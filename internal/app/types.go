@@ -2,6 +2,7 @@ package app
 
 import (
 	"context"
+	"io"
 	"sync"
 
 	"github.com/langowarny/lango/internal/adk"
@@ -21,6 +22,9 @@ type App struct {
 	Agent   *adk.Agent
 	Gateway *gateway.Server
 	Store   session.Store
+
+	// Browser (optional, io.Closer)
+	Browser io.Closer
 
 	// Self-Learning Components
 	KnowledgeStore  *knowledge.Store

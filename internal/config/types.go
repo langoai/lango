@@ -260,6 +260,9 @@ type FilesystemToolConfig struct {
 
 // BrowserToolConfig defines browser automation settings
 type BrowserToolConfig struct {
+	// Enable browser tools (requires Chromium)
+	Enabled bool `mapstructure:"enabled" json:"enabled"`
+
 	// Run headless
 	Headless bool `mapstructure:"headless" json:"headless"`
 

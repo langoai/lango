@@ -7,7 +7,7 @@ A high-performance AI agent built with Go, supporting multiple AI providers, cha
 - 🔥 **Fast** - Single binary, <100ms startup, <100MB memory
 - 🤖 **Multi-Provider AI** - OpenAI, Anthropic, Gemini, Ollama with unified interface
 - 🔌 **Multi-Channel** - Telegram, Discord, Slack support
-- 🛠️ **Rich Tools** - Shell execution, file system operations
+- 🛠️ **Rich Tools** - Shell execution, file system operations, browser automation
 - 🧠 **Self-Learning** - Knowledge store, learning engine, skill system
 - 🔒 **Secure** - AES-256-GCM encryption, key registry, companion app support
 - 💾 **Persistent** - Ent ORM with SQLite session storage
@@ -133,7 +133,7 @@ lango/
 │   ├── session/            # Ent-based SQLite session store
 │   ├── skill/              # Skill registry, executor, builder
 │   ├── supervisor/         # Provider proxy, privileged tool execution
-│   └── tools/              # exec, filesystem
+│   └── tools/              # exec, filesystem, browser
 └── openspec/               # Specifications (OpenSpec workflow)
 ```
 
@@ -203,6 +203,9 @@ Use `lango onboard` to interactively configure providers, models, and security s
 | `session.databasePath` | string | `~/.lango/sessions.db` | SQLite path |
 | `security.signer.provider` | string | `local` | `local` or `rpc` |
 | `security.passphrase` | string | - | **DEPRECATED** Use `LANGO_PASSPHRASE` env var |
+| `tools.browser.enabled` | bool | `false` | Enable browser automation tools (requires Chromium) |
+| `tools.browser.headless` | bool | `true` | Run browser in headless mode |
+| `tools.browser.sessionTimeout` | duration | `5m` | Browser session timeout |
 | `knowledge.enabled` | bool | `false` | Enable self-learning knowledge system |
 | `knowledge.maxLearnings` | int | - | Max learning entries per session |
 | `knowledge.maxKnowledge` | int | - | Max knowledge entries per session |

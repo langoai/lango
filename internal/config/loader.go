@@ -46,6 +46,7 @@ func DefaultConfig() *Config {
 				MaxReadSize: 10 * 1024 * 1024, // 10MB
 			},
 			Browser: BrowserToolConfig{
+				Enabled:        false,
 				Headless:       true,
 				SessionTimeout: 5 * time.Minute,
 			},
@@ -82,6 +83,7 @@ func Load(configPath string) (*Config, error) {
 	v.SetDefault("tools.exec.defaultTimeout", defaults.Tools.Exec.DefaultTimeout)
 	v.SetDefault("tools.exec.allowBackground", defaults.Tools.Exec.AllowBackground)
 	v.SetDefault("tools.filesystem.maxReadSize", defaults.Tools.Filesystem.MaxReadSize)
+	v.SetDefault("tools.browser.enabled", defaults.Tools.Browser.Enabled)
 	v.SetDefault("tools.browser.headless", defaults.Tools.Browser.Headless)
 	v.SetDefault("tools.browser.sessionTimeout", defaults.Tools.Browser.SessionTimeout)
 

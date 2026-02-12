@@ -9,6 +9,7 @@ import (
 	"github.com/langowarny/lango/internal/agent"
 	"github.com/langowarny/lango/internal/config"
 	"github.com/langowarny/lango/internal/logging"
+	"github.com/langowarny/lango/internal/tools/browser"
 	"github.com/langowarny/lango/internal/tools/filesystem"
 )
 
@@ -41,12 +42,27 @@ func New(cfg *config.Config) (*App, error) {
 		logger().Info("security disabled, set security.signer.provider to enable")
 	}
 
-	// 4. Base tools (exec + filesystem)
+	// 4. Base tools (exec + filesystem + optional browser)
 	fsConfig := filesystem.Config{
 		MaxReadSize:  cfg.Tools.Filesystem.MaxReadSize,
 		AllowedPaths: cfg.Tools.Filesystem.AllowedPaths,
 	}
-	tools := buildTools(sv, fsConfig)
+
+	var browserSM *browser.SessionManager
+	if cfg.Tools.Browser.Enabled {
+		bt, err := browser.New(browser.Config{
+			Headless:       cfg.Tools.Browser.Headless,
+			SessionTimeout: cfg.Tools.Browser.SessionTimeout,
+		})
+		if err != nil {
+			return nil, fmt.Errorf("create browser tool: %w", err)
+		}
+		browserSM = browser.NewSessionManager(bt)
+		app.Browser = browserSM
+		logger().Info("browser tools enabled")
+	}
+
+	tools := buildTools(sv, fsConfig, browserSM)
 
 	// 5. Knowledge system (optional, non-blocking)
 	kc := initKnowledge(cfg, store, tools)
@@ -139,6 +155,12 @@ func (a *App) Stop(ctx context.Context) error {
 		logger().Info("all services stopped")
 	case <-ctx.Done():
 		logger().Warnw("shutdown timed out waiting for services", "error", ctx.Err())
+	}
+
+	if a.Browser != nil {
+		if err := a.Browser.Close(); err != nil {
+			logger().Errorw("browser close error", "error", err)
+		}
 	}
 
 	if a.Store != nil {

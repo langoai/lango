@@ -131,6 +131,14 @@ func (t *Tool) CloseSession(sessionID string) error {
 	return nil
 }
 
+// HasSession reports whether a session with the given ID exists.
+func (t *Tool) HasSession(sessionID string) bool {
+	t.mu.RLock()
+	defer t.mu.RUnlock()
+	_, ok := t.sessions[sessionID]
+	return ok
+}
+
 // getSession retrieves a session by ID
 func (t *Tool) getSession(sessionID string) (*Session, error) {
 	t.mu.RLock()
