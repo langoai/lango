@@ -1,15 +1,18 @@
 # Lango 🚀
 
-A high-performance AI agent built with Go, supporting multiple channels (Telegram, Discord, Slack) and advanced tools.
+A high-performance AI agent built with Go, supporting multiple AI providers, channels (Telegram, Discord, Slack), and a self-learning knowledge system.
 
 ## Features
 
 - 🔥 **Fast** - Single binary, <100ms startup, <100MB memory
-- 🔒 **Secure** - No Node.js dependencies, reduced attack surface
+- 🤖 **Multi-Provider AI** - OpenAI, Anthropic, Gemini, Ollama with unified interface
 - 🔌 **Multi-Channel** - Telegram, Discord, Slack support
-- 🛠️ **Rich Tools** - Shell execution, file system, browser automation
-- 💾 **Persistent** - SQLite session storage
+- 🛠️ **Rich Tools** - Shell execution, file system operations
+- 🧠 **Self-Learning** - Knowledge store, learning engine, skill system
+- 🔒 **Secure** - AES-256-GCM encryption, key registry, companion app support
+- 💾 **Persistent** - Ent ORM with SQLite session storage
 - 🌐 **Gateway** - WebSocket/HTTP server for control plane
+- 🔑 **Auth** - OIDC authentication, OAuth login flow
 
 ## Quick Start
 
@@ -37,9 +40,12 @@ Create `lango.json`:
   },
   "agent": {
     "provider": "gemini",
-    "model": "gemini-2.0-flash-exp",
-    "apiKey": "${GOOGLE_API_KEY}",
-    "maxConversationTurns": 20
+    "model": "gemini-2.0-flash-exp"
+  },
+  "providers": {
+    "gemini": {
+      "apiKey": "${GOOGLE_API_KEY}"
+    }
   },
   "channels": {
     "telegram": {
@@ -77,9 +83,10 @@ lango onboard
 ```
 
 This guides you through:
-1. API key configuration
-2. Model selection
-3. Channel setup (Telegram, Discord, or Slack)
+1. AI provider configuration (API keys, models)
+2. Server and channel setup (Telegram, Discord, Slack)
+3. Security settings (encryption, signer mode)
+4. Tool configuration
 
 ### Diagnostics
 
@@ -100,27 +107,45 @@ lango doctor --json
 
 ```
 lango/
-├── cmd/lango/          # CLI entry point
+├── cmd/lango/              # CLI entry point (cobra)
 ├── internal/
-│   ├── agent/          # Agent runtime with multi-provider support
-│   ├── provider/       # AI Providers (OpenAI, Anthropic, Gemini)
-│   ├── gateway/        # WebSocket/HTTP server
-│   ├── channels/       # Telegram, Discord, Slack
-│   ├── tools/          # exec, filesystem, browser
-│   ├── session/        # SQLite session store
-│   ├── config/         # Configuration loading
-│   ├── logging/        # Zap logger
-└── pkg/                # Public packages
+│   ├── adk/                # Google ADK agent wrapper, session/state adapters
+│   ├── agent/              # Agent types, PII redactor
+│   ├── app/                # Application bootstrap, wiring, tool registration
+│   ├── channels/           # Telegram, Discord, Slack integrations
+│   ├── cli/                # CLI commands
+│   │   ├── auth/           #   lango login (OIDC/OAuth)
+│   │   ├── doctor/         #   lango doctor (diagnostics)
+│   │   ├── onboard/        #   lango onboard (TUI wizard)
+│   │   └── security/       #   lango security migrate-passphrase
+│   ├── companion/          # mDNS companion app discovery
+│   ├── config/             # Config loading, env var substitution, validation
+│   ├── ent/                # Ent ORM schemas and generated code
+│   ├── gateway/            # WebSocket/HTTP server, OIDC auth
+│   ├── knowledge/          # Knowledge store, context retriever
+│   ├── learning/           # Learning engine, error pattern analyzer
+│   ├── logging/            # Zap structured logger
+│   ├── provider/           # AI provider interface and implementations
+│   │   ├── anthropic/      #   Claude models
+│   │   ├── gemini/         #   Google Gemini models
+│   │   └── openai/         #   OpenAI-compatible (GPT, Ollama, etc.)
+│   ├── security/           # Crypto providers, key registry, secrets store
+│   ├── session/            # Ent-based SQLite session store
+│   ├── skill/              # Skill registry, executor, builder
+│   ├── supervisor/         # Provider proxy, privileged tool execution
+│   └── tools/              # exec, filesystem
+└── openspec/               # Specifications (OpenSpec workflow)
 ```
 
 ## AI Providers
 
-Lango supports multiple AI providers with a unified interface and automatic fallback.
+Lango supports multiple AI providers with a unified interface. Provider aliases are resolved automatically (e.g., `gpt` -> `openai`, `claude` -> `anthropic`, `llama` -> `ollama`).
 
 ### Supported Providers
-- **OpenAI** (`openai`): GPT-4, GPT-3.5, and compatible APIs (Ollama, Groq, etc.)
+- **OpenAI** (`openai`): GPT-4o, GPT-4, and OpenAI-compatible APIs
 - **Anthropic** (`anthropic`): Claude 3, Claude 3.5
 - **Gemini** (`gemini`): Google Gemini models
+- **Ollama** (`ollama`): Local models via Ollama (default: `http://localhost:11434/v1`)
 
 ### Configuration Example
 
@@ -140,7 +165,7 @@ Lango supports multiple AI providers with a unified interface and automatic fall
       "apiKey": "${ANTHROPIC_API_KEY}"
     },
     "ollama": {
-        "baseUrl": "http://localhost:11434"
+      "baseUrl": "http://localhost:11434/v1"
     }
   },
   "security": {
@@ -168,17 +193,44 @@ Use `lango onboard` to interactively configure providers, models, and security s
 | `agent.model` | string | `gemini-2.0-flash-exp` | Primary model ID |
 | `agent.fallbackProvider` | string | - | Fallback provider ID |
 | `agent.fallbackModel` | string | - | Fallback model ID |
-| `agent.apiKey` | string | - | legacy: use `providers` section |
-| `providers.<id>.type` | string | - | Provider type (openai, anthropic, gemini) |
-| `providers.<id>.apiKey` | string | - | Provider API key |
-| `providers.<id>.baseUrl` | string | - | Custom base URL (e.g. for Ollama) |
 | `agent.maxTokens` | int | `4096` | Max tokens |
-| `agent.maxConversationTurns` | int | `20` | Max conversation history turns |
+| `agent.temperature` | float | `0` | Generation temperature |
+| `providers.<id>.type` | string | - | Provider type (openai, anthropic, gemini) |
+| `providers.<id>.apiKey` | string | - | Provider API key (supports `${ENV_VAR}`) |
+| `providers.<id>.baseUrl` | string | - | Custom base URL (e.g. for Ollama) |
 | `logging.level` | string | `info` | Log level |
 | `logging.format` | string | `console` | `json` or `console` |
 | `session.databasePath` | string | `~/.lango/sessions.db` | SQLite path |
 | `security.signer.provider` | string | `local` | `local` or `rpc` |
-| `security.passphrase` | string | - | **DEPRECATED** Use `LANGO_PASSPHRASE` |
+| `security.passphrase` | string | - | **DEPRECATED** Use `LANGO_PASSPHRASE` env var |
+| `knowledge.enabled` | bool | `false` | Enable self-learning knowledge system |
+| `knowledge.maxLearnings` | int | - | Max learning entries per session |
+| `knowledge.maxKnowledge` | int | - | Max knowledge entries per session |
+| `knowledge.autoApproveSkills` | bool | `false` | Auto-approve new skills |
+| `knowledge.maxSkillsPerDay` | int | - | Rate limit for skill creation |
+
+## Self-Learning System
+
+Lango includes a self-learning knowledge system that improves agent performance over time.
+
+- **Knowledge Store** - Persistent storage for facts, patterns, and external references
+- **Learning Engine** - Observes tool execution results, extracts error patterns, boosts successful strategies
+- **Skill System** - Agents can create reusable composite/script/template skills with safety validation
+- **Context Retriever** - 6-layer context architecture that assembles relevant knowledge into prompts
+
+Configure in `lango.json`:
+
+```json
+{
+  "knowledge": {
+    "enabled": true,
+    "maxLearnings": 100,
+    "maxKnowledge": 500,
+    "autoApproveSkills": false,
+    "maxSkillsPerDay": 10
+  }
+}
+```
 
 ## Security
 
@@ -214,56 +266,58 @@ Configure mode in `lango.json`:
 }
 ```
 
-### Secrets Management
+### Key Registry
 
-AI agents can securely store and retrieve secrets (API keys, tokens, etc.):
+Lango manages cryptographic keys via an Ent-backed key registry. Keys are used for secret encryption, signing, and companion app integration.
 
-```go
-// Stored secrets are encrypted with AES-256-GCM
-secrets.store(name: "api-key", value: "sk-...")
-secrets.get(name: "api-key")  // Requires user approval
-secrets.list()
-secrets.delete(name: "api-key")
+### Companion App Discovery (RPC Mode)
+
+Lango supports optional companion apps for hardware-backed security:
+
+- **mDNS Discovery** - Auto-discovers companion apps on the local network via `_lango-companion._tcp`
+- **Manual Config** - Set a fixed companion address
+
+### Authentication
+
+Lango supports OIDC authentication for the gateway:
+
+```bash
+# Login via OIDC provider
+lango login google
 ```
 
-### Cryptographic Operations
-
-```go
-crypto.encrypt(data: "sensitive", keyId: "default")
-crypto.decrypt(ciphertext: "...", keyId: "default")
-crypto.sign(data: "message")
-crypto.hash(data: "content", algorithm: "sha256")
-crypto.keys()  // List available keys
-```
-
-### Companion App Integration (RPC Mode)
-
-Lango supports optional iOS/macOS companion apps for hardware-backed security:
-
-- **mDNS Discovery** - Auto-discovers companion apps on the local network
-- **Secure Enclave** - Keys never leave the hardware security module
-- **Approval UI** - Native push notifications for sensitive operations
-
-Configure in `lango.json`:
+Configure OIDC providers in `lango.json`:
 
 ```json
 {
-  "security": {
-    "signer": {
-      "provider": "rpc"
-    },
-    "companion": {
-      "enabled": true,
-      "address": "ws://192.168.1.100:18790"
+  "auth": {
+    "providers": {
+      "google": {
+        "issuerUrl": "https://accounts.google.com",
+        "clientId": "${GOOGLE_CLIENT_ID}",
+        "clientSecret": "${GOOGLE_CLIENT_SECRET}",
+        "redirectUrl": "http://localhost:18789/auth/callback/google",
+        "scopes": ["openid", "email", "profile"]
+      }
     }
   }
 }
 ```
 
+## Docker
+
+```bash
+# Build Docker image
+make docker-build
+
+# Run with docker-compose
+docker-compose up -d
+```
+
 ## Development
 
 ```bash
-# Run tests
+# Run tests with race detector
 make test
 
 # Run linter
@@ -272,8 +326,14 @@ make lint
 # Build for all platforms
 make build-all
 
-# Run locally
+# Run locally (build + serve)
 make dev
+
+# Generate Ent code
+make generate
+
+# Download and tidy dependencies
+make deps
 ```
 
 ## License
