@@ -4,8 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"net/http" // Added for os.Getenv
-	"os"
+	"net/http"
 	"strings"
 	"time"
 
@@ -47,31 +46,7 @@ func (c *SecurityCheck) Run(ctx context.Context, cfg *config.Config) Result {
 		}
 	}
 
-	// 2. Check Deprecated config
-	if cfg.Security.Passphrase != "" {
-		issues = append(issues, "Config field 'security.passphrase' is deprecated (use LANGO_PASSPHRASE env var or interactive prompt)")
-		if status < StatusWarn {
-			status = StatusWarn
-		}
-	}
-
-	// 3. Check LANGO_PASSPHRASE usage
-	if os.Getenv("LANGO_PASSPHRASE") != "" {
-		if cfg.Security.Signer.Provider == "local" {
-			issues = append(issues, "LANGO_PASSPHRASE env var is valid but less secure than interactive entry")
-			// Info level? Doctor uses Pass/Warn/Fail. Warn seems appropriate for "less secure".
-			if status < StatusWarn {
-				status = StatusWarn
-			}
-		} else {
-			issues = append(issues, "LANGO_PASSPHRASE env var is set but ignored (provider is not local)")
-			if status < StatusWarn {
-				status = StatusWarn
-			}
-		}
-	}
-
-	// 4. Check Database State (Salt/Checksum)
+	// 2. Check Database State (Salt/Checksum)
 	if cfg.Session.DatabasePath == "" {
 		issues = append(issues, "No session database path configured")
 		status = StatusWarn
@@ -88,7 +63,7 @@ func (c *SecurityCheck) Run(ctx context.Context, cfg *config.Config) Result {
 					Status:  StatusWarn,
 					Message: "Session database is encrypted and locked",
 					Details: "The doctor command cannot verify the session database contents because it is encrypted.\n" +
-						"To verify, run: LANGO_PASSPHRASE=your_passphrase lango doctor",
+						"Ensure your passphrase keyfile (~/.lango/keyfile) exists, or run in an interactive terminal.",
 				}
 			}
 			return Result{

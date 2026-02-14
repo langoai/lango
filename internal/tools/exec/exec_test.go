@@ -4,6 +4,8 @@ import (
 	"context"
 	"testing"
 	"time"
+
+	"github.com/stretchr/testify/assert"
 )
 
 func TestRun(t *testing.T) {
@@ -98,5 +100,32 @@ func TestEnvFiltering(t *testing.T) {
 		if e == "ANTHROPIC_API_KEY=secret" {
 			t.Error("API key should be filtered")
 		}
+	}
+}
+
+func TestFilterEnvBlacklist(t *testing.T) {
+	tool := New(Config{})
+
+	tests := []struct {
+		give     string
+		wantKept bool
+	}{
+		{give: "PATH=/usr/bin", wantKept: true},
+		{give: "HOME=/home/test", wantKept: true},
+		{give: "LANGO_PASSPHRASE=supersecret", wantKept: false},
+		{give: "ANTHROPIC_API_KEY=key123", wantKept: false},
+		{give: "AWS_SECRET=abc", wantKept: false},
+		{give: "OPENAI_API_KEY=sk-xxx", wantKept: false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.give, func(t *testing.T) {
+			filtered := tool.filterEnv([]string{tt.give})
+			if tt.wantKept {
+				assert.Len(t, filtered, 1, "expected env var to be kept")
+			} else {
+				assert.Empty(t, filtered, "expected env var to be filtered")
+			}
+		})
 	}
 }

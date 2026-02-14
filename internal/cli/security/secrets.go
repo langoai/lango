@@ -44,7 +44,7 @@ func newSecretsListCmd(cfgLoader func() (*config.Config, error)) *cobra.Command 
 			}
 			defer store.Close()
 
-			secretsStore, err := initLocalCrypto(cfg, store)
+			secretsStore, err := initLocalCrypto(store)
 			if err != nil {
 				return err
 			}
@@ -108,7 +108,7 @@ func newSecretsSetCmd(cfgLoader func() (*config.Config, error)) *cobra.Command {
 			}
 			defer store.Close()
 
-			secretsStore, err := initLocalCrypto(cfg, store)
+			secretsStore, err := initLocalCrypto(store)
 			if err != nil {
 				return err
 			}
@@ -150,7 +150,7 @@ func newSecretsDeleteCmd(cfgLoader func() (*config.Config, error)) *cobra.Comman
 			}
 			defer store.Close()
 
-			secretsStore, err := initLocalCrypto(cfg, store)
+			secretsStore, err := initLocalCrypto(store)
 			if err != nil {
 				return err
 			}

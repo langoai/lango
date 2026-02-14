@@ -41,6 +41,34 @@ var (
 			},
 		},
 	}
+	// ConfigProfilesColumns holds the columns for the "config_profiles" table.
+	ConfigProfilesColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeUUID},
+		{Name: "name", Type: field.TypeString, Unique: true},
+		{Name: "encrypted_data", Type: field.TypeBytes},
+		{Name: "active", Type: field.TypeBool, Default: false},
+		{Name: "version", Type: field.TypeInt, Default: 1},
+		{Name: "created_at", Type: field.TypeTime},
+		{Name: "updated_at", Type: field.TypeTime},
+	}
+	// ConfigProfilesTable holds the schema information for the "config_profiles" table.
+	ConfigProfilesTable = &schema.Table{
+		Name:       "config_profiles",
+		Columns:    ConfigProfilesColumns,
+		PrimaryKey: []*schema.Column{ConfigProfilesColumns[0]},
+		Indexes: []*schema.Index{
+			{
+				Name:    "configprofile_name",
+				Unique:  false,
+				Columns: []*schema.Column{ConfigProfilesColumns[1]},
+			},
+			{
+				Name:    "configprofile_active",
+				Unique:  false,
+				Columns: []*schema.Column{ConfigProfilesColumns[3]},
+			},
+		},
+	}
 	// ExternalRefsColumns holds the columns for the "external_refs" table.
 	ExternalRefsColumns = []*schema.Column{
 		{Name: "id", Type: field.TypeUUID},
@@ -328,6 +356,7 @@ var (
 	// Tables holds all the tables in the schema.
 	Tables = []*schema.Table{
 		AuditLogsTable,
+		ConfigProfilesTable,
 		ExternalRefsTable,
 		KeysTable,
 		KnowledgesTable,

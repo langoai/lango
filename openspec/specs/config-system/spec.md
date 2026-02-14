@@ -1,19 +1,22 @@
 ## Requirements
 
-### Requirement: Configuration file loading
-The system SHALL load configuration from JSON or YAML files with a priority chain.
+### Requirement: Configuration loading
+The system SHALL load configuration through the bootstrap process from an encrypted SQLite database profile instead of directly from a plaintext JSON file. The `config.Load()` function SHALL be retained for migration purposes only.
 
-#### Scenario: Load JSON config
-- **WHEN** a lango.json file exists in the config directory
-- **THEN** the configuration SHALL be loaded from that file
+#### Scenario: Normal startup
+- **WHEN** the application starts via `lango serve`
+- **THEN** configuration is loaded via `bootstrap.Run()` which reads the active encrypted profile
 
-#### Scenario: Load YAML config
-- **WHEN** a lango.yaml file exists (no JSON)
-- **THEN** the configuration SHALL be loaded from YAML
+#### Scenario: Migration loading
+- **WHEN** `config.Load()` is called during JSON import
+- **THEN** the JSON file is read with environment variable substitution (existing behavior preserved)
 
-#### Scenario: Config file priority
-- **WHEN** multiple config files exist
-- **THEN** JSON SHALL take precedence over YAML
+### Requirement: Configuration save
+The system SHALL save configuration through `configstore.Store.Save()` which encrypts and stores in the database. The legacy `config.Save()` function SHALL be simplified to a basic JSON marshal without sanitization.
+
+#### Scenario: Save via configstore
+- **WHEN** a config is saved through the configstore
+- **THEN** it is JSON-serialized, AES-256-GCM encrypted, and stored in the database
 
 ### Requirement: Environment variable substitution
 The system SHALL substitute environment variables in configuration values.

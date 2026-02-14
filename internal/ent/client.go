@@ -17,6 +17,7 @@ import (
 	"entgo.io/ent/dialect/sql"
 	"entgo.io/ent/dialect/sql/sqlgraph"
 	"github.com/langowarny/lango/internal/ent/auditlog"
+	"github.com/langowarny/lango/internal/ent/configprofile"
 	"github.com/langowarny/lango/internal/ent/externalref"
 	"github.com/langowarny/lango/internal/ent/key"
 	"github.com/langowarny/lango/internal/ent/knowledge"
@@ -36,6 +37,8 @@ type Client struct {
 	Schema *migrate.Schema
 	// AuditLog is the client for interacting with the AuditLog builders.
 	AuditLog *AuditLogClient
+	// ConfigProfile is the client for interacting with the ConfigProfile builders.
+	ConfigProfile *ConfigProfileClient
 	// ExternalRef is the client for interacting with the ExternalRef builders.
 	ExternalRef *ExternalRefClient
 	// Key is the client for interacting with the Key builders.
@@ -68,6 +71,7 @@ func NewClient(opts ...Option) *Client {
 func (c *Client) init() {
 	c.Schema = migrate.NewSchema(c.driver)
 	c.AuditLog = NewAuditLogClient(c.config)
+	c.ConfigProfile = NewConfigProfileClient(c.config)
 	c.ExternalRef = NewExternalRefClient(c.config)
 	c.Key = NewKeyClient(c.config)
 	c.Knowledge = NewKnowledgeClient(c.config)
@@ -168,19 +172,20 @@ func (c *Client) Tx(ctx context.Context) (*Tx, error) {
 	cfg := c.config
 	cfg.driver = tx
 	return &Tx{
-		ctx:         ctx,
-		config:      cfg,
-		AuditLog:    NewAuditLogClient(cfg),
-		ExternalRef: NewExternalRefClient(cfg),
-		Key:         NewKeyClient(cfg),
-		Knowledge:   NewKnowledgeClient(cfg),
-		Learning:    NewLearningClient(cfg),
-		Message:     NewMessageClient(cfg),
-		Observation: NewObservationClient(cfg),
-		Reflection:  NewReflectionClient(cfg),
-		Secret:      NewSecretClient(cfg),
-		Session:     NewSessionClient(cfg),
-		Skill:       NewSkillClient(cfg),
+		ctx:           ctx,
+		config:        cfg,
+		AuditLog:      NewAuditLogClient(cfg),
+		ConfigProfile: NewConfigProfileClient(cfg),
+		ExternalRef:   NewExternalRefClient(cfg),
+		Key:           NewKeyClient(cfg),
+		Knowledge:     NewKnowledgeClient(cfg),
+		Learning:      NewLearningClient(cfg),
+		Message:       NewMessageClient(cfg),
+		Observation:   NewObservationClient(cfg),
+		Reflection:    NewReflectionClient(cfg),
+		Secret:        NewSecretClient(cfg),
+		Session:       NewSessionClient(cfg),
+		Skill:         NewSkillClient(cfg),
 	}, nil
 }
 
@@ -198,19 +203,20 @@ func (c *Client) BeginTx(ctx context.Context, opts *sql.TxOptions) (*Tx, error) 
 	cfg := c.config
 	cfg.driver = &txDriver{tx: tx, drv: c.driver}
 	return &Tx{
-		ctx:         ctx,
-		config:      cfg,
-		AuditLog:    NewAuditLogClient(cfg),
-		ExternalRef: NewExternalRefClient(cfg),
-		Key:         NewKeyClient(cfg),
-		Knowledge:   NewKnowledgeClient(cfg),
-		Learning:    NewLearningClient(cfg),
-		Message:     NewMessageClient(cfg),
-		Observation: NewObservationClient(cfg),
-		Reflection:  NewReflectionClient(cfg),
-		Secret:      NewSecretClient(cfg),
-		Session:     NewSessionClient(cfg),
-		Skill:       NewSkillClient(cfg),
+		ctx:           ctx,
+		config:        cfg,
+		AuditLog:      NewAuditLogClient(cfg),
+		ConfigProfile: NewConfigProfileClient(cfg),
+		ExternalRef:   NewExternalRefClient(cfg),
+		Key:           NewKeyClient(cfg),
+		Knowledge:     NewKnowledgeClient(cfg),
+		Learning:      NewLearningClient(cfg),
+		Message:       NewMessageClient(cfg),
+		Observation:   NewObservationClient(cfg),
+		Reflection:    NewReflectionClient(cfg),
+		Secret:        NewSecretClient(cfg),
+		Session:       NewSessionClient(cfg),
+		Skill:         NewSkillClient(cfg),
 	}, nil
 }
 
@@ -240,8 +246,8 @@ func (c *Client) Close() error {
 // In order to add hooks to a specific client, call: `client.Node.Use(...)`.
 func (c *Client) Use(hooks ...Hook) {
 	for _, n := range []interface{ Use(...Hook) }{
-		c.AuditLog, c.ExternalRef, c.Key, c.Knowledge, c.Learning, c.Message,
-		c.Observation, c.Reflection, c.Secret, c.Session, c.Skill,
+		c.AuditLog, c.ConfigProfile, c.ExternalRef, c.Key, c.Knowledge, c.Learning,
+		c.Message, c.Observation, c.Reflection, c.Secret, c.Session, c.Skill,
 	} {
 		n.Use(hooks...)
 	}
@@ -251,8 +257,8 @@ func (c *Client) Use(hooks ...Hook) {
 // In order to add interceptors to a specific client, call: `client.Node.Intercept(...)`.
 func (c *Client) Intercept(interceptors ...Interceptor) {
 	for _, n := range []interface{ Intercept(...Interceptor) }{
-		c.AuditLog, c.ExternalRef, c.Key, c.Knowledge, c.Learning, c.Message,
-		c.Observation, c.Reflection, c.Secret, c.Session, c.Skill,
+		c.AuditLog, c.ConfigProfile, c.ExternalRef, c.Key, c.Knowledge, c.Learning,
+		c.Message, c.Observation, c.Reflection, c.Secret, c.Session, c.Skill,
 	} {
 		n.Intercept(interceptors...)
 	}
@@ -263,6 +269,8 @@ func (c *Client) Mutate(ctx context.Context, m Mutation) (Value, error) {
 	switch m := m.(type) {
 	case *AuditLogMutation:
 		return c.AuditLog.mutate(ctx, m)
+	case *ConfigProfileMutation:
+		return c.ConfigProfile.mutate(ctx, m)
 	case *ExternalRefMutation:
 		return c.ExternalRef.mutate(ctx, m)
 	case *KeyMutation:
@@ -418,6 +426,139 @@ func (c *AuditLogClient) mutate(ctx context.Context, m *AuditLogMutation) (Value
 		return (&AuditLogDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
 	default:
 		return nil, fmt.Errorf("ent: unknown AuditLog mutation op: %q", m.Op())
+	}
+}
+
+// ConfigProfileClient is a client for the ConfigProfile schema.
+type ConfigProfileClient struct {
+	config
+}
+
+// NewConfigProfileClient returns a client for the ConfigProfile from the given config.
+func NewConfigProfileClient(c config) *ConfigProfileClient {
+	return &ConfigProfileClient{config: c}
+}
+
+// Use adds a list of mutation hooks to the hooks stack.
+// A call to `Use(f, g, h)` equals to `configprofile.Hooks(f(g(h())))`.
+func (c *ConfigProfileClient) Use(hooks ...Hook) {
+	c.hooks.ConfigProfile = append(c.hooks.ConfigProfile, hooks...)
+}
+
+// Intercept adds a list of query interceptors to the interceptors stack.
+// A call to `Intercept(f, g, h)` equals to `configprofile.Intercept(f(g(h())))`.
+func (c *ConfigProfileClient) Intercept(interceptors ...Interceptor) {
+	c.inters.ConfigProfile = append(c.inters.ConfigProfile, interceptors...)
+}
+
+// Create returns a builder for creating a ConfigProfile entity.
+func (c *ConfigProfileClient) Create() *ConfigProfileCreate {
+	mutation := newConfigProfileMutation(c.config, OpCreate)
+	return &ConfigProfileCreate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// CreateBulk returns a builder for creating a bulk of ConfigProfile entities.
+func (c *ConfigProfileClient) CreateBulk(builders ...*ConfigProfileCreate) *ConfigProfileCreateBulk {
+	return &ConfigProfileCreateBulk{config: c.config, builders: builders}
+}
+
+// MapCreateBulk creates a bulk creation builder from the given slice. For each item in the slice, the function creates
+// a builder and applies setFunc on it.
+func (c *ConfigProfileClient) MapCreateBulk(slice any, setFunc func(*ConfigProfileCreate, int)) *ConfigProfileCreateBulk {
+	rv := reflect.ValueOf(slice)
+	if rv.Kind() != reflect.Slice {
+		return &ConfigProfileCreateBulk{err: fmt.Errorf("calling to ConfigProfileClient.MapCreateBulk with wrong type %T, need slice", slice)}
+	}
+	builders := make([]*ConfigProfileCreate, rv.Len())
+	for i := 0; i < rv.Len(); i++ {
+		builders[i] = c.Create()
+		setFunc(builders[i], i)
+	}
+	return &ConfigProfileCreateBulk{config: c.config, builders: builders}
+}
+
+// Update returns an update builder for ConfigProfile.
+func (c *ConfigProfileClient) Update() *ConfigProfileUpdate {
+	mutation := newConfigProfileMutation(c.config, OpUpdate)
+	return &ConfigProfileUpdate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOne returns an update builder for the given entity.
+func (c *ConfigProfileClient) UpdateOne(_m *ConfigProfile) *ConfigProfileUpdateOne {
+	mutation := newConfigProfileMutation(c.config, OpUpdateOne, withConfigProfile(_m))
+	return &ConfigProfileUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOneID returns an update builder for the given id.
+func (c *ConfigProfileClient) UpdateOneID(id uuid.UUID) *ConfigProfileUpdateOne {
+	mutation := newConfigProfileMutation(c.config, OpUpdateOne, withConfigProfileID(id))
+	return &ConfigProfileUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// Delete returns a delete builder for ConfigProfile.
+func (c *ConfigProfileClient) Delete() *ConfigProfileDelete {
+	mutation := newConfigProfileMutation(c.config, OpDelete)
+	return &ConfigProfileDelete{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// DeleteOne returns a builder for deleting the given entity.
+func (c *ConfigProfileClient) DeleteOne(_m *ConfigProfile) *ConfigProfileDeleteOne {
+	return c.DeleteOneID(_m.ID)
+}
+
+// DeleteOneID returns a builder for deleting the given entity by its id.
+func (c *ConfigProfileClient) DeleteOneID(id uuid.UUID) *ConfigProfileDeleteOne {
+	builder := c.Delete().Where(configprofile.ID(id))
+	builder.mutation.id = &id
+	builder.mutation.op = OpDeleteOne
+	return &ConfigProfileDeleteOne{builder}
+}
+
+// Query returns a query builder for ConfigProfile.
+func (c *ConfigProfileClient) Query() *ConfigProfileQuery {
+	return &ConfigProfileQuery{
+		config: c.config,
+		ctx:    &QueryContext{Type: TypeConfigProfile},
+		inters: c.Interceptors(),
+	}
+}
+
+// Get returns a ConfigProfile entity by its id.
+func (c *ConfigProfileClient) Get(ctx context.Context, id uuid.UUID) (*ConfigProfile, error) {
+	return c.Query().Where(configprofile.ID(id)).Only(ctx)
+}
+
+// GetX is like Get, but panics if an error occurs.
+func (c *ConfigProfileClient) GetX(ctx context.Context, id uuid.UUID) *ConfigProfile {
+	obj, err := c.Get(ctx, id)
+	if err != nil {
+		panic(err)
+	}
+	return obj
+}
+
+// Hooks returns the client hooks.
+func (c *ConfigProfileClient) Hooks() []Hook {
+	return c.hooks.ConfigProfile
+}
+
+// Interceptors returns the client interceptors.
+func (c *ConfigProfileClient) Interceptors() []Interceptor {
+	return c.inters.ConfigProfile
+}
+
+func (c *ConfigProfileClient) mutate(ctx context.Context, m *ConfigProfileMutation) (Value, error) {
+	switch m.Op() {
+	case OpCreate:
+		return (&ConfigProfileCreate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdate:
+		return (&ConfigProfileUpdate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdateOne:
+		return (&ConfigProfileUpdateOne{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpDelete, OpDeleteOne:
+		return (&ConfigProfileDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
+	default:
+		return nil, fmt.Errorf("ent: unknown ConfigProfile mutation op: %q", m.Op())
 	}
 }
 
@@ -1818,11 +1959,11 @@ func (c *SkillClient) mutate(ctx context.Context, m *SkillMutation) (Value, erro
 // hooks and interceptors per client, for fast access.
 type (
 	hooks struct {
-		AuditLog, ExternalRef, Key, Knowledge, Learning, Message, Observation,
-		Reflection, Secret, Session, Skill []ent.Hook
+		AuditLog, ConfigProfile, ExternalRef, Key, Knowledge, Learning, Message,
+		Observation, Reflection, Secret, Session, Skill []ent.Hook
 	}
 	inters struct {
-		AuditLog, ExternalRef, Key, Knowledge, Learning, Message, Observation,
-		Reflection, Secret, Session, Skill []ent.Interceptor
+		AuditLog, ConfigProfile, ExternalRef, Key, Knowledge, Learning, Message,
+		Observation, Reflection, Secret, Session, Skill []ent.Interceptor
 	}
 )

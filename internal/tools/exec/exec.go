@@ -300,7 +300,7 @@ func (t *Tool) filterEnv(env []string) []string {
 	defaultFilter := []string{
 		"AWS_SECRET", "ANTHROPIC_API_KEY", "OPENAI_API_KEY",
 		"GOOGLE_API_KEY", "SLACK_BOT_TOKEN", "DISCORD_TOKEN",
-		"TELEGRAM_BOT_TOKEN",
+		"TELEGRAM_BOT_TOKEN", "LANGO_PASSPHRASE",
 	}
 	filterList := append(defaultFilter, t.config.EnvFilter...)
 

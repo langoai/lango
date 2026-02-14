@@ -3,10 +3,13 @@ package app
 import (
 	"context"
 	"fmt"
+	"os"
+	"path/filepath"
 
 	"go.uber.org/zap"
 
 	"github.com/langowarny/lango/internal/agent"
+	"github.com/langowarny/lango/internal/bootstrap"
 	"github.com/langowarny/lango/internal/config"
 	"github.com/langowarny/lango/internal/logging"
 	"github.com/langowarny/lango/internal/security"
@@ -16,8 +19,9 @@ import (
 
 func logger() *zap.SugaredLogger { return logging.App() }
 
-// New creates a new application instance
-func New(cfg *config.Config) (*App, error) {
+// New creates a new application instance from a bootstrap result.
+func New(boot *bootstrap.Result) (*App, error) {
+	cfg := boot.Config
 	app := &App{
 		Config: cfg,
 	}
@@ -28,15 +32,15 @@ func New(cfg *config.Config) (*App, error) {
 		return nil, fmt.Errorf("failed to create supervisor: %w", err)
 	}
 
-	// 2. Session Store
-	store, err := initSessionStore(cfg)
+	// 2. Session Store — reuse the DB client opened during bootstrap.
+	store, err := initSessionStore(cfg, boot)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create session store: %w", err)
 	}
 	app.Store = store
 
-	// 3. Security
-	crypto, keys, secrets, err := initSecurity(cfg, store)
+	// 3. Security — reuse the crypto provider initialized during bootstrap.
+	crypto, keys, secrets, err := initSecurity(cfg, store, boot)
 	if err != nil {
 		return nil, fmt.Errorf("security init: %w", err)
 	}
@@ -45,9 +49,16 @@ func New(cfg *config.Config) (*App, error) {
 	app.Secrets = secrets
 
 	// 4. Base tools (exec + filesystem + optional browser)
+	// Block agent access to the ~/.lango/ directory.
+	var blockedPaths []string
+	if home, err := os.UserHomeDir(); err == nil {
+		blockedPaths = append(blockedPaths,
+			filepath.Join(home, ".lango")+string(os.PathSeparator))
+	}
 	fsConfig := filesystem.Config{
 		MaxReadSize:  cfg.Tools.Filesystem.MaxReadSize,
 		AllowedPaths: cfg.Tools.Filesystem.AllowedPaths,
+		BlockedPaths: blockedPaths,
 	}
 
 	var browserSM *browser.SessionManager
@@ -71,6 +82,10 @@ func New(cfg *config.Config) (*App, error) {
 	// SecretScanner detects leaked secrets in model output.
 	refs := security.NewRefStore()
 	scanner := agent.NewSecretScanner()
+
+	// Register config secrets to prevent leakage in model output.
+	registerConfigSecrets(scanner, cfg)
+
 	if app.Crypto != nil && app.Keys != nil {
 		tools = append(tools, buildCryptoTools(app.Crypto, app.Keys, refs, scanner)...)
 		logger().Info("crypto tools registered")
@@ -219,4 +234,32 @@ func (a *App) Stop(ctx context.Context) error {
 	}
 
 	return nil
+}
+
+// registerConfigSecrets extracts sensitive values from config and registers
+// them with the secret scanner so they are redacted from model output.
+func registerConfigSecrets(scanner *agent.SecretScanner, cfg *config.Config) {
+	register := func(name, value string) {
+		if value != "" {
+			scanner.Register(name, []byte(value))
+		}
+	}
+
+	// Provider credentials
+	for id, p := range cfg.Providers {
+		register("provider."+id+".apiKey", p.APIKey)
+		register("provider."+id+".clientSecret", p.ClientSecret)
+	}
+
+	// Channel tokens
+	register("telegram.botToken", cfg.Channels.Telegram.BotToken)
+	register("discord.botToken", cfg.Channels.Discord.BotToken)
+	register("slack.botToken", cfg.Channels.Slack.BotToken)
+	register("slack.appToken", cfg.Channels.Slack.AppToken)
+	register("slack.signingSecret", cfg.Channels.Slack.SigningSecret)
+
+	// Auth provider secrets
+	for id, a := range cfg.Auth.Providers {
+		register("auth."+id+".clientSecret", a.ClientSecret)
+	}
 }

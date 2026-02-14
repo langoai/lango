@@ -2,13 +2,13 @@ package app
 
 import (
 	"context"
-	"crypto/hmac"
 	"fmt"
 	"os"
 	"strings"
 
 	"github.com/langowarny/lango/internal/adk"
 	"github.com/langowarny/lango/internal/agent"
+	"github.com/langowarny/lango/internal/bootstrap"
 	"github.com/langowarny/lango/internal/config"
 	"github.com/langowarny/lango/internal/gateway"
 	"github.com/langowarny/lango/internal/knowledge"
@@ -54,16 +54,10 @@ func initSupervisor(cfg *config.Config) (*supervisor.Supervisor, error) {
 }
 
 // initSessionStore creates and initializes the session store.
-func initSessionStore(cfg *config.Config) (session.Store, error) {
-	passphrase := os.Getenv("LANGO_PASSPHRASE")
-	if passphrase == "" {
-		passphrase = cfg.Security.Passphrase
-	}
-
+// When a bootstrap result is available, the shared DB client is reused to avoid
+// opening a second database connection.
+func initSessionStore(cfg *config.Config, boot *bootstrap.Result) (session.Store, error) {
 	var storeOpts []session.StoreOption
-	if passphrase != "" {
-		storeOpts = append(storeOpts, session.WithPassphrase(passphrase))
-	}
 	if cfg.Session.MaxHistoryTurns > 0 {
 		storeOpts = append(storeOpts, session.WithMaxHistoryTurns(cfg.Session.MaxHistoryTurns))
 	}
@@ -72,6 +66,13 @@ func initSessionStore(cfg *config.Config) (session.Store, error) {
 	}
 
 	logger().Info("initializing session store...")
+
+	// Reuse the ent client opened during bootstrap.
+	if boot != nil && boot.DBClient != nil {
+		return session.NewEntStoreWithClient(boot.DBClient, storeOpts...), nil
+	}
+
+	// Fallback: open a fresh connection (e.g., for tests).
 	store, err := session.NewEntStore(cfg.Session.DatabasePath, storeOpts...)
 	if err != nil {
 		return nil, fmt.Errorf("session store: %w", err)
@@ -80,68 +81,31 @@ func initSessionStore(cfg *config.Config) (session.Store, error) {
 }
 
 // initSecurity creates and initializes the security stack.
-func initSecurity(cfg *config.Config, store session.Store) (security.CryptoProvider, *security.KeyRegistry, *security.SecretsStore, error) {
+// When a bootstrap result provides an already-initialized CryptoProvider, it is
+// reused for the "local" provider case to avoid re-acquiring the passphrase.
+func initSecurity(cfg *config.Config, store session.Store, boot *bootstrap.Result) (security.CryptoProvider, *security.KeyRegistry, *security.SecretsStore, error) {
 	if cfg.Security.Signer.Provider == "" {
 		return nil, nil, nil, nil
 	}
 
 	switch cfg.Security.Signer.Provider {
 	case "local":
-		passphrase := os.Getenv("LANGO_PASSPHRASE")
-		if passphrase == "" {
-			passphrase = cfg.Security.Passphrase
-		}
-		if passphrase == "" {
-			return nil, nil, nil, fmt.Errorf("local security provider requires a passphrase")
-		}
+		// Reuse the crypto provider initialized during bootstrap.
+		if boot != nil && boot.Crypto != nil && boot.DBClient != nil {
+			keys := security.NewKeyRegistry(boot.DBClient)
+			secrets := security.NewSecretsStore(boot.DBClient, keys, boot.Crypto)
 
-		provider := security.NewLocalCryptoProvider()
+			ctx := context.Background()
+			if _, err := keys.RegisterKey(ctx, "default", "local", security.KeyTypeEncryption); err != nil {
+				return nil, nil, nil, fmt.Errorf("register default key: %w", err)
+			}
 
-		entStore, ok := store.(*session.EntStore)
-		if !ok {
-			return nil, nil, nil, fmt.Errorf("local security provider requires EntStore")
-		}
-
-		salt, err := entStore.GetSalt("default")
-		if err != nil {
-			// First-time setup: initialize with new salt
-			if err := provider.Initialize(passphrase); err != nil {
-				return nil, nil, nil, fmt.Errorf("initialize crypto provider: %w", err)
-			}
-			if err := entStore.SetSalt("default", provider.Salt()); err != nil {
-				return nil, nil, nil, fmt.Errorf("store salt: %w", err)
-			}
-			checksum := provider.CalculateChecksum(passphrase, provider.Salt())
-			if err := entStore.SetChecksum("default", checksum); err != nil {
-				return nil, nil, nil, fmt.Errorf("store checksum: %w", err)
-			}
-		} else {
-			// Existing salt found: initialize with it
-			if err := provider.InitializeWithSalt(passphrase, salt); err != nil {
-				return nil, nil, nil, fmt.Errorf("initialize crypto provider with salt: %w", err)
-			}
-			// Verify checksum
-			storedChecksum, err := entStore.GetChecksum("default")
-			if err == nil {
-				computed := provider.CalculateChecksum(passphrase, salt)
-				if !hmac.Equal(storedChecksum, computed) {
-					return nil, nil, nil, fmt.Errorf("passphrase checksum mismatch: incorrect passphrase")
-				}
-			}
+			logger().Info("security initialized (local provider, from bootstrap)")
+			return boot.Crypto, keys, secrets, nil
 		}
 
-		client := entStore.Client()
-		keys := security.NewKeyRegistry(client)
-		secrets := security.NewSecretsStore(client, keys, provider)
-
-		// Register default encryption key
-		ctx := context.Background()
-		if _, err := keys.RegisterKey(ctx, "default", "local", security.KeyTypeEncryption); err != nil {
-			return nil, nil, nil, fmt.Errorf("register default key: %w", err)
-		}
-
-		logger().Info("security initialized (local provider)")
-		return provider, keys, secrets, nil
+		// Fallback: standalone initialization (should not happen in normal flow).
+		return nil, nil, nil, fmt.Errorf("local security provider requires bootstrap")
 
 	case "rpc":
 		provider := security.NewRPCProvider()

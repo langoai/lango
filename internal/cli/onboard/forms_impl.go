@@ -215,13 +215,6 @@ func NewSecurityForm(cfg *config.Config) *FormModel {
 		Placeholder: "key-123",
 	})
 
-	// Passphrase
-	form.AddField(&Field{
-		Key: "passphrase", Label: "Local Passphrase", Type: InputPassword,
-		Value:       cfg.Security.Passphrase,
-		Placeholder: "${ENV_VAR} or plaintext",
-	})
-
 	return &form
 }
 

@@ -5,25 +5,16 @@ This capability defines how the user's passphrase for the Local Crypto Provider 
 
 ## Requirements
 
-### Requirement: Interactive Passphrase Prompt
-The passphrase prompt SHALL only be triggered when `security.signer.provider` is explicitly set to `"local"`. When security is not configured, the system SHALL skip passphrase initialization entirely without error. When security IS configured but passphrase initialization fails, the system SHALL log a warning and continue startup without security tools (non-blocking).
+### Requirement: Passphrase source resolution
+The system SHALL resolve passphrases using the priority chain: keyfile (`~/.lango/keyfile`) → interactive terminal prompt → stdin pipe. The system SHALL NOT read passphrases from the `LANGO_PASSPHRASE` environment variable or the `security.passphrase` config field.
 
-#### Scenario: First-time passphrase setup
-- **WHEN** `security.signer.provider` is `"local"` and no salt exists and environment is interactive
-- **THEN** the system SHALL prompt for passphrase creation
-- **THEN** the system SHALL store salt and checksum
+#### Scenario: Passphrase acquisition in CLI security commands
+- **WHEN** `initLocalCrypto` is called in CLI security commands
+- **THEN** the passphrase is acquired via `passphrase.Acquire()` (not env var or config)
 
-#### Scenario: Security not configured
-- **WHEN** `security.signer.provider` is empty or not set
-- **THEN** the system SHALL skip all passphrase initialization
-- **THEN** the system SHALL log an info message about security being disabled
-- **THEN** the agent SHALL start normally without security tools
-
-#### Scenario: Passphrase initialization failure
-- **WHEN** `security.signer.provider` is `"local"` but passphrase cannot be obtained (non-interactive, no env var)
-- **THEN** the system SHALL log a warning
-- **THEN** the system SHALL continue startup without security tools
-- **THEN** the system SHALL NOT return an error or block startup
+#### Scenario: Non-interactive environment without keyfile
+- **WHEN** stdin is not a terminal and no keyfile exists
+- **THEN** the system attempts to read from stdin pipe; if empty, returns an error
 
 ### Requirement: Passphrase Checksum Validation
 The system SHALL store a checksum to detect incorrect passphrase early.
@@ -58,10 +49,3 @@ The system SHALL provide a CLI command to migrate encrypted data to a new passph
 - **THEN** system rolls back all changes
 - **AND** preserves original encrypted data
 
-### Requirement: Config Passphrase Deprecation
-The `security.passphrase` config field SHALL be ignored. The `LANGO_PASSPHRASE` environment variable SHALL be the only supported method for providing passphrase non-interactively. A deprecation warning SHALL be logged if `security.passphrase` is set in config.
-
-#### Scenario: Passphrase in config detected
-- **WHEN** `security.passphrase` is set in config file
-- **THEN** the system SHALL log a deprecation warning
-- **THEN** the system SHALL NOT use the config value

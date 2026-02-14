@@ -2,21 +2,25 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"os"
 	"os/signal"
 	"syscall"
+	"text/tabwriter"
 	"time"
 
 	"github.com/spf13/cobra"
 
 	"github.com/langowarny/lango/internal/app"
+	"github.com/langowarny/lango/internal/bootstrap"
 	"github.com/langowarny/lango/internal/cli/auth"
 	"github.com/langowarny/lango/internal/cli/doctor"
 	climemory "github.com/langowarny/lango/internal/cli/memory"
 	"github.com/langowarny/lango/internal/cli/onboard"
 	clisecurity "github.com/langowarny/lango/internal/cli/security"
 	"github.com/langowarny/lango/internal/config"
+	"github.com/langowarny/lango/internal/configstore"
 	"github.com/langowarny/lango/internal/logging"
 )
 
@@ -33,7 +37,7 @@ func main() {
 		Long:  `Lango is a high-performance AI agent built with Go, supporting multiple channels and tools.`,
 	}
 
-	rootCmd.PersistentFlags().StringVar(&cfgFile, "config", "", "config file (default: lango.json)")
+	rootCmd.PersistentFlags().StringVar(&cfgFile, "config", "", "config file path for migration/import (default: lango.json)")
 
 	rootCmd.AddCommand(serveCmd())
 	rootCmd.AddCommand(versionCmd())
@@ -42,10 +46,20 @@ func main() {
 	rootCmd.AddCommand(onboard.NewCommand())
 	rootCmd.AddCommand(auth.NewCommand())
 	rootCmd.AddCommand(clisecurity.NewSecurityCmd(func() (*config.Config, error) {
-		return config.Load(cfgFile)
+		boot, err := bootstrap.Run(bootstrap.Options{MigrationPath: cfgFile})
+		if err != nil {
+			return nil, err
+		}
+		defer boot.DBClient.Close()
+		return boot.Config, nil
 	}))
 	rootCmd.AddCommand(climemory.NewMemoryCmd(func() (*config.Config, error) {
-		return config.Load(cfgFile)
+		boot, err := bootstrap.Run(bootstrap.Options{MigrationPath: cfgFile})
+		if err != nil {
+			return nil, err
+		}
+		defer boot.DBClient.Close()
+		return boot.Config, nil
 	}))
 
 	if err := rootCmd.Execute(); err != nil {
@@ -54,34 +68,45 @@ func main() {
 	}
 }
 
+// bootstrapForConfig creates a bootstrap result for config subcommands.
+func bootstrapForConfig() (*bootstrap.Result, error) {
+	return bootstrap.Run(bootstrap.Options{
+		MigrationPath: cfgFile,
+	})
+}
+
 func serveCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:   "serve",
 		Short: "Start the gateway server",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			// Load configuration
-			cfg, err := config.Load(cfgFile)
+			// Bootstrap: DB + crypto + config profile
+			boot, err := bootstrap.Run(bootstrap.Options{
+				MigrationPath: cfgFile,
+			})
 			if err != nil {
-				return fmt.Errorf("failed to load config: %w", err)
+				return fmt.Errorf("bootstrap: %w", err)
 			}
+			defer boot.DBClient.Close()
 
 			// Initialize logging
+			cfg := boot.Config
 			if err := logging.Init(logging.LogConfig{
 				Level:      cfg.Logging.Level,
 				Format:     cfg.Logging.Format,
 				OutputPath: cfg.Logging.OutputPath,
 			}); err != nil {
-				return fmt.Errorf("failed to init logging: %w", err)
+				return fmt.Errorf("init logging: %w", err)
 			}
 			defer logging.Sync()
 
 			log := logging.Sugar()
-			log.Infow("starting lango", "version", Version)
+			log.Infow("starting lango", "version", Version, "profile", boot.ProfileName)
 
 			// Create application
-			application, err := app.New(cfg)
+			application, err := app.New(boot)
 			if err != nil {
-				return fmt.Errorf("failed to create application: %w", err)
+				return fmt.Errorf("create application: %w", err)
 			}
 
 			// Setup graceful shutdown
@@ -128,26 +153,238 @@ func versionCmd() *cobra.Command {
 func configCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "config",
-		Short: "Configuration commands",
+		Short: "Configuration profile management",
 	}
 
-	cmd.AddCommand(&cobra.Command{
-		Use:   "validate",
-		Short: "Validate configuration file",
+	cmd.AddCommand(configListCmd())
+	cmd.AddCommand(configCreateCmd())
+	cmd.AddCommand(configUseCmd())
+	cmd.AddCommand(configDeleteCmd())
+	cmd.AddCommand(configImportCmd())
+	cmd.AddCommand(configExportCmd())
+	cmd.AddCommand(configValidateCmd())
+
+	return cmd
+}
+
+func configListCmd() *cobra.Command {
+	return &cobra.Command{
+		Use:   "list",
+		Short: "List all configuration profiles",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			cfg, err := config.Load(cfgFile)
+			boot, err := bootstrapForConfig()
 			if err != nil {
-				return fmt.Errorf("configuration invalid: %w", err)
+				return fmt.Errorf("bootstrap: %w", err)
+			}
+			defer boot.DBClient.Close()
+
+			profiles, err := boot.ConfigStore.List(context.Background())
+			if err != nil {
+				return fmt.Errorf("list profiles: %w", err)
 			}
 
-			if err := config.Validate(cfg); err != nil {
+			if len(profiles) == 0 {
+				fmt.Println("No profiles found.")
+				return nil
+			}
+
+			w := tabwriter.NewWriter(os.Stdout, 0, 4, 2, ' ', 0)
+			fmt.Fprintln(w, "NAME\tACTIVE\tVERSION\tCREATED\tUPDATED")
+			for _, p := range profiles {
+				active := ""
+				if p.Active {
+					active = "*"
+				}
+				fmt.Fprintf(w, "%s\t%s\t%d\t%s\t%s\n",
+					p.Name,
+					active,
+					p.Version,
+					p.CreatedAt.Format(time.DateTime),
+					p.UpdatedAt.Format(time.DateTime),
+				)
+			}
+			return w.Flush()
+		},
+	}
+}
+
+func configCreateCmd() *cobra.Command {
+	return &cobra.Command{
+		Use:   "create <name>",
+		Short: "Create a new profile with default configuration",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			name := args[0]
+
+			boot, err := bootstrapForConfig()
+			if err != nil {
+				return fmt.Errorf("bootstrap: %w", err)
+			}
+			defer boot.DBClient.Close()
+
+			ctx := context.Background()
+
+			exists, err := boot.ConfigStore.Exists(ctx, name)
+			if err != nil {
+				return fmt.Errorf("check profile: %w", err)
+			}
+			if exists {
+				return fmt.Errorf("profile %q already exists", name)
+			}
+
+			cfg := config.DefaultConfig()
+			if err := boot.ConfigStore.Save(ctx, name, cfg); err != nil {
+				return fmt.Errorf("create profile: %w", err)
+			}
+
+			fmt.Printf("Profile %q created with default configuration.\n", name)
+			return nil
+		},
+	}
+}
+
+func configUseCmd() *cobra.Command {
+	return &cobra.Command{
+		Use:   "use <name>",
+		Short: "Switch to a different configuration profile",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			name := args[0]
+
+			boot, err := bootstrapForConfig()
+			if err != nil {
+				return fmt.Errorf("bootstrap: %w", err)
+			}
+			defer boot.DBClient.Close()
+
+			if err := boot.ConfigStore.SetActive(context.Background(), name); err != nil {
+				return fmt.Errorf("switch profile: %w", err)
+			}
+
+			fmt.Printf("Switched to profile %q.\n", name)
+			return nil
+		},
+	}
+}
+
+func configDeleteCmd() *cobra.Command {
+	var force bool
+
+	cmd := &cobra.Command{
+		Use:   "delete <name>",
+		Short: "Delete a configuration profile",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			name := args[0]
+
+			if !force {
+				fmt.Printf("Delete profile %q? This cannot be undone. [y/N]: ", name)
+				var answer string
+				fmt.Scanln(&answer)
+				if answer != "y" && answer != "Y" {
+					fmt.Println("Aborted.")
+					return nil
+				}
+			}
+
+			boot, err := bootstrapForConfig()
+			if err != nil {
+				return fmt.Errorf("bootstrap: %w", err)
+			}
+			defer boot.DBClient.Close()
+
+			if err := boot.ConfigStore.Delete(context.Background(), name); err != nil {
+				return fmt.Errorf("delete profile: %w", err)
+			}
+
+			fmt.Printf("Profile %q deleted.\n", name)
+			return nil
+		},
+	}
+
+	cmd.Flags().BoolVarP(&force, "force", "f", false, "skip confirmation prompt")
+	return cmd
+}
+
+func configImportCmd() *cobra.Command {
+	var profileName string
+
+	cmd := &cobra.Command{
+		Use:   "import <file>",
+		Short: "Import a JSON config file as a profile",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			filePath := args[0]
+
+			boot, err := bootstrapForConfig()
+			if err != nil {
+				return fmt.Errorf("bootstrap: %w", err)
+			}
+			defer boot.DBClient.Close()
+
+			ctx := context.Background()
+			if err := configstore.MigrateFromJSON(ctx, boot.ConfigStore, filePath, profileName); err != nil {
+				return fmt.Errorf("import config: %w", err)
+			}
+
+			fmt.Printf("Imported %q as profile %q (now active).\n", filePath, profileName)
+			return nil
+		},
+	}
+
+	cmd.Flags().StringVar(&profileName, "profile", "default", "name for the imported profile")
+	return cmd
+}
+
+func configExportCmd() *cobra.Command {
+	return &cobra.Command{
+		Use:   "export <name>",
+		Short: "Export a profile as plaintext JSON",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			name := args[0]
+
+			boot, err := bootstrapForConfig()
+			if err != nil {
+				return fmt.Errorf("bootstrap: %w", err)
+			}
+			defer boot.DBClient.Close()
+
+			cfg, err := boot.ConfigStore.Load(context.Background(), name)
+			if err != nil {
+				return fmt.Errorf("load profile: %w", err)
+			}
+
+			fmt.Fprintln(os.Stderr, "WARNING: exported configuration contains sensitive values in plaintext.")
+
+			data, err := json.MarshalIndent(cfg, "", "  ")
+			if err != nil {
+				return fmt.Errorf("marshal config: %w", err)
+			}
+
+			fmt.Println(string(data))
+			return nil
+		},
+	}
+}
+
+func configValidateCmd() *cobra.Command {
+	return &cobra.Command{
+		Use:   "validate",
+		Short: "Validate the active configuration profile",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			boot, err := bootstrapForConfig()
+			if err != nil {
+				return fmt.Errorf("bootstrap: %w", err)
+			}
+			defer boot.DBClient.Close()
+
+			if err := config.Validate(boot.Config); err != nil {
 				return fmt.Errorf("validation failed: %w", err)
 			}
 
-			fmt.Println("Configuration is valid")
+			fmt.Printf("Profile %q configuration is valid.\n", boot.ProfileName)
 			return nil
 		},
-	})
-
-	return cmd
+	}
 }

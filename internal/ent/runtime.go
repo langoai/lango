@@ -7,6 +7,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/langowarny/lango/internal/ent/auditlog"
+	"github.com/langowarny/lango/internal/ent/configprofile"
 	"github.com/langowarny/lango/internal/ent/externalref"
 	"github.com/langowarny/lango/internal/ent/key"
 	"github.com/langowarny/lango/internal/ent/knowledge"
@@ -38,6 +39,34 @@ func init() {
 	auditlogDescID := auditlogFields[0].Descriptor()
 	// auditlog.DefaultID holds the default value on creation for the id field.
 	auditlog.DefaultID = auditlogDescID.Default.(func() uuid.UUID)
+	configprofileFields := schema.ConfigProfile{}.Fields()
+	_ = configprofileFields
+	// configprofileDescName is the schema descriptor for name field.
+	configprofileDescName := configprofileFields[1].Descriptor()
+	// configprofile.NameValidator is a validator for the "name" field. It is called by the builders before save.
+	configprofile.NameValidator = configprofileDescName.Validators[0].(func(string) error)
+	// configprofileDescActive is the schema descriptor for active field.
+	configprofileDescActive := configprofileFields[3].Descriptor()
+	// configprofile.DefaultActive holds the default value on creation for the active field.
+	configprofile.DefaultActive = configprofileDescActive.Default.(bool)
+	// configprofileDescVersion is the schema descriptor for version field.
+	configprofileDescVersion := configprofileFields[4].Descriptor()
+	// configprofile.DefaultVersion holds the default value on creation for the version field.
+	configprofile.DefaultVersion = configprofileDescVersion.Default.(int)
+	// configprofileDescCreatedAt is the schema descriptor for created_at field.
+	configprofileDescCreatedAt := configprofileFields[5].Descriptor()
+	// configprofile.DefaultCreatedAt holds the default value on creation for the created_at field.
+	configprofile.DefaultCreatedAt = configprofileDescCreatedAt.Default.(func() time.Time)
+	// configprofileDescUpdatedAt is the schema descriptor for updated_at field.
+	configprofileDescUpdatedAt := configprofileFields[6].Descriptor()
+	// configprofile.DefaultUpdatedAt holds the default value on creation for the updated_at field.
+	configprofile.DefaultUpdatedAt = configprofileDescUpdatedAt.Default.(func() time.Time)
+	// configprofile.UpdateDefaultUpdatedAt holds the default value on update for the updated_at field.
+	configprofile.UpdateDefaultUpdatedAt = configprofileDescUpdatedAt.UpdateDefault.(func() time.Time)
+	// configprofileDescID is the schema descriptor for id field.
+	configprofileDescID := configprofileFields[0].Descriptor()
+	// configprofile.DefaultID holds the default value on creation for the id field.
+	configprofile.DefaultID = configprofileDescID.Default.(func() uuid.UUID)
 	externalrefFields := schema.ExternalRef{}.Fields()
 	_ = externalrefFields
 	// externalrefDescName is the schema descriptor for name field.

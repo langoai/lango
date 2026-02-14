@@ -55,6 +55,10 @@ The system SHALL control environment variables passed to child processes.
 - **WHEN** dangerous environment variables (LD_PRELOAD, etc.) are present
 - **THEN** they SHALL be filtered out for security
 
+#### Scenario: LANGO_PASSPHRASE filtered
+- **WHEN** an agent executes a command and `LANGO_PASSPHRASE` is set in the parent environment
+- **THEN** `LANGO_PASSPHRASE` is not passed to the child process
+
 ### Requirement: Enhanced execution feedback
 The system SHALL provide more descriptive feedback when commands fail or time out.
 

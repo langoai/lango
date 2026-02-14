@@ -9,6 +9,9 @@ import (
 // AuditLog is the predicate function for auditlog builders.
 type AuditLog func(*sql.Selector)
 
+// ConfigProfile is the predicate function for configprofile builders.
+type ConfigProfile func(*sql.Selector)
+
 // ExternalRef is the predicate function for externalref builders.
 type ExternalRef func(*sql.Selector)
 

@@ -21,6 +21,18 @@ func (f AuditLogFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value, er
 	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.AuditLogMutation", m)
 }
 
+// The ConfigProfileFunc type is an adapter to allow the use of ordinary
+// function as ConfigProfile mutator.
+type ConfigProfileFunc func(context.Context, *ent.ConfigProfileMutation) (ent.Value, error)
+
+// Mutate calls f(ctx, m).
+func (f ConfigProfileFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value, error) {
+	if mv, ok := m.(*ent.ConfigProfileMutation); ok {
+		return f(ctx, mv)
+	}
+	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.ConfigProfileMutation", m)
+}
+
 // The ExternalRefFunc type is an adapter to allow the use of ordinary
 // function as ExternalRef mutator.
 type ExternalRefFunc func(context.Context, *ent.ExternalRefMutation) (ent.Value, error)

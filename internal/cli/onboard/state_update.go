@@ -123,10 +123,6 @@ func (s *ConfigState) UpdateConfigFromForm(form *FormModel) {
 		case "signer_keyid":
 			s.Current.Security.Signer.KeyID = val
 
-		// Security - Passphrase
-		case "passphrase":
-			s.Current.Security.Passphrase = val
-
 		// Knowledge
 		case "knowledge_enabled":
 			s.Current.Knowledge.Enabled = f.Checked

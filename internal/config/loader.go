@@ -148,9 +148,6 @@ func substituteEnvVars(cfg *Config) {
 		cfg.Auth.Providers[id] = aCfg
 	}
 
-	// Security passphrase
-	cfg.Security.Passphrase = expandEnvVars(cfg.Security.Passphrase)
-
 	// Paths
 	cfg.Session.DatabasePath = expandEnvVars(cfg.Session.DatabasePath)
 }
@@ -218,14 +215,10 @@ func providerKeys(providers map[string]ProviderConfig) []string {
 	return keys
 }
 
-// Save writes the configuration to the specified path in JSON format.
-// Sensitive fields (API keys, tokens, passphrases) are replaced with
-// placeholder values to prevent plaintext secret exposure.
+// Save is deprecated. Use configstore.Store.Save() for encrypted profile storage.
+// This function is kept temporarily for migration support from lango.json.
 func Save(cfg *Config, path string) error {
-	// Deep copy to avoid mutating the live config
-	sanitized := sanitizeForSave(cfg)
-
-	data, err := json.MarshalIndent(sanitized, "", "  ")
+	data, err := json.MarshalIndent(cfg, "", "  ")
 	if err != nil {
 		return fmt.Errorf("marshal config: %w", err)
 	}
@@ -235,57 +228,4 @@ func Save(cfg *Config, path string) error {
 	}
 
 	return nil
-}
-
-// sanitizeForSave creates a copy of the config with sensitive values replaced by placeholders.
-func sanitizeForSave(cfg *Config) *Config {
-	// Shallow copy
-	c := *cfg
-
-	// Sanitize provider credentials
-	if c.Providers != nil {
-		providers := make(map[string]ProviderConfig, len(c.Providers))
-		for k, v := range c.Providers {
-			v.APIKey = redactSecret(v.APIKey)
-			v.ClientSecret = redactSecret(v.ClientSecret)
-			providers[k] = v
-		}
-		c.Providers = providers
-	}
-
-	// Sanitize channel tokens
-	c.Channels.Telegram.BotToken = redactSecret(c.Channels.Telegram.BotToken)
-	c.Channels.Discord.BotToken = redactSecret(c.Channels.Discord.BotToken)
-	c.Channels.Slack.BotToken = redactSecret(c.Channels.Slack.BotToken)
-	c.Channels.Slack.AppToken = redactSecret(c.Channels.Slack.AppToken)
-	c.Channels.Slack.SigningSecret = redactSecret(c.Channels.Slack.SigningSecret)
-
-	// Sanitize auth provider secrets
-	if c.Auth.Providers != nil {
-		authProviders := make(map[string]OIDCProviderConfig, len(c.Auth.Providers))
-		for k, v := range c.Auth.Providers {
-			v.ClientSecret = redactSecret(v.ClientSecret)
-			authProviders[k] = v
-		}
-		c.Auth.Providers = authProviders
-	}
-
-	// Sanitize passphrase
-	c.Security.Passphrase = redactSecret(c.Security.Passphrase)
-
-	return &c
-}
-
-// redactSecret replaces a secret value with a placeholder.
-// Values that are already env var references (${...}) are preserved.
-// Empty values are preserved as-is.
-func redactSecret(value string) string {
-	if value == "" {
-		return ""
-	}
-	// Preserve env var references
-	if envVarRegex.MatchString(value) {
-		return value
-	}
-	return "***REDACTED***"
 }

@@ -130,6 +130,18 @@ func NewEntStore(dbPath string, opts ...StoreOption) (*EntStore, error) {
 	return store, nil
 }
 
+// NewEntStoreWithClient creates a new ent-backed session store using an
+// existing ent.Client. This avoids opening a second database connection when
+// the client is already available (e.g., from the bootstrap process).
+// Schema migration is assumed to be already complete.
+func NewEntStoreWithClient(client *ent.Client, opts ...StoreOption) *EntStore {
+	store := &EntStore{client: client}
+	for _, opt := range opts {
+		opt(store)
+	}
+	return store
+}
+
 // Client returns the ent client
 func (s *EntStore) Client() *ent.Client {
 	return s.client
@@ -384,8 +396,13 @@ func (s *EntStore) AppendMessage(key string, msg Message) error {
 	return nil
 }
 
-// Close closes the ent client
+// Close closes the ent client and underlying database connection.
+// When the client was provided externally via NewEntStoreWithClient, only the
+// ent client is closed; the raw DB connection is managed by the caller.
 func (s *EntStore) Close() error {
+	if s.client == nil {
+		return nil
+	}
 	return s.client.Close()
 }
 

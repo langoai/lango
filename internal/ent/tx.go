@@ -14,6 +14,8 @@ type Tx struct {
 	config
 	// AuditLog is the client for interacting with the AuditLog builders.
 	AuditLog *AuditLogClient
+	// ConfigProfile is the client for interacting with the ConfigProfile builders.
+	ConfigProfile *ConfigProfileClient
 	// ExternalRef is the client for interacting with the ExternalRef builders.
 	ExternalRef *ExternalRefClient
 	// Key is the client for interacting with the Key builders.
@@ -166,6 +168,7 @@ func (tx *Tx) Client() *Client {
 
 func (tx *Tx) init() {
 	tx.AuditLog = NewAuditLogClient(tx.config)
+	tx.ConfigProfile = NewConfigProfileClient(tx.config)
 	tx.ExternalRef = NewExternalRefClient(tx.config)
 	tx.Key = NewKeyClient(tx.config)
 	tx.Knowledge = NewKnowledgeClient(tx.config)

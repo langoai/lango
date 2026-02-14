@@ -17,6 +17,7 @@ var logger = logging.SubsystemSugar("tool.filesystem")
 type Config struct {
 	MaxReadSize  int64    // maximum file size to read
 	AllowedPaths []string // allowed base paths (empty = all)
+	BlockedPaths []string // paths that are always denied
 }
 
 // Tool provides filesystem operations
@@ -305,6 +306,18 @@ func (t *Tool) validatePath(path string) (string, error) {
 
 	// Clean the path to prevent traversal
 	absPath = filepath.Clean(absPath)
+
+	// Check against blocked paths
+	for _, blocked := range t.config.BlockedPaths {
+		absBlocked, err := filepath.Abs(blocked)
+		if err != nil {
+			continue
+		}
+		absBlocked = filepath.Clean(absBlocked)
+		if strings.HasPrefix(absPath, absBlocked) {
+			return "", fmt.Errorf("access denied: protected path")
+		}
+	}
 
 	// Check against allowed paths
 	if len(t.config.AllowedPaths) > 0 {

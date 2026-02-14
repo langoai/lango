@@ -101,8 +101,6 @@ type SecurityConfig struct {
 	Interceptor InterceptorConfig `mapstructure:"interceptor" json:"interceptor"`
 	// Signer configuration
 	Signer SignerConfig `mapstructure:"signer" json:"signer"`
-	// Passphrase for local crypto provider (supports ${ENV_VAR} substitution)
-	Passphrase string `mapstructure:"passphrase" json:"passphrase"`
 }
 
 // InterceptorConfig defines AI Privacy Interceptor settings
