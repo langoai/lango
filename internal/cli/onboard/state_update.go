@@ -148,6 +148,26 @@ func (s *ConfigState) UpdateConfigFromForm(form *FormModel) {
 			if i, err := strconv.Atoi(val); err == nil {
 				s.Current.Knowledge.MaxSkillsPerDay = i
 			}
+
+		// Observational Memory
+		case "om_enabled":
+			s.Current.ObservationalMemory.Enabled = f.Checked
+		case "om_provider":
+			s.Current.ObservationalMemory.Provider = val
+		case "om_model":
+			s.Current.ObservationalMemory.Model = val
+		case "om_msg_threshold":
+			if i, err := strconv.Atoi(val); err == nil {
+				s.Current.ObservationalMemory.MessageTokenThreshold = i
+			}
+		case "om_obs_threshold":
+			if i, err := strconv.Atoi(val); err == nil {
+				s.Current.ObservationalMemory.ObservationTokenThreshold = i
+			}
+		case "om_max_budget":
+			if i, err := strconv.Atoi(val); err == nil {
+				s.Current.ObservationalMemory.MaxMessageTokenBudget = i
+			}
 		}
 	}
 }

@@ -25,6 +25,8 @@ func NewSecurityCmd(cfgLoader func() (*config.Config, error)) *cobra.Command {
 	}
 
 	cmd.AddCommand(newMigratePassphraseCmd(cfgLoader))
+	cmd.AddCommand(newSecretsCmd(cfgLoader))
+	cmd.AddCommand(newStatusCmd(cfgLoader))
 
 	return cmd
 }

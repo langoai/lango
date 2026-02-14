@@ -13,6 +13,7 @@ import (
 	"github.com/langowarny/lango/internal/app"
 	"github.com/langowarny/lango/internal/cli/auth"
 	"github.com/langowarny/lango/internal/cli/doctor"
+	climemory "github.com/langowarny/lango/internal/cli/memory"
 	"github.com/langowarny/lango/internal/cli/onboard"
 	clisecurity "github.com/langowarny/lango/internal/cli/security"
 	"github.com/langowarny/lango/internal/config"
@@ -41,6 +42,9 @@ func main() {
 	rootCmd.AddCommand(onboard.NewCommand())
 	rootCmd.AddCommand(auth.NewCommand())
 	rootCmd.AddCommand(clisecurity.NewSecurityCmd(func() (*config.Config, error) {
+		return config.Load(cfgFile)
+	}))
+	rootCmd.AddCommand(climemory.NewMemoryCmd(func() (*config.Config, error) {
 		return config.Load(cfgFile)
 	}))
 

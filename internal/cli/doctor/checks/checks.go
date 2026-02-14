@@ -112,5 +112,8 @@ func AllChecks() []Check {
 		// Security Checks
 		&SecurityCheck{},
 		&CompanionConnectionCheck{},
+		// Memory & Scanning Checks
+		&ObservationalMemoryCheck{},
+		&OutputScanningCheck{},
 	}
 }

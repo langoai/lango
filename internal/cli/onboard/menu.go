@@ -30,6 +30,7 @@ func NewMenuModel() MenuModel {
 			{"tools", "🛠️ Tools", "Exec, Browser, Filesystem"},
 			{"security", "🔒 Security", "PII, Approval, Encryption"},
 			{"knowledge", "🧠 Knowledge", "Learning, Skills, Context limits"},
+			{"observational_memory", "🔬 Observational Memory", "Observer, Reflector, Thresholds"},
 			{"providers", "☁️ Providers", "Manage multi-provider configurations"},
 			{"save", "💾 Save & Exit", "Write config to file"},
 			{"cancel", "❌ Cancel", "Exit without saving"},

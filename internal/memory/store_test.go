@@ -170,3 +170,52 @@ func TestSaveAndListReflections(t *testing.T) {
 		assert.Equal(t, 2, results[1].Generation)
 	})
 }
+
+func TestDeleteReflectionsBySession(t *testing.T) {
+	store := newTestStore(t)
+	ctx := context.Background()
+
+	// Create reflections in different sessions
+	ref1 := Reflection{
+		SessionKey: "session-ref-del",
+		Content:    "First reflection",
+		TokenCount: 10,
+		Generation: 1,
+	}
+	ref2 := Reflection{
+		SessionKey: "session-ref-del",
+		Content:    "Second reflection",
+		TokenCount: 15,
+		Generation: 2,
+	}
+	ref3 := Reflection{
+		SessionKey: "session-ref-other",
+		Content:    "Other session reflection",
+		TokenCount: 8,
+		Generation: 1,
+	}
+	require.NoError(t, store.SaveReflection(ctx, ref1))
+	require.NoError(t, store.SaveReflection(ctx, ref2))
+	require.NoError(t, store.SaveReflection(ctx, ref3))
+
+	t.Run("delete by session", func(t *testing.T) {
+		err := store.DeleteReflectionsBySession(ctx, "session-ref-del")
+		require.NoError(t, err)
+
+		results, err := store.ListReflections(ctx, "session-ref-del")
+		require.NoError(t, err)
+		assert.Empty(t, results)
+	})
+
+	t.Run("other session unaffected", func(t *testing.T) {
+		results, err := store.ListReflections(ctx, "session-ref-other")
+		require.NoError(t, err)
+		assert.Len(t, results, 1)
+		assert.Equal(t, "Other session reflection", results[0].Content)
+	})
+
+	t.Run("delete empty session", func(t *testing.T) {
+		err := store.DeleteReflectionsBySession(ctx, "no-such-session")
+		require.NoError(t, err)
+	})
+}

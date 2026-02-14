@@ -127,6 +127,18 @@ func (s *Store) DeleteReflections(ctx context.Context, ids []uuid.UUID) error {
 	return nil
 }
 
+// DeleteReflectionsBySession deletes all reflections for a session.
+func (s *Store) DeleteReflectionsBySession(ctx context.Context, sessionKey string) error {
+	_, err := s.client.Reflection.Delete().
+		Where(reflection.SessionKey(sessionKey)).
+		Exec(ctx)
+
+	if err != nil {
+		return fmt.Errorf("delete reflections by session: %w", err)
+	}
+	return nil
+}
+
 // ListReflections returns reflections for a session ordered by created_at ascending.
 func (s *Store) ListReflections(ctx context.Context, sessionKey string) ([]Reflection, error) {
 	entries, err := s.client.Reflection.Query().

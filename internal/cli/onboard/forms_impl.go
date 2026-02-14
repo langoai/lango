@@ -273,6 +273,66 @@ func NewKnowledgeForm(cfg *config.Config) *FormModel {
 	return &form
 }
 
+// Helper to create Observational Memory configuration form
+func NewObservationalMemoryForm(cfg *config.Config) *FormModel {
+	form := NewFormModel("🔬 Observational Memory")
+
+	form.AddField(&Field{
+		Key: "om_enabled", Label: "Enabled", Type: InputBool,
+		Checked: cfg.ObservationalMemory.Enabled,
+	})
+
+	form.AddField(&Field{
+		Key: "om_provider", Label: "Provider", Type: InputText,
+		Value:       cfg.ObservationalMemory.Provider,
+		Placeholder: "leave empty for agent default",
+	})
+
+	form.AddField(&Field{
+		Key: "om_model", Label: "Model", Type: InputText,
+		Value:       cfg.ObservationalMemory.Model,
+		Placeholder: "leave empty for agent default",
+	})
+
+	form.AddField(&Field{
+		Key: "om_msg_threshold", Label: "Message Token Threshold",
+		Type:  InputInt,
+		Value: strconv.Itoa(cfg.ObservationalMemory.MessageTokenThreshold),
+		Validate: func(s string) error {
+			if i, err := strconv.Atoi(s); err != nil || i <= 0 {
+				return fmt.Errorf("must be a positive integer")
+			}
+			return nil
+		},
+	})
+
+	form.AddField(&Field{
+		Key: "om_obs_threshold", Label: "Observation Token Threshold",
+		Type:  InputInt,
+		Value: strconv.Itoa(cfg.ObservationalMemory.ObservationTokenThreshold),
+		Validate: func(s string) error {
+			if i, err := strconv.Atoi(s); err != nil || i <= 0 {
+				return fmt.Errorf("must be a positive integer")
+			}
+			return nil
+		},
+	})
+
+	form.AddField(&Field{
+		Key: "om_max_budget", Label: "Max Message Token Budget",
+		Type:  InputInt,
+		Value: strconv.Itoa(cfg.ObservationalMemory.MaxMessageTokenBudget),
+		Validate: func(s string) error {
+			if i, err := strconv.Atoi(s); err != nil || i <= 0 {
+				return fmt.Errorf("must be a positive integer")
+			}
+			return nil
+		},
+	})
+
+	return &form
+}
+
 // Helper to create Provider configuration form
 func NewProviderForm(id string, cfg config.ProviderConfig) *FormModel {
 	title := "Edit Provider: " + id
