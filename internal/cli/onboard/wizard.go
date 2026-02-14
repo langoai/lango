@@ -209,7 +209,7 @@ func (w *Wizard) handleMenuSelection(id string) tea.Cmd {
 		w.providersList = NewProvidersListModel(w.state.Current)
 		w.step = StepProvidersList
 	case "save":
-		// TODO: Implement save logic
+		// Save is handled by the caller (onboard.go) after wizard completes.
 		w.Completed = true // Signal completion to main loop
 		return tea.Quit
 	case "cancel":

@@ -108,8 +108,7 @@ func (p *ProviderProxy) Generate(ctx context.Context, params provider.GeneratePa
 	return stream, nil
 }
 
-// ListModels is not yet fully implemented via proxy, returning empty for now or could similarly proxy.
+// ListModels is not proxied yet; returns empty list. Implement when model listing via proxy is needed.
 func (p *ProviderProxy) ListModels(ctx context.Context) ([]provider.ModelInfo, error) {
-	// TODO: Implement ListModels proxying if needed
 	return []provider.ModelInfo{}, nil
 }

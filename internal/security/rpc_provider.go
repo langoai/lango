@@ -12,6 +12,8 @@ import (
 
 var rpcLogger = logging.SubsystemSugar("security")
 
+const rpcTimeout = 30 * time.Second
+
 // SignRequest represents the payload sent to the signer provider.
 type SignRequest struct {
 	ID      string `json:"id"`
@@ -105,7 +107,7 @@ func (s *RPCProvider) Sign(ctx context.Context, keyID string, payload []byte) ([
 		return resp.Signature, nil
 	case <-ctx.Done():
 		return nil, ctx.Err()
-	case <-time.After(30 * time.Second):
+	case <-time.After(rpcTimeout):
 		return nil, fmt.Errorf("signing request timed out")
 	}
 }
@@ -138,10 +140,9 @@ func (s *RPCProvider) Encrypt(ctx context.Context, keyID string, plaintext []byt
 			return nil, fmt.Errorf("remote encryption error: %s", resp.Error)
 		}
 		return resp.Ciphertext, nil
-	// TODO: Configurable timeout?
 	case <-ctx.Done():
 		return nil, ctx.Err()
-	case <-time.After(30 * time.Second):
+	case <-time.After(rpcTimeout):
 		return nil, fmt.Errorf("encryption request timed out")
 	}
 }
@@ -176,7 +177,7 @@ func (s *RPCProvider) Decrypt(ctx context.Context, keyID string, ciphertext []by
 		return resp.Plaintext, nil
 	case <-ctx.Done():
 		return nil, ctx.Err()
-	case <-time.After(30 * time.Second):
+	case <-time.After(rpcTimeout):
 		return nil, fmt.Errorf("decryption request timed out")
 	}
 }

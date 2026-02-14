@@ -32,10 +32,3 @@ func (s *ConfigState) MarkDirty(field string) {
 func (s *ConfigState) IsDirty(field string) bool {
 	return s.Dirty[field]
 }
-
-// UpdateField updates a field using reflection (simplified for now).
-// In a real implementation, we might want type-safe updates per form.
-func (s *ConfigState) UpdateField(path string, value interface{}) {
-	// TODO: Implement reflection-based update or explicit setters
-	s.MarkDirty(path)
-}

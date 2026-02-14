@@ -538,7 +538,7 @@ func TestProviderProxy_ListModels(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ListModels() returned error: %v", err)
 	}
-	// Currently returns empty list
+	// Returns empty list until proxy-based model listing is implemented.
 	if len(models) != 0 {
 		t.Errorf("expected empty models list, got %d", len(models))
 	}
