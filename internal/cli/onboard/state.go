@@ -12,8 +12,13 @@ type ConfigState struct {
 
 // NewConfigState creates a new state with default config.
 func NewConfigState() *ConfigState {
+	return NewConfigStateWith(config.DefaultConfig())
+}
+
+// NewConfigStateWith creates a new state with the given config.
+func NewConfigStateWith(cfg *config.Config) *ConfigState {
 	return &ConfigState{
-		Current: config.DefaultConfig(),
+		Current: cfg,
 		Dirty:   make(map[string]bool),
 	}
 }

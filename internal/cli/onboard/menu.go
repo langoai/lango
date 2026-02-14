@@ -32,7 +32,7 @@ func NewMenuModel() MenuModel {
 			{"knowledge", "🧠 Knowledge", "Learning, Skills, Context limits"},
 			{"observational_memory", "🔬 Observational Memory", "Observer, Reflector, Thresholds"},
 			{"providers", "☁️ Providers", "Manage multi-provider configurations"},
-			{"save", "💾 Save & Exit", "Write config to file"},
+			{"save", "💾 Save & Exit", "Save encrypted profile"},
 			{"cancel", "❌ Cancel", "Exit without saving"},
 		},
 		Cursor: 0,

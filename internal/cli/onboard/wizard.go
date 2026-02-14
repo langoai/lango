@@ -42,11 +42,20 @@ type Wizard struct {
 	Cancelled bool
 }
 
-// NewWizard creates a new onboard wizard.
+// NewWizard creates a new onboard wizard with default config.
 func NewWizard() *Wizard {
 	return &Wizard{
 		step:  StepWelcome,
 		state: NewConfigState(),
+		menu:  NewMenuModel(),
+	}
+}
+
+// NewWizardWithConfig creates a new onboard wizard pre-loaded with the given config.
+func NewWizardWithConfig(cfg *config.Config) *Wizard {
+	return &Wizard{
+		step:  StepWelcome,
+		state: NewConfigStateWith(cfg),
 		menu:  NewMenuModel(),
 	}
 }
@@ -243,13 +252,9 @@ func (w *Wizard) View() string {
 	return b.String()
 }
 
-// SaveConfig writes the configuration to disk.
-func (w *Wizard) SaveConfig() error {
-	// Use the internal config package to save
-	// We need to ensure the path is correct.
-	// The original code saved to "lango.json" in CWD.
-	// We should probably allow the user to specify or default to that.
-	return config.Save(w.state.Current, "lango.json")
+// Config returns the current configuration from the wizard state.
+func (w *Wizard) Config() *config.Config {
+	return w.state.Current
 }
 
 func (w *Wizard) isProviderForm() bool {
