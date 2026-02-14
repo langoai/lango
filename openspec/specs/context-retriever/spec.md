@@ -1,11 +1,11 @@
 ## ADDED Requirements
 
-### Requirement: 6 Context Layer Architecture
-The system SHALL organize context into 6 distinct layers for retrieval-augmented generation.
+### Requirement: 8 Context Layer Architecture
+The system SHALL organize context into 8 distinct layers for retrieval-augmented generation.
 
 #### Scenario: Context layer definitions
 - **WHEN** the context retriever is initialized
-- **THEN** the system SHALL recognize 6 layers: Tool Registry, User Knowledge, Skill Patterns, External Knowledge, Agent Learnings, Runtime Context
+- **THEN** the system SHALL recognize 8 layers: Tool Registry, User Knowledge, Skill Patterns, External Knowledge, Agent Learnings, Runtime Context, Observations, Reflections
 
 ### Requirement: Context Retrieval
 The system SHALL search requested context layers and return relevant items.
@@ -48,10 +48,10 @@ The system SHALL extract meaningful keywords from user queries for search.
 - **THEN** the system SHALL strip punctuation from word boundaries
 
 ### Requirement: Prompt Assembly
-The system SHALL assemble an augmented system prompt from base prompt and retrieved context.
+The system SHALL assemble an augmented system prompt from base prompt, retrieved context, and observational memory.
 
 #### Scenario: No context retrieved
-- **WHEN** `AssemblePrompt` is called with no retrieved items
+- **WHEN** `AssemblePrompt` is called with no retrieved items and no observations
 - **THEN** the system SHALL return the base prompt unchanged
 
 #### Scenario: Context sections
@@ -62,12 +62,18 @@ The system SHALL assemble an augmented system prompt from base prompt and retrie
   - "Available Skills" for skill patterns
   - "External References" for external knowledge
 
+#### Scenario: Observation memory section
+- **WHEN** `AssemblePrompt` is called with observations or reflections
+- **THEN** the system SHALL append a "Conversation Memory" section after knowledge sections
+- **AND** reflections SHALL appear before observations within that section
+
 ### Requirement: Context-Aware Model Adapter
-The system SHALL wrap the ADK model adapter to transparently inject retrieved context.
+The system SHALL wrap the ADK model adapter to transparently inject retrieved context and observational memory.
 
 #### Scenario: System prompt augmentation
 - **WHEN** `GenerateContent` is called on the context-aware adapter
 - **THEN** the system SHALL extract the user's latest message as query
 - **AND** retrieve relevant context from all layers
-- **AND** augment the system instruction with assembled context
+- **AND** retrieve observations and reflections for the current session
+- **AND** augment the system instruction with assembled context including observations
 - **AND** forward the modified request to the underlying model adapter

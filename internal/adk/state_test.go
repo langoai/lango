@@ -398,6 +398,130 @@ func TestEventsAdapter_At(t *testing.T) {
 	}
 }
 
+// --- Token-Budget Truncation tests ---
+
+func TestEventsAdapter_TokenBudgetTruncation(t *testing.T) {
+	t.Run("includes all messages within budget", func(t *testing.T) {
+		var msgs []internal.Message
+		for range 5 {
+			msgs = append(msgs, internal.Message{
+				Role:      "user",
+				Content:   "short",
+				Timestamp: time.Now(),
+			})
+		}
+		adapter := &EventsAdapter{
+			history:     msgs,
+			tokenBudget: 10000,
+		}
+		if adapter.Len() != 5 {
+			t.Errorf("expected 5, got %d", adapter.Len())
+		}
+	})
+
+	t.Run("truncates when budget exceeded", func(t *testing.T) {
+		var msgs []internal.Message
+		// Each message has 400 chars content = ~100 tokens + 4 overhead = ~104 tokens
+		for range 20 {
+			content := ""
+			for range 400 {
+				content += "a"
+			}
+			msgs = append(msgs, internal.Message{
+				Role:      "user",
+				Content:   content,
+				Timestamp: time.Now(),
+			})
+		}
+		adapter := &EventsAdapter{
+			history:     msgs,
+			tokenBudget: 500, // can fit ~4-5 messages
+		}
+		resultLen := adapter.Len()
+		if resultLen >= 20 {
+			t.Errorf("expected truncation, got %d", resultLen)
+		}
+		if resultLen < 1 {
+			t.Error("expected at least 1 message")
+		}
+	})
+
+	t.Run("always includes at least one message", func(t *testing.T) {
+		msgs := []internal.Message{{
+			Role:      "user",
+			Content:   string(make([]byte, 40000)), // huge message
+			Timestamp: time.Now(),
+		}}
+		adapter := &EventsAdapter{
+			history:     msgs,
+			tokenBudget: 10,
+		}
+		if adapter.Len() != 1 {
+			t.Errorf("expected 1 message, got %d", adapter.Len())
+		}
+	})
+
+	t.Run("empty history", func(t *testing.T) {
+		adapter := &EventsAdapter{
+			history:     nil,
+			tokenBudget: 100,
+		}
+		if adapter.Len() != 0 {
+			t.Errorf("expected 0, got %d", adapter.Len())
+		}
+	})
+
+	t.Run("preserves most recent messages", func(t *testing.T) {
+		var msgs []internal.Message
+		for i := range 10 {
+			content := ""
+			for range 40 {
+				content += "x"
+			}
+			msgs = append(msgs, internal.Message{
+				Role:      "user",
+				Content:   content,          // ~10 tokens + 4 overhead = 14 tokens each
+				Timestamp: time.Now().Add(time.Duration(i) * time.Second),
+			})
+		}
+		// Budget for ~2 messages: 28 tokens
+		adapter := &EventsAdapter{
+			history:     msgs,
+			tokenBudget: 30,
+		}
+		truncated := adapter.truncatedHistory()
+		if len(truncated) != 2 {
+			t.Fatalf("expected 2 messages, got %d", len(truncated))
+		}
+		// Should be the last 2 messages
+		if truncated[0].Content != msgs[8].Content {
+			t.Error("expected 9th message (index 8)")
+		}
+		if truncated[1].Content != msgs[9].Content {
+			t.Error("expected 10th message (index 9)")
+		}
+	})
+}
+
+func TestEventsAdapter_LegacyFallback(t *testing.T) {
+	var msgs []internal.Message
+	for range 150 {
+		msgs = append(msgs, internal.Message{
+			Role:      "user",
+			Content:   "msg",
+			Timestamp: time.Now(),
+		})
+	}
+	// tokenBudget=0 means legacy mode
+	adapter := &EventsAdapter{
+		history:     msgs,
+		tokenBudget: 0,
+	}
+	if adapter.Len() != 100 {
+		t.Errorf("expected legacy 100-cap, got %d", adapter.Len())
+	}
+}
+
 // --- SessionServiceAdapter tests ---
 
 func TestSessionServiceAdapter_Create(t *testing.T) {

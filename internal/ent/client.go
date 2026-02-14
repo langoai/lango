@@ -22,6 +22,8 @@ import (
 	"github.com/langowarny/lango/internal/ent/knowledge"
 	"github.com/langowarny/lango/internal/ent/learning"
 	"github.com/langowarny/lango/internal/ent/message"
+	"github.com/langowarny/lango/internal/ent/observation"
+	"github.com/langowarny/lango/internal/ent/reflection"
 	"github.com/langowarny/lango/internal/ent/secret"
 	"github.com/langowarny/lango/internal/ent/session"
 	"github.com/langowarny/lango/internal/ent/skill"
@@ -44,6 +46,10 @@ type Client struct {
 	Learning *LearningClient
 	// Message is the client for interacting with the Message builders.
 	Message *MessageClient
+	// Observation is the client for interacting with the Observation builders.
+	Observation *ObservationClient
+	// Reflection is the client for interacting with the Reflection builders.
+	Reflection *ReflectionClient
 	// Secret is the client for interacting with the Secret builders.
 	Secret *SecretClient
 	// Session is the client for interacting with the Session builders.
@@ -67,6 +73,8 @@ func (c *Client) init() {
 	c.Knowledge = NewKnowledgeClient(c.config)
 	c.Learning = NewLearningClient(c.config)
 	c.Message = NewMessageClient(c.config)
+	c.Observation = NewObservationClient(c.config)
+	c.Reflection = NewReflectionClient(c.config)
 	c.Secret = NewSecretClient(c.config)
 	c.Session = NewSessionClient(c.config)
 	c.Skill = NewSkillClient(c.config)
@@ -168,6 +176,8 @@ func (c *Client) Tx(ctx context.Context) (*Tx, error) {
 		Knowledge:   NewKnowledgeClient(cfg),
 		Learning:    NewLearningClient(cfg),
 		Message:     NewMessageClient(cfg),
+		Observation: NewObservationClient(cfg),
+		Reflection:  NewReflectionClient(cfg),
 		Secret:      NewSecretClient(cfg),
 		Session:     NewSessionClient(cfg),
 		Skill:       NewSkillClient(cfg),
@@ -196,6 +206,8 @@ func (c *Client) BeginTx(ctx context.Context, opts *sql.TxOptions) (*Tx, error) 
 		Knowledge:   NewKnowledgeClient(cfg),
 		Learning:    NewLearningClient(cfg),
 		Message:     NewMessageClient(cfg),
+		Observation: NewObservationClient(cfg),
+		Reflection:  NewReflectionClient(cfg),
 		Secret:      NewSecretClient(cfg),
 		Session:     NewSessionClient(cfg),
 		Skill:       NewSkillClient(cfg),
@@ -228,8 +240,8 @@ func (c *Client) Close() error {
 // In order to add hooks to a specific client, call: `client.Node.Use(...)`.
 func (c *Client) Use(hooks ...Hook) {
 	for _, n := range []interface{ Use(...Hook) }{
-		c.AuditLog, c.ExternalRef, c.Key, c.Knowledge, c.Learning, c.Message, c.Secret,
-		c.Session, c.Skill,
+		c.AuditLog, c.ExternalRef, c.Key, c.Knowledge, c.Learning, c.Message,
+		c.Observation, c.Reflection, c.Secret, c.Session, c.Skill,
 	} {
 		n.Use(hooks...)
 	}
@@ -239,8 +251,8 @@ func (c *Client) Use(hooks ...Hook) {
 // In order to add interceptors to a specific client, call: `client.Node.Intercept(...)`.
 func (c *Client) Intercept(interceptors ...Interceptor) {
 	for _, n := range []interface{ Intercept(...Interceptor) }{
-		c.AuditLog, c.ExternalRef, c.Key, c.Knowledge, c.Learning, c.Message, c.Secret,
-		c.Session, c.Skill,
+		c.AuditLog, c.ExternalRef, c.Key, c.Knowledge, c.Learning, c.Message,
+		c.Observation, c.Reflection, c.Secret, c.Session, c.Skill,
 	} {
 		n.Intercept(interceptors...)
 	}
@@ -261,6 +273,10 @@ func (c *Client) Mutate(ctx context.Context, m Mutation) (Value, error) {
 		return c.Learning.mutate(ctx, m)
 	case *MessageMutation:
 		return c.Message.mutate(ctx, m)
+	case *ObservationMutation:
+		return c.Observation.mutate(ctx, m)
+	case *ReflectionMutation:
+		return c.Reflection.mutate(ctx, m)
 	case *SecretMutation:
 		return c.Secret.mutate(ctx, m)
 	case *SessionMutation:
@@ -1102,6 +1118,272 @@ func (c *MessageClient) mutate(ctx context.Context, m *MessageMutation) (Value, 
 	}
 }
 
+// ObservationClient is a client for the Observation schema.
+type ObservationClient struct {
+	config
+}
+
+// NewObservationClient returns a client for the Observation from the given config.
+func NewObservationClient(c config) *ObservationClient {
+	return &ObservationClient{config: c}
+}
+
+// Use adds a list of mutation hooks to the hooks stack.
+// A call to `Use(f, g, h)` equals to `observation.Hooks(f(g(h())))`.
+func (c *ObservationClient) Use(hooks ...Hook) {
+	c.hooks.Observation = append(c.hooks.Observation, hooks...)
+}
+
+// Intercept adds a list of query interceptors to the interceptors stack.
+// A call to `Intercept(f, g, h)` equals to `observation.Intercept(f(g(h())))`.
+func (c *ObservationClient) Intercept(interceptors ...Interceptor) {
+	c.inters.Observation = append(c.inters.Observation, interceptors...)
+}
+
+// Create returns a builder for creating a Observation entity.
+func (c *ObservationClient) Create() *ObservationCreate {
+	mutation := newObservationMutation(c.config, OpCreate)
+	return &ObservationCreate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// CreateBulk returns a builder for creating a bulk of Observation entities.
+func (c *ObservationClient) CreateBulk(builders ...*ObservationCreate) *ObservationCreateBulk {
+	return &ObservationCreateBulk{config: c.config, builders: builders}
+}
+
+// MapCreateBulk creates a bulk creation builder from the given slice. For each item in the slice, the function creates
+// a builder and applies setFunc on it.
+func (c *ObservationClient) MapCreateBulk(slice any, setFunc func(*ObservationCreate, int)) *ObservationCreateBulk {
+	rv := reflect.ValueOf(slice)
+	if rv.Kind() != reflect.Slice {
+		return &ObservationCreateBulk{err: fmt.Errorf("calling to ObservationClient.MapCreateBulk with wrong type %T, need slice", slice)}
+	}
+	builders := make([]*ObservationCreate, rv.Len())
+	for i := 0; i < rv.Len(); i++ {
+		builders[i] = c.Create()
+		setFunc(builders[i], i)
+	}
+	return &ObservationCreateBulk{config: c.config, builders: builders}
+}
+
+// Update returns an update builder for Observation.
+func (c *ObservationClient) Update() *ObservationUpdate {
+	mutation := newObservationMutation(c.config, OpUpdate)
+	return &ObservationUpdate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOne returns an update builder for the given entity.
+func (c *ObservationClient) UpdateOne(_m *Observation) *ObservationUpdateOne {
+	mutation := newObservationMutation(c.config, OpUpdateOne, withObservation(_m))
+	return &ObservationUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOneID returns an update builder for the given id.
+func (c *ObservationClient) UpdateOneID(id uuid.UUID) *ObservationUpdateOne {
+	mutation := newObservationMutation(c.config, OpUpdateOne, withObservationID(id))
+	return &ObservationUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// Delete returns a delete builder for Observation.
+func (c *ObservationClient) Delete() *ObservationDelete {
+	mutation := newObservationMutation(c.config, OpDelete)
+	return &ObservationDelete{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// DeleteOne returns a builder for deleting the given entity.
+func (c *ObservationClient) DeleteOne(_m *Observation) *ObservationDeleteOne {
+	return c.DeleteOneID(_m.ID)
+}
+
+// DeleteOneID returns a builder for deleting the given entity by its id.
+func (c *ObservationClient) DeleteOneID(id uuid.UUID) *ObservationDeleteOne {
+	builder := c.Delete().Where(observation.ID(id))
+	builder.mutation.id = &id
+	builder.mutation.op = OpDeleteOne
+	return &ObservationDeleteOne{builder}
+}
+
+// Query returns a query builder for Observation.
+func (c *ObservationClient) Query() *ObservationQuery {
+	return &ObservationQuery{
+		config: c.config,
+		ctx:    &QueryContext{Type: TypeObservation},
+		inters: c.Interceptors(),
+	}
+}
+
+// Get returns a Observation entity by its id.
+func (c *ObservationClient) Get(ctx context.Context, id uuid.UUID) (*Observation, error) {
+	return c.Query().Where(observation.ID(id)).Only(ctx)
+}
+
+// GetX is like Get, but panics if an error occurs.
+func (c *ObservationClient) GetX(ctx context.Context, id uuid.UUID) *Observation {
+	obj, err := c.Get(ctx, id)
+	if err != nil {
+		panic(err)
+	}
+	return obj
+}
+
+// Hooks returns the client hooks.
+func (c *ObservationClient) Hooks() []Hook {
+	return c.hooks.Observation
+}
+
+// Interceptors returns the client interceptors.
+func (c *ObservationClient) Interceptors() []Interceptor {
+	return c.inters.Observation
+}
+
+func (c *ObservationClient) mutate(ctx context.Context, m *ObservationMutation) (Value, error) {
+	switch m.Op() {
+	case OpCreate:
+		return (&ObservationCreate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdate:
+		return (&ObservationUpdate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdateOne:
+		return (&ObservationUpdateOne{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpDelete, OpDeleteOne:
+		return (&ObservationDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
+	default:
+		return nil, fmt.Errorf("ent: unknown Observation mutation op: %q", m.Op())
+	}
+}
+
+// ReflectionClient is a client for the Reflection schema.
+type ReflectionClient struct {
+	config
+}
+
+// NewReflectionClient returns a client for the Reflection from the given config.
+func NewReflectionClient(c config) *ReflectionClient {
+	return &ReflectionClient{config: c}
+}
+
+// Use adds a list of mutation hooks to the hooks stack.
+// A call to `Use(f, g, h)` equals to `reflection.Hooks(f(g(h())))`.
+func (c *ReflectionClient) Use(hooks ...Hook) {
+	c.hooks.Reflection = append(c.hooks.Reflection, hooks...)
+}
+
+// Intercept adds a list of query interceptors to the interceptors stack.
+// A call to `Intercept(f, g, h)` equals to `reflection.Intercept(f(g(h())))`.
+func (c *ReflectionClient) Intercept(interceptors ...Interceptor) {
+	c.inters.Reflection = append(c.inters.Reflection, interceptors...)
+}
+
+// Create returns a builder for creating a Reflection entity.
+func (c *ReflectionClient) Create() *ReflectionCreate {
+	mutation := newReflectionMutation(c.config, OpCreate)
+	return &ReflectionCreate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// CreateBulk returns a builder for creating a bulk of Reflection entities.
+func (c *ReflectionClient) CreateBulk(builders ...*ReflectionCreate) *ReflectionCreateBulk {
+	return &ReflectionCreateBulk{config: c.config, builders: builders}
+}
+
+// MapCreateBulk creates a bulk creation builder from the given slice. For each item in the slice, the function creates
+// a builder and applies setFunc on it.
+func (c *ReflectionClient) MapCreateBulk(slice any, setFunc func(*ReflectionCreate, int)) *ReflectionCreateBulk {
+	rv := reflect.ValueOf(slice)
+	if rv.Kind() != reflect.Slice {
+		return &ReflectionCreateBulk{err: fmt.Errorf("calling to ReflectionClient.MapCreateBulk with wrong type %T, need slice", slice)}
+	}
+	builders := make([]*ReflectionCreate, rv.Len())
+	for i := 0; i < rv.Len(); i++ {
+		builders[i] = c.Create()
+		setFunc(builders[i], i)
+	}
+	return &ReflectionCreateBulk{config: c.config, builders: builders}
+}
+
+// Update returns an update builder for Reflection.
+func (c *ReflectionClient) Update() *ReflectionUpdate {
+	mutation := newReflectionMutation(c.config, OpUpdate)
+	return &ReflectionUpdate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOne returns an update builder for the given entity.
+func (c *ReflectionClient) UpdateOne(_m *Reflection) *ReflectionUpdateOne {
+	mutation := newReflectionMutation(c.config, OpUpdateOne, withReflection(_m))
+	return &ReflectionUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOneID returns an update builder for the given id.
+func (c *ReflectionClient) UpdateOneID(id uuid.UUID) *ReflectionUpdateOne {
+	mutation := newReflectionMutation(c.config, OpUpdateOne, withReflectionID(id))
+	return &ReflectionUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// Delete returns a delete builder for Reflection.
+func (c *ReflectionClient) Delete() *ReflectionDelete {
+	mutation := newReflectionMutation(c.config, OpDelete)
+	return &ReflectionDelete{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// DeleteOne returns a builder for deleting the given entity.
+func (c *ReflectionClient) DeleteOne(_m *Reflection) *ReflectionDeleteOne {
+	return c.DeleteOneID(_m.ID)
+}
+
+// DeleteOneID returns a builder for deleting the given entity by its id.
+func (c *ReflectionClient) DeleteOneID(id uuid.UUID) *ReflectionDeleteOne {
+	builder := c.Delete().Where(reflection.ID(id))
+	builder.mutation.id = &id
+	builder.mutation.op = OpDeleteOne
+	return &ReflectionDeleteOne{builder}
+}
+
+// Query returns a query builder for Reflection.
+func (c *ReflectionClient) Query() *ReflectionQuery {
+	return &ReflectionQuery{
+		config: c.config,
+		ctx:    &QueryContext{Type: TypeReflection},
+		inters: c.Interceptors(),
+	}
+}
+
+// Get returns a Reflection entity by its id.
+func (c *ReflectionClient) Get(ctx context.Context, id uuid.UUID) (*Reflection, error) {
+	return c.Query().Where(reflection.ID(id)).Only(ctx)
+}
+
+// GetX is like Get, but panics if an error occurs.
+func (c *ReflectionClient) GetX(ctx context.Context, id uuid.UUID) *Reflection {
+	obj, err := c.Get(ctx, id)
+	if err != nil {
+		panic(err)
+	}
+	return obj
+}
+
+// Hooks returns the client hooks.
+func (c *ReflectionClient) Hooks() []Hook {
+	return c.hooks.Reflection
+}
+
+// Interceptors returns the client interceptors.
+func (c *ReflectionClient) Interceptors() []Interceptor {
+	return c.inters.Reflection
+}
+
+func (c *ReflectionClient) mutate(ctx context.Context, m *ReflectionMutation) (Value, error) {
+	switch m.Op() {
+	case OpCreate:
+		return (&ReflectionCreate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdate:
+		return (&ReflectionUpdate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdateOne:
+		return (&ReflectionUpdateOne{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpDelete, OpDeleteOne:
+		return (&ReflectionDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
+	default:
+		return nil, fmt.Errorf("ent: unknown Reflection mutation op: %q", m.Op())
+	}
+}
+
 // SecretClient is a client for the Secret schema.
 type SecretClient struct {
 	config
@@ -1536,11 +1818,11 @@ func (c *SkillClient) mutate(ctx context.Context, m *SkillMutation) (Value, erro
 // hooks and interceptors per client, for fast access.
 type (
 	hooks struct {
-		AuditLog, ExternalRef, Key, Knowledge, Learning, Message, Secret, Session,
-		Skill []ent.Hook
+		AuditLog, ExternalRef, Key, Knowledge, Learning, Message, Observation,
+		Reflection, Secret, Session, Skill []ent.Hook
 	}
 	inters struct {
-		AuditLog, ExternalRef, Key, Knowledge, Learning, Message, Secret, Session,
-		Skill []ent.Interceptor
+		AuditLog, ExternalRef, Key, Knowledge, Learning, Message, Observation,
+		Reflection, Secret, Session, Skill []ent.Interceptor
 	}
 )

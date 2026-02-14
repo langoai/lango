@@ -18,6 +18,8 @@ import (
 	"github.com/langowarny/lango/internal/ent/knowledge"
 	"github.com/langowarny/lango/internal/ent/learning"
 	"github.com/langowarny/lango/internal/ent/message"
+	"github.com/langowarny/lango/internal/ent/observation"
+	"github.com/langowarny/lango/internal/ent/reflection"
 	"github.com/langowarny/lango/internal/ent/secret"
 	"github.com/langowarny/lango/internal/ent/session"
 	"github.com/langowarny/lango/internal/ent/skill"
@@ -87,6 +89,8 @@ func checkColumn(t, c string) error {
 			knowledge.Table:   knowledge.ValidColumn,
 			learning.Table:    learning.ValidColumn,
 			message.Table:     message.ValidColumn,
+			observation.Table: observation.ValidColumn,
+			reflection.Table:  reflection.ValidColumn,
 			secret.Table:      secret.ValidColumn,
 			session.Table:     session.ValidColumn,
 			skill.Table:       skill.ValidColumn,

@@ -1,0 +1,54 @@
+## ADDED Requirements
+
+### Requirement: Observation Entity Schema
+The system SHALL define an Ent schema for Observation entities.
+
+#### Scenario: Observation schema fields
+- **WHEN** the Observation schema is defined
+- **THEN** it SHALL include: id (UUID), session_key (string, not empty), content (text, not empty), token_count (int, default 0), source_start_index (int), source_end_index (int), created_at (time, default now)
+
+#### Scenario: Observation schema indexes
+- **WHEN** querying observations
+- **THEN** the schema SHALL have indexes on session_key and created_at for efficient retrieval
+
+#### Scenario: Observation auto-migration
+- **WHEN** the application starts
+- **THEN** ent SHALL create the Observation table automatically if it does not exist
+
+### Requirement: Reflection Entity Schema
+The system SHALL define an Ent schema for Reflection entities.
+
+#### Scenario: Reflection schema fields
+- **WHEN** the Reflection schema is defined
+- **THEN** it SHALL include: id (UUID), session_key (string, not empty), content (text, not empty), token_count (int, default 0), generation (int, default 1), created_at (time, default now)
+
+#### Scenario: Reflection schema indexes
+- **WHEN** querying reflections
+- **THEN** the schema SHALL have indexes on session_key and created_at for efficient retrieval
+
+#### Scenario: Reflection auto-migration
+- **WHEN** the application starts
+- **THEN** ent SHALL create the Reflection table automatically if it does not exist
+
+### Requirement: OM Data Access Methods
+The system SHALL provide data access methods for observations and reflections through the session store.
+
+#### Scenario: Save observation
+- **WHEN** an observation is generated
+- **THEN** the store SHALL persist the observation with all fields
+
+#### Scenario: List observations by session
+- **WHEN** querying observations for a session
+- **THEN** the store SHALL return observations ordered by created_at ascending
+
+#### Scenario: Delete observations by session
+- **WHEN** observations are condensed into a reflection
+- **THEN** the store SHALL delete the specified observations
+
+#### Scenario: Save reflection
+- **WHEN** a reflection is generated
+- **THEN** the store SHALL persist the reflection with all fields
+
+#### Scenario: List reflections by session
+- **WHEN** querying reflections for a session
+- **THEN** the store SHALL return reflections ordered by created_at ascending

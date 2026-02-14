@@ -24,6 +24,12 @@ type Learning func(*sql.Selector)
 // Message is the predicate function for message builders.
 type Message func(*sql.Selector)
 
+// Observation is the predicate function for observation builders.
+type Observation func(*sql.Selector)
+
+// Reflection is the predicate function for reflection builders.
+type Reflection func(*sql.Selector)
+
 // Secret is the predicate function for secret builders.
 type Secret func(*sql.Selector)
 

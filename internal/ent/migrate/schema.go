@@ -174,6 +174,61 @@ var (
 			},
 		},
 	}
+	// ObservationsColumns holds the columns for the "observations" table.
+	ObservationsColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeUUID},
+		{Name: "session_key", Type: field.TypeString},
+		{Name: "content", Type: field.TypeString, Size: 2147483647},
+		{Name: "token_count", Type: field.TypeInt, Default: 0},
+		{Name: "source_start_index", Type: field.TypeInt, Default: 0},
+		{Name: "source_end_index", Type: field.TypeInt, Default: 0},
+		{Name: "created_at", Type: field.TypeTime},
+	}
+	// ObservationsTable holds the schema information for the "observations" table.
+	ObservationsTable = &schema.Table{
+		Name:       "observations",
+		Columns:    ObservationsColumns,
+		PrimaryKey: []*schema.Column{ObservationsColumns[0]},
+		Indexes: []*schema.Index{
+			{
+				Name:    "observation_session_key",
+				Unique:  false,
+				Columns: []*schema.Column{ObservationsColumns[1]},
+			},
+			{
+				Name:    "observation_created_at",
+				Unique:  false,
+				Columns: []*schema.Column{ObservationsColumns[6]},
+			},
+		},
+	}
+	// ReflectionsColumns holds the columns for the "reflections" table.
+	ReflectionsColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeUUID},
+		{Name: "session_key", Type: field.TypeString},
+		{Name: "content", Type: field.TypeString, Size: 2147483647},
+		{Name: "token_count", Type: field.TypeInt, Default: 0},
+		{Name: "generation", Type: field.TypeInt, Default: 1},
+		{Name: "created_at", Type: field.TypeTime},
+	}
+	// ReflectionsTable holds the schema information for the "reflections" table.
+	ReflectionsTable = &schema.Table{
+		Name:       "reflections",
+		Columns:    ReflectionsColumns,
+		PrimaryKey: []*schema.Column{ReflectionsColumns[0]},
+		Indexes: []*schema.Index{
+			{
+				Name:    "reflection_session_key",
+				Unique:  false,
+				Columns: []*schema.Column{ReflectionsColumns[1]},
+			},
+			{
+				Name:    "reflection_created_at",
+				Unique:  false,
+				Columns: []*schema.Column{ReflectionsColumns[5]},
+			},
+		},
+	}
 	// SecretsColumns holds the columns for the "secrets" table.
 	SecretsColumns = []*schema.Column{
 		{Name: "id", Type: field.TypeUUID},
@@ -278,6 +333,8 @@ var (
 		KnowledgesTable,
 		LearningsTable,
 		MessagesTable,
+		ObservationsTable,
+		ReflectionsTable,
 		SecretsTable,
 		SessionsTable,
 		SkillsTable,

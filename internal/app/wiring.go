@@ -5,6 +5,7 @@ import (
 	"crypto/hmac"
 	"fmt"
 	"os"
+	"strings"
 
 	"github.com/langowarny/lango/internal/adk"
 	"github.com/langowarny/lango/internal/agent"
@@ -12,6 +13,8 @@ import (
 	"github.com/langowarny/lango/internal/gateway"
 	"github.com/langowarny/lango/internal/knowledge"
 	"github.com/langowarny/lango/internal/learning"
+	"github.com/langowarny/lango/internal/memory"
+	"github.com/langowarny/lango/internal/provider"
 	"github.com/langowarny/lango/internal/security"
 	"github.com/langowarny/lango/internal/session"
 	"github.com/langowarny/lango/internal/skill"
@@ -213,6 +216,119 @@ func initKnowledge(cfg *config.Config, store session.Store, baseTools []*agent.T
 	}
 }
 
+// memoryComponents holds optional observational memory components.
+type memoryComponents struct {
+	store     *memory.Store
+	observer  *memory.Observer
+	reflector *memory.Reflector
+	buffer    *memory.Buffer
+}
+
+// providerTextGenerator adapts a supervisor.ProviderProxy to the memory.TextGenerator interface.
+type providerTextGenerator struct {
+	proxy *supervisor.ProviderProxy
+}
+
+func (g *providerTextGenerator) GenerateText(ctx context.Context, systemPrompt, userPrompt string) (string, error) {
+	params := provider.GenerateParams{
+		Messages: []provider.Message{
+			{Role: "system", Content: systemPrompt},
+			{Role: "user", Content: userPrompt},
+		},
+	}
+
+	stream, err := g.proxy.Generate(ctx, params)
+	if err != nil {
+		return "", fmt.Errorf("generate text: %w", err)
+	}
+
+	var result strings.Builder
+	for evt, err := range stream {
+		if err != nil {
+			return "", fmt.Errorf("stream text: %w", err)
+		}
+		if evt.Type == provider.StreamEventPlainText {
+			result.WriteString(evt.Text)
+		}
+		if evt.Type == provider.StreamEventError && evt.Error != nil {
+			return "", evt.Error
+		}
+	}
+	return result.String(), nil
+}
+
+// initMemory creates the observational memory components if enabled.
+func initMemory(cfg *config.Config, store session.Store, sv *supervisor.Supervisor) *memoryComponents {
+	if !cfg.ObservationalMemory.Enabled {
+		logger().Info("observational memory disabled")
+		return nil
+	}
+
+	entStore, ok := store.(*session.EntStore)
+	if !ok {
+		logger().Warn("observational memory requires EntStore, skipping")
+		return nil
+	}
+
+	client := entStore.Client()
+	mLogger := logger()
+	mStore := memory.NewStore(client, mLogger)
+
+	// Create provider proxy for observer/reflector LLM calls
+	provider := cfg.ObservationalMemory.Provider
+	if provider == "" {
+		provider = cfg.Agent.Provider
+	}
+	omModel := cfg.ObservationalMemory.Model
+	if omModel == "" {
+		omModel = cfg.Agent.Model
+	}
+
+	proxy := supervisor.NewProviderProxy(sv, provider, omModel)
+	generator := &providerTextGenerator{proxy: proxy}
+
+	observer := memory.NewObserver(generator, mStore, mLogger)
+	reflector := memory.NewReflector(generator, mStore, mLogger)
+
+	// Apply defaults for thresholds
+	msgThreshold := cfg.ObservationalMemory.MessageTokenThreshold
+	if msgThreshold <= 0 {
+		msgThreshold = 1000
+	}
+	obsThreshold := cfg.ObservationalMemory.ObservationTokenThreshold
+	if obsThreshold <= 0 {
+		obsThreshold = 2000
+	}
+
+	// Message provider retrieves messages for a session key
+	getMessages := func(sessionKey string) ([]session.Message, error) {
+		sess, err := store.Get(sessionKey)
+		if err != nil {
+			return nil, err
+		}
+		if sess == nil {
+			return nil, nil
+		}
+		return sess.History, nil
+	}
+
+	buffer := memory.NewBuffer(observer, reflector, mStore, msgThreshold, obsThreshold, getMessages, mLogger)
+
+	logger().Infow("observational memory initialized",
+		"provider", provider,
+		"model", omModel,
+		"messageTokenThreshold", msgThreshold,
+		"observationTokenThreshold", obsThreshold,
+	)
+
+	return &memoryComponents{
+		store:     mStore,
+		observer:  observer,
+		reflector: reflector,
+		buffer:    buffer,
+	}
+}
+
 // initAuth creates the auth manager if OIDC providers are configured.
 func initAuth(cfg *config.Config, store session.Store) *gateway.AuthManager {
 	if len(cfg.Auth.Providers) == 0 {
@@ -230,7 +346,7 @@ func initAuth(cfg *config.Config, store session.Store) *gateway.AuthManager {
 }
 
 // initAgent creates the ADK agent with the given tools and provider proxy.
-func initAgent(ctx context.Context, sv *supervisor.Supervisor, cfg *config.Config, store session.Store, tools []*agent.Tool, kc *knowledgeComponents, scanner *agent.SecretScanner) (*adk.Agent, error) {
+func initAgent(ctx context.Context, sv *supervisor.Supervisor, cfg *config.Config, store session.Store, tools []*agent.Tool, kc *knowledgeComponents, mc *memoryComponents, scanner *agent.SecretScanner) (*adk.Agent, error) {
 	// Adapt tools to ADK format
 	var adkTools []adk_tool.Tool
 	for _, t := range tools {
@@ -268,7 +384,19 @@ func initAgent(ctx context.Context, sv *supervisor.Supervisor, cfg *config.Confi
 			cfg.Knowledge.MaxContextPerLayer,
 			logger(),
 		)
-		llm = adk.NewContextAwareModelAdapter(modelAdapter, retriever, systemPrompt, logger())
+		ctxAdapter := adk.NewContextAwareModelAdapter(modelAdapter, retriever, systemPrompt, logger())
+
+		// Wire in observational memory if available
+		if mc != nil {
+			ctxAdapter.WithMemory(mc.store, "")
+		}
+
+		llm = ctxAdapter
+	} else if mc != nil {
+		// OM without knowledge system — create minimal context-aware adapter
+		ctxAdapter := adk.NewContextAwareModelAdapter(modelAdapter, nil, systemPrompt, logger())
+		ctxAdapter.WithMemory(mc.store, "")
+		llm = ctxAdapter
 	}
 
 	// If PII redaction is enabled, wrap with PII-redacting adapter

@@ -81,6 +81,30 @@ func (f MessageFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value, err
 	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.MessageMutation", m)
 }
 
+// The ObservationFunc type is an adapter to allow the use of ordinary
+// function as Observation mutator.
+type ObservationFunc func(context.Context, *ent.ObservationMutation) (ent.Value, error)
+
+// Mutate calls f(ctx, m).
+func (f ObservationFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value, error) {
+	if mv, ok := m.(*ent.ObservationMutation); ok {
+		return f(ctx, mv)
+	}
+	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.ObservationMutation", m)
+}
+
+// The ReflectionFunc type is an adapter to allow the use of ordinary
+// function as Reflection mutator.
+type ReflectionFunc func(context.Context, *ent.ReflectionMutation) (ent.Value, error)
+
+// Mutate calls f(ctx, m).
+func (f ReflectionFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value, error) {
+	if mv, ok := m.(*ent.ReflectionMutation); ok {
+		return f(ctx, mv)
+	}
+	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.ReflectionMutation", m)
+}
+
 // The SecretFunc type is an adapter to allow the use of ordinary
 // function as Secret mutator.
 type SecretFunc func(context.Context, *ent.SecretMutation) (ent.Value, error)

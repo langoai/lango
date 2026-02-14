@@ -12,6 +12,8 @@ import (
 	"github.com/langowarny/lango/internal/ent/knowledge"
 	"github.com/langowarny/lango/internal/ent/learning"
 	"github.com/langowarny/lango/internal/ent/message"
+	"github.com/langowarny/lango/internal/ent/observation"
+	"github.com/langowarny/lango/internal/ent/reflection"
 	"github.com/langowarny/lango/internal/ent/schema"
 	"github.com/langowarny/lango/internal/ent/secret"
 	"github.com/langowarny/lango/internal/ent/session"
@@ -152,6 +154,62 @@ func init() {
 	messageDescTimestamp := messageFields[2].Descriptor()
 	// message.DefaultTimestamp holds the default value on creation for the timestamp field.
 	message.DefaultTimestamp = messageDescTimestamp.Default.(func() time.Time)
+	observationFields := schema.Observation{}.Fields()
+	_ = observationFields
+	// observationDescSessionKey is the schema descriptor for session_key field.
+	observationDescSessionKey := observationFields[1].Descriptor()
+	// observation.SessionKeyValidator is a validator for the "session_key" field. It is called by the builders before save.
+	observation.SessionKeyValidator = observationDescSessionKey.Validators[0].(func(string) error)
+	// observationDescContent is the schema descriptor for content field.
+	observationDescContent := observationFields[2].Descriptor()
+	// observation.ContentValidator is a validator for the "content" field. It is called by the builders before save.
+	observation.ContentValidator = observationDescContent.Validators[0].(func(string) error)
+	// observationDescTokenCount is the schema descriptor for token_count field.
+	observationDescTokenCount := observationFields[3].Descriptor()
+	// observation.DefaultTokenCount holds the default value on creation for the token_count field.
+	observation.DefaultTokenCount = observationDescTokenCount.Default.(int)
+	// observationDescSourceStartIndex is the schema descriptor for source_start_index field.
+	observationDescSourceStartIndex := observationFields[4].Descriptor()
+	// observation.DefaultSourceStartIndex holds the default value on creation for the source_start_index field.
+	observation.DefaultSourceStartIndex = observationDescSourceStartIndex.Default.(int)
+	// observationDescSourceEndIndex is the schema descriptor for source_end_index field.
+	observationDescSourceEndIndex := observationFields[5].Descriptor()
+	// observation.DefaultSourceEndIndex holds the default value on creation for the source_end_index field.
+	observation.DefaultSourceEndIndex = observationDescSourceEndIndex.Default.(int)
+	// observationDescCreatedAt is the schema descriptor for created_at field.
+	observationDescCreatedAt := observationFields[6].Descriptor()
+	// observation.DefaultCreatedAt holds the default value on creation for the created_at field.
+	observation.DefaultCreatedAt = observationDescCreatedAt.Default.(func() time.Time)
+	// observationDescID is the schema descriptor for id field.
+	observationDescID := observationFields[0].Descriptor()
+	// observation.DefaultID holds the default value on creation for the id field.
+	observation.DefaultID = observationDescID.Default.(func() uuid.UUID)
+	reflectionFields := schema.Reflection{}.Fields()
+	_ = reflectionFields
+	// reflectionDescSessionKey is the schema descriptor for session_key field.
+	reflectionDescSessionKey := reflectionFields[1].Descriptor()
+	// reflection.SessionKeyValidator is a validator for the "session_key" field. It is called by the builders before save.
+	reflection.SessionKeyValidator = reflectionDescSessionKey.Validators[0].(func(string) error)
+	// reflectionDescContent is the schema descriptor for content field.
+	reflectionDescContent := reflectionFields[2].Descriptor()
+	// reflection.ContentValidator is a validator for the "content" field. It is called by the builders before save.
+	reflection.ContentValidator = reflectionDescContent.Validators[0].(func(string) error)
+	// reflectionDescTokenCount is the schema descriptor for token_count field.
+	reflectionDescTokenCount := reflectionFields[3].Descriptor()
+	// reflection.DefaultTokenCount holds the default value on creation for the token_count field.
+	reflection.DefaultTokenCount = reflectionDescTokenCount.Default.(int)
+	// reflectionDescGeneration is the schema descriptor for generation field.
+	reflectionDescGeneration := reflectionFields[4].Descriptor()
+	// reflection.DefaultGeneration holds the default value on creation for the generation field.
+	reflection.DefaultGeneration = reflectionDescGeneration.Default.(int)
+	// reflectionDescCreatedAt is the schema descriptor for created_at field.
+	reflectionDescCreatedAt := reflectionFields[5].Descriptor()
+	// reflection.DefaultCreatedAt holds the default value on creation for the created_at field.
+	reflection.DefaultCreatedAt = reflectionDescCreatedAt.Default.(func() time.Time)
+	// reflectionDescID is the schema descriptor for id field.
+	reflectionDescID := reflectionFields[0].Descriptor()
+	// reflection.DefaultID holds the default value on creation for the id field.
+	reflection.DefaultID = reflectionDescID.Default.(func() uuid.UUID)
 	secretFields := schema.Secret{}.Fields()
 	_ = secretFields
 	// secretDescName is the schema descriptor for name field.

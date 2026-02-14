@@ -31,6 +31,9 @@ type Config struct {
 	// Knowledge configuration
 	Knowledge KnowledgeConfig `mapstructure:"knowledge" json:"knowledge"`
 
+	// Observational Memory configuration
+	ObservationalMemory ObservationalMemoryConfig `mapstructure:"observationalMemory" json:"observationalMemory"`
+
 	// Providers configuration
 	Providers map[string]ProviderConfig `mapstructure:"providers" json:"providers"`
 }
@@ -54,6 +57,27 @@ type KnowledgeConfig struct {
 
 	// Maximum new skills per day
 	MaxSkillsPerDay int `mapstructure:"maxSkillsPerDay" json:"maxSkillsPerDay"`
+}
+
+// ObservationalMemoryConfig defines Observational Memory settings
+type ObservationalMemoryConfig struct {
+	// Enable the observational memory system
+	Enabled bool `mapstructure:"enabled" json:"enabled"`
+
+	// LLM provider for observer/reflector (empty = use agent default)
+	Provider string `mapstructure:"provider" json:"provider"`
+
+	// Model ID for observer/reflector (empty = use agent default)
+	Model string `mapstructure:"model" json:"model"`
+
+	// Token threshold to trigger observation (default: 1000)
+	MessageTokenThreshold int `mapstructure:"messageTokenThreshold" json:"messageTokenThreshold"`
+
+	// Token threshold to trigger reflection (default: 2000)
+	ObservationTokenThreshold int `mapstructure:"observationTokenThreshold" json:"observationTokenThreshold"`
+
+	// Max token budget for recent messages in context (default: 8000)
+	MaxMessageTokenBudget int `mapstructure:"maxMessageTokenBudget" json:"maxMessageTokenBudget"`
 }
 
 // AuthConfig defines authentication settings

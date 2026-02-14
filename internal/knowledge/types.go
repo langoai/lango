@@ -10,6 +10,8 @@ const (
 	LayerExternalKnowledge              // Docs, wiki, MCP integration
 	LayerAgentLearnings                 // Error patterns, discovered fixes
 	LayerRuntimeContext                 // Session history, tool results, env state
+	LayerObservations                   // Compressed conversation observations
+	LayerReflections                    // Condensed observation reflections
 )
 
 // ContextItem represents a single item from any context layer.

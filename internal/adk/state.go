@@ -9,6 +9,7 @@ import (
 	"google.golang.org/adk/session"
 	"google.golang.org/genai"
 
+	"github.com/langowarny/lango/internal/memory"
 	internal "github.com/langowarny/lango/internal/session"
 	"google.golang.org/adk/model"
 )
@@ -34,6 +35,15 @@ func (s *SessionAdapter) State() session.State {
 func (s *SessionAdapter) Events() session.Events {
 	return &EventsAdapter{history: s.sess.History}
 }
+
+// EventsWithTokenBudget returns an EventsAdapter that uses token-budget truncation.
+func (s *SessionAdapter) EventsWithTokenBudget(budget int) session.Events {
+	return &EventsAdapter{
+		history:     s.sess.History,
+		tokenBudget: budget,
+	}
+}
+
 func (s *SessionAdapter) LastUpdateTime() time.Time { return s.sess.UpdatedAt }
 
 // StateAdapter adapts internal.Session.Metadata to adk.State
@@ -88,19 +98,52 @@ func (s *StateAdapter) All() iter.Seq2[string, any] {
 	}
 }
 
-// EventsAdapter adapts internal history to adk events
+// EventsAdapter adapts internal history to adk events.
+// Supports two truncation modes:
+// - Token-budget: when tokenBudget > 0, includes messages from most recent until budget is exhausted
+// - Message count: falls back to hard 100-message cap when tokenBudget is 0
 type EventsAdapter struct {
-	history []internal.Message
+	history     []internal.Message
+	tokenBudget int // 0 means use legacy 100-message cap
+}
+
+// truncatedHistory returns the messages to include based on truncation mode.
+func (e *EventsAdapter) truncatedHistory() []internal.Message {
+	if e.tokenBudget > 0 {
+		return e.tokenBudgetTruncate()
+	}
+	// Legacy: hard 100-message cap
+	msgs := e.history
+	if len(msgs) > 100 {
+		msgs = msgs[len(msgs)-100:]
+	}
+	return msgs
+}
+
+// tokenBudgetTruncate includes messages from most recent to oldest until the token budget is exhausted.
+func (e *EventsAdapter) tokenBudgetTruncate() []internal.Message {
+	if len(e.history) == 0 {
+		return e.history
+	}
+
+	var totalTokens int
+	startIdx := len(e.history)
+
+	for i := len(e.history) - 1; i >= 0; i-- {
+		msgTokens := memory.CountMessageTokens(e.history[i])
+		if totalTokens+msgTokens > e.tokenBudget && startIdx < len(e.history) {
+			break
+		}
+		totalTokens += msgTokens
+		startIdx = i
+	}
+
+	return e.history[startIdx:]
 }
 
 func (e *EventsAdapter) All() iter.Seq[*session.Event] {
 	return func(yield func(*session.Event) bool) {
-		// Truncate history to last 100 messages
-		// This prevents context window overflow and excessive processing
-		msgs := e.history
-		if len(msgs) > 100 {
-			msgs = msgs[len(msgs)-100:]
-		}
+		msgs := e.truncatedHistory()
 
 		for _, msg := range msgs {
 			// Map Author
@@ -152,16 +195,11 @@ func (e *EventsAdapter) All() iter.Seq[*session.Event] {
 }
 
 func (e *EventsAdapter) Len() int {
-	lenMsgs := len(e.history)
-	if lenMsgs > 100 {
-		return 100
-	}
-	return lenMsgs
+	return len(e.truncatedHistory())
 }
 
 func (e *EventsAdapter) At(i int) *session.Event {
 	// Reusing logic from All is inefficient but simple for now
-	// Ideally we refactor message conversion
 	var found *session.Event
 	count := 0
 	e.All()(func(evt *session.Event) bool {

@@ -102,6 +102,13 @@ func New(cfg *config.Config) (*App, error) {
 		tools = append(tools, metaTools...)
 	}
 
+	// 5b. Observational Memory (optional)
+	mc := initMemory(cfg, store, sv)
+	if mc != nil {
+		app.MemoryStore = mc.store
+		app.MemoryBuffer = mc.buffer
+	}
+
 	// 6. Auth
 	auth := initAuth(cfg, store)
 
@@ -117,7 +124,7 @@ func New(cfg *config.Config) (*App, error) {
 	}
 
 	// 9. ADK Agent (scanner is passed for output-side secret scanning)
-	adkAgent, err := initAgent(context.Background(), sv, cfg, store, tools, kc, scanner)
+	adkAgent, err := initAgent(context.Background(), sv, cfg, store, tools, kc, mc, scanner)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create agent: %w", err)
 	}
@@ -146,6 +153,12 @@ func (a *App) Start(ctx context.Context) error {
 		}
 	}()
 
+	// Start observational memory buffer if enabled
+	if a.MemoryBuffer != nil {
+		a.MemoryBuffer.Start(&a.wg)
+		logger().Info("observational memory buffer started")
+	}
+
 	logger().Info("starting channels...")
 	for _, ch := range a.Channels {
 		a.wg.Add(1)
@@ -171,6 +184,12 @@ func (a *App) Stop(ctx context.Context) error {
 
 	for _, ch := range a.Channels {
 		ch.Stop()
+	}
+
+	// Stop observational memory buffer
+	if a.MemoryBuffer != nil {
+		a.MemoryBuffer.Stop()
+		logger().Info("observational memory buffer stopped")
 	}
 
 	// Wait for all background goroutines to finish

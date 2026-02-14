@@ -10,6 +10,7 @@ import (
 	"github.com/langowarny/lango/internal/gateway"
 	"github.com/langowarny/lango/internal/knowledge"
 	"github.com/langowarny/lango/internal/learning"
+	"github.com/langowarny/lango/internal/memory"
 	"github.com/langowarny/lango/internal/security"
 	"github.com/langowarny/lango/internal/session"
 	"github.com/langowarny/lango/internal/skill"
@@ -36,6 +37,10 @@ type App struct {
 	KnowledgeStore  *knowledge.Store
 	LearningEngine  *learning.Engine
 	SkillRegistry   *skill.Registry
+
+	// Observational Memory Components (optional)
+	MemoryStore  *memory.Store
+	MemoryBuffer *memory.Buffer
 
 	// Channels
 	Channels []Channel
