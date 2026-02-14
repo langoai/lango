@@ -133,6 +133,9 @@ type ServerConfig struct {
 
 	// Enable WebSocket server
 	WebSocketEnabled bool `mapstructure:"wsEnabled" json:"wsEnabled"`
+
+	// Allowed origins for WebSocket CORS (empty = same-origin, ["*"] = allow all)
+	AllowedOrigins []string `mapstructure:"allowedOrigins" json:"allowedOrigins"`
 }
 
 // AgentConfig defines LLM agent settings

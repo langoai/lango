@@ -46,6 +46,7 @@ type Config struct {
 	Port             int
 	HTTPEnabled      bool
 	WebSocketEnabled bool
+	AllowedOrigins   []string
 }
 
 // Client represents a connected WebSocket client
@@ -80,11 +81,14 @@ type RPCError struct {
 	Message string `json:"message"`
 }
 
-// RPCHandler is a function that handles an RPC method
-type RPCHandler func(params json.RawMessage) (interface{}, error)
+// RPCHandler is a function that handles an RPC method.
+// The client parameter provides the calling client's context (session, type, etc).
+type RPCHandler func(client *Client, params json.RawMessage) (interface{}, error)
 
 // New creates a new gateway server
 func New(cfg Config, agent *adk.Agent, provider *security.RPCProvider, store session.Store, auth *AuthManager) *Server {
+	originChecker := makeOriginChecker(cfg.AllowedOrigins)
+
 	s := &Server{
 		config:           cfg,
 		agent:            agent,
@@ -98,7 +102,7 @@ func New(cfg Config, agent *adk.Agent, provider *security.RPCProvider, store ses
 		upgrader: websocket.Upgrader{
 			ReadBufferSize:  1024,
 			WriteBufferSize: 1024,
-			CheckOrigin:     func(r *http.Request) bool { return true },
+			CheckOrigin:     originChecker,
 		},
 	}
 	s.setupRoutes()
@@ -128,7 +132,7 @@ func New(cfg Config, agent *adk.Agent, provider *security.RPCProvider, store ses
 }
 
 // handleChatMessage processes chat messages via Agent
-func (s *Server) handleChatMessage(params json.RawMessage) (interface{}, error) {
+func (s *Server) handleChatMessage(client *Client, params json.RawMessage) (interface{}, error) {
 	var req struct {
 		Message    string `json:"message"`
 		SessionKey string `json:"sessionKey"`
@@ -140,13 +144,25 @@ func (s *Server) handleChatMessage(params json.RawMessage) (interface{}, error) 
 	if req.Message == "" {
 		return nil, fmt.Errorf("message is required")
 	}
-	// Use default session if not provided
-	if req.SessionKey == "" {
-		req.SessionKey = "default"
+
+	// Determine session key:
+	// - Authenticated client: always use their authenticated session key
+	// - Unauthenticated (auth disabled): use provided key or "default"
+	sessionKey := "default"
+	if client.SessionKey != "" {
+		// Authenticated user — force their own session
+		sessionKey = client.SessionKey
+	} else if req.SessionKey != "" {
+		// No auth — allow client-specified key
+		sessionKey = req.SessionKey
+	}
+
+	if s.agent == nil {
+		return nil, fmt.Errorf("agent not configured")
 	}
 
 	ctx := context.Background()
-	response, err := s.agent.RunAndCollect(ctx, req.SessionKey, req.Message)
+	response, err := s.agent.RunAndCollect(ctx, sessionKey, req.Message)
 	if err != nil {
 		return nil, err
 	}
@@ -157,7 +173,7 @@ func (s *Server) handleChatMessage(params json.RawMessage) (interface{}, error) 
 }
 
 // handleSignResponse proxies signature responses to the RPCProvider
-func (s *Server) handleSignResponse(params json.RawMessage) (interface{}, error) {
+func (s *Server) handleSignResponse(_ *Client, params json.RawMessage) (interface{}, error) {
 	if s.provider == nil {
 		return nil, fmt.Errorf("provider not configured")
 	}
@@ -175,7 +191,7 @@ func (s *Server) handleSignResponse(params json.RawMessage) (interface{}, error)
 }
 
 // handleEncryptResponse proxies encryption responses to the RPCProvider
-func (s *Server) handleEncryptResponse(params json.RawMessage) (interface{}, error) {
+func (s *Server) handleEncryptResponse(_ *Client, params json.RawMessage) (interface{}, error) {
 	if s.provider == nil {
 		return nil, fmt.Errorf("provider not configured")
 	}
@@ -193,7 +209,7 @@ func (s *Server) handleEncryptResponse(params json.RawMessage) (interface{}, err
 }
 
 // handleDecryptResponse proxies decryption responses to the RPCProvider
-func (s *Server) handleDecryptResponse(params json.RawMessage) (interface{}, error) {
+func (s *Server) handleDecryptResponse(_ *Client, params json.RawMessage) (interface{}, error) {
 	if s.provider == nil {
 		return nil, fmt.Errorf("provider not configured")
 	}
@@ -260,7 +276,7 @@ func (s *Server) RequestApproval(ctx context.Context, message string) (bool, err
 }
 
 // handleCompanionHello processes companion hello message
-func (s *Server) handleCompanionHello(params json.RawMessage) (interface{}, error) {
+func (s *Server) handleCompanionHello(_ *Client, params json.RawMessage) (interface{}, error) {
 	var req struct {
 		DeviceID  string `json:"deviceId"`
 		PublicKey string `json:"publicKey"`
@@ -276,7 +292,7 @@ func (s *Server) handleCompanionHello(params json.RawMessage) (interface{}, erro
 }
 
 // handleApprovalResponse processes approval response from companion
-func (s *Server) handleApprovalResponse(params json.RawMessage) (interface{}, error) {
+func (s *Server) handleApprovalResponse(_ *Client, params json.RawMessage) (interface{}, error) {
 	var req struct {
 		RequestID string `json:"requestId"`
 		Approved  bool   `json:"approved"`
@@ -306,23 +322,31 @@ func (s *Server) setupRoutes() {
 	s.router.Use(middleware.Recoverer)
 	s.router.Use(middleware.RequestID)
 
-	// HTTP API endpoints (conditional)
+	// Public routes — no auth required
 	if s.config.HTTPEnabled {
 		s.router.Get("/health", s.handleHealth)
-		s.router.Get("/status", s.handleStatus)
 	}
 
-	// WebSocket endpoint
-	if s.config.WebSocketEnabled {
-		s.router.Get("/ws", s.handleWebSocket)
-		if s.provider != nil {
-			s.router.Get("/companion", s.handleCompanionWebSocket)
-		}
-	}
-
-	// Register Auth routes
+	// Auth routes — public, with rate limiting
 	if s.auth != nil {
 		s.auth.RegisterRoutes(s.router)
+	}
+
+	// Protected routes — require auth when OIDC is configured
+	s.router.Group(func(r chi.Router) {
+		r.Use(requireAuth(s.auth))
+
+		if s.config.HTTPEnabled {
+			r.Get("/status", s.handleStatus)
+		}
+		if s.config.WebSocketEnabled {
+			r.Get("/ws", s.handleWebSocket)
+		}
+	})
+
+	// Companion endpoint — separate group, no OIDC auth, origin restriction only
+	if s.config.WebSocketEnabled && s.provider != nil {
+		s.router.Get("/companion", s.handleCompanionWebSocket)
 	}
 }
 
@@ -408,19 +432,24 @@ func (s *Server) handleWebSocketConnection(w http.ResponseWriter, r *http.Reques
 	}
 
 	clientID := fmt.Sprintf("%s-%d", clientType, time.Now().UnixNano())
+
+	// Bind authenticated session to client (empty if no auth)
+	sessionKey := SessionFromContext(r.Context())
+
 	client := &Client{
-		ID:     clientID,
-		Type:   clientType,
-		Conn:   conn,
-		Server: s,
-		Send:   make(chan []byte, 256),
+		ID:         clientID,
+		Type:       clientType,
+		Conn:       conn,
+		Server:     s,
+		Send:       make(chan []byte, 256),
+		SessionKey: sessionKey,
 	}
 
 	s.clientsMu.Lock()
 	s.clients[clientID] = client
 	s.clientsMu.Unlock()
 
-	logger().Infow("client connected", "clientId", clientID)
+	logger().Infow("client connected", "clientId", clientID, "authenticated", sessionKey != "")
 
 	// Start read/write pumps
 	go client.writePump()
@@ -491,7 +520,7 @@ func (c *Client) readPump() {
 			continue
 		}
 
-		result, err := handler(req.Params)
+		result, err := handler(c, req.Params)
 		if err != nil {
 			c.sendError(req.ID, -32000, err.Error())
 			continue

@@ -403,5 +403,6 @@ func initGateway(cfg *config.Config, adkAgent *adk.Agent, store session.Store, a
 		Port:             cfg.Server.Port,
 		HTTPEnabled:      cfg.Server.HTTPEnabled,
 		WebSocketEnabled: cfg.Server.WebSocketEnabled,
+		AllowedOrigins:   cfg.Server.AllowedOrigins,
 	}, adkAgent, nil, store, auth)
 }

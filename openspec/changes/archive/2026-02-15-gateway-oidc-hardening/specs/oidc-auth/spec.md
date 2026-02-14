@@ -1,11 +1,4 @@
-## Requirements
-
-### Requirement: OIDC Provider Configuration
-The system SHALL allow configuring multiple OIDC providers (Google, GitHub) via `lango.json`, specifying Client ID, Client Secret, and Issuer URL.
-
-#### Scenario: Config Loading
-- **WHEN** the application starts with OIDC config
-- **THEN** the system initializes the OIDC provider verifiers
+## MODIFIED Requirements
 
 ### Requirement: Login Flow
 The system SHALL provide HTTP endpoints to initiate OIDC login and handle the callback. Auth routes SHALL be rate-limited to a maximum of 10 concurrent requests. State cookies SHALL use per-provider names (`oauth_state_{provider}`) to prevent collision during concurrent multi-provider logins. All cookies SHALL use `isSecure(r)` for the Secure flag to support reverse proxy deployments. The callback response SHALL return structured JSON without exposing user email addresses.
@@ -28,6 +21,8 @@ The system SHALL provide HTTP endpoints to initiate OIDC login and handle the ca
 - **AND** simultaneously initiates login with provider "github"
 - **THEN** the state cookies SHALL be `oauth_state_google` and `oauth_state_github` respectively
 - **AND** neither SHALL overwrite the other
+
+## ADDED Requirements
 
 ### Requirement: Logout Endpoint
 The system SHALL provide a `POST /auth/logout` endpoint that invalidates the user's session and clears the session cookie.

@@ -36,7 +36,8 @@ Create `lango.json`:
 {
   "server": {
     "host": "localhost",
-    "port": 18789
+    "port": 18789,
+    "allowedOrigins": []
   },
   "agent": {
     "provider": "gemini",
@@ -192,6 +193,7 @@ Use `lango onboard` to interactively configure providers, models, and security s
 | `server.port` | int | `18789` | Listen port |
 | `server.httpEnabled` | bool | `false` | Enable HTTP API endpoints |
 | `server.wsEnabled` | bool | `false` | Enable WebSocket server |
+| `server.allowedOrigins` | []string | `[]` | WebSocket CORS allowed origins (empty = same-origin, `["*"]` = allow all) |
 | **Agent** | | | |
 | `agent.provider` | string | `gemini` | Primary AI provider ID |
 | `agent.model` | string | `gemini-2.0-flash-exp` | Primary model ID |
@@ -377,6 +379,33 @@ Configure OIDC providers in `lango.json`:
   }
 }
 ```
+
+#### Auth Endpoints
+
+| Method | Path | Description |
+|--------|------|-------------|
+| `GET` | `/auth/login/{provider}` | Initiate OIDC login flow |
+| `GET` | `/auth/callback/{provider}` | OIDC callback (returns JSON: `{"status":"authenticated","sessionKey":"..."}`) |
+| `POST` | `/auth/logout` | Clear session and cookie (returns JSON: `{"status":"logged_out"}`) |
+
+#### Protected Routes
+
+When OIDC is configured, the following endpoints require a valid `lango_session` cookie:
+- `/ws` — WebSocket connection
+- `/status` — Server status
+
+Without OIDC configuration, all routes are open (development/local mode).
+
+#### WebSocket CORS
+
+Use `server.allowedOrigins` to control which origins can connect via WebSocket:
+- `[]` (empty, default) — same-origin requests only
+- `["https://example.com"]` — specific origins
+- `["*"]` — allow all origins (not recommended for production)
+
+#### Rate Limiting
+
+Auth endpoints (`/auth/login/*`, `/auth/callback/*`, `/auth/logout`) are throttled to a maximum of 10 concurrent requests.
 
 ## Docker
 

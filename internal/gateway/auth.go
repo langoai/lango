@@ -4,12 +4,14 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/base64"
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"time"
 
 	"github.com/coreos/go-oidc/v3/oidc"
 	"github.com/go-chi/chi/v5"
+	"github.com/go-chi/chi/v5/middleware"
 	"github.com/google/uuid"
 	"github.com/langowarny/lango/internal/config"
 	"github.com/langowarny/lango/internal/logging"
@@ -81,8 +83,14 @@ func NewOIDCProvider(name string, cfg config.OIDCProviderConfig) (*OIDCProvider,
 
 // RegisterRoutes registers auth routes on the router
 func (am *AuthManager) RegisterRoutes(r chi.Router) {
-	r.Get("/auth/login/{provider}", am.handleLogin)
-	r.Get("/auth/callback/{provider}", am.handleCallback)
+	r.Group(func(authRouter chi.Router) {
+		// Rate limit auth endpoints (max 10 concurrent requests)
+		authRouter.Use(middleware.Throttle(10))
+
+		authRouter.Get("/auth/login/{provider}", am.handleLogin)
+		authRouter.Get("/auth/callback/{provider}", am.handleCallback)
+		authRouter.Post("/auth/logout", am.handleLogout)
+	})
 }
 
 func (am *AuthManager) handleLogin(w http.ResponseWriter, r *http.Request) {
@@ -99,13 +107,13 @@ func (am *AuthManager) handleLogin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// TODO: Store state in cookie to verify callback
+	// Per-provider state cookie to prevent collision with concurrent logins
 	http.SetCookie(w, &http.Cookie{
-		Name:     "oauth_state",
+		Name:     "oauth_state_" + provName,
 		Value:    state,
 		Path:     "/",
 		HttpOnly: true,
-		Secure:   r.TLS != nil,
+		Secure:   isSecure(r),
 		SameSite: http.SameSiteLaxMode,
 		Expires:  time.Now().Add(10 * time.Minute),
 	})
@@ -121,8 +129,9 @@ func (am *AuthManager) handleCallback(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Verify state
-	cookie, err := r.Cookie("oauth_state")
+	// Verify state using per-provider cookie
+	cookieName := "oauth_state_" + provName
+	cookie, err := r.Cookie(cookieName)
 	if err != nil {
 		http.Error(w, "state cookie missing", http.StatusBadRequest)
 		return
@@ -131,6 +140,17 @@ func (am *AuthManager) handleCallback(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "state mismatch", http.StatusBadRequest)
 		return
 	}
+
+	// Delete state cookie after validation
+	http.SetCookie(w, &http.Cookie{
+		Name:     cookieName,
+		Value:    "",
+		Path:     "/",
+		HttpOnly: true,
+		Secure:   isSecure(r),
+		SameSite: http.SameSiteLaxMode,
+		MaxAge:   -1,
+	})
 
 	// Exchange code
 	ctx := r.Context()
@@ -173,7 +193,6 @@ func (am *AuthManager) handleCallback(w http.ResponseWriter, r *http.Request) {
 		CreatedAt: time.Now(),
 		UpdatedAt: time.Now(),
 		Metadata: map[string]string{
-			"email":    claims.Email,
 			"sub":      claims.Sub,
 			"provider": provName,
 		},
@@ -191,12 +210,44 @@ func (am *AuthManager) handleCallback(w http.ResponseWriter, r *http.Request) {
 		Value:    sessionKey,
 		Path:     "/",
 		HttpOnly: true,
-		Secure:   r.TLS != nil,
+		Secure:   isSecure(r),
 		SameSite: http.SameSiteLaxMode,
-		Expires:  time.Now().Add(24 * time.Hour), // Configurable TTL?
+		Expires:  time.Now().Add(24 * time.Hour),
 	})
 
-	fmt.Fprintf(w, "Login successful! Welcome %s", claims.Email)
+	// Return structured JSON response (no PII exposure)
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]string{
+		"status":     "authenticated",
+		"sessionKey": sessionKey,
+	})
+}
+
+// handleLogout clears the session and cookie
+func (am *AuthManager) handleLogout(w http.ResponseWriter, r *http.Request) {
+	cookie, err := r.Cookie("lango_session")
+	if err == nil && cookie.Value != "" {
+		// Delete session from store
+		if delErr := am.store.Delete(cookie.Value); delErr != nil {
+			authLogger.Warnw("session delete error during logout", "error", delErr)
+		}
+	}
+
+	// Clear cookie regardless
+	http.SetCookie(w, &http.Cookie{
+		Name:     "lango_session",
+		Value:    "",
+		Path:     "/",
+		HttpOnly: true,
+		Secure:   isSecure(r),
+		SameSite: http.SameSiteLaxMode,
+		MaxAge:   -1,
+	})
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]string{
+		"status": "logged_out",
+	})
 }
 
 func generateRandomString(n int) (string, error) {
