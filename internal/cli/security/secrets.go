@@ -7,44 +7,39 @@ import (
 	"os"
 	"text/tabwriter"
 
-	"github.com/langowarny/lango/internal/cli/prompt"
-	"github.com/langowarny/lango/internal/config"
-	"github.com/langowarny/lango/internal/session"
 	"github.com/spf13/cobra"
+
+	"github.com/langowarny/lango/internal/bootstrap"
+	"github.com/langowarny/lango/internal/cli/prompt"
 )
 
-func newSecretsCmd(cfgLoader func() (*config.Config, error)) *cobra.Command {
+func newSecretsCmd(bootLoader func() (*bootstrap.Result, error)) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "secrets",
 		Short: "Manage encrypted secrets",
 	}
 
-	cmd.AddCommand(newSecretsListCmd(cfgLoader))
-	cmd.AddCommand(newSecretsSetCmd(cfgLoader))
-	cmd.AddCommand(newSecretsDeleteCmd(cfgLoader))
+	cmd.AddCommand(newSecretsListCmd(bootLoader))
+	cmd.AddCommand(newSecretsSetCmd(bootLoader))
+	cmd.AddCommand(newSecretsDeleteCmd(bootLoader))
 
 	return cmd
 }
 
-func newSecretsListCmd(cfgLoader func() (*config.Config, error)) *cobra.Command {
+func newSecretsListCmd(bootLoader func() (*bootstrap.Result, error)) *cobra.Command {
 	var jsonOutput bool
 
 	cmd := &cobra.Command{
 		Use:   "list",
 		Short: "List stored secrets (values are never shown)",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			cfg, err := cfgLoader()
+			boot, err := bootLoader()
 			if err != nil {
 				return fmt.Errorf("load config: %w", err)
 			}
+			defer boot.DBClient.Close()
 
-			store, err := session.NewEntStore(cfg.Session.DatabasePath)
-			if err != nil {
-				return fmt.Errorf("open session store: %w", err)
-			}
-			defer store.Close()
-
-			secretsStore, err := initLocalCrypto(store)
+			secretsStore, err := secretsStoreFromBoot(boot)
 			if err != nil {
 				return err
 			}
@@ -85,7 +80,7 @@ func newSecretsListCmd(cfgLoader func() (*config.Config, error)) *cobra.Command 
 	return cmd
 }
 
-func newSecretsSetCmd(cfgLoader func() (*config.Config, error)) *cobra.Command {
+func newSecretsSetCmd(bootLoader func() (*bootstrap.Result, error)) *cobra.Command {
 	return &cobra.Command{
 		Use:   "set <name>",
 		Short: "Store an encrypted secret",
@@ -97,18 +92,13 @@ func newSecretsSetCmd(cfgLoader func() (*config.Config, error)) *cobra.Command {
 				return fmt.Errorf("this command requires an interactive terminal")
 			}
 
-			cfg, err := cfgLoader()
+			boot, err := bootLoader()
 			if err != nil {
 				return fmt.Errorf("load config: %w", err)
 			}
+			defer boot.DBClient.Close()
 
-			store, err := session.NewEntStore(cfg.Session.DatabasePath)
-			if err != nil {
-				return fmt.Errorf("open session store: %w", err)
-			}
-			defer store.Close()
-
-			secretsStore, err := initLocalCrypto(store)
+			secretsStore, err := secretsStoreFromBoot(boot)
 			if err != nil {
 				return err
 			}
@@ -129,7 +119,7 @@ func newSecretsSetCmd(cfgLoader func() (*config.Config, error)) *cobra.Command {
 	}
 }
 
-func newSecretsDeleteCmd(cfgLoader func() (*config.Config, error)) *cobra.Command {
+func newSecretsDeleteCmd(bootLoader func() (*bootstrap.Result, error)) *cobra.Command {
 	var force bool
 
 	cmd := &cobra.Command{
@@ -139,18 +129,13 @@ func newSecretsDeleteCmd(cfgLoader func() (*config.Config, error)) *cobra.Comman
 		RunE: func(cmd *cobra.Command, args []string) error {
 			name := args[0]
 
-			cfg, err := cfgLoader()
+			boot, err := bootLoader()
 			if err != nil {
 				return fmt.Errorf("load config: %w", err)
 			}
+			defer boot.DBClient.Close()
 
-			store, err := session.NewEntStore(cfg.Session.DatabasePath)
-			if err != nil {
-				return fmt.Errorf("open session store: %w", err)
-			}
-			defer store.Close()
-
-			secretsStore, err := initLocalCrypto(store)
+			secretsStore, err := secretsStoreFromBoot(boot)
 			if err != nil {
 				return err
 			}

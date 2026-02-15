@@ -98,15 +98,19 @@ The onboarding tool MUST support editing the following configuration sections:
 
 #### Scenario: Knowledge menu and form
 - **WHEN** user views the Configuration Menu
-- **THEN** a "Knowledge" category SHALL appear between Security and Providers
+- **THEN** a "Knowledge" category SHALL appear between Security and Observational Memory
 - **AND** selecting it SHALL display the Knowledge configuration form with 6 fields
 
 ### User Interface
 - **Navigation**:
     - Users MUST be able to navigate between configuration categories freely.
     - Uses a menu-based system (e.g., Main Menu -> Category -> Form).
-    - The menu SHALL include categories: Agent, Server, Channels, Tools, Session, Security, Knowledge, Observational Memory, Embedding & RAG, Providers, Save & Exit, Cancel.
+    - The menu SHALL include categories in this order: Providers, Agent, Server, Channels, Tools, Session, Security, Knowledge, Observational Memory, Embedding & RAG, Save & Exit, Cancel.
     - Form cursor navigation SHALL NOT panic when navigating past the first or last field.
+
+#### Scenario: Providers category appears first
+- **WHEN** user views the configuration menu
+- **THEN** "Providers" SHALL be the first category in the menu, before "Agent"
 
 #### Scenario: Form cursor at top boundary
 - **WHEN** user presses up or shift+tab while cursor is on the first field
@@ -118,7 +122,7 @@ The onboarding tool MUST support editing the following configuration sections:
 
 #### Scenario: Knowledge category in menu
 - **WHEN** user views the configuration menu
-- **THEN** "Knowledge" category SHALL be listed after "Security" and before "Providers"
+- **THEN** "Knowledge" category SHALL be listed after "Security" and before "Observational Memory"
 
 #### Scenario: Provider creation field order
 - **WHEN** user selects "Add New Provider" from the Providers list

@@ -40,13 +40,8 @@ func main() {
 	rootCmd.AddCommand(configCmd())
 	rootCmd.AddCommand(doctor.NewCommand())
 	rootCmd.AddCommand(onboard.NewCommand())
-	rootCmd.AddCommand(clisecurity.NewSecurityCmd(func() (*config.Config, error) {
-		boot, err := bootstrap.Run(bootstrap.Options{})
-		if err != nil {
-			return nil, err
-		}
-		defer boot.DBClient.Close()
-		return boot.Config, nil
+	rootCmd.AddCommand(clisecurity.NewSecurityCmd(func() (*bootstrap.Result, error) {
+		return bootstrap.Run(bootstrap.Options{})
 	}))
 	rootCmd.AddCommand(climemory.NewMemoryCmd(func() (*config.Config, error) {
 		boot, err := bootstrap.Run(bootstrap.Options{})

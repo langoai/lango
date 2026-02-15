@@ -46,16 +46,16 @@ The system SHALL provide a `lango security secrets delete <name>` command that r
 - **THEN** the command exits with an error indicating the secret was not found
 
 ### Requirement: Crypto initialization helper
-The system SHALL provide a shared crypto initialization function that resolves the passphrase using a 3-tier fallback: `LANGO_PASSPHRASE` environment variable, then `security.passphrase` config value, then interactive prompt. The function SHALL load or generate salt, verify checksum, and return a ready-to-use SecretsStore.
+The system SHALL provide a shared crypto initialization function (`secretsStoreFromBoot`) that creates a `SecretsStore` directly from a `*bootstrap.Result`. The function SHALL reuse the already-initialized `CryptoProvider` and `*ent.Client` from the bootstrap result, register the default encryption key, and return a ready-to-use `SecretsStore`. The function SHALL NOT independently acquire a passphrase — the passphrase MUST be acquired exactly once during `bootstrap.Run()`.
 
-#### Scenario: Passphrase from environment
-- **WHEN** `LANGO_PASSPHRASE` is set and valid
-- **THEN** the function uses it without prompting
+#### Scenario: Passphrase acquired once
+- **WHEN** user runs any security secrets command
+- **THEN** the passphrase SHALL be prompted exactly once during bootstrap, not again during secrets store initialization
 
 #### Scenario: First-time setup
 - **WHEN** no salt exists in the database
-- **THEN** the function generates a random salt, stores it, initializes the crypto provider, and stores the checksum
+- **THEN** the bootstrap process handles salt generation and checksum storage before the secrets store is created
 
 #### Scenario: Incorrect passphrase
 - **WHEN** the provided passphrase does not match the stored checksum
-- **THEN** the function returns an "incorrect passphrase" error
+- **THEN** the bootstrap process returns an "incorrect passphrase" error before any secrets store creation occurs

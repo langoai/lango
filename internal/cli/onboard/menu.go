@@ -24,6 +24,7 @@ type MenuModel struct {
 func NewMenuModel() MenuModel {
 	return MenuModel{
 		Categories: []Category{
+			{"providers", "☁️ Providers", "Manage multi-provider configurations"},
 			{"agent", "🤖 Agent", "Provider, Model, Key"},
 			{"server", "🌐 Server", "Host, Port, Networking"},
 			{"channels", "📡 Channels", "Telegram, Discord, Slack"},
@@ -33,7 +34,6 @@ func NewMenuModel() MenuModel {
 			{"knowledge", "🧠 Knowledge", "Learning, Skills, Context limits"},
 			{"observational_memory", "🔬 Observational Memory", "Observer, Reflector, Thresholds"},
 			{"embedding", "🔗 Embedding & RAG", "Provider, Model, RAG settings"},
-			{"providers", "☁️ Providers", "Manage multi-provider configurations"},
 			{"save", "💾 Save & Exit", "Save encrypted profile"},
 			{"cancel", "❌ Cancel", "Exit without saving"},
 		},

@@ -6,23 +6,26 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/langowarny/lango/internal/config"
-	sec "github.com/langowarny/lango/internal/security"
-	"github.com/langowarny/lango/internal/session"
 	"github.com/spf13/cobra"
+
+	"github.com/langowarny/lango/internal/bootstrap"
+	sec "github.com/langowarny/lango/internal/security"
 )
 
-func newStatusCmd(cfgLoader func() (*config.Config, error)) *cobra.Command {
+func newStatusCmd(bootLoader func() (*bootstrap.Result, error)) *cobra.Command {
 	var jsonOutput bool
 
 	cmd := &cobra.Command{
 		Use:   "status",
 		Short: "Show security configuration status",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			cfg, err := cfgLoader()
+			boot, err := bootLoader()
 			if err != nil {
 				return fmt.Errorf("load config: %w", err)
 			}
+			defer boot.DBClient.Close()
+
+			cfg := boot.Config
 
 			type statusOutput struct {
 				SignerProvider  string `json:"signer_provider"`
@@ -40,25 +43,16 @@ func newStatusCmd(cfgLoader func() (*config.Config, error)) *cobra.Command {
 				ApprovalReq:   boolToStatus(cfg.Security.Interceptor.ApprovalRequired),
 			}
 
-			// Try to read key/secret counts from DB
-			if cfg.Session.DatabasePath != "" {
-				store, err := session.NewEntStore(cfg.Session.DatabasePath)
-				if err == nil {
-					defer store.Close()
+			ctx := context.Background()
+			registry := sec.NewKeyRegistry(boot.DBClient)
+			keys, err := registry.ListKeys(ctx)
+			if err == nil {
+				s.EncryptionKeys = len(keys)
+			}
 
-					ctx := context.Background()
-					registry := sec.NewKeyRegistry(store.Client())
-					keys, err := registry.ListKeys(ctx)
-					if err == nil {
-						s.EncryptionKeys = len(keys)
-					}
-
-					// Count secrets (just query count, no crypto needed)
-					secrets, err := store.Client().Secret.Query().Count(ctx)
-					if err == nil {
-						s.StoredSecrets = secrets
-					}
-				}
+			secrets, err := boot.DBClient.Secret.Query().Count(ctx)
+			if err == nil {
+				s.StoredSecrets = secrets
 			}
 
 			if jsonOutput {
