@@ -34,8 +34,3 @@ The `lango doctor` command Long description SHALL enumerate all diagnostic check
 - **WHEN** user runs `lango doctor --help`
 - **THEN** the description SHALL list: Encrypted configuration profile validity, API key and provider configuration, Channel token validation, Session database accessibility, Server port availability, Security configuration, Companion connectivity
 
-## REMOVED Requirements
-
-### Requirement: Doctor --config flag
-**Reason**: The `--config` flag on the doctor command existed to specify a JSON config file path. Doctor now loads configuration via bootstrap from the encrypted profile database.
-**Migration**: Configuration is loaded automatically from the encrypted profile. No flag needed.

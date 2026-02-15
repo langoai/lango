@@ -1,5 +1,7 @@
-## ADDED Requirements
+## Purpose
 
+Define the `lango doctor` diagnostic command that checks installation health, configuration validity, and service connectivity.
+## Requirements
 ### Requirement: Doctor Command Entry Point
 The system SHALL provide a `lango doctor` command that runs diagnostic checks on the Lango installation and configuration.
 
@@ -19,19 +21,20 @@ The command SHALL verify the status of every provider defined in the `providers`
 - **THEN** the doctor output includes checks for both "OpenAI" and "Anthropic"
 
 ### Requirement: Configuration File Check
-The system SHALL verify that the configuration file exists and contains valid JSON syntax.
+The system SHALL verify that an encrypted configuration profile exists and is valid, instead of checking for a JSON file.
 
-#### Scenario: Valid configuration file
-- **WHEN** lango.json exists with valid JSON syntax
-- **THEN** check passes with message "Configuration file valid"
+#### Scenario: Valid encrypted profile
+- **WHEN** an active encrypted profile is loaded successfully via bootstrap
+- **THEN** check passes with message "Encrypted configuration profile valid"
 
-#### Scenario: Missing configuration file
-- **WHEN** lango.json does not exist
-- **THEN** check fails with message "Configuration file not found" and suggestion to run `lango onboard`
+#### Scenario: No active profile loaded
+- **WHEN** bootstrap fails to load an active profile but `lango.db` exists
+- **THEN** check fails with message "No active configuration profile loaded" and suggestion to run `lango onboard`
 
-#### Scenario: Invalid JSON syntax
-- **WHEN** lango.json contains invalid JSON
-- **THEN** check fails with specific syntax error location
+#### Scenario: No profile database
+- **WHEN** `~/.lango/lango.db` does not exist
+- **THEN** check fails with message "Encrypted profile database not found" and is marked as fixable
+- **AND** the fix action guides the user to run `lango onboard`
 
 ### Requirement: Legacy API Key Verification
 The system SHALL verify the legacy API key configuration ONLY IF no modern providers are configured.
@@ -84,9 +87,9 @@ The system SHALL support a `--fix` flag that attempts to automatically repair co
 - **WHEN** `--fix` is provided AND database directory does not exist
 - **THEN** system creates the directory and reports "Created ~/.lango directory"
 
-#### Scenario: Fix generates default config
-- **WHEN** `--fix` is provided AND lango.json is missing
-- **THEN** system creates minimal lango.json and reports "Created default configuration"
+#### Scenario: Fix guides to onboard for missing profile
+- **WHEN** `--fix` is provided AND no encrypted profile exists
+- **THEN** system displays guidance: "Run 'lango onboard' to set up your configuration"
 
 ### Requirement: Check Result Summary
 The system SHALL display a summary of all check results at the end of execution.
@@ -152,21 +155,36 @@ The `doctor` command MUST NOT crash or return obscure system errors (like "out o
 - **AND** check status is "warn"
 
 ### Requirement: Clear Feedback
-If the database is locked, `doctor` SHOULD suggest how to unlock (e.g., set `LANGO_PASSPHRASE`).
+The system SHALL suggest how to unlock a locked database when encountered during doctor checks.
+
+#### Scenario: Locked database guidance
+- **WHEN** the session database is encrypted and locked
+- **THEN** doctor SHALL display a suggestion to set `LANGO_PASSPHRASE` or run `lango onboard`
 
 ### Requirement: Security Config Validation
-The `Security Configuration` check MUST verify that the `security` block in `lango.json` is valid according to the new schema.
+The `Security Configuration` check SHALL verify that the `security` block in the configuration is valid according to the current schema.
+
+#### Scenario: Valid security config
+- **WHEN** the security configuration block is present and well-formed
+- **THEN** the check passes
+
+#### Scenario: Invalid security config
+- **WHEN** the security configuration block is malformed or missing required fields
+- **THEN** the check fails with a specific error message
 
 ### Requirement: Doctor command description lists all checks
 The `lango doctor` command Long description SHALL enumerate all diagnostic checks performed.
 
 #### Scenario: Long description content
 - **WHEN** user runs `lango doctor --help`
-- **THEN** the description SHALL list: Configuration file validity, API key and provider configuration, Channel token validation, Session database accessibility, Server port availability, Security configuration, Companion connectivity
+- **THEN** the description SHALL list: Encrypted configuration profile validity, API key and provider configuration, Channel token validation, Session database accessibility, Server port availability, Security configuration, Companion connectivity
 
 ### Requirement: Documentation Alignment
-- **Example Config**: `lango.example.json` MUST include valid `providers` map and `security` block.
-- **README**: MUST explain multiple providers and TUI configuration.
+The system SHALL keep example configuration and README documentation aligned with the current doctor checks.
+
+#### Scenario: Documentation reflects current checks
+- **WHEN** a user consults the README or example configuration
+- **THEN** the documented checks and configuration format SHALL match the actual doctor command behavior
 
 ### Requirement: Observational Memory diagnostic check
 The system SHALL include an ObservationalMemoryCheck in the doctor command that validates OM configuration. The check SHALL skip when `observationalMemory.enabled` is false. The check SHALL fail when `messageTokenThreshold`, `observationTokenThreshold`, or `maxMessageTokenBudget` are non-positive. The check SHALL warn when `maxMessageTokenBudget` is not greater than `messageTokenThreshold`. The check SHALL warn when a custom provider is specified but not found in the providers map.
@@ -220,3 +238,4 @@ The system SHALL register ObservationalMemoryCheck and OutputScanningCheck in th
 #### Scenario: Doctor runs all checks
 - **WHEN** user runs `lango doctor`
 - **THEN** the output includes results for "Observational Memory" and "Output Scanning" checks
+

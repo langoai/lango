@@ -389,16 +389,24 @@ docker-compose up -d
 
 ### Headless Configuration
 
-For Docker/CI environments where interactive setup is unavailable:
+The Docker image includes an entrypoint script that auto-imports configuration on first startup. Both the config and passphrase are injected via Docker secrets — never as environment variables — so the agent cannot read them at runtime.
 
-1. Prepare a config JSON file locally.
-2. COPY it into the container.
-3. Import and auto-delete:
+1. Create `config.json` with your provider keys and settings.
+2. Create `passphrase.txt` containing your encryption passphrase.
+3. Run with docker-compose:
    ```bash
-   lango config import config.json --profile production
+   docker-compose up -d
    ```
-   The source JSON file is automatically deleted after import for security.
-4. Set `LANGO_PASSPHRASE` environment variable for non-interactive passphrase entry.
+
+The entrypoint script (`docker-entrypoint.sh`):
+- Copies the passphrase secret to `~/.lango/keyfile` (0600, blocked by the agent's filesystem tool)
+- On first run, copies the config secret to `/tmp`, imports it into an encrypted profile, and the temp file is auto-deleted
+- On subsequent restarts, the existing profile is reused
+
+Environment variables (optional):
+- `LANGO_PROFILE` — profile name to create (default: `default`)
+- `LANGO_CONFIG_FILE` — override config secret path (default: `/run/secrets/lango_config`)
+- `LANGO_PASSPHRASE_FILE` — override passphrase secret path (default: `/run/secrets/lango_passphrase`)
 
 ## Development
 

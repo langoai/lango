@@ -9,8 +9,8 @@ RUN go mod download
 # Copy source
 COPY . .
 
-# Build with CGO disabled (pure Go SQLite driver)
-RUN CGO_ENABLED=0 go build -ldflags="-s -w" -o lango ./cmd/lango
+# Build with CGO enabled (required by mattn/go-sqlite3)
+RUN CGO_ENABLED=1 go build -ldflags="-s -w" -o lango ./cmd/lango
 
 # Runtime image
 FROM debian:bookworm-slim
@@ -30,6 +30,7 @@ RUN groupadd -r lango && useradd -r -g lango -m -d /home/lango lango
 WORKDIR /app
 
 COPY --from=builder /app/lango /usr/local/bin/lango
+COPY docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
 
 # Create data directory and set permissions
 RUN mkdir -p /data && chown -R lango:lango /data && chmod 700 /data
@@ -42,5 +43,5 @@ EXPOSE 18789
 HEALTHCHECK --interval=30s --timeout=5s --start-period=5s --retries=3 \
     CMD curl -f http://localhost:18789/health || exit 1
 
-ENTRYPOINT ["lango"]
+ENTRYPOINT ["docker-entrypoint.sh"]
 CMD ["serve"]

@@ -21,8 +21,3 @@ The system SHALL provide a `lango config export <name>` command that outputs dec
 - **THEN** the passphrase is verified via bootstrap
 - **AND** the decrypted config is printed to stdout as formatted JSON, with a WARNING on stderr
 
-## REMOVED Requirements
-
-### Requirement: Root --config flag
-**Reason**: The `--config` persistent flag on the root command existed to specify a JSON migration path. With automatic JSON migration removed from bootstrap, this flag is unnecessary. Users import JSON explicitly via `lango config import`.
-**Migration**: Use `lango config import <file>` instead of `--config <file>`.

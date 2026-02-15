@@ -1,5 +1,7 @@
-## Requirements
+## Purpose
 
+Define the configuration loading, saving, and migration system for encrypted SQLite profiles.
+## Requirements
 ### Requirement: Configuration loading
 The system SHALL load configuration through the bootstrap process from an encrypted SQLite database profile instead of directly from a plaintext JSON file. The `config.Load()` function SHALL be retained for migration purposes only.
 
@@ -12,11 +14,15 @@ The system SHALL load configuration through the bootstrap process from an encryp
 - **THEN** the JSON file is read with environment variable substitution (existing behavior preserved)
 
 ### Requirement: Configuration save
-The system SHALL save configuration through `configstore.Store.Save()` which encrypts and stores in the database. The legacy `config.Save()` function SHALL be simplified to a basic JSON marshal without sanitization.
+The system SHALL save configuration through `configstore.Store.Save()` which encrypts and stores in the database. The legacy `config.Save()` function SHALL be removed.
 
 #### Scenario: Save via configstore
 - **WHEN** a config is saved through the configstore
 - **THEN** it is JSON-serialized, AES-256-GCM encrypted, and stored in the database
+
+#### Scenario: No legacy save function
+- **WHEN** code attempts to call `config.Save()`
+- **THEN** a compile error SHALL occur because the function no longer exists
 
 ### Requirement: Environment variable substitution
 The system SHALL substitute environment variables in configuration values.
@@ -126,3 +132,4 @@ The system SHALL support a `knowledge` section in the configuration for self-lea
 - **AND** `maxLearnings` SHALL default to 10 if not specified or <= 0
 - **AND** `maxKnowledge` SHALL default to 20 if not specified or <= 0
 - **AND** `maxContextPerLayer` SHALL default to 5 if not specified or <= 0
+

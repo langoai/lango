@@ -11,8 +11,3 @@ The system SHALL save configuration through `configstore.Store.Save()` which enc
 - **WHEN** code attempts to call `config.Save()`
 - **THEN** a compile error SHALL occur because the function no longer exists
 
-## REMOVED Requirements
-
-### Requirement: Configuration save (legacy)
-**Reason**: The deprecated `config.Save()` function was retained for migration support from `lango.json`. With automatic JSON migration removed from bootstrap, this function is no longer needed. All configuration persistence goes through `configstore.Store.Save()`.
-**Migration**: Use `configstore.Store.Save()` for encrypted profile storage.

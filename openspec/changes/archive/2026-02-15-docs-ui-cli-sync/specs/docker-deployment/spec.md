@@ -1,7 +1,5 @@
-## Purpose
+## MODIFIED Requirements
 
-Define the Docker container configuration, compose orchestration, and secure secrets-based deployment model for Lango.
-## Requirements
 ### Requirement: Docker Container Configuration
 The system SHALL provide a Dockerfile optimized for production deployment.
 
@@ -33,29 +31,26 @@ The system SHALL provide a Dockerfile optimized for production deployment.
 - **AND** the entrypoint SHALL `exec lango` to replace itself as PID 1
 
 ### Requirement: Docker Compose Orchestration
-The system SHALL provide a docker-compose.yml for simplified deployment. The README documentation SHALL describe the import→delete configuration pattern instead of read-only JSON mounting.
+The system SHALL provide a docker-compose.yml for simplified deployment.
 
 #### Scenario: Service definition
 - **WHEN** running `docker-compose up`
 - **THEN** the lango service SHALL start on port 18789
 - **AND** volumes SHALL persist data to lango-data volume
 
-#### Scenario: Configuration via import
+#### Scenario: Secret injection via Docker secrets
 - **WHEN** docker-compose starts the lango service
-- **THEN** the recommended configuration method is `lango config import` with auto-deletion of the source file
-- **AND** `LANGO_PASSPHRASE` environment variable SHALL be used for non-interactive passphrase entry
+- **THEN** the system SHALL mount `config.json` as Docker secret `lango_config`
+- **AND** the system SHALL mount `passphrase.txt` as Docker secret `lango_passphrase`
+- **AND** secrets SHALL be available at `/run/secrets/` (tmpfs-backed)
+- **AND** no API keys or passphrases SHALL be passed as environment variables
 
-### Requirement: Data Persistence
-The system SHALL persist data across container restarts.
+#### Scenario: Profile configuration
+- **WHEN** docker-compose starts the lango service
+- **THEN** the `LANGO_PROFILE` environment variable SHALL specify the profile name
+- **AND** the default profile name SHALL be `default`
 
-#### Scenario: SQLite database persistence
-- **WHEN** the container restarts
-- **THEN** the SQLite database at /data SHALL be preserved
-- **AND** session history SHALL not be lost
-
-#### Scenario: Volume mount
-- **WHEN** docker-compose is used
-- **THEN** a named volume (lango-data) SHALL be mounted at /data
+## ADDED Requirements
 
 ### Requirement: Secure Entrypoint Config Bootstrap
 The system SHALL provide a `docker-entrypoint.sh` script that securely bootstraps configuration before starting lango.
@@ -84,16 +79,3 @@ The system SHALL provide a `docker-entrypoint.sh` script that securely bootstrap
 #### Scenario: Configurable secret paths
 - **WHEN** the user sets `LANGO_CONFIG_FILE` or `LANGO_PASSPHRASE_FILE` environment variables
 - **THEN** the entrypoint SHALL use the specified paths instead of the default Docker secret paths
-
-### Requirement: Headless configuration via import
-The system SHALL document a headless configuration pattern for Docker/CI environments where interactive setup is unavailable.
-
-#### Scenario: Docker import workflow
-- **WHEN** a Docker container needs configuration without interactive TUI
-- **THEN** the user SHALL prepare a JSON config file, COPY it into the container, and run `lango config import config.json --profile production`
-- **AND** the source JSON file is automatically deleted after import for security
-
-#### Scenario: Non-interactive passphrase
-- **WHEN** running in a headless environment without a terminal
-- **THEN** the user SHALL set the `LANGO_PASSPHRASE` environment variable for non-interactive passphrase entry
-
