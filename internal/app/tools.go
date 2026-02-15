@@ -1,18 +1,13 @@
 package app
 
 import (
-	"bufio"
 	"context"
 	"encoding/json"
 	"fmt"
-	"os"
-	"strings"
 	"time"
 
-	"golang.org/x/term"
-
 	"github.com/langowarny/lango/internal/agent"
-	"github.com/langowarny/lango/internal/gateway"
+	"github.com/langowarny/lango/internal/approval"
 	"github.com/langowarny/lango/internal/knowledge"
 	"github.com/langowarny/lango/internal/learning"
 	"github.com/langowarny/lango/internal/security"
@@ -829,11 +824,8 @@ func buildSecretsTools(secretsStore *security.SecretsStore, refs *security.RefSt
 
 // wrapWithApproval wraps a tool to require approval if it's in the sensitive tools list.
 // Uses fail-closed: denies execution unless explicitly approved.
-// Approval sources (in priority order):
-//  1. Companion app approval via gateway
-//  2. Interactive TTY prompt (if stdin is a terminal)
-//  3. Deny with error (no approval source available)
-func wrapWithApproval(t *agent.Tool, sensitiveTools []string, gw *gateway.Server) *agent.Tool {
+// The approval.Provider routes requests to the appropriate channel (Gateway, Telegram, Discord, Slack, TTY).
+func wrapWithApproval(t *agent.Tool, sensitiveTools []string, ap approval.Provider) *agent.Tool {
 	isSensitive := false
 	for _, name := range sensitiveTools {
 		if name == t.Name {
@@ -851,7 +843,14 @@ func wrapWithApproval(t *agent.Tool, sensitiveTools []string, gw *gateway.Server
 		Description: t.Description,
 		Parameters:  t.Parameters,
 		Handler: func(ctx context.Context, params map[string]interface{}) (interface{}, error) {
-			approved, err := requestToolApproval(ctx, t.Name, gw)
+			req := approval.ApprovalRequest{
+				ID:         fmt.Sprintf("req-%d", time.Now().UnixNano()),
+				ToolName:   t.Name,
+				SessionKey: SessionKeyFromContext(ctx),
+				Params:     params,
+				CreatedAt:  time.Now(),
+			}
+			approved, err := ap.RequestApproval(ctx, req)
 			if err != nil {
 				return nil, fmt.Errorf("tool '%s' approval: %w", t.Name, err)
 			}
@@ -861,41 +860,4 @@ func wrapWithApproval(t *agent.Tool, sensitiveTools []string, gw *gateway.Server
 			return original(ctx, params)
 		},
 	}
-}
-
-// requestToolApproval requests approval for a sensitive tool execution.
-// Returns (true, nil) if approved, (false, nil) if denied, or (false, err) on error.
-func requestToolApproval(ctx context.Context, toolName string, gw *gateway.Server) (bool, error) {
-	// Priority 1: Companion approval
-	if gw.HasCompanions() {
-		approved, err := gw.RequestApproval(ctx, fmt.Sprintf("Tool '%s' requires approval", toolName))
-		if err != nil {
-			logger().Warnw("companion approval error (fail-closed)", "tool", toolName, "error", err)
-			return false, fmt.Errorf("companion approval error: %w", err)
-		}
-		return approved, nil
-	}
-
-	// Priority 2: Interactive TTY prompt
-	if term.IsTerminal(int(os.Stdin.Fd())) {
-		return promptTTYApproval(toolName)
-	}
-
-	// Priority 3: No approval source — deny
-	logger().Warnw("sensitive tool denied: no approval source available", "tool", toolName)
-	return false, nil
-}
-
-// promptTTYApproval prompts the user via terminal for tool approval.
-func promptTTYApproval(toolName string) (bool, error) {
-	fmt.Fprintf(os.Stderr, "\n⚠ Sensitive tool '%s' requires approval. Allow? [y/N]: ", toolName)
-
-	reader := bufio.NewReader(os.Stdin)
-	input, err := reader.ReadString('\n')
-	if err != nil {
-		return false, fmt.Errorf("read approval input: %w", err)
-	}
-
-	answer := strings.TrimSpace(strings.ToLower(input))
-	return answer == "y" || answer == "yes", nil
 }

@@ -1,18 +1,4 @@
-## ADDED Requirements
-
-### Requirement: Intercept AI Requests
-The system SHALL intercept all agent requests to the LLM and pass them through a filter chain before execution.
-
-#### Scenario: Interception
-- **WHEN** an agent initiates a chat completion request
-- **THEN** the request parameters (messages, tools) are inspected by the middleware
-
-### Requirement: PII Redaction
-The system SHALL automatically redact personally identifiable information (email, phone numbers, API keys) from the prompt content using regex patterns.
-
-#### Scenario: Redact Email
-- **WHEN** a user prompt contains "my email is test@example.com"
-- **THEN** it is rewritten to "my email is [REDACTED]" before sending to the LLM
+## MODIFIED Requirements
 
 ### Requirement: Approval Workflow
 The system SHALL block execution of "sensitive" tools (configured list) and require explicit approval before proceeding. The system SHALL use fail-closed semantics: without explicit approval, execution is denied. Approval requests SHALL be routed through a `CompositeProvider` that selects the appropriate approval channel based on the originating session key.
@@ -67,6 +53,8 @@ The system SHALL block execution of "sensitive" tools (configured list) and requ
 - **AND** no companion is connected
 - **AND** stdin is not a terminal
 - **THEN** the tool execution SHALL be denied
+
+## ADDED Requirements
 
 ### Requirement: Approval timeout configuration
 The system SHALL support an `ApprovalTimeoutSec` configuration field in `InterceptorConfig` that controls how long to wait for an approval response before timing out.

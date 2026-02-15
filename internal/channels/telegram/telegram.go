@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"strings"
 	"sync"
+	"time"
 
 	"go.uber.org/zap"
 
@@ -17,11 +18,12 @@ func logger() *zap.SugaredLogger { return logging.Channel().Named("telegram") }
 
 // Config holds Telegram channel configuration
 type Config struct {
-	BotToken    string
-	Allowlist   []int64      // allowed user/chat IDs (empty = all)
-	APIEndpoint string       // optional, for testing
-	HTTPClient     *http.Client // optional, for testing
-	Bot            BotAPI       // optional, for testing
+	BotToken           string
+	Allowlist          []int64      // allowed user/chat IDs (empty = all)
+	ApprovalTimeoutSec int          // 0 = default 30s
+	APIEndpoint        string       // optional, for testing
+	HTTPClient         *http.Client // optional, for testing
+	Bot                BotAPI       // optional, for testing
 }
 
 // MessageHandler handles incoming messages
@@ -53,6 +55,7 @@ type Channel struct {
 	config   Config
 	bot      BotAPI
 	handler  MessageHandler
+	approval *ApprovalProvider
 	stopChan chan struct{}
 	wg       sync.WaitGroup
 }
@@ -86,16 +89,24 @@ func New(cfg Config) (*Channel, error) {
 
 	logger().Infow("telegram bot authorized", "username", botAPI.GetSelf().UserName)
 
-	return &Channel{
+	ch := &Channel{
 		config:   cfg,
 		bot:      botAPI,
 		stopChan: make(chan struct{}),
-	}, nil
+	}
+	ch.approval = NewApprovalProvider(botAPI, time.Duration(cfg.ApprovalTimeoutSec)*time.Second)
+
+	return ch, nil
 }
 
 // SetHandler sets the message handler
 func (c *Channel) SetHandler(handler MessageHandler) {
 	c.handler = handler
+}
+
+// GetApprovalProvider returns the channel's approval provider for composite registration.
+func (c *Channel) GetApprovalProvider() *ApprovalProvider {
+	return c.approval
 }
 
 // Start starts listening for updates
@@ -120,6 +131,11 @@ func (c *Channel) Start(ctx context.Context) error {
 			case <-c.stopChan:
 				return
 			case update := <-updates:
+				if update.CallbackQuery != nil {
+					c.approval.HandleCallback(update.CallbackQuery)
+					continue
+				}
+
 				if update.Message == nil {
 					continue
 				}

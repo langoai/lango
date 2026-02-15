@@ -8,6 +8,7 @@ import (
 type BotAPI interface {
 	GetUpdatesChan(config tgbotapi.UpdateConfig) tgbotapi.UpdatesChannel
 	Send(c tgbotapi.Chattable) (tgbotapi.Message, error)
+	Request(c tgbotapi.Chattable) (*tgbotapi.APIResponse, error)
 	GetFile(config tgbotapi.FileConfig) (tgbotapi.File, error)
 	StopReceivingUpdates()
 	GetSelf() tgbotapi.User

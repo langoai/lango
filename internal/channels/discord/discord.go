@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/bwmarrin/discordgo"
 	"github.com/langowarny/lango/internal/logging"
@@ -15,11 +16,12 @@ var logger = logging.SubsystemSugar("channel.discord")
 
 // Config holds Discord channel configuration
 type Config struct {
-	BotToken      string
-	ApplicationID string
-	AllowedGuilds []string     // empty = all
-	HTTPClient    *http.Client // optional, for testing
-	Session       Session      // optional, for testing
+	BotToken           string
+	ApplicationID      string
+	AllowedGuilds      []string     // empty = all
+	ApprovalTimeoutSec int          // 0 = default 30s
+	HTTPClient         *http.Client // optional, for testing
+	Session            Session      // optional, for testing
 }
 
 // MessageHandler handles incoming messages
@@ -63,6 +65,7 @@ type Channel struct {
 	config   Config
 	session  Session
 	handler  MessageHandler
+	approval *ApprovalProvider
 	botID    string
 	stopChan chan struct{}
 	wg       sync.WaitGroup
@@ -93,16 +96,24 @@ func New(cfg Config) (*Channel, error) {
 		sess = NewDiscordSession(session)
 	}
 
-	return &Channel{
+	ch := &Channel{
 		config:   cfg,
 		session:  sess,
 		stopChan: make(chan struct{}),
-	}, nil
+	}
+	ch.approval = NewApprovalProvider(sess, time.Duration(cfg.ApprovalTimeoutSec)*time.Second)
+
+	return ch, nil
 }
 
 // SetHandler sets the message handler
 func (c *Channel) SetHandler(handler MessageHandler) {
 	c.handler = handler
+}
+
+// GetApprovalProvider returns the channel's approval provider for composite registration.
+func (c *Channel) GetApprovalProvider() *ApprovalProvider {
+	return c.approval
 }
 
 // Start starts the Discord bot
@@ -112,6 +123,7 @@ func (c *Channel) Start(ctx context.Context) error {
 	}
 
 	c.session.AddHandler(c.onMessageCreate)
+	c.session.AddHandler(c.onInteractionCreate)
 
 	if err := c.session.Open(); err != nil {
 		return fmt.Errorf("failed to open session: %w", err)
@@ -250,6 +262,13 @@ func (c *Channel) registerCommands() {
 	}
 
 	logger.Info("slash commands registered")
+}
+
+// onInteractionCreate handles interaction events (button clicks)
+func (c *Channel) onInteractionCreate(s *discordgo.Session, i *discordgo.InteractionCreate) {
+	if i.Type == discordgo.InteractionMessageComponent {
+		c.approval.HandleInteraction(i)
+	}
 }
 
 // isBotMentioned checks if the bot is mentioned

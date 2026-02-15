@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/langowarny/lango/internal/approval"
 	"github.com/langowarny/lango/internal/channels/discord"
 	"github.com/langowarny/lango/internal/channels/slack"
 	"github.com/langowarny/lango/internal/channels/telegram"
@@ -14,8 +15,9 @@ func (a *App) initChannels() error {
 	// Telegram
 	if a.Config.Channels.Telegram.Enabled {
 		tgConfig := telegram.Config{
-			BotToken:  a.Config.Channels.Telegram.BotToken,
-			Allowlist: a.Config.Channels.Telegram.Allowlist,
+			BotToken:           a.Config.Channels.Telegram.BotToken,
+			Allowlist:          a.Config.Channels.Telegram.Allowlist,
+			ApprovalTimeoutSec: a.Config.Security.Interceptor.ApprovalTimeoutSec,
 		}
 		tgChannel, err := telegram.New(tgConfig)
 		if err != nil {
@@ -25,6 +27,9 @@ func (a *App) initChannels() error {
 				return a.handleTelegramMessage(ctx, msg)
 			})
 			a.Channels = append(a.Channels, tgChannel)
+			if composite, ok := a.ApprovalProvider.(*approval.CompositeProvider); ok {
+				composite.Register(tgChannel.GetApprovalProvider())
+			}
 			logger().Info("telegram channel initialized")
 		}
 	}
@@ -32,9 +37,10 @@ func (a *App) initChannels() error {
 	// Discord
 	if a.Config.Channels.Discord.Enabled {
 		dcConfig := discord.Config{
-			BotToken:      a.Config.Channels.Discord.BotToken,
-			ApplicationID: a.Config.Channels.Discord.ApplicationID,
-			AllowedGuilds: a.Config.Channels.Discord.AllowedGuilds,
+			BotToken:           a.Config.Channels.Discord.BotToken,
+			ApplicationID:      a.Config.Channels.Discord.ApplicationID,
+			AllowedGuilds:      a.Config.Channels.Discord.AllowedGuilds,
+			ApprovalTimeoutSec: a.Config.Security.Interceptor.ApprovalTimeoutSec,
 		}
 		dcChannel, err := discord.New(dcConfig)
 		if err != nil {
@@ -44,16 +50,20 @@ func (a *App) initChannels() error {
 				return a.handleDiscordMessage(ctx, msg)
 			})
 			a.Channels = append(a.Channels, dcChannel)
+			if composite, ok := a.ApprovalProvider.(*approval.CompositeProvider); ok {
+				composite.Register(dcChannel.GetApprovalProvider())
+			}
 			logger().Info("discord channel initialized")
 		}
 	}
 
 	// Slack
-	if a.Config.Channels.Slack.Enabled { // Assumes Config struct exists and has Enabled
+	if a.Config.Channels.Slack.Enabled {
 		slConfig := slack.Config{
-			BotToken:      a.Config.Channels.Slack.BotToken,
-			AppToken:      a.Config.Channels.Slack.AppToken,
-			SigningSecret: a.Config.Channels.Slack.SigningSecret,
+			BotToken:           a.Config.Channels.Slack.BotToken,
+			AppToken:           a.Config.Channels.Slack.AppToken,
+			SigningSecret:      a.Config.Channels.Slack.SigningSecret,
+			ApprovalTimeoutSec: a.Config.Security.Interceptor.ApprovalTimeoutSec,
 		}
 		slChannel, err := slack.New(slConfig)
 		if err != nil {
@@ -63,6 +73,9 @@ func (a *App) initChannels() error {
 				return a.handleSlackMessage(ctx, msg)
 			})
 			a.Channels = append(a.Channels, slChannel)
+			if composite, ok := a.ApprovalProvider.(*approval.CompositeProvider); ok {
+				composite.Register(slChannel.GetApprovalProvider())
+			}
 			logger().Info("slack channel initialized")
 		}
 	}

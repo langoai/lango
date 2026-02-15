@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/langowarny/lango/internal/logging"
 	"github.com/slack-go/slack"
@@ -17,13 +18,14 @@ var logger = logging.SubsystemSugar("channel.slack")
 
 // Config holds Slack channel configuration
 type Config struct {
-	BotToken      string // xoxb-...
-	AppToken      string // xapp-... (for Socket Mode)
-	SigningSecret string
-	APIURL        string       // optional, for testing
-	HTTPClient    *http.Client // optional, for testing
-	Client        Client       // optional, for testing
-	Socket        Socket       // optional, for testing
+	BotToken           string // xoxb-...
+	AppToken           string // xapp-... (for Socket Mode)
+	SigningSecret      string
+	ApprovalTimeoutSec int          // 0 = default 30s
+	APIURL             string       // optional, for testing
+	HTTPClient         *http.Client // optional, for testing
+	Client             Client       // optional, for testing
+	Socket             Socket       // optional, for testing
 }
 
 // MessageHandler handles incoming messages
@@ -64,6 +66,7 @@ type Channel struct {
 	api      Client
 	socket   Socket
 	handler  MessageHandler
+	approval *ApprovalProvider
 	botID    string
 	stopChan chan struct{}
 	wg       sync.WaitGroup
@@ -118,17 +121,25 @@ func New(cfg Config) (*Channel, error) {
 		}
 	}
 
-	return &Channel{
+	ch := &Channel{
 		config:   cfg,
 		api:      apiClient,
 		socket:   socketClient,
 		stopChan: make(chan struct{}),
-	}, nil
+	}
+	ch.approval = NewApprovalProvider(apiClient, time.Duration(cfg.ApprovalTimeoutSec)*time.Second)
+
+	return ch, nil
 }
 
 // SetHandler sets the message handler
 func (c *Channel) SetHandler(handler MessageHandler) {
 	c.handler = handler
+}
+
+// GetApprovalProvider returns the channel's approval provider for composite registration.
+func (c *Channel) GetApprovalProvider() *ApprovalProvider {
+	return c.approval
 }
 
 // Start starts the Slack bot
@@ -172,6 +183,8 @@ func (c *Channel) handleEvents(ctx context.Context) {
 			switch event.Type {
 			case socketmode.EventTypeEventsAPI:
 				c.handleEventsAPI(ctx, event)
+			case socketmode.EventTypeInteractive:
+				c.handleInteractiveEvent(event)
 			case socketmode.EventTypeSlashCommand:
 				// Handle slash commands if needed
 			}
@@ -191,6 +204,22 @@ func (c *Channel) handleEventsAPI(ctx context.Context, event socketmode.Event) {
 	switch eventsAPIEvent.Type {
 	case slackevents.CallbackEvent:
 		c.handleCallbackEvent(ctx, eventsAPIEvent.InnerEvent)
+	}
+}
+
+// handleInteractiveEvent processes interactive events (button clicks)
+func (c *Channel) handleInteractiveEvent(event socketmode.Event) {
+	callback, ok := event.Data.(slack.InteractionCallback)
+	if !ok {
+		return
+	}
+
+	c.socket.Ack(*event.Request)
+
+	if callback.Type == slack.InteractionTypeBlockActions {
+		for _, action := range callback.ActionCallback.BlockActions {
+			c.approval.HandleInteractive(action.ActionID)
+		}
 	}
 }
 

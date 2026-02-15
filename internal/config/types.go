@@ -105,12 +105,13 @@ type SecurityConfig struct {
 
 // InterceptorConfig defines AI Privacy Interceptor settings
 type InterceptorConfig struct {
-	Enabled          bool     `mapstructure:"enabled" json:"enabled"`
-	RedactPII        bool     `mapstructure:"redactPii" json:"redactPii"`
-	ApprovalRequired bool     `mapstructure:"approvalRequired" json:"approvalRequired"`
-	NotifyChannel    string   `mapstructure:"notifyChannel" json:"notifyChannel"` // e.g. "discord", "telegram"
-	SensitiveTools   []string `mapstructure:"sensitiveTools" json:"sensitiveTools"`
-	PIIRegexPatterns []string `mapstructure:"piiRegexPatterns" json:"piiRegexPatterns"`
+	Enabled            bool     `mapstructure:"enabled" json:"enabled"`
+	RedactPII          bool     `mapstructure:"redactPii" json:"redactPii"`
+	ApprovalRequired   bool     `mapstructure:"approvalRequired" json:"approvalRequired"`
+	NotifyChannel      string   `mapstructure:"notifyChannel" json:"notifyChannel"` // e.g. "discord", "telegram"
+	SensitiveTools     []string `mapstructure:"sensitiveTools" json:"sensitiveTools"`
+	PIIRegexPatterns   []string `mapstructure:"piiRegexPatterns" json:"piiRegexPatterns"`
+	ApprovalTimeoutSec int      `mapstructure:"approvalTimeoutSec" json:"approvalTimeoutSec"` // default 30
 }
 
 // SignerConfig defines Secure Signer settings

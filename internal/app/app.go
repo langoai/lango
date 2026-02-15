@@ -9,6 +9,7 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/langowarny/lango/internal/agent"
+	"github.com/langowarny/lango/internal/approval"
 	"github.com/langowarny/lango/internal/bootstrap"
 	"github.com/langowarny/lango/internal/config"
 	"github.com/langowarny/lango/internal/logging"
@@ -130,10 +131,15 @@ func New(boot *bootstrap.Result) (*App, error) {
 	// 7. Gateway (created before agent so we can wire approval)
 	app.Gateway = initGateway(cfg, nil, app.Store, auth)
 
-	// 8. Tool approval wrapper (if configured)
+	// 8. Build composite approval provider and tool approval wrapper
+	composite := approval.NewCompositeProvider()
+	composite.Register(approval.NewGatewayProvider(app.Gateway))
+	composite.SetTTYFallback(&approval.TTYProvider{})
+	app.ApprovalProvider = composite
+
 	if cfg.Security.Interceptor.ApprovalRequired && len(cfg.Security.Interceptor.SensitiveTools) > 0 {
 		for i, t := range tools {
-			tools[i] = wrapWithApproval(t, cfg.Security.Interceptor.SensitiveTools, app.Gateway)
+			tools[i] = wrapWithApproval(t, cfg.Security.Interceptor.SensitiveTools, composite)
 		}
 		logger().Infow("tool approval enabled", "sensitiveTools", cfg.Security.Interceptor.SensitiveTools)
 	}

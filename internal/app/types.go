@@ -6,6 +6,7 @@ import (
 	"sync"
 
 	"github.com/langowarny/lango/internal/adk"
+	"github.com/langowarny/lango/internal/approval"
 	"github.com/langowarny/lango/internal/config"
 	"github.com/langowarny/lango/internal/gateway"
 	"github.com/langowarny/lango/internal/knowledge"
@@ -32,6 +33,9 @@ type App struct {
 	Crypto  security.CryptoProvider
 	Keys    *security.KeyRegistry
 	Secrets *security.SecretsStore
+
+	// Approval Provider (composite, routes to channel-specific providers)
+	ApprovalProvider approval.Provider
 
 	// Self-Learning Components
 	KnowledgeStore  *knowledge.Store

@@ -27,6 +27,10 @@ func (m *MockClient) AuthTest() (*slack.AuthTestResponse, error) {
 	return &slack.AuthTestResponse{UserID: "bot-123", Team: "TestTeam"}, nil
 }
 
+func (m *MockClient) UpdateMessage(channelID, timestamp string, options ...slack.MsgOption) (string, string, string, error) {
+	return channelID, timestamp, "", nil
+}
+
 func (m *MockClient) PostMessage(channelID string, options ...slack.MsgOption) (string, string, error) {
 	m.PostMessages = append(m.PostMessages, struct {
 		ChannelID string

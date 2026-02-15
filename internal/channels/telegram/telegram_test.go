@@ -36,6 +36,10 @@ func (m *MockBotAPI) GetFile(config tgbotapi.FileConfig) (tgbotapi.File, error) 
 	return tgbotapi.File{}, nil
 }
 
+func (m *MockBotAPI) Request(c tgbotapi.Chattable) (*tgbotapi.APIResponse, error) {
+	return &tgbotapi.APIResponse{Ok: true}, nil
+}
+
 func (m *MockBotAPI) StopReceivingUpdates() {
 }
 

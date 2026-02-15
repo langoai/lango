@@ -9,7 +9,7 @@ import (
 
 // MockSession implements Session interface for testing
 type MockSession struct {
-	Handler      interface{}
+	Handlers     []interface{}
 	SentMessages []string
 	State        *discordgo.State
 }
@@ -23,7 +23,7 @@ func (m *MockSession) Close() error {
 }
 
 func (m *MockSession) AddHandler(handler interface{}) func() {
-	m.Handler = handler
+	m.Handlers = append(m.Handlers, handler)
 	return func() {}
 }
 
@@ -35,6 +35,14 @@ func (m *MockSession) ChannelMessageSend(channelID string, content string, optio
 func (m *MockSession) ChannelMessageSendComplex(channelID string, data *discordgo.MessageSend, options ...discordgo.RequestOption) (*discordgo.Message, error) {
 	m.SentMessages = append(m.SentMessages, data.Content)
 	return &discordgo.Message{Content: data.Content}, nil
+}
+
+func (m *MockSession) ChannelMessageEditComplex(edit *discordgo.MessageEdit, options ...discordgo.RequestOption) (*discordgo.Message, error) {
+	return &discordgo.Message{}, nil
+}
+
+func (m *MockSession) InteractionRespond(interaction *discordgo.Interaction, resp *discordgo.InteractionResponse, options ...discordgo.RequestOption) error {
+	return nil
 }
 
 func (m *MockSession) ApplicationCommandCreate(appID string, guildID string, cmd *discordgo.ApplicationCommand, options ...discordgo.RequestOption) (*discordgo.ApplicationCommand, error) {
@@ -79,10 +87,16 @@ func TestDiscordChannel(t *testing.T) {
 		t.Fatalf("failed to start: %v", err)
 	}
 
-	// Retrieve registered handler
-	handlerFunc, ok := mockSession.Handler.(func(*discordgo.Session, *discordgo.MessageCreate))
-	if !ok {
-		t.Fatalf("handler not registered or wrong type")
+	// Retrieve registered message handler (first one registered)
+	var handlerFunc func(*discordgo.Session, *discordgo.MessageCreate)
+	for _, h := range mockSession.Handlers {
+		if fn, ok := h.(func(*discordgo.Session, *discordgo.MessageCreate)); ok {
+			handlerFunc = fn
+			break
+		}
+	}
+	if handlerFunc == nil {
+		t.Fatalf("message handler not registered or wrong type")
 	}
 
 	// Simulate incoming message
