@@ -65,9 +65,9 @@ func (s *Supervisor) initializeProviders() error {
 			case "openai":
 				p = openai.NewProvider(id, apiKey, pCfg.BaseURL)
 			case "anthropic":
-				p = anthropic.NewProvider(apiKey)
+				p = anthropic.NewProvider(id, apiKey)
 			case "gemini", "google": // Support "google" as alias
-				p, err = gemini.NewProvider(context.Background(), apiKey, "")
+				p, err = gemini.NewProvider(context.Background(), id, apiKey, "")
 			case "ollama":
 				baseURL := pCfg.BaseURL
 				if baseURL == "" {

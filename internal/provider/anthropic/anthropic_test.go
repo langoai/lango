@@ -6,14 +6,14 @@ import (
 )
 
 func TestNewProvider(t *testing.T) {
-	p := NewProvider("test-key")
-	if p.ID() != "anthropic" {
-		t.Errorf("expected ID 'anthropic', got %s", p.ID())
+	p := NewProvider("my-anthropic", "test-key")
+	if p.ID() != "my-anthropic" {
+		t.Errorf("expected ID 'my-anthropic', got %s", p.ID())
 	}
 }
 
 func TestAnthropicProvider_ListModels(t *testing.T) {
-	p := NewProvider("test-key")
+	p := NewProvider("anthropic", "test-key")
 	models, err := p.ListModels(context.Background())
 	if err != nil {
 		t.Fatalf("ListModels: %v", err)

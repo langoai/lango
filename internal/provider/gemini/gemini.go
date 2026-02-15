@@ -16,14 +16,14 @@ type GeminiProvider struct {
 	model  string
 }
 
-func NewProvider(ctx context.Context, apiKey string, model string) (*GeminiProvider, error) {
+func NewProvider(ctx context.Context, id, apiKey string, model string) (*GeminiProvider, error) {
 	client, err := genai.NewClient(ctx, &genai.ClientConfig{APIKey: apiKey})
 	if err != nil {
-		return nil, fmt.Errorf("failed to create gemini client: %w", err)
+		return nil, fmt.Errorf("create gemini client: %w", err)
 	}
 	return &GeminiProvider{
 		client: client,
-		id:     "gemini",
+		id:     id,
 		model:  model,
 	}, nil
 }

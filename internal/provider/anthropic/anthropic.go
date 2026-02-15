@@ -16,11 +16,11 @@ type AnthropicProvider struct {
 	id     string
 }
 
-func NewProvider(apiKey string) *AnthropicProvider {
+func NewProvider(id, apiKey string) *AnthropicProvider {
 	client := anthropic.NewClient(option.WithAPIKey(apiKey))
 	return &AnthropicProvider{
 		client: &client,
-		id:     "anthropic",
+		id:     id,
 	}
 }
 
