@@ -31,6 +31,7 @@ func NewMenuModel() MenuModel {
 			{"security", "🔒 Security", "PII, Approval, Encryption"},
 			{"knowledge", "🧠 Knowledge", "Learning, Skills, Context limits"},
 			{"observational_memory", "🔬 Observational Memory", "Observer, Reflector, Thresholds"},
+			{"embedding", "🔗 Embedding & RAG", "Provider, Model, RAG settings"},
 			{"providers", "☁️ Providers", "Manage multi-provider configurations"},
 			{"save", "💾 Save & Exit", "Save encrypted profile"},
 			{"cancel", "❌ Cancel", "Exit without saving"},

@@ -85,6 +85,7 @@ func TestNewSecurityForm_AllFields(t *testing.T) {
 	wantKeys := []string{
 		"db_path", "ttl", "max_history_turns",
 		"interceptor_enabled", "interceptor_pii", "interceptor_approval",
+		"interceptor_timeout", "interceptor_notify", "interceptor_sensitive_tools",
 		"signer_provider", "signer_rpc", "signer_keyid",
 		"passphrase",
 	}
@@ -214,6 +215,107 @@ func TestUpdateConfigFromForm_KnowledgeFields(t *testing.T) {
 	}
 	if k.MaxSkillsPerDay != 15 {
 		t.Errorf("MaxSkillsPerDay: want 15, got %d", k.MaxSkillsPerDay)
+	}
+}
+
+func TestNewEmbeddingForm_AllFields(t *testing.T) {
+	cfg := defaultTestConfig()
+	form := NewEmbeddingForm(cfg)
+
+	wantKeys := []string{
+		"emb_provider", "emb_model", "emb_dimensions",
+		"emb_local_baseurl",
+		"emb_rag_enabled", "emb_rag_max_results", "emb_rag_collections",
+	}
+
+	if len(form.Fields) != len(wantKeys) {
+		t.Fatalf("expected %d fields, got %d", len(wantKeys), len(form.Fields))
+	}
+
+	for _, key := range wantKeys {
+		if f := fieldByKey(form, key); f == nil {
+			t.Errorf("missing field %q", key)
+		}
+	}
+
+	if f := fieldByKey(form, "emb_provider"); f.Type != InputSelect {
+		t.Errorf("emb_provider: want InputSelect, got %d", f.Type)
+	}
+	if f := fieldByKey(form, "emb_rag_enabled"); f.Type != InputBool {
+		t.Errorf("emb_rag_enabled: want InputBool, got %d", f.Type)
+	}
+}
+
+func TestUpdateConfigFromForm_EmbeddingFields(t *testing.T) {
+	state := NewConfigState()
+	form := NewFormModel("test")
+	form.AddField(&Field{Key: "emb_provider", Type: InputSelect, Value: "openai"})
+	form.AddField(&Field{Key: "emb_model", Type: InputText, Value: "text-embedding-3-small"})
+	form.AddField(&Field{Key: "emb_dimensions", Type: InputInt, Value: "1536"})
+	form.AddField(&Field{Key: "emb_local_baseurl", Type: InputText, Value: "http://localhost:11434/v1"})
+	form.AddField(&Field{Key: "emb_rag_enabled", Type: InputBool, Checked: true})
+	form.AddField(&Field{Key: "emb_rag_max_results", Type: InputInt, Value: "5"})
+	form.AddField(&Field{Key: "emb_rag_collections", Type: InputText, Value: "docs,wiki"})
+
+	state.UpdateConfigFromForm(&form)
+
+	e := state.Current.Embedding
+	if e.Provider != "openai" {
+		t.Errorf("Provider: want %q, got %q", "openai", e.Provider)
+	}
+	if e.Model != "text-embedding-3-small" {
+		t.Errorf("Model: want %q, got %q", "text-embedding-3-small", e.Model)
+	}
+	if e.Dimensions != 1536 {
+		t.Errorf("Dimensions: want 1536, got %d", e.Dimensions)
+	}
+	if e.Local.BaseURL != "http://localhost:11434/v1" {
+		t.Errorf("Local.BaseURL: want %q, got %q", "http://localhost:11434/v1", e.Local.BaseURL)
+	}
+	if !e.RAG.Enabled {
+		t.Error("RAG.Enabled: want true")
+	}
+	if e.RAG.MaxResults != 5 {
+		t.Errorf("RAG.MaxResults: want 5, got %d", e.RAG.MaxResults)
+	}
+	if len(e.RAG.Collections) != 2 || e.RAG.Collections[0] != "docs" || e.RAG.Collections[1] != "wiki" {
+		t.Errorf("RAG.Collections: want [docs wiki], got %v", e.RAG.Collections)
+	}
+}
+
+func TestUpdateConfigFromForm_SecurityInterceptorFields(t *testing.T) {
+	state := NewConfigState()
+	form := NewFormModel("test")
+	form.AddField(&Field{Key: "interceptor_timeout", Type: InputInt, Value: "60"})
+	form.AddField(&Field{Key: "interceptor_notify", Type: InputSelect, Value: "telegram"})
+	form.AddField(&Field{Key: "interceptor_sensitive_tools", Type: InputText, Value: "exec, browser"})
+
+	state.UpdateConfigFromForm(&form)
+
+	ic := state.Current.Security.Interceptor
+	if ic.ApprovalTimeoutSec != 60 {
+		t.Errorf("ApprovalTimeoutSec: want 60, got %d", ic.ApprovalTimeoutSec)
+	}
+	if ic.NotifyChannel != "telegram" {
+		t.Errorf("NotifyChannel: want %q, got %q", "telegram", ic.NotifyChannel)
+	}
+	if len(ic.SensitiveTools) != 2 || ic.SensitiveTools[0] != "exec" || ic.SensitiveTools[1] != "browser" {
+		t.Errorf("SensitiveTools: want [exec browser], got %v", ic.SensitiveTools)
+	}
+}
+
+func TestNewMenuModel_HasEmbeddingCategory(t *testing.T) {
+	menu := NewMenuModel()
+
+	found := false
+	for _, cat := range menu.Categories {
+		if cat.ID == "embedding" {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Error("menu missing 'embedding' category")
 	}
 }
 

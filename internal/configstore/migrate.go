@@ -3,6 +3,8 @@ package configstore
 import (
 	"context"
 	"fmt"
+	"log"
+	"os"
 
 	"github.com/langowarny/lango/internal/config"
 )
@@ -21,6 +23,11 @@ func MigrateFromJSON(ctx context.Context, store *Store, jsonPath, profileName st
 
 	if err := store.SetActive(ctx, profileName); err != nil {
 		return fmt.Errorf("set active profile %q: %w", profileName, err)
+	}
+
+	// Delete the source JSON file after successful import for security.
+	if err := os.Remove(jsonPath); err != nil {
+		log.Printf("WARNING: imported successfully but could not delete source file %q: %v", jsonPath, err)
 	}
 
 	return nil

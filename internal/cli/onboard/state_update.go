@@ -2,6 +2,7 @@ package onboard
 
 import (
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/langowarny/lango/internal/config"
@@ -114,6 +115,25 @@ func (s *ConfigState) UpdateConfigFromForm(form *FormModel) {
 			s.Current.Security.Interceptor.RedactPII = f.Checked
 		case "interceptor_approval":
 			s.Current.Security.Interceptor.ApprovalRequired = f.Checked
+		case "interceptor_timeout":
+			if i, err := strconv.Atoi(val); err == nil {
+				s.Current.Security.Interceptor.ApprovalTimeoutSec = i
+			}
+		case "interceptor_notify":
+			s.Current.Security.Interceptor.NotifyChannel = val
+		case "interceptor_sensitive_tools":
+			if val != "" {
+				parts := strings.Split(val, ",")
+				tools := make([]string, 0, len(parts))
+				for _, p := range parts {
+					if t := strings.TrimSpace(p); t != "" {
+						tools = append(tools, t)
+					}
+				}
+				s.Current.Security.Interceptor.SensitiveTools = tools
+			} else {
+				s.Current.Security.Interceptor.SensitiveTools = nil
+			}
 
 		// Security - Signer
 		case "signer_provider":
@@ -163,6 +183,37 @@ func (s *ConfigState) UpdateConfigFromForm(form *FormModel) {
 		case "om_max_budget":
 			if i, err := strconv.Atoi(val); err == nil {
 				s.Current.ObservationalMemory.MaxMessageTokenBudget = i
+			}
+
+		// Embedding & RAG
+		case "emb_provider":
+			s.Current.Embedding.Provider = val
+		case "emb_model":
+			s.Current.Embedding.Model = val
+		case "emb_dimensions":
+			if i, err := strconv.Atoi(val); err == nil {
+				s.Current.Embedding.Dimensions = i
+			}
+		case "emb_local_baseurl":
+			s.Current.Embedding.Local.BaseURL = val
+		case "emb_rag_enabled":
+			s.Current.Embedding.RAG.Enabled = f.Checked
+		case "emb_rag_max_results":
+			if i, err := strconv.Atoi(val); err == nil {
+				s.Current.Embedding.RAG.MaxResults = i
+			}
+		case "emb_rag_collections":
+			if val != "" {
+				parts := strings.Split(val, ",")
+				cols := make([]string, 0, len(parts))
+				for _, p := range parts {
+					if c := strings.TrimSpace(p); c != "" {
+						cols = append(cols, c)
+					}
+				}
+				s.Current.Embedding.RAG.Collections = cols
+			} else {
+				s.Current.Embedding.RAG.Collections = nil
 			}
 		}
 	}

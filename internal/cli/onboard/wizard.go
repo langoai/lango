@@ -205,6 +205,10 @@ func (w *Wizard) handleMenuSelection(id string) tea.Cmd {
 		w.activeForm = NewObservationalMemoryForm(w.state.Current)
 		w.activeForm.Focus = true
 		w.step = StepForm
+	case "embedding":
+		w.activeForm = NewEmbeddingForm(w.state.Current)
+		w.activeForm.Focus = true
+		w.step = StepForm
 	case "providers":
 		w.providersList = NewProvidersListModel(w.state.Current)
 		w.step = StepProvidersList

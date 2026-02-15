@@ -44,8 +44,6 @@ type Options struct {
 	DBPath string
 	// KeyfilePath is the path to the passphrase keyfile (default: ~/.lango/keyfile).
 	KeyfilePath string
-	// MigrationPath is the path to an existing lango.json for migration.
-	MigrationPath string
 	// ForceProfile overrides the active profile selection.
 	ForceProfile string
 }
@@ -149,7 +147,7 @@ func Run(opts Options) (*Result, error) {
 		}
 
 		if errors.Is(err, configstore.ErrNoActiveProfile) {
-			cfg, profileName, err = handleNoProfile(ctx, store, opts.MigrationPath)
+			cfg, profileName, err = handleNoProfile(ctx, store)
 			if err != nil {
 				client.Close()
 				return nil, err
@@ -299,28 +297,11 @@ func storeChecksum(db *sql.DB, checksum []byte) error {
 }
 
 // handleNoProfile handles the case where no active profile exists.
-// It tries to migrate from an existing lango.json or creates a default profile.
+// It creates a default profile with sensible defaults.
 func handleNoProfile(
 	ctx context.Context,
 	store *configstore.Store,
-	migrationPath string,
 ) (*config.Config, string, error) {
-	// Try migration from lango.json.
-	jsonPaths := candidateJSONPaths(migrationPath)
-	for _, p := range jsonPaths {
-		if _, err := os.Stat(p); err == nil {
-			if err := configstore.MigrateFromJSON(ctx, store, p, "default"); err != nil {
-				return nil, "", fmt.Errorf("migrate from %s: %w", p, err)
-			}
-			cfg, err := store.Load(ctx, "default")
-			if err != nil {
-				return nil, "", fmt.Errorf("load migrated profile: %w", err)
-			}
-			return cfg, "default", nil
-		}
-	}
-
-	// No existing config — create default profile.
 	cfg := config.DefaultConfig()
 	if err := store.Save(ctx, "default", cfg); err != nil {
 		return nil, "", fmt.Errorf("save default profile: %w", err)
@@ -330,17 +311,4 @@ func handleNoProfile(
 	}
 
 	return cfg, "default", nil
-}
-
-// candidateJSONPaths returns paths to search for an existing lango.json.
-func candidateJSONPaths(explicit string) []string {
-	var paths []string
-	if explicit != "" {
-		paths = append(paths, explicit)
-	}
-	paths = append(paths, "lango.json")
-	if home, err := os.UserHomeDir(); err == nil {
-		paths = append(paths, filepath.Join(home, ".lango", "lango.json"))
-	}
-	return paths
 }

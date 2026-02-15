@@ -4,10 +4,10 @@ package doctor
 import (
 	"context"
 	"fmt"
-	"os"
 
 	"github.com/spf13/cobra"
 
+	"github.com/langowarny/lango/internal/bootstrap"
 	"github.com/langowarny/lango/internal/cli/doctor/checks"
 	"github.com/langowarny/lango/internal/cli/doctor/output"
 	"github.com/langowarny/lango/internal/config"
@@ -15,9 +15,8 @@ import (
 
 // Options holds the doctor command options.
 type Options struct {
-	Fix        bool
-	JSON       bool
-	ConfigPath string
+	Fix  bool
+	JSON bool
 }
 
 // NewCommand creates the doctor command.
@@ -31,7 +30,7 @@ func NewCommand() *cobra.Command {
 for common issues and can automatically fix some problems.
 
 Checks performed:
-  - Configuration file validity
+  - Encrypted configuration profile validity
   - API key and provider configuration
   - Channel token validation
   - Session database accessibility
@@ -45,27 +44,17 @@ Checks performed:
 
 	cmd.Flags().BoolVar(&opts.Fix, "fix", false, "Attempt to automatically fix issues")
 	cmd.Flags().BoolVar(&opts.JSON, "json", false, "Output results as JSON")
-	cmd.Flags().StringVar(&opts.ConfigPath, "config", "", "Path to config file")
 
 	return cmd
 }
 
 func run(ctx context.Context, opts *Options) error {
-	// Load configuration (may be nil if not found)
+	// Load configuration from encrypted profile via bootstrap.
 	var cfg *config.Config
-	if opts.ConfigPath != "" {
-		loadedCfg, err := config.Load(opts.ConfigPath)
-		if err == nil {
-			cfg = loadedCfg
-		}
-	} else {
-		// Try default locations
-		for _, path := range []string{"lango.json", os.ExpandEnv("$HOME/.lango/lango.json")} {
-			if loadedCfg, err := config.Load(path); err == nil {
-				cfg = loadedCfg
-				break
-			}
-		}
+	boot, err := bootstrap.Run(bootstrap.Options{})
+	if err == nil {
+		cfg = boot.Config
+		defer boot.DBClient.Close()
 	}
 
 	// Get all checks
@@ -91,7 +80,7 @@ func run(ctx context.Context, opts *Options) error {
 		renderer := &output.JSONRenderer{}
 		jsonOutput, err := renderer.Render(summary)
 		if err != nil {
-			return fmt.Errorf("failed to render JSON: %w", err)
+			return fmt.Errorf("render JSON: %w", err)
 		}
 		fmt.Println(jsonOutput)
 	} else {

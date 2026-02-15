@@ -2,32 +2,16 @@ package checks
 
 import (
 	"context"
-	"os"
-	"path/filepath"
 	"testing"
 
 	"github.com/langowarny/lango/internal/config"
 )
 
 func TestConfigCheck_Run_ValidConfig(t *testing.T) {
-	// Create a temp config file
-	tmpDir := t.TempDir()
-	configPath := filepath.Join(tmpDir, "lango.json")
-	configContent := `{
-		"server": {"host": "localhost", "port": 18789},
-		"agent": {"provider": "gemini", "model": "gemini-2.0-flash-exp"}
-	}`
-	if err := os.WriteFile(configPath, []byte(configContent), 0644); err != nil {
-		t.Fatal(err)
-	}
-
-	// Change to temp directory
-	oldCwd, _ := os.Getwd()
-	os.Chdir(tmpDir)
-	defer os.Chdir(oldCwd)
+	cfg := config.DefaultConfig()
 
 	check := &ConfigCheck{}
-	result := check.Run(context.Background(), nil)
+	result := check.Run(context.Background(), cfg)
 
 	// Accept both pass and warn (validation warnings are acceptable)
 	if result.Status != StatusPass && result.Status != StatusWarn {
@@ -35,21 +19,24 @@ func TestConfigCheck_Run_ValidConfig(t *testing.T) {
 	}
 }
 
-func TestConfigCheck_Run_MissingConfig(t *testing.T) {
-	// Change to empty temp directory
-	tmpDir := t.TempDir()
-	oldCwd, _ := os.Getwd()
-	os.Chdir(tmpDir)
-	defer os.Chdir(oldCwd)
-
+func TestConfigCheck_Run_NilConfig(t *testing.T) {
 	check := &ConfigCheck{}
 	result := check.Run(context.Background(), nil)
 
 	if result.Status != StatusFail {
 		t.Errorf("expected StatusFail, got %v", result.Status)
 	}
-	if !result.Fixable {
-		t.Error("expected Fixable to be true")
+}
+
+func TestConfigCheck_Fix_GuidesToOnboard(t *testing.T) {
+	check := &ConfigCheck{}
+	result := check.Fix(context.Background(), nil)
+
+	if result.Status != StatusFail {
+		t.Errorf("expected StatusFail (guidance), got %v", result.Status)
+	}
+	if result.Details == "" {
+		t.Error("expected details with onboard guidance")
 	}
 }
 

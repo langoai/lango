@@ -1,7 +1,6 @@
 package config
 
 import (
-	"encoding/json"
 	"fmt"
 	"os"
 	"regexp"
@@ -213,17 +212,3 @@ func providerKeys(providers map[string]ProviderConfig) []string {
 	return keys
 }
 
-// Save is deprecated. Use configstore.Store.Save() for encrypted profile storage.
-// This function is kept temporarily for migration support from lango.json.
-func Save(cfg *Config, path string) error {
-	data, err := json.MarshalIndent(cfg, "", "  ")
-	if err != nil {
-		return fmt.Errorf("marshal config: %w", err)
-	}
-
-	if err := os.WriteFile(path, data, 0600); err != nil {
-		return fmt.Errorf("write config file: %w", err)
-	}
-
-	return nil
-}

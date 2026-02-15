@@ -3,6 +3,7 @@ package onboard
 import (
 	"fmt"
 	"strconv"
+	"strings"
 
 	"github.com/langowarny/lango/internal/config"
 )
@@ -215,6 +216,32 @@ func NewSecurityForm(cfg *config.Config) *FormModel {
 		Placeholder: "key-123",
 	})
 
+	// Approval Timeout
+	form.AddField(&Field{
+		Key: "interceptor_timeout", Label: "  Approval Timeout (s)", Type: InputInt,
+		Value: strconv.Itoa(cfg.Security.Interceptor.ApprovalTimeoutSec),
+		Validate: func(s string) error {
+			if i, err := strconv.Atoi(s); err != nil || i < 0 {
+				return fmt.Errorf("must be a non-negative integer")
+			}
+			return nil
+		},
+	})
+
+	// Notify Channel
+	form.AddField(&Field{
+		Key: "interceptor_notify", Label: "  Notify Channel", Type: InputSelect,
+		Value:   cfg.Security.Interceptor.NotifyChannel,
+		Options: []string{"", "telegram", "discord", "slack"},
+	})
+
+	// Sensitive Tools
+	form.AddField(&Field{
+		Key: "interceptor_sensitive_tools", Label: "  Sensitive Tools", Type: InputText,
+		Value:       strings.Join(cfg.Security.Interceptor.SensitiveTools, ","),
+		Placeholder: "exec,browser (comma-separated)",
+	})
+
 	// Passphrase
 	form.AddField(&Field{
 		Key: "passphrase", Label: "DB Passphrase", Type: InputPassword,
@@ -326,6 +353,64 @@ func NewObservationalMemoryForm(cfg *config.Config) *FormModel {
 			}
 			return nil
 		},
+	})
+
+	return &form
+}
+
+// Helper to create Embedding & RAG configuration form
+func NewEmbeddingForm(cfg *config.Config) *FormModel {
+	form := NewFormModel("🔗 Embedding & RAG Configuration")
+
+	form.AddField(&Field{
+		Key: "emb_provider", Label: "Provider", Type: InputSelect,
+		Value:   cfg.Embedding.Provider,
+		Options: []string{"openai", "google", "local"},
+	})
+
+	form.AddField(&Field{
+		Key: "emb_model", Label: "Model", Type: InputText,
+		Value:       cfg.Embedding.Model,
+		Placeholder: "e.g. text-embedding-3-small",
+	})
+
+	form.AddField(&Field{
+		Key: "emb_dimensions", Label: "Dimensions", Type: InputInt,
+		Value: strconv.Itoa(cfg.Embedding.Dimensions),
+		Validate: func(s string) error {
+			if i, err := strconv.Atoi(s); err != nil || i < 0 {
+				return fmt.Errorf("must be a non-negative integer")
+			}
+			return nil
+		},
+	})
+
+	form.AddField(&Field{
+		Key: "emb_local_baseurl", Label: "Local Base URL", Type: InputText,
+		Value:       cfg.Embedding.Local.BaseURL,
+		Placeholder: "http://localhost:11434/v1",
+	})
+
+	form.AddField(&Field{
+		Key: "emb_rag_enabled", Label: "RAG Enabled", Type: InputBool,
+		Checked: cfg.Embedding.RAG.Enabled,
+	})
+
+	form.AddField(&Field{
+		Key: "emb_rag_max_results", Label: "RAG Max Results", Type: InputInt,
+		Value: strconv.Itoa(cfg.Embedding.RAG.MaxResults),
+		Validate: func(s string) error {
+			if i, err := strconv.Atoi(s); err != nil || i < 0 {
+				return fmt.Errorf("must be a non-negative integer")
+			}
+			return nil
+		},
+	})
+
+	form.AddField(&Field{
+		Key: "emb_rag_collections", Label: "RAG Collections", Type: InputText,
+		Value:       strings.Join(cfg.Embedding.RAG.Collections, ","),
+		Placeholder: "collection1,collection2 (comma-separated)",
 	})
 
 	return &form

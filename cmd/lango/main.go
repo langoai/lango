@@ -26,7 +26,6 @@ import (
 var (
 	Version   = "dev"
 	BuildTime = "unknown"
-	cfgFile   string
 )
 
 func main() {
@@ -36,15 +35,13 @@ func main() {
 		Long:  `Lango is a high-performance AI agent built with Go, supporting multiple channels and tools.`,
 	}
 
-	rootCmd.PersistentFlags().StringVar(&cfgFile, "config", "", "config file path for migration/import (default: lango.json)")
-
 	rootCmd.AddCommand(serveCmd())
 	rootCmd.AddCommand(versionCmd())
 	rootCmd.AddCommand(configCmd())
 	rootCmd.AddCommand(doctor.NewCommand())
 	rootCmd.AddCommand(onboard.NewCommand())
 	rootCmd.AddCommand(clisecurity.NewSecurityCmd(func() (*config.Config, error) {
-		boot, err := bootstrap.Run(bootstrap.Options{MigrationPath: cfgFile})
+		boot, err := bootstrap.Run(bootstrap.Options{})
 		if err != nil {
 			return nil, err
 		}
@@ -52,7 +49,7 @@ func main() {
 		return boot.Config, nil
 	}))
 	rootCmd.AddCommand(climemory.NewMemoryCmd(func() (*config.Config, error) {
-		boot, err := bootstrap.Run(bootstrap.Options{MigrationPath: cfgFile})
+		boot, err := bootstrap.Run(bootstrap.Options{})
 		if err != nil {
 			return nil, err
 		}
@@ -68,9 +65,7 @@ func main() {
 
 // bootstrapForConfig creates a bootstrap result for config subcommands.
 func bootstrapForConfig() (*bootstrap.Result, error) {
-	return bootstrap.Run(bootstrap.Options{
-		MigrationPath: cfgFile,
-	})
+	return bootstrap.Run(bootstrap.Options{})
 }
 
 func serveCmd() *cobra.Command {
@@ -79,9 +74,7 @@ func serveCmd() *cobra.Command {
 		Short: "Start the gateway server",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			// Bootstrap: DB + crypto + config profile
-			boot, err := bootstrap.Run(bootstrap.Options{
-				MigrationPath: cfgFile,
-			})
+			boot, err := bootstrap.Run(bootstrap.Options{})
 			if err != nil {
 				return fmt.Errorf("bootstrap: %w", err)
 			}
@@ -309,7 +302,7 @@ func configImportCmd() *cobra.Command {
 
 	cmd := &cobra.Command{
 		Use:   "import <file>",
-		Short: "Import a JSON config file as a profile",
+		Short: "Import and encrypt a JSON config (source file is deleted after import)",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			filePath := args[0]
@@ -326,6 +319,7 @@ func configImportCmd() *cobra.Command {
 			}
 
 			fmt.Printf("Imported %q as profile %q (now active).\n", filePath, profileName)
+			fmt.Println("Source file deleted for security.")
 			return nil
 		},
 	}
@@ -337,11 +331,14 @@ func configImportCmd() *cobra.Command {
 func configExportCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:   "export <name>",
-		Short: "Export a profile as plaintext JSON",
+		Short: "Export a profile as plaintext JSON (requires passphrase verification)",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			name := args[0]
 
+			// Verify passphrase before export.
+			// Bootstrap already validates the passphrase, so reaching here
+			// means the passphrase is correct.
 			boot, err := bootstrapForConfig()
 			if err != nil {
 				return fmt.Errorf("bootstrap: %w", err)

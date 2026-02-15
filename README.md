@@ -30,46 +30,18 @@ go install github.com/langowarny/lango/cmd/lango@latest
 
 ### Configuration
 
-Create `lango.json`:
+All configuration is stored in an encrypted SQLite database (`~/.lango/lango.db`), protected by a passphrase (AES-256-GCM). No plaintext config files are stored on disk.
 
-```json
-{
-  "server": {
-    "host": "localhost",
-    "port": 18789,
-    "allowedOrigins": []
-  },
-  "agent": {
-    "provider": "gemini",
-    "model": "gemini-2.0-flash-exp"
-  },
-  "providers": {
-    "gemini": {
-      "apiKey": "${GOOGLE_API_KEY}"
-    }
-  },
-  "channels": {
-    "telegram": {
-      "enabled": true,
-      "botToken": "${TELEGRAM_BOT_TOKEN}"
-    }
-  },
-  "logging": {
-    "level": "info",
-    "format": "console"
-  }
-}
+Use the interactive onboard wizard for first-time setup:
+
+```bash
+lango onboard
 ```
 
 ### Run
 
 ```bash
-# Start the server (ensure GOOGLE_API_KEY is set)
-export GOOGLE_API_KEY=your_key_here
 lango serve
-
-# Or with custom config
-lango serve --config /path/to/lango.json
 
 # Validate configuration
 lango config validate
@@ -86,8 +58,39 @@ lango onboard
 This guides you through:
 1. AI provider configuration (API keys, models)
 2. Server and channel setup (Telegram, Discord, Slack)
-3. Security settings (encryption, signer mode)
+3. Security settings (encryption, signer mode, approval workflows)
 4. Tool configuration
+5. Knowledge and observational memory settings
+6. Embedding & RAG configuration (provider, model, RAG toggle)
+
+### CLI Commands
+
+```
+lango serve                      Start the gateway server
+lango version                    Print version and build info
+lango onboard                    Interactive TUI configuration wizard
+lango doctor [--fix] [--json]    Diagnostics and health checks
+
+lango config list                List all configuration profiles
+lango config create <name>       Create a new profile with defaults
+lango config use <name>          Switch to a different profile
+lango config delete <name>       Delete a profile (--force to skip prompt)
+lango config import <file>       Import and encrypt a JSON config (source file is deleted after import)
+lango config export <name>       Export active profile as JSON (requires passphrase)
+lango config validate            Validate the active profile
+
+lango security status [--json]   Show security configuration status
+lango security migrate-passphrase Rotate encryption passphrase
+lango security secrets list      List stored secrets (values hidden)
+lango security secrets set <n>   Store an encrypted secret
+lango security secrets delete <n> Delete a stored secret (--force)
+
+lango memory list [--json]       List observational memory entries
+lango memory status [--json]     Show memory system status
+lango memory clear [--force]     Clear all memory entries
+
+lango login <provider>           Login via OIDC provider
+```
 
 ### Diagnostics
 
@@ -113,19 +116,25 @@ lango/
 │   ├── adk/                # Google ADK agent wrapper, session/state adapters
 │   ├── agent/              # Agent types, PII redactor, secret scanner
 │   ├── app/                # Application bootstrap, wiring, tool registration
+│   ├── approval/           # Composite approval provider for sensitive tools
+│   ├── bootstrap/          # Application bootstrap: DB, crypto, config profile init
 │   ├── channels/           # Telegram, Discord, Slack integrations
 │   ├── cli/                # CLI commands
 │   │   ├── auth/           #   lango login (OIDC/OAuth)
 │   │   ├── doctor/         #   lango doctor (diagnostics)
+│   │   ├── memory/         #   lango memory list/status/clear
 │   │   ├── onboard/        #   lango onboard (TUI wizard)
-│   │   └── security/       #   lango security migrate-passphrase
+│   │   └── security/       #   lango security status/secrets/migrate-passphrase
 │   ├── config/             # Config loading, env var substitution, validation
+│   ├── configstore/        # Encrypted config profile storage (Ent-backed)
+│   ├── embedding/          # Embedding providers (OpenAI, Google, local) and RAG
 │   ├── ent/                # Ent ORM schemas and generated code
 │   ├── gateway/            # WebSocket/HTTP server, OIDC auth
 │   ├── knowledge/          # Knowledge store, 8-layer context retriever
 │   ├── learning/           # Learning engine, error pattern analyzer
 │   ├── logging/            # Zap structured logger
 │   ├── memory/             # Observational memory (observer, reflector, token counter)
+│   ├── passphrase/         # Passphrase prompt and validation helpers
 │   ├── provider/           # AI provider interface and implementations
 │   │   ├── anthropic/      #   Claude models
 │   │   ├── gemini/         #   Google Gemini models
@@ -148,43 +157,13 @@ Lango supports multiple AI providers with a unified interface. Provider aliases 
 - **Gemini** (`gemini`): Google Gemini models
 - **Ollama** (`ollama`): Local models via Ollama (default: `http://localhost:11434/v1`)
 
-### Configuration Example
+### Setup
 
-```json
-{
-  "agent": {
-    "provider": "openai",
-    "model": "gpt-4o",
-    "fallbackProvider": "anthropic",
-    "fallbackModel": "claude-3-5-sonnet-20241022"
-  },
-  "providers": {
-    "openai": {
-      "apiKey": "${OPENAI_API_KEY}"
-    },
-    "anthropic": {
-      "apiKey": "${ANTHROPIC_API_KEY}"
-    },
-    "ollama": {
-      "baseUrl": "http://localhost:11434/v1"
-    }
-  },
-  "security": {
-    "interceptor": {
-      "enabled": true,
-      "redactPii": true
-    },
-    "signer": {
-      "provider": "local"
-    }
-  }
-}
-```
-
-### Onboarding TUI
-Use `lango onboard` to interactively configure providers, models, and security settings. The TUI allows you to manage multiple providers and set up local encryption.
+Use `lango onboard` to interactively configure providers, models, security settings, embedding & RAG, knowledge, and observational memory. The TUI allows you to manage multiple providers and set up local encryption.
 
 ## Configuration Reference
+
+All settings are managed via `lango onboard` or `lango config` and stored encrypted in the profile database.
 
 | Key | Type | Default | Description |
 |-----|------|---------|-------------|
@@ -204,7 +183,7 @@ Use `lango onboard` to interactively configure providers, models, and security s
 | `agent.systemPromptPath` | string | - | Custom system prompt template path |
 | **Providers** | | | |
 | `providers.<id>.type` | string | - | Provider type (openai, anthropic, gemini) |
-| `providers.<id>.apiKey` | string | - | Provider API key (supports `${ENV_VAR}`) |
+| `providers.<id>.apiKey` | string | - | Provider API key |
 | `providers.<id>.baseUrl` | string | - | Custom base URL (e.g. for Ollama) |
 | **Logging** | | | |
 | `logging.level` | string | `info` | Log level |
@@ -215,10 +194,19 @@ Use `lango onboard` to interactively configure providers, models, and security s
 | `session.maxHistoryTurns` | int | - | Maximum history turns per session |
 | **Security** | | | |
 | `security.signer.provider` | string | `local` | `local`, `rpc`, or `enclave` |
-| `security.passphrase` | string | - | **DEPRECATED** Use `LANGO_PASSPHRASE` env var |
 | `security.interceptor.enabled` | bool | `false` | Enable AI Privacy Interceptor |
 | `security.interceptor.redactPii` | bool | `false` | Redact PII from AI interactions |
 | `security.interceptor.approvalRequired` | bool | `false` | Require approval for sensitive tool use |
+| `security.interceptor.approvalTimeoutSec` | int | `30` | Seconds to wait for approval before timeout |
+| `security.interceptor.notifyChannel` | string | - | Channel for approval notifications (`telegram`, `discord`, `slack`) |
+| `security.interceptor.sensitiveTools` | []string | - | Tool names that require approval (e.g. `["exec", "browser"]`) |
+| `security.interceptor.piiRegexPatterns` | []string | - | Custom regex patterns for PII detection |
+| **Auth** | | | |
+| `auth.providers.<id>.issuerUrl` | string | - | OIDC issuer URL |
+| `auth.providers.<id>.clientId` | string | - | OIDC client ID |
+| `auth.providers.<id>.clientSecret` | string | - | OIDC client secret |
+| `auth.providers.<id>.redirectUrl` | string | - | OAuth callback URL |
+| `auth.providers.<id>.scopes` | []string | - | OIDC scopes (e.g. `["openid", "email"]`) |
 | **Tools** | | | |
 | `tools.exec.defaultTimeout` | duration | - | Default timeout for shell commands |
 | `tools.exec.allowBackground` | bool | `false` | Allow background processes |
@@ -242,6 +230,35 @@ Use `lango onboard` to interactively configure providers, models, and security s
 | `observationalMemory.messageTokenThreshold` | int | `1000` | Token threshold to trigger observation |
 | `observationalMemory.observationTokenThreshold` | int | `2000` | Token threshold to trigger reflection |
 | `observationalMemory.maxMessageTokenBudget` | int | `8000` | Max token budget for recent messages in context |
+| **Embedding** | | | |
+| `embedding.provider` | string | - | Embedding backend (`openai`, `google`, `local`) |
+| `embedding.model` | string | - | Embedding model identifier |
+| `embedding.dimensions` | int | - | Embedding vector dimensionality |
+| `embedding.local.baseUrl` | string | `http://localhost:11434/v1` | Local (Ollama) embedding endpoint |
+| `embedding.local.model` | string | - | Model override for local provider |
+| `embedding.rag.enabled` | bool | `false` | Enable RAG context injection |
+| `embedding.rag.maxResults` | int | - | Max results to inject into context |
+| `embedding.rag.collections` | []string | - | Collections to search (empty = all) |
+
+## Embedding & RAG
+
+Lango supports embedding-based retrieval-augmented generation (RAG) to inject relevant context into agent prompts automatically.
+
+### Supported Providers
+
+- **OpenAI** (`openai`): `text-embedding-3-small`, `text-embedding-3-large`, etc.
+- **Google** (`google`): Gemini embedding models
+- **Local** (`local`): Ollama-compatible local embedding server
+
+### Configuration
+
+Configure embedding and RAG settings via `lango onboard` > Embedding & RAG menu, or use `lango config` CLI.
+
+### RAG
+
+When `embedding.rag.enabled` is `true`, relevant knowledge entries are automatically retrieved via vector similarity search and injected into the agent's context. Configure `maxResults` to control how many results are included and `collections` to limit which knowledge collections are searched.
+
+Use `lango doctor` to verify embedding configuration and provider connectivity.
 
 ## Self-Learning System
 
@@ -269,28 +286,7 @@ Observational Memory is an async subsystem that compresses long conversations in
 - **Async Buffer** — queues observation/reflection tasks for background processing
 - **Token Counter** — tracks token usage to determine when compression should trigger
 
-Configure in `lango.json`:
-
-```json
-{
-  "knowledge": {
-    "enabled": true,
-    "maxLearnings": 100,
-    "maxKnowledge": 500,
-    "maxContextPerLayer": 10,
-    "autoApproveSkills": false,
-    "maxSkillsPerDay": 10
-  },
-  "observationalMemory": {
-    "enabled": true,
-    "messageTokenThreshold": 1000,
-    "observationTokenThreshold": 2000,
-    "maxMessageTokenBudget": 8000
-  }
-}
-```
-
-> **Note**: Observational Memory is currently configured via `lango.json` only. CLI/TUI commands for managing observations are planned for a future release.
+Configure knowledge and observational memory settings via `lango onboard` or `lango config` CLI. Use `lango memory list`, `lango memory status`, and `lango memory clear` to manage observation entries.
 
 ## Security
 
@@ -314,17 +310,7 @@ Lango supports two security modes:
    - Offloads cryptographic operations to a hardware-backed companion app or external signer.
    - Keys never leave the secure hardware.
 
-Configure mode in `lango.json`:
-
-```json
-{
-  "security": {
-    "signer": {
-      "provider": "local" // or "rpc"
-    }
-  }
-}
-```
+Configure security mode via `lango onboard` > Security menu, or use `lango config` CLI.
 
 ### AI Privacy Interceptor
 
@@ -362,23 +348,7 @@ Lango supports OIDC authentication for the gateway:
 lango login google
 ```
 
-Configure OIDC providers in `lango.json`:
-
-```json
-{
-  "auth": {
-    "providers": {
-      "google": {
-        "issuerUrl": "https://accounts.google.com",
-        "clientId": "${GOOGLE_CLIENT_ID}",
-        "clientSecret": "${GOOGLE_CLIENT_SECRET}",
-        "redirectUrl": "http://localhost:18789/auth/callback/google",
-        "scopes": ["openid", "email", "profile"]
-      }
-    }
-  }
-}
-```
+Configure OIDC providers via `lango onboard` or `lango config` CLI.
 
 #### Auth Endpoints
 
@@ -416,6 +386,19 @@ make docker-build
 # Run with docker-compose
 docker-compose up -d
 ```
+
+### Headless Configuration
+
+For Docker/CI environments where interactive setup is unavailable:
+
+1. Prepare a config JSON file locally.
+2. COPY it into the container.
+3. Import and auto-delete:
+   ```bash
+   lango config import config.json --profile production
+   ```
+   The source JSON file is automatically deleted after import for security.
+4. Set `LANGO_PASSPHRASE` environment variable for non-interactive passphrase entry.
 
 ## Development
 
