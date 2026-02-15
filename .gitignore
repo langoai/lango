@@ -32,6 +32,7 @@ go.work.sum
 .vscode/
 
 *.json
+passphrase.txt
 
 !lango.example.json
 /lango

@@ -18,16 +18,14 @@ fi
 CONFIG_SECRET="${LANGO_CONFIG_FILE:-/run/secrets/lango_config}"
 PROFILE_NAME="${LANGO_PROFILE:-default}"
 
-if [ -f "$CONFIG_SECRET" ]; then
-  if ! lango config list 2>/dev/null | grep -wq "$PROFILE_NAME"; then
-    echo "Importing config as profile '$PROFILE_NAME'..."
-    trap 'rm -f /tmp/lango-import.json' EXIT
-    cp "$CONFIG_SECRET" /tmp/lango-import.json
-    lango config import /tmp/lango-import.json --profile "$PROFILE_NAME"
-    rm -f /tmp/lango-import.json
-    trap - EXIT
-    echo "Config imported successfully."
-  fi
+if [ -f "$CONFIG_SECRET" ] && [ ! -f "$LANGO_DIR/lango.db" ]; then
+  echo "Importing config as profile '$PROFILE_NAME'..."
+  trap 'rm -f /tmp/lango-import.json' EXIT
+  cp "$CONFIG_SECRET" /tmp/lango-import.json
+  lango config import /tmp/lango-import.json --profile "$PROFILE_NAME"
+  rm -f /tmp/lango-import.json
+  trap - EXIT
+  echo "Config imported successfully."
 fi
 
 exec lango "$@"
