@@ -40,8 +40,9 @@ func (p *OpenAIProvider) Embed(ctx context.Context, texts []string) ([][]float32
 	}
 
 	resp, err := p.client.CreateEmbeddings(ctx, openai.EmbeddingRequest{
-		Input: texts,
-		Model: p.model,
+		Input:      texts,
+		Model:      p.model,
+		Dimensions: p.dimensions,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("openai embeddings: %w", err)

@@ -3,13 +3,17 @@
 ## Requirements
 
 ### REQ-EMB-001: Embedding Provider Interface
-The system SHALL provide an `EmbeddingProvider` interface supporting batch text-to-vector conversion with provider ID, embed, and dimensions methods.
+The system SHALL provide an `EmbeddingProvider` interface supporting batch text-to-vector conversion with provider ID, embed, and dimensions methods. Each provider SHALL pass the configured `dimensions` value to its underlying API call so that returned vectors match the configured dimension.
 
 **Scenarios:**
 - Given OpenAI API key and model, when Embed is called with texts, then float32 vectors of configured dimensions are returned
 - Given Google API key and model, when Embed is called, then vectors matching configured dimensions are returned
 - Given local Ollama endpoint, when Embed is called, then vectors from the local model are returned
 - Given an unknown provider type, when creating via registry, then an error is returned
+- Given GoogleProvider with dimensions=N, when Embed is called, then EmbedContent API includes OutputDimensionality=N
+- Given OpenAIProvider with dimensions=N, when Embed is called, then EmbeddingRequest includes Dimensions=N
+- Given LocalProvider with dimensions=N, when Embed is called, then EmbeddingRequest includes Dimensions=N
+- Given any provider returns vectors, then vector dimension matches SQLite vec table float[N] schema
 
 ### REQ-EMB-002: Vector Store
 The system SHALL provide a `VectorStore` interface supporting Upsert, Search (by collection + cosine similarity), and Delete operations.

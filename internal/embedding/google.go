@@ -52,7 +52,11 @@ func (p *GoogleProvider) Embed(ctx context.Context, texts []string) ([][]float32
 		contents[i] = genai.NewContentFromText(t, genai.RoleUser)
 	}
 
-	resp, err := p.client.Models.EmbedContent(ctx, p.model, contents, nil)
+	dim := int32(p.dimensions)
+	cfg := &genai.EmbedContentConfig{
+		OutputDimensionality: &dim,
+	}
+	resp, err := p.client.Models.EmbedContent(ctx, p.model, contents, cfg)
 	if err != nil {
 		return nil, fmt.Errorf("google embeddings: %w", err)
 	}
