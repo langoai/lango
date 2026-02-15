@@ -571,15 +571,28 @@ func TestSessionServiceAdapter_Get(t *testing.T) {
 	}
 }
 
-func TestSessionServiceAdapter_GetNotFound(t *testing.T) {
+func TestSessionServiceAdapter_GetAutoCreate(t *testing.T) {
 	store := newMockStore()
 	service := NewSessionServiceAdapter(store)
 
-	_, err := service.Get(context.Background(), &session.GetRequest{
-		SessionID: "nonexistent",
+	// Get on a nonexistent session should auto-create it
+	resp, err := service.Get(context.Background(), &session.GetRequest{
+		SessionID: "auto-created",
 	})
-	if err == nil {
-		t.Fatal("expected error for nonexistent session")
+	if err != nil {
+		t.Fatalf("expected auto-create, got error: %v", err)
+	}
+	if resp.Session.ID() != "auto-created" {
+		t.Fatalf("expected session ID 'auto-created', got %q", resp.Session.ID())
+	}
+
+	// Verify session now exists in store
+	sess, err := store.Get("auto-created")
+	if err != nil {
+		t.Fatalf("expected session in store, got error: %v", err)
+	}
+	if sess.Key != "auto-created" {
+		t.Fatalf("expected key 'auto-created', got %q", sess.Key)
 	}
 }
 

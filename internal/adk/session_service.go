@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"strings"
 	"time"
 
 	internal "github.com/langowarny/lango/internal/session"
@@ -50,10 +51,24 @@ func (s *SessionServiceAdapter) Create(ctx context.Context, req *session.CreateR
 func (s *SessionServiceAdapter) Get(ctx context.Context, req *session.GetRequest) (*session.GetResponse, error) {
 	sess, err := s.store.Get(req.SessionID)
 	if err != nil {
+		// Auto-create session if not found
+		if strings.Contains(err.Error(), "session not found") {
+			createReq := &session.CreateRequest{SessionID: req.SessionID}
+			resp, createErr := s.Create(ctx, createReq)
+			if createErr != nil {
+				return nil, fmt.Errorf("auto-create session %s: %w", req.SessionID, createErr)
+			}
+			return &session.GetResponse{Session: resp.Session}, nil
+		}
 		return nil, err
 	}
 	if sess == nil {
-		return nil, fmt.Errorf("session not found: %s", req.SessionID)
+		createReq := &session.CreateRequest{SessionID: req.SessionID}
+		resp, createErr := s.Create(ctx, createReq)
+		if createErr != nil {
+			return nil, fmt.Errorf("auto-create session %s: %w", req.SessionID, createErr)
+		}
+		return &session.GetResponse{Session: resp.Session}, nil
 	}
 	return &session.GetResponse{Session: NewSessionAdapter(sess, s.store)}, nil
 }
