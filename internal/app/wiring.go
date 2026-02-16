@@ -577,18 +577,14 @@ func initAgent(ctx context.Context, sv *supervisor.Supervisor, cfg *config.Confi
 		logger().Info("initializing multi-agent orchestration...")
 
 		orchCfg := orchestration.Config{
-			Tools:        tools,
-			Model:        llm,
-			SystemPrompt: systemPrompt,
-			AdaptTool:    adk.AdaptTool,
+			Tools:               tools,
+			Model:               llm,
+			SystemPrompt:        systemPrompt,
+			AdaptTool:           adk.AdaptTool,
+			MaxDelegationRounds: 3,
 		}
 
-		agentTree, err := orchestration.BuildAgentTree(orchCfg)
-		if err != nil {
-			return nil, fmt.Errorf("build agent tree: %w", err)
-		}
-
-		// Add remote A2A agents as additional sub-agents if configured.
+		// Load remote A2A agents BEFORE building the tree so they are included.
 		if cfg.A2A.Enabled && len(cfg.A2A.RemoteAgents) > 0 {
 			remoteAgents, err := a2a.LoadRemoteAgents(cfg.A2A.RemoteAgents, logger())
 			if err != nil {
@@ -597,6 +593,11 @@ func initAgent(ctx context.Context, sv *supervisor.Supervisor, cfg *config.Confi
 			if len(remoteAgents) > 0 {
 				orchCfg.RemoteAgents = remoteAgents
 			}
+		}
+
+		agentTree, err := orchestration.BuildAgentTree(orchCfg)
+		if err != nil {
+			return nil, fmt.Errorf("build agent tree: %w", err)
 		}
 
 		adkAgent, err := adk.NewAgentFromADK(agentTree, store)

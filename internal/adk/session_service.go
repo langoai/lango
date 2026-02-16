@@ -12,11 +12,12 @@ import (
 )
 
 type SessionServiceAdapter struct {
-	store internal.Store
+	store         internal.Store
+	rootAgentName string
 }
 
-func NewSessionServiceAdapter(store internal.Store) *SessionServiceAdapter {
-	return &SessionServiceAdapter{store: store}
+func NewSessionServiceAdapter(store internal.Store, rootAgentName string) *SessionServiceAdapter {
+	return &SessionServiceAdapter{store: store, rootAgentName: rootAgentName}
 }
 
 func (s *SessionServiceAdapter) Create(ctx context.Context, req *session.CreateRequest) (*session.CreateResponse, error) {
@@ -45,7 +46,7 @@ func (s *SessionServiceAdapter) Create(ctx context.Context, req *session.CreateR
 		return nil, err
 	}
 
-	return &session.CreateResponse{Session: NewSessionAdapter(sess, s.store)}, nil
+	return &session.CreateResponse{Session: NewSessionAdapter(sess, s.store, s.rootAgentName)}, nil
 }
 
 func (s *SessionServiceAdapter) Get(ctx context.Context, req *session.GetRequest) (*session.GetResponse, error) {
@@ -70,7 +71,7 @@ func (s *SessionServiceAdapter) Get(ctx context.Context, req *session.GetRequest
 		}
 		return &session.GetResponse{Session: resp.Session}, nil
 	}
-	return &session.GetResponse{Session: NewSessionAdapter(sess, s.store)}, nil
+	return &session.GetResponse{Session: NewSessionAdapter(sess, s.store, s.rootAgentName)}, nil
 }
 
 func (s *SessionServiceAdapter) List(ctx context.Context, req *session.ListRequest) (*session.ListResponse, error) {
@@ -136,11 +137,14 @@ func (s *SessionServiceAdapter) AppendEvent(ctx context.Context, sess session.Se
 	}
 
 	if msg.Role == "" {
-		msg.Role = "assistant" // Default? Or check author?
+		msg.Role = "assistant"
 		if evt.Author == "user" {
 			msg.Role = "user"
 		}
 	}
+
+	// Preserve the ADK author for multi-agent routing.
+	msg.Author = evt.Author
 
 	if err := s.store.AppendMessage(sess.ID(), msg); err != nil {
 		return err

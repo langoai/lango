@@ -33,8 +33,8 @@ func TestAppendEvent_UpdatesInMemoryHistory(t *testing.T) {
 	}
 	store.Create(sess)
 
-	adapter := NewSessionAdapter(sess, store)
-	svc := NewSessionServiceAdapter(store)
+	adapter := NewSessionAdapter(sess, store, "lango-agent")
+	svc := NewSessionServiceAdapter(store, "lango-agent")
 
 	evt := newTestEvent("user", "user", "hello")
 
@@ -70,8 +70,8 @@ func TestAppendEvent_MultipleEvents_AccumulateHistory(t *testing.T) {
 	}
 	store.Create(sess)
 
-	adapter := NewSessionAdapter(sess, store)
-	svc := NewSessionServiceAdapter(store)
+	adapter := NewSessionAdapter(sess, store, "lango-agent")
+	svc := NewSessionServiceAdapter(store, "lango-agent")
 
 	// Append user message
 	if err := svc.AppendEvent(context.Background(), adapter, newTestEvent("user", "user", "hello")); err != nil {
@@ -111,8 +111,8 @@ func TestAppendEvent_StateDelta_SkipsHistory(t *testing.T) {
 	}
 	store.Create(sess)
 
-	adapter := NewSessionAdapter(sess, store)
-	svc := NewSessionServiceAdapter(store)
+	adapter := NewSessionAdapter(sess, store, "lango-agent")
+	svc := NewSessionServiceAdapter(store, "lango-agent")
 
 	// Pure state-delta event (no LLMResponse content)
 	evt := &session.Event{
@@ -143,8 +143,8 @@ func TestAppendEvent_DBAndMemoryBothUpdated(t *testing.T) {
 	}
 	store.Create(sess)
 
-	adapter := NewSessionAdapter(sess, store)
-	svc := NewSessionServiceAdapter(store)
+	adapter := NewSessionAdapter(sess, store, "lango-agent")
+	svc := NewSessionServiceAdapter(store, "lango-agent")
 
 	evt := newTestEvent("user", "user", "hello")
 	if err := svc.AppendEvent(context.Background(), adapter, evt); err != nil {
@@ -163,6 +163,42 @@ func TestAppendEvent_DBAndMemoryBothUpdated(t *testing.T) {
 	// Verify in-memory history also has the message
 	if len(adapter.sess.History) != 1 {
 		t.Fatalf("expected 1 message in memory, got %d", len(adapter.sess.History))
+	}
+}
+
+func TestAppendEvent_PreservesAuthor(t *testing.T) {
+	store := newMockStore()
+	sess := &internal.Session{
+		Key:       "test-session",
+		Metadata:  make(map[string]string),
+		CreatedAt: time.Now(),
+		UpdatedAt: time.Now(),
+	}
+	store.Create(sess)
+
+	adapter := NewSessionAdapter(sess, store, "lango-orchestrator")
+	svc := NewSessionServiceAdapter(store, "lango-orchestrator")
+
+	evt := newTestEvent("lango-orchestrator", "model", "hello from orchestrator")
+	if err := svc.AppendEvent(context.Background(), adapter, evt); err != nil {
+		t.Fatalf("AppendEvent: %v", err)
+	}
+
+	// Verify author was preserved in in-memory history
+	if len(adapter.sess.History) != 1 {
+		t.Fatalf("expected 1 message, got %d", len(adapter.sess.History))
+	}
+	if adapter.sess.History[0].Author != "lango-orchestrator" {
+		t.Errorf("expected author 'lango-orchestrator', got %q", adapter.sess.History[0].Author)
+	}
+
+	// Verify author was preserved in DB store
+	dbMsgs := store.messages["test-session"]
+	if len(dbMsgs) != 1 {
+		t.Fatalf("expected 1 DB message, got %d", len(dbMsgs))
+	}
+	if dbMsgs[0].Author != "lango-orchestrator" {
+		t.Errorf("expected DB author 'lango-orchestrator', got %q", dbMsgs[0].Author)
 	}
 }
 

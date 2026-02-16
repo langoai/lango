@@ -183,6 +183,10 @@ func init() {
 	messageDescTimestamp := messageFields[2].Descriptor()
 	// message.DefaultTimestamp holds the default value on creation for the timestamp field.
 	message.DefaultTimestamp = messageDescTimestamp.Default.(func() time.Time)
+	// messageDescAuthor is the schema descriptor for author field.
+	messageDescAuthor := messageFields[4].Descriptor()
+	// message.DefaultAuthor holds the default value on creation for the author field.
+	message.DefaultAuthor = messageDescAuthor.Default.(string)
 	observationFields := schema.Observation{}.Fields()
 	_ = observationFields
 	// observationDescSessionKey is the schema descriptor for session_key field.

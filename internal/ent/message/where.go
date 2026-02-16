@@ -70,6 +70,11 @@ func Timestamp(v time.Time) predicate.Message {
 	return predicate.Message(sql.FieldEQ(FieldTimestamp, v))
 }
 
+// Author applies equality check predicate on the "author" field. It's identical to AuthorEQ.
+func Author(v string) predicate.Message {
+	return predicate.Message(sql.FieldEQ(FieldAuthor, v))
+}
+
 // RoleEQ applies the EQ predicate on the "role" field.
 func RoleEQ(v string) predicate.Message {
 	return predicate.Message(sql.FieldEQ(FieldRole, v))
@@ -248,6 +253,81 @@ func ToolCallsIsNil() predicate.Message {
 // ToolCallsNotNil applies the NotNil predicate on the "tool_calls" field.
 func ToolCallsNotNil() predicate.Message {
 	return predicate.Message(sql.FieldNotNull(FieldToolCalls))
+}
+
+// AuthorEQ applies the EQ predicate on the "author" field.
+func AuthorEQ(v string) predicate.Message {
+	return predicate.Message(sql.FieldEQ(FieldAuthor, v))
+}
+
+// AuthorNEQ applies the NEQ predicate on the "author" field.
+func AuthorNEQ(v string) predicate.Message {
+	return predicate.Message(sql.FieldNEQ(FieldAuthor, v))
+}
+
+// AuthorIn applies the In predicate on the "author" field.
+func AuthorIn(vs ...string) predicate.Message {
+	return predicate.Message(sql.FieldIn(FieldAuthor, vs...))
+}
+
+// AuthorNotIn applies the NotIn predicate on the "author" field.
+func AuthorNotIn(vs ...string) predicate.Message {
+	return predicate.Message(sql.FieldNotIn(FieldAuthor, vs...))
+}
+
+// AuthorGT applies the GT predicate on the "author" field.
+func AuthorGT(v string) predicate.Message {
+	return predicate.Message(sql.FieldGT(FieldAuthor, v))
+}
+
+// AuthorGTE applies the GTE predicate on the "author" field.
+func AuthorGTE(v string) predicate.Message {
+	return predicate.Message(sql.FieldGTE(FieldAuthor, v))
+}
+
+// AuthorLT applies the LT predicate on the "author" field.
+func AuthorLT(v string) predicate.Message {
+	return predicate.Message(sql.FieldLT(FieldAuthor, v))
+}
+
+// AuthorLTE applies the LTE predicate on the "author" field.
+func AuthorLTE(v string) predicate.Message {
+	return predicate.Message(sql.FieldLTE(FieldAuthor, v))
+}
+
+// AuthorContains applies the Contains predicate on the "author" field.
+func AuthorContains(v string) predicate.Message {
+	return predicate.Message(sql.FieldContains(FieldAuthor, v))
+}
+
+// AuthorHasPrefix applies the HasPrefix predicate on the "author" field.
+func AuthorHasPrefix(v string) predicate.Message {
+	return predicate.Message(sql.FieldHasPrefix(FieldAuthor, v))
+}
+
+// AuthorHasSuffix applies the HasSuffix predicate on the "author" field.
+func AuthorHasSuffix(v string) predicate.Message {
+	return predicate.Message(sql.FieldHasSuffix(FieldAuthor, v))
+}
+
+// AuthorIsNil applies the IsNil predicate on the "author" field.
+func AuthorIsNil() predicate.Message {
+	return predicate.Message(sql.FieldIsNull(FieldAuthor))
+}
+
+// AuthorNotNil applies the NotNil predicate on the "author" field.
+func AuthorNotNil() predicate.Message {
+	return predicate.Message(sql.FieldNotNull(FieldAuthor))
+}
+
+// AuthorEqualFold applies the EqualFold predicate on the "author" field.
+func AuthorEqualFold(v string) predicate.Message {
+	return predicate.Message(sql.FieldEqualFold(FieldAuthor, v))
+}
+
+// AuthorContainsFold applies the ContainsFold predicate on the "author" field.
+func AuthorContainsFold(v string) predicate.Message {
+	return predicate.Message(sql.FieldContainsFold(FieldAuthor, v))
 }
 
 // HasSession applies the HasEdge predicate on the "session" edge.

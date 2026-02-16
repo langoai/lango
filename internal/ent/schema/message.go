@@ -31,6 +31,9 @@ func (Message) Fields() []ent.Field {
 			Default(time.Now),
 		field.JSON("tool_calls", []ToolCall{}).
 			Optional(),
+		field.String("author").
+			Optional().
+			Default(""),
 	}
 }
 

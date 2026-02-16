@@ -22,6 +22,8 @@ const (
 	FieldTimestamp = "timestamp"
 	// FieldToolCalls holds the string denoting the tool_calls field in the database.
 	FieldToolCalls = "tool_calls"
+	// FieldAuthor holds the string denoting the author field in the database.
+	FieldAuthor = "author"
 	// EdgeSession holds the string denoting the session edge name in mutations.
 	EdgeSession = "session"
 	// Table holds the table name of the message in the database.
@@ -42,6 +44,7 @@ var Columns = []string{
 	FieldContent,
 	FieldTimestamp,
 	FieldToolCalls,
+	FieldAuthor,
 }
 
 // ForeignKeys holds the SQL foreign-keys that are owned by the "messages"
@@ -70,6 +73,8 @@ var (
 	RoleValidator func(string) error
 	// DefaultTimestamp holds the default value on creation for the "timestamp" field.
 	DefaultTimestamp func() time.Time
+	// DefaultAuthor holds the default value on creation for the "author" field.
+	DefaultAuthor string
 )
 
 // OrderOption defines the ordering options for the Message queries.
@@ -93,6 +98,11 @@ func ByContent(opts ...sql.OrderTermOption) OrderOption {
 // ByTimestamp orders the results by the timestamp field.
 func ByTimestamp(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldTimestamp, opts...).ToFunc()
+}
+
+// ByAuthor orders the results by the author field.
+func ByAuthor(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldAuthor, opts...).ToFunc()
 }
 
 // BySessionField orders the results by session field.

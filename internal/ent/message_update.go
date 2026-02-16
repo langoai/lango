@@ -91,6 +91,26 @@ func (_u *MessageUpdate) ClearToolCalls() *MessageUpdate {
 	return _u
 }
 
+// SetAuthor sets the "author" field.
+func (_u *MessageUpdate) SetAuthor(v string) *MessageUpdate {
+	_u.mutation.SetAuthor(v)
+	return _u
+}
+
+// SetNillableAuthor sets the "author" field if the given value is not nil.
+func (_u *MessageUpdate) SetNillableAuthor(v *string) *MessageUpdate {
+	if v != nil {
+		_u.SetAuthor(*v)
+	}
+	return _u
+}
+
+// ClearAuthor clears the value of the "author" field.
+func (_u *MessageUpdate) ClearAuthor() *MessageUpdate {
+	_u.mutation.ClearAuthor()
+	return _u
+}
+
 // SetSessionID sets the "session" edge to the Session entity by ID.
 func (_u *MessageUpdate) SetSessionID(id int) *MessageUpdate {
 	_u.mutation.SetSessionID(id)
@@ -189,6 +209,12 @@ func (_u *MessageUpdate) sqlSave(ctx context.Context) (_node int, err error) {
 	}
 	if _u.mutation.ToolCallsCleared() {
 		_spec.ClearField(message.FieldToolCalls, field.TypeJSON)
+	}
+	if value, ok := _u.mutation.Author(); ok {
+		_spec.SetField(message.FieldAuthor, field.TypeString, value)
+	}
+	if _u.mutation.AuthorCleared() {
+		_spec.ClearField(message.FieldAuthor, field.TypeString)
 	}
 	if _u.mutation.SessionCleared() {
 		edge := &sqlgraph.EdgeSpec{
@@ -296,6 +322,26 @@ func (_u *MessageUpdateOne) AppendToolCalls(v []schema.ToolCall) *MessageUpdateO
 // ClearToolCalls clears the value of the "tool_calls" field.
 func (_u *MessageUpdateOne) ClearToolCalls() *MessageUpdateOne {
 	_u.mutation.ClearToolCalls()
+	return _u
+}
+
+// SetAuthor sets the "author" field.
+func (_u *MessageUpdateOne) SetAuthor(v string) *MessageUpdateOne {
+	_u.mutation.SetAuthor(v)
+	return _u
+}
+
+// SetNillableAuthor sets the "author" field if the given value is not nil.
+func (_u *MessageUpdateOne) SetNillableAuthor(v *string) *MessageUpdateOne {
+	if v != nil {
+		_u.SetAuthor(*v)
+	}
+	return _u
+}
+
+// ClearAuthor clears the value of the "author" field.
+func (_u *MessageUpdateOne) ClearAuthor() *MessageUpdateOne {
+	_u.mutation.ClearAuthor()
 	return _u
 }
 
@@ -427,6 +473,12 @@ func (_u *MessageUpdateOne) sqlSave(ctx context.Context) (_node *Message, err er
 	}
 	if _u.mutation.ToolCallsCleared() {
 		_spec.ClearField(message.FieldToolCalls, field.TypeJSON)
+	}
+	if value, ok := _u.mutation.Author(); ok {
+		_spec.SetField(message.FieldAuthor, field.TypeString, value)
+	}
+	if _u.mutation.AuthorCleared() {
+		_spec.ClearField(message.FieldAuthor, field.TypeString)
 	}
 	if _u.mutation.SessionCleared() {
 		edge := &sqlgraph.EdgeSpec{

@@ -196,15 +196,17 @@ func (s *EntStore) Create(session *Session) error {
 			}
 		}
 
-		_, err := s.client.Message.Create().
+		builder := s.client.Message.Create().
 			SetSession(created).
 			SetRole(msg.Role).
 			SetContent(msg.Content).
 			SetTimestamp(msg.Timestamp).
-			SetToolCalls(toolCalls).
-			Save(ctx)
-		if err != nil {
-			return fmt.Errorf("failed to create message: %w", err)
+			SetToolCalls(toolCalls)
+		if msg.Author != "" {
+			builder.SetAuthor(msg.Author)
+		}
+		if _, err := builder.Save(ctx); err != nil {
+			return fmt.Errorf("create message: %w", err)
 		}
 	}
 
@@ -355,13 +357,16 @@ func (s *EntStore) AppendMessage(key string, msg Message) error {
 		timestamp = time.Now()
 	}
 
-	_, err = s.client.Message.Create().
+	msgBuilder := s.client.Message.Create().
 		SetSession(entSession).
 		SetRole(msg.Role).
 		SetContent(msg.Content).
 		SetTimestamp(timestamp).
-		SetToolCalls(toolCalls).
-		Save(ctx)
+		SetToolCalls(toolCalls)
+	if msg.Author != "" {
+		msgBuilder.SetAuthor(msg.Author)
+	}
+	_, err = msgBuilder.Save(ctx)
 
 	if err != nil {
 		return fmt.Errorf("failed to create message: %w", err)
@@ -436,6 +441,7 @@ func (s *EntStore) entToSession(e *ent.Session) *Session {
 			Content:   m.Content,
 			Timestamp: m.Timestamp,
 			ToolCalls: toolCalls,
+			Author:    m.Author,
 		})
 	}
 

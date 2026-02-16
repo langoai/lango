@@ -4683,6 +4683,7 @@ type MessageMutation struct {
 	timestamp        *time.Time
 	tool_calls       *[]schema.ToolCall
 	appendtool_calls []schema.ToolCall
+	author           *string
 	clearedFields    map[string]struct{}
 	session          *int
 	clearedsession   bool
@@ -4962,6 +4963,55 @@ func (m *MessageMutation) ResetToolCalls() {
 	delete(m.clearedFields, message.FieldToolCalls)
 }
 
+// SetAuthor sets the "author" field.
+func (m *MessageMutation) SetAuthor(s string) {
+	m.author = &s
+}
+
+// Author returns the value of the "author" field in the mutation.
+func (m *MessageMutation) Author() (r string, exists bool) {
+	v := m.author
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldAuthor returns the old "author" field's value of the Message entity.
+// If the Message object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *MessageMutation) OldAuthor(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldAuthor is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldAuthor requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldAuthor: %w", err)
+	}
+	return oldValue.Author, nil
+}
+
+// ClearAuthor clears the value of the "author" field.
+func (m *MessageMutation) ClearAuthor() {
+	m.author = nil
+	m.clearedFields[message.FieldAuthor] = struct{}{}
+}
+
+// AuthorCleared returns if the "author" field was cleared in this mutation.
+func (m *MessageMutation) AuthorCleared() bool {
+	_, ok := m.clearedFields[message.FieldAuthor]
+	return ok
+}
+
+// ResetAuthor resets all changes to the "author" field.
+func (m *MessageMutation) ResetAuthor() {
+	m.author = nil
+	delete(m.clearedFields, message.FieldAuthor)
+}
+
 // SetSessionID sets the "session" edge to the Session entity by id.
 func (m *MessageMutation) SetSessionID(id int) {
 	m.session = &id
@@ -5035,7 +5085,7 @@ func (m *MessageMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *MessageMutation) Fields() []string {
-	fields := make([]string, 0, 4)
+	fields := make([]string, 0, 5)
 	if m.role != nil {
 		fields = append(fields, message.FieldRole)
 	}
@@ -5047,6 +5097,9 @@ func (m *MessageMutation) Fields() []string {
 	}
 	if m.tool_calls != nil {
 		fields = append(fields, message.FieldToolCalls)
+	}
+	if m.author != nil {
+		fields = append(fields, message.FieldAuthor)
 	}
 	return fields
 }
@@ -5064,6 +5117,8 @@ func (m *MessageMutation) Field(name string) (ent.Value, bool) {
 		return m.Timestamp()
 	case message.FieldToolCalls:
 		return m.ToolCalls()
+	case message.FieldAuthor:
+		return m.Author()
 	}
 	return nil, false
 }
@@ -5081,6 +5136,8 @@ func (m *MessageMutation) OldField(ctx context.Context, name string) (ent.Value,
 		return m.OldTimestamp(ctx)
 	case message.FieldToolCalls:
 		return m.OldToolCalls(ctx)
+	case message.FieldAuthor:
+		return m.OldAuthor(ctx)
 	}
 	return nil, fmt.Errorf("unknown Message field %s", name)
 }
@@ -5118,6 +5175,13 @@ func (m *MessageMutation) SetField(name string, value ent.Value) error {
 		}
 		m.SetToolCalls(v)
 		return nil
+	case message.FieldAuthor:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetAuthor(v)
+		return nil
 	}
 	return fmt.Errorf("unknown Message field %s", name)
 }
@@ -5151,6 +5215,9 @@ func (m *MessageMutation) ClearedFields() []string {
 	if m.FieldCleared(message.FieldToolCalls) {
 		fields = append(fields, message.FieldToolCalls)
 	}
+	if m.FieldCleared(message.FieldAuthor) {
+		fields = append(fields, message.FieldAuthor)
+	}
 	return fields
 }
 
@@ -5167,6 +5234,9 @@ func (m *MessageMutation) ClearField(name string) error {
 	switch name {
 	case message.FieldToolCalls:
 		m.ClearToolCalls()
+		return nil
+	case message.FieldAuthor:
+		m.ClearAuthor()
 		return nil
 	}
 	return fmt.Errorf("unknown Message nullable field %s", name)
@@ -5187,6 +5257,9 @@ func (m *MessageMutation) ResetField(name string) error {
 		return nil
 	case message.FieldToolCalls:
 		m.ResetToolCalls()
+		return nil
+	case message.FieldAuthor:
+		m.ResetAuthor()
 		return nil
 	}
 	return fmt.Errorf("unknown Message field %s", name)

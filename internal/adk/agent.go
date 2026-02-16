@@ -40,7 +40,7 @@ func NewAgent(ctx context.Context, tools []tool.Tool, mod model.LLM, systemPromp
 	}
 
 	// Create Session Service
-	sessService := NewSessionServiceAdapter(store)
+	sessService := NewSessionServiceAdapter(store, "lango-agent")
 
 	// Create Runner
 	runnerCfg := runner.Config{
@@ -63,7 +63,7 @@ func NewAgent(ctx context.Context, tools []tool.Tool, mod model.LLM, systemPromp
 // NewAgentFromADK creates a Lango Agent wrapping a pre-built ADK agent.
 // Used for multi-agent orchestration where the agent tree is built externally.
 func NewAgentFromADK(adkAgent adk_agent.Agent, store internal.Store) (*Agent, error) {
-	sessService := NewSessionServiceAdapter(store)
+	sessService := NewSessionServiceAdapter(store, adkAgent.Name())
 
 	runnerCfg := runner.Config{
 		AppName:        "lango",

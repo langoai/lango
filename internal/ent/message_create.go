@@ -54,6 +54,20 @@ func (_c *MessageCreate) SetToolCalls(v []schema.ToolCall) *MessageCreate {
 	return _c
 }
 
+// SetAuthor sets the "author" field.
+func (_c *MessageCreate) SetAuthor(v string) *MessageCreate {
+	_c.mutation.SetAuthor(v)
+	return _c
+}
+
+// SetNillableAuthor sets the "author" field if the given value is not nil.
+func (_c *MessageCreate) SetNillableAuthor(v *string) *MessageCreate {
+	if v != nil {
+		_c.SetAuthor(*v)
+	}
+	return _c
+}
+
 // SetSessionID sets the "session" edge to the Session entity by ID.
 func (_c *MessageCreate) SetSessionID(id int) *MessageCreate {
 	_c.mutation.SetSessionID(id)
@@ -111,6 +125,10 @@ func (_c *MessageCreate) defaults() {
 	if _, ok := _c.mutation.Timestamp(); !ok {
 		v := message.DefaultTimestamp()
 		_c.mutation.SetTimestamp(v)
+	}
+	if _, ok := _c.mutation.Author(); !ok {
+		v := message.DefaultAuthor
+		_c.mutation.SetAuthor(v)
 	}
 }
 
@@ -171,6 +189,10 @@ func (_c *MessageCreate) createSpec() (*Message, *sqlgraph.CreateSpec) {
 	if value, ok := _c.mutation.ToolCalls(); ok {
 		_spec.SetField(message.FieldToolCalls, field.TypeJSON, value)
 		_node.ToolCalls = value
+	}
+	if value, ok := _c.mutation.Author(); ok {
+		_spec.SetField(message.FieldAuthor, field.TypeString, value)
+		_node.Author = value
 	}
 	if nodes := _c.mutation.SessionIDs(); len(nodes) > 0 {
 		edge := &sqlgraph.EdgeSpec{

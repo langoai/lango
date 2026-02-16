@@ -16,12 +16,13 @@ import (
 
 // SessionAdapter adapts internal.Session to adk.Session
 type SessionAdapter struct {
-	sess  *internal.Session
-	store internal.Store
+	sess          *internal.Session
+	store         internal.Store
+	rootAgentName string
 }
 
-func NewSessionAdapter(s *internal.Session, store internal.Store) *SessionAdapter {
-	return &SessionAdapter{sess: s, store: store}
+func NewSessionAdapter(s *internal.Session, store internal.Store, rootAgentName string) *SessionAdapter {
+	return &SessionAdapter{sess: s, store: store, rootAgentName: rootAgentName}
 }
 
 func (s *SessionAdapter) ID() string      { return s.sess.Key }
@@ -33,14 +34,15 @@ func (s *SessionAdapter) State() session.State {
 }
 
 func (s *SessionAdapter) Events() session.Events {
-	return &EventsAdapter{history: s.sess.History}
+	return &EventsAdapter{history: s.sess.History, rootAgentName: s.rootAgentName}
 }
 
 // EventsWithTokenBudget returns an EventsAdapter that uses token-budget truncation.
 func (s *SessionAdapter) EventsWithTokenBudget(budget int) session.Events {
 	return &EventsAdapter{
-		history:     s.sess.History,
-		tokenBudget: budget,
+		history:       s.sess.History,
+		tokenBudget:   budget,
+		rootAgentName: s.rootAgentName,
 	}
 }
 
@@ -104,8 +106,9 @@ const DefaultTokenBudget = 32000
 // EventsAdapter adapts internal history to adk events.
 // Uses token-budget truncation: includes messages from most recent until the budget is exhausted.
 type EventsAdapter struct {
-	history     []internal.Message
-	tokenBudget int
+	history       []internal.Message
+	tokenBudget   int
+	rootAgentName string
 }
 
 // truncatedHistory returns the messages to include based on token budget.
@@ -144,14 +147,23 @@ func (e *EventsAdapter) All() iter.Seq[*session.Event] {
 		msgs := e.truncatedHistory()
 
 		for _, msg := range msgs {
-			// Map Author
-			author := "model" // Default for assistant
-			if msg.Role == "user" {
-				author = "user"
-			} else if msg.Role == "assistant" {
-				author = "lango-agent" // ADK agent name
-			} else if msg.Role == "function" || msg.Role == "tool" {
-				author = "tool"
+			// Map Author: use stored author if available, otherwise derive from role.
+			author := msg.Author
+			if author == "" {
+				switch msg.Role {
+				case "user":
+					author = "user"
+				case "assistant":
+					if e.rootAgentName != "" {
+						author = e.rootAgentName
+					} else {
+						author = "lango-agent"
+					}
+				case "function", "tool":
+					author = "tool"
+				default:
+					author = "model"
+				}
 			}
 
 			var parts []*genai.Part

@@ -61,7 +61,7 @@ func TestStateAdapter_SetGet(t *testing.T) {
 	store := newMockStore()
 	store.Create(sess)
 
-	adapter := NewSessionAdapter(sess, store)
+	adapter := NewSessionAdapter(sess, store, "lango-agent")
 	state := adapter.State()
 
 	// Test Set string
@@ -120,7 +120,7 @@ func TestStateAdapter_GetNonExistent(t *testing.T) {
 	store := newMockStore()
 	store.Create(sess)
 
-	adapter := NewSessionAdapter(sess, store)
+	adapter := NewSessionAdapter(sess, store, "lango-agent")
 	state := adapter.State()
 
 	_, err := state.Get("nonexistent")
@@ -137,7 +137,7 @@ func TestStateAdapter_SetNilMetadata(t *testing.T) {
 	store := newMockStore()
 	store.Create(sess)
 
-	adapter := NewSessionAdapter(sess, store)
+	adapter := NewSessionAdapter(sess, store, "lango-agent")
 	state := adapter.State()
 
 	// Set should initialize metadata if nil
@@ -166,7 +166,7 @@ func TestStateAdapter_All(t *testing.T) {
 	store := newMockStore()
 	store.Create(sess)
 
-	adapter := NewSessionAdapter(sess, store)
+	adapter := NewSessionAdapter(sess, store, "lango-agent")
 	state := adapter.State()
 
 	count := 0
@@ -202,7 +202,7 @@ func TestSessionAdapter_BasicFields(t *testing.T) {
 		UpdatedAt: now,
 	}
 	store := newMockStore()
-	adapter := NewSessionAdapter(sess, store)
+	adapter := NewSessionAdapter(sess, store, "lango-agent")
 
 	if adapter.ID() != "sess-123" {
 		t.Errorf("expected ID 'sess-123', got %q", adapter.ID())
@@ -229,7 +229,7 @@ func TestEventsAdapter(t *testing.T) {
 		},
 	}
 
-	adapter := NewSessionAdapter(sess, &mockStore{})
+	adapter := NewSessionAdapter(sess, &mockStore{}, "lango-agent")
 	events := adapter.Events()
 
 	count := 0
@@ -256,7 +256,7 @@ func TestEventsAdapter_AuthorMapping(t *testing.T) {
 		},
 	}
 
-	adapter := NewSessionAdapter(sess, &mockStore{})
+	adapter := NewSessionAdapter(sess, &mockStore{}, "lango-agent")
 	events := adapter.Events()
 
 	expectedAuthors := []string{"user", "lango-agent", "tool", "tool"}
@@ -269,6 +269,34 @@ func TestEventsAdapter_AuthorMapping(t *testing.T) {
 	}
 	if i != 4 {
 		t.Errorf("expected 4 events, got %d", i)
+	}
+}
+
+func TestEventsAdapter_AuthorMapping_MultiAgent(t *testing.T) {
+	now := time.Now()
+	sess := &internal.Session{
+		History: []internal.Message{
+			{Role: "user", Content: "hello", Timestamp: now},
+			// Stored author from a previous multi-agent event.
+			{Role: "assistant", Content: "hi", Author: "lango-orchestrator", Timestamp: now.Add(time.Second)},
+			// No stored author — should fall back to rootAgentName.
+			{Role: "assistant", Content: "ok", Timestamp: now.Add(2 * time.Second)},
+		},
+	}
+
+	adapter := NewSessionAdapter(sess, &mockStore{}, "lango-orchestrator")
+	events := adapter.Events()
+
+	expectedAuthors := []string{"user", "lango-orchestrator", "lango-orchestrator"}
+	i := 0
+	for evt := range events.All() {
+		if i < len(expectedAuthors) && evt.Author != expectedAuthors[i] {
+			t.Errorf("event %d: expected author %q, got %q", i, expectedAuthors[i], evt.Author)
+		}
+		i++
+	}
+	if i != 3 {
+		t.Errorf("expected 3 events, got %d", i)
 	}
 }
 
@@ -285,7 +313,7 @@ func TestEventsAdapter_Truncation(t *testing.T) {
 	}
 
 	sess := &internal.Session{History: msgs}
-	adapter := NewSessionAdapter(sess, &mockStore{})
+	adapter := NewSessionAdapter(sess, &mockStore{}, "lango-agent")
 	events := adapter.Events()
 
 	// All 150 small messages should fit within the default token budget.
@@ -328,7 +356,7 @@ func TestEventsAdapter_WithToolCalls(t *testing.T) {
 		},
 	}
 
-	adapter := NewSessionAdapter(sess, &mockStore{})
+	adapter := NewSessionAdapter(sess, &mockStore{}, "lango-agent")
 	events := adapter.Events()
 
 	count := 0
@@ -360,7 +388,7 @@ func TestEventsAdapter_WithToolCalls(t *testing.T) {
 
 func TestEventsAdapter_EmptyHistory(t *testing.T) {
 	sess := &internal.Session{}
-	adapter := NewSessionAdapter(sess, &mockStore{})
+	adapter := NewSessionAdapter(sess, &mockStore{}, "lango-agent")
 	events := adapter.Events()
 
 	if events.Len() != 0 {
@@ -386,7 +414,7 @@ func TestEventsAdapter_At(t *testing.T) {
 		},
 	}
 
-	adapter := NewSessionAdapter(sess, &mockStore{})
+	adapter := NewSessionAdapter(sess, &mockStore{}, "lango-agent")
 	events := adapter.Events()
 
 	evt0 := events.At(0)
@@ -536,7 +564,7 @@ func TestEventsAdapter_DefaultTokenBudget(t *testing.T) {
 
 func TestSessionServiceAdapter_Create(t *testing.T) {
 	store := newMockStore()
-	service := NewSessionServiceAdapter(store)
+	service := NewSessionServiceAdapter(store, "lango-agent")
 
 	resp, err := service.Create(context.Background(), &session.CreateRequest{
 		SessionID: "new-session",
@@ -568,7 +596,7 @@ func TestSessionServiceAdapter_Get(t *testing.T) {
 		Metadata: map[string]string{"foo": "bar"},
 	})
 
-	service := NewSessionServiceAdapter(store)
+	service := NewSessionServiceAdapter(store, "lango-agent")
 
 	resp, err := service.Get(context.Background(), &session.GetRequest{
 		SessionID: "existing",
@@ -583,7 +611,7 @@ func TestSessionServiceAdapter_Get(t *testing.T) {
 
 func TestSessionServiceAdapter_GetAutoCreate(t *testing.T) {
 	store := newMockStore()
-	service := NewSessionServiceAdapter(store)
+	service := NewSessionServiceAdapter(store, "lango-agent")
 
 	// Get on a nonexistent session should auto-create it
 	resp, err := service.Get(context.Background(), &session.GetRequest{
@@ -610,7 +638,7 @@ func TestSessionServiceAdapter_Delete(t *testing.T) {
 	store := newMockStore()
 	store.Create(&internal.Session{Key: "to-delete"})
 
-	service := NewSessionServiceAdapter(store)
+	service := NewSessionServiceAdapter(store, "lango-agent")
 
 	err := service.Delete(context.Background(), &session.DeleteRequest{
 		SessionID: "to-delete",
@@ -628,7 +656,7 @@ func TestSessionServiceAdapter_Delete(t *testing.T) {
 
 func TestSessionServiceAdapter_List(t *testing.T) {
 	store := newMockStore()
-	service := NewSessionServiceAdapter(store)
+	service := NewSessionServiceAdapter(store, "lango-agent")
 
 	resp, err := service.List(context.Background(), &session.ListRequest{})
 	if err != nil {
@@ -648,8 +676,8 @@ func TestSessionServiceAdapter_AppendEvent_UserMessage(t *testing.T) {
 	}
 	store.Create(sess)
 
-	service := NewSessionServiceAdapter(store)
-	adapter := NewSessionAdapter(sess, store)
+	service := NewSessionServiceAdapter(store, "lango-agent")
+	adapter := NewSessionAdapter(sess, store, "lango-agent")
 
 	evt := &session.Event{
 		Author:    "user",

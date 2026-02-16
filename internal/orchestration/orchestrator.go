@@ -2,6 +2,7 @@ package orchestration
 
 import (
 	"fmt"
+	"strings"
 
 	adk_agent "google.golang.org/adk/agent"
 	"google.golang.org/adk/agent/llmagent"
@@ -29,10 +30,14 @@ type Config struct {
 	AdaptTool ToolAdapter
 	// RemoteAgents are external A2A agents to include as sub-agents.
 	RemoteAgents []adk_agent.Agent
+	// MaxDelegationRounds limits the number of orchestrator→sub-agent
+	// delegation rounds per user turn. Zero means use default (3).
+	MaxDelegationRounds int
 }
 
 // BuildAgentTree creates a hierarchical agent tree with an orchestrator root
-// and specialized sub-agents (executor, researcher, planner, memory-manager).
+// and specialized sub-agents. Sub-agents are only created when they have
+// tools assigned (except Planner which is LLM-only and always included).
 func BuildAgentTree(cfg Config) (adk_agent.Agent, error) {
 	if cfg.AdaptTool == nil {
 		return nil, fmt.Errorf("build agent tree: AdaptTool is required")
@@ -40,81 +45,129 @@ func BuildAgentTree(cfg Config) (adk_agent.Agent, error) {
 
 	rs := PartitionTools(cfg.Tools)
 
-	executorTools, err := adaptTools(cfg.AdaptTool, rs.Executor)
-	if err != nil {
-		return nil, fmt.Errorf("adapt executor tools: %w", err)
+	var subAgents []adk_agent.Agent
+	var agentDescriptions []string
+
+	// Executor: only if tools are assigned.
+	if len(rs.Executor) > 0 {
+		executorTools, err := adaptTools(cfg.AdaptTool, rs.Executor)
+		if err != nil {
+			return nil, fmt.Errorf("adapt executor tools: %w", err)
+		}
+		a, err := llmagent.New(llmagent.Config{
+			Name:        "executor",
+			Description: "Executes tools including shell commands, file operations, browser automation, and cryptographic operations. Delegate to this agent when the user needs to perform actions.",
+			Model:       cfg.Model,
+			Tools:       executorTools,
+			Instruction: "You are the Executor agent. Execute tool calls precisely as requested. Report results accurately. If a tool fails, report the error without retrying unless explicitly asked.",
+		})
+		if err != nil {
+			return nil, fmt.Errorf("create executor agent: %w", err)
+		}
+		subAgents = append(subAgents, a)
+		agentDescriptions = append(agentDescriptions, "- executor: for running tools and performing actions")
 	}
 
-	researcherTools, err := adaptTools(cfg.AdaptTool, rs.Researcher)
-	if err != nil {
-		return nil, fmt.Errorf("adapt researcher tools: %w", err)
+	// Researcher: only if tools are assigned.
+	if len(rs.Researcher) > 0 {
+		researcherTools, err := adaptTools(cfg.AdaptTool, rs.Researcher)
+		if err != nil {
+			return nil, fmt.Errorf("adapt researcher tools: %w", err)
+		}
+		a, err := llmagent.New(llmagent.Config{
+			Name:        "researcher",
+			Description: "Searches knowledge bases, performs RAG retrieval, and traverses the knowledge graph. Delegate to this agent for information lookup and research tasks.",
+			Model:       cfg.Model,
+			Tools:       researcherTools,
+			Instruction: "You are the Researcher agent. Search and retrieve relevant information from knowledge bases, semantic search, and the knowledge graph. Provide comprehensive, well-organized results.",
+		})
+		if err != nil {
+			return nil, fmt.Errorf("create researcher agent: %w", err)
+		}
+		subAgents = append(subAgents, a)
+		agentDescriptions = append(agentDescriptions, "- researcher: for searching knowledge and information retrieval")
 	}
 
-	memoryTools, err := adaptTools(cfg.AdaptTool, rs.MemoryManager)
-	if err != nil {
-		return nil, fmt.Errorf("adapt memory tools: %w", err)
+	// Planner: always included (LLM-only reasoning agent).
+	{
+		a, err := llmagent.New(llmagent.Config{
+			Name:        "planner",
+			Description: "Decomposes complex tasks into steps and designs execution plans. Delegate to this agent when the user needs task planning or strategy.",
+			Model:       cfg.Model,
+			Instruction: "You are the Planner agent. Break complex tasks into clear, actionable steps. Consider dependencies between steps. Output structured plans.",
+		})
+		if err != nil {
+			return nil, fmt.Errorf("create planner agent: %w", err)
+		}
+		subAgents = append(subAgents, a)
+		agentDescriptions = append(agentDescriptions, "- planner: for task decomposition and planning")
 	}
 
-	executorAgent, err := llmagent.New(llmagent.Config{
-		Name:        "executor",
-		Description: "Executes tools including shell commands, file operations, browser automation, and cryptographic operations. Delegate to this agent when the user needs to perform actions.",
-		Model:       cfg.Model,
-		Tools:       executorTools,
-		Instruction: "You are the Executor agent. Execute tool calls precisely as requested. Report results accurately. If a tool fails, report the error without retrying unless explicitly asked.",
-	})
-	if err != nil {
-		return nil, fmt.Errorf("create executor agent: %w", err)
+	// Memory Manager: only if memory tools are assigned.
+	if len(rs.MemoryManager) > 0 {
+		memoryTools, err := adaptTools(cfg.AdaptTool, rs.MemoryManager)
+		if err != nil {
+			return nil, fmt.Errorf("adapt memory tools: %w", err)
+		}
+		a, err := llmagent.New(llmagent.Config{
+			Name:        "memory-manager",
+			Description: "Manages conversational memory including observations, reflections, and the memory graph. Delegate to this agent for memory-related operations.",
+			Model:       cfg.Model,
+			Tools:       memoryTools,
+			Instruction: "You are the Memory Manager agent. Manage observations, reflections, and the memory graph. Organize and retrieve relevant past interactions.",
+		})
+		if err != nil {
+			return nil, fmt.Errorf("create memory agent: %w", err)
+		}
+		subAgents = append(subAgents, a)
+		agentDescriptions = append(agentDescriptions, "- memory-manager: for memory operations")
 	}
-
-	researcherAgent, err := llmagent.New(llmagent.Config{
-		Name:        "researcher",
-		Description: "Searches knowledge bases, performs RAG retrieval, and traverses the knowledge graph. Delegate to this agent for information lookup and research tasks.",
-		Model:       cfg.Model,
-		Tools:       researcherTools,
-		Instruction: "You are the Researcher agent. Search and retrieve relevant information from knowledge bases, semantic search, and the knowledge graph. Provide comprehensive, well-organized results.",
-	})
-	if err != nil {
-		return nil, fmt.Errorf("create researcher agent: %w", err)
-	}
-
-	plannerAgent, err := llmagent.New(llmagent.Config{
-		Name:        "planner",
-		Description: "Decomposes complex tasks into steps and designs execution plans. Delegate to this agent when the user needs task planning or strategy.",
-		Model:       cfg.Model,
-		Instruction: "You are the Planner agent. Break complex tasks into clear, actionable steps. Consider dependencies between steps. Output structured plans.",
-	})
-	if err != nil {
-		return nil, fmt.Errorf("create planner agent: %w", err)
-	}
-
-	memoryAgent, err := llmagent.New(llmagent.Config{
-		Name:        "memory-manager",
-		Description: "Manages conversational memory including observations, reflections, and the memory graph. Delegate to this agent for memory-related operations.",
-		Model:       cfg.Model,
-		Tools:       memoryTools,
-		Instruction: "You are the Memory Manager agent. Manage observations, reflections, and the memory graph. Organize and retrieve relevant past interactions.",
-	})
-	if err != nil {
-		return nil, fmt.Errorf("create memory agent: %w", err)
-	}
-
-	subAgents := []adk_agent.Agent{executorAgent, researcherAgent, plannerAgent, memoryAgent}
 
 	// Append remote A2A agents if configured.
 	subAgents = append(subAgents, cfg.RemoteAgents...)
-
-	orchestratorInstruction := cfg.SystemPrompt + "\n\nYou are the orchestrator. Route tasks to the most appropriate sub-agent based on the task type. You have these sub-agents:\n- executor: for running tools and performing actions\n- researcher: for searching knowledge and information retrieval\n- planner: for task decomposition and planning\n- memory-manager: for memory operations"
-
-	// Mention remote agents in instruction.
 	for _, ra := range cfg.RemoteAgents {
-		orchestratorInstruction += fmt.Sprintf("\n- %s: %s (remote A2A agent)", ra.Name(), ra.Description())
+		agentDescriptions = append(agentDescriptions,
+			fmt.Sprintf("- %s: %s (remote A2A agent)", ra.Name(), ra.Description()))
 	}
-	orchestratorInstruction += "\n\nDelegate tasks appropriately and synthesize results for the user."
+
+	// Adapt all tools for the orchestrator so it can handle simple tasks
+	// directly without delegating to sub-agents.
+	allAdkTools, err := adaptTools(cfg.AdaptTool, cfg.Tools)
+	if err != nil {
+		return nil, fmt.Errorf("adapt orchestrator tools: %w", err)
+	}
+
+	// Build orchestrator instruction with direct tool usage guidance
+	// and max delegation rounds guardrail.
+	maxRounds := cfg.MaxDelegationRounds
+	if maxRounds <= 0 {
+		maxRounds = 3
+	}
+
+	orchestratorInstruction := cfg.SystemPrompt + fmt.Sprintf(`
+
+You are the orchestrator. You have tools available for direct use AND specialized sub-agents for complex tasks.
+
+## Direct Tool Usage
+For simple, single-step tasks, call the appropriate tool directly. Do NOT delegate single-tool operations to a sub-agent.
+
+## Sub-Agent Delegation
+For complex, multi-step tasks requiring specialized reasoning, delegate to a sub-agent.
+ONLY use these exact agent names:
+%s
+
+## Rules
+- Simple tasks (single tool call, greetings, casual questions): handle directly.
+- Complex tasks (multi-step reasoning, research synthesis): delegate to the appropriate sub-agent listed above.
+- Conversational queries: respond directly without tools or delegation.
+- NEVER invent agent names. Only use the exact names listed above.
+- Maximum %d delegation rounds per user turn. After that, synthesize and respond.`, strings.Join(agentDescriptions, "\n"), maxRounds)
 
 	orchestrator, err := llmagent.New(llmagent.Config{
 		Name:        "lango-orchestrator",
 		Description: "Lango Assistant Orchestrator",
 		Model:       cfg.Model,
+		Tools:       allAdkTools,
 		SubAgents:   subAgents,
 		Instruction: orchestratorInstruction,
 	})

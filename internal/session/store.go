@@ -10,6 +10,7 @@ type Message struct {
 	Content   string     `json:"content"`
 	Timestamp time.Time  `json:"timestamp"`
 	ToolCalls []ToolCall `json:"toolCalls,omitempty"`
+	Author    string     `json:"author,omitempty"` // ADK agent name for multi-agent routing
 }
 
 // ToolCall represents a tool invocation

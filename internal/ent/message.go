@@ -28,6 +28,8 @@ type Message struct {
 	Timestamp time.Time `json:"timestamp,omitempty"`
 	// ToolCalls holds the value of the "tool_calls" field.
 	ToolCalls []schema.ToolCall `json:"tool_calls,omitempty"`
+	// Author holds the value of the "author" field.
+	Author string `json:"author,omitempty"`
 	// Edges holds the relations/edges for other nodes in the graph.
 	// The values are being populated by the MessageQuery when eager-loading is set.
 	Edges            MessageEdges `json:"edges"`
@@ -64,7 +66,7 @@ func (*Message) scanValues(columns []string) ([]any, error) {
 			values[i] = new([]byte)
 		case message.FieldID:
 			values[i] = new(sql.NullInt64)
-		case message.FieldRole, message.FieldContent:
+		case message.FieldRole, message.FieldContent, message.FieldAuthor:
 			values[i] = new(sql.NullString)
 		case message.FieldTimestamp:
 			values[i] = new(sql.NullTime)
@@ -116,6 +118,12 @@ func (_m *Message) assignValues(columns []string, values []any) error {
 				if err := json.Unmarshal(*value, &_m.ToolCalls); err != nil {
 					return fmt.Errorf("unmarshal field tool_calls: %w", err)
 				}
+			}
+		case message.FieldAuthor:
+			if value, ok := values[i].(*sql.NullString); !ok {
+				return fmt.Errorf("unexpected type %T for field author", values[i])
+			} else if value.Valid {
+				_m.Author = value.String
 			}
 		case message.ForeignKeys[0]:
 			if value, ok := values[i].(*sql.NullInt64); !ok {
@@ -176,6 +184,9 @@ func (_m *Message) String() string {
 	builder.WriteString(", ")
 	builder.WriteString("tool_calls=")
 	builder.WriteString(fmt.Sprintf("%v", _m.ToolCalls))
+	builder.WriteString(", ")
+	builder.WriteString("author=")
+	builder.WriteString(_m.Author)
 	builder.WriteByte(')')
 	return builder.String()
 }

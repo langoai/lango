@@ -186,6 +186,7 @@ var (
 		{Name: "content", Type: field.TypeString, Size: 2147483647},
 		{Name: "timestamp", Type: field.TypeTime},
 		{Name: "tool_calls", Type: field.TypeJSON, Nullable: true},
+		{Name: "author", Type: field.TypeString, Nullable: true, Default: ""},
 		{Name: "session_messages", Type: field.TypeInt, Nullable: true},
 	}
 	// MessagesTable holds the schema information for the "messages" table.
@@ -196,7 +197,7 @@ var (
 		ForeignKeys: []*schema.ForeignKey{
 			{
 				Symbol:     "messages_sessions_messages",
-				Columns:    []*schema.Column{MessagesColumns[5]},
+				Columns:    []*schema.Column{MessagesColumns[6]},
 				RefColumns: []*schema.Column{SessionsColumns[0]},
 				OnDelete:   schema.SetNull,
 			},

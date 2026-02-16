@@ -147,6 +147,8 @@ func TestBuildAgentTree_Success(t *testing.T) {
 	require.NotNil(t, root)
 
 	assert.Equal(t, "lango-orchestrator", root.Name())
+	// executor (has exec_shell, custom_tool), researcher (search_web),
+	// planner (always), memory-manager (memory_store) = 4
 	assert.Len(t, root.SubAgents(), 4, "orchestrator should have 4 sub-agents")
 
 	subNames := make([]string, len(root.SubAgents()))
@@ -170,6 +172,115 @@ func TestBuildAgentTree_AdapterError(t *testing.T) {
 	})
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "adapt executor tools")
+}
+
+func TestBuildAgentTree_NoMemoryTools(t *testing.T) {
+	// Only executor tools — no memory tools means no memory-manager sub-agent.
+	tools := []*agent.Tool{
+		newTestTool("exec_shell"),
+		newTestTool("custom_tool"),
+	}
+
+	root, err := BuildAgentTree(Config{
+		Tools:        tools,
+		Model:        nil,
+		SystemPrompt: "test prompt",
+		AdaptTool:    stubAdapter,
+	})
+	require.NoError(t, err)
+
+	// executor + planner (always) = 2 (no researcher, no memory-manager)
+	assert.Len(t, root.SubAgents(), 2)
+
+	subNames := make([]string, len(root.SubAgents()))
+	for i, sa := range root.SubAgents() {
+		subNames[i] = sa.Name()
+	}
+	assert.Contains(t, subNames, "executor")
+	assert.Contains(t, subNames, "planner")
+	assert.NotContains(t, subNames, "memory-manager")
+	assert.NotContains(t, subNames, "researcher")
+}
+
+func TestBuildAgentTree_NoTools(t *testing.T) {
+	// No tools at all — only planner should be created.
+	root, err := BuildAgentTree(Config{
+		Tools:        nil,
+		Model:        nil,
+		SystemPrompt: "test prompt",
+		AdaptTool:    stubAdapter,
+	})
+	require.NoError(t, err)
+
+	// Only planner (always included)
+	assert.Len(t, root.SubAgents(), 1)
+	assert.Equal(t, "planner", root.SubAgents()[0].Name())
+}
+
+func TestBuildAgentTree_OrchestratorHasToolsAndSubAgents(t *testing.T) {
+	// Track which tools are adapted by the adapter.
+	var adaptedTools []string
+	trackingAdapter := func(tool *agent.Tool) (adk_tool.Tool, error) {
+		adaptedTools = append(adaptedTools, tool.Name)
+		return &stubTool{name: tool.Name}, nil
+	}
+
+	tools := []*agent.Tool{
+		newTestTool("exec_shell"),
+		newTestTool("search_web"),
+		newTestTool("memory_store"),
+		newTestTool("custom_tool"),
+	}
+
+	root, err := BuildAgentTree(Config{
+		Tools:        tools,
+		Model:        nil,
+		SystemPrompt: "test prompt",
+		AdaptTool:    trackingAdapter,
+	})
+	require.NoError(t, err)
+
+	// Sub-agents should still exist for complex delegation.
+	assert.Len(t, root.SubAgents(), 4,
+		"orchestrator should still have 4 sub-agents")
+
+	// Each tool should be adapted twice: once for the sub-agent and
+	// once for the orchestrator's direct tools.
+	toolAdaptCounts := make(map[string]int, len(tools))
+	for _, name := range adaptedTools {
+		toolAdaptCounts[name]++
+	}
+	for _, tool := range tools {
+		assert.Equal(t, 2, toolAdaptCounts[tool.Name],
+			"tool %q should be adapted for both sub-agent and orchestrator", tool.Name)
+	}
+}
+
+func TestBuildAgentTree_OrchestratorAdaptError(t *testing.T) {
+	// When sub-agent tools adapt successfully but orchestrator tools fail,
+	// the error should reference "adapt orchestrator tools".
+	callCount := 0
+	failOnSecondBatch := func(tool *agent.Tool) (adk_tool.Tool, error) {
+		callCount++
+		// The first call batch is for executor sub-agent tools.
+		// After all sub-agents are created, orchestrator tools are adapted.
+		// With 1 tool that goes to executor, executor adaptTools adapts 1 tool,
+		// then orchestrator adaptTools will call again — fail on that.
+		if callCount > 1 {
+			return nil, fmt.Errorf("orchestrator adapt failure")
+		}
+		return &stubTool{name: tool.Name}, nil
+	}
+
+	// Use a single tool that maps to executor (unmatched prefix).
+	_, err := BuildAgentTree(Config{
+		Tools:        []*agent.Tool{newTestTool("custom_tool")},
+		Model:        nil,
+		SystemPrompt: "test",
+		AdaptTool:    failOnSecondBatch,
+	})
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "adapt orchestrator tools")
 }
 
 func TestPartitionTools_PrefixPriority(t *testing.T) {
