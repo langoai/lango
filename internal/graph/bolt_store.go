@@ -5,6 +5,9 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"os"
+	"path/filepath"
+	"strings"
 
 	bolt "go.etcd.io/bbolt"
 )
@@ -30,6 +33,20 @@ type BoltStore struct {
 // NewBoltStore opens (or creates) a BoltDB database at path and initialises
 // the three index buckets.
 func NewBoltStore(path string) (*BoltStore, error) {
+	// Expand tilde to home directory.
+	if strings.HasPrefix(path, "~/") {
+		home, err := os.UserHomeDir()
+		if err != nil {
+			return nil, fmt.Errorf("resolve home dir: %w", err)
+		}
+		path = filepath.Join(home, path[2:])
+	}
+
+	// Ensure parent directory exists.
+	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
+		return nil, fmt.Errorf("create db directory: %w", err)
+	}
+
 	db, err := bolt.Open(path, 0o600, nil)
 	if err != nil {
 		return nil, fmt.Errorf("open bolt db: %w", err)
