@@ -27,6 +27,9 @@ func NewGatewayProvider(gw GatewayApprover) *GatewayProvider {
 // RequestApproval sends the approval request to connected companions.
 func (g *GatewayProvider) RequestApproval(ctx context.Context, req ApprovalRequest) (bool, error) {
 	msg := fmt.Sprintf("Tool '%s' requires approval", req.ToolName)
+	if req.Summary != "" {
+		msg += "\n  " + req.Summary
+	}
 	return g.gw.RequestApproval(ctx, msg)
 }
 

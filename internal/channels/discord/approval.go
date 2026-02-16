@@ -42,8 +42,12 @@ func (p *ApprovalProvider) RequestApproval(ctx context.Context, req approval.App
 	p.pending.Store(req.ID, respChan)
 	defer p.pending.Delete(req.ID)
 
+	content := fmt.Sprintf("🔐 Tool **%s** requires approval", req.ToolName)
+	if req.Summary != "" {
+		content += "\n```\n" + req.Summary + "\n```"
+	}
 	_, err = p.session.ChannelMessageSendComplex(channelID, &discordgo.MessageSend{
-		Content: fmt.Sprintf("🔐 Tool **%s** requires approval", req.ToolName),
+		Content: content,
 		Components: []discordgo.MessageComponent{
 			discordgo.ActionsRow{
 				Components: []discordgo.MessageComponent{

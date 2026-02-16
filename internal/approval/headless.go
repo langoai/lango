@@ -19,6 +19,7 @@ func (h *HeadlessProvider) RequestApproval(_ context.Context, req ApprovalReques
 		"tool", req.ToolName,
 		"sessionKey", req.SessionKey,
 		"requestID", req.ID,
+		"summary", req.Summary,
 	)
 	return true, nil
 }

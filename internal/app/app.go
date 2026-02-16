@@ -150,11 +150,15 @@ func New(boot *bootstrap.Result) (*App, error) {
 	}
 	app.ApprovalProvider = composite
 
-	if cfg.Security.Interceptor.ApprovalRequired && len(cfg.Security.Interceptor.SensitiveTools) > 0 {
+	policy := cfg.Security.Interceptor.ApprovalPolicy
+	if policy == "" {
+		policy = config.ApprovalPolicyDangerous
+	}
+	if policy != config.ApprovalPolicyNone {
 		for i, t := range tools {
-			tools[i] = wrapWithApproval(t, cfg.Security.Interceptor.SensitiveTools, composite)
+			tools[i] = wrapWithApproval(t, cfg.Security.Interceptor, composite)
 		}
-		logger().Infow("tool approval enabled", "sensitiveTools", cfg.Security.Interceptor.SensitiveTools)
+		logger().Infow("tool approval enabled", "policy", string(policy))
 	}
 
 	// 9. ADK Agent (scanner is passed for output-side secret scanning)

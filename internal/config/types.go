@@ -142,16 +142,32 @@ type SecurityConfig struct {
 	Signer SignerConfig `mapstructure:"signer" json:"signer"`
 }
 
+// ApprovalPolicy determines which tools require approval before execution.
+type ApprovalPolicy string
+
+const (
+	// ApprovalPolicyDangerous requires approval for Dangerous-level tools (default).
+	ApprovalPolicyDangerous ApprovalPolicy = "dangerous"
+	// ApprovalPolicyAll requires approval for all tools.
+	ApprovalPolicyAll ApprovalPolicy = "all"
+	// ApprovalPolicyConfigured requires approval only for explicitly listed SensitiveTools.
+	ApprovalPolicyConfigured ApprovalPolicy = "configured"
+	// ApprovalPolicyNone disables approval entirely.
+	ApprovalPolicyNone ApprovalPolicy = "none"
+)
+
 // InterceptorConfig defines AI Privacy Interceptor settings
 type InterceptorConfig struct {
-	Enabled             bool     `mapstructure:"enabled" json:"enabled"`
-	RedactPII           bool     `mapstructure:"redactPii" json:"redactPii"`
-	ApprovalRequired    bool     `mapstructure:"approvalRequired" json:"approvalRequired"`
-	HeadlessAutoApprove bool     `mapstructure:"headlessAutoApprove" json:"headlessAutoApprove"`
-	NotifyChannel       string   `mapstructure:"notifyChannel" json:"notifyChannel"` // e.g. "discord", "telegram"
-	SensitiveTools      []string `mapstructure:"sensitiveTools" json:"sensitiveTools"`
-	PIIRegexPatterns    []string `mapstructure:"piiRegexPatterns" json:"piiRegexPatterns"`
-	ApprovalTimeoutSec  int      `mapstructure:"approvalTimeoutSec" json:"approvalTimeoutSec"` // default 30
+	Enabled             bool           `mapstructure:"enabled" json:"enabled"`
+	RedactPII           bool           `mapstructure:"redactPii" json:"redactPii"`
+	ApprovalRequired    bool           `mapstructure:"approvalRequired" json:"approvalRequired"`         // Deprecated: use ApprovalPolicy
+	ApprovalPolicy      ApprovalPolicy `mapstructure:"approvalPolicy" json:"approvalPolicy"`             // default: "dangerous"
+	HeadlessAutoApprove bool           `mapstructure:"headlessAutoApprove" json:"headlessAutoApprove"`
+	NotifyChannel       string         `mapstructure:"notifyChannel" json:"notifyChannel"`               // e.g. "discord", "telegram"
+	SensitiveTools      []string       `mapstructure:"sensitiveTools" json:"sensitiveTools"`
+	ExemptTools         []string       `mapstructure:"exemptTools" json:"exemptTools"`                   // Tools exempt from approval regardless of policy
+	PIIRegexPatterns    []string       `mapstructure:"piiRegexPatterns" json:"piiRegexPatterns"`
+	ApprovalTimeoutSec  int            `mapstructure:"approvalTimeoutSec" json:"approvalTimeoutSec"`     // default 30
 }
 
 // SignerConfig defines Secure Signer settings

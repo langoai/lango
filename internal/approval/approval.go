@@ -13,6 +13,7 @@ type ApprovalRequest struct {
 	ToolName   string
 	SessionKey string
 	Params     map[string]interface{}
+	Summary    string // Human-readable description of what the tool will do
 	CreatedAt  time.Time
 }
 

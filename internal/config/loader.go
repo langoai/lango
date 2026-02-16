@@ -50,6 +50,12 @@ func DefaultConfig() *Config {
 				SessionTimeout: 5 * time.Minute,
 			},
 		},
+		Security: SecurityConfig{
+			Interceptor: InterceptorConfig{
+				Enabled:        true,
+				ApprovalPolicy: ApprovalPolicyDangerous,
+			},
+		},
 		Knowledge: KnowledgeConfig{
 			Enabled:            false,
 			MaxLearnings:       10,
@@ -85,6 +91,8 @@ func Load(configPath string) (*Config, error) {
 	v.SetDefault("tools.browser.enabled", defaults.Tools.Browser.Enabled)
 	v.SetDefault("tools.browser.headless", defaults.Tools.Browser.Headless)
 	v.SetDefault("tools.browser.sessionTimeout", defaults.Tools.Browser.SessionTimeout)
+	v.SetDefault("security.interceptor.enabled", defaults.Security.Interceptor.Enabled)
+	v.SetDefault("security.interceptor.approvalPolicy", string(defaults.Security.Interceptor.ApprovalPolicy))
 
 	// Configure viper
 	v.SetConfigType("json")
@@ -112,6 +120,9 @@ func Load(configPath string) (*Config, error) {
 		return nil, fmt.Errorf("unmarshal config: %w", err)
 	}
 
+	// Migrate legacy approval settings to ApprovalPolicy
+	migrateApprovalPolicy(cfg)
+
 	// Apply environment variable substitution
 	substituteEnvVars(cfg)
 
@@ -121,6 +132,31 @@ func Load(configPath string) (*Config, error) {
 	}
 
 	return cfg, nil
+}
+
+// migrateApprovalPolicy migrates legacy approvalRequired + sensitiveTools
+// configuration to the new ApprovalPolicy field.
+func migrateApprovalPolicy(cfg *Config) {
+	ic := &cfg.Security.Interceptor
+
+	// If ApprovalPolicy is already explicitly set, keep it.
+	if ic.ApprovalPolicy != "" {
+		return
+	}
+
+	// Migrate from legacy fields.
+	if ic.ApprovalRequired {
+		if len(ic.SensitiveTools) > 0 {
+			ic.ApprovalPolicy = ApprovalPolicyConfigured
+		} else {
+			ic.ApprovalPolicy = ApprovalPolicyDangerous
+		}
+		return
+	}
+
+	// ApprovalRequired was explicitly set to false (or defaulted to false
+	// in an existing config). Respect the explicit opt-out for existing users.
+	// New installations get "dangerous" via DefaultConfig / SetDefault.
 }
 
 // substituteEnvVars replaces ${VAR} patterns with environment variable values

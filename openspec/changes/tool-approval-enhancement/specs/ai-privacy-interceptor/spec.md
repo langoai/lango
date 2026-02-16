@@ -1,18 +1,4 @@
-## ADDED Requirements
-
-### Requirement: Intercept AI Requests
-The system SHALL intercept all agent requests to the LLM and pass them through a filter chain before execution.
-
-#### Scenario: Interception
-- **WHEN** an agent initiates a chat completion request
-- **THEN** the request parameters (messages, tools) are inspected by the middleware
-
-### Requirement: PII Redaction
-The system SHALL automatically redact personally identifiable information (email, phone numbers, API keys) from the prompt content using regex patterns.
-
-#### Scenario: Redact Email
-- **WHEN** a user prompt contains "my email is test@example.com"
-- **THEN** it is rewritten to "my email is [REDACTED]" before sending to the LLM
+## MODIFIED Requirements
 
 ### Requirement: Approval Workflow
 The system SHALL determine which tools require approval based on the configured `ApprovalPolicy` and each tool's `SafetyLevel`. The system SHALL use fail-closed semantics: without explicit approval, execution is denied. Approval requests SHALL be routed through a `CompositeProvider` that selects the appropriate approval channel based on the originating session key. The legacy `approvalRequired` boolean is deprecated in favor of `ApprovalPolicy`.
@@ -90,14 +76,3 @@ The system SHALL determine which tools require approval based on the configured 
 - **AND** `HeadlessAutoApprove` is false
 - **AND** stdin is not a terminal
 - **THEN** the tool execution SHALL be denied
-
-### Requirement: Approval timeout configuration
-The system SHALL support an `ApprovalTimeoutSec` configuration field in `InterceptorConfig` that controls how long to wait for an approval response before timing out.
-
-#### Scenario: Default timeout
-- **WHEN** `ApprovalTimeoutSec` is not set or is 0
-- **THEN** the system SHALL use a default timeout of 30 seconds
-
-#### Scenario: Custom timeout
-- **WHEN** `ApprovalTimeoutSec` is set to a positive value
-- **THEN** the system SHALL use that value as the timeout in seconds

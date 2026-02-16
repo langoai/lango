@@ -51,7 +51,11 @@ func (p *ApprovalProvider) RequestApproval(ctx context.Context, req approval.App
 		),
 	)
 
-	msg := tgbotapi.NewMessage(chatID, fmt.Sprintf("🔐 Tool '%s' requires approval", req.ToolName))
+	text := fmt.Sprintf("🔐 Tool '%s' requires approval", req.ToolName)
+	if req.Summary != "" {
+		text += "\n\n" + req.Summary
+	}
+	msg := tgbotapi.NewMessage(chatID, text)
 	msg.ReplyMarkup = keyboard
 
 	if _, err := p.bot.Send(msg); err != nil {

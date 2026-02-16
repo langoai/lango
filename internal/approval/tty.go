@@ -23,7 +23,11 @@ func (t *TTYProvider) RequestApproval(_ context.Context, req ApprovalRequest) (b
 		return false, nil
 	}
 
-	fmt.Fprintf(os.Stderr, "\n⚠ Sensitive tool '%s' requires approval. Allow? [y/N]: ", req.ToolName)
+	fmt.Fprintf(os.Stderr, "\n⚠ Sensitive tool '%s' requires approval.\n", req.ToolName)
+	if req.Summary != "" {
+		fmt.Fprintf(os.Stderr, "  %s\n", req.Summary)
+	}
+	fmt.Fprint(os.Stderr, "  Allow? [y/N]: ")
 
 	reader := bufio.NewReader(os.Stdin)
 	input, err := reader.ReadString('\n')

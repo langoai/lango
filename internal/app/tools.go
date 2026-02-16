@@ -8,6 +8,7 @@ import (
 
 	"github.com/langowarny/lango/internal/agent"
 	"github.com/langowarny/lango/internal/approval"
+	"github.com/langowarny/lango/internal/config"
 	"github.com/langowarny/lango/internal/knowledge"
 	"github.com/langowarny/lango/internal/learning"
 	"github.com/langowarny/lango/internal/security"
@@ -60,6 +61,7 @@ func buildExecTools(sv *supervisor.Supervisor) []*agent.Tool {
 		{
 			Name:        "exec",
 			Description: "Execute shell commands",
+			SafetyLevel: agent.SafetyLevelDangerous,
 			Parameters: map[string]interface{}{
 				"type": "object",
 				"properties": map[string]interface{}{
@@ -81,6 +83,7 @@ func buildExecTools(sv *supervisor.Supervisor) []*agent.Tool {
 		{
 			Name:        "exec_bg",
 			Description: "Execute a shell command in the background",
+			SafetyLevel: agent.SafetyLevelDangerous,
 			Parameters: map[string]interface{}{
 				"type": "object",
 				"properties": map[string]interface{}{
@@ -102,6 +105,7 @@ func buildExecTools(sv *supervisor.Supervisor) []*agent.Tool {
 		{
 			Name:        "exec_status",
 			Description: "Check the status of a background process",
+			SafetyLevel: agent.SafetyLevelSafe,
 			Parameters: map[string]interface{}{
 				"type": "object",
 				"properties": map[string]interface{}{
@@ -123,6 +127,7 @@ func buildExecTools(sv *supervisor.Supervisor) []*agent.Tool {
 		{
 			Name:        "exec_stop",
 			Description: "Stop a background process",
+			SafetyLevel: agent.SafetyLevelDangerous,
 			Parameters: map[string]interface{}{
 				"type": "object",
 				"properties": map[string]interface{}{
@@ -149,6 +154,7 @@ func buildFilesystemTools(fsTool *filesystem.Tool) []*agent.Tool {
 		{
 			Name:        "fs_read",
 			Description: "Read a file",
+			SafetyLevel: agent.SafetyLevelSafe,
 			Parameters: map[string]interface{}{
 				"type": "object",
 				"properties": map[string]interface{}{
@@ -167,6 +173,7 @@ func buildFilesystemTools(fsTool *filesystem.Tool) []*agent.Tool {
 		{
 			Name:        "fs_list",
 			Description: "List contents of a directory",
+			SafetyLevel: agent.SafetyLevelSafe,
 			Parameters: map[string]interface{}{
 				"type": "object",
 				"properties": map[string]interface{}{
@@ -185,6 +192,7 @@ func buildFilesystemTools(fsTool *filesystem.Tool) []*agent.Tool {
 		{
 			Name:        "fs_write",
 			Description: "Write content to a file",
+			SafetyLevel: agent.SafetyLevelDangerous,
 			Parameters: map[string]interface{}{
 				"type": "object",
 				"properties": map[string]interface{}{
@@ -205,6 +213,7 @@ func buildFilesystemTools(fsTool *filesystem.Tool) []*agent.Tool {
 		{
 			Name:        "fs_edit",
 			Description: "Edit a file by replacing a line range",
+			SafetyLevel: agent.SafetyLevelDangerous,
 			Parameters: map[string]interface{}{
 				"type": "object",
 				"properties": map[string]interface{}{
@@ -240,6 +249,7 @@ func buildFilesystemTools(fsTool *filesystem.Tool) []*agent.Tool {
 		{
 			Name:        "fs_mkdir",
 			Description: "Create a directory",
+			SafetyLevel: agent.SafetyLevelModerate,
 			Parameters: map[string]interface{}{
 				"type": "object",
 				"properties": map[string]interface{}{
@@ -258,6 +268,7 @@ func buildFilesystemTools(fsTool *filesystem.Tool) []*agent.Tool {
 		{
 			Name:        "fs_delete",
 			Description: "Delete a file or directory",
+			SafetyLevel: agent.SafetyLevelDangerous,
 			Parameters: map[string]interface{}{
 				"type": "object",
 				"properties": map[string]interface{}{
@@ -281,6 +292,7 @@ func buildBrowserTools(sm *browser.SessionManager) []*agent.Tool {
 		{
 			Name:        "browser_navigate",
 			Description: "Navigate the browser to a URL and return the page title, URL, and a text snippet",
+			SafetyLevel: agent.SafetyLevelDangerous,
 			Parameters: map[string]interface{}{
 				"type": "object",
 				"properties": map[string]interface{}{
@@ -312,6 +324,7 @@ func buildBrowserTools(sm *browser.SessionManager) []*agent.Tool {
 		{
 			Name:        "browser_action",
 			Description: "Perform an action on the current browser page: click, type, eval, get_text, get_element_info, or wait",
+			SafetyLevel: agent.SafetyLevelDangerous,
 			Parameters: map[string]interface{}{
 				"type": "object",
 				"properties": map[string]interface{}{
@@ -401,6 +414,7 @@ func buildBrowserTools(sm *browser.SessionManager) []*agent.Tool {
 		{
 			Name:        "browser_screenshot",
 			Description: "Capture a screenshot of the current browser page as base64 PNG",
+			SafetyLevel: agent.SafetyLevelSafe,
 			Parameters: map[string]interface{}{
 				"type": "object",
 				"properties": map[string]interface{}{
@@ -429,6 +443,7 @@ func buildMetaTools(store *knowledge.Store, engine *learning.Engine, registry *s
 		{
 			Name:        "save_knowledge",
 			Description: "Save a piece of knowledge (user rule, definition, preference, or fact) for future reference",
+			SafetyLevel: agent.SafetyLevelModerate,
 			Parameters: map[string]interface{}{
 				"type": "object",
 				"properties": map[string]interface{}{
@@ -487,6 +502,7 @@ func buildMetaTools(store *knowledge.Store, engine *learning.Engine, registry *s
 		{
 			Name:        "search_knowledge",
 			Description: "Search stored knowledge entries by query and optional category",
+			SafetyLevel: agent.SafetyLevelSafe,
 			Parameters: map[string]interface{}{
 				"type": "object",
 				"properties": map[string]interface{}{
@@ -513,6 +529,7 @@ func buildMetaTools(store *knowledge.Store, engine *learning.Engine, registry *s
 		{
 			Name:        "save_learning",
 			Description: "Save a diagnosed error pattern and its fix for future reference",
+			SafetyLevel: agent.SafetyLevelModerate,
 			Parameters: map[string]interface{}{
 				"type": "object",
 				"properties": map[string]interface{}{
@@ -565,6 +582,7 @@ func buildMetaTools(store *knowledge.Store, engine *learning.Engine, registry *s
 		{
 			Name:        "search_learnings",
 			Description: "Search stored learnings by error pattern or trigger",
+			SafetyLevel: agent.SafetyLevelSafe,
 			Parameters: map[string]interface{}{
 				"type": "object",
 				"properties": map[string]interface{}{
@@ -591,6 +609,7 @@ func buildMetaTools(store *knowledge.Store, engine *learning.Engine, registry *s
 		{
 			Name:        "create_skill",
 			Description: "Create a new reusable skill from a multi-step workflow, script, or template",
+			SafetyLevel: agent.SafetyLevelModerate,
 			Parameters: map[string]interface{}{
 				"type": "object",
 				"properties": map[string]interface{}{
@@ -666,6 +685,7 @@ func buildMetaTools(store *knowledge.Store, engine *learning.Engine, registry *s
 		{
 			Name:        "list_skills",
 			Description: "List all active skills with usage statistics",
+			SafetyLevel: agent.SafetyLevelSafe,
 			Parameters: map[string]interface{}{
 				"type":       "object",
 				"properties": map[string]interface{}{},
@@ -692,6 +712,7 @@ func wrapWithLearning(t *agent.Tool, engine *learning.Engine) *agent.Tool {
 		Name:        t.Name,
 		Description: t.Description,
 		Parameters:  t.Parameters,
+		SafetyLevel: t.SafetyLevel,
 		Handler: func(ctx context.Context, params map[string]interface{}) (interface{}, error) {
 			result, err := original(ctx, params)
 			sessionKey := SessionKeyFromContext(ctx)
@@ -708,6 +729,7 @@ func buildCryptoTools(crypto security.CryptoProvider, keys *security.KeyRegistry
 		{
 			Name:        "crypto_encrypt",
 			Description: "Encrypt data using a registered key",
+			SafetyLevel: agent.SafetyLevelDangerous,
 			Parameters: map[string]interface{}{
 				"type": "object",
 				"properties": map[string]interface{}{
@@ -721,6 +743,7 @@ func buildCryptoTools(crypto security.CryptoProvider, keys *security.KeyRegistry
 		{
 			Name:        "crypto_decrypt",
 			Description: "Decrypt data using a registered key. Returns an opaque {{decrypt:id}} reference token. The decrypted value never enters the agent context.",
+			SafetyLevel: agent.SafetyLevelDangerous,
 			Parameters: map[string]interface{}{
 				"type": "object",
 				"properties": map[string]interface{}{
@@ -734,6 +757,7 @@ func buildCryptoTools(crypto security.CryptoProvider, keys *security.KeyRegistry
 		{
 			Name:        "crypto_sign",
 			Description: "Generate a digital signature for data",
+			SafetyLevel: agent.SafetyLevelDangerous,
 			Parameters: map[string]interface{}{
 				"type": "object",
 				"properties": map[string]interface{}{
@@ -747,6 +771,7 @@ func buildCryptoTools(crypto security.CryptoProvider, keys *security.KeyRegistry
 		{
 			Name:        "crypto_hash",
 			Description: "Compute a cryptographic hash of data",
+			SafetyLevel: agent.SafetyLevelSafe,
 			Parameters: map[string]interface{}{
 				"type": "object",
 				"properties": map[string]interface{}{
@@ -760,6 +785,7 @@ func buildCryptoTools(crypto security.CryptoProvider, keys *security.KeyRegistry
 		{
 			Name:        "crypto_keys",
 			Description: "List all registered cryptographic keys",
+			SafetyLevel: agent.SafetyLevelSafe,
 			Parameters: map[string]interface{}{
 				"type":       "object",
 				"properties": map[string]interface{}{},
@@ -776,6 +802,7 @@ func buildSecretsTools(secretsStore *security.SecretsStore, refs *security.RefSt
 		{
 			Name:        "secrets_store",
 			Description: "Encrypt and store a secret value",
+			SafetyLevel: agent.SafetyLevelDangerous,
 			Parameters: map[string]interface{}{
 				"type": "object",
 				"properties": map[string]interface{}{
@@ -789,6 +816,7 @@ func buildSecretsTools(secretsStore *security.SecretsStore, refs *security.RefSt
 		{
 			Name:        "secrets_get",
 			Description: "Retrieve a stored secret as a reference token. Returns an opaque {{secret:name}} token that is resolved at execution time by exec tools. The actual secret value never enters the agent context.",
+			SafetyLevel: agent.SafetyLevelDangerous,
 			Parameters: map[string]interface{}{
 				"type": "object",
 				"properties": map[string]interface{}{
@@ -801,6 +829,7 @@ func buildSecretsTools(secretsStore *security.SecretsStore, refs *security.RefSt
 		{
 			Name:        "secrets_list",
 			Description: "List all stored secrets (metadata only, no values)",
+			SafetyLevel: agent.SafetyLevelSafe,
 			Parameters: map[string]interface{}{
 				"type":       "object",
 				"properties": map[string]interface{}{},
@@ -810,6 +839,7 @@ func buildSecretsTools(secretsStore *security.SecretsStore, refs *security.RefSt
 		{
 			Name:        "secrets_delete",
 			Description: "Delete a stored secret",
+			SafetyLevel: agent.SafetyLevelDangerous,
 			Parameters: map[string]interface{}{
 				"type": "object",
 				"properties": map[string]interface{}{
@@ -822,18 +852,97 @@ func buildSecretsTools(secretsStore *security.SecretsStore, refs *security.RefSt
 	}
 }
 
-// wrapWithApproval wraps a tool to require approval if it's in the sensitive tools list.
-// Uses fail-closed: denies execution unless explicitly approved.
-// The approval.Provider routes requests to the appropriate channel (Gateway, Telegram, Discord, Slack, TTY).
-func wrapWithApproval(t *agent.Tool, sensitiveTools []string, ap approval.Provider) *agent.Tool {
-	isSensitive := false
-	for _, name := range sensitiveTools {
+// needsApproval determines whether a tool requires approval based on the
+// configured policy, explicit exemptions, and sensitive tool lists.
+func needsApproval(t *agent.Tool, ic config.InterceptorConfig) bool {
+	// ExemptTools always bypass approval.
+	for _, name := range ic.ExemptTools {
 		if name == t.Name {
-			isSensitive = true
-			break
+			return false
 		}
 	}
-	if !isSensitive {
+
+	// SensitiveTools always require approval.
+	for _, name := range ic.SensitiveTools {
+		if name == t.Name {
+			return true
+		}
+	}
+
+	switch ic.ApprovalPolicy {
+	case config.ApprovalPolicyAll:
+		return true
+	case config.ApprovalPolicyDangerous:
+		return t.SafetyLevel.IsDangerous()
+	case config.ApprovalPolicyConfigured:
+		return false // only SensitiveTools (handled above)
+	case config.ApprovalPolicyNone:
+		return false
+	default:
+		return true // unknown policy → fail-safe
+	}
+}
+
+// buildApprovalSummary returns a human-readable description of what a tool
+// invocation will do, suitable for display in approval messages.
+func buildApprovalSummary(toolName string, params map[string]interface{}) string {
+	switch toolName {
+	case "exec", "exec_bg":
+		if cmd, ok := params["command"].(string); ok {
+			return "Execute: " + truncate(cmd, 200)
+		}
+	case "fs_write":
+		path, _ := params["path"].(string)
+		content, _ := params["content"].(string)
+		return fmt.Sprintf("Write to %s (%d bytes)", path, len(content))
+	case "fs_edit":
+		path, _ := params["path"].(string)
+		return "Edit file: " + path
+	case "fs_delete":
+		path, _ := params["path"].(string)
+		return "Delete: " + path
+	case "browser_navigate":
+		url, _ := params["url"].(string)
+		return "Navigate to: " + truncate(url, 200)
+	case "browser_action":
+		action, _ := params["action"].(string)
+		selector, _ := params["selector"].(string)
+		if selector != "" {
+			return fmt.Sprintf("Browser %s on: %s", action, truncate(selector, 100))
+		}
+		return "Browser action: " + action
+	case "secrets_store":
+		name, _ := params["name"].(string)
+		return "Store secret: " + name
+	case "secrets_get":
+		name, _ := params["name"].(string)
+		return "Retrieve secret: " + name
+	case "secrets_delete":
+		name, _ := params["name"].(string)
+		return "Delete secret: " + name
+	case "crypto_encrypt":
+		return "Encrypt data"
+	case "crypto_decrypt":
+		return "Decrypt ciphertext"
+	case "crypto_sign":
+		return "Generate digital signature"
+	}
+	return "Tool: " + toolName
+}
+
+// truncate shortens s to maxLen characters, appending "..." if truncated.
+func truncate(s string, maxLen int) string {
+	if len(s) <= maxLen {
+		return s
+	}
+	return s[:maxLen] + "..."
+}
+
+// wrapWithApproval wraps a tool to require approval based on the configured policy.
+// Uses fail-closed: denies execution unless explicitly approved.
+// The approval.Provider routes requests to the appropriate channel (Gateway, Telegram, Discord, Slack, TTY).
+func wrapWithApproval(t *agent.Tool, ic config.InterceptorConfig, ap approval.Provider) *agent.Tool {
+	if !needsApproval(t, ic) {
 		return t
 	}
 
@@ -842,12 +951,14 @@ func wrapWithApproval(t *agent.Tool, sensitiveTools []string, ap approval.Provid
 		Name:        t.Name,
 		Description: t.Description,
 		Parameters:  t.Parameters,
+		SafetyLevel: t.SafetyLevel,
 		Handler: func(ctx context.Context, params map[string]interface{}) (interface{}, error) {
 			req := approval.ApprovalRequest{
 				ID:         fmt.Sprintf("req-%d", time.Now().UnixNano()),
 				ToolName:   t.Name,
 				SessionKey: SessionKeyFromContext(ctx),
 				Params:     params,
+				Summary:    buildApprovalSummary(t.Name, params),
 				CreatedAt:  time.Now(),
 			}
 			approved, err := ap.RequestApproval(ctx, req)

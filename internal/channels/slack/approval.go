@@ -55,12 +55,15 @@ func (p *ApprovalProvider) RequestApproval(ctx context.Context, req approval.App
 		slackapi.NewTextBlockObject("plain_text", "❌ Deny", true, false))
 	denyBtn.Style = slackapi.StyleDanger
 
+	sectionText := fmt.Sprintf("🔐 Tool *%s* requires approval", req.ToolName)
+	if req.Summary != "" {
+		sectionText += "\n```" + req.Summary + "```"
+	}
 	_, ts, err := p.api.PostMessage(channelID,
 		slackapi.MsgOptionText(fmt.Sprintf("🔐 Tool '%s' requires approval", req.ToolName), false),
 		slackapi.MsgOptionBlocks(
 			slackapi.NewSectionBlock(
-				slackapi.NewTextBlockObject("mrkdwn",
-					fmt.Sprintf("🔐 Tool *%s* requires approval", req.ToolName), false, false),
+				slackapi.NewTextBlockObject("mrkdwn", sectionText, false, false),
 				nil, nil,
 			),
 			slackapi.NewActionBlock(
