@@ -28,19 +28,24 @@ func newStatusCmd(bootLoader func() (*bootstrap.Result, error)) *cobra.Command {
 			cfg := boot.Config
 
 			type statusOutput struct {
-				SignerProvider  string `json:"signer_provider"`
+				SignerProvider string `json:"signer_provider"`
 				EncryptionKeys int    `json:"encryption_keys"`
 				StoredSecrets  int    `json:"stored_secrets"`
 				Interceptor    string `json:"interceptor"`
 				PIIRedaction   string `json:"pii_redaction"`
-				ApprovalReq    string `json:"approval_required"`
+				ApprovalPolicy string `json:"approval_policy"`
+			}
+
+			policy := string(cfg.Security.Interceptor.ApprovalPolicy)
+			if policy == "" {
+				policy = "dangerous"
 			}
 
 			s := statusOutput{
-				SignerProvider: cfg.Security.Signer.Provider,
-				Interceptor:   boolToStatus(cfg.Security.Interceptor.Enabled),
-				PIIRedaction:  boolToStatus(cfg.Security.Interceptor.RedactPII),
-				ApprovalReq:   boolToStatus(cfg.Security.Interceptor.ApprovalRequired),
+				SignerProvider:  cfg.Security.Signer.Provider,
+				Interceptor:    boolToStatus(cfg.Security.Interceptor.Enabled),
+				PIIRedaction:   boolToStatus(cfg.Security.Interceptor.RedactPII),
+				ApprovalPolicy: policy,
 			}
 
 			ctx := context.Background()
@@ -67,7 +72,7 @@ func newStatusCmd(bootLoader func() (*bootstrap.Result, error)) *cobra.Command {
 			fmt.Printf("  Stored Secrets:     %d\n", s.StoredSecrets)
 			fmt.Printf("  Interceptor:        %s\n", s.Interceptor)
 			fmt.Printf("  PII Redaction:      %s\n", s.PIIRedaction)
-			fmt.Printf("  Approval Required:  %s\n", s.ApprovalReq)
+			fmt.Printf("  Approval Policy:    %s\n", s.ApprovalPolicy)
 
 			return nil
 		},

@@ -217,9 +217,14 @@ func NewSecurityForm(cfg *config.Config) *FormModel {
 		Key: "interceptor_pii", Label: "  Redact PII", Type: InputBool,
 		Checked: cfg.Security.Interceptor.RedactPII,
 	})
+	policyVal := string(cfg.Security.Interceptor.ApprovalPolicy)
+	if policyVal == "" {
+		policyVal = "dangerous"
+	}
 	form.AddField(&Field{
-		Key: "interceptor_approval", Label: "  Approval Req.", Type: InputBool,
-		Checked: cfg.Security.Interceptor.ApprovalRequired,
+		Key: "interceptor_policy", Label: "  Approval Policy", Type: InputSelect,
+		Value:   policyVal,
+		Options: []string{"dangerous", "all", "configured", "none"},
 	})
 
 	// Signer
@@ -263,6 +268,13 @@ func NewSecurityForm(cfg *config.Config) *FormModel {
 		Key: "interceptor_sensitive_tools", Label: "  Sensitive Tools", Type: InputText,
 		Value:       strings.Join(cfg.Security.Interceptor.SensitiveTools, ","),
 		Placeholder: "exec,browser (comma-separated)",
+	})
+
+	// Exempt Tools
+	form.AddField(&Field{
+		Key: "interceptor_exempt_tools", Label: "  Exempt Tools", Type: InputText,
+		Value:       strings.Join(cfg.Security.Interceptor.ExemptTools, ","),
+		Placeholder: "filesystem (comma-separated)",
 	})
 
 	return &form

@@ -113,8 +113,21 @@ func (s *ConfigState) UpdateConfigFromForm(form *FormModel) {
 			s.Current.Security.Interceptor.Enabled = f.Checked
 		case "interceptor_pii":
 			s.Current.Security.Interceptor.RedactPII = f.Checked
-		case "interceptor_approval":
-			s.Current.Security.Interceptor.ApprovalRequired = f.Checked
+		case "interceptor_policy":
+			s.Current.Security.Interceptor.ApprovalPolicy = config.ApprovalPolicy(val)
+		case "interceptor_exempt_tools":
+			if val != "" {
+				parts := strings.Split(val, ",")
+				tools := make([]string, 0, len(parts))
+				for _, p := range parts {
+					if t := strings.TrimSpace(p); t != "" {
+						tools = append(tools, t)
+					}
+				}
+				s.Current.Security.Interceptor.ExemptTools = tools
+			} else {
+				s.Current.Security.Interceptor.ExemptTools = nil
+			}
 		case "interceptor_timeout":
 			if i, err := strconv.Atoi(val); err == nil {
 				s.Current.Security.Interceptor.ApprovalTimeoutSec = i

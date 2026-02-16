@@ -1,4 +1,4 @@
-## Requirements
+## MODIFIED Requirements
 
 ### Requirement: Security status command
 The system SHALL provide a `lango security status` command that displays the current security configuration and state. The command SHALL show signer provider, encryption key count, stored secret count, interceptor status, PII redaction status, and approval policy. The command SHALL support `--json` for JSON output. The command SHALL NOT require a passphrase (it reads counts only, no decryption).

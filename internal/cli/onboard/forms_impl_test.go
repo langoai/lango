@@ -106,8 +106,9 @@ func TestNewSecurityForm_AllFields(t *testing.T) {
 	form := NewSecurityForm(cfg)
 
 	wantKeys := []string{
-		"interceptor_enabled", "interceptor_pii", "interceptor_approval",
+		"interceptor_enabled", "interceptor_pii", "interceptor_policy",
 		"interceptor_timeout", "interceptor_notify", "interceptor_sensitive_tools",
+		"interceptor_exempt_tools",
 		"signer_provider", "signer_rpc", "signer_keyid",
 	}
 

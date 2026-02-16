@@ -168,7 +168,7 @@ All settings are managed via `lango onboard` or `lango config` and stored encryp
 | `server.allowedOrigins` | []string | `[]` | WebSocket CORS allowed origins (empty = same-origin, `["*"]` = allow all) |
 | **Agent** | | | |
 | `agent.provider` | string | `anthropic` | Primary AI provider ID |
-| `agent.model` | string | `claude-sonnet-4-20250514` | Primary model ID |
+| `agent.model` | string | - | Primary model ID |
 | `agent.fallbackProvider` | string | - | Fallback provider ID |
 | `agent.fallbackModel` | string | - | Fallback model ID |
 | `agent.maxTokens` | int | `4096` | Max tokens |
@@ -187,12 +187,14 @@ All settings are managed via `lango onboard` or `lango config` and stored encryp
 | `session.maxHistoryTurns` | int | - | Maximum history turns per session |
 | **Security** | | | |
 | `security.signer.provider` | string | `local` | `local`, `rpc`, or `enclave` |
-| `security.interceptor.enabled` | bool | `false` | Enable AI Privacy Interceptor |
+| `security.interceptor.enabled` | bool | `true` | Enable AI Privacy Interceptor |
 | `security.interceptor.redactPii` | bool | `false` | Redact PII from AI interactions |
-| `security.interceptor.approvalRequired` | bool | `false` | Require approval for sensitive tool use |
+| `security.interceptor.approvalRequired` | bool | `false` | (deprecated) Require approval for sensitive tool use |
+| `security.interceptor.approvalPolicy` | string | `dangerous` | Approval policy: `dangerous`, `all`, `configured`, `none` |
 | `security.interceptor.approvalTimeoutSec` | int | `30` | Seconds to wait for approval before timeout |
 | `security.interceptor.notifyChannel` | string | - | Channel for approval notifications (`telegram`, `discord`, `slack`) |
 | `security.interceptor.sensitiveTools` | []string | - | Tool names that require approval (e.g. `["exec", "browser"]`) |
+| `security.interceptor.exemptTools` | []string | - | Tool names exempt from approval regardless of policy |
 | `security.interceptor.piiRegexPatterns` | []string | - | Custom regex patterns for PII detection |
 | **Auth** | | | |
 | `auth.providers.<id>.issuerUrl` | string | - | OIDC issuer URL |

@@ -23,7 +23,7 @@ func DefaultConfig() *Config {
 		},
 		Agent: AgentConfig{
 			Provider:    "anthropic",
-			Model:       "claude-sonnet-4-20250514",
+			Model:       "",
 			MaxTokens:   4096,
 			Temperature: 0.7,
 		},
@@ -247,4 +247,3 @@ func providerKeys(providers map[string]ProviderConfig) []string {
 	}
 	return keys
 }
-
