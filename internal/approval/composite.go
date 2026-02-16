@@ -2,6 +2,7 @@ package approval
 
 import (
 	"context"
+	"fmt"
 	"sync"
 )
 
@@ -53,7 +54,7 @@ func (c *CompositeProvider) RequestApproval(ctx context.Context, req ApprovalReq
 	}
 
 	// Fail-closed: no provider available
-	return false, nil
+	return false, fmt.Errorf("no approval provider for session %q", req.SessionKey)
 }
 
 // CanHandle always returns true; CompositeProvider accepts all requests

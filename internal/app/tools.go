@@ -966,7 +966,11 @@ func wrapWithApproval(t *agent.Tool, ic config.InterceptorConfig, ap approval.Pr
 				return nil, fmt.Errorf("tool '%s' approval: %w", t.Name, err)
 			}
 			if !approved {
-				return nil, fmt.Errorf("tool '%s' execution denied", t.Name)
+				sk := SessionKeyFromContext(ctx)
+				if sk == "" {
+					return nil, fmt.Errorf("tool '%s' execution denied: no approval channel available (session key missing)", t.Name)
+				}
+				return nil, fmt.Errorf("tool '%s' execution denied: user did not approve the action", t.Name)
 			}
 			return original(ctx, params)
 		},

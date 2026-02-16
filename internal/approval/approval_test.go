@@ -127,8 +127,8 @@ func TestCompositeProvider_FailClosed(t *testing.T) {
 	}
 
 	approved, err := comp.RequestApproval(context.Background(), req)
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
+	if err == nil {
+		t.Fatal("expected error when no provider available")
 	}
 	if approved {
 		t.Error("expected fail-closed (deny) when no provider available")

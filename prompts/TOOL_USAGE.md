@@ -34,6 +34,13 @@
 - `secrets_list` shows metadata (name, creation date, access count) without revealing values.
 - Never attempt to reconstruct secret values from reference tokens, access counts, or other metadata.
 
+### Tool Approval
+- Some tools require user approval before execution, depending on the configured approval policy.
+- When approval is required, a request is sent to the user's channel (Telegram inline keyboard, Discord button, Slack interactive message, or terminal prompt).
+- If you receive "user did not approve the action": inform the user that the action was not approved and ask if they would like to try again or take a different approach. This is NOT a permanent restriction — the user can approve on the next attempt.
+- If you receive "no approval channel available": this indicates a system configuration issue. Inform the user that the approval system could not reach them and suggest they check their channel configuration.
+- Never skip a tool action just because approval was denied once. Always inform the user and offer alternatives.
+
 ### Error Handling
 - When a tool call fails, report the error clearly: what was attempted, what went wrong, and what alternatives exist.
 - Do not retry the same failing command without changing something. Diagnose the issue first.

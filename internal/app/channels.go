@@ -110,7 +110,10 @@ func (a *App) handleSlackMessage(ctx context.Context, msg *slack.IncomingMessage
 	return &slack.OutgoingMessage{Text: response}, nil
 }
 
-// runAgent executes the agent and aggregates the response
+// runAgent executes the agent and aggregates the response.
+// It injects the session key into the context so that downstream components
+// (approval providers, learning engine, etc.) can route by channel.
 func (a *App) runAgent(ctx context.Context, sessionKey, input string) (string, error) {
+	ctx = WithSessionKey(ctx, sessionKey)
 	return a.Agent.RunAndCollect(ctx, sessionKey, input)
 }
