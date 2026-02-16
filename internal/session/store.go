@@ -54,8 +54,3 @@ type Store interface {
 	SetSalt(name string, salt []byte) error
 }
 
-// NewSQLiteStore creates a new SQLite-backed session store using ent
-// This is kept for backward compatibility - internally uses EntStore
-func NewSQLiteStore(dbPath string) (Store, error) {
-	return NewEntStore(dbPath)
-}

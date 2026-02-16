@@ -486,9 +486,6 @@ func (s *EntStore) GetSalt(name string) ([]byte, error) {
 	}
 
 	var salt []byte
-	// We read 'value' column for salt to maintain backward compatibility if we kept the name 'value'
-	// But in ensureSecurityTable we kept 'value' column.
-	// So salt is stored in 'value'.
 	err := s.db.QueryRow(`SELECT value FROM security_config WHERE name = ?`, name).Scan(&salt)
 	if err != nil {
 		if err == sql.ErrNoRows {

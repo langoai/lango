@@ -61,12 +61,6 @@ func NewAgentForm(cfg *config.Config) *FormModel {
 		Placeholder: "~/.lango/prompts (directory of .md files)",
 	})
 
-	form.AddField(&Field{
-		Key: "system_prompt_path", Label: "System Prompt Path (legacy)", Type: InputText,
-		Value:       cfg.Agent.SystemPromptPath,
-		Placeholder: "path/to/system_prompt.txt",
-	})
-
 	fallbackOpts := append([]string{""}, providerOpts...)
 	form.AddField(&Field{
 		Key: "fallback_provider", Label: "Fallback Provider", Type: InputSelect,
@@ -399,10 +393,23 @@ func NewObservationalMemoryForm(cfg *config.Config) *FormModel {
 func NewEmbeddingForm(cfg *config.Config) *FormModel {
 	form := NewFormModel("🔗 Embedding & RAG Configuration")
 
+	// Build provider options from user's registered providers + "local".
+	providerOpts := []string{"local"}
+	for id := range cfg.Providers {
+		providerOpts = append(providerOpts, id)
+	}
+	sort.Strings(providerOpts)
+
+	// Determine current selection: prefer ProviderID, fallback to "local" if Provider is "local".
+	currentVal := cfg.Embedding.ProviderID
+	if currentVal == "" && cfg.Embedding.Provider == "local" {
+		currentVal = "local"
+	}
+
 	form.AddField(&Field{
-		Key: "emb_provider", Label: "Provider", Type: InputSelect,
-		Value:   cfg.Embedding.Provider,
-		Options: []string{"openai", "google", "local"},
+		Key: "emb_provider_id", Label: "Provider", Type: InputSelect,
+		Value:   currentVal,
+		Options: providerOpts,
 	})
 
 	form.AddField(&Field{

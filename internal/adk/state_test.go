@@ -273,7 +273,7 @@ func TestEventsAdapter_AuthorMapping(t *testing.T) {
 }
 
 func TestEventsAdapter_Truncation(t *testing.T) {
-	// Create 150 messages
+	// Create 150 small messages — all fit within default token budget.
 	var msgs []internal.Message
 	now := time.Now()
 	for i := range 150 {
@@ -288,9 +288,9 @@ func TestEventsAdapter_Truncation(t *testing.T) {
 	adapter := NewSessionAdapter(sess, &mockStore{})
 	events := adapter.Events()
 
-	// Len should be capped at 100
-	if events.Len() != 100 {
-		t.Errorf("expected Len=100, got %d", events.Len())
+	// All 150 small messages should fit within the default token budget.
+	if events.Len() != 150 {
+		t.Errorf("expected Len=150, got %d", events.Len())
 	}
 
 	// Count events from All()
@@ -298,8 +298,14 @@ func TestEventsAdapter_Truncation(t *testing.T) {
 	for range events.All() {
 		count++
 	}
-	if count != 100 {
-		t.Errorf("expected 100 events from All(), got %d", count)
+	if count != 150 {
+		t.Errorf("expected 150 events from All(), got %d", count)
+	}
+
+	// With an explicit small budget, messages should be truncated.
+	budgetEvents := adapter.EventsWithTokenBudget(30)
+	if budgetEvents.Len() >= 150 {
+		t.Errorf("expected truncation with small budget, got %d", budgetEvents.Len())
 	}
 }
 
@@ -505,7 +511,7 @@ func TestEventsAdapter_TokenBudgetTruncation(t *testing.T) {
 	})
 }
 
-func TestEventsAdapter_LegacyFallback(t *testing.T) {
+func TestEventsAdapter_DefaultTokenBudget(t *testing.T) {
 	var msgs []internal.Message
 	for range 150 {
 		msgs = append(msgs, internal.Message{
@@ -514,13 +520,15 @@ func TestEventsAdapter_LegacyFallback(t *testing.T) {
 			Timestamp: time.Now(),
 		})
 	}
-	// tokenBudget=0 means legacy mode
+	// tokenBudget=0 means use DefaultTokenBudget
 	adapter := &EventsAdapter{
 		history:     msgs,
 		tokenBudget: 0,
 	}
-	if adapter.Len() != 100 {
-		t.Errorf("expected legacy 100-cap, got %d", adapter.Len())
+	// With DefaultTokenBudget (32000) and tiny messages (~1 token each),
+	// all 150 messages should fit within the budget.
+	if adapter.Len() != 150 {
+		t.Errorf("expected all 150 messages within default budget, got %d", adapter.Len())
 	}
 }
 

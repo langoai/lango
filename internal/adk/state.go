@@ -98,26 +98,19 @@ func (s *StateAdapter) All() iter.Seq2[string, any] {
 	}
 }
 
+// DefaultTokenBudget is the token budget used when no explicit budget is provided.
+const DefaultTokenBudget = 32000
+
 // EventsAdapter adapts internal history to adk events.
-// Supports two truncation modes:
-// - Token-budget: when tokenBudget > 0, includes messages from most recent until budget is exhausted
-// - Message count: falls back to hard 100-message cap when tokenBudget is 0
+// Uses token-budget truncation: includes messages from most recent until the budget is exhausted.
 type EventsAdapter struct {
 	history     []internal.Message
-	tokenBudget int // 0 means use legacy 100-message cap
+	tokenBudget int
 }
 
-// truncatedHistory returns the messages to include based on truncation mode.
+// truncatedHistory returns the messages to include based on token budget.
 func (e *EventsAdapter) truncatedHistory() []internal.Message {
-	if e.tokenBudget > 0 {
-		return e.tokenBudgetTruncate()
-	}
-	// Legacy: hard 100-message cap
-	msgs := e.history
-	if len(msgs) > 100 {
-		msgs = msgs[len(msgs)-100:]
-	}
-	return msgs
+	return e.tokenBudgetTruncate()
 }
 
 // tokenBudgetTruncate includes messages from most recent to oldest until the token budget is exhausted.
@@ -126,12 +119,17 @@ func (e *EventsAdapter) tokenBudgetTruncate() []internal.Message {
 		return e.history
 	}
 
+	budget := e.tokenBudget
+	if budget <= 0 {
+		budget = DefaultTokenBudget
+	}
+
 	var totalTokens int
 	startIdx := len(e.history)
 
 	for i := len(e.history) - 1; i >= 0; i-- {
 		msgTokens := memory.CountMessageTokens(e.history[i])
-		if totalTokens+msgTokens > e.tokenBudget && startIdx < len(e.history) {
+		if totalTokens+msgTokens > budget && startIdx < len(e.history) {
 			break
 		}
 		totalTokens += msgTokens

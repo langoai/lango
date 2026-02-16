@@ -53,3 +53,25 @@ Embedding settings SHALL be configurable via the `embedding` section in config, 
 
 ### REQ-EMB-009: Doctor Check
 The doctor command SHALL include an Embedding/RAG check that validates provider configuration and API key availability.
+
+### REQ-EMB-010: ProviderID-based Embedding Provider Resolution
+The `EmbeddingConfig` SHALL support a `ProviderID` field that references a key in the `Config.Providers` map. When `ProviderID` is set, the embedding backend type and API key SHALL be resolved from the referenced provider's `Type` and `APIKey` fields using the `ProviderTypeToEmbeddingType` mapping.
+
+**Scenarios:**
+- Given `embedding.providerID` is `"gemini-1"` and `providers["gemini-1"]` has type `"gemini"` and a valid API key, then the embedding backend type is `"google"` and the API key is the provider's API key
+- Given `embedding.providerID` is `"my-openai"` and `providers["my-openai"]` has type `"openai"` and a valid API key, then the embedding backend type is `"openai"` and the API key is the provider's API key
+- Given `embedding.providerID` is `"my-ollama"` and `providers["my-ollama"]` has type `"ollama"`, then the embedding backend type is `"local"` and no API key is required
+- Given `embedding.providerID` references a provider with type `"anthropic"` (no embedding support), then the resolver returns empty backend type and empty API key
+- Given `embedding.providerID` is set to an ID that does not exist in the providers map, then the resolver returns empty backend type and empty API key
+
+### REQ-EMB-011: Embedding Provider Resolution
+The system SHALL resolve the embedding backend via two paths:
+1. `ProviderID` — looks up the provider in the providers map and resolves backend type and API key.
+2. `Provider = "local"` — uses local (Ollama) embeddings with no API key.
+
+If neither `ProviderID` nor `Provider = "local"` is set, the embedding system SHALL be disabled.
+
+**Scenarios:**
+- Given `embedding.providerID` is set to a valid key in the providers map, then the backend type and API key are resolved from that provider entry
+- Given `embedding.provider` is set to `"local"`, then the backend type is `"local"` with no API key
+- Given both `embedding.providerID` and `embedding.provider` are empty, then the embedding system is disabled

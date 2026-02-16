@@ -228,7 +228,8 @@ All settings are managed via `lango onboard` or `lango config` and stored encryp
 | `observationalMemory.observationTokenThreshold` | int | `2000` | Token threshold to trigger reflection |
 | `observationalMemory.maxMessageTokenBudget` | int | `8000` | Max token budget for recent messages in context |
 | **Embedding** | | | |
-| `embedding.provider` | string | - | Embedding backend (`openai`, `google`, `local`) |
+| `embedding.providerID` | string | - | Provider ID from `providers` map (e.g., `"gemini-1"`, `"my-openai"`). Backend type and API key are auto-resolved. |
+| `embedding.provider` | string | - | Embedding backend (`openai`, `google`, `local`). Deprecated when `providerID` is set. |
 | `embedding.model` | string | - | Embedding model identifier |
 | `embedding.dimensions` | int | - | Embedding vector dimensionality |
 | `embedding.local.baseUrl` | string | `http://localhost:11434/v1` | Local (Ollama) embedding endpoint |

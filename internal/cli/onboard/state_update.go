@@ -39,8 +39,6 @@ func (s *ConfigState) UpdateConfigFromForm(form *FormModel) {
 			}
 		case "prompts_dir":
 			s.Current.Agent.PromptsDir = val
-		case "system_prompt_path":
-			s.Current.Agent.SystemPromptPath = val
 		case "fallback_provider":
 			s.Current.Agent.FallbackProvider = val
 		case "fallback_model":
@@ -201,8 +199,14 @@ func (s *ConfigState) UpdateConfigFromForm(form *FormModel) {
 			}
 
 		// Embedding & RAG
-		case "emb_provider":
-			s.Current.Embedding.Provider = val
+		case "emb_provider_id":
+			if val == "local" {
+				s.Current.Embedding.ProviderID = ""
+				s.Current.Embedding.Provider = "local"
+			} else {
+				s.Current.Embedding.ProviderID = val
+				s.Current.Embedding.Provider = ""
+			}
 		case "emb_model":
 			s.Current.Embedding.Model = val
 		case "emb_dimensions":

@@ -12,7 +12,7 @@ The onboarding tool MUST support editing the following configuration sections:
     - Set Model ID
     - Set Max Tokens (integer)
     - Set Temperature (float)
-    - Set System Prompt Path (file path)
+    - Set Prompts Directory (directory of .md files)
     - Select Fallback Provider (empty + same dynamic provider list as Provider)
     - Set Fallback Model ID
 
@@ -67,7 +67,7 @@ The onboarding tool MUST support editing the following configuration sections:
 
 #### Scenario: Agent fallback configuration
 - **WHEN** user navigates to Agent settings
-- **THEN** the form SHALL display fields for system_prompt_path, fallback_provider, and fallback_model
+- **THEN** the form SHALL display fields for prompts_dir, fallback_provider, and fallback_model
 - **AND** fallback_provider SHALL be an InputSelect with options: empty + registered provider IDs
 
 #### Scenario: Agent provider options from registered providers
@@ -317,3 +317,22 @@ The "Save & Exit" menu item description SHALL read "Save encrypted profile" inst
 #### Scenario: Menu description
 - **WHEN** user views the configuration menu
 - **THEN** the "Save & Exit" item description SHALL be "Save encrypted profile"
+
+### Requirement: Embedding form provider selection
+The onboard TUI embedding form SHALL display the user's registered provider IDs from the providers map plus `"local"` as options. When a provider ID is selected, the form SHALL set `ProviderID` on the embedding config and clear the `Provider` field. When `"local"` is selected, `ProviderID` SHALL be cleared and `Provider` SHALL be set to `"local"`.
+
+#### Scenario: Provider options from registered providers
+- **WHEN** the user has providers `"gemini-1"` and `"my-openai"` registered
+- **THEN** the embedding provider dropdown SHALL show `["gemini-1", "local", "my-openai"]` (sorted, with "local" always included)
+
+#### Scenario: Selecting a registered provider
+- **WHEN** the user selects `"my-openai"` from the embedding provider dropdown
+- **THEN** `embedding.providerID` SHALL be set to `"my-openai"` and `embedding.provider` SHALL be cleared
+
+#### Scenario: Selecting local provider
+- **WHEN** the user selects `"local"` from the embedding provider dropdown
+- **THEN** `embedding.providerID` SHALL be empty and `embedding.provider` SHALL be `"local"`
+
+#### Scenario: Current value display
+- **WHEN** `embedding.providerID` is set to `"gemini-1"`
+- **THEN** the form SHALL show `"gemini-1"` as the current selected value

@@ -3,7 +3,6 @@ package app
 import (
 	"context"
 	"fmt"
-	"os"
 	"strings"
 
 	"database/sql"
@@ -28,31 +27,11 @@ import (
 )
 
 // buildPromptBuilder returns a prompt.Builder configured from the agent settings.
-// Priority: PromptsDir (directory of .md files) > SystemPromptPath (legacy single file) > defaults.
+// Priority: PromptsDir (directory of .md files) > defaults.
 func buildPromptBuilder(cfg *config.AgentConfig) *prompt.Builder {
-	// 1. Directory-based prompts
 	if cfg.PromptsDir != "" {
 		return prompt.LoadFromDir(cfg.PromptsDir, logger())
 	}
-
-	// 2. Legacy: single system prompt file → replace Identity section only
-	if cfg.SystemPromptPath != "" {
-		data, err := os.ReadFile(cfg.SystemPromptPath)
-		if err != nil {
-			logger().Warnw("system prompt file not found, using defaults", "path", cfg.SystemPromptPath, "error", err)
-			return prompt.DefaultBuilder()
-		}
-		content := strings.TrimSpace(string(data))
-		if content == "" {
-			return prompt.DefaultBuilder()
-		}
-		logger().Infow("loaded custom system prompt", "path", cfg.SystemPromptPath)
-		b := prompt.DefaultBuilder()
-		b.Add(prompt.NewStaticSection(prompt.SectionIdentity, 100, "", content))
-		return b
-	}
-
-	// 3. Built-in defaults
 	return prompt.DefaultBuilder()
 }
 
@@ -314,36 +293,28 @@ type embeddingComponents struct {
 
 // initEmbedding creates the embedding pipeline and RAG service if configured.
 func initEmbedding(cfg *config.Config, rawDB *sql.DB, kc *knowledgeComponents, mc *memoryComponents) *embeddingComponents {
-	if cfg.Embedding.Provider == "" {
+	emb := cfg.Embedding
+	if emb.Provider == "" && emb.ProviderID == "" {
 		logger().Info("embedding system disabled (no provider configured)")
 		return nil
 	}
 
-	// Resolve API key from providers map.
-	apiKey := ""
-	switch cfg.Embedding.Provider {
-	case "openai":
-		if p, ok := cfg.Providers["openai"]; ok {
-			apiKey = p.APIKey
-		}
-	case "google":
-		if p, ok := cfg.Providers["google"]; ok {
-			apiKey = p.APIKey
-		}
-		if p, ok := cfg.Providers["gemini"]; ok && apiKey == "" {
-			apiKey = p.APIKey
-		}
+	backendType, apiKey := cfg.ResolveEmbeddingProvider()
+	if backendType == "" {
+		logger().Warnw("embedding provider type could not be resolved",
+			"providerID", emb.ProviderID, "provider", emb.Provider)
+		return nil
 	}
 
 	providerCfg := embedding.ProviderConfig{
-		Provider:   cfg.Embedding.Provider,
-		Model:      cfg.Embedding.Model,
-		Dimensions: cfg.Embedding.Dimensions,
+		Provider:   backendType,
+		Model:      emb.Model,
+		Dimensions: emb.Dimensions,
 		APIKey:     apiKey,
-		BaseURL:    cfg.Embedding.Local.BaseURL,
+		BaseURL:    emb.Local.BaseURL,
 	}
-	if cfg.Embedding.Provider == "local" && cfg.Embedding.Local.Model != "" {
-		providerCfg.Model = cfg.Embedding.Local.Model
+	if backendType == "local" && emb.Local.Model != "" {
+		providerCfg.Model = emb.Local.Model
 	}
 
 	registry, err := embedding.NewRegistry(providerCfg, nil, logger())
@@ -400,9 +371,10 @@ func initEmbedding(cfg *config.Config, rawDB *sql.DB, kc *knowledgeComponents, m
 	}
 
 	logger().Infow("embedding system initialized",
-		"provider", cfg.Embedding.Provider,
+		"provider", backendType,
+		"providerID", emb.ProviderID,
 		"dimensions", dimensions,
-		"ragEnabled", cfg.Embedding.RAG.Enabled,
+		"ragEnabled", emb.RAG.Enabled,
 	)
 
 	return &embeddingComponents{

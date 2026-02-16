@@ -115,8 +115,8 @@ func TestIntegration_ObservationToReflection(t *testing.T) {
 }
 
 func TestIntegration_OMDisabled_NoImpact(t *testing.T) {
-	// When OM is disabled, the EventsAdapter should use legacy 100-message cap
-	// This test verifies the default behavior is unchanged
+	// When OM is disabled, the EventsAdapter uses the default token budget.
+	// This test verifies that token counting works independently.
 
 	// Create 150 messages
 	messages := make([]session.Message, 150)

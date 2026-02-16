@@ -22,7 +22,7 @@ func (c *EmbeddingCheck) Run(_ context.Context, cfg *config.Config) Result {
 	}
 
 	emb := cfg.Embedding
-	if emb.Provider == "" {
+	if emb.Provider == "" && emb.ProviderID == "" {
 		return Result{
 			Name:    c.Name(),
 			Status:  StatusSkip,
@@ -33,34 +33,19 @@ func (c *EmbeddingCheck) Run(_ context.Context, cfg *config.Config) Result {
 	var issues []string
 	status := StatusPass
 
-	// Validate provider type.
-	switch emb.Provider {
-	case "openai", "google", "local":
-		// ok
-	default:
-		issues = append(issues, fmt.Sprintf("unknown provider: %s", emb.Provider))
-		status = StatusFail
-	}
+	// Resolve backend type and API key via unified resolver.
+	backendType, apiKey := cfg.ResolveEmbeddingProvider()
 
-	// Check API key availability for cloud providers.
-	if emb.Provider == "openai" {
-		if p, ok := cfg.Providers["openai"]; !ok || p.APIKey == "" {
-			issues = append(issues, "openai embedding requires an API key in providers.openai")
-			status = StatusFail
+	if backendType == "" {
+		if emb.ProviderID != "" {
+			issues = append(issues, fmt.Sprintf("provider ID %q not found in providers map or has unsupported type", emb.ProviderID))
+		} else {
+			issues = append(issues, "embedding provider not properly configured (set providerID or provider=local)")
 		}
-	}
-	if emb.Provider == "google" {
-		hasKey := false
-		if p, ok := cfg.Providers["google"]; ok && p.APIKey != "" {
-			hasKey = true
-		}
-		if p, ok := cfg.Providers["gemini"]; ok && p.APIKey != "" {
-			hasKey = true
-		}
-		if !hasKey {
-			issues = append(issues, "google embedding requires an API key in providers.google or providers.gemini")
-			status = StatusFail
-		}
+		status = StatusFail
+	} else if backendType != "local" && apiKey == "" {
+		issues = append(issues, fmt.Sprintf("provider %q has no API key configured", emb.ProviderID))
+		status = StatusFail
 	}
 
 	// Check dimensions.
@@ -80,8 +65,12 @@ func (c *EmbeddingCheck) Run(_ context.Context, cfg *config.Config) Result {
 	}
 
 	if len(issues) == 0 {
+		providerLabel := backendType
+		if emb.ProviderID != "" {
+			providerLabel = fmt.Sprintf("%s (id=%s)", backendType, emb.ProviderID)
+		}
 		msg := fmt.Sprintf("Embedding configured (provider=%s, dimensions=%d, rag=%v)",
-			emb.Provider, emb.Dimensions, emb.RAG.Enabled)
+			providerLabel, emb.Dimensions, emb.RAG.Enabled)
 		return Result{Name: c.Name(), Status: StatusPass, Message: msg}
 	}
 

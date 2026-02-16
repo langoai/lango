@@ -85,7 +85,13 @@ type ObservationalMemoryConfig struct {
 
 // EmbeddingConfig defines embedding and RAG settings.
 type EmbeddingConfig struct {
-	// Provider selects the embedding backend: "openai", "google", or "local".
+	// ProviderID references a key in the providers map (e.g., "gemini-1", "my-openai").
+	// The embedding backend type and API key are resolved from this provider.
+	// For local (Ollama) embeddings, leave ProviderID empty and set Provider to "local".
+	ProviderID string `mapstructure:"providerID" json:"providerID"`
+
+	// Provider is used only for local (Ollama) embeddings where no entry in the
+	// providers map is needed. Set to "local" to enable local embeddings.
 	Provider string `mapstructure:"provider" json:"provider"`
 
 	// Model is the embedding model identifier.
@@ -160,7 +166,6 @@ const (
 type InterceptorConfig struct {
 	Enabled             bool           `mapstructure:"enabled" json:"enabled"`
 	RedactPII           bool           `mapstructure:"redactPii" json:"redactPii"`
-	ApprovalRequired    bool           `mapstructure:"approvalRequired" json:"approvalRequired"`         // Deprecated: use ApprovalPolicy
 	ApprovalPolicy      ApprovalPolicy `mapstructure:"approvalPolicy" json:"approvalPolicy"`             // default: "dangerous"
 	HeadlessAutoApprove bool           `mapstructure:"headlessAutoApprove" json:"headlessAutoApprove"`
 	NotifyChannel       string         `mapstructure:"notifyChannel" json:"notifyChannel"`               // e.g. "discord", "telegram"
@@ -208,9 +213,6 @@ type AgentConfig struct {
 
 	// Temperature for generation
 	Temperature float64 `mapstructure:"temperature" json:"temperature"`
-
-	// System prompt template path
-	SystemPromptPath string `mapstructure:"systemPromptPath" json:"systemPromptPath"`
 
 	// PromptsDir is the directory containing section .md files (AGENTS.md, SAFETY.md, etc.)
 	// If empty, built-in default sections are used.
@@ -351,4 +353,41 @@ type BrowserToolConfig struct {
 
 	// Session timeout
 	SessionTimeout time.Duration `mapstructure:"sessionTimeout" json:"sessionTimeout"`
+}
+
+// ProviderTypeToEmbeddingType maps a provider config type to the corresponding
+// embedding backend type.
+var ProviderTypeToEmbeddingType = map[string]string{
+	"openai":    "openai",
+	"gemini":    "google",
+	"google":    "google",
+	"anthropic": "",
+	"ollama":    "local",
+}
+
+// ResolveEmbeddingProvider returns the embedding backend type and API key
+// for the configured embedding provider.
+// Priority: ProviderID (from providers map) > Provider "local" (Ollama).
+func (c *Config) ResolveEmbeddingProvider() (backendType, apiKey string) {
+	emb := c.Embedding
+
+	// Explicit provider ID — resolve type and key from providers map.
+	if emb.ProviderID != "" {
+		p, ok := c.Providers[emb.ProviderID]
+		if !ok {
+			return "", ""
+		}
+		bt := ProviderTypeToEmbeddingType[p.Type]
+		if bt == "" {
+			return "", ""
+		}
+		return bt, p.APIKey
+	}
+
+	// Local (Ollama) provider — no API key needed.
+	if emb.Provider == "local" {
+		return "local", ""
+	}
+
+	return "", ""
 }

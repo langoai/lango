@@ -32,7 +32,8 @@ The system SHALL provide a `CompositeProvider` that routes approval requests to 
 #### Scenario: No matching provider without fallback (fail-closed)
 - **WHEN** no registered provider can handle the session key
 - **AND** no TTY fallback is configured
-- **THEN** the request SHALL be denied (return false, nil)
+- **THEN** the request SHALL be denied (return false)
+- **AND** an error SHALL be returned with the message `no approval provider for session "<sessionKey>"`
 
 ### Requirement: Thread-safe provider registration
 The system SHALL allow providers to be registered concurrently without data races.
@@ -126,3 +127,16 @@ The system SHALL provide a `buildApprovalSummary(toolName, params)` function tha
 #### Scenario: Long command truncation
 - **WHEN** a command string exceeds 200 characters
 - **THEN** it SHALL be truncated to 200 characters with "..." appended
+
+### Requirement: Session key context propagation
+The `runAgent` function SHALL inject the session key into the context via `WithSessionKey` before passing it to the agent pipeline, ensuring downstream components (approval providers, learning engine) can access the session key via `SessionKeyFromContext`.
+
+#### Scenario: Channel message triggers agent with session key
+- **WHEN** a Telegram/Discord/Slack handler calls `runAgent(ctx, sessionKey, input)`
+- **THEN** `runAgent` SHALL call `WithSessionKey(ctx, sessionKey)` before invoking the agent
+- **AND** `SessionKeyFromContext` SHALL return the session key within the agent pipeline
+
+#### Scenario: Session key reaches approval provider
+- **WHEN** a tool requiring approval is invoked from a channel message
+- **THEN** the `ApprovalRequest.SessionKey` field SHALL contain the channel session key (e.g., "telegram:123:456")
+- **AND** `CompositeProvider` SHALL route to the matching channel provider

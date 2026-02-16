@@ -27,7 +27,7 @@ func TestNewAgentForm_AllFields(t *testing.T) {
 
 	wantKeys := []string{
 		"provider", "model", "maxtokens", "temp",
-		"prompts_dir", "system_prompt_path", "fallback_provider", "fallback_model",
+		"prompts_dir", "fallback_provider", "fallback_model",
 	}
 
 	if len(form.Fields) != len(wantKeys) {
@@ -159,7 +159,6 @@ func TestUpdateConfigFromForm_AgentAdvancedFields(t *testing.T) {
 	state := NewConfigState()
 	form := NewFormModel("test")
 	form.AddField(&Field{Key: "prompts_dir", Type: InputText, Value: "~/.lango/prompts"})
-	form.AddField(&Field{Key: "system_prompt_path", Type: InputText, Value: "/path/to/prompt.txt"})
 	form.AddField(&Field{Key: "fallback_provider", Type: InputSelect, Value: "openai"})
 	form.AddField(&Field{Key: "fallback_model", Type: InputText, Value: "gpt-4o"})
 
@@ -167,9 +166,6 @@ func TestUpdateConfigFromForm_AgentAdvancedFields(t *testing.T) {
 
 	if state.Current.Agent.PromptsDir != "~/.lango/prompts" {
 		t.Errorf("PromptsDir: want %q, got %q", "~/.lango/prompts", state.Current.Agent.PromptsDir)
-	}
-	if state.Current.Agent.SystemPromptPath != "/path/to/prompt.txt" {
-		t.Errorf("SystemPromptPath: want %q, got %q", "/path/to/prompt.txt", state.Current.Agent.SystemPromptPath)
 	}
 	if state.Current.Agent.FallbackProvider != "openai" {
 		t.Errorf("FallbackProvider: want %q, got %q", "openai", state.Current.Agent.FallbackProvider)
@@ -282,7 +278,7 @@ func TestNewEmbeddingForm_AllFields(t *testing.T) {
 	form := NewEmbeddingForm(cfg)
 
 	wantKeys := []string{
-		"emb_provider", "emb_model", "emb_dimensions",
+		"emb_provider_id", "emb_model", "emb_dimensions",
 		"emb_local_baseurl",
 		"emb_rag_enabled", "emb_rag_max_results", "emb_rag_collections",
 	}
@@ -297,18 +293,48 @@ func TestNewEmbeddingForm_AllFields(t *testing.T) {
 		}
 	}
 
-	if f := fieldByKey(form, "emb_provider"); f.Type != InputSelect {
-		t.Errorf("emb_provider: want InputSelect, got %d", f.Type)
+	if f := fieldByKey(form, "emb_provider_id"); f.Type != InputSelect {
+		t.Errorf("emb_provider_id: want InputSelect, got %d", f.Type)
 	}
 	if f := fieldByKey(form, "emb_rag_enabled"); f.Type != InputBool {
 		t.Errorf("emb_rag_enabled: want InputBool, got %d", f.Type)
 	}
 }
 
+func TestNewEmbeddingForm_ProviderOptionsFromProviders(t *testing.T) {
+	cfg := defaultTestConfig()
+	cfg.Providers = map[string]config.ProviderConfig{
+		"gemini-1":  {Type: "gemini", APIKey: "test-key"},
+		"my-openai": {Type: "openai", APIKey: "sk-test"},
+	}
+	cfg.Embedding.ProviderID = "gemini-1"
+
+	form := NewEmbeddingForm(cfg)
+	f := fieldByKey(form, "emb_provider_id")
+	if f == nil {
+		t.Fatal("missing emb_provider_id field")
+	}
+
+	// Should have "local" + user providers.
+	if len(f.Options) < 3 {
+		t.Errorf("expected at least 3 options, got %d: %v", len(f.Options), f.Options)
+	}
+
+	// Current value should be the ProviderID.
+	if f.Value != "gemini-1" {
+		t.Errorf("value: want %q, got %q", "gemini-1", f.Value)
+	}
+}
+
 func TestUpdateConfigFromForm_EmbeddingFields(t *testing.T) {
 	state := NewConfigState()
+	// Set up a provider for the ProviderID to resolve against.
+	state.Current.Providers = map[string]config.ProviderConfig{
+		"my-openai": {Type: "openai", APIKey: "sk-test"},
+	}
+
 	form := NewFormModel("test")
-	form.AddField(&Field{Key: "emb_provider", Type: InputSelect, Value: "openai"})
+	form.AddField(&Field{Key: "emb_provider_id", Type: InputSelect, Value: "my-openai"})
 	form.AddField(&Field{Key: "emb_model", Type: InputText, Value: "text-embedding-3-small"})
 	form.AddField(&Field{Key: "emb_dimensions", Type: InputInt, Value: "1536"})
 	form.AddField(&Field{Key: "emb_local_baseurl", Type: InputText, Value: "http://localhost:11434/v1"})
@@ -319,8 +345,11 @@ func TestUpdateConfigFromForm_EmbeddingFields(t *testing.T) {
 	state.UpdateConfigFromForm(&form)
 
 	e := state.Current.Embedding
-	if e.Provider != "openai" {
-		t.Errorf("Provider: want %q, got %q", "openai", e.Provider)
+	if e.ProviderID != "my-openai" {
+		t.Errorf("ProviderID: want %q, got %q", "my-openai", e.ProviderID)
+	}
+	if e.Provider != "" {
+		t.Errorf("Provider: want empty (non-local), got %q", e.Provider)
 	}
 	if e.Model != "text-embedding-3-small" {
 		t.Errorf("Model: want %q, got %q", "text-embedding-3-small", e.Model)
@@ -339,6 +368,22 @@ func TestUpdateConfigFromForm_EmbeddingFields(t *testing.T) {
 	}
 	if len(e.RAG.Collections) != 2 || e.RAG.Collections[0] != "docs" || e.RAG.Collections[1] != "wiki" {
 		t.Errorf("RAG.Collections: want [docs wiki], got %v", e.RAG.Collections)
+	}
+}
+
+func TestUpdateConfigFromForm_EmbeddingProviderIDLocal(t *testing.T) {
+	state := NewConfigState()
+	form := NewFormModel("test")
+	form.AddField(&Field{Key: "emb_provider_id", Type: InputSelect, Value: "local"})
+
+	state.UpdateConfigFromForm(&form)
+
+	e := state.Current.Embedding
+	if e.ProviderID != "" {
+		t.Errorf("ProviderID: want empty, got %q", e.ProviderID)
+	}
+	if e.Provider != "local" {
+		t.Errorf("Provider: want %q, got %q", "local", e.Provider)
 	}
 }
 
