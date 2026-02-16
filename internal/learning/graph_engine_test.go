@@ -37,7 +37,10 @@ func (s *fakeGraphStore) QueryBySubjectPredicate(context.Context, string, string
 func (s *fakeGraphStore) Traverse(context.Context, string, int, []string) ([]graph.Triple, error) {
 	return nil, nil
 }
-func (s *fakeGraphStore) Close() error { return nil }
+func (s *fakeGraphStore) Count(context.Context) (int, error)              { return len(s.triples), nil }
+func (s *fakeGraphStore) PredicateStats(context.Context) (map[string]int, error) { return nil, nil }
+func (s *fakeGraphStore) ClearAll(context.Context) error                  { s.triples = nil; return nil }
+func (s *fakeGraphStore) Close() error                                    { return nil }
 
 func TestGraphEngine_RecordErrorGraph_WithCallback(t *testing.T) {
 	logger := zap.NewNop().Sugar()

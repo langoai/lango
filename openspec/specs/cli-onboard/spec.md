@@ -109,7 +109,7 @@ The onboarding tool MUST support editing the following configuration sections:
 - **Navigation**:
     - Users MUST be able to navigate between configuration categories freely.
     - Uses a menu-based system (e.g., Main Menu -> Category -> Form).
-    - The menu SHALL include categories in this order: Providers, Agent, Server, Channels, Tools, Session, Security, Auth, Knowledge, Observational Memory, Embedding & RAG, Save & Exit, Cancel.
+    - The menu SHALL include categories in this order: Providers, Agent, Server, Channels, Tools, Session, Security, Auth, Knowledge, Observational Memory, Embedding & RAG, Graph Store, Multi-Agent, A2A Protocol, Save & Exit, Cancel.
     - Form cursor navigation SHALL NOT panic when navigating past the first or last field.
 
 #### Scenario: Providers category appears first
@@ -336,3 +336,24 @@ The onboard TUI embedding form SHALL display the user's registered provider IDs 
 #### Scenario: Current value display
 - **WHEN** `embedding.providerID` is set to `"gemini-1"`
 - **THEN** the form SHALL show `"gemini-1"` as the current selected value
+
+### Requirement: Graph store wizard screen
+The onboard wizard SHALL include a "Graph Store" menu item that opens a form with fields: graph_enabled (bool), graph_backend (select: bolt), graph_db_path (text), graph_max_depth (int), graph_max_expand (int). Form values SHALL be written back to the config.
+
+#### Scenario: Configure graph via wizard
+- **WHEN** user selects "Graph Store" from onboard menu and fills the form
+- **THEN** config.Graph fields are updated with form values
+
+### Requirement: Multi-agent wizard screen
+The onboard wizard SHALL include a "Multi-Agent" menu item that opens a form with a single multi_agent (bool) toggle. Form values SHALL be written back to config.Agent.MultiAgent.
+
+#### Scenario: Enable multi-agent via wizard
+- **WHEN** user selects "Multi-Agent" and toggles enabled
+- **THEN** config.Agent.MultiAgent is set to true
+
+### Requirement: A2A protocol wizard screen
+The onboard wizard SHALL include an "A2A Protocol" menu item that opens a form with fields: a2a_enabled (bool), a2a_base_url (text), a2a_agent_name (text), a2a_agent_desc (text). Form values SHALL be written back to the config.
+
+#### Scenario: Configure A2A via wizard
+- **WHEN** user selects "A2A Protocol" and fills the form
+- **THEN** config.A2A fields are updated with form values

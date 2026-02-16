@@ -508,6 +508,94 @@ func NewOIDCProviderForm(id string, cfg config.OIDCProviderConfig) *FormModel {
 	return &form
 }
 
+// NewGraphForm creates the Graph Store configuration form.
+func NewGraphForm(cfg *config.Config) *FormModel {
+	form := NewFormModel("📊 Graph Store Configuration")
+
+	form.AddField(&Field{
+		Key: "graph_enabled", Label: "Enabled", Type: InputBool,
+		Checked: cfg.Graph.Enabled,
+	})
+
+	form.AddField(&Field{
+		Key: "graph_backend", Label: "Backend", Type: InputSelect,
+		Value:   cfg.Graph.Backend,
+		Options: []string{"bolt"},
+	})
+
+	form.AddField(&Field{
+		Key: "graph_db_path", Label: "Database Path", Type: InputText,
+		Value:       cfg.Graph.DatabasePath,
+		Placeholder: "~/.lango/graph.db",
+	})
+
+	form.AddField(&Field{
+		Key: "graph_max_depth", Label: "Max Traversal Depth", Type: InputInt,
+		Value: strconv.Itoa(cfg.Graph.MaxTraversalDepth),
+		Validate: func(s string) error {
+			if i, err := strconv.Atoi(s); err != nil || i <= 0 {
+				return fmt.Errorf("must be a positive integer")
+			}
+			return nil
+		},
+	})
+
+	form.AddField(&Field{
+		Key: "graph_max_expand", Label: "Max Expansion Results", Type: InputInt,
+		Value: strconv.Itoa(cfg.Graph.MaxExpansionResults),
+		Validate: func(s string) error {
+			if i, err := strconv.Atoi(s); err != nil || i <= 0 {
+				return fmt.Errorf("must be a positive integer")
+			}
+			return nil
+		},
+	})
+
+	return &form
+}
+
+// NewMultiAgentForm creates the Multi-Agent configuration form.
+func NewMultiAgentForm(cfg *config.Config) *FormModel {
+	form := NewFormModel("🔀 Multi-Agent Configuration")
+
+	form.AddField(&Field{
+		Key: "multi_agent", Label: "Enable Multi-Agent Orchestration", Type: InputBool,
+		Checked: cfg.Agent.MultiAgent,
+	})
+
+	return &form
+}
+
+// NewA2AForm creates the A2A Protocol configuration form.
+func NewA2AForm(cfg *config.Config) *FormModel {
+	form := NewFormModel("🌍 A2A Protocol Configuration")
+
+	form.AddField(&Field{
+		Key: "a2a_enabled", Label: "Enabled", Type: InputBool,
+		Checked: cfg.A2A.Enabled,
+	})
+
+	form.AddField(&Field{
+		Key: "a2a_base_url", Label: "Base URL", Type: InputText,
+		Value:       cfg.A2A.BaseURL,
+		Placeholder: "https://your-agent.example.com",
+	})
+
+	form.AddField(&Field{
+		Key: "a2a_agent_name", Label: "Agent Name", Type: InputText,
+		Value:       cfg.A2A.AgentName,
+		Placeholder: "my-lango-agent",
+	})
+
+	form.AddField(&Field{
+		Key: "a2a_agent_desc", Label: "Agent Description", Type: InputText,
+		Value:       cfg.A2A.AgentDescription,
+		Placeholder: "A helpful AI assistant",
+	})
+
+	return &form
+}
+
 // Helper to create Provider configuration form
 func NewProviderForm(id string, cfg config.ProviderConfig) *FormModel {
 	title := "Edit Provider: " + id

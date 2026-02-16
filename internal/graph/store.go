@@ -47,6 +47,15 @@ type Store interface {
 	// predicates filters which edge types to follow (empty = all).
 	Traverse(ctx context.Context, startNode string, maxDepth int, predicates []string) ([]Triple, error)
 
+	// Count returns the total number of triples in the store.
+	Count(ctx context.Context) (int, error)
+
+	// PredicateStats returns the number of triples for each predicate type.
+	PredicateStats(ctx context.Context) (map[string]int, error)
+
+	// ClearAll removes all triples from the store.
+	ClearAll(ctx context.Context) error
+
 	// Close closes the underlying store.
 	Close() error
 }

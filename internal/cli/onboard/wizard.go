@@ -256,6 +256,18 @@ func (w *Wizard) handleMenuSelection(id string) tea.Cmd {
 		w.activeForm = NewEmbeddingForm(w.state.Current)
 		w.activeForm.Focus = true
 		w.step = StepForm
+	case "graph":
+		w.activeForm = NewGraphForm(w.state.Current)
+		w.activeForm.Focus = true
+		w.step = StepForm
+	case "multi_agent":
+		w.activeForm = NewMultiAgentForm(w.state.Current)
+		w.activeForm.Focus = true
+		w.step = StepForm
+	case "a2a":
+		w.activeForm = NewA2AForm(w.state.Current)
+		w.activeForm.Focus = true
+		w.step = StepForm
 	case "auth":
 		w.authProvidersList = NewAuthProvidersListModel(w.state.Current)
 		w.step = StepAuthProvidersList

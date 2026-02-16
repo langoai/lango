@@ -14,7 +14,9 @@ import (
 
 	"github.com/langowarny/lango/internal/app"
 	"github.com/langowarny/lango/internal/bootstrap"
+	cliagent "github.com/langowarny/lango/internal/cli/agent"
 	"github.com/langowarny/lango/internal/cli/doctor"
+	cligraph "github.com/langowarny/lango/internal/cli/graph"
 	climemory "github.com/langowarny/lango/internal/cli/memory"
 	"github.com/langowarny/lango/internal/cli/onboard"
 	clisecurity "github.com/langowarny/lango/internal/cli/security"
@@ -44,6 +46,22 @@ func main() {
 		return bootstrap.Run(bootstrap.Options{})
 	}))
 	rootCmd.AddCommand(climemory.NewMemoryCmd(func() (*config.Config, error) {
+		boot, err := bootstrap.Run(bootstrap.Options{})
+		if err != nil {
+			return nil, err
+		}
+		defer boot.DBClient.Close()
+		return boot.Config, nil
+	}))
+	rootCmd.AddCommand(cliagent.NewAgentCmd(func() (*config.Config, error) {
+		boot, err := bootstrap.Run(bootstrap.Options{})
+		if err != nil {
+			return nil, err
+		}
+		defer boot.DBClient.Close()
+		return boot.Config, nil
+	}))
+	rootCmd.AddCommand(cligraph.NewGraphCmd(func() (*config.Config, error) {
 		boot, err := bootstrap.Run(bootstrap.Options{})
 		if err != nil {
 			return nil, err

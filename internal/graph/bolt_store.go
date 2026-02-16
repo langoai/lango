@@ -204,6 +204,50 @@ func (s *BoltStore) Traverse(_ context.Context, startNode string, maxDepth int, 
 	return result, err
 }
 
+// Count returns the total number of triples by counting keys in the SPO bucket.
+func (s *BoltStore) Count(_ context.Context) (int, error) {
+	var count int
+	err := s.db.View(func(tx *bolt.Tx) error {
+		b := tx.Bucket(bucketSPO)
+		count = b.Stats().KeyN
+		return nil
+	})
+	return count, err
+}
+
+// PredicateStats returns the number of triples grouped by predicate.
+func (s *BoltStore) PredicateStats(_ context.Context) (map[string]int, error) {
+	stats := make(map[string]int)
+	err := s.db.View(func(tx *bolt.Tx) error {
+		b := tx.Bucket(bucketSPO)
+		c := b.Cursor()
+		for k, _ := c.First(); k != nil; k, _ = c.Next() {
+			_, p, _, err := splitKey(k)
+			if err != nil {
+				return err
+			}
+			stats[p]++
+		}
+		return nil
+	})
+	return stats, err
+}
+
+// ClearAll removes all triples from all index buckets.
+func (s *BoltStore) ClearAll(_ context.Context) error {
+	return s.db.Update(func(tx *bolt.Tx) error {
+		for _, name := range [][]byte{bucketSPO, bucketPOS, bucketOSP} {
+			if err := tx.DeleteBucket(name); err != nil {
+				return fmt.Errorf("delete bucket %s: %w", name, err)
+			}
+			if _, err := tx.CreateBucket(name); err != nil {
+				return fmt.Errorf("recreate bucket %s: %w", name, err)
+			}
+		}
+		return nil
+	})
+}
+
 // Close closes the underlying BoltDB database.
 func (s *BoltStore) Close() error {
 	return s.db.Close()

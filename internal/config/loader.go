@@ -63,6 +63,15 @@ func DefaultConfig() *Config {
 			MaxContextPerLayer: 5,
 			MaxSkillsPerDay:    5,
 		},
+		Graph: GraphConfig{
+			Enabled:             false,
+			Backend:             "bolt",
+			MaxTraversalDepth:   2,
+			MaxExpansionResults: 10,
+		},
+		A2A: A2AConfig{
+			Enabled: false,
+		},
 	}
 }
 
@@ -93,6 +102,11 @@ func Load(configPath string) (*Config, error) {
 	v.SetDefault("tools.browser.sessionTimeout", defaults.Tools.Browser.SessionTimeout)
 	v.SetDefault("security.interceptor.enabled", defaults.Security.Interceptor.Enabled)
 	v.SetDefault("security.interceptor.approvalPolicy", string(defaults.Security.Interceptor.ApprovalPolicy))
+	v.SetDefault("graph.enabled", defaults.Graph.Enabled)
+	v.SetDefault("graph.backend", defaults.Graph.Backend)
+	v.SetDefault("graph.maxTraversalDepth", defaults.Graph.MaxTraversalDepth)
+	v.SetDefault("graph.maxExpansionResults", defaults.Graph.MaxExpansionResults)
+	v.SetDefault("a2a.enabled", defaults.A2A.Enabled)
 
 	// Configure viper
 	v.SetConfigType("json")
@@ -202,6 +216,21 @@ func Validate(cfg *Config) error {
 		}
 		if cfg.Security.Signer.Provider == "rpc" && cfg.Security.Signer.RPCUrl == "" {
 			errs = append(errs, "security.signer.rpcUrl is required when provider is 'rpc'")
+		}
+	}
+
+	// Validate graph config
+	if cfg.Graph.Enabled && cfg.Graph.Backend != "bolt" {
+		errs = append(errs, fmt.Sprintf("graph.backend %q is not supported (must be \"bolt\")", cfg.Graph.Backend))
+	}
+
+	// Validate A2A config
+	if cfg.A2A.Enabled {
+		if cfg.A2A.BaseURL == "" {
+			errs = append(errs, "a2a.baseUrl is required when A2A is enabled")
+		}
+		if cfg.A2A.AgentName == "" {
+			errs = append(errs, "a2a.agentName is required when A2A is enabled")
 		}
 	}
 

@@ -118,5 +118,9 @@ func AllChecks() []Check {
 		&OutputScanningCheck{},
 		// Embedding / RAG
 		&EmbeddingCheck{},
+		// Graph / Multi-Agent / A2A
+		&GraphStoreCheck{},
+		&MultiAgentCheck{},
+		&A2ACheck{},
 	}
 }

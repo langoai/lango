@@ -234,6 +234,36 @@ func (s *ConfigState) UpdateConfigFromForm(form *FormModel) {
 			} else {
 				s.Current.Embedding.RAG.Collections = nil
 			}
+
+		// Graph Store
+		case "graph_enabled":
+			s.Current.Graph.Enabled = f.Checked
+		case "graph_backend":
+			s.Current.Graph.Backend = val
+		case "graph_db_path":
+			s.Current.Graph.DatabasePath = val
+		case "graph_max_depth":
+			if i, err := strconv.Atoi(val); err == nil {
+				s.Current.Graph.MaxTraversalDepth = i
+			}
+		case "graph_max_expand":
+			if i, err := strconv.Atoi(val); err == nil {
+				s.Current.Graph.MaxExpansionResults = i
+			}
+
+		// Multi-Agent
+		case "multi_agent":
+			s.Current.Agent.MultiAgent = f.Checked
+
+		// A2A Protocol
+		case "a2a_enabled":
+			s.Current.A2A.Enabled = f.Checked
+		case "a2a_base_url":
+			s.Current.A2A.BaseURL = val
+		case "a2a_agent_name":
+			s.Current.A2A.AgentName = val
+		case "a2a_agent_desc":
+			s.Current.A2A.AgentDescription = val
 		}
 	}
 }

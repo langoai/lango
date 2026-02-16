@@ -9,6 +9,9 @@ A high-performance AI agent built with Go, supporting multiple AI providers, cha
 - 🔌 **Multi-Channel** - Telegram, Discord, Slack support
 - 🛠️ **Rich Tools** - Shell execution, file system operations, browser automation, crypto & secrets tools
 - 🧠 **Self-Learning** - Knowledge store, learning engine, skill system, observational memory
+- 📊 **Knowledge Graph & Graph RAG** - BoltDB triple store with hybrid vector + graph retrieval
+- 🔀 **Multi-Agent Orchestration** - Hierarchical sub-agents (executor, researcher, planner, memory-manager)
+- 🌍 **A2A Protocol** - Agent-to-Agent protocol for remote agent discovery and integration
 - 🔒 **Secure** - AES-256-GCM encryption, key registry, secret management, output scanning
 - 💾 **Persistent** - Ent ORM with SQLite session storage
 - 🌐 **Gateway** - WebSocket/HTTP server for control plane
@@ -54,6 +57,9 @@ The onboard wizard guides you through:
 4. Tool configuration
 5. Knowledge and observational memory settings
 6. Embedding & RAG configuration (provider, model, RAG toggle)
+7. Graph Store configuration (backend, database path, traversal depth)
+8. Multi-Agent mode (single vs hierarchical orchestration)
+9. A2A Protocol settings (agent card, remote agents)
 
 ### CLI Commands
 
@@ -81,6 +87,13 @@ lango memory list [--json]       List observational memory entries
 lango memory status [--json]     Show memory system status
 lango memory clear [--force]     Clear all memory entries
 
+lango graph status [--json]      Show graph store status
+lango graph query [flags] [--json] Query graph triples (--subject, --predicate, --object, --limit)
+lango graph stats [--json]       Show graph statistics
+lango graph clear [--force]      Clear all graph data
+
+lango agent status [--json]      Show agent mode and configuration
+lango agent list [--json] [--check] List local and remote agents
 ```
 
 ### Diagnostics
@@ -111,8 +124,10 @@ lango/
 │   ├── bootstrap/          # Application bootstrap: DB, crypto, config profile init
 │   ├── channels/           # Telegram, Discord, Slack integrations
 │   ├── cli/                # CLI commands
+│   │   ├── agent/          #   lango agent status/list
 │   │   ├── common/         #   shared CLI helpers
 │   │   ├── doctor/         #   lango doctor (diagnostics)
+│   │   ├── graph/          #   lango graph status/query/stats/clear
 │   │   ├── memory/         #   lango memory list/status/clear
 │   │   ├── onboard/        #   lango onboard (TUI wizard)
 │   │   ├── prompt/         #   interactive prompt utilities
@@ -120,13 +135,16 @@ lango/
 │   │   └── tui/            #   TUI components and views
 │   ├── config/             # Config loading, env var substitution, validation
 │   ├── configstore/        # Encrypted config profile storage (Ent-backed)
+│   ├── a2a/                # A2A protocol server and remote agent loading
 │   ├── embedding/          # Embedding providers (OpenAI, Google, local) and RAG
 │   ├── ent/                # Ent ORM schemas and generated code
 │   ├── gateway/            # WebSocket/HTTP server, OIDC auth
+│   ├── graph/              # BoltDB triple store, Graph RAG, entity extractor
 │   ├── knowledge/          # Knowledge store, 8-layer context retriever
-│   ├── learning/           # Learning engine, error pattern analyzer
+│   ├── learning/           # Learning engine, error pattern analyzer, self-learning graph
 │   ├── logging/            # Zap structured logger
 │   ├── memory/             # Observational memory (observer, reflector, token counter)
+│   ├── orchestration/      # Multi-agent orchestration (executor, researcher, planner, memory-manager)
 │   ├── passphrase/         # Passphrase prompt and validation helpers
 │   ├── provider/           # AI provider interface and implementations
 │   │   ├── anthropic/      #   Claude models
@@ -237,6 +255,20 @@ All settings are managed via `lango onboard` or `lango config` and stored encryp
 | `embedding.rag.enabled` | bool | `false` | Enable RAG context injection |
 | `embedding.rag.maxResults` | int | - | Max results to inject into context |
 | `embedding.rag.collections` | []string | - | Collections to search (empty = all) |
+| **Graph Store** | | | |
+| `graph.enabled` | bool | `false` | Enable the knowledge graph store |
+| `graph.backend` | string | `bolt` | Graph backend type (currently only `bolt`) |
+| `graph.databasePath` | string | - | File path for graph database |
+| `graph.maxTraversalDepth` | int | `2` | Maximum BFS traversal depth for graph expansion |
+| `graph.maxExpansionResults` | int | `10` | Maximum graph-expanded results to return |
+| **Multi-Agent** | | | |
+| `agent.multiAgent` | bool | `false` | Enable hierarchical multi-agent orchestration |
+| **A2A Protocol** | | | |
+| `a2a.enabled` | bool | `false` | Enable A2A protocol support |
+| `a2a.baseUrl` | string | - | External URL where this agent is reachable |
+| `a2a.agentName` | string | - | Name advertised in the Agent Card |
+| `a2a.agentDescription` | string | - | Description in the Agent Card |
+| `a2a.remoteAgents` | []object | - | External A2A agents to integrate (name + agentCardUrl) |
 
 ## System Prompts
 
@@ -294,6 +326,68 @@ Configure embedding and RAG settings via `lango onboard` > Embedding & RAG menu,
 When `embedding.rag.enabled` is `true`, relevant knowledge entries are automatically retrieved via vector similarity search and injected into the agent's context. Configure `maxResults` to control how many results are included and `collections` to limit which knowledge collections are searched.
 
 Use `lango doctor` to verify embedding configuration and provider connectivity.
+
+## Knowledge Graph & Graph RAG
+
+Lango includes a BoltDB-backed knowledge graph that stores relationships as Subject-Predicate-Object triples with three index orderings (SPO, POS, OSP) for efficient queries from any direction.
+
+### Predicate Vocabulary
+
+| Predicate | Meaning |
+|-----------|---------|
+| `related_to` | Semantic relationship between entities |
+| `caused_by` | Causal relationship (effect → cause) |
+| `resolved_by` | Resolution relationship (error → fix) |
+| `follows` | Temporal ordering |
+| `similar_to` | Similarity relationship |
+| `contains` | Containment (session → observation) |
+| `in_session` | Session membership |
+| `reflects_on` | Reflection targets |
+| `learned_from` | Provenance (learning → session) |
+
+### Graph RAG (Hybrid Retrieval)
+
+When both embedding/RAG and graph store are enabled, Lango uses 2-phase hybrid retrieval:
+
+1. **Vector Search** — standard embedding-based similarity search
+2. **Graph Expansion** — expands vector results through graph relationships (related_to, resolved_by, caused_by, similar_to)
+
+This combines semantic similarity with structural knowledge for richer context.
+
+### Self-Learning Graph
+
+The `learning.GraphEngine` automatically records error patterns and fixes as graph triples, with confidence propagation (rate 0.3) that strengthens frequently-confirmed relationships.
+
+### Configuration
+
+Configure via `lango onboard` > Graph Store menu. Use `lango graph status`, `lango graph stats`, and `lango graph query` to inspect graph data.
+
+## Multi-Agent Orchestration
+
+When `agent.multiAgent` is enabled, Lango builds a hierarchical agent tree with specialized sub-agents:
+
+| Agent | Role | Tools |
+|-------|------|-------|
+| **executor** | Runs tools: shell, filesystem, browser, crypto | exec, fs_*, browser_*, crypto_* |
+| **researcher** | Knowledge retrieval, RAG, graph traversal | search_*, rag_*, graph_* |
+| **planner** | Task decomposition and strategy | (reasoning only, no tools) |
+| **memory-manager** | Memory operations and observations | memory_*, observe_*, reflect_* |
+
+The orchestrator routes tasks to the appropriate sub-agent and synthesizes results. Tool partitioning is prefix-based — unmatched tools default to the executor.
+
+Enable via `lango onboard` > Multi-Agent menu or set `agent.multiAgent: true` in import JSON. Use `lango agent status` and `lango agent list` to inspect.
+
+## A2A Protocol
+
+Lango supports the Agent-to-Agent (A2A) protocol for inter-agent communication:
+
+- **Agent Card** — served at `/.well-known/agent.json` with agent name, description, skills
+- **Remote Agents** — discover and integrate external A2A agents as sub-agents in the orchestrator
+- **Graceful Degradation** — unreachable remote agents are skipped without blocking startup
+
+Configure via `lango onboard` > A2A Protocol menu. Remote agents (name + URL pairs) should be configured via `lango config export` → edit JSON → `lango config import`.
+
+> **Note:** All settings are stored in the encrypted profile database — no plaintext config files. Use `lango onboard` for interactive configuration or `lango config import/export` for programmatic configuration.
 
 ## Self-Learning System
 
