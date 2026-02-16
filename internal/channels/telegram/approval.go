@@ -115,7 +115,11 @@ func (p *ApprovalProvider) HandleCallback(query *tgbotapi.CallbackQuery) {
 
 	// Send result to waiting goroutine
 	if ch, ok := p.pending.LoadAndDelete(requestID); ok {
-		respChan := ch.(chan bool)
+		respChan, ok := ch.(chan bool)
+		if !ok {
+			logger().Warnw("unexpected pending type", "requestId", requestID)
+			return
+		}
 		select {
 		case respChan <- approved:
 		default:

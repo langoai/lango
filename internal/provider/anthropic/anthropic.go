@@ -8,8 +8,11 @@ import (
 	"github.com/anthropics/anthropic-sdk-go/option"
 	"github.com/anthropics/anthropic-sdk-go/packages/param"
 	"github.com/anthropics/anthropic-sdk-go/shared/constant"
+	"github.com/langowarny/lango/internal/logging"
 	"github.com/langowarny/lango/internal/provider"
 )
+
+var logger = logging.SubsystemSugar("provider.anthropic")
 
 type AnthropicProvider struct {
 	client *anthropic.Client
@@ -101,6 +104,10 @@ func (p *AnthropicProvider) convertParams(params provider.GenerateParams) (anthr
 			msgs = append(msgs, anthropic.NewUserMessage(anthropic.NewTextBlock(m.Content)))
 		case "assistant":
 			msgs = append(msgs, anthropic.NewAssistantMessage(anthropic.NewTextBlock(m.Content)))
+		case "system":
+			// system role handled separately below
+		default:
+			logger.Warnw("unknown message role, skipping", "role", m.Role)
 		}
 	}
 

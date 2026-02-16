@@ -161,7 +161,7 @@ func (s *Server) handleChatMessage(client *Client, params json.RawMessage) (inte
 		return nil, fmt.Errorf("agent not configured")
 	}
 
-	ctx := context.Background()
+	ctx := session.WithSessionKey(context.Background(), sessionKey)
 	response, err := s.agent.RunAndCollect(ctx, sessionKey, req.Message)
 	if err != nil {
 		return nil, err

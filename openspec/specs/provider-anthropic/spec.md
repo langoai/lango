@@ -44,6 +44,19 @@ The system SHALL support Claude's extended thinking feature when available.
 - **WHEN** model supports extended thinking and it is requested
 - **THEN** reasoning content SHALL be included in the response metadata
 
+### Requirement: Anthropic provider unknown role handling
+The `convertParams` method SHALL handle unknown message roles by logging a warning and skipping the message. The switch statement SHALL include explicit cases for "user", "assistant", and "system" roles, and a `default` case that logs the unknown role via the subsystem logger.
+
+#### Scenario: Unknown role is logged and skipped
+- **WHEN** `convertParams` encounters a message with role "tool" or any unrecognized role
+- **THEN** it SHALL log a warning containing the unknown role value
+- **AND** it SHALL NOT include that message in the Anthropic API request
+- **AND** it SHALL NOT return an error
+
+#### Scenario: System role handled separately
+- **WHEN** `convertParams` encounters a message with role "system"
+- **THEN** it SHALL NOT log a warning (system is handled in a separate loop)
+
 ### Requirement: Anthropic provider constructor accepts explicit ID
 The Anthropic provider constructor SHALL accept an `id` string parameter and use it as the provider's registry identity, instead of hardcoding `"anthropic"`.
 

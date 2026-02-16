@@ -111,7 +111,11 @@ func (p *ApprovalProvider) HandleInteractive(actionID string) {
 
 	// Update the original message to remove buttons
 	if val, ok := p.pending.Load(requestID); ok {
-		pending := val.(*approvalPending)
+		pending, ok := val.(*approvalPending)
+		if !ok {
+			logger.Warnw("unexpected pending type", "requestId", requestID)
+			return
+		}
 		status := "❌ Denied"
 		if approved {
 			status = "✅ Approved"
@@ -126,7 +130,11 @@ func (p *ApprovalProvider) HandleInteractive(actionID string) {
 
 	// Send result to waiting goroutine
 	if val, ok := p.pending.LoadAndDelete(requestID); ok {
-		pending := val.(*approvalPending)
+		pending, ok := val.(*approvalPending)
+		if !ok {
+			logger.Warnw("unexpected pending type", "requestId", requestID)
+			return
+		}
 		select {
 		case pending.ch <- approved:
 		default:

@@ -66,6 +66,7 @@ type Channel struct {
 	session  Session
 	handler  MessageHandler
 	approval *ApprovalProvider
+	ctx      context.Context
 	botID    string
 	stopChan chan struct{}
 	wg       sync.WaitGroup
@@ -121,6 +122,8 @@ func (c *Channel) Start(ctx context.Context) error {
 	if c.handler == nil {
 		return fmt.Errorf("message handler not set")
 	}
+
+	c.ctx = ctx
 
 	c.session.AddHandler(c.onMessageCreate)
 	c.session.AddHandler(c.onInteractionCreate)
@@ -182,7 +185,7 @@ func (c *Channel) onMessageCreate(s *discordgo.Session, m *discordgo.MessageCrea
 	)
 
 	// Call handler
-	response, err := c.handler(context.Background(), incoming)
+	response, err := c.handler(c.ctx, incoming)
 	if err != nil {
 		logger.Errorw("handler error", "error", err)
 		c.sendError(m.ChannelID, err)

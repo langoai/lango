@@ -42,18 +42,16 @@ The system SHALL allow providers to be registered concurrently without data race
 - **WHEN** multiple providers are registered from different goroutines
 - **THEN** all registrations SHALL complete without data races
 
-### Requirement: TTY approval fallback
-The system SHALL provide a `TTYProvider` that prompts the user via terminal stdin for approval as a last-resort fallback.
+### Requirement: TTY approval fallback behavior
+The `TTYProvider.RequestApproval` SHALL return `(false, error)` when stdin is not a terminal, with an error message containing "not a terminal". This replaces the previous behavior of returning `(false, nil)` which was indistinguishable from an explicit user denial.
 
-#### Scenario: TTY prompt
-- **WHEN** TTY fallback is invoked
-- **AND** stdin is a terminal
-- **THEN** the system SHALL print a prompt to stderr and read y/N from stdin
+#### Scenario: Non-terminal environment returns error
+- **WHEN** `TTYProvider.RequestApproval` is called and stdin is not a terminal
+- **THEN** it SHALL return `false` and a non-nil error containing "not a terminal"
 
-#### Scenario: Non-terminal stdin
-- **WHEN** TTY fallback is invoked
-- **AND** stdin is not a terminal
-- **THEN** the request SHALL be denied (return false, nil)
+#### Scenario: Terminal environment prompts user
+- **WHEN** `TTYProvider.RequestApproval` is called and stdin is a terminal
+- **THEN** it SHALL prompt on stderr and read the user's response from stdin
 
 ### Requirement: Gateway approval provider
 The system SHALL provide a `GatewayProvider` that delegates approval to connected companion apps via WebSocket.
@@ -140,3 +138,26 @@ The `runAgent` function SHALL inject the session key into the context via `WithS
 - **WHEN** a tool requiring approval is invoked from a channel message
 - **THEN** the `ApprovalRequest.SessionKey` field SHALL contain the channel session key (e.g., "telegram:123:456")
 - **AND** `CompositeProvider` SHALL route to the matching channel provider
+
+### Requirement: Safe type assertions in approval providers
+All channel approval providers (Discord, Telegram, Slack) SHALL use comma-ok pattern when asserting types from `sync.Map` loads. If the type assertion fails, the provider SHALL log a warning and return without panicking.
+
+#### Scenario: Discord approval handles unexpected type
+- **WHEN** `HandleInteraction` loads a value from `pending` sync.Map and the type assertion to `chan bool` fails
+- **THEN** it SHALL log a warning with the request ID and return without sending to the channel
+
+#### Scenario: Telegram approval handles unexpected type
+- **WHEN** `HandleCallback` loads a value from `pending` sync.Map and the type assertion to `chan bool` fails
+- **THEN** it SHALL log a warning with the request ID and return without sending to the channel
+
+#### Scenario: Slack approval handles unexpected type
+- **WHEN** `HandleInteractive` loads a value from `pending` sync.Map and the type assertion to `*approvalPending` fails
+- **THEN** it SHALL log a warning with the request ID and return without sending to the channel
+
+### Requirement: Audit log error logging
+Tool handlers that call `store.SaveAuditLog` SHALL log a warning via `logger().Warnw` if the audit log write fails, rather than discarding the error with `_ =`. The tool handler SHALL NOT return this error to the caller (log and degrade gracefully).
+
+#### Scenario: Audit log write failure is logged
+- **WHEN** `store.SaveAuditLog` returns a non-nil error during `save_knowledge` tool execution
+- **THEN** a warning log SHALL be emitted with the action name and error details
+- **AND** the tool SHALL still return success to the caller

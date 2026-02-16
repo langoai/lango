@@ -8,6 +8,7 @@ import (
 	"github.com/langowarny/lango/internal/channels/discord"
 	"github.com/langowarny/lango/internal/channels/slack"
 	"github.com/langowarny/lango/internal/channels/telegram"
+	"github.com/langowarny/lango/internal/session"
 )
 
 // initChannels initializes all configured channels and wires them to the agent
@@ -114,6 +115,6 @@ func (a *App) handleSlackMessage(ctx context.Context, msg *slack.IncomingMessage
 // It injects the session key into the context so that downstream components
 // (approval providers, learning engine, etc.) can route by channel.
 func (a *App) runAgent(ctx context.Context, sessionKey, input string) (string, error) {
-	ctx = WithSessionKey(ctx, sessionKey)
+	ctx = session.WithSessionKey(ctx, sessionKey)
 	return a.Agent.RunAndCollect(ctx, sessionKey, input)
 }

@@ -20,7 +20,7 @@ var _ Provider = (*TTYProvider)(nil)
 // RequestApproval prompts the user on stderr and reads y/N from stdin.
 func (t *TTYProvider) RequestApproval(_ context.Context, req ApprovalRequest) (bool, error) {
 	if !term.IsTerminal(int(os.Stdin.Fd())) {
-		return false, nil
+		return false, fmt.Errorf("TTY approval unavailable: stdin is not a terminal")
 	}
 
 	fmt.Fprintf(os.Stderr, "\n⚠ Sensitive tool '%s' requires approval.\n", req.ToolName)

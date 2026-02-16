@@ -89,6 +89,16 @@ The `handlers.go` file SHALL contain all RPC handler method implementations. All
 - **WHEN** agent is nil
 - **THEN** it SHALL return "agent not configured" error
 
+#### Scenario: Session key available in agent context
+- **WHEN** a `chat.message` RPC request is processed with session key "default"
+- **THEN** `session.WithSessionKey(ctx, "default")` SHALL be called before `agent.RunAndCollect`
+- **AND** `session.SessionKeyFromContext` within the agent pipeline SHALL return "default"
+
+#### Scenario: Authenticated session key propagated
+- **WHEN** an authenticated client sends a `chat.message` RPC request
+- **THEN** the client's authenticated session key SHALL be injected into the context
+- **AND** downstream approval routing SHALL use that session key
+
 #### Scenario: Security Proxy Handlers
 - **WHEN** `handleSignResponse`, `handleEncryptResponse`, or `handleDecryptResponse` is called
 - **THEN** it SHALL delegate to the corresponding RPCProvider method

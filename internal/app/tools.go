@@ -12,6 +12,7 @@ import (
 	"github.com/langowarny/lango/internal/knowledge"
 	"github.com/langowarny/lango/internal/learning"
 	"github.com/langowarny/lango/internal/security"
+	"github.com/langowarny/lango/internal/session"
 	"github.com/langowarny/lango/internal/skill"
 	"github.com/langowarny/lango/internal/supervisor"
 	"github.com/langowarny/lango/internal/tools/browser"
@@ -19,22 +20,6 @@ import (
 	"github.com/langowarny/lango/internal/tools/filesystem"
 	toolsecrets "github.com/langowarny/lango/internal/tools/secrets"
 )
-
-// sessionKeyCtxKey is the context key type for session keys.
-type sessionKeyCtxKey struct{}
-
-// WithSessionKey adds a session key to the context.
-func WithSessionKey(ctx context.Context, key string) context.Context {
-	return context.WithValue(ctx, sessionKeyCtxKey{}, key)
-}
-
-// SessionKeyFromContext extracts the session key from context.
-func SessionKeyFromContext(ctx context.Context) string {
-	if v, ok := ctx.Value(sessionKeyCtxKey{}).(string); ok {
-		return v
-	}
-	return ""
-}
 
 // buildTools creates the set of tools available to the agent.
 // When browserSM is non-nil, browser tools are included.
@@ -486,11 +471,13 @@ func buildMetaTools(store *knowledge.Store, engine *learning.Engine, registry *s
 					return nil, fmt.Errorf("save knowledge: %w", err)
 				}
 
-				_ = store.SaveAuditLog(ctx, knowledge.AuditEntry{
+				if err := store.SaveAuditLog(ctx, knowledge.AuditEntry{
 					Action: "knowledge_save",
 					Actor:  "agent",
 					Target: key,
-				})
+				}); err != nil {
+					logger().Warnw("audit log save failed", "action", "knowledge_save", "error", err)
+				}
 
 				return map[string]interface{}{
 					"status":  "saved",
@@ -567,11 +554,13 @@ func buildMetaTools(store *knowledge.Store, engine *learning.Engine, registry *s
 					return nil, fmt.Errorf("save learning: %w", err)
 				}
 
-				_ = store.SaveAuditLog(ctx, knowledge.AuditEntry{
+				if err := store.SaveAuditLog(ctx, knowledge.AuditEntry{
 					Action: "learning_save",
 					Actor:  "agent",
 					Target: trigger,
-				})
+				}); err != nil {
+					logger().Warnw("audit log save failed", "action", "learning_save", "error", err)
+				}
 
 				return map[string]interface{}{
 					"status":  "saved",
@@ -665,7 +654,7 @@ func buildMetaTools(store *knowledge.Store, engine *learning.Engine, registry *s
 					status = "active"
 				}
 
-				_ = store.SaveAuditLog(ctx, knowledge.AuditEntry{
+				if err := store.SaveAuditLog(ctx, knowledge.AuditEntry{
 					Action: "skill_create",
 					Actor:  "agent",
 					Target: name,
@@ -673,7 +662,9 @@ func buildMetaTools(store *knowledge.Store, engine *learning.Engine, registry *s
 						"type":   skillType,
 						"status": status,
 					},
-				})
+				}); err != nil {
+					logger().Warnw("audit log save failed", "action", "skill_create", "error", err)
+				}
 
 				return map[string]interface{}{
 					"status":  status,
@@ -715,7 +706,7 @@ func wrapWithLearning(t *agent.Tool, engine *learning.Engine) *agent.Tool {
 		SafetyLevel: t.SafetyLevel,
 		Handler: func(ctx context.Context, params map[string]interface{}) (interface{}, error) {
 			result, err := original(ctx, params)
-			sessionKey := SessionKeyFromContext(ctx)
+			sessionKey := session.SessionKeyFromContext(ctx)
 			engine.OnToolResult(ctx, sessionKey, t.Name, params, result, err)
 			return result, err
 		},
@@ -956,7 +947,7 @@ func wrapWithApproval(t *agent.Tool, ic config.InterceptorConfig, ap approval.Pr
 			req := approval.ApprovalRequest{
 				ID:         fmt.Sprintf("req-%d", time.Now().UnixNano()),
 				ToolName:   t.Name,
-				SessionKey: SessionKeyFromContext(ctx),
+				SessionKey: session.SessionKeyFromContext(ctx),
 				Params:     params,
 				Summary:    buildApprovalSummary(t.Name, params),
 				CreatedAt:  time.Now(),
@@ -966,7 +957,7 @@ func wrapWithApproval(t *agent.Tool, ic config.InterceptorConfig, ap approval.Pr
 				return nil, fmt.Errorf("tool '%s' approval: %w", t.Name, err)
 			}
 			if !approved {
-				sk := SessionKeyFromContext(ctx)
+				sk := session.SessionKeyFromContext(ctx)
 				if sk == "" {
 					return nil, fmt.Errorf("tool '%s' execution denied: no approval channel available (session key missing)", t.Name)
 				}
