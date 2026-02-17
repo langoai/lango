@@ -10,7 +10,7 @@ A high-performance AI agent built with Go, supporting multiple AI providers, cha
 - 🛠️ **Rich Tools** - Shell execution, file system operations, browser automation, crypto & secrets tools
 - 🧠 **Self-Learning** - Knowledge store, learning engine, skill system, observational memory
 - 📊 **Knowledge Graph & Graph RAG** - BoltDB triple store with hybrid vector + graph retrieval
-- 🔀 **Multi-Agent Orchestration** - Hierarchical sub-agents (executor, researcher, planner, memory-manager)
+- 🔀 **Multi-Agent Orchestration** - Hierarchical sub-agents (operator, navigator, vault, librarian, planner, chronicler)
 - 🌍 **A2A Protocol** - Agent-to-Agent protocol for remote agent discovery and integration
 - 💸 **Blockchain Payments** - USDC payments on Base L2, X402 auto-pay protocol, spending limits
 - ⏰ **Cron Scheduling** - Persistent cron jobs with cron/interval/one-time schedules, multi-channel delivery
@@ -172,7 +172,7 @@ lango/
 │   ├── learning/           # Learning engine, error pattern analyzer, self-learning graph
 │   ├── logging/            # Zap structured logger
 │   ├── memory/             # Observational memory (observer, reflector, token counter)
-│   ├── orchestration/      # Multi-agent orchestration (executor, researcher, planner, memory-manager)
+│   ├── orchestration/      # Multi-agent orchestration (operator, navigator, vault, librarian, planner, chronicler)
 │   ├── passphrase/         # Passphrase prompt and validation helpers
 │   ├── provider/           # AI provider interface and implementations
 │   │   ├── anthropic/      #   Claude models
@@ -428,12 +428,14 @@ When `agent.multiAgent` is enabled, Lango builds a hierarchical agent tree with 
 
 | Agent | Role | Tools |
 |-------|------|-------|
-| **executor** | Runs tools: shell, filesystem, browser, crypto, payments | exec, fs_*, browser_*, crypto_*, payment_* |
-| **researcher** | Knowledge retrieval, RAG, graph traversal | search_*, rag_*, graph_* |
-| **planner** | Task decomposition and strategy | (reasoning only, no tools) |
-| **memory-manager** | Memory operations and observations | memory_*, observe_*, reflect_* |
+| **operator** | System operations: shell commands, file I/O, skill execution | exec_*, fs_*, skill_* |
+| **navigator** | Web browsing: page navigation, interaction, screenshots | browser_* |
+| **vault** | Security: encryption, secret management, blockchain payments | crypto_*, secrets_*, payment_* |
+| **librarian** | Knowledge: search, RAG, graph traversal, skill management | search_*, rag_*, graph_*, save_knowledge, save_learning, create_skill, list_skills |
+| **planner** | Task decomposition and planning | (LLM reasoning only, no tools) |
+| **chronicler** | Conversational memory: observations, reflections, recall | memory_*, observe_*, reflect_* |
 
-The orchestrator routes tasks to the appropriate sub-agent and synthesizes results. Tool partitioning is prefix-based — unmatched tools default to the executor.
+The orchestrator uses a keyword-based routing table and 5-step decision protocol (CLASSIFY → MATCH → SELECT → VERIFY → DELEGATE) to route tasks. Each sub-agent can reject misrouted tasks with `[REJECT]`. Unmatched tools are tracked separately and reported to the orchestrator.
 
 Enable via `lango onboard` > Multi-Agent menu or set `agent.multiAgent: true` in import JSON. Use `lango agent status` and `lango agent list` to inspect.
 
@@ -619,7 +621,7 @@ lango workflow history
 
 ### Supported Agents
 
-Steps specify which sub-agent to use: `executor`, `researcher`, `planner`, or `memory-manager`. These map to the multi-agent orchestration system when `agent.multiAgent` is enabled.
+Steps specify which sub-agent to use: `operator`, `navigator`, `vault`, `librarian`, `planner`, or `chronicler`. These map to the multi-agent orchestration system when `agent.multiAgent` is enabled.
 
 ## Self-Learning System
 
