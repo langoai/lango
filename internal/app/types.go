@@ -12,6 +12,8 @@ import (
 	"github.com/langowarny/lango/internal/gateway"
 	"github.com/langowarny/lango/internal/graph"
 	"github.com/langowarny/lango/internal/knowledge"
+	"github.com/langowarny/lango/internal/payment"
+	"github.com/langowarny/lango/internal/wallet"
 	"github.com/langowarny/lango/internal/learning"
 	"github.com/langowarny/lango/internal/memory"
 	"github.com/langowarny/lango/internal/security"
@@ -58,6 +60,10 @@ type App struct {
 	// Graph Components (optional)
 	GraphStore  graph.Store
 	GraphBuffer *graph.GraphBuffer
+
+	// Payment Components (optional)
+	WalletProvider wallet.WalletProvider
+	PaymentService *payment.Service
 
 	// Channels
 	Channels []Channel

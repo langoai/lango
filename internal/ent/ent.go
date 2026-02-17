@@ -20,6 +20,7 @@ import (
 	"github.com/langowarny/lango/internal/ent/learning"
 	"github.com/langowarny/lango/internal/ent/message"
 	"github.com/langowarny/lango/internal/ent/observation"
+	"github.com/langowarny/lango/internal/ent/paymenttx"
 	"github.com/langowarny/lango/internal/ent/reflection"
 	"github.com/langowarny/lango/internal/ent/secret"
 	"github.com/langowarny/lango/internal/ent/session"
@@ -92,6 +93,7 @@ func checkColumn(t, c string) error {
 			learning.Table:      learning.ValidColumn,
 			message.Table:       message.ValidColumn,
 			observation.Table:   observation.ValidColumn,
+			paymenttx.Table:     paymenttx.ValidColumn,
 			reflection.Table:    reflection.ValidColumn,
 			secret.Table:        secret.ValidColumn,
 			session.Table:       session.ValidColumn,

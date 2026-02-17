@@ -15,7 +15,7 @@ type RoleToolSet struct {
 }
 
 // executorPrefixes are tool name prefixes assigned to the Executor sub-agent.
-var executorPrefixes = []string{"exec", "fs_", "browser_", "crypto_", "skill_"}
+var executorPrefixes = []string{"exec", "fs_", "browser_", "crypto_", "skill_", "payment_"}
 
 // researcherPrefixes are tool name prefixes assigned to the Researcher sub-agent.
 var researcherPrefixes = []string{"search_", "rag_", "graph_", "save_knowledge", "save_learning"}
@@ -63,6 +63,7 @@ var capabilityMap = map[string]string{
 	"browser_":       "web browsing",
 	"crypto_":        "cryptography",
 	"skill_":         "skill management",
+	"payment_":       "blockchain payments (USDC on Base)",
 	"search_":        "information search",
 	"rag_":           "knowledge retrieval (RAG)",
 	"graph_":         "knowledge graph traversal",

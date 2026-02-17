@@ -231,6 +231,55 @@ var (
 			},
 		},
 	}
+	// PaymentTxesColumns holds the columns for the "payment_txes" table.
+	PaymentTxesColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeUUID},
+		{Name: "tx_hash", Type: field.TypeString, Nullable: true},
+		{Name: "from_address", Type: field.TypeString},
+		{Name: "to_address", Type: field.TypeString},
+		{Name: "amount", Type: field.TypeString},
+		{Name: "chain_id", Type: field.TypeInt64},
+		{Name: "status", Type: field.TypeEnum, Enums: []string{"pending", "submitted", "confirmed", "failed"}, Default: "pending"},
+		{Name: "session_key", Type: field.TypeString, Nullable: true},
+		{Name: "purpose", Type: field.TypeString, Nullable: true},
+		{Name: "x402_url", Type: field.TypeString, Nullable: true},
+		{Name: "error_message", Type: field.TypeString, Nullable: true},
+		{Name: "created_at", Type: field.TypeTime},
+		{Name: "updated_at", Type: field.TypeTime},
+	}
+	// PaymentTxesTable holds the schema information for the "payment_txes" table.
+	PaymentTxesTable = &schema.Table{
+		Name:       "payment_txes",
+		Columns:    PaymentTxesColumns,
+		PrimaryKey: []*schema.Column{PaymentTxesColumns[0]},
+		Indexes: []*schema.Index{
+			{
+				Name:    "paymenttx_tx_hash",
+				Unique:  false,
+				Columns: []*schema.Column{PaymentTxesColumns[1]},
+			},
+			{
+				Name:    "paymenttx_from_address",
+				Unique:  false,
+				Columns: []*schema.Column{PaymentTxesColumns[2]},
+			},
+			{
+				Name:    "paymenttx_status",
+				Unique:  false,
+				Columns: []*schema.Column{PaymentTxesColumns[6]},
+			},
+			{
+				Name:    "paymenttx_created_at",
+				Unique:  false,
+				Columns: []*schema.Column{PaymentTxesColumns[11]},
+			},
+			{
+				Name:    "paymenttx_session_key",
+				Unique:  false,
+				Columns: []*schema.Column{PaymentTxesColumns[7]},
+			},
+		},
+	}
 	// ReflectionsColumns holds the columns for the "reflections" table.
 	ReflectionsColumns = []*schema.Column{
 		{Name: "id", Type: field.TypeUUID},
@@ -364,6 +413,7 @@ var (
 		LearningsTable,
 		MessagesTable,
 		ObservationsTable,
+		PaymentTxesTable,
 		ReflectionsTable,
 		SecretsTable,
 		SessionsTable,

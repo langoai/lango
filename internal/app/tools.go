@@ -14,6 +14,7 @@ import (
 	"github.com/langowarny/lango/internal/knowledge"
 	"github.com/langowarny/lango/internal/learning"
 	"github.com/langowarny/lango/internal/memory"
+	"github.com/langowarny/lango/internal/payment"
 	"github.com/langowarny/lango/internal/security"
 	"github.com/langowarny/lango/internal/session"
 	"github.com/langowarny/lango/internal/skill"
@@ -21,7 +22,9 @@ import (
 	"github.com/langowarny/lango/internal/tools/browser"
 	toolcrypto "github.com/langowarny/lango/internal/tools/crypto"
 	"github.com/langowarny/lango/internal/tools/filesystem"
+	toolpayment "github.com/langowarny/lango/internal/tools/payment"
 	toolsecrets "github.com/langowarny/lango/internal/tools/secrets"
+	"github.com/langowarny/lango/internal/wallet"
 )
 
 // buildTools creates the set of tools available to the agent.
@@ -920,6 +923,11 @@ func buildApprovalSummary(toolName string, params map[string]interface{}) string
 		return "Decrypt ciphertext"
 	case "crypto_sign":
 		return "Generate digital signature"
+	case "payment_send":
+		amount, _ := params["amount"].(string)
+		to, _ := params["to"].(string)
+		purpose, _ := params["purpose"].(string)
+		return fmt.Sprintf("Send %s USDC to %s (%s)", amount, truncate(to, 12), truncate(purpose, 50))
 	}
 	return "Tool: " + toolName
 }
@@ -1146,4 +1154,9 @@ func buildMemoryAgentTools(ms *memory.Store) []*agent.Tool {
 			},
 		},
 	}
+}
+
+// buildPaymentTools creates blockchain payment tools.
+func buildPaymentTools(svc *payment.Service, limiter wallet.SpendingLimiter) []*agent.Tool {
+	return toolpayment.BuildTools(svc, limiter)
 }

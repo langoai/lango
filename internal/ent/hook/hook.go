@@ -105,6 +105,18 @@ func (f ObservationFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value,
 	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.ObservationMutation", m)
 }
 
+// The PaymentTxFunc type is an adapter to allow the use of ordinary
+// function as PaymentTx mutator.
+type PaymentTxFunc func(context.Context, *ent.PaymentTxMutation) (ent.Value, error)
+
+// Mutate calls f(ctx, m).
+func (f PaymentTxFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value, error) {
+	if mv, ok := m.(*ent.PaymentTxMutation); ok {
+		return f(ctx, mv)
+	}
+	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.PaymentTxMutation", m)
+}
+
 // The ReflectionFunc type is an adapter to allow the use of ordinary
 // function as Reflection mutator.
 type ReflectionFunc func(context.Context, *ent.ReflectionMutation) (ent.Value, error)

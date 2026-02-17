@@ -8,6 +8,8 @@ import (
 
 	"database/sql"
 
+	"github.com/ethereum/go-ethereum/ethclient"
+
 	"github.com/langowarny/lango/internal/a2a"
 	"github.com/langowarny/lango/internal/adk"
 	"github.com/langowarny/lango/internal/agent"
@@ -20,12 +22,14 @@ import (
 	"github.com/langowarny/lango/internal/learning"
 	"github.com/langowarny/lango/internal/memory"
 	"github.com/langowarny/lango/internal/orchestration"
+	"github.com/langowarny/lango/internal/payment"
 	"github.com/langowarny/lango/internal/prompt"
 	"github.com/langowarny/lango/internal/provider"
 	"github.com/langowarny/lango/internal/security"
 	"github.com/langowarny/lango/internal/session"
 	"github.com/langowarny/lango/internal/skill"
 	"github.com/langowarny/lango/internal/supervisor"
+	"github.com/langowarny/lango/internal/wallet"
 	"google.golang.org/adk/model"
 	adk_tool "google.golang.org/adk/tool"
 )
@@ -812,4 +816,89 @@ func (a *ragServiceAdapter) Retrieve(ctx context.Context, query string, opts gra
 		}
 	}
 	return graphResults, nil
+}
+
+// paymentComponents holds optional blockchain payment components.
+type paymentComponents struct {
+	wallet  wallet.WalletProvider
+	service *payment.Service
+	limiter wallet.SpendingLimiter
+}
+
+// initPayment creates the payment components if enabled.
+// Follows the same graceful degradation pattern as initGraphStore.
+func initPayment(cfg *config.Config, store session.Store, secrets *security.SecretsStore) *paymentComponents {
+	if !cfg.Payment.Enabled {
+		logger().Info("payment system disabled")
+		return nil
+	}
+
+	if secrets == nil {
+		logger().Warn("payment system requires security.signer, skipping")
+		return nil
+	}
+
+	entStore, ok := store.(*session.EntStore)
+	if !ok {
+		logger().Warn("payment system requires EntStore, skipping")
+		return nil
+	}
+
+	client := entStore.Client()
+
+	// Create RPC client for blockchain interaction
+	rpcClient, err := ethclient.Dial(cfg.Payment.Network.RPCURL)
+	if err != nil {
+		logger().Warnw("payment RPC connection failed, skipping", "error", err, "rpcUrl", cfg.Payment.Network.RPCURL)
+		return nil
+	}
+
+	// Create wallet provider based on configuration
+	var wp wallet.WalletProvider
+	switch cfg.Payment.WalletProvider {
+	case "local":
+		wp = wallet.NewLocalWallet(secrets, cfg.Payment.Network.RPCURL, cfg.Payment.Network.ChainID)
+	case "rpc":
+		wp = wallet.NewRPCWallet()
+	case "composite":
+		local := wallet.NewLocalWallet(secrets, cfg.Payment.Network.RPCURL, cfg.Payment.Network.ChainID)
+		rpc := wallet.NewRPCWallet()
+		wp = wallet.NewCompositeWallet(rpc, local, nil)
+	default:
+		logger().Warnw("unknown wallet provider, using local", "provider", cfg.Payment.WalletProvider)
+		wp = wallet.NewLocalWallet(secrets, cfg.Payment.Network.RPCURL, cfg.Payment.Network.ChainID)
+	}
+
+	// Create spending limiter
+	limiter, err := wallet.NewEntSpendingLimiter(client,
+		cfg.Payment.Limits.MaxPerTx,
+		cfg.Payment.Limits.MaxDaily,
+	)
+	if err != nil {
+		logger().Warnw("spending limiter init failed, skipping", "error", err)
+		return nil
+	}
+
+	// Create transaction builder
+	builder := payment.NewTxBuilder(rpcClient,
+		cfg.Payment.Network.ChainID,
+		cfg.Payment.Network.USDCContract,
+	)
+
+	// Create payment service
+	svc := payment.NewService(wp, limiter, builder, client, rpcClient, cfg.Payment.Network.ChainID)
+
+	logger().Infow("payment system initialized",
+		"walletProvider", cfg.Payment.WalletProvider,
+		"chainId", cfg.Payment.Network.ChainID,
+		"network", wallet.NetworkName(cfg.Payment.Network.ChainID),
+		"maxPerTx", cfg.Payment.Limits.MaxPerTx,
+		"maxDaily", cfg.Payment.Limits.MaxDaily,
+	)
+
+	return &paymentComponents{
+		wallet:  wp,
+		service: svc,
+		limiter: limiter,
+	}
 }

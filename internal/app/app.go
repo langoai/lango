@@ -169,6 +169,14 @@ func New(boot *bootstrap.Result) (*App, error) {
 		tools = append(tools, buildMemoryAgentTools(mc.store)...)
 	}
 
+	// 5h. Payment tools (optional)
+	pc := initPayment(cfg, store, app.Secrets)
+	if pc != nil {
+		app.WalletProvider = pc.wallet
+		app.PaymentService = pc.service
+		tools = append(tools, buildPaymentTools(pc.service, pc.limiter)...)
+	}
+
 	// 6. Auth
 	auth := initAuth(cfg, store)
 

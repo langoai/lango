@@ -17,7 +17,7 @@ The system SHALL support a multi-agent mode (`agent.multiAgent: true`) that crea
 - **THEN** the system SHALL create a single flat agent with all tools
 
 ### Requirement: Tool partitioning by prefix
-Tools SHALL be partitioned to sub-agents based on name prefixes: `exec/fs_/browser_/crypto_/skill_` → Executor, `search_/rag_/graph_/save_knowledge/save_learning` → Researcher, `memory_/observe_/reflect_` → MemoryManager, unmatched → Executor.
+Tools SHALL be partitioned to sub-agents based on name prefixes: `exec/fs_/browser_/crypto_/skill_/payment_` → Executor, `search_/rag_/graph_/save_knowledge/save_learning` → Researcher, `memory_/observe_/reflect_` → MemoryManager, unmatched → Executor.
 
 #### Scenario: Graph tools routed to Researcher
 - **WHEN** tools named `graph_traverse` and `graph_query` are registered
@@ -26,6 +26,11 @@ Tools SHALL be partitioned to sub-agents based on name prefixes: `exec/fs_/brows
 #### Scenario: Unmatched tools default to Executor
 - **WHEN** a tool with an unrecognized prefix is present
 - **THEN** it SHALL be assigned to the Executor sub-agent
+
+#### Scenario: Payment tools routed to Executor
+- **WHEN** tools with prefix `payment_` are registered
+- **THEN** they SHALL be assigned to the Executor sub-agent
+- **AND** the capabilityMap SHALL describe them as "blockchain payments (USDC on Base)"
 
 ### Requirement: Graph, RAG, and Memory agent tools
 The system SHALL provide dedicated tools for sub-agents: `graph_traverse`, `graph_query` (graph store), `rag_retrieve` (RAG service), `memory_list_observations`, `memory_list_reflections` (memory store).

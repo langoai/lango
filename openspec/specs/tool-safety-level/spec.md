@@ -50,9 +50,9 @@ The system SHALL add a `SafetyLevel` field to the `agent.Tool` struct.
 
 ### Requirement: All built-in tools have SafetyLevel assigned
 Every built-in tool SHALL have an explicit SafetyLevel assignment. The classifications SHALL be:
-- **Dangerous**: exec, exec_bg, exec_stop, fs_write, fs_edit, fs_delete, browser_navigate, browser_action, crypto_encrypt, crypto_decrypt, crypto_sign, secrets_store, secrets_get, secrets_delete
+- **Dangerous**: exec, exec_bg, exec_stop, fs_write, fs_edit, fs_delete, browser_navigate, browser_action, crypto_encrypt, crypto_decrypt, crypto_sign, secrets_store, secrets_get, secrets_delete, payment_send
 - **Moderate**: fs_mkdir, save_knowledge, save_learning, create_skill
-- **Safe**: exec_status, fs_read, fs_list, browser_screenshot, crypto_hash, crypto_keys, secrets_list, search_knowledge, search_learnings, list_skills
+- **Safe**: exec_status, fs_read, fs_list, browser_screenshot, crypto_hash, crypto_keys, secrets_list, search_knowledge, search_learnings, list_skills, payment_balance, payment_history, payment_limits, payment_wallet_info
 
 #### Scenario: Exec tool classification
 - **WHEN** the exec tool is created
@@ -68,3 +68,10 @@ The system SHALL preserve the SafetyLevel field when wrapping tools with `wrapWi
 #### Scenario: Learning wrapper preserves level
 - **WHEN** a tool with SafetyLevelDangerous is wrapped with wrapWithLearning
 - **THEN** the resulting tool SHALL have SafetyLevelDangerous
+
+### Requirement: Tool approval summary for payment_send
+The `buildApprovalSummary` function SHALL include a case for `payment_send` that formats the summary as "Send {amount} USDC to {to} ({purpose})".
+
+#### Scenario: Payment send approval message
+- **WHEN** approval is requested for `payment_send` with amount "1.50", to "0x1234...5678", and purpose "API access"
+- **THEN** the summary is "Send 1.50 USDC to 0x1234...567... (API access)"

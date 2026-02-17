@@ -14,6 +14,7 @@ import (
 	"github.com/langowarny/lango/internal/ent/learning"
 	"github.com/langowarny/lango/internal/ent/message"
 	"github.com/langowarny/lango/internal/ent/observation"
+	"github.com/langowarny/lango/internal/ent/paymenttx"
 	"github.com/langowarny/lango/internal/ent/reflection"
 	"github.com/langowarny/lango/internal/ent/schema"
 	"github.com/langowarny/lango/internal/ent/secret"
@@ -217,6 +218,34 @@ func init() {
 	observationDescID := observationFields[0].Descriptor()
 	// observation.DefaultID holds the default value on creation for the id field.
 	observation.DefaultID = observationDescID.Default.(func() uuid.UUID)
+	paymenttxFields := schema.PaymentTx{}.Fields()
+	_ = paymenttxFields
+	// paymenttxDescFromAddress is the schema descriptor for from_address field.
+	paymenttxDescFromAddress := paymenttxFields[2].Descriptor()
+	// paymenttx.FromAddressValidator is a validator for the "from_address" field. It is called by the builders before save.
+	paymenttx.FromAddressValidator = paymenttxDescFromAddress.Validators[0].(func(string) error)
+	// paymenttxDescToAddress is the schema descriptor for to_address field.
+	paymenttxDescToAddress := paymenttxFields[3].Descriptor()
+	// paymenttx.ToAddressValidator is a validator for the "to_address" field. It is called by the builders before save.
+	paymenttx.ToAddressValidator = paymenttxDescToAddress.Validators[0].(func(string) error)
+	// paymenttxDescAmount is the schema descriptor for amount field.
+	paymenttxDescAmount := paymenttxFields[4].Descriptor()
+	// paymenttx.AmountValidator is a validator for the "amount" field. It is called by the builders before save.
+	paymenttx.AmountValidator = paymenttxDescAmount.Validators[0].(func(string) error)
+	// paymenttxDescCreatedAt is the schema descriptor for created_at field.
+	paymenttxDescCreatedAt := paymenttxFields[11].Descriptor()
+	// paymenttx.DefaultCreatedAt holds the default value on creation for the created_at field.
+	paymenttx.DefaultCreatedAt = paymenttxDescCreatedAt.Default.(func() time.Time)
+	// paymenttxDescUpdatedAt is the schema descriptor for updated_at field.
+	paymenttxDescUpdatedAt := paymenttxFields[12].Descriptor()
+	// paymenttx.DefaultUpdatedAt holds the default value on creation for the updated_at field.
+	paymenttx.DefaultUpdatedAt = paymenttxDescUpdatedAt.Default.(func() time.Time)
+	// paymenttx.UpdateDefaultUpdatedAt holds the default value on update for the updated_at field.
+	paymenttx.UpdateDefaultUpdatedAt = paymenttxDescUpdatedAt.UpdateDefault.(func() time.Time)
+	// paymenttxDescID is the schema descriptor for id field.
+	paymenttxDescID := paymenttxFields[0].Descriptor()
+	// paymenttx.DefaultID holds the default value on creation for the id field.
+	paymenttx.DefaultID = paymenttxDescID.Default.(func() uuid.UUID)
 	reflectionFields := schema.Reflection{}.Fields()
 	_ = reflectionFields
 	// reflectionDescSessionKey is the schema descriptor for session_key field.

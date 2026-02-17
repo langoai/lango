@@ -43,6 +43,9 @@ type Config struct {
 	// A2A protocol configuration
 	A2A A2AConfig `mapstructure:"a2a" json:"a2a"`
 
+	// Payment configuration (blockchain micropayments)
+	Payment PaymentConfig `mapstructure:"payment" json:"payment"`
+
 	// Providers configuration
 	Providers map[string]ProviderConfig `mapstructure:"providers" json:"providers"`
 }
@@ -428,6 +431,57 @@ type RemoteAgentConfig struct {
 	// AgentCardURL is the URL to fetch the agent card from.
 	// Typically: https://host/.well-known/agent.json
 	AgentCardURL string `mapstructure:"agentCardUrl" json:"agentCardUrl"`
+}
+
+// PaymentConfig defines blockchain payment settings.
+type PaymentConfig struct {
+	// Enable blockchain payment features.
+	Enabled bool `mapstructure:"enabled" json:"enabled"`
+
+	// WalletProvider selects the wallet backend: "local", "rpc", or "composite".
+	WalletProvider string `mapstructure:"walletProvider" json:"walletProvider"`
+
+	// Network defines blockchain network parameters.
+	Network PaymentNetworkConfig `mapstructure:"network" json:"network"`
+
+	// Limits defines spending restrictions.
+	Limits SpendingLimitsConfig `mapstructure:"limits" json:"limits"`
+
+	// X402 defines X402 protocol interception settings.
+	X402 X402Config `mapstructure:"x402" json:"x402"`
+}
+
+// PaymentNetworkConfig defines blockchain network parameters.
+type PaymentNetworkConfig struct {
+	// ChainID is the EVM chain ID (default: 84532 = Base Sepolia).
+	ChainID int64 `mapstructure:"chainId" json:"chainId"`
+
+	// RPCURL is the JSON-RPC endpoint for the blockchain network.
+	RPCURL string `mapstructure:"rpcUrl" json:"rpcUrl"`
+
+	// USDCContract is the USDC token contract address on the target chain.
+	USDCContract string `mapstructure:"usdcContract" json:"usdcContract"`
+}
+
+// SpendingLimitsConfig defines spending restrictions for payment transactions.
+type SpendingLimitsConfig struct {
+	// MaxPerTx is the maximum amount per transaction in USDC (e.g. "1.00").
+	MaxPerTx string `mapstructure:"maxPerTx" json:"maxPerTx"`
+
+	// MaxDaily is the maximum daily spending in USDC (e.g. "10.00").
+	MaxDaily string `mapstructure:"maxDaily" json:"maxDaily"`
+
+	// AutoApproveBelow is the amount below which transactions are auto-approved.
+	AutoApproveBelow string `mapstructure:"autoApproveBelow" json:"autoApproveBelow"`
+}
+
+// X402Config defines X402 protocol interception settings.
+type X402Config struct {
+	// AutoIntercept enables automatic interception of HTTP 402 responses.
+	AutoIntercept bool `mapstructure:"autoIntercept" json:"autoIntercept"`
+
+	// MaxAutoPayAmount is the maximum amount to auto-pay for X402 challenges.
+	MaxAutoPayAmount string `mapstructure:"maxAutoPayAmount" json:"maxAutoPayAmount"`
 }
 
 // ResolveEmbeddingProvider returns the embedding backend type and API key

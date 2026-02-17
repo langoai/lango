@@ -72,6 +72,23 @@ func DefaultConfig() *Config {
 		A2A: A2AConfig{
 			Enabled: false,
 		},
+		Payment: PaymentConfig{
+			Enabled:        false,
+			WalletProvider: "local",
+			Network: PaymentNetworkConfig{
+				ChainID:      84532, // Base Sepolia
+				USDCContract: "0x036CbD53842c5426634e7929541eC2318f3dCF7e",
+			},
+			Limits: SpendingLimitsConfig{
+				MaxPerTx:         "1.00",
+				MaxDaily:         "10.00",
+				AutoApproveBelow: "0.10",
+			},
+			X402: X402Config{
+				AutoIntercept:    false,
+				MaxAutoPayAmount: "0.50",
+			},
+		},
 	}
 }
 
@@ -107,6 +124,15 @@ func Load(configPath string) (*Config, error) {
 	v.SetDefault("graph.maxTraversalDepth", defaults.Graph.MaxTraversalDepth)
 	v.SetDefault("graph.maxExpansionResults", defaults.Graph.MaxExpansionResults)
 	v.SetDefault("a2a.enabled", defaults.A2A.Enabled)
+	v.SetDefault("payment.enabled", defaults.Payment.Enabled)
+	v.SetDefault("payment.walletProvider", defaults.Payment.WalletProvider)
+	v.SetDefault("payment.network.chainId", defaults.Payment.Network.ChainID)
+	v.SetDefault("payment.network.usdcContract", defaults.Payment.Network.USDCContract)
+	v.SetDefault("payment.limits.maxPerTx", defaults.Payment.Limits.MaxPerTx)
+	v.SetDefault("payment.limits.maxDaily", defaults.Payment.Limits.MaxDaily)
+	v.SetDefault("payment.limits.autoApproveBelow", defaults.Payment.Limits.AutoApproveBelow)
+	v.SetDefault("payment.x402.autoIntercept", defaults.Payment.X402.AutoIntercept)
+	v.SetDefault("payment.x402.maxAutoPayAmount", defaults.Payment.X402.MaxAutoPayAmount)
 
 	// Configure viper
 	v.SetConfigType("json")
@@ -166,6 +192,9 @@ func substituteEnvVars(cfg *Config) {
 		aCfg.ClientSecret = expandEnvVars(aCfg.ClientSecret)
 		cfg.Auth.Providers[id] = aCfg
 	}
+
+	// Payment
+	cfg.Payment.Network.RPCURL = expandEnvVars(cfg.Payment.Network.RPCURL)
 
 	// Paths
 	cfg.Session.DatabasePath = expandEnvVars(cfg.Session.DatabasePath)
@@ -231,6 +260,17 @@ func Validate(cfg *Config) error {
 		}
 		if cfg.A2A.AgentName == "" {
 			errs = append(errs, "a2a.agentName is required when A2A is enabled")
+		}
+	}
+
+	// Validate payment config
+	if cfg.Payment.Enabled {
+		if cfg.Payment.Network.RPCURL == "" {
+			errs = append(errs, "payment.network.rpcUrl is required when payment is enabled")
+		}
+		validWalletProviders := map[string]bool{"local": true, "rpc": true, "composite": true}
+		if !validWalletProviders[cfg.Payment.WalletProvider] {
+			errs = append(errs, fmt.Sprintf("invalid payment.walletProvider: %q (must be local, rpc, or composite)", cfg.Payment.WalletProvider))
 		}
 	}
 

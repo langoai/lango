@@ -30,6 +30,9 @@ type Message func(*sql.Selector)
 // Observation is the predicate function for observation builders.
 type Observation func(*sql.Selector)
 
+// PaymentTx is the predicate function for paymenttx builders.
+type PaymentTx func(*sql.Selector)
+
 // Reflection is the predicate function for reflection builders.
 type Reflection func(*sql.Selector)
 
