@@ -38,6 +38,7 @@ func NewMenuModel() MenuModel {
 			{"graph", "📊 Graph Store", "Knowledge graph, GraphRAG settings"},
 			{"multi_agent", "🔀 Multi-Agent", "Orchestration mode"},
 			{"a2a", "🌍 A2A Protocol", "Agent-to-Agent, remote agents"},
+			{"payment", "💸 Payment", "Blockchain wallet, spending limits, X402"},
 			{"save", "💾 Save & Exit", "Save encrypted profile"},
 			{"cancel", "❌ Cancel", "Exit without saving"},
 		},

@@ -12,6 +12,7 @@ A high-performance AI agent built with Go, supporting multiple AI providers, cha
 - 📊 **Knowledge Graph & Graph RAG** - BoltDB triple store with hybrid vector + graph retrieval
 - 🔀 **Multi-Agent Orchestration** - Hierarchical sub-agents (executor, researcher, planner, memory-manager)
 - 🌍 **A2A Protocol** - Agent-to-Agent protocol for remote agent discovery and integration
+- 💸 **Blockchain Payments** - USDC payments on Base L2, X402 auto-pay protocol, spending limits
 - 🔒 **Secure** - AES-256-GCM encryption, key registry, secret management, output scanning
 - 💾 **Persistent** - Ent ORM with SQLite session storage
 - 🌐 **Gateway** - WebSocket/HTTP server for control plane
@@ -60,6 +61,7 @@ The onboard wizard guides you through:
 7. Graph Store configuration (backend, database path, traversal depth)
 8. Multi-Agent mode (single vs hierarchical orchestration)
 9. A2A Protocol settings (agent card, remote agents)
+10. Payment configuration (blockchain, wallet, spending limits)
 
 ### CLI Commands
 
@@ -94,6 +96,12 @@ lango graph clear [--force]      Clear all graph data
 
 lango agent status [--json]      Show agent mode and configuration
 lango agent list [--json] [--check] List local and remote agents
+
+lango payment balance [--json]   Show USDC wallet balance
+lango payment history [--json] [--limit N] Show payment transaction history
+lango payment limits [--json]    Show spending limits and daily usage
+lango payment info [--json]      Show wallet and payment system info
+lango payment send [flags]       Send USDC payment (--to, --amount, --purpose required; --force, --json)
 ```
 
 ### Diagnostics
@@ -130,6 +138,7 @@ lango/
 │   │   ├── graph/          #   lango graph status/query/stats/clear
 │   │   ├── memory/         #   lango memory list/status/clear
 │   │   ├── onboard/        #   lango onboard (TUI wizard)
+│   │   ├── payment/        #   lango payment balance/history/limits/info/send
 │   │   ├── prompt/         #   interactive prompt utilities
 │   │   ├── security/       #   lango security status/secrets/migrate-passphrase
 │   │   └── tui/            #   TUI components and views
@@ -153,8 +162,11 @@ lango/
 │   ├── security/           # Crypto providers, key registry, secrets store, companion discovery
 │   ├── session/            # Ent-based SQLite session store
 │   ├── skill/              # Skill registry, executor, builder
+│   ├── payment/            # Blockchain payment service (USDC on EVM chains)
 │   ├── supervisor/         # Provider proxy, privileged tool execution
-│   └── tools/              # browser, crypto, exec, filesystem, secrets
+│   ├── wallet/             # Wallet providers (local, rpc, composite), spending limiter
+│   ├── x402/               # X402 payment protocol middleware
+│   └── tools/              # browser, crypto, exec, filesystem, secrets, payment
 ├── prompts/                # Default prompt .md files (embedded via go:embed)
 └── openspec/               # Specifications (OpenSpec workflow)
 ```
@@ -269,6 +281,17 @@ All settings are managed via `lango onboard` or `lango config` and stored encryp
 | `a2a.agentName` | string | - | Name advertised in the Agent Card |
 | `a2a.agentDescription` | string | - | Description in the Agent Card |
 | `a2a.remoteAgents` | []object | - | External A2A agents to integrate (name + agentCardUrl) |
+| **Payment** | | | |
+| `payment.enabled` | bool | `false` | Enable blockchain payment features |
+| `payment.walletProvider` | string | `local` | Wallet backend: `local`, `rpc`, or `composite` |
+| `payment.network.chainId` | int | `84532` | EVM chain ID (84532 = Base Sepolia, 8453 = Base) |
+| `payment.network.rpcUrl` | string | - | JSON-RPC endpoint for blockchain network |
+| `payment.network.usdcContract` | string | - | USDC token contract address |
+| `payment.limits.maxPerTx` | string | `1.00` | Max USDC per transaction (e.g. `"1.00"`) |
+| `payment.limits.maxDaily` | string | `10.00` | Max USDC per day (e.g. `"10.00"`) |
+| `payment.limits.autoApproveBelow` | string | - | Auto-approve amount threshold |
+| `payment.x402.autoIntercept` | bool | `false` | Auto-intercept HTTP 402 responses |
+| `payment.x402.maxAutoPayAmount` | string | - | Max amount for X402 auto-pay |
 
 ## System Prompts
 
@@ -368,7 +391,7 @@ When `agent.multiAgent` is enabled, Lango builds a hierarchical agent tree with 
 
 | Agent | Role | Tools |
 |-------|------|-------|
-| **executor** | Runs tools: shell, filesystem, browser, crypto | exec, fs_*, browser_*, crypto_* |
+| **executor** | Runs tools: shell, filesystem, browser, crypto, payments | exec, fs_*, browser_*, crypto_*, payment_* |
 | **researcher** | Knowledge retrieval, RAG, graph traversal | search_*, rag_*, graph_* |
 | **planner** | Task decomposition and strategy | (reasoning only, no tools) |
 | **memory-manager** | Memory operations and observations | memory_*, observe_*, reflect_* |
@@ -388,6 +411,68 @@ Lango supports the Agent-to-Agent (A2A) protocol for inter-agent communication:
 Configure via `lango onboard` > A2A Protocol menu. Remote agents (name + URL pairs) should be configured via `lango config export` → edit JSON → `lango config import`.
 
 > **Note:** All settings are stored in the encrypted profile database — no plaintext config files. Use `lango onboard` for interactive configuration or `lango config import/export` for programmatic configuration.
+
+## Blockchain Payments
+
+Lango includes a blockchain payment system for USDC transactions on Base L2 (EVM), with built-in spending limits and X402 protocol support.
+
+### Payment Tools
+
+When `payment.enabled` is `true`, the following agent tools are registered:
+
+| Tool | Description | Safety Level |
+|------|-------------|--------------|
+| `payment_send` | Send USDC to a recipient address | Dangerous |
+| `payment_balance` | Check wallet USDC balance | Safe |
+| `payment_history` | View recent transaction history | Safe |
+| `payment_limits` | View spending limits and daily usage | Safe |
+| `payment_wallet_info` | Show wallet address and network info | Safe |
+
+### Wallet Providers
+
+| Provider | Description |
+|----------|-------------|
+| `local` | Key derived from encrypted secrets store (default) |
+| `rpc` | Remote signer via companion app |
+| `composite` | Tries RPC first, falls back to local |
+
+### X402 Protocol
+
+When `payment.x402.autoIntercept` is enabled, the agent automatically handles HTTP 402 Payment Required responses:
+
+1. Server returns 402 with payment challenge headers
+2. Agent parses recipient address, amount, and token
+3. Payment is sent if within spending limits
+4. Original request is retried with payment proof
+
+### CLI Usage
+
+```bash
+# Check wallet balance
+lango payment balance
+
+# View transaction history
+lango payment history --limit 10
+
+# View spending limits
+lango payment limits
+
+# Show wallet and network info
+lango payment info
+
+# Send USDC (interactive confirmation)
+lango payment send --to 0x... --amount 0.50 --purpose "API access"
+
+# Send USDC (non-interactive)
+lango payment send --to 0x... --amount 0.50 --purpose "API access" --force
+
+# JSON output for scripting
+lango payment balance --json
+```
+
+### Configuration
+
+Configure via `lango onboard` or import JSON with `lango config import`. Requires `security.signer` to be configured for wallet key management.
 
 ## Self-Learning System
 
@@ -460,6 +545,14 @@ The built-in secret scanner monitors agent output for accidental secret leakage.
 ### Key Registry
 
 Lango manages cryptographic keys via an Ent-backed key registry. Keys are used for secret encryption, signing, and companion app integration.
+
+### Wallet Key Security
+
+When blockchain payments are enabled, wallet private keys are protected by the same encryption layer as other secrets:
+
+- **Local mode**: Keys are derived from the passphrase-encrypted secrets store (AES-256-GCM). Private keys never leave the wallet layer — the agent only sees addresses and receipts.
+- **RPC mode**: Signing operations are delegated to the companion app / hardware signer.
+- **Spending limits**: Per-transaction and daily limits prevent runaway spending. Limits are enforced in the `wallet.SpendingLimiter` before any transaction is signed.
 
 ### Companion App Discovery (RPC Mode)
 

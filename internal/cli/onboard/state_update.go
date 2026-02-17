@@ -264,6 +264,30 @@ func (s *ConfigState) UpdateConfigFromForm(form *FormModel) {
 			s.Current.A2A.AgentName = val
 		case "a2a_agent_desc":
 			s.Current.A2A.AgentDescription = val
+
+		// Payment
+		case "payment_enabled":
+			s.Current.Payment.Enabled = f.Checked
+		case "payment_wallet_provider":
+			s.Current.Payment.WalletProvider = val
+		case "payment_chain_id":
+			if i, err := strconv.ParseInt(val, 10, 64); err == nil {
+				s.Current.Payment.Network.ChainID = i
+			}
+		case "payment_rpc_url":
+			s.Current.Payment.Network.RPCURL = val
+		case "payment_usdc_contract":
+			s.Current.Payment.Network.USDCContract = val
+		case "payment_max_per_tx":
+			s.Current.Payment.Limits.MaxPerTx = val
+		case "payment_max_daily":
+			s.Current.Payment.Limits.MaxDaily = val
+		case "payment_auto_approve":
+			s.Current.Payment.Limits.AutoApproveBelow = val
+		case "payment_x402_auto":
+			s.Current.Payment.X402.AutoIntercept = f.Checked
+		case "payment_x402_max":
+			s.Current.Payment.X402.MaxAutoPayAmount = val
 		}
 	}
 }

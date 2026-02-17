@@ -268,6 +268,10 @@ func (w *Wizard) handleMenuSelection(id string) tea.Cmd {
 		w.activeForm = NewA2AForm(w.state.Current)
 		w.activeForm.Focus = true
 		w.step = StepForm
+	case "payment":
+		w.activeForm = NewPaymentForm(w.state.Current)
+		w.activeForm.Focus = true
+		w.step = StepForm
 	case "auth":
 		w.authProvidersList = NewAuthProvidersListModel(w.state.Current)
 		w.step = StepAuthProvidersList

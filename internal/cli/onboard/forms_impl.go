@@ -596,6 +596,76 @@ func NewA2AForm(cfg *config.Config) *FormModel {
 	return &form
 }
 
+// NewPaymentForm creates the Payment configuration form.
+func NewPaymentForm(cfg *config.Config) *FormModel {
+	form := NewFormModel("💸 Payment Configuration")
+
+	form.AddField(&Field{
+		Key: "payment_enabled", Label: "Enabled", Type: InputBool,
+		Checked: cfg.Payment.Enabled,
+	})
+
+	form.AddField(&Field{
+		Key: "payment_wallet_provider", Label: "Wallet Provider", Type: InputSelect,
+		Value:   cfg.Payment.WalletProvider,
+		Options: []string{"local", "rpc", "composite"},
+	})
+
+	form.AddField(&Field{
+		Key: "payment_chain_id", Label: "Chain ID", Type: InputInt,
+		Value: strconv.FormatInt(cfg.Payment.Network.ChainID, 10),
+		Validate: func(s string) error {
+			if _, err := strconv.ParseInt(s, 10, 64); err != nil {
+				return fmt.Errorf("must be an integer")
+			}
+			return nil
+		},
+	})
+
+	form.AddField(&Field{
+		Key: "payment_rpc_url", Label: "RPC URL", Type: InputText,
+		Value:       cfg.Payment.Network.RPCURL,
+		Placeholder: "https://sepolia.base.org",
+	})
+
+	form.AddField(&Field{
+		Key: "payment_usdc_contract", Label: "USDC Contract", Type: InputText,
+		Value:       cfg.Payment.Network.USDCContract,
+		Placeholder: "0x036CbD53842c5426634e7929541eC2318f3dCF7e",
+	})
+
+	form.AddField(&Field{
+		Key: "payment_max_per_tx", Label: "Max Per Transaction (USDC)", Type: InputText,
+		Value:       cfg.Payment.Limits.MaxPerTx,
+		Placeholder: "1.00",
+	})
+
+	form.AddField(&Field{
+		Key: "payment_max_daily", Label: "Max Daily (USDC)", Type: InputText,
+		Value:       cfg.Payment.Limits.MaxDaily,
+		Placeholder: "10.00",
+	})
+
+	form.AddField(&Field{
+		Key: "payment_auto_approve", Label: "Auto-Approve Below (USDC)", Type: InputText,
+		Value:       cfg.Payment.Limits.AutoApproveBelow,
+		Placeholder: "0.10",
+	})
+
+	form.AddField(&Field{
+		Key: "payment_x402_auto", Label: "X402 Auto-Intercept", Type: InputBool,
+		Checked: cfg.Payment.X402.AutoIntercept,
+	})
+
+	form.AddField(&Field{
+		Key: "payment_x402_max", Label: "X402 Max Auto-Pay (USDC)", Type: InputText,
+		Value:       cfg.Payment.X402.MaxAutoPayAmount,
+		Placeholder: "0.50",
+	})
+
+	return &form
+}
+
 // Helper to create Provider configuration form
 func NewProviderForm(id string, cfg config.ProviderConfig) *FormModel {
 	title := "Edit Provider: " + id

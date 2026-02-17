@@ -17,6 +17,7 @@ import (
 	cliagent "github.com/langowarny/lango/internal/cli/agent"
 	"github.com/langowarny/lango/internal/cli/doctor"
 	cligraph "github.com/langowarny/lango/internal/cli/graph"
+	clipayment "github.com/langowarny/lango/internal/cli/payment"
 	climemory "github.com/langowarny/lango/internal/cli/memory"
 	"github.com/langowarny/lango/internal/cli/onboard"
 	clisecurity "github.com/langowarny/lango/internal/cli/security"
@@ -68,6 +69,9 @@ func main() {
 		}
 		defer boot.DBClient.Close()
 		return boot.Config, nil
+	}))
+	rootCmd.AddCommand(clipayment.NewPaymentCmd(func() (*bootstrap.Result, error) {
+		return bootstrap.Run(bootstrap.Options{})
 	}))
 
 	if err := rootCmd.Execute(); err != nil {
