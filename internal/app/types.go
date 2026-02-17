@@ -15,6 +15,7 @@ import (
 	"github.com/langowarny/lango/internal/graph"
 	"github.com/langowarny/lango/internal/knowledge"
 	"github.com/langowarny/lango/internal/learning"
+	"github.com/langowarny/lango/internal/librarian"
 	"github.com/langowarny/lango/internal/memory"
 	"github.com/langowarny/lango/internal/payment"
 	"github.com/langowarny/lango/internal/security"
@@ -59,6 +60,10 @@ type App struct {
 
 	// Conversation Analysis Components (optional)
 	AnalysisBuffer *learning.AnalysisBuffer
+
+	// Proactive Librarian Components (optional)
+	LibrarianInquiryStore    *librarian.InquiryStore
+	LibrarianProactiveBuffer *librarian.ProactiveBuffer
 
 	// Graph Components (optional)
 	GraphStore  graph.Store

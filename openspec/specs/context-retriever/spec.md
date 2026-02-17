@@ -1,11 +1,19 @@
 ## ADDED Requirements
 
-### Requirement: 8 Context Layer Architecture
-The system SHALL organize context into 8 distinct layers for retrieval-augmented generation.
+### Requirement: Context Layer Architecture
+The system SHALL organize context into distinct layers for retrieval-augmented generation, including a Pending Inquiries layer for the proactive librarian.
 
 #### Scenario: Context layer definitions
 - **WHEN** the context retriever is initialized
-- **THEN** the system SHALL recognize 8 layers: Tool Registry, User Knowledge, Skill Patterns, External Knowledge, Agent Learnings, Runtime Context, Observations, Reflections
+- **THEN** the system SHALL recognize 9 layers: Tool Registry, User Knowledge, Skill Patterns, External Knowledge, Agent Learnings, Runtime Context, Observations, Reflections, and Pending Inquiries
+
+#### Scenario: Pending inquiries layer retrieval
+- **WHEN** Retrieve is called with LayerPendingInquiries in the requested layers
+- **THEN** the retriever delegates to the InquiryProvider to fetch pending inquiry items
+
+#### Scenario: No inquiry provider configured
+- **WHEN** LayerPendingInquiries is requested but no InquiryProvider is set
+- **THEN** the retriever returns nil items for that layer without error
 
 ### Requirement: Context Retrieval
 The system SHALL search requested context layers and return relevant items.
@@ -73,6 +81,14 @@ The system SHALL assemble an augmented system prompt from base prompt, retrieved
 - **WHEN** `AssemblePrompt` is called with observations or reflections
 - **THEN** the system SHALL append a "Conversation Memory" section after knowledge sections
 - **AND** reflections SHALL appear before observations within that section
+
+#### Scenario: Inquiries present in context
+- **WHEN** AssemblePrompt is called with LayerPendingInquiries items
+- **THEN** the output includes a "## Pending Knowledge Inquiries" section with each inquiry formatted as `- [topic] question (context: why)`
+
+#### Scenario: No inquiries
+- **WHEN** no LayerPendingInquiries items exist
+- **THEN** no inquiry section is included in the prompt
 
 ### Requirement: Context-Aware Model Adapter
 The system SHALL wrap the ADK model adapter to transparently inject retrieved context and observational memory.
@@ -158,3 +174,10 @@ The system SHALL provide a `RuntimeContextAdapter` with thread-safe session upda
 #### Scenario: Thread-safe access
 - **WHEN** `SetSession` and `GetRuntimeContext` are called concurrently
 - **THEN** the adapter SHALL use mutex protection to prevent data races
+
+### Requirement: InquiryProvider Interface
+The system SHALL define an InquiryProvider interface with method `PendingInquiryItems(ctx, sessionKey, limit) ([]ContextItem, error)`. The ContextRetriever SHALL accept an optional InquiryProvider via `WithInquiryProvider()`.
+
+#### Scenario: Wire inquiry provider
+- **WHEN** WithInquiryProvider is called with a non-nil provider
+- **THEN** the retriever uses it for LayerPendingInquiries retrieval

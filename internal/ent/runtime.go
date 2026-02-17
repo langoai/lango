@@ -11,6 +11,7 @@ import (
 	"github.com/langowarny/lango/internal/ent/cronjob"
 	"github.com/langowarny/lango/internal/ent/cronjobhistory"
 	"github.com/langowarny/lango/internal/ent/externalref"
+	"github.com/langowarny/lango/internal/ent/inquiry"
 	"github.com/langowarny/lango/internal/ent/key"
 	"github.com/langowarny/lango/internal/ent/knowledge"
 	"github.com/langowarny/lango/internal/ent/learning"
@@ -153,6 +154,28 @@ func init() {
 	externalrefDescID := externalrefFields[0].Descriptor()
 	// externalref.DefaultID holds the default value on creation for the id field.
 	externalref.DefaultID = externalrefDescID.Default.(func() uuid.UUID)
+	inquiryFields := schema.Inquiry{}.Fields()
+	_ = inquiryFields
+	// inquiryDescSessionKey is the schema descriptor for session_key field.
+	inquiryDescSessionKey := inquiryFields[1].Descriptor()
+	// inquiry.SessionKeyValidator is a validator for the "session_key" field. It is called by the builders before save.
+	inquiry.SessionKeyValidator = inquiryDescSessionKey.Validators[0].(func(string) error)
+	// inquiryDescTopic is the schema descriptor for topic field.
+	inquiryDescTopic := inquiryFields[2].Descriptor()
+	// inquiry.TopicValidator is a validator for the "topic" field. It is called by the builders before save.
+	inquiry.TopicValidator = inquiryDescTopic.Validators[0].(func(string) error)
+	// inquiryDescQuestion is the schema descriptor for question field.
+	inquiryDescQuestion := inquiryFields[3].Descriptor()
+	// inquiry.QuestionValidator is a validator for the "question" field. It is called by the builders before save.
+	inquiry.QuestionValidator = inquiryDescQuestion.Validators[0].(func(string) error)
+	// inquiryDescCreatedAt is the schema descriptor for created_at field.
+	inquiryDescCreatedAt := inquiryFields[10].Descriptor()
+	// inquiry.DefaultCreatedAt holds the default value on creation for the created_at field.
+	inquiry.DefaultCreatedAt = inquiryDescCreatedAt.Default.(func() time.Time)
+	// inquiryDescID is the schema descriptor for id field.
+	inquiryDescID := inquiryFields[0].Descriptor()
+	// inquiry.DefaultID holds the default value on creation for the id field.
+	inquiry.DefaultID = inquiryDescID.Default.(func() uuid.UUID)
 	keyFields := schema.Key{}.Fields()
 	_ = keyFields
 	// keyDescName is the schema descriptor for name field.

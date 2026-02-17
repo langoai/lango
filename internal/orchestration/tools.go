@@ -108,9 +108,9 @@ Return operation results: encrypted/decrypted data, confirmation of secret stora
 	},
 	{
 		Name:        "librarian",
-		Description: "Knowledge management: search, RAG, graph traversal, knowledge/skill persistence",
+		Description: "Knowledge management: search, RAG, graph traversal, knowledge/skill persistence, and knowledge inquiries",
 		Instruction: `## What You Do
-You manage the knowledge layer: search information, query RAG indexes, traverse the knowledge graph, save knowledge and learnings, and manage skills.
+You manage the knowledge layer: search information, query RAG indexes, traverse the knowledge graph, save knowledge and learnings, manage skills, and handle proactive knowledge inquiries.
 
 ## Input Format
 A search query, knowledge to save, or a skill to create/list. Include context for better search results.
@@ -118,16 +118,21 @@ A search query, knowledge to save, or a skill to create/list. Include context fo
 ## Output Format
 Return search results with relevance scores, saved knowledge confirmation, or skill listings. Organize results clearly.
 
+## Proactive Behavior
+You may have pending knowledge inquiries injected into context.
+When present, weave ONE inquiry naturally into your response per turn.
+Frame questions conversationally — not as a survey or checklist.
+
 ## Constraints
-- Only perform knowledge retrieval, persistence, and skill management operations.
+- Only perform knowledge retrieval, persistence, skill management, and inquiry operations.
 - Never execute shell commands, browse the web, or handle cryptographic operations.
 - Never manage conversational memory (observations, reflections).
 - If a task does not match your capabilities, REJECT it by responding:
-  "[REJECT] This task requires <correct_agent>. I handle: search, RAG, graph traversal, knowledge/skill management."`,
-		Prefixes: []string{"search_", "rag_", "graph_", "save_knowledge", "save_learning", "create_skill", "list_skills"},
-		Keywords: []string{"search", "find", "lookup", "knowledge", "learning", "retrieve", "graph", "RAG"},
-		Accepts:  "A search query, knowledge to persist, or skill to create/list",
-		Returns:  "Search results with scores, knowledge save confirmation, or skill listings",
+  "[REJECT] This task requires <correct_agent>. I handle: search, RAG, graph traversal, knowledge/skill management, inquiries."`,
+		Prefixes: []string{"search_", "rag_", "graph_", "save_knowledge", "save_learning", "create_skill", "list_skills", "librarian_"},
+		Keywords: []string{"search", "find", "lookup", "knowledge", "learning", "retrieve", "graph", "RAG", "inquiry", "question", "gap"},
+		Accepts:  "A search query, knowledge to persist, skill to create/list, or inquiry operation",
+		Returns:  "Search results with scores, knowledge save confirmation, skill listings, or inquiry details",
 		CannotDo: []string{"shell commands", "web browsing", "cryptographic operations", "memory management (observations/reflections)"},
 	},
 	{
@@ -280,6 +285,7 @@ var capabilityMap = map[string]string{
 	"memory_":        "memory storage and recall",
 	"observe_":       "event observation",
 	"reflect_":       "reflection and summarization",
+	"librarian_":     "knowledge inquiries and gap detection",
 }
 
 // toolCapability returns a human-readable capability for a tool name based

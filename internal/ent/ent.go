@@ -17,6 +17,7 @@ import (
 	"github.com/langowarny/lango/internal/ent/cronjob"
 	"github.com/langowarny/lango/internal/ent/cronjobhistory"
 	"github.com/langowarny/lango/internal/ent/externalref"
+	"github.com/langowarny/lango/internal/ent/inquiry"
 	"github.com/langowarny/lango/internal/ent/key"
 	"github.com/langowarny/lango/internal/ent/knowledge"
 	"github.com/langowarny/lango/internal/ent/learning"
@@ -93,6 +94,7 @@ func checkColumn(t, c string) error {
 			cronjob.Table:         cronjob.ValidColumn,
 			cronjobhistory.Table:  cronjobhistory.ValidColumn,
 			externalref.Table:     externalref.ValidColumn,
+			inquiry.Table:         inquiry.ValidColumn,
 			key.Table:             key.ValidColumn,
 			knowledge.Table:       knowledge.ValidColumn,
 			learning.Table:        learning.ValidColumn,

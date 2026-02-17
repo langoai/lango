@@ -58,6 +58,9 @@ type Config struct {
 	// Skill configuration (file-based skills)
 	Skill SkillConfig `mapstructure:"skill" json:"skill"`
 
+	// Librarian configuration (proactive knowledge agent)
+	Librarian LibrarianConfig `mapstructure:"librarian" json:"librarian"`
+
 	// Providers configuration
 	Providers map[string]ProviderConfig `mapstructure:"providers" json:"providers"`
 }
@@ -105,6 +108,30 @@ type WorkflowConfig struct {
 
 	// Directory to store workflow state for resume capability.
 	StateDir string `mapstructure:"stateDir" json:"stateDir"`
+}
+
+// LibrarianConfig defines proactive knowledge librarian settings.
+type LibrarianConfig struct {
+	// Enable the proactive librarian system.
+	Enabled bool `mapstructure:"enabled" json:"enabled"`
+
+	// Minimum observation count to trigger analysis (default: 2).
+	ObservationThreshold int `mapstructure:"observationThreshold" json:"observationThreshold"`
+
+	// Turns between inquiries per session (default: 3).
+	InquiryCooldownTurns int `mapstructure:"inquiryCooldownTurns" json:"inquiryCooldownTurns"`
+
+	// Maximum pending inquiries per session (default: 2).
+	MaxPendingInquiries int `mapstructure:"maxPendingInquiries" json:"maxPendingInquiries"`
+
+	// Minimum confidence level for auto-save: "high", "medium", "low" (default: "high").
+	AutoSaveConfidence string `mapstructure:"autoSaveConfidence" json:"autoSaveConfidence"`
+
+	// LLM provider for analysis (empty = use agent default).
+	Provider string `mapstructure:"provider" json:"provider"`
+
+	// Model ID for analysis (empty = use agent default).
+	Model string `mapstructure:"model" json:"model"`
 }
 
 // SkillConfig defines file-based skill settings.

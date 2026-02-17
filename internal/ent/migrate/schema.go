@@ -163,6 +163,39 @@ var (
 			},
 		},
 	}
+	// InquiriesColumns holds the columns for the "inquiries" table.
+	InquiriesColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeUUID},
+		{Name: "session_key", Type: field.TypeString},
+		{Name: "topic", Type: field.TypeString},
+		{Name: "question", Type: field.TypeString, Size: 2147483647},
+		{Name: "context", Type: field.TypeString, Nullable: true, Size: 2147483647},
+		{Name: "priority", Type: field.TypeEnum, Enums: []string{"low", "medium", "high"}, Default: "medium"},
+		{Name: "status", Type: field.TypeEnum, Enums: []string{"pending", "resolved", "dismissed"}, Default: "pending"},
+		{Name: "answer", Type: field.TypeString, Nullable: true, Size: 2147483647},
+		{Name: "knowledge_key", Type: field.TypeString, Nullable: true},
+		{Name: "source_observation_id", Type: field.TypeString, Nullable: true},
+		{Name: "created_at", Type: field.TypeTime},
+		{Name: "resolved_at", Type: field.TypeTime, Nullable: true},
+	}
+	// InquiriesTable holds the schema information for the "inquiries" table.
+	InquiriesTable = &schema.Table{
+		Name:       "inquiries",
+		Columns:    InquiriesColumns,
+		PrimaryKey: []*schema.Column{InquiriesColumns[0]},
+		Indexes: []*schema.Index{
+			{
+				Name:    "inquiry_session_key_status",
+				Unique:  false,
+				Columns: []*schema.Column{InquiriesColumns[1], InquiriesColumns[6]},
+			},
+			{
+				Name:    "inquiry_status",
+				Unique:  false,
+				Columns: []*schema.Column{InquiriesColumns[6]},
+			},
+		},
+	}
 	// KeysColumns holds the columns for the "keys" table.
 	KeysColumns = []*schema.Column{
 		{Name: "id", Type: field.TypeUUID},
@@ -516,6 +549,7 @@ var (
 		CronJobsTable,
 		CronJobHistoriesTable,
 		ExternalRefsTable,
+		InquiriesTable,
 		KeysTable,
 		KnowledgesTable,
 		LearningsTable,

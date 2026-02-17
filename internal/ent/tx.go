@@ -22,6 +22,8 @@ type Tx struct {
 	CronJobHistory *CronJobHistoryClient
 	// ExternalRef is the client for interacting with the ExternalRef builders.
 	ExternalRef *ExternalRefClient
+	// Inquiry is the client for interacting with the Inquiry builders.
+	Inquiry *InquiryClient
 	// Key is the client for interacting with the Key builders.
 	Key *KeyClient
 	// Knowledge is the client for interacting with the Knowledge builders.
@@ -180,6 +182,7 @@ func (tx *Tx) init() {
 	tx.CronJob = NewCronJobClient(tx.config)
 	tx.CronJobHistory = NewCronJobHistoryClient(tx.config)
 	tx.ExternalRef = NewExternalRefClient(tx.config)
+	tx.Inquiry = NewInquiryClient(tx.config)
 	tx.Key = NewKeyClient(tx.config)
 	tx.Knowledge = NewKnowledgeClient(tx.config)
 	tx.Learning = NewLearningClient(tx.config)

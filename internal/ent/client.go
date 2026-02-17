@@ -21,6 +21,7 @@ import (
 	"github.com/langowarny/lango/internal/ent/cronjob"
 	"github.com/langowarny/lango/internal/ent/cronjobhistory"
 	"github.com/langowarny/lango/internal/ent/externalref"
+	"github.com/langowarny/lango/internal/ent/inquiry"
 	"github.com/langowarny/lango/internal/ent/key"
 	"github.com/langowarny/lango/internal/ent/knowledge"
 	"github.com/langowarny/lango/internal/ent/learning"
@@ -49,6 +50,8 @@ type Client struct {
 	CronJobHistory *CronJobHistoryClient
 	// ExternalRef is the client for interacting with the ExternalRef builders.
 	ExternalRef *ExternalRefClient
+	// Inquiry is the client for interacting with the Inquiry builders.
+	Inquiry *InquiryClient
 	// Key is the client for interacting with the Key builders.
 	Key *KeyClient
 	// Knowledge is the client for interacting with the Knowledge builders.
@@ -87,6 +90,7 @@ func (c *Client) init() {
 	c.CronJob = NewCronJobClient(c.config)
 	c.CronJobHistory = NewCronJobHistoryClient(c.config)
 	c.ExternalRef = NewExternalRefClient(c.config)
+	c.Inquiry = NewInquiryClient(c.config)
 	c.Key = NewKeyClient(c.config)
 	c.Knowledge = NewKnowledgeClient(c.config)
 	c.Learning = NewLearningClient(c.config)
@@ -195,6 +199,7 @@ func (c *Client) Tx(ctx context.Context) (*Tx, error) {
 		CronJob:         NewCronJobClient(cfg),
 		CronJobHistory:  NewCronJobHistoryClient(cfg),
 		ExternalRef:     NewExternalRefClient(cfg),
+		Inquiry:         NewInquiryClient(cfg),
 		Key:             NewKeyClient(cfg),
 		Knowledge:       NewKnowledgeClient(cfg),
 		Learning:        NewLearningClient(cfg),
@@ -230,6 +235,7 @@ func (c *Client) BeginTx(ctx context.Context, opts *sql.TxOptions) (*Tx, error) 
 		CronJob:         NewCronJobClient(cfg),
 		CronJobHistory:  NewCronJobHistoryClient(cfg),
 		ExternalRef:     NewExternalRefClient(cfg),
+		Inquiry:         NewInquiryClient(cfg),
 		Key:             NewKeyClient(cfg),
 		Knowledge:       NewKnowledgeClient(cfg),
 		Learning:        NewLearningClient(cfg),
@@ -270,9 +276,10 @@ func (c *Client) Close() error {
 // In order to add hooks to a specific client, call: `client.Node.Use(...)`.
 func (c *Client) Use(hooks ...Hook) {
 	for _, n := range []interface{ Use(...Hook) }{
-		c.AuditLog, c.ConfigProfile, c.CronJob, c.CronJobHistory, c.ExternalRef, c.Key,
-		c.Knowledge, c.Learning, c.Message, c.Observation, c.PaymentTx, c.Reflection,
-		c.Secret, c.Session, c.WorkflowRun, c.WorkflowStepRun,
+		c.AuditLog, c.ConfigProfile, c.CronJob, c.CronJobHistory, c.ExternalRef,
+		c.Inquiry, c.Key, c.Knowledge, c.Learning, c.Message, c.Observation,
+		c.PaymentTx, c.Reflection, c.Secret, c.Session, c.WorkflowRun,
+		c.WorkflowStepRun,
 	} {
 		n.Use(hooks...)
 	}
@@ -282,9 +289,10 @@ func (c *Client) Use(hooks ...Hook) {
 // In order to add interceptors to a specific client, call: `client.Node.Intercept(...)`.
 func (c *Client) Intercept(interceptors ...Interceptor) {
 	for _, n := range []interface{ Intercept(...Interceptor) }{
-		c.AuditLog, c.ConfigProfile, c.CronJob, c.CronJobHistory, c.ExternalRef, c.Key,
-		c.Knowledge, c.Learning, c.Message, c.Observation, c.PaymentTx, c.Reflection,
-		c.Secret, c.Session, c.WorkflowRun, c.WorkflowStepRun,
+		c.AuditLog, c.ConfigProfile, c.CronJob, c.CronJobHistory, c.ExternalRef,
+		c.Inquiry, c.Key, c.Knowledge, c.Learning, c.Message, c.Observation,
+		c.PaymentTx, c.Reflection, c.Secret, c.Session, c.WorkflowRun,
+		c.WorkflowStepRun,
 	} {
 		n.Intercept(interceptors...)
 	}
@@ -303,6 +311,8 @@ func (c *Client) Mutate(ctx context.Context, m Mutation) (Value, error) {
 		return c.CronJobHistory.mutate(ctx, m)
 	case *ExternalRefMutation:
 		return c.ExternalRef.mutate(ctx, m)
+	case *InquiryMutation:
+		return c.Inquiry.mutate(ctx, m)
 	case *KeyMutation:
 		return c.Key.mutate(ctx, m)
 	case *KnowledgeMutation:
@@ -992,6 +1002,139 @@ func (c *ExternalRefClient) mutate(ctx context.Context, m *ExternalRefMutation) 
 		return (&ExternalRefDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
 	default:
 		return nil, fmt.Errorf("ent: unknown ExternalRef mutation op: %q", m.Op())
+	}
+}
+
+// InquiryClient is a client for the Inquiry schema.
+type InquiryClient struct {
+	config
+}
+
+// NewInquiryClient returns a client for the Inquiry from the given config.
+func NewInquiryClient(c config) *InquiryClient {
+	return &InquiryClient{config: c}
+}
+
+// Use adds a list of mutation hooks to the hooks stack.
+// A call to `Use(f, g, h)` equals to `inquiry.Hooks(f(g(h())))`.
+func (c *InquiryClient) Use(hooks ...Hook) {
+	c.hooks.Inquiry = append(c.hooks.Inquiry, hooks...)
+}
+
+// Intercept adds a list of query interceptors to the interceptors stack.
+// A call to `Intercept(f, g, h)` equals to `inquiry.Intercept(f(g(h())))`.
+func (c *InquiryClient) Intercept(interceptors ...Interceptor) {
+	c.inters.Inquiry = append(c.inters.Inquiry, interceptors...)
+}
+
+// Create returns a builder for creating a Inquiry entity.
+func (c *InquiryClient) Create() *InquiryCreate {
+	mutation := newInquiryMutation(c.config, OpCreate)
+	return &InquiryCreate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// CreateBulk returns a builder for creating a bulk of Inquiry entities.
+func (c *InquiryClient) CreateBulk(builders ...*InquiryCreate) *InquiryCreateBulk {
+	return &InquiryCreateBulk{config: c.config, builders: builders}
+}
+
+// MapCreateBulk creates a bulk creation builder from the given slice. For each item in the slice, the function creates
+// a builder and applies setFunc on it.
+func (c *InquiryClient) MapCreateBulk(slice any, setFunc func(*InquiryCreate, int)) *InquiryCreateBulk {
+	rv := reflect.ValueOf(slice)
+	if rv.Kind() != reflect.Slice {
+		return &InquiryCreateBulk{err: fmt.Errorf("calling to InquiryClient.MapCreateBulk with wrong type %T, need slice", slice)}
+	}
+	builders := make([]*InquiryCreate, rv.Len())
+	for i := 0; i < rv.Len(); i++ {
+		builders[i] = c.Create()
+		setFunc(builders[i], i)
+	}
+	return &InquiryCreateBulk{config: c.config, builders: builders}
+}
+
+// Update returns an update builder for Inquiry.
+func (c *InquiryClient) Update() *InquiryUpdate {
+	mutation := newInquiryMutation(c.config, OpUpdate)
+	return &InquiryUpdate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOne returns an update builder for the given entity.
+func (c *InquiryClient) UpdateOne(_m *Inquiry) *InquiryUpdateOne {
+	mutation := newInquiryMutation(c.config, OpUpdateOne, withInquiry(_m))
+	return &InquiryUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOneID returns an update builder for the given id.
+func (c *InquiryClient) UpdateOneID(id uuid.UUID) *InquiryUpdateOne {
+	mutation := newInquiryMutation(c.config, OpUpdateOne, withInquiryID(id))
+	return &InquiryUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// Delete returns a delete builder for Inquiry.
+func (c *InquiryClient) Delete() *InquiryDelete {
+	mutation := newInquiryMutation(c.config, OpDelete)
+	return &InquiryDelete{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// DeleteOne returns a builder for deleting the given entity.
+func (c *InquiryClient) DeleteOne(_m *Inquiry) *InquiryDeleteOne {
+	return c.DeleteOneID(_m.ID)
+}
+
+// DeleteOneID returns a builder for deleting the given entity by its id.
+func (c *InquiryClient) DeleteOneID(id uuid.UUID) *InquiryDeleteOne {
+	builder := c.Delete().Where(inquiry.ID(id))
+	builder.mutation.id = &id
+	builder.mutation.op = OpDeleteOne
+	return &InquiryDeleteOne{builder}
+}
+
+// Query returns a query builder for Inquiry.
+func (c *InquiryClient) Query() *InquiryQuery {
+	return &InquiryQuery{
+		config: c.config,
+		ctx:    &QueryContext{Type: TypeInquiry},
+		inters: c.Interceptors(),
+	}
+}
+
+// Get returns a Inquiry entity by its id.
+func (c *InquiryClient) Get(ctx context.Context, id uuid.UUID) (*Inquiry, error) {
+	return c.Query().Where(inquiry.ID(id)).Only(ctx)
+}
+
+// GetX is like Get, but panics if an error occurs.
+func (c *InquiryClient) GetX(ctx context.Context, id uuid.UUID) *Inquiry {
+	obj, err := c.Get(ctx, id)
+	if err != nil {
+		panic(err)
+	}
+	return obj
+}
+
+// Hooks returns the client hooks.
+func (c *InquiryClient) Hooks() []Hook {
+	return c.hooks.Inquiry
+}
+
+// Interceptors returns the client interceptors.
+func (c *InquiryClient) Interceptors() []Interceptor {
+	return c.inters.Inquiry
+}
+
+func (c *InquiryClient) mutate(ctx context.Context, m *InquiryMutation) (Value, error) {
+	switch m.Op() {
+	case OpCreate:
+		return (&InquiryCreate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdate:
+		return (&InquiryUpdate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdateOne:
+		return (&InquiryUpdateOne{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpDelete, OpDeleteOne:
+		return (&InquiryDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
+	default:
+		return nil, fmt.Errorf("ent: unknown Inquiry mutation op: %q", m.Op())
 	}
 }
 
@@ -2525,13 +2668,13 @@ func (c *WorkflowStepRunClient) mutate(ctx context.Context, m *WorkflowStepRunMu
 // hooks and interceptors per client, for fast access.
 type (
 	hooks struct {
-		AuditLog, ConfigProfile, CronJob, CronJobHistory, ExternalRef, Key, Knowledge,
-		Learning, Message, Observation, PaymentTx, Reflection, Secret, Session,
-		WorkflowRun, WorkflowStepRun []ent.Hook
+		AuditLog, ConfigProfile, CronJob, CronJobHistory, ExternalRef, Inquiry, Key,
+		Knowledge, Learning, Message, Observation, PaymentTx, Reflection, Secret,
+		Session, WorkflowRun, WorkflowStepRun []ent.Hook
 	}
 	inters struct {
-		AuditLog, ConfigProfile, CronJob, CronJobHistory, ExternalRef, Key, Knowledge,
-		Learning, Message, Observation, PaymentTx, Reflection, Secret, Session,
-		WorkflowRun, WorkflowStepRun []ent.Interceptor
+		AuditLog, ConfigProfile, CronJob, CronJobHistory, ExternalRef, Inquiry, Key,
+		Knowledge, Learning, Message, Observation, PaymentTx, Reflection, Secret,
+		Session, WorkflowRun, WorkflowStepRun []ent.Interceptor
 	}
 )

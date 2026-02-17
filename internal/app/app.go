@@ -158,6 +158,13 @@ func New(boot *bootstrap.Result) (*App, error) {
 		app.AnalysisBuffer = ab
 	}
 
+	// 5d'''. Proactive Librarian (optional)
+	lc := initLibrarian(cfg, sv, store, kc, mc, gc)
+	if lc != nil {
+		app.LibrarianInquiryStore = lc.inquiryStore
+		app.LibrarianProactiveBuffer = lc.proactiveBuffer
+	}
+
 	// 5e. Graph tools (optional)
 	if gc != nil {
 		tools = append(tools, buildGraphTools(gc.store)...)
@@ -179,6 +186,11 @@ func New(boot *bootstrap.Result) (*App, error) {
 		app.WalletProvider = pc.wallet
 		app.PaymentService = pc.service
 		tools = append(tools, buildPaymentTools(pc.service, pc.limiter)...)
+	}
+
+	// 5i. Librarian tools (optional)
+	if lc != nil {
+		tools = append(tools, buildLibrarianTools(lc.inquiryStore)...)
 	}
 
 	// 6. Auth
@@ -210,7 +222,7 @@ func New(boot *bootstrap.Result) (*App, error) {
 	}
 
 	// 9. ADK Agent (scanner is passed for output-side secret scanning)
-	adkAgent, err := initAgent(context.Background(), sv, cfg, store, tools, kc, mc, ec, gc, scanner, registry)
+	adkAgent, err := initAgent(context.Background(), sv, cfg, store, tools, kc, mc, ec, gc, scanner, registry, lc)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create agent: %w", err)
 	}
@@ -258,6 +270,11 @@ func New(boot *bootstrap.Result) (*App, error) {
 			app.AnalysisBuffer.Trigger(sessionKey)
 		})
 	}
+	if app.LibrarianProactiveBuffer != nil {
+		app.Gateway.OnTurnComplete(func(sessionKey string) {
+			app.LibrarianProactiveBuffer.Trigger(sessionKey)
+		})
+	}
 
 	return app, nil
 }
@@ -296,6 +313,12 @@ func (a *App) Start(ctx context.Context) error {
 	if a.AnalysisBuffer != nil {
 		a.AnalysisBuffer.Start(&a.wg)
 		logger().Info("conversation analysis buffer started")
+	}
+
+	// Start proactive librarian buffer if enabled
+	if a.LibrarianProactiveBuffer != nil {
+		a.LibrarianProactiveBuffer.Start(&a.wg)
+		logger().Info("proactive librarian buffer started")
 	}
 
 	// Start cron scheduler if enabled
@@ -356,6 +379,12 @@ func (a *App) Stop(ctx context.Context) error {
 	if a.AnalysisBuffer != nil {
 		a.AnalysisBuffer.Stop()
 		logger().Info("conversation analysis buffer stopped")
+	}
+
+	// Stop proactive librarian buffer
+	if a.LibrarianProactiveBuffer != nil {
+		a.LibrarianProactiveBuffer.Stop()
+		logger().Info("proactive librarian buffer stopped")
 	}
 
 	// Stop graph buffer

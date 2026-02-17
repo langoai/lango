@@ -24,6 +24,7 @@ import (
 	"github.com/langowarny/lango/internal/graph"
 	"github.com/langowarny/lango/internal/knowledge"
 	"github.com/langowarny/lango/internal/learning"
+	"github.com/langowarny/lango/internal/librarian"
 	"github.com/langowarny/lango/internal/memory"
 	"github.com/langowarny/lango/internal/orchestration"
 	"github.com/langowarny/lango/internal/payment"
@@ -596,7 +597,7 @@ func initAuth(cfg *config.Config, store session.Store) *gateway.AuthManager {
 }
 
 // initAgent creates the ADK agent with the given tools and provider proxy.
-func initAgent(ctx context.Context, sv *supervisor.Supervisor, cfg *config.Config, store session.Store, tools []*agent.Tool, kc *knowledgeComponents, mc *memoryComponents, ec *embeddingComponents, gc *graphComponents, scanner *agent.SecretScanner, sr *skill.Registry) (*adk.Agent, error) {
+func initAgent(ctx context.Context, sv *supervisor.Supervisor, cfg *config.Config, store session.Store, tools []*agent.Tool, kc *knowledgeComponents, mc *memoryComponents, ec *embeddingComponents, gc *graphComponents, scanner *agent.SecretScanner, sr *skill.Registry, lc *librarianComponents) (*adk.Agent, error) {
 	// Adapt tools to ADK format
 	var adkTools []adk_tool.Tool
 	for _, t := range tools {
@@ -639,6 +640,11 @@ func initAgent(ctx context.Context, sv *supervisor.Supervisor, cfg *config.Confi
 		// Wire skill provider from file-based registry.
 		if sr != nil {
 			retriever.WithSkillProvider(&skillProviderAdapter{registry: sr})
+		}
+
+		// Wire inquiry provider from proactive librarian.
+		if lc != nil {
+			retriever.WithInquiryProvider(&inquiryProviderAdapter{store: lc.inquiryStore})
 		}
 
 		// Wire tool registry and runtime context providers
@@ -1096,6 +1102,141 @@ func initWorkflow(cfg *config.Config, store session.Store, app *App) *workflow.E
 	)
 
 	return engine
+}
+
+// librarianComponents holds optional proactive librarian components.
+type librarianComponents struct {
+	inquiryStore    *librarian.InquiryStore
+	proactiveBuffer *librarian.ProactiveBuffer
+}
+
+// initLibrarian creates the proactive librarian components if enabled.
+// Requires: librarian.enabled && knowledge.enabled && observationalMemory.enabled.
+func initLibrarian(
+	cfg *config.Config,
+	sv *supervisor.Supervisor,
+	store session.Store,
+	kc *knowledgeComponents,
+	mc *memoryComponents,
+	gc *graphComponents,
+) *librarianComponents {
+	if !cfg.Librarian.Enabled {
+		logger().Info("proactive librarian disabled")
+		return nil
+	}
+	if kc == nil {
+		logger().Warn("proactive librarian requires knowledge system, skipping")
+		return nil
+	}
+	if mc == nil {
+		logger().Warn("proactive librarian requires observational memory, skipping")
+		return nil
+	}
+
+	entStore, ok := store.(*session.EntStore)
+	if !ok {
+		logger().Warn("proactive librarian requires EntStore, skipping")
+		return nil
+	}
+
+	client := entStore.Client()
+	lLogger := logger()
+
+	inquiryStore := librarian.NewInquiryStore(client, lLogger)
+
+	// Create LLM proxy.
+	provider := cfg.Librarian.Provider
+	if provider == "" {
+		provider = cfg.Agent.Provider
+	}
+	lModel := cfg.Librarian.Model
+	if lModel == "" {
+		lModel = cfg.Agent.Model
+	}
+
+	proxy := supervisor.NewProviderProxy(sv, provider, lModel)
+	generator := &providerTextGenerator{proxy: proxy}
+
+	analyzer := librarian.NewObservationAnalyzer(generator, lLogger)
+	processor := librarian.NewInquiryProcessor(generator, inquiryStore, kc.store, lLogger)
+
+	// Message provider.
+	getMessages := func(sessionKey string) ([]session.Message, error) {
+		sess, err := store.Get(sessionKey)
+		if err != nil {
+			return nil, err
+		}
+		if sess == nil {
+			return nil, nil
+		}
+		return sess.History, nil
+	}
+
+	// Observation provider.
+	getObservations := librarian.ObservationProvider(mc.store.ListObservations)
+
+	bufCfg := librarian.ProactiveBufferConfig{
+		ObservationThreshold: cfg.Librarian.ObservationThreshold,
+		CooldownTurns:        cfg.Librarian.InquiryCooldownTurns,
+		MaxPending:           cfg.Librarian.MaxPendingInquiries,
+		AutoSaveConfidence:   cfg.Librarian.AutoSaveConfidence,
+	}
+	buffer := librarian.NewProactiveBuffer(
+		analyzer, processor, inquiryStore, kc.store,
+		getMessages, getObservations, bufCfg, lLogger,
+	)
+
+	// Wire graph callback if available.
+	if gc != nil && gc.buffer != nil {
+		buffer.SetGraphCallback(func(triples []librarian.Triple) {
+			graphTriples := make([]graph.Triple, len(triples))
+			for i, t := range triples {
+				graphTriples[i] = graph.Triple{
+					Subject:   t.Subject,
+					Predicate: t.Predicate,
+					Object:    t.Object,
+					Metadata:  t.Metadata,
+				}
+			}
+			gc.buffer.Enqueue(graph.GraphRequest{Triples: graphTriples})
+		})
+	}
+
+	logger().Infow("proactive librarian initialized",
+		"provider", provider,
+		"model", lModel,
+		"observationThreshold", bufCfg.ObservationThreshold,
+		"cooldownTurns", bufCfg.CooldownTurns,
+		"maxPending", bufCfg.MaxPending,
+	)
+
+	return &librarianComponents{
+		inquiryStore:    inquiryStore,
+		proactiveBuffer: buffer,
+	}
+}
+
+// inquiryProviderAdapter bridges librarian.InquiryStore → knowledge.InquiryProvider.
+type inquiryProviderAdapter struct {
+	store *librarian.InquiryStore
+}
+
+func (a *inquiryProviderAdapter) PendingInquiryItems(ctx context.Context, sessionKey string, limit int) ([]knowledge.ContextItem, error) {
+	inquiries, err := a.store.ListPendingInquiries(ctx, sessionKey, limit)
+	if err != nil {
+		return nil, err
+	}
+
+	items := make([]knowledge.ContextItem, 0, len(inquiries))
+	for _, inq := range inquiries {
+		items = append(items, knowledge.ContextItem{
+			Layer:   knowledge.LayerPendingInquiries,
+			Key:     inq.Topic,
+			Content: inq.Question,
+			Source:  inq.Context,
+		})
+	}
+	return items, nil
 }
 
 // skillProviderAdapter adapts *skill.Registry to knowledge.SkillProvider.

@@ -69,6 +69,18 @@ func (f ExternalRefFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value,
 	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.ExternalRefMutation", m)
 }
 
+// The InquiryFunc type is an adapter to allow the use of ordinary
+// function as Inquiry mutator.
+type InquiryFunc func(context.Context, *ent.InquiryMutation) (ent.Value, error)
+
+// Mutate calls f(ctx, m).
+func (f InquiryFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value, error) {
+	if mv, ok := m.(*ent.InquiryMutation); ok {
+		return f(ctx, mv)
+	}
+	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.InquiryMutation", m)
+}
+
 // The KeyFunc type is an adapter to allow the use of ordinary
 // function as Key mutator.
 type KeyFunc func(context.Context, *ent.KeyMutation) (ent.Value, error)

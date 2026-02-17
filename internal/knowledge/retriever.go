@@ -31,7 +31,7 @@ type SkillProvider interface {
 	ListActiveSkillInfos(ctx context.Context) ([]SkillInfo, error)
 }
 
-// ContextRetriever searches the 6 context layers and assembles augmented prompts.
+// ContextRetriever searches the context layers and assembles augmented prompts.
 type ContextRetriever struct {
 	store           *Store
 	maxPerLayer     int
@@ -39,6 +39,7 @@ type ContextRetriever struct {
 	toolProvider    ToolRegistryProvider
 	runtimeProvider RuntimeContextProvider
 	skillProvider   SkillProvider
+	inquiryProvider InquiryProvider
 }
 
 // NewContextRetriever creates a new context retriever.
@@ -68,6 +69,12 @@ func (r *ContextRetriever) WithRuntimeContext(p RuntimeContextProvider) *Context
 // WithSkillProvider sets the skill provider for context retrieval.
 func (r *ContextRetriever) WithSkillProvider(p SkillProvider) *ContextRetriever {
 	r.skillProvider = p
+	return r
+}
+
+// WithInquiryProvider sets the inquiry provider for proactive librarian context.
+func (r *ContextRetriever) WithInquiryProvider(p InquiryProvider) *ContextRetriever {
+	r.inquiryProvider = p
 	return r
 }
 
@@ -115,6 +122,8 @@ func (r *ContextRetriever) Retrieve(ctx context.Context, req RetrievalRequest) (
 			items = r.retrieveTools(searchQuery, maxPerLayer)
 		case LayerRuntimeContext:
 			items = r.retrieveRuntimeContext()
+		case LayerPendingInquiries:
+			items, err = r.retrievePendingInquiries(ctx, req.SessionKey, maxPerLayer)
 		}
 
 		if err != nil {
@@ -179,6 +188,18 @@ func (r *ContextRetriever) AssemblePrompt(basePrompt string, result *RetrievalRe
 		b.WriteString("\n\n## External References\n")
 		for _, item := range items {
 			b.WriteString(fmt.Sprintf("- %s (%s): %s\n", item.Key, item.Source, item.Content))
+		}
+	}
+
+	if items, ok := result.Items[LayerPendingInquiries]; ok && len(items) > 0 {
+		b.WriteString("\n\n## Pending Knowledge Inquiries\n")
+		b.WriteString("Consider weaving ONE of these questions naturally into your response:\n")
+		for _, item := range items {
+			if item.Source != "" {
+				b.WriteString(fmt.Sprintf("- [%s] %s (context: %s)\n", item.Key, item.Content, item.Source))
+			} else {
+				b.WriteString(fmt.Sprintf("- [%s] %s\n", item.Key, item.Content))
+			}
 		}
 	}
 
@@ -308,6 +329,13 @@ func (r *ContextRetriever) retrieveLearnings(ctx context.Context, query string, 
 		})
 	}
 	return items, nil
+}
+
+func (r *ContextRetriever) retrievePendingInquiries(ctx context.Context, sessionKey string, limit int) ([]ContextItem, error) {
+	if r.inquiryProvider == nil {
+		return nil, nil
+	}
+	return r.inquiryProvider.PendingInquiryItems(ctx, sessionKey, limit)
 }
 
 // Common English stop words to filter from queries.

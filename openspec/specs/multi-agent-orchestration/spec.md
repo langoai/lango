@@ -93,6 +93,10 @@ Sub-agent descriptions in the orchestrator prompt SHALL use human-readable capab
 - **WHEN** a tool has no matching prefix in `capabilityMap`
 - **THEN** its capability SHALL be "general actions"
 
+#### Scenario: Capability description includes librarian inquiry tools
+- **WHEN** capabilityDescription is called for a tool set containing `librarian_pending_inquiries`
+- **THEN** the description includes "knowledge inquiries and gap detection"
+
 ### Requirement: Orchestrator instruction guides delegation-only execution
 The orchestrator instruction SHALL enforce mandatory delegation for all tool-requiring tasks. It SHALL include a routing table with exact agent names, a decision protocol, and rejection handling. Sub-agent entries SHALL use capability descriptions, not raw tool name lists. The instruction SHALL NOT contain words that could be confused with agent names.
 
@@ -233,3 +237,14 @@ The RoleToolSet struct SHALL have fields: Operator, Navigator, Vault, Librarian,
 #### Scenario: Planner tools always empty
 - **WHEN** PartitionTools is called with any input
 - **THEN** the Planner field SHALL always be nil/empty
+
+### Requirement: Librarian Agent Specification
+The librarian sub-agent SHALL handle knowledge management including: search, RAG, graph traversal, knowledge/skill persistence, and knowledge inquiries. The agent spec SHALL include `librarian_` in its Prefixes list and `inquiry`, `question`, `gap` in its Keywords list. The Instruction SHALL include a "Proactive Behavior" section instructing the agent to weave pending inquiries naturally into responses.
+
+#### Scenario: Librarian tool routing with inquiry prefix
+- **WHEN** a tool named `librarian_pending_inquiries` is partitioned
+- **THEN** it is assigned to the librarian sub-agent's tool set
+
+#### Scenario: Inquiry keyword routing
+- **WHEN** the orchestrator receives a request containing "inquiry" or "gap"
+- **THEN** the routing table matches the librarian agent via keyword matching

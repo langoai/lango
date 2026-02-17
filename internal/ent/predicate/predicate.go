@@ -21,6 +21,9 @@ type CronJobHistory func(*sql.Selector)
 // ExternalRef is the predicate function for externalref builders.
 type ExternalRef func(*sql.Selector)
 
+// Inquiry is the predicate function for inquiry builders.
+type Inquiry func(*sql.Selector)
+
 // Key is the predicate function for key builders.
 type Key func(*sql.Selector)
 

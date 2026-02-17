@@ -1,5 +1,7 @@
 package knowledge
 
+import "context"
+
 // ContextLayer represents the 6 context layers in the self-learning architecture.
 type ContextLayer int
 
@@ -12,6 +14,7 @@ const (
 	LayerRuntimeContext                 // Session history, tool results, env state
 	LayerObservations                   // Compressed conversation observations
 	LayerReflections                    // Condensed observation reflections
+	LayerPendingInquiries               // Proactive librarian pending questions
 )
 
 // ContextItem represents a single item from any context layer.
@@ -74,6 +77,11 @@ type ExternalRefEntry struct {
 	Location string
 	Summary  string
 	Metadata map[string]interface{}
+}
+
+// InquiryProvider supplies pending knowledge inquiries for context injection.
+type InquiryProvider interface {
+	PendingInquiryItems(ctx context.Context, sessionKey string, limit int) ([]ContextItem, error)
 }
 
 // ToolDescriptor describes a single tool available to the agent.

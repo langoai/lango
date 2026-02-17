@@ -12,7 +12,9 @@ import (
 	"github.com/langowarny/lango/internal/embedding"
 	"github.com/langowarny/lango/internal/graph"
 	"github.com/langowarny/lango/internal/knowledge"
+	"github.com/google/uuid"
 	"github.com/langowarny/lango/internal/learning"
+	"github.com/langowarny/lango/internal/librarian"
 	"github.com/langowarny/lango/internal/memory"
 	"github.com/langowarny/lango/internal/payment"
 	"github.com/langowarny/lango/internal/security"
@@ -1164,4 +1166,66 @@ func buildMemoryAgentTools(ms *memory.Store) []*agent.Tool {
 // buildPaymentTools creates blockchain payment tools.
 func buildPaymentTools(svc *payment.Service, limiter wallet.SpendingLimiter) []*agent.Tool {
 	return toolpayment.BuildTools(svc, limiter)
+}
+
+// buildLibrarianTools creates proactive librarian agent tools.
+func buildLibrarianTools(is *librarian.InquiryStore) []*agent.Tool {
+	return []*agent.Tool{
+		{
+			Name:        "librarian_pending_inquiries",
+			Description: "List pending knowledge inquiries for the current session",
+			SafetyLevel: agent.SafetyLevelSafe,
+			Parameters: map[string]interface{}{
+				"type": "object",
+				"properties": map[string]interface{}{
+					"session_key": map[string]interface{}{"type": "string", "description": "Session key (uses current session if empty)"},
+					"limit":       map[string]interface{}{"type": "integer", "description": "Maximum results (default: 5)"},
+				},
+			},
+			Handler: func(ctx context.Context, params map[string]interface{}) (interface{}, error) {
+				sessionKey, _ := params["session_key"].(string)
+				if sessionKey == "" {
+					sessionKey = session.SessionKeyFromContext(ctx)
+				}
+				limit := 5
+				if l, ok := params["limit"].(float64); ok && l > 0 {
+					limit = int(l)
+				}
+				inquiries, err := is.ListPendingInquiries(ctx, sessionKey, limit)
+				if err != nil {
+					return nil, fmt.Errorf("list pending inquiries: %w", err)
+				}
+				return map[string]interface{}{"inquiries": inquiries, "count": len(inquiries)}, nil
+			},
+		},
+		{
+			Name:        "librarian_dismiss_inquiry",
+			Description: "Dismiss a pending knowledge inquiry that the user does not want to answer",
+			SafetyLevel: agent.SafetyLevelModerate,
+			Parameters: map[string]interface{}{
+				"type": "object",
+				"properties": map[string]interface{}{
+					"inquiry_id": map[string]interface{}{"type": "string", "description": "UUID of the inquiry to dismiss"},
+				},
+				"required": []string{"inquiry_id"},
+			},
+			Handler: func(ctx context.Context, params map[string]interface{}) (interface{}, error) {
+				idStr, ok := params["inquiry_id"].(string)
+				if !ok || idStr == "" {
+					return nil, fmt.Errorf("missing inquiry_id parameter")
+				}
+				id, err := uuid.Parse(idStr)
+				if err != nil {
+					return nil, fmt.Errorf("invalid inquiry_id: %w", err)
+				}
+				if err := is.DismissInquiry(ctx, id); err != nil {
+					return nil, fmt.Errorf("dismiss inquiry: %w", err)
+				}
+				return map[string]interface{}{
+					"status":  "dismissed",
+					"message": fmt.Sprintf("Inquiry %s dismissed", idStr),
+				}, nil
+			},
+		},
+	}
 }
