@@ -50,7 +50,7 @@ The `SAFETY.md` file SHALL define security behavior rules including secret expos
 - **THEN** it SHALL require confirmation before destructive commands with specific examples
 
 ### Requirement: CONVERSATION_RULES.md prevents answer repetition
-The `CONVERSATION_RULES.md` file SHALL define conversation behavior rules that prevent answer accumulation/repetition across turns, including current-question focus, self-contained responses, topic change handling, channel message limits, and consistency maintenance.
+The `CONVERSATION_RULES.md` file SHALL define conversation behavior rules that prevent answer accumulation/repetition across turns, including current-question focus, self-contained responses, topic change handling, channel message limits, consistency maintenance, and channel-safe Markdown formatting conventions.
 
 #### Scenario: Conversation rules prevent repetition
 - **WHEN** the conversation rules section is rendered
@@ -59,6 +59,13 @@ The `CONVERSATION_RULES.md` file SHALL define conversation behavior rules that p
 #### Scenario: Conversation rules respect channel limits
 - **WHEN** the conversation rules section is rendered
 - **THEN** it SHALL mention Telegram (4096) and Discord (2000) character limits
+
+#### Scenario: Conversation rules include Markdown formatting conventions
+- **WHEN** the conversation rules section is rendered
+- **THEN** it SHALL instruct to use `-` for unordered lists instead of `*`
+- **AND** it SHALL instruct to wrap code identifiers in backticks
+- **AND** it SHALL instruct to ensure all formatting markers are paired
+- **AND** it SHALL instruct to always close fenced code blocks
 
 ### Requirement: TOOL_USAGE.md provides per-tool guidelines
 The `TOOL_USAGE.md` file SHALL provide specific usage guidelines for each of the eight tool categories with concrete patterns, commands, and best practices.
