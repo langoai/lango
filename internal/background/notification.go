@@ -45,6 +45,25 @@ func (n *Notification) Notify(ctx context.Context, task *Task) error {
 	return nil
 }
 
+// NotifyStart sends a notification that a background task has started execution.
+func (n *Notification) NotifyStart(ctx context.Context, task *Task) error {
+	snap := task.Snapshot()
+
+	if snap.OriginChannel == "" {
+		n.logger.Debugw("skip start notification: no origin channel", "taskID", snap.ID)
+		return nil
+	}
+
+	msg := fmt.Sprintf("Background task started: %s", truncate(snap.Prompt, 50))
+
+	if err := n.notifier.SendMessage(ctx, snap.OriginChannel, msg); err != nil {
+		return fmt.Errorf("send start notification for task %s: %w", snap.ID, err)
+	}
+
+	n.logger.Infow("start notification sent", "taskID", snap.ID, "channel", snap.OriginChannel)
+	return nil
+}
+
 func formatNotification(snap TaskSnapshot) string {
 	promptSummary := truncate(snap.Prompt, 50)
 

@@ -39,6 +39,7 @@ type RunStatus struct {
 	Status         string
 	TotalSteps     int
 	CompletedSteps int
+	StartedAt      time.Time
 	StepStatuses   []StepStatus
 }
 

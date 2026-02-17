@@ -46,6 +46,11 @@ func (e *Executor) Execute(ctx context.Context, job Job) *JobResult {
 		"session_mode", job.SessionMode,
 	)
 
+	// Notify start (best-effort).
+	if len(job.DeliverTo) > 0 && e.delivery != nil {
+		e.delivery.DeliverStart(ctx, job.Name, job.DeliverTo)
+	}
+
 	response, err := e.runner.Run(ctx, sessionKey, job.Prompt)
 	duration := time.Since(startedAt)
 

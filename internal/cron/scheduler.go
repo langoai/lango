@@ -183,6 +183,16 @@ func (s *Scheduler) ListJobs(ctx context.Context) ([]Job, error) {
 	return s.store.List(ctx)
 }
 
+// History returns execution history for a specific job.
+func (s *Scheduler) History(ctx context.Context, jobID string, limit int) ([]HistoryEntry, error) {
+	return s.store.ListHistory(ctx, jobID, limit)
+}
+
+// AllHistory returns execution history across all jobs.
+func (s *Scheduler) AllHistory(ctx context.Context, limit int) ([]HistoryEntry, error) {
+	return s.store.ListAllHistory(ctx, limit)
+}
+
 // registerJob adds a job to the internal cron scheduler based on its schedule type.
 func (s *Scheduler) registerJob(job Job) error {
 	spec, err := buildCronSpec(job)

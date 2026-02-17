@@ -32,7 +32,7 @@ func NewDelivery(sender ChannelSender, logger *zap.SugaredLogger) *Delivery {
 // Deliver sends a job result to the specified target channels.
 func (d *Delivery) Deliver(ctx context.Context, result *JobResult, targets []string) error {
 	if d.sender == nil {
-		d.logger.Debugw("no channel sender configured, skipping delivery",
+		d.logger.Warnw("no channel sender configured, skipping delivery",
 			"job", result.JobName,
 			"targets", targets,
 		)
@@ -56,6 +56,32 @@ func (d *Delivery) Deliver(ctx context.Context, result *JobResult, targets []str
 		return fmt.Errorf("deliver to channels: %s", strings.Join(errs, "; "))
 	}
 	return nil
+}
+
+// DeliverStart sends a notification that a cron job has started execution.
+func (d *Delivery) DeliverStart(ctx context.Context, jobName string, targets []string) {
+	if d.sender == nil {
+		d.logger.Warn("no channel sender configured, skipping start notification",
+			"job", jobName,
+		)
+		return
+	}
+
+	if len(targets) == 0 {
+		return
+	}
+
+	msg := fmt.Sprintf("[Cron] Starting: %s", jobName)
+
+	for _, target := range targets {
+		if err := d.sender.SendMessage(ctx, target, msg); err != nil {
+			d.logger.Warnw("deliver start notification",
+				"job", jobName,
+				"target", target,
+				"error", err,
+			)
+		}
+	}
 }
 
 // formatDeliveryMessage formats a JobResult into a human-readable message.

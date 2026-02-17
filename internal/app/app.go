@@ -193,6 +193,27 @@ func New(boot *bootstrap.Result) (*App, error) {
 		tools = append(tools, buildLibrarianTools(lc.inquiryStore)...)
 	}
 
+	// 5j. Cron Scheduling (optional) — initialized before agent so tools get approval-wrapped.
+	app.CronScheduler = initCron(cfg, store, app)
+	if app.CronScheduler != nil {
+		tools = append(tools, buildCronTools(app.CronScheduler)...)
+		logger().Info("cron tools registered")
+	}
+
+	// 5k. Background Tasks (optional)
+	app.BackgroundManager = initBackground(cfg, app)
+	if app.BackgroundManager != nil {
+		tools = append(tools, buildBackgroundTools(app.BackgroundManager)...)
+		logger().Info("background tools registered")
+	}
+
+	// 5l. Workflow Engine (optional)
+	app.WorkflowEngine = initWorkflow(cfg, store, app)
+	if app.WorkflowEngine != nil {
+		tools = append(tools, buildWorkflowTools(app.WorkflowEngine, cfg.Workflow.StateDir)...)
+		logger().Info("workflow tools registered")
+	}
+
 	// 6. Auth
 	auth := initAuth(cfg, store)
 
@@ -242,16 +263,7 @@ func New(boot *bootstrap.Result) (*App, error) {
 		logger().Errorw("failed to initialize channels", "error", err)
 	}
 
-	// 11. Cron Scheduling (optional)
-	app.CronScheduler = initCron(cfg, store, app)
-
-	// 12. Background Tasks (optional)
-	app.BackgroundManager = initBackground(cfg, app)
-
-	// 13. Workflow Engine (optional)
-	app.WorkflowEngine = initWorkflow(cfg, store, app)
-
-	// 14. Wire memory compaction (optional)
+	// 11. Wire memory compaction (optional)
 	if mc != nil && mc.buffer != nil {
 		if entStore, ok := store.(*session.EntStore); ok {
 			mc.buffer.SetCompactor(entStore.CompactMessages)
@@ -352,6 +364,18 @@ func (a *App) Stop(ctx context.Context) error {
 	if a.CronScheduler != nil {
 		a.CronScheduler.Stop()
 		logger().Info("cron scheduler stopped")
+	}
+
+	// Stop background manager
+	if a.BackgroundManager != nil {
+		a.BackgroundManager.Shutdown()
+		logger().Info("background manager stopped")
+	}
+
+	// Stop workflow engine
+	if a.WorkflowEngine != nil {
+		a.WorkflowEngine.Shutdown()
+		logger().Info("workflow engine stopped")
 	}
 
 	// Signal gateway and channels to stop

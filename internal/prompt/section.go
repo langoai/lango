@@ -10,6 +10,7 @@ const (
 	SectionConversationRules SectionID = "conversation_rules"
 	SectionToolUsage         SectionID = "tool_usage"
 	SectionCustom            SectionID = "custom"
+	SectionAutomation        SectionID = "automation"
 )
 
 // PromptSection produces a titled block of text for the system prompt.

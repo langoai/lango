@@ -168,6 +168,7 @@ func (s *StateStore) GetRunStatus(ctx context.Context, runID string) (*RunStatus
 		Status:         string(run.Status),
 		TotalSteps:     run.TotalSteps,
 		CompletedSteps: run.CompletedSteps,
+		StartedAt:      run.StartedAt,
 		StepStatuses:   statuses,
 	}, nil
 }
@@ -214,6 +215,7 @@ func (s *StateStore) ListRuns(ctx context.Context, limit int) ([]RunStatus, erro
 			Status:         string(r.Status),
 			TotalSteps:     r.TotalSteps,
 			CompletedSteps: r.CompletedSteps,
+			StartedAt:      r.StartedAt,
 		})
 	}
 	return result, nil

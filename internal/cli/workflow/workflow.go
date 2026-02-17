@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/spf13/cobra"
+	"go.uber.org/zap"
 
 	"github.com/langowarny/lango/internal/bootstrap"
 	"github.com/langowarny/lango/internal/workflow"
@@ -143,7 +144,7 @@ func newWorkflowListCmd(bootLoader func() (*bootstrap.Result, error)) *cobra.Com
 				fmt.Fprintf(w, "%s\t%s\t%s\t%d/%d\t%s\n",
 					shortID(r.RunID), r.WorkflowName, r.Status,
 					r.CompletedSteps, r.TotalSteps,
-					formatTime(time.Now())) // TODO: get from RunStatus
+					formatTime(r.StartedAt))
 			}
 			return w.Flush()
 		},
@@ -271,11 +272,12 @@ func initEngine(boot *bootstrap.Result) *workflow.Engine {
 		return nil
 	}
 
-	state := workflow.NewStateStore(boot.DBClient, nil)
+	lg, _ := zap.NewProduction()
+	state := workflow.NewStateStore(boot.DBClient, lg.Sugar())
 	return workflow.NewEngine(nil, state, nil,
 		boot.Config.Workflow.MaxConcurrentSteps,
 		boot.Config.Workflow.DefaultTimeout,
-		nil)
+		lg.Sugar())
 }
 
 func shortID(id string) string {

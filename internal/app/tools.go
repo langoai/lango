@@ -4,15 +4,19 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"os"
+	"path/filepath"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/langowarny/lango/internal/agent"
 	"github.com/langowarny/lango/internal/approval"
+	"github.com/langowarny/lango/internal/background"
 	"github.com/langowarny/lango/internal/config"
+	cronpkg "github.com/langowarny/lango/internal/cron"
 	"github.com/langowarny/lango/internal/embedding"
 	"github.com/langowarny/lango/internal/graph"
 	"github.com/langowarny/lango/internal/knowledge"
-	"github.com/google/uuid"
 	"github.com/langowarny/lango/internal/learning"
 	"github.com/langowarny/lango/internal/librarian"
 	"github.com/langowarny/lango/internal/memory"
@@ -27,6 +31,7 @@ import (
 	toolpayment "github.com/langowarny/lango/internal/tools/payment"
 	toolsecrets "github.com/langowarny/lango/internal/tools/secrets"
 	"github.com/langowarny/lango/internal/wallet"
+	"github.com/langowarny/lango/internal/workflow"
 )
 
 // buildTools creates the set of tools available to the agent.
@@ -856,6 +861,478 @@ func buildSecretsTools(secretsStore *security.SecretsStore, refs *security.RefSt
 	}
 }
 
+// buildCronTools creates tools for managing scheduled cron jobs.
+func buildCronTools(scheduler *cronpkg.Scheduler) []*agent.Tool {
+	return []*agent.Tool{
+		{
+			Name:        "cron_add",
+			Description: "Create a new scheduled cron job that runs an agent prompt on a recurring schedule",
+			SafetyLevel: agent.SafetyLevelModerate,
+			Parameters: map[string]interface{}{
+				"type": "object",
+				"properties": map[string]interface{}{
+					"name":          map[string]interface{}{"type": "string", "description": "Unique name for the cron job"},
+					"schedule_type": map[string]interface{}{"type": "string", "description": "Schedule type: cron (crontab), every (interval), or at (one-time)", "enum": []string{"cron", "every", "at"}},
+					"schedule":      map[string]interface{}{"type": "string", "description": "Schedule value: crontab expr for cron, Go duration for every (e.g. 1h30m), RFC3339 datetime for at"},
+					"prompt":        map[string]interface{}{"type": "string", "description": "The prompt to execute on each run"},
+					"session_mode":  map[string]interface{}{"type": "string", "description": "Session mode: isolated (new session each run) or main (shared session)", "enum": []string{"isolated", "main"}},
+					"deliver_to":    map[string]interface{}{"type": "array", "items": map[string]interface{}{"type": "string"}, "description": "Channels to deliver results to (e.g. telegram, discord, slack)"},
+				},
+				"required": []string{"name", "schedule_type", "schedule", "prompt"},
+			},
+			Handler: func(ctx context.Context, params map[string]interface{}) (interface{}, error) {
+				name, _ := params["name"].(string)
+				scheduleType, _ := params["schedule_type"].(string)
+				schedule, _ := params["schedule"].(string)
+				prompt, _ := params["prompt"].(string)
+				sessionMode, _ := params["session_mode"].(string)
+
+				if name == "" || scheduleType == "" || schedule == "" || prompt == "" {
+					return nil, fmt.Errorf("name, schedule_type, schedule, and prompt are required")
+				}
+				if sessionMode == "" {
+					sessionMode = "isolated"
+				}
+
+				var deliverTo []string
+				if raw, ok := params["deliver_to"].([]interface{}); ok {
+					for _, v := range raw {
+						if s, ok := v.(string); ok {
+							deliverTo = append(deliverTo, s)
+						}
+					}
+				}
+
+				job := cronpkg.Job{
+					Name:         name,
+					ScheduleType: scheduleType,
+					Schedule:     schedule,
+					Prompt:       prompt,
+					SessionMode:  sessionMode,
+					DeliverTo:    deliverTo,
+					Enabled:      true,
+				}
+
+				if err := scheduler.AddJob(ctx, job); err != nil {
+					return nil, fmt.Errorf("add cron job: %w", err)
+				}
+
+				return map[string]interface{}{
+					"status":  "created",
+					"name":    name,
+					"message": fmt.Sprintf("Cron job '%s' created with schedule %s=%s", name, scheduleType, schedule),
+				}, nil
+			},
+		},
+		{
+			Name:        "cron_list",
+			Description: "List all registered cron jobs with their schedules and status",
+			SafetyLevel: agent.SafetyLevelSafe,
+			Parameters: map[string]interface{}{
+				"type":       "object",
+				"properties": map[string]interface{}{},
+			},
+			Handler: func(ctx context.Context, params map[string]interface{}) (interface{}, error) {
+				jobs, err := scheduler.ListJobs(ctx)
+				if err != nil {
+					return nil, fmt.Errorf("list cron jobs: %w", err)
+				}
+				return map[string]interface{}{"jobs": jobs, "count": len(jobs)}, nil
+			},
+		},
+		{
+			Name:        "cron_pause",
+			Description: "Pause a cron job so it no longer fires on schedule",
+			SafetyLevel: agent.SafetyLevelModerate,
+			Parameters: map[string]interface{}{
+				"type": "object",
+				"properties": map[string]interface{}{
+					"id": map[string]interface{}{"type": "string", "description": "The cron job ID to pause"},
+				},
+				"required": []string{"id"},
+			},
+			Handler: func(ctx context.Context, params map[string]interface{}) (interface{}, error) {
+				id, _ := params["id"].(string)
+				if id == "" {
+					return nil, fmt.Errorf("missing id parameter")
+				}
+				if err := scheduler.PauseJob(ctx, id); err != nil {
+					return nil, fmt.Errorf("pause cron job: %w", err)
+				}
+				return map[string]interface{}{"status": "paused", "id": id}, nil
+			},
+		},
+		{
+			Name:        "cron_resume",
+			Description: "Resume a paused cron job",
+			SafetyLevel: agent.SafetyLevelModerate,
+			Parameters: map[string]interface{}{
+				"type": "object",
+				"properties": map[string]interface{}{
+					"id": map[string]interface{}{"type": "string", "description": "The cron job ID to resume"},
+				},
+				"required": []string{"id"},
+			},
+			Handler: func(ctx context.Context, params map[string]interface{}) (interface{}, error) {
+				id, _ := params["id"].(string)
+				if id == "" {
+					return nil, fmt.Errorf("missing id parameter")
+				}
+				if err := scheduler.ResumeJob(ctx, id); err != nil {
+					return nil, fmt.Errorf("resume cron job: %w", err)
+				}
+				return map[string]interface{}{"status": "resumed", "id": id}, nil
+			},
+		},
+		{
+			Name:        "cron_remove",
+			Description: "Permanently remove a cron job",
+			SafetyLevel: agent.SafetyLevelDangerous,
+			Parameters: map[string]interface{}{
+				"type": "object",
+				"properties": map[string]interface{}{
+					"id": map[string]interface{}{"type": "string", "description": "The cron job ID to remove"},
+				},
+				"required": []string{"id"},
+			},
+			Handler: func(ctx context.Context, params map[string]interface{}) (interface{}, error) {
+				id, _ := params["id"].(string)
+				if id == "" {
+					return nil, fmt.Errorf("missing id parameter")
+				}
+				if err := scheduler.RemoveJob(ctx, id); err != nil {
+					return nil, fmt.Errorf("remove cron job: %w", err)
+				}
+				return map[string]interface{}{"status": "removed", "id": id}, nil
+			},
+		},
+		{
+			Name:        "cron_history",
+			Description: "View execution history for cron jobs",
+			SafetyLevel: agent.SafetyLevelSafe,
+			Parameters: map[string]interface{}{
+				"type": "object",
+				"properties": map[string]interface{}{
+					"job_id": map[string]interface{}{"type": "string", "description": "Filter by job ID (omit for all jobs)"},
+					"limit":  map[string]interface{}{"type": "integer", "description": "Maximum entries to return (default: 20)"},
+				},
+			},
+			Handler: func(ctx context.Context, params map[string]interface{}) (interface{}, error) {
+				jobID, _ := params["job_id"].(string)
+				limit := 20
+				if l, ok := params["limit"].(float64); ok && l > 0 {
+					limit = int(l)
+				}
+
+				var entries []cronpkg.HistoryEntry
+				var err error
+				if jobID != "" {
+					entries, err = scheduler.History(ctx, jobID, limit)
+				} else {
+					entries, err = scheduler.AllHistory(ctx, limit)
+				}
+				if err != nil {
+					return nil, fmt.Errorf("cron history: %w", err)
+				}
+				return map[string]interface{}{"entries": entries, "count": len(entries)}, nil
+			},
+		},
+	}
+}
+
+// buildBackgroundTools creates tools for managing background tasks.
+func buildBackgroundTools(mgr *background.Manager) []*agent.Tool {
+	return []*agent.Tool{
+		{
+			Name:        "bg_submit",
+			Description: "Submit a prompt for asynchronous background execution",
+			SafetyLevel: agent.SafetyLevelModerate,
+			Parameters: map[string]interface{}{
+				"type": "object",
+				"properties": map[string]interface{}{
+					"prompt":  map[string]interface{}{"type": "string", "description": "The prompt to execute in the background"},
+					"channel": map[string]interface{}{"type": "string", "description": "Channel to deliver results to (e.g. telegram, discord, slack)"},
+				},
+				"required": []string{"prompt"},
+			},
+			Handler: func(ctx context.Context, params map[string]interface{}) (interface{}, error) {
+				prompt, _ := params["prompt"].(string)
+				if prompt == "" {
+					return nil, fmt.Errorf("missing prompt parameter")
+				}
+				channel, _ := params["channel"].(string)
+				sessionKey := session.SessionKeyFromContext(ctx)
+
+				taskID, err := mgr.Submit(ctx, prompt, background.Origin{
+					Channel: channel,
+					Session: sessionKey,
+				})
+				if err != nil {
+					return nil, fmt.Errorf("submit background task: %w", err)
+				}
+				return map[string]interface{}{
+					"status":  "submitted",
+					"task_id": taskID,
+					"message": "Task submitted for background execution",
+				}, nil
+			},
+		},
+		{
+			Name:        "bg_status",
+			Description: "Check the status of a background task",
+			SafetyLevel: agent.SafetyLevelSafe,
+			Parameters: map[string]interface{}{
+				"type": "object",
+				"properties": map[string]interface{}{
+					"task_id": map[string]interface{}{"type": "string", "description": "The background task ID"},
+				},
+				"required": []string{"task_id"},
+			},
+			Handler: func(ctx context.Context, params map[string]interface{}) (interface{}, error) {
+				taskID, _ := params["task_id"].(string)
+				if taskID == "" {
+					return nil, fmt.Errorf("missing task_id parameter")
+				}
+				snap, err := mgr.Status(taskID)
+				if err != nil {
+					return nil, fmt.Errorf("background task status: %w", err)
+				}
+				return snap, nil
+			},
+		},
+		{
+			Name:        "bg_list",
+			Description: "List all background tasks and their current status",
+			SafetyLevel: agent.SafetyLevelSafe,
+			Parameters: map[string]interface{}{
+				"type":       "object",
+				"properties": map[string]interface{}{},
+			},
+			Handler: func(ctx context.Context, params map[string]interface{}) (interface{}, error) {
+				snapshots := mgr.List()
+				return map[string]interface{}{"tasks": snapshots, "count": len(snapshots)}, nil
+			},
+		},
+		{
+			Name:        "bg_result",
+			Description: "Retrieve the result of a completed background task",
+			SafetyLevel: agent.SafetyLevelSafe,
+			Parameters: map[string]interface{}{
+				"type": "object",
+				"properties": map[string]interface{}{
+					"task_id": map[string]interface{}{"type": "string", "description": "The background task ID"},
+				},
+				"required": []string{"task_id"},
+			},
+			Handler: func(ctx context.Context, params map[string]interface{}) (interface{}, error) {
+				taskID, _ := params["task_id"].(string)
+				if taskID == "" {
+					return nil, fmt.Errorf("missing task_id parameter")
+				}
+				result, err := mgr.Result(taskID)
+				if err != nil {
+					return nil, fmt.Errorf("background task result: %w", err)
+				}
+				return map[string]interface{}{"task_id": taskID, "result": result}, nil
+			},
+		},
+		{
+			Name:        "bg_cancel",
+			Description: "Cancel a pending or running background task",
+			SafetyLevel: agent.SafetyLevelModerate,
+			Parameters: map[string]interface{}{
+				"type": "object",
+				"properties": map[string]interface{}{
+					"task_id": map[string]interface{}{"type": "string", "description": "The background task ID to cancel"},
+				},
+				"required": []string{"task_id"},
+			},
+			Handler: func(ctx context.Context, params map[string]interface{}) (interface{}, error) {
+				taskID, _ := params["task_id"].(string)
+				if taskID == "" {
+					return nil, fmt.Errorf("missing task_id parameter")
+				}
+				if err := mgr.Cancel(taskID); err != nil {
+					return nil, fmt.Errorf("cancel background task: %w", err)
+				}
+				return map[string]interface{}{"status": "cancelled", "task_id": taskID}, nil
+			},
+		},
+	}
+}
+
+// buildWorkflowTools creates tools for executing and managing workflows.
+func buildWorkflowTools(engine *workflow.Engine, stateDir string) []*agent.Tool {
+	return []*agent.Tool{
+		{
+			Name:        "workflow_run",
+			Description: "Execute a workflow from a YAML file path or inline YAML content",
+			SafetyLevel: agent.SafetyLevelModerate,
+			Parameters: map[string]interface{}{
+				"type": "object",
+				"properties": map[string]interface{}{
+					"file_path":    map[string]interface{}{"type": "string", "description": "Path to a .flow.yaml workflow file"},
+					"yaml_content": map[string]interface{}{"type": "string", "description": "Inline YAML workflow definition (alternative to file_path)"},
+				},
+			},
+			Handler: func(ctx context.Context, params map[string]interface{}) (interface{}, error) {
+				filePath, _ := params["file_path"].(string)
+				yamlContent, _ := params["yaml_content"].(string)
+
+				if filePath == "" && yamlContent == "" {
+					return nil, fmt.Errorf("either file_path or yaml_content is required")
+				}
+
+				var w *workflow.Workflow
+				var err error
+				if filePath != "" {
+					w, err = workflow.ParseFile(filePath)
+				} else {
+					w, err = workflow.Parse([]byte(yamlContent))
+				}
+				if err != nil {
+					return nil, fmt.Errorf("parse workflow: %w", err)
+				}
+
+				result, err := engine.Run(ctx, w)
+				if err != nil {
+					return nil, fmt.Errorf("run workflow: %w", err)
+				}
+
+				return map[string]interface{}{
+					"run_id":   result.RunID,
+					"workflow": result.WorkflowName,
+					"status":   result.Status,
+					"steps":    result.StepResults,
+					"error":    result.Error,
+				}, nil
+			},
+		},
+		{
+			Name:        "workflow_status",
+			Description: "Check the current status and progress of a workflow execution",
+			SafetyLevel: agent.SafetyLevelSafe,
+			Parameters: map[string]interface{}{
+				"type": "object",
+				"properties": map[string]interface{}{
+					"run_id": map[string]interface{}{"type": "string", "description": "The workflow run ID"},
+				},
+				"required": []string{"run_id"},
+			},
+			Handler: func(ctx context.Context, params map[string]interface{}) (interface{}, error) {
+				runID, _ := params["run_id"].(string)
+				if runID == "" {
+					return nil, fmt.Errorf("missing run_id parameter")
+				}
+				status, err := engine.Status(ctx, runID)
+				if err != nil {
+					return nil, fmt.Errorf("workflow status: %w", err)
+				}
+				return status, nil
+			},
+		},
+		{
+			Name:        "workflow_list",
+			Description: "List recent workflow executions",
+			SafetyLevel: agent.SafetyLevelSafe,
+			Parameters: map[string]interface{}{
+				"type": "object",
+				"properties": map[string]interface{}{
+					"limit": map[string]interface{}{"type": "integer", "description": "Maximum runs to return (default: 20)"},
+				},
+			},
+			Handler: func(ctx context.Context, params map[string]interface{}) (interface{}, error) {
+				limit := 20
+				if l, ok := params["limit"].(float64); ok && l > 0 {
+					limit = int(l)
+				}
+				runs, err := engine.ListRuns(ctx, limit)
+				if err != nil {
+					return nil, fmt.Errorf("list workflow runs: %w", err)
+				}
+				return map[string]interface{}{"runs": runs, "count": len(runs)}, nil
+			},
+		},
+		{
+			Name:        "workflow_cancel",
+			Description: "Cancel a running workflow execution",
+			SafetyLevel: agent.SafetyLevelModerate,
+			Parameters: map[string]interface{}{
+				"type": "object",
+				"properties": map[string]interface{}{
+					"run_id": map[string]interface{}{"type": "string", "description": "The workflow run ID to cancel"},
+				},
+				"required": []string{"run_id"},
+			},
+			Handler: func(ctx context.Context, params map[string]interface{}) (interface{}, error) {
+				runID, _ := params["run_id"].(string)
+				if runID == "" {
+					return nil, fmt.Errorf("missing run_id parameter")
+				}
+				if err := engine.Cancel(runID); err != nil {
+					return nil, fmt.Errorf("cancel workflow: %w", err)
+				}
+				return map[string]interface{}{"status": "cancelled", "run_id": runID}, nil
+			},
+		},
+		{
+			Name:        "workflow_save",
+			Description: "Save a workflow YAML definition to the workflows directory for future use",
+			SafetyLevel: agent.SafetyLevelModerate,
+			Parameters: map[string]interface{}{
+				"type": "object",
+				"properties": map[string]interface{}{
+					"name":         map[string]interface{}{"type": "string", "description": "Workflow name (used as filename: name.flow.yaml)"},
+					"yaml_content": map[string]interface{}{"type": "string", "description": "The YAML workflow definition"},
+				},
+				"required": []string{"name", "yaml_content"},
+			},
+			Handler: func(ctx context.Context, params map[string]interface{}) (interface{}, error) {
+				name, _ := params["name"].(string)
+				yamlContent, _ := params["yaml_content"].(string)
+
+				if name == "" || yamlContent == "" {
+					return nil, fmt.Errorf("name and yaml_content are required")
+				}
+
+				// Validate the YAML before saving.
+				w, err := workflow.Parse([]byte(yamlContent))
+				if err != nil {
+					return nil, fmt.Errorf("parse workflow YAML: %w", err)
+				}
+				if err := workflow.Validate(w); err != nil {
+					return nil, fmt.Errorf("validate workflow: %w", err)
+				}
+
+				dir := stateDir
+				if dir == "" {
+					if home, err := os.UserHomeDir(); err == nil {
+						dir = filepath.Join(home, ".lango", "workflows")
+					} else {
+						return nil, fmt.Errorf("determine workflows directory: %w", err)
+					}
+				}
+
+				if err := os.MkdirAll(dir, 0o755); err != nil {
+					return nil, fmt.Errorf("create workflows directory: %w", err)
+				}
+
+				filePath := filepath.Join(dir, name+".flow.yaml")
+				if err := os.WriteFile(filePath, []byte(yamlContent), 0o644); err != nil {
+					return nil, fmt.Errorf("write workflow file: %w", err)
+				}
+
+				return map[string]interface{}{
+					"status":    "saved",
+					"name":      name,
+					"file_path": filePath,
+					"message":   fmt.Sprintf("Workflow '%s' saved to %s", name, filePath),
+				}, nil
+			},
+		},
+	}
+}
+
 // needsApproval determines whether a tool requires approval based on the
 // configured policy, explicit exemptions, and sensitive tool lists.
 func needsApproval(t *agent.Tool, ic config.InterceptorConfig) bool {
@@ -935,6 +1412,26 @@ func buildApprovalSummary(toolName string, params map[string]interface{}) string
 		to, _ := params["to"].(string)
 		purpose, _ := params["purpose"].(string)
 		return fmt.Sprintf("Send %s USDC to %s (%s)", amount, truncate(to, 12), truncate(purpose, 50))
+	case "cron_add":
+		name, _ := params["name"].(string)
+		scheduleType, _ := params["schedule_type"].(string)
+		schedule, _ := params["schedule"].(string)
+		return fmt.Sprintf("Create cron job: %s (%s=%s)", name, scheduleType, schedule)
+	case "cron_remove":
+		id, _ := params["id"].(string)
+		return "Remove cron job: " + id
+	case "bg_submit":
+		prompt, _ := params["prompt"].(string)
+		return "Submit background task: " + truncate(prompt, 100)
+	case "workflow_run":
+		filePath, _ := params["file_path"].(string)
+		if filePath != "" {
+			return "Run workflow: " + filePath
+		}
+		return "Run inline workflow"
+	case "workflow_cancel":
+		runID, _ := params["run_id"].(string)
+		return "Cancel workflow: " + runID
 	}
 	return "Tool: " + toolName
 }

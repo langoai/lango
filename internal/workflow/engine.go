@@ -333,6 +333,17 @@ func (e *Engine) ListRuns(ctx context.Context, limit int) ([]RunStatus, error) {
 	return e.state.ListRuns(ctx, limit)
 }
 
+// Shutdown cancels all running workflows.
+func (e *Engine) Shutdown() {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	for runID, cancel := range e.cancels {
+		cancel()
+		e.logger.Infow("workflow cancelled during shutdown", "runID", runID)
+	}
+	e.logger.Info("workflow engine shut down")
+}
+
 // buildSummary formats a human-readable summary of workflow results.
 func (e *Engine) buildSummary(workflowName string, results map[string]string) string {
 	var b strings.Builder

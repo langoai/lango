@@ -227,12 +227,12 @@ Each sub-agent instruction SHALL include guidance to report results clearly afte
 - **WHEN** the chronicler sub-agent completes memory operations
 - **THEN** its instruction SHALL guide it to report what was stored or retrieved
 
-### Requirement: RoleToolSet has six roles plus Unmatched
-The RoleToolSet struct SHALL have fields: Operator, Navigator, Vault, Librarian, Planner, Chronicler, and Unmatched. Each field is a slice of `*agent.Tool`.
+### Requirement: RoleToolSet has seven roles plus Unmatched
+The RoleToolSet struct SHALL have fields: Operator, Navigator, Vault, Librarian, Planner, Chronicler, Automator, and Unmatched. Each field is a slice of `*agent.Tool`.
 
 #### Scenario: RoleToolSet structure
 - **WHEN** PartitionTools is called
-- **THEN** it SHALL return a RoleToolSet with seven fields (six roles + Unmatched)
+- **THEN** it SHALL return a RoleToolSet with eight fields (seven roles + Unmatched)
 
 #### Scenario: Planner tools always empty
 - **WHEN** PartitionTools is called with any input
@@ -248,3 +248,28 @@ The librarian sub-agent SHALL handle knowledge management including: search, RAG
 #### Scenario: Inquiry keyword routing
 - **WHEN** the orchestrator receives a request containing "inquiry" or "gap"
 - **THEN** the routing table matches the librarian agent via keyword matching
+
+### Requirement: Automator agent spec
+The system SHALL include an "automator" `AgentSpec` in the `agentSpecs` registry for routing automation-related requests to a dedicated sub-agent.
+
+#### Scenario: Automator routing
+- **WHEN** tools with `cron_`, `bg_`, or `workflow_` prefixes are present
+- **THEN** they SHALL be partitioned to the Automator role in `PartitionTools`
+
+#### Scenario: Automator keywords
+- **WHEN** a user request contains keywords like "schedule", "cron", "background", "workflow", "automate"
+- **THEN** the orchestrator SHALL route to the automator sub-agent
+
+### Requirement: Automator in RoleToolSet
+The `RoleToolSet` SHALL include an `Automator []*agent.Tool` field, and `toolsForSpec` SHALL return it for the "automator" spec name.
+
+#### Scenario: Tool partitioning order
+- **WHEN** `PartitionTools` processes tools
+- **THEN** automator matching SHALL occur before operator matching to prevent `cron_`/`bg_`/`workflow_` tools from being assigned to operator
+
+### Requirement: Automation capability descriptions
+The `capabilityMap` SHALL include entries for `cron_`, `bg_`, and `workflow_` prefixes.
+
+#### Scenario: Capability description
+- **WHEN** `toolCapability` is called for a `cron_` prefixed tool
+- **THEN** it SHALL return "cron job scheduling"

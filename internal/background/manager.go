@@ -150,6 +150,13 @@ func (m *Manager) execute(ctx context.Context, task *Task) {
 	task.SetRunning()
 	m.logger.Infow("task running", "taskID", task.ID)
 
+	// Send start notification (best-effort).
+	if m.notify != nil {
+		if notifyErr := m.notify.NotifyStart(context.Background(), task); notifyErr != nil {
+			m.logger.Warnw("start notification send error", "taskID", task.ID, "error", notifyErr)
+		}
+	}
+
 	sessionKey := "bg:" + task.ID
 	result, err := m.runner.Run(ctx, sessionKey, task.Prompt)
 
@@ -167,6 +174,19 @@ func (m *Manager) execute(ctx context.Context, task *Task) {
 			m.logger.Warnw("notification send error", "taskID", task.ID, "error", notifyErr)
 		}
 	}
+}
+
+// Shutdown cancels all Pending/Running tasks.
+func (m *Manager) Shutdown() {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	for _, task := range m.tasks {
+		snap := task.Snapshot()
+		if snap.Status == Pending || snap.Status == Running {
+			task.Cancel()
+		}
+	}
+	m.logger.Info("background manager shut down")
 }
 
 // activeCountLocked returns the number of non-terminal tasks. Caller must hold m.mu.

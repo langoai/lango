@@ -136,6 +136,31 @@ Frame questions conversationally — not as a survey or checklist.
 		CannotDo: []string{"shell commands", "web browsing", "cryptographic operations", "memory management (observations/reflections)"},
 	},
 	{
+		Name:        "automator",
+		Description: "Automation: cron scheduling, background tasks, workflow orchestration",
+		Instruction: `## What You Do
+You manage automation systems: schedule recurring cron jobs, submit background tasks for async execution, and run multi-step workflow pipelines.
+
+## Input Format
+A scheduling request (cron job to create/manage), a background task to submit, or a workflow to execute/monitor.
+
+## Output Format
+Return confirmation of created schedules, task IDs for background jobs, or workflow execution status and results.
+
+## Constraints
+- Only manage cron jobs, background tasks, and workflows.
+- Never execute shell commands directly, browse the web, or handle cryptographic operations.
+- Never search knowledge bases or manage memory.
+- If a task does not match your capabilities, REJECT it by responding:
+  "[REJECT] This task requires <correct_agent>. I handle: cron scheduling, background tasks, workflow pipelines."`,
+		Prefixes: []string{"cron_", "bg_", "workflow_"},
+		Keywords: []string{"schedule", "cron", "every", "recurring", "background",
+			"async", "later", "workflow", "pipeline", "automate", "timer"},
+		Accepts:  "A scheduling request, background task, or workflow to execute/monitor",
+		Returns:  "Schedule confirmation, task IDs, or workflow execution status",
+		CannotDo: []string{"shell commands", "file operations", "web browsing", "cryptographic operations", "knowledge search"},
+	},
+	{
 		Name:          "planner",
 		Description:   "Task decomposition and planning (LLM reasoning only, no tools)",
 		Instruction: `## What You Do
@@ -192,18 +217,19 @@ type RoleToolSet struct {
 	Navigator  []*agent.Tool
 	Vault      []*agent.Tool
 	Librarian  []*agent.Tool
+	Automator  []*agent.Tool
 	Planner    []*agent.Tool // Always empty — LLM-only reasoning.
 	Chronicler []*agent.Tool
 	Unmatched  []*agent.Tool // Tools matching no prefix — tracked separately.
 }
 
 // Prefix lists for each role, derived from agentSpecs for consistency.
-// Matching order: Librarian → Chronicler → Navigator → Vault → Operator → Unmatched.
+// Matching order: Librarian → Chronicler → Automator → Navigator → Vault → Operator → Unmatched.
 // Librarian is checked first because save_knowledge/save_learning/create_skill/list_skills
 // are exact-match prefixes that must not fall through to Operator.
 
 // PartitionTools splits tools into role-specific sets based on tool name prefixes.
-// Matching order: Librarian → Chronicler → Navigator → Vault → Operator → Unmatched.
+// Matching order: Librarian → Chronicler → Automator → Navigator → Vault → Operator → Unmatched.
 // Unlike the previous implementation, unmatched tools are NOT assigned to any agent.
 func PartitionTools(tools []*agent.Tool) RoleToolSet {
 	var rs RoleToolSet
@@ -213,6 +239,8 @@ func PartitionTools(tools []*agent.Tool) RoleToolSet {
 			rs.Librarian = append(rs.Librarian, t)
 		case matchesPrefix(t.Name, specPrefixes("chronicler")):
 			rs.Chronicler = append(rs.Chronicler, t)
+		case matchesPrefix(t.Name, specPrefixes("automator")):
+			rs.Automator = append(rs.Automator, t)
 		case matchesPrefix(t.Name, specPrefixes("navigator")):
 			rs.Navigator = append(rs.Navigator, t)
 		case matchesPrefix(t.Name, specPrefixes("vault")):
@@ -247,6 +275,8 @@ func toolsForSpec(spec AgentSpec, rs RoleToolSet) []*agent.Tool {
 		return rs.Vault
 	case "librarian":
 		return rs.Librarian
+	case "automator":
+		return rs.Automator
 	case "planner":
 		return rs.Planner
 	case "chronicler":
@@ -286,6 +316,9 @@ var capabilityMap = map[string]string{
 	"observe_":       "event observation",
 	"reflect_":       "reflection and summarization",
 	"librarian_":     "knowledge inquiries and gap detection",
+	"cron_":          "cron job scheduling",
+	"bg_":            "background task execution",
+	"workflow_":      "workflow pipeline execution",
 }
 
 // toolCapability returns a human-readable capability for a tool name based
