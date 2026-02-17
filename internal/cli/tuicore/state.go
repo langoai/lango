@@ -1,4 +1,4 @@
-package onboard
+package tuicore
 
 import (
 	"github.com/langowarny/lango/internal/config"

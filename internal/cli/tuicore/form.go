@@ -1,4 +1,4 @@
-package onboard
+package tuicore
 
 import (
 	"fmt"
@@ -9,35 +9,7 @@ import (
 	"github.com/charmbracelet/lipgloss"
 )
 
-// InputType defines the type of input field
-type InputType int
-
-const (
-	InputText InputType = iota
-	InputInt
-	InputBool // Toggled via space
-	InputSelect
-	InputPassword
-)
-
-// Field represents a single configuration field in a form
-type Field struct {
-	Key         string
-	Label       string
-	Type        InputType
-	Value       string
-	Placeholder string
-	Options     []string // For InputSelect
-	Checked     bool     // For InputBool
-	Width       int
-	Validate    func(string) error
-
-	// Internal UI state
-	textInput textinput.Model
-	err       error
-}
-
-// FormModel manages a list of fields
+// FormModel manages a list of fields.
 type FormModel struct {
 	Title    string
 	Fields   []*Field
@@ -47,6 +19,7 @@ type FormModel struct {
 	OnCancel func()
 }
 
+// NewFormModel creates a new form with the given title.
 func NewFormModel(title string) FormModel {
 	return FormModel{
 		Title:  title,
@@ -55,6 +28,7 @@ func NewFormModel(title string) FormModel {
 	}
 }
 
+// AddField adds a field to the form, initializing its text input if applicable.
 func (m *FormModel) AddField(f *Field) {
 	if f.Type == InputText || f.Type == InputInt || f.Type == InputPassword {
 		ti := textinput.New()
@@ -67,17 +41,19 @@ func (m *FormModel) AddField(f *Field) {
 		}
 		if f.Type == InputPassword {
 			ti.EchoMode = textinput.EchoPassword
-			ti.EchoCharacter = '•'
+			ti.EchoCharacter = '*'
 		}
-		f.textInput = ti
+		f.TextInput = ti
 	}
 	m.Fields = append(m.Fields, f)
 }
 
+// Init implements tea.Model.
 func (m FormModel) Init() tea.Cmd {
 	return textinput.Blink
 }
 
+// Update implements tea.Model.
 func (m FormModel) Update(msg tea.Msg) (FormModel, tea.Cmd) {
 	if !m.Focus {
 		return m, nil
@@ -91,18 +67,11 @@ func (m FormModel) Update(msg tea.Msg) (FormModel, tea.Cmd) {
 		case "up", "shift+tab":
 			if m.Cursor > 0 {
 				m.Cursor--
-			} else {
-				// Already at top, do nothing
 			}
 		case "down", "tab":
 			if m.Cursor < len(m.Fields)-1 {
 				m.Cursor++
 			}
-		case "enter":
-			// For boolean, toggle
-			// For others, maybe validate?
-			// Usually enter on a form ideally submits, but here we navigate fields
-			// keeping standard navigation simple
 		case " ":
 			field := m.Fields[m.Cursor]
 			if field.Type == InputBool {
@@ -119,8 +88,8 @@ func (m FormModel) Update(msg tea.Msg) (FormModel, tea.Cmd) {
 	field := m.Fields[m.Cursor]
 	if field.Type == InputText || field.Type == InputInt || field.Type == InputPassword {
 		var inputCmd tea.Cmd
-		field.textInput, inputCmd = field.textInput.Update(msg)
-		field.Value = field.textInput.Value()
+		field.TextInput, inputCmd = field.TextInput.Update(msg)
+		field.Value = field.TextInput.Value()
 		cmd = inputCmd
 	}
 
@@ -129,9 +98,6 @@ func (m FormModel) Update(msg tea.Msg) (FormModel, tea.Cmd) {
 		if msg, ok := msg.(tea.KeyMsg); ok {
 			switch msg.String() {
 			case "right", "l":
-				// Cycle forward
-				// Need current index logic
-				// Simplified: Just cycle blindly for now or find index
 				idx := -1
 				for i, opt := range field.Options {
 					if opt == field.Value {
@@ -145,7 +111,6 @@ func (m FormModel) Update(msg tea.Msg) (FormModel, tea.Cmd) {
 					field.Value = field.Options[0]
 				}
 			case "left", "h":
-				// Cycle backward
 				idx := -1
 				for i, opt := range field.Options {
 					if opt == field.Value {
@@ -165,6 +130,7 @@ func (m FormModel) Update(msg tea.Msg) (FormModel, tea.Cmd) {
 	return m, cmd
 }
 
+// View renders the form.
 func (m FormModel) View() string {
 	var b strings.Builder
 
@@ -183,13 +149,13 @@ func (m FormModel) View() string {
 		switch f.Type {
 		case InputText, InputInt, InputPassword:
 			if i == m.Cursor {
-				f.textInput.Focus()
-				f.textInput.TextStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("#04B575"))
+				f.TextInput.Focus()
+				f.TextInput.TextStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("#04B575"))
 			} else {
-				f.textInput.Blur()
-				f.textInput.TextStyle = lipgloss.NewStyle()
+				f.TextInput.Blur()
+				f.TextInput.TextStyle = lipgloss.NewStyle()
 			}
-			b.WriteString(f.textInput.View())
+			b.WriteString(f.TextInput.View())
 
 		case InputBool:
 			check := "[ ]"
@@ -217,7 +183,7 @@ func (m FormModel) View() string {
 
 	// Help Footer
 	b.WriteString("\n")
-	b.WriteString(lipgloss.NewStyle().Foreground(lipgloss.Color("#626262")).Render("tab/shift+tab: nav • space: toggle • ←/→: select options • esc: back"))
+	b.WriteString(lipgloss.NewStyle().Foreground(lipgloss.Color("#626262")).Render("tab/shift+tab: nav \u2022 space: toggle \u2022 \u2190/\u2192: select options \u2022 esc: back"))
 
 	return b.String()
 }

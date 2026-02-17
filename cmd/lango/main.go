@@ -20,6 +20,7 @@ import (
 	cligraph "github.com/langowarny/lango/internal/cli/graph"
 	climemory "github.com/langowarny/lango/internal/cli/memory"
 	"github.com/langowarny/lango/internal/cli/onboard"
+	"github.com/langowarny/lango/internal/cli/settings"
 	clipayment "github.com/langowarny/lango/internal/cli/payment"
 	clisecurity "github.com/langowarny/lango/internal/cli/security"
 	cliworkflow "github.com/langowarny/lango/internal/cli/workflow"
@@ -45,6 +46,7 @@ func main() {
 	rootCmd.AddCommand(configCmd())
 	rootCmd.AddCommand(doctor.NewCommand())
 	rootCmd.AddCommand(onboard.NewCommand())
+	rootCmd.AddCommand(settings.NewCommand())
 	rootCmd.AddCommand(clisecurity.NewSecurityCmd(func() (*bootstrap.Result, error) {
 		return bootstrap.Run(bootstrap.Options{})
 	}))

@@ -1,4 +1,4 @@
-package onboard
+package tuicore
 
 import (
 	"strconv"
@@ -14,11 +14,8 @@ func (s *ConfigState) UpdateConfigFromForm(form *FormModel) {
 		return
 	}
 
-	// Iterate over fields and update config
-	// This is a manual mapping based on keys defined in forms_impl.go
 	for _, f := range form.Fields {
 		val := f.Value
-		// For boolean fields, value might be empty string, check Checked
 		if f.Type == InputBool {
 			val = strconv.FormatBool(f.Checked)
 		}
@@ -34,8 +31,8 @@ func (s *ConfigState) UpdateConfigFromForm(form *FormModel) {
 				s.Current.Agent.MaxTokens = i
 			}
 		case "temp":
-			if f, err := strconv.ParseFloat(val, 64); err == nil {
-				s.Current.Agent.Temperature = f
+			if fv, err := strconv.ParseFloat(val, 64); err == nil {
+				s.Current.Agent.Temperature = fv
 			}
 		case "prompts_dir":
 			s.Current.Agent.PromptsDir = val
@@ -96,7 +93,7 @@ func (s *ConfigState) UpdateConfigFromForm(form *FormModel) {
 				s.Current.Tools.Filesystem.MaxReadSize = i
 			}
 
-		// Security / Session
+		// Session
 		case "db_path":
 			s.Current.Session.DatabasePath = val
 		case "ttl":
@@ -116,18 +113,7 @@ func (s *ConfigState) UpdateConfigFromForm(form *FormModel) {
 		case "interceptor_policy":
 			s.Current.Security.Interceptor.ApprovalPolicy = config.ApprovalPolicy(val)
 		case "interceptor_exempt_tools":
-			if val != "" {
-				parts := strings.Split(val, ",")
-				tools := make([]string, 0, len(parts))
-				for _, p := range parts {
-					if t := strings.TrimSpace(p); t != "" {
-						tools = append(tools, t)
-					}
-				}
-				s.Current.Security.Interceptor.ExemptTools = tools
-			} else {
-				s.Current.Security.Interceptor.ExemptTools = nil
-			}
+			s.Current.Security.Interceptor.ExemptTools = splitCSV(val)
 		case "interceptor_timeout":
 			if i, err := strconv.Atoi(val); err == nil {
 				s.Current.Security.Interceptor.ApprovalTimeoutSec = i
@@ -135,18 +121,7 @@ func (s *ConfigState) UpdateConfigFromForm(form *FormModel) {
 		case "interceptor_notify":
 			s.Current.Security.Interceptor.NotifyChannel = val
 		case "interceptor_sensitive_tools":
-			if val != "" {
-				parts := strings.Split(val, ",")
-				tools := make([]string, 0, len(parts))
-				for _, p := range parts {
-					if t := strings.TrimSpace(p); t != "" {
-						tools = append(tools, t)
-					}
-				}
-				s.Current.Security.Interceptor.SensitiveTools = tools
-			} else {
-				s.Current.Security.Interceptor.SensitiveTools = nil
-			}
+			s.Current.Security.Interceptor.SensitiveTools = splitCSV(val)
 
 		// Security - Signer
 		case "signer_provider":
@@ -222,18 +197,7 @@ func (s *ConfigState) UpdateConfigFromForm(form *FormModel) {
 				s.Current.Embedding.RAG.MaxResults = i
 			}
 		case "emb_rag_collections":
-			if val != "" {
-				parts := strings.Split(val, ",")
-				cols := make([]string, 0, len(parts))
-				for _, p := range parts {
-					if c := strings.TrimSpace(p); c != "" {
-						cols = append(cols, c)
-					}
-				}
-				s.Current.Embedding.RAG.Collections = cols
-			} else {
-				s.Current.Embedding.RAG.Collections = nil
-			}
+			s.Current.Embedding.RAG.Collections = splitCSV(val)
 
 		// Graph Store
 		case "graph_enabled":
@@ -302,7 +266,6 @@ func (s *ConfigState) UpdateAuthProviderFromForm(id string, form *FormModel) {
 		s.Current.Auth.Providers = make(map[string]config.OIDCProviderConfig)
 	}
 
-	// If id is empty, look for "oidc_id" field in form
 	if id == "" {
 		for _, f := range form.Fields {
 			if f.Key == "oidc_id" {
@@ -333,18 +296,7 @@ func (s *ConfigState) UpdateAuthProviderFromForm(id string, form *FormModel) {
 		case "oidc_redirect":
 			p.RedirectURL = val
 		case "oidc_scopes":
-			if val != "" {
-				parts := strings.Split(val, ",")
-				scopes := make([]string, 0, len(parts))
-				for _, s := range parts {
-					if t := strings.TrimSpace(s); t != "" {
-						scopes = append(scopes, t)
-					}
-				}
-				p.Scopes = scopes
-			} else {
-				p.Scopes = nil
-			}
+			p.Scopes = splitCSV(val)
 		}
 	}
 
@@ -362,7 +314,6 @@ func (s *ConfigState) UpdateProviderFromForm(id string, form *FormModel) {
 		s.Current.Providers = make(map[string]config.ProviderConfig)
 	}
 
-	// If id is empty, look for "id" field in form
 	if id == "" {
 		for _, f := range form.Fields {
 			if f.Key == "id" {
@@ -373,10 +324,9 @@ func (s *ConfigState) UpdateProviderFromForm(id string, form *FormModel) {
 	}
 
 	if id == "" {
-		return // Should not happen if validation works
+		return
 	}
 
-	// Get or create provider config
 	p, ok := s.Current.Providers[id]
 	if !ok {
 		p = config.ProviderConfig{}
@@ -396,4 +346,22 @@ func (s *ConfigState) UpdateProviderFromForm(id string, form *FormModel) {
 
 	s.Current.Providers[id] = p
 	s.MarkDirty("providers")
+}
+
+// splitCSV splits a comma-separated string, trims whitespace, and drops empty parts.
+func splitCSV(val string) []string {
+	if val == "" {
+		return nil
+	}
+	parts := strings.Split(val, ",")
+	out := make([]string, 0, len(parts))
+	for _, p := range parts {
+		if t := strings.TrimSpace(p); t != "" {
+			out = append(out, t)
+		}
+	}
+	if len(out) == 0 {
+		return nil
+	}
+	return out
 }

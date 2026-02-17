@@ -1,4 +1,4 @@
-package onboard
+package settings
 
 import (
 	"strings"
@@ -7,12 +7,14 @@ import (
 	"github.com/charmbracelet/lipgloss"
 )
 
+// Category represents a configuration category in the menu.
 type Category struct {
 	ID    string
 	Title string
 	Desc  string
 }
 
+// MenuModel manages the configuration menu.
 type MenuModel struct {
 	Categories []Category
 	Cursor     int
@@ -21,35 +23,38 @@ type MenuModel struct {
 	Height     int
 }
 
+// NewMenuModel creates a new menu model with all configuration categories.
 func NewMenuModel() MenuModel {
 	return MenuModel{
 		Categories: []Category{
-			{"providers", "☁️ Providers", "Manage multi-provider configurations"},
-			{"agent", "🤖 Agent", "Provider, Model, Key"},
-			{"server", "🌐 Server", "Host, Port, Networking"},
-			{"channels", "📡 Channels", "Telegram, Discord, Slack"},
-			{"tools", "🛠️ Tools", "Exec, Browser, Filesystem"},
-			{"session", "📂 Session", "Database, TTL, History"},
-			{"security", "🔒 Security", "PII, Approval, Encryption"},
-			{"auth", "🔑 Auth", "OIDC provider configuration"},
-			{"knowledge", "🧠 Knowledge", "Learning, Skills, Context limits"},
-			{"observational_memory", "🔬 Observational Memory", "Observer, Reflector, Thresholds"},
-			{"embedding", "🔗 Embedding & RAG", "Provider, Model, RAG settings"},
-			{"graph", "📊 Graph Store", "Knowledge graph, GraphRAG settings"},
-			{"multi_agent", "🔀 Multi-Agent", "Orchestration mode"},
-			{"a2a", "🌍 A2A Protocol", "Agent-to-Agent, remote agents"},
-			{"payment", "💸 Payment", "Blockchain wallet, spending limits, X402"},
-			{"save", "💾 Save & Exit", "Save encrypted profile"},
-			{"cancel", "❌ Cancel", "Exit without saving"},
+			{"providers", "Providers", "Manage multi-provider configurations"},
+			{"agent", "Agent", "Provider, Model, Key"},
+			{"server", "Server", "Host, Port, Networking"},
+			{"channels", "Channels", "Telegram, Discord, Slack"},
+			{"tools", "Tools", "Exec, Browser, Filesystem"},
+			{"session", "Session", "Database, TTL, History"},
+			{"security", "Security", "PII, Approval, Encryption"},
+			{"auth", "Auth", "OIDC provider configuration"},
+			{"knowledge", "Knowledge", "Learning, Skills, Context limits"},
+			{"observational_memory", "Observational Memory", "Observer, Reflector, Thresholds"},
+			{"embedding", "Embedding & RAG", "Provider, Model, RAG settings"},
+			{"graph", "Graph Store", "Knowledge graph, GraphRAG settings"},
+			{"multi_agent", "Multi-Agent", "Orchestration mode"},
+			{"a2a", "A2A Protocol", "Agent-to-Agent, remote agents"},
+			{"payment", "Payment", "Blockchain wallet, spending limits, X402"},
+			{"save", "Save & Exit", "Save encrypted profile"},
+			{"cancel", "Cancel", "Exit without saving"},
 		},
 		Cursor: 0,
 	}
 }
 
+// Init implements tea.Model.
 func (m MenuModel) Init() tea.Cmd {
 	return nil
 }
 
+// Update handles key events for the menu.
 func (m MenuModel) Update(msg tea.Msg) (MenuModel, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.KeyMsg:
@@ -70,6 +75,7 @@ func (m MenuModel) Update(msg tea.Msg) (MenuModel, tea.Cmd) {
 	return m, nil
 }
 
+// View renders the configuration menu.
 func (m MenuModel) View() string {
 	var b strings.Builder
 
@@ -86,7 +92,7 @@ func (m MenuModel) View() string {
 		itemStyle := lipgloss.NewStyle()
 
 		if m.Cursor == i {
-			cursor = "▸ "
+			cursor = "\u25b8 "
 			itemStyle = itemStyle.Foreground(lipgloss.Color("#04B575")).Bold(true)
 		}
 

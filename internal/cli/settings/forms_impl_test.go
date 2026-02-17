@@ -1,10 +1,11 @@
-package onboard
+package settings
 
 import (
 	"strconv"
 	"testing"
 	"time"
 
+	"github.com/langowarny/lango/internal/cli/tuicore"
 	"github.com/langowarny/lango/internal/config"
 )
 
@@ -12,7 +13,7 @@ func defaultTestConfig() *config.Config {
 	return config.DefaultConfig()
 }
 
-func fieldByKey(form *FormModel, key string) *Field {
+func fieldByKey(form *tuicore.FormModel, key string) *tuicore.Field {
 	for _, f := range form.Fields {
 		if f.Key == key {
 			return f
@@ -40,11 +41,10 @@ func TestNewAgentForm_AllFields(t *testing.T) {
 		}
 	}
 
-	// Verify values
 	if f := fieldByKey(form, "provider"); f.Value != "anthropic" {
 		t.Errorf("provider: want %q, got %q", "anthropic", f.Value)
 	}
-	if f := fieldByKey(form, "fallback_provider"); f.Type != InputSelect {
+	if f := fieldByKey(form, "fallback_provider"); f.Type != tuicore.InputSelect {
 		t.Errorf("fallback_provider: want InputSelect, got %d", f.Type)
 	}
 }
@@ -69,7 +69,6 @@ func TestNewToolsForm_AllFields(t *testing.T) {
 		}
 	}
 
-	// Verify browser defaults
 	if f := fieldByKey(form, "browser_enabled"); f.Checked != false {
 		t.Error("browser_enabled: want false by default")
 	}
@@ -143,7 +142,6 @@ func TestNewKnowledgeForm_AllFields(t *testing.T) {
 		}
 	}
 
-	// Verify defaults
 	if f := fieldByKey(form, "knowledge_enabled"); f.Checked != false {
 		t.Error("knowledge_enabled: want false by default")
 	}
@@ -156,11 +154,11 @@ func TestNewKnowledgeForm_AllFields(t *testing.T) {
 }
 
 func TestUpdateConfigFromForm_AgentAdvancedFields(t *testing.T) {
-	state := NewConfigState()
-	form := NewFormModel("test")
-	form.AddField(&Field{Key: "prompts_dir", Type: InputText, Value: "~/.lango/prompts"})
-	form.AddField(&Field{Key: "fallback_provider", Type: InputSelect, Value: "openai"})
-	form.AddField(&Field{Key: "fallback_model", Type: InputText, Value: "gpt-4o"})
+	state := tuicore.NewConfigState()
+	form := tuicore.NewFormModel("test")
+	form.AddField(&tuicore.Field{Key: "prompts_dir", Type: tuicore.InputText, Value: "~/.lango/prompts"})
+	form.AddField(&tuicore.Field{Key: "fallback_provider", Type: tuicore.InputSelect, Value: "openai"})
+	form.AddField(&tuicore.Field{Key: "fallback_model", Type: tuicore.InputText, Value: "gpt-4o"})
 
 	state.UpdateConfigFromForm(&form)
 
@@ -176,10 +174,10 @@ func TestUpdateConfigFromForm_AgentAdvancedFields(t *testing.T) {
 }
 
 func TestUpdateConfigFromForm_BrowserFields(t *testing.T) {
-	state := NewConfigState()
-	form := NewFormModel("test")
-	form.AddField(&Field{Key: "browser_enabled", Type: InputBool, Checked: true})
-	form.AddField(&Field{Key: "browser_session_timeout", Type: InputText, Value: "10m"})
+	state := tuicore.NewConfigState()
+	form := tuicore.NewFormModel("test")
+	form.AddField(&tuicore.Field{Key: "browser_enabled", Type: tuicore.InputBool, Checked: true})
+	form.AddField(&tuicore.Field{Key: "browser_session_timeout", Type: tuicore.InputText, Value: "10m"})
 
 	state.UpdateConfigFromForm(&form)
 
@@ -192,9 +190,9 @@ func TestUpdateConfigFromForm_BrowserFields(t *testing.T) {
 }
 
 func TestUpdateConfigFromForm_MaxHistoryTurns(t *testing.T) {
-	state := NewConfigState()
-	form := NewFormModel("test")
-	form.AddField(&Field{Key: "max_history_turns", Type: InputInt, Value: "100"})
+	state := tuicore.NewConfigState()
+	form := tuicore.NewFormModel("test")
+	form.AddField(&tuicore.Field{Key: "max_history_turns", Type: tuicore.InputInt, Value: "100"})
 
 	state.UpdateConfigFromForm(&form)
 
@@ -204,14 +202,14 @@ func TestUpdateConfigFromForm_MaxHistoryTurns(t *testing.T) {
 }
 
 func TestUpdateConfigFromForm_KnowledgeFields(t *testing.T) {
-	state := NewConfigState()
-	form := NewFormModel("test")
-	form.AddField(&Field{Key: "knowledge_enabled", Type: InputBool, Checked: true})
-	form.AddField(&Field{Key: "knowledge_max_learnings", Type: InputInt, Value: "25"})
-	form.AddField(&Field{Key: "knowledge_max_knowledge", Type: InputInt, Value: "50"})
-	form.AddField(&Field{Key: "knowledge_max_context", Type: InputInt, Value: "8"})
-	form.AddField(&Field{Key: "knowledge_auto_approve", Type: InputBool, Checked: true})
-	form.AddField(&Field{Key: "knowledge_max_skills_day", Type: InputInt, Value: "15"})
+	state := tuicore.NewConfigState()
+	form := tuicore.NewFormModel("test")
+	form.AddField(&tuicore.Field{Key: "knowledge_enabled", Type: tuicore.InputBool, Checked: true})
+	form.AddField(&tuicore.Field{Key: "knowledge_max_learnings", Type: tuicore.InputInt, Value: "25"})
+	form.AddField(&tuicore.Field{Key: "knowledge_max_knowledge", Type: tuicore.InputInt, Value: "50"})
+	form.AddField(&tuicore.Field{Key: "knowledge_max_context", Type: tuicore.InputInt, Value: "8"})
+	form.AddField(&tuicore.Field{Key: "knowledge_auto_approve", Type: tuicore.InputBool, Checked: true})
+	form.AddField(&tuicore.Field{Key: "knowledge_max_skills_day", Type: tuicore.InputInt, Value: "15"})
 
 	state.UpdateConfigFromForm(&form)
 
@@ -255,9 +253,8 @@ func TestNewObservationalMemoryForm_ProviderIsSelect(t *testing.T) {
 		}
 	}
 
-	// om_provider must be InputSelect with empty-string option first
 	f := fieldByKey(form, "om_provider")
-	if f.Type != InputSelect {
+	if f.Type != tuicore.InputSelect {
 		t.Errorf("om_provider: want InputSelect, got %d", f.Type)
 	}
 	if len(f.Options) == 0 {
@@ -267,8 +264,7 @@ func TestNewObservationalMemoryForm_ProviderIsSelect(t *testing.T) {
 		t.Errorf("om_provider: first option should be empty string, got %q", f.Options[0])
 	}
 
-	// om_model remains InputText
-	if mf := fieldByKey(form, "om_model"); mf.Type != InputText {
+	if mf := fieldByKey(form, "om_model"); mf.Type != tuicore.InputText {
 		t.Errorf("om_model: want InputText, got %d", mf.Type)
 	}
 }
@@ -293,10 +289,10 @@ func TestNewEmbeddingForm_AllFields(t *testing.T) {
 		}
 	}
 
-	if f := fieldByKey(form, "emb_provider_id"); f.Type != InputSelect {
+	if f := fieldByKey(form, "emb_provider_id"); f.Type != tuicore.InputSelect {
 		t.Errorf("emb_provider_id: want InputSelect, got %d", f.Type)
 	}
-	if f := fieldByKey(form, "emb_rag_enabled"); f.Type != InputBool {
+	if f := fieldByKey(form, "emb_rag_enabled"); f.Type != tuicore.InputBool {
 		t.Errorf("emb_rag_enabled: want InputBool, got %d", f.Type)
 	}
 }
@@ -315,32 +311,29 @@ func TestNewEmbeddingForm_ProviderOptionsFromProviders(t *testing.T) {
 		t.Fatal("missing emb_provider_id field")
 	}
 
-	// Should have "local" + user providers.
 	if len(f.Options) < 3 {
 		t.Errorf("expected at least 3 options, got %d: %v", len(f.Options), f.Options)
 	}
 
-	// Current value should be the ProviderID.
 	if f.Value != "gemini-1" {
 		t.Errorf("value: want %q, got %q", "gemini-1", f.Value)
 	}
 }
 
 func TestUpdateConfigFromForm_EmbeddingFields(t *testing.T) {
-	state := NewConfigState()
-	// Set up a provider for the ProviderID to resolve against.
+	state := tuicore.NewConfigState()
 	state.Current.Providers = map[string]config.ProviderConfig{
 		"my-openai": {Type: "openai", APIKey: "sk-test"},
 	}
 
-	form := NewFormModel("test")
-	form.AddField(&Field{Key: "emb_provider_id", Type: InputSelect, Value: "my-openai"})
-	form.AddField(&Field{Key: "emb_model", Type: InputText, Value: "text-embedding-3-small"})
-	form.AddField(&Field{Key: "emb_dimensions", Type: InputInt, Value: "1536"})
-	form.AddField(&Field{Key: "emb_local_baseurl", Type: InputText, Value: "http://localhost:11434/v1"})
-	form.AddField(&Field{Key: "emb_rag_enabled", Type: InputBool, Checked: true})
-	form.AddField(&Field{Key: "emb_rag_max_results", Type: InputInt, Value: "5"})
-	form.AddField(&Field{Key: "emb_rag_collections", Type: InputText, Value: "docs,wiki"})
+	form := tuicore.NewFormModel("test")
+	form.AddField(&tuicore.Field{Key: "emb_provider_id", Type: tuicore.InputSelect, Value: "my-openai"})
+	form.AddField(&tuicore.Field{Key: "emb_model", Type: tuicore.InputText, Value: "text-embedding-3-small"})
+	form.AddField(&tuicore.Field{Key: "emb_dimensions", Type: tuicore.InputInt, Value: "1536"})
+	form.AddField(&tuicore.Field{Key: "emb_local_baseurl", Type: tuicore.InputText, Value: "http://localhost:11434/v1"})
+	form.AddField(&tuicore.Field{Key: "emb_rag_enabled", Type: tuicore.InputBool, Checked: true})
+	form.AddField(&tuicore.Field{Key: "emb_rag_max_results", Type: tuicore.InputInt, Value: "5"})
+	form.AddField(&tuicore.Field{Key: "emb_rag_collections", Type: tuicore.InputText, Value: "docs,wiki"})
 
 	state.UpdateConfigFromForm(&form)
 
@@ -372,9 +365,9 @@ func TestUpdateConfigFromForm_EmbeddingFields(t *testing.T) {
 }
 
 func TestUpdateConfigFromForm_EmbeddingProviderIDLocal(t *testing.T) {
-	state := NewConfigState()
-	form := NewFormModel("test")
-	form.AddField(&Field{Key: "emb_provider_id", Type: InputSelect, Value: "local"})
+	state := tuicore.NewConfigState()
+	form := tuicore.NewFormModel("test")
+	form.AddField(&tuicore.Field{Key: "emb_provider_id", Type: tuicore.InputSelect, Value: "local"})
 
 	state.UpdateConfigFromForm(&form)
 
@@ -388,11 +381,11 @@ func TestUpdateConfigFromForm_EmbeddingProviderIDLocal(t *testing.T) {
 }
 
 func TestUpdateConfigFromForm_SecurityInterceptorFields(t *testing.T) {
-	state := NewConfigState()
-	form := NewFormModel("test")
-	form.AddField(&Field{Key: "interceptor_timeout", Type: InputInt, Value: "60"})
-	form.AddField(&Field{Key: "interceptor_notify", Type: InputSelect, Value: "telegram"})
-	form.AddField(&Field{Key: "interceptor_sensitive_tools", Type: InputText, Value: "exec, browser"})
+	state := tuicore.NewConfigState()
+	form := tuicore.NewFormModel("test")
+	form.AddField(&tuicore.Field{Key: "interceptor_timeout", Type: tuicore.InputInt, Value: "60"})
+	form.AddField(&tuicore.Field{Key: "interceptor_notify", Type: tuicore.InputSelect, Value: "telegram"})
+	form.AddField(&tuicore.Field{Key: "interceptor_sensitive_tools", Type: tuicore.InputText, Value: "exec, browser"})
 
 	state.UpdateConfigFromForm(&form)
 
@@ -438,7 +431,6 @@ func TestNewMenuModel_HasKnowledgeCategory(t *testing.T) {
 	}
 }
 
-// validatePort is exported via forms_impl.go — verify the validator
 func TestValidatePort(t *testing.T) {
 	tests := []struct {
 		give    string

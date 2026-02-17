@@ -5,8 +5,10 @@ import (
 	"strings"
 
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/lipgloss"
 
 	"github.com/langowarny/lango/internal/cli/tui"
+	"github.com/langowarny/lango/internal/cli/tuicore"
 	"github.com/langowarny/lango/internal/config"
 )
 
@@ -14,53 +16,62 @@ import (
 type WizardStep int
 
 const (
-	StepWelcome WizardStep = iota
-	StepMenu
-	StepForm
-	StepProvidersList
-	StepAuthProvidersList
+	StepProvider WizardStep = iota // Step 1
+	StepAgent                      // Step 2
+	StepChannel                    // Step 3
+	StepSecurity                   // Step 4
+	StepTest                       // Step 5
 	StepComplete
 )
 
-// Wizard is the main bubbletea model for the onboard wizard.
+// channelOption defines a channel choice in the selector.
+type channelOption struct {
+	ID   string
+	Name string
+	Desc string
+}
+
+var channelOptions = []channelOption{
+	{ID: "telegram", Name: "Telegram", Desc: "Bot via BotFather"},
+	{ID: "discord", Name: "Discord", Desc: "Bot via Developer Portal"},
+	{ID: "slack", Name: "Slack", Desc: "App via Socket Mode"},
+	{ID: "skip", Name: "Skip", Desc: "Configure later in settings"},
+}
+
+// Wizard is the main bubbletea model for the 5-step onboard wizard.
 type Wizard struct {
 	step  WizardStep
-	state *ConfigState
+	state *tuicore.ConfigState
 
-	// Sub-models
-	menu                 MenuModel
-	providersList        ProvidersListModel
-	authProvidersList    AuthProvidersListModel
-	activeForm           *FormModel
-	activeProviderID     string // Track which provider is being edited
-	activeAuthProviderID string // Track which OIDC provider is being edited
+	// Current step's form
+	activeForm *tuicore.FormModel
 
-	// UI State
+	// Channel selection state (Step 3)
+	channelChoice     string // "telegram", "discord", "slack", "skip", or ""
+	channelSelectMode bool   // true when showing channel picker (before form)
+	channelCursor     int    // cursor for channel selector
+
+	// Test results (Step 5)
+	testResults []TestResult
+
+	// UI dimensions
 	width  int
 	height int
-	err    error
 
 	// Public status
 	Completed bool
 	Cancelled bool
 }
 
-// NewWizard creates a new onboard wizard with default config.
-func NewWizard() *Wizard {
-	return &Wizard{
-		step:  StepWelcome,
-		state: NewConfigState(),
-		menu:  NewMenuModel(),
+// NewWizard creates a new 5-step onboard wizard.
+func NewWizard(cfg *config.Config) *Wizard {
+	w := &Wizard{
+		step:              StepProvider,
+		state:             tuicore.NewConfigStateWith(cfg),
+		channelSelectMode: false,
 	}
-}
-
-// NewWizardWithConfig creates a new onboard wizard pre-loaded with the given config.
-func NewWizardWithConfig(cfg *config.Config) *Wizard {
-	return &Wizard{
-		step:  StepWelcome,
-		state: NewConfigStateWith(cfg),
-		menu:  NewMenuModel(),
-	}
+	w.enterStep(StepProvider)
+	return w
 }
 
 // Init implements tea.Model.
@@ -70,8 +81,6 @@ func (w *Wizard) Init() tea.Cmd {
 
 // Update implements tea.Model.
 func (w *Wizard) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
-	var cmd tea.Cmd
-
 	switch msg := msg.(type) {
 	case tea.KeyMsg:
 		if msg.String() == "ctrl+c" {
@@ -79,49 +88,22 @@ func (w *Wizard) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return w, tea.Quit
 		}
 
-		// ESC handling depends on context
-		if msg.String() == "esc" {
-			switch w.step {
-			case StepWelcome:
-				return w, tea.Quit
-			case StepMenu:
-				// Maybe verify exit? For now quit.
-				// Or go back to welcome?
-				// Actually, "Cancel" in menu handles quit.
-				// Let's make ESC go back to welcome or quit.
-				return w, tea.Quit
-			case StepProvidersList:
-				w.step = StepMenu
-				return w, nil
-			case StepAuthProvidersList:
-				w.step = StepMenu
-				return w, nil
-			case StepForm:
-				// Save form state to config
-				if w.activeForm != nil {
-					if w.activeAuthProviderID != "" || w.isAuthProviderForm() {
-						w.state.UpdateAuthProviderFromForm(w.activeAuthProviderID, w.activeForm)
-					} else if w.activeProviderID != "" || w.isProviderForm() {
-						w.state.UpdateProviderFromForm(w.activeProviderID, w.activeForm)
-					} else {
-						w.state.UpdateConfigFromForm(w.activeForm)
-					}
-				}
-				// Go back to the appropriate list or menu
-				if w.activeAuthProviderID != "" || w.isAuthProviderForm() {
-					w.step = StepAuthProvidersList
-					w.authProvidersList = NewAuthProvidersListModel(w.state.Current)
-				} else if w.activeProviderID != "" || w.isProviderForm() {
-					w.step = StepProvidersList
-					w.providersList = NewProvidersListModel(w.state.Current)
-				} else {
-					w.step = StepMenu
-				}
-				w.activeForm = nil
-				w.activeProviderID = ""
-				w.activeAuthProviderID = ""
-				return w, nil
-			}
+		// Global navigation
+		switch msg.String() {
+		case "ctrl+n":
+			return w.nextStep()
+		case "ctrl+p":
+			return w.prevStep()
+		}
+
+		// Step-specific handling
+		switch w.step {
+		case StepProvider, StepAgent, StepSecurity:
+			return w.handleFormStep(msg)
+		case StepChannel:
+			return w.handleChannelStep(msg)
+		case StepTest:
+			return w.handleTestStep(msg)
 		}
 
 	case tea.WindowSizeMsg:
@@ -129,218 +111,264 @@ func (w *Wizard) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		w.height = msg.Height
 	}
 
-	// Route events based on step
-	switch w.step {
-	case StepWelcome:
-		// Simple start/quit logic
-		if msg, ok := msg.(tea.KeyMsg); ok {
-			switch msg.String() {
-			case "enter":
-				// Default to Advanced (Editor) mode as that's what we are building
-				w.step = StepMenu
-			}
-		}
-
-	case StepMenu:
-		var menuCmd tea.Cmd
-		w.menu, menuCmd = w.menu.Update(msg)
-		cmd = menuCmd
-
-		if w.menu.Selected != "" {
-			cmd = w.handleMenuSelection(w.menu.Selected)
-			w.menu.Selected = "" // Reset selection signal
-		}
-
-	case StepForm:
-		if w.activeForm != nil {
-			var formCmd tea.Cmd
-			*w.activeForm, formCmd = w.activeForm.Update(msg)
-			cmd = formCmd
-		}
-
-	case StepProvidersList:
-		var plCmd tea.Cmd
-		w.providersList, plCmd = w.providersList.Update(msg)
-		cmd = plCmd
-
-		if w.providersList.Deleted != "" {
-			delete(w.state.Current.Providers, w.providersList.Deleted)
-			w.state.MarkDirty("providers")
-			w.providersList = NewProvidersListModel(w.state.Current)
-		} else if w.providersList.Exit {
-			w.providersList.Exit = false
-			w.step = StepMenu
-		} else if w.providersList.Selected != "" {
-			id := w.providersList.Selected
-			if id == "NEW" {
-				w.activeProviderID = "" // New provider
-				w.activeForm = NewProviderForm("", config.ProviderConfig{})
-			} else {
-				w.activeProviderID = id
-				if p, ok := w.state.Current.Providers[id]; ok {
-					w.activeForm = NewProviderForm(id, p)
-				}
-			}
-			w.activeForm.Focus = true
-			w.step = StepForm
-			w.providersList.Selected = ""
-		}
-
-	case StepAuthProvidersList:
-		var aplCmd tea.Cmd
-		w.authProvidersList, aplCmd = w.authProvidersList.Update(msg)
-		cmd = aplCmd
-
-		if w.authProvidersList.Deleted != "" {
-			delete(w.state.Current.Auth.Providers, w.authProvidersList.Deleted)
-			w.state.MarkDirty("auth")
-			w.authProvidersList = NewAuthProvidersListModel(w.state.Current)
-		} else if w.authProvidersList.Exit {
-			w.authProvidersList.Exit = false
-			w.step = StepMenu
-		} else if w.authProvidersList.Selected != "" {
-			id := w.authProvidersList.Selected
-			if id == "NEW" {
-				w.activeAuthProviderID = ""
-				w.activeForm = NewOIDCProviderForm("", config.OIDCProviderConfig{})
-			} else {
-				w.activeAuthProviderID = id
-				if p, ok := w.state.Current.Auth.Providers[id]; ok {
-					w.activeForm = NewOIDCProviderForm(id, p)
-				}
-			}
-			w.activeForm.Focus = true
-			w.step = StepForm
-			w.authProvidersList.Selected = ""
-		}
-	}
-
-	return w, cmd
+	return w, nil
 }
 
-func (w *Wizard) handleMenuSelection(id string) tea.Cmd {
-	switch id {
-	case "agent":
-		w.activeForm = NewAgentForm(w.state.Current)
-		w.activeForm.Focus = true
-		w.step = StepForm
-	case "server":
-		w.activeForm = NewServerForm(w.state.Current)
-		w.activeForm.Focus = true
-		w.step = StepForm
-	case "channels":
-		w.activeForm = NewChannelsForm(w.state.Current)
-		w.activeForm.Focus = true
-		w.step = StepForm
-	case "tools":
-		w.activeForm = NewToolsForm(w.state.Current)
-		w.activeForm.Focus = true
-		w.step = StepForm
-	case "session":
-		w.activeForm = NewSessionForm(w.state.Current)
-		w.activeForm.Focus = true
-		w.step = StepForm
-	case "security":
-		w.activeForm = NewSecurityForm(w.state.Current)
-		w.activeForm.Focus = true
-		w.step = StepForm
-	case "knowledge":
-		w.activeForm = NewKnowledgeForm(w.state.Current)
-		w.activeForm.Focus = true
-		w.step = StepForm
-	case "observational_memory":
-		w.activeForm = NewObservationalMemoryForm(w.state.Current)
-		w.activeForm.Focus = true
-		w.step = StepForm
-	case "embedding":
-		w.activeForm = NewEmbeddingForm(w.state.Current)
-		w.activeForm.Focus = true
-		w.step = StepForm
-	case "graph":
-		w.activeForm = NewGraphForm(w.state.Current)
-		w.activeForm.Focus = true
-		w.step = StepForm
-	case "multi_agent":
-		w.activeForm = NewMultiAgentForm(w.state.Current)
-		w.activeForm.Focus = true
-		w.step = StepForm
-	case "a2a":
-		w.activeForm = NewA2AForm(w.state.Current)
-		w.activeForm.Focus = true
-		w.step = StepForm
-	case "payment":
-		w.activeForm = NewPaymentForm(w.state.Current)
-		w.activeForm.Focus = true
-		w.step = StepForm
-	case "auth":
-		w.authProvidersList = NewAuthProvidersListModel(w.state.Current)
-		w.step = StepAuthProvidersList
-	case "providers":
-		w.providersList = NewProvidersListModel(w.state.Current)
-		w.step = StepProvidersList
-	case "save":
-		// Save is handled by the caller (onboard.go) after wizard completes.
-		w.Completed = true // Signal completion to main loop
-		return tea.Quit
-	case "cancel":
-		w.err = fmt.Errorf("setup cancelled")
-		w.Cancelled = true
-		return tea.Quit
+func (w *Wizard) handleFormStep(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	if msg.String() == "esc" {
+		if w.step == StepProvider {
+			// On first step, Esc quits
+			w.Cancelled = true
+			return w, tea.Quit
+		}
+		return w.prevStep()
 	}
-	return nil
+
+	if w.activeForm != nil {
+		var cmd tea.Cmd
+		*w.activeForm, cmd = w.activeForm.Update(msg)
+		return w, cmd
+	}
+	return w, nil
+}
+
+func (w *Wizard) handleChannelStep(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	if msg.String() == "esc" {
+		if w.channelSelectMode {
+			// Go back to previous step
+			return w.prevStep()
+		}
+		// Go back to channel selector
+		w.channelSelectMode = true
+		w.activeForm = nil
+		return w, nil
+	}
+
+	if w.channelSelectMode {
+		switch msg.String() {
+		case "up", "k":
+			if w.channelCursor > 0 {
+				w.channelCursor--
+			}
+		case "down", "j":
+			if w.channelCursor < len(channelOptions)-1 {
+				w.channelCursor++
+			}
+		case "enter":
+			choice := channelOptions[w.channelCursor]
+			w.channelChoice = choice.ID
+			if choice.ID == "skip" {
+				return w.nextStep()
+			}
+			// Enable the selected channel
+			w.enableChannel(choice.ID)
+			w.activeForm = NewChannelStepForm(choice.ID, w.state.Current)
+			if w.activeForm != nil {
+				w.activeForm.Focus = true
+			}
+			w.channelSelectMode = false
+		}
+		return w, nil
+	}
+
+	// Channel form mode
+	if w.activeForm != nil {
+		var cmd tea.Cmd
+		*w.activeForm, cmd = w.activeForm.Update(msg)
+		return w, cmd
+	}
+	return w, nil
+}
+
+func (w *Wizard) handleTestStep(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	switch msg.String() {
+	case "enter":
+		w.Completed = true
+		return w, tea.Quit
+	case "esc":
+		return w.prevStep()
+	}
+	return w, nil
+}
+
+func (w *Wizard) nextStep() (tea.Model, tea.Cmd) {
+	// Save current form before advancing
+	w.saveCurrentForm()
+
+	next := w.step + 1
+	if next > StepTest {
+		w.Completed = true
+		return w, tea.Quit
+	}
+
+	w.enterStep(next)
+	return w, nil
+}
+
+func (w *Wizard) prevStep() (tea.Model, tea.Cmd) {
+	// Save current form before going back
+	w.saveCurrentForm()
+
+	if w.step <= StepProvider {
+		return w, nil
+	}
+
+	prev := w.step - 1
+	w.enterStep(prev)
+	return w, nil
+}
+
+func (w *Wizard) enterStep(step WizardStep) {
+	w.step = step
+
+	switch step {
+	case StepProvider:
+		w.activeForm = NewProviderStepForm(w.state.Current)
+		w.activeForm.Focus = true
+	case StepAgent:
+		w.activeForm = NewAgentStepForm(w.state.Current)
+		w.activeForm.Focus = true
+	case StepChannel:
+		w.channelSelectMode = true
+		w.activeForm = nil
+	case StepSecurity:
+		w.activeForm = NewSecurityStepForm(w.state.Current)
+		w.activeForm.Focus = true
+	case StepTest:
+		w.activeForm = nil
+		w.testResults = RunConfigTests(w.state.Current)
+	}
+}
+
+func (w *Wizard) saveCurrentForm() {
+	if w.activeForm == nil {
+		return
+	}
+
+	switch w.step {
+	case StepProvider:
+		w.state.UpdateProviderFromForm("", w.activeForm)
+		// Also set agent provider to match
+		for _, f := range w.activeForm.Fields {
+			if f.Key == "id" {
+				w.state.Current.Agent.Provider = f.Value
+			}
+		}
+	case StepAgent:
+		w.state.UpdateConfigFromForm(w.activeForm)
+	case StepChannel:
+		w.state.UpdateConfigFromForm(w.activeForm)
+	case StepSecurity:
+		w.state.UpdateConfigFromForm(w.activeForm)
+	}
+}
+
+func (w *Wizard) enableChannel(ch string) {
+	switch ch {
+	case "telegram":
+		w.state.Current.Channels.Telegram.Enabled = true
+	case "discord":
+		w.state.Current.Channels.Discord.Enabled = true
+	case "slack":
+		w.state.Current.Channels.Slack.Enabled = true
+	}
 }
 
 // View implements tea.Model.
 func (w *Wizard) View() string {
 	var b strings.Builder
 
-	// Global Header
-	b.WriteString(tui.TitleStyle.Render("🚀 Lango Configuration Editor"))
+	// Title
+	b.WriteString(tui.TitleStyle.Render("Lango Setup Wizard"))
 	b.WriteString("\n\n")
 
+	if w.step <= StepTest {
+		// Progress bar
+		b.WriteString(renderProgress(int(w.step), w.width))
+		// Step list
+		b.WriteString(renderStepList(int(w.step)))
+	}
+
+	// Step content
 	switch w.step {
-	case StepWelcome:
-		b.WriteString(tui.SubtitleStyle.Render("Welcome!"))
-		b.WriteString("\n\n")
-		b.WriteString("Press [Enter] to start configuring Lango.\n")
-		b.WriteString(tui.MutedStyle.Render("This editor allows you to configure Agent, Server, Tools, and more."))
-
-	case StepMenu:
-		b.WriteString(w.menu.View())
-
-	case StepForm:
+	case StepProvider, StepAgent, StepSecurity:
 		if w.activeForm != nil {
 			b.WriteString(w.activeForm.View())
 		}
-
-	case StepProvidersList:
-		b.WriteString(w.providersList.View())
-
-	case StepAuthProvidersList:
-		b.WriteString(w.authProvidersList.View())
+	case StepChannel:
+		b.WriteString(w.viewChannel())
+	case StepTest:
+		b.WriteString(w.viewTest())
 	}
 
-	// Global Footer (if needed)
+	// Footer
+	b.WriteString("\n")
+	footer := tui.MutedStyle.Render("ctrl+n: next \u2022 ctrl+p: back \u2022 ctrl+c: quit")
+	b.WriteString(footer)
 
 	return b.String()
 }
 
-// Config returns the current configuration from the wizard state.
+func (w *Wizard) viewChannel() string {
+	var b strings.Builder
+
+	if w.channelSelectMode {
+		titleStyle := lipgloss.NewStyle().Bold(true).Foreground(tui.Primary).MarginBottom(1)
+		b.WriteString(titleStyle.Render("Select a Channel"))
+		b.WriteString("\n\n")
+
+		for i, opt := range channelOptions {
+			cursor := "  "
+			style := lipgloss.NewStyle()
+			descStyle := tui.MutedStyle
+
+			if i == w.channelCursor {
+				cursor = "\u25b8 "
+				style = lipgloss.NewStyle().Foreground(tui.Success).Bold(true)
+			}
+
+			b.WriteString(cursor)
+			b.WriteString(style.Render(opt.Name))
+			b.WriteString("    ")
+			b.WriteString(descStyle.Render(opt.Desc))
+			b.WriteString("\n")
+		}
+	} else if w.activeForm != nil {
+		b.WriteString(w.activeForm.View())
+	}
+
+	return b.String()
+}
+
+func (w *Wizard) viewTest() string {
+	var b strings.Builder
+
+	titleStyle := lipgloss.NewStyle().Bold(true).Foreground(tui.Primary).MarginBottom(1)
+	b.WriteString(titleStyle.Render("Configuration Test Results"))
+	b.WriteString("\n\n")
+
+	for _, r := range w.testResults {
+		var line string
+		switch r.Status {
+		case "pass":
+			line = tui.FormatPass(fmt.Sprintf("%s: %s", r.Name, r.Message))
+		case "warn":
+			line = tui.FormatWarn(fmt.Sprintf("%s: %s", r.Name, r.Message))
+		case "fail":
+			line = tui.FormatFail(fmt.Sprintf("%s: %s", r.Name, r.Message))
+		}
+		b.WriteString("  ")
+		b.WriteString(line)
+		b.WriteString("\n")
+	}
+
+	b.WriteString("\n")
+	b.WriteString(tui.MutedStyle.Render("Press [Enter] to save and complete, [Esc] to go back"))
+
+	return b.String()
+}
+
+// Config returns the current configuration.
 func (w *Wizard) Config() *config.Config {
 	return w.state.Current
-}
-
-func (w *Wizard) isProviderForm() bool {
-	if w.activeForm == nil {
-		return false
-	}
-	// Heuristic: check if title contains "Provider" but not "OIDC"
-	return strings.Contains(w.activeForm.Title, "Provider") && !strings.Contains(w.activeForm.Title, "OIDC")
-}
-
-func (w *Wizard) isAuthProviderForm() bool {
-	if w.activeForm == nil {
-		return false
-	}
-	return strings.Contains(w.activeForm.Title, "OIDC")
 }

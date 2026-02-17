@@ -1,4 +1,4 @@
-package onboard
+package settings
 
 import (
 	"fmt"
@@ -10,46 +10,46 @@ import (
 	"github.com/langowarny/lango/internal/config"
 )
 
-// AuthProviderItem represents an OIDC provider in the list.
-type AuthProviderItem struct {
-	ID        string
-	IssuerURL string
+// ProviderItem represents a provider in the list.
+type ProviderItem struct {
+	ID   string
+	Type string
 }
 
-// AuthProvidersListModel manages the OIDC provider list UI.
-type AuthProvidersListModel struct {
-	Providers []AuthProviderItem
+// ProvidersListModel manages the provider list UI.
+type ProvidersListModel struct {
+	Providers []ProviderItem
 	Cursor    int
 	Selected  string // ID of selected provider, or "NEW"
 	Deleted   string // ID of provider to delete
 	Exit      bool   // True if user wants to go back
 }
 
-// NewAuthProvidersListModel creates a new model from config.
-func NewAuthProvidersListModel(cfg *config.Config) AuthProvidersListModel {
-	var items []AuthProviderItem
-	if cfg.Auth.Providers != nil {
-		for id, p := range cfg.Auth.Providers {
-			items = append(items, AuthProviderItem{ID: id, IssuerURL: p.IssuerURL})
+// NewProvidersListModel creates a new model from config.
+func NewProvidersListModel(cfg *config.Config) ProvidersListModel {
+	var items []ProviderItem
+	if cfg.Providers != nil {
+		for id, p := range cfg.Providers {
+			items = append(items, ProviderItem{ID: id, Type: p.Type})
 		}
 	}
 	sort.Slice(items, func(i, j int) bool {
 		return items[i].ID < items[j].ID
 	})
 
-	return AuthProvidersListModel{
+	return ProvidersListModel{
 		Providers: items,
 		Cursor:    0,
 	}
 }
 
 // Init implements tea.Model.
-func (m AuthProvidersListModel) Init() tea.Cmd {
+func (m ProvidersListModel) Init() tea.Cmd {
 	return nil
 }
 
-// Update handles key events for the OIDC provider list.
-func (m AuthProvidersListModel) Update(msg tea.Msg) (AuthProvidersListModel, tea.Cmd) {
+// Update handles key events for the provider list.
+func (m ProvidersListModel) Update(msg tea.Msg) (ProvidersListModel, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.KeyMsg:
 		switch msg.String() {
@@ -58,7 +58,6 @@ func (m AuthProvidersListModel) Update(msg tea.Msg) (AuthProvidersListModel, tea
 				m.Cursor--
 			}
 		case "down", "j":
-			// +1 for "Add New OIDC Provider" option
 			if m.Cursor < len(m.Providers) {
 				m.Cursor++
 			}
@@ -82,8 +81,8 @@ func (m AuthProvidersListModel) Update(msg tea.Msg) (AuthProvidersListModel, tea
 	return m, nil
 }
 
-// View renders the OIDC provider list.
-func (m AuthProvidersListModel) View() string {
+// View renders the provider list.
+func (m ProvidersListModel) View() string {
 	var b strings.Builder
 
 	titleStyle := lipgloss.NewStyle().
@@ -91,7 +90,7 @@ func (m AuthProvidersListModel) View() string {
 		Foreground(lipgloss.Color("#7D56F4")).
 		MarginBottom(1)
 
-	b.WriteString(titleStyle.Render("Manage OIDC Providers"))
+	b.WriteString(titleStyle.Render("Manage Providers"))
 	b.WriteString("\n\n")
 
 	for i, p := range m.Providers {
@@ -99,28 +98,27 @@ func (m AuthProvidersListModel) View() string {
 		itemStyle := lipgloss.NewStyle()
 
 		if m.Cursor == i {
-			cursor = "▸ "
+			cursor = "\u25b8 "
 			itemStyle = itemStyle.Foreground(lipgloss.Color("#04B575")).Bold(true)
 		}
 
 		b.WriteString(cursor)
-		label := fmt.Sprintf("%s (%s)", p.ID, p.IssuerURL)
+		label := fmt.Sprintf("%s (%s)", p.ID, p.Type)
 		b.WriteString(itemStyle.Render(label))
 		b.WriteString("\n")
 	}
 
-	// Render "Add New" option
 	cursor := "  "
 	itemStyle := lipgloss.NewStyle()
 	if m.Cursor == len(m.Providers) {
-		cursor = "▸ "
+		cursor = "\u25b8 "
 		itemStyle = itemStyle.Foreground(lipgloss.Color("#04B575")).Bold(true)
 	}
 	b.WriteString(cursor)
-	b.WriteString(itemStyle.Render("+ Add New OIDC Provider"))
+	b.WriteString(itemStyle.Render("+ Add New Provider"))
 	b.WriteString("\n\n")
 
-	b.WriteString(lipgloss.NewStyle().Foreground(lipgloss.Color("#626262")).Render("↑/↓: navigate • enter: select • d: delete • esc: back"))
+	b.WriteString(lipgloss.NewStyle().Foreground(lipgloss.Color("#626262")).Render("\u2191/\u2193: navigate \u2022 enter: select \u2022 d: delete \u2022 esc: back"))
 
 	return b.String()
 }
