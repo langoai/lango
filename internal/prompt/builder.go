@@ -49,6 +49,14 @@ func (b *Builder) Has(id SectionID) bool {
 	return false
 }
 
+// Clone returns a deep copy of the builder so the caller can diverge
+// independently (e.g. per sub-agent customization).
+func (b *Builder) Clone() *Builder {
+	clone := &Builder{sections: make([]PromptSection, len(b.sections))}
+	copy(clone.sections, b.sections)
+	return clone
+}
+
 // Build sorts sections by priority and joins their rendered content.
 func (b *Builder) Build() string {
 	sorted := make([]PromptSection, len(b.sections))

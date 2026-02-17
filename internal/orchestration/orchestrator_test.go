@@ -440,6 +440,95 @@ func TestBuildAgentTree_DescriptionsUseCapabilities(t *testing.T) {
 	}
 }
 
+// --- SubAgentPromptFunc tests ---
+
+func TestBuildAgentTree_SubAgentPromptFunc(t *testing.T) {
+	tools := []*agent.Tool{
+		newTestTool("exec_shell"),
+		newTestTool("search_web"),
+	}
+
+	// Track which agent names and default instructions the func receives.
+	calls := make(map[string]string)
+	promptFunc := func(agentName, defaultInstruction string) string {
+		calls[agentName] = defaultInstruction
+		return "## Custom Prompt for " + agentName + "\n" + defaultInstruction
+	}
+
+	root, err := BuildAgentTree(Config{
+		Tools:          tools,
+		Model:          nil,
+		SystemPrompt:   "test prompt",
+		AdaptTool:      stubAdapter,
+		SubAgentPrompt: promptFunc,
+	})
+	require.NoError(t, err)
+	require.NotNil(t, root)
+
+	// operator, librarian, planner should all have been called.
+	assert.Contains(t, calls, "operator")
+	assert.Contains(t, calls, "librarian")
+	assert.Contains(t, calls, "planner")
+
+	// Default instructions should have been passed through.
+	assert.Contains(t, calls["operator"], "## What You Do")
+	assert.Contains(t, calls["planner"], "## What You Do")
+}
+
+func TestBuildAgentTree_NilSubAgentPromptFunc(t *testing.T) {
+	// With nil SubAgentPrompt, agents should use spec.Instruction unchanged.
+	tools := []*agent.Tool{newTestTool("exec_shell")}
+
+	root, err := BuildAgentTree(Config{
+		Tools:          tools,
+		Model:          nil,
+		SystemPrompt:   "test prompt",
+		AdaptTool:      stubAdapter,
+		SubAgentPrompt: nil,
+	})
+	require.NoError(t, err)
+	require.NotNil(t, root)
+
+	// operator + planner = 2 agents
+	assert.Len(t, root.SubAgents(), 2)
+}
+
+func TestBuildAgentTree_SubAgentPromptFunc_AllAgents(t *testing.T) {
+	tools := []*agent.Tool{
+		newTestTool("exec_shell"),
+		newTestTool("browser_open"),
+		newTestTool("crypto_sign"),
+		newTestTool("search_web"),
+		newTestTool("memory_store"),
+	}
+
+	var calledAgents []string
+	promptFunc := func(agentName, defaultInstruction string) string {
+		calledAgents = append(calledAgents, agentName)
+		return "SAFETY RULES\n\n" + defaultInstruction + "\n\nCONVERSATION RULES"
+	}
+
+	root, err := BuildAgentTree(Config{
+		Tools:          tools,
+		Model:          nil,
+		SystemPrompt:   "test prompt",
+		AdaptTool:      stubAdapter,
+		SubAgentPrompt: promptFunc,
+	})
+	require.NoError(t, err)
+
+	// All 6 agents should have been processed.
+	assert.Len(t, calledAgents, 6)
+	assert.Contains(t, calledAgents, "operator")
+	assert.Contains(t, calledAgents, "navigator")
+	assert.Contains(t, calledAgents, "vault")
+	assert.Contains(t, calledAgents, "librarian")
+	assert.Contains(t, calledAgents, "planner")
+	assert.Contains(t, calledAgents, "chronicler")
+
+	assert.Len(t, root.SubAgents(), 6)
+}
+
 // --- buildRoutingEntry tests ---
 
 func TestBuildRoutingEntry(t *testing.T) {

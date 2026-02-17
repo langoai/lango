@@ -16,6 +16,13 @@ import (
 // which carries transitive imports that may cause import cycles.
 type ToolAdapter func(t *agent.Tool) (adk_tool.Tool, error)
 
+// SubAgentPromptFunc builds the final instruction for a sub-agent.
+// agentName is the spec name (e.g. "operator"), defaultInstruction is
+// the hard-coded spec.Instruction. The function returns the assembled
+// system prompt that should replace spec.Instruction.
+// When nil, the original spec.Instruction is used (backward compatible).
+type SubAgentPromptFunc func(agentName, defaultInstruction string) string
+
 // Config holds orchestration configuration.
 type Config struct {
 	// Tools is the full set of available tools.
@@ -32,6 +39,9 @@ type Config struct {
 	// MaxDelegationRounds limits the number of orchestrator→sub-agent
 	// delegation rounds per user turn. Zero means use default (5).
 	MaxDelegationRounds int
+	// SubAgentPrompt builds the final system prompt for each sub-agent.
+	// When nil, the original spec.Instruction is used unchanged.
+	SubAgentPrompt SubAgentPromptFunc
 }
 
 // BuildAgentTree creates a hierarchical agent tree with an orchestrator root
@@ -68,12 +78,17 @@ func BuildAgentTree(cfg Config) (adk_agent.Agent, error) {
 			desc = fmt.Sprintf("%s. Capabilities: %s", spec.Description, caps)
 		}
 
+		instruction := spec.Instruction
+		if cfg.SubAgentPrompt != nil {
+			instruction = cfg.SubAgentPrompt(spec.Name, spec.Instruction)
+		}
+
 		a, err := llmagent.New(llmagent.Config{
 			Name:        spec.Name,
 			Description: desc,
 			Model:       cfg.Model,
 			Tools:       adkTools,
-			Instruction: spec.Instruction,
+			Instruction: instruction,
 		})
 		if err != nil {
 			return nil, fmt.Errorf("create %s agent: %w", spec.Name, err)

@@ -59,7 +59,7 @@ func NewAgentForm(cfg *config.Config) *tuicore.FormModel {
 	form.AddField(&tuicore.Field{
 		Key: "prompts_dir", Label: "Prompts Directory", Type: tuicore.InputText,
 		Value:       cfg.Agent.PromptsDir,
-		Placeholder: "~/.lango/prompts (directory of .md files)",
+		Placeholder: "~/.lango/prompts (supports agents/<name>/ for per-agent overrides)",
 	})
 
 	fallbackOpts := append([]string{""}, providerOpts...)

@@ -368,6 +368,37 @@ Then configure the path via `lango onboard` > Agent Configuration > Prompts Dire
 
 Unknown `.md` files in the directory are added as custom sections with priority 900+, appearing after the default sections.
 
+### Per-Agent Prompt Customization
+
+In multi-agent mode (`agent.multiAgent: true`), all sub-agents (operator, navigator, vault, librarian, planner, chronicler) automatically inherit shared prompt sections (Safety, Conversation Rules) from the prompts directory.
+
+You can override or extend prompts per agent by creating an `agents/<name>/` subdirectory:
+
+```
+~/.lango/prompts/
+  AGENTS.md               # orchestrator identity
+  SAFETY.md               # shared safety (inherited by all sub-agents)
+  CONVERSATION_RULES.md   # shared rules (inherited by all sub-agents)
+  agents/
+    operator/
+      IDENTITY.md          # override operator's default role description
+      SAFETY.md            # override shared safety for operator only
+    librarian/
+      IDENTITY.md          # override librarian's default role description
+      MY_RULES.md          # add custom section for librarian only
+```
+
+**Supported per-agent files:**
+
+| File | Section | Priority | Behavior |
+|------|---------|----------|----------|
+| `IDENTITY.md` | Agent Identity | 150 | Replaces the agent's default role description |
+| `SAFETY.md` | Safety | 200 | Overrides the shared safety guidelines |
+| `CONVERSATION_RULES.md` | Conversation Rules | 300 | Overrides the shared conversation rules |
+| `*.md` (other) | Custom | 900+ | Added as additional custom sections |
+
+If no `agents/<name>/` directory exists, the sub-agent uses its built-in instruction combined with the shared Safety and Conversation Rules.
+
 ## Embedding & RAG
 
 Lango supports embedding-based retrieval-augmented generation (RAG) to inject relevant context into agent prompts automatically.

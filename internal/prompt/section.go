@@ -5,6 +5,7 @@ type SectionID string
 
 const (
 	SectionIdentity          SectionID = "identity"
+	SectionAgentIdentity     SectionID = "agent_identity"
 	SectionSafety            SectionID = "safety"
 	SectionConversationRules SectionID = "conversation_rules"
 	SectionToolUsage         SectionID = "tool_usage"

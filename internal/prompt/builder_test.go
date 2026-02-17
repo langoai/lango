@@ -71,6 +71,35 @@ func TestBuilder_Build_Empty(t *testing.T) {
 	assert.Equal(t, "", b.Build())
 }
 
+func TestBuilder_Clone(t *testing.T) {
+	b := NewBuilder()
+	b.Add(NewStaticSection("a", 100, "A", "alpha"))
+	b.Add(NewStaticSection("b", 200, "B", "bravo"))
+
+	clone := b.Clone()
+
+	// Mutate clone — original must be unaffected.
+	clone.Add(NewStaticSection("c", 300, "C", "charlie"))
+	clone.Add(NewStaticSection("a", 100, "A", "alpha-override"))
+
+	original := b.Build()
+	assert.Contains(t, original, "alpha")
+	assert.NotContains(t, original, "charlie")
+	assert.NotContains(t, original, "alpha-override")
+
+	cloned := clone.Build()
+	assert.Contains(t, cloned, "alpha-override")
+	assert.Contains(t, cloned, "charlie")
+}
+
+func TestBuilder_Clone_Empty(t *testing.T) {
+	b := NewBuilder()
+	clone := b.Clone()
+	clone.Add(NewStaticSection("x", 100, "", "x"))
+	assert.Equal(t, "", b.Build())
+	assert.Equal(t, "x", clone.Build())
+}
+
 func TestBuilder_PrioritySorting(t *testing.T) {
 	b := NewBuilder()
 	b.Add(NewStaticSection("c", 300, "", "third"))

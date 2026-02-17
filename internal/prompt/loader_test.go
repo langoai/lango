@@ -73,6 +73,86 @@ func TestLoadFromDir_OverridesMultipleSections(t *testing.T) {
 	assert.Contains(t, result, "Answer only the current question")
 }
 
+// --- LoadAgentFromDir tests ---
+
+func TestLoadAgentFromDir_OverridesIdentity(t *testing.T) {
+	dir := t.TempDir()
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "IDENTITY.md"), []byte("Custom agent identity"), 0644))
+
+	base := NewBuilder()
+	base.Add(NewStaticSection(SectionAgentIdentity, 150, "", "Default identity"))
+	base.Add(NewStaticSection(SectionSafety, 200, "Safety Guidelines", "Shared safety"))
+
+	b := LoadAgentFromDir(base, dir, nil)
+	result := b.Build()
+	assert.Contains(t, result, "Custom agent identity")
+	assert.NotContains(t, result, "Default identity")
+	assert.Contains(t, result, "Shared safety")
+}
+
+func TestLoadAgentFromDir_OverridesSafety(t *testing.T) {
+	dir := t.TempDir()
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "SAFETY.md"), []byte("Agent-specific safety"), 0644))
+
+	base := NewBuilder()
+	base.Add(NewStaticSection(SectionSafety, 200, "Safety Guidelines", "Shared safety"))
+
+	b := LoadAgentFromDir(base, dir, nil)
+	result := b.Build()
+	assert.Contains(t, result, "Agent-specific safety")
+	assert.NotContains(t, result, "Shared safety")
+}
+
+func TestLoadAgentFromDir_AddsCustomSection(t *testing.T) {
+	dir := t.TempDir()
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "MY_RULES.md"), []byte("Custom rules"), 0644))
+
+	base := NewBuilder()
+	base.Add(NewStaticSection(SectionSafety, 200, "Safety Guidelines", "Shared safety"))
+
+	b := LoadAgentFromDir(base, dir, nil)
+	result := b.Build()
+	assert.Contains(t, result, "Custom rules")
+	assert.Contains(t, result, "Shared safety")
+	assert.True(t, b.Has("custom_my_rules"))
+}
+
+func TestLoadAgentFromDir_NonExistentDir(t *testing.T) {
+	base := NewBuilder()
+	base.Add(NewStaticSection(SectionSafety, 200, "Safety Guidelines", "Shared safety"))
+
+	b := LoadAgentFromDir(base, "/nonexistent/agent/path", nil)
+	result := b.Build()
+	assert.Contains(t, result, "Shared safety")
+}
+
+func TestLoadAgentFromDir_DoesNotMutateBase(t *testing.T) {
+	dir := t.TempDir()
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "IDENTITY.md"), []byte("Override"), 0644))
+
+	base := NewBuilder()
+	base.Add(NewStaticSection(SectionAgentIdentity, 150, "", "Original"))
+
+	_ = LoadAgentFromDir(base, dir, nil)
+
+	// base should be unchanged
+	result := base.Build()
+	assert.Contains(t, result, "Original")
+	assert.NotContains(t, result, "Override")
+}
+
+func TestLoadAgentFromDir_IgnoresEmptyFiles(t *testing.T) {
+	dir := t.TempDir()
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "IDENTITY.md"), []byte("   "), 0644))
+
+	base := NewBuilder()
+	base.Add(NewStaticSection(SectionAgentIdentity, 150, "", "Original"))
+
+	b := LoadAgentFromDir(base, dir, nil)
+	result := b.Build()
+	assert.Contains(t, result, "Original")
+}
+
 func TestLoadFromDir_CustomSectionPriorityAfterDefaults(t *testing.T) {
 	dir := t.TempDir()
 	require.NoError(t, os.WriteFile(filepath.Join(dir, "EXTRA.md"), []byte("extra content"), 0644))

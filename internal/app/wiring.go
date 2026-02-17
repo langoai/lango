@@ -49,6 +49,47 @@ func buildPromptBuilder(cfg *config.AgentConfig) *prompt.Builder {
 	return prompt.DefaultBuilder()
 }
 
+// buildSubAgentPromptFunc creates a SubAgentPromptFunc that injects shared
+// prompt sections (Safety, ConversationRules) into each sub-agent's system
+// prompt, with optional per-agent overrides from <promptsDir>/agents/<name>/.
+func buildSubAgentPromptFunc(cfg *config.AgentConfig) orchestration.SubAgentPromptFunc {
+	// Build a shared base containing only safety + conversation rules.
+	// Sub-agents should NOT inherit the global identity or tool usage sections.
+	shared := prompt.NewBuilder()
+
+	if cfg.PromptsDir != "" {
+		// Load shared sections from user's prompts directory.
+		full := prompt.LoadFromDir(cfg.PromptsDir, logger())
+		if full.Has(prompt.SectionSafety) {
+			// Re-load: LoadFromDir returns a full builder. We extract only
+			// what we need by building a fresh shared base from the directory.
+			shared = prompt.LoadFromDir(cfg.PromptsDir, logger())
+		}
+	} else {
+		shared = prompt.DefaultBuilder()
+	}
+	// Remove sections that are agent-global, not sub-agent shared.
+	shared.Remove(prompt.SectionIdentity)
+	shared.Remove(prompt.SectionToolUsage)
+
+	return func(agentName, defaultInstruction string) string {
+		b := shared.Clone()
+
+		// Insert the spec's default instruction as agent identity (priority 150).
+		b.Add(prompt.NewStaticSection(
+			prompt.SectionAgentIdentity, 150, "", defaultInstruction,
+		))
+
+		// Apply per-agent overrides if the directory exists.
+		if cfg.PromptsDir != "" {
+			agentDir := filepath.Join(cfg.PromptsDir, "agents", agentName)
+			b = prompt.LoadAgentFromDir(b, agentDir, logger())
+		}
+
+		return b.Build()
+	}
+}
+
 // initSupervisor creates and initializes the Supervisor.
 func initSupervisor(cfg *config.Config) (*supervisor.Supervisor, error) {
 	logger().Info("initializing supervisor...")
@@ -698,6 +739,7 @@ func initAgent(ctx context.Context, sv *supervisor.Supervisor, cfg *config.Confi
 			SystemPrompt:        orchestratorPrompt,
 			AdaptTool:           adk.AdaptTool,
 			MaxDelegationRounds: 5,
+			SubAgentPrompt:      buildSubAgentPromptFunc(&cfg.Agent),
 		}
 
 		// Load remote A2A agents BEFORE building the tree so they are included.
