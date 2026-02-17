@@ -61,7 +61,10 @@ func DefaultConfig() *Config {
 			MaxLearnings:       10,
 			MaxKnowledge:       20,
 			MaxContextPerLayer: 5,
-			MaxSkillsPerDay:    5,
+		},
+		Skill: SkillConfig{
+			Enabled:   true,
+			SkillsDir: "~/.lango/skills",
 		},
 		Graph: GraphConfig{
 			Enabled:             false,

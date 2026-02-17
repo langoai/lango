@@ -55,6 +55,9 @@ type Config struct {
 	// Workflow engine configuration
 	Workflow WorkflowConfig `mapstructure:"workflow" json:"workflow"`
 
+	// Skill configuration (file-based skills)
+	Skill SkillConfig `mapstructure:"skill" json:"skill"`
+
 	// Providers configuration
 	Providers map[string]ProviderConfig `mapstructure:"providers" json:"providers"`
 }
@@ -104,6 +107,15 @@ type WorkflowConfig struct {
 	StateDir string `mapstructure:"stateDir" json:"stateDir"`
 }
 
+// SkillConfig defines file-based skill settings.
+type SkillConfig struct {
+	// Enable the skill system.
+	Enabled bool `mapstructure:"enabled" json:"enabled"`
+
+	// SkillsDir is the directory containing skill files (default: ~/.lango/skills).
+	SkillsDir string `mapstructure:"skillsDir" json:"skillsDir"`
+}
+
 // KnowledgeConfig defines self-learning knowledge system settings
 type KnowledgeConfig struct {
 	// Enable the knowledge/learning system
@@ -117,12 +129,6 @@ type KnowledgeConfig struct {
 
 	// Maximum context items per layer in retrieval
 	MaxContextPerLayer int `mapstructure:"maxContextPerLayer" json:"maxContextPerLayer"`
-
-	// Auto-approve new skills without human review
-	AutoApproveSkills bool `mapstructure:"autoApproveSkills" json:"autoApproveSkills"`
-
-	// Maximum new skills per day
-	MaxSkillsPerDay int `mapstructure:"maxSkillsPerDay" json:"maxSkillsPerDay"`
 
 	// AnalysisTurnThreshold is the number of new turns before triggering conversation analysis (default: 10).
 	AnalysisTurnThreshold int `mapstructure:"analysisTurnThreshold" json:"analysisTurnThreshold"`

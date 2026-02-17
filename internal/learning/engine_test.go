@@ -17,7 +17,7 @@ func newTestEngine(t *testing.T) (*Engine, *knowledge.Store) {
 	client := enttest.Open(t, "sqlite3", "file:ent?mode=memory&_fk=1")
 	t.Cleanup(func() { client.Close() })
 	logger := zap.NewNop().Sugar()
-	store := knowledge.NewStore(client, logger, 20, 10, 5)
+	store := knowledge.NewStore(client, logger, 20, 10)
 	engine := NewEngine(store, logger)
 	return engine, store
 }

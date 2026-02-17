@@ -1,7 +1,5 @@
 package skill
 
-import "github.com/langowarny/lango/internal/knowledge"
-
 // SkillStep represents one step in a composite skill.
 type SkillStep struct {
 	Tool   string                 `json:"tool"`
@@ -9,7 +7,7 @@ type SkillStep struct {
 }
 
 // BuildCompositeSkill creates a SkillEntry for a multi-step tool chain.
-func BuildCompositeSkill(name, description string, steps []SkillStep, params map[string]interface{}) knowledge.SkillEntry {
+func BuildCompositeSkill(name, description string, steps []SkillStep, params map[string]interface{}) SkillEntry {
 	stepDefs := make([]interface{}, 0, len(steps))
 	for _, s := range steps {
 		stepDefs = append(stepDefs, map[string]interface{}{
@@ -18,7 +16,7 @@ func BuildCompositeSkill(name, description string, steps []SkillStep, params map
 		})
 	}
 
-	entry := knowledge.SkillEntry{
+	entry := SkillEntry{
 		Name:        name,
 		Description: description,
 		Type:        "composite",
@@ -34,8 +32,8 @@ func BuildCompositeSkill(name, description string, steps []SkillStep, params map
 }
 
 // BuildScriptSkill creates a SkillEntry for a shell script.
-func BuildScriptSkill(name, description, script string, params map[string]interface{}) knowledge.SkillEntry {
-	entry := knowledge.SkillEntry{
+func BuildScriptSkill(name, description, script string, params map[string]interface{}) SkillEntry {
+	entry := SkillEntry{
 		Name:        name,
 		Description: description,
 		Type:        "script",
@@ -51,8 +49,8 @@ func BuildScriptSkill(name, description, script string, params map[string]interf
 }
 
 // BuildTemplateSkill creates a SkillEntry for a template-based skill.
-func BuildTemplateSkill(name, description, tmpl string, params map[string]interface{}) knowledge.SkillEntry {
-	entry := knowledge.SkillEntry{
+func BuildTemplateSkill(name, description, tmpl string, params map[string]interface{}) SkillEntry {
+	entry := SkillEntry{
 		Name:        name,
 		Description: description,
 		Type:        "template",

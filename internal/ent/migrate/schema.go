@@ -438,41 +438,6 @@ var (
 			},
 		},
 	}
-	// SkillsColumns holds the columns for the "skills" table.
-	SkillsColumns = []*schema.Column{
-		{Name: "id", Type: field.TypeUUID},
-		{Name: "name", Type: field.TypeString, Unique: true},
-		{Name: "description", Type: field.TypeString, Size: 2147483647},
-		{Name: "skill_type", Type: field.TypeEnum, Enums: []string{"composite", "script", "template"}},
-		{Name: "definition", Type: field.TypeJSON},
-		{Name: "parameters", Type: field.TypeJSON, Nullable: true},
-		{Name: "status", Type: field.TypeEnum, Enums: []string{"active", "draft", "disabled"}, Default: "draft"},
-		{Name: "created_by", Type: field.TypeString, Nullable: true},
-		{Name: "use_count", Type: field.TypeInt, Default: 0},
-		{Name: "success_count", Type: field.TypeInt, Default: 0},
-		{Name: "last_used_at", Type: field.TypeTime, Nullable: true},
-		{Name: "requires_approval", Type: field.TypeBool, Default: true},
-		{Name: "created_at", Type: field.TypeTime},
-		{Name: "updated_at", Type: field.TypeTime},
-	}
-	// SkillsTable holds the schema information for the "skills" table.
-	SkillsTable = &schema.Table{
-		Name:       "skills",
-		Columns:    SkillsColumns,
-		PrimaryKey: []*schema.Column{SkillsColumns[0]},
-		Indexes: []*schema.Index{
-			{
-				Name:    "skill_status",
-				Unique:  false,
-				Columns: []*schema.Column{SkillsColumns[6]},
-			},
-			{
-				Name:    "skill_skill_type",
-				Unique:  false,
-				Columns: []*schema.Column{SkillsColumns[3]},
-			},
-		},
-	}
 	// WorkflowRunsColumns holds the columns for the "workflow_runs" table.
 	WorkflowRunsColumns = []*schema.Column{
 		{Name: "id", Type: field.TypeUUID},
@@ -560,7 +525,6 @@ var (
 		ReflectionsTable,
 		SecretsTable,
 		SessionsTable,
-		SkillsTable,
 		WorkflowRunsTable,
 		WorkflowStepRunsTable,
 	}

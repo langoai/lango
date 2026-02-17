@@ -18,7 +18,7 @@ func TestSessionLearner_LearnFromSession_HighConfidence(t *testing.T) {
 	t.Cleanup(func() { client.Close() })
 
 	logger := zap.NewNop().Sugar()
-	store := knowledge.NewStore(client, logger, 20, 10, 5)
+	store := knowledge.NewStore(client, logger, 20, 10)
 
 	results := []analysisResult{
 		{Type: "preference", Category: "tools", Content: "User prefers vim keybindings", Confidence: "high"},

@@ -21,7 +21,6 @@ import (
 	"github.com/langowarny/lango/internal/ent/schema"
 	"github.com/langowarny/lango/internal/ent/secret"
 	"github.com/langowarny/lango/internal/ent/session"
-	"github.com/langowarny/lango/internal/ent/skill"
 	"github.com/langowarny/lango/internal/ent/workflowrun"
 	"github.com/langowarny/lango/internal/ent/workflowsteprun"
 )
@@ -374,42 +373,6 @@ func init() {
 	session.DefaultUpdatedAt = sessionDescUpdatedAt.Default.(func() time.Time)
 	// session.UpdateDefaultUpdatedAt holds the default value on update for the updated_at field.
 	session.UpdateDefaultUpdatedAt = sessionDescUpdatedAt.UpdateDefault.(func() time.Time)
-	skillFields := schema.Skill{}.Fields()
-	_ = skillFields
-	// skillDescName is the schema descriptor for name field.
-	skillDescName := skillFields[1].Descriptor()
-	// skill.NameValidator is a validator for the "name" field. It is called by the builders before save.
-	skill.NameValidator = skillDescName.Validators[0].(func(string) error)
-	// skillDescDescription is the schema descriptor for description field.
-	skillDescDescription := skillFields[2].Descriptor()
-	// skill.DescriptionValidator is a validator for the "description" field. It is called by the builders before save.
-	skill.DescriptionValidator = skillDescDescription.Validators[0].(func(string) error)
-	// skillDescUseCount is the schema descriptor for use_count field.
-	skillDescUseCount := skillFields[8].Descriptor()
-	// skill.DefaultUseCount holds the default value on creation for the use_count field.
-	skill.DefaultUseCount = skillDescUseCount.Default.(int)
-	// skillDescSuccessCount is the schema descriptor for success_count field.
-	skillDescSuccessCount := skillFields[9].Descriptor()
-	// skill.DefaultSuccessCount holds the default value on creation for the success_count field.
-	skill.DefaultSuccessCount = skillDescSuccessCount.Default.(int)
-	// skillDescRequiresApproval is the schema descriptor for requires_approval field.
-	skillDescRequiresApproval := skillFields[11].Descriptor()
-	// skill.DefaultRequiresApproval holds the default value on creation for the requires_approval field.
-	skill.DefaultRequiresApproval = skillDescRequiresApproval.Default.(bool)
-	// skillDescCreatedAt is the schema descriptor for created_at field.
-	skillDescCreatedAt := skillFields[12].Descriptor()
-	// skill.DefaultCreatedAt holds the default value on creation for the created_at field.
-	skill.DefaultCreatedAt = skillDescCreatedAt.Default.(func() time.Time)
-	// skillDescUpdatedAt is the schema descriptor for updated_at field.
-	skillDescUpdatedAt := skillFields[13].Descriptor()
-	// skill.DefaultUpdatedAt holds the default value on creation for the updated_at field.
-	skill.DefaultUpdatedAt = skillDescUpdatedAt.Default.(func() time.Time)
-	// skill.UpdateDefaultUpdatedAt holds the default value on update for the updated_at field.
-	skill.UpdateDefaultUpdatedAt = skillDescUpdatedAt.UpdateDefault.(func() time.Time)
-	// skillDescID is the schema descriptor for id field.
-	skillDescID := skillFields[0].Descriptor()
-	// skill.DefaultID holds the default value on creation for the id field.
-	skill.DefaultID = skillDescID.Default.(func() uuid.UUID)
 	workflowrunFields := schema.WorkflowRun{}.Fields()
 	_ = workflowrunFields
 	// workflowrunDescWorkflowName is the schema descriptor for workflow_name field.

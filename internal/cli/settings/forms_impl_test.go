@@ -129,7 +129,6 @@ func TestNewKnowledgeForm_AllFields(t *testing.T) {
 	wantKeys := []string{
 		"knowledge_enabled", "knowledge_max_learnings",
 		"knowledge_max_knowledge", "knowledge_max_context",
-		"knowledge_auto_approve", "knowledge_max_skills_day",
 	}
 
 	if len(form.Fields) != len(wantKeys) {
@@ -208,9 +207,6 @@ func TestUpdateConfigFromForm_KnowledgeFields(t *testing.T) {
 	form.AddField(&tuicore.Field{Key: "knowledge_max_learnings", Type: tuicore.InputInt, Value: "25"})
 	form.AddField(&tuicore.Field{Key: "knowledge_max_knowledge", Type: tuicore.InputInt, Value: "50"})
 	form.AddField(&tuicore.Field{Key: "knowledge_max_context", Type: tuicore.InputInt, Value: "8"})
-	form.AddField(&tuicore.Field{Key: "knowledge_auto_approve", Type: tuicore.InputBool, Checked: true})
-	form.AddField(&tuicore.Field{Key: "knowledge_max_skills_day", Type: tuicore.InputInt, Value: "15"})
-
 	state.UpdateConfigFromForm(&form)
 
 	k := state.Current.Knowledge
@@ -225,12 +221,6 @@ func TestUpdateConfigFromForm_KnowledgeFields(t *testing.T) {
 	}
 	if k.MaxContextPerLayer != 8 {
 		t.Errorf("MaxContextPerLayer: want 8, got %d", k.MaxContextPerLayer)
-	}
-	if !k.AutoApproveSkills {
-		t.Error("AutoApproveSkills: want true")
-	}
-	if k.MaxSkillsPerDay != 15 {
-		t.Errorf("MaxSkillsPerDay: want 15, got %d", k.MaxSkillsPerDay)
 	}
 }
 

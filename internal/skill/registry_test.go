@@ -2,22 +2,19 @@ package skill
 
 import (
 	"context"
+	"path/filepath"
 	"strings"
 	"testing"
 
 	"go.uber.org/zap"
 
 	"github.com/langowarny/lango/internal/agent"
-	"github.com/langowarny/lango/internal/ent/enttest"
-	"github.com/langowarny/lango/internal/knowledge"
-	_ "github.com/mattn/go-sqlite3"
 )
 
 func newTestRegistry(t *testing.T) *Registry {
-	client := enttest.Open(t, "sqlite3", "file:ent?mode=memory&_fk=1")
-	t.Cleanup(func() { client.Close() })
+	dir := filepath.Join(t.TempDir(), "skills")
 	logger := zap.NewNop().Sugar()
-	store := knowledge.NewStore(client, logger, 20, 10, 5)
+	store := NewFileSkillStore(dir, logger)
 	baseTool := &agent.Tool{Name: "test_tool", Description: "a test tool"}
 	return NewRegistry(store, []*agent.Tool{baseTool}, logger)
 }
@@ -25,27 +22,27 @@ func newTestRegistry(t *testing.T) *Registry {
 func TestRegistry_CreateSkill_Validation(t *testing.T) {
 	tests := []struct {
 		give    string
-		entry   knowledge.SkillEntry
+		entry   SkillEntry
 		wantErr string
 	}{
 		{
 			give:    "empty name",
-			entry:   knowledge.SkillEntry{Name: "", Type: "composite", Definition: map[string]interface{}{"steps": []interface{}{}}},
+			entry:   SkillEntry{Name: "", Type: "composite", Definition: map[string]interface{}{"steps": []interface{}{}}},
 			wantErr: "skill name is required",
 		},
 		{
 			give:    "invalid type",
-			entry:   knowledge.SkillEntry{Name: "foo", Type: "unknown", Definition: map[string]interface{}{"steps": []interface{}{}}},
+			entry:   SkillEntry{Name: "foo", Type: "unknown", Definition: map[string]interface{}{"steps": []interface{}{}}},
 			wantErr: "skill type must be composite, script, or template",
 		},
 		{
 			give:    "empty definition",
-			entry:   knowledge.SkillEntry{Name: "foo", Type: "composite", Definition: map[string]interface{}{}},
+			entry:   SkillEntry{Name: "foo", Type: "composite", Definition: map[string]interface{}{}},
 			wantErr: "skill definition is required",
 		},
 		{
 			give: "dangerous script",
-			entry: knowledge.SkillEntry{
+			entry: SkillEntry{
 				Name: "danger",
 				Type: "script",
 				Definition: map[string]interface{}{
@@ -86,7 +83,7 @@ func TestRegistry_LoadSkills_AllTools(t *testing.T) {
 	}
 
 	// Create and activate a skill.
-	err := registry.CreateSkill(ctx, knowledge.SkillEntry{
+	err := registry.CreateSkill(ctx, SkillEntry{
 		Name:        "my_skill",
 		Description: "does stuff",
 		Type:        "template",
@@ -130,7 +127,7 @@ func TestRegistry_LoadedSkills(t *testing.T) {
 	}
 
 	// Create and activate a skill.
-	err := registry.CreateSkill(ctx, knowledge.SkillEntry{
+	err := registry.CreateSkill(ctx, SkillEntry{
 		Name:        "loaded_skill",
 		Description: "test loaded",
 		Type:        "template",
@@ -166,7 +163,7 @@ func TestRegistry_ActivateSkill(t *testing.T) {
 	ctx := context.Background()
 
 	// Create a skill first.
-	err := registry.CreateSkill(ctx, knowledge.SkillEntry{
+	err := registry.CreateSkill(ctx, SkillEntry{
 		Name:        "activate_me",
 		Description: "a skill to activate",
 		Type:        "composite",
@@ -207,7 +204,7 @@ func TestRegistry_GetSkillTool(t *testing.T) {
 	ctx := context.Background()
 
 	t.Run("skill_ prefix naming", func(t *testing.T) {
-		err := registry.CreateSkill(ctx, knowledge.SkillEntry{
+		err := registry.CreateSkill(ctx, SkillEntry{
 			Name:        "prefixed",
 			Description: "test prefix",
 			Type:        "template",
@@ -240,4 +237,37 @@ func TestRegistry_GetSkillTool(t *testing.T) {
 			t.Error("GetSkillTool returned true for non-existent skill, want false")
 		}
 	})
+}
+
+func TestRegistry_ListActiveSkills(t *testing.T) {
+	registry := newTestRegistry(t)
+	ctx := context.Background()
+
+	// Create and activate a skill.
+	err := registry.CreateSkill(ctx, SkillEntry{
+		Name:        "listable",
+		Description: "a listable skill",
+		Type:        "script",
+		Status:      "active",
+		Definition:  map[string]interface{}{"script": "echo hi"},
+	})
+	if err != nil {
+		t.Fatalf("CreateSkill: %v", err)
+	}
+
+	err = registry.ActivateSkill(ctx, "listable")
+	if err != nil {
+		t.Fatalf("ActivateSkill: %v", err)
+	}
+
+	skills, err := registry.ListActiveSkills(ctx)
+	if err != nil {
+		t.Fatalf("ListActiveSkills: %v", err)
+	}
+	if len(skills) != 1 {
+		t.Fatalf("len(skills) = %d, want 1", len(skills))
+	}
+	if skills[0].Name != "listable" {
+		t.Errorf("skills[0].Name = %q, want %q", skills[0].Name, "listable")
+	}
 }

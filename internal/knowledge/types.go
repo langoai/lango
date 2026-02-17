@@ -58,19 +58,6 @@ type LearningEntry struct {
 	Tags         []string
 }
 
-// SkillEntry is the domain type for skill CRUD operations.
-type SkillEntry struct {
-	Name             string
-	Description      string
-	Type             string
-	Definition       map[string]interface{}
-	Parameters       map[string]interface{}
-	CreatedBy        string
-	RequiresApproval bool
-	UseCount         int
-	SuccessCount     int
-}
-
 // AuditEntry is the domain type for audit log writes.
 type AuditEntry struct {
 	SessionKey string

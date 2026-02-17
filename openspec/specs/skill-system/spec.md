@@ -1,5 +1,64 @@
 ## ADDED Requirements
 
+### Requirement: File-Based Skill Storage
+The system SHALL store skills as `<dir>/<name>/SKILL.md` files with YAML frontmatter containing name, description, type, status, and optional parameters.
+
+#### Scenario: Save a new skill
+- **WHEN** a skill entry is saved via `FileSkillStore.Save()`
+- **THEN** the system SHALL create `<skillsDir>/<name>/SKILL.md` with YAML frontmatter and markdown body
+
+#### Scenario: Load active skills
+- **WHEN** `FileSkillStore.ListActive()` is called
+- **THEN** all skills with `status: active` in their frontmatter SHALL be returned
+
+#### Scenario: Delete a skill
+- **WHEN** `FileSkillStore.Delete()` is called with a skill name
+- **THEN** the entire `<skillsDir>/<name>/` directory SHALL be removed
+
+### Requirement: SKILL.md Parsing
+The system SHALL parse SKILL.md files with YAML frontmatter delimited by `---` lines, extracting metadata and body content.
+
+#### Scenario: Parse valid SKILL.md
+- **WHEN** a file with valid YAML frontmatter and markdown body is parsed
+- **THEN** a `SkillEntry` SHALL be returned with all frontmatter fields populated and definition extracted from code blocks
+
+#### Scenario: Parse file without frontmatter
+- **WHEN** a file without `---` delimiters is parsed
+- **THEN** an error SHALL be returned
+
+### Requirement: Embedded Default Skills
+The system SHALL embed 30 default CLI skill files via `//go:embed` and deploy them to the user's skills directory on first run.
+
+#### Scenario: First-run deployment
+- **WHEN** `EnsureDefaults()` is called and a skill directory does not exist
+- **THEN** the default skill SHALL be copied from the embedded filesystem to `<skillsDir>/<name>/SKILL.md`
+
+#### Scenario: Existing skills preserved
+- **WHEN** `EnsureDefaults()` is called and a skill directory already exists
+- **THEN** that skill SHALL NOT be overwritten
+
+### Requirement: Independent Skill Configuration
+The system SHALL use a separate `SkillConfig` with `Enabled` and `SkillsDir` fields, independent of `KnowledgeConfig`.
+
+#### Scenario: Skill system disabled
+- **WHEN** `skill.enabled` is false in config
+- **THEN** no skills SHALL be loaded and skill tools SHALL NOT be registered
+
+#### Scenario: Custom skills directory
+- **WHEN** `skill.skillsDir` is set to a custom path
+- **THEN** skills SHALL be read from and written to that directory
+
+### Requirement: SkillProvider Interface
+The system SHALL decouple the `ContextRetriever` from skill storage via a `SkillProvider` interface.
+
+#### Scenario: Skill provider wired
+- **WHEN** a `SkillProvider` is set on the `ContextRetriever`
+- **THEN** skill context items SHALL be retrieved via the provider instead of the knowledge store
+
+#### Scenario: No skill provider
+- **WHEN** no `SkillProvider` is configured
+- **THEN** the skill layer SHALL return no items without error
+
 ### Requirement: Skill Registry
 The system SHALL provide a registry for managing reusable skill definitions with lifecycle management.
 
@@ -7,7 +66,7 @@ The system SHALL provide a registry for managing reusable skill definitions with
 - **WHEN** `CreateSkill` is called with a valid skill entry
 - **THEN** the system SHALL validate the skill type is one of "composite", "script", or "template"
 - **AND** validate the skill definition matches the type requirements
-- **AND** persist the skill with status "draft"
+- **AND** persist the skill with status "active"
 
 #### Scenario: Invalid skill type
 - **WHEN** `CreateSkill` is called with an unrecognized skill type
@@ -27,7 +86,7 @@ The system SHALL provide a registry for managing reusable skill definitions with
 - **THEN** the definition SHALL contain a "template" string
 
 #### Scenario: Activate skill
-- **WHEN** `ActivateSkill` is called with a draft skill name
+- **WHEN** `ActivateSkill` is called with a skill name
 - **THEN** the system SHALL set the skill status to "active"
 
 #### Scenario: Load skills on startup

@@ -48,9 +48,6 @@ type Secret func(*sql.Selector)
 // Session is the predicate function for session builders.
 type Session func(*sql.Selector)
 
-// Skill is the predicate function for skill builders.
-type Skill func(*sql.Selector)
-
 // WorkflowRun is the predicate function for workflowrun builders.
 type WorkflowRun func(*sql.Selector)
 

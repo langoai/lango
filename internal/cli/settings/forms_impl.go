@@ -310,16 +310,6 @@ func NewKnowledgeForm(cfg *config.Config) *tuicore.FormModel {
 		Value: strconv.Itoa(cfg.Knowledge.MaxContextPerLayer),
 	})
 
-	form.AddField(&tuicore.Field{
-		Key: "knowledge_auto_approve", Label: "Auto Approve Skills", Type: tuicore.InputBool,
-		Checked: cfg.Knowledge.AutoApproveSkills,
-	})
-
-	form.AddField(&tuicore.Field{
-		Key: "knowledge_max_skills_day", Label: "Max Skills/Day", Type: tuicore.InputInt,
-		Value: strconv.Itoa(cfg.Knowledge.MaxSkillsPerDay),
-	})
-
 	return &form
 }
 

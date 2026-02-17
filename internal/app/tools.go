@@ -429,7 +429,7 @@ func buildBrowserTools(sm *browser.SessionManager) []*agent.Tool {
 }
 
 // buildMetaTools creates knowledge/learning/skill meta-tools for the agent.
-func buildMetaTools(store *knowledge.Store, engine *learning.Engine, registry *skill.Registry, autoApprove bool) []*agent.Tool {
+func buildMetaTools(store *knowledge.Store, engine *learning.Engine, registry *skill.Registry) []*agent.Tool {
 	return []*agent.Tool{
 		{
 			Name:        "save_knowledge",
@@ -638,26 +638,27 @@ func buildMetaTools(store *knowledge.Store, engine *learning.Engine, registry *s
 					}
 				}
 
-				entry := knowledge.SkillEntry{
+				entry := skill.SkillEntry{
 					Name:             name,
 					Description:      description,
 					Type:             skillType,
 					Definition:       definition,
 					Parameters:       parameters,
+					Status:           "active",
 					CreatedBy:        "agent",
-					RequiresApproval: !autoApprove,
+					RequiresApproval: false,
+				}
+
+				if registry == nil {
+					return nil, fmt.Errorf("skill system is not enabled")
 				}
 
 				if err := registry.CreateSkill(ctx, entry); err != nil {
 					return nil, fmt.Errorf("create skill: %w", err)
 				}
 
-				status := "draft"
-				if autoApprove {
-					if err := registry.ActivateSkill(ctx, name); err != nil {
-						return nil, fmt.Errorf("activate skill: %w", err)
-					}
-					status = "active"
+				if err := registry.ActivateSkill(ctx, name); err != nil {
+					return nil, fmt.Errorf("activate skill: %w", err)
 				}
 
 				if err := store.SaveAuditLog(ctx, knowledge.AuditEntry{
@@ -666,29 +667,33 @@ func buildMetaTools(store *knowledge.Store, engine *learning.Engine, registry *s
 					Target: name,
 					Details: map[string]interface{}{
 						"type":   skillType,
-						"status": status,
+						"status": "active",
 					},
 				}); err != nil {
 					logger().Warnw("audit log save failed", "action", "skill_create", "error", err)
 				}
 
 				return map[string]interface{}{
-					"status":  status,
+					"status":  "active",
 					"name":    name,
-					"message": fmt.Sprintf("Skill '%s' created with status '%s'", name, status),
+					"message": fmt.Sprintf("Skill '%s' created and activated", name),
 				}, nil
 			},
 		},
 		{
 			Name:        "list_skills",
-			Description: "List all active skills with usage statistics",
+			Description: "List all active skills",
 			SafetyLevel: agent.SafetyLevelSafe,
 			Parameters: map[string]interface{}{
 				"type":       "object",
 				"properties": map[string]interface{}{},
 			},
 			Handler: func(ctx context.Context, params map[string]interface{}) (interface{}, error) {
-				skills, err := store.ListActiveSkills(ctx)
+				if registry == nil {
+					return map[string]interface{}{"skills": []interface{}{}, "count": 0}, nil
+				}
+
+				skills, err := registry.ListActiveSkills(ctx)
 				if err != nil {
 					return nil, fmt.Errorf("list skills: %w", err)
 				}

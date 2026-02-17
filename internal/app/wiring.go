@@ -3,6 +3,7 @@ package app
 import (
 	"context"
 	"fmt"
+	"os"
 	"path/filepath"
 	"strings"
 	"time"
@@ -34,6 +35,7 @@ import (
 	"github.com/langowarny/lango/internal/supervisor"
 	"github.com/langowarny/lango/internal/wallet"
 	"github.com/langowarny/lango/internal/workflow"
+	"github.com/langowarny/lango/skills"
 	"google.golang.org/adk/model"
 	adk_tool "google.golang.org/adk/tool"
 )
@@ -139,12 +141,11 @@ type knowledgeComponents struct {
 	store    *knowledge.Store
 	engine   *learning.Engine
 	observer learning.ToolResultObserver
-	registry *skill.Registry
 }
 
 // initKnowledge creates the self-learning components if enabled.
 // When gc is provided, a GraphEngine is used as the observer instead of the base Engine.
-func initKnowledge(cfg *config.Config, store session.Store, baseTools []*agent.Tool, gc *graphComponents) *knowledgeComponents {
+func initKnowledge(cfg *config.Config, store session.Store, gc *graphComponents) *knowledgeComponents {
 	if !cfg.Knowledge.Enabled {
 		logger().Info("knowledge system disabled")
 		return nil
@@ -163,7 +164,6 @@ func initKnowledge(cfg *config.Config, store session.Store, baseTools []*agent.T
 		client, kLogger,
 		cfg.Knowledge.MaxKnowledge,
 		cfg.Knowledge.MaxLearnings,
-		cfg.Knowledge.MaxSkillsPerDay,
 	)
 
 	engine := learning.NewEngine(kStore, kLogger)
@@ -179,20 +179,51 @@ func initKnowledge(cfg *config.Config, store session.Store, baseTools []*agent.T
 		logger().Info("graph-enhanced learning engine initialized")
 	}
 
-	registry := skill.NewRegistry(kStore, baseTools, kLogger)
-
-	ctx := context.Background()
-	if err := registry.LoadSkills(ctx); err != nil {
-		logger().Warnw("load skills error", "error", err)
-	}
-
 	logger().Info("knowledge system initialized")
 	return &knowledgeComponents{
-		store:    kStore,
-		engine:   engine,
+		store:  kStore,
+		engine: engine,
 		observer: observer,
-		registry: registry,
 	}
+}
+
+// initSkills creates the file-based skill registry.
+func initSkills(cfg *config.Config, baseTools []*agent.Tool) *skill.Registry {
+	if !cfg.Skill.Enabled {
+		logger().Info("skill system disabled")
+		return nil
+	}
+
+	dir := cfg.Skill.SkillsDir
+	if dir == "" {
+		dir = "~/.lango/skills"
+	}
+	// Expand ~ to home directory.
+	if len(dir) > 1 && dir[:2] == "~/" {
+		if home, err := os.UserHomeDir(); err == nil {
+			dir = filepath.Join(home, dir[2:])
+		}
+	}
+
+	sLogger := logger()
+	store := skill.NewFileSkillStore(dir, sLogger)
+
+	// Deploy embedded default skills.
+	defaultFS, err := skills.DefaultFS()
+	if err == nil {
+		if err := store.EnsureDefaults(defaultFS); err != nil {
+			sLogger.Warnw("deploy default skills error", "error", err)
+		}
+	}
+
+	registry := skill.NewRegistry(store, baseTools, sLogger)
+	ctx := context.Background()
+	if err := registry.LoadSkills(ctx); err != nil {
+		sLogger.Warnw("load skills error", "error", err)
+	}
+
+	sLogger.Infow("skill system initialized", "dir", dir)
+	return registry
 }
 
 // memoryComponents holds optional observational memory components.
@@ -524,7 +555,7 @@ func initAuth(cfg *config.Config, store session.Store) *gateway.AuthManager {
 }
 
 // initAgent creates the ADK agent with the given tools and provider proxy.
-func initAgent(ctx context.Context, sv *supervisor.Supervisor, cfg *config.Config, store session.Store, tools []*agent.Tool, kc *knowledgeComponents, mc *memoryComponents, ec *embeddingComponents, gc *graphComponents, scanner *agent.SecretScanner) (*adk.Agent, error) {
+func initAgent(ctx context.Context, sv *supervisor.Supervisor, cfg *config.Config, store session.Store, tools []*agent.Tool, kc *knowledgeComponents, mc *memoryComponents, ec *embeddingComponents, gc *graphComponents, scanner *agent.SecretScanner, sr *skill.Registry) (*adk.Agent, error) {
 	// Adapt tools to ADK format
 	var adkTools []adk_tool.Tool
 	for _, t := range tools {
@@ -563,6 +594,11 @@ func initAgent(ctx context.Context, sv *supervisor.Supervisor, cfg *config.Confi
 			cfg.Knowledge.MaxContextPerLayer,
 			logger(),
 		)
+
+		// Wire skill provider from file-based registry.
+		if sr != nil {
+			retriever.WithSkillProvider(&skillProviderAdapter{registry: sr})
+		}
 
 		// Wire tool registry and runtime context providers
 		toolAdapter := adk.NewToolRegistryAdapter(tools)
@@ -1018,4 +1054,25 @@ func initWorkflow(cfg *config.Config, store session.Store, app *App) *workflow.E
 	)
 
 	return engine
+}
+
+// skillProviderAdapter adapts *skill.Registry to knowledge.SkillProvider.
+type skillProviderAdapter struct {
+	registry *skill.Registry
+}
+
+func (a *skillProviderAdapter) ListActiveSkillInfos(ctx context.Context) ([]knowledge.SkillInfo, error) {
+	entries, err := a.registry.ListActiveSkills(ctx)
+	if err != nil {
+		return nil, err
+	}
+	infos := make([]knowledge.SkillInfo, len(entries))
+	for i, e := range entries {
+		infos[i] = knowledge.SkillInfo{
+			Name:        e.Name,
+			Description: e.Description,
+			Type:        e.Type,
+		}
+	}
+	return infos, nil
 }

@@ -6,18 +6,12 @@ import (
 	"testing"
 
 	"go.uber.org/zap"
-
-	"github.com/langowarny/lango/internal/ent/enttest"
-	"github.com/langowarny/lango/internal/knowledge"
-	_ "github.com/mattn/go-sqlite3"
 )
 
 func newTestExecutor(t *testing.T) *Executor {
-	client := enttest.Open(t, "sqlite3", "file:ent?mode=memory&_fk=1")
-	t.Cleanup(func() { client.Close() })
+	t.Helper()
 	logger := zap.NewNop().Sugar()
-	store := knowledge.NewStore(client, logger, 20, 10, 5)
-	return NewExecutor(store, logger)
+	return NewExecutor(logger)
 }
 
 func TestValidateScript(t *testing.T) {
@@ -57,7 +51,7 @@ func TestExecute_Composite(t *testing.T) {
 	ctx := context.Background()
 
 	t.Run("normal plan returned", func(t *testing.T) {
-		skill := knowledge.SkillEntry{
+		sk := SkillEntry{
 			Name: "test-composite",
 			Type: "composite",
 			Definition: map[string]interface{}{
@@ -68,7 +62,7 @@ func TestExecute_Composite(t *testing.T) {
 			},
 		}
 
-		result, err := executor.Execute(ctx, skill, nil)
+		result, err := executor.Execute(ctx, sk, nil)
 		if err != nil {
 			t.Fatalf("Execute composite: %v", err)
 		}
@@ -94,13 +88,13 @@ func TestExecute_Composite(t *testing.T) {
 	})
 
 	t.Run("missing steps key", func(t *testing.T) {
-		skill := knowledge.SkillEntry{
+		sk := SkillEntry{
 			Name:       "no-steps",
 			Type:       "composite",
 			Definition: map[string]interface{}{},
 		}
 
-		_, err := executor.Execute(ctx, skill, nil)
+		_, err := executor.Execute(ctx, sk, nil)
 		if err == nil {
 			t.Fatal("expected error for missing steps, got nil")
 		}
@@ -110,7 +104,7 @@ func TestExecute_Composite(t *testing.T) {
 	})
 
 	t.Run("steps not array", func(t *testing.T) {
-		skill := knowledge.SkillEntry{
+		sk := SkillEntry{
 			Name: "bad-steps",
 			Type: "composite",
 			Definition: map[string]interface{}{
@@ -118,7 +112,7 @@ func TestExecute_Composite(t *testing.T) {
 			},
 		}
 
-		_, err := executor.Execute(ctx, skill, nil)
+		_, err := executor.Execute(ctx, sk, nil)
 		if err == nil {
 			t.Fatal("expected error for non-array steps, got nil")
 		}
@@ -128,7 +122,7 @@ func TestExecute_Composite(t *testing.T) {
 	})
 
 	t.Run("step not object", func(t *testing.T) {
-		skill := knowledge.SkillEntry{
+		sk := SkillEntry{
 			Name: "bad-step",
 			Type: "composite",
 			Definition: map[string]interface{}{
@@ -136,7 +130,7 @@ func TestExecute_Composite(t *testing.T) {
 			},
 		}
 
-		_, err := executor.Execute(ctx, skill, nil)
+		_, err := executor.Execute(ctx, sk, nil)
 		if err == nil {
 			t.Fatal("expected error for non-object step, got nil")
 		}
@@ -151,7 +145,7 @@ func TestExecute_Template(t *testing.T) {
 	ctx := context.Background()
 
 	t.Run("normal rendering with params", func(t *testing.T) {
-		skill := knowledge.SkillEntry{
+		sk := SkillEntry{
 			Name: "greet",
 			Type: "template",
 			Definition: map[string]interface{}{
@@ -159,7 +153,7 @@ func TestExecute_Template(t *testing.T) {
 			},
 		}
 
-		result, err := executor.Execute(ctx, skill, map[string]interface{}{"Name": "World"})
+		result, err := executor.Execute(ctx, sk, map[string]interface{}{"Name": "World"})
 		if err != nil {
 			t.Fatalf("Execute template: %v", err)
 		}
@@ -174,13 +168,13 @@ func TestExecute_Template(t *testing.T) {
 	})
 
 	t.Run("missing template key", func(t *testing.T) {
-		skill := knowledge.SkillEntry{
+		sk := SkillEntry{
 			Name:       "no-tmpl",
 			Type:       "template",
 			Definition: map[string]interface{}{},
 		}
 
-		_, err := executor.Execute(ctx, skill, nil)
+		_, err := executor.Execute(ctx, sk, nil)
 		if err == nil {
 			t.Fatal("expected error for missing template, got nil")
 		}
@@ -190,7 +184,7 @@ func TestExecute_Template(t *testing.T) {
 	})
 
 	t.Run("invalid template syntax", func(t *testing.T) {
-		skill := knowledge.SkillEntry{
+		sk := SkillEntry{
 			Name: "bad-tmpl",
 			Type: "template",
 			Definition: map[string]interface{}{
@@ -198,7 +192,7 @@ func TestExecute_Template(t *testing.T) {
 			},
 		}
 
-		_, err := executor.Execute(ctx, skill, nil)
+		_, err := executor.Execute(ctx, sk, nil)
 		if err == nil {
 			t.Fatal("expected error for invalid template syntax, got nil")
 		}
@@ -213,7 +207,7 @@ func TestExecute_Script(t *testing.T) {
 	ctx := context.Background()
 
 	t.Run("safe script execution", func(t *testing.T) {
-		skill := knowledge.SkillEntry{
+		sk := SkillEntry{
 			Name: "echo-test",
 			Type: "script",
 			Definition: map[string]interface{}{
@@ -221,7 +215,7 @@ func TestExecute_Script(t *testing.T) {
 			},
 		}
 
-		result, err := executor.Execute(ctx, skill, nil)
+		result, err := executor.Execute(ctx, sk, nil)
 		if err != nil {
 			t.Fatalf("Execute script: %v", err)
 		}
@@ -236,7 +230,7 @@ func TestExecute_Script(t *testing.T) {
 	})
 
 	t.Run("dangerous script blocked", func(t *testing.T) {
-		skill := knowledge.SkillEntry{
+		sk := SkillEntry{
 			Name: "danger",
 			Type: "script",
 			Definition: map[string]interface{}{
@@ -244,7 +238,7 @@ func TestExecute_Script(t *testing.T) {
 			},
 		}
 
-		_, err := executor.Execute(ctx, skill, nil)
+		_, err := executor.Execute(ctx, sk, nil)
 		if err == nil {
 			t.Fatal("expected error for dangerous script, got nil")
 		}
@@ -258,13 +252,13 @@ func TestExecute_UnknownType(t *testing.T) {
 	executor := newTestExecutor(t)
 	ctx := context.Background()
 
-	skill := knowledge.SkillEntry{
+	sk := SkillEntry{
 		Name:       "mystery",
 		Type:       "unknown",
 		Definition: map[string]interface{}{"foo": "bar"},
 	}
 
-	_, err := executor.Execute(ctx, skill, nil)
+	_, err := executor.Execute(ctx, sk, nil)
 	if err == nil {
 		t.Fatal("expected error for unknown type, got nil")
 	}

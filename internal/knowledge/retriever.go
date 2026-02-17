@@ -19,6 +19,18 @@ type RuntimeContextProvider interface {
 	GetRuntimeContext() RuntimeContext
 }
 
+// SkillInfo describes a single skill for context retrieval.
+type SkillInfo struct {
+	Name        string
+	Description string
+	Type        string
+}
+
+// SkillProvider supplies active skill information.
+type SkillProvider interface {
+	ListActiveSkillInfos(ctx context.Context) ([]SkillInfo, error)
+}
+
 // ContextRetriever searches the 6 context layers and assembles augmented prompts.
 type ContextRetriever struct {
 	store           *Store
@@ -26,6 +38,7 @@ type ContextRetriever struct {
 	logger          *zap.SugaredLogger
 	toolProvider    ToolRegistryProvider
 	runtimeProvider RuntimeContextProvider
+	skillProvider   SkillProvider
 }
 
 // NewContextRetriever creates a new context retriever.
@@ -49,6 +62,12 @@ func (r *ContextRetriever) WithToolRegistry(p ToolRegistryProvider) *ContextRetr
 // WithRuntimeContext sets the runtime context provider.
 func (r *ContextRetriever) WithRuntimeContext(p RuntimeContextProvider) *ContextRetriever {
 	r.runtimeProvider = p
+	return r
+}
+
+// WithSkillProvider sets the skill provider for context retrieval.
+func (r *ContextRetriever) WithSkillProvider(p SkillProvider) *ContextRetriever {
+	r.skillProvider = p
 	return r
 }
 
@@ -219,7 +238,11 @@ func (r *ContextRetriever) retrieveKnowledge(ctx context.Context, query string, 
 }
 
 func (r *ContextRetriever) retrieveSkills(ctx context.Context, query string, limit int) ([]ContextItem, error) {
-	skills, err := r.store.ListActiveSkills(ctx)
+	if r.skillProvider == nil {
+		return nil, nil
+	}
+
+	skills, err := r.skillProvider.ListActiveSkillInfos(ctx)
 	if err != nil {
 		return nil, err
 	}

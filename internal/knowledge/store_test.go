@@ -16,7 +16,7 @@ func newTestStore(t *testing.T) *Store {
 	client := enttest.Open(t, "sqlite3", "file:ent?mode=memory&_fk=1")
 	t.Cleanup(func() { client.Close() })
 	logger := zap.NewNop().Sugar()
-	return NewStore(client, logger, 20, 10, 5)
+	return NewStore(client, logger, 20, 10)
 }
 
 func TestSaveAndGetKnowledge(t *testing.T) {
@@ -496,236 +496,6 @@ func TestBoostLearningConfidence(t *testing.T) {
 	})
 }
 
-func TestSaveAndGetSkill(t *testing.T) {
-	store := newTestStore(t)
-	ctx := context.Background()
-
-	t.Run("all fields saved and retrieved", func(t *testing.T) {
-		entry := SkillEntry{
-			Name:        "deploy-service",
-			Description: "Deploy a microservice to production",
-			Type:        "composite",
-			Definition: map[string]interface{}{
-				"steps": []interface{}{"build", "test", "deploy"},
-			},
-			Parameters: map[string]interface{}{
-				"service_name": "string",
-			},
-			CreatedBy:        "admin",
-			RequiresApproval: true,
-		}
-		if err := store.SaveSkill(ctx, entry); err != nil {
-			t.Fatalf("SaveSkill: %v", err)
-		}
-		got, err := store.GetSkill(ctx, "deploy-service")
-		if err != nil {
-			t.Fatalf("GetSkill: %v", err)
-		}
-		if got.Name != "deploy-service" {
-			t.Errorf("want name %q, got %q", "deploy-service", got.Name)
-		}
-		if got.Description != "Deploy a microservice to production" {
-			t.Errorf("want description %q, got %q", "Deploy a microservice to production", got.Description)
-		}
-		if got.Type != "composite" {
-			t.Errorf("want type %q, got %q", "composite", got.Type)
-		}
-		if got.CreatedBy != "admin" {
-			t.Errorf("want created_by %q, got %q", "admin", got.CreatedBy)
-		}
-		if !got.RequiresApproval {
-			t.Error("want requires_approval true, got false")
-		}
-		if got.UseCount != 0 {
-			t.Errorf("want use_count 0, got %d", got.UseCount)
-		}
-		if got.SuccessCount != 0 {
-			t.Errorf("want success_count 0, got %d", got.SuccessCount)
-		}
-	})
-
-	t.Run("non-existent skill", func(t *testing.T) {
-		_, err := store.GetSkill(ctx, "no-such-skill")
-		if err == nil {
-			t.Fatal("expected error for non-existent skill, got nil")
-		}
-		if !strings.Contains(err.Error(), "skill not found") {
-			t.Errorf("want error containing %q, got %q", "skill not found", err.Error())
-		}
-	})
-}
-
-func TestListActiveSkills(t *testing.T) {
-	store := newTestStore(t)
-	ctx := context.Background()
-
-	t.Run("empty result when no active skills", func(t *testing.T) {
-		results, err := store.ListActiveSkills(ctx)
-		if err != nil {
-			t.Fatalf("ListActiveSkills: %v", err)
-		}
-		if len(results) != 0 {
-			t.Errorf("want 0 results, got %d", len(results))
-		}
-	})
-
-	t.Run("draft skills not listed", func(t *testing.T) {
-		entry := SkillEntry{
-			Name:        "draft-skill",
-			Description: "A draft skill",
-			Type:        "script",
-			Definition:  map[string]interface{}{"cmd": "echo hello"},
-		}
-		if err := store.SaveSkill(ctx, entry); err != nil {
-			t.Fatalf("SaveSkill: %v", err)
-		}
-		results, err := store.ListActiveSkills(ctx)
-		if err != nil {
-			t.Fatalf("ListActiveSkills: %v", err)
-		}
-		for _, r := range results {
-			if r.Name == "draft-skill" {
-				t.Error("draft skill should not appear in active list")
-			}
-		}
-	})
-
-	t.Run("active skill is listed", func(t *testing.T) {
-		entry := SkillEntry{
-			Name:        "active-skill",
-			Description: "An active skill",
-			Type:        "template",
-			Definition:  map[string]interface{}{"tmpl": "{{.name}}"},
-		}
-		if err := store.SaveSkill(ctx, entry); err != nil {
-			t.Fatalf("SaveSkill: %v", err)
-		}
-		if err := store.ActivateSkill(ctx, "active-skill"); err != nil {
-			t.Fatalf("ActivateSkill: %v", err)
-		}
-		results, err := store.ListActiveSkills(ctx)
-		if err != nil {
-			t.Fatalf("ListActiveSkills: %v", err)
-		}
-		found := false
-		for _, r := range results {
-			if r.Name == "active-skill" {
-				found = true
-			}
-		}
-		if !found {
-			t.Error("expected active-skill in active list")
-		}
-	})
-}
-
-func TestActivateSkill(t *testing.T) {
-	store := newTestStore(t)
-	ctx := context.Background()
-
-	t.Run("activate then get and list", func(t *testing.T) {
-		entry := SkillEntry{
-			Name:        "to-activate",
-			Description: "Skill to activate",
-			Type:        "composite",
-			Definition:  map[string]interface{}{"steps": []interface{}{"one"}},
-		}
-		if err := store.SaveSkill(ctx, entry); err != nil {
-			t.Fatalf("SaveSkill: %v", err)
-		}
-		if err := store.ActivateSkill(ctx, "to-activate"); err != nil {
-			t.Fatalf("ActivateSkill: %v", err)
-		}
-		got, err := store.GetSkill(ctx, "to-activate")
-		if err != nil {
-			t.Fatalf("GetSkill: %v", err)
-		}
-		if got.Name != "to-activate" {
-			t.Errorf("want name %q, got %q", "to-activate", got.Name)
-		}
-		actives, err := store.ListActiveSkills(ctx)
-		if err != nil {
-			t.Fatalf("ListActiveSkills: %v", err)
-		}
-		found := false
-		for _, a := range actives {
-			if a.Name == "to-activate" {
-				found = true
-			}
-		}
-		if !found {
-			t.Error("expected to-activate in active list after activation")
-		}
-	})
-
-	t.Run("non-existent skill error", func(t *testing.T) {
-		err := store.ActivateSkill(ctx, "no-such-skill")
-		if err == nil {
-			t.Fatal("expected error for non-existent skill, got nil")
-		}
-		if !strings.Contains(err.Error(), "skill not found") {
-			t.Errorf("want error containing %q, got %q", "skill not found", err.Error())
-		}
-	})
-}
-
-func TestIncrementSkillUsage(t *testing.T) {
-	store := newTestStore(t)
-	ctx := context.Background()
-
-	entry := SkillEntry{
-		Name:        "usage-skill",
-		Description: "Skill for usage test",
-		Type:        "script",
-		Definition:  map[string]interface{}{"cmd": "echo test"},
-	}
-	if err := store.SaveSkill(ctx, entry); err != nil {
-		t.Fatalf("SaveSkill: %v", err)
-	}
-
-	t.Run("success true increments use and success count", func(t *testing.T) {
-		if err := store.IncrementSkillUsage(ctx, "usage-skill", true); err != nil {
-			t.Fatalf("IncrementSkillUsage: %v", err)
-		}
-		got, err := store.GetSkill(ctx, "usage-skill")
-		if err != nil {
-			t.Fatalf("GetSkill: %v", err)
-		}
-		if got.UseCount != 1 {
-			t.Errorf("want use_count 1, got %d", got.UseCount)
-		}
-		if got.SuccessCount != 1 {
-			t.Errorf("want success_count 1, got %d", got.SuccessCount)
-		}
-	})
-
-	t.Run("success false increments use only", func(t *testing.T) {
-		if err := store.IncrementSkillUsage(ctx, "usage-skill", false); err != nil {
-			t.Fatalf("IncrementSkillUsage: %v", err)
-		}
-		got, err := store.GetSkill(ctx, "usage-skill")
-		if err != nil {
-			t.Fatalf("GetSkill: %v", err)
-		}
-		if got.UseCount != 2 {
-			t.Errorf("want use_count 2, got %d", got.UseCount)
-		}
-		if got.SuccessCount != 1 {
-			t.Errorf("want success_count still 1, got %d", got.SuccessCount)
-		}
-	})
-
-	t.Run("non-existent skill", func(t *testing.T) {
-		err := store.IncrementSkillUsage(ctx, "no-such-skill", true)
-		if err == nil {
-			t.Fatal("expected error for non-existent skill, got nil")
-		}
-		if !strings.Contains(err.Error(), "skill not found") {
-			t.Errorf("want error containing %q, got %q", "skill not found", err.Error())
-		}
-	})
-}
-
 func TestSaveAuditLog(t *testing.T) {
 	store := newTestStore(t)
 	ctx := context.Background()
@@ -826,7 +596,7 @@ func TestRateLimit_Knowledge(t *testing.T) {
 	client := enttest.Open(t, "sqlite3", "file:ent?mode=memory&_fk=1")
 	t.Cleanup(func() { client.Close() })
 	logger := zap.NewNop().Sugar()
-	store := NewStore(client, logger, 2, 2, 2)
+	store := NewStore(client, logger, 2, 2)
 	ctx := context.Background()
 
 	t.Run("third save fails for same session", func(t *testing.T) {
@@ -870,7 +640,7 @@ func TestRateLimit_Learning(t *testing.T) {
 	client := enttest.Open(t, "sqlite3", "file:ent?mode=memory&_fk=1")
 	t.Cleanup(func() { client.Close() })
 	logger := zap.NewNop().Sugar()
-	store := NewStore(client, logger, 2, 2, 2)
+	store := NewStore(client, logger, 2, 2)
 	ctx := context.Background()
 
 	t.Run("third save fails for same session", func(t *testing.T) {
@@ -907,37 +677,3 @@ func TestRateLimit_Learning(t *testing.T) {
 	})
 }
 
-func TestRateLimit_Skill(t *testing.T) {
-	client := enttest.Open(t, "sqlite3", "file:ent?mode=memory&_fk=1")
-	t.Cleanup(func() { client.Close() })
-	logger := zap.NewNop().Sugar()
-	store := NewStore(client, logger, 2, 2, 2)
-	ctx := context.Background()
-
-	t.Run("third skill creation fails", func(t *testing.T) {
-		for i := 0; i < 2; i++ {
-			entry := SkillEntry{
-				Name:        "rl-skill-" + strings.Repeat("z", i+1),
-				Description: "rate limited skill",
-				Type:        "script",
-				Definition:  map[string]interface{}{"cmd": "echo"},
-			}
-			if err := store.SaveSkill(ctx, entry); err != nil {
-				t.Fatalf("SaveSkill %d: %v", i, err)
-			}
-		}
-		entry := SkillEntry{
-			Name:        "rl-skill-third",
-			Description: "should fail",
-			Type:        "script",
-			Definition:  map[string]interface{}{"cmd": "echo"},
-		}
-		err := store.SaveSkill(ctx, entry)
-		if err == nil {
-			t.Fatal("expected rate limit error on 3rd skill, got nil")
-		}
-		if !strings.Contains(err.Error(), "limit reached") {
-			t.Errorf("want error containing %q, got %q", "limit reached", err.Error())
-		}
-	})
-}

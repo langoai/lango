@@ -26,7 +26,6 @@ import (
 	"github.com/langowarny/lango/internal/ent/reflection"
 	"github.com/langowarny/lango/internal/ent/secret"
 	"github.com/langowarny/lango/internal/ent/session"
-	"github.com/langowarny/lango/internal/ent/skill"
 	"github.com/langowarny/lango/internal/ent/workflowrun"
 	"github.com/langowarny/lango/internal/ent/workflowsteprun"
 )
@@ -103,7 +102,6 @@ func checkColumn(t, c string) error {
 			reflection.Table:      reflection.ValidColumn,
 			secret.Table:          secret.ValidColumn,
 			session.Table:         session.ValidColumn,
-			skill.Table:           skill.ValidColumn,
 			workflowrun.Table:     workflowrun.ValidColumn,
 			workflowsteprun.Table: workflowsteprun.ValidColumn,
 		})

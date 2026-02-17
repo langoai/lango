@@ -29,7 +29,7 @@ func TestConversationAnalyzer_Analyze_Fact(t *testing.T) {
 	t.Cleanup(func() { client.Close() })
 
 	logger := zap.NewNop().Sugar()
-	store := knowledge.NewStore(client, logger, 20, 10, 5)
+	store := knowledge.NewStore(client, logger, 20, 10)
 
 	results := []analysisResult{
 		{Type: "fact", Category: "domain", Content: "User prefers Go modules", Confidence: "high"},
@@ -65,7 +65,7 @@ func TestConversationAnalyzer_Analyze_Correction(t *testing.T) {
 	t.Cleanup(func() { client.Close() })
 
 	logger := zap.NewNop().Sugar()
-	store := knowledge.NewStore(client, logger, 20, 10, 5)
+	store := knowledge.NewStore(client, logger, 20, 10)
 
 	results := []analysisResult{
 		{Type: "correction", Category: "style", Content: "Use snake_case not camelCase", Confidence: "high"},
@@ -111,7 +111,7 @@ func TestConversationAnalyzer_Analyze_InvalidJSON(t *testing.T) {
 	t.Cleanup(func() { client.Close() })
 
 	logger := zap.NewNop().Sugar()
-	store := knowledge.NewStore(client, logger, 20, 10, 5)
+	store := knowledge.NewStore(client, logger, 20, 10)
 
 	gen := &fakeTextGenerator{response: "not valid json at all"}
 	analyzer := NewConversationAnalyzer(gen, store, logger)
@@ -132,7 +132,7 @@ func TestConversationAnalyzer_GraphCallback(t *testing.T) {
 	t.Cleanup(func() { client.Close() })
 
 	logger := zap.NewNop().Sugar()
-	store := knowledge.NewStore(client, logger, 20, 10, 5)
+	store := knowledge.NewStore(client, logger, 20, 10)
 
 	results := []analysisResult{
 		{

@@ -16,7 +16,7 @@ func newTestRetriever(t *testing.T) (*ContextRetriever, *Store) {
 	client := enttest.Open(t, "sqlite3", "file:ent?mode=memory&_fk=1")
 	t.Cleanup(func() { client.Close() })
 	logger := zap.NewNop().Sugar()
-	store := NewStore(client, logger, 20, 10, 5)
+	store := NewStore(client, logger, 20, 10)
 	retriever := NewContextRetriever(store, 5, logger)
 	return retriever, store
 }
@@ -97,18 +97,6 @@ func TestContextRetriever_Retrieve(t *testing.T) {
 		Category:     "timeout",
 	}); err != nil {
 		t.Fatalf("SaveLearning: %v", err)
-	}
-
-	if err := store.SaveSkill(ctx, SkillEntry{
-		Name:        "deploy-canary",
-		Description: "Canary deployment workflow",
-		Type:        "composite",
-		Definition:  map[string]interface{}{"steps": []interface{}{"build", "deploy"}},
-	}); err != nil {
-		t.Fatalf("SaveSkill: %v", err)
-	}
-	if err := store.ActivateSkill(ctx, "deploy-canary"); err != nil {
-		t.Fatalf("ActivateSkill: %v", err)
 	}
 
 	if err := store.SaveExternalRef(ctx, "deploy-guide", "url", "https://example.com/deploy", "Deployment best practices guide"); err != nil {

@@ -8,12 +8,11 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/langowarny/lango/internal/agent"
-	"github.com/langowarny/lango/internal/knowledge"
 )
 
-// Registry manages skill lifecycle and converts DB skills to executable tools.
+// Registry manages skill lifecycle and converts file-based skills to executable tools.
 type Registry struct {
-	store     *knowledge.Store
+	store     SkillStore
 	executor  *Executor
 	baseTools []*agent.Tool
 	logger    *zap.SugaredLogger
@@ -22,18 +21,18 @@ type Registry struct {
 }
 
 // NewRegistry creates a new skill registry.
-func NewRegistry(store *knowledge.Store, baseTools []*agent.Tool, logger *zap.SugaredLogger) *Registry {
+func NewRegistry(store SkillStore, baseTools []*agent.Tool, logger *zap.SugaredLogger) *Registry {
 	return &Registry{
 		store:     store,
-		executor:  NewExecutor(store, logger),
+		executor:  NewExecutor(logger),
 		baseTools: baseTools,
 		logger:    logger,
 	}
 }
 
-// LoadSkills loads active skills from DB and converts them to agent tools.
+// LoadSkills loads active skills from the store and converts them to agent tools.
 func (r *Registry) LoadSkills(ctx context.Context) error {
-	skills, err := r.store.ListActiveSkills(ctx)
+	skills, err := r.store.ListActive(ctx)
 	if err != nil {
 		return fmt.Errorf("load active skills: %w", err)
 	}
@@ -64,7 +63,7 @@ func (r *Registry) AllTools() []*agent.Tool {
 }
 
 // CreateSkill validates and saves a new skill.
-func (r *Registry) CreateSkill(ctx context.Context, entry knowledge.SkillEntry) error {
+func (r *Registry) CreateSkill(ctx context.Context, entry SkillEntry) error {
 	if entry.Name == "" {
 		return fmt.Errorf("skill name is required")
 	}
@@ -89,12 +88,12 @@ func (r *Registry) CreateSkill(ctx context.Context, entry knowledge.SkillEntry) 
 		}
 	}
 
-	return r.store.SaveSkill(ctx, entry)
+	return r.store.Save(ctx, entry)
 }
 
 // ActivateSkill activates a skill and reloads the skill tools.
 func (r *Registry) ActivateSkill(ctx context.Context, name string) error {
-	if err := r.store.ActivateSkill(ctx, name); err != nil {
+	if err := r.store.Activate(ctx, name); err != nil {
 		return err
 	}
 	return r.LoadSkills(ctx)
@@ -125,7 +124,12 @@ func (r *Registry) GetSkillTool(name string) (*agent.Tool, bool) {
 	return nil, false
 }
 
-func (r *Registry) skillToTool(sk knowledge.SkillEntry) *agent.Tool {
+// ListActiveSkills returns all active skill entries from the store.
+func (r *Registry) ListActiveSkills(ctx context.Context) ([]SkillEntry, error) {
+	return r.store.ListActive(ctx)
+}
+
+func (r *Registry) skillToTool(sk SkillEntry) *agent.Tool {
 	skillEntry := sk
 
 	params := map[string]interface{}{
@@ -141,16 +145,7 @@ func (r *Registry) skillToTool(sk knowledge.SkillEntry) *agent.Tool {
 		Description: skillEntry.Description,
 		Parameters:  params,
 		Handler: func(ctx context.Context, p map[string]interface{}) (interface{}, error) {
-			result, err := r.executor.Execute(ctx, skillEntry, p)
-			if err != nil {
-				return nil, err
-			}
-
-			if usageErr := r.store.IncrementSkillUsage(ctx, skillEntry.Name, true); usageErr != nil {
-				r.logger.Warnf("increment skill usage for %q: %v", skillEntry.Name, usageErr)
-			}
-
-			return result, nil
+			return r.executor.Execute(ctx, skillEntry, p)
 		},
 	}
 }

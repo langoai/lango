@@ -177,18 +177,6 @@ func (f SessionFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value, err
 	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.SessionMutation", m)
 }
 
-// The SkillFunc type is an adapter to allow the use of ordinary
-// function as Skill mutator.
-type SkillFunc func(context.Context, *ent.SkillMutation) (ent.Value, error)
-
-// Mutate calls f(ctx, m).
-func (f SkillFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value, error) {
-	if mv, ok := m.(*ent.SkillMutation); ok {
-		return f(ctx, mv)
-	}
-	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.SkillMutation", m)
-}
-
 // The WorkflowRunFunc type is an adapter to allow the use of ordinary
 // function as WorkflowRun mutator.
 type WorkflowRunFunc func(context.Context, *ent.WorkflowRunMutation) (ent.Value, error)

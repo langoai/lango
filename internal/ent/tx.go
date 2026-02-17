@@ -40,8 +40,6 @@ type Tx struct {
 	Secret *SecretClient
 	// Session is the client for interacting with the Session builders.
 	Session *SessionClient
-	// Skill is the client for interacting with the Skill builders.
-	Skill *SkillClient
 	// WorkflowRun is the client for interacting with the WorkflowRun builders.
 	WorkflowRun *WorkflowRunClient
 	// WorkflowStepRun is the client for interacting with the WorkflowStepRun builders.
@@ -191,7 +189,6 @@ func (tx *Tx) init() {
 	tx.Reflection = NewReflectionClient(tx.config)
 	tx.Secret = NewSecretClient(tx.config)
 	tx.Session = NewSessionClient(tx.config)
-	tx.Skill = NewSkillClient(tx.config)
 	tx.WorkflowRun = NewWorkflowRunClient(tx.config)
 	tx.WorkflowStepRun = NewWorkflowStepRunClient(tx.config)
 }

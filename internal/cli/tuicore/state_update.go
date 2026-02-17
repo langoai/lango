@@ -146,14 +146,7 @@ func (s *ConfigState) UpdateConfigFromForm(form *FormModel) {
 			if i, err := strconv.Atoi(val); err == nil {
 				s.Current.Knowledge.MaxContextPerLayer = i
 			}
-		case "knowledge_auto_approve":
-			s.Current.Knowledge.AutoApproveSkills = f.Checked
-		case "knowledge_max_skills_day":
-			if i, err := strconv.Atoi(val); err == nil {
-				s.Current.Knowledge.MaxSkillsPerDay = i
-			}
-
-		// Observational Memory
+			// Observational Memory
 		case "om_enabled":
 			s.Current.ObservationalMemory.Enabled = f.Checked
 		case "om_provider":

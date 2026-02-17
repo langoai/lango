@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"sync"
-	"time"
 
 	"entgo.io/ent/dialect/sql"
 	"github.com/google/uuid"
@@ -16,7 +15,6 @@ import (
 	entknowledge "github.com/langowarny/lango/internal/ent/knowledge"
 	entlearning "github.com/langowarny/lango/internal/ent/learning"
 	"github.com/langowarny/lango/internal/ent/predicate"
-	entskill "github.com/langowarny/lango/internal/ent/skill"
 )
 
 // EmbedCallback is an optional hook called when content is saved, enabling
@@ -41,32 +39,25 @@ type Store struct {
 	mu              sync.Mutex
 	knowledgeCounts map[string]int
 	learningCounts  map[string]int
-	dailySkillCounts map[string]int
 	maxKnowledge    int
 	maxLearnings    int
-	maxSkillsPerDay int
 }
 
 // NewStore creates a new knowledge store.
-func NewStore(client *ent.Client, logger *zap.SugaredLogger, maxKnowledge, maxLearnings, maxSkillsPerDay int) *Store {
+func NewStore(client *ent.Client, logger *zap.SugaredLogger, maxKnowledge, maxLearnings int) *Store {
 	if maxKnowledge <= 0 {
 		maxKnowledge = 20
 	}
 	if maxLearnings <= 0 {
 		maxLearnings = 10
 	}
-	if maxSkillsPerDay <= 0 {
-		maxSkillsPerDay = 5
-	}
 	return &Store{
-		client:           client,
-		logger:           logger,
-		knowledgeCounts:  make(map[string]int),
-		learningCounts:   make(map[string]int),
-		dailySkillCounts: make(map[string]int),
-		maxKnowledge:     maxKnowledge,
-		maxLearnings:     maxLearnings,
-		maxSkillsPerDay:  maxSkillsPerDay,
+		client:          client,
+		logger:          logger,
+		knowledgeCounts: make(map[string]int),
+		learningCounts:  make(map[string]int),
+		maxKnowledge:    maxKnowledge,
+		maxLearnings:    maxLearnings,
 	}
 }
 
@@ -396,124 +387,6 @@ func (s *Store) BoostLearningConfidence(ctx context.Context, id uuid.UUID, succe
 	return nil
 }
 
-// SaveSkill creates a new skill (default draft status).
-func (s *Store) SaveSkill(ctx context.Context, entry SkillEntry) error {
-	if err := s.reserveSkillSlot(); err != nil {
-		return err
-	}
-
-	builder := s.client.Skill.Create().
-		SetName(entry.Name).
-		SetDescription(entry.Description).
-		SetSkillType(entskill.SkillType(entry.Type)).
-		SetDefinition(entry.Definition)
-
-	if entry.Parameters != nil {
-		builder.SetParameters(entry.Parameters)
-	}
-	if entry.CreatedBy != "" {
-		builder.SetCreatedBy(entry.CreatedBy)
-	}
-	builder.SetRequiresApproval(entry.RequiresApproval)
-
-	_, err := builder.Save(ctx)
-	if err != nil {
-		return fmt.Errorf("create skill: %w", err)
-	}
-	return nil
-}
-
-// GetSkill retrieves a skill entry by name.
-func (s *Store) GetSkill(ctx context.Context, name string) (*SkillEntry, error) {
-	sk, err := s.client.Skill.Query().
-		Where(entskill.Name(name)).
-		Only(ctx)
-
-	if ent.IsNotFound(err) {
-		return nil, fmt.Errorf("skill not found: %s", name)
-	}
-	if err != nil {
-		return nil, fmt.Errorf("query skill: %w", err)
-	}
-
-	return &SkillEntry{
-		Name:             sk.Name,
-		Description:      sk.Description,
-		Type:             string(sk.SkillType),
-		Definition:       sk.Definition,
-		Parameters:       sk.Parameters,
-		CreatedBy:        sk.CreatedBy,
-		RequiresApproval: sk.RequiresApproval,
-		UseCount:         sk.UseCount,
-		SuccessCount:     sk.SuccessCount,
-	}, nil
-}
-
-// ListActiveSkills returns all skills with status=active.
-func (s *Store) ListActiveSkills(ctx context.Context) ([]SkillEntry, error) {
-	skills, err := s.client.Skill.Query().
-		Where(entskill.StatusEQ(entskill.StatusActive)).
-		All(ctx)
-
-	if err != nil {
-		return nil, fmt.Errorf("list active skills: %w", err)
-	}
-
-	result := make([]SkillEntry, 0, len(skills))
-	for _, sk := range skills {
-		result = append(result, SkillEntry{
-			Name:             sk.Name,
-			Description:      sk.Description,
-			Type:             string(sk.SkillType),
-			Definition:       sk.Definition,
-			Parameters:       sk.Parameters,
-			CreatedBy:        sk.CreatedBy,
-			RequiresApproval: sk.RequiresApproval,
-			UseCount:         sk.UseCount,
-			SuccessCount:     sk.SuccessCount,
-		})
-	}
-	return result, nil
-}
-
-// ActivateSkill sets a skill's status to active.
-func (s *Store) ActivateSkill(ctx context.Context, name string) error {
-	n, err := s.client.Skill.Update().
-		Where(entskill.Name(name)).
-		SetStatus(entskill.StatusActive).
-		Save(ctx)
-
-	if err != nil {
-		return fmt.Errorf("activate skill: %w", err)
-	}
-	if n == 0 {
-		return fmt.Errorf("skill not found: %s", name)
-	}
-	return nil
-}
-
-// IncrementSkillUsage increments usage stats for a skill.
-func (s *Store) IncrementSkillUsage(ctx context.Context, name string, success bool) error {
-	now := time.Now()
-	updater := s.client.Skill.Update().
-		Where(entskill.Name(name)).
-		AddUseCount(1).
-		SetLastUsedAt(now)
-
-	if success {
-		updater.AddSuccessCount(1)
-	}
-
-	n, err := updater.Save(ctx)
-	if err != nil {
-		return fmt.Errorf("increment skill usage: %w", err)
-	}
-	if n == 0 {
-		return fmt.Errorf("skill not found: %s", name)
-	}
-	return nil
-}
-
 // SaveAuditLog creates a new audit log entry.
 func (s *Store) SaveAuditLog(ctx context.Context, entry AuditEntry) error {
 	builder := s.client.AuditLog.Create().
@@ -638,16 +511,3 @@ func (s *Store) reserveLearningSlot(sessionKey string) error {
 	return nil
 }
 
-func (s *Store) reserveSkillSlot() error {
-	if s.maxSkillsPerDay <= 0 {
-		return nil
-	}
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	today := time.Now().Format("2006-01-02")
-	if s.dailySkillCounts[today] >= s.maxSkillsPerDay {
-		return fmt.Errorf("daily skill creation limit reached (%d/%d)", s.maxSkillsPerDay, s.maxSkillsPerDay)
-	}
-	s.dailySkillCounts[today]++
-	return nil
-}

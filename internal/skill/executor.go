@@ -10,8 +10,6 @@ import (
 	"text/template"
 
 	"go.uber.org/zap"
-
-	"github.com/langowarny/lango/internal/knowledge"
 )
 
 var _dangerousPatterns = []*regexp.Regexp{
@@ -25,17 +23,16 @@ var _dangerousPatterns = []*regexp.Regexp{
 
 // Executor safely executes skills.
 type Executor struct {
-	store  *knowledge.Store
 	logger *zap.SugaredLogger
 }
 
 // NewExecutor creates a new skill executor.
-func NewExecutor(store *knowledge.Store, logger *zap.SugaredLogger) *Executor {
-	return &Executor{store: store, logger: logger}
+func NewExecutor(logger *zap.SugaredLogger) *Executor {
+	return &Executor{logger: logger}
 }
 
 // Execute runs a skill with the given parameters.
-func (e *Executor) Execute(ctx context.Context, skill knowledge.SkillEntry, params map[string]interface{}) (interface{}, error) {
+func (e *Executor) Execute(ctx context.Context, skill SkillEntry, params map[string]interface{}) (interface{}, error) {
 	switch skill.Type {
 	case "composite":
 		return e.executeComposite(ctx, skill)
@@ -58,7 +55,7 @@ func (e *Executor) ValidateScript(script string) error {
 	return nil
 }
 
-func (e *Executor) executeComposite(_ context.Context, skill knowledge.SkillEntry) (interface{}, error) {
+func (e *Executor) executeComposite(_ context.Context, skill SkillEntry) (interface{}, error) {
 	stepsRaw, ok := skill.Definition["steps"]
 	if !ok {
 		return nil, fmt.Errorf("composite skill %q missing 'steps' in definition", skill.Name)
@@ -93,7 +90,7 @@ func (e *Executor) executeComposite(_ context.Context, skill knowledge.SkillEntr
 	}, nil
 }
 
-func (e *Executor) executeScript(ctx context.Context, skill knowledge.SkillEntry) (interface{}, error) {
+func (e *Executor) executeScript(ctx context.Context, skill SkillEntry) (interface{}, error) {
 	scriptRaw, ok := skill.Definition["script"]
 	if !ok {
 		return nil, fmt.Errorf("script skill %q missing 'script' in definition", skill.Name)
@@ -134,7 +131,7 @@ func (e *Executor) executeScript(ctx context.Context, skill knowledge.SkillEntry
 	return stdout.String(), nil
 }
 
-func (e *Executor) executeTemplate(skill knowledge.SkillEntry, params map[string]interface{}) (interface{}, error) {
+func (e *Executor) executeTemplate(skill SkillEntry, params map[string]interface{}) (interface{}, error) {
 	tmplRaw, ok := skill.Definition["template"]
 	if !ok {
 		return nil, fmt.Errorf("template skill %q missing 'template' in definition", skill.Name)

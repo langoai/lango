@@ -106,12 +106,18 @@ func New(boot *bootstrap.Result) (*App, error) {
 		app.GraphBuffer = gc.buffer
 	}
 
-	// 5. Knowledge system (optional, non-blocking)
-	kc := initKnowledge(cfg, store, tools, gc)
+	// 5. Skills (file-based, independent of knowledge)
+	registry := initSkills(cfg, tools)
+	if registry != nil {
+		app.SkillRegistry = registry
+		tools = append(tools, registry.LoadedSkills()...)
+	}
+
+	// 5a. Knowledge system (optional, non-blocking)
+	kc := initKnowledge(cfg, store, gc)
 	if kc != nil {
 		app.KnowledgeStore = kc.store
 		app.LearningEngine = kc.engine
-		app.SkillRegistry = kc.registry
 
 		// Wrap base tools with learning observer (Engine or GraphEngine)
 		wrapped := make([]*agent.Tool, len(tools))
@@ -120,11 +126,8 @@ func New(boot *bootstrap.Result) (*App, error) {
 		}
 		tools = wrapped
 
-		// Add dynamic skills from registry
-		tools = append(tools, kc.registry.LoadedSkills()...)
-
 		// Add meta-tools
-		metaTools := buildMetaTools(kc.store, kc.engine, kc.registry, cfg.Knowledge.AutoApproveSkills)
+		metaTools := buildMetaTools(kc.store, kc.engine, registry)
 		tools = append(tools, metaTools...)
 	}
 
@@ -207,7 +210,7 @@ func New(boot *bootstrap.Result) (*App, error) {
 	}
 
 	// 9. ADK Agent (scanner is passed for output-side secret scanning)
-	adkAgent, err := initAgent(context.Background(), sv, cfg, store, tools, kc, mc, ec, gc, scanner)
+	adkAgent, err := initAgent(context.Background(), sv, cfg, store, tools, kc, mc, ec, gc, scanner, registry)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create agent: %w", err)
 	}
