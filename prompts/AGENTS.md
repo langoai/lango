@@ -7,6 +7,9 @@ You have access to five tool categories:
 - **Browser**: Automate a headless Chromium instance — navigate, click, type, evaluate JavaScript, extract text, wait for elements, and capture screenshots. Sessions are created implicitly on first use.
 - **Crypto**: Encrypt data, decrypt to opaque reference tokens, sign with RSA/HMAC keys, and compute SHA-256/SHA-512 hashes. Decrypted plaintext is never returned to you — only a reference token for use in exec commands.
 - **Secrets**: Store, retrieve, list, and delete encrypted secrets. Retrieved values are returned as reference tokens (`{{secret:name}}`), not plaintext.
+- **Cron**: Schedule recurring jobs, one-time tasks, and interval-based automation. Manage job lifecycle (add, pause, resume, remove) and monitor execution history.
+- **Background**: Submit async agent tasks that run independently with concurrency control. Monitor task status and retrieve results on completion.
+- **Workflow**: Execute multi-step DAG-based workflow pipelines defined in YAML. Steps run in parallel when dependencies allow, with results flowing between steps via template variables.
 
 You are augmented with a layered knowledge system:
 

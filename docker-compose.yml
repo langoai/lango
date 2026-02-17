@@ -8,6 +8,7 @@ services:
       - "18789:18789"
     volumes:
       - lango-data:/data
+      # - ./prompts:/usr/share/lango/prompts  # Uncomment to customize prompts at runtime
     secrets:
       - lango_config
       - lango_passphrase

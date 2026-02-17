@@ -10,7 +10,7 @@ A high-performance AI agent built with Go, supporting multiple AI providers, cha
 - 🛠️ **Rich Tools** - Shell execution, file system operations, browser automation, crypto & secrets tools
 - 🧠 **Self-Learning** - Knowledge store, learning engine, file-based skill system, observational memory
 - 📊 **Knowledge Graph & Graph RAG** - BoltDB triple store with hybrid vector + graph retrieval
-- 🔀 **Multi-Agent Orchestration** - Hierarchical sub-agents (operator, navigator, vault, librarian, planner, chronicler)
+- 🔀 **Multi-Agent Orchestration** - Hierarchical sub-agents (operator, navigator, vault, librarian, automator, planner, chronicler)
 - 🌍 **A2A Protocol** - Agent-to-Agent protocol for remote agent discovery and integration
 - 💸 **Blockchain Payments** - USDC payments on Base L2, X402 auto-pay protocol, spending limits
 - ⏰ **Cron Scheduling** - Persistent cron jobs with cron/interval/one-time schedules, multi-channel delivery
@@ -171,7 +171,7 @@ lango/
 │   ├── learning/           # Learning engine, error pattern analyzer, self-learning graph
 │   ├── logging/            # Zap structured logger
 │   ├── memory/             # Observational memory (observer, reflector, token counter)
-│   ├── orchestration/      # Multi-agent orchestration (operator, navigator, vault, librarian, planner, chronicler)
+│   ├── orchestration/      # Multi-agent orchestration (operator, navigator, vault, librarian, automator, planner, chronicler)
 │   ├── passphrase/         # Passphrase prompt and validation helpers
 │   ├── provider/           # AI provider interface and implementations
 │   │   ├── anthropic/      #   Claude models
@@ -370,7 +370,7 @@ Unknown `.md` files in the directory are added as custom sections with priority 
 
 ### Per-Agent Prompt Customization
 
-In multi-agent mode (`agent.multiAgent: true`), all sub-agents (operator, navigator, vault, librarian, planner, chronicler) automatically inherit shared prompt sections (Safety, Conversation Rules) from the prompts directory.
+In multi-agent mode (`agent.multiAgent: true`), all sub-agents (operator, navigator, vault, librarian, automator, planner, chronicler) automatically inherit shared prompt sections (Safety, Conversation Rules) from the prompts directory.
 
 You can override or extend prompts per agent by creating an `agents/<name>/` subdirectory:
 
@@ -464,6 +464,7 @@ When `agent.multiAgent` is enabled, Lango builds a hierarchical agent tree with 
 | **navigator** | Web browsing: page navigation, interaction, screenshots | browser_* |
 | **vault** | Security: encryption, secret management, blockchain payments | crypto_*, secrets_*, payment_* |
 | **librarian** | Knowledge: search, RAG, graph traversal, skill management | search_*, rag_*, graph_*, save_knowledge, save_learning, create_skill, list_skills |
+| **automator** | Automation: cron scheduling, background tasks, workflow pipelines | cron_*, bg_*, workflow_* |
 | **planner** | Task decomposition and planning | (LLM reasoning only, no tools) |
 | **chronicler** | Conversational memory: observations, reflections, recall | memory_*, observe_*, reflect_* |
 
@@ -653,7 +654,7 @@ lango workflow history
 
 ### Supported Agents
 
-Steps specify which sub-agent to use: `operator`, `navigator`, `vault`, `librarian`, `planner`, or `chronicler`. These map to the multi-agent orchestration system when `agent.multiAgent` is enabled.
+Steps specify which sub-agent to use: `operator`, `navigator`, `vault`, `librarian`, `automator`, `planner`, or `chronicler`. These map to the multi-agent orchestration system when `agent.multiAgent` is enabled.
 
 ## Self-Learning System
 

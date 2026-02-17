@@ -1,11 +1,11 @@
 ## ADDED Requirements
 
 ### Requirement: Hierarchical agent tree with sub-agents
-The system SHALL support a multi-agent mode (`agent.multiAgent: true`) that creates an orchestrator root agent with specialized sub-agents: operator, navigator, vault, librarian, planner, and chronicler. The orchestrator SHALL have NO direct tools (`Tools: nil`) and MUST delegate all tool-requiring tasks to sub-agents.
+The system SHALL support a multi-agent mode (`agent.multiAgent: true`) that creates an orchestrator root agent with specialized sub-agents: operator, navigator, vault, librarian, automator, planner, and chronicler. The orchestrator SHALL have NO direct tools (`Tools: nil`) and MUST delegate all tool-requiring tasks to sub-agents.
 
 #### Scenario: Multi-agent mode enabled
 - **WHEN** `agent.multiAgent` is true
-- **THEN** BuildAgentTree SHALL create an orchestrator that has NO direct tools AND has sub-agents (operator, navigator, vault, librarian, planner, chronicler)
+- **THEN** BuildAgentTree SHALL create an orchestrator that has NO direct tools AND has sub-agents (operator, navigator, vault, librarian, automator, planner, chronicler)
 
 #### Scenario: Orchestrator has no direct tools
 - **WHEN** the orchestrator is created
@@ -149,8 +149,8 @@ The EventsAdapter SHALL use the stored `msg.Author` when available, falling back
 The `BuildAgentTree` function SHALL create sub-agents data-driven from the agentSpecs registry. Agents with no tools SHALL be skipped unless AlwaysInclude is set. The planner sub-agent SHALL always be created as it is LLM-only.
 
 #### Scenario: All tool categories have tools
-- **WHEN** tools exist for operator, navigator, vault, librarian, and chronicler roles
-- **THEN** all six sub-agents (operator, navigator, vault, librarian, planner, chronicler) SHALL be created
+- **WHEN** tools exist for operator, navigator, vault, librarian, automator, and chronicler roles
+- **THEN** all seven sub-agents (operator, navigator, vault, librarian, automator, planner, chronicler) SHALL be created
 
 #### Scenario: Partial tools — only operator and librarian
 - **WHEN** only operator and librarian tools are provided

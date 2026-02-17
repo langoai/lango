@@ -42,6 +42,11 @@ The system SHALL provide a docker-compose.yml for simplified deployment. The REA
 - **THEN** the lango service SHALL start on port 18789
 - **AND** volumes SHALL persist data to lango-data volume
 
+#### Scenario: Optional prompts volume mount
+- **WHEN** docker-compose.yml is inspected
+- **THEN** it SHALL contain a commented-out volume mount for `./prompts:/usr/share/lango/prompts` to allow runtime prompt customization
+- **AND** the default behavior (using embedded prompts) SHALL be unchanged when the comment is not removed
+
 #### Scenario: Configuration via import
 - **WHEN** docker-compose starts the lango service
 - **THEN** the recommended configuration method is `lango config import` with auto-deletion of the source file

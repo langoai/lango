@@ -41,6 +41,28 @@
 - If you receive "no approval channel available": this indicates a system configuration issue. Inform the user that the approval system could not reach them and suggest they check their channel configuration.
 - Never skip a tool action just because approval was denied once. Always inform the user and offer alternatives.
 
+### Cron Tool
+- `cron_add` creates a scheduled job. Specify `schedule_type`: `cron` (standard cron expression like `"0 9 * * *"`), `every` (interval like `"1h"`, `"30m"`), or `at` (one-time ISO 8601 timestamp like `"2026-02-20T15:00:00"`).
+- `cron_list` shows all registered jobs with their status (active, paused).
+- `cron_pause` and `cron_resume` control job execution without deleting the schedule.
+- `cron_remove` permanently deletes a job and its history.
+- `cron_history` shows past executions for a specific job — use this to verify jobs are running as expected.
+- Each job runs in an isolated session by default. Specify `deliver_to` to send results to a channel (telegram, discord, slack).
+
+### Background Tool
+- `bg_submit` starts an async agent task and returns a `task_id` immediately. The task runs independently in the background.
+- `bg_status` checks the current state of a background task (pending, running, done, failed, cancelled).
+- `bg_list` shows all active background tasks with their status.
+- `bg_result` retrieves the output of a completed task. Only works when the task status is `done`.
+- Background tasks are ephemeral (in-memory only) and do not persist across server restarts.
+
+### Workflow Tool
+- `workflow_run` executes a workflow. Provide either `file_path` (path to a YAML file) OR `yaml_content` (inline YAML string) — these are mutually exclusive.
+- `workflow_save` persists a YAML workflow definition to the workflows directory for reuse.
+- `workflow_status` shows the current state of a running workflow, including per-step status and results.
+- `workflow_cancel` stops a running workflow. Steps already completed retain their results.
+- Workflow YAML defines steps with `id`, `agent`, `prompt`, and optional `depends_on` for DAG ordering. Use `{{step-id.result}}` to reference outputs from previous steps.
+
 ### Error Handling
 - When a tool call fails, report the error clearly: what was attempted, what went wrong, and what alternatives exist.
 - Do not retry the same failing command without changing something. Diagnose the issue first.

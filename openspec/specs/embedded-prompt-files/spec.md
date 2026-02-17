@@ -28,11 +28,11 @@ The system SHALL embed all default prompt `.md` files into the binary at build t
 - **AND** the system SHALL NOT panic or return an error
 
 ### Requirement: AGENTS.md covers agent identity
-The `AGENTS.md` file SHALL define the agent's identity including name, role, five tool categories (exec, filesystem, browser, crypto, secrets), 6-layer knowledge system awareness, observational memory awareness, multi-channel awareness, and response principles.
+The `AGENTS.md` file SHALL define the agent's identity including name, role, eight tool categories (exec, filesystem, browser, crypto, secrets, cron, background, workflow), 6-layer knowledge system awareness, observational memory awareness, multi-channel awareness, and response principles.
 
 #### Scenario: Identity prompt contains tool categories
 - **WHEN** the identity section is rendered
-- **THEN** it SHALL mention exec, filesystem, browser, crypto, and secrets tools
+- **THEN** it SHALL mention exec, filesystem, browser, crypto, secrets, cron, background, and workflow tools
 
 #### Scenario: Identity prompt contains knowledge system
 - **WHEN** the identity section is rendered
@@ -61,11 +61,11 @@ The `CONVERSATION_RULES.md` file SHALL define conversation behavior rules that p
 - **THEN** it SHALL mention Telegram (4096) and Discord (2000) character limits
 
 ### Requirement: TOOL_USAGE.md provides per-tool guidelines
-The `TOOL_USAGE.md` file SHALL provide specific usage guidelines for each of the five tool categories with concrete patterns, commands, and best practices.
+The `TOOL_USAGE.md` file SHALL provide specific usage guidelines for each of the eight tool categories with concrete patterns, commands, and best practices.
 
-#### Scenario: Tool usage covers all five tools
+#### Scenario: Tool usage covers all eight tools
 - **WHEN** the tool usage section is rendered
-- **THEN** it SHALL contain subsections for Exec, Filesystem, Browser, Crypto, and Secrets tools
+- **THEN** it SHALL contain subsections for Exec, Filesystem, Browser, Crypto, Secrets, Cron, Background, and Workflow tools
 
 #### Scenario: Tool usage includes error handling guidance
 - **WHEN** the tool usage section is rendered
