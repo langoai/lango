@@ -1,7 +1,7 @@
 ## ADDED Requirements
 
 ### Requirement: Browser automation via go-rod
-The system SHALL provide browser automation tools powered by go-rod for web page interaction, with support for both local and remote browser instances.
+The system SHALL provide browser automation tools powered by go-rod for web page interaction, with local browser launch support.
 
 #### Scenario: Browser navigation
 - **WHEN** `browser_navigate` is called with a URL
@@ -12,19 +12,15 @@ The system SHALL provide browser automation tools powered by go-rod for web page
 - **THEN** the system SHALL auto-create a browser session and reuse it for subsequent calls
 - **AND** the LLM SHALL NOT need to manage session IDs
 
-#### Scenario: Remote browser configuration
-- **WHEN** `RemoteBrowserURL` is set in browser tool config
-- **THEN** the browser tool SHALL store the URL in its `Config.RemoteBrowserURL` field
-- **AND** the value SHALL be wired from `BrowserToolConfig.RemoteBrowserURL` in app initialization
-
 #### Scenario: Thread-safe browser initialization
 - **WHEN** multiple browser tool calls are made concurrently
-- **THEN** only one initialization attempt SHALL execute at a time
+- **THEN** the system SHALL use a `sync.Mutex` + `bool` guard pattern for initialization
+- **AND** only one initialization attempt SHALL execute at a time
 - **AND** subsequent concurrent calls SHALL wait for and share the result
 
-#### Scenario: Retry on connection failure
-- **WHEN** browser initialization fails (e.g., remote Chrome not ready)
-- **THEN** the failed state SHALL NOT be cached permanently
+#### Scenario: Retry on initialization failure
+- **WHEN** browser initialization fails (e.g., Chromium not found)
+- **THEN** the `initDone` flag SHALL remain false
 - **AND** the next browser tool call SHALL retry initialization
 
 #### Scenario: No partial initialization
@@ -34,7 +30,7 @@ The system SHALL provide browser automation tools powered by go-rod for web page
 
 #### Scenario: Re-initialization after close
 - **WHEN** `Close()` is called and browser resources are cleaned up
-- **THEN** the initialization guard SHALL be reset
+- **THEN** the `initDone` flag SHALL be reset to false under `initMu`
 - **AND** the next browser tool call SHALL re-initialize from scratch
 
 ### Requirement: Page interaction via browser_action

@@ -1,7 +1,5 @@
-## Purpose
+## MODIFIED Requirements
 
-Define the Docker container configuration, compose orchestration, and secure secrets-based deployment model for Lango.
-## Requirements
 ### Requirement: Docker Container Configuration
 The system SHALL provide a Dockerfile optimized for production deployment.
 
@@ -63,58 +61,6 @@ The system SHALL provide a docker-compose.yml with a single lango service.
 - **THEN** the recommended configuration method is `lango config import` with auto-deletion of the source file
 - **AND** `LANGO_PASSPHRASE` environment variable SHALL be used for non-interactive passphrase entry
 
-### Requirement: Data Persistence
-The system SHALL persist data across container restarts.
-
-#### Scenario: SQLite database persistence
-- **WHEN** the container restarts
-- **THEN** the SQLite database at /data SHALL be preserved
-- **AND** session history SHALL not be lost
-
-#### Scenario: Volume mount
-- **WHEN** docker-compose is used
-- **THEN** a named volume (lango-data) SHALL be mounted at /data
-
-### Requirement: Secure Entrypoint Config Bootstrap
-The system SHALL provide a `docker-entrypoint.sh` script that securely bootstraps configuration before starting lango.
-
-#### Scenario: Passphrase keyfile setup
-- **WHEN** the entrypoint script runs
-- **AND** a passphrase secret exists at `/run/secrets/lango_passphrase`
-- **THEN** the script SHALL copy the passphrase to `~/.lango/keyfile`
-- **AND** the keyfile SHALL have permissions 0600
-- **AND** the keyfile path SHALL be blocked by the agent's filesystem tool
-
-#### Scenario: First-run config import
-- **WHEN** the entrypoint script runs
-- **AND** a config secret exists at `/run/secrets/lango_config`
-- **AND** no profile with the configured name exists
-- **THEN** the script SHALL copy the config to `/tmp/lango-import.json`
-- **AND** the script SHALL run `lango config import` with the temp file
-- **AND** the temp file SHALL be auto-deleted after import
-
-#### Scenario: Subsequent restart (idempotent)
-- **WHEN** the entrypoint script runs
-- **AND** the profile already exists in the database
-- **THEN** the script SHALL skip the import step
-- **AND** the script SHALL proceed to start lango normally
-
-#### Scenario: Configurable secret paths
-- **WHEN** the user sets `LANGO_CONFIG_FILE` or `LANGO_PASSPHRASE_FILE` environment variables
-- **THEN** the entrypoint SHALL use the specified paths instead of the default Docker secret paths
-
-### Requirement: Headless configuration via import
-The system SHALL document a headless configuration pattern for Docker/CI environments where interactive setup is unavailable.
-
-#### Scenario: Docker import workflow
-- **WHEN** a Docker container needs configuration without interactive TUI
-- **THEN** the user SHALL prepare a JSON config file, COPY it into the container, and run `lango config import config.json --profile production`
-- **AND** the source JSON file is automatically deleted after import for security
-
-#### Scenario: Non-interactive passphrase
-- **WHEN** running in a headless environment without a terminal
-- **THEN** the user SHALL set the `LANGO_PASSPHRASE` environment variable for non-interactive passphrase entry
-
 ### Requirement: Makefile Docker targets
 The Makefile SHALL provide targets for managing Docker containers.
 
@@ -142,3 +88,25 @@ The Makefile SHALL provide targets for building Docker images.
 - **THEN** the system SHALL tag and push both version and latest tags to the specified registry
 - **WHEN** running `make docker-push` without REGISTRY set
 - **THEN** the system SHALL fail with an error message
+
+## REMOVED Requirements
+
+### Requirement: Slim deployment (default profile)
+**Reason**: Single image always includes Chromium. No need for slim variant without browser.
+**Migration**: Use `docker compose up -d` without any profile flags.
+
+### Requirement: Built-in browser deployment (browser profile)
+**Reason**: Merged into default single image. Chromium is always included.
+**Migration**: Use `docker compose up -d` without any profile flags.
+
+### Requirement: Sidecar browser deployment (browser-sidecar profile)
+**Reason**: Remote browser support removed. Single image includes Chromium directly.
+**Migration**: Use `docker compose up -d`. Remove Chrome sidecar containers.
+
+### Requirement: Makefile browser build variant
+**Reason**: No `WITH_BROWSER` build arg. Single image always includes Chromium.
+**Migration**: Use `make docker-build` for the unified image.
+
+### Requirement: Makefile browser/sidecar compose targets
+**Reason**: No compose profiles. Single `docker compose up -d` command.
+**Migration**: Use `make docker-up` and `make docker-down`.

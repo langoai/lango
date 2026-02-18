@@ -108,10 +108,6 @@ deps:
 docker-build:
 	docker build -t $(BINARY_NAME):$(VERSION) -t $(BINARY_NAME):latest .
 
-## docker-build-browser: Build Docker image with Chromium
-docker-build-browser:
-	docker build --build-arg WITH_BROWSER=true -t $(BINARY_NAME):browser .
-
 ## docker-push: Push image to registry (requires REGISTRY variable)
 docker-push:
 	@test -n "$(REGISTRY)" || (echo "Error: REGISTRY is not set. Usage: make docker-push REGISTRY=your.registry.io"; exit 1)
@@ -122,21 +118,13 @@ docker-push:
 
 # ─── Docker Compose ──────────────────────────────────────────────────────────
 
-## docker-up: Start default profile containers
+## docker-up: Start containers
 docker-up:
-	docker compose --profile default up -d
+	docker compose up -d
 
-## docker-up-browser: Start browser profile containers
-docker-up-browser:
-	docker compose --profile browser up -d
-
-## docker-up-sidecar: Start browser-sidecar profile containers
-docker-up-sidecar:
-	docker compose --profile browser-sidecar up -d
-
-## docker-down: Stop all containers
+## docker-down: Stop containers
 docker-down:
-	docker compose --profile default --profile browser --profile browser-sidecar down
+	docker compose down
 
 ## docker-logs: Tail container logs
 docker-logs:
@@ -162,6 +150,6 @@ help:
         test test-short bench coverage \
         fmt fmt-check vet lint generate ci \
         deps \
-        docker-build docker-build-browser docker-push \
-        docker-up docker-up-browser docker-up-sidecar docker-down docker-logs \
+        docker-build docker-push \
+        docker-up docker-down docker-logs \
         health clean help

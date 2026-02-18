@@ -5,7 +5,6 @@ import (
 	"encoding/base64"
 	"errors"
 	"fmt"
-	"os"
 	"sync"
 	"time"
 
@@ -44,20 +43,19 @@ func safeRodCallValue[T any](fn func() (T, error)) (ret T, retErr error) {
 
 // Config holds browser tool configuration
 type Config struct {
-	Headless         bool
-	BrowserBin       string
-	RemoteBrowserURL string
-	SessionTimeout   time.Duration
+	Headless       bool
+	BrowserBin     string
+	SessionTimeout time.Duration
 }
 
 // Tool provides browser automation
 type Tool struct {
-	config      Config
-	browser     *rod.Browser
-	browserOnce sync.Once
-	browserErr  error
-	sessions    map[string]*Session
-	mu          sync.RWMutex
+	config   Config
+	browser  *rod.Browser
+	initMu   sync.Mutex
+	initDone bool
+	sessions map[string]*Session
+	mu       sync.RWMutex
 }
 
 // Session represents a browser session with a page
@@ -98,36 +96,22 @@ func New(cfg Config) (*Tool, error) {
 	}, nil
 }
 
-// ensureBrowser lazily initializes the browser with thread-safe sync.Once.
-// On failure, the Once is reset so the next call retries initialization.
+// ensureBrowser lazily initializes the browser with mutex-based guard.
+// On failure, initDone remains false so the next call retries initialization.
 func (t *Tool) ensureBrowser() error {
-	t.browserOnce.Do(func() {
-		t.browserErr = t.initBrowser()
-		if t.browserErr != nil {
-			// Reset Once so next call retries instead of returning stale error
-			t.browserOnce = sync.Once{}
-		}
-	})
-	return t.browserErr
+	t.initMu.Lock()
+	defer t.initMu.Unlock()
+	if t.initDone {
+		return nil
+	}
+	if err := t.initBrowser(); err != nil {
+		return err
+	}
+	t.initDone = true
+	return nil
 }
 
 func (t *Tool) initBrowser() error {
-	// Remote browser via config or env var
-	wsURL := t.config.RemoteBrowserURL
-	if wsURL == "" {
-		wsURL = os.Getenv("ROD_BROWSER_WS")
-	}
-	if wsURL != "" {
-		b := rod.New().ControlURL(wsURL)
-		if err := b.Connect(); err != nil {
-			return fmt.Errorf("connect remote browser: %w", err)
-		}
-		t.browser = b
-		logger.Infow("connected to remote browser", "url", wsURL)
-		return nil
-	}
-
-	// Local browser launch
 	l := launcher.New().Headless(t.config.Headless)
 
 	bin := t.config.BrowserBin
@@ -452,8 +436,9 @@ func (t *Tool) Close() error {
 	}
 
 	// Reset so browser can be re-initialized if needed
-	t.browserOnce = sync.Once{}
-	t.browserErr = nil
+	t.initMu.Lock()
+	t.initDone = false
+	t.initMu.Unlock()
 
 	logger.Info("browser closed")
 	return nil

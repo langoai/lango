@@ -263,9 +263,8 @@ All settings are managed via `lango onboard` (guided wizard), `lango settings` (
 | `tools.exec.workDir` | string | - | Working directory (empty = current) |
 | `tools.filesystem.maxReadSize` | int | - | Maximum file size to read |
 | `tools.filesystem.allowedPaths` | []string | - | Allowed paths (empty = allow all) |
-| `tools.browser.enabled` | bool | `false` | Enable browser automation tools (requires Chromium or remote browser) |
+| `tools.browser.enabled` | bool | `false` | Enable browser automation tools (requires Chromium) |
 | `tools.browser.headless` | bool | `true` | Run browser in headless mode |
-| `tools.browser.remoteBrowserUrl` | string | - | WebSocket URL for remote browser (e.g. `ws://chrome:9222`) |
 | `tools.browser.sessionTimeout` | duration | `5m` | Browser session timeout |
 | **Knowledge** | | | |
 | `knowledge.enabled` | bool | `false` | Enable self-learning knowledge system |
@@ -808,38 +807,19 @@ Auth endpoints (`/auth/login/*`, `/auth/callback/*`, `/auth/logout`) are throttl
 
 ## Docker
 
-### Image Variants
+### Docker Image
 
-The Docker image supports a `WITH_BROWSER` build arg to control Chromium bundling:
-
-| Image | Build Command | Size |
-|-------|--------------|------|
-| Slim (default) | `docker build -t lango:latest .` | ~200MB |
-| With browser | `docker build --build-arg WITH_BROWSER=true -t lango:browser .` | ~550MB |
-
-### Docker Compose Profiles
+The Docker image includes Chromium for browser automation:
 
 ```bash
-# Slim (default) — no browser
-docker compose up -d
-
-# Built-in browser — Chromium included in image
-docker compose --profile browser up -d
-
-# Sidecar pattern — slim image + separate Chrome container
-docker compose --profile browser-sidecar up -d
+docker build -t lango:latest .
 ```
 
-The sidecar pattern keeps the lango image slim (~200MB) while providing browser functionality via a separate `chromedp/headless-shell` container connected over WebSocket.
+### Docker Compose
 
-### Remote Browser Support
-
-Instead of bundling Chromium, you can connect to a remote browser via WebSocket:
-
-- **Config**: Set `tools.browser.remoteBrowserUrl` to a WebSocket URL (e.g. `ws://chrome:9222`)
-- **Env var**: Set `ROD_BROWSER_WS` environment variable (used as fallback when config is not set)
-
-This is automatically configured when using the `browser-sidecar` docker-compose profile.
+```bash
+docker compose up -d
+```
 
 ### Headless Configuration
 

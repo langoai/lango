@@ -1,5 +1,3 @@
-ARG WITH_BROWSER=false
-
 FROM golang:1.25-bookworm AS builder
 
 WORKDIR /app
@@ -20,12 +18,10 @@ RUN CGO_ENABLED=1 go build -ldflags="-s -w" -o lango ./cmd/lango
 
 # Runtime image
 FROM debian:bookworm-slim
-ARG WITH_BROWSER=false
 
-RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates \
-    && if [ "$WITH_BROWSER" = "true" ]; then \
-         apt-get install -y --no-install-recommends chromium; \
-       fi \
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        ca-certificates \
+        chromium \
     && rm -rf /var/lib/apt/lists/*
 
 RUN groupadd -r lango && useradd -r -g lango -m -d /home/lango lango \

@@ -67,10 +67,9 @@ func New(boot *bootstrap.Result) (*App, error) {
 	var browserSM *browser.SessionManager
 	if cfg.Tools.Browser.Enabled {
 		bt, err := browser.New(browser.Config{
-			Headless:         cfg.Tools.Browser.Headless,
-			BrowserBin:       cfg.Tools.Browser.BrowserBin,
-			RemoteBrowserURL: cfg.Tools.Browser.RemoteBrowserURL,
-			SessionTimeout:   cfg.Tools.Browser.SessionTimeout,
+			Headless:       cfg.Tools.Browser.Headless,
+			BrowserBin:     cfg.Tools.Browser.BrowserBin,
+			SessionTimeout: cfg.Tools.Browser.SessionTimeout,
 		})
 		if err != nil {
 			return nil, fmt.Errorf("create browser tool: %w", err)
