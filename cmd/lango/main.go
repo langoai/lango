@@ -140,7 +140,7 @@ func serveCmd() *cobra.Command {
 				shutdownCtx, shutdownCancel := context.WithTimeout(ctx, 10*time.Second)
 				defer shutdownCancel()
 				if err := application.Stop(shutdownCtx); err != nil {
-					log.Errorw("shutdown error", "error", err)
+					log.Warnw("shutdown error", "error", err)
 				}
 				cancel()
 			}()

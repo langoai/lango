@@ -385,7 +385,7 @@ func (a *App) Stop(ctx context.Context) error {
 
 	// Signal gateway and channels to stop
 	if err := a.Gateway.Shutdown(ctx); err != nil {
-		logger().Errorw("gateway shutdown error", "error", err)
+		logger().Warnw("gateway shutdown error", "error", err)
 	}
 
 	for _, ch := range a.Channels {
@@ -438,19 +438,19 @@ func (a *App) Stop(ctx context.Context) error {
 
 	if a.Browser != nil {
 		if err := a.Browser.Close(); err != nil {
-			logger().Errorw("browser close error", "error", err)
+			logger().Warnw("browser close error", "error", err)
 		}
 	}
 
 	if a.Store != nil {
 		if err := a.Store.Close(); err != nil {
-			logger().Errorw("session store close error", "error", err)
+			logger().Warnw("session store close error", "error", err)
 		}
 	}
 
 	if a.GraphStore != nil {
 		if err := a.GraphStore.Close(); err != nil {
-			logger().Errorw("graph store close error", "error", err)
+			logger().Warnw("graph store close error", "error", err)
 		}
 	}
 

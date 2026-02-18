@@ -56,8 +56,17 @@ The `server.go` file SHALL contain the Server struct definition, Config struct w
 #### Scenario: Server Lifecycle
 - **WHEN** `Start()` is called
 - **THEN** it SHALL listen on the configured host:port
+- **WHEN** `Start()` returns after `Shutdown()` has been called
+- **THEN** it SHALL return `nil` (not `http.ErrServerClosed`), treating graceful shutdown as a normal exit
+- **WHEN** `Start()` returns with any other error
+- **THEN** it SHALL return that error to the caller
 - **WHEN** `Shutdown()` is called
 - **THEN** it SHALL close all WebSocket clients and stop the HTTP server
+
+#### Scenario: Graceful shutdown does not produce error
+- **WHEN** `Shutdown()` is called on a running server
+- **THEN** `Start()` SHALL return `nil`
+- **THEN** the caller SHALL NOT log an error for the normal shutdown path
 
 ### Requirement: websocket.go (Connection Management)
 The `websocket.go` file SHALL contain the Client struct, WebSocket upgrade handlers, read/write pump goroutines, send helpers, client close logic, broadcast methods, and client removal. The `handleWebSocketConnection` function SHALL extract the authenticated session key from the request context via `SessionFromContext` and bind it to `Client.SessionKey`.
