@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/base64"
 	"fmt"
+	"os"
 	"sync"
 	"time"
 
@@ -17,9 +18,10 @@ var logger = logging.SubsystemSugar("tool.browser")
 
 // Config holds browser tool configuration
 type Config struct {
-	Headless       bool
-	BrowserBin     string
-	SessionTimeout time.Duration
+	Headless         bool
+	BrowserBin       string
+	RemoteBrowserURL string
+	SessionTimeout   time.Duration
 }
 
 // Tool provides browser automation
@@ -74,6 +76,21 @@ func (t *Tool) ensureBrowser() error {
 		return nil
 	}
 
+	// Remote browser via config or env var
+	wsURL := t.config.RemoteBrowserURL
+	if wsURL == "" {
+		wsURL = os.Getenv("ROD_BROWSER_WS")
+	}
+	if wsURL != "" {
+		t.browser = rod.New().ControlURL(wsURL)
+		if err := t.browser.Connect(); err != nil {
+			return fmt.Errorf("connect remote browser: %w", err)
+		}
+		logger.Infow("connected to remote browser", "url", wsURL)
+		return nil
+	}
+
+	// Local browser launch
 	l := launcher.New().Headless(t.config.Headless)
 
 	bin := t.config.BrowserBin

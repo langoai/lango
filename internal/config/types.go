@@ -477,6 +477,9 @@ type BrowserToolConfig struct {
 	// Path to browser binary (empty = auto-detect via launcher.LookPath)
 	BrowserBin string `mapstructure:"browserBin" json:"browserBin"`
 
+	// WebSocket URL for remote browser (e.g. ws://chrome:9222)
+	RemoteBrowserURL string `mapstructure:"remoteBrowserUrl" json:"remoteBrowserUrl"`
+
 	// Session timeout
 	SessionTimeout time.Duration `mapstructure:"sessionTimeout" json:"sessionTimeout"`
 }

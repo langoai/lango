@@ -68,6 +68,7 @@ For the full configuration editor with all options, use `lango settings`.
 ```
 lango serve                      Start the gateway server
 lango version                    Print version and build info
+lango health [--port N]          Check gateway health (default port: 18789)
 lango onboard                    Guided 5-step setup wizard for first-time configuration
 lango settings                   Full interactive configuration editor (all options)
 lango doctor [--fix] [--json]    Diagnostics and health checks
@@ -262,8 +263,9 @@ All settings are managed via `lango onboard` (guided wizard), `lango settings` (
 | `tools.exec.workDir` | string | - | Working directory (empty = current) |
 | `tools.filesystem.maxReadSize` | int | - | Maximum file size to read |
 | `tools.filesystem.allowedPaths` | []string | - | Allowed paths (empty = allow all) |
-| `tools.browser.enabled` | bool | `false` | Enable browser automation tools (requires Chromium) |
+| `tools.browser.enabled` | bool | `false` | Enable browser automation tools (requires Chromium or remote browser) |
 | `tools.browser.headless` | bool | `true` | Run browser in headless mode |
+| `tools.browser.remoteBrowserUrl` | string | - | WebSocket URL for remote browser (e.g. `ws://chrome:9222`) |
 | `tools.browser.sessionTimeout` | duration | `5m` | Browser session timeout |
 | **Knowledge** | | | |
 | `knowledge.enabled` | bool | `false` | Enable self-learning knowledge system |
@@ -787,13 +789,38 @@ Auth endpoints (`/auth/login/*`, `/auth/callback/*`, `/auth/logout`) are throttl
 
 ## Docker
 
-```bash
-# Build Docker image
-make docker-build
+### Image Variants
 
-# Run with docker-compose
-docker-compose up -d
+The Docker image supports a `WITH_BROWSER` build arg to control Chromium bundling:
+
+| Image | Build Command | Size |
+|-------|--------------|------|
+| Slim (default) | `docker build -t lango:latest .` | ~200MB |
+| With browser | `docker build --build-arg WITH_BROWSER=true -t lango:browser .` | ~550MB |
+
+### Docker Compose Profiles
+
+```bash
+# Slim (default) — no browser
+docker compose up -d
+
+# Built-in browser — Chromium included in image
+docker compose --profile browser up -d
+
+# Sidecar pattern — slim image + separate Chrome container
+docker compose --profile browser-sidecar up -d
 ```
+
+The sidecar pattern keeps the lango image slim (~200MB) while providing browser functionality via a separate `chromedp/headless-shell` container connected over WebSocket.
+
+### Remote Browser Support
+
+Instead of bundling Chromium, you can connect to a remote browser via WebSocket:
+
+- **Config**: Set `tools.browser.remoteBrowserUrl` to a WebSocket URL (e.g. `ws://chrome:9222`)
+- **Env var**: Set `ROD_BROWSER_WS` environment variable (used as fallback when config is not set)
+
+This is automatically configured when using the `browser-sidecar` docker-compose profile.
 
 ### Headless Configuration
 
@@ -803,7 +830,7 @@ The Docker image includes an entrypoint script that auto-imports configuration o
 2. Create `passphrase.txt` containing your encryption passphrase.
 3. Run with docker-compose:
    ```bash
-   docker-compose up -d
+   docker compose up -d
    ```
 
 The entrypoint script (`docker-entrypoint.sh`):

@@ -30,6 +30,7 @@ require (
 	go.uber.org/zap v1.27.0
 	golang.org/x/crypto v0.45.0
 	golang.org/x/oauth2 v0.35.0
+	golang.org/x/sync v0.18.0
 	golang.org/x/term v0.39.0
 	google.golang.org/adk v0.4.0
 	google.golang.org/genai v1.40.0
@@ -130,7 +131,6 @@ require (
 	golang.org/x/exp v0.0.0-20251023183803-a4bb9ffd2546 // indirect
 	golang.org/x/mod v0.29.0 // indirect
 	golang.org/x/net v0.47.0 // indirect
-	golang.org/x/sync v0.18.0 // indirect
 	golang.org/x/sys v0.40.0 // indirect
 	golang.org/x/text v0.31.0 // indirect
 	google.golang.org/genproto/googleapis/api v0.0.0-20251014184007-4626949a642f // indirect

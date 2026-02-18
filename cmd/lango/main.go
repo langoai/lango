@@ -4,8 +4,10 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"net/http"
 	"os"
 	"os/signal"
+	"strconv"
 	"syscall"
 	"text/tabwriter"
 	"time"
@@ -43,6 +45,7 @@ func main() {
 
 	rootCmd.AddCommand(serveCmd())
 	rootCmd.AddCommand(versionCmd())
+	rootCmd.AddCommand(healthCmd())
 	rootCmd.AddCommand(configCmd())
 	rootCmd.AddCommand(doctor.NewCommand())
 	rootCmd.AddCommand(onboard.NewCommand())
@@ -166,6 +169,35 @@ func versionCmd() *cobra.Command {
 			fmt.Printf("lango %s (built %s)\n", Version, BuildTime)
 		},
 	}
+}
+
+func healthCmd() *cobra.Command {
+	var port int
+
+	cmd := &cobra.Command{
+		Use:   "health",
+		Short: "Check gateway health (replaces curl in Docker HEALTHCHECK)",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			url := "http://localhost:" + strconv.Itoa(port) + "/health"
+			client := &http.Client{Timeout: 5 * time.Second}
+
+			resp, err := client.Get(url)
+			if err != nil {
+				return fmt.Errorf("health check: %w", err)
+			}
+			defer resp.Body.Close()
+
+			if resp.StatusCode != http.StatusOK {
+				return fmt.Errorf("unhealthy: status %d", resp.StatusCode)
+			}
+
+			fmt.Println("ok")
+			return nil
+		},
+	}
+
+	cmd.Flags().IntVar(&port, "port", 18789, "gateway port to check")
+	return cmd
 }
 
 func configCmd() *cobra.Command {

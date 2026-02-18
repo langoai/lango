@@ -8,12 +8,65 @@ services:
       - "18789:18789"
     volumes:
       - lango-data:/data
-      # - ./prompts:/usr/share/lango/prompts  # Uncomment to customize prompts at runtime
     secrets:
       - lango_config
       - lango_passphrase
     environment:
       - LANGO_PROFILE=default
+    profiles:
+      - default
+      - browser
+
+  lango-browser:
+    build:
+      context: .
+      args:
+        WITH_BROWSER: "true"
+    image: lango:browser
+    container_name: lango-browser
+    restart: unless-stopped
+    ports:
+      - "18789:18789"
+    volumes:
+      - lango-data:/data
+    secrets:
+      - lango_config
+      - lango_passphrase
+    environment:
+      - LANGO_PROFILE=default
+    profiles:
+      - browser
+
+  lango-sidecar:
+    build: .
+    image: lango:latest
+    container_name: lango-sidecar
+    restart: unless-stopped
+    ports:
+      - "18789:18789"
+    volumes:
+      - lango-data:/data
+    secrets:
+      - lango_config
+      - lango_passphrase
+    environment:
+      - LANGO_PROFILE=default
+      - ROD_BROWSER_WS=ws://chrome:9222
+    depends_on:
+      - chrome
+    profiles:
+      - browser-sidecar
+
+  chrome:
+    image: chromedp/headless-shell:latest
+    container_name: lango-chrome
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+    profiles:
+      - browser-sidecar
 
 secrets:
   lango_config:

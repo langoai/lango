@@ -1,0 +1,17 @@
+.git
+.github
+.claude
+.cursor
+.vscode
+.idea
+.DS_Store
+tmp/
+openspec/
+bin/
+*.test
+*.out
+coverage.*
+*.coverprofile
+passphrase.txt
+.env
+docker-compose.yml
