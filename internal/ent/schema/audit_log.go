@@ -30,6 +30,8 @@ func (AuditLog) Fields() []ent.Field {
 				"learning_save",
 				"skill_create",
 				"skill_execute",
+				"skill_import",
+				"skill_import_bulk",
 				"knowledge_search",
 				"approval_request",
 				"approval_response",

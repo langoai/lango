@@ -12,7 +12,7 @@ var (
 	AuditLogsColumns = []*schema.Column{
 		{Name: "id", Type: field.TypeUUID},
 		{Name: "session_key", Type: field.TypeString, Nullable: true},
-		{Name: "action", Type: field.TypeEnum, Enums: []string{"tool_call", "knowledge_save", "learning_save", "skill_create", "skill_execute", "knowledge_search", "approval_request", "approval_response"}},
+		{Name: "action", Type: field.TypeEnum, Enums: []string{"tool_call", "knowledge_save", "learning_save", "skill_create", "skill_execute", "skill_import", "skill_import_bulk", "knowledge_search", "approval_request", "approval_response"}},
 		{Name: "actor", Type: field.TypeString},
 		{Name: "target", Type: field.TypeString, Nullable: true},
 		{Name: "details", Type: field.TypeJSON, Nullable: true},
