@@ -8,7 +8,7 @@ A high-performance AI agent built with Go, supporting multiple AI providers, cha
 - 🤖 **Multi-Provider AI** - OpenAI, Anthropic, Gemini, Ollama with unified interface
 - 🔌 **Multi-Channel** - Telegram, Discord, Slack support
 - 🛠️ **Rich Tools** - Shell execution, file system operations, browser automation, crypto & secrets tools
-- 🧠 **Self-Learning** - Knowledge store, learning engine, file-based skill system, observational memory
+- 🧠 **Self-Learning** - Knowledge store, learning engine, file-based skill system, observational memory, proactive knowledge librarian
 - 📊 **Knowledge Graph & Graph RAG** - BoltDB triple store with hybrid vector + graph retrieval
 - 🔀 **Multi-Agent Orchestration** - Hierarchical sub-agents (operator, navigator, vault, librarian, automator, planner, chronicler)
 - 🌍 **A2A Protocol** - Agent-to-Agent protocol for remote agent discovery and integration
@@ -321,15 +321,26 @@ All settings are managed via `lango onboard` (guided wizard), `lango settings` (
 | `cron.maxConcurrentJobs` | int | `5` | Max concurrent job executions |
 | `cron.defaultSessionMode` | string | `isolated` | Default session mode (`isolated` or `main`) |
 | `cron.historyRetention` | duration | `720h` | How long to retain execution history |
+| `cron.defaultDeliverTo` | []string | `[]` | Default delivery channels for job results (e.g. `["telegram:123"]`) |
 | **Background Execution** | | | |
 | `background.enabled` | bool | `false` | Enable background task execution |
 | `background.yieldMs` | int | `30000` | Auto-yield threshold in milliseconds |
 | `background.maxConcurrentTasks` | int | `3` | Max concurrent background tasks |
+| `background.defaultDeliverTo` | []string | `[]` | Default delivery channels for task results |
 | **Workflow Engine** | | | |
 | `workflow.enabled` | bool | `false` | Enable workflow engine |
 | `workflow.maxConcurrentSteps` | int | `4` | Max concurrent workflow steps per run |
 | `workflow.defaultTimeout` | duration | `10m` | Default timeout per workflow step |
 | `workflow.stateDir` | string | `~/.lango/workflows/` | Directory for workflow state files |
+| `workflow.defaultDeliverTo` | []string | `[]` | Default delivery channels for workflow results |
+| **Librarian** | | | |
+| `librarian.enabled` | bool | `false` | Enable proactive knowledge librarian |
+| `librarian.observationThreshold` | int | `2` | Min observations to trigger analysis |
+| `librarian.inquiryCooldownTurns` | int | `3` | Turns between inquiries per session |
+| `librarian.maxPendingInquiries` | int | `2` | Max pending inquiries per session |
+| `librarian.autoSaveConfidence` | string | `"high"` | Confidence for auto-save (high/medium/low) |
+| `librarian.provider` | string | - | LLM provider for analysis (empty = agent default) |
+| `librarian.model` | string | - | Model for analysis (empty = agent default) |
 
 ## System Prompts
 
@@ -463,7 +474,7 @@ When `agent.multiAgent` is enabled, Lango builds a hierarchical agent tree with 
 | **operator** | System operations: shell commands, file I/O, skill execution | exec_*, fs_*, skill_* |
 | **navigator** | Web browsing: page navigation, interaction, screenshots | browser_* |
 | **vault** | Security: encryption, secret management, blockchain payments | crypto_*, secrets_*, payment_* |
-| **librarian** | Knowledge: search, RAG, graph traversal, skill management | search_*, rag_*, graph_*, save_knowledge, save_learning, create_skill, list_skills |
+| **librarian** | Knowledge: search, RAG, graph traversal, skill management, proactive knowledge extraction | search_*, rag_*, graph_*, save_knowledge, save_learning, create_skill, list_skills, librarian_pending_inquiries, librarian_dismiss_inquiry |
 | **automator** | Automation: cron scheduling, background tasks, workflow pipelines | cron_*, bg_*, workflow_* |
 | **planner** | Task decomposition and planning | (LLM reasoning only, no tools) |
 | **chronicler** | Conversational memory: observations, reflections, recall | memory_*, observe_*, reflect_* |
