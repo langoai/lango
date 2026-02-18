@@ -190,11 +190,14 @@ func openDatabase(dbPath string) (*ent.Client, *sql.DB, error) {
 		return nil, nil, fmt.Errorf("create db directory: %w", err)
 	}
 
-	connStr := "file:" + dbPath + "?cache=shared"
+	connStr := "file:" + dbPath + "?cache=shared&_journal_mode=WAL&_busy_timeout=5000"
 	db, err := sql.Open("sqlite3", connStr)
 	if err != nil {
 		return nil, nil, fmt.Errorf("sql open: %w", err)
 	}
+
+	db.SetMaxOpenConns(4)
+	db.SetMaxIdleConns(4)
 
 	if _, err := db.Exec("PRAGMA foreign_keys = ON"); err != nil {
 		db.Close()

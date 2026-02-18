@@ -24,10 +24,9 @@ type SQLiteVecStore struct {
 
 // NewSQLiteVecStore creates a new sqlite-vec backed vector store.
 // The db connection should be the same SQLite database used by ent.
-// MaxOpenConns is set to 1 to ensure concurrent queries share the same
-// connection (required for in-memory SQLite databases).
+// Connection pool settings are managed by bootstrap; WAL mode enables
+// safe concurrent access for file-based databases.
 func NewSQLiteVecStore(db *sql.DB, dimensions int) (*SQLiteVecStore, error) {
-	db.SetMaxOpenConns(1)
 	s := &SQLiteVecStore{
 		db:         db,
 		dimensions: dimensions,
