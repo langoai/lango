@@ -13,7 +13,7 @@ import (
 
 // approvalPending holds the response channel and message metadata for a pending approval.
 type approvalPending struct {
-	ch        chan bool
+	ch        chan approval.ApprovalResponse
 	channelID string
 	messageID string
 }
@@ -38,14 +38,14 @@ func NewApprovalProvider(sess Session, timeout time.Duration) *ApprovalProvider 
 	}
 }
 
-// RequestApproval sends a message with approve/deny buttons and waits for interaction.
-func (p *ApprovalProvider) RequestApproval(ctx context.Context, req approval.ApprovalRequest) (bool, error) {
+// RequestApproval sends a message with approve/deny/always-allow buttons and waits for interaction.
+func (p *ApprovalProvider) RequestApproval(ctx context.Context, req approval.ApprovalRequest) (approval.ApprovalResponse, error) {
 	channelID, err := parseDiscordChannelID(req.SessionKey)
 	if err != nil {
-		return false, fmt.Errorf("parse session key: %w", err)
+		return approval.ApprovalResponse{}, fmt.Errorf("parse session key: %w", err)
 	}
 
-	respChan := make(chan bool, 1)
+	respChan := make(chan approval.ApprovalResponse, 1)
 
 	content := fmt.Sprintf("🔐 Tool **%s** requires approval", req.ToolName)
 	if req.Summary != "" {
@@ -74,10 +74,22 @@ func (p *ApprovalProvider) RequestApproval(ctx context.Context, req approval.App
 					},
 				},
 			},
+			discordgo.ActionsRow{
+				Components: []discordgo.MessageComponent{
+					discordgo.Button{
+						Label:    "Always Allow",
+						Style:    discordgo.SecondaryButton,
+						CustomID: "always:" + req.ID,
+						Emoji: &discordgo.ComponentEmoji{
+							Name: "🔓",
+						},
+					},
+				},
+			},
 		},
 	})
 	if err != nil {
-		return false, fmt.Errorf("send approval message: %w", err)
+		return approval.ApprovalResponse{}, fmt.Errorf("send approval message: %w", err)
 	}
 
 	p.pending.Store(req.ID, &approvalPending{
@@ -88,14 +100,14 @@ func (p *ApprovalProvider) RequestApproval(ctx context.Context, req approval.App
 	defer p.pending.Delete(req.ID)
 
 	select {
-	case approved := <-respChan:
-		return approved, nil
+	case resp := <-respChan:
+		return resp, nil
 	case <-ctx.Done():
 		p.editExpiredMessage(channelID, sentMsg.ID)
-		return false, ctx.Err()
+		return approval.ApprovalResponse{}, ctx.Err()
 	case <-time.After(p.timeout):
 		p.editExpiredMessage(channelID, sentMsg.ID)
-		return false, fmt.Errorf("approval timeout")
+		return approval.ApprovalResponse{}, fmt.Errorf("approval timeout")
 	}
 }
 
@@ -109,22 +121,30 @@ func (p *ApprovalProvider) HandleInteraction(i *discordgo.InteractionCreate) {
 	customID := data.CustomID
 
 	var requestID string
-	var approved bool
+	var resp approval.ApprovalResponse
 
 	if strings.HasPrefix(customID, "approve:") {
 		requestID = strings.TrimPrefix(customID, "approve:")
-		approved = true
+		resp = approval.ApprovalResponse{Approved: true}
 	} else if strings.HasPrefix(customID, "deny:") {
 		requestID = strings.TrimPrefix(customID, "deny:")
-		approved = false
+		resp = approval.ApprovalResponse{}
+	} else if strings.HasPrefix(customID, "always:") {
+		requestID = strings.TrimPrefix(customID, "always:")
+		resp = approval.ApprovalResponse{Approved: true, AlwaysAllow: true}
 	} else {
 		return
 	}
 
 	// Respond to the interaction
-	status := "❌ Denied"
-	if approved {
+	var status string
+	switch {
+	case resp.AlwaysAllow:
+		status = "🔓 Always Allowed"
+	case resp.Approved:
 		status = "✅ Approved"
+	default:
+		status = "❌ Denied"
 	}
 
 	err := p.session.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
@@ -146,7 +166,7 @@ func (p *ApprovalProvider) HandleInteraction(i *discordgo.InteractionCreate) {
 			return
 		}
 		select {
-		case pending.ch <- approved:
+		case pending.ch <- resp:
 		default:
 		}
 	}

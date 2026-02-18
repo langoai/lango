@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/gorilla/websocket"
+	"github.com/langowarny/lango/internal/approval"
 )
 
 func TestGatewayServer(t *testing.T) {
@@ -178,7 +179,7 @@ func TestApprovalResponse_AtomicDelete(t *testing.T) {
 	server := New(cfg, nil, nil, nil, nil)
 
 	// Create a pending approval
-	respChan := make(chan bool, 1)
+	respChan := make(chan approval.ApprovalResponse, 1)
 	server.pendingApprovalsMu.Lock()
 	server.pendingApprovals["req-1"] = respChan
 	server.pendingApprovalsMu.Unlock()
@@ -195,8 +196,8 @@ func TestApprovalResponse_AtomicDelete(t *testing.T) {
 
 	// Verify the approval was received
 	select {
-	case approved := <-respChan:
-		if !approved {
+	case resp := <-respChan:
+		if !resp.Approved {
 			t.Error("expected approved=true")
 		}
 	default:
@@ -222,7 +223,7 @@ func TestApprovalResponse_DuplicateResponse(t *testing.T) {
 	server := New(cfg, nil, nil, nil, nil)
 
 	// Create a pending approval
-	respChan := make(chan bool, 1)
+	respChan := make(chan approval.ApprovalResponse, 1)
 	server.pendingApprovalsMu.Lock()
 	server.pendingApprovals["req-dup"] = respChan
 	server.pendingApprovalsMu.Unlock()

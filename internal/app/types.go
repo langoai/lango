@@ -44,6 +44,7 @@ type App struct {
 
 	// Approval Provider (composite, routes to channel-specific providers)
 	ApprovalProvider approval.Provider
+	GrantStore       *approval.GrantStore
 
 	// Self-Learning Components
 	KnowledgeStore  *knowledge.Store

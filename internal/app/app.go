@@ -236,13 +236,16 @@ func New(boot *bootstrap.Result) (*App, error) {
 	}
 	app.ApprovalProvider = composite
 
+	grantStore := approval.NewGrantStore()
+	app.GrantStore = grantStore
+
 	policy := cfg.Security.Interceptor.ApprovalPolicy
 	if policy == "" {
 		policy = config.ApprovalPolicyDangerous
 	}
 	if policy != config.ApprovalPolicyNone {
 		for i, t := range tools {
-			tools[i] = wrapWithApproval(t, cfg.Security.Interceptor, composite)
+			tools[i] = wrapWithApproval(t, cfg.Security.Interceptor, composite, grantStore)
 		}
 		logger().Infow("tool approval enabled", "policy", string(policy))
 	}

@@ -6,10 +6,9 @@ import (
 )
 
 // GatewayApprover abstracts the gateway.Server methods needed for approval.
-// gateway.Server already satisfies this interface — no gateway changes needed.
 type GatewayApprover interface {
 	HasCompanions() bool
-	RequestApproval(ctx context.Context, message string) (bool, error)
+	RequestApproval(ctx context.Context, message string) (ApprovalResponse, error)
 }
 
 // GatewayProvider routes approval requests to companion apps via WebSocket.
@@ -25,7 +24,7 @@ func NewGatewayProvider(gw GatewayApprover) *GatewayProvider {
 }
 
 // RequestApproval sends the approval request to connected companions.
-func (g *GatewayProvider) RequestApproval(ctx context.Context, req ApprovalRequest) (bool, error) {
+func (g *GatewayProvider) RequestApproval(ctx context.Context, req ApprovalRequest) (ApprovalResponse, error) {
 	msg := fmt.Sprintf("Tool '%s' requires approval", req.ToolName)
 	if req.Summary != "" {
 		msg += "\n  " + req.Summary

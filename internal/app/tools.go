@@ -1546,7 +1546,8 @@ func truncate(s string, maxLen int) string {
 // wrapWithApproval wraps a tool to require approval based on the configured policy.
 // Uses fail-closed: denies execution unless explicitly approved.
 // The approval.Provider routes requests to the appropriate channel (Gateway, Telegram, Discord, Slack, TTY).
-func wrapWithApproval(t *agent.Tool, ic config.InterceptorConfig, ap approval.Provider) *agent.Tool {
+// The GrantStore tracks "always allow" grants to auto-approve repeat invocations within a session.
+func wrapWithApproval(t *agent.Tool, ic config.InterceptorConfig, ap approval.Provider, gs *approval.GrantStore) *agent.Tool {
 	if !needsApproval(t, ic) {
 		return t
 	}
@@ -1562,6 +1563,12 @@ func wrapWithApproval(t *agent.Tool, ic config.InterceptorConfig, ap approval.Pr
 			if target := approval.ApprovalTargetFromContext(ctx); target != "" {
 				sessionKey = target
 			}
+
+			// Check persistent grant — auto-approve if previously "always allowed"
+			if gs != nil && gs.IsGranted(sessionKey, t.Name) {
+				return original(ctx, params)
+			}
+
 			req := approval.ApprovalRequest{
 				ID:         fmt.Sprintf("req-%d", time.Now().UnixNano()),
 				ToolName:   t.Name,
@@ -1570,17 +1577,23 @@ func wrapWithApproval(t *agent.Tool, ic config.InterceptorConfig, ap approval.Pr
 				Summary:    buildApprovalSummary(t.Name, params),
 				CreatedAt:  time.Now(),
 			}
-			approved, err := ap.RequestApproval(ctx, req)
+			resp, err := ap.RequestApproval(ctx, req)
 			if err != nil {
 				return nil, fmt.Errorf("tool '%s' approval: %w", t.Name, err)
 			}
-			if !approved {
+			if !resp.Approved {
 				sk := session.SessionKeyFromContext(ctx)
 				if sk == "" {
 					return nil, fmt.Errorf("tool '%s' execution denied: no approval channel available (session key missing)", t.Name)
 				}
 				return nil, fmt.Errorf("tool '%s' execution denied: user did not approve the action", t.Name)
 			}
+
+			// Record persistent grant for this session+tool
+			if resp.AlwaysAllow && gs != nil {
+				gs.Grant(sessionKey, t.Name)
+			}
+
 			return original(ctx, params)
 		},
 	}

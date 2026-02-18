@@ -5,12 +5,24 @@ The Channel Approval capability provides a unified interface for routing tool ex
 ## Requirements
 
 ### Requirement: Approval Provider interface
-The system SHALL define a `Provider` interface with `RequestApproval(ctx, req) (bool, error)` and `CanHandle(sessionKey) bool` methods for handling tool execution approval requests.
+The system SHALL define a `Provider` interface with `RequestApproval(ctx, req) (ApprovalResponse, error)` and `CanHandle(sessionKey) bool` methods for handling tool execution approval requests. `ApprovalResponse` SHALL carry `Approved bool` and `AlwaysAllow bool` fields.
 
 #### Scenario: Provider implementation
 - **WHEN** a new approval channel is added
-- **THEN** it SHALL implement the `Provider` interface
+- **THEN** it SHALL implement the `Provider` interface returning `ApprovalResponse`
 - **AND** `CanHandle` SHALL return true only for session keys it can handle
+
+#### Scenario: Approve response
+- **WHEN** a user approves a request
+- **THEN** the provider SHALL return `ApprovalResponse{Approved: true, AlwaysAllow: false}`
+
+#### Scenario: Always Allow response
+- **WHEN** a user clicks "Always Allow"
+- **THEN** the provider SHALL return `ApprovalResponse{Approved: true, AlwaysAllow: true}`
+
+#### Scenario: Deny response
+- **WHEN** a user denies a request
+- **THEN** the provider SHALL return `ApprovalResponse{Approved: false, AlwaysAllow: false}`
 
 ### Requirement: Composite approval routing
 The system SHALL provide a `CompositeProvider` that routes approval requests to the first registered provider whose `CanHandle` returns true for the given session key. The session key used for routing MAY be overridden by an explicit approval target set in the context, which takes precedence over the standard session key.
@@ -49,18 +61,22 @@ The system SHALL allow providers to be registered concurrently without data race
 - **THEN** all registrations SHALL complete without data races
 
 ### Requirement: TTY approval fallback behavior
-The `TTYProvider.RequestApproval` SHALL return `(false, error)` when stdin is not a terminal, with an error message containing "not a terminal". This replaces the previous behavior of returning `(false, nil)` which was indistinguishable from an explicit user denial.
+The `TTYProvider.RequestApproval` SHALL return `(ApprovalResponse{}, error)` when stdin is not a terminal. When stdin is a terminal, it SHALL prompt with `[y/a/N]` where `a` means "always allow".
 
 #### Scenario: Non-terminal environment returns error
 - **WHEN** `TTYProvider.RequestApproval` is called and stdin is not a terminal
-- **THEN** it SHALL return `false` and a non-nil error containing "not a terminal"
+- **THEN** it SHALL return an empty `ApprovalResponse` and a non-nil error containing "not a terminal"
 
-#### Scenario: Terminal environment prompts user
-- **WHEN** `TTYProvider.RequestApproval` is called and stdin is a terminal
-- **THEN** it SHALL prompt on stderr and read the user's response from stdin
+#### Scenario: Terminal user types 'a'
+- **WHEN** the user enters "a" or "always" at the TTY prompt
+- **THEN** it SHALL return `ApprovalResponse{Approved: true, AlwaysAllow: true}`
+
+#### Scenario: Terminal user types 'y'
+- **WHEN** the user enters "y" or "yes" at the TTY prompt
+- **THEN** it SHALL return `ApprovalResponse{Approved: true, AlwaysAllow: false}`
 
 ### Requirement: Gateway approval provider
-The system SHALL provide a `GatewayProvider` that delegates approval to connected companion apps via WebSocket.
+The system SHALL provide a `GatewayProvider` that delegates approval to connected companion apps via WebSocket. The `GatewayApprover` interface SHALL return `(ApprovalResponse, error)`.
 
 #### Scenario: Companions connected
 - **WHEN** a companion app is connected
@@ -70,6 +86,14 @@ The system SHALL provide a `GatewayProvider` that delegates approval to connecte
 #### Scenario: No companions connected
 - **WHEN** no companion app is connected
 - **THEN** `CanHandle` SHALL return false
+
+#### Scenario: Companion sends alwaysAllow
+- **WHEN** a companion responds with `{"approved": true, "alwaysAllow": true}`
+- **THEN** the provider SHALL return `ApprovalResponse{Approved: true, AlwaysAllow: true}`
+
+#### Scenario: Companion omits alwaysAllow (backward compatible)
+- **WHEN** a companion responds with `{"approved": true}` without `alwaysAllow`
+- **THEN** the provider SHALL return `ApprovalResponse{Approved: true, AlwaysAllow: false}`
 
 ### Requirement: Approval request context
 Each approval request SHALL carry an ID, tool name, session key, parameters, a human-readable Summary string, and creation timestamp.
@@ -174,6 +198,42 @@ All channel approval providers (Discord, Telegram, Slack) SHALL use comma-ok pat
 #### Scenario: Multiple consecutive approvals
 - **WHEN** 4 tools require consecutive approval and all are approved
 - **THEN** the agent processes each approval without cumulative Telegram API latency between them
+
+### Requirement: Telegram Always Allow button
+The Telegram approval message SHALL include a second row with an "Always Allow" button using the callback data prefix `always:`.
+
+#### Scenario: Always Allow button layout
+- **WHEN** an approval message is sent in Telegram
+- **THEN** it SHALL have Row 1 with Approve and Deny buttons, and Row 2 with an Always Allow button
+
+#### Scenario: Always Allow callback
+- **WHEN** a user clicks "Always Allow" in Telegram
+- **THEN** the response channel SHALL receive `ApprovalResponse{Approved: true, AlwaysAllow: true}`
+- **AND** the message SHALL be edited to show "Always Allowed"
+
+### Requirement: Discord Always Allow button
+The Discord approval message SHALL include a second ActionsRow with a Secondary-style "Always Allow" button using the custom ID prefix `always:`.
+
+#### Scenario: Always Allow button layout
+- **WHEN** an approval message is sent in Discord
+- **THEN** it SHALL have ActionsRow 1 with Approve and Deny, and ActionsRow 2 with Always Allow
+
+#### Scenario: Always Allow interaction
+- **WHEN** a user clicks "Always Allow" in Discord
+- **THEN** the response channel SHALL receive `ApprovalResponse{Approved: true, AlwaysAllow: true}`
+- **AND** the interaction response SHALL show "Always Allowed"
+
+### Requirement: Slack Always Allow button
+The Slack approval message SHALL include an "Always Allow" button in the action block with the action ID prefix `always:`.
+
+#### Scenario: Always Allow button in action block
+- **WHEN** an approval message is sent in Slack
+- **THEN** the action block SHALL contain Approve, Deny, and Always Allow buttons
+
+#### Scenario: Always Allow interactive action
+- **WHEN** a user clicks "Always Allow" in Slack
+- **THEN** the response channel SHALL receive `ApprovalResponse{Approved: true, AlwaysAllow: true}`
+- **AND** the message SHALL be updated to show "Always Allowed"
 
 ### Requirement: Audit log error logging
 Tool handlers that call `store.SaveAuditLog` SHALL log a warning via `logger().Warnw` if the audit log write fails, rather than discarding the error with `_ =`. The tool handler SHALL NOT return this error to the caller (log and degrade gracefully).

@@ -13,7 +13,7 @@ import (
 
 // approvalPending holds the response channel and message metadata for a pending approval.
 type approvalPending struct {
-	ch        chan bool
+	ch        chan approval.ApprovalResponse
 	channelID string
 	timestamp string
 }
@@ -38,14 +38,14 @@ func NewApprovalProvider(api Client, timeout time.Duration) *ApprovalProvider {
 	}
 }
 
-// RequestApproval posts a message with approve/deny action buttons and waits for interaction.
-func (p *ApprovalProvider) RequestApproval(ctx context.Context, req approval.ApprovalRequest) (bool, error) {
+// RequestApproval posts a message with approve/deny/always-allow action buttons and waits for interaction.
+func (p *ApprovalProvider) RequestApproval(ctx context.Context, req approval.ApprovalRequest) (approval.ApprovalResponse, error) {
 	channelID, err := parseSlackChannelID(req.SessionKey)
 	if err != nil {
-		return false, fmt.Errorf("parse session key: %w", err)
+		return approval.ApprovalResponse{}, fmt.Errorf("parse session key: %w", err)
 	}
 
-	respChan := make(chan bool, 1)
+	respChan := make(chan approval.ApprovalResponse, 1)
 
 	approveBtn := slackapi.NewButtonBlockElement("approve:"+req.ID, "approve",
 		slackapi.NewTextBlockObject("plain_text", "✅ Approve", true, false))
@@ -54,6 +54,9 @@ func (p *ApprovalProvider) RequestApproval(ctx context.Context, req approval.App
 	denyBtn := slackapi.NewButtonBlockElement("deny:"+req.ID, "deny",
 		slackapi.NewTextBlockObject("plain_text", "❌ Deny", true, false))
 	denyBtn.Style = slackapi.StyleDanger
+
+	alwaysBtn := slackapi.NewButtonBlockElement("always:"+req.ID, "always",
+		slackapi.NewTextBlockObject("plain_text", "🔓 Always Allow", true, false))
 
 	sectionText := fmt.Sprintf("🔐 Tool *%s* requires approval", req.ToolName)
 	if req.Summary != "" {
@@ -70,11 +73,12 @@ func (p *ApprovalProvider) RequestApproval(ctx context.Context, req approval.App
 				"approval_actions",
 				approveBtn,
 				denyBtn,
+				alwaysBtn,
 			),
 		),
 	)
 	if err != nil {
-		return false, fmt.Errorf("send approval message: %w", err)
+		return approval.ApprovalResponse{}, fmt.Errorf("send approval message: %w", err)
 	}
 
 	p.pending.Store(req.ID, &approvalPending{
@@ -85,28 +89,31 @@ func (p *ApprovalProvider) RequestApproval(ctx context.Context, req approval.App
 	defer p.pending.Delete(req.ID)
 
 	select {
-	case approved := <-respChan:
-		return approved, nil
+	case resp := <-respChan:
+		return resp, nil
 	case <-ctx.Done():
 		p.editExpiredMessage(channelID, ts)
-		return false, ctx.Err()
+		return approval.ApprovalResponse{}, ctx.Err()
 	case <-time.After(p.timeout):
 		p.editExpiredMessage(channelID, ts)
-		return false, fmt.Errorf("approval timeout")
+		return approval.ApprovalResponse{}, fmt.Errorf("approval timeout")
 	}
 }
 
 // HandleInteractive processes a Slack interactive callback (block_actions) for approval.
 func (p *ApprovalProvider) HandleInteractive(actionID string) {
 	var requestID string
-	var approved bool
+	var resp approval.ApprovalResponse
 
 	if strings.HasPrefix(actionID, "approve:") {
 		requestID = strings.TrimPrefix(actionID, "approve:")
-		approved = true
+		resp = approval.ApprovalResponse{Approved: true}
 	} else if strings.HasPrefix(actionID, "deny:") {
 		requestID = strings.TrimPrefix(actionID, "deny:")
-		approved = false
+		resp = approval.ApprovalResponse{}
+	} else if strings.HasPrefix(actionID, "always:") {
+		requestID = strings.TrimPrefix(actionID, "always:")
+		resp = approval.ApprovalResponse{Approved: true, AlwaysAllow: true}
 	} else {
 		return
 	}
@@ -124,9 +131,14 @@ func (p *ApprovalProvider) HandleInteractive(actionID string) {
 	}
 
 	// Update the original message to remove buttons
-	status := "❌ Denied"
-	if approved {
+	var status string
+	switch {
+	case resp.AlwaysAllow:
+		status = "🔓 Always Allowed"
+	case resp.Approved:
 		status = "✅ Approved"
+	default:
+		status = "❌ Denied"
 	}
 	_, _, _, err := p.api.UpdateMessage(pending.channelID, pending.timestamp,
 		slackapi.MsgOptionText(fmt.Sprintf("🔐 Tool approval — %s", status), false),
@@ -138,7 +150,7 @@ func (p *ApprovalProvider) HandleInteractive(actionID string) {
 
 	// Send result to waiting goroutine
 	select {
-	case pending.ch <- approved:
+	case pending.ch <- resp:
 	default:
 	}
 }

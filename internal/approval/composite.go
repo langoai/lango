@@ -35,7 +35,7 @@ func (c *CompositeProvider) SetTTYFallback(p Provider) {
 
 // RequestApproval routes the request to the first provider whose CanHandle
 // returns true. If none match, falls back to TTY. If TTY is unavailable, denies.
-func (c *CompositeProvider) RequestApproval(ctx context.Context, req ApprovalRequest) (bool, error) {
+func (c *CompositeProvider) RequestApproval(ctx context.Context, req ApprovalRequest) (ApprovalResponse, error) {
 	c.mu.RLock()
 	providers := make([]Provider, len(c.providers))
 	copy(providers, c.providers)
@@ -54,7 +54,7 @@ func (c *CompositeProvider) RequestApproval(ctx context.Context, req ApprovalReq
 	}
 
 	// Fail-closed: no provider available
-	return false, fmt.Errorf("no approval provider for session %q", req.SessionKey)
+	return ApprovalResponse{}, fmt.Errorf("no approval provider for session %q", req.SessionKey)
 }
 
 // CanHandle always returns true; CompositeProvider accepts all requests

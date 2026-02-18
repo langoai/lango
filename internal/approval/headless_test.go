@@ -16,11 +16,11 @@ func TestHeadlessProvider_AlwaysApproves(t *testing.T) {
 		CreatedAt:  time.Now(),
 	}
 
-	approved, err := p.RequestApproval(context.Background(), req)
+	resp, err := p.RequestApproval(context.Background(), req)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if !approved {
+	if !resp.Approved {
 		t.Error("expected HeadlessProvider to approve")
 	}
 }
@@ -48,11 +48,11 @@ func TestCompositeProvider_HeadlessFallback(t *testing.T) {
 		CreatedAt:  time.Now(),
 	}
 
-	approved, err := comp.RequestApproval(context.Background(), req)
+	resp, err := comp.RequestApproval(context.Background(), req)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if !approved {
+	if !resp.Approved {
 		t.Error("expected headless fallback to approve")
 	}
 }

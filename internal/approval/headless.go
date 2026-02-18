@@ -14,14 +14,14 @@ type HeadlessProvider struct{}
 var _ Provider = (*HeadlessProvider)(nil)
 
 // RequestApproval always approves and logs a warning for audit trail.
-func (h *HeadlessProvider) RequestApproval(_ context.Context, req ApprovalRequest) (bool, error) {
+func (h *HeadlessProvider) RequestApproval(_ context.Context, req ApprovalRequest) (ApprovalResponse, error) {
 	logging.App().Warnw("headless auto-approve",
 		"tool", req.ToolName,
 		"sessionKey", req.SessionKey,
 		"requestID", req.ID,
 		"summary", req.Summary,
 	)
-	return true, nil
+	return ApprovalResponse{Approved: true}, nil
 }
 
 // CanHandle always returns false. HeadlessProvider is used as a TTY

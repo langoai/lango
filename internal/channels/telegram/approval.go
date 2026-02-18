@@ -14,7 +14,7 @@ import (
 
 // approvalPending holds the response channel and message metadata for a pending approval.
 type approvalPending struct {
-	ch        chan bool
+	ch        chan approval.ApprovalResponse
 	chatID    int64
 	messageID int
 }
@@ -40,19 +40,22 @@ func NewApprovalProvider(bot BotAPI, timeout time.Duration) *ApprovalProvider {
 }
 
 // RequestApproval sends an InlineKeyboard message to the chat and waits for a callback.
-func (p *ApprovalProvider) RequestApproval(ctx context.Context, req approval.ApprovalRequest) (bool, error) {
+func (p *ApprovalProvider) RequestApproval(ctx context.Context, req approval.ApprovalRequest) (approval.ApprovalResponse, error) {
 	chatID, err := parseTelegramChatID(req.SessionKey)
 	if err != nil {
-		return false, fmt.Errorf("parse session key: %w", err)
+		return approval.ApprovalResponse{}, fmt.Errorf("parse session key: %w", err)
 	}
 
-	respChan := make(chan bool, 1)
+	respChan := make(chan approval.ApprovalResponse, 1)
 
-	// Build inline keyboard
+	// Build inline keyboard with Always Allow on a second row
 	keyboard := tgbotapi.NewInlineKeyboardMarkup(
 		tgbotapi.NewInlineKeyboardRow(
 			tgbotapi.NewInlineKeyboardButtonData("✅ Approve", "approve:"+req.ID),
 			tgbotapi.NewInlineKeyboardButtonData("❌ Deny", "deny:"+req.ID),
+		),
+		tgbotapi.NewInlineKeyboardRow(
+			tgbotapi.NewInlineKeyboardButtonData("🔓 Always Allow", "always:"+req.ID),
 		),
 	)
 
@@ -65,7 +68,7 @@ func (p *ApprovalProvider) RequestApproval(ctx context.Context, req approval.App
 
 	sentMsg, err := p.bot.Send(msg)
 	if err != nil {
-		return false, fmt.Errorf("send approval message: %w", err)
+		return approval.ApprovalResponse{}, fmt.Errorf("send approval message: %w", err)
 	}
 
 	p.pending.Store(req.ID, &approvalPending{
@@ -76,14 +79,14 @@ func (p *ApprovalProvider) RequestApproval(ctx context.Context, req approval.App
 	defer p.pending.Delete(req.ID)
 
 	select {
-	case approved := <-respChan:
-		return approved, nil
+	case resp := <-respChan:
+		return resp, nil
 	case <-ctx.Done():
 		p.editApprovalMessage(chatID, sentMsg.MessageID, "🔐 Tool approval — ⏱ Expired")
-		return false, ctx.Err()
+		return approval.ApprovalResponse{}, ctx.Err()
 	case <-time.After(p.timeout):
 		p.editApprovalMessage(chatID, sentMsg.MessageID, "🔐 Tool approval — ⏱ Expired")
-		return false, fmt.Errorf("approval timeout")
+		return approval.ApprovalResponse{}, fmt.Errorf("approval timeout")
 	}
 }
 
@@ -94,14 +97,17 @@ func (p *ApprovalProvider) HandleCallback(query *tgbotapi.CallbackQuery) {
 	}
 
 	var requestID string
-	var approved bool
+	var resp approval.ApprovalResponse
 
 	if strings.HasPrefix(query.Data, "approve:") {
 		requestID = strings.TrimPrefix(query.Data, "approve:")
-		approved = true
+		resp = approval.ApprovalResponse{Approved: true}
 	} else if strings.HasPrefix(query.Data, "deny:") {
 		requestID = strings.TrimPrefix(query.Data, "deny:")
-		approved = false
+		resp = approval.ApprovalResponse{}
+	} else if strings.HasPrefix(query.Data, "always:") {
+		requestID = strings.TrimPrefix(query.Data, "always:")
+		resp = approval.ApprovalResponse{Approved: true, AlwaysAllow: true}
 	} else {
 		return
 	}
@@ -138,14 +144,19 @@ func (p *ApprovalProvider) HandleCallback(query *tgbotapi.CallbackQuery) {
 	// and avoids message ordering issues where the final response arrives before
 	// the approval status edit.
 	select {
-	case pending.ch <- approved:
+	case pending.ch <- resp:
 	default:
 	}
 
 	// Edit original message to remove the keyboard
-	status := "❌ Denied"
-	if approved {
+	var status string
+	switch {
+	case resp.AlwaysAllow:
+		status = "🔓 Always Allowed"
+	case resp.Approved:
 		status = "✅ Approved"
+	default:
+		status = "❌ Denied"
 	}
 	p.editApprovalMessage(pending.chatID, pending.messageID, fmt.Sprintf("🔐 Tool approval — %s", status))
 }

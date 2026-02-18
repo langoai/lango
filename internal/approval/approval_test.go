@@ -17,11 +17,11 @@ type mockProvider struct {
 	callMu  sync.Mutex
 }
 
-func (m *mockProvider) RequestApproval(_ context.Context, _ ApprovalRequest) (bool, error) {
+func (m *mockProvider) RequestApproval(_ context.Context, _ ApprovalRequest) (ApprovalResponse, error) {
 	m.callMu.Lock()
 	m.called = true
 	m.callMu.Unlock()
-	return m.result, m.err
+	return ApprovalResponse{Approved: m.result}, m.err
 }
 
 func (m *mockProvider) CanHandle(sessionKey string) bool {
@@ -66,12 +66,12 @@ func TestCompositeProvider_RoutesByPrefix(t *testing.T) {
 				CreatedAt:  time.Now(),
 			}
 
-			approved, err := comp.RequestApproval(context.Background(), req)
+			resp, err := comp.RequestApproval(context.Background(), req)
 			if err != nil {
 				t.Fatalf("unexpected error: %v", err)
 			}
-			if approved != tt.wantResult {
-				t.Errorf("got approved=%v, want %v", approved, tt.wantResult)
+			if resp.Approved != tt.wantResult {
+				t.Errorf("got approved=%v, want %v", resp.Approved, tt.wantResult)
 			}
 
 			providers := map[string]*mockProvider{
@@ -104,11 +104,11 @@ func TestCompositeProvider_TTYFallback(t *testing.T) {
 		CreatedAt:  time.Now(),
 	}
 
-	approved, err := comp.RequestApproval(context.Background(), req)
+	resp, err := comp.RequestApproval(context.Background(), req)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if !approved {
+	if !resp.Approved {
 		t.Error("expected TTY fallback to approve")
 	}
 	if !tty.wasCalled() {
@@ -126,11 +126,11 @@ func TestCompositeProvider_FailClosed(t *testing.T) {
 		CreatedAt:  time.Now(),
 	}
 
-	approved, err := comp.RequestApproval(context.Background(), req)
+	resp, err := comp.RequestApproval(context.Background(), req)
 	if err == nil {
 		t.Fatal("expected error when no provider available")
 	}
-	if approved {
+	if resp.Approved {
 		t.Error("expected fail-closed (deny) when no provider available")
 	}
 }
@@ -152,11 +152,11 @@ func TestCompositeProvider_ProviderError(t *testing.T) {
 		CreatedAt:  time.Now(),
 	}
 
-	approved, err := comp.RequestApproval(context.Background(), req)
+	resp, err := comp.RequestApproval(context.Background(), req)
 	if err == nil {
 		t.Fatal("expected error")
 	}
-	if approved {
+	if resp.Approved {
 		t.Error("expected denial on error")
 	}
 }
@@ -168,7 +168,7 @@ func TestCompositeProvider_ConcurrentRequests(t *testing.T) {
 	comp.Register(slow)
 
 	var wg sync.WaitGroup
-	results := make([]bool, 10)
+	results := make([]ApprovalResponse, 10)
 	errs := make([]error, 10)
 
 	for i := 0; i < 10; i++ {
@@ -191,7 +191,7 @@ func TestCompositeProvider_ConcurrentRequests(t *testing.T) {
 		if errs[i] != nil {
 			t.Errorf("request %d: unexpected error: %v", i, errs[i])
 		}
-		if !results[i] {
+		if !results[i].Approved {
 			t.Errorf("request %d: expected approval", i)
 		}
 	}
@@ -219,11 +219,11 @@ func TestCompositeProvider_FirstMatchWins(t *testing.T) {
 		CreatedAt:  time.Now(),
 	}
 
-	approved, err := comp.RequestApproval(context.Background(), req)
+	resp, err := comp.RequestApproval(context.Background(), req)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if !approved {
+	if !resp.Approved {
 		t.Error("expected first provider to win (approve)")
 	}
 	if !first.wasCalled() {
@@ -293,15 +293,15 @@ func TestGatewayProvider(t *testing.T) {
 				ID:       "test-1",
 				ToolName: "exec",
 			}
-			approved, err := p.RequestApproval(context.Background(), req)
+			resp, err := p.RequestApproval(context.Background(), req)
 			if tt.wantErr && err == nil {
 				t.Error("expected error")
 			}
 			if !tt.wantErr && err != nil {
 				t.Errorf("unexpected error: %v", err)
 			}
-			if approved != tt.wantApproved {
-				t.Errorf("approved = %v, want %v", approved, tt.wantApproved)
+			if resp.Approved != tt.wantApproved {
+				t.Errorf("approved = %v, want %v", resp.Approved, tt.wantApproved)
 			}
 		})
 	}
@@ -317,6 +317,6 @@ func (m *mockGatewayApprover) HasCompanions() bool {
 	return m.companions
 }
 
-func (m *mockGatewayApprover) RequestApproval(_ context.Context, _ string) (bool, error) {
-	return m.result, m.err
+func (m *mockGatewayApprover) RequestApproval(_ context.Context, _ string) (ApprovalResponse, error) {
+	return ApprovalResponse{Approved: m.result}, m.err
 }

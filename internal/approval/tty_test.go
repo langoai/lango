@@ -19,8 +19,8 @@ func TestTTYProvider_NonTerminal_ReturnsError(t *testing.T) {
 		CreatedAt:  time.Now(),
 	}
 
-	approved, err := p.RequestApproval(context.Background(), req)
-	if approved {
+	resp, err := p.RequestApproval(context.Background(), req)
+	if resp.Approved {
 		t.Error("expected TTYProvider to deny in non-terminal environment")
 	}
 	if err == nil {

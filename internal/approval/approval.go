@@ -17,10 +17,16 @@ type ApprovalRequest struct {
 	CreatedAt  time.Time
 }
 
+// ApprovalResponse carries the result of an approval request.
+type ApprovalResponse struct {
+	Approved    bool
+	AlwaysAllow bool
+}
+
 // Provider defines the interface for approval request handling.
 type Provider interface {
 	// RequestApproval sends an approval request and blocks until approved/denied or context is cancelled.
-	RequestApproval(ctx context.Context, req ApprovalRequest) (bool, error)
+	RequestApproval(ctx context.Context, req ApprovalRequest) (ApprovalResponse, error)
 
 	// CanHandle reports whether this provider can handle the given session key.
 	CanHandle(sessionKey string) bool

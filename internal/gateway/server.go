@@ -16,6 +16,7 @@ import (
 	"github.com/go-chi/chi/v5/middleware"
 	"github.com/gorilla/websocket"
 	"github.com/langowarny/lango/internal/adk"
+	"github.com/langowarny/lango/internal/approval"
 	"github.com/langowarny/lango/internal/logging"
 	"github.com/langowarny/lango/internal/security"
 	"github.com/langowarny/lango/internal/session"
@@ -40,7 +41,7 @@ type Server struct {
 	clientsMu          sync.RWMutex
 	handlers           map[string]RPCHandler
 	handlersMu         sync.RWMutex
-	pendingApprovals   map[string]chan bool
+	pendingApprovals   map[string]chan approval.ApprovalResponse
 	pendingApprovalsMu sync.Mutex
 	turnCallbacks      []TurnCallback
 }
@@ -104,7 +105,7 @@ func New(cfg Config, agent *adk.Agent, provider *security.RPCProvider, store ses
 		router:           chi.NewRouter(),
 		clients:          make(map[string]*Client),
 		handlers:         make(map[string]RPCHandler),
-		pendingApprovals: make(map[string]chan bool),
+		pendingApprovals: make(map[string]chan approval.ApprovalResponse),
 		upgrader: websocket.Upgrader{
 			ReadBufferSize:  1024,
 			WriteBufferSize: 1024,
@@ -276,8 +277,8 @@ func (s *Server) handleDecryptResponse(_ *Client, params json.RawMessage) (inter
 	return map[string]string{"status": "ok"}, nil
 }
 
-// RequestApproval broadcasts an approval request to companions and waits for response
-func (s *Server) RequestApproval(ctx context.Context, message string) (bool, error) {
+// RequestApproval broadcasts an approval request to companions and waits for response.
+func (s *Server) RequestApproval(ctx context.Context, message string) (approval.ApprovalResponse, error) {
 	// 1. Check if any companions connected
 	s.clientsMu.RLock()
 	hasCompanion := false
@@ -290,12 +291,12 @@ func (s *Server) RequestApproval(ctx context.Context, message string) (bool, err
 	s.clientsMu.RUnlock()
 
 	if !hasCompanion {
-		return false, fmt.Errorf("no companion connected")
+		return approval.ApprovalResponse{}, fmt.Errorf("no companion connected")
 	}
 
 	// 2. Create approval request
 	id := fmt.Sprintf("req-%d", time.Now().UnixNano())
-	respChan := make(chan bool, 1)
+	respChan := make(chan approval.ApprovalResponse, 1)
 
 	s.pendingApprovalsMu.Lock()
 	s.pendingApprovals[id] = respChan
@@ -321,12 +322,12 @@ func (s *Server) RequestApproval(ctx context.Context, message string) (bool, err
 	}
 
 	select {
-	case approved := <-respChan:
-		return approved, nil
+	case resp := <-respChan:
+		return resp, nil
 	case <-ctx.Done():
-		return false, ctx.Err()
+		return approval.ApprovalResponse{}, ctx.Err()
 	case <-time.After(timeout):
-		return false, fmt.Errorf("approval timeout")
+		return approval.ApprovalResponse{}, fmt.Errorf("approval timeout")
 	}
 }
 
@@ -349,8 +350,9 @@ func (s *Server) handleCompanionHello(_ *Client, params json.RawMessage) (interf
 // handleApprovalResponse processes approval response from companion
 func (s *Server) handleApprovalResponse(_ *Client, params json.RawMessage) (interface{}, error) {
 	var req struct {
-		RequestID string `json:"requestId"`
-		Approved  bool   `json:"approved"`
+		RequestID   string `json:"requestId"`
+		Approved    bool   `json:"approved"`
+		AlwaysAllow bool   `json:"alwaysAllow"`
 	}
 	if err := json.Unmarshal(params, &req); err != nil {
 		return nil, fmt.Errorf("invalid params: %w", err)
@@ -364,9 +366,13 @@ func (s *Server) handleApprovalResponse(_ *Client, params json.RawMessage) (inte
 	s.pendingApprovalsMu.Unlock()
 
 	if exists {
+		resp := approval.ApprovalResponse{
+			Approved:    req.Approved,
+			AlwaysAllow: req.AlwaysAllow,
+		}
 		// Non-blocking send
 		select {
-		case ch <- req.Approved:
+		case ch <- resp:
 		default:
 		}
 	}

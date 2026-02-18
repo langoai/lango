@@ -77,11 +77,11 @@ func TestSlackApprovalProvider_Approve(t *testing.T) {
 	}
 
 	done := make(chan struct{})
-	var approved bool
+	var resp approval.ApprovalResponse
 	var err error
 
 	go func() {
-		approved, err = p.RequestApproval(context.Background(), req)
+		resp, err = p.RequestApproval(context.Background(), req)
 		close(done)
 	}()
 
@@ -95,7 +95,7 @@ func TestSlackApprovalProvider_Approve(t *testing.T) {
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
-		if !approved {
+		if !resp.Approved {
 			t.Error("expected approved=true")
 		}
 	case <-time.After(2 * time.Second):
@@ -129,11 +129,11 @@ func TestSlackApprovalProvider_Deny(t *testing.T) {
 	}
 
 	done := make(chan struct{})
-	var approved bool
+	var resp approval.ApprovalResponse
 	var err error
 
 	go func() {
-		approved, err = p.RequestApproval(context.Background(), req)
+		resp, err = p.RequestApproval(context.Background(), req)
 		close(done)
 	}()
 
@@ -146,7 +146,7 @@ func TestSlackApprovalProvider_Deny(t *testing.T) {
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
-		if approved {
+		if resp.Approved {
 			t.Error("expected approved=false")
 		}
 	case <-time.After(2 * time.Second):
@@ -171,11 +171,11 @@ func TestSlackApprovalProvider_Timeout(t *testing.T) {
 		CreatedAt:  time.Now(),
 	}
 
-	approved, err := p.RequestApproval(context.Background(), req)
+	resp, err := p.RequestApproval(context.Background(), req)
 	if err == nil {
 		t.Fatal("expected timeout error")
 	}
-	if approved {
+	if resp.Approved {
 		t.Error("expected approved=false on timeout")
 	}
 
@@ -213,11 +213,11 @@ func TestSlackApprovalProvider_DuplicateAction(t *testing.T) {
 	}
 
 	done := make(chan struct{})
-	var approved bool
+	var resp approval.ApprovalResponse
 	var err error
 
 	go func() {
-		approved, err = p.RequestApproval(context.Background(), req)
+		resp, err = p.RequestApproval(context.Background(), req)
 		close(done)
 	}()
 
@@ -234,7 +234,7 @@ func TestSlackApprovalProvider_DuplicateAction(t *testing.T) {
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
-		if !approved {
+		if !resp.Approved {
 			t.Error("expected approved=true from first action")
 		}
 	case <-time.After(2 * time.Second):
