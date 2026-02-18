@@ -81,6 +81,16 @@ The system SHALL manage session history using token-budget-based dynamic truncat
 - **AND** `user` role maps to `user` author
 - **AND** `assistant` role maps to the agent name
 
+#### Scenario: Model role mapping
+- **WHEN** a stored message has `Role: "model"` and empty `Author`
+- **THEN** the EventsAdapter SHALL map the author to `rootAgentName` (or `"lango-agent"` if rootAgentName is empty)
+- **AND** the author SHALL NOT be the literal string `"model"`
+
+#### Scenario: Unknown role fallback
+- **WHEN** a stored message has an unrecognized `Role` and empty `Author`
+- **THEN** the EventsAdapter SHALL map the author to `rootAgentName` (or `"lango-agent"` if rootAgentName is empty)
+- **AND** the author SHALL NOT produce "Event from an unknown agent" warnings
+
 ### Requirement: Agent hallucination retry in RunAndCollect
 `RunAndCollect` SHALL detect "failed to find agent" errors, extract the hallucinated agent name, send a correction message with valid sub-agent names, and retry once. If the retry also fails, the original error SHALL be returned.
 

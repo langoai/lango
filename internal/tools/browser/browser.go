@@ -26,10 +26,12 @@ type Config struct {
 
 // Tool provides browser automation
 type Tool struct {
-	config   Config
-	browser  *rod.Browser
-	sessions map[string]*Session
-	mu       sync.RWMutex
+	config      Config
+	browser     *rod.Browser
+	browserOnce sync.Once
+	browserErr  error
+	sessions    map[string]*Session
+	mu          sync.RWMutex
 }
 
 // Session represents a browser session with a page
@@ -70,22 +72,31 @@ func New(cfg Config) (*Tool, error) {
 	}, nil
 }
 
-// ensureBrowser lazily initializes the browser
+// ensureBrowser lazily initializes the browser with thread-safe sync.Once.
+// On failure, the Once is reset so the next call retries initialization.
 func (t *Tool) ensureBrowser() error {
-	if t.browser != nil {
-		return nil
-	}
+	t.browserOnce.Do(func() {
+		t.browserErr = t.initBrowser()
+		if t.browserErr != nil {
+			// Reset Once so next call retries instead of returning stale error
+			t.browserOnce = sync.Once{}
+		}
+	})
+	return t.browserErr
+}
 
+func (t *Tool) initBrowser() error {
 	// Remote browser via config or env var
 	wsURL := t.config.RemoteBrowserURL
 	if wsURL == "" {
 		wsURL = os.Getenv("ROD_BROWSER_WS")
 	}
 	if wsURL != "" {
-		t.browser = rod.New().ControlURL(wsURL)
-		if err := t.browser.Connect(); err != nil {
+		b := rod.New().ControlURL(wsURL)
+		if err := b.Connect(); err != nil {
 			return fmt.Errorf("connect remote browser: %w", err)
 		}
+		t.browser = b
 		logger.Infow("connected to remote browser", "url", wsURL)
 		return nil
 	}
@@ -108,11 +119,12 @@ func (t *Tool) ensureBrowser() error {
 		return fmt.Errorf("launch browser: %w", err)
 	}
 
-	t.browser = rod.New().ControlURL(url)
-	if err := t.browser.Connect(); err != nil {
+	b := rod.New().ControlURL(url)
+	if err := b.Connect(); err != nil {
 		return fmt.Errorf("connect browser: %w", err)
 	}
 
+	t.browser = b
 	logger.Infow("browser launched", "headless", t.config.Headless, "bin", bin)
 	return nil
 }
@@ -392,6 +404,10 @@ func (t *Tool) Close() error {
 		t.browser.Close()
 		t.browser = nil
 	}
+
+	// Reset so browser can be re-initialized if needed
+	t.browserOnce = sync.Once{}
+	t.browserErr = nil
 
 	logger.Info("browser closed")
 	return nil

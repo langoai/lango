@@ -153,7 +153,7 @@ func (e *EventsAdapter) All() iter.Seq[*session.Event] {
 				switch msg.Role {
 				case "user":
 					author = "user"
-				case "assistant":
+				case "assistant", "model":
 					if e.rootAgentName != "" {
 						author = e.rootAgentName
 					} else {
@@ -162,7 +162,11 @@ func (e *EventsAdapter) All() iter.Seq[*session.Event] {
 				case "function", "tool":
 					author = "tool"
 				default:
-					author = "model"
+					if e.rootAgentName != "" {
+						author = e.rootAgentName
+					} else {
+						author = "lango-agent"
+					}
 				}
 			}
 
