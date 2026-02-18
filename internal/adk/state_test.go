@@ -3,6 +3,8 @@ package adk
 import (
 	"context"
 	"encoding/json"
+	"fmt"
+	"sync"
 	"testing"
 	"time"
 
@@ -631,6 +633,74 @@ func TestSessionServiceAdapter_GetAutoCreate(t *testing.T) {
 	}
 	if sess.Key != "auto-created" {
 		t.Fatalf("expected key 'auto-created', got %q", sess.Key)
+	}
+}
+
+// uniqueMockStore simulates UNIQUE constraint errors on concurrent Create.
+type uniqueMockStore struct {
+	mu       sync.Mutex
+	sessions map[string]*internal.Session
+}
+
+func newUniqueMockStore() *uniqueMockStore {
+	return &uniqueMockStore{sessions: make(map[string]*internal.Session)}
+}
+
+func (m *uniqueMockStore) Create(s *internal.Session) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if _, exists := m.sessions[s.Key]; exists {
+		return fmt.Errorf("ent: constraint failed: UNIQUE constraint failed: sessions.key")
+	}
+	m.sessions[s.Key] = s
+	return nil
+}
+
+func (m *uniqueMockStore) Get(key string) (*internal.Session, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	s, ok := m.sessions[key]
+	if !ok {
+		return nil, fmt.Errorf("session not found: %s", key)
+	}
+	return s, nil
+}
+
+func (m *uniqueMockStore) Update(s *internal.Session) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.sessions[s.Key] = s
+	return nil
+}
+func (m *uniqueMockStore) Delete(key string) error              { return nil }
+func (m *uniqueMockStore) AppendMessage(string, internal.Message) error { return nil }
+func (m *uniqueMockStore) Close() error                         { return nil }
+func (m *uniqueMockStore) GetSalt(string) ([]byte, error)       { return nil, nil }
+func (m *uniqueMockStore) SetSalt(string, []byte) error         { return nil }
+
+func TestSessionServiceAdapter_GetAutoCreate_Concurrent(t *testing.T) {
+	store := newUniqueMockStore()
+	service := NewSessionServiceAdapter(store, "lango-agent")
+
+	const goroutines = 10
+	var wg sync.WaitGroup
+	errs := make([]error, goroutines)
+
+	wg.Add(goroutines)
+	for i := range goroutines {
+		go func() {
+			defer wg.Done()
+			_, errs[i] = service.Get(context.Background(), &session.GetRequest{
+				SessionID: "race-session",
+			})
+		}()
+	}
+	wg.Wait()
+
+	for i, err := range errs {
+		if err != nil {
+			t.Errorf("goroutine %d failed: %v", i, err)
+		}
 	}
 }
 

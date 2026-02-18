@@ -54,24 +54,33 @@ func (s *SessionServiceAdapter) Get(ctx context.Context, req *session.GetRequest
 	if err != nil {
 		// Auto-create session if not found
 		if strings.Contains(err.Error(), "session not found") {
-			createReq := &session.CreateRequest{SessionID: req.SessionID}
-			resp, createErr := s.Create(ctx, createReq)
-			if createErr != nil {
-				return nil, fmt.Errorf("auto-create session %s: %w", req.SessionID, createErr)
-			}
-			return &session.GetResponse{Session: resp.Session}, nil
+			return s.getOrCreate(ctx, req)
 		}
 		return nil, err
 	}
 	if sess == nil {
-		createReq := &session.CreateRequest{SessionID: req.SessionID}
-		resp, createErr := s.Create(ctx, createReq)
-		if createErr != nil {
-			return nil, fmt.Errorf("auto-create session %s: %w", req.SessionID, createErr)
-		}
-		return &session.GetResponse{Session: resp.Session}, nil
+		return s.getOrCreate(ctx, req)
 	}
 	return &session.GetResponse{Session: NewSessionAdapter(sess, s.store, s.rootAgentName)}, nil
+}
+
+// getOrCreate attempts to create a session, and if it fails due to a
+// concurrent creation (UNIQUE constraint), retries the Get instead.
+func (s *SessionServiceAdapter) getOrCreate(ctx context.Context, req *session.GetRequest) (*session.GetResponse, error) {
+	createReq := &session.CreateRequest{SessionID: req.SessionID}
+	resp, createErr := s.Create(ctx, createReq)
+	if createErr != nil {
+		// Another goroutine already created this session — fetch it.
+		if strings.Contains(createErr.Error(), "UNIQUE constraint") {
+			sess, err := s.store.Get(req.SessionID)
+			if err != nil {
+				return nil, fmt.Errorf("auto-create session %s: get after conflict: %w", req.SessionID, err)
+			}
+			return &session.GetResponse{Session: NewSessionAdapter(sess, s.store, s.rootAgentName)}, nil
+		}
+		return nil, fmt.Errorf("auto-create session %s: %w", req.SessionID, createErr)
+	}
+	return &session.GetResponse{Session: resp.Session}, nil
 }
 
 func (s *SessionServiceAdapter) List(ctx context.Context, req *session.ListRequest) (*session.ListResponse, error) {
