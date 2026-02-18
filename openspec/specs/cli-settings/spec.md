@@ -17,7 +17,7 @@ The settings editor SHALL support editing all configuration sections previously 
 8. **Auth** — OIDC provider management (add, edit, delete)
 9. **Knowledge** — Enabled, max learnings/knowledge/context
 10. **Skill** — Enabled, skills directory
-11. **Observational Memory** — Enabled, provider, model, thresholds, budget
+11. **Observational Memory** — Enabled, provider, model, thresholds, budget, context limits
 12. **Embedding & RAG** — Provider, model, dimensions, local URL, RAG settings
 13. **Graph Store** — Enabled, backend, DB path, traversal depth, expansion results
 14. **Multi-Agent** — Orchestration toggle
@@ -139,3 +139,22 @@ lango settings [--profile <name>]
 #### Scenario: Save from settings
 - **WHEN** user selects "Save & Exit" from the menu
 - **THEN** the configuration SHALL be saved as an encrypted profile
+
+### Requirement: Observational Memory context limit fields in settings form
+The Observational Memory settings form SHALL include fields for configuring context limits:
+- **Max Reflections in Context** (`om_max_reflections`) — Integer input (non-negative, 0 = unlimited)
+- **Max Observations in Context** (`om_max_observations`) — Integer input (non-negative, 0 = unlimited)
+
+The state update handler SHALL map these fields to `ObservationalMemory.MaxReflectionsInContext` and `ObservationalMemory.MaxObservationsInContext`.
+
+#### Scenario: Edit context limit fields
+- **WHEN** user selects "Observational Memory" from the settings menu
+- **THEN** the form SHALL display "Max Reflections in Context" and "Max Observations in Context" fields pre-populated from `config.ObservationalMemory`
+
+#### Scenario: Save context limit values
+- **WHEN** user sets Max Reflections in Context to 10 and Max Observations in Context to 50
+- **THEN** the config state SHALL update `ObservationalMemory.MaxReflectionsInContext` to 10 and `ObservationalMemory.MaxObservationsInContext` to 50
+
+#### Scenario: Zero means unlimited
+- **WHEN** user sets Max Reflections in Context to 0
+- **THEN** the value SHALL be accepted (0 = unlimited) and stored as 0

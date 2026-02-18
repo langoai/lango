@@ -18,7 +18,7 @@ A high-performance AI agent built with Go, supporting multiple AI providers, cha
 - 🔄 **Workflow Engine** - DAG-based YAML workflows with parallel step execution and state persistence
 - 🔒 **Secure** - AES-256-GCM encryption, key registry, secret management, output scanning
 - 💾 **Persistent** - Ent ORM with SQLite session storage
-- 🌐 **Gateway** - WebSocket/HTTP server for control plane
+- 🌐 **Gateway** - WebSocket/HTTP server with real-time streaming
 - 🔑 **Auth** - OIDC authentication, OAuth login flow
 
 ## Quick Start
@@ -282,6 +282,8 @@ All settings are managed via `lango onboard` (guided wizard), `lango settings` (
 | `observationalMemory.messageTokenThreshold` | int | `1000` | Token threshold to trigger observation |
 | `observationalMemory.observationTokenThreshold` | int | `2000` | Token threshold to trigger reflection |
 | `observationalMemory.maxMessageTokenBudget` | int | `8000` | Max token budget for recent messages in context |
+| `observationalMemory.maxReflectionsInContext` | int | `5` | Max reflections injected into LLM context (0 = unlimited) |
+| `observationalMemory.maxObservationsInContext` | int | `20` | Max observations injected into LLM context (0 = unlimited) |
 | **Embedding** | | | |
 | `embedding.providerID` | string | - | Provider ID from `providers` map (e.g., `"gemini-1"`, `"my-openai"`). Backend type and API key are auto-resolved. |
 | `embedding.provider` | string | - | Embedding backend (`openai`, `google`, `local`). Deprecated when `providerID` is set. |
@@ -429,6 +431,10 @@ Configure embedding and RAG settings via `lango onboard` > Embedding & RAG menu,
 ### RAG
 
 When `embedding.rag.enabled` is `true`, relevant knowledge entries are automatically retrieved via vector similarity search and injected into the agent's context. Configure `maxResults` to control how many results are included and `collections` to limit which knowledge collections are searched.
+
+### Embedding Cache
+
+Query embedding vectors are cached in-memory with a 5-minute TTL and 100-entry limit to reduce redundant API calls. The cache is automatic — no configuration needed.
 
 Use `lango doctor` to verify embedding configuration and provider connectivity.
 
@@ -694,6 +700,7 @@ Observational Memory is an async subsystem that compresses long conversations in
 - **Reflector** — condenses accumulated observations into higher-level reflections when the observation token threshold is reached
 - **Async Buffer** — queues observation/reflection tasks for background processing
 - **Token Counter** — tracks token usage to determine when compression should trigger
+- **Context Limits** — only the most recent reflections (default: 5) and observations (default: 20) are injected into LLM context, keeping prompts lean as sessions grow
 
 Configure knowledge and observational memory settings via `lango onboard` or `lango config` CLI. Use `lango memory list`, `lango memory status`, and `lango memory clear` to manage observation entries.
 
@@ -782,6 +789,18 @@ Use `server.allowedOrigins` to control which origins can connect via WebSocket:
 - `[]` (empty, default) — same-origin requests only
 - `["https://example.com"]` — specific origins
 - `["*"]` — allow all origins (not recommended for production)
+
+#### WebSocket Events
+
+The gateway broadcasts the following events during chat processing:
+
+| Event | Payload | Description |
+|-------|---------|-------------|
+| `agent.thinking` | `{sessionKey}` | Sent before agent execution begins |
+| `agent.chunk` | `{sessionKey, chunk}` | Streamed text chunk during LLM generation |
+| `agent.done` | `{sessionKey}` | Sent after agent execution completes |
+
+Events are scoped to the requesting user's session. Clients that don't handle `agent.chunk` will still receive the full response in the RPC result (backward compatible).
 
 #### Rate Limiting
 

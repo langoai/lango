@@ -172,6 +172,14 @@ func (s *ConfigState) UpdateConfigFromForm(form *FormModel) {
 			if i, err := strconv.Atoi(val); err == nil {
 				s.Current.ObservationalMemory.MaxMessageTokenBudget = i
 			}
+		case "om_max_reflections":
+			if i, err := strconv.Atoi(val); err == nil {
+				s.Current.ObservationalMemory.MaxReflectionsInContext = i
+			}
+		case "om_max_observations":
+			if i, err := strconv.Atoi(val); err == nil {
+				s.Current.ObservationalMemory.MaxObservationsInContext = i
+			}
 
 		// Embedding & RAG
 		case "emb_provider_id":

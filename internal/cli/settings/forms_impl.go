@@ -389,6 +389,30 @@ func NewObservationalMemoryForm(cfg *config.Config) *tuicore.FormModel {
 		},
 	})
 
+	form.AddField(&tuicore.Field{
+		Key: "om_max_reflections", Label: "Max Reflections in Context",
+		Type:  tuicore.InputInt,
+		Value: strconv.Itoa(cfg.ObservationalMemory.MaxReflectionsInContext),
+		Validate: func(s string) error {
+			if i, err := strconv.Atoi(s); err != nil || i < 0 {
+				return fmt.Errorf("must be a non-negative integer (0 = unlimited)")
+			}
+			return nil
+		},
+	})
+
+	form.AddField(&tuicore.Field{
+		Key: "om_max_observations", Label: "Max Observations in Context",
+		Type:  tuicore.InputInt,
+		Value: strconv.Itoa(cfg.ObservationalMemory.MaxObservationsInContext),
+		Validate: func(s string) error {
+			if i, err := strconv.Atoi(s); err != nil || i < 0 {
+				return fmt.Errorf("must be a non-negative integer (0 = unlimited)")
+			}
+			return nil
+		},
+	})
+
 	return &form
 }
 
