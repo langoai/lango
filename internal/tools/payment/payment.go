@@ -5,16 +5,20 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
+	"net/http"
+	"strings"
 
 	"github.com/langowarny/lango/internal/agent"
 	"github.com/langowarny/lango/internal/payment"
 	"github.com/langowarny/lango/internal/security"
 	"github.com/langowarny/lango/internal/session"
 	"github.com/langowarny/lango/internal/wallet"
+	"github.com/langowarny/lango/internal/x402"
 )
 
 // BuildTools creates the payment agent tools.
-func BuildTools(svc *payment.Service, limiter wallet.SpendingLimiter, secrets *security.SecretsStore, chainID int64) []*agent.Tool {
+func BuildTools(svc *payment.Service, limiter wallet.SpendingLimiter, secrets *security.SecretsStore, chainID int64, interceptor *x402.Interceptor) []*agent.Tool {
 	tools := []*agent.Tool{
 		buildSendTool(svc),
 		buildBalanceTool(svc),
@@ -24,6 +28,9 @@ func BuildTools(svc *payment.Service, limiter wallet.SpendingLimiter, secrets *s
 	}
 	if secrets != nil {
 		tools = append(tools, buildCreateWalletTool(secrets, chainID))
+	}
+	if interceptor != nil && interceptor.IsEnabled() {
+		tools = append(tools, buildX402FetchTool(interceptor, svc))
 	}
 	return tools
 }
@@ -240,6 +247,125 @@ func buildCreateWalletTool(secrets *security.SecretsStore, chainID int64) *agent
 				"chainId": chainID,
 				"network": wallet.NetworkName(chainID),
 			}, nil
+		},
+	}
+}
+
+// buildX402FetchTool creates the x402_fetch tool for HTTP requests with automatic X402 payment.
+func buildX402FetchTool(interceptor *x402.Interceptor, svc *payment.Service) *agent.Tool {
+	return &agent.Tool{
+		Name:        "x402_fetch",
+		Description: "Make an HTTP request with automatic X402 payment. If the server responds with HTTP 402, the agent wallet automatically signs an EIP-3009 authorization and retries. Requires approval.",
+		SafetyLevel: agent.SafetyLevelDangerous,
+		Parameters: map[string]interface{}{
+			"type": "object",
+			"properties": map[string]interface{}{
+				"url": map[string]interface{}{
+					"type":        "string",
+					"description": "The URL to request",
+				},
+				"method": map[string]interface{}{
+					"type":        "string",
+					"description": "HTTP method (default: GET)",
+					"enum":        []string{"GET", "POST", "PUT", "DELETE", "PATCH"},
+				},
+				"body": map[string]interface{}{
+					"type":        "string",
+					"description": "Request body (for POST/PUT/PATCH)",
+				},
+				"headers": map[string]interface{}{
+					"type":        "object",
+					"description": "Additional HTTP headers as key-value pairs",
+				},
+			},
+			"required": []string{"url"},
+		},
+		Handler: func(ctx context.Context, params map[string]interface{}) (interface{}, error) {
+			url, _ := params["url"].(string)
+			if url == "" {
+				return nil, fmt.Errorf("url is required")
+			}
+
+			method, _ := params["method"].(string)
+			if method == "" {
+				method = "GET"
+			}
+
+			body, _ := params["body"].(string)
+
+			httpClient, err := interceptor.HTTPClient(ctx)
+			if err != nil {
+				return nil, fmt.Errorf("create X402 HTTP client: %w", err)
+			}
+
+			var bodyReader io.Reader
+			if body != "" {
+				bodyReader = strings.NewReader(body)
+			}
+
+			req, err := http.NewRequestWithContext(ctx, method, url, bodyReader)
+			if err != nil {
+				return nil, fmt.Errorf("create request: %w", err)
+			}
+
+			// Add custom headers.
+			if hdrs, ok := params["headers"].(map[string]interface{}); ok {
+				for k, v := range hdrs {
+					if s, ok := v.(string); ok {
+						req.Header.Set(k, s)
+					}
+				}
+			}
+
+			resp, err := httpClient.Do(req)
+			if err != nil {
+				return nil, fmt.Errorf("X402 request: %w", err)
+			}
+			defer resp.Body.Close()
+
+			respBody, err := io.ReadAll(resp.Body)
+			if err != nil {
+				return nil, fmt.Errorf("read response body: %w", err)
+			}
+
+			// Truncate large responses for agent context.
+			bodyStr := string(respBody)
+			const maxBodyLen = 8192
+			truncated := false
+			if len(bodyStr) > maxBodyLen {
+				bodyStr = bodyStr[:maxBodyLen]
+				truncated = true
+			}
+
+			respHeaders := make(map[string]string, len(resp.Header))
+			for k, v := range resp.Header {
+				if len(v) > 0 {
+					respHeaders[k] = v[0]
+				}
+			}
+
+			result := map[string]interface{}{
+				"statusCode": resp.StatusCode,
+				"body":       bodyStr,
+				"headers":    respHeaders,
+			}
+			if truncated {
+				result["truncated"] = true
+			}
+
+			// If payment was made (non-402 response after retry), record it for audit.
+			if svc != nil && resp.StatusCode >= 200 && resp.StatusCode < 300 {
+				if paymentResp := resp.Header.Get("Payment-Response"); paymentResp != "" {
+					addr, _ := interceptor.SignerAddress(ctx)
+					_ = svc.RecordX402Payment(ctx, payment.X402PaymentRecord{
+						URL:     url,
+						From:    addr,
+						ChainID: 0, // Set from config at wiring level if needed.
+					})
+				}
+			}
+
+			return result, nil
 		},
 	}
 }

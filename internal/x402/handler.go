@@ -1,55 +1,23 @@
 package x402
 
 import (
-	"encoding/json"
-	"fmt"
-	"net/http"
-	"strconv"
+	x402sdk "github.com/coinbase/x402/go"
+	evmclient "github.com/coinbase/x402/go/mechanisms/evm/exact/client"
 )
 
-// ParseChallenge extracts an X402 payment challenge from HTTP 402 response headers.
-func ParseChallenge(url string, resp *http.Response) (*Challenge, error) {
-	if resp.StatusCode != http.StatusPaymentRequired {
-		return nil, fmt.Errorf("expected HTTP 402, got %d", resp.StatusCode)
-	}
-
-	amount := resp.Header.Get(HeaderPaymentAmount)
-	if amount == "" {
-		return nil, fmt.Errorf("missing %s header", HeaderPaymentAmount)
-	}
-
-	recipient := resp.Header.Get(HeaderPaymentRecipient)
-	if recipient == "" {
-		return nil, fmt.Errorf("missing %s header", HeaderPaymentRecipient)
-	}
-
-	token := resp.Header.Get(HeaderPaymentToken)
-	network := resp.Header.Get(HeaderPaymentNetwork)
-
-	var chainID int64
-	if cidStr := resp.Header.Get(HeaderPaymentChainID); cidStr != "" {
-		var err error
-		chainID, err = strconv.ParseInt(cidStr, 10, 64)
-		if err != nil {
-			return nil, fmt.Errorf("invalid %s header: %w", HeaderPaymentChainID, err)
-		}
-	}
-
-	return &Challenge{
-		PaymentURL:       url,
-		Amount:           amount,
-		TokenAddress:     token,
-		RecipientAddress: recipient,
-		Network:          network,
-		ChainID:          chainID,
-	}, nil
-}
-
-// BuildPaymentHeader creates the X-PAYMENT header value from a payment payload.
-func BuildPaymentHeader(payload PaymentPayload) (string, error) {
-	data, err := json.Marshal(payload)
+// NewX402Client creates an X402 SDK client configured for the given chain and signer.
+// The client is registered with the exact EVM scheme for the specified CAIP-2 network.
+func NewX402Client(signerProvider SignerProvider, chainID int64) (*x402sdk.X402Client, error) {
+	signer, err := signerProvider.EvmSigner(nil)
 	if err != nil {
-		return "", fmt.Errorf("marshal payment payload: %w", err)
+		return nil, err
 	}
-	return string(data), nil
+
+	network := x402sdk.Network(CAIP2Network(chainID))
+	scheme := evmclient.NewExactEvmScheme(signer)
+
+	client := x402sdk.Newx402Client()
+	client.Register(network, scheme)
+
+	return client, nil
 }

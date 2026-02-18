@@ -185,6 +185,20 @@ func (_u *PaymentTxUpdate) ClearX402URL() *PaymentTxUpdate {
 	return _u
 }
 
+// SetPaymentMethod sets the "payment_method" field.
+func (_u *PaymentTxUpdate) SetPaymentMethod(v paymenttx.PaymentMethod) *PaymentTxUpdate {
+	_u.mutation.SetPaymentMethod(v)
+	return _u
+}
+
+// SetNillablePaymentMethod sets the "payment_method" field if the given value is not nil.
+func (_u *PaymentTxUpdate) SetNillablePaymentMethod(v *paymenttx.PaymentMethod) *PaymentTxUpdate {
+	if v != nil {
+		_u.SetPaymentMethod(*v)
+	}
+	return _u
+}
+
 // SetErrorMessage sets the "error_message" field.
 func (_u *PaymentTxUpdate) SetErrorMessage(v string) *PaymentTxUpdate {
 	_u.mutation.SetErrorMessage(v)
@@ -274,6 +288,11 @@ func (_u *PaymentTxUpdate) check() error {
 			return &ValidationError{Name: "status", err: fmt.Errorf(`ent: validator failed for field "PaymentTx.status": %w`, err)}
 		}
 	}
+	if v, ok := _u.mutation.PaymentMethod(); ok {
+		if err := paymenttx.PaymentMethodValidator(v); err != nil {
+			return &ValidationError{Name: "payment_method", err: fmt.Errorf(`ent: validator failed for field "PaymentTx.payment_method": %w`, err)}
+		}
+	}
 	return nil
 }
 
@@ -330,6 +349,9 @@ func (_u *PaymentTxUpdate) sqlSave(ctx context.Context) (_node int, err error) {
 	}
 	if _u.mutation.X402URLCleared() {
 		_spec.ClearField(paymenttx.FieldX402URL, field.TypeString)
+	}
+	if value, ok := _u.mutation.PaymentMethod(); ok {
+		_spec.SetField(paymenttx.FieldPaymentMethod, field.TypeEnum, value)
 	}
 	if value, ok := _u.mutation.ErrorMessage(); ok {
 		_spec.SetField(paymenttx.FieldErrorMessage, field.TypeString, value)
@@ -517,6 +539,20 @@ func (_u *PaymentTxUpdateOne) ClearX402URL() *PaymentTxUpdateOne {
 	return _u
 }
 
+// SetPaymentMethod sets the "payment_method" field.
+func (_u *PaymentTxUpdateOne) SetPaymentMethod(v paymenttx.PaymentMethod) *PaymentTxUpdateOne {
+	_u.mutation.SetPaymentMethod(v)
+	return _u
+}
+
+// SetNillablePaymentMethod sets the "payment_method" field if the given value is not nil.
+func (_u *PaymentTxUpdateOne) SetNillablePaymentMethod(v *paymenttx.PaymentMethod) *PaymentTxUpdateOne {
+	if v != nil {
+		_u.SetPaymentMethod(*v)
+	}
+	return _u
+}
+
 // SetErrorMessage sets the "error_message" field.
 func (_u *PaymentTxUpdateOne) SetErrorMessage(v string) *PaymentTxUpdateOne {
 	_u.mutation.SetErrorMessage(v)
@@ -619,6 +655,11 @@ func (_u *PaymentTxUpdateOne) check() error {
 			return &ValidationError{Name: "status", err: fmt.Errorf(`ent: validator failed for field "PaymentTx.status": %w`, err)}
 		}
 	}
+	if v, ok := _u.mutation.PaymentMethod(); ok {
+		if err := paymenttx.PaymentMethodValidator(v); err != nil {
+			return &ValidationError{Name: "payment_method", err: fmt.Errorf(`ent: validator failed for field "PaymentTx.payment_method": %w`, err)}
+		}
+	}
 	return nil
 }
 
@@ -692,6 +733,9 @@ func (_u *PaymentTxUpdateOne) sqlSave(ctx context.Context) (_node *PaymentTx, er
 	}
 	if _u.mutation.X402URLCleared() {
 		_spec.ClearField(paymenttx.FieldX402URL, field.TypeString)
+	}
+	if value, ok := _u.mutation.PaymentMethod(); ok {
+		_spec.SetField(paymenttx.FieldPaymentMethod, field.TypeEnum, value)
 	}
 	if value, ok := _u.mutation.ErrorMessage(); ok {
 		_spec.SetField(paymenttx.FieldErrorMessage, field.TypeString, value)

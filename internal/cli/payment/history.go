@@ -56,7 +56,7 @@ func newHistoryCmd(bootLoader func() (*bootstrap.Result, error)) *cobra.Command 
 			}
 
 			w := tabwriter.NewWriter(os.Stdout, 0, 4, 2, ' ', 0)
-			fmt.Fprintln(w, "STATUS\tAMOUNT\tTO\tPURPOSE\tTX HASH\tCREATED")
+			fmt.Fprintln(w, "STATUS\tAMOUNT\tTO\tMETHOD\tPURPOSE\tTX HASH\tCREATED")
 			for _, tx := range txs {
 				hash := tx.TxHash
 				if len(hash) > 14 {
@@ -70,10 +70,15 @@ func newHistoryCmd(bootLoader func() (*bootstrap.Result, error)) *cobra.Command 
 				if len(purpose) > 24 {
 					purpose = purpose[:21] + "..."
 				}
-				fmt.Fprintf(w, "%s\t%s USDC\t%s\t%s\t%s\t%s\n",
+				method := tx.PaymentMethod
+				if method == "" {
+					method = "direct"
+				}
+				fmt.Fprintf(w, "%s\t%s USDC\t%s\t%s\t%s\t%s\t%s\n",
 					tx.Status,
 					tx.Amount,
 					to,
+					method,
 					purpose,
 					hash,
 					tx.CreatedAt.Format("2006-01-02 15:04"),

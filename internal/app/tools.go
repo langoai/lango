@@ -33,6 +33,7 @@ import (
 	toolpayment "github.com/langowarny/lango/internal/tools/payment"
 	toolsecrets "github.com/langowarny/lango/internal/tools/secrets"
 	"github.com/langowarny/lango/internal/workflow"
+	x402pkg "github.com/langowarny/lango/internal/x402"
 )
 
 // buildTools creates the set of tools available to the agent.
@@ -1692,6 +1693,13 @@ func buildApprovalSummary(toolName string, params map[string]interface{}) string
 		return fmt.Sprintf("Send %s USDC to %s (%s)", amount, truncate(to, 12), truncate(purpose, 50))
 	case "payment_create_wallet":
 		return "Create new blockchain wallet"
+	case "x402_fetch":
+		url, _ := params["url"].(string)
+		method, _ := params["method"].(string)
+		if method == "" {
+			method = "GET"
+		}
+		return fmt.Sprintf("X402 %s %s (auto-pay enabled)", method, truncate(url, 150))
 	case "cron_add":
 		name, _ := params["name"].(string)
 		scheduleType, _ := params["schedule_type"].(string)
@@ -1958,8 +1966,8 @@ func buildMemoryAgentTools(ms *memory.Store) []*agent.Tool {
 }
 
 // buildPaymentTools creates blockchain payment tools.
-func buildPaymentTools(pc *paymentComponents) []*agent.Tool {
-	return toolpayment.BuildTools(pc.service, pc.limiter, pc.secrets, pc.chainID)
+func buildPaymentTools(pc *paymentComponents, x402Interceptor *x402pkg.Interceptor) []*agent.Tool {
+	return toolpayment.BuildTools(pc.service, pc.limiter, pc.secrets, pc.chainID, x402Interceptor)
 }
 
 // buildLibrarianTools creates proactive librarian agent tools.

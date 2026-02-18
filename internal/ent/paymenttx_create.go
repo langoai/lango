@@ -115,6 +115,20 @@ func (_c *PaymentTxCreate) SetNillableX402URL(v *string) *PaymentTxCreate {
 	return _c
 }
 
+// SetPaymentMethod sets the "payment_method" field.
+func (_c *PaymentTxCreate) SetPaymentMethod(v paymenttx.PaymentMethod) *PaymentTxCreate {
+	_c.mutation.SetPaymentMethod(v)
+	return _c
+}
+
+// SetNillablePaymentMethod sets the "payment_method" field if the given value is not nil.
+func (_c *PaymentTxCreate) SetNillablePaymentMethod(v *paymenttx.PaymentMethod) *PaymentTxCreate {
+	if v != nil {
+		_c.SetPaymentMethod(*v)
+	}
+	return _c
+}
+
 // SetErrorMessage sets the "error_message" field.
 func (_c *PaymentTxCreate) SetErrorMessage(v string) *PaymentTxCreate {
 	_c.mutation.SetErrorMessage(v)
@@ -210,6 +224,10 @@ func (_c *PaymentTxCreate) defaults() {
 		v := paymenttx.DefaultStatus
 		_c.mutation.SetStatus(v)
 	}
+	if _, ok := _c.mutation.PaymentMethod(); !ok {
+		v := paymenttx.DefaultPaymentMethod
+		_c.mutation.SetPaymentMethod(v)
+	}
 	if _, ok := _c.mutation.CreatedAt(); !ok {
 		v := paymenttx.DefaultCreatedAt()
 		_c.mutation.SetCreatedAt(v)
@@ -259,6 +277,14 @@ func (_c *PaymentTxCreate) check() error {
 	if v, ok := _c.mutation.Status(); ok {
 		if err := paymenttx.StatusValidator(v); err != nil {
 			return &ValidationError{Name: "status", err: fmt.Errorf(`ent: validator failed for field "PaymentTx.status": %w`, err)}
+		}
+	}
+	if _, ok := _c.mutation.PaymentMethod(); !ok {
+		return &ValidationError{Name: "payment_method", err: errors.New(`ent: missing required field "PaymentTx.payment_method"`)}
+	}
+	if v, ok := _c.mutation.PaymentMethod(); ok {
+		if err := paymenttx.PaymentMethodValidator(v); err != nil {
+			return &ValidationError{Name: "payment_method", err: fmt.Errorf(`ent: validator failed for field "PaymentTx.payment_method": %w`, err)}
 		}
 	}
 	if _, ok := _c.mutation.CreatedAt(); !ok {
@@ -337,6 +363,10 @@ func (_c *PaymentTxCreate) createSpec() (*PaymentTx, *sqlgraph.CreateSpec) {
 	if value, ok := _c.mutation.X402URL(); ok {
 		_spec.SetField(paymenttx.FieldX402URL, field.TypeString, value)
 		_node.X402URL = value
+	}
+	if value, ok := _c.mutation.PaymentMethod(); ok {
+		_spec.SetField(paymenttx.FieldPaymentMethod, field.TypeEnum, value)
+		_node.PaymentMethod = value
 	}
 	if value, ok := _c.mutation.ErrorMessage(); ok {
 		_spec.SetField(paymenttx.FieldErrorMessage, field.TypeString, value)

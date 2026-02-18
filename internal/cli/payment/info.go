@@ -43,7 +43,11 @@ func newInfoCmd(bootLoader func() (*bootstrap.Result, error)) *cobra.Command {
 
 			x402Status := "disabled"
 			if deps.config.X402.AutoIntercept {
-				x402Status = "enabled"
+				x402Status = "enabled (V2 SDK)"
+			}
+			x402MaxAutoPay := deps.config.X402.MaxAutoPayAmount
+			if x402MaxAutoPay == "" {
+				x402MaxAutoPay = "unlimited"
 			}
 
 			if jsonOutput {
@@ -56,17 +60,22 @@ func newInfoCmd(bootLoader func() (*bootstrap.Result, error)) *cobra.Command {
 					"walletProvider": deps.config.WalletProvider,
 					"usdcContract":   deps.config.Network.USDCContract,
 					"rpcUrl":         deps.config.Network.RPCURL,
-					"x402":           x402Status,
+					"x402": map[string]interface{}{
+						"status":          x402Status,
+						"protocol":        "X402 V2 (Coinbase SDK)",
+						"maxAutoPayAmount": x402MaxAutoPay,
+					},
 				})
 			}
 
 			fmt.Println("Payment System Info")
-			fmt.Printf("  Wallet Address:     %s\n", addr)
-			fmt.Printf("  Network:            %s (chain %d)\n", network, chainID)
-			fmt.Printf("  Wallet Provider:    %s\n", deps.config.WalletProvider)
-			fmt.Printf("  USDC Contract:      %s\n", deps.config.Network.USDCContract)
-			fmt.Printf("  RPC URL:            %s\n", deps.config.Network.RPCURL)
+			fmt.Printf("  Wallet Address:      %s\n", addr)
+			fmt.Printf("  Network:             %s (chain %d)\n", network, chainID)
+			fmt.Printf("  Wallet Provider:     %s\n", deps.config.WalletProvider)
+			fmt.Printf("  USDC Contract:       %s\n", deps.config.Network.USDCContract)
+			fmt.Printf("  RPC URL:             %s\n", deps.config.Network.RPCURL)
 			fmt.Printf("  X402 Auto-Intercept: %s\n", x402Status)
+			fmt.Printf("  X402 Max Auto-Pay:   %s USDC\n", x402MaxAutoPay)
 
 			return nil
 		},

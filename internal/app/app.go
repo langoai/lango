@@ -18,6 +18,7 @@ import (
 	"github.com/langowarny/lango/internal/session"
 	"github.com/langowarny/lango/internal/tools/browser"
 	"github.com/langowarny/lango/internal/tools/filesystem"
+	x402pkg "github.com/langowarny/lango/internal/x402"
 )
 
 func logger() *zap.SugaredLogger { return logging.App() }
@@ -187,10 +188,19 @@ func New(boot *bootstrap.Result) (*App, error) {
 
 	// 5h. Payment tools (optional)
 	pc := initPayment(cfg, store, app.Secrets)
+	var x402Interceptor *x402pkg.Interceptor
 	if pc != nil {
 		app.WalletProvider = pc.wallet
 		app.PaymentService = pc.service
-		tools = append(tools, buildPaymentTools(pc)...)
+
+		// 5h'. X402 interceptor (optional, requires payment)
+		xc := initX402(cfg, app.Secrets, pc.limiter)
+		if xc != nil {
+			x402Interceptor = xc.interceptor
+			app.X402Interceptor = xc.interceptor
+		}
+
+		tools = append(tools, buildPaymentTools(pc, x402Interceptor)...)
 	}
 
 	// 5i. Librarian tools (optional)

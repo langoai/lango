@@ -1,94 +1,44 @@
 package x402
 
 import (
-	"net/http"
 	"testing"
 )
 
-func TestParseChallenge(t *testing.T) {
+func TestCAIP2Network(t *testing.T) {
 	tests := []struct {
-		give       string
-		giveStatus int
-		headers    map[string]string
-		wantErr    bool
-		wantAmount string
+		give    int64
+		want    string
 	}{
-		{
-			give:       "basic challenge",
-			giveStatus: 402,
-			headers: map[string]string{
-				HeaderPaymentAmount:    "0.01",
-				HeaderPaymentRecipient: "0x1234567890abcdef1234567890abcdef12345678",
-				HeaderPaymentToken:     "0xUSDC",
-				HeaderPaymentNetwork:   "base-sepolia",
-				HeaderPaymentChainID:   "84532",
-			},
-			wantAmount: "0.01",
-		},
-		{
-			give:       "non-402 status",
-			giveStatus: 200,
-			headers:    map[string]string{},
-			wantErr:    true,
-		},
-		{
-			give:       "missing amount header",
-			giveStatus: 402,
-			headers: map[string]string{
-				HeaderPaymentRecipient: "0x1234",
-			},
-			wantErr: true,
-		},
-		{
-			give:       "missing recipient header",
-			giveStatus: 402,
-			headers: map[string]string{
-				HeaderPaymentAmount: "0.01",
-			},
-			wantErr: true,
-		},
+		{give: 1, want: "eip155:1"},
+		{give: 8453, want: "eip155:8453"},
+		{give: 84532, want: "eip155:84532"},
+		{give: 11155111, want: "eip155:11155111"},
 	}
 
 	for _, tt := range tests {
-		t.Run(tt.give, func(t *testing.T) {
-			resp := &http.Response{
-				StatusCode: tt.giveStatus,
-				Header:     http.Header{},
-			}
-			for k, v := range tt.headers {
-				resp.Header.Set(k, v)
-			}
-
-			challenge, err := ParseChallenge("https://example.com/api", resp)
-			if tt.wantErr {
-				if err == nil {
-					t.Errorf("expected error, got nil")
-				}
-				return
-			}
-			if err != nil {
-				t.Fatalf("unexpected error: %v", err)
-			}
-			if challenge.Amount != tt.wantAmount {
-				t.Errorf("Amount = %q, want %q", challenge.Amount, tt.wantAmount)
+		t.Run(tt.want, func(t *testing.T) {
+			got := CAIP2Network(tt.give)
+			if got != tt.want {
+				t.Errorf("CAIP2Network(%d) = %q, want %q", tt.give, got, tt.want)
 			}
 		})
 	}
 }
 
-func TestBuildPaymentHeader(t *testing.T) {
-	payload := PaymentPayload{
-		TxHash:  "0xabc123",
-		From:    "0xsender",
-		ChainID: 84532,
+func TestConfig(t *testing.T) {
+	cfg := Config{
+		Enabled:          true,
+		ChainID:          84532,
+		MaxAutoPayAmount: "1.00",
 	}
 
-	header, err := BuildPaymentHeader(payload)
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
+	if !cfg.Enabled {
+		t.Error("expected Enabled to be true")
 	}
-
-	if header == "" {
-		t.Error("expected non-empty header")
+	if cfg.ChainID != 84532 {
+		t.Errorf("ChainID = %d, want 84532", cfg.ChainID)
+	}
+	if cfg.MaxAutoPayAmount != "1.00" {
+		t.Errorf("MaxAutoPayAmount = %q, want %q", cfg.MaxAutoPayAmount, "1.00")
 	}
 }

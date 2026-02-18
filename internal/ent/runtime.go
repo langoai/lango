@@ -317,11 +317,11 @@ func init() {
 	// paymenttx.AmountValidator is a validator for the "amount" field. It is called by the builders before save.
 	paymenttx.AmountValidator = paymenttxDescAmount.Validators[0].(func(string) error)
 	// paymenttxDescCreatedAt is the schema descriptor for created_at field.
-	paymenttxDescCreatedAt := paymenttxFields[11].Descriptor()
+	paymenttxDescCreatedAt := paymenttxFields[12].Descriptor()
 	// paymenttx.DefaultCreatedAt holds the default value on creation for the created_at field.
 	paymenttx.DefaultCreatedAt = paymenttxDescCreatedAt.Default.(func() time.Time)
 	// paymenttxDescUpdatedAt is the schema descriptor for updated_at field.
-	paymenttxDescUpdatedAt := paymenttxFields[12].Descriptor()
+	paymenttxDescUpdatedAt := paymenttxFields[13].Descriptor()
 	// paymenttx.DefaultUpdatedAt holds the default value on creation for the updated_at field.
 	paymenttx.DefaultUpdatedAt = paymenttxDescUpdatedAt.Default.(func() time.Time)
 	// paymenttx.UpdateDefaultUpdatedAt holds the default value on update for the updated_at field.

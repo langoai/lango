@@ -185,34 +185,41 @@ func (s *Service) History(ctx context.Context, limit int) ([]TransactionInfo, er
 	result := make([]TransactionInfo, len(txs))
 	for i, tx := range txs {
 		result[i] = TransactionInfo{
-			TxHash:       tx.TxHash,
-			Status:       string(tx.Status),
-			Amount:       tx.Amount,
-			From:         tx.FromAddress,
-			To:           tx.ToAddress,
-			ChainID:      tx.ChainID,
-			Purpose:      tx.Purpose,
-			X402URL:      tx.X402URL,
-			ErrorMessage: tx.ErrorMessage,
-			CreatedAt:    tx.CreatedAt,
+			TxHash:        tx.TxHash,
+			Status:        string(tx.Status),
+			Amount:        tx.Amount,
+			From:          tx.FromAddress,
+			To:            tx.ToAddress,
+			ChainID:       tx.ChainID,
+			Purpose:       tx.Purpose,
+			X402URL:       tx.X402URL,
+			PaymentMethod: string(tx.PaymentMethod),
+			ErrorMessage:  tx.ErrorMessage,
+			CreatedAt:     tx.CreatedAt,
 		}
 	}
 
 	return result, nil
 }
 
-// HandleX402 processes an X402 payment challenge.
-func (s *Service) HandleX402(ctx context.Context, challenge X402Challenge) (string, error) {
-	receipt, err := s.Send(ctx, PaymentRequest{
-		To:      challenge.RecipientAddress,
-		Amount:  challenge.Amount,
-		Purpose: "X402 payment for " + challenge.PaymentURL,
-		X402URL: challenge.PaymentURL,
-	})
+// RecordX402Payment records an X402 automatic payment for audit trail.
+// Unlike Send(), this does not build or submit a transaction — the SDK handles
+// payment signing. This only creates the database record for tracking.
+func (s *Service) RecordX402Payment(ctx context.Context, record X402PaymentRecord) error {
+	_, err := s.client.PaymentTx.Create().
+		SetFromAddress(record.From).
+		SetToAddress(record.To).
+		SetAmount(record.Amount).
+		SetChainID(record.ChainID).
+		SetStatus(paymenttx.StatusSubmitted).
+		SetPurpose("X402 auto-payment").
+		SetX402URL(record.URL).
+		SetPaymentMethod(paymenttx.PaymentMethodX402V2).
+		Save(ctx)
 	if err != nil {
-		return "", fmt.Errorf("x402 payment: %w", err)
+		return fmt.Errorf("record X402 payment: %w", err)
 	}
-	return receipt.TxHash, nil
+	return nil
 }
 
 // WalletAddress returns the wallet's public address.

@@ -29,6 +29,7 @@ import (
 	"github.com/langowarny/lango/internal/orchestration"
 	"github.com/langowarny/lango/internal/payment"
 	"github.com/langowarny/lango/internal/prompt"
+	x402pkg "github.com/langowarny/lango/internal/x402"
 	"github.com/langowarny/lango/internal/provider"
 	"github.com/langowarny/lango/internal/security"
 	"github.com/langowarny/lango/internal/session"
@@ -1022,6 +1023,45 @@ func initPayment(cfg *config.Config, store session.Store, secrets *security.Secr
 		limiter: limiter,
 		secrets: secrets,
 		chainID: cfg.Payment.Network.ChainID,
+	}
+}
+
+// x402Components holds optional X402 interceptor components.
+type x402Components struct {
+	interceptor *x402pkg.Interceptor
+}
+
+// initX402 creates the X402 interceptor if payment is enabled.
+func initX402(cfg *config.Config, secrets *security.SecretsStore, limiter wallet.SpendingLimiter) *x402Components {
+	if !cfg.Payment.Enabled {
+		return nil
+	}
+	if secrets == nil {
+		return nil
+	}
+
+	signerProvider := x402pkg.NewLocalSignerProvider(secrets)
+
+	maxAutoPayAmt := cfg.Payment.Limits.MaxPerTx
+	if maxAutoPayAmt == "" {
+		maxAutoPayAmt = "1.00"
+	}
+
+	x402Cfg := x402pkg.Config{
+		Enabled:          true,
+		ChainID:          cfg.Payment.Network.ChainID,
+		MaxAutoPayAmount: maxAutoPayAmt,
+	}
+
+	interceptor := x402pkg.NewInterceptor(signerProvider, limiter, x402Cfg, logger())
+
+	logger().Infow("X402 interceptor configured",
+		"chainId", x402Cfg.ChainID,
+		"maxAutoPayAmount", maxAutoPayAmt,
+	)
+
+	return &x402Components{
+		interceptor: interceptor,
 	}
 }
 

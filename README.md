@@ -12,7 +12,7 @@ A high-performance AI agent built with Go, supporting multiple AI providers, cha
 - 📊 **Knowledge Graph & Graph RAG** - BoltDB triple store with hybrid vector + graph retrieval
 - 🔀 **Multi-Agent Orchestration** - Hierarchical sub-agents (operator, navigator, vault, librarian, automator, planner, chronicler)
 - 🌍 **A2A Protocol** - Agent-to-Agent protocol for remote agent discovery and integration
-- 💸 **Blockchain Payments** - USDC payments on Base L2, X402 auto-pay protocol, spending limits
+- 💸 **Blockchain Payments** - USDC payments on Base L2, X402 V2 auto-pay protocol (Coinbase SDK), spending limits
 - ⏰ **Cron Scheduling** - Persistent cron jobs with cron/interval/one-time schedules, multi-channel delivery
 - ⚡ **Background Execution** - Async task manager with concurrency control and completion notifications
 - 🔄 **Workflow Engine** - DAG-based YAML workflows with parallel step execution and state persistence
@@ -184,10 +184,10 @@ lango/
 │   ├── cron/               # Cron scheduler (robfig/cron/v3), job store, executor, delivery
 │   ├── background/         # Background task manager, notifications, monitoring
 │   ├── workflow/            # DAG workflow engine, YAML parser, state persistence
-│   ├── payment/            # Blockchain payment service (USDC on EVM chains)
+│   ├── payment/            # Blockchain payment service (USDC on EVM chains, X402 audit trail)
 │   ├── supervisor/         # Provider proxy, privileged tool execution
 │   ├── wallet/             # Wallet providers (local, rpc, composite), spending limiter
-│   ├── x402/               # X402 payment protocol middleware
+│   ├── x402/               # X402 V2 payment protocol (Coinbase SDK, EIP-3009 signing)
 │   └── tools/              # browser, crypto, exec, filesystem, secrets, payment
 ├── prompts/                # Default prompt .md files (embedded via go:embed)
 ├── skills/                 # 30 embedded default skills (go:embed SKILL.md files)
@@ -523,6 +523,8 @@ When `payment.enabled` is `true`, the following agent tools are registered:
 | `payment_history` | View recent transaction history | Safe |
 | `payment_limits` | View spending limits and daily usage | Safe |
 | `payment_wallet_info` | Show wallet address and network info | Safe |
+| `payment_create_wallet` | Create a new blockchain wallet (key stored encrypted) | Dangerous |
+| `x402_fetch` | HTTP request with automatic X402 payment (EIP-3009) | Dangerous |
 
 ### Wallet Providers
 
@@ -532,14 +534,23 @@ When `payment.enabled` is `true`, the following agent tools are registered:
 | `rpc` | Remote signer via companion app |
 | `composite` | Tries RPC first, falls back to local |
 
-### X402 Protocol
+### X402 V2 Protocol
 
-When `payment.x402.autoIntercept` is enabled, the agent automatically handles HTTP 402 Payment Required responses:
+Lango uses the official [Coinbase X402 Go SDK](https://github.com/coinbase/x402) for automatic HTTP 402 payments. When `payment.x402.autoIntercept` is enabled:
 
-1. Server returns 402 with payment challenge headers
-2. Agent parses recipient address, amount, and token
-3. Payment is sent if within spending limits
-4. Original request is retried with payment proof
+1. Agent makes an HTTP request via the `x402_fetch` tool
+2. Server returns 402 with `PAYMENT-REQUIRED` header (Base64 JSON)
+3. SDK's `PaymentRoundTripper` intercepts the 402 response
+4. SDK creates an EIP-3009 `transferWithAuthorization`, signs with EIP-712 typed data
+5. SDK retries the request with `PAYMENT-SIGNATURE` header
+6. Server verifies the signature and returns content
+
+Key features:
+- **EIP-3009 off-chain signatures** — no on-chain transaction needed from the agent
+- **CAIP-2 network identifiers** — standard `eip155:<chainID>` format
+- **Spending limit enforcement** — `BeforePaymentCreationHook` checks per-tx and daily limits before signing
+- **Lazy client initialization** — wallet key loaded only when first X402 request is made
+- **Audit trail** — X402 payments recorded in PaymentTx with `payment_method = "x402_v2"`
 
 ### CLI Usage
 

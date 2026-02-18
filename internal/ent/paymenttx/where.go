@@ -665,6 +665,26 @@ func X402URLContainsFold(v string) predicate.PaymentTx {
 	return predicate.PaymentTx(sql.FieldContainsFold(FieldX402URL, v))
 }
 
+// PaymentMethodEQ applies the EQ predicate on the "payment_method" field.
+func PaymentMethodEQ(v PaymentMethod) predicate.PaymentTx {
+	return predicate.PaymentTx(sql.FieldEQ(FieldPaymentMethod, v))
+}
+
+// PaymentMethodNEQ applies the NEQ predicate on the "payment_method" field.
+func PaymentMethodNEQ(v PaymentMethod) predicate.PaymentTx {
+	return predicate.PaymentTx(sql.FieldNEQ(FieldPaymentMethod, v))
+}
+
+// PaymentMethodIn applies the In predicate on the "payment_method" field.
+func PaymentMethodIn(vs ...PaymentMethod) predicate.PaymentTx {
+	return predicate.PaymentTx(sql.FieldIn(FieldPaymentMethod, vs...))
+}
+
+// PaymentMethodNotIn applies the NotIn predicate on the "payment_method" field.
+func PaymentMethodNotIn(vs ...PaymentMethod) predicate.PaymentTx {
+	return predicate.PaymentTx(sql.FieldNotIn(FieldPaymentMethod, vs...))
+}
+
 // ErrorMessageEQ applies the EQ predicate on the "error_message" field.
 func ErrorMessageEQ(v string) predicate.PaymentTx {
 	return predicate.PaymentTx(sql.FieldEQ(FieldErrorMessage, v))

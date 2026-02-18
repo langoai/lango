@@ -19,6 +19,9 @@ type PaymentRequest struct {
 
 	// X402URL is the URL that triggered an X402 payment (if applicable).
 	X402URL string `json:"x402Url,omitempty"`
+
+	// PaymentMethod indicates how the payment was made ("direct_transfer" or "x402_v2").
+	PaymentMethod string `json:"paymentMethod,omitempty"`
 }
 
 // PaymentReceipt is returned after a payment is submitted.
@@ -34,23 +37,24 @@ type PaymentReceipt struct {
 
 // TransactionInfo combines a receipt with contextual information.
 type TransactionInfo struct {
-	TxHash       string    `json:"txHash,omitempty"`
-	Status       string    `json:"status"`
-	Amount       string    `json:"amount"`
-	From         string    `json:"from"`
-	To           string    `json:"to"`
-	ChainID      int64     `json:"chainId"`
-	Purpose      string    `json:"purpose,omitempty"`
-	X402URL      string    `json:"x402Url,omitempty"`
-	ErrorMessage string    `json:"errorMessage,omitempty"`
-	CreatedAt    time.Time `json:"createdAt"`
+	TxHash        string    `json:"txHash,omitempty"`
+	Status        string    `json:"status"`
+	Amount        string    `json:"amount"`
+	From          string    `json:"from"`
+	To            string    `json:"to"`
+	ChainID       int64     `json:"chainId"`
+	Purpose       string    `json:"purpose,omitempty"`
+	X402URL       string    `json:"x402Url,omitempty"`
+	PaymentMethod string    `json:"paymentMethod,omitempty"`
+	ErrorMessage  string    `json:"errorMessage,omitempty"`
+	CreatedAt     time.Time `json:"createdAt"`
 }
 
-// X402Challenge represents a parsed HTTP 402 payment challenge.
-type X402Challenge struct {
-	PaymentURL       string `json:"paymentUrl"`
-	Amount           string `json:"amount"`
-	TokenAddress     string `json:"tokenAddress"`
-	RecipientAddress string `json:"recipientAddress"`
-	Network          string `json:"network"`
+// X402PaymentRecord captures an X402 automatic payment for audit trail.
+type X402PaymentRecord struct {
+	URL     string `json:"url"`
+	Amount  string `json:"amount"`
+	From    string `json:"from"`
+	To      string `json:"to"`
+	ChainID int64  `json:"chainId"`
 }

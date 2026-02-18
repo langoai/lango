@@ -8889,26 +8889,27 @@ func (m *ObservationMutation) ResetEdge(name string) error {
 // PaymentTxMutation represents an operation that mutates the PaymentTx nodes in the graph.
 type PaymentTxMutation struct {
 	config
-	op            Op
-	typ           string
-	id            *uuid.UUID
-	tx_hash       *string
-	from_address  *string
-	to_address    *string
-	amount        *string
-	chain_id      *int64
-	addchain_id   *int64
-	status        *paymenttx.Status
-	session_key   *string
-	purpose       *string
-	x402_url      *string
-	error_message *string
-	created_at    *time.Time
-	updated_at    *time.Time
-	clearedFields map[string]struct{}
-	done          bool
-	oldValue      func(context.Context) (*PaymentTx, error)
-	predicates    []predicate.PaymentTx
+	op             Op
+	typ            string
+	id             *uuid.UUID
+	tx_hash        *string
+	from_address   *string
+	to_address     *string
+	amount         *string
+	chain_id       *int64
+	addchain_id    *int64
+	status         *paymenttx.Status
+	session_key    *string
+	purpose        *string
+	x402_url       *string
+	payment_method *paymenttx.PaymentMethod
+	error_message  *string
+	created_at     *time.Time
+	updated_at     *time.Time
+	clearedFields  map[string]struct{}
+	done           bool
+	oldValue       func(context.Context) (*PaymentTx, error)
+	predicates     []predicate.PaymentTx
 }
 
 var _ ent.Mutation = (*PaymentTxMutation)(nil)
@@ -9411,6 +9412,42 @@ func (m *PaymentTxMutation) ResetX402URL() {
 	delete(m.clearedFields, paymenttx.FieldX402URL)
 }
 
+// SetPaymentMethod sets the "payment_method" field.
+func (m *PaymentTxMutation) SetPaymentMethod(pm paymenttx.PaymentMethod) {
+	m.payment_method = &pm
+}
+
+// PaymentMethod returns the value of the "payment_method" field in the mutation.
+func (m *PaymentTxMutation) PaymentMethod() (r paymenttx.PaymentMethod, exists bool) {
+	v := m.payment_method
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldPaymentMethod returns the old "payment_method" field's value of the PaymentTx entity.
+// If the PaymentTx object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *PaymentTxMutation) OldPaymentMethod(ctx context.Context) (v paymenttx.PaymentMethod, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldPaymentMethod is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldPaymentMethod requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldPaymentMethod: %w", err)
+	}
+	return oldValue.PaymentMethod, nil
+}
+
+// ResetPaymentMethod resets all changes to the "payment_method" field.
+func (m *PaymentTxMutation) ResetPaymentMethod() {
+	m.payment_method = nil
+}
+
 // SetErrorMessage sets the "error_message" field.
 func (m *PaymentTxMutation) SetErrorMessage(s string) {
 	m.error_message = &s
@@ -9566,7 +9603,7 @@ func (m *PaymentTxMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *PaymentTxMutation) Fields() []string {
-	fields := make([]string, 0, 12)
+	fields := make([]string, 0, 13)
 	if m.tx_hash != nil {
 		fields = append(fields, paymenttx.FieldTxHash)
 	}
@@ -9593,6 +9630,9 @@ func (m *PaymentTxMutation) Fields() []string {
 	}
 	if m.x402_url != nil {
 		fields = append(fields, paymenttx.FieldX402URL)
+	}
+	if m.payment_method != nil {
+		fields = append(fields, paymenttx.FieldPaymentMethod)
 	}
 	if m.error_message != nil {
 		fields = append(fields, paymenttx.FieldErrorMessage)
@@ -9629,6 +9669,8 @@ func (m *PaymentTxMutation) Field(name string) (ent.Value, bool) {
 		return m.Purpose()
 	case paymenttx.FieldX402URL:
 		return m.X402URL()
+	case paymenttx.FieldPaymentMethod:
+		return m.PaymentMethod()
 	case paymenttx.FieldErrorMessage:
 		return m.ErrorMessage()
 	case paymenttx.FieldCreatedAt:
@@ -9662,6 +9704,8 @@ func (m *PaymentTxMutation) OldField(ctx context.Context, name string) (ent.Valu
 		return m.OldPurpose(ctx)
 	case paymenttx.FieldX402URL:
 		return m.OldX402URL(ctx)
+	case paymenttx.FieldPaymentMethod:
+		return m.OldPaymentMethod(ctx)
 	case paymenttx.FieldErrorMessage:
 		return m.OldErrorMessage(ctx)
 	case paymenttx.FieldCreatedAt:
@@ -9739,6 +9783,13 @@ func (m *PaymentTxMutation) SetField(name string, value ent.Value) error {
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
 		m.SetX402URL(v)
+		return nil
+	case paymenttx.FieldPaymentMethod:
+		v, ok := value.(paymenttx.PaymentMethod)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetPaymentMethod(v)
 		return nil
 	case paymenttx.FieldErrorMessage:
 		v, ok := value.(string)
@@ -9884,6 +9935,9 @@ func (m *PaymentTxMutation) ResetField(name string) error {
 		return nil
 	case paymenttx.FieldX402URL:
 		m.ResetX402URL()
+		return nil
+	case paymenttx.FieldPaymentMethod:
+		m.ResetPaymentMethod()
 		return nil
 	case paymenttx.FieldErrorMessage:
 		m.ResetErrorMessage()

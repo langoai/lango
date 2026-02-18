@@ -23,6 +23,7 @@ import (
 	"github.com/langowarny/lango/internal/skill"
 	"github.com/langowarny/lango/internal/wallet"
 	"github.com/langowarny/lango/internal/workflow"
+	x402pkg "github.com/langowarny/lango/internal/x402"
 )
 
 // App is the root application structure
@@ -71,8 +72,9 @@ type App struct {
 	GraphBuffer *graph.GraphBuffer
 
 	// Payment Components (optional)
-	WalletProvider wallet.WalletProvider
-	PaymentService *payment.Service
+	WalletProvider  wallet.WalletProvider
+	PaymentService  *payment.Service
+	X402Interceptor *x402pkg.Interceptor
 
 	// Cron Scheduling Components (optional)
 	CronScheduler *cronpkg.Scheduler

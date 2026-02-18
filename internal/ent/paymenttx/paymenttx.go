@@ -33,6 +33,8 @@ const (
 	FieldPurpose = "purpose"
 	// FieldX402URL holds the string denoting the x402_url field in the database.
 	FieldX402URL = "x402_url"
+	// FieldPaymentMethod holds the string denoting the payment_method field in the database.
+	FieldPaymentMethod = "payment_method"
 	// FieldErrorMessage holds the string denoting the error_message field in the database.
 	FieldErrorMessage = "error_message"
 	// FieldCreatedAt holds the string denoting the created_at field in the database.
@@ -55,6 +57,7 @@ var Columns = []string{
 	FieldSessionKey,
 	FieldPurpose,
 	FieldX402URL,
+	FieldPaymentMethod,
 	FieldErrorMessage,
 	FieldCreatedAt,
 	FieldUpdatedAt,
@@ -115,6 +118,32 @@ func StatusValidator(s Status) error {
 	}
 }
 
+// PaymentMethod defines the type for the "payment_method" enum field.
+type PaymentMethod string
+
+// PaymentMethodDirectTransfer is the default value of the PaymentMethod enum.
+const DefaultPaymentMethod = PaymentMethodDirectTransfer
+
+// PaymentMethod values.
+const (
+	PaymentMethodDirectTransfer PaymentMethod = "direct_transfer"
+	PaymentMethodX402V2         PaymentMethod = "x402_v2"
+)
+
+func (pm PaymentMethod) String() string {
+	return string(pm)
+}
+
+// PaymentMethodValidator is a validator for the "payment_method" field enum values. It is called by the builders before save.
+func PaymentMethodValidator(pm PaymentMethod) error {
+	switch pm {
+	case PaymentMethodDirectTransfer, PaymentMethodX402V2:
+		return nil
+	default:
+		return fmt.Errorf("paymenttx: invalid enum value for payment_method field: %q", pm)
+	}
+}
+
 // OrderOption defines the ordering options for the PaymentTx queries.
 type OrderOption func(*sql.Selector)
 
@@ -166,6 +195,11 @@ func ByPurpose(opts ...sql.OrderTermOption) OrderOption {
 // ByX402URL orders the results by the x402_url field.
 func ByX402URL(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldX402URL, opts...).ToFunc()
+}
+
+// ByPaymentMethod orders the results by the payment_method field.
+func ByPaymentMethod(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldPaymentMethod, opts...).ToFunc()
 }
 
 // ByErrorMessage orders the results by the error_message field.

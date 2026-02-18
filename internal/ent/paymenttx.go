@@ -36,6 +36,8 @@ type PaymentTx struct {
 	Purpose string `json:"purpose,omitempty"`
 	// URL that triggered X402 payment (if applicable)
 	X402URL string `json:"x402_url,omitempty"`
+	// How the payment was made: direct ERC-20 transfer or X402 V2 auto-payment
+	PaymentMethod paymenttx.PaymentMethod `json:"payment_method,omitempty"`
 	// Error details if transaction failed
 	ErrorMessage string `json:"error_message,omitempty"`
 	// CreatedAt holds the value of the "created_at" field.
@@ -52,7 +54,7 @@ func (*PaymentTx) scanValues(columns []string) ([]any, error) {
 		switch columns[i] {
 		case paymenttx.FieldChainID:
 			values[i] = new(sql.NullInt64)
-		case paymenttx.FieldTxHash, paymenttx.FieldFromAddress, paymenttx.FieldToAddress, paymenttx.FieldAmount, paymenttx.FieldStatus, paymenttx.FieldSessionKey, paymenttx.FieldPurpose, paymenttx.FieldX402URL, paymenttx.FieldErrorMessage:
+		case paymenttx.FieldTxHash, paymenttx.FieldFromAddress, paymenttx.FieldToAddress, paymenttx.FieldAmount, paymenttx.FieldStatus, paymenttx.FieldSessionKey, paymenttx.FieldPurpose, paymenttx.FieldX402URL, paymenttx.FieldPaymentMethod, paymenttx.FieldErrorMessage:
 			values[i] = new(sql.NullString)
 		case paymenttx.FieldCreatedAt, paymenttx.FieldUpdatedAt:
 			values[i] = new(sql.NullTime)
@@ -132,6 +134,12 @@ func (_m *PaymentTx) assignValues(columns []string, values []any) error {
 				return fmt.Errorf("unexpected type %T for field x402_url", values[i])
 			} else if value.Valid {
 				_m.X402URL = value.String
+			}
+		case paymenttx.FieldPaymentMethod:
+			if value, ok := values[i].(*sql.NullString); !ok {
+				return fmt.Errorf("unexpected type %T for field payment_method", values[i])
+			} else if value.Valid {
+				_m.PaymentMethod = paymenttx.PaymentMethod(value.String)
 			}
 		case paymenttx.FieldErrorMessage:
 			if value, ok := values[i].(*sql.NullString); !ok {
@@ -213,6 +221,9 @@ func (_m *PaymentTx) String() string {
 	builder.WriteString(", ")
 	builder.WriteString("x402_url=")
 	builder.WriteString(_m.X402URL)
+	builder.WriteString(", ")
+	builder.WriteString("payment_method=")
+	builder.WriteString(fmt.Sprintf("%v", _m.PaymentMethod))
 	builder.WriteString(", ")
 	builder.WriteString("error_message=")
 	builder.WriteString(_m.ErrorMessage)
