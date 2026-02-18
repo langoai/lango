@@ -23,7 +23,6 @@ import (
 	"github.com/langowarny/lango/internal/learning"
 	"github.com/langowarny/lango/internal/librarian"
 	"github.com/langowarny/lango/internal/memory"
-	"github.com/langowarny/lango/internal/payment"
 	"github.com/langowarny/lango/internal/security"
 	"github.com/langowarny/lango/internal/session"
 	"github.com/langowarny/lango/internal/skill"
@@ -33,7 +32,6 @@ import (
 	"github.com/langowarny/lango/internal/tools/filesystem"
 	toolpayment "github.com/langowarny/lango/internal/tools/payment"
 	toolsecrets "github.com/langowarny/lango/internal/tools/secrets"
-	"github.com/langowarny/lango/internal/wallet"
 	"github.com/langowarny/lango/internal/workflow"
 )
 
@@ -1675,6 +1673,8 @@ func buildApprovalSummary(toolName string, params map[string]interface{}) string
 		to, _ := params["to"].(string)
 		purpose, _ := params["purpose"].(string)
 		return fmt.Sprintf("Send %s USDC to %s (%s)", amount, truncate(to, 12), truncate(purpose, 50))
+	case "payment_create_wallet":
+		return "Create new blockchain wallet"
 	case "cron_add":
 		name, _ := params["name"].(string)
 		scheduleType, _ := params["schedule_type"].(string)
@@ -1941,8 +1941,8 @@ func buildMemoryAgentTools(ms *memory.Store) []*agent.Tool {
 }
 
 // buildPaymentTools creates blockchain payment tools.
-func buildPaymentTools(svc *payment.Service, limiter wallet.SpendingLimiter) []*agent.Tool {
-	return toolpayment.BuildTools(svc, limiter)
+func buildPaymentTools(pc *paymentComponents) []*agent.Tool {
+	return toolpayment.BuildTools(pc.service, pc.limiter, pc.secrets, pc.chainID)
 }
 
 // buildLibrarianTools creates proactive librarian agent tools.

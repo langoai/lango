@@ -31,7 +31,7 @@ func NewLocalWallet(secrets *security.SecretsStore, rpcURL string, chainID int64
 		secrets: secrets,
 		rpcURL:  rpcURL,
 		chainID: chainID,
-		keyName: "wallet.privatekey",
+		keyName: walletKeyName,
 	}
 }
 

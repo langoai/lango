@@ -190,7 +190,7 @@ func New(boot *bootstrap.Result) (*App, error) {
 	if pc != nil {
 		app.WalletProvider = pc.wallet
 		app.PaymentService = pc.service
-		tools = append(tools, buildPaymentTools(pc.service, pc.limiter)...)
+		tools = append(tools, buildPaymentTools(pc)...)
 	}
 
 	// 5i. Librarian tools (optional)

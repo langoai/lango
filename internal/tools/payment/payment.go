@@ -3,23 +3,29 @@ package payment
 
 import (
 	"context"
+	"errors"
 	"fmt"
 
 	"github.com/langowarny/lango/internal/agent"
 	"github.com/langowarny/lango/internal/payment"
+	"github.com/langowarny/lango/internal/security"
 	"github.com/langowarny/lango/internal/session"
 	"github.com/langowarny/lango/internal/wallet"
 )
 
 // BuildTools creates the payment agent tools.
-func BuildTools(svc *payment.Service, limiter wallet.SpendingLimiter) []*agent.Tool {
-	return []*agent.Tool{
+func BuildTools(svc *payment.Service, limiter wallet.SpendingLimiter, secrets *security.SecretsStore, chainID int64) []*agent.Tool {
+	tools := []*agent.Tool{
 		buildSendTool(svc),
 		buildBalanceTool(svc),
 		buildHistoryTool(svc),
 		buildLimitsTool(limiter),
 		buildWalletInfoTool(svc),
 	}
+	if secrets != nil {
+		tools = append(tools, buildCreateWalletTool(secrets, chainID))
+	}
+	return tools
 }
 
 func buildSendTool(svc *payment.Service) *agent.Tool {
@@ -199,6 +205,40 @@ func buildWalletInfoTool(svc *payment.Service) *agent.Tool {
 				"address": addr,
 				"chainId": svc.ChainID(),
 				"network": wallet.NetworkName(svc.ChainID()),
+			}, nil
+		},
+	}
+}
+
+func buildCreateWalletTool(secrets *security.SecretsStore, chainID int64) *agent.Tool {
+	return &agent.Tool{
+		Name:        "payment_create_wallet",
+		Description: "Create a new blockchain wallet. Generates a private key stored securely — only the public address is returned. Requires approval.",
+		SafetyLevel: agent.SafetyLevelDangerous,
+		Parameters: map[string]interface{}{
+			"type":       "object",
+			"properties": map[string]interface{}{},
+		},
+		Handler: func(ctx context.Context, params map[string]interface{}) (interface{}, error) {
+			addr, err := wallet.CreateWallet(ctx, secrets)
+			if err != nil {
+				if errors.Is(err, wallet.ErrWalletExists) {
+					return map[string]interface{}{
+						"status":  "exists",
+						"address": addr,
+						"chainId": chainID,
+						"network": wallet.NetworkName(chainID),
+						"message": "Wallet already exists. Use payment_wallet_info to view details.",
+					}, nil
+				}
+				return nil, err
+			}
+
+			return map[string]interface{}{
+				"status":  "created",
+				"address": addr,
+				"chainId": chainID,
+				"network": wallet.NetworkName(chainID),
 			}, nil
 		},
 	}

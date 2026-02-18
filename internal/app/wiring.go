@@ -939,6 +939,8 @@ type paymentComponents struct {
 	wallet  wallet.WalletProvider
 	service *payment.Service
 	limiter wallet.SpendingLimiter
+	secrets *security.SecretsStore
+	chainID int64
 }
 
 // initPayment creates the payment components if enabled.
@@ -1016,6 +1018,8 @@ func initPayment(cfg *config.Config, store session.Store, secrets *security.Secr
 		wallet:  wp,
 		service: svc,
 		limiter: limiter,
+		secrets: secrets,
+		chainID: cfg.Payment.Network.ChainID,
 	}
 }
 
