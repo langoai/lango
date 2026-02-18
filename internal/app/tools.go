@@ -1558,10 +1558,14 @@ func wrapWithApproval(t *agent.Tool, ic config.InterceptorConfig, ap approval.Pr
 		Parameters:  t.Parameters,
 		SafetyLevel: t.SafetyLevel,
 		Handler: func(ctx context.Context, params map[string]interface{}) (interface{}, error) {
+			sessionKey := session.SessionKeyFromContext(ctx)
+			if target := approval.ApprovalTargetFromContext(ctx); target != "" {
+				sessionKey = target
+			}
 			req := approval.ApprovalRequest{
 				ID:         fmt.Sprintf("req-%d", time.Now().UnixNano()),
 				ToolName:   t.Name,
-				SessionKey: session.SessionKeyFromContext(ctx),
+				SessionKey: sessionKey,
 				Params:     params,
 				Summary:    buildApprovalSummary(t.Name, params),
 				CreatedAt:  time.Now(),

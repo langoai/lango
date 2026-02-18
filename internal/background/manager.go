@@ -3,9 +3,11 @@ package background
 import (
 	"context"
 	"fmt"
+	"strings"
 	"sync"
 
 	"github.com/google/uuid"
+	"github.com/langowarny/lango/internal/approval"
 	"go.uber.org/zap"
 )
 
@@ -155,6 +157,13 @@ func (m *Manager) execute(ctx context.Context, task *Task) {
 		if notifyErr := m.notify.NotifyStart(context.Background(), task); notifyErr != nil {
 			m.logger.Warnw("start notification send error", "taskID", task.ID, "error", notifyErr)
 		}
+	}
+
+	// Route tool approval requests to the originating channel.
+	if task.OriginSession != "" {
+		ctx = approval.WithApprovalTarget(ctx, task.OriginSession)
+	} else if task.OriginChannel != "" && strings.Contains(task.OriginChannel, ":") {
+		ctx = approval.WithApprovalTarget(ctx, task.OriginChannel)
 	}
 
 	sessionKey := "bg:" + task.ID

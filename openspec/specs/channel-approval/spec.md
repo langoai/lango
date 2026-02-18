@@ -13,7 +13,7 @@ The system SHALL define a `Provider` interface with `RequestApproval(ctx, req) (
 - **AND** `CanHandle` SHALL return true only for session keys it can handle
 
 ### Requirement: Composite approval routing
-The system SHALL provide a `CompositeProvider` that routes approval requests to the first registered provider whose `CanHandle` returns true for the given session key.
+The system SHALL provide a `CompositeProvider` that routes approval requests to the first registered provider whose `CanHandle` returns true for the given session key. The session key used for routing MAY be overridden by an explicit approval target set in the context, which takes precedence over the standard session key.
 
 #### Scenario: Route to matching provider
 - **WHEN** an approval request has session key "telegram:123:456"
@@ -34,6 +34,12 @@ The system SHALL provide a `CompositeProvider` that routes approval requests to 
 - **AND** no TTY fallback is configured
 - **THEN** the request SHALL be denied (return false)
 - **AND** an error SHALL be returned with the message `no approval provider for session "<sessionKey>"`
+
+#### Scenario: Approval target overrides session key
+- **WHEN** an approval request has session key "cron:MyJob:123"
+- **AND** the context has approval target "telegram:123456789"
+- **THEN** the request SHALL use "telegram:123456789" for provider matching
+- **AND** the request SHALL be routed to the Telegram provider
 
 ### Requirement: Thread-safe provider registration
 The system SHALL allow providers to be registered concurrently without data races.

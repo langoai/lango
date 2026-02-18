@@ -4,8 +4,10 @@ import (
 	"context"
 	"fmt"
 	"strconv"
+	"strings"
 	"time"
 
+	"github.com/langowarny/lango/internal/approval"
 	"go.uber.org/zap"
 )
 
@@ -45,6 +47,11 @@ func (e *Executor) Execute(ctx context.Context, job Job) *JobResult {
 		"session_key", sessionKey,
 		"session_mode", job.SessionMode,
 	)
+
+	// Route tool approval requests to the delivery channel.
+	if len(job.DeliverTo) > 0 && strings.Contains(job.DeliverTo[0], ":") {
+		ctx = approval.WithApprovalTarget(ctx, job.DeliverTo[0])
+	}
 
 	// Notify start (best-effort).
 	if len(job.DeliverTo) > 0 && e.delivery != nil {
