@@ -12,7 +12,7 @@ This project includes experimental AI Agent features and is currently in an unst
 
 ## Features
 
-- 🔥 **Fast** - Single binary, <100ms startup, <100MB memory
+- 🔥 **Fast** - Single binary, <100ms startup, <250MB memory
 - 🤖 **Multi-Provider AI** - OpenAI, Anthropic, Gemini, Ollama with unified interface
 - 🔌 **Multi-Channel** - Telegram, Discord, Slack support
 - 🛠️ **Rich Tools** - Shell execution, file system operations, browser automation, crypto & secrets tools
@@ -207,9 +207,12 @@ lango/
 Lango supports multiple AI providers with a unified interface. Provider aliases are resolved automatically (e.g., `gpt`/`chatgpt` -> `openai`, `claude` -> `anthropic`, `llama` -> `ollama`, `bard` -> `gemini`).
 
 ### Supported Providers
-- **OpenAI** (`openai`): GPT-4o, GPT-4, and OpenAI-compatible APIs
-- **Anthropic** (`anthropic`): Claude Sonnet 4, Claude 3.5, Claude 3
-- **Gemini** (`gemini`): Google Gemini models
+
+**Recommended**: You should select a reasoning model for smooth usage.
+
+- **OpenAI** (`openai`): Open-AI GPTs(GPT-5.2, GPT-5.3 Codex...), and OpenAI-Compatible APIs
+- **Anthropic** (`anthropic`): Claude Opus, Sonnet, Haiku
+- **Gemini** (`gemini`): Google Gemini Pro, Flash
 - **Ollama** (`ollama`): Local models via Ollama (default: `http://localhost:11434/v1`)
 
 ### Setup
