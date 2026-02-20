@@ -74,6 +74,10 @@
 - Single import: `import_skill(url: "https://github.com/owner/repo", skill_name: "skill-name")`.
 - Direct URL: `import_skill(url: "https://example.com/path/to/SKILL.md")`.
 
+### Learning Management Tool
+- `learning_stats` returns aggregate statistics about stored learnings: total count, category distribution, average confidence, date range, and occurrence/success totals. Use this to brief the user on learning data health.
+- `learning_cleanup` deletes learning entries by criteria. Parameters: `category`, `max_confidence`, `older_than_days`, `id` (single UUID), `dry_run` (default true). Always use `dry_run=true` first to preview, then confirm with `dry_run=false`.
+
 ### Error Handling
 - When a tool call fails, report the error clearly: what was attempted, what went wrong, and what alternatives exist.
 - Do not retry the same failing command without changing something. Diagnose the issue first.

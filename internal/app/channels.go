@@ -121,8 +121,24 @@ func (a *App) runAgent(ctx context.Context, sessionKey, input string) (string, e
 	if timeout <= 0 {
 		timeout = 5 * time.Minute
 	}
+
+	start := time.Now()
+	logger().Debugw("agent request started",
+		"session", sessionKey,
+		"timeout", timeout.String(),
+		"input_len", len(input))
+
 	ctx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
+
+	// Warn when approaching timeout (80%).
+	warnTimer := time.AfterFunc(time.Duration(float64(timeout)*0.8), func() {
+		logger().Warnw("agent request approaching timeout",
+			"session", sessionKey,
+			"elapsed", time.Since(start).String(),
+			"timeout", timeout.String())
+	})
+	defer warnTimer.Stop()
 
 	ctx = session.WithSessionKey(ctx, sessionKey)
 	response, err := a.Agent.RunAndCollect(ctx, sessionKey, input)
@@ -135,9 +151,25 @@ func (a *App) runAgent(ctx context.Context, sessionKey, input string) (string, e
 		a.AnalysisBuffer.Trigger(sessionKey)
 	}
 
+	elapsed := time.Since(start)
 	if err != nil && ctx.Err() == context.DeadlineExceeded {
+		logger().Errorw("agent request timed out",
+			"session", sessionKey,
+			"elapsed", elapsed.String(),
+			"timeout", timeout.String())
 		return "", fmt.Errorf("request timed out after %v", timeout)
 	}
+	if err != nil {
+		logger().Warnw("agent request failed",
+			"session", sessionKey,
+			"elapsed", elapsed.String(),
+			"error", err)
+		return "", err
+	}
 
-	return response, err
+	logger().Infow("agent request completed",
+		"session", sessionKey,
+		"elapsed", elapsed.String(),
+		"response_len", len(response))
+	return response, nil
 }

@@ -16,7 +16,7 @@ func newTestRetriever(t *testing.T) (*ContextRetriever, *Store) {
 	client := enttest.Open(t, "sqlite3", "file:ent?mode=memory&_fk=1")
 	t.Cleanup(func() { client.Close() })
 	logger := zap.NewNop().Sugar()
-	store := NewStore(client, logger, 20, 10)
+	store := NewStore(client, logger)
 	retriever := NewContextRetriever(store, 5, logger)
 	return retriever, store
 }

@@ -2,8 +2,10 @@ package knowledge
 
 import (
 	"context"
+	"fmt"
 	"strings"
 	"testing"
+	"time"
 
 	"go.uber.org/zap"
 
@@ -16,7 +18,7 @@ func newTestStore(t *testing.T) *Store {
 	client := enttest.Open(t, "sqlite3", "file:ent?mode=memory&_fk=1")
 	t.Cleanup(func() { client.Close() })
 	logger := zap.NewNop().Sugar()
-	return NewStore(client, logger, 20, 10)
+	return NewStore(client, logger)
 }
 
 func TestSaveAndGetKnowledge(t *testing.T) {
@@ -592,88 +594,127 @@ func TestSaveAndSearchExternalRef(t *testing.T) {
 	})
 }
 
-func TestRateLimit_Knowledge(t *testing.T) {
-	client := enttest.Open(t, "sqlite3", "file:ent?mode=memory&_fk=1")
-	t.Cleanup(func() { client.Close() })
-	logger := zap.NewNop().Sugar()
-	store := NewStore(client, logger, 2, 2)
+func TestGetLearningStats(t *testing.T) {
+	store := newTestStore(t)
 	ctx := context.Background()
 
-	t.Run("third save fails for same session", func(t *testing.T) {
-		for i := 0; i < 2; i++ {
-			entry := KnowledgeEntry{
-				Key:      "rl-k-" + strings.Repeat("x", i+1),
-				Category: "fact",
-				Content:  "rate limited content",
-			}
-			if err := store.SaveKnowledge(ctx, "session-rl", entry); err != nil {
-				t.Fatalf("SaveKnowledge %d: %v", i, err)
-			}
+	t.Run("empty store", func(t *testing.T) {
+		stats, err := store.GetLearningStats(ctx)
+		if err != nil {
+			t.Fatalf("GetLearningStats: %v", err)
 		}
-		entry := KnowledgeEntry{
-			Key:      "rl-k-third",
-			Category: "fact",
-			Content:  "should fail",
-		}
-		err := store.SaveKnowledge(ctx, "session-rl", entry)
-		if err == nil {
-			t.Fatal("expected rate limit error on 3rd save, got nil")
-		}
-		if !strings.Contains(err.Error(), "limit reached") {
-			t.Errorf("want error containing %q, got %q", "limit reached", err.Error())
+		if stats.TotalCount != 0 {
+			t.Errorf("TotalCount: want 0, got %d", stats.TotalCount)
 		}
 	})
 
-	t.Run("different session is independent", func(t *testing.T) {
-		entry := KnowledgeEntry{
-			Key:      "rl-k-other",
-			Category: "fact",
-			Content:  "different session",
-		}
-		if err := store.SaveKnowledge(ctx, "session-other", entry); err != nil {
-			t.Fatalf("expected no error for different session, got: %v", err)
-		}
-	})
-}
-
-func TestRateLimit_Learning(t *testing.T) {
-	client := enttest.Open(t, "sqlite3", "file:ent?mode=memory&_fk=1")
-	t.Cleanup(func() { client.Close() })
-	logger := zap.NewNop().Sugar()
-	store := NewStore(client, logger, 2, 2)
-	ctx := context.Background()
-
-	t.Run("third save fails for same session", func(t *testing.T) {
-		for i := 0; i < 2; i++ {
+	t.Run("with entries", func(t *testing.T) {
+		for i := 0; i < 3; i++ {
 			entry := LearningEntry{
-				Trigger:  "rl-trigger-" + strings.Repeat("y", i+1),
-				Category: "general",
+				Trigger:  fmt.Sprintf("stats-trigger-%d", i),
+				Category: "tool_error",
 			}
-			if err := store.SaveLearning(ctx, "session-rl", entry); err != nil {
+			if err := store.SaveLearning(ctx, "sess-stats", entry); err != nil {
 				t.Fatalf("SaveLearning %d: %v", i, err)
 			}
 		}
 		entry := LearningEntry{
-			Trigger:  "rl-trigger-third",
+			Trigger:  "stats-trigger-general",
 			Category: "general",
 		}
-		err := store.SaveLearning(ctx, "session-rl", entry)
-		if err == nil {
-			t.Fatal("expected rate limit error on 3rd save, got nil")
+		if err := store.SaveLearning(ctx, "sess-stats", entry); err != nil {
+			t.Fatalf("SaveLearning: %v", err)
 		}
-		if !strings.Contains(err.Error(), "limit reached") {
-			t.Errorf("want error containing %q, got %q", "limit reached", err.Error())
-		}
-	})
 
-	t.Run("different session is independent", func(t *testing.T) {
-		entry := LearningEntry{
-			Trigger:  "rl-trigger-other",
-			Category: "general",
+		stats, err := store.GetLearningStats(ctx)
+		if err != nil {
+			t.Fatalf("GetLearningStats: %v", err)
 		}
-		if err := store.SaveLearning(ctx, "session-other", entry); err != nil {
-			t.Fatalf("expected no error for different session, got: %v", err)
+		if stats.TotalCount < 4 {
+			t.Errorf("TotalCount: want >= 4, got %d", stats.TotalCount)
+		}
+		if stats.ByCategory["tool_error"] < 3 {
+			t.Errorf("ByCategory[tool_error]: want >= 3, got %d", stats.ByCategory["tool_error"])
 		}
 	})
+}
+
+func TestDeleteLearning(t *testing.T) {
+	store := newTestStore(t)
+	ctx := context.Background()
+
+	entry := LearningEntry{
+		Trigger:  "delete-me",
+		Category: "general",
+	}
+	if err := store.SaveLearning(ctx, "sess-del", entry); err != nil {
+		t.Fatalf("SaveLearning: %v", err)
+	}
+
+	entities, err := store.SearchLearningEntities(ctx, "delete-me", 5)
+	if err != nil || len(entities) == 0 {
+		t.Fatalf("expected at least one entity, err=%v", err)
+	}
+
+	if err := store.DeleteLearning(ctx, entities[0].ID); err != nil {
+		t.Fatalf("DeleteLearning: %v", err)
+	}
+
+	after, err := store.SearchLearningEntities(ctx, "delete-me", 5)
+	if err != nil {
+		t.Fatalf("SearchLearningEntities: %v", err)
+	}
+	if len(after) != 0 {
+		t.Errorf("expected 0 after delete, got %d", len(after))
+	}
+}
+
+func TestDeleteLearningsWhere(t *testing.T) {
+	store := newTestStore(t)
+	ctx := context.Background()
+
+	for i := 0; i < 5; i++ {
+		entry := LearningEntry{
+			Trigger:  fmt.Sprintf("bulk-del-%d", i),
+			Category: "general",
+		}
+		if err := store.SaveLearning(ctx, "sess-bulk", entry); err != nil {
+			t.Fatalf("SaveLearning %d: %v", i, err)
+		}
+	}
+
+	n, err := store.DeleteLearningsWhere(ctx, "general", 0, time.Time{})
+	if err != nil {
+		t.Fatalf("DeleteLearningsWhere: %v", err)
+	}
+	if n < 5 {
+		t.Errorf("want >= 5 deleted, got %d", n)
+	}
+}
+
+func TestListLearnings(t *testing.T) {
+	store := newTestStore(t)
+	ctx := context.Background()
+
+	for i := 0; i < 3; i++ {
+		entry := LearningEntry{
+			Trigger:  fmt.Sprintf("list-test-%d", i),
+			Category: "tool_error",
+		}
+		if err := store.SaveLearning(ctx, "sess-list", entry); err != nil {
+			t.Fatalf("SaveLearning %d: %v", i, err)
+		}
+	}
+
+	entries, total, err := store.ListLearnings(ctx, "tool_error", 0, time.Time{}, 2, 0)
+	if err != nil {
+		t.Fatalf("ListLearnings: %v", err)
+	}
+	if total < 3 {
+		t.Errorf("total: want >= 3, got %d", total)
+	}
+	if len(entries) != 2 {
+		t.Errorf("entries: want 2 (limit), got %d", len(entries))
+	}
 }
 

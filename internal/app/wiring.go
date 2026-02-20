@@ -203,11 +203,7 @@ func initKnowledge(cfg *config.Config, store session.Store, gc *graphComponents)
 	client := entStore.Client()
 	kLogger := logger()
 
-	kStore := knowledge.NewStore(
-		client, kLogger,
-		cfg.Knowledge.MaxKnowledge,
-		cfg.Knowledge.MaxLearnings,
-	)
+	kStore := knowledge.NewStore(client, kLogger)
 
 	engine := learning.NewEngine(kStore, kLogger)
 

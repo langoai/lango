@@ -140,14 +140,6 @@ func (s *ConfigState) UpdateConfigFromForm(form *FormModel) {
 		// Knowledge
 		case "knowledge_enabled":
 			s.Current.Knowledge.Enabled = f.Checked
-		case "knowledge_max_learnings":
-			if i, err := strconv.Atoi(val); err == nil {
-				s.Current.Knowledge.MaxLearnings = i
-			}
-		case "knowledge_max_knowledge":
-			if i, err := strconv.Atoi(val); err == nil {
-				s.Current.Knowledge.MaxKnowledge = i
-			}
 		case "knowledge_max_context":
 			if i, err := strconv.Atoi(val); err == nil {
 				s.Current.Knowledge.MaxContextPerLayer = i

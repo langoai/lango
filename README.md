@@ -281,9 +281,7 @@ All settings are managed via `lango onboard` (guided wizard), `lango settings` (
 | `tools.browser.sessionTimeout` | duration | `5m` | Browser session timeout |
 | **Knowledge** | | | |
 | `knowledge.enabled` | bool | `false` | Enable self-learning knowledge system |
-| `knowledge.maxLearnings` | int | - | Max learning entries per session |
-| `knowledge.maxKnowledge` | int | - | Max knowledge entries per session |
-| `knowledge.maxContextPerLayer` | int | - | Max context items per layer in retrieval |
+| `knowledge.maxContextPerLayer` | int | `5` | Max context items per layer in retrieval |
 | **Skill System** | | | |
 | `skill.enabled` | bool | `false` | Enable file-based skill system |
 | `skill.skillsDir` | string | `~/.lango/skills` | Directory containing skill files (`<name>/SKILL.md`) |
@@ -498,7 +496,7 @@ When `agent.multiAgent` is enabled, Lango builds a hierarchical agent tree with 
 | **operator** | System operations: shell commands, file I/O, skill execution | exec_*, fs_*, skill_* |
 | **navigator** | Web browsing: page navigation, interaction, screenshots | browser_* |
 | **vault** | Security: encryption, secret management, blockchain payments | crypto_*, secrets_*, payment_* |
-| **librarian** | Knowledge: search, RAG, graph traversal, skill management, proactive knowledge extraction | search_*, rag_*, graph_*, save_knowledge, save_learning, create_skill, list_skills, librarian_pending_inquiries, librarian_dismiss_inquiry |
+| **librarian** | Knowledge: search, RAG, graph traversal, skill management, learning data management, proactive knowledge extraction | search_*, rag_*, graph_*, save_knowledge, save_learning, learning_*, create_skill, list_skills, librarian_pending_inquiries, librarian_dismiss_inquiry |
 | **automator** | Automation: cron scheduling, background tasks, workflow pipelines | cron_*, bg_*, workflow_* |
 | **planner** | Task decomposition and planning | (LLM reasoning only, no tools) |
 | **chronicler** | Conversational memory: observations, reflections, recall | memory_*, observe_*, reflect_* |
@@ -707,7 +705,7 @@ Steps specify which sub-agent to use: `operator`, `navigator`, `vault`, `librari
 Lango includes a self-learning knowledge system that improves agent performance over time.
 
 - **Knowledge Store** - Persistent storage for facts, patterns, and external references
-- **Learning Engine** - Observes tool execution results, extracts error patterns, boosts successful strategies
+- **Learning Engine** - Observes tool execution results, extracts error patterns, boosts successful strategies. Agent tools (`learning_stats`, `learning_cleanup`) let the agent brief users on learning data and clean up entries by age, confidence, or category
 - **Skill System** - File-based skills stored as `~/.lango/skills/<name>/SKILL.md` with YAML frontmatter. Supports four skill types: script (shell), template (Go template), composite (multi-step), and instruction (reference documents). Ships with 30 embedded default skills deployed on first run. Import skills from GitHub repos or any URL via the `import_skill` tool — automatically uses `git clone` when available (fetches full directory with resource files) and falls back to the GitHub HTTP API when git is not installed. Each skill directory can include resource subdirectories (`scripts/`, `references/`, `assets/`). YAML frontmatter supports `allowed-tools` for pre-approved tool lists. Dangerous script patterns (fork bombs, `rm -rf /`, `curl|sh`) are blocked at creation and execution time.
 - **Context Retriever** - 8-layer context architecture that assembles relevant knowledge into prompts:
   1. Tool Registry — available tools and capabilities

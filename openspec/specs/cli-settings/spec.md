@@ -15,7 +15,7 @@ The settings editor SHALL support editing all configuration sections previously 
 6. **Session** — TTL, Max history turns
 7. **Security** — Interceptor (PII, policy, timeout, tools), Signer (provider, RPC, KeyID)
 8. **Auth** — OIDC provider management (add, edit, delete)
-9. **Knowledge** — Enabled, max learnings/knowledge/context
+9. **Knowledge** — Enabled, max context per layer, auto approve skills, max skills per day
 10. **Skill** — Enabled, skills directory
 11. **Observational Memory** — Enabled, provider, model, thresholds, budget, context limits
 12. **Embedding & RAG** — Provider, model, dimensions, local URL, RAG settings

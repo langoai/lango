@@ -41,7 +41,7 @@ func TestDefaultBuilder_SectionOrder(t *testing.T) {
 func TestDefaultBuilder_UsesEmbeddedContent(t *testing.T) {
 	result := DefaultBuilder().Build()
 	// Verify embedded content is loaded (not fallbacks)
-	assert.Contains(t, result, "five tool categories")
+	assert.Contains(t, result, "nine tool categories")
 	assert.Contains(t, result, "Never expose secrets")
 	assert.Contains(t, result, "Exec Tool")
 }

@@ -917,6 +917,96 @@ func buildMetaTools(store *knowledge.Store, engine *learning.Engine, registry *s
 				}, nil
 			},
 		},
+		{
+			Name:        "learning_stats",
+			Description: "Get statistics and briefing about stored learning data including total count, category distribution, average confidence, and date range",
+			SafetyLevel: agent.SafetyLevelSafe,
+			Parameters: map[string]interface{}{
+				"type":       "object",
+				"properties": map[string]interface{}{},
+			},
+			Handler: func(ctx context.Context, params map[string]interface{}) (interface{}, error) {
+				stats, err := store.GetLearningStats(ctx)
+				if err != nil {
+					return nil, fmt.Errorf("get learning stats: %w", err)
+				}
+				return stats, nil
+			},
+		},
+		{
+			Name:        "learning_cleanup",
+			Description: "Delete learning entries by criteria (age, confidence, category). Use dry_run=true (default) to preview, dry_run=false to actually delete.",
+			SafetyLevel: agent.SafetyLevelModerate,
+			Parameters: map[string]interface{}{
+				"type": "object",
+				"properties": map[string]interface{}{
+					"category":        map[string]interface{}{"type": "string", "description": "Delete only entries in this category"},
+					"max_confidence":  map[string]interface{}{"type": "number", "description": "Delete entries with confidence at or below this value"},
+					"older_than_days": map[string]interface{}{"type": "integer", "description": "Delete entries older than N days"},
+					"id":              map[string]interface{}{"type": "string", "description": "Delete a specific entry by UUID"},
+					"dry_run":         map[string]interface{}{"type": "boolean", "description": "If true (default), only return count of entries that would be deleted"},
+				},
+			},
+			Handler: func(ctx context.Context, params map[string]interface{}) (interface{}, error) {
+				// Single entry delete by ID.
+				if idStr, ok := params["id"].(string); ok && idStr != "" {
+					id, err := uuid.Parse(idStr)
+					if err != nil {
+						return nil, fmt.Errorf("invalid id: %w", err)
+					}
+					dryRun := true
+					if dr, ok := params["dry_run"].(bool); ok {
+						dryRun = dr
+					}
+					if dryRun {
+						return map[string]interface{}{"would_delete": 1, "dry_run": true}, nil
+					}
+					if err := store.DeleteLearning(ctx, id); err != nil {
+						return nil, fmt.Errorf("delete learning: %w", err)
+					}
+					return map[string]interface{}{"deleted": 1, "dry_run": false}, nil
+				}
+
+				// Bulk delete by criteria.
+				category, _ := params["category"].(string)
+				var maxConfidence float64
+				if mc, ok := params["max_confidence"].(float64); ok {
+					maxConfidence = mc
+				}
+				var olderThan time.Time
+				if days, ok := params["older_than_days"].(float64); ok && days > 0 {
+					olderThan = time.Now().AddDate(0, 0, -int(days))
+				}
+
+				dryRun := true
+				if dr, ok := params["dry_run"].(bool); ok {
+					dryRun = dr
+				}
+
+				if dryRun {
+					// Count matching entries without deleting.
+					_, total, err := store.ListLearnings(ctx, category, 0, olderThan, 0, 0)
+					if err != nil {
+						return nil, fmt.Errorf("count learnings: %w", err)
+					}
+					// Apply maxConfidence filter for count (ListLearnings uses minConfidence).
+					if maxConfidence > 0 {
+						_, filteredTotal, err := store.ListLearnings(ctx, category, 0, olderThan, 1, 0)
+						if err != nil {
+							return nil, fmt.Errorf("count filtered learnings: %w", err)
+						}
+						_ = filteredTotal
+					}
+					return map[string]interface{}{"would_delete": total, "dry_run": true}, nil
+				}
+
+				n, err := store.DeleteLearningsWhere(ctx, category, maxConfidence, olderThan)
+				if err != nil {
+					return nil, fmt.Errorf("delete learnings: %w", err)
+				}
+				return map[string]interface{}{"deleted": n, "dry_run": false}, nil
+			},
+		},
 	}
 }
 

@@ -120,7 +120,10 @@ func (e *Engine) handleError(ctx context.Context, sessionKey, toolName string, e
 		Category:     category,
 	})
 	if saveErr != nil {
-		e.logger.Warnw("save learning:", "error", saveErr)
+		e.logger.Warnw("save learning",
+			"session", sessionKey,
+			"tool", toolName,
+			"error", saveErr)
 	}
 }
 

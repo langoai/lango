@@ -172,12 +172,6 @@ type KnowledgeConfig struct {
 	// Enable the knowledge/learning system
 	Enabled bool `mapstructure:"enabled" json:"enabled"`
 
-	// Maximum learning entries per session
-	MaxLearnings int `mapstructure:"maxLearnings" json:"maxLearnings"`
-
-	// Maximum knowledge entries per session
-	MaxKnowledge int `mapstructure:"maxKnowledge" json:"maxKnowledge"`
-
 	// Maximum context items per layer in retrieval
 	MaxContextPerLayer int `mapstructure:"maxContextPerLayer" json:"maxContextPerLayer"`
 
