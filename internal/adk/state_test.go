@@ -562,6 +562,238 @@ func TestEventsAdapter_DefaultTokenBudget(t *testing.T) {
 	}
 }
 
+// --- FunctionResponse reconstruction tests ---
+
+func TestEventsAdapter_FunctionResponseReconstruction(t *testing.T) {
+	now := time.Now()
+
+	t.Run("new format with ToolCalls metadata", func(t *testing.T) {
+		sess := &internal.Session{
+			History: []internal.Message{
+				{Role: "user", Content: "run ls", Timestamp: now},
+				{
+					Role: "assistant",
+					ToolCalls: []internal.ToolCall{
+						{ID: "adk-abc-123", Name: "exec", Input: `{"command":"ls"}`},
+					},
+					Timestamp: now.Add(time.Second),
+				},
+				{
+					Role: "tool",
+					ToolCalls: []internal.ToolCall{
+						{ID: "adk-abc-123", Name: "exec", Output: `{"result":"file.txt"}`},
+					},
+					Content:   `{"result":"file.txt"}`,
+					Timestamp: now.Add(2 * time.Second),
+				},
+			},
+		}
+
+		adapter := &EventsAdapter{history: sess.History, rootAgentName: "lango-agent"}
+		var events []*session.Event
+		for evt := range adapter.All() {
+			events = append(events, evt)
+		}
+
+		if len(events) != 3 {
+			t.Fatalf("expected 3 events, got %d", len(events))
+		}
+
+		// Verify assistant event has FunctionCall with ID
+		assistantEvt := events[1]
+		if assistantEvt.LLMResponse.Content.Role != "assistant" {
+			t.Errorf("expected role 'assistant', got %q", assistantEvt.LLMResponse.Content.Role)
+		}
+		var fc *genai.FunctionCall
+		for _, p := range assistantEvt.LLMResponse.Content.Parts {
+			if p.FunctionCall != nil {
+				fc = p.FunctionCall
+			}
+		}
+		if fc == nil {
+			t.Fatal("expected FunctionCall part in assistant event")
+		}
+		if fc.ID != "adk-abc-123" {
+			t.Errorf("expected FunctionCall.ID 'adk-abc-123', got %q", fc.ID)
+		}
+		if fc.Name != "exec" {
+			t.Errorf("expected FunctionCall.Name 'exec', got %q", fc.Name)
+		}
+
+		// Verify tool event has FunctionResponse
+		toolEvt := events[2]
+		if toolEvt.LLMResponse.Content.Role != "function" {
+			t.Errorf("expected role 'function', got %q", toolEvt.LLMResponse.Content.Role)
+		}
+		var fr *genai.FunctionResponse
+		for _, p := range toolEvt.LLMResponse.Content.Parts {
+			if p.FunctionResponse != nil {
+				fr = p.FunctionResponse
+			}
+		}
+		if fr == nil {
+			t.Fatal("expected FunctionResponse part in tool event")
+		}
+		if fr.ID != "adk-abc-123" {
+			t.Errorf("expected FunctionResponse.ID 'adk-abc-123', got %q", fr.ID)
+		}
+		if fr.Name != "exec" {
+			t.Errorf("expected FunctionResponse.Name 'exec', got %q", fr.Name)
+		}
+		if fr.Response["result"] != "file.txt" {
+			t.Errorf("expected response result 'file.txt', got %v", fr.Response["result"])
+		}
+	})
+
+	t.Run("legacy format without ToolCalls on tool message", func(t *testing.T) {
+		sess := &internal.Session{
+			History: []internal.Message{
+				{Role: "user", Content: "run ls", Timestamp: now},
+				{
+					Role: "assistant",
+					ToolCalls: []internal.ToolCall{
+						{ID: "call_exec", Name: "exec", Input: `{"command":"ls"}`},
+					},
+					Timestamp: now.Add(time.Second),
+				},
+				{
+					Role:      "tool",
+					Content:   `{"result":"file.txt"}`,
+					Timestamp: now.Add(2 * time.Second),
+					// No ToolCalls — legacy format
+				},
+			},
+		}
+
+		adapter := &EventsAdapter{history: sess.History, rootAgentName: "lango-agent"}
+		var events []*session.Event
+		for evt := range adapter.All() {
+			events = append(events, evt)
+		}
+
+		if len(events) != 3 {
+			t.Fatalf("expected 3 events, got %d", len(events))
+		}
+
+		// Verify tool event has FunctionResponse reconstructed from legacy
+		toolEvt := events[2]
+		if toolEvt.LLMResponse.Content.Role != "function" {
+			t.Errorf("expected role 'function', got %q", toolEvt.LLMResponse.Content.Role)
+		}
+		var fr *genai.FunctionResponse
+		for _, p := range toolEvt.LLMResponse.Content.Parts {
+			if p.FunctionResponse != nil {
+				fr = p.FunctionResponse
+			}
+		}
+		if fr == nil {
+			t.Fatal("expected FunctionResponse part in legacy tool event")
+		}
+		if fr.ID != "call_exec" {
+			t.Errorf("expected FunctionResponse.ID 'call_exec', got %q", fr.ID)
+		}
+		if fr.Name != "exec" {
+			t.Errorf("expected FunctionResponse.Name 'exec', got %q", fr.Name)
+		}
+	})
+
+	t.Run("tool message without preceding assistant ToolCalls falls back to text", func(t *testing.T) {
+		sess := &internal.Session{
+			History: []internal.Message{
+				{Role: "user", Content: "hello", Timestamp: now},
+				{
+					Role:      "tool",
+					Content:   "some result",
+					Timestamp: now.Add(time.Second),
+					// No preceding assistant with ToolCalls
+				},
+			},
+		}
+
+		adapter := &EventsAdapter{history: sess.History, rootAgentName: "lango-agent"}
+		var events []*session.Event
+		for evt := range adapter.All() {
+			events = append(events, evt)
+		}
+
+		if len(events) != 2 {
+			t.Fatalf("expected 2 events, got %d", len(events))
+		}
+
+		toolEvt := events[1]
+		// Should fall back to text since no context to reconstruct FunctionResponse
+		hasText := false
+		for _, p := range toolEvt.LLMResponse.Content.Parts {
+			if p.Text != "" {
+				hasText = true
+			}
+		}
+		if !hasText {
+			t.Error("expected text part in tool event without FunctionResponse context")
+		}
+	})
+}
+
+func TestEventsAdapter_TruncationSequenceSafety(t *testing.T) {
+	t.Run("skips leading tool message after truncation", func(t *testing.T) {
+		var msgs []internal.Message
+		// Create many messages so truncation kicks in
+		for i := range 20 {
+			content := ""
+			for range 200 {
+				content += "x"
+			}
+			msgs = append(msgs, internal.Message{
+				Role:      "user",
+				Content:   content,
+				Timestamp: time.Now().Add(time.Duration(i) * time.Second),
+			})
+		}
+		// Place a tool message at a position likely to be at the truncation boundary
+		msgs[15] = internal.Message{
+			Role:      "tool",
+			Content:   `{"result":"ok"}`,
+			Timestamp: time.Now().Add(15 * time.Second),
+		}
+
+		adapter := &EventsAdapter{
+			history:     msgs,
+			tokenBudget: 400, // enough for ~6-7 messages
+		}
+		truncated := adapter.truncatedHistory()
+
+		if len(truncated) > 0 {
+			first := truncated[0]
+			if first.Role == "tool" || first.Role == "function" {
+				t.Error("truncated history should not start with tool/function message")
+			}
+		}
+	})
+
+	t.Run("does not skip trailing FunctionCall without truncation", func(t *testing.T) {
+		msgs := []internal.Message{
+			{Role: "user", Content: "hello", Timestamp: time.Now()},
+			{
+				Role: "assistant",
+				ToolCalls: []internal.ToolCall{
+					{ID: "call_1", Name: "exec", Input: `{"cmd":"ls"}`},
+				},
+				Timestamp: time.Now().Add(time.Second),
+			},
+		}
+
+		adapter := &EventsAdapter{
+			history:     msgs,
+			tokenBudget: 100000, // no truncation
+		}
+		truncated := adapter.truncatedHistory()
+
+		if len(truncated) != 2 {
+			t.Errorf("expected 2 messages (no truncation), got %d", len(truncated))
+		}
+	})
+}
+
 // --- SessionServiceAdapter tests ---
 
 func TestSessionServiceAdapter_Create(t *testing.T) {

@@ -117,6 +117,8 @@ func (e *EventsAdapter) truncatedHistory() []internal.Message {
 }
 
 // tokenBudgetTruncate includes messages from most recent to oldest until the token budget is exhausted.
+// It ensures the truncated slice does not start with a tool/function message or an assistant+FunctionCall
+// without its matching tool response, which would violate Gemini's message ordering requirements.
 func (e *EventsAdapter) tokenBudgetTruncate() []internal.Message {
 	if len(e.history) == 0 {
 		return e.history
@@ -139,12 +141,48 @@ func (e *EventsAdapter) tokenBudgetTruncate() []internal.Message {
 		startIdx = i
 	}
 
-	return e.history[startIdx:]
+	result := e.history[startIdx:]
+
+	// Only apply sequence safety when truncation actually removed messages,
+	// because a trailing FunctionCall without response is valid (response pending).
+	if startIdx > 0 {
+		for len(result) > 0 {
+			first := result[0]
+			// tool/function messages cannot appear without a preceding assistant+FunctionCall.
+			if first.Role == "tool" || first.Role == "function" {
+				result = result[1:]
+				continue
+			}
+			// assistant with FunctionCall but no following tool response is invalid at boundary.
+			if (first.Role == "assistant" || first.Role == "model") && len(first.ToolCalls) > 0 && hasFunctionCallToolCalls(first.ToolCalls) {
+				if len(result) < 2 || (result[1].Role != "tool" && result[1].Role != "function") {
+					result = result[1:]
+					continue
+				}
+			}
+			break
+		}
+	}
+
+	return result
+}
+
+// hasFunctionCallToolCalls returns true if any ToolCall has Input (i.e., is a FunctionCall, not a FunctionResponse).
+func hasFunctionCallToolCalls(tcs []internal.ToolCall) bool {
+	for _, tc := range tcs {
+		if tc.Input != "" {
+			return true
+		}
+	}
+	return false
 }
 
 func (e *EventsAdapter) All() iter.Seq[*session.Event] {
 	return func(yield func(*session.Event) bool) {
 		msgs := e.truncatedHistory()
+
+		// Track the most recent assistant ToolCalls for legacy tool-message fallback.
+		var lastAssistantToolCalls []internal.ToolCall
 
 		for _, msg := range msgs {
 			// Map Author: use stored author if available, otherwise derive from role.
@@ -170,36 +208,113 @@ func (e *EventsAdapter) All() iter.Seq[*session.Event] {
 				}
 			}
 
+			role := msg.Role
 			var parts []*genai.Part
-			if msg.Content != "" {
-				parts = append(parts, &genai.Part{Text: msg.Content})
-			}
 
-			evt := &session.Event{
-				ID:        uuid.NewString(), // Generate on fly as we don't store event IDs
-				Timestamp: msg.Timestamp,
-				Author:    author,
-				LLMResponse: model.LLMResponse{
-					Content: &genai.Content{
-						Role:  msg.Role,
-						Parts: parts,
-					},
-				},
-			}
-			// Map tool calls if present
-			if len(msg.ToolCalls) > 0 {
+			switch role {
+			case "assistant", "model":
+				// Text content
+				if msg.Content != "" {
+					parts = append(parts, &genai.Part{Text: msg.Content})
+				}
+				// FunctionCall parts from ToolCalls (only those with Input, not Output-only)
 				for _, tc := range msg.ToolCalls {
+					if tc.Input == "" {
+						continue
+					}
 					args := make(map[string]any)
-					// best effort json unmarshal
 					_ = json.Unmarshal([]byte(tc.Input), &args)
-
-					evt.LLMResponse.Content.Parts = append(evt.LLMResponse.Content.Parts, &genai.Part{
+					parts = append(parts, &genai.Part{
 						FunctionCall: &genai.FunctionCall{
+							ID:   tc.ID,
 							Name: tc.Name,
 							Args: args,
 						},
 					})
 				}
+				// Remember for legacy fallback
+				lastAssistantToolCalls = msg.ToolCalls
+
+			case "tool", "function":
+				// Check if ToolCalls carry FunctionResponse metadata (new format)
+				hasResponseMeta := false
+				for _, tc := range msg.ToolCalls {
+					if tc.Output != "" {
+						hasResponseMeta = true
+						break
+					}
+				}
+
+				if hasResponseMeta {
+					// New format: reconstruct FunctionResponse from stored ToolCalls
+					for _, tc := range msg.ToolCalls {
+						if tc.Output == "" {
+							continue
+						}
+						resp := make(map[string]any)
+						_ = json.Unmarshal([]byte(tc.Output), &resp)
+						parts = append(parts, &genai.Part{
+							FunctionResponse: &genai.FunctionResponse{
+								ID:       tc.ID,
+								Name:     tc.Name,
+								Response: resp,
+							},
+						})
+					}
+					role = "function" // Gemini expects "function" role for FunctionResponse
+				} else if len(lastAssistantToolCalls) > 0 {
+					// Legacy format: infer FunctionResponse from preceding assistant ToolCalls.
+					// Use the content as the response body for the first call.
+					tc := lastAssistantToolCalls[0]
+					resp := make(map[string]any)
+					if msg.Content != "" {
+						_ = json.Unmarshal([]byte(msg.Content), &resp)
+						if len(resp) == 0 {
+							resp = map[string]any{"result": msg.Content}
+						}
+					}
+					parts = append(parts, &genai.Part{
+						FunctionResponse: &genai.FunctionResponse{
+							ID:       tc.ID,
+							Name:     tc.Name,
+							Response: resp,
+						},
+					})
+					// Consume used call
+					if len(lastAssistantToolCalls) > 1 {
+						lastAssistantToolCalls = lastAssistantToolCalls[1:]
+					} else {
+						lastAssistantToolCalls = nil
+					}
+					role = "function"
+				} else {
+					// No context to reconstruct FunctionResponse — emit as text
+					if msg.Content != "" {
+						parts = append(parts, &genai.Part{Text: msg.Content})
+					}
+				}
+
+			default:
+				// user or other roles
+				if msg.Content != "" {
+					parts = append(parts, &genai.Part{Text: msg.Content})
+				}
+			}
+
+			if len(parts) == 0 {
+				continue
+			}
+
+			evt := &session.Event{
+				ID:        uuid.NewString(),
+				Timestamp: msg.Timestamp,
+				Author:    author,
+				LLMResponse: model.LLMResponse{
+					Content: &genai.Content{
+						Role:  role,
+						Parts: parts,
+					},
+				},
 			}
 			if !yield(evt) {
 				return

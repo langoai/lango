@@ -214,24 +214,27 @@ func convertMessages(contents []*genai.Content) ([]provider.Message, error) {
 			}
 			if p.FunctionCall != nil {
 				b, _ := json.Marshal(p.FunctionCall.Args)
+				id := p.FunctionCall.ID
+				if id == "" {
+					id = "call_" + p.FunctionCall.Name
+				}
 				msg.ToolCalls = append(msg.ToolCalls, provider.ToolCall{
-					ID:        "call_" + p.FunctionCall.Name, // Synthetic ID if needed
+					ID:        id,
 					Name:      p.FunctionCall.Name,
 					Arguments: string(b),
 				})
 			}
 			if p.FunctionResponse != nil {
-				// Tool response content
-				// Should be handled as content/metadata?
-				// Provider expects content string usually for tool result.
-				// We map it to content.
 				b, _ := json.Marshal(p.FunctionResponse.Response)
 				msg.Content += string(b)
-				// Add tool call ID to metadata if provider supports linking
 				if msg.Metadata == nil {
 					msg.Metadata = make(map[string]interface{})
 				}
-				msg.Metadata["tool_call_id"] = p.FunctionResponse.Name // Or ID if available?
+				id := p.FunctionResponse.ID
+				if id == "" {
+					id = p.FunctionResponse.Name
+				}
+				msg.Metadata["tool_call_id"] = id
 			}
 		}
 		msgs = append(msgs, msg)

@@ -115,20 +115,30 @@ func (s *SessionServiceAdapter) AppendEvent(ctx context.Context, sess session.Se
 				msg.Content += p.Text
 			}
 			if p.FunctionCall != nil {
-				// Internal ToolCall format
 				argsBytes, _ := json.Marshal(p.FunctionCall.Args)
+				id := p.FunctionCall.ID
+				if id == "" {
+					id = "call_" + p.FunctionCall.Name
+				}
 				tc := internal.ToolCall{
 					Name:  p.FunctionCall.Name,
 					Input: string(argsBytes),
-					ID:    "call_" + p.FunctionCall.Name, // Synthetic ID
+					ID:    id,
 				}
 				msg.ToolCalls = append(msg.ToolCalls, tc)
 			}
 			if p.FunctionResponse != nil {
-				// This usually goes to content or separate tool message?
-				// For internal storage, tool response is usually content.
-				b, _ := json.Marshal(p.FunctionResponse.Response)
-				msg.Content += string(b)
+				responseBytes, _ := json.Marshal(p.FunctionResponse.Response)
+				id := p.FunctionResponse.ID
+				if id == "" {
+					id = "call_" + p.FunctionResponse.Name
+				}
+				msg.ToolCalls = append(msg.ToolCalls, internal.ToolCall{
+					ID:     id,
+					Name:   p.FunctionResponse.Name,
+					Output: string(responseBytes),
+				})
+				msg.Content += string(responseBytes)
 			}
 		}
 	} else {
