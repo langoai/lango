@@ -15,6 +15,10 @@ The system SHALL observe every tool execution result to detect error patterns an
 - **WHEN** an error occurs and a matching learning with confidence > 0.5 already exists
 - **THEN** the system SHALL skip creating a new learning entry
 
+#### Scenario: Error save failure logging
+- **WHEN** saving a learning entry fails in `handleError`
+- **THEN** the system SHALL log at Warn level with session key, tool name, and error details
+
 ### Requirement: Error Pattern Extraction
 The system SHALL normalize error messages into reusable patterns.
 

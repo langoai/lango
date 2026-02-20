@@ -21,7 +21,7 @@ func TestAnalysisBuffer_StartStop(t *testing.T) {
 
 	client := enttest.Open(t, "sqlite3", "file:ent?mode=memory&_fk=1")
 	t.Cleanup(func() { client.Close() })
-	store := knowledge.NewStore(client, logger, 20, 10)
+	store := knowledge.NewStore(client, logger)
 
 	analyzer := NewConversationAnalyzer(gen, store, logger)
 	learner := NewSessionLearner(gen, store, logger)
@@ -45,7 +45,7 @@ func TestAnalysisBuffer_TriggerAnalysis(t *testing.T) {
 
 	client := enttest.Open(t, "sqlite3", "file:ent?mode=memory&_fk=1")
 	t.Cleanup(func() { client.Close() })
-	store := knowledge.NewStore(client, logger, 20, 10)
+	store := knowledge.NewStore(client, logger)
 
 	results := []analysisResult{
 		{Type: "fact", Category: "test", Content: "buffer analysis fact", Confidence: "high"},
@@ -94,7 +94,7 @@ func TestAnalysisBuffer_SessionEnd(t *testing.T) {
 
 	client := enttest.Open(t, "sqlite3", "file:ent?mode=memory&_fk=1")
 	t.Cleanup(func() { client.Close() })
-	store := knowledge.NewStore(client, logger, 20, 10)
+	store := knowledge.NewStore(client, logger)
 
 	results := []analysisResult{
 		{Type: "preference", Category: "workflow", Content: "session end preference", Confidence: "high"},
@@ -141,7 +141,7 @@ func TestAnalysisBuffer_BelowThreshold(t *testing.T) {
 
 	client := enttest.Open(t, "sqlite3", "file:ent?mode=memory&_fk=1")
 	t.Cleanup(func() { client.Close() })
-	store := knowledge.NewStore(client, logger, 20, 10)
+	store := knowledge.NewStore(client, logger)
 
 	gen := &fakeTextGenerator{response: "[]"}
 	analyzer := NewConversationAnalyzer(gen, store, logger)

@@ -101,25 +101,6 @@ The system SHALL support CRUD operations for external references (docs, APIs, wi
 - **WHEN** `SearchExternalRefs` is called with a query
 - **THEN** the system SHALL split the query into individual keywords and create separate `NameContains`/`SummaryContains` LIKE predicates for each keyword, combined with OR logic
 
-### Requirement: Per-Session Rate Limiting
-The system SHALL enforce per-session rate limits for knowledge and learning saves to prevent runaway accumulation.
-
-#### Scenario: Knowledge save limit
-- **WHEN** a session has reached the configured maximum knowledge saves
-- **THEN** the system SHALL reject further knowledge saves with an error
-
-#### Scenario: Learning save limit
-- **WHEN** a session has reached the configured maximum learning saves
-- **THEN** the system SHALL reject further learning saves with an error
-
-#### Scenario: Atomic rate limit check
-- **WHEN** checking and incrementing the rate limit counter
-- **THEN** the system SHALL perform the check and increment atomically within a single lock acquisition to prevent TOCTOU race conditions
-
-#### Scenario: Empty session key bypasses rate limit
-- **WHEN** session key is empty
-- **THEN** the system SHALL skip rate limit checks
-
 ### Requirement: Ent Schema Definitions
 The system SHALL define Ent ORM schemas for the 5 knowledge entities.
 
@@ -152,10 +133,8 @@ The Onboard TUI SHALL provide a dedicated Knowledge configuration form accessibl
 
 #### Scenario: Knowledge form fields
 - **WHEN** user selects the Knowledge category
-- **THEN** the form SHALL display 6 fields:
+- **THEN** the form SHALL display 4 fields:
   - knowledge_enabled (boolean toggle)
-  - knowledge_max_learnings (integer input)
-  - knowledge_max_knowledge (integer input)
   - knowledge_max_context (integer input for MaxContextPerLayer)
   - knowledge_auto_approve (boolean toggle for AutoApproveSkills)
   - knowledge_max_skills_day (integer input for MaxSkillsPerDay)

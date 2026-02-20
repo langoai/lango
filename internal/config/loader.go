@@ -60,8 +60,6 @@ func DefaultConfig() *Config {
 		},
 		Knowledge: KnowledgeConfig{
 			Enabled:            false,
-			MaxLearnings:       10,
-			MaxKnowledge:       20,
 			MaxContextPerLayer: 5,
 		},
 		Skill: SkillConfig{

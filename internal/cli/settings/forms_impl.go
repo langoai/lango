@@ -303,16 +303,6 @@ func NewKnowledgeForm(cfg *config.Config) *tuicore.FormModel {
 	})
 
 	form.AddField(&tuicore.Field{
-		Key: "knowledge_max_learnings", Label: "Max Learnings", Type: tuicore.InputInt,
-		Value: strconv.Itoa(cfg.Knowledge.MaxLearnings),
-	})
-
-	form.AddField(&tuicore.Field{
-		Key: "knowledge_max_knowledge", Label: "Max Knowledge", Type: tuicore.InputInt,
-		Value: strconv.Itoa(cfg.Knowledge.MaxKnowledge),
-	})
-
-	form.AddField(&tuicore.Field{
 		Key: "knowledge_max_context", Label: "Max Context/Layer", Type: tuicore.InputInt,
 		Value: strconv.Itoa(cfg.Knowledge.MaxContextPerLayer),
 	})

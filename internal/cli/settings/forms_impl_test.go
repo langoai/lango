@@ -128,8 +128,7 @@ func TestNewKnowledgeForm_AllFields(t *testing.T) {
 	form := NewKnowledgeForm(cfg)
 
 	wantKeys := []string{
-		"knowledge_enabled", "knowledge_max_learnings",
-		"knowledge_max_knowledge", "knowledge_max_context",
+		"knowledge_enabled", "knowledge_max_context",
 	}
 
 	if len(form.Fields) != len(wantKeys) {
@@ -144,9 +143,6 @@ func TestNewKnowledgeForm_AllFields(t *testing.T) {
 
 	if f := fieldByKey(form, "knowledge_enabled"); f.Checked != false {
 		t.Error("knowledge_enabled: want false by default")
-	}
-	if f := fieldByKey(form, "knowledge_max_learnings"); f.Value != "10" {
-		t.Errorf("knowledge_max_learnings: want %q, got %q", "10", f.Value)
 	}
 	if f := fieldByKey(form, "knowledge_max_context"); f.Value != "5" {
 		t.Errorf("knowledge_max_context: want %q, got %q", "5", f.Value)
@@ -205,20 +201,12 @@ func TestUpdateConfigFromForm_KnowledgeFields(t *testing.T) {
 	state := tuicore.NewConfigState()
 	form := tuicore.NewFormModel("test")
 	form.AddField(&tuicore.Field{Key: "knowledge_enabled", Type: tuicore.InputBool, Checked: true})
-	form.AddField(&tuicore.Field{Key: "knowledge_max_learnings", Type: tuicore.InputInt, Value: "25"})
-	form.AddField(&tuicore.Field{Key: "knowledge_max_knowledge", Type: tuicore.InputInt, Value: "50"})
 	form.AddField(&tuicore.Field{Key: "knowledge_max_context", Type: tuicore.InputInt, Value: "8"})
 	state.UpdateConfigFromForm(&form)
 
 	k := state.Current.Knowledge
 	if !k.Enabled {
 		t.Error("Knowledge.Enabled: want true")
-	}
-	if k.MaxLearnings != 25 {
-		t.Errorf("MaxLearnings: want 25, got %d", k.MaxLearnings)
-	}
-	if k.MaxKnowledge != 50 {
-		t.Errorf("MaxKnowledge: want 50, got %d", k.MaxKnowledge)
 	}
 	if k.MaxContextPerLayer != 8 {
 		t.Errorf("MaxContextPerLayer: want 8, got %d", k.MaxContextPerLayer)

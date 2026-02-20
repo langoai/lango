@@ -4,7 +4,7 @@ import (
 	"context"
 	"fmt"
 	"strings"
-	"sync"
+	"time"
 
 	"entgo.io/ent/dialect/sql"
 	"github.com/google/uuid"
@@ -35,30 +35,13 @@ type Store struct {
 	onEmbed EmbedCallback
 	// Optional graph relationship hook (nil = disabled).
 	onGraph GraphCallback
-
-	// Rate limiting per session
-	mu              sync.Mutex
-	knowledgeCounts map[string]int
-	learningCounts  map[string]int
-	maxKnowledge    int
-	maxLearnings    int
 }
 
 // NewStore creates a new knowledge store.
-func NewStore(client *ent.Client, logger *zap.SugaredLogger, maxKnowledge, maxLearnings int) *Store {
-	if maxKnowledge <= 0 {
-		maxKnowledge = 20
-	}
-	if maxLearnings <= 0 {
-		maxLearnings = 10
-	}
+func NewStore(client *ent.Client, logger *zap.SugaredLogger) *Store {
 	return &Store{
-		client:          client,
-		logger:          logger,
-		knowledgeCounts: make(map[string]int),
-		learningCounts:  make(map[string]int),
-		maxKnowledge:    maxKnowledge,
-		maxLearnings:    maxLearnings,
+		client: client,
+		logger: logger,
 	}
 }
 
@@ -74,10 +57,6 @@ func (s *Store) SetGraphCallback(cb GraphCallback) {
 
 // SaveKnowledge creates or updates a knowledge entry by key.
 func (s *Store) SaveKnowledge(ctx context.Context, sessionKey string, entry KnowledgeEntry) error {
-	if err := s.reserveKnowledgeSlot(sessionKey); err != nil {
-		return err
-	}
-
 	existing, err := s.client.Knowledge.Query().
 		Where(entknowledge.Key(entry.Key)).
 		Only(ctx)
@@ -251,10 +230,6 @@ func (s *Store) DeleteKnowledge(ctx context.Context, key string) error {
 
 // SaveLearning creates a new learning entry.
 func (s *Store) SaveLearning(ctx context.Context, sessionKey string, entry LearningEntry) error {
-	if err := s.reserveLearningSlot(sessionKey); err != nil {
-		return err
-	}
-
 	builder := s.client.Learning.Create().
 		SetTrigger(entry.Trigger).
 		SetCategory(entlearning.Category(entry.Category))
@@ -540,31 +515,115 @@ func externalRefKeywordPredicates(query string) []predicate.ExternalRef {
 	return preds
 }
 
-// Rate limiting helpers
+// LearningStats holds aggregate statistics about learning entries.
+type LearningStats struct {
+	TotalCount       int            `json:"total_count"`
+	ByCategory       map[string]int `json:"by_category"`
+	AvgConfidence    float64        `json:"avg_confidence"`
+	OldestEntry      time.Time      `json:"oldest_entry,omitempty"`
+	NewestEntry      time.Time      `json:"newest_entry,omitempty"`
+	TotalOccurrences int            `json:"total_occurrences"`
+	TotalSuccesses   int            `json:"total_successes"`
+}
 
-func (s *Store) reserveKnowledgeSlot(sessionKey string) error {
-	if sessionKey == "" {
-		return nil
+// GetLearningStats returns aggregate statistics about stored learning entries.
+func (s *Store) GetLearningStats(ctx context.Context) (*LearningStats, error) {
+	entries, err := s.client.Learning.Query().All(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("query learnings: %w", err)
 	}
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	if s.knowledgeCounts[sessionKey] >= s.maxKnowledge {
-		return fmt.Errorf("knowledge save limit reached for session (%d/%d)", s.maxKnowledge, s.maxKnowledge)
+
+	stats := &LearningStats{
+		ByCategory: make(map[string]int),
 	}
-	s.knowledgeCounts[sessionKey]++
+	stats.TotalCount = len(entries)
+	if stats.TotalCount == 0 {
+		return stats, nil
+	}
+
+	var totalConf float64
+	for _, e := range entries {
+		stats.ByCategory[string(e.Category)]++
+		totalConf += e.Confidence
+		stats.TotalOccurrences += e.OccurrenceCount
+		stats.TotalSuccesses += e.SuccessCount
+		if stats.OldestEntry.IsZero() || e.CreatedAt.Before(stats.OldestEntry) {
+			stats.OldestEntry = e.CreatedAt
+		}
+		if e.CreatedAt.After(stats.NewestEntry) {
+			stats.NewestEntry = e.CreatedAt
+		}
+	}
+	stats.AvgConfidence = totalConf / float64(stats.TotalCount)
+	return stats, nil
+}
+
+// ListLearnings returns learning entries with optional filtering and pagination.
+// Pass zero-value for parameters to skip a filter.
+func (s *Store) ListLearnings(ctx context.Context, category string, minConfidence float64, olderThan time.Time, limit, offset int) ([]*ent.Learning, int, error) {
+	q := s.client.Learning.Query()
+
+	if category != "" {
+		q = q.Where(entlearning.CategoryEQ(entlearning.Category(category)))
+	}
+	if minConfidence > 0 {
+		q = q.Where(entlearning.ConfidenceGTE(minConfidence))
+	}
+	if !olderThan.IsZero() {
+		q = q.Where(entlearning.CreatedAtLTE(olderThan))
+	}
+
+	total, err := q.Clone().Count(ctx)
+	if err != nil {
+		return nil, 0, fmt.Errorf("count learnings: %w", err)
+	}
+
+	if limit <= 0 {
+		limit = 50
+	}
+	entries, err := q.
+		Order(entlearning.ByCreatedAt(sql.OrderDesc())).
+		Limit(limit).
+		Offset(offset).
+		All(ctx)
+	if err != nil {
+		return nil, 0, fmt.Errorf("list learnings: %w", err)
+	}
+	return entries, total, nil
+}
+
+// DeleteLearning deletes a single learning entry by UUID.
+func (s *Store) DeleteLearning(ctx context.Context, id uuid.UUID) error {
+	err := s.client.Learning.DeleteOneID(id).Exec(ctx)
+	if err != nil {
+		return fmt.Errorf("delete learning: %w", err)
+	}
 	return nil
 }
 
-func (s *Store) reserveLearningSlot(sessionKey string) error {
-	if sessionKey == "" {
-		return nil
+// DeleteLearningsWhere deletes learning entries matching the given criteria
+// and returns the number of deleted entries.
+func (s *Store) DeleteLearningsWhere(ctx context.Context, category string, maxConfidence float64, olderThan time.Time) (int, error) {
+	q := s.client.Learning.Delete()
+
+	var preds []predicate.Learning
+	if category != "" {
+		preds = append(preds, entlearning.CategoryEQ(entlearning.Category(category)))
 	}
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	if s.learningCounts[sessionKey] >= s.maxLearnings {
-		return fmt.Errorf("learning save limit reached for session (%d/%d)", s.maxLearnings, s.maxLearnings)
+	if maxConfidence > 0 {
+		preds = append(preds, entlearning.ConfidenceLTE(maxConfidence))
 	}
-	s.learningCounts[sessionKey]++
-	return nil
+	if !olderThan.IsZero() {
+		preds = append(preds, entlearning.CreatedAtLTE(olderThan))
+	}
+	if len(preds) == 0 {
+		return 0, fmt.Errorf("at least one filter criterion is required for bulk delete")
+	}
+
+	n, err := q.Where(preds...).Exec(ctx)
+	if err != nil {
+		return 0, fmt.Errorf("delete learnings: %w", err)
+	}
+	return n, nil
 }
 

@@ -6,6 +6,7 @@ import (
 	"iter"
 	"regexp"
 	"strings"
+	"time"
 
 	"go.uber.org/zap"
 	adk_agent "google.golang.org/adk/agent"
@@ -110,13 +111,22 @@ func (a *Agent) Run(ctx context.Context, sessionID string, input string) iter.Se
 // If the agent encounters a "failed to find agent" error (hallucinated agent
 // name), it sends a correction message and retries once.
 func (a *Agent) RunAndCollect(ctx context.Context, sessionID, input string) (string, error) {
+	start := time.Now()
 	resp, err := a.runAndCollectOnce(ctx, sessionID, input)
 	if err == nil {
+		logger().Debugw("agent run completed",
+			"session", sessionID,
+			"elapsed", time.Since(start).String(),
+			"response_len", len(resp))
 		return resp, nil
 	}
 
 	badAgent := extractMissingAgent(err)
 	if badAgent == "" || len(a.adkAgent.SubAgents()) == 0 {
+		logger().Warnw("agent run failed",
+			"session", sessionID,
+			"elapsed", time.Since(start).String(),
+			"error", err)
 		return "", err
 	}
 
@@ -128,9 +138,26 @@ func (a *Agent) RunAndCollect(ctx context.Context, sessionID, input string) (str
 	logger().Warnw("agent name hallucination detected, retrying",
 		"hallucinated", badAgent,
 		"valid_agents", names,
-		"session", sessionID)
+		"session", sessionID,
+		"elapsed", time.Since(start).String())
 
-	return a.runAndCollectOnce(ctx, sessionID, correction)
+	retryStart := time.Now()
+	resp, err = a.runAndCollectOnce(ctx, sessionID, correction)
+	if err != nil {
+		logger().Errorw("agent hallucination retry failed",
+			"session", sessionID,
+			"retry_elapsed", time.Since(retryStart).String(),
+			"total_elapsed", time.Since(start).String(),
+			"error", err)
+		return "", err
+	}
+
+	logger().Infow("agent hallucination retry succeeded",
+		"session", sessionID,
+		"retry_elapsed", time.Since(retryStart).String(),
+		"total_elapsed", time.Since(start).String(),
+		"response_len", len(resp))
+	return resp, nil
 }
 
 // runAndCollectOnce executes a single agent run and collects text output.
