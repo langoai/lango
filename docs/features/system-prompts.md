@@ -24,10 +24,14 @@ mkdir -p ~/.lango/prompts
 echo "You are a helpful coding assistant." > ~/.lango/prompts/AGENTS.md
 ```
 
-```yaml
-# config.yaml
-agent:
-  promptsDir: "~/.lango/prompts"
+> **Settings:** `lango settings` → Agent
+
+```json
+{
+  "agent": {
+    "promptsDir": "~/.lango/prompts"
+  }
+}
 ```
 
 ### Precedence

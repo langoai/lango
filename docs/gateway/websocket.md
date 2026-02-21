@@ -8,12 +8,18 @@ Lango supports WebSocket connections for real-time streaming of agent responses.
 
 ## Configuration
 
-```yaml
-server:
-  wsEnabled: true
-  allowedOrigins:
-    - "http://localhost:3000"
-    - "https://your-app.example.com"
+> **Settings:** `lango settings` → Server
+
+```json
+{
+  "server": {
+    "wsEnabled": true,
+    "allowedOrigins": [
+      "http://localhost:3000",
+      "https://your-app.example.com"
+    ]
+  }
+}
 ```
 
 | Key | Type | Default | Description |

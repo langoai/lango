@@ -93,11 +93,17 @@ The `allowedOrigins` setting controls which origins can establish WebSocket conn
 | `["https://example.com"]` | Only the listed origins |
 | `["*"]` | Allow all origins |
 
-```yaml
-server:
-  allowedOrigins:
-    - "https://app.example.com"
-    - "https://admin.example.com"
+> **Settings:** `lango settings` → Security
+
+```json
+{
+  "server": {
+    "allowedOrigins": [
+      "https://app.example.com",
+      "https://admin.example.com"
+    ]
+  }
+}
 ```
 
 !!! danger "Wildcard Origins"
@@ -120,37 +126,53 @@ This applies to:
 
 ### Single Provider
 
-```yaml
-auth:
-  providers:
-    google:
-      issuerUrl: "https://accounts.google.com"
-      clientId: "your-client-id.apps.googleusercontent.com"
-      clientSecret: "your-client-secret"
-      redirectUrl: "https://your-domain.com/auth/callback/google"
-      scopes:
-        - openid
-        - email
-        - profile
+> **Settings:** `lango settings` → Auth
+
+```json
+{
+  "auth": {
+    "providers": {
+      "google": {
+        "issuerUrl": "https://accounts.google.com",
+        "clientId": "your-client-id.apps.googleusercontent.com",
+        "clientSecret": "your-client-secret",
+        "redirectUrl": "https://your-domain.com/auth/callback/google",
+        "scopes": [
+          "openid",
+          "email",
+          "profile"
+        ]
+      }
+    }
+  }
+}
 ```
 
 ### Multiple Providers
 
-```yaml
-auth:
-  providers:
-    google:
-      issuerUrl: "https://accounts.google.com"
-      clientId: "google-client-id"
-      clientSecret: "google-client-secret"
-      redirectUrl: "https://your-domain.com/auth/callback/google"
-      scopes: [openid, email, profile]
-    github:
-      issuerUrl: "https://token.actions.githubusercontent.com"
-      clientId: "github-client-id"
-      clientSecret: "github-client-secret"
-      redirectUrl: "https://your-domain.com/auth/callback/github"
-      scopes: [openid, email]
+> **Settings:** `lango settings` → Auth
+
+```json
+{
+  "auth": {
+    "providers": {
+      "google": {
+        "issuerUrl": "https://accounts.google.com",
+        "clientId": "google-client-id",
+        "clientSecret": "google-client-secret",
+        "redirectUrl": "https://your-domain.com/auth/callback/google",
+        "scopes": ["openid", "email", "profile"]
+      },
+      "github": {
+        "issuerUrl": "https://token.actions.githubusercontent.com",
+        "clientId": "github-client-id",
+        "clientSecret": "github-client-secret",
+        "redirectUrl": "https://your-domain.com/auth/callback/github",
+        "scopes": ["openid", "email"]
+      }
+    }
+  }
+}
 ```
 
 Each provider is registered under a unique name (e.g., `google`, `github`) which maps to the `{provider}` path parameter in auth endpoints.

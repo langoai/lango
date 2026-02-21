@@ -32,35 +32,49 @@ Select **Embedding & RAG** from the setup menu.
 
 Reference an existing entry from the `providers` map via `providerID`:
 
-```yaml
-providers:
-  my-openai:
-    type: openai
-    apiKey: ${OPENAI_API_KEY}
+> **Settings:** `lango settings` → Embedding & RAG
 
-embedding:
-  providerID: my-openai
-  model: text-embedding-3-small
-  dimensions: 1536
-  rag:
-    enabled: true
-    maxResults: 5
+```json
+{
+  "providers": {
+    "my-openai": {
+      "type": "openai",
+      "apiKey": "${OPENAI_API_KEY}"
+    }
+  },
+  "embedding": {
+    "providerID": "my-openai",
+    "model": "text-embedding-3-small",
+    "dimensions": 1536,
+    "rag": {
+      "enabled": true,
+      "maxResults": 5
+    }
+  }
+}
 ```
 
 #### Using Local (Ollama) Embeddings
 
 For local embeddings, set `provider` to `local` instead of using `providerID`:
 
-```yaml
-embedding:
-  provider: local
-  model: nomic-embed-text
-  dimensions: 768
-  local:
-    baseUrl: http://localhost:11434/v1
-  rag:
-    enabled: true
-    maxResults: 5
+> **Settings:** `lango settings` → Embedding & RAG
+
+```json
+{
+  "embedding": {
+    "provider": "local",
+    "model": "nomic-embed-text",
+    "dimensions": 768,
+    "local": {
+      "baseUrl": "http://localhost:11434/v1"
+    },
+    "rag": {
+      "enabled": true,
+      "maxResults": 5
+    }
+  }
+}
 ```
 
 !!! tip "Local Setup"
@@ -93,14 +107,18 @@ RAG searches across these embedding collections:
 
 You can restrict which collections are searched:
 
-```yaml
-embedding:
-  rag:
-    enabled: true
-    maxResults: 5
-    collections:
-      - knowledge
-      - learning
+> **Settings:** `lango settings` → Embedding & RAG
+
+```json
+{
+  "embedding": {
+    "rag": {
+      "enabled": true,
+      "maxResults": 5,
+      "collections": ["knowledge", "learning"]
+    }
+  }
+}
 ```
 
 Leave `collections` empty to search all collections.
@@ -109,32 +127,45 @@ Leave `collections` empty to search all collections.
 
 Set `maxDistance` to filter out low-relevance results:
 
-```yaml
-embedding:
-  rag:
-    enabled: true
-    maxResults: 5
-    maxDistance: 0.8  # Only include results with cosine distance <= 0.8
+> **Settings:** `lango settings` → Embedding & RAG
+
+```json
+{
+  "embedding": {
+    "rag": {
+      "enabled": true,
+      "maxResults": 5,
+      "maxDistance": 0.8
+    }
+  }
+}
 ```
 
 Set to `0.0` (default) to disable distance filtering.
 
 ## Configuration Reference
 
-```yaml
-embedding:
-  providerID: ""          # Reference to providers map entry
-  provider: ""            # "local" for Ollama (no providerID needed)
-  model: ""               # Embedding model identifier
-  dimensions: 0           # Vector dimensionality
-  local:
-    baseUrl: http://localhost:11434/v1
-    model: ""             # Override model for local provider
-  rag:
-    enabled: false
-    maxResults: 5
-    collections: []       # Empty = search all
-    maxDistance: 0.0       # 0.0 = no distance filter
+> **Settings:** `lango settings` → Embedding & RAG
+
+```json
+{
+  "embedding": {
+    "providerID": "",
+    "provider": "",
+    "model": "",
+    "dimensions": 0,
+    "local": {
+      "baseUrl": "http://localhost:11434/v1",
+      "model": ""
+    },
+    "rag": {
+      "enabled": false,
+      "maxResults": 5,
+      "collections": [],
+      "maxDistance": 0.0
+    }
+  }
+}
 ```
 
 | Key | Type | Default | Description |

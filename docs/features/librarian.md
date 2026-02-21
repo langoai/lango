@@ -106,15 +106,20 @@ When the [Knowledge Graph](knowledge-graph.md) is enabled, the Librarian can als
 
 ## Configuration
 
-```yaml
-librarian:
-  enabled: true
-  observationThreshold: 2
-  inquiryCooldownTurns: 3
-  maxPendingInquiries: 2
-  autoSaveConfidence: high
-  provider: ""    # Empty = use agent default
-  model: ""       # Empty = use agent default
+> **Settings:** `lango settings` → Librarian
+
+```json
+{
+  "librarian": {
+    "enabled": true,
+    "observationThreshold": 2,
+    "inquiryCooldownTurns": 3,
+    "maxPendingInquiries": 2,
+    "autoSaveConfidence": "high",
+    "provider": "",
+    "model": ""
+  }
+}
 ```
 
 | Key | Type | Default | Description |

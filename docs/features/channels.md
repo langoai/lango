@@ -35,12 +35,18 @@ Select **Channel Setup** during onboarding to configure one or more channels.
 
 ### Configuration
 
-```yaml
-channels:
-  telegram:
-    enabled: true
-    botToken: ${TELEGRAM_BOT_TOKEN}
-    allowlist: []  # Empty = allow all users
+> **Settings:** `lango settings` → Channels
+
+```json
+{
+  "channels": {
+    "telegram": {
+      "enabled": true,
+      "botToken": "${TELEGRAM_BOT_TOKEN}",
+      "allowlist": []
+    }
+  }
+}
 ```
 
 | Key | Type | Description |
@@ -63,13 +69,19 @@ channels:
 
 ### Configuration
 
-```yaml
-channels:
-  discord:
-    enabled: true
-    botToken: ${DISCORD_BOT_TOKEN}
-    applicationId: "your-application-id"
-    allowedGuilds: []  # Empty = allow all servers
+> **Settings:** `lango settings` → Channels
+
+```json
+{
+  "channels": {
+    "discord": {
+      "enabled": true,
+      "botToken": "${DISCORD_BOT_TOKEN}",
+      "applicationId": "your-application-id",
+      "allowedGuilds": []
+    }
+  }
+}
 ```
 
 | Key | Type | Description |
@@ -89,13 +101,19 @@ channels:
 
 ### Configuration
 
-```yaml
-channels:
-  slack:
-    enabled: true
-    botToken: ${SLACK_BOT_TOKEN}
-    appToken: ${SLACK_APP_TOKEN}
-    signingSecret: ${SLACK_SIGNING_SECRET}
+> **Settings:** `lango settings` → Channels
+
+```json
+{
+  "channels": {
+    "slack": {
+      "enabled": true,
+      "botToken": "${SLACK_BOT_TOKEN}",
+      "appToken": "${SLACK_APP_TOKEN}",
+      "signingSecret": "${SLACK_SIGNING_SECRET}"
+    }
+  }
+}
 ```
 
 | Key | Type | Description |
@@ -118,20 +136,28 @@ All channels share the following capabilities:
 
 You can enable multiple channels simultaneously. Each runs independently:
 
-```yaml
-channels:
-  telegram:
-    enabled: true
-    botToken: ${TELEGRAM_BOT_TOKEN}
-  discord:
-    enabled: true
-    botToken: ${DISCORD_BOT_TOKEN}
-    applicationId: "123456789"
-  slack:
-    enabled: true
-    botToken: ${SLACK_BOT_TOKEN}
-    appToken: ${SLACK_APP_TOKEN}
-    signingSecret: ${SLACK_SIGNING_SECRET}
+> **Settings:** `lango settings` → Channels
+
+```json
+{
+  "channels": {
+    "telegram": {
+      "enabled": true,
+      "botToken": "${TELEGRAM_BOT_TOKEN}"
+    },
+    "discord": {
+      "enabled": true,
+      "botToken": "${DISCORD_BOT_TOKEN}",
+      "applicationId": "123456789"
+    },
+    "slack": {
+      "enabled": true,
+      "botToken": "${SLACK_BOT_TOKEN}",
+      "appToken": "${SLACK_APP_TOKEN}",
+      "signingSecret": "${SLACK_SIGNING_SECRET}"
+    }
+  }
+}
 ```
 
 ## Related

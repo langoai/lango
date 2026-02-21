@@ -90,15 +90,19 @@ Job results are delivered to configured communication channels after execution. 
 
 ## Configuration
 
-```yaml
-cron:
-  enabled: true
-  timezone: "Asia/Seoul"           # Default timezone (default: "UTC")
-  maxConcurrentJobs: 5             # Max parallel job executions (default: 5)
-  defaultSessionMode: "isolated"   # "isolated" or "main" (default: "isolated")
-  historyRetention: "30d"          # How long to keep execution history
-  defaultDeliverTo:                # Fallback delivery channels
-    - telegram
+> **Settings:** `lango settings` → Cron Scheduler
+
+```json
+{
+  "cron": {
+    "enabled": true,
+    "timezone": "Asia/Seoul",
+    "maxConcurrentJobs": 5,
+    "defaultSessionMode": "isolated",
+    "historyRetention": "30d",
+    "defaultDeliverTo": ["telegram"]
+  }
+}
 ```
 
 | Key | Type | Default | Description |

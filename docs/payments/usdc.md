@@ -80,20 +80,25 @@ lango payment balance --json
 
 ## Configuration
 
-```yaml
-payment:
-  enabled: true
-  walletProvider: local  # local | rpc | composite
+> **Settings:** `lango settings` → Payment
 
-  network:
-    chainId: 84532           # 84532 = Base Sepolia (testnet), 8453 = Base (mainnet)
-    rpcUrl: "https://sepolia.base.org"
-    usdcContract: "0x..."    # USDC contract address for the target network
-
-  limits:
-    maxPerTx: 10.0           # Maximum USDC per single transaction
-    maxDaily: 100.0          # Maximum USDC per 24-hour period
-    autoApproveBelow: 0.10   # Auto-approve transactions below this amount
+```json
+{
+  "payment": {
+    "enabled": true,
+    "walletProvider": "local",
+    "network": {
+      "chainId": 84532,
+      "rpcUrl": "https://sepolia.base.org",
+      "usdcContract": "0x..."
+    },
+    "limits": {
+      "maxPerTx": 10.0,
+      "maxDaily": 100.0,
+      "autoApproveBelow": 0.10
+    }
+  }
+}
 ```
 
 | Key | Type | Default | Description |

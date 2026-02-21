@@ -78,14 +78,18 @@ Each task runs in an isolated session with the key format `bg:<task-id>`.
 
 ## Configuration
 
-```yaml
-background:
-  enabled: true
-  yieldMs: 5000               # Auto-yield threshold in milliseconds
-  maxConcurrentTasks: 10       # Max parallel tasks (default: 10)
-  taskTimeout: 30m             # Max duration per task (default: 30m)
-  defaultDeliverTo:            # Fallback delivery channels
-    - telegram
+> **Settings:** `lango settings` → Background Tasks
+
+```json
+{
+  "background": {
+    "enabled": true,
+    "yieldMs": 5000,
+    "maxConcurrentTasks": 10,
+    "taskTimeout": "30m",
+    "defaultDeliverTo": ["telegram"]
+  }
+}
 ```
 
 | Key | Type | Default | Description |

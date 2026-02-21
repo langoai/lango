@@ -39,12 +39,18 @@ The **security interceptor** sits between the user and the AI agent. It:
 
     The security interceptor is disabled by default. Enable it in your configuration:
 
-    ```yaml
-    security:
-      interceptor:
-        enabled: true
-        redactPii: true
-        approvalPolicy: dangerous
+    > **Settings:** `lango settings` → Security
+
+    ```json
+    {
+      "security": {
+        "interceptor": {
+          "enabled": true,
+          "redactPii": true,
+          "approvalPolicy": "dangerous"
+        }
+      }
+    }
     ```
 
 ## Encryption Modes

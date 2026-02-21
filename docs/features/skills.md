@@ -234,14 +234,19 @@ Resource directories (`scripts/`, `references/`, `assets/`) are automatically im
 
 ## Configuration
 
-```yaml
-skill:
-  enabled: true
-  skillsDir: ~/.lango/skills
-  allowImport: true
-  maxBulkImport: 50
-  importConcurrency: 5
-  importTimeout: 2m
+> **Settings:** `lango settings` → Skill
+
+```json
+{
+  "skill": {
+    "enabled": true,
+    "skillsDir": "~/.lango/skills",
+    "allowImport": true,
+    "maxBulkImport": 50,
+    "importConcurrency": 5,
+    "importTimeout": "2m"
+  }
+}
 ```
 
 | Key | Type | Default | Description |

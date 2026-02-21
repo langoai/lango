@@ -72,26 +72,40 @@ Lango ships with 13 builtin regex patterns across four categories:
 
 Use `piiDisabledPatterns` to disable specific builtin patterns by name:
 
-```yaml
-security:
-  interceptor:
-    enabled: true
-    redactPii: true
-    piiDisabledPatterns:
-      - ipv4          # Don't redact IP addresses
-      - kr_landline   # Don't redact Korean landlines
+> **Settings:** `lango settings` → Security
+
+```json
+{
+  "security": {
+    "interceptor": {
+      "enabled": true,
+      "redactPii": true,
+      "piiDisabledPatterns": [
+        "ipv4",
+        "kr_landline"
+      ]
+    }
+  }
+}
 ```
 
 ### Adding Custom Patterns
 
 Use `piiCustomPatterns` to add your own regex patterns:
 
-```yaml
-security:
-  interceptor:
-    piiCustomPatterns:
-      company_id: '\bEMP-\d{6}\b'
-      internal_code: '\bINT-[A-Z]{3}-\d{4}\b'
+> **Settings:** `lango settings` → Security
+
+```json
+{
+  "security": {
+    "interceptor": {
+      "piiCustomPatterns": {
+        "company_id": "\\bEMP-\\d{6}\\b",
+        "internal_code": "\\bINT-[A-Z]{3}-\\d{4}\\b"
+      }
+    }
+  }
+}
 ```
 
 Custom patterns are categorized as `custom` and always enabled. Each pattern must be a valid Go regex.
@@ -140,16 +154,23 @@ If the Presidio service is unreachable, the detector silently falls back to rege
 
 ### Configuration
 
-```yaml
-security:
-  interceptor:
-    enabled: true
-    redactPii: true
-    presidio:
-      enabled: true
-      url: "http://localhost:5002"    # Presidio analyzer endpoint
-      scoreThreshold: 0.7             # Minimum confidence (0.0-1.0)
-      language: "en"                  # Language hint for analysis
+> **Settings:** `lango settings` → Security
+
+```json
+{
+  "security": {
+    "interceptor": {
+      "enabled": true,
+      "redactPii": true,
+      "presidio": {
+        "enabled": true,
+        "url": "http://localhost:5002",
+        "scoreThreshold": 0.7,
+        "language": "en"
+      }
+    }
+  }
+}
 ```
 
 | Key | Type | Default | Description |
@@ -161,29 +182,31 @@ security:
 
 ## Full Configuration Reference
 
-```yaml
-security:
-  interceptor:
-    enabled: true                  # Enable the security interceptor
-    redactPii: true                # Enable PII redaction
+> **Settings:** `lango settings` → Security
 
-    # Legacy regex patterns (backward compatibility)
-    piiRegexPatterns:
-      - '\bCUSTOM-\d+\b'
-
-    # Disable specific builtin patterns by name
-    piiDisabledPatterns:
-      - ipv4
-      - kr_bank_account
-
-    # Add named custom patterns
-    piiCustomPatterns:
-      employee_id: '\bEMP-\d{6}\b'
-
-    # Microsoft Presidio integration
-    presidio:
-      enabled: false
-      url: "http://localhost:5002"
-      scoreThreshold: 0.7
-      language: "en"
+```json
+{
+  "security": {
+    "interceptor": {
+      "enabled": true,
+      "redactPii": true,
+      "piiRegexPatterns": [
+        "\\bCUSTOM-\\d+\\b"
+      ],
+      "piiDisabledPatterns": [
+        "ipv4",
+        "kr_bank_account"
+      ],
+      "piiCustomPatterns": {
+        "employee_id": "\\bEMP-\\d{6}\\b"
+      },
+      "presidio": {
+        "enabled": false,
+        "url": "http://localhost:5002",
+        "scoreThreshold": 0.7,
+        "language": "en"
+      }
+    }
+  }
+}
 ```
