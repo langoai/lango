@@ -7,7 +7,7 @@ services:
     ports:
       - "18789:18789"
     volumes:
-      - lango-data:/data
+      - lango-data:/home/lango/.lango
     secrets:
       - lango_config
       - lango_passphrase

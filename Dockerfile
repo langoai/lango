@@ -27,7 +27,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
 
 RUN groupadd -r lango && useradd -r -g lango -m -d /home/lango lango \
-    && mkdir -p /data && chown -R lango:lango /data && chmod 700 /data
+    && mkdir -p /home/lango/.lango && chown lango:lango /home/lango/.lango
 
 COPY --from=builder /app/lango /usr/local/bin/lango
 COPY --from=builder /app/prompts/ /usr/share/lango/prompts/
