@@ -26,7 +26,7 @@ type LocalSignerProvider struct {
 func NewLocalSignerProvider(secrets *security.SecretsStore) *LocalSignerProvider {
 	return &LocalSignerProvider{
 		secrets: secrets,
-		keyName: "wallet_private_key",
+		keyName: "wallet.privatekey",
 	}
 }
 
