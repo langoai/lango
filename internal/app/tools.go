@@ -1793,7 +1793,7 @@ func buildApprovalSummary(toolName string, params map[string]interface{}) string
 		return fmt.Sprintf("Send %s USDC to %s (%s)", amount, truncate(to, 12), truncate(purpose, 50))
 	case "payment_create_wallet":
 		return "Create new blockchain wallet"
-	case "x402_fetch":
+	case "payment_x402_fetch":
 		url, _ := params["url"].(string)
 		method, _ := params["method"].(string)
 		if method == "" {

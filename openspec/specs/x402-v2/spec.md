@@ -4,7 +4,7 @@
 Define the X402 V2 payment protocol integration in Lango, using the Coinbase X402 Go SDK for automatic HTTP 402 payment handling with EIP-3009 off-chain signatures.
 
 ## Protocol Flow
-1. Agent makes HTTP request via `x402_fetch` tool
+1. Agent makes HTTP request via `payment_x402_fetch` tool
 2. Server returns 402 with `PAYMENT-REQUIRED` header (Base64 JSON)
 3. SDK's `PaymentRoundTripper` intercepts the 402 response
 4. SDK creates EIP-3009 authorization, signs with EIP-712 typed data
@@ -31,7 +31,7 @@ Define the X402 V2 payment protocol integration in Lango, using the Coinbase X40
 - `HTTPClient(ctx)` returns the X402-wrapped HTTP client
 - `IsEnabled()` and `SignerAddress()` for callers
 
-### x402_fetch Tool (`internal/tools/payment/payment.go`)
+### payment_x402_fetch Tool (`internal/tools/payment/payment.go`)
 - SafetyLevel: Dangerous (requires approval)
 - Parameters: url (required), method, body, headers
 - Uses interceptor's HTTPClient for automatic 402 handling

@@ -20,7 +20,7 @@ Lango provides a blockchain payment system for USDC on Base L2 (EVM). The agent 
 | `payment_limits` | View spending limits and daily usage | Safe |
 | `payment_wallet_info` | Show wallet address and network info | Safe |
 | `payment_create_wallet` | Create new blockchain wallet | Dangerous |
-| `x402_fetch` | HTTP request with automatic X402 payment | Dangerous |
+| `payment_x402_fetch` | HTTP request with automatic X402 payment | Dangerous |
 
 !!! note "Tool Approval"
 

@@ -251,10 +251,10 @@ func buildCreateWalletTool(secrets *security.SecretsStore, chainID int64) *agent
 	}
 }
 
-// buildX402FetchTool creates the x402_fetch tool for HTTP requests with automatic X402 payment.
+// buildX402FetchTool creates the payment_x402_fetch tool for HTTP requests with automatic X402 payment.
 func buildX402FetchTool(interceptor *x402.Interceptor, svc *payment.Service) *agent.Tool {
 	return &agent.Tool{
-		Name:        "x402_fetch",
+		Name:        "payment_x402_fetch",
 		Description: "Make an HTTP request with automatic X402 payment. If the server responds with HTTP 402, the agent wallet automatically signs an EIP-3009 authorization and retries. Requires approval.",
 		SafetyLevel: agent.SafetyLevelDangerous,
 		Parameters: map[string]interface{}{
