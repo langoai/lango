@@ -1,0 +1,151 @@
+site_name: Lango
+site_url: https://langowarny.github.io/lango/
+site_description: A high-performance AI agent framework built with Go
+repo_name: langowarny/lango
+repo_url: https://github.com/langowarny/lango
+edit_uri: edit/main/docs/
+copyright: Copyright &copy; 2026 langowarny - MIT License
+
+theme:
+  name: material
+  logo: assets/logo.png
+  favicon: assets/logo.png
+  icon:
+    repo: fontawesome/brands/github
+  palette:
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      primary: deep purple
+      accent: amber
+      toggle:
+        icon: material/brightness-7
+        name: Switch to dark mode
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      primary: deep purple
+      accent: amber
+      toggle:
+        icon: material/brightness-4
+        name: Switch to light mode
+  features:
+    - navigation.tabs
+    - navigation.tabs.sticky
+    - navigation.sections
+    - navigation.expand
+    - navigation.path
+    - navigation.top
+    - navigation.indexes
+    - navigation.footer
+    - search.suggest
+    - search.highlight
+    - search.share
+    - content.code.copy
+    - content.code.annotate
+    - content.tabs.link
+    - toc.follow
+
+plugins:
+  - search
+  - minify:
+      minify_html: true
+
+markdown_extensions:
+  - abbr
+  - admonition
+  - attr_list
+  - def_list
+  - footnotes
+  - md_in_html
+  - tables
+  - toc:
+      permalink: true
+      toc_depth: 3
+  - pymdownx.details
+  - pymdownx.emoji:
+      emoji_index: !!python/name:material.extensions.emoji.twemoji
+      emoji_generator: !!python/name:material.extensions.emoji.to_svg
+  - pymdownx.highlight:
+      line_spans: __span
+      pygments_lang_class: true
+  - pymdownx.inlinehilite
+  - pymdownx.keys
+  - pymdownx.mark
+  - pymdownx.superfences:
+      custom_fences:
+        - name: mermaid
+          class: mermaid
+          format: !!python/name:pymdownx.superfences.fence_code_format
+  - pymdownx.tabbed:
+      alternate_style: true
+  - pymdownx.tasklist:
+      custom_checkbox: true
+
+extra:
+  social:
+    - icon: fontawesome/brands/github
+      link: https://github.com/langowarny/lango
+  generator: false
+
+extra_css:
+  - stylesheets/extra.css
+
+nav:
+  - Home: index.md
+  - Getting Started:
+    - getting-started/index.md
+    - Installation: getting-started/installation.md
+    - Quick Start: getting-started/quickstart.md
+    - Configuration Basics: getting-started/configuration.md
+  - Architecture:
+    - architecture/index.md
+    - System Overview: architecture/overview.md
+    - Project Structure: architecture/project-structure.md
+    - Data Flow: architecture/data-flow.md
+  - Features:
+    - features/index.md
+    - AI Providers: features/ai-providers.md
+    - Channels: features/channels.md
+    - Knowledge System: features/knowledge.md
+    - Observational Memory: features/observational-memory.md
+    - Embedding & RAG: features/embedding-rag.md
+    - Knowledge Graph: features/knowledge-graph.md
+    - Multi-Agent Orchestration: features/multi-agent.md
+    - A2A Protocol: features/a2a-protocol.md
+    - Skill System: features/skills.md
+    - Proactive Librarian: features/librarian.md
+    - System Prompts: features/system-prompts.md
+  - Automation:
+    - automation/index.md
+    - Cron Scheduling: automation/cron.md
+    - Background Tasks: automation/background.md
+    - Workflow Engine: automation/workflows.md
+  - Security:
+    - security/index.md
+    - Encryption & Secrets: security/encryption.md
+    - PII Redaction: security/pii-redaction.md
+    - Tool Approval: security/tool-approval.md
+    - Authentication: security/authentication.md
+  - Payments:
+    - payments/index.md
+    - USDC Payments: payments/usdc.md
+    - X402 Protocol: payments/x402.md
+  - CLI Reference:
+    - cli/index.md
+    - Core Commands: cli/core.md
+    - Config Management: cli/config.md
+    - Agent & Memory: cli/agent-memory.md
+    - Security Commands: cli/security.md
+    - Payment Commands: cli/payment.md
+    - Automation Commands: cli/automation.md
+  - Gateway & API:
+    - gateway/index.md
+    - HTTP API: gateway/http-api.md
+    - WebSocket: gateway/websocket.md
+  - Deployment:
+    - deployment/index.md
+    - Docker: deployment/docker.md
+    - Production Checklist: deployment/production.md
+  - Development:
+    - development/index.md
+    - Build & Test: development/build-test.md
+  - Configuration Reference: configuration.md
