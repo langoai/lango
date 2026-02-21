@@ -126,14 +126,18 @@ lango workflow history --limit 20
 
 ## Configuration
 
-```yaml
-workflow:
-  enabled: true
-  maxConcurrentSteps: 4        # Max parallel steps (default: 4)
-  defaultTimeout: 5m           # Per-step timeout (default: 5m)
-  stateDir: "~/.lango/state"   # State storage directory
-  defaultDeliverTo:            # Fallback delivery channels
-    - telegram
+> **Settings:** `lango settings` → Workflow Engine
+
+```json
+{
+  "workflow": {
+    "enabled": true,
+    "maxConcurrentSteps": 4,
+    "defaultTimeout": "5m",
+    "stateDir": "~/.lango/state",
+    "defaultDeliverTo": ["telegram"]
+  }
+}
 ```
 
 | Key | Type | Default | Description |

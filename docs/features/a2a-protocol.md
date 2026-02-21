@@ -87,17 +87,27 @@ WARN  load remote agent  name=weather-agent  url=https://weather.example.com/.we
 
 ## Configuration
 
-```yaml
-a2a:
-  enabled: true
-  baseUrl: "https://your-host:18789"
-  agentName: "lango-assistant"
-  agentDescription: "Lango AI Assistant"
-  remoteAgents:
-    - name: "weather-agent"
-      agentCardUrl: "https://weather.example.com/.well-known/agent.json"
-    - name: "code-review-agent"
-      agentCardUrl: "https://review.example.com/.well-known/agent.json"
+> **Settings:** `lango settings` → A2A Protocol
+
+```json
+{
+  "a2a": {
+    "enabled": true,
+    "baseUrl": "https://your-host:18789",
+    "agentName": "lango-assistant",
+    "agentDescription": "Lango AI Assistant",
+    "remoteAgents": [
+      {
+        "name": "weather-agent",
+        "agentCardUrl": "https://weather.example.com/.well-known/agent.json"
+      },
+      {
+        "name": "code-review-agent",
+        "agentCardUrl": "https://review.example.com/.well-known/agent.json"
+      }
+    ]
+  }
+}
 ```
 
 | Setting | Default | Description |

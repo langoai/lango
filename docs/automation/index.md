@@ -15,17 +15,22 @@ Lango provides three automation systems for scheduling, background execution, an
 
 ## Enabling Automation
 
-Each system is disabled by default. Enable them in your `config.yaml`:
+Each system is disabled by default. Enable them in your configuration:
 
-```yaml
-cron:
-  enabled: true
+> **Settings:** `lango settings` → Cron Scheduler
 
-background:
-  enabled: true
-
-workflow:
-  enabled: true
+```json
+{
+  "cron": {
+    "enabled": true
+  },
+  "background": {
+    "enabled": true
+  },
+  "workflow": {
+    "enabled": true
+  }
+}
 ```
 
 ## Common Patterns

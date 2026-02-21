@@ -21,39 +21,59 @@ The `approvalPolicy` setting determines which tools require human approval befor
 
     Setting `approvalPolicy: none` disables all safety checks for tool execution. Only use this in fully trusted, isolated environments.
 
-```yaml
-security:
-  interceptor:
-    enabled: true
-    approvalPolicy: dangerous    # dangerous | all | configured | none
+> **Settings:** `lango settings` → Security
+
+```json
+{
+  "security": {
+    "interceptor": {
+      "enabled": true,
+      "approvalPolicy": "dangerous"
+    }
+  }
+}
 ```
 
 ## Sensitive Tools
 
 When using `approvalPolicy: configured`, you must explicitly list which tools require approval:
 
-```yaml
-security:
-  interceptor:
-    approvalPolicy: configured
-    sensitiveTools:
-      - exec            # Shell command execution
-      - browser         # Browser automation
-      - filesystem      # File system operations
-      - wallet_send     # Blockchain transactions
+> **Settings:** `lango settings` → Security
+
+```json
+{
+  "security": {
+    "interceptor": {
+      "approvalPolicy": "configured",
+      "sensitiveTools": [
+        "exec",
+        "browser",
+        "filesystem",
+        "wallet_send"
+      ]
+    }
+  }
+}
 ```
 
 ## Exempt Tools
 
 Tools listed in `exemptTools` are exempt from approval regardless of the active policy. This is useful when a broad policy like `all` is active but certain safe tools should always execute immediately:
 
-```yaml
-security:
-  interceptor:
-    approvalPolicy: all
-    exemptTools:
-      - knowledge_search    # Always allow knowledge lookups
-      - memory_recall       # Always allow memory queries
+> **Settings:** `lango settings` → Security
+
+```json
+{
+  "security": {
+    "interceptor": {
+      "approvalPolicy": "all",
+      "exemptTools": [
+        "knowledge_search",
+        "memory_recall"
+      ]
+    }
+  }
+}
 ```
 
 !!! warning "Exempt Overrides Policy"
@@ -64,10 +84,16 @@ security:
 
 The `approvalTimeoutSec` setting controls how long the system waits for human approval before the tool call is rejected:
 
-```yaml
-security:
-  interceptor:
-    approvalTimeoutSec: 30    # seconds (default: 30)
+> **Settings:** `lango settings` → Security
+
+```json
+{
+  "security": {
+    "interceptor": {
+      "approvalTimeoutSec": 30
+    }
+  }
+}
 ```
 
 If the timeout expires without approval, the tool call is denied and the agent receives an error.
@@ -76,10 +102,16 @@ If the timeout expires without approval, the tool call is denied and the agent r
 
 Configure which messaging channel receives approval notifications. When a tool requires approval, a notification is sent to the specified channel with details about the pending tool call:
 
-```yaml
-security:
-  interceptor:
-    notifyChannel: telegram    # telegram | discord | slack
+> **Settings:** `lango settings` → Security
+
+```json
+{
+  "security": {
+    "interceptor": {
+      "notifyChannel": "telegram"
+    }
+  }
+}
 ```
 
 The notification includes:
@@ -93,10 +125,16 @@ The notification includes:
 
 For CI/CD or automated deployments where no human is available to approve, enable headless auto-approve:
 
-```yaml
-security:
-  interceptor:
-    headlessAutoApprove: true
+> **Settings:** `lango settings` → Security
+
+```json
+{
+  "security": {
+    "interceptor": {
+      "headlessAutoApprove": true
+    }
+  }
+}
 ```
 
 !!! warning "Security Risk"
@@ -105,19 +143,27 @@ security:
 
 ## Configuration Reference
 
-```yaml
-security:
-  interceptor:
-    enabled: true
-    approvalPolicy: dangerous        # dangerous | all | configured | none
-    sensitiveTools:                   # Tools requiring approval (configured policy)
-      - exec
-      - browser
-    exemptTools:                      # Tools exempt from approval
-      - knowledge_search
-    approvalTimeoutSec: 30           # Timeout in seconds
-    notifyChannel: telegram          # Channel for approval notifications
-    headlessAutoApprove: false       # Auto-approve in headless mode
+> **Settings:** `lango settings` → Security
+
+```json
+{
+  "security": {
+    "interceptor": {
+      "enabled": true,
+      "approvalPolicy": "dangerous",
+      "sensitiveTools": [
+        "exec",
+        "browser"
+      ],
+      "exemptTools": [
+        "knowledge_search"
+      ],
+      "approvalTimeoutSec": 30,
+      "notifyChannel": "telegram",
+      "headlessAutoApprove": false
+    }
+  }
+}
 ```
 
 | Key | Type | Default | Description |

@@ -85,16 +85,21 @@ Set any limit to `0` for unlimited injection (not recommended).
 
 ## Configuration
 
-```yaml
-observationalMemory:
-  enabled: true
-  provider: ""           # Empty = use agent default
-  model: ""              # Empty = use agent default
-  messageTokenThreshold: 1000
-  observationTokenThreshold: 2000
-  maxMessageTokenBudget: 8000
-  maxReflectionsInContext: 5
-  maxObservationsInContext: 20
+> **Settings:** `lango settings` → Observational Memory
+
+```json
+{
+  "observationalMemory": {
+    "enabled": true,
+    "provider": "",
+    "model": "",
+    "messageTokenThreshold": 1000,
+    "observationTokenThreshold": 2000,
+    "maxMessageTokenBudget": 8000,
+    "maxReflectionsInContext": 5,
+    "maxObservationsInContext": 20
+  }
+}
 ```
 
 | Key | Type | Default | Description |

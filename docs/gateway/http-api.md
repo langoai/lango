@@ -8,11 +8,16 @@ Lango exposes an HTTP API for health monitoring, agent discovery, authentication
 
 ## Server Configuration
 
-```yaml
-server:
-  host: localhost
-  port: 18789
-  httpEnabled: true
+> **Settings:** `lango settings` → Server
+
+```json
+{
+  "server": {
+    "host": "localhost",
+    "port": 18789,
+    "httpEnabled": true
+  }
+}
 ```
 
 | Key | Type | Default | Description |

@@ -76,12 +76,18 @@ Each RPC request has a 30-second timeout. If the companion is unreachable, the *
 
 Configure RPC mode:
 
-```yaml
-security:
-  signer:
-    provider: rpc
-    rpcUrl: "https://companion.local:8443"
-    keyId: "primary-signing-key"
+> **Settings:** `lango settings` → Security
+
+```json
+{
+  "security": {
+    "signer": {
+      "provider": "rpc",
+      "rpcUrl": "https://companion.local:8443",
+      "keyId": "primary-signing-key"
+    }
+  }
+}
 ```
 
 ## Secret Management
@@ -138,11 +144,17 @@ When blockchain payments are enabled, wallet private keys are managed through th
 
 **Spending Limits** provide an additional safety layer:
 
-```yaml
-payment:
-  limits:
-    maxPerTx: "1.00"      # Max per transaction (USDC)
-    maxDaily: "10.00"      # Max daily spending (USDC)
+> **Settings:** `lango settings` → Security
+
+```json
+{
+  "payment": {
+    "limits": {
+      "maxPerTx": "1.00",
+      "maxDaily": "10.00"
+    }
+  }
+}
 ```
 
 ## Companion App Discovery
@@ -159,11 +171,17 @@ Lango can auto-discover companion apps on the local network using mDNS:
 
 If mDNS discovery fails, configure the companion URL explicitly:
 
-```yaml
-security:
-  signer:
-    provider: rpc
-    rpcUrl: "https://192.168.1.100:8443"
+> **Settings:** `lango settings` → Security
+
+```json
+{
+  "security": {
+    "signer": {
+      "provider": "rpc",
+      "rpcUrl": "https://192.168.1.100:8443"
+    }
+  }
+}
 ```
 
 ## CLI Commands
@@ -203,14 +221,21 @@ lango security secrets delete <name>
 
 ## Configuration Reference
 
-```yaml
-security:
-  interceptor:
-    enabled: true
-    redactPii: true
-    approvalPolicy: dangerous
-  signer:
-    provider: local          # "local" or "rpc"
-    rpcUrl: ""               # RPC endpoint (rpc mode only)
-    keyId: ""                # Key identifier
+> **Settings:** `lango settings` → Security
+
+```json
+{
+  "security": {
+    "interceptor": {
+      "enabled": true,
+      "redactPii": true,
+      "approvalPolicy": "dangerous"
+    },
+    "signer": {
+      "provider": "local",
+      "rpcUrl": "",
+      "keyId": ""
+    }
+  }
+}
 ```

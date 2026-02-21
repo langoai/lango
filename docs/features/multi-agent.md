@@ -141,9 +141,14 @@ When [A2A protocol](a2a-protocol.md) is enabled, remote agents are appended to t
 
 ## Configuration
 
-```yaml
-agent:
-  multiAgent: true
+> **Settings:** `lango settings` → Multi-Agent
+
+```json
+{
+  "agent": {
+    "multiAgent": true
+  }
+}
 ```
 
 | Setting | Default | Description |

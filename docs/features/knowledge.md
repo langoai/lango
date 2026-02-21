@@ -122,12 +122,17 @@ The retriever assembles context into named sections:
 
 ## Configuration
 
-```yaml
-knowledge:
-  enabled: true
-  maxContextPerLayer: 5
-  analysisTurnThreshold: 10
-  analysisTokenThreshold: 2000
+> **Settings:** `lango settings` → Knowledge
+
+```json
+{
+  "knowledge": {
+    "enabled": true,
+    "maxContextPerLayer": 5,
+    "analysisTurnThreshold": 10,
+    "analysisTokenThreshold": 2000
+  }
+}
 ```
 
 | Key | Type | Default | Description |

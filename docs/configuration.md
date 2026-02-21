@@ -2,6 +2,8 @@
 
 Complete reference of all configuration keys available in Lango. Configuration is stored in encrypted profiles managed by [`lango config`](cli/config.md) commands. Use [`lango onboard`](cli/core.md#lango-onboard) for guided setup or [`lango settings`](cli/core.md#lango-settings) for the full interactive editor.
 
+All configuration is managed through the **`lango settings`** TUI (interactive terminal editor) or by importing a JSON file with **`lango config import`**. Lango does not use YAML configuration files. The JSON examples below show the structure expected by `lango config import` and reflect what `lango settings` edits behind the scenes.
+
 See [Configuration Basics](getting-started/configuration.md) for an introduction to the configuration system.
 
 ---
@@ -10,13 +12,18 @@ See [Configuration Basics](getting-started/configuration.md) for an introduction
 
 Gateway server settings for HTTP API and WebSocket connections.
 
-```yaml
-server:
-  host: "localhost"
-  port: 18789
-  httpEnabled: true
-  wsEnabled: true
-  allowedOrigins: []
+> **Settings:** `lango settings` → Server
+
+```json
+{
+  "server": {
+    "host": "localhost",
+    "port": 18789,
+    "httpEnabled": true,
+    "wsEnabled": true,
+    "allowedOrigins": []
+  }
+}
 ```
 
 | Key | Type | Default | Description |
@@ -33,19 +40,24 @@ server:
 
 LLM agent settings including model selection, prompt configuration, and timeouts.
 
-```yaml
-agent:
-  provider: "anthropic"
-  model: "claude-sonnet-4-20250514"
-  fallbackProvider: ""
-  fallbackModel: ""
-  maxTokens: 4096
-  temperature: 0.7
-  systemPromptPath: ""
-  promptsDir: ""
-  requestTimeout: 5m
-  toolTimeout: 2m
-  multiAgent: false
+> **Settings:** `lango settings` → Agent
+
+```json
+{
+  "agent": {
+    "provider": "anthropic",
+    "model": "claude-sonnet-4-20250514",
+    "fallbackProvider": "",
+    "fallbackModel": "",
+    "maxTokens": 4096,
+    "temperature": 0.7,
+    "systemPromptPath": "",
+    "promptsDir": "",
+    "requestTimeout": "5m",
+    "toolTimeout": "2m",
+    "multiAgent": false
+  }
+}
 ```
 
 | Key | Type | Default | Description |
@@ -68,18 +80,26 @@ agent:
 
 Named AI provider configurations. Referenced by other sections via provider ID.
 
-```yaml
-providers:
-  my-anthropic:
-    type: "anthropic"
-    apiKey: "${ANTHROPIC_API_KEY}"
-  my-openai:
-    type: "openai"
-    apiKey: "${OPENAI_API_KEY}"
-    baseUrl: "https://api.openai.com/v1"
-  local-ollama:
-    type: "ollama"
-    baseUrl: "http://localhost:11434/v1"
+> **Settings:** `lango settings` → Providers
+
+```json
+{
+  "providers": {
+    "my-anthropic": {
+      "type": "anthropic",
+      "apiKey": "${ANTHROPIC_API_KEY}"
+    },
+    "my-openai": {
+      "type": "openai",
+      "apiKey": "${OPENAI_API_KEY}",
+      "baseUrl": "https://api.openai.com/v1"
+    },
+    "local-ollama": {
+      "type": "ollama",
+      "baseUrl": "http://localhost:11434/v1"
+    }
+  }
+}
 ```
 
 | Key | Type | Default | Description |
@@ -92,10 +112,15 @@ providers:
 
 ## Logging
 
-```yaml
-logging:
-  level: "info"
-  format: "console"
+> **Settings:** `lango settings` → Logging
+
+```json
+{
+  "logging": {
+    "level": "info",
+    "format": "console"
+  }
+}
 ```
 
 | Key | Type | Default | Description |
@@ -109,11 +134,16 @@ logging:
 
 Session storage and lifecycle settings.
 
-```yaml
-session:
-  databasePath: "~/.lango/data.db"
-  ttl: 24h
-  maxHistoryTurns: 100
+> **Settings:** `lango settings` → Session
+
+```json
+{
+  "session": {
+    "databasePath": "~/.lango/data.db",
+    "ttl": "24h",
+    "maxHistoryTurns": 100
+  }
+}
 ```
 
 | Key | Type | Default | Description |
@@ -136,16 +166,22 @@ session:
 
 The security interceptor controls tool execution approval and PII protection. See [Tool Approval](security/tool-approval.md) and [PII Redaction](security/pii-redaction.md).
 
-```yaml
-security:
-  interceptor:
-    enabled: true
-    redactPii: false
-    approvalPolicy: "dangerous"
-    approvalTimeoutSec: 30
-    notifyChannel: ""
-    sensitiveTools: []
-    exemptTools: []
+> **Settings:** `lango settings` → Security
+
+```json
+{
+  "security": {
+    "interceptor": {
+      "enabled": true,
+      "redactPii": false,
+      "approvalPolicy": "dangerous",
+      "approvalTimeoutSec": 30,
+      "notifyChannel": "",
+      "sensitiveTools": [],
+      "exemptTools": []
+    }
+  }
+}
 ```
 
 | Key | Type | Default | Description |
@@ -160,12 +196,18 @@ security:
 
 ### PII Detection
 
-```yaml
-security:
-  interceptor:
-    piiRegexPatterns: []
-    piiDisabledPatterns: []
-    piiCustomPatterns: []
+> **Settings:** `lango settings` → Security
+
+```json
+{
+  "security": {
+    "interceptor": {
+      "piiRegexPatterns": [],
+      "piiDisabledPatterns": [],
+      "piiCustomPatterns": []
+    }
+  }
+}
 ```
 
 | Key | Type | Default | Description |
@@ -176,14 +218,21 @@ security:
 
 ### Presidio Integration
 
-```yaml
-security:
-  interceptor:
-    presidio:
-      enabled: false
-      url: "http://localhost:5002"
-      scoreThreshold: 0.7
-      language: "en"
+> **Settings:** `lango settings` → Security
+
+```json
+{
+  "security": {
+    "interceptor": {
+      "presidio": {
+        "enabled": false,
+        "url": "http://localhost:5002",
+        "scoreThreshold": 0.7,
+        "language": "en"
+      }
+    }
+  }
+}
 ```
 
 | Key | Type | Default | Description |
@@ -199,15 +248,22 @@ security:
 
 Configure OAuth2/OIDC authentication providers for the gateway API.
 
-```yaml
-auth:
-  providers:
-    google:
-      issuerUrl: "https://accounts.google.com"
-      clientId: "${GOOGLE_CLIENT_ID}"
-      clientSecret: "${GOOGLE_CLIENT_SECRET}"
-      redirectUrl: "http://localhost:18789/auth/callback"
-      scopes: ["openid", "email", "profile"]
+> **Settings:** `lango settings` → Auth
+
+```json
+{
+  "auth": {
+    "providers": {
+      "google": {
+        "issuerUrl": "https://accounts.google.com",
+        "clientId": "${GOOGLE_CLIENT_ID}",
+        "clientSecret": "${GOOGLE_CLIENT_SECRET}",
+        "redirectUrl": "http://localhost:18789/auth/callback",
+        "scopes": ["openid", "email", "profile"]
+      }
+    }
+  }
+}
 ```
 
 | Key | Type | Default | Description |
@@ -303,16 +359,21 @@ Communication channel configurations.
 
 ## Observational Memory
 
-```yaml
-observationalMemory:
-  enabled: false
-  provider: ""
-  model: ""
-  messageTokenThreshold: 1000
-  observationTokenThreshold: 2000
-  maxMessageTokenBudget: 8000
-  maxReflectionsInContext: 5
-  maxObservationsInContext: 20
+> **Settings:** `lango settings` → Observational Memory
+
+```json
+{
+  "observationalMemory": {
+    "enabled": false,
+    "provider": "",
+    "model": "",
+    "messageTokenThreshold": 1000,
+    "observationTokenThreshold": 2000,
+    "maxMessageTokenBudget": 8000,
+    "maxReflectionsInContext": 5,
+    "maxObservationsInContext": 20
+  }
+}
 ```
 
 | Key | Type | Default | Description |
@@ -330,19 +391,26 @@ observationalMemory:
 
 ## Embedding & RAG
 
-```yaml
-embedding:
-  providerID: "my-openai"
-  provider: ""
-  model: "text-embedding-3-small"
-  dimensions: 1536
-  local:
-    baseUrl: "http://localhost:11434/v1"
-    model: ""
-  rag:
-    enabled: false
-    maxResults: 5
-    collections: []
+> **Settings:** `lango settings` → Embedding & RAG
+
+```json
+{
+  "embedding": {
+    "providerID": "my-openai",
+    "provider": "",
+    "model": "text-embedding-3-small",
+    "dimensions": 1536,
+    "local": {
+      "baseUrl": "http://localhost:11434/v1",
+      "model": ""
+    },
+    "rag": {
+      "enabled": false,
+      "maxResults": 5,
+      "collections": []
+    }
+  }
+}
 ```
 
 | Key | Type | Default | Description |
@@ -361,13 +429,18 @@ embedding:
 
 ## Graph
 
-```yaml
-graph:
-  enabled: false
-  backend: "bolt"
-  databasePath: "~/.lango/graph.db"
-  maxTraversalDepth: 2
-  maxExpansionResults: 10
+> **Settings:** `lango settings` → Graph Store
+
+```json
+{
+  "graph": {
+    "enabled": false,
+    "backend": "bolt",
+    "databasePath": "~/.lango/graph.db",
+    "maxTraversalDepth": 2,
+    "maxExpansionResults": 10
+  }
+}
 ```
 
 | Key | Type | Default | Description |
@@ -385,15 +458,23 @@ graph:
 !!! warning "Experimental"
     The A2A protocol is experimental. See [A2A Protocol](features/a2a-protocol.md).
 
-```yaml
-a2a:
-  enabled: false
-  baseUrl: ""
-  agentName: ""
-  agentDescription: ""
-  remoteAgents:
-    - name: "code-reviewer"
-      agentCardUrl: "https://reviewer.example.com/.well-known/agent.json"
+> **Settings:** `lango settings` → A2A Protocol
+
+```json
+{
+  "a2a": {
+    "enabled": false,
+    "baseUrl": "",
+    "agentName": "",
+    "agentDescription": "",
+    "remoteAgents": [
+      {
+        "name": "code-reviewer",
+        "agentCardUrl": "https://reviewer.example.com/.well-known/agent.json"
+      }
+    ]
+  }
+}
 ```
 
 | Key | Type | Default | Description |
@@ -418,21 +499,29 @@ Each remote agent entry:
 !!! warning "Experimental"
     The payment system is experimental. See [Payments](payments/index.md).
 
-```yaml
-payment:
-  enabled: false
-  walletProvider: "local"
-  network:
-    chainId: 84532
-    rpcUrl: "https://sepolia.base.org"
-    usdcContract: "0x036CbD53842c5426634e7929541eC2318f3dCF7e"
-  limits:
-    maxPerTx: "1.00"
-    maxDaily: "10.00"
-    autoApproveBelow: ""
-  x402:
-    autoIntercept: false
-    maxAutoPayAmount: ""
+> **Settings:** `lango settings` → Payment
+
+```json
+{
+  "payment": {
+    "enabled": false,
+    "walletProvider": "local",
+    "network": {
+      "chainId": 84532,
+      "rpcUrl": "https://sepolia.base.org",
+      "usdcContract": "0x036CbD53842c5426634e7929541eC2318f3dCF7e"
+    },
+    "limits": {
+      "maxPerTx": "1.00",
+      "maxDaily": "10.00",
+      "autoApproveBelow": ""
+    },
+    "x402": {
+      "autoIntercept": false,
+      "maxAutoPayAmount": ""
+    }
+  }
+}
 ```
 
 | Key | Type | Default | Description |
@@ -454,14 +543,19 @@ payment:
 
 See [Cron Scheduling](automation/cron.md) for usage details and [CLI reference](cli/automation.md#cron-commands).
 
-```yaml
-cron:
-  enabled: false
-  timezone: "UTC"
-  maxConcurrentJobs: 5
-  defaultSessionMode: "isolated"
-  historyRetention: "720h"
-  defaultDeliverTo: []
+> **Settings:** `lango settings` → Cron Scheduler
+
+```json
+{
+  "cron": {
+    "enabled": false,
+    "timezone": "UTC",
+    "maxConcurrentJobs": 5,
+    "defaultSessionMode": "isolated",
+    "historyRetention": "720h",
+    "defaultDeliverTo": []
+  }
+}
 ```
 
 | Key | Type | Default | Description |
@@ -480,12 +574,17 @@ cron:
 !!! warning "Experimental"
     Background tasks are experimental. See [Background Tasks](automation/background.md).
 
-```yaml
-background:
-  enabled: false
-  yieldMs: 30000
-  maxConcurrentTasks: 3
-  defaultDeliverTo: []
+> **Settings:** `lango settings` → Background Tasks
+
+```json
+{
+  "background": {
+    "enabled": false,
+    "yieldMs": 30000,
+    "maxConcurrentTasks": 3,
+    "defaultDeliverTo": []
+  }
+}
 ```
 
 | Key | Type | Default | Description |
@@ -502,13 +601,18 @@ background:
 !!! warning "Experimental"
     The workflow engine is experimental. See [Workflow Engine](automation/workflows.md) and [CLI reference](cli/automation.md#workflow-commands).
 
-```yaml
-workflow:
-  enabled: false
-  maxConcurrentSteps: 4
-  defaultTimeout: 10m
-  stateDir: "~/.lango/workflows/"
-  defaultDeliverTo: []
+> **Settings:** `lango settings` → Workflow Engine
+
+```json
+{
+  "workflow": {
+    "enabled": false,
+    "maxConcurrentSteps": 4,
+    "defaultTimeout": "10m",
+    "stateDir": "~/.lango/workflows/",
+    "defaultDeliverTo": []
+  }
+}
 ```
 
 | Key | Type | Default | Description |
@@ -526,15 +630,20 @@ workflow:
 !!! warning "Experimental"
     The Proactive Librarian is experimental. See [Proactive Librarian](features/librarian.md).
 
-```yaml
-librarian:
-  enabled: false
-  observationThreshold: 2
-  inquiryCooldownTurns: 3
-  maxPendingInquiries: 2
-  autoSaveConfidence: "high"
-  provider: ""
-  model: ""
+> **Settings:** `lango settings` → Librarian
+
+```json
+{
+  "librarian": {
+    "enabled": false,
+    "observationThreshold": 2,
+    "inquiryCooldownTurns": 3,
+    "maxPendingInquiries": 2,
+    "autoSaveConfidence": "high",
+    "provider": "",
+    "model": ""
+  }
+}
 ```
 
 | Key | Type | Default | Description |
@@ -553,13 +662,18 @@ librarian:
 
 String configuration values support `${ENV_VAR}` syntax for environment variable substitution. This is useful for sensitive values like API keys and tokens:
 
-```yaml
-providers:
-  my-provider:
-    type: "anthropic"
-    apiKey: "${ANTHROPIC_API_KEY}"
-
-channels:
-  telegram:
-    botToken: "${TELEGRAM_BOT_TOKEN}"
+```json
+{
+  "providers": {
+    "my-provider": {
+      "type": "anthropic",
+      "apiKey": "${ANTHROPIC_API_KEY}"
+    }
+  },
+  "channels": {
+    "telegram": {
+      "botToken": "${TELEGRAM_BOT_TOKEN}"
+    }
+  }
+}
 ```

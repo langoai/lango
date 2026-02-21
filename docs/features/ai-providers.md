@@ -48,27 +48,41 @@ lango settings
 
 Providers are defined in the `providers` map in your config file (`~/.lango/config.yaml`):
 
-```yaml
-providers:
-  my-openai:
-    type: openai
-    apiKey: ${OPENAI_API_KEY}
-  my-anthropic:
-    type: anthropic
-    apiKey: ${ANTHROPIC_API_KEY}
-  my-gemini:
-    type: gemini
-    apiKey: ${GEMINI_API_KEY}
-  local-ollama:
-    type: ollama
+> **Settings:** `lango settings` → Providers
+
+```json
+{
+  "providers": {
+    "my-openai": {
+      "type": "openai",
+      "apiKey": "${OPENAI_API_KEY}"
+    },
+    "my-anthropic": {
+      "type": "anthropic",
+      "apiKey": "${ANTHROPIC_API_KEY}"
+    },
+    "my-gemini": {
+      "type": "gemini",
+      "apiKey": "${GEMINI_API_KEY}"
+    },
+    "local-ollama": {
+      "type": "ollama"
+    }
+  }
+}
 ```
 
 Then reference a provider in the agent config:
 
-```yaml
-agent:
-  provider: openai
-  model: gpt-5.2
+> **Settings:** `lango settings` → Agent
+
+```json
+{
+  "agent": {
+    "provider": "openai",
+    "model": "gpt-5.2"
+  }
+}
 ```
 
 !!! tip "Environment Variable Substitution"
@@ -79,12 +93,18 @@ agent:
 
 Any OpenAI-compatible API can be used by setting a custom `baseUrl`:
 
-```yaml
-providers:
-  my-custom-llm:
-    type: openai
-    apiKey: ${CUSTOM_API_KEY}
-    baseUrl: https://api.custom-provider.com/v1
+> **Settings:** `lango settings` → Providers
+
+```json
+{
+  "providers": {
+    "my-custom-llm": {
+      "type": "openai",
+      "apiKey": "${CUSTOM_API_KEY}",
+      "baseUrl": "https://api.custom-provider.com/v1"
+    }
+  }
+}
 ```
 
 ### Ollama (Local Models)
@@ -99,10 +119,16 @@ ollama serve
 ollama pull llama3.2
 ```
 
-```yaml
-providers:
-  local:
-    type: ollama
+> **Settings:** `lango settings` → Providers
+
+```json
+{
+  "providers": {
+    "local": {
+      "type": "ollama"
+    }
+  }
+}
 ```
 
 The default endpoint is `http://localhost:11434/v1`.
@@ -111,12 +137,17 @@ The default endpoint is `http://localhost:11434/v1`.
 
 Configure a fallback provider to handle failures gracefully:
 
-```yaml
-agent:
-  provider: anthropic
-  model: claude-sonnet-4-6
-  fallbackProvider: openai
-  fallbackModel: gpt-5.2
+> **Settings:** `lango settings` → Agent
+
+```json
+{
+  "agent": {
+    "provider": "anthropic",
+    "model": "claude-sonnet-4-6",
+    "fallbackProvider": "openai",
+    "fallbackModel": "gpt-5.2"
+  }
+}
 ```
 
 When the primary provider fails, Lango automatically retries with the fallback provider and model.

@@ -141,13 +141,18 @@ The default propagation rate is **0.3**, meaning each success propagates a small
 
 ## Configuration
 
-```yaml
-graph:
-  enabled: true
-  backend: "bolt"
-  databasePath: "~/.lango/graph.db"
-  maxTraversalDepth: 2
-  maxExpansionResults: 10
+> **Settings:** `lango settings` → Graph Store
+
+```json
+{
+  "graph": {
+    "enabled": true,
+    "backend": "bolt",
+    "databasePath": "~/.lango/graph.db",
+    "maxTraversalDepth": 2,
+    "maxExpansionResults": 10
+  }
+}
 ```
 
 | Setting | Default | Description |
