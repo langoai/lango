@@ -539,7 +539,7 @@ When `payment.enabled` is `true`, the following agent tools are registered:
 | `payment_limits` | View spending limits and daily usage | Safe |
 | `payment_wallet_info` | Show wallet address and network info | Safe |
 | `payment_create_wallet` | Create a new blockchain wallet (key stored encrypted) | Dangerous |
-| `x402_fetch` | HTTP request with automatic X402 payment (EIP-3009) | Dangerous |
+| `payment_x402_fetch` | HTTP request with automatic X402 payment (EIP-3009) | Dangerous |
 
 ### Wallet Providers
 
@@ -553,7 +553,7 @@ When `payment.enabled` is `true`, the following agent tools are registered:
 
 Lango uses the official [Coinbase X402 Go SDK](https://github.com/coinbase/x402) for automatic HTTP 402 payments. When `payment.x402.autoIntercept` is enabled:
 
-1. Agent makes an HTTP request via the `x402_fetch` tool
+1. Agent makes an HTTP request via the `payment_x402_fetch` tool
 2. Server returns 402 with `PAYMENT-REQUIRED` header (Base64 JSON)
 3. SDK's `PaymentRoundTripper` intercepts the 402 response
 4. SDK creates an EIP-3009 `transferWithAuthorization`, signs with EIP-712 typed data
