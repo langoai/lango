@@ -48,3 +48,6 @@ bin/
 .coverage/
 
 tmp/
+
+# MkDocs build output
+site/
