@@ -16,15 +16,8 @@ import (
 	entknowledge "github.com/langowarny/lango/internal/ent/knowledge"
 	entlearning "github.com/langowarny/lango/internal/ent/learning"
 	"github.com/langowarny/lango/internal/ent/predicate"
+	"github.com/langowarny/lango/internal/types"
 )
-
-// EmbedCallback is an optional hook called when content is saved, enabling
-// asynchronous embedding without importing the embedding package.
-type EmbedCallback func(id, collection, content string, metadata map[string]string)
-
-// GraphCallback is an optional hook called when content is saved, enabling
-// asynchronous graph relationship updates without importing the graph package.
-type GraphCallback func(id, collection, content string, metadata map[string]string)
 
 // Store provides CRUD operations for knowledge, learning, skill, audit, and external ref entities.
 type Store struct {
@@ -32,9 +25,9 @@ type Store struct {
 	logger *zap.SugaredLogger
 
 	// Optional embedding hook (nil = disabled).
-	onEmbed EmbedCallback
+	onEmbed types.EmbedCallback
 	// Optional graph relationship hook (nil = disabled).
-	onGraph GraphCallback
+	onGraph types.ContentCallback
 }
 
 // NewStore creates a new knowledge store.
@@ -46,12 +39,12 @@ func NewStore(client *ent.Client, logger *zap.SugaredLogger) *Store {
 }
 
 // SetEmbedCallback sets the optional embedding hook.
-func (s *Store) SetEmbedCallback(cb EmbedCallback) {
+func (s *Store) SetEmbedCallback(cb types.EmbedCallback) {
 	s.onEmbed = cb
 }
 
 // SetGraphCallback sets the optional graph relationship hook.
-func (s *Store) SetGraphCallback(cb GraphCallback) {
+func (s *Store) SetGraphCallback(cb types.ContentCallback) {
 	s.onGraph = cb
 }
 
@@ -64,7 +57,7 @@ func (s *Store) SaveKnowledge(ctx context.Context, sessionKey string, entry Know
 	if ent.IsNotFound(err) {
 		builder := s.client.Knowledge.Create().
 			SetKey(entry.Key).
-			SetCategory(entknowledge.Category(entry.Category)).
+			SetCategory(entry.Category).
 			SetContent(entry.Content)
 
 		if len(entry.Tags) > 0 {
@@ -79,7 +72,7 @@ func (s *Store) SaveKnowledge(ctx context.Context, sessionKey string, entry Know
 			return fmt.Errorf("create knowledge: %w", err)
 		}
 
-		meta := map[string]string{"category": entry.Category}
+		meta := map[string]string{"category": string(entry.Category)}
 		if s.onEmbed != nil {
 			s.onEmbed(entry.Key, "knowledge", entry.Content, meta)
 		}
@@ -93,7 +86,7 @@ func (s *Store) SaveKnowledge(ctx context.Context, sessionKey string, entry Know
 	}
 
 	updater := existing.Update().
-		SetCategory(entknowledge.Category(entry.Category)).
+		SetCategory(entry.Category).
 		SetContent(entry.Content)
 
 	if len(entry.Tags) > 0 {
@@ -110,7 +103,7 @@ func (s *Store) SaveKnowledge(ctx context.Context, sessionKey string, entry Know
 
 	if s.onEmbed != nil {
 		s.onEmbed(entry.Key, "knowledge", entry.Content, map[string]string{
-			"category": entry.Category,
+			"category": string(entry.Category),
 		})
 	}
 	return nil
@@ -123,7 +116,7 @@ func (s *Store) GetKnowledge(ctx context.Context, key string) (*KnowledgeEntry, 
 		Only(ctx)
 
 	if ent.IsNotFound(err) {
-		return nil, fmt.Errorf("knowledge not found: %s", key)
+		return nil, fmt.Errorf("get knowledge %q: %w", key, ErrKnowledgeNotFound)
 	}
 	if err != nil {
 		return nil, fmt.Errorf("query knowledge: %w", err)
@@ -131,7 +124,7 @@ func (s *Store) GetKnowledge(ctx context.Context, key string) (*KnowledgeEntry, 
 
 	return &KnowledgeEntry{
 		Key:      k.Key,
-		Category: string(k.Category),
+		Category: k.Category,
 		Content:  k.Content,
 		Tags:     k.Tags,
 		Source:   k.Source,
@@ -170,7 +163,7 @@ func (s *Store) SearchKnowledge(ctx context.Context, query string, category stri
 	for _, k := range entries {
 		result = append(result, KnowledgeEntry{
 			Key:      k.Key,
-			Category: string(k.Category),
+			Category: k.Category,
 			Content:  k.Content,
 			Tags:     k.Tags,
 			Source:   k.Source,
@@ -208,7 +201,7 @@ func (s *Store) IncrementKnowledgeUseCount(ctx context.Context, key string) erro
 		return fmt.Errorf("increment knowledge use count: %w", err)
 	}
 	if n == 0 {
-		return fmt.Errorf("knowledge not found: %s", key)
+		return fmt.Errorf("increment use count %q: %w", key, ErrKnowledgeNotFound)
 	}
 	return nil
 }
@@ -223,7 +216,7 @@ func (s *Store) DeleteKnowledge(ctx context.Context, key string) error {
 		return fmt.Errorf("delete knowledge: %w", err)
 	}
 	if n == 0 {
-		return fmt.Errorf("knowledge not found: %s", key)
+		return fmt.Errorf("delete knowledge %q: %w", key, ErrKnowledgeNotFound)
 	}
 	return nil
 }
@@ -232,7 +225,7 @@ func (s *Store) DeleteKnowledge(ctx context.Context, key string) error {
 func (s *Store) SaveLearning(ctx context.Context, sessionKey string, entry LearningEntry) error {
 	builder := s.client.Learning.Create().
 		SetTrigger(entry.Trigger).
-		SetCategory(entlearning.Category(entry.Category))
+		SetCategory(entry.Category)
 
 	if entry.ErrorPattern != "" {
 		builder.SetErrorPattern(entry.ErrorPattern)
@@ -258,7 +251,7 @@ func (s *Store) SaveLearning(ctx context.Context, sessionKey string, entry Learn
 			content += "\n" + entry.Fix
 		}
 		s.onEmbed(created.ID.String(), "learning", content, map[string]string{
-			"category": entry.Category,
+			"category": string(entry.Category),
 		})
 	}
 
@@ -269,6 +262,9 @@ func (s *Store) SaveLearning(ctx context.Context, sessionKey string, entry Learn
 func (s *Store) GetLearning(ctx context.Context, id uuid.UUID) (*LearningEntry, error) {
 	l, err := s.client.Learning.Get(ctx, id)
 	if err != nil {
+		if ent.IsNotFound(err) {
+			return nil, fmt.Errorf("get learning %q: %w", id, ErrLearningNotFound)
+		}
 		return nil, fmt.Errorf("get learning: %w", err)
 	}
 	return &LearningEntry{
@@ -276,7 +272,7 @@ func (s *Store) GetLearning(ctx context.Context, id uuid.UUID) (*LearningEntry, 
 		ErrorPattern: l.ErrorPattern,
 		Diagnosis:    l.Diagnosis,
 		Fix:          l.Fix,
-		Category:     string(l.Category),
+		Category:     l.Category,
 		Tags:         l.Tags,
 	}, nil
 }
@@ -316,7 +312,7 @@ func (s *Store) SearchLearnings(ctx context.Context, errorPattern string, catego
 			ErrorPattern: l.ErrorPattern,
 			Diagnosis:    l.Diagnosis,
 			Fix:          l.Fix,
-			Category:     string(l.Category),
+			Category:     l.Category,
 			Tags:         l.Tags,
 		})
 	}
@@ -518,7 +514,7 @@ func externalRefKeywordPredicates(query string) []predicate.ExternalRef {
 // LearningStats holds aggregate statistics about learning entries.
 type LearningStats struct {
 	TotalCount       int            `json:"total_count"`
-	ByCategory       map[string]int `json:"by_category"`
+	ByCategory       map[entlearning.Category]int `json:"by_category"`
 	AvgConfidence    float64        `json:"avg_confidence"`
 	OldestEntry      time.Time      `json:"oldest_entry,omitempty"`
 	NewestEntry      time.Time      `json:"newest_entry,omitempty"`
@@ -534,7 +530,7 @@ func (s *Store) GetLearningStats(ctx context.Context) (*LearningStats, error) {
 	}
 
 	stats := &LearningStats{
-		ByCategory: make(map[string]int),
+		ByCategory: make(map[entlearning.Category]int),
 	}
 	stats.TotalCount = len(entries)
 	if stats.TotalCount == 0 {
@@ -543,7 +539,7 @@ func (s *Store) GetLearningStats(ctx context.Context) (*LearningStats, error) {
 
 	var totalConf float64
 	for _, e := range entries {
-		stats.ByCategory[string(e.Category)]++
+		stats.ByCategory[e.Category]++
 		totalConf += e.Confidence
 		stats.TotalOccurrences += e.OccurrenceCount
 		stats.TotalSuccesses += e.SuccessCount
@@ -596,6 +592,9 @@ func (s *Store) ListLearnings(ctx context.Context, category string, minConfidenc
 func (s *Store) DeleteLearning(ctx context.Context, id uuid.UUID) error {
 	err := s.client.Learning.DeleteOneID(id).Exec(ctx)
 	if err != nil {
+		if ent.IsNotFound(err) {
+			return fmt.Errorf("delete learning %q: %w", id, ErrLearningNotFound)
+		}
 		return fmt.Errorf("delete learning: %w", err)
 	}
 	return nil

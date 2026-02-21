@@ -2,15 +2,17 @@ package session
 
 import (
 	"time"
+
+	"github.com/langowarny/lango/internal/types"
 )
 
 // Message represents a single message in conversation history
 type Message struct {
-	Role      string     `json:"role"` // "user", "assistant", "tool"
-	Content   string     `json:"content"`
-	Timestamp time.Time  `json:"timestamp"`
-	ToolCalls []ToolCall `json:"toolCalls,omitempty"`
-	Author    string     `json:"author,omitempty"` // ADK agent name for multi-agent routing
+	Role      types.MessageRole `json:"role"` // "user", "assistant", "tool"
+	Content   string            `json:"content"`
+	Timestamp time.Time         `json:"timestamp"`
+	ToolCalls []ToolCall        `json:"toolCalls,omitempty"`
+	Author    string            `json:"author,omitempty"` // ADK agent name for multi-agent routing
 }
 
 // ToolCall represents a tool invocation

@@ -4,6 +4,10 @@ import (
 	"encoding/json"
 	"fmt"
 	"strings"
+
+	entknowledge "github.com/langowarny/lango/internal/ent/knowledge"
+	entlearning "github.com/langowarny/lango/internal/ent/learning"
+	"github.com/langowarny/lango/internal/types"
 )
 
 // analysisResult is the expected structure from LLM analysis output.
@@ -11,7 +15,7 @@ type analysisResult struct {
 	Type       string `json:"type"`                // fact, pattern, correction, preference
 	Category   string `json:"category"`            // domain-specific category
 	Content    string `json:"content"`             // the extracted knowledge
-	Confidence string `json:"confidence"`          // low, medium, high
+	Confidence types.Confidence `json:"confidence"` // low, medium, high
 	Subject    string `json:"subject,omitempty"`   // optional graph subject
 	Predicate  string `json:"predicate,omitempty"` // optional graph predicate
 	Object     string `json:"object,omitempty"`    // optional graph object
@@ -38,39 +42,39 @@ func parseAnalysisResponse(raw string) ([]analysisResult, error) {
 	return nil, fmt.Errorf("parse analysis response: invalid JSON")
 }
 
-// mapKnowledgeCategory maps LLM analysis type to a valid ent knowledge category enum.
-func mapKnowledgeCategory(analysisType string) string {
+// mapKnowledgeCategory maps LLM analysis type to a valid knowledge category.
+func mapKnowledgeCategory(analysisType string) entknowledge.Category {
 	switch analysisType {
 	case "preference":
-		return "preference"
+		return entknowledge.CategoryPreference
 	case "fact":
-		return "fact"
+		return entknowledge.CategoryFact
 	case "rule":
-		return "rule"
+		return entknowledge.CategoryRule
 	case "definition":
-		return "definition"
+		return entknowledge.CategoryDefinition
 	default:
-		return "fact"
+		return entknowledge.CategoryFact
 	}
 }
 
-// mapLearningCategory maps LLM analysis type to a valid ent learning category enum.
-func mapLearningCategory(analysisType string) string {
+// mapLearningCategory maps LLM analysis type to a valid learning category.
+func mapLearningCategory(analysisType string) entlearning.Category {
 	switch analysisType {
 	case "correction":
-		return "user_correction"
+		return entlearning.CategoryUserCorrection
 	case "pattern":
-		return "general"
+		return entlearning.CategoryGeneral
 	case "tool_error":
-		return "tool_error"
+		return entlearning.CategoryToolError
 	case "provider_error":
-		return "provider_error"
+		return entlearning.CategoryProviderError
 	case "timeout":
-		return "timeout"
+		return entlearning.CategoryTimeout
 	case "permission":
-		return "permission"
+		return entlearning.CategoryPermission
 	default:
-		return "general"
+		return entlearning.CategoryGeneral
 	}
 }
 

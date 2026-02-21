@@ -12,6 +12,7 @@ import (
 	"github.com/langowarny/lango/internal/provider/gemini"
 	"github.com/langowarny/lango/internal/provider/openai"
 	"github.com/langowarny/lango/internal/tools/exec"
+	"github.com/langowarny/lango/internal/types"
 )
 
 var logger = logging.SubsystemSugar("supervisor")
@@ -62,19 +63,19 @@ func (s *Supervisor) initializeProviders() error {
 			}
 
 			switch pCfg.Type {
-			case "openai":
+			case types.ProviderOpenAI:
 				p = openai.NewProvider(id, apiKey, pCfg.BaseURL)
-			case "anthropic":
+			case types.ProviderAnthropic:
 				p = anthropic.NewProvider(id, apiKey)
-			case "gemini", "google": // Support "google" as alias
+			case types.ProviderGemini, types.ProviderGoogle: // Support "google" as alias
 				p, err = gemini.NewProvider(context.Background(), id, apiKey, "")
-			case "ollama":
+			case types.ProviderOllama:
 				baseURL := pCfg.BaseURL
 				if baseURL == "" {
 					baseURL = "http://localhost:11434/v1"
 				}
 				p = openai.NewProvider(id, apiKey, baseURL)
-			case "github":
+			case types.ProviderGitHub:
 				// GitHub Models uses OpenAI compatible endpoint
 				baseURL := pCfg.BaseURL
 				if baseURL == "" {
@@ -87,7 +88,7 @@ func (s *Supervisor) initializeProviders() error {
 			}
 
 			if err != nil {
-				logger.Warnw("failed to initialize provider", "id", id, "error", err)
+				logger.Warnw("initialize provider", "id", id, "error", err)
 				continue
 			}
 			s.registry.Register(p)

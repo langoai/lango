@@ -25,7 +25,7 @@ func (Knowledge) Fields() []ent.Field {
 			Unique().
 			NotEmpty(),
 		field.Enum("category").
-			Values("rule", "definition", "preference", "fact"),
+			Values("rule", "definition", "preference", "fact", "pattern", "correction"),
 		field.Text("content").
 			NotEmpty(),
 		field.JSON("tags", []string{}).

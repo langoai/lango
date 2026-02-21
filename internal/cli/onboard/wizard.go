@@ -10,6 +10,7 @@ import (
 	"github.com/langowarny/lango/internal/cli/tui"
 	"github.com/langowarny/lango/internal/cli/tuicore"
 	"github.com/langowarny/lango/internal/config"
+	"github.com/langowarny/lango/internal/types"
 )
 
 // WizardStep represents the current step in the wizard.
@@ -32,9 +33,9 @@ type channelOption struct {
 }
 
 var channelOptions = []channelOption{
-	{ID: "telegram", Name: "Telegram", Desc: "Bot via BotFather"},
-	{ID: "discord", Name: "Discord", Desc: "Bot via Developer Portal"},
-	{ID: "slack", Name: "Slack", Desc: "App via Socket Mode"},
+	{ID: string(types.ChannelTelegram), Name: "Telegram", Desc: "Bot via BotFather"},
+	{ID: string(types.ChannelDiscord), Name: "Discord", Desc: "Bot via Developer Portal"},
+	{ID: string(types.ChannelSlack), Name: "Slack", Desc: "App via Socket Mode"},
 	{ID: "skip", Name: "Skip", Desc: "Configure later in settings"},
 }
 
@@ -264,12 +265,12 @@ func (w *Wizard) saveCurrentForm() {
 }
 
 func (w *Wizard) enableChannel(ch string) {
-	switch ch {
-	case "telegram":
+	switch types.ChannelType(ch) {
+	case types.ChannelTelegram:
 		w.state.Current.Channels.Telegram.Enabled = true
-	case "discord":
+	case types.ChannelDiscord:
 		w.state.Current.Channels.Discord.Enabled = true
-	case "slack":
+	case types.ChannelSlack:
 		w.state.Current.Channels.Slack.Enabled = true
 	}
 }

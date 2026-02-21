@@ -8,8 +8,10 @@ import (
 	"github.com/google/uuid"
 	"go.uber.org/zap"
 
+	entknowledge "github.com/langowarny/lango/internal/ent/knowledge"
 	"github.com/langowarny/lango/internal/knowledge"
 	"github.com/langowarny/lango/internal/session"
+	"github.com/langowarny/lango/internal/types"
 )
 
 const answerDetectionPrompt = `You are a knowledge librarian. Analyze the recent conversation messages to detect if the user has answered any of the pending knowledge inquiries.
@@ -88,7 +90,7 @@ func (p *InquiryProcessor) ProcessAnswers(ctx context.Context, sessionKey string
 	}
 
 	for _, match := range matches {
-		if match.Confidence == "low" {
+		if match.Confidence == types.ConfidenceLow {
 			continue
 		}
 
@@ -102,7 +104,7 @@ func (p *InquiryProcessor) ProcessAnswers(ctx context.Context, sessionKey string
 		if match.Knowledge != nil && match.Knowledge.Key != "" {
 			entry := knowledge.KnowledgeEntry{
 				Key:      match.Knowledge.Key,
-				Category: match.Knowledge.Category,
+				Category: entknowledge.Category(match.Knowledge.Category),
 				Content:  match.Knowledge.Content,
 				Source:   "proactive_librarian",
 			}

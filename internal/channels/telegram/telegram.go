@@ -82,7 +82,7 @@ func New(cfg Config) (*Channel, error) {
 	} else {
 		bot, err := tgbotapi.NewBotAPIWithClient(cfg.BotToken, endpoint, client)
 		if err != nil {
-			return nil, fmt.Errorf("failed to create bot: %w", err)
+			return nil, fmt.Errorf("create bot: %w", err)
 		}
 		botAPI = NewTelegramBot(bot)
 	}
@@ -384,7 +384,7 @@ func (c *Channel) sendError(chatID int64, replyTo int, err error) {
 func (c *Channel) DownloadFile(fileID string) ([]byte, error) {
 	file, err := c.bot.GetFile(tgbotapi.FileConfig{FileID: fileID})
 	if err != nil {
-		return nil, fmt.Errorf("failed to get file: %w", err)
+		return nil, fmt.Errorf("get file: %w", err)
 	}
 
 	url := file.Link(c.config.BotToken)

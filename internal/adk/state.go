@@ -11,6 +11,7 @@ import (
 
 	"github.com/langowarny/lango/internal/memory"
 	internal "github.com/langowarny/lango/internal/session"
+	"github.com/langowarny/lango/internal/types"
 	"google.golang.org/adk/model"
 )
 
@@ -189,15 +190,15 @@ func (e *EventsAdapter) All() iter.Seq[*session.Event] {
 			author := msg.Author
 			if author == "" {
 				switch msg.Role {
-				case "user":
+				case types.RoleUser:
 					author = "user"
-				case "assistant", "model":
+				case types.RoleAssistant, types.RoleModel:
 					if e.rootAgentName != "" {
 						author = e.rootAgentName
 					} else {
 						author = "lango-agent"
 					}
-				case "function", "tool":
+				case types.RoleFunction, types.RoleTool:
 					author = "tool"
 				default:
 					if e.rootAgentName != "" {
@@ -212,7 +213,7 @@ func (e *EventsAdapter) All() iter.Seq[*session.Event] {
 			var parts []*genai.Part
 
 			switch role {
-			case "assistant", "model":
+			case types.RoleAssistant, types.RoleModel:
 				// Text content
 				if msg.Content != "" {
 					parts = append(parts, &genai.Part{Text: msg.Content})
@@ -235,7 +236,7 @@ func (e *EventsAdapter) All() iter.Seq[*session.Event] {
 				// Remember for legacy fallback
 				lastAssistantToolCalls = msg.ToolCalls
 
-			case "tool", "function":
+			case types.RoleTool, types.RoleFunction:
 				// Check if ToolCalls carry FunctionResponse metadata (new format)
 				hasResponseMeta := false
 				for _, tc := range msg.ToolCalls {
@@ -261,7 +262,7 @@ func (e *EventsAdapter) All() iter.Seq[*session.Event] {
 							},
 						})
 					}
-					role = "function" // Gemini expects "function" role for FunctionResponse
+					role = types.RoleFunction // Gemini expects "function" role for FunctionResponse
 				} else if len(lastAssistantToolCalls) > 0 {
 					// Legacy format: infer FunctionResponse from preceding assistant ToolCalls.
 					// Use the content as the response body for the first call.
@@ -286,7 +287,7 @@ func (e *EventsAdapter) All() iter.Seq[*session.Event] {
 					} else {
 						lastAssistantToolCalls = nil
 					}
-					role = "function"
+					role = types.RoleFunction
 				} else {
 					// No context to reconstruct FunctionResponse — emit as text
 					if msg.Content != "" {
@@ -311,7 +312,7 @@ func (e *EventsAdapter) All() iter.Seq[*session.Event] {
 				Author:    author,
 				LLMResponse: model.LLMResponse{
 					Content: &genai.Content{
-						Role:  role,
+						Role:  string(role),
 						Parts: parts,
 					},
 				},

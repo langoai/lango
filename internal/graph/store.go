@@ -2,7 +2,12 @@ package graph
 
 import "context"
 
+// Predicate represents a relationship type in the knowledge graph.
+type Predicate string
+
 // Predicate constants define relationship types in the knowledge graph.
+// These are untyped string constants to allow direct use in Triple struct literals
+// where the Predicate field is string. Use Predicate(x).Valid() for validation.
 const (
 	RelatedTo   = "related_to"   // semantic relationship between entities
 	CausedBy    = "caused_by"    // causal relationship (effect → cause)
@@ -14,6 +19,20 @@ const (
 	ReflectsOn  = "reflects_on"  // reflection targets (reflection → observation)
 	LearnedFrom = "learned_from" // provenance (learning → session)
 )
+
+// Valid reports whether p is a known predicate type.
+func (p Predicate) Valid() bool {
+	switch string(p) {
+	case RelatedTo, CausedBy, ResolvedBy, Follows, SimilarTo, Contains, InSession, ReflectsOn, LearnedFrom:
+		return true
+	}
+	return false
+}
+
+// Values returns all known predicate types.
+func (p Predicate) Values() []Predicate {
+	return []Predicate{RelatedTo, CausedBy, ResolvedBy, Follows, SimilarTo, Contains, InSession, ReflectsOn, LearnedFrom}
+}
 
 // Triple represents a Subject-Predicate-Object relationship in the graph.
 type Triple struct {

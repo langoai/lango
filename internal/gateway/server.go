@@ -166,7 +166,7 @@ func (s *Server) handleChatMessage(client *Client, params json.RawMessage) (inte
 	}
 
 	if s.agent == nil {
-		return nil, fmt.Errorf("agent not configured")
+		return nil, ErrAgentNotReady
 	}
 
 	// Notify UI that agent is thinking
@@ -304,7 +304,7 @@ func (s *Server) RequestApproval(ctx context.Context, message string) (approval.
 	s.clientsMu.RUnlock()
 
 	if !hasCompanion {
-		return approval.ApprovalResponse{}, fmt.Errorf("no companion connected")
+		return approval.ApprovalResponse{}, ErrNoCompanion
 	}
 
 	// 2. Create approval request
@@ -340,7 +340,7 @@ func (s *Server) RequestApproval(ctx context.Context, message string) (approval.
 	case <-ctx.Done():
 		return approval.ApprovalResponse{}, ctx.Err()
 	case <-time.After(timeout):
-		return approval.ApprovalResponse{}, fmt.Errorf("approval timeout")
+		return approval.ApprovalResponse{}, ErrApprovalTimeout
 	}
 }
 

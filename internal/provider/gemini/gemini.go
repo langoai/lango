@@ -117,7 +117,7 @@ func (p *GeminiProvider) Generate(ctx context.Context, params provider.GenerateP
 		for _, t := range params.Tools {
 			schema, err := convertSchema(t.Parameters)
 			if err != nil {
-				return nil, fmt.Errorf("failed to convert tool schema: %w", err)
+				return nil, fmt.Errorf("convert tool schema: %w", err)
 			}
 			funcDecls = append(funcDecls, &genai.FunctionDeclaration{
 				Name:        t.Name,

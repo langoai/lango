@@ -55,8 +55,8 @@ func ParseSkillMD(content []byte) (*SkillEntry, error) {
 	entry := &SkillEntry{
 		Name:             meta.Name,
 		Description:      meta.Description,
-		Type:             meta.Type,
-		Status:           meta.Status,
+		Type:             SkillType(meta.Type),
+		Status:           SkillStatus(meta.Status),
 		CreatedBy:        meta.CreatedBy,
 		RequiresApproval: meta.RequiresApproval,
 		Source:           meta.Source,
@@ -88,8 +88,8 @@ func RenderSkillMD(entry *SkillEntry) ([]byte, error) {
 	meta := frontmatter{
 		Name:             entry.Name,
 		Description:      entry.Description,
-		Type:             entry.Type,
-		Status:           status,
+		Type:             string(entry.Type),
+		Status:           string(status),
 		CreatedBy:        entry.CreatedBy,
 		RequiresApproval: entry.RequiresApproval,
 		Source:           entry.Source,

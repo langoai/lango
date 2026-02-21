@@ -252,7 +252,7 @@ func (r *ContextRetriever) retrieveKnowledge(ctx context.Context, query string, 
 			Layer:    LayerUserKnowledge,
 			Key:      e.Key,
 			Content:  e.Content,
-			Category: e.Category,
+			Category: string(e.Category),
 			Source:   e.Source,
 		})
 	}
@@ -326,7 +326,7 @@ func (r *ContextRetriever) retrieveLearnings(ctx context.Context, query string, 
 			Layer:    LayerAgentLearnings,
 			Key:      l.Trigger,
 			Content:  content,
-			Category: l.Category,
+			Category: string(l.Category),
 		})
 	}
 	return items, nil

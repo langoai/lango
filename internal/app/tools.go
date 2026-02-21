@@ -18,6 +18,8 @@ import (
 	"github.com/langowarny/lango/internal/config"
 	cronpkg "github.com/langowarny/lango/internal/cron"
 	"github.com/langowarny/lango/internal/embedding"
+	entknowledge "github.com/langowarny/lango/internal/ent/knowledge"
+	entlearning "github.com/langowarny/lango/internal/ent/learning"
 	"github.com/langowarny/lango/internal/graph"
 	"github.com/langowarny/lango/internal/knowledge"
 	"github.com/langowarny/lango/internal/learning"
@@ -32,6 +34,7 @@ import (
 	"github.com/langowarny/lango/internal/tools/filesystem"
 	toolpayment "github.com/langowarny/lango/internal/tools/payment"
 	toolsecrets "github.com/langowarny/lango/internal/tools/secrets"
+	"github.com/langowarny/lango/internal/types"
 	"github.com/langowarny/lango/internal/workflow"
 	x402pkg "github.com/langowarny/lango/internal/x402"
 )
@@ -536,7 +539,7 @@ func buildMetaTools(store *knowledge.Store, engine *learning.Engine, registry *s
 
 				entry := knowledge.KnowledgeEntry{
 					Key:      key,
-					Category: category,
+					Category: entknowledge.Category(category),
 					Content:  content,
 					Tags:     tags,
 					Source:   source,
@@ -622,7 +625,7 @@ func buildMetaTools(store *knowledge.Store, engine *learning.Engine, registry *s
 					ErrorPattern: errorPattern,
 					Diagnosis:    diagnosis,
 					Fix:          fix,
-					Category:     category,
+					Category:     entlearning.Category(category),
 				}
 
 				if err := store.SaveLearning(ctx, "", entry); err != nil {
@@ -710,10 +713,10 @@ func buildMetaTools(store *knowledge.Store, engine *learning.Engine, registry *s
 				entry := skill.SkillEntry{
 					Name:             name,
 					Description:      description,
-					Type:             skillType,
+					Type:             skill.SkillType(skillType),
 					Definition:       definition,
 					Parameters:       parameters,
-					Status:           "active",
+					Status:           skill.SkillStatusActive,
 					CreatedBy:        "agent",
 					RequiresApproval: false,
 				}
@@ -1198,13 +1201,11 @@ func detectChannelFromContext(ctx context.Context) string {
 	if len(parts) < 2 {
 		return ""
 	}
-	ch := parts[0]
-	switch ch {
-	case "telegram", "discord", "slack":
-		return ch + ":" + parts[1]
-	default:
-		return ""
+	ch := types.ChannelType(parts[0])
+	if ch.Valid() {
+		return parts[0] + ":" + parts[1]
 	}
+	return ""
 }
 
 // buildCronTools creates tools for managing scheduled cron jobs.

@@ -10,6 +10,7 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/langowarny/lango/internal/ent/enttest"
+	entlearning "github.com/langowarny/lango/internal/ent/learning"
 	_ "github.com/mattn/go-sqlite3"
 )
 
@@ -274,7 +275,7 @@ func TestSaveLearning(t *testing.T) {
 			ErrorPattern: "dial tcp.*connection refused",
 			Diagnosis:    "Service is not running",
 			Fix:          "Start the service with systemctl start",
-			Category:     "tool_error",
+			Category:     entlearning.CategoryToolError,
 			Tags:         []string{"network", "service"},
 		}
 		if err := store.SaveLearning(ctx, "session-1", entry); err != nil {
@@ -297,15 +298,15 @@ func TestSaveLearning(t *testing.T) {
 		if got.Fix != "Start the service with systemctl start" {
 			t.Errorf("want fix %q, got %q", "Start the service with systemctl start", got.Fix)
 		}
-		if got.Category != "tool_error" {
-			t.Errorf("want category %q, got %q", "tool_error", got.Category)
+		if got.Category != entlearning.CategoryToolError {
+			t.Errorf("want category %q, got %q", entlearning.CategoryToolError, got.Category)
 		}
 	})
 
 	t.Run("minimal entry", func(t *testing.T) {
 		entry := LearningEntry{
 			Trigger:  "timeout occurred",
-			Category: "timeout",
+			Category: entlearning.CategoryTimeout,
 		}
 		if err := store.SaveLearning(ctx, "session-1", entry); err != nil {
 			t.Fatalf("SaveLearning: %v", err)
@@ -332,9 +333,9 @@ func TestSearchLearnings(t *testing.T) {
 	ctx := context.Background()
 
 	entries := []LearningEntry{
-		{Trigger: "file not found", ErrorPattern: "ENOENT", Category: "tool_error"},
-		{Trigger: "permission denied", ErrorPattern: "EACCES", Category: "permission"},
-		{Trigger: "api timeout", ErrorPattern: "context deadline exceeded", Category: "timeout"},
+		{Trigger: "file not found", ErrorPattern: "ENOENT", Category: entlearning.CategoryToolError},
+		{Trigger: "permission denied", ErrorPattern: "EACCES", Category: entlearning.CategoryPermission},
+		{Trigger: "api timeout", ErrorPattern: "context deadline exceeded", Category: entlearning.CategoryTimeout},
 	}
 	for _, e := range entries {
 		if err := store.SaveLearning(ctx, "session-1", e); err != nil {
@@ -384,9 +385,9 @@ func TestSearchLearningEntities(t *testing.T) {
 	ctx := context.Background()
 
 	entries := []LearningEntry{
-		{Trigger: "entity-trigger-1", ErrorPattern: "entity-error-1", Category: "general"},
-		{Trigger: "entity-trigger-2", ErrorPattern: "entity-error-2", Category: "general"},
-		{Trigger: "entity-trigger-3", ErrorPattern: "entity-error-3", Category: "general"},
+		{Trigger: "entity-trigger-1", ErrorPattern: "entity-error-1", Category: entlearning.CategoryGeneral},
+		{Trigger: "entity-trigger-2", ErrorPattern: "entity-error-2", Category: entlearning.CategoryGeneral},
+		{Trigger: "entity-trigger-3", ErrorPattern: "entity-error-3", Category: entlearning.CategoryGeneral},
 	}
 	for _, e := range entries {
 		if err := store.SaveLearning(ctx, "session-1", e); err != nil {
@@ -429,7 +430,7 @@ func TestBoostLearningConfidence(t *testing.T) {
 		entry := LearningEntry{
 			Trigger:      "boost-trigger",
 			ErrorPattern: "boost-error",
-			Category:     "general",
+			Category:     entlearning.CategoryGeneral,
 		}
 		if err := store.SaveLearning(ctx, "session-1", entry); err != nil {
 			t.Fatalf("SaveLearning: %v", err)
@@ -467,7 +468,7 @@ func TestBoostLearningConfidence(t *testing.T) {
 		entry := LearningEntry{
 			Trigger:      "min-conf-trigger",
 			ErrorPattern: "min-conf-error",
-			Category:     "general",
+			Category:     entlearning.CategoryGeneral,
 		}
 		if err := store.SaveLearning(ctx, "session-1", entry); err != nil {
 			t.Fatalf("SaveLearning: %v", err)
@@ -612,7 +613,7 @@ func TestGetLearningStats(t *testing.T) {
 		for i := 0; i < 3; i++ {
 			entry := LearningEntry{
 				Trigger:  fmt.Sprintf("stats-trigger-%d", i),
-				Category: "tool_error",
+				Category: entlearning.CategoryToolError,
 			}
 			if err := store.SaveLearning(ctx, "sess-stats", entry); err != nil {
 				t.Fatalf("SaveLearning %d: %v", i, err)
@@ -620,7 +621,7 @@ func TestGetLearningStats(t *testing.T) {
 		}
 		entry := LearningEntry{
 			Trigger:  "stats-trigger-general",
-			Category: "general",
+			Category: entlearning.CategoryGeneral,
 		}
 		if err := store.SaveLearning(ctx, "sess-stats", entry); err != nil {
 			t.Fatalf("SaveLearning: %v", err)
@@ -633,8 +634,8 @@ func TestGetLearningStats(t *testing.T) {
 		if stats.TotalCount < 4 {
 			t.Errorf("TotalCount: want >= 4, got %d", stats.TotalCount)
 		}
-		if stats.ByCategory["tool_error"] < 3 {
-			t.Errorf("ByCategory[tool_error]: want >= 3, got %d", stats.ByCategory["tool_error"])
+		if stats.ByCategory[entlearning.CategoryToolError] < 3 {
+			t.Errorf("ByCategory[tool_error]: want >= 3, got %d", stats.ByCategory[entlearning.CategoryToolError])
 		}
 	})
 }
@@ -645,7 +646,7 @@ func TestDeleteLearning(t *testing.T) {
 
 	entry := LearningEntry{
 		Trigger:  "delete-me",
-		Category: "general",
+		Category: entlearning.CategoryGeneral,
 	}
 	if err := store.SaveLearning(ctx, "sess-del", entry); err != nil {
 		t.Fatalf("SaveLearning: %v", err)
@@ -676,7 +677,7 @@ func TestDeleteLearningsWhere(t *testing.T) {
 	for i := 0; i < 5; i++ {
 		entry := LearningEntry{
 			Trigger:  fmt.Sprintf("bulk-del-%d", i),
-			Category: "general",
+			Category: entlearning.CategoryGeneral,
 		}
 		if err := store.SaveLearning(ctx, "sess-bulk", entry); err != nil {
 			t.Fatalf("SaveLearning %d: %v", i, err)
@@ -699,7 +700,7 @@ func TestListLearnings(t *testing.T) {
 	for i := 0; i < 3; i++ {
 		entry := LearningEntry{
 			Trigger:  fmt.Sprintf("list-test-%d", i),
-			Category: "tool_error",
+			Category: entlearning.CategoryToolError,
 		}
 		if err := store.SaveLearning(ctx, "sess-list", entry); err != nil {
 			t.Fatalf("SaveLearning %d: %v", i, err)

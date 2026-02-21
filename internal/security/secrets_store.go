@@ -51,13 +51,13 @@ func (s *SecretsStore) Store(ctx context.Context, name string, value []byte) err
 	// Encrypt the value
 	encrypted, err := s.crypto.Encrypt(ctx, keyInfo.RemoteKeyID, value)
 	if err != nil {
-		return fmt.Errorf("failed to encrypt secret: %w", err)
+		return fmt.Errorf("encrypt secret: %w", err)
 	}
 
 	// Get the key entity
 	keyEntity, err := s.client.Key.Get(ctx, keyInfo.ID)
 	if err != nil {
-		return fmt.Errorf("failed to get key entity: %w", err)
+		return fmt.Errorf("get key entity: %w", err)
 	}
 
 	// Check if secret exists
@@ -70,7 +70,7 @@ func (s *SecretsStore) Store(ctx context.Context, name string, value []byte) err
 			SetAccessCount(0). // Reset access count on update
 			Save(ctx)
 		if err != nil {
-			return fmt.Errorf("failed to update secret: %w", err)
+			return fmt.Errorf("update secret: %w", err)
 		}
 		return nil
 	}
@@ -82,7 +82,7 @@ func (s *SecretsStore) Store(ctx context.Context, name string, value []byte) err
 		SetKey(keyEntity).
 		Save(ctx)
 	if err != nil {
-		return fmt.Errorf("failed to create secret: %w", err)
+		return fmt.Errorf("create secret: %w", err)
 	}
 
 	return nil
@@ -99,7 +99,7 @@ func (s *SecretsStore) Get(ctx context.Context, name string) ([]byte, error) {
 		if ent.IsNotFound(err) {
 			return nil, fmt.Errorf("secret not found: %s", name)
 		}
-		return nil, fmt.Errorf("failed to get secret: %w", err)
+		return nil, fmt.Errorf("get secret: %w", err)
 	}
 
 	// Get key info for decryption
@@ -111,7 +111,7 @@ func (s *SecretsStore) Get(ctx context.Context, name string) ([]byte, error) {
 	// Decrypt the value
 	decrypted, err := s.crypto.Decrypt(ctx, keyEntity.RemoteKeyID, sec.EncryptedValue)
 	if err != nil {
-		return nil, fmt.Errorf("failed to decrypt secret: %w", err)
+		return nil, fmt.Errorf("decrypt secret: %w", err)
 	}
 
 	// Increment access count
@@ -131,7 +131,7 @@ func (s *SecretsStore) Get(ctx context.Context, name string) ([]byte, error) {
 func (s *SecretsStore) List(ctx context.Context) ([]*SecretInfo, error) {
 	secrets, err := s.client.Secret.Query().WithKey().All(ctx)
 	if err != nil {
-		return nil, fmt.Errorf("failed to list secrets: %w", err)
+		return nil, fmt.Errorf("list secrets: %w", err)
 	}
 
 	result := make([]*SecretInfo, len(secrets))
@@ -157,7 +157,7 @@ func (s *SecretsStore) List(ctx context.Context) ([]*SecretInfo, error) {
 func (s *SecretsStore) Delete(ctx context.Context, name string) error {
 	deleted, err := s.client.Secret.Delete().Where(secret.NameEQ(name)).Exec(ctx)
 	if err != nil {
-		return fmt.Errorf("failed to delete secret: %w", err)
+		return fmt.Errorf("delete secret: %w", err)
 	}
 	if deleted == 0 {
 		return fmt.Errorf("secret not found: %s", name)

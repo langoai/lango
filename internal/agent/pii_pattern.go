@@ -12,6 +12,20 @@ const (
 	PIICategoryNetwork   PIICategory = "network"
 )
 
+// Valid reports whether c is a known PII category.
+func (c PIICategory) Valid() bool {
+	switch c {
+	case PIICategoryContact, PIICategoryIdentity, PIICategoryFinancial, PIICategoryNetwork:
+		return true
+	}
+	return false
+}
+
+// Values returns all known PII categories.
+func (c PIICategory) Values() []PIICategory {
+	return []PIICategory{PIICategoryContact, PIICategoryIdentity, PIICategoryFinancial, PIICategoryNetwork}
+}
+
 // PIIPatternDef defines a single PII detection pattern.
 type PIIPatternDef struct {
 	Name           string

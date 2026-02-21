@@ -74,7 +74,7 @@ func (t *Tool) Store(ctx context.Context, params map[string]interface{}) (interf
 	logger.Infow("storing secret", "name", p.Name)
 
 	if err := t.store.Store(ctx, p.Name, []byte(p.Value)); err != nil {
-		return nil, fmt.Errorf("failed to store secret: %w", err)
+		return nil, fmt.Errorf("store secret: %w", err)
 	}
 
 	return map[string]interface{}{
@@ -123,7 +123,7 @@ func (t *Tool) Get(ctx context.Context, params map[string]interface{}) (interfac
 func (t *Tool) List(ctx context.Context, params map[string]interface{}) (interface{}, error) {
 	secrets, err := t.store.List(ctx)
 	if err != nil {
-		return nil, fmt.Errorf("failed to list secrets: %w", err)
+		return nil, fmt.Errorf("list secrets: %w", err)
 	}
 
 	entries := make([]SecretEntry, len(secrets))

@@ -3,11 +3,12 @@ package adk
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
-	"strings"
 	"time"
 
 	internal "github.com/langowarny/lango/internal/session"
+	"github.com/langowarny/lango/internal/types"
 	"google.golang.org/adk/session"
 )
 
@@ -53,7 +54,7 @@ func (s *SessionServiceAdapter) Get(ctx context.Context, req *session.GetRequest
 	sess, err := s.store.Get(req.SessionID)
 	if err != nil {
 		// Auto-create session if not found
-		if strings.Contains(err.Error(), "session not found") {
+		if errors.Is(err, internal.ErrSessionNotFound) {
 			return s.getOrCreate(ctx, req)
 		}
 		return nil, err
@@ -71,7 +72,7 @@ func (s *SessionServiceAdapter) getOrCreate(ctx context.Context, req *session.Ge
 	resp, createErr := s.Create(ctx, createReq)
 	if createErr != nil {
 		// Another goroutine already created this session — fetch it.
-		if strings.Contains(createErr.Error(), "UNIQUE constraint") {
+		if errors.Is(createErr, internal.ErrDuplicateSession) {
 			sess, err := s.store.Get(req.SessionID)
 			if err != nil {
 				return nil, fmt.Errorf("auto-create session %s: get after conflict: %w", req.SessionID, err)
@@ -102,13 +103,7 @@ func (s *SessionServiceAdapter) AppendEvent(ctx context.Context, sess session.Se
 	}
 
 	if evt.LLMResponse.Content != nil {
-		role := evt.LLMResponse.Content.Role
-		if role == "model" {
-			role = "assistant"
-		} else if role == "function" {
-			role = "tool" // ADK function response
-		}
-		msg.Role = role
+		msg.Role = types.MessageRole(evt.LLMResponse.Content.Role).Normalize()
 
 		for _, p := range evt.LLMResponse.Content.Parts {
 			if p.Text != "" {
@@ -156,9 +151,9 @@ func (s *SessionServiceAdapter) AppendEvent(ctx context.Context, sess session.Se
 	}
 
 	if msg.Role == "" {
-		msg.Role = "assistant"
+		msg.Role = types.RoleAssistant
 		if evt.Author == "user" {
-			msg.Role = "user"
+			msg.Role = types.RoleUser
 		}
 	}
 

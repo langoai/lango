@@ -1,7 +1,6 @@
 package workflow
 
 import (
-	"errors"
 	"fmt"
 	"os"
 
@@ -40,17 +39,17 @@ func ParseFile(path string) (*Workflow, error) {
 // Validate checks that a Workflow is well-formed.
 func Validate(w *Workflow) error {
 	if w.Name == "" {
-		return errors.New("workflow name must not be empty")
+		return ErrWorkflowNameEmpty
 	}
 	if len(w.Steps) == 0 {
-		return errors.New("workflow must have at least one step")
+		return ErrNoWorkflowSteps
 	}
 
 	// Check step ID uniqueness and build lookup.
 	seen := make(map[string]bool, len(w.Steps))
 	for _, s := range w.Steps {
 		if s.ID == "" {
-			return errors.New("step id must not be empty")
+			return ErrStepIDEmpty
 		}
 		if seen[s.ID] {
 			return fmt.Errorf("duplicate step id %q", s.ID)

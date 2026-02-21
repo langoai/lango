@@ -140,7 +140,7 @@ func (t *Tool) RunWithPTY(ctx context.Context, command string, timeout time.Dura
 	// Start with PTY
 	ptmx, err := pty.Start(cmd)
 	if err != nil {
-		return nil, fmt.Errorf("failed to start PTY: %w", err)
+		return nil, fmt.Errorf("start PTY: %w", err)
 	}
 	defer ptmx.Close()
 
@@ -200,7 +200,7 @@ func (t *Tool) StartBackground(command string) (string, error) {
 	cmd.Stderr = output
 
 	if err := cmd.Start(); err != nil {
-		return "", fmt.Errorf("failed to start: %w", err)
+		return "", fmt.Errorf("start background process: %w", err)
 	}
 
 	bp := &BackgroundProcess{

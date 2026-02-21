@@ -17,6 +17,20 @@ const (
 	SafetyLevelDangerous
 )
 
+// Valid reports whether s is a known safety level.
+func (s SafetyLevel) Valid() bool {
+	switch s {
+	case SafetyLevelSafe, SafetyLevelModerate, SafetyLevelDangerous:
+		return true
+	}
+	return false
+}
+
+// Values returns all known safety levels.
+func (s SafetyLevel) Values() []SafetyLevel {
+	return []SafetyLevel{SafetyLevelSafe, SafetyLevelModerate, SafetyLevelDangerous}
+}
+
 // String returns the human-readable name of the safety level.
 func (s SafetyLevel) String() string {
 	switch s {

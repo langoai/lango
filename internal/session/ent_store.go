@@ -21,6 +21,7 @@ import (
 	entschema "github.com/langowarny/lango/internal/ent/schema"
 	entsession "github.com/langowarny/lango/internal/ent/session"
 	"github.com/langowarny/lango/internal/logging"
+	"github.com/langowarny/lango/internal/types"
 	_ "github.com/mattn/go-sqlite3" // Use cgo driver for SQLCipher support
 )
 
@@ -93,7 +94,7 @@ func NewEntStore(dbPath string, opts ...StoreOption) (*EntStore, error) {
 	// modernc.org/sqlite registers as "sqlite", mattn/go-sqlite3 registers as "sqlite3"
 	db, err := sql.Open("sqlite3", connStr)
 	if err != nil {
-		return nil, fmt.Errorf("failed to open database: %w", err)
+		return nil, fmt.Errorf("open database: %w", err)
 	}
 
 	// Set key immediately if provided (essential for SQLCipher)
@@ -112,7 +113,7 @@ func NewEntStore(dbPath string, opts ...StoreOption) (*EntStore, error) {
 	// This will fail if the DB is encrypted and key wasn't accepted, OR if file path is invalid
 	if _, err := db.Exec("PRAGMA foreign_keys = ON"); err != nil {
 		db.Close()
-		return nil, fmt.Errorf("failed to enable foreign keys/unlock db: %w", err)
+		return nil, fmt.Errorf("enable foreign keys/unlock db: %w", err)
 	}
 
 	// Create ent driver with SQLite dialect
@@ -122,7 +123,7 @@ func NewEntStore(dbPath string, opts ...StoreOption) (*EntStore, error) {
 	// Auto-migrate schema - skip FK check since we've enabled it manually
 	if err := client.Schema.Create(context.Background(), schema.WithForeignKeys(false)); err != nil {
 		client.Close()
-		return nil, fmt.Errorf("failed to create schema: %w", err)
+		return nil, fmt.Errorf("create schema: %w", err)
 	}
 
 	store.client = client
@@ -181,7 +182,10 @@ func (s *EntStore) Create(session *Session) error {
 
 	created, err := builder.Save(ctx)
 	if err != nil {
-		return fmt.Errorf("failed to create session: %w", err)
+		if strings.Contains(err.Error(), "UNIQUE constraint") {
+			return fmt.Errorf("create session %q: %w", session.Key, ErrDuplicateSession)
+		}
+		return fmt.Errorf("create session %q: %w", session.Key, err)
 	}
 
 	// Create messages if any
@@ -198,7 +202,7 @@ func (s *EntStore) Create(session *Session) error {
 
 		builder := s.client.Message.Create().
 			SetSession(created).
-			SetRole(msg.Role).
+			SetRole(string(msg.Role)).
 			SetContent(msg.Content).
 			SetTimestamp(msg.Timestamp).
 			SetToolCalls(toolCalls)
@@ -229,10 +233,10 @@ func (s *EntStore) Get(key string) (*Session, error) {
 		Only(ctx)
 
 	if ent.IsNotFound(err) {
-		return nil, fmt.Errorf("session not found: %s", key)
+		return nil, fmt.Errorf("get session %q: %w", key, ErrSessionNotFound)
 	}
 	if err != nil {
-		return nil, fmt.Errorf("failed to get session: %w", err)
+		return nil, fmt.Errorf("get session %q: %w", key, err)
 	}
 
 	// Check TTL
@@ -259,10 +263,10 @@ func (s *EntStore) Update(session *Session) error {
 		Only(ctx)
 
 	if ent.IsNotFound(err) {
-		return fmt.Errorf("session not found: %s", session.Key)
+		return fmt.Errorf("update session %q: %w", session.Key, ErrSessionNotFound)
 	}
 	if err != nil {
-		return fmt.Errorf("failed to get session: %w", err)
+		return fmt.Errorf("update session %q: %w", session.Key, err)
 	}
 
 	// Update session
@@ -305,7 +309,7 @@ func (s *EntStore) Delete(key string) error {
 		return nil // Already deleted
 	}
 	if err != nil {
-		return fmt.Errorf("failed to get session: %w", err)
+		return fmt.Errorf("get session: %w", err)
 	}
 
 	// Delete all messages
@@ -313,7 +317,7 @@ func (s *EntStore) Delete(key string) error {
 		Where(message.HasSessionWith(entsession.ID(entSession.ID))).
 		Exec(ctx)
 	if err != nil {
-		return fmt.Errorf("failed to delete messages: %w", err)
+		return fmt.Errorf("delete messages: %w", err)
 	}
 
 	// Delete session
@@ -334,10 +338,10 @@ func (s *EntStore) AppendMessage(key string, msg Message) error {
 		Only(ctx)
 
 	if ent.IsNotFound(err) {
-		return fmt.Errorf("session not found: %s", key)
+		return fmt.Errorf("append message to session %q: %w", key, ErrSessionNotFound)
 	}
 	if err != nil {
-		return fmt.Errorf("failed to get session: %w", err)
+		return fmt.Errorf("append message to session %q: %w", key, err)
 	}
 
 	// Convert tool calls
@@ -359,7 +363,7 @@ func (s *EntStore) AppendMessage(key string, msg Message) error {
 
 	msgBuilder := s.client.Message.Create().
 		SetSession(entSession).
-		SetRole(msg.Role).
+		SetRole(string(msg.Role)).
 		SetContent(msg.Content).
 		SetTimestamp(timestamp).
 		SetToolCalls(toolCalls)
@@ -369,7 +373,7 @@ func (s *EntStore) AppendMessage(key string, msg Message) error {
 	_, err = msgBuilder.Save(ctx)
 
 	if err != nil {
-		return fmt.Errorf("failed to create message: %w", err)
+		return fmt.Errorf("create message: %w", err)
 	}
 
 	// Update session timestamp
@@ -497,7 +501,7 @@ func (s *EntStore) entToSession(e *ent.Session) *Session {
 		}
 
 		session.History = append(session.History, Message{
-			Role:      m.Role,
+			Role:      types.MessageRole(m.Role),
 			Content:   m.Content,
 			Timestamp: m.Timestamp,
 			ToolCalls: toolCalls,
@@ -518,7 +522,7 @@ func (s *EntStore) ensureSecurityTable() error {
 		)
 	`)
 	if err != nil {
-		return fmt.Errorf("failed to create security_config table: %w", err)
+		return fmt.Errorf("create security_config table: %w", err)
 	}
 
 	// Check if checksum column exists
@@ -528,14 +532,14 @@ func (s *EntStore) ensureSecurityTable() error {
 		SELECT count(*) FROM pragma_table_info('security_config') WHERE name='checksum'
 	`).Scan(&count)
 	if err != nil {
-		return fmt.Errorf("failed to check table schema: %w", err)
+		return fmt.Errorf("check table schema: %w", err)
 	}
 
 	if count == 0 {
 		// Add checksum column
 		_, err = s.db.Exec(`ALTER TABLE security_config ADD COLUMN checksum BLOB`)
 		if err != nil {
-			return fmt.Errorf("failed to add checksum column: %w", err)
+			return fmt.Errorf("add checksum column: %w", err)
 		}
 	}
 
@@ -557,7 +561,7 @@ func (s *EntStore) GetSalt(name string) ([]byte, error) {
 		if err == sql.ErrNoRows {
 			return nil, fmt.Errorf("salt not found: %s", name)
 		}
-		return nil, fmt.Errorf("failed to query salt: %w", err)
+		return nil, fmt.Errorf("query salt: %w", err)
 	}
 
 	return salt, nil
@@ -579,7 +583,7 @@ func (s *EntStore) SetSalt(name string, salt []byte) error {
 		ON CONFLICT(name) DO UPDATE SET value=excluded.value
 	`, name, salt)
 	if err != nil {
-		return fmt.Errorf("failed to store salt: %w", err)
+		return fmt.Errorf("store salt: %w", err)
 	}
 
 	return nil
@@ -602,7 +606,7 @@ func (s *EntStore) GetChecksum(name string) ([]byte, error) {
 		if err == sql.ErrNoRows {
 			return nil, fmt.Errorf("checksum not found: %s", name)
 		}
-		return nil, fmt.Errorf("failed to query checksum: %w", err)
+		return nil, fmt.Errorf("query checksum: %w", err)
 	}
 
 	if raw == nil {
@@ -642,7 +646,7 @@ func (s *EntStore) SetChecksum(name string, checksum []byte) error {
 		UPDATE security_config SET checksum = ? WHERE name = ?
 	`, checksum, name)
 	if err != nil {
-		return fmt.Errorf("failed to update checksum: %w", err)
+		return fmt.Errorf("update checksum: %w", err)
 	}
 
 	rows, _ := res.RowsAffected()
@@ -662,7 +666,7 @@ func (s *EntStore) MigrateSecrets(ctx context.Context, reencryptFn func([]byte) 
 	// 1. Start Ent Transaction
 	tx, err := s.client.Tx(ctx)
 	if err != nil {
-		return fmt.Errorf("failed to start transaction: %w", err)
+		return fmt.Errorf("start transaction: %w", err)
 	}
 	defer func() {
 		if r := recover(); r != nil {
@@ -677,17 +681,17 @@ func (s *EntStore) MigrateSecrets(ctx context.Context, reencryptFn func([]byte) 
 	// 2. Iterate and Re-encrypt Secrets
 	secrets, err := tx.Secret.Query().All(ctx)
 	if err != nil {
-		return fmt.Errorf("failed to query secrets: %w", err)
+		return fmt.Errorf("query secrets: %w", err)
 	}
 
 	for _, sec := range secrets {
 		newVal, err := reencryptFn(sec.EncryptedValue)
 		if err != nil {
-			return fmt.Errorf("failed to re-encrypt secret %s: %w", sec.Name, err)
+			return fmt.Errorf("re-encrypt secret %s: %w", sec.Name, err)
 		}
 
 		if _, err := tx.Secret.UpdateOne(sec).SetEncryptedValue(newVal).Save(ctx); err != nil {
-			return fmt.Errorf("failed to update secret %s: %w", sec.Name, err)
+			return fmt.Errorf("update secret %s: %w", sec.Name, err)
 		}
 	}
 
@@ -697,25 +701,6 @@ func (s *EntStore) MigrateSecrets(ctx context.Context, reencryptFn func([]byte) 
 
 	// Get tx value
 	v := reflect.ValueOf(tx).Elem()
-	// Get config field (embedded)
-	// config is struct, driver is field 0 usually? Or named "driver".
-	// config has "driver" field.
-	// We need to access "driver" field of "config" struct embedded in "Tx".
-
-	// "Tx" struct:
-	// type Tx struct {
-	//    config
-	//    ...
-	// }
-	// "config" struct:
-	// type config struct {
-	//    driver dialect.Driver
-	//    ...
-	// }
-
-	// Note: config might be embedded via name "config" or anonymous?
-	// In generated code: `type Tx struct { config ... }`. It is named field "config".
-
 	cfgField := v.FieldByName("config")
 	drvField := cfgField.FieldByName("driver")
 
@@ -724,25 +709,25 @@ func (s *EntStore) MigrateSecrets(ctx context.Context, reencryptFn func([]byte) 
 
 	drv, ok := drvField.Interface().(dialect.Driver)
 	if !ok {
-		return fmt.Errorf("failed to resolve transaction driver")
+		return fmt.Errorf("resolve transaction driver")
 	}
 
 	// Exec Raw SQL
 	// Update Salt
 	err = drv.Exec(ctx, `INSERT OR REPLACE INTO security_config (name, value) VALUES (?, ?)`, []interface{}{"default", newSalt}, nil)
 	if err != nil {
-		return fmt.Errorf("failed to update salt: %w", err)
+		return fmt.Errorf("update salt: %w", err)
 	}
 
 	// Update Checksum
 	err = drv.Exec(ctx, `UPDATE security_config SET checksum = ? WHERE name = ?`, []interface{}{newChecksum, "default"}, nil)
 	if err != nil {
-		return fmt.Errorf("failed to update checksum: %w", err)
+		return fmt.Errorf("update checksum: %w", err)
 	}
 
 	// 4. Commit
 	if err := tx.Commit(); err != nil {
-		return fmt.Errorf("failed to commit transaction: %w", err)
+		return fmt.Errorf("commit transaction: %w", err)
 	}
 
 	return nil

@@ -30,7 +30,7 @@ func NewProvidersListModel(cfg *config.Config) ProvidersListModel {
 	var items []ProviderItem
 	if cfg.Providers != nil {
 		for id, p := range cfg.Providers {
-			items = append(items, ProviderItem{ID: id, Type: p.Type})
+			items = append(items, ProviderItem{ID: id, Type: string(p.Type)})
 		}
 	}
 	sort.Slice(items, func(i, j int) bool {

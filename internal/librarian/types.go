@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/langowarny/lango/internal/types"
 )
 
 // ObservationKnowledge represents knowledge extracted from conversation observations.
@@ -12,7 +13,7 @@ type ObservationKnowledge struct {
 	Type       string `json:"type"`       // preference, fact, rule, definition
 	Category   string `json:"category"`   // domain-specific category
 	Content    string `json:"content"`    // extracted knowledge content
-	Confidence string `json:"confidence"` // high, medium, low
+	Confidence types.Confidence `json:"confidence"` // high, medium, low
 	Key        string `json:"key"`        // unique identifier for storage
 
 	// Graph triple fields (optional).
@@ -58,12 +59,7 @@ type TextGenerator interface {
 }
 
 // GraphCallback is an optional hook for saving graph triples.
-type GraphCallback func(triples []Triple)
+type GraphCallback = types.TripleCallback
 
 // Triple mirrors graph.Triple to avoid import cycles.
-type Triple struct {
-	Subject   string
-	Predicate string
-	Object    string
-	Metadata  map[string]string
-}
+type Triple = types.Triple

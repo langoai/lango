@@ -8,6 +8,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/langowarny/lango/internal/logging"
+	"github.com/langowarny/lango/internal/types"
 )
 
 var rpcLogger = logging.SubsystemSugar("security")
@@ -56,12 +57,9 @@ type DecryptResponse struct {
 	Error     string `json:"error,omitempty"`
 }
 
-// SenderFunc defines how to send the request to the provider.
-type SenderFunc func(event string, payload interface{}) error
-
 // RPCProvider implements CryptoProvider using an asynchronous RPC mechanism.
 type RPCProvider struct {
-	sender         SenderFunc
+	sender         types.RPCSenderFunc
 	signPending    sync.Map // map[string]chan SignResponse
 	encryptPending sync.Map // map[string]chan EncryptResponse
 	decryptPending sync.Map // map[string]chan DecryptResponse
@@ -73,7 +71,7 @@ func NewRPCProvider() *RPCProvider {
 }
 
 // SetSender configures the function used to send requests.
-func (s *RPCProvider) SetSender(sender SenderFunc) {
+func (s *RPCProvider) SetSender(sender types.RPCSenderFunc) {
 	s.sender = sender
 }
 
@@ -96,7 +94,7 @@ func (s *RPCProvider) Sign(ctx context.Context, keyID string, payload []byte) ([
 
 	rpcLogger.Infow("requesting signature", "reqId", reqID, "keyId", keyID)
 	if err := s.sender("sign.request", req); err != nil {
-		return nil, fmt.Errorf("failed to send sign request: %w", err)
+		return nil, fmt.Errorf("send sign request: %w", err)
 	}
 
 	select {
@@ -131,7 +129,7 @@ func (s *RPCProvider) Encrypt(ctx context.Context, keyID string, plaintext []byt
 
 	rpcLogger.Infow("requesting encryption", "reqId", reqID, "keyId", keyID)
 	if err := s.sender("encrypt.request", req); err != nil {
-		return nil, fmt.Errorf("failed to send encrypt request: %w", err)
+		return nil, fmt.Errorf("send encrypt request: %w", err)
 	}
 
 	select {
@@ -166,7 +164,7 @@ func (s *RPCProvider) Decrypt(ctx context.Context, keyID string, ciphertext []by
 
 	rpcLogger.Infow("requesting decryption", "reqId", reqID, "keyId", keyID)
 	if err := s.sender("decrypt.request", req); err != nil {
-		return nil, fmt.Errorf("failed to send decrypt request: %w", err)
+		return nil, fmt.Errorf("send decrypt request: %w", err)
 	}
 
 	select {

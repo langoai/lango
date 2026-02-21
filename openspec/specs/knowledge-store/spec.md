@@ -1,5 +1,47 @@
 ## ADDED Requirements
 
+### Requirement: Knowledge entry structure
+The `knowledge.KnowledgeEntry` struct SHALL use `entknowledge.Category` (Ent-generated type) for its `Category` field. The `knowledge.LearningEntry` struct SHALL use `entlearning.Category` (Ent-generated type) for its `Category` field. No duplicate domain enum types SHALL exist — the Ent-generated types are the single source of truth. The `string()` cast SHALL only occur at system boundaries: metadata maps and tool parameter parsing.
+
+#### Scenario: Knowledge entry uses Ent category type directly
+- **WHEN** a `KnowledgeEntry` is created in learning, librarian, or app packages
+- **THEN** the `Category` field SHALL be assigned an `entknowledge.Category` value (e.g., `entknowledge.CategoryFact`)
+
+#### Scenario: No DB boundary cast needed
+- **WHEN** a knowledge entry is persisted via Ent `SetCategory()`
+- **THEN** the category SHALL be passed directly: `SetCategory(entry.Category)` with no intermediate cast
+
+#### Scenario: No read boundary cast needed
+- **WHEN** a knowledge entry is loaded from Ent
+- **THEN** the category SHALL be assigned directly: `Category: k.Category`
+
+#### Scenario: Tool parameter boundary
+- **WHEN** the `save_knowledge` tool receives a category string from tool parameters
+- **THEN** the string SHALL be cast at the boundary: `Category: entknowledge.Category(category)`
+
+#### Scenario: Metadata map boundary
+- **WHEN** a knowledge entry category is placed into a `map[string]string` metadata map
+- **THEN** the category SHALL be cast: `"category": string(entry.Category)`
+
+#### Scenario: Learning entry uses Ent category type directly
+- **WHEN** a `LearningEntry` is created in learning, app, or knowledge packages
+- **THEN** the `Category` field SHALL be assigned an `entlearning.Category` value (e.g., `entlearning.CategoryToolError`)
+
+#### Scenario: No Learning DB boundary cast needed
+- **WHEN** a learning entry is persisted or loaded via Ent
+- **THEN** the category SHALL be passed/assigned directly with no intermediate cast
+
+### Requirement: LearningStats ByCategory field type
+The `LearningStats.ByCategory` field SHALL use `map[entlearning.Category]int` instead of `map[string]int`. The map SHALL be populated using the `Category` field directly without string casting.
+
+#### Scenario: ByCategory uses enum type as key
+- **WHEN** `GetLearningStats` is called and learning entries exist
+- **THEN** `ByCategory` map keys SHALL be of type `entlearning.Category`, not `string`
+
+#### Scenario: JSON serialization compatibility
+- **WHEN** `LearningStats` is serialized to JSON
+- **THEN** the `by_category` field SHALL produce identical JSON output as the previous `map[string]int` representation
+
 ### Requirement: Knowledge CRUD Operations
 The system SHALL provide persistent CRUD operations for knowledge entries identified by a unique key.
 
@@ -106,7 +148,7 @@ The system SHALL define Ent ORM schemas for the 5 knowledge entities.
 
 #### Scenario: Knowledge schema
 - **WHEN** the database is migrated
-- **THEN** a `Knowledge` table SHALL exist with fields: key (unique), category (enum: rule/definition/preference/fact), content, tags (JSON), source, relevance_score, use_count, created_at, updated_at
+- **THEN** a `Knowledge` table SHALL exist with fields: key (unique), category (enum: rule/definition/preference/fact/pattern/correction), content, tags (JSON), source, relevance_score, use_count, created_at, updated_at
 
 #### Scenario: Learning schema
 - **WHEN** the database is migrated

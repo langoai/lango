@@ -10,6 +10,7 @@ import (
 	"github.com/langowarny/lango/internal/channels/slack"
 	"github.com/langowarny/lango/internal/channels/telegram"
 	"github.com/langowarny/lango/internal/session"
+	"github.com/langowarny/lango/internal/types"
 )
 
 // initChannels initializes all configured channels and wires them to the agent
@@ -23,7 +24,7 @@ func (a *App) initChannels() error {
 		}
 		tgChannel, err := telegram.New(tgConfig)
 		if err != nil {
-			logger().Errorw("failed to create telegram channel", "error", err)
+			logger().Errorw("create telegram channel", "error", err)
 		} else {
 			tgChannel.SetHandler(func(ctx context.Context, msg *telegram.IncomingMessage) (*telegram.OutgoingMessage, error) {
 				return a.handleTelegramMessage(ctx, msg)
@@ -46,7 +47,7 @@ func (a *App) initChannels() error {
 		}
 		dcChannel, err := discord.New(dcConfig)
 		if err != nil {
-			logger().Errorw("failed to create discord channel", "error", err)
+			logger().Errorw("create discord channel", "error", err)
 		} else {
 			dcChannel.SetHandler(func(ctx context.Context, msg *discord.IncomingMessage) (*discord.OutgoingMessage, error) {
 				return a.handleDiscordMessage(ctx, msg)
@@ -69,7 +70,7 @@ func (a *App) initChannels() error {
 		}
 		slChannel, err := slack.New(slConfig)
 		if err != nil {
-			logger().Errorw("failed to create slack channel", "error", err)
+			logger().Errorw("create slack channel", "error", err)
 		} else {
 			slChannel.SetHandler(func(ctx context.Context, msg *slack.IncomingMessage) (*slack.OutgoingMessage, error) {
 				return a.handleSlackMessage(ctx, msg)
@@ -86,7 +87,7 @@ func (a *App) initChannels() error {
 }
 
 func (a *App) handleTelegramMessage(ctx context.Context, msg *telegram.IncomingMessage) (*telegram.OutgoingMessage, error) {
-	sessionKey := fmt.Sprintf("telegram:%d:%d", msg.ChatID, msg.UserID)
+	sessionKey := fmt.Sprintf("%s:%d:%d", types.ChannelTelegram, msg.ChatID, msg.UserID)
 	response, err := a.runAgent(ctx, sessionKey, msg.Text)
 	if err != nil {
 		return nil, err
@@ -95,7 +96,7 @@ func (a *App) handleTelegramMessage(ctx context.Context, msg *telegram.IncomingM
 }
 
 func (a *App) handleDiscordMessage(ctx context.Context, msg *discord.IncomingMessage) (*discord.OutgoingMessage, error) {
-	sessionKey := fmt.Sprintf("discord:%s:%s", msg.ChannelID, msg.AuthorID)
+	sessionKey := fmt.Sprintf("%s:%s:%s", types.ChannelDiscord, msg.ChannelID, msg.AuthorID)
 	response, err := a.runAgent(ctx, sessionKey, msg.Content)
 	if err != nil {
 		return nil, err
@@ -104,7 +105,7 @@ func (a *App) handleDiscordMessage(ctx context.Context, msg *discord.IncomingMes
 }
 
 func (a *App) handleSlackMessage(ctx context.Context, msg *slack.IncomingMessage) (*slack.OutgoingMessage, error) {
-	sessionKey := fmt.Sprintf("slack:%s:%s", msg.ChannelID, msg.UserID)
+	sessionKey := fmt.Sprintf("%s:%s:%s", types.ChannelSlack, msg.ChannelID, msg.UserID)
 	response, err := a.runAgent(ctx, sessionKey, msg.Text)
 	if err != nil {
 		return nil, err

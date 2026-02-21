@@ -15,6 +15,20 @@ const (
 	StreamEventDone      StreamEventType = "done"
 )
 
+// Valid reports whether t is a known stream event type.
+func (t StreamEventType) Valid() bool {
+	switch t {
+	case StreamEventPlainText, StreamEventToolCall, StreamEventError, StreamEventDone:
+		return true
+	}
+	return false
+}
+
+// Values returns all known stream event types.
+func (t StreamEventType) Values() []StreamEventType {
+	return []StreamEventType{StreamEventPlainText, StreamEventToolCall, StreamEventError, StreamEventDone}
+}
+
 // StreamEvent represents a single event in the generation stream.
 type StreamEvent struct {
 	Type     StreamEventType

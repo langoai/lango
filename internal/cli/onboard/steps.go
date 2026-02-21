@@ -7,6 +7,7 @@ import (
 
 	"github.com/langowarny/lango/internal/cli/tuicore"
 	"github.com/langowarny/lango/internal/config"
+	"github.com/langowarny/lango/internal/types"
 )
 
 // NewProviderStepForm creates the Step 1 form: Provider Setup.
@@ -78,12 +79,12 @@ func NewAgentStepForm(cfg *config.Config) *tuicore.FormModel {
 
 // NewChannelStepForm creates the Step 3 form for the given channel type.
 func NewChannelStepForm(channel string, cfg *config.Config) *tuicore.FormModel {
-	switch channel {
-	case "telegram":
+	switch types.ChannelType(channel) {
+	case types.ChannelTelegram:
 		return newTelegramForm(cfg)
-	case "discord":
+	case types.ChannelDiscord:
 		return newDiscordForm(cfg)
-	case "slack":
+	case types.ChannelSlack:
 		return newSlackForm(cfg)
 	default:
 		return nil
@@ -188,11 +189,11 @@ func providerTypeFromConfig(cfg *config.Config) string {
 	}
 	// Use the agent's provider if available
 	if p, ok := cfg.Providers[cfg.Agent.Provider]; ok {
-		return p.Type
+		return string(p.Type)
 	}
 	// Otherwise use first provider
 	for _, p := range cfg.Providers {
-		return p.Type
+		return string(p.Type)
 	}
 	return "anthropic"
 }

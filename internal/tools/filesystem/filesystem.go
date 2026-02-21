@@ -65,7 +65,7 @@ func (t *Tool) Read(path string) (string, error) {
 
 	content, err := os.ReadFile(absPath)
 	if err != nil {
-		return "", fmt.Errorf("failed to read: %w", err)
+		return "", fmt.Errorf("read file: %w", err)
 	}
 
 	logger.Infow("file read", "path", absPath, "size", len(content))
@@ -81,7 +81,7 @@ func (t *Tool) ReadLines(path string, startLine, endLine int) (string, error) {
 
 	file, err := os.Open(absPath)
 	if err != nil {
-		return "", fmt.Errorf("failed to open: %w", err)
+		return "", fmt.Errorf("open file: %w", err)
 	}
 	defer file.Close()
 
@@ -116,19 +116,19 @@ func (t *Tool) Write(path, content string) error {
 	// Ensure parent directory exists
 	dir := filepath.Dir(absPath)
 	if err := os.MkdirAll(dir, 0755); err != nil {
-		return fmt.Errorf("failed to create directory: %w", err)
+		return fmt.Errorf("create directory: %w", err)
 	}
 
 	// Write to temp file first (atomic write)
 	tempPath := absPath + ".tmp"
 	if err := os.WriteFile(tempPath, []byte(content), 0644); err != nil {
-		return fmt.Errorf("failed to write: %w", err)
+		return fmt.Errorf("write file: %w", err)
 	}
 
 	// Rename to final path
 	if err := os.Rename(tempPath, absPath); err != nil {
 		os.Remove(tempPath) // cleanup
-		return fmt.Errorf("failed to rename: %w", err)
+		return fmt.Errorf("rename file: %w", err)
 	}
 
 	logger.Infow("file written", "path", absPath, "size", len(content))
@@ -145,7 +145,7 @@ func (t *Tool) Edit(path string, startLine, endLine int, newContent string) erro
 	// Read existing content
 	file, err := os.Open(absPath)
 	if err != nil {
-		return fmt.Errorf("failed to open: %w", err)
+		return fmt.Errorf("open file: %w", err)
 	}
 
 	var lines []string
@@ -192,7 +192,7 @@ func (t *Tool) ListDir(path string) ([]FileInfo, error) {
 
 	entries, err := os.ReadDir(absPath)
 	if err != nil {
-		return nil, fmt.Errorf("failed to read directory: %w", err)
+		return nil, fmt.Errorf("read directory: %w", err)
 	}
 
 	result := make([]FileInfo, 0, len(entries))
@@ -223,7 +223,7 @@ func (t *Tool) Delete(path string) error {
 	}
 
 	if err := os.RemoveAll(absPath); err != nil {
-		return fmt.Errorf("failed to delete: %w", err)
+		return fmt.Errorf("delete: %w", err)
 	}
 
 	logger.Infow("file deleted", "path", absPath)
@@ -252,7 +252,7 @@ func (t *Tool) Mkdir(path string) error {
 	}
 
 	if err := os.MkdirAll(absPath, 0755); err != nil {
-		return fmt.Errorf("failed to create directory: %w", err)
+		return fmt.Errorf("create directory: %w", err)
 	}
 
 	logger.Infow("directory created", "path", absPath)
@@ -273,18 +273,18 @@ func (t *Tool) Copy(src, dst string) error {
 
 	srcFile, err := os.Open(srcPath)
 	if err != nil {
-		return fmt.Errorf("failed to open source: %w", err)
+		return fmt.Errorf("open source: %w", err)
 	}
 	defer srcFile.Close()
 
 	// Ensure parent directory exists
 	if err := os.MkdirAll(filepath.Dir(dstPath), 0755); err != nil {
-		return fmt.Errorf("failed to create directory: %w", err)
+		return fmt.Errorf("create directory: %w", err)
 	}
 
 	dstFile, err := os.Create(dstPath)
 	if err != nil {
-		return fmt.Errorf("failed to create destination: %w", err)
+		return fmt.Errorf("create destination: %w", err)
 	}
 	defer dstFile.Close()
 

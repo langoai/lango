@@ -6,10 +6,12 @@ import (
 
 	"go.uber.org/zap"
 
+	entknowledge "github.com/langowarny/lango/internal/ent/knowledge"
 	"github.com/langowarny/lango/internal/graph"
 	"github.com/langowarny/lango/internal/knowledge"
 	"github.com/langowarny/lango/internal/memory"
 	"github.com/langowarny/lango/internal/session"
+	"github.com/langowarny/lango/internal/types"
 )
 
 // MessageProvider retrieves messages for a session key.
@@ -29,7 +31,7 @@ type ProactiveBuffer struct {
 	observationThreshold int
 	cooldownTurns      int
 	maxPending         int
-	autoSaveConfidence string
+	autoSaveConfidence types.Confidence
 	graphCallback      GraphCallback
 
 	mu          sync.Mutex
@@ -46,7 +48,7 @@ type ProactiveBufferConfig struct {
 	ObservationThreshold int
 	CooldownTurns        int
 	MaxPending           int
-	AutoSaveConfidence   string
+	AutoSaveConfidence   types.Confidence
 }
 
 // NewProactiveBuffer creates a new proactive librarian buffer.
@@ -70,7 +72,7 @@ func NewProactiveBuffer(
 		cfg.MaxPending = 2
 	}
 	if cfg.AutoSaveConfidence == "" {
-		cfg.AutoSaveConfidence = "high"
+		cfg.AutoSaveConfidence = types.ConfidenceHigh
 	}
 
 	return &ProactiveBuffer{
@@ -246,30 +248,30 @@ func (b *ProactiveBuffer) process(sessionKey string) {
 }
 
 // shouldAutoSave checks if the extraction confidence meets the auto-save threshold.
-func (b *ProactiveBuffer) shouldAutoSave(confidence string) bool {
+func (b *ProactiveBuffer) shouldAutoSave(confidence types.Confidence) bool {
 	switch b.autoSaveConfidence {
-	case "low":
+	case types.ConfidenceLow:
 		return true
-	case "medium":
-		return confidence == "medium" || confidence == "high"
+	case types.ConfidenceMedium:
+		return confidence == types.ConfidenceMedium || confidence == types.ConfidenceHigh
 	default: // "high"
-		return confidence == "high"
+		return confidence == types.ConfidenceHigh
 	}
 }
 
 // mapCategory maps LLM analysis type to a valid knowledge category.
-func mapCategory(analysisType string) string {
+func mapCategory(analysisType string) entknowledge.Category {
 	switch analysisType {
 	case "preference":
-		return "preference"
+		return entknowledge.CategoryPreference
 	case "fact":
-		return "fact"
+		return entknowledge.CategoryFact
 	case "rule":
-		return "rule"
+		return entknowledge.CategoryRule
 	case "definition":
-		return "definition"
+		return entknowledge.CategoryDefinition
 	default:
-		return "fact"
+		return entknowledge.CategoryFact
 	}
 }
 

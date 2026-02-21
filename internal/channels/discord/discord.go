@@ -84,7 +84,7 @@ func New(cfg Config) (*Channel, error) {
 	} else {
 		session, err := discordgo.New("Bot " + cfg.BotToken)
 		if err != nil {
-			return nil, fmt.Errorf("failed to create session: %w", err)
+			return nil, fmt.Errorf("create session: %w", err)
 		}
 
 		session.Identify.Intents = discordgo.IntentsGuildMessages |
@@ -129,7 +129,7 @@ func (c *Channel) Start(ctx context.Context) error {
 	c.session.AddHandler(c.onInteractionCreate)
 
 	if err := c.session.Open(); err != nil {
-		return fmt.Errorf("failed to open session: %w", err)
+		return fmt.Errorf("open session: %w", err)
 	}
 
 	c.botID = c.session.GetState().User.ID
@@ -319,7 +319,7 @@ func (c *Channel) registerCommands() {
 	for _, cmd := range commands {
 		_, err := c.session.ApplicationCommandCreate(c.config.ApplicationID, "", cmd)
 		if err != nil {
-			logger.Warnw("failed to create command", "command", cmd.Name, "error", err)
+			logger.Warnw("create command", "command", cmd.Name, "error", err)
 		}
 	}
 

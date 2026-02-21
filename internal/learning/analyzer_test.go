@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"strings"
 	"testing"
+
+	entlearning "github.com/langowarny/lango/internal/ent/learning"
 )
 
 func TestExtractErrorPattern(t *testing.T) {
@@ -58,79 +60,79 @@ func TestCategorizeError(t *testing.T) {
 		give     string
 		giveErr  error
 		giveTool string
-		want     string
+		want     entlearning.Category
 	}{
 		{
 			give:     "context.DeadlineExceeded",
 			giveErr:  context.DeadlineExceeded,
 			giveTool: "",
-			want:     "timeout",
+			want:     entlearning.CategoryTimeout,
 		},
 		{
 			give:     "deadline exceeded string",
 			giveErr:  errors.New("deadline exceeded waiting for response"),
 			giveTool: "",
-			want:     "timeout",
+			want:     entlearning.CategoryTimeout,
 		},
 		{
 			give:     "timeout string",
 			giveErr:  errors.New("connection timeout"),
 			giveTool: "",
-			want:     "timeout",
+			want:     entlearning.CategoryTimeout,
 		},
 		{
 			give:     "permission denied",
 			giveErr:  errors.New("permission denied"),
 			giveTool: "",
-			want:     "permission",
+			want:     entlearning.CategoryPermission,
 		},
 		{
 			give:     "access denied",
 			giveErr:  errors.New("access denied for user"),
 			giveTool: "",
-			want:     "permission",
+			want:     entlearning.CategoryPermission,
 		},
 		{
 			give:     "forbidden",
 			giveErr:  errors.New("forbidden resource"),
 			giveTool: "",
-			want:     "permission",
+			want:     entlearning.CategoryPermission,
 		},
 		{
 			give:     "api error",
 			giveErr:  errors.New("api call failed"),
 			giveTool: "",
-			want:     "provider_error",
+			want:     entlearning.CategoryProviderError,
 		},
 		{
 			give:     "model error",
 			giveErr:  errors.New("model not found"),
 			giveTool: "",
-			want:     "provider_error",
+			want:     entlearning.CategoryProviderError,
 		},
 		{
 			give:     "provider error",
 			giveErr:  errors.New("provider unavailable"),
 			giveTool: "",
-			want:     "provider_error",
+			want:     entlearning.CategoryProviderError,
 		},
 		{
 			give:     "rate limit",
 			giveErr:  errors.New("rate limit exceeded"),
 			giveTool: "",
-			want:     "provider_error",
+			want:     entlearning.CategoryProviderError,
 		},
 		{
 			give:     "tool error with toolName",
 			giveErr:  errors.New("something broke"),
 			giveTool: "exec",
-			want:     "tool_error",
+			want:     entlearning.CategoryToolError,
 		},
 		{
 			give:     "general error no toolName",
 			giveErr:  errors.New("something broke"),
 			giveTool: "",
-			want:     "general",
+			want:     entlearning.CategoryGeneral,
 		},
 	}
 

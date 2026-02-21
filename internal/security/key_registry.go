@@ -19,6 +19,20 @@ const (
 	KeyTypeSigning    KeyType = "signing"
 )
 
+// Valid reports whether t is a known key type.
+func (t KeyType) Valid() bool {
+	switch t {
+	case KeyTypeEncryption, KeyTypeSigning:
+		return true
+	}
+	return false
+}
+
+// Values returns all known key types.
+func (t KeyType) Values() []KeyType {
+	return []KeyType{KeyTypeEncryption, KeyTypeSigning}
+}
+
 // KeyInfo represents key metadata.
 type KeyInfo struct {
 	ID          uuid.UUID
@@ -56,7 +70,7 @@ func (r *KeyRegistry) RegisterKey(ctx context.Context, name, remoteKeyID string,
 			SetType(key.Type(keyType)).
 			Save(ctx)
 		if err != nil {
-			return nil, fmt.Errorf("failed to update key: %w", err)
+			return nil, fmt.Errorf("update key: %w", err)
 		}
 		return toKeyInfo(updated), nil
 	}
@@ -68,7 +82,7 @@ func (r *KeyRegistry) RegisterKey(ctx context.Context, name, remoteKeyID string,
 		SetType(key.Type(keyType)).
 		Save(ctx)
 	if err != nil {
-		return nil, fmt.Errorf("failed to create key: %w", err)
+		return nil, fmt.Errorf("create key: %w", err)
 	}
 
 	return toKeyInfo(created), nil
@@ -82,9 +96,9 @@ func (r *KeyRegistry) GetKey(ctx context.Context, name string) (*KeyInfo, error)
 	k, err := r.client.Key.Query().Where(key.NameEQ(name)).Only(ctx)
 	if err != nil {
 		if ent.IsNotFound(err) {
-			return nil, fmt.Errorf("key not found: %s", name)
+			return nil, fmt.Errorf("get key %q: %w", name, ErrKeyNotFound)
 		}
-		return nil, fmt.Errorf("failed to get key: %w", err)
+		return nil, fmt.Errorf("get key %q: %w", name, err)
 	}
 
 	return toKeyInfo(k), nil
@@ -101,9 +115,9 @@ func (r *KeyRegistry) GetDefaultKey(ctx context.Context) (*KeyInfo, error) {
 		First(ctx)
 	if err != nil {
 		if ent.IsNotFound(err) {
-			return nil, fmt.Errorf("no encryption keys available")
+			return nil, ErrNoEncryptionKeys
 		}
-		return nil, fmt.Errorf("failed to get default key: %w", err)
+		return nil, fmt.Errorf("get default key: %w", err)
 	}
 
 	return toKeyInfo(k), nil
@@ -116,7 +130,7 @@ func (r *KeyRegistry) ListKeys(ctx context.Context) ([]*KeyInfo, error) {
 
 	keys, err := r.client.Key.Query().Order(ent.Desc(key.FieldCreatedAt)).All(ctx)
 	if err != nil {
-		return nil, fmt.Errorf("failed to list keys: %w", err)
+		return nil, fmt.Errorf("list keys: %w", err)
 	}
 
 	result := make([]*KeyInfo, len(keys))
@@ -146,7 +160,7 @@ func (r *KeyRegistry) DeleteKey(ctx context.Context, name string) error {
 
 	_, err := r.client.Key.Delete().Where(key.NameEQ(name)).Exec(ctx)
 	if err != nil {
-		return fmt.Errorf("failed to delete key: %w", err)
+		return fmt.Errorf("delete key: %w", err)
 	}
 	return nil
 }

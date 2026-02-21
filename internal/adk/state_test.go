@@ -882,7 +882,7 @@ func (m *uniqueMockStore) Create(s *internal.Session) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	if _, exists := m.sessions[s.Key]; exists {
-		return fmt.Errorf("ent: constraint failed: UNIQUE constraint failed: sessions.key")
+		return fmt.Errorf("create session %q: %w", s.Key, internal.ErrDuplicateSession)
 	}
 	m.sessions[s.Key] = s
 	return nil
@@ -893,7 +893,7 @@ func (m *uniqueMockStore) Get(key string) (*internal.Session, error) {
 	defer m.mu.Unlock()
 	s, ok := m.sessions[key]
 	if !ok {
-		return nil, fmt.Errorf("session not found: %s", key)
+		return nil, fmt.Errorf("get session %q: %w", key, internal.ErrSessionNotFound)
 	}
 	return s, nil
 }

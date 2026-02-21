@@ -224,7 +224,7 @@ func (t *Tool) Hash(ctx context.Context, params map[string]interface{}) (interfa
 func (t *Tool) Keys(ctx context.Context, params map[string]interface{}) (interface{}, error) {
 	keys, err := t.registry.ListKeys(ctx)
 	if err != nil {
-		return nil, fmt.Errorf("failed to list keys: %w", err)
+		return nil, fmt.Errorf("list keys: %w", err)
 	}
 
 	entries := make([]KeyEntry, len(keys))

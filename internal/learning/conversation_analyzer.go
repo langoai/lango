@@ -7,6 +7,7 @@ import (
 
 	"go.uber.org/zap"
 
+	entlearning "github.com/langowarny/lango/internal/ent/learning"
 	"github.com/langowarny/lango/internal/graph"
 	"github.com/langowarny/lango/internal/knowledge"
 	"github.com/langowarny/lango/internal/session"
@@ -113,7 +114,7 @@ func (a *ConversationAnalyzer) saveResult(ctx context.Context, sessionKey string
 		}
 		if r.Type == "correction" {
 			entry.Fix = r.Content
-			entry.Category = "user_correction"
+			entry.Category = entlearning.CategoryUserCorrection
 		}
 		if err := a.store.SaveLearning(ctx, sessionKey, entry); err != nil {
 			a.logger.Debugw("save learning from analysis", "error", err)

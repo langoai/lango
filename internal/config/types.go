@@ -1,6 +1,10 @@
 package config
 
-import "time"
+import (
+	"time"
+
+	"github.com/langowarny/lango/internal/types"
+)
 
 // Config is the root configuration structure for lango
 type Config struct {
@@ -137,7 +141,7 @@ type LibrarianConfig struct {
 	MaxPendingInquiries int `mapstructure:"maxPendingInquiries" json:"maxPendingInquiries"`
 
 	// Minimum confidence level for auto-save: "high", "medium", "low" (default: "high").
-	AutoSaveConfidence string `mapstructure:"autoSaveConfidence" json:"autoSaveConfidence"`
+	AutoSaveConfidence types.Confidence `mapstructure:"autoSaveConfidence" json:"autoSaveConfidence"`
 
 	// LLM provider for analysis (empty = use agent default).
 	Provider string `mapstructure:"provider" json:"provider"`
@@ -290,6 +294,20 @@ const (
 	ApprovalPolicyNone ApprovalPolicy = "none"
 )
 
+// Valid reports whether p is a known approval policy.
+func (p ApprovalPolicy) Valid() bool {
+	switch p {
+	case ApprovalPolicyDangerous, ApprovalPolicyAll, ApprovalPolicyConfigured, ApprovalPolicyNone:
+		return true
+	}
+	return false
+}
+
+// Values returns all known approval policies.
+func (p ApprovalPolicy) Values() []ApprovalPolicy {
+	return []ApprovalPolicy{ApprovalPolicyDangerous, ApprovalPolicyAll, ApprovalPolicyConfigured, ApprovalPolicyNone}
+}
+
 // InterceptorConfig defines AI Privacy Interceptor settings
 type InterceptorConfig struct {
 	Enabled             bool           `mapstructure:"enabled" json:"enabled"`
@@ -377,7 +395,7 @@ type AgentConfig struct {
 // ProviderConfig defines AI provider settings
 type ProviderConfig struct {
 	// Provider type (openai, anthropic, gemini)
-	Type string `mapstructure:"type" json:"type"`
+	Type types.ProviderType `mapstructure:"type" json:"type"`
 
 	// API key for the provider (supports ${ENV_VAR} substitution)
 	APIKey string `mapstructure:"apiKey" json:"apiKey"`
@@ -509,12 +527,12 @@ type BrowserToolConfig struct {
 
 // ProviderTypeToEmbeddingType maps a provider config type to the corresponding
 // embedding backend type.
-var ProviderTypeToEmbeddingType = map[string]string{
-	"openai":    "openai",
-	"gemini":    "google",
-	"google":    "google",
-	"anthropic": "",
-	"ollama":    "local",
+var ProviderTypeToEmbeddingType = map[types.ProviderType]string{
+	types.ProviderOpenAI:    "openai",
+	types.ProviderGemini:    "google",
+	types.ProviderGoogle:    "google",
+	types.ProviderAnthropic: "",
+	types.ProviderOllama:    "local",
 }
 
 // GraphConfig defines graph store settings for relationship-aware retrieval.

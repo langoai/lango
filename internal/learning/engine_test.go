@@ -68,7 +68,7 @@ func TestEngine_OnToolResult_Error_KnownFix(t *testing.T) {
 		ErrorPattern: "connection refused",
 		Diagnosis:    "server is down",
 		Fix:          "restart the server",
-		Category:     "tool_error",
+		Category:     entlearning.CategoryToolError,
 	})
 	if err != nil {
 		t.Fatalf("SaveLearning: %v", err)
@@ -125,7 +125,7 @@ func TestEngine_GetFixForError(t *testing.T) {
 			ErrorPattern: errMsg,
 			Diagnosis:    "missing declaration",
 			Fix:          "declare the variable before use",
-			Category:     "tool_error",
+			Category:     entlearning.CategoryToolError,
 		})
 		if err != nil {
 			t.Fatalf("SaveLearning: %v", err)
@@ -171,7 +171,7 @@ func TestEngine_GetFixForError(t *testing.T) {
 			ErrorPattern: "low conf pattern xyz",
 			Diagnosis:    "some diagnosis",
 			Fix:          "some fix",
-			Category:     "tool_error",
+			Category:     entlearning.CategoryToolError,
 		})
 		if err != nil {
 			t.Fatalf("SaveLearning: %v", err)
@@ -220,7 +220,7 @@ func TestEngine_RecordUserCorrection(t *testing.T) {
 
 	found := false
 	for _, l := range learnings {
-		if l.Trigger == "wrong output format" && l.Category == "user_correction" && l.Fix == "ask for clarification" {
+		if l.Trigger == "wrong output format" && l.Category == entlearning.CategoryUserCorrection && l.Fix == "ask for clarification" {
 			found = true
 			break
 		}

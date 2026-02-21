@@ -1335,7 +1335,7 @@ func (a *skillProviderAdapter) ListActiveSkillInfos(ctx context.Context) ([]know
 		infos[i] = knowledge.SkillInfo{
 			Name:        e.Name,
 			Description: e.Description,
-			Type:        e.Type,
+			Type:        string(e.Type),
 		}
 	}
 	return infos, nil

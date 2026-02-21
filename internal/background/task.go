@@ -17,6 +17,20 @@ const (
 	Cancelled
 )
 
+// Valid reports whether s is a known task status.
+func (s Status) Valid() bool {
+	switch s {
+	case Pending, Running, Done, Failed, Cancelled:
+		return true
+	}
+	return false
+}
+
+// Values returns all known task statuses.
+func (s Status) Values() []Status {
+	return []Status{Pending, Running, Done, Failed, Cancelled}
+}
+
 // String returns the human-readable name of the status.
 func (s Status) String() string {
 	switch s {

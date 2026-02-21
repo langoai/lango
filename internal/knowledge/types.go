@@ -1,6 +1,11 @@
 package knowledge
 
-import "context"
+import (
+	"context"
+
+	entknowledge "github.com/langowarny/lango/internal/ent/knowledge"
+	entlearning "github.com/langowarny/lango/internal/ent/learning"
+)
 
 // ContextLayer represents the 6 context layers in the self-learning architecture.
 type ContextLayer int
@@ -16,6 +21,24 @@ const (
 	LayerReflections                    // Condensed observation reflections
 	LayerPendingInquiries               // Proactive librarian pending questions
 )
+
+// Valid reports whether l is a known context layer.
+func (l ContextLayer) Valid() bool {
+	switch l {
+	case LayerToolRegistry, LayerUserKnowledge, LayerSkillPatterns, LayerExternalKnowledge,
+		LayerAgentLearnings, LayerRuntimeContext, LayerObservations, LayerReflections, LayerPendingInquiries:
+		return true
+	}
+	return false
+}
+
+// Values returns all known context layers.
+func (l ContextLayer) Values() []ContextLayer {
+	return []ContextLayer{
+		LayerToolRegistry, LayerUserKnowledge, LayerSkillPatterns, LayerExternalKnowledge,
+		LayerAgentLearnings, LayerRuntimeContext, LayerObservations, LayerReflections, LayerPendingInquiries,
+	}
+}
 
 // ContextItem represents a single item from any context layer.
 type ContextItem struct {
@@ -45,7 +68,7 @@ type RetrievalResult struct {
 // KnowledgeEntry is the domain type for knowledge CRUD operations.
 type KnowledgeEntry struct {
 	Key      string
-	Category string
+	Category entknowledge.Category
 	Content  string
 	Tags     []string
 	Source   string
@@ -57,7 +80,7 @@ type LearningEntry struct {
 	ErrorPattern string
 	Diagnosis    string
 	Fix          string
-	Category     string
+	Category     entlearning.Category
 	Tags         []string
 }
 

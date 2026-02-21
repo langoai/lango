@@ -8,6 +8,7 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/langowarny/lango/internal/ent/enttest"
+	entlearning "github.com/langowarny/lango/internal/ent/learning"
 	_ "github.com/mattn/go-sqlite3"
 )
 
@@ -94,7 +95,7 @@ func TestContextRetriever_Retrieve(t *testing.T) {
 		Trigger:      "deployment failure",
 		ErrorPattern: "deploy timeout",
 		Fix:          "Increase deployment timeout to 5m",
-		Category:     "timeout",
+		Category:     entlearning.CategoryTimeout,
 	}); err != nil {
 		t.Fatalf("SaveLearning: %v", err)
 	}

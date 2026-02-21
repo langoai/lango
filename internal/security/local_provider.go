@@ -54,7 +54,7 @@ func (p *LocalCryptoProvider) Initialize(passphrase string) error {
 	// Generate salt for PBKDF2
 	salt := make([]byte, SaltSize)
 	if _, err := io.ReadFull(rand.Reader, salt); err != nil {
-		return fmt.Errorf("failed to generate salt: %w", err)
+		return fmt.Errorf("generate salt: %w", err)
 	}
 
 	p.salt = salt
@@ -155,17 +155,17 @@ func (p *LocalCryptoProvider) Encrypt(ctx context.Context, keyID string, plainte
 
 	block, err := aes.NewCipher(key)
 	if err != nil {
-		return nil, fmt.Errorf("failed to create cipher: %w", err)
+		return nil, fmt.Errorf("create cipher: %w", err)
 	}
 
 	gcm, err := cipher.NewGCM(block)
 	if err != nil {
-		return nil, fmt.Errorf("failed to create GCM: %w", err)
+		return nil, fmt.Errorf("create GCM: %w", err)
 	}
 
 	nonce := make([]byte, NonceSize)
 	if _, err := io.ReadFull(rand.Reader, nonce); err != nil {
-		return nil, fmt.Errorf("failed to generate nonce: %w", err)
+		return nil, fmt.Errorf("generate nonce: %w", err)
 	}
 
 	// Prepend nonce to ciphertext
@@ -193,12 +193,12 @@ func (p *LocalCryptoProvider) Decrypt(ctx context.Context, keyID string, ciphert
 
 	block, err := aes.NewCipher(key)
 	if err != nil {
-		return nil, fmt.Errorf("failed to create cipher: %w", err)
+		return nil, fmt.Errorf("create cipher: %w", err)
 	}
 
 	gcm, err := cipher.NewGCM(block)
 	if err != nil {
-		return nil, fmt.Errorf("failed to create GCM: %w", err)
+		return nil, fmt.Errorf("create GCM: %w", err)
 	}
 
 	nonce := ciphertext[:NonceSize]
@@ -206,7 +206,7 @@ func (p *LocalCryptoProvider) Decrypt(ctx context.Context, keyID string, ciphert
 
 	plaintext, err := gcm.Open(nil, nonce, ciphertext, nil)
 	if err != nil {
-		return nil, fmt.Errorf("decryption failed: %w", err)
+		return nil, fmt.Errorf("%w: %v", ErrDecryptionFailed, err)
 	}
 
 	return plaintext, nil

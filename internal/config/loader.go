@@ -7,6 +7,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/langowarny/lango/internal/types"
 	"github.com/spf13/viper"
 )
 
@@ -119,7 +120,7 @@ func DefaultConfig() *Config {
 			ObservationThreshold: 2,
 			InquiryCooldownTurns: 3,
 			MaxPendingInquiries:  2,
-			AutoSaveConfidence:   "high",
+			AutoSaveConfidence:   types.ConfidenceHigh,
 		},
 	}
 }

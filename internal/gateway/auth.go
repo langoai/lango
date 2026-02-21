@@ -46,7 +46,7 @@ func NewAuthManager(cfg config.AuthConfig, store session.Store) (*AuthManager, e
 	for name, providerCfg := range cfg.Providers {
 		provider, err := NewOIDCProvider(name, providerCfg)
 		if err != nil {
-			return nil, fmt.Errorf("failed to create provider %s: %w", name, err)
+			return nil, fmt.Errorf("create provider %s: %w", name, err)
 		}
 		am.providers[name] = provider
 	}
@@ -59,7 +59,7 @@ func NewOIDCProvider(name string, cfg config.OIDCProviderConfig) (*OIDCProvider,
 	ctx := context.Background()
 	provider, err := oidc.NewProvider(ctx, cfg.IssuerURL)
 	if err != nil {
-		return nil, fmt.Errorf("failed to query provider %q: %w", cfg.IssuerURL, err)
+		return nil, fmt.Errorf("query provider %q: %w", cfg.IssuerURL, err)
 	}
 
 	oauthConfig := &oauth2.Config{
@@ -103,7 +103,7 @@ func (am *AuthManager) handleLogin(w http.ResponseWriter, r *http.Request) {
 
 	state, err := generateRandomString(32)
 	if err != nil {
-		http.Error(w, "failed to generate state", http.StatusInternalServerError)
+		http.Error(w, "generate state", http.StatusInternalServerError)
 		return
 	}
 
@@ -182,7 +182,7 @@ func (am *AuthManager) handleCallback(w http.ResponseWriter, r *http.Request) {
 		Sub           string `json:"sub"`
 	}
 	if err := idToken.Claims(&claims); err != nil {
-		http.Error(w, "failed to parse claims", http.StatusInternalServerError)
+		http.Error(w, "parse claims", http.StatusInternalServerError)
 		return
 	}
 

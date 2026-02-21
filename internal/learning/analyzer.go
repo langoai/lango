@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"regexp"
 	"strings"
+
+	entlearning "github.com/langowarny/lango/internal/ent/learning"
 )
 
 var (
@@ -24,21 +26,21 @@ func extractErrorPattern(err error) string {
 	return strings.TrimSpace(msg)
 }
 
-func categorizeError(toolName string, err error) string {
+func categorizeError(toolName string, err error) entlearning.Category {
 	msg := strings.ToLower(err.Error())
 
 	switch {
 	case isDeadlineExceeded(err) || strings.Contains(msg, "deadline exceeded") || strings.Contains(msg, "timeout"):
-		return "timeout"
+		return entlearning.CategoryTimeout
 	case strings.Contains(msg, "permission denied") || strings.Contains(msg, "access denied") || strings.Contains(msg, "forbidden"):
-		return "permission"
+		return entlearning.CategoryPermission
 	case strings.Contains(msg, "api") || strings.Contains(msg, "model") || strings.Contains(msg, "provider") || strings.Contains(msg, "rate limit"):
-		return "provider_error"
+		return entlearning.CategoryProviderError
 	default:
 		if toolName != "" {
-			return "tool_error"
+			return entlearning.CategoryToolError
 		}
-		return "general"
+		return entlearning.CategoryGeneral
 	}
 }
 

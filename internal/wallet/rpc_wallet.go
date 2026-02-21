@@ -8,10 +8,8 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/langowarny/lango/internal/types"
 )
-
-// SenderFunc sends a message to the companion app via WebSocket.
-type SenderFunc func(msgType string, payload interface{}) error
 
 // SignTxRequest is sent to the companion for transaction signing.
 type SignTxRequest struct {
@@ -54,7 +52,7 @@ type AddressResponse struct {
 // RPCWallet delegates wallet operations to a companion app via WebSocket RPC.
 // Mirrors the security.RPCProvider pattern: correlation IDs + channel-based response.
 type RPCWallet struct {
-	sender  SenderFunc
+	sender  types.RPCSenderFunc
 	timeout time.Duration
 
 	mu             sync.Mutex
@@ -74,7 +72,7 @@ func NewRPCWallet() *RPCWallet {
 }
 
 // SetSender configures the transport for sending requests to the companion.
-func (w *RPCWallet) SetSender(fn SenderFunc) {
+func (w *RPCWallet) SetSender(fn types.RPCSenderFunc) {
 	w.sender = fn
 }
 

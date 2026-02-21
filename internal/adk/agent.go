@@ -42,7 +42,7 @@ func NewAgent(ctx context.Context, tools []tool.Tool, mod model.LLM, systemPromp
 
 	adkAgent, err := llmagent.New(cfg)
 	if err != nil {
-		return nil, fmt.Errorf("failed to create llm agent: %w", err)
+		return nil, fmt.Errorf("create llm agent: %w", err)
 	}
 
 	// Create Session Service
@@ -57,7 +57,7 @@ func NewAgent(ctx context.Context, tools []tool.Tool, mod model.LLM, systemPromp
 
 	r, err := runner.New(runnerCfg)
 	if err != nil {
-		return nil, fmt.Errorf("failed to create runner: %w", err)
+		return nil, fmt.Errorf("create runner: %w", err)
 	}
 
 	return &Agent{

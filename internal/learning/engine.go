@@ -6,6 +6,7 @@ import (
 
 	"go.uber.org/zap"
 
+	entlearning "github.com/langowarny/lango/internal/ent/learning"
 	"github.com/langowarny/lango/internal/knowledge"
 )
 
@@ -88,7 +89,7 @@ func (e *Engine) RecordUserCorrection(ctx context.Context, sessionKey, trigger, 
 		Trigger:   trigger,
 		Diagnosis: diagnosis,
 		Fix:       fix,
-		Category:  "user_correction",
+		Category:  entlearning.CategoryUserCorrection,
 	})
 }
 

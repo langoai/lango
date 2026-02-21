@@ -13,6 +13,20 @@ const (
 	SectionAutomation        SectionID = "automation"
 )
 
+// Valid reports whether s is a known section ID.
+func (s SectionID) Valid() bool {
+	switch s {
+	case SectionIdentity, SectionAgentIdentity, SectionSafety, SectionConversationRules, SectionToolUsage, SectionCustom, SectionAutomation:
+		return true
+	}
+	return false
+}
+
+// Values returns all known section IDs.
+func (s SectionID) Values() []SectionID {
+	return []SectionID{SectionIdentity, SectionAgentIdentity, SectionSafety, SectionConversationRules, SectionToolUsage, SectionCustom, SectionAutomation}
+}
+
 // PromptSection produces a titled block of text for the system prompt.
 type PromptSection interface {
 	ID() SectionID

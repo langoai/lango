@@ -12,22 +12,15 @@ import (
 	"github.com/langowarny/lango/internal/ent"
 	"github.com/langowarny/lango/internal/ent/observation"
 	"github.com/langowarny/lango/internal/ent/reflection"
+	"github.com/langowarny/lango/internal/types"
 )
-
-// EmbedCallback is an optional hook called when content is saved, enabling
-// asynchronous embedding without importing the embedding package.
-type EmbedCallback func(id, collection, content string, metadata map[string]string)
-
-// ContentCallback is an optional hook called when content is saved, enabling
-// asynchronous processing without importing external packages.
-type ContentCallback func(id, collection, content string, metadata map[string]string)
 
 // Store provides CRUD operations for observations and reflections.
 type Store struct {
 	client     *ent.Client
 	logger     *zap.SugaredLogger
-	onEmbed    EmbedCallback
-	onGraph    ContentCallback
+	onEmbed    types.EmbedCallback
+	onGraph    types.ContentCallback
 	graphHooks *GraphHooks
 
 	// lastObsMu protects lastObsIDs for concurrent SaveObservation calls.
@@ -45,12 +38,12 @@ func NewStore(client *ent.Client, logger *zap.SugaredLogger) *Store {
 }
 
 // SetEmbedCallback sets the optional embedding hook.
-func (s *Store) SetEmbedCallback(cb EmbedCallback) {
+func (s *Store) SetEmbedCallback(cb types.EmbedCallback) {
 	s.onEmbed = cb
 }
 
 // SetGraphCallback sets the optional graph relationship hook.
-func (s *Store) SetGraphCallback(cb ContentCallback) {
+func (s *Store) SetGraphCallback(cb types.ContentCallback) {
 	s.onGraph = cb
 }
 

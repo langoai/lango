@@ -33,13 +33,13 @@ func New(boot *bootstrap.Result) (*App, error) {
 	// 1. Supervisor (holds provider secrets, exec tool)
 	sv, err := initSupervisor(cfg)
 	if err != nil {
-		return nil, fmt.Errorf("failed to create supervisor: %w", err)
+		return nil, fmt.Errorf("create supervisor: %w", err)
 	}
 
 	// 2. Session Store — reuse the DB client opened during bootstrap.
 	store, err := initSessionStore(cfg, boot)
 	if err != nil {
-		return nil, fmt.Errorf("failed to create session store: %w", err)
+		return nil, fmt.Errorf("create session store: %w", err)
 	}
 	app.Store = store
 
@@ -263,7 +263,7 @@ func New(boot *bootstrap.Result) (*App, error) {
 	// 9. ADK Agent (scanner is passed for output-side secret scanning)
 	adkAgent, err := initAgent(context.Background(), sv, cfg, store, tools, kc, mc, ec, gc, scanner, registry, lc)
 	if err != nil {
-		return nil, fmt.Errorf("failed to create agent: %w", err)
+		return nil, fmt.Errorf("create agent: %w", err)
 	}
 	app.Agent = adkAgent
 
@@ -278,7 +278,7 @@ func New(boot *bootstrap.Result) (*App, error) {
 
 	// 10. Channels
 	if err := app.initChannels(); err != nil {
-		logger().Errorw("failed to initialize channels", "error", err)
+		logger().Errorw("initialize channels", "error", err)
 	}
 
 	// 11. Wire memory compaction (optional)

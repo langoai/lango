@@ -8,6 +8,7 @@ import (
 
 	"github.com/langowarny/lango/internal/cli/tuicore"
 	"github.com/langowarny/lango/internal/config"
+	"github.com/langowarny/lango/internal/types"
 )
 
 // buildProviderOptions builds provider options from registered providers.
@@ -264,7 +265,7 @@ func NewSecurityForm(cfg *config.Config) *tuicore.FormModel {
 	form.AddField(&tuicore.Field{
 		Key: "interceptor_notify", Label: "  Notify Channel", Type: tuicore.InputSelect,
 		Value:   cfg.Security.Interceptor.NotifyChannel,
-		Options: []string{"", "telegram", "discord", "slack"},
+		Options: []string{"", string(types.ChannelTelegram), string(types.ChannelDiscord), string(types.ChannelSlack)},
 	})
 
 	form.AddField(&tuicore.Field{
@@ -933,7 +934,7 @@ func NewLibrarianForm(cfg *config.Config) *tuicore.FormModel {
 
 	form.AddField(&tuicore.Field{
 		Key: "lib_auto_save", Label: "Auto-Save Confidence", Type: tuicore.InputSelect,
-		Value:   cfg.Librarian.AutoSaveConfidence,
+		Value:   string(cfg.Librarian.AutoSaveConfidence),
 		Options: []string{"high", "medium", "low"},
 	})
 
@@ -963,7 +964,7 @@ func NewProviderForm(id string, cfg config.ProviderConfig) *tuicore.FormModel {
 
 	form.AddField(&tuicore.Field{
 		Key: "type", Label: "Type", Type: tuicore.InputSelect,
-		Value:   cfg.Type,
+		Value:   string(cfg.Type),
 		Options: []string{"openai", "anthropic", "gemini", "ollama"},
 	})
 

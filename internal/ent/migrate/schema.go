@@ -227,7 +227,7 @@ var (
 	KnowledgesColumns = []*schema.Column{
 		{Name: "id", Type: field.TypeUUID},
 		{Name: "key", Type: field.TypeString, Unique: true},
-		{Name: "category", Type: field.TypeEnum, Enums: []string{"rule", "definition", "preference", "fact"}},
+		{Name: "category", Type: field.TypeEnum, Enums: []string{"rule", "definition", "preference", "fact", "pattern", "correction"}},
 		{Name: "content", Type: field.TypeString, Size: 2147483647},
 		{Name: "tags", Type: field.TypeJSON, Nullable: true},
 		{Name: "source", Type: field.TypeString, Nullable: true},
