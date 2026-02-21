@@ -634,8 +634,8 @@ func TestGetLearningStats(t *testing.T) {
 		if stats.TotalCount < 4 {
 			t.Errorf("TotalCount: want >= 4, got %d", stats.TotalCount)
 		}
-		if stats.ByCategory["tool_error"] < 3 {
-			t.Errorf("ByCategory[tool_error]: want >= 3, got %d", stats.ByCategory["tool_error"])
+		if stats.ByCategory[entlearning.CategoryToolError] < 3 {
+			t.Errorf("ByCategory[tool_error]: want >= 3, got %d", stats.ByCategory[entlearning.CategoryToolError])
 		}
 	})
 }

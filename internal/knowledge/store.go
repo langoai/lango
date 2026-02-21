@@ -514,7 +514,7 @@ func externalRefKeywordPredicates(query string) []predicate.ExternalRef {
 // LearningStats holds aggregate statistics about learning entries.
 type LearningStats struct {
 	TotalCount       int            `json:"total_count"`
-	ByCategory       map[string]int `json:"by_category"`
+	ByCategory       map[entlearning.Category]int `json:"by_category"`
 	AvgConfidence    float64        `json:"avg_confidence"`
 	OldestEntry      time.Time      `json:"oldest_entry,omitempty"`
 	NewestEntry      time.Time      `json:"newest_entry,omitempty"`
@@ -530,7 +530,7 @@ func (s *Store) GetLearningStats(ctx context.Context) (*LearningStats, error) {
 	}
 
 	stats := &LearningStats{
-		ByCategory: make(map[string]int),
+		ByCategory: make(map[entlearning.Category]int),
 	}
 	stats.TotalCount = len(entries)
 	if stats.TotalCount == 0 {
@@ -539,7 +539,7 @@ func (s *Store) GetLearningStats(ctx context.Context) (*LearningStats, error) {
 
 	var totalConf float64
 	for _, e := range entries {
-		stats.ByCategory[string(e.Category)]++
+		stats.ByCategory[e.Category]++
 		totalConf += e.Confidence
 		stats.TotalOccurrences += e.OccurrenceCount
 		stats.TotalSuccesses += e.SuccessCount
