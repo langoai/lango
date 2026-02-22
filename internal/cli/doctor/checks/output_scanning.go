@@ -6,8 +6,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/langowarny/lango/internal/config"
-	"github.com/langowarny/lango/internal/session"
+	"github.com/langoai/lango/internal/config"
+	"github.com/langoai/lango/internal/session"
 )
 
 // OutputScanningCheck validates output scanning and interceptor configuration.
@@ -34,8 +34,8 @@ func (c *OutputScanningCheck) Run(ctx context.Context, cfg *config.Config) Resul
 				count, err := store.Client().Secret.Query().Count(ctx)
 				if err == nil && count > 0 {
 					return Result{
-						Name:   c.Name(),
-						Status: StatusWarn,
+						Name:    c.Name(),
+						Status:  StatusWarn,
 						Message: "Output interceptor is disabled but secrets exist in database",
 						Details: "Stored secrets will not be redacted from AI output. " +
 							"Enable security.interceptor.enabled to protect sensitive data.",

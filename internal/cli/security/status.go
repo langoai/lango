@@ -8,8 +8,8 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/langowarny/lango/internal/bootstrap"
-	sec "github.com/langowarny/lango/internal/security"
+	"github.com/langoai/lango/internal/bootstrap"
+	sec "github.com/langoai/lango/internal/security"
 )
 
 func newStatusCmd(bootLoader func() (*bootstrap.Result, error)) *cobra.Command {
@@ -42,7 +42,7 @@ func newStatusCmd(bootLoader func() (*bootstrap.Result, error)) *cobra.Command {
 			}
 
 			s := statusOutput{
-				SignerProvider:  cfg.Security.Signer.Provider,
+				SignerProvider: cfg.Security.Signer.Provider,
 				Interceptor:    boolToStatus(cfg.Security.Interceptor.Enabled),
 				PIIRedaction:   boolToStatus(cfg.Security.Interceptor.RedactPII),
 				ApprovalPolicy: policy,

@@ -17,8 +17,8 @@ import (
 	"google.golang.org/adk/tool"
 	"google.golang.org/genai"
 
-	"github.com/langowarny/lango/internal/logging"
-	internal "github.com/langowarny/lango/internal/session"
+	"github.com/langoai/lango/internal/logging"
+	internal "github.com/langoai/lango/internal/session"
 )
 
 func logger() *zap.SugaredLogger { return logging.Agent() }

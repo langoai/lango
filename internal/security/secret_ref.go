@@ -5,7 +5,7 @@ import (
 	"regexp"
 	"sync"
 
-	"github.com/langowarny/lango/internal/logging"
+	"github.com/langoai/lango/internal/logging"
 )
 
 // tokenPattern matches {{secret:name}} and {{decrypt:id}} reference tokens.

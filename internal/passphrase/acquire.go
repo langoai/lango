@@ -6,7 +6,7 @@ import (
 	"path/filepath"
 	"syscall"
 
-	"github.com/langowarny/lango/internal/cli/prompt"
+	"github.com/langoai/lango/internal/cli/prompt"
 	"golang.org/x/term"
 )
 

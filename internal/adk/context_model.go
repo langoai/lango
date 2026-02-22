@@ -11,12 +11,12 @@ import (
 	"google.golang.org/adk/model"
 	"google.golang.org/genai"
 
-	"github.com/langowarny/lango/internal/embedding"
-	"github.com/langowarny/lango/internal/graph"
-	"github.com/langowarny/lango/internal/knowledge"
-	"github.com/langowarny/lango/internal/memory"
-	"github.com/langowarny/lango/internal/prompt"
-	"github.com/langowarny/lango/internal/session"
+	"github.com/langoai/lango/internal/embedding"
+	"github.com/langoai/lango/internal/graph"
+	"github.com/langoai/lango/internal/knowledge"
+	"github.com/langoai/lango/internal/memory"
+	"github.com/langoai/lango/internal/prompt"
+	"github.com/langoai/lango/internal/session"
 )
 
 // MemoryProvider retrieves observations and reflections for a session.
@@ -250,7 +250,7 @@ func (m *ContextAwareModelAdapter) assembleGraphRAGSection(ctx context.Context, 
 		Collections: m.ragOpts.Collections,
 		Limit:       m.ragOpts.Limit,
 		SessionKey:  m.ragOpts.SessionKey,
-		MaxDistance:  m.ragOpts.MaxDistance,
+		MaxDistance: m.ragOpts.MaxDistance,
 	}
 	if sessionKey != "" {
 		opts.SessionKey = sessionKey

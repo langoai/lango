@@ -10,9 +10,9 @@ import (
 
 	"go.uber.org/zap"
 
-	"github.com/langowarny/lango/internal/config"
-	"github.com/langowarny/lango/internal/memory"
-	"github.com/langowarny/lango/internal/session"
+	"github.com/langoai/lango/internal/config"
+	"github.com/langoai/lango/internal/memory"
+	"github.com/langoai/lango/internal/session"
 	"github.com/spf13/cobra"
 )
 

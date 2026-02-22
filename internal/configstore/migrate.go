@@ -6,7 +6,7 @@ import (
 	"log"
 	"os"
 
-	"github.com/langowarny/lango/internal/config"
+	"github.com/langoai/lango/internal/config"
 )
 
 // MigrateFromJSON reads a JSON config file and imports it as an encrypted profile.

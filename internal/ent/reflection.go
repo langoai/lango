@@ -10,7 +10,7 @@ import (
 	"entgo.io/ent"
 	"entgo.io/ent/dialect/sql"
 	"github.com/google/uuid"
-	"github.com/langowarny/lango/internal/ent/reflection"
+	"github.com/langoai/lango/internal/ent/reflection"
 )
 
 // Reflection is the model entity for the Reflection schema.

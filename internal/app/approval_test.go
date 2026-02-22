@@ -3,16 +3,16 @@ package app
 import (
 	"testing"
 
-	"github.com/langowarny/lango/internal/agent"
-	"github.com/langowarny/lango/internal/config"
+	"github.com/langoai/lango/internal/agent"
+	"github.com/langoai/lango/internal/config"
 )
 
 func TestNeedsApproval(t *testing.T) {
 	tests := []struct {
-		give     string
-		tool     *agent.Tool
-		ic       config.InterceptorConfig
-		want     bool
+		give string
+		tool *agent.Tool
+		ic   config.InterceptorConfig
+		want bool
 	}{
 		{
 			give: "dangerous policy + dangerous tool → true",
@@ -104,10 +104,10 @@ func TestNeedsApproval(t *testing.T) {
 
 func TestBuildApprovalSummary(t *testing.T) {
 	tests := []struct {
-		give       string
-		toolName   string
-		params     map[string]interface{}
-		want       string
+		give     string
+		toolName string
+		params   map[string]interface{}
+		want     string
 	}{
 		{
 			give:     "exec command",

@@ -6,7 +6,7 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/langowarny/lango/internal/ent"
+	"github.com/langoai/lango/internal/ent"
 )
 
 // The AuditLogFunc type is an adapter to allow the use of ordinary

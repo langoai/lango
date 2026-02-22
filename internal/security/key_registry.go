@@ -7,8 +7,8 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/langowarny/lango/internal/ent"
-	"github.com/langowarny/lango/internal/ent/key"
+	"github.com/langoai/lango/internal/ent"
+	"github.com/langoai/lango/internal/ent/key"
 )
 
 // KeyType represents the purpose of a key.

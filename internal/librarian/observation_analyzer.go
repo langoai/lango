@@ -7,7 +7,7 @@ import (
 
 	"go.uber.org/zap"
 
-	"github.com/langowarny/lango/internal/memory"
+	"github.com/langoai/lango/internal/memory"
 )
 
 const observationAnalysisPrompt = `You are a proactive knowledge librarian. Analyze the following conversation observations and:

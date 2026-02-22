@@ -7,10 +7,10 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 
-	"github.com/langowarny/lango/internal/cli/tui"
-	"github.com/langowarny/lango/internal/cli/tuicore"
-	"github.com/langowarny/lango/internal/config"
-	"github.com/langowarny/lango/internal/types"
+	"github.com/langoai/lango/internal/cli/tui"
+	"github.com/langoai/lango/internal/cli/tuicore"
+	"github.com/langoai/lango/internal/config"
+	"github.com/langoai/lango/internal/types"
 )
 
 // WizardStep represents the current step in the wizard.

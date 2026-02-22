@@ -13,9 +13,9 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
 	"github.com/google/uuid"
-	"github.com/langowarny/lango/internal/config"
-	"github.com/langowarny/lango/internal/logging"
-	"github.com/langowarny/lango/internal/session"
+	"github.com/langoai/lango/internal/config"
+	"github.com/langoai/lango/internal/logging"
+	"github.com/langoai/lango/internal/session"
 	"golang.org/x/oauth2"
 )
 

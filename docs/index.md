@@ -15,7 +15,7 @@ Single binary. Multi-provider AI. Self-learning knowledge system.
 ## Quick Install
 
 ```bash
-git clone https://github.com/langowarny/lango.git
+git clone https://github.com/langoai/lango.git
 cd lango
 make build
 ./bin/lango onboard

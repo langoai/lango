@@ -8,11 +8,11 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/langowarny/lango/internal/bootstrap"
-	"github.com/langowarny/lango/internal/cli/prompt"
-	"github.com/langowarny/lango/internal/logging"
-	"github.com/langowarny/lango/internal/security"
-	"github.com/langowarny/lango/internal/session"
+	"github.com/langoai/lango/internal/bootstrap"
+	"github.com/langoai/lango/internal/cli/prompt"
+	"github.com/langoai/lango/internal/logging"
+	"github.com/langoai/lango/internal/security"
+	"github.com/langoai/lango/internal/session"
 )
 
 var logger = logging.SubsystemSugar("cli-security")

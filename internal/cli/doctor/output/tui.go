@@ -5,8 +5,8 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/langowarny/lango/internal/cli/doctor/checks"
-	"github.com/langowarny/lango/internal/cli/tui"
+	"github.com/langoai/lango/internal/cli/doctor/checks"
+	"github.com/langoai/lango/internal/cli/tui"
 )
 
 // TUIRenderer renders check results to the terminal with styling.

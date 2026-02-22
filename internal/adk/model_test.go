@@ -5,7 +5,7 @@ import (
 	"iter"
 	"testing"
 
-	"github.com/langowarny/lango/internal/provider"
+	"github.com/langoai/lango/internal/provider"
 	"google.golang.org/adk/model"
 	"google.golang.org/genai"
 )

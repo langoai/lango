@@ -9,7 +9,7 @@ import (
 	"github.com/google/uuid"
 	"go.uber.org/zap"
 
-	"github.com/langowarny/lango/internal/session"
+	"github.com/langoai/lango/internal/session"
 )
 
 // TextGenerator generates text from a prompt. Used to abstract LLM calls for testability.

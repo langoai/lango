@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/langowarny/lango/internal/tools/browser"
+	"github.com/langoai/lango/internal/tools/browser"
 )
 
 func TestBrowserIntegration(t *testing.T) {

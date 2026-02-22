@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"net"
 
-	"github.com/langowarny/lango/internal/config"
+	"github.com/langoai/lango/internal/config"
 )
 
 // NetworkCheck validates network-related configuration.

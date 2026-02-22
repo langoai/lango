@@ -4,8 +4,8 @@ import (
 	"context"
 	"testing"
 
-	"github.com/langowarny/lango/internal/ent/enttest"
-	"github.com/langowarny/lango/internal/security"
+	"github.com/langoai/lango/internal/ent/enttest"
+	"github.com/langoai/lango/internal/security"
 	_ "github.com/mattn/go-sqlite3"
 )
 

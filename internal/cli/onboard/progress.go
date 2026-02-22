@@ -5,7 +5,7 @@ import (
 	"strings"
 
 	"github.com/charmbracelet/lipgloss"
-	"github.com/langowarny/lango/internal/cli/tui"
+	"github.com/langoai/lango/internal/cli/tui"
 )
 
 // StepDef describes a wizard step for display purposes.

@@ -7,8 +7,8 @@ import (
 
 	"go.uber.org/zap"
 
-	"github.com/langowarny/lango/internal/ent/enttest"
-	entlearning "github.com/langowarny/lango/internal/ent/learning"
+	"github.com/langoai/lango/internal/ent/enttest"
+	entlearning "github.com/langoai/lango/internal/ent/learning"
 	_ "github.com/mattn/go-sqlite3"
 )
 

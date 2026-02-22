@@ -6,11 +6,11 @@ import (
 
 	"go.uber.org/zap"
 
-	entlearning "github.com/langowarny/lango/internal/ent/learning"
-	"github.com/langowarny/lango/internal/graph"
-	"github.com/langowarny/lango/internal/knowledge"
-	"github.com/langowarny/lango/internal/session"
-	"github.com/langowarny/lango/internal/types"
+	entlearning "github.com/langoai/lango/internal/ent/learning"
+	"github.com/langoai/lango/internal/graph"
+	"github.com/langoai/lango/internal/knowledge"
+	"github.com/langoai/lango/internal/session"
+	"github.com/langoai/lango/internal/types"
 )
 
 const sessionLearnerPrompt = `You are a session analysis assistant. Analyze this complete conversation session and extract high-confidence learnings.

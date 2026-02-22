@@ -9,12 +9,12 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/langowarny/lango/internal/agent"
-	"github.com/langowarny/lango/internal/payment"
-	"github.com/langowarny/lango/internal/security"
-	"github.com/langowarny/lango/internal/session"
-	"github.com/langowarny/lango/internal/wallet"
-	"github.com/langowarny/lango/internal/x402"
+	"github.com/langoai/lango/internal/agent"
+	"github.com/langoai/lango/internal/payment"
+	"github.com/langoai/lango/internal/security"
+	"github.com/langoai/lango/internal/session"
+	"github.com/langoai/lango/internal/wallet"
+	"github.com/langoai/lango/internal/x402"
 )
 
 // BuildTools creates the payment agent tools.
@@ -183,11 +183,11 @@ func buildLimitsTool(limiter wallet.SpendingLimiter) *agent.Tool {
 			}
 
 			return map[string]interface{}{
-				"maxPerTx":        wallet.FormatUSDC(entLimiter.MaxPerTx()),
-				"maxDaily":        wallet.FormatUSDC(entLimiter.MaxDaily()),
-				"dailySpent":      wallet.FormatUSDC(spent),
-				"dailyRemaining":  wallet.FormatUSDC(remaining),
-				"currency":        "USDC",
+				"maxPerTx":       wallet.FormatUSDC(entLimiter.MaxPerTx()),
+				"maxDaily":       wallet.FormatUSDC(entLimiter.MaxDaily()),
+				"dailySpent":     wallet.FormatUSDC(spent),
+				"dailyRemaining": wallet.FormatUSDC(remaining),
+				"currency":       "USDC",
 			}, nil
 		},
 	}

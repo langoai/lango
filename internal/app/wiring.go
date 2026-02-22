@@ -12,32 +12,32 @@ import (
 
 	"github.com/ethereum/go-ethereum/ethclient"
 
-	"github.com/langowarny/lango/internal/a2a"
-	"github.com/langowarny/lango/internal/adk"
-	"github.com/langowarny/lango/internal/agent"
-	"github.com/langowarny/lango/internal/background"
-	"github.com/langowarny/lango/internal/bootstrap"
-	"github.com/langowarny/lango/internal/config"
-	cronpkg "github.com/langowarny/lango/internal/cron"
-	"github.com/langowarny/lango/internal/embedding"
-	"github.com/langowarny/lango/internal/gateway"
-	"github.com/langowarny/lango/internal/graph"
-	"github.com/langowarny/lango/internal/knowledge"
-	"github.com/langowarny/lango/internal/learning"
-	"github.com/langowarny/lango/internal/librarian"
-	"github.com/langowarny/lango/internal/memory"
-	"github.com/langowarny/lango/internal/orchestration"
-	"github.com/langowarny/lango/internal/payment"
-	"github.com/langowarny/lango/internal/prompt"
-	x402pkg "github.com/langowarny/lango/internal/x402"
-	"github.com/langowarny/lango/internal/provider"
-	"github.com/langowarny/lango/internal/security"
-	"github.com/langowarny/lango/internal/session"
-	"github.com/langowarny/lango/internal/skill"
-	"github.com/langowarny/lango/internal/supervisor"
-	"github.com/langowarny/lango/internal/wallet"
-	"github.com/langowarny/lango/internal/workflow"
-	"github.com/langowarny/lango/skills"
+	"github.com/langoai/lango/internal/a2a"
+	"github.com/langoai/lango/internal/adk"
+	"github.com/langoai/lango/internal/agent"
+	"github.com/langoai/lango/internal/background"
+	"github.com/langoai/lango/internal/bootstrap"
+	"github.com/langoai/lango/internal/config"
+	cronpkg "github.com/langoai/lango/internal/cron"
+	"github.com/langoai/lango/internal/embedding"
+	"github.com/langoai/lango/internal/gateway"
+	"github.com/langoai/lango/internal/graph"
+	"github.com/langoai/lango/internal/knowledge"
+	"github.com/langoai/lango/internal/learning"
+	"github.com/langoai/lango/internal/librarian"
+	"github.com/langoai/lango/internal/memory"
+	"github.com/langoai/lango/internal/orchestration"
+	"github.com/langoai/lango/internal/payment"
+	"github.com/langoai/lango/internal/prompt"
+	"github.com/langoai/lango/internal/provider"
+	"github.com/langoai/lango/internal/security"
+	"github.com/langoai/lango/internal/session"
+	"github.com/langoai/lango/internal/skill"
+	"github.com/langoai/lango/internal/supervisor"
+	"github.com/langoai/lango/internal/wallet"
+	"github.com/langoai/lango/internal/workflow"
+	x402pkg "github.com/langoai/lango/internal/x402"
+	"github.com/langoai/lango/skills"
 	"google.golang.org/adk/model"
 	adk_tool "google.golang.org/adk/tool"
 )
@@ -220,8 +220,8 @@ func initKnowledge(cfg *config.Config, store session.Store, gc *graphComponents)
 
 	logger().Info("knowledge system initialized")
 	return &knowledgeComponents{
-		store:  kStore,
-		engine: engine,
+		store:    kStore,
+		engine:   engine,
 		observer: observer,
 	}
 }
@@ -687,7 +687,7 @@ func initAgent(ctx context.Context, sv *supervisor.Supervisor, cfg *config.Confi
 			ragOpts := embedding.RetrieveOptions{
 				Limit:       cfg.Embedding.RAG.MaxResults,
 				Collections: cfg.Embedding.RAG.Collections,
-				MaxDistance:  cfg.Embedding.RAG.MaxDistance,
+				MaxDistance: cfg.Embedding.RAG.MaxDistance,
 			}
 			if ragOpts.Limit <= 0 {
 				ragOpts.Limit = 5
@@ -722,7 +722,7 @@ func initAgent(ctx context.Context, sv *supervisor.Supervisor, cfg *config.Confi
 			ragOpts := embedding.RetrieveOptions{
 				Limit:       cfg.Embedding.RAG.MaxResults,
 				Collections: cfg.Embedding.RAG.Collections,
-				MaxDistance:  cfg.Embedding.RAG.MaxDistance,
+				MaxDistance: cfg.Embedding.RAG.MaxDistance,
 			}
 			if ragOpts.Limit <= 0 {
 				ragOpts.Limit = 5
@@ -919,7 +919,7 @@ func (a *ragServiceAdapter) Retrieve(ctx context.Context, query string, opts gra
 		Collections: opts.Collections,
 		Limit:       opts.Limit,
 		SessionKey:  opts.SessionKey,
-		MaxDistance:  opts.MaxDistance,
+		MaxDistance: opts.MaxDistance,
 	}
 
 	results, err := a.inner.Retrieve(ctx, query, embOpts)

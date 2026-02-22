@@ -8,8 +8,8 @@ import (
 	"github.com/anthropics/anthropic-sdk-go/option"
 	"github.com/anthropics/anthropic-sdk-go/packages/param"
 	"github.com/anthropics/anthropic-sdk-go/shared/constant"
-	"github.com/langowarny/lango/internal/logging"
-	"github.com/langowarny/lango/internal/provider"
+	"github.com/langoai/lango/internal/logging"
+	"github.com/langoai/lango/internal/provider"
 )
 
 var logger = logging.SubsystemSugar("provider.anthropic")

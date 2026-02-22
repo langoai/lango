@@ -6,10 +6,10 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/langowarny/lango/internal/channels/discord"
-	"github.com/langowarny/lango/internal/channels/slack"
-	"github.com/langowarny/lango/internal/channels/telegram"
-	"github.com/langowarny/lango/internal/types"
+	"github.com/langoai/lango/internal/channels/discord"
+	"github.com/langoai/lango/internal/channels/slack"
+	"github.com/langoai/lango/internal/channels/telegram"
+	"github.com/langoai/lango/internal/types"
 )
 
 // channelSender implements cron.ChannelSender, background.ChannelNotifier, and

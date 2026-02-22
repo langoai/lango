@@ -9,9 +9,9 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/langowarny/lango/internal/config"
-	"github.com/langowarny/lango/internal/ent"
-	"github.com/langowarny/lango/internal/security"
+	"github.com/langoai/lango/internal/config"
+	"github.com/langoai/lango/internal/ent"
+	"github.com/langoai/lango/internal/security"
 )
 
 func testClient(t *testing.T) *ent.Client {

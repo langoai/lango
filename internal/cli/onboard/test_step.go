@@ -3,7 +3,7 @@ package onboard
 import (
 	"fmt"
 
-	"github.com/langowarny/lango/internal/config"
+	"github.com/langoai/lango/internal/config"
 )
 
 // TestResult represents a single configuration validation result.

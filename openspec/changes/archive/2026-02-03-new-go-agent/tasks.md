@@ -1,6 +1,6 @@
 ## 1. Project Setup
 
-- [x] 1.1 Initialize Go module with `go mod init github.com/langowarny/lango`
+- [x] 1.1 Initialize Go module with `go mod init github.com/langoai/lango`
 - [x] 1.2 Create project directory structure (`cmd/`, `internal/`, `pkg/`)
 - [x] 1.3 Add core dependencies to go.mod (ADK-Go, zap, chi, gorilla/websocket)
 - [x] 1.4 Create Makefile with build/test/lint targets

@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/langowarny/lango/internal/session"
+	"github.com/langoai/lango/internal/session"
 )
 
 // mockStore implements session.Store for testing purposes.

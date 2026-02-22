@@ -12,8 +12,8 @@ import (
 	"entgo.io/ent/dialect/sql/sqlgraph"
 	"entgo.io/ent/dialect/sql/sqljson"
 	"entgo.io/ent/schema/field"
-	"github.com/langowarny/lango/internal/ent/learning"
-	"github.com/langowarny/lango/internal/ent/predicate"
+	"github.com/langoai/lango/internal/ent/learning"
+	"github.com/langoai/lango/internal/ent/predicate"
 )
 
 // LearningUpdate is the builder for updating Learning entities.

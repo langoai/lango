@@ -3,8 +3,8 @@ package adk
 import (
 	"testing"
 
-	"github.com/langowarny/lango/internal/agent"
-	"github.com/langowarny/lango/internal/knowledge"
+	"github.com/langoai/lango/internal/agent"
+	"github.com/langoai/lango/internal/knowledge"
 )
 
 func TestToolRegistryAdapter_ListTools(t *testing.T) {

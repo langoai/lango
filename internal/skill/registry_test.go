@@ -8,7 +8,7 @@ import (
 
 	"go.uber.org/zap"
 
-	"github.com/langowarny/lango/internal/agent"
+	"github.com/langoai/lango/internal/agent"
 )
 
 func newTestRegistry(t *testing.T) *Registry {

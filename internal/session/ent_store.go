@@ -16,12 +16,12 @@ import (
 	"entgo.io/ent/dialect"
 	entsql "entgo.io/ent/dialect/sql"
 	"entgo.io/ent/dialect/sql/schema"
-	"github.com/langowarny/lango/internal/ent"
-	"github.com/langowarny/lango/internal/ent/message"
-	entschema "github.com/langowarny/lango/internal/ent/schema"
-	entsession "github.com/langowarny/lango/internal/ent/session"
-	"github.com/langowarny/lango/internal/logging"
-	"github.com/langowarny/lango/internal/types"
+	"github.com/langoai/lango/internal/ent"
+	"github.com/langoai/lango/internal/ent/message"
+	entschema "github.com/langoai/lango/internal/ent/schema"
+	entsession "github.com/langoai/lango/internal/ent/session"
+	"github.com/langoai/lango/internal/logging"
+	"github.com/langoai/lango/internal/types"
 	_ "github.com/mattn/go-sqlite3" // Use cgo driver for SQLCipher support
 )
 

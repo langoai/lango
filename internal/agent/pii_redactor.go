@@ -3,7 +3,7 @@ package agent
 import (
 	"sort"
 
-	"github.com/langowarny/lango/internal/logging"
+	"github.com/langoai/lango/internal/logging"
 )
 
 var piiLogger = logging.SubsystemSugar("pii-redactor")

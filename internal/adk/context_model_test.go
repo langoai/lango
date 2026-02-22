@@ -8,10 +8,10 @@ import (
 	"google.golang.org/adk/model"
 	"google.golang.org/genai"
 
-	"github.com/langowarny/lango/internal/memory"
-	"github.com/langowarny/lango/internal/prompt"
-	"github.com/langowarny/lango/internal/provider"
-	"github.com/langowarny/lango/internal/session"
+	"github.com/langoai/lango/internal/memory"
+	"github.com/langoai/lango/internal/prompt"
+	"github.com/langoai/lango/internal/provider"
+	"github.com/langoai/lango/internal/session"
 )
 
 // mockMemoryProvider records calls and returns canned data.

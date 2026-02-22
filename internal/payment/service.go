@@ -12,9 +12,9 @@ import (
 	"github.com/ethereum/go-ethereum/ethclient"
 	"github.com/google/uuid"
 
-	"github.com/langowarny/lango/internal/ent"
-	"github.com/langowarny/lango/internal/ent/paymenttx"
-	"github.com/langowarny/lango/internal/wallet"
+	"github.com/langoai/lango/internal/ent"
+	"github.com/langoai/lango/internal/ent/paymenttx"
+	"github.com/langoai/lango/internal/wallet"
 )
 
 // Service orchestrates blockchain payment operations.

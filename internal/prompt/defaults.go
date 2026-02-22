@@ -1,7 +1,7 @@
 package prompt
 
 import (
-	"github.com/langowarny/lango/prompts"
+	"github.com/langoai/lango/prompts"
 )
 
 const (
