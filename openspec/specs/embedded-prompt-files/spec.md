@@ -28,11 +28,11 @@ The system SHALL embed all default prompt `.md` files into the binary at build t
 - **AND** the system SHALL NOT panic or return an error
 
 ### Requirement: AGENTS.md covers agent identity
-The `AGENTS.md` file SHALL define the agent's identity including name, role, eight tool categories (exec, filesystem, browser, crypto, secrets, cron, background, workflow), 6-layer knowledge system awareness, observational memory awareness, multi-channel awareness, and response principles.
+The `AGENTS.md` file SHALL define the agent's identity including name, role, ten tool categories (exec, filesystem, browser, crypto, secrets, cron, background, workflow, skills, P2P network), 6-layer knowledge system awareness, observational memory awareness, multi-channel awareness, and response principles.
 
 #### Scenario: Identity prompt contains tool categories
 - **WHEN** the identity section is rendered
-- **THEN** it SHALL mention exec, filesystem, browser, crypto, secrets, cron, background, and workflow tools
+- **THEN** it SHALL mention exec, filesystem, browser, crypto, secrets, cron, background, workflow, skills, and P2P network tools
 
 #### Scenario: Identity prompt contains knowledge system
 - **WHEN** the identity section is rendered

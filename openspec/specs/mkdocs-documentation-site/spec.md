@@ -50,11 +50,22 @@ The documentation SHALL have dedicated pages for: AI Providers, Channels, Knowle
 - **THEN** each feature SHALL have its own page with configuration reference and usage examples
 
 ### Requirement: CLI reference documentation
-The documentation SHALL include a complete CLI reference organized by command category: Core, Config Management, Agent & Memory, Security, Payment, and Automation commands.
+The documentation SHALL include a complete CLI reference organized by command category: Core, Config Management, Agent & Memory, Security, Payment, P2P, and Automation commands.
 
 #### Scenario: CLI commands documented
 - **WHEN** a user looks up a CLI command
 - **THEN** they SHALL find syntax, flags, and usage examples
+
+### Requirement: Navigation includes P2P pages
+The mkdocs.yml navigation SHALL include "P2P Network: features/p2p-network.md" in the Features section and "P2P Commands: cli/p2p.md" in the CLI Reference section.
+
+#### Scenario: P2P feature in nav
+- **WHEN** the mkdocs site is built
+- **THEN** the Features navigation section includes a "P2P Network" entry after "A2A Protocol"
+
+#### Scenario: P2P CLI in nav
+- **WHEN** the mkdocs site is built
+- **THEN** the CLI Reference navigation section includes a "P2P Commands" entry after "Payment Commands"
 
 ### Requirement: Configuration reference
 The documentation SHALL include a complete configuration reference page listing all configuration keys with type, default value, and description, organized by category.
