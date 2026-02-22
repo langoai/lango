@@ -9,7 +9,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.uber.org/zap"
 
-	"github.com/langowarny/lango/internal/ent/enttest"
+	"github.com/langoai/lango/internal/ent/enttest"
 	_ "github.com/mattn/go-sqlite3"
 )
 

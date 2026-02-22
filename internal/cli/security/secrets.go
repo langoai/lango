@@ -9,8 +9,8 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/langowarny/lango/internal/bootstrap"
-	"github.com/langowarny/lango/internal/cli/prompt"
+	"github.com/langoai/lango/internal/bootstrap"
+	"github.com/langoai/lango/internal/cli/prompt"
 )
 
 func newSecretsCmd(bootLoader func() (*bootstrap.Result, error)) *cobra.Command {

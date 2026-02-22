@@ -3,7 +3,7 @@ package clitypes
 import (
 	"os"
 
-	"github.com/langowarny/lango/internal/provider"
+	"github.com/langoai/lango/internal/provider"
 )
 
 // ProviderMetadata holds information about a provider for CLI display.

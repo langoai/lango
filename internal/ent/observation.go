@@ -10,7 +10,7 @@ import (
 	"entgo.io/ent"
 	"entgo.io/ent/dialect/sql"
 	"github.com/google/uuid"
-	"github.com/langowarny/lango/internal/ent/observation"
+	"github.com/langoai/lango/internal/ent/observation"
 )
 
 // Observation is the model entity for the Observation schema.

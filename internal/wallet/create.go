@@ -7,7 +7,7 @@ import (
 
 	"github.com/ethereum/go-ethereum/crypto"
 
-	"github.com/langowarny/lango/internal/security"
+	"github.com/langoai/lango/internal/security"
 )
 
 const walletKeyName = "wallet.privatekey"

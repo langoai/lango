@@ -4,7 +4,7 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/langowarny/lango/internal/logging"
+	"github.com/langoai/lango/internal/logging"
 )
 
 var secretLogger = logging.SubsystemSugar("secret-scanner")

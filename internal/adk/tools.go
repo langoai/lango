@@ -9,7 +9,7 @@ import (
 	"google.golang.org/adk/tool"
 	"google.golang.org/adk/tool/functiontool"
 
-	"github.com/langowarny/lango/internal/agent"
+	"github.com/langoai/lango/internal/agent"
 )
 
 // AdaptTool converts an internal agent.Tool to an ADK tool.Tool

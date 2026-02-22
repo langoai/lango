@@ -5,9 +5,9 @@ import (
 	"sort"
 	"strconv"
 
-	"github.com/langowarny/lango/internal/cli/tuicore"
-	"github.com/langowarny/lango/internal/config"
-	"github.com/langowarny/lango/internal/types"
+	"github.com/langoai/lango/internal/cli/tuicore"
+	"github.com/langoai/lango/internal/config"
+	"github.com/langoai/lango/internal/types"
 )
 
 // NewProviderStepForm creates the Step 1 form: Provider Setup.

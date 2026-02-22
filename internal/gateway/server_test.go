@@ -9,7 +9,7 @@ import (
 	"time"
 
 	"github.com/gorilla/websocket"
-	"github.com/langowarny/lango/internal/approval"
+	"github.com/langoai/lango/internal/approval"
 )
 
 func TestGatewayServer(t *testing.T) {

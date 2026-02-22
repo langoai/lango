@@ -5,7 +5,7 @@ import (
 	"testing"
 	"time"
 
-	internal "github.com/langowarny/lango/internal/session"
+	internal "github.com/langoai/lango/internal/session"
 	"google.golang.org/adk/model"
 	"google.golang.org/adk/session"
 	"google.golang.org/genai"

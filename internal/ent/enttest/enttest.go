@@ -5,12 +5,12 @@ package enttest
 import (
 	"context"
 
-	"github.com/langowarny/lango/internal/ent"
+	"github.com/langoai/lango/internal/ent"
 	// required by schema hooks.
-	_ "github.com/langowarny/lango/internal/ent/runtime"
+	_ "github.com/langoai/lango/internal/ent/runtime"
 
 	"entgo.io/ent/dialect/sql/schema"
-	"github.com/langowarny/lango/internal/ent/migrate"
+	"github.com/langoai/lango/internal/ent/migrate"
 )
 
 type (

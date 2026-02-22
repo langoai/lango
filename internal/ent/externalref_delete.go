@@ -8,8 +8,8 @@ import (
 	"entgo.io/ent/dialect/sql"
 	"entgo.io/ent/dialect/sql/sqlgraph"
 	"entgo.io/ent/schema/field"
-	"github.com/langowarny/lango/internal/ent/externalref"
-	"github.com/langowarny/lango/internal/ent/predicate"
+	"github.com/langoai/lango/internal/ent/externalref"
+	"github.com/langoai/lango/internal/ent/predicate"
 )
 
 // ExternalRefDelete is the builder for deleting a ExternalRef entity.

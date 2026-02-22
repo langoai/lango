@@ -5,7 +5,7 @@ import (
 
 	"go.uber.org/zap"
 
-	"github.com/langowarny/lango/internal/graph"
+	"github.com/langoai/lango/internal/graph"
 )
 
 // TripleCallback is a hook that receives graph triples for asynchronous storage.

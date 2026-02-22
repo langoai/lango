@@ -10,7 +10,7 @@ import (
 	"github.com/stretchr/testify/require"
 	adk_tool "google.golang.org/adk/tool"
 
-	"github.com/langowarny/lango/internal/agent"
+	"github.com/langoai/lango/internal/agent"
 )
 
 func newTestTool(name string) *agent.Tool {
@@ -29,7 +29,7 @@ type stubTool struct {
 	name string
 }
 
-func (s *stubTool) Name() string       { return s.name }
+func (s *stubTool) Name() string        { return s.name }
 func (s *stubTool) Description() string { return "stub " + s.name }
 func (s *stubTool) IsLongRunning() bool { return false }
 

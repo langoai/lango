@@ -6,7 +6,7 @@ import (
 	"time"
 
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
-	"github.com/langowarny/lango/internal/approval"
+	"github.com/langoai/lango/internal/approval"
 )
 
 // MockApprovalBotAPI extends MockBotAPI with Request support.

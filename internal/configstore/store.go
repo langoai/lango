@@ -6,10 +6,10 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/langowarny/lango/internal/config"
-	"github.com/langowarny/lango/internal/ent"
-	"github.com/langowarny/lango/internal/ent/configprofile"
-	"github.com/langowarny/lango/internal/security"
+	"github.com/langoai/lango/internal/config"
+	"github.com/langoai/lango/internal/ent"
+	"github.com/langoai/lango/internal/ent/configprofile"
+	"github.com/langoai/lango/internal/security"
 )
 
 // Sentinel errors for configstore operations.

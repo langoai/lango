@@ -8,7 +8,7 @@ import (
 	"github.com/coinbase/x402/go/mechanisms/evm"
 	evmsigners "github.com/coinbase/x402/go/signers/evm"
 
-	"github.com/langowarny/lango/internal/security"
+	"github.com/langoai/lango/internal/security"
 )
 
 // SignerProvider creates an EVM signer for X402 payments.

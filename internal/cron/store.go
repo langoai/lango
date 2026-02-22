@@ -7,9 +7,9 @@ import (
 
 	"github.com/google/uuid"
 
-	"github.com/langowarny/lango/internal/ent"
-	"github.com/langowarny/lango/internal/ent/cronjob"
-	"github.com/langowarny/lango/internal/ent/cronjobhistory"
+	"github.com/langoai/lango/internal/ent"
+	"github.com/langoai/lango/internal/ent/cronjob"
+	"github.com/langoai/lango/internal/ent/cronjobhistory"
 )
 
 // Store defines the persistence interface for cron jobs and their history.

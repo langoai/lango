@@ -10,7 +10,7 @@ import (
 	"entgo.io/ent"
 	"entgo.io/ent/dialect/sql"
 	"github.com/google/uuid"
-	"github.com/langowarny/lango/internal/ent/paymenttx"
+	"github.com/langoai/lango/internal/ent/paymenttx"
 )
 
 // PaymentTx is the model entity for the PaymentTx schema.

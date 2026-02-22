@@ -3,8 +3,8 @@ package knowledge
 import (
 	"context"
 
-	entknowledge "github.com/langowarny/lango/internal/ent/knowledge"
-	entlearning "github.com/langowarny/lango/internal/ent/learning"
+	entknowledge "github.com/langoai/lango/internal/ent/knowledge"
+	entlearning "github.com/langoai/lango/internal/ent/learning"
 )
 
 // ContextLayer represents the 6 context layers in the self-learning architecture.

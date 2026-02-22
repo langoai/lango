@@ -11,7 +11,7 @@ import (
 	"entgo.io/ent/dialect/sql/sqlgraph"
 	"entgo.io/ent/schema/field"
 	"github.com/google/uuid"
-	"github.com/langowarny/lango/internal/ent/cronjob"
+	"github.com/langoai/lango/internal/ent/cronjob"
 )
 
 // CronJobCreate is the builder for creating a CronJob entity.

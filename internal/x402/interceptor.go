@@ -12,7 +12,7 @@ import (
 	evmclient "github.com/coinbase/x402/go/mechanisms/evm/exact/client"
 	"go.uber.org/zap"
 
-	"github.com/langowarny/lango/internal/wallet"
+	"github.com/langoai/lango/internal/wallet"
 )
 
 // Interceptor provides an X402-enabled HTTP client via the Coinbase SDK.

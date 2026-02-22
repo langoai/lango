@@ -11,7 +11,7 @@ import (
 	"entgo.io/ent"
 	"entgo.io/ent/dialect/sql"
 	"github.com/google/uuid"
-	"github.com/langowarny/lango/internal/ent/learning"
+	"github.com/langoai/lango/internal/ent/learning"
 )
 
 // Learning is the model entity for the Learning schema.

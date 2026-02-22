@@ -15,11 +15,11 @@ import (
 	"entgo.io/ent/dialect/sql/schema"
 	_ "github.com/mattn/go-sqlite3"
 
-	"github.com/langowarny/lango/internal/config"
-	"github.com/langowarny/lango/internal/configstore"
-	"github.com/langowarny/lango/internal/ent"
-	"github.com/langowarny/lango/internal/passphrase"
-	"github.com/langowarny/lango/internal/security"
+	"github.com/langoai/lango/internal/config"
+	"github.com/langoai/lango/internal/configstore"
+	"github.com/langoai/lango/internal/ent"
+	"github.com/langoai/lango/internal/passphrase"
+	"github.com/langoai/lango/internal/security"
 )
 
 // Result holds everything produced by the bootstrap process.

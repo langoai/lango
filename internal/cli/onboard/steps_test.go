@@ -3,8 +3,8 @@ package onboard
 import (
 	"testing"
 
-	"github.com/langowarny/lango/internal/cli/tuicore"
-	"github.com/langowarny/lango/internal/config"
+	"github.com/langoai/lango/internal/cli/tuicore"
+	"github.com/langoai/lango/internal/config"
 )
 
 func fieldByKey(form *tuicore.FormModel, key string) *tuicore.Field {

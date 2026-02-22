@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/langowarny/lango/internal/agent"
+	"github.com/langoai/lango/internal/agent"
 )
 
 // AgentSpec defines a sub-agent's identity, routing metadata, and prompt structure.
@@ -161,8 +161,8 @@ Return confirmation of created schedules, task IDs for background jobs, or workf
 		CannotDo: []string{"shell commands", "file operations", "web browsing", "cryptographic operations", "knowledge search"},
 	},
 	{
-		Name:          "planner",
-		Description:   "Task decomposition and planning (LLM reasoning only, no tools)",
+		Name:        "planner",
+		Description: "Task decomposition and planning (LLM reasoning only, no tools)",
 		Instruction: `## What You Do
 You decompose complex tasks into clear, actionable steps and design execution plans. You use LLM reasoning only — no tools.
 

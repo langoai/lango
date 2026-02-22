@@ -3,7 +3,7 @@ package memory
 import (
 	"testing"
 
-	"github.com/langowarny/lango/internal/session"
+	"github.com/langoai/lango/internal/session"
 	"github.com/stretchr/testify/assert"
 )
 

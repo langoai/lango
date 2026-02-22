@@ -7,8 +7,8 @@ import (
 	"os"
 	"text/tabwriter"
 
-	"github.com/langowarny/lango/internal/config"
-	graphstore "github.com/langowarny/lango/internal/graph"
+	"github.com/langoai/lango/internal/config"
+	graphstore "github.com/langoai/lango/internal/graph"
 	"github.com/spf13/cobra"
 )
 

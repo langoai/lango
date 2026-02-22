@@ -7,8 +7,8 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/langowarny/lango/internal/logging"
-	"github.com/langowarny/lango/internal/types"
+	"github.com/langoai/lango/internal/logging"
+	"github.com/langoai/lango/internal/types"
 )
 
 var rpcLogger = logging.SubsystemSugar("security")

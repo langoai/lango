@@ -9,7 +9,7 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/langowarny/lango/internal/bootstrap"
+	"github.com/langoai/lango/internal/bootstrap"
 )
 
 func newHistoryCmd(bootLoader func() (*bootstrap.Result, error)) *cobra.Command {

@@ -9,7 +9,7 @@ import (
 	"github.com/go-chi/chi/v5"
 	"go.uber.org/zap"
 
-	"github.com/langowarny/lango/internal/config"
+	"github.com/langoai/lango/internal/config"
 )
 
 // fakeAgent implements agent.Agent for testing.
@@ -19,8 +19,8 @@ type fakeAgent struct {
 	subAgents   []fakeAgent
 }
 
-func (a fakeAgent) Name() string        { return a.name }
-func (a fakeAgent) Description() string  { return a.description }
+func (a fakeAgent) Name() string           { return a.name }
+func (a fakeAgent) Description() string    { return a.description }
 func (a fakeAgent) SubAgents() []fakeAgent { return a.subAgents }
 
 func TestAgentCard(t *testing.T) {
