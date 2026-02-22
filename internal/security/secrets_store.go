@@ -6,9 +6,9 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/langowarny/lango/internal/ent"
-	"github.com/langowarny/lango/internal/ent/secret"
-	"github.com/langowarny/lango/internal/logging"
+	"github.com/langoai/lango/internal/ent"
+	"github.com/langoai/lango/internal/ent/secret"
+	"github.com/langoai/lango/internal/logging"
 )
 
 var secretsLogger = logging.SubsystemSugar("secrets-store")

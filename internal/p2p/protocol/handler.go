@@ -11,8 +11,8 @@ import (
 	"github.com/libp2p/go-libp2p/core/network"
 	"go.uber.org/zap"
 
-	"github.com/langowarny/lango/internal/p2p/firewall"
-	"github.com/langowarny/lango/internal/p2p/handshake"
+	"github.com/langoai/lango/internal/p2p/firewall"
+	"github.com/langoai/lango/internal/p2p/handshake"
 )
 
 // ToolExecutor executes a tool by name with the given parameters.
@@ -24,12 +24,12 @@ type CardProvider func() map[string]interface{}
 
 // Handler processes A2A-over-P2P messages on libp2p streams.
 type Handler struct {
-	sessions  *handshake.SessionStore
-	firewall  *firewall.Firewall
-	executor  ToolExecutor
-	cardFn    CardProvider
-	localDID  string
-	logger    *zap.SugaredLogger
+	sessions *handshake.SessionStore
+	firewall *firewall.Firewall
+	executor ToolExecutor
+	cardFn   CardProvider
+	localDID string
+	logger   *zap.SugaredLogger
 }
 
 // HandlerConfig configures the protocol handler.

@@ -1,7 +1,7 @@
 package tuicore
 
 import (
-	"github.com/langowarny/lango/internal/config"
+	"github.com/langoai/lango/internal/config"
 )
 
 // ConfigState holds the current configuration state and tracking for dirty fields.

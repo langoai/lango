@@ -1,4 +1,4 @@
-module github.com/langowarny/lango
+module github.com/langoai/lango
 
 go 1.25.4
 

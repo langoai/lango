@@ -9,8 +9,8 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/langowarny/lango/internal/bootstrap"
-	"github.com/langowarny/lango/internal/p2p/discovery"
+	"github.com/langoai/lango/internal/bootstrap"
+	"github.com/langoai/lango/internal/p2p/discovery"
 )
 
 func newDiscoverCmd(bootLoader func() (*bootstrap.Result, error)) *cobra.Command {

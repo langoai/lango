@@ -7,10 +7,10 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/langowarny/lango/internal/bootstrap"
-	"github.com/langowarny/lango/internal/cli/doctor/checks"
-	"github.com/langowarny/lango/internal/cli/doctor/output"
-	"github.com/langowarny/lango/internal/config"
+	"github.com/langoai/lango/internal/bootstrap"
+	"github.com/langoai/lango/internal/cli/doctor/checks"
+	"github.com/langoai/lango/internal/cli/doctor/output"
+	"github.com/langoai/lango/internal/config"
 )
 
 // Options holds the doctor command options.

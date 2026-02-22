@@ -4,7 +4,7 @@ package checks
 import (
 	"context"
 
-	"github.com/langowarny/lango/internal/config"
+	"github.com/langoai/lango/internal/config"
 )
 
 // Status represents the result status of a check.

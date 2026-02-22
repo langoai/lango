@@ -9,7 +9,7 @@ import (
 	"google.golang.org/adk/agent"
 	"google.golang.org/adk/server/adka2a"
 
-	"github.com/langowarny/lango/internal/config"
+	"github.com/langoai/lango/internal/config"
 )
 
 // Server exposes a Lango agent as an A2A-compatible server.
@@ -107,7 +107,9 @@ func (s *Server) SetPricing(pricing *PricingInfo) {
 
 // RegisterRoutes mounts the A2A routes on the given HTTP mux.
 // - GET /.well-known/agent.json — serves the Agent Card
-func (s *Server) RegisterRoutes(mux interface{ Get(string, http.HandlerFunc) }) {
+func (s *Server) RegisterRoutes(mux interface {
+	Get(string, http.HandlerFunc)
+}) {
 	mux.Get("/.well-known/agent.json", s.handleAgentCard)
 	s.logger.Infow("a2a routes registered",
 		"agentCard", "/.well-known/agent.json",

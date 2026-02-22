@@ -13,8 +13,8 @@ import (
 	"time"
 
 	"github.com/creack/pty"
-	"github.com/langowarny/lango/internal/logging"
-	"github.com/langowarny/lango/internal/security"
+	"github.com/langoai/lango/internal/logging"
+	"github.com/langoai/lango/internal/security"
 )
 
 var logger = logging.SubsystemSugar("tool.exec")
@@ -24,8 +24,8 @@ type Config struct {
 	DefaultTimeout  time.Duration
 	AllowBackground bool
 	WorkDir         string
-	EnvFilter       []string // environment variables to exclude
-	EnvWhitelist    []string // if set, ONLY these vars are allowed
+	EnvFilter       []string           // environment variables to exclude
+	EnvWhitelist    []string           // if set, ONLY these vars are allowed
 	Refs            *security.RefStore // secret reference token resolver
 }
 

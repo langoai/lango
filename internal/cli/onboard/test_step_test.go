@@ -3,7 +3,7 @@ package onboard
 import (
 	"testing"
 
-	"github.com/langowarny/lango/internal/config"
+	"github.com/langoai/lango/internal/config"
 )
 
 func TestRunConfigTests_ValidConfig(t *testing.T) {

@@ -20,7 +20,7 @@ title: Installation
 ## Build from Source
 
 ```bash
-git clone https://github.com/langowarny/lango.git
+git clone https://github.com/langoai/lango.git
 cd lango
 make build
 ```
@@ -36,7 +36,7 @@ make install
 You can also install directly with `go install`:
 
 ```bash
-CGO_ENABLED=1 go install github.com/langowarny/lango/cmd/lango@latest
+CGO_ENABLED=1 go install github.com/langoai/lango/cmd/lango@latest
 ```
 
 ## Verify Installation

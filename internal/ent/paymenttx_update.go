@@ -11,8 +11,8 @@ import (
 	"entgo.io/ent/dialect/sql"
 	"entgo.io/ent/dialect/sql/sqlgraph"
 	"entgo.io/ent/schema/field"
-	"github.com/langowarny/lango/internal/ent/paymenttx"
-	"github.com/langowarny/lango/internal/ent/predicate"
+	"github.com/langoai/lango/internal/ent/paymenttx"
+	"github.com/langoai/lango/internal/ent/predicate"
 )
 
 // PaymentTxUpdate is the builder for updating PaymentTx entities.

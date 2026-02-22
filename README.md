@@ -36,12 +36,12 @@ This project includes experimental AI Agent features and is currently in an unst
 
 ```bash
 # Build from source
-git clone https://github.com/langowarny/lango.git
+git clone https://github.com/langoai/lango.git
 cd lango
 make build
 
 # Or install directly
-go install github.com/langowarny/lango/cmd/lango@latest
+go install github.com/langoai/lango/cmd/lango@latest
 ```
 
 ### Configuration

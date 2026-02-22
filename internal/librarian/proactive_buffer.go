@@ -6,12 +6,12 @@ import (
 
 	"go.uber.org/zap"
 
-	entknowledge "github.com/langowarny/lango/internal/ent/knowledge"
-	"github.com/langowarny/lango/internal/graph"
-	"github.com/langowarny/lango/internal/knowledge"
-	"github.com/langowarny/lango/internal/memory"
-	"github.com/langowarny/lango/internal/session"
-	"github.com/langowarny/lango/internal/types"
+	entknowledge "github.com/langoai/lango/internal/ent/knowledge"
+	"github.com/langoai/lango/internal/graph"
+	"github.com/langoai/lango/internal/knowledge"
+	"github.com/langoai/lango/internal/memory"
+	"github.com/langoai/lango/internal/session"
+	"github.com/langoai/lango/internal/types"
 )
 
 // MessageProvider retrieves messages for a session key.
@@ -22,17 +22,17 @@ type ObservationProvider func(ctx context.Context, sessionKey string) ([]memory.
 
 // ProactiveBuffer manages the async proactive librarian pipeline.
 type ProactiveBuffer struct {
-	analyzer           *ObservationAnalyzer
-	processor          *InquiryProcessor
-	inquiryStore       *InquiryStore
-	knowledgeStore     *knowledge.Store
-	getMessages        MessageProvider
-	getObservations    ObservationProvider
+	analyzer             *ObservationAnalyzer
+	processor            *InquiryProcessor
+	inquiryStore         *InquiryStore
+	knowledgeStore       *knowledge.Store
+	getMessages          MessageProvider
+	getObservations      ObservationProvider
 	observationThreshold int
-	cooldownTurns      int
-	maxPending         int
-	autoSaveConfidence types.Confidence
-	graphCallback      GraphCallback
+	cooldownTurns        int
+	maxPending           int
+	autoSaveConfidence   types.Confidence
+	graphCallback        GraphCallback
 
 	mu          sync.Mutex
 	turnCounter map[string]int // session_key → turns since last inquiry

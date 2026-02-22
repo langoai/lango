@@ -6,8 +6,8 @@ import (
 
 	"go.uber.org/zap"
 
-	"github.com/langowarny/lango/internal/graph"
-	"github.com/langowarny/lango/internal/knowledge"
+	"github.com/langoai/lango/internal/graph"
+	"github.com/langoai/lango/internal/knowledge"
 )
 
 // GraphCallback is a hook for asynchronous graph updates from the learning system.

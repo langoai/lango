@@ -7,8 +7,8 @@ import (
 	"sync"
 	"time"
 
+	"github.com/langoai/lango/internal/approval"
 	slackapi "github.com/slack-go/slack"
-	"github.com/langowarny/lango/internal/approval"
 )
 
 // approvalPending holds the response channel and message metadata for a pending approval.

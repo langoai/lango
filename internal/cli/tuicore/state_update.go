@@ -5,8 +5,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/langowarny/lango/internal/config"
-	"github.com/langowarny/lango/internal/types"
+	"github.com/langoai/lango/internal/config"
+	"github.com/langoai/lango/internal/types"
 )
 
 // UpdateConfigFromForm updates the config based on the form fields.

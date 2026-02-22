@@ -4,8 +4,8 @@ import (
 	"context"
 	"iter"
 
-	"github.com/langowarny/lango/internal/agent"
-	"github.com/langowarny/lango/internal/logging"
+	"github.com/langoai/lango/internal/agent"
+	"github.com/langoai/lango/internal/logging"
 	"google.golang.org/adk/model"
 )
 

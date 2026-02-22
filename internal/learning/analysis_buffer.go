@@ -6,8 +6,8 @@ import (
 
 	"go.uber.org/zap"
 
-	"github.com/langowarny/lango/internal/session"
-	"github.com/langowarny/lango/internal/types"
+	"github.com/langoai/lango/internal/session"
+	"github.com/langoai/lango/internal/types"
 )
 
 // perMessageOverhead is the token overhead per message for role/formatting.

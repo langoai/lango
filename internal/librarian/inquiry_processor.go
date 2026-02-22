@@ -8,10 +8,10 @@ import (
 	"github.com/google/uuid"
 	"go.uber.org/zap"
 
-	entknowledge "github.com/langowarny/lango/internal/ent/knowledge"
-	"github.com/langowarny/lango/internal/knowledge"
-	"github.com/langowarny/lango/internal/session"
-	"github.com/langowarny/lango/internal/types"
+	entknowledge "github.com/langoai/lango/internal/ent/knowledge"
+	"github.com/langoai/lango/internal/knowledge"
+	"github.com/langoai/lango/internal/session"
+	"github.com/langoai/lango/internal/types"
 )
 
 const answerDetectionPrompt = `You are a knowledge librarian. Analyze the recent conversation messages to detect if the user has answered any of the pending knowledge inquiries.

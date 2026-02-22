@@ -7,7 +7,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/langowarny/lango/internal/types"
+	"github.com/langoai/lango/internal/types"
 	"github.com/spf13/viper"
 )
 

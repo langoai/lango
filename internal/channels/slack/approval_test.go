@@ -6,8 +6,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/langoai/lango/internal/approval"
 	slackapi "github.com/slack-go/slack"
-	"github.com/langowarny/lango/internal/approval"
 )
 
 // MockApprovalClient extends MockClient with UpdateMessage tracking.

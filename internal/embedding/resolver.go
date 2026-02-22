@@ -6,8 +6,8 @@ import (
 
 	"github.com/google/uuid"
 
-	"github.com/langowarny/lango/internal/knowledge"
-	"github.com/langowarny/lango/internal/memory"
+	"github.com/langoai/lango/internal/knowledge"
+	"github.com/langoai/lango/internal/memory"
 )
 
 // StoreResolver resolves content from knowledge and memory stores.

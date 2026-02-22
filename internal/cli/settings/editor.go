@@ -6,9 +6,9 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 
-	"github.com/langowarny/lango/internal/cli/tui"
-	"github.com/langowarny/lango/internal/cli/tuicore"
-	"github.com/langowarny/lango/internal/config"
+	"github.com/langoai/lango/internal/cli/tui"
+	"github.com/langoai/lango/internal/cli/tuicore"
+	"github.com/langoai/lango/internal/config"
 )
 
 // EditorStep represents the current step in the settings editor.

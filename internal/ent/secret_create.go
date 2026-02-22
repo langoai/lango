@@ -11,8 +11,8 @@ import (
 	"entgo.io/ent/dialect/sql/sqlgraph"
 	"entgo.io/ent/schema/field"
 	"github.com/google/uuid"
-	"github.com/langowarny/lango/internal/ent/key"
-	"github.com/langowarny/lango/internal/ent/secret"
+	"github.com/langoai/lango/internal/ent/key"
+	"github.com/langoai/lango/internal/ent/secret"
 )
 
 // SecretCreate is the builder for creating a Secret entity.

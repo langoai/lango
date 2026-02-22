@@ -7,7 +7,7 @@ import (
 
 	"go.uber.org/zap"
 
-	"github.com/langowarny/lango/internal/graph"
+	"github.com/langoai/lango/internal/graph"
 )
 
 // Verify GraphEngine satisfies ToolResultObserver.
@@ -28,19 +28,23 @@ func (s *fakeGraphStore) AddTriples(_ context.Context, ts []graph.Triple) error 
 	return nil
 }
 
-func (s *fakeGraphStore) RemoveTriple(context.Context, graph.Triple) error          { return nil }
-func (s *fakeGraphStore) QueryBySubject(context.Context, string) ([]graph.Triple, error)  { return nil, nil }
-func (s *fakeGraphStore) QueryByObject(context.Context, string) ([]graph.Triple, error)   { return nil, nil }
+func (s *fakeGraphStore) RemoveTriple(context.Context, graph.Triple) error { return nil }
+func (s *fakeGraphStore) QueryBySubject(context.Context, string) ([]graph.Triple, error) {
+	return nil, nil
+}
+func (s *fakeGraphStore) QueryByObject(context.Context, string) ([]graph.Triple, error) {
+	return nil, nil
+}
 func (s *fakeGraphStore) QueryBySubjectPredicate(context.Context, string, string) ([]graph.Triple, error) {
 	return nil, nil
 }
 func (s *fakeGraphStore) Traverse(context.Context, string, int, []string) ([]graph.Triple, error) {
 	return nil, nil
 }
-func (s *fakeGraphStore) Count(context.Context) (int, error)              { return len(s.triples), nil }
+func (s *fakeGraphStore) Count(context.Context) (int, error)                     { return len(s.triples), nil }
 func (s *fakeGraphStore) PredicateStats(context.Context) (map[string]int, error) { return nil, nil }
-func (s *fakeGraphStore) ClearAll(context.Context) error                  { s.triples = nil; return nil }
-func (s *fakeGraphStore) Close() error                                    { return nil }
+func (s *fakeGraphStore) ClearAll(context.Context) error                         { s.triples = nil; return nil }
+func (s *fakeGraphStore) Close() error                                           { return nil }
 
 func TestGraphEngine_RecordErrorGraph_WithCallback(t *testing.T) {
 	logger := zap.NewNop().Sugar()

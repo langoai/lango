@@ -12,8 +12,8 @@ import (
 	"entgo.io/ent/dialect/sql/sqlgraph"
 	"entgo.io/ent/dialect/sql/sqljson"
 	"entgo.io/ent/schema/field"
-	"github.com/langowarny/lango/internal/ent/cronjob"
-	"github.com/langowarny/lango/internal/ent/predicate"
+	"github.com/langoai/lango/internal/ent/cronjob"
+	"github.com/langoai/lango/internal/ent/predicate"
 )
 
 // CronJobUpdate is the builder for updating CronJob entities.

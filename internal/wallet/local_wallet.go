@@ -10,16 +10,16 @@ import (
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/ethclient"
 
-	"github.com/langowarny/lango/internal/security"
+	"github.com/langoai/lango/internal/security"
 )
 
 // LocalWallet implements WalletProvider using a locally-stored encrypted private key.
 // The key is loaded from SecretsStore, used for signing, then immediately zeroed.
 type LocalWallet struct {
-	secrets  *security.SecretsStore
-	rpcURL   string
-	chainID  int64
-	keyName  string
+	secrets *security.SecretsStore
+	rpcURL  string
+	chainID int64
+	keyName string
 
 	mu     sync.Mutex
 	client *ethclient.Client

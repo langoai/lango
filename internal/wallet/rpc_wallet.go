@@ -8,7 +8,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/langowarny/lango/internal/types"
+	"github.com/langoai/lango/internal/types"
 )
 
 // SignTxRequest is sent to the companion for transaction signing.

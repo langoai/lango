@@ -10,7 +10,7 @@ import (
 
 	"entgo.io/ent"
 	"entgo.io/ent/dialect/sql"
-	"github.com/langowarny/lango/internal/ent/session"
+	"github.com/langoai/lango/internal/ent/session"
 )
 
 // Session is the model entity for the Session schema.

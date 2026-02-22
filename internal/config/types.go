@@ -3,7 +3,7 @@ package config
 import (
 	"time"
 
-	"github.com/langowarny/lango/internal/types"
+	"github.com/langoai/lango/internal/types"
 )
 
 // Config is the root configuration structure for lango
@@ -385,15 +385,15 @@ func (p ApprovalPolicy) Values() []ApprovalPolicy {
 
 // InterceptorConfig defines AI Privacy Interceptor settings
 type InterceptorConfig struct {
-	Enabled             bool           `mapstructure:"enabled" json:"enabled"`
-	RedactPII           bool           `mapstructure:"redactPii" json:"redactPii"`
-	ApprovalPolicy      ApprovalPolicy `mapstructure:"approvalPolicy" json:"approvalPolicy"`             // default: "dangerous"
-	HeadlessAutoApprove bool           `mapstructure:"headlessAutoApprove" json:"headlessAutoApprove"`
-	NotifyChannel       string         `mapstructure:"notifyChannel" json:"notifyChannel"`               // e.g. "discord", "telegram"
-	SensitiveTools      []string       `mapstructure:"sensitiveTools" json:"sensitiveTools"`
-	ExemptTools         []string       `mapstructure:"exemptTools" json:"exemptTools"`                   // Tools exempt from approval regardless of policy
-	PIIRegexPatterns    []string       `mapstructure:"piiRegexPatterns" json:"piiRegexPatterns"`
-	ApprovalTimeoutSec  int            `mapstructure:"approvalTimeoutSec" json:"approvalTimeoutSec"`     // default 30
+	Enabled             bool              `mapstructure:"enabled" json:"enabled"`
+	RedactPII           bool              `mapstructure:"redactPii" json:"redactPii"`
+	ApprovalPolicy      ApprovalPolicy    `mapstructure:"approvalPolicy" json:"approvalPolicy"` // default: "dangerous"
+	HeadlessAutoApprove bool              `mapstructure:"headlessAutoApprove" json:"headlessAutoApprove"`
+	NotifyChannel       string            `mapstructure:"notifyChannel" json:"notifyChannel"` // e.g. "discord", "telegram"
+	SensitiveTools      []string          `mapstructure:"sensitiveTools" json:"sensitiveTools"`
+	ExemptTools         []string          `mapstructure:"exemptTools" json:"exemptTools"` // Tools exempt from approval regardless of policy
+	PIIRegexPatterns    []string          `mapstructure:"piiRegexPatterns" json:"piiRegexPatterns"`
+	ApprovalTimeoutSec  int               `mapstructure:"approvalTimeoutSec" json:"approvalTimeoutSec"` // default 30
 	PIIDisabledPatterns []string          `mapstructure:"piiDisabledPatterns" json:"piiDisabledPatterns"`
 	PIICustomPatterns   map[string]string `mapstructure:"piiCustomPatterns" json:"piiCustomPatterns"`
 	Presidio            PresidioConfig    `mapstructure:"presidio" json:"presidio"`
@@ -477,7 +477,6 @@ type ProviderConfig struct {
 
 	// Base URL for OpenAI-compatible providers
 	BaseURL string `mapstructure:"baseUrl" json:"baseUrl"`
-
 }
 
 // ChannelsConfig holds all channel configurations
@@ -497,7 +496,6 @@ type TelegramConfig struct {
 
 	// Allowed user/group IDs (empty = allow all)
 	Allowlist []int64 `mapstructure:"allowlist" json:"allowlist"`
-
 }
 
 // DiscordConfig defines Discord bot settings

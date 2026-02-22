@@ -6,7 +6,7 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/langowarny/lango/internal/config"
+	"github.com/langoai/lango/internal/config"
 )
 
 // A2ACheck validates A2A protocol configuration.

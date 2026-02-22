@@ -10,8 +10,8 @@ import (
 	"entgo.io/ent/dialect/sql"
 	"entgo.io/ent/dialect/sql/sqlgraph"
 	"entgo.io/ent/schema/field"
-	"github.com/langowarny/lango/internal/ent/observation"
-	"github.com/langowarny/lango/internal/ent/predicate"
+	"github.com/langoai/lango/internal/ent/observation"
+	"github.com/langoai/lango/internal/ent/predicate"
 )
 
 // ObservationUpdate is the builder for updating Observation entities.

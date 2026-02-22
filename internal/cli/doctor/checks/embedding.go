@@ -4,7 +4,7 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/langowarny/lango/internal/config"
+	"github.com/langoai/lango/internal/config"
 )
 
 // EmbeddingCheck validates embedding/RAG configuration.

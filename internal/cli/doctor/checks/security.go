@@ -8,8 +8,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/langowarny/lango/internal/config"
-	"github.com/langowarny/lango/internal/session"
+	"github.com/langoai/lango/internal/config"
+	"github.com/langoai/lango/internal/session"
 )
 
 // SecurityCheck checks security configuration and state

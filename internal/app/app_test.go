@@ -4,8 +4,8 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/langowarny/lango/internal/bootstrap"
-	"github.com/langowarny/lango/internal/config"
+	"github.com/langoai/lango/internal/bootstrap"
+	"github.com/langoai/lango/internal/config"
 )
 
 // testBoot creates a minimal bootstrap.Result for testing.

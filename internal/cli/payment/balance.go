@@ -8,8 +8,8 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/langowarny/lango/internal/bootstrap"
-	"github.com/langowarny/lango/internal/wallet"
+	"github.com/langoai/lango/internal/bootstrap"
+	"github.com/langoai/lango/internal/wallet"
 )
 
 func newBalanceCmd(bootLoader func() (*bootstrap.Result, error)) *cobra.Command {

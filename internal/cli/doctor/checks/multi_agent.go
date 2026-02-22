@@ -4,7 +4,7 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/langowarny/lango/internal/config"
+	"github.com/langoai/lango/internal/config"
 )
 
 // MultiAgentCheck validates multi-agent orchestration configuration.

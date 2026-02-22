@@ -8,7 +8,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/langowarny/lango/internal/passphrase"
+	"github.com/langoai/lango/internal/passphrase"
 )
 
 func TestRun_ShredsKeyfileAfterCryptoInit(t *testing.T) {

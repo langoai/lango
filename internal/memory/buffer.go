@@ -6,7 +6,7 @@ import (
 
 	"go.uber.org/zap"
 
-	"github.com/langowarny/lango/internal/session"
+	"github.com/langoai/lango/internal/session"
 )
 
 // MessageProvider retrieves messages for a session key.

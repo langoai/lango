@@ -3,7 +3,7 @@ package output
 import (
 	"encoding/json"
 
-	"github.com/langowarny/lango/internal/cli/doctor/checks"
+	"github.com/langoai/lango/internal/cli/doctor/checks"
 )
 
 // JSONOutput represents the JSON output structure.

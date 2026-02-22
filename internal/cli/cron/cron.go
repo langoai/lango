@@ -11,9 +11,9 @@ import (
 	"github.com/google/uuid"
 	"github.com/spf13/cobra"
 
-	"github.com/langowarny/lango/internal/bootstrap"
-	"github.com/langowarny/lango/internal/cron"
-	"github.com/langowarny/lango/internal/ent"
+	"github.com/langoai/lango/internal/bootstrap"
+	"github.com/langoai/lango/internal/cron"
+	"github.com/langoai/lango/internal/ent"
 )
 
 // NewCronCmd creates the cron command with lazy bootstrap loading.
@@ -40,14 +40,14 @@ func initStore(boot *bootstrap.Result) cron.Store {
 
 func newAddCmd(bootLoader func() (*bootstrap.Result, error)) *cobra.Command {
 	var (
-		name       string
-		schedule   string
-		every      string
-		at         string
-		prompt     string
-		deliverTo  []string
-		isolated   bool
-		timezone   string
+		name      string
+		schedule  string
+		every     string
+		at        string
+		prompt    string
+		deliverTo []string
+		isolated  bool
+		timezone  string
 	)
 
 	cmd := &cobra.Command{

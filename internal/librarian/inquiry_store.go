@@ -8,8 +8,8 @@ import (
 	"github.com/google/uuid"
 	"go.uber.org/zap"
 
-	"github.com/langowarny/lango/internal/ent"
-	"github.com/langowarny/lango/internal/ent/inquiry"
+	"github.com/langoai/lango/internal/ent"
+	"github.com/langoai/lango/internal/ent/inquiry"
 )
 
 // InquiryStore provides CRUD operations for knowledge inquiries.

@@ -7,7 +7,7 @@ import (
 	"google.golang.org/adk/agent"
 	"google.golang.org/adk/agent/remoteagent"
 
-	"github.com/langowarny/lango/internal/config"
+	"github.com/langoai/lango/internal/config"
 )
 
 // LoadRemoteAgents creates ADK agents from the configured remote A2A agent list.

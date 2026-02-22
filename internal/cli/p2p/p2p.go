@@ -8,10 +8,10 @@ import (
 	"github.com/spf13/cobra"
 	"go.uber.org/zap"
 
-	"github.com/langowarny/lango/internal/bootstrap"
-	"github.com/langowarny/lango/internal/config"
-	"github.com/langowarny/lango/internal/logging"
-	p2pnet "github.com/langowarny/lango/internal/p2p"
+	"github.com/langoai/lango/internal/bootstrap"
+	"github.com/langoai/lango/internal/config"
+	"github.com/langoai/lango/internal/logging"
+	p2pnet "github.com/langoai/lango/internal/p2p"
 )
 
 // p2pDeps holds lazily-initialized P2P dependencies.

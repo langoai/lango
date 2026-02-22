@@ -8,10 +8,10 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/langowarny/lango/internal/bootstrap"
-	"github.com/langowarny/lango/internal/cli/prompt"
-	pmtypes "github.com/langowarny/lango/internal/payment"
-	"github.com/langowarny/lango/internal/wallet"
+	"github.com/langoai/lango/internal/bootstrap"
+	"github.com/langoai/lango/internal/cli/prompt"
+	pmtypes "github.com/langoai/lango/internal/payment"
+	"github.com/langoai/lango/internal/wallet"
 )
 
 func newSendCmd(bootLoader func() (*bootstrap.Result, error)) *cobra.Command {

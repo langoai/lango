@@ -11,7 +11,7 @@ import (
 	"github.com/libp2p/go-libp2p/core/peer"
 	"go.uber.org/zap"
 
-	"github.com/langowarny/lango/internal/wallet"
+	"github.com/langoai/lango/internal/wallet"
 )
 
 // ProtocolID is the libp2p protocol identifier for the handshake.
@@ -29,10 +29,10 @@ type ZKVerifierFunc func(ctx context.Context, proof, challenge, publicKey []byte
 
 // PendingHandshake describes a handshake awaiting user approval.
 type PendingHandshake struct {
-	PeerID    peer.ID `json:"peerId"`
-	PeerDID   string  `json:"peerDid"`
-	RemoteAddr string `json:"remoteAddr"`
-	Timestamp time.Time `json:"timestamp"`
+	PeerID     peer.ID   `json:"peerId"`
+	PeerDID    string    `json:"peerDid"`
+	RemoteAddr string    `json:"remoteAddr"`
+	Timestamp  time.Time `json:"timestamp"`
 }
 
 // Challenge is sent by the initiator to start the handshake.
@@ -59,15 +59,15 @@ type SessionAck struct {
 
 // Handshaker manages peer authentication using wallet signatures or ZK proofs.
 type Handshaker struct {
-	wallet     wallet.WalletProvider
-	sessions   *SessionStore
-	approvalFn ApprovalFunc
-	zkProver   ZKProverFunc
-	zkVerifier ZKVerifierFunc
-	zkEnabled  bool
-	timeout    time.Duration
+	wallet           wallet.WalletProvider
+	sessions         *SessionStore
+	approvalFn       ApprovalFunc
+	zkProver         ZKProverFunc
+	zkVerifier       ZKVerifierFunc
+	zkEnabled        bool
+	timeout          time.Duration
 	autoApproveKnown bool
-	logger     *zap.SugaredLogger
+	logger           *zap.SugaredLogger
 }
 
 // Config configures the Handshaker.

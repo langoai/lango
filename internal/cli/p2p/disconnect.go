@@ -6,7 +6,7 @@ import (
 	"github.com/libp2p/go-libp2p/core/peer"
 	"github.com/spf13/cobra"
 
-	"github.com/langowarny/lango/internal/bootstrap"
+	"github.com/langoai/lango/internal/bootstrap"
 )
 
 func newDisconnectCmd(bootLoader func() (*bootstrap.Result, error)) *cobra.Command {

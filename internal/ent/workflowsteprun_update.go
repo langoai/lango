@@ -12,8 +12,8 @@ import (
 	"entgo.io/ent/dialect/sql/sqlgraph"
 	"entgo.io/ent/schema/field"
 	"github.com/google/uuid"
-	"github.com/langowarny/lango/internal/ent/predicate"
-	"github.com/langowarny/lango/internal/ent/workflowsteprun"
+	"github.com/langoai/lango/internal/ent/predicate"
+	"github.com/langoai/lango/internal/ent/workflowsteprun"
 )
 
 // WorkflowStepRunUpdate is the builder for updating WorkflowStepRun entities.

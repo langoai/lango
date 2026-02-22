@@ -10,8 +10,8 @@ import (
 
 	"entgo.io/ent/dialect/sql/sqlgraph"
 	"entgo.io/ent/schema/field"
-	"github.com/langowarny/lango/internal/ent/message"
-	"github.com/langowarny/lango/internal/ent/session"
+	"github.com/langoai/lango/internal/ent/message"
+	"github.com/langoai/lango/internal/ent/session"
 )
 
 // SessionCreate is the builder for creating a Session entity.

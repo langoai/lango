@@ -14,7 +14,7 @@ import (
 	"github.com/libp2p/go-libp2p/core/peer"
 	"go.uber.org/zap"
 
-	"github.com/langowarny/lango/internal/wallet"
+	"github.com/langoai/lango/internal/wallet"
 )
 
 const (

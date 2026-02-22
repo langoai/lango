@@ -9,7 +9,7 @@ Get your agent running in three steps.
 ## Step 1: Install
 
 ```bash
-git clone https://github.com/langowarny/lango.git
+git clone https://github.com/langoai/lango.git
 cd lango
 make build
 ```

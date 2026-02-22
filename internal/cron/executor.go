@@ -7,7 +7,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/langowarny/lango/internal/approval"
+	"github.com/langoai/lango/internal/approval"
 	"go.uber.org/zap"
 )
 

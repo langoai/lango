@@ -5,26 +5,26 @@ import (
 	"io"
 	"sync"
 
-	"github.com/langowarny/lango/internal/adk"
-	"github.com/langowarny/lango/internal/approval"
-	"github.com/langowarny/lango/internal/background"
-	"github.com/langowarny/lango/internal/config"
-	cronpkg "github.com/langowarny/lango/internal/cron"
-	"github.com/langowarny/lango/internal/embedding"
-	"github.com/langowarny/lango/internal/gateway"
-	"github.com/langowarny/lango/internal/graph"
-	"github.com/langowarny/lango/internal/knowledge"
-	"github.com/langowarny/lango/internal/learning"
-	"github.com/langowarny/lango/internal/librarian"
-	"github.com/langowarny/lango/internal/memory"
-	"github.com/langowarny/lango/internal/p2p"
-	"github.com/langowarny/lango/internal/payment"
-	"github.com/langowarny/lango/internal/security"
-	"github.com/langowarny/lango/internal/session"
-	"github.com/langowarny/lango/internal/skill"
-	"github.com/langowarny/lango/internal/wallet"
-	"github.com/langowarny/lango/internal/workflow"
-	x402pkg "github.com/langowarny/lango/internal/x402"
+	"github.com/langoai/lango/internal/adk"
+	"github.com/langoai/lango/internal/approval"
+	"github.com/langoai/lango/internal/background"
+	"github.com/langoai/lango/internal/config"
+	cronpkg "github.com/langoai/lango/internal/cron"
+	"github.com/langoai/lango/internal/embedding"
+	"github.com/langoai/lango/internal/gateway"
+	"github.com/langoai/lango/internal/graph"
+	"github.com/langoai/lango/internal/knowledge"
+	"github.com/langoai/lango/internal/learning"
+	"github.com/langoai/lango/internal/librarian"
+	"github.com/langoai/lango/internal/memory"
+	"github.com/langoai/lango/internal/p2p"
+	"github.com/langoai/lango/internal/payment"
+	"github.com/langoai/lango/internal/security"
+	"github.com/langoai/lango/internal/session"
+	"github.com/langoai/lango/internal/skill"
+	"github.com/langoai/lango/internal/wallet"
+	"github.com/langoai/lango/internal/workflow"
+	x402pkg "github.com/langoai/lango/internal/x402"
 )
 
 // App is the root application structure
@@ -49,9 +49,9 @@ type App struct {
 	GrantStore       *approval.GrantStore
 
 	// Self-Learning Components
-	KnowledgeStore  *knowledge.Store
-	LearningEngine  *learning.Engine
-	SkillRegistry   *skill.Registry
+	KnowledgeStore *knowledge.Store
+	LearningEngine *learning.Engine
+	SkillRegistry  *skill.Registry
 
 	// Observational Memory Components (optional)
 	MemoryStore  *memory.Store

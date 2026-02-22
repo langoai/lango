@@ -5,20 +5,20 @@ import (
 	"fmt"
 	"strings"
 
-	entknowledge "github.com/langowarny/lango/internal/ent/knowledge"
-	entlearning "github.com/langowarny/lango/internal/ent/learning"
-	"github.com/langowarny/lango/internal/types"
+	entknowledge "github.com/langoai/lango/internal/ent/knowledge"
+	entlearning "github.com/langoai/lango/internal/ent/learning"
+	"github.com/langoai/lango/internal/types"
 )
 
 // analysisResult is the expected structure from LLM analysis output.
 type analysisResult struct {
-	Type       string `json:"type"`                // fact, pattern, correction, preference
-	Category   string `json:"category"`            // domain-specific category
-	Content    string `json:"content"`             // the extracted knowledge
-	Confidence types.Confidence `json:"confidence"` // low, medium, high
-	Subject    string `json:"subject,omitempty"`   // optional graph subject
-	Predicate  string `json:"predicate,omitempty"` // optional graph predicate
-	Object     string `json:"object,omitempty"`    // optional graph object
+	Type       string           `json:"type"`                // fact, pattern, correction, preference
+	Category   string           `json:"category"`            // domain-specific category
+	Content    string           `json:"content"`             // the extracted knowledge
+	Confidence types.Confidence `json:"confidence"`          // low, medium, high
+	Subject    string           `json:"subject,omitempty"`   // optional graph subject
+	Predicate  string           `json:"predicate,omitempty"` // optional graph predicate
+	Object     string           `json:"object,omitempty"`    // optional graph object
 }
 
 // parseAnalysisResponse extracts structured results from an LLM JSON response.

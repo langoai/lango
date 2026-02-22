@@ -9,8 +9,8 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/langowarny/lango/internal/bootstrap"
-	"github.com/langowarny/lango/internal/p2p/firewall"
+	"github.com/langoai/lango/internal/bootstrap"
+	"github.com/langoai/lango/internal/p2p/firewall"
 )
 
 func newFirewallCmd(bootLoader func() (*bootstrap.Result, error)) *cobra.Command {
@@ -90,10 +90,10 @@ func newFirewallListCmd(bootLoader func() (*bootstrap.Result, error)) *cobra.Com
 
 func newFirewallAddCmd(bootLoader func() (*bootstrap.Result, error)) *cobra.Command {
 	var (
-		peerDID    string
-		action     string
-		tools      []string
-		rateLimit  int
+		peerDID   string
+		action    string
+		tools     []string
+		rateLimit int
 	)
 
 	cmd := &cobra.Command{

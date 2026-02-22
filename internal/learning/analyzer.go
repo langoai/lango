@@ -7,7 +7,7 @@ import (
 	"regexp"
 	"strings"
 
-	entlearning "github.com/langowarny/lango/internal/ent/learning"
+	entlearning "github.com/langoai/lango/internal/ent/learning"
 )
 
 var (

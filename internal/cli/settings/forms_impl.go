@@ -6,9 +6,9 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/langowarny/lango/internal/cli/tuicore"
-	"github.com/langowarny/lango/internal/config"
-	"github.com/langowarny/lango/internal/types"
+	"github.com/langoai/lango/internal/cli/tuicore"
+	"github.com/langoai/lango/internal/config"
+	"github.com/langoai/lango/internal/types"
 )
 
 // buildProviderOptions builds provider options from registered providers.

@@ -12,8 +12,8 @@ import (
 	"entgo.io/ent/dialect/sql/sqlgraph"
 	"entgo.io/ent/schema/field"
 	"github.com/google/uuid"
-	"github.com/langowarny/lango/internal/ent/knowledge"
-	"github.com/langowarny/lango/internal/ent/predicate"
+	"github.com/langoai/lango/internal/ent/knowledge"
+	"github.com/langoai/lango/internal/ent/predicate"
 )
 
 // KnowledgeQuery is the builder for querying Knowledge entities.
