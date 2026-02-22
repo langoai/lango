@@ -11,7 +11,7 @@ import (
 	"entgo.io/ent"
 	"entgo.io/ent/dialect/sql"
 	"github.com/google/uuid"
-	"github.com/langowarny/lango/internal/ent/knowledge"
+	"github.com/langoai/lango/internal/ent/knowledge"
 )
 
 // Knowledge is the model entity for the Knowledge schema.

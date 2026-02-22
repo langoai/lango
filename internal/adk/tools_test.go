@@ -4,7 +4,7 @@ import (
 	"context"
 	"testing"
 
-	"github.com/langowarny/lango/internal/agent"
+	"github.com/langoai/lango/internal/agent"
 )
 
 func TestAdaptTool_ParameterDef(t *testing.T) {

@@ -7,10 +7,10 @@ import (
 
 	"go.uber.org/zap"
 
-	entlearning "github.com/langowarny/lango/internal/ent/learning"
-	"github.com/langowarny/lango/internal/graph"
-	"github.com/langowarny/lango/internal/knowledge"
-	"github.com/langowarny/lango/internal/session"
+	entlearning "github.com/langoai/lango/internal/ent/learning"
+	"github.com/langoai/lango/internal/graph"
+	"github.com/langoai/lango/internal/knowledge"
+	"github.com/langoai/lango/internal/session"
 )
 
 // TextGenerator generates text from a prompt (mirrors memory.TextGenerator to avoid import cycle).

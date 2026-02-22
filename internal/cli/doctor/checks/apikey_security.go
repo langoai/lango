@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/langowarny/lango/internal/config"
+	"github.com/langoai/lango/internal/config"
 )
 
 // APIKeySecurityCheck validates that API keys use environment variable references

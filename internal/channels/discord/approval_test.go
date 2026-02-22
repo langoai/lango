@@ -7,7 +7,7 @@ import (
 	"time"
 
 	"github.com/bwmarrin/discordgo"
-	"github.com/langowarny/lango/internal/approval"
+	"github.com/langoai/lango/internal/approval"
 )
 
 // MockApprovalSession extends MockSession with InteractionRespond and ChannelMessageEditComplex tracking.

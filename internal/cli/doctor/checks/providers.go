@@ -6,7 +6,7 @@ import (
 	"os"
 	"strings"
 
-	"github.com/langowarny/lango/internal/config"
+	"github.com/langoai/lango/internal/config"
 )
 
 // ProvidersCheck validates the AI provider configurations.

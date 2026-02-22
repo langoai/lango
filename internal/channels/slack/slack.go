@@ -8,7 +8,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/langowarny/lango/internal/logging"
+	"github.com/langoai/lango/internal/logging"
 	"github.com/slack-go/slack"
 	"github.com/slack-go/slack/slackevents"
 	"github.com/slack-go/slack/socketmode"

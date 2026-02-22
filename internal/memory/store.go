@@ -9,10 +9,10 @@ import (
 	"github.com/google/uuid"
 	"go.uber.org/zap"
 
-	"github.com/langowarny/lango/internal/ent"
-	"github.com/langowarny/lango/internal/ent/observation"
-	"github.com/langowarny/lango/internal/ent/reflection"
-	"github.com/langowarny/lango/internal/types"
+	"github.com/langoai/lango/internal/ent"
+	"github.com/langoai/lango/internal/ent/observation"
+	"github.com/langoai/lango/internal/ent/reflection"
+	"github.com/langoai/lango/internal/types"
 )
 
 // Store provides CRUD operations for observations and reflections.

@@ -5,8 +5,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/langowarny/lango/internal/cli/tuicore"
-	"github.com/langowarny/lango/internal/config"
+	"github.com/langoai/lango/internal/cli/tuicore"
+	"github.com/langoai/lango/internal/config"
 )
 
 func defaultTestConfig() *config.Config {
@@ -127,16 +127,16 @@ func TestNewSecurityForm_AllFields(t *testing.T) {
 
 func TestParseCustomPatterns(t *testing.T) {
 	tests := []struct {
-		give     string
-		wantLen  int
-		wantKey  string
-		wantVal  string
+		give    string
+		wantLen int
+		wantKey string
+		wantVal string
 	}{
 		{give: "", wantLen: 0},
 		{give: "my_id:\\bID-\\d{6}\\b", wantLen: 1, wantKey: "my_id", wantVal: "\\bID-\\d{6}\\b"},
 		{give: "a:\\d+,b:\\w+", wantLen: 2},
-		{give: "invalid", wantLen: 0},        // no colon
-		{give: ":noname", wantLen: 0},         // empty name
+		{give: "invalid", wantLen: 0}, // no colon
+		{give: ":noname", wantLen: 0}, // empty name
 	}
 
 	for _, tt := range tests {

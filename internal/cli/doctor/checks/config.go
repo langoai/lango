@@ -5,7 +5,7 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/langowarny/lango/internal/config"
+	"github.com/langoai/lango/internal/config"
 )
 
 // ConfigCheck validates the encrypted configuration profile.

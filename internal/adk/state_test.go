@@ -8,7 +8,7 @@ import (
 	"testing"
 	"time"
 
-	internal "github.com/langowarny/lango/internal/session"
+	internal "github.com/langoai/lango/internal/session"
 	"google.golang.org/adk/session"
 	"google.golang.org/genai"
 )
@@ -518,7 +518,7 @@ func TestEventsAdapter_TokenBudgetTruncation(t *testing.T) {
 			}
 			msgs = append(msgs, internal.Message{
 				Role:      "user",
-				Content:   content,          // ~10 tokens + 4 overhead = 14 tokens each
+				Content:   content, // ~10 tokens + 4 overhead = 14 tokens each
 				Timestamp: time.Now().Add(time.Duration(i) * time.Second),
 			})
 		}
@@ -904,11 +904,11 @@ func (m *uniqueMockStore) Update(s *internal.Session) error {
 	m.sessions[s.Key] = s
 	return nil
 }
-func (m *uniqueMockStore) Delete(key string) error              { return nil }
+func (m *uniqueMockStore) Delete(key string) error                      { return nil }
 func (m *uniqueMockStore) AppendMessage(string, internal.Message) error { return nil }
-func (m *uniqueMockStore) Close() error                         { return nil }
-func (m *uniqueMockStore) GetSalt(string) ([]byte, error)       { return nil, nil }
-func (m *uniqueMockStore) SetSalt(string, []byte) error         { return nil }
+func (m *uniqueMockStore) Close() error                                 { return nil }
+func (m *uniqueMockStore) GetSalt(string) ([]byte, error)               { return nil, nil }
+func (m *uniqueMockStore) SetSalt(string, []byte) error                 { return nil }
 
 func TestSessionServiceAdapter_GetAutoCreate_Concurrent(t *testing.T) {
 	store := newUniqueMockStore()

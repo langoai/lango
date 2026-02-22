@@ -5,16 +5,16 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/langowarny/lango/internal/types"
+	"github.com/langoai/lango/internal/types"
 )
 
 // ObservationKnowledge represents knowledge extracted from conversation observations.
 type ObservationKnowledge struct {
-	Type       string `json:"type"`       // preference, fact, rule, definition
-	Category   string `json:"category"`   // domain-specific category
-	Content    string `json:"content"`    // extracted knowledge content
+	Type       string           `json:"type"`       // preference, fact, rule, definition
+	Category   string           `json:"category"`   // domain-specific category
+	Content    string           `json:"content"`    // extracted knowledge content
 	Confidence types.Confidence `json:"confidence"` // high, medium, low
-	Key        string `json:"key"`        // unique identifier for storage
+	Key        string           `json:"key"`        // unique identifier for storage
 
 	// Graph triple fields (optional).
 	Subject   string `json:"subject,omitempty"`
@@ -24,10 +24,10 @@ type ObservationKnowledge struct {
 
 // KnowledgeGap represents a detected gap in knowledge that requires user clarification.
 type KnowledgeGap struct {
-	Topic       string `json:"topic"`
-	Question    string `json:"question"`
-	Context     string `json:"context,omitempty"`
-	Priority    string `json:"priority"` // low, medium, high
+	Topic       string   `json:"topic"`
+	Question    string   `json:"question"`
+	Context     string   `json:"context,omitempty"`
+	Priority    string   `json:"priority"` // low, medium, high
 	RelatedKeys []string `json:"relatedKeys,omitempty"`
 }
 

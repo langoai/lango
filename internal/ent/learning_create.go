@@ -11,7 +11,7 @@ import (
 	"entgo.io/ent/dialect/sql/sqlgraph"
 	"entgo.io/ent/schema/field"
 	"github.com/google/uuid"
-	"github.com/langowarny/lango/internal/ent/learning"
+	"github.com/langoai/lango/internal/ent/learning"
 )
 
 // LearningCreate is the builder for creating a Learning entity.

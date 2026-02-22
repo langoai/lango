@@ -3,7 +3,7 @@ package approval
 import (
 	"context"
 
-	"github.com/langowarny/lango/internal/logging"
+	"github.com/langoai/lango/internal/logging"
 )
 
 // HeadlessProvider auto-approves all tool execution requests.

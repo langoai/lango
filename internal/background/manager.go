@@ -8,8 +8,8 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/langowarny/lango/internal/approval"
-	"github.com/langowarny/lango/internal/ctxutil"
+	"github.com/langoai/lango/internal/approval"
+	"github.com/langoai/lango/internal/ctxutil"
 	"go.uber.org/zap"
 )
 

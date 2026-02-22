@@ -9,7 +9,7 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/langowarny/lango/internal/background"
+	"github.com/langoai/lango/internal/background"
 )
 
 // NewBgCmd creates the bg (background) command.

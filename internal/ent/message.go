@@ -10,9 +10,9 @@ import (
 
 	"entgo.io/ent"
 	"entgo.io/ent/dialect/sql"
-	"github.com/langowarny/lango/internal/ent/message"
-	"github.com/langowarny/lango/internal/ent/schema"
-	"github.com/langowarny/lango/internal/ent/session"
+	"github.com/langoai/lango/internal/ent/message"
+	"github.com/langoai/lango/internal/ent/schema"
+	"github.com/langoai/lango/internal/ent/session"
 )
 
 // Message is the model entity for the Message schema.

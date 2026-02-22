@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"iter"
 
-	"github.com/langowarny/lango/internal/provider"
+	"github.com/langoai/lango/internal/provider"
 )
 
 // ProxyOption configures optional parameters for ProviderProxy.

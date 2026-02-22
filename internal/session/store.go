@@ -3,7 +3,7 @@ package session
 import (
 	"time"
 
-	"github.com/langowarny/lango/internal/types"
+	"github.com/langoai/lango/internal/types"
 )
 
 // Message represents a single message in conversation history
@@ -56,4 +56,3 @@ type Store interface {
 	// SetSalt stores the encryption salt for LocalCryptoProvider
 	SetSalt(name string, salt []byte) error
 }
-

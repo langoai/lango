@@ -6,7 +6,7 @@ import (
 	"github.com/google/uuid"
 	"go.uber.org/zap"
 
-	"github.com/langowarny/lango/internal/graph"
+	"github.com/langoai/lango/internal/graph"
 )
 
 func TestGraphHooks_OnObservation(t *testing.T) {

@@ -6,8 +6,8 @@ import (
 	"math/big"
 	"time"
 
-	"github.com/langowarny/lango/internal/ent"
-	"github.com/langowarny/lango/internal/ent/paymenttx"
+	"github.com/langoai/lango/internal/ent"
+	"github.com/langoai/lango/internal/ent/paymenttx"
 )
 
 // SpendingLimiter enforces per-transaction and daily spending limits.

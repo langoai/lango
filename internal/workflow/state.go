@@ -9,9 +9,9 @@ import (
 	"github.com/google/uuid"
 	"go.uber.org/zap"
 
-	"github.com/langowarny/lango/internal/ent"
-	"github.com/langowarny/lango/internal/ent/workflowrun"
-	"github.com/langowarny/lango/internal/ent/workflowsteprun"
+	"github.com/langoai/lango/internal/ent"
+	"github.com/langoai/lango/internal/ent/workflowrun"
+	"github.com/langoai/lango/internal/ent/workflowsteprun"
 )
 
 // StateStore persists workflow execution state for resume capability.

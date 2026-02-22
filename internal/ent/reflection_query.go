@@ -12,8 +12,8 @@ import (
 	"entgo.io/ent/dialect/sql/sqlgraph"
 	"entgo.io/ent/schema/field"
 	"github.com/google/uuid"
-	"github.com/langowarny/lango/internal/ent/predicate"
-	"github.com/langowarny/lango/internal/ent/reflection"
+	"github.com/langoai/lango/internal/ent/predicate"
+	"github.com/langoai/lango/internal/ent/reflection"
 )
 
 // ReflectionQuery is the builder for querying Reflection entities.

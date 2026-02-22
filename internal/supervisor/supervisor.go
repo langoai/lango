@@ -5,14 +5,14 @@ import (
 	"fmt"
 	"iter"
 
-	"github.com/langowarny/lango/internal/config"
-	"github.com/langowarny/lango/internal/logging"
-	"github.com/langowarny/lango/internal/provider"
-	"github.com/langowarny/lango/internal/provider/anthropic"
-	"github.com/langowarny/lango/internal/provider/gemini"
-	"github.com/langowarny/lango/internal/provider/openai"
-	"github.com/langowarny/lango/internal/tools/exec"
-	"github.com/langowarny/lango/internal/types"
+	"github.com/langoai/lango/internal/config"
+	"github.com/langoai/lango/internal/logging"
+	"github.com/langoai/lango/internal/provider"
+	"github.com/langoai/lango/internal/provider/anthropic"
+	"github.com/langoai/lango/internal/provider/gemini"
+	"github.com/langoai/lango/internal/provider/openai"
+	"github.com/langoai/lango/internal/tools/exec"
+	"github.com/langoai/lango/internal/types"
 )
 
 var logger = logging.SubsystemSugar("supervisor")

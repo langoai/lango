@@ -8,8 +8,8 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/langowarny/lango/internal/bootstrap"
-	"github.com/langowarny/lango/internal/wallet"
+	"github.com/langoai/lango/internal/bootstrap"
+	"github.com/langoai/lango/internal/wallet"
 )
 
 func newInfoCmd(bootLoader func() (*bootstrap.Result, error)) *cobra.Command {
@@ -61,8 +61,8 @@ func newInfoCmd(bootLoader func() (*bootstrap.Result, error)) *cobra.Command {
 					"usdcContract":   deps.config.Network.USDCContract,
 					"rpcUrl":         deps.config.Network.RPCURL,
 					"x402": map[string]interface{}{
-						"status":          x402Status,
-						"protocol":        "X402 V2 (Coinbase SDK)",
+						"status":           x402Status,
+						"protocol":         "X402 V2 (Coinbase SDK)",
 						"maxAutoPayAmount": x402MaxAutoPay,
 					},
 				})

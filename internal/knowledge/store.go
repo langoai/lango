@@ -10,13 +10,13 @@ import (
 	"github.com/google/uuid"
 	"go.uber.org/zap"
 
-	"github.com/langowarny/lango/internal/ent"
-	"github.com/langowarny/lango/internal/ent/auditlog"
-	"github.com/langowarny/lango/internal/ent/externalref"
-	entknowledge "github.com/langowarny/lango/internal/ent/knowledge"
-	entlearning "github.com/langowarny/lango/internal/ent/learning"
-	"github.com/langowarny/lango/internal/ent/predicate"
-	"github.com/langowarny/lango/internal/types"
+	"github.com/langoai/lango/internal/ent"
+	"github.com/langoai/lango/internal/ent/auditlog"
+	"github.com/langoai/lango/internal/ent/externalref"
+	entknowledge "github.com/langoai/lango/internal/ent/knowledge"
+	entlearning "github.com/langoai/lango/internal/ent/learning"
+	"github.com/langoai/lango/internal/ent/predicate"
+	"github.com/langoai/lango/internal/types"
 )
 
 // Store provides CRUD operations for knowledge, learning, skill, audit, and external ref entities.
@@ -513,13 +513,13 @@ func externalRefKeywordPredicates(query string) []predicate.ExternalRef {
 
 // LearningStats holds aggregate statistics about learning entries.
 type LearningStats struct {
-	TotalCount       int            `json:"total_count"`
+	TotalCount       int                          `json:"total_count"`
 	ByCategory       map[entlearning.Category]int `json:"by_category"`
-	AvgConfidence    float64        `json:"avg_confidence"`
-	OldestEntry      time.Time      `json:"oldest_entry,omitempty"`
-	NewestEntry      time.Time      `json:"newest_entry,omitempty"`
-	TotalOccurrences int            `json:"total_occurrences"`
-	TotalSuccesses   int            `json:"total_successes"`
+	AvgConfidence    float64                      `json:"avg_confidence"`
+	OldestEntry      time.Time                    `json:"oldest_entry,omitempty"`
+	NewestEntry      time.Time                    `json:"newest_entry,omitempty"`
+	TotalOccurrences int                          `json:"total_occurrences"`
+	TotalSuccesses   int                          `json:"total_successes"`
 }
 
 // GetLearningStats returns aggregate statistics about stored learning entries.
@@ -625,4 +625,3 @@ func (s *Store) DeleteLearningsWhere(ctx context.Context, category string, maxCo
 	}
 	return n, nil
 }
-

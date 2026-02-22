@@ -8,12 +8,12 @@ import (
 	"github.com/ethereum/go-ethereum/ethclient"
 	"github.com/spf13/cobra"
 
-	"github.com/langowarny/lango/internal/bootstrap"
-	"github.com/langowarny/lango/internal/config"
-	"github.com/langowarny/lango/internal/payment"
-	"github.com/langowarny/lango/internal/security"
-	"github.com/langowarny/lango/internal/session"
-	"github.com/langowarny/lango/internal/wallet"
+	"github.com/langoai/lango/internal/bootstrap"
+	"github.com/langoai/lango/internal/config"
+	"github.com/langoai/lango/internal/payment"
+	"github.com/langoai/lango/internal/security"
+	"github.com/langoai/lango/internal/session"
+	"github.com/langoai/lango/internal/wallet"
 )
 
 // paymentDeps holds lazily-initialized payment dependencies.

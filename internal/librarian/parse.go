@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/langowarny/lango/internal/types"
+	"github.com/langoai/lango/internal/types"
 )
 
 // parseAnalysisOutput extracts structured analysis from LLM JSON response.
@@ -35,9 +35,9 @@ func parseAnswerMatches(raw string) ([]answerMatch, error) {
 
 // answerMatch represents an LLM-detected match between a user message and a pending inquiry.
 type answerMatch struct {
-	InquiryID  string `json:"inquiry_id"`
-	Answer     string `json:"answer"`
-	Confidence types.Confidence `json:"confidence"` // high, medium, low
+	InquiryID  string            `json:"inquiry_id"`
+	Answer     string            `json:"answer"`
+	Confidence types.Confidence  `json:"confidence"` // high, medium, low
 	Knowledge  *matchedKnowledge `json:"knowledge,omitempty"`
 }
 

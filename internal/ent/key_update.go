@@ -12,9 +12,9 @@ import (
 	"entgo.io/ent/dialect/sql/sqlgraph"
 	"entgo.io/ent/schema/field"
 	"github.com/google/uuid"
-	"github.com/langowarny/lango/internal/ent/key"
-	"github.com/langowarny/lango/internal/ent/predicate"
-	"github.com/langowarny/lango/internal/ent/secret"
+	"github.com/langoai/lango/internal/ent/key"
+	"github.com/langoai/lango/internal/ent/predicate"
+	"github.com/langoai/lango/internal/ent/secret"
 )
 
 // KeyUpdate is the builder for updating Key entities.

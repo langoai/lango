@@ -4,7 +4,7 @@ import (
 	"context"
 	"os"
 
-	"github.com/langowarny/lango/internal/config"
+	"github.com/langoai/lango/internal/config"
 )
 
 // ChannelCheck validates channel token configurations.

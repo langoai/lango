@@ -11,7 +11,7 @@ import (
 	"github.com/go-rod/rod"
 	"github.com/go-rod/rod/lib/launcher"
 	"github.com/go-rod/rod/lib/proto"
-	"github.com/langowarny/lango/internal/logging"
+	"github.com/langoai/lango/internal/logging"
 )
 
 var logger = logging.SubsystemSugar("tool.browser")

@@ -7,8 +7,8 @@ import (
 	"fmt"
 	"time"
 
-	internal "github.com/langowarny/lango/internal/session"
-	"github.com/langowarny/lango/internal/types"
+	internal "github.com/langoai/lango/internal/session"
+	"github.com/langoai/lango/internal/types"
 	"google.golang.org/adk/session"
 )
 

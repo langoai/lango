@@ -11,8 +11,8 @@ import (
 	"github.com/spf13/cobra"
 	"go.uber.org/zap"
 
-	"github.com/langowarny/lango/internal/bootstrap"
-	"github.com/langowarny/lango/internal/workflow"
+	"github.com/langoai/lango/internal/bootstrap"
+	"github.com/langoai/lango/internal/workflow"
 )
 
 // NewWorkflowCmd creates the workflow command with lazy bootstrap loading.

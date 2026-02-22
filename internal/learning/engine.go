@@ -6,8 +6,8 @@ import (
 
 	"go.uber.org/zap"
 
-	entlearning "github.com/langowarny/lango/internal/ent/learning"
-	"github.com/langowarny/lango/internal/knowledge"
+	entlearning "github.com/langoai/lango/internal/ent/learning"
+	"github.com/langoai/lango/internal/knowledge"
 )
 
 // ToolResultObserver observes tool execution results for learning.

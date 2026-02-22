@@ -6,8 +6,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/langowarny/lango/internal/config"
-	"github.com/langowarny/lango/internal/provider"
+	"github.com/langoai/lango/internal/config"
+	"github.com/langoai/lango/internal/provider"
 )
 
 func defaultTestConfig() *config.Config {

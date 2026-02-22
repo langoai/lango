@@ -9,7 +9,7 @@ import (
 	"time"
 
 	"github.com/bwmarrin/discordgo"
-	"github.com/langowarny/lango/internal/logging"
+	"github.com/langoai/lango/internal/logging"
 )
 
 var logger = logging.SubsystemSugar("channel.discord")

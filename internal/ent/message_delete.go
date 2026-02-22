@@ -8,8 +8,8 @@ import (
 	"entgo.io/ent/dialect/sql"
 	"entgo.io/ent/dialect/sql/sqlgraph"
 	"entgo.io/ent/schema/field"
-	"github.com/langowarny/lango/internal/ent/message"
-	"github.com/langowarny/lango/internal/ent/predicate"
+	"github.com/langoai/lango/internal/ent/message"
+	"github.com/langoai/lango/internal/ent/predicate"
 )
 
 // MessageDelete is the builder for deleting a Message entity.

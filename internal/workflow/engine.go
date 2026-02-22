@@ -7,7 +7,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/langowarny/lango/internal/ctxutil"
+	"github.com/langoai/lango/internal/ctxutil"
 	"go.uber.org/zap"
 )
 

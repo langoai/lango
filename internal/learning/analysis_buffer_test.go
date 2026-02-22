@@ -9,9 +9,9 @@ import (
 
 	"go.uber.org/zap"
 
-	"github.com/langowarny/lango/internal/ent/enttest"
-	"github.com/langowarny/lango/internal/knowledge"
-	"github.com/langowarny/lango/internal/session"
+	"github.com/langoai/lango/internal/ent/enttest"
+	"github.com/langoai/lango/internal/knowledge"
+	"github.com/langoai/lango/internal/session"
 	_ "github.com/mattn/go-sqlite3"
 )
 

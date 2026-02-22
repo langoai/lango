@@ -8,17 +8,17 @@ import (
 
 	"go.uber.org/zap"
 
-	"github.com/langowarny/lango/internal/a2a"
-	"github.com/langowarny/lango/internal/agent"
-	"github.com/langowarny/lango/internal/approval"
-	"github.com/langowarny/lango/internal/bootstrap"
-	"github.com/langowarny/lango/internal/config"
-	"github.com/langowarny/lango/internal/logging"
-	"github.com/langowarny/lango/internal/security"
-	"github.com/langowarny/lango/internal/session"
-	"github.com/langowarny/lango/internal/tools/browser"
-	"github.com/langowarny/lango/internal/tools/filesystem"
-	x402pkg "github.com/langowarny/lango/internal/x402"
+	"github.com/langoai/lango/internal/a2a"
+	"github.com/langoai/lango/internal/agent"
+	"github.com/langoai/lango/internal/approval"
+	"github.com/langoai/lango/internal/bootstrap"
+	"github.com/langoai/lango/internal/config"
+	"github.com/langoai/lango/internal/logging"
+	"github.com/langoai/lango/internal/security"
+	"github.com/langoai/lango/internal/session"
+	"github.com/langoai/lango/internal/tools/browser"
+	"github.com/langoai/lango/internal/tools/filesystem"
+	x402pkg "github.com/langoai/lango/internal/x402"
 )
 
 func logger() *zap.SugaredLogger { return logging.App() }

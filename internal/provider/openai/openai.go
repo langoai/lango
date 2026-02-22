@@ -10,7 +10,7 @@ import (
 
 	"github.com/sashabaranov/go-openai"
 
-	"github.com/langowarny/lango/internal/provider"
+	"github.com/langoai/lango/internal/provider"
 )
 
 // OpenAIProvider implements the Provider interface for OpenAI-compatible APIs.

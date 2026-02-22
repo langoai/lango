@@ -11,9 +11,9 @@ import (
 	"hash"
 
 	"github.com/google/uuid"
-	"github.com/langowarny/lango/internal/agent"
-	"github.com/langowarny/lango/internal/logging"
-	"github.com/langowarny/lango/internal/security"
+	"github.com/langoai/lango/internal/agent"
+	"github.com/langoai/lango/internal/logging"
+	"github.com/langoai/lango/internal/security"
 )
 
 var logger = logging.SubsystemSugar("tool.crypto")

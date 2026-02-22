@@ -5,12 +5,12 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/langowarny/lango/internal/approval"
-	"github.com/langowarny/lango/internal/channels/discord"
-	"github.com/langowarny/lango/internal/channels/slack"
-	"github.com/langowarny/lango/internal/channels/telegram"
-	"github.com/langowarny/lango/internal/session"
-	"github.com/langowarny/lango/internal/types"
+	"github.com/langoai/lango/internal/approval"
+	"github.com/langoai/lango/internal/channels/discord"
+	"github.com/langoai/lango/internal/channels/slack"
+	"github.com/langoai/lango/internal/channels/telegram"
+	"github.com/langoai/lango/internal/session"
+	"github.com/langoai/lango/internal/types"
 )
 
 // initChannels initializes all configured channels and wires them to the agent

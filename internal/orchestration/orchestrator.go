@@ -8,7 +8,7 @@ import (
 	"google.golang.org/adk/model"
 	adk_tool "google.golang.org/adk/tool"
 
-	"github.com/langowarny/lango/internal/agent"
+	"github.com/langoai/lango/internal/agent"
 )
 
 // ToolAdapter converts an internal agent.Tool to an ADK tool.Tool.

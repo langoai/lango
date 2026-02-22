@@ -4,7 +4,7 @@ import (
 	"context"
 	"testing"
 
-	"github.com/langowarny/lango/internal/config"
+	"github.com/langoai/lango/internal/config"
 )
 
 func TestEmbeddingCheck_Run_ProviderIDResolvesCorrectly(t *testing.T) {

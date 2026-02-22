@@ -4,8 +4,8 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/langowarny/lango/internal/bootstrap"
-	sec "github.com/langowarny/lango/internal/security"
+	"github.com/langoai/lango/internal/bootstrap"
+	sec "github.com/langoai/lango/internal/security"
 )
 
 // secretsStoreFromBoot creates a SecretsStore from a bootstrap result,

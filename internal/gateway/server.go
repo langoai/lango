@@ -15,11 +15,11 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
 	"github.com/gorilla/websocket"
-	"github.com/langowarny/lango/internal/adk"
-	"github.com/langowarny/lango/internal/approval"
-	"github.com/langowarny/lango/internal/logging"
-	"github.com/langowarny/lango/internal/security"
-	"github.com/langowarny/lango/internal/session"
+	"github.com/langoai/lango/internal/adk"
+	"github.com/langoai/lango/internal/approval"
+	"github.com/langoai/lango/internal/logging"
+	"github.com/langoai/lango/internal/security"
+	"github.com/langoai/lango/internal/session"
 )
 
 func logger() *zap.SugaredLogger { return logging.Gateway() }

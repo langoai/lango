@@ -4,7 +4,7 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/langowarny/lango/internal/config"
+	"github.com/langoai/lango/internal/config"
 )
 
 // GraphStoreCheck validates graph store configuration.
