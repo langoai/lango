@@ -133,6 +133,22 @@ func (w *LocalWallet) getClient() (*ethclient.Client, error) {
 	return client, nil
 }
 
+// PublicKey returns the compressed public key bytes.
+func (w *LocalWallet) PublicKey(ctx context.Context) ([]byte, error) {
+	keyBytes, err := w.secrets.Get(ctx, w.keyName)
+	if err != nil {
+		return nil, fmt.Errorf("load wallet key: %w", err)
+	}
+	defer zeroBytes(keyBytes)
+
+	privateKey, err := crypto.ToECDSA(keyBytes)
+	if err != nil {
+		return nil, fmt.Errorf("parse wallet key: %w", err)
+	}
+
+	return crypto.CompressPubkey(&privateKey.PublicKey), nil
+}
+
 // zeroBytes overwrites a byte slice with zeros.
 func zeroBytes(b []byte) {
 	for i := range b {

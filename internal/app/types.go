@@ -17,6 +17,7 @@ import (
 	"github.com/langowarny/lango/internal/learning"
 	"github.com/langowarny/lango/internal/librarian"
 	"github.com/langowarny/lango/internal/memory"
+	"github.com/langowarny/lango/internal/p2p"
 	"github.com/langowarny/lango/internal/payment"
 	"github.com/langowarny/lango/internal/security"
 	"github.com/langowarny/lango/internal/session"
@@ -84,6 +85,9 @@ type App struct {
 
 	// Workflow Engine Components (optional)
 	WorkflowEngine *workflow.Engine
+
+	// P2P Components (optional)
+	P2PNode *p2p.Node
 
 	// Channels
 	Channels []Channel

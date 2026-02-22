@@ -3,6 +3,7 @@ package a2a
 import (
 	"encoding/json"
 	"net/http"
+	"time"
 
 	"go.uber.org/zap"
 	"google.golang.org/adk/agent"
@@ -27,6 +28,29 @@ type AgentCard struct {
 	Description string       `json:"description"`
 	URL         string       `json:"url"`
 	Skills      []AgentSkill `json:"skills"`
+
+	// P2P extensions
+	DID           string         `json:"did,omitempty"`
+	Multiaddrs    []string       `json:"multiaddrs,omitempty"`
+	Capabilities  []string       `json:"capabilities,omitempty"`
+	Pricing       *PricingInfo   `json:"pricing,omitempty"`
+	ZKCredentials []ZKCredential `json:"zkCredentials,omitempty"`
+}
+
+// PricingInfo describes the pricing for an agent's services.
+type PricingInfo struct {
+	Currency   string            `json:"currency"`
+	PerQuery   string            `json:"perQuery,omitempty"`
+	PerMinute  string            `json:"perMinute,omitempty"`
+	ToolPrices map[string]string `json:"toolPrices,omitempty"`
+}
+
+// ZKCredential is a zero-knowledge proof of agent capability.
+type ZKCredential struct {
+	CapabilityID string    `json:"capabilityId"`
+	Proof        []byte    `json:"proof"`
+	IssuedAt     time.Time `json:"issuedAt"`
+	ExpiresAt    time.Time `json:"expiresAt"`
 }
 
 // AgentSkill describes a capability of the agent.
@@ -64,6 +88,21 @@ func NewServer(cfg config.A2AConfig, adkAgent agent.Agent, logger *zap.SugaredLo
 		card:   card,
 		logger: logger,
 	}
+}
+
+// Card returns the agent card (used by P2P gossip and protocol).
+func (s *Server) Card() *AgentCard { return s.card }
+
+// SetP2PInfo adds P2P networking information to the agent card.
+func (s *Server) SetP2PInfo(did string, multiaddrs, capabilities []string) {
+	s.card.DID = did
+	s.card.Multiaddrs = multiaddrs
+	s.card.Capabilities = capabilities
+}
+
+// SetPricing sets the pricing information on the agent card.
+func (s *Server) SetPricing(pricing *PricingInfo) {
+	s.card.Pricing = pricing
 }
 
 // RegisterRoutes mounts the A2A routes on the given HTTP mux.

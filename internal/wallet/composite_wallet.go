@@ -81,6 +81,22 @@ func (w *CompositeWallet) SignMessage(ctx context.Context, message []byte) ([]by
 	return w.fallback.SignMessage(ctx, message)
 }
 
+// PublicKey returns the compressed public key from the active provider.
+func (w *CompositeWallet) PublicKey(ctx context.Context) ([]byte, error) {
+	if w.checker != nil && w.checker.IsConnected() {
+		pk, err := w.primary.PublicKey(ctx)
+		if err == nil {
+			return pk, nil
+		}
+	}
+
+	w.mu.Lock()
+	w.usedLocal = true
+	w.mu.Unlock()
+
+	return w.fallback.PublicKey(ctx)
+}
+
 // UsedLocal returns true if the fallback (local) wallet was used at any point.
 func (w *CompositeWallet) UsedLocal() bool {
 	w.mu.RLock()

@@ -100,8 +100,8 @@ Return operation results: encrypted/decrypted data, confirmation of secret stora
 - Handle sensitive data carefully — never log secrets or private keys in plain text.
 - If a task does not match your capabilities, REJECT it by responding:
   "[REJECT] This task requires <correct_agent>. I handle: encryption, secret management, blockchain payments."`,
-		Prefixes: []string{"crypto_", "secrets_", "payment_"},
-		Keywords: []string{"encrypt", "decrypt", "sign", "hash", "secret", "password", "payment", "wallet", "USDC"},
+		Prefixes: []string{"crypto_", "secrets_", "payment_", "p2p_"},
+		Keywords: []string{"encrypt", "decrypt", "sign", "hash", "secret", "password", "payment", "wallet", "USDC", "peer", "p2p", "connect", "handshake", "firewall", "zkp"},
 		Accepts:  "A security operation (crypto, secret, or payment) with parameters",
 		Returns:  "Encrypted/decrypted data, secret confirmation, or payment transaction status",
 		CannotDo: []string{"shell commands", "file operations", "web browsing", "knowledge search", "memory management"},

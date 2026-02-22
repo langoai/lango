@@ -188,6 +188,7 @@ func New(boot *bootstrap.Result) (*App, error) {
 
 	// 5h. Payment tools (optional)
 	pc := initPayment(cfg, store, app.Secrets)
+	var p2pc *p2pComponents
 	var x402Interceptor *x402pkg.Interceptor
 	if pc != nil {
 		app.WalletProvider = pc.wallet
@@ -201,6 +202,15 @@ func New(boot *bootstrap.Result) (*App, error) {
 		}
 
 		tools = append(tools, buildPaymentTools(pc, x402Interceptor)...)
+
+		// 5h''. P2P networking (optional, requires wallet)
+		p2pc = initP2P(cfg, pc.wallet)
+		if p2pc != nil {
+			app.P2PNode = p2pc.node
+			// Wire P2P payment tool.
+			tools = append(tools, buildP2PTools(p2pc)...)
+			tools = append(tools, buildP2PPaymentTool(p2pc, pc)...)
+		}
 	}
 
 	// 5i. Librarian tools (optional)
@@ -351,6 +361,15 @@ func (a *App) Start(ctx context.Context) error {
 		logger().Info("proactive librarian buffer started")
 	}
 
+	// Start P2P node if enabled
+	if a.P2PNode != nil {
+		if err := a.P2PNode.Start(&a.wg); err != nil {
+			logger().Errorw("P2P node start error", "error", err)
+		} else {
+			logger().Infow("P2P node started", "peerID", a.P2PNode.PeerID())
+		}
+	}
+
 	// Start cron scheduler if enabled
 	if a.CronScheduler != nil {
 		if err := a.CronScheduler.Start(ctx); err != nil {
@@ -394,6 +413,15 @@ func (a *App) Stop(ctx context.Context) error {
 	if a.WorkflowEngine != nil {
 		a.WorkflowEngine.Shutdown()
 		logger().Info("workflow engine stopped")
+	}
+
+	// Stop P2P node
+	if a.P2PNode != nil {
+		if err := a.P2PNode.Stop(); err != nil {
+			logger().Warnw("P2P node stop error", "error", err)
+		} else {
+			logger().Info("P2P node stopped")
+		}
 	}
 
 	// Signal gateway and channels to stop

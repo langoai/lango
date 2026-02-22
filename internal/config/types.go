@@ -65,8 +65,83 @@ type Config struct {
 	// Librarian configuration (proactive knowledge agent)
 	Librarian LibrarianConfig `mapstructure:"librarian" json:"librarian"`
 
+	// P2P network configuration
+	P2P P2PConfig `mapstructure:"p2p" json:"p2p"`
+
 	// Providers configuration
 	Providers map[string]ProviderConfig `mapstructure:"providers" json:"providers"`
+}
+
+// P2PConfig defines peer-to-peer network settings for the Sovereign Agent Network.
+type P2PConfig struct {
+	// Enable P2P networking.
+	Enabled bool `mapstructure:"enabled" json:"enabled"`
+
+	// ListenAddrs are the multiaddrs to listen on (e.g. /ip4/0.0.0.0/tcp/9000).
+	ListenAddrs []string `mapstructure:"listenAddrs" json:"listenAddrs"`
+
+	// BootstrapPeers are initial peers to connect to for DHT bootstrapping.
+	BootstrapPeers []string `mapstructure:"bootstrapPeers" json:"bootstrapPeers"`
+
+	// KeyDir is the directory for persisting node keys (default: ~/.lango/p2p).
+	KeyDir string `mapstructure:"keyDir" json:"keyDir"`
+
+	// EnableRelay allows this node to act as a relay for NAT traversal.
+	EnableRelay bool `mapstructure:"enableRelay" json:"enableRelay"`
+
+	// EnableMDNS enables multicast DNS for local peer discovery.
+	EnableMDNS bool `mapstructure:"enableMdns" json:"enableMdns"`
+
+	// MaxPeers is the maximum number of connected peers.
+	MaxPeers int `mapstructure:"maxPeers" json:"maxPeers"`
+
+	// HandshakeTimeout is the maximum duration for peer handshake.
+	HandshakeTimeout time.Duration `mapstructure:"handshakeTimeout" json:"handshakeTimeout"`
+
+	// SessionTokenTTL is the lifetime of session tokens after handshake.
+	SessionTokenTTL time.Duration `mapstructure:"sessionTokenTtl" json:"sessionTokenTtl"`
+
+	// AutoApproveKnownPeers skips HITL approval for previously authenticated peers.
+	AutoApproveKnownPeers bool `mapstructure:"autoApproveKnownPeers" json:"autoApproveKnownPeers"`
+
+	// FirewallRules defines static ACL rules for the knowledge firewall.
+	FirewallRules []FirewallRule `mapstructure:"firewallRules" json:"firewallRules"`
+
+	// GossipInterval is the interval for gossip-based agent card propagation.
+	GossipInterval time.Duration `mapstructure:"gossipInterval" json:"gossipInterval"`
+
+	// ZKHandshake enables ZK-enhanced handshake instead of plain signature mode.
+	ZKHandshake bool `mapstructure:"zkHandshake" json:"zkHandshake"`
+
+	// ZKAttestation enables ZK attestation proofs on responses to peers.
+	ZKAttestation bool `mapstructure:"zkAttestation" json:"zkAttestation"`
+
+	// ZKP holds zero-knowledge proof settings.
+	ZKP ZKPConfig `mapstructure:"zkp" json:"zkp"`
+}
+
+// ZKPConfig defines zero-knowledge proof settings.
+type ZKPConfig struct {
+	// ProofCacheDir is the directory for caching compiled circuits and proving keys.
+	ProofCacheDir string `mapstructure:"proofCacheDir" json:"proofCacheDir"`
+
+	// ProvingScheme selects the ZKP proving scheme: "plonk" or "groth16".
+	ProvingScheme string `mapstructure:"provingScheme" json:"provingScheme"`
+}
+
+// FirewallRule defines an ACL rule for the knowledge firewall.
+type FirewallRule struct {
+	// PeerDID is the DID of the peer this rule applies to ("*" for all).
+	PeerDID string `mapstructure:"peerDid" json:"peerDid"`
+
+	// Action is "allow" or "deny".
+	Action string `mapstructure:"action" json:"action"`
+
+	// Tools lists tool name patterns this rule applies to.
+	Tools []string `mapstructure:"tools" json:"tools"`
+
+	// RateLimit is the maximum requests per minute (0 = unlimited).
+	RateLimit int `mapstructure:"rateLimit" json:"rateLimit"`
 }
 
 // CronConfig defines cron scheduling settings.

@@ -21,6 +21,10 @@ type WalletProvider interface {
 
 	// SignMessage signs an arbitrary message and returns the signature.
 	SignMessage(ctx context.Context, message []byte) ([]byte, error)
+
+	// PublicKey returns the compressed public key bytes.
+	// Used for P2P identity derivation (DID). Private key is never exposed.
+	PublicKey(ctx context.Context) ([]byte, error)
 }
 
 // WalletInfo holds public wallet metadata.

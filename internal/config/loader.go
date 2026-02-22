@@ -122,6 +122,26 @@ func DefaultConfig() *Config {
 			MaxPendingInquiries:  2,
 			AutoSaveConfidence:   types.ConfidenceHigh,
 		},
+		P2P: P2PConfig{
+			Enabled: false,
+			ListenAddrs: []string{
+				"/ip4/0.0.0.0/tcp/9000",
+				"/ip4/0.0.0.0/udp/9000/quic-v1",
+			},
+			KeyDir:           "~/.lango/p2p",
+			EnableRelay:      true,
+			EnableMDNS:       true,
+			MaxPeers:         50,
+			HandshakeTimeout: 30 * time.Second,
+			SessionTokenTTL:  24 * time.Hour,
+			GossipInterval:   30 * time.Second,
+			ZKHandshake:      true,
+			ZKAttestation:    true,
+			ZKP: ZKPConfig{
+				ProofCacheDir: "~/.lango/p2p/zkp-cache",
+				ProvingScheme: "plonk",
+			},
+		},
 	}
 }
 
@@ -197,6 +217,19 @@ func Load(configPath string) (*Config, error) {
 	v.SetDefault("skill.maxBulkImport", defaults.Skill.MaxBulkImport)
 	v.SetDefault("skill.importConcurrency", defaults.Skill.ImportConcurrency)
 	v.SetDefault("skill.importTimeout", defaults.Skill.ImportTimeout)
+	v.SetDefault("p2p.enabled", defaults.P2P.Enabled)
+	v.SetDefault("p2p.listenAddrs", defaults.P2P.ListenAddrs)
+	v.SetDefault("p2p.keyDir", defaults.P2P.KeyDir)
+	v.SetDefault("p2p.enableRelay", defaults.P2P.EnableRelay)
+	v.SetDefault("p2p.enableMdns", defaults.P2P.EnableMDNS)
+	v.SetDefault("p2p.maxPeers", defaults.P2P.MaxPeers)
+	v.SetDefault("p2p.handshakeTimeout", defaults.P2P.HandshakeTimeout)
+	v.SetDefault("p2p.sessionTokenTtl", defaults.P2P.SessionTokenTTL)
+	v.SetDefault("p2p.gossipInterval", defaults.P2P.GossipInterval)
+	v.SetDefault("p2p.zkHandshake", defaults.P2P.ZKHandshake)
+	v.SetDefault("p2p.zkAttestation", defaults.P2P.ZKAttestation)
+	v.SetDefault("p2p.zkp.proofCacheDir", defaults.P2P.ZKP.ProofCacheDir)
+	v.SetDefault("p2p.zkp.provingScheme", defaults.P2P.ZKP.ProvingScheme)
 
 	// Configure viper
 	v.SetConfigType("json")
@@ -335,6 +368,17 @@ func Validate(cfg *Config) error {
 		validWalletProviders := map[string]bool{"local": true, "rpc": true, "composite": true}
 		if !validWalletProviders[cfg.Payment.WalletProvider] {
 			errs = append(errs, fmt.Sprintf("invalid payment.walletProvider: %q (must be local, rpc, or composite)", cfg.Payment.WalletProvider))
+		}
+	}
+
+	// Validate P2P config
+	if cfg.P2P.Enabled {
+		if !cfg.Payment.Enabled {
+			errs = append(errs, "p2p requires payment.enabled (wallet needed for identity)")
+		}
+		validSchemes := map[string]bool{"plonk": true, "groth16": true}
+		if cfg.P2P.ZKP.ProvingScheme != "" && !validSchemes[cfg.P2P.ZKP.ProvingScheme] {
+			errs = append(errs, fmt.Sprintf("invalid p2p.zkp.provingScheme: %q (must be plonk or groth16)", cfg.P2P.ZKP.ProvingScheme))
 		}
 	}
 

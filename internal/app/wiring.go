@@ -15,6 +15,13 @@ import (
 	"github.com/langowarny/lango/internal/a2a"
 	"github.com/langowarny/lango/internal/adk"
 	"github.com/langowarny/lango/internal/agent"
+	"github.com/langowarny/lango/internal/p2p"
+	"github.com/langowarny/lango/internal/p2p/discovery"
+	"github.com/langowarny/lango/internal/p2p/firewall"
+	"github.com/langowarny/lango/internal/p2p/handshake"
+	"github.com/langowarny/lango/internal/p2p/identity"
+	p2pproto "github.com/langowarny/lango/internal/p2p/protocol"
+	libp2pproto "github.com/libp2p/go-libp2p/core/protocol"
 	"github.com/langowarny/lango/internal/background"
 	"github.com/langowarny/lango/internal/bootstrap"
 	"github.com/langowarny/lango/internal/config"
@@ -1064,6 +1071,147 @@ func initX402(cfg *config.Config, secrets *security.SecretsStore, limiter wallet
 
 	return &x402Components{
 		interceptor: interceptor,
+	}
+}
+
+// p2pComponents holds optional P2P networking components.
+type p2pComponents struct {
+	node       *p2p.Node
+	sessions   *handshake.SessionStore
+	handshaker *handshake.Handshaker
+	fw         *firewall.Firewall
+	gossip     *discovery.GossipService
+	identity   *identity.WalletDIDProvider
+	handler    *p2pproto.Handler
+}
+
+// initP2P creates the P2P networking components if enabled.
+func initP2P(cfg *config.Config, wp wallet.WalletProvider) *p2pComponents {
+	if !cfg.P2P.Enabled {
+		logger().Info("P2P networking disabled")
+		return nil
+	}
+
+	if wp == nil {
+		logger().Warn("P2P networking requires wallet provider, skipping")
+		return nil
+	}
+
+	pLogger := logger()
+
+	// Create P2P node.
+	node, err := p2p.NewNode(cfg.P2P, pLogger)
+	if err != nil {
+		pLogger.Warnw("P2P node creation failed, skipping", "error", err)
+		return nil
+	}
+
+	// Create identity provider from wallet.
+	idProvider := identity.NewProvider(wp, pLogger)
+
+	// Create session store.
+	sessionTTL := cfg.P2P.SessionTokenTTL
+	if sessionTTL <= 0 {
+		sessionTTL = 24 * time.Hour
+	}
+	sessions, err := handshake.NewSessionStore(sessionTTL)
+	if err != nil {
+		pLogger.Warnw("P2P session store creation failed, skipping", "error", err)
+		return nil
+	}
+
+	// Create handshaker.
+	hsTimeout := cfg.P2P.HandshakeTimeout
+	if hsTimeout <= 0 {
+		hsTimeout = 30 * time.Second
+	}
+	handshaker := handshake.NewHandshaker(handshake.Config{
+		Wallet:           wp,
+		Sessions:         sessions,
+		ZKEnabled:        cfg.P2P.ZKHandshake,
+		Timeout:          hsTimeout,
+		AutoApproveKnown: cfg.P2P.AutoApproveKnownPeers,
+		Logger:           pLogger,
+	})
+
+	// Create firewall.
+	var aclRules []firewall.ACLRule
+	for _, r := range cfg.P2P.FirewallRules {
+		aclRules = append(aclRules, firewall.ACLRule{
+			PeerDID:   r.PeerDID,
+			Action:    r.Action,
+			Tools:     r.Tools,
+			RateLimit: r.RateLimit,
+		})
+	}
+	fw := firewall.New(aclRules, pLogger)
+
+	// Register handshake protocol handler on the host.
+	node.Host().SetStreamHandler(libp2pproto.ID(handshake.ProtocolID), handshaker.StreamHandler())
+
+	// Get local DID for protocol handler.
+	var localDID string
+	ctx := context.Background()
+	d, err := idProvider.DID(ctx)
+	if err == nil && d != nil {
+		localDID = d.ID
+	}
+
+	// Create A2A-over-P2P protocol handler.
+	handler := p2pproto.NewHandler(p2pproto.HandlerConfig{
+		Sessions: sessions,
+		Firewall: fw,
+		LocalDID: localDID,
+		Logger:   pLogger,
+	})
+	node.Host().SetStreamHandler(libp2pproto.ID(p2pproto.ProtocolID), handler.StreamHandler())
+
+	// Create gossip discovery service.
+	var gossip *discovery.GossipService
+	gossipInterval := cfg.P2P.GossipInterval
+	if gossipInterval <= 0 {
+		gossipInterval = 30 * time.Second
+	}
+
+	agentName := cfg.A2A.AgentName
+	if agentName == "" {
+		agentName = "lango"
+	}
+	localCard := &discovery.GossipCard{
+		Name:   agentName,
+		DID:    localDID,
+		PeerID: node.PeerID().String(),
+	}
+	for _, a := range node.Multiaddrs() {
+		localCard.Multiaddrs = append(localCard.Multiaddrs, a.String())
+	}
+
+	gossip, err = discovery.NewGossipService(discovery.GossipConfig{
+		Host:      node.Host(),
+		LocalCard: localCard,
+		Interval:  gossipInterval,
+		Logger:    pLogger,
+	})
+	if err != nil {
+		pLogger.Warnw("gossip service creation failed", "error", err)
+	}
+
+	pLogger.Infow("P2P networking initialized",
+		"peerID", node.PeerID(),
+		"did", localDID,
+		"listenAddrs", cfg.P2P.ListenAddrs,
+		"zkHandshake", cfg.P2P.ZKHandshake,
+		"firewallRules", len(aclRules),
+	)
+
+	return &p2pComponents{
+		node:       node,
+		sessions:   sessions,
+		handshaker: handshaker,
+		fw:         fw,
+		gossip:     gossip,
+		identity:   idProvider,
+		handler:    handler,
 	}
 }
 

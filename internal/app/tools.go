@@ -14,6 +14,13 @@ import (
 
 	"github.com/langowarny/lango/internal/agent"
 	"github.com/langowarny/lango/internal/approval"
+	"github.com/langowarny/lango/internal/p2p/discovery"
+	"github.com/langowarny/lango/internal/p2p/firewall"
+	"github.com/langowarny/lango/internal/p2p/handshake"
+	"github.com/langowarny/lango/internal/p2p/identity"
+	"github.com/langowarny/lango/internal/p2p/protocol"
+	"github.com/libp2p/go-libp2p/core/peer"
+	"github.com/multiformats/go-multiaddr"
 	"github.com/langowarny/lango/internal/background"
 	"github.com/langowarny/lango/internal/config"
 	cronpkg "github.com/langowarny/lango/internal/cron"
@@ -25,6 +32,7 @@ import (
 	"github.com/langowarny/lango/internal/learning"
 	"github.com/langowarny/lango/internal/librarian"
 	"github.com/langowarny/lango/internal/memory"
+	"github.com/langowarny/lango/internal/payment"
 	"github.com/langowarny/lango/internal/security"
 	"github.com/langowarny/lango/internal/session"
 	"github.com/langowarny/lango/internal/skill"
@@ -2068,6 +2076,426 @@ func buildMemoryAgentTools(ms *memory.Store) []*agent.Tool {
 // buildPaymentTools creates blockchain payment tools.
 func buildPaymentTools(pc *paymentComponents, x402Interceptor *x402pkg.Interceptor) []*agent.Tool {
 	return toolpayment.BuildTools(pc.service, pc.limiter, pc.secrets, pc.chainID, x402Interceptor)
+}
+
+// buildP2PTools creates P2P networking tools.
+func buildP2PTools(pc *p2pComponents) []*agent.Tool {
+	return []*agent.Tool{
+		{
+			Name:        "p2p_status",
+			Description: "Show P2P node status: peer ID, listen addresses, connected peers",
+			SafetyLevel: agent.SafetyLevelSafe,
+			Parameters: map[string]interface{}{
+				"type":       "object",
+				"properties": map[string]interface{}{},
+			},
+			Handler: func(ctx context.Context, params map[string]interface{}) (interface{}, error) {
+				addrs := pc.node.Multiaddrs()
+				addrStrs := make([]string, len(addrs))
+				for i, a := range addrs {
+					addrStrs[i] = a.String()
+				}
+				connected := pc.node.ConnectedPeers()
+				peerStrs := make([]string, len(connected))
+				for i, p := range connected {
+					peerStrs[i] = p.String()
+				}
+
+				// Get local DID if available.
+				var did string
+				if pc.identity != nil {
+					d, err := pc.identity.DID(ctx)
+					if err == nil && d != nil {
+						did = d.ID
+					}
+				}
+
+				return map[string]interface{}{
+					"peerID":         pc.node.PeerID().String(),
+					"did":            did,
+					"listenAddrs":    addrStrs,
+					"connectedPeers": peerStrs,
+					"peerCount":      len(connected),
+					"sessions":       len(pc.sessions.ActiveSessions()),
+				}, nil
+			},
+		},
+		{
+			Name:        "p2p_connect",
+			Description: "Initiate a handshake with a remote peer by multiaddr",
+			SafetyLevel: agent.SafetyLevelDangerous,
+			Parameters: map[string]interface{}{
+				"type": "object",
+				"properties": map[string]interface{}{
+					"multiaddr": map[string]interface{}{"type": "string", "description": "The peer's multiaddr (e.g., /ip4/1.2.3.4/tcp/9000/p2p/QmPeer...)"},
+				},
+				"required": []string{"multiaddr"},
+			},
+			Handler: func(ctx context.Context, params map[string]interface{}) (interface{}, error) {
+				addr, _ := params["multiaddr"].(string)
+				if addr == "" {
+					return nil, fmt.Errorf("missing multiaddr parameter")
+				}
+
+				// Parse multiaddr and extract peer info.
+				ma, err := multiaddr.NewMultiaddr(addr)
+				if err != nil {
+					return nil, fmt.Errorf("invalid multiaddr: %w", err)
+				}
+				pi, err := peer.AddrInfoFromP2pAddr(ma)
+				if err != nil {
+					return nil, fmt.Errorf("parse peer addr: %w", err)
+				}
+
+				// Connect to the peer.
+				if err := pc.node.Host().Connect(ctx, *pi); err != nil {
+					return nil, fmt.Errorf("connect to peer: %w", err)
+				}
+
+				// Open a handshake stream.
+				s, err := pc.node.Host().NewStream(ctx, pi.ID, handshake.ProtocolID)
+				if err != nil {
+					return nil, fmt.Errorf("open handshake stream: %w", err)
+				}
+				defer s.Close()
+
+				// Get local DID.
+				localDID := ""
+				if pc.identity != nil {
+					d, err := pc.identity.DID(ctx)
+					if err == nil && d != nil {
+						localDID = d.ID
+					}
+				}
+
+				sess, err := pc.handshaker.Initiate(ctx, s, localDID)
+				if err != nil {
+					return nil, fmt.Errorf("handshake: %w", err)
+				}
+
+				return map[string]interface{}{
+					"status":     "connected",
+					"peerID":     pi.ID.String(),
+					"peerDID":    sess.PeerDID,
+					"zkVerified": sess.ZKVerified,
+					"expiresAt":  sess.ExpiresAt.Format(time.RFC3339),
+				}, nil
+			},
+		},
+		{
+			Name:        "p2p_disconnect",
+			Description: "Disconnect from a peer",
+			SafetyLevel: agent.SafetyLevelModerate,
+			Parameters: map[string]interface{}{
+				"type": "object",
+				"properties": map[string]interface{}{
+					"peer_did": map[string]interface{}{"type": "string", "description": "The peer's DID to disconnect"},
+				},
+				"required": []string{"peer_did"},
+			},
+			Handler: func(ctx context.Context, params map[string]interface{}) (interface{}, error) {
+				peerDID, _ := params["peer_did"].(string)
+				if peerDID == "" {
+					return nil, fmt.Errorf("missing peer_did parameter")
+				}
+				pc.sessions.Remove(peerDID)
+				return map[string]interface{}{
+					"status":  "disconnected",
+					"peerDID": peerDID,
+				}, nil
+			},
+		},
+		{
+			Name:        "p2p_peers",
+			Description: "List connected peers with session info",
+			SafetyLevel: agent.SafetyLevelSafe,
+			Parameters: map[string]interface{}{
+				"type":       "object",
+				"properties": map[string]interface{}{},
+			},
+			Handler: func(ctx context.Context, params map[string]interface{}) (interface{}, error) {
+				sessions := pc.sessions.ActiveSessions()
+				peers := make([]map[string]interface{}, 0, len(sessions))
+				for _, s := range sessions {
+					peers = append(peers, map[string]interface{}{
+						"peerDID":    s.PeerDID,
+						"zkVerified": s.ZKVerified,
+						"createdAt":  s.CreatedAt.Format(time.RFC3339),
+						"expiresAt":  s.ExpiresAt.Format(time.RFC3339),
+					})
+				}
+				return map[string]interface{}{"peers": peers, "count": len(peers)}, nil
+			},
+		},
+		{
+			Name:        "p2p_query",
+			Description: "Send an inference-only query to a connected peer",
+			SafetyLevel: agent.SafetyLevelModerate,
+			Parameters: map[string]interface{}{
+				"type": "object",
+				"properties": map[string]interface{}{
+					"peer_did":  map[string]interface{}{"type": "string", "description": "The peer's DID to query"},
+					"tool_name": map[string]interface{}{"type": "string", "description": "Tool to invoke on the remote agent"},
+					"params":    map[string]interface{}{"type": "string", "description": "JSON string of parameters for the tool"},
+				},
+				"required": []string{"peer_did", "tool_name"},
+			},
+			Handler: func(ctx context.Context, params map[string]interface{}) (interface{}, error) {
+				peerDID, _ := params["peer_did"].(string)
+				toolName, _ := params["tool_name"].(string)
+				paramStr, _ := params["params"].(string)
+
+				if peerDID == "" || toolName == "" {
+					return nil, fmt.Errorf("peer_did and tool_name are required")
+				}
+
+				sess := pc.sessions.Get(peerDID)
+				if sess == nil {
+					return nil, fmt.Errorf("no active session for peer %s", peerDID)
+				}
+
+				// Parse the peer ID from DID.
+				did, err := identity.ParseDID(peerDID)
+				if err != nil {
+					return nil, fmt.Errorf("parse peer DID: %w", err)
+				}
+
+				var toolParams map[string]interface{}
+				if paramStr != "" {
+					if err := json.Unmarshal([]byte(paramStr), &toolParams); err != nil {
+						return nil, fmt.Errorf("parse params JSON: %w", err)
+					}
+				}
+				if toolParams == nil {
+					toolParams = map[string]interface{}{}
+				}
+
+				remoteAgent := protocol.NewRemoteAgent(protocol.RemoteAgentConfig{
+					Name:         "peer-" + peerDID[:16],
+					DID:          peerDID,
+					PeerID:       did.PeerID,
+					SessionToken: sess.Token,
+					Host:         pc.node.Host(),
+					Logger:       logger(),
+				})
+
+				result, err := remoteAgent.InvokeTool(ctx, toolName, toolParams)
+				if err != nil {
+					return nil, fmt.Errorf("remote tool invoke: %w", err)
+				}
+
+				return result, nil
+			},
+		},
+		{
+			Name:        "p2p_firewall_rules",
+			Description: "List current firewall ACL rules",
+			SafetyLevel: agent.SafetyLevelSafe,
+			Parameters: map[string]interface{}{
+				"type":       "object",
+				"properties": map[string]interface{}{},
+			},
+			Handler: func(ctx context.Context, params map[string]interface{}) (interface{}, error) {
+				rules := pc.fw.Rules()
+				ruleList := make([]map[string]interface{}, len(rules))
+				for i, r := range rules {
+					ruleList[i] = map[string]interface{}{
+						"peerDID":   r.PeerDID,
+						"action":    r.Action,
+						"tools":     r.Tools,
+						"rateLimit": r.RateLimit,
+					}
+				}
+				return map[string]interface{}{"rules": ruleList, "count": len(rules)}, nil
+			},
+		},
+		{
+			Name:        "p2p_firewall_add",
+			Description: "Add a firewall ACL rule",
+			SafetyLevel: agent.SafetyLevelDangerous,
+			Parameters: map[string]interface{}{
+				"type": "object",
+				"properties": map[string]interface{}{
+					"peer_did":   map[string]interface{}{"type": "string", "description": "Peer DID to apply rule to (* for all)"},
+					"action":     map[string]interface{}{"type": "string", "description": "allow or deny", "enum": []string{"allow", "deny"}},
+					"tools":      map[string]interface{}{"type": "array", "items": map[string]interface{}{"type": "string"}, "description": "Tool name patterns (* for all)"},
+					"rate_limit": map[string]interface{}{"type": "integer", "description": "Max requests per minute (0 = unlimited)"},
+				},
+				"required": []string{"peer_did", "action"},
+			},
+			Handler: func(ctx context.Context, params map[string]interface{}) (interface{}, error) {
+				peerDID, _ := params["peer_did"].(string)
+				action, _ := params["action"].(string)
+				if peerDID == "" || action == "" {
+					return nil, fmt.Errorf("peer_did and action are required")
+				}
+
+				var tools []string
+				if raw, ok := params["tools"].([]interface{}); ok {
+					for _, v := range raw {
+						if s, ok := v.(string); ok {
+							tools = append(tools, s)
+						}
+					}
+				}
+
+				var rateLimit int
+				if rl, ok := params["rate_limit"].(float64); ok {
+					rateLimit = int(rl)
+				}
+
+				pc.fw.AddRule(firewall.ACLRule{
+					PeerDID:   peerDID,
+					Action:    action,
+					Tools:     tools,
+					RateLimit: rateLimit,
+				})
+
+				return map[string]interface{}{
+					"status":  "added",
+					"message": fmt.Sprintf("Firewall rule added: %s %s", action, peerDID),
+				}, nil
+			},
+		},
+		{
+			Name:        "p2p_firewall_remove",
+			Description: "Remove all firewall rules for a peer DID",
+			SafetyLevel: agent.SafetyLevelDangerous,
+			Parameters: map[string]interface{}{
+				"type": "object",
+				"properties": map[string]interface{}{
+					"peer_did": map[string]interface{}{"type": "string", "description": "Peer DID to remove rules for"},
+				},
+				"required": []string{"peer_did"},
+			},
+			Handler: func(ctx context.Context, params map[string]interface{}) (interface{}, error) {
+				peerDID, _ := params["peer_did"].(string)
+				if peerDID == "" {
+					return nil, fmt.Errorf("missing peer_did parameter")
+				}
+				removed := pc.fw.RemoveRule(peerDID)
+				return map[string]interface{}{
+					"status":  "removed",
+					"count":   removed,
+					"message": fmt.Sprintf("Removed %d rules for %s", removed, peerDID),
+				}, nil
+			},
+		},
+		{
+			Name:        "p2p_discover",
+			Description: "Discover peers by capability or tags",
+			SafetyLevel: agent.SafetyLevelSafe,
+			Parameters: map[string]interface{}{
+				"type": "object",
+				"properties": map[string]interface{}{
+					"capability": map[string]interface{}{"type": "string", "description": "Capability to search for"},
+				},
+			},
+			Handler: func(ctx context.Context, params map[string]interface{}) (interface{}, error) {
+				capability, _ := params["capability"].(string)
+
+				if pc.gossip == nil {
+					return map[string]interface{}{"peers": []interface{}{}, "count": 0, "message": "gossip not enabled"}, nil
+				}
+
+				var cards []*discovery.GossipCard
+				if capability != "" {
+					cards = pc.gossip.FindByCapability(capability)
+				} else {
+					cards = pc.gossip.KnownPeers()
+				}
+
+				peers := make([]map[string]interface{}, 0, len(cards))
+				for _, c := range cards {
+					peers = append(peers, map[string]interface{}{
+						"name":         c.Name,
+						"did":          c.DID,
+						"capabilities": c.Capabilities,
+						"pricing":      c.Pricing,
+						"peerID":       c.PeerID,
+						"timestamp":    c.Timestamp.Format(time.RFC3339),
+					})
+				}
+				return map[string]interface{}{"peers": peers, "count": len(peers)}, nil
+			},
+		},
+	}
+}
+
+// buildP2PPaymentTool creates the p2p_pay tool for peer-to-peer USDC payments.
+func buildP2PPaymentTool(p2pc *p2pComponents, pc *paymentComponents) []*agent.Tool {
+	if pc == nil || pc.service == nil {
+		return nil
+	}
+
+	return []*agent.Tool{
+		{
+			Name:        "p2p_pay",
+			Description: "Send USDC payment to a connected peer for their services",
+			SafetyLevel: agent.SafetyLevelDangerous,
+			Parameters: map[string]interface{}{
+				"type": "object",
+				"properties": map[string]interface{}{
+					"peer_did": map[string]interface{}{"type": "string", "description": "The recipient peer's DID"},
+					"amount":   map[string]interface{}{"type": "string", "description": "Amount in USDC (e.g., '0.50')"},
+					"memo":     map[string]interface{}{"type": "string", "description": "Payment memo/reason"},
+				},
+				"required": []string{"peer_did", "amount"},
+			},
+			Handler: func(ctx context.Context, params map[string]interface{}) (interface{}, error) {
+				peerDID, _ := params["peer_did"].(string)
+				amount, _ := params["amount"].(string)
+				memo, _ := params["memo"].(string)
+
+				if peerDID == "" || amount == "" {
+					return nil, fmt.Errorf("peer_did and amount are required")
+				}
+
+				// Verify session exists for this peer.
+				sess := p2pc.sessions.Get(peerDID)
+				if sess == nil {
+					return nil, fmt.Errorf("no active session for peer %s — connect first", peerDID)
+				}
+
+				// Get the peer's wallet address from their DID.
+				did, err := identity.ParseDID(peerDID)
+				if err != nil {
+					return nil, fmt.Errorf("parse peer DID: %w", err)
+				}
+
+				// Derive Ethereum address from compressed public key.
+				recipientAddr := fmt.Sprintf("0x%x", did.PublicKey[:20])
+
+				if memo == "" {
+					memo = "P2P payment"
+				}
+
+				sessionKey := session.SessionKeyFromContext(ctx)
+				receipt, err := pc.service.Send(ctx, payment.PaymentRequest{
+					To:         recipientAddr,
+					Amount:     amount,
+					Purpose:    memo,
+					SessionKey: sessionKey,
+				})
+				if err != nil {
+					return nil, fmt.Errorf("send payment: %w", err)
+				}
+
+				return map[string]interface{}{
+					"status":    receipt.Status,
+					"txHash":    receipt.TxHash,
+					"from":      receipt.From,
+					"to":        receipt.To,
+					"peerDID":   peerDID,
+					"amount":    receipt.Amount,
+					"currency":  "USDC",
+					"chainId":   receipt.ChainID,
+					"memo":      memo,
+					"timestamp": receipt.Timestamp.Format(time.RFC3339),
+				}, nil
+			},
+		},
+	}
 }
 
 // buildLibrarianTools creates proactive librarian agent tools.

@@ -217,6 +217,11 @@ func (w *RPCWallet) HandleSignMsgResponse(resp SignMsgResponse) {
 	}
 }
 
+// PublicKey is not supported via RPC — returns an error.
+func (w *RPCWallet) PublicKey(_ context.Context) ([]byte, error) {
+	return nil, fmt.Errorf("RPC wallet: PublicKey not supported (use local wallet for P2P identity)")
+}
+
 // HandleAddressResponse dispatches an address response from the companion.
 func (w *RPCWallet) HandleAddressResponse(resp AddressResponse) {
 	w.mu.Lock()
