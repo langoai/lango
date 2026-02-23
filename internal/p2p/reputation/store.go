@@ -4,11 +4,23 @@ package reputation
 import (
 	"context"
 	"fmt"
+	"time"
 
 	"github.com/langoai/lango/internal/ent"
 	"github.com/langoai/lango/internal/ent/peerreputation"
 	"go.uber.org/zap"
 )
+
+// PeerDetails holds full reputation information for a single peer.
+type PeerDetails struct {
+	PeerDID             string    `json:"peerDid"`
+	TrustScore          float64   `json:"trustScore"`
+	SuccessfulExchanges int       `json:"successfulExchanges"`
+	FailedExchanges     int       `json:"failedExchanges"`
+	TimeoutCount        int       `json:"timeoutCount"`
+	FirstSeen           time.Time `json:"firstSeen"`
+	LastInteraction     time.Time `json:"lastInteraction"`
+}
 
 // Store persists and queries peer reputation data.
 type Store struct {
@@ -43,6 +55,29 @@ func (s *Store) RecordTimeout(ctx context.Context, peerDID string) error {
 	return s.upsert(ctx, peerDID, func(successes, failures, timeouts int) (int, int, int) {
 		return successes, failures, timeouts + 1
 	})
+}
+
+// GetDetails returns full reputation details for a peer. Returns nil if the
+// peer has no reputation record.
+func (s *Store) GetDetails(ctx context.Context, peerDID string) (*PeerDetails, error) {
+	rep, err := s.client.PeerReputation.Query().
+		Where(peerreputation.PeerDid(peerDID)).
+		Only(ctx)
+	if err != nil {
+		if ent.IsNotFound(err) {
+			return nil, nil
+		}
+		return nil, fmt.Errorf("query peer reputation %q: %w", peerDID, err)
+	}
+	return &PeerDetails{
+		PeerDID:             rep.PeerDid,
+		TrustScore:          rep.TrustScore,
+		SuccessfulExchanges: rep.SuccessfulExchanges,
+		FailedExchanges:     rep.FailedExchanges,
+		TimeoutCount:        rep.TimeoutCount,
+		FirstSeen:           rep.FirstSeen,
+		LastInteraction:     rep.LastInteraction,
+	}, nil
 }
 
 // GetScore returns the current trust score for a peer. Returns 0.0 if the peer

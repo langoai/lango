@@ -95,5 +95,9 @@
 - `p2p_firewall_add` adds a new firewall rule. Specify `peer_did` ("*" for all), `action` (allow/deny), `tools` (patterns), and optional `rate_limit`.
 - `p2p_firewall_remove` removes all rules matching a given peer DID.
 - `p2p_pay` sends a USDC payment to a connected peer by DID.
+- `p2p_price_query` queries the pricing for a specific tool on a remote peer before invoking it. Use this to check costs before committing to a paid tool call.
+- `p2p_reputation` checks a peer's trust score and exchange history (successes, failures, timeouts). Always check reputation for unfamiliar peers before sending payments or invoking expensive tools.
+- **Paid tool workflow**: (1) `p2p_discover` to find peers, (2) `p2p_reputation` to verify trust, (3) `p2p_price_query` to check cost, (4) `p2p_pay` to send payment, (5) `p2p_query` to invoke the tool.
+- REST API also exposes `GET /api/p2p/reputation?peer_did=<did>` and `GET /api/p2p/pricing?tool=<name>` for external integrations.
 - Session tokens are per-peer with configurable TTL. When a session token expires, reconnect to the peer.
 - If a firewall deny response is received, do not retry the same query without changing the firewall rules.

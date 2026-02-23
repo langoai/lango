@@ -29,6 +29,32 @@ The gateway SHALL expose `GET /api/p2p/identity` that returns the local DID stri
 - **WHEN** a client sends `GET /api/p2p/identity` and the identity provider is nil
 - **THEN** the response SHALL be HTTP 200 with JSON containing `did` as null and `peerId` (string)
 
+### Requirement: P2P reputation endpoint
+The gateway SHALL expose `GET /api/p2p/reputation` that returns peer reputation details.
+
+#### Scenario: GET /api/p2p/reputation with valid peer_did
+- **WHEN** client sends `GET /api/p2p/reputation?peer_did=did:lango:abc123`
+- **THEN** server returns JSON with full PeerDetails (peerDid, trustScore, successfulExchanges, failedExchanges, timeoutCount, firstSeen, lastInteraction)
+
+#### Scenario: GET /api/p2p/reputation without peer_did
+- **WHEN** client sends `GET /api/p2p/reputation` without peer_did query parameter
+- **THEN** server returns 400 with error message "peer_did query parameter is required"
+
+#### Scenario: GET /api/p2p/reputation for unknown peer
+- **WHEN** client sends `GET /api/p2p/reputation?peer_did=did:lango:unknown`
+- **THEN** server returns JSON with trustScore 0.0 and "no reputation record found" message
+
+### Requirement: P2P pricing endpoint
+The gateway SHALL expose `GET /api/p2p/pricing` that returns P2P tool pricing configuration.
+
+#### Scenario: GET /api/p2p/pricing without tool filter
+- **WHEN** client sends `GET /api/p2p/pricing`
+- **THEN** server returns JSON with enabled status, perQuery default price, toolPrices map, and currency
+
+#### Scenario: GET /api/p2p/pricing with tool filter
+- **WHEN** client sends `GET /api/p2p/pricing?tool=knowledge_search`
+- **THEN** server returns JSON with tool name, specific price (or default), and currency
+
 ### Requirement: P2P routes registration
 The P2P REST endpoints SHALL be registered on the gateway router only when P2P components are initialized (i.e., `p2pComponents` is non-nil).
 

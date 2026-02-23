@@ -15,6 +15,8 @@ func registerP2PRoutes(r chi.Router, p2pc *p2pComponents) {
 		r.Get("/status", p2pStatusHandler(p2pc))
 		r.Get("/peers", p2pPeersHandler(p2pc))
 		r.Get("/identity", p2pIdentityHandler(p2pc))
+		r.Get("/reputation", p2pReputationHandler(p2pc))
+		r.Get("/pricing", p2pPricingHandler(p2pc))
 	})
 }
 
@@ -66,6 +68,78 @@ func p2pPeersHandler(p2pc *p2pComponents) http.HandlerFunc {
 		json.NewEncoder(w).Encode(map[string]interface{}{
 			"peers": peers,
 			"count": len(peers),
+		})
+	}
+}
+
+func p2pReputationHandler(p2pc *p2pComponents) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+
+		peerDID := r.URL.Query().Get("peer_did")
+		if peerDID == "" {
+			w.WriteHeader(http.StatusBadRequest)
+			json.NewEncoder(w).Encode(map[string]string{
+				"error": "peer_did query parameter is required",
+			})
+			return
+		}
+
+		if p2pc.reputation == nil {
+			w.WriteHeader(http.StatusServiceUnavailable)
+			json.NewEncoder(w).Encode(map[string]string{
+				"error": "reputation system not available",
+			})
+			return
+		}
+
+		details, err := p2pc.reputation.GetDetails(r.Context(), peerDID)
+		if err != nil {
+			w.WriteHeader(http.StatusInternalServerError)
+			json.NewEncoder(w).Encode(map[string]string{
+				"error": err.Error(),
+			})
+			return
+		}
+
+		if details == nil {
+			json.NewEncoder(w).Encode(map[string]interface{}{
+				"peerDid":    peerDID,
+				"trustScore": 0.0,
+				"message":    "no reputation record found",
+			})
+			return
+		}
+
+		json.NewEncoder(w).Encode(details)
+	}
+}
+
+func p2pPricingHandler(p2pc *p2pComponents) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+
+		pricing := p2pc.pricingCfg
+		toolName := r.URL.Query().Get("tool")
+
+		if toolName != "" {
+			price, ok := pricing.ToolPrices[toolName]
+			if !ok {
+				price = pricing.PerQuery
+			}
+			json.NewEncoder(w).Encode(map[string]interface{}{
+				"tool":     toolName,
+				"price":    price,
+				"currency": "USDC",
+			})
+			return
+		}
+
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"enabled":    pricing.Enabled,
+			"perQuery":   pricing.PerQuery,
+			"toolPrices": pricing.ToolPrices,
+			"currency":   "USDC",
 		})
 	}
 }

@@ -208,3 +208,86 @@ lango p2p identity             # Show local identity
 ```
 
 See the [P2P CLI Reference](../cli/p2p.md) for detailed command documentation.
+
+## Paid Value Exchange
+
+Lango supports paid P2P tool invocations via the **Payment Gate**. When pricing is enabled, remote peers must pay in USDC before invoking tools.
+
+### Payment Gate Flow
+
+1. **Price Query** — The caller queries the provider's pricing via `p2p_price_query` or `GET /api/p2p/pricing`
+2. **Price Quote** — The provider returns a `PriceQuoteResult` with the tool price in USDC
+3. **Payment** — The caller sends USDC via `p2p_pay` to the provider's wallet address
+4. **Tool Invocation** — After payment confirmation, the caller invokes the tool via `p2p_query`
+
+### USDC Registry
+
+Payment settlements use on-chain USDC transfers. The system supports multiple chains via the `contracts.LookupUSDC()` registry. Wallet addresses are derived from peer DIDs.
+
+### Configuration
+
+```json
+{
+  "p2p": {
+    "pricing": {
+      "enabled": true,
+      "perQuery": "0.10",
+      "toolPrices": {
+        "knowledge_search": "0.25",
+        "browser_navigate": "0.50"
+      }
+    }
+  }
+}
+```
+
+## Reputation System
+
+The reputation system tracks peer behavior across exchanges and computes a trust score.
+
+### Trust Score Formula
+
+```
+score = successes / (successes + failures×2 + timeouts×1.5 + 1.0)
+```
+
+The score ranges from 0.0 to 1.0. The `minTrustScore` configuration (default: 0.3) sets the threshold for accepting requests from peers.
+
+### Exchange Tracking
+
+Each peer interaction is recorded:
+- **Success** — Tool invocation completed normally
+- **Failure** — Tool invocation returned an error
+- **Timeout** — Tool invocation timed out
+
+### Querying Reputation
+
+- **CLI**: `lango p2p reputation --peer-did <did>`
+- **Agent Tool**: `p2p_reputation` with `peer_did` parameter
+- **REST API**: `GET /api/p2p/reputation?peer_did=<did>`
+
+New peers with no reputation record are given the benefit of the doubt (trusted by default).
+
+## Owner Shield
+
+The Owner Shield prevents owner PII from leaking through P2P responses. When configured, it sanitizes all outgoing P2P responses to remove:
+
+- Owner name, email, and phone number
+- Custom extra terms (e.g., company name, address)
+- Conversation history (when `blockConversations` is true, which is the default)
+
+### Configuration
+
+```json
+{
+  "p2p": {
+    "ownerProtection": {
+      "ownerName": "Alice",
+      "ownerEmail": "alice@example.com",
+      "ownerPhone": "+1234567890",
+      "extraTerms": ["Acme Corp"],
+      "blockConversations": true
+    }
+  }
+}
+```

@@ -36,6 +36,8 @@ func NewP2PCmd(bootLoader func() (*bootstrap.Result, error)) *cobra.Command {
 	cmd.AddCommand(newFirewallCmd(bootLoader))
 	cmd.AddCommand(newDiscoverCmd(bootLoader))
 	cmd.AddCommand(newIdentityCmd(bootLoader))
+	cmd.AddCommand(newReputationCmd(bootLoader))
+	cmd.AddCommand(newPricingCmd(bootLoader))
 
 	return cmd
 }

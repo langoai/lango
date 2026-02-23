@@ -599,6 +599,30 @@ Each firewall rule entry:
 | `firewallRules[].tools` | `[]string` | Tool name patterns (empty = all) |
 | `firewallRules[].rateLimit` | `int` | Max requests/min (0 = unlimited) |
 
+### P2P Pricing
+
+| Key | Type | Default | Description |
+|-----|------|---------|-------------|
+| `p2p.pricing.enabled` | `bool` | `false` | Enable paid P2P tool invocations |
+| `p2p.pricing.perQuery` | `string` | | Default price per query in USDC (e.g., `"0.10"`) |
+| `p2p.pricing.toolPrices` | `map[string]string` | | Map of tool names to specific prices in USDC |
+
+### P2P Owner Protection
+
+| Key | Type | Default | Description |
+|-----|------|---------|-------------|
+| `p2p.ownerProtection.ownerName` | `string` | | Owner name to block from P2P responses |
+| `p2p.ownerProtection.ownerEmail` | `string` | | Owner email to block from P2P responses |
+| `p2p.ownerProtection.ownerPhone` | `string` | | Owner phone to block from P2P responses |
+| `p2p.ownerProtection.extraTerms` | `[]string` | | Additional terms to block from P2P responses |
+| `p2p.ownerProtection.blockConversations` | `bool` | `true` | Block conversation data in P2P responses |
+
+### P2P Reputation
+
+| Key | Type | Default | Description |
+|-----|------|---------|-------------|
+| `p2p.minTrustScore` | `float64` | `0.3` | Minimum trust score to accept P2P requests (0.0 - 1.0) |
+
 ---
 
 ## Cron

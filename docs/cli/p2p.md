@@ -214,3 +214,73 @@ P2P Identity
     /ip4/0.0.0.0/tcp/9000
     /ip6/::/tcp/9000
 ```
+
+---
+
+## `lango p2p reputation`
+
+Show peer reputation and trust score details.
+
+### Usage
+
+```bash
+lango p2p reputation --peer-did <did> [--json]
+```
+
+### Flags
+
+| Flag | Description |
+|------|-------------|
+| `--peer-did` | The DID of the peer to query (required) |
+| `--json` | Output as JSON |
+
+### Examples
+
+```bash
+# Show reputation for a peer
+lango p2p reputation --peer-did "did:lango:abc123"
+
+# Output as JSON
+lango p2p reputation --peer-did "did:lango:abc123" --json
+```
+
+### Output Fields
+
+| Field | Description |
+|-------|-------------|
+| Trust Score | Current trust score (0.0 to 1.0) |
+| Successes | Number of successful exchanges |
+| Failures | Number of failed exchanges |
+| Timeouts | Number of timed-out exchanges |
+| First Seen | Timestamp of first interaction |
+| Last Interaction | Timestamp of most recent interaction |
+
+## `lango p2p pricing`
+
+Show P2P tool pricing configuration.
+
+### Usage
+
+```bash
+lango p2p pricing [--tool <name>] [--json]
+```
+
+### Flags
+
+| Flag | Description |
+|------|-------------|
+| `--tool` | Filter pricing for a specific tool |
+| `--json` | Output as JSON |
+
+### Examples
+
+```bash
+# Show all pricing
+lango p2p pricing
+
+# Show pricing for a specific tool
+lango p2p pricing --tool "knowledge_search"
+
+# Output as JSON
+lango p2p pricing --json
+```

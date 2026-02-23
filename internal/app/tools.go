@@ -2383,6 +2383,108 @@ func buildP2PTools(pc *p2pComponents) []*agent.Tool {
 			},
 		},
 		{
+			Name:        "p2p_price_query",
+			Description: "Query pricing for a specific tool on a remote peer before invoking it",
+			SafetyLevel: agent.SafetyLevelSafe,
+			Parameters: map[string]interface{}{
+				"type": "object",
+				"properties": map[string]interface{}{
+					"peer_did":  map[string]interface{}{"type": "string", "description": "The remote peer's DID"},
+					"tool_name": map[string]interface{}{"type": "string", "description": "The tool to query pricing for"},
+				},
+				"required": []string{"peer_did", "tool_name"},
+			},
+			Handler: func(ctx context.Context, params map[string]interface{}) (interface{}, error) {
+				peerDID, _ := params["peer_did"].(string)
+				toolName, _ := params["tool_name"].(string)
+				if peerDID == "" || toolName == "" {
+					return nil, fmt.Errorf("peer_did and tool_name are required")
+				}
+
+				sess := pc.sessions.Get(peerDID)
+				if sess == nil {
+					return nil, fmt.Errorf("no active session for peer %s — connect first", peerDID)
+				}
+
+				did, err := identity.ParseDID(peerDID)
+				if err != nil {
+					return nil, fmt.Errorf("parse peer DID: %w", err)
+				}
+
+				remoteAgent := protocol.NewRemoteAgent(protocol.RemoteAgentConfig{
+					Name:         "peer-" + peerDID[:16],
+					DID:          peerDID,
+					PeerID:       did.PeerID,
+					SessionToken: sess.Token,
+					Host:         pc.node.Host(),
+					Logger:       logger(),
+				})
+
+				quote, err := remoteAgent.QueryPrice(ctx, toolName)
+				if err != nil {
+					return nil, fmt.Errorf("price query: %w", err)
+				}
+
+				return map[string]interface{}{
+					"toolName":     quote.ToolName,
+					"price":        quote.Price,
+					"currency":     quote.Currency,
+					"usdcContract": quote.USDCContract,
+					"chainId":      quote.ChainID,
+					"sellerAddr":   quote.SellerAddr,
+					"quoteExpiry":  quote.QuoteExpiry,
+					"isFree":       quote.IsFree,
+				}, nil
+			},
+		},
+		{
+			Name:        "p2p_reputation",
+			Description: "Check a peer's trust score and exchange history",
+			SafetyLevel: agent.SafetyLevelSafe,
+			Parameters: map[string]interface{}{
+				"type": "object",
+				"properties": map[string]interface{}{
+					"peer_did": map[string]interface{}{"type": "string", "description": "The peer's DID to check reputation for"},
+				},
+				"required": []string{"peer_did"},
+			},
+			Handler: func(ctx context.Context, params map[string]interface{}) (interface{}, error) {
+				peerDID, _ := params["peer_did"].(string)
+				if peerDID == "" {
+					return nil, fmt.Errorf("peer_did is required")
+				}
+
+				if pc.reputation == nil {
+					return nil, fmt.Errorf("reputation system not available (requires database)")
+				}
+
+				details, err := pc.reputation.GetDetails(ctx, peerDID)
+				if err != nil {
+					return nil, fmt.Errorf("get reputation: %w", err)
+				}
+
+				if details == nil {
+					return map[string]interface{}{
+						"peerDID":   peerDID,
+						"score":     0.0,
+						"isTrusted": true,
+						"message":   "new peer — no reputation record",
+					}, nil
+				}
+
+				return map[string]interface{}{
+					"peerDID":             details.PeerDID,
+					"trustScore":          details.TrustScore,
+					"isTrusted":           details.TrustScore >= 0.3,
+					"successfulExchanges": details.SuccessfulExchanges,
+					"failedExchanges":     details.FailedExchanges,
+					"timeoutCount":        details.TimeoutCount,
+					"firstSeen":           details.FirstSeen.Format(time.RFC3339),
+					"lastInteraction":     details.LastInteraction.Format(time.RFC3339),
+				}, nil
+			},
+		},
+		{
 			Name:        "p2p_discover",
 			Description: "Discover peers by capability or tags",
 			SafetyLevel: agent.SafetyLevelSafe,

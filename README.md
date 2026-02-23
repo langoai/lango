@@ -555,6 +555,33 @@ Lango supports decentralized peer-to-peer agent connectivity via the Sovereign A
 - **Agent Discovery** — GossipSub-based agent card propagation with capability search
 - **ZK Handshake** — Optional zero-knowledge proof verification during authentication
 - **ZK Attestation** — Prove response authenticity without revealing internal state
+- **Payment Gate** — USDC-based paid tool invocations with configurable per-tool pricing
+- **Reputation System** — Trust score tracking based on exchange outcomes (successes, failures, timeouts)
+- **Owner Shield** — PII protection that sanitizes outgoing P2P responses to prevent owner data leakage
+
+#### Paid Value Exchange
+
+Lango supports monetized P2P tool invocations. Peers can set prices for their tools in USDC, and callers follow a structured flow:
+
+1. **Discover** peers with the desired capability
+2. **Check reputation** to verify peer trustworthiness
+3. **Query pricing** to see the cost before committing
+4. **Send payment** in USDC via on-chain transfer
+5. **Invoke the tool** after payment confirmation
+
+Configure pricing in the P2P config:
+
+```json
+{
+  "pricing": {
+    "enabled": true,
+    "perQuery": "0.10",
+    "toolPrices": {
+      "knowledge_search": "0.25"
+    }
+  }
+}
+```
 
 ### REST API
 

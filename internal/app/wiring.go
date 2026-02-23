@@ -1093,6 +1093,7 @@ type p2pComponents struct {
 	handler    *p2pproto.Handler
 	payGate    *paygate.Gate
 	reputation *reputation.Store
+	pricingCfg config.P2PPricingConfig
 }
 
 // initP2P creates the P2P networking components if enabled.
@@ -1347,6 +1348,7 @@ func initP2P(cfg *config.Config, wp wallet.WalletProvider, pc *paymentComponents
 		handler:    handler,
 		payGate:    pg,
 		reputation: repStore,
+		pricingCfg: cfg.P2P.Pricing,
 	}
 }
 

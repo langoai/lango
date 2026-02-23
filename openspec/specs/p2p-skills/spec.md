@@ -13,3 +13,18 @@ Each P2P skill SKILL.md SHALL follow the existing skill format with YAML frontma
 #### Scenario: Skill file structure
 - **WHEN** any P2P SKILL.md file is parsed
 - **THEN** it contains valid YAML frontmatter with `type: script` and `status: active`, and a shell code block executing `lango p2p <subcommand>`
+
+### Requirement: P2P paid value exchange skills
+The skills directory SHALL include skill definitions for P2P reputation, pricing, and owner shield operations.
+
+#### Scenario: p2p-reputation skill exists
+- **WHEN** system loads skills from `skills/` directory
+- **THEN** `skills/p2p-reputation/SKILL.md` exists with type `script`, status `active`, and command `lango p2p reputation --peer-did "$PEER_DID"`
+
+#### Scenario: p2p-pricing skill exists
+- **WHEN** system loads skills from `skills/` directory
+- **THEN** `skills/p2p-pricing/SKILL.md` exists with type `script`, status `active`, and command `lango p2p pricing`
+
+#### Scenario: p2p-owner-shield skill exists
+- **WHEN** system loads skills from `skills/` directory
+- **THEN** `skills/p2p-owner-shield/SKILL.md` exists with type `script`, status `active`, and command `lango p2p status --json | jq '.ownerShield'`
