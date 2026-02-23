@@ -18,6 +18,7 @@ import (
 	"github.com/langoai/lango/internal/ent/message"
 	"github.com/langoai/lango/internal/ent/observation"
 	"github.com/langoai/lango/internal/ent/paymenttx"
+	"github.com/langoai/lango/internal/ent/peerreputation"
 	"github.com/langoai/lango/internal/ent/reflection"
 	"github.com/langoai/lango/internal/ent/schema"
 	"github.com/langoai/lango/internal/ent/secret"
@@ -330,6 +331,52 @@ func init() {
 	paymenttxDescID := paymenttxFields[0].Descriptor()
 	// paymenttx.DefaultID holds the default value on creation for the id field.
 	paymenttx.DefaultID = paymenttxDescID.Default.(func() uuid.UUID)
+	peerreputationFields := schema.PeerReputation{}.Fields()
+	_ = peerreputationFields
+	// peerreputationDescPeerDid is the schema descriptor for peer_did field.
+	peerreputationDescPeerDid := peerreputationFields[1].Descriptor()
+	// peerreputation.PeerDidValidator is a validator for the "peer_did" field. It is called by the builders before save.
+	peerreputation.PeerDidValidator = peerreputationDescPeerDid.Validators[0].(func(string) error)
+	// peerreputationDescSuccessfulExchanges is the schema descriptor for successful_exchanges field.
+	peerreputationDescSuccessfulExchanges := peerreputationFields[2].Descriptor()
+	// peerreputation.DefaultSuccessfulExchanges holds the default value on creation for the successful_exchanges field.
+	peerreputation.DefaultSuccessfulExchanges = peerreputationDescSuccessfulExchanges.Default.(int)
+	// peerreputationDescFailedExchanges is the schema descriptor for failed_exchanges field.
+	peerreputationDescFailedExchanges := peerreputationFields[3].Descriptor()
+	// peerreputation.DefaultFailedExchanges holds the default value on creation for the failed_exchanges field.
+	peerreputation.DefaultFailedExchanges = peerreputationDescFailedExchanges.Default.(int)
+	// peerreputationDescTimeoutCount is the schema descriptor for timeout_count field.
+	peerreputationDescTimeoutCount := peerreputationFields[4].Descriptor()
+	// peerreputation.DefaultTimeoutCount holds the default value on creation for the timeout_count field.
+	peerreputation.DefaultTimeoutCount = peerreputationDescTimeoutCount.Default.(int)
+	// peerreputationDescTrustScore is the schema descriptor for trust_score field.
+	peerreputationDescTrustScore := peerreputationFields[5].Descriptor()
+	// peerreputation.DefaultTrustScore holds the default value on creation for the trust_score field.
+	peerreputation.DefaultTrustScore = peerreputationDescTrustScore.Default.(float64)
+	// peerreputationDescFirstSeen is the schema descriptor for first_seen field.
+	peerreputationDescFirstSeen := peerreputationFields[6].Descriptor()
+	// peerreputation.DefaultFirstSeen holds the default value on creation for the first_seen field.
+	peerreputation.DefaultFirstSeen = peerreputationDescFirstSeen.Default.(func() time.Time)
+	// peerreputationDescLastInteraction is the schema descriptor for last_interaction field.
+	peerreputationDescLastInteraction := peerreputationFields[7].Descriptor()
+	// peerreputation.DefaultLastInteraction holds the default value on creation for the last_interaction field.
+	peerreputation.DefaultLastInteraction = peerreputationDescLastInteraction.Default.(func() time.Time)
+	// peerreputation.UpdateDefaultLastInteraction holds the default value on update for the last_interaction field.
+	peerreputation.UpdateDefaultLastInteraction = peerreputationDescLastInteraction.UpdateDefault.(func() time.Time)
+	// peerreputationDescCreatedAt is the schema descriptor for created_at field.
+	peerreputationDescCreatedAt := peerreputationFields[8].Descriptor()
+	// peerreputation.DefaultCreatedAt holds the default value on creation for the created_at field.
+	peerreputation.DefaultCreatedAt = peerreputationDescCreatedAt.Default.(func() time.Time)
+	// peerreputationDescUpdatedAt is the schema descriptor for updated_at field.
+	peerreputationDescUpdatedAt := peerreputationFields[9].Descriptor()
+	// peerreputation.DefaultUpdatedAt holds the default value on creation for the updated_at field.
+	peerreputation.DefaultUpdatedAt = peerreputationDescUpdatedAt.Default.(func() time.Time)
+	// peerreputation.UpdateDefaultUpdatedAt holds the default value on update for the updated_at field.
+	peerreputation.UpdateDefaultUpdatedAt = peerreputationDescUpdatedAt.UpdateDefault.(func() time.Time)
+	// peerreputationDescID is the schema descriptor for id field.
+	peerreputationDescID := peerreputationFields[0].Descriptor()
+	// peerreputation.DefaultID holds the default value on creation for the id field.
+	peerreputation.DefaultID = peerreputationDescID.Default.(func() uuid.UUID)
 	reflectionFields := schema.Reflection{}.Fields()
 	_ = reflectionFields
 	// reflectionDescSessionKey is the schema descriptor for session_key field.

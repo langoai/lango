@@ -22,12 +22,25 @@ type ToolExecutor func(ctx context.Context, toolName string, params map[string]i
 // CardProvider returns the local agent card as a map.
 type CardProvider func() map[string]interface{}
 
+// PayGateChecker checks payment for a tool invocation.
+type PayGateChecker interface {
+	Check(peerDID, toolName string, payload map[string]interface{}) (PayGateResult, error)
+}
+
+// PayGateResult represents the payment check outcome.
+type PayGateResult struct {
+	Status     string                 // "free", "verified", "payment_required", "invalid"
+	Auth       interface{}            // the verified authorization (opaque to handler)
+	PriceQuote map[string]interface{} // price quote when payment required
+}
+
 // Handler processes A2A-over-P2P messages on libp2p streams.
 type Handler struct {
 	sessions *handshake.SessionStore
 	firewall *firewall.Firewall
 	executor ToolExecutor
 	cardFn   CardProvider
+	payGate  PayGateChecker
 	localDID string
 	logger   *zap.SugaredLogger
 }
@@ -52,6 +65,16 @@ func NewHandler(cfg HandlerConfig) *Handler {
 		localDID: cfg.LocalDID,
 		logger:   cfg.Logger,
 	}
+}
+
+// SetExecutor sets the tool executor callback.
+func (h *Handler) SetExecutor(exec ToolExecutor) {
+	h.executor = exec
+}
+
+// SetPayGate sets the payment gate checker for paid tool invocations.
+func (h *Handler) SetPayGate(gate PayGateChecker) {
+	h.payGate = gate
 }
 
 // StreamHandler returns a libp2p stream handler for incoming A2A messages.
@@ -94,6 +117,10 @@ func (h *Handler) handleRequest(ctx context.Context, s network.Stream, req *Requ
 		return h.handleCapabilityQuery(req, peerDID)
 	case RequestToolInvoke:
 		return h.handleToolInvoke(ctx, req, peerDID)
+	case RequestPriceQuery:
+		return h.handlePriceQuery(ctx, req, peerDID)
+	case RequestToolInvokePaid:
+		return h.handleToolInvokePaid(ctx, req, peerDID)
 	default:
 		return &Response{
 			RequestID: req.RequestID,
@@ -158,7 +185,7 @@ func (h *Handler) handleToolInvoke(ctx context.Context, req *Request, peerDID st
 
 	// Firewall check.
 	if h.firewall != nil {
-		if err := h.firewall.FilterQuery(peerDID, toolName); err != nil {
+		if err := h.firewall.FilterQuery(ctx, peerDID, toolName); err != nil {
 			return &Response{
 				RequestID: req.RequestID,
 				Status:    "denied",
@@ -190,6 +217,165 @@ func (h *Handler) handleToolInvoke(ctx context.Context, req *Request, peerDID st
 	}
 
 	// Generate ZK attestation if available.
+	var attestation []byte
+	if h.firewall != nil {
+		resultBytes, _ := json.Marshal(result)
+		hash := sha256.Sum256(resultBytes)
+		didHash := sha256.Sum256([]byte(h.localDID))
+		attestation, _ = h.firewall.AttestResponse(hash[:], didHash[:])
+	}
+
+	return &Response{
+		RequestID:        req.RequestID,
+		Status:           "ok",
+		Result:           result,
+		AttestationProof: attestation,
+		Timestamp:        time.Now(),
+	}
+}
+
+// handlePriceQuery returns pricing information for a tool.
+func (h *Handler) handlePriceQuery(ctx context.Context, req *Request, peerDID string) *Response {
+	toolName, _ := req.Payload["toolName"].(string)
+	if toolName == "" {
+		return &Response{
+			RequestID: req.RequestID,
+			Status:    "error",
+			Error:     "missing toolName in payload",
+			Timestamp: time.Now(),
+		}
+	}
+
+	if h.payGate == nil {
+		// No payment gate configured — everything is free.
+		return &Response{
+			RequestID: req.RequestID,
+			Status:    "ok",
+			Result: map[string]interface{}{
+				"toolName": toolName,
+				"isFree":   true,
+			},
+			Timestamp: time.Now(),
+		}
+	}
+
+	result, err := h.payGate.Check(peerDID, toolName, nil)
+	if err != nil {
+		return &Response{
+			RequestID: req.RequestID,
+			Status:    "error",
+			Error:     fmt.Sprintf("price query %s: %v", toolName, err),
+			Timestamp: time.Now(),
+		}
+	}
+
+	if result.Status == "free" {
+		return &Response{
+			RequestID: req.RequestID,
+			Status:    "ok",
+			Result: map[string]interface{}{
+				"toolName": toolName,
+				"isFree":   true,
+			},
+			Timestamp: time.Now(),
+		}
+	}
+
+	return &Response{
+		RequestID: req.RequestID,
+		Status:    "ok",
+		Result:    result.PriceQuote,
+		Timestamp: time.Now(),
+	}
+}
+
+// handleToolInvokePaid executes a paid tool invocation with payment verification.
+func (h *Handler) handleToolInvokePaid(ctx context.Context, req *Request, peerDID string) *Response {
+	toolName, _ := req.Payload["toolName"].(string)
+	if toolName == "" {
+		return &Response{
+			RequestID: req.RequestID,
+			Status:    "error",
+			Error:     "missing toolName in payload",
+			Timestamp: time.Now(),
+		}
+	}
+
+	// 1. Firewall ACL check.
+	if h.firewall != nil {
+		if err := h.firewall.FilterQuery(ctx, peerDID, toolName); err != nil {
+			return &Response{
+				RequestID: req.RequestID,
+				Status:    "denied",
+				Error:     err.Error(),
+				Timestamp: time.Now(),
+			}
+		}
+	}
+
+	// 2. Payment gate check.
+	if h.payGate != nil {
+		result, err := h.payGate.Check(peerDID, toolName, req.Payload)
+		if err != nil {
+			return &Response{
+				RequestID: req.RequestID,
+				Status:    "error",
+				Error:     fmt.Sprintf("payment check %s: %v", toolName, err),
+				Timestamp: time.Now(),
+			}
+		}
+
+		switch result.Status {
+		case "payment_required":
+			return &Response{
+				RequestID: req.RequestID,
+				Status:    StatusPaymentRequired,
+				Result:    result.PriceQuote,
+				Timestamp: time.Now(),
+			}
+		case "invalid":
+			return &Response{
+				RequestID: req.RequestID,
+				Status:    "error",
+				Error:     "invalid payment authorization",
+				Timestamp: time.Now(),
+			}
+		case "verified", "free":
+			// Continue to execution.
+		}
+	}
+
+	// 3. Execute tool.
+	params, _ := req.Payload["params"].(map[string]interface{})
+	if params == nil {
+		params = map[string]interface{}{}
+	}
+
+	if h.executor == nil {
+		return &Response{
+			RequestID: req.RequestID,
+			Status:    "error",
+			Error:     "tool executor not configured",
+			Timestamp: time.Now(),
+		}
+	}
+
+	result, err := h.executor(ctx, toolName, params)
+	if err != nil {
+		return &Response{
+			RequestID: req.RequestID,
+			Status:    "error",
+			Error:     err.Error(),
+			Timestamp: time.Now(),
+		}
+	}
+
+	// 4. Sanitize response through firewall.
+	if h.firewall != nil {
+		result = h.firewall.SanitizeResponse(result)
+	}
+
+	// 5. ZK attestation.
 	var attestation []byte
 	if h.firewall != nil {
 		resultBytes, _ := json.Marshal(result)

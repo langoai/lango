@@ -153,6 +153,18 @@ func (f PaymentTxFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value, e
 	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.PaymentTxMutation", m)
 }
 
+// The PeerReputationFunc type is an adapter to allow the use of ordinary
+// function as PeerReputation mutator.
+type PeerReputationFunc func(context.Context, *ent.PeerReputationMutation) (ent.Value, error)
+
+// Mutate calls f(ctx, m).
+func (f PeerReputationFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value, error) {
+	if mv, ok := m.(*ent.PeerReputationMutation); ok {
+		return f(ctx, mv)
+	}
+	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.PeerReputationMutation", m)
+}
+
 // The ReflectionFunc type is an adapter to allow the use of ordinary
 // function as Reflection mutator.
 type ReflectionFunc func(context.Context, *ent.ReflectionMutation) (ent.Value, error)

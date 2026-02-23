@@ -10,6 +10,8 @@ import (
 
 	"database/sql"
 
+	"github.com/consensys/gnark/frontend"
+	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/ethclient"
 
 	"github.com/langoai/lango/internal/a2a"
@@ -19,6 +21,7 @@ import (
 	"github.com/langoai/lango/internal/bootstrap"
 	"github.com/langoai/lango/internal/config"
 	cronpkg "github.com/langoai/lango/internal/cron"
+	"github.com/langoai/lango/internal/ent"
 	"github.com/langoai/lango/internal/embedding"
 	"github.com/langoai/lango/internal/gateway"
 	"github.com/langoai/lango/internal/graph"
@@ -32,8 +35,11 @@ import (
 	"github.com/langoai/lango/internal/p2p/firewall"
 	"github.com/langoai/lango/internal/p2p/handshake"
 	"github.com/langoai/lango/internal/p2p/identity"
+	"github.com/langoai/lango/internal/p2p/paygate"
 	p2pproto "github.com/langoai/lango/internal/p2p/protocol"
+	"github.com/langoai/lango/internal/p2p/reputation"
 	"github.com/langoai/lango/internal/payment"
+	"github.com/langoai/lango/internal/payment/contracts"
 	"github.com/langoai/lango/internal/prompt"
 	"github.com/langoai/lango/internal/provider"
 	"github.com/langoai/lango/internal/security"
@@ -42,6 +48,8 @@ import (
 	"github.com/langoai/lango/internal/supervisor"
 	"github.com/langoai/lango/internal/wallet"
 	"github.com/langoai/lango/internal/workflow"
+	"github.com/langoai/lango/internal/zkp"
+	"github.com/langoai/lango/internal/zkp/circuits"
 	x402pkg "github.com/langoai/lango/internal/x402"
 	"github.com/langoai/lango/skills"
 	libp2pproto "github.com/libp2p/go-libp2p/core/protocol"
@@ -1083,10 +1091,12 @@ type p2pComponents struct {
 	gossip     *discovery.GossipService
 	identity   *identity.WalletDIDProvider
 	handler    *p2pproto.Handler
+	payGate    *paygate.Gate
+	reputation *reputation.Store
 }
 
 // initP2P creates the P2P networking components if enabled.
-func initP2P(cfg *config.Config, wp wallet.WalletProvider) *p2pComponents {
+func initP2P(cfg *config.Config, wp wallet.WalletProvider, pc *paymentComponents, dbClient *ent.Client) *p2pComponents {
 	if !cfg.P2P.Enabled {
 		logger().Info("P2P networking disabled")
 		return nil
@@ -1120,19 +1130,48 @@ func initP2P(cfg *config.Config, wp wallet.WalletProvider) *p2pComponents {
 		return nil
 	}
 
+	// Initialize ZKP prover (optional).
+	zkProver := initZKP(cfg)
+
 	// Create handshaker.
 	hsTimeout := cfg.P2P.HandshakeTimeout
 	if hsTimeout <= 0 {
 		hsTimeout = 30 * time.Second
 	}
-	handshaker := handshake.NewHandshaker(handshake.Config{
+	hsCfg := handshake.Config{
 		Wallet:           wp,
 		Sessions:         sessions,
 		ZKEnabled:        cfg.P2P.ZKHandshake,
 		Timeout:          hsTimeout,
 		AutoApproveKnown: cfg.P2P.AutoApproveKnownPeers,
 		Logger:           pLogger,
-	})
+	}
+
+	// Wire ZK prover/verifier into handshake if available.
+	if zkProver != nil && cfg.P2P.ZKHandshake {
+		hsCfg.ZKProver = func(ctx context.Context, challenge []byte) ([]byte, error) {
+			assignment := &circuits.WalletOwnershipCircuit{
+				Challenge: challenge,
+				Response:  challenge, // simplified: use challenge as witness in MVP
+			}
+			proof, err := zkProver.Prove(ctx, "wallet_ownership", assignment)
+			if err != nil {
+				return nil, err
+			}
+			return proof.Data, nil
+		}
+		hsCfg.ZKVerifier = func(ctx context.Context, proof, challenge, publicKey []byte) (bool, error) {
+			p := &zkp.Proof{
+				CircuitID: "wallet_ownership",
+				Data:      proof,
+				Scheme:    zkProver.Scheme(),
+			}
+			return zkProver.Verify(ctx, p, &circuits.WalletOwnershipCircuit{})
+		}
+		pLogger.Info("ZK handshake prover/verifier wired")
+	}
+
+	handshaker := handshake.NewHandshaker(hsCfg)
 
 	// Create firewall.
 	var aclRules []firewall.ACLRule
@@ -1145,6 +1184,55 @@ func initP2P(cfg *config.Config, wp wallet.WalletProvider) *p2pComponents {
 		})
 	}
 	fw := firewall.New(aclRules, pLogger)
+
+	// Wire Owner Shield if configured.
+	ownerCfg := cfg.P2P.OwnerProtection
+	if ownerCfg.OwnerName != "" || ownerCfg.OwnerEmail != "" || ownerCfg.OwnerPhone != "" {
+		blockConv := true
+		if ownerCfg.BlockConversations != nil {
+			blockConv = *ownerCfg.BlockConversations
+		}
+		shield := firewall.NewOwnerShield(firewall.OwnerProtectionConfig{
+			OwnerName:          ownerCfg.OwnerName,
+			OwnerEmail:         ownerCfg.OwnerEmail,
+			OwnerPhone:         ownerCfg.OwnerPhone,
+			ExtraTerms:         ownerCfg.ExtraTerms,
+			BlockConversations: blockConv,
+		}, pLogger)
+		fw.SetOwnerShield(shield)
+		pLogger.Info("P2P owner data shield enabled")
+	}
+
+	// Wire ZK attestation into firewall if available.
+	if zkProver != nil && cfg.P2P.ZKAttestation {
+		fw.SetZKAttestFunc(func(responseHash, agentDIDHash []byte) ([]byte, error) {
+			assignment := &circuits.ResponseAttestationCircuit{
+				ResponseHash: responseHash,
+				AgentDIDHash: agentDIDHash,
+				Timestamp:    time.Now().Unix(),
+			}
+			proof, err := zkProver.Prove(context.Background(), "response_attestation", assignment)
+			if err != nil {
+				return nil, err
+			}
+			return proof.Data, nil
+		})
+		pLogger.Info("ZK response attestation wired to firewall")
+	}
+
+	// Wire reputation system if DB client is available.
+	var repStore *reputation.Store
+	if dbClient != nil {
+		repStore = reputation.NewStore(dbClient, pLogger)
+		minScore := cfg.P2P.MinTrustScore
+		if minScore <= 0 {
+			minScore = 0.3
+		}
+		fw.SetReputationChecker(func(ctx context.Context, peerDID string) (float64, error) {
+			return repStore.GetScore(ctx, peerDID)
+		}, minScore)
+		pLogger.Infow("P2P reputation system enabled", "minTrustScore", minScore)
+	}
 
 	// Register handshake protocol handler on the host.
 	node.Host().SetStreamHandler(libp2pproto.ID(handshake.ProtocolID), handshaker.StreamHandler())
@@ -1177,6 +1265,42 @@ func initP2P(cfg *config.Config, wp wallet.WalletProvider) *p2pComponents {
 	if agentName == "" {
 		agentName = "lango"
 	}
+	// Wire payment gate if pricing is enabled.
+	var pg *paygate.Gate
+	if cfg.P2P.Pricing.Enabled && pc != nil {
+		walletAddr := ""
+		ctx2 := context.Background()
+		if a, err := wp.Address(ctx2); err == nil {
+			walletAddr = a
+		}
+		usdcAddr, _ := contracts.LookupUSDC(pc.chainID)
+
+		pricingFn := func(toolName string) (string, bool) {
+			if price, ok := cfg.P2P.Pricing.ToolPrices[toolName]; ok {
+				return price, false
+			}
+			if cfg.P2P.Pricing.PerQuery != "" {
+				return cfg.P2P.Pricing.PerQuery, false
+			}
+			return "", true // free by default
+		}
+
+		pg = paygate.New(paygate.Config{
+			PricingFn: pricingFn,
+			LocalAddr: walletAddr,
+			ChainID:   pc.chainID,
+			USDCAddr:  usdcAddr,
+			Logger:    pLogger,
+		})
+
+		// Wire PayGate to handler via adapter.
+		handler.SetPayGate(&payGateAdapter{gate: pg, chainID: pc.chainID, usdcAddr: usdcAddr})
+		pLogger.Infow("P2P payment gate enabled",
+			"perQuery", cfg.P2P.Pricing.PerQuery,
+			"toolPrices", len(cfg.P2P.Pricing.ToolPrices),
+		)
+	}
+
 	localCard := &discovery.GossipCard{
 		Name:   agentName,
 		DID:    localDID,
@@ -1184,6 +1308,15 @@ func initP2P(cfg *config.Config, wp wallet.WalletProvider) *p2pComponents {
 	}
 	for _, a := range node.Multiaddrs() {
 		localCard.Multiaddrs = append(localCard.Multiaddrs, a.String())
+	}
+
+	// Set pricing info on gossip card if pricing is enabled.
+	if cfg.P2P.Pricing.Enabled {
+		localCard.Pricing = &discovery.PricingInfo{
+			Currency:   "USDC",
+			PerQuery:   cfg.P2P.Pricing.PerQuery,
+			ToolPrices: cfg.P2P.Pricing.ToolPrices,
+		}
 	}
 
 	gossip, err = discovery.NewGossipService(discovery.GossipConfig{
@@ -1212,7 +1345,81 @@ func initP2P(cfg *config.Config, wp wallet.WalletProvider) *p2pComponents {
 		gossip:     gossip,
 		identity:   idProvider,
 		handler:    handler,
+		payGate:    pg,
+		reputation: repStore,
 	}
+}
+
+// payGateAdapter adapts paygate.Gate to protocol.PayGateChecker.
+type payGateAdapter struct {
+	gate     *paygate.Gate
+	chainID  int64
+	usdcAddr common.Address
+}
+
+func (a *payGateAdapter) Check(peerDID, toolName string, payload map[string]interface{}) (p2pproto.PayGateResult, error) {
+	result, err := a.gate.Check(peerDID, toolName, payload)
+	if err != nil {
+		return p2pproto.PayGateResult{}, err
+	}
+	pgr := p2pproto.PayGateResult{
+		Status: string(result.Status),
+	}
+	if result.Auth != nil {
+		pgr.Auth = result.Auth
+	}
+	if result.PriceQuote != nil {
+		pgr.PriceQuote = map[string]interface{}{
+			"toolName":     result.PriceQuote.ToolName,
+			"price":        result.PriceQuote.Price,
+			"currency":     result.PriceQuote.Currency,
+			"usdcContract": result.PriceQuote.USDCContract,
+			"chainId":      result.PriceQuote.ChainID,
+			"sellerAddr":   result.PriceQuote.SellerAddr,
+			"quoteExpiry":  result.PriceQuote.QuoteExpiry,
+			"isFree":       false,
+		}
+	}
+	return pgr, nil
+}
+
+// initZKP creates ZKP components if enabled.
+func initZKP(cfg *config.Config) *zkp.ProverService {
+	if !cfg.P2P.ZKHandshake && !cfg.P2P.ZKAttestation {
+		return nil
+	}
+
+	prover, err := zkp.NewProverService(zkp.Config{
+		CacheDir: cfg.P2P.ZKP.ProofCacheDir,
+		Scheme:   cfg.P2P.ZKP.ProvingScheme,
+		Logger:   logger(),
+	})
+	if err != nil {
+		logger().Warnw("ZKP prover init error, skipping", "error", err)
+		return nil
+	}
+
+	// Compile all 4 circuits.
+	circuitDefs := map[string]interface {
+		Define(frontend.API) error
+	}{
+		"wallet_ownership":     &circuits.WalletOwnershipCircuit{},
+		"response_attestation": &circuits.ResponseAttestationCircuit{},
+		"balance_range":        &circuits.BalanceRangeCircuit{},
+		"agent_capability":     &circuits.AgentCapabilityCircuit{},
+	}
+
+	for id, circuit := range circuitDefs {
+		if err := prover.Compile(id, circuit); err != nil {
+			logger().Warnw("ZKP circuit compile error", "circuitID", id, "error", err)
+		}
+	}
+
+	logger().Infow("ZKP prover initialized",
+		"scheme", prover.Scheme(),
+		"circuits", len(circuitDefs),
+	)
+	return prover
 }
 
 // agentRunnerAdapter adapts app.runAgent to cron.AgentRunner / background.AgentRunner / workflow.AgentRunner.

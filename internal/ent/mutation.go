@@ -24,6 +24,7 @@ import (
 	"github.com/langoai/lango/internal/ent/message"
 	"github.com/langoai/lango/internal/ent/observation"
 	"github.com/langoai/lango/internal/ent/paymenttx"
+	"github.com/langoai/lango/internal/ent/peerreputation"
 	"github.com/langoai/lango/internal/ent/predicate"
 	"github.com/langoai/lango/internal/ent/reflection"
 	"github.com/langoai/lango/internal/ent/schema"
@@ -54,6 +55,7 @@ const (
 	TypeMessage         = "Message"
 	TypeObservation     = "Observation"
 	TypePaymentTx       = "PaymentTx"
+	TypePeerReputation  = "PeerReputation"
 	TypeReflection      = "Reflection"
 	TypeSecret          = "Secret"
 	TypeSession         = "Session"
@@ -9998,6 +10000,905 @@ func (m *PaymentTxMutation) ClearEdge(name string) error {
 // It returns an error if the edge is not defined in the schema.
 func (m *PaymentTxMutation) ResetEdge(name string) error {
 	return fmt.Errorf("unknown PaymentTx edge %s", name)
+}
+
+// PeerReputationMutation represents an operation that mutates the PeerReputation nodes in the graph.
+type PeerReputationMutation struct {
+	config
+	op                      Op
+	typ                     string
+	id                      *uuid.UUID
+	peer_did                *string
+	successful_exchanges    *int
+	addsuccessful_exchanges *int
+	failed_exchanges        *int
+	addfailed_exchanges     *int
+	timeout_count           *int
+	addtimeout_count        *int
+	trust_score             *float64
+	addtrust_score          *float64
+	first_seen              *time.Time
+	last_interaction        *time.Time
+	created_at              *time.Time
+	updated_at              *time.Time
+	clearedFields           map[string]struct{}
+	done                    bool
+	oldValue                func(context.Context) (*PeerReputation, error)
+	predicates              []predicate.PeerReputation
+}
+
+var _ ent.Mutation = (*PeerReputationMutation)(nil)
+
+// peerreputationOption allows management of the mutation configuration using functional options.
+type peerreputationOption func(*PeerReputationMutation)
+
+// newPeerReputationMutation creates new mutation for the PeerReputation entity.
+func newPeerReputationMutation(c config, op Op, opts ...peerreputationOption) *PeerReputationMutation {
+	m := &PeerReputationMutation{
+		config:        c,
+		op:            op,
+		typ:           TypePeerReputation,
+		clearedFields: make(map[string]struct{}),
+	}
+	for _, opt := range opts {
+		opt(m)
+	}
+	return m
+}
+
+// withPeerReputationID sets the ID field of the mutation.
+func withPeerReputationID(id uuid.UUID) peerreputationOption {
+	return func(m *PeerReputationMutation) {
+		var (
+			err   error
+			once  sync.Once
+			value *PeerReputation
+		)
+		m.oldValue = func(ctx context.Context) (*PeerReputation, error) {
+			once.Do(func() {
+				if m.done {
+					err = errors.New("querying old values post mutation is not allowed")
+				} else {
+					value, err = m.Client().PeerReputation.Get(ctx, id)
+				}
+			})
+			return value, err
+		}
+		m.id = &id
+	}
+}
+
+// withPeerReputation sets the old PeerReputation of the mutation.
+func withPeerReputation(node *PeerReputation) peerreputationOption {
+	return func(m *PeerReputationMutation) {
+		m.oldValue = func(context.Context) (*PeerReputation, error) {
+			return node, nil
+		}
+		m.id = &node.ID
+	}
+}
+
+// Client returns a new `ent.Client` from the mutation. If the mutation was
+// executed in a transaction (ent.Tx), a transactional client is returned.
+func (m PeerReputationMutation) Client() *Client {
+	client := &Client{config: m.config}
+	client.init()
+	return client
+}
+
+// Tx returns an `ent.Tx` for mutations that were executed in transactions;
+// it returns an error otherwise.
+func (m PeerReputationMutation) Tx() (*Tx, error) {
+	if _, ok := m.driver.(*txDriver); !ok {
+		return nil, errors.New("ent: mutation is not running in a transaction")
+	}
+	tx := &Tx{config: m.config}
+	tx.init()
+	return tx, nil
+}
+
+// SetID sets the value of the id field. Note that this
+// operation is only accepted on creation of PeerReputation entities.
+func (m *PeerReputationMutation) SetID(id uuid.UUID) {
+	m.id = &id
+}
+
+// ID returns the ID value in the mutation. Note that the ID is only available
+// if it was provided to the builder or after it was returned from the database.
+func (m *PeerReputationMutation) ID() (id uuid.UUID, exists bool) {
+	if m.id == nil {
+		return
+	}
+	return *m.id, true
+}
+
+// IDs queries the database and returns the entity ids that match the mutation's predicate.
+// That means, if the mutation is applied within a transaction with an isolation level such
+// as sql.LevelSerializable, the returned ids match the ids of the rows that will be updated
+// or updated by the mutation.
+func (m *PeerReputationMutation) IDs(ctx context.Context) ([]uuid.UUID, error) {
+	switch {
+	case m.op.Is(OpUpdateOne | OpDeleteOne):
+		id, exists := m.ID()
+		if exists {
+			return []uuid.UUID{id}, nil
+		}
+		fallthrough
+	case m.op.Is(OpUpdate | OpDelete):
+		return m.Client().PeerReputation.Query().Where(m.predicates...).IDs(ctx)
+	default:
+		return nil, fmt.Errorf("IDs is not allowed on %s operations", m.op)
+	}
+}
+
+// SetPeerDid sets the "peer_did" field.
+func (m *PeerReputationMutation) SetPeerDid(s string) {
+	m.peer_did = &s
+}
+
+// PeerDid returns the value of the "peer_did" field in the mutation.
+func (m *PeerReputationMutation) PeerDid() (r string, exists bool) {
+	v := m.peer_did
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldPeerDid returns the old "peer_did" field's value of the PeerReputation entity.
+// If the PeerReputation object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *PeerReputationMutation) OldPeerDid(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldPeerDid is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldPeerDid requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldPeerDid: %w", err)
+	}
+	return oldValue.PeerDid, nil
+}
+
+// ResetPeerDid resets all changes to the "peer_did" field.
+func (m *PeerReputationMutation) ResetPeerDid() {
+	m.peer_did = nil
+}
+
+// SetSuccessfulExchanges sets the "successful_exchanges" field.
+func (m *PeerReputationMutation) SetSuccessfulExchanges(i int) {
+	m.successful_exchanges = &i
+	m.addsuccessful_exchanges = nil
+}
+
+// SuccessfulExchanges returns the value of the "successful_exchanges" field in the mutation.
+func (m *PeerReputationMutation) SuccessfulExchanges() (r int, exists bool) {
+	v := m.successful_exchanges
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldSuccessfulExchanges returns the old "successful_exchanges" field's value of the PeerReputation entity.
+// If the PeerReputation object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *PeerReputationMutation) OldSuccessfulExchanges(ctx context.Context) (v int, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldSuccessfulExchanges is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldSuccessfulExchanges requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldSuccessfulExchanges: %w", err)
+	}
+	return oldValue.SuccessfulExchanges, nil
+}
+
+// AddSuccessfulExchanges adds i to the "successful_exchanges" field.
+func (m *PeerReputationMutation) AddSuccessfulExchanges(i int) {
+	if m.addsuccessful_exchanges != nil {
+		*m.addsuccessful_exchanges += i
+	} else {
+		m.addsuccessful_exchanges = &i
+	}
+}
+
+// AddedSuccessfulExchanges returns the value that was added to the "successful_exchanges" field in this mutation.
+func (m *PeerReputationMutation) AddedSuccessfulExchanges() (r int, exists bool) {
+	v := m.addsuccessful_exchanges
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ResetSuccessfulExchanges resets all changes to the "successful_exchanges" field.
+func (m *PeerReputationMutation) ResetSuccessfulExchanges() {
+	m.successful_exchanges = nil
+	m.addsuccessful_exchanges = nil
+}
+
+// SetFailedExchanges sets the "failed_exchanges" field.
+func (m *PeerReputationMutation) SetFailedExchanges(i int) {
+	m.failed_exchanges = &i
+	m.addfailed_exchanges = nil
+}
+
+// FailedExchanges returns the value of the "failed_exchanges" field in the mutation.
+func (m *PeerReputationMutation) FailedExchanges() (r int, exists bool) {
+	v := m.failed_exchanges
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldFailedExchanges returns the old "failed_exchanges" field's value of the PeerReputation entity.
+// If the PeerReputation object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *PeerReputationMutation) OldFailedExchanges(ctx context.Context) (v int, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldFailedExchanges is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldFailedExchanges requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldFailedExchanges: %w", err)
+	}
+	return oldValue.FailedExchanges, nil
+}
+
+// AddFailedExchanges adds i to the "failed_exchanges" field.
+func (m *PeerReputationMutation) AddFailedExchanges(i int) {
+	if m.addfailed_exchanges != nil {
+		*m.addfailed_exchanges += i
+	} else {
+		m.addfailed_exchanges = &i
+	}
+}
+
+// AddedFailedExchanges returns the value that was added to the "failed_exchanges" field in this mutation.
+func (m *PeerReputationMutation) AddedFailedExchanges() (r int, exists bool) {
+	v := m.addfailed_exchanges
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ResetFailedExchanges resets all changes to the "failed_exchanges" field.
+func (m *PeerReputationMutation) ResetFailedExchanges() {
+	m.failed_exchanges = nil
+	m.addfailed_exchanges = nil
+}
+
+// SetTimeoutCount sets the "timeout_count" field.
+func (m *PeerReputationMutation) SetTimeoutCount(i int) {
+	m.timeout_count = &i
+	m.addtimeout_count = nil
+}
+
+// TimeoutCount returns the value of the "timeout_count" field in the mutation.
+func (m *PeerReputationMutation) TimeoutCount() (r int, exists bool) {
+	v := m.timeout_count
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldTimeoutCount returns the old "timeout_count" field's value of the PeerReputation entity.
+// If the PeerReputation object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *PeerReputationMutation) OldTimeoutCount(ctx context.Context) (v int, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldTimeoutCount is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldTimeoutCount requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldTimeoutCount: %w", err)
+	}
+	return oldValue.TimeoutCount, nil
+}
+
+// AddTimeoutCount adds i to the "timeout_count" field.
+func (m *PeerReputationMutation) AddTimeoutCount(i int) {
+	if m.addtimeout_count != nil {
+		*m.addtimeout_count += i
+	} else {
+		m.addtimeout_count = &i
+	}
+}
+
+// AddedTimeoutCount returns the value that was added to the "timeout_count" field in this mutation.
+func (m *PeerReputationMutation) AddedTimeoutCount() (r int, exists bool) {
+	v := m.addtimeout_count
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ResetTimeoutCount resets all changes to the "timeout_count" field.
+func (m *PeerReputationMutation) ResetTimeoutCount() {
+	m.timeout_count = nil
+	m.addtimeout_count = nil
+}
+
+// SetTrustScore sets the "trust_score" field.
+func (m *PeerReputationMutation) SetTrustScore(f float64) {
+	m.trust_score = &f
+	m.addtrust_score = nil
+}
+
+// TrustScore returns the value of the "trust_score" field in the mutation.
+func (m *PeerReputationMutation) TrustScore() (r float64, exists bool) {
+	v := m.trust_score
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldTrustScore returns the old "trust_score" field's value of the PeerReputation entity.
+// If the PeerReputation object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *PeerReputationMutation) OldTrustScore(ctx context.Context) (v float64, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldTrustScore is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldTrustScore requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldTrustScore: %w", err)
+	}
+	return oldValue.TrustScore, nil
+}
+
+// AddTrustScore adds f to the "trust_score" field.
+func (m *PeerReputationMutation) AddTrustScore(f float64) {
+	if m.addtrust_score != nil {
+		*m.addtrust_score += f
+	} else {
+		m.addtrust_score = &f
+	}
+}
+
+// AddedTrustScore returns the value that was added to the "trust_score" field in this mutation.
+func (m *PeerReputationMutation) AddedTrustScore() (r float64, exists bool) {
+	v := m.addtrust_score
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ResetTrustScore resets all changes to the "trust_score" field.
+func (m *PeerReputationMutation) ResetTrustScore() {
+	m.trust_score = nil
+	m.addtrust_score = nil
+}
+
+// SetFirstSeen sets the "first_seen" field.
+func (m *PeerReputationMutation) SetFirstSeen(t time.Time) {
+	m.first_seen = &t
+}
+
+// FirstSeen returns the value of the "first_seen" field in the mutation.
+func (m *PeerReputationMutation) FirstSeen() (r time.Time, exists bool) {
+	v := m.first_seen
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldFirstSeen returns the old "first_seen" field's value of the PeerReputation entity.
+// If the PeerReputation object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *PeerReputationMutation) OldFirstSeen(ctx context.Context) (v time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldFirstSeen is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldFirstSeen requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldFirstSeen: %w", err)
+	}
+	return oldValue.FirstSeen, nil
+}
+
+// ResetFirstSeen resets all changes to the "first_seen" field.
+func (m *PeerReputationMutation) ResetFirstSeen() {
+	m.first_seen = nil
+}
+
+// SetLastInteraction sets the "last_interaction" field.
+func (m *PeerReputationMutation) SetLastInteraction(t time.Time) {
+	m.last_interaction = &t
+}
+
+// LastInteraction returns the value of the "last_interaction" field in the mutation.
+func (m *PeerReputationMutation) LastInteraction() (r time.Time, exists bool) {
+	v := m.last_interaction
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldLastInteraction returns the old "last_interaction" field's value of the PeerReputation entity.
+// If the PeerReputation object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *PeerReputationMutation) OldLastInteraction(ctx context.Context) (v time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldLastInteraction is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldLastInteraction requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldLastInteraction: %w", err)
+	}
+	return oldValue.LastInteraction, nil
+}
+
+// ResetLastInteraction resets all changes to the "last_interaction" field.
+func (m *PeerReputationMutation) ResetLastInteraction() {
+	m.last_interaction = nil
+}
+
+// SetCreatedAt sets the "created_at" field.
+func (m *PeerReputationMutation) SetCreatedAt(t time.Time) {
+	m.created_at = &t
+}
+
+// CreatedAt returns the value of the "created_at" field in the mutation.
+func (m *PeerReputationMutation) CreatedAt() (r time.Time, exists bool) {
+	v := m.created_at
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldCreatedAt returns the old "created_at" field's value of the PeerReputation entity.
+// If the PeerReputation object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *PeerReputationMutation) OldCreatedAt(ctx context.Context) (v time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldCreatedAt is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldCreatedAt requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldCreatedAt: %w", err)
+	}
+	return oldValue.CreatedAt, nil
+}
+
+// ResetCreatedAt resets all changes to the "created_at" field.
+func (m *PeerReputationMutation) ResetCreatedAt() {
+	m.created_at = nil
+}
+
+// SetUpdatedAt sets the "updated_at" field.
+func (m *PeerReputationMutation) SetUpdatedAt(t time.Time) {
+	m.updated_at = &t
+}
+
+// UpdatedAt returns the value of the "updated_at" field in the mutation.
+func (m *PeerReputationMutation) UpdatedAt() (r time.Time, exists bool) {
+	v := m.updated_at
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldUpdatedAt returns the old "updated_at" field's value of the PeerReputation entity.
+// If the PeerReputation object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *PeerReputationMutation) OldUpdatedAt(ctx context.Context) (v time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldUpdatedAt is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldUpdatedAt requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldUpdatedAt: %w", err)
+	}
+	return oldValue.UpdatedAt, nil
+}
+
+// ResetUpdatedAt resets all changes to the "updated_at" field.
+func (m *PeerReputationMutation) ResetUpdatedAt() {
+	m.updated_at = nil
+}
+
+// Where appends a list predicates to the PeerReputationMutation builder.
+func (m *PeerReputationMutation) Where(ps ...predicate.PeerReputation) {
+	m.predicates = append(m.predicates, ps...)
+}
+
+// WhereP appends storage-level predicates to the PeerReputationMutation builder. Using this method,
+// users can use type-assertion to append predicates that do not depend on any generated package.
+func (m *PeerReputationMutation) WhereP(ps ...func(*sql.Selector)) {
+	p := make([]predicate.PeerReputation, len(ps))
+	for i := range ps {
+		p[i] = ps[i]
+	}
+	m.Where(p...)
+}
+
+// Op returns the operation name.
+func (m *PeerReputationMutation) Op() Op {
+	return m.op
+}
+
+// SetOp allows setting the mutation operation.
+func (m *PeerReputationMutation) SetOp(op Op) {
+	m.op = op
+}
+
+// Type returns the node type of this mutation (PeerReputation).
+func (m *PeerReputationMutation) Type() string {
+	return m.typ
+}
+
+// Fields returns all fields that were changed during this mutation. Note that in
+// order to get all numeric fields that were incremented/decremented, call
+// AddedFields().
+func (m *PeerReputationMutation) Fields() []string {
+	fields := make([]string, 0, 9)
+	if m.peer_did != nil {
+		fields = append(fields, peerreputation.FieldPeerDid)
+	}
+	if m.successful_exchanges != nil {
+		fields = append(fields, peerreputation.FieldSuccessfulExchanges)
+	}
+	if m.failed_exchanges != nil {
+		fields = append(fields, peerreputation.FieldFailedExchanges)
+	}
+	if m.timeout_count != nil {
+		fields = append(fields, peerreputation.FieldTimeoutCount)
+	}
+	if m.trust_score != nil {
+		fields = append(fields, peerreputation.FieldTrustScore)
+	}
+	if m.first_seen != nil {
+		fields = append(fields, peerreputation.FieldFirstSeen)
+	}
+	if m.last_interaction != nil {
+		fields = append(fields, peerreputation.FieldLastInteraction)
+	}
+	if m.created_at != nil {
+		fields = append(fields, peerreputation.FieldCreatedAt)
+	}
+	if m.updated_at != nil {
+		fields = append(fields, peerreputation.FieldUpdatedAt)
+	}
+	return fields
+}
+
+// Field returns the value of a field with the given name. The second boolean
+// return value indicates that this field was not set, or was not defined in the
+// schema.
+func (m *PeerReputationMutation) Field(name string) (ent.Value, bool) {
+	switch name {
+	case peerreputation.FieldPeerDid:
+		return m.PeerDid()
+	case peerreputation.FieldSuccessfulExchanges:
+		return m.SuccessfulExchanges()
+	case peerreputation.FieldFailedExchanges:
+		return m.FailedExchanges()
+	case peerreputation.FieldTimeoutCount:
+		return m.TimeoutCount()
+	case peerreputation.FieldTrustScore:
+		return m.TrustScore()
+	case peerreputation.FieldFirstSeen:
+		return m.FirstSeen()
+	case peerreputation.FieldLastInteraction:
+		return m.LastInteraction()
+	case peerreputation.FieldCreatedAt:
+		return m.CreatedAt()
+	case peerreputation.FieldUpdatedAt:
+		return m.UpdatedAt()
+	}
+	return nil, false
+}
+
+// OldField returns the old value of the field from the database. An error is
+// returned if the mutation operation is not UpdateOne, or the query to the
+// database failed.
+func (m *PeerReputationMutation) OldField(ctx context.Context, name string) (ent.Value, error) {
+	switch name {
+	case peerreputation.FieldPeerDid:
+		return m.OldPeerDid(ctx)
+	case peerreputation.FieldSuccessfulExchanges:
+		return m.OldSuccessfulExchanges(ctx)
+	case peerreputation.FieldFailedExchanges:
+		return m.OldFailedExchanges(ctx)
+	case peerreputation.FieldTimeoutCount:
+		return m.OldTimeoutCount(ctx)
+	case peerreputation.FieldTrustScore:
+		return m.OldTrustScore(ctx)
+	case peerreputation.FieldFirstSeen:
+		return m.OldFirstSeen(ctx)
+	case peerreputation.FieldLastInteraction:
+		return m.OldLastInteraction(ctx)
+	case peerreputation.FieldCreatedAt:
+		return m.OldCreatedAt(ctx)
+	case peerreputation.FieldUpdatedAt:
+		return m.OldUpdatedAt(ctx)
+	}
+	return nil, fmt.Errorf("unknown PeerReputation field %s", name)
+}
+
+// SetField sets the value of a field with the given name. It returns an error if
+// the field is not defined in the schema, or if the type mismatched the field
+// type.
+func (m *PeerReputationMutation) SetField(name string, value ent.Value) error {
+	switch name {
+	case peerreputation.FieldPeerDid:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetPeerDid(v)
+		return nil
+	case peerreputation.FieldSuccessfulExchanges:
+		v, ok := value.(int)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetSuccessfulExchanges(v)
+		return nil
+	case peerreputation.FieldFailedExchanges:
+		v, ok := value.(int)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetFailedExchanges(v)
+		return nil
+	case peerreputation.FieldTimeoutCount:
+		v, ok := value.(int)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetTimeoutCount(v)
+		return nil
+	case peerreputation.FieldTrustScore:
+		v, ok := value.(float64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetTrustScore(v)
+		return nil
+	case peerreputation.FieldFirstSeen:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetFirstSeen(v)
+		return nil
+	case peerreputation.FieldLastInteraction:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetLastInteraction(v)
+		return nil
+	case peerreputation.FieldCreatedAt:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetCreatedAt(v)
+		return nil
+	case peerreputation.FieldUpdatedAt:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetUpdatedAt(v)
+		return nil
+	}
+	return fmt.Errorf("unknown PeerReputation field %s", name)
+}
+
+// AddedFields returns all numeric fields that were incremented/decremented during
+// this mutation.
+func (m *PeerReputationMutation) AddedFields() []string {
+	var fields []string
+	if m.addsuccessful_exchanges != nil {
+		fields = append(fields, peerreputation.FieldSuccessfulExchanges)
+	}
+	if m.addfailed_exchanges != nil {
+		fields = append(fields, peerreputation.FieldFailedExchanges)
+	}
+	if m.addtimeout_count != nil {
+		fields = append(fields, peerreputation.FieldTimeoutCount)
+	}
+	if m.addtrust_score != nil {
+		fields = append(fields, peerreputation.FieldTrustScore)
+	}
+	return fields
+}
+
+// AddedField returns the numeric value that was incremented/decremented on a field
+// with the given name. The second boolean return value indicates that this field
+// was not set, or was not defined in the schema.
+func (m *PeerReputationMutation) AddedField(name string) (ent.Value, bool) {
+	switch name {
+	case peerreputation.FieldSuccessfulExchanges:
+		return m.AddedSuccessfulExchanges()
+	case peerreputation.FieldFailedExchanges:
+		return m.AddedFailedExchanges()
+	case peerreputation.FieldTimeoutCount:
+		return m.AddedTimeoutCount()
+	case peerreputation.FieldTrustScore:
+		return m.AddedTrustScore()
+	}
+	return nil, false
+}
+
+// AddField adds the value to the field with the given name. It returns an error if
+// the field is not defined in the schema, or if the type mismatched the field
+// type.
+func (m *PeerReputationMutation) AddField(name string, value ent.Value) error {
+	switch name {
+	case peerreputation.FieldSuccessfulExchanges:
+		v, ok := value.(int)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddSuccessfulExchanges(v)
+		return nil
+	case peerreputation.FieldFailedExchanges:
+		v, ok := value.(int)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddFailedExchanges(v)
+		return nil
+	case peerreputation.FieldTimeoutCount:
+		v, ok := value.(int)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddTimeoutCount(v)
+		return nil
+	case peerreputation.FieldTrustScore:
+		v, ok := value.(float64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddTrustScore(v)
+		return nil
+	}
+	return fmt.Errorf("unknown PeerReputation numeric field %s", name)
+}
+
+// ClearedFields returns all nullable fields that were cleared during this
+// mutation.
+func (m *PeerReputationMutation) ClearedFields() []string {
+	return nil
+}
+
+// FieldCleared returns a boolean indicating if a field with the given name was
+// cleared in this mutation.
+func (m *PeerReputationMutation) FieldCleared(name string) bool {
+	_, ok := m.clearedFields[name]
+	return ok
+}
+
+// ClearField clears the value of the field with the given name. It returns an
+// error if the field is not defined in the schema.
+func (m *PeerReputationMutation) ClearField(name string) error {
+	return fmt.Errorf("unknown PeerReputation nullable field %s", name)
+}
+
+// ResetField resets all changes in the mutation for the field with the given name.
+// It returns an error if the field is not defined in the schema.
+func (m *PeerReputationMutation) ResetField(name string) error {
+	switch name {
+	case peerreputation.FieldPeerDid:
+		m.ResetPeerDid()
+		return nil
+	case peerreputation.FieldSuccessfulExchanges:
+		m.ResetSuccessfulExchanges()
+		return nil
+	case peerreputation.FieldFailedExchanges:
+		m.ResetFailedExchanges()
+		return nil
+	case peerreputation.FieldTimeoutCount:
+		m.ResetTimeoutCount()
+		return nil
+	case peerreputation.FieldTrustScore:
+		m.ResetTrustScore()
+		return nil
+	case peerreputation.FieldFirstSeen:
+		m.ResetFirstSeen()
+		return nil
+	case peerreputation.FieldLastInteraction:
+		m.ResetLastInteraction()
+		return nil
+	case peerreputation.FieldCreatedAt:
+		m.ResetCreatedAt()
+		return nil
+	case peerreputation.FieldUpdatedAt:
+		m.ResetUpdatedAt()
+		return nil
+	}
+	return fmt.Errorf("unknown PeerReputation field %s", name)
+}
+
+// AddedEdges returns all edge names that were set/added in this mutation.
+func (m *PeerReputationMutation) AddedEdges() []string {
+	edges := make([]string, 0, 0)
+	return edges
+}
+
+// AddedIDs returns all IDs (to other nodes) that were added for the given edge
+// name in this mutation.
+func (m *PeerReputationMutation) AddedIDs(name string) []ent.Value {
+	return nil
+}
+
+// RemovedEdges returns all edge names that were removed in this mutation.
+func (m *PeerReputationMutation) RemovedEdges() []string {
+	edges := make([]string, 0, 0)
+	return edges
+}
+
+// RemovedIDs returns all IDs (to other nodes) that were removed for the edge with
+// the given name in this mutation.
+func (m *PeerReputationMutation) RemovedIDs(name string) []ent.Value {
+	return nil
+}
+
+// ClearedEdges returns all edge names that were cleared in this mutation.
+func (m *PeerReputationMutation) ClearedEdges() []string {
+	edges := make([]string, 0, 0)
+	return edges
+}
+
+// EdgeCleared returns a boolean which indicates if the edge with the given name
+// was cleared in this mutation.
+func (m *PeerReputationMutation) EdgeCleared(name string) bool {
+	return false
+}
+
+// ClearEdge clears the value of the edge with the given name. It returns an error
+// if that edge is not defined in the schema.
+func (m *PeerReputationMutation) ClearEdge(name string) error {
+	return fmt.Errorf("unknown PeerReputation unique edge %s", name)
+}
+
+// ResetEdge resets all changes to the edge with the given name in this mutation.
+// It returns an error if the edge is not defined in the schema.
+func (m *PeerReputationMutation) ResetEdge(name string) error {
+	return fmt.Errorf("unknown PeerReputation edge %s", name)
 }
 
 // ReflectionMutation represents an operation that mutates the Reflection nodes in the graph.

@@ -3,6 +3,7 @@
 package firewall
 
 import (
+	"context"
 	"fmt"
 	"regexp"
 	"strings"
@@ -31,13 +32,19 @@ type ACLRule struct {
 // ZKAttestFunc generates a ZK attestation proof for a response.
 type ZKAttestFunc func(responseHash, agentDIDHash []byte) ([]byte, error)
 
+// ReputationChecker returns a trust score for a peer DID.
+type ReputationChecker func(ctx context.Context, peerDID string) (float64, error)
+
 // Firewall enforces access control and response sanitization for P2P queries.
 type Firewall struct {
-	rules      []ACLRule
-	mu         sync.RWMutex
-	limiters   map[string]*rate.Limiter // per-peer rate limiters
-	attestFunc ZKAttestFunc
-	logger     *zap.SugaredLogger
+	rules           []ACLRule
+	mu              sync.RWMutex
+	limiters        map[string]*rate.Limiter // per-peer rate limiters
+	attestFunc      ZKAttestFunc
+	ownerShield     *OwnerShield
+	reputationCheck ReputationChecker
+	minTrustScore   float64
+	logger          *zap.SugaredLogger
 }
 
 // New creates a new Firewall with deny-all default policy.
@@ -66,8 +73,23 @@ func (f *Firewall) SetZKAttestFunc(fn ZKAttestFunc) {
 	f.mu.Unlock()
 }
 
+// SetOwnerShield sets the owner data protection shield.
+func (f *Firewall) SetOwnerShield(shield *OwnerShield) {
+	f.mu.Lock()
+	f.ownerShield = shield
+	f.mu.Unlock()
+}
+
+// SetReputationChecker sets the reputation checker and minimum trust score.
+func (f *Firewall) SetReputationChecker(fn ReputationChecker, minScore float64) {
+	f.mu.Lock()
+	f.reputationCheck = fn
+	f.minTrustScore = minScore
+	f.mu.Unlock()
+}
+
 // FilterQuery checks if a query from the given peer is allowed.
-func (f *Firewall) FilterQuery(peerDID, toolName string) error {
+func (f *Firewall) FilterQuery(ctx context.Context, peerDID, toolName string) error {
 	f.mu.RLock()
 	defer f.mu.RUnlock()
 
@@ -81,6 +103,18 @@ func (f *Firewall) FilterQuery(peerDID, toolName string) error {
 	if limiter, ok := f.limiters["*"]; ok {
 		if !limiter.Allow() {
 			return fmt.Errorf("global rate limit exceeded")
+		}
+	}
+
+	// Check reputation score.
+	if f.reputationCheck != nil {
+		score, err := f.reputationCheck(ctx, peerDID)
+		if err != nil {
+			f.logger.Warnw("reputation check error", "peerDID", peerDID, "error", err)
+			// Don't block on reputation errors, continue to ACL.
+		} else if score > 0 && score < f.minTrustScore {
+			// score == 0 means new peer, allow through (they start fresh).
+			return fmt.Errorf("peer %s reputation %.2f below minimum %.2f", peerDID, score, f.minTrustScore)
 		}
 	}
 
@@ -126,6 +160,15 @@ func (f *Firewall) SanitizeResponse(response map[string]interface{}) map[string]
 			sanitized[k] = f.SanitizeResponse(val)
 		default:
 			sanitized[k] = v
+		}
+	}
+
+	// Apply owner shield if configured.
+	if f.ownerShield != nil {
+		var blocked []string
+		sanitized, blocked = f.ownerShield.ScanAndRedact(sanitized)
+		if len(blocked) > 0 {
+			f.logger.Infow("owner data redacted from P2P response", "fields", blocked)
 		}
 	}
 

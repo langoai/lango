@@ -2,6 +2,7 @@ package protocol
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 
 	"github.com/libp2p/go-libp2p/core/host"
@@ -129,4 +130,67 @@ func (a *P2PRemoteAgent) FetchAgentCard(ctx context.Context) (map[string]interfa
 	}
 
 	return resp.Result, nil
+}
+
+// QueryPrice queries the pricing for a tool on the remote agent.
+func (a *P2PRemoteAgent) QueryPrice(ctx context.Context, toolName string) (*PriceQuoteResult, error) {
+	s, err := a.host.NewStream(ctx, a.peerID, ProtocolID)
+	if err != nil {
+		return nil, fmt.Errorf("open stream to %s: %w", a.peerID, err)
+	}
+	defer s.Close()
+
+	payload := map[string]interface{}{"toolName": toolName}
+	resp, err := SendRequest(ctx, s, RequestPriceQuery, a.token, payload)
+	if err != nil {
+		return nil, fmt.Errorf("price query %s on %s: %w", toolName, a.name, err)
+	}
+
+	if resp.Status != "ok" {
+		errMsg := resp.Error
+		if errMsg == "" {
+			errMsg = "unknown error"
+		}
+		return nil, fmt.Errorf("price query %s error: %s", toolName, errMsg)
+	}
+
+	// Parse result into PriceQuoteResult.
+	resultBytes, err := json.Marshal(resp.Result)
+	if err != nil {
+		return nil, fmt.Errorf("marshal price quote: %w", err)
+	}
+
+	var quote PriceQuoteResult
+	if err := json.Unmarshal(resultBytes, &quote); err != nil {
+		return nil, fmt.Errorf("unmarshal price quote: %w", err)
+	}
+
+	return &quote, nil
+}
+
+// InvokeToolPaid sends a paid tool invocation to the remote agent.
+func (a *P2PRemoteAgent) InvokeToolPaid(
+	ctx context.Context,
+	toolName string,
+	params map[string]interface{},
+	paymentAuth map[string]interface{},
+) (*Response, error) {
+	s, err := a.host.NewStream(ctx, a.peerID, ProtocolID)
+	if err != nil {
+		return nil, fmt.Errorf("open stream to %s: %w", a.peerID, err)
+	}
+	defer s.Close()
+
+	payload := map[string]interface{}{
+		"toolName":    toolName,
+		"params":      params,
+		"paymentAuth": paymentAuth,
+	}
+
+	resp, err := SendRequest(ctx, s, RequestToolInvokePaid, a.token, payload)
+	if err != nil {
+		return nil, fmt.Errorf("paid invoke %s on %s: %w", toolName, a.name, err)
+	}
+
+	return resp, nil
 }

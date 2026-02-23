@@ -204,7 +204,7 @@ func New(boot *bootstrap.Result) (*App, error) {
 		tools = append(tools, buildPaymentTools(pc, x402Interceptor)...)
 
 		// 5h''. P2P networking (optional, requires wallet)
-		p2pc = initP2P(cfg, pc.wallet)
+		p2pc = initP2P(cfg, pc.wallet, pc, boot.DBClient)
 		if p2pc != nil {
 			app.P2PNode = p2pc.node
 			// Wire P2P payment tool.
@@ -286,8 +286,33 @@ func New(boot *bootstrap.Result) (*App, error) {
 		a2aServer.RegisterRoutes(app.Gateway.Router())
 	}
 
-	// 9c. P2P REST API routes (if P2P enabled)
+	// 9c. P2P executor + REST API routes (if P2P enabled)
 	if p2pc != nil {
+		// Wire executor callback so remote peers can invoke local tools.
+		// Capture the tools slice in a closure for direct tool dispatch.
+		if p2pc.handler != nil {
+			toolIndex := make(map[string]*agent.Tool, len(tools))
+			for _, t := range tools {
+				toolIndex[t.Name] = t
+			}
+			p2pc.handler.SetExecutor(func(ctx context.Context, toolName string, params map[string]interface{}) (map[string]interface{}, error) {
+				t, ok := toolIndex[toolName]
+				if !ok {
+					return nil, fmt.Errorf("tool %q not found", toolName)
+				}
+				result, err := t.Handler(ctx, params)
+				if err != nil {
+					return nil, err
+				}
+				// Coerce the result to map[string]interface{}.
+				switch v := result.(type) {
+				case map[string]interface{}:
+					return v, nil
+				default:
+					return map[string]interface{}{"result": v}, nil
+				}
+			})
+		}
 		registerP2PRoutes(app.Gateway.Router(), p2pc)
 		logger().Info("P2P REST API routes registered")
 	}

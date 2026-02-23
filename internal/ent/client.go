@@ -28,6 +28,7 @@ import (
 	"github.com/langoai/lango/internal/ent/message"
 	"github.com/langoai/lango/internal/ent/observation"
 	"github.com/langoai/lango/internal/ent/paymenttx"
+	"github.com/langoai/lango/internal/ent/peerreputation"
 	"github.com/langoai/lango/internal/ent/reflection"
 	"github.com/langoai/lango/internal/ent/secret"
 	"github.com/langoai/lango/internal/ent/session"
@@ -64,6 +65,8 @@ type Client struct {
 	Observation *ObservationClient
 	// PaymentTx is the client for interacting with the PaymentTx builders.
 	PaymentTx *PaymentTxClient
+	// PeerReputation is the client for interacting with the PeerReputation builders.
+	PeerReputation *PeerReputationClient
 	// Reflection is the client for interacting with the Reflection builders.
 	Reflection *ReflectionClient
 	// Secret is the client for interacting with the Secret builders.
@@ -97,6 +100,7 @@ func (c *Client) init() {
 	c.Message = NewMessageClient(c.config)
 	c.Observation = NewObservationClient(c.config)
 	c.PaymentTx = NewPaymentTxClient(c.config)
+	c.PeerReputation = NewPeerReputationClient(c.config)
 	c.Reflection = NewReflectionClient(c.config)
 	c.Secret = NewSecretClient(c.config)
 	c.Session = NewSessionClient(c.config)
@@ -206,6 +210,7 @@ func (c *Client) Tx(ctx context.Context) (*Tx, error) {
 		Message:         NewMessageClient(cfg),
 		Observation:     NewObservationClient(cfg),
 		PaymentTx:       NewPaymentTxClient(cfg),
+		PeerReputation:  NewPeerReputationClient(cfg),
 		Reflection:      NewReflectionClient(cfg),
 		Secret:          NewSecretClient(cfg),
 		Session:         NewSessionClient(cfg),
@@ -242,6 +247,7 @@ func (c *Client) BeginTx(ctx context.Context, opts *sql.TxOptions) (*Tx, error) 
 		Message:         NewMessageClient(cfg),
 		Observation:     NewObservationClient(cfg),
 		PaymentTx:       NewPaymentTxClient(cfg),
+		PeerReputation:  NewPeerReputationClient(cfg),
 		Reflection:      NewReflectionClient(cfg),
 		Secret:          NewSecretClient(cfg),
 		Session:         NewSessionClient(cfg),
@@ -278,8 +284,8 @@ func (c *Client) Use(hooks ...Hook) {
 	for _, n := range []interface{ Use(...Hook) }{
 		c.AuditLog, c.ConfigProfile, c.CronJob, c.CronJobHistory, c.ExternalRef,
 		c.Inquiry, c.Key, c.Knowledge, c.Learning, c.Message, c.Observation,
-		c.PaymentTx, c.Reflection, c.Secret, c.Session, c.WorkflowRun,
-		c.WorkflowStepRun,
+		c.PaymentTx, c.PeerReputation, c.Reflection, c.Secret, c.Session,
+		c.WorkflowRun, c.WorkflowStepRun,
 	} {
 		n.Use(hooks...)
 	}
@@ -291,8 +297,8 @@ func (c *Client) Intercept(interceptors ...Interceptor) {
 	for _, n := range []interface{ Intercept(...Interceptor) }{
 		c.AuditLog, c.ConfigProfile, c.CronJob, c.CronJobHistory, c.ExternalRef,
 		c.Inquiry, c.Key, c.Knowledge, c.Learning, c.Message, c.Observation,
-		c.PaymentTx, c.Reflection, c.Secret, c.Session, c.WorkflowRun,
-		c.WorkflowStepRun,
+		c.PaymentTx, c.PeerReputation, c.Reflection, c.Secret, c.Session,
+		c.WorkflowRun, c.WorkflowStepRun,
 	} {
 		n.Intercept(interceptors...)
 	}
@@ -325,6 +331,8 @@ func (c *Client) Mutate(ctx context.Context, m Mutation) (Value, error) {
 		return c.Observation.mutate(ctx, m)
 	case *PaymentTxMutation:
 		return c.PaymentTx.mutate(ctx, m)
+	case *PeerReputationMutation:
+		return c.PeerReputation.mutate(ctx, m)
 	case *ReflectionMutation:
 		return c.Reflection.mutate(ctx, m)
 	case *SecretMutation:
@@ -1968,6 +1976,139 @@ func (c *PaymentTxClient) mutate(ctx context.Context, m *PaymentTxMutation) (Val
 	}
 }
 
+// PeerReputationClient is a client for the PeerReputation schema.
+type PeerReputationClient struct {
+	config
+}
+
+// NewPeerReputationClient returns a client for the PeerReputation from the given config.
+func NewPeerReputationClient(c config) *PeerReputationClient {
+	return &PeerReputationClient{config: c}
+}
+
+// Use adds a list of mutation hooks to the hooks stack.
+// A call to `Use(f, g, h)` equals to `peerreputation.Hooks(f(g(h())))`.
+func (c *PeerReputationClient) Use(hooks ...Hook) {
+	c.hooks.PeerReputation = append(c.hooks.PeerReputation, hooks...)
+}
+
+// Intercept adds a list of query interceptors to the interceptors stack.
+// A call to `Intercept(f, g, h)` equals to `peerreputation.Intercept(f(g(h())))`.
+func (c *PeerReputationClient) Intercept(interceptors ...Interceptor) {
+	c.inters.PeerReputation = append(c.inters.PeerReputation, interceptors...)
+}
+
+// Create returns a builder for creating a PeerReputation entity.
+func (c *PeerReputationClient) Create() *PeerReputationCreate {
+	mutation := newPeerReputationMutation(c.config, OpCreate)
+	return &PeerReputationCreate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// CreateBulk returns a builder for creating a bulk of PeerReputation entities.
+func (c *PeerReputationClient) CreateBulk(builders ...*PeerReputationCreate) *PeerReputationCreateBulk {
+	return &PeerReputationCreateBulk{config: c.config, builders: builders}
+}
+
+// MapCreateBulk creates a bulk creation builder from the given slice. For each item in the slice, the function creates
+// a builder and applies setFunc on it.
+func (c *PeerReputationClient) MapCreateBulk(slice any, setFunc func(*PeerReputationCreate, int)) *PeerReputationCreateBulk {
+	rv := reflect.ValueOf(slice)
+	if rv.Kind() != reflect.Slice {
+		return &PeerReputationCreateBulk{err: fmt.Errorf("calling to PeerReputationClient.MapCreateBulk with wrong type %T, need slice", slice)}
+	}
+	builders := make([]*PeerReputationCreate, rv.Len())
+	for i := 0; i < rv.Len(); i++ {
+		builders[i] = c.Create()
+		setFunc(builders[i], i)
+	}
+	return &PeerReputationCreateBulk{config: c.config, builders: builders}
+}
+
+// Update returns an update builder for PeerReputation.
+func (c *PeerReputationClient) Update() *PeerReputationUpdate {
+	mutation := newPeerReputationMutation(c.config, OpUpdate)
+	return &PeerReputationUpdate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOne returns an update builder for the given entity.
+func (c *PeerReputationClient) UpdateOne(_m *PeerReputation) *PeerReputationUpdateOne {
+	mutation := newPeerReputationMutation(c.config, OpUpdateOne, withPeerReputation(_m))
+	return &PeerReputationUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOneID returns an update builder for the given id.
+func (c *PeerReputationClient) UpdateOneID(id uuid.UUID) *PeerReputationUpdateOne {
+	mutation := newPeerReputationMutation(c.config, OpUpdateOne, withPeerReputationID(id))
+	return &PeerReputationUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// Delete returns a delete builder for PeerReputation.
+func (c *PeerReputationClient) Delete() *PeerReputationDelete {
+	mutation := newPeerReputationMutation(c.config, OpDelete)
+	return &PeerReputationDelete{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// DeleteOne returns a builder for deleting the given entity.
+func (c *PeerReputationClient) DeleteOne(_m *PeerReputation) *PeerReputationDeleteOne {
+	return c.DeleteOneID(_m.ID)
+}
+
+// DeleteOneID returns a builder for deleting the given entity by its id.
+func (c *PeerReputationClient) DeleteOneID(id uuid.UUID) *PeerReputationDeleteOne {
+	builder := c.Delete().Where(peerreputation.ID(id))
+	builder.mutation.id = &id
+	builder.mutation.op = OpDeleteOne
+	return &PeerReputationDeleteOne{builder}
+}
+
+// Query returns a query builder for PeerReputation.
+func (c *PeerReputationClient) Query() *PeerReputationQuery {
+	return &PeerReputationQuery{
+		config: c.config,
+		ctx:    &QueryContext{Type: TypePeerReputation},
+		inters: c.Interceptors(),
+	}
+}
+
+// Get returns a PeerReputation entity by its id.
+func (c *PeerReputationClient) Get(ctx context.Context, id uuid.UUID) (*PeerReputation, error) {
+	return c.Query().Where(peerreputation.ID(id)).Only(ctx)
+}
+
+// GetX is like Get, but panics if an error occurs.
+func (c *PeerReputationClient) GetX(ctx context.Context, id uuid.UUID) *PeerReputation {
+	obj, err := c.Get(ctx, id)
+	if err != nil {
+		panic(err)
+	}
+	return obj
+}
+
+// Hooks returns the client hooks.
+func (c *PeerReputationClient) Hooks() []Hook {
+	return c.hooks.PeerReputation
+}
+
+// Interceptors returns the client interceptors.
+func (c *PeerReputationClient) Interceptors() []Interceptor {
+	return c.inters.PeerReputation
+}
+
+func (c *PeerReputationClient) mutate(ctx context.Context, m *PeerReputationMutation) (Value, error) {
+	switch m.Op() {
+	case OpCreate:
+		return (&PeerReputationCreate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdate:
+		return (&PeerReputationUpdate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdateOne:
+		return (&PeerReputationUpdateOne{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpDelete, OpDeleteOne:
+		return (&PeerReputationDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
+	default:
+		return nil, fmt.Errorf("ent: unknown PeerReputation mutation op: %q", m.Op())
+	}
+}
+
 // ReflectionClient is a client for the Reflection schema.
 type ReflectionClient struct {
 	config
@@ -2669,12 +2810,12 @@ func (c *WorkflowStepRunClient) mutate(ctx context.Context, m *WorkflowStepRunMu
 type (
 	hooks struct {
 		AuditLog, ConfigProfile, CronJob, CronJobHistory, ExternalRef, Inquiry, Key,
-		Knowledge, Learning, Message, Observation, PaymentTx, Reflection, Secret,
-		Session, WorkflowRun, WorkflowStepRun []ent.Hook
+		Knowledge, Learning, Message, Observation, PaymentTx, PeerReputation,
+		Reflection, Secret, Session, WorkflowRun, WorkflowStepRun []ent.Hook
 	}
 	inters struct {
 		AuditLog, ConfigProfile, CronJob, CronJobHistory, ExternalRef, Inquiry, Key,
-		Knowledge, Learning, Message, Observation, PaymentTx, Reflection, Secret,
-		Session, WorkflowRun, WorkflowStepRun []ent.Interceptor
+		Knowledge, Learning, Message, Observation, PaymentTx, PeerReputation,
+		Reflection, Secret, Session, WorkflowRun, WorkflowStepRun []ent.Interceptor
 	}
 )

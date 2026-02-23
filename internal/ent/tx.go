@@ -36,6 +36,8 @@ type Tx struct {
 	Observation *ObservationClient
 	// PaymentTx is the client for interacting with the PaymentTx builders.
 	PaymentTx *PaymentTxClient
+	// PeerReputation is the client for interacting with the PeerReputation builders.
+	PeerReputation *PeerReputationClient
 	// Reflection is the client for interacting with the Reflection builders.
 	Reflection *ReflectionClient
 	// Secret is the client for interacting with the Secret builders.
@@ -189,6 +191,7 @@ func (tx *Tx) init() {
 	tx.Message = NewMessageClient(tx.config)
 	tx.Observation = NewObservationClient(tx.config)
 	tx.PaymentTx = NewPaymentTxClient(tx.config)
+	tx.PeerReputation = NewPeerReputationClient(tx.config)
 	tx.Reflection = NewReflectionClient(tx.config)
 	tx.Secret = NewSecretClient(tx.config)
 	tx.Session = NewSessionClient(tx.config)

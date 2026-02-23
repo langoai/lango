@@ -24,6 +24,7 @@ import (
 	"github.com/langoai/lango/internal/ent/message"
 	"github.com/langoai/lango/internal/ent/observation"
 	"github.com/langoai/lango/internal/ent/paymenttx"
+	"github.com/langoai/lango/internal/ent/peerreputation"
 	"github.com/langoai/lango/internal/ent/reflection"
 	"github.com/langoai/lango/internal/ent/secret"
 	"github.com/langoai/lango/internal/ent/session"
@@ -101,6 +102,7 @@ func checkColumn(t, c string) error {
 			message.Table:         message.ValidColumn,
 			observation.Table:     observation.ValidColumn,
 			paymenttx.Table:       paymenttx.ValidColumn,
+			peerreputation.Table:  peerreputation.ValidColumn,
 			reflection.Table:      reflection.ValidColumn,
 			secret.Table:          secret.ValidColumn,
 			session.Table:         session.ValidColumn,

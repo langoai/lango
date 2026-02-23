@@ -384,6 +384,37 @@ var (
 			},
 		},
 	}
+	// PeerReputationsColumns holds the columns for the "peer_reputations" table.
+	PeerReputationsColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeUUID},
+		{Name: "peer_did", Type: field.TypeString, Unique: true},
+		{Name: "successful_exchanges", Type: field.TypeInt, Default: 0},
+		{Name: "failed_exchanges", Type: field.TypeInt, Default: 0},
+		{Name: "timeout_count", Type: field.TypeInt, Default: 0},
+		{Name: "trust_score", Type: field.TypeFloat64, Default: 0},
+		{Name: "first_seen", Type: field.TypeTime},
+		{Name: "last_interaction", Type: field.TypeTime},
+		{Name: "created_at", Type: field.TypeTime},
+		{Name: "updated_at", Type: field.TypeTime},
+	}
+	// PeerReputationsTable holds the schema information for the "peer_reputations" table.
+	PeerReputationsTable = &schema.Table{
+		Name:       "peer_reputations",
+		Columns:    PeerReputationsColumns,
+		PrimaryKey: []*schema.Column{PeerReputationsColumns[0]},
+		Indexes: []*schema.Index{
+			{
+				Name:    "peerreputation_trust_score",
+				Unique:  false,
+				Columns: []*schema.Column{PeerReputationsColumns[5]},
+			},
+			{
+				Name:    "peerreputation_last_interaction",
+				Unique:  false,
+				Columns: []*schema.Column{PeerReputationsColumns[7]},
+			},
+		},
+	}
 	// ReflectionsColumns holds the columns for the "reflections" table.
 	ReflectionsColumns = []*schema.Column{
 		{Name: "id", Type: field.TypeUUID},
@@ -557,6 +588,7 @@ var (
 		MessagesTable,
 		ObservationsTable,
 		PaymentTxesTable,
+		PeerReputationsTable,
 		ReflectionsTable,
 		SecretsTable,
 		SessionsTable,

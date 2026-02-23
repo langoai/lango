@@ -118,6 +118,45 @@ type P2PConfig struct {
 
 	// ZKP holds zero-knowledge proof settings.
 	ZKP ZKPConfig `mapstructure:"zkp" json:"zkp"`
+
+	// Pricing for paid P2P tool invocations.
+	Pricing P2PPricingConfig `mapstructure:"pricing" json:"pricing"`
+
+	// OwnerProtection prevents owner PII from leaking via P2P.
+	OwnerProtection OwnerProtectionConfig `mapstructure:"ownerProtection" json:"ownerProtection"`
+
+	// MinTrustScore is the minimum reputation to accept requests (0.0 to 1.0, default 0.3).
+	MinTrustScore float64 `mapstructure:"minTrustScore" json:"minTrustScore"`
+}
+
+// P2PPricingConfig defines pricing for P2P tool invocations.
+type P2PPricingConfig struct {
+	// Enable paid tool invocations.
+	Enabled bool `mapstructure:"enabled" json:"enabled"`
+
+	// PerQuery is the default price per query in USDC (e.g. "0.50").
+	PerQuery string `mapstructure:"perQuery" json:"perQuery"`
+
+	// ToolPrices maps tool names to their specific prices in USDC.
+	ToolPrices map[string]string `mapstructure:"toolPrices" json:"toolPrices,omitempty"`
+}
+
+// OwnerProtectionConfig configures owner data protection for P2P responses.
+type OwnerProtectionConfig struct {
+	// OwnerName is the owner's name to block from P2P responses.
+	OwnerName string `mapstructure:"ownerName" json:"ownerName"`
+
+	// OwnerEmail is the owner's email to block from P2P responses.
+	OwnerEmail string `mapstructure:"ownerEmail" json:"ownerEmail"`
+
+	// OwnerPhone is the owner's phone number to block from P2P responses.
+	OwnerPhone string `mapstructure:"ownerPhone" json:"ownerPhone"`
+
+	// ExtraTerms are additional terms to block from P2P responses.
+	ExtraTerms []string `mapstructure:"extraTerms" json:"extraTerms,omitempty"`
+
+	// BlockConversations blocks all conversation-related fields from P2P responses (default: true).
+	BlockConversations *bool `mapstructure:"blockConversations" json:"blockConversations"`
 }
 
 // ZKPConfig defines zero-knowledge proof settings.

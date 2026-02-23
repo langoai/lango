@@ -18,7 +18,16 @@ const (
 
 	// RequestAgentCard requests the agent card of the remote agent.
 	RequestAgentCard RequestType = "agent_card"
+
+	// RequestPriceQuery queries the pricing for a tool on the remote agent.
+	RequestPriceQuery RequestType = "price_query"
+
+	// RequestToolInvokePaid invokes a paid tool on the remote agent.
+	RequestToolInvokePaid RequestType = "tool_invoke_paid"
 )
+
+// Status constants for payment-related responses.
+const StatusPaymentRequired = "payment_required"
 
 // Request is a P2P A2A request message.
 type Request struct {
@@ -47,4 +56,23 @@ type ToolInvokePayload struct {
 // CapabilityQueryPayload is the payload for a capability query.
 type CapabilityQueryPayload struct {
 	Filter string `json:"filter,omitempty"` // optional tool name prefix filter
+}
+
+// PriceQuoteResult is returned when querying tool pricing.
+type PriceQuoteResult struct {
+	ToolName     string `json:"toolName"`
+	Price        string `json:"price"`
+	Currency     string `json:"currency"`
+	USDCContract string `json:"usdcContract"`
+	ChainID      int64  `json:"chainId"`
+	SellerAddr   string `json:"sellerAddr"`
+	QuoteExpiry  int64  `json:"quoteExpiry"`
+	IsFree       bool   `json:"isFree"`
+}
+
+// PaidInvokePayload is the payload for a paid tool invocation.
+type PaidInvokePayload struct {
+	ToolName    string                 `json:"toolName"`
+	Params      map[string]interface{} `json:"params"`
+	PaymentAuth map[string]interface{} `json:"paymentAuth,omitempty"`
 }

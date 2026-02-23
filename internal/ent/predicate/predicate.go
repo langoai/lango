@@ -42,6 +42,9 @@ type Observation func(*sql.Selector)
 // PaymentTx is the predicate function for paymenttx builders.
 type PaymentTx func(*sql.Selector)
 
+// PeerReputation is the predicate function for peerreputation builders.
+type PeerReputation func(*sql.Selector)
+
 // Reflection is the predicate function for reflection builders.
 type Reflection func(*sql.Selector)
 
