@@ -443,6 +443,59 @@ type SecurityConfig struct {
 	Keyring KeyringConfig `mapstructure:"keyring" json:"keyring"`
 	// DBEncryption configuration (SQLCipher transparent encryption)
 	DBEncryption DBEncryptionConfig `mapstructure:"dbEncryption" json:"dbEncryption"`
+	// KMS configuration (Cloud KMS / HSM backends)
+	KMS KMSConfig `mapstructure:"kms" json:"kms"`
+}
+
+// KMSConfig defines Cloud KMS and HSM backend settings.
+type KMSConfig struct {
+	// Region is the cloud region for KMS API calls (e.g. "us-east-1", "us-central1").
+	Region string `mapstructure:"region" json:"region"`
+
+	// KeyID is the KMS key identifier (ARN, resource name, or alias).
+	KeyID string `mapstructure:"keyId" json:"keyId"`
+
+	// Endpoint is an optional custom endpoint for KMS API calls (useful for testing).
+	Endpoint string `mapstructure:"endpoint" json:"endpoint,omitempty"`
+
+	// FallbackToLocal enables automatic fallback to the local CryptoProvider when KMS is unavailable.
+	FallbackToLocal bool `mapstructure:"fallbackToLocal" json:"fallbackToLocal"`
+
+	// TimeoutPerOperation is the maximum duration for a single KMS API call (default: 5s).
+	TimeoutPerOperation time.Duration `mapstructure:"timeoutPerOperation" json:"timeoutPerOperation"`
+
+	// MaxRetries is the number of retry attempts for transient KMS errors (default: 3).
+	MaxRetries int `mapstructure:"maxRetries" json:"maxRetries"`
+
+	// Azure holds Azure Key Vault specific settings.
+	Azure AzureKVConfig `mapstructure:"azure" json:"azure"`
+
+	// PKCS11 holds PKCS#11 HSM specific settings.
+	PKCS11 PKCS11Config `mapstructure:"pkcs11" json:"pkcs11"`
+}
+
+// AzureKVConfig defines Azure Key Vault specific settings.
+type AzureKVConfig struct {
+	// VaultURL is the Azure Key Vault URL (e.g. "https://myvault.vault.azure.net").
+	VaultURL string `mapstructure:"vaultUrl" json:"vaultUrl"`
+
+	// KeyVersion is the specific key version to use (empty = latest).
+	KeyVersion string `mapstructure:"keyVersion" json:"keyVersion,omitempty"`
+}
+
+// PKCS11Config defines PKCS#11 HSM specific settings.
+type PKCS11Config struct {
+	// ModulePath is the path to the PKCS#11 shared library (.so/.dylib/.dll).
+	ModulePath string `mapstructure:"modulePath" json:"modulePath"`
+
+	// SlotID is the PKCS#11 slot number to use.
+	SlotID int `mapstructure:"slotId" json:"slotId"`
+
+	// Pin is the PKCS#11 user PIN (prefer LANGO_PKCS11_PIN env var).
+	Pin string `mapstructure:"pin" json:"pin,omitempty"`
+
+	// KeyLabel is the label of the key object in the HSM.
+	KeyLabel string `mapstructure:"keyLabel" json:"keyLabel"`
 }
 
 // DBEncryptionConfig defines SQLCipher transparent database encryption settings.

@@ -37,6 +37,9 @@ func newStatusCmd(bootLoader func() (*bootstrap.Result, error)) *cobra.Command {
 				PIIRedaction   string `json:"pii_redaction"`
 				ApprovalPolicy string `json:"approval_policy"`
 				DBEncryption   string `json:"db_encryption"`
+				KMSProvider    string `json:"kms_provider,omitempty"`
+				KMSKeyID       string `json:"kms_key_id,omitempty"`
+				KMSFallback    string `json:"kms_fallback,omitempty"`
 			}
 
 			policy := string(cfg.Security.Interceptor.ApprovalPolicy)
@@ -66,6 +69,13 @@ func newStatusCmd(bootLoader func() (*bootstrap.Result, error)) *cobra.Command {
 				DBEncryption:   dbEncStatus,
 			}
 
+			// Populate KMS fields when a KMS provider is configured.
+			if isKMSProvider(cfg.Security.Signer.Provider) {
+				s.KMSProvider = cfg.Security.Signer.Provider
+				s.KMSKeyID = cfg.Security.KMS.KeyID
+				s.KMSFallback = boolToStatus(cfg.Security.KMS.FallbackToLocal)
+			}
+
 			ctx := context.Background()
 			registry := sec.NewKeyRegistry(boot.DBClient)
 			keys, err := registry.ListKeys(ctx)
@@ -92,6 +102,11 @@ func newStatusCmd(bootLoader func() (*bootstrap.Result, error)) *cobra.Command {
 			fmt.Printf("  PII Redaction:      %s\n", s.PIIRedaction)
 			fmt.Printf("  Approval Policy:    %s\n", s.ApprovalPolicy)
 			fmt.Printf("  DB Encryption:      %s\n", s.DBEncryption)
+			if s.KMSProvider != "" {
+				fmt.Printf("  KMS Provider:       %s\n", s.KMSProvider)
+				fmt.Printf("  KMS Key ID:         %s\n", s.KMSKeyID)
+				fmt.Printf("  KMS Fallback:       %s\n", s.KMSFallback)
+			}
 
 			return nil
 		},

@@ -65,6 +65,11 @@ func DefaultConfig() *Config {
 				Enabled:        false,
 				CipherPageSize: 4096,
 			},
+			KMS: KMSConfig{
+				FallbackToLocal:     true,
+				TimeoutPerOperation: 5 * time.Second,
+				MaxRetries:          3,
+			},
 		},
 		Knowledge: KnowledgeConfig{
 			Enabled:            false,
@@ -203,6 +208,9 @@ func Load(configPath string) (*Config, error) {
 	v.SetDefault("security.keyring.enabled", defaults.Security.Keyring.Enabled)
 	v.SetDefault("security.dbEncryption.enabled", defaults.Security.DBEncryption.Enabled)
 	v.SetDefault("security.dbEncryption.cipherPageSize", defaults.Security.DBEncryption.CipherPageSize)
+	v.SetDefault("security.kms.fallbackToLocal", defaults.Security.KMS.FallbackToLocal)
+	v.SetDefault("security.kms.timeoutPerOperation", defaults.Security.KMS.TimeoutPerOperation)
+	v.SetDefault("security.kms.maxRetries", defaults.Security.KMS.MaxRetries)
 	v.SetDefault("graph.enabled", defaults.Graph.Enabled)
 	v.SetDefault("graph.backend", defaults.Graph.Backend)
 	v.SetDefault("graph.maxTraversalDepth", defaults.Graph.MaxTraversalDepth)
@@ -372,12 +380,33 @@ func Validate(cfg *Config) error {
 
 	// Validate security config
 	if cfg.Security.Signer.Provider != "" {
-		validProviders := map[string]bool{"local": true, "rpc": true, "enclave": true}
+		validProviders := map[string]bool{
+			"local": true, "rpc": true, "enclave": true,
+			"aws-kms": true, "gcp-kms": true, "azure-kv": true, "pkcs11": true,
+		}
 		if !validProviders[cfg.Security.Signer.Provider] {
-			errs = append(errs, fmt.Sprintf("invalid security.signer.provider: %q (must be local, rpc, or enclave)", cfg.Security.Signer.Provider))
+			errs = append(errs, fmt.Sprintf("invalid security.signer.provider: %q (must be local, rpc, enclave, aws-kms, gcp-kms, azure-kv, or pkcs11)", cfg.Security.Signer.Provider))
 		}
 		if cfg.Security.Signer.Provider == "rpc" && cfg.Security.Signer.RPCUrl == "" {
 			errs = append(errs, "security.signer.rpcUrl is required when provider is 'rpc'")
+		}
+		// Validate KMS-specific config.
+		switch cfg.Security.Signer.Provider {
+		case "aws-kms", "gcp-kms":
+			if cfg.Security.KMS.KeyID == "" {
+				errs = append(errs, fmt.Sprintf("security.kms.keyId is required when provider is %q", cfg.Security.Signer.Provider))
+			}
+		case "azure-kv":
+			if cfg.Security.KMS.Azure.VaultURL == "" {
+				errs = append(errs, "security.kms.azure.vaultUrl is required when provider is 'azure-kv'")
+			}
+			if cfg.Security.KMS.KeyID == "" {
+				errs = append(errs, "security.kms.keyId is required when provider is 'azure-kv'")
+			}
+		case "pkcs11":
+			if cfg.Security.KMS.PKCS11.ModulePath == "" {
+				errs = append(errs, "security.kms.pkcs11.modulePath is required when provider is 'pkcs11'")
+			}
 		}
 	}
 

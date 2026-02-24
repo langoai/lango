@@ -189,6 +189,40 @@ func initSecurity(cfg *config.Config, store session.Store, boot *bootstrap.Resul
 	case "enclave":
 		return nil, nil, nil, fmt.Errorf("enclave provider not yet implemented")
 
+	case "aws-kms", "gcp-kms", "azure-kv", "pkcs11":
+		kmsProvider, err := security.NewKMSProvider(cfg.Security.Signer.Provider, cfg.Security.KMS)
+		if err != nil {
+			return nil, nil, nil, fmt.Errorf("KMS provider %q: %w", cfg.Security.Signer.Provider, err)
+		}
+
+		if boot == nil || boot.DBClient == nil {
+			return nil, nil, nil, fmt.Errorf("KMS security provider requires bootstrap")
+		}
+
+		keys := security.NewKeyRegistry(boot.DBClient)
+		ctx := context.Background()
+		if _, err := keys.RegisterKey(ctx, "kms-default", cfg.Security.KMS.KeyID, security.KeyTypeEncryption); err != nil {
+			return nil, nil, nil, fmt.Errorf("register KMS key: %w", err)
+		}
+
+		var finalProvider security.CryptoProvider = kmsProvider
+
+		// Wrap with CompositeCryptoProvider for fallback when configured.
+		if cfg.Security.KMS.FallbackToLocal && boot.Crypto != nil {
+			checker := security.NewKMSHealthChecker(kmsProvider, cfg.Security.KMS.KeyID, 0)
+			finalProvider = security.NewCompositeCryptoProvider(kmsProvider, boot.Crypto, checker)
+			logger().Infow("security initialized (KMS provider with local fallback)",
+				"provider", cfg.Security.Signer.Provider,
+				"keyID", cfg.Security.KMS.KeyID)
+		} else {
+			logger().Infow("security initialized (KMS provider)",
+				"provider", cfg.Security.Signer.Provider,
+				"keyID", cfg.Security.KMS.KeyID)
+		}
+
+		secrets := security.NewSecretsStore(boot.DBClient, keys, finalProvider)
+		return finalProvider, keys, secrets, nil
+
 	default:
 		return nil, nil, nil, fmt.Errorf("unknown security provider: %s", cfg.Security.Signer.Provider)
 	}
