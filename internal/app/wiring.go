@@ -1257,6 +1257,19 @@ func initP2P(cfg *config.Config, wp wallet.WalletProvider, pc *paymentComponents
 	})
 	node.Host().SetStreamHandler(libp2pproto.ID(p2pproto.ProtocolID), handler.StreamHandler())
 
+	// Wire security event handler for auto-invalidation on repeated failures
+	// or reputation drops.
+	minTrust := cfg.P2P.MinTrustScore
+	if minTrust <= 0 {
+		minTrust = 0.3
+	}
+	secEvents := handshake.NewSecurityEventHandler(sessions, 5, minTrust, pLogger)
+	handler.SetSecurityEvents(secEvents)
+	if repStore != nil {
+		repStore.SetOnChangeCallback(secEvents.OnReputationChange)
+	}
+	pLogger.Info("P2P security event handler wired")
+
 	// Create gossip discovery service.
 	var gossip *discovery.GossipService
 	gossipInterval := cfg.P2P.GossipInterval

@@ -58,6 +58,9 @@ func DefaultConfig() *Config {
 				Enabled:        true,
 				ApprovalPolicy: ApprovalPolicyDangerous,
 			},
+			Keyring: KeyringConfig{
+				Enabled: true,
+			},
 		},
 		Knowledge: KnowledgeConfig{
 			Enabled:            false,
@@ -141,6 +144,11 @@ func DefaultConfig() *Config {
 				ProofCacheDir: "~/.lango/p2p/zkp-cache",
 				ProvingScheme: "plonk",
 			},
+			ToolIsolation: ToolIsolationConfig{
+				Enabled:        false,
+				TimeoutPerTool: 30 * time.Second,
+				MaxMemoryMB:    256,
+			},
 		},
 	}
 }
@@ -174,6 +182,7 @@ func Load(configPath string) (*Config, error) {
 	v.SetDefault("tools.browser.sessionTimeout", defaults.Tools.Browser.SessionTimeout)
 	v.SetDefault("security.interceptor.enabled", defaults.Security.Interceptor.Enabled)
 	v.SetDefault("security.interceptor.approvalPolicy", string(defaults.Security.Interceptor.ApprovalPolicy))
+	v.SetDefault("security.keyring.enabled", defaults.Security.Keyring.Enabled)
 	v.SetDefault("graph.enabled", defaults.Graph.Enabled)
 	v.SetDefault("graph.backend", defaults.Graph.Backend)
 	v.SetDefault("graph.maxTraversalDepth", defaults.Graph.MaxTraversalDepth)

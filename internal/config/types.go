@@ -129,6 +129,21 @@ type P2PConfig struct {
 
 	// MinTrustScore is the minimum reputation to accept requests (0.0 to 1.0, default 0.3).
 	MinTrustScore float64 `mapstructure:"minTrustScore" json:"minTrustScore"`
+
+	// ToolIsolation configures process isolation for remote tool invocations.
+	ToolIsolation ToolIsolationConfig `mapstructure:"toolIsolation" json:"toolIsolation"`
+}
+
+// ToolIsolationConfig configures subprocess isolation for P2P tool execution.
+type ToolIsolationConfig struct {
+	// Enabled turns on subprocess isolation for remote peer tool invocations.
+	Enabled bool `mapstructure:"enabled" json:"enabled"`
+
+	// TimeoutPerTool is the maximum duration for a single tool execution (default: 30s).
+	TimeoutPerTool time.Duration `mapstructure:"timeoutPerTool" json:"timeoutPerTool"`
+
+	// MaxMemoryMB is a soft memory limit per subprocess in megabytes (Phase 2).
+	MaxMemoryMB int `mapstructure:"maxMemoryMB" json:"maxMemoryMB"`
 }
 
 // P2PPricingConfig defines pricing for P2P tool invocations.
@@ -394,6 +409,14 @@ type SecurityConfig struct {
 	Interceptor InterceptorConfig `mapstructure:"interceptor" json:"interceptor"`
 	// Signer configuration
 	Signer SignerConfig `mapstructure:"signer" json:"signer"`
+	// Keyring configuration (OS keyring for passphrase storage)
+	Keyring KeyringConfig `mapstructure:"keyring" json:"keyring"`
+}
+
+// KeyringConfig defines OS keyring integration settings.
+type KeyringConfig struct {
+	// Enabled activates OS keyring as the highest-priority passphrase source.
+	Enabled bool `mapstructure:"enabled" json:"enabled"`
 }
 
 // ApprovalPolicy determines which tools require approval before execution.

@@ -24,6 +24,13 @@ type ToolExecutor func(ctx context.Context, toolName string, params map[string]i
 // Uses the callback pattern to avoid import cycles with the approval package.
 type ToolApprovalFunc func(ctx context.Context, peerDID, toolName string, params map[string]interface{}) (bool, error)
 
+// SecurityEventTracker records tool execution outcomes for security monitoring.
+// Uses the callback pattern to avoid import cycles with the handshake package.
+type SecurityEventTracker interface {
+	RecordToolFailure(peerDID string)
+	RecordToolSuccess(peerDID string)
+}
+
 // CardProvider returns the local agent card as a map.
 type CardProvider func() map[string]interface{}
 
@@ -41,14 +48,16 @@ type PayGateResult struct {
 
 // Handler processes A2A-over-P2P messages on libp2p streams.
 type Handler struct {
-	sessions   *handshake.SessionStore
-	firewall   *firewall.Firewall
-	executor   ToolExecutor
-	cardFn     CardProvider
-	payGate    PayGateChecker
-	approvalFn ToolApprovalFunc
-	localDID   string
-	logger     *zap.SugaredLogger
+	sessions       *handshake.SessionStore
+	firewall       *firewall.Firewall
+	executor       ToolExecutor
+	sandboxExec    ToolExecutor
+	cardFn         CardProvider
+	payGate        PayGateChecker
+	approvalFn     ToolApprovalFunc
+	securityEvents SecurityEventTracker
+	localDID       string
+	logger         *zap.SugaredLogger
 }
 
 // HandlerConfig configures the protocol handler.
@@ -86,6 +95,19 @@ func (h *Handler) SetPayGate(gate PayGateChecker) {
 // SetApprovalFunc sets the owner approval callback for remote tool invocations.
 func (h *Handler) SetApprovalFunc(fn ToolApprovalFunc) {
 	h.approvalFn = fn
+}
+
+// SetSandboxExecutor sets an isolated executor for remote tool invocations.
+// When set, tool calls from remote peers use this executor instead of the
+// default in-process executor, preventing access to parent process memory.
+func (h *Handler) SetSandboxExecutor(exec ToolExecutor) {
+	h.sandboxExec = exec
+}
+
+// SetSecurityEvents sets the security event tracker for recording tool
+// execution outcomes and triggering auto-invalidation on repeated failures.
+func (h *Handler) SetSecurityEvents(tracker SecurityEventTracker) {
+	h.securityEvents = tracker
 }
 
 // StreamHandler returns a libp2p stream handler for incoming A2A messages.
@@ -232,15 +254,26 @@ func (h *Handler) handleToolInvoke(ctx context.Context, req *Request, peerDID st
 		}
 	}
 
-	// Execute tool.
-	result, err := h.executor(ctx, toolName, params)
+	// Execute tool (prefer sandbox executor for process isolation).
+	exec := h.executor
+	if h.sandboxExec != nil {
+		exec = h.sandboxExec
+	}
+	result, err := exec(ctx, toolName, params)
 	if err != nil {
+		if h.securityEvents != nil {
+			h.securityEvents.RecordToolFailure(peerDID)
+		}
 		return &Response{
 			RequestID: req.RequestID,
 			Status:    "error",
 			Error:     err.Error(),
 			Timestamp: time.Now(),
 		}
+	}
+
+	if h.securityEvents != nil {
+		h.securityEvents.RecordToolSuccess(peerDID)
 	}
 
 	// Sanitize response through firewall.
@@ -403,8 +436,12 @@ func (h *Handler) handleToolInvokePaid(ctx context.Context, req *Request, peerDI
 		}
 	}
 
-	// 4. Execute tool.
-	if h.executor == nil {
+	// 4. Execute tool (prefer sandbox executor for process isolation).
+	paidExec := h.executor
+	if h.sandboxExec != nil {
+		paidExec = h.sandboxExec
+	}
+	if paidExec == nil {
 		return &Response{
 			RequestID: req.RequestID,
 			Status:    "error",
@@ -413,14 +450,21 @@ func (h *Handler) handleToolInvokePaid(ctx context.Context, req *Request, peerDI
 		}
 	}
 
-	result, err := h.executor(ctx, toolName, params)
+	result, err := paidExec(ctx, toolName, params)
 	if err != nil {
+		if h.securityEvents != nil {
+			h.securityEvents.RecordToolFailure(peerDID)
+		}
 		return &Response{
 			RequestID: req.RequestID,
 			Status:    "error",
 			Error:     err.Error(),
 			Timestamp: time.Now(),
 		}
+	}
+
+	if h.securityEvents != nil {
+		h.securityEvents.RecordToolSuccess(peerDID)
 	}
 
 	// 5. Sanitize response through firewall.

@@ -15,6 +15,7 @@ import (
 	"github.com/langoai/lango/internal/bootstrap"
 	"github.com/langoai/lango/internal/config"
 	"github.com/langoai/lango/internal/logging"
+	"github.com/langoai/lango/internal/sandbox"
 	"github.com/langoai/lango/internal/security"
 	"github.com/langoai/lango/internal/session"
 	"github.com/langoai/lango/internal/wallet"
@@ -318,6 +319,19 @@ func New(boot *bootstrap.Result) (*App, error) {
 					return map[string]interface{}{"result": v}, nil
 				}
 			})
+
+			// Wire sandbox executor for P2P tool isolation if enabled.
+			if cfg.P2P.ToolIsolation.Enabled {
+				sbxExec := sandbox.NewSubprocessExecutor(sandbox.Config{
+					Enabled:        true,
+					TimeoutPerTool: cfg.P2P.ToolIsolation.TimeoutPerTool,
+					MaxMemoryMB:    cfg.P2P.ToolIsolation.MaxMemoryMB,
+				})
+				p2pc.handler.SetSandboxExecutor(func(ctx context.Context, toolName string, params map[string]interface{}) (map[string]interface{}, error) {
+					return sbxExec.Execute(ctx, toolName, params)
+				})
+				logger().Info("P2P tool isolation enabled (subprocess mode)")
+			}
 		}
 		// Wire owner approval callback for inbound remote tool invocations.
 		if pc != nil {

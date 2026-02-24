@@ -4,6 +4,7 @@ package p2p
 import (
 	"fmt"
 	"sync"
+	"time"
 
 	"github.com/spf13/cobra"
 	"go.uber.org/zap"
@@ -12,6 +13,7 @@ import (
 	"github.com/langoai/lango/internal/config"
 	"github.com/langoai/lango/internal/logging"
 	p2pnet "github.com/langoai/lango/internal/p2p"
+	"github.com/langoai/lango/internal/p2p/handshake"
 	"github.com/langoai/lango/internal/security"
 )
 
@@ -19,6 +21,7 @@ import (
 type p2pDeps struct {
 	config     *config.P2PConfig
 	node       *p2pnet.Node
+	sessions   *handshake.SessionStore
 	keyStorage string // "secrets-store" or "file"
 	cleanup    func()
 }
@@ -40,6 +43,7 @@ func NewP2PCmd(bootLoader func() (*bootstrap.Result, error)) *cobra.Command {
 	cmd.AddCommand(newIdentityCmd(bootLoader))
 	cmd.AddCommand(newReputationCmd(bootLoader))
 	cmd.AddCommand(newPricingCmd(bootLoader))
+	cmd.AddCommand(newSessionCmd(bootLoader))
 
 	return cmd
 }
@@ -77,9 +81,20 @@ func initP2PDeps(boot *bootstrap.Result) (*p2pDeps, error) {
 		return nil, fmt.Errorf("start P2P node: %w", err)
 	}
 
+	sessionTTL := cfg.P2P.SessionTokenTTL
+	if sessionTTL <= 0 {
+		sessionTTL = 24 * time.Hour
+	}
+	sessions, err := handshake.NewSessionStore(sessionTTL)
+	if err != nil {
+		node.Stop()
+		return nil, fmt.Errorf("create session store: %w", err)
+	}
+
 	return &p2pDeps{
 		config:     &cfg.P2P,
 		node:       node,
+		sessions:   sessions,
 		keyStorage: keyStorage,
 		cleanup: func() {
 			node.Stop()

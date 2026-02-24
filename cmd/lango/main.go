@@ -30,6 +30,7 @@ import (
 	"github.com/langoai/lango/internal/config"
 	"github.com/langoai/lango/internal/configstore"
 	"github.com/langoai/lango/internal/logging"
+	"github.com/langoai/lango/internal/sandbox"
 )
 
 var (
@@ -38,6 +39,16 @@ var (
 )
 
 func main() {
+	// Check if running as sandbox worker subprocess.
+	// Worker mode is used for process-isolated tool execution in P2P.
+	if sandbox.IsWorkerMode() {
+		// Phase 1: no tools registered in worker — the subprocess executor
+		// is wired at the application level. This early exit prevents the
+		// worker from initializing cobra and the full application stack.
+		sandbox.RunWorker(sandbox.ToolRegistry{})
+		return
+	}
+
 	rootCmd := &cobra.Command{
 		Use:   "lango",
 		Short: "Lango - Fast AI Agent in Go",

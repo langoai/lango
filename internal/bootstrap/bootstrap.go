@@ -18,6 +18,7 @@ import (
 	"github.com/langoai/lango/internal/config"
 	"github.com/langoai/lango/internal/configstore"
 	"github.com/langoai/lango/internal/ent"
+	"github.com/langoai/lango/internal/keyring"
 	"github.com/langoai/lango/internal/passphrase"
 	"github.com/langoai/lango/internal/security"
 )
@@ -90,9 +91,17 @@ func Run(opts Options) (*Result, error) {
 	}
 
 	// 4. Acquire passphrase.
+	// Wire OS keyring provider when available. The keyring is the highest-priority
+	// passphrase source and gracefully falls back to keyfile/interactive/stdin.
+	var krProvider keyring.Provider
+	if status := keyring.IsAvailable(); status.Available {
+		krProvider = keyring.NewOSProvider()
+	}
+
 	pass, source, err := passphrase.Acquire(passphrase.Options{
-		KeyfilePath:   opts.KeyfilePath,
-		AllowCreation: firstRun,
+		KeyfilePath:     opts.KeyfilePath,
+		AllowCreation:   firstRun,
+		KeyringProvider: krProvider,
 	})
 	if err != nil {
 		client.Close()
