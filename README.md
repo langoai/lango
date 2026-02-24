@@ -136,6 +136,8 @@ lango p2p firewall add           Add a firewall ACL rule
 lango p2p firewall remove        Remove firewall rules for a peer
 lango p2p discover               Discover agents by capability
 lango p2p identity               Show local DID and peer identity
+lango p2p reputation             Query peer trust score
+lango p2p pricing                Show tool pricing
 ```
 
 ### Diagnostics
@@ -359,6 +361,10 @@ All settings are managed via `lango onboard` (guided wizard), `lango settings` (
 | `p2p.enableRelay` | bool | `false` | Enable relay for NAT traversal |
 | `p2p.enableMdns` | bool | `true` | Enable mDNS discovery |
 | `p2p.maxPeers` | int | `50` | Maximum connected peers |
+| `p2p.autoApproveKnownPeers` | bool | `false` | Skip approval for previously authenticated peers |
+| `p2p.minTrustScore` | float64 | `0.3` | Minimum reputation score for accepting peer requests |
+| `p2p.pricing.enabled` | bool | `false` | Enable paid tool invocations |
+| `p2p.pricing.perQuery` | string | `"0.10"` | Default USDC price per query |
 | `p2p.zkHandshake` | bool | `false` | Enable ZK-enhanced handshake |
 | `p2p.zkAttestation` | bool | `false` | Enable ZK response attestation |
 | **Cron Scheduling** | | | |
@@ -556,6 +562,7 @@ Lango supports decentralized peer-to-peer agent connectivity via the Sovereign A
 - **ZK Handshake** — Optional zero-knowledge proof verification during authentication
 - **ZK Attestation** — Prove response authenticity without revealing internal state
 - **Payment Gate** — USDC-based paid tool invocations with configurable per-tool pricing
+- **Approval Pipeline** — Three-stage inbound gate (firewall → owner approval → execution) with auto-approve for paid tools below threshold
 - **Reputation System** — Trust score tracking based on exchange outcomes (successes, failures, timeouts)
 - **Owner Shield** — PII protection that sanitizes outgoing P2P responses to prevent owner data leakage
 
@@ -568,6 +575,8 @@ Lango supports monetized P2P tool invocations. Peers can set prices for their to
 3. **Query pricing** to see the cost before committing
 4. **Send payment** in USDC via on-chain transfer
 5. **Invoke the tool** after payment confirmation
+
+> **Auto-Approval**: Payments below `payment.limits.autoApproveBelow` are auto-approved without confirmation, provided they also satisfy `maxPerTx` and `maxDaily` limits.
 
 Configure pricing in the P2P config:
 
@@ -591,6 +600,8 @@ When the gateway is running, P2P status endpoints are available for monitoring a
 curl http://localhost:18789/api/p2p/status     # Peer ID, listen addrs, peer count
 curl http://localhost:18789/api/p2p/peers      # Connected peers with addrs
 curl http://localhost:18789/api/p2p/identity   # Local DID and peer ID
+curl "http://localhost:18789/api/p2p/reputation?peer_did=did:lango:02abc..."  # Trust score
+curl http://localhost:18789/api/p2p/pricing    # Tool pricing
 ```
 
 ### CLI Usage

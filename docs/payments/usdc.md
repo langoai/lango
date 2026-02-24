@@ -112,6 +112,15 @@ lango payment balance --json
 | `payment.limits.maxDaily` | `float64` | `100.0` | Maximum USDC per 24-hour rolling window |
 | `payment.limits.autoApproveBelow` | `float64` | `0.10` | Auto-approve threshold (no confirmation prompt) |
 
+!!! info "P2P Integration"
+
+    The `autoApproveBelow` threshold also applies to P2P payment flows:
+
+    - **Outbound**: `p2p_pay` and `payment_send` transactions below the threshold are auto-approved without user confirmation.
+    - **Inbound**: When a remote peer invokes a paid tool, the owner's approval pipeline checks the tool price against the spending limiter. If the price is below `autoApproveBelow` and within daily limits, the invocation is auto-approved.
+
+    See [P2P Network — Approval Pipeline](../features/p2p-network.md#approval-pipeline) for the full inbound gate flow.
+
 !!! tip "Testnet First"
 
     Start with Base Sepolia (`chainId: 84532`) for testing. Switch to Base mainnet (`chainId: 8453`) only after verifying your configuration. See the [Production Checklist](../deployment/production.md) for mainnet deployment guidance.

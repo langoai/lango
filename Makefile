@@ -58,6 +58,10 @@ test:
 test-short:
 	$(GOTEST) -v -short ./...
 
+## test-p2p: Run P2P and wallet spending tests
+test-p2p:
+	$(GOTEST) -v -race ./internal/p2p/... ./internal/wallet/...
+
 ## bench: Run benchmarks
 bench:
 	$(GOTEST) -bench=. -benchmem ./...
@@ -147,7 +151,7 @@ help:
 
 .PHONY: build build-linux build-darwin build-all install \
         dev run \
-        test test-short bench coverage \
+        test test-short test-p2p bench coverage \
         fmt fmt-check vet lint generate ci \
         deps \
         docker-build docker-push \

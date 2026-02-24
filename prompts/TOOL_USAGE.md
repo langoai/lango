@@ -89,15 +89,16 @@
 - `p2p_connect` initiates a handshake with a remote peer. Requires a full multiaddr (e.g. `/ip4/1.2.3.4/tcp/9000/p2p/QmPeerID`). The handshake includes DID-based identity verification.
 - `p2p_disconnect` closes the connection to a specific peer by peer ID.
 - `p2p_peers` lists all currently connected peers with their peer IDs and multiaddrs.
-- `p2p_query` sends an inference-only query to a remote agent. The query is subject to the remote peer's firewall rules — if denied, do not retry without rule changes.
+- `p2p_query` sends an inference-only query to a remote agent. The query is subject to the remote peer's three-stage approval pipeline: (1) firewall ACL, (2) reputation check against `minTrustScore`, and (3) owner approval. If denied at any stage, do not retry without the remote peer changing their configuration.
 - `p2p_discover` searches for agents by capability tag via GossipSub. Results include agent name, DID, capabilities, and peer ID. Connect to bootstrap peers first if no agents appear.
 - `p2p_firewall_rules` lists current firewall ACL rules. Default policy is deny-all.
 - `p2p_firewall_add` adds a new firewall rule. Specify `peer_did` ("*" for all), `action` (allow/deny), `tools` (patterns), and optional `rate_limit`.
 - `p2p_firewall_remove` removes all rules matching a given peer DID.
-- `p2p_pay` sends a USDC payment to a connected peer by DID.
+- `p2p_pay` sends a USDC payment to a connected peer by DID. Payments below the `autoApproveBelow` threshold are auto-approved without user confirmation; larger amounts require explicit approval.
 - `p2p_price_query` queries the pricing for a specific tool on a remote peer before invoking it. Use this to check costs before committing to a paid tool call.
 - `p2p_reputation` checks a peer's trust score and exchange history (successes, failures, timeouts). Always check reputation for unfamiliar peers before sending payments or invoking expensive tools.
-- **Paid tool workflow**: (1) `p2p_discover` to find peers, (2) `p2p_reputation` to verify trust, (3) `p2p_price_query` to check cost, (4) `p2p_pay` to send payment, (5) `p2p_query` to invoke the tool.
+- **Paid tool workflow**: (1) `p2p_discover` to find peers, (2) `p2p_reputation` to verify trust, (3) `p2p_price_query` to check cost, (4) `p2p_pay` to send payment (auto-approved if below threshold), (5) `p2p_query` to invoke the tool (subject to remote owner's approval pipeline).
+- **Inbound tool invocations** from remote peers pass through a three-stage gate on the local node: (1) firewall ACL check, (2) reputation score verification against `minTrustScore`, and (3) owner approval (auto-approved for paid tools below `autoApproveBelow`, otherwise interactive confirmation).
 - REST API also exposes `GET /api/p2p/reputation?peer_did=<did>` and `GET /api/p2p/pricing?tool=<name>` for external integrations.
 - Session tokens are per-peer with configurable TTL. When a session token expires, reconnect to the peer.
 - If a firewall deny response is received, do not retry the same query without changing the firewall rules.

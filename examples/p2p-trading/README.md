@@ -26,6 +26,20 @@ Spins up **3 Lango agents** (Alice, Bob, Charlie) and a local Ethereum node (Anv
          └─────────┘
 ```
 
+## Configuration Highlights
+
+The example agents are configured with the following approval and payment settings:
+
+| Setting | Value | Description |
+|---------|-------|-------------|
+| `payment.limits.autoApproveBelow` | `"50.00"` | Auto-approve payments under 50 USDC without confirmation |
+| `p2p.autoApproveKnownPeers` | `true` | Skip handshake approval for previously authenticated peers |
+| `p2p.pricing.enabled` | `true` | Enable paid tool invocations between agents |
+| `p2p.pricing.perQuery` | `"0.10"` | Default USDC price per tool query |
+| `security.interceptor.headlessAutoApprove` | `true` | Auto-approve tool invocations in headless Docker mode |
+
+> **Production Note**: The `autoApproveBelow` threshold is intentionally high (`50.00`) for testing convenience. In production, use a much lower value (e.g., `"0.10"`) and rely on interactive approval for larger amounts.
+
 ## Prerequisites
 
 - Docker & Docker Compose v2
@@ -88,6 +102,8 @@ make all
 | `/api/p2p/status`    | GET    | Peer ID, listen addrs, peer count |
 | `/api/p2p/peers`     | GET    | List connected peers + addresses |
 | `/api/p2p/identity`  | GET    | Local DID string                |
+| `/api/p2p/reputation`| GET    | Peer trust score and history    |
+| `/api/p2p/pricing`   | GET    | Tool pricing configuration      |
 
 ## Troubleshooting
 
