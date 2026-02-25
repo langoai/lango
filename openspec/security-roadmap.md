@@ -28,7 +28,7 @@ This roadmap addresses security hardening in three phases: P0 (immediate) → P1
 
 ## P0: Critical (Immediate)
 
-### P0-1: Migrate P2P Node Key to SecretsStore
+### P0-1: Migrate P2P Node Key to SecretsStore ✅ COMPLETED
 
 **Problem:** `internal/p2p/node.go:200-245` stores Ed25519 private key as plain binary at `~/.lango/p2p/node.key` with only `0600` permissions. This is inconsistent with wallet keys which are encrypted in `SecretsStore`.
 
@@ -50,7 +50,7 @@ This roadmap addresses security hardening in three phases: P0 (immediate) → P1
 
 **Key constant:** `nodeKeySecret = "p2p.node.privatekey"` in SecretsStore
 
-### P0-2: Complete Handshake Signature Verification
+### P0-2: Complete Handshake Signature Verification ✅ COMPLETED
 
 **Problem:** `internal/p2p/handshake/handshake.go:293-300` accepts any non-empty signature as valid.
 
@@ -77,7 +77,7 @@ if len(resp.Signature) > 0 {
 
 **Reuse:** `go-ethereum/crypto` (already used by wallet)
 
-### P0-3: Clean Up KeyDir Config Exposure
+### P0-3: Clean Up KeyDir Config Exposure ✅ COMPLETED
 
 **Files to modify:**
 - `internal/config/types.go` — Add `omitempty` to `KeyDir`, mark as deprecated
@@ -87,7 +87,7 @@ if len(resp.Signature) > 0 {
 
 ## P1: Medium-term
 
-### P1-4: OS Keyring Integration
+### P1-4: OS Keyring Integration ✅ COMPLETED
 
 **Rationale:** Master passphrase currently acquired from keyfile (disk plaintext) or interactive input. OS keyring (macOS Keychain / Linux secret-service / Windows DPAPI) provides hardware-backed protection without leaving keyfiles on disk.
 
@@ -108,7 +108,7 @@ if len(resp.Signature) > 0 {
 **Complexity:** Medium (2-3 days)
 **Risk:** Low — existing paths (keyfile/interactive) retained as fallback
 
-### P1-5: Tool Execution Process Isolation
+### P1-5: Tool Execution Process Isolation ✅ COMPLETED
 
 **Rationale:** `handler.go:236` executes `h.executor(ctx, toolName, params)` in-process. Malicious tool invoked by remote peer can access process memory (passphrases, private keys, session tokens).
 
@@ -128,7 +128,7 @@ if len(resp.Signature) > 0 {
 **Complexity:** High (4-5 days)
 **Risk:** Medium — subprocess overhead (tens of ms latency)
 
-### P1-6: Session Explicit Invalidation
+### P1-6: Session Explicit Invalidation ✅ COMPLETED
 
 **Rationale:** `SessionStore` (`internal/p2p/handshake/session.go`) only supports TTL-based expiration. No explicit logout, security-event-based revocation, or session listing.
 

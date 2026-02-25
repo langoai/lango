@@ -31,6 +31,23 @@ Security Status
   Interceptor:        enabled
   PII Redaction:      disabled
   Approval Policy:    dangerous
+  DB Encryption:      disabled (plaintext)
+```
+
+```bash
+# With KMS configured
+$ lango security status
+Security Status
+  Signer Provider:    aws-kms
+  Encryption Keys:    2
+  Stored Secrets:     5
+  Interceptor:        enabled
+  PII Redaction:      disabled
+  Approval Policy:    dangerous
+  DB Encryption:      encrypted (active)
+  KMS Provider:       aws-kms
+  KMS Key ID:         arn:aws:kms:us-east-1:...
+  KMS Fallback:       enabled
 ```
 
 **JSON output fields:**
@@ -43,6 +60,10 @@ Security Status
 | `interceptor` | string | Interceptor status (`enabled`/`disabled`) |
 | `pii_redaction` | string | PII redaction status (`enabled`/`disabled`) |
 | `approval_policy` | string | Tool approval policy (`always`, `dangerous`, `never`) |
+| `db_encryption` | string | Database encryption status |
+| `kms_provider` | string | KMS provider name (when configured) |
+| `kms_key_id` | string | KMS key identifier (when configured) |
+| `kms_fallback` | string | KMS fallback status (when configured) |
 
 ---
 
@@ -80,6 +101,228 @@ Enter NEW passphrase:
 Confirm NEW passphrase:
 Migrating secrets...
 Migration completed successfully!
+```
+
+---
+
+## OS Keyring
+
+Manage OS keyring passphrase storage. The OS keyring (macOS Keychain, Linux secret-service, Windows Credential Manager) allows lango to unlock automatically without a keyfile or interactive prompt.
+
+### lango security keyring store
+
+Store the master passphrase in the OS keyring. Requires an interactive terminal. The passphrase is verified against the existing crypto state before storing.
+
+```
+lango security keyring store
+```
+
+!!! warning "Interactive Only"
+    This command requires an interactive terminal and cannot be used in CI/CD pipelines.
+
+**Example:**
+
+```bash
+$ lango security keyring store
+Enter passphrase to store in keyring: ********
+Passphrase stored in OS keyring (macOS Keychain).
+```
+
+---
+
+### lango security keyring clear
+
+Remove the master passphrase from the OS keyring.
+
+```
+lango security keyring clear [--force]
+```
+
+| Flag | Type | Default | Description |
+|------|------|---------|-------------|
+| `--force` | bool | `false` | Skip confirmation prompt |
+
+**Examples:**
+
+```bash
+# Interactive
+$ lango security keyring clear
+Remove passphrase from OS keyring? [y/N] y
+Passphrase removed from OS keyring.
+
+# Non-interactive
+$ lango security keyring clear --force
+Passphrase removed from OS keyring.
+```
+
+---
+
+### lango security keyring status
+
+Show OS keyring availability and stored passphrase status.
+
+```
+lango security keyring status [--json]
+```
+
+| Flag | Type | Default | Description |
+|------|------|---------|-------------|
+| `--json` | bool | `false` | Output as JSON |
+
+**Example:**
+
+```bash
+$ lango security keyring status
+OS Keyring Status
+  Available:      true
+  Backend:        macOS Keychain
+  Has Passphrase: true
+```
+
+**JSON output fields:**
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `available` | bool | Whether OS keyring is available |
+| `backend` | string | Keyring backend name |
+| `error` | string | Error message if unavailable |
+| `has_passphrase` | bool | Whether passphrase is stored |
+
+---
+
+## Database Encryption
+
+Encrypt or decrypt the application database using SQLCipher.
+
+### lango security db-migrate
+
+Convert the plaintext SQLite database to SQLCipher-encrypted format using the current passphrase.
+
+```
+lango security db-migrate [--force]
+```
+
+| Flag | Type | Default | Description |
+|------|------|---------|-------------|
+| `--force` | bool | `false` | Skip confirmation prompt (enables non-interactive mode) |
+
+**Example:**
+
+```bash
+$ lango security db-migrate
+This will encrypt your database. A backup will be created. Continue? [y/N] y
+Enter passphrase for DB encryption: ********
+Encrypting database...
+Database encrypted successfully.
+Set security.dbEncryption.enabled=true in your config to use the encrypted DB.
+```
+
+---
+
+### lango security db-decrypt
+
+Convert a SQLCipher-encrypted database back to plaintext SQLite.
+
+```
+lango security db-decrypt [--force]
+```
+
+| Flag | Type | Default | Description |
+|------|------|---------|-------------|
+| `--force` | bool | `false` | Skip confirmation prompt (enables non-interactive mode) |
+
+**Example:**
+
+```bash
+$ lango security db-decrypt
+This will decrypt your database to plaintext. Continue? [y/N] y
+Enter passphrase for DB decryption: ********
+Decrypting database...
+Database decrypted successfully.
+Set security.dbEncryption.enabled=false in your config if you no longer want encryption.
+```
+
+---
+
+## Cloud KMS / HSM
+
+Manage Cloud KMS and HSM integration. Requires `security.signer.provider` to be set to a KMS provider (`aws-kms`, `gcp-kms`, `azure-kv`, or `pkcs11`).
+
+### lango security kms status
+
+Show the KMS provider connection status.
+
+```
+lango security kms status [--json]
+```
+
+| Flag | Type | Default | Description |
+|------|------|---------|-------------|
+| `--json` | bool | `false` | Output as JSON |
+
+**Example:**
+
+```bash
+$ lango security kms status
+KMS Status
+  Provider:      aws-kms
+  Key ID:        arn:aws:kms:us-east-1:123456789012:key/example-key
+  Region:        us-east-1
+  Fallback:      enabled
+  Status:        connected
+```
+
+**JSON output fields:**
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `provider` | string | KMS provider name |
+| `key_id` | string | KMS key identifier |
+| `region` | string | Cloud region (if applicable) |
+| `fallback` | string | Local fallback status (`enabled`/`disabled`) |
+| `status` | string | Connection status (`connected`, `unreachable`, `not configured`, or error) |
+
+---
+
+### lango security kms test
+
+Test KMS encrypt/decrypt roundtrip using 32 bytes of random data.
+
+```
+lango security kms test
+```
+
+**Example:**
+
+```bash
+$ lango security kms test
+Testing KMS roundtrip with key "arn:aws:kms:us-east-1:123456789012:key/example-key"...
+  Encrypt: OK (32 bytes → 64 bytes)
+  Decrypt: OK (32 bytes)
+  Roundtrip: PASS
+```
+
+---
+
+### lango security kms keys
+
+List KMS keys registered in the KeyRegistry.
+
+```
+lango security kms keys [--json]
+```
+
+| Flag | Type | Default | Description |
+|------|------|---------|-------------|
+| `--json` | bool | `false` | Output as JSON |
+
+**Example:**
+
+```bash
+$ lango security kms keys
+ID                                    NAME                  TYPE          REMOTE KEY ID
+550e8400-e29b-41d4-a716-446655440000  primary-signing       signing       arn:aws:kms:us-east-1:...
+6ba7b810-9dad-11d1-80b4-00c04fd430c8  default-encryption    encryption    arn:aws:kms:us-east-1:...
 ```
 
 ---

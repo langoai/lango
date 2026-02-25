@@ -102,3 +102,8 @@
 - REST API also exposes `GET /api/p2p/reputation?peer_did=<did>` and `GET /api/p2p/pricing?tool=<name>` for external integrations.
 - Session tokens are per-peer with configurable TTL. When a session token expires, reconnect to the peer.
 - If a firewall deny response is received, do not retry the same query without changing the firewall rules.
+- **Session management**: Active sessions can be listed, individually revoked, or bulk-revoked. Sessions are automatically invalidated when a peer's reputation drops below `minTrustScore` or after repeated tool execution failures. Use `p2p_status` to monitor session count.
+- **Sandbox awareness**: When `p2p.toolIsolation.enabled` is true, all inbound remote tool invocations from peers execute in a sandbox (subprocess or Docker container). This is transparent to the agent — tool calls work the same way, but with process-level isolation.
+- **Signed challenges**: Protocol v1.1 uses ECDSA-signed challenges. When `p2p.requireSignedChallenge` is true, only peers supporting v1.1 can connect. Legacy v1.0 peers will be rejected.
+- **KMS latency**: When a Cloud KMS provider is configured (`aws-kms`, `gcp-kms`, `azure-kv`, `pkcs11`), cryptographic operations incur network roundtrip latency. The system retries transient errors automatically with exponential backoff. If KMS is unreachable and `kms.fallbackToLocal` is enabled, operations fall back to local mode.
+- **Credential revocation**: Revoked DIDs are tracked in the gossip discovery layer. Use `maxCredentialAge` to enforce credential freshness — stale credentials are rejected even if not explicitly revoked. Gossip refresh propagates revocations across the network.

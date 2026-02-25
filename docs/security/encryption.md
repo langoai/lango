@@ -90,6 +90,88 @@ Configure RPC mode:
 }
 ```
 
+### Cloud KMS Mode
+
+Cloud KMS mode delegates cryptographic operations to a managed key service. Four backends are supported:
+
+| Backend | Provider | Build Tag | Key Types |
+|---------|----------|-----------|-----------|
+| AWS KMS | `aws-kms` | `kms_aws` | ECDSA_SHA_256 signing, SYMMETRIC_DEFAULT encrypt/decrypt |
+| GCP Cloud KMS | `gcp-kms` | `kms_gcp` | AsymmetricSign SHA-256, symmetric encrypt/decrypt |
+| Azure Key Vault | `azure-kv` | `kms_azure` | ES256 signing, RSA-OAEP encrypt/decrypt |
+| PKCS#11 HSM | `pkcs11` | `kms_pkcs11` | CKM_ECDSA signing, CKM_AES_GCM encrypt/decrypt |
+
+Build with the appropriate tag to include the Cloud SDK dependency:
+
+```bash
+# Single provider
+go build -tags kms_aws ./cmd/lango
+
+# All providers
+go build -tags kms_all ./cmd/lango
+```
+
+Without a build tag, the provider returns a stub error at runtime.
+
+The **CompositeCryptoProvider** wraps any KMS backend with automatic local fallback when `kms.fallbackToLocal` is enabled. KMS calls include exponential backoff retry logic for transient errors (throttling, network timeouts) and a health checker with a 30-second probe cache.
+
+Configure Cloud KMS:
+
+> **Settings:** `lango settings` → Security
+
+```json
+{
+  "security": {
+    "signer": {
+      "provider": "aws-kms"
+    },
+    "kms": {
+      "region": "us-east-1",
+      "keyId": "arn:aws:kms:us-east-1:123456789012:key/example-key",
+      "fallbackToLocal": true,
+      "timeoutPerOperation": "5s",
+      "maxRetries": 3
+    }
+  }
+}
+```
+
+For Azure Key Vault, also specify the vault URL:
+
+```json
+{
+  "security": {
+    "signer": { "provider": "azure-kv" },
+    "kms": {
+      "keyId": "my-signing-key",
+      "azure": {
+        "vaultUrl": "https://myvault.vault.azure.net"
+      }
+    }
+  }
+}
+```
+
+For PKCS#11 HSM:
+
+```json
+{
+  "security": {
+    "signer": { "provider": "pkcs11" },
+    "kms": {
+      "pkcs11": {
+        "modulePath": "/usr/lib/softhsm/libsofthsm2.so",
+        "slotId": 0,
+        "keyLabel": "lango-signing-key"
+      }
+    }
+  }
+}
+```
+
+!!! tip "PKCS#11 PIN"
+    Set the PIN via `LANGO_PKCS11_PIN` environment variable instead of storing it in configuration.
+
 ## Secret Management
 
 Agents manage encrypted secrets through tool workflows. Secrets are stored in the Ent database with AES-256-GCM encryption and referenced by name -- plaintext values never appear in logs or agent output.
@@ -119,6 +201,84 @@ Scanned output: "Connected using key [SECRET:api_key]"
 ```
 
 This prevents accidental secret leakage through chat messages, logs, or tool output.
+
+## OS Keyring Integration
+
+Lango can store the master passphrase in the operating system's native keyring, eliminating the need for keyfiles or interactive prompts on every startup.
+
+**Passphrase Source Priority:**
+
+1. **OS Keyring** (when `security.keyring.enabled` is true and a passphrase is stored)
+2. **Keyfile** (`~/.lango/passphrase` or `LANGO_KEYFILE` path)
+3. **Interactive prompt** (terminal input)
+4. **Stdin** (piped input for CI/CD)
+
+**Supported Platforms:**
+
+| Platform | Backend |
+|----------|---------|
+| macOS | Keychain |
+| Linux | secret-service (GNOME Keyring, KDE Wallet) |
+| Windows | Credential Manager (DPAPI) |
+
+Configure:
+
+```json
+{
+  "security": {
+    "keyring": {
+      "enabled": true
+    }
+  }
+}
+```
+
+Manage via CLI:
+
+```bash
+lango security keyring store    # Store passphrase (interactive)
+lango security keyring status   # Check keyring availability
+lango security keyring clear    # Remove stored passphrase
+```
+
+!!! note "Linux CI/CD"
+    In headless Linux environments without a display server, the keyring daemon may be unavailable. Lango falls back gracefully to keyfile or environment variable methods.
+
+## Database Encryption
+
+Lango supports transparent database encryption using SQLCipher PRAGMA-based encryption. When enabled, the entire application database (`~/.lango/lango.db`) is encrypted at rest.
+
+**How it works:**
+
+1. After `sql.Open`, the bootstrap process issues `PRAGMA key = '<passphrase>'` to unlock the database
+2. `PRAGMA cipher_page_size` is set according to configuration (default: 4096)
+3. All subsequent reads and writes are transparently encrypted/decrypted
+
+Configure:
+
+```json
+{
+  "security": {
+    "dbEncryption": {
+      "enabled": true,
+      "cipherPageSize": 4096
+    }
+  }
+}
+```
+
+**Migration commands:**
+
+```bash
+# Encrypt an existing plaintext database
+lango security db-migrate
+
+# Decrypt back to plaintext
+lango security db-decrypt
+```
+
+!!! note "Build Dependency"
+    Database encryption requires `libsqlcipher-dev` at build time. The `mattn/go-sqlite3` driver is retained for `sqlite-vec` compatibility, with PRAGMA-based encryption instead of a separate `go-sqlcipher` driver.
 
 ## Key Registry
 
@@ -235,6 +395,28 @@ lango security secrets delete <name>
       "provider": "local",
       "rpcUrl": "",
       "keyId": ""
+    },
+    "keyring": {
+      "enabled": false
+    },
+    "dbEncryption": {
+      "enabled": false,
+      "cipherPageSize": 4096
+    },
+    "kms": {
+      "region": "",
+      "keyId": "",
+      "fallbackToLocal": true,
+      "timeoutPerOperation": "5s",
+      "maxRetries": 3,
+      "azure": {
+        "vaultUrl": ""
+      },
+      "pkcs11": {
+        "modulePath": "",
+        "slotId": 0,
+        "keyLabel": ""
+      }
     }
   }
 }

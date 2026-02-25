@@ -255,6 +255,147 @@ lango p2p reputation --peer-did "did:lango:abc123" --json
 | First Seen | Timestamp of first interaction |
 | Last Interaction | Timestamp of most recent interaction |
 
+---
+
+## lango p2p session
+
+Manage P2P sessions. List, revoke, or revoke all authenticated peer sessions.
+
+### lango p2p session list
+
+List all active (non-expired, non-invalidated) peer sessions.
+
+```
+lango p2p session list [--json]
+```
+
+| Flag | Type | Default | Description |
+|------|------|---------|-------------|
+| `--json` | bool | `false` | Output as JSON |
+
+**Example:**
+
+```bash
+$ lango p2p session list
+PEER DID                              CREATED                    EXPIRES                    ZK VERIFIED
+did:lango:02abc123...                 2026-02-25T10:00:00Z       2026-02-25T11:00:00Z       true
+did:lango:03def456...                 2026-02-25T10:30:00Z       2026-02-25T11:30:00Z       false
+```
+
+---
+
+### lango p2p session revoke
+
+Revoke a specific peer's session by DID.
+
+```
+lango p2p session revoke --peer-did <did>
+```
+
+| Flag | Type | Default | Description |
+|------|------|---------|-------------|
+| `--peer-did` | string | *required* | The DID of the peer to revoke |
+
+**Example:**
+
+```bash
+$ lango p2p session revoke --peer-did "did:lango:02abc123..."
+Session for did:lango:02abc123... revoked.
+```
+
+---
+
+### lango p2p session revoke-all
+
+Revoke all active peer sessions.
+
+```
+lango p2p session revoke-all
+```
+
+**Example:**
+
+```bash
+$ lango p2p session revoke-all
+All sessions revoked.
+```
+
+---
+
+## lango p2p sandbox
+
+Manage the P2P tool execution sandbox. Inspect sandbox status, run smoke tests, and clean up orphaned containers.
+
+### lango p2p sandbox status
+
+Show the current sandbox runtime status including isolation configuration, container mode, and active runtime.
+
+```
+lango p2p sandbox status
+```
+
+**Example (subprocess mode):**
+
+```bash
+$ lango p2p sandbox status
+Tool isolation: enabled
+  Timeout per tool: 30s
+  Max memory (MB):  512
+  Container mode:   disabled (subprocess fallback)
+```
+
+**Example (container mode):**
+
+```bash
+$ lango p2p sandbox status
+Tool isolation: enabled
+  Timeout per tool: 30s
+  Max memory (MB):  512
+  Container mode:   enabled
+  Runtime config:   auto
+  Image:            lango-sandbox:latest
+  Network mode:     none
+  Active runtime:   docker
+  Pool size:        3
+```
+
+---
+
+### lango p2p sandbox test
+
+Run a sandbox smoke test by executing a simple echo tool through the sandbox.
+
+```
+lango p2p sandbox test
+```
+
+**Example:**
+
+```bash
+$ lango p2p sandbox test
+Using container runtime: docker
+Smoke test passed: map[msg:sandbox-smoke-test]
+```
+
+---
+
+### lango p2p sandbox cleanup
+
+Find and remove orphaned Docker containers with the `lango.sandbox=true` label.
+
+```
+lango p2p sandbox cleanup
+```
+
+**Example:**
+
+```bash
+$ lango p2p sandbox cleanup
+Orphaned sandbox containers cleaned up.
+```
+
+---
+
 ## `lango p2p pricing`
 
 Show P2P tool pricing configuration.

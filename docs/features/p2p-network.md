@@ -60,10 +60,50 @@ When two agents connect, they perform mutual DID-based authentication:
 1. **TCP/QUIC connection** established via libp2p with Noise encryption
 2. **DID exchange** -- each peer presents its `did:lango:...` identifier
 3. **Signature verification** -- DID public key is verified against the peer ID
-4. **Session token** -- a time-limited session token is issued for subsequent queries
-5. **(Optional) ZK proof** -- when `p2p.zkHandshake` is enabled, a zero-knowledge proof of identity is verified
+4. **Signed challenge** -- the initiating peer sends a challenge with ECDSA signature over the canonical payload (`nonce || timestamp || senderDID`). The receiver validates the signature, checks the timestamp (5-minute past window, 30-second future grace), and verifies the nonce against a TTL-based replay cache.
+5. **Session token** -- a time-limited session token is issued for subsequent queries
+6. **(Optional) ZK proof** -- when `p2p.zkHandshake` is enabled, a zero-knowledge proof of identity is verified
+
+**Protocol Versioning:**
+
+| Version | Protocol ID | Features |
+|---------|------------|----------|
+| v1.0 | `/lango/handshake/1.0.0` | Legacy unsigned challenge (backward compatible) |
+| v1.1 | `/lango/handshake/1.1.0` | ECDSA signed challenge, timestamp validation, nonce replay protection |
+
+When `p2p.requireSignedChallenge` is `true`, unsigned (v1.0) challenges are rejected. Default is `false` for backward compatibility.
 
 Session tokens have a configurable TTL (`p2p.sessionTokenTtl`). Expired tokens require re-authentication.
+
+## Session Management
+
+Sessions are managed through `SessionStore` with both TTL-based expiration and explicit invalidation.
+
+### Invalidation Reasons
+
+| Reason | Trigger |
+|--------|---------|
+| `logout` | Peer explicitly logs out |
+| `reputation_drop` | Peer reputation drops below `minTrustScore` |
+| `repeated_failures` | N consecutive tool execution failures |
+| `manual_revoke` | Owner manually revokes via CLI |
+| `security_event` | Automatic security event handler |
+
+### Security Event Handler
+
+The `SecurityEventHandler` monitors peer behavior and automatically invalidates sessions when:
+
+- A peer's reputation drops below the configured `minTrustScore`
+- A peer exceeds the consecutive failure threshold
+- A security event is triggered externally
+
+### CLI
+
+```bash
+lango p2p session list                          # List active sessions
+lango p2p session revoke --peer-did <did>       # Revoke specific peer
+lango p2p session revoke-all                    # Revoke all sessions
+```
 
 ## Knowledge Firewall
 
@@ -133,6 +173,59 @@ The local agent owner is prompted to approve or deny the tool invocation. This s
 
 When auto-approval conditions are not met, the request falls back to the composite approval provider (Telegram inline keyboard, Discord button, Slack interactive message, or terminal prompt).
 
+## Tool Execution Sandbox
+
+Inbound P2P tool invocations can run in an isolated sandbox to prevent malicious tool code from accessing process memory (passphrases, private keys, session tokens).
+
+### Isolation Modes
+
+| Mode | Backend | Isolation Level | Overhead |
+|------|---------|----------------|----------|
+| **Subprocess** | `os/exec` | Process-level | ~10ms |
+| **Container** | Docker SDK | Container-level (namespaces, cgroups) | ~50-100ms |
+
+### Container Runtime Probe Chain
+
+When container mode is enabled, the executor probes available runtimes in order:
+
+1. **Docker** -- Full Docker SDK integration with OOM detection, label-based cleanup (`lango.sandbox=true`)
+2. **gVisor** -- Stub for future implementation
+3. **Native** -- Falls back to subprocess executor
+
+### Container Pool
+
+An optional pre-warmed container pool reduces cold-start latency. Configure `poolSize` (default: 0 = disabled) and `poolIdleTimeout` (default: 5m).
+
+### Configuration
+
+```json
+{
+  "p2p": {
+    "toolIsolation": {
+      "enabled": true,
+      "timeoutPerTool": "30s",
+      "maxMemoryMB": 512,
+      "container": {
+        "enabled": true,
+        "runtime": "auto",
+        "image": "lango-sandbox:latest",
+        "networkMode": "none",
+        "readOnlyRootfs": true,
+        "poolSize": 3
+      }
+    }
+  }
+}
+```
+
+### CLI
+
+```bash
+lango p2p sandbox status    # Show sandbox runtime status
+lango p2p sandbox test      # Run smoke test
+lango p2p sandbox cleanup   # Remove orphaned containers
+```
+
 ## Discovery
 
 Agent discovery uses GossipSub for decentralized agent card propagation:
@@ -159,18 +252,77 @@ Agent discovery uses GossipSub for decentralized agent card propagation:
 }
 ```
 
+## Credential Revocation
+
+The gossip discovery system supports credential revocation to prevent compromised or retired agents from being discovered.
+
+### Revocation Mechanisms
+
+- **`RevokeDID(did)`** -- Adds a DID to the local revocation set. Revoked DIDs are rejected during agent card validation.
+- **`IsRevoked(did)`** -- Checks whether a DID has been revoked.
+- **`maxCredentialAge`** -- Credentials older than this duration (measured from `IssuedAt`) are rejected even if not explicitly revoked.
+
+### Credential Validation
+
+When processing incoming agent cards via GossipSub, three checks are applied:
+
+1. **Expiration** -- `ExpiresAt` must be in the future
+2. **Staleness** -- `IssuedAt + maxCredentialAge` must be in the future
+3. **Revocation** -- The agent's DID must not be in the revocation set
+
+Configure `maxCredentialAge` in the ZKP settings:
+
+```json
+{
+  "p2p": {
+    "zkp": {
+      "maxCredentialAge": "24h"
+    }
+  }
+}
+```
+
 ## ZK Circuits
 
 When ZK features are enabled, Lango uses four zero-knowledge circuits:
 
-| Circuit | Purpose |
-|---------|---------|
-| Identity | Prove DID ownership without revealing the private key |
-| Membership | Prove membership in an authorized peer set |
-| Range | Prove a value falls within a range (e.g., reputation score) |
-| Attestation | Prove response authenticity without revealing internal state |
+| Circuit | Purpose | Public Inputs |
+|---------|---------|---------------|
+| Identity | Prove DID ownership without revealing the private key | DID hash |
+| Membership | Prove membership in an authorized peer set | Merkle root |
+| Range | Prove a value falls within a range (e.g., reputation score) | Min, Max bounds |
+| Attestation | Prove response authenticity with freshness guarantees | AgentID hash, MinTimestamp, MaxTimestamp |
+| Capability | Prove authorized capability with agent binding | CapabilityHash, AgentTestBinding |
 
-Configure the proving scheme via `p2p.zkp.provingScheme` (`"plonk"` or `"groth16"`).
+### Attestation Freshness
+
+The Attestation circuit includes `MinTimestamp` and `MaxTimestamp` public inputs with range assertions, ensuring proofs are fresh and cannot be replayed outside the validity window.
+
+### Structured Attestation Data
+
+Attestation proofs are returned as structured `AttestationData`:
+
+```json
+{
+  "proof": "<base64-encoded-proof>",
+  "publicInputs": ["<agent-id-hash>", "<min-ts>", "<max-ts>"],
+  "circuitId": "attestation",
+  "scheme": "plonk"
+}
+```
+
+### SRS Configuration
+
+Configure the proving scheme and SRS (Structured Reference String) source:
+
+| Setting | Values | Description |
+|---------|--------|-------------|
+| `p2p.zkp.provingScheme` | `"plonk"`, `"groth16"` | ZKP proving scheme |
+| `p2p.zkp.srsMode` | `"unsafe"`, `"file"` | SRS generation mode |
+| `p2p.zkp.srsPath` | file path | Path to SRS file (when `srsMode = "file"`) |
+
+!!! warning "Production SRS"
+    The `"unsafe"` SRS mode uses a deterministic setup suitable for development. For production deployments, use `"file"` mode with an SRS generated from a trusted ceremony.
 
 ## Configuration
 
@@ -200,9 +352,25 @@ Configure the proving scheme via `p2p.zkp.provingScheme` (`"plonk"` or `"groth16
     "gossipInterval": "30s",
     "zkHandshake": false,
     "zkAttestation": false,
+    "requireSignedChallenge": false,
     "zkp": {
       "proofCacheDir": "~/.lango/zkp",
-      "provingScheme": "plonk"
+      "provingScheme": "plonk",
+      "srsMode": "unsafe",
+      "srsPath": "",
+      "maxCredentialAge": "24h"
+    },
+    "toolIsolation": {
+      "enabled": false,
+      "timeoutPerTool": "30s",
+      "maxMemoryMB": 512,
+      "container": {
+        "enabled": false,
+        "runtime": "auto",
+        "image": "lango-sandbox:latest",
+        "networkMode": "none",
+        "poolSize": 0
+      }
     }
   }
 }
@@ -257,6 +425,12 @@ lango p2p discover             # Discover agents
 lango p2p identity             # Show local identity
 lango p2p reputation --peer-did <did>  # Query trust score
 lango p2p pricing              # Show tool pricing
+lango p2p session list                          # List active sessions
+lango p2p session revoke --peer-did <did>       # Revoke peer session
+lango p2p session revoke-all                    # Revoke all sessions
+lango p2p sandbox status                        # Show sandbox status
+lango p2p sandbox test                          # Run sandbox smoke test
+lango p2p sandbox cleanup                       # Remove orphaned containers
 ```
 
 See the [P2P CLI Reference](../cli/p2p.md) for detailed command documentation.

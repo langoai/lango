@@ -357,7 +357,7 @@ All settings are managed via `lango onboard` (guided wizard), `lango settings` (
 | `p2p.enabled` | bool | `false` | Enable P2P networking |
 | `p2p.listenAddrs` | []string | `["/ip4/0.0.0.0/tcp/9000"]` | Multiaddrs to listen on |
 | `p2p.bootstrapPeers` | []string | `[]` | Bootstrap peers for DHT |
-| `p2p.keyDir` | string | `~/.lango/p2p` | Node key directory |
+| `p2p.keyDir` | string | `~/.lango/p2p` | Node key directory (deprecated — keys now stored in SecretsStore) |
 | `p2p.enableRelay` | bool | `false` | Enable relay for NAT traversal |
 | `p2p.enableMdns` | bool | `true` | Enable mDNS discovery |
 | `p2p.maxPeers` | int | `50` | Maximum connected peers |
@@ -367,6 +367,33 @@ All settings are managed via `lango onboard` (guided wizard), `lango settings` (
 | `p2p.pricing.perQuery` | string | `"0.10"` | Default USDC price per query |
 | `p2p.zkHandshake` | bool | `false` | Enable ZK-enhanced handshake |
 | `p2p.zkAttestation` | bool | `false` | Enable ZK response attestation |
+| `p2p.sessionTokenTtl` | duration | `1h` | Session token lifetime after handshake |
+| `p2p.requireSignedChallenge` | bool | `false` | Reject unsigned (v1.0) challenges from peers |
+| `p2p.toolIsolation.enabled` | bool | `false` | Enable subprocess isolation for remote tool execution |
+| `p2p.toolIsolation.timeoutPerTool` | duration | `30s` | Max duration per tool execution |
+| `p2p.toolIsolation.maxMemoryMB` | int | `512` | Soft memory limit per tool process |
+| `p2p.toolIsolation.container.enabled` | bool | `false` | Enable container-based sandbox |
+| `p2p.toolIsolation.container.runtime` | string | `auto` | Container runtime: `auto`, `docker`, `gvisor`, `native` |
+| `p2p.toolIsolation.container.image` | string | `lango-sandbox:latest` | Docker image for sandbox |
+| `p2p.toolIsolation.container.networkMode` | string | `none` | Docker network mode |
+| `p2p.toolIsolation.container.poolSize` | int | `0` | Pre-warmed container pool size (0 = disabled) |
+| `p2p.zkp.srsMode` | string | `unsafe` | SRS generation mode: `unsafe` or `file` |
+| `p2p.zkp.srsPath` | string | - | Path to SRS file (when srsMode = file) |
+| `p2p.zkp.maxCredentialAge` | string | `24h` | Maximum age for ZK credentials |
+| **Security** | | | |
+| `security.keyring.enabled` | bool | `false` | Enable OS keyring for passphrase storage |
+| `security.dbEncryption.enabled` | bool | `false` | Enable SQLCipher database encryption |
+| `security.dbEncryption.cipherPageSize` | int | `4096` | SQLCipher cipher page size |
+| `security.signer.provider` | string | `local` | Signer provider: `local`, `rpc`, `aws-kms`, `gcp-kms`, `azure-kv`, `pkcs11` |
+| `security.kms.region` | string | - | Cloud region for KMS API calls |
+| `security.kms.keyId` | string | - | KMS key identifier (ARN, resource name, or alias) |
+| `security.kms.fallbackToLocal` | bool | `true` | Auto-fallback to local CryptoProvider when KMS unavailable |
+| `security.kms.timeoutPerOperation` | duration | `5s` | Max duration per KMS API call |
+| `security.kms.maxRetries` | int | `3` | Retry attempts for transient KMS errors |
+| `security.kms.azure.vaultUrl` | string | - | Azure Key Vault URL |
+| `security.kms.pkcs11.modulePath` | string | - | Path to PKCS#11 shared library |
+| `security.kms.pkcs11.slotId` | int | `0` | PKCS#11 slot number |
+| `security.kms.pkcs11.keyLabel` | string | - | Key label in HSM |
 | **Cron Scheduling** | | | |
 | `cron.enabled` | bool | `false` | Enable cron job scheduling |
 | `cron.timezone` | string | `UTC` | Default timezone for cron expressions |
@@ -565,6 +592,13 @@ Lango supports decentralized peer-to-peer agent connectivity via the Sovereign A
 - **Approval Pipeline** — Three-stage inbound gate (firewall → owner approval → execution) with auto-approve for paid tools below threshold
 - **Reputation System** — Trust score tracking based on exchange outcomes (successes, failures, timeouts)
 - **Owner Shield** — PII protection that sanitizes outgoing P2P responses to prevent owner data leakage
+- **Signed Challenges** — ECDSA signed handshake challenges with nonce replay protection and timestamp validation
+- **Session Management** — TTL + explicit session invalidation with security event auto-revocation
+- **Tool Sandbox** — Subprocess and container-based isolation for remote tool execution
+- **Cloud KMS / HSM** — AWS KMS, GCP KMS, Azure Key Vault, PKCS#11 HSM integration for signing and encryption
+- **Database Encryption** — SQLCipher transparent encryption for the application database
+- **OS Keyring** — Hardware-backed passphrase storage in OS keyring (macOS Keychain, Linux secret-service, Windows DPAPI)
+- **Credential Revocation** — DID revocation and max credential age enforcement via gossip
 
 #### Paid Value Exchange
 
@@ -625,6 +659,16 @@ lango p2p firewall add --peer-did "did:lango:02abc..." --action allow --tools "s
 
 # Show identity
 lango p2p identity
+
+# Manage peer sessions
+lango p2p session list
+lango p2p session revoke --peer-did "did:lango:02abc..."
+lango p2p session revoke-all
+
+# Sandbox management
+lango p2p sandbox status
+lango p2p sandbox test
+lango p2p sandbox cleanup
 ```
 
 ### Configuration
@@ -906,6 +950,57 @@ Lango supports optional companion apps for hardware-backed security. Companion d
 
 - **mDNS Discovery** — auto-discovers companion apps on the local network via `_lango-companion._tcp`
 - **Manual Config** — set a fixed companion address
+
+### OS Keyring
+
+Store the master passphrase in the OS keyring for automatic unlock on startup:
+
+```bash
+lango security keyring store    # Store passphrase (interactive)
+lango security keyring status   # Check keyring availability
+lango security keyring clear    # Remove stored passphrase
+```
+
+Supported: macOS Keychain, Linux secret-service (GNOME Keyring), Windows Credential Manager. Configure via `security.keyring.enabled`.
+
+### Database Encryption
+
+Encrypt the application database at rest using SQLCipher:
+
+```bash
+lango security db-migrate    # Encrypt plaintext DB
+lango security db-decrypt    # Decrypt back to plaintext
+```
+
+Configure via `security.dbEncryption.enabled` and `security.dbEncryption.cipherPageSize` (default: 4096).
+
+### Cloud KMS / HSM
+
+Delegate cryptographic operations to managed key services:
+
+| Provider | Config Value | Build Tag |
+|----------|-------------|-----------|
+| AWS KMS | `aws-kms` | `kms_aws` |
+| GCP Cloud KMS | `gcp-kms` | `kms_gcp` |
+| Azure Key Vault | `azure-kv` | `kms_azure` |
+| PKCS#11 HSM | `pkcs11` | `kms_pkcs11` |
+
+```bash
+lango security kms status    # Check KMS connection
+lango security kms test      # Test encrypt/decrypt roundtrip
+lango security kms keys      # List registered keys
+```
+
+Set `security.signer.provider` to the desired KMS backend and configure `security.kms.*` settings.
+
+### P2P Security Hardening
+
+The P2P network includes multiple security layers:
+
+- **Signed Challenges** — ECDSA signed handshake (nonce || timestamp || DID), timestamp validation (5min past + 30s future), nonce replay protection
+- **Session Management** — TTL + explicit invalidation with auto-revocation on reputation drop or repeated failures
+- **Tool Sandbox** — Subprocess and container-based process isolation for remote tool execution
+- **Credential Revocation** — DID revocation set and max credential age enforcement via gossip discovery
 
 ### Authentication
 
