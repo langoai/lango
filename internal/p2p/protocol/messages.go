@@ -37,13 +37,22 @@ type Request struct {
 	Payload      map[string]interface{} `json:"payload,omitempty"`
 }
 
+// AttestationData holds structured ZK attestation proof with metadata.
+type AttestationData struct {
+	Proof        []byte `json:"proof"`
+	PublicInputs []byte `json:"publicInputs"`
+	CircuitID    string `json:"circuitId"`
+	Scheme       string `json:"scheme"`
+}
+
 // Response is a P2P A2A response message.
 type Response struct {
 	RequestID        string                 `json:"requestId"`
 	Status           string                 `json:"status"` // "ok", "error", "denied"
 	Result           map[string]interface{} `json:"result,omitempty"`
 	Error            string                 `json:"error,omitempty"`
-	AttestationProof []byte                 `json:"attestationProof,omitempty"`
+	AttestationProof []byte                 `json:"attestationProof,omitempty"` // Deprecated: use Attestation
+	Attestation      *AttestationData       `json:"attestation,omitempty"`
 	Timestamp        time.Time              `json:"timestamp"`
 }
 

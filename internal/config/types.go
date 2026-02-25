@@ -132,6 +132,10 @@ type P2PConfig struct {
 
 	// ToolIsolation configures process isolation for remote tool invocations.
 	ToolIsolation ToolIsolationConfig `mapstructure:"toolIsolation" json:"toolIsolation"`
+
+	// RequireSignedChallenge rejects unsigned challenges from peers when true.
+	// When false (default), unsigned legacy challenges are accepted for backward compatibility.
+	RequireSignedChallenge bool `mapstructure:"requireSignedChallenge" json:"requireSignedChallenge"`
 }
 
 // ToolIsolationConfig configures subprocess isolation for P2P tool execution.
@@ -213,6 +217,15 @@ type ZKPConfig struct {
 
 	// ProvingScheme selects the ZKP proving scheme: "plonk" or "groth16".
 	ProvingScheme string `mapstructure:"provingScheme" json:"provingScheme"`
+
+	// SRSMode selects the SRS generation mode: "unsafe" (default) or "file".
+	SRSMode string `mapstructure:"srsMode" json:"srsMode"`
+
+	// SRSPath is the path to the SRS file (used when SRSMode == "file").
+	SRSPath string `mapstructure:"srsPath" json:"srsPath"`
+
+	// MaxCredentialAge is the maximum age for ZK credentials (e.g. "24h").
+	MaxCredentialAge string `mapstructure:"maxCredentialAge" json:"maxCredentialAge"`
 }
 
 // FirewallRule defines an ACL rule for the knowledge firewall.

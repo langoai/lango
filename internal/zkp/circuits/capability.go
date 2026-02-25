@@ -9,16 +9,18 @@ import (
 // with a score meeting a minimum threshold, without revealing the actual score
 // or test details.
 //
-// Public inputs: CapabilityHash, AgentDIDHash, MinScore
+// Public inputs: CapabilityHash, AgentDIDHash, MinScore, AgentTestBinding
 // Private witness: ActualScore, TestHash
 //
 // Constraints:
 //   - ActualScore >= MinScore
 //   - MiMC(TestHash, ActualScore) == CapabilityHash
+//   - MiMC(TestHash, AgentDIDHash) == AgentTestBinding
 type AgentCapabilityCircuit struct {
-	CapabilityHash frontend.Variable `gnark:",public"`
-	AgentDIDHash   frontend.Variable `gnark:",public"`
-	MinScore       frontend.Variable `gnark:",public"`
+	CapabilityHash   frontend.Variable `gnark:",public"`
+	AgentDIDHash     frontend.Variable `gnark:",public"`
+	MinScore         frontend.Variable `gnark:",public"`
+	AgentTestBinding frontend.Variable `gnark:",public"`
 
 	ActualScore frontend.Variable `gnark:""`
 	TestHash    frontend.Variable `gnark:""`
@@ -45,7 +47,7 @@ func (c *AgentCapabilityCircuit) Define(api frontend.API) error {
 		return err
 	}
 	hAgent.Write(c.TestHash, c.AgentDIDHash)
-	_ = hAgent.Sum() // Constrains the relationship without needing an external check.
+	api.AssertIsEqual(hAgent.Sum(), c.AgentTestBinding)
 
 	return nil
 }

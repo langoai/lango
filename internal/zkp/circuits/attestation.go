@@ -8,15 +8,19 @@ import (
 // ResponseAttestationCircuit proves that an agent produced a response derived
 // from specific source data, without revealing the source data or agent key.
 //
-// Public inputs: ResponseHash, AgentDIDHash, Timestamp
+// Public inputs: ResponseHash, AgentDIDHash, Timestamp, MinTimestamp, MaxTimestamp
 // Private witness: SourceDataHash, AgentKeyProof
 //
-// Constraint: MiMC(SourceDataHash, AgentKeyProof, Timestamp) == ResponseHash
-// AND MiMC(AgentKeyProof) == AgentDIDHash
+// Constraints:
+//   - MiMC(AgentKeyProof) == AgentDIDHash
+//   - MiMC(SourceDataHash, AgentKeyProof, Timestamp) == ResponseHash
+//   - MinTimestamp <= Timestamp <= MaxTimestamp (freshness)
 type ResponseAttestationCircuit struct {
 	ResponseHash   frontend.Variable `gnark:",public"`
 	AgentDIDHash   frontend.Variable `gnark:",public"`
 	Timestamp      frontend.Variable `gnark:",public"`
+	MinTimestamp   frontend.Variable `gnark:",public"`
+	MaxTimestamp   frontend.Variable `gnark:",public"`
 
 	SourceDataHash frontend.Variable `gnark:""`
 	AgentKeyProof  frontend.Variable `gnark:""`
@@ -41,6 +45,10 @@ func (c *ResponseAttestationCircuit) Define(api frontend.API) error {
 	hResp.Write(c.SourceDataHash, c.AgentKeyProof, c.Timestamp)
 	computedResp := hResp.Sum()
 	api.AssertIsEqual(computedResp, c.ResponseHash)
+
+	// Prove timestamp freshness: MinTimestamp <= Timestamp <= MaxTimestamp
+	api.AssertIsLessOrEqual(c.MinTimestamp, c.Timestamp)
+	api.AssertIsLessOrEqual(c.Timestamp, c.MaxTimestamp)
 
 	return nil
 }

@@ -49,6 +49,9 @@ type ZKCredential struct {
 // ZKCredentialVerifier verifies a ZK credential proof.
 type ZKCredentialVerifier func(cred *ZKCredential) (bool, error)
 
+// defaultMaxCredentialAge is the default maximum age for ZK credentials.
+const defaultMaxCredentialAge = 24 * time.Hour
+
 // GossipService manages agent card propagation via GossipSub.
 type GossipService struct {
 	host      host.Host
@@ -63,6 +66,10 @@ type GossipService struct {
 	peers  map[string]*GossipCard // keyed by DID
 	cancel context.CancelFunc
 	logger *zap.SugaredLogger
+
+	revokedMu        sync.RWMutex
+	revokedDIDs      map[string]time.Time // DID → revocation time
+	maxCredentialAge time.Duration
 }
 
 // GossipConfig configures the gossip service.
@@ -92,15 +99,17 @@ func NewGossipService(cfg GossipConfig) (*GossipService, error) {
 	}
 
 	return &GossipService{
-		host:      cfg.Host,
-		ps:        ps,
-		topic:     topic,
-		sub:       sub,
-		localCard: cfg.LocalCard,
-		interval:  cfg.Interval,
-		verifier:  cfg.Verifier,
-		peers:     make(map[string]*GossipCard),
-		logger:    cfg.Logger,
+		host:             cfg.Host,
+		ps:               ps,
+		topic:            topic,
+		sub:              sub,
+		localCard:        cfg.LocalCard,
+		interval:         cfg.Interval,
+		verifier:         cfg.Verifier,
+		peers:            make(map[string]*GossipCard),
+		logger:           cfg.Logger,
+		revokedDIDs:      make(map[string]time.Time),
+		maxCredentialAge: defaultMaxCredentialAge,
 	}, nil
 }
 
@@ -170,6 +179,29 @@ func (g *GossipService) FindByDID(did string) *GossipCard {
 	g.mu.RLock()
 	defer g.mu.RUnlock()
 	return g.peers[did]
+}
+
+// RevokeDID marks a DID as revoked, preventing its credentials from being accepted.
+func (g *GossipService) RevokeDID(did string) {
+	g.revokedMu.Lock()
+	g.revokedDIDs[did] = time.Now()
+	g.revokedMu.Unlock()
+	g.logger.Infow("DID revoked", "did", did)
+}
+
+// IsRevoked checks if a DID has been revoked.
+func (g *GossipService) IsRevoked(did string) bool {
+	g.revokedMu.RLock()
+	_, revoked := g.revokedDIDs[did]
+	g.revokedMu.RUnlock()
+	return revoked
+}
+
+// SetMaxCredentialAge sets the maximum allowed age for ZK credentials.
+func (g *GossipService) SetMaxCredentialAge(d time.Duration) {
+	g.revokedMu.Lock()
+	g.maxCredentialAge = d
+	g.revokedMu.Unlock()
 }
 
 // publishLoop periodically publishes the local agent card.
@@ -242,13 +274,36 @@ func (g *GossipService) handleMessage(msg *pubsub.Message) {
 		return
 	}
 
+	// Reject cards from revoked DIDs.
+	if g.IsRevoked(card.DID) {
+		g.logger.Warnw("rejected card from revoked DID", "did", card.DID)
+		return
+	}
+
 	// Verify ZK credentials if verifier is available.
+	now := time.Now()
 	if g.verifier != nil {
 		for _, cred := range card.ZKCredentials {
-			if cred.ExpiresAt.Before(time.Now()) {
-				g.logger.Debugw("expired ZK credential", "did", card.DID, "capability", cred.CapabilityID)
+			if cred.ExpiresAt.Before(now) {
+				g.logger.Debugw("expired ZK credential",
+					"did", card.DID, "capability", cred.CapabilityID)
 				continue
 			}
+
+			// Check credential age against max allowed age.
+			g.revokedMu.RLock()
+			maxAge := g.maxCredentialAge
+			g.revokedMu.RUnlock()
+			if cred.IssuedAt.Add(maxAge).Before(now) {
+				g.logger.Warnw("stale ZK credential exceeds max age",
+					"did", card.DID,
+					"capability", cred.CapabilityID,
+					"issuedAt", cred.IssuedAt,
+					"maxAge", maxAge,
+				)
+				continue
+			}
+
 			valid, err := g.verifier(&cred)
 			if err != nil || !valid {
 				g.logger.Warnw("invalid ZK credential, discarding card",

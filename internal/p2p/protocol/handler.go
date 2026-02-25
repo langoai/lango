@@ -282,21 +282,29 @@ func (h *Handler) handleToolInvoke(ctx context.Context, req *Request, peerDID st
 	}
 
 	// Generate ZK attestation if available.
-	var attestation []byte
+	resp := &Response{
+		RequestID: req.RequestID,
+		Status:    "ok",
+		Result:    result,
+		Timestamp: time.Now(),
+	}
 	if h.firewall != nil {
 		resultBytes, _ := json.Marshal(result)
 		hash := sha256.Sum256(resultBytes)
 		didHash := sha256.Sum256([]byte(h.localDID))
-		attestation, _ = h.firewall.AttestResponse(hash[:], didHash[:])
+		ar, _ := h.firewall.AttestResponse(hash[:], didHash[:])
+		if ar != nil {
+			resp.Attestation = &AttestationData{
+				Proof:        ar.Proof,
+				PublicInputs: ar.PublicInputs,
+				CircuitID:    ar.CircuitID,
+				Scheme:       ar.Scheme,
+			}
+			resp.AttestationProof = ar.Proof // backward compat
+		}
 	}
 
-	return &Response{
-		RequestID:        req.RequestID,
-		Status:           "ok",
-		Result:           result,
-		AttestationProof: attestation,
-		Timestamp:        time.Now(),
-	}
+	return resp
 }
 
 // handlePriceQuery returns pricing information for a tool.
@@ -473,21 +481,29 @@ func (h *Handler) handleToolInvokePaid(ctx context.Context, req *Request, peerDI
 	}
 
 	// 6. ZK attestation.
-	var attestation []byte
+	paidResp := &Response{
+		RequestID: req.RequestID,
+		Status:    "ok",
+		Result:    result,
+		Timestamp: time.Now(),
+	}
 	if h.firewall != nil {
 		resultBytes, _ := json.Marshal(result)
 		hash := sha256.Sum256(resultBytes)
 		didHash := sha256.Sum256([]byte(h.localDID))
-		attestation, _ = h.firewall.AttestResponse(hash[:], didHash[:])
+		ar, _ := h.firewall.AttestResponse(hash[:], didHash[:])
+		if ar != nil {
+			paidResp.Attestation = &AttestationData{
+				Proof:        ar.Proof,
+				PublicInputs: ar.PublicInputs,
+				CircuitID:    ar.CircuitID,
+				Scheme:       ar.Scheme,
+			}
+			paidResp.AttestationProof = ar.Proof // backward compat
+		}
 	}
 
-	return &Response{
-		RequestID:        req.RequestID,
-		Status:           "ok",
-		Result:           result,
-		AttestationProof: attestation,
-		Timestamp:        time.Now(),
-	}
+	return paidResp
 }
 
 // resolvePeerDID validates the session token and returns the peer DID.

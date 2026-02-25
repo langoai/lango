@@ -1170,18 +1170,28 @@ func initP2P(cfg *config.Config, wp wallet.WalletProvider, pc *paymentComponents
 	// Initialize ZKP prover (optional).
 	zkProver := initZKP(cfg)
 
+	// Create nonce cache for replay protection (TTL = 2 * handshake timeout).
+	nonceTTL := 2 * cfg.P2P.HandshakeTimeout
+	if nonceTTL <= 0 {
+		nonceTTL = 60 * time.Second
+	}
+	nonceCache := handshake.NewNonceCache(nonceTTL)
+	nonceCache.Start()
+
 	// Create handshaker.
 	hsTimeout := cfg.P2P.HandshakeTimeout
 	if hsTimeout <= 0 {
 		hsTimeout = 30 * time.Second
 	}
 	hsCfg := handshake.Config{
-		Wallet:           wp,
-		Sessions:         sessions,
-		ZKEnabled:        cfg.P2P.ZKHandshake,
-		Timeout:          hsTimeout,
-		AutoApproveKnown: cfg.P2P.AutoApproveKnownPeers,
-		Logger:           pLogger,
+		Wallet:                 wp,
+		Sessions:               sessions,
+		ZKEnabled:              cfg.P2P.ZKHandshake,
+		Timeout:                hsTimeout,
+		AutoApproveKnown:       cfg.P2P.AutoApproveKnownPeers,
+		NonceCache:             nonceCache,
+		RequireSignedChallenge: cfg.P2P.RequireSignedChallenge,
+		Logger:                 pLogger,
 	}
 
 	// Wire ZK prover/verifier into handshake if available.
@@ -1242,17 +1252,25 @@ func initP2P(cfg *config.Config, wp wallet.WalletProvider, pc *paymentComponents
 
 	// Wire ZK attestation into firewall if available.
 	if zkProver != nil && cfg.P2P.ZKAttestation {
-		fw.SetZKAttestFunc(func(responseHash, agentDIDHash []byte) ([]byte, error) {
+		fw.SetZKAttestFunc(func(responseHash, agentDIDHash []byte) (*firewall.AttestationResult, error) {
+			now := time.Now().Unix()
 			assignment := &circuits.ResponseAttestationCircuit{
 				ResponseHash: responseHash,
 				AgentDIDHash: agentDIDHash,
-				Timestamp:    time.Now().Unix(),
+				Timestamp:    now,
+				MinTimestamp:  now - 300, // 5-minute window
+				MaxTimestamp:  now + 30,  // 30-second future grace
 			}
 			proof, err := zkProver.Prove(context.Background(), "response_attestation", assignment)
 			if err != nil {
 				return nil, err
 			}
-			return proof.Data, nil
+			return &firewall.AttestationResult{
+				Proof:        proof.Data,
+				PublicInputs: proof.PublicInputs,
+				CircuitID:    proof.CircuitID,
+				Scheme:       proof.Scheme,
+			}, nil
 		})
 		pLogger.Info("ZK response attestation wired to firewall")
 	}
@@ -1271,8 +1289,9 @@ func initP2P(cfg *config.Config, wp wallet.WalletProvider, pc *paymentComponents
 		pLogger.Infow("P2P reputation system enabled", "minTrustScore", minScore)
 	}
 
-	// Register handshake protocol handler on the host.
+	// Register handshake protocol handlers (v1.0 legacy + v1.1 signed challenge).
 	node.Host().SetStreamHandler(libp2pproto.ID(handshake.ProtocolID), handshaker.StreamHandler())
+	node.Host().SetStreamHandler(libp2pproto.ID(handshake.ProtocolIDv11), handshaker.StreamHandlerV11())
 
 	// Get local DID for protocol handler.
 	var localDID string
@@ -1379,6 +1398,13 @@ func initP2P(cfg *config.Config, wp wallet.WalletProvider, pc *paymentComponents
 		pLogger.Warnw("gossip service creation failed", "error", err)
 	}
 
+	// Set credential max age from config.
+	if gossip != nil && cfg.P2P.ZKP.MaxCredentialAge != "" {
+		if maxAge, err := time.ParseDuration(cfg.P2P.ZKP.MaxCredentialAge); err == nil {
+			gossip.SetMaxCredentialAge(maxAge)
+		}
+	}
+
 	pLogger.Infow("P2P networking initialized",
 		"peerID", node.PeerID(),
 		"did", localDID,
@@ -1458,6 +1484,8 @@ func initZKP(cfg *config.Config) *zkp.ProverService {
 	prover, err := zkp.NewProverService(zkp.Config{
 		CacheDir: cfg.P2P.ZKP.ProofCacheDir,
 		Scheme:   cfg.P2P.ZKP.ProvingScheme,
+		SRSMode:  cfg.P2P.ZKP.SRSMode,
+		SRSPath:  cfg.P2P.ZKP.SRSPath,
 		Logger:   logger(),
 	})
 	if err != nil {

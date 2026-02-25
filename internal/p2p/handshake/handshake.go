@@ -5,8 +5,10 @@ import (
 	"context"
 	"crypto/hmac"
 	"crypto/rand"
+	"encoding/binary"
 	"encoding/json"
 	"fmt"
+	"math"
 	"time"
 
 	ethcrypto "github.com/ethereum/go-ethereum/crypto"
@@ -17,8 +19,20 @@ import (
 	"github.com/langoai/lango/internal/wallet"
 )
 
-// ProtocolID is the libp2p protocol identifier for the handshake.
-const ProtocolID = "/lango/handshake/1.0.0"
+// Protocol version constants for handshake negotiation.
+const (
+	// ProtocolID is the legacy protocol identifier (unsigned challenges).
+	ProtocolID = "/lango/handshake/1.0.0"
+
+	// ProtocolIDv11 is the signed-challenge protocol (v1.1).
+	ProtocolIDv11 = "/lango/handshake/1.1.0"
+)
+
+// challengeTimestampWindow is the maximum age of a challenge timestamp (5 min).
+const challengeTimestampWindow = 5 * time.Minute
+
+// challengeFutureGrace is the maximum future drift allowed for challenge timestamps.
+const challengeFutureGrace = 30 * time.Second
 
 // ApprovalFunc is called to request user approval for an incoming handshake.
 // Uses the callback pattern to avoid import cycles with the approval package.
@@ -43,6 +57,8 @@ type Challenge struct {
 	Nonce     []byte `json:"nonce"`
 	Timestamp int64  `json:"timestamp"`
 	SenderDID string `json:"senderDid"`
+	PublicKey []byte `json:"publicKey,omitempty"`  // v1.1: initiator's public key
+	Signature []byte `json:"signature,omitempty"` // v1.1: ECDSA signature over canonical payload
 }
 
 // ChallengeResponse is the target's reply with proof of identity.
@@ -62,42 +78,48 @@ type SessionAck struct {
 
 // Handshaker manages peer authentication using wallet signatures or ZK proofs.
 type Handshaker struct {
-	wallet           wallet.WalletProvider
-	sessions         *SessionStore
-	approvalFn       ApprovalFunc
-	zkProver         ZKProverFunc
-	zkVerifier       ZKVerifierFunc
-	zkEnabled        bool
-	timeout          time.Duration
-	autoApproveKnown bool
-	logger           *zap.SugaredLogger
+	wallet                wallet.WalletProvider
+	sessions              *SessionStore
+	approvalFn            ApprovalFunc
+	zkProver              ZKProverFunc
+	zkVerifier            ZKVerifierFunc
+	zkEnabled             bool
+	timeout               time.Duration
+	autoApproveKnown      bool
+	nonceCache            *NonceCache
+	requireSignedChallenge bool
+	logger                *zap.SugaredLogger
 }
 
 // Config configures the Handshaker.
 type Config struct {
-	Wallet           wallet.WalletProvider
-	Sessions         *SessionStore
-	ApprovalFn       ApprovalFunc
-	ZKProver         ZKProverFunc
-	ZKVerifier       ZKVerifierFunc
-	ZKEnabled        bool
-	Timeout          time.Duration
-	AutoApproveKnown bool
-	Logger           *zap.SugaredLogger
+	Wallet                wallet.WalletProvider
+	Sessions              *SessionStore
+	ApprovalFn            ApprovalFunc
+	ZKProver              ZKProverFunc
+	ZKVerifier            ZKVerifierFunc
+	ZKEnabled             bool
+	Timeout               time.Duration
+	AutoApproveKnown      bool
+	NonceCache            *NonceCache
+	RequireSignedChallenge bool
+	Logger                *zap.SugaredLogger
 }
 
 // NewHandshaker creates a new peer authenticator.
 func NewHandshaker(cfg Config) *Handshaker {
 	return &Handshaker{
-		wallet:           cfg.Wallet,
-		sessions:         cfg.Sessions,
-		approvalFn:       cfg.ApprovalFn,
-		zkProver:         cfg.ZKProver,
-		zkVerifier:       cfg.ZKVerifier,
-		zkEnabled:        cfg.ZKEnabled,
-		timeout:          cfg.Timeout,
-		autoApproveKnown: cfg.AutoApproveKnown,
-		logger:           cfg.Logger,
+		wallet:                 cfg.Wallet,
+		sessions:               cfg.Sessions,
+		approvalFn:             cfg.ApprovalFn,
+		zkProver:               cfg.ZKProver,
+		zkVerifier:             cfg.ZKVerifier,
+		zkEnabled:              cfg.ZKEnabled,
+		timeout:                cfg.Timeout,
+		autoApproveKnown:       cfg.AutoApproveKnown,
+		nonceCache:             cfg.NonceCache,
+		requireSignedChallenge: cfg.RequireSignedChallenge,
+		logger:                 cfg.Logger,
 	}
 }
 
@@ -116,6 +138,21 @@ func (h *Handshaker) Initiate(ctx context.Context, s network.Stream, localDID st
 		Nonce:     nonce,
 		Timestamp: time.Now().Unix(),
 		SenderDID: localDID,
+	}
+
+	// Sign the challenge (v1.1 protocol).
+	pubkey, err := h.wallet.PublicKey(ctx)
+	if err != nil {
+		h.logger.Warnw("challenge signing skipped: get public key", "error", err)
+	} else {
+		challenge.PublicKey = pubkey
+		payload := challengeSignPayload(nonce, challenge.Timestamp, localDID)
+		sig, err := h.wallet.SignMessage(ctx, payload)
+		if err != nil {
+			h.logger.Warnw("challenge signing skipped: sign", "error", err)
+		} else {
+			challenge.Signature = sig
+		}
 	}
 
 	// Send challenge.
@@ -172,6 +209,28 @@ func (h *Handshaker) HandleIncoming(ctx context.Context, s network.Stream) (*Ses
 	dec := json.NewDecoder(s)
 	if err := dec.Decode(&challenge); err != nil {
 		return nil, fmt.Errorf("receive challenge: %w", err)
+	}
+
+	// Validate challenge timestamp (reject stale or far-future challenges).
+	if err := validateChallengeTimestamp(challenge.Timestamp); err != nil {
+		return nil, fmt.Errorf("challenge timestamp: %w", err)
+	}
+
+	// Check nonce replay.
+	if h.nonceCache != nil {
+		if !h.nonceCache.CheckAndRecord(challenge.Nonce) {
+			return nil, fmt.Errorf("nonce replay detected")
+		}
+	}
+
+	// Verify challenge signature (v1.1 protocol).
+	if len(challenge.Signature) > 0 && len(challenge.PublicKey) > 0 {
+		if err := verifyChallengeSignature(&challenge); err != nil {
+			return nil, fmt.Errorf("challenge signature: %w", err)
+		}
+		h.logger.Debugw("challenge signature verified", "senderDID", challenge.SenderDID)
+	} else if h.requireSignedChallenge {
+		return nil, fmt.Errorf("unsigned challenge rejected (requireSignedChallenge=true)")
 	}
 
 	// Request user approval (HITL).
@@ -315,6 +374,74 @@ func (h *Handshaker) verifyResponse(ctx context.Context, resp *ChallengeResponse
 	}
 
 	return fmt.Errorf("no proof or signature in response")
+}
+
+// StreamHandlerV11 returns a libp2p stream handler for v1.1 (signed challenge) handshakes.
+// Uses the same HandleIncoming logic since it handles both signed and unsigned challenges.
+func (h *Handshaker) StreamHandlerV11() network.StreamHandler {
+	return func(s network.Stream) {
+		defer s.Close()
+
+		ctx := context.Background()
+		_, err := h.HandleIncoming(ctx, s)
+		if err != nil {
+			h.logger.Warnw("incoming v1.1 handshake failed", "peer", s.Conn().RemotePeer(), "error", err)
+		}
+	}
+}
+
+// challengeSignPayload constructs the canonical bytes for challenge signing:
+// nonce || bigEndian(timestamp, 8) || utf8(senderDID)
+func challengeSignPayload(nonce []byte, timestamp int64, senderDID string) []byte {
+	buf := make([]byte, 0, len(nonce)+8+len(senderDID))
+	buf = append(buf, nonce...)
+	ts := make([]byte, 8)
+	binary.BigEndian.PutUint64(ts, uint64(timestamp))
+	buf = append(buf, ts...)
+	buf = append(buf, []byte(senderDID)...)
+	return ethcrypto.Keccak256(buf)
+}
+
+// verifyChallengeSignature verifies the ECDSA signature on a v1.1 challenge.
+func verifyChallengeSignature(c *Challenge) error {
+	if len(c.Signature) != 65 {
+		return fmt.Errorf("invalid signature length: %d (expected 65)", len(c.Signature))
+	}
+
+	payload := challengeSignPayload(c.Nonce, c.Timestamp, c.SenderDID)
+	recovered, err := ethcrypto.SigToPub(payload, c.Signature)
+	if err != nil {
+		return fmt.Errorf("recover public key: %w", err)
+	}
+
+	recoveredCompressed := ethcrypto.CompressPubkey(recovered)
+	if !bytes.Equal(recoveredCompressed, c.PublicKey) {
+		return fmt.Errorf("public key mismatch")
+	}
+
+	return nil
+}
+
+// validateChallengeTimestamp ensures the challenge timestamp is within the
+// acceptable window: not older than challengeTimestampWindow and not more
+// than challengeFutureGrace in the future.
+func validateChallengeTimestamp(ts int64) error {
+	if ts <= 0 || ts > math.MaxInt64/2 {
+		return fmt.Errorf("invalid timestamp value: %d", ts)
+	}
+
+	now := time.Now()
+	challengeTime := time.Unix(ts, 0)
+
+	if now.Sub(challengeTime) > challengeTimestampWindow {
+		return fmt.Errorf("timestamp too old: %v ago (max %v)", now.Sub(challengeTime), challengeTimestampWindow)
+	}
+
+	if challengeTime.Sub(now) > challengeFutureGrace {
+		return fmt.Errorf("timestamp too far in future: %v ahead (max %v)", challengeTime.Sub(now), challengeFutureGrace)
+	}
+
+	return nil
 }
 
 // StreamHandler returns a libp2p stream handler for incoming handshakes.

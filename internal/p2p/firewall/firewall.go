@@ -29,8 +29,16 @@ type ACLRule struct {
 	RateLimit int `json:"rateLimit"`
 }
 
+// AttestationResult holds a structured ZK attestation proof from the prover.
+type AttestationResult struct {
+	Proof        []byte
+	PublicInputs []byte
+	CircuitID    string
+	Scheme       string
+}
+
 // ZKAttestFunc generates a ZK attestation proof for a response.
-type ZKAttestFunc func(responseHash, agentDIDHash []byte) ([]byte, error)
+type ZKAttestFunc func(responseHash, agentDIDHash []byte) (*AttestationResult, error)
 
 // ReputationChecker returns a trust score for a peer DID.
 type ReputationChecker func(ctx context.Context, peerDID string) (float64, error)
@@ -176,7 +184,7 @@ func (f *Firewall) SanitizeResponse(response map[string]interface{}) map[string]
 }
 
 // AttestResponse generates a ZK attestation proof for a response.
-func (f *Firewall) AttestResponse(responseHash, agentDIDHash []byte) ([]byte, error) {
+func (f *Firewall) AttestResponse(responseHash, agentDIDHash []byte) (*AttestationResult, error) {
 	f.mu.RLock()
 	fn := f.attestFunc
 	f.mu.RUnlock()

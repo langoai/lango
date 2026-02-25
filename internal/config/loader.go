@@ -150,8 +150,10 @@ func DefaultConfig() *Config {
 			ZKHandshake:      true,
 			ZKAttestation:    true,
 			ZKP: ZKPConfig{
-				ProofCacheDir: "~/.lango/p2p/zkp-cache",
-				ProvingScheme: "plonk",
+				ProofCacheDir:    "~/.lango/p2p/zkp-cache",
+				ProvingScheme:    "plonk",
+				SRSMode:          "unsafe",
+				MaxCredentialAge: "24h",
 			},
 			ToolIsolation: ToolIsolationConfig{
 				Enabled:        false,

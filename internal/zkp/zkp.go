@@ -3,14 +3,17 @@
 package zkp
 
 import (
+	"bufio"
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
 	"sync"
 
 	"github.com/consensys/gnark-crypto/ecc"
+	"github.com/consensys/gnark-crypto/kzg"
 	"github.com/consensys/gnark/backend/groth16"
 	"github.com/consensys/gnark/backend/plonk"
 	"github.com/consensys/gnark/constraint"
@@ -41,12 +44,16 @@ type Config struct {
 	CacheDir string
 	Scheme   string // "plonk" (default) or "groth16"
 	Logger   *zap.SugaredLogger
+	SRSMode  string // "unsafe" (default) or "file"
+	SRSPath  string // path to SRS file (used when SRSMode == "file")
 }
 
 // ProverService manages circuit compilation, proof generation, and verification.
 type ProverService struct {
 	cacheDir string
 	scheme   string // "plonk" or "groth16"
+	srsMode  string // "unsafe" or "file"
+	srsPath  string
 	logger   *zap.SugaredLogger
 	mu       sync.RWMutex
 	compiled map[string]*CompiledCircuit
@@ -72,9 +79,16 @@ func NewProverService(cfg Config) (*ProverService, error) {
 		return nil, fmt.Errorf("create ZKP cache dir: %w", err)
 	}
 
+	srsMode := cfg.SRSMode
+	if srsMode == "" {
+		srsMode = "unsafe"
+	}
+
 	svc := &ProverService{
 		cacheDir: cacheDir,
 		scheme:   scheme,
+		srsMode:  srsMode,
+		srsPath:  cfg.SRSPath,
 		logger:   cfg.Logger,
 		compiled: make(map[string]*CompiledCircuit),
 	}
@@ -82,6 +96,7 @@ func NewProverService(cfg Config) (*ProverService, error) {
 	cfg.Logger.Infow("ZKP prover service initialized",
 		"scheme", scheme,
 		"cacheDir", cacheDir,
+		"srsMode", srsMode,
 	)
 
 	return svc, nil
@@ -123,9 +138,9 @@ func (s *ProverService) Compile(circuitID string, circuit frontend.Circuit) erro
 
 	switch s.scheme {
 	case "plonk":
-		canonical, lagrange, err := unsafekzg.NewSRS(ccs)
+		canonical, lagrange, err := s.loadSRS(ccs, circuitID)
 		if err != nil {
-			return fmt.Errorf("generate SRS for %q: %w", circuitID, err)
+			return fmt.Errorf("load SRS for %q: %w", circuitID, err)
 		}
 		pk, vk, err := plonk.Setup(ccs, canonical, lagrange)
 		if err != nil {
@@ -279,4 +294,62 @@ func (s *ProverService) IsCompiled(circuitID string) bool {
 	defer s.mu.RUnlock()
 	_, ok := s.compiled[circuitID]
 	return ok
+}
+
+// loadSRS returns canonical and lagrange SRS for a compiled constraint system.
+// When SRSMode is "file", it attempts to load from the configured SRS file,
+// falling back to unsafe generation if the file does not exist.
+func (s *ProverService) loadSRS(
+	ccs constraint.ConstraintSystem, circuitID string,
+) (kzg.SRS, kzg.SRS, error) {
+	if s.srsMode == "file" && s.srsPath != "" {
+		canonical, lagrange, err := loadSRSFromFile(s.srsPath)
+		if err != nil {
+			if errors.Is(err, os.ErrNotExist) {
+				s.logger.Warnw("SRS file not found, falling back to unsafe SRS",
+					"path", s.srsPath,
+					"circuitID", circuitID,
+				)
+			} else {
+				return nil, nil, fmt.Errorf("load SRS from file: %w", err)
+			}
+		} else {
+			s.logger.Infow("loaded SRS from file",
+				"path", s.srsPath,
+				"circuitID", circuitID,
+			)
+			return canonical, lagrange, nil
+		}
+	}
+
+	// Default: generate unsafe SRS (for testing/development).
+	canonical, lagrange, err := unsafekzg.NewSRS(ccs)
+	if err != nil {
+		return nil, nil, fmt.Errorf("generate unsafe SRS: %w", err)
+	}
+	return canonical, lagrange, nil
+}
+
+// loadSRSFromFile reads canonical and lagrange KZG SRS from a file.
+// The file must contain both SRS written sequentially (canonical first, then lagrange).
+func loadSRSFromFile(path string) (kzg.SRS, kzg.SRS, error) {
+	f, err := os.Open(path)
+	if err != nil {
+		return nil, nil, fmt.Errorf("open SRS file %q: %w", path, err)
+	}
+	defer f.Close()
+
+	r := bufio.NewReaderSize(f, 1<<20)
+
+	canonical := kzg.NewSRS(ecc.BN254)
+	lagrange := kzg.NewSRS(ecc.BN254)
+
+	if _, err := canonical.ReadFrom(r); err != nil {
+		return nil, nil, fmt.Errorf("read canonical SRS: %w", err)
+	}
+	if _, err := lagrange.ReadFrom(r); err != nil {
+		return nil, nil, fmt.Errorf("read lagrange SRS: %w", err)
+	}
+
+	return canonical, lagrange, nil
 }

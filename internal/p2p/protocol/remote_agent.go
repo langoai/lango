@@ -10,27 +10,32 @@ import (
 	"go.uber.org/zap"
 )
 
+// ZKAttestVerifyFunc verifies a ZK attestation proof from a remote peer.
+type ZKAttestVerifyFunc func(ctx context.Context, attestation *AttestationData) (bool, error)
+
 // P2PRemoteAgent represents a remote agent accessible over P2P.
 // It can be used as a sub-agent in the orchestration framework.
 type P2PRemoteAgent struct {
-	name       string
-	did        string
-	peerID     peer.ID
-	token      string
-	host       host.Host
+	name         string
+	did          string
+	peerID       peer.ID
+	token        string
+	host         host.Host
 	capabilities []string
-	logger     *zap.SugaredLogger
+	attestVerify ZKAttestVerifyFunc
+	logger       *zap.SugaredLogger
 }
 
 // RemoteAgentConfig configures a P2P remote agent.
 type RemoteAgentConfig struct {
-	Name         string
-	DID          string
-	PeerID       peer.ID
-	SessionToken string
-	Host         host.Host
-	Capabilities []string
-	Logger       *zap.SugaredLogger
+	Name           string
+	DID            string
+	PeerID         peer.ID
+	SessionToken   string
+	Host           host.Host
+	Capabilities   []string
+	AttestVerifier ZKAttestVerifyFunc
+	Logger         *zap.SugaredLogger
 }
 
 // NewRemoteAgent creates a remote agent adapter for P2P communication.
@@ -42,8 +47,14 @@ func NewRemoteAgent(cfg RemoteAgentConfig) *P2PRemoteAgent {
 		token:        cfg.SessionToken,
 		host:         cfg.Host,
 		capabilities: cfg.Capabilities,
+		attestVerify: cfg.AttestVerifier,
 		logger:       cfg.Logger,
 	}
+}
+
+// SetAttestVerifier sets the ZK attestation verification callback.
+func (a *P2PRemoteAgent) SetAttestVerifier(fn ZKAttestVerifyFunc) {
+	a.attestVerify = fn
 }
 
 // Name returns the remote agent's name.
@@ -85,8 +96,17 @@ func (a *P2PRemoteAgent) InvokeTool(ctx context.Context, toolName string, params
 	}
 
 	// Verify ZK attestation if present.
-	if len(resp.AttestationProof) > 0 {
-		a.logger.Debugw("response has ZK attestation", "tool", toolName, "remote", a.name)
+	if resp.Attestation != nil && a.attestVerify != nil {
+		valid, err := a.attestVerify(ctx, resp.Attestation)
+		if err != nil {
+			a.logger.Warnw("attestation verification error", "tool", toolName, "remote", a.name, "error", err)
+		} else if valid {
+			a.logger.Debugw("attestation verified", "tool", toolName, "remote", a.name, "circuit", resp.Attestation.CircuitID)
+		} else {
+			a.logger.Warnw("attestation verification failed", "tool", toolName, "remote", a.name)
+		}
+	} else if len(resp.AttestationProof) > 0 {
+		a.logger.Debugw("response has legacy attestation proof (unverified)", "tool", toolName, "remote", a.name)
 	}
 
 	return resp.Result, nil
