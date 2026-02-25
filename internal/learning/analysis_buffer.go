@@ -6,6 +6,7 @@ import (
 
 	"go.uber.org/zap"
 
+	"github.com/langoai/lango/internal/asyncbuf"
 	"github.com/langoai/lango/internal/session"
 	"github.com/langoai/lango/internal/types"
 )
@@ -31,11 +32,9 @@ type AnalysisBuffer struct {
 	tokenThreshold int
 
 	mu           sync.Mutex
-	lastAnalyzed map[string]int // session_key → last analyzed message index
+	lastAnalyzed map[string]int // session_key -> last analyzed message index
 
-	queue  chan AnalysisRequest
-	stopCh chan struct{}
-	done   chan struct{}
+	inner  *asyncbuf.TriggerBuffer[AnalysisRequest]
 	logger *zap.SugaredLogger
 }
 
@@ -53,71 +52,39 @@ func NewAnalysisBuffer(
 	if tokenThreshold <= 0 {
 		tokenThreshold = 2000
 	}
-	return &AnalysisBuffer{
+	b := &AnalysisBuffer{
 		analyzer:       analyzer,
 		learner:        learner,
 		getMessages:    getMessages,
 		turnThreshold:  turnThreshold,
 		tokenThreshold: tokenThreshold,
 		lastAnalyzed:   make(map[string]int),
-		queue:          make(chan AnalysisRequest, 32),
-		stopCh:         make(chan struct{}),
-		done:           make(chan struct{}),
 		logger:         logger,
 	}
+	b.inner = asyncbuf.NewTriggerBuffer[AnalysisRequest](asyncbuf.TriggerConfig{
+		QueueSize: 32,
+	}, b.process, logger)
+	return b
 }
 
 // Start launches the background analysis goroutine.
 func (b *AnalysisBuffer) Start(wg *sync.WaitGroup) {
-	wg.Add(1)
-	go func() {
-		defer wg.Done()
-		defer close(b.done)
-		b.run()
-	}()
+	b.inner.Start(wg)
 }
 
 // Trigger checks if analysis is needed for a session and enqueues if thresholds are met.
 func (b *AnalysisBuffer) Trigger(sessionKey string) {
-	select {
-	case b.queue <- AnalysisRequest{SessionKey: sessionKey}:
-	default:
-		b.logger.Warnw("analysis queue full, dropping trigger", "sessionKey", sessionKey)
-	}
+	b.inner.Enqueue(AnalysisRequest{SessionKey: sessionKey})
 }
 
 // TriggerSessionEnd enqueues a session-end analysis request.
 func (b *AnalysisBuffer) TriggerSessionEnd(sessionKey string) {
-	select {
-	case b.queue <- AnalysisRequest{SessionKey: sessionKey, SessionEnd: true}:
-	default:
-		b.logger.Warnw("analysis queue full, dropping session-end trigger", "sessionKey", sessionKey)
-	}
+	b.inner.Enqueue(AnalysisRequest{SessionKey: sessionKey, SessionEnd: true})
 }
 
 // Stop signals the background goroutine to drain and exit.
 func (b *AnalysisBuffer) Stop() {
-	close(b.stopCh)
-	<-b.done
-}
-
-func (b *AnalysisBuffer) run() {
-	for {
-		select {
-		case req := <-b.queue:
-			b.process(req)
-		case <-b.stopCh:
-			// Drain remaining.
-			for {
-				select {
-				case req := <-b.queue:
-					b.process(req)
-				default:
-					return
-				}
-			}
-		}
-	}
+	b.inner.Stop()
 }
 
 func (b *AnalysisBuffer) process(req AnalysisRequest) {

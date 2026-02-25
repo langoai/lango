@@ -36,7 +36,12 @@ Checks performed:
   - Session database accessibility
   - Server port availability
   - Security configuration (signer, interceptor, passphrase)
-  - Companion connectivity (WebSocket gateway status)`,
+  - Companion connectivity (WebSocket gateway status)
+
+See Also:
+  lango settings - Interactive settings editor (TUI)
+  lango config   - View/manage configuration profiles
+  lango onboard  - Guided setup wizard`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return run(cmd.Context(), opts)
 		},

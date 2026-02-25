@@ -39,7 +39,12 @@ gives you free navigation across every configuration section:
   - Graph:      Knowledge graph and GraphRAG
   - Payment:    Blockchain wallet, spending limits, X402
 
-All settings including API keys are saved in an encrypted profile (~/.lango/lango.db).`,
+All settings including API keys are saved in an encrypted profile (~/.lango/lango.db).
+
+See Also:
+  lango config   - View/manage configuration profiles
+  lango onboard  - Guided setup wizard
+  lango doctor   - Diagnose configuration issues`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return runSettings(profileName)
 		},

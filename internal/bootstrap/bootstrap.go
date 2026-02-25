@@ -19,7 +19,7 @@ import (
 	"github.com/langoai/lango/internal/configstore"
 	"github.com/langoai/lango/internal/ent"
 	"github.com/langoai/lango/internal/keyring"
-	"github.com/langoai/lango/internal/passphrase"
+	"github.com/langoai/lango/internal/security/passphrase"
 	"github.com/langoai/lango/internal/security"
 )
 

@@ -6,6 +6,7 @@ import (
 
 	"go.uber.org/zap"
 
+	"github.com/langoai/lango/internal/asyncbuf"
 	"github.com/langoai/lango/internal/session"
 )
 
@@ -30,10 +31,8 @@ type Buffer struct {
 	mu           sync.Mutex
 	lastObserved map[string]int
 
-	triggerCh chan string
-	stopCh    chan struct{}
-	done      chan struct{}
-	logger    *zap.SugaredLogger
+	inner  *asyncbuf.TriggerBuffer[string]
+	logger *zap.SugaredLogger
 }
 
 // NewBuffer creates a new asynchronous observation buffer.
@@ -45,7 +44,7 @@ func NewBuffer(
 	getMessages MessageProvider,
 	logger *zap.SugaredLogger,
 ) *Buffer {
-	return &Buffer{
+	b := &Buffer{
 		observer:                  observer,
 		reflector:                 reflector,
 		store:                     store,
@@ -53,31 +52,23 @@ func NewBuffer(
 		observationTokenThreshold: obsThreshold,
 		getMessages:               getMessages,
 		lastObserved:              make(map[string]int),
-		triggerCh:                 make(chan string, 16),
-		stopCh:                    make(chan struct{}),
-		done:                      make(chan struct{}),
 		logger:                    logger,
 	}
+	b.inner = asyncbuf.NewTriggerBuffer[string](asyncbuf.TriggerConfig{
+		QueueSize: 16,
+	}, b.process, logger)
+	return b
 }
 
 // Start launches the background goroutine. The WaitGroup is incremented so
 // callers can wait for graceful shutdown.
 func (b *Buffer) Start(wg *sync.WaitGroup) {
-	wg.Add(1)
-	go func() {
-		defer wg.Done()
-		defer close(b.done)
-		b.run()
-	}()
+	b.inner.Start(wg)
 }
 
 // Trigger sends a non-blocking signal to process the given session.
 func (b *Buffer) Trigger(sessionKey string) {
-	select {
-	case b.triggerCh <- sessionKey:
-	default:
-		b.logger.Debugw("buffer trigger dropped (channel full)", "sessionKey", sessionKey)
-	}
+	b.inner.Enqueue(sessionKey)
 }
 
 // SetCompactor enables message compaction after observation. When set,
@@ -89,27 +80,7 @@ func (b *Buffer) SetCompactor(c MessageCompactor) {
 
 // Stop signals the background goroutine to stop and waits for completion.
 func (b *Buffer) Stop() {
-	close(b.stopCh)
-	<-b.done
-}
-
-func (b *Buffer) run() {
-	for {
-		select {
-		case sessionKey := <-b.triggerCh:
-			b.process(sessionKey)
-		case <-b.stopCh:
-			// Drain remaining triggers before exiting.
-			for {
-				select {
-				case sessionKey := <-b.triggerCh:
-					b.process(sessionKey)
-				default:
-					return
-				}
-			}
-		}
-	}
+	b.inner.Stop()
 }
 
 func (b *Buffer) process(sessionKey string) {

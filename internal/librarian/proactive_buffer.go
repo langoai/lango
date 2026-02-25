@@ -6,6 +6,7 @@ import (
 
 	"go.uber.org/zap"
 
+	"github.com/langoai/lango/internal/asyncbuf"
 	entknowledge "github.com/langoai/lango/internal/ent/knowledge"
 	"github.com/langoai/lango/internal/graph"
 	"github.com/langoai/lango/internal/knowledge"
@@ -35,11 +36,9 @@ type ProactiveBuffer struct {
 	graphCallback        GraphCallback
 
 	mu          sync.Mutex
-	turnCounter map[string]int // session_key → turns since last inquiry
+	turnCounter map[string]int // session_key -> turns since last inquiry
 
-	queue  chan string
-	stopCh chan struct{}
-	done   chan struct{}
+	inner  *asyncbuf.TriggerBuffer[string]
 	logger *zap.SugaredLogger
 }
 
@@ -75,7 +74,7 @@ func NewProactiveBuffer(
 		cfg.AutoSaveConfidence = types.ConfidenceHigh
 	}
 
-	return &ProactiveBuffer{
+	b := &ProactiveBuffer{
 		analyzer:             analyzer,
 		processor:            processor,
 		inquiryStore:         inquiryStore,
@@ -87,11 +86,12 @@ func NewProactiveBuffer(
 		maxPending:           cfg.MaxPending,
 		autoSaveConfidence:   cfg.AutoSaveConfidence,
 		turnCounter:          make(map[string]int),
-		queue:                make(chan string, 32),
-		stopCh:               make(chan struct{}),
-		done:                 make(chan struct{}),
 		logger:               logger,
 	}
+	b.inner = asyncbuf.NewTriggerBuffer[string](asyncbuf.TriggerConfig{
+		QueueSize: 32,
+	}, b.process, logger)
+	return b
 }
 
 // SetGraphCallback sets the optional graph triple callback.
@@ -101,45 +101,17 @@ func (b *ProactiveBuffer) SetGraphCallback(cb GraphCallback) {
 
 // Start launches the background processing goroutine.
 func (b *ProactiveBuffer) Start(wg *sync.WaitGroup) {
-	wg.Add(1)
-	go func() {
-		defer wg.Done()
-		defer close(b.done)
-		b.run()
-	}()
+	b.inner.Start(wg)
 }
 
 // Trigger enqueues a session for proactive analysis.
 func (b *ProactiveBuffer) Trigger(sessionKey string) {
-	select {
-	case b.queue <- sessionKey:
-	default:
-		b.logger.Warnw("proactive buffer queue full, dropping trigger", "sessionKey", sessionKey)
-	}
+	b.inner.Enqueue(sessionKey)
 }
 
 // Stop signals the background goroutine to drain and exit.
 func (b *ProactiveBuffer) Stop() {
-	close(b.stopCh)
-	<-b.done
-}
-
-func (b *ProactiveBuffer) run() {
-	for {
-		select {
-		case sessionKey := <-b.queue:
-			b.process(sessionKey)
-		case <-b.stopCh:
-			for {
-				select {
-				case sessionKey := <-b.queue:
-					b.process(sessionKey)
-				default:
-					return
-				}
-			}
-		}
-	}
+	b.inner.Stop()
 }
 
 func (b *ProactiveBuffer) process(sessionKey string) {

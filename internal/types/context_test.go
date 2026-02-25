@@ -1,4 +1,4 @@
-package ctxutil
+package types
 
 import (
 	"context"
@@ -8,9 +8,9 @@ import (
 
 type testKey struct{}
 
-func TestDetach_ParentCancelDoesNotAffectChild(t *testing.T) {
+func TestDetachContext_ParentCancelDoesNotAffectChild(t *testing.T) {
 	parent, cancel := context.WithCancel(context.Background())
-	detached := Detach(parent)
+	detached := DetachContext(parent)
 
 	cancel() // cancel parent
 
@@ -25,9 +25,9 @@ func TestDetach_ParentCancelDoesNotAffectChild(t *testing.T) {
 	}
 }
 
-func TestDetach_PreservesValues(t *testing.T) {
+func TestDetachContext_PreservesValues(t *testing.T) {
 	parent := context.WithValue(context.Background(), testKey{}, "hello")
-	detached := Detach(parent)
+	detached := DetachContext(parent)
 
 	got := detached.Value(testKey{})
 	if got != "hello" {
@@ -35,20 +35,20 @@ func TestDetach_PreservesValues(t *testing.T) {
 	}
 }
 
-func TestDetach_NoDeadline(t *testing.T) {
+func TestDetachContext_NoDeadline(t *testing.T) {
 	parent, cancel := context.WithTimeout(context.Background(), time.Hour)
 	defer cancel()
 
-	detached := Detach(parent)
+	detached := DetachContext(parent)
 
 	if _, ok := detached.Deadline(); ok {
 		t.Fatal("detached context should have no deadline")
 	}
 }
 
-func TestDetach_WithCancelWrapping(t *testing.T) {
+func TestDetachContext_WithCancelWrapping(t *testing.T) {
 	parent, parentCancel := context.WithCancel(context.Background())
-	detached := Detach(parent)
+	detached := DetachContext(parent)
 	child, childCancel := context.WithCancel(detached)
 
 	// Cancel parent — child should be unaffected.
@@ -64,9 +64,9 @@ func TestDetach_WithCancelWrapping(t *testing.T) {
 	}
 }
 
-func TestDetach_WithTimeoutWrapping(t *testing.T) {
+func TestDetachContext_WithTimeoutWrapping(t *testing.T) {
 	parent := context.WithValue(context.Background(), testKey{}, "timeout-test")
-	detached := Detach(parent)
+	detached := DetachContext(parent)
 	child, cancel := context.WithTimeout(detached, 50*time.Millisecond)
 	defer cancel()
 

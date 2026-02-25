@@ -7,7 +7,7 @@ import (
 
 	"github.com/consensys/gnark-crypto/ecc/bn254/fr"
 	nativemimc "github.com/consensys/gnark-crypto/ecc/bn254/fr/mimc"
-	"github.com/langoai/lango/internal/zkp/circuits"
+	"github.com/langoai/lango/internal/p2p/zkp/circuits"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/zap"

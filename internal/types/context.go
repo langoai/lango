@@ -1,4 +1,4 @@
-package ctxutil
+package types
 
 import (
 	"context"
@@ -18,10 +18,10 @@ func (c *detachedCtx) Done() <-chan struct{}        { return nil }
 func (c *detachedCtx) Err() error                   { return nil }
 func (c *detachedCtx) Value(key any) any            { return c.parent.Value(key) }
 
-// Detach returns a new context that is independent of the parent's
+// DetachContext returns a new context that is independent of the parent's
 // cancellation and deadline but preserves all context values.
 // Use this when spawning long-running goroutines that must not be
 // cancelled when the originating request completes.
-func Detach(ctx context.Context) context.Context {
+func DetachContext(ctx context.Context) context.Context {
 	return &detachedCtx{parent: ctx}
 }

@@ -55,52 +55,92 @@ func main() {
 		Long:  `Lango is a high-performance AI agent built with Go, supporting multiple channels and tools.`,
 	}
 
+	rootCmd.AddGroup(
+		&cobra.Group{ID: "core", Title: "Core:"},
+		&cobra.Group{ID: "config", Title: "Configuration:"},
+		&cobra.Group{ID: "data", Title: "Data & AI:"},
+		&cobra.Group{ID: "infra", Title: "Infrastructure:"},
+	)
+
 	rootCmd.AddCommand(serveCmd())
 	rootCmd.AddCommand(versionCmd())
 	rootCmd.AddCommand(healthCmd())
 	rootCmd.AddCommand(configCmd())
-	rootCmd.AddCommand(doctor.NewCommand())
-	rootCmd.AddCommand(onboard.NewCommand())
-	rootCmd.AddCommand(settings.NewCommand())
-	rootCmd.AddCommand(clisecurity.NewSecurityCmd(func() (*bootstrap.Result, error) {
+
+	doctorCmd := doctor.NewCommand()
+	doctorCmd.GroupID = "config"
+	rootCmd.AddCommand(doctorCmd)
+
+	onboardCmd := onboard.NewCommand()
+	onboardCmd.GroupID = "config"
+	rootCmd.AddCommand(onboardCmd)
+
+	settingsCmd := settings.NewCommand()
+	settingsCmd.GroupID = "config"
+	rootCmd.AddCommand(settingsCmd)
+
+	securityCmd := clisecurity.NewSecurityCmd(func() (*bootstrap.Result, error) {
 		return bootstrap.Run(bootstrap.Options{})
-	}))
-	rootCmd.AddCommand(climemory.NewMemoryCmd(func() (*config.Config, error) {
+	})
+	securityCmd.GroupID = "infra"
+	rootCmd.AddCommand(securityCmd)
+
+	memoryCmd := climemory.NewMemoryCmd(func() (*config.Config, error) {
 		boot, err := bootstrap.Run(bootstrap.Options{})
 		if err != nil {
 			return nil, err
 		}
 		defer boot.DBClient.Close()
 		return boot.Config, nil
-	}))
-	rootCmd.AddCommand(cliagent.NewAgentCmd(func() (*config.Config, error) {
+	})
+	memoryCmd.GroupID = "data"
+	rootCmd.AddCommand(memoryCmd)
+
+	agentCmd := cliagent.NewAgentCmd(func() (*config.Config, error) {
 		boot, err := bootstrap.Run(bootstrap.Options{})
 		if err != nil {
 			return nil, err
 		}
 		defer boot.DBClient.Close()
 		return boot.Config, nil
-	}))
-	rootCmd.AddCommand(cligraph.NewGraphCmd(func() (*config.Config, error) {
+	})
+	agentCmd.GroupID = "data"
+	rootCmd.AddCommand(agentCmd)
+
+	graphCmd := cligraph.NewGraphCmd(func() (*config.Config, error) {
 		boot, err := bootstrap.Run(bootstrap.Options{})
 		if err != nil {
 			return nil, err
 		}
 		defer boot.DBClient.Close()
 		return boot.Config, nil
-	}))
-	rootCmd.AddCommand(clipayment.NewPaymentCmd(func() (*bootstrap.Result, error) {
+	})
+	graphCmd.GroupID = "data"
+	rootCmd.AddCommand(graphCmd)
+
+	paymentCmd := clipayment.NewPaymentCmd(func() (*bootstrap.Result, error) {
 		return bootstrap.Run(bootstrap.Options{})
-	}))
-	rootCmd.AddCommand(clip2p.NewP2PCmd(func() (*bootstrap.Result, error) {
+	})
+	paymentCmd.GroupID = "infra"
+	rootCmd.AddCommand(paymentCmd)
+
+	p2pCmd := clip2p.NewP2PCmd(func() (*bootstrap.Result, error) {
 		return bootstrap.Run(bootstrap.Options{})
-	}))
-	rootCmd.AddCommand(clicron.NewCronCmd(func() (*bootstrap.Result, error) {
+	})
+	p2pCmd.GroupID = "infra"
+	rootCmd.AddCommand(p2pCmd)
+
+	cronCmd := clicron.NewCronCmd(func() (*bootstrap.Result, error) {
 		return bootstrap.Run(bootstrap.Options{})
-	}))
-	rootCmd.AddCommand(cliworkflow.NewWorkflowCmd(func() (*bootstrap.Result, error) {
+	})
+	cronCmd.GroupID = "infra"
+	rootCmd.AddCommand(cronCmd)
+
+	workflowCmd := cliworkflow.NewWorkflowCmd(func() (*bootstrap.Result, error) {
 		return bootstrap.Run(bootstrap.Options{})
-	}))
+	})
+	workflowCmd.GroupID = "infra"
+	rootCmd.AddCommand(workflowCmd)
 
 	if err := rootCmd.Execute(); err != nil {
 		fmt.Fprintln(os.Stderr, err)
@@ -115,8 +155,9 @@ func bootstrapForConfig() (*bootstrap.Result, error) {
 
 func serveCmd() *cobra.Command {
 	return &cobra.Command{
-		Use:   "serve",
-		Short: "Start the gateway server",
+		Use:     "serve",
+		Short:   "Start the gateway server",
+		GroupID: "core",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			// Bootstrap: DB + crypto + config profile
 			boot, err := bootstrap.Run(bootstrap.Options{})
@@ -178,8 +219,9 @@ func serveCmd() *cobra.Command {
 
 func versionCmd() *cobra.Command {
 	return &cobra.Command{
-		Use:   "version",
-		Short: "Print version information",
+		Use:     "version",
+		Short:   "Print version information",
+		GroupID: "core",
 		Run: func(cmd *cobra.Command, args []string) {
 			fmt.Printf("lango %s (built %s)\n", Version, BuildTime)
 		},
@@ -190,8 +232,9 @@ func healthCmd() *cobra.Command {
 	var port int
 
 	cmd := &cobra.Command{
-		Use:   "health",
-		Short: "Check gateway health (replaces curl in Docker HEALTHCHECK)",
+		Use:     "health",
+		Short:   "Check gateway health (replaces curl in Docker HEALTHCHECK)",
+		GroupID: "core",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			url := "http://localhost:" + strconv.Itoa(port) + "/health"
 			client := &http.Client{Timeout: 5 * time.Second}
@@ -217,8 +260,17 @@ func healthCmd() *cobra.Command {
 
 func configCmd() *cobra.Command {
 	cmd := &cobra.Command{
-		Use:   "config",
-		Short: "Configuration profile management",
+		Use:     "config",
+		Short:   "Configuration profile management",
+		GroupID: "config",
+		Long: `Configuration profile management.
+
+Manage multiple configuration profiles for different environments or setups.
+
+See Also:
+  lango settings  - Interactive settings editor (TUI)
+  lango onboard   - Guided setup wizard
+  lango doctor    - Diagnose configuration issues`,
 	}
 
 	cmd.AddCommand(configListCmd())

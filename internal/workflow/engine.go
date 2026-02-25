@@ -7,7 +7,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/langoai/lango/internal/ctxutil"
+	"github.com/langoai/lango/internal/types"
 	"go.uber.org/zap"
 )
 
@@ -74,7 +74,7 @@ func (e *Engine) Run(ctx context.Context, w *Workflow) (*RunResult, error) {
 	}
 
 	// Detach from parent context to prevent cascading cancellation.
-	detached := ctxutil.Detach(ctx)
+	detached := types.DetachContext(ctx)
 
 	runID, err := e.state.CreateRun(detached, w)
 	if err != nil {
@@ -98,7 +98,7 @@ func (e *Engine) RunAsync(ctx context.Context, w *Workflow) (string, error) {
 	}
 
 	// Detach from parent context to prevent cascading cancellation.
-	detached := ctxutil.Detach(ctx)
+	detached := types.DetachContext(ctx)
 
 	runID, err := e.state.CreateRun(detached, w)
 	if err != nil {

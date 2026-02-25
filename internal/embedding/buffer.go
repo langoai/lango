@@ -3,10 +3,11 @@ package embedding
 import (
 	"context"
 	"sync"
-	"sync/atomic"
 	"time"
 
 	"go.uber.org/zap"
+
+	"github.com/langoai/lango/internal/asyncbuf"
 )
 
 // EmbedRequest represents a request to embed and store a text.
@@ -19,19 +20,12 @@ type EmbedRequest struct {
 
 // EmbeddingBuffer collects embed requests and processes them in batches
 // on a background goroutine. It follows the same lifecycle pattern as
-// memory.Buffer: Start → Enqueue → Stop.
+// memory.Buffer: Start -> Enqueue -> Stop.
 type EmbeddingBuffer struct {
 	provider EmbeddingProvider
 	store    VectorStore
-
-	queue  chan EmbedRequest
-	stopCh chan struct{}
-	done   chan struct{}
-
-	batchSize    int
-	batchTimeout time.Duration
-	dropCount    atomic.Int64
-	logger       *zap.SugaredLogger
+	inner    *asyncbuf.BatchBuffer[EmbedRequest]
+	logger   *zap.SugaredLogger
 }
 
 // NewEmbeddingBuffer creates a new asynchronous embedding buffer.
@@ -40,91 +34,38 @@ func NewEmbeddingBuffer(
 	store VectorStore,
 	logger *zap.SugaredLogger,
 ) *EmbeddingBuffer {
-	return &EmbeddingBuffer{
-		provider:     provider,
-		store:        store,
-		queue:        make(chan EmbedRequest, 256),
-		stopCh:       make(chan struct{}),
-		done:         make(chan struct{}),
-		batchSize:    32,
-		batchTimeout: 2 * time.Second,
-		logger:       logger,
+	b := &EmbeddingBuffer{
+		provider: provider,
+		store:    store,
+		logger:   logger,
 	}
+	b.inner = asyncbuf.NewBatchBuffer[EmbedRequest](asyncbuf.BatchConfig{
+		QueueSize:    256,
+		BatchSize:    32,
+		BatchTimeout: 2 * time.Second,
+	}, b.processBatch, logger)
+	return b
 }
 
 // Start launches the background goroutine. The WaitGroup is incremented
 // so callers can wait for graceful shutdown.
 func (b *EmbeddingBuffer) Start(wg *sync.WaitGroup) {
-	wg.Add(1)
-	go func() {
-		defer wg.Done()
-		defer close(b.done)
-		b.run()
-	}()
+	b.inner.Start(wg)
 }
 
 // Enqueue submits an embed request. Non-blocking; drops if the queue is full.
 func (b *EmbeddingBuffer) Enqueue(req EmbedRequest) {
-	select {
-	case b.queue <- req:
-	default:
-		b.dropCount.Add(1)
-		b.logger.Warnw("embedding queue full, dropping request",
-			"id", req.ID, "collection", req.Collection, "totalDropped", b.dropCount.Load())
-	}
+	b.inner.Enqueue(req)
 }
 
 // DroppedCount returns the total number of dropped embed requests.
 func (b *EmbeddingBuffer) DroppedCount() int64 {
-	return b.dropCount.Load()
+	return b.inner.DroppedCount()
 }
 
 // Stop signals the background goroutine to drain and exit.
 func (b *EmbeddingBuffer) Stop() {
-	close(b.stopCh)
-	<-b.done
-}
-
-func (b *EmbeddingBuffer) run() {
-	timer := time.NewTimer(b.batchTimeout)
-	defer timer.Stop()
-
-	var batch []EmbedRequest
-
-	flush := func() {
-		if len(batch) == 0 {
-			return
-		}
-		b.processBatch(batch)
-		batch = batch[:0]
-	}
-
-	for {
-		select {
-		case req := <-b.queue:
-			batch = append(batch, req)
-			if len(batch) >= b.batchSize {
-				flush()
-				timer.Reset(b.batchTimeout)
-			}
-
-		case <-timer.C:
-			flush()
-			timer.Reset(b.batchTimeout)
-
-		case <-b.stopCh:
-			// Drain remaining items.
-			for {
-				select {
-				case req := <-b.queue:
-					batch = append(batch, req)
-				default:
-					flush()
-					return
-				}
-			}
-		}
-	}
+	b.inner.Stop()
 }
 
 func (b *EmbeddingBuffer) processBatch(batch []EmbedRequest) {

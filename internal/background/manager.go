@@ -9,7 +9,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/langoai/lango/internal/approval"
-	"github.com/langoai/lango/internal/ctxutil"
+	"github.com/langoai/lango/internal/types"
 	"go.uber.org/zap"
 )
 
@@ -67,7 +67,7 @@ func (m *Manager) Submit(ctx context.Context, prompt string, origin Origin) (str
 		return "", fmt.Errorf("submit task: max concurrent tasks reached (%d)", m.maxTasks)
 	}
 
-	detached := ctxutil.Detach(ctx)
+	detached := types.DetachContext(ctx)
 	taskCtx, cancelFn := context.WithTimeout(detached, m.taskTimeout)
 	id := uuid.New().String()
 

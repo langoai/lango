@@ -31,7 +31,12 @@ func NewCommand() *cobra.Command {
 
 For the full configuration editor with all options, use "lango settings".
 
-All settings including API keys are saved in an encrypted profile (~/.lango/lango.db).`,
+All settings including API keys are saved in an encrypted profile (~/.lango/lango.db).
+
+See Also:
+  lango settings - Interactive settings editor (TUI)
+  lango config   - View/manage configuration profiles
+  lango doctor   - Diagnose configuration issues`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return runOnboard(profileName)
 		},
