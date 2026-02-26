@@ -559,13 +559,31 @@ Each remote agent entry:
     "handshakeTimeout": "30s",
     "sessionTokenTtl": "1h",
     "autoApproveKnownPeers": false,
+    "requireSignedChallenge": false,
     "firewallRules": [],
     "gossipInterval": "30s",
     "zkHandshake": false,
     "zkAttestation": false,
     "zkp": {
       "proofCacheDir": "~/.lango/zkp",
-      "provingScheme": "plonk"
+      "provingScheme": "plonk",
+      "srsMode": "unsafe",
+      "srsPath": "",
+      "maxCredentialAge": "24h"
+    },
+    "toolIsolation": {
+      "enabled": false,
+      "timeoutPerTool": "30s",
+      "maxMemoryMB": 512,
+      "container": {
+        "enabled": false,
+        "runtime": "auto",
+        "image": "lango-sandbox:latest",
+        "networkMode": "none",
+        "readOnlyRootfs": true,
+        "poolSize": 0,
+        "poolIdleTimeout": "5m"
+      }
     }
   }
 }
@@ -587,8 +605,12 @@ Each remote agent entry:
 | `p2p.gossipInterval` | `duration` | `30s` | Agent card gossip interval |
 | `p2p.zkHandshake` | `bool` | `false` | Enable ZK-enhanced handshake |
 | `p2p.zkAttestation` | `bool` | `false` | Enable ZK attestation on responses |
+| `p2p.requireSignedChallenge` | `bool` | `false` | Reject unsigned (v1.0) challenges; require v1.1 signed challenges |
 | `p2p.zkp.proofCacheDir` | `string` | `~/.lango/zkp` | ZKP circuit cache directory |
 | `p2p.zkp.provingScheme` | `string` | `plonk` | ZKP proving scheme: `plonk` or `groth16` |
+| `p2p.zkp.srsMode` | `string` | `unsafe` | SRS generation mode: `unsafe` (deterministic) or `file` (trusted ceremony) |
+| `p2p.zkp.srsPath` | `string` | | Path to SRS file (when `srsMode = "file"`) |
+| `p2p.zkp.maxCredentialAge` | `string` | `24h` | Maximum age for ZK credentials before rejection |
 
 Each firewall rule entry:
 
@@ -622,6 +644,22 @@ Each firewall rule entry:
 | Key | Type | Default | Description |
 |-----|------|---------|-------------|
 | `p2p.minTrustScore` | `float64` | `0.3` | Minimum trust score to accept P2P requests (0.0 - 1.0) |
+
+### P2P Tool Isolation
+
+| Key | Type | Default | Description |
+|-----|------|---------|-------------|
+| `p2p.toolIsolation.enabled` | `bool` | `false` | Enable subprocess isolation for remote peer tool invocations |
+| `p2p.toolIsolation.timeoutPerTool` | `duration` | `30s` | Maximum duration for a single tool execution |
+| `p2p.toolIsolation.maxMemoryMB` | `int` | `512` | Soft memory limit per subprocess in megabytes |
+| `p2p.toolIsolation.container.enabled` | `bool` | `false` | Use container-based sandbox instead of subprocess |
+| `p2p.toolIsolation.container.runtime` | `string` | `auto` | Container runtime: `auto`, `docker`, `gvisor`, `native` |
+| `p2p.toolIsolation.container.image` | `string` | `lango-sandbox:latest` | Docker image for sandbox container |
+| `p2p.toolIsolation.container.networkMode` | `string` | `none` | Docker network mode for sandbox containers |
+| `p2p.toolIsolation.container.readOnlyRootfs` | `bool` | `true` | Mount container root filesystem as read-only |
+| `p2p.toolIsolation.container.cpuQuotaUs` | `int` | `0` | Docker CPU quota in microseconds (0 = unlimited) |
+| `p2p.toolIsolation.container.poolSize` | `int` | `0` | Pre-warmed containers in pool (0 = disabled) |
+| `p2p.toolIsolation.container.poolIdleTimeout` | `duration` | `5m` | Idle timeout before pool containers are recycled |
 
 ---
 
