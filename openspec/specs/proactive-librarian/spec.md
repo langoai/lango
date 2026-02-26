@@ -27,7 +27,7 @@ The system SHALL provide a `LibrarianConfig` struct with fields: Enabled (bool),
 - **THEN** defaults are applied: ObservationThreshold=2, InquiryCooldownTurns=3, MaxPendingInquiries=2, AutoSaveConfidence="high"
 
 ### Requirement: Observation Analyzer
-The system SHALL analyze conversation observations via LLM to extract knowledge (with type, category, content, confidence, key) and detect knowledge gaps (with topic, question, context, priority). The analyzer SHALL output a structured AnalysisOutput containing extractions and gaps arrays.
+The system SHALL analyze conversation observations via LLM to extract knowledge (with type, category, content, confidence, key) and detect knowledge gaps (with topic, question, context, priority). The analyzer SHALL output a structured AnalysisOutput containing extractions and gaps arrays. The observation analyzer prompt SHALL list all valid extraction types including `pattern` and `correction` in addition to `preference`, `fact`, `rule`, `definition`.
 
 #### Scenario: Successful analysis
 - **WHEN** observations are passed to the analyzer
@@ -37,8 +37,12 @@ The system SHALL analyze conversation observations via LLM to extract knowledge 
 - **WHEN** zero observations are provided
 - **THEN** an empty AnalysisOutput is returned without LLM call
 
+#### Scenario: Prompt includes all types
+- **WHEN** the observation analyzer generates its LLM prompt
+- **THEN** the type field description SHALL include `preference|fact|rule|definition|pattern|correction`
+
 ### Requirement: Inquiry Processor
-The system SHALL detect user answers to pending inquiries by analyzing recent messages via LLM. When a match is detected with high or medium confidence, the system SHALL save the answer as structured knowledge and resolve the inquiry.
+The system SHALL detect user answers to pending inquiries by analyzing recent messages via LLM. When a match is detected with high or medium confidence, the system SHALL validate the category via `mapCategory()` before saving the answer as structured knowledge and resolve the inquiry. Raw casting of LLM-provided category strings to `entknowledge.Category` SHALL NOT be used.
 
 #### Scenario: Answer detected
 - **WHEN** a recent message matches a pending inquiry with high confidence
@@ -47,6 +51,14 @@ The system SHALL detect user answers to pending inquiries by analyzing recent me
 #### Scenario: No pending inquiries
 - **WHEN** no pending inquiries exist for the session
 - **THEN** the processor returns immediately without LLM call
+
+#### Scenario: Valid inquiry answer category
+- **WHEN** an inquiry answer match contains a recognized category
+- **THEN** the knowledge SHALL be saved and the inquiry resolved
+
+#### Scenario: Invalid inquiry answer category
+- **WHEN** an inquiry answer match contains an unrecognized category
+- **THEN** the knowledge save SHALL be skipped with a warning log, but the inquiry SHALL still be resolved
 
 ### Requirement: Proactive Buffer
 The system SHALL provide an async ProactiveBuffer with Start/Trigger/Stop lifecycle. On each trigger, the buffer SHALL: (1) process pending inquiry answers, (2) analyze observations if threshold is met, (3) auto-save high-confidence extractions, (4) create inquiries from gaps respecting cooldown and max-pending limits.
@@ -86,7 +98,7 @@ The system SHALL expose two new agent tools: `librarian_pending_inquiries` (list
 - **THEN** the inquiry is dismissed and confirmation is returned
 
 ### Requirement: Auto-save Knowledge from Extractions
-The system SHALL automatically save knowledge extractions that meet the configured auto-save confidence threshold. High-confidence extractions are saved without user confirmation. Optional graph triples (subject/predicate/object) SHALL be forwarded via the graph callback if available.
+The system SHALL automatically save knowledge extractions that meet the configured auto-save confidence threshold. The extraction pipeline SHALL validate the type of each extraction before saving. High-confidence extractions with valid types are saved without user confirmation. When an extraction has an unrecognized type, the system SHALL log a warning and skip that extraction without affecting other extractions in the batch. Optional graph triples (subject/predicate/object) SHALL be forwarded via the graph callback if available.
 
 #### Scenario: High confidence auto-save
 - **WHEN** an extraction has confidence "high" and AutoSaveConfidence is "high"
@@ -95,3 +107,11 @@ The system SHALL automatically save knowledge extractions that meet the configur
 #### Scenario: Below threshold extraction
 - **WHEN** an extraction has confidence "medium" and AutoSaveConfidence is "high"
 - **THEN** the extraction is NOT auto-saved
+
+#### Scenario: Valid extraction type saved
+- **WHEN** an extraction with a recognized type (preference, fact, rule, definition, pattern, correction) meets the auto-save confidence threshold
+- **THEN** the knowledge entry SHALL be saved with the correct category
+
+#### Scenario: Unknown extraction type skipped
+- **WHEN** an extraction with an unrecognized type is encountered
+- **THEN** the system SHALL log a warning with the key and type, skip that extraction, and continue processing remaining extractions

@@ -5,9 +5,18 @@ The system SHALL provide agent-facing tools for managing the knowledge base.
 
 #### Scenario: save_knowledge tool
 - **WHEN** the agent invokes `save_knowledge` with key, category, content, and optional tags/source
-- **THEN** the system SHALL persist the knowledge entry via the Store
+- **THEN** the system SHALL validate the category using `entknowledge.CategoryValidator()` before persisting
+- **AND** persist the knowledge entry via the Store
 - **AND** create an audit log entry with action "knowledge_save"
 - **AND** return a success status with the key
+
+#### Scenario: save_knowledge with invalid category
+- **WHEN** the agent invokes `save_knowledge` with an unrecognized category
+- **THEN** the system SHALL return an error indicating the invalid category without saving
+
+#### Scenario: save_knowledge tool schema includes all categories
+- **WHEN** the tool parameters are inspected
+- **THEN** the `category` enum SHALL include all six valid values: rule, definition, preference, fact, pattern, correction
 
 #### Scenario: search_knowledge tool
 - **WHEN** the agent invokes `search_knowledge` with a query and optional category

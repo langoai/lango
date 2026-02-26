@@ -99,10 +99,15 @@ func (l *SessionLearner) LearnFromSession(ctx context.Context, sessionKey string
 func (l *SessionLearner) saveSessionResult(ctx context.Context, sessionKey string, r analysisResult) {
 	switch r.Type {
 	case "fact", "preference":
+		cat, err := mapKnowledgeCategory(r.Type)
+		if err != nil {
+			l.logger.Debugw("skip session knowledge: unknown type", "type", r.Type, "error", err)
+			break
+		}
 		key := fmt.Sprintf("session:%s:%s", sessionKey, sanitizeForNode(r.Content[:min(len(r.Content), 32)]))
 		entry := knowledge.KnowledgeEntry{
 			Key:      key,
-			Category: mapKnowledgeCategory(r.Type),
+			Category: cat,
 			Content:  r.Content,
 			Source:   "session_learning",
 		}

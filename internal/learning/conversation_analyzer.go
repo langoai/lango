@@ -95,10 +95,15 @@ func (a *ConversationAnalyzer) Analyze(ctx context.Context, sessionKey string, m
 func (a *ConversationAnalyzer) saveResult(ctx context.Context, sessionKey string, r analysisResult) {
 	switch r.Type {
 	case "fact", "preference":
+		cat, err := mapKnowledgeCategory(r.Type)
+		if err != nil {
+			a.logger.Debugw("skip knowledge: unknown type", "type", r.Type, "error", err)
+			break
+		}
 		key := fmt.Sprintf("conv:%s:%s", sessionKey, sanitizeForNode(r.Content[:min(len(r.Content), 32)]))
 		entry := knowledge.KnowledgeEntry{
 			Key:      key,
-			Category: mapKnowledgeCategory(r.Type),
+			Category: cat,
 			Content:  r.Content,
 			Source:   "conversation_analysis",
 		}

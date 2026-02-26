@@ -515,13 +515,13 @@ func buildMetaTools(store *knowledge.Store, engine *learning.Engine, registry *s
 	return []*agent.Tool{
 		{
 			Name:        "save_knowledge",
-			Description: "Save a piece of knowledge (user rule, definition, preference, or fact) for future reference",
+			Description: "Save a piece of knowledge (user rule, definition, preference, fact, pattern, or correction) for future reference",
 			SafetyLevel: agent.SafetyLevelModerate,
 			Parameters: map[string]interface{}{
 				"type": "object",
 				"properties": map[string]interface{}{
 					"key":      map[string]interface{}{"type": "string", "description": "Unique key for this knowledge entry"},
-					"category": map[string]interface{}{"type": "string", "description": "Category: rule, definition, preference, or fact", "enum": []string{"rule", "definition", "preference", "fact"}},
+					"category": map[string]interface{}{"type": "string", "description": "Category: rule, definition, preference, fact, pattern, or correction", "enum": []string{"rule", "definition", "preference", "fact", "pattern", "correction"}},
 					"content":  map[string]interface{}{"type": "string", "description": "The knowledge content to save"},
 					"tags":     map[string]interface{}{"type": "array", "items": map[string]interface{}{"type": "string"}, "description": "Optional tags for categorization"},
 					"source":   map[string]interface{}{"type": "string", "description": "Where this knowledge came from"},
@@ -538,6 +538,11 @@ func buildMetaTools(store *knowledge.Store, engine *learning.Engine, registry *s
 					return nil, fmt.Errorf("key, category, and content are required")
 				}
 
+				cat := entknowledge.Category(category)
+				if err := entknowledge.CategoryValidator(cat); err != nil {
+					return nil, fmt.Errorf("invalid category %q: %w", category, err)
+				}
+
 				var tags []string
 				if rawTags, ok := params["tags"].([]interface{}); ok {
 					for _, t := range rawTags {
@@ -549,7 +554,7 @@ func buildMetaTools(store *knowledge.Store, engine *learning.Engine, registry *s
 
 				entry := knowledge.KnowledgeEntry{
 					Key:      key,
-					Category: entknowledge.Category(category),
+					Category: cat,
 					Content:  content,
 					Tags:     tags,
 					Source:   source,

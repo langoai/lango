@@ -32,6 +32,31 @@ type ErrorFixProvider interface {
 // defaultMaxTurns is the default maximum number of tool-calling iterations per agent run.
 const defaultMaxTurns = 25
 
+// AgentOption configures optional Agent behavior at construction time.
+type AgentOption func(*agentOptions)
+
+type agentOptions struct {
+	tokenBudget      int
+	maxTurns         int
+	errorFixProvider ErrorFixProvider
+}
+
+// WithAgentTokenBudget sets the session history token budget.
+// Use ModelTokenBudget(modelName) to derive an appropriate value.
+func WithAgentTokenBudget(budget int) AgentOption {
+	return func(o *agentOptions) { o.tokenBudget = budget }
+}
+
+// WithAgentMaxTurns sets the maximum number of tool-calling turns per run.
+func WithAgentMaxTurns(n int) AgentOption {
+	return func(o *agentOptions) { o.maxTurns = n }
+}
+
+// WithAgentErrorFixProvider sets a learning-based error correction provider.
+func WithAgentErrorFixProvider(p ErrorFixProvider) AgentOption {
+	return func(o *agentOptions) { o.errorFixProvider = p }
+}
+
 // Agent wraps the ADK runner for integration with Lango.
 type Agent struct {
 	runner         *runner.Runner
@@ -41,7 +66,12 @@ type Agent struct {
 }
 
 // NewAgent creates a new Agent instance.
-func NewAgent(ctx context.Context, tools []tool.Tool, mod model.LLM, systemPrompt string, store internal.Store) (*Agent, error) {
+func NewAgent(ctx context.Context, tools []tool.Tool, mod model.LLM, systemPrompt string, store internal.Store, opts ...AgentOption) (*Agent, error) {
+	var o agentOptions
+	for _, fn := range opts {
+		fn(&o)
+	}
+
 	// Create LLM Agent
 	cfg := llmagent.Config{
 		Name:        "lango-agent",
@@ -58,6 +88,9 @@ func NewAgent(ctx context.Context, tools []tool.Tool, mod model.LLM, systemPromp
 
 	// Create Session Service
 	sessService := NewSessionServiceAdapter(store, "lango-agent")
+	if o.tokenBudget > 0 {
+		sessService.WithTokenBudget(o.tokenBudget)
+	}
 
 	// Create Runner
 	runnerCfg := runner.Config{
@@ -72,15 +105,25 @@ func NewAgent(ctx context.Context, tools []tool.Tool, mod model.LLM, systemPromp
 	}
 
 	return &Agent{
-		runner:   r,
-		adkAgent: adkAgent,
+		runner:           r,
+		adkAgent:         adkAgent,
+		maxTurns:         o.maxTurns,
+		errorFixProvider: o.errorFixProvider,
 	}, nil
 }
 
 // NewAgentFromADK creates a Lango Agent wrapping a pre-built ADK agent.
 // Used for multi-agent orchestration where the agent tree is built externally.
-func NewAgentFromADK(adkAgent adk_agent.Agent, store internal.Store) (*Agent, error) {
+func NewAgentFromADK(adkAgent adk_agent.Agent, store internal.Store, opts ...AgentOption) (*Agent, error) {
+	var o agentOptions
+	for _, fn := range opts {
+		fn(&o)
+	}
+
 	sessService := NewSessionServiceAdapter(store, adkAgent.Name())
+	if o.tokenBudget > 0 {
+		sessService.WithTokenBudget(o.tokenBudget)
+	}
 
 	runnerCfg := runner.Config{
 		AppName:        "lango",
@@ -93,7 +136,12 @@ func NewAgentFromADK(adkAgent adk_agent.Agent, store internal.Store) (*Agent, er
 		return nil, fmt.Errorf("create runner: %w", err)
 	}
 
-	return &Agent{runner: r, adkAgent: adkAgent}, nil
+	return &Agent{
+		runner:           r,
+		adkAgent:         adkAgent,
+		maxTurns:         o.maxTurns,
+		errorFixProvider: o.errorFixProvider,
+	}, nil
 }
 
 // WithMaxTurns sets the maximum number of tool-calling turns per run.

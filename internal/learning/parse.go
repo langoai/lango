@@ -43,18 +43,22 @@ func parseAnalysisResponse(raw string) ([]analysisResult, error) {
 }
 
 // mapKnowledgeCategory maps LLM analysis type to a valid knowledge category.
-func mapKnowledgeCategory(analysisType string) entknowledge.Category {
+func mapKnowledgeCategory(analysisType string) (entknowledge.Category, error) {
 	switch analysisType {
 	case "preference":
-		return entknowledge.CategoryPreference
+		return entknowledge.CategoryPreference, nil
 	case "fact":
-		return entknowledge.CategoryFact
+		return entknowledge.CategoryFact, nil
 	case "rule":
-		return entknowledge.CategoryRule
+		return entknowledge.CategoryRule, nil
 	case "definition":
-		return entknowledge.CategoryDefinition
+		return entknowledge.CategoryDefinition, nil
+	case "pattern":
+		return entknowledge.CategoryPattern, nil
+	case "correction":
+		return entknowledge.CategoryCorrection, nil
 	default:
-		return entknowledge.CategoryFact
+		return "", fmt.Errorf("unrecognized knowledge type: %q", analysisType)
 	}
 }
 

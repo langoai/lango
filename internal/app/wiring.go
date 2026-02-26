@@ -412,6 +412,10 @@ func initMemory(cfg *config.Config, store session.Store, sv *supervisor.Supervis
 
 	buffer := memory.NewBuffer(observer, reflector, mStore, msgThreshold, obsThreshold, getMessages, mLogger)
 
+	if cfg.ObservationalMemory.ReflectionConsolidationThreshold > 0 {
+		buffer.SetReflectionConsolidationThreshold(cfg.ObservationalMemory.ReflectionConsolidationThreshold)
+	}
+
 	logger().Infow("observational memory initialized",
 		"provider", provider,
 		"model", omModel,
@@ -729,6 +733,9 @@ func initAgent(ctx context.Context, sv *supervisor.Supervisor, cfg *config.Confi
 				maxObs = 20
 			}
 			ctxAdapter.WithMemoryLimits(maxRef, maxObs)
+			if cfg.ObservationalMemory.MemoryTokenBudget > 0 {
+				ctxAdapter.WithMemoryTokenBudget(cfg.ObservationalMemory.MemoryTokenBudget)
+			}
 		}
 
 		// Wire in RAG if available and enabled
@@ -765,6 +772,9 @@ func initAgent(ctx context.Context, sv *supervisor.Supervisor, cfg *config.Confi
 			maxObs = 20
 		}
 		ctxAdapter.WithMemoryLimits(maxRef, maxObs)
+		if cfg.ObservationalMemory.MemoryTokenBudget > 0 {
+			ctxAdapter.WithMemoryTokenBudget(cfg.ObservationalMemory.MemoryTokenBudget)
+		}
 
 		// Wire in RAG if available and enabled
 		if ec != nil && cfg.Embedding.RAG.Enabled {
@@ -825,7 +835,7 @@ func initAgent(ctx context.Context, sv *supervisor.Supervisor, cfg *config.Confi
 			Model:               llm,
 			SystemPrompt:        orchestratorPrompt,
 			AdaptTool:           adk.AdaptTool,
-			MaxDelegationRounds: 5,
+			MaxDelegationRounds: cfg.Agent.MaxDelegationRounds,
 			SubAgentPrompt:      buildSubAgentPromptFunc(&cfg.Agent),
 		}
 
@@ -845,7 +855,9 @@ func initAgent(ctx context.Context, sv *supervisor.Supervisor, cfg *config.Confi
 			return nil, fmt.Errorf("build agent tree: %w", err)
 		}
 
-		adkAgent, err := adk.NewAgentFromADK(agentTree, store)
+		// Build agent options for multi-agent mode.
+		agentOpts := buildAgentOptions(cfg, kc)
+		adkAgent, err := adk.NewAgentFromADK(agentTree, store, agentOpts...)
 		if err != nil {
 			return nil, fmt.Errorf("adk multi-agent: %w", err)
 		}
@@ -854,11 +866,36 @@ func initAgent(ctx context.Context, sv *supervisor.Supervisor, cfg *config.Confi
 
 	// Single-agent mode (default).
 	logger().Info("initializing agent runtime (ADK)...")
-	adkAgent, err := adk.NewAgent(ctx, adkTools, llm, systemPrompt, store)
+	agentOpts := buildAgentOptions(cfg, kc)
+	adkAgent, err := adk.NewAgent(ctx, adkTools, llm, systemPrompt, store, agentOpts...)
 	if err != nil {
 		return nil, fmt.Errorf("adk agent: %w", err)
 	}
 	return adkAgent, nil
+}
+
+// buildAgentOptions constructs AgentOption slice from config and knowledge components.
+func buildAgentOptions(cfg *config.Config, kc *knowledgeComponents) []adk.AgentOption {
+	var opts []adk.AgentOption
+
+	// Token budget derived from the configured model.
+	opts = append(opts, adk.WithAgentTokenBudget(adk.ModelTokenBudget(cfg.Agent.Model)))
+
+	// Max turns (0 = use agent default).
+	if cfg.Agent.MaxTurns > 0 {
+		opts = append(opts, adk.WithAgentMaxTurns(cfg.Agent.MaxTurns))
+	}
+
+	// Error correction: enabled by default when knowledge system is available.
+	errorCorrectionEnabled := true
+	if cfg.Agent.ErrorCorrectionEnabled != nil {
+		errorCorrectionEnabled = *cfg.Agent.ErrorCorrectionEnabled
+	}
+	if errorCorrectionEnabled && kc != nil && kc.engine != nil {
+		opts = append(opts, adk.WithAgentErrorFixProvider(kc.engine))
+	}
+
+	return opts
 }
 
 // initGateway creates the gateway server.

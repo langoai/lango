@@ -83,6 +83,12 @@ func (b *Buffer) SetCompactor(c MessageCompactor) {
 	b.compactor = c
 }
 
+// SetReflectionConsolidationThreshold overrides the default number of reflections
+// that must accumulate before meta-reflection (consolidation) is triggered.
+func (b *Buffer) SetReflectionConsolidationThreshold(n int) {
+	b.reflectionConsolidationThreshold = n
+}
+
 // Stop signals the background goroutine to stop and waits for completion.
 func (b *Buffer) Stop() {
 	b.inner.Stop()

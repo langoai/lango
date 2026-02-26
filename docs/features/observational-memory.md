@@ -97,7 +97,9 @@ Set any limit to `0` for unlimited injection (not recommended).
     "observationTokenThreshold": 2000,
     "maxMessageTokenBudget": 8000,
     "maxReflectionsInContext": 5,
-    "maxObservationsInContext": 20
+    "maxObservationsInContext": 20,
+    "memoryTokenBudget": 4000,
+    "reflectionConsolidationThreshold": 5
   }
 }
 ```
@@ -112,6 +114,8 @@ Set any limit to `0` for unlimited injection (not recommended).
 | `maxMessageTokenBudget` | `int` | `8000` | Maximum token budget for recent messages in context |
 | `maxReflectionsInContext` | `int` | `5` | Max reflections injected into LLM context (0 = unlimited) |
 | `maxObservationsInContext` | `int` | `20` | Max observations injected into LLM context (0 = unlimited) |
+| `memoryTokenBudget` | `int` | `4000` | Max token budget for the memory section in system prompt |
+| `reflectionConsolidationThreshold` | `int` | `5` | Min reflections before meta-reflection (consolidation) triggers |
 
 !!! tip "Dedicated Model"
 
@@ -168,6 +172,12 @@ Reflection 3 (gen 1)  ─┘
 ```
 
 Each generation captures a broader summary, enabling context maintenance for arbitrarily long conversations.
+
+### Auto-Consolidation
+
+The `reflectionConsolidationThreshold` controls how many reflections must accumulate before meta-reflection fires. A lower value (e.g., 3) causes more frequent consolidation — useful for fast-moving conversations. A higher value (e.g., 10) preserves more granular reflections before summarizing.
+
+The `memoryTokenBudget` caps the total tokens injected into the system prompt for the memory section. Reflections are prioritized first (higher information density), then observations fill the remaining budget.
 
 ## Related
 

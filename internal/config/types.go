@@ -385,6 +385,14 @@ type ObservationalMemoryConfig struct {
 
 	// MaxObservationsInContext limits observations injected into LLM context (default: 20, 0 = unlimited).
 	MaxObservationsInContext int `mapstructure:"maxObservationsInContext" json:"maxObservationsInContext"`
+
+	// MemoryTokenBudget sets the max token budget for the memory section in system prompt (default: 4000).
+	// Zero means use the default.
+	MemoryTokenBudget int `mapstructure:"memoryTokenBudget" json:"memoryTokenBudget"`
+
+	// ReflectionConsolidationThreshold is the min reflections before meta-reflection triggers (default: 5).
+	// Zero means use the default.
+	ReflectionConsolidationThreshold int `mapstructure:"reflectionConsolidationThreshold" json:"reflectionConsolidationThreshold"`
 }
 
 // EmbeddingConfig defines embedding and RAG settings.
@@ -635,6 +643,18 @@ type AgentConfig struct {
 
 	// ToolTimeout is the maximum duration for a single tool call execution (default: 2m).
 	ToolTimeout time.Duration `mapstructure:"toolTimeout" json:"toolTimeout"`
+
+	// MaxTurns limits the number of tool-calling iterations per agent run (default: 25).
+	// Zero means use the default.
+	MaxTurns int `mapstructure:"maxTurns" json:"maxTurns"`
+
+	// ErrorCorrectionEnabled enables learning-based error correction (default: true).
+	// When nil, defaults to true if the knowledge system is enabled.
+	ErrorCorrectionEnabled *bool `mapstructure:"errorCorrectionEnabled" json:"errorCorrectionEnabled"`
+
+	// MaxDelegationRounds limits orchestrator→sub-agent delegation rounds per turn (default: 10).
+	// Zero means use the default.
+	MaxDelegationRounds int `mapstructure:"maxDelegationRounds" json:"maxDelegationRounds"`
 }
 
 // ProviderConfig defines AI provider settings

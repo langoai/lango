@@ -256,6 +256,9 @@ All settings are managed via `lango onboard` (guided wizard), `lango settings` (
 | `agent.promptsDir` | string | - | Directory of `.md` files to override default prompt sections (takes precedence over `systemPromptPath`) |
 | `agent.requestTimeout` | duration | `5m` | Max time for a single agent request (prevents indefinite hangs) |
 | `agent.toolTimeout` | duration | `2m` | Max time for a single tool call execution |
+| `agent.maxTurns` | int | `25` | Max tool-calling iterations per agent run |
+| `agent.errorCorrectionEnabled` | bool | `true` | Enable learning-based error correction (requires knowledge system) |
+| `agent.maxDelegationRounds` | int | `10` | Max orchestrator→sub-agent delegation rounds per turn (multi-agent only) |
 | **Providers** | | | |
 | `providers.<id>.type` | string | - | Provider type (openai, anthropic, gemini) |
 | `providers.<id>.apiKey` | string | - | Provider API key |
@@ -318,6 +321,8 @@ All settings are managed via `lango onboard` (guided wizard), `lango settings` (
 | `observationalMemory.maxMessageTokenBudget` | int | `8000` | Max token budget for recent messages in context |
 | `observationalMemory.maxReflectionsInContext` | int | `5` | Max reflections injected into LLM context (0 = unlimited) |
 | `observationalMemory.maxObservationsInContext` | int | `20` | Max observations injected into LLM context (0 = unlimited) |
+| `observationalMemory.memoryTokenBudget` | int | `4000` | Max token budget for the memory section in system prompt |
+| `observationalMemory.reflectionConsolidationThreshold` | int | `5` | Min reflections before meta-reflection triggers |
 | **Embedding** | | | |
 | `embedding.providerID` | string | - | Provider ID from `providers` map (e.g., `"gemini-1"`, `"my-openai"`). Backend type and API key are auto-resolved. |
 | `embedding.provider` | string | - | Embedding backend (`openai`, `google`, `local`). Deprecated when `providerID` is set. |

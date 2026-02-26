@@ -29,7 +29,7 @@ Output JSON:
 {
   "extractions": [
     {
-      "type": "preference|fact|rule|definition",
+      "type": "preference|fact|rule|definition|pattern|correction",
       "category": "domain category",
       "content": "the knowledge content",
       "confidence": "high|medium|low",

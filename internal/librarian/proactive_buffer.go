@@ -2,6 +2,7 @@ package librarian
 
 import (
 	"context"
+	"fmt"
 	"sync"
 
 	"go.uber.org/zap"
@@ -150,9 +151,14 @@ func (b *ProactiveBuffer) process(sessionKey string) {
 	// Process extractions: auto-save high confidence, create inquiries for medium.
 	for _, ext := range output.Extractions {
 		if b.shouldAutoSave(ext.Confidence) {
+			cat, err := mapCategory(ext.Type)
+			if err != nil {
+				b.logger.Warnw("skip extraction: unknown type", "key", ext.Key, "type", ext.Type, "error", err)
+				continue
+			}
 			entry := knowledge.KnowledgeEntry{
 				Key:      ext.Key,
-				Category: mapCategory(ext.Type),
+				Category: cat,
 				Content:  ext.Content,
 				Source:   "proactive_librarian",
 			}
@@ -232,18 +238,22 @@ func (b *ProactiveBuffer) shouldAutoSave(confidence types.Confidence) bool {
 }
 
 // mapCategory maps LLM analysis type to a valid knowledge category.
-func mapCategory(analysisType string) entknowledge.Category {
+func mapCategory(analysisType string) (entknowledge.Category, error) {
 	switch analysisType {
 	case "preference":
-		return entknowledge.CategoryPreference
+		return entknowledge.CategoryPreference, nil
 	case "fact":
-		return entknowledge.CategoryFact
+		return entknowledge.CategoryFact, nil
 	case "rule":
-		return entknowledge.CategoryRule
+		return entknowledge.CategoryRule, nil
 	case "definition":
-		return entknowledge.CategoryDefinition
+		return entknowledge.CategoryDefinition, nil
+	case "pattern":
+		return entknowledge.CategoryPattern, nil
+	case "correction":
+		return entknowledge.CategoryCorrection, nil
 	default:
-		return entknowledge.CategoryFact
+		return "", fmt.Errorf("unrecognized knowledge type: %q", analysisType)
 	}
 }
 

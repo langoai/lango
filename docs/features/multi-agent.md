@@ -133,7 +133,7 @@ When a rejection occurs, the orchestrator re-evaluates and tries the next most r
 
 ### Delegation Limits
 
-The orchestrator enforces a maximum number of delegation rounds per user turn (default: **5**). Simple conversational messages (greetings, opinions, general knowledge) are handled directly by the orchestrator without delegation.
+The orchestrator enforces a maximum number of delegation rounds per user turn (default: **10**). Simple conversational messages (greetings, opinions, general knowledge) are handled directly by the orchestrator without delegation.
 
 ## Remote A2A Agents
 
@@ -154,6 +154,7 @@ When [A2A protocol](a2a-protocol.md) is enabled, remote agents are appended to t
 | Setting | Default | Description |
 |---|---|---|
 | `agent.multiAgent` | `false` | Enable hierarchical sub-agent orchestration |
+| `agent.maxDelegationRounds` | `10` | Max orchestrator→sub-agent delegation rounds per turn |
 
 !!! info
 
