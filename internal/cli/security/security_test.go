@@ -50,8 +50,8 @@ func TestSecretsCmd_HasSubcommands(t *testing.T) {
 				secretsSubs[ssub.Use] = true
 			}
 			assert.True(t, secretsSubs["list"], "secrets should have list subcommand")
-			assert.True(t, secretsSubs["set [name]"], "secrets should have set subcommand")
-			assert.True(t, secretsSubs["delete [name]"], "secrets should have delete subcommand")
+			assert.True(t, secretsSubs["set <name>"], "secrets should have set subcommand")
+			assert.True(t, secretsSubs["delete <name>"], "secrets should have delete subcommand")
 			return
 		}
 	}

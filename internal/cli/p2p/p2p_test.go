@@ -67,7 +67,7 @@ func TestFirewallCmd_HasSubcommands(t *testing.T) {
 			}
 			assert.True(t, firewallSubs["list"], "firewall should have list subcommand")
 			assert.True(t, firewallSubs["add"], "firewall should have add subcommand")
-			assert.True(t, firewallSubs["remove"], "firewall should have remove subcommand")
+			assert.True(t, firewallSubs["remove <peer-did>"], "firewall should have remove subcommand")
 			return
 		}
 	}
@@ -83,7 +83,7 @@ func TestSessionCmd_HasSubcommands(t *testing.T) {
 				sessionSubs[ssub.Use] = true
 			}
 			assert.True(t, sessionSubs["list"], "session should have list subcommand")
-			assert.True(t, sessionSubs["revoke [peer-id]"], "session should have revoke subcommand")
+			assert.True(t, sessionSubs["revoke"], "session should have revoke subcommand")
 			assert.True(t, sessionSubs["revoke-all"], "session should have revoke-all subcommand")
 			return
 		}
