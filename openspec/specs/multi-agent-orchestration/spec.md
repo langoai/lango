@@ -199,7 +199,22 @@ The `Config` struct SHALL include a `MaxDelegationRounds` field. The orchestrato
 
 #### Scenario: Default max rounds
 - **WHEN** `MaxDelegationRounds` is zero or unset
-- **THEN** the default limit of 5 rounds SHALL be used in the orchestrator prompt
+- **THEN** the default limit of 10 rounds SHALL be used in the orchestrator prompt
+
+### Requirement: Round budget guidance in orchestrator prompt
+The orchestrator instruction SHALL include round-budget management guidance that helps the LLM self-regulate delegation efficiency.
+
+#### Scenario: Budget guidance included in prompt
+- **WHEN** the orchestrator instruction is built
+- **THEN** it SHALL contain guidance categorizing tasks by round cost: simple (1-2), medium (3-5), complex (6-10)
+
+#### Scenario: Prompt includes consolidation advice
+- **WHEN** the orchestrator is running low on rounds
+- **THEN** the prompt SHALL advise consolidating partial results and providing the best possible answer
+
+#### Scenario: Delegation rules formatting
+- **WHEN** the orchestrator instruction is built
+- **THEN** the "Maximum N delegation rounds" text SHALL appear as part of the round budget section, not the delegation rules section
 
 ### Requirement: Dynamic Orchestrator Instruction
 The orchestrator instruction SHALL be dynamically generated to list only the sub-agents that were actually created, rather than hardcoding all agent names.
