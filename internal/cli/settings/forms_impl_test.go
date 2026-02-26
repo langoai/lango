@@ -493,6 +493,328 @@ func TestNewSkillForm_AllFields(t *testing.T) {
 	}
 }
 
+func TestNewP2PForm_AllFields(t *testing.T) {
+	cfg := defaultTestConfig()
+	form := NewP2PForm(cfg)
+
+	wantKeys := []string{
+		"p2p_enabled", "p2p_listen_addrs", "p2p_bootstrap_peers",
+		"p2p_enable_relay", "p2p_enable_mdns", "p2p_max_peers",
+		"p2p_handshake_timeout", "p2p_session_token_ttl",
+		"p2p_auto_approve", "p2p_gossip_interval",
+		"p2p_zk_handshake", "p2p_zk_attestation",
+		"p2p_require_signed_challenge", "p2p_min_trust_score",
+	}
+
+	if len(form.Fields) != len(wantKeys) {
+		t.Fatalf("expected %d fields, got %d", len(wantKeys), len(form.Fields))
+	}
+
+	for _, key := range wantKeys {
+		if f := fieldByKey(form, key); f == nil {
+			t.Errorf("missing field %q", key)
+		}
+	}
+}
+
+func TestNewP2PZKPForm_AllFields(t *testing.T) {
+	cfg := defaultTestConfig()
+	form := NewP2PZKPForm(cfg)
+
+	wantKeys := []string{
+		"zkp_proof_cache_dir", "zkp_proving_scheme",
+		"zkp_srs_mode", "zkp_srs_path", "zkp_max_credential_age",
+	}
+
+	if len(form.Fields) != len(wantKeys) {
+		t.Fatalf("expected %d fields, got %d", len(wantKeys), len(form.Fields))
+	}
+
+	for _, key := range wantKeys {
+		if f := fieldByKey(form, key); f == nil {
+			t.Errorf("missing field %q", key)
+		}
+	}
+
+	if f := fieldByKey(form, "zkp_proving_scheme"); f.Type != tuicore.InputSelect {
+		t.Errorf("zkp_proving_scheme: want InputSelect, got %d", f.Type)
+	}
+}
+
+func TestNewP2PPricingForm_AllFields(t *testing.T) {
+	cfg := defaultTestConfig()
+	form := NewP2PPricingForm(cfg)
+
+	wantKeys := []string{
+		"pricing_enabled", "pricing_per_query", "pricing_tool_prices",
+	}
+
+	if len(form.Fields) != len(wantKeys) {
+		t.Fatalf("expected %d fields, got %d", len(wantKeys), len(form.Fields))
+	}
+
+	for _, key := range wantKeys {
+		if f := fieldByKey(form, key); f == nil {
+			t.Errorf("missing field %q", key)
+		}
+	}
+}
+
+func TestNewP2POwnerProtectionForm_AllFields(t *testing.T) {
+	cfg := defaultTestConfig()
+	form := NewP2POwnerProtectionForm(cfg)
+
+	wantKeys := []string{
+		"owner_name", "owner_email", "owner_phone",
+		"owner_extra_terms", "owner_block_conversations",
+	}
+
+	if len(form.Fields) != len(wantKeys) {
+		t.Fatalf("expected %d fields, got %d", len(wantKeys), len(form.Fields))
+	}
+
+	for _, key := range wantKeys {
+		if f := fieldByKey(form, key); f == nil {
+			t.Errorf("missing field %q", key)
+		}
+	}
+
+	if f := fieldByKey(form, "owner_block_conversations"); !f.Checked {
+		t.Error("owner_block_conversations: want true by default (nil *bool)")
+	}
+}
+
+func TestNewP2PSandboxForm_AllFields(t *testing.T) {
+	cfg := defaultTestConfig()
+	form := NewP2PSandboxForm(cfg)
+
+	wantKeys := []string{
+		"sandbox_enabled", "sandbox_timeout", "sandbox_max_memory_mb",
+		"container_enabled", "container_runtime", "container_image",
+		"container_network_mode", "container_readonly_rootfs",
+		"container_cpu_quota", "container_pool_size", "container_pool_idle_timeout",
+	}
+
+	if len(form.Fields) != len(wantKeys) {
+		t.Fatalf("expected %d fields, got %d", len(wantKeys), len(form.Fields))
+	}
+
+	for _, key := range wantKeys {
+		if f := fieldByKey(form, key); f == nil {
+			t.Errorf("missing field %q", key)
+		}
+	}
+
+	if f := fieldByKey(form, "container_runtime"); f.Type != tuicore.InputSelect {
+		t.Errorf("container_runtime: want InputSelect, got %d", f.Type)
+	}
+}
+
+func TestNewKeyringForm_AllFields(t *testing.T) {
+	cfg := defaultTestConfig()
+	form := NewKeyringForm(cfg)
+
+	if len(form.Fields) != 1 {
+		t.Fatalf("expected 1 field, got %d", len(form.Fields))
+	}
+
+	if f := fieldByKey(form, "keyring_enabled"); f == nil {
+		t.Error("missing field keyring_enabled")
+	}
+}
+
+func TestNewDBEncryptionForm_AllFields(t *testing.T) {
+	cfg := defaultTestConfig()
+	form := NewDBEncryptionForm(cfg)
+
+	wantKeys := []string{
+		"db_encryption_enabled", "db_cipher_page_size",
+	}
+
+	if len(form.Fields) != len(wantKeys) {
+		t.Fatalf("expected %d fields, got %d", len(wantKeys), len(form.Fields))
+	}
+
+	for _, key := range wantKeys {
+		if f := fieldByKey(form, key); f == nil {
+			t.Errorf("missing field %q", key)
+		}
+	}
+}
+
+func TestNewKMSForm_AllFields(t *testing.T) {
+	cfg := defaultTestConfig()
+	form := NewKMSForm(cfg)
+
+	wantKeys := []string{
+		"kms_region", "kms_key_id", "kms_endpoint",
+		"kms_fallback_to_local", "kms_timeout", "kms_max_retries",
+		"kms_azure_vault_url", "kms_azure_key_version",
+		"kms_pkcs11_module", "kms_pkcs11_slot_id",
+		"kms_pkcs11_pin", "kms_pkcs11_key_label",
+	}
+
+	if len(form.Fields) != len(wantKeys) {
+		t.Fatalf("expected %d fields, got %d", len(wantKeys), len(form.Fields))
+	}
+
+	for _, key := range wantKeys {
+		if f := fieldByKey(form, key); f == nil {
+			t.Errorf("missing field %q", key)
+		}
+	}
+
+	if f := fieldByKey(form, "kms_pkcs11_pin"); f.Type != tuicore.InputPassword {
+		t.Errorf("kms_pkcs11_pin: want InputPassword, got %d", f.Type)
+	}
+}
+
+func TestNewMenuModel_HasP2PCategories(t *testing.T) {
+	menu := NewMenuModel()
+
+	wantIDs := []string{
+		"p2p", "p2p_zkp", "p2p_pricing", "p2p_owner", "p2p_sandbox",
+		"security_keyring", "security_db", "security_kms",
+	}
+
+	for _, id := range wantIDs {
+		found := false
+		for _, cat := range menu.Categories {
+			if cat.ID == id {
+				found = true
+				break
+			}
+		}
+		if !found {
+			t.Errorf("menu missing %q category", id)
+		}
+	}
+}
+
+func TestUpdateConfigFromForm_P2PFields(t *testing.T) {
+	state := tuicore.NewConfigState()
+	form := tuicore.NewFormModel("test")
+	form.AddField(&tuicore.Field{Key: "p2p_enabled", Type: tuicore.InputBool, Checked: true})
+	form.AddField(&tuicore.Field{Key: "p2p_listen_addrs", Type: tuicore.InputText, Value: "/ip4/0.0.0.0/tcp/9000,/ip4/0.0.0.0/udp/9000"})
+	form.AddField(&tuicore.Field{Key: "p2p_max_peers", Type: tuicore.InputInt, Value: "50"})
+	form.AddField(&tuicore.Field{Key: "p2p_handshake_timeout", Type: tuicore.InputText, Value: "45s"})
+	form.AddField(&tuicore.Field{Key: "p2p_min_trust_score", Type: tuicore.InputText, Value: "0.5"})
+	form.AddField(&tuicore.Field{Key: "p2p_zk_handshake", Type: tuicore.InputBool, Checked: true})
+
+	state.UpdateConfigFromForm(&form)
+
+	p := state.Current.P2P
+	if !p.Enabled {
+		t.Error("P2P.Enabled: want true")
+	}
+	if len(p.ListenAddrs) != 2 {
+		t.Errorf("ListenAddrs: want 2, got %d", len(p.ListenAddrs))
+	}
+	if p.MaxPeers != 50 {
+		t.Errorf("MaxPeers: want 50, got %d", p.MaxPeers)
+	}
+	if p.HandshakeTimeout != 45*time.Second {
+		t.Errorf("HandshakeTimeout: want 45s, got %v", p.HandshakeTimeout)
+	}
+	if p.MinTrustScore != 0.5 {
+		t.Errorf("MinTrustScore: want 0.5, got %f", p.MinTrustScore)
+	}
+	if !p.ZKHandshake {
+		t.Error("ZKHandshake: want true")
+	}
+}
+
+func TestUpdateConfigFromForm_P2PSandboxBoolPtr(t *testing.T) {
+	state := tuicore.NewConfigState()
+	form := tuicore.NewFormModel("test")
+	form.AddField(&tuicore.Field{Key: "sandbox_enabled", Type: tuicore.InputBool, Checked: true})
+	form.AddField(&tuicore.Field{Key: "container_readonly_rootfs", Type: tuicore.InputBool, Checked: false})
+	form.AddField(&tuicore.Field{Key: "owner_block_conversations", Type: tuicore.InputBool, Checked: false})
+
+	state.UpdateConfigFromForm(&form)
+
+	if !state.Current.P2P.ToolIsolation.Enabled {
+		t.Error("ToolIsolation.Enabled: want true")
+	}
+	ro := state.Current.P2P.ToolIsolation.Container.ReadOnlyRootfs
+	if ro == nil {
+		t.Fatal("ReadOnlyRootfs: want non-nil")
+	}
+	if *ro {
+		t.Error("ReadOnlyRootfs: want false")
+	}
+	bc := state.Current.P2P.OwnerProtection.BlockConversations
+	if bc == nil {
+		t.Fatal("BlockConversations: want non-nil")
+	}
+	if *bc {
+		t.Error("BlockConversations: want false")
+	}
+}
+
+func TestUpdateConfigFromForm_KMSFields(t *testing.T) {
+	state := tuicore.NewConfigState()
+	form := tuicore.NewFormModel("test")
+	form.AddField(&tuicore.Field{Key: "kms_region", Type: tuicore.InputText, Value: "us-east-1"})
+	form.AddField(&tuicore.Field{Key: "kms_key_id", Type: tuicore.InputText, Value: "arn:aws:kms:us-east-1:123:key/abc"})
+	form.AddField(&tuicore.Field{Key: "kms_fallback_to_local", Type: tuicore.InputBool, Checked: true})
+	form.AddField(&tuicore.Field{Key: "kms_timeout", Type: tuicore.InputText, Value: "10s"})
+	form.AddField(&tuicore.Field{Key: "kms_max_retries", Type: tuicore.InputInt, Value: "5"})
+	form.AddField(&tuicore.Field{Key: "kms_azure_vault_url", Type: tuicore.InputText, Value: "https://myvault.vault.azure.net"})
+	form.AddField(&tuicore.Field{Key: "kms_pkcs11_slot_id", Type: tuicore.InputInt, Value: "2"})
+	form.AddField(&tuicore.Field{Key: "kms_pkcs11_pin", Type: tuicore.InputPassword, Value: "1234"})
+
+	state.UpdateConfigFromForm(&form)
+
+	k := state.Current.Security.KMS
+	if k.Region != "us-east-1" {
+		t.Errorf("Region: want %q, got %q", "us-east-1", k.Region)
+	}
+	if k.KeyID != "arn:aws:kms:us-east-1:123:key/abc" {
+		t.Errorf("KeyID: want arn..., got %q", k.KeyID)
+	}
+	if !k.FallbackToLocal {
+		t.Error("FallbackToLocal: want true")
+	}
+	if k.TimeoutPerOperation != 10*time.Second {
+		t.Errorf("TimeoutPerOperation: want 10s, got %v", k.TimeoutPerOperation)
+	}
+	if k.MaxRetries != 5 {
+		t.Errorf("MaxRetries: want 5, got %d", k.MaxRetries)
+	}
+	if k.Azure.VaultURL != "https://myvault.vault.azure.net" {
+		t.Errorf("Azure.VaultURL: want vault url, got %q", k.Azure.VaultURL)
+	}
+	if k.PKCS11.SlotID != 2 {
+		t.Errorf("PKCS11.SlotID: want 2, got %d", k.PKCS11.SlotID)
+	}
+	if k.PKCS11.Pin != "1234" {
+		t.Errorf("PKCS11.Pin: want 1234, got %q", k.PKCS11.Pin)
+	}
+}
+
+func TestDerefBool(t *testing.T) {
+	tests := []struct {
+		give    *bool
+		def     bool
+		want    bool
+	}{
+		{give: nil, def: true, want: true},
+		{give: nil, def: false, want: false},
+		{give: boolP(true), def: false, want: true},
+		{give: boolP(false), def: true, want: false},
+	}
+
+	for _, tt := range tests {
+		got := derefBool(tt.give, tt.def)
+		if got != tt.want {
+			t.Errorf("derefBool(%v, %v): want %v, got %v", tt.give, tt.def, tt.want, got)
+		}
+	}
+}
+
+func boolP(b bool) *bool { return &b }
+
 func TestValidatePort(t *testing.T) {
 	tests := []struct {
 		give    string

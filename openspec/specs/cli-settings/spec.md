@@ -12,7 +12,7 @@ The settings editor SHALL support editing all configuration sections:
 4. **Channels** — Telegram, Discord, Slack enable/disable + tokens
 5. **Tools** — Exec timeout, Browser, Filesystem limits
 6. **Session** — TTL, Max history turns
-7. **Security** — Interceptor (PII, policy, timeout, tools), Signer (provider, RPC, KeyID)
+7. **Security** — Interceptor (PII, policy, timeout, tools), Signer (provider incl. aws-kms/gcp-kms/azure-kv/pkcs11, RPC, KeyID)
 8. **Auth** — OIDC provider management (add, edit, delete)
 9. **Knowledge** — Enabled, max context per layer, auto approve skills, max skills per day
 10. **Skill** — Enabled, skills directory
@@ -26,10 +26,18 @@ The settings editor SHALL support editing all configuration sections:
 18. **Background Tasks** — Enabled, yield time, max concurrent tasks
 19. **Workflow Engine** — Enabled, max concurrent steps, default timeout, state directory
 20. **Librarian** — Enabled, observation threshold, inquiry cooldown, max inquiries, auto-save confidence, provider, model
+21. **P2P Network** — Enabled, listen addrs, bootstrap peers, relay, mDNS, max peers, handshake, gossip, ZK settings, trust score
+22. **P2P ZKP** — Proof cache, proving scheme, SRS mode/path, credential age
+23. **P2P Pricing** — Enabled, per query price, tool-specific prices
+24. **P2P Owner Protection** — Owner name/email/phone, extra terms, block conversations
+25. **P2P Sandbox** — Tool isolation (enabled, timeout, memory), container sandbox (runtime, image, network, rootfs, pool)
+26. **Security Keyring** — OS keyring enabled
+27. **Security DB Encryption** — SQLCipher enabled, cipher page size
+28. **Security KMS** — Region, key ID, endpoint, fallback, timeout, retries, Azure, PKCS#11
 
 #### Scenario: Menu categories
 - **WHEN** user launches `lango settings`
-- **THEN** the menu SHALL display categories in order: Providers, Agent, Server, Channels, Tools, Session, Security, Auth, Knowledge, Skill, Observational Memory, Embedding & RAG, Graph Store, Multi-Agent, A2A Protocol, Payment, Cron Scheduler, Background Tasks, Workflow Engine, Librarian, Save & Exit, Cancel
+- **THEN** the menu SHALL display categories in order: Providers, Agent, Server, Channels, Tools, Session, Security, Auth, Knowledge, Skill, Observational Memory, Embedding & RAG, Graph Store, Multi-Agent, A2A Protocol, Payment, Cron Scheduler, Background Tasks, Workflow Engine, Librarian, P2P Network, P2P ZKP, P2P Pricing, P2P Owner Protection, P2P Sandbox, Security Keyring, Security DB Encryption, Security KMS, Save & Exit, Cancel
 
 ### Requirement: User Interface
 The settings editor SHALL provide menu-based navigation with categories, free navigation between categories, and shared `tuicore.FormModel` for all forms. Provider and OIDC provider list views SHALL support managing collections.
@@ -176,3 +184,10 @@ The ConfigState.UpdateConfigFromForm SHALL map the new PII form keys to their co
 #### Scenario: Update Presidio enabled
 - **WHEN** form field "presidio_enabled" is checked
 - **THEN** config Presidio.Enabled SHALL be true
+
+### Requirement: Security form signer provider options
+The Security form's signer provider dropdown SHALL include options for all supported providers: local, rpc, enclave, aws-kms, gcp-kms, azure-kv, pkcs11.
+
+#### Scenario: KMS providers available in signer dropdown
+- **WHEN** user opens the Security form
+- **THEN** the signer provider dropdown SHALL include "aws-kms", "gcp-kms", "azure-kv", and "pkcs11" as options

@@ -238,7 +238,7 @@ func NewSecurityForm(cfg *config.Config) *tuicore.FormModel {
 	form.AddField(&tuicore.Field{
 		Key: "signer_provider", Label: "Signer Provider", Type: tuicore.InputSelect,
 		Value:   cfg.Security.Signer.Provider,
-		Options: []string{"local", "rpc", "enclave"},
+		Options: []string{"local", "rpc", "enclave", "aws-kms", "gcp-kms", "azure-kv", "pkcs11"},
 	})
 	form.AddField(&tuicore.Field{
 		Key: "signer_rpc", Label: "  RPC URL", Type: tuicore.InputText,
@@ -949,6 +949,399 @@ func NewLibrarianForm(cfg *config.Config) *tuicore.FormModel {
 		Key: "lib_model", Label: "Model", Type: tuicore.InputText,
 		Value:       cfg.Librarian.Model,
 		Placeholder: "leave empty for agent default",
+	})
+
+	return &form
+}
+
+// derefBool safely dereferences a *bool with a default value.
+func derefBool(p *bool, def bool) bool {
+	if p == nil {
+		return def
+	}
+	return *p
+}
+
+// formatKeyValueMap formats a map[string]string as "key:value" comma-separated.
+func formatKeyValueMap(m map[string]string) string {
+	return formatCustomPatterns(m)
+}
+
+// NewP2PForm creates the P2P Network configuration form.
+func NewP2PForm(cfg *config.Config) *tuicore.FormModel {
+	form := tuicore.NewFormModel("P2P Network Configuration")
+
+	form.AddField(&tuicore.Field{
+		Key: "p2p_enabled", Label: "Enabled", Type: tuicore.InputBool,
+		Checked: cfg.P2P.Enabled,
+	})
+
+	form.AddField(&tuicore.Field{
+		Key: "p2p_listen_addrs", Label: "Listen Addresses", Type: tuicore.InputText,
+		Value:       strings.Join(cfg.P2P.ListenAddrs, ","),
+		Placeholder: "/ip4/0.0.0.0/tcp/9000 (comma-separated)",
+	})
+
+	form.AddField(&tuicore.Field{
+		Key: "p2p_bootstrap_peers", Label: "Bootstrap Peers", Type: tuicore.InputText,
+		Value:       strings.Join(cfg.P2P.BootstrapPeers, ","),
+		Placeholder: "/ip4/host/tcp/port/p2p/peerID (comma-separated)",
+	})
+
+	form.AddField(&tuicore.Field{
+		Key: "p2p_enable_relay", Label: "Enable Relay", Type: tuicore.InputBool,
+		Checked: cfg.P2P.EnableRelay,
+	})
+
+	form.AddField(&tuicore.Field{
+		Key: "p2p_enable_mdns", Label: "Enable mDNS", Type: tuicore.InputBool,
+		Checked: cfg.P2P.EnableMDNS,
+	})
+
+	form.AddField(&tuicore.Field{
+		Key: "p2p_max_peers", Label: "Max Peers", Type: tuicore.InputInt,
+		Value: strconv.Itoa(cfg.P2P.MaxPeers),
+	})
+
+	form.AddField(&tuicore.Field{
+		Key: "p2p_handshake_timeout", Label: "Handshake Timeout", Type: tuicore.InputText,
+		Value:       cfg.P2P.HandshakeTimeout.String(),
+		Placeholder: "30s",
+	})
+
+	form.AddField(&tuicore.Field{
+		Key: "p2p_session_token_ttl", Label: "Session Token TTL", Type: tuicore.InputText,
+		Value:       cfg.P2P.SessionTokenTTL.String(),
+		Placeholder: "24h",
+	})
+
+	form.AddField(&tuicore.Field{
+		Key: "p2p_auto_approve", Label: "Auto-Approve Known Peers", Type: tuicore.InputBool,
+		Checked: cfg.P2P.AutoApproveKnownPeers,
+	})
+
+	form.AddField(&tuicore.Field{
+		Key: "p2p_gossip_interval", Label: "Gossip Interval", Type: tuicore.InputText,
+		Value:       cfg.P2P.GossipInterval.String(),
+		Placeholder: "30s",
+	})
+
+	form.AddField(&tuicore.Field{
+		Key: "p2p_zk_handshake", Label: "ZK Handshake", Type: tuicore.InputBool,
+		Checked: cfg.P2P.ZKHandshake,
+	})
+
+	form.AddField(&tuicore.Field{
+		Key: "p2p_zk_attestation", Label: "ZK Attestation", Type: tuicore.InputBool,
+		Checked: cfg.P2P.ZKAttestation,
+	})
+
+	form.AddField(&tuicore.Field{
+		Key: "p2p_require_signed_challenge", Label: "Require Signed Challenge", Type: tuicore.InputBool,
+		Checked: cfg.P2P.RequireSignedChallenge,
+	})
+
+	form.AddField(&tuicore.Field{
+		Key: "p2p_min_trust_score", Label: "Min Trust Score", Type: tuicore.InputText,
+		Value:       fmt.Sprintf("%.1f", cfg.P2P.MinTrustScore),
+		Placeholder: "0.3 (0.0 to 1.0)",
+	})
+
+	return &form
+}
+
+// NewP2PZKPForm creates the P2P ZKP configuration form.
+func NewP2PZKPForm(cfg *config.Config) *tuicore.FormModel {
+	form := tuicore.NewFormModel("P2P ZKP Configuration")
+
+	form.AddField(&tuicore.Field{
+		Key: "zkp_proof_cache_dir", Label: "Proof Cache Directory", Type: tuicore.InputText,
+		Value:       cfg.P2P.ZKP.ProofCacheDir,
+		Placeholder: "~/.lango/p2p/zkp-cache",
+	})
+
+	provingScheme := cfg.P2P.ZKP.ProvingScheme
+	if provingScheme == "" {
+		provingScheme = "plonk"
+	}
+	form.AddField(&tuicore.Field{
+		Key: "zkp_proving_scheme", Label: "Proving Scheme", Type: tuicore.InputSelect,
+		Value:   provingScheme,
+		Options: []string{"plonk", "groth16"},
+	})
+
+	srsMode := cfg.P2P.ZKP.SRSMode
+	if srsMode == "" {
+		srsMode = "unsafe"
+	}
+	form.AddField(&tuicore.Field{
+		Key: "zkp_srs_mode", Label: "SRS Mode", Type: tuicore.InputSelect,
+		Value:   srsMode,
+		Options: []string{"unsafe", "file"},
+	})
+
+	form.AddField(&tuicore.Field{
+		Key: "zkp_srs_path", Label: "SRS File Path", Type: tuicore.InputText,
+		Value:       cfg.P2P.ZKP.SRSPath,
+		Placeholder: "/path/to/srs.bin (when SRS mode = file)",
+	})
+
+	form.AddField(&tuicore.Field{
+		Key: "zkp_max_credential_age", Label: "Max Credential Age", Type: tuicore.InputText,
+		Value:       cfg.P2P.ZKP.MaxCredentialAge,
+		Placeholder: "24h",
+	})
+
+	return &form
+}
+
+// NewP2PPricingForm creates the P2P Pricing configuration form.
+func NewP2PPricingForm(cfg *config.Config) *tuicore.FormModel {
+	form := tuicore.NewFormModel("P2P Pricing Configuration")
+
+	form.AddField(&tuicore.Field{
+		Key: "pricing_enabled", Label: "Enabled", Type: tuicore.InputBool,
+		Checked: cfg.P2P.Pricing.Enabled,
+	})
+
+	form.AddField(&tuicore.Field{
+		Key: "pricing_per_query", Label: "Price Per Query (USDC)", Type: tuicore.InputText,
+		Value:       cfg.P2P.Pricing.PerQuery,
+		Placeholder: "0.50",
+	})
+
+	form.AddField(&tuicore.Field{
+		Key: "pricing_tool_prices", Label: "Tool Prices", Type: tuicore.InputText,
+		Value:       formatKeyValueMap(cfg.P2P.Pricing.ToolPrices),
+		Placeholder: "exec:0.10,browser:0.50 (name:price, comma-sep)",
+	})
+
+	return &form
+}
+
+// NewP2POwnerProtectionForm creates the P2P Owner Protection configuration form.
+func NewP2POwnerProtectionForm(cfg *config.Config) *tuicore.FormModel {
+	form := tuicore.NewFormModel("P2P Owner Protection")
+
+	form.AddField(&tuicore.Field{
+		Key: "owner_name", Label: "Owner Name", Type: tuicore.InputText,
+		Value:       cfg.P2P.OwnerProtection.OwnerName,
+		Placeholder: "Your name to block from P2P responses",
+	})
+
+	form.AddField(&tuicore.Field{
+		Key: "owner_email", Label: "Owner Email", Type: tuicore.InputText,
+		Value:       cfg.P2P.OwnerProtection.OwnerEmail,
+		Placeholder: "your@email.com",
+	})
+
+	form.AddField(&tuicore.Field{
+		Key: "owner_phone", Label: "Owner Phone", Type: tuicore.InputText,
+		Value:       cfg.P2P.OwnerProtection.OwnerPhone,
+		Placeholder: "+82-10-1234-5678",
+	})
+
+	form.AddField(&tuicore.Field{
+		Key: "owner_extra_terms", Label: "Extra Terms", Type: tuicore.InputText,
+		Value:       strings.Join(cfg.P2P.OwnerProtection.ExtraTerms, ","),
+		Placeholder: "company-name,project-name (comma-sep)",
+	})
+
+	form.AddField(&tuicore.Field{
+		Key: "owner_block_conversations", Label: "Block Conversations", Type: tuicore.InputBool,
+		Checked: derefBool(cfg.P2P.OwnerProtection.BlockConversations, true),
+	})
+
+	return &form
+}
+
+// NewP2PSandboxForm creates the P2P Sandbox configuration form.
+func NewP2PSandboxForm(cfg *config.Config) *tuicore.FormModel {
+	form := tuicore.NewFormModel("P2P Sandbox Configuration")
+
+	form.AddField(&tuicore.Field{
+		Key: "sandbox_enabled", Label: "Tool Isolation Enabled", Type: tuicore.InputBool,
+		Checked: cfg.P2P.ToolIsolation.Enabled,
+	})
+
+	form.AddField(&tuicore.Field{
+		Key: "sandbox_timeout", Label: "Timeout Per Tool", Type: tuicore.InputText,
+		Value:       cfg.P2P.ToolIsolation.TimeoutPerTool.String(),
+		Placeholder: "30s",
+	})
+
+	form.AddField(&tuicore.Field{
+		Key: "sandbox_max_memory_mb", Label: "Max Memory (MB)", Type: tuicore.InputInt,
+		Value:       strconv.Itoa(cfg.P2P.ToolIsolation.MaxMemoryMB),
+		Placeholder: "256",
+	})
+
+	form.AddField(&tuicore.Field{
+		Key: "container_enabled", Label: "Container Sandbox", Type: tuicore.InputBool,
+		Checked: cfg.P2P.ToolIsolation.Container.Enabled,
+	})
+
+	runtime := cfg.P2P.ToolIsolation.Container.Runtime
+	if runtime == "" {
+		runtime = "auto"
+	}
+	form.AddField(&tuicore.Field{
+		Key: "container_runtime", Label: "  Runtime", Type: tuicore.InputSelect,
+		Value:   runtime,
+		Options: []string{"auto", "docker", "gvisor", "native"},
+	})
+
+	form.AddField(&tuicore.Field{
+		Key: "container_image", Label: "  Image", Type: tuicore.InputText,
+		Value:       cfg.P2P.ToolIsolation.Container.Image,
+		Placeholder: "lango-sandbox:latest",
+	})
+
+	networkMode := cfg.P2P.ToolIsolation.Container.NetworkMode
+	if networkMode == "" {
+		networkMode = "none"
+	}
+	form.AddField(&tuicore.Field{
+		Key: "container_network_mode", Label: "  Network Mode", Type: tuicore.InputSelect,
+		Value:   networkMode,
+		Options: []string{"none", "host", "bridge"},
+	})
+
+	form.AddField(&tuicore.Field{
+		Key: "container_readonly_rootfs", Label: "  Read-Only Rootfs", Type: tuicore.InputBool,
+		Checked: derefBool(cfg.P2P.ToolIsolation.Container.ReadOnlyRootfs, true),
+	})
+
+	form.AddField(&tuicore.Field{
+		Key: "container_cpu_quota", Label: "  CPU Quota (us)", Type: tuicore.InputInt,
+		Value:       strconv.FormatInt(cfg.P2P.ToolIsolation.Container.CPUQuotaUS, 10),
+		Placeholder: "0 (0 = unlimited)",
+	})
+
+	form.AddField(&tuicore.Field{
+		Key: "container_pool_size", Label: "  Pool Size", Type: tuicore.InputInt,
+		Value:       strconv.Itoa(cfg.P2P.ToolIsolation.Container.PoolSize),
+		Placeholder: "0 (0 = disabled)",
+	})
+
+	form.AddField(&tuicore.Field{
+		Key: "container_pool_idle_timeout", Label: "  Pool Idle Timeout", Type: tuicore.InputText,
+		Value:       cfg.P2P.ToolIsolation.Container.PoolIdleTimeout.String(),
+		Placeholder: "5m",
+	})
+
+	return &form
+}
+
+// NewKeyringForm creates the Security Keyring configuration form.
+func NewKeyringForm(cfg *config.Config) *tuicore.FormModel {
+	form := tuicore.NewFormModel("Security Keyring Configuration")
+
+	form.AddField(&tuicore.Field{
+		Key: "keyring_enabled", Label: "OS Keyring Enabled", Type: tuicore.InputBool,
+		Checked: cfg.Security.Keyring.Enabled,
+	})
+
+	return &form
+}
+
+// NewDBEncryptionForm creates the Security DB Encryption configuration form.
+func NewDBEncryptionForm(cfg *config.Config) *tuicore.FormModel {
+	form := tuicore.NewFormModel("Security DB Encryption Configuration")
+
+	form.AddField(&tuicore.Field{
+		Key: "db_encryption_enabled", Label: "SQLCipher Encryption", Type: tuicore.InputBool,
+		Checked: cfg.Security.DBEncryption.Enabled,
+	})
+
+	form.AddField(&tuicore.Field{
+		Key: "db_cipher_page_size", Label: "Cipher Page Size", Type: tuicore.InputInt,
+		Value:       strconv.Itoa(cfg.Security.DBEncryption.CipherPageSize),
+		Placeholder: "4096",
+		Validate: func(s string) error {
+			if i, err := strconv.Atoi(s); err != nil || i <= 0 {
+				return fmt.Errorf("must be a positive integer")
+			}
+			return nil
+		},
+	})
+
+	return &form
+}
+
+// NewKMSForm creates the Security KMS configuration form.
+func NewKMSForm(cfg *config.Config) *tuicore.FormModel {
+	form := tuicore.NewFormModel("Security KMS Configuration")
+
+	form.AddField(&tuicore.Field{
+		Key: "kms_region", Label: "Region", Type: tuicore.InputText,
+		Value:       cfg.Security.KMS.Region,
+		Placeholder: "us-east-1 or us-central1",
+	})
+
+	form.AddField(&tuicore.Field{
+		Key: "kms_key_id", Label: "Key ID", Type: tuicore.InputText,
+		Value:       cfg.Security.KMS.KeyID,
+		Placeholder: "arn:aws:kms:... or alias/my-key",
+	})
+
+	form.AddField(&tuicore.Field{
+		Key: "kms_endpoint", Label: "Endpoint", Type: tuicore.InputText,
+		Value:       cfg.Security.KMS.Endpoint,
+		Placeholder: "http://localhost:8080 (optional)",
+	})
+
+	form.AddField(&tuicore.Field{
+		Key: "kms_fallback_to_local", Label: "Fallback to Local", Type: tuicore.InputBool,
+		Checked: cfg.Security.KMS.FallbackToLocal,
+	})
+
+	form.AddField(&tuicore.Field{
+		Key: "kms_timeout", Label: "Timeout Per Operation", Type: tuicore.InputText,
+		Value:       cfg.Security.KMS.TimeoutPerOperation.String(),
+		Placeholder: "5s",
+	})
+
+	form.AddField(&tuicore.Field{
+		Key: "kms_max_retries", Label: "Max Retries", Type: tuicore.InputInt,
+		Value:       strconv.Itoa(cfg.Security.KMS.MaxRetries),
+		Placeholder: "3",
+	})
+
+	form.AddField(&tuicore.Field{
+		Key: "kms_azure_vault_url", Label: "Azure Vault URL", Type: tuicore.InputText,
+		Value:       cfg.Security.KMS.Azure.VaultURL,
+		Placeholder: "https://myvault.vault.azure.net",
+	})
+
+	form.AddField(&tuicore.Field{
+		Key: "kms_azure_key_version", Label: "Azure Key Version", Type: tuicore.InputText,
+		Value:       cfg.Security.KMS.Azure.KeyVersion,
+		Placeholder: "empty = latest",
+	})
+
+	form.AddField(&tuicore.Field{
+		Key: "kms_pkcs11_module", Label: "PKCS#11 Module Path", Type: tuicore.InputText,
+		Value:       cfg.Security.KMS.PKCS11.ModulePath,
+		Placeholder: "/usr/lib/pkcs11/opensc-pkcs11.so",
+	})
+
+	form.AddField(&tuicore.Field{
+		Key: "kms_pkcs11_slot_id", Label: "PKCS#11 Slot ID", Type: tuicore.InputInt,
+		Value:       strconv.Itoa(cfg.Security.KMS.PKCS11.SlotID),
+		Placeholder: "0",
+	})
+
+	form.AddField(&tuicore.Field{
+		Key: "kms_pkcs11_pin", Label: "PKCS#11 PIN", Type: tuicore.InputPassword,
+		Value:       cfg.Security.KMS.PKCS11.Pin,
+		Placeholder: "prefer LANGO_PKCS11_PIN env var",
+	})
+
+	form.AddField(&tuicore.Field{
+		Key: "kms_pkcs11_key_label", Label: "PKCS#11 Key Label", Type: tuicore.InputText,
+		Value:       cfg.Security.KMS.PKCS11.KeyLabel,
+		Placeholder: "my-signing-key",
 	})
 
 	return &form

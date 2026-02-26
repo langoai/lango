@@ -280,6 +280,38 @@ func (e *Editor) handleMenuSelection(id string) tea.Cmd {
 		e.activeForm = NewLibrarianForm(e.state.Current)
 		e.activeForm.Focus = true
 		e.step = StepForm
+	case "p2p":
+		e.activeForm = NewP2PForm(e.state.Current)
+		e.activeForm.Focus = true
+		e.step = StepForm
+	case "p2p_zkp":
+		e.activeForm = NewP2PZKPForm(e.state.Current)
+		e.activeForm.Focus = true
+		e.step = StepForm
+	case "p2p_pricing":
+		e.activeForm = NewP2PPricingForm(e.state.Current)
+		e.activeForm.Focus = true
+		e.step = StepForm
+	case "p2p_owner":
+		e.activeForm = NewP2POwnerProtectionForm(e.state.Current)
+		e.activeForm.Focus = true
+		e.step = StepForm
+	case "p2p_sandbox":
+		e.activeForm = NewP2PSandboxForm(e.state.Current)
+		e.activeForm.Focus = true
+		e.step = StepForm
+	case "security_keyring":
+		e.activeForm = NewKeyringForm(e.state.Current)
+		e.activeForm.Focus = true
+		e.step = StepForm
+	case "security_db":
+		e.activeForm = NewDBEncryptionForm(e.state.Current)
+		e.activeForm.Focus = true
+		e.step = StepForm
+	case "security_kms":
+		e.activeForm = NewKMSForm(e.state.Current)
+		e.activeForm.Focus = true
+		e.step = StepForm
 	case "auth":
 		e.authProvidersList = NewAuthProvidersListModel(e.state.Current)
 		e.step = StepAuthProvidersList

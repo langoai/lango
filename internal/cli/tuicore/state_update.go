@@ -330,6 +330,156 @@ func (s *ConfigState) UpdateConfigFromForm(form *FormModel) {
 		case "payment_x402_max":
 			s.Current.Payment.X402.MaxAutoPayAmount = val
 
+		// P2P Network
+		case "p2p_enabled":
+			s.Current.P2P.Enabled = f.Checked
+		case "p2p_listen_addrs":
+			s.Current.P2P.ListenAddrs = splitCSV(val)
+		case "p2p_bootstrap_peers":
+			s.Current.P2P.BootstrapPeers = splitCSV(val)
+		case "p2p_enable_relay":
+			s.Current.P2P.EnableRelay = f.Checked
+		case "p2p_enable_mdns":
+			s.Current.P2P.EnableMDNS = f.Checked
+		case "p2p_max_peers":
+			if i, err := strconv.Atoi(val); err == nil {
+				s.Current.P2P.MaxPeers = i
+			}
+		case "p2p_handshake_timeout":
+			if d, err := time.ParseDuration(val); err == nil {
+				s.Current.P2P.HandshakeTimeout = d
+			}
+		case "p2p_session_token_ttl":
+			if d, err := time.ParseDuration(val); err == nil {
+				s.Current.P2P.SessionTokenTTL = d
+			}
+		case "p2p_auto_approve":
+			s.Current.P2P.AutoApproveKnownPeers = f.Checked
+		case "p2p_gossip_interval":
+			if d, err := time.ParseDuration(val); err == nil {
+				s.Current.P2P.GossipInterval = d
+			}
+		case "p2p_zk_handshake":
+			s.Current.P2P.ZKHandshake = f.Checked
+		case "p2p_zk_attestation":
+			s.Current.P2P.ZKAttestation = f.Checked
+		case "p2p_require_signed_challenge":
+			s.Current.P2P.RequireSignedChallenge = f.Checked
+		case "p2p_min_trust_score":
+			if fv, err := strconv.ParseFloat(val, 64); err == nil {
+				s.Current.P2P.MinTrustScore = fv
+			}
+
+		// P2P ZKP
+		case "zkp_proof_cache_dir":
+			s.Current.P2P.ZKP.ProofCacheDir = val
+		case "zkp_proving_scheme":
+			s.Current.P2P.ZKP.ProvingScheme = val
+		case "zkp_srs_mode":
+			s.Current.P2P.ZKP.SRSMode = val
+		case "zkp_srs_path":
+			s.Current.P2P.ZKP.SRSPath = val
+		case "zkp_max_credential_age":
+			s.Current.P2P.ZKP.MaxCredentialAge = val
+
+		// P2P Pricing
+		case "pricing_enabled":
+			s.Current.P2P.Pricing.Enabled = f.Checked
+		case "pricing_per_query":
+			s.Current.P2P.Pricing.PerQuery = val
+		case "pricing_tool_prices":
+			s.Current.P2P.Pricing.ToolPrices = parseCustomPatterns(val)
+
+		// P2P Owner Protection
+		case "owner_name":
+			s.Current.P2P.OwnerProtection.OwnerName = val
+		case "owner_email":
+			s.Current.P2P.OwnerProtection.OwnerEmail = val
+		case "owner_phone":
+			s.Current.P2P.OwnerProtection.OwnerPhone = val
+		case "owner_extra_terms":
+			s.Current.P2P.OwnerProtection.ExtraTerms = splitCSV(val)
+		case "owner_block_conversations":
+			s.Current.P2P.OwnerProtection.BlockConversations = boolPtr(f.Checked)
+
+		// P2P Sandbox
+		case "sandbox_enabled":
+			s.Current.P2P.ToolIsolation.Enabled = f.Checked
+		case "sandbox_timeout":
+			if d, err := time.ParseDuration(val); err == nil {
+				s.Current.P2P.ToolIsolation.TimeoutPerTool = d
+			}
+		case "sandbox_max_memory_mb":
+			if i, err := strconv.Atoi(val); err == nil {
+				s.Current.P2P.ToolIsolation.MaxMemoryMB = i
+			}
+		case "container_enabled":
+			s.Current.P2P.ToolIsolation.Container.Enabled = f.Checked
+		case "container_runtime":
+			s.Current.P2P.ToolIsolation.Container.Runtime = val
+		case "container_image":
+			s.Current.P2P.ToolIsolation.Container.Image = val
+		case "container_network_mode":
+			s.Current.P2P.ToolIsolation.Container.NetworkMode = val
+		case "container_readonly_rootfs":
+			s.Current.P2P.ToolIsolation.Container.ReadOnlyRootfs = boolPtr(f.Checked)
+		case "container_cpu_quota":
+			if i, err := strconv.ParseInt(val, 10, 64); err == nil {
+				s.Current.P2P.ToolIsolation.Container.CPUQuotaUS = i
+			}
+		case "container_pool_size":
+			if i, err := strconv.Atoi(val); err == nil {
+				s.Current.P2P.ToolIsolation.Container.PoolSize = i
+			}
+		case "container_pool_idle_timeout":
+			if d, err := time.ParseDuration(val); err == nil {
+				s.Current.P2P.ToolIsolation.Container.PoolIdleTimeout = d
+			}
+
+		// Security Keyring
+		case "keyring_enabled":
+			s.Current.Security.Keyring.Enabled = f.Checked
+
+		// Security DB Encryption
+		case "db_encryption_enabled":
+			s.Current.Security.DBEncryption.Enabled = f.Checked
+		case "db_cipher_page_size":
+			if i, err := strconv.Atoi(val); err == nil {
+				s.Current.Security.DBEncryption.CipherPageSize = i
+			}
+
+		// Security KMS
+		case "kms_region":
+			s.Current.Security.KMS.Region = val
+		case "kms_key_id":
+			s.Current.Security.KMS.KeyID = val
+		case "kms_endpoint":
+			s.Current.Security.KMS.Endpoint = val
+		case "kms_fallback_to_local":
+			s.Current.Security.KMS.FallbackToLocal = f.Checked
+		case "kms_timeout":
+			if d, err := time.ParseDuration(val); err == nil {
+				s.Current.Security.KMS.TimeoutPerOperation = d
+			}
+		case "kms_max_retries":
+			if i, err := strconv.Atoi(val); err == nil {
+				s.Current.Security.KMS.MaxRetries = i
+			}
+		case "kms_azure_vault_url":
+			s.Current.Security.KMS.Azure.VaultURL = val
+		case "kms_azure_key_version":
+			s.Current.Security.KMS.Azure.KeyVersion = val
+		case "kms_pkcs11_module":
+			s.Current.Security.KMS.PKCS11.ModulePath = val
+		case "kms_pkcs11_slot_id":
+			if i, err := strconv.Atoi(val); err == nil {
+				s.Current.Security.KMS.PKCS11.SlotID = i
+			}
+		case "kms_pkcs11_pin":
+			s.Current.Security.KMS.PKCS11.Pin = val
+		case "kms_pkcs11_key_label":
+			s.Current.Security.KMS.PKCS11.KeyLabel = val
+
 		// Librarian
 		case "lib_enabled":
 			s.Current.Librarian.Enabled = f.Checked
@@ -446,6 +596,9 @@ func (s *ConfigState) UpdateProviderFromForm(id string, form *FormModel) {
 	s.Current.Providers[id] = p
 	s.MarkDirty("providers")
 }
+
+// boolPtr returns a pointer to the given bool value.
+func boolPtr(b bool) *bool { return &b }
 
 // parseCustomPatterns parses a comma-separated "name:regex" string into a map.
 func parseCustomPatterns(val string) map[string]string {
