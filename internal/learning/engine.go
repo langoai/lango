@@ -65,6 +65,10 @@ func (e *Engine) OnToolResult(ctx context.Context, sessionKey, toolName string, 
 	e.handleSuccess(ctx, toolName)
 }
 
+// autoApplyConfidenceThreshold is the minimum confidence required to auto-apply a learned fix.
+// Set higher than the previous 0.5 to reduce false positives from low-quality learnings.
+const autoApplyConfidenceThreshold = 0.7
+
 // GetFixForError returns a known fix for a given tool error if one exists with sufficient confidence.
 func (e *Engine) GetFixForError(ctx context.Context, toolName string, err error) (string, bool) {
 	pattern := extractErrorPattern(err)
@@ -76,7 +80,7 @@ func (e *Engine) GetFixForError(ctx context.Context, toolName string, err error)
 	}
 
 	for _, entity := range entities {
-		if entity.Confidence > 0.5 && entity.Fix != "" {
+		if entity.Confidence > autoApplyConfidenceThreshold && entity.Fix != "" {
 			return entity.Fix, true
 		}
 	}
@@ -103,7 +107,7 @@ func (e *Engine) handleError(ctx context.Context, sessionKey, toolName string, e
 	}
 
 	for _, entity := range entities {
-		if entity.Confidence > 0.5 {
+		if entity.Confidence > autoApplyConfidenceThreshold {
 			e.logger.Infow("known fix exists for error",
 				"tool", toolName,
 				"pattern", pattern,
@@ -129,15 +133,20 @@ func (e *Engine) handleError(ctx context.Context, sessionKey, toolName string, e
 }
 
 func (e *Engine) handleSuccess(ctx context.Context, toolName string) {
-	entities, searchErr := e.store.SearchLearningEntities(ctx, toolName, 5)
+	// Search by the specific tool trigger to avoid boosting unrelated learnings.
+	trigger := fmt.Sprintf("tool:%s", toolName)
+	entities, searchErr := e.store.SearchLearningEntities(ctx, trigger, 5)
 	if searchErr != nil {
 		e.logger.Warnw("search learnings:", "error", searchErr)
 		return
 	}
 
 	for _, entity := range entities {
-		if boostErr := e.store.BoostLearningConfidence(ctx, entity.ID, 1, 0.0); boostErr != nil {
-			e.logger.Warnw("boost learning confidence:", "error", boostErr)
+		// Only boost learnings whose trigger matches this tool.
+		if entity.Trigger == trigger {
+			if boostErr := e.store.BoostLearningConfidence(ctx, entity.ID, 1, 0.0); boostErr != nil {
+				e.logger.Warnw("boost learning confidence:", "error", boostErr)
+			}
 		}
 	}
 }

@@ -15,10 +15,18 @@ import (
 type SessionServiceAdapter struct {
 	store         internal.Store
 	rootAgentName string
+	tokenBudget   int // 0 = use DefaultTokenBudget
 }
 
 func NewSessionServiceAdapter(store internal.Store, rootAgentName string) *SessionServiceAdapter {
 	return &SessionServiceAdapter{store: store, rootAgentName: rootAgentName}
+}
+
+// WithTokenBudget sets the token budget for history truncation.
+// Use ModelTokenBudget(modelName) to derive an appropriate budget from the model name.
+func (s *SessionServiceAdapter) WithTokenBudget(budget int) *SessionServiceAdapter {
+	s.tokenBudget = budget
+	return s
 }
 
 func (s *SessionServiceAdapter) Create(ctx context.Context, req *session.CreateRequest) (*session.CreateResponse, error) {
@@ -47,7 +55,9 @@ func (s *SessionServiceAdapter) Create(ctx context.Context, req *session.CreateR
 		return nil, err
 	}
 
-	return &session.CreateResponse{Session: NewSessionAdapter(sess, s.store, s.rootAgentName)}, nil
+	sa := NewSessionAdapter(sess, s.store, s.rootAgentName)
+	sa.tokenBudget = s.tokenBudget
+	return &session.CreateResponse{Session: sa}, nil
 }
 
 func (s *SessionServiceAdapter) Get(ctx context.Context, req *session.GetRequest) (*session.GetResponse, error) {
@@ -62,7 +72,9 @@ func (s *SessionServiceAdapter) Get(ctx context.Context, req *session.GetRequest
 	if sess == nil {
 		return s.getOrCreate(ctx, req)
 	}
-	return &session.GetResponse{Session: NewSessionAdapter(sess, s.store, s.rootAgentName)}, nil
+	sa := NewSessionAdapter(sess, s.store, s.rootAgentName)
+	sa.tokenBudget = s.tokenBudget
+	return &session.GetResponse{Session: sa}, nil
 }
 
 // getOrCreate attempts to create a session, and if it fails due to a
@@ -77,7 +89,9 @@ func (s *SessionServiceAdapter) getOrCreate(ctx context.Context, req *session.Ge
 			if err != nil {
 				return nil, fmt.Errorf("auto-create session %s: get after conflict: %w", req.SessionID, err)
 			}
-			return &session.GetResponse{Session: NewSessionAdapter(sess, s.store, s.rootAgentName)}, nil
+			sa := NewSessionAdapter(sess, s.store, s.rootAgentName)
+			sa.tokenBudget = s.tokenBudget
+			return &session.GetResponse{Session: sa}, nil
 		}
 		return nil, fmt.Errorf("auto-create session %s: %w", req.SessionID, createErr)
 	}

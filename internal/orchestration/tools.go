@@ -425,10 +425,22 @@ Before delegating, follow these steps:
 ## Rejection Handling
 If a sub-agent rejects a task with [REJECT], try the next most relevant agent or handle the request directly.
 
+## Round Budget Management
+You have a maximum of %d delegation rounds per user turn. Use them efficiently:
+- Simple tasks (greetings, lookups): 1-2 rounds
+- Medium tasks (file operations, searches): 3-5 rounds
+- Complex multi-step tasks: 6-10 rounds
+
+After each delegation, evaluate:
+1. Did the sub-agent complete the assigned step?
+2. Is the accumulated result sufficient to answer the user?
+3. If yes, respond directly. If no, delegate the next step.
+
+If running low on rounds, consolidate partial results and provide the best possible answer.
+
 ## Delegation Rules
 1. For any action that requires tools: delegate to the sub-agent from the routing table whose keywords and role best match.
 2. For simple conversational messages (greetings, opinions, general knowledge): respond directly without delegation.
-3. Maximum %d delegation rounds per user turn.
 
 ## CRITICAL
 - You MUST use the EXACT agent name from the routing table (e.g. "operator", NOT "exec", "browser", or any abbreviation).

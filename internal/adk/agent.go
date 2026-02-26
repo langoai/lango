@@ -23,10 +23,21 @@ import (
 
 func logger() *zap.SugaredLogger { return logging.Agent() }
 
+// ErrorFixProvider returns a known fix for a tool error if one exists.
+// Implemented by learning.Engine.
+type ErrorFixProvider interface {
+	GetFixForError(ctx context.Context, toolName string, err error) (string, bool)
+}
+
+// defaultMaxTurns is the default maximum number of tool-calling iterations per agent run.
+const defaultMaxTurns = 25
+
 // Agent wraps the ADK runner for integration with Lango.
 type Agent struct {
-	runner   *runner.Runner
-	adkAgent adk_agent.Agent
+	runner         *runner.Runner
+	adkAgent       adk_agent.Agent
+	maxTurns       int              // 0 = defaultMaxTurns
+	errorFixProvider ErrorFixProvider // optional: for self-correction on errors
 }
 
 // NewAgent creates a new Agent instance.
@@ -85,12 +96,27 @@ func NewAgentFromADK(adkAgent adk_agent.Agent, store internal.Store) (*Agent, er
 	return &Agent{runner: r, adkAgent: adkAgent}, nil
 }
 
+// WithMaxTurns sets the maximum number of tool-calling turns per run.
+// Zero or negative values use the default (25).
+func (a *Agent) WithMaxTurns(n int) *Agent {
+	a.maxTurns = n
+	return a
+}
+
+// WithErrorFixProvider sets an optional provider for learning-based error correction.
+// When set, the agent will attempt to apply known fixes on errors before giving up.
+func (a *Agent) WithErrorFixProvider(p ErrorFixProvider) *Agent {
+	a.errorFixProvider = p
+	return a
+}
+
 // ADKAgent returns the underlying ADK agent, or nil if not available.
 func (a *Agent) ADKAgent() adk_agent.Agent {
 	return a.adkAgent
 }
 
 // Run executes the agent for a given session and returns an event iterator.
+// It enforces a maximum turn limit to prevent unbounded tool-calling loops.
 func (a *Agent) Run(ctx context.Context, sessionID string, input string) iter.Seq2[*session.Event, error] {
 	// Create user content
 	userMsg := &genai.Content{
@@ -103,8 +129,51 @@ func (a *Agent) Run(ctx context.Context, sessionID string, input string) iter.Se
 		// Defaults
 	}
 
-	// Execute via Runner
-	return a.runner.Run(ctx, "user", sessionID, userMsg, runCfg)
+	maxTurns := a.maxTurns
+	if maxTurns <= 0 {
+		maxTurns = defaultMaxTurns
+	}
+
+	// Execute via Runner with turn limit enforcement.
+	inner := a.runner.Run(ctx, "user", sessionID, userMsg, runCfg)
+
+	return func(yield func(*session.Event, error) bool) {
+		turnCount := 0
+		for event, err := range inner {
+			if err != nil {
+				yield(nil, err)
+				return
+			}
+			// Count events containing function calls as agent turns.
+			if event.Content != nil && hasFunctionCalls(event) {
+				turnCount++
+				if turnCount > maxTurns {
+					logger().Warnw("agent max turns exceeded",
+						"session", sessionID,
+						"turns", turnCount,
+						"maxTurns", maxTurns)
+					yield(nil, fmt.Errorf("agent exceeded maximum turn limit (%d)", maxTurns))
+					return
+				}
+			}
+			if !yield(event, nil) {
+				return
+			}
+		}
+	}
+}
+
+// hasFunctionCalls reports whether the event contains any FunctionCall parts.
+func hasFunctionCalls(e *session.Event) bool {
+	if e.Content == nil {
+		return false
+	}
+	for _, p := range e.Content.Parts {
+		if p.FunctionCall != nil {
+			return true
+		}
+	}
+	return false
 }
 
 // RunAndCollect executes the agent and returns the full text response.
@@ -123,6 +192,26 @@ func (a *Agent) RunAndCollect(ctx context.Context, sessionID, input string) (str
 
 	badAgent := extractMissingAgent(err)
 	if badAgent == "" || len(a.adkAgent.SubAgents()) == 0 {
+		// Try learning-based error correction before giving up.
+		if a.errorFixProvider != nil {
+			if fix, ok := a.errorFixProvider.GetFixForError(ctx, "", err); ok {
+				correction := fmt.Sprintf(
+					"[System: Previous action failed with: %s. Suggested fix: %s. Please retry.]",
+					err.Error(), fix)
+				logger().Infow("applying learned fix for error",
+					"session", sessionID,
+					"fix", fix,
+					"elapsed", time.Since(start).String())
+				retryResp, retryErr := a.runAndCollectOnce(ctx, sessionID, correction)
+				if retryErr == nil {
+					return retryResp, nil
+				}
+				logger().Warnw("learned fix retry failed",
+					"session", sessionID,
+					"error", retryErr)
+			}
+		}
+
 		logger().Warnw("agent run failed",
 			"session", sessionID,
 			"elapsed", time.Since(start).String(),

@@ -31,17 +31,18 @@ type MemoryProvider interface {
 // Before each LLM call, it retrieves relevant knowledge and injects it
 // into the system instruction.
 type ContextAwareModelAdapter struct {
-	inner           *ModelAdapter
-	retriever       *knowledge.ContextRetriever
-	memoryProvider  MemoryProvider
-	ragService      *embedding.RAGService
-	ragOpts         embedding.RetrieveOptions
-	graphRAG        *graph.GraphRAGService
-	runtimeAdapter  *RuntimeContextAdapter
-	basePrompt      string
-	maxReflections  int
-	maxObservations int
-	logger          *zap.SugaredLogger
+	inner              *ModelAdapter
+	retriever          *knowledge.ContextRetriever
+	memoryProvider     MemoryProvider
+	ragService         *embedding.RAGService
+	ragOpts            embedding.RetrieveOptions
+	graphRAG           *graph.GraphRAGService
+	runtimeAdapter     *RuntimeContextAdapter
+	basePrompt         string
+	maxReflections     int
+	maxObservations    int
+	memoryTokenBudget  int // max tokens for the memory section; 0 = default (4000)
+	logger             *zap.SugaredLogger
 }
 
 // NewContextAwareModelAdapter creates a context-aware model adapter.
@@ -94,6 +95,15 @@ func (m *ContextAwareModelAdapter) WithGraphRAG(svc *graph.GraphRAGService) *Con
 func (m *ContextAwareModelAdapter) WithMemoryLimits(maxReflections, maxObservations int) *ContextAwareModelAdapter {
 	m.maxReflections = maxReflections
 	m.maxObservations = maxObservations
+	return m
+}
+
+// WithMemoryTokenBudget sets the maximum token budget for the memory section
+// injected into the system prompt. Reflections are prioritized first (higher
+// information density), then observations fill the remaining budget.
+// Zero means use default (4000 tokens).
+func (m *ContextAwareModelAdapter) WithMemoryTokenBudget(budget int) *ContextAwareModelAdapter {
+	m.memoryTokenBudget = budget
 	return m
 }
 
@@ -193,7 +203,12 @@ func (m *ContextAwareModelAdapter) GenerateContent(ctx context.Context, req *mod
 	return m.inner.GenerateContent(ctx, req, stream)
 }
 
+// defaultMemoryTokenBudget is the default token budget for the memory section.
+const defaultMemoryTokenBudget = 4000
+
 // assembleMemorySection builds the "Conversation Memory" section from observations and reflections.
+// It enforces a token budget: reflections are included first (higher information density),
+// then observations fill the remaining budget.
 func (m *ContextAwareModelAdapter) assembleMemorySection(ctx context.Context, sessionKey string) string {
 	var reflections []memory.Reflection
 	var observations []memory.Observation
@@ -221,23 +236,42 @@ func (m *ContextAwareModelAdapter) assembleMemorySection(ctx context.Context, se
 		return ""
 	}
 
+	budget := m.memoryTokenBudget
+	if budget <= 0 {
+		budget = defaultMemoryTokenBudget
+	}
+
 	var b strings.Builder
+	currentTokens := 0
+
 	b.WriteString("## Conversation Memory\n")
 
+	// Reflections first — higher information density from compressed summaries.
 	if len(reflections) > 0 {
 		b.WriteString("\n### Summary\n")
 		for _, ref := range reflections {
+			t := memory.EstimateTokens(ref.Content)
+			if currentTokens+t > budget {
+				break
+			}
 			b.WriteString(ref.Content)
 			b.WriteString("\n")
+			currentTokens += t
 		}
 	}
 
-	if len(observations) > 0 {
+	// Observations fill remaining budget.
+	if len(observations) > 0 && currentTokens < budget {
 		b.WriteString("\n### Recent Observations\n")
 		for _, obs := range observations {
+			t := memory.EstimateTokens(obs.Content)
+			if currentTokens+t > budget {
+				break
+			}
 			b.WriteString("- ")
 			b.WriteString(obs.Content)
 			b.WriteString("\n")
+			currentTokens += t
 		}
 	}
 

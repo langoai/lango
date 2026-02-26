@@ -37,7 +37,7 @@ type Config struct {
 	// RemoteAgents are external A2A agents to include as sub-agents.
 	RemoteAgents []adk_agent.Agent
 	// MaxDelegationRounds limits the number of orchestrator→sub-agent
-	// delegation rounds per user turn. Zero means use default (5).
+	// delegation rounds per user turn. Zero means use default (10).
 	MaxDelegationRounds int
 	// SubAgentPrompt builds the final system prompt for each sub-agent.
 	// When nil, the original spec.Instruction is used unchanged.
@@ -112,7 +112,7 @@ func BuildAgentTree(cfg Config) (adk_agent.Agent, error) {
 
 	maxRounds := cfg.MaxDelegationRounds
 	if maxRounds <= 0 {
-		maxRounds = 5
+		maxRounds = 10
 	}
 
 	orchestratorInstruction := buildOrchestratorInstruction(

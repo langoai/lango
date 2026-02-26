@@ -3,6 +3,8 @@ package adk
 import (
 	"encoding/json"
 	"iter"
+	"strings"
+	"sync"
 	"time"
 
 	"github.com/google/uuid"
@@ -20,6 +22,7 @@ type SessionAdapter struct {
 	sess          *internal.Session
 	store         internal.Store
 	rootAgentName string
+	tokenBudget   int // 0 = use DefaultTokenBudget; set via SessionServiceAdapter
 }
 
 func NewSessionAdapter(s *internal.Session, store internal.Store, rootAgentName string) *SessionAdapter {
@@ -35,7 +38,11 @@ func (s *SessionAdapter) State() session.State {
 }
 
 func (s *SessionAdapter) Events() session.Events {
-	return &EventsAdapter{history: s.sess.History, rootAgentName: s.rootAgentName}
+	return &EventsAdapter{
+		history:       s.sess.History,
+		tokenBudget:   s.tokenBudget,
+		rootAgentName: s.rootAgentName,
+	}
 }
 
 // EventsWithTokenBudget returns an EventsAdapter that uses token-budget truncation.
@@ -104,17 +111,50 @@ func (s *StateAdapter) All() iter.Seq2[string, any] {
 // DefaultTokenBudget is the token budget used when no explicit budget is provided.
 const DefaultTokenBudget = 32000
 
+// ModelTokenBudget returns an appropriate history token budget for the given model.
+// It uses approximately 50-60% of each model family's context window, leaving room
+// for system prompts, tool definitions, and generated output.
+// Returns DefaultTokenBudget for unknown models.
+func ModelTokenBudget(modelName string) int {
+	lower := strings.ToLower(modelName)
+	switch {
+	case strings.Contains(lower, "claude"):
+		return 100000 // ~50% of 200K context
+	case strings.Contains(lower, "gemini"):
+		return 200000 // ~20% of 1M context
+	case strings.Contains(lower, "gpt-4o"), strings.Contains(lower, "gpt-4-turbo"):
+		return 64000 // ~50% of 128K context
+	case strings.Contains(lower, "gpt-4"):
+		return 32000 // 8K–32K context models
+	case strings.Contains(lower, "gpt-3.5"):
+		return 8000 // ~50% of 16K context
+	default:
+		return DefaultTokenBudget
+	}
+}
+
 // EventsAdapter adapts internal history to adk events.
 // Uses token-budget truncation: includes messages from most recent until the budget is exhausted.
+// Truncated history and converted events are lazily cached for O(1) repeated access.
 type EventsAdapter struct {
 	history       []internal.Message
 	tokenBudget   int
 	rootAgentName string
+
+	// Lazy caches — safe because EventsAdapter is created fresh per session access.
+	truncateOnce sync.Once
+	truncated    []internal.Message
+	eventsOnce   sync.Once
+	eventsCache  []*session.Event
 }
 
 // truncatedHistory returns the messages to include based on token budget.
+// The result is lazily cached so repeated calls (e.g. from Len, At, All) are O(1).
 func (e *EventsAdapter) truncatedHistory() []internal.Message {
-	return e.tokenBudgetTruncate()
+	e.truncateOnce.Do(func() {
+		e.truncated = e.tokenBudgetTruncate()
+	})
+	return e.truncated
 }
 
 // tokenBudgetTruncate includes messages from most recent to oldest until the token budget is exhausted.
@@ -328,17 +368,16 @@ func (e *EventsAdapter) Len() int {
 	return len(e.truncatedHistory())
 }
 
+// At returns the i-th event. The full event list is built once on first call
+// and cached, making subsequent At calls O(1) instead of O(n).
 func (e *EventsAdapter) At(i int) *session.Event {
-	// Reusing logic from All is inefficient but simple for now
-	var found *session.Event
-	count := 0
-	e.All()(func(evt *session.Event) bool {
-		if count == i {
-			found = evt
-			return false
+	e.eventsOnce.Do(func() {
+		for evt := range e.All() {
+			e.eventsCache = append(e.eventsCache, evt)
 		}
-		count++
-		return true
 	})
-	return found
+	if i < 0 || i >= len(e.eventsCache) {
+		return nil
+	}
+	return e.eventsCache[i]
 }

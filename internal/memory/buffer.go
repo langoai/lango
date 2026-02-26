@@ -16,16 +16,21 @@ type MessageProvider func(sessionKey string) ([]session.Message, error)
 // MessageCompactor replaces observed messages with a summary to reduce session size.
 type MessageCompactor func(sessionKey string, upToIndex int, summary string) error
 
+// defaultReflectionConsolidationThreshold is the minimum number of reflections
+// that must accumulate before meta-reflection (consolidation) is triggered.
+const defaultReflectionConsolidationThreshold = 5
+
 // Buffer manages background observation and reflection processing.
 type Buffer struct {
 	observer  *Observer
 	reflector *Reflector
 	store     *Store
 
-	messageTokenThreshold     int
-	observationTokenThreshold int
-	getMessages               MessageProvider
-	compactor                 MessageCompactor // optional: compact observed messages
+	messageTokenThreshold              int
+	observationTokenThreshold          int
+	reflectionConsolidationThreshold   int // min reflections before meta-reflection; 0 = default (5)
+	getMessages                        MessageProvider
+	compactor                          MessageCompactor // optional: compact observed messages
 
 	// lastObserved tracks the last observed message index per session.
 	mu           sync.Mutex
@@ -140,6 +145,29 @@ func (b *Buffer) process(sessionKey string) {
 		_, err := b.reflector.Reflect(ctx, sessionKey)
 		if err != nil {
 			b.logger.Errorw("reflector failed", "sessionKey", sessionKey, "error", err)
+		}
+	}
+
+	// Auto-trigger meta-reflection when reflections accumulate past the threshold.
+	// This prevents unbounded reflection growth in long-running sessions.
+	threshold := b.reflectionConsolidationThreshold
+	if threshold <= 0 {
+		threshold = defaultReflectionConsolidationThreshold
+	}
+
+	reflections, err := b.store.ListReflections(ctx, sessionKey)
+	if err != nil {
+		b.logger.Errorw("list reflections for meta-reflection check", "sessionKey", sessionKey, "error", err)
+		return
+	}
+	if len(reflections) >= threshold {
+		_, err := b.reflector.ReflectOnReflections(ctx, sessionKey)
+		if err != nil {
+			b.logger.Errorw("meta-reflector failed", "sessionKey", sessionKey, "error", err)
+		} else {
+			b.logger.Debugw("meta-reflection triggered",
+				"sessionKey", sessionKey,
+				"condensedReflections", len(reflections))
 		}
 	}
 }
