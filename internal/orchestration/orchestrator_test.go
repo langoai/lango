@@ -697,7 +697,7 @@ func TestBuildOrchestratorInstruction_ContainsRoutingTable(t *testing.T) {
 	assert.Contains(t, got, "run, execute")
 	assert.Contains(t, got, "web browsing")
 	assert.Contains(t, got, "Decision Protocol")
-	assert.Contains(t, got, "Maximum 5 delegation rounds")
+	assert.Contains(t, got, "maximum of 5 delegation rounds")
 }
 
 func TestBuildOrchestratorInstruction_UnmatchedTools(t *testing.T) {

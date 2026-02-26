@@ -1,6 +1,7 @@
 package p2p
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/langoai/lango/internal/bootstrap"
@@ -32,7 +33,7 @@ func TestNewP2PCmd_Structure(t *testing.T) {
 
 	subCmds := make(map[string]bool)
 	for _, sub := range cmd.Commands() {
-		subCmds[sub.Use] = true
+		subCmds[strings.Fields(sub.Use)[0]] = true
 	}
 
 	for _, name := range expected {
