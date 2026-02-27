@@ -18,6 +18,7 @@ const (
 type Field struct {
 	Key         string
 	Label       string
+	Description string // Help text shown below the focused field
 	Type        InputType
 	Value       string
 	Placeholder string

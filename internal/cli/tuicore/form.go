@@ -180,6 +180,12 @@ func (m FormModel) View() string {
 			b.WriteString(val)
 		}
 		b.WriteString("\n")
+
+		// Show description for the focused field
+		if i == m.Cursor && f.Description != "" {
+			b.WriteString(tui.FieldDescStyle.Render("ℹ " + f.Description))
+			b.WriteString("\n")
+		}
 	}
 
 	// Help Footer
