@@ -77,7 +77,7 @@ func NewWizard(cfg *config.Config) *Wizard {
 
 // Init implements tea.Model.
 func (w *Wizard) Init() tea.Cmd {
-	return nil
+	return tea.ClearScreen
 }
 
 // Update implements tea.Model.
@@ -279,8 +279,10 @@ func (w *Wizard) enableChannel(ch string) {
 func (w *Wizard) View() string {
 	var b strings.Builder
 
-	// Title
-	b.WriteString(tui.TitleStyle.Render("Lango Setup Wizard"))
+	// Banner + subtitle
+	b.WriteString(tui.Banner())
+	b.WriteString("\n")
+	b.WriteString(tui.SubtitleStyle.Render("Setup Wizard"))
 	b.WriteString("\n\n")
 
 	if w.step <= StepTest {

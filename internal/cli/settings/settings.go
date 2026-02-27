@@ -10,6 +10,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/langoai/lango/internal/bootstrap"
+	"github.com/langoai/lango/internal/cli/tui"
 	"github.com/langoai/lango/internal/config"
 	"github.com/langoai/lango/internal/configstore"
 )
@@ -68,6 +69,8 @@ func runSettings(profileName string) error {
 	if err != nil {
 		return fmt.Errorf("load profile %q: %w", profileName, err)
 	}
+
+	tui.SetProfile(profileName)
 
 	p := tea.NewProgram(NewEditorWithConfig(initialCfg))
 	model, err := p.Run()

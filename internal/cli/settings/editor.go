@@ -5,7 +5,6 @@ import (
 	"strings"
 
 	tea "github.com/charmbracelet/bubbletea"
-	"github.com/charmbracelet/lipgloss"
 
 	"github.com/langoai/lango/internal/cli/tui"
 	"github.com/langoai/lango/internal/cli/tuicore"
@@ -67,7 +66,7 @@ func NewEditorWithConfig(cfg *config.Config) *Editor {
 
 // Init implements tea.Model.
 func (e *Editor) Init() tea.Cmd {
-	return nil
+	return tea.ClearScreen
 }
 
 // Update implements tea.Model.
@@ -386,15 +385,11 @@ func (e *Editor) View() string {
 func (e *Editor) viewWelcome() string {
 	var b strings.Builder
 
-	box := lipgloss.NewStyle().
-		Border(lipgloss.RoundedBorder()).
-		BorderForeground(tui.Primary).
-		Padding(1, 3)
-
-	title := lipgloss.NewStyle().Foreground(tui.Foreground).Bold(true).Render("Welcome to Lango Settings")
-	desc := tui.MutedStyle.Render("Configure your agent, providers, channels, and more.\nAll settings are saved to an encrypted local profile.")
-
-	b.WriteString(box.Render(title + "\n\n" + desc))
+	b.WriteString(tui.BannerBox())
+	b.WriteString("\n\n")
+	b.WriteString(tui.MutedStyle.Render("Configure your agent, providers, channels, and more."))
+	b.WriteString("\n")
+	b.WriteString(tui.MutedStyle.Render("All settings are saved to an encrypted local profile."))
 	b.WriteString("\n\n")
 	b.WriteString(tui.HelpBar(
 		tui.HelpEntry("Enter", "Start"),

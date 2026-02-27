@@ -23,6 +23,7 @@ import (
 	climemory "github.com/langoai/lango/internal/cli/memory"
 	"github.com/langoai/lango/internal/cli/onboard"
 	clip2p "github.com/langoai/lango/internal/cli/p2p"
+	"github.com/langoai/lango/internal/cli/tui"
 	clipayment "github.com/langoai/lango/internal/cli/payment"
 	clisecurity "github.com/langoai/lango/internal/cli/security"
 	"github.com/langoai/lango/internal/cli/settings"
@@ -48,6 +49,8 @@ func main() {
 		sandbox.RunWorker(sandbox.ToolRegistry{})
 		return
 	}
+
+	tui.SetVersionInfo(Version, BuildTime)
 
 	rootCmd := &cobra.Command{
 		Use:   "lango",
@@ -178,6 +181,11 @@ func serveCmd() *cobra.Command {
 			defer logging.Sync()
 
 			log := logging.Sugar()
+
+			// Print serve banner before starting
+			tui.SetProfile(boot.ProfileName)
+			fmt.Print(tui.ServeBanner())
+
 			log.Infow("starting lango", "version", Version, "profile", boot.ProfileName)
 
 			// Create application
