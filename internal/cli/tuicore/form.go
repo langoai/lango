@@ -7,6 +7,8 @@ import (
 	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
+
+	"github.com/langoai/lango/internal/cli/tui"
 )
 
 // FormModel manages a list of fields.
@@ -134,14 +136,13 @@ func (m FormModel) Update(msg tea.Msg) (FormModel, tea.Cmd) {
 func (m FormModel) View() string {
 	var b strings.Builder
 
-	titleStyle := lipgloss.NewStyle().Bold(true).Border(lipgloss.NormalBorder(), false, false, true, false).BorderForeground(lipgloss.Color("#7D56F4")).MarginBottom(1)
-	b.WriteString(titleStyle.Render(m.Title))
+	b.WriteString(tui.FormTitleBarStyle.Render(m.Title))
 	b.WriteString("\n")
 
 	for i, f := range m.Fields {
 		labelStyle := lipgloss.NewStyle().Width(20)
 		if i == m.Cursor {
-			labelStyle = labelStyle.Foreground(lipgloss.Color("#04B575")).Bold(true)
+			labelStyle = labelStyle.Foreground(tui.Accent).Bold(true)
 		}
 
 		b.WriteString(labelStyle.Render(f.Label))
@@ -150,7 +151,7 @@ func (m FormModel) View() string {
 		case InputText, InputInt, InputPassword:
 			if i == m.Cursor {
 				f.TextInput.Focus()
-				f.TextInput.TextStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("#04B575"))
+				f.TextInput.TextStyle = lipgloss.NewStyle().Foreground(tui.Accent)
 			} else {
 				f.TextInput.Blur()
 				f.TextInput.TextStyle = lipgloss.NewStyle()
@@ -163,7 +164,7 @@ func (m FormModel) View() string {
 				check = "[x]"
 			}
 			if i == m.Cursor {
-				check = lipgloss.NewStyle().Foreground(lipgloss.Color("#04B575")).Render(check)
+				check = lipgloss.NewStyle().Foreground(tui.Accent).Render(check)
 			}
 			b.WriteString(check)
 
@@ -174,7 +175,7 @@ func (m FormModel) View() string {
 			}
 			if i == m.Cursor {
 				val = fmt.Sprintf("< %s >", val)
-				val = lipgloss.NewStyle().Foreground(lipgloss.Color("#04B575")).Render(val)
+				val = lipgloss.NewStyle().Foreground(tui.Accent).Render(val)
 			}
 			b.WriteString(val)
 		}
@@ -183,7 +184,13 @@ func (m FormModel) View() string {
 
 	// Help Footer
 	b.WriteString("\n")
-	b.WriteString(lipgloss.NewStyle().Foreground(lipgloss.Color("#626262")).Render("tab/shift+tab: nav \u2022 space: toggle \u2022 \u2190/\u2192: select options \u2022 esc: back"))
+	b.WriteString(tui.HelpBar(
+		tui.HelpEntry("Tab", "Next"),
+		tui.HelpEntry("Shift+Tab", "Prev"),
+		tui.HelpEntry("Space", "Toggle"),
+		tui.HelpEntry("←→", "Options"),
+		tui.HelpEntry("Esc", "Back"),
+	))
 
 	return b.String()
 }

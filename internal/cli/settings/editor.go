@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/lipgloss"
 
 	"github.com/langoai/lango/internal/cli/tui"
 	"github.com/langoai/lango/internal/cli/tuicore"
@@ -339,15 +340,29 @@ func (e *Editor) handleMenuSelection(id string) tea.Cmd {
 func (e *Editor) View() string {
 	var b strings.Builder
 
-	b.WriteString(tui.TitleStyle.Render("Lango Configuration Editor"))
+	// Dynamic breadcrumb header
+	switch e.step {
+	case StepWelcome, StepMenu:
+		b.WriteString(tui.Breadcrumb("Settings"))
+	case StepForm:
+		formTitle := ""
+		if e.activeForm != nil {
+			formTitle = e.activeForm.Title
+		}
+		b.WriteString(tui.Breadcrumb("Settings", formTitle))
+	case StepProvidersList:
+		b.WriteString(tui.Breadcrumb("Settings", "Providers"))
+	case StepAuthProvidersList:
+		b.WriteString(tui.Breadcrumb("Settings", "Auth Providers"))
+	default:
+		b.WriteString(tui.Breadcrumb("Settings"))
+	}
 	b.WriteString("\n\n")
 
+	// Content
 	switch e.step {
 	case StepWelcome:
-		b.WriteString(tui.SubtitleStyle.Render("Welcome!"))
-		b.WriteString("\n\n")
-		b.WriteString("Press [Enter] to start configuring Lango.\n")
-		b.WriteString(tui.MutedStyle.Render("This editor allows you to configure Agent, Server, Tools, and more."))
+		b.WriteString(e.viewWelcome())
 
 	case StepMenu:
 		b.WriteString(e.menu.View())
@@ -363,6 +378,27 @@ func (e *Editor) View() string {
 	case StepAuthProvidersList:
 		b.WriteString(e.authProvidersList.View())
 	}
+
+	return b.String()
+}
+
+func (e *Editor) viewWelcome() string {
+	var b strings.Builder
+
+	box := lipgloss.NewStyle().
+		Border(lipgloss.RoundedBorder()).
+		BorderForeground(tui.Primary).
+		Padding(1, 3)
+
+	title := lipgloss.NewStyle().Foreground(tui.Foreground).Bold(true).Render("Welcome to Lango Settings")
+	desc := tui.MutedStyle.Render("Configure your agent, providers, channels, and more.\nAll settings are saved to an encrypted local profile.")
+
+	b.WriteString(box.Render(title + "\n\n" + desc))
+	b.WriteString("\n\n")
+	b.WriteString(tui.HelpBar(
+		tui.HelpEntry("Enter", "Start"),
+		tui.HelpEntry("Esc", "Quit"),
+	))
 
 	return b.String()
 }

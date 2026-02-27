@@ -7,6 +7,8 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
+
+	"github.com/langoai/lango/internal/cli/tui"
 	"github.com/langoai/lango/internal/config"
 )
 
@@ -85,40 +87,50 @@ func (m ProvidersListModel) Update(msg tea.Msg) (ProvidersListModel, tea.Cmd) {
 func (m ProvidersListModel) View() string {
 	var b strings.Builder
 
-	titleStyle := lipgloss.NewStyle().
-		Bold(true).
-		Foreground(lipgloss.Color("#7D56F4")).
-		MarginBottom(1)
-
-	b.WriteString(titleStyle.Render("Manage Providers"))
-	b.WriteString("\n\n")
-
+	// Items inside a container
+	var body strings.Builder
 	for i, p := range m.Providers {
 		cursor := "  "
 		itemStyle := lipgloss.NewStyle()
 
 		if m.Cursor == i {
-			cursor = "\u25b8 "
-			itemStyle = itemStyle.Foreground(lipgloss.Color("#04B575")).Bold(true)
+			cursor = tui.CursorStyle.Render("▸ ")
+			itemStyle = tui.ActiveItemStyle
 		}
 
-		b.WriteString(cursor)
+		body.WriteString(cursor)
 		label := fmt.Sprintf("%s (%s)", p.ID, p.Type)
-		b.WriteString(itemStyle.Render(label))
-		b.WriteString("\n")
+		body.WriteString(itemStyle.Render(label))
+		body.WriteString("\n")
 	}
 
+	// "Add New" item
 	cursor := "  "
 	itemStyle := lipgloss.NewStyle()
 	if m.Cursor == len(m.Providers) {
-		cursor = "\u25b8 "
-		itemStyle = itemStyle.Foreground(lipgloss.Color("#04B575")).Bold(true)
+		cursor = tui.CursorStyle.Render("▸ ")
+		itemStyle = tui.ActiveItemStyle
+	} else {
+		itemStyle = lipgloss.NewStyle().Foreground(tui.Muted)
 	}
-	b.WriteString(cursor)
-	b.WriteString(itemStyle.Render("+ Add New Provider"))
-	b.WriteString("\n\n")
+	body.WriteString(cursor)
+	body.WriteString(itemStyle.Render("+ Add New Provider"))
 
-	b.WriteString(lipgloss.NewStyle().Foreground(lipgloss.Color("#626262")).Render("\u2191/\u2193: navigate \u2022 enter: select \u2022 d: delete \u2022 esc: back"))
+	// Wrap in container
+	container := lipgloss.NewStyle().
+		Border(lipgloss.RoundedBorder()).
+		BorderForeground(tui.Muted).
+		Padding(1, 2)
+	b.WriteString(container.Render(body.String()))
+
+	// Help footer
+	b.WriteString("\n")
+	b.WriteString(tui.HelpBar(
+		tui.HelpEntry("↑↓", "Navigate"),
+		tui.HelpEntry("Enter", "Select"),
+		tui.HelpEntry("d", "Delete"),
+		tui.HelpEntry("Esc", "Back"),
+	))
 
 	return b.String()
 }

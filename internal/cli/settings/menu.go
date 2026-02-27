@@ -6,6 +6,8 @@ import (
 	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
+
+	"github.com/langoai/lango/internal/cli/tui"
 )
 
 // Category represents a configuration category in the menu.
@@ -69,8 +71,8 @@ func NewMenuModel() MenuModel {
 	si.CharLimit = 40
 	si.Width = 30
 	si.Prompt = "/ "
-	si.PromptStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("#7C3AED")).Bold(true)
-	si.TextStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("#F9FAFB"))
+	si.PromptStyle = lipgloss.NewStyle().Foreground(tui.Primary).Bold(true)
+	si.TextStyle = lipgloss.NewStyle().Foreground(tui.Foreground)
 
 	return MenuModel{
 		Sections: []Section{
@@ -251,71 +253,66 @@ func (m *MenuModel) applyFilter() {
 func (m MenuModel) View() string {
 	var b strings.Builder
 
-	titleStyle := lipgloss.NewStyle().
-		Bold(true).
-		Foreground(lipgloss.Color("#7C3AED")).
-		MarginBottom(1)
-
-	b.WriteString(titleStyle.Render("Configuration Menu"))
+	// Search bar — always visible
+	if m.searching {
+		b.WriteString(tui.SearchBarStyle.Render(m.searchInput.View()))
+	} else {
+		hint := lipgloss.NewStyle().
+			Foreground(tui.Dim).
+			Italic(true).
+			PaddingLeft(1)
+		b.WriteString(hint.Render("/ Search..."))
+	}
 	b.WriteString("\n\n")
 
-	// Search bar
-	if m.searching {
-		boxStyle := lipgloss.NewStyle().
-			Border(lipgloss.RoundedBorder()).
-			BorderForeground(lipgloss.Color("#7C3AED")).
-			Padding(0, 1).
-			MarginBottom(1)
-		b.WriteString(boxStyle.Render(m.searchInput.View()))
-		b.WriteString("\n\n")
-	} else {
-		hintStyle := lipgloss.NewStyle().
-			Foreground(lipgloss.Color("#626262")).
-			Italic(true)
-		b.WriteString(hintStyle.Render("Press / to search"))
-		b.WriteString("\n\n")
-	}
-
+	// Menu body
+	var body strings.Builder
 	if m.searching && m.filtered != nil {
-		// Render filtered results
-		m.renderFilteredView(&b)
+		m.renderFilteredView(&body)
 	} else {
-		// Render grouped view
-		m.renderGroupedView(&b)
+		m.renderGroupedView(&body)
 	}
 
-	// Help footer
+	// Wrap in container
+	container := lipgloss.NewStyle().
+		Border(lipgloss.RoundedBorder()).
+		BorderForeground(tui.Muted).
+		Padding(0, 1)
+	b.WriteString(container.Render(body.String()))
+
+	// Help footer with key badges
 	b.WriteString("\n")
-	helpStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("#626262"))
 	if m.searching {
-		b.WriteString(helpStyle.Render("↑/↓: navigate • enter: select • esc: cancel search"))
+		b.WriteString(tui.HelpBar(
+			tui.HelpEntry("↑↓", "Navigate"),
+			tui.HelpEntry("Enter", "Select"),
+			tui.HelpEntry("Esc", "Cancel"),
+		))
 	} else {
-		b.WriteString(helpStyle.Render("↑/↓/j/k: navigate • enter: select • /: search • esc: quit"))
+		b.WriteString(tui.HelpBar(
+			tui.HelpEntry("↑↓", "Navigate"),
+			tui.HelpEntry("Enter", "Select"),
+			tui.HelpEntry("/", "Search"),
+			tui.HelpEntry("Esc", "Quit"),
+		))
 	}
 
 	return b.String()
 }
 
 func (m MenuModel) renderGroupedView(b *strings.Builder) {
-	sectionStyle := lipgloss.NewStyle().
-		Foreground(lipgloss.Color("#3B82F6")).
-		Bold(true).
-		MarginTop(1)
-	separatorStyle := lipgloss.NewStyle().
-		Foreground(lipgloss.Color("#374151"))
-
 	globalIdx := 0
 	for si, section := range m.Sections {
 		// Section header
 		if section.Title != "" {
 			if si > 0 {
-				b.WriteString(separatorStyle.Render("  ────────────────────────────────────"))
+				b.WriteString(tui.SeparatorLineStyle.Render("  " + strings.Repeat("─", 38)))
 				b.WriteString("\n")
 			}
-			b.WriteString(sectionStyle.Render("  " + section.Title))
+			b.WriteString(tui.SectionHeaderStyle.Render(section.Title))
 			b.WriteString("\n")
 		} else if si > 0 {
-			b.WriteString(separatorStyle.Render("  ────────────────────────────────────"))
+			b.WriteString(tui.SeparatorLineStyle.Render("  " + strings.Repeat("─", 38)))
 			b.WriteString("\n")
 		}
 
@@ -329,7 +326,7 @@ func (m MenuModel) renderGroupedView(b *strings.Builder) {
 func (m MenuModel) renderFilteredView(b *strings.Builder) {
 	if len(m.filtered) == 0 {
 		noResult := lipgloss.NewStyle().
-			Foreground(lipgloss.Color("#6B7280")).
+			Foreground(tui.Muted).
 			Italic(true)
 		b.WriteString(noResult.Render("  No matching items"))
 		b.WriteString("\n")
@@ -342,45 +339,45 @@ func (m MenuModel) renderFilteredView(b *strings.Builder) {
 }
 
 func (m MenuModel) renderItem(b *strings.Builder, cat Category, idx int) {
-	cursor := "  "
-	titleStyle := lipgloss.NewStyle()
-	descStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("#626262"))
+	const titleWidth = 22
+	isSelected := m.Cursor == idx
 
-	if m.Cursor == idx {
-		cursor = lipgloss.NewStyle().Foreground(lipgloss.Color("#04B575")).Render("▸ ")
-		titleStyle = titleStyle.Foreground(lipgloss.Color("#04B575")).Bold(true)
-		descStyle = descStyle.Foreground(lipgloss.Color("#04B575"))
+	cursor := "  "
+	titleStyle := lipgloss.NewStyle().Width(titleWidth)
+	descStyle := lipgloss.NewStyle().Foreground(tui.Dim)
+
+	if isSelected {
+		cursor = tui.CursorStyle.Render("▸ ")
+		titleStyle = titleStyle.Foreground(tui.Accent).Bold(true)
+		descStyle = descStyle.Foreground(tui.Accent)
 	}
 
-	// Highlight search matches in title/desc
+	// Handle search highlighting
 	title := cat.Title
 	desc := cat.Desc
 
 	if m.searching && m.searchInput.Value() != "" {
 		query := strings.ToLower(strings.TrimSpace(m.searchInput.Value()))
-		title = m.highlightMatch(title, query, m.Cursor == idx)
-		desc = m.highlightMatch(desc, query, m.Cursor == idx)
-	}
+		highlightedTitle := m.highlightMatch(title, query, isSelected)
+		highlightedDesc := m.highlightMatch(desc, query, isSelected)
 
-	b.WriteString(cursor)
-	if m.searching && m.searchInput.Value() != "" {
-		// Already highlighted, render raw
-		b.WriteString(title)
+		b.WriteString(cursor)
+		b.WriteString(lipgloss.NewStyle().Width(titleWidth).Render(highlightedTitle))
+		if desc != "" {
+			b.WriteString(" ")
+			b.WriteString(highlightedDesc)
+		}
 	} else {
+		b.WriteString(cursor)
 		b.WriteString(titleStyle.Render(title))
-	}
-	if desc != "" {
-		b.WriteString(" ")
-		if m.searching && m.searchInput.Value() != "" {
-			b.WriteString(desc)
-		} else {
+		if desc != "" {
 			b.WriteString(descStyle.Render(desc))
 		}
 	}
 	b.WriteString("\n")
 }
 
-// highlightMatch highlights matching substrings with a yellow/amber color.
+// highlightMatch highlights matching substrings with amber color.
 func (m MenuModel) highlightMatch(text, query string, selected bool) string {
 	if query == "" {
 		return text
@@ -389,23 +386,23 @@ func (m MenuModel) highlightMatch(text, query string, selected bool) string {
 	idx := strings.Index(lower, query)
 	if idx < 0 {
 		if selected {
-			return lipgloss.NewStyle().Foreground(lipgloss.Color("#04B575")).Bold(true).Render(text)
+			return lipgloss.NewStyle().Foreground(tui.Accent).Bold(true).Render(text)
 		}
-		return lipgloss.NewStyle().Foreground(lipgloss.Color("#626262")).Render(text)
+		return lipgloss.NewStyle().Foreground(tui.Dim).Render(text)
 	}
 
-	matchStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("#F59E0B")).Bold(true)
+	matchStyle := lipgloss.NewStyle().Foreground(tui.Warning).Bold(true)
 	if selected {
-		matchStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("#F59E0B")).Bold(true).Underline(true)
+		matchStyle = matchStyle.Underline(true)
 	}
 
 	before := text[:idx]
 	match := text[idx : idx+len(query)]
 	after := text[idx+len(query):]
 
-	normalStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("#626262"))
+	normalStyle := lipgloss.NewStyle().Foreground(tui.Dim)
 	if selected {
-		normalStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("#04B575")).Bold(true)
+		normalStyle = lipgloss.NewStyle().Foreground(tui.Accent).Bold(true)
 	}
 
 	return normalStyle.Render(before) + matchStyle.Render(match) + normalStyle.Render(after)
