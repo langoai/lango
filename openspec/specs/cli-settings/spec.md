@@ -39,6 +39,10 @@ The settings editor SHALL support editing all configuration sections:
 - **WHEN** user launches `lango settings`
 - **THEN** the menu SHALL display all categories including P2P Network, P2P ZKP, P2P Pricing, P2P Owner Protection, P2P Sandbox, Security Keyring, Security DB Encryption, Security KMS, grouped under "P2P Network" and "Security" sections in order: Providers, Agent, Server, Channels, Tools, Session, Security, Auth, Knowledge, Skill, Observational Memory, Embedding & RAG, Graph Store, Multi-Agent, A2A Protocol, Payment, Cron Scheduler, Background Tasks, Workflow Engine, Librarian, P2P Network, P2P ZKP, P2P Pricing, P2P Owner Protection, P2P Sandbox, Security Keyring, Security DB Encryption, Security KMS, Save & Exit, Cancel
 
+#### Scenario: Provider form includes github
+- **WHEN** user opens the provider add/edit form
+- **THEN** the Type select field options SHALL include "github" alongside openai, anthropic, gemini, and ollama
+
 ### Requirement: User Interface
 The settings editor SHALL provide menu-based navigation with categories, free navigation between categories, and shared `tuicore.FormModel` for all forms. Provider and OIDC provider list views SHALL support managing collections. Pressing Esc at StepMenu SHALL navigate back to StepWelcome instead of quitting the TUI. The help bar at StepMenu SHALL display "Back" for the Esc key.
 
@@ -474,7 +478,7 @@ Form builders for Agent, Observational Memory, Embedding, and Librarian SHALL at
 
 #### Scenario: Agent form model fetch
 - **WHEN** the Agent form is created and the configured provider has a valid API key
-- **THEN** the Model ID field SHALL be populated with models from `fetchModelOptions(cfg.Agent.Provider, ...)`
+- **THEN** the Model ID field SHALL be populated with models from `FetchModelOptions(cfg.Agent.Provider, ...)`
 
 #### Scenario: Observational Memory model fetch with provider inheritance
 - **WHEN** the Observational Memory form is created with an empty provider
@@ -559,8 +563,16 @@ KMS backend-specific fields SHALL be visible based on the selected backend type.
 - **WHEN** the KMS backend is "pkcs11"
 - **THEN** the PKCS11 Module Path, Slot ID, PIN, and Key Label fields SHALL be visible
 
+### Requirement: Model Fetcher API
+The settings package SHALL export `FetchModelOptions` and `NewProviderFromConfig` as public functions so other CLI packages (e.g., onboard) can reuse model auto-fetch logic.
+
+#### Scenario: Exported function availability
+- **WHEN** another package imports the settings package
+- **THEN** `settings.FetchModelOptions(providerID, cfg, currentModel)` SHALL be callable
+- **AND** `settings.NewProviderFromConfig(id, pCfg)` SHALL be callable
+
 ### Requirement: Model fetcher provider support
-The `newProviderFromConfig` function SHALL support creating lightweight provider instances for: OpenAI, Anthropic, Gemini/Google, Ollama (via OpenAI-compatible endpoint), and GitHub (via OpenAI-compatible endpoint).
+The `NewProviderFromConfig` function SHALL support creating lightweight provider instances for: OpenAI, Anthropic, Gemini/Google, Ollama (via OpenAI-compatible endpoint), and GitHub (via OpenAI-compatible endpoint).
 
 #### Scenario: Ollama default base URL
 - **WHEN** creating an Ollama provider with empty BaseURL
@@ -572,4 +584,4 @@ The `newProviderFromConfig` function SHALL support creating lightweight provider
 
 #### Scenario: Provider without API key
 - **WHEN** creating a non-Ollama provider with empty API key
-- **THEN** `newProviderFromConfig` SHALL return nil
+- **THEN** `NewProviderFromConfig` SHALL return nil
