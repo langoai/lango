@@ -206,13 +206,8 @@ func (s *ConfigState) UpdateConfigFromForm(form *FormModel) {
 
 		// Embedding & RAG
 		case "emb_provider_id":
-			if val == "local" {
-				s.Current.Embedding.ProviderID = ""
-				s.Current.Embedding.Provider = "local"
-			} else {
-				s.Current.Embedding.ProviderID = val
-				s.Current.Embedding.Provider = ""
-			}
+			s.Current.Embedding.Provider = val
+			s.Current.Embedding.ProviderID = "" // clear deprecated field
 		case "emb_model":
 			s.Current.Embedding.Model = val
 		case "emb_dimensions":

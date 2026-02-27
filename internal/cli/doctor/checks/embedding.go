@@ -22,7 +22,7 @@ func (c *EmbeddingCheck) Run(_ context.Context, cfg *config.Config) Result {
 	}
 
 	emb := cfg.Embedding
-	if emb.Provider == "" && emb.ProviderID == "" {
+	if emb.Provider == "" {
 		return Result{
 			Name:    c.Name(),
 			Status:  StatusSkip,
@@ -37,14 +37,10 @@ func (c *EmbeddingCheck) Run(_ context.Context, cfg *config.Config) Result {
 	backendType, apiKey := cfg.ResolveEmbeddingProvider()
 
 	if backendType == "" {
-		if emb.ProviderID != "" {
-			issues = append(issues, fmt.Sprintf("provider ID %q not found in providers map or has unsupported type", emb.ProviderID))
-		} else {
-			issues = append(issues, "embedding provider not properly configured (set providerID or provider=local)")
-		}
+		issues = append(issues, fmt.Sprintf("provider %q not found in providers map or has unsupported type", emb.Provider))
 		status = StatusFail
 	} else if backendType != "local" && apiKey == "" {
-		issues = append(issues, fmt.Sprintf("provider %q has no API key configured", emb.ProviderID))
+		issues = append(issues, fmt.Sprintf("provider %q has no API key configured", emb.Provider))
 		status = StatusFail
 	}
 
@@ -65,9 +61,9 @@ func (c *EmbeddingCheck) Run(_ context.Context, cfg *config.Config) Result {
 	}
 
 	if len(issues) == 0 {
-		providerLabel := backendType
-		if emb.ProviderID != "" {
-			providerLabel = fmt.Sprintf("%s (id=%s)", backendType, emb.ProviderID)
+		providerLabel := emb.Provider
+		if backendType != emb.Provider {
+			providerLabel = fmt.Sprintf("%s (%s)", emb.Provider, backendType)
 		}
 		msg := fmt.Sprintf("Embedding configured (provider=%s, dimensions=%d, rag=%v)",
 			providerLabel, emb.Dimensions, emb.RAG.Enabled)

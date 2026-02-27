@@ -334,7 +334,7 @@ func TestNewEmbeddingForm_ProviderOptionsFromProviders(t *testing.T) {
 		"gemini-1":  {Type: "gemini", APIKey: "test-key"},
 		"my-openai": {Type: "openai", APIKey: "sk-test"},
 	}
-	cfg.Embedding.ProviderID = "gemini-1"
+	cfg.Embedding.Provider = "gemini-1"
 
 	form := NewEmbeddingForm(cfg)
 	f := fieldByKey(form, "emb_provider_id")
@@ -369,11 +369,11 @@ func TestUpdateConfigFromForm_EmbeddingFields(t *testing.T) {
 	state.UpdateConfigFromForm(&form)
 
 	e := state.Current.Embedding
-	if e.ProviderID != "my-openai" {
-		t.Errorf("ProviderID: want %q, got %q", "my-openai", e.ProviderID)
+	if e.Provider != "my-openai" {
+		t.Errorf("Provider: want %q, got %q", "my-openai", e.Provider)
 	}
-	if e.Provider != "" {
-		t.Errorf("Provider: want empty (non-local), got %q", e.Provider)
+	if e.ProviderID != "" {
+		t.Errorf("ProviderID: want empty (deprecated), got %q", e.ProviderID)
 	}
 	if e.Model != "text-embedding-3-small" {
 		t.Errorf("Model: want %q, got %q", "text-embedding-3-small", e.Model)
@@ -395,7 +395,7 @@ func TestUpdateConfigFromForm_EmbeddingFields(t *testing.T) {
 	}
 }
 
-func TestUpdateConfigFromForm_EmbeddingProviderIDLocal(t *testing.T) {
+func TestUpdateConfigFromForm_EmbeddingProviderLocal(t *testing.T) {
 	state := tuicore.NewConfigState()
 	form := tuicore.NewFormModel("test")
 	form.AddField(&tuicore.Field{Key: "emb_provider_id", Type: tuicore.InputSelect, Value: "local"})
@@ -403,11 +403,11 @@ func TestUpdateConfigFromForm_EmbeddingProviderIDLocal(t *testing.T) {
 	state.UpdateConfigFromForm(&form)
 
 	e := state.Current.Embedding
-	if e.ProviderID != "" {
-		t.Errorf("ProviderID: want empty, got %q", e.ProviderID)
-	}
 	if e.Provider != "local" {
 		t.Errorf("Provider: want %q, got %q", "local", e.Provider)
+	}
+	if e.ProviderID != "" {
+		t.Errorf("ProviderID: want empty (deprecated), got %q", e.ProviderID)
 	}
 }
 

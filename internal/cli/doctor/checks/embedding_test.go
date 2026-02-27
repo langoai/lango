@@ -7,10 +7,10 @@ import (
 	"github.com/langoai/lango/internal/config"
 )
 
-func TestEmbeddingCheck_Run_ProviderIDResolvesCorrectly(t *testing.T) {
+func TestEmbeddingCheck_Run_ProviderResolvesCorrectly(t *testing.T) {
 	cfg := &config.Config{
 		Embedding: config.EmbeddingConfig{
-			ProviderID: "gemini-1",
+			Provider:   "gemini-1",
 			Dimensions: 768,
 		},
 		Providers: map[string]config.ProviderConfig{
@@ -26,10 +26,10 @@ func TestEmbeddingCheck_Run_ProviderIDResolvesCorrectly(t *testing.T) {
 	}
 }
 
-func TestEmbeddingCheck_Run_ProviderIDNotFound(t *testing.T) {
+func TestEmbeddingCheck_Run_ProviderNotFound(t *testing.T) {
 	cfg := &config.Config{
 		Embedding: config.EmbeddingConfig{
-			ProviderID: "nonexistent",
+			Provider:   "nonexistent",
 			Dimensions: 768,
 		},
 		Providers: map[string]config.ProviderConfig{
@@ -45,10 +45,10 @@ func TestEmbeddingCheck_Run_ProviderIDNotFound(t *testing.T) {
 	}
 }
 
-func TestEmbeddingCheck_Run_ProviderIDNoAPIKey(t *testing.T) {
+func TestEmbeddingCheck_Run_ProviderNoAPIKey(t *testing.T) {
 	cfg := &config.Config{
 		Embedding: config.EmbeddingConfig{
-			ProviderID: "my-openai",
+			Provider:   "my-openai",
 			Dimensions: 1536,
 		},
 		Providers: map[string]config.ProviderConfig{

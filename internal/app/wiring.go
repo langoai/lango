@@ -541,7 +541,7 @@ type embeddingComponents struct {
 // initEmbedding creates the embedding pipeline and RAG service if configured.
 func initEmbedding(cfg *config.Config, rawDB *sql.DB, kc *knowledgeComponents, mc *memoryComponents) *embeddingComponents {
 	emb := cfg.Embedding
-	if emb.Provider == "" && emb.ProviderID == "" {
+	if emb.Provider == "" {
 		logger().Info("embedding system disabled (no provider configured)")
 		return nil
 	}
@@ -549,7 +549,7 @@ func initEmbedding(cfg *config.Config, rawDB *sql.DB, kc *knowledgeComponents, m
 	backendType, apiKey := cfg.ResolveEmbeddingProvider()
 	if backendType == "" {
 		logger().Warnw("embedding provider type could not be resolved",
-			"providerID", emb.ProviderID, "provider", emb.Provider)
+			"provider", emb.Provider)
 		return nil
 	}
 
@@ -618,8 +618,8 @@ func initEmbedding(cfg *config.Config, rawDB *sql.DB, kc *knowledgeComponents, m
 	}
 
 	logger().Infow("embedding system initialized",
-		"provider", backendType,
-		"providerID", emb.ProviderID,
+		"provider", emb.Provider,
+		"backendType", backendType,
 		"dimensions", dimensions,
 		"ragEnabled", emb.RAG.Enabled,
 	)

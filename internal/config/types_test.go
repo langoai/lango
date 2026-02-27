@@ -2,17 +2,17 @@ package config
 
 import "testing"
 
-func TestResolveEmbeddingProvider_ExplicitProviderID(t *testing.T) {
+func TestResolveEmbeddingProvider_ByProviderMapKey(t *testing.T) {
 	tests := []struct {
-		give           string
-		providerID     string
-		providers      map[string]ProviderConfig
-		wantBackend    string
-		wantHasAPIKey  bool
+		give          string
+		provider      string
+		providers     map[string]ProviderConfig
+		wantBackend   string
+		wantHasAPIKey bool
 	}{
 		{
-			give:       "gemini provider by custom ID",
-			providerID: "gemini-1",
+			give:     "gemini provider by custom ID",
+			provider: "gemini-1",
 			providers: map[string]ProviderConfig{
 				"gemini-1": {Type: "gemini", APIKey: "test-key"},
 			},
@@ -20,8 +20,8 @@ func TestResolveEmbeddingProvider_ExplicitProviderID(t *testing.T) {
 			wantHasAPIKey: true,
 		},
 		{
-			give:       "openai provider by custom ID",
-			providerID: "my-openai",
+			give:     "openai provider by custom ID",
+			provider: "my-openai",
 			providers: map[string]ProviderConfig{
 				"my-openai": {Type: "openai", APIKey: "sk-test"},
 			},
@@ -29,8 +29,8 @@ func TestResolveEmbeddingProvider_ExplicitProviderID(t *testing.T) {
 			wantHasAPIKey: true,
 		},
 		{
-			give:       "ollama provider by custom ID",
-			providerID: "my-ollama",
+			give:     "ollama provider by custom ID",
+			provider: "my-ollama",
 			providers: map[string]ProviderConfig{
 				"my-ollama": {Type: "ollama"},
 			},
@@ -38,8 +38,8 @@ func TestResolveEmbeddingProvider_ExplicitProviderID(t *testing.T) {
 			wantHasAPIKey: false,
 		},
 		{
-			give:       "anthropic provider has no embedding support",
-			providerID: "my-claude",
+			give:     "anthropic provider has no embedding support",
+			provider: "my-claude",
 			providers: map[string]ProviderConfig{
 				"my-claude": {Type: "anthropic", APIKey: "sk-ant-test"},
 			},
@@ -47,8 +47,8 @@ func TestResolveEmbeddingProvider_ExplicitProviderID(t *testing.T) {
 			wantHasAPIKey: false,
 		},
 		{
-			give:       "provider ID not found",
-			providerID: "nonexistent",
+			give:     "provider not found",
+			provider: "nonexistent",
 			providers: map[string]ProviderConfig{
 				"openai": {Type: "openai", APIKey: "sk-test"},
 			},
@@ -60,7 +60,7 @@ func TestResolveEmbeddingProvider_ExplicitProviderID(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.give, func(t *testing.T) {
 			cfg := &Config{
-				Embedding: EmbeddingConfig{ProviderID: tt.providerID},
+				Embedding: EmbeddingConfig{Provider: tt.provider},
 				Providers: tt.providers,
 			}
 			backend, apiKey := cfg.ResolveEmbeddingProvider()
@@ -100,7 +100,9 @@ func TestResolveEmbeddingProvider_NeitherConfigured(t *testing.T) {
 	}
 }
 
-func TestResolveEmbeddingProvider_ProviderIDTakesPrecedence(t *testing.T) {
+func TestResolveEmbeddingProvider_LegacyProviderIDFallback(t *testing.T) {
+	// Legacy configs may still have ProviderID set. The resolver should
+	// fall back to ProviderID when Provider is empty.
 	cfg := &Config{
 		Embedding: EmbeddingConfig{
 			ProviderID: "gemini-1",
@@ -117,4 +119,42 @@ func TestResolveEmbeddingProvider_ProviderIDTakesPrecedence(t *testing.T) {
 	if apiKey != "gemini-key" {
 		t.Errorf("apiKey: want %q, got %q", "gemini-key", apiKey)
 	}
+}
+
+func TestMigrateEmbeddingProvider(t *testing.T) {
+	t.Run("migrates ProviderID to Provider", func(t *testing.T) {
+		cfg := &Config{
+			Embedding: EmbeddingConfig{ProviderID: "my-openai"},
+		}
+		cfg.MigrateEmbeddingProvider()
+		if cfg.Embedding.Provider != "my-openai" {
+			t.Errorf("Provider: want %q, got %q", "my-openai", cfg.Embedding.Provider)
+		}
+		if cfg.Embedding.ProviderID != "" {
+			t.Errorf("ProviderID should be empty after migration, got %q", cfg.Embedding.ProviderID)
+		}
+	})
+
+	t.Run("Provider takes precedence when both set", func(t *testing.T) {
+		cfg := &Config{
+			Embedding: EmbeddingConfig{Provider: "local", ProviderID: "gemini-1"},
+		}
+		cfg.MigrateEmbeddingProvider()
+		if cfg.Embedding.Provider != "local" {
+			t.Errorf("Provider: want %q, got %q", "local", cfg.Embedding.Provider)
+		}
+		if cfg.Embedding.ProviderID != "" {
+			t.Errorf("ProviderID should be empty after migration, got %q", cfg.Embedding.ProviderID)
+		}
+	})
+
+	t.Run("no-op when only Provider is set", func(t *testing.T) {
+		cfg := &Config{
+			Embedding: EmbeddingConfig{Provider: "local"},
+		}
+		cfg.MigrateEmbeddingProvider()
+		if cfg.Embedding.Provider != "local" {
+			t.Errorf("Provider: want %q, got %q", "local", cfg.Embedding.Provider)
+		}
+	})
 }

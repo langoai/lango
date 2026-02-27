@@ -303,6 +303,9 @@ func Load(configPath string) (*Config, error) {
 		return nil, fmt.Errorf("unmarshal config: %w", err)
 	}
 
+	// Migrate legacy fields.
+	cfg.MigrateEmbeddingProvider()
+
 	// Apply environment variable substitution
 	substituteEnvVars(cfg)
 

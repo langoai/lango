@@ -650,14 +650,9 @@ func NewEmbeddingForm(cfg *config.Config) *tuicore.FormModel {
 	}
 	sort.Strings(providerOpts)
 
-	currentVal := cfg.Embedding.ProviderID
-	if currentVal == "" && cfg.Embedding.Provider == "local" {
-		currentVal = "local"
-	}
-
 	form.AddField(&tuicore.Field{
 		Key: "emb_provider_id", Label: "Provider", Type: tuicore.InputSelect,
-		Value:       currentVal,
+		Value:       cfg.Embedding.Provider,
 		Options:     providerOpts,
 		Description: "Embedding provider; 'local' uses a local model via Ollama/compatible API",
 	})
@@ -669,12 +664,8 @@ func NewEmbeddingForm(cfg *config.Config) *tuicore.FormModel {
 		Description: "Embedding model name; must be supported by the selected provider",
 	})
 
-	embFetchProvider := cfg.Embedding.ProviderID
-	if embFetchProvider == "" && cfg.Embedding.Provider != "" {
-		embFetchProvider = cfg.Embedding.Provider
-	}
-	if embFetchProvider != "" {
-		if embModelOpts := fetchModelOptions(embFetchProvider, cfg, cfg.Embedding.Model); len(embModelOpts) > 0 {
+	if cfg.Embedding.Provider != "" {
+		if embModelOpts := fetchModelOptions(cfg.Embedding.Provider, cfg, cfg.Embedding.Model); len(embModelOpts) > 0 {
 			embModelOpts = append([]string{""}, embModelOpts...)
 			form.Fields[len(form.Fields)-1].Type = tuicore.InputSelect
 			form.Fields[len(form.Fields)-1].Options = embModelOpts
