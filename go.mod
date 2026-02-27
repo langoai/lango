@@ -27,6 +27,7 @@ require (
 	github.com/go-chi/chi/v5 v5.1.0
 	github.com/go-rod/rod v0.116.2
 	github.com/go-telegram-bot-api/telegram-bot-api/v5 v5.5.1
+	github.com/google/go-tpm v0.9.8
 	github.com/google/jsonschema-go v0.4.2
 	github.com/google/uuid v1.6.0
 	github.com/gorilla/websocket v1.5.3

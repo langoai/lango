@@ -29,9 +29,20 @@ type Provider interface {
 
 ## Availability Detection
 
-`IsAvailable()` performs a write/read/delete probe cycle to verify the OS keyring daemon is accessible. Returns `Status{Available, Backend, Error}`.
+`IsAvailable()` performs a write/read/delete probe cycle to verify the OS keyring daemon is accessible. Returns `Status{Available, Backend, SecurityTier, Error}`.
 
 Keyring availability is determined solely by runtime auto-detection — there is no configuration flag.
+
+### Requirement: Status struct describes keyring availability
+The `Status` struct SHALL include a `SecurityTier` field indicating the detected hardware security tier alongside existing `Available`, `Backend`, and `Error` fields.
+
+#### Scenario: IsAvailable reports security tier
+- **WHEN** `IsAvailable()` is called on a system with biometric hardware
+- **THEN** the returned `Status` SHALL have `SecurityTier` set to `TierBiometric`
+
+#### Scenario: IsAvailable on system without secure hardware
+- **WHEN** `IsAvailable()` is called on a system without biometric or TPM
+- **THEN** the returned `Status` SHALL have `SecurityTier` set to `TierNone`
 
 #### Scenario: Keyring availability on supported OS
 - **WHEN** the application starts on a system with an OS keyring daemon

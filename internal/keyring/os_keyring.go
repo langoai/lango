@@ -70,9 +70,13 @@ func IsAvailable() Status {
 
 	_ = provider.Delete(Service, probeKey)
 
+	// Detect security tier for status reporting.
+	_, tier := DetectSecureProvider()
+
 	return Status{
-		Available: true,
-		Backend:   backendName(),
+		Available:    true,
+		Backend:      backendName(),
+		SecurityTier: tier,
 	}
 }
 
