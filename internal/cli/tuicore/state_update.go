@@ -431,10 +431,6 @@ func (s *ConfigState) UpdateConfigFromForm(form *FormModel) {
 				s.Current.P2P.ToolIsolation.Container.PoolIdleTimeout = d
 			}
 
-		// Security Keyring
-		case "keyring_enabled":
-			s.Current.Security.Keyring.Enabled = f.Checked
-
 		// Security DB Encryption
 		case "db_encryption_enabled":
 			s.Current.Security.DBEncryption.Enabled = f.Checked

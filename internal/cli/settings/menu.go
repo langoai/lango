@@ -129,7 +129,6 @@ func NewMenuModel() MenuModel {
 				Categories: []Category{
 					{"security", "Security", "PII, Approval, Encryption"},
 					{"auth", "Auth", "OIDC provider configuration"},
-					{"security_keyring", "Security Keyring", "OS keyring for passphrase storage"},
 					{"security_db", "Security DB Encryption", "SQLCipher database encryption"},
 					{"security_kms", "Security KMS", "Cloud KMS / HSM backends"},
 				},

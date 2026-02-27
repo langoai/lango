@@ -15,6 +15,7 @@ import (
 	"entgo.io/ent/dialect/sql/schema"
 	_ "github.com/mattn/go-sqlite3"
 
+	"github.com/langoai/lango/internal/cli/prompt"
 	"github.com/langoai/lango/internal/config"
 	"github.com/langoai/lango/internal/configstore"
 	"github.com/langoai/lango/internal/ent"
@@ -105,6 +106,15 @@ func Run(opts Options) (*Result, error) {
 	})
 	if err != nil {
 		return nil, fmt.Errorf("acquire passphrase: %w", err)
+	}
+
+	// 3b. Offer to store passphrase in OS keyring for future automatic unlock.
+	if source == passphrase.SourceInteractive && krProvider != nil {
+		if ok, promptErr := prompt.Confirm("OS keyring is available. Store passphrase for automatic unlock?"); promptErr == nil && ok {
+			if storeErr := krProvider.Set(keyring.Service, keyring.KeyMasterPassphrase, pass); storeErr != nil {
+				fmt.Fprintf(os.Stderr, "warning: store passphrase in keyring: %v\n", storeErr)
+			}
+		}
 	}
 
 	// 4. Open database with encryption key if needed.

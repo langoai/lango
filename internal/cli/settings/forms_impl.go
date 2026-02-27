@@ -1573,19 +1573,6 @@ func NewP2PSandboxForm(cfg *config.Config) *tuicore.FormModel {
 	return &form
 }
 
-// NewKeyringForm creates the Security Keyring configuration form.
-func NewKeyringForm(cfg *config.Config) *tuicore.FormModel {
-	form := tuicore.NewFormModel("Security Keyring Configuration")
-
-	form.AddField(&tuicore.Field{
-		Key: "keyring_enabled", Label: "OS Keyring Enabled", Type: tuicore.InputBool,
-		Checked:     cfg.Security.Keyring.Enabled,
-		Description: "Store encryption passphrase in OS keyring (macOS Keychain, GNOME Keyring, etc.)",
-	})
-
-	return &form
-}
-
 // NewDBEncryptionForm creates the Security DB Encryption configuration form.
 func NewDBEncryptionForm(cfg *config.Config) *tuicore.FormModel {
 	form := tuicore.NewFormModel("Security DB Encryption Configuration")

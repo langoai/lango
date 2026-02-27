@@ -31,13 +31,43 @@ type Provider interface {
 
 `IsAvailable()` performs a write/read/delete probe cycle to verify the OS keyring daemon is accessible. Returns `Status{Available, Backend, Error}`.
 
-## Configuration
+Keyring availability is determined solely by runtime auto-detection — there is no configuration flag.
 
-```yaml
-security:
-  keyring:
-    enabled: true  # default
-```
+#### Scenario: Keyring availability on supported OS
+- **WHEN** the application starts on a system with an OS keyring daemon
+- **THEN** `IsAvailable()` returns `Status{Available: true}` and the keyring is used as the highest-priority passphrase source
+
+#### Scenario: Keyring unavailable in headless environment
+- **WHEN** the application starts in a headless environment (CI, Docker, SSH)
+- **THEN** `IsAvailable()` returns `Status{Available: false}` and the system silently falls back to keyfile or interactive prompt
+
+## Interactive Keyring Storage Prompt
+
+After a passphrase is acquired interactively (source is `SourceInteractive`) and an OS keyring provider is available, the system SHALL prompt the user to store the passphrase in the OS keyring for future automatic unlock.
+
+#### Scenario: First run with keyring available
+- **WHEN** user enters passphrase interactively AND OS keyring is available
+- **THEN** system prompts "OS keyring is available. Store passphrase for automatic unlock? [y/N]"
+
+#### Scenario: User accepts keyring storage
+- **WHEN** user responds "y" to the keyring storage prompt
+- **THEN** system stores the passphrase via `krProvider.Set(Service, KeyMasterPassphrase, pass)`
+
+#### Scenario: User declines keyring storage
+- **WHEN** user responds "N" or presses Enter to the keyring storage prompt
+- **THEN** system proceeds without storing and does not prompt again until next interactive entry
+
+#### Scenario: Keyring store failure
+- **WHEN** user accepts but `krProvider.Set()` returns an error
+- **THEN** system prints a warning to stderr and continues startup normally
+
+#### Scenario: Non-interactive passphrase source
+- **WHEN** passphrase is acquired from keyring, keyfile, or stdin pipe
+- **THEN** system SHALL NOT display the keyring storage prompt
+
+#### Scenario: Keyring unavailable
+- **WHEN** OS keyring is not available (headless, CI, Docker)
+- **THEN** system SHALL NOT display the keyring storage prompt
 
 ## CLI Commands
 

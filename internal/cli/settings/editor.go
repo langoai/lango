@@ -307,10 +307,6 @@ func (e *Editor) handleMenuSelection(id string) tea.Cmd {
 		e.activeForm = NewP2PSandboxForm(e.state.Current)
 		e.activeForm.Focus = true
 		e.step = StepForm
-	case "security_keyring":
-		e.activeForm = NewKeyringForm(e.state.Current)
-		e.activeForm.Focus = true
-		e.step = StepForm
 	case "security_db":
 		e.activeForm = NewDBEncryptionForm(e.state.Current)
 		e.activeForm.Focus = true

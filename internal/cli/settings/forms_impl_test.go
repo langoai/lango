@@ -610,19 +610,6 @@ func TestNewP2PSandboxForm_AllFields(t *testing.T) {
 	}
 }
 
-func TestNewKeyringForm_AllFields(t *testing.T) {
-	cfg := defaultTestConfig()
-	form := NewKeyringForm(cfg)
-
-	if len(form.Fields) != 1 {
-		t.Fatalf("expected 1 field, got %d", len(form.Fields))
-	}
-
-	if f := fieldByKey(form, "keyring_enabled"); f == nil {
-		t.Error("missing field keyring_enabled")
-	}
-}
-
 func TestNewDBEncryptionForm_AllFields(t *testing.T) {
 	cfg := defaultTestConfig()
 	form := NewDBEncryptionForm(cfg)
@@ -675,7 +662,7 @@ func TestNewMenuModel_HasP2PCategories(t *testing.T) {
 
 	wantIDs := []string{
 		"p2p", "p2p_zkp", "p2p_pricing", "p2p_owner", "p2p_sandbox",
-		"security_keyring", "security_db", "security_kms",
+		"security_db", "security_kms",
 	}
 
 	for _, id := range wantIDs {

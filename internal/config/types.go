@@ -461,8 +461,6 @@ type SecurityConfig struct {
 	Interceptor InterceptorConfig `mapstructure:"interceptor" json:"interceptor"`
 	// Signer configuration
 	Signer SignerConfig `mapstructure:"signer" json:"signer"`
-	// Keyring configuration (OS keyring for passphrase storage)
-	Keyring KeyringConfig `mapstructure:"keyring" json:"keyring"`
 	// DBEncryption configuration (SQLCipher transparent encryption)
 	DBEncryption DBEncryptionConfig `mapstructure:"dbEncryption" json:"dbEncryption"`
 	// KMS configuration (Cloud KMS / HSM backends)
@@ -526,12 +524,6 @@ type DBEncryptionConfig struct {
 	Enabled bool `mapstructure:"enabled" json:"enabled"`
 	// CipherPageSize is the SQLCipher cipher_page_size PRAGMA (default: 4096).
 	CipherPageSize int `mapstructure:"cipherPageSize" json:"cipherPageSize"`
-}
-
-// KeyringConfig defines OS keyring integration settings.
-type KeyringConfig struct {
-	// Enabled activates OS keyring as the highest-priority passphrase source.
-	Enabled bool `mapstructure:"enabled" json:"enabled"`
 }
 
 // ApprovalPolicy determines which tools require approval before execution.

@@ -35,7 +35,7 @@ into groups:
   Infrastructure: Payment, Cron Scheduler, Background Tasks, Workflow Engine
   P2P Network:    P2P Network, P2P ZKP, P2P Pricing, P2P Owner Protection,
                   P2P Sandbox
-  Security:       Security, Auth, Security Keyring, Security DB Encryption,
+  Security:       Security, Auth, Security DB Encryption,
                   Security KMS
 
 Press "/" to search across all categories by keyword.

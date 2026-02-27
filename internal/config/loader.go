@@ -58,9 +58,6 @@ func DefaultConfig() *Config {
 				Enabled:        true,
 				ApprovalPolicy: ApprovalPolicyDangerous,
 			},
-			Keyring: KeyringConfig{
-				Enabled: true,
-			},
 			DBEncryption: DBEncryptionConfig{
 				Enabled:        false,
 				CipherPageSize: 4096,
@@ -207,7 +204,6 @@ func Load(configPath string) (*Config, error) {
 	v.SetDefault("tools.browser.sessionTimeout", defaults.Tools.Browser.SessionTimeout)
 	v.SetDefault("security.interceptor.enabled", defaults.Security.Interceptor.Enabled)
 	v.SetDefault("security.interceptor.approvalPolicy", string(defaults.Security.Interceptor.ApprovalPolicy))
-	v.SetDefault("security.keyring.enabled", defaults.Security.Keyring.Enabled)
 	v.SetDefault("security.dbEncryption.enabled", defaults.Security.DBEncryption.Enabled)
 	v.SetDefault("security.dbEncryption.cipherPageSize", defaults.Security.DBEncryption.CipherPageSize)
 	v.SetDefault("security.kms.fallbackToLocal", defaults.Security.KMS.FallbackToLocal)
