@@ -436,7 +436,7 @@ func TestNewMenuModel_HasEmbeddingCategory(t *testing.T) {
 	menu := NewMenuModel()
 
 	found := false
-	for _, cat := range menu.Categories {
+	for _, cat := range menu.AllCategories() {
 		if cat.ID == "embedding" {
 			found = true
 			break
@@ -451,7 +451,7 @@ func TestNewMenuModel_HasKnowledgeCategory(t *testing.T) {
 	menu := NewMenuModel()
 
 	found := false
-	for _, cat := range menu.Categories {
+	for _, cat := range menu.AllCategories() {
 		if cat.ID == "knowledge" {
 			found = true
 			break
@@ -679,7 +679,7 @@ func TestNewMenuModel_HasP2PCategories(t *testing.T) {
 
 	for _, id := range wantIDs {
 		found := false
-		for _, cat := range menu.Categories {
+		for _, cat := range menu.AllCategories() {
 			if cat.ID == id {
 				found = true
 				break

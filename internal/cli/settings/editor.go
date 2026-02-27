@@ -82,7 +82,13 @@ func (e *Editor) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 		if msg.String() == "esc" {
 			switch e.step {
-			case StepWelcome, StepMenu:
+			case StepWelcome:
+				return e, tea.Quit
+			case StepMenu:
+				if e.menu.IsSearching() {
+					// Let the menu handle esc to cancel search
+					break
+				}
 				return e, tea.Quit
 			case StepProvidersList:
 				e.step = StepMenu
