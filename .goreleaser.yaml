@@ -40,19 +40,21 @@ builds:
 
 archives:
   - id: standard
-    builds:
+    ids:
       - lango
     name_template: "lango_{{.Version}}_{{.Os}}_{{.Arch}}"
-    format: tar.gz
+    formats:
+      - tar.gz
     files:
       - LICENSE*
       - README.md
 
   - id: extended
-    builds:
+    ids:
       - lango-extended
     name_template: "lango-extended_{{.Version}}_{{.Os}}_{{.Arch}}"
-    format: tar.gz
+    formats:
+      - tar.gz
     files:
       - LICENSE*
       - README.md
