@@ -48,11 +48,11 @@ jobs:
         with:
           install-only: true
 
-      - name: Build (split)
+      - name: Build (single-target)
         env:
           GOOS: ${{ matrix.goos }}
           GOARCH: ${{ matrix.goarch }}
-        run: goreleaser build --split --clean --timeout 60m
+        run: goreleaser build --single-target --clean --timeout 60m
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
@@ -70,11 +70,6 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Set up Go
-        uses: actions/setup-go@v5
-        with:
-          go-version-file: go.mod
-
       - name: Download all artifacts
         uses: actions/download-artifact@v4
         with:
@@ -82,12 +77,54 @@ jobs:
           pattern: build-*
           merge-multiple: true
 
-      - name: Set up GoReleaser
-        uses: goreleaser/goreleaser-action@v7
-        with:
-          install-only: true
+      - name: Get version
+        id: version
+        run: echo "version=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
 
-      - name: Release (merge)
+      - name: Create archives and checksums
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          mkdir -p release
+
+          # Find all built binaries and create tar.gz archives
+          for build_dir in dist/*/; do
+            # Skip non-directory entries
+            [ -d "$build_dir" ] || continue
+
+            binary="$build_dir/lango"
+            [ -f "$binary" ] || continue
+
+            # Extract dir name: e.g. lango_linux_amd64_v1 or lango-extended_darwin_arm64
+            dirname=$(basename "$build_dir")
+
+            # Normalize: strip GOAMD64 suffix (_v1, _v2, etc.)
+            normalized=$(echo "$dirname" | sed 's/_v[0-9]*$//')
+
+            # Build archive name: lango_{VERSION}_{os}_{arch}.tar.gz
+            # dirname format: {build_id}_{os}_{arch}
+            build_id=$(echo "$normalized" | cut -d_ -f1)
+            os_arch=$(echo "$normalized" | cut -d_ -f2-)
+            archive_name="${build_id}_${VERSION}_${os_arch}.tar.gz"
+
+            # Create tar.gz with binary + docs
+            tar -czf "release/${archive_name}" \
+              -C "$build_dir" lango \
+              -C "$GITHUB_WORKSPACE" LICENSE README.md 2>/dev/null || \
+            tar -czf "release/${archive_name}" \
+              -C "$build_dir" lango
+          done
+
+          # Generate checksums
+          cd release
+          sha256sum *.tar.gz > checksums.txt
+
+      - name: Create GitHub Release
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: goreleaser continue --merge --timeout 60m
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" \
+            --title "lango v${VERSION}" \
+            --generate-notes \
+            release/*
