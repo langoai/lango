@@ -43,6 +43,7 @@ passphrase.txt
 
 # Build output
 bin/
+dist/
 
 # Coverage reports
 .coverage/

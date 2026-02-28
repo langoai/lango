@@ -1,0 +1,93 @@
+# yaml-language-server: $schema=https://goreleaser.com/static/schema.json
+version: 2
+
+project_name: lango
+
+builds:
+  - id: lango
+    binary: lango
+    main: ./cmd/lango
+    env:
+      - CGO_ENABLED=1
+    goos:
+      - linux
+      - darwin
+    goarch:
+      - amd64
+      - arm64
+    ldflags:
+      - -s -w
+      - -X main.Version={{.Version}}
+      - -X main.BuildTime={{.Date}}
+
+  - id: lango-extended
+    binary: lango
+    main: ./cmd/lango
+    env:
+      - CGO_ENABLED=1
+    goos:
+      - linux
+      - darwin
+    goarch:
+      - amd64
+      - arm64
+    tags:
+      - kms_all
+    ldflags:
+      - -s -w
+      - -X main.Version={{.Version}}
+      - -X main.BuildTime={{.Date}}
+
+archives:
+  - id: standard
+    builds:
+      - lango
+    name_template: "lango_{{.Version}}_{{.Os}}_{{.Arch}}"
+    format: tar.gz
+    files:
+      - LICENSE*
+      - README.md
+
+  - id: extended
+    builds:
+      - lango-extended
+    name_template: "lango-extended_{{.Version}}_{{.Os}}_{{.Arch}}"
+    format: tar.gz
+    files:
+      - LICENSE*
+      - README.md
+
+checksum:
+  name_template: "checksums.txt"
+  algorithm: sha256
+
+changelog:
+  sort: asc
+  groups:
+    - title: Features
+      regexp: '^.*?feat(\([[:word:]]+\))??!?:.+$'
+      order: 0
+    - title: Bug Fixes
+      regexp: '^.*?fix(\([[:word:]]+\))??!?:.+$'
+      order: 1
+    - title: Refactoring
+      regexp: '^.*?refactor(\([[:word:]]+\))??!?:.+$'
+      order: 2
+    - title: Documentation
+      regexp: '^.*?docs(\([[:word:]]+\))??!?:.+$'
+      order: 3
+    - title: Others
+      order: 999
+  filters:
+    exclude:
+      - "^test:"
+      - "^chore:"
+      - "^ci:"
+
+release:
+  github:
+    owner: langoai
+    name: lango
+  prerelease: auto
+  draft: false
+  name_template: "{{.ProjectName}} v{{.Version}}"

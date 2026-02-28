@@ -157,7 +157,17 @@ health:
 ## clean: Remove build artifacts and coverage reports
 clean:
 	$(GOCLEAN)
-	rm -rf bin/ $(COVERAGE_DIR)/
+	rm -rf bin/ dist/ $(COVERAGE_DIR)/
+
+# ─── Release ────────────────────────────────────────────────────────────────
+
+## release-dry: Test GoReleaser build locally (current platform only)
+release-dry:
+	goreleaser build --single-target --snapshot --clean
+
+## release-check: Validate .goreleaser.yaml configuration
+release-check:
+	goreleaser check
 
 ## help: Show available targets
 help:
@@ -172,4 +182,6 @@ help:
         sandbox-image \
         docker-build docker-push \
         docker-up docker-down docker-logs \
-        health clean help
+        health clean \
+        release-dry release-check \
+        help
