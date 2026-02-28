@@ -2,6 +2,7 @@ package telegram
 
 import (
 	"context"
+	"sync"
 	"testing"
 	"time"
 
@@ -10,6 +11,7 @@ import (
 
 // MockBotAPI implements BotAPI interface
 type MockBotAPI struct {
+	mu                 sync.Mutex
 	GetUpdatesChanFunc func(config tgbotapi.UpdateConfig) tgbotapi.UpdatesChannel
 	SendFunc           func(c tgbotapi.Chattable) (tgbotapi.Message, error)
 	GetSelfFunc        func() tgbotapi.User
@@ -26,7 +28,9 @@ func (m *MockBotAPI) GetUpdatesChan(config tgbotapi.UpdateConfig) tgbotapi.Updat
 }
 
 func (m *MockBotAPI) Send(c tgbotapi.Chattable) (tgbotapi.Message, error) {
+	m.mu.Lock()
 	m.SentMessages = append(m.SentMessages, c)
+	m.mu.Unlock()
 	if m.SendFunc != nil {
 		return m.SendFunc(c)
 	}
@@ -38,8 +42,26 @@ func (m *MockBotAPI) GetFile(config tgbotapi.FileConfig) (tgbotapi.File, error) 
 }
 
 func (m *MockBotAPI) Request(c tgbotapi.Chattable) (*tgbotapi.APIResponse, error) {
+	m.mu.Lock()
 	m.RequestCalls = append(m.RequestCalls, c)
+	m.mu.Unlock()
 	return &tgbotapi.APIResponse{Ok: true}, nil
+}
+
+func (m *MockBotAPI) getSentMessages() []tgbotapi.Chattable {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	result := make([]tgbotapi.Chattable, len(m.SentMessages))
+	copy(result, m.SentMessages)
+	return result
+}
+
+func (m *MockBotAPI) getRequestCalls() []tgbotapi.Chattable {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	result := make([]tgbotapi.Chattable, len(m.RequestCalls))
+	copy(result, m.RequestCalls)
+	return result
 }
 
 func (m *MockBotAPI) StopReceivingUpdates() {
@@ -111,23 +133,28 @@ func TestTelegramChannel(t *testing.T) {
 
 	select {
 	case <-msgProcessed:
+		// Allow goroutine to finish posting
+		time.Sleep(50 * time.Millisecond)
+
 		// Check typing indicator was sent via Request
-		if len(mockBot.RequestCalls) == 0 {
+		reqCalls := mockBot.getRequestCalls()
+		if len(reqCalls) == 0 {
 			t.Error("expected typing indicator via Request")
 		} else {
-			action, ok := mockBot.RequestCalls[0].(tgbotapi.ChatActionConfig)
+			action, ok := reqCalls[0].(tgbotapi.ChatActionConfig)
 			if !ok {
-				t.Errorf("expected ChatActionConfig, got %T", mockBot.RequestCalls[0])
+				t.Errorf("expected ChatActionConfig, got %T", reqCalls[0])
 			} else if action.Action != tgbotapi.ChatTyping {
 				t.Errorf("expected action 'typing', got '%s'", action.Action)
 			}
 		}
 
 		// Check response
-		if len(mockBot.SentMessages) == 0 {
+		sentMsgs := mockBot.getSentMessages()
+		if len(sentMsgs) == 0 {
 			t.Error("expected Send to be called")
 		} else {
-			sent := mockBot.SentMessages[0].(tgbotapi.MessageConfig)
+			sent := sentMsgs[0].(tgbotapi.MessageConfig)
 			if sent.Text != "Reply" {
 				t.Errorf("expected 'Reply', got '%s'", sent.Text)
 			}
@@ -178,9 +205,12 @@ func TestTelegramTypingIndicator(t *testing.T) {
 
 	select {
 	case <-done:
+		// Allow goroutine to finish posting
+		time.Sleep(50 * time.Millisecond)
+
 		// Verify at least one Request call with ChatTyping action
 		found := false
-		for _, call := range mockBot.RequestCalls {
+		for _, call := range mockBot.getRequestCalls() {
 			if action, ok := call.(tgbotapi.ChatActionConfig); ok && action.Action == tgbotapi.ChatTyping {
 				found = true
 				break

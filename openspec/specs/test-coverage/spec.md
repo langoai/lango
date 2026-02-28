@@ -57,3 +57,11 @@ Existing test files must be expanded with additional scenarios.
 - Anthropic provider: ListModels returns expected model list
 - OpenAI provider: ListModels returns error for unavailable server
 - App: creation fails gracefully with no providers or invalid provider type
+
+### REQ-6: Channel Mock Thread Safety
+Channel test mock types SHALL use mutex synchronization to protect shared slices from concurrent access by handler goroutines and test assertions.
+
+**Scenarios:**
+- Slack mock concurrent access: serialized via mutex when handler goroutine appends to PostMessages/UpdateMessages while test goroutine reads
+- Telegram mock concurrent access: serialized via mutex when handler goroutine appends to SentMessages/RequestCalls while test goroutine reads
+- Safe mock data retrieval: helper methods return defensive copies of underlying slices

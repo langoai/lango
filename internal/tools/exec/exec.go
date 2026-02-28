@@ -36,12 +36,30 @@ type Tool struct {
 	bgMu        sync.RWMutex
 }
 
+// syncBuffer is a thread-safe wrapper around bytes.Buffer.
+type syncBuffer struct {
+	mu  sync.Mutex
+	buf bytes.Buffer
+}
+
+func (sb *syncBuffer) Write(p []byte) (int, error) {
+	sb.mu.Lock()
+	defer sb.mu.Unlock()
+	return sb.buf.Write(p)
+}
+
+func (sb *syncBuffer) String() string {
+	sb.mu.Lock()
+	defer sb.mu.Unlock()
+	return sb.buf.String()
+}
+
 // BackgroundProcess represents a running background command
 type BackgroundProcess struct {
 	ID        string
 	Command   string
 	Cmd       *exec.Cmd
-	Output    *bytes.Buffer
+	Output    *syncBuffer
 	StartTime time.Time
 	Done      bool
 	ExitCode  int
@@ -195,7 +213,7 @@ func (t *Tool) StartBackground(command string) (string, error) {
 	cmd.Dir = t.config.WorkDir
 	cmd.Env = t.filterEnv(os.Environ())
 
-	output := &bytes.Buffer{}
+	output := &syncBuffer{}
 	cmd.Stdout = output
 	cmd.Stderr = output
 

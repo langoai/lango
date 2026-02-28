@@ -23,7 +23,7 @@ The system SHALL support pseudo-terminal (PTY) mode for interactive commands.
 - **THEN** the codes SHALL be preserved for rendering or stripped as configured
 
 ### Requirement: Background process management
-The system SHALL support running commands in the background with process tracking.
+The system SHALL support running commands in the background with process tracking. Background process output SHALL be thread-safe for concurrent read/write access.
 
 #### Scenario: Background execution
 - **WHEN** a command is started in background mode
@@ -32,6 +32,10 @@ The system SHALL support running commands in the background with process trackin
 #### Scenario: Background process status
 - **WHEN** status is requested for a background process
 - **THEN** current output and execution state SHALL be returned
+
+#### Scenario: Concurrent output access
+- **WHEN** a background process is writing output while status is being read
+- **THEN** the output buffer SHALL be safely accessible without data races
 
 ### Requirement: Working directory control
 The system SHALL execute commands in a specified working directory.

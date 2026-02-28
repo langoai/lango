@@ -2,6 +2,7 @@ package slack
 
 import (
 	"context"
+	"sync"
 	"testing"
 	"time"
 
@@ -12,6 +13,7 @@ import (
 
 // MockClient implements Client interface
 type MockClient struct {
+	mu                sync.Mutex
 	AuthTestFunc      func() (*slack.AuthTestResponse, error)
 	PostMessageFunc   func(channelID string, options ...slack.MsgOption) (string, string, error)
 	UpdateMessageFunc func(channelID, timestamp string, options ...slack.MsgOption) (string, string, string, error)
@@ -38,11 +40,13 @@ func (m *MockClient) AuthTest() (*slack.AuthTestResponse, error) {
 }
 
 func (m *MockClient) UpdateMessage(channelID, timestamp string, options ...slack.MsgOption) (string, string, string, error) {
+	m.mu.Lock()
 	m.UpdateMessages = append(m.UpdateMessages, struct {
 		ChannelID string
 		Timestamp string
 		Options   []slack.MsgOption
 	}{ChannelID: channelID, Timestamp: timestamp, Options: options})
+	m.mu.Unlock()
 	if m.UpdateMessageFunc != nil {
 		return m.UpdateMessageFunc(channelID, timestamp, options...)
 	}
@@ -50,14 +54,46 @@ func (m *MockClient) UpdateMessage(channelID, timestamp string, options ...slack
 }
 
 func (m *MockClient) PostMessage(channelID string, options ...slack.MsgOption) (string, string, error) {
+	m.mu.Lock()
 	m.PostMessages = append(m.PostMessages, struct {
 		ChannelID string
 		Options   []slack.MsgOption
 	}{ChannelID: channelID, Options: options})
+	m.mu.Unlock()
 	if m.PostMessageFunc != nil {
 		return m.PostMessageFunc(channelID, options...)
 	}
 	return "ts-123", "chan-123", nil
+}
+
+func (m *MockClient) getPostMessages() []struct {
+	ChannelID string
+	Options   []slack.MsgOption
+} {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	result := make([]struct {
+		ChannelID string
+		Options   []slack.MsgOption
+	}, len(m.PostMessages))
+	copy(result, m.PostMessages)
+	return result
+}
+
+func (m *MockClient) getUpdateMessages() []struct {
+	ChannelID string
+	Timestamp string
+	Options   []slack.MsgOption
+} {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	result := make([]struct {
+		ChannelID string
+		Timestamp string
+		Options   []slack.MsgOption
+	}, len(m.UpdateMessages))
+	copy(result, m.UpdateMessages)
+	return result
 }
 
 // MockSocket implements Socket interface
@@ -137,10 +173,10 @@ func TestSlackChannel(t *testing.T) {
 	case <-time.After(200 * time.Millisecond):
 		// With thinking indicator: expect 1 PostMessage (thinking placeholder)
 		// + 1 UpdateMessage (replace placeholder with response)
-		if len(mockClient.PostMessages) == 0 {
+		if len(mockClient.getPostMessages()) == 0 {
 			t.Error("expected PostMessage to be called (thinking placeholder)")
 		}
-		if len(mockClient.UpdateMessages) == 0 {
+		if len(mockClient.getUpdateMessages()) == 0 {
 			t.Error("expected UpdateMessage to be called (replace placeholder)")
 		}
 	}
@@ -207,16 +243,18 @@ func TestSlackThinkingPlaceholder(t *testing.T) {
 	}
 
 	// Verify: first PostMessage is the thinking placeholder, then UpdateMessage replaces it
-	if len(mockClient.PostMessages) < 1 {
-		t.Fatalf("expected at least 1 PostMessage call, got %d", len(mockClient.PostMessages))
+	postMsgs := mockClient.getPostMessages()
+	if len(postMsgs) < 1 {
+		t.Fatalf("expected at least 1 PostMessage call, got %d", len(postMsgs))
 	}
 
-	if len(mockClient.UpdateMessages) < 1 {
-		t.Fatalf("expected at least 1 UpdateMessage call, got %d", len(mockClient.UpdateMessages))
+	updateMsgs := mockClient.getUpdateMessages()
+	if len(updateMsgs) < 1 {
+		t.Fatalf("expected at least 1 UpdateMessage call, got %d", len(updateMsgs))
 	}
 
 	// Verify UpdateMessage was called with the placeholder timestamp
-	if mockClient.UpdateMessages[0].Timestamp != "placeholder-ts" {
-		t.Errorf("expected update on 'placeholder-ts', got '%s'", mockClient.UpdateMessages[0].Timestamp)
+	if updateMsgs[0].Timestamp != "placeholder-ts" {
+		t.Errorf("expected update on 'placeholder-ts', got '%s'", updateMsgs[0].Timestamp)
 	}
 }
