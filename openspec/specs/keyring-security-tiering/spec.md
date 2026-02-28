@@ -3,9 +3,7 @@
 ## Purpose
 
 Hardware-backed security tier detection with biometric (macOS Touch ID) and TPM 2.0 (Linux) keyring providers, plus deny-fallback for environments without secure hardware. Prevents same-UID passphrase exposure by requiring user presence verification before keyring auto-unlock.
-
 ## Requirements
-
 ### Requirement: SecurityTier enum represents hardware security levels
 The system SHALL define a `SecurityTier` enum with values `TierNone` (0), `TierTPM` (1), and `TierBiometric` (2), ordered by security strength.
 
@@ -56,19 +54,20 @@ The system SHALL provide a `BiometricProvider` that stores secrets in the macOS 
 - **THEN** `NewBiometricProvider()` SHALL return `ErrBiometricNotAvailable` because the Keychain probe will fail
 
 ### Requirement: TPMProvider seals secrets with TPM 2.0
-The system SHALL provide a `TPMProvider` that seals secrets under the TPM's Storage Root Key and stores the sealed blob at `~/.lango/tpm/<service>_<key>.sealed`.
 
-#### Scenario: Seal and unseal with TPM
-- **WHEN** a secret is stored via `TPMProvider.Set()` and later retrieved via `TPMProvider.Get()`
-- **THEN** Set SHALL seal the data with TPM2 and write the blob to disk, and Get SHALL unseal using the same TPM chip
+The TPM provider SHALL use `TPMTSymDefObject` for the SRK template symmetric parameters. The provider SHALL use `tpm2.Marshal` with single-return signature and `tpm2.Unmarshal` with generic type parameter signature `Unmarshal[T]([]byte) (*T, error)` as required by go-tpm v0.9.8.
 
-#### Scenario: TPM not available on non-Linux platform
-- **WHEN** `NewTPMProvider()` is called on a non-Linux platform
-- **THEN** it SHALL return `ErrTPMNotAvailable`
+#### Scenario: SRK template uses correct symmetric type
+- **WHEN** the TPM provider creates a primary key with ECC P256 SRK template
+- **THEN** the template's `Symmetric` field SHALL be of type `TPMTSymDefObject`
 
-#### Scenario: Delete removes sealed blob
-- **WHEN** `TPMProvider.Delete()` is called for an existing sealed blob
-- **THEN** it SHALL remove the sealed blob file from disk
+#### Scenario: Marshal sealed blob without error return
+- **WHEN** the TPM provider marshals `TPM2BPublic` and `TPM2BPrivate` to bytes
+- **THEN** the system SHALL call `tpm2.Marshal` which returns `[]byte` directly
+
+#### Scenario: Unmarshal sealed blob with generic type parameter
+- **WHEN** the TPM provider unmarshals bytes into `TPM2BPublic` or `TPM2BPrivate`
+- **THEN** the system SHALL call `tpm2.Unmarshal[T](data)` returning `(*T, error)` and dereference the result
 
 ### Requirement: Error sentinels for hardware availability
 The system SHALL define `ErrBiometricNotAvailable` and `ErrTPMNotAvailable` sentinel errors for callers to distinguish hardware unavailability from other failures.
@@ -146,3 +145,4 @@ Every Keychain query dictionary (set, get, has, delete) SHALL include `kSecUseDa
 #### Scenario: Delete targets login Keychain
 - **WHEN** `keychain_delete_biometric()` builds its query dictionary
 - **THEN** it SHALL include `kSecUseDataProtectionKeychain = kCFBooleanFalse`
+

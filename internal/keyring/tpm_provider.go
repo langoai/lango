@@ -122,7 +122,7 @@ func srkTemplate() tpm2.TPMTPublic {
 		Parameters: tpm2.NewTPMUPublicParms(
 			tpm2.TPMAlgECC,
 			&tpm2.TPMSECCParms{
-				Symmetric: tpm2.TPMTSymDef{
+				Symmetric: tpm2.TPMTSymDefObject{
 					Algorithm: tpm2.TPMAlgAES,
 					KeyBits:   tpm2.NewTPMUSymKeyBits(tpm2.TPMAlgAES, tpm2.TPMKeyBits(128)),
 					Mode:      tpm2.NewTPMUSymMode(tpm2.TPMAlgAES, tpm2.TPMAlgCFB),
@@ -253,14 +253,8 @@ func (p *TPMProvider) unseal(blob []byte) ([]byte, error) {
 // marshalSealedBlob encodes TPM public and private parts into a single byte slice.
 // Format: [4-byte pubLen][pubBytes][4-byte privLen][privBytes]
 func marshalSealedBlob(pub tpm2.TPM2BPublic, priv tpm2.TPM2BPrivate) ([]byte, error) {
-	pubBytes, err := tpm2.Marshal(pub)
-	if err != nil {
-		return nil, fmt.Errorf("marshal public: %w", err)
-	}
-	privBytes, err := tpm2.Marshal(priv)
-	if err != nil {
-		return nil, fmt.Errorf("marshal private: %w", err)
-	}
+	pubBytes := tpm2.Marshal(pub)
+	privBytes := tpm2.Marshal(priv)
 
 	buf := make([]byte, 4+len(pubBytes)+4+len(privBytes))
 	binary.BigEndian.PutUint32(buf[0:4], uint32(len(pubBytes)))
@@ -287,9 +281,11 @@ func unmarshalSealedBlob(blob []byte) (tpm2.TPM2BPublic, tpm2.TPM2BPrivate, erro
 	}
 
 	pubBytes := blob[4 : 4+pubLen]
-	if _, err := tpm2.Unmarshal(pubBytes, &pub); err != nil {
+	pPub, err := tpm2.Unmarshal[tpm2.TPM2BPublic](pubBytes)
+	if err != nil {
 		return pub, priv, fmt.Errorf("unmarshal public: %w", err)
 	}
+	pub = *pPub
 
 	offset := 4 + pubLen
 	privLen := binary.BigEndian.Uint32(blob[offset : offset+4])
@@ -298,9 +294,11 @@ func unmarshalSealedBlob(blob []byte) (tpm2.TPM2BPublic, tpm2.TPM2BPrivate, erro
 	}
 
 	privBytes := blob[offset+4 : offset+4+privLen]
-	if _, err := tpm2.Unmarshal(privBytes, &priv); err != nil {
+	pPriv, err := tpm2.Unmarshal[tpm2.TPM2BPrivate](privBytes)
+	if err != nil {
 		return pub, priv, fmt.Errorf("unmarshal private: %w", err)
 	}
+	priv = *pPriv
 
 	return pub, priv, nil
 }
