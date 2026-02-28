@@ -12,6 +12,7 @@ import (
 	cronpkg "github.com/langoai/lango/internal/cron"
 	"github.com/langoai/lango/internal/embedding"
 	"github.com/langoai/lango/internal/gateway"
+	"github.com/langoai/lango/internal/lifecycle"
 	"github.com/langoai/lango/internal/graph"
 	"github.com/langoai/lango/internal/knowledge"
 	"github.com/langoai/lango/internal/learning"
@@ -91,6 +92,9 @@ type App struct {
 
 	// Channels
 	Channels []Channel
+
+	// Lifecycle registry manages component startup/shutdown ordering.
+	registry *lifecycle.Registry
 
 	// wg tracks background goroutines for graceful shutdown
 	wg sync.WaitGroup

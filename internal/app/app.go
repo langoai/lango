@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sync"
 	"time"
 
 	"go.uber.org/zap"
@@ -14,10 +15,12 @@ import (
 	"github.com/langoai/lango/internal/approval"
 	"github.com/langoai/lango/internal/bootstrap"
 	"github.com/langoai/lango/internal/config"
+	"github.com/langoai/lango/internal/lifecycle"
 	"github.com/langoai/lango/internal/logging"
 	"github.com/langoai/lango/internal/sandbox"
 	"github.com/langoai/lango/internal/security"
 	"github.com/langoai/lango/internal/session"
+	"github.com/langoai/lango/internal/toolchain"
 	"github.com/langoai/lango/internal/wallet"
 	"github.com/langoai/lango/internal/tools/browser"
 	"github.com/langoai/lango/internal/tools/filesystem"
@@ -30,7 +33,8 @@ func logger() *zap.SugaredLogger { return logging.App() }
 func New(boot *bootstrap.Result) (*App, error) {
 	cfg := boot.Config
 	app := &App{
-		Config: cfg,
+		Config:   cfg,
+		registry: lifecycle.NewRegistry(),
 	}
 
 	// 1. Supervisor (holds provider secrets, exec tool)
@@ -129,11 +133,7 @@ func New(boot *bootstrap.Result) (*App, error) {
 		app.LearningEngine = kc.engine
 
 		// Wrap base tools with learning observer (Engine or GraphEngine)
-		wrapped := make([]*agent.Tool, len(tools))
-		for i, t := range tools {
-			wrapped[i] = wrapWithLearning(t, kc.observer)
-		}
-		tools = wrapped
+		tools = toolchain.ChainAll(tools, toolchain.WithLearning(kc.observer))
 
 		// Add meta-tools
 		metaTools := buildMetaTools(kc.store, kc.engine, registry, cfg.Skill)
@@ -281,9 +281,8 @@ func New(boot *bootstrap.Result) (*App, error) {
 		if pc != nil {
 			limiter = pc.limiter
 		}
-		for i, t := range tools {
-			tools[i] = wrapWithApproval(t, cfg.Security.Interceptor, composite, grantStore, limiter)
-		}
+		tools = toolchain.ChainAll(tools,
+			toolchain.WithApproval(cfg.Security.Interceptor, composite, grantStore, limiter))
 		logger().Infow("tool approval enabled", "policy", string(policy))
 	}
 
@@ -437,154 +436,135 @@ func New(boot *bootstrap.Result) (*App, error) {
 		})
 	}
 
+	// 16. Register lifecycle components for ordered startup/shutdown.
+	app.registerLifecycleComponents()
+
 	return app, nil
 }
 
-// Start starts the application services
+// registerLifecycleComponents registers all startable/stoppable components
+// with the lifecycle registry using appropriate adapters and priorities.
+func (a *App) registerLifecycleComponents() {
+	reg := a.registry
+
+	// Gateway — runs blocking in a goroutine, shutdown via context.
+	reg.Register(lifecycle.NewFuncComponent("gateway",
+		func(_ context.Context, wg *sync.WaitGroup) error {
+			wg.Add(1)
+			go func() {
+				defer wg.Done()
+				if err := a.Gateway.Start(); err != nil {
+					logger().Errorw("gateway server error", "error", err)
+				}
+			}()
+			return nil
+		},
+		func(ctx context.Context) error {
+			return a.Gateway.Shutdown(ctx)
+		},
+	), lifecycle.PriorityNetwork)
+
+	// Buffers — all implement Startable (Start(*sync.WaitGroup) / Stop()).
+	if a.MemoryBuffer != nil {
+		reg.Register(lifecycle.NewSimpleComponent("memory-buffer", a.MemoryBuffer), lifecycle.PriorityBuffer)
+	}
+	if a.EmbeddingBuffer != nil {
+		reg.Register(lifecycle.NewSimpleComponent("embedding-buffer", a.EmbeddingBuffer), lifecycle.PriorityBuffer)
+	}
+	if a.GraphBuffer != nil {
+		reg.Register(lifecycle.NewSimpleComponent("graph-buffer", a.GraphBuffer), lifecycle.PriorityBuffer)
+	}
+	if a.AnalysisBuffer != nil {
+		reg.Register(lifecycle.NewSimpleComponent("analysis-buffer", a.AnalysisBuffer), lifecycle.PriorityBuffer)
+	}
+	if a.LibrarianProactiveBuffer != nil {
+		reg.Register(lifecycle.NewSimpleComponent("librarian-proactive-buffer", a.LibrarianProactiveBuffer), lifecycle.PriorityBuffer)
+	}
+
+	// P2P Node — Start(*sync.WaitGroup) error / Stop() error.
+	if a.P2PNode != nil {
+		reg.Register(lifecycle.NewFuncComponent("p2p-node",
+			func(_ context.Context, wg *sync.WaitGroup) error {
+				return a.P2PNode.Start(wg)
+			},
+			func(_ context.Context) error {
+				return a.P2PNode.Stop()
+			},
+		), lifecycle.PriorityNetwork)
+	}
+
+	// Cron Scheduler — Start(ctx) error / Stop().
+	if a.CronScheduler != nil {
+		reg.Register(lifecycle.NewFuncComponent("cron-scheduler",
+			func(ctx context.Context, _ *sync.WaitGroup) error {
+				return a.CronScheduler.Start(ctx)
+			},
+			func(_ context.Context) error {
+				a.CronScheduler.Stop()
+				return nil
+			},
+		), lifecycle.PriorityAutomation)
+	}
+
+	// Background Manager — no Start, only Shutdown().
+	if a.BackgroundManager != nil {
+		reg.Register(lifecycle.NewFuncComponent("background-manager",
+			func(_ context.Context, _ *sync.WaitGroup) error { return nil },
+			func(_ context.Context) error {
+				a.BackgroundManager.Shutdown()
+				return nil
+			},
+		), lifecycle.PriorityAutomation)
+	}
+
+	// Workflow Engine — no Start, only Shutdown().
+	if a.WorkflowEngine != nil {
+		reg.Register(lifecycle.NewFuncComponent("workflow-engine",
+			func(_ context.Context, _ *sync.WaitGroup) error { return nil },
+			func(_ context.Context) error {
+				a.WorkflowEngine.Shutdown()
+				return nil
+			},
+		), lifecycle.PriorityAutomation)
+	}
+
+	// Channels — each runs blocking in a goroutine, Stop() to signal.
+	for i, ch := range a.Channels {
+		ch := ch // capture for closure
+		name := fmt.Sprintf("channel-%d", i)
+		reg.Register(lifecycle.NewFuncComponent(name,
+			func(ctx context.Context, wg *sync.WaitGroup) error {
+				wg.Add(1)
+				go func() {
+					defer wg.Done()
+					if err := ch.Start(ctx); err != nil {
+						logger().Errorw("channel start error", "error", err)
+					}
+				}()
+				return nil
+			},
+			func(_ context.Context) error {
+				ch.Stop()
+				return nil
+			},
+		), lifecycle.PriorityNetwork)
+	}
+}
+
+// Start starts the application services using the lifecycle registry.
 func (a *App) Start(ctx context.Context) error {
 	logger().Info("starting application")
-
-	a.wg.Add(1)
-	go func() {
-		defer a.wg.Done()
-		if err := a.Gateway.Start(); err != nil {
-			logger().Errorw("gateway server error", "error", err)
-		}
-	}()
-
-	// Start observational memory buffer if enabled
-	if a.MemoryBuffer != nil {
-		a.MemoryBuffer.Start(&a.wg)
-		logger().Info("observational memory buffer started")
-	}
-
-	// Start embedding buffer if enabled
-	if a.EmbeddingBuffer != nil {
-		a.EmbeddingBuffer.Start(&a.wg)
-		logger().Info("embedding buffer started")
-	}
-
-	// Start graph buffer if enabled
-	if a.GraphBuffer != nil {
-		a.GraphBuffer.Start(&a.wg)
-		logger().Info("graph buffer started")
-	}
-
-	// Start analysis buffer if enabled
-	if a.AnalysisBuffer != nil {
-		a.AnalysisBuffer.Start(&a.wg)
-		logger().Info("conversation analysis buffer started")
-	}
-
-	// Start proactive librarian buffer if enabled
-	if a.LibrarianProactiveBuffer != nil {
-		a.LibrarianProactiveBuffer.Start(&a.wg)
-		logger().Info("proactive librarian buffer started")
-	}
-
-	// Start P2P node if enabled
-	if a.P2PNode != nil {
-		if err := a.P2PNode.Start(&a.wg); err != nil {
-			logger().Errorw("P2P node start error", "error", err)
-		} else {
-			logger().Infow("P2P node started", "peerID", a.P2PNode.PeerID())
-		}
-	}
-
-	// Start cron scheduler if enabled
-	if a.CronScheduler != nil {
-		if err := a.CronScheduler.Start(ctx); err != nil {
-			logger().Errorw("cron scheduler start error", "error", err)
-		} else {
-			logger().Info("cron scheduler started")
-		}
-	}
-
-	logger().Info("starting channels...")
-	for _, ch := range a.Channels {
-		a.wg.Add(1)
-		go func(c Channel) {
-			defer a.wg.Done()
-			if err := c.Start(ctx); err != nil {
-				logger().Errorw("channel start error", "error", err)
-			}
-		}(ch)
-	}
-
-	return nil
+	return a.registry.StartAll(ctx, &a.wg)
 }
 
 // Stop stops the application services and waits for all goroutines to exit.
 func (a *App) Stop(ctx context.Context) error {
 	logger().Info("stopping application")
 
-	// Stop cron scheduler
-	if a.CronScheduler != nil {
-		a.CronScheduler.Stop()
-		logger().Info("cron scheduler stopped")
-	}
+	// Stop all lifecycle-managed components in reverse startup order.
+	a.registry.StopAll(ctx)
 
-	// Stop background manager
-	if a.BackgroundManager != nil {
-		a.BackgroundManager.Shutdown()
-		logger().Info("background manager stopped")
-	}
-
-	// Stop workflow engine
-	if a.WorkflowEngine != nil {
-		a.WorkflowEngine.Shutdown()
-		logger().Info("workflow engine stopped")
-	}
-
-	// Stop P2P node
-	if a.P2PNode != nil {
-		if err := a.P2PNode.Stop(); err != nil {
-			logger().Warnw("P2P node stop error", "error", err)
-		} else {
-			logger().Info("P2P node stopped")
-		}
-	}
-
-	// Signal gateway and channels to stop
-	if err := a.Gateway.Shutdown(ctx); err != nil {
-		logger().Warnw("gateway shutdown error", "error", err)
-	}
-
-	for _, ch := range a.Channels {
-		ch.Stop()
-	}
-
-	// Stop observational memory buffer
-	if a.MemoryBuffer != nil {
-		a.MemoryBuffer.Stop()
-		logger().Info("observational memory buffer stopped")
-	}
-
-	// Stop embedding buffer
-	if a.EmbeddingBuffer != nil {
-		a.EmbeddingBuffer.Stop()
-		logger().Info("embedding buffer stopped")
-	}
-
-	// Stop analysis buffer
-	if a.AnalysisBuffer != nil {
-		a.AnalysisBuffer.Stop()
-		logger().Info("conversation analysis buffer stopped")
-	}
-
-	// Stop proactive librarian buffer
-	if a.LibrarianProactiveBuffer != nil {
-		a.LibrarianProactiveBuffer.Stop()
-		logger().Info("proactive librarian buffer stopped")
-	}
-
-	// Stop graph buffer
-	if a.GraphBuffer != nil {
-		a.GraphBuffer.Stop()
-		logger().Info("graph buffer stopped")
-	}
-
-	// Wait for all background goroutines to finish
+	// Wait for all background goroutines to finish.
 	done := make(chan struct{})
 	go func() {
 		a.wg.Wait()
@@ -598,6 +578,7 @@ func (a *App) Stop(ctx context.Context) error {
 		logger().Warnw("shutdown timed out waiting for services", "error", ctx.Err())
 	}
 
+	// Close non-lifecycle resources (browser, stores) after all components stop.
 	if a.Browser != nil {
 		if err := a.Browser.Close(); err != nil {
 			logger().Warnw("browser close error", "error", err)

@@ -2,9 +2,7 @@ package bootstrap
 
 import (
 	"context"
-	"crypto/hmac"
 	"database/sql"
-	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -15,13 +13,10 @@ import (
 	"entgo.io/ent/dialect/sql/schema"
 	_ "github.com/mattn/go-sqlite3"
 
-	"github.com/langoai/lango/internal/cli/prompt"
 	"github.com/langoai/lango/internal/config"
 	"github.com/langoai/lango/internal/configstore"
 	"github.com/langoai/lango/internal/ent"
-	"github.com/langoai/lango/internal/keyring"
 	"github.com/langoai/lango/internal/security"
-	"github.com/langoai/lango/internal/security/passphrase"
 )
 
 // Result holds everything produced by the bootstrap process.
@@ -59,7 +54,7 @@ type Options struct {
 	SkipSecureDetection bool
 }
 
-// Run executes the full bootstrap sequence:
+// Run executes the full bootstrap sequence using the phase pipeline:
 //  1. Ensure ~/.lango/ directory
 //  2. Detect DB encryption status
 //  3. Acquire passphrase
@@ -68,166 +63,8 @@ type Options struct {
 //  6. Initialize crypto provider
 //  7. Load or create configuration profile
 func Run(opts Options) (*Result, error) {
-	home, err := os.UserHomeDir()
-	if err != nil {
-		return nil, fmt.Errorf("resolve home directory: %w", err)
-	}
-
-	langoDir := filepath.Join(home, ".lango")
-	if opts.DBPath == "" {
-		opts.DBPath = filepath.Join(langoDir, "lango.db")
-	}
-	if opts.KeyfilePath == "" {
-		opts.KeyfilePath = filepath.Join(langoDir, "keyfile")
-	}
-
-	// 1. Ensure data directory exists.
-	if err := os.MkdirAll(langoDir, 0700); err != nil {
-		return nil, fmt.Errorf("create data directory: %w", err)
-	}
-
-	// 2. Determine whether the DB file is encrypted (or encryption is configured).
-	dbEncrypted := IsDBEncrypted(opts.DBPath)
-	needsDBKey := dbEncrypted || opts.DBEncryption.Enabled
-
-	// 3. Acquire passphrase.
-	// If the DB is encrypted or encryption is enabled, we need the passphrase
-	// BEFORE opening the database so we can derive the DB encryption key.
-	//
-	// DetectSecureProvider returns the highest-tier hardware-backed provider:
-	//   TierBiometric (macOS Touch ID) > TierTPM (Linux) > TierNone.
-	// When TierNone, secureProvider is nil and keyring auto-read is disabled,
-	// preventing same-UID attacks on plain OS keyring storage.
-	var secureProvider keyring.Provider
-	var tier keyring.SecurityTier
-	if !opts.SkipSecureDetection {
-		secureProvider, tier = keyring.DetectSecureProvider()
-	}
-
-	// Determine if this is a first-run scenario: no DB file at all.
-	_, statErr := os.Stat(opts.DBPath)
-	dbExists := statErr == nil
-	firstRunGuess := !dbExists
-
-	pass, source, err := passphrase.Acquire(passphrase.Options{
-		KeyfilePath:     opts.KeyfilePath,
-		AllowCreation:   firstRunGuess,
-		KeyringProvider: secureProvider, // nil on TierNone → keyring read skipped
-	})
-	if err != nil {
-		return nil, fmt.Errorf("acquire passphrase: %w", err)
-	}
-
-	// 3b. Offer to store passphrase only when a secure hardware provider is available.
-	if source == passphrase.SourceInteractive && secureProvider != nil {
-		tierLabel := tier.String() // "biometric" or "tpm"
-		msg := fmt.Sprintf("Secure storage available (%s). Store passphrase?", tierLabel)
-		if ok, promptErr := prompt.Confirm(msg); promptErr == nil && ok {
-			if storeErr := secureProvider.Set(keyring.Service, keyring.KeyMasterPassphrase, pass); storeErr != nil {
-				if errors.Is(storeErr, keyring.ErrEntitlement) {
-					fmt.Fprintf(os.Stderr, "warning: biometric storage unavailable (binary not codesigned)\n")
-					fmt.Fprintf(os.Stderr, "  Tip: codesign the binary for Touch ID support: make codesign\n")
-					fmt.Fprintf(os.Stderr, "  Note: also ensure device passcode is set (required for biometric Keychain)\n")
-				} else {
-					fmt.Fprintf(os.Stderr, "warning: store passphrase failed: %v\n", storeErr)
-				}
-			} else {
-				fmt.Fprintf(os.Stderr, "Passphrase saved. Next launch will load it automatically.\n")
-			}
-		}
-	}
-
-	// 4. Open database with encryption key if needed.
-	var dbKey string
-	if needsDBKey {
-		dbKey = pass
-	}
-	client, rawDB, err := openDatabase(opts.DBPath, dbKey, opts.DBEncryption.CipherPageSize)
-	if err != nil {
-		return nil, fmt.Errorf("open database: %w", err)
-	}
-
-	// 5. Check existing salt to determine first-run vs returning user.
-	salt, checksum, firstRun, err := loadSecurityState(rawDB)
-	if err != nil {
-		client.Close()
-		return nil, fmt.Errorf("load security state: %w", err)
-	}
-
-	// 6. Initialize crypto provider.
-	provider := security.NewLocalCryptoProvider()
-	if firstRun {
-		if err := provider.Initialize(pass); err != nil {
-			client.Close()
-			return nil, fmt.Errorf("initialize crypto: %w", err)
-		}
-		if err := storeSalt(rawDB, provider.Salt()); err != nil {
-			client.Close()
-			return nil, fmt.Errorf("store salt: %w", err)
-		}
-		cs := provider.CalculateChecksum(pass, provider.Salt())
-		if err := storeChecksum(rawDB, cs); err != nil {
-			client.Close()
-			return nil, fmt.Errorf("store checksum: %w", err)
-		}
-	} else {
-		if err := provider.InitializeWithSalt(pass, salt); err != nil {
-			client.Close()
-			return nil, fmt.Errorf("initialize crypto with salt: %w", err)
-		}
-		if checksum != nil {
-			computed := provider.CalculateChecksum(pass, salt)
-			if !hmac.Equal(checksum, computed) {
-				client.Close()
-				return nil, fmt.Errorf("passphrase checksum mismatch: incorrect passphrase")
-			}
-		}
-	}
-
-	// 6b. Shred keyfile after successful crypto initialization.
-	if source == passphrase.SourceKeyfile && !opts.KeepKeyfile {
-		if err := passphrase.ShredKeyfile(opts.KeyfilePath); err != nil {
-			fmt.Fprintf(os.Stderr, "warning: shred keyfile: %v\n", err)
-		}
-	}
-
-	// 7. Load or create configuration profile.
-	store := configstore.NewStore(client, provider)
-	ctx := context.Background()
-
-	profileName := opts.ForceProfile
-	var cfg *config.Config
-
-	if profileName != "" {
-		cfg, err = store.Load(ctx, profileName)
-		if err != nil {
-			client.Close()
-			return nil, fmt.Errorf("load profile %q: %w", profileName, err)
-		}
-	} else {
-		profileName, cfg, err = store.LoadActive(ctx)
-		if err != nil && !errors.Is(err, configstore.ErrNoActiveProfile) {
-			client.Close()
-			return nil, fmt.Errorf("load active profile: %w", err)
-		}
-
-		if errors.Is(err, configstore.ErrNoActiveProfile) {
-			cfg, profileName, err = handleNoProfile(ctx, store)
-			if err != nil {
-				client.Close()
-				return nil, err
-			}
-		}
-	}
-
-	return &Result{
-		Config:      cfg,
-		DBClient:    client,
-		RawDB:       rawDB,
-		Crypto:      provider,
-		ConfigStore: store,
-		ProfileName: profileName,
-	}, nil
+	pipeline := NewPipeline(DefaultPhases()...)
+	return pipeline.Execute(context.Background(), opts)
 }
 
 // openDatabase opens the SQLite/SQLCipher database and runs ent schema migration.

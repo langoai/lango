@@ -1,0 +1,29 @@
+## ADDED Requirements
+
+### Requirement: Phase-based pipeline
+The bootstrap system SHALL execute phases sequentially using a Pipeline with Phase structs containing Name, Run, and optional Cleanup functions.
+
+#### Scenario: All phases succeed
+- **WHEN** all phases complete without error
+- **THEN** Pipeline.Execute SHALL return the Result from State
+
+### Requirement: Reverse cleanup on failure
+If a phase fails, the Pipeline SHALL call Cleanup functions of all previously completed phases in reverse order.
+
+#### Scenario: Phase 4 fails after phases 1-3 complete
+- **WHEN** phase 4 returns an error
+- **THEN** cleanup SHALL run for phases 3, 2, 1 in that order (if they have Cleanup functions)
+
+### Requirement: State passes data between phases
+The Pipeline SHALL use a State struct to carry data between phases, including Options, Result, and intermediate values.
+
+#### Scenario: Database handle passes from open to security phase
+- **WHEN** phaseOpenDatabase sets Client on State
+- **THEN** phaseLoadSecurityState SHALL read Client from State
+
+### Requirement: Default bootstrap phases
+The system SHALL provide DefaultPhases() returning the 7-phase bootstrap sequence: ensureDataDir, detectEncryption, acquirePassphrase, openDatabase, loadSecurityState, initCrypto, loadProfile.
+
+#### Scenario: Run uses default phases
+- **WHEN** bootstrap.Run(opts) is called
+- **THEN** it SHALL create a Pipeline with DefaultPhases and execute it
