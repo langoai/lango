@@ -195,14 +195,14 @@ func TestEntStore_MaxHistoryTurns(t *testing.T) {
 }
 
 func TestEntStore_TTL(t *testing.T) {
-	store := newTestEntStore(t, WithTTL(1*time.Millisecond))
+	store := newTestEntStore(t, WithTTL(50*time.Millisecond))
 
 	sess := &Session{Key: "sess-ttl"}
 	if err := store.Create(sess); err != nil {
 		t.Fatalf("Create: %v", err)
 	}
 
-	time.Sleep(5 * time.Millisecond)
+	time.Sleep(100 * time.Millisecond)
 
 	_, err := store.Get("sess-ttl")
 	if err == nil {
@@ -214,14 +214,14 @@ func TestEntStore_TTL(t *testing.T) {
 }
 
 func TestEntStore_TTL_DeleteAndRecreate(t *testing.T) {
-	store := newTestEntStore(t, WithTTL(1*time.Millisecond))
+	store := newTestEntStore(t, WithTTL(50*time.Millisecond))
 
 	sess := &Session{Key: "sess-ttl-renew", Model: "old-model"}
 	if err := store.Create(sess); err != nil {
 		t.Fatalf("Create: %v", err)
 	}
 
-	time.Sleep(5 * time.Millisecond)
+	time.Sleep(100 * time.Millisecond)
 
 	// Verify expired
 	_, err := store.Get("sess-ttl-renew")
