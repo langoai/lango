@@ -44,7 +44,7 @@ jobs:
           sudo apt-get install -y libsqlite3-dev
 
       - name: Set up GoReleaser
-        uses: goreleaser/goreleaser-action@v6
+        uses: goreleaser/goreleaser-action@v7
         with:
           install-only: true
 
@@ -83,7 +83,7 @@ jobs:
           merge-multiple: true
 
       - name: Set up GoReleaser
-        uses: goreleaser/goreleaser-action@v6
+        uses: goreleaser/goreleaser-action@v7
         with:
           install-only: true
 
