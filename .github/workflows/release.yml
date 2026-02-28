@@ -19,9 +19,11 @@ jobs:
           - runner: ubuntu-24.04-arm
             goos: linux
             goarch: arm64
-          - runner: macos-13
+          - runner: macos-14
             goos: darwin
             goarch: amd64
+            cc: "clang -arch x86_64"
+            cxx: "clang++ -arch x86_64"
           - runner: macos-14
             goos: darwin
             goarch: arm64
@@ -52,6 +54,8 @@ jobs:
         env:
           GOOS: ${{ matrix.goos }}
           GOARCH: ${{ matrix.goarch }}
+          CC: ${{ matrix.cc || '' }}
+          CXX: ${{ matrix.cxx || '' }}
         run: goreleaser build --single-target --clean --timeout 60m
 
       - name: Upload artifacts
