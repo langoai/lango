@@ -31,11 +31,19 @@ The system SHALL parse SKILL.md files with YAML frontmatter delimited by `---` l
 - **THEN** an error SHALL be returned
 
 ### Requirement: Embedded Default Skills
-The system SHALL embed 30 default CLI skill files via `//go:embed` and deploy them to the user's skills directory on first run.
+The system SHALL embed default skill files via `//go:embed **/SKILL.md`. When no real skill SKILL.md files are present, a `.placeholder/SKILL.md` file SHALL exist to satisfy the embed glob pattern. The placeholder SHALL NOT contain valid YAML frontmatter and SHALL NOT be deployed as a usable skill.
 
-#### Scenario: First-run deployment
-- **WHEN** `EnsureDefaults()` is called and a skill directory does not exist
-- **THEN** the default skill SHALL be copied from the embedded filesystem to `<skillsDir>/<name>/SKILL.md`
+#### Scenario: Build with no real default skills
+- **WHEN** `go build` is run with only `.placeholder/SKILL.md` in the skills directory
+- **THEN** the build SHALL succeed without errors
+
+#### Scenario: Placeholder not deployed as skill
+- **WHEN** `EnsureDefaults()` iterates over the embedded filesystem
+- **THEN** the `.placeholder` directory SHALL be skipped or ignored because it lacks valid YAML frontmatter
+
+#### Scenario: Future skill addition
+- **WHEN** a new `skills/<name>/SKILL.md` file with valid frontmatter is added
+- **THEN** it SHALL be automatically included in the embedded filesystem and deployed via `EnsureDefaults()`
 
 #### Scenario: Existing skills preserved
 - **WHEN** `EnsureDefaults()` is called and a skill directory already exists

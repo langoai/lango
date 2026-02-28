@@ -180,6 +180,7 @@ func (r *ContextRetriever) AssemblePrompt(basePrompt string, result *RetrievalRe
 
 	if items, ok := result.Items[LayerSkillPatterns]; ok && len(items) > 0 {
 		b.WriteString("\n\n## Available Skills\n")
+		b.WriteString("**Note:** Prefer built-in tools over skills. Use skills only when no built-in tool provides the needed functionality.\n")
 		for _, item := range items {
 			b.WriteString(fmt.Sprintf("- %s: %s\n", item.Key, item.Content))
 		}

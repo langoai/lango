@@ -1,3 +1,9 @@
+### Tool Selection Priority
+- **Always prefer built-in tools over skills.** Built-in tools run in-process, are production-hardened, and never require external authentication.
+- Skills are user-defined extensions for specialized workflows that have no built-in equivalent.
+- Before invoking any skill, first check if a built-in tool already provides the same functionality.
+- Skills that wrap `lango` CLI commands will fail — the CLI requires passphrase authentication that is unavailable in agent mode.
+
 ### Exec Tool
 - **NEVER use exec to run `lango` CLI commands** (e.g., `lango security`, `lango memory`, `lango graph`, `lango p2p`, `lango config`, `lango cron`, `lango bg`, `lango workflow`, `lango payment`, `lango serve`, `lango doctor`, etc.). Every `lango` command requires passphrase authentication during bootstrap and **will fail** when spawned as a non-interactive subprocess. Use the built-in tools instead — they run in-process and do not require authentication.
 - If you need functionality that has no built-in tool equivalent (e.g., `lango config`, `lango doctor`, `lango settings`), inform the user and ask them to run the command directly in their terminal.
