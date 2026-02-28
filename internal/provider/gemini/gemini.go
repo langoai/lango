@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"iter"
+	"strings"
 
 	"github.com/langoai/lango/internal/provider"
 	"google.golang.org/genai"
@@ -197,15 +198,22 @@ func (p *GeminiProvider) Generate(ctx context.Context, params provider.GenerateP
 }
 
 func (p *GeminiProvider) ListModels(ctx context.Context) ([]provider.ModelInfo, error) {
-	// Basic implementation using configured client
-	// p.client.Models.List(ctx, nil) returns iterator
-
-	// Example hardcoded for now as API exploration might take time
-	return []provider.ModelInfo{
-		{ID: "gemini-2.0-flash-exp", Name: "Gemini 2.0 Flash Exp"},
-		{ID: "gemini-1.5-pro", Name: "Gemini 1.5 Pro"},
-		{ID: "gemini-1.5-flash", Name: "Gemini 1.5 Flash"},
-	}, nil
+	var models []provider.ModelInfo
+	for m, err := range p.client.Models.All(ctx) {
+		if err != nil {
+			if len(models) > 0 {
+				return models, nil
+			}
+			return nil, fmt.Errorf("list gemini models: %w", err)
+		}
+		id := strings.TrimPrefix(m.Name, "models/")
+		models = append(models, provider.ModelInfo{
+			ID:            id,
+			Name:          m.DisplayName,
+			ContextWindow: int(m.InputTokenLimit),
+		})
+	}
+	return models, nil
 }
 
 func convertSchema(schemaMap map[string]interface{}) (*genai.Schema, error) {

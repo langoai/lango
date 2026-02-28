@@ -469,12 +469,20 @@ Numeric and range-sensitive fields SHALL have `Validate` functions that return c
 Form builders for Agent, Observational Memory, Embedding, and Librarian SHALL attempt to fetch available models from the configured provider API at form creation time.
 
 #### Scenario: Successful model fetch
-- **WHEN** the provider API returns a list of models within the 5-second timeout
-- **THEN** the model field SHALL be converted from InputText to InputSelect with the fetched models as options, and the current model SHALL always be included
+- **WHEN** the provider API returns a list of models within the 15-second timeout
+- **THEN** the model field SHALL be converted from InputText to InputSearchSelect with the fetched models as options, and the current model SHALL always be included
 
-#### Scenario: Failed model fetch
+#### Scenario: Failed model fetch with error feedback
 - **WHEN** the provider API fails, times out, or returns empty
-- **THEN** the model field SHALL remain as InputText with placeholder text
+- **THEN** the model field SHALL remain as InputText and the description SHALL show the failure reason
+
+#### Scenario: Embedding model field with filtered models
+- **WHEN** the Embedding form fetches models
+- **THEN** FetchEmbeddingModelOptions SHALL filter for embedding-pattern models ("embed", "embedding") and fall back to full list if no matches
+
+#### Scenario: Esc key with open dropdown in form
+- **WHEN** user presses Esc while a search-select dropdown is open in StepForm
+- **THEN** editor passes Esc to form (closes dropdown) instead of exiting the form
 
 #### Scenario: Agent form model fetch
 - **WHEN** the Agent form is created and the configured provider has a valid API key

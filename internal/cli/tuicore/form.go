@@ -47,7 +47,30 @@ func (m *FormModel) AddField(f *Field) {
 		}
 		f.TextInput = ti
 	}
+	if f.Type == InputSearchSelect {
+		ti := textinput.New()
+		ti.Placeholder = "Type to search..."
+		ti.SetValue(f.Value)
+		ti.CharLimit = 200
+		ti.Width = 40
+		if f.Width > 0 {
+			ti.Width = f.Width
+		}
+		f.TextInput = ti
+		f.FilteredOptions = make([]string, len(f.Options))
+		copy(f.FilteredOptions, f.Options)
+	}
 	m.Fields = append(m.Fields, f)
+}
+
+// HasOpenDropdown reports whether any field has an open search-select dropdown.
+func (m FormModel) HasOpenDropdown() bool {
+	for _, f := range m.Fields {
+		if f.Type == InputSearchSelect && f.SelectOpen {
+			return true
+		}
+	}
+	return false
 }
 
 // VisibleFields returns only the fields that pass their visibility check.
@@ -84,6 +107,61 @@ func (m FormModel) Update(msg tea.Msg) (FormModel, tea.Cmd) {
 
 	var cmd tea.Cmd
 
+	field := visible[m.Cursor]
+
+	// InputSearchSelect with open dropdown: intercept keys before form navigation.
+	if field.Type == InputSearchSelect && field.SelectOpen {
+		if msg, ok := msg.(tea.KeyMsg); ok {
+			switch msg.String() {
+			case "up":
+				if field.SelectCursor > 0 {
+					field.SelectCursor--
+				}
+				return m, nil
+			case "down":
+				if field.SelectCursor < len(field.FilteredOptions)-1 {
+					field.SelectCursor++
+				}
+				return m, nil
+			case "enter":
+				if len(field.FilteredOptions) > 0 && field.SelectCursor < len(field.FilteredOptions) {
+					field.Value = field.FilteredOptions[field.SelectCursor]
+					field.TextInput.SetValue(field.Value)
+				}
+				field.SelectOpen = false
+				return m, nil
+			case "esc":
+				field.SelectOpen = false
+				field.TextInput.SetValue(field.Value)
+				field.applySearchFilter("")
+				return m, nil
+			case "tab":
+				field.SelectOpen = false
+				field.TextInput.SetValue(field.Value)
+				field.applySearchFilter("")
+				if m.Cursor < len(visible)-1 {
+					m.Cursor++
+				}
+				return m, nil
+			case "shift+tab":
+				field.SelectOpen = false
+				field.TextInput.SetValue(field.Value)
+				field.applySearchFilter("")
+				if m.Cursor > 0 {
+					m.Cursor--
+				}
+				return m, nil
+			default:
+				// Pass character input to text field for filtering
+				var inputCmd tea.Cmd
+				field.TextInput, inputCmd = field.TextInput.Update(msg)
+				field.applySearchFilter(field.TextInput.Value())
+				cmd = inputCmd
+				return m, cmd
+			}
+		}
+	}
+
 	switch msg := msg.(type) {
 	case tea.KeyMsg:
 		switch msg.String() {
@@ -96,9 +174,24 @@ func (m FormModel) Update(msg tea.Msg) (FormModel, tea.Cmd) {
 				m.Cursor++
 			}
 		case " ":
-			field := visible[m.Cursor]
 			if field.Type == InputBool {
 				field.Checked = !field.Checked
+			}
+		case "enter":
+			if field.Type == InputSearchSelect {
+				field.SelectOpen = true
+				field.SelectCursor = 0
+				field.TextInput.SetValue("")
+				field.applySearchFilter("")
+				field.TextInput.Focus()
+				// Pre-select current value in list
+				for i, opt := range field.FilteredOptions {
+					if opt == field.Value {
+						field.SelectCursor = i
+						break
+					}
+				}
+				return m, nil
 			}
 		case "esc":
 			if m.OnCancel != nil {
@@ -117,7 +210,7 @@ func (m FormModel) Update(msg tea.Msg) (FormModel, tea.Cmd) {
 	}
 
 	// Update specific field logic.
-	field := visible[m.Cursor]
+	field = visible[m.Cursor]
 	if field.Type == InputText || field.Type == InputInt || field.Type == InputPassword {
 		var inputCmd tea.Cmd
 		field.TextInput, inputCmd = field.TextInput.Update(msg)
@@ -211,6 +304,57 @@ func (m FormModel) View() string {
 				val = lipgloss.NewStyle().Foreground(tui.Accent).Render(val)
 			}
 			b.WriteString(val)
+
+		case InputSearchSelect:
+			if isFocused && f.SelectOpen {
+				// Show search input
+				f.TextInput.Focus()
+				f.TextInput.TextStyle = lipgloss.NewStyle().Foreground(tui.Accent)
+				b.WriteString(f.TextInput.View())
+				b.WriteString("\n")
+
+				// Show match count
+				matchInfo := fmt.Sprintf("  %d/%d matches", len(f.FilteredOptions), len(f.Options))
+				b.WriteString(lipgloss.NewStyle().Foreground(tui.Dim).Render(matchInfo))
+				b.WriteString("\n")
+
+				// Render dropdown (max 8 visible)
+				maxVisible := 8
+				start := 0
+				if f.SelectCursor >= maxVisible {
+					start = f.SelectCursor - maxVisible + 1
+				}
+				end := start + maxVisible
+				if end > len(f.FilteredOptions) {
+					end = len(f.FilteredOptions)
+				}
+
+				for i := start; i < end; i++ {
+					opt := f.FilteredOptions[i]
+					if i == f.SelectCursor {
+						b.WriteString(lipgloss.NewStyle().Foreground(tui.Accent).Bold(true).Render("  > " + opt))
+					} else {
+						b.WriteString(lipgloss.NewStyle().Foreground(tui.Muted).Render("    " + opt))
+					}
+					b.WriteString("\n")
+				}
+
+				if end < len(f.FilteredOptions) {
+					more := fmt.Sprintf("    ... %d more", len(f.FilteredOptions)-end)
+					b.WriteString(lipgloss.NewStyle().Foreground(tui.Dim).Render(more))
+					b.WriteString("\n")
+				}
+			} else {
+				// Closed state: show current value
+				val := f.Value
+				if val == "" {
+					val = "(none)"
+				}
+				if isFocused {
+					val = lipgloss.NewStyle().Foreground(tui.Accent).Render(val + "  [Enter: search]")
+				}
+				b.WriteString(val)
+			}
 		}
 		b.WriteString("\n")
 
@@ -221,15 +365,32 @@ func (m FormModel) View() string {
 		}
 	}
 
-	// Help Footer
+	// Help Footer - context-dependent
 	b.WriteString("\n")
-	b.WriteString(tui.HelpBar(
-		tui.HelpEntry("Tab", "Next"),
-		tui.HelpEntry("Shift+Tab", "Prev"),
-		tui.HelpEntry("Space", "Toggle"),
-		tui.HelpEntry("←→", "Options"),
-		tui.HelpEntry("Esc", "Back"),
-	))
+	hasOpenDropdown := false
+	for _, f := range visible {
+		if f.Type == InputSearchSelect && f.SelectOpen {
+			hasOpenDropdown = true
+			break
+		}
+	}
+	if hasOpenDropdown {
+		b.WriteString(tui.HelpBar(
+			tui.HelpEntry("↑↓", "Navigate"),
+			tui.HelpEntry("Enter", "Select"),
+			tui.HelpEntry("Esc", "Close"),
+			tui.HelpEntry("Type", "Filter"),
+		))
+	} else {
+		b.WriteString(tui.HelpBar(
+			tui.HelpEntry("Tab", "Next"),
+			tui.HelpEntry("Shift+Tab", "Prev"),
+			tui.HelpEntry("Space", "Toggle"),
+			tui.HelpEntry("←→", "Options"),
+			tui.HelpEntry("Enter", "Search"),
+			tui.HelpEntry("Esc", "Back"),
+		))
+	}
 
 	return b.String()
 }

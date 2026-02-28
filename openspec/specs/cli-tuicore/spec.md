@@ -127,6 +127,23 @@ The `Field` struct SHALL expose an `IsVisible() bool` method that returns true w
 - **WHEN** a form has 5 fields and 2 have VisibleWhen returning false
 - **THEN** VisibleFields() SHALL return 3 fields
 
+### Requirement: InputSearchSelect field type in form model
+The FormModel MUST support InputSearchSelect as a field type with dedicated state management.
+
+#### Scenario: Field initialization
+- **WHEN** AddField is called with InputSearchSelect type
+- **THEN** TextInput is initialized with search placeholder, FilteredOptions copies Options
+
+#### Scenario: HasOpenDropdown query
+- **WHEN** any field has SelectOpen == true
+- **THEN** HasOpenDropdown() returns true
+
+#### Scenario: Context-dependent help bar
+- **WHEN** a dropdown is open
+- **THEN** help bar shows dropdown-specific keys (↑↓ Navigate, Enter Select, Esc Close, Type Filter)
+- **WHEN** no dropdown is open
+- **THEN** help bar shows form-level keys including Enter Search
+
 ### Embedding ProviderID deprecation in state update
 The `UpdateConfigFromForm` case for `emb_provider_id` SHALL set `cfg.Embedding.Provider` to the value AND clear `cfg.Embedding.ProviderID` to empty string.
 

@@ -44,12 +44,14 @@ func NewAgentForm(cfg *config.Config) *tuicore.FormModel {
 	})
 
 	// Try to fetch models dynamically from the selected provider
-	if modelOpts := FetchModelOptions(cfg.Agent.Provider, cfg, cfg.Agent.Model); len(modelOpts) > 0 {
+	if modelOpts, fetchErr := FetchModelOptionsWithError(cfg.Agent.Provider, cfg, cfg.Agent.Model); len(modelOpts) > 0 {
 		f := form.Fields[len(form.Fields)-1]
-		f.Type = tuicore.InputSelect
+		f.Type = tuicore.InputSearchSelect
 		f.Options = modelOpts
 		f.Placeholder = ""
-		f.Description = fmt.Sprintf("Fetched %d models from provider; use ←→ to browse", len(modelOpts))
+		f.Description = fmt.Sprintf("Fetched %d models from provider; press Enter to search", len(modelOpts))
+	} else if fetchErr != nil {
+		form.Fields[len(form.Fields)-1].Description = fmt.Sprintf("Could not fetch models (%v); enter model ID manually", fetchErr)
 	}
 
 	form.AddField(&tuicore.Field{
@@ -104,11 +106,13 @@ func NewAgentForm(cfg *config.Config) *tuicore.FormModel {
 	})
 
 	if cfg.Agent.FallbackProvider != "" {
-		if fbModelOpts := FetchModelOptions(cfg.Agent.FallbackProvider, cfg, cfg.Agent.FallbackModel); len(fbModelOpts) > 0 {
+		if fbModelOpts, fbErr := FetchModelOptionsWithError(cfg.Agent.FallbackProvider, cfg, cfg.Agent.FallbackModel); len(fbModelOpts) > 0 {
 			fbModelOpts = append([]string{""}, fbModelOpts...)
-			form.Fields[len(form.Fields)-1].Type = tuicore.InputSelect
+			form.Fields[len(form.Fields)-1].Type = tuicore.InputSearchSelect
 			form.Fields[len(form.Fields)-1].Options = fbModelOpts
 			form.Fields[len(form.Fields)-1].Placeholder = ""
+		} else if fbErr != nil {
+			form.Fields[len(form.Fields)-1].Description = fmt.Sprintf("Could not fetch models (%v); enter model ID manually", fbErr)
 		}
 	}
 
@@ -596,11 +600,13 @@ func NewObservationalMemoryForm(cfg *config.Config) *tuicore.FormModel {
 	if omFetchProvider == "" {
 		omFetchProvider = cfg.Agent.Provider
 	}
-	if omModelOpts := FetchModelOptions(omFetchProvider, cfg, cfg.ObservationalMemory.Model); len(omModelOpts) > 0 {
+	if omModelOpts, omErr := FetchModelOptionsWithError(omFetchProvider, cfg, cfg.ObservationalMemory.Model); len(omModelOpts) > 0 {
 		omModelOpts = append([]string{""}, omModelOpts...)
-		form.Fields[len(form.Fields)-1].Type = tuicore.InputSelect
+		form.Fields[len(form.Fields)-1].Type = tuicore.InputSearchSelect
 		form.Fields[len(form.Fields)-1].Options = omModelOpts
 		form.Fields[len(form.Fields)-1].Placeholder = ""
+	} else if omErr != nil {
+		form.Fields[len(form.Fields)-1].Description = fmt.Sprintf("Could not fetch models (%v); enter model ID manually", omErr)
 	}
 
 	form.AddField(&tuicore.Field{
@@ -696,11 +702,16 @@ func NewEmbeddingForm(cfg *config.Config) *tuicore.FormModel {
 	})
 
 	if cfg.Embedding.Provider != "" {
-		if embModelOpts := FetchModelOptions(cfg.Embedding.Provider, cfg, cfg.Embedding.Model); len(embModelOpts) > 0 {
+		if embModelOpts := FetchEmbeddingModelOptions(cfg.Embedding.Provider, cfg, cfg.Embedding.Model); len(embModelOpts) > 0 {
 			embModelOpts = append([]string{""}, embModelOpts...)
-			form.Fields[len(form.Fields)-1].Type = tuicore.InputSelect
+			form.Fields[len(form.Fields)-1].Type = tuicore.InputSearchSelect
 			form.Fields[len(form.Fields)-1].Options = embModelOpts
 			form.Fields[len(form.Fields)-1].Placeholder = ""
+		} else {
+			// FetchEmbeddingModelOptions returns nil only if FetchModelOptions fails
+			if _, embErr := FetchModelOptionsWithError(cfg.Embedding.Provider, cfg, cfg.Embedding.Model); embErr != nil {
+				form.Fields[len(form.Fields)-1].Description = fmt.Sprintf("Could not fetch models (%v); enter model ID manually", embErr)
+			}
 		}
 	}
 
@@ -1203,11 +1214,13 @@ func NewLibrarianForm(cfg *config.Config) *tuicore.FormModel {
 	if libFetchProvider == "" {
 		libFetchProvider = cfg.Agent.Provider
 	}
-	if libModelOpts := FetchModelOptions(libFetchProvider, cfg, cfg.Librarian.Model); len(libModelOpts) > 0 {
+	if libModelOpts, libErr := FetchModelOptionsWithError(libFetchProvider, cfg, cfg.Librarian.Model); len(libModelOpts) > 0 {
 		libModelOpts = append([]string{""}, libModelOpts...)
-		form.Fields[len(form.Fields)-1].Type = tuicore.InputSelect
+		form.Fields[len(form.Fields)-1].Type = tuicore.InputSearchSelect
 		form.Fields[len(form.Fields)-1].Options = libModelOpts
 		form.Fields[len(form.Fields)-1].Placeholder = ""
+	} else if libErr != nil {
+		form.Fields[len(form.Fields)-1].Description = fmt.Sprintf("Could not fetch models (%v); enter model ID manually", libErr)
 	}
 
 	return &form

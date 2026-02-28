@@ -98,6 +98,11 @@ func (e *Editor) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				e.step = StepMenu
 				return e, nil
 			case StepForm:
+				// If a search-select dropdown is open, let the form handle Esc
+				// (closes dropdown only, does not exit the form).
+				if e.activeForm != nil && e.activeForm.HasOpenDropdown() {
+					break
+				}
 				if e.activeForm != nil {
 					if e.activeAuthProviderID != "" || e.isAuthProviderForm() {
 						e.state.UpdateAuthProviderFromForm(e.activeAuthProviderID, e.activeForm)
