@@ -24,7 +24,7 @@ This project includes experimental AI Agent features and is currently in an unst
 - ⏰ **Cron Scheduling** - Persistent cron jobs with cron/interval/one-time schedules, multi-channel delivery
 - ⚡ **Background Execution** - Async task manager with concurrency control and completion notifications
 - 🔄 **Workflow Engine** - DAG-based YAML workflows with parallel step execution and state persistence
-- 🔒 **Secure** - AES-256-GCM encryption, key registry, secret management, output scanning
+- 🔒 **Secure** - AES-256-GCM encryption, key registry, secret management, output scanning, hardware keyring (Touch ID / TPM), SQLCipher DB encryption, Cloud KMS (AWS/GCP/Azure/PKCS#11)
 - 💾 **Persistent** - Ent ORM with SQLite session storage
 - 🌐 **Gateway** - WebSocket/HTTP server with real-time streaming
 - 🔑 **Auth** - OIDC authentication, OAuth login flow
@@ -95,6 +95,14 @@ lango security migrate-passphrase Rotate encryption passphrase
 lango security secrets list      List stored secrets (values hidden)
 lango security secrets set <n>   Store an encrypted secret (--value-hex for non-interactive)
 lango security secrets delete <n> Delete a stored secret (--force)
+lango security keyring store     Store passphrase in hardware keyring (Touch ID / TPM)
+lango security keyring clear     Remove passphrase from keyring (--force)
+lango security keyring status    Show hardware keyring status (--json)
+lango security db-migrate        Encrypt database with SQLCipher (--force)
+lango security db-decrypt        Decrypt database to plaintext (--force)
+lango security kms status        Show KMS provider status (--json)
+lango security kms test          Test KMS encrypt/decrypt roundtrip
+lango security kms keys          List KMS keys in registry (--json)
 
 lango memory list [--json]       List observational memory entries
 lango memory status [--json]     Show memory system status
@@ -138,6 +146,17 @@ lango p2p discover               Discover agents by capability
 lango p2p identity               Show local DID and peer identity
 lango p2p reputation             Query peer trust score
 lango p2p pricing                Show tool pricing
+lango p2p session list           List active peer sessions (--json)
+lango p2p session revoke         Revoke a peer session (--peer-did)
+lango p2p session revoke-all     Revoke all active peer sessions
+lango p2p sandbox status         Show sandbox runtime status
+lango p2p sandbox test           Run sandbox smoke test
+lango p2p sandbox cleanup        Remove orphaned sandbox containers
+
+lango bg list                    List background tasks
+lango bg status <id>             Show background task status
+lango bg cancel <id>             Cancel a running background task
+lango bg result <id>             Show completed task result
 ```
 
 ### Diagnostics
@@ -166,6 +185,7 @@ lango/
 │   ├── app/                # Application bootstrap, wiring, tool registration
 │   ├── approval/           # Composite approval provider for sensitive tools
 │   ├── bootstrap/          # Application bootstrap: DB, crypto, config profile init
+│   ├── dbmigrate/          # Database encryption migration (SQLCipher)
 │   ├── channels/           # Telegram, Discord, Slack integrations
 │   ├── cli/                # CLI commands
 │   │   ├── agent/          #   lango agent status/list
@@ -180,7 +200,8 @@ lango/
 │   │   ├── bg/             #   lango bg list/status/cancel/result
 │   │   ├── workflow/       #   lango workflow run/list/status/cancel/history
 │   │   ├── prompt/         #   interactive prompt utilities
-│   │   ├── security/       #   lango security status/secrets/migrate-passphrase
+│   │   ├── security/       #   lango security status/secrets/migrate-passphrase/keyring/db-migrate/db-decrypt/kms
+│   │   ├── p2p/            #   lango p2p status/peers/connect/disconnect/firewall/discover/identity/reputation/pricing/session/sandbox
 │   │   └── tui/            #   TUI components and views
 │   ├── config/             # Config loading, env var substitution, validation
 │   ├── configstore/        # Encrypted config profile storage (Ent-backed)
@@ -191,15 +212,18 @@ lango/
 │   ├── graph/              # BoltDB triple store, Graph RAG, entity extractor
 │   ├── knowledge/          # Knowledge store, 8-layer context retriever
 │   ├── learning/           # Learning engine, error pattern analyzer, self-learning graph
+│   ├── lifecycle/          # Component lifecycle management (priority-ordered startup/shutdown)
 │   ├── logging/            # Zap structured logger
 │   ├── memory/             # Observational memory (observer, reflector, token counter)
 │   ├── orchestration/      # Multi-agent orchestration (operator, navigator, vault, librarian, automator, planner, chronicler)
+│   ├── keyring/            # Hardware keyring integration (Touch ID / TPM 2.0)
 │   ├── passphrase/         # Passphrase prompt and validation helpers
 │   ├── provider/           # AI provider interface and implementations
 │   │   ├── anthropic/      #   Claude models
 │   │   ├── gemini/         #   Google Gemini models
 │   │   └── openai/         #   OpenAI-compatible (GPT, Ollama, etc.)
-│   ├── security/           # Crypto providers, key registry, secrets store, companion discovery
+│   ├── sandbox/            # Tool execution isolation (subprocess/container)
+│   ├── security/           # Crypto providers, key registry, secrets store, companion discovery, KMS providers
 │   ├── session/            # Ent-based SQLite session store
 │   ├── skill/              # File-based skill system (SKILL.md parser, FileSkillStore, registry, executor, GitHub importer with git clone + HTTP fallback, resource directories)
 │   ├── cron/               # Cron scheduler (robfig/cron/v3), job store, executor, delivery
@@ -212,7 +236,7 @@ lango/
 │   ├── x402/               # X402 V2 payment protocol (Coinbase SDK, EIP-3009 signing)
 │   └── tools/              # browser, crypto, exec, filesystem, secrets, payment
 ├── prompts/                # Default prompt .md files (embedded via go:embed)
-├── skills/                 # 38 embedded default skills (go:embed SKILL.md files)
+├── skills/                 # Skill system scaffold (go:embed). Built-in skills were removed — Lango's passphrase-based security model makes it impractical for the agent to invoke CLI commands as skills
 └── openspec/               # Specifications (OpenSpec workflow)
 ```
 
@@ -885,7 +909,7 @@ Lango includes a self-learning knowledge system that improves agent performance 
 
 - **Knowledge Store** - Persistent storage for facts, patterns, and external references
 - **Learning Engine** - Observes tool execution results, extracts error patterns, boosts successful strategies. Agent tools (`learning_stats`, `learning_cleanup`) let the agent brief users on learning data and clean up entries by age, confidence, or category
-- **Skill System** - File-based skills stored as `~/.lango/skills/<name>/SKILL.md` with YAML frontmatter. Supports four skill types: script (shell), template (Go template), composite (multi-step), and instruction (reference documents). Ships with 30 embedded default skills deployed on first run. Import skills from GitHub repos or any URL via the `import_skill` tool — automatically uses `git clone` when available (fetches full directory with resource files) and falls back to the GitHub HTTP API when git is not installed. Each skill directory can include resource subdirectories (`scripts/`, `references/`, `assets/`). YAML frontmatter supports `allowed-tools` for pre-approved tool lists. Dangerous script patterns (fork bombs, `rm -rf /`, `curl|sh`) are blocked at creation and execution time.
+- **Skill System** - File-based skills stored as `~/.lango/skills/<name>/SKILL.md` with YAML frontmatter. Supports four skill types: script (shell), template (Go template), composite (multi-step), and instruction (reference documents). Previously shipped ~30 built-in skills, but these were removed because Lango's passphrase-based security model makes it impractical for the agent to invoke CLI commands as skills. The skill infrastructure remains fully functional for user-defined skills. Import skills from GitHub repos or any URL via the `import_skill` tool — automatically uses `git clone` when available (fetches full directory with resource files) and falls back to the GitHub HTTP API when git is not installed. Each skill directory can include resource subdirectories (`scripts/`, `references/`, `assets/`). YAML frontmatter supports `allowed-tools` for pre-approved tool lists. Dangerous script patterns (fork bombs, `rm -rf /`, `curl|sh`) are blocked at creation and execution time.
 - **Context Retriever** - 8-layer context architecture that assembles relevant knowledge into prompts:
   1. Tool Registry — available tools and capabilities
   2. User Knowledge — rules, preferences, definitions, facts

@@ -9,7 +9,7 @@ lango/
 ├── cmd/lango/              # Application entry point
 ├── internal/               # All application packages (Go internal visibility)
 ├── prompts/                # Default prompt .md files (embedded via go:embed)
-├── skills/                 # 30 embedded default skills (go:embed SKILL.md files)
+├── skills/                 # Skill system scaffold (go:embed)
 ├── openspec/               # Specifications (OpenSpec workflow)
 ├── docs/                   # MkDocs documentation source
 ├── go.mod / go.sum         # Go module definition
@@ -50,7 +50,8 @@ All application code lives under `internal/` to enforce Go's visibility boundary
 | `cli/bg/` | `lango bg list`, `status`, `cancel`, `result` -- background task management |
 | `cli/workflow/` | `lango workflow run`, `list`, `status`, `cancel`, `history` -- workflow management |
 | `cli/prompt/` | Interactive prompt utilities for CLI input |
-| `cli/security/` | `lango security status`, `secrets`, `migrate-passphrase` -- security operations |
+| `cli/security/` | `lango security status`, `secrets`, `migrate-passphrase`, `keyring store/clear/status`, `db-migrate`, `db-decrypt`, `kms status/test/keys` -- security operations |
+| `cli/p2p/` | `lango p2p status`, `peers`, `connect`, `disconnect`, `firewall list/add/remove`, `discover`, `identity`, `reputation`, `pricing`, `session list/revoke/revoke-all`, `sandbox status/test/cleanup` -- P2P network management |
 | `cli/tui/` | TUI components and views for interactive terminal sessions |
 | `channels/` | Channel bot integrations for Telegram, Discord, and Slack. Each adapter converts platform-specific messages to the Gateway's internal format |
 | `gateway/` | HTTP REST + WebSocket server built on chi router. Handles JSON-RPC over WebSocket, OIDC authentication (`AuthManager`), turn callbacks, and approval routing. Provides `Server.SetAgent()` for late-binding the agent after initialization |
@@ -73,7 +74,7 @@ All application code lives under `internal/` to enforce Go's visibility boundary
 |---------|-------------|
 | `config/` | YAML configuration loading with environment variable substitution (`${ENV_VAR}` syntax), validation, and defaults. Defines all config structs (`Config`, `AgentConfig`, `SecurityConfig`, etc.) |
 | `configstore/` | Encrypted configuration profile storage backed by Ent ORM. Allows multiple named profiles with passphrase-derived encryption |
-| `security/` | Crypto providers (`LocalProvider` with passphrase-derived keys, `RPCProvider` for remote signing). `KeyRegistry` manages encryption keys. `SecretsStore` provides encrypted secret storage. `RefStore` holds opaque references so plaintext never reaches agent context. Companion discovery for distributed setups |
+| `security/` | Crypto providers (`LocalProvider` with passphrase-derived keys, `RPCProvider` for remote signing). `KeyRegistry` manages encryption keys. `SecretsStore` provides encrypted secret storage. `RefStore` holds opaque references so plaintext never reaches agent context. Companion discovery for distributed setups. KMS providers (AWS KMS, GCP KMS, Azure Key Vault, PKCS#11) with retry and health checking |
 | `session/` | Session persistence via Ent ORM with SQLite backend. `EntStore` implements the `Store` interface with configurable TTL and max history turns. `CompactMessages()` supports memory compaction |
 | `ent/` | Ent ORM schema definitions and generated code for all database entities |
 | `logging/` | Structured logging via Zap. Per-package logger instances (`logging.App()`, `logging.Agent()`, `logging.Gateway()`, etc.) |
@@ -90,6 +91,10 @@ All application code lives under `internal/` to enforce Go's visibility boundary
 | `cron/` | Cron scheduling system built on robfig/cron/v3. `Scheduler` manages job lifecycle. `EntStore` persists jobs and execution history. `Executor` runs agent prompts on schedule. `Delivery` routes results to channels |
 | `background/` | In-memory background task manager. `Manager` enforces concurrency limits and task timeouts. `Notification` routes results to channels |
 | `workflow/` | DAG-based workflow engine. `Engine` parses YAML workflow definitions, resolves step dependencies, and executes steps in parallel where possible. `StateStore` persists workflow state via Ent |
+| `lifecycle/` | Component lifecycle management. `Registry` with priority-ordered startup and reverse-order shutdown. Adapters: `SimpleComponent`, `FuncComponent`, `ErrorComponent` |
+| `keyring/` | Hardware keyring integration (Touch ID / TPM 2.0). `Provider` interface backed by OS keyring via go-keyring |
+| `sandbox/` | Tool execution isolation. `SubprocessExecutor` for process-isolated P2P tool execution. `ContainerRuntime` interface with Docker/gVisor/native fallback chain. Optional pre-warmed container pool |
+| `dbmigrate/` | Database encryption migration. `MigrateToEncrypted` / `DecryptToPlaintext` for SQLCipher transitions. `IsEncrypted` detection and `secureDeleteFile` cleanup |
 | `passphrase/` | Passphrase prompt and validation helpers for terminal input |
 | `orchestration/` | Multi-agent orchestration. `BuildAgentTree()` creates an ADK agent hierarchy with sub-agents: Operator (tool execution), Navigator (research), Vault (security), Librarian (knowledge), Automator (cron/bg/workflow), Planner (task planning), Chronicler (memory) |
 | `a2a/` | Agent-to-Agent protocol. `Server` exposes agent card and task endpoints. `LoadRemoteAgents()` discovers and loads remote agent capabilities |
@@ -107,7 +112,7 @@ Default system prompt sections as Markdown files, embedded into the binary via `
 
 ## `skills/`
 
-30 embedded default skills as `SKILL.md` files, deployed to `~/.lango/skills/` on first run via `EnsureDefaults()`. Each skill defines a name, description, and instruction template that the agent can invoke.
+Skill system scaffold. Previously included ~30 built-in skills as SKILL.md files deployed via go:embed, but these were removed because Lango's passphrase-protected security model makes it impractical for the agent to invoke lango CLI commands as skills. The skill infrastructure (FileSkillStore, Registry, GitHub importer) remains fully functional for user-defined skills.
 
 ## `openspec/`
 

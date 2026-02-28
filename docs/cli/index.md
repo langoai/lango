@@ -48,6 +48,14 @@ Lango provides a comprehensive command-line interface built with [Cobra](https:/
 | `lango security secrets list` | List stored secrets (values hidden) |
 | `lango security secrets set <name>` | Store an encrypted secret |
 | `lango security secrets delete <name>` | Delete a stored secret |
+| `lango security keyring store` | Store passphrase in hardware keyring (Touch ID / TPM) |
+| `lango security keyring clear` | Remove passphrase from keyring |
+| `lango security keyring status` | Show hardware keyring status |
+| `lango security db-migrate` | Encrypt database with SQLCipher |
+| `lango security db-decrypt` | Decrypt database to plaintext |
+| `lango security kms status` | Show KMS provider status |
+| `lango security kms test` | Test KMS encrypt/decrypt roundtrip |
+| `lango security kms keys` | List KMS keys in registry |
 
 ### Payment
 
@@ -58,6 +66,28 @@ Lango provides a comprehensive command-line interface built with [Cobra](https:/
 | `lango payment limits` | Show spending limits and daily usage |
 | `lango payment info` | Show wallet and payment system info |
 | `lango payment send` | Send a USDC payment |
+
+### P2P Network
+
+| Command | Description |
+|---------|-------------|
+| `lango p2p status` | Show P2P node status |
+| `lango p2p peers` | List connected peers |
+| `lango p2p connect <multiaddr>` | Connect to a peer by multiaddr |
+| `lango p2p disconnect <peer-id>` | Disconnect from a peer |
+| `lango p2p firewall list` | List firewall ACL rules |
+| `lango p2p firewall add` | Add a firewall ACL rule |
+| `lango p2p firewall remove` | Remove firewall rules for a peer |
+| `lango p2p discover` | Discover agents by capability |
+| `lango p2p identity` | Show local DID and peer identity |
+| `lango p2p reputation` | Query peer trust score |
+| `lango p2p pricing` | Show tool pricing |
+| `lango p2p session list` | List active peer sessions |
+| `lango p2p session revoke` | Revoke a peer session |
+| `lango p2p session revoke-all` | Revoke all active peer sessions |
+| `lango p2p sandbox status` | Show sandbox runtime status |
+| `lango p2p sandbox test` | Run sandbox smoke test |
+| `lango p2p sandbox cleanup` | Remove orphaned sandbox containers |
 
 ### Automation
 
@@ -74,6 +104,10 @@ Lango provides a comprehensive command-line interface built with [Cobra](https:/
 | `lango workflow status <run-id>` | Show workflow run status |
 | `lango workflow cancel <run-id>` | Cancel a running workflow |
 | `lango workflow history` | Show workflow execution history |
+| `lango bg list` | List background tasks |
+| `lango bg status <id>` | Show background task status |
+| `lango bg cancel <id>` | Cancel a running background task |
+| `lango bg result <id>` | Show completed task result |
 
 ## Global Behavior
 

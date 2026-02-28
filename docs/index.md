@@ -109,7 +109,7 @@ See the [Installation Guide](getting-started/installation.md) for detailed instr
 
     ---
 
-    AES-256-GCM encryption, key registry, secret management, and PII redaction.
+    AES-256-GCM encryption, key registry, secret management, PII redaction, hardware keyring (Touch ID / TPM), SQLCipher database encryption, and Cloud KMS integration.
 
 -   :floppy_disk: **Persistent**
 

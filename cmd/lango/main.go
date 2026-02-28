@@ -15,8 +15,10 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/langoai/lango/internal/app"
+	"github.com/langoai/lango/internal/background"
 	"github.com/langoai/lango/internal/bootstrap"
 	cliagent "github.com/langoai/lango/internal/cli/agent"
+	clibg "github.com/langoai/lango/internal/cli/bg"
 	clicron "github.com/langoai/lango/internal/cli/cron"
 	"github.com/langoai/lango/internal/cli/doctor"
 	cligraph "github.com/langoai/lango/internal/cli/graph"
@@ -144,6 +146,12 @@ func main() {
 	})
 	workflowCmd.GroupID = "infra"
 	rootCmd.AddCommand(workflowCmd)
+
+	bgCmd := clibg.NewBgCmd(func() (*background.Manager, error) {
+		return nil, fmt.Errorf("bg commands require a running server (use 'lango serve' first)")
+	})
+	bgCmd.GroupID = "infra"
+	rootCmd.AddCommand(bgCmd)
 
 	if err := rootCmd.Execute(); err != nil {
 		fmt.Fprintln(os.Stderr, err)
