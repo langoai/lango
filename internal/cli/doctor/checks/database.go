@@ -114,7 +114,7 @@ func (c *DatabaseCheck) resolveDatabasePath(cfg *config.Config) string {
 	// Default path
 	home, err := os.UserHomeDir()
 	if err != nil {
-		return "sessions.db"
+		return "lango.db"
 	}
-	return filepath.Join(home, ".lango", "sessions.db")
+	return filepath.Join(home, ".lango", "lango.db")
 }

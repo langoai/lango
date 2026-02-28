@@ -59,7 +59,7 @@ The system SHALL verify that enabled channel tokens are configured.
 - **THEN** check fails with specific channel and missing token field
 
 ### Requirement: Session Database Check
-The system SHALL verify that the session database is accessible.
+The system SHALL verify that the session database is accessible. The fallback database path when no config is loaded SHALL be `~/.lango/lango.db`, matching the DefaultConfig convention.
 
 #### Scenario: Database file exists and is writable
 - **WHEN** session.databasePath points to an accessible SQLite file
@@ -68,6 +68,10 @@ The system SHALL verify that the session database is accessible.
 #### Scenario: Database path not writable
 - **WHEN** database path directory is not writable
 - **THEN** check fails with permission error
+
+#### Scenario: No config loaded fallback path
+- **WHEN** no configuration is loaded (cfg is nil or databasePath is empty)
+- **THEN** the check SHALL use `~/.lango/lango.db` as the fallback path
 
 ### Requirement: Server Port Check
 The system SHALL verify that the configured server port is available.
@@ -263,15 +267,19 @@ The embedding doctor check SHALL use `Config.ResolveEmbeddingProvider()` for val
 - **THEN** the check SHALL skip with "not configured" message
 
 ### Requirement: Graph store health check
-The doctor command SHALL include a GraphStoreCheck that validates graph store configuration. The check SHALL skip if graph.enabled is false. When enabled, it SHALL validate that backend is "bolt", databasePath is set, and maxTraversalDepth and maxExpansionResults are positive.
+The doctor command SHALL include a GraphStoreCheck that validates graph store configuration. The check SHALL skip if graph.enabled is false. When enabled, it SHALL validate that backend is "bolt" and maxTraversalDepth and maxExpansionResults are positive. When databasePath is empty, the check SHALL return StatusWarn with a message indicating the path will default to graph.db next to the session database, instead of StatusFail.
 
 #### Scenario: Graph disabled
 - **WHEN** doctor runs with graph.enabled=false
 - **THEN** GraphStoreCheck returns StatusSkip
 
-#### Scenario: Graph misconfigured
+#### Scenario: Graph databasePath empty
 - **WHEN** doctor runs with graph.enabled=true and databasePath empty
-- **THEN** GraphStoreCheck returns StatusFail with message about missing path
+- **THEN** GraphStoreCheck returns StatusWarn with message indicating the fallback path will be used
+
+#### Scenario: Graph misconfigured backend
+- **WHEN** doctor runs with graph.enabled=true and backend is not "bolt"
+- **THEN** GraphStoreCheck returns StatusFail with message about unsupported backend
 
 ### Requirement: Multi-agent health check
 The doctor command SHALL include a MultiAgentCheck that validates multi-agent configuration. The check SHALL skip if agent.multiAgent is false. When enabled, it SHALL validate that agent.provider is set.

@@ -68,6 +68,14 @@ The configuration system SHALL apply sensible defaults for all non-credential fi
 - `librarian.inquiryCooldownTurns`: `3`
 - `librarian.maxPendingInquiries`: `2`
 - `librarian.autoSaveConfidence`: `"high"`
+- `observationalMemory.enabled`: `false`
+- `observationalMemory.messageTokenThreshold`: `1000`
+- `observationalMemory.observationTokenThreshold`: `2000`
+- `observationalMemory.maxMessageTokenBudget`: `8000`
+- `observationalMemory.maxReflectionsInContext`: `5`
+- `observationalMemory.maxObservationsInContext`: `20`
+- `observationalMemory.memoryTokenBudget`: `4000`
+- `observationalMemory.reflectionConsolidationThreshold`: `5`
 
 #### Scenario: Missing optional field
 - **WHEN** a configuration field is not specified
@@ -86,6 +94,10 @@ The configuration system SHALL apply sensible defaults for all non-credential fi
 #### Scenario: Librarian defaults applied
 - **WHEN** the `librarian` section is omitted from configuration
 - **THEN** the system SHALL apply default values: enabled=false, observationThreshold=2, inquiryCooldownTurns=3, maxPendingInquiries=2, autoSaveConfidence="high"
+
+#### Scenario: ObservationalMemory defaults applied
+- **WHEN** the `observationalMemory` section is omitted from configuration
+- **THEN** the system SHALL apply default values: enabled=false, messageTokenThreshold=1000, observationTokenThreshold=2000, maxMessageTokenBudget=8000, maxReflectionsInContext=5, maxObservationsInContext=20, memoryTokenBudget=4000, reflectionConsolidationThreshold=5
 
 ### Requirement: Runtime configuration updates
 The system SHALL support reloading configuration without full restart.

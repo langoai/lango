@@ -139,7 +139,7 @@ func TestNetworkCheck_Run_PortAvailable(t *testing.T) {
 func TestDatabaseCheck_Run_DirectoryNotExist(t *testing.T) {
 	cfg := &config.Config{
 		Session: config.SessionConfig{
-			DatabasePath: "/nonexistent/path/sessions.db",
+			DatabasePath: "/nonexistent/path/lango.db",
 		},
 	}
 

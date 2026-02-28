@@ -22,7 +22,7 @@ The application SHALL prioritize the passphrase from environment variables over 
 The application SHALL verify that configuration paths using `~` are correctly expanded to the user's home directory.
 
 #### Scenario: Tilde Expansion
-- **GIVEN** `databasePath` is configured as `~/.lango/sessions.db`
+- **GIVEN** `databasePath` is configured as `~/.lango/lango.db`
 - **WHEN** the application initializes storage
 - **THEN** it expands `~` to the current user's home directory
 - **AND** successfully locates the file/directory

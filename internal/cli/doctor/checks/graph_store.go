@@ -38,8 +38,10 @@ func (c *GraphStoreCheck) Run(_ context.Context, cfg *config.Config) Result {
 	}
 
 	if cfg.Graph.DatabasePath == "" {
-		issues = append(issues, "graph.databasePath is not set")
-		status = StatusFail
+		issues = append(issues, "graph.databasePath is not set (will default to graph.db next to session database)")
+		if status < StatusWarn {
+			status = StatusWarn
+		}
 	}
 
 	if cfg.Graph.MaxTraversalDepth <= 0 {
