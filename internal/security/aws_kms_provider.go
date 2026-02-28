@@ -13,6 +13,7 @@ import (
 	awsconfig "github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/service/kms"
 	"github.com/aws/aws-sdk-go-v2/service/kms/types"
+	"github.com/aws/smithy-go"
 	"github.com/langoai/lango/internal/config"
 	"github.com/langoai/lango/internal/logging"
 )
@@ -174,14 +175,14 @@ func (p *AWSKMSProvider) classifyError(op, keyID string, err error) error {
 		KeyID:    keyID,
 	}
 
-	var accessDenied *types.AccessDeniedException
 	var disabled *types.DisabledException
 	var notFound *types.NotFoundException
 	var invalidKeyUsage *types.InvalidKeyUsageException
 	var kmsInvalidState *types.KMSInvalidStateException
+	var apiErr smithy.APIError
 
 	switch {
-	case errors.As(err, &accessDenied):
+	case errors.As(err, &apiErr) && apiErr.ErrorCode() == "AccessDeniedException":
 		kmsErr.Err = fmt.Errorf("%w: %s", ErrKMSAccessDenied, err)
 	case errors.As(err, &disabled):
 		kmsErr.Err = fmt.Errorf("%w: %s", ErrKMSKeyDisabled, err)

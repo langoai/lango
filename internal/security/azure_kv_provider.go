@@ -84,7 +84,7 @@ func (p *AzureKVProvider) Sign(ctx context.Context, keyID string, payload []byte
 		opCtx, cancel := context.WithTimeout(ctx, p.timeout)
 		defer cancel()
 
-		alg := azkeys.JSONWebKeySignatureAlgorithmES256
+		alg := azkeys.SignatureAlgorithmES256
 		resp, err := p.client.Sign(opCtx, resolved, p.keyVersion, azkeys.SignParameters{
 			Algorithm: &alg,
 			Value:     digest[:],
@@ -110,7 +110,7 @@ func (p *AzureKVProvider) Encrypt(ctx context.Context, keyID string, plaintext [
 		opCtx, cancel := context.WithTimeout(ctx, p.timeout)
 		defer cancel()
 
-		alg := azkeys.JSONWebKeyEncryptionAlgorithmRSAOAEP
+		alg := azkeys.EncryptionAlgorithmRSAOAEP
 		resp, err := p.client.Encrypt(opCtx, resolved, p.keyVersion, azkeys.KeyOperationParameters{
 			Algorithm: &alg,
 			Value:     plaintext,
@@ -136,7 +136,7 @@ func (p *AzureKVProvider) Decrypt(ctx context.Context, keyID string, ciphertext 
 		opCtx, cancel := context.WithTimeout(ctx, p.timeout)
 		defer cancel()
 
-		alg := azkeys.JSONWebKeyEncryptionAlgorithmRSAOAEP
+		alg := azkeys.EncryptionAlgorithmRSAOAEP
 		resp, err := p.client.Decrypt(opCtx, resolved, p.keyVersion, azkeys.KeyOperationParameters{
 			Algorithm: &alg,
 			Value:     ciphertext,

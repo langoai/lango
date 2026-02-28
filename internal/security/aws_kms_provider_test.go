@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/aws/aws-sdk-go-v2/service/kms/types"
+	"github.com/aws/smithy-go"
 	"github.com/langoai/lango/internal/config"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -70,7 +71,7 @@ func TestAWSKMSProvider_ClassifyError(t *testing.T) {
 	}{
 		{
 			name:     "access denied",
-			give:     &types.AccessDeniedException{Message: strPtr("access denied")},
+			give:     &smithy.GenericAPIError{Code: "AccessDeniedException", Message: "access denied"},
 			wantSent: ErrKMSAccessDenied,
 		},
 		{
