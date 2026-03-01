@@ -154,6 +154,10 @@ func (p *GeminiProvider) Generate(ctx context.Context, params provider.GenerateP
 		}
 	}
 
+	// Sanitize contents to satisfy Gemini's strict turn-ordering rules
+	// (no consecutive same-role turns, FunctionCall/Response pairing, etc).
+	contents = sanitizeContents(contents)
+
 	// Streaming
 	streamIter := p.client.Models.GenerateContentStream(ctx, model, contents, conf)
 

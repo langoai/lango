@@ -225,6 +225,21 @@ func (e *EventsAdapter) All() iter.Seq[*session.Event] {
 		// Track the most recent assistant ToolCalls for legacy tool-message fallback.
 		var lastAssistantToolCalls []internal.ToolCall
 
+		// Defense-in-depth: merge consecutive same-role events before yielding.
+		// This prevents Gemini INVALID_ARGUMENT errors caused by duplicate
+		// model or user turns in the session history.
+		var pending *session.Event
+
+		flushPending := func() bool {
+			if pending != nil {
+				if !yield(pending) {
+					return false
+				}
+				pending = nil
+			}
+			return true
+		}
+
 		for _, msg := range msgs {
 			// Map Author: use stored author if available, otherwise derive from role.
 			author := msg.Author
@@ -357,15 +372,30 @@ func (e *EventsAdapter) All() iter.Seq[*session.Event] {
 					},
 				},
 			}
-			if !yield(evt) {
+
+			// Merge consecutive same-role events into a single event.
+			if pending != nil && pending.Content.Role == evt.Content.Role {
+				pending.Content.Parts = append(pending.Content.Parts, evt.Content.Parts...)
+				continue
+			}
+			if !flushPending() {
 				return
 			}
+			pending = evt
 		}
+		flushPending()
 	}
 }
 
 func (e *EventsAdapter) Len() int {
-	return len(e.truncatedHistory())
+	// Use the cached event list to be consistent with All() and At(),
+	// which may merge consecutive same-role events.
+	e.eventsOnce.Do(func() {
+		for evt := range e.All() {
+			e.eventsCache = append(e.eventsCache, evt)
+		}
+	})
+	return len(e.eventsCache)
 }
 
 // At returns the i-th event. The full event list is built once on first call

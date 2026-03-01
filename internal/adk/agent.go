@@ -187,15 +187,45 @@ func (a *Agent) Run(ctx context.Context, sessionID string, input string) iter.Se
 
 	return func(yield func(*session.Event, error) bool) {
 		turnCount := 0
+		warnedAtThreshold := false
+		wrapUpGranted := false
+
 		for event, err := range inner {
 			if err != nil {
 				yield(nil, err)
 				return
 			}
+
 			// Count events containing function calls as agent turns.
-			if event.Content != nil && hasFunctionCalls(event) {
+			// Delegation transfers (agent-to-agent routing) are not counted
+			// because they are routing overhead, not actual tool work.
+			if event.Content != nil && hasFunctionCalls(event) && !isDelegationEvent(event) {
 				turnCount++
+
+				// Log a warning at 80% of the turn limit for observability.
+				if !warnedAtThreshold && maxTurns > 0 && turnCount == maxTurns*4/5 {
+					warnedAtThreshold = true
+					logger().Warnw("agent nearing turn limit",
+						"session", sessionID,
+						"turns", turnCount,
+						"maxTurns", maxTurns,
+						"remaining", maxTurns-turnCount)
+				}
+
 				if turnCount > maxTurns {
+					if !wrapUpGranted {
+						// Grant one wrap-up turn so the agent can finalize gracefully.
+						wrapUpGranted = true
+						logger().Warnw("agent turn limit reached, granting wrap-up turn",
+							"session", sessionID,
+							"turns", turnCount,
+							"maxTurns", maxTurns)
+						if !yield(event, nil) {
+							return
+						}
+						continue
+					}
+					// Hard stop after wrap-up turn was consumed.
 					logger().Warnw("agent max turns exceeded",
 						"session", sessionID,
 						"turns", turnCount,
@@ -222,6 +252,12 @@ func hasFunctionCalls(e *session.Event) bool {
 		}
 	}
 	return false
+}
+
+// isDelegationEvent reports whether the event is a pure agent-to-agent
+// delegation transfer (routing overhead, not actual tool work).
+func isDelegationEvent(e *session.Event) bool {
+	return e.Actions.TransferToAgent != ""
 }
 
 // RunAndCollect executes the agent and returns the full text response.

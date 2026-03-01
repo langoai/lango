@@ -458,9 +458,12 @@ func buildAgentOptions(cfg *config.Config, kc *knowledgeComponents) []adk.AgentO
 	// Token budget derived from the configured model.
 	opts = append(opts, adk.WithAgentTokenBudget(adk.ModelTokenBudget(cfg.Agent.Model)))
 
-	// Max turns (0 = use agent default).
+	// Max turns: use explicit config if set, otherwise raise default for multi-agent mode
+	// where delegation overhead consumes more turns.
 	if cfg.Agent.MaxTurns > 0 {
 		opts = append(opts, adk.WithAgentMaxTurns(cfg.Agent.MaxTurns))
+	} else if cfg.Agent.MultiAgent {
+		opts = append(opts, adk.WithAgentMaxTurns(50))
 	}
 
 	// Error correction: enabled by default when knowledge system is available.
