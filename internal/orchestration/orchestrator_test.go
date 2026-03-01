@@ -316,7 +316,7 @@ func TestBuildAgentTree_RoutingTableInInstruction(t *testing.T) {
 		entries = append(entries, buildRoutingEntry(spec, capabilityDescription(st)))
 	}
 
-	inst := buildOrchestratorInstruction("test prompt", entries, 5, rs.Unmatched)
+	inst := buildOrchestratorInstruction("test prompt", entries, 5, rs.Unmatched, false)
 
 	assert.Contains(t, inst, "Routing Table")
 	assert.Contains(t, inst, "### operator")
@@ -689,7 +689,7 @@ func TestBuildOrchestratorInstruction_ContainsRoutingTable(t *testing.T) {
 		},
 	}
 
-	got := buildOrchestratorInstruction("base prompt", entries, 5, nil)
+	got := buildOrchestratorInstruction("base prompt", entries, 5, nil, false)
 
 	assert.Contains(t, got, "base prompt")
 	assert.Contains(t, got, "### operator")
@@ -706,7 +706,7 @@ func TestBuildOrchestratorInstruction_UnmatchedTools(t *testing.T) {
 		newTestTool("special_op"),
 	}
 
-	got := buildOrchestratorInstruction("base", nil, 3, unmatched)
+	got := buildOrchestratorInstruction("base", nil, 3, unmatched, false)
 
 	assert.Contains(t, got, "Unmatched Tools")
 	assert.Contains(t, got, "custom_action")
@@ -714,9 +714,54 @@ func TestBuildOrchestratorInstruction_UnmatchedTools(t *testing.T) {
 }
 
 func TestBuildOrchestratorInstruction_NoUnmatchedTools(t *testing.T) {
-	got := buildOrchestratorInstruction("base", nil, 5, nil)
+	got := buildOrchestratorInstruction("base", nil, 5, nil, false)
 
 	assert.NotContains(t, got, "Unmatched Tools")
+}
+
+func TestBuildOrchestratorInstruction_WithUniversalTools(t *testing.T) {
+	got := buildOrchestratorInstruction("base", nil, 5, nil, true)
+
+	assert.Contains(t, got, "builtin_list")
+	assert.Contains(t, got, "builtin_invoke")
+	assert.NotContains(t, got, "You do NOT have tools")
+}
+
+func TestBuildOrchestratorInstruction_WithoutUniversalTools(t *testing.T) {
+	got := buildOrchestratorInstruction("base", nil, 5, nil, false)
+
+	assert.Contains(t, got, "You do NOT have tools")
+	assert.NotContains(t, got, "builtin_list")
+}
+
+// --- PartitionTools builtin_ skip tests ---
+
+func TestPartitionTools_SkipsBuiltinPrefix(t *testing.T) {
+	tools := []*agent.Tool{
+		newTestTool("exec_shell"),
+		newTestTool("builtin_list"),
+		newTestTool("builtin_invoke"),
+		newTestTool("search_web"),
+	}
+
+	got := PartitionTools(tools)
+
+	assert.Equal(t, []string{"exec_shell"}, toolNames(got.Operator))
+	assert.Equal(t, []string{"search_web"}, toolNames(got.Librarian))
+	assert.Nil(t, got.Unmatched, "builtin_ tools should not appear in unmatched")
+
+	// Verify builtin_ tools are not in any role.
+	allTools := append(got.Operator, got.Navigator...)
+	allTools = append(allTools, got.Vault...)
+	allTools = append(allTools, got.Librarian...)
+	allTools = append(allTools, got.Automator...)
+	allTools = append(allTools, got.Planner...)
+	allTools = append(allTools, got.Chronicler...)
+	allTools = append(allTools, got.Unmatched...)
+	for _, tool := range allTools {
+		assert.False(t, strings.HasPrefix(tool.Name, "builtin_"),
+			"builtin_ tool %q should not be in any role", tool.Name)
+	}
 }
 
 // --- Agent spec consistency tests ---

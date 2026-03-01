@@ -42,6 +42,9 @@ type Config struct {
 	// SubAgentPrompt builds the final system prompt for each sub-agent.
 	// When nil, the original spec.Instruction is used unchanged.
 	SubAgentPrompt SubAgentPromptFunc
+	// UniversalTools are tools given directly to the orchestrator
+	// (e.g. builtin_list/builtin_invoke dispatchers).
+	UniversalTools []*agent.Tool
 }
 
 // BuildAgentTree creates a hierarchical agent tree with an orchestrator root
@@ -115,15 +118,25 @@ func BuildAgentTree(cfg Config) (adk_agent.Agent, error) {
 		maxRounds = 10
 	}
 
+	// Adapt universal tools (dispatchers) for the orchestrator.
+	var orchTools []adk_tool.Tool
+	if len(cfg.UniversalTools) > 0 {
+		adapted, err := adaptTools(cfg.AdaptTool, cfg.UniversalTools)
+		if err != nil {
+			return nil, fmt.Errorf("adapt universal tools: %w", err)
+		}
+		orchTools = adapted
+	}
+
 	orchestratorInstruction := buildOrchestratorInstruction(
-		cfg.SystemPrompt, routingEntries, maxRounds, rs.Unmatched,
+		cfg.SystemPrompt, routingEntries, maxRounds, rs.Unmatched, len(orchTools) > 0,
 	)
 
 	orchestrator, err := llmagent.New(llmagent.Config{
 		Name:        "lango-orchestrator",
 		Description: "Lango Assistant Orchestrator",
 		Model:       cfg.Model,
-		Tools:       nil,
+		Tools:       orchTools,
 		SubAgents:   subAgents,
 		Instruction: orchestratorInstruction,
 	})

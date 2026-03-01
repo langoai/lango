@@ -82,7 +82,8 @@ func blockLangoExec(cmd string, automationAvailable map[string]bool) string {
 	if strings.HasPrefix(lower, "lango ") || lower == "lango" {
 		return "Do not use exec to run the lango CLI — every lango command requires passphrase authentication " +
 			"via bootstrap and will fail when spawned as a subprocess. " +
-			"Use the built-in tools for the operation you need, or ask the user to run this command directly in their terminal."
+			"Use the built-in tools (try builtin_list to discover available tools), " +
+			"or ask the user to run this command directly in their terminal."
 	}
 
 	// Redirect skill-related git clone to import_skill tool.
