@@ -20,6 +20,7 @@ import (
 	"github.com/langoai/lango/internal/session"
 	"github.com/langoai/lango/internal/skill"
 	"github.com/langoai/lango/internal/supervisor"
+	"github.com/langoai/lango/internal/toolcatalog"
 	"google.golang.org/adk/model"
 	adk_tool "google.golang.org/adk/tool"
 )
@@ -212,7 +213,7 @@ func initAuth(cfg *config.Config, store session.Store) *gateway.AuthManager {
 }
 
 // initAgent creates the ADK agent with the given tools and provider proxy.
-func initAgent(ctx context.Context, sv *supervisor.Supervisor, cfg *config.Config, store session.Store, tools []*agent.Tool, kc *knowledgeComponents, mc *memoryComponents, ec *embeddingComponents, gc *graphComponents, scanner *agent.SecretScanner, sr *skill.Registry, lc *librarianComponents) (*adk.Agent, error) {
+func initAgent(ctx context.Context, sv *supervisor.Supervisor, cfg *config.Config, store session.Store, tools []*agent.Tool, kc *knowledgeComponents, mc *memoryComponents, ec *embeddingComponents, gc *graphComponents, scanner *agent.SecretScanner, sr *skill.Registry, lc *librarianComponents, catalog *toolcatalog.Catalog) (*adk.Agent, error) {
 	// Adapt tools to ADK format with optional per-tool timeout.
 	toolTimeout := cfg.Agent.ToolTimeout
 	var adkTools []adk_tool.Tool
@@ -387,13 +388,23 @@ func initAgent(ctx context.Context, sv *supervisor.Supervisor, cfg *config.Confi
 		// cause the LLM to hallucinate agent names like "browser" or "exec".
 		orchBuilder := buildPromptBuilder(&cfg.Agent)
 		orchBuilder.Remove(prompt.SectionToolUsage)
+		orchIdentity := "You are Lango, a production-grade AI assistant built for developers and teams.\n" +
+			"You coordinate specialized sub-agents to handle tasks."
+		if catalog != nil && catalog.ToolCount() > 0 {
+			orchIdentity += " You also have builtin_list and builtin_invoke tools for direct access to any registered built-in tool."
+		} else {
+			orchIdentity += " You do not have direct access to tools — delegate to sub-agents instead."
+		}
 		orchBuilder.Add(prompt.NewStaticSection(
 			prompt.SectionIdentity, 100, "",
-			"You are Lango, a production-grade AI assistant built for developers and teams.\n"+
-				"You coordinate specialized sub-agents to handle tasks. "+
-				"You do not have direct access to tools — delegate to sub-agents instead.",
+			orchIdentity,
 		))
 		orchestratorPrompt := orchBuilder.Build()
+
+		var universalTools []*agent.Tool
+		if catalog != nil {
+			universalTools = toolcatalog.BuildDispatcher(catalog)
+		}
 
 		orchCfg := orchestration.Config{
 			Tools:               tools,
@@ -402,6 +413,7 @@ func initAgent(ctx context.Context, sv *supervisor.Supervisor, cfg *config.Confi
 			AdaptTool:           adk.AdaptTool,
 			MaxDelegationRounds: cfg.Agent.MaxDelegationRounds,
 			SubAgentPrompt:      buildSubAgentPromptFunc(&cfg.Agent),
+			UniversalTools:      universalTools,
 		}
 
 		// Load remote A2A agents BEFORE building the tree so they are included.

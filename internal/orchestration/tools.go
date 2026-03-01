@@ -234,6 +234,10 @@ type RoleToolSet struct {
 func PartitionTools(tools []*agent.Tool) RoleToolSet {
 	var rs RoleToolSet
 	for _, t := range tools {
+		// Dispatcher tools stay with the orchestrator only.
+		if strings.HasPrefix(t.Name, "builtin_") {
+			continue
+		}
 		switch {
 		case matchesPrefix(t.Name, specPrefixes("librarian")):
 			rs.Librarian = append(rs.Librarian, t)
@@ -380,19 +384,20 @@ func buildRoutingEntry(spec AgentSpec, caps string) routingEntry {
 
 // buildOrchestratorInstruction assembles the orchestrator prompt with routing table
 // and decision protocol.
-func buildOrchestratorInstruction(basePrompt string, entries []routingEntry, maxRounds int, unmatched []*agent.Tool) string {
+func buildOrchestratorInstruction(basePrompt string, entries []routingEntry, maxRounds int, unmatched []*agent.Tool, hasUniversalTools bool) string {
 	var b strings.Builder
 
 	b.WriteString(basePrompt)
-	b.WriteString(`
+	b.WriteString("\n\nYou are the orchestrator. You coordinate specialized sub-agents to fulfill user requests.\n\n## Your Role\n")
 
-You are the orchestrator. You coordinate specialized sub-agents to fulfill user requests.
+	if hasUniversalTools {
+		b.WriteString("You coordinate specialized sub-agents. You also have builtin_list and builtin_invoke tools for direct access to any registered built-in tool without delegation.\n")
+		b.WriteString("When a sub-agent rejects a task or a tool is not assigned to any sub-agent, use builtin_invoke to execute it directly.\n")
+	} else {
+		b.WriteString("You do NOT have tools. You MUST delegate all tool-requiring tasks to the appropriate sub-agent using transfer_to_agent.\n")
+	}
 
-## Your Role
-You do NOT have tools. You MUST delegate all tool-requiring tasks to the appropriate sub-agent using transfer_to_agent.
-
-## Routing Table (use EXACTLY these agent names)
-`)
+	b.WriteString("\n## Routing Table (use EXACTLY these agent names)\n")
 	for _, e := range entries {
 		fmt.Fprintf(&b, "\n### %s\n", e.Name)
 		fmt.Fprintf(&b, "- **Role**: %s\n", e.Description)

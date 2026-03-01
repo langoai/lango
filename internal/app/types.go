@@ -23,6 +23,7 @@ import (
 	"github.com/langoai/lango/internal/security"
 	"github.com/langoai/lango/internal/session"
 	"github.com/langoai/lango/internal/skill"
+	"github.com/langoai/lango/internal/toolcatalog"
 	"github.com/langoai/lango/internal/wallet"
 	"github.com/langoai/lango/internal/workflow"
 	x402pkg "github.com/langoai/lango/internal/x402"
@@ -86,6 +87,9 @@ type App struct {
 
 	// Workflow Engine Components (optional)
 	WorkflowEngine *workflow.Engine
+
+	// Tool Catalog (built-in tool discovery + dynamic dispatch)
+	ToolCatalog *toolcatalog.Catalog
 
 	// P2P Components (optional)
 	P2PNode *p2p.Node
