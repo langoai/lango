@@ -6,6 +6,8 @@ import (
 	"strconv"
 	"strings"
 
+	tea "github.com/charmbracelet/bubbletea"
+
 	"github.com/langoai/lango/internal/cli/tuicore"
 	"github.com/langoai/lango/internal/config"
 )
@@ -105,20 +107,22 @@ func NewObservationalMemoryForm(cfg *config.Config) *tuicore.FormModel {
 	})
 
 	omProviderOpts := append([]string{""}, buildProviderOptions(cfg)...)
-	form.AddField(&tuicore.Field{
+	omProviderField := &tuicore.Field{
 		Key: "om_provider", Label: "Provider", Type: tuicore.InputSelect,
 		Value:       cfg.ObservationalMemory.Provider,
 		Options:     omProviderOpts,
 		Placeholder: "(inherits from Agent)",
 		Description: fmt.Sprintf("LLM provider for memory processing; empty = inherit from Agent (%s)", cfg.Agent.Provider),
-	})
+	}
+	form.AddField(omProviderField)
 
-	form.AddField(&tuicore.Field{
+	omModelField := &tuicore.Field{
 		Key: "om_model", Label: "Model", Type: tuicore.InputText,
 		Value:       cfg.ObservationalMemory.Model,
 		Placeholder: "(inherits from Agent)",
 		Description: fmt.Sprintf("Model for observation/reflection generation; empty = inherit from Agent (%s)", cfg.Agent.Model),
-	})
+	}
+	form.AddField(omModelField)
 
 	omFetchProvider := cfg.ObservationalMemory.Provider
 	if omFetchProvider == "" {
@@ -126,11 +130,23 @@ func NewObservationalMemoryForm(cfg *config.Config) *tuicore.FormModel {
 	}
 	if omModelOpts, omErr := FetchModelOptionsWithError(omFetchProvider, cfg, cfg.ObservationalMemory.Model); len(omModelOpts) > 0 {
 		omModelOpts = append([]string{""}, omModelOpts...)
-		form.Fields[len(form.Fields)-1].Type = tuicore.InputSearchSelect
-		form.Fields[len(form.Fields)-1].Options = omModelOpts
-		form.Fields[len(form.Fields)-1].Placeholder = ""
+		omModelField.Type = tuicore.InputSearchSelect
+		omModelField.Options = omModelOpts
+		omModelField.Placeholder = ""
 	} else if omErr != nil {
-		form.Fields[len(form.Fields)-1].Description = fmt.Sprintf("Could not fetch models (%v); enter model ID manually", omErr)
+		omModelField.Description = fmt.Sprintf("Could not fetch models (%v); enter model ID manually", omErr)
+	}
+
+	// Reactive: om_provider → om_model
+	omCfgCopy := cfg
+	omProviderField.OnChange = func(newProvider string) tea.Cmd {
+		fetchP := newProvider
+		if fetchP == "" {
+			fetchP = omCfgCopy.Agent.Provider
+		}
+		omModelField.Loading = true
+		omModelField.LoadError = nil
+		return FetchModelOptionsCmd("om_model", fetchP, omCfgCopy, "")
 	}
 
 	form.AddField(&tuicore.Field{
@@ -211,32 +227,44 @@ func NewEmbeddingForm(cfg *config.Config) *tuicore.FormModel {
 	}
 	sort.Strings(providerOpts)
 
-	form.AddField(&tuicore.Field{
+	embProviderField := &tuicore.Field{
 		Key: "emb_provider_id", Label: "Provider", Type: tuicore.InputSelect,
 		Value:       cfg.Embedding.Provider,
 		Options:     providerOpts,
 		Description: "Embedding provider; 'local' uses a local model via Ollama/compatible API",
-	})
+	}
+	form.AddField(embProviderField)
 
-	form.AddField(&tuicore.Field{
+	embModelField := &tuicore.Field{
 		Key: "emb_model", Label: "Model", Type: tuicore.InputText,
 		Value:       cfg.Embedding.Model,
 		Placeholder: "e.g. text-embedding-3-small",
 		Description: "Embedding model name; must be supported by the selected provider",
-	})
+	}
+	form.AddField(embModelField)
 
 	if cfg.Embedding.Provider != "" {
 		if embModelOpts := FetchEmbeddingModelOptions(cfg.Embedding.Provider, cfg, cfg.Embedding.Model); len(embModelOpts) > 0 {
 			embModelOpts = append([]string{""}, embModelOpts...)
-			form.Fields[len(form.Fields)-1].Type = tuicore.InputSearchSelect
-			form.Fields[len(form.Fields)-1].Options = embModelOpts
-			form.Fields[len(form.Fields)-1].Placeholder = ""
+			embModelField.Type = tuicore.InputSearchSelect
+			embModelField.Options = embModelOpts
+			embModelField.Placeholder = ""
 		} else {
-			// FetchEmbeddingModelOptions returns nil only if FetchModelOptions fails
 			if _, embErr := FetchModelOptionsWithError(cfg.Embedding.Provider, cfg, cfg.Embedding.Model); embErr != nil {
-				form.Fields[len(form.Fields)-1].Description = fmt.Sprintf("Could not fetch models (%v); enter model ID manually", embErr)
+				embModelField.Description = fmt.Sprintf("Could not fetch models (%v); enter model ID manually", embErr)
 			}
 		}
+	}
+
+	// Reactive: emb_provider → emb_model (embedding-filtered)
+	embCfgCopy := cfg
+	embProviderField.OnChange = func(newProvider string) tea.Cmd {
+		if newProvider == "" || newProvider == "local" {
+			return nil
+		}
+		embModelField.Loading = true
+		embModelField.LoadError = nil
+		return FetchEmbeddingModelOptionsCmd("emb_model", newProvider, embCfgCopy, "")
 	}
 
 	form.AddField(&tuicore.Field{
@@ -391,20 +419,22 @@ func NewLibrarianForm(cfg *config.Config) *tuicore.FormModel {
 	})
 
 	libProviderOpts := append([]string{""}, buildProviderOptions(cfg)...)
-	form.AddField(&tuicore.Field{
+	libProviderField := &tuicore.Field{
 		Key: "lib_provider", Label: "Provider", Type: tuicore.InputSelect,
 		Value:       cfg.Librarian.Provider,
 		Options:     libProviderOpts,
 		Placeholder: "(inherits from Agent)",
 		Description: fmt.Sprintf("LLM provider for librarian processing; empty = inherit from Agent (%s)", cfg.Agent.Provider),
-	})
+	}
+	form.AddField(libProviderField)
 
-	form.AddField(&tuicore.Field{
+	libModelField := &tuicore.Field{
 		Key: "lib_model", Label: "Model", Type: tuicore.InputText,
 		Value:       cfg.Librarian.Model,
 		Placeholder: "(inherits from Agent)",
 		Description: fmt.Sprintf("Model for knowledge extraction; empty = inherit from Agent (%s)", cfg.Agent.Model),
-	})
+	}
+	form.AddField(libModelField)
 
 	libFetchProvider := cfg.Librarian.Provider
 	if libFetchProvider == "" {
@@ -412,11 +442,23 @@ func NewLibrarianForm(cfg *config.Config) *tuicore.FormModel {
 	}
 	if libModelOpts, libErr := FetchModelOptionsWithError(libFetchProvider, cfg, cfg.Librarian.Model); len(libModelOpts) > 0 {
 		libModelOpts = append([]string{""}, libModelOpts...)
-		form.Fields[len(form.Fields)-1].Type = tuicore.InputSearchSelect
-		form.Fields[len(form.Fields)-1].Options = libModelOpts
-		form.Fields[len(form.Fields)-1].Placeholder = ""
+		libModelField.Type = tuicore.InputSearchSelect
+		libModelField.Options = libModelOpts
+		libModelField.Placeholder = ""
 	} else if libErr != nil {
-		form.Fields[len(form.Fields)-1].Description = fmt.Sprintf("Could not fetch models (%v); enter model ID manually", libErr)
+		libModelField.Description = fmt.Sprintf("Could not fetch models (%v); enter model ID manually", libErr)
+	}
+
+	// Reactive: lib_provider → lib_model
+	libCfgCopy := cfg
+	libProviderField.OnChange = func(newProvider string) tea.Cmd {
+		fetchP := newProvider
+		if fetchP == "" {
+			fetchP = libCfgCopy.Agent.Provider
+		}
+		libModelField.Loading = true
+		libModelField.LoadError = nil
+		return FetchModelOptionsCmd("lib_model", fetchP, libCfgCopy, "")
 	}
 
 	return &form

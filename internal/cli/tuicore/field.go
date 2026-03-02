@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	"github.com/charmbracelet/bubbles/textinput"
+	tea "github.com/charmbracelet/bubbletea"
 )
 
 // InputType defines the type of input field.
@@ -35,6 +36,15 @@ type Field struct {
 	// VisibleWhen controls conditional visibility. When non-nil, the field is
 	// shown only when this function returns true. When nil the field is always visible.
 	VisibleWhen func() bool
+
+	// OnChange is called when the field value changes (e.g. InputSelect left/right).
+	// The returned tea.Cmd (if non-nil) is executed asynchronously by the runtime.
+	OnChange func(newValue string) tea.Cmd
+
+	// Loading indicates an async operation (e.g. model fetch) is in progress.
+	Loading bool
+	// LoadError holds the last async fetch error for display.
+	LoadError error
 
 	// TextInput holds the bubbletea text input model (exported for cross-package use).
 	TextInput textinput.Model

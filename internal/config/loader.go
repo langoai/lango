@@ -335,32 +335,34 @@ func Load(configPath string) (*Config, error) {
 func substituteEnvVars(cfg *Config) {
 	// Provider credentials
 	for id, pCfg := range cfg.Providers {
-		pCfg.APIKey = expandEnvVars(pCfg.APIKey)
+		pCfg.APIKey = ExpandEnvVars(pCfg.APIKey)
 		cfg.Providers[id] = pCfg
 	}
 
 	// Channel tokens
-	cfg.Channels.Telegram.BotToken = expandEnvVars(cfg.Channels.Telegram.BotToken)
-	cfg.Channels.Discord.BotToken = expandEnvVars(cfg.Channels.Discord.BotToken)
-	cfg.Channels.Slack.BotToken = expandEnvVars(cfg.Channels.Slack.BotToken)
-	cfg.Channels.Slack.AppToken = expandEnvVars(cfg.Channels.Slack.AppToken)
-	cfg.Channels.Slack.SigningSecret = expandEnvVars(cfg.Channels.Slack.SigningSecret)
+	cfg.Channels.Telegram.BotToken = ExpandEnvVars(cfg.Channels.Telegram.BotToken)
+	cfg.Channels.Discord.BotToken = ExpandEnvVars(cfg.Channels.Discord.BotToken)
+	cfg.Channels.Slack.BotToken = ExpandEnvVars(cfg.Channels.Slack.BotToken)
+	cfg.Channels.Slack.AppToken = ExpandEnvVars(cfg.Channels.Slack.AppToken)
+	cfg.Channels.Slack.SigningSecret = ExpandEnvVars(cfg.Channels.Slack.SigningSecret)
 
 	// Auth OIDC provider credentials
 	for id, aCfg := range cfg.Auth.Providers {
-		aCfg.ClientID = expandEnvVars(aCfg.ClientID)
-		aCfg.ClientSecret = expandEnvVars(aCfg.ClientSecret)
+		aCfg.ClientID = ExpandEnvVars(aCfg.ClientID)
+		aCfg.ClientSecret = ExpandEnvVars(aCfg.ClientSecret)
 		cfg.Auth.Providers[id] = aCfg
 	}
 
 	// Payment
-	cfg.Payment.Network.RPCURL = expandEnvVars(cfg.Payment.Network.RPCURL)
+	cfg.Payment.Network.RPCURL = ExpandEnvVars(cfg.Payment.Network.RPCURL)
 
 	// Paths
-	cfg.Session.DatabasePath = expandEnvVars(cfg.Session.DatabasePath)
+	cfg.Session.DatabasePath = ExpandEnvVars(cfg.Session.DatabasePath)
 }
 
-func expandEnvVars(s string) string {
+// ExpandEnvVars replaces ${VAR} patterns in s with environment variable values.
+// Variables that are not set in the environment are left as-is.
+func ExpandEnvVars(s string) string {
 	return envVarRegex.ReplaceAllStringFunc(s, func(match string) string {
 		varName := strings.TrimSuffix(strings.TrimPrefix(match, "${"), "}")
 		if val := os.Getenv(varName); val != "" {

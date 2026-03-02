@@ -5,6 +5,8 @@ import (
 	"sort"
 	"strconv"
 
+	tea "github.com/charmbracelet/bubbletea"
+
 	"github.com/langoai/lango/internal/cli/settings"
 	"github.com/langoai/lango/internal/cli/tuicore"
 	"github.com/langoai/lango/internal/config"
@@ -51,27 +53,42 @@ func NewAgentStepForm(cfg *config.Config) *tuicore.FormModel {
 	form := tuicore.NewFormModel("Agent Config")
 
 	providerOpts := buildProviderOptions(cfg)
-	form.AddField(&tuicore.Field{
+	providerField := &tuicore.Field{
 		Key: "provider", Label: "Provider", Type: tuicore.InputSelect,
 		Value:       cfg.Agent.Provider,
 		Options:     providerOpts,
 		Description: "LLM provider to use for agent inference",
-	})
+	}
+	form.AddField(providerField)
 
-	form.AddField(&tuicore.Field{
-		Key: "model", Label: "Model ID", Type: tuicore.InputText,
+	modelField := &tuicore.Field{
+		Key: "model", Label: "Model ID", Type: tuicore.InputSearchSelect,
 		Value:       cfg.Agent.Model,
 		Placeholder: suggestModel(cfg.Agent.Provider),
+		Options:     []string{},
 		Description: "Model identifier from the selected provider",
-	})
+	}
+	form.AddField(modelField)
 
 	// Try to fetch models dynamically from the selected provider
-	if modelOpts := settings.FetchModelOptions(cfg.Agent.Provider, cfg, cfg.Agent.Model); len(modelOpts) > 0 {
-		f := form.Fields[len(form.Fields)-1]
-		f.Type = tuicore.InputSelect
-		f.Options = modelOpts
-		f.Placeholder = ""
-		f.Description = fmt.Sprintf("Fetched %d models from provider; use ←→ to browse", len(modelOpts))
+	if modelOpts, fetchErr := settings.FetchModelOptionsWithError(cfg.Agent.Provider, cfg, cfg.Agent.Model); len(modelOpts) > 0 {
+		modelField.Options = modelOpts
+		modelField.Placeholder = ""
+		modelField.Description = fmt.Sprintf("Fetched %d models from provider; press Enter to search", len(modelOpts))
+	} else if fetchErr != nil {
+		modelField.Type = tuicore.InputText
+		modelField.Description = fmt.Sprintf("Could not fetch models (%v); enter model ID manually", fetchErr)
+	} else {
+		modelField.Type = tuicore.InputText
+	}
+
+	// Reactive: when provider changes, re-fetch model list and update placeholder
+	cfgCopy := cfg
+	providerField.OnChange = func(newProvider string) tea.Cmd {
+		modelField.Placeholder = suggestModel(newProvider)
+		modelField.Loading = true
+		modelField.LoadError = nil
+		return settings.FetchModelOptionsCmd("model", newProvider, cfgCopy, "")
 	}
 
 	form.AddField(&tuicore.Field{

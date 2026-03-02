@@ -6,6 +6,8 @@ import (
 	"strconv"
 	"strings"
 
+	tea "github.com/charmbracelet/bubbletea"
+
 	"github.com/langoai/lango/internal/cli/tuicore"
 	"github.com/langoai/lango/internal/config"
 )
@@ -28,29 +30,38 @@ func NewAgentForm(cfg *config.Config) *tuicore.FormModel {
 	form := tuicore.NewFormModel("Agent Configuration")
 
 	providerOpts := buildProviderOptions(cfg)
-	form.AddField(&tuicore.Field{
+	providerField := &tuicore.Field{
 		Key: "provider", Label: "Provider", Type: tuicore.InputSelect,
 		Value:       cfg.Agent.Provider,
 		Options:     providerOpts,
 		Description: "LLM provider to use for agent inference",
-	})
+	}
+	form.AddField(providerField)
 
-	form.AddField(&tuicore.Field{
+	modelField := &tuicore.Field{
 		Key: "model", Label: "Model ID", Type: tuicore.InputText,
 		Value:       cfg.Agent.Model,
 		Placeholder: "e.g. claude-3-5-sonnet-20240620",
 		Description: "Model identifier from the selected provider",
-	})
+	}
+	form.AddField(modelField)
 
 	// Try to fetch models dynamically from the selected provider
 	if modelOpts, fetchErr := FetchModelOptionsWithError(cfg.Agent.Provider, cfg, cfg.Agent.Model); len(modelOpts) > 0 {
-		f := form.Fields[len(form.Fields)-1]
-		f.Type = tuicore.InputSearchSelect
-		f.Options = modelOpts
-		f.Placeholder = ""
-		f.Description = fmt.Sprintf("Fetched %d models from provider; press Enter to search", len(modelOpts))
+		modelField.Type = tuicore.InputSearchSelect
+		modelField.Options = modelOpts
+		modelField.Placeholder = ""
+		modelField.Description = fmt.Sprintf("Fetched %d models from provider; press Enter to search", len(modelOpts))
 	} else if fetchErr != nil {
-		form.Fields[len(form.Fields)-1].Description = fmt.Sprintf("Could not fetch models (%v); enter model ID manually", fetchErr)
+		modelField.Description = fmt.Sprintf("Could not fetch models (%v); enter model ID manually", fetchErr)
+	}
+
+	// Reactive: when provider changes, re-fetch model list
+	cfgCopy := cfg
+	providerField.OnChange = func(newProvider string) tea.Cmd {
+		modelField.Loading = true
+		modelField.LoadError = nil
+		return FetchModelOptionsCmd("model", newProvider, cfgCopy, "")
 	}
 
 	form.AddField(&tuicore.Field{
@@ -90,29 +101,41 @@ func NewAgentForm(cfg *config.Config) *tuicore.FormModel {
 	})
 
 	fallbackOpts := append([]string{""}, providerOpts...)
-	form.AddField(&tuicore.Field{
+	fbProviderField := &tuicore.Field{
 		Key: "fallback_provider", Label: "Fallback Provider", Type: tuicore.InputSelect,
 		Value:       cfg.Agent.FallbackProvider,
 		Options:     fallbackOpts,
 		Description: "Alternative provider used when primary provider fails or is unavailable",
-	})
+	}
+	form.AddField(fbProviderField)
 
-	form.AddField(&tuicore.Field{
+	fbModelField := &tuicore.Field{
 		Key: "fallback_model", Label: "Fallback Model", Type: tuicore.InputText,
 		Value:       cfg.Agent.FallbackModel,
 		Placeholder: "e.g. gpt-4o",
 		Description: "Model to use with the fallback provider",
-	})
+	}
+	form.AddField(fbModelField)
 
 	if cfg.Agent.FallbackProvider != "" {
 		if fbModelOpts, fbErr := FetchModelOptionsWithError(cfg.Agent.FallbackProvider, cfg, cfg.Agent.FallbackModel); len(fbModelOpts) > 0 {
 			fbModelOpts = append([]string{""}, fbModelOpts...)
-			form.Fields[len(form.Fields)-1].Type = tuicore.InputSearchSelect
-			form.Fields[len(form.Fields)-1].Options = fbModelOpts
-			form.Fields[len(form.Fields)-1].Placeholder = ""
+			fbModelField.Type = tuicore.InputSearchSelect
+			fbModelField.Options = fbModelOpts
+			fbModelField.Placeholder = ""
 		} else if fbErr != nil {
-			form.Fields[len(form.Fields)-1].Description = fmt.Sprintf("Could not fetch models (%v); enter model ID manually", fbErr)
+			fbModelField.Description = fmt.Sprintf("Could not fetch models (%v); enter model ID manually", fbErr)
 		}
+	}
+
+	// Reactive: when fallback provider changes, re-fetch fallback model list
+	fbProviderField.OnChange = func(newProvider string) tea.Cmd {
+		if newProvider == "" {
+			return nil
+		}
+		fbModelField.Loading = true
+		fbModelField.LoadError = nil
+		return FetchModelOptionsCmd("fallback_model", newProvider, cfgCopy, "")
 	}
 
 	form.AddField(&tuicore.Field{

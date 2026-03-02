@@ -25,13 +25,13 @@ func TestExpandEnvVars(t *testing.T) {
 	os.Setenv("TEST_API_KEY", "sk-test-123")
 	defer os.Unsetenv("TEST_API_KEY")
 
-	result := expandEnvVars("${TEST_API_KEY}")
+	result := ExpandEnvVars("${TEST_API_KEY}")
 	if result != "sk-test-123" {
 		t.Errorf("expected sk-test-123, got %s", result)
 	}
 
 	// Test non-existent variable (should keep original)
-	result = expandEnvVars("${NON_EXISTENT_VAR}")
+	result = ExpandEnvVars("${NON_EXISTENT_VAR}")
 	if result != "${NON_EXISTENT_VAR}" {
 		t.Errorf("expected ${NON_EXISTENT_VAR}, got %s", result)
 	}

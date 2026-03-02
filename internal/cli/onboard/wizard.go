@@ -110,6 +110,14 @@ func (w *Wizard) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.WindowSizeMsg:
 		w.width = msg.Width
 		w.height = msg.Height
+
+	default:
+		// Forward non-key messages (e.g. FieldOptionsLoadedMsg) to active form.
+		if w.activeForm != nil {
+			var cmd tea.Cmd
+			*w.activeForm, cmd = w.activeForm.Update(msg)
+			return w, cmd
+		}
 	}
 
 	return w, nil
