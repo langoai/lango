@@ -15,6 +15,11 @@ import (
 	"github.com/langoai/lango/internal/security/passphrase"
 )
 
+// dataDirPerm is the permission mode for all ~/.lango/ directories.
+// 0700 restricts access to the owner only (appropriate for data containing
+// encrypted secrets, database files, and keyfiles).
+const dataDirPerm = 0700
+
 // DefaultPhases returns the standard bootstrap phase sequence.
 func DefaultPhases() []Phase {
 	return []Phase{
@@ -47,9 +52,24 @@ func phaseEnsureDataDir() Phase {
 				s.Options.KeyfilePath = filepath.Join(s.LangoDir, "keyfile")
 			}
 
-			if err := os.MkdirAll(s.LangoDir, 0700); err != nil {
+			if err := os.MkdirAll(s.LangoDir, dataDirPerm); err != nil {
 				return fmt.Errorf("create data directory: %w", err)
 			}
+
+			// Verify the directory is actually writable by the current user.
+			// Docker volumes may have stale ownership from a previous build.
+			testPath := filepath.Join(s.LangoDir, ".write-test")
+			if err := os.WriteFile(testPath, []byte{}, 0600); err != nil {
+				return fmt.Errorf("data directory not writable (uid %d): %w", os.Getuid(), err)
+			}
+			os.Remove(testPath)
+
+			// Pre-create the skills directory so FileSkillStore can write immediately.
+			skillsDir := filepath.Join(s.LangoDir, "skills")
+			if err := os.MkdirAll(skillsDir, dataDirPerm); err != nil {
+				return fmt.Errorf("create skills directory: %w", err)
+			}
+
 			return nil
 		},
 	}
