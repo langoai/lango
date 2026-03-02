@@ -210,7 +210,7 @@ func (c *Channel) handleUpdate(ctx context.Context, update tgbotapi.Update) {
 		return
 	}
 
-	if response != nil {
+	if response != nil && response.Text != "" {
 		if err := c.Send(incoming.ChatID, response); err != nil {
 			logger().Errorw("send error", "error", err)
 		}

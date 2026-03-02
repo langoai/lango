@@ -368,7 +368,7 @@ func (a *Agent) runAndCollectOnce(ctx context.Context, sessionID, input string) 
 			// Streaming text chunk — collect incrementally.
 			sawPartial = true
 			for _, part := range event.Content.Parts {
-				if part.Text != "" {
+				if part.Text != "" && !part.Thought {
 					b.WriteString(part.Text)
 				}
 			}
@@ -376,7 +376,7 @@ func (a *Agent) runAndCollectOnce(ctx context.Context, sessionID, input string) 
 			// Non-streaming mode: no partial events were seen,
 			// so collect from the final complete response.
 			for _, part := range event.Content.Parts {
-				if part.Text != "" {
+				if part.Text != "" && !part.Thought {
 					b.WriteString(part.Text)
 				}
 			}
@@ -439,7 +439,7 @@ func (a *Agent) RunStreaming(ctx context.Context, sessionID, input string, onChu
 		if event.Partial {
 			sawPartial = true
 			for _, part := range event.Content.Parts {
-				if part.Text != "" {
+				if part.Text != "" && !part.Thought {
 					b.WriteString(part.Text)
 					if onChunk != nil {
 						onChunk(part.Text)
@@ -449,7 +449,7 @@ func (a *Agent) RunStreaming(ctx context.Context, sessionID, input string, onChu
 		} else if !sawPartial {
 			// Non-streaming mode: collect from final response.
 			for _, part := range event.Content.Parts {
-				if part.Text != "" {
+				if part.Text != "" && !part.Thought {
 					b.WriteString(part.Text)
 				}
 			}

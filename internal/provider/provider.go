@@ -39,9 +39,11 @@ type StreamEvent struct {
 
 // ToolCall represents a request for tool execution.
 type ToolCall struct {
-	ID        string
-	Name      string
-	Arguments string // JSON string
+	ID               string
+	Name             string
+	Arguments        string // JSON string
+	Thought          bool   // Gemini: part is a thinking step
+	ThoughtSignature []byte // Gemini: opaque signature to echo back
 }
 
 // Message represents a chat message.

@@ -105,6 +105,8 @@ func (m *ModelAdapter) GenerateContent(ctx context.Context, req *model.LLMReques
 								Name: evt.ToolCall.Name,
 								Args: args,
 							},
+							Thought:          evt.ToolCall.Thought,
+							ThoughtSignature: evt.ToolCall.ThoughtSignature,
 						}
 						toolParts = append(toolParts, part)
 						resp := &model.LLMResponse{
@@ -167,6 +169,8 @@ func (m *ModelAdapter) GenerateContent(ctx context.Context, req *model.LLMReques
 								Name: evt.ToolCall.Name,
 								Args: args,
 							},
+							Thought:          evt.ToolCall.Thought,
+							ThoughtSignature: evt.ToolCall.ThoughtSignature,
 						})
 					}
 				case provider.StreamEventDone:
@@ -215,9 +219,11 @@ func convertMessages(contents []*genai.Content) ([]provider.Message, error) {
 					id = "call_" + p.FunctionCall.Name
 				}
 				msg.ToolCalls = append(msg.ToolCalls, provider.ToolCall{
-					ID:        id,
-					Name:      p.FunctionCall.Name,
-					Arguments: string(b),
+					ID:               id,
+					Name:             p.FunctionCall.Name,
+					Arguments:        string(b),
+					Thought:          p.Thought,
+					ThoughtSignature: p.ThoughtSignature,
 				})
 			}
 			if p.FunctionResponse != nil {
