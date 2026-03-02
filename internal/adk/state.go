@@ -286,6 +286,8 @@ func (e *EventsAdapter) All() iter.Seq[*session.Event] {
 							Name: tc.Name,
 							Args: args,
 						},
+						Thought:          tc.Thought,
+						ThoughtSignature: tc.ThoughtSignature,
 					})
 				}
 				// Remember for legacy fallback

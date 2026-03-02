@@ -190,10 +190,12 @@ func (s *EntStore) Create(session *Session) error {
 		toolCalls := make([]entschema.ToolCall, len(msg.ToolCalls))
 		for i, tc := range msg.ToolCalls {
 			toolCalls[i] = entschema.ToolCall{
-				ID:     tc.ID,
-				Name:   tc.Name,
-				Input:  tc.Input,
-				Output: tc.Output,
+				ID:               tc.ID,
+				Name:             tc.Name,
+				Input:            tc.Input,
+				Output:           tc.Output,
+				Thought:          tc.Thought,
+				ThoughtSignature: tc.ThoughtSignature,
 			}
 		}
 
@@ -345,10 +347,12 @@ func (s *EntStore) AppendMessage(key string, msg Message) error {
 	toolCalls := make([]entschema.ToolCall, len(msg.ToolCalls))
 	for i, tc := range msg.ToolCalls {
 		toolCalls[i] = entschema.ToolCall{
-			ID:     tc.ID,
-			Name:   tc.Name,
-			Input:  tc.Input,
-			Output: tc.Output,
+			ID:               tc.ID,
+			Name:             tc.Name,
+			Input:            tc.Input,
+			Output:           tc.Output,
+			Thought:          tc.Thought,
+			ThoughtSignature: tc.ThoughtSignature,
 		}
 	}
 
@@ -490,10 +494,12 @@ func (s *EntStore) entToSession(e *ent.Session) *Session {
 		toolCalls := make([]ToolCall, len(m.ToolCalls))
 		for i, tc := range m.ToolCalls {
 			toolCalls[i] = ToolCall{
-				ID:     tc.ID,
-				Name:   tc.Name,
-				Input:  tc.Input,
-				Output: tc.Output,
+				ID:               tc.ID,
+				Name:             tc.Name,
+				Input:            tc.Input,
+				Output:           tc.Output,
+				Thought:          tc.Thought,
+				ThoughtSignature: tc.ThoughtSignature,
 			}
 		}
 

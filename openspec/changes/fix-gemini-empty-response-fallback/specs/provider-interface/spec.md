@@ -1,0 +1,43 @@
+## ADDED Requirements
+
+### Requirement: Thought event type for provider streaming
+The `StreamEventType` enum SHALL include a `StreamEventThought` value (`"thought"`) for thought-only text filtered at the provider level. The `StreamEvent` struct SHALL include a `ThoughtLen int` field carrying the byte length of filtered thought text for diagnostics.
+
+#### Scenario: StreamEventThought is a valid event type
+- **WHEN** `StreamEventThought.Valid()` is called
+- **THEN** it SHALL return `true`
+
+#### Scenario: StreamEventThought included in Values()
+- **WHEN** `StreamEventType.Values()` is called
+- **THEN** the returned slice SHALL include `StreamEventThought`
+
+#### Scenario: ThoughtLen populated on thought events
+- **WHEN** a provider emits a `StreamEventThought` event
+- **THEN** the `ThoughtLen` field SHALL contain the byte length of the filtered thought text
+- **AND** the `Text` field SHALL be empty (thought content is not exposed)
+
+## MODIFIED Requirements
+
+### Requirement: Streaming Response Support
+The system SHALL support streaming LLM responses via Go iterators.
+
+#### Scenario: Text streaming
+- **WHEN** the provider generates a response
+- **THEN** it SHALL yield `StreamEvent` with `Type: "text_delta"` for each text chunk
+
+#### Scenario: Tool call streaming
+- **WHEN** the provider generates a tool call
+- **THEN** it SHALL yield `StreamEvent` with `Type: "tool_call"` containing the tool call details
+
+#### Scenario: Thought text streaming
+- **WHEN** the provider generates thought-only text (e.g., Gemini `Thought=true`)
+- **THEN** it SHALL yield `StreamEvent` with `Type: "thought"` and `ThoughtLen` set to the byte length of the thought text
+- **AND** it SHALL NOT include the thought text content in the `Text` field
+
+#### Scenario: Stream completion
+- **WHEN** the response generation completes
+- **THEN** it SHALL yield `StreamEvent` with `Type: "done"`
+
+#### Scenario: Error during streaming
+- **WHEN** an error occurs during generation
+- **THEN** it SHALL yield `StreamEvent` with `Type: "error"` and the error details

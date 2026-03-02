@@ -194,7 +194,7 @@ func (c *Channel) onMessageCreate(s *discordgo.Session, m *discordgo.MessageCrea
 		return
 	}
 
-	if response != nil {
+	if response != nil && response.Content != "" {
 		if err := c.Send(m.ChannelID, response); err != nil {
 			logger.Errorw("send error", "error", err)
 		}

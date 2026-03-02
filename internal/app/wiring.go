@@ -389,22 +389,13 @@ func initAgent(ctx context.Context, sv *supervisor.Supervisor, cfg *config.Confi
 		orchBuilder := buildPromptBuilder(&cfg.Agent)
 		orchBuilder.Remove(prompt.SectionToolUsage)
 		orchIdentity := "You are Lango, a production-grade AI assistant built for developers and teams.\n" +
-			"You coordinate specialized sub-agents to handle tasks."
-		if catalog != nil && catalog.ToolCount() > 0 {
-			orchIdentity += " You also have builtin_list and builtin_invoke tools for direct access to any registered built-in tool."
-		} else {
-			orchIdentity += " You do not have direct access to tools — delegate to sub-agents instead."
-		}
+			"You coordinate specialized sub-agents to handle tasks." +
+			" You do not have direct access to tools — delegate to sub-agents instead."
 		orchBuilder.Add(prompt.NewStaticSection(
 			prompt.SectionIdentity, 100, "",
 			orchIdentity,
 		))
 		orchestratorPrompt := orchBuilder.Build()
-
-		var universalTools []*agent.Tool
-		if catalog != nil {
-			universalTools = toolcatalog.BuildDispatcher(catalog)
-		}
 
 		orchCfg := orchestration.Config{
 			Tools:               tools,
@@ -413,7 +404,8 @@ func initAgent(ctx context.Context, sv *supervisor.Supervisor, cfg *config.Confi
 			AdaptTool:           adk.AdaptTool,
 			MaxDelegationRounds: cfg.Agent.MaxDelegationRounds,
 			SubAgentPrompt:      buildSubAgentPromptFunc(&cfg.Agent),
-			UniversalTools:      universalTools,
+			// UniversalTools intentionally omitted — the orchestrator must
+			// delegate to sub-agents rather than invoke tools directly.
 		}
 
 		// Load remote A2A agents BEFORE building the tree so they are included.

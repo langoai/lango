@@ -88,19 +88,34 @@ func TestBuiltinInvoke_Success(t *testing.T) {
 	tools := BuildDispatcher(catalog)
 	invokeTool := tools[1]
 
+	// Use a safe tool (browser_navigate) — dangerous tools are blocked.
 	result, err := invokeTool.Handler(context.Background(), map[string]interface{}{
-		"tool_name": "exec_shell",
-		"params":    map[string]interface{}{"command": "echo hello"},
+		"tool_name": "browser_navigate",
+		"params":    map[string]interface{}{"url": "https://example.com"},
 	})
 	require.NoError(t, err)
 
 	m, ok := result.(map[string]interface{})
 	require.True(t, ok)
-	assert.Equal(t, "exec_shell", m["tool"])
+	assert.Equal(t, "browser_navigate", m["tool"])
 
 	inner, ok := m["result"].(map[string]interface{})
 	require.True(t, ok)
-	assert.Equal(t, "ran: echo hello", inner["stdout"])
+	assert.Equal(t, "https://example.com", inner["navigated"])
+}
+
+func TestBuiltinInvoke_BlocksDangerousTools(t *testing.T) {
+	catalog := setupCatalog()
+	tools := BuildDispatcher(catalog)
+	invokeTool := tools[1]
+
+	_, err := invokeTool.Handler(context.Background(), map[string]interface{}{
+		"tool_name": "exec_shell",
+		"params":    map[string]interface{}{"command": "echo hello"},
+	})
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "requires approval")
+	assert.Contains(t, err.Error(), "delegate to the appropriate sub-agent")
 }
 
 func TestBuiltinInvoke_NotFound(t *testing.T) {

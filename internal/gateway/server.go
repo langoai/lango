@@ -24,6 +24,10 @@ import (
 
 func logger() *zap.SugaredLogger { return logging.Gateway() }
 
+// emptyResponseFallback is returned to the user when the agent succeeds
+// but produces no visible text (e.g. Gemini thought-only responses).
+const emptyResponseFallback = "I processed your message but couldn't formulate a visible response. Could you try rephrasing your question?"
+
 // TurnCallback is called after each agent turn completes (for buffer triggers, etc).
 type TurnCallback func(sessionKey string)
 
@@ -205,6 +209,13 @@ func (s *Server) handleChatMessage(client *Client, params json.RawMessage) (inte
 	// Fire turn-complete callbacks (buffer triggers, etc.) regardless of error.
 	for _, cb := range s.turnCallbacks {
 		cb(sessionKey)
+	}
+
+	// Guard against empty responses (e.g. Gemini thought-only output).
+	if err == nil && response == "" {
+		response = emptyResponseFallback
+		logger().Warnw("empty agent response, using fallback",
+			"session", sessionKey)
 	}
 
 	if err != nil {

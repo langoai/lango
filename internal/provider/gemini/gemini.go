@@ -96,12 +96,15 @@ func (p *GeminiProvider) Generate(ctx context.Context, params provider.GenerateP
 				if err := json.Unmarshal([]byte(tc.Arguments), &args); err != nil {
 					args = make(map[string]interface{})
 				}
-				parts = append(parts, &genai.Part{
+				p := &genai.Part{
 					FunctionCall: &genai.FunctionCall{
 						Name: tc.Name,
 						Args: args,
 					},
-				})
+					Thought:          tc.Thought,
+					ThoughtSignature: tc.ThoughtSignature,
+				}
+				parts = append(parts, p)
 			}
 		}
 
@@ -173,11 +176,20 @@ func (p *GeminiProvider) Generate(ctx context.Context, params provider.GenerateP
 				if cand.Content != nil {
 					for _, part := range cand.Content.Parts {
 						if part.Text != "" {
-							if !yield(provider.StreamEvent{
-								Type: provider.StreamEventPlainText,
-								Text: part.Text,
-							}, nil) {
-								return
+							if part.Thought {
+								if !yield(provider.StreamEvent{
+									Type:       provider.StreamEventThought,
+									ThoughtLen: len(part.Text),
+								}, nil) {
+									return
+								}
+							} else {
+								if !yield(provider.StreamEvent{
+									Type: provider.StreamEventPlainText,
+									Text: part.Text,
+								}, nil) {
+									return
+								}
 							}
 						}
 						if part.FunctionCall != nil {
@@ -185,9 +197,11 @@ func (p *GeminiProvider) Generate(ctx context.Context, params provider.GenerateP
 							if !yield(provider.StreamEvent{
 								Type: provider.StreamEventToolCall,
 								ToolCall: &provider.ToolCall{
-									ID:        part.FunctionCall.Name, // Use name as ID if ID missing
-									Name:      part.FunctionCall.Name,
-									Arguments: string(argsJSON),
+									ID:               part.FunctionCall.Name, // Use name as ID if ID missing
+									Name:             part.FunctionCall.Name,
+									Arguments:        string(argsJSON),
+									Thought:          part.Thought,
+									ThoughtSignature: part.ThoughtSignature,
 								},
 							}, nil) {
 								return

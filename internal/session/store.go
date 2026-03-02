@@ -17,10 +17,12 @@ type Message struct {
 
 // ToolCall represents a tool invocation
 type ToolCall struct {
-	ID     string `json:"id"`
-	Name   string `json:"name"`
-	Input  string `json:"input"`
-	Output string `json:"output,omitempty"`
+	ID               string `json:"id"`
+	Name             string `json:"name"`
+	Input            string `json:"input"`
+	Output           string `json:"output,omitempty"`
+	Thought          bool   `json:"thought,omitempty"`
+	ThoughtSignature []byte `json:"thoughtSignature,omitempty"`
 }
 
 // Session represents a conversation session

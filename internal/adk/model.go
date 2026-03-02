@@ -105,6 +105,8 @@ func (m *ModelAdapter) GenerateContent(ctx context.Context, req *model.LLMReques
 								Name: evt.ToolCall.Name,
 								Args: args,
 							},
+							Thought:          evt.ToolCall.Thought,
+							ThoughtSignature: evt.ToolCall.ThoughtSignature,
 						}
 						toolParts = append(toolParts, part)
 						resp := &model.LLMResponse{
@@ -117,6 +119,9 @@ func (m *ModelAdapter) GenerateContent(ctx context.Context, req *model.LLMReques
 							return
 						}
 					}
+
+				case provider.StreamEventThought:
+					// Thought text filtered at provider level; no action needed.
 
 				case provider.StreamEventDone:
 					// Final event: include accumulated full text so ADK
@@ -167,8 +172,12 @@ func (m *ModelAdapter) GenerateContent(ctx context.Context, req *model.LLMReques
 								Name: evt.ToolCall.Name,
 								Args: args,
 							},
+							Thought:          evt.ToolCall.Thought,
+							ThoughtSignature: evt.ToolCall.ThoughtSignature,
 						})
 					}
+				case provider.StreamEventThought:
+					// Thought text filtered at provider level; no action needed.
 				case provider.StreamEventDone:
 					// Ignored — we build the final response below.
 				case provider.StreamEventError:
@@ -215,9 +224,11 @@ func convertMessages(contents []*genai.Content) ([]provider.Message, error) {
 					id = "call_" + p.FunctionCall.Name
 				}
 				msg.ToolCalls = append(msg.ToolCalls, provider.ToolCall{
-					ID:        id,
-					Name:      p.FunctionCall.Name,
-					Arguments: string(b),
+					ID:               id,
+					Name:             p.FunctionCall.Name,
+					Arguments:        string(b),
+					Thought:          p.Thought,
+					ThoughtSignature: p.ThoughtSignature,
 				})
 			}
 			if p.FunctionResponse != nil {

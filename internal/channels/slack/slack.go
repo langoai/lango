@@ -282,7 +282,7 @@ func (c *Channel) handleMessage(ctx context.Context, eventType, channelID, userI
 			return
 		}
 
-		if response != nil {
+		if response != nil && response.Text != "" {
 			// Replace placeholder with actual response
 			if placeholderErr == nil {
 				formattedText := FormatMrkdwn(response.Text)

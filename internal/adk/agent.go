@@ -267,10 +267,33 @@ func (a *Agent) RunAndCollect(ctx context.Context, sessionID, input string) (str
 	start := time.Now()
 	resp, err := a.runAndCollectOnce(ctx, sessionID, input)
 	if err == nil {
-		logger().Debugw("agent run completed",
-			"session", sessionID,
-			"elapsed", time.Since(start).String(),
-			"response_len", len(resp))
+		// Safety net: detect [REJECT] text from sub-agents that failed to
+		// call transfer_to_agent and force re-routing through the orchestrator.
+		if resp != "" && containsRejectPattern(resp) && len(a.adkAgent.SubAgents()) > 0 {
+			logger().Warnw("sub-agent REJECT detected in text, forcing re-route",
+				"session", sessionID,
+				"response_preview", truncate(resp, 100))
+			correction := fmt.Sprintf(
+				"[System: A sub-agent could not handle this request. "+
+					"Re-evaluate and route to a different agent or answer directly. "+
+					"Original user request: %s]", input)
+			retryResp, retryErr := a.runAndCollectOnce(ctx, sessionID, correction)
+			if retryErr == nil && retryResp != "" && !containsRejectPattern(retryResp) {
+				return retryResp, nil
+			}
+			// Fall through with original response if retry also fails.
+		}
+
+		if resp == "" {
+			logger().Warnw("agent returned empty response",
+				"session", sessionID,
+				"elapsed", time.Since(start).String())
+		} else {
+			logger().Debugw("agent run completed",
+				"session", sessionID,
+				"elapsed", time.Since(start).String(),
+				"response_len", len(resp))
+		}
 		return resp, nil
 	}
 
@@ -393,6 +416,26 @@ func (a *Agent) runAndCollectOnce(ctx context.Context, sessionID, input string) 
 	}
 
 	return b.String(), nil
+}
+
+// rejectPattern matches the sub-agent [REJECT] text protocol.
+// Used as a safety net when a sub-agent emits [REJECT] text instead of
+// calling transfer_to_agent (e.g. prompt not followed).
+var rejectPattern = regexp.MustCompile(`\[REJECT\]`)
+
+// containsRejectPattern reports whether the text contains a [REJECT] marker.
+func containsRejectPattern(text string) bool {
+	return rejectPattern.MatchString(text)
+}
+
+// truncate returns the first n runes of s, appending "..." if truncated.
+// Uses rune counting to avoid splitting multi-byte UTF-8 characters.
+func truncate(s string, n int) string {
+	runes := []rune(s)
+	if len(runes) <= n {
+		return s
+	}
+	return string(runes[:n]) + "..."
 }
 
 // reAgentNotFound matches ADK's "failed to find agent: <name>" error.

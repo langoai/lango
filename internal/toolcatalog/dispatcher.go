@@ -98,6 +98,16 @@ func buildInvokeTool(catalog *Catalog) *agent.Tool {
 				return nil, fmt.Errorf("tool %q not found in catalog", toolName)
 			}
 
+			// Block dangerous tools from being invoked via the dispatcher.
+			// Dangerous tools must be executed through their owning sub-agent
+			// which has the proper approval chain wired by ADK middleware.
+			if entry.Tool.SafetyLevel >= agent.SafetyLevelDangerous {
+				return nil, fmt.Errorf(
+					"tool %q requires approval (safety=%s); delegate to the appropriate sub-agent instead",
+					toolName, entry.Tool.SafetyLevel,
+				)
+			}
+
 			toolParams, _ := params["params"].(map[string]interface{})
 			if toolParams == nil {
 				toolParams = make(map[string]interface{})
