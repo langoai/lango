@@ -181,6 +181,19 @@ func (s *Server) handleChatMessage(client *Client, params json.RawMessage) (inte
 	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()
 
+	// Warn UI when approaching timeout (80%).
+	warnTimer := time.AfterFunc(time.Duration(float64(timeout)*0.8), func() {
+		logger().Warnw("agent request approaching timeout",
+			"session", sessionKey,
+			"timeout", timeout.String())
+		s.BroadcastToSession(sessionKey, "agent.warning", map[string]string{
+			"sessionKey": sessionKey,
+			"message":    "Request is taking longer than expected",
+			"type":       "approaching_timeout",
+		})
+	})
+	defer warnTimer.Stop()
+
 	ctx = session.WithSessionKey(ctx, sessionKey)
 	response, err := s.agent.RunStreaming(ctx, sessionKey, req.Message, func(chunk string) {
 		s.BroadcastToSession(sessionKey, "agent.chunk", map[string]string{
@@ -194,14 +207,27 @@ func (s *Server) handleChatMessage(client *Client, params json.RawMessage) (inte
 		cb(sessionKey)
 	}
 
-	// Notify UI that agent is done
+	if err != nil {
+		// Classify the error for UI display.
+		errType := "unknown"
+		if ctx.Err() == context.DeadlineExceeded {
+			errType = "timeout"
+		}
+
+		// Notify UI of the error so it can stop thinking indicators
+		// and display a user-visible error message.
+		s.BroadcastToSession(sessionKey, "agent.error", map[string]string{
+			"sessionKey": sessionKey,
+			"error":      err.Error(),
+			"type":       errType,
+		})
+		return nil, err
+	}
+
+	// Notify UI that agent completed successfully.
 	s.BroadcastToSession(sessionKey, "agent.done", map[string]string{
 		"sessionKey": sessionKey,
 	})
-
-	if err != nil {
-		return nil, err
-	}
 
 	return map[string]string{
 		"response": response,

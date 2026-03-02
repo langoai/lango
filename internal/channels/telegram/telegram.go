@@ -250,6 +250,7 @@ func (c *Channel) StartTyping(ctx context.Context, chatID int64) func() {
 
 // startTyping sends a typing action to the chat and refreshes it
 // periodically until the returned stop function is called.
+// The returned stop function is safe to call multiple times.
 func (c *Channel) startTyping(chatID int64) func() {
 	action := tgbotapi.NewChatAction(chatID, tgbotapi.ChatTyping)
 	if _, err := c.bot.Request(action); err != nil {
@@ -257,6 +258,7 @@ func (c *Channel) startTyping(chatID int64) func() {
 	}
 
 	done := make(chan struct{})
+	var once sync.Once
 	go func() {
 		ticker := time.NewTicker(4 * time.Second)
 		defer ticker.Stop()
@@ -272,7 +274,7 @@ func (c *Channel) startTyping(chatID int64) func() {
 		}
 	}()
 
-	return func() { close(done) }
+	return func() { once.Do(func() { close(done) }) }
 }
 
 // Send sends a message.

@@ -385,6 +385,13 @@ func (a *Agent) runAndCollectOnce(ctx context.Context, sessionID, input string) 
 		// in streaming mode. Its text duplicates partial chunks, so skip.
 	}
 
+	// ADK's streaming iterator silently terminates on context deadline
+	// without yielding an error. Check context after iteration to detect
+	// timeout that the iterator failed to propagate.
+	if err := ctx.Err(); err != nil {
+		return "", fmt.Errorf("agent error: %w", err)
+	}
+
 	return b.String(), nil
 }
 
@@ -447,6 +454,13 @@ func (a *Agent) RunStreaming(ctx context.Context, sessionID, input string, onChu
 				}
 			}
 		}
+	}
+
+	// ADK's streaming iterator silently terminates on context deadline
+	// without yielding an error. Check context after iteration to detect
+	// timeout that the iterator failed to propagate.
+	if err := ctx.Err(); err != nil {
+		return "", fmt.Errorf("agent error: %w", err)
 	}
 
 	return b.String(), nil
