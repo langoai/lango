@@ -80,7 +80,7 @@ func openDatabase(dbPath, encryptionKey string, cipherPageSize int) (*ent.Client
 	}
 
 	// Ensure parent directory exists.
-	if err := os.MkdirAll(filepath.Dir(dbPath), 0700); err != nil {
+	if err := os.MkdirAll(filepath.Dir(dbPath), dataDirPerm); err != nil {
 		return nil, nil, fmt.Errorf("create db directory: %w", err)
 	}
 

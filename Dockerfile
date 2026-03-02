@@ -35,12 +35,25 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
 
 RUN groupadd -r lango && useradd -r -g lango -m -d /home/lango lango \
-    && mkdir -p /home/lango/.lango && chown lango:lango /home/lango/.lango
+    && mkdir -p /home/lango/.lango/skills \
+    && mkdir -p /home/lango/bin \
+    && chown -R lango:lango /home/lango/.lango /home/lango/bin
 
 COPY --from=builder /app/lango /usr/local/bin/lango
 COPY --from=builder /app/prompts/ /usr/share/lango/prompts/
 COPY docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
 RUN chmod +x /usr/local/bin/docker-entrypoint.sh
+
+# Optional: install Go toolchain for agents that need `go install` capability.
+# Build with --build-arg INSTALL_GO=true to enable.
+ARG INSTALL_GO=false
+RUN if [ "$INSTALL_GO" = "true" ]; then \
+        curl -fsSL https://go.dev/dl/go1.25.linux-amd64.tar.gz \
+        | tar -C /usr/local -xzf - ; \
+    fi
+
+ENV PATH="/home/lango/bin:/home/lango/go/bin:/usr/local/go/bin:${PATH}"
+ENV GOPATH="/home/lango/go"
 
 USER lango
 WORKDIR /home/lango
