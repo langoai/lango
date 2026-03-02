@@ -118,25 +118,14 @@ func BuildAgentTree(cfg Config) (adk_agent.Agent, error) {
 		maxRounds = 10
 	}
 
-	// Adapt universal tools (dispatchers) for the orchestrator.
-	var orchTools []adk_tool.Tool
-	if len(cfg.UniversalTools) > 0 {
-		adapted, err := adaptTools(cfg.AdaptTool, cfg.UniversalTools)
-		if err != nil {
-			return nil, fmt.Errorf("adapt universal tools: %w", err)
-		}
-		orchTools = adapted
-	}
-
 	orchestratorInstruction := buildOrchestratorInstruction(
-		cfg.SystemPrompt, routingEntries, maxRounds, rs.Unmatched, len(orchTools) > 0,
+		cfg.SystemPrompt, routingEntries, maxRounds, rs.Unmatched,
 	)
 
 	orchestrator, err := llmagent.New(llmagent.Config{
 		Name:        "lango-orchestrator",
 		Description: "Lango Assistant Orchestrator",
 		Model:       cfg.Model,
-		Tools:       orchTools,
 		SubAgents:   subAgents,
 		Instruction: orchestratorInstruction,
 	})

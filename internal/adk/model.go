@@ -120,6 +120,9 @@ func (m *ModelAdapter) GenerateContent(ctx context.Context, req *model.LLMReques
 						}
 					}
 
+				case provider.StreamEventThought:
+					// Thought text filtered at provider level; no action needed.
+
 				case provider.StreamEventDone:
 					// Final event: include accumulated full text so ADK
 					// stores a complete assistant message in the session.
@@ -173,6 +176,8 @@ func (m *ModelAdapter) GenerateContent(ctx context.Context, req *model.LLMReques
 							ThoughtSignature: evt.ToolCall.ThoughtSignature,
 						})
 					}
+				case provider.StreamEventThought:
+					// Thought text filtered at provider level; no action needed.
 				case provider.StreamEventDone:
 					// Ignored — we build the final response below.
 				case provider.StreamEventError:

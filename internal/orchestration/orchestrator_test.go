@@ -316,7 +316,7 @@ func TestBuildAgentTree_RoutingTableInInstruction(t *testing.T) {
 		entries = append(entries, buildRoutingEntry(spec, capabilityDescription(st)))
 	}
 
-	inst := buildOrchestratorInstruction("test prompt", entries, 5, rs.Unmatched, false)
+	inst := buildOrchestratorInstruction("test prompt", entries, 5, rs.Unmatched)
 
 	assert.Contains(t, inst, "Routing Table")
 	assert.Contains(t, inst, "### operator")
@@ -334,16 +334,14 @@ func TestBuildAgentTree_RoutingTableInInstruction(t *testing.T) {
 	assert.Contains(t, inst, "VERIFY")
 	assert.Contains(t, inst, "DELEGATE")
 
-	// Should contain rejection handling.
-	assert.Contains(t, inst, "Rejection Handling")
-	assert.Contains(t, inst, "[REJECT]")
+	// Should contain re-routing protocol.
+	assert.Contains(t, inst, "Re-Routing Protocol")
+	assert.Contains(t, inst, "sub-agent transfers control back")
 }
 
-func TestBuildAgentTree_RejectProtocolInInstructions(t *testing.T) {
+func TestBuildAgentTree_EscalationProtocolInInstructions(t *testing.T) {
 	// Agent.Instruction() is not part of the public ADK interface, so we
-	// verify reject protocol presence via the agentSpecs registry directly.
-	// This is covered by TestAgentSpecs_AllHaveRejectProtocol as well,
-	// but this test verifies that all specs used by BuildAgentTree include it.
+	// verify escalation protocol presence via the agentSpecs registry directly.
 	tools := []*agent.Tool{
 		newTestTool("exec_shell"),
 		newTestTool("browser_open"),
@@ -358,8 +356,10 @@ func TestBuildAgentTree_RejectProtocolInInstructions(t *testing.T) {
 		if len(st) == 0 && !spec.AlwaysInclude {
 			continue
 		}
-		assert.Contains(t, spec.Instruction, "[REJECT]",
-			"spec %q should have reject protocol in instruction", spec.Name)
+		assert.Contains(t, spec.Instruction, "transfer_to_agent",
+			"spec %q should have transfer_to_agent escalation in instruction", spec.Name)
+		assert.Contains(t, spec.Instruction, "lango-orchestrator",
+			"spec %q should escalate to lango-orchestrator", spec.Name)
 	}
 }
 
@@ -689,7 +689,7 @@ func TestBuildOrchestratorInstruction_ContainsRoutingTable(t *testing.T) {
 		},
 	}
 
-	got := buildOrchestratorInstruction("base prompt", entries, 5, nil, false)
+	got := buildOrchestratorInstruction("base prompt", entries, 5, nil)
 
 	assert.Contains(t, got, "base prompt")
 	assert.Contains(t, got, "### operator")
@@ -706,7 +706,7 @@ func TestBuildOrchestratorInstruction_UnmatchedTools(t *testing.T) {
 		newTestTool("special_op"),
 	}
 
-	got := buildOrchestratorInstruction("base", nil, 3, unmatched, false)
+	got := buildOrchestratorInstruction("base", nil, 3, unmatched)
 
 	assert.Contains(t, got, "Unmatched Tools")
 	assert.Contains(t, got, "custom_action")
@@ -714,24 +714,44 @@ func TestBuildOrchestratorInstruction_UnmatchedTools(t *testing.T) {
 }
 
 func TestBuildOrchestratorInstruction_NoUnmatchedTools(t *testing.T) {
-	got := buildOrchestratorInstruction("base", nil, 5, nil, false)
+	got := buildOrchestratorInstruction("base", nil, 5, nil)
 
 	assert.NotContains(t, got, "Unmatched Tools")
 }
 
-func TestBuildOrchestratorInstruction_WithUniversalTools(t *testing.T) {
-	got := buildOrchestratorInstruction("base", nil, 5, nil, true)
-
-	assert.Contains(t, got, "builtin_list")
-	assert.Contains(t, got, "builtin_invoke")
-	assert.NotContains(t, got, "You do NOT have tools")
-}
-
-func TestBuildOrchestratorInstruction_WithoutUniversalTools(t *testing.T) {
-	got := buildOrchestratorInstruction("base", nil, 5, nil, false)
+func TestBuildOrchestratorInstruction_DelegateOnly(t *testing.T) {
+	got := buildOrchestratorInstruction("base", nil, 5, nil)
 
 	assert.Contains(t, got, "You do NOT have tools")
 	assert.NotContains(t, got, "builtin_list")
+}
+
+func TestBuildOrchestratorInstruction_HasAssessStep(t *testing.T) {
+	got := buildOrchestratorInstruction("base", nil, 5, nil)
+
+	assert.Contains(t, got, "0. ASSESS")
+	assert.Contains(t, got, "simple conversational request")
+	assert.Contains(t, got, "respond directly")
+}
+
+func TestBuildOrchestratorInstruction_HasReRoutingProtocol(t *testing.T) {
+	got := buildOrchestratorInstruction("base", nil, 5, nil)
+
+	assert.Contains(t, got, "Re-Routing Protocol")
+	assert.Contains(t, got, "sub-agent transfers control back")
+	assert.Contains(t, got, "NEVER re-send the same request")
+	assert.Contains(t, got, "general-purpose assistant")
+}
+
+func TestBuildOrchestratorInstruction_DelegationRulesOrder(t *testing.T) {
+	got := buildOrchestratorInstruction("base", nil, 5, nil)
+
+	// Verify that direct response rule comes BEFORE delegation rule.
+	directIdx := strings.Index(got, "respond directly WITHOUT delegation")
+	delegateIdx := strings.Index(got, "delegate to the sub-agent")
+	assert.Greater(t, directIdx, 0, "direct response rule should exist")
+	assert.Greater(t, delegateIdx, 0, "delegation rule should exist")
+	assert.Less(t, directIdx, delegateIdx, "direct response should come before delegation")
 }
 
 // --- PartitionTools builtin_ skip tests ---
@@ -766,10 +786,14 @@ func TestPartitionTools_SkipsBuiltinPrefix(t *testing.T) {
 
 // --- Agent spec consistency tests ---
 
-func TestAgentSpecs_AllHaveRejectProtocol(t *testing.T) {
+func TestAgentSpecs_AllHaveEscalationProtocol(t *testing.T) {
 	for _, spec := range agentSpecs {
-		assert.Contains(t, spec.Instruction, "[REJECT]",
-			"spec %q must have reject protocol", spec.Name)
+		assert.Contains(t, spec.Instruction, "## Escalation Protocol",
+			"spec %q must have escalation protocol section", spec.Name)
+		assert.Contains(t, spec.Instruction, `transfer_to_agent`,
+			"spec %q must use transfer_to_agent for escalation", spec.Name)
+		assert.Contains(t, spec.Instruction, `lango-orchestrator`,
+			"spec %q must escalate to lango-orchestrator", spec.Name)
 	}
 }
 

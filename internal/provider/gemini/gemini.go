@@ -175,12 +175,21 @@ func (p *GeminiProvider) Generate(ctx context.Context, params provider.GenerateP
 			for _, cand := range resp.Candidates {
 				if cand.Content != nil {
 					for _, part := range cand.Content.Parts {
-						if part.Text != "" && !part.Thought {
-							if !yield(provider.StreamEvent{
-								Type: provider.StreamEventPlainText,
-								Text: part.Text,
-							}, nil) {
-								return
+						if part.Text != "" {
+							if part.Thought {
+								if !yield(provider.StreamEvent{
+									Type:       provider.StreamEventThought,
+									ThoughtLen: len(part.Text),
+								}, nil) {
+									return
+								}
+							} else {
+								if !yield(provider.StreamEvent{
+									Type: provider.StreamEventPlainText,
+									Text: part.Text,
+								}, nil) {
+									return
+								}
 							}
 						}
 						if part.FunctionCall != nil {

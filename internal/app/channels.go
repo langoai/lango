@@ -113,6 +113,10 @@ func (a *App) handleSlackMessage(ctx context.Context, msg *slack.IncomingMessage
 	return &slack.OutgoingMessage{Text: response}, nil
 }
 
+// emptyResponseFallback is returned to the user when the agent succeeds
+// but produces no visible text (e.g. Gemini thought-only responses).
+const emptyResponseFallback = "I processed your message but couldn't formulate a visible response. Could you try rephrasing your question?"
+
 // runAgent executes the agent and aggregates the response.
 // It injects the session key into the context so that downstream components
 // (approval providers, learning engine, etc.) can route by channel.
@@ -166,6 +170,13 @@ func (a *App) runAgent(ctx context.Context, sessionKey, input string) (string, e
 			"elapsed", elapsed.String(),
 			"error", err)
 		return "", err
+	}
+
+	if response == "" {
+		logger().Warnw("empty agent response, using fallback",
+			"session", sessionKey,
+			"elapsed", elapsed.String())
+		response = emptyResponseFallback
 	}
 
 	logger().Infow("agent request completed",
