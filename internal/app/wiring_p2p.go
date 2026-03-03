@@ -2,6 +2,7 @@ package app
 
 import (
 	"context"
+	"fmt"
 	"time"
 
 	"github.com/consensys/gnark/frontend"
@@ -11,6 +12,7 @@ import (
 	"github.com/langoai/lango/internal/ent"
 	"github.com/langoai/lango/internal/eventbus"
 	"github.com/langoai/lango/internal/p2p"
+	"github.com/langoai/lango/internal/p2p/agentpool"
 	"github.com/langoai/lango/internal/p2p/discovery"
 	"github.com/langoai/lango/internal/p2p/firewall"
 	"github.com/langoai/lango/internal/p2p/handshake"
@@ -19,6 +21,7 @@ import (
 	p2pproto "github.com/langoai/lango/internal/p2p/protocol"
 	"github.com/langoai/lango/internal/p2p/reputation"
 	"github.com/langoai/lango/internal/p2p/settlement"
+	"github.com/langoai/lango/internal/p2p/team"
 	"github.com/langoai/lango/internal/p2p/zkp"
 	"github.com/langoai/lango/internal/p2p/zkp/circuits"
 	"github.com/langoai/lango/internal/payment/contracts"
@@ -29,17 +32,21 @@ import (
 
 // p2pComponents holds optional P2P networking components.
 type p2pComponents struct {
-	node       *p2p.Node
-	sessions   *handshake.SessionStore
-	handshaker *handshake.Handshaker
-	fw         *firewall.Firewall
-	gossip     *discovery.GossipService
-	identity   *identity.WalletDIDProvider
-	handler    *p2pproto.Handler
-	payGate    *paygate.Gate
-	reputation *reputation.Store
-	pricingCfg config.P2PPricingConfig
-	pricingFn  func(toolName string) (string, bool)
+	node        *p2p.Node
+	sessions    *handshake.SessionStore
+	handshaker  *handshake.Handshaker
+	fw          *firewall.Firewall
+	gossip      *discovery.GossipService
+	identity    *identity.WalletDIDProvider
+	handler     *p2pproto.Handler
+	payGate     *paygate.Gate
+	reputation  *reputation.Store
+	pricingCfg  config.P2PPricingConfig
+	pricingFn   func(toolName string) (string, bool)
+	agentPool   *agentpool.Pool
+	selector    *agentpool.Selector
+	coordinator *team.Coordinator
+	provider    *agentpool.PoolProvider
 }
 
 // initP2P creates the P2P networking components if enabled.
@@ -383,18 +390,45 @@ func initP2P(cfg *config.Config, wp wallet.WalletProvider, pc *paymentComponents
 		}
 	}
 
+	// Create agent pool and selector for dynamic P2P agent management.
+	pool := agentpool.New(pLogger)
+	selector := agentpool.NewSelector(pool, agentpool.DefaultWeights())
+	provider := agentpool.NewPoolProvider(pool, selector)
+
+	// Create team coordinator for distributed agent collaboration.
+	var coord *team.Coordinator
+	invokeFn := func(ctx context.Context, peerID, toolName string, params map[string]interface{}) (map[string]interface{}, error) {
+		// Default invoke function — can be overridden via handler wiring.
+		return nil, fmt.Errorf("P2P team invoke not configured for peer %s", peerID)
+	}
+	coord = team.NewCoordinator(team.CoordinatorConfig{
+		Pool:     pool,
+		Selector: selector,
+		InvokeFn: invokeFn,
+		Bus:      bus,
+		Logger:   pLogger,
+	})
+
+	pLogger.Infow("P2P agent pool and team coordinator initialized",
+		"selectorWeights", "default",
+	)
+
 	return &p2pComponents{
-		node:       node,
-		sessions:   sessions,
-		handshaker: handshaker,
-		fw:         fw,
-		gossip:     gossip,
-		identity:   idProvider,
-		handler:    handler,
-		payGate:    pg,
-		reputation: repStore,
-		pricingCfg: cfg.P2P.Pricing,
-		pricingFn:  extPricingFn,
+		node:        node,
+		sessions:    sessions,
+		handshaker:  handshaker,
+		fw:          fw,
+		gossip:      gossip,
+		identity:    idProvider,
+		handler:     handler,
+		payGate:     pg,
+		reputation:  repStore,
+		pricingCfg:  cfg.P2P.Pricing,
+		pricingFn:   extPricingFn,
+		agentPool:   pool,
+		selector:    selector,
+		coordinator: coord,
+		provider:    provider,
 	}
 }
 

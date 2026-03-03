@@ -9,6 +9,7 @@ import (
 	"github.com/langoai/lango/internal/a2a"
 	"github.com/langoai/lango/internal/adk"
 	"github.com/langoai/lango/internal/agent"
+	"github.com/langoai/lango/internal/agentregistry"
 	"github.com/langoai/lango/internal/bootstrap"
 	"github.com/langoai/lango/internal/config"
 	"github.com/langoai/lango/internal/embedding"
@@ -196,6 +197,33 @@ func initSecurity(cfg *config.Config, store session.Store, boot *bootstrap.Resul
 	}
 }
 
+// initAgentRegistry creates and populates the agent registry.
+// Order: embedded defaults first, then user-defined agents (override by name).
+func initAgentRegistry(cfg *config.AgentConfig) (*agentregistry.Registry, error) {
+	reg := agentregistry.New()
+
+	// Load embedded default agents (AGENT.md files in defaults/).
+	embeddedStore := agentregistry.NewEmbeddedStore()
+	if err := reg.LoadFromStore(embeddedStore); err != nil {
+		return nil, fmt.Errorf("load embedded agents: %w", err)
+	}
+
+	// Load user-defined agents if directory is configured.
+	if cfg.AgentsDir != "" {
+		userStore := agentregistry.NewFileStore(cfg.AgentsDir)
+		if err := reg.LoadFromStore(userStore); err != nil {
+			logger().Warnw("load user agents", "dir", cfg.AgentsDir, "error", err)
+			// Non-fatal: continue with embedded agents only.
+		}
+	}
+
+	logger().Infow("agent registry initialized",
+		"total", len(reg.All()),
+		"active", len(reg.Active()),
+	)
+	return reg, nil
+}
+
 // initAuth creates the auth manager if OIDC providers are configured.
 func initAuth(cfg *config.Config, store session.Store) *gateway.AuthManager {
 	if len(cfg.Auth.Providers) == 0 {
@@ -213,7 +241,7 @@ func initAuth(cfg *config.Config, store session.Store) *gateway.AuthManager {
 }
 
 // initAgent creates the ADK agent with the given tools and provider proxy.
-func initAgent(ctx context.Context, sv *supervisor.Supervisor, cfg *config.Config, store session.Store, tools []*agent.Tool, kc *knowledgeComponents, mc *memoryComponents, ec *embeddingComponents, gc *graphComponents, scanner *agent.SecretScanner, sr *skill.Registry, lc *librarianComponents, catalog *toolcatalog.Catalog) (*adk.Agent, error) {
+func initAgent(ctx context.Context, sv *supervisor.Supervisor, cfg *config.Config, store session.Store, tools []*agent.Tool, kc *knowledgeComponents, mc *memoryComponents, ec *embeddingComponents, gc *graphComponents, scanner *agent.SecretScanner, sr *skill.Registry, lc *librarianComponents, catalog *toolcatalog.Catalog, p2pc *p2pComponents) (*adk.Agent, error) {
 	// Adapt tools to ADK format with optional per-tool timeout.
 	toolTimeout := cfg.Agent.ToolTimeout
 	var adkTools []adk_tool.Tool
@@ -408,6 +436,15 @@ func initAgent(ctx context.Context, sv *supervisor.Supervisor, cfg *config.Confi
 			// delegate to sub-agents rather than invoke tools directly.
 		}
 
+		// Use dynamic agent registry specs when available.
+		reg, err := initAgentRegistry(&cfg.Agent)
+		if err != nil {
+			logger().Warnw("agent registry init, using builtin specs", "error", err)
+		} else if specs := reg.Specs(); len(specs) > 0 {
+			orchCfg.Specs = specs
+			logger().Infow("using dynamic agent specs", "count", len(specs))
+		}
+
 		// Load remote A2A agents BEFORE building the tree so they are included.
 		if cfg.A2A.Enabled && len(cfg.A2A.RemoteAgents) > 0 {
 			remoteAgents, err := a2a.LoadRemoteAgents(cfg.A2A.RemoteAgents, logger())
@@ -417,6 +454,12 @@ func initAgent(ctx context.Context, sv *supervisor.Supervisor, cfg *config.Confi
 			if len(remoteAgents) > 0 {
 				orchCfg.RemoteAgents = remoteAgents
 			}
+		}
+
+		// Wire P2P dynamic agent provider for routing table integration.
+		if p2pc != nil && p2pc.provider != nil {
+			orchCfg.DynamicAgents = p2pc.provider
+			logger().Info("P2P dynamic agent provider wired to orchestrator")
 		}
 
 		agentTree, err := orchestration.BuildAgentTree(orchCfg)
