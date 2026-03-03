@@ -55,7 +55,8 @@ LLM agent settings including model selection, prompt configuration, and timeouts
     "promptsDir": "",
     "requestTimeout": "5m",
     "toolTimeout": "2m",
-    "multiAgent": false
+    "multiAgent": false,
+    "agentsDir": ""
   }
 }
 ```
@@ -73,6 +74,27 @@ LLM agent settings including model selection, prompt configuration, and timeouts
 | `agent.requestTimeout` | `duration` | `5m` | Maximum duration for a single AI provider request |
 | `agent.toolTimeout` | `duration` | `2m` | Maximum duration for a single tool call |
 | `agent.multiAgent` | `bool` | `false` | Enable [multi-agent orchestration](features/multi-agent.md) |
+| `agent.agentsDir` | `string` | `""` | Directory containing user-defined [AGENT.md](features/multi-agent.md#custom-agent-definitions) agent definitions |
+
+---
+
+## Agent Memory
+
+Per-agent persistent memory for cross-session context retention.
+
+> **Settings:** `lango settings` → Agent Memory
+
+```json
+{
+  "agentMemory": {
+    "enabled": false
+  }
+}
+```
+
+| Key | Type | Default | Description |
+|-----|------|---------|-------------|
+| `agentMemory.enabled` | `bool` | `false` | Enable per-agent persistent memory for sub-agents |
 
 ---
 
@@ -332,6 +354,36 @@ Communication channel configurations.
 | `tools.browser.enabled` | `bool` | `false` | Enable browser automation tool |
 | `tools.browser.headless` | `bool` | `true` | Run browser in headless mode |
 | `tools.browser.sessionTimeout` | `duration` | `5m` | Browser session timeout |
+
+---
+
+## Hooks
+
+Tool execution hooks for security filtering, access control, and event publishing.
+
+> **Settings:** `lango settings` → Hooks
+
+```json
+{
+  "hooks": {
+    "enabled": false,
+    "securityFilter": false,
+    "accessControl": false,
+    "eventPublishing": false,
+    "knowledgeSave": false,
+    "blockedCommands": []
+  }
+}
+```
+
+| Key | Type | Default | Description |
+|-----|------|---------|-------------|
+| `hooks.enabled` | `bool` | `false` | Enable the tool execution hook system |
+| `hooks.securityFilter` | `bool` | `false` | Block dangerous commands via security filter hook |
+| `hooks.accessControl` | `bool` | `false` | Enable per-agent tool access control |
+| `hooks.eventPublishing` | `bool` | `false` | Publish tool execution events to the [event bus](features/multi-agent.md) |
+| `hooks.knowledgeSave` | `bool` | `false` | Auto-save knowledge extracted from tool results |
+| `hooks.blockedCommands` | `[]string` | `[]` | Command patterns to block when security filter is active |
 
 ---
 
@@ -628,6 +680,14 @@ Each firewall rule entry:
 | `p2p.pricing.enabled` | `bool` | `false` | Enable paid P2P tool invocations |
 | `p2p.pricing.perQuery` | `string` | | Default price per query in USDC (e.g., `"0.10"`) |
 | `p2p.pricing.toolPrices` | `map[string]string` | | Map of tool names to specific prices in USDC |
+| `p2p.pricing.trustThresholds.postPayMinScore` | `float64` | `0.8` | Minimum reputation score for post-pay pricing tier |
+
+### P2P Settlement
+
+| Key | Type | Default | Description |
+|-----|------|---------|-------------|
+| `p2p.pricing.settlement.receiptTimeout` | `duration` | `2m` | Maximum wait for on-chain receipt confirmation |
+| `p2p.pricing.settlement.maxRetries` | `int` | `3` | Maximum transaction submission retries |
 
 ### P2P Owner Protection
 

@@ -139,6 +139,85 @@ The orchestrator enforces a maximum number of delegation rounds per user turn (d
 
 When [A2A protocol](a2a-protocol.md) is enabled, remote agents are appended to the sub-agent list and appear in the routing table. The orchestrator can delegate to them just like local sub-agents.
 
+## Custom Agent Definitions
+
+In addition to the built-in agents (operator, navigator, vault, librarian, automator, planner, chronicler), you can define custom agents using `AGENT.md` files.
+
+### AGENT.md Format
+
+Place agent definitions in the directory specified by `agent.agentsDir`. Each agent is a subdirectory containing an `AGENT.md` file:
+
+```
+~/.lango/agents/
+├── code-reviewer/
+│   └── AGENT.md
+├── translator/
+│   └── AGENT.md
+└── data-analyst/
+    └── AGENT.md
+```
+
+An `AGENT.md` file defines the agent's metadata and behavior:
+
+```markdown
+---
+name: code-reviewer
+description: Reviews code for quality, security, and best practices
+prefixes:
+  - review_*
+  - lint_*
+keywords:
+  - review
+  - code quality
+  - security audit
+capabilities:
+  - code-review
+  - security-analysis
+---
+
+You are a code review specialist. Analyze code for...
+```
+
+The front matter specifies routing metadata (prefixes, keywords, capabilities), while the body becomes the agent's system instruction.
+
+### Loading Priority
+
+1. **Built-in agents** — Always loaded first (operator, navigator, etc.)
+2. **User-defined agents** — Loaded from `agent.agentsDir`, merged into the agent tree
+3. **Remote A2A agents** — Appended when A2A protocol is enabled
+
+User-defined agents cannot override built-in agent names.
+
+## Dynamic Tool Routing
+
+Tool routing uses a multi-signal matching strategy beyond simple prefix matching:
+
+1. **Prefix match** — Tools are assigned to agents whose prefix patterns match the tool name (e.g., `browser_*` → navigator)
+2. **Keyword match** — The orchestrator uses keyword affinity to route ambiguous requests
+3. **Capability match** — Custom agents declare capabilities that are matched against task requirements
+
+The `PartitionToolsDynamic` function handles this multi-signal assignment, building a `DynamicToolSet` that maps each agent to its allocated tools. Unmatched tools are tracked separately and listed in the orchestrator's prompt for manual routing.
+
+## Agent Memory
+
+When `agentMemory.enabled` is `true`, each sub-agent maintains its own persistent memory store. This enables:
+
+- **Cross-session learning** — Agents retain context from previous interactions
+- **Experience accumulation** — Patterns and preferences are remembered across conversations
+- **Per-agent isolation** — Each agent's memory is scoped to its name, preventing cross-contamination
+
+Agent memory is backed by the same storage layer as the main session store and supports search, pruning, and use-count tracking.
+
+## Child Session Isolation
+
+Sub-agents operate in isolated child sessions forked from the parent conversation. This provides:
+
+- **Context isolation** — Each sub-agent sees only its relevant context, not the full conversation history
+- **Result merging** — When a sub-agent completes, its results are summarized and merged back into the parent session
+- **Cleanup** — Discarded child sessions are cleaned up automatically
+
+The `ChildSessionServiceAdapter` manages the fork/merge lifecycle. A `Summarizer` extracts the key results from the child session before merging.
+
 ## Configuration
 
 > **Settings:** `lango settings` → Multi-Agent
@@ -155,6 +234,7 @@ When [A2A protocol](a2a-protocol.md) is enabled, remote agents are appended to t
 |---|---|---|
 | `agent.multiAgent` | `false` | Enable hierarchical sub-agent orchestration |
 | `agent.maxDelegationRounds` | `10` | Max orchestrator→sub-agent delegation rounds per turn |
+| `agent.agentsDir` | `""` | Directory containing user-defined AGENT.md agent definitions |
 
 !!! info
 

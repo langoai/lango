@@ -28,10 +28,15 @@ All application code lives under `internal/` to enforce Go's visibility boundary
 
 | Package | Description |
 |---------|-------------|
-| `adk/` | Google ADK v0.4.0 integration. Contains `Agent` (wraps ADK runner), `ModelAdapter` (bridges `provider.ProviderProxy` to ADK `model.LLM`), `ContextAwareModelAdapter` (injects knowledge/memory/RAG into system prompt), `SessionServiceAdapter` (bridges internal session store to ADK session interface), and `AdaptTool()` (converts `agent.Tool` to ADK `tool.Tool`) |
+| `adk/` | Google ADK v0.5.0 integration. Contains `Agent` (wraps ADK runner), `ModelAdapter` (bridges `provider.ProviderProxy` to ADK `model.LLM`), `ContextAwareModelAdapter` (injects knowledge/memory/RAG into system prompt), `SessionServiceAdapter` (bridges internal session store to ADK session interface), `ChildSessionServiceAdapter` (fork/merge child sessions for sub-agent isolation), `Summarizer` (extracts key results from child sessions), and `AdaptTool()` (converts `agent.Tool` to ADK `tool.Tool`) |
 | `agent/` | Core agent types: `Tool` struct (name, description, parameters, handler), `ParameterDef`, `PII Redactor` (regex + optional Presidio integration), `SecretScanner` (prevents credential leakage in model output) |
 | `app/` | Application bootstrap and wiring. `app.go` defines `New()` (component initialization), `Start()`, and `Stop()`. `wiring.go` contains all `init*` functions that create individual subsystems. `types.go` defines the `App` struct with all component fields. `tools.go` builds tool collections. `sender.go` provides `channelSender` adapter for delivery |
 | `bootstrap/` | Pre-application startup: opens database, initializes crypto provider, loads config profile. Returns `bootstrap.Result` with shared `DBClient` and `Crypto` provider for reuse |
+| `agentregistry/` | Agent definition registry. `Registry` loads built-in agents and user-defined `AGENT.md` files from `agent.agentsDir`. Provides `Specs()` for orchestrator routing and `Active()` for runtime agent listing |
+| `agentmemory/` | Per-agent persistent memory. `Store` interface with `Save()`, `Get()`, `Search()`, `Delete()`, `Prune()` operations. Scoped by agent name for cross-session context retention |
+| `ctxkeys/` | Context key helpers. `WithAgentName()` / `AgentNameFromContext()` for propagating agent identity through request contexts |
+| `eventbus/` | Typed synchronous event pub/sub. `Bus` with `Subscribe()` / `Publish()`. `SubscribeTyped[T]()` generic helper for type-safe subscriptions. Events: ContentSaved, TriplesExtracted, TurnCompleted, ReputationChanged |
+| `types/` | Shared type definitions used across packages: `ProviderType`, `Role`, `RPCSenderFunc`, `ChannelType`, `ConfidenceLevel`, `TokenUsage` |
 
 ### Presentation
 
@@ -51,6 +56,7 @@ All application code lives under `internal/` to enforce Go's visibility boundary
 | `cli/workflow/` | `lango workflow run`, `list`, `status`, `cancel`, `history` -- workflow management |
 | `cli/prompt/` | Interactive prompt utilities for CLI input |
 | `cli/security/` | `lango security status`, `secrets`, `migrate-passphrase`, `keyring store/clear/status`, `db-migrate`, `db-decrypt`, `kms status/test/keys` -- security operations |
+| `cli/tuicore/` | Shared TUI components for interactive terminal sessions. `FormModel` (Bubbletea form manager), `Field` struct with input types: `InputText`, `InputInt`, `InputPassword`, `InputBool`, `InputSelect`, `InputSearchSelect` |
 | `cli/p2p/` | `lango p2p status`, `peers`, `connect`, `disconnect`, `firewall list/add/remove`, `discover`, `identity`, `reputation`, `pricing`, `session list/revoke/revoke-all`, `sandbox status/test/cleanup` -- P2P network management |
 | `cli/tui/` | TUI components and views for interactive terminal sessions |
 | `channels/` | Channel bot integrations for Telegram, Discord, and Slack. Each adapter converts platform-specific messages to the Gateway's internal format |
@@ -95,8 +101,12 @@ All application code lives under `internal/` to enforce Go's visibility boundary
 | `keyring/` | Hardware keyring integration (Touch ID / TPM 2.0). `Provider` interface backed by OS keyring via go-keyring |
 | `sandbox/` | Tool execution isolation. `SubprocessExecutor` for process-isolated P2P tool execution. `ContainerRuntime` interface with Docker/gVisor/native fallback chain. Optional pre-warmed container pool |
 | `dbmigrate/` | Database encryption migration. `MigrateToEncrypted` / `DecryptToPlaintext` for SQLCipher transitions. `IsEncrypted` detection and `secureDeleteFile` cleanup |
+| `toolcatalog/` | Thread-safe tool registry with category grouping. `Catalog` with `Register()`, `Get()`, `ListCategories()`, `ListTools()`. `ToolEntry` pairs tools with categories, `ToolSchema` provides tool summaries |
+| `toolchain/` | HTTP-style middleware chain for tool wrapping. `Middleware` type, `Chain()` / `ChainAll()` functions. Built-in middlewares: security filter, access control, event publishing, knowledge save, approval, browser recovery |
+| `appinit/` | Declarative module initialization system. `Module` interface with `Provides` / `DependsOn` keys. `Builder` with Kahn's algorithm topological sort for dependency resolution. Foundation for ordered application bootstrap |
+| `asyncbuf/` | Generic async batch processor. `BatchBuffer[T]` with configurable batch size, flush interval, and backpressure. `Start()` / `Enqueue()` / `Stop()` lifecycle. Replaces per-subsystem buffer implementations |
 | `passphrase/` | Passphrase prompt and validation helpers for terminal input |
-| `orchestration/` | Multi-agent orchestration. `BuildAgentTree()` creates an ADK agent hierarchy with sub-agents: Operator (tool execution), Navigator (research), Vault (security), Librarian (knowledge), Automator (cron/bg/workflow), Planner (task planning), Chronicler (memory) |
+| `orchestration/` | Multi-agent orchestration. `BuildAgentTree()` creates an ADK agent hierarchy. `AgentSpec` defines agent metadata (prefixes, keywords, capabilities). `PartitionToolsDynamic()` allocates tools to agents via multi-signal matching (prefix, keyword, capability). `BuiltinSpecs()` returns default agent definitions. Sub-agents: Operator, Navigator, Vault, Librarian, Automator, Planner, Chronicler. Supports user-defined agents via `AgentRegistry` |
 | `a2a/` | Agent-to-Agent protocol. `Server` exposes agent card and task endpoints. `LoadRemoteAgents()` discovers and loads remote agent capabilities |
 | `tools/` | Built-in tool implementations |
 | `tools/browser/` | Headless browser tool with session management |
@@ -105,6 +115,9 @@ All application code lives under `internal/` to enforce Go's visibility boundary
 | `tools/filesystem/` | File read/write/list tools with path allowlisting and blocklisting |
 | `tools/secrets/` | Secret management tools (store, retrieve, list, delete) |
 | `tools/payment/` | Payment tools (balance, send, history) |
+| `p2p/team/` | P2P team coordination. `Team` manages task-scoped agent groups with roles (Leader, Worker, Reviewer, Observer). `ScopedContext` controls metadata sharing. Budget tracking via `AddSpend()`. Team lifecycle: Forming → Active → Completed/Disbanded |
+| `p2p/agentpool/` | P2P agent pool with health monitoring. `Pool` manages discovered agents. `HealthChecker` runs periodic probes (Healthy/Degraded/Unhealthy/Unknown). `Selector` provides weighted agent selection based on reputation, latency, success rate, and availability |
+| `p2p/settlement/` | On-chain USDC settlement for P2P tool invocations. `Service` handles EIP-3009 authorization-based transfers with exponential retry. `ReputationRecorder` interface for outcome tracking. Subscriber pattern for settlement notifications |
 
 ## `prompts/`
 

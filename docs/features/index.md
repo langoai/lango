@@ -60,7 +60,7 @@ Lango provides a comprehensive set of features for building intelligent AI agent
 
     ---
 
-    Hierarchical sub-agents (Executor, Researcher, Planner, Memory Manager) working together on complex tasks.
+    Hierarchical sub-agents (Operator, Navigator, Vault, Librarian, Automator, Planner, Chronicler) working together on complex tasks.
 
     [:octicons-arrow-right-24: Learn more](multi-agent.md)
 
@@ -79,6 +79,12 @@ Lango provides a comprehensive set of features for building intelligent AI agent
     Decentralized agent-to-agent connectivity via libp2p with DID identity, knowledge firewall, and ZK-enhanced handshake.
 
     [:octicons-arrow-right-24: Learn more](p2p-network.md)
+
+-   :brain: **Agent Memory** :material-flask-outline:{ title="Experimental" }
+
+    ---
+
+    Per-agent persistent memory for cross-session context retention and experience accumulation.
 
 -   :toolbox: **[Skill System](skills.md)**
 
@@ -122,6 +128,10 @@ Lango provides a comprehensive set of features for building intelligent AI agent
 | Skill System | Stable | `skill.enabled` |
 | Proactive Librarian | Experimental | `librarian.enabled` |
 | System Prompts | Stable | `agent.promptsDir` |
+| Agent Memory | Experimental | `agentMemory.enabled` |
+| Tool Hooks | Experimental | `hooks.enabled` |
+| Tool Catalog | Internal | — |
+| Event Bus | Internal | — |
 
 !!! note "Experimental Features"
 
