@@ -255,6 +255,7 @@ func New(boot *bootstrap.Result) (*App, error) {
 			// Wire P2P payment tool.
 			p2pTools := buildP2PTools(p2pc)
 			p2pTools = append(p2pTools, buildP2PPaymentTool(p2pc, pc)...)
+			p2pTools = append(p2pTools, buildP2PPaidInvokeTool(p2pc, pc)...)
 			tools = append(tools, p2pTools...)
 			catalog.RegisterCategory(toolcatalog.Category{Name: "p2p", Description: "Peer-to-peer networking", ConfigKey: "p2p.enabled", Enabled: true})
 			catalog.Register("p2p", p2pTools)
