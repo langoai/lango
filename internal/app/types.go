@@ -6,11 +6,14 @@ import (
 	"sync"
 
 	"github.com/langoai/lango/internal/adk"
+	"github.com/langoai/lango/internal/agentmemory"
+	"github.com/langoai/lango/internal/agentregistry"
 	"github.com/langoai/lango/internal/approval"
 	"github.com/langoai/lango/internal/background"
 	"github.com/langoai/lango/internal/config"
 	cronpkg "github.com/langoai/lango/internal/cron"
 	"github.com/langoai/lango/internal/embedding"
+	"github.com/langoai/lango/internal/eventbus"
 	"github.com/langoai/lango/internal/gateway"
 	"github.com/langoai/lango/internal/lifecycle"
 	"github.com/langoai/lango/internal/graph"
@@ -19,11 +22,14 @@ import (
 	"github.com/langoai/lango/internal/librarian"
 	"github.com/langoai/lango/internal/memory"
 	"github.com/langoai/lango/internal/p2p"
+	"github.com/langoai/lango/internal/p2p/agentpool"
+	"github.com/langoai/lango/internal/p2p/team"
 	"github.com/langoai/lango/internal/payment"
 	"github.com/langoai/lango/internal/security"
 	"github.com/langoai/lango/internal/session"
 	"github.com/langoai/lango/internal/skill"
 	"github.com/langoai/lango/internal/toolcatalog"
+	"github.com/langoai/lango/internal/toolchain"
 	"github.com/langoai/lango/internal/wallet"
 	"github.com/langoai/lango/internal/workflow"
 	x402pkg "github.com/langoai/lango/internal/x402"
@@ -54,6 +60,9 @@ type App struct {
 	KnowledgeStore *knowledge.Store
 	LearningEngine *learning.Engine
 	SkillRegistry  *skill.Registry
+
+	// Agent Memory Components (optional, per-agent persistent memory)
+	AgentMemoryStore agentmemory.Store
 
 	// Observational Memory Components (optional)
 	MemoryStore  *memory.Store
@@ -92,7 +101,19 @@ type App struct {
 	ToolCatalog *toolcatalog.Catalog
 
 	// P2P Components (optional)
-	P2PNode *p2p.Node
+	P2PNode            *p2p.Node
+	P2PAgentPool       *agentpool.Pool
+	P2PTeamCoordinator *team.Coordinator
+	P2PAgentProvider   agentpool.DynamicAgentProvider
+
+	// Event Bus (app-level, for hooks and cross-component communication)
+	EventBus *eventbus.Bus
+
+	// Agent Registry (dynamic agent definitions)
+	AgentRegistry *agentregistry.Registry
+
+	// Hook Registry (tool execution hooks)
+	HookRegistry *toolchain.HookRegistry
 
 	// Channels
 	Channels []Channel

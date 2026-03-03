@@ -9,6 +9,7 @@ import (
 	adk_tool "google.golang.org/adk/tool"
 
 	"github.com/langoai/lango/internal/agent"
+	"github.com/langoai/lango/internal/p2p/agentpool"
 )
 
 // ToolAdapter converts an internal agent.Tool to an ADK tool.Tool.
@@ -45,60 +46,69 @@ type Config struct {
 	// UniversalTools are tools given directly to the orchestrator
 	// (e.g. builtin_list/builtin_invoke dispatchers).
 	UniversalTools []*agent.Tool
+	// Specs overrides the default built-in agent specifications.
+	// When nil, the built-in agentSpecs are used (backward compatible).
+	Specs []AgentSpec
+	// DynamicAgents provides P2P agents discovered at runtime.
+	// When set, discovered agents are added to the routing table.
+	DynamicAgents agentpool.DynamicAgentProvider
 }
 
 // BuildAgentTree creates a hierarchical agent tree with an orchestrator root
-// and specialized sub-agents. Sub-agents are created data-driven from agentSpecs.
+// and specialized sub-agents. Sub-agents are created data-driven from specs.
+// When cfg.Specs is nil, the built-in agentSpecs are used (backward compatible).
 // Agents with no tools are skipped unless AlwaysInclude is set (e.g. Planner).
 func BuildAgentTree(cfg Config) (adk_agent.Agent, error) {
 	if cfg.AdaptTool == nil {
 		return nil, fmt.Errorf("build agent tree: AdaptTool is required")
 	}
 
-	rs := PartitionTools(cfg.Tools)
+	// Determine which specs to use: explicit or built-in defaults.
+	specs := cfg.Specs
+	if specs == nil {
+		specs = agentSpecs
+	}
 
+	// Use dynamic partitioning when explicit specs are provided,
+	// otherwise fall back to the legacy RoleToolSet path for backward compatibility.
 	var subAgents []adk_agent.Agent
 	var routingEntries []routingEntry
+	var unmatchedTools []*agent.Tool
 
-	for _, spec := range agentSpecs {
-		tools := toolsForSpec(spec, rs)
-		if len(tools) == 0 && !spec.AlwaysInclude {
-			continue
-		}
+	if cfg.Specs != nil {
+		ds := PartitionToolsDynamic(cfg.Tools, specs)
+		unmatchedTools = ds.Unmatched()
 
-		var adkTools []adk_tool.Tool
-		if len(tools) > 0 {
-			var err error
-			adkTools, err = adaptTools(cfg.AdaptTool, tools)
-			if err != nil {
-				return nil, fmt.Errorf("adapt %s tools: %w", spec.Name, err)
+		for _, spec := range specs {
+			tools := ds[spec.Name]
+			if len(tools) == 0 && !spec.AlwaysInclude {
+				continue
 			}
-		}
 
-		caps := capabilityDescription(tools)
-		desc := spec.Description
-		if caps != "" {
-			desc = fmt.Sprintf("%s. Capabilities: %s", spec.Description, caps)
+			sa, entry, err := buildSubAgent(cfg, spec, tools)
+			if err != nil {
+				return nil, err
+			}
+			subAgents = append(subAgents, sa)
+			routingEntries = append(routingEntries, entry)
 		}
+	} else {
+		rs := PartitionTools(cfg.Tools)
+		unmatchedTools = rs.Unmatched
 
-		instruction := spec.Instruction
-		if cfg.SubAgentPrompt != nil {
-			instruction = cfg.SubAgentPrompt(spec.Name, spec.Instruction)
+		for _, spec := range specs {
+			tools := toolsForSpec(spec, rs)
+			if len(tools) == 0 && !spec.AlwaysInclude {
+				continue
+			}
+
+			sa, entry, err := buildSubAgent(cfg, spec, tools)
+			if err != nil {
+				return nil, err
+			}
+			subAgents = append(subAgents, sa)
+			routingEntries = append(routingEntries, entry)
 		}
-
-		a, err := llmagent.New(llmagent.Config{
-			Name:        spec.Name,
-			Description: desc,
-			Model:       cfg.Model,
-			Tools:       adkTools,
-			Instruction: instruction,
-		})
-		if err != nil {
-			return nil, fmt.Errorf("create %s agent: %w", spec.Name, err)
-		}
-
-		subAgents = append(subAgents, a)
-		routingEntries = append(routingEntries, buildRoutingEntry(spec, caps))
 	}
 
 	// Append remote A2A agents if configured.
@@ -113,13 +123,29 @@ func BuildAgentTree(cfg Config) (adk_agent.Agent, error) {
 		})
 	}
 
+	// Append P2P dynamic agents to routing table.
+	// These agents are invoked through p2p_invoke tool rather than direct delegation,
+	// but they appear in the routing table so the orchestrator can decide when to use them.
+	if cfg.DynamicAgents != nil {
+		for _, da := range cfg.DynamicAgents.AvailableAgents() {
+			routingEntries = append(routingEntries, routingEntry{
+				Name:         fmt.Sprintf("p2p:%s", da.Name),
+				Description:  fmt.Sprintf("%s (P2P remote agent, trust=%.2f)", da.Description, da.TrustScore),
+				Keywords:     nil,
+				Capabilities: da.Capabilities,
+				Accepts:      "Use p2p_invoke tool with peer DID: " + da.DID,
+				Returns:      "Remote tool execution results via P2P protocol",
+			})
+		}
+	}
+
 	maxRounds := cfg.MaxDelegationRounds
 	if maxRounds <= 0 {
 		maxRounds = 10
 	}
 
 	orchestratorInstruction := buildOrchestratorInstruction(
-		cfg.SystemPrompt, routingEntries, maxRounds, rs.Unmatched,
+		cfg.SystemPrompt, routingEntries, maxRounds, unmatchedTools,
 	)
 
 	orchestrator, err := llmagent.New(llmagent.Config{
@@ -134,6 +160,42 @@ func BuildAgentTree(cfg Config) (adk_agent.Agent, error) {
 	}
 
 	return orchestrator, nil
+}
+
+// buildSubAgent creates a single sub-agent from a spec and its assigned tools.
+func buildSubAgent(cfg Config, spec AgentSpec, tools []*agent.Tool) (adk_agent.Agent, routingEntry, error) {
+	var adkTools []adk_tool.Tool
+	if len(tools) > 0 {
+		var err error
+		adkTools, err = adaptTools(cfg.AdaptTool, tools)
+		if err != nil {
+			return nil, routingEntry{}, fmt.Errorf("adapt %s tools: %w", spec.Name, err)
+		}
+	}
+
+	caps := capabilityDescription(tools)
+	desc := spec.Description
+	if caps != "" {
+		desc = fmt.Sprintf("%s. Capabilities: %s", spec.Description, caps)
+	}
+
+	instruction := spec.Instruction
+	if cfg.SubAgentPrompt != nil {
+		instruction = cfg.SubAgentPrompt(spec.Name, spec.Instruction)
+	}
+
+	a, err := llmagent.New(llmagent.Config{
+		Name:        spec.Name,
+		Description: desc,
+		Model:       cfg.Model,
+		Tools:       adkTools,
+		Instruction: instruction,
+	})
+	if err != nil {
+		return nil, routingEntry{}, fmt.Errorf("create %s agent: %w", spec.Name, err)
+	}
+
+	return a, buildRoutingEntry(spec, caps), nil
 }
 
 // adaptTools converts a slice of internal agent tools to ADK tools using the provided adapter.

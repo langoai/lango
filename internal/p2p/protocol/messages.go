@@ -27,6 +27,9 @@ const (
 
 	// RequestToolInvokePaid invokes a paid tool on the remote agent.
 	RequestToolInvokePaid RequestType = "tool_invoke_paid"
+
+	// RequestContextShare shares scoped context with a team member.
+	RequestContextShare RequestType = "context_share"
 )
 
 // ResponseStatus identifies the status of an A2A response.
@@ -121,4 +124,10 @@ type PaidInvokePayload struct {
 	ToolName    string                 `json:"toolName"`
 	Params      map[string]interface{} `json:"params"`
 	PaymentAuth map[string]interface{} `json:"paymentAuth,omitempty"`
+}
+
+// ContextSharePayload is the payload for sharing scoped context with a team member.
+type ContextSharePayload struct {
+	TeamID  string                 `json:"teamId"`
+	Context map[string]interface{} `json:"context"`
 }

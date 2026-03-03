@@ -19,6 +19,9 @@ type AgentSpec struct {
 	Prefixes []string
 	// Keywords are routing hints for the orchestrator's decision protocol.
 	Keywords []string
+	// Capabilities are semantic ability descriptions for description-based routing.
+	// These supplement tool-derived capabilities with explicit domain labels.
+	Capabilities []string
 	// Accepts describes the expected input format.
 	Accepts string
 	// Returns describes the expected output format.
@@ -27,6 +30,9 @@ type AgentSpec struct {
 	CannotDo []string
 	// AlwaysInclude creates this agent even with zero tools (e.g. Planner).
 	AlwaysInclude bool
+	// SessionIsolation indicates this agent should use a child session
+	// instead of the parent session.
+	SessionIsolation bool
 }
 
 // agentSpecs is the ordered registry of all sub-agent specifications.
@@ -398,14 +404,56 @@ func capabilityDescription(tools []*agent.Tool) string {
 	return strings.Join(caps, ", ")
 }
 
+// DynamicToolSet is a map-based tool set keyed by agent name.
+// Unlike RoleToolSet, it supports arbitrary agent names from dynamic specs.
+type DynamicToolSet map[string][]*agent.Tool
+
+// PartitionToolsDynamic splits tools into agent-specific sets based on the
+// given specs. Each tool is assigned to the first spec whose prefixes match.
+// Tools with a "builtin_" prefix are skipped (orchestrator-only).
+// Unmatched tools are stored under the empty-string key.
+func PartitionToolsDynamic(tools []*agent.Tool, specs []AgentSpec) DynamicToolSet {
+	ds := make(DynamicToolSet, len(specs)+1)
+	for _, t := range tools {
+		if strings.HasPrefix(t.Name, "builtin_") {
+			continue
+		}
+		matched := false
+		for _, spec := range specs {
+			if matchesPrefix(t.Name, spec.Prefixes) {
+				ds[spec.Name] = append(ds[spec.Name], t)
+				matched = true
+				break
+			}
+		}
+		if !matched {
+			ds[""] = append(ds[""], t)
+		}
+	}
+	return ds
+}
+
+// Unmatched returns tools that matched no agent spec.
+func (ds DynamicToolSet) Unmatched() []*agent.Tool {
+	return ds[""]
+}
+
+// BuiltinSpecs returns a copy of the default built-in agent specifications.
+func BuiltinSpecs() []AgentSpec {
+	result := make([]AgentSpec, len(agentSpecs))
+	copy(result, agentSpecs)
+	return result
+}
+
 // routingEntry holds pre-formatted routing metadata for a single sub-agent.
 type routingEntry struct {
-	Name        string
-	Description string
-	Keywords    []string
-	Accepts     string
-	Returns     string
-	CannotDo    []string
+	Name         string
+	Description  string
+	Keywords     []string
+	Capabilities []string
+	Accepts      string
+	Returns      string
+	CannotDo     []string
 }
 
 // buildRoutingEntry creates a routing entry from an AgentSpec and its resolved capabilities.
@@ -414,14 +462,48 @@ func buildRoutingEntry(spec AgentSpec, caps string) routingEntry {
 	if caps != "" {
 		desc = fmt.Sprintf("%s. Capabilities: %s", spec.Description, caps)
 	}
-	return routingEntry{
-		Name:        spec.Name,
-		Description: desc,
-		Keywords:    spec.Keywords,
-		Accepts:     spec.Accepts,
-		Returns:     spec.Returns,
-		CannotDo:    spec.CannotDo,
+
+	// Merge explicit capabilities from spec with tool-derived capability string.
+	var mergedCaps []string
+	if len(spec.Capabilities) > 0 {
+		mergedCaps = append(mergedCaps, spec.Capabilities...)
 	}
+	if caps != "" {
+		for _, c := range strings.Split(caps, ", ") {
+			c = strings.TrimSpace(c)
+			if c != "" {
+				mergedCaps = append(mergedCaps, c)
+			}
+		}
+	}
+	// Deduplicate capabilities.
+	mergedCaps = dedup(mergedCaps)
+
+	return routingEntry{
+		Name:         spec.Name,
+		Description:  desc,
+		Keywords:     spec.Keywords,
+		Capabilities: mergedCaps,
+		Accepts:      spec.Accepts,
+		Returns:      spec.Returns,
+		CannotDo:     spec.CannotDo,
+	}
+}
+
+// dedup removes duplicate strings while preserving order.
+func dedup(items []string) []string {
+	if len(items) == 0 {
+		return nil
+	}
+	seen := make(map[string]struct{}, len(items))
+	result := make([]string, 0, len(items))
+	for _, item := range items {
+		if _, ok := seen[item]; !ok {
+			seen[item] = struct{}{}
+			result = append(result, item)
+		}
+	}
+	return result
 }
 
 // buildOrchestratorInstruction assembles the orchestrator prompt with routing table
@@ -438,6 +520,9 @@ func buildOrchestratorInstruction(basePrompt string, entries []routingEntry, max
 		fmt.Fprintf(&b, "\n### %s\n", e.Name)
 		fmt.Fprintf(&b, "- **Role**: %s\n", e.Description)
 		fmt.Fprintf(&b, "- **Keywords**: [%s]\n", strings.Join(e.Keywords, ", "))
+		if len(e.Capabilities) > 0 {
+			fmt.Fprintf(&b, "- **Capabilities**: [%s]\n", strings.Join(e.Capabilities, ", "))
+		}
 		fmt.Fprintf(&b, "- **Accepts**: %s\n", e.Accepts)
 		fmt.Fprintf(&b, "- **Returns**: %s\n", e.Returns)
 		if len(e.CannotDo) > 0 {
@@ -459,7 +544,10 @@ func buildOrchestratorInstruction(basePrompt string, entries []routingEntry, max
 Before delegating, follow these steps:
 0. ASSESS: Is this a simple conversational request (greeting, general knowledge, opinion, weather, math, small talk)? If yes, respond directly — no delegation needed. You ARE capable of answering general knowledge questions.
 1. CLASSIFY: Identify the domain of the request.
-2. MATCH: Compare keywords against the routing table.
+2. MATCH: Use a two-stage matching process:
+   a. **Keyword Match**: Compare request terms against each agent's Keywords list.
+   b. **Capability Match**: If no strong keyword match, compare the request intent against each agent's Capabilities list using semantic similarity.
+   c. Pick the agent with the strongest combined signal across both stages.
 3. SELECT: Choose the best-matching agent.
 4. VERIFY: Check the selected agent's "Cannot" list to ensure no conflict.
 5. DELEGATE: Transfer to the selected agent.

@@ -12,6 +12,7 @@ import (
 
 	"github.com/langoai/lango/internal/a2a"
 	"github.com/langoai/lango/internal/agent"
+	"github.com/langoai/lango/internal/agentmemory"
 	"github.com/langoai/lango/internal/approval"
 	"github.com/langoai/lango/internal/bootstrap"
 	"github.com/langoai/lango/internal/config"
@@ -34,8 +35,10 @@ func logger() *zap.SugaredLogger { return logging.App() }
 // New creates a new application instance from a bootstrap result.
 func New(boot *bootstrap.Result) (*App, error) {
 	cfg := boot.Config
+	bus := eventbus.New()
 	app := &App{
 		Config:   cfg,
+		EventBus: bus,
 		registry: lifecycle.NewRegistry(),
 	}
 
@@ -227,6 +230,17 @@ func New(boot *bootstrap.Result) (*App, error) {
 		catalog.Register("memory", mt)
 	}
 
+	// 5g'. Agent Memory tools (optional, per-agent persistent memory)
+	if cfg.AgentMemory.Enabled {
+		amStore := agentmemory.NewInMemoryStore()
+		app.AgentMemoryStore = amStore
+		amTools := buildAgentMemoryTools(amStore)
+		tools = append(tools, amTools...)
+		catalog.RegisterCategory(toolcatalog.Category{Name: "agent_memory", Description: "Per-agent persistent memory", ConfigKey: "agentMemory.enabled", Enabled: true})
+		catalog.Register("agent_memory", amTools)
+		logger().Info("agent memory tools enabled")
+	}
+
 	// 5h. Payment tools (optional)
 	pc := initPayment(cfg, store, app.Secrets)
 	var p2pc *p2pComponents
@@ -252,6 +266,9 @@ func New(boot *bootstrap.Result) (*App, error) {
 		p2pc = initP2P(cfg, pc.wallet, pc, boot.DBClient, app.Secrets, p2pBus)
 		if p2pc != nil {
 			app.P2PNode = p2pc.node
+			app.P2PAgentPool = p2pc.agentPool
+			app.P2PTeamCoordinator = p2pc.coordinator
+			app.P2PAgentProvider = p2pc.provider
 			// Wire P2P payment tool.
 			p2pTools := buildP2PTools(p2pc)
 			p2pTools = append(p2pTools, buildP2PPaymentTool(p2pc, pc)...)
@@ -311,6 +328,28 @@ func New(boot *bootstrap.Result) (*App, error) {
 	// 7. Gateway (created before agent so we can wire approval)
 	app.Gateway = initGateway(cfg, nil, app.Store, auth)
 
+	// 7b. Tool Execution Hooks
+	if cfg.Hooks.Enabled || cfg.Agent.MultiAgent {
+		hookRegistry := toolchain.NewHookRegistry()
+
+		// Register built-in hooks based on configuration.
+		if cfg.Hooks.SecurityFilter {
+			hookRegistry.RegisterPre(toolchain.NewSecurityFilterHook(cfg.Hooks.BlockedCommands))
+		}
+		if cfg.Hooks.AccessControl {
+			hookRegistry.RegisterPre(toolchain.NewAgentAccessControlHook(nil))
+		}
+		if cfg.Hooks.EventPublishing && bus != nil {
+			hookRegistry.RegisterPost(toolchain.NewEventBusHook(bus))
+		}
+
+		tools = toolchain.ChainAll(tools, toolchain.WithHooks(hookRegistry))
+		logger().Infow("tool hooks enabled",
+			"preHooks", len(hookRegistry.PreHooks()),
+			"postHooks", len(hookRegistry.PostHooks()),
+		)
+	}
+
 	// 8. Build composite approval provider and tool approval wrapper
 	composite := approval.NewCompositeProvider()
 	composite.Register(approval.NewGatewayProvider(app.Gateway))
@@ -350,7 +389,7 @@ func New(boot *bootstrap.Result) (*App, error) {
 	}
 
 	// 9. ADK Agent (scanner is passed for output-side secret scanning)
-	adkAgent, err := initAgent(context.Background(), sv, cfg, store, tools, kc, mc, ec, gc, scanner, registry, lc, catalog)
+	adkAgent, err := initAgent(context.Background(), sv, cfg, store, tools, kc, mc, ec, gc, scanner, registry, lc, catalog, p2pc)
 	if err != nil {
 		return nil, fmt.Errorf("create agent: %w", err)
 	}

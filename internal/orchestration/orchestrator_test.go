@@ -847,6 +847,203 @@ func TestAgentSpecs_InstructionStructure(t *testing.T) {
 	}
 }
 
+// --- PartitionToolsDynamic tests ---
+
+func TestPartitionToolsDynamic(t *testing.T) {
+	tests := []struct {
+		name          string
+		giveTools     []*agent.Tool
+		giveSpecs     []AgentSpec
+		wantPartition map[string][]string
+		wantUnmatched []string
+	}{
+		{
+			name: "basic partitioning with custom specs",
+			giveTools: []*agent.Tool{
+				newTestTool("api_call"),
+				newTestTool("api_list"),
+				newTestTool("db_query"),
+				newTestTool("db_insert"),
+				newTestTool("unknown_op"),
+			},
+			giveSpecs: []AgentSpec{
+				{Name: "api-agent", Prefixes: []string{"api_"}},
+				{Name: "db-agent", Prefixes: []string{"db_"}},
+			},
+			wantPartition: map[string][]string{
+				"api-agent": {"api_call", "api_list"},
+				"db-agent":  {"db_query", "db_insert"},
+			},
+			wantUnmatched: []string{"unknown_op"},
+		},
+		{
+			name: "builtin_ tools skipped",
+			giveTools: []*agent.Tool{
+				newTestTool("builtin_list"),
+				newTestTool("api_call"),
+			},
+			giveSpecs: []AgentSpec{
+				{Name: "api-agent", Prefixes: []string{"api_"}},
+			},
+			wantPartition: map[string][]string{
+				"api-agent": {"api_call"},
+			},
+		},
+		{
+			name:      "empty tools",
+			giveTools: nil,
+			giveSpecs: []AgentSpec{
+				{Name: "agent-a", Prefixes: []string{"a_"}},
+			},
+			wantPartition: map[string][]string{},
+		},
+		{
+			name: "first matching spec wins",
+			giveTools: []*agent.Tool{
+				newTestTool("search_web"),
+			},
+			giveSpecs: []AgentSpec{
+				{Name: "first", Prefixes: []string{"search_"}},
+				{Name: "second", Prefixes: []string{"search_"}},
+			},
+			wantPartition: map[string][]string{
+				"first": {"search_web"},
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := PartitionToolsDynamic(tt.giveTools, tt.giveSpecs)
+
+			for name, wantNames := range tt.wantPartition {
+				assert.Equal(t, wantNames, toolNames(got[name]), "agent %q tools", name)
+			}
+
+			assert.Equal(t, tt.wantUnmatched, toolNames(got.Unmatched()), "unmatched tools")
+		})
+	}
+}
+
+func TestBuiltinSpecs(t *testing.T) {
+	specs := BuiltinSpecs()
+
+	// Should return a copy of the built-in specs.
+	assert.Len(t, specs, len(agentSpecs))
+	for i, spec := range specs {
+		assert.Equal(t, agentSpecs[i].Name, spec.Name)
+	}
+
+	// Modifying returned slice should not affect original.
+	specs[0].Name = "modified"
+	assert.NotEqual(t, "modified", agentSpecs[0].Name)
+}
+
+func TestBuildAgentTree_WithCustomSpecs(t *testing.T) {
+	tools := []*agent.Tool{
+		newTestTool("api_call"),
+		newTestTool("db_query"),
+	}
+
+	customSpecs := []AgentSpec{
+		{
+			Name:         "api-handler",
+			Description:  "Handles API calls",
+			Instruction:  "## What You Do\nHandle API.\n## Input Format\nAPI request.\n## Output Format\nAPI response.\n## Constraints\nOnly API.\n## Escalation Protocol\nIf a task does not match your capabilities:\n1. Do NOT attempt to answer.\n2. IMMEDIATELY call transfer_to_agent with agent_name \"lango-orchestrator\".",
+			Prefixes:     []string{"api_"},
+			Keywords:     []string{"api", "call"},
+			Capabilities: []string{"REST API management", "HTTP requests"},
+			Accepts:      "API request",
+			Returns:      "API response",
+		},
+		{
+			Name:         "db-handler",
+			Description:  "Handles database operations",
+			Instruction:  "## What You Do\nHandle DB.\n## Input Format\nSQL query.\n## Output Format\nQuery result.\n## Constraints\nOnly DB.\n## Escalation Protocol\nIf a task does not match your capabilities:\n1. Do NOT attempt to answer.\n2. IMMEDIATELY call transfer_to_agent with agent_name \"lango-orchestrator\".",
+			Prefixes:     []string{"db_"},
+			Keywords:     []string{"database", "query"},
+			Capabilities: []string{"SQL queries", "database management"},
+			Accepts:      "SQL query",
+			Returns:      "Query result",
+		},
+	}
+
+	root, err := BuildAgentTree(Config{
+		Tools:        tools,
+		Model:        nil,
+		SystemPrompt: "test prompt",
+		AdaptTool:    stubAdapter,
+		Specs:        customSpecs,
+	})
+	require.NoError(t, err)
+	require.NotNil(t, root)
+
+	assert.Equal(t, "lango-orchestrator", root.Name())
+	assert.Len(t, root.SubAgents(), 2)
+
+	subNames := make([]string, len(root.SubAgents()))
+	for i, sa := range root.SubAgents() {
+		subNames[i] = sa.Name()
+	}
+	assert.Contains(t, subNames, "api-handler")
+	assert.Contains(t, subNames, "db-handler")
+}
+
+func TestBuildAgentTree_CustomSpecsAlwaysInclude(t *testing.T) {
+	customSpecs := []AgentSpec{
+		{
+			Name:          "thinker",
+			Description:   "Reasoning agent",
+			Instruction:   "Think.\n## What You Do\nThink.\n## Input Format\nProblem.\n## Output Format\nAnswer.\n## Constraints\nOnly think.\n## Escalation Protocol\nIf a task does not match:\n1. Call transfer_to_agent with agent_name \"lango-orchestrator\".",
+			Keywords:      []string{"think", "reason"},
+			AlwaysInclude: true,
+			Accepts:       "Problem",
+			Returns:       "Answer",
+		},
+	}
+
+	root, err := BuildAgentTree(Config{
+		Tools:        nil,
+		Model:        nil,
+		SystemPrompt: "test",
+		AdaptTool:    stubAdapter,
+		Specs:        customSpecs,
+	})
+	require.NoError(t, err)
+
+	assert.Len(t, root.SubAgents(), 1)
+	assert.Equal(t, "thinker", root.SubAgents()[0].Name())
+}
+
+func TestBuildOrchestratorInstruction_ContainsCapabilities(t *testing.T) {
+	entries := []routingEntry{
+		{
+			Name:         "api-handler",
+			Description:  "API operations",
+			Keywords:     []string{"api"},
+			Capabilities: []string{"REST API management", "HTTP requests"},
+			Accepts:      "API request",
+			Returns:      "API response",
+		},
+	}
+
+	got := buildOrchestratorInstruction("base", entries, 5, nil)
+
+	assert.Contains(t, got, "**Capabilities**")
+	assert.Contains(t, got, "REST API management")
+	assert.Contains(t, got, "HTTP requests")
+	assert.Contains(t, got, "Capability Match")
+}
+
+func TestBuildOrchestratorInstruction_CapabilityMatchStep(t *testing.T) {
+	got := buildOrchestratorInstruction("base", nil, 5, nil)
+
+	// Verify upgraded MATCH step mentions capability matching.
+	assert.Contains(t, got, "Keyword Match")
+	assert.Contains(t, got, "Capability Match")
+	assert.Contains(t, got, "semantic similarity")
+}
+
 // --- helpers ---
 
 // toolNames extracts names from a tool slice for assertions.
