@@ -128,6 +128,7 @@ const DefaultPaymentMethod = PaymentMethodDirectTransfer
 const (
 	PaymentMethodDirectTransfer PaymentMethod = "direct_transfer"
 	PaymentMethodX402V2         PaymentMethod = "x402_v2"
+	PaymentMethodP2pSettlement  PaymentMethod = "p2p_settlement"
 )
 
 func (pm PaymentMethod) String() string {
@@ -137,7 +138,7 @@ func (pm PaymentMethod) String() string {
 // PaymentMethodValidator is a validator for the "payment_method" field enum values. It is called by the builders before save.
 func PaymentMethodValidator(pm PaymentMethod) error {
 	switch pm {
-	case PaymentMethodDirectTransfer, PaymentMethodX402V2:
+	case PaymentMethodDirectTransfer, PaymentMethodX402V2, PaymentMethodP2pSettlement:
 		return nil
 	default:
 		return fmt.Errorf("paymenttx: invalid enum value for payment_method field: %q", pm)

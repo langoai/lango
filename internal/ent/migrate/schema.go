@@ -346,7 +346,7 @@ var (
 		{Name: "session_key", Type: field.TypeString, Nullable: true},
 		{Name: "purpose", Type: field.TypeString, Nullable: true},
 		{Name: "x402_url", Type: field.TypeString, Nullable: true},
-		{Name: "payment_method", Type: field.TypeEnum, Enums: []string{"direct_transfer", "x402_v2"}, Default: "direct_transfer"},
+		{Name: "payment_method", Type: field.TypeEnum, Enums: []string{"direct_transfer", "x402_v2", "p2p_settlement"}, Default: "direct_transfer"},
 		{Name: "error_message", Type: field.TypeString, Nullable: true},
 		{Name: "created_at", Type: field.TypeTime},
 		{Name: "updated_at", Type: field.TypeTime},
