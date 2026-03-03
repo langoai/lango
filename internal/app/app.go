@@ -15,6 +15,7 @@ import (
 	"github.com/langoai/lango/internal/approval"
 	"github.com/langoai/lango/internal/bootstrap"
 	"github.com/langoai/lango/internal/config"
+	"github.com/langoai/lango/internal/eventbus"
 	"github.com/langoai/lango/internal/lifecycle"
 	"github.com/langoai/lango/internal/logging"
 	"github.com/langoai/lango/internal/sandbox"
@@ -247,12 +248,14 @@ func New(boot *bootstrap.Result) (*App, error) {
 		catalog.Register("payment", pt)
 
 		// 5h''. P2P networking (optional, requires wallet)
-		p2pc = initP2P(cfg, pc.wallet, pc, boot.DBClient, app.Secrets)
+		p2pBus := eventbus.New()
+		p2pc = initP2P(cfg, pc.wallet, pc, boot.DBClient, app.Secrets, p2pBus)
 		if p2pc != nil {
 			app.P2PNode = p2pc.node
 			// Wire P2P payment tool.
 			p2pTools := buildP2PTools(p2pc)
 			p2pTools = append(p2pTools, buildP2PPaymentTool(p2pc, pc)...)
+			p2pTools = append(p2pTools, buildP2PPaidInvokeTool(p2pc, pc)...)
 			tools = append(tools, p2pTools...)
 			catalog.RegisterCategory(toolcatalog.Category{Name: "p2p", Description: "Peer-to-peer networking", ConfigKey: "p2p.enabled", Enabled: true})
 			catalog.Register("p2p", p2pTools)

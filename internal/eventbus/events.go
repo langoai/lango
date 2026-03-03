@@ -61,3 +61,15 @@ type MemoryGraphEvent struct {
 
 // EventName implements Event.
 func (e MemoryGraphEvent) EventName() string { return "memory.graph" }
+
+// ToolExecutionPaidEvent is published after a paid tool execution succeeds.
+// The settlement service subscribes to this event to initiate on-chain settlement.
+type ToolExecutionPaidEvent struct {
+	PeerDID      string
+	ToolName     string
+	Auth         interface{} // *eip3009.Authorization (interface to avoid import cycle)
+	SettlementID string      // non-empty for post-pay deferred entries
+}
+
+// EventName implements Event.
+func (e ToolExecutionPaidEvent) EventName() string { return "tool.execution.paid" }

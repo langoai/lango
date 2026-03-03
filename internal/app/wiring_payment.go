@@ -13,11 +13,12 @@ import (
 
 // paymentComponents holds optional blockchain payment components.
 type paymentComponents struct {
-	wallet  wallet.WalletProvider
-	service *payment.Service
-	limiter wallet.SpendingLimiter
-	secrets *security.SecretsStore
-	chainID int64
+	wallet    wallet.WalletProvider
+	service   *payment.Service
+	limiter   wallet.SpendingLimiter
+	secrets   *security.SecretsStore
+	rpcClient *ethclient.Client
+	chainID   int64
 }
 
 // initPayment creates the payment components if enabled.
@@ -93,11 +94,12 @@ func initPayment(cfg *config.Config, store session.Store, secrets *security.Secr
 	)
 
 	return &paymentComponents{
-		wallet:  wp,
-		service: svc,
-		limiter: limiter,
-		secrets: secrets,
-		chainID: cfg.Payment.Network.ChainID,
+		wallet:    wp,
+		service:   svc,
+		limiter:   limiter,
+		secrets:   secrets,
+		rpcClient: rpcClient,
+		chainID:   cfg.Payment.Network.ChainID,
 	}
 }
 

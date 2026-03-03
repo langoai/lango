@@ -11,6 +11,7 @@ import (
 	"github.com/libp2p/go-libp2p/core/network"
 	"go.uber.org/zap"
 
+	"github.com/langoai/lango/internal/eventbus"
 	"github.com/langoai/lango/internal/p2p/firewall"
 	"github.com/langoai/lango/internal/p2p/handshake"
 )
@@ -34,6 +35,7 @@ type SecurityEventTracker interface {
 // CardProvider returns the local agent card as a map.
 type CardProvider func() map[string]interface{}
 
+
 // PayGateChecker checks payment for a tool invocation.
 type PayGateChecker interface {
 	Check(peerDID, toolName string, payload map[string]interface{}) (PayGateResult, error)
@@ -45,13 +47,15 @@ const (
 	payGateStatusVerified        = "verified"
 	payGateStatusPaymentRequired = "payment_required"
 	payGateStatusInvalid         = "invalid"
+	payGateStatusPostPayApproved = "postpay_approved"
 )
 
 // PayGateResult represents the payment check outcome.
 type PayGateResult struct {
-	Status     string                 // payGateStatusFree, payGateStatusVerified, payGateStatusPaymentRequired, payGateStatusInvalid
-	Auth       interface{}            // the verified authorization (opaque to handler)
-	PriceQuote map[string]interface{} // price quote when payment required
+	Status       string                 // payGateStatusFree, payGateStatusVerified, payGateStatusPaymentRequired, payGateStatusInvalid, payGateStatusPostPayApproved
+	Auth         interface{}            // the verified authorization (opaque to handler)
+	PriceQuote   map[string]interface{} // price quote when payment required
+	SettlementID string                 // deferred settlement ID for post-pay
 }
 
 // Handler processes A2A-over-P2P messages on libp2p streams.
@@ -64,6 +68,7 @@ type Handler struct {
 	payGate        PayGateChecker
 	approvalFn     ToolApprovalFunc
 	securityEvents SecurityEventTracker
+	eventBus       *eventbus.Bus
 	localDID       string
 	logger         *zap.SugaredLogger
 }
@@ -116,6 +121,11 @@ func (h *Handler) SetSandboxExecutor(exec ToolExecutor) {
 // execution outcomes and triggering auto-invalidation on repeated failures.
 func (h *Handler) SetSecurityEvents(tracker SecurityEventTracker) {
 	h.securityEvents = tracker
+}
+
+// SetEventBus sets the event bus for post-execution event publishing.
+func (h *Handler) SetEventBus(bus *eventbus.Bus) {
+	h.eventBus = bus
 }
 
 // StreamHandler returns a libp2p stream handler for incoming A2A messages.
@@ -401,8 +411,10 @@ func (h *Handler) handleToolInvokePaid(ctx context.Context, req *Request, peerDI
 	}
 
 	// 2. Payment gate check.
+	var verifiedAuth interface{}
+	var settlementID string
 	if h.payGate != nil {
-		result, err := h.payGate.Check(peerDID, toolName, req.Payload)
+		pgResult, err := h.payGate.Check(peerDID, toolName, req.Payload)
 		if err != nil {
 			return &Response{
 				RequestID: req.RequestID,
@@ -412,12 +424,12 @@ func (h *Handler) handleToolInvokePaid(ctx context.Context, req *Request, peerDI
 			}
 		}
 
-		switch result.Status {
+		switch pgResult.Status {
 		case payGateStatusPaymentRequired:
 			return &Response{
 				RequestID: req.RequestID,
 				Status:    ResponseStatusPaymentRequired,
-				Result:    result.PriceQuote,
+				Result:    pgResult.PriceQuote,
 				Timestamp: time.Now(),
 			}
 		case payGateStatusInvalid:
@@ -427,7 +439,13 @@ func (h *Handler) handleToolInvokePaid(ctx context.Context, req *Request, peerDI
 				Error:     ErrInvalidPaymentAuth.Error(),
 				Timestamp: time.Now(),
 			}
-		case payGateStatusVerified, payGateStatusFree:
+		case payGateStatusPostPayApproved:
+			settlementID = pgResult.SettlementID
+			// Continue to execution — payment deferred.
+		case payGateStatusVerified:
+			verifiedAuth = pgResult.Auth
+			// Continue to execution.
+		case payGateStatusFree:
 			// Continue to execution.
 		}
 	}
@@ -493,6 +511,16 @@ func (h *Handler) handleToolInvokePaid(ctx context.Context, req *Request, peerDI
 
 	if h.securityEvents != nil {
 		h.securityEvents.RecordToolSuccess(peerDID)
+	}
+
+	// 4b. Publish settlement event for on-chain processing.
+	if h.eventBus != nil && (verifiedAuth != nil || settlementID != "") {
+		h.eventBus.Publish(eventbus.ToolExecutionPaidEvent{
+			PeerDID:      peerDID,
+			ToolName:     toolName,
+			Auth:         verifiedAuth,
+			SettlementID: settlementID,
+		})
 	}
 
 	// 5. Sanitize response through firewall.

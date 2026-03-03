@@ -36,7 +36,7 @@ type PaymentTx struct {
 	Purpose string `json:"purpose,omitempty"`
 	// URL that triggered X402 payment (if applicable)
 	X402URL string `json:"x402_url,omitempty"`
-	// How the payment was made: direct ERC-20 transfer or X402 V2 auto-payment
+	// How the payment was made: direct ERC-20 transfer, X402 V2, or P2P settlement
 	PaymentMethod paymenttx.PaymentMethod `json:"payment_method,omitempty"`
 	// Error details if transaction failed
 	ErrorMessage string `json:"error_message,omitempty"`

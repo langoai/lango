@@ -120,6 +120,27 @@ type P2PPricingConfig struct {
 
 	// ToolPrices maps tool names to their specific prices in USDC.
 	ToolPrices map[string]string `mapstructure:"toolPrices" json:"toolPrices,omitempty"`
+
+	// TrustThresholds configures trust-based payment tier thresholds.
+	TrustThresholds TrustThresholds `mapstructure:"trustThresholds" json:"trustThresholds"`
+
+	// Settlement configures on-chain settlement behavior.
+	Settlement SettlementConfig `mapstructure:"settlement" json:"settlement"`
+}
+
+// TrustThresholds defines score thresholds for payment tier routing.
+type TrustThresholds struct {
+	// PostPayMinScore is the minimum reputation score for post-pay eligibility (default: 0.8).
+	PostPayMinScore float64 `mapstructure:"postPayMinScore" json:"postPayMinScore"`
+}
+
+// SettlementConfig configures on-chain settlement parameters.
+type SettlementConfig struct {
+	// ReceiptTimeout is the maximum wait time for on-chain receipt confirmation (default: 2m).
+	ReceiptTimeout time.Duration `mapstructure:"receiptTimeout" json:"receiptTimeout"`
+
+	// MaxRetries is the maximum number of submission retries (default: 3).
+	MaxRetries int `mapstructure:"maxRetries" json:"maxRetries"`
 }
 
 // OwnerProtectionConfig configures owner data protection for P2P responses.

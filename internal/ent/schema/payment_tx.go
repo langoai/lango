@@ -49,9 +49,9 @@ func (PaymentTx) Fields() []ent.Field {
 			Optional().
 			Comment("URL that triggered X402 payment (if applicable)"),
 		field.Enum("payment_method").
-			Values("direct_transfer", "x402_v2").
+			Values("direct_transfer", "x402_v2", "p2p_settlement").
 			Default("direct_transfer").
-			Comment("How the payment was made: direct ERC-20 transfer or X402 V2 auto-payment"),
+			Comment("How the payment was made: direct ERC-20 transfer, X402 V2, or P2P settlement"),
 		field.String("error_message").
 			Optional().
 			Comment("Error details if transaction failed"),

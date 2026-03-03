@@ -9,6 +9,7 @@ import (
 
 	"github.com/langoai/lango/internal/config"
 	"github.com/langoai/lango/internal/ent"
+	"github.com/langoai/lango/internal/eventbus"
 	"github.com/langoai/lango/internal/p2p"
 	"github.com/langoai/lango/internal/p2p/discovery"
 	"github.com/langoai/lango/internal/p2p/firewall"
@@ -17,6 +18,7 @@ import (
 	"github.com/langoai/lango/internal/p2p/paygate"
 	p2pproto "github.com/langoai/lango/internal/p2p/protocol"
 	"github.com/langoai/lango/internal/p2p/reputation"
+	"github.com/langoai/lango/internal/p2p/settlement"
 	"github.com/langoai/lango/internal/p2p/zkp"
 	"github.com/langoai/lango/internal/p2p/zkp/circuits"
 	"github.com/langoai/lango/internal/payment/contracts"
@@ -41,7 +43,7 @@ type p2pComponents struct {
 }
 
 // initP2P creates the P2P networking components if enabled.
-func initP2P(cfg *config.Config, wp wallet.WalletProvider, pc *paymentComponents, dbClient *ent.Client, secrets *security.SecretsStore) *p2pComponents {
+func initP2P(cfg *config.Config, wp wallet.WalletProvider, pc *paymentComponents, dbClient *ent.Client, secrets *security.SecretsStore, bus *eventbus.Bus) *p2pComponents {
 	if !cfg.P2P.Enabled {
 		logger().Info("P2P networking disabled")
 		return nil
@@ -262,12 +264,29 @@ func initP2P(cfg *config.Config, wp wallet.WalletProvider, pc *paymentComponents
 			return "", true // free by default
 		}
 
+		// Build trust config from P2P pricing thresholds.
+		trustCfg := paygate.DefaultTrustConfig()
+		if cfg.P2P.Pricing.TrustThresholds.PostPayMinScore > 0 {
+			trustCfg.PostPayMinScore = cfg.P2P.Pricing.TrustThresholds.PostPayMinScore
+		}
+
+		// Wire reputation function for trust-based payment tiers.
+		var reputationFn paygate.ReputationFunc
+		if repStore != nil {
+			reputationFn = func(ctx context.Context, peerDID string) (float64, error) {
+				return repStore.GetScore(ctx, peerDID)
+			}
+		}
+
 		pg = paygate.New(paygate.Config{
-			PricingFn: pricingFn,
-			LocalAddr: walletAddr,
-			ChainID:   pc.chainID,
-			USDCAddr:  usdcAddr,
-			Logger:    pLogger,
+			PricingFn:    pricingFn,
+			ReputationFn: reputationFn,
+			TrustCfg:     trustCfg,
+			LocalAddr:    walletAddr,
+			ChainID:      pc.chainID,
+			USDCAddr:     usdcAddr,
+			RPCClient:    pc.rpcClient,
+			Logger:       pLogger,
 		})
 
 		// Wire PayGate to handler via adapter.
@@ -275,7 +294,36 @@ func initP2P(cfg *config.Config, wp wallet.WalletProvider, pc *paymentComponents
 		pLogger.Infow("P2P payment gate enabled",
 			"perQuery", cfg.P2P.Pricing.PerQuery,
 			"toolPrices", len(cfg.P2P.Pricing.ToolPrices),
+			"postPayMinScore", trustCfg.PostPayMinScore,
 		)
+
+		// Wire settlement service for on-chain payment processing.
+		if bus != nil && pc.rpcClient != nil && dbClient != nil {
+			receiptTimeout := cfg.P2P.Pricing.Settlement.ReceiptTimeout
+			if receiptTimeout <= 0 {
+				receiptTimeout = 2 * time.Minute
+			}
+			maxRetries := cfg.P2P.Pricing.Settlement.MaxRetries
+			if maxRetries <= 0 {
+				maxRetries = 3
+			}
+			settleSvc := settlement.New(settlement.Config{
+				Wallet:         wp,
+				RPCClient:      pc.rpcClient,
+				DBClient:       dbClient,
+				ChainID:        pc.chainID,
+				USDCAddr:       usdcAddr,
+				ReceiptTimeout: receiptTimeout,
+				MaxRetries:     maxRetries,
+				Logger:         pLogger,
+			})
+			if repStore != nil {
+				settleSvc.SetReputationRecorder(repStore)
+			}
+			settleSvc.Subscribe(bus)
+			handler.SetEventBus(bus)
+			pLogger.Info("P2P settlement service wired to event bus")
+		}
 	}
 
 	localCard := &discovery.GossipCard{
@@ -363,7 +411,8 @@ func (a *payGateAdapter) Check(peerDID, toolName string, payload map[string]inte
 		return p2pproto.PayGateResult{}, err
 	}
 	pgr := p2pproto.PayGateResult{
-		Status: string(result.Status),
+		Status:       string(result.Status),
+		SettlementID: result.SettlementID,
 	}
 	if result.Auth != nil {
 		pgr.Auth = result.Auth
