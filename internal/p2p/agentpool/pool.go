@@ -491,9 +491,10 @@ func (s *Selector) scoreAgent(a *Agent, requiredCaps []string) float64 {
 		availWeight = w.Health // legacy fallback
 	}
 	var availComponent float64
-	if a.Status == StatusHealthy {
+	switch a.Status {
+	case StatusHealthy:
 		availComponent = availWeight
-	} else if a.Status == StatusDegraded {
+	case StatusDegraded:
 		availComponent = availWeight * 0.5
 	}
 
