@@ -151,6 +151,10 @@ lango doctor [--fix] [--json]
 - Multi-agent configuration
 - A2A remote agent connectivity
 - Output scanning and PII detection settings
+- Tool hooks configuration
+- Agent registry health
+- Librarian status
+- Approval system status
 
 **Examples:**
 

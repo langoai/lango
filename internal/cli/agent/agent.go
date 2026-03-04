@@ -14,6 +14,8 @@ func NewAgentCmd(cfgLoader func() (*config.Config, error)) *cobra.Command {
 
 	cmd.AddCommand(newStatusCmd(cfgLoader))
 	cmd.AddCommand(newListCmd(cfgLoader))
+	cmd.AddCommand(newToolsCmd(cfgLoader))
+	cmd.AddCommand(newHooksCmd(cfgLoader))
 
 	return cmd
 }

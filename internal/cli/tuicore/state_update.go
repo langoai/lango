@@ -244,6 +244,18 @@ func (s *ConfigState) UpdateConfigFromForm(form *FormModel) {
 		// Multi-Agent
 		case "multi_agent":
 			s.Current.Agent.MultiAgent = f.Checked
+		case "max_delegation_rounds":
+			if i, err := strconv.Atoi(val); err == nil {
+				s.Current.Agent.MaxDelegationRounds = i
+			}
+		case "max_turns":
+			if i, err := strconv.Atoi(val); err == nil {
+				s.Current.Agent.MaxTurns = i
+			}
+		case "error_correction_enabled":
+			s.Current.Agent.ErrorCorrectionEnabled = boolPtr(f.Checked)
+		case "agents_dir":
+			s.Current.Agent.AgentsDir = val
 
 		// A2A Protocol
 		case "a2a_enabled":
@@ -473,6 +485,24 @@ func (s *ConfigState) UpdateConfigFromForm(form *FormModel) {
 			s.Current.Security.KMS.PKCS11.Pin = val
 		case "kms_pkcs11_key_label":
 			s.Current.Security.KMS.PKCS11.KeyLabel = val
+
+		// Hooks
+		case "hooks_enabled":
+			s.Current.Hooks.Enabled = f.Checked
+		case "hooks_security_filter":
+			s.Current.Hooks.SecurityFilter = f.Checked
+		case "hooks_access_control":
+			s.Current.Hooks.AccessControl = f.Checked
+		case "hooks_event_publishing":
+			s.Current.Hooks.EventPublishing = f.Checked
+		case "hooks_knowledge_save":
+			s.Current.Hooks.KnowledgeSave = f.Checked
+		case "hooks_blocked_commands":
+			s.Current.Hooks.BlockedCommands = splitCSV(val)
+
+		// Agent Memory
+		case "agent_memory_enabled":
+			s.Current.AgentMemory.Enabled = f.Checked
 
 		// Librarian
 		case "lib_enabled":

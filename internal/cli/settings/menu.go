@@ -92,6 +92,7 @@ func NewMenuModel() MenuModel {
 					{"tools", "Tools", "Exec, Browser, Filesystem"},
 					{"multi_agent", "Multi-Agent", "Orchestration mode"},
 					{"a2a", "A2A Protocol", "Agent-to-Agent, remote agents"},
+					{"hooks", "Hooks", "Tool execution hooks, security filter"},
 				},
 			},
 			{
@@ -103,6 +104,7 @@ func NewMenuModel() MenuModel {
 					{"embedding", "Embedding & RAG", "Provider, Model, RAG settings"},
 					{"graph", "Graph Store", "Knowledge graph, GraphRAG settings"},
 					{"librarian", "Librarian", "Proactive knowledge extraction"},
+					{"agent_memory", "Agent Memory", "Per-agent persistent memory"},
 				},
 			},
 			{

@@ -15,6 +15,8 @@ func NewMemoryCmd(cfgLoader func() (*config.Config, error)) *cobra.Command {
 	cmd.AddCommand(newListCmd(cfgLoader))
 	cmd.AddCommand(newStatusCmd(cfgLoader))
 	cmd.AddCommand(newClearCmd(cfgLoader))
+	cmd.AddCommand(newAgentsCmd(cfgLoader))
+	cmd.AddCommand(newAgentCmd(cfgLoader))
 
 	return cmd
 }

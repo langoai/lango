@@ -37,6 +37,7 @@ func NewPaymentCmd(bootLoader func() (*bootstrap.Result, error)) *cobra.Command 
 	cmd.AddCommand(newLimitsCmd(bootLoader))
 	cmd.AddCommand(newInfoCmd(bootLoader))
 	cmd.AddCommand(newSendCmd(bootLoader))
+	cmd.AddCommand(newX402Cmd(bootLoader))
 
 	return cmd
 }

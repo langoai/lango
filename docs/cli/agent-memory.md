@@ -59,7 +59,7 @@ lango agent list [--json] [--check]
 | `--json` | bool | `false` | Output as JSON |
 | `--check` | bool | `false` | Test connectivity to remote agents |
 
-**Local agents** are always listed regardless of multi-agent configuration:
+**Local agents** are always listed regardless of multi-agent configuration. This includes built-in agents, embedded default agents, and user-defined agents from `agent.agentsDir`:
 
 | Agent | Description |
 |-------|-------------|
@@ -87,6 +87,60 @@ Use `--check` to verify remote agent connectivity:
 ```bash
 $ lango agent list --check
 # Remote agents will show "ok", "unreachable", or HTTP status codes
+```
+
+---
+
+### lango agent tools
+
+Show tool-to-agent assignments. Displays how tools are partitioned across sub-agents in multi-agent mode.
+
+```
+lango agent tools [--json]
+```
+
+| Flag | Type | Default | Description |
+|------|------|---------|-------------|
+| `--json` | bool | `false` | Output as JSON |
+
+**Example:**
+
+```bash
+$ lango agent tools
+AGENT           TOOLS
+operator        exec_shell, exec_command, fs_read, fs_write, fs_delete, skill_run
+navigator       browser_navigate, browser_click, browser_type, browser_screenshot
+vault           crypto_encrypt, crypto_decrypt, secrets_set, payment_send
+librarian       search_knowledge, rag_query, graph_traverse, save_knowledge
+automator       cron_add, cron_list, bg_submit, workflow_run
+chronicler      memory_observe, memory_reflect, memory_recall
+(unmatched)     custom_tool_1, custom_tool_2
+```
+
+---
+
+### lango agent hooks
+
+Show registered tool hooks (middleware) in the tool execution chain.
+
+```
+lango agent hooks [--json]
+```
+
+| Flag | Type | Default | Description |
+|------|------|---------|-------------|
+| `--json` | bool | `false` | Output as JSON |
+
+**Example:**
+
+```bash
+$ lango agent hooks
+HOOK                    TYPE          STATUS
+security_filter         pre-execute   active
+approval_gate           pre-execute   active
+learning_observer       post-execute  active
+knowledge_saver         post-execute  active
+event_publisher         post-execute  active
 ```
 
 ---
@@ -313,3 +367,133 @@ Cleared all triples from the knowledge graph.
 
 !!! danger
     This operation is irreversible. All graph data will be permanently deleted.
+
+---
+
+### lango graph add
+
+Add a triple to the knowledge graph.
+
+```
+lango graph add --subject <s> --predicate <p> --object <o>
+```
+
+| Flag | Type | Default | Description |
+|------|------|---------|-------------|
+| `--subject` | string | *required* | Triple subject |
+| `--predicate` | string | *required* | Triple predicate (relationship) |
+| `--object` | string | *required* | Triple object |
+
+**Example:**
+
+```bash
+$ lango graph add --subject "Go" --predicate "is_a" --object "programming_language"
+Triple added: Go → is_a → programming_language
+```
+
+---
+
+### lango graph export
+
+Export graph data to a file.
+
+```
+lango graph export <file> [--format <format>]
+```
+
+| Argument | Required | Description |
+|----------|----------|-------------|
+| `file` | Yes | Output file path |
+
+| Flag | Type | Default | Description |
+|------|------|---------|-------------|
+| `--format` | string | `json` | Export format: `json` or `ntriples` |
+
+**Example:**
+
+```bash
+$ lango graph export ./graph-backup.json
+Exported 1523 triples to ./graph-backup.json
+```
+
+---
+
+### lango graph import
+
+Import graph data from a file.
+
+```
+lango graph import <file> [--format <format>]
+```
+
+| Argument | Required | Description |
+|----------|----------|-------------|
+| `file` | Yes | Input file path |
+
+| Flag | Type | Default | Description |
+|------|------|---------|-------------|
+| `--format` | string | `json` | Import format: `json` or `ntriples` |
+
+**Example:**
+
+```bash
+$ lango graph import ./graph-backup.json
+Imported 1523 triples from ./graph-backup.json
+```
+
+---
+
+## Agent Memory Commands
+
+Manage per-agent persistent memory. Agent memory enables cross-session context retention for individual sub-agents. Requires `agentMemory.enabled: true`.
+
+### lango memory agents
+
+List all agents that have persistent memory entries.
+
+```
+lango memory agents [--json]
+```
+
+| Flag | Type | Default | Description |
+|------|------|---------|-------------|
+| `--json` | bool | `false` | Output as JSON |
+
+**Example:**
+
+```bash
+$ lango memory agents
+AGENT           ENTRIES  LAST UPDATED
+librarian       45       2026-03-01 14:30
+operator        23       2026-03-01 12:15
+navigator       12       2026-02-28 09:00
+```
+
+---
+
+### lango memory agent
+
+Show memory entries for a specific agent.
+
+```
+lango memory agent <name> [--limit N] [--json]
+```
+
+| Argument | Required | Description |
+|----------|----------|-------------|
+| `name` | Yes | Agent name |
+
+| Flag | Type | Default | Description |
+|------|------|---------|-------------|
+| `--limit` | int | `20` | Maximum entries to show |
+| `--json` | bool | `false` | Output as JSON |
+
+**Example:**
+
+```bash
+$ lango memory agent librarian
+ID        CONTENT                                              USES  CREATED
+a1b2c3d4  User prefers concise code examples in Go             8     2026-02-20 14:30
+e5f6g7h8  Project uses BoltDB for graph storage                5     2026-02-22 10:15
+i9j0k1l2  User works with microservices architecture           3     2026-02-25 16:45
+```

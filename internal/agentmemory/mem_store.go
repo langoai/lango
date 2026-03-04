@@ -197,6 +197,36 @@ func (s *InMemoryStore) Prune(agentName string, minConfidence float64) (int, err
 	return pruned, nil
 }
 
+func (s *InMemoryStore) ListAgentNames() ([]string, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	names := make([]string, 0, len(s.entries))
+	for name := range s.entries {
+		if len(s.entries[name]) > 0 {
+			names = append(names, name)
+		}
+	}
+	return names, nil
+}
+
+func (s *InMemoryStore) ListAll(agentName string) ([]*Entry, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	agentMap := s.entries[agentName]
+	if agentMap == nil {
+		return nil, nil
+	}
+
+	results := make([]*Entry, 0, len(agentMap))
+	for _, e := range agentMap {
+		clone := *e
+		results = append(results, &clone)
+	}
+	return results, nil
+}
+
 // matchesSearch returns true if the entry matches the given search options.
 func matchesSearch(e *Entry, opts SearchOptions) bool {
 	if opts.Scope != "" && e.Scope != opts.Scope {

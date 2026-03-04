@@ -23,6 +23,12 @@ type Store interface {
 
 	// Prune removes entries below a confidence threshold.
 	Prune(agentName string, minConfidence float64) (int, error)
+
+	// ListAgentNames returns the names of all agents that have stored memories.
+	ListAgentNames() ([]string, error)
+
+	// ListAll returns all entries for a given agent.
+	ListAll(agentName string) ([]*Entry, error)
 }
 
 // SearchOptions configures a memory search query.
