@@ -1,3 +1,5 @@
+## MODIFIED Requirements
+
 ### Requirement: Agent name context keys
 The `ctxkeys` package SHALL provide `WithAgentName(ctx, name)` and `AgentNameFromContext(ctx)` functions for propagating agent identity through Go context. The `toolchain` package SHALL delegate its `WithAgentName` and `AgentNameFromContext` functions to the `ctxkeys` canonical implementations, ensuring a single context key is used across the entire codebase.
 
@@ -16,10 +18,3 @@ The `ctxkeys` package SHALL provide `WithAgentName(ctx, name)` and `AgentNameFro
 #### Scenario: Cross-package context key compatibility
 - **WHEN** `ctxkeys.WithAgentName` sets a name on a context
 - **THEN** `toolchain.AgentNameFromContext` SHALL return the same name
-
-### Requirement: ADK tool adapter integration
-The ADK tool adapter SHALL inject the current agent name into the Go context before tool execution, making it available to hooks and middleware.
-
-#### Scenario: Agent name available in tool context
-- **WHEN** a tool is executed via the ADK adapter within a sub-agent
-- **THEN** the agent name SHALL be available via AgentNameFromContext in the tool's context

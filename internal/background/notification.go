@@ -5,6 +5,8 @@ import (
 	"fmt"
 
 	"go.uber.org/zap"
+
+	"github.com/langoai/lango/internal/toolchain"
 )
 
 // ChannelNotifier sends notifications to communication channels.
@@ -109,8 +111,5 @@ func formatNotification(snap TaskSnapshot) string {
 }
 
 func truncate(s string, maxLen int) string {
-	if len(s) <= maxLen {
-		return s
-	}
-	return s[:maxLen] + "..."
+	return toolchain.Truncate(s, maxLen)
 }

@@ -55,7 +55,7 @@ func TestCheck_MediumTrust_Prepay(t *testing.T) {
 
 func TestCheck_ExactThreshold_Prepay(t *testing.T) {
 	repFn := func(ctx context.Context, peerDID string) (float64, error) {
-		return 0.8, nil // exactly at threshold — NOT post-pay (must be strictly greater)
+		return DefaultPostPayThreshold, nil // exactly at threshold — NOT post-pay (must be strictly greater)
 	}
 	gate := testGateWithReputation(paidPricingFn, repFn, DefaultTrustConfig())
 

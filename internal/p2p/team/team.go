@@ -12,6 +12,7 @@ import (
 // Sentinel errors for team operations.
 var (
 	ErrTeamFull       = errors.New("team is at maximum capacity")
+	ErrBudgetExceeded = errors.New("team budget exceeded")
 	ErrAlreadyMember  = errors.New("agent is already a team member")
 	ErrNotMember      = errors.New("agent is not a team member")
 	ErrTeamDisbanded  = errors.New("team has been disbanded")
@@ -133,14 +134,30 @@ func (t *Team) GetMember(did string) *Member {
 	return t.members[did]
 }
 
-// Members returns all current members.
+// Clone returns a deep copy of the Member.
+func (m *Member) Clone() *Member {
+	c := *m
+	if len(m.Capabilities) > 0 {
+		c.Capabilities = make([]string, len(m.Capabilities))
+		copy(c.Capabilities, m.Capabilities)
+	}
+	if len(m.Metadata) > 0 {
+		c.Metadata = make(map[string]string, len(m.Metadata))
+		for k, v := range m.Metadata {
+			c.Metadata[k] = v
+		}
+	}
+	return &c
+}
+
+// Members returns copies of all current members (safe for concurrent use).
 func (t *Team) Members() []*Member {
 	t.mu.RLock()
 	defer t.mu.RUnlock()
 
 	result := make([]*Member, 0, len(t.members))
 	for _, m := range t.members {
-		result = append(result, m)
+		result = append(result, m.Clone())
 	}
 	return result
 }
@@ -167,13 +184,13 @@ func (t *Team) ActiveMembers() []*Member {
 	return result
 }
 
-// AddSpend adds to the team's spent total. Returns ErrTeamFull if budget is exceeded.
+// AddSpend adds to the team's spent total. Returns ErrBudgetExceeded if budget is exceeded.
 func (t *Team) AddSpend(amount float64) error {
 	t.mu.Lock()
 	defer t.mu.Unlock()
 
 	if t.Budget > 0 && t.Spent+amount > t.Budget {
-		return ErrTeamFull
+		return ErrBudgetExceeded
 	}
 	t.Spent += amount
 	return nil

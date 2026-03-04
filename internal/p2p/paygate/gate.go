@@ -15,6 +15,8 @@ import (
 
 	"github.com/langoai/lango/internal/payment/contracts"
 	"github.com/langoai/lango/internal/payment/eip3009"
+
+	// wallet is imported for ParseUSDC delegation and currency constants.
 	"github.com/langoai/lango/internal/wallet"
 )
 
@@ -222,24 +224,9 @@ func (g *Gate) BuildQuote(toolName, price string) *PriceQuote {
 	}
 }
 
-// ParseUSDC converts a decimal USDC string (e.g. "0.50") into the smallest
-// unit (*big.Int with 6 decimals, e.g. 500000).
-func ParseUSDC(amount string) (*big.Int, error) {
-	rat := new(big.Rat)
-	if _, ok := rat.SetString(amount); !ok {
-		return nil, fmt.Errorf("invalid USDC amount: %q", amount)
-	}
-
-	// Multiply by 10^6.
-	multiplier := new(big.Rat).SetInt(new(big.Int).Exp(big.NewInt(10), big.NewInt(6), nil))
-	rat.Mul(rat, multiplier)
-
-	if !rat.IsInt() {
-		return nil, fmt.Errorf("USDC amount %q exceeds 6 decimal places", amount)
-	}
-
-	return rat.Num(), nil
-}
+// ParseUSDC delegates to wallet.ParseUSDC. Kept as a package-level alias for
+// backward compatibility within the paygate package.
+var ParseUSDC = wallet.ParseUSDC
 
 // parseAuthorization converts a JSON-decoded map into an eip3009.Authorization.
 func parseAuthorization(m map[string]interface{}) (*eip3009.Authorization, error) {

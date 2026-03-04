@@ -418,14 +418,10 @@ func (a *Agent) runAndCollectOnce(ctx context.Context, sessionID, input string) 
 	return b.String(), nil
 }
 
-// rejectPattern matches the sub-agent [REJECT] text protocol.
-// Used as a safety net when a sub-agent emits [REJECT] text instead of
-// calling transfer_to_agent (e.g. prompt not followed).
-var rejectPattern = regexp.MustCompile(`\[REJECT\]`)
-
 // containsRejectPattern reports whether the text contains a [REJECT] marker.
+// Uses strings.Contains for efficiency since the pattern is a literal string.
 func containsRejectPattern(text string) bool {
-	return rejectPattern.MatchString(text)
+	return strings.Contains(text, "[REJECT]")
 }
 
 // truncate returns the first n runes of s, appending "..." if truncated.

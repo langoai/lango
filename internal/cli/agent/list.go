@@ -10,6 +10,7 @@ import (
 
 	"github.com/langoai/lango/internal/agentregistry"
 	"github.com/langoai/lango/internal/config"
+	"github.com/langoai/lango/internal/toolchain"
 	"github.com/spf13/cobra"
 )
 
@@ -139,10 +140,7 @@ func newListCmd(cfgLoader func() (*config.Config, error)) *cobra.Command {
 }
 
 func truncate(s string, max int) string {
-	if len(s) <= max {
-		return s
-	}
-	return s[:max-3] + "..."
+	return toolchain.Truncate(s, max)
 }
 
 func agentSourceLabel(source agentregistry.AgentSource) string {

@@ -1,6 +1,10 @@
 package toolchain
 
-import "context"
+import (
+	"context"
+
+	"github.com/langoai/lango/internal/ctxkeys"
+)
 
 // HookContext provides metadata about the current tool execution to hooks.
 type HookContext struct {
@@ -44,20 +48,9 @@ type PostToolHook interface {
 	Post(ctx HookContext, result interface{}, toolErr error) error
 }
 
-// contextKey is a private type to avoid collisions with other packages.
-type contextKey string
+// WithAgentName delegates to ctxkeys.WithAgentName so that a single canonical
+// context key is used across the entire codebase.
+var WithAgentName = ctxkeys.WithAgentName
 
-const agentNameCtxKey contextKey = "toolchain.agent_name"
-
-// WithAgentName sets the agent name in context (called by ADK adapter).
-func WithAgentName(ctx context.Context, name string) context.Context {
-	return context.WithValue(ctx, agentNameCtxKey, name)
-}
-
-// AgentNameFromContext extracts the agent name from context.
-func AgentNameFromContext(ctx context.Context) string {
-	if v, ok := ctx.Value(agentNameCtxKey).(string); ok {
-		return v
-	}
-	return ""
-}
+// AgentNameFromContext delegates to ctxkeys.AgentNameFromContext.
+var AgentNameFromContext = ctxkeys.AgentNameFromContext

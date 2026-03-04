@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"time"
 
@@ -109,11 +110,11 @@ func New(boot *bootstrap.Result) (*App, error) {
 	// Register base tools (exec, fs, browser) all at once.
 	for _, t := range tools {
 		switch {
-		case len(t.Name) >= 4 && t.Name[:4] == "exec":
+		case strings.HasPrefix(t.Name, "exec"):
 			catalog.Register("exec", []*agent.Tool{t})
-		case len(t.Name) >= 3 && t.Name[:3] == "fs_":
+		case strings.HasPrefix(t.Name, "fs_"):
 			catalog.Register("filesystem", []*agent.Tool{t})
-		case len(t.Name) >= 8 && t.Name[:8] == "browser_":
+		case strings.HasPrefix(t.Name, "browser_"):
 			catalog.Register("browser", []*agent.Tool{t})
 		}
 	}
@@ -262,8 +263,9 @@ func New(boot *bootstrap.Result) (*App, error) {
 		catalog.Register("payment", pt)
 
 		// 5h''. P2P networking (optional, requires wallet)
-		p2pBus := eventbus.New()
-		p2pc = initP2P(cfg, pc.wallet, pc, boot.DBClient, app.Secrets, p2pBus)
+		// Use the single global bus so settlement and other P2P subscribers
+		// receive tool execution events published by EventBusHook.
+		p2pc = initP2P(cfg, pc.wallet, pc, boot.DBClient, app.Secrets, bus)
 		if p2pc != nil {
 			app.P2PNode = p2pc.node
 			app.P2PAgentPool = p2pc.agentPool
@@ -389,7 +391,21 @@ func New(boot *bootstrap.Result) (*App, error) {
 	}
 
 	// 9. ADK Agent (scanner is passed for output-side secret scanning)
-	adkAgent, err := initAgent(context.Background(), sv, cfg, store, tools, kc, mc, ec, gc, scanner, registry, lc, catalog, p2pc)
+	adkAgent, err := initAgent(context.Background(), &agentDeps{
+		sv:      sv,
+		cfg:     cfg,
+		store:   store,
+		tools:   tools,
+		kc:      kc,
+		mc:      mc,
+		ec:      ec,
+		gc:      gc,
+		scanner: scanner,
+		sr:      registry,
+		lc:      lc,
+		catalog: catalog,
+		p2pc:    p2pc,
+	})
 	if err != nil {
 		return nil, fmt.Errorf("create agent: %w", err)
 	}
