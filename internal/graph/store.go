@@ -72,6 +72,9 @@ type Store interface {
 	// PredicateStats returns the number of triples for each predicate type.
 	PredicateStats(ctx context.Context) (map[string]int, error)
 
+	// AllTriples returns every triple in the store.
+	AllTriples(ctx context.Context) ([]Triple, error)
+
 	// ClearAll removes all triples from the store.
 	ClearAll(ctx context.Context) error
 

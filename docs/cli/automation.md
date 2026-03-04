@@ -351,3 +351,40 @@ e5f6g7h8  Data Migration        cancelled  2/5
 i9j0k1l2  Weekly Summary        failed     1/4
 m3n4o5p6  Daily Report Pipeline completed  3/3
 ```
+
+---
+
+### lango workflow validate
+
+Validate a workflow YAML file without executing it. Checks syntax, step dependencies, and DAG structure for cycles.
+
+```
+lango workflow validate <file.flow.yaml>
+```
+
+| Argument | Required | Description |
+|----------|----------|-------------|
+| `file.flow.yaml` | Yes | Path to the workflow YAML file to validate |
+
+**Example:**
+
+```bash
+$ lango workflow validate ./daily-report.flow.yaml
+Workflow: Daily Report Pipeline
+  Steps:    3
+  Schedule: 0 9 * * *
+  Valid:    true
+
+Step Dependencies:
+  fetch-data     → (none)
+  analyze        → fetch-data
+  report         → analyze
+
+$ lango workflow validate ./broken.flow.yaml
+Validation failed:
+  - Step "report" depends on unknown step "nonexistent"
+  - Cycle detected: analyze → report → analyze
+```
+
+!!! tip
+    Run `lango workflow validate` before `lango workflow run` to catch structural issues early.

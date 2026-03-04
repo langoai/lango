@@ -240,6 +240,65 @@ The `ChildSessionServiceAdapter` manages the fork/merge lifecycle. A `Summarizer
 
     When `multiAgent` is `false` (default), a single monolithic agent handles all tasks with all tools. The multi-agent mode trades some latency (orchestrator reasoning + delegation) for better task specialization and reduced context pollution.
 
+## Agent Registry
+
+The `AgentRegistry` manages agent definitions from multiple sources with a priority-based loading system.
+
+### Registry Sources
+
+| Source | Priority | Description |
+|--------|----------|-------------|
+| `SourceBuiltin` | 0 | Hardcoded agents (operator, navigator, vault, etc.) |
+| `SourceEmbedded` | 1 | Default agents from `embed.FS` (bundled `defaults/` directory) |
+| `SourceUser` | 2 | User-defined agents from `~/.lango/agents/` |
+| `SourceRemote` | 3 | Agents loaded from P2P network |
+
+The registry provides thread-safe concurrent access (`sync.RWMutex`) and supports:
+- `Register(def)` — Add or overwrite an agent definition
+- `Get(name)` — Retrieve a specific agent
+- `Active()` — Return all agents with `status: active`, sorted by name
+- `All()` — Return all agents in insertion order
+- `Specs()` — Convert active agents to orchestration format
+- `LoadFromStore(store)` — Bulk load from a `Store` implementation
+
+### File Store
+
+The `FileStore` loads agent definitions from a directory. Each agent resides in a subdirectory containing an `AGENT.md` file. See [AGENT.md File Format](agent-format.md) for the file specification.
+
+### Embedded Store
+
+The `EmbeddedStore` loads default agent definitions bundled in the binary via Go's `embed.FS`. These serve as fallback definitions when no user-defined agents are present.
+
+## Tool Hooks
+
+Tool hooks provide a middleware chain for tool execution, enabling cross-cutting concerns like security filtering, access control, and learning.
+
+### Middleware Chain
+
+Tools pass through a middleware chain before and after execution:
+
+```
+Request ──► SecurityFilter ──► ApprovalGate ──► Execute ──► LearningObserver ──► KnowledgeSaver ──► EventPublisher ──► Response
+```
+
+### Hook Types
+
+| Hook | Phase | Description |
+|------|-------|-------------|
+| `SecurityFilter` | Pre-execute | Filters dangerous tools and applies PII redaction |
+| `ApprovalGate` | Pre-execute | Routes to the approval system for sensitive tools |
+| `LearningObserver` | Post-execute | Records tool results for the learning engine |
+| `KnowledgeSaver` | Post-execute | Saves extracted knowledge to the knowledge store |
+| `EventPublisher` | Post-execute | Publishes tool events to the event bus |
+| `BrowserRecovery` | Post-execute | Handles browser tool error recovery |
+
+### Configuration
+
+Hooks are automatically wired based on enabled features:
+- Learning hooks require `knowledge.enabled: true`
+- Approval hooks require `security.interceptor.enabled: true`
+- Event hooks require the event bus to be initialized
+
 ## CLI Commands
 
 ### Agent Status
@@ -257,3 +316,19 @@ lango agent list
 ```
 
 Lists all active sub-agents with their roles, tool counts, and capabilities.
+
+### Agent Tools
+
+```bash
+lango agent tools
+```
+
+Shows tool-to-agent assignments in multi-agent mode.
+
+### Agent Hooks
+
+```bash
+lango agent hooks
+```
+
+Shows registered tool hooks in the middleware chain.

@@ -431,6 +431,11 @@ lango p2p session revoke-all                    # Revoke all sessions
 lango p2p sandbox status                        # Show sandbox status
 lango p2p sandbox test                          # Run sandbox smoke test
 lango p2p sandbox cleanup                       # Remove orphaned containers
+lango p2p team list                             # List active P2P teams
+lango p2p team status <id>                      # Show team details
+lango p2p team disband <id>                     # Disband an active team
+lango p2p zkp status                            # Show ZKP configuration
+lango p2p zkp circuits                          # List ZKP circuits
 ```
 
 See the [P2P CLI Reference](../cli/p2p.md) for detailed command documentation.

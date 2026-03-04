@@ -156,3 +156,38 @@ Payment Submitted
 
 !!! tip
     Use `--force` for non-interactive environments. Without it, the command requires confirmation and fails in non-interactive terminals.
+
+---
+
+## lango payment x402
+
+Show X402 auto-pay protocol configuration and status. The X402 protocol enables automatic payment for HTTP 402 (Payment Required) responses using the Coinbase SDK and EIP-3009 signing.
+
+```
+lango payment x402 [--json]
+```
+
+| Flag | Type | Default | Description |
+|------|------|---------|-------------|
+| `--json` | bool | `false` | Output as JSON |
+
+**Example:**
+
+```bash
+$ lango payment x402
+X402 Auto-Pay Configuration
+  Auto-Intercept:    enabled
+  Max Auto-Pay:      1.00 USDC
+  Network:           Base Sepolia (chain 84532)
+  Wallet Address:    0x1234...abcd
+```
+
+When X402 is disabled:
+
+```bash
+$ lango payment x402
+X402 Auto-Pay Configuration
+  Auto-Intercept:    disabled
+```
+
+See the [X402 Protocol](../payments/x402.md) documentation for details on the payment protocol.

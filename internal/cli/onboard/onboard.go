@@ -125,4 +125,9 @@ func printNextSteps(profileName string) {
 	fmt.Println("\n  Profile management:")
 	fmt.Println("     lango config list    \u2014 list all profiles")
 	fmt.Println("     lango config use     \u2014 switch active profile")
+
+	fmt.Println("\n  Advanced features (optional):")
+	fmt.Println("     Agent Memory    \u2014 enable per-agent persistent memory via lango settings > Agent Memory")
+	fmt.Println("     Tool Hooks      \u2014 configure tool middleware (learning, approval) via lango settings > Security")
+	fmt.Println("     Librarian       \u2014 enable proactive knowledge extraction via lango settings > Librarian")
 }

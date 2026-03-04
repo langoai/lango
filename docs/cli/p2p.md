@@ -425,3 +425,133 @@ lango p2p pricing --tool "knowledge_search"
 # Output as JSON
 lango p2p pricing --json
 ```
+
+---
+
+## lango p2p team
+
+Manage P2P teams — task-scoped collaboration groups between agents across the network. See the [P2P Teams](../features/p2p-network.md#p2p-team-coordination) section for details.
+
+### lango p2p team list
+
+List all active P2P teams.
+
+```
+lango p2p team list [--json]
+```
+
+| Flag | Type | Default | Description |
+|------|------|---------|-------------|
+| `--json` | bool | `false` | Output as JSON |
+
+**Example:**
+
+```bash
+$ lango p2p team list
+ID                                    STATUS    MEMBERS  LEADER DID                   TASK
+a1b2c3d4-5678-9012-abcd-ef1234567890  active    3        did:lango:02abc...          Research project
+e5f6g7h8-9012-3456-cdef-ab1234567890  forming   2        did:lango:03def...          Code review
+```
+
+### lango p2p team status
+
+Show detailed status for a specific team, including members and their roles.
+
+```
+lango p2p team status <team-id> [--json]
+```
+
+| Argument | Required | Description |
+|----------|----------|-------------|
+| `team-id` | Yes | Team ID |
+
+| Flag | Type | Default | Description |
+|------|------|---------|-------------|
+| `--json` | bool | `false` | Output as JSON |
+
+**Example:**
+
+```bash
+$ lango p2p team status a1b2c3d4-5678-9012-abcd-ef1234567890
+Team: a1b2c3d4-5678-9012-abcd-ef1234567890
+  Status:  active
+  Task:    Research project
+
+Members:
+  DID                          ROLE       STATUS
+  did:lango:02abc...           leader     idle
+  did:lango:03def...           worker     busy
+  did:lango:04ghi...           reviewer   idle
+```
+
+### lango p2p team disband
+
+Disband an active team. Only the team leader can disband.
+
+```
+lango p2p team disband <team-id>
+```
+
+| Argument | Required | Description |
+|----------|----------|-------------|
+| `team-id` | Yes | Team ID to disband |
+
+**Example:**
+
+```bash
+$ lango p2p team disband a1b2c3d4-5678-9012-abcd-ef1234567890
+Team a1b2c3d4-5678-9012-abcd-ef1234567890 disbanded.
+```
+
+---
+
+## lango p2p zkp
+
+Inspect ZKP (zero-knowledge proof) configuration and compiled circuits. See the [ZKP](../features/zkp.md) section for details.
+
+### lango p2p zkp status
+
+Show ZKP configuration, including proving scheme, SRS mode, and compiled circuit count.
+
+```
+lango p2p zkp status [--json]
+```
+
+| Flag | Type | Default | Description |
+|------|------|---------|-------------|
+| `--json` | bool | `false` | Output as JSON |
+
+**Example:**
+
+```bash
+$ lango p2p zkp status
+ZKP Status
+  Proving Scheme:   plonk
+  SRS Mode:         unsafe
+  ZK Handshake:     true
+  ZK Attestation:   true
+  Compiled Circuits: 4
+```
+
+### lango p2p zkp circuits
+
+List all available ZKP circuits and their compilation status.
+
+```
+lango p2p zkp circuits [--json]
+```
+
+| Flag | Type | Default | Description |
+|------|------|---------|-------------|
+| `--json` | bool | `false` | Output as JSON |
+
+**Example:**
+
+```bash
+$ lango p2p zkp circuits
+CIRCUIT              COMPILED  CONSTRAINTS  SCHEME
+ownership            true      245          plonk
+capability           true      512          plonk
+balance_range        true      128          plonk
+attestation          true      389          plonk
+```

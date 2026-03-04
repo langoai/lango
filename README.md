@@ -116,20 +116,39 @@ lango security kms keys          List KMS keys in registry (--json)
 lango memory list [--json]       List observational memory entries
 lango memory status [--json]     Show memory system status
 lango memory clear [--force]     Clear all memory entries
+lango memory agents [--json]     List agents with persistent memory
+lango memory agent <name>        Show memory entries for a specific agent
 
 lango graph status [--json]      Show graph store status
 lango graph query [flags] [--json] Query graph triples (--subject, --predicate, --object, --limit)
 lango graph stats [--json]       Show graph statistics
 lango graph clear [--force]      Clear all graph data
+lango graph add [flags]          Add a triple (--subject, --predicate, --object)
+lango graph export <file>        Export graph data to a file
+lango graph import <file>        Import graph data from a file
 
 lango agent status [--json]      Show agent mode and configuration
 lango agent list [--json] [--check] List local and remote agents
+lango agent tools [--json]       Show tool-to-agent assignments
+lango agent hooks [--json]       Show registered tool hooks
+
+lango a2a card [--json]          Show local A2A agent card configuration
+lango a2a check <url> [--json]   Fetch and display a remote agent card
+
+lango learning status [--json]   Show learning system configuration
+lango learning history           Show recent learning entries
+
+lango librarian status [--json]  Show librarian configuration and inquiry stats
+lango librarian inquiries        List pending knowledge inquiries
+
+lango approval status [--json]   Show approval system configuration
 
 lango payment balance [--json]   Show USDC wallet balance
 lango payment history [--json] [--limit N] Show payment transaction history
 lango payment limits [--json]    Show spending limits and daily usage
 lango payment info [--json]      Show wallet and payment system info
 lango payment send [flags]       Send USDC payment (--to, --amount, --purpose required; --force, --json)
+lango payment x402 [--json]      Show X402 auto-pay configuration
 
 lango cron add [flags]           Add a cron job (--name, --schedule/--every/--at, --prompt, --deliver, --timezone)
 lango cron list                  List all cron jobs
@@ -143,6 +162,7 @@ lango workflow list              List workflow runs
 lango workflow status <run-id>   Show workflow run status with step details
 lango workflow cancel <run-id>   Cancel a running workflow
 lango workflow history           Show workflow execution history
+lango workflow validate <file>   Validate a workflow YAML file
 
 lango p2p status                 Show P2P node status
 lango p2p peers                  List connected peers
@@ -161,6 +181,11 @@ lango p2p session revoke-all     Revoke all active peer sessions
 lango p2p sandbox status         Show sandbox runtime status
 lango p2p sandbox test           Run sandbox smoke test
 lango p2p sandbox cleanup        Remove orphaned sandbox containers
+lango p2p team list              List active P2P teams
+lango p2p team status <id>       Show team details and member status
+lango p2p team disband <id>      Disband an active team
+lango p2p zkp status             Show ZKP configuration
+lango p2p zkp circuits           List compiled ZKP circuits
 
 lango bg list                    List background tasks
 lango bg status <id>             Show background task status

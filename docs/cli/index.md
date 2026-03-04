@@ -31,13 +31,47 @@ Lango provides a comprehensive command-line interface built with [Cobra](https:/
 |---------|-------------|
 | `lango agent status` | Show agent mode and configuration |
 | `lango agent list` | List local and remote agents |
+| `lango agent tools` | Show tool-to-agent assignments |
+| `lango agent hooks` | Show registered tool hooks |
 | `lango memory list` | List observational memory entries |
 | `lango memory status` | Show memory system status |
 | `lango memory clear` | Clear all memory entries for a session |
+| `lango memory agents` | List agents with persistent memory |
+| `lango memory agent <name>` | Show memory entries for a specific agent |
 | `lango graph status` | Show graph store status |
 | `lango graph query` | Query graph triples |
 | `lango graph stats` | Show graph statistics |
 | `lango graph clear` | Clear all graph data |
+| `lango graph add` | Add a triple to the knowledge graph |
+| `lango graph export` | Export graph data to a file |
+| `lango graph import` | Import graph data from a file |
+
+### A2A Protocol
+
+| Command | Description |
+|---------|-------------|
+| `lango a2a card` | Show local A2A agent card configuration |
+| `lango a2a check <url>` | Fetch and display a remote agent card |
+
+### Learning
+
+| Command | Description |
+|---------|-------------|
+| `lango learning status` | Show learning system configuration |
+| `lango learning history` | Show recent learning entries |
+
+### Librarian
+
+| Command | Description |
+|---------|-------------|
+| `lango librarian status` | Show librarian configuration and inquiry stats |
+| `lango librarian inquiries` | List pending knowledge inquiries |
+
+### Approval
+
+| Command | Description |
+|---------|-------------|
+| `lango approval status` | Show approval system configuration |
 
 ### Security
 
@@ -66,6 +100,7 @@ Lango provides a comprehensive command-line interface built with [Cobra](https:/
 | `lango payment limits` | Show spending limits and daily usage |
 | `lango payment info` | Show wallet and payment system info |
 | `lango payment send` | Send a USDC payment |
+| `lango payment x402` | Show X402 auto-pay configuration |
 
 ### P2P Network
 
@@ -88,6 +123,11 @@ Lango provides a comprehensive command-line interface built with [Cobra](https:/
 | `lango p2p sandbox status` | Show sandbox runtime status |
 | `lango p2p sandbox test` | Run sandbox smoke test |
 | `lango p2p sandbox cleanup` | Remove orphaned sandbox containers |
+| `lango p2p team list` | List active P2P teams |
+| `lango p2p team status <id>` | Show team details and member status |
+| `lango p2p team disband <id>` | Disband an active team |
+| `lango p2p zkp status` | Show ZKP configuration |
+| `lango p2p zkp circuits` | List compiled ZKP circuits |
 
 ### Automation
 
@@ -104,6 +144,7 @@ Lango provides a comprehensive command-line interface built with [Cobra](https:/
 | `lango workflow status <run-id>` | Show workflow run status |
 | `lango workflow cancel <run-id>` | Cancel a running workflow |
 | `lango workflow history` | Show workflow execution history |
+| `lango workflow validate <file>` | Validate a workflow YAML file |
 | `lango bg list` | List background tasks |
 | `lango bg status <id>` | Show background task status |
 | `lango bg cancel <id>` | Cancel a running background task |

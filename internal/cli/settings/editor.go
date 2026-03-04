@@ -288,6 +288,14 @@ func (e *Editor) handleMenuSelection(id string) tea.Cmd {
 		e.activeForm = NewWorkflowForm(e.state.Current)
 		e.activeForm.Focus = true
 		e.step = StepForm
+	case "hooks":
+		e.activeForm = NewHooksForm(e.state.Current)
+		e.activeForm.Focus = true
+		e.step = StepForm
+	case "agent_memory":
+		e.activeForm = NewAgentMemoryForm(e.state.Current)
+		e.activeForm.Focus = true
+		e.step = StepForm
 	case "librarian":
 		e.activeForm = NewLibrarianForm(e.state.Current)
 		e.activeForm.Focus = true

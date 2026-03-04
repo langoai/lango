@@ -250,6 +250,24 @@ func (s *BoltStore) PredicateStats(_ context.Context) (map[string]int, error) {
 	return stats, err
 }
 
+// AllTriples returns every triple stored in the SPO index.
+func (s *BoltStore) AllTriples(_ context.Context) ([]Triple, error) {
+	var result []Triple
+	err := s.db.View(func(tx *bolt.Tx) error {
+		b := tx.Bucket(bucketSPO)
+		c := b.Cursor()
+		for k, v := c.First(); k != nil; k, v = c.Next() {
+			t, err := tripleFromSPOKey(k, v)
+			if err != nil {
+				return err
+			}
+			result = append(result, t)
+		}
+		return nil
+	})
+	return result, err
+}
+
 // ClearAll removes all triples from all index buckets.
 func (s *BoltStore) ClearAll(_ context.Context) error {
 	return s.db.Update(func(tx *bolt.Tx) error {

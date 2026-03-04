@@ -29,6 +29,7 @@ func NewWorkflowCmd(bootLoader func() (*bootstrap.Result, error)) *cobra.Command
 	cmd.AddCommand(newWorkflowStatusCmd(bootLoader))
 	cmd.AddCommand(newWorkflowCancelCmd(bootLoader))
 	cmd.AddCommand(newWorkflowHistoryCmd(bootLoader))
+	cmd.AddCommand(newValidateCmd())
 
 	return cmd
 }

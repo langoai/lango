@@ -18,6 +18,45 @@ func NewMultiAgentForm(cfg *config.Config) *tuicore.FormModel {
 		Description: "Allow the agent to spawn and coordinate sub-agents for complex tasks",
 	})
 
+	form.AddField(&tuicore.Field{
+		Key: "max_delegation_rounds", Label: "Max Delegation Rounds", Type: tuicore.InputInt,
+		Value:       strconv.Itoa(cfg.Agent.MaxDelegationRounds),
+		Placeholder: "10",
+		Description: "Maximum orchestrator→sub-agent delegation rounds per turn (0 = default)",
+		Validate: func(s string) error {
+			if i, err := strconv.Atoi(s); err != nil || i < 0 {
+				return fmt.Errorf("must be a non-negative integer")
+			}
+			return nil
+		},
+	})
+
+	form.AddField(&tuicore.Field{
+		Key: "max_turns", Label: "Max Turns", Type: tuicore.InputInt,
+		Value:       strconv.Itoa(cfg.Agent.MaxTurns),
+		Placeholder: "25",
+		Description: "Maximum tool-calling iterations per agent run (0 = default)",
+		Validate: func(s string) error {
+			if i, err := strconv.Atoi(s); err != nil || i < 0 {
+				return fmt.Errorf("must be a non-negative integer")
+			}
+			return nil
+		},
+	})
+
+	form.AddField(&tuicore.Field{
+		Key: "error_correction_enabled", Label: "Error Correction", Type: tuicore.InputBool,
+		Checked:     derefBool(cfg.Agent.ErrorCorrectionEnabled, true),
+		Description: "Enable learning-based error correction for agent tool calls",
+	})
+
+	form.AddField(&tuicore.Field{
+		Key: "agents_dir", Label: "Agents Directory", Type: tuicore.InputText,
+		Value:       cfg.Agent.AgentsDir,
+		Placeholder: "~/.lango/agents",
+		Description: "Directory containing user-defined AGENT.md files (<dir>/<name>/AGENT.md)",
+	})
+
 	return &form
 }
 

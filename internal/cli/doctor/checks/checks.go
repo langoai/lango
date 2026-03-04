@@ -122,5 +122,10 @@ func AllChecks() []Check {
 		&GraphStoreCheck{},
 		&MultiAgentCheck{},
 		&A2ACheck{},
+		// Tool Hooks / Agent Registry / Librarian / Approval
+		&ToolHooksCheck{},
+		&AgentRegistryCheck{},
+		&LibrarianCheck{},
+		&ApprovalCheck{},
 	}
 }
