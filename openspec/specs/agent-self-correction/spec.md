@@ -51,7 +51,7 @@ The system SHALL support an optional `ErrorFixProvider` that returns known fixes
 - **THEN** `RunAndCollect` SHALL return the response immediately without retry
 
 ### Requirement: REJECT pattern matching
-The system SHALL provide a `containsRejectPattern` function that matches the exact `[REJECT]` text marker using regex. The match SHALL be case-sensitive (lowercase `[reject]` SHALL NOT match).
+The system SHALL provide a `containsRejectPattern` function that matches the exact `[REJECT]` text marker using `strings.Contains`. The match SHALL be case-sensitive (lowercase `[reject]` SHALL NOT match).
 
 #### Scenario: Exact REJECT marker matched
 - **WHEN** text contains `[REJECT]`

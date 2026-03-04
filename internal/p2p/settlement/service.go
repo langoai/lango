@@ -56,6 +56,8 @@ type Service struct {
 
 	// nonceMu serializes transaction building to avoid nonce collisions.
 	nonceMu sync.Mutex
+	// wg tracks in-flight handleEvent goroutines for graceful shutdown.
+	wg sync.WaitGroup
 }
 
 // New creates a settlement service with the given configuration.
@@ -91,9 +93,18 @@ func (s *Service) SetReputationRecorder(r ReputationRecorder) {
 // ToolExecutionPaidEvent on the given event bus.
 func (s *Service) Subscribe(bus *eventbus.Bus) {
 	eventbus.SubscribeTyped(bus, func(evt eventbus.ToolExecutionPaidEvent) {
-		go s.handleEvent(evt)
+		s.wg.Add(1)
+		go func() {
+			defer s.wg.Done()
+			s.handleEvent(evt)
+		}()
 	})
 	s.logger.Info("settlement service subscribed to tool.execution.paid events")
+}
+
+// Close waits for all in-flight settlement goroutines to finish.
+func (s *Service) Close() {
+	s.wg.Wait()
 }
 
 // handleEvent processes a single paid tool execution event.

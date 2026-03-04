@@ -11,16 +11,18 @@ import (
 // InMemoryChildStore implements ChildSessionStore using an in-memory map.
 // It wraps an existing Store for parent session access.
 type InMemoryChildStore struct {
-	parent   Store
-	mu       sync.RWMutex
-	children map[string]*ChildSession // keyed by child session key
+	parent      Store
+	mu          sync.RWMutex
+	children    map[string]*ChildSession // keyed by child session key
+	parentIndex map[string][]string      // parent key -> child keys
 }
 
 // NewInMemoryChildStore creates a new in-memory child session store.
 func NewInMemoryChildStore(parent Store) *InMemoryChildStore {
 	return &InMemoryChildStore{
-		parent:   parent,
-		children: make(map[string]*ChildSession),
+		parent:      parent,
+		children:    make(map[string]*ChildSession),
+		parentIndex: make(map[string][]string),
 	}
 }
 
@@ -50,6 +52,7 @@ func (s *InMemoryChildStore) ForkChild(parentKey, agentName string, cfg ChildSes
 
 	s.mu.Lock()
 	s.children[child.Key] = child
+	s.parentIndex[child.ParentKey] = append(s.parentIndex[child.ParentKey], child.Key)
 	s.mu.Unlock()
 
 	return child, nil
@@ -95,9 +98,24 @@ func (s *InMemoryChildStore) DiscardChild(childKey string) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	if _, ok := s.children[childKey]; !ok {
+	child, ok := s.children[childKey]
+	if !ok {
 		return fmt.Errorf("child session %q not found", childKey)
 	}
+
+	// Remove from parent index.
+	parentKey := child.ParentKey
+	kids := s.parentIndex[parentKey]
+	for i, k := range kids {
+		if k == childKey {
+			s.parentIndex[parentKey] = append(kids[:i], kids[i+1:]...)
+			break
+		}
+	}
+	if len(s.parentIndex[parentKey]) == 0 {
+		delete(s.parentIndex, parentKey)
+	}
+
 	delete(s.children, childKey)
 	return nil
 }
@@ -114,14 +132,15 @@ func (s *InMemoryChildStore) GetChild(childKey string) (*ChildSession, error) {
 	return child, nil
 }
 
-// ChildrenOf returns all child sessions for a parent.
+// ChildrenOf returns all child sessions for a parent using the parent index.
 func (s *InMemoryChildStore) ChildrenOf(parentKey string) ([]*ChildSession, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
-	var result []*ChildSession
-	for _, child := range s.children {
-		if child.ParentKey == parentKey {
+	keys := s.parentIndex[parentKey]
+	result := make([]*ChildSession, 0, len(keys))
+	for _, k := range keys {
+		if child, ok := s.children[k]; ok {
 			result = append(result, child)
 		}
 	}

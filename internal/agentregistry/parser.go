@@ -6,6 +6,8 @@ import (
 	"strings"
 
 	"gopkg.in/yaml.v3"
+
+	"github.com/langoai/lango/internal/mdparse"
 )
 
 // ParseAgentMD parses an AGENT.md file (YAML frontmatter + markdown body).
@@ -59,24 +61,5 @@ func RenderAgentMD(def *AgentDefinition) ([]byte, error) {
 	return buf.Bytes(), nil
 }
 
-// splitFrontmatter extracts YAML frontmatter and body from markdown content.
-// Reuses the same pattern as skill/parser.go.
-func splitFrontmatter(content []byte) (frontmatterBytes []byte, body string, err error) {
-	s := strings.TrimSpace(string(content))
-
-	if !strings.HasPrefix(s, "---") {
-		return nil, "", fmt.Errorf("missing frontmatter delimiter (---)")
-	}
-
-	rest := s[3:]
-	rest = strings.TrimLeft(rest, "\r\n")
-	idx := strings.Index(rest, "---")
-	if idx < 0 {
-		return nil, "", fmt.Errorf("missing closing frontmatter delimiter (---)")
-	}
-
-	fm := rest[:idx]
-	body = strings.TrimSpace(rest[idx+3:])
-
-	return []byte(fm), body, nil
-}
+// splitFrontmatter delegates to mdparse.SplitFrontmatter.
+var splitFrontmatter = mdparse.SplitFrontmatter

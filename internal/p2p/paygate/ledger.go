@@ -91,3 +91,19 @@ func (l *DeferredLedger) PendingByPeer(peerDID string) []*DeferredEntry {
 	}
 	return result
 }
+
+// Cleanup removes all settled entries from the ledger, freeing memory.
+// Returns the number of entries removed.
+func (l *DeferredLedger) Cleanup() int {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+
+	removed := 0
+	for id, e := range l.entries {
+		if e.Settled {
+			delete(l.entries, id)
+			removed++
+		}
+	}
+	return removed
+}

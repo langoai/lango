@@ -295,15 +295,21 @@ func (hc *HealthChecker) loop(ctx context.Context) {
 
 func (hc *HealthChecker) checkAll(ctx context.Context) {
 	agents := hc.pool.List()
+	var wg sync.WaitGroup
+	wg.Add(len(agents))
 	for _, a := range agents {
-		latency, err := hc.checkFn(ctx, a)
-		if err != nil {
-			hc.pool.MarkUnhealthy(a.DID)
-			hc.logger.Debugw("health check failed", "did", a.DID, "error", err)
-		} else {
-			hc.pool.MarkHealthy(a.DID, latency)
-		}
+		go func(a *Agent) {
+			defer wg.Done()
+			latency, err := hc.checkFn(ctx, a)
+			if err != nil {
+				hc.pool.MarkUnhealthy(a.DID)
+				hc.logger.Debugw("health check failed", "did", a.DID, "error", err)
+			} else {
+				hc.pool.MarkHealthy(a.DID, latency)
+			}
+		}(a)
 	}
+	wg.Wait()
 }
 
 // SelectorWeights configures the relative importance of selection criteria.

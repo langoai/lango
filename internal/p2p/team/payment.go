@@ -42,13 +42,17 @@ func (a *PaymentAgreement) IsExpired() bool {
 	return time.Now().After(a.ValidUntil)
 }
 
+// DefaultPostPayThreshold is the minimum trust score for post-pay eligibility.
+// Matches paygate.DefaultPostPayThreshold to keep both layers consistent.
+const DefaultPostPayThreshold = 0.7
+
 // SelectPaymentMode chooses payment mode based on trust score and price.
-// High trust (>= 0.7) with nonzero price -> PostPay; low trust -> PrePay; zero price -> Free.
+// High trust (>= DefaultPostPayThreshold) with nonzero price -> PostPay; low trust -> PrePay; zero price -> Free.
 func SelectPaymentMode(trustScore, pricePerTask float64) PaymentMode {
 	if pricePerTask <= 0 {
 		return PaymentFree
 	}
-	if trustScore >= 0.7 {
+	if trustScore >= DefaultPostPayThreshold {
 		return PaymentPostpay
 	}
 	return PaymentPrepay

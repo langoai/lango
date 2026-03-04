@@ -240,8 +240,37 @@ func initAuth(cfg *config.Config, store session.Store) *gateway.AuthManager {
 	return auth
 }
 
+// agentDeps groups the dependencies needed by initAgent to reduce parameter sprawl.
+type agentDeps struct {
+	sv      *supervisor.Supervisor
+	cfg     *config.Config
+	store   session.Store
+	tools   []*agent.Tool
+	kc      *knowledgeComponents
+	mc      *memoryComponents
+	ec      *embeddingComponents
+	gc      *graphComponents
+	scanner *agent.SecretScanner
+	sr      *skill.Registry
+	lc      *librarianComponents
+	catalog *toolcatalog.Catalog
+	p2pc    *p2pComponents
+}
+
 // initAgent creates the ADK agent with the given tools and provider proxy.
-func initAgent(ctx context.Context, sv *supervisor.Supervisor, cfg *config.Config, store session.Store, tools []*agent.Tool, kc *knowledgeComponents, mc *memoryComponents, ec *embeddingComponents, gc *graphComponents, scanner *agent.SecretScanner, sr *skill.Registry, lc *librarianComponents, catalog *toolcatalog.Catalog, p2pc *p2pComponents) (*adk.Agent, error) {
+func initAgent(ctx context.Context, deps *agentDeps) (*adk.Agent, error) {
+	sv := deps.sv
+	cfg := deps.cfg
+	store := deps.store
+	tools := deps.tools
+	kc := deps.kc
+	mc := deps.mc
+	ec := deps.ec
+	gc := deps.gc
+	scanner := deps.scanner
+	sr := deps.sr
+	lc := deps.lc
+	p2pc := deps.p2pc
 	// Adapt tools to ADK format with optional per-tool timeout.
 	toolTimeout := cfg.Agent.ToolTimeout
 	var adkTools []adk_tool.Tool
