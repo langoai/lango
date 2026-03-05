@@ -5,7 +5,21 @@
 
 # Lango 🐿️
 
-A high-performance AI agent built with Go, supporting multiple AI providers, channels (Telegram, Discord, Slack), and a self-learning knowledge system.
+**A sovereign AI agent runtime with built-in commerce.** Lango is a high-performance agent in Go that lets AI agents discover each other, negotiate, transact, and collaborate — without intermediaries.
+
+### Why Lango?
+
+Most agent frameworks stop at tool-calling. Lango goes further — it gives agents an **economic layer**:
+
+- **Peer-to-Peer Agent Economy** — Agents discover, authenticate, and trade capabilities over libp2p. No central hub. No vendor lock-in.
+- **Native Payments** — USDC transactions on Base L2, with spending limits, daily caps, and automatic X402 HTTP payment negotiation (Coinbase SDK).
+- **Trust & Reputation** — Every interaction builds a verifiable reputation score. Trusted peers get post-pay terms; new peers prepay.
+- **Zero-Knowledge Security** — ZK proofs for handshake authentication and response attestation. Agents prove identity and output integrity without revealing internals.
+- **Knowledge as Currency** — Self-learning knowledge graph, observational memory, and RAG-powered context retrieval — agents that get smarter with every interaction can charge for their expertise.
+- **Multi-Agent Orchestration** — Hierarchical sub-agent teams with role-based delegation, P2P team coordination, and DAG-based workflow pipelines.
+- **Open Interoperability** — A2A protocol for remote agent discovery, MCP integration for external tools, and multi-provider AI support (OpenAI, Anthropic, Gemini, Ollama).
+
+Single binary. <100ms startup. <250MB memory. Just Go.
 
 ## ⚠️ **Note**
 
