@@ -20,6 +20,7 @@ const (
 	StepForm
 	StepProvidersList
 	StepAuthProvidersList
+	StepMCPServersList
 	StepComplete
 )
 
@@ -32,9 +33,11 @@ type Editor struct {
 	menu                 MenuModel
 	providersList        ProvidersListModel
 	authProvidersList    AuthProvidersListModel
+	mcpServersList       MCPServersListModel
 	activeForm           *tuicore.FormModel
 	activeProviderID     string
 	activeAuthProviderID string
+	activeMCPServerName  string
 
 	// UI State
 	width  int
@@ -97,6 +100,9 @@ func (e *Editor) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			case StepAuthProvidersList:
 				e.step = StepMenu
 				return e, nil
+			case StepMCPServersList:
+				e.step = StepMenu
+				return e, nil
 			case StepForm:
 				// If a search-select dropdown is open, let the form handle Esc
 				// (closes dropdown only, does not exit the form).
@@ -108,6 +114,8 @@ func (e *Editor) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 						e.state.UpdateAuthProviderFromForm(e.activeAuthProviderID, e.activeForm)
 					} else if e.activeProviderID != "" || e.isProviderForm() {
 						e.state.UpdateProviderFromForm(e.activeProviderID, e.activeForm)
+					} else if e.activeMCPServerName != "" || e.isMCPServerForm() {
+						e.state.UpdateMCPServerFromForm(e.activeMCPServerName, e.activeForm)
 					} else {
 						e.state.UpdateConfigFromForm(e.activeForm)
 					}
@@ -118,12 +126,16 @@ func (e *Editor) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				} else if e.activeProviderID != "" || e.isProviderForm() {
 					e.step = StepProvidersList
 					e.providersList = NewProvidersListModel(e.state.Current)
+				} else if e.activeMCPServerName != "" || e.isMCPServerForm() {
+					e.step = StepMCPServersList
+					e.mcpServersList = NewMCPServersListModel(e.state.Current)
 				} else {
 					e.step = StepMenu
 				}
 				e.activeForm = nil
 				e.activeProviderID = ""
 				e.activeAuthProviderID = ""
+				e.activeMCPServerName = ""
 				return e, nil
 			}
 		}
@@ -213,6 +225,34 @@ func (e *Editor) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			e.step = StepForm
 			e.authProvidersList.Selected = ""
 		}
+
+	case StepMCPServersList:
+		var mslCmd tea.Cmd
+		e.mcpServersList, mslCmd = e.mcpServersList.Update(msg)
+		cmd = mslCmd
+
+		if e.mcpServersList.Deleted != "" {
+			delete(e.state.Current.MCP.Servers, e.mcpServersList.Deleted)
+			e.state.MarkDirty("mcp")
+			e.mcpServersList = NewMCPServersListModel(e.state.Current)
+		} else if e.mcpServersList.Exit {
+			e.mcpServersList.Exit = false
+			e.step = StepMenu
+		} else if e.mcpServersList.Selected != "" {
+			name := e.mcpServersList.Selected
+			if name == "NEW" {
+				e.activeMCPServerName = ""
+				e.activeForm = NewMCPServerForm("", config.MCPServerConfig{})
+			} else {
+				e.activeMCPServerName = name
+				if srv, ok := e.state.Current.MCP.Servers[name]; ok {
+					e.activeForm = NewMCPServerForm(name, srv)
+				}
+			}
+			e.activeForm.Focus = true
+			e.step = StepForm
+			e.mcpServersList.Selected = ""
+		}
 	}
 
 	return e, cmd
@@ -288,6 +328,13 @@ func (e *Editor) handleMenuSelection(id string) tea.Cmd {
 		e.activeForm = NewWorkflowForm(e.state.Current)
 		e.activeForm.Focus = true
 		e.step = StepForm
+	case "mcp":
+		e.activeForm = NewMCPForm(e.state.Current)
+		e.activeForm.Focus = true
+		e.step = StepForm
+	case "mcp_servers":
+		e.mcpServersList = NewMCPServersListModel(e.state.Current)
+		e.step = StepMCPServersList
 	case "hooks":
 		e.activeForm = NewHooksForm(e.state.Current)
 		e.activeForm.Focus = true
@@ -363,6 +410,8 @@ func (e *Editor) View() string {
 		b.WriteString(tui.Breadcrumb("Settings", "Providers"))
 	case StepAuthProvidersList:
 		b.WriteString(tui.Breadcrumb("Settings", "Auth Providers"))
+	case StepMCPServersList:
+		b.WriteString(tui.Breadcrumb("Settings", "MCP Servers"))
 	default:
 		b.WriteString(tui.Breadcrumb("Settings"))
 	}
@@ -386,6 +435,9 @@ func (e *Editor) View() string {
 
 	case StepAuthProvidersList:
 		b.WriteString(e.authProvidersList.View())
+
+	case StepMCPServersList:
+		b.WriteString(e.mcpServersList.View())
 	}
 
 	return b.String()
@@ -425,4 +477,11 @@ func (e *Editor) isAuthProviderForm() bool {
 		return false
 	}
 	return strings.Contains(e.activeForm.Title, "OIDC")
+}
+
+func (e *Editor) isMCPServerForm() bool {
+	if e.activeForm == nil {
+		return false
+	}
+	return strings.Contains(e.activeForm.Title, "MCP Server")
 }

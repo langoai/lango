@@ -114,6 +114,8 @@ func NewMenuModel() MenuModel {
 					{"cron", "Cron Scheduler", "Scheduled jobs, timezone, history"},
 					{"background", "Background Tasks", "Async tasks, concurrency limits"},
 					{"workflow", "Workflow Engine", "DAG workflows, timeouts, state"},
+				{"mcp", "MCP Settings", "Global MCP server settings"},
+				{"mcp_servers", "MCP Server List", "Add, edit, remove MCP servers"},
 				},
 			},
 			{

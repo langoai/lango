@@ -61,6 +61,7 @@ func blockLangoExec(cmd string, automationAvailable map[string]bool) string {
 		{"lango p2p", "", "p2p_status, p2p_connect, p2p_disconnect, p2p_peers, p2p_query, p2p_discover, p2p_firewall_rules, p2p_firewall_add, p2p_firewall_remove, p2p_reputation, p2p_pay, p2p_price_query"},
 		{"lango security", "", "crypto_encrypt, crypto_decrypt, crypto_sign, crypto_hash, crypto_keys, secrets_store, secrets_get, secrets_list, secrets_delete"},
 		{"lango payment", "", "payment_send, payment_create_wallet, payment_x402_fetch"},
+		{"lango mcp", "", "mcp_status, mcp_tools"},
 	}
 
 	for _, g := range guards {

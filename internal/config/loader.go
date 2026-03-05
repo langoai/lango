@@ -141,6 +141,14 @@ func DefaultConfig() *Config {
 			MaxPendingInquiries:  2,
 			AutoSaveConfidence:   types.ConfidenceHigh,
 		},
+		MCP: MCPConfig{
+			Enabled:              false,
+			DefaultTimeout:       30 * time.Second,
+			MaxOutputTokens:      25000,
+			HealthCheckInterval:  30 * time.Second,
+			AutoReconnect:        true,
+			MaxReconnectAttempts: 5,
+		},
 		P2P: P2PConfig{
 			Enabled: false,
 			ListenAddrs: []string{
@@ -270,6 +278,12 @@ func Load(configPath string) (*Config, error) {
 	v.SetDefault("skill.maxBulkImport", defaults.Skill.MaxBulkImport)
 	v.SetDefault("skill.importConcurrency", defaults.Skill.ImportConcurrency)
 	v.SetDefault("skill.importTimeout", defaults.Skill.ImportTimeout)
+	v.SetDefault("mcp.enabled", defaults.MCP.Enabled)
+	v.SetDefault("mcp.defaultTimeout", defaults.MCP.DefaultTimeout)
+	v.SetDefault("mcp.maxOutputTokens", defaults.MCP.MaxOutputTokens)
+	v.SetDefault("mcp.healthCheckInterval", defaults.MCP.HealthCheckInterval)
+	v.SetDefault("mcp.autoReconnect", defaults.MCP.AutoReconnect)
+	v.SetDefault("mcp.maxReconnectAttempts", defaults.MCP.MaxReconnectAttempts)
 	v.SetDefault("p2p.enabled", defaults.P2P.Enabled)
 	v.SetDefault("p2p.listenAddrs", defaults.P2P.ListenAddrs)
 	v.SetDefault("p2p.keyDir", defaults.P2P.KeyDir)
@@ -355,6 +369,17 @@ func substituteEnvVars(cfg *Config) {
 
 	// Payment
 	cfg.Payment.Network.RPCURL = ExpandEnvVars(cfg.Payment.Network.RPCURL)
+
+	// MCP server env/headers
+	for name, srv := range cfg.MCP.Servers {
+		for k, v := range srv.Env {
+			srv.Env[k] = ExpandEnvVars(v)
+		}
+		for k, v := range srv.Headers {
+			srv.Headers[k] = ExpandEnvVars(v)
+		}
+		cfg.MCP.Servers[name] = srv
+	}
 
 	// Paths
 	cfg.Session.DatabasePath = ExpandEnvVars(cfg.Session.DatabasePath)
@@ -473,6 +498,26 @@ func Validate(cfg *Config) error {
 		validRuntimes := map[string]bool{"auto": true, "docker": true, "gvisor": true, "native": true}
 		if !validRuntimes[cfg.P2P.ToolIsolation.Container.Runtime] {
 			errs = append(errs, fmt.Sprintf("invalid p2p.toolIsolation.container.runtime: %q (must be auto, docker, gvisor, or native)", cfg.P2P.ToolIsolation.Container.Runtime))
+		}
+	}
+
+	// Validate MCP config
+	if cfg.MCP.Enabled {
+		for name, srv := range cfg.MCP.Servers {
+			validTransports := map[string]bool{"": true, "stdio": true, "http": true, "sse": true}
+			if !validTransports[srv.Transport] {
+				errs = append(errs, fmt.Sprintf("mcp.servers.%s.transport %q is not supported (must be stdio, http, or sse)", name, srv.Transport))
+			}
+			switch srv.Transport {
+			case "", "stdio":
+				if srv.Command == "" {
+					errs = append(errs, fmt.Sprintf("mcp.servers.%s.command is required for stdio transport", name))
+				}
+			case "http", "sse":
+				if srv.URL == "" {
+					errs = append(errs, fmt.Sprintf("mcp.servers.%s.url is required for %s transport", name, srv.Transport))
+				}
+			}
 		}
 	}
 

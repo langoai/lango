@@ -22,6 +22,7 @@ import (
 	cliapproval "github.com/langoai/lango/internal/cli/approval"
 	clibg "github.com/langoai/lango/internal/cli/bg"
 	clicron "github.com/langoai/lango/internal/cli/cron"
+	climcp "github.com/langoai/lango/internal/cli/mcp"
 	"github.com/langoai/lango/internal/cli/doctor"
 	cligraph "github.com/langoai/lango/internal/cli/graph"
 	clilearning "github.com/langoai/lango/internal/cli/learning"
@@ -190,6 +191,21 @@ func main() {
 	})
 	p2pCmd.GroupID = "infra"
 	rootCmd.AddCommand(p2pCmd)
+
+	mcpCfgLoader := func() (*config.Config, error) {
+		boot, err := bootstrap.Run(bootstrap.Options{})
+		if err != nil {
+			return nil, err
+		}
+		defer boot.DBClient.Close()
+		return boot.Config, nil
+	}
+	mcpBootLoader := func() (*bootstrap.Result, error) {
+		return bootstrap.Run(bootstrap.Options{})
+	}
+	mcpCmd := climcp.NewMCPCmd(mcpCfgLoader, mcpBootLoader)
+	mcpCmd.GroupID = "infra"
+	rootCmd.AddCommand(mcpCmd)
 
 	cronCmd := clicron.NewCronCmd(func() (*bootstrap.Result, error) {
 		return bootstrap.Run(bootstrap.Options{})

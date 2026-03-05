@@ -150,6 +150,18 @@ Lango provides a comprehensive command-line interface built with [Cobra](https:/
 | `lango bg cancel <id>` | Cancel a running background task |
 | `lango bg result <id>` | Show completed task result |
 
+### MCP Servers
+
+| Command | Description |
+|---------|-------------|
+| `lango mcp list` | List all configured MCP servers |
+| `lango mcp add <name>` | Add a new MCP server |
+| `lango mcp remove <name>` | Remove an MCP server configuration |
+| `lango mcp get <name>` | Show server details and discovered tools |
+| `lango mcp test <name>` | Test server connectivity |
+| `lango mcp enable <name>` | Enable an MCP server |
+| `lango mcp disable <name>` | Disable an MCP server |
+
 ## Global Behavior
 
 All commands read configuration from the active encrypted profile stored in `~/.lango/lango.db`. On first run, Lango prompts for a passphrase to initialize encryption.
