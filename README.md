@@ -26,6 +26,7 @@ This project includes experimental AI Agent features and is currently in an unst
 - ⏰ **Cron Scheduling** - Persistent cron jobs with cron/interval/one-time schedules, multi-channel delivery
 - ⚡ **Background Execution** - Async task manager with concurrency control and completion notifications
 - 🔄 **Workflow Engine** - DAG-based YAML workflows with parallel step execution and state persistence
+- 🔗 **MCP Integration** - Connect to external MCP servers (stdio/HTTP/SSE), auto-discovery, health checks, multi-scope config
 - 🔒 **Secure** - AES-256-GCM encryption, key registry, secret management, output scanning, hardware keyring (Touch ID / TPM), SQLCipher DB encryption, Cloud KMS (AWS/GCP/Azure/PKCS#11)
 - 💾 **Persistent** - Ent ORM with SQLite session storage
 - 🌐 **Gateway** - WebSocket/HTTP server with real-time streaming
@@ -164,6 +165,14 @@ lango workflow cancel <run-id>   Cancel a running workflow
 lango workflow history           Show workflow execution history
 lango workflow validate <file>   Validate a workflow YAML file
 
+lango mcp list                   List all configured MCP servers
+lango mcp add <name> [flags]     Add a new MCP server (--type, --command, --url, --env, --header, --scope, --safety)
+lango mcp remove <name>          Remove an MCP server configuration (--scope)
+lango mcp get <name>             Show server details and discovered tools
+lango mcp test <name>            Test server connectivity (handshake + ping + tool count)
+lango mcp enable <name>          Enable an MCP server (--scope)
+lango mcp disable <name>         Disable an MCP server (--scope)
+
 lango p2p status                 Show P2P node status
 lango p2p peers                  List connected peers
 lango p2p connect <multiaddr>    Connect to a peer by multiaddr
@@ -238,6 +247,7 @@ lango/
 │   │   ├── cron/           #   lango cron add/list/delete/pause/resume/history
 │   │   ├── bg/             #   lango bg list/status/cancel/result
 │   │   ├── workflow/       #   lango workflow run/list/status/cancel/history
+│   │   ├── mcp/           #   lango mcp list/add/remove/get/test/enable/disable
 │   │   ├── prompt/         #   interactive prompt utilities
 │   │   ├── security/       #   lango security status/secrets/migrate-passphrase/keyring/db-migrate/db-decrypt/kms
 │   │   ├── p2p/            #   lango p2p status/peers/connect/disconnect/firewall/discover/identity/reputation/pricing/session/sandbox
@@ -278,6 +288,7 @@ lango/
 │   ├── supervisor/         # Provider proxy, privileged tool execution
 │   ├── wallet/             # Wallet providers (local, rpc, composite), spending limiter
 │   ├── x402/               # X402 V2 payment protocol (Coinbase SDK, EIP-3009 signing)
+│   ├── mcp/               # MCP server connection, tool adaptation, multi-scope config
 │   ├── toolcatalog/        # Thread-safe tool registry with categories
 │   ├── toolchain/          # Middleware chain for tool wrapping
 │   ├── tools/              # browser, crypto, exec, filesystem, secrets, payment
