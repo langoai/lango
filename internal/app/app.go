@@ -324,6 +324,24 @@ func New(boot *bootstrap.Result) (*App, error) {
 	tools = append(tools, dispatcherTools...)
 	app.ToolCatalog = catalog
 
+	// 5n. MCP Plugins (optional — external MCP server tools)
+	mcpc := initMCP(cfg)
+	if mcpc != nil {
+		app.MCPManager = mcpc.manager
+		tools = append(tools, mcpc.tools...)
+		catalog.RegisterCategory(toolcatalog.Category{
+			Name:        "mcp",
+			Description: "MCP plugin tools (external servers)",
+			ConfigKey:   "mcp.enabled",
+			Enabled:     true,
+		})
+		catalog.Register("mcp", mcpc.tools)
+		// Register management meta-tools
+		mgmtTools := buildMCPManagementTools(mcpc.manager)
+		tools = append(tools, mgmtTools...)
+		catalog.Register("mcp", mgmtTools)
+	}
+
 	// 6. Auth
 	auth := initAuth(cfg, store)
 
@@ -646,6 +664,14 @@ func (a *App) registerLifecycleComponents() {
 		), lifecycle.PriorityAutomation)
 	}
 
+	// MCP Manager — disconnect all servers on shutdown.
+	if a.MCPManager != nil {
+		reg.Register(lifecycle.NewFuncComponent("mcp-manager",
+			func(_ context.Context, _ *sync.WaitGroup) error { return nil },
+			func(ctx context.Context) error { return a.MCPManager.DisconnectAll(ctx) },
+		), lifecycle.PriorityNetwork)
+	}
+
 	// Channels — each runs blocking in a goroutine, Stop() to signal.
 	for i, ch := range a.Channels {
 		ch := ch // capture for closure
@@ -742,5 +768,15 @@ func registerConfigSecrets(scanner *agent.SecretScanner, cfg *config.Config) {
 	// Auth provider secrets
 	for id, a := range cfg.Auth.Providers {
 		register("auth."+id+".clientSecret", a.ClientSecret)
+	}
+
+	// MCP server secrets (headers and env vars)
+	for name, srv := range cfg.MCP.Servers {
+		for hk, hv := range srv.Headers {
+			register("mcp."+name+".header."+hk, hv)
+		}
+		for ek, ev := range srv.Env {
+			register("mcp."+name+".env."+ek, ev)
+		}
 	}
 }

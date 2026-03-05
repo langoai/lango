@@ -74,6 +74,9 @@ type Config struct {
 	// Agent Memory configuration (per-agent persistent memory)
 	AgentMemory AgentMemoryConfig `mapstructure:"agentMemory" json:"agentMemory"`
 
+	// MCP server integration configuration
+	MCP MCPConfig `mapstructure:"mcp" json:"mcp"`
+
 	// Providers configuration
 	Providers map[string]ProviderConfig `mapstructure:"providers" json:"providers"`
 }
