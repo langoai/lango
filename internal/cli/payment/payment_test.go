@@ -27,7 +27,7 @@ func TestNewPaymentCmd_Structure(t *testing.T) {
 func TestNewPaymentCmd_Subcommands(t *testing.T) {
 	cmd := NewPaymentCmd(dummyBootLoader())
 
-	expected := []string{"balance", "history", "limits", "info", "send"}
+	expected := []string{"balance", "history", "limits", "info", "send", "x402"}
 
 	subCmds := make(map[string]bool)
 	for _, sub := range cmd.Commands() {
@@ -41,7 +41,7 @@ func TestNewPaymentCmd_Subcommands(t *testing.T) {
 
 func TestNewPaymentCmd_SubcommandCount(t *testing.T) {
 	cmd := NewPaymentCmd(dummyBootLoader())
-	assert.Equal(t, 5, len(cmd.Commands()), "expected 5 payment subcommands")
+	assert.Equal(t, 6, len(cmd.Commands()), "expected 6 payment subcommands")
 }
 
 func TestBalanceCmd_HasJSONFlag(t *testing.T) {

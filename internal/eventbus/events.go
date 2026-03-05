@@ -61,3 +61,93 @@ type MemoryGraphEvent struct {
 
 // EventName implements Event.
 func (e MemoryGraphEvent) EventName() string { return "memory.graph" }
+
+// ToolExecutionPaidEvent is published after a paid tool execution succeeds.
+// The settlement service subscribes to this event to initiate on-chain settlement.
+type ToolExecutionPaidEvent struct {
+	PeerDID      string
+	ToolName     string
+	Auth         interface{} // *eip3009.Authorization (interface to avoid import cycle)
+	SettlementID string      // non-empty for post-pay deferred entries
+}
+
+// EventName implements Event.
+func (e ToolExecutionPaidEvent) EventName() string { return "tool.execution.paid" }
+
+// --- P2P agent pool and discovery events ---
+
+// AgentDiscoveredEvent is published when a new remote agent is discovered.
+type AgentDiscoveredEvent struct {
+	DID          string
+	Name         string
+	Capabilities []string
+}
+
+// EventName implements Event.
+func (e AgentDiscoveredEvent) EventName() string { return "agent.discovered" }
+
+// TaskDelegatedEvent is published when a task is delegated to an agent.
+type TaskDelegatedEvent struct {
+	TeamID   string
+	TaskID   string
+	AgentDID string
+}
+
+// EventName implements Event.
+func (e TaskDelegatedEvent) EventName() string { return "task.delegated" }
+
+// TaskCompletedEvent is published when a delegated task completes successfully.
+type TaskCompletedEvent struct {
+	TeamID     string
+	TaskID     string
+	AgentDID   string
+	Success    bool
+	DurationMs int64
+}
+
+// EventName implements Event.
+func (e TaskCompletedEvent) EventName() string { return "task.completed" }
+
+// TaskFailedEvent is published when a delegated task fails.
+type TaskFailedEvent struct {
+	TeamID   string
+	TaskID   string
+	AgentDID string
+	Error    string
+}
+
+// EventName implements Event.
+func (e TaskFailedEvent) EventName() string { return "task.failed" }
+
+// PaymentNegotiatedEvent is published when payment terms are agreed.
+type PaymentNegotiatedEvent struct {
+	TeamID   string
+	AgentDID string
+	Mode     string
+	Price    float64
+}
+
+// EventName implements Event.
+func (e PaymentNegotiatedEvent) EventName() string { return "payment.negotiated" }
+
+// PaymentSettledEvent is published when a payment is settled on-chain.
+type PaymentSettledEvent struct {
+	TeamID   string
+	AgentDID string
+	Amount   float64
+	TxHash   string
+}
+
+// EventName implements Event.
+func (e PaymentSettledEvent) EventName() string { return "payment.settled" }
+
+// TrustUpdatedEvent is published when an agent's trust score changes.
+type TrustUpdatedEvent struct {
+	AgentDID string
+	OldScore float64
+	NewScore float64
+}
+
+// EventName implements Event.
+func (e TrustUpdatedEvent) EventName() string { return "trust.updated" }
+

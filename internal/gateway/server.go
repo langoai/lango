@@ -24,6 +24,10 @@ import (
 
 func logger() *zap.SugaredLogger { return logging.Gateway() }
 
+// emptyResponseFallback is returned to the user when the agent succeeds
+// but produces no visible text (e.g. Gemini thought-only responses).
+const emptyResponseFallback = "I processed your message but couldn't formulate a visible response. Could you try rephrasing your question?"
+
 // TurnCallback is called after each agent turn completes (for buffer triggers, etc).
 type TurnCallback func(sessionKey string)
 
@@ -181,6 +185,19 @@ func (s *Server) handleChatMessage(client *Client, params json.RawMessage) (inte
 	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()
 
+	// Warn UI when approaching timeout (80%).
+	warnTimer := time.AfterFunc(time.Duration(float64(timeout)*0.8), func() {
+		logger().Warnw("agent request approaching timeout",
+			"session", sessionKey,
+			"timeout", timeout.String())
+		s.BroadcastToSession(sessionKey, "agent.warning", map[string]string{
+			"sessionKey": sessionKey,
+			"message":    "Request is taking longer than expected",
+			"type":       "approaching_timeout",
+		})
+	})
+	defer warnTimer.Stop()
+
 	ctx = session.WithSessionKey(ctx, sessionKey)
 	response, err := s.agent.RunStreaming(ctx, sessionKey, req.Message, func(chunk string) {
 		s.BroadcastToSession(sessionKey, "agent.chunk", map[string]string{
@@ -194,14 +211,34 @@ func (s *Server) handleChatMessage(client *Client, params json.RawMessage) (inte
 		cb(sessionKey)
 	}
 
-	// Notify UI that agent is done
+	// Guard against empty responses (e.g. Gemini thought-only output).
+	if err == nil && response == "" {
+		response = emptyResponseFallback
+		logger().Warnw("empty agent response, using fallback",
+			"session", sessionKey)
+	}
+
+	if err != nil {
+		// Classify the error for UI display.
+		errType := "unknown"
+		if ctx.Err() == context.DeadlineExceeded {
+			errType = "timeout"
+		}
+
+		// Notify UI of the error so it can stop thinking indicators
+		// and display a user-visible error message.
+		s.BroadcastToSession(sessionKey, "agent.error", map[string]string{
+			"sessionKey": sessionKey,
+			"error":      err.Error(),
+			"type":       errType,
+		})
+		return nil, err
+	}
+
+	// Notify UI that agent completed successfully.
 	s.BroadcastToSession(sessionKey, "agent.done", map[string]string{
 		"sessionKey": sessionKey,
 	})
-
-	if err != nil {
-		return nil, err
-	}
 
 	return map[string]string{
 		"response": response,

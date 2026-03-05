@@ -1,6 +1,7 @@
 package tuicore
 
 import (
+	"fmt"
 	"testing"
 
 	tea "github.com/charmbracelet/bubbletea"
@@ -153,6 +154,131 @@ func TestInputSearchSelect_CursorClamping(t *testing.T) {
 
 	// Cursor should be clamped to new filtered length
 	assert.Equal(t, 1, field.SelectCursor) // max index is 1 (2 items)
+}
+
+func TestInputSelect_OnChangeCallback(t *testing.T) {
+	form := NewFormModel("Test")
+	form.Focus = true
+
+	var calledWith string
+	form.AddField(&Field{
+		Key: "provider", Label: "Provider", Type: InputSelect,
+		Value:   "openai",
+		Options: []string{"anthropic", "openai", "gemini"},
+		OnChange: func(newValue string) tea.Cmd {
+			calledWith = newValue
+			return nil
+		},
+	})
+
+	// Move right: openai → gemini
+	form, _ = form.Update(tea.KeyMsg{Type: tea.KeyRight})
+	assert.Equal(t, "gemini", form.Fields[0].Value)
+	assert.Equal(t, "gemini", calledWith)
+
+	// Move left: gemini → openai
+	calledWith = ""
+	form, _ = form.Update(tea.KeyMsg{Type: tea.KeyLeft})
+	assert.Equal(t, "openai", form.Fields[0].Value)
+	assert.Equal(t, "openai", calledWith)
+
+	// Same value (already at start, wrap around): no change, no callback
+	calledWith = ""
+	form.Fields[0].Value = "anthropic"
+	form, _ = form.Update(tea.KeyMsg{Type: tea.KeyLeft})
+	// Should wrap to last element
+	assert.Equal(t, "gemini", form.Fields[0].Value)
+	assert.Equal(t, "gemini", calledWith)
+}
+
+func TestInputSelect_OnChangeNotCalledWhenNoChange(t *testing.T) {
+	form := NewFormModel("Test")
+	form.Focus = true
+
+	callCount := 0
+	form.AddField(&Field{
+		Key: "provider", Label: "Provider", Type: InputSelect,
+		Value:   "solo",
+		Options: []string{"solo"},
+		OnChange: func(newValue string) tea.Cmd {
+			callCount++
+			return nil
+		},
+	})
+
+	// With only one option, right shouldn't change value
+	form, _ = form.Update(tea.KeyMsg{Type: tea.KeyRight})
+	assert.Equal(t, "solo", form.Fields[0].Value)
+	assert.Equal(t, 0, callCount)
+}
+
+func TestFieldOptionsLoadedMsg_UpdatesField(t *testing.T) {
+	form := NewFormModel("Test")
+	form.Focus = true
+	form.AddField(&Field{
+		Key: "model", Label: "Model", Type: InputText,
+		Value:   "old-model",
+		Loading: true,
+	})
+
+	newOpts := []string{"model-a", "model-b", "model-c"}
+	form, _ = form.Update(FieldOptionsLoadedMsg{
+		FieldKey:   "model",
+		ProviderID: "openai",
+		Options:    newOpts,
+	})
+
+	field := form.Fields[0]
+	assert.False(t, field.Loading)
+	assert.Nil(t, field.LoadError)
+	assert.Equal(t, InputSearchSelect, field.Type)
+	assert.Equal(t, newOpts, field.Options)
+	assert.Equal(t, newOpts, field.FilteredOptions)
+	assert.Contains(t, field.Description, "3 models")
+}
+
+func TestFieldOptionsLoadedMsg_Error(t *testing.T) {
+	form := NewFormModel("Test")
+	form.Focus = true
+	form.AddField(&Field{
+		Key: "model", Label: "Model", Type: InputSearchSelect,
+		Value:   "old-model",
+		Options: []string{"old-opt"},
+		Loading: true,
+	})
+
+	form, _ = form.Update(FieldOptionsLoadedMsg{
+		FieldKey:   "model",
+		ProviderID: "openai",
+		Err:        fmt.Errorf("unauthorized"),
+	})
+
+	field := form.Fields[0]
+	assert.False(t, field.Loading)
+	assert.NotNil(t, field.LoadError)
+	assert.Equal(t, InputText, field.Type) // Should fallback to InputText
+	assert.Contains(t, field.Description, "unauthorized")
+}
+
+func TestFieldOptionsLoadedMsg_WrongFieldKey(t *testing.T) {
+	form := NewFormModel("Test")
+	form.Focus = true
+	form.AddField(&Field{
+		Key: "model", Label: "Model", Type: InputText,
+		Value:   "original",
+		Loading: true,
+	})
+
+	// Send msg with wrong field key — should be ignored
+	form, _ = form.Update(FieldOptionsLoadedMsg{
+		FieldKey:   "other_model",
+		ProviderID: "openai",
+		Options:    []string{"new-a", "new-b"},
+	})
+
+	field := form.Fields[0]
+	assert.True(t, field.Loading) // Still loading — msg was ignored
+	assert.Equal(t, InputText, field.Type)
 }
 
 func TestFormModel_HasOpenDropdown(t *testing.T) {

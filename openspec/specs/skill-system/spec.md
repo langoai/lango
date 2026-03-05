@@ -6,6 +6,7 @@ The system SHALL store skills as `<dir>/<name>/SKILL.md` files with YAML frontma
 #### Scenario: Save a new skill
 - **WHEN** a skill entry is saved via `FileSkillStore.Save()`
 - **THEN** the system SHALL create `<skillsDir>/<name>/SKILL.md` with YAML frontmatter and markdown body
+- **AND** the skill directory SHALL be created with permission mode 0700
 
 #### Scenario: Load active skills
 - **WHEN** `FileSkillStore.ListActive()` is called
@@ -23,6 +24,7 @@ The system SHALL store skills as `<dir>/<name>/SKILL.md` files with YAML frontma
 #### Scenario: SaveResource writes file to correct path
 - **WHEN** `SaveResource` is called with skillName="my-skill" and relPath="scripts/run.sh"
 - **THEN** the file SHALL be written to `<store-dir>/my-skill/scripts/run.sh`
+- **AND** parent directories SHALL be created with permission mode 0700
 
 ### Requirement: SKILL.md Parsing
 The system SHALL parse SKILL.md files with YAML frontmatter delimited by `---` lines, extracting metadata and body content.
@@ -54,6 +56,10 @@ The system SHALL embed default skill files via `//go:embed **/SKILL.md`. When no
 #### Scenario: Existing skills preserved
 - **WHEN** `EnsureDefaults()` is called and a skill directory already exists
 - **THEN** that skill SHALL NOT be overwritten
+
+#### Scenario: EnsureDefaults directory permissions
+- **WHEN** `EnsureDefaults()` creates skill directories
+- **THEN** all directories SHALL be created with permission mode 0700
 
 ### Requirement: Independent Skill Configuration
 The system SHALL use a separate `SkillConfig` with `Enabled` and `SkillsDir` fields, independent of `KnowledgeConfig`.

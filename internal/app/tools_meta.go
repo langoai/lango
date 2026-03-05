@@ -318,6 +318,10 @@ func buildMetaTools(store *knowledge.Store, engine *learning.Engine, registry *s
 				"required": []string{"url"},
 			},
 			Handler: func(ctx context.Context, params map[string]interface{}) (interface{}, error) {
+				if !skillCfg.AllowImport {
+					return nil, fmt.Errorf("skill import disabled (skill.allowImport=false)")
+				}
+
 				if registry == nil {
 					return nil, fmt.Errorf("skill system is not enabled")
 				}

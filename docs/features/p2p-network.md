@@ -431,6 +431,11 @@ lango p2p session revoke-all                    # Revoke all sessions
 lango p2p sandbox status                        # Show sandbox status
 lango p2p sandbox test                          # Run sandbox smoke test
 lango p2p sandbox cleanup                       # Remove orphaned containers
+lango p2p team list                             # List active P2P teams
+lango p2p team status <id>                      # Show team details
+lango p2p team disband <id>                     # Disband an active team
+lango p2p zkp status                            # Show ZKP configuration
+lango p2p zkp circuits                          # List ZKP circuits
 ```
 
 See the [P2P CLI Reference](../cli/p2p.md) for detailed command documentation.
@@ -478,6 +483,157 @@ Payment settlements use on-chain USDC transfers. The system supports multiple ch
   }
 }
 ```
+
+## Trust-Based Pricing Tiers
+
+The pricing system supports differentiated payment flows based on peer reputation:
+
+| Tier | Reputation Score | Payment Flow |
+|------|-----------------|--------------|
+| **PostPay** | ≥ `postPayMinScore` (default: 0.8) | Tool executes first, payment settles after |
+| **PrePay** | < `postPayMinScore` | Payment must confirm before tool execution |
+
+This tiered approach rewards trusted peers with lower friction while protecting against unknown or low-reputation callers.
+
+### Configuration
+
+```json
+{
+  "p2p": {
+    "pricing": {
+      "trustThresholds": {
+        "postPayMinScore": 0.8
+      }
+    }
+  }
+}
+```
+
+## Settlement Service
+
+The settlement service handles asynchronous on-chain USDC settlement for P2P tool invocations. It supports EIP-3009 authorization-based transfers for gasless payments.
+
+### Settlement Flow
+
+1. **Trigger** — After a paid tool invocation completes (or before, for PrePay tier)
+2. **Build transaction** — Constructs an EIP-3009 `transferWithAuthorization` call
+3. **Submit with retry** — Submits the transaction with exponential backoff (up to `maxRetries`)
+4. **Wait for confirmation** — Monitors on-chain receipt up to `receiptTimeout`
+5. **Record outcome** — Updates reputation (success/failure) via `ReputationRecorder`
+
+### Subscriber Pattern
+
+External components can subscribe to settlement outcomes:
+
+```go
+service.Subscribe(func(result SettlementResult) {
+    // Handle completed settlement
+})
+```
+
+### Configuration
+
+```json
+{
+  "p2p": {
+    "pricing": {
+      "settlement": {
+        "receiptTimeout": "2m",
+        "maxRetries": 3
+      }
+    }
+  }
+}
+```
+
+| Key | Default | Description |
+|-----|---------|-------------|
+| `p2p.pricing.settlement.receiptTimeout` | `2m` | Max wait for on-chain receipt confirmation |
+| `p2p.pricing.settlement.maxRetries` | `3` | Max transaction submission retries |
+
+## Buyer Auto-Payment
+
+The `p2p_invoke_paid` tool automates the complete paid remote tool invocation flow from the buyer side:
+
+1. **Discover** — Find the target agent via DHT or gossip
+2. **Query price** — Fetch the tool's USDC price from the provider
+3. **Authorize payment** — Sign an EIP-3009 `transferWithAuthorization` for the exact amount
+4. **Invoke tool** — Send the tool request with the payment authorization attached
+5. **Confirm settlement** — Wait for on-chain confirmation
+
+This tool is automatically available when both P2P and payment features are enabled. It integrates with the spending limiter (`maxPerTx`, `maxDaily`) and auto-approval thresholds.
+
+## P2P Team Coordination
+
+P2P teams enable task-scoped collaboration between multiple agents across the network.
+
+### Team Lifecycle
+
+```mermaid
+stateDiagram-v2
+    [*] --> Forming
+    Forming --> Active: All members joined
+    Active --> Completed: Task finished
+    Active --> Disbanded: Leader disbands
+    Forming --> Disbanded: Timeout
+```
+
+### Roles
+
+| Role | Description |
+|------|-------------|
+| **Leader** | Creates the team, assigns tasks, manages budget |
+| **Worker** | Executes assigned subtasks |
+| **Reviewer** | Validates task outputs |
+| **Observer** | Monitors progress without active participation |
+
+### Member Status
+
+Each member tracks their current status: `Idle`, `Busy`, `Failed`, or `Left`.
+
+### Scoped Context
+
+Teams operate with a `ScopedContext` that controls metadata sharing between members. A `ContextFilter` restricts what information flows between agents, preventing unintended data leakage across organizational boundaries.
+
+### Budget Tracking
+
+Teams track cumulative spending via `AddSpend()`. The leader manages the team's budget and can enforce spending limits across all members.
+
+## Agent Pool
+
+The agent pool provides discovery, health monitoring, and intelligent selection of P2P agents.
+
+### Health Checking
+
+The `HealthChecker` runs periodic probes against pooled agents:
+
+| Status | Meaning |
+|--------|---------|
+| `Healthy` | Agent responded within acceptable latency |
+| `Degraded` | Agent responding but with elevated latency or error rate |
+| `Unhealthy` | Agent unreachable or failing consistently |
+| `Unknown` | No health data available (newly discovered) |
+
+Stale agents (no health check response within the eviction window) are automatically removed.
+
+### Weighted Selection
+
+The `Selector` uses configurable weights to score agents:
+
+- **Reputation** — Peer trust score from the reputation system
+- **Latency** — Recent response times
+- **Success rate** — Historical success/failure ratio
+- **Availability** — Current health status
+
+Selection strategies:
+- `Select()` — Pick the highest-scoring agent
+- `SelectN(n)` — Pick the top N agents
+- `SelectRandom()` — Weighted random selection
+- `SelectBest()` — Alias for `Select()`
+
+### Capability Search
+
+`FindByCapability(tag)` returns all healthy agents that advertise a matching capability tag in their agent card.
 
 ## Reputation System
 

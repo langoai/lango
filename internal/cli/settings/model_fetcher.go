@@ -7,6 +7,9 @@ import (
 	"strings"
 	"time"
 
+	tea "github.com/charmbracelet/bubbletea"
+
+	"github.com/langoai/lango/internal/cli/tuicore"
 	"github.com/langoai/lango/internal/config"
 	"github.com/langoai/lango/internal/provider"
 	provanthropic "github.com/langoai/lango/internal/provider/anthropic"
@@ -19,15 +22,18 @@ const modelFetchTimeout = 15 * time.Second
 
 // NewProviderFromConfig creates a lightweight provider instance from config.
 // Returns nil if the provider cannot be created (missing API key, unknown type, etc.).
+// Environment variable references (${VAR}) in APIKey and BaseURL are expanded.
 func NewProviderFromConfig(id string, pCfg config.ProviderConfig) provider.Provider {
-	apiKey := pCfg.APIKey
+	apiKey := config.ExpandEnvVars(pCfg.APIKey)
+	baseURL := config.ExpandEnvVars(pCfg.BaseURL)
+
 	if apiKey == "" && pCfg.Type != types.ProviderOllama {
 		return nil
 	}
 
 	switch pCfg.Type {
 	case types.ProviderOpenAI:
-		return provopenai.NewProvider(id, apiKey, pCfg.BaseURL)
+		return provopenai.NewProvider(id, apiKey, baseURL)
 	case types.ProviderAnthropic:
 		return provanthropic.NewProvider(id, apiKey)
 	case types.ProviderGemini, types.ProviderGoogle:
@@ -37,13 +43,11 @@ func NewProviderFromConfig(id string, pCfg config.ProviderConfig) provider.Provi
 		}
 		return p
 	case types.ProviderOllama:
-		baseURL := pCfg.BaseURL
 		if baseURL == "" {
 			baseURL = "http://localhost:11434/v1"
 		}
 		return provopenai.NewProvider(id, apiKey, baseURL)
 	case types.ProviderGitHub:
-		baseURL := pCfg.BaseURL
 		if baseURL == "" {
 			baseURL = "https://models.inference.ai.azure.com"
 		}
@@ -101,6 +105,38 @@ func FetchModelOptionsWithError(providerID string, cfg *config.Config, currentMo
 	}
 
 	return opts, nil
+}
+
+// FetchModelOptionsCmd returns a Bubble Tea Cmd that fetches model options
+// asynchronously and sends a FieldOptionsLoadedMsg when complete.
+func FetchModelOptionsCmd(fieldKey, providerID string, cfg *config.Config, currentModel string) tea.Cmd {
+	return func() tea.Msg {
+		opts, err := FetchModelOptionsWithError(providerID, cfg, currentModel)
+		return tuicore.FieldOptionsLoadedMsg{
+			FieldKey:   fieldKey,
+			ProviderID: providerID,
+			Options:    opts,
+			Err:        err,
+		}
+	}
+}
+
+// FetchEmbeddingModelOptionsCmd returns a Bubble Tea Cmd that fetches
+// embedding model options asynchronously.
+func FetchEmbeddingModelOptionsCmd(fieldKey, providerID string, cfg *config.Config, currentModel string) tea.Cmd {
+	return func() tea.Msg {
+		opts := FetchEmbeddingModelOptions(providerID, cfg, currentModel)
+		var err error
+		if len(opts) == 0 {
+			_, err = FetchModelOptionsWithError(providerID, cfg, currentModel)
+		}
+		return tuicore.FieldOptionsLoadedMsg{
+			FieldKey:   fieldKey,
+			ProviderID: providerID,
+			Options:    opts,
+			Err:        err,
+		}
+	}
 }
 
 // embeddingPatterns contains substrings that indicate embedding models.

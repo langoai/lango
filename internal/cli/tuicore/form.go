@@ -107,6 +107,55 @@ func (m FormModel) Update(msg tea.Msg) (FormModel, tea.Cmd) {
 
 	var cmd tea.Cmd
 
+	// Handle async model-fetch results.
+	if msg, ok := msg.(FieldOptionsLoadedMsg); ok {
+		for _, f := range m.Fields {
+			if f.Key != msg.FieldKey {
+				continue
+			}
+			f.Loading = false
+			f.LoadError = msg.Err
+			if msg.Err != nil || len(msg.Options) == 0 {
+				// Fall back to manual text input.
+				if f.Type == InputSearchSelect {
+					f.Type = InputText
+					ti := textinput.New()
+					ti.Placeholder = f.Placeholder
+					ti.SetValue(f.Value)
+					ti.CharLimit = 100
+					ti.Width = 30
+					if f.Width > 0 {
+						ti.Width = f.Width
+					}
+					f.TextInput = ti
+				}
+				if msg.Err != nil {
+					f.Description = fmt.Sprintf("Could not fetch models (%v); enter model ID manually", msg.Err)
+				}
+			} else {
+				f.Options = msg.Options
+				f.Description = fmt.Sprintf("Fetched %d models from provider; press Enter to search", len(msg.Options))
+				if f.Type != InputSearchSelect {
+					f.Type = InputSearchSelect
+					ti := textinput.New()
+					ti.Placeholder = "Type to search..."
+					ti.SetValue(f.Value)
+					ti.CharLimit = 200
+					ti.Width = 40
+					if f.Width > 0 {
+						ti.Width = f.Width
+					}
+					f.TextInput = ti
+				}
+				f.FilteredOptions = make([]string, len(msg.Options))
+				copy(f.FilteredOptions, msg.Options)
+				f.SelectCursor = 0
+			}
+			break
+		}
+		return m, nil
+	}
+
 	field := visible[m.Cursor]
 
 	// InputSearchSelect with open dropdown: intercept keys before form navigation.
@@ -221,6 +270,7 @@ func (m FormModel) Update(msg tea.Msg) (FormModel, tea.Cmd) {
 	// Handle Select Logic (Left/Right to cycle options).
 	if field.Type == InputSelect {
 		if msg, ok := msg.(tea.KeyMsg); ok {
+			oldValue := field.Value
 			switch msg.String() {
 			case "right", "l":
 				idx := -1
@@ -247,6 +297,12 @@ func (m FormModel) Update(msg tea.Msg) (FormModel, tea.Cmd) {
 					field.Value = field.Options[idx-1]
 				} else if len(field.Options) > 0 {
 					field.Value = field.Options[len(field.Options)-1]
+				}
+			}
+			// Fire OnChange callback when value actually changed.
+			if field.Value != oldValue && field.OnChange != nil {
+				if changeCmd := field.OnChange(field.Value); changeCmd != nil {
+					cmd = changeCmd
 				}
 			}
 		}
@@ -306,6 +362,11 @@ func (m FormModel) View() string {
 			b.WriteString(val)
 
 		case InputSearchSelect:
+			if f.Loading {
+				b.WriteString(lipgloss.NewStyle().Foreground(tui.Dim).Italic(true).Render("Loading models..."))
+				b.WriteString("\n")
+				continue
+			}
 			if isFocused && f.SelectOpen {
 				// Show search input
 				f.TextInput.Focus()

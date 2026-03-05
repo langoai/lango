@@ -10,8 +10,11 @@ import (
 
 	"github.com/sashabaranov/go-openai"
 
+	"github.com/langoai/lango/internal/logging"
 	"github.com/langoai/lango/internal/provider"
 )
+
+var logger = logging.SubsystemSugar("provider.openai")
 
 // OpenAIProvider implements the Provider interface for OpenAI-compatible APIs.
 type OpenAIProvider struct {
@@ -102,18 +105,21 @@ func (p *OpenAIProvider) Generate(ctx context.Context, params provider.GenerateP
 
 // ListModels returns a list of available models.
 func (p *OpenAIProvider) ListModels(ctx context.Context) ([]provider.ModelInfo, error) {
+	logger.Debugw("listing models", "provider", p.id)
 	list, err := p.client.ListModels(ctx)
 	if err != nil {
+		logger.Debugw("list models failed", "provider", p.id, "error", err)
 		return nil, err
 	}
 
-	var models []provider.ModelInfo
+	models := make([]provider.ModelInfo, 0, len(list.Models))
 	for _, m := range list.Models {
 		models = append(models, provider.ModelInfo{
 			ID:   m.ID,
 			Name: m.ID,
 		})
 	}
+	logger.Debugw("list models succeeded", "provider", p.id, "count", len(models))
 	return models, nil
 }
 

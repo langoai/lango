@@ -16,9 +16,18 @@ The system SHALL expose a `p2p_pay` agent tool (safety level: `Dangerous`) that 
 - **WHEN** `p2p_pay` is called without `peer_did` or without `amount`
 - **THEN** the tool SHALL return an error containing "peer_did and amount are required"
 
+#### Scenario: Both payment tools registered
+- **WHEN** the application initializes with `p2p.enabled=true` and valid payment components (wallet, limiter, service)
+- **THEN** the P2P tool list SHALL include both `p2p_pay` and `p2p_invoke_paid`
+
+#### Scenario: p2p_pay available without p2p_invoke_paid
+- **WHEN** `paymentComponents` has a service but nil limiter
+- **THEN** `buildP2PPaymentTool` SHALL return `p2p_pay` but `buildP2PPaidInvokeTool` SHALL return nil
+
 #### Scenario: Tool unavailable without payment service
 - **WHEN** the application is initialized with `payment.enabled=false`
 - **THEN** `buildP2PPaymentTool` SHALL return nil and `p2p_pay` SHALL NOT be registered with the agent
+- **AND** `buildP2PPaidInvokeTool` SHALL return nil and `p2p_invoke_paid` SHALL NOT be registered
 
 ---
 

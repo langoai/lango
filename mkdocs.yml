@@ -1,6 +1,6 @@
 site_name: Lango
 site_url: https://langoai.github.io/lango/
-site_description: A high-performance AI agent framework built with Go
+site_description: A high-performance AI agent built with Go
 repo_name: langoai/lango
 repo_url: https://github.com/langoai/lango
 edit_uri: edit/main/docs/

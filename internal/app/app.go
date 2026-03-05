@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"time"
 
@@ -12,14 +13,17 @@ import (
 
 	"github.com/langoai/lango/internal/a2a"
 	"github.com/langoai/lango/internal/agent"
+	"github.com/langoai/lango/internal/agentmemory"
 	"github.com/langoai/lango/internal/approval"
 	"github.com/langoai/lango/internal/bootstrap"
 	"github.com/langoai/lango/internal/config"
+	"github.com/langoai/lango/internal/eventbus"
 	"github.com/langoai/lango/internal/lifecycle"
 	"github.com/langoai/lango/internal/logging"
 	"github.com/langoai/lango/internal/sandbox"
 	"github.com/langoai/lango/internal/security"
 	"github.com/langoai/lango/internal/session"
+	"github.com/langoai/lango/internal/toolcatalog"
 	"github.com/langoai/lango/internal/toolchain"
 	"github.com/langoai/lango/internal/wallet"
 	"github.com/langoai/lango/internal/tools/browser"
@@ -32,8 +36,10 @@ func logger() *zap.SugaredLogger { return logging.App() }
 // New creates a new application instance from a bootstrap result.
 func New(boot *bootstrap.Result) (*App, error) {
 	cfg := boot.Config
+	bus := eventbus.New()
 	app := &App{
 		Config:   cfg,
+		EventBus: bus,
 		registry: lifecycle.NewRegistry(),
 	}
 
@@ -94,6 +100,25 @@ func New(boot *bootstrap.Result) (*App, error) {
 	}
 	tools := buildTools(sv, fsConfig, browserSM, automationAvailable)
 
+	// Tool Catalog — register every built-in tool for dynamic discovery/dispatch.
+	catalog := toolcatalog.New()
+	catalog.RegisterCategory(toolcatalog.Category{Name: "exec", Description: "Shell command execution", Enabled: true})
+	catalog.RegisterCategory(toolcatalog.Category{Name: "filesystem", Description: "File system operations", Enabled: true})
+	if cfg.Tools.Browser.Enabled {
+		catalog.RegisterCategory(toolcatalog.Category{Name: "browser", Description: "Web browsing", ConfigKey: "tools.browser.enabled", Enabled: true})
+	}
+	// Register base tools (exec, fs, browser) all at once.
+	for _, t := range tools {
+		switch {
+		case strings.HasPrefix(t.Name, "exec"):
+			catalog.Register("exec", []*agent.Tool{t})
+		case strings.HasPrefix(t.Name, "fs_"):
+			catalog.Register("filesystem", []*agent.Tool{t})
+		case strings.HasPrefix(t.Name, "browser_"):
+			catalog.Register("browser", []*agent.Tool{t})
+		}
+	}
+
 	// 4b. Crypto/Secrets tools (if security is enabled)
 	// RefStore holds opaque references; plaintext never reaches agent context.
 	// SecretScanner detects leaked secrets in model output.
@@ -104,11 +129,17 @@ func New(boot *bootstrap.Result) (*App, error) {
 	registerConfigSecrets(scanner, cfg)
 
 	if app.Crypto != nil && app.Keys != nil {
-		tools = append(tools, buildCryptoTools(app.Crypto, app.Keys, refs, scanner)...)
+		ct := buildCryptoTools(app.Crypto, app.Keys, refs, scanner)
+		tools = append(tools, ct...)
+		catalog.RegisterCategory(toolcatalog.Category{Name: "crypto", Description: "Cryptographic operations", ConfigKey: "security.signer.provider", Enabled: true})
+		catalog.Register("crypto", ct)
 		logger().Info("crypto tools registered")
 	}
 	if app.Secrets != nil {
-		tools = append(tools, buildSecretsTools(app.Secrets, refs, scanner)...)
+		st := buildSecretsTools(app.Secrets, refs, scanner)
+		tools = append(tools, st...)
+		catalog.RegisterCategory(toolcatalog.Category{Name: "secrets", Description: "Secret management", ConfigKey: "security.secrets.enabled", Enabled: true})
+		catalog.Register("secrets", st)
 		logger().Info("secrets tools registered")
 	}
 
@@ -138,6 +169,8 @@ func New(boot *bootstrap.Result) (*App, error) {
 		// Add meta-tools
 		metaTools := buildMetaTools(kc.store, kc.engine, registry, cfg.Skill)
 		tools = append(tools, metaTools...)
+		catalog.RegisterCategory(toolcatalog.Category{Name: "meta", Description: "Knowledge, learning, and skill management", ConfigKey: "knowledge.enabled", Enabled: true})
+		catalog.Register("meta", metaTools)
 	}
 
 	// 5b. Observational Memory (optional)
@@ -176,17 +209,37 @@ func New(boot *bootstrap.Result) (*App, error) {
 
 	// 5e. Graph tools (optional)
 	if gc != nil {
-		tools = append(tools, buildGraphTools(gc.store)...)
+		gt := buildGraphTools(gc.store)
+		tools = append(tools, gt...)
+		catalog.RegisterCategory(toolcatalog.Category{Name: "graph", Description: "Knowledge graph traversal", ConfigKey: "graph.enabled", Enabled: true})
+		catalog.Register("graph", gt)
 	}
 
 	// 5f. RAG tools (optional)
 	if ec != nil && ec.ragService != nil {
-		tools = append(tools, buildRAGTools(ec.ragService)...)
+		rt := buildRAGTools(ec.ragService)
+		tools = append(tools, rt...)
+		catalog.RegisterCategory(toolcatalog.Category{Name: "rag", Description: "Retrieval-augmented generation", ConfigKey: "embedding.rag.enabled", Enabled: true})
+		catalog.Register("rag", rt)
 	}
 
 	// 5g. Memory agent tools (optional)
 	if mc != nil {
-		tools = append(tools, buildMemoryAgentTools(mc.store)...)
+		mt := buildMemoryAgentTools(mc.store)
+		tools = append(tools, mt...)
+		catalog.RegisterCategory(toolcatalog.Category{Name: "memory", Description: "Observational memory", ConfigKey: "observationalMemory.enabled", Enabled: true})
+		catalog.Register("memory", mt)
+	}
+
+	// 5g'. Agent Memory tools (optional, per-agent persistent memory)
+	if cfg.AgentMemory.Enabled {
+		amStore := agentmemory.NewInMemoryStore()
+		app.AgentMemoryStore = amStore
+		amTools := buildAgentMemoryTools(amStore)
+		tools = append(tools, amTools...)
+		catalog.RegisterCategory(toolcatalog.Category{Name: "agent_memory", Description: "Per-agent persistent memory", ConfigKey: "agentMemory.enabled", Enabled: true})
+		catalog.Register("agent_memory", amTools)
+		logger().Info("agent memory tools enabled")
 	}
 
 	// 5h. Payment tools (optional)
@@ -204,42 +257,89 @@ func New(boot *bootstrap.Result) (*App, error) {
 			app.X402Interceptor = xc.interceptor
 		}
 
-		tools = append(tools, buildPaymentTools(pc, x402Interceptor)...)
+		pt := buildPaymentTools(pc, x402Interceptor)
+		tools = append(tools, pt...)
+		catalog.RegisterCategory(toolcatalog.Category{Name: "payment", Description: "Blockchain payments (USDC on Base)", ConfigKey: "payment.enabled", Enabled: true})
+		catalog.Register("payment", pt)
 
 		// 5h''. P2P networking (optional, requires wallet)
-		p2pc = initP2P(cfg, pc.wallet, pc, boot.DBClient, app.Secrets)
+		// Use the single global bus so settlement and other P2P subscribers
+		// receive tool execution events published by EventBusHook.
+		p2pc = initP2P(cfg, pc.wallet, pc, boot.DBClient, app.Secrets, bus)
 		if p2pc != nil {
 			app.P2PNode = p2pc.node
+			app.P2PAgentPool = p2pc.agentPool
+			app.P2PTeamCoordinator = p2pc.coordinator
+			app.P2PAgentProvider = p2pc.provider
 			// Wire P2P payment tool.
-			tools = append(tools, buildP2PTools(p2pc)...)
-			tools = append(tools, buildP2PPaymentTool(p2pc, pc)...)
+			p2pTools := buildP2PTools(p2pc)
+			p2pTools = append(p2pTools, buildP2PPaymentTool(p2pc, pc)...)
+			p2pTools = append(p2pTools, buildP2PPaidInvokeTool(p2pc, pc)...)
+			tools = append(tools, p2pTools...)
+			catalog.RegisterCategory(toolcatalog.Category{Name: "p2p", Description: "Peer-to-peer networking", ConfigKey: "p2p.enabled", Enabled: true})
+			catalog.Register("p2p", p2pTools)
 		}
 	}
 
 	// 5i. Librarian tools (optional)
 	if lc != nil {
-		tools = append(tools, buildLibrarianTools(lc.inquiryStore)...)
+		lt := buildLibrarianTools(lc.inquiryStore)
+		tools = append(tools, lt...)
+		catalog.RegisterCategory(toolcatalog.Category{Name: "librarian", Description: "Knowledge inquiries and gap detection", ConfigKey: "librarian.enabled", Enabled: true})
+		catalog.Register("librarian", lt)
 	}
 
 	// 5j. Cron Scheduling (optional) — initialized before agent so tools get approval-wrapped.
 	app.CronScheduler = initCron(cfg, store, app)
 	if app.CronScheduler != nil {
-		tools = append(tools, buildCronTools(app.CronScheduler, cfg.Cron.DefaultDeliverTo)...)
+		cronTools := buildCronTools(app.CronScheduler, cfg.Cron.DefaultDeliverTo)
+		tools = append(tools, cronTools...)
+		catalog.RegisterCategory(toolcatalog.Category{Name: "cron", Description: "Cron job scheduling", ConfigKey: "cron.enabled", Enabled: true})
+		catalog.Register("cron", cronTools)
 		logger().Info("cron tools registered")
 	}
 
 	// 5k. Background Tasks (optional)
 	app.BackgroundManager = initBackground(cfg, app)
 	if app.BackgroundManager != nil {
-		tools = append(tools, buildBackgroundTools(app.BackgroundManager, cfg.Background.DefaultDeliverTo)...)
+		bgTools := buildBackgroundTools(app.BackgroundManager, cfg.Background.DefaultDeliverTo)
+		tools = append(tools, bgTools...)
+		catalog.RegisterCategory(toolcatalog.Category{Name: "background", Description: "Background task execution", ConfigKey: "background.enabled", Enabled: true})
+		catalog.Register("background", bgTools)
 		logger().Info("background tools registered")
 	}
 
 	// 5l. Workflow Engine (optional)
 	app.WorkflowEngine = initWorkflow(cfg, store, app)
 	if app.WorkflowEngine != nil {
-		tools = append(tools, buildWorkflowTools(app.WorkflowEngine, cfg.Workflow.StateDir, cfg.Workflow.DefaultDeliverTo)...)
+		wfTools := buildWorkflowTools(app.WorkflowEngine, cfg.Workflow.StateDir, cfg.Workflow.DefaultDeliverTo)
+		tools = append(tools, wfTools...)
+		catalog.RegisterCategory(toolcatalog.Category{Name: "workflow", Description: "Workflow pipeline execution", ConfigKey: "workflow.enabled", Enabled: true})
+		catalog.Register("workflow", wfTools)
 		logger().Info("workflow tools registered")
+	}
+
+	// 5m. Dispatcher tools — dynamic access to all registered built-in tools.
+	dispatcherTools := toolcatalog.BuildDispatcher(catalog)
+	tools = append(tools, dispatcherTools...)
+	app.ToolCatalog = catalog
+
+	// 5n. MCP Plugins (optional — external MCP server tools)
+	mcpc := initMCP(cfg)
+	if mcpc != nil {
+		app.MCPManager = mcpc.manager
+		tools = append(tools, mcpc.tools...)
+		catalog.RegisterCategory(toolcatalog.Category{
+			Name:        "mcp",
+			Description: "MCP plugin tools (external servers)",
+			ConfigKey:   "mcp.enabled",
+			Enabled:     true,
+		})
+		catalog.Register("mcp", mcpc.tools)
+		// Register management meta-tools
+		mgmtTools := buildMCPManagementTools(mcpc.manager)
+		tools = append(tools, mgmtTools...)
+		catalog.Register("mcp", mgmtTools)
 	}
 
 	// 6. Auth
@@ -247,6 +347,28 @@ func New(boot *bootstrap.Result) (*App, error) {
 
 	// 7. Gateway (created before agent so we can wire approval)
 	app.Gateway = initGateway(cfg, nil, app.Store, auth)
+
+	// 7b. Tool Execution Hooks
+	if cfg.Hooks.Enabled || cfg.Agent.MultiAgent {
+		hookRegistry := toolchain.NewHookRegistry()
+
+		// Register built-in hooks based on configuration.
+		if cfg.Hooks.SecurityFilter {
+			hookRegistry.RegisterPre(toolchain.NewSecurityFilterHook(cfg.Hooks.BlockedCommands))
+		}
+		if cfg.Hooks.AccessControl {
+			hookRegistry.RegisterPre(toolchain.NewAgentAccessControlHook(nil))
+		}
+		if cfg.Hooks.EventPublishing && bus != nil {
+			hookRegistry.RegisterPost(toolchain.NewEventBusHook(bus))
+		}
+
+		tools = toolchain.ChainAll(tools, toolchain.WithHooks(hookRegistry))
+		logger().Infow("tool hooks enabled",
+			"preHooks", len(hookRegistry.PreHooks()),
+			"postHooks", len(hookRegistry.PostHooks()),
+		)
+	}
 
 	// 8. Build composite approval provider and tool approval wrapper
 	composite := approval.NewCompositeProvider()
@@ -287,7 +409,21 @@ func New(boot *bootstrap.Result) (*App, error) {
 	}
 
 	// 9. ADK Agent (scanner is passed for output-side secret scanning)
-	adkAgent, err := initAgent(context.Background(), sv, cfg, store, tools, kc, mc, ec, gc, scanner, registry, lc)
+	adkAgent, err := initAgent(context.Background(), &agentDeps{
+		sv:      sv,
+		cfg:     cfg,
+		store:   store,
+		tools:   tools,
+		kc:      kc,
+		mc:      mc,
+		ec:      ec,
+		gc:      gc,
+		scanner: scanner,
+		sr:      registry,
+		lc:      lc,
+		catalog: catalog,
+		p2pc:    p2pc,
+	})
 	if err != nil {
 		return nil, fmt.Errorf("create agent: %w", err)
 	}
@@ -528,6 +664,14 @@ func (a *App) registerLifecycleComponents() {
 		), lifecycle.PriorityAutomation)
 	}
 
+	// MCP Manager — disconnect all servers on shutdown.
+	if a.MCPManager != nil {
+		reg.Register(lifecycle.NewFuncComponent("mcp-manager",
+			func(_ context.Context, _ *sync.WaitGroup) error { return nil },
+			func(ctx context.Context) error { return a.MCPManager.DisconnectAll(ctx) },
+		), lifecycle.PriorityNetwork)
+	}
+
 	// Channels — each runs blocking in a goroutine, Stop() to signal.
 	for i, ch := range a.Channels {
 		ch := ch // capture for closure
@@ -624,5 +768,15 @@ func registerConfigSecrets(scanner *agent.SecretScanner, cfg *config.Config) {
 	// Auth provider secrets
 	for id, a := range cfg.Auth.Providers {
 		register("auth."+id+".clientSecret", a.ClientSecret)
+	}
+
+	// MCP server secrets (headers and env vars)
+	for name, srv := range cfg.MCP.Servers {
+		for hk, hv := range srv.Headers {
+			register("mcp."+name+".header."+hk, hv)
+		}
+		for ek, ev := range srv.Env {
+			register("mcp."+name+".env."+ek, ev)
+		}
 	}
 }

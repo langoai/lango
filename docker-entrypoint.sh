@@ -2,7 +2,17 @@
 set -e
 
 LANGO_DIR="$HOME/.lango"
-mkdir -p "$LANGO_DIR"
+mkdir -p "$LANGO_DIR/skills" "$HOME/bin"
+
+# Verify write permissions on critical directories.
+# Named Docker volumes can inherit stale ownership from previous builds.
+for dir in "$LANGO_DIR" "$LANGO_DIR/skills" "$HOME/bin"; do
+  if [ -d "$dir" ] && ! [ -w "$dir" ]; then
+    echo "ERROR: $dir is not writable by $(whoami) (uid=$(id -u))." >&2
+    echo "  Hint: remove the volume and recreate it: docker volume rm lango-data" >&2
+    exit 1
+  fi
+done
 
 # Set up passphrase keyfile from Docker secret.
 # The keyfile path (~/.lango/keyfile) is blocked by the agent's filesystem tool.

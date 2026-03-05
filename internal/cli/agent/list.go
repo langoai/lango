@@ -8,39 +8,19 @@ import (
 	"text/tabwriter"
 	"time"
 
+	"github.com/langoai/lango/internal/agentregistry"
 	"github.com/langoai/lango/internal/config"
+	"github.com/langoai/lango/internal/toolchain"
 	"github.com/spf13/cobra"
 )
 
 type agentEntry struct {
 	Name        string `json:"name"`
 	Type        string `json:"type"`
+	Source      string `json:"source,omitempty"`
 	Description string `json:"description,omitempty"`
 	URL         string `json:"url,omitempty"`
 	Status      string `json:"status,omitempty"`
-}
-
-var localAgents = []agentEntry{
-	{
-		Name:        "executor",
-		Type:        "local",
-		Description: "Executes tools including shell commands, file operations, browser automation",
-	},
-	{
-		Name:        "researcher",
-		Type:        "local",
-		Description: "Searches knowledge bases, performs RAG retrieval, graph traversal",
-	},
-	{
-		Name:        "planner",
-		Type:        "local",
-		Description: "Decomposes complex tasks into steps and designs execution plans",
-	},
-	{
-		Name:        "memory-manager",
-		Type:        "local",
-		Description: "Manages conversational memory including observations, reflections",
-	},
 }
 
 func newListCmd(cfgLoader func() (*config.Config, error)) *cobra.Command {
@@ -51,7 +31,7 @@ func newListCmd(cfgLoader func() (*config.Config, error)) *cobra.Command {
 
 	cmd := &cobra.Command{
 		Use:   "list",
-		Short: "List available sub-agents and remote A2A agents",
+		Short: "List available sub-agents, user-defined agents, and remote agents",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			cfg, err := cfgLoader()
 			if err != nil {
@@ -60,15 +40,33 @@ func newListCmd(cfgLoader func() (*config.Config, error)) *cobra.Command {
 
 			var entries []agentEntry
 
-			// Add local sub-agents.
-			entries = append(entries, localAgents...)
+			// Load agents from registry (embedded + user-defined).
+			reg := agentregistry.New()
+			embeddedStore := agentregistry.NewEmbeddedStore()
+			if loadErr := reg.LoadFromStore(embeddedStore); loadErr != nil {
+				return fmt.Errorf("load embedded agents: %w", loadErr)
+			}
+			if cfg.Agent.AgentsDir != "" {
+				userStore := agentregistry.NewFileStore(cfg.Agent.AgentsDir)
+				_ = reg.LoadFromStore(userStore) // non-fatal
+			}
+
+			for _, def := range reg.Active() {
+				entries = append(entries, agentEntry{
+					Name:        def.Name,
+					Type:        "local",
+					Source:      agentSourceLabel(def.Source),
+					Description: def.Description,
+				})
+			}
 
 			// Add remote A2A agents.
 			for _, ra := range cfg.A2A.RemoteAgents {
 				e := agentEntry{
-					Name: ra.Name,
-					Type: "remote",
-					URL:  ra.AgentCardURL,
+					Name:   ra.Name,
+					Type:   "remote",
+					Source: "a2a",
+					URL:    ra.AgentCardURL,
 				}
 				if check {
 					e.Status = checkConnectivity(ra.AgentCardURL)
@@ -87,14 +85,14 @@ func newListCmd(cfgLoader func() (*config.Config, error)) *cobra.Command {
 				return nil
 			}
 
-			// Print local agents.
+			// Print local agents (builtin + user).
 			w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
-			fmt.Fprintln(w, "NAME\tTYPE\tDESCRIPTION")
+			fmt.Fprintln(w, "NAME\tSOURCE\tDESCRIPTION")
 			for _, e := range entries {
 				if e.Type != "local" {
 					continue
 				}
-				fmt.Fprintf(w, "%s\t%s\t%s\n", e.Name, e.Type, e.Description)
+				fmt.Fprintf(w, "%s\t%s\t%s\n", e.Name, e.Source, truncate(e.Description, 60))
 			}
 			if err := w.Flush(); err != nil {
 				return fmt.Errorf("flush table: %w", err)
@@ -112,18 +110,18 @@ func newListCmd(cfgLoader func() (*config.Config, error)) *cobra.Command {
 				fmt.Println()
 				w = tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
 				if check {
-					fmt.Fprintln(w, "NAME\tTYPE\tURL\tSTATUS")
+					fmt.Fprintln(w, "NAME\tSOURCE\tURL\tSTATUS")
 				} else {
-					fmt.Fprintln(w, "NAME\tTYPE\tURL")
+					fmt.Fprintln(w, "NAME\tSOURCE\tURL")
 				}
 				for _, e := range entries {
 					if e.Type != "remote" {
 						continue
 					}
 					if check {
-						fmt.Fprintf(w, "%s\t%s\t%s\t%s\n", e.Name, e.Type, e.URL, e.Status)
+						fmt.Fprintf(w, "%s\t%s\t%s\t%s\n", e.Name, e.Source, e.URL, e.Status)
 					} else {
-						fmt.Fprintf(w, "%s\t%s\t%s\n", e.Name, e.Type, e.URL)
+						fmt.Fprintf(w, "%s\t%s\t%s\n", e.Name, e.Source, e.URL)
 					}
 				}
 				if err := w.Flush(); err != nil {
@@ -139,6 +137,25 @@ func newListCmd(cfgLoader func() (*config.Config, error)) *cobra.Command {
 	cmd.Flags().BoolVar(&check, "check", false, "Test connectivity to remote agents")
 
 	return cmd
+}
+
+func truncate(s string, max int) string {
+	return toolchain.Truncate(s, max)
+}
+
+func agentSourceLabel(source agentregistry.AgentSource) string {
+	switch source {
+	case agentregistry.SourceBuiltin:
+		return "builtin"
+	case agentregistry.SourceEmbedded:
+		return "embedded"
+	case agentregistry.SourceUser:
+		return "user"
+	case agentregistry.SourceRemote:
+		return "remote"
+	default:
+		return "unknown"
+	}
 }
 
 func checkConnectivity(url string) string {

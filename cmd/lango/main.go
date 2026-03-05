@@ -17,11 +17,16 @@ import (
 	"github.com/langoai/lango/internal/app"
 	"github.com/langoai/lango/internal/background"
 	"github.com/langoai/lango/internal/bootstrap"
+	clia2a "github.com/langoai/lango/internal/cli/a2a"
 	cliagent "github.com/langoai/lango/internal/cli/agent"
+	cliapproval "github.com/langoai/lango/internal/cli/approval"
 	clibg "github.com/langoai/lango/internal/cli/bg"
 	clicron "github.com/langoai/lango/internal/cli/cron"
+	climcp "github.com/langoai/lango/internal/cli/mcp"
 	"github.com/langoai/lango/internal/cli/doctor"
 	cligraph "github.com/langoai/lango/internal/cli/graph"
+	clilearning "github.com/langoai/lango/internal/cli/learning"
+	clilibrarian "github.com/langoai/lango/internal/cli/librarian"
 	climemory "github.com/langoai/lango/internal/cli/memory"
 	"github.com/langoai/lango/internal/cli/onboard"
 	clip2p "github.com/langoai/lango/internal/cli/p2p"
@@ -123,6 +128,58 @@ func main() {
 	graphCmd.GroupID = "data"
 	rootCmd.AddCommand(graphCmd)
 
+	a2aCmd := clia2a.NewA2ACmd(func() (*config.Config, error) {
+		boot, err := bootstrap.Run(bootstrap.Options{})
+		if err != nil {
+			return nil, err
+		}
+		defer boot.DBClient.Close()
+		return boot.Config, nil
+	})
+	a2aCmd.GroupID = "data"
+	rootCmd.AddCommand(a2aCmd)
+
+	learningCfgLoader := func() (*config.Config, error) {
+		boot, err := bootstrap.Run(bootstrap.Options{})
+		if err != nil {
+			return nil, err
+		}
+		defer boot.DBClient.Close()
+		return boot.Config, nil
+	}
+	learningBootLoader := func() (*bootstrap.Result, error) {
+		return bootstrap.Run(bootstrap.Options{})
+	}
+	learningCmd := clilearning.NewLearningCmd(learningCfgLoader, learningBootLoader)
+	learningCmd.GroupID = "data"
+	rootCmd.AddCommand(learningCmd)
+
+	librarianCfgLoader := func() (*config.Config, error) {
+		boot, err := bootstrap.Run(bootstrap.Options{})
+		if err != nil {
+			return nil, err
+		}
+		defer boot.DBClient.Close()
+		return boot.Config, nil
+	}
+	librarianBootLoader := func() (*bootstrap.Result, error) {
+		return bootstrap.Run(bootstrap.Options{})
+	}
+	librarianCmd := clilibrarian.NewLibrarianCmd(librarianCfgLoader, librarianBootLoader)
+	librarianCmd.GroupID = "data"
+	rootCmd.AddCommand(librarianCmd)
+
+	approvalCmd := cliapproval.NewApprovalCmd(func() (*config.Config, error) {
+		boot, err := bootstrap.Run(bootstrap.Options{})
+		if err != nil {
+			return nil, err
+		}
+		defer boot.DBClient.Close()
+		return boot.Config, nil
+	})
+	approvalCmd.GroupID = "infra"
+	rootCmd.AddCommand(approvalCmd)
+
 	paymentCmd := clipayment.NewPaymentCmd(func() (*bootstrap.Result, error) {
 		return bootstrap.Run(bootstrap.Options{})
 	})
@@ -134,6 +191,21 @@ func main() {
 	})
 	p2pCmd.GroupID = "infra"
 	rootCmd.AddCommand(p2pCmd)
+
+	mcpCfgLoader := func() (*config.Config, error) {
+		boot, err := bootstrap.Run(bootstrap.Options{})
+		if err != nil {
+			return nil, err
+		}
+		defer boot.DBClient.Close()
+		return boot.Config, nil
+	}
+	mcpBootLoader := func() (*bootstrap.Result, error) {
+		return bootstrap.Run(bootstrap.Options{})
+	}
+	mcpCmd := climcp.NewMCPCmd(mcpCfgLoader, mcpBootLoader)
+	mcpCmd.GroupID = "infra"
+	rootCmd.AddCommand(mcpCmd)
 
 	cronCmd := clicron.NewCronCmd(func() (*bootstrap.Result, error) {
 		return bootstrap.Run(bootstrap.Options{})

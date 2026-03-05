@@ -138,9 +138,11 @@ func (s *SessionServiceAdapter) AppendEvent(ctx context.Context, sess session.Se
 					id = "call_" + p.FunctionCall.Name
 				}
 				tc := internal.ToolCall{
-					Name:  p.FunctionCall.Name,
-					Input: string(argsBytes),
-					ID:    id,
+					Name:             p.FunctionCall.Name,
+					Input:            string(argsBytes),
+					ID:               id,
+					Thought:          p.Thought,
+					ThoughtSignature: p.ThoughtSignature,
 				}
 				msg.ToolCalls = append(msg.ToolCalls, tc)
 			}

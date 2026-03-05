@@ -15,6 +15,8 @@ import (
 
 	"github.com/langoai/lango/internal/payment/contracts"
 	"github.com/langoai/lango/internal/payment/eip3009"
+
+	// wallet is imported for ParseUSDC delegation and currency constants.
 	"github.com/langoai/lango/internal/wallet"
 )
 
@@ -41,14 +43,19 @@ const (
 
 	// StatusInvalid means the provided payment authorization is invalid.
 	StatusInvalid ResultStatus = "invalid"
+
+	// StatusPostPayApproved means the peer has high enough trust to defer
+	// payment until after tool execution (post-pay).
+	StatusPostPayApproved ResultStatus = "postpay_approved"
 )
 
 // Result describes the outcome of a payment gate check.
 type Result struct {
-	Status     ResultStatus            `json:"status"`
-	Auth       *eip3009.Authorization  `json:"auth,omitempty"`
-	PriceQuote *PriceQuote             `json:"priceQuote,omitempty"`
-	Reason     string                  `json:"reason,omitempty"`
+	Status       ResultStatus           `json:"status"`
+	Auth         *eip3009.Authorization `json:"auth,omitempty"`
+	PriceQuote   *PriceQuote            `json:"priceQuote,omitempty"`
+	Reason       string                 `json:"reason,omitempty"`
+	SettlementID string                 `json:"settlementId,omitempty"`
 }
 
 // PriceQuote tells a buyer what to pay for a tool invocation.
@@ -64,44 +71,75 @@ type PriceQuote struct {
 
 // Config holds construction parameters for a Gate.
 type Config struct {
-	PricingFn PricingFunc
-	LocalAddr string
-	ChainID   int64
-	USDCAddr  common.Address
-	RPCClient *ethclient.Client
-	Logger    *zap.SugaredLogger
+	PricingFn    PricingFunc
+	ReputationFn ReputationFunc
+	TrustCfg     TrustConfig
+	LocalAddr    string
+	ChainID      int64
+	USDCAddr     common.Address
+	RPCClient    *ethclient.Client
+	Logger       *zap.SugaredLogger
 }
 
 // Gate sits between the firewall and the tool executor, enforcing payment
 // requirements for paid tools.
 type Gate struct {
-	pricingFn PricingFunc
-	localAddr string
-	chainID   int64
-	usdcAddr  common.Address
-	rpcClient *ethclient.Client
-	logger    *zap.SugaredLogger
+	pricingFn    PricingFunc
+	reputationFn ReputationFunc
+	trustCfg     TrustConfig
+	ledger       *DeferredLedger
+	localAddr    string
+	chainID      int64
+	usdcAddr     common.Address
+	rpcClient    *ethclient.Client
+	logger       *zap.SugaredLogger
 }
 
 // New creates a payment gate from the given configuration.
 func New(cfg Config) *Gate {
 	return &Gate{
-		pricingFn: cfg.PricingFn,
-		localAddr: cfg.LocalAddr,
-		chainID:   cfg.ChainID,
-		usdcAddr:  cfg.USDCAddr,
-		rpcClient: cfg.RPCClient,
-		logger:    cfg.Logger,
+		pricingFn:    cfg.PricingFn,
+		reputationFn: cfg.ReputationFn,
+		trustCfg:     cfg.TrustCfg,
+		ledger:       NewDeferredLedger(),
+		localAddr:    cfg.LocalAddr,
+		chainID:      cfg.ChainID,
+		usdcAddr:     cfg.USDCAddr,
+		rpcClient:    cfg.RPCClient,
+		logger:       cfg.Logger,
 	}
+}
+
+// Ledger returns the deferred payment ledger for post-pay tracking.
+func (g *Gate) Ledger() *DeferredLedger {
+	return g.ledger
 }
 
 // Check evaluates whether a tool invocation should proceed. It looks up the
 // tool price, and if payment is required, validates the EIP-3009 authorization
-// embedded in the payload.
+// embedded in the payload. High-trust peers (score > PostPayMinScore) are
+// granted post-pay: the tool executes first, settlement happens asynchronously.
 func (g *Gate) Check(peerDID, toolName string, payload map[string]interface{}) (*Result, error) {
 	price, isFree := g.pricingFn(toolName)
 	if isFree {
 		return &Result{Status: StatusFree}, nil
+	}
+
+	// Trust-based post-pay: high-reputation peers pay after execution.
+	if g.reputationFn != nil {
+		score, err := g.reputationFn(context.Background(), peerDID)
+		if err != nil {
+			g.logger.Warnw("reputation lookup failed, falling back to prepay",
+				"peerDID", peerDID, "error", err)
+		} else if score > g.trustCfg.PostPayMinScore {
+			sid := g.ledger.Add(peerDID, toolName, price)
+			g.logger.Infow("post-pay approved",
+				"peerDID", peerDID, "tool", toolName, "price", price, "score", score)
+			return &Result{
+				Status:       StatusPostPayApproved,
+				SettlementID: sid,
+			}, nil
+		}
 	}
 
 	// Look for payment authorization in the payload.
@@ -173,26 +211,6 @@ func (g *Gate) Check(peerDID, toolName string, payload map[string]interface{}) (
 	}, nil
 }
 
-// SubmitOnChain encodes the authorization as calldata and submits the
-// transferWithAuthorization transaction to the USDC contract. For MVP this logs
-// the intent and returns a placeholder hash, since actual submission requires a
-// signed transaction from the seller's wallet.
-func (g *Gate) SubmitOnChain(ctx context.Context, auth *eip3009.Authorization) (string, error) {
-	calldata := eip3009.EncodeCalldata(auth)
-	g.logger.Infow("submit transferWithAuthorization",
-		"from", auth.From.Hex(),
-		"to", auth.To.Hex(),
-		"value", auth.Value.String(),
-		"calldataLen", len(calldata),
-	)
-
-	// TODO: Build and submit the actual transaction via g.rpcClient when
-	// seller-side signing is available. For now return a deterministic
-	// placeholder derived from the nonce.
-	placeholder := fmt.Sprintf("0x%x", auth.Nonce[:16])
-	return placeholder, nil
-}
-
 // BuildQuote creates a PriceQuote for the given tool and price.
 func (g *Gate) BuildQuote(toolName, price string) *PriceQuote {
 	return &PriceQuote{
@@ -206,24 +224,9 @@ func (g *Gate) BuildQuote(toolName, price string) *PriceQuote {
 	}
 }
 
-// ParseUSDC converts a decimal USDC string (e.g. "0.50") into the smallest
-// unit (*big.Int with 6 decimals, e.g. 500000).
-func ParseUSDC(amount string) (*big.Int, error) {
-	rat := new(big.Rat)
-	if _, ok := rat.SetString(amount); !ok {
-		return nil, fmt.Errorf("invalid USDC amount: %q", amount)
-	}
-
-	// Multiply by 10^6.
-	multiplier := new(big.Rat).SetInt(new(big.Int).Exp(big.NewInt(10), big.NewInt(6), nil))
-	rat.Mul(rat, multiplier)
-
-	if !rat.IsInt() {
-		return nil, fmt.Errorf("USDC amount %q exceeds 6 decimal places", amount)
-	}
-
-	return rat.Num(), nil
-}
+// ParseUSDC delegates to wallet.ParseUSDC. Kept as a package-level alias for
+// backward compatibility within the paygate package.
+var ParseUSDC = wallet.ParseUSDC
 
 // parseAuthorization converts a JSON-decoded map into an eip3009.Authorization.
 func parseAuthorization(m map[string]interface{}) (*eip3009.Authorization, error) {

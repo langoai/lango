@@ -26,6 +26,9 @@ type Config struct {
 	// Tools configuration
 	Tools ToolsConfig `mapstructure:"tools" json:"tools"`
 
+	// Hooks configuration (tool execution hooks)
+	Hooks HooksConfig `mapstructure:"hooks" json:"hooks"`
+
 	// Auth configuration
 	Auth AuthConfig `mapstructure:"auth" json:"auth"`
 
@@ -67,6 +70,12 @@ type Config struct {
 
 	// P2P network configuration
 	P2P P2PConfig `mapstructure:"p2p" json:"p2p"`
+
+	// Agent Memory configuration (per-agent persistent memory)
+	AgentMemory AgentMemoryConfig `mapstructure:"agentMemory" json:"agentMemory"`
+
+	// MCP server integration configuration
+	MCP MCPConfig `mapstructure:"mcp" json:"mcp"`
 
 	// Providers configuration
 	Providers map[string]ProviderConfig `mapstructure:"providers" json:"providers"`
@@ -135,6 +144,11 @@ type AgentConfig struct {
 	// MaxDelegationRounds limits orchestrator→sub-agent delegation rounds per turn (default: 10).
 	// Zero means use the default.
 	MaxDelegationRounds int `mapstructure:"maxDelegationRounds" json:"maxDelegationRounds"`
+
+	// AgentsDir is the directory containing user-defined AGENT.md files.
+	// Structure: <dir>/<name>/AGENT.md
+	// If empty, only built-in agents are used.
+	AgentsDir string `mapstructure:"agentsDir" json:"agentsDir"`
 }
 
 // ProviderConfig defines AI provider settings
@@ -232,6 +246,27 @@ type ToolsConfig struct {
 	Browser    BrowserToolConfig    `mapstructure:"browser" json:"browser"`
 }
 
+// HooksConfig defines tool execution hook settings.
+type HooksConfig struct {
+	// Enabled activates the hook system (default: true when multi-agent is enabled).
+	Enabled bool `mapstructure:"enabled" json:"enabled"`
+
+	// SecurityFilter enables the security filter hook that blocks dangerous commands.
+	SecurityFilter bool `mapstructure:"securityFilter" json:"securityFilter"`
+
+	// AccessControl enables per-agent tool access control.
+	AccessControl bool `mapstructure:"accessControl" json:"accessControl"`
+
+	// EventPublishing enables publishing tool execution events to the event bus.
+	EventPublishing bool `mapstructure:"eventPublishing" json:"eventPublishing"`
+
+	// KnowledgeSave enables automatic knowledge saving from tool results.
+	KnowledgeSave bool `mapstructure:"knowledgeSave" json:"knowledgeSave"`
+
+	// BlockedCommands is a list of command patterns to block (security filter).
+	BlockedCommands []string `mapstructure:"blockedCommands" json:"blockedCommands"`
+}
+
 // ExecToolConfig defines shell execution settings
 type ExecToolConfig struct {
 	// Default timeout for commands
@@ -251,6 +286,12 @@ type FilesystemToolConfig struct {
 
 	// Allowed paths (empty = allow all)
 	AllowedPaths []string `mapstructure:"allowedPaths" json:"allowedPaths"`
+}
+
+// AgentMemoryConfig defines agent-scoped persistent memory settings.
+type AgentMemoryConfig struct {
+	// Enable agent memory system
+	Enabled bool `mapstructure:"enabled" json:"enabled"`
 }
 
 // BrowserToolConfig defines browser automation settings

@@ -1,9 +1,25 @@
-  
-
+<div align="center">
+  <img src="./logo.png" alt="Lango Logo">
+</div>
+<br>
 
 # Lango 🐿️
 
-A high-performance AI agent built with Go, supporting multiple AI providers, channels (Telegram, Discord, Slack), and a self-learning knowledge system.
+**A sovereign AI agent runtime with built-in commerce.** Lango is a high-performance agent in Go that lets AI agents discover each other, negotiate, transact, and collaborate — without intermediaries.
+
+### Why Lango?
+
+Most agent frameworks stop at tool-calling. Lango goes further — it gives agents an **economic layer**:
+
+- **Peer-to-Peer Agent Economy** — Agents discover, authenticate, and trade capabilities over libp2p. No central hub. No vendor lock-in.
+- **Native Payments** — USDC transactions on Base L2, with spending limits, daily caps, and automatic X402 HTTP payment negotiation (Coinbase SDK).
+- **Trust & Reputation** — Every interaction builds a verifiable reputation score. Trusted peers get post-pay terms; new peers prepay.
+- **Zero-Knowledge Security** — ZK proofs for handshake authentication and response attestation. Agents prove identity and output integrity without revealing internals.
+- **Knowledge as Currency** — Self-learning knowledge graph, observational memory, and RAG-powered context retrieval — agents that get smarter with every interaction can charge for their expertise.
+- **Multi-Agent Orchestration** — Hierarchical sub-agent teams with role-based delegation, P2P team coordination, and DAG-based workflow pipelines.
+- **Open Interoperability** — A2A protocol for remote agent discovery, MCP integration for external tools, and multi-provider AI support (OpenAI, Anthropic, Gemini, Ollama).
+
+Single binary. <100ms startup. <250MB memory. Just Go.
 
 ## ⚠️ **Note**
 
@@ -24,10 +40,18 @@ This project includes experimental AI Agent features and is currently in an unst
 - ⏰ **Cron Scheduling** - Persistent cron jobs with cron/interval/one-time schedules, multi-channel delivery
 - ⚡ **Background Execution** - Async task manager with concurrency control and completion notifications
 - 🔄 **Workflow Engine** - DAG-based YAML workflows with parallel step execution and state persistence
+- 🔗 **MCP Integration** - Connect to external MCP servers (stdio/HTTP/SSE), auto-discovery, health checks, multi-scope config
 - 🔒 **Secure** - AES-256-GCM encryption, key registry, secret management, output scanning, hardware keyring (Touch ID / TPM), SQLCipher DB encryption, Cloud KMS (AWS/GCP/Azure/PKCS#11)
 - 💾 **Persistent** - Ent ORM with SQLite session storage
 - 🌐 **Gateway** - WebSocket/HTTP server with real-time streaming
 - 🔑 **Auth** - OIDC authentication, OAuth login flow
+- 🏗️ **Agent Registry** - Custom agent definitions via AGENT.md files, dynamic routing with keyword + capability matching
+- 🧬 **Agent Memory** - Per-agent persistent memory for cross-session context retention
+- 📡 **Event Bus** - Typed synchronous pub/sub for internal component communication
+- 🪝 **Tool Hooks** - Middleware chain for tool execution (security filter, access control, event publishing, knowledge save)
+- 👥 **P2P Teams** - Task-scoped agent groups with role-based delegation (Leader, Worker, Reviewer, Observer)
+- 🏊 **Agent Pool** - P2P agent pool with health checking and weighted selection
+- 💰 **P2P Settlement** - On-chain USDC settlement with EIP-3009, receipt tracking, and retry
 
 ## Quick Start
 
@@ -107,20 +131,39 @@ lango security kms keys          List KMS keys in registry (--json)
 lango memory list [--json]       List observational memory entries
 lango memory status [--json]     Show memory system status
 lango memory clear [--force]     Clear all memory entries
+lango memory agents [--json]     List agents with persistent memory
+lango memory agent <name>        Show memory entries for a specific agent
 
 lango graph status [--json]      Show graph store status
 lango graph query [flags] [--json] Query graph triples (--subject, --predicate, --object, --limit)
 lango graph stats [--json]       Show graph statistics
 lango graph clear [--force]      Clear all graph data
+lango graph add [flags]          Add a triple (--subject, --predicate, --object)
+lango graph export <file>        Export graph data to a file
+lango graph import <file>        Import graph data from a file
 
 lango agent status [--json]      Show agent mode and configuration
 lango agent list [--json] [--check] List local and remote agents
+lango agent tools [--json]       Show tool-to-agent assignments
+lango agent hooks [--json]       Show registered tool hooks
+
+lango a2a card [--json]          Show local A2A agent card configuration
+lango a2a check <url> [--json]   Fetch and display a remote agent card
+
+lango learning status [--json]   Show learning system configuration
+lango learning history           Show recent learning entries
+
+lango librarian status [--json]  Show librarian configuration and inquiry stats
+lango librarian inquiries        List pending knowledge inquiries
+
+lango approval status [--json]   Show approval system configuration
 
 lango payment balance [--json]   Show USDC wallet balance
 lango payment history [--json] [--limit N] Show payment transaction history
 lango payment limits [--json]    Show spending limits and daily usage
 lango payment info [--json]      Show wallet and payment system info
 lango payment send [flags]       Send USDC payment (--to, --amount, --purpose required; --force, --json)
+lango payment x402 [--json]      Show X402 auto-pay configuration
 
 lango cron add [flags]           Add a cron job (--name, --schedule/--every/--at, --prompt, --deliver, --timezone)
 lango cron list                  List all cron jobs
@@ -134,6 +177,15 @@ lango workflow list              List workflow runs
 lango workflow status <run-id>   Show workflow run status with step details
 lango workflow cancel <run-id>   Cancel a running workflow
 lango workflow history           Show workflow execution history
+lango workflow validate <file>   Validate a workflow YAML file
+
+lango mcp list                   List all configured MCP servers
+lango mcp add <name> [flags]     Add a new MCP server (--type, --command, --url, --env, --header, --scope, --safety)
+lango mcp remove <name>          Remove an MCP server configuration (--scope)
+lango mcp get <name>             Show server details and discovered tools
+lango mcp test <name>            Test server connectivity (handshake + ping + tool count)
+lango mcp enable <name>          Enable an MCP server (--scope)
+lango mcp disable <name>         Disable an MCP server (--scope)
 
 lango p2p status                 Show P2P node status
 lango p2p peers                  List connected peers
@@ -152,6 +204,11 @@ lango p2p session revoke-all     Revoke all active peer sessions
 lango p2p sandbox status         Show sandbox runtime status
 lango p2p sandbox test           Run sandbox smoke test
 lango p2p sandbox cleanup        Remove orphaned sandbox containers
+lango p2p team list              List active P2P teams
+lango p2p team status <id>       Show team details and member status
+lango p2p team disband <id>      Disband an active team
+lango p2p zkp status             Show ZKP configuration
+lango p2p zkp circuits           List compiled ZKP circuits
 
 lango bg list                    List background tasks
 lango bg status <id>             Show background task status
@@ -182,12 +239,17 @@ lango/
 ├── internal/
 │   ├── adk/                # Google ADK agent wrapper, session/state adapters
 │   ├── agent/              # Agent types, PII redactor, secret scanner
+│   ├── agentmemory/        # Per-agent persistent memory store
+│   ├── agentregistry/      # Agent definition registry with AGENT.md loading
 │   ├── app/                # Application bootstrap, wiring, tool registration
+│   ├── appinit/            # Module system with topological dependency sort
 │   ├── approval/           # Composite approval provider for sensitive tools
+│   ├── asyncbuf/           # Generic async batch processor
 │   ├── bootstrap/          # Application bootstrap: DB, crypto, config profile init
 │   ├── dbmigrate/          # Database encryption migration (SQLCipher)
 │   ├── channels/           # Telegram, Discord, Slack integrations
 │   ├── cli/                # CLI commands
+│   │   ├── tuicore/        #   Shared TUI components (FormModel, Field types)
 │   │   ├── agent/          #   lango agent status/list
 │   │   ├── common/         #   shared CLI helpers
 │   │   ├── doctor/         #   lango doctor (diagnostics)
@@ -199,15 +261,18 @@ lango/
 │   │   ├── cron/           #   lango cron add/list/delete/pause/resume/history
 │   │   ├── bg/             #   lango bg list/status/cancel/result
 │   │   ├── workflow/       #   lango workflow run/list/status/cancel/history
+│   │   ├── mcp/           #   lango mcp list/add/remove/get/test/enable/disable
 │   │   ├── prompt/         #   interactive prompt utilities
 │   │   ├── security/       #   lango security status/secrets/migrate-passphrase/keyring/db-migrate/db-decrypt/kms
 │   │   ├── p2p/            #   lango p2p status/peers/connect/disconnect/firewall/discover/identity/reputation/pricing/session/sandbox
 │   │   └── tui/            #   TUI components and views
 │   ├── config/             # Config loading, env var substitution, validation
 │   ├── configstore/        # Encrypted config profile storage (Ent-backed)
+│   ├── ctxkeys/            # Context key helpers for agent name propagation
 │   ├── a2a/                # A2A protocol server and remote agent loading
 │   ├── embedding/          # Embedding providers (OpenAI, Google, local) and RAG
 │   ├── ent/                # Ent ORM schemas and generated code
+│   ├── eventbus/           # Typed synchronous event pub/sub
 │   ├── gateway/            # WebSocket/HTTP server, OIDC auth
 │   ├── graph/              # BoltDB triple store, Graph RAG, entity extractor
 │   ├── knowledge/          # Knowledge store, 8-layer context retriever
@@ -231,10 +296,17 @@ lango/
 │   ├── workflow/            # DAG workflow engine, YAML parser, state persistence
 │   ├── payment/            # Blockchain payment service (USDC on EVM chains, X402 audit trail)
 │   ├── p2p/                # P2P networking (libp2p node, identity, handshake, firewall, discovery, ZKP)
+│   │   ├── team/           #   P2P team coordination
+│   │   ├── agentpool/      #   Agent pool with health checking
+│   │   └── settlement/     #   On-chain USDC settlement
 │   ├── supervisor/         # Provider proxy, privileged tool execution
 │   ├── wallet/             # Wallet providers (local, rpc, composite), spending limiter
 │   ├── x402/               # X402 V2 payment protocol (Coinbase SDK, EIP-3009 signing)
-│   └── tools/              # browser, crypto, exec, filesystem, secrets, payment
+│   ├── mcp/               # MCP server connection, tool adaptation, multi-scope config
+│   ├── toolcatalog/        # Thread-safe tool registry with categories
+│   ├── toolchain/          # Middleware chain for tool wrapping
+│   ├── tools/              # browser, crypto, exec, filesystem, secrets, payment
+│   └── types/              # Shared types (ProviderType, Role, RPCSenderFunc)
 ├── prompts/                # Default prompt .md files (embedded via go:embed)
 ├── skills/                 # Skill system scaffold (go:embed). Built-in skills were removed — Lango's passphrase-based security model makes it impractical for the agent to invoke CLI commands as skills
 └── openspec/               # Specifications (OpenSpec workflow)
@@ -284,6 +356,7 @@ All settings are managed via `lango onboard` (guided wizard), `lango settings` (
 | `agent.maxTurns`                                       | int      | `25`                        | Max tool-calling iterations per agent run                                                                         |
 | `agent.errorCorrectionEnabled`                         | bool     | `true`                      | Enable learning-based error correction (requires knowledge system)                                                |
 | `agent.maxDelegationRounds`                            | int      | `10`                        | Max orchestrator→sub-agent delegation rounds per turn (multi-agent only)                                          |
+| `agent.agentsDir`                                      | string   |                             | Directory containing user-defined AGENT.md files                                                                  |
 | **Providers**                                          |          |                             |                                                                                                                   |
 | `providers.<id>.type`                                  | string   | -                           | Provider type (openai, anthropic, gemini)                                                                         |
 | `providers.<id>.apiKey`                                | string   | -                           | Provider API key                                                                                                  |
@@ -395,6 +468,9 @@ All settings are managed via `lango onboard` (guided wizard), `lango settings` (
 | `p2p.minTrustScore`                                    | float64  | `0.3`                       | Minimum reputation score for accepting peer requests                                                              |
 | `p2p.pricing.enabled`                                  | bool     | `false`                     | Enable paid tool invocations                                                                                      |
 | `p2p.pricing.perQuery`                                 | string   | `"0.10"`                    | Default USDC price per query                                                                                      |
+| `p2p.pricing.trustThresholds.postPayMinScore`          | float64  | `0.8`                       | Minimum reputation score for post-pay eligibility                                                                 |
+| `p2p.pricing.settlement.receiptTimeout`                | duration | `2m`                        | Max wait for on-chain receipt confirmation                                                                        |
+| `p2p.pricing.settlement.maxRetries`                    | int      | `3`                         | Max settlement submission retries                                                                                 |
 | `p2p.zkHandshake`                                      | bool     | `false`                     | Enable ZK-enhanced handshake                                                                                      |
 | `p2p.zkAttestation`                                    | bool     | `false`                     | Enable ZK response attestation                                                                                    |
 | `p2p.sessionTokenTtl`                                  | duration | `1h`                        | Session token lifetime after handshake                                                                            |
@@ -449,6 +525,15 @@ All settings are managed via `lango onboard` (guided wizard), `lango settings` (
 | `librarian.autoSaveConfidence`                         | string   | `"high"`                    | Confidence for auto-save (high/medium/low)                                                                        |
 | `librarian.provider`                                   | string   | -                           | LLM provider for analysis (empty = agent default)                                                                 |
 | `librarian.model`                                      | string   | -                           | Model for analysis (empty = agent default)                                                                        |
+| **Agent Memory**                                       |          |                             |                                                                                                                   |
+| `agentMemory.enabled`                                  | bool     | `false`                     | Enable per-agent persistent memory                                                                                |
+| **Hooks**                                              |          |                             |                                                                                                                   |
+| `hooks.enabled`                                        | bool     | `false`                     | Enable tool execution hook system                                                                                 |
+| `hooks.securityFilter`                                 | bool     | `false`                     | Block dangerous commands via security filter                                                                      |
+| `hooks.accessControl`                                  | bool     | `false`                     | Enable per-agent tool access control                                                                              |
+| `hooks.eventPublishing`                                | bool     | `false`                     | Publish tool execution events to event bus                                                                        |
+| `hooks.knowledgeSave`                                  | bool     | `false`                     | Auto-save knowledge from tool results                                                                             |
+| `hooks.blockedCommands`                                | []string | `[]`                        | Command patterns to block (security filter)                                                                       |
 
 
 ## System Prompts
@@ -602,6 +687,18 @@ When `agent.multiAgent` is enabled, Lango builds a hierarchical agent tree with 
 
 The orchestrator uses a keyword-based routing table and 5-step decision protocol (CLASSIFY → MATCH → SELECT → VERIFY → DELEGATE) to route tasks. Each sub-agent can reject misrouted tasks with `[REJECT]`. Unmatched tools are tracked separately and reported to the orchestrator.
 
+### Custom Agents (AGENT.md)
+
+Custom agents can be defined via `AGENT.md` files placed in the `agent.agentsDir` directory. Each file specifies the agent's name, description, capabilities, and tool access. The agent registry loads these definitions at startup and makes them available for dynamic routing alongside built-in sub-agents.
+
+### Dynamic Routing
+
+In addition to prefix-based tool partitioning, the orchestrator supports dynamic routing via keyword + capability matching. When a task does not match a prefix rule, the router evaluates registered agent capabilities and keywords to find the best-fit agent.
+
+### Agent Memory
+
+When `agentMemory.enabled` is `true`, each sub-agent maintains its own persistent memory store for cross-session context retention. This allows agents to accumulate domain-specific knowledge across conversations, improving task performance over time.
+
 Enable via `lango onboard` > Multi-Agent menu or set `agent.multiAgent: true` in import JSON. Use `lango agent status` and `lango agent list` to inspect.
 
 ## A2A Protocol (🧪 Experimental Features)
@@ -637,6 +734,11 @@ Lango supports decentralized peer-to-peer agent connectivity via the Sovereign A
 - **Database Encryption** — SQLCipher transparent encryption for the application database
 - **OS Keyring** — Hardware-backed passphrase storage in OS keyring (macOS Keychain, Linux secret-service, Windows DPAPI)
 - **Credential Revocation** — DID revocation and max credential age enforcement via gossip
+- **Trust-Based Pricing** — Tiered pricing model: PostPay for trusted peers (reputation score >= 0.8), PrePay for new/untrusted peers
+- **Settlement Service** — Async on-chain USDC settlement via EIP-3009 with receipt tracking and configurable retry
+- **Auto-Payment Tool** — `p2p_invoke_paid` tool for buyer-side automatic payment handling during P2P interactions
+- **P2P Teams** — Task-scoped agent groups with role-based delegation (Leader, Worker, Reviewer, Observer), conflict resolution, and result aggregation
+- **Agent Pool** — P2P agent pool with discovery integration, periodic health checking, and weighted selection based on reputation scores
 
 #### Paid Value Exchange
 

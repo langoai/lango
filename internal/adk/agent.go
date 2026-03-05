@@ -187,15 +187,45 @@ func (a *Agent) Run(ctx context.Context, sessionID string, input string) iter.Se
 
 	return func(yield func(*session.Event, error) bool) {
 		turnCount := 0
+		warnedAtThreshold := false
+		wrapUpGranted := false
+
 		for event, err := range inner {
 			if err != nil {
 				yield(nil, err)
 				return
 			}
+
 			// Count events containing function calls as agent turns.
-			if event.Content != nil && hasFunctionCalls(event) {
+			// Delegation transfers (agent-to-agent routing) are not counted
+			// because they are routing overhead, not actual tool work.
+			if event.Content != nil && hasFunctionCalls(event) && !isDelegationEvent(event) {
 				turnCount++
+
+				// Log a warning at 80% of the turn limit for observability.
+				if !warnedAtThreshold && maxTurns > 0 && turnCount == maxTurns*4/5 {
+					warnedAtThreshold = true
+					logger().Warnw("agent nearing turn limit",
+						"session", sessionID,
+						"turns", turnCount,
+						"maxTurns", maxTurns,
+						"remaining", maxTurns-turnCount)
+				}
+
 				if turnCount > maxTurns {
+					if !wrapUpGranted {
+						// Grant one wrap-up turn so the agent can finalize gracefully.
+						wrapUpGranted = true
+						logger().Warnw("agent turn limit reached, granting wrap-up turn",
+							"session", sessionID,
+							"turns", turnCount,
+							"maxTurns", maxTurns)
+						if !yield(event, nil) {
+							return
+						}
+						continue
+					}
+					// Hard stop after wrap-up turn was consumed.
 					logger().Warnw("agent max turns exceeded",
 						"session", sessionID,
 						"turns", turnCount,
@@ -224,6 +254,12 @@ func hasFunctionCalls(e *session.Event) bool {
 	return false
 }
 
+// isDelegationEvent reports whether the event is a pure agent-to-agent
+// delegation transfer (routing overhead, not actual tool work).
+func isDelegationEvent(e *session.Event) bool {
+	return e.Actions.TransferToAgent != ""
+}
+
 // RunAndCollect executes the agent and returns the full text response.
 // If the agent encounters a "failed to find agent" error (hallucinated agent
 // name), it sends a correction message and retries once.
@@ -231,10 +267,33 @@ func (a *Agent) RunAndCollect(ctx context.Context, sessionID, input string) (str
 	start := time.Now()
 	resp, err := a.runAndCollectOnce(ctx, sessionID, input)
 	if err == nil {
-		logger().Debugw("agent run completed",
-			"session", sessionID,
-			"elapsed", time.Since(start).String(),
-			"response_len", len(resp))
+		// Safety net: detect [REJECT] text from sub-agents that failed to
+		// call transfer_to_agent and force re-routing through the orchestrator.
+		if resp != "" && containsRejectPattern(resp) && len(a.adkAgent.SubAgents()) > 0 {
+			logger().Warnw("sub-agent REJECT detected in text, forcing re-route",
+				"session", sessionID,
+				"response_preview", truncate(resp, 100))
+			correction := fmt.Sprintf(
+				"[System: A sub-agent could not handle this request. "+
+					"Re-evaluate and route to a different agent or answer directly. "+
+					"Original user request: %s]", input)
+			retryResp, retryErr := a.runAndCollectOnce(ctx, sessionID, correction)
+			if retryErr == nil && retryResp != "" && !containsRejectPattern(retryResp) {
+				return retryResp, nil
+			}
+			// Fall through with original response if retry also fails.
+		}
+
+		if resp == "" {
+			logger().Warnw("agent returned empty response",
+				"session", sessionID,
+				"elapsed", time.Since(start).String())
+		} else {
+			logger().Debugw("agent run completed",
+				"session", sessionID,
+				"elapsed", time.Since(start).String(),
+				"response_len", len(resp))
+		}
 		return resp, nil
 	}
 
@@ -349,7 +408,30 @@ func (a *Agent) runAndCollectOnce(ctx context.Context, sessionID, input string) 
 		// in streaming mode. Its text duplicates partial chunks, so skip.
 	}
 
+	// ADK's streaming iterator silently terminates on context deadline
+	// without yielding an error. Check context after iteration to detect
+	// timeout that the iterator failed to propagate.
+	if err := ctx.Err(); err != nil {
+		return "", fmt.Errorf("agent error: %w", err)
+	}
+
 	return b.String(), nil
+}
+
+// containsRejectPattern reports whether the text contains a [REJECT] marker.
+// Uses strings.Contains for efficiency since the pattern is a literal string.
+func containsRejectPattern(text string) bool {
+	return strings.Contains(text, "[REJECT]")
+}
+
+// truncate returns the first n runes of s, appending "..." if truncated.
+// Uses rune counting to avoid splitting multi-byte UTF-8 characters.
+func truncate(s string, n int) string {
+	runes := []rune(s)
+	if len(runes) <= n {
+		return s
+	}
+	return string(runes[:n]) + "..."
 }
 
 // reAgentNotFound matches ADK's "failed to find agent: <name>" error.
@@ -411,6 +493,13 @@ func (a *Agent) RunStreaming(ctx context.Context, sessionID, input string, onChu
 				}
 			}
 		}
+	}
+
+	// ADK's streaming iterator silently terminates on context deadline
+	// without yielding an error. Check context after iteration to detect
+	// timeout that the iterator failed to propagate.
+	if err := ctx.Err(); err != nil {
+		return "", fmt.Errorf("agent error: %w", err)
 	}
 
 	return b.String(), nil

@@ -9,6 +9,7 @@ import (
 	"time"
 
 	internal "github.com/langoai/lango/internal/session"
+	"github.com/langoai/lango/internal/types"
 	"google.golang.org/adk/session"
 	"google.golang.org/genai"
 )
@@ -291,15 +292,17 @@ func TestEventsAdapter_AuthorMapping_MultiAgent(t *testing.T) {
 			{Role: "user", Content: "hello", Timestamp: now},
 			// Stored author from a previous multi-agent event.
 			{Role: "assistant", Content: "hi", Author: "lango-orchestrator", Timestamp: now.Add(time.Second)},
+			// Interleave user message to prevent role merging.
+			{Role: "user", Content: "follow up", Timestamp: now.Add(2 * time.Second)},
 			// No stored author — should fall back to rootAgentName.
-			{Role: "assistant", Content: "ok", Timestamp: now.Add(2 * time.Second)},
+			{Role: "assistant", Content: "ok", Timestamp: now.Add(3 * time.Second)},
 		},
 	}
 
 	adapter := NewSessionAdapter(sess, &mockStore{}, "lango-orchestrator")
 	events := adapter.Events()
 
-	expectedAuthors := []string{"user", "lango-orchestrator", "lango-orchestrator"}
+	expectedAuthors := []string{"user", "lango-orchestrator", "user", "lango-orchestrator"}
 	i := 0
 	for evt := range events.All() {
 		if i < len(expectedAuthors) && evt.Author != expectedAuthors[i] {
@@ -307,18 +310,19 @@ func TestEventsAdapter_AuthorMapping_MultiAgent(t *testing.T) {
 		}
 		i++
 	}
-	if i != 3 {
-		t.Errorf("expected 3 events, got %d", i)
+	if i != 4 {
+		t.Errorf("expected 4 events, got %d", i)
 	}
 }
 
 func TestEventsAdapter_Truncation(t *testing.T) {
-	// Create 150 small messages — all fit within default token budget.
+	// Create 150 small messages with alternating roles — all fit within default token budget.
 	var msgs []internal.Message
 	now := time.Now()
+	roles := []types.MessageRole{"user", "assistant"}
 	for i := range 150 {
 		msgs = append(msgs, internal.Message{
-			Role:      "user",
+			Role:      roles[i%2],
 			Content:   "msg",
 			Timestamp: now.Add(time.Duration(i) * time.Second),
 		})
@@ -451,19 +455,20 @@ func TestEventsAdapter_At(t *testing.T) {
 func TestEventsAdapter_TokenBudgetTruncation(t *testing.T) {
 	t.Run("includes all messages within budget", func(t *testing.T) {
 		var msgs []internal.Message
-		for range 5 {
+		roles := []types.MessageRole{"user", "assistant"}
+		for i := range 6 {
 			msgs = append(msgs, internal.Message{
-				Role:      "user",
+				Role:      roles[i%2],
 				Content:   "short",
-				Timestamp: time.Now(),
+				Timestamp: time.Now().Add(time.Duration(i) * time.Second),
 			})
 		}
 		adapter := &EventsAdapter{
 			history:     msgs,
 			tokenBudget: 10000,
 		}
-		if adapter.Len() != 5 {
-			t.Errorf("expected 5, got %d", adapter.Len())
+		if adapter.Len() != 6 {
+			t.Errorf("expected 6, got %d", adapter.Len())
 		}
 	})
 
@@ -553,11 +558,12 @@ func TestEventsAdapter_TokenBudgetTruncation(t *testing.T) {
 
 func TestEventsAdapter_DefaultTokenBudget(t *testing.T) {
 	var msgs []internal.Message
-	for range 150 {
+	roles := []types.MessageRole{"user", "assistant"}
+	for i := range 150 {
 		msgs = append(msgs, internal.Message{
-			Role:      "user",
+			Role:      roles[i%2],
 			Content:   "msg",
-			Timestamp: time.Now(),
+			Timestamp: time.Now().Add(time.Duration(i) * time.Second),
 		})
 	}
 	// tokenBudget=0 means use DefaultTokenBudget
@@ -740,6 +746,72 @@ func TestEventsAdapter_FunctionResponseReconstruction(t *testing.T) {
 		}
 		if !hasText {
 			t.Error("expected text part in tool event without FunctionResponse context")
+		}
+	})
+}
+
+func TestEventsAdapter_ConsecutiveRoleMerging(t *testing.T) {
+	now := time.Now()
+
+	t.Run("consecutive assistant turns are merged", func(t *testing.T) {
+		sess := &internal.Session{
+			History: []internal.Message{
+				{Role: "user", Content: "hello", Timestamp: now},
+				{Role: "assistant", Content: "part1", Timestamp: now.Add(time.Second)},
+				{Role: "assistant", Content: "part2", Timestamp: now.Add(2 * time.Second)},
+			},
+		}
+		adapter := &EventsAdapter{history: sess.History, rootAgentName: "lango-agent"}
+		var events []*session.Event
+		for evt := range adapter.All() {
+			events = append(events, evt)
+		}
+		if len(events) != 2 {
+			t.Fatalf("expected 2 events (merged), got %d", len(events))
+		}
+		// Second event should have 2 text parts from the merged assistant turns.
+		if len(events[1].Content.Parts) != 2 {
+			t.Errorf("expected 2 parts in merged event, got %d", len(events[1].Content.Parts))
+		}
+	})
+
+	t.Run("alternating roles are not merged", func(t *testing.T) {
+		sess := &internal.Session{
+			History: []internal.Message{
+				{Role: "user", Content: "hello", Timestamp: now},
+				{Role: "assistant", Content: "hi", Timestamp: now.Add(time.Second)},
+				{Role: "user", Content: "bye", Timestamp: now.Add(2 * time.Second)},
+			},
+		}
+		adapter := &EventsAdapter{history: sess.History, rootAgentName: "lango-agent"}
+		var events []*session.Event
+		for evt := range adapter.All() {
+			events = append(events, evt)
+		}
+		if len(events) != 3 {
+			t.Errorf("expected 3 events (no merging), got %d", len(events))
+		}
+	})
+
+	t.Run("Len matches All count", func(t *testing.T) {
+		sess := &internal.Session{
+			History: []internal.Message{
+				{Role: "user", Content: "a", Timestamp: now},
+				{Role: "assistant", Content: "b", Timestamp: now.Add(time.Second)},
+				{Role: "assistant", Content: "c", Timestamp: now.Add(2 * time.Second)},
+				{Role: "user", Content: "d", Timestamp: now.Add(3 * time.Second)},
+			},
+		}
+		adapter := &EventsAdapter{history: sess.History, rootAgentName: "lango-agent"}
+		count := 0
+		for range adapter.All() {
+			count++
+		}
+		if adapter.Len() != count {
+			t.Errorf("Len()=%d != All() count=%d", adapter.Len(), count)
+		}
+		if count != 3 {
+			t.Errorf("expected 3 events, got %d", count)
 		}
 	})
 }

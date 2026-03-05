@@ -334,16 +334,14 @@ func TestBuildAgentTree_RoutingTableInInstruction(t *testing.T) {
 	assert.Contains(t, inst, "VERIFY")
 	assert.Contains(t, inst, "DELEGATE")
 
-	// Should contain rejection handling.
-	assert.Contains(t, inst, "Rejection Handling")
-	assert.Contains(t, inst, "[REJECT]")
+	// Should contain re-routing protocol.
+	assert.Contains(t, inst, "Re-Routing Protocol")
+	assert.Contains(t, inst, "sub-agent transfers control back")
 }
 
-func TestBuildAgentTree_RejectProtocolInInstructions(t *testing.T) {
+func TestBuildAgentTree_EscalationProtocolInInstructions(t *testing.T) {
 	// Agent.Instruction() is not part of the public ADK interface, so we
-	// verify reject protocol presence via the agentSpecs registry directly.
-	// This is covered by TestAgentSpecs_AllHaveRejectProtocol as well,
-	// but this test verifies that all specs used by BuildAgentTree include it.
+	// verify escalation protocol presence via the agentSpecs registry directly.
 	tools := []*agent.Tool{
 		newTestTool("exec_shell"),
 		newTestTool("browser_open"),
@@ -358,8 +356,10 @@ func TestBuildAgentTree_RejectProtocolInInstructions(t *testing.T) {
 		if len(st) == 0 && !spec.AlwaysInclude {
 			continue
 		}
-		assert.Contains(t, spec.Instruction, "[REJECT]",
-			"spec %q should have reject protocol in instruction", spec.Name)
+		assert.Contains(t, spec.Instruction, "transfer_to_agent",
+			"spec %q should have transfer_to_agent escalation in instruction", spec.Name)
+		assert.Contains(t, spec.Instruction, "lango-orchestrator",
+			"spec %q should escalate to lango-orchestrator", spec.Name)
 	}
 }
 
@@ -719,12 +719,81 @@ func TestBuildOrchestratorInstruction_NoUnmatchedTools(t *testing.T) {
 	assert.NotContains(t, got, "Unmatched Tools")
 }
 
+func TestBuildOrchestratorInstruction_DelegateOnly(t *testing.T) {
+	got := buildOrchestratorInstruction("base", nil, 5, nil)
+
+	assert.Contains(t, got, "You do NOT have tools")
+	assert.NotContains(t, got, "builtin_list")
+}
+
+func TestBuildOrchestratorInstruction_HasAssessStep(t *testing.T) {
+	got := buildOrchestratorInstruction("base", nil, 5, nil)
+
+	assert.Contains(t, got, "0. ASSESS")
+	assert.Contains(t, got, "simple conversational request")
+	assert.Contains(t, got, "respond directly")
+}
+
+func TestBuildOrchestratorInstruction_HasReRoutingProtocol(t *testing.T) {
+	got := buildOrchestratorInstruction("base", nil, 5, nil)
+
+	assert.Contains(t, got, "Re-Routing Protocol")
+	assert.Contains(t, got, "sub-agent transfers control back")
+	assert.Contains(t, got, "NEVER re-send the same request")
+	assert.Contains(t, got, "general-purpose assistant")
+}
+
+func TestBuildOrchestratorInstruction_DelegationRulesOrder(t *testing.T) {
+	got := buildOrchestratorInstruction("base", nil, 5, nil)
+
+	// Verify that direct response rule comes BEFORE delegation rule.
+	directIdx := strings.Index(got, "respond directly WITHOUT delegation")
+	delegateIdx := strings.Index(got, "delegate to the sub-agent")
+	assert.Greater(t, directIdx, 0, "direct response rule should exist")
+	assert.Greater(t, delegateIdx, 0, "delegation rule should exist")
+	assert.Less(t, directIdx, delegateIdx, "direct response should come before delegation")
+}
+
+// --- PartitionTools builtin_ skip tests ---
+
+func TestPartitionTools_SkipsBuiltinPrefix(t *testing.T) {
+	tools := []*agent.Tool{
+		newTestTool("exec_shell"),
+		newTestTool("builtin_list"),
+		newTestTool("builtin_invoke"),
+		newTestTool("search_web"),
+	}
+
+	got := PartitionTools(tools)
+
+	assert.Equal(t, []string{"exec_shell"}, toolNames(got.Operator))
+	assert.Equal(t, []string{"search_web"}, toolNames(got.Librarian))
+	assert.Nil(t, got.Unmatched, "builtin_ tools should not appear in unmatched")
+
+	// Verify builtin_ tools are not in any role.
+	allTools := append(got.Operator, got.Navigator...)
+	allTools = append(allTools, got.Vault...)
+	allTools = append(allTools, got.Librarian...)
+	allTools = append(allTools, got.Automator...)
+	allTools = append(allTools, got.Planner...)
+	allTools = append(allTools, got.Chronicler...)
+	allTools = append(allTools, got.Unmatched...)
+	for _, tool := range allTools {
+		assert.False(t, strings.HasPrefix(tool.Name, "builtin_"),
+			"builtin_ tool %q should not be in any role", tool.Name)
+	}
+}
+
 // --- Agent spec consistency tests ---
 
-func TestAgentSpecs_AllHaveRejectProtocol(t *testing.T) {
+func TestAgentSpecs_AllHaveEscalationProtocol(t *testing.T) {
 	for _, spec := range agentSpecs {
-		assert.Contains(t, spec.Instruction, "[REJECT]",
-			"spec %q must have reject protocol", spec.Name)
+		assert.Contains(t, spec.Instruction, "## Escalation Protocol",
+			"spec %q must have escalation protocol section", spec.Name)
+		assert.Contains(t, spec.Instruction, `transfer_to_agent`,
+			"spec %q must use transfer_to_agent for escalation", spec.Name)
+		assert.Contains(t, spec.Instruction, `lango-orchestrator`,
+			"spec %q must escalate to lango-orchestrator", spec.Name)
 	}
 }
 
@@ -776,6 +845,203 @@ func TestAgentSpecs_InstructionStructure(t *testing.T) {
 				"spec %q instruction must contain %q", spec.Name, section)
 		}
 	}
+}
+
+// --- PartitionToolsDynamic tests ---
+
+func TestPartitionToolsDynamic(t *testing.T) {
+	tests := []struct {
+		name          string
+		giveTools     []*agent.Tool
+		giveSpecs     []AgentSpec
+		wantPartition map[string][]string
+		wantUnmatched []string
+	}{
+		{
+			name: "basic partitioning with custom specs",
+			giveTools: []*agent.Tool{
+				newTestTool("api_call"),
+				newTestTool("api_list"),
+				newTestTool("db_query"),
+				newTestTool("db_insert"),
+				newTestTool("unknown_op"),
+			},
+			giveSpecs: []AgentSpec{
+				{Name: "api-agent", Prefixes: []string{"api_"}},
+				{Name: "db-agent", Prefixes: []string{"db_"}},
+			},
+			wantPartition: map[string][]string{
+				"api-agent": {"api_call", "api_list"},
+				"db-agent":  {"db_query", "db_insert"},
+			},
+			wantUnmatched: []string{"unknown_op"},
+		},
+		{
+			name: "builtin_ tools skipped",
+			giveTools: []*agent.Tool{
+				newTestTool("builtin_list"),
+				newTestTool("api_call"),
+			},
+			giveSpecs: []AgentSpec{
+				{Name: "api-agent", Prefixes: []string{"api_"}},
+			},
+			wantPartition: map[string][]string{
+				"api-agent": {"api_call"},
+			},
+		},
+		{
+			name:      "empty tools",
+			giveTools: nil,
+			giveSpecs: []AgentSpec{
+				{Name: "agent-a", Prefixes: []string{"a_"}},
+			},
+			wantPartition: map[string][]string{},
+		},
+		{
+			name: "first matching spec wins",
+			giveTools: []*agent.Tool{
+				newTestTool("search_web"),
+			},
+			giveSpecs: []AgentSpec{
+				{Name: "first", Prefixes: []string{"search_"}},
+				{Name: "second", Prefixes: []string{"search_"}},
+			},
+			wantPartition: map[string][]string{
+				"first": {"search_web"},
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := PartitionToolsDynamic(tt.giveTools, tt.giveSpecs)
+
+			for name, wantNames := range tt.wantPartition {
+				assert.Equal(t, wantNames, toolNames(got[name]), "agent %q tools", name)
+			}
+
+			assert.Equal(t, tt.wantUnmatched, toolNames(got.Unmatched()), "unmatched tools")
+		})
+	}
+}
+
+func TestBuiltinSpecs(t *testing.T) {
+	specs := BuiltinSpecs()
+
+	// Should return a copy of the built-in specs.
+	assert.Len(t, specs, len(agentSpecs))
+	for i, spec := range specs {
+		assert.Equal(t, agentSpecs[i].Name, spec.Name)
+	}
+
+	// Modifying returned slice should not affect original.
+	specs[0].Name = "modified"
+	assert.NotEqual(t, "modified", agentSpecs[0].Name)
+}
+
+func TestBuildAgentTree_WithCustomSpecs(t *testing.T) {
+	tools := []*agent.Tool{
+		newTestTool("api_call"),
+		newTestTool("db_query"),
+	}
+
+	customSpecs := []AgentSpec{
+		{
+			Name:         "api-handler",
+			Description:  "Handles API calls",
+			Instruction:  "## What You Do\nHandle API.\n## Input Format\nAPI request.\n## Output Format\nAPI response.\n## Constraints\nOnly API.\n## Escalation Protocol\nIf a task does not match your capabilities:\n1. Do NOT attempt to answer.\n2. IMMEDIATELY call transfer_to_agent with agent_name \"lango-orchestrator\".",
+			Prefixes:     []string{"api_"},
+			Keywords:     []string{"api", "call"},
+			Capabilities: []string{"REST API management", "HTTP requests"},
+			Accepts:      "API request",
+			Returns:      "API response",
+		},
+		{
+			Name:         "db-handler",
+			Description:  "Handles database operations",
+			Instruction:  "## What You Do\nHandle DB.\n## Input Format\nSQL query.\n## Output Format\nQuery result.\n## Constraints\nOnly DB.\n## Escalation Protocol\nIf a task does not match your capabilities:\n1. Do NOT attempt to answer.\n2. IMMEDIATELY call transfer_to_agent with agent_name \"lango-orchestrator\".",
+			Prefixes:     []string{"db_"},
+			Keywords:     []string{"database", "query"},
+			Capabilities: []string{"SQL queries", "database management"},
+			Accepts:      "SQL query",
+			Returns:      "Query result",
+		},
+	}
+
+	root, err := BuildAgentTree(Config{
+		Tools:        tools,
+		Model:        nil,
+		SystemPrompt: "test prompt",
+		AdaptTool:    stubAdapter,
+		Specs:        customSpecs,
+	})
+	require.NoError(t, err)
+	require.NotNil(t, root)
+
+	assert.Equal(t, "lango-orchestrator", root.Name())
+	assert.Len(t, root.SubAgents(), 2)
+
+	subNames := make([]string, len(root.SubAgents()))
+	for i, sa := range root.SubAgents() {
+		subNames[i] = sa.Name()
+	}
+	assert.Contains(t, subNames, "api-handler")
+	assert.Contains(t, subNames, "db-handler")
+}
+
+func TestBuildAgentTree_CustomSpecsAlwaysInclude(t *testing.T) {
+	customSpecs := []AgentSpec{
+		{
+			Name:          "thinker",
+			Description:   "Reasoning agent",
+			Instruction:   "Think.\n## What You Do\nThink.\n## Input Format\nProblem.\n## Output Format\nAnswer.\n## Constraints\nOnly think.\n## Escalation Protocol\nIf a task does not match:\n1. Call transfer_to_agent with agent_name \"lango-orchestrator\".",
+			Keywords:      []string{"think", "reason"},
+			AlwaysInclude: true,
+			Accepts:       "Problem",
+			Returns:       "Answer",
+		},
+	}
+
+	root, err := BuildAgentTree(Config{
+		Tools:        nil,
+		Model:        nil,
+		SystemPrompt: "test",
+		AdaptTool:    stubAdapter,
+		Specs:        customSpecs,
+	})
+	require.NoError(t, err)
+
+	assert.Len(t, root.SubAgents(), 1)
+	assert.Equal(t, "thinker", root.SubAgents()[0].Name())
+}
+
+func TestBuildOrchestratorInstruction_ContainsCapabilities(t *testing.T) {
+	entries := []routingEntry{
+		{
+			Name:         "api-handler",
+			Description:  "API operations",
+			Keywords:     []string{"api"},
+			Capabilities: []string{"REST API management", "HTTP requests"},
+			Accepts:      "API request",
+			Returns:      "API response",
+		},
+	}
+
+	got := buildOrchestratorInstruction("base", entries, 5, nil)
+
+	assert.Contains(t, got, "**Capabilities**")
+	assert.Contains(t, got, "REST API management")
+	assert.Contains(t, got, "HTTP requests")
+	assert.Contains(t, got, "Capability Match")
+}
+
+func TestBuildOrchestratorInstruction_CapabilityMatchStep(t *testing.T) {
+	got := buildOrchestratorInstruction("base", nil, 5, nil)
+
+	// Verify upgraded MATCH step mentions capability matching.
+	assert.Contains(t, got, "Keyword Match")
+	assert.Contains(t, got, "Capability Match")
+	assert.Contains(t, got, "semantic similarity")
 }
 
 // --- helpers ---

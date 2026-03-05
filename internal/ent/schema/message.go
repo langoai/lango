@@ -10,10 +10,12 @@ import (
 
 // ToolCall represents a tool invocation (embedded in Message)
 type ToolCall struct {
-	ID     string `json:"id"`
-	Name   string `json:"name"`
-	Input  string `json:"input"`
-	Output string `json:"output,omitempty"`
+	ID               string `json:"id"`
+	Name             string `json:"name"`
+	Input            string `json:"input"`
+	Output           string `json:"output,omitempty"`
+	Thought          bool   `json:"thought,omitempty"`
+	ThoughtSignature []byte `json:"thoughtSignature,omitempty"`
 }
 
 // Message holds the schema definition for the Message entity.

@@ -2,6 +2,7 @@ package app
 
 import (
 	"context"
+	"fmt"
 	"time"
 
 	"github.com/consensys/gnark/frontend"
@@ -9,7 +10,9 @@ import (
 
 	"github.com/langoai/lango/internal/config"
 	"github.com/langoai/lango/internal/ent"
+	"github.com/langoai/lango/internal/eventbus"
 	"github.com/langoai/lango/internal/p2p"
+	"github.com/langoai/lango/internal/p2p/agentpool"
 	"github.com/langoai/lango/internal/p2p/discovery"
 	"github.com/langoai/lango/internal/p2p/firewall"
 	"github.com/langoai/lango/internal/p2p/handshake"
@@ -17,6 +20,8 @@ import (
 	"github.com/langoai/lango/internal/p2p/paygate"
 	p2pproto "github.com/langoai/lango/internal/p2p/protocol"
 	"github.com/langoai/lango/internal/p2p/reputation"
+	"github.com/langoai/lango/internal/p2p/settlement"
+	"github.com/langoai/lango/internal/p2p/team"
 	"github.com/langoai/lango/internal/p2p/zkp"
 	"github.com/langoai/lango/internal/p2p/zkp/circuits"
 	"github.com/langoai/lango/internal/payment/contracts"
@@ -27,21 +32,25 @@ import (
 
 // p2pComponents holds optional P2P networking components.
 type p2pComponents struct {
-	node       *p2p.Node
-	sessions   *handshake.SessionStore
-	handshaker *handshake.Handshaker
-	fw         *firewall.Firewall
-	gossip     *discovery.GossipService
-	identity   *identity.WalletDIDProvider
-	handler    *p2pproto.Handler
-	payGate    *paygate.Gate
-	reputation *reputation.Store
-	pricingCfg config.P2PPricingConfig
-	pricingFn  func(toolName string) (string, bool)
+	node        *p2p.Node
+	sessions    *handshake.SessionStore
+	handshaker  *handshake.Handshaker
+	fw          *firewall.Firewall
+	gossip      *discovery.GossipService
+	identity    *identity.WalletDIDProvider
+	handler     *p2pproto.Handler
+	payGate     *paygate.Gate
+	reputation  *reputation.Store
+	pricingCfg  config.P2PPricingConfig
+	pricingFn   func(toolName string) (string, bool)
+	agentPool   *agentpool.Pool
+	selector    *agentpool.Selector
+	coordinator *team.Coordinator
+	provider    *agentpool.PoolProvider
 }
 
 // initP2P creates the P2P networking components if enabled.
-func initP2P(cfg *config.Config, wp wallet.WalletProvider, pc *paymentComponents, dbClient *ent.Client, secrets *security.SecretsStore) *p2pComponents {
+func initP2P(cfg *config.Config, wp wallet.WalletProvider, pc *paymentComponents, dbClient *ent.Client, secrets *security.SecretsStore, bus *eventbus.Bus) *p2pComponents {
 	if !cfg.P2P.Enabled {
 		logger().Info("P2P networking disabled")
 		return nil
@@ -262,12 +271,29 @@ func initP2P(cfg *config.Config, wp wallet.WalletProvider, pc *paymentComponents
 			return "", true // free by default
 		}
 
+		// Build trust config from P2P pricing thresholds.
+		trustCfg := paygate.DefaultTrustConfig()
+		if cfg.P2P.Pricing.TrustThresholds.PostPayMinScore > 0 {
+			trustCfg.PostPayMinScore = cfg.P2P.Pricing.TrustThresholds.PostPayMinScore
+		}
+
+		// Wire reputation function for trust-based payment tiers.
+		var reputationFn paygate.ReputationFunc
+		if repStore != nil {
+			reputationFn = func(ctx context.Context, peerDID string) (float64, error) {
+				return repStore.GetScore(ctx, peerDID)
+			}
+		}
+
 		pg = paygate.New(paygate.Config{
-			PricingFn: pricingFn,
-			LocalAddr: walletAddr,
-			ChainID:   pc.chainID,
-			USDCAddr:  usdcAddr,
-			Logger:    pLogger,
+			PricingFn:    pricingFn,
+			ReputationFn: reputationFn,
+			TrustCfg:     trustCfg,
+			LocalAddr:    walletAddr,
+			ChainID:      pc.chainID,
+			USDCAddr:     usdcAddr,
+			RPCClient:    pc.rpcClient,
+			Logger:       pLogger,
 		})
 
 		// Wire PayGate to handler via adapter.
@@ -275,7 +301,36 @@ func initP2P(cfg *config.Config, wp wallet.WalletProvider, pc *paymentComponents
 		pLogger.Infow("P2P payment gate enabled",
 			"perQuery", cfg.P2P.Pricing.PerQuery,
 			"toolPrices", len(cfg.P2P.Pricing.ToolPrices),
+			"postPayMinScore", trustCfg.PostPayMinScore,
 		)
+
+		// Wire settlement service for on-chain payment processing.
+		if bus != nil && pc.rpcClient != nil && dbClient != nil {
+			receiptTimeout := cfg.P2P.Pricing.Settlement.ReceiptTimeout
+			if receiptTimeout <= 0 {
+				receiptTimeout = 2 * time.Minute
+			}
+			maxRetries := cfg.P2P.Pricing.Settlement.MaxRetries
+			if maxRetries <= 0 {
+				maxRetries = 3
+			}
+			settleSvc := settlement.New(settlement.Config{
+				Wallet:         wp,
+				RPCClient:      pc.rpcClient,
+				DBClient:       dbClient,
+				ChainID:        pc.chainID,
+				USDCAddr:       usdcAddr,
+				ReceiptTimeout: receiptTimeout,
+				MaxRetries:     maxRetries,
+				Logger:         pLogger,
+			})
+			if repStore != nil {
+				settleSvc.SetReputationRecorder(repStore)
+			}
+			settleSvc.Subscribe(bus)
+			handler.SetEventBus(bus)
+			pLogger.Info("P2P settlement service wired to event bus")
+		}
 	}
 
 	localCard := &discovery.GossipCard{
@@ -335,18 +390,45 @@ func initP2P(cfg *config.Config, wp wallet.WalletProvider, pc *paymentComponents
 		}
 	}
 
+	// Create agent pool and selector for dynamic P2P agent management.
+	pool := agentpool.New(pLogger)
+	selector := agentpool.NewSelector(pool, agentpool.DefaultWeights())
+	provider := agentpool.NewPoolProvider(pool, selector)
+
+	// Create team coordinator for distributed agent collaboration.
+	var coord *team.Coordinator
+	invokeFn := func(ctx context.Context, peerID, toolName string, params map[string]interface{}) (map[string]interface{}, error) {
+		// Default invoke function — can be overridden via handler wiring.
+		return nil, fmt.Errorf("P2P team invoke not configured for peer %s", peerID)
+	}
+	coord = team.NewCoordinator(team.CoordinatorConfig{
+		Pool:     pool,
+		Selector: selector,
+		InvokeFn: invokeFn,
+		Bus:      bus,
+		Logger:   pLogger,
+	})
+
+	pLogger.Infow("P2P agent pool and team coordinator initialized",
+		"selectorWeights", "default",
+	)
+
 	return &p2pComponents{
-		node:       node,
-		sessions:   sessions,
-		handshaker: handshaker,
-		fw:         fw,
-		gossip:     gossip,
-		identity:   idProvider,
-		handler:    handler,
-		payGate:    pg,
-		reputation: repStore,
-		pricingCfg: cfg.P2P.Pricing,
-		pricingFn:  extPricingFn,
+		node:        node,
+		sessions:    sessions,
+		handshaker:  handshaker,
+		fw:          fw,
+		gossip:      gossip,
+		identity:    idProvider,
+		handler:     handler,
+		payGate:     pg,
+		reputation:  repStore,
+		pricingCfg:  cfg.P2P.Pricing,
+		pricingFn:   extPricingFn,
+		agentPool:   pool,
+		selector:    selector,
+		coordinator: coord,
+		provider:    provider,
 	}
 }
 
@@ -363,7 +445,8 @@ func (a *payGateAdapter) Check(peerDID, toolName string, payload map[string]inte
 		return p2pproto.PayGateResult{}, err
 	}
 	pgr := p2pproto.PayGateResult{
-		Status: string(result.Status),
+		Status:       string(result.Status),
+		SettlementID: result.SettlementID,
 	}
 	if result.Auth != nil {
 		pgr.Auth = result.Auth

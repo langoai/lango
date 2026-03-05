@@ -244,6 +244,18 @@ func (s *ConfigState) UpdateConfigFromForm(form *FormModel) {
 		// Multi-Agent
 		case "multi_agent":
 			s.Current.Agent.MultiAgent = f.Checked
+		case "max_delegation_rounds":
+			if i, err := strconv.Atoi(val); err == nil {
+				s.Current.Agent.MaxDelegationRounds = i
+			}
+		case "max_turns":
+			if i, err := strconv.Atoi(val); err == nil {
+				s.Current.Agent.MaxTurns = i
+			}
+		case "error_correction_enabled":
+			s.Current.Agent.ErrorCorrectionEnabled = boolPtr(f.Checked)
+		case "agents_dir":
+			s.Current.Agent.AgentsDir = val
 
 		// A2A Protocol
 		case "a2a_enabled":
@@ -300,6 +312,28 @@ func (s *ConfigState) UpdateConfigFromForm(form *FormModel) {
 			s.Current.Workflow.StateDir = val
 		case "wf_default_deliver":
 			s.Current.Workflow.DefaultDeliverTo = splitCSV(val)
+
+		// MCP
+		case "mcp_enabled":
+			s.Current.MCP.Enabled = f.Checked
+		case "mcp_default_timeout":
+			if d, err := time.ParseDuration(val); err == nil {
+				s.Current.MCP.DefaultTimeout = d
+			}
+		case "mcp_max_output_tokens":
+			if i, err := strconv.Atoi(val); err == nil {
+				s.Current.MCP.MaxOutputTokens = i
+			}
+		case "mcp_health_check_interval":
+			if d, err := time.ParseDuration(val); err == nil {
+				s.Current.MCP.HealthCheckInterval = d
+			}
+		case "mcp_auto_reconnect":
+			s.Current.MCP.AutoReconnect = f.Checked
+		case "mcp_max_reconnect_attempts":
+			if i, err := strconv.Atoi(val); err == nil {
+				s.Current.MCP.MaxReconnectAttempts = i
+			}
 
 		// Payment
 		case "payment_enabled":
@@ -474,6 +508,24 @@ func (s *ConfigState) UpdateConfigFromForm(form *FormModel) {
 		case "kms_pkcs11_key_label":
 			s.Current.Security.KMS.PKCS11.KeyLabel = val
 
+		// Hooks
+		case "hooks_enabled":
+			s.Current.Hooks.Enabled = f.Checked
+		case "hooks_security_filter":
+			s.Current.Hooks.SecurityFilter = f.Checked
+		case "hooks_access_control":
+			s.Current.Hooks.AccessControl = f.Checked
+		case "hooks_event_publishing":
+			s.Current.Hooks.EventPublishing = f.Checked
+		case "hooks_knowledge_save":
+			s.Current.Hooks.KnowledgeSave = f.Checked
+		case "hooks_blocked_commands":
+			s.Current.Hooks.BlockedCommands = splitCSV(val)
+
+		// Agent Memory
+		case "agent_memory_enabled":
+			s.Current.AgentMemory.Enabled = f.Checked
+
 		// Librarian
 		case "lib_enabled":
 			s.Current.Librarian.Enabled = f.Checked
@@ -591,6 +643,68 @@ func (s *ConfigState) UpdateProviderFromForm(id string, form *FormModel) {
 	s.MarkDirty("providers")
 }
 
+// UpdateMCPServerFromForm updates a specific MCP server config from the form.
+func (s *ConfigState) UpdateMCPServerFromForm(name string, form *FormModel) {
+	if form == nil {
+		return
+	}
+
+	if s.Current.MCP.Servers == nil {
+		s.Current.MCP.Servers = make(map[string]config.MCPServerConfig)
+	}
+
+	if name == "" {
+		for _, f := range form.Fields {
+			if f.Key == "mcp_srv_name" {
+				name = f.Value
+				break
+			}
+		}
+	}
+
+	if name == "" {
+		return
+	}
+
+	srv, ok := s.Current.MCP.Servers[name]
+	if !ok {
+		srv = config.MCPServerConfig{}
+	}
+
+	for _, f := range form.Fields {
+		val := f.Value
+		switch f.Key {
+		case "mcp_srv_transport":
+			srv.Transport = val
+		case "mcp_srv_command":
+			srv.Command = val
+		case "mcp_srv_args":
+			srv.Args = splitCSV(val)
+		case "mcp_srv_url":
+			srv.URL = val
+		case "mcp_srv_env":
+			srv.Env = parseKeyValuePairs(val)
+		case "mcp_srv_headers":
+			srv.Headers = parseKeyValuePairs(val)
+		case "mcp_srv_enabled":
+			srv.Enabled = boolPtr(f.Checked)
+		case "mcp_srv_timeout":
+			if val != "" {
+				if d, err := time.ParseDuration(val); err == nil {
+					srv.Timeout = d
+				}
+			} else {
+				srv.Timeout = 0
+			}
+		case "mcp_srv_safety":
+			srv.SafetyLevel = val
+		}
+	}
+
+	s.Current.MCP.Servers[name] = srv
+	s.MarkDirty("mcp")
+}
+
 // boolPtr returns a pointer to the given bool value.
 func boolPtr(b bool) *bool { return &b }
 
@@ -638,4 +752,32 @@ func splitCSV(val string) []string {
 		return nil
 	}
 	return out
+}
+
+// parseKeyValuePairs parses a comma-separated "KEY=VAL,KEY=VAL" string into a map.
+func parseKeyValuePairs(val string) map[string]string {
+	if val == "" {
+		return nil
+	}
+	result := make(map[string]string)
+	parts := strings.Split(val, ",")
+	for _, p := range parts {
+		p = strings.TrimSpace(p)
+		if p == "" {
+			continue
+		}
+		idx := strings.Index(p, "=")
+		if idx <= 0 {
+			continue
+		}
+		key := strings.TrimSpace(p[:idx])
+		value := strings.TrimSpace(p[idx+1:])
+		if key != "" {
+			result[key] = value
+		}
+	}
+	if len(result) == 0 {
+		return nil
+	}
+	return result
 }

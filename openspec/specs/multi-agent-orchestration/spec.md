@@ -1,7 +1,28 @@
 ## ADDED Requirements
 
+### Requirement: Orchestrator universal tools
+The orchestration `Config` struct SHALL include a `UniversalTools` field. In multi-agent mode, the orchestrator SHALL NOT receive universal tools. `BuildAgentTree` SHALL NOT adapt or assign `UniversalTools` to the orchestrator agent. The orchestrator SHALL have no direct tools and MUST delegate all tasks to sub-agents.
+
+#### Scenario: Multi-agent orchestrator has no tools
+- **WHEN** `BuildAgentTree` is called (multi-agent mode)
+- **THEN** the orchestrator agent SHALL have no tools (Tools is nil/empty)
+- **AND** the orchestrator instruction SHALL state "You do NOT have tools"
+- **AND** the instruction SHALL NOT mention builtin_list or builtin_invoke
+
+#### Scenario: Config.UniversalTools field preserved
+- **WHEN** `Config.UniversalTools` is set
+- **THEN** the field SHALL be accepted without error but SHALL NOT be wired to the orchestrator
+
+### Requirement: Builtin prefix exclusion from partitioning
+`PartitionTools` SHALL skip any tool whose name starts with `builtin_`. These tools SHALL NOT appear in any sub-agent's tool set or in the Unmatched list.
+
+#### Scenario: Builtin tools skipped during partitioning
+- **WHEN** tools include `builtin_list` and `builtin_invoke` alongside normal tools
+- **THEN** `PartitionTools` SHALL assign normal tools to their respective roles
+- **AND** `builtin_*` tools SHALL not appear in any RoleToolSet field
+
 ### Requirement: Hierarchical agent tree with sub-agents
-The system SHALL support a multi-agent mode (`agent.multiAgent: true`) that creates an orchestrator root agent with specialized sub-agents: operator, navigator, vault, librarian, automator, planner, and chronicler. The orchestrator SHALL have NO direct tools (`Tools: nil`) and MUST delegate all tool-requiring tasks to sub-agents.
+The system SHALL support a multi-agent mode (`agent.multiAgent: true`) that creates an orchestrator root agent with specialized sub-agents: operator, navigator, vault, librarian, automator, planner, and chronicler. The orchestrator SHALL have NO direct tools (`Tools: nil`) and MUST delegate all tool-requiring tasks to sub-agents. Each sub-agent SHALL include an Escalation Protocol section in its instruction that directs it to call `transfer_to_agent` with agent_name `lango-orchestrator` when it receives an out-of-scope request. Sub-agents SHALL NOT emit `[REJECT]` text or tell users to ask another agent.
 
 #### Scenario: Multi-agent mode enabled
 - **WHEN** `agent.multiAgent` is true
@@ -15,6 +36,17 @@ The system SHALL support a multi-agent mode (`agent.multiAgent: true`) that crea
 #### Scenario: Single-agent fallback
 - **WHEN** `agent.multiAgent` is false
 - **THEN** the system SHALL create a single flat agent with all tools
+
+#### Scenario: Sub-agent escalation via transfer_to_agent
+- **WHEN** a sub-agent receives a request outside its capabilities
+- **THEN** the sub-agent instruction SHALL direct it to call `transfer_to_agent` with agent_name `lango-orchestrator`
+- **AND** the sub-agent SHALL NOT emit any text before the transfer call
+- **AND** the sub-agent instruction SHALL contain `## Escalation Protocol` section
+
+#### Scenario: All sub-agents have escalation protocol
+- **WHEN** agentSpecs are defined for all 7 sub-agents
+- **THEN** every spec's Instruction SHALL contain `transfer_to_agent` and `lango-orchestrator`
+- **AND** every spec's Instruction SHALL contain `## Escalation Protocol`
 
 ### Requirement: Tool partitioning by prefix
 Tools SHALL be partitioned to sub-agents based on name prefixes with matching order Librarian → Chronicler → Navigator → Vault → Operator → Unmatched: `exec/fs_/skill_` → operator, `browser_` → navigator, `crypto_/secrets_/payment_` → vault, `search_/rag_/graph_/save_knowledge/save_learning/create_skill/list_skills` → librarian, `memory_/observe_/reflect_` → chronicler, unmatched → Unmatched bucket (not assigned to any agent).
@@ -98,11 +130,17 @@ Sub-agent descriptions in the orchestrator prompt SHALL use human-readable capab
 - **THEN** the description includes "knowledge inquiries and gap detection"
 
 ### Requirement: Orchestrator instruction guides delegation-only execution
-The orchestrator instruction SHALL enforce mandatory delegation for all tool-requiring tasks. It SHALL include a routing table with exact agent names, a decision protocol, and rejection handling. Sub-agent entries SHALL use capability descriptions, not raw tool name lists. The instruction SHALL NOT contain words that could be confused with agent names.
+The orchestrator instruction SHALL enforce mandatory delegation for all tool-requiring tasks. It SHALL include a routing table with exact agent names, a decision protocol, and rejection handling. Sub-agent entries SHALL use capability descriptions, not raw tool name lists. The instruction SHALL NOT contain words that could be confused with agent names. The instruction SHALL always state the orchestrator has no tools.
 
 #### Scenario: Tool-requiring task
 - **WHEN** a user requests any task requiring tool execution
 - **THEN** the orchestrator SHALL delegate to the appropriate sub-agent using its exact registered name
+
+#### Scenario: Delegation-only prompt
+- **WHEN** the orchestrator instruction is built
+- **THEN** it SHALL contain "You do NOT have tools"
+- **AND** it SHALL contain "MUST delegate all tool-requiring tasks"
+- **AND** it SHALL NOT contain "builtin_list" or "builtin_invoke"
 
 #### Scenario: Agent name exactness
 - **WHEN** the orchestrator delegates to a sub-agent
@@ -164,6 +202,40 @@ The `BuildAgentTree` function SHALL create sub-agents data-driven from the agent
 - **WHEN** all tools have unrecognized prefixes
 - **THEN** only the planner sub-agent SHALL be created
 - **AND** no unmatched tools SHALL be adapted
+
+### Requirement: Orchestrator direct response assessment
+The orchestrator's Decision Protocol SHALL include a Step 0 (ASSESS) that evaluates whether a request is a simple conversational message (greeting, general knowledge, opinion, weather, math, small talk). If yes, the orchestrator SHALL respond directly without delegation.
+
+#### Scenario: Simple greeting handled directly
+- **WHEN** the user sends a greeting like "안녕하세요"
+- **THEN** the orchestrator SHALL respond directly without delegating to any sub-agent
+
+#### Scenario: General knowledge handled directly
+- **WHEN** the user asks a general knowledge question (e.g., weather, math)
+- **THEN** the orchestrator SHALL respond directly without delegation
+
+#### Scenario: Tool-requiring request delegated normally
+- **WHEN** the user requests an action requiring tools (e.g., "지갑 만들어줘")
+- **THEN** the orchestrator SHALL delegate to the appropriate sub-agent per the routing table
+
+### Requirement: Orchestrator re-routing protocol
+The orchestrator instruction SHALL include a "Re-Routing Protocol" section. When a sub-agent transfers control back to the orchestrator, the orchestrator SHALL NOT re-send the same request to the same agent. It SHALL re-evaluate using the Decision Protocol (starting from Step 0) and either route to a different agent or answer directly as a general-purpose assistant.
+
+#### Scenario: Sub-agent transfers back
+- **WHEN** a sub-agent calls `transfer_to_agent` to return control to the orchestrator
+- **THEN** the orchestrator SHALL re-evaluate the request using the Decision Protocol from Step 0
+- **AND** SHALL NOT re-send to the same sub-agent
+
+#### Scenario: No matching agent after re-evaluation
+- **WHEN** re-evaluation determines no sub-agent can handle the request
+- **THEN** the orchestrator SHALL answer the question itself as a general-purpose assistant
+
+### Requirement: Delegation rules prioritize direct response
+The orchestrator's Delegation Rules SHALL list direct response for simple conversational messages BEFORE the rule about delegating tool-requiring tasks.
+
+#### Scenario: Delegation rules ordering
+- **WHEN** the orchestrator instruction is built
+- **THEN** the rule about responding directly to simple messages SHALL appear before the rule about delegating to sub-agents
 
 ### Requirement: Orchestrator Short-Circuit for Simple Queries
 The orchestrator instruction SHALL direct the LLM to respond directly to simple conversational queries (greetings, opinions, general knowledge) without delegating to sub-agents.
@@ -288,3 +360,58 @@ The `capabilityMap` SHALL include entries for `cron_`, `bg_`, and `workflow_` pr
 #### Scenario: Capability description
 - **WHEN** `toolCapability` is called for a `cron_` prefixed tool
 - **THEN** it SHALL return "cron job scheduling"
+
+### Requirement: Multi-agent default turn limit
+When `agent.multiAgent` is true and no explicit `MaxTurns` is configured, the system SHALL default to 50 turns instead of the standard 25. This provides sufficient headroom for multi-agent workflows with delegation overhead.
+
+#### Scenario: Multi-agent mode with no explicit MaxTurns
+- **WHEN** `agent.multiAgent` is true AND `agent.maxTurns` is zero or unset
+- **THEN** the system SHALL use 50 as the maximum turn limit
+
+#### Scenario: Multi-agent mode with explicit MaxTurns
+- **WHEN** `agent.multiAgent` is true AND `agent.maxTurns` is set to a positive value
+- **THEN** the system SHALL use the explicitly configured value, not the multi-agent default
+
+#### Scenario: Single-agent mode unaffected
+- **WHEN** `agent.multiAgent` is false
+- **THEN** the system SHALL use the standard default of 25 turns (unchanged behavior)
+
+### Requirement: Dynamic specs support in Config
+The orchestration `Config` struct SHALL include a `Specs []AgentSpec` field. When non-nil, `BuildAgentTree` SHALL use these specs instead of the hardcoded built-in specs.
+
+#### Scenario: Custom specs provided
+- **WHEN** Config.Specs is set to a non-nil slice of AgentSpec
+- **THEN** BuildAgentTree SHALL use those specs for agent tree construction
+
+#### Scenario: Nil specs falls back to builtins
+- **WHEN** Config.Specs is nil
+- **THEN** BuildAgentTree SHALL use the default BuiltinSpecs()
+
+### Requirement: DynamicAgents provider in Config
+The orchestration `Config` struct SHALL include a `DynamicAgents` field of type `agentpool.DynamicAgentProvider`. When set, dynamic P2P agents SHALL appear in the orchestrator's routing table.
+
+#### Scenario: P2P agents in routing table
+- **WHEN** DynamicAgents is set and has available agents
+- **THEN** each P2P agent SHALL appear in the routing table with "p2p:" prefix, trust score, and capabilities
+
+#### Scenario: No P2P agents
+- **WHEN** DynamicAgents is nil
+- **THEN** the routing table SHALL contain only local and A2A agents
+
+### Requirement: Capability-enhanced routing entries
+Routing table entries SHALL include a `Capabilities` field listing the agent's capabilities. The orchestrator instruction SHALL display capabilities alongside agent descriptions.
+
+#### Scenario: Routing entry with capabilities
+- **WHEN** a routing entry is generated for an agent with capabilities ["search", "rag"]
+- **THEN** the entry SHALL include those capabilities in the orchestrator instruction
+
+### Requirement: DynamicToolSet and PartitionToolsDynamic
+The orchestration package SHALL provide `DynamicToolSet` (map[string][]*agent.Tool) and `PartitionToolsDynamic(tools, specs)` function. The existing `PartitionTools()` SHALL be preserved as a backward-compatible wrapper.
+
+#### Scenario: Dynamic partitioning matches static
+- **WHEN** PartitionToolsDynamic is called with the built-in specs
+- **THEN** the result SHALL match PartitionTools for the same tool set
+
+#### Scenario: PartitionTools still works
+- **WHEN** PartitionTools is called
+- **THEN** it SHALL return the same results as before (backward compatible)

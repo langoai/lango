@@ -19,6 +19,9 @@ func NewGraphCmd(cfgLoader func() (*config.Config, error)) *cobra.Command {
 	cmd.AddCommand(newQueryCmd(cfgLoader))
 	cmd.AddCommand(newStatsCmd(cfgLoader))
 	cmd.AddCommand(newClearCmd(cfgLoader))
+	cmd.AddCommand(newAddCmd(cfgLoader))
+	cmd.AddCommand(newExportCmd(cfgLoader))
+	cmd.AddCommand(newImportCmd(cfgLoader))
 
 	return cmd
 }

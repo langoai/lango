@@ -11,6 +11,7 @@ type StreamEventType string
 const (
 	StreamEventPlainText StreamEventType = "text_delta"
 	StreamEventToolCall  StreamEventType = "tool_call"
+	StreamEventThought   StreamEventType = "thought"
 	StreamEventError     StreamEventType = "error"
 	StreamEventDone      StreamEventType = "done"
 )
@@ -18,7 +19,7 @@ const (
 // Valid reports whether t is a known stream event type.
 func (t StreamEventType) Valid() bool {
 	switch t {
-	case StreamEventPlainText, StreamEventToolCall, StreamEventError, StreamEventDone:
+	case StreamEventPlainText, StreamEventToolCall, StreamEventThought, StreamEventError, StreamEventDone:
 		return true
 	}
 	return false
@@ -26,22 +27,25 @@ func (t StreamEventType) Valid() bool {
 
 // Values returns all known stream event types.
 func (t StreamEventType) Values() []StreamEventType {
-	return []StreamEventType{StreamEventPlainText, StreamEventToolCall, StreamEventError, StreamEventDone}
+	return []StreamEventType{StreamEventPlainText, StreamEventToolCall, StreamEventThought, StreamEventError, StreamEventDone}
 }
 
 // StreamEvent represents a single event in the generation stream.
 type StreamEvent struct {
-	Type     StreamEventType
-	Text     string
-	ToolCall *ToolCall
-	Error    error
+	Type       StreamEventType
+	Text       string
+	ToolCall   *ToolCall
+	Error      error
+	ThoughtLen int // length of filtered thought text (diagnostics only)
 }
 
 // ToolCall represents a request for tool execution.
 type ToolCall struct {
-	ID        string
-	Name      string
-	Arguments string // JSON string
+	ID               string
+	Name             string
+	Arguments        string // JSON string
+	Thought          bool   // Gemini: part is a thinking step
+	ThoughtSignature []byte // Gemini: opaque signature to echo back
 }
 
 // Message represents a chat message.

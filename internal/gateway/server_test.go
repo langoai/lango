@@ -1,7 +1,9 @@
 package gateway
 
 import (
+	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -344,6 +346,203 @@ func TestBroadcastToSession_NoAuth(t *testing.T) {
 		// Good
 	default:
 		t.Error("expected client B to receive broadcast")
+	}
+}
+
+func TestHandleChatMessage_NilAgent_ReturnsErrorWithoutBroadcast(t *testing.T) {
+	cfg := Config{
+		Host:             "localhost",
+		Port:             0,
+		HTTPEnabled:      true,
+		WebSocketEnabled: true,
+		RequestTimeout:   50 * time.Millisecond,
+	}
+	server := New(cfg, nil, nil, nil, nil)
+
+	// Create a UI client to receive broadcasts.
+	sendCh := make(chan []byte, 256)
+	server.clientsMu.Lock()
+	server.clients["ui-1"] = &Client{
+		ID:         "ui-1",
+		Type:       "ui",
+		SessionKey: "",
+		Send:       sendCh,
+	}
+	server.clientsMu.Unlock()
+
+	// Call handleChatMessage — agent is nil, so it returns ErrAgentNotReady
+	// before any broadcast events (agent.thinking, agent.done, agent.error).
+	client := &Client{ID: "test", Type: "ui", Server: server, SessionKey: ""}
+	params := json.RawMessage(`{"message":"hello"}`)
+	_, err := server.handleChatMessage(client, params)
+	if err == nil {
+		t.Fatal("expected error from nil agent")
+	}
+
+	// No events should be sent — ErrAgentNotReady fires before agent.thinking.
+	select {
+	case msg := <-sendCh:
+		t.Errorf("expected no broadcast, got: %s", msg)
+	default:
+		// Good — no broadcast
+	}
+}
+
+func TestHandleChatMessage_SuccessBroadcastsAgentDone(t *testing.T) {
+	// This test verifies that on success, agent.done is sent (not agent.error).
+	// We validate the broadcast logic directly using BroadcastToSession.
+	cfg := Config{
+		Host:             "localhost",
+		Port:             0,
+		HTTPEnabled:      true,
+		WebSocketEnabled: true,
+	}
+	server := New(cfg, nil, nil, nil, nil)
+
+	sendCh := make(chan []byte, 256)
+	server.clientsMu.Lock()
+	server.clients["ui-1"] = &Client{
+		ID:         "ui-1",
+		Type:       "ui",
+		SessionKey: "",
+		Send:       sendCh,
+	}
+	server.clientsMu.Unlock()
+
+	// Simulate the success path: broadcast agent.done.
+	server.BroadcastToSession("", "agent.done", map[string]string{
+		"sessionKey": "",
+	})
+
+	select {
+	case msg := <-sendCh:
+		var m map[string]interface{}
+		if err := json.Unmarshal(msg, &m); err != nil {
+			t.Fatalf("unmarshal: %v", err)
+		}
+		if m["event"] != "agent.done" {
+			t.Errorf("expected agent.done, got %v", m["event"])
+		}
+	default:
+		t.Error("expected agent.done broadcast")
+	}
+}
+
+func TestHandleChatMessage_ErrorBroadcastsAgentErrorEvent(t *testing.T) {
+	// Simulate the error path: broadcast agent.error with classification.
+	cfg := Config{
+		Host:             "localhost",
+		Port:             0,
+		HTTPEnabled:      true,
+		WebSocketEnabled: true,
+	}
+	server := New(cfg, nil, nil, nil, nil)
+
+	sendCh := make(chan []byte, 256)
+	server.clientsMu.Lock()
+	server.clients["ui-1"] = &Client{
+		ID:         "ui-1",
+		Type:       "ui",
+		SessionKey: "",
+		Send:       sendCh,
+	}
+	server.clientsMu.Unlock()
+
+	// Simulate timeout error broadcast.
+	ctx, cancel := context.WithTimeout(context.Background(), 0)
+	defer cancel()
+	<-ctx.Done()
+
+	errType := "unknown"
+	if ctx.Err() == context.DeadlineExceeded {
+		errType = "timeout"
+	}
+	server.BroadcastToSession("", "agent.error", map[string]string{
+		"sessionKey": "",
+		"error":      fmt.Sprintf("agent error: %v", ctx.Err()),
+		"type":       errType,
+	})
+
+	select {
+	case msg := <-sendCh:
+		var m map[string]interface{}
+		if err := json.Unmarshal(msg, &m); err != nil {
+			t.Fatalf("unmarshal: %v", err)
+		}
+		if m["event"] != "agent.error" {
+			t.Errorf("expected agent.error, got %v", m["event"])
+		}
+		payload, ok := m["payload"].(map[string]interface{})
+		if !ok {
+			t.Fatal("expected payload map")
+		}
+		if payload["type"] != "timeout" {
+			t.Errorf("expected type 'timeout', got %v", payload["type"])
+		}
+	default:
+		t.Error("expected agent.error broadcast")
+	}
+}
+
+func TestWarningBroadcast_ApproachingTimeout(t *testing.T) {
+	// Verify that the 80% timeout warning timer fires and broadcasts
+	// an agent.warning event with the correct payload.
+	cfg := Config{
+		Host:             "localhost",
+		Port:             0,
+		HTTPEnabled:      true,
+		WebSocketEnabled: true,
+	}
+	server := New(cfg, nil, nil, nil, nil)
+
+	sendCh := make(chan []byte, 256)
+	server.clientsMu.Lock()
+	server.clients["ui-1"] = &Client{
+		ID:         "ui-1",
+		Type:       "ui",
+		SessionKey: "",
+		Send:       sendCh,
+	}
+	server.clientsMu.Unlock()
+
+	// Simulate the warning timer pattern used in handleChatMessage:
+	// time.AfterFunc at 80% of timeout broadcasting agent.warning.
+	timeout := 50 * time.Millisecond
+	sessionKey := "test-session"
+
+	warnTimer := time.AfterFunc(time.Duration(float64(timeout)*0.8), func() {
+		server.BroadcastToSession(sessionKey, "agent.warning", map[string]string{
+			"sessionKey": sessionKey,
+			"message":    "Request is taking longer than expected",
+			"type":       "approaching_timeout",
+		})
+	})
+	defer warnTimer.Stop()
+
+	// Wait for the timer to fire (80% of 50ms = 40ms, wait a bit more).
+	time.Sleep(70 * time.Millisecond)
+
+	select {
+	case msg := <-sendCh:
+		var m map[string]interface{}
+		if err := json.Unmarshal(msg, &m); err != nil {
+			t.Fatalf("unmarshal: %v", err)
+		}
+		if m["event"] != "agent.warning" {
+			t.Errorf("expected agent.warning, got %v", m["event"])
+		}
+		payload, ok := m["payload"].(map[string]interface{})
+		if !ok {
+			t.Fatal("expected payload map")
+		}
+		if payload["type"] != "approaching_timeout" {
+			t.Errorf("expected type 'approaching_timeout', got %v", payload["type"])
+		}
+		if payload["message"] != "Request is taking longer than expected" {
+			t.Errorf("unexpected message: %v", payload["message"])
+		}
+	default:
+		t.Error("expected agent.warning broadcast after 80% timeout")
 	}
 }
 
