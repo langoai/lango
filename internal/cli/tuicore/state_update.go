@@ -313,6 +313,28 @@ func (s *ConfigState) UpdateConfigFromForm(form *FormModel) {
 		case "wf_default_deliver":
 			s.Current.Workflow.DefaultDeliverTo = splitCSV(val)
 
+		// MCP
+		case "mcp_enabled":
+			s.Current.MCP.Enabled = f.Checked
+		case "mcp_default_timeout":
+			if d, err := time.ParseDuration(val); err == nil {
+				s.Current.MCP.DefaultTimeout = d
+			}
+		case "mcp_max_output_tokens":
+			if i, err := strconv.Atoi(val); err == nil {
+				s.Current.MCP.MaxOutputTokens = i
+			}
+		case "mcp_health_check_interval":
+			if d, err := time.ParseDuration(val); err == nil {
+				s.Current.MCP.HealthCheckInterval = d
+			}
+		case "mcp_auto_reconnect":
+			s.Current.MCP.AutoReconnect = f.Checked
+		case "mcp_max_reconnect_attempts":
+			if i, err := strconv.Atoi(val); err == nil {
+				s.Current.MCP.MaxReconnectAttempts = i
+			}
+
 		// Payment
 		case "payment_enabled":
 			s.Current.Payment.Enabled = f.Checked
