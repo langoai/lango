@@ -6,11 +6,18 @@ Provide a TUI settings form for editing global MCP (Model Context Protocol) serv
 
 ## Requirements
 
+### Requirement: MCP Menu Entry
+The TUI settings menu SHALL display two separate entries for MCP configuration under the Infrastructure section: "MCP Settings" for global MCP configuration and "MCP Server List" for per-server CRUD management.
+
+#### Scenario: Menu displays both MCP entries
+- **WHEN** user views the Infrastructure section in the settings menu
+- **THEN** the menu shows "MCP Settings" (ID: `mcp`) with description "Global MCP server settings" and "MCP Server List" (ID: `mcp_servers`) with description "Add, edit, remove MCP servers"
+
 ### Requirement: MCP settings form exists in TUI
-The TUI settings editor SHALL provide an "MCP Servers" form accessible from the Infrastructure section of the settings menu.
+The TUI settings editor SHALL provide an "MCP Settings" form accessible from the Infrastructure section of the settings menu.
 
 #### Scenario: User navigates to MCP settings
-- **WHEN** user opens the settings menu and selects "MCP Servers" from the Infrastructure section
+- **WHEN** user opens the settings menu and selects "MCP Settings" from the Infrastructure section
 - **THEN** the system SHALL display a form titled "MCP Servers Configuration" with 6 fields
 
 ### Requirement: MCP form exposes global configuration fields
