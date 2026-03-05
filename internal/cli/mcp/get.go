@@ -71,7 +71,7 @@ func newGetCmd(cfgLoader func() (*config.Config, error)) *cobra.Command {
 				fmt.Printf("  Connection: FAILED (%v)\n", err)
 				return nil
 			}
-			defer conn.Disconnect(context.Background())
+			defer func() { _ = conn.Disconnect(context.Background()) }()
 
 			tools := conn.Tools()
 			fmt.Printf("  Tools:        %d available\n", len(tools))

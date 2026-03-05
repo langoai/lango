@@ -59,7 +59,7 @@ func newTestCmd(cfgLoader func() (*config.Config, error)) *cobra.Command {
 			handshake := time.Since(start)
 			fmt.Printf("  Handshake:  OK (%s)\n", handshake.Truncate(time.Millisecond))
 
-			defer conn.Disconnect(context.Background())
+			defer func() { _ = conn.Disconnect(context.Background()) }()
 
 			// List tools
 			tools := conn.Tools()
