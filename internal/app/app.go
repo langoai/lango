@@ -342,6 +342,27 @@ func New(boot *bootstrap.Result) (*App, error) {
 		catalog.Register("mcp", mgmtTools)
 	}
 
+	// 5o. Economy Layer (optional — budget, risk, pricing, negotiation, escrow)
+	econc := initEconomy(cfg, p2pc, bus)
+	if econc != nil {
+		app.EconomyBudget = econc.budgetEngine
+		app.EconomyRisk = econc.riskEngine
+		app.EconomyPricing = econc.pricingEngine
+		app.EconomyNegotiation = econc.negotiationEngine
+		app.EconomyEscrow = econc.escrowEngine
+
+		econTools := buildEconomyTools(econc)
+		tools = append(tools, econTools...)
+		catalog.RegisterCategory(toolcatalog.Category{
+			Name:        "economy",
+			Description: "P2P economy (budget, risk, pricing, negotiation, escrow)",
+			ConfigKey:   "economy.enabled",
+			Enabled:     true,
+		})
+		catalog.Register("economy", econTools)
+		logger().Info("economy tools registered")
+	}
+
 	// 6. Auth
 	auth := initAuth(cfg, store)
 

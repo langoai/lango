@@ -30,6 +30,12 @@ const (
 
 	// RequestContextShare shares scoped context with a team member.
 	RequestContextShare RequestType = "context_share"
+
+	// RequestNegotiatePropose proposes a negotiation session.
+	RequestNegotiatePropose RequestType = "negotiate_propose"
+
+	// RequestNegotiateRespond responds to a negotiation (counter/accept/reject).
+	RequestNegotiateRespond RequestType = "negotiate_respond"
 )
 
 // ResponseStatus identifies the status of an A2A response.
@@ -130,4 +136,13 @@ type PaidInvokePayload struct {
 type ContextSharePayload struct {
 	TeamID  string                 `json:"teamId"`
 	Context map[string]interface{} `json:"context"`
+}
+
+// NegotiatePayload is the payload for negotiation messages.
+type NegotiatePayload struct {
+	SessionID string `json:"sessionId,omitempty"` // empty for initial proposal
+	Action    string `json:"action"`              // "propose", "counter", "accept", "reject"
+	ToolName  string `json:"toolName,omitempty"`
+	Price     string `json:"price,omitempty"`     // USDC amount as string
+	Reason    string `json:"reason,omitempty"`
 }

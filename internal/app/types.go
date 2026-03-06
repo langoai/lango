@@ -98,6 +98,13 @@ type App struct {
 	// Workflow Engine Components (optional)
 	WorkflowEngine *workflow.Engine
 
+	// Economy Components (optional, P2P economy layer)
+	EconomyBudget      interface{} // *budget.Engine
+	EconomyRisk        interface{} // *risk.Engine
+	EconomyPricing     interface{} // *pricing.Engine
+	EconomyNegotiation interface{} // *negotiation.Engine
+	EconomyEscrow      interface{} // *escrow.Engine
+
 	// MCP Components (optional, external MCP server integration)
 	MCPManager *mcp.ServerManager
 

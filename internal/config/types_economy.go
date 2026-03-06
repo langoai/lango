@@ -1,0 +1,99 @@
+package config
+
+import "time"
+
+// EconomyConfig defines P2P economy layer settings (budget, risk, escrow, pricing, negotiation).
+type EconomyConfig struct {
+	// Enabled activates the economy layer.
+	Enabled bool `mapstructure:"enabled" json:"enabled"`
+
+	// Budget controls per-task spending limits.
+	Budget BudgetConfig `mapstructure:"budget" json:"budget"`
+
+	// Risk configures trust-based payment strategy routing.
+	Risk RiskConfig `mapstructure:"risk" json:"risk"`
+
+	// Negotiate configures the P2P negotiation protocol.
+	Negotiate NegotiationConfig `mapstructure:"negotiate" json:"negotiate"`
+
+	// Escrow configures the milestone-based escrow service.
+	Escrow EscrowConfig `mapstructure:"escrow" json:"escrow"`
+
+	// Pricing configures dynamic pricing adjustments.
+	Pricing DynamicPricingConfig `mapstructure:"pricing" json:"pricing"`
+}
+
+// BudgetConfig defines per-task spending limits.
+type BudgetConfig struct {
+	// DefaultMax is the default maximum budget per task in USDC (e.g. "10.00").
+	DefaultMax string `mapstructure:"defaultMax" json:"defaultMax"`
+
+	// AlertThresholds are percentage thresholds that trigger budget alerts (e.g. [0.5, 0.8, 0.95]).
+	AlertThresholds []float64 `mapstructure:"alertThresholds" json:"alertThresholds"`
+
+	// HardLimit enforces budget as a hard cap (rejects overspend). Default: true.
+	HardLimit *bool `mapstructure:"hardLimit" json:"hardLimit"`
+}
+
+// RiskConfig defines trust-based payment strategy routing thresholds.
+type RiskConfig struct {
+	// EscrowThreshold is the USDC amount above which escrow is forced (e.g. "5.00").
+	EscrowThreshold string `mapstructure:"escrowThreshold" json:"escrowThreshold"`
+
+	// HighTrustScore is the minimum trust score for DirectPay strategy (default: 0.8).
+	HighTrustScore float64 `mapstructure:"highTrustScore" json:"highTrustScore"`
+
+	// MediumTrustScore is the minimum trust score for non-ZK strategies (default: 0.5).
+	MediumTrustScore float64 `mapstructure:"mediumTrustScore" json:"mediumTrustScore"`
+}
+
+// NegotiationConfig defines P2P price negotiation settings.
+type NegotiationConfig struct {
+	// Enabled activates the P2P negotiation protocol.
+	Enabled bool `mapstructure:"enabled" json:"enabled"`
+
+	// MaxRounds is the maximum number of counter-offers (default: 5).
+	MaxRounds int `mapstructure:"maxRounds" json:"maxRounds"`
+
+	// Timeout is the negotiation session timeout (default: 5m).
+	Timeout time.Duration `mapstructure:"timeout" json:"timeout"`
+
+	// AutoNegotiate enables automatic counter-offer generation.
+	AutoNegotiate bool `mapstructure:"autoNegotiate" json:"autoNegotiate"`
+
+	// MaxDiscount is the maximum discount percentage for auto-negotiation (0-1, default: 0.2).
+	MaxDiscount float64 `mapstructure:"maxDiscount" json:"maxDiscount"`
+}
+
+// EscrowConfig defines milestone-based escrow settings.
+type EscrowConfig struct {
+	// Enabled activates the escrow service.
+	Enabled bool `mapstructure:"enabled" json:"enabled"`
+
+	// DefaultTimeout is the escrow expiration timeout (default: 24h).
+	DefaultTimeout time.Duration `mapstructure:"defaultTimeout" json:"defaultTimeout"`
+
+	// MaxMilestones is the maximum milestones per escrow (default: 10).
+	MaxMilestones int `mapstructure:"maxMilestones" json:"maxMilestones"`
+
+	// AutoRelease releases funds automatically when all milestones are met.
+	AutoRelease bool `mapstructure:"autoRelease" json:"autoRelease"`
+
+	// DisputeWindow is the time window for raising disputes after completion (default: 1h).
+	DisputeWindow time.Duration `mapstructure:"disputeWindow" json:"disputeWindow"`
+}
+
+// DynamicPricingConfig defines dynamic pricing adjustment settings.
+type DynamicPricingConfig struct {
+	// Enabled activates dynamic pricing.
+	Enabled bool `mapstructure:"enabled" json:"enabled"`
+
+	// TrustDiscount is the max discount for high-trust peers (0-1, default: 0.1).
+	TrustDiscount float64 `mapstructure:"trustDiscount" json:"trustDiscount"`
+
+	// VolumeDiscount is the max discount for high-volume peers (0-1, default: 0.05).
+	VolumeDiscount float64 `mapstructure:"volumeDiscount" json:"volumeDiscount"`
+
+	// MinPrice is the minimum price floor in USDC (e.g. "0.01").
+	MinPrice string `mapstructure:"minPrice" json:"minPrice"`
+}

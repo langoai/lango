@@ -22,6 +22,7 @@ import (
 	cliapproval "github.com/langoai/lango/internal/cli/approval"
 	clibg "github.com/langoai/lango/internal/cli/bg"
 	clicron "github.com/langoai/lango/internal/cli/cron"
+	clieconomy "github.com/langoai/lango/internal/cli/economy"
 	climcp "github.com/langoai/lango/internal/cli/mcp"
 	"github.com/langoai/lango/internal/cli/doctor"
 	cligraph "github.com/langoai/lango/internal/cli/graph"
@@ -206,6 +207,18 @@ func main() {
 	mcpCmd := climcp.NewMCPCmd(mcpCfgLoader, mcpBootLoader)
 	mcpCmd.GroupID = "infra"
 	rootCmd.AddCommand(mcpCmd)
+
+	economyCfgLoader := func() (*config.Config, error) {
+		boot, err := bootstrap.Run(bootstrap.Options{})
+		if err != nil {
+			return nil, err
+		}
+		defer boot.DBClient.Close()
+		return boot.Config, nil
+	}
+	economyCmd := clieconomy.NewEconomyCmd(economyCfgLoader)
+	economyCmd.GroupID = "infra"
+	rootCmd.AddCommand(economyCmd)
 
 	cronCmd := clicron.NewCronCmd(func() (*bootstrap.Result, error) {
 		return bootstrap.Run(bootstrap.Options{})

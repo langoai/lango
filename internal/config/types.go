@@ -77,6 +77,9 @@ type Config struct {
 	// MCP server integration configuration
 	MCP MCPConfig `mapstructure:"mcp" json:"mcp"`
 
+	// Economy layer configuration (budget, risk, escrow, pricing, negotiation)
+	Economy EconomyConfig `mapstructure:"economy" json:"economy"`
+
 	// Providers configuration
 	Providers map[string]ProviderConfig `mapstructure:"providers" json:"providers"`
 }
