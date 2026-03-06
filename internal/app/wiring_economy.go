@@ -207,7 +207,7 @@ func initEconomy(cfg *config.Config, p2pc *p2pComponents, bus *eventbus.Bus) *ec
 // handleNegotiateProtocol routes P2P negotiation messages to the negotiation engine.
 func handleNegotiateProtocol(ctx context.Context, ne *negotiation.Engine, localDID, peerDID string, payload p2pproto.NegotiatePayload) (map[string]interface{}, error) {
 	switch payload.Action {
-	case "propose":
+	case string(negotiation.ActionPropose):
 		price, ok := new(big.Int).SetString(payload.Price, 10)
 		if !ok {
 			price = new(big.Int)
@@ -225,7 +225,7 @@ func handleNegotiateProtocol(ctx context.Context, ne *negotiation.Engine, localD
 			"phase":     string(sess.Phase),
 		}, nil
 
-	case "counter":
+	case string(negotiation.ActionCounter):
 		price, ok := new(big.Int).SetString(payload.Price, 10)
 		if !ok {
 			price = new(big.Int)
@@ -244,7 +244,7 @@ func handleNegotiateProtocol(ctx context.Context, ne *negotiation.Engine, localD
 			"round":     sess.Round,
 		}, nil
 
-	case "accept":
+	case string(negotiation.ActionAccept):
 		sess, err := ne.Accept(ctx, payload.SessionID, localDID)
 		if err != nil {
 			return nil, err
@@ -254,7 +254,7 @@ func handleNegotiateProtocol(ctx context.Context, ne *negotiation.Engine, localD
 			"phase":     string(sess.Phase),
 		}, nil
 
-	case "reject":
+	case string(negotiation.ActionReject):
 		sess, err := ne.Reject(ctx, payload.SessionID, localDID, payload.Reason)
 		if err != nil {
 			return nil, err
@@ -271,6 +271,8 @@ func handleNegotiateProtocol(ctx context.Context, ne *negotiation.Engine, localD
 
 // noopSettler is a placeholder settlement executor for escrow.
 type noopSettler struct{}
+
+var _ escrow.SettlementExecutor = (*noopSettler)(nil)
 
 func (noopSettler) Lock(_ context.Context, _ string, _ *big.Int) error    { return nil }
 func (noopSettler) Release(_ context.Context, _ string, _ *big.Int) error { return nil }

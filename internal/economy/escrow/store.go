@@ -76,7 +76,7 @@ func (s *memoryStore) ListByPeer(peerDID string) []*EscrowEntry {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
-	var result []*EscrowEntry
+	result := make([]*EscrowEntry, 0, len(s.escrows))
 	for _, e := range s.escrows {
 		if e.BuyerDID == peerDID || e.SellerDID == peerDID {
 			result = append(result, e)

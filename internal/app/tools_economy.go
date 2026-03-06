@@ -16,7 +16,7 @@ import (
 
 // buildEconomyTools creates economy layer tools from engine components.
 func buildEconomyTools(ec *economyComponents) []*agent.Tool {
-	var tools []*agent.Tool
+	tools := make([]*agent.Tool, 0, 12)
 
 	if ec.budgetEngine != nil {
 		tools = append(tools, buildBudgetTools(ec.budgetEngine)...)

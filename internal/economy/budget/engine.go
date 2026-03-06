@@ -11,6 +11,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/langoai/lango/internal/config"
+	"github.com/langoai/lango/internal/wallet"
 )
 
 var (
@@ -45,9 +46,12 @@ func NewEngine(store *Store, cfg config.BudgetConfig, opts ...Option) (*Engine, 
 	}
 
 	if cfg.DefaultMax != "" {
-		dm, ok := parseUSDC(cfg.DefaultMax)
-		if !ok {
+		dm, err := wallet.ParseUSDC(cfg.DefaultMax)
+		if err != nil {
 			return nil, fmt.Errorf("parse defaultMax %q: %w", cfg.DefaultMax, ErrInvalidAmount)
+		}
+		if dm.Sign() <= 0 {
+			return nil, fmt.Errorf("parse defaultMax %q: must be positive: %w", cfg.DefaultMax, ErrInvalidAmount)
 		}
 		e.defaultMax = dm
 	}
@@ -276,32 +280,22 @@ func (e *Engine) checkThresholds(tb *TaskBudget) {
 	total := new(big.Float).SetInt(tb.TotalBudget)
 	pct, _ := new(big.Float).Quo(spent, total).Float64()
 
-	e.mu.Lock()
-	defer e.mu.Unlock()
+	var triggered []float64
 
+	e.mu.Lock()
 	if _, ok := e.alertsSent[tb.TaskID]; !ok {
 		e.alertsSent[tb.TaskID] = make(map[float64]bool)
 	}
-
 	for _, threshold := range e.thresholds {
 		if pct >= threshold && !e.alertsSent[tb.TaskID][threshold] {
 			e.alertsSent[tb.TaskID][threshold] = true
-			e.alertCallback(tb.TaskID, threshold)
+			triggered = append(triggered, threshold)
 		}
+	}
+	e.mu.Unlock()
+
+	for _, threshold := range triggered {
+		e.alertCallback(tb.TaskID, threshold)
 	}
 }
 
-// parseUSDC parses a decimal USDC string (e.g. "10.00") into the smallest unit (6 decimals).
-func parseUSDC(s string) (*big.Int, bool) {
-	f, _, err := new(big.Float).Parse(s, 10)
-	if err != nil {
-		return nil, false
-	}
-	multiplier := new(big.Float).SetInt64(1_000_000)
-	f.Mul(f, multiplier)
-	result, _ := f.Int(nil)
-	if result.Sign() <= 0 {
-		return nil, false
-	}
-	return result, true
-}

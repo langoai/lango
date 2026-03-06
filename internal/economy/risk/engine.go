@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/langoai/lango/internal/config"
+	"github.com/langoai/lango/internal/wallet"
 )
 
 // ReputationQuerier queries peer trust scores. Defined locally to avoid import cycles.
@@ -36,8 +37,8 @@ func New(cfg config.RiskConfig, reputation ReputationQuerier) (*Engine, error) {
 		medTrust = 0.5
 	}
 
-	threshold := parseUSDC(cfg.EscrowThreshold)
-	if threshold == nil {
+	threshold, err := wallet.ParseUSDC(cfg.EscrowThreshold)
+	if err != nil || threshold.Sign() <= 0 {
 		threshold = big.NewInt(5_000_000) // 5 USDC default (6 decimals)
 	}
 
@@ -94,21 +95,6 @@ func (e *Engine) explain(trust float64, amount *big.Int, v Verifiability, s Stra
 
 	return fmt.Sprintf("peer trust is %s, %s transaction with %s verifiability; recommending %s",
 		trustLabel, valueLabel, string(v), string(s))
-}
-
-// parseUSDC parses a USDC decimal string (e.g. "5.00") into micro-units (*big.Int).
-// Returns nil if the string is empty or unparseable.
-func parseUSDC(s string) *big.Int {
-	if s == "" {
-		return nil
-	}
-	f, _, err := big.ParseFloat(s, 10, 64, big.ToNearestEven)
-	if err != nil {
-		return nil
-	}
-	micro := new(big.Float).Mul(f, big.NewFloat(1_000_000))
-	result, _ := micro.Int(nil)
-	return result
 }
 
 // clamp restricts a value to [0.0, 1.0].

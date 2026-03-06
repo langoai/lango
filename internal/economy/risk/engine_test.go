@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"github.com/langoai/lango/internal/config"
+	"github.com/langoai/lango/internal/wallet"
 )
 
 func mockReputation(scores map[string]float64) ReputationQuerier {
@@ -528,11 +529,12 @@ func TestClamp(t *testing.T) {
 
 func TestParseUSDC(t *testing.T) {
 	tests := []struct {
-		give string
-		want *big.Int
+		give    string
+		want    *big.Int
+		wantErr bool
 	}{
-		{give: "", want: nil},
-		{give: "not-a-number", want: nil},
+		{give: "", wantErr: true},
+		{give: "not-a-number", wantErr: true},
 		{give: "5.00", want: usdc(5)},
 		{give: "10.50", want: big.NewInt(10_500_000)},
 		{give: "0.01", want: big.NewInt(10_000)},
@@ -540,18 +542,18 @@ func TestParseUSDC(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.give, func(t *testing.T) {
-			got := parseUSDC(tt.give)
-			if tt.want == nil {
-				if got != nil {
-					t.Errorf("parseUSDC(%q): got %s, want nil", tt.give, got)
+			got, err := wallet.ParseUSDC(tt.give)
+			if tt.wantErr {
+				if err == nil {
+					t.Errorf("wallet.ParseUSDC(%q): want error, got %s", tt.give, got)
 				}
 				return
 			}
-			if got == nil {
-				t.Fatalf("parseUSDC(%q): got nil, want %s", tt.give, tt.want)
+			if err != nil {
+				t.Fatalf("wallet.ParseUSDC(%q): unexpected error: %v", tt.give, err)
 			}
 			if got.Cmp(tt.want) != 0 {
-				t.Errorf("parseUSDC(%q): got %s, want %s", tt.give, got, tt.want)
+				t.Errorf("wallet.ParseUSDC(%q): got %s, want %s", tt.give, got, tt.want)
 			}
 		})
 	}
