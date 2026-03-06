@@ -81,6 +81,18 @@ type EscrowConfig struct {
 
 	// DisputeWindow is the time window for raising disputes after completion (default: 1h).
 	DisputeWindow time.Duration `mapstructure:"disputeWindow" json:"disputeWindow"`
+
+	// Settlement configures on-chain settlement for escrow.
+	Settlement EscrowSettlementConfig `mapstructure:"settlement" json:"settlement"`
+}
+
+// EscrowSettlementConfig configures on-chain settlement parameters for escrow.
+type EscrowSettlementConfig struct {
+	// ReceiptTimeout is the maximum wait for on-chain confirmation (default: 2m).
+	ReceiptTimeout time.Duration `mapstructure:"receiptTimeout" json:"receiptTimeout"`
+
+	// MaxRetries is the maximum transaction submission attempts (default: 3).
+	MaxRetries int `mapstructure:"maxRetries" json:"maxRetries"`
 }
 
 // DynamicPricingConfig defines dynamic pricing adjustment settings.

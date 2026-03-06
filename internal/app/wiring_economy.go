@@ -12,6 +12,7 @@ import (
 	"github.com/langoai/lango/internal/economy/risk"
 	"github.com/langoai/lango/internal/eventbus"
 	p2pproto "github.com/langoai/lango/internal/p2p/protocol"
+	"github.com/langoai/lango/internal/payment"
 )
 
 // economyComponents holds optional economy layer components.
@@ -24,7 +25,7 @@ type economyComponents struct {
 }
 
 // initEconomy creates the economy layer components if enabled.
-func initEconomy(cfg *config.Config, p2pc *p2pComponents, bus *eventbus.Bus) *economyComponents {
+func initEconomy(cfg *config.Config, p2pc *p2pComponents, pc *paymentComponents, bus *eventbus.Bus) *economyComponents {
 	if !cfg.Economy.Enabled {
 		logger().Info("economy layer disabled")
 		return nil
@@ -195,8 +196,20 @@ func initEconomy(cfg *config.Config, p2pc *p2pComponents, bus *eventbus.Bus) *ec
 			escrowCfg.DisputeWindow = escrow.DefaultEngineConfig().DisputeWindow
 		}
 
-		// Use a no-op settlement executor — real on-chain settlement wired in Phase 4.
-		escrowEngine := escrow.NewEngine(escrowStore, noopSettler{}, escrowCfg)
+		var settler escrow.SettlementExecutor = noopSettler{}
+		if pc != nil {
+			settler = escrow.NewUSDCSettler(
+				pc.wallet,
+				payment.NewTxBuilder(pc.rpcClient, pc.chainID, cfg.Payment.Network.USDCContract),
+				pc.rpcClient,
+				pc.chainID,
+				escrow.WithReceiptTimeout(cfg.Economy.Escrow.Settlement.ReceiptTimeout),
+				escrow.WithMaxRetries(cfg.Economy.Escrow.Settlement.MaxRetries),
+			)
+			logger().Info("economy: escrow using USDC settler")
+		}
+
+		escrowEngine := escrow.NewEngine(escrowStore, settler, escrowCfg)
 		ec.escrowEngine = escrowEngine
 		logger().Info("economy: escrow engine initialized")
 	}

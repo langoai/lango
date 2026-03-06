@@ -343,7 +343,7 @@ func New(boot *bootstrap.Result) (*App, error) {
 	}
 
 	// 5o. Economy Layer (optional — budget, risk, pricing, negotiation, escrow)
-	econc := initEconomy(cfg, p2pc, bus)
+	econc := initEconomy(cfg, p2pc, pc, bus)
 	if econc != nil {
 		app.EconomyBudget = econc.budgetEngine
 		app.EconomyRisk = econc.riskEngine
@@ -361,6 +361,21 @@ func New(boot *bootstrap.Result) (*App, error) {
 		})
 		catalog.Register("economy", econTools)
 		logger().Info("economy tools registered")
+	}
+
+	// 5p. Contract interaction (optional, requires payment)
+	cc := initContract(pc)
+	if cc != nil {
+		ctTools := buildContractTools(cc.caller)
+		tools = append(tools, ctTools...)
+		catalog.RegisterCategory(toolcatalog.Category{
+			Name:        "contract",
+			Description: "Smart contract interaction",
+			ConfigKey:   "payment.enabled",
+			Enabled:     true,
+		})
+		catalog.Register("contract", ctTools)
+		logger().Info("contract interaction tools registered")
 	}
 
 	// 6. Auth

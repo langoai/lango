@@ -5,7 +5,7 @@ Wiring layer that connects all 5 economy subsystems (budget, risk, pricing, nego
 ## Requirements
 
 ### Requirement: Economy component initialization
-The system SHALL initialize all 5 economy subsystems (budget, risk, pricing, negotiation, escrow) during app startup via initEconomy(). Initialization SHALL occur after P2P wiring and before agent tool registration.
+The system SHALL initialize all 5 economy subsystems (budget, risk, pricing, negotiation, escrow) during app startup via initEconomy(). Initialization SHALL occur after P2P wiring and before agent tool registration. The function SHALL accept `*paymentComponents` to enable on-chain escrow settlement.
 
 #### Scenario: Economy enabled
 - **WHEN** economy.enabled is true in config
@@ -14,6 +14,14 @@ The system SHALL initialize all 5 economy subsystems (budget, risk, pricing, neg
 #### Scenario: Economy disabled
 - **WHEN** economy.enabled is false in config
 - **THEN** initEconomy returns nil and no economy components are initialized
+
+#### Scenario: Payment components passed to initEconomy
+- **WHEN** `app.New()` initializes the economy layer
+- **THEN** the `paymentComponents` from `initPayment` is passed as the `pc` parameter to `initEconomy`
+
+#### Scenario: Nil payment components handled gracefully
+- **WHEN** `initEconomy` receives nil `paymentComponents`
+- **THEN** escrow falls back to `noopSettler` and all other economy components initialize normally
 
 ### Requirement: Cross-system callback wiring
 The system SHALL wire callbacks between economy subsystems without direct imports: reputation querier from P2P into risk and pricing engines, risk assessor into budget engine, pricing querier into negotiation engine.
