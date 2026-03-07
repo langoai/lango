@@ -4,9 +4,14 @@ import (
 	"context"
 	"math/big"
 
+	"github.com/ethereum/go-ethereum/common"
+
 	"github.com/langoai/lango/internal/config"
+	"github.com/langoai/lango/internal/contract"
 	"github.com/langoai/lango/internal/economy/budget"
 	"github.com/langoai/lango/internal/economy/escrow"
+	"github.com/langoai/lango/internal/economy/escrow/hub"
+	"github.com/langoai/lango/internal/economy/escrow/sentinel"
 	"github.com/langoai/lango/internal/economy/negotiation"
 	"github.com/langoai/lango/internal/economy/pricing"
 	"github.com/langoai/lango/internal/economy/risk"
@@ -22,6 +27,8 @@ type economyComponents struct {
 	pricingEngine     *pricing.Engine
 	negotiationEngine *negotiation.Engine
 	escrowEngine      *escrow.Engine
+	escrowSettler     escrow.SettlementExecutor
+	sentinelEngine    *sentinel.Engine
 }
 
 // initEconomy creates the economy layer components if enabled.
@@ -196,25 +203,80 @@ func initEconomy(cfg *config.Config, p2pc *p2pComponents, pc *paymentComponents,
 			escrowCfg.DisputeWindow = escrow.DefaultEngineConfig().DisputeWindow
 		}
 
-		var settler escrow.SettlementExecutor = noopSettler{}
-		if pc != nil {
-			settler = escrow.NewUSDCSettler(
-				pc.wallet,
-				payment.NewTxBuilder(pc.rpcClient, pc.chainID, cfg.Payment.Network.USDCContract),
-				pc.rpcClient,
-				pc.chainID,
-				escrow.WithReceiptTimeout(cfg.Economy.Escrow.Settlement.ReceiptTimeout),
-				escrow.WithMaxRetries(cfg.Economy.Escrow.Settlement.MaxRetries),
-			)
-			logger().Info("economy: escrow using USDC settler")
-		}
+		// Select settlement mode based on config.
+		settler := selectSettler(cfg, pc)
+		ec.escrowSettler = settler
 
 		escrowEngine := escrow.NewEngine(escrowStore, settler, escrowCfg)
 		ec.escrowEngine = escrowEngine
 		logger().Info("economy: escrow engine initialized")
+
+		// 5a. Security Sentinel Engine
+		sentinelCfg := sentinel.DefaultSentinelConfig()
+		sentinelEngine := sentinel.New(bus, sentinelCfg)
+		if err := sentinelEngine.Start(); err != nil {
+			logger().Warnw("sentinel engine start", "error", err)
+		} else {
+			ec.sentinelEngine = sentinelEngine
+			logger().Info("economy: sentinel engine initialized")
+		}
 	}
 
 	return ec
+}
+
+// selectSettler chooses the settlement executor based on config.
+// Returns: USDCSettler (custodian), HubSettler, VaultSettler, or noopSettler.
+func selectSettler(cfg *config.Config, pc *paymentComponents) escrow.SettlementExecutor {
+	oc := cfg.Economy.Escrow.OnChain
+
+	// On-chain mode requires payment components.
+	if oc.Enabled && pc != nil {
+		abiCache := contract.NewABICache()
+		caller := contract.NewCaller(pc.rpcClient, pc.wallet, pc.chainID, abiCache)
+
+		switch oc.Mode {
+		case "hub":
+			if oc.HubAddress != "" {
+				hubAddr := common.HexToAddress(oc.HubAddress)
+				tokenAddr := common.HexToAddress(oc.TokenAddress)
+				settler := hub.NewHubSettler(caller, hubAddr, tokenAddr, pc.chainID)
+				logger().Infow("economy: escrow using Hub settler",
+					"hub", oc.HubAddress, "token", oc.TokenAddress)
+				return settler
+			}
+			logger().Warn("economy: hub mode enabled but hubAddress not set, falling back to custodian")
+
+		case "vault":
+			if oc.VaultFactoryAddress != "" && oc.VaultImplementation != "" {
+				factoryAddr := common.HexToAddress(oc.VaultFactoryAddress)
+				implAddr := common.HexToAddress(oc.VaultImplementation)
+				tokenAddr := common.HexToAddress(oc.TokenAddress)
+				arbitrator := common.HexToAddress(oc.ArbitratorAddress)
+				settler := hub.NewVaultSettler(caller, factoryAddr, implAddr, tokenAddr, arbitrator, pc.chainID)
+				logger().Infow("economy: escrow using Vault settler",
+					"factory", oc.VaultFactoryAddress, "token", oc.TokenAddress)
+				return settler
+			}
+			logger().Warn("economy: vault mode enabled but addresses not set, falling back to custodian")
+		}
+	}
+
+	// Default: custodian mode (existing USDCSettler).
+	if pc != nil {
+		settler := escrow.NewUSDCSettler(
+			pc.wallet,
+			payment.NewTxBuilder(pc.rpcClient, pc.chainID, cfg.Payment.Network.USDCContract),
+			pc.rpcClient,
+			pc.chainID,
+			escrow.WithReceiptTimeout(cfg.Economy.Escrow.Settlement.ReceiptTimeout),
+			escrow.WithMaxRetries(cfg.Economy.Escrow.Settlement.MaxRetries),
+		)
+		logger().Info("economy: escrow using USDC settler (custodian)")
+		return settler
+	}
+
+	return noopSettler{}
 }
 
 // handleNegotiateProtocol routes P2P negotiation messages to the negotiation engine.

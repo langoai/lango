@@ -84,6 +84,36 @@ type EscrowConfig struct {
 
 	// Settlement configures on-chain settlement for escrow.
 	Settlement EscrowSettlementConfig `mapstructure:"settlement" json:"settlement"`
+
+	// OnChain configures the on-chain escrow hub/vault system.
+	OnChain EscrowOnChainConfig `mapstructure:"onChain" json:"onChain"`
+}
+
+// EscrowOnChainConfig configures on-chain escrow contract integration.
+type EscrowOnChainConfig struct {
+	// Enabled activates on-chain escrow mode.
+	Enabled bool `mapstructure:"enabled" json:"enabled"`
+
+	// Mode selects the on-chain escrow pattern: "hub" or "vault".
+	Mode string `mapstructure:"mode" json:"mode"`
+
+	// HubAddress is the deployed LangoEscrowHub contract address.
+	HubAddress string `mapstructure:"hubAddress" json:"hubAddress"`
+
+	// VaultFactoryAddress is the deployed LangoVaultFactory contract address.
+	VaultFactoryAddress string `mapstructure:"vaultFactoryAddress" json:"vaultFactoryAddress"`
+
+	// VaultImplementation is the LangoVault implementation address for cloning.
+	VaultImplementation string `mapstructure:"vaultImplementation" json:"vaultImplementation"`
+
+	// ArbitratorAddress is the dispute arbitrator address.
+	ArbitratorAddress string `mapstructure:"arbitratorAddress" json:"arbitratorAddress"`
+
+	// PollInterval is the event monitor polling interval (default: 15s).
+	PollInterval time.Duration `mapstructure:"pollInterval" json:"pollInterval"`
+
+	// TokenAddress is the ERC-20 token (USDC) contract address.
+	TokenAddress string `mapstructure:"tokenAddress" json:"tokenAddress"`
 }
 
 // EscrowSettlementConfig configures on-chain settlement parameters for escrow.

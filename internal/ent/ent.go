@@ -16,6 +16,7 @@ import (
 	"github.com/langoai/lango/internal/ent/configprofile"
 	"github.com/langoai/lango/internal/ent/cronjob"
 	"github.com/langoai/lango/internal/ent/cronjobhistory"
+	"github.com/langoai/lango/internal/ent/escrowdeal"
 	"github.com/langoai/lango/internal/ent/externalref"
 	"github.com/langoai/lango/internal/ent/inquiry"
 	"github.com/langoai/lango/internal/ent/key"
@@ -95,6 +96,7 @@ func checkColumn(t, c string) error {
 			configprofile.Table:   configprofile.ValidColumn,
 			cronjob.Table:         cronjob.ValidColumn,
 			cronjobhistory.Table:  cronjobhistory.ValidColumn,
+			escrowdeal.Table:      escrowdeal.ValidColumn,
 			externalref.Table:     externalref.ValidColumn,
 			inquiry.Table:         inquiry.ValidColumn,
 			key.Table:             key.ValidColumn,

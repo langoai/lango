@@ -18,6 +18,9 @@ type CronJob func(*sql.Selector)
 // CronJobHistory is the predicate function for cronjobhistory builders.
 type CronJobHistory func(*sql.Selector)
 
+// EscrowDeal is the predicate function for escrowdeal builders.
+type EscrowDeal func(*sql.Selector)
+
 // ExternalRef is the predicate function for externalref builders.
 type ExternalRef func(*sql.Selector)
 
