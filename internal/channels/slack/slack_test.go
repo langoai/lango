@@ -9,6 +9,8 @@ import (
 	"github.com/slack-go/slack"
 	"github.com/slack-go/slack/slackevents"
 	"github.com/slack-go/slack/socketmode"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 // MockClient implements Client interface
@@ -114,6 +116,8 @@ func (m *MockSocket) Events() <-chan socketmode.Event {
 }
 
 func TestSlackChannel(t *testing.T) {
+	t.Parallel()
+
 	mockClient := &MockClient{}
 	mockSocket := &MockSocket{
 		EventsCh: make(chan socketmode.Event, 1),
@@ -127,26 +131,19 @@ func TestSlackChannel(t *testing.T) {
 	}
 
 	channel, err := New(cfg)
-	if err != nil {
-		t.Fatalf("failed to create channel: %v", err)
-	}
+	require.NoError(t, err)
 
 	channel.SetHandler(func(ctx context.Context, msg *IncomingMessage) (*OutgoingMessage, error) {
-		if msg.Text != "Hello" {
-			t.Errorf("expected 'Hello', got '%s'", msg.Text)
-		}
+		assert.Equal(t, "Hello", msg.Text)
 		return &OutgoingMessage{Text: "World"}, nil
 	})
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	if err := channel.Start(ctx); err != nil {
-		t.Fatalf("failed to start: %v", err)
-	}
+	require.NoError(t, channel.Start(ctx))
 
 	// Simulate incoming message event via Socket Mode
-	// We need to construct strict structure expected by handler
 	innerEvent := &slackevents.MessageEvent{
 		Type:        "message",
 		Text:        "Hello",
@@ -172,15 +169,13 @@ func TestSlackChannel(t *testing.T) {
 	<-time.After(200 * time.Millisecond)
 	// With thinking indicator: expect 1 PostMessage (thinking placeholder)
 	// + 1 UpdateMessage (replace placeholder with response)
-	if len(mockClient.getPostMessages()) == 0 {
-		t.Error("expected PostMessage to be called (thinking placeholder)")
-	}
-	if len(mockClient.getUpdateMessages()) == 0 {
-		t.Error("expected UpdateMessage to be called (replace placeholder)")
-	}
+	assert.NotEmpty(t, mockClient.getPostMessages(), "expected PostMessage to be called (thinking placeholder)")
+	assert.NotEmpty(t, mockClient.getUpdateMessages(), "expected UpdateMessage to be called (replace placeholder)")
 }
 
 func TestSlackThinkingPlaceholder(t *testing.T) {
+	t.Parallel()
+
 	mockClient := &MockClient{
 		PostMessageFunc: func(channelID string, options ...slack.MsgOption) (string, string, error) {
 			return channelID, "placeholder-ts", nil
@@ -198,9 +193,7 @@ func TestSlackThinkingPlaceholder(t *testing.T) {
 	}
 
 	channel, err := New(cfg)
-	if err != nil {
-		t.Fatalf("new channel: %v", err)
-	}
+	require.NoError(t, err)
 
 	handlerDone := make(chan struct{})
 	channel.SetHandler(func(ctx context.Context, msg *IncomingMessage) (*OutgoingMessage, error) {
@@ -211,9 +204,7 @@ func TestSlackThinkingPlaceholder(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	if err := channel.Start(ctx); err != nil {
-		t.Fatalf("start: %v", err)
-	}
+	require.NoError(t, channel.Start(ctx))
 
 	innerEvent := &slackevents.MessageEvent{
 		Type:        "message",
@@ -242,17 +233,11 @@ func TestSlackThinkingPlaceholder(t *testing.T) {
 
 	// Verify: first PostMessage is the thinking placeholder, then UpdateMessage replaces it
 	postMsgs := mockClient.getPostMessages()
-	if len(postMsgs) < 1 {
-		t.Fatalf("expected at least 1 PostMessage call, got %d", len(postMsgs))
-	}
+	require.NotEmpty(t, postMsgs, "expected at least 1 PostMessage call")
 
 	updateMsgs := mockClient.getUpdateMessages()
-	if len(updateMsgs) < 1 {
-		t.Fatalf("expected at least 1 UpdateMessage call, got %d", len(updateMsgs))
-	}
+	require.NotEmpty(t, updateMsgs, "expected at least 1 UpdateMessage call")
 
 	// Verify UpdateMessage was called with the placeholder timestamp
-	if updateMsgs[0].Timestamp != "placeholder-ts" {
-		t.Errorf("expected update on 'placeholder-ts', got '%s'", updateMsgs[0].Timestamp)
-	}
+	assert.Equal(t, "placeholder-ts", updateMsgs[0].Timestamp)
 }

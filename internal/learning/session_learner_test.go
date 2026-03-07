@@ -5,6 +5,8 @@ import (
 	"encoding/json"
 	"testing"
 
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	"go.uber.org/zap"
 
 	"github.com/langoai/lango/internal/ent/enttest"
@@ -14,6 +16,8 @@ import (
 )
 
 func TestSessionLearner_LearnFromSession_HighConfidence(t *testing.T) {
+	t.Parallel()
+
 	client := enttest.Open(t, "sqlite3", "file:ent?mode=memory&_fk=1")
 	t.Cleanup(func() { client.Close() })
 
@@ -37,30 +41,22 @@ func TestSessionLearner_LearnFromSession_HighConfidence(t *testing.T) {
 
 	ctx := context.Background()
 	err := learner.LearnFromSession(ctx, "sess-1", msgs)
-	if err != nil {
-		t.Fatalf("LearnFromSession: %v", err)
-	}
+	require.NoError(t, err)
 
 	// Only high-confidence results should be stored.
 	entries, err := store.SearchKnowledge(ctx, "vim", "", 10)
-	if err != nil {
-		t.Fatalf("SearchKnowledge: %v", err)
-	}
-	if len(entries) == 0 {
-		t.Fatal("expected high-confidence entry to be stored")
-	}
+	require.NoError(t, err)
+	require.NotEmpty(t, entries, "expected high-confidence entry to be stored")
 
 	// Low-confidence should NOT be stored.
 	lowEntries, err := store.SearchKnowledge(ctx, "Low confidence fact", "", 10)
-	if err != nil {
-		t.Fatalf("SearchKnowledge: %v", err)
-	}
-	if len(lowEntries) > 0 {
-		t.Error("low-confidence entry should not be stored")
-	}
+	require.NoError(t, err)
+	assert.Empty(t, lowEntries, "low-confidence entry should not be stored")
 }
 
 func TestSessionLearner_SkipShortSession(t *testing.T) {
+	t.Parallel()
+
 	logger := zap.NewNop().Sugar()
 	gen := &fakeTextGenerator{response: "[]"}
 	learner := NewSessionLearner(gen, nil, logger)
@@ -72,35 +68,34 @@ func TestSessionLearner_SkipShortSession(t *testing.T) {
 	}
 
 	err := learner.LearnFromSession(context.Background(), "short-sess", msgs)
-	if err != nil {
-		t.Fatalf("LearnFromSession should not error for short sessions: %v", err)
-	}
+	require.NoError(t, err)
 }
 
 func TestSampleMessages(t *testing.T) {
+	t.Parallel()
+
 	t.Run("short session returns all", func(t *testing.T) {
+		t.Parallel()
 		msgs := make([]session.Message, 10)
 		for i := range msgs {
 			msgs[i] = session.Message{Content: "msg"}
 		}
 		sampled := sampleMessages(msgs)
-		if len(sampled) != 10 {
-			t.Errorf("want 10 messages for short session, got %d", len(sampled))
-		}
+		assert.Len(t, sampled, 10)
 	})
 
 	t.Run("exactly 20 returns all", func(t *testing.T) {
+		t.Parallel()
 		msgs := make([]session.Message, 20)
 		for i := range msgs {
 			msgs[i] = session.Message{Content: "msg"}
 		}
 		sampled := sampleMessages(msgs)
-		if len(sampled) != 20 {
-			t.Errorf("want 20 messages for 20-message session, got %d", len(sampled))
-		}
+		assert.Len(t, sampled, 20)
 	})
 
 	t.Run("long session samples", func(t *testing.T) {
+		t.Parallel()
 		msgs := make([]session.Message, 50)
 		for i := range msgs {
 			msgs[i] = session.Message{Content: "msg"}
@@ -108,9 +103,7 @@ func TestSampleMessages(t *testing.T) {
 		sampled := sampleMessages(msgs)
 
 		// Should be less than total.
-		if len(sampled) >= 50 {
-			t.Errorf("sampled %d messages from 50, expected fewer", len(sampled))
-		}
+		assert.Less(t, len(sampled), 50, "sampled messages from 50 should be fewer")
 
 		// First 3 should be first 3 messages.
 		for i := 0; i < 3; i++ {
@@ -123,9 +116,7 @@ func TestSampleMessages(t *testing.T) {
 		for i := 0; i < 5; i++ {
 			sampledIdx := len(sampled) - 5 + i
 			msgsIdx := len(msgs) - 5 + i
-			if sampled[sampledIdx].Content != msgs[msgsIdx].Content {
-				t.Errorf("last-5 mismatch at position %d", i)
-			}
+			assert.Equal(t, msgs[msgsIdx].Content, sampled[sampledIdx].Content, "last-5 mismatch at position %d", i)
 		}
 	})
 }

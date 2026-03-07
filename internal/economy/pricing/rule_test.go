@@ -3,69 +3,71 @@ package pricing
 import (
 	"math/big"
 	"testing"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestNewRuleSet(t *testing.T) {
+	t.Parallel()
+
 	rs := NewRuleSet()
-	if len(rs.Rules()) != 0 {
-		t.Errorf("new RuleSet should be empty, got %d rules", len(rs.Rules()))
-	}
+	assert.Len(t, rs.Rules(), 0)
 }
 
 func TestRuleSet_Add_SortsByPriority(t *testing.T) {
+	t.Parallel()
+
 	rs := NewRuleSet()
 	rs.Add(PricingRule{Name: "low", Priority: 10, Enabled: true})
 	rs.Add(PricingRule{Name: "high", Priority: 1, Enabled: true})
 	rs.Add(PricingRule{Name: "mid", Priority: 5, Enabled: true})
 
 	rules := rs.Rules()
-	if len(rules) != 3 {
-		t.Fatalf("expected 3 rules, got %d", len(rules))
-	}
-	if rules[0].Name != "high" || rules[1].Name != "mid" || rules[2].Name != "low" {
-		t.Errorf("rules not sorted by priority: %v, %v, %v",
-			rules[0].Name, rules[1].Name, rules[2].Name)
-	}
+	require.Len(t, rules, 3)
+	assert.Equal(t, "high", rules[0].Name)
+	assert.Equal(t, "mid", rules[1].Name)
+	assert.Equal(t, "low", rules[2].Name)
 }
 
 func TestRuleSet_Remove(t *testing.T) {
+	t.Parallel()
+
 	rs := NewRuleSet()
 	rs.Add(PricingRule{Name: "a", Priority: 1, Enabled: true})
 	rs.Add(PricingRule{Name: "b", Priority: 2, Enabled: true})
 
 	rs.Remove("a")
 	rules := rs.Rules()
-	if len(rules) != 1 {
-		t.Fatalf("expected 1 rule after remove, got %d", len(rules))
-	}
-	if rules[0].Name != "b" {
-		t.Errorf("expected rule 'b' to remain, got %q", rules[0].Name)
-	}
+	require.Len(t, rules, 1)
+	assert.Equal(t, "b", rules[0].Name)
 }
 
 func TestRuleSet_Remove_Nonexistent(t *testing.T) {
+	t.Parallel()
+
 	rs := NewRuleSet()
 	rs.Add(PricingRule{Name: "a", Priority: 1, Enabled: true})
 	rs.Remove("nonexistent")
 
-	if len(rs.Rules()) != 1 {
-		t.Errorf("removing nonexistent rule should not change count")
-	}
+	assert.Len(t, rs.Rules(), 1)
 }
 
 func TestRuleSet_Rules_ReturnsCopy(t *testing.T) {
+	t.Parallel()
+
 	rs := NewRuleSet()
 	rs.Add(PricingRule{Name: "a", Priority: 1, Enabled: true})
 
 	rules := rs.Rules()
 	rules[0].Name = "mutated"
 
-	if rs.Rules()[0].Name != "a" {
-		t.Error("Rules() should return a copy; internal state was mutated")
-	}
+	assert.Equal(t, "a", rs.Rules()[0].Name)
 }
 
 func TestRuleSet_Evaluate(t *testing.T) {
+	t.Parallel()
+
 	tests := []struct {
 		give           string
 		giveRules      []PricingRule
@@ -310,6 +312,7 @@ func TestRuleSet_Evaluate(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.give, func(t *testing.T) {
+			t.Parallel()
 			rs := NewRuleSet()
 			for _, r := range tt.giveRules {
 				rs.Add(r)
@@ -322,18 +325,15 @@ func TestRuleSet_Evaluate(t *testing.T) {
 				big.NewInt(tt.giveBasePrice),
 			)
 
-			wantPrice := big.NewInt(tt.wantPrice)
-			if gotPrice.Cmp(wantPrice) != 0 {
-				t.Errorf("price = %s, want %s", gotPrice, wantPrice)
-			}
-			if len(gotMods) != tt.wantModCount {
-				t.Errorf("modifier count = %d, want %d", len(gotMods), tt.wantModCount)
-			}
+			assert.Equal(t, 0, gotPrice.Cmp(big.NewInt(tt.wantPrice)), "price = %s, want %d", gotPrice, tt.wantPrice)
+			assert.Len(t, gotMods, tt.wantModCount)
 		})
 	}
 }
 
 func TestRuleSet_Evaluate_DoesNotMutateBasePrice(t *testing.T) {
+	t.Parallel()
+
 	rs := NewRuleSet()
 	rs.Add(PricingRule{
 		Name:     "discount",
@@ -345,7 +345,5 @@ func TestRuleSet_Evaluate_DoesNotMutateBasePrice(t *testing.T) {
 	basePrice := big.NewInt(100000)
 	rs.Evaluate("tool", 0.5, "", basePrice)
 
-	if basePrice.Cmp(big.NewInt(100000)) != 0 {
-		t.Errorf("basePrice mutated to %s", basePrice)
-	}
+	assert.Equal(t, 0, basePrice.Cmp(big.NewInt(100000)))
 }

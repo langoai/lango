@@ -7,6 +7,9 @@ import (
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+
 	"github.com/langoai/lango/internal/session"
 )
 
@@ -48,6 +51,7 @@ func (m *mockStore) GetSalt(_ string) ([]byte, error)                { return ni
 func (m *mockStore) SetSalt(_ string, _ []byte) error                { return nil }
 
 func TestRequireAuth_NilAuthPassesThrough(t *testing.T) {
+	t.Parallel()
 	handler := requireAuth(nil)(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusOK)
 	}))
@@ -57,12 +61,11 @@ func TestRequireAuth_NilAuthPassesThrough(t *testing.T) {
 
 	handler.ServeHTTP(rec, req)
 
-	if rec.Code != http.StatusOK {
-		t.Errorf("expected 200 when auth is nil, got %d", rec.Code)
-	}
+	assert.Equal(t, http.StatusOK, rec.Code)
 }
 
 func TestRequireAuth_NoCookieReturns401(t *testing.T) {
+	t.Parallel()
 	store := newMockStore()
 	auth := &AuthManager{
 		providers: make(map[string]*OIDCProvider),
@@ -78,12 +81,11 @@ func TestRequireAuth_NoCookieReturns401(t *testing.T) {
 
 	handler.ServeHTTP(rec, req)
 
-	if rec.Code != http.StatusUnauthorized {
-		t.Errorf("expected 401 when no cookie, got %d", rec.Code)
-	}
+	assert.Equal(t, http.StatusUnauthorized, rec.Code)
 }
 
 func TestRequireAuth_InvalidSessionReturns401(t *testing.T) {
+	t.Parallel()
 	store := newMockStore()
 	auth := &AuthManager{
 		providers: make(map[string]*OIDCProvider),
@@ -100,12 +102,11 @@ func TestRequireAuth_InvalidSessionReturns401(t *testing.T) {
 
 	handler.ServeHTTP(rec, req)
 
-	if rec.Code != http.StatusUnauthorized {
-		t.Errorf("expected 401 for invalid session, got %d", rec.Code)
-	}
+	assert.Equal(t, http.StatusUnauthorized, rec.Code)
 }
 
 func TestRequireAuth_ValidSessionSetsContext(t *testing.T) {
+	t.Parallel()
 	store := newMockStore()
 	store.Create(&session.Session{
 		Key:       "sess_valid-key",
@@ -130,52 +131,40 @@ func TestRequireAuth_ValidSessionSetsContext(t *testing.T) {
 
 	handler.ServeHTTP(rec, req)
 
-	if rec.Code != http.StatusOK {
-		t.Errorf("expected 200 for valid session, got %d", rec.Code)
-	}
-	if capturedSessionKey != "sess_valid-key" {
-		t.Errorf("expected session key 'sess_valid-key', got %q", capturedSessionKey)
-	}
+	assert.Equal(t, http.StatusOK, rec.Code)
+	assert.Equal(t, "sess_valid-key", capturedSessionKey)
 }
 
 func TestSessionFromContext_Empty(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	key := SessionFromContext(ctx)
-	if key != "" {
-		t.Errorf("expected empty string for empty context, got %q", key)
-	}
+	assert.Empty(t, key)
 }
 
 func TestMakeOriginChecker_EmptyReturnsNil(t *testing.T) {
+	t.Parallel()
 	checker := makeOriginChecker(nil)
-	if checker != nil {
-		t.Error("expected nil checker for empty origins")
-	}
+	assert.Nil(t, checker)
 
 	checker = makeOriginChecker([]string{})
-	if checker != nil {
-		t.Error("expected nil checker for empty slice")
-	}
+	assert.Nil(t, checker)
 }
 
 func TestMakeOriginChecker_WildcardAllowsAll(t *testing.T) {
+	t.Parallel()
 	checker := makeOriginChecker([]string{"*"})
-	if checker == nil {
-		t.Fatal("expected non-nil checker for wildcard")
-	}
+	require.NotNil(t, checker)
 
 	req := httptest.NewRequest(http.MethodGet, "/ws", nil)
 	req.Header.Set("Origin", "https://evil.example.com")
-	if !checker(req) {
-		t.Error("expected wildcard to allow all origins")
-	}
+	assert.True(t, checker(req))
 }
 
 func TestMakeOriginChecker_SpecificOriginsMatch(t *testing.T) {
+	t.Parallel()
 	checker := makeOriginChecker([]string{"https://app.example.com", "https://admin.example.com"})
-	if checker == nil {
-		t.Fatal("expected non-nil checker for specific origins")
-	}
+	require.NotNil(t, checker)
 
 	tests := []struct {
 		give string
@@ -189,46 +178,39 @@ func TestMakeOriginChecker_SpecificOriginsMatch(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.give, func(t *testing.T) {
+			t.Parallel()
 			req := httptest.NewRequest(http.MethodGet, "/ws", nil)
 			if tt.give != "" {
 				req.Header.Set("Origin", tt.give)
 			}
 			got := checker(req)
-			if got != tt.want {
-				t.Errorf("origin %q: got %v, want %v", tt.give, got, tt.want)
-			}
+			assert.Equal(t, tt.want, got)
 		})
 	}
 }
 
 func TestMakeOriginChecker_TrailingSlashNormalized(t *testing.T) {
+	t.Parallel()
 	checker := makeOriginChecker([]string{"https://app.example.com/"})
-	if checker == nil {
-		t.Fatal("expected non-nil checker")
-	}
+	require.NotNil(t, checker)
 
 	req := httptest.NewRequest(http.MethodGet, "/ws", nil)
 	req.Header.Set("Origin", "https://app.example.com")
-	if !checker(req) {
-		t.Error("expected trailing slash to be normalized")
-	}
+	assert.True(t, checker(req))
 }
 
 func TestIsSecure_DirectTLS(t *testing.T) {
+	t.Parallel()
 	req := httptest.NewRequest(http.MethodGet, "https://localhost/test", nil)
-	// httptest doesn't set TLS, manually test the header path
-	// isSecure returns false here: httptest doesn't set TLS, that's expected.
 	_ = isSecure(req)
 
-	// Test X-Forwarded-Proto header
 	req = httptest.NewRequest(http.MethodGet, "http://localhost/test", nil)
 	req.Header.Set("X-Forwarded-Proto", "https")
-	if !isSecure(req) {
-		t.Error("expected isSecure=true with X-Forwarded-Proto: https")
-	}
+	assert.True(t, isSecure(req))
 }
 
 func TestIsSecure_XForwardedProto(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		give string
 		want bool
@@ -241,19 +223,19 @@ func TestIsSecure_XForwardedProto(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.give, func(t *testing.T) {
+			t.Parallel()
 			req := httptest.NewRequest(http.MethodGet, "http://localhost/test", nil)
 			if tt.give != "" {
 				req.Header.Set("X-Forwarded-Proto", tt.give)
 			}
 			got := isSecure(req)
-			if got != tt.want {
-				t.Errorf("X-Forwarded-Proto %q: got %v, want %v", tt.give, got, tt.want)
-			}
+			assert.Equal(t, tt.want, got)
 		})
 	}
 }
 
 func TestLogout_ClearsSessionAndCookie(t *testing.T) {
+	t.Parallel()
 	store := newMockStore()
 	store.Create(&session.Session{
 		Key:       "sess_to-delete",
@@ -272,15 +254,11 @@ func TestLogout_ClearsSessionAndCookie(t *testing.T) {
 
 	auth.handleLogout(rec, req)
 
-	if rec.Code != http.StatusOK {
-		t.Errorf("expected 200, got %d", rec.Code)
-	}
+	assert.Equal(t, http.StatusOK, rec.Code)
 
 	// Verify session was deleted from store
 	sess, _ := store.Get("sess_to-delete")
-	if sess != nil {
-		t.Error("expected session to be deleted from store")
-	}
+	assert.Nil(t, sess)
 
 	// Verify cookie was cleared
 	cookies := rec.Result().Cookies()
@@ -288,50 +266,31 @@ func TestLogout_ClearsSessionAndCookie(t *testing.T) {
 	for _, c := range cookies {
 		if c.Name == "lango_session" {
 			found = true
-			if c.MaxAge != -1 {
-				t.Errorf("expected MaxAge -1, got %d", c.MaxAge)
-			}
-			if c.Value != "" {
-				t.Errorf("expected empty cookie value, got %q", c.Value)
-			}
+			assert.Equal(t, -1, c.MaxAge)
+			assert.Empty(t, c.Value)
 		}
 	}
-	if !found {
-		t.Error("expected lango_session cookie in response")
-	}
+	assert.True(t, found, "expected lango_session cookie in response")
 }
 
 func TestStateCookie_PerProviderName(t *testing.T) {
-	// Verify that state cookie name includes provider name
+	t.Parallel()
 	auth := &AuthManager{
 		providers: make(map[string]*OIDCProvider),
 		store:     newMockStore(),
 	}
 
-	// handleLogin requires a real OIDC provider, so we test indirectly
-	// by verifying the handleCallback checks for per-provider cookie name
-
 	req := httptest.NewRequest(http.MethodGet, "/auth/callback/google?state=abc&code=xyz", nil)
-	// Set the old-style cookie (without provider suffix) — should fail
 	req.AddCookie(&http.Cookie{Name: "oauth_state", Value: "abc"})
 	rec := httptest.NewRecorder()
 
-	// This should return "state cookie missing" because it looks for "oauth_state_google"
 	auth.handleCallback(rec, req)
 
-	// Provider "google" is not registered, so we get 404 first.
-	// The important thing is it doesn't use the old cookie name.
-	_ = rec.Code
-
-	// Now test with correct per-provider cookie but non-existent provider
 	req2 := httptest.NewRequest(http.MethodGet, "/auth/callback/google?state=abc&code=xyz", nil)
 	req2.AddCookie(&http.Cookie{Name: "oauth_state_google", Value: "abc"})
 	rec2 := httptest.NewRecorder()
 
 	auth.handleCallback(rec2, req2)
 
-	// Should get 404 (provider not found) rather than "state cookie missing"
-	if rec2.Code != http.StatusNotFound {
-		t.Errorf("expected 404 (provider not found), got %d", rec2.Code)
-	}
+	assert.Equal(t, http.StatusNotFound, rec2.Code)
 }

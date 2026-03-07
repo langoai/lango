@@ -19,6 +19,8 @@ func newTestSecurityHandler(t *testing.T, maxFailures int, minTrust float64) (*S
 }
 
 func TestConsecutiveFailures_TriggerAutoInvalidation(t *testing.T) {
+	t.Parallel()
+
 	handler, store := newTestSecurityHandler(t, 3, 0.3)
 
 	sess, err := store.Create("did:lango:peer1", false)
@@ -42,6 +44,8 @@ func TestConsecutiveFailures_TriggerAutoInvalidation(t *testing.T) {
 }
 
 func TestSuccess_ResetsFailureCounter(t *testing.T) {
+	t.Parallel()
+
 	handler, store := newTestSecurityHandler(t, 3, 0.3)
 
 	sess, err := store.Create("did:lango:peer1", false)
@@ -64,6 +68,8 @@ func TestSuccess_ResetsFailureCounter(t *testing.T) {
 }
 
 func TestReputationDrop_TriggersInvalidation(t *testing.T) {
+	t.Parallel()
+
 	handler, store := newTestSecurityHandler(t, 5, 0.3)
 
 	sess, err := store.Create("did:lango:peer1", false)
@@ -83,6 +89,8 @@ func TestReputationDrop_TriggersInvalidation(t *testing.T) {
 }
 
 func TestReputationAtThreshold_NoInvalidation(t *testing.T) {
+	t.Parallel()
+
 	handler, store := newTestSecurityHandler(t, 5, 0.3)
 
 	sess, err := store.Create("did:lango:peer1", false)
@@ -94,6 +102,8 @@ func TestReputationAtThreshold_NoInvalidation(t *testing.T) {
 }
 
 func TestDefaultMaxFailures(t *testing.T) {
+	t.Parallel()
+
 	store, err := NewSessionStore(24 * time.Hour)
 	require.NoError(t, err)
 

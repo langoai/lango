@@ -11,70 +11,55 @@ import (
 )
 
 func TestReadWrite(t *testing.T) {
+	t.Parallel()
+
 	tool := New(Config{})
 	tmpDir := t.TempDir()
 	testFile := filepath.Join(tmpDir, "test.txt")
 
 	// Write
 	content := "hello\nworld"
-	if err := tool.Write(testFile, content); err != nil {
-		t.Fatalf("write failed: %v", err)
-	}
+	require.NoError(t, tool.Write(testFile, content))
 
 	// Read
 	result, err := tool.Read(testFile)
-	if err != nil {
-		t.Fatalf("read failed: %v", err)
-	}
-
-	if result != content {
-		t.Errorf("expected %q, got %q", content, result)
-	}
+	require.NoError(t, err)
+	assert.Equal(t, content, result)
 }
 
 func TestReadLines(t *testing.T) {
+	t.Parallel()
+
 	tool := New(Config{})
 	tmpDir := t.TempDir()
 	testFile := filepath.Join(tmpDir, "lines.txt")
 
 	content := "line1\nline2\nline3\nline4\nline5"
-	if err := tool.Write(testFile, content); err != nil {
-		t.Fatalf("write failed: %v", err)
-	}
+	require.NoError(t, tool.Write(testFile, content))
 
 	result, err := tool.ReadLines(testFile, 2, 4)
-	if err != nil {
-		t.Fatalf("readLines failed: %v", err)
-	}
-
-	expected := "line2\nline3\nline4"
-	if result != expected {
-		t.Errorf("expected %q, got %q", expected, result)
-	}
+	require.NoError(t, err)
+	assert.Equal(t, "line2\nline3\nline4", result)
 }
 
 func TestEdit(t *testing.T) {
+	t.Parallel()
+
 	tool := New(Config{})
 	tmpDir := t.TempDir()
 	testFile := filepath.Join(tmpDir, "edit.txt")
 
 	content := "line1\nold\nline3"
-	if err := tool.Write(testFile, content); err != nil {
-		t.Fatalf("write failed: %v", err)
-	}
-
-	if err := tool.Edit(testFile, 2, 2, "new"); err != nil {
-		t.Fatalf("edit failed: %v", err)
-	}
+	require.NoError(t, tool.Write(testFile, content))
+	require.NoError(t, tool.Edit(testFile, 2, 2, "new"))
 
 	result, _ := tool.Read(testFile)
-	expected := "line1\nnew\nline3"
-	if result != expected {
-		t.Errorf("expected %q, got %q", expected, result)
-	}
+	assert.Equal(t, "line1\nnew\nline3", result)
 }
 
 func TestListDir(t *testing.T) {
+	t.Parallel()
+
 	tool := New(Config{})
 	tmpDir := t.TempDir()
 
@@ -84,28 +69,25 @@ func TestListDir(t *testing.T) {
 	os.Mkdir(filepath.Join(tmpDir, "subdir"), 0755)
 
 	files, err := tool.ListDir(tmpDir)
-	if err != nil {
-		t.Fatalf("listDir failed: %v", err)
-	}
-
-	if len(files) != 3 {
-		t.Errorf("expected 3 entries, got %d", len(files))
-	}
+	require.NoError(t, err)
+	assert.Len(t, files, 3)
 }
 
 func TestPathValidation(t *testing.T) {
+	t.Parallel()
+
 	tool := New(Config{
 		AllowedPaths: []string{"/tmp/allowed"},
 	})
 
 	// Should fail for paths outside allowed
 	_, err := tool.validatePath("/etc/passwd")
-	if err == nil {
-		t.Error("expected error for disallowed path")
-	}
+	require.Error(t, err)
 }
 
 func TestFileSizeLimit(t *testing.T) {
+	t.Parallel()
+
 	tool := New(Config{MaxReadSize: 10})
 	tmpDir := t.TempDir()
 	testFile := filepath.Join(tmpDir, "large.txt")
@@ -114,12 +96,12 @@ func TestFileSizeLimit(t *testing.T) {
 	os.WriteFile(testFile, []byte("this is larger than 10 bytes"), 0644)
 
 	_, err := tool.Read(testFile)
-	if err == nil {
-		t.Error("expected error for large file")
-	}
+	require.Error(t, err)
 }
 
 func TestBlockedPaths(t *testing.T) {
+	t.Parallel()
+
 	tmpDir := t.TempDir()
 	blockedDir := filepath.Join(tmpDir, "secrets")
 	allowedDir := filepath.Join(tmpDir, "public")
@@ -159,6 +141,8 @@ func TestBlockedPaths(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.give, func(t *testing.T) {
+			t.Parallel()
+
 			tool := New(Config{BlockedPaths: tt.giveBlocked})
 			_, err := tool.validatePath(tt.give)
 			if tt.wantErr {

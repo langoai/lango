@@ -19,6 +19,8 @@ func makeNonce(t *testing.T) []byte {
 }
 
 func TestNonceCache_FirstNonce(t *testing.T) {
+	t.Parallel()
+
 	nc := NewNonceCache(5 * time.Minute)
 
 	nonce := makeNonce(t)
@@ -27,6 +29,8 @@ func TestNonceCache_FirstNonce(t *testing.T) {
 }
 
 func TestNonceCache_DuplicateNonce(t *testing.T) {
+	t.Parallel()
+
 	nc := NewNonceCache(5 * time.Minute)
 
 	nonce := makeNonce(t)
@@ -38,6 +42,8 @@ func TestNonceCache_DuplicateNonce(t *testing.T) {
 }
 
 func TestNonceCache_DifferentNonces(t *testing.T) {
+	t.Parallel()
+
 	nc := NewNonceCache(5 * time.Minute)
 
 	nonce1 := makeNonce(t)
@@ -51,6 +57,8 @@ func TestNonceCache_DifferentNonces(t *testing.T) {
 }
 
 func TestNonceCache_InvalidLength(t *testing.T) {
+	t.Parallel()
+
 	nc := NewNonceCache(5 * time.Minute)
 
 	tests := []struct {
@@ -65,6 +73,7 @@ func TestNonceCache_InvalidLength(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.give, func(t *testing.T) {
+			t.Parallel()
 			ok := nc.CheckAndRecord(tt.data)
 			assert.False(t, ok, "invalid nonce length should return false")
 		})
@@ -72,6 +81,8 @@ func TestNonceCache_InvalidLength(t *testing.T) {
 }
 
 func TestNonceCache_Cleanup(t *testing.T) {
+	t.Parallel()
+
 	ttl := 50 * time.Millisecond
 	nc := NewNonceCache(ttl)
 
@@ -89,6 +100,8 @@ func TestNonceCache_Cleanup(t *testing.T) {
 }
 
 func TestNonceCache_StartStop(t *testing.T) {
+	t.Parallel()
+
 	ttl := 50 * time.Millisecond
 	nc := NewNonceCache(ttl)
 
@@ -113,6 +126,8 @@ func TestNonceCache_StartStop(t *testing.T) {
 }
 
 func TestNonceCache_Concurrent(t *testing.T) {
+	t.Parallel()
+
 	nc := NewNonceCache(5 * time.Minute)
 	nc.Start()
 	defer nc.Stop()

@@ -7,6 +7,9 @@ import (
 	"math/big"
 	"testing"
 
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+
 	"github.com/langoai/lango/internal/config"
 	"github.com/langoai/lango/internal/wallet"
 )
@@ -38,6 +41,8 @@ func newTestEngine(t *testing.T, trust float64) *Engine {
 }
 
 func TestEngine_Assess_StrategyMatrix(t *testing.T) {
+	t.Parallel()
+
 	tests := []struct {
 		give         string
 		giveTrust    float64
@@ -46,7 +51,6 @@ func TestEngine_Assess_StrategyMatrix(t *testing.T) {
 		wantStrategy Strategy
 	}{
 		// === High trust (>= 0.8) ===
-		// Low value: always DirectPay regardless of verifiability
 		{
 			give:         "high trust, low value, high verify -> direct pay",
 			giveTrust:    0.9,
@@ -68,7 +72,6 @@ func TestEngine_Assess_StrategyMatrix(t *testing.T) {
 			giveVerify:   VerifiabilityLow,
 			wantStrategy: StrategyDirectPay,
 		},
-		// High value: forced escrow
 		{
 			give:         "high trust, high value, high verify -> escrow",
 			giveTrust:    0.95,
@@ -83,9 +86,7 @@ func TestEngine_Assess_StrategyMatrix(t *testing.T) {
 			giveVerify:   VerifiabilityLow,
 			wantStrategy: StrategyEscrow,
 		},
-
 		// === Medium trust (0.5 - 0.8) ===
-		// Low value: depends on verifiability
 		{
 			give:         "medium trust, low value, high verify -> direct pay",
 			giveTrust:    0.6,
@@ -107,7 +108,6 @@ func TestEngine_Assess_StrategyMatrix(t *testing.T) {
 			giveVerify:   VerifiabilityLow,
 			wantStrategy: StrategyEscrow,
 		},
-		// High value: forced escrow
 		{
 			give:         "medium trust, high value, high verify -> escrow",
 			giveTrust:    0.7,
@@ -122,9 +122,7 @@ func TestEngine_Assess_StrategyMatrix(t *testing.T) {
 			giveVerify:   VerifiabilityLow,
 			wantStrategy: StrategyEscrow,
 		},
-
 		// === Low trust (< 0.5) ===
-		// Low value: depends on verifiability
 		{
 			give:         "low trust, low value, high verify -> micro payment",
 			giveTrust:    0.2,
@@ -146,7 +144,6 @@ func TestEngine_Assess_StrategyMatrix(t *testing.T) {
 			giveVerify:   VerifiabilityLow,
 			wantStrategy: StrategyZKFirst,
 		},
-		// High value: always ZKEscrow
 		{
 			give:         "low trust, high value, high verify -> zk escrow",
 			giveTrust:    0.2,
@@ -161,7 +158,6 @@ func TestEngine_Assess_StrategyMatrix(t *testing.T) {
 			giveVerify:   VerifiabilityLow,
 			wantStrategy: StrategyZKEscrow,
 		},
-
 		// === Boundary: trust thresholds ===
 		{
 			give:         "exactly high trust threshold -> direct pay",
@@ -191,9 +187,7 @@ func TestEngine_Assess_StrategyMatrix(t *testing.T) {
 			giveVerify:   VerifiabilityHigh,
 			wantStrategy: StrategyMicroPayment,
 		},
-
 		// === Boundary: escrow threshold ===
-		// amount > threshold = high value; amount <= threshold = low value
 		{
 			give:         "medium trust, at escrow threshold -> direct pay (not high value)",
 			giveTrust:    0.6,
@@ -212,24 +206,21 @@ func TestEngine_Assess_StrategyMatrix(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.give, func(t *testing.T) {
+			t.Parallel()
 			rep := mockReputation(map[string]float64{"peer1": tt.giveTrust})
 			engine, err := New(config.RiskConfig{}, rep)
-			if err != nil {
-				t.Fatalf("New: %v", err)
-			}
+			require.NoError(t, err)
 
 			assessment, err := engine.Assess(context.Background(), "peer1", tt.giveAmount, tt.giveVerify)
-			if err != nil {
-				t.Fatalf("unexpected error: %v", err)
-			}
-			if assessment.Strategy != tt.wantStrategy {
-				t.Errorf("strategy: got %q, want %q", assessment.Strategy, tt.wantStrategy)
-			}
+			require.NoError(t, err)
+			assert.Equal(t, tt.wantStrategy, assessment.Strategy)
 		})
 	}
 }
 
 func TestEngine_Assess_RiskScoreRange(t *testing.T) {
+	t.Parallel()
+
 	tests := []struct {
 		give       string
 		giveTrust  float64
@@ -262,74 +253,50 @@ func TestEngine_Assess_RiskScoreRange(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.give, func(t *testing.T) {
+			t.Parallel()
 			rep := mockReputation(map[string]float64{"peer1": tt.giveTrust})
 			engine, err := New(config.RiskConfig{}, rep)
-			if err != nil {
-				t.Fatalf("New: %v", err)
-			}
+			require.NoError(t, err)
 
 			assessment, err := engine.Assess(context.Background(), "peer1", tt.giveAmount, tt.giveVerify)
-			if err != nil {
-				t.Fatalf("unexpected error: %v", err)
-			}
-			if assessment.RiskScore < 0 || assessment.RiskScore > 1 {
-				t.Errorf("risk score out of range: %f", assessment.RiskScore)
-			}
-			if assessment.RiskLevel != tt.wantLevel {
-				t.Errorf("risk level: got %q, want %q (score=%.3f)", assessment.RiskLevel, tt.wantLevel, assessment.RiskScore)
-			}
+			require.NoError(t, err)
+			assert.GreaterOrEqual(t, assessment.RiskScore, 0.0)
+			assert.LessOrEqual(t, assessment.RiskScore, 1.0)
+			assert.Equal(t, tt.wantLevel, assessment.RiskLevel)
 		})
 	}
 }
 
 func TestEngine_Assess_Fields(t *testing.T) {
+	t.Parallel()
+
 	rep := mockReputation(map[string]float64{"did:test:alice": 0.75})
 	engine, err := New(config.RiskConfig{}, rep)
-	if err != nil {
-		t.Fatalf("New: %v", err)
-	}
+	require.NoError(t, err)
 	amount := usdc(3)
 
 	assessment, err := engine.Assess(context.Background(), "did:test:alice", amount, VerifiabilityMedium)
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
+	require.NoError(t, err)
 
-	if assessment.PeerDID != "did:test:alice" {
-		t.Errorf("PeerDID: got %q, want %q", assessment.PeerDID, "did:test:alice")
-	}
-	if assessment.Amount.Cmp(amount) != 0 {
-		t.Errorf("Amount: got %s, want %s", assessment.Amount, amount)
-	}
-	if assessment.TrustScore != 0.75 {
-		t.Errorf("TrustScore: got %f, want %f", assessment.TrustScore, 0.75)
-	}
-	if assessment.Verifiability != VerifiabilityMedium {
-		t.Errorf("Verifiability: got %q, want %q", assessment.Verifiability, VerifiabilityMedium)
-	}
-	if len(assessment.Factors) != 3 {
-		t.Errorf("Factors count: got %d, want 3", len(assessment.Factors))
-	}
-	if assessment.Explanation == "" {
-		t.Error("Explanation should not be empty")
-	}
-	if assessment.AssessedAt.IsZero() {
-		t.Error("AssessedAt should not be zero")
-	}
+	assert.Equal(t, "did:test:alice", assessment.PeerDID)
+	assert.Equal(t, 0, assessment.Amount.Cmp(amount))
+	assert.InDelta(t, 0.75, assessment.TrustScore, 0.001)
+	assert.Equal(t, VerifiabilityMedium, assessment.Verifiability)
+	assert.Len(t, assessment.Factors, 3)
+	assert.NotEmpty(t, assessment.Explanation)
+	assert.False(t, assessment.AssessedAt.IsZero())
 	// Amount should be a defensive copy.
 	amount.SetInt64(0)
-	if assessment.Amount.Sign() == 0 {
-		t.Error("Amount should be a defensive copy")
-	}
+	assert.NotEqual(t, 0, assessment.Amount.Sign())
 }
 
 func TestEngine_Assess_FactorWeights(t *testing.T) {
+	t.Parallel()
+
 	engine := newTestEngine(t, 0.5)
 
 	assessment, err := engine.Assess(context.Background(), "peer1", usdc(1), VerifiabilityHigh)
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
+	require.NoError(t, err)
 
 	wantFactors := map[string]float64{
 		"trust":         0.40,
@@ -339,16 +306,10 @@ func TestEngine_Assess_FactorWeights(t *testing.T) {
 
 	for _, f := range assessment.Factors {
 		wantWeight, ok := wantFactors[f.Name]
-		if !ok {
-			t.Errorf("unexpected factor %q", f.Name)
-			continue
-		}
-		if f.Weight != wantWeight {
-			t.Errorf("factor %q weight: got %f, want %f", f.Name, f.Weight, wantWeight)
-		}
-		if f.Value < 0 || f.Value > 1 {
-			t.Errorf("factor %q value out of range: %f", f.Name, f.Value)
-		}
+		require.True(t, ok, "unexpected factor %q", f.Name)
+		assert.InDelta(t, wantWeight, f.Weight, 0.001, "factor %q weight", f.Name)
+		assert.GreaterOrEqual(t, f.Value, 0.0, "factor %q value", f.Name)
+		assert.LessOrEqual(t, f.Value, 1.0, "factor %q value", f.Name)
 		delete(wantFactors, f.Name)
 	}
 	for name := range wantFactors {
@@ -357,44 +318,38 @@ func TestEngine_Assess_FactorWeights(t *testing.T) {
 }
 
 func TestEngine_Assess_ReputationError(t *testing.T) {
+	t.Parallel()
+
 	dbErr := errors.New("db connection lost")
 	rep := mockReputationErr(dbErr)
 	engine, err := New(config.RiskConfig{}, rep)
-	if err != nil {
-		t.Fatalf("New: %v", err)
-	}
+	require.NoError(t, err)
 
 	_, err = engine.Assess(context.Background(), "peer1", usdc(1), VerifiabilityHigh)
-	if err == nil {
-		t.Fatal("expected error, got nil")
-	}
-	if !errors.Is(err, dbErr) {
-		t.Errorf("error should wrap original: got %v", err)
-	}
+	require.Error(t, err)
+	assert.ErrorIs(t, err, dbErr)
 }
 
 func TestEngine_Assess_CustomConfig(t *testing.T) {
+	t.Parallel()
+
 	rep := mockReputation(map[string]float64{"peer1": 0.7})
 	engine, err := New(config.RiskConfig{
 		HighTrustScore:   0.7,
 		MediumTrustScore: 0.4,
 		EscrowThreshold:  "10.00",
 	}, rep)
-	if err != nil {
-		t.Fatalf("New: %v", err)
-	}
+	require.NoError(t, err)
 
 	assessment, err := engine.Assess(context.Background(), "peer1", usdc(5), VerifiabilityHigh)
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
+	require.NoError(t, err)
 	// With custom config, 0.7 meets high trust threshold and 5 USDC <= 10 USDC threshold -> DirectPay
-	if assessment.Strategy != StrategyDirectPay {
-		t.Errorf("strategy: got %q, want %q", assessment.Strategy, StrategyDirectPay)
-	}
+	assert.Equal(t, StrategyDirectPay, assessment.Strategy)
 }
 
 func TestClassifyRisk(t *testing.T) {
+	t.Parallel()
+
 	tests := []struct {
 		give      float64
 		wantLevel RiskLevel
@@ -412,15 +367,15 @@ func TestClassifyRisk(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(fmt.Sprintf("score_%.2f", tt.give), func(t *testing.T) {
-			got := classifyRisk(tt.give)
-			if got != tt.wantLevel {
-				t.Errorf("classifyRisk(%.2f): got %q, want %q", tt.give, got, tt.wantLevel)
-			}
+			t.Parallel()
+			assert.Equal(t, tt.wantLevel, classifyRisk(tt.give))
 		})
 	}
 }
 
 func TestTrustFactor(t *testing.T) {
+	t.Parallel()
+
 	tests := []struct {
 		give     float64
 		wantRisk float64
@@ -433,21 +388,18 @@ func TestTrustFactor(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(fmt.Sprintf("trust_%.1f", tt.give), func(t *testing.T) {
+			t.Parallel()
 			f := trustFactor(tt.give)
-			if f.Name != "trust" {
-				t.Errorf("name: got %q, want %q", f.Name, "trust")
-			}
-			if f.Weight != 0.4 {
-				t.Errorf("weight: got %f, want 0.4", f.Weight)
-			}
-			if fmt.Sprintf("%.2f", f.Value) != fmt.Sprintf("%.2f", tt.wantRisk) {
-				t.Errorf("value: got %f, want %f", f.Value, tt.wantRisk)
-			}
+			assert.Equal(t, "trust", f.Name)
+			assert.InDelta(t, 0.4, f.Weight, 0.001)
+			assert.InDelta(t, tt.wantRisk, f.Value, 0.01)
 		})
 	}
 }
 
 func TestVerifiabilityFactor(t *testing.T) {
+	t.Parallel()
+
 	tests := []struct {
 		give     Verifiability
 		wantRisk float64
@@ -460,21 +412,18 @@ func TestVerifiabilityFactor(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(string(tt.give), func(t *testing.T) {
+			t.Parallel()
 			f := verifiabilityFactor(tt.give)
-			if f.Name != "verifiability" {
-				t.Errorf("name: got %q, want %q", f.Name, "verifiability")
-			}
-			if f.Weight != 0.25 {
-				t.Errorf("weight: got %f, want 0.25", f.Weight)
-			}
-			if f.Value != tt.wantRisk {
-				t.Errorf("value: got %f, want %f", f.Value, tt.wantRisk)
-			}
+			assert.Equal(t, "verifiability", f.Name)
+			assert.InDelta(t, 0.25, f.Weight, 0.001)
+			assert.InDelta(t, tt.wantRisk, f.Value, 0.001)
 		})
 	}
 }
 
 func TestAmountFactor(t *testing.T) {
+	t.Parallel()
+
 	threshold := usdc(5)
 
 	tests := []struct {
@@ -497,15 +446,17 @@ func TestAmountFactor(t *testing.T) {
 			label = tt.give.String()
 		}
 		t.Run(label, func(t *testing.T) {
+			t.Parallel()
 			f := amountFactor(tt.give, threshold)
-			if f.Value < tt.wantMin || f.Value > tt.wantMax {
-				t.Errorf("amountFactor(%s): got %f, want [%f, %f]", label, f.Value, tt.wantMin, tt.wantMax)
-			}
+			assert.GreaterOrEqual(t, f.Value, tt.wantMin, "amountFactor(%s)", label)
+			assert.LessOrEqual(t, f.Value, tt.wantMax, "amountFactor(%s)", label)
 		})
 	}
 }
 
 func TestClamp(t *testing.T) {
+	t.Parallel()
+
 	tests := []struct {
 		give float64
 		want float64
@@ -519,15 +470,15 @@ func TestClamp(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(fmt.Sprintf("%.1f", tt.give), func(t *testing.T) {
-			got := clamp(tt.give)
-			if got != tt.want {
-				t.Errorf("clamp(%.1f): got %f, want %f", tt.give, got, tt.want)
-			}
+			t.Parallel()
+			assert.InDelta(t, tt.want, clamp(tt.give), 0.001)
 		})
 	}
 }
 
 func TestParseUSDC(t *testing.T) {
+	t.Parallel()
+
 	tests := []struct {
 		give    string
 		want    *big.Int
@@ -542,19 +493,14 @@ func TestParseUSDC(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.give, func(t *testing.T) {
+			t.Parallel()
 			got, err := wallet.ParseUSDC(tt.give)
 			if tt.wantErr {
-				if err == nil {
-					t.Errorf("wallet.ParseUSDC(%q): want error, got %s", tt.give, got)
-				}
+				require.Error(t, err)
 				return
 			}
-			if err != nil {
-				t.Fatalf("wallet.ParseUSDC(%q): unexpected error: %v", tt.give, err)
-			}
-			if got.Cmp(tt.want) != 0 {
-				t.Errorf("wallet.ParseUSDC(%q): got %s, want %s", tt.give, got, tt.want)
-			}
+			require.NoError(t, err)
+			assert.Equal(t, 0, got.Cmp(tt.want))
 		})
 	}
 }

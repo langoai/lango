@@ -3,9 +3,13 @@ package budget
 import (
 	"math/big"
 	"testing"
+
+	"github.com/stretchr/testify/assert"
 )
 
 func TestTaskBudget_Remaining(t *testing.T) {
+	t.Parallel()
+
 	tests := []struct {
 		give         string
 		giveTotal    int64
@@ -66,6 +70,7 @@ func TestTaskBudget_Remaining(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.give, func(t *testing.T) {
+			t.Parallel()
 			tb := &TaskBudget{
 				TotalBudget: big.NewInt(tt.giveTotal),
 				Spent:       big.NewInt(tt.giveSpent),
@@ -73,14 +78,14 @@ func TestTaskBudget_Remaining(t *testing.T) {
 			}
 			got := tb.Remaining()
 			want := big.NewInt(tt.want)
-			if got.Cmp(want) != 0 {
-				t.Errorf("Remaining() = %s, want %s", got, want)
-			}
+			assert.Equal(t, 0, got.Cmp(want), "Remaining() = %s, want %s", got, want)
 		})
 	}
 }
 
 func TestTaskBudget_Remaining_DoesNotMutateFields(t *testing.T) {
+	t.Parallel()
+
 	tb := &TaskBudget{
 		TotalBudget: big.NewInt(1000000),
 		Spent:       big.NewInt(300000),
@@ -89,13 +94,7 @@ func TestTaskBudget_Remaining_DoesNotMutateFields(t *testing.T) {
 
 	_ = tb.Remaining()
 
-	if tb.TotalBudget.Cmp(big.NewInt(1000000)) != 0 {
-		t.Errorf("TotalBudget mutated to %s", tb.TotalBudget)
-	}
-	if tb.Spent.Cmp(big.NewInt(300000)) != 0 {
-		t.Errorf("Spent mutated to %s", tb.Spent)
-	}
-	if tb.Reserved.Cmp(big.NewInt(200000)) != 0 {
-		t.Errorf("Reserved mutated to %s", tb.Reserved)
-	}
+	assert.Equal(t, 0, tb.TotalBudget.Cmp(big.NewInt(1000000)))
+	assert.Equal(t, 0, tb.Spent.Cmp(big.NewInt(300000)))
+	assert.Equal(t, 0, tb.Reserved.Cmp(big.NewInt(200000)))
 }

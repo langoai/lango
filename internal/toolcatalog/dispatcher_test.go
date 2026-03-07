@@ -41,6 +41,8 @@ func setupCatalog() *Catalog {
 }
 
 func TestBuildDispatcher_ReturnsTwo(t *testing.T) {
+	t.Parallel()
+
 	tools := BuildDispatcher(setupCatalog())
 	require.Len(t, tools, 2)
 	assert.Equal(t, "builtin_list", tools[0].Name)
@@ -48,6 +50,8 @@ func TestBuildDispatcher_ReturnsTwo(t *testing.T) {
 }
 
 func TestBuiltinList_AllTools(t *testing.T) {
+	t.Parallel()
+
 	catalog := setupCatalog()
 	tools := BuildDispatcher(catalog)
 	listTool := tools[0]
@@ -65,6 +69,8 @@ func TestBuiltinList_AllTools(t *testing.T) {
 }
 
 func TestBuiltinList_FilterByCategory(t *testing.T) {
+	t.Parallel()
+
 	catalog := setupCatalog()
 	tools := BuildDispatcher(catalog)
 	listTool := tools[0]
@@ -84,6 +90,8 @@ func TestBuiltinList_FilterByCategory(t *testing.T) {
 }
 
 func TestBuiltinInvoke_Success(t *testing.T) {
+	t.Parallel()
+
 	catalog := setupCatalog()
 	tools := BuildDispatcher(catalog)
 	invokeTool := tools[1]
@@ -105,6 +113,8 @@ func TestBuiltinInvoke_Success(t *testing.T) {
 }
 
 func TestBuiltinInvoke_BlocksDangerousTools(t *testing.T) {
+	t.Parallel()
+
 	catalog := setupCatalog()
 	tools := BuildDispatcher(catalog)
 	invokeTool := tools[1]
@@ -119,6 +129,8 @@ func TestBuiltinInvoke_BlocksDangerousTools(t *testing.T) {
 }
 
 func TestBuiltinInvoke_NotFound(t *testing.T) {
+	t.Parallel()
+
 	catalog := setupCatalog()
 	tools := BuildDispatcher(catalog)
 	invokeTool := tools[1]
@@ -131,6 +143,8 @@ func TestBuiltinInvoke_NotFound(t *testing.T) {
 }
 
 func TestBuiltinInvoke_EmptyToolName(t *testing.T) {
+	t.Parallel()
+
 	catalog := setupCatalog()
 	tools := BuildDispatcher(catalog)
 	invokeTool := tools[1]
@@ -141,6 +155,8 @@ func TestBuiltinInvoke_EmptyToolName(t *testing.T) {
 }
 
 func TestBuiltinInvoke_NilParams(t *testing.T) {
+	t.Parallel()
+
 	catalog := setupCatalog()
 	tools := BuildDispatcher(catalog)
 	invokeTool := tools[1]
@@ -157,6 +173,8 @@ func TestBuiltinInvoke_NilParams(t *testing.T) {
 }
 
 func TestDispatcher_SafetyLevels(t *testing.T) {
+	t.Parallel()
+
 	tools := BuildDispatcher(setupCatalog())
 	assert.Equal(t, agent.SafetyLevelSafe, tools[0].SafetyLevel, "builtin_list should be safe")
 	assert.Equal(t, agent.SafetyLevelDangerous, tools[1].SafetyLevel, "builtin_invoke should be dangerous")

@@ -1,12 +1,16 @@
 package budget
 
 import (
-	"errors"
 	"math/big"
 	"testing"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestStore_Allocate(t *testing.T) {
+	t.Parallel()
+
 	tests := []struct {
 		give      string
 		giveID    string
@@ -33,6 +37,7 @@ func TestStore_Allocate(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.give, func(t *testing.T) {
+			t.Parallel()
 			s := NewStore()
 			if tt.setup != nil {
 				tt.setup(s)
@@ -40,48 +45,34 @@ func TestStore_Allocate(t *testing.T) {
 
 			got, err := s.Allocate(tt.giveID, big.NewInt(tt.giveTotal))
 			if tt.wantErr != nil {
-				if !errors.Is(err, tt.wantErr) {
-					t.Fatalf("Allocate() error = %v, want %v", err, tt.wantErr)
-				}
+				require.ErrorIs(t, err, tt.wantErr)
 				return
 			}
-			if err != nil {
-				t.Fatalf("Allocate() unexpected error: %v", err)
-			}
-			if got.TaskID != tt.giveID {
-				t.Errorf("TaskID = %q, want %q", got.TaskID, tt.giveID)
-			}
-			if got.TotalBudget.Cmp(big.NewInt(tt.giveTotal)) != 0 {
-				t.Errorf("TotalBudget = %s, want %d", got.TotalBudget, tt.giveTotal)
-			}
-			if got.Status != StatusActive {
-				t.Errorf("Status = %q, want %q", got.Status, StatusActive)
-			}
-			if got.Spent.Sign() != 0 {
-				t.Errorf("Spent = %s, want 0", got.Spent)
-			}
-			if got.Reserved.Sign() != 0 {
-				t.Errorf("Reserved = %s, want 0", got.Reserved)
-			}
+			require.NoError(t, err)
+			assert.Equal(t, tt.giveID, got.TaskID)
+			assert.Equal(t, 0, got.TotalBudget.Cmp(big.NewInt(tt.giveTotal)))
+			assert.Equal(t, StatusActive, got.Status)
+			assert.Equal(t, 0, got.Spent.Sign())
+			assert.Equal(t, 0, got.Reserved.Sign())
 		})
 	}
 }
 
 func TestStore_Allocate_CopiesTotal(t *testing.T) {
+	t.Parallel()
+
 	s := NewStore()
 	total := big.NewInt(1000000)
 	tb, err := s.Allocate("task-1", total)
-	if err != nil {
-		t.Fatalf("Allocate() unexpected error: %v", err)
-	}
+	require.NoError(t, err)
 
 	total.SetInt64(0)
-	if tb.TotalBudget.Cmp(big.NewInt(1000000)) != 0 {
-		t.Errorf("TotalBudget mutated by caller: got %s", tb.TotalBudget)
-	}
+	assert.Equal(t, 0, tb.TotalBudget.Cmp(big.NewInt(1000000)))
 }
 
 func TestStore_Get(t *testing.T) {
+	t.Parallel()
+
 	tests := []struct {
 		give    string
 		giveID  string
@@ -105,6 +96,7 @@ func TestStore_Get(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.give, func(t *testing.T) {
+			t.Parallel()
 			s := NewStore()
 			if tt.setup != nil {
 				tt.setup(s)
@@ -112,22 +104,18 @@ func TestStore_Get(t *testing.T) {
 
 			got, err := s.Get(tt.giveID)
 			if tt.wantErr != nil {
-				if !errors.Is(err, tt.wantErr) {
-					t.Fatalf("Get() error = %v, want %v", err, tt.wantErr)
-				}
+				require.ErrorIs(t, err, tt.wantErr)
 				return
 			}
-			if err != nil {
-				t.Fatalf("Get() unexpected error: %v", err)
-			}
-			if got.TaskID != tt.giveID {
-				t.Errorf("TaskID = %q, want %q", got.TaskID, tt.giveID)
-			}
+			require.NoError(t, err)
+			assert.Equal(t, tt.giveID, got.TaskID)
 		})
 	}
 }
 
 func TestStore_List(t *testing.T) {
+	t.Parallel()
+
 	tests := []struct {
 		give      string
 		setup     func(*Store)
@@ -157,20 +145,21 @@ func TestStore_List(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.give, func(t *testing.T) {
+			t.Parallel()
 			s := NewStore()
 			if tt.setup != nil {
 				tt.setup(s)
 			}
 
 			got := s.List()
-			if len(got) != tt.wantCount {
-				t.Errorf("List() returned %d budgets, want %d", len(got), tt.wantCount)
-			}
+			assert.Len(t, got, tt.wantCount)
 		})
 	}
 }
 
 func TestStore_Update(t *testing.T) {
+	t.Parallel()
+
 	tests := []struct {
 		give       string
 		giveID     string
@@ -197,6 +186,7 @@ func TestStore_Update(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.give, func(t *testing.T) {
+			t.Parallel()
 			s := NewStore()
 			if tt.setup != nil {
 				tt.setup(s)
@@ -211,24 +201,20 @@ func TestStore_Update(t *testing.T) {
 			}
 			err := s.Update(budget)
 			if tt.wantErr != nil {
-				if !errors.Is(err, tt.wantErr) {
-					t.Fatalf("Update() error = %v, want %v", err, tt.wantErr)
-				}
+				require.ErrorIs(t, err, tt.wantErr)
 				return
 			}
-			if err != nil {
-				t.Fatalf("Update() unexpected error: %v", err)
-			}
+			require.NoError(t, err)
 
 			got, _ := s.Get(tt.giveID)
-			if got.Status != tt.giveStatus {
-				t.Errorf("Status = %q, want %q", got.Status, tt.giveStatus)
-			}
+			assert.Equal(t, tt.giveStatus, got.Status)
 		})
 	}
 }
 
 func TestStore_Delete(t *testing.T) {
+	t.Parallel()
+
 	tests := []struct {
 		give    string
 		giveID  string
@@ -252,6 +238,7 @@ func TestStore_Delete(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.give, func(t *testing.T) {
+			t.Parallel()
 			s := NewStore()
 			if tt.setup != nil {
 				tt.setup(s)
@@ -259,19 +246,13 @@ func TestStore_Delete(t *testing.T) {
 
 			err := s.Delete(tt.giveID)
 			if tt.wantErr != nil {
-				if !errors.Is(err, tt.wantErr) {
-					t.Fatalf("Delete() error = %v, want %v", err, tt.wantErr)
-				}
+				require.ErrorIs(t, err, tt.wantErr)
 				return
 			}
-			if err != nil {
-				t.Fatalf("Delete() unexpected error: %v", err)
-			}
+			require.NoError(t, err)
 
 			_, err = s.Get(tt.giveID)
-			if !errors.Is(err, ErrBudgetNotFound) {
-				t.Errorf("Get() after Delete() error = %v, want %v", err, ErrBudgetNotFound)
-			}
+			assert.ErrorIs(t, err, ErrBudgetNotFound)
 		})
 	}
 }

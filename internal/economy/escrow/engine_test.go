@@ -73,6 +73,8 @@ func createFundedEscrow(t *testing.T, e *Engine, settler *mockSettler) *EscrowEn
 }
 
 func TestEngineCreate(t *testing.T) {
+	t.Parallel()
+
 	tests := []struct {
 		give    string
 		req     CreateRequest
@@ -135,6 +137,7 @@ func TestEngineCreate(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.give, func(t *testing.T) {
+			t.Parallel()
 			e := NewEngine(NewMemoryStore(), &mockSettler{}, tt.cfg)
 			entry, err := e.Create(context.Background(), tt.req)
 			if tt.wantErr != nil {
@@ -152,6 +155,8 @@ func TestEngineCreate(t *testing.T) {
 }
 
 func TestEngineCreate_CustomExpiry(t *testing.T) {
+	t.Parallel()
+
 	e := newTestEngine(&mockSettler{})
 	expiry := time.Date(2026, 6, 1, 0, 0, 0, 0, time.UTC)
 	entry, err := e.Create(context.Background(), CreateRequest{
@@ -168,6 +173,8 @@ func TestEngineCreate_CustomExpiry(t *testing.T) {
 }
 
 func TestEngineFund(t *testing.T) {
+	t.Parallel()
+
 	tests := []struct {
 		give      string
 		setup     func(*Engine) string
@@ -207,6 +214,7 @@ func TestEngineFund(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.give, func(t *testing.T) {
+			t.Parallel()
 			settler := &mockSettler{lockErr: tt.lockErr}
 			e := newTestEngine(settler)
 			id := tt.setup(e)
@@ -224,6 +232,8 @@ func TestEngineFund(t *testing.T) {
 }
 
 func TestEngineActivate(t *testing.T) {
+	t.Parallel()
+
 	settler := &mockSettler{}
 	e := newTestEngine(settler)
 	funded := createFundedEscrow(t, e, settler)
@@ -234,6 +244,8 @@ func TestEngineActivate(t *testing.T) {
 }
 
 func TestEngineActivate_InvalidTransition(t *testing.T) {
+	t.Parallel()
+
 	e := newTestEngine(&mockSettler{})
 	entry, _ := e.Create(context.Background(), CreateRequest{
 		BuyerDID: "did:b", SellerDID: "did:s", Amount: big.NewInt(100),
@@ -245,6 +257,8 @@ func TestEngineActivate_InvalidTransition(t *testing.T) {
 }
 
 func TestEngineCompleteMilestone(t *testing.T) {
+	t.Parallel()
+
 	settler := &mockSettler{}
 	e := newTestEngine(settler)
 	ctx := context.Background()
@@ -267,6 +281,8 @@ func TestEngineCompleteMilestone(t *testing.T) {
 }
 
 func TestEngineCompleteMilestone_AutoRelease(t *testing.T) {
+	t.Parallel()
+
 	settler := &mockSettler{}
 	cfg := DefaultEngineConfig()
 	cfg.AutoRelease = true
@@ -292,6 +308,8 @@ func TestEngineCompleteMilestone_AutoRelease(t *testing.T) {
 }
 
 func TestEngineCompleteMilestone_NotFound(t *testing.T) {
+	t.Parallel()
+
 	settler := &mockSettler{}
 	e := newTestEngine(settler)
 	ctx := context.Background()
@@ -303,6 +321,8 @@ func TestEngineCompleteMilestone_NotFound(t *testing.T) {
 }
 
 func TestEngineRelease(t *testing.T) {
+	t.Parallel()
+
 	settler := &mockSettler{}
 	e := newTestEngine(settler)
 	ctx := context.Background()
@@ -322,6 +342,8 @@ func TestEngineRelease(t *testing.T) {
 }
 
 func TestEngineDispute(t *testing.T) {
+	t.Parallel()
+
 	settler := &mockSettler{}
 	e := newTestEngine(settler)
 	ctx := context.Background()
@@ -335,6 +357,8 @@ func TestEngineDispute(t *testing.T) {
 }
 
 func TestEngineRefund(t *testing.T) {
+	t.Parallel()
+
 	settler := &mockSettler{}
 	e := newTestEngine(settler)
 	ctx := context.Background()
@@ -349,6 +373,8 @@ func TestEngineRefund(t *testing.T) {
 }
 
 func TestEngineRefund_InvalidTransition(t *testing.T) {
+	t.Parallel()
+
 	settler := &mockSettler{}
 	e := newTestEngine(settler)
 	ctx := context.Background()
@@ -359,6 +385,8 @@ func TestEngineRefund_InvalidTransition(t *testing.T) {
 }
 
 func TestEngineExpire(t *testing.T) {
+	t.Parallel()
+
 	settler := &mockSettler{}
 	e := newTestEngine(settler)
 	ctx := context.Background()
@@ -372,6 +400,8 @@ func TestEngineExpire(t *testing.T) {
 }
 
 func TestEngineExpire_PendingNoRefund(t *testing.T) {
+	t.Parallel()
+
 	e := newTestEngine(&mockSettler{})
 	ctx := context.Background()
 	entry, _ := e.Create(ctx, CreateRequest{
@@ -385,6 +415,8 @@ func TestEngineExpire_PendingNoRefund(t *testing.T) {
 }
 
 func TestEngineCheckExpiry(t *testing.T) {
+	t.Parallel()
+
 	settler := &mockSettler{}
 	e := newTestEngine(settler)
 	ctx := context.Background()
@@ -402,6 +434,8 @@ func TestEngineCheckExpiry(t *testing.T) {
 }
 
 func TestEngineListAndGet(t *testing.T) {
+	t.Parallel()
+
 	settler := &mockSettler{}
 	e := newTestEngine(settler)
 	ctx := context.Background()
@@ -421,6 +455,8 @@ func TestEngineListAndGet(t *testing.T) {
 }
 
 func TestEngineFullLifecycle(t *testing.T) {
+	t.Parallel()
+
 	settler := &mockSettler{}
 	e := newTestEngine(settler)
 	ctx := context.Background()

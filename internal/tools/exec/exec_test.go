@@ -6,57 +6,44 @@ import (
 	"time"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestRun(t *testing.T) {
+	t.Parallel()
+
 	tool := New(Config{DefaultTimeout: 5 * time.Second})
 
 	result, err := tool.Run(context.Background(), "echo hello", 0)
-	if err != nil {
-		t.Fatalf("failed: %v", err)
-	}
-
-	if result.ExitCode != 0 {
-		t.Errorf("expected exit code 0, got %d", result.ExitCode)
-	}
-
-	if result.Stdout != "hello\n" {
-		t.Errorf("expected 'hello\\n', got %q", result.Stdout)
-	}
+	require.NoError(t, err)
+	assert.Equal(t, 0, result.ExitCode)
+	assert.Equal(t, "hello\n", result.Stdout)
 }
 
 func TestRunTimeout(t *testing.T) {
+	t.Parallel()
+
 	tool := New(Config{DefaultTimeout: 100 * time.Millisecond})
 
 	result, err := tool.Run(context.Background(), "sleep 10", 100*time.Millisecond)
-	if err != nil {
-		t.Fatalf("failed: %v", err)
-	}
-
-	if !result.TimedOut {
-		t.Error("expected timeout")
-	}
+	require.NoError(t, err)
+	assert.True(t, result.TimedOut, "expected timeout")
 }
 
 func TestRunWithPTY(t *testing.T) {
+	t.Parallel()
+
 	tool := New(Config{DefaultTimeout: 5 * time.Second})
 
 	result, err := tool.RunWithPTY(context.Background(), "echo pty-test", 0)
-	if err != nil {
-		t.Fatalf("failed: %v", err)
-	}
-
-	if result.ExitCode != 0 {
-		t.Errorf("expected exit code 0, got %d", result.ExitCode)
-	}
-
-	// PTY output includes the echoed command
-	if len(result.Stdout) == 0 {
-		t.Error("expected non-empty output")
-	}
+	require.NoError(t, err)
+	assert.Equal(t, 0, result.ExitCode)
+	assert.NotEmpty(t, result.Stdout, "expected non-empty output")
 }
 
 func TestBackgroundProcess(t *testing.T) {
+	t.Parallel()
+
 	tool := New(Config{
 		DefaultTimeout:  5 * time.Second,
 		AllowBackground: true,
@@ -64,25 +51,18 @@ func TestBackgroundProcess(t *testing.T) {
 	defer tool.Cleanup()
 
 	id, err := tool.StartBackground("sleep 10")
-	if err != nil {
-		t.Fatalf("failed to start: %v", err)
-	}
+	require.NoError(t, err)
 
 	status, err := tool.GetBackgroundStatus(id)
-	if err != nil {
-		t.Fatalf("failed to get status: %v", err)
-	}
+	require.NoError(t, err)
+	assert.False(t, status.Done, "process should still be running")
 
-	if status.Done {
-		t.Error("process should still be running")
-	}
-
-	if err := tool.StopBackground(id); err != nil {
-		t.Errorf("failed to stop: %v", err)
-	}
+	assert.NoError(t, tool.StopBackground(id))
 }
 
 func TestEnvFiltering(t *testing.T) {
+	t.Parallel()
+
 	tool := New(Config{})
 
 	env := []string{
@@ -92,18 +72,16 @@ func TestEnvFiltering(t *testing.T) {
 	}
 
 	filtered := tool.filterEnv(env)
-	if len(filtered) != 2 {
-		t.Errorf("expected 2 vars, got %d", len(filtered))
-	}
+	assert.Len(t, filtered, 2)
 
 	for _, e := range filtered {
-		if e == "ANTHROPIC_API_KEY=secret" {
-			t.Error("API key should be filtered")
-		}
+		assert.NotEqual(t, "ANTHROPIC_API_KEY=secret", e, "API key should be filtered")
 	}
 }
 
 func TestFilterEnvBlacklist(t *testing.T) {
+	t.Parallel()
+
 	tool := New(Config{})
 
 	tests := []struct {
@@ -120,6 +98,8 @@ func TestFilterEnvBlacklist(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.give, func(t *testing.T) {
+			t.Parallel()
+
 			filtered := tool.filterEnv([]string{tt.give})
 			if tt.wantKept {
 				assert.Len(t, filtered, 1, "expected env var to be kept")

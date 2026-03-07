@@ -8,6 +8,8 @@ import (
 )
 
 func TestKMSProviderName_Valid(t *testing.T) {
+	t.Parallel()
+
 	tests := []struct {
 		name  KMSProviderName
 		valid bool
@@ -23,12 +25,15 @@ func TestKMSProviderName_Valid(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(string(tt.name), func(t *testing.T) {
+			t.Parallel()
 			assert.Equal(t, tt.valid, tt.name.Valid())
 		})
 	}
 }
 
 func TestKMSProviderName_Constants(t *testing.T) {
+	t.Parallel()
+
 	assert.Equal(t, KMSProviderName("aws-kms"), KMSProviderAWS)
 	assert.Equal(t, KMSProviderName("gcp-kms"), KMSProviderGCP)
 	assert.Equal(t, KMSProviderName("azure-kv"), KMSProviderAzure)
@@ -36,6 +41,8 @@ func TestKMSProviderName_Constants(t *testing.T) {
 }
 
 func TestNewKMSProvider_UnknownProvider(t *testing.T) {
+	t.Parallel()
+
 	provider, err := NewKMSProvider("unknown-provider", config.KMSConfig{})
 	assert.Error(t, err)
 	assert.Nil(t, provider)

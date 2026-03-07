@@ -22,6 +22,8 @@ func newTestTool(name string) *agent.Tool {
 }
 
 func TestCatalog_RegisterAndGet(t *testing.T) {
+	t.Parallel()
+
 	tests := []struct {
 		name     string
 		give     []*agent.Tool
@@ -54,6 +56,8 @@ func TestCatalog_RegisterAndGet(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
 			c := New()
 			c.RegisterCategory(Category{Name: "exec", Description: "exec tools"})
 			c.Register("exec", tt.give)
@@ -69,6 +73,8 @@ func TestCatalog_RegisterAndGet(t *testing.T) {
 }
 
 func TestCatalog_ListCategories(t *testing.T) {
+	t.Parallel()
+
 	c := New()
 	c.RegisterCategory(Category{Name: "browser", Description: "browser tools", ConfigKey: "tools.browser.enabled", Enabled: true})
 	c.RegisterCategory(Category{Name: "exec", Description: "exec tools", ConfigKey: "", Enabled: true})
@@ -85,6 +91,8 @@ func TestCatalog_ListCategories(t *testing.T) {
 }
 
 func TestCatalog_ListTools(t *testing.T) {
+	t.Parallel()
+
 	c := New()
 	c.RegisterCategory(Category{Name: "exec", Description: "exec tools"})
 	c.RegisterCategory(Category{Name: "browser", Description: "browser tools"})
@@ -121,6 +129,8 @@ func TestCatalog_ListTools(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
 			tools := c.ListTools(tt.category)
 			assert.Len(t, tools, tt.wantLen)
 		})
@@ -128,6 +138,8 @@ func TestCatalog_ListTools(t *testing.T) {
 }
 
 func TestCatalog_ToolCount(t *testing.T) {
+	t.Parallel()
+
 	c := New()
 	assert.Equal(t, 0, c.ToolCount())
 
@@ -141,6 +153,8 @@ func TestCatalog_ToolCount(t *testing.T) {
 }
 
 func TestCatalog_InsertionOrder(t *testing.T) {
+	t.Parallel()
+
 	c := New()
 	c.RegisterCategory(Category{Name: "a"})
 	c.RegisterCategory(Category{Name: "b"})

@@ -19,6 +19,8 @@ func (m *mockStartable) Start(_ *sync.WaitGroup) { m.started = true }
 func (m *mockStartable) Stop()                    { m.stopped = true }
 
 func TestNewSimpleComponent(t *testing.T) {
+	t.Parallel()
+
 	m := &mockStartable{}
 	c := NewSimpleComponent("test-simple", m)
 
@@ -35,6 +37,8 @@ func TestNewSimpleComponent(t *testing.T) {
 }
 
 func TestSimpleComponent_Struct(t *testing.T) {
+	t.Parallel()
+
 	started := false
 	stopped := false
 	c := &SimpleComponent{
@@ -56,6 +60,8 @@ func TestSimpleComponent_Struct(t *testing.T) {
 }
 
 func TestFuncComponent(t *testing.T) {
+	t.Parallel()
+
 	started := false
 	stopped := false
 	c := &FuncComponent{
@@ -83,6 +89,8 @@ func TestFuncComponent(t *testing.T) {
 }
 
 func TestFuncComponent_NilStop(t *testing.T) {
+	t.Parallel()
+
 	c := &FuncComponent{
 		ComponentName: "test-nil-stop",
 		StartFunc:     func(_ context.Context, _ *sync.WaitGroup) error { return nil },
@@ -93,6 +101,8 @@ func TestFuncComponent_NilStop(t *testing.T) {
 }
 
 func TestErrorComponent(t *testing.T) {
+	t.Parallel()
+
 	errBoom := errors.New("boom")
 	c := &ErrorComponent{
 		ComponentName: "test-error",

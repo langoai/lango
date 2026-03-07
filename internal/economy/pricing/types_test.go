@@ -2,9 +2,13 @@ package pricing
 
 import (
 	"testing"
+
+	"github.com/stretchr/testify/assert"
 )
 
 func TestPriceModifierType_StringValues(t *testing.T) {
+	t.Parallel()
+
 	tests := []struct {
 		give string
 		want PriceModifierType
@@ -17,16 +21,15 @@ func TestPriceModifierType_StringValues(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.give, func(t *testing.T) {
-			if string(tt.want) != tt.give {
-				t.Errorf("PriceModifierType %q: got %q, want %q", tt.give, string(tt.want), tt.give)
-			}
+			t.Parallel()
+			assert.Equal(t, tt.give, string(tt.want))
 		})
 	}
 }
 
 func TestQuote_IsFreeDefault(t *testing.T) {
+	t.Parallel()
+
 	var q Quote
-	if q.IsFree {
-		t.Error("zero-value Quote should not be free")
-	}
+	assert.False(t, q.IsFree)
 }

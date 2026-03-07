@@ -27,6 +27,8 @@ func newTestEntry(id, buyer, seller string) *EscrowEntry {
 }
 
 func TestStoreCreate(t *testing.T) {
+	t.Parallel()
+
 	tests := []struct {
 		give    string
 		setup   func(Store)
@@ -50,6 +52,7 @@ func TestStoreCreate(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.give, func(t *testing.T) {
+			t.Parallel()
 			s := NewMemoryStore()
 			tt.setup(s)
 
@@ -71,6 +74,8 @@ func TestStoreCreate(t *testing.T) {
 }
 
 func TestStoreGet(t *testing.T) {
+	t.Parallel()
+
 	tests := []struct {
 		give    string
 		id      string
@@ -94,6 +99,7 @@ func TestStoreGet(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.give, func(t *testing.T) {
+			t.Parallel()
 			s := NewMemoryStore()
 			tt.setup(s)
 
@@ -111,6 +117,8 @@ func TestStoreGet(t *testing.T) {
 }
 
 func TestStoreList(t *testing.T) {
+	t.Parallel()
+
 	tests := []struct {
 		give     string
 		setup    func(Store)
@@ -133,6 +141,7 @@ func TestStoreList(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.give, func(t *testing.T) {
+			t.Parallel()
 			s := NewMemoryStore()
 			tt.setup(s)
 			assert.Len(t, s.List(), tt.wantLen)
@@ -141,6 +150,8 @@ func TestStoreList(t *testing.T) {
 }
 
 func TestStoreListByPeer(t *testing.T) {
+	t.Parallel()
+
 	tests := []struct {
 		give    string
 		peerDID string
@@ -185,6 +196,7 @@ func TestStoreListByPeer(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.give, func(t *testing.T) {
+			t.Parallel()
 			s := NewMemoryStore()
 			tt.setup(s)
 			assert.Len(t, s.ListByPeer(tt.peerDID), tt.wantLen)
@@ -193,6 +205,8 @@ func TestStoreListByPeer(t *testing.T) {
 }
 
 func TestStoreUpdate(t *testing.T) {
+	t.Parallel()
+
 	tests := []struct {
 		give    string
 		setup   func(Store)
@@ -225,6 +239,7 @@ func TestStoreUpdate(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.give, func(t *testing.T) {
+			t.Parallel()
 			s := NewMemoryStore()
 			tt.setup(s)
 
@@ -245,6 +260,8 @@ func TestStoreUpdate(t *testing.T) {
 }
 
 func TestStoreDelete(t *testing.T) {
+	t.Parallel()
+
 	tests := []struct {
 		give    string
 		id      string
@@ -268,6 +285,7 @@ func TestStoreDelete(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.give, func(t *testing.T) {
+			t.Parallel()
 			s := NewMemoryStore()
 			tt.setup(s)
 

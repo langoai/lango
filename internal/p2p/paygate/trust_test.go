@@ -28,6 +28,8 @@ func paidPricingFn(toolName string) (string, bool) {
 }
 
 func TestCheck_HighTrust_PostPay(t *testing.T) {
+	t.Parallel()
+
 	repFn := func(ctx context.Context, peerDID string) (float64, error) {
 		return 0.9, nil
 	}
@@ -42,6 +44,8 @@ func TestCheck_HighTrust_PostPay(t *testing.T) {
 }
 
 func TestCheck_MediumTrust_Prepay(t *testing.T) {
+	t.Parallel()
+
 	repFn := func(ctx context.Context, peerDID string) (float64, error) {
 		return 0.5, nil
 	}
@@ -54,6 +58,8 @@ func TestCheck_MediumTrust_Prepay(t *testing.T) {
 }
 
 func TestCheck_ExactThreshold_Prepay(t *testing.T) {
+	t.Parallel()
+
 	repFn := func(ctx context.Context, peerDID string) (float64, error) {
 		return DefaultPostPayThreshold, nil // exactly at threshold — NOT post-pay (must be strictly greater)
 	}
@@ -65,6 +71,8 @@ func TestCheck_ExactThreshold_Prepay(t *testing.T) {
 }
 
 func TestCheck_NilReputation_Prepay(t *testing.T) {
+	t.Parallel()
+
 	gate := testGateWithReputation(paidPricingFn, nil, DefaultTrustConfig())
 
 	result, err := gate.Check("did:peer:unknown", "paid-tool", map[string]interface{}{})
@@ -73,6 +81,8 @@ func TestCheck_NilReputation_Prepay(t *testing.T) {
 }
 
 func TestCheck_ReputationError_FallbackPrepay(t *testing.T) {
+	t.Parallel()
+
 	repFn := func(ctx context.Context, peerDID string) (float64, error) {
 		return 0, errors.New("db unavailable")
 	}
@@ -84,6 +94,8 @@ func TestCheck_ReputationError_FallbackPrepay(t *testing.T) {
 }
 
 func TestCheck_FreeTool_IgnoresReputation(t *testing.T) {
+	t.Parallel()
+
 	repFn := func(ctx context.Context, peerDID string) (float64, error) {
 		return 1.0, nil
 	}
@@ -96,6 +108,8 @@ func TestCheck_FreeTool_IgnoresReputation(t *testing.T) {
 }
 
 func TestCheck_HighTrust_WithAuth_StillPostPay(t *testing.T) {
+	t.Parallel()
+
 	// If peer has high trust AND provides auth, post-pay should take priority
 	// (auth is ignored since they qualify for post-pay).
 	repFn := func(ctx context.Context, peerDID string) (float64, error) {
@@ -115,6 +129,8 @@ func TestCheck_HighTrust_WithAuth_StillPostPay(t *testing.T) {
 }
 
 func TestCheck_CustomThreshold(t *testing.T) {
+	t.Parallel()
+
 	repFn := func(ctx context.Context, peerDID string) (float64, error) {
 		return 0.7, nil
 	}

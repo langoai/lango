@@ -1,8 +1,14 @@
 package config
 
-import "testing"
+import (
+	"testing"
+
+	"github.com/stretchr/testify/assert"
+)
 
 func TestResolveEmbeddingProvider_ByProviderMapKey(t *testing.T) {
+	t.Parallel()
+
 	tests := []struct {
 		give          string
 		provider      string
@@ -59,50 +65,44 @@ func TestResolveEmbeddingProvider_ByProviderMapKey(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.give, func(t *testing.T) {
+			t.Parallel()
+
 			cfg := &Config{
 				Embedding: EmbeddingConfig{Provider: tt.provider},
 				Providers: tt.providers,
 			}
 			backend, apiKey := cfg.ResolveEmbeddingProvider()
-			if backend != tt.wantBackend {
-				t.Errorf("backend: want %q, got %q", tt.wantBackend, backend)
-			}
-			if (apiKey != "") != tt.wantHasAPIKey {
-				t.Errorf("hasAPIKey: want %v, got apiKey=%q", tt.wantHasAPIKey, apiKey)
-			}
+			assert.Equal(t, tt.wantBackend, backend, "backend")
+			assert.Equal(t, tt.wantHasAPIKey, apiKey != "", "hasAPIKey")
 		})
 	}
 }
 
 func TestResolveEmbeddingProvider_LocalProvider(t *testing.T) {
+	t.Parallel()
+
 	cfg := &Config{
 		Embedding: EmbeddingConfig{Provider: "local"},
 	}
 	backend, apiKey := cfg.ResolveEmbeddingProvider()
-	if backend != "local" {
-		t.Errorf("backend: want %q, got %q", "local", backend)
-	}
-	if apiKey != "" {
-		t.Errorf("apiKey: want empty, got %q", apiKey)
-	}
+	assert.Equal(t, "local", backend)
+	assert.Empty(t, apiKey)
 }
 
 func TestResolveEmbeddingProvider_NeitherConfigured(t *testing.T) {
+	t.Parallel()
+
 	cfg := &Config{
 		Embedding: EmbeddingConfig{},
 	}
 	backend, apiKey := cfg.ResolveEmbeddingProvider()
-	if backend != "" {
-		t.Errorf("backend: want empty, got %q", backend)
-	}
-	if apiKey != "" {
-		t.Errorf("apiKey: want empty, got %q", apiKey)
-	}
+	assert.Empty(t, backend)
+	assert.Empty(t, apiKey)
 }
 
 func TestResolveEmbeddingProvider_LegacyProviderIDFallback(t *testing.T) {
-	// Legacy configs may still have ProviderID set. The resolver should
-	// fall back to ProviderID when Provider is empty.
+	t.Parallel()
+
 	cfg := &Config{
 		Embedding: EmbeddingConfig{
 			ProviderID: "gemini-1",
@@ -113,52 +113,48 @@ func TestResolveEmbeddingProvider_LegacyProviderIDFallback(t *testing.T) {
 	}
 
 	backend, apiKey := cfg.ResolveEmbeddingProvider()
-	if backend != "google" {
-		t.Errorf("backend: want %q, got %q", "google", backend)
-	}
-	if apiKey != "gemini-key" {
-		t.Errorf("apiKey: want %q, got %q", "gemini-key", apiKey)
-	}
+	assert.Equal(t, "google", backend)
+	assert.Equal(t, "gemini-key", apiKey)
 }
 
 func TestMigrateEmbeddingProvider(t *testing.T) {
+	t.Parallel()
+
 	t.Run("migrates ProviderID to Provider", func(t *testing.T) {
+		t.Parallel()
+
 		cfg := &Config{
 			Embedding: EmbeddingConfig{ProviderID: "my-openai"},
 		}
 		cfg.MigrateEmbeddingProvider()
-		if cfg.Embedding.Provider != "my-openai" {
-			t.Errorf("Provider: want %q, got %q", "my-openai", cfg.Embedding.Provider)
-		}
-		if cfg.Embedding.ProviderID != "" {
-			t.Errorf("ProviderID should be empty after migration, got %q", cfg.Embedding.ProviderID)
-		}
+		assert.Equal(t, "my-openai", cfg.Embedding.Provider)
+		assert.Empty(t, cfg.Embedding.ProviderID)
 	})
 
 	t.Run("Provider takes precedence when both set", func(t *testing.T) {
+		t.Parallel()
+
 		cfg := &Config{
 			Embedding: EmbeddingConfig{Provider: "local", ProviderID: "gemini-1"},
 		}
 		cfg.MigrateEmbeddingProvider()
-		if cfg.Embedding.Provider != "local" {
-			t.Errorf("Provider: want %q, got %q", "local", cfg.Embedding.Provider)
-		}
-		if cfg.Embedding.ProviderID != "" {
-			t.Errorf("ProviderID should be empty after migration, got %q", cfg.Embedding.ProviderID)
-		}
+		assert.Equal(t, "local", cfg.Embedding.Provider)
+		assert.Empty(t, cfg.Embedding.ProviderID)
 	})
 
 	t.Run("no-op when only Provider is set", func(t *testing.T) {
+		t.Parallel()
+
 		cfg := &Config{
 			Embedding: EmbeddingConfig{Provider: "local"},
 		}
 		cfg.MigrateEmbeddingProvider()
-		if cfg.Embedding.Provider != "local" {
-			t.Errorf("Provider: want %q, got %q", "local", cfg.Embedding.Provider)
-		}
+		assert.Equal(t, "local", cfg.Embedding.Provider)
 	})
 
 	t.Run("migrates Local.Model to Model", func(t *testing.T) {
+		t.Parallel()
+
 		cfg := &Config{
 			Embedding: EmbeddingConfig{
 				Provider: "local",
@@ -166,15 +162,13 @@ func TestMigrateEmbeddingProvider(t *testing.T) {
 			},
 		}
 		cfg.MigrateEmbeddingProvider()
-		if cfg.Embedding.Model != "nomic-embed-text" {
-			t.Errorf("Model: want %q, got %q", "nomic-embed-text", cfg.Embedding.Model)
-		}
-		if cfg.Embedding.Local.Model != "" {
-			t.Errorf("Local.Model should be cleared, got %q", cfg.Embedding.Local.Model)
-		}
+		assert.Equal(t, "nomic-embed-text", cfg.Embedding.Model)
+		assert.Empty(t, cfg.Embedding.Local.Model)
 	})
 
 	t.Run("Model takes precedence over Local.Model", func(t *testing.T) {
+		t.Parallel()
+
 		cfg := &Config{
 			Embedding: EmbeddingConfig{
 				Provider: "local",
@@ -183,11 +177,7 @@ func TestMigrateEmbeddingProvider(t *testing.T) {
 			},
 		}
 		cfg.MigrateEmbeddingProvider()
-		if cfg.Embedding.Model != "text-embedding-3-small" {
-			t.Errorf("Model: want %q, got %q", "text-embedding-3-small", cfg.Embedding.Model)
-		}
-		if cfg.Embedding.Local.Model != "" {
-			t.Errorf("Local.Model should be cleared, got %q", cfg.Embedding.Local.Model)
-		}
+		assert.Equal(t, "text-embedding-3-small", cfg.Embedding.Model)
+		assert.Empty(t, cfg.Embedding.Local.Model)
 	})
 }

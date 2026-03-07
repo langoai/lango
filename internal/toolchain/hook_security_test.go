@@ -3,17 +3,22 @@ package toolchain
 import (
 	"context"
 	"testing"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestSecurityFilterHook_Pre(t *testing.T) {
+	t.Parallel()
+
 	tests := []struct {
-		give           string
+		give            string
 		blockedPatterns []string
-		blockedTools   []string
-		toolName       string
-		params         map[string]interface{}
-		wantAction     PreHookAction
-		wantReason     string
+		blockedTools    []string
+		toolName        string
+		params          map[string]interface{}
+		wantAction      PreHookAction
+		wantReason      string
 	}{
 		{
 			give:       "allowed tool passes through",
@@ -69,6 +74,8 @@ func TestSecurityFilterHook_Pre(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.give, func(t *testing.T) {
+			t.Parallel()
+
 			hook := &SecurityFilterHook{
 				BlockedPatterns: tt.blockedPatterns,
 				BlockedTools:    tt.blockedTools,
@@ -80,25 +87,19 @@ func TestSecurityFilterHook_Pre(t *testing.T) {
 				Ctx:      context.Background(),
 			})
 
-			if err != nil {
-				t.Fatalf("unexpected error: %v", err)
-			}
-			if result.Action != tt.wantAction {
-				t.Errorf("Action = %d, want %d", result.Action, tt.wantAction)
-			}
-			if tt.wantReason != "" && result.BlockReason != tt.wantReason {
-				t.Errorf("BlockReason = %q, want %q", result.BlockReason, tt.wantReason)
+			require.NoError(t, err)
+			assert.Equal(t, tt.wantAction, result.Action)
+			if tt.wantReason != "" {
+				assert.Equal(t, tt.wantReason, result.BlockReason)
 			}
 		})
 	}
 }
 
 func TestSecurityFilterHook_Metadata(t *testing.T) {
+	t.Parallel()
+
 	hook := &SecurityFilterHook{}
-	if hook.Name() != "security_filter" {
-		t.Errorf("Name() = %q, want %q", hook.Name(), "security_filter")
-	}
-	if hook.Priority() != 10 {
-		t.Errorf("Priority() = %d, want 10", hook.Priority())
-	}
+	assert.Equal(t, "security_filter", hook.Name())
+	assert.Equal(t, 10, hook.Priority())
 }

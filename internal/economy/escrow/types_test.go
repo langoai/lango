@@ -9,6 +9,8 @@ import (
 )
 
 func TestCompletedMilestones(t *testing.T) {
+	t.Parallel()
+
 	tests := []struct {
 		give       string
 		milestones []Milestone
@@ -56,6 +58,7 @@ func TestCompletedMilestones(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.give, func(t *testing.T) {
+			t.Parallel()
 			entry := &EscrowEntry{Milestones: tt.milestones}
 			assert.Equal(t, tt.want, entry.CompletedMilestones())
 		})
@@ -63,6 +66,8 @@ func TestCompletedMilestones(t *testing.T) {
 }
 
 func TestAllMilestonesCompleted(t *testing.T) {
+	t.Parallel()
+
 	now := time.Now()
 	tests := []struct {
 		give       string
@@ -101,6 +106,7 @@ func TestAllMilestonesCompleted(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.give, func(t *testing.T) {
+			t.Parallel()
 			entry := &EscrowEntry{
 				Milestones:  tt.milestones,
 				TotalAmount: big.NewInt(100),

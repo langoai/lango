@@ -4,9 +4,14 @@ import (
 	"encoding/json"
 	"testing"
 	"time"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestTeamRequestTypes(t *testing.T) {
+	t.Parallel()
+
 	tests := []struct {
 		give RequestType
 		want string
@@ -20,14 +25,15 @@ func TestTeamRequestTypes(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.want, func(t *testing.T) {
-			if string(tt.give) != tt.want {
-				t.Errorf("RequestType = %q, want %q", tt.give, tt.want)
-			}
+			t.Parallel()
+			assert.Equal(t, tt.want, string(tt.give))
 		})
 	}
 }
 
 func TestTeamInvitePayload_JSON(t *testing.T) {
+	t.Parallel()
+
 	p := TeamInvitePayload{
 		TeamID:       "t1",
 		TeamName:     "search-team",
@@ -38,24 +44,18 @@ func TestTeamInvitePayload_JSON(t *testing.T) {
 	}
 
 	data, err := json.Marshal(p)
-	if err != nil {
-		t.Fatalf("Marshal() error = %v", err)
-	}
+	require.NoError(t, err)
 
 	var decoded TeamInvitePayload
-	if err := json.Unmarshal(data, &decoded); err != nil {
-		t.Fatalf("Unmarshal() error = %v", err)
-	}
+	require.NoError(t, json.Unmarshal(data, &decoded))
 
-	if decoded.TeamID != p.TeamID {
-		t.Errorf("TeamID = %q, want %q", decoded.TeamID, p.TeamID)
-	}
-	if len(decoded.Capabilities) != 2 {
-		t.Errorf("Capabilities count = %d, want 2", len(decoded.Capabilities))
-	}
+	assert.Equal(t, p.TeamID, decoded.TeamID)
+	assert.Len(t, decoded.Capabilities, 2)
 }
 
 func TestTeamTaskPayload_JSON(t *testing.T) {
+	t.Parallel()
+
 	p := TeamTaskPayload{
 		TeamID:   "t1",
 		TaskID:   "task-42",
@@ -65,24 +65,18 @@ func TestTeamTaskPayload_JSON(t *testing.T) {
 	}
 
 	data, err := json.Marshal(p)
-	if err != nil {
-		t.Fatalf("Marshal() error = %v", err)
-	}
+	require.NoError(t, err)
 
 	var decoded TeamTaskPayload
-	if err := json.Unmarshal(data, &decoded); err != nil {
-		t.Fatalf("Unmarshal() error = %v", err)
-	}
+	require.NoError(t, json.Unmarshal(data, &decoded))
 
-	if decoded.ToolName != "web_search" {
-		t.Errorf("ToolName = %q, want %q", decoded.ToolName, "web_search")
-	}
-	if decoded.Params["query"] != "hello" {
-		t.Errorf("Params[query] = %v, want %q", decoded.Params["query"], "hello")
-	}
+	assert.Equal(t, "web_search", decoded.ToolName)
+	assert.Equal(t, "hello", decoded.Params["query"])
 }
 
 func TestTeamResultPayload_JSON(t *testing.T) {
+	t.Parallel()
+
 	p := TeamResultPayload{
 		TeamID:    "t1",
 		TaskID:    "task-42",
@@ -92,37 +86,27 @@ func TestTeamResultPayload_JSON(t *testing.T) {
 	}
 
 	data, err := json.Marshal(p)
-	if err != nil {
-		t.Fatalf("Marshal() error = %v", err)
-	}
+	require.NoError(t, err)
 
 	var decoded TeamResultPayload
-	if err := json.Unmarshal(data, &decoded); err != nil {
-		t.Fatalf("Unmarshal() error = %v", err)
-	}
+	require.NoError(t, json.Unmarshal(data, &decoded))
 
-	if decoded.Duration != 1500 {
-		t.Errorf("Duration = %d, want 1500", decoded.Duration)
-	}
+	assert.Equal(t, int64(1500), decoded.Duration)
 }
 
 func TestTeamDisbandPayload_JSON(t *testing.T) {
+	t.Parallel()
+
 	p := TeamDisbandPayload{
 		TeamID: "t1",
 		Reason: "task complete",
 	}
 
 	data, err := json.Marshal(p)
-	if err != nil {
-		t.Fatalf("Marshal() error = %v", err)
-	}
+	require.NoError(t, err)
 
 	var decoded TeamDisbandPayload
-	if err := json.Unmarshal(data, &decoded); err != nil {
-		t.Fatalf("Unmarshal() error = %v", err)
-	}
+	require.NoError(t, json.Unmarshal(data, &decoded))
 
-	if decoded.Reason != "task complete" {
-		t.Errorf("Reason = %q, want %q", decoded.Reason, "task complete")
-	}
+	assert.Equal(t, "task complete", decoded.Reason)
 }

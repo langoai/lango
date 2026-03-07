@@ -4,9 +4,14 @@ import (
 	"context"
 	"testing"
 	"time"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestNegotiatePayment_Free(t *testing.T) {
+	t.Parallel()
+
 	n := NewNegotiator(NegotiatorConfig{
 		PriceQueryFn: func(_ context.Context, _, _ string) (string, bool, error) {
 			return "", true, nil
@@ -15,15 +20,13 @@ func TestNegotiatePayment_Free(t *testing.T) {
 
 	member := &Member{DID: "did:1", PeerID: "peer-1"}
 	agreement, err := n.NegotiatePayment(context.Background(), "t1", member, "search")
-	if err != nil {
-		t.Fatalf("NegotiatePayment() error = %v", err)
-	}
-	if agreement.Mode != PaymentFree {
-		t.Errorf("Mode = %q, want %q", agreement.Mode, PaymentFree)
-	}
+	require.NoError(t, err)
+	assert.Equal(t, PaymentFree, agreement.Mode)
 }
 
 func TestNegotiatePayment_Prepay(t *testing.T) {
+	t.Parallel()
+
 	n := NewNegotiator(NegotiatorConfig{
 		PriceQueryFn: func(_ context.Context, _, _ string) (string, bool, error) {
 			return "0.50", false, nil
@@ -36,21 +39,15 @@ func TestNegotiatePayment_Prepay(t *testing.T) {
 
 	member := &Member{DID: "did:1", PeerID: "peer-1"}
 	agreement, err := n.NegotiatePayment(context.Background(), "t1", member, "search")
-	if err != nil {
-		t.Fatalf("NegotiatePayment() error = %v", err)
-	}
-	if agreement.Mode != PaymentPrepay {
-		t.Errorf("Mode = %q, want %q", agreement.Mode, PaymentPrepay)
-	}
-	if agreement.PricePerUse != "0.50" {
-		t.Errorf("PricePerUse = %q, want %q", agreement.PricePerUse, "0.50")
-	}
-	if agreement.Currency != "USDC" {
-		t.Errorf("Currency = %q, want %q", agreement.Currency, "USDC")
-	}
+	require.NoError(t, err)
+	assert.Equal(t, PaymentPrepay, agreement.Mode)
+	assert.Equal(t, "0.50", agreement.PricePerUse)
+	assert.Equal(t, "USDC", agreement.Currency)
 }
 
 func TestNegotiatePayment_Postpay(t *testing.T) {
+	t.Parallel()
+
 	n := NewNegotiator(NegotiatorConfig{
 		PriceQueryFn: func(_ context.Context, _, _ string) (string, bool, error) {
 			return "1.00", false, nil
@@ -63,28 +60,24 @@ func TestNegotiatePayment_Postpay(t *testing.T) {
 
 	member := &Member{DID: "did:1", PeerID: "peer-1"}
 	agreement, err := n.NegotiatePayment(context.Background(), "t1", member, "search")
-	if err != nil {
-		t.Fatalf("NegotiatePayment() error = %v", err)
-	}
-	if agreement.Mode != PaymentPostpay {
-		t.Errorf("Mode = %q, want %q", agreement.Mode, PaymentPostpay)
-	}
+	require.NoError(t, err)
+	assert.Equal(t, PaymentPostpay, agreement.Mode)
 }
 
 func TestNegotiatePayment_NoPriceFunc(t *testing.T) {
+	t.Parallel()
+
 	n := NewNegotiator(NegotiatorConfig{})
 
 	member := &Member{DID: "did:1", PeerID: "peer-1"}
 	agreement, err := n.NegotiatePayment(context.Background(), "t1", member, "search")
-	if err != nil {
-		t.Fatalf("NegotiatePayment() error = %v", err)
-	}
-	if agreement.Mode != PaymentFree {
-		t.Errorf("Mode = %q, want %q (no price func means free)", agreement.Mode, PaymentFree)
-	}
+	require.NoError(t, err)
+	assert.Equal(t, PaymentFree, agreement.Mode, "no price func means free")
 }
 
 func TestSelectPaymentMode(t *testing.T) {
+	t.Parallel()
+
 	tests := []struct {
 		give         string
 		trustScore   float64
@@ -101,28 +94,25 @@ func TestSelectPaymentMode(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.give, func(t *testing.T) {
+			t.Parallel()
 			got := SelectPaymentMode(tt.trustScore, tt.pricePerTask)
-			if got != tt.want {
-				t.Errorf("SelectPaymentMode(%f, %f) = %q, want %q", tt.trustScore, tt.pricePerTask, got, tt.want)
-			}
+			assert.Equal(t, tt.want, got)
 		})
 	}
 }
 
 func TestNegotiatePaymentQuick(t *testing.T) {
+	t.Parallel()
+
 	a := NegotiatePaymentQuick("t1", "did:1", 0.9, 0.50, 10.0)
-	if a.Mode != PaymentPostpay {
-		t.Errorf("Mode = %q, want %q", a.Mode, PaymentPostpay)
-	}
-	if a.PricePerUse != "0.50" {
-		t.Errorf("PricePerUse = %q, want %q", a.PricePerUse, "0.50")
-	}
-	if a.MaxUses != 20 {
-		t.Errorf("MaxUses = %d, want 20 (10.0/0.50)", a.MaxUses)
-	}
+	assert.Equal(t, PaymentPostpay, a.Mode)
+	assert.Equal(t, "0.50", a.PricePerUse)
+	assert.Equal(t, 20, a.MaxUses, "10.0/0.50")
 }
 
 func TestPaymentAgreement_IsExpired(t *testing.T) {
+	t.Parallel()
+
 	tests := []struct {
 		give       string
 		validUntil time.Time
@@ -135,10 +125,9 @@ func TestPaymentAgreement_IsExpired(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.give, func(t *testing.T) {
+			t.Parallel()
 			a := &PaymentAgreement{ValidUntil: tt.validUntil}
-			if got := a.IsExpired(); got != tt.want {
-				t.Errorf("IsExpired() = %v, want %v", got, tt.want)
-			}
+			assert.Equal(t, tt.want, a.IsExpired())
 		})
 	}
 }

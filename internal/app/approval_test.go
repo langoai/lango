@@ -5,6 +5,7 @@ import (
 
 	"github.com/langoai/lango/internal/agent"
 	"github.com/langoai/lango/internal/config"
+	"github.com/stretchr/testify/assert"
 )
 
 func TestNeedsApproval(t *testing.T) {
@@ -95,9 +96,7 @@ func TestNeedsApproval(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.give, func(t *testing.T) {
 			got := needsApproval(tt.tool, tt.ic)
-			if got != tt.want {
-				t.Errorf("needsApproval() = %v, want %v", got, tt.want)
-			}
+			assert.Equal(t, tt.want, got)
 		})
 	}
 }
@@ -204,9 +203,7 @@ func TestBuildApprovalSummary(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.give, func(t *testing.T) {
 			got := buildApprovalSummary(tt.toolName, tt.params)
-			if got != tt.want {
-				t.Errorf("buildApprovalSummary(%q) = %q, want %q", tt.toolName, got, tt.want)
-			}
+			assert.Equal(t, tt.want, got)
 		})
 	}
 }
@@ -226,9 +223,7 @@ func TestTruncate(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.give, func(t *testing.T) {
 			got := truncate(tt.give, tt.maxLen)
-			if got != tt.want {
-				t.Errorf("truncate(%q, %d) = %q, want %q", tt.give, tt.maxLen, got, tt.want)
-			}
+			assert.Equal(t, tt.want, got)
 		})
 	}
 }

@@ -52,6 +52,8 @@ func newTestHandshaker(t *testing.T, w *mockWallet) *Handshaker {
 }
 
 func TestVerifyResponse_ValidSignature(t *testing.T) {
+	t.Parallel()
+
 	privKey, err := ethcrypto.GenerateKey()
 	require.NoError(t, err)
 	privBytes := ethcrypto.FromECDSA(privKey)
@@ -78,6 +80,8 @@ func TestVerifyResponse_ValidSignature(t *testing.T) {
 }
 
 func TestVerifyResponse_InvalidSignature(t *testing.T) {
+	t.Parallel()
+
 	privKey, err := ethcrypto.GenerateKey()
 	require.NoError(t, err)
 	privBytes := ethcrypto.FromECDSA(privKey)
@@ -108,6 +112,8 @@ func TestVerifyResponse_InvalidSignature(t *testing.T) {
 }
 
 func TestVerifyResponse_WrongSignatureLength(t *testing.T) {
+	t.Parallel()
+
 	privKey, err := ethcrypto.GenerateKey()
 	require.NoError(t, err)
 	privBytes := ethcrypto.FromECDSA(privKey)
@@ -132,6 +138,8 @@ func TestVerifyResponse_WrongSignatureLength(t *testing.T) {
 }
 
 func TestVerifyResponse_NonceMismatch(t *testing.T) {
+	t.Parallel()
+
 	privKey, err := ethcrypto.GenerateKey()
 	require.NoError(t, err)
 	privBytes := ethcrypto.FromECDSA(privKey)
@@ -160,6 +168,8 @@ func TestVerifyResponse_NonceMismatch(t *testing.T) {
 }
 
 func TestVerifyResponse_NoProofOrSignature(t *testing.T) {
+	t.Parallel()
+
 	privKey, err := ethcrypto.GenerateKey()
 	require.NoError(t, err)
 	privBytes := ethcrypto.FromECDSA(privKey)
@@ -183,6 +193,8 @@ func TestVerifyResponse_NoProofOrSignature(t *testing.T) {
 }
 
 func TestVerifyResponse_CorruptedSignature(t *testing.T) {
+	t.Parallel()
+
 	privKey, err := ethcrypto.GenerateKey()
 	require.NoError(t, err)
 	privBytes := ethcrypto.FromECDSA(privKey)

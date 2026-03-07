@@ -12,6 +12,8 @@ import (
 )
 
 func TestLoadOrGenerateKey_NewKeyWithoutSecrets(t *testing.T) {
+	t.Parallel()
+
 	tmpDir := t.TempDir()
 	log := zap.NewNop().Sugar()
 
@@ -38,6 +40,8 @@ func TestLoadOrGenerateKey_NewKeyWithoutSecrets(t *testing.T) {
 }
 
 func TestLoadOrGenerateKey_LegacyFileLoaded(t *testing.T) {
+	t.Parallel()
+
 	tmpDir := t.TempDir()
 	log := zap.NewNop().Sugar()
 
@@ -59,6 +63,8 @@ func TestLoadOrGenerateKey_LegacyFileLoaded(t *testing.T) {
 }
 
 func TestExpandHome(t *testing.T) {
+	t.Parallel()
+
 	home, err := os.UserHomeDir()
 	require.NoError(t, err)
 
@@ -75,12 +81,15 @@ func TestExpandHome(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.give, func(t *testing.T) {
+			t.Parallel()
 			assert.Equal(t, tt.want, expandHome(tt.give))
 		})
 	}
 }
 
 func TestLoadOrGenerateKey_EmptyKeyDirUsesDefault(t *testing.T) {
+	t.Parallel()
+
 	// Use a temp dir to avoid writing to real ~/.lango/p2p.
 	tmpDir := t.TempDir()
 	subDir := filepath.Join(tmpDir, "p2p")
@@ -98,6 +107,8 @@ func TestLoadOrGenerateKey_EmptyKeyDirUsesDefault(t *testing.T) {
 }
 
 func TestZeroBytes(t *testing.T) {
+	t.Parallel()
+
 	data := []byte{0x01, 0x02, 0x03, 0x04, 0x05}
 	zeroBytes(data)
 	for _, b := range data {

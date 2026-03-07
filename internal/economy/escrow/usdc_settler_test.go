@@ -10,11 +10,15 @@ import (
 )
 
 func TestUSDCSettler_Interface(t *testing.T) {
+	t.Parallel()
+
 	// Compile-time interface check — verifies USDCSettler satisfies SettlementExecutor.
 	var _ SettlementExecutor = (*USDCSettler)(nil)
 }
 
 func TestNewUSDCSettler_Defaults(t *testing.T) {
+	t.Parallel()
+
 	s := NewUSDCSettler(nil, nil, nil, 8453)
 	require.NotNil(t, s)
 	assert.Equal(t, 2*time.Minute, s.receiptTimeout)
@@ -24,6 +28,8 @@ func TestNewUSDCSettler_Defaults(t *testing.T) {
 }
 
 func TestNewUSDCSettler_WithOptions(t *testing.T) {
+	t.Parallel()
+
 	customLogger := zap.NewExample().Sugar()
 
 	tests := []struct {
@@ -60,6 +66,7 @@ func TestNewUSDCSettler_WithOptions(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.give, func(t *testing.T) {
+			t.Parallel()
 			s := NewUSDCSettler(nil, nil, nil, 84532, tt.giveOpts...)
 			require.NotNil(t, s)
 			assert.Equal(t, tt.wantTimeout, s.receiptTimeout)

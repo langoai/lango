@@ -13,6 +13,8 @@ import (
 )
 
 func TestResolveAddress(t *testing.T) {
+	t.Parallel()
+
 	// Generate a real key for the valid case.
 	privKey, err := crypto.GenerateKey()
 	require.NoError(t, err)
@@ -59,6 +61,7 @@ func TestResolveAddress(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.give, func(t *testing.T) {
+			t.Parallel()
 			addr, err := ResolveAddress(tt.give)
 			if tt.wantErr {
 				require.Error(t, err)

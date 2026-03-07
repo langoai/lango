@@ -6,6 +6,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	"go.uber.org/zap"
 
 	"github.com/langoai/lango/internal/p2p/agentpool"
@@ -60,6 +62,8 @@ func setupCoordinator(t *testing.T) (*Coordinator, *agentpool.Pool) {
 }
 
 func TestFormTeam(t *testing.T) {
+	t.Parallel()
+
 	coord, _ := setupCoordinator(t)
 
 	tm, err := coord.FormTeam(context.Background(), FormTeamRequest{
@@ -70,21 +74,16 @@ func TestFormTeam(t *testing.T) {
 		Capability:  "search",
 		MemberCount: 2,
 	})
-	if err != nil {
-		t.Fatalf("FormTeam() error = %v", err)
-	}
-
-	if tm.Status != StatusActive {
-		t.Errorf("Status = %q, want %q", tm.Status, StatusActive)
-	}
+	require.NoError(t, err)
+	assert.Equal(t, StatusActive, tm.Status)
 
 	// Should have leader + up to 2 workers.
-	if tm.MemberCount() < 2 {
-		t.Errorf("MemberCount() = %d, want >= 2", tm.MemberCount())
-	}
+	assert.GreaterOrEqual(t, tm.MemberCount(), 2)
 }
 
 func TestDelegateTask(t *testing.T) {
+	t.Parallel()
+
 	coord, _ := setupCoordinator(t)
 
 	_, err := coord.FormTeam(context.Background(), FormTeamRequest{
@@ -95,33 +94,22 @@ func TestDelegateTask(t *testing.T) {
 		Capability:  "search",
 		MemberCount: 2,
 	})
-	if err != nil {
-		t.Fatalf("FormTeam() error = %v", err)
-	}
+	require.NoError(t, err)
 
 	results, err := coord.DelegateTask(context.Background(), "t1", "web_search", map[string]interface{}{"q": "test"})
-	if err != nil {
-		t.Fatalf("DelegateTask() error = %v", err)
-	}
-
-	if len(results) == 0 {
-		t.Fatal("DelegateTask() returned empty results")
-	}
+	require.NoError(t, err)
+	require.NotEmpty(t, results)
 
 	for _, r := range results {
-		if r.Err != nil {
-			t.Errorf("result from %s has error: %v", r.MemberDID, r.Err)
-		}
-		if r.Result == nil {
-			t.Errorf("result from %s is nil", r.MemberDID)
-		}
-		if r.Duration == 0 {
-			t.Errorf("result from %s has zero duration", r.MemberDID)
-		}
+		assert.NoError(t, r.Err, "result from %s", r.MemberDID)
+		assert.NotNil(t, r.Result, "result from %s", r.MemberDID)
+		assert.NotZero(t, r.Duration, "result from %s", r.MemberDID)
 	}
 }
 
 func TestCollectResults_MajorityResolver(t *testing.T) {
+	t.Parallel()
+
 	results := []TaskResult{
 		{MemberDID: "did:1", Result: map[string]interface{}{"answer": "42"}, Duration: time.Millisecond},
 		{MemberDID: "did:2", Err: errors.New("timeout"), Duration: 5 * time.Second},
@@ -129,42 +117,38 @@ func TestCollectResults_MajorityResolver(t *testing.T) {
 	}
 
 	resolved, err := MajorityResolver(results)
-	if err != nil {
-		t.Fatalf("MajorityResolver() error = %v", err)
-	}
-	if resolved["answer"] != "42" {
-		t.Errorf("answer = %v, want 42", resolved["answer"])
-	}
+	require.NoError(t, err)
+	assert.Equal(t, "42", resolved["answer"])
 }
 
 func TestCollectResults_AllFailed(t *testing.T) {
+	t.Parallel()
+
 	results := []TaskResult{
 		{MemberDID: "did:1", Err: errors.New("fail")},
 		{MemberDID: "did:2", Err: errors.New("fail")},
 	}
 
 	_, err := MajorityResolver(results)
-	if err == nil {
-		t.Error("MajorityResolver() should return error when all failed")
-	}
+	assert.Error(t, err)
 }
 
 func TestFastestResolver(t *testing.T) {
+	t.Parallel()
+
 	results := []TaskResult{
 		{MemberDID: "did:1", Result: map[string]interface{}{"v": 1}, Duration: 100 * time.Millisecond},
 		{MemberDID: "did:2", Err: errors.New("timeout")},
 	}
 
 	resolved, err := FastestResolver(results)
-	if err != nil {
-		t.Fatalf("FastestResolver() error = %v", err)
-	}
-	if resolved["v"] != 1 {
-		t.Errorf("v = %v, want 1", resolved["v"])
-	}
+	require.NoError(t, err)
+	assert.Equal(t, 1, resolved["v"])
 }
 
 func TestDisbandTeam(t *testing.T) {
+	t.Parallel()
+
 	coord, _ := setupCoordinator(t)
 
 	_, err := coord.FormTeam(context.Background(), FormTeamRequest{
@@ -175,30 +159,26 @@ func TestDisbandTeam(t *testing.T) {
 		Capability:  "search",
 		MemberCount: 1,
 	})
-	if err != nil {
-		t.Fatalf("FormTeam() error = %v", err)
-	}
+	require.NoError(t, err)
 
-	if err := coord.DisbandTeam("t1"); err != nil {
-		t.Fatalf("DisbandTeam() error = %v", err)
-	}
+	require.NoError(t, coord.DisbandTeam("t1"))
 
 	_, err = coord.GetTeam("t1")
-	if err != ErrTeamNotFound {
-		t.Errorf("GetTeam after disband: got %v, want ErrTeamNotFound", err)
-	}
+	assert.ErrorIs(t, err, ErrTeamNotFound)
 }
 
 func TestDisbandTeam_NotFound(t *testing.T) {
+	t.Parallel()
+
 	coord, _ := setupCoordinator(t)
 
 	err := coord.DisbandTeam("nonexistent")
-	if err != ErrTeamNotFound {
-		t.Errorf("DisbandTeam nonexistent: got %v, want ErrTeamNotFound", err)
-	}
+	assert.ErrorIs(t, err, ErrTeamNotFound)
 }
 
 func TestResolveConflict(t *testing.T) {
+	t.Parallel()
+
 	tests := []struct {
 		give     string
 		strategy ConflictStrategy
@@ -251,27 +231,22 @@ func TestResolveConflict(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.give, func(t *testing.T) {
+			t.Parallel()
 			result, err := ResolveConflict(tt.strategy, tt.results)
 			if tt.wantErr {
-				if err == nil {
-					t.Error("expected error, got nil")
-				}
+				assert.Error(t, err)
 				return
 			}
-			if err != nil {
-				t.Fatalf("unexpected error: %v", err)
-			}
-			if result == nil {
-				t.Fatal("result is nil")
-			}
-			if !result.Success {
-				t.Error("result should be successful")
-			}
+			require.NoError(t, err)
+			require.NotNil(t, result)
+			assert.True(t, result.Success)
 		})
 	}
 }
 
 func TestListTeams(t *testing.T) {
+	t.Parallel()
+
 	coord, _ := setupCoordinator(t)
 
 	_, _ = coord.FormTeam(context.Background(), FormTeamRequest{
@@ -284,7 +259,5 @@ func TestListTeams(t *testing.T) {
 	})
 
 	teams := coord.ListTeams()
-	if len(teams) != 2 {
-		t.Errorf("ListTeams() returned %d teams, want 2", len(teams))
-	}
+	assert.Len(t, teams, 2)
 }

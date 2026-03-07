@@ -1,8 +1,10 @@
 package app
 
 import (
-	"strings"
 	"testing"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestBlockLangoExec_SkillGuards(t *testing.T) {
@@ -49,9 +51,7 @@ func TestBlockLangoExec_SkillGuards(t *testing.T) {
 		t.Run(tt.give, func(t *testing.T) {
 			msg := blockLangoExec(tt.give, auto)
 			gotMsg := msg != ""
-			if gotMsg != tt.wantMsg {
-				t.Errorf("blockLangoExec(%q) returned msg=%q, wantMsg=%v", tt.give, msg, tt.wantMsg)
-			}
+			assert.Equal(t, tt.wantMsg, gotMsg, "blockLangoExec(%q) returned msg=%q", tt.give, msg)
 		})
 	}
 }
@@ -96,13 +96,9 @@ func TestBlockLangoExec_AllSubcommands(t *testing.T) {
 		t.Run(tt.give, func(t *testing.T) {
 			msg := blockLangoExec(tt.give, auto)
 			gotBlocked := msg != ""
-			if gotBlocked != tt.wantBlocked {
-				t.Errorf("blockLangoExec(%q): blocked=%v, want %v (msg=%q)",
-					tt.give, gotBlocked, tt.wantBlocked, msg)
-			}
-			if tt.wantContain != "" && !strings.Contains(msg, tt.wantContain) {
-				t.Errorf("blockLangoExec(%q): message %q does not contain %q",
-					tt.give, msg, tt.wantContain)
+			assert.Equal(t, tt.wantBlocked, gotBlocked, "blockLangoExec(%q) msg=%q", tt.give, msg)
+			if tt.wantContain != "" {
+				assert.Contains(t, msg, tt.wantContain)
 			}
 		})
 	}
@@ -114,20 +110,12 @@ func TestBlockLangoExec_DisabledFeature(t *testing.T) {
 	auto := map[string]bool{}
 
 	msg := blockLangoExec("lango cron list", auto)
-	if msg == "" {
-		t.Fatal("expected blocked message for disabled cron")
-	}
-	if !strings.Contains(msg, "Enable the") {
-		t.Errorf("expected 'Enable the' suggestion, got: %s", msg)
-	}
+	require.NotEmpty(t, msg, "expected blocked message for disabled cron")
+	assert.Contains(t, msg, "Enable the")
 
 	// Non-automation guards (graph, memory, etc.) should always block
 	// regardless of automation flags.
 	msg = blockLangoExec("lango graph query", auto)
-	if msg == "" {
-		t.Fatal("expected blocked message for graph")
-	}
-	if strings.Contains(msg, "Enable the") {
-		t.Errorf("graph guard should not suggest enabling a feature, got: %s", msg)
-	}
+	require.NotEmpty(t, msg, "expected blocked message for graph")
+	assert.NotContains(t, msg, "Enable the", "graph guard should not suggest enabling a feature")
 }
