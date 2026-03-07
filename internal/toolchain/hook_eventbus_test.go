@@ -10,13 +10,13 @@ import (
 
 func TestEventBusHook_Post(t *testing.T) {
 	tests := []struct {
-		give          string
-		toolName      string
-		agentName     string
-		sessionKey    string
-		toolErr       error
-		wantSuccess   bool
-		wantErrMsg    string
+		give        string
+		toolName    string
+		agentName   string
+		sessionKey  string
+		toolErr     error
+		wantSuccess bool
+		wantErrMsg  string
 	}{
 		{
 			give:        "successful tool execution publishes success event",
@@ -47,15 +47,21 @@ func TestEventBusHook_Post(t *testing.T) {
 			})
 
 			hook := NewEventBusHook(bus)
-			err := hook.Post(HookContext{
+			ctx := HookContext{
 				ToolName:   tt.toolName,
 				AgentName:  tt.agentName,
 				SessionKey: tt.sessionKey,
 				Ctx:        context.Background(),
-			}, "some-result", tt.toolErr)
+			}
 
+			// Call Pre to record start time, then Post to publish event.
+			if _, err := hook.Pre(ctx); err != nil {
+				t.Fatalf("Pre() unexpected error: %v", err)
+			}
+
+			err := hook.Post(ctx, "some-result", tt.toolErr)
 			if err != nil {
-				t.Fatalf("unexpected error: %v", err)
+				t.Fatalf("Post() unexpected error: %v", err)
 			}
 			if received == nil {
 				t.Fatal("event was not published")
@@ -75,7 +81,53 @@ func TestEventBusHook_Post(t *testing.T) {
 			if received.Error != tt.wantErrMsg {
 				t.Errorf("Error = %q, want %q", received.Error, tt.wantErrMsg)
 			}
+			if received.Duration <= 0 {
+				t.Errorf("Duration = %v, want > 0", received.Duration)
+			}
 		})
+	}
+}
+
+func TestEventBusHook_PreContinues(t *testing.T) {
+	hook := NewEventBusHook(eventbus.New())
+	result, err := hook.Pre(HookContext{
+		ToolName:   "test",
+		AgentName:  "agent",
+		SessionKey: "sess",
+		Ctx:        context.Background(),
+	})
+	if err != nil {
+		t.Fatalf("Pre() unexpected error: %v", err)
+	}
+	if result.Action != Continue {
+		t.Errorf("Action = %d, want Continue (%d)", result.Action, Continue)
+	}
+}
+
+func TestEventBusHook_PostWithoutPre(t *testing.T) {
+	bus := eventbus.New()
+
+	var received *ToolExecutedEvent
+	eventbus.SubscribeTyped(bus, func(e ToolExecutedEvent) {
+		received = &e
+	})
+
+	hook := NewEventBusHook(bus)
+	// Call Post without Pre — duration should be zero but no panic.
+	err := hook.Post(HookContext{
+		ToolName:   "test",
+		AgentName:  "agent",
+		SessionKey: "sess",
+		Ctx:        context.Background(),
+	}, nil, nil)
+	if err != nil {
+		t.Fatalf("Post() unexpected error: %v", err)
+	}
+	if received == nil {
+		t.Fatal("event was not published")
+	}
+	if received.Duration != 0 {
+		t.Errorf("Duration = %v, want 0 (no Pre call)", received.Duration)
 	}
 }
 

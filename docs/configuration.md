@@ -723,6 +723,124 @@ Each firewall rule entry:
 
 ---
 
+## Economy
+
+!!! warning "Experimental"
+    The P2P economy layer is experimental. See [P2P Economy](features/economy.md).
+
+> **Settings:** `lango settings` → Economy
+
+```json
+{
+  "economy": {
+    "enabled": false,
+    "budget": {
+      "defaultMax": "10.00",
+      "alertThresholds": [0.5, 0.8, 0.95],
+      "hardLimit": true
+    },
+    "risk": {
+      "escrowThreshold": "5.00",
+      "highTrustScore": 0.8,
+      "mediumTrustScore": 0.5
+    },
+    "negotiate": {
+      "enabled": false,
+      "maxRounds": 5,
+      "timeout": "5m",
+      "autoNegotiate": false,
+      "maxDiscount": 0.2
+    },
+    "escrow": {
+      "enabled": false,
+      "defaultTimeout": "24h",
+      "maxMilestones": 10,
+      "autoRelease": false,
+      "disputeWindow": "1h"
+    },
+    "pricing": {
+      "enabled": false,
+      "trustDiscount": 0.1,
+      "volumeDiscount": 0.05,
+      "minPrice": "0.01"
+    }
+  }
+}
+```
+
+| Key | Type | Default | Description |
+|-----|------|---------|-------------|
+| `economy.enabled` | `bool` | `false` | Enable the P2P economy layer |
+| `economy.budget.defaultMax` | `string` | `10.00` | Default maximum budget per task in USDC |
+| `economy.budget.alertThresholds` | `[]float64` | `[0.5, 0.8, 0.95]` | Budget usage percentages that trigger alerts |
+| `economy.budget.hardLimit` | `bool` | `true` | Enforce budget as a hard cap (reject overspend) |
+| `economy.risk.escrowThreshold` | `string` | `5.00` | USDC amount above which escrow is forced |
+| `economy.risk.highTrustScore` | `float64` | `0.8` | Minimum trust score for DirectPay strategy |
+| `economy.risk.mediumTrustScore` | `float64` | `0.5` | Minimum trust score for non-ZK strategies |
+| `economy.negotiate.enabled` | `bool` | `false` | Enable P2P negotiation protocol |
+| `economy.negotiate.maxRounds` | `int` | `5` | Maximum counter-offers per negotiation |
+| `economy.negotiate.timeout` | `duration` | `5m` | Negotiation session timeout |
+| `economy.negotiate.autoNegotiate` | `bool` | `false` | Auto-generate counter-offers |
+| `economy.negotiate.maxDiscount` | `float64` | `0.2` | Maximum discount for auto-negotiation (0-1) |
+| `economy.escrow.enabled` | `bool` | `false` | Enable milestone-based escrow |
+| `economy.escrow.defaultTimeout` | `duration` | `24h` | Escrow expiration timeout |
+| `economy.escrow.maxMilestones` | `int` | `10` | Maximum milestones per escrow |
+| `economy.escrow.autoRelease` | `bool` | `false` | Auto-release funds when all milestones met |
+| `economy.escrow.disputeWindow` | `duration` | `1h` | Time window for disputes after completion |
+| `economy.pricing.enabled` | `bool` | `false` | Enable dynamic pricing adjustments |
+| `economy.pricing.trustDiscount` | `float64` | `0.1` | Max discount for high-trust peers (0-1) |
+| `economy.pricing.volumeDiscount` | `float64` | `0.05` | Max discount for high-volume peers (0-1) |
+| `economy.pricing.minPrice` | `string` | `0.01` | Minimum price floor in USDC |
+
+---
+
+## Observability
+
+!!! warning "Experimental"
+    The observability system is experimental. See [Observability](features/observability.md).
+
+> **Settings:** `lango settings` → Observability
+
+```json
+{
+  "observability": {
+    "enabled": false,
+    "tokens": {
+      "enabled": true,
+      "persistHistory": false,
+      "retentionDays": 30
+    },
+    "health": {
+      "enabled": true,
+      "interval": "30s"
+    },
+    "audit": {
+      "enabled": false,
+      "retentionDays": 90
+    },
+    "metrics": {
+      "enabled": true,
+      "format": "json"
+    }
+  }
+}
+```
+
+| Key | Type | Default | Description |
+|-----|------|---------|-------------|
+| `observability.enabled` | `bool` | `false` | Enable the observability subsystem |
+| `observability.tokens.enabled` | `bool` | `true` | Enable token usage tracking |
+| `observability.tokens.persistHistory` | `bool` | `false` | Persist token usage to database |
+| `observability.tokens.retentionDays` | `int` | `30` | Days to retain token usage records |
+| `observability.health.enabled` | `bool` | `true` | Enable health check monitoring |
+| `observability.health.interval` | `duration` | `30s` | Health check probe interval |
+| `observability.audit.enabled` | `bool` | `false` | Enable audit logging |
+| `observability.audit.retentionDays` | `int` | `90` | Days to retain audit records |
+| `observability.metrics.enabled` | `bool` | `true` | Enable metrics export endpoint |
+| `observability.metrics.format` | `string` | `json` | Metrics export format (`json`, `prometheus`) |
+
+---
+
 ## Cron
 
 See [Cron Scheduling](automation/cron.md) for usage details and [CLI reference](cli/automation.md#cron-commands).

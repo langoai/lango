@@ -17,6 +17,9 @@ import (
 	"github.com/langoai/lango/internal/gateway"
 	"github.com/langoai/lango/internal/lifecycle"
 	"github.com/langoai/lango/internal/mcp"
+	"github.com/langoai/lango/internal/observability"
+	"github.com/langoai/lango/internal/observability/health"
+	"github.com/langoai/lango/internal/observability/token"
 	"github.com/langoai/lango/internal/graph"
 	"github.com/langoai/lango/internal/knowledge"
 	"github.com/langoai/lango/internal/learning"
@@ -98,8 +101,20 @@ type App struct {
 	// Workflow Engine Components (optional)
 	WorkflowEngine *workflow.Engine
 
+	// Economy Components (optional, P2P economy layer)
+	EconomyBudget      interface{} // *budget.Engine
+	EconomyRisk        interface{} // *risk.Engine
+	EconomyPricing     interface{} // *pricing.Engine
+	EconomyNegotiation interface{} // *negotiation.Engine
+	EconomyEscrow      interface{} // *escrow.Engine
+
 	// MCP Components (optional, external MCP server integration)
 	MCPManager *mcp.ServerManager
+
+	// Observability Components (optional)
+	MetricsCollector *observability.MetricsCollector
+	HealthRegistry   *health.Registry
+	TokenStore       *token.EntTokenStore
 
 	// Tool Catalog (built-in tool discovery + dynamic dispatch)
 	ToolCatalog *toolcatalog.Catalog

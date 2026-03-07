@@ -347,6 +347,30 @@ func (e *Editor) handleMenuSelection(id string) tea.Cmd {
 		e.activeForm = NewLibrarianForm(e.state.Current)
 		e.activeForm.Focus = true
 		e.step = StepForm
+	case "economy":
+		e.activeForm = NewEconomyForm(e.state.Current)
+		e.activeForm.Focus = true
+		e.step = StepForm
+	case "economy_risk":
+		e.activeForm = NewEconomyRiskForm(e.state.Current)
+		e.activeForm.Focus = true
+		e.step = StepForm
+	case "economy_negotiation":
+		e.activeForm = NewEconomyNegotiationForm(e.state.Current)
+		e.activeForm.Focus = true
+		e.step = StepForm
+	case "economy_escrow":
+		e.activeForm = NewEconomyEscrowForm(e.state.Current)
+		e.activeForm.Focus = true
+		e.step = StepForm
+	case "economy_pricing":
+		e.activeForm = NewEconomyPricingForm(e.state.Current)
+		e.activeForm.Focus = true
+		e.step = StepForm
+	case "observability":
+		e.activeForm = NewObservabilityForm(e.state.Current)
+		e.activeForm.Focus = true
+		e.step = StepForm
 	case "p2p":
 		e.activeForm = NewP2PForm(e.state.Current)
 		e.activeForm.Focus = true

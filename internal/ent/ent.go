@@ -28,6 +28,7 @@ import (
 	"github.com/langoai/lango/internal/ent/reflection"
 	"github.com/langoai/lango/internal/ent/secret"
 	"github.com/langoai/lango/internal/ent/session"
+	"github.com/langoai/lango/internal/ent/tokenusage"
 	"github.com/langoai/lango/internal/ent/workflowrun"
 	"github.com/langoai/lango/internal/ent/workflowsteprun"
 )
@@ -106,6 +107,7 @@ func checkColumn(t, c string) error {
 			reflection.Table:      reflection.ValidColumn,
 			secret.Table:          secret.ValidColumn,
 			session.Table:         session.ValidColumn,
+			tokenusage.Table:      tokenusage.ValidColumn,
 			workflowrun.Table:     workflowrun.ValidColumn,
 			workflowsteprun.Table: workflowsteprun.ValidColumn,
 		})

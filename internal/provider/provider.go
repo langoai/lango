@@ -30,6 +30,14 @@ func (t StreamEventType) Values() []StreamEventType {
 	return []StreamEventType{StreamEventPlainText, StreamEventToolCall, StreamEventThought, StreamEventError, StreamEventDone}
 }
 
+// Usage holds token usage data returned by the provider.
+type Usage struct {
+	InputTokens  int64
+	OutputTokens int64
+	TotalTokens  int64
+	CacheTokens  int64 // Anthropic prompt caching
+}
+
 // StreamEvent represents a single event in the generation stream.
 type StreamEvent struct {
 	Type       StreamEventType
@@ -37,6 +45,7 @@ type StreamEvent struct {
 	ToolCall   *ToolCall
 	Error      error
 	ThoughtLen int // length of filtered thought text (diagnostics only)
+	Usage      *Usage
 }
 
 // ToolCall represents a request for tool execution.

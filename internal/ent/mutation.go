@@ -30,6 +30,7 @@ import (
 	"github.com/langoai/lango/internal/ent/schema"
 	"github.com/langoai/lango/internal/ent/secret"
 	"github.com/langoai/lango/internal/ent/session"
+	"github.com/langoai/lango/internal/ent/tokenusage"
 	"github.com/langoai/lango/internal/ent/workflowrun"
 	"github.com/langoai/lango/internal/ent/workflowsteprun"
 )
@@ -59,6 +60,7 @@ const (
 	TypeReflection      = "Reflection"
 	TypeSecret          = "Secret"
 	TypeSession         = "Session"
+	TypeTokenUsage      = "TokenUsage"
 	TypeWorkflowRun     = "WorkflowRun"
 	TypeWorkflowStepRun = "WorkflowStepRun"
 )
@@ -13062,6 +13064,946 @@ func (m *SessionMutation) ResetEdge(name string) error {
 		return nil
 	}
 	return fmt.Errorf("unknown Session edge %s", name)
+}
+
+// TokenUsageMutation represents an operation that mutates the TokenUsage nodes in the graph.
+type TokenUsageMutation struct {
+	config
+	op               Op
+	typ              string
+	id               *uuid.UUID
+	session_key      *string
+	provider         *string
+	model            *string
+	agent_name       *string
+	input_tokens     *int64
+	addinput_tokens  *int64
+	output_tokens    *int64
+	addoutput_tokens *int64
+	total_tokens     *int64
+	addtotal_tokens  *int64
+	cache_tokens     *int64
+	addcache_tokens  *int64
+	timestamp        *time.Time
+	clearedFields    map[string]struct{}
+	done             bool
+	oldValue         func(context.Context) (*TokenUsage, error)
+	predicates       []predicate.TokenUsage
+}
+
+var _ ent.Mutation = (*TokenUsageMutation)(nil)
+
+// tokenusageOption allows management of the mutation configuration using functional options.
+type tokenusageOption func(*TokenUsageMutation)
+
+// newTokenUsageMutation creates new mutation for the TokenUsage entity.
+func newTokenUsageMutation(c config, op Op, opts ...tokenusageOption) *TokenUsageMutation {
+	m := &TokenUsageMutation{
+		config:        c,
+		op:            op,
+		typ:           TypeTokenUsage,
+		clearedFields: make(map[string]struct{}),
+	}
+	for _, opt := range opts {
+		opt(m)
+	}
+	return m
+}
+
+// withTokenUsageID sets the ID field of the mutation.
+func withTokenUsageID(id uuid.UUID) tokenusageOption {
+	return func(m *TokenUsageMutation) {
+		var (
+			err   error
+			once  sync.Once
+			value *TokenUsage
+		)
+		m.oldValue = func(ctx context.Context) (*TokenUsage, error) {
+			once.Do(func() {
+				if m.done {
+					err = errors.New("querying old values post mutation is not allowed")
+				} else {
+					value, err = m.Client().TokenUsage.Get(ctx, id)
+				}
+			})
+			return value, err
+		}
+		m.id = &id
+	}
+}
+
+// withTokenUsage sets the old TokenUsage of the mutation.
+func withTokenUsage(node *TokenUsage) tokenusageOption {
+	return func(m *TokenUsageMutation) {
+		m.oldValue = func(context.Context) (*TokenUsage, error) {
+			return node, nil
+		}
+		m.id = &node.ID
+	}
+}
+
+// Client returns a new `ent.Client` from the mutation. If the mutation was
+// executed in a transaction (ent.Tx), a transactional client is returned.
+func (m TokenUsageMutation) Client() *Client {
+	client := &Client{config: m.config}
+	client.init()
+	return client
+}
+
+// Tx returns an `ent.Tx` for mutations that were executed in transactions;
+// it returns an error otherwise.
+func (m TokenUsageMutation) Tx() (*Tx, error) {
+	if _, ok := m.driver.(*txDriver); !ok {
+		return nil, errors.New("ent: mutation is not running in a transaction")
+	}
+	tx := &Tx{config: m.config}
+	tx.init()
+	return tx, nil
+}
+
+// SetID sets the value of the id field. Note that this
+// operation is only accepted on creation of TokenUsage entities.
+func (m *TokenUsageMutation) SetID(id uuid.UUID) {
+	m.id = &id
+}
+
+// ID returns the ID value in the mutation. Note that the ID is only available
+// if it was provided to the builder or after it was returned from the database.
+func (m *TokenUsageMutation) ID() (id uuid.UUID, exists bool) {
+	if m.id == nil {
+		return
+	}
+	return *m.id, true
+}
+
+// IDs queries the database and returns the entity ids that match the mutation's predicate.
+// That means, if the mutation is applied within a transaction with an isolation level such
+// as sql.LevelSerializable, the returned ids match the ids of the rows that will be updated
+// or updated by the mutation.
+func (m *TokenUsageMutation) IDs(ctx context.Context) ([]uuid.UUID, error) {
+	switch {
+	case m.op.Is(OpUpdateOne | OpDeleteOne):
+		id, exists := m.ID()
+		if exists {
+			return []uuid.UUID{id}, nil
+		}
+		fallthrough
+	case m.op.Is(OpUpdate | OpDelete):
+		return m.Client().TokenUsage.Query().Where(m.predicates...).IDs(ctx)
+	default:
+		return nil, fmt.Errorf("IDs is not allowed on %s operations", m.op)
+	}
+}
+
+// SetSessionKey sets the "session_key" field.
+func (m *TokenUsageMutation) SetSessionKey(s string) {
+	m.session_key = &s
+}
+
+// SessionKey returns the value of the "session_key" field in the mutation.
+func (m *TokenUsageMutation) SessionKey() (r string, exists bool) {
+	v := m.session_key
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldSessionKey returns the old "session_key" field's value of the TokenUsage entity.
+// If the TokenUsage object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *TokenUsageMutation) OldSessionKey(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldSessionKey is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldSessionKey requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldSessionKey: %w", err)
+	}
+	return oldValue.SessionKey, nil
+}
+
+// ClearSessionKey clears the value of the "session_key" field.
+func (m *TokenUsageMutation) ClearSessionKey() {
+	m.session_key = nil
+	m.clearedFields[tokenusage.FieldSessionKey] = struct{}{}
+}
+
+// SessionKeyCleared returns if the "session_key" field was cleared in this mutation.
+func (m *TokenUsageMutation) SessionKeyCleared() bool {
+	_, ok := m.clearedFields[tokenusage.FieldSessionKey]
+	return ok
+}
+
+// ResetSessionKey resets all changes to the "session_key" field.
+func (m *TokenUsageMutation) ResetSessionKey() {
+	m.session_key = nil
+	delete(m.clearedFields, tokenusage.FieldSessionKey)
+}
+
+// SetProvider sets the "provider" field.
+func (m *TokenUsageMutation) SetProvider(s string) {
+	m.provider = &s
+}
+
+// Provider returns the value of the "provider" field in the mutation.
+func (m *TokenUsageMutation) Provider() (r string, exists bool) {
+	v := m.provider
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldProvider returns the old "provider" field's value of the TokenUsage entity.
+// If the TokenUsage object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *TokenUsageMutation) OldProvider(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldProvider is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldProvider requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldProvider: %w", err)
+	}
+	return oldValue.Provider, nil
+}
+
+// ResetProvider resets all changes to the "provider" field.
+func (m *TokenUsageMutation) ResetProvider() {
+	m.provider = nil
+}
+
+// SetModel sets the "model" field.
+func (m *TokenUsageMutation) SetModel(s string) {
+	m.model = &s
+}
+
+// Model returns the value of the "model" field in the mutation.
+func (m *TokenUsageMutation) Model() (r string, exists bool) {
+	v := m.model
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldModel returns the old "model" field's value of the TokenUsage entity.
+// If the TokenUsage object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *TokenUsageMutation) OldModel(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldModel is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldModel requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldModel: %w", err)
+	}
+	return oldValue.Model, nil
+}
+
+// ResetModel resets all changes to the "model" field.
+func (m *TokenUsageMutation) ResetModel() {
+	m.model = nil
+}
+
+// SetAgentName sets the "agent_name" field.
+func (m *TokenUsageMutation) SetAgentName(s string) {
+	m.agent_name = &s
+}
+
+// AgentName returns the value of the "agent_name" field in the mutation.
+func (m *TokenUsageMutation) AgentName() (r string, exists bool) {
+	v := m.agent_name
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldAgentName returns the old "agent_name" field's value of the TokenUsage entity.
+// If the TokenUsage object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *TokenUsageMutation) OldAgentName(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldAgentName is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldAgentName requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldAgentName: %w", err)
+	}
+	return oldValue.AgentName, nil
+}
+
+// ClearAgentName clears the value of the "agent_name" field.
+func (m *TokenUsageMutation) ClearAgentName() {
+	m.agent_name = nil
+	m.clearedFields[tokenusage.FieldAgentName] = struct{}{}
+}
+
+// AgentNameCleared returns if the "agent_name" field was cleared in this mutation.
+func (m *TokenUsageMutation) AgentNameCleared() bool {
+	_, ok := m.clearedFields[tokenusage.FieldAgentName]
+	return ok
+}
+
+// ResetAgentName resets all changes to the "agent_name" field.
+func (m *TokenUsageMutation) ResetAgentName() {
+	m.agent_name = nil
+	delete(m.clearedFields, tokenusage.FieldAgentName)
+}
+
+// SetInputTokens sets the "input_tokens" field.
+func (m *TokenUsageMutation) SetInputTokens(i int64) {
+	m.input_tokens = &i
+	m.addinput_tokens = nil
+}
+
+// InputTokens returns the value of the "input_tokens" field in the mutation.
+func (m *TokenUsageMutation) InputTokens() (r int64, exists bool) {
+	v := m.input_tokens
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldInputTokens returns the old "input_tokens" field's value of the TokenUsage entity.
+// If the TokenUsage object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *TokenUsageMutation) OldInputTokens(ctx context.Context) (v int64, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldInputTokens is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldInputTokens requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldInputTokens: %w", err)
+	}
+	return oldValue.InputTokens, nil
+}
+
+// AddInputTokens adds i to the "input_tokens" field.
+func (m *TokenUsageMutation) AddInputTokens(i int64) {
+	if m.addinput_tokens != nil {
+		*m.addinput_tokens += i
+	} else {
+		m.addinput_tokens = &i
+	}
+}
+
+// AddedInputTokens returns the value that was added to the "input_tokens" field in this mutation.
+func (m *TokenUsageMutation) AddedInputTokens() (r int64, exists bool) {
+	v := m.addinput_tokens
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ResetInputTokens resets all changes to the "input_tokens" field.
+func (m *TokenUsageMutation) ResetInputTokens() {
+	m.input_tokens = nil
+	m.addinput_tokens = nil
+}
+
+// SetOutputTokens sets the "output_tokens" field.
+func (m *TokenUsageMutation) SetOutputTokens(i int64) {
+	m.output_tokens = &i
+	m.addoutput_tokens = nil
+}
+
+// OutputTokens returns the value of the "output_tokens" field in the mutation.
+func (m *TokenUsageMutation) OutputTokens() (r int64, exists bool) {
+	v := m.output_tokens
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldOutputTokens returns the old "output_tokens" field's value of the TokenUsage entity.
+// If the TokenUsage object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *TokenUsageMutation) OldOutputTokens(ctx context.Context) (v int64, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldOutputTokens is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldOutputTokens requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldOutputTokens: %w", err)
+	}
+	return oldValue.OutputTokens, nil
+}
+
+// AddOutputTokens adds i to the "output_tokens" field.
+func (m *TokenUsageMutation) AddOutputTokens(i int64) {
+	if m.addoutput_tokens != nil {
+		*m.addoutput_tokens += i
+	} else {
+		m.addoutput_tokens = &i
+	}
+}
+
+// AddedOutputTokens returns the value that was added to the "output_tokens" field in this mutation.
+func (m *TokenUsageMutation) AddedOutputTokens() (r int64, exists bool) {
+	v := m.addoutput_tokens
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ResetOutputTokens resets all changes to the "output_tokens" field.
+func (m *TokenUsageMutation) ResetOutputTokens() {
+	m.output_tokens = nil
+	m.addoutput_tokens = nil
+}
+
+// SetTotalTokens sets the "total_tokens" field.
+func (m *TokenUsageMutation) SetTotalTokens(i int64) {
+	m.total_tokens = &i
+	m.addtotal_tokens = nil
+}
+
+// TotalTokens returns the value of the "total_tokens" field in the mutation.
+func (m *TokenUsageMutation) TotalTokens() (r int64, exists bool) {
+	v := m.total_tokens
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldTotalTokens returns the old "total_tokens" field's value of the TokenUsage entity.
+// If the TokenUsage object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *TokenUsageMutation) OldTotalTokens(ctx context.Context) (v int64, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldTotalTokens is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldTotalTokens requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldTotalTokens: %w", err)
+	}
+	return oldValue.TotalTokens, nil
+}
+
+// AddTotalTokens adds i to the "total_tokens" field.
+func (m *TokenUsageMutation) AddTotalTokens(i int64) {
+	if m.addtotal_tokens != nil {
+		*m.addtotal_tokens += i
+	} else {
+		m.addtotal_tokens = &i
+	}
+}
+
+// AddedTotalTokens returns the value that was added to the "total_tokens" field in this mutation.
+func (m *TokenUsageMutation) AddedTotalTokens() (r int64, exists bool) {
+	v := m.addtotal_tokens
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ResetTotalTokens resets all changes to the "total_tokens" field.
+func (m *TokenUsageMutation) ResetTotalTokens() {
+	m.total_tokens = nil
+	m.addtotal_tokens = nil
+}
+
+// SetCacheTokens sets the "cache_tokens" field.
+func (m *TokenUsageMutation) SetCacheTokens(i int64) {
+	m.cache_tokens = &i
+	m.addcache_tokens = nil
+}
+
+// CacheTokens returns the value of the "cache_tokens" field in the mutation.
+func (m *TokenUsageMutation) CacheTokens() (r int64, exists bool) {
+	v := m.cache_tokens
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldCacheTokens returns the old "cache_tokens" field's value of the TokenUsage entity.
+// If the TokenUsage object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *TokenUsageMutation) OldCacheTokens(ctx context.Context) (v int64, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldCacheTokens is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldCacheTokens requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldCacheTokens: %w", err)
+	}
+	return oldValue.CacheTokens, nil
+}
+
+// AddCacheTokens adds i to the "cache_tokens" field.
+func (m *TokenUsageMutation) AddCacheTokens(i int64) {
+	if m.addcache_tokens != nil {
+		*m.addcache_tokens += i
+	} else {
+		m.addcache_tokens = &i
+	}
+}
+
+// AddedCacheTokens returns the value that was added to the "cache_tokens" field in this mutation.
+func (m *TokenUsageMutation) AddedCacheTokens() (r int64, exists bool) {
+	v := m.addcache_tokens
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ResetCacheTokens resets all changes to the "cache_tokens" field.
+func (m *TokenUsageMutation) ResetCacheTokens() {
+	m.cache_tokens = nil
+	m.addcache_tokens = nil
+}
+
+// SetTimestamp sets the "timestamp" field.
+func (m *TokenUsageMutation) SetTimestamp(t time.Time) {
+	m.timestamp = &t
+}
+
+// Timestamp returns the value of the "timestamp" field in the mutation.
+func (m *TokenUsageMutation) Timestamp() (r time.Time, exists bool) {
+	v := m.timestamp
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldTimestamp returns the old "timestamp" field's value of the TokenUsage entity.
+// If the TokenUsage object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *TokenUsageMutation) OldTimestamp(ctx context.Context) (v time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldTimestamp is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldTimestamp requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldTimestamp: %w", err)
+	}
+	return oldValue.Timestamp, nil
+}
+
+// ResetTimestamp resets all changes to the "timestamp" field.
+func (m *TokenUsageMutation) ResetTimestamp() {
+	m.timestamp = nil
+}
+
+// Where appends a list predicates to the TokenUsageMutation builder.
+func (m *TokenUsageMutation) Where(ps ...predicate.TokenUsage) {
+	m.predicates = append(m.predicates, ps...)
+}
+
+// WhereP appends storage-level predicates to the TokenUsageMutation builder. Using this method,
+// users can use type-assertion to append predicates that do not depend on any generated package.
+func (m *TokenUsageMutation) WhereP(ps ...func(*sql.Selector)) {
+	p := make([]predicate.TokenUsage, len(ps))
+	for i := range ps {
+		p[i] = ps[i]
+	}
+	m.Where(p...)
+}
+
+// Op returns the operation name.
+func (m *TokenUsageMutation) Op() Op {
+	return m.op
+}
+
+// SetOp allows setting the mutation operation.
+func (m *TokenUsageMutation) SetOp(op Op) {
+	m.op = op
+}
+
+// Type returns the node type of this mutation (TokenUsage).
+func (m *TokenUsageMutation) Type() string {
+	return m.typ
+}
+
+// Fields returns all fields that were changed during this mutation. Note that in
+// order to get all numeric fields that were incremented/decremented, call
+// AddedFields().
+func (m *TokenUsageMutation) Fields() []string {
+	fields := make([]string, 0, 9)
+	if m.session_key != nil {
+		fields = append(fields, tokenusage.FieldSessionKey)
+	}
+	if m.provider != nil {
+		fields = append(fields, tokenusage.FieldProvider)
+	}
+	if m.model != nil {
+		fields = append(fields, tokenusage.FieldModel)
+	}
+	if m.agent_name != nil {
+		fields = append(fields, tokenusage.FieldAgentName)
+	}
+	if m.input_tokens != nil {
+		fields = append(fields, tokenusage.FieldInputTokens)
+	}
+	if m.output_tokens != nil {
+		fields = append(fields, tokenusage.FieldOutputTokens)
+	}
+	if m.total_tokens != nil {
+		fields = append(fields, tokenusage.FieldTotalTokens)
+	}
+	if m.cache_tokens != nil {
+		fields = append(fields, tokenusage.FieldCacheTokens)
+	}
+	if m.timestamp != nil {
+		fields = append(fields, tokenusage.FieldTimestamp)
+	}
+	return fields
+}
+
+// Field returns the value of a field with the given name. The second boolean
+// return value indicates that this field was not set, or was not defined in the
+// schema.
+func (m *TokenUsageMutation) Field(name string) (ent.Value, bool) {
+	switch name {
+	case tokenusage.FieldSessionKey:
+		return m.SessionKey()
+	case tokenusage.FieldProvider:
+		return m.Provider()
+	case tokenusage.FieldModel:
+		return m.Model()
+	case tokenusage.FieldAgentName:
+		return m.AgentName()
+	case tokenusage.FieldInputTokens:
+		return m.InputTokens()
+	case tokenusage.FieldOutputTokens:
+		return m.OutputTokens()
+	case tokenusage.FieldTotalTokens:
+		return m.TotalTokens()
+	case tokenusage.FieldCacheTokens:
+		return m.CacheTokens()
+	case tokenusage.FieldTimestamp:
+		return m.Timestamp()
+	}
+	return nil, false
+}
+
+// OldField returns the old value of the field from the database. An error is
+// returned if the mutation operation is not UpdateOne, or the query to the
+// database failed.
+func (m *TokenUsageMutation) OldField(ctx context.Context, name string) (ent.Value, error) {
+	switch name {
+	case tokenusage.FieldSessionKey:
+		return m.OldSessionKey(ctx)
+	case tokenusage.FieldProvider:
+		return m.OldProvider(ctx)
+	case tokenusage.FieldModel:
+		return m.OldModel(ctx)
+	case tokenusage.FieldAgentName:
+		return m.OldAgentName(ctx)
+	case tokenusage.FieldInputTokens:
+		return m.OldInputTokens(ctx)
+	case tokenusage.FieldOutputTokens:
+		return m.OldOutputTokens(ctx)
+	case tokenusage.FieldTotalTokens:
+		return m.OldTotalTokens(ctx)
+	case tokenusage.FieldCacheTokens:
+		return m.OldCacheTokens(ctx)
+	case tokenusage.FieldTimestamp:
+		return m.OldTimestamp(ctx)
+	}
+	return nil, fmt.Errorf("unknown TokenUsage field %s", name)
+}
+
+// SetField sets the value of a field with the given name. It returns an error if
+// the field is not defined in the schema, or if the type mismatched the field
+// type.
+func (m *TokenUsageMutation) SetField(name string, value ent.Value) error {
+	switch name {
+	case tokenusage.FieldSessionKey:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetSessionKey(v)
+		return nil
+	case tokenusage.FieldProvider:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetProvider(v)
+		return nil
+	case tokenusage.FieldModel:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetModel(v)
+		return nil
+	case tokenusage.FieldAgentName:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetAgentName(v)
+		return nil
+	case tokenusage.FieldInputTokens:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetInputTokens(v)
+		return nil
+	case tokenusage.FieldOutputTokens:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetOutputTokens(v)
+		return nil
+	case tokenusage.FieldTotalTokens:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetTotalTokens(v)
+		return nil
+	case tokenusage.FieldCacheTokens:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetCacheTokens(v)
+		return nil
+	case tokenusage.FieldTimestamp:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetTimestamp(v)
+		return nil
+	}
+	return fmt.Errorf("unknown TokenUsage field %s", name)
+}
+
+// AddedFields returns all numeric fields that were incremented/decremented during
+// this mutation.
+func (m *TokenUsageMutation) AddedFields() []string {
+	var fields []string
+	if m.addinput_tokens != nil {
+		fields = append(fields, tokenusage.FieldInputTokens)
+	}
+	if m.addoutput_tokens != nil {
+		fields = append(fields, tokenusage.FieldOutputTokens)
+	}
+	if m.addtotal_tokens != nil {
+		fields = append(fields, tokenusage.FieldTotalTokens)
+	}
+	if m.addcache_tokens != nil {
+		fields = append(fields, tokenusage.FieldCacheTokens)
+	}
+	return fields
+}
+
+// AddedField returns the numeric value that was incremented/decremented on a field
+// with the given name. The second boolean return value indicates that this field
+// was not set, or was not defined in the schema.
+func (m *TokenUsageMutation) AddedField(name string) (ent.Value, bool) {
+	switch name {
+	case tokenusage.FieldInputTokens:
+		return m.AddedInputTokens()
+	case tokenusage.FieldOutputTokens:
+		return m.AddedOutputTokens()
+	case tokenusage.FieldTotalTokens:
+		return m.AddedTotalTokens()
+	case tokenusage.FieldCacheTokens:
+		return m.AddedCacheTokens()
+	}
+	return nil, false
+}
+
+// AddField adds the value to the field with the given name. It returns an error if
+// the field is not defined in the schema, or if the type mismatched the field
+// type.
+func (m *TokenUsageMutation) AddField(name string, value ent.Value) error {
+	switch name {
+	case tokenusage.FieldInputTokens:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddInputTokens(v)
+		return nil
+	case tokenusage.FieldOutputTokens:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddOutputTokens(v)
+		return nil
+	case tokenusage.FieldTotalTokens:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddTotalTokens(v)
+		return nil
+	case tokenusage.FieldCacheTokens:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddCacheTokens(v)
+		return nil
+	}
+	return fmt.Errorf("unknown TokenUsage numeric field %s", name)
+}
+
+// ClearedFields returns all nullable fields that were cleared during this
+// mutation.
+func (m *TokenUsageMutation) ClearedFields() []string {
+	var fields []string
+	if m.FieldCleared(tokenusage.FieldSessionKey) {
+		fields = append(fields, tokenusage.FieldSessionKey)
+	}
+	if m.FieldCleared(tokenusage.FieldAgentName) {
+		fields = append(fields, tokenusage.FieldAgentName)
+	}
+	return fields
+}
+
+// FieldCleared returns a boolean indicating if a field with the given name was
+// cleared in this mutation.
+func (m *TokenUsageMutation) FieldCleared(name string) bool {
+	_, ok := m.clearedFields[name]
+	return ok
+}
+
+// ClearField clears the value of the field with the given name. It returns an
+// error if the field is not defined in the schema.
+func (m *TokenUsageMutation) ClearField(name string) error {
+	switch name {
+	case tokenusage.FieldSessionKey:
+		m.ClearSessionKey()
+		return nil
+	case tokenusage.FieldAgentName:
+		m.ClearAgentName()
+		return nil
+	}
+	return fmt.Errorf("unknown TokenUsage nullable field %s", name)
+}
+
+// ResetField resets all changes in the mutation for the field with the given name.
+// It returns an error if the field is not defined in the schema.
+func (m *TokenUsageMutation) ResetField(name string) error {
+	switch name {
+	case tokenusage.FieldSessionKey:
+		m.ResetSessionKey()
+		return nil
+	case tokenusage.FieldProvider:
+		m.ResetProvider()
+		return nil
+	case tokenusage.FieldModel:
+		m.ResetModel()
+		return nil
+	case tokenusage.FieldAgentName:
+		m.ResetAgentName()
+		return nil
+	case tokenusage.FieldInputTokens:
+		m.ResetInputTokens()
+		return nil
+	case tokenusage.FieldOutputTokens:
+		m.ResetOutputTokens()
+		return nil
+	case tokenusage.FieldTotalTokens:
+		m.ResetTotalTokens()
+		return nil
+	case tokenusage.FieldCacheTokens:
+		m.ResetCacheTokens()
+		return nil
+	case tokenusage.FieldTimestamp:
+		m.ResetTimestamp()
+		return nil
+	}
+	return fmt.Errorf("unknown TokenUsage field %s", name)
+}
+
+// AddedEdges returns all edge names that were set/added in this mutation.
+func (m *TokenUsageMutation) AddedEdges() []string {
+	edges := make([]string, 0, 0)
+	return edges
+}
+
+// AddedIDs returns all IDs (to other nodes) that were added for the given edge
+// name in this mutation.
+func (m *TokenUsageMutation) AddedIDs(name string) []ent.Value {
+	return nil
+}
+
+// RemovedEdges returns all edge names that were removed in this mutation.
+func (m *TokenUsageMutation) RemovedEdges() []string {
+	edges := make([]string, 0, 0)
+	return edges
+}
+
+// RemovedIDs returns all IDs (to other nodes) that were removed for the edge with
+// the given name in this mutation.
+func (m *TokenUsageMutation) RemovedIDs(name string) []ent.Value {
+	return nil
+}
+
+// ClearedEdges returns all edge names that were cleared in this mutation.
+func (m *TokenUsageMutation) ClearedEdges() []string {
+	edges := make([]string, 0, 0)
+	return edges
+}
+
+// EdgeCleared returns a boolean which indicates if the edge with the given name
+// was cleared in this mutation.
+func (m *TokenUsageMutation) EdgeCleared(name string) bool {
+	return false
+}
+
+// ClearEdge clears the value of the edge with the given name. It returns an error
+// if that edge is not defined in the schema.
+func (m *TokenUsageMutation) ClearEdge(name string) error {
+	return fmt.Errorf("unknown TokenUsage unique edge %s", name)
+}
+
+// ResetEdge resets all changes to the edge with the given name in this mutation.
+// It returns an error if the edge is not defined in the schema.
+func (m *TokenUsageMutation) ResetEdge(name string) error {
+	return fmt.Errorf("unknown TokenUsage edge %s", name)
 }
 
 // WorkflowRunMutation represents an operation that mutates the WorkflowRun nodes in the graph.

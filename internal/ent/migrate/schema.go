@@ -503,6 +503,47 @@ var (
 			},
 		},
 	}
+	// TokenUsagesColumns holds the columns for the "token_usages" table.
+	TokenUsagesColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeUUID},
+		{Name: "session_key", Type: field.TypeString, Nullable: true},
+		{Name: "provider", Type: field.TypeString},
+		{Name: "model", Type: field.TypeString},
+		{Name: "agent_name", Type: field.TypeString, Nullable: true},
+		{Name: "input_tokens", Type: field.TypeInt64, Default: 0},
+		{Name: "output_tokens", Type: field.TypeInt64, Default: 0},
+		{Name: "total_tokens", Type: field.TypeInt64, Default: 0},
+		{Name: "cache_tokens", Type: field.TypeInt64, Default: 0},
+		{Name: "timestamp", Type: field.TypeTime},
+	}
+	// TokenUsagesTable holds the schema information for the "token_usages" table.
+	TokenUsagesTable = &schema.Table{
+		Name:       "token_usages",
+		Columns:    TokenUsagesColumns,
+		PrimaryKey: []*schema.Column{TokenUsagesColumns[0]},
+		Indexes: []*schema.Index{
+			{
+				Name:    "tokenusage_session_key",
+				Unique:  false,
+				Columns: []*schema.Column{TokenUsagesColumns[1]},
+			},
+			{
+				Name:    "tokenusage_provider",
+				Unique:  false,
+				Columns: []*schema.Column{TokenUsagesColumns[2]},
+			},
+			{
+				Name:    "tokenusage_timestamp",
+				Unique:  false,
+				Columns: []*schema.Column{TokenUsagesColumns[9]},
+			},
+			{
+				Name:    "tokenusage_agent_name_timestamp",
+				Unique:  false,
+				Columns: []*schema.Column{TokenUsagesColumns[4], TokenUsagesColumns[9]},
+			},
+		},
+	}
 	// WorkflowRunsColumns holds the columns for the "workflow_runs" table.
 	WorkflowRunsColumns = []*schema.Column{
 		{Name: "id", Type: field.TypeUUID},
@@ -592,6 +633,7 @@ var (
 		ReflectionsTable,
 		SecretsTable,
 		SessionsTable,
+		TokenUsagesTable,
 		WorkflowRunsTable,
 		WorkflowStepRunsTable,
 	}

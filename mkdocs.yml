@@ -112,6 +112,9 @@ nav:
     - Multi-Agent Orchestration: features/multi-agent.md
     - A2A Protocol: features/a2a-protocol.md
     - P2P Network: features/p2p-network.md
+    - P2P Economy: features/economy.md
+    - Smart Contracts: features/contracts.md
+    - Observability: features/observability.md
     - Skill System: features/skills.md
     - Proactive Librarian: features/librarian.md
     - System Prompts: features/system-prompts.md
@@ -138,6 +141,9 @@ nav:
     - Security Commands: cli/security.md
     - Payment Commands: cli/payment.md
     - P2P Commands: cli/p2p.md
+    - Economy Commands: cli/economy.md
+    - Contract Commands: cli/contract.md
+    - Metrics Commands: cli/metrics.md
     - Automation Commands: cli/automation.md
   - Gateway & API:
     - gateway/index.md

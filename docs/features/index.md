@@ -80,6 +80,30 @@ Lango provides a comprehensive set of features for building intelligent AI agent
 
     [:octicons-arrow-right-24: Learn more](p2p-network.md)
 
+-   :moneybag: **[P2P Economy](economy.md)** :material-flask-outline:{ title="Experimental" }
+
+    ---
+
+    Budget management, risk assessment, dynamic pricing, P2P negotiation, and milestone-based escrow for agent commerce.
+
+    [:octicons-arrow-right-24: Learn more](economy.md)
+
+-   :page_facing_up: **[Smart Contracts](contracts.md)** :material-flask-outline:{ title="Experimental" }
+
+    ---
+
+    EVM smart contract interaction with ABI caching, view/pure reads, and state-changing calls.
+
+    [:octicons-arrow-right-24: Learn more](contracts.md)
+
+-   :bar_chart: **[Observability](observability.md)** :material-flask-outline:{ title="Experimental" }
+
+    ---
+
+    Token usage tracking, health monitoring, audit logging, and metrics endpoints for operational visibility.
+
+    [:octicons-arrow-right-24: Learn more](observability.md)
+
 -   :brain: **Agent Memory** :material-flask-outline:{ title="Experimental" }
 
     ---
@@ -125,6 +149,9 @@ Lango provides a comprehensive set of features for building intelligent AI agent
 | Multi-Agent Orchestration | Experimental | `agent.multiAgent` |
 | A2A Protocol | Experimental | `a2a.enabled` |
 | P2P Network | Experimental | `p2p.enabled` |
+| P2P Economy | Experimental | `economy.enabled` |
+| Smart Contracts | Experimental | `payment.enabled` |
+| Observability | Experimental | `observability.enabled` |
 | Skill System | Stable | `skill.enabled` |
 | Proactive Librarian | Experimental | `librarian.enabled` |
 | System Prompts | Stable | `agent.promptsDir` |

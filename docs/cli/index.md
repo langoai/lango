@@ -129,6 +129,34 @@ Lango provides a comprehensive command-line interface built with [Cobra](https:/
 | `lango p2p zkp status` | Show ZKP configuration |
 | `lango p2p zkp circuits` | List compiled ZKP circuits |
 
+### Economy
+
+| Command | Description |
+|---------|-------------|
+| `lango economy budget status` | Show budget allocation status |
+| `lango economy risk status` | Show risk assessment configuration |
+| `lango economy pricing status` | Show dynamic pricing configuration |
+| `lango economy negotiate status` | Show negotiation protocol status |
+| `lango economy escrow status` | Show escrow service status |
+
+### Contract
+
+| Command | Description |
+|---------|-------------|
+| `lango contract read` | Call a view/pure smart contract method |
+| `lango contract call` | Execute a state-changing contract method |
+| `lango contract abi load` | Load and cache a contract ABI |
+
+### Metrics
+
+| Command | Description |
+|---------|-------------|
+| `lango metrics` | Show system metrics snapshot |
+| `lango metrics sessions` | Show per-session token usage |
+| `lango metrics tools` | Show per-tool metrics |
+| `lango metrics agents` | Show per-agent metrics |
+| `lango metrics history` | Show historical metrics |
+
 ### Automation
 
 | Command | Description |

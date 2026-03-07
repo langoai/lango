@@ -32,6 +32,7 @@ import (
 	"github.com/langoai/lango/internal/ent/reflection"
 	"github.com/langoai/lango/internal/ent/secret"
 	"github.com/langoai/lango/internal/ent/session"
+	"github.com/langoai/lango/internal/ent/tokenusage"
 	"github.com/langoai/lango/internal/ent/workflowrun"
 	"github.com/langoai/lango/internal/ent/workflowsteprun"
 )
@@ -73,6 +74,8 @@ type Client struct {
 	Secret *SecretClient
 	// Session is the client for interacting with the Session builders.
 	Session *SessionClient
+	// TokenUsage is the client for interacting with the TokenUsage builders.
+	TokenUsage *TokenUsageClient
 	// WorkflowRun is the client for interacting with the WorkflowRun builders.
 	WorkflowRun *WorkflowRunClient
 	// WorkflowStepRun is the client for interacting with the WorkflowStepRun builders.
@@ -104,6 +107,7 @@ func (c *Client) init() {
 	c.Reflection = NewReflectionClient(c.config)
 	c.Secret = NewSecretClient(c.config)
 	c.Session = NewSessionClient(c.config)
+	c.TokenUsage = NewTokenUsageClient(c.config)
 	c.WorkflowRun = NewWorkflowRunClient(c.config)
 	c.WorkflowStepRun = NewWorkflowStepRunClient(c.config)
 }
@@ -214,6 +218,7 @@ func (c *Client) Tx(ctx context.Context) (*Tx, error) {
 		Reflection:      NewReflectionClient(cfg),
 		Secret:          NewSecretClient(cfg),
 		Session:         NewSessionClient(cfg),
+		TokenUsage:      NewTokenUsageClient(cfg),
 		WorkflowRun:     NewWorkflowRunClient(cfg),
 		WorkflowStepRun: NewWorkflowStepRunClient(cfg),
 	}, nil
@@ -251,6 +256,7 @@ func (c *Client) BeginTx(ctx context.Context, opts *sql.TxOptions) (*Tx, error) 
 		Reflection:      NewReflectionClient(cfg),
 		Secret:          NewSecretClient(cfg),
 		Session:         NewSessionClient(cfg),
+		TokenUsage:      NewTokenUsageClient(cfg),
 		WorkflowRun:     NewWorkflowRunClient(cfg),
 		WorkflowStepRun: NewWorkflowStepRunClient(cfg),
 	}, nil
@@ -284,7 +290,7 @@ func (c *Client) Use(hooks ...Hook) {
 	for _, n := range []interface{ Use(...Hook) }{
 		c.AuditLog, c.ConfigProfile, c.CronJob, c.CronJobHistory, c.ExternalRef,
 		c.Inquiry, c.Key, c.Knowledge, c.Learning, c.Message, c.Observation,
-		c.PaymentTx, c.PeerReputation, c.Reflection, c.Secret, c.Session,
+		c.PaymentTx, c.PeerReputation, c.Reflection, c.Secret, c.Session, c.TokenUsage,
 		c.WorkflowRun, c.WorkflowStepRun,
 	} {
 		n.Use(hooks...)
@@ -297,7 +303,7 @@ func (c *Client) Intercept(interceptors ...Interceptor) {
 	for _, n := range []interface{ Intercept(...Interceptor) }{
 		c.AuditLog, c.ConfigProfile, c.CronJob, c.CronJobHistory, c.ExternalRef,
 		c.Inquiry, c.Key, c.Knowledge, c.Learning, c.Message, c.Observation,
-		c.PaymentTx, c.PeerReputation, c.Reflection, c.Secret, c.Session,
+		c.PaymentTx, c.PeerReputation, c.Reflection, c.Secret, c.Session, c.TokenUsage,
 		c.WorkflowRun, c.WorkflowStepRun,
 	} {
 		n.Intercept(interceptors...)
@@ -339,6 +345,8 @@ func (c *Client) Mutate(ctx context.Context, m Mutation) (Value, error) {
 		return c.Secret.mutate(ctx, m)
 	case *SessionMutation:
 		return c.Session.mutate(ctx, m)
+	case *TokenUsageMutation:
+		return c.TokenUsage.mutate(ctx, m)
 	case *WorkflowRunMutation:
 		return c.WorkflowRun.mutate(ctx, m)
 	case *WorkflowStepRunMutation:
@@ -2540,6 +2548,139 @@ func (c *SessionClient) mutate(ctx context.Context, m *SessionMutation) (Value, 
 	}
 }
 
+// TokenUsageClient is a client for the TokenUsage schema.
+type TokenUsageClient struct {
+	config
+}
+
+// NewTokenUsageClient returns a client for the TokenUsage from the given config.
+func NewTokenUsageClient(c config) *TokenUsageClient {
+	return &TokenUsageClient{config: c}
+}
+
+// Use adds a list of mutation hooks to the hooks stack.
+// A call to `Use(f, g, h)` equals to `tokenusage.Hooks(f(g(h())))`.
+func (c *TokenUsageClient) Use(hooks ...Hook) {
+	c.hooks.TokenUsage = append(c.hooks.TokenUsage, hooks...)
+}
+
+// Intercept adds a list of query interceptors to the interceptors stack.
+// A call to `Intercept(f, g, h)` equals to `tokenusage.Intercept(f(g(h())))`.
+func (c *TokenUsageClient) Intercept(interceptors ...Interceptor) {
+	c.inters.TokenUsage = append(c.inters.TokenUsage, interceptors...)
+}
+
+// Create returns a builder for creating a TokenUsage entity.
+func (c *TokenUsageClient) Create() *TokenUsageCreate {
+	mutation := newTokenUsageMutation(c.config, OpCreate)
+	return &TokenUsageCreate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// CreateBulk returns a builder for creating a bulk of TokenUsage entities.
+func (c *TokenUsageClient) CreateBulk(builders ...*TokenUsageCreate) *TokenUsageCreateBulk {
+	return &TokenUsageCreateBulk{config: c.config, builders: builders}
+}
+
+// MapCreateBulk creates a bulk creation builder from the given slice. For each item in the slice, the function creates
+// a builder and applies setFunc on it.
+func (c *TokenUsageClient) MapCreateBulk(slice any, setFunc func(*TokenUsageCreate, int)) *TokenUsageCreateBulk {
+	rv := reflect.ValueOf(slice)
+	if rv.Kind() != reflect.Slice {
+		return &TokenUsageCreateBulk{err: fmt.Errorf("calling to TokenUsageClient.MapCreateBulk with wrong type %T, need slice", slice)}
+	}
+	builders := make([]*TokenUsageCreate, rv.Len())
+	for i := 0; i < rv.Len(); i++ {
+		builders[i] = c.Create()
+		setFunc(builders[i], i)
+	}
+	return &TokenUsageCreateBulk{config: c.config, builders: builders}
+}
+
+// Update returns an update builder for TokenUsage.
+func (c *TokenUsageClient) Update() *TokenUsageUpdate {
+	mutation := newTokenUsageMutation(c.config, OpUpdate)
+	return &TokenUsageUpdate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOne returns an update builder for the given entity.
+func (c *TokenUsageClient) UpdateOne(_m *TokenUsage) *TokenUsageUpdateOne {
+	mutation := newTokenUsageMutation(c.config, OpUpdateOne, withTokenUsage(_m))
+	return &TokenUsageUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOneID returns an update builder for the given id.
+func (c *TokenUsageClient) UpdateOneID(id uuid.UUID) *TokenUsageUpdateOne {
+	mutation := newTokenUsageMutation(c.config, OpUpdateOne, withTokenUsageID(id))
+	return &TokenUsageUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// Delete returns a delete builder for TokenUsage.
+func (c *TokenUsageClient) Delete() *TokenUsageDelete {
+	mutation := newTokenUsageMutation(c.config, OpDelete)
+	return &TokenUsageDelete{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// DeleteOne returns a builder for deleting the given entity.
+func (c *TokenUsageClient) DeleteOne(_m *TokenUsage) *TokenUsageDeleteOne {
+	return c.DeleteOneID(_m.ID)
+}
+
+// DeleteOneID returns a builder for deleting the given entity by its id.
+func (c *TokenUsageClient) DeleteOneID(id uuid.UUID) *TokenUsageDeleteOne {
+	builder := c.Delete().Where(tokenusage.ID(id))
+	builder.mutation.id = &id
+	builder.mutation.op = OpDeleteOne
+	return &TokenUsageDeleteOne{builder}
+}
+
+// Query returns a query builder for TokenUsage.
+func (c *TokenUsageClient) Query() *TokenUsageQuery {
+	return &TokenUsageQuery{
+		config: c.config,
+		ctx:    &QueryContext{Type: TypeTokenUsage},
+		inters: c.Interceptors(),
+	}
+}
+
+// Get returns a TokenUsage entity by its id.
+func (c *TokenUsageClient) Get(ctx context.Context, id uuid.UUID) (*TokenUsage, error) {
+	return c.Query().Where(tokenusage.ID(id)).Only(ctx)
+}
+
+// GetX is like Get, but panics if an error occurs.
+func (c *TokenUsageClient) GetX(ctx context.Context, id uuid.UUID) *TokenUsage {
+	obj, err := c.Get(ctx, id)
+	if err != nil {
+		panic(err)
+	}
+	return obj
+}
+
+// Hooks returns the client hooks.
+func (c *TokenUsageClient) Hooks() []Hook {
+	return c.hooks.TokenUsage
+}
+
+// Interceptors returns the client interceptors.
+func (c *TokenUsageClient) Interceptors() []Interceptor {
+	return c.inters.TokenUsage
+}
+
+func (c *TokenUsageClient) mutate(ctx context.Context, m *TokenUsageMutation) (Value, error) {
+	switch m.Op() {
+	case OpCreate:
+		return (&TokenUsageCreate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdate:
+		return (&TokenUsageUpdate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdateOne:
+		return (&TokenUsageUpdateOne{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpDelete, OpDeleteOne:
+		return (&TokenUsageDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
+	default:
+		return nil, fmt.Errorf("ent: unknown TokenUsage mutation op: %q", m.Op())
+	}
+}
+
 // WorkflowRunClient is a client for the WorkflowRun schema.
 type WorkflowRunClient struct {
 	config
@@ -2811,11 +2952,13 @@ type (
 	hooks struct {
 		AuditLog, ConfigProfile, CronJob, CronJobHistory, ExternalRef, Inquiry, Key,
 		Knowledge, Learning, Message, Observation, PaymentTx, PeerReputation,
-		Reflection, Secret, Session, WorkflowRun, WorkflowStepRun []ent.Hook
+		Reflection, Secret, Session, TokenUsage, WorkflowRun,
+		WorkflowStepRun []ent.Hook
 	}
 	inters struct {
 		AuditLog, ConfigProfile, CronJob, CronJobHistory, ExternalRef, Inquiry, Key,
 		Knowledge, Learning, Message, Observation, PaymentTx, PeerReputation,
-		Reflection, Secret, Session, WorkflowRun, WorkflowStepRun []ent.Interceptor
+		Reflection, Secret, Session, TokenUsage, WorkflowRun,
+		WorkflowStepRun []ent.Interceptor
 	}
 )

@@ -5,7 +5,7 @@
 - Skills that wrap `lango` CLI commands will fail — the CLI requires passphrase authentication that is unavailable in agent mode.
 
 ### Exec Tool
-- **NEVER use exec to run `lango` CLI commands** (e.g., `lango security`, `lango memory`, `lango graph`, `lango p2p`, `lango config`, `lango cron`, `lango bg`, `lango workflow`, `lango payment`, `lango serve`, `lango doctor`, etc.). Every `lango` command requires passphrase authentication during bootstrap and **will fail** when spawned as a non-interactive subprocess. Use the built-in tools instead — they run in-process and do not require authentication.
+- **NEVER use exec to run `lango` CLI commands** (e.g., `lango security`, `lango memory`, `lango graph`, `lango p2p`, `lango config`, `lango cron`, `lango bg`, `lango workflow`, `lango payment`, `lango economy`, `lango metrics`, `lango contract`, `lango serve`, `lango doctor`, etc.). Every `lango` command requires passphrase authentication during bootstrap and **will fail** when spawned as a non-interactive subprocess. Use the built-in tools instead — they run in-process and do not require authentication.
 - If you need functionality that has no built-in tool equivalent (e.g., `lango config`, `lango doctor`, `lango settings`), inform the user and ask them to run the command directly in their terminal.
 - Prefer read-only commands first (`cat`, `ls`, `grep`, `ps`) before modifying anything.
 - Set appropriate timeouts for long-running commands. Default is 30 seconds.
@@ -115,3 +115,24 @@
 - **Signed challenges**: Protocol v1.1 uses ECDSA-signed challenges. When `p2p.requireSignedChallenge` is true, only peers supporting v1.1 can connect. Legacy v1.0 peers will be rejected.
 - **KMS latency**: When a Cloud KMS provider is configured (`aws-kms`, `gcp-kms`, `azure-kv`, `pkcs11`), cryptographic operations incur network roundtrip latency. The system retries transient errors automatically with exponential backoff. If KMS is unreachable and `kms.fallbackToLocal` is enabled, operations fall back to local mode.
 - **Credential revocation**: Revoked DIDs are tracked in the gossip discovery layer. Use `maxCredentialAge` to enforce credential freshness — stale credentials are rejected even if not explicitly revoked. Gossip refresh propagates revocations across the network.
+
+### Economy Tool
+- `economy_budget_allocate` allocates a spending budget for a task. Specify `taskId` and optional `amount` (USDC, e.g. '5.00'). Returns budget ID and status.
+- `economy_budget_status` checks the current budget burn rate for a task.
+- `economy_budget_close` closes a task budget and returns a final report with total spent and entry count.
+- `economy_risk_assess` evaluates the risk level for a peer transaction. Specify `peerDid`, `amount` (USDC), and optional `verifiability` (high/medium/low). Returns risk level, risk score, recommended strategy (DirectPay/Escrow/EscrowWithZK/Reject), trust score, and explanation.
+- `economy_price_quote` gets a price quote for a tool invocation, optionally applying peer-specific trust discounts. Specify `toolName` and optional `peerDid`. Returns base price, final price, and currency.
+- `economy_negotiate` starts a price negotiation with a peer. Specify `peerDid`, `toolName`, and `price` (USDC). Returns session ID, phase, and round number.
+- `economy_negotiate_status` checks the status of a negotiation session by `sessionId`. Returns current phase, round, max rounds, and current terms.
+- `economy_escrow_create` creates a milestone-based escrow between buyer and seller. Specify `buyerDid`, `sellerDid`, `amount` (USDC), and `milestones` array (each with description and amount). Returns escrow ID.
+- `economy_escrow_milestone` marks a milestone as completed in an escrow. Specify `escrowId`, `milestoneId`, and optional `evidence`.
+- `economy_escrow_status` checks escrow status including buyer/seller DIDs, total amount, and per-milestone status.
+- `economy_escrow_release` releases escrow funds to the seller after satisfactory completion.
+- `economy_escrow_dispute` raises a dispute on an escrow. Specify `escrowId` and `note` describing the dispute.
+- **Economy workflow**: (1) `economy_budget_allocate` to set spending limits, (2) `economy_risk_assess` to evaluate the transaction, (3) `economy_price_quote` to get the price, (4) optionally `economy_negotiate` to negotiate, (5) `economy_escrow_create` for high-value transactions.
+
+### Contract Tool
+- `contract_abi_load` pre-loads and caches a contract ABI for faster subsequent calls. Provide `address` and `abi` (JSON string), and optionally `chainId`. Always load the ABI before calling read/write methods.
+- `contract_read` calls a view/pure smart contract method (no gas cost, no state change). Specify `address`, `abi`, `method`, and optional `args` array and `chainId`. Returns the decoded result.
+- `contract_call` sends a state-changing transaction to a smart contract (costs gas). Specify `address`, `abi`, `method`, optional `args`, optional `value` (ETH to send, e.g. '0.01'), and optional `chainId`. Requires a funded wallet. Returns transaction hash and gas used.
+- **Contract workflow**: (1) `contract_abi_load` to cache the ABI, (2) `contract_read` to inspect state, (3) `contract_call` only when state changes are needed.
