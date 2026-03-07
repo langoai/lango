@@ -547,6 +547,106 @@ func (s *ConfigState) UpdateConfigFromForm(form *FormModel) {
 			s.Current.Librarian.Provider = val
 		case "lib_model":
 			s.Current.Librarian.Model = val
+
+		// Economy
+		case "economy_enabled":
+			s.Current.Economy.Enabled = f.Checked
+		case "economy_budget_default_max":
+			s.Current.Economy.Budget.DefaultMax = val
+		case "economy_budget_hard_limit":
+			s.Current.Economy.Budget.HardLimit = boolPtr(f.Checked)
+		case "economy_budget_alert_thresholds":
+			s.Current.Economy.Budget.AlertThresholds = parseFloatSlice(val)
+
+		// Economy Risk
+		case "economy_risk_escrow_threshold":
+			s.Current.Economy.Risk.EscrowThreshold = val
+		case "economy_risk_high_trust":
+			if fv, err := strconv.ParseFloat(val, 64); err == nil {
+				s.Current.Economy.Risk.HighTrustScore = fv
+			}
+		case "economy_risk_medium_trust":
+			if fv, err := strconv.ParseFloat(val, 64); err == nil {
+				s.Current.Economy.Risk.MediumTrustScore = fv
+			}
+
+		// Economy Negotiation
+		case "economy_negotiate_enabled":
+			s.Current.Economy.Negotiate.Enabled = f.Checked
+		case "economy_negotiate_max_rounds":
+			if i, err := strconv.Atoi(val); err == nil {
+				s.Current.Economy.Negotiate.MaxRounds = i
+			}
+		case "economy_negotiate_timeout":
+			if d, err := time.ParseDuration(val); err == nil {
+				s.Current.Economy.Negotiate.Timeout = d
+			}
+		case "economy_negotiate_auto":
+			s.Current.Economy.Negotiate.AutoNegotiate = f.Checked
+		case "economy_negotiate_max_discount":
+			if fv, err := strconv.ParseFloat(val, 64); err == nil {
+				s.Current.Economy.Negotiate.MaxDiscount = fv
+			}
+
+		// Economy Escrow
+		case "economy_escrow_enabled":
+			s.Current.Economy.Escrow.Enabled = f.Checked
+		case "economy_escrow_default_timeout":
+			if d, err := time.ParseDuration(val); err == nil {
+				s.Current.Economy.Escrow.DefaultTimeout = d
+			}
+		case "economy_escrow_max_milestones":
+			if i, err := strconv.Atoi(val); err == nil {
+				s.Current.Economy.Escrow.MaxMilestones = i
+			}
+		case "economy_escrow_auto_release":
+			s.Current.Economy.Escrow.AutoRelease = f.Checked
+		case "economy_escrow_dispute_window":
+			if d, err := time.ParseDuration(val); err == nil {
+				s.Current.Economy.Escrow.DisputeWindow = d
+			}
+
+		// Economy Pricing
+		case "economy_pricing_enabled":
+			s.Current.Economy.Pricing.Enabled = f.Checked
+		case "economy_pricing_trust_discount":
+			if fv, err := strconv.ParseFloat(val, 64); err == nil {
+				s.Current.Economy.Pricing.TrustDiscount = fv
+			}
+		case "economy_pricing_volume_discount":
+			if fv, err := strconv.ParseFloat(val, 64); err == nil {
+				s.Current.Economy.Pricing.VolumeDiscount = fv
+			}
+		case "economy_pricing_min_price":
+			s.Current.Economy.Pricing.MinPrice = val
+
+		// Observability
+		case "obs_enabled":
+			s.Current.Observability.Enabled = f.Checked
+		case "obs_tokens_enabled":
+			s.Current.Observability.Tokens.Enabled = f.Checked
+		case "obs_tokens_persist":
+			s.Current.Observability.Tokens.PersistHistory = f.Checked
+		case "obs_tokens_retention":
+			if i, err := strconv.Atoi(val); err == nil {
+				s.Current.Observability.Tokens.RetentionDays = i
+			}
+		case "obs_health_enabled":
+			s.Current.Observability.Health.Enabled = f.Checked
+		case "obs_health_interval":
+			if d, err := time.ParseDuration(val); err == nil {
+				s.Current.Observability.Health.Interval = d
+			}
+		case "obs_audit_enabled":
+			s.Current.Observability.Audit.Enabled = f.Checked
+		case "obs_audit_retention":
+			if i, err := strconv.Atoi(val); err == nil {
+				s.Current.Observability.Audit.RetentionDays = i
+			}
+		case "obs_metrics_enabled":
+			s.Current.Observability.Metrics.Enabled = f.Checked
+		case "obs_metrics_format":
+			s.Current.Observability.Metrics.Format = val
 		}
 	}
 }
@@ -746,6 +846,28 @@ func splitCSV(val string) []string {
 	for _, p := range parts {
 		if t := strings.TrimSpace(p); t != "" {
 			out = append(out, t)
+		}
+	}
+	if len(out) == 0 {
+		return nil
+	}
+	return out
+}
+
+// parseFloatSlice parses a comma-separated string of floats into a float64 slice.
+func parseFloatSlice(val string) []float64 {
+	if val == "" {
+		return nil
+	}
+	parts := strings.Split(val, ",")
+	out := make([]float64, 0, len(parts))
+	for _, p := range parts {
+		p = strings.TrimSpace(p)
+		if p == "" {
+			continue
+		}
+		if f, err := strconv.ParseFloat(p, 64); err == nil {
+			out = append(out, f)
 		}
 	}
 	if len(out) == 0 {

@@ -127,5 +127,9 @@ func AllChecks() []Check {
 		&AgentRegistryCheck{},
 		&LibrarianCheck{},
 		&ApprovalCheck{},
+		// Economy / Contract / Observability
+		&EconomyCheck{},
+		&ContractCheck{},
+		&ObservabilityCheck{},
 	}
 }

@@ -116,6 +116,17 @@ func NewMenuModel() MenuModel {
 					{"workflow", "Workflow Engine", "DAG workflows, timeouts, state"},
 				{"mcp", "MCP Settings", "Global MCP server settings"},
 				{"mcp_servers", "MCP Server List", "Add, edit, remove MCP servers"},
+				{"observability", "Observability", "Token tracking, health, metrics"},
+				},
+			},
+			{
+				Title: "Economy",
+				Categories: []Category{
+					{"economy", "Economy", "Budget, risk, pricing settings"},
+					{"economy_risk", "Economy Risk", "Trust-based risk assessment"},
+					{"economy_negotiation", "Economy Negotiation", "P2P price negotiation"},
+					{"economy_escrow", "Economy Escrow", "Milestone-based escrow"},
+					{"economy_pricing", "Economy Pricing", "Dynamic pricing rules"},
 				},
 			},
 			{

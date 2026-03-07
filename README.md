@@ -52,6 +52,9 @@ This project includes experimental AI Agent features and is currently in an unst
 - 👥 **P2P Teams** - Task-scoped agent groups with role-based delegation (Leader, Worker, Reviewer, Observer)
 - 🏊 **Agent Pool** - P2P agent pool with health checking and weighted selection
 - 💰 **P2P Settlement** - On-chain USDC settlement with EIP-3009, receipt tracking, and retry
+- 💰 **P2P Economy** — Budget management, trust-based risk assessment, dynamic pricing with peer discounts, P2P negotiation protocol, and milestone-based escrow with USDC settlement
+- 📜 **Smart Contracts** — EVM smart contract interaction with ABI caching, view/pure reads, and state-changing calls
+- 📊 **Observability** — Token usage tracking, health monitoring, audit logging, and metrics endpoints
 
 ## Quick Start
 
@@ -210,6 +213,22 @@ lango p2p team disband <id>      Disband an active team
 lango p2p zkp status             Show ZKP configuration
 lango p2p zkp circuits           List compiled ZKP circuits
 
+lango economy budget status     Show budget allocation status
+lango economy risk status       Show risk assessment configuration
+lango economy pricing status    Show dynamic pricing configuration
+lango economy negotiate status  Show negotiation protocol status
+lango economy escrow status     Show escrow service status
+
+lango contract read [flags]     Read a smart contract method (--address, --method, --abi, --args)
+lango contract call [flags]     Execute a state-changing contract method (--address, --method, --value)
+lango contract abi load [flags] Load and cache a contract ABI (--address, --file)
+
+lango metrics                   Show system metrics snapshot
+lango metrics sessions          Show per-session token usage
+lango metrics tools             Show per-tool metrics
+lango metrics agents            Show per-agent metrics
+lango metrics history [--days]  Show historical metrics
+
 lango bg list                    List background tasks
 lango bg status <id>             Show background task status
 lango bg cancel <id>             Cancel a running background task
@@ -265,11 +284,15 @@ lango/
 │   │   ├── prompt/         #   interactive prompt utilities
 │   │   ├── security/       #   lango security status/secrets/migrate-passphrase/keyring/db-migrate/db-decrypt/kms
 │   │   ├── p2p/            #   lango p2p status/peers/connect/disconnect/firewall/discover/identity/reputation/pricing/session/sandbox
+│   │   ├── economy/       #   lango economy budget/risk/pricing/negotiate/escrow status
+│   │   ├── contract/      #   lango contract read/call/abi
+│   │   ├── metrics/       #   lango metrics [sessions|tools|agents|history]
 │   │   └── tui/            #   TUI components and views
 │   ├── config/             # Config loading, env var substitution, validation
 │   ├── configstore/        # Encrypted config profile storage (Ent-backed)
 │   ├── ctxkeys/            # Context key helpers for agent name propagation
 │   ├── a2a/                # A2A protocol server and remote agent loading
+│   ├── economy/             # P2P economy layer (budget, risk, pricing, negotiation, escrow)
 │   ├── embedding/          # Embedding providers (OpenAI, Google, local) and RAG
 │   ├── ent/                # Ent ORM schemas and generated code
 │   ├── eventbus/           # Typed synchronous event pub/sub
@@ -291,10 +314,12 @@ lango/
 │   ├── security/           # Crypto providers, key registry, secrets store, companion discovery, KMS providers
 │   ├── session/            # Ent-based SQLite session store
 │   ├── skill/              # File-based skill system (SKILL.md parser, FileSkillStore, registry, executor, GitHub importer with git clone + HTTP fallback, resource directories)
+│   ├── contract/            # EVM smart contract interaction, ABI cache
 │   ├── cron/               # Cron scheduler (robfig/cron/v3), job store, executor, delivery
 │   ├── background/         # Background task manager, notifications, monitoring
 │   ├── workflow/            # DAG workflow engine, YAML parser, state persistence
 │   ├── payment/            # Blockchain payment service (USDC on EVM chains, X402 audit trail)
+│   ├── observability/       # Metrics, token tracking, health checks, audit logging
 │   ├── p2p/                # P2P networking (libp2p node, identity, handshake, firewall, discovery, ZKP)
 │   │   ├── team/           #   P2P team coordination
 │   │   ├── agentpool/      #   Agent pool with health checking
