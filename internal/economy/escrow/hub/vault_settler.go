@@ -20,7 +20,7 @@ var _ escrow.SettlementExecutor = (*VaultSettler)(nil)
 // created via the LangoVaultFactory.
 type VaultSettler struct {
 	factory     *FactoryClient
-	caller      *contract.Caller
+	caller      contract.ContractCaller
 	tokenAddr   common.Address
 	implAddr    common.Address
 	arbitrator  common.Address
@@ -46,7 +46,7 @@ func WithVaultLogger(l *zap.SugaredLogger) VaultSettlerOption {
 
 // NewVaultSettler creates a vault-mode settler.
 func NewVaultSettler(
-	caller *contract.Caller,
+	caller contract.ContractCaller,
 	factoryAddr, implAddr, tokenAddr, arbitrator common.Address,
 	chainID int64,
 	opts ...VaultSettlerOption,

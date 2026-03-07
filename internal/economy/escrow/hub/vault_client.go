@@ -12,14 +12,14 @@ import (
 
 // VaultClient provides typed access to a LangoVault contract instance.
 type VaultClient struct {
-	caller  *contract.Caller
+	caller  contract.ContractCaller
 	address common.Address
 	chainID int64
 	abiJSON string
 }
 
 // NewVaultClient creates a vault client for a specific vault address.
-func NewVaultClient(caller *contract.Caller, address common.Address, chainID int64) *VaultClient {
+func NewVaultClient(caller contract.ContractCaller, address common.Address, chainID int64) *VaultClient {
 	return &VaultClient{
 		caller:  caller,
 		address: address,

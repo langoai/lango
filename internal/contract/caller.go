@@ -22,6 +22,15 @@ const DefaultTimeout = 30 * time.Second
 // MaxRetries is the default number of retry attempts for transaction submission.
 const MaxRetries = 3
 
+// ContractCaller abstracts read and write access to smart contracts.
+type ContractCaller interface {
+	Read(ctx context.Context, req ContractCallRequest) (*ContractCallResult, error)
+	Write(ctx context.Context, req ContractCallRequest) (*ContractCallResult, error)
+}
+
+// Compile-time check.
+var _ ContractCaller = (*Caller)(nil)
+
 // Caller provides read and write access to smart contracts.
 type Caller struct {
 	rpc        *ethclient.Client

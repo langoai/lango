@@ -12,14 +12,14 @@ import (
 
 // HubClient provides typed access to the LangoEscrowHub contract.
 type HubClient struct {
-	caller  *contract.Caller
+	caller  contract.ContractCaller
 	address common.Address
 	chainID int64
 	abiJSON string
 }
 
 // NewHubClient creates a hub client for the given contract address.
-func NewHubClient(caller *contract.Caller, address common.Address, chainID int64) *HubClient {
+func NewHubClient(caller contract.ContractCaller, address common.Address, chainID int64) *HubClient {
 	return &HubClient{
 		caller:  caller,
 		address: address,

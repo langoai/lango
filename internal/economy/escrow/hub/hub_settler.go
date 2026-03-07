@@ -41,7 +41,7 @@ func WithHubLogger(l *zap.SugaredLogger) HubSettlerOption {
 }
 
 // NewHubSettler creates a hub-mode settler.
-func NewHubSettler(caller *contract.Caller, hubAddr, tokenAddr common.Address, chainID int64, opts ...HubSettlerOption) *HubSettler {
+func NewHubSettler(caller contract.ContractCaller, hubAddr, tokenAddr common.Address, chainID int64, opts ...HubSettlerOption) *HubSettler {
 	s := &HubSettler{
 		hub:       NewHubClient(caller, hubAddr, chainID),
 		tokenAddr: tokenAddr,

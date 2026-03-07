@@ -12,14 +12,14 @@ import (
 
 // FactoryClient provides typed access to the LangoVaultFactory contract.
 type FactoryClient struct {
-	caller  *contract.Caller
+	caller  contract.ContractCaller
 	address common.Address
 	chainID int64
 	abiJSON string
 }
 
 // NewFactoryClient creates a factory client for the given contract address.
-func NewFactoryClient(caller *contract.Caller, address common.Address, chainID int64) *FactoryClient {
+func NewFactoryClient(caller contract.ContractCaller, address common.Address, chainID int64) *FactoryClient {
 	return &FactoryClient{
 		caller:  caller,
 		address: address,
