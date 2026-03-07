@@ -756,7 +756,21 @@ Each firewall rule entry:
       "defaultTimeout": "24h",
       "maxMilestones": 10,
       "autoRelease": false,
-      "disputeWindow": "1h"
+      "disputeWindow": "1h",
+      "settlement": {
+        "receiptTimeout": "2m",
+        "maxRetries": 3
+      },
+      "onChain": {
+        "enabled": false,
+        "mode": "hub",
+        "hubAddress": "",
+        "vaultFactoryAddress": "",
+        "vaultImplementation": "",
+        "arbitratorAddress": "",
+        "tokenAddress": "",
+        "pollInterval": "15s"
+      }
     },
     "pricing": {
       "enabled": false,
@@ -787,6 +801,16 @@ Each firewall rule entry:
 | `economy.escrow.maxMilestones` | `int` | `10` | Maximum milestones per escrow |
 | `economy.escrow.autoRelease` | `bool` | `false` | Auto-release funds when all milestones met |
 | `economy.escrow.disputeWindow` | `duration` | `1h` | Time window for disputes after completion |
+| `economy.escrow.settlement.receiptTimeout` | `duration` | `2m` | Max wait for on-chain receipt confirmation |
+| `economy.escrow.settlement.maxRetries` | `int` | `3` | Max transaction submission retries |
+| `economy.escrow.onChain.enabled` | `bool` | `false` | Enable on-chain escrow mode |
+| `economy.escrow.onChain.mode` | `string` | `hub` | On-chain escrow pattern: `hub` or `vault` |
+| `economy.escrow.onChain.hubAddress` | `string` | | Deployed LangoEscrowHub contract address |
+| `economy.escrow.onChain.vaultFactoryAddress` | `string` | | Deployed LangoVaultFactory contract address |
+| `economy.escrow.onChain.vaultImplementation` | `string` | | LangoVault implementation address for cloning |
+| `economy.escrow.onChain.arbitratorAddress` | `string` | | Dispute arbitrator address |
+| `economy.escrow.onChain.tokenAddress` | `string` | | ERC-20 token (USDC) contract address |
+| `economy.escrow.onChain.pollInterval` | `duration` | `15s` | Event monitor polling interval |
 | `economy.pricing.enabled` | `bool` | `false` | Enable dynamic pricing adjustments |
 | `economy.pricing.trustDiscount` | `float64` | `0.1` | Max discount for high-trust peers (0-1) |
 | `economy.pricing.volumeDiscount` | `float64` | `0.05` | Max discount for high-volume peers (0-1) |

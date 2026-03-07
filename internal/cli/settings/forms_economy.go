@@ -192,6 +192,96 @@ func NewEconomyEscrowForm(cfg *config.Config) *tuicore.FormModel {
 	return &form
 }
 
+// NewEconomyEscrowOnChainForm creates the on-chain escrow configuration form.
+func NewEconomyEscrowOnChainForm(cfg *config.Config) *tuicore.FormModel {
+	form := tuicore.NewFormModel("On-Chain Escrow Configuration")
+	oc := cfg.Economy.Escrow.OnChain
+	st := cfg.Economy.Escrow.Settlement
+
+	form.AddField(&tuicore.Field{
+		Key: "economy_escrow_onchain_enabled", Label: "Enabled", Type: tuicore.InputBool,
+		Checked:     oc.Enabled,
+		Description: "Enable on-chain escrow mode",
+	})
+
+	form.AddField(&tuicore.Field{
+		Key: "economy_escrow_onchain_mode", Label: "Mode", Type: tuicore.InputText,
+		Value:       oc.Mode,
+		Placeholder: "hub (hub or vault)",
+		Description: "On-chain escrow pattern: hub (single contract) or vault (per-deal clone)",
+		Validate: func(s string) error {
+			if s != "hub" && s != "vault" {
+				return fmt.Errorf("must be 'hub' or 'vault'")
+			}
+			return nil
+		},
+	})
+
+	form.AddField(&tuicore.Field{
+		Key: "economy_escrow_onchain_hub_address", Label: "Hub Address", Type: tuicore.InputText,
+		Value:       oc.HubAddress,
+		Placeholder: "0x...",
+		Description: "Deployed LangoEscrowHub contract address",
+	})
+
+	form.AddField(&tuicore.Field{
+		Key: "economy_escrow_onchain_vault_factory", Label: "Vault Factory Address", Type: tuicore.InputText,
+		Value:       oc.VaultFactoryAddress,
+		Placeholder: "0x...",
+		Description: "Deployed LangoVaultFactory contract address",
+	})
+
+	form.AddField(&tuicore.Field{
+		Key: "economy_escrow_onchain_vault_impl", Label: "Vault Implementation", Type: tuicore.InputText,
+		Value:       oc.VaultImplementation,
+		Placeholder: "0x...",
+		Description: "LangoVault implementation address for cloning",
+	})
+
+	form.AddField(&tuicore.Field{
+		Key: "economy_escrow_onchain_arbitrator", Label: "Arbitrator Address", Type: tuicore.InputText,
+		Value:       oc.ArbitratorAddress,
+		Placeholder: "0x...",
+		Description: "Dispute arbitrator address",
+	})
+
+	form.AddField(&tuicore.Field{
+		Key: "economy_escrow_onchain_token", Label: "Token Address", Type: tuicore.InputText,
+		Value:       oc.TokenAddress,
+		Placeholder: "0x...",
+		Description: "ERC-20 token (USDC) contract address",
+	})
+
+	form.AddField(&tuicore.Field{
+		Key: "economy_escrow_onchain_poll_interval", Label: "Poll Interval", Type: tuicore.InputText,
+		Value:       oc.PollInterval.String(),
+		Placeholder: "15s",
+		Description: "Event monitor polling interval",
+	})
+
+	form.AddField(&tuicore.Field{
+		Key: "economy_escrow_settlement_receipt_timeout", Label: "Receipt Timeout", Type: tuicore.InputText,
+		Value:       st.ReceiptTimeout.String(),
+		Placeholder: "2m",
+		Description: "Max wait for on-chain receipt confirmation",
+	})
+
+	form.AddField(&tuicore.Field{
+		Key: "economy_escrow_settlement_max_retries", Label: "Max Retries", Type: tuicore.InputInt,
+		Value:       strconv.Itoa(st.MaxRetries),
+		Placeholder: "3",
+		Description: "Max transaction submission retries",
+		Validate: func(s string) error {
+			if i, err := strconv.Atoi(s); err != nil || i < 0 {
+				return fmt.Errorf("must be a non-negative integer")
+			}
+			return nil
+		},
+	})
+
+	return &form
+}
+
 // NewEconomyPricingForm creates the Economy Dynamic Pricing configuration form.
 func NewEconomyPricingForm(cfg *config.Config) *tuicore.FormModel {
 	form := tuicore.NewFormModel("Economy Pricing Configuration")

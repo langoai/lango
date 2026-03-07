@@ -1,9 +1,7 @@
 ## Purpose
 
 Security anomaly detection engine for the on-chain escrow system. Monitors escrow activity via eventbus subscriptions and generates alerts for suspicious patterns.
-
 ## Requirements
-
 ### Requirement: Sentinel engine with anomaly detection
 The system SHALL provide a Sentinel engine that subscribes to eventbus escrow events, runs them through pluggable Detector implementations, and stores generated alerts. The engine SHALL support Start/Stop lifecycle.
 
@@ -46,3 +44,32 @@ The system SHALL provide a `security-sentinel.yaml` skill that allows the agent 
 #### Scenario: Skill invocation for alerts
 - **WHEN** the security-sentinel skill is invoked with action=alerts
 - **THEN** the agent calls sentinel_alerts and reports severity levels with recommended actions
+
+### Requirement: Sentinel documentation in economy.md
+The system SHALL include a Security Sentinel subsection in `docs/features/economy.md` covering 5 anomaly detectors, alert severity levels, and configuration.
+
+#### Scenario: Detector documentation
+- **WHEN** a user reads the Sentinel section in economy.md
+- **THEN** they find descriptions of RapidCreation, LargeWithdrawal, RepeatedDispute, UnusualTiming, and BalanceDrop detectors
+
+### Requirement: Sentinel tools in system prompts
+The system SHALL list all 4 `sentinel_*` tools in `prompts/TOOL_USAGE.md`: `sentinel_status`, `sentinel_alerts`, `sentinel_config`, `sentinel_acknowledge`.
+
+#### Scenario: Sentinel tool names match code
+- **WHEN** the agent reads TOOL_USAGE.md
+- **THEN** tool names match those registered in `internal/app/tools_sentinel.go`
+
+### Requirement: Sentinel CLI documentation
+The system SHALL document the `lango economy escrow sentinel status` command in `docs/cli/economy.md`.
+
+#### Scenario: Sentinel CLI reference
+- **WHEN** a user reads `docs/cli/economy.md`
+- **THEN** they find the sentinel status command with description and output format
+
+### Requirement: README reflects sentinel
+The system SHALL mention Security Sentinel anomaly detection in `README.md` features.
+
+#### Scenario: Sentinel in README
+- **WHEN** a user reads README.md
+- **THEN** Security Sentinel is mentioned in the features section
+

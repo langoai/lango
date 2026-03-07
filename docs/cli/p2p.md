@@ -503,6 +503,18 @@ $ lango p2p team disband a1b2c3d4-5678-9012-abcd-ef1234567890
 Team a1b2c3d4-5678-9012-abcd-ef1234567890 disbanded.
 ```
 
+### Team Coordination Features
+
+Teams support configurable conflict resolution and payment coordination:
+
+- **Conflict Resolution**: `trust_weighted` (default), `majority_vote`, `leader_decides`, `fail_on_conflict`
+- **Assignment**: `best_match`, `round_robin`, `load_balanced`
+- **Payment Modes**: Trust-based mode selection — `free` (price=0), `postpay` (trust >= 0.7), `prepay` (trust < 0.7)
+
+Teams are runtime-only structures managed by the running server. Use `lango serve` to start the server and form teams via the agent tools (`p2p_team_create`, `p2p_team_join`).
+
+See the [P2P Team Coordination](../features/p2p-network.md#p2p-team-coordination) section for detailed documentation on conflict resolution strategies, assignment strategies, and payment coordination.
+
 ---
 
 ## lango p2p zkp

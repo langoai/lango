@@ -155,20 +155,22 @@ stateDiagram-v2
 
 ## Escrow
 
-The escrow service holds funds in a milestone-based escrow between buyer and seller. Funds are released when all milestones are completed, or refunded if a dispute is raised within the dispute window.
+The escrow service holds funds in a milestone-based escrow between buyer and seller. The escrow follows a structured lifecycle from creation through settlement, with support for dispute resolution.
 
 ### Lifecycle
 
 ```mermaid
 stateDiagram-v2
     [*] --> Created
-    Created --> Active: Funded
-    Active --> Active: Milestone completed
-    Active --> Completed: All milestones done
-    Completed --> Released: Funds released
-    Active --> Disputed: Dispute raised
-    Disputed --> Released: Resolved in seller's favor
-    Disputed --> Refunded: Resolved in buyer's favor
+    Created --> Funded: escrow_fund
+    Funded --> Active: escrow_activate
+    Active --> WorkSubmitted: escrow_submit_work
+    WorkSubmitted --> Released: escrow_release
+    Active --> Disputed: escrow_dispute
+    Funded --> Disputed: escrow_dispute
+    Disputed --> Resolved: escrow_resolve
+    Active --> Refunded: escrow_refund
+    Funded --> Refunded: escrow_refund
 ```
 
 ### Configuration
@@ -187,19 +189,102 @@ stateDiagram-v2
 
 | Tool | Description |
 |------|-------------|
-| `economy_escrow_create` | Create a milestone-based escrow between buyer and seller |
-| `economy_escrow_milestone` | Complete a milestone in an escrow |
-| `economy_escrow_status` | Check escrow status and milestone progress |
-| `economy_escrow_release` | Release escrow funds to seller |
-| `economy_escrow_dispute` | Raise a dispute on an escrow |
+| `escrow_create` | Create a new escrow deal between buyer and seller with milestones |
+| `escrow_fund` | Fund an escrow with USDC (deposits to contract if on-chain) |
+| `escrow_activate` | Activate a funded escrow so work can begin |
+| `escrow_submit_work` | Submit a work hash as proof of completion |
+| `escrow_release` | Release escrow funds to the seller |
+| `escrow_refund` | Refund escrow funds to the buyer |
+| `escrow_dispute` | Raise a dispute on an escrow |
+| `escrow_resolve` | Resolve a disputed escrow as arbitrator |
+| `escrow_status` | Get detailed escrow status including on-chain state |
+| `escrow_list` | List all escrows with optional filter |
 
 ### Events
 
 | Event | Description |
 |-------|-------------|
 | `escrow.created` | Escrow locked between payer and payee |
-| `escrow.milestone` | Escrow milestone completed |
-| `escrow.released` | Escrow funds released on-chain |
+| `escrow.funded` | Escrow funded with USDC |
+| `escrow.activated` | Escrow activated for work |
+| `escrow.work_submitted` | Work proof submitted |
+| `escrow.released` | Escrow funds released |
+| `escrow.refunded` | Escrow funds refunded to buyer |
+| `escrow.disputed` | Dispute raised on escrow |
+| `escrow.resolved` | Dispute resolved by arbitrator |
+
+## On-Chain Escrow
+
+When on-chain settlement is enabled, escrow operations are backed by Solidity smart contracts deployed on an EVM-compatible chain. Lango supports two on-chain modes:
+
+### Hub Mode
+
+Uses a single **LangoEscrowHub** contract that holds multiple deals. All escrows share one contract address, reducing deployment costs. This is the default on-chain mode.
+
+### Vault Mode
+
+Uses **LangoVaultFactory** to deploy a per-deal **LangoVault** via EIP-1167 minimal proxy (clone). Each escrow gets its own isolated contract instance, providing stronger separation of funds.
+
+### On-Chain Deal States
+
+```
+Created --> Deposited --> WorkSubmitted --> Released
+                 |              |
+             Disputed      Refunded
+                 |
+             Resolved
+```
+
+### On-Chain Configuration
+
+| Key | Default | Description |
+|-----|---------|-------------|
+| `economy.escrow.onChain.enabled` | `false` | Enable on-chain escrow settlement |
+| `economy.escrow.onChain.mode` | `"hub"` | On-chain mode: `hub` or `vault` |
+| `economy.escrow.onChain.hubAddress` | `-` | Deployed LangoEscrowHub contract address |
+| `economy.escrow.onChain.vaultFactoryAddress` | `-` | Deployed LangoVaultFactory contract address |
+| `economy.escrow.onChain.vaultImplementation` | `-` | LangoVault implementation address for cloning |
+| `economy.escrow.onChain.arbitratorAddress` | `-` | On-chain arbitrator wallet address |
+| `economy.escrow.onChain.tokenAddress` | `-` | ERC-20 token (USDC) contract address |
+| `economy.escrow.onChain.pollInterval` | `15s` | Interval for polling on-chain state |
+
+### On-Chain Events
+
+| Event | Description |
+|-------|-------------|
+| `escrow.onchain.deposit` | Tokens deposited into on-chain escrow |
+| `escrow.onchain.work` | Work proof submitted on-chain |
+| `escrow.onchain.release` | On-chain escrow funds released |
+| `escrow.onchain.refund` | On-chain escrow funds refunded |
+| `escrow.onchain.dispute` | On-chain dispute raised |
+| `escrow.onchain.resolved` | On-chain dispute resolved |
+
+## Security Sentinel
+
+The Security Sentinel monitors escrow activity for suspicious patterns and generates alerts. It runs as a background engine that analyzes escrow events in real time.
+
+### Detectors
+
+| Detector | Description |
+|----------|-------------|
+| **RapidCreation** | Flags agents creating many escrows in a short window |
+| **LargeWithdrawal** | Flags unusually large fund releases or refunds |
+| **RepeatedDispute** | Flags agents with a high dispute-to-completion ratio |
+| **UnusualTiming** | Flags escrow operations outside normal hours |
+| **BalanceDrop (WashTrade)** | Flags circular fund flows suggesting wash trading |
+
+### Alert Severity
+
+Alerts are categorized by severity: `critical`, `high`, `medium`, `low`.
+
+### Agent Tools
+
+| Tool | Description |
+|------|-------------|
+| `sentinel_status` | Get Sentinel engine status (running state, alert counts) |
+| `sentinel_alerts` | List security alerts with optional severity filter |
+| `sentinel_config` | Show current detection thresholds |
+| `sentinel_acknowledge` | Acknowledge and dismiss an alert by ID |
 
 ## Events Summary
 
@@ -213,8 +298,19 @@ All economy events are published on the event bus:
 | `negotiation.completed` | Negotiation terms agreed |
 | `negotiation.failed` | Negotiation rejected, expired, or cancelled |
 | `escrow.created` | Escrow locked between payer and payee |
-| `escrow.milestone` | Escrow milestone completed |
-| `escrow.released` | Escrow funds released on-chain |
+| `escrow.funded` | Escrow funded with USDC |
+| `escrow.activated` | Escrow activated for work |
+| `escrow.work_submitted` | Work proof submitted |
+| `escrow.released` | Escrow funds released |
+| `escrow.refunded` | Escrow funds refunded to buyer |
+| `escrow.disputed` | Dispute raised on escrow |
+| `escrow.resolved` | Dispute resolved by arbitrator |
+| `escrow.onchain.deposit` | Tokens deposited into on-chain escrow |
+| `escrow.onchain.work` | Work proof submitted on-chain |
+| `escrow.onchain.release` | On-chain escrow funds released |
+| `escrow.onchain.refund` | On-chain escrow funds refunded |
+| `escrow.onchain.dispute` | On-chain dispute raised |
+| `escrow.onchain.resolved` | On-chain dispute resolved |
 
 ## Configuration
 
@@ -256,6 +352,16 @@ All economy events are published on the event bus:
       "settlement": {
         "receiptTimeout": "2m",
         "maxRetries": 3
+      },
+      "onChain": {
+        "enabled": false,
+        "mode": "hub",
+        "hubAddress": "",
+        "vaultFactoryAddress": "",
+        "vaultImplementation": "",
+        "arbitratorAddress": "",
+        "tokenAddress": "",
+        "pollInterval": "15s"
       }
     }
   }
