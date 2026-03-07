@@ -599,6 +599,64 @@ Teams operate with a `ScopedContext` that controls metadata sharing between memb
 
 Teams track cumulative spending via `AddSpend()`. The leader manages the team's budget and can enforce spending limits across all members.
 
+### Conflict Resolution
+
+When multiple team members produce conflicting results for the same task, the coordinator applies a configurable conflict resolution strategy:
+
+| Strategy | Behavior |
+|----------|----------|
+| `trust_weighted` | Picks the result from the highest-trust (fastest) agent |
+| `majority_vote` | Picks the most common result by simple majority |
+| `leader_decides` | Returns the first successful result for leader review |
+| `fail_on_conflict` | Returns an error if members produce different results |
+
+Source: `internal/p2p/team/conflict.go`
+
+### Assignment Strategies
+
+Task assignment to team members follows one of three strategies:
+
+| Strategy | Behavior |
+|----------|----------|
+| `best_match` | Assigns to the agent with the highest capability match |
+| `round_robin` | Cycles through members evenly |
+| `load_balanced` | Assigns to the least-busy member |
+
+Source: `internal/p2p/team/coordinator.go`
+
+### Payment Coordination
+
+The `PaymentCoordinator` negotiates payment terms between team leader and members. Payment mode is selected based on trust score:
+
+| Trust Score | Mode | Description |
+|-------------|------|-------------|
+| Price = 0 | `free` | No payment required |
+| >= 0.7 | `postpay` | Tool executes first, payment settles after |
+| < 0.7 | `prepay` | Payment must confirm before tool execution |
+
+The `Negotiator` queries each member's tool price and trust score to determine the payment mode. Agreements include `PricePerUse`, `Currency` (USDC), `MaxUses`, and `ValidUntil`.
+
+Source: `internal/p2p/team/payment.go`
+
+### Team Events
+
+The event bus publishes team lifecycle events:
+
+| Event | Description |
+|-------|-------------|
+| `team.formed` | New team created with leader and initial members |
+| `team.disbanded` | Team disbanded with reason |
+| `team.member.joined` | Agent joined a team with role |
+| `team.member.left` | Agent left a team with reason |
+| `team.task.delegated` | Task sent to team workers |
+| `team.task.completed` | Delegated task finished with success/failure counts |
+| `team.conflict.detected` | Conflicting results found from members |
+| `team.payment.agreed` | Payment terms negotiated with member |
+| `team.health.check` | Team-level health sweep completed |
+| `team.leader.changed` | Team leader replaced |
+
+Source: `internal/eventbus/team_events.go`
+
 ## Agent Pool
 
 The agent pool provides discovery, health monitoring, and intelligent selection of P2P agents.

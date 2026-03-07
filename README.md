@@ -3,7 +3,13 @@
 </div>
 <br>
 
+
 # Lango 🐿️
+[![Ask DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/langoai/lango)
+[![CI](https://github.com/langoai/lango/actions/workflows/ci.yml/badge.svg)](https://github.com/langoai/lango/actions/workflows/ci.yml)
+[![Go Version](https://img.shields.io/github/go-mod/go-version/langoai/lango)](https://github.com/langoai/lango)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![Go Report Card](https://goreportcard.com/badge/github.com/langoai/lango)](https://goreportcard.com/report/github.com/langoai/lango)
 
 **A sovereign AI agent runtime with built-in commerce.** Lango is a high-performance agent in Go that lets AI agents discover each other, negotiate, transact, and collaborate — without intermediaries.
 
@@ -49,11 +55,12 @@ This project includes experimental AI Agent features and is currently in an unst
 - 🧬 **Agent Memory** - Per-agent persistent memory for cross-session context retention
 - 📡 **Event Bus** - Typed synchronous pub/sub for internal component communication
 - 🪝 **Tool Hooks** - Middleware chain for tool execution (security filter, access control, event publishing, knowledge save)
-- 👥 **P2P Teams** - Task-scoped agent groups with role-based delegation (Leader, Worker, Reviewer, Observer)
 - 🏊 **Agent Pool** - P2P agent pool with health checking and weighted selection
 - 💰 **P2P Settlement** - On-chain USDC settlement with EIP-3009, receipt tracking, and retry
-- 💰 **P2P Economy** — Budget management, trust-based risk assessment, dynamic pricing with peer discounts, P2P negotiation protocol, and milestone-based escrow with USDC settlement
-- 📜 **Smart Contracts** — EVM smart contract interaction with ABI caching, view/pure reads, and state-changing calls
+- 💰 **P2P Economy** — Budget management, trust-based risk assessment, dynamic pricing with peer discounts, P2P negotiation protocol, and milestone-based escrow with on-chain Hub/Vault dual-mode settlement
+- 🛡️ **Security Sentinel** — Real-time anomaly detection for on-chain escrow (rapid creation, large withdrawal, repeated dispute, unusual timing, balance drop)
+- 📜 **Smart Contracts** — EVM smart contract interaction with ABI caching, view/pure reads, state-changing calls, and Foundry-based escrow contracts (LangoEscrowHub, LangoVault, LangoVaultFactory)
+- 👥 **P2P Teams** — Task-scoped agent groups with role-based delegation, conflict resolution (trust_weighted, majority_vote, leader_decides, fail_on_conflict), assignment strategies, and payment coordination
 - 📊 **Observability** — Token usage tracking, health monitoring, audit logging, and metrics endpoints
 
 ## Quick Start
@@ -217,7 +224,10 @@ lango economy budget status     Show budget allocation status
 lango economy risk status       Show risk assessment configuration
 lango economy pricing status    Show dynamic pricing configuration
 lango economy negotiate status  Show negotiation protocol status
-lango economy escrow status     Show escrow service status
+lango economy escrow status     Show escrow service configuration
+lango economy escrow list       Show escrow summary (on-chain mode, addresses)
+lango economy escrow show       Show detailed on-chain escrow configuration (--id)
+lango economy escrow sentinel status  Show Security Sentinel engine status
 
 lango contract read [flags]     Read a smart contract method (--address, --method, --abi, --args)
 lango contract call [flags]     Execute a state-changing contract method (--address, --method, --value)
@@ -284,7 +294,7 @@ lango/
 │   │   ├── prompt/         #   interactive prompt utilities
 │   │   ├── security/       #   lango security status/secrets/migrate-passphrase/keyring/db-migrate/db-decrypt/kms
 │   │   ├── p2p/            #   lango p2p status/peers/connect/disconnect/firewall/discover/identity/reputation/pricing/session/sandbox
-│   │   ├── economy/       #   lango economy budget/risk/pricing/negotiate/escrow status
+│   │   ├── economy/       #   lango economy budget/risk/pricing/negotiate/escrow status/list/show/sentinel
 │   │   ├── contract/      #   lango contract read/call/abi
 │   │   ├── metrics/       #   lango metrics [sessions|tools|agents|history]
 │   │   └── tui/            #   TUI components and views
@@ -293,6 +303,9 @@ lango/
 │   ├── ctxkeys/            # Context key helpers for agent name propagation
 │   ├── a2a/                # A2A protocol server and remote agent loading
 │   ├── economy/             # P2P economy layer (budget, risk, pricing, negotiation, escrow)
+│   │   └── escrow/          #   Milestone escrow engine, on-chain settlement
+│   │       ├── hub/         #     Hub/Vault settlers, contract clients
+│   │       └── sentinel/    #     Security Sentinel anomaly detection
 │   ├── embedding/          # Embedding providers (OpenAI, Google, local) and RAG
 │   ├── ent/                # Ent ORM schemas and generated code
 │   ├── eventbus/           # Typed synchronous event pub/sub
@@ -332,6 +345,7 @@ lango/
 │   ├── toolchain/          # Middleware chain for tool wrapping
 │   ├── tools/              # browser, crypto, exec, filesystem, secrets, payment
 │   └── types/              # Shared types (ProviderType, Role, RPCSenderFunc)
+├── contracts/              # Foundry-based Solidity contracts (LangoEscrowHub, LangoVault, LangoVaultFactory)
 ├── prompts/                # Default prompt .md files (embedded via go:embed)
 ├── skills/                 # Skill system scaffold (go:embed). Built-in skills were removed — Lango's passphrase-based security model makes it impractical for the agent to invoke CLI commands as skills
 └── openspec/               # Specifications (OpenSpec workflow)

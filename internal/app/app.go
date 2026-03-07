@@ -362,6 +362,34 @@ func New(boot *bootstrap.Result) (*App, error) {
 		})
 		catalog.Register("economy", econTools)
 		logger().Info("economy tools registered")
+
+		// 5o'. On-chain escrow tools (if escrow engine is available)
+		if econc.escrowEngine != nil && econc.escrowSettler != nil {
+			escrowTools := buildOnChainEscrowTools(econc.escrowEngine, econc.escrowSettler)
+			tools = append(tools, escrowTools...)
+			catalog.RegisterCategory(toolcatalog.Category{
+				Name:        "escrow",
+				Description: "On-chain escrow management (hub/vault/custodian)",
+				ConfigKey:   "economy.escrow.enabled",
+				Enabled:     true,
+			})
+			catalog.Register("escrow", escrowTools)
+			logger().Info("on-chain escrow tools registered")
+		}
+
+		// 5o''. Sentinel tools (if sentinel engine is available)
+		if econc.sentinelEngine != nil {
+			sentTools := buildSentinelTools(econc.sentinelEngine)
+			tools = append(tools, sentTools...)
+			catalog.RegisterCategory(toolcatalog.Category{
+				Name:        "sentinel",
+				Description: "Security Sentinel anomaly detection",
+				ConfigKey:   "economy.escrow.enabled",
+				Enabled:     true,
+			})
+			catalog.Register("sentinel", sentTools)
+			logger().Info("sentinel tools registered")
+		}
 	}
 
 	// 5p. Contract interaction (optional, requires payment)

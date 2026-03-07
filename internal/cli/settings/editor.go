@@ -363,6 +363,10 @@ func (e *Editor) handleMenuSelection(id string) tea.Cmd {
 		e.activeForm = NewEconomyEscrowForm(e.state.Current)
 		e.activeForm.Focus = true
 		e.step = StepForm
+	case "economy_escrow_onchain":
+		e.activeForm = NewEconomyEscrowOnChainForm(e.state.Current)
+		e.activeForm.Focus = true
+		e.step = StepForm
 	case "economy_pricing":
 		e.activeForm = NewEconomyPricingForm(e.state.Current)
 		e.activeForm.Focus = true

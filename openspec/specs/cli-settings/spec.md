@@ -1,9 +1,7 @@
 ## Purpose
 
 Define the `lango settings` command that provides a comprehensive, interactive menu-based configuration editor for all aspects of the encrypted configuration profile.
-
 ## Requirements
-
 ### Requirement: Configuration Coverage
 The settings editor SHALL support editing all configuration sections:
 1. **Providers** — Add, edit, delete multi-provider configurations
@@ -679,3 +677,33 @@ The `UpdateConfigFromForm()` function SHALL handle all economy and observability
 #### Scenario: Observability form fields saved
 - **WHEN** user edits observability form fields and navigates back
 - **THEN** the config state SHALL be updated for all observability.* fields including tokens, health, audit, and metrics sub-configs
+
+### Requirement: TUI on-chain escrow form
+The system SHALL provide a TUI form (`NewEconomyEscrowOnChainForm`) for configuring on-chain escrow settings with 10 fields: enabled, mode, hubAddress, vaultFactoryAddress, vaultImplementation, arbitratorAddress, tokenAddress, pollInterval, receiptTimeout, maxRetries.
+
+#### Scenario: Form creation
+- **WHEN** the user selects "On-Chain Escrow" from the settings menu
+- **THEN** a form with 10 fields matching `EscrowOnChainConfig` and `EscrowSettlementConfig` is displayed
+
+#### Scenario: Mode validation
+- **WHEN** the user enters a value other than "hub" or "vault" for the mode field
+- **THEN** a validation error "must be 'hub' or 'vault'" is shown
+
+#### Scenario: Max retries validation
+- **WHEN** the user enters a negative number for max retries
+- **THEN** a validation error "must be a non-negative integer" is shown
+
+### Requirement: Menu category for on-chain escrow
+The system SHALL include an `economy_escrow_onchain` category in the Economy section of the settings menu with title "On-Chain Escrow" and description "Hub/Vault mode, contracts, settlement".
+
+#### Scenario: Menu navigation
+- **WHEN** the user navigates the settings menu to the Economy section
+- **THEN** "On-Chain Escrow" appears as a selectable category
+
+### Requirement: Editor wiring for on-chain escrow
+The system SHALL wire the `economy_escrow_onchain` menu selection to the `NewEconomyEscrowOnChainForm` in `editor.go`.
+
+#### Scenario: Menu selection handler
+- **WHEN** the user selects `economy_escrow_onchain` from the menu
+- **THEN** `handleMenuSelection` returns the on-chain escrow form model
+

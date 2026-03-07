@@ -45,6 +45,11 @@ passphrase.txt
 bin/
 dist/
 
+# Foundry
+contracts/out/
+contracts/cache/
+contracts/lib/
+
 # Coverage reports
 .coverage/
 

@@ -165,3 +165,101 @@ When escrow is disabled:
 $ lango economy escrow status
 Escrow is disabled.
 ```
+
+---
+
+## lango economy escrow list
+
+Show escrow configuration summary including on-chain mode.
+
+```
+lango economy escrow list
+```
+
+No additional flags.
+
+**Example:**
+
+```bash
+$ lango economy escrow list
+Escrow Summary:
+  On-Chain Escrow:  enabled
+  Mode:             hub
+  Hub Address:      0x1234...
+  Auto Release:     false
+  Default Timeout:  24h0m0s
+
+Use 'lango economy escrow show' for detailed on-chain configuration.
+```
+
+When economy is disabled:
+
+```bash
+$ lango economy escrow list
+Economy layer is disabled. Enable with economy.enabled=true
+```
+
+---
+
+## lango economy escrow show
+
+Show detailed on-chain escrow configuration including all contract addresses and settlement parameters.
+
+```
+lango economy escrow show [--id <escrow-id>]
+```
+
+| Flag | Type | Default | Description |
+|------|------|---------|-------------|
+| `--id` | string | `""` | Escrow ID to show (future use) |
+
+**Example:**
+
+```bash
+$ lango economy escrow show
+On-Chain Escrow Configuration:
+  Enabled:              enabled
+  Mode:                 hub
+  Hub Address:          0x1234...
+  Vault Factory:        (not set)
+  Vault Implementation: (not set)
+  Arbitrator:           0x5678...
+  Token Address:        0x036CbD53842c5426634e7929541eC2318f3dCF7e
+  Poll Interval:        15s
+
+Settlement:
+  Receipt Timeout:      2m0s
+  Max Retries:          3
+```
+
+---
+
+## lango economy escrow sentinel status
+
+Show Security Sentinel engine status.
+
+```
+lango economy escrow sentinel status
+```
+
+No additional flags.
+
+**Example:**
+
+```bash
+$ lango economy escrow sentinel status
+Sentinel Engine:
+  Status:  active (monitors on-chain escrow events)
+  Mode:    hub
+
+The sentinel engine runs within the application server.
+Use 'lango serve' to start and 'lango economy escrow sentinel alerts'
+(via agent tools) to view detected alerts.
+```
+
+When on-chain escrow is disabled:
+
+```bash
+$ lango economy escrow sentinel status
+On-chain escrow is disabled. Sentinel monitors on-chain events.
+```

@@ -16,6 +16,7 @@ import (
 	"github.com/langoai/lango/internal/ent/configprofile"
 	"github.com/langoai/lango/internal/ent/cronjob"
 	"github.com/langoai/lango/internal/ent/cronjobhistory"
+	"github.com/langoai/lango/internal/ent/escrowdeal"
 	"github.com/langoai/lango/internal/ent/externalref"
 	"github.com/langoai/lango/internal/ent/inquiry"
 	"github.com/langoai/lango/internal/ent/key"
@@ -48,6 +49,7 @@ const (
 	TypeConfigProfile   = "ConfigProfile"
 	TypeCronJob         = "CronJob"
 	TypeCronJobHistory  = "CronJobHistory"
+	TypeEscrowDeal      = "EscrowDeal"
 	TypeExternalRef     = "ExternalRef"
 	TypeInquiry         = "Inquiry"
 	TypeKey             = "Key"
@@ -3226,6 +3228,1480 @@ func (m *CronJobHistoryMutation) ClearEdge(name string) error {
 // It returns an error if the edge is not defined in the schema.
 func (m *CronJobHistoryMutation) ResetEdge(name string) error {
 	return fmt.Errorf("unknown CronJobHistory edge %s", name)
+}
+
+// EscrowDealMutation represents an operation that mutates the EscrowDeal nodes in the graph.
+type EscrowDealMutation struct {
+	config
+	op               Op
+	typ              string
+	id               *int
+	escrow_id        *string
+	buyer_did        *string
+	seller_did       *string
+	total_amount     *string
+	status           *string
+	milestones       *[]byte
+	task_id          *string
+	reason           *string
+	dispute_note     *string
+	chain_id         *int64
+	addchain_id      *int64
+	hub_address      *string
+	on_chain_deal_id *string
+	deposit_tx_hash  *string
+	release_tx_hash  *string
+	refund_tx_hash   *string
+	created_at       *time.Time
+	updated_at       *time.Time
+	expires_at       *time.Time
+	clearedFields    map[string]struct{}
+	done             bool
+	oldValue         func(context.Context) (*EscrowDeal, error)
+	predicates       []predicate.EscrowDeal
+}
+
+var _ ent.Mutation = (*EscrowDealMutation)(nil)
+
+// escrowdealOption allows management of the mutation configuration using functional options.
+type escrowdealOption func(*EscrowDealMutation)
+
+// newEscrowDealMutation creates new mutation for the EscrowDeal entity.
+func newEscrowDealMutation(c config, op Op, opts ...escrowdealOption) *EscrowDealMutation {
+	m := &EscrowDealMutation{
+		config:        c,
+		op:            op,
+		typ:           TypeEscrowDeal,
+		clearedFields: make(map[string]struct{}),
+	}
+	for _, opt := range opts {
+		opt(m)
+	}
+	return m
+}
+
+// withEscrowDealID sets the ID field of the mutation.
+func withEscrowDealID(id int) escrowdealOption {
+	return func(m *EscrowDealMutation) {
+		var (
+			err   error
+			once  sync.Once
+			value *EscrowDeal
+		)
+		m.oldValue = func(ctx context.Context) (*EscrowDeal, error) {
+			once.Do(func() {
+				if m.done {
+					err = errors.New("querying old values post mutation is not allowed")
+				} else {
+					value, err = m.Client().EscrowDeal.Get(ctx, id)
+				}
+			})
+			return value, err
+		}
+		m.id = &id
+	}
+}
+
+// withEscrowDeal sets the old EscrowDeal of the mutation.
+func withEscrowDeal(node *EscrowDeal) escrowdealOption {
+	return func(m *EscrowDealMutation) {
+		m.oldValue = func(context.Context) (*EscrowDeal, error) {
+			return node, nil
+		}
+		m.id = &node.ID
+	}
+}
+
+// Client returns a new `ent.Client` from the mutation. If the mutation was
+// executed in a transaction (ent.Tx), a transactional client is returned.
+func (m EscrowDealMutation) Client() *Client {
+	client := &Client{config: m.config}
+	client.init()
+	return client
+}
+
+// Tx returns an `ent.Tx` for mutations that were executed in transactions;
+// it returns an error otherwise.
+func (m EscrowDealMutation) Tx() (*Tx, error) {
+	if _, ok := m.driver.(*txDriver); !ok {
+		return nil, errors.New("ent: mutation is not running in a transaction")
+	}
+	tx := &Tx{config: m.config}
+	tx.init()
+	return tx, nil
+}
+
+// ID returns the ID value in the mutation. Note that the ID is only available
+// if it was provided to the builder or after it was returned from the database.
+func (m *EscrowDealMutation) ID() (id int, exists bool) {
+	if m.id == nil {
+		return
+	}
+	return *m.id, true
+}
+
+// IDs queries the database and returns the entity ids that match the mutation's predicate.
+// That means, if the mutation is applied within a transaction with an isolation level such
+// as sql.LevelSerializable, the returned ids match the ids of the rows that will be updated
+// or updated by the mutation.
+func (m *EscrowDealMutation) IDs(ctx context.Context) ([]int, error) {
+	switch {
+	case m.op.Is(OpUpdateOne | OpDeleteOne):
+		id, exists := m.ID()
+		if exists {
+			return []int{id}, nil
+		}
+		fallthrough
+	case m.op.Is(OpUpdate | OpDelete):
+		return m.Client().EscrowDeal.Query().Where(m.predicates...).IDs(ctx)
+	default:
+		return nil, fmt.Errorf("IDs is not allowed on %s operations", m.op)
+	}
+}
+
+// SetEscrowID sets the "escrow_id" field.
+func (m *EscrowDealMutation) SetEscrowID(s string) {
+	m.escrow_id = &s
+}
+
+// EscrowID returns the value of the "escrow_id" field in the mutation.
+func (m *EscrowDealMutation) EscrowID() (r string, exists bool) {
+	v := m.escrow_id
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldEscrowID returns the old "escrow_id" field's value of the EscrowDeal entity.
+// If the EscrowDeal object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *EscrowDealMutation) OldEscrowID(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldEscrowID is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldEscrowID requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldEscrowID: %w", err)
+	}
+	return oldValue.EscrowID, nil
+}
+
+// ResetEscrowID resets all changes to the "escrow_id" field.
+func (m *EscrowDealMutation) ResetEscrowID() {
+	m.escrow_id = nil
+}
+
+// SetBuyerDid sets the "buyer_did" field.
+func (m *EscrowDealMutation) SetBuyerDid(s string) {
+	m.buyer_did = &s
+}
+
+// BuyerDid returns the value of the "buyer_did" field in the mutation.
+func (m *EscrowDealMutation) BuyerDid() (r string, exists bool) {
+	v := m.buyer_did
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldBuyerDid returns the old "buyer_did" field's value of the EscrowDeal entity.
+// If the EscrowDeal object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *EscrowDealMutation) OldBuyerDid(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldBuyerDid is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldBuyerDid requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldBuyerDid: %w", err)
+	}
+	return oldValue.BuyerDid, nil
+}
+
+// ResetBuyerDid resets all changes to the "buyer_did" field.
+func (m *EscrowDealMutation) ResetBuyerDid() {
+	m.buyer_did = nil
+}
+
+// SetSellerDid sets the "seller_did" field.
+func (m *EscrowDealMutation) SetSellerDid(s string) {
+	m.seller_did = &s
+}
+
+// SellerDid returns the value of the "seller_did" field in the mutation.
+func (m *EscrowDealMutation) SellerDid() (r string, exists bool) {
+	v := m.seller_did
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldSellerDid returns the old "seller_did" field's value of the EscrowDeal entity.
+// If the EscrowDeal object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *EscrowDealMutation) OldSellerDid(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldSellerDid is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldSellerDid requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldSellerDid: %w", err)
+	}
+	return oldValue.SellerDid, nil
+}
+
+// ResetSellerDid resets all changes to the "seller_did" field.
+func (m *EscrowDealMutation) ResetSellerDid() {
+	m.seller_did = nil
+}
+
+// SetTotalAmount sets the "total_amount" field.
+func (m *EscrowDealMutation) SetTotalAmount(s string) {
+	m.total_amount = &s
+}
+
+// TotalAmount returns the value of the "total_amount" field in the mutation.
+func (m *EscrowDealMutation) TotalAmount() (r string, exists bool) {
+	v := m.total_amount
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldTotalAmount returns the old "total_amount" field's value of the EscrowDeal entity.
+// If the EscrowDeal object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *EscrowDealMutation) OldTotalAmount(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldTotalAmount is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldTotalAmount requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldTotalAmount: %w", err)
+	}
+	return oldValue.TotalAmount, nil
+}
+
+// ResetTotalAmount resets all changes to the "total_amount" field.
+func (m *EscrowDealMutation) ResetTotalAmount() {
+	m.total_amount = nil
+}
+
+// SetStatus sets the "status" field.
+func (m *EscrowDealMutation) SetStatus(s string) {
+	m.status = &s
+}
+
+// Status returns the value of the "status" field in the mutation.
+func (m *EscrowDealMutation) Status() (r string, exists bool) {
+	v := m.status
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldStatus returns the old "status" field's value of the EscrowDeal entity.
+// If the EscrowDeal object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *EscrowDealMutation) OldStatus(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldStatus is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldStatus requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldStatus: %w", err)
+	}
+	return oldValue.Status, nil
+}
+
+// ResetStatus resets all changes to the "status" field.
+func (m *EscrowDealMutation) ResetStatus() {
+	m.status = nil
+}
+
+// SetMilestones sets the "milestones" field.
+func (m *EscrowDealMutation) SetMilestones(b []byte) {
+	m.milestones = &b
+}
+
+// Milestones returns the value of the "milestones" field in the mutation.
+func (m *EscrowDealMutation) Milestones() (r []byte, exists bool) {
+	v := m.milestones
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldMilestones returns the old "milestones" field's value of the EscrowDeal entity.
+// If the EscrowDeal object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *EscrowDealMutation) OldMilestones(ctx context.Context) (v []byte, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldMilestones is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldMilestones requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldMilestones: %w", err)
+	}
+	return oldValue.Milestones, nil
+}
+
+// ClearMilestones clears the value of the "milestones" field.
+func (m *EscrowDealMutation) ClearMilestones() {
+	m.milestones = nil
+	m.clearedFields[escrowdeal.FieldMilestones] = struct{}{}
+}
+
+// MilestonesCleared returns if the "milestones" field was cleared in this mutation.
+func (m *EscrowDealMutation) MilestonesCleared() bool {
+	_, ok := m.clearedFields[escrowdeal.FieldMilestones]
+	return ok
+}
+
+// ResetMilestones resets all changes to the "milestones" field.
+func (m *EscrowDealMutation) ResetMilestones() {
+	m.milestones = nil
+	delete(m.clearedFields, escrowdeal.FieldMilestones)
+}
+
+// SetTaskID sets the "task_id" field.
+func (m *EscrowDealMutation) SetTaskID(s string) {
+	m.task_id = &s
+}
+
+// TaskID returns the value of the "task_id" field in the mutation.
+func (m *EscrowDealMutation) TaskID() (r string, exists bool) {
+	v := m.task_id
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldTaskID returns the old "task_id" field's value of the EscrowDeal entity.
+// If the EscrowDeal object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *EscrowDealMutation) OldTaskID(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldTaskID is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldTaskID requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldTaskID: %w", err)
+	}
+	return oldValue.TaskID, nil
+}
+
+// ClearTaskID clears the value of the "task_id" field.
+func (m *EscrowDealMutation) ClearTaskID() {
+	m.task_id = nil
+	m.clearedFields[escrowdeal.FieldTaskID] = struct{}{}
+}
+
+// TaskIDCleared returns if the "task_id" field was cleared in this mutation.
+func (m *EscrowDealMutation) TaskIDCleared() bool {
+	_, ok := m.clearedFields[escrowdeal.FieldTaskID]
+	return ok
+}
+
+// ResetTaskID resets all changes to the "task_id" field.
+func (m *EscrowDealMutation) ResetTaskID() {
+	m.task_id = nil
+	delete(m.clearedFields, escrowdeal.FieldTaskID)
+}
+
+// SetReason sets the "reason" field.
+func (m *EscrowDealMutation) SetReason(s string) {
+	m.reason = &s
+}
+
+// Reason returns the value of the "reason" field in the mutation.
+func (m *EscrowDealMutation) Reason() (r string, exists bool) {
+	v := m.reason
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldReason returns the old "reason" field's value of the EscrowDeal entity.
+// If the EscrowDeal object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *EscrowDealMutation) OldReason(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldReason is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldReason requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldReason: %w", err)
+	}
+	return oldValue.Reason, nil
+}
+
+// ClearReason clears the value of the "reason" field.
+func (m *EscrowDealMutation) ClearReason() {
+	m.reason = nil
+	m.clearedFields[escrowdeal.FieldReason] = struct{}{}
+}
+
+// ReasonCleared returns if the "reason" field was cleared in this mutation.
+func (m *EscrowDealMutation) ReasonCleared() bool {
+	_, ok := m.clearedFields[escrowdeal.FieldReason]
+	return ok
+}
+
+// ResetReason resets all changes to the "reason" field.
+func (m *EscrowDealMutation) ResetReason() {
+	m.reason = nil
+	delete(m.clearedFields, escrowdeal.FieldReason)
+}
+
+// SetDisputeNote sets the "dispute_note" field.
+func (m *EscrowDealMutation) SetDisputeNote(s string) {
+	m.dispute_note = &s
+}
+
+// DisputeNote returns the value of the "dispute_note" field in the mutation.
+func (m *EscrowDealMutation) DisputeNote() (r string, exists bool) {
+	v := m.dispute_note
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldDisputeNote returns the old "dispute_note" field's value of the EscrowDeal entity.
+// If the EscrowDeal object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *EscrowDealMutation) OldDisputeNote(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldDisputeNote is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldDisputeNote requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldDisputeNote: %w", err)
+	}
+	return oldValue.DisputeNote, nil
+}
+
+// ClearDisputeNote clears the value of the "dispute_note" field.
+func (m *EscrowDealMutation) ClearDisputeNote() {
+	m.dispute_note = nil
+	m.clearedFields[escrowdeal.FieldDisputeNote] = struct{}{}
+}
+
+// DisputeNoteCleared returns if the "dispute_note" field was cleared in this mutation.
+func (m *EscrowDealMutation) DisputeNoteCleared() bool {
+	_, ok := m.clearedFields[escrowdeal.FieldDisputeNote]
+	return ok
+}
+
+// ResetDisputeNote resets all changes to the "dispute_note" field.
+func (m *EscrowDealMutation) ResetDisputeNote() {
+	m.dispute_note = nil
+	delete(m.clearedFields, escrowdeal.FieldDisputeNote)
+}
+
+// SetChainID sets the "chain_id" field.
+func (m *EscrowDealMutation) SetChainID(i int64) {
+	m.chain_id = &i
+	m.addchain_id = nil
+}
+
+// ChainID returns the value of the "chain_id" field in the mutation.
+func (m *EscrowDealMutation) ChainID() (r int64, exists bool) {
+	v := m.chain_id
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldChainID returns the old "chain_id" field's value of the EscrowDeal entity.
+// If the EscrowDeal object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *EscrowDealMutation) OldChainID(ctx context.Context) (v int64, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldChainID is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldChainID requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldChainID: %w", err)
+	}
+	return oldValue.ChainID, nil
+}
+
+// AddChainID adds i to the "chain_id" field.
+func (m *EscrowDealMutation) AddChainID(i int64) {
+	if m.addchain_id != nil {
+		*m.addchain_id += i
+	} else {
+		m.addchain_id = &i
+	}
+}
+
+// AddedChainID returns the value that was added to the "chain_id" field in this mutation.
+func (m *EscrowDealMutation) AddedChainID() (r int64, exists bool) {
+	v := m.addchain_id
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ClearChainID clears the value of the "chain_id" field.
+func (m *EscrowDealMutation) ClearChainID() {
+	m.chain_id = nil
+	m.addchain_id = nil
+	m.clearedFields[escrowdeal.FieldChainID] = struct{}{}
+}
+
+// ChainIDCleared returns if the "chain_id" field was cleared in this mutation.
+func (m *EscrowDealMutation) ChainIDCleared() bool {
+	_, ok := m.clearedFields[escrowdeal.FieldChainID]
+	return ok
+}
+
+// ResetChainID resets all changes to the "chain_id" field.
+func (m *EscrowDealMutation) ResetChainID() {
+	m.chain_id = nil
+	m.addchain_id = nil
+	delete(m.clearedFields, escrowdeal.FieldChainID)
+}
+
+// SetHubAddress sets the "hub_address" field.
+func (m *EscrowDealMutation) SetHubAddress(s string) {
+	m.hub_address = &s
+}
+
+// HubAddress returns the value of the "hub_address" field in the mutation.
+func (m *EscrowDealMutation) HubAddress() (r string, exists bool) {
+	v := m.hub_address
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldHubAddress returns the old "hub_address" field's value of the EscrowDeal entity.
+// If the EscrowDeal object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *EscrowDealMutation) OldHubAddress(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldHubAddress is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldHubAddress requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldHubAddress: %w", err)
+	}
+	return oldValue.HubAddress, nil
+}
+
+// ClearHubAddress clears the value of the "hub_address" field.
+func (m *EscrowDealMutation) ClearHubAddress() {
+	m.hub_address = nil
+	m.clearedFields[escrowdeal.FieldHubAddress] = struct{}{}
+}
+
+// HubAddressCleared returns if the "hub_address" field was cleared in this mutation.
+func (m *EscrowDealMutation) HubAddressCleared() bool {
+	_, ok := m.clearedFields[escrowdeal.FieldHubAddress]
+	return ok
+}
+
+// ResetHubAddress resets all changes to the "hub_address" field.
+func (m *EscrowDealMutation) ResetHubAddress() {
+	m.hub_address = nil
+	delete(m.clearedFields, escrowdeal.FieldHubAddress)
+}
+
+// SetOnChainDealID sets the "on_chain_deal_id" field.
+func (m *EscrowDealMutation) SetOnChainDealID(s string) {
+	m.on_chain_deal_id = &s
+}
+
+// OnChainDealID returns the value of the "on_chain_deal_id" field in the mutation.
+func (m *EscrowDealMutation) OnChainDealID() (r string, exists bool) {
+	v := m.on_chain_deal_id
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldOnChainDealID returns the old "on_chain_deal_id" field's value of the EscrowDeal entity.
+// If the EscrowDeal object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *EscrowDealMutation) OldOnChainDealID(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldOnChainDealID is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldOnChainDealID requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldOnChainDealID: %w", err)
+	}
+	return oldValue.OnChainDealID, nil
+}
+
+// ClearOnChainDealID clears the value of the "on_chain_deal_id" field.
+func (m *EscrowDealMutation) ClearOnChainDealID() {
+	m.on_chain_deal_id = nil
+	m.clearedFields[escrowdeal.FieldOnChainDealID] = struct{}{}
+}
+
+// OnChainDealIDCleared returns if the "on_chain_deal_id" field was cleared in this mutation.
+func (m *EscrowDealMutation) OnChainDealIDCleared() bool {
+	_, ok := m.clearedFields[escrowdeal.FieldOnChainDealID]
+	return ok
+}
+
+// ResetOnChainDealID resets all changes to the "on_chain_deal_id" field.
+func (m *EscrowDealMutation) ResetOnChainDealID() {
+	m.on_chain_deal_id = nil
+	delete(m.clearedFields, escrowdeal.FieldOnChainDealID)
+}
+
+// SetDepositTxHash sets the "deposit_tx_hash" field.
+func (m *EscrowDealMutation) SetDepositTxHash(s string) {
+	m.deposit_tx_hash = &s
+}
+
+// DepositTxHash returns the value of the "deposit_tx_hash" field in the mutation.
+func (m *EscrowDealMutation) DepositTxHash() (r string, exists bool) {
+	v := m.deposit_tx_hash
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldDepositTxHash returns the old "deposit_tx_hash" field's value of the EscrowDeal entity.
+// If the EscrowDeal object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *EscrowDealMutation) OldDepositTxHash(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldDepositTxHash is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldDepositTxHash requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldDepositTxHash: %w", err)
+	}
+	return oldValue.DepositTxHash, nil
+}
+
+// ClearDepositTxHash clears the value of the "deposit_tx_hash" field.
+func (m *EscrowDealMutation) ClearDepositTxHash() {
+	m.deposit_tx_hash = nil
+	m.clearedFields[escrowdeal.FieldDepositTxHash] = struct{}{}
+}
+
+// DepositTxHashCleared returns if the "deposit_tx_hash" field was cleared in this mutation.
+func (m *EscrowDealMutation) DepositTxHashCleared() bool {
+	_, ok := m.clearedFields[escrowdeal.FieldDepositTxHash]
+	return ok
+}
+
+// ResetDepositTxHash resets all changes to the "deposit_tx_hash" field.
+func (m *EscrowDealMutation) ResetDepositTxHash() {
+	m.deposit_tx_hash = nil
+	delete(m.clearedFields, escrowdeal.FieldDepositTxHash)
+}
+
+// SetReleaseTxHash sets the "release_tx_hash" field.
+func (m *EscrowDealMutation) SetReleaseTxHash(s string) {
+	m.release_tx_hash = &s
+}
+
+// ReleaseTxHash returns the value of the "release_tx_hash" field in the mutation.
+func (m *EscrowDealMutation) ReleaseTxHash() (r string, exists bool) {
+	v := m.release_tx_hash
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldReleaseTxHash returns the old "release_tx_hash" field's value of the EscrowDeal entity.
+// If the EscrowDeal object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *EscrowDealMutation) OldReleaseTxHash(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldReleaseTxHash is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldReleaseTxHash requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldReleaseTxHash: %w", err)
+	}
+	return oldValue.ReleaseTxHash, nil
+}
+
+// ClearReleaseTxHash clears the value of the "release_tx_hash" field.
+func (m *EscrowDealMutation) ClearReleaseTxHash() {
+	m.release_tx_hash = nil
+	m.clearedFields[escrowdeal.FieldReleaseTxHash] = struct{}{}
+}
+
+// ReleaseTxHashCleared returns if the "release_tx_hash" field was cleared in this mutation.
+func (m *EscrowDealMutation) ReleaseTxHashCleared() bool {
+	_, ok := m.clearedFields[escrowdeal.FieldReleaseTxHash]
+	return ok
+}
+
+// ResetReleaseTxHash resets all changes to the "release_tx_hash" field.
+func (m *EscrowDealMutation) ResetReleaseTxHash() {
+	m.release_tx_hash = nil
+	delete(m.clearedFields, escrowdeal.FieldReleaseTxHash)
+}
+
+// SetRefundTxHash sets the "refund_tx_hash" field.
+func (m *EscrowDealMutation) SetRefundTxHash(s string) {
+	m.refund_tx_hash = &s
+}
+
+// RefundTxHash returns the value of the "refund_tx_hash" field in the mutation.
+func (m *EscrowDealMutation) RefundTxHash() (r string, exists bool) {
+	v := m.refund_tx_hash
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldRefundTxHash returns the old "refund_tx_hash" field's value of the EscrowDeal entity.
+// If the EscrowDeal object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *EscrowDealMutation) OldRefundTxHash(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldRefundTxHash is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldRefundTxHash requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldRefundTxHash: %w", err)
+	}
+	return oldValue.RefundTxHash, nil
+}
+
+// ClearRefundTxHash clears the value of the "refund_tx_hash" field.
+func (m *EscrowDealMutation) ClearRefundTxHash() {
+	m.refund_tx_hash = nil
+	m.clearedFields[escrowdeal.FieldRefundTxHash] = struct{}{}
+}
+
+// RefundTxHashCleared returns if the "refund_tx_hash" field was cleared in this mutation.
+func (m *EscrowDealMutation) RefundTxHashCleared() bool {
+	_, ok := m.clearedFields[escrowdeal.FieldRefundTxHash]
+	return ok
+}
+
+// ResetRefundTxHash resets all changes to the "refund_tx_hash" field.
+func (m *EscrowDealMutation) ResetRefundTxHash() {
+	m.refund_tx_hash = nil
+	delete(m.clearedFields, escrowdeal.FieldRefundTxHash)
+}
+
+// SetCreatedAt sets the "created_at" field.
+func (m *EscrowDealMutation) SetCreatedAt(t time.Time) {
+	m.created_at = &t
+}
+
+// CreatedAt returns the value of the "created_at" field in the mutation.
+func (m *EscrowDealMutation) CreatedAt() (r time.Time, exists bool) {
+	v := m.created_at
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldCreatedAt returns the old "created_at" field's value of the EscrowDeal entity.
+// If the EscrowDeal object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *EscrowDealMutation) OldCreatedAt(ctx context.Context) (v time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldCreatedAt is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldCreatedAt requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldCreatedAt: %w", err)
+	}
+	return oldValue.CreatedAt, nil
+}
+
+// ResetCreatedAt resets all changes to the "created_at" field.
+func (m *EscrowDealMutation) ResetCreatedAt() {
+	m.created_at = nil
+}
+
+// SetUpdatedAt sets the "updated_at" field.
+func (m *EscrowDealMutation) SetUpdatedAt(t time.Time) {
+	m.updated_at = &t
+}
+
+// UpdatedAt returns the value of the "updated_at" field in the mutation.
+func (m *EscrowDealMutation) UpdatedAt() (r time.Time, exists bool) {
+	v := m.updated_at
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldUpdatedAt returns the old "updated_at" field's value of the EscrowDeal entity.
+// If the EscrowDeal object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *EscrowDealMutation) OldUpdatedAt(ctx context.Context) (v time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldUpdatedAt is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldUpdatedAt requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldUpdatedAt: %w", err)
+	}
+	return oldValue.UpdatedAt, nil
+}
+
+// ResetUpdatedAt resets all changes to the "updated_at" field.
+func (m *EscrowDealMutation) ResetUpdatedAt() {
+	m.updated_at = nil
+}
+
+// SetExpiresAt sets the "expires_at" field.
+func (m *EscrowDealMutation) SetExpiresAt(t time.Time) {
+	m.expires_at = &t
+}
+
+// ExpiresAt returns the value of the "expires_at" field in the mutation.
+func (m *EscrowDealMutation) ExpiresAt() (r time.Time, exists bool) {
+	v := m.expires_at
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldExpiresAt returns the old "expires_at" field's value of the EscrowDeal entity.
+// If the EscrowDeal object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *EscrowDealMutation) OldExpiresAt(ctx context.Context) (v time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldExpiresAt is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldExpiresAt requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldExpiresAt: %w", err)
+	}
+	return oldValue.ExpiresAt, nil
+}
+
+// ResetExpiresAt resets all changes to the "expires_at" field.
+func (m *EscrowDealMutation) ResetExpiresAt() {
+	m.expires_at = nil
+}
+
+// Where appends a list predicates to the EscrowDealMutation builder.
+func (m *EscrowDealMutation) Where(ps ...predicate.EscrowDeal) {
+	m.predicates = append(m.predicates, ps...)
+}
+
+// WhereP appends storage-level predicates to the EscrowDealMutation builder. Using this method,
+// users can use type-assertion to append predicates that do not depend on any generated package.
+func (m *EscrowDealMutation) WhereP(ps ...func(*sql.Selector)) {
+	p := make([]predicate.EscrowDeal, len(ps))
+	for i := range ps {
+		p[i] = ps[i]
+	}
+	m.Where(p...)
+}
+
+// Op returns the operation name.
+func (m *EscrowDealMutation) Op() Op {
+	return m.op
+}
+
+// SetOp allows setting the mutation operation.
+func (m *EscrowDealMutation) SetOp(op Op) {
+	m.op = op
+}
+
+// Type returns the node type of this mutation (EscrowDeal).
+func (m *EscrowDealMutation) Type() string {
+	return m.typ
+}
+
+// Fields returns all fields that were changed during this mutation. Note that in
+// order to get all numeric fields that were incremented/decremented, call
+// AddedFields().
+func (m *EscrowDealMutation) Fields() []string {
+	fields := make([]string, 0, 18)
+	if m.escrow_id != nil {
+		fields = append(fields, escrowdeal.FieldEscrowID)
+	}
+	if m.buyer_did != nil {
+		fields = append(fields, escrowdeal.FieldBuyerDid)
+	}
+	if m.seller_did != nil {
+		fields = append(fields, escrowdeal.FieldSellerDid)
+	}
+	if m.total_amount != nil {
+		fields = append(fields, escrowdeal.FieldTotalAmount)
+	}
+	if m.status != nil {
+		fields = append(fields, escrowdeal.FieldStatus)
+	}
+	if m.milestones != nil {
+		fields = append(fields, escrowdeal.FieldMilestones)
+	}
+	if m.task_id != nil {
+		fields = append(fields, escrowdeal.FieldTaskID)
+	}
+	if m.reason != nil {
+		fields = append(fields, escrowdeal.FieldReason)
+	}
+	if m.dispute_note != nil {
+		fields = append(fields, escrowdeal.FieldDisputeNote)
+	}
+	if m.chain_id != nil {
+		fields = append(fields, escrowdeal.FieldChainID)
+	}
+	if m.hub_address != nil {
+		fields = append(fields, escrowdeal.FieldHubAddress)
+	}
+	if m.on_chain_deal_id != nil {
+		fields = append(fields, escrowdeal.FieldOnChainDealID)
+	}
+	if m.deposit_tx_hash != nil {
+		fields = append(fields, escrowdeal.FieldDepositTxHash)
+	}
+	if m.release_tx_hash != nil {
+		fields = append(fields, escrowdeal.FieldReleaseTxHash)
+	}
+	if m.refund_tx_hash != nil {
+		fields = append(fields, escrowdeal.FieldRefundTxHash)
+	}
+	if m.created_at != nil {
+		fields = append(fields, escrowdeal.FieldCreatedAt)
+	}
+	if m.updated_at != nil {
+		fields = append(fields, escrowdeal.FieldUpdatedAt)
+	}
+	if m.expires_at != nil {
+		fields = append(fields, escrowdeal.FieldExpiresAt)
+	}
+	return fields
+}
+
+// Field returns the value of a field with the given name. The second boolean
+// return value indicates that this field was not set, or was not defined in the
+// schema.
+func (m *EscrowDealMutation) Field(name string) (ent.Value, bool) {
+	switch name {
+	case escrowdeal.FieldEscrowID:
+		return m.EscrowID()
+	case escrowdeal.FieldBuyerDid:
+		return m.BuyerDid()
+	case escrowdeal.FieldSellerDid:
+		return m.SellerDid()
+	case escrowdeal.FieldTotalAmount:
+		return m.TotalAmount()
+	case escrowdeal.FieldStatus:
+		return m.Status()
+	case escrowdeal.FieldMilestones:
+		return m.Milestones()
+	case escrowdeal.FieldTaskID:
+		return m.TaskID()
+	case escrowdeal.FieldReason:
+		return m.Reason()
+	case escrowdeal.FieldDisputeNote:
+		return m.DisputeNote()
+	case escrowdeal.FieldChainID:
+		return m.ChainID()
+	case escrowdeal.FieldHubAddress:
+		return m.HubAddress()
+	case escrowdeal.FieldOnChainDealID:
+		return m.OnChainDealID()
+	case escrowdeal.FieldDepositTxHash:
+		return m.DepositTxHash()
+	case escrowdeal.FieldReleaseTxHash:
+		return m.ReleaseTxHash()
+	case escrowdeal.FieldRefundTxHash:
+		return m.RefundTxHash()
+	case escrowdeal.FieldCreatedAt:
+		return m.CreatedAt()
+	case escrowdeal.FieldUpdatedAt:
+		return m.UpdatedAt()
+	case escrowdeal.FieldExpiresAt:
+		return m.ExpiresAt()
+	}
+	return nil, false
+}
+
+// OldField returns the old value of the field from the database. An error is
+// returned if the mutation operation is not UpdateOne, or the query to the
+// database failed.
+func (m *EscrowDealMutation) OldField(ctx context.Context, name string) (ent.Value, error) {
+	switch name {
+	case escrowdeal.FieldEscrowID:
+		return m.OldEscrowID(ctx)
+	case escrowdeal.FieldBuyerDid:
+		return m.OldBuyerDid(ctx)
+	case escrowdeal.FieldSellerDid:
+		return m.OldSellerDid(ctx)
+	case escrowdeal.FieldTotalAmount:
+		return m.OldTotalAmount(ctx)
+	case escrowdeal.FieldStatus:
+		return m.OldStatus(ctx)
+	case escrowdeal.FieldMilestones:
+		return m.OldMilestones(ctx)
+	case escrowdeal.FieldTaskID:
+		return m.OldTaskID(ctx)
+	case escrowdeal.FieldReason:
+		return m.OldReason(ctx)
+	case escrowdeal.FieldDisputeNote:
+		return m.OldDisputeNote(ctx)
+	case escrowdeal.FieldChainID:
+		return m.OldChainID(ctx)
+	case escrowdeal.FieldHubAddress:
+		return m.OldHubAddress(ctx)
+	case escrowdeal.FieldOnChainDealID:
+		return m.OldOnChainDealID(ctx)
+	case escrowdeal.FieldDepositTxHash:
+		return m.OldDepositTxHash(ctx)
+	case escrowdeal.FieldReleaseTxHash:
+		return m.OldReleaseTxHash(ctx)
+	case escrowdeal.FieldRefundTxHash:
+		return m.OldRefundTxHash(ctx)
+	case escrowdeal.FieldCreatedAt:
+		return m.OldCreatedAt(ctx)
+	case escrowdeal.FieldUpdatedAt:
+		return m.OldUpdatedAt(ctx)
+	case escrowdeal.FieldExpiresAt:
+		return m.OldExpiresAt(ctx)
+	}
+	return nil, fmt.Errorf("unknown EscrowDeal field %s", name)
+}
+
+// SetField sets the value of a field with the given name. It returns an error if
+// the field is not defined in the schema, or if the type mismatched the field
+// type.
+func (m *EscrowDealMutation) SetField(name string, value ent.Value) error {
+	switch name {
+	case escrowdeal.FieldEscrowID:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetEscrowID(v)
+		return nil
+	case escrowdeal.FieldBuyerDid:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetBuyerDid(v)
+		return nil
+	case escrowdeal.FieldSellerDid:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetSellerDid(v)
+		return nil
+	case escrowdeal.FieldTotalAmount:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetTotalAmount(v)
+		return nil
+	case escrowdeal.FieldStatus:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetStatus(v)
+		return nil
+	case escrowdeal.FieldMilestones:
+		v, ok := value.([]byte)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetMilestones(v)
+		return nil
+	case escrowdeal.FieldTaskID:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetTaskID(v)
+		return nil
+	case escrowdeal.FieldReason:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetReason(v)
+		return nil
+	case escrowdeal.FieldDisputeNote:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetDisputeNote(v)
+		return nil
+	case escrowdeal.FieldChainID:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetChainID(v)
+		return nil
+	case escrowdeal.FieldHubAddress:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetHubAddress(v)
+		return nil
+	case escrowdeal.FieldOnChainDealID:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetOnChainDealID(v)
+		return nil
+	case escrowdeal.FieldDepositTxHash:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetDepositTxHash(v)
+		return nil
+	case escrowdeal.FieldReleaseTxHash:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetReleaseTxHash(v)
+		return nil
+	case escrowdeal.FieldRefundTxHash:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetRefundTxHash(v)
+		return nil
+	case escrowdeal.FieldCreatedAt:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetCreatedAt(v)
+		return nil
+	case escrowdeal.FieldUpdatedAt:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetUpdatedAt(v)
+		return nil
+	case escrowdeal.FieldExpiresAt:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetExpiresAt(v)
+		return nil
+	}
+	return fmt.Errorf("unknown EscrowDeal field %s", name)
+}
+
+// AddedFields returns all numeric fields that were incremented/decremented during
+// this mutation.
+func (m *EscrowDealMutation) AddedFields() []string {
+	var fields []string
+	if m.addchain_id != nil {
+		fields = append(fields, escrowdeal.FieldChainID)
+	}
+	return fields
+}
+
+// AddedField returns the numeric value that was incremented/decremented on a field
+// with the given name. The second boolean return value indicates that this field
+// was not set, or was not defined in the schema.
+func (m *EscrowDealMutation) AddedField(name string) (ent.Value, bool) {
+	switch name {
+	case escrowdeal.FieldChainID:
+		return m.AddedChainID()
+	}
+	return nil, false
+}
+
+// AddField adds the value to the field with the given name. It returns an error if
+// the field is not defined in the schema, or if the type mismatched the field
+// type.
+func (m *EscrowDealMutation) AddField(name string, value ent.Value) error {
+	switch name {
+	case escrowdeal.FieldChainID:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddChainID(v)
+		return nil
+	}
+	return fmt.Errorf("unknown EscrowDeal numeric field %s", name)
+}
+
+// ClearedFields returns all nullable fields that were cleared during this
+// mutation.
+func (m *EscrowDealMutation) ClearedFields() []string {
+	var fields []string
+	if m.FieldCleared(escrowdeal.FieldMilestones) {
+		fields = append(fields, escrowdeal.FieldMilestones)
+	}
+	if m.FieldCleared(escrowdeal.FieldTaskID) {
+		fields = append(fields, escrowdeal.FieldTaskID)
+	}
+	if m.FieldCleared(escrowdeal.FieldReason) {
+		fields = append(fields, escrowdeal.FieldReason)
+	}
+	if m.FieldCleared(escrowdeal.FieldDisputeNote) {
+		fields = append(fields, escrowdeal.FieldDisputeNote)
+	}
+	if m.FieldCleared(escrowdeal.FieldChainID) {
+		fields = append(fields, escrowdeal.FieldChainID)
+	}
+	if m.FieldCleared(escrowdeal.FieldHubAddress) {
+		fields = append(fields, escrowdeal.FieldHubAddress)
+	}
+	if m.FieldCleared(escrowdeal.FieldOnChainDealID) {
+		fields = append(fields, escrowdeal.FieldOnChainDealID)
+	}
+	if m.FieldCleared(escrowdeal.FieldDepositTxHash) {
+		fields = append(fields, escrowdeal.FieldDepositTxHash)
+	}
+	if m.FieldCleared(escrowdeal.FieldReleaseTxHash) {
+		fields = append(fields, escrowdeal.FieldReleaseTxHash)
+	}
+	if m.FieldCleared(escrowdeal.FieldRefundTxHash) {
+		fields = append(fields, escrowdeal.FieldRefundTxHash)
+	}
+	return fields
+}
+
+// FieldCleared returns a boolean indicating if a field with the given name was
+// cleared in this mutation.
+func (m *EscrowDealMutation) FieldCleared(name string) bool {
+	_, ok := m.clearedFields[name]
+	return ok
+}
+
+// ClearField clears the value of the field with the given name. It returns an
+// error if the field is not defined in the schema.
+func (m *EscrowDealMutation) ClearField(name string) error {
+	switch name {
+	case escrowdeal.FieldMilestones:
+		m.ClearMilestones()
+		return nil
+	case escrowdeal.FieldTaskID:
+		m.ClearTaskID()
+		return nil
+	case escrowdeal.FieldReason:
+		m.ClearReason()
+		return nil
+	case escrowdeal.FieldDisputeNote:
+		m.ClearDisputeNote()
+		return nil
+	case escrowdeal.FieldChainID:
+		m.ClearChainID()
+		return nil
+	case escrowdeal.FieldHubAddress:
+		m.ClearHubAddress()
+		return nil
+	case escrowdeal.FieldOnChainDealID:
+		m.ClearOnChainDealID()
+		return nil
+	case escrowdeal.FieldDepositTxHash:
+		m.ClearDepositTxHash()
+		return nil
+	case escrowdeal.FieldReleaseTxHash:
+		m.ClearReleaseTxHash()
+		return nil
+	case escrowdeal.FieldRefundTxHash:
+		m.ClearRefundTxHash()
+		return nil
+	}
+	return fmt.Errorf("unknown EscrowDeal nullable field %s", name)
+}
+
+// ResetField resets all changes in the mutation for the field with the given name.
+// It returns an error if the field is not defined in the schema.
+func (m *EscrowDealMutation) ResetField(name string) error {
+	switch name {
+	case escrowdeal.FieldEscrowID:
+		m.ResetEscrowID()
+		return nil
+	case escrowdeal.FieldBuyerDid:
+		m.ResetBuyerDid()
+		return nil
+	case escrowdeal.FieldSellerDid:
+		m.ResetSellerDid()
+		return nil
+	case escrowdeal.FieldTotalAmount:
+		m.ResetTotalAmount()
+		return nil
+	case escrowdeal.FieldStatus:
+		m.ResetStatus()
+		return nil
+	case escrowdeal.FieldMilestones:
+		m.ResetMilestones()
+		return nil
+	case escrowdeal.FieldTaskID:
+		m.ResetTaskID()
+		return nil
+	case escrowdeal.FieldReason:
+		m.ResetReason()
+		return nil
+	case escrowdeal.FieldDisputeNote:
+		m.ResetDisputeNote()
+		return nil
+	case escrowdeal.FieldChainID:
+		m.ResetChainID()
+		return nil
+	case escrowdeal.FieldHubAddress:
+		m.ResetHubAddress()
+		return nil
+	case escrowdeal.FieldOnChainDealID:
+		m.ResetOnChainDealID()
+		return nil
+	case escrowdeal.FieldDepositTxHash:
+		m.ResetDepositTxHash()
+		return nil
+	case escrowdeal.FieldReleaseTxHash:
+		m.ResetReleaseTxHash()
+		return nil
+	case escrowdeal.FieldRefundTxHash:
+		m.ResetRefundTxHash()
+		return nil
+	case escrowdeal.FieldCreatedAt:
+		m.ResetCreatedAt()
+		return nil
+	case escrowdeal.FieldUpdatedAt:
+		m.ResetUpdatedAt()
+		return nil
+	case escrowdeal.FieldExpiresAt:
+		m.ResetExpiresAt()
+		return nil
+	}
+	return fmt.Errorf("unknown EscrowDeal field %s", name)
+}
+
+// AddedEdges returns all edge names that were set/added in this mutation.
+func (m *EscrowDealMutation) AddedEdges() []string {
+	edges := make([]string, 0, 0)
+	return edges
+}
+
+// AddedIDs returns all IDs (to other nodes) that were added for the given edge
+// name in this mutation.
+func (m *EscrowDealMutation) AddedIDs(name string) []ent.Value {
+	return nil
+}
+
+// RemovedEdges returns all edge names that were removed in this mutation.
+func (m *EscrowDealMutation) RemovedEdges() []string {
+	edges := make([]string, 0, 0)
+	return edges
+}
+
+// RemovedIDs returns all IDs (to other nodes) that were removed for the edge with
+// the given name in this mutation.
+func (m *EscrowDealMutation) RemovedIDs(name string) []ent.Value {
+	return nil
+}
+
+// ClearedEdges returns all edge names that were cleared in this mutation.
+func (m *EscrowDealMutation) ClearedEdges() []string {
+	edges := make([]string, 0, 0)
+	return edges
+}
+
+// EdgeCleared returns a boolean which indicates if the edge with the given name
+// was cleared in this mutation.
+func (m *EscrowDealMutation) EdgeCleared(name string) bool {
+	return false
+}
+
+// ClearEdge clears the value of the edge with the given name. It returns an error
+// if that edge is not defined in the schema.
+func (m *EscrowDealMutation) ClearEdge(name string) error {
+	return fmt.Errorf("unknown EscrowDeal unique edge %s", name)
+}
+
+// ResetEdge resets all changes to the edge with the given name in this mutation.
+// It returns an error if the edge is not defined in the schema.
+func (m *EscrowDealMutation) ResetEdge(name string) error {
+	return fmt.Errorf("unknown EscrowDeal edge %s", name)
 }
 
 // ExternalRefMutation represents an operation that mutates the ExternalRef nodes in the graph.

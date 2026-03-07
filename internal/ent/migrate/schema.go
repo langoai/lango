@@ -139,6 +139,56 @@ var (
 			},
 		},
 	}
+	// EscrowDealsColumns holds the columns for the "escrow_deals" table.
+	EscrowDealsColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeInt, Increment: true},
+		{Name: "escrow_id", Type: field.TypeString, Unique: true},
+		{Name: "buyer_did", Type: field.TypeString},
+		{Name: "seller_did", Type: field.TypeString},
+		{Name: "total_amount", Type: field.TypeString},
+		{Name: "status", Type: field.TypeString, Default: "pending"},
+		{Name: "milestones", Type: field.TypeBytes, Nullable: true},
+		{Name: "task_id", Type: field.TypeString, Nullable: true},
+		{Name: "reason", Type: field.TypeString, Nullable: true},
+		{Name: "dispute_note", Type: field.TypeString, Nullable: true},
+		{Name: "chain_id", Type: field.TypeInt64, Nullable: true, Default: 0},
+		{Name: "hub_address", Type: field.TypeString, Nullable: true},
+		{Name: "on_chain_deal_id", Type: field.TypeString, Nullable: true},
+		{Name: "deposit_tx_hash", Type: field.TypeString, Nullable: true},
+		{Name: "release_tx_hash", Type: field.TypeString, Nullable: true},
+		{Name: "refund_tx_hash", Type: field.TypeString, Nullable: true},
+		{Name: "created_at", Type: field.TypeTime},
+		{Name: "updated_at", Type: field.TypeTime},
+		{Name: "expires_at", Type: field.TypeTime},
+	}
+	// EscrowDealsTable holds the schema information for the "escrow_deals" table.
+	EscrowDealsTable = &schema.Table{
+		Name:       "escrow_deals",
+		Columns:    EscrowDealsColumns,
+		PrimaryKey: []*schema.Column{EscrowDealsColumns[0]},
+		Indexes: []*schema.Index{
+			{
+				Name:    "escrowdeal_buyer_did",
+				Unique:  false,
+				Columns: []*schema.Column{EscrowDealsColumns[2]},
+			},
+			{
+				Name:    "escrowdeal_seller_did",
+				Unique:  false,
+				Columns: []*schema.Column{EscrowDealsColumns[3]},
+			},
+			{
+				Name:    "escrowdeal_status",
+				Unique:  false,
+				Columns: []*schema.Column{EscrowDealsColumns[5]},
+			},
+			{
+				Name:    "escrowdeal_on_chain_deal_id",
+				Unique:  false,
+				Columns: []*schema.Column{EscrowDealsColumns[12]},
+			},
+		},
+	}
 	// ExternalRefsColumns holds the columns for the "external_refs" table.
 	ExternalRefsColumns = []*schema.Column{
 		{Name: "id", Type: field.TypeUUID},
@@ -621,6 +671,7 @@ var (
 		ConfigProfilesTable,
 		CronJobsTable,
 		CronJobHistoriesTable,
+		EscrowDealsTable,
 		ExternalRefsTable,
 		InquiriesTable,
 		KeysTable,

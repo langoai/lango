@@ -20,6 +20,8 @@ type Tx struct {
 	CronJob *CronJobClient
 	// CronJobHistory is the client for interacting with the CronJobHistory builders.
 	CronJobHistory *CronJobHistoryClient
+	// EscrowDeal is the client for interacting with the EscrowDeal builders.
+	EscrowDeal *EscrowDealClient
 	// ExternalRef is the client for interacting with the ExternalRef builders.
 	ExternalRef *ExternalRefClient
 	// Inquiry is the client for interacting with the Inquiry builders.
@@ -185,6 +187,7 @@ func (tx *Tx) init() {
 	tx.ConfigProfile = NewConfigProfileClient(tx.config)
 	tx.CronJob = NewCronJobClient(tx.config)
 	tx.CronJobHistory = NewCronJobHistoryClient(tx.config)
+	tx.EscrowDeal = NewEscrowDealClient(tx.config)
 	tx.ExternalRef = NewExternalRefClient(tx.config)
 	tx.Inquiry = NewInquiryClient(tx.config)
 	tx.Key = NewKeyClient(tx.config)

@@ -124,12 +124,26 @@
 - `economy_price_quote` gets a price quote for a tool invocation, optionally applying peer-specific trust discounts. Specify `toolName` and optional `peerDid`. Returns base price, final price, and currency.
 - `economy_negotiate` starts a price negotiation with a peer. Specify `peerDid`, `toolName`, and `price` (USDC). Returns session ID, phase, and round number.
 - `economy_negotiate_status` checks the status of a negotiation session by `sessionId`. Returns current phase, round, max rounds, and current terms.
-- `economy_escrow_create` creates a milestone-based escrow between buyer and seller. Specify `buyerDid`, `sellerDid`, `amount` (USDC), and `milestones` array (each with description and amount). Returns escrow ID.
-- `economy_escrow_milestone` marks a milestone as completed in an escrow. Specify `escrowId`, `milestoneId`, and optional `evidence`.
-- `economy_escrow_status` checks escrow status including buyer/seller DIDs, total amount, and per-milestone status.
-- `economy_escrow_release` releases escrow funds to the seller after satisfactory completion.
-- `economy_escrow_dispute` raises a dispute on an escrow. Specify `escrowId` and `note` describing the dispute.
-- **Economy workflow**: (1) `economy_budget_allocate` to set spending limits, (2) `economy_risk_assess` to evaluate the transaction, (3) `economy_price_quote` to get the price, (4) optionally `economy_negotiate` to negotiate, (5) `economy_escrow_create` for high-value transactions.
+- **Economy workflow**: (1) `economy_budget_allocate` to set spending limits, (2) `economy_risk_assess` to evaluate the transaction, (3) `economy_price_quote` to get the price, (4) optionally `economy_negotiate` to negotiate, (5) `escrow_create` for high-value transactions.
+
+### Escrow Tool
+- `escrow_create` creates a new escrow deal between buyer and seller with milestones. Specify `buyerDid`, `sellerDid`, `amount` (USDC), `reason`, and `milestones` array (each with `description` and `amount`). Returns `escrowId`, `status`, and `amount`.
+- `escrow_fund` funds an escrow with USDC. In on-chain mode, also deposits to the smart contract. Specify `escrowId`. Returns `escrowId`, `status`, `amount`, and `onChainTxHash` (if on-chain).
+- `escrow_activate` activates a funded escrow so work can begin. Specify `escrowId`. Returns `escrowId` and `status`.
+- `escrow_submit_work` submits a work hash as proof of completion. Specify `escrowId` and `workHash`. Returns `escrowId`, `status`, `workHash`, and `onChainTxHash` (if on-chain).
+- `escrow_release` releases escrow funds to the seller. Specify `escrowId`. Returns `escrowId`, `status`, and `onChainTxHash` (if on-chain).
+- `escrow_refund` refunds escrow funds to the buyer. Specify `escrowId`. Returns `escrowId`, `status`, and `onChainTxHash` (if on-chain).
+- `escrow_dispute` raises a dispute on an escrow. Specify `escrowId` and `note`. Returns `escrowId`, `status`, and `onChainTxHash` (if on-chain).
+- `escrow_resolve` resolves a disputed escrow as arbitrator. Specify `escrowId`, `favor` (buyer/seller), and `sellerPercent` (0-100). Returns `escrowId`, `favor`, `sellerAmount`, `buyerAmount`, and `onChainTxHash` (if on-chain).
+- `escrow_status` gets detailed escrow status including on-chain state if available. Specify `escrowId`. Returns `escrowId`, `buyerDid`, `sellerDid`, `amount`, `status`, `reason`, `milestones`, `expiresAt`, plus `onChainStatus`/`onChainAmount` if on-chain.
+- `escrow_list` lists all escrows with optional filter. Specify `filter` (all/active/disputed) and optional `peerDid`. Returns `count` and `escrows[]`.
+- **Escrow workflow (on-chain)**: (1) `escrow_create` to set up the deal, (2) `escrow_fund` to deposit USDC, (3) `escrow_activate` to begin work, (4) `escrow_submit_work` to submit proof, (5) `escrow_release` to pay the seller — or `escrow_dispute` to raise a dispute, then `escrow_resolve` to settle.
+
+### Sentinel Tool
+- `sentinel_status` gets Security Sentinel engine status including running state and alert counts. No parameters required.
+- `sentinel_alerts` lists security alerts with optional severity filter. Specify `severity` (critical/high/medium/low) and optional `limit` (default 20). Returns `count` and `alerts[]`.
+- `sentinel_config` shows current Security Sentinel detection thresholds. No parameters required. Returns `rapidCreationWindow`, `rapidCreationMax`, `largeWithdrawalAmount`, and other threshold values.
+- `sentinel_acknowledge` acknowledges and dismisses a security alert by ID. Specify `alertId`. Returns `alertId` and `acknowledged`.
 
 ### Contract Tool
 - `contract_abi_load` pre-loads and caches a contract ABI for faster subsequent calls. Provide `address` and `abi` (JSON string), and optionally `chainId`. Always load the ABI before calling read/write methods.

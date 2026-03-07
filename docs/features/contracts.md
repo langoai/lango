@@ -59,3 +59,69 @@ Smart contract tools require payment to be enabled with a valid RPC endpoint:
 ```
 
 See the [Contract CLI Reference](../cli/contract.md) for command documentation.
+
+## Escrow Contracts
+
+Lango includes Foundry-based Solidity contracts for on-chain escrow settlement between P2P agents.
+
+### LangoEscrowHub
+
+**Source:** `contracts/src/LangoEscrowHub.sol`
+
+Master escrow hub for P2P agent deals. Holds multiple deals in a single contract, reducing deployment costs.
+
+**Deal struct:** `buyer`, `seller`, `token`, `amount`, `deadline`, `status`, `workHash`
+
+**States:** Created(0) → Deposited(1) → WorkSubmitted(2) → Released(3) / Refunded(4) / Disputed(5) → Resolved(6)
+
+**Events:** `DealCreated`, `Deposited`, `WorkSubmitted`, `Released`, `Refunded`, `Disputed`, `DealResolved`
+
+**Access control:**
+
+| Modifier | Functions |
+|----------|-----------|
+| `onlyBuyer` | `deposit`, `release`, `refund` |
+| `onlySeller` | `submitWork` |
+| `onlyArbitrator` | `resolveDispute` |
+| Either party | `dispute` |
+
+### LangoVault
+
+**Source:** `contracts/src/LangoVault.sol`
+
+Individual vault per deal, designed as an EIP-1167 clone target. Same lifecycle as LangoEscrowHub but with `initialize()` instead of a constructor, enabling minimal proxy deployment.
+
+**States:** Uninitialized(0) → Created(1) → Deposited(2) → WorkSubmitted(3) → Released(4) / Refunded(5) / Disputed(6) → Resolved(7)
+
+**Events:** `VaultInitialized`, `Deposited`, `WorkSubmitted`, `Released`, `Refunded`, `Disputed`, `VaultResolved`
+
+### LangoVaultFactory
+
+**Source:** `contracts/src/LangoVaultFactory.sol`
+
+EIP-1167 Minimal Proxy factory for LangoVault. Each call to `createVault()` clones the implementation contract and initializes the new vault with deal parameters.
+
+**Events:** `VaultCreated`
+
+### Foundry Setup
+
+```
+contracts/
+├── foundry.toml           # Solidity 0.8.24, optimizer 200 runs
+├── src/
+│   ├── LangoEscrowHub.sol
+│   ├── LangoVault.sol
+│   ├── LangoVaultFactory.sol
+│   └── interfaces/
+│       └── IERC20.sol
+└── lib/
+    └── forge-std/
+```
+
+Build and test:
+
+```bash
+cd contracts
+forge build    # Compile contracts
+forge test     # Run tests
+```

@@ -126,6 +126,7 @@ func NewMenuModel() MenuModel {
 					{"economy_risk", "Economy Risk", "Trust-based risk assessment"},
 					{"economy_negotiation", "Economy Negotiation", "P2P price negotiation"},
 					{"economy_escrow", "Economy Escrow", "Milestone-based escrow"},
+					{"economy_escrow_onchain", "On-Chain Escrow", "Hub/Vault mode, contracts, settlement"},
 					{"economy_pricing", "Economy Pricing", "Dynamic pricing rules"},
 				},
 			},
