@@ -6,24 +6,25 @@ import (
 	"sync"
 	"testing"
 
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+
 	"github.com/langoai/lango/internal/agent"
 	"github.com/langoai/lango/internal/lifecycle"
 )
 
 func TestBuilder_Empty(t *testing.T) {
+	t.Parallel()
+
 	result, err := NewBuilder().Build(context.Background())
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if len(result.Tools) != 0 {
-		t.Errorf("want 0 tools, got %d", len(result.Tools))
-	}
-	if len(result.Components) != 0 {
-		t.Errorf("want 0 components, got %d", len(result.Components))
-	}
+	require.NoError(t, err)
+	assert.Empty(t, result.Tools)
+	assert.Empty(t, result.Components)
 }
 
 func TestBuilder_MultipleModules(t *testing.T) {
+	t.Parallel()
+
 	toolA := &agent.Tool{Name: "tool_a", Description: "Tool A"}
 	toolB := &agent.Tool{Name: "tool_b", Description: "Tool B"}
 
@@ -47,9 +48,7 @@ func TestBuilder_MultipleModules(t *testing.T) {
 		initFn: func(_ context.Context, r Resolver) (*ModuleResult, error) {
 			// Verify we can resolve the dependency from module A.
 			val := r.Resolve("key_a")
-			if val == nil {
-				return nil, errors.New("expected key_a to be resolved")
-			}
+			require.NotNil(t, val)
 			return &ModuleResult{
 				Tools:  []*agent.Tool{toolB},
 				Values: map[Provides]interface{}{"key_b": val.(string) + "_extended"},
@@ -61,29 +60,21 @@ func TestBuilder_MultipleModules(t *testing.T) {
 		AddModule(modB). // added out of order intentionally
 		AddModule(modA).
 		Build(context.Background())
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
+	require.NoError(t, err)
 
-	if len(result.Tools) != 2 {
-		t.Fatalf("want 2 tools, got %d", len(result.Tools))
-	}
+	require.Len(t, result.Tools, 2)
 	// A should init first, so tool_a first.
-	if result.Tools[0].Name != "tool_a" {
-		t.Errorf("want first tool %q, got %q", "tool_a", result.Tools[0].Name)
-	}
-	if result.Tools[1].Name != "tool_b" {
-		t.Errorf("want second tool %q, got %q", "tool_b", result.Tools[1].Name)
-	}
+	assert.Equal(t, "tool_a", result.Tools[0].Name)
+	assert.Equal(t, "tool_b", result.Tools[1].Name)
 
 	// Verify resolver contains values from both modules.
 	val := result.Resolver.Resolve("key_b")
-	if val != "value_a_extended" {
-		t.Errorf("want resolver key_b = %q, got %v", "value_a_extended", val)
-	}
+	assert.Equal(t, "value_a_extended", val)
 }
 
 func TestBuilder_ResolverPassesValues(t *testing.T) {
+	t.Parallel()
+
 	var receivedVal interface{}
 
 	modA := &stubModule{
@@ -111,16 +102,14 @@ func TestBuilder_ResolverPassesValues(t *testing.T) {
 		AddModule(modB).
 		AddModule(modA).
 		Build(context.Background())
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
+	require.NoError(t, err)
 
-	if receivedVal != 42 {
-		t.Errorf("want resolved value 42, got %v", receivedVal)
-	}
+	assert.Equal(t, 42, receivedVal)
 }
 
 func TestBuilder_Components(t *testing.T) {
+	t.Parallel()
+
 	comp := &dummyComponent{name: "test_comp"}
 	mod := &stubModule{
 		name:    "comp_module",
@@ -135,18 +124,14 @@ func TestBuilder_Components(t *testing.T) {
 	}
 
 	result, err := NewBuilder().AddModule(mod).Build(context.Background())
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if len(result.Components) != 1 {
-		t.Fatalf("want 1 component, got %d", len(result.Components))
-	}
-	if result.Components[0].Component.Name() != "test_comp" {
-		t.Errorf("want component name %q, got %q", "test_comp", result.Components[0].Component.Name())
-	}
+	require.NoError(t, err)
+	require.Len(t, result.Components, 1)
+	assert.Equal(t, "test_comp", result.Components[0].Component.Name())
 }
 
 func TestBuilder_InitError(t *testing.T) {
+	t.Parallel()
+
 	mod := &stubModule{
 		name:    "failing",
 		enabled: true,
@@ -156,20 +141,13 @@ func TestBuilder_InitError(t *testing.T) {
 	}
 
 	_, err := NewBuilder().AddModule(mod).Build(context.Background())
-	if err == nil {
-		t.Fatal("expected error, got nil")
-	}
-	if !errors.Is(err, errors.Unwrap(err)) {
-		// Just check that the error message contains useful info.
-		wantMsg := `init module "failing"`
-		if got := err.Error(); len(got) == 0 {
-			t.Errorf("expected non-empty error message")
-		}
-		_ = wantMsg
-	}
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "failing")
 }
 
 func TestBuilder_NilResult(t *testing.T) {
+	t.Parallel()
+
 	mod := &stubModule{
 		name:    "nil_result",
 		enabled: true,
@@ -179,15 +157,13 @@ func TestBuilder_NilResult(t *testing.T) {
 	}
 
 	result, err := NewBuilder().AddModule(mod).Build(context.Background())
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if len(result.Tools) != 0 {
-		t.Errorf("want 0 tools, got %d", len(result.Tools))
-	}
+	require.NoError(t, err)
+	assert.Empty(t, result.Tools)
 }
 
 func TestBuilder_CycleError(t *testing.T) {
+	t.Parallel()
+
 	modA := &stubModule{
 		name:      "a",
 		provides:  []Provides{"key_a"},
@@ -202,9 +178,7 @@ func TestBuilder_CycleError(t *testing.T) {
 	}
 
 	_, err := NewBuilder().AddModule(modA).AddModule(modB).Build(context.Background())
-	if err == nil {
-		t.Fatal("expected cycle error, got nil")
-	}
+	require.Error(t, err)
 }
 
 // dummyComponent implements lifecycle.Component for testing.

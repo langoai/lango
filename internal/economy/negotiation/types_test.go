@@ -2,9 +2,13 @@ package negotiation
 
 import (
 	"testing"
+
+	"github.com/stretchr/testify/assert"
 )
 
 func TestNegotiationSession_IsTerminal(t *testing.T) {
+	t.Parallel()
+
 	tests := []struct {
 		give Phase
 		want bool
@@ -19,15 +23,16 @@ func TestNegotiationSession_IsTerminal(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(string(tt.give), func(t *testing.T) {
+			t.Parallel()
 			ns := &NegotiationSession{Phase: tt.give}
-			if got := ns.IsTerminal(); got != tt.want {
-				t.Errorf("IsTerminal() = %v, want %v", got, tt.want)
-			}
+			assert.Equal(t, tt.want, ns.IsTerminal())
 		})
 	}
 }
 
 func TestNegotiationSession_CanCounter(t *testing.T) {
+	t.Parallel()
+
 	tests := []struct {
 		give     string
 		phase    Phase
@@ -81,14 +86,13 @@ func TestNegotiationSession_CanCounter(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.give, func(t *testing.T) {
+			t.Parallel()
 			ns := &NegotiationSession{
 				Phase:     tt.phase,
 				Round:     tt.round,
 				MaxRounds: tt.maxRound,
 			}
-			if got := ns.CanCounter(); got != tt.want {
-				t.Errorf("CanCounter() = %v, want %v", got, tt.want)
-			}
+			assert.Equal(t, tt.want, ns.CanCounter())
 		})
 	}
 }

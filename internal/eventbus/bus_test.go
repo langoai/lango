@@ -4,6 +4,9 @@ import (
 	"sync"
 	"sync/atomic"
 	"testing"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 // testEvent is a minimal event used across tests.
@@ -21,6 +24,8 @@ type otherEvent struct {
 func (e otherEvent) EventName() string { return "other.event" }
 
 func TestSingleHandlerReceivesEvent(t *testing.T) {
+	t.Parallel()
+
 	bus := New()
 
 	var received string
@@ -30,12 +35,12 @@ func TestSingleHandlerReceivesEvent(t *testing.T) {
 
 	bus.Publish(testEvent{Value: "hello"})
 
-	if received != "hello" {
-		t.Errorf("want %q, got %q", "hello", received)
-	}
+	assert.Equal(t, "hello", received)
 }
 
 func TestMultipleHandlersReceiveInOrder(t *testing.T) {
+	t.Parallel()
+
 	bus := New()
 
 	var order []int
@@ -45,17 +50,12 @@ func TestMultipleHandlersReceiveInOrder(t *testing.T) {
 
 	bus.Publish(testEvent{Value: "x"})
 
-	if len(order) != 3 {
-		t.Fatalf("want 3 handler calls, got %d", len(order))
-	}
-	for i, want := range []int{1, 2, 3} {
-		if order[i] != want {
-			t.Errorf("order[%d] = %d, want %d", i, order[i], want)
-		}
-	}
+	assert.Equal(t, []int{1, 2, 3}, order)
 }
 
 func TestPublishWithNoHandlersDoesNotPanic(t *testing.T) {
+	t.Parallel()
+
 	bus := New()
 
 	// Should not panic.
@@ -63,6 +63,8 @@ func TestPublishWithNoHandlersDoesNotPanic(t *testing.T) {
 }
 
 func TestSubscribeTypedProvidesSafeHandling(t *testing.T) {
+	t.Parallel()
+
 	bus := New()
 
 	var received ContentSavedEvent
@@ -77,15 +79,13 @@ func TestSubscribeTypedProvidesSafeHandling(t *testing.T) {
 		Source:     "knowledge",
 	})
 
-	if received.ID != "doc-1" {
-		t.Errorf("want ID %q, got %q", "doc-1", received.ID)
-	}
-	if received.Source != "knowledge" {
-		t.Errorf("want Source %q, got %q", "knowledge", received.Source)
-	}
+	assert.Equal(t, "doc-1", received.ID)
+	assert.Equal(t, "knowledge", received.Source)
 }
 
 func TestDifferentEventTypesRouteToSeparateHandlers(t *testing.T) {
+	t.Parallel()
+
 	bus := New()
 
 	var testCalled, otherCalled bool
@@ -94,12 +94,8 @@ func TestDifferentEventTypesRouteToSeparateHandlers(t *testing.T) {
 
 	bus.Publish(testEvent{Value: "a"})
 
-	if !testCalled {
-		t.Error("test.event handler was not called")
-	}
-	if otherCalled {
-		t.Error("other.event handler was called unexpectedly")
-	}
+	assert.True(t, testCalled, "test.event handler was not called")
+	assert.False(t, otherCalled, "other.event handler was called unexpectedly")
 
 	// Reset and publish the other event.
 	testCalled = false
@@ -107,15 +103,13 @@ func TestDifferentEventTypesRouteToSeparateHandlers(t *testing.T) {
 
 	bus.Publish(otherEvent{Code: 42})
 
-	if testCalled {
-		t.Error("test.event handler was called unexpectedly")
-	}
-	if !otherCalled {
-		t.Error("other.event handler was not called")
-	}
+	assert.False(t, testCalled, "test.event handler was called unexpectedly")
+	assert.True(t, otherCalled, "other.event handler was not called")
 }
 
 func TestConcurrentPublishAndSubscribe(t *testing.T) {
+	t.Parallel()
+
 	bus := New()
 
 	var count atomic.Int64
@@ -152,12 +146,12 @@ func TestConcurrentPublishAndSubscribe(t *testing.T) {
 
 	// We only assert that no data race occurred. The exact count is
 	// non-deterministic because new handlers are added while publishing.
-	if count.Load() == 0 {
-		t.Error("expected at least one handler invocation")
-	}
+	assert.Greater(t, count.Load(), int64(0), "expected at least one handler invocation")
 }
 
 func TestSubscribeTypedIgnoresMismatchedType(t *testing.T) {
+	t.Parallel()
+
 	bus := New()
 
 	var called bool
@@ -170,12 +164,12 @@ func TestSubscribeTypedIgnoresMismatchedType(t *testing.T) {
 	bus.Subscribe("turn.completed", func(_ Event) {})
 	bus.Publish(TurnCompletedEvent{SessionKey: "sess-1"})
 
-	if !called {
-		t.Error("typed handler was not called for matching type")
-	}
+	assert.True(t, called, "typed handler was not called for matching type")
 }
 
 func TestAllEventTypesHaveDistinctNames(t *testing.T) {
+	t.Parallel()
+
 	events := []Event{
 		ContentSavedEvent{},
 		TriplesExtractedEvent{},
@@ -187,14 +181,14 @@ func TestAllEventTypesHaveDistinctNames(t *testing.T) {
 	seen := make(map[string]bool, len(events))
 	for _, e := range events {
 		name := e.EventName()
-		if seen[name] {
-			t.Errorf("duplicate event name: %s", name)
-		}
+		assert.False(t, seen[name], "duplicate event name: %s", name)
 		seen[name] = true
 	}
 }
 
 func TestReputationChangedEventRoundTrip(t *testing.T) {
+	t.Parallel()
+
 	bus := New()
 
 	var got ReputationChangedEvent
@@ -204,15 +198,13 @@ func TestReputationChangedEventRoundTrip(t *testing.T) {
 
 	bus.Publish(ReputationChangedEvent{PeerDID: "did:example:123", NewScore: 0.85})
 
-	if got.PeerDID != "did:example:123" {
-		t.Errorf("PeerDID = %q, want %q", got.PeerDID, "did:example:123")
-	}
-	if got.NewScore != 0.85 {
-		t.Errorf("NewScore = %f, want %f", got.NewScore, 0.85)
-	}
+	assert.Equal(t, "did:example:123", got.PeerDID)
+	assert.InDelta(t, 0.85, got.NewScore, 0.001)
 }
 
 func TestTriplesExtractedEventRoundTrip(t *testing.T) {
+	t.Parallel()
+
 	bus := New()
 
 	var got TriplesExtractedEvent
@@ -228,18 +220,14 @@ func TestTriplesExtractedEventRoundTrip(t *testing.T) {
 		Source: "learning",
 	})
 
-	if len(got.Triples) != 2 {
-		t.Fatalf("want 2 triples, got %d", len(got.Triples))
-	}
-	if got.Triples[0].Subject != "Go" {
-		t.Errorf("Subject = %q, want %q", got.Triples[0].Subject, "Go")
-	}
-	if got.Source != "learning" {
-		t.Errorf("Source = %q, want %q", got.Source, "learning")
-	}
+	require.Len(t, got.Triples, 2)
+	assert.Equal(t, "Go", got.Triples[0].Subject)
+	assert.Equal(t, "learning", got.Source)
 }
 
 func TestMemoryGraphEventRoundTrip(t *testing.T) {
+	t.Parallel()
+
 	bus := New()
 
 	var got MemoryGraphEvent
@@ -255,16 +243,8 @@ func TestMemoryGraphEventRoundTrip(t *testing.T) {
 		Type:       "observation",
 	})
 
-	if len(got.Triples) != 1 {
-		t.Fatalf("want 1 triple, got %d", len(got.Triples))
-	}
-	if got.Triples[0].Subject != "Alice" {
-		t.Errorf("Subject = %q, want %q", got.Triples[0].Subject, "Alice")
-	}
-	if got.SessionKey != "sess-42" {
-		t.Errorf("SessionKey = %q, want %q", got.SessionKey, "sess-42")
-	}
-	if got.Type != "observation" {
-		t.Errorf("Type = %q, want %q", got.Type, "observation")
-	}
+	require.Len(t, got.Triples, 1)
+	assert.Equal(t, "Alice", got.Triples[0].Subject)
+	assert.Equal(t, "sess-42", got.SessionKey)
+	assert.Equal(t, "observation", got.Type)
 }

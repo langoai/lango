@@ -14,6 +14,8 @@ func testLogger() *zap.SugaredLogger {
 }
 
 func TestScanAndRedact_ExactTerms(t *testing.T) {
+	t.Parallel()
+
 	shield := NewOwnerShield(OwnerProtectionConfig{
 		OwnerName:  "Alice Kim",
 		OwnerEmail: "alice@example.com",
@@ -50,6 +52,7 @@ func TestScanAndRedact_ExactTerms(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.give, func(t *testing.T) {
+			t.Parallel()
 			result, blocked := shield.ScanAndRedact(tt.giveData)
 			require.Len(t, blocked, len(tt.wantKeys))
 			for _, key := range tt.wantKeys {
@@ -61,6 +64,8 @@ func TestScanAndRedact_ExactTerms(t *testing.T) {
 }
 
 func TestScanAndRedact_RegexPatterns(t *testing.T) {
+	t.Parallel()
+
 	shield := NewOwnerShield(OwnerProtectionConfig{}, testLogger())
 
 	tests := []struct {
@@ -92,6 +97,7 @@ func TestScanAndRedact_RegexPatterns(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.give, func(t *testing.T) {
+			t.Parallel()
 			_, blocked := shield.ScanAndRedact(tt.giveData)
 			if tt.wantBlock {
 				assert.NotEmpty(t, blocked)
@@ -103,6 +109,8 @@ func TestScanAndRedact_RegexPatterns(t *testing.T) {
 }
 
 func TestScanAndRedact_ConversationBlocking(t *testing.T) {
+	t.Parallel()
+
 	shield := NewOwnerShield(OwnerProtectionConfig{
 		BlockConversations: true,
 	}, testLogger())
@@ -141,6 +149,7 @@ func TestScanAndRedact_ConversationBlocking(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.give, func(t *testing.T) {
+			t.Parallel()
 			result, blocked := shield.ScanAndRedact(tt.giveData)
 			require.Len(t, blocked, 1)
 			assert.Equal(t, tt.wantKey, blocked[0])
@@ -150,6 +159,8 @@ func TestScanAndRedact_ConversationBlocking(t *testing.T) {
 }
 
 func TestScanAndRedact_ConversationBlocking_Disabled(t *testing.T) {
+	t.Parallel()
+
 	shield := NewOwnerShield(OwnerProtectionConfig{
 		BlockConversations: false,
 	}, testLogger())
@@ -164,6 +175,8 @@ func TestScanAndRedact_ConversationBlocking_Disabled(t *testing.T) {
 }
 
 func TestScanAndRedact_NestedMaps(t *testing.T) {
+	t.Parallel()
+
 	shield := NewOwnerShield(OwnerProtectionConfig{
 		OwnerName: "Alice Kim",
 	}, testLogger())
@@ -200,6 +213,8 @@ func TestScanAndRedact_NestedMaps(t *testing.T) {
 }
 
 func TestScanAndRedact_NoMatch(t *testing.T) {
+	t.Parallel()
+
 	shield := NewOwnerShield(OwnerProtectionConfig{
 		OwnerName:          "Alice Kim",
 		OwnerEmail:         "alice@example.com",
@@ -221,6 +236,8 @@ func TestScanAndRedact_NoMatch(t *testing.T) {
 }
 
 func TestContainsOwnerData(t *testing.T) {
+	t.Parallel()
+
 	shield := NewOwnerShield(OwnerProtectionConfig{
 		OwnerName:  "Alice Kim",
 		OwnerEmail: "alice@example.com",
@@ -245,12 +262,15 @@ func TestContainsOwnerData(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.give, func(t *testing.T) {
+			t.Parallel()
 			assert.Equal(t, tt.want, shield.ContainsOwnerData(tt.give))
 		})
 	}
 }
 
 func TestNewOwnerShield_EmptyConfig(t *testing.T) {
+	t.Parallel()
+
 	shield := NewOwnerShield(OwnerProtectionConfig{}, testLogger())
 
 	assert.Empty(t, shield.exactTerms)
@@ -259,6 +279,8 @@ func TestNewOwnerShield_EmptyConfig(t *testing.T) {
 }
 
 func TestNewOwnerShield_ExtraTerms(t *testing.T) {
+	t.Parallel()
+
 	shield := NewOwnerShield(OwnerProtectionConfig{
 		ExtraTerms: []string{"secret-project", "", "codename-alpha"},
 	}, testLogger())

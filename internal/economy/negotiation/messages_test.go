@@ -4,9 +4,14 @@ import (
 	"math/big"
 	"testing"
 	"time"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestNegotiatePayload_MarshalRoundTrip(t *testing.T) {
+	t.Parallel()
+
 	give := &NegotiatePayload{
 		SessionID: "sess-001",
 		Proposal: Proposal{
@@ -25,46 +30,30 @@ func TestNegotiatePayload_MarshalRoundTrip(t *testing.T) {
 	}
 
 	data, err := give.Marshal()
-	if err != nil {
-		t.Fatalf("Marshal() error: %v", err)
-	}
+	require.NoError(t, err)
 
 	got, err := UnmarshalNegotiatePayload(data)
-	if err != nil {
-		t.Fatalf("UnmarshalNegotiatePayload() error: %v", err)
-	}
+	require.NoError(t, err)
 
-	if got.SessionID != give.SessionID {
-		t.Errorf("SessionID = %q, want %q", got.SessionID, give.SessionID)
-	}
-	if got.Proposal.Action != give.Proposal.Action {
-		t.Errorf("Action = %q, want %q", got.Proposal.Action, give.Proposal.Action)
-	}
-	if got.Proposal.SenderDID != give.Proposal.SenderDID {
-		t.Errorf("SenderDID = %q, want %q", got.Proposal.SenderDID, give.Proposal.SenderDID)
-	}
-	if got.Proposal.Terms.ToolName != give.Proposal.Terms.ToolName {
-		t.Errorf("ToolName = %q, want %q", got.Proposal.Terms.ToolName, give.Proposal.Terms.ToolName)
-	}
-	if got.Proposal.Terms.Currency != give.Proposal.Terms.Currency {
-		t.Errorf("Currency = %q, want %q", got.Proposal.Terms.Currency, give.Proposal.Terms.Currency)
-	}
-	if got.Proposal.Terms.UseEscrow != give.Proposal.Terms.UseEscrow {
-		t.Errorf("UseEscrow = %v, want %v", got.Proposal.Terms.UseEscrow, give.Proposal.Terms.UseEscrow)
-	}
-	if got.Proposal.Round != give.Proposal.Round {
-		t.Errorf("Round = %d, want %d", got.Proposal.Round, give.Proposal.Round)
-	}
+	assert.Equal(t, give.SessionID, got.SessionID)
+	assert.Equal(t, give.Proposal.Action, got.Proposal.Action)
+	assert.Equal(t, give.Proposal.SenderDID, got.Proposal.SenderDID)
+	assert.Equal(t, give.Proposal.Terms.ToolName, got.Proposal.Terms.ToolName)
+	assert.Equal(t, give.Proposal.Terms.Currency, got.Proposal.Terms.Currency)
+	assert.Equal(t, give.Proposal.Terms.UseEscrow, got.Proposal.Terms.UseEscrow)
+	assert.Equal(t, give.Proposal.Round, got.Proposal.Round)
 }
 
 func TestUnmarshalNegotiatePayload_InvalidJSON(t *testing.T) {
+	t.Parallel()
+
 	_, err := UnmarshalNegotiatePayload([]byte("not-json"))
-	if err == nil {
-		t.Error("UnmarshalNegotiatePayload() expected error for invalid JSON")
-	}
+	require.Error(t, err)
 }
 
 func TestProposalActions(t *testing.T) {
+	t.Parallel()
+
 	tests := []struct {
 		give ProposalAction
 		want string
@@ -77,9 +66,8 @@ func TestProposalActions(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.want, func(t *testing.T) {
-			if string(tt.give) != tt.want {
-				t.Errorf("ProposalAction = %q, want %q", tt.give, tt.want)
-			}
+			t.Parallel()
+			assert.Equal(t, tt.want, string(tt.give))
 		})
 	}
 }

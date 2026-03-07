@@ -21,11 +21,15 @@ func newTestGossipServiceFields() *GossipService {
 }
 
 func TestGossipService_KnownPeers_Empty(t *testing.T) {
+	t.Parallel()
+
 	gs := newTestGossipServiceFields()
 	assert.Empty(t, gs.KnownPeers())
 }
 
 func TestGossipService_KnownPeers_AfterAdding(t *testing.T) {
+	t.Parallel()
+
 	gs := newTestGossipServiceFields()
 	gs.peers["did:lango:a"] = &GossipCard{DID: "did:lango:a", Name: "alice"}
 	gs.peers["did:lango:b"] = &GossipCard{DID: "did:lango:b", Name: "bob"}
@@ -35,6 +39,8 @@ func TestGossipService_KnownPeers_AfterAdding(t *testing.T) {
 }
 
 func TestGossipService_FindByCapability_Match(t *testing.T) {
+	t.Parallel()
+
 	gs := newTestGossipServiceFields()
 	gs.peers["did:lango:a"] = &GossipCard{
 		DID:          "did:lango:a",
@@ -51,6 +57,8 @@ func TestGossipService_FindByCapability_Match(t *testing.T) {
 }
 
 func TestGossipService_FindByCapability_NoMatch(t *testing.T) {
+	t.Parallel()
+
 	gs := newTestGossipServiceFields()
 	gs.peers["did:lango:a"] = &GossipCard{
 		DID:          "did:lango:a",
@@ -62,6 +70,8 @@ func TestGossipService_FindByCapability_NoMatch(t *testing.T) {
 }
 
 func TestGossipService_FindByDID(t *testing.T) {
+	t.Parallel()
+
 	gs := newTestGossipServiceFields()
 	card := &GossipCard{DID: "did:lango:alice", Name: "alice"}
 	gs.peers["did:lango:alice"] = card
@@ -75,6 +85,8 @@ func TestGossipService_FindByDID(t *testing.T) {
 }
 
 func TestGossipService_RevokeDID_And_IsRevoked(t *testing.T) {
+	t.Parallel()
+
 	gs := newTestGossipServiceFields()
 
 	assert.False(t, gs.IsRevoked("did:lango:bad"))
@@ -86,6 +98,8 @@ func TestGossipService_RevokeDID_And_IsRevoked(t *testing.T) {
 }
 
 func TestGossipService_SetMaxCredentialAge(t *testing.T) {
+	t.Parallel()
+
 	gs := newTestGossipServiceFields()
 	assert.Equal(t, defaultMaxCredentialAge, gs.maxCredentialAge)
 
@@ -97,14 +111,20 @@ func TestGossipService_SetMaxCredentialAge(t *testing.T) {
 }
 
 func TestGossipService_DefaultMaxCredentialAge(t *testing.T) {
+	t.Parallel()
+
 	assert.Equal(t, 24*time.Hour, defaultMaxCredentialAge)
 }
 
 func TestTopicAgentCard_Constant(t *testing.T) {
+	t.Parallel()
+
 	assert.Equal(t, "/lango/agentcard/1.0.0", TopicAgentCard)
 }
 
 func TestPeerIDFromString_Valid(t *testing.T) {
+	t.Parallel()
+
 	// Use a well-known peer ID format (base58 encoded).
 	// This tests that the function wraps peer.Decode correctly.
 	_, err := PeerIDFromString("invalid-peer-id")

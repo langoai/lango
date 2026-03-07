@@ -7,6 +7,8 @@ import (
 
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
 	"github.com/langoai/lango/internal/approval"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 // MockApprovalBotAPI extends MockBotAPI with Request support.
@@ -23,6 +25,8 @@ func (m *MockApprovalBotAPI) Request(c tgbotapi.Chattable) (*tgbotapi.APIRespons
 }
 
 func TestApprovalProvider_CanHandle(t *testing.T) {
+	t.Parallel()
+
 	tests := []struct {
 		give string
 		want bool
@@ -37,14 +41,16 @@ func TestApprovalProvider_CanHandle(t *testing.T) {
 	p := NewApprovalProvider(&MockApprovalBotAPI{}, 30*time.Second)
 	for _, tt := range tests {
 		t.Run(tt.give, func(t *testing.T) {
-			if got := p.CanHandle(tt.give); got != tt.want {
-				t.Errorf("CanHandle(%q) = %v, want %v", tt.give, got, tt.want)
-			}
+			t.Parallel()
+
+			assert.Equal(t, tt.want, p.CanHandle(tt.give))
 		})
 	}
 }
 
 func TestApprovalProvider_Approve(t *testing.T) {
+	t.Parallel()
+
 	bot := &MockApprovalBotAPI{}
 	p := NewApprovalProvider(bot, 5*time.Second)
 
@@ -80,12 +86,8 @@ func TestApprovalProvider_Approve(t *testing.T) {
 
 	select {
 	case <-done:
-		if err != nil {
-			t.Fatalf("unexpected error: %v", err)
-		}
-		if !resp.Approved {
-			t.Error("expected approved=true")
-		}
+		require.NoError(t, err)
+		assert.True(t, resp.Approved)
 	case <-time.After(2 * time.Second):
 		t.Fatal("timeout waiting for approval")
 	}
@@ -98,12 +100,12 @@ func TestApprovalProvider_Approve(t *testing.T) {
 			break
 		}
 	}
-	if !hasEdit {
-		t.Error("expected edit message to remove keyboard")
-	}
+	assert.True(t, hasEdit, "expected edit message to remove keyboard")
 }
 
 func TestApprovalProvider_Deny(t *testing.T) {
+	t.Parallel()
+
 	bot := &MockApprovalBotAPI{}
 	p := NewApprovalProvider(bot, 5*time.Second)
 
@@ -137,18 +139,16 @@ func TestApprovalProvider_Deny(t *testing.T) {
 
 	select {
 	case <-done:
-		if err != nil {
-			t.Fatalf("unexpected error: %v", err)
-		}
-		if resp.Approved {
-			t.Error("expected approved=false")
-		}
+		require.NoError(t, err)
+		assert.False(t, resp.Approved)
 	case <-time.After(2 * time.Second):
 		t.Fatal("timeout waiting for denial")
 	}
 }
 
 func TestApprovalProvider_Timeout(t *testing.T) {
+	t.Parallel()
+
 	bot := &MockApprovalBotAPI{}
 	p := NewApprovalProvider(bot, 100*time.Millisecond) // short timeout
 
@@ -160,12 +160,8 @@ func TestApprovalProvider_Timeout(t *testing.T) {
 	}
 
 	resp, err := p.RequestApproval(context.Background(), req)
-	if err == nil {
-		t.Fatal("expected timeout error")
-	}
-	if resp.Approved {
-		t.Error("expected approved=false on timeout")
-	}
+	require.Error(t, err)
+	assert.False(t, resp.Approved)
 
 	// Verify expired message was edited
 	hasEdit := false
@@ -176,12 +172,12 @@ func TestApprovalProvider_Timeout(t *testing.T) {
 			}
 		}
 	}
-	if !hasEdit {
-		t.Error("expected expired message edit on timeout")
-	}
+	assert.True(t, hasEdit, "expected expired message edit on timeout")
 }
 
 func TestApprovalProvider_ContextCancellation(t *testing.T) {
+	t.Parallel()
+
 	bot := &MockApprovalBotAPI{}
 	p := NewApprovalProvider(bot, 30*time.Second)
 
@@ -207,9 +203,7 @@ func TestApprovalProvider_ContextCancellation(t *testing.T) {
 
 	select {
 	case <-done:
-		if err == nil {
-			t.Fatal("expected context cancelled error")
-		}
+		require.Error(t, err)
 		// Verify expired message was edited
 		hasEdit := false
 		for _, msg := range bot.SentMessages {
@@ -219,15 +213,15 @@ func TestApprovalProvider_ContextCancellation(t *testing.T) {
 				}
 			}
 		}
-		if !hasEdit {
-			t.Error("expected expired message edit on context cancellation")
-		}
+		assert.True(t, hasEdit, "expected expired message edit on context cancellation")
 	case <-time.After(2 * time.Second):
 		t.Fatal("timeout waiting for cancellation")
 	}
 }
 
 func TestApprovalProvider_AlwaysAllow(t *testing.T) {
+	t.Parallel()
+
 	bot := &MockApprovalBotAPI{}
 	p := NewApprovalProvider(bot, 5*time.Second)
 
@@ -257,21 +251,17 @@ func TestApprovalProvider_AlwaysAllow(t *testing.T) {
 
 	select {
 	case <-done:
-		if err != nil {
-			t.Fatalf("unexpected error: %v", err)
-		}
-		if !resp.Approved {
-			t.Error("expected approved=true")
-		}
-		if !resp.AlwaysAllow {
-			t.Error("expected alwaysAllow=true")
-		}
+		require.NoError(t, err)
+		assert.True(t, resp.Approved)
+		assert.True(t, resp.AlwaysAllow)
 	case <-time.After(2 * time.Second):
 		t.Fatal("timeout waiting for always-allow")
 	}
 }
 
 func TestApprovalProvider_InvalidSessionKey(t *testing.T) {
+	t.Parallel()
+
 	bot := &MockApprovalBotAPI{}
 	p := NewApprovalProvider(bot, 5*time.Second)
 
@@ -283,12 +273,12 @@ func TestApprovalProvider_InvalidSessionKey(t *testing.T) {
 	}
 
 	_, err := p.RequestApproval(context.Background(), req)
-	if err == nil {
-		t.Fatal("expected error for invalid session key")
-	}
+	require.Error(t, err)
 }
 
 func TestApprovalProvider_UnknownCallback(t *testing.T) {
+	t.Parallel()
+
 	bot := &MockApprovalBotAPI{}
 	p := NewApprovalProvider(bot, 5*time.Second)
 
@@ -303,6 +293,8 @@ func TestApprovalProvider_UnknownCallback(t *testing.T) {
 }
 
 func TestApprovalProvider_DuplicateCallback(t *testing.T) {
+	t.Parallel()
+
 	bot := &MockApprovalBotAPI{}
 	p := NewApprovalProvider(bot, 5*time.Second)
 
@@ -338,12 +330,8 @@ func TestApprovalProvider_DuplicateCallback(t *testing.T) {
 
 	select {
 	case <-done:
-		if err != nil {
-			t.Fatalf("unexpected error: %v", err)
-		}
-		if !resp.Approved {
-			t.Error("expected approved=true from first callback")
-		}
+		require.NoError(t, err)
+		assert.True(t, resp.Approved, "expected approved=true from first callback")
 	case <-time.After(2 * time.Second):
 		t.Fatal("timeout")
 	}

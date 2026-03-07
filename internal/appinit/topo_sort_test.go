@@ -3,6 +3,9 @@ package appinit
 import (
 	"context"
 	"testing"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 // stubModule is a minimal Module implementation for testing.
@@ -26,6 +29,8 @@ func (s *stubModule) Init(ctx context.Context, r Resolver) (*ModuleResult, error
 }
 
 func TestTopoSort(t *testing.T) {
+	t.Parallel()
+
 	tests := []struct {
 		give      string
 		modules   []Module
@@ -116,27 +121,19 @@ func TestTopoSort(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.give, func(t *testing.T) {
+			t.Parallel()
+
 			got, err := TopoSort(tt.modules)
 			if tt.wantErr {
-				if err == nil {
-					t.Fatal("expected error, got nil")
-				}
+				require.Error(t, err)
 				return
 			}
-			if err != nil {
-				t.Fatalf("unexpected error: %v", err)
-			}
+			require.NoError(t, err)
 
-			if len(got) != len(tt.wantOrder) {
-				names := moduleNames(got)
-				t.Fatalf("want %d modules %v, got %d modules %v",
-					len(tt.wantOrder), tt.wantOrder, len(got), names)
-			}
+			require.Len(t, got, len(tt.wantOrder))
 
 			for i, m := range got {
-				if m.Name() != tt.wantOrder[i] {
-					t.Errorf("position %d: want %q, got %q", i, tt.wantOrder[i], m.Name())
-				}
+				assert.Equal(t, tt.wantOrder[i], m.Name(), "position %d", i)
 			}
 		})
 	}

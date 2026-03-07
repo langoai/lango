@@ -5,9 +5,14 @@ import (
 	"fmt"
 	"sync"
 	"testing"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestRefStore_Store(t *testing.T) {
+	t.Parallel()
+
 	tests := []struct {
 		give      string
 		giveValue []byte
@@ -32,16 +37,17 @@ func TestRefStore_Store(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.give, func(t *testing.T) {
+			t.Parallel()
 			rs := NewRefStore()
 			got := rs.Store(tt.give, tt.giveValue)
-			if got != tt.want {
-				t.Errorf("Store(%q) = %q, want %q", tt.give, got, tt.want)
-			}
+			assert.Equal(t, tt.want, got)
 		})
 	}
 }
 
 func TestRefStore_StoreDecrypted(t *testing.T) {
+	t.Parallel()
+
 	tests := []struct {
 		give      string
 		giveValue []byte
@@ -61,25 +67,25 @@ func TestRefStore_StoreDecrypted(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.give, func(t *testing.T) {
+			t.Parallel()
 			rs := NewRefStore()
 			got := rs.StoreDecrypted(tt.give, tt.giveValue)
-			if got != tt.want {
-				t.Errorf("StoreDecrypted(%q) = %q, want %q",
-					tt.give, got, tt.want)
-			}
+			assert.Equal(t, tt.want, got)
 		})
 	}
 }
 
 func TestRefStore_Resolve(t *testing.T) {
+	t.Parallel()
+
 	rs := NewRefStore()
 	rs.Store("my-secret", []byte("secret-value"))
 	rs.StoreDecrypted("dec-1", []byte("decrypted-value"))
 
 	tests := []struct {
-		give     string
-		wantVal  []byte
-		wantOK   bool
+		give    string
+		wantVal []byte
+		wantOK  bool
 	}{
 		{
 			give:    "{{secret:my-secret}}",
@@ -105,39 +111,34 @@ func TestRefStore_Resolve(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.give, func(t *testing.T) {
+			t.Parallel()
 			gotVal, gotOK := rs.Resolve(tt.give)
-			if gotOK != tt.wantOK {
-				t.Errorf("Resolve(%q) ok = %v, want %v",
-					tt.give, gotOK, tt.wantOK)
-			}
-			if !bytes.Equal(gotVal, tt.wantVal) {
-				t.Errorf("Resolve(%q) val = %q, want %q",
-					tt.give, gotVal, tt.wantVal)
-			}
+			assert.Equal(t, tt.wantOK, gotOK)
+			assert.True(t, bytes.Equal(gotVal, tt.wantVal), "Resolve(%q) val = %q, want %q", tt.give, gotVal, tt.wantVal)
 		})
 	}
 }
 
 func TestRefStore_Resolve_DoesNotMutateInternal(t *testing.T) {
+	t.Parallel()
+
 	rs := NewRefStore()
 	rs.Store("key", []byte("original"))
 
 	val, ok := rs.Resolve("{{secret:key}}")
-	if !ok {
-		t.Fatal("expected to resolve stored secret")
-	}
+	require.True(t, ok, "expected to resolve stored secret")
 
 	// Mutate the returned slice
 	val[0] = 'X'
 
 	// Verify internal state is unchanged
 	val2, _ := rs.Resolve("{{secret:key}}")
-	if string(val2) != "original" {
-		t.Errorf("internal state mutated: got %q, want %q", val2, "original")
-	}
+	assert.Equal(t, "original", string(val2))
 }
 
 func TestRefStore_ResolveAll(t *testing.T) {
+	t.Parallel()
+
 	rs := NewRefStore()
 	rs.Store("user", []byte("admin"))
 	rs.Store("pass", []byte("s3cret"))
@@ -175,25 +176,23 @@ func TestRefStore_ResolveAll(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.give, func(t *testing.T) {
+			t.Parallel()
 			got := rs.ResolveAll(tt.give)
-			if got != tt.want {
-				t.Errorf("ResolveAll(%q) = %q, want %q",
-					tt.give, got, tt.want)
-			}
+			assert.Equal(t, tt.want, got)
 		})
 	}
 }
 
 func TestRefStore_Values(t *testing.T) {
+	t.Parallel()
+
 	rs := NewRefStore()
 	rs.Store("a", []byte("val-a"))
 	rs.Store("b", []byte("val-b"))
 	rs.StoreDecrypted("c", []byte("val-c"))
 
 	values := rs.Values()
-	if len(values) != 3 {
-		t.Fatalf("Values() returned %d items, want 3", len(values))
-	}
+	require.Len(t, values, 3)
 
 	// Collect all values into a set for order-independent comparison
 	seen := make(map[string]bool, len(values))
@@ -202,32 +201,30 @@ func TestRefStore_Values(t *testing.T) {
 	}
 
 	for _, want := range []string{"val-a", "val-b", "val-c"} {
-		if !seen[want] {
-			t.Errorf("Values() missing %q", want)
-		}
+		assert.True(t, seen[want], "Values() missing %q", want)
 	}
 }
 
 func TestRefStore_Values_DoesNotMutateInternal(t *testing.T) {
+	t.Parallel()
+
 	rs := NewRefStore()
 	rs.Store("key", []byte("original"))
 
 	values := rs.Values()
-	if len(values) != 1 {
-		t.Fatalf("Values() returned %d items, want 1", len(values))
-	}
+	require.Len(t, values, 1)
 
 	// Mutate the returned slice
 	values[0][0] = 'X'
 
 	// Verify internal state is unchanged
 	val, _ := rs.Resolve("{{secret:key}}")
-	if string(val) != "original" {
-		t.Errorf("internal state mutated: got %q, want %q", val, "original")
-	}
+	assert.Equal(t, "original", string(val))
 }
 
 func TestRefStore_Names(t *testing.T) {
+	t.Parallel()
+
 	rs := NewRefStore()
 	rs.Store("api-key", []byte("sk-12345"))
 	rs.Store("db-pass", []byte("p@ss"))
@@ -255,47 +252,39 @@ func TestRefStore_Names(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.wantName, func(t *testing.T) {
+			t.Parallel()
 			got, ok := names[tt.givePlaintext]
-			if !ok {
-				t.Errorf("Names() missing key %q", tt.givePlaintext)
-				return
-			}
-			if got != tt.wantName {
-				t.Errorf("Names()[%q] = %q, want %q",
-					tt.givePlaintext, got, tt.wantName)
-			}
+			require.True(t, ok, "Names() missing key %q", tt.givePlaintext)
+			assert.Equal(t, tt.wantName, got)
 		})
 	}
 }
 
 func TestRefStore_Clear(t *testing.T) {
+	t.Parallel()
+
 	rs := NewRefStore()
 	rs.Store("secret-1", []byte("value-1"))
 	rs.StoreDecrypted("dec-1", []byte("value-2"))
 
 	// Verify data exists before clearing
-	if _, ok := rs.Resolve("{{secret:secret-1}}"); !ok {
-		t.Fatal("expected secret to exist before Clear")
-	}
+	_, ok := rs.Resolve("{{secret:secret-1}}")
+	require.True(t, ok, "expected secret to exist before Clear")
 
 	rs.Clear()
 
 	// Verify all data is gone
-	if _, ok := rs.Resolve("{{secret:secret-1}}"); ok {
-		t.Error("expected secret to be cleared")
-	}
-	if _, ok := rs.Resolve("{{decrypt:dec-1}}"); ok {
-		t.Error("expected decrypt ref to be cleared")
-	}
-	if len(rs.Values()) != 0 {
-		t.Error("expected Values() to be empty after Clear")
-	}
-	if len(rs.Names()) != 0 {
-		t.Error("expected Names() to be empty after Clear")
-	}
+	_, ok = rs.Resolve("{{secret:secret-1}}")
+	assert.False(t, ok, "expected secret to be cleared")
+	_, ok = rs.Resolve("{{decrypt:dec-1}}")
+	assert.False(t, ok, "expected decrypt ref to be cleared")
+	assert.Empty(t, rs.Values(), "expected Values() to be empty after Clear")
+	assert.Empty(t, rs.Names(), "expected Names() to be empty after Clear")
 }
 
 func TestRefStore_ConcurrentStoreAndResolve(t *testing.T) {
+	t.Parallel()
+
 	rs := NewRefStore()
 	const numGoroutines = 100
 
@@ -327,18 +316,15 @@ func TestRefStore_ConcurrentStoreAndResolve(t *testing.T) {
 	for i := 0; i < numGoroutines; i++ {
 		token := fmt.Sprintf("{{secret:key-%d}}", i)
 		val, ok := rs.Resolve(token)
-		if !ok {
-			t.Errorf("missing value for %s after concurrent store", token)
-			continue
-		}
+		require.True(t, ok, "missing value for %s after concurrent store", token)
 		want := fmt.Sprintf("val-%d", i)
-		if string(val) != want {
-			t.Errorf("Resolve(%q) = %q, want %q", token, val, want)
-		}
+		assert.Equal(t, want, string(val))
 	}
 }
 
 func TestRefStore_ConcurrentMixedOperations(t *testing.T) {
+	t.Parallel()
+
 	rs := NewRefStore()
 	rs.Store("pre-existing", []byte("initial"))
 
@@ -383,11 +369,6 @@ func TestRefStore_ConcurrentMixedOperations(t *testing.T) {
 
 	// Verify pre-existing value survives concurrent operations
 	val, ok := rs.Resolve("{{secret:pre-existing}}")
-	if !ok {
-		t.Error("pre-existing secret lost during concurrent operations")
-	}
-	if string(val) != "initial" {
-		t.Errorf("pre-existing value changed: got %q, want %q",
-			val, "initial")
-	}
+	require.True(t, ok, "pre-existing secret lost during concurrent operations")
+	assert.Equal(t, "initial", string(val))
 }

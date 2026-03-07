@@ -4,17 +4,19 @@ import (
 	"context"
 	"testing"
 	"time"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestRPCProvider_Sign(t *testing.T) {
+	t.Parallel()
+
 	provider := NewRPCProvider()
 
 	// Mock Sender that replies immediately
 	provider.SetSender(func(event string, payload interface{}) error {
-		if event != "sign.request" {
-			t.Errorf("expected sign.request, got %s", event)
-			return nil
-		}
+		assert.Equal(t, "sign.request", event)
 		req := payload.(SignRequest)
 
 		// Simulate response
@@ -25,9 +27,7 @@ func TestRPCProvider_Sign(t *testing.T) {
 
 		// Handle response in a goroutine to avoid blocking if the channel buffer was 0 (it's 1, but good practice)
 		go func() {
-			if err := provider.HandleSignResponse(resp); err != nil {
-				t.Errorf("handle response failed: %v", err)
-			}
+			require.NoError(t, provider.HandleSignResponse(resp))
 		}()
 		return nil
 	})
@@ -36,23 +36,17 @@ func TestRPCProvider_Sign(t *testing.T) {
 	defer cancel()
 
 	sig, err := provider.Sign(ctx, "key1", []byte("data"))
-	if err != nil {
-		t.Fatalf("Sign failed: %v", err)
-	}
-
-	if string(sig) != "signature_bytes" {
-		t.Errorf("expected 'signature_bytes', got %s", string(sig))
-	}
+	require.NoError(t, err)
+	assert.Equal(t, "signature_bytes", string(sig))
 }
 
 func TestRPCProvider_Encrypt(t *testing.T) {
+	t.Parallel()
+
 	provider := NewRPCProvider()
 
 	provider.SetSender(func(event string, payload interface{}) error {
-		if event != "encrypt.request" {
-			t.Errorf("expected encrypt.request, got %s", event)
-			return nil
-		}
+		assert.Equal(t, "encrypt.request", event)
 		req := payload.(EncryptRequest)
 
 		resp := EncryptResponse{
@@ -70,23 +64,17 @@ func TestRPCProvider_Encrypt(t *testing.T) {
 	defer cancel()
 
 	cipher, err := provider.Encrypt(ctx, "key1", []byte("plaintext"))
-	if err != nil {
-		t.Fatalf("Encrypt failed: %v", err)
-	}
-
-	if string(cipher) != "encrypted_bytes" {
-		t.Errorf("expected 'encrypted_bytes', got %s", string(cipher))
-	}
+	require.NoError(t, err)
+	assert.Equal(t, "encrypted_bytes", string(cipher))
 }
 
 func TestRPCProvider_Decrypt(t *testing.T) {
+	t.Parallel()
+
 	provider := NewRPCProvider()
 
 	provider.SetSender(func(event string, payload interface{}) error {
-		if event != "decrypt.request" {
-			t.Errorf("expected decrypt.request, got %s", event)
-			return nil
-		}
+		assert.Equal(t, "decrypt.request", event)
 		req := payload.(DecryptRequest)
 
 		resp := DecryptResponse{
@@ -104,11 +92,6 @@ func TestRPCProvider_Decrypt(t *testing.T) {
 	defer cancel()
 
 	plain, err := provider.Decrypt(ctx, "key1", []byte("ciphertext"))
-	if err != nil {
-		t.Fatalf("Decrypt failed: %v", err)
-	}
-
-	if string(plain) != "decrypted_bytes" {
-		t.Errorf("expected 'decrypted_bytes', got %s", string(plain))
-	}
+	require.NoError(t, err)
+	assert.Equal(t, "decrypted_bytes", string(plain))
 }

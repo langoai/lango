@@ -4,6 +4,9 @@ import (
 	"context"
 	"errors"
 	"testing"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 // mockKnowledgeSaver implements KnowledgeSaver for testing.
@@ -30,6 +33,8 @@ func (m *mockKnowledgeSaver) SaveToolResult(_ context.Context, sessionKey, toolN
 }
 
 func TestKnowledgeSaveHook_Post(t *testing.T) {
+	t.Parallel()
+
 	tests := []struct {
 		give          string
 		saveableTools []string
@@ -66,6 +71,8 @@ func TestKnowledgeSaveHook_Post(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.give, func(t *testing.T) {
+			t.Parallel()
+
 			saver := &mockKnowledgeSaver{}
 			hook := NewKnowledgeSaveHook(saver, tt.saveableTools)
 
@@ -76,32 +83,24 @@ func TestKnowledgeSaveHook_Post(t *testing.T) {
 				Ctx:        context.Background(),
 			}, "search-result", tt.toolErr)
 
-			if err != nil {
-				t.Fatalf("unexpected error: %v", err)
-			}
+			require.NoError(t, err)
 
 			saved := len(saver.calls) > 0
-			if saved != tt.wantSaved {
-				t.Errorf("saved = %v, want %v", saved, tt.wantSaved)
-			}
+			assert.Equal(t, tt.wantSaved, saved)
 
 			if tt.wantSaved && len(saver.calls) == 1 {
 				call := saver.calls[0]
-				if call.toolName != tt.toolName {
-					t.Errorf("toolName = %q, want %q", call.toolName, tt.toolName)
-				}
-				if call.sessionKey != "session-1" {
-					t.Errorf("sessionKey = %q, want %q", call.sessionKey, "session-1")
-				}
-				if call.result != "search-result" {
-					t.Errorf("result = %v, want %q", call.result, "search-result")
-				}
+				assert.Equal(t, tt.toolName, call.toolName)
+				assert.Equal(t, "session-1", call.sessionKey)
+				assert.Equal(t, "search-result", call.result)
 			}
 		})
 	}
 }
 
 func TestKnowledgeSaveHook_Post_SaverError(t *testing.T) {
+	t.Parallel()
+
 	saverErr := errors.New("db write failed")
 	saver := &mockKnowledgeSaver{err: saverErr}
 	hook := NewKnowledgeSaveHook(saver, []string{"web_search"})
@@ -111,20 +110,14 @@ func TestKnowledgeSaveHook_Post_SaverError(t *testing.T) {
 		Ctx:      context.Background(),
 	}, "result", nil)
 
-	if err == nil {
-		t.Fatal("expected error from saver failure")
-	}
-	if !errors.Is(err, saverErr) {
-		t.Errorf("err = %v, want wrapping %v", err, saverErr)
-	}
+	require.Error(t, err)
+	assert.ErrorIs(t, err, saverErr)
 }
 
 func TestKnowledgeSaveHook_Metadata(t *testing.T) {
+	t.Parallel()
+
 	hook := NewKnowledgeSaveHook(&mockKnowledgeSaver{}, nil)
-	if hook.Name() != "knowledge_save" {
-		t.Errorf("Name() = %q, want %q", hook.Name(), "knowledge_save")
-	}
-	if hook.Priority() != 100 {
-		t.Errorf("Priority() = %d, want 100", hook.Priority())
-	}
+	assert.Equal(t, "knowledge_save", hook.Name())
+	assert.Equal(t, 100, hook.Priority())
 }

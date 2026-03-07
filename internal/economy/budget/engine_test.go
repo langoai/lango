@@ -1,10 +1,12 @@
 package budget
 
 import (
-	"errors"
 	"math/big"
 	"sync"
 	"testing"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 
 	"github.com/langoai/lango/internal/config"
 )
@@ -26,6 +28,8 @@ func defaultCfg() config.BudgetConfig {
 }
 
 func TestEngine_Allocate(t *testing.T) {
+	t.Parallel()
+
 	tests := []struct {
 		give      string
 		giveTotal int64
@@ -36,51 +40,47 @@ func TestEngine_Allocate(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.give, func(t *testing.T) {
+			t.Parallel()
 			e, _ := newTestEngine(defaultCfg())
 			tb, err := e.Allocate("task-1", big.NewInt(tt.giveTotal))
-			if err != nil {
-				t.Fatalf("Allocate() unexpected error: %v", err)
-			}
-			if tb.TotalBudget.Cmp(big.NewInt(tt.giveTotal)) != 0 {
-				t.Errorf("TotalBudget = %s, want %d", tb.TotalBudget, tt.giveTotal)
-			}
-			if tb.Status != StatusActive {
-				t.Errorf("Status = %q, want %q", tb.Status, StatusActive)
-			}
+			require.NoError(t, err)
+			assert.Equal(t, 0, tb.TotalBudget.Cmp(big.NewInt(tt.giveTotal)))
+			assert.Equal(t, StatusActive, tb.Status)
 		})
 	}
 }
 
 func TestEngine_Allocate_DefaultMax(t *testing.T) {
+	t.Parallel()
+
 	e, _ := newTestEngine(defaultCfg())
 	tb, err := e.Allocate("task-1", nil)
-	if err != nil {
-		t.Fatalf("Allocate() with default max: %v", err)
-	}
+	require.NoError(t, err)
+
 	want := big.NewInt(10_000_000)
-	if tb.TotalBudget.Cmp(want) != 0 {
-		t.Errorf("TotalBudget = %s, want %s", tb.TotalBudget, want)
-	}
+	assert.Equal(t, 0, tb.TotalBudget.Cmp(want))
 }
 
 func TestEngine_Allocate_NoDefaultNoAmount(t *testing.T) {
+	t.Parallel()
+
 	e, _ := newTestEngine(config.BudgetConfig{})
 	_, err := e.Allocate("task-1", nil)
-	if !errors.Is(err, ErrInvalidAmount) {
-		t.Fatalf("Allocate() nil with no default: got %v, want ErrInvalidAmount", err)
-	}
+	require.ErrorIs(t, err, ErrInvalidAmount)
 }
 
 func TestEngine_Allocate_Duplicate(t *testing.T) {
+	t.Parallel()
+
 	e, _ := newTestEngine(defaultCfg())
 	_, _ = e.Allocate("task-1", big.NewInt(1000000))
 	_, err := e.Allocate("task-1", big.NewInt(500000))
-	if !errors.Is(err, ErrBudgetExists) {
-		t.Fatalf("duplicate Allocate() error = %v, want ErrBudgetExists", err)
-	}
+	require.ErrorIs(t, err, ErrBudgetExists)
 }
 
 func TestEngine_Check(t *testing.T) {
+	t.Parallel()
+
 	tests := []struct {
 		give       string
 		giveAmount int64
@@ -98,6 +98,7 @@ func TestEngine_Check(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.give, func(t *testing.T) {
+			t.Parallel()
 			e, s := newTestEngine(defaultCfg())
 			_, _ = s.Allocate("task-1", big.NewInt(1000000))
 
@@ -110,37 +111,35 @@ func TestEngine_Check(t *testing.T) {
 
 			err := e.Check("task-1", big.NewInt(tt.giveAmount))
 			if tt.wantErr != nil {
-				if !errors.Is(err, tt.wantErr) {
-					t.Fatalf("Check() error = %v, want %v", err, tt.wantErr)
-				}
+				require.ErrorIs(t, err, tt.wantErr)
 				return
 			}
-			if err != nil {
-				t.Fatalf("Check() unexpected error: %v", err)
-			}
+			require.NoError(t, err)
 		})
 	}
 }
 
 func TestEngine_Check_InvalidAmount(t *testing.T) {
+	t.Parallel()
+
 	e, s := newTestEngine(defaultCfg())
 	_, _ = s.Allocate("task-1", big.NewInt(1000000))
 
 	err := e.Check("task-1", big.NewInt(0))
-	if !errors.Is(err, ErrInvalidAmount) {
-		t.Fatalf("Check(0) error = %v, want ErrInvalidAmount", err)
-	}
+	require.ErrorIs(t, err, ErrInvalidAmount)
 }
 
 func TestEngine_Check_NotFound(t *testing.T) {
+	t.Parallel()
+
 	e, _ := newTestEngine(defaultCfg())
 	err := e.Check("nonexistent", big.NewInt(100))
-	if !errors.Is(err, ErrBudgetNotFound) {
-		t.Fatalf("Check() error = %v, want ErrBudgetNotFound", err)
-	}
+	require.ErrorIs(t, err, ErrBudgetNotFound)
 }
 
 func TestEngine_Record(t *testing.T) {
+	t.Parallel()
+
 	tests := []struct {
 		give       string
 		giveAmount int64
@@ -165,6 +164,7 @@ func TestEngine_Record(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.give, func(t *testing.T) {
+			t.Parallel()
 			e, s := newTestEngine(defaultCfg())
 			_, _ = s.Allocate("task-1", big.NewInt(1000000))
 			if tt.giveSetup != nil {
@@ -180,45 +180,35 @@ func TestEngine_Record(t *testing.T) {
 
 			err := e.Record("task-1", entry)
 			if tt.wantErr != nil {
-				if !errors.Is(err, tt.wantErr) {
-					t.Fatalf("Record() error = %v, want %v", err, tt.wantErr)
-				}
+				require.ErrorIs(t, err, tt.wantErr)
 				return
 			}
-			if err != nil {
-				t.Fatalf("Record() unexpected error: %v", err)
-			}
+			require.NoError(t, err)
 
 			tb, _ := s.Get("task-1")
-			if tb.Spent.Cmp(big.NewInt(tt.wantSpent)) != 0 {
-				t.Errorf("Spent = %s, want %d", tb.Spent, tt.wantSpent)
-			}
-			if len(tb.Entries) != 1 {
-				t.Errorf("Entries count = %d, want 1", len(tb.Entries))
-			}
-			if tb.Entries[0].ID == "" {
-				t.Error("Entry ID should be auto-generated")
-			}
+			assert.Equal(t, 0, tb.Spent.Cmp(big.NewInt(tt.wantSpent)))
+			assert.Len(t, tb.Entries, 1)
+			assert.NotEmpty(t, tb.Entries[0].ID)
 		})
 	}
 }
 
 func TestEngine_Record_ExhaustsOnFullSpend(t *testing.T) {
+	t.Parallel()
+
 	e, s := newTestEngine(defaultCfg())
 	_, _ = s.Allocate("task-1", big.NewInt(1000))
 
 	err := e.Record("task-1", SpendEntry{Amount: big.NewInt(1000), PeerDID: "did:peer:123"})
-	if err != nil {
-		t.Fatalf("Record() unexpected error: %v", err)
-	}
+	require.NoError(t, err)
 
 	tb, _ := s.Get("task-1")
-	if tb.Status != StatusExhausted {
-		t.Errorf("Status = %q, want %q", tb.Status, StatusExhausted)
-	}
+	assert.Equal(t, StatusExhausted, tb.Status)
 }
 
 func TestEngine_Record_MultipleEntries(t *testing.T) {
+	t.Parallel()
+
 	e, s := newTestEngine(defaultCfg())
 	_, _ = s.Allocate("task-1", big.NewInt(1000000))
 
@@ -229,53 +219,45 @@ func TestEngine_Record_MultipleEntries(t *testing.T) {
 			Reason:  "entry",
 			ID:      "id-" + string(rune('a'+i)),
 		})
-		if err != nil {
-			t.Fatalf("Record() entry %d: unexpected error: %v", i, err)
-		}
+		require.NoError(t, err)
 	}
 
 	tb, _ := s.Get("task-1")
-	if tb.Spent.Cmp(big.NewInt(300000)) != 0 {
-		t.Errorf("Spent = %s, want 300000", tb.Spent)
-	}
-	if len(tb.Entries) != 3 {
-		t.Errorf("Entries count = %d, want 3", len(tb.Entries))
-	}
+	assert.Equal(t, 0, tb.Spent.Cmp(big.NewInt(300000)))
+	assert.Len(t, tb.Entries, 3)
 }
 
 func TestEngine_Reserve(t *testing.T) {
+	t.Parallel()
+
 	e, s := newTestEngine(defaultCfg())
 	_, _ = s.Allocate("task-1", big.NewInt(1000000))
 
 	release, err := e.Reserve("task-1", big.NewInt(500000))
-	if err != nil {
-		t.Fatalf("Reserve() unexpected error: %v", err)
-	}
+	require.NoError(t, err)
 
 	tb, _ := s.Get("task-1")
-	if tb.Reserved.Cmp(big.NewInt(500000)) != 0 {
-		t.Errorf("Reserved = %s, want 500000", tb.Reserved)
-	}
+	assert.Equal(t, 0, tb.Reserved.Cmp(big.NewInt(500000)))
 
 	release()
 
 	tb, _ = s.Get("task-1")
-	if tb.Reserved.Sign() != 0 {
-		t.Errorf("Reserved after release = %s, want 0", tb.Reserved)
-	}
+	assert.Equal(t, 0, tb.Reserved.Sign())
 }
 
 func TestEngine_Reserve_ExceedsRemaining(t *testing.T) {
+	t.Parallel()
+
 	e, s := newTestEngine(defaultCfg())
 	_, _ = s.Allocate("task-1", big.NewInt(1000000))
 
 	_, err := e.Reserve("task-1", big.NewInt(1000001))
-	if !errors.Is(err, ErrBudgetExceeded) {
-		t.Fatalf("Reserve() error = %v, want ErrBudgetExceeded", err)
-	}
+	require.ErrorIs(t, err, ErrBudgetExceeded)
 }
 
 func TestEngine_Reserve_ReleaseIdempotent(t *testing.T) {
+	t.Parallel()
+
 	e, s := newTestEngine(defaultCfg())
 	_, _ = s.Allocate("task-1", big.NewInt(1000000))
 
@@ -284,12 +266,12 @@ func TestEngine_Reserve_ReleaseIdempotent(t *testing.T) {
 	release()
 
 	tb, _ := s.Get("task-1")
-	if tb.Reserved.Sign() != 0 {
-		t.Errorf("Reserved after double release = %s, want 0", tb.Reserved)
-	}
+	assert.Equal(t, 0, tb.Reserved.Sign())
 }
 
 func TestEngine_SetProgress(t *testing.T) {
+	t.Parallel()
+
 	tests := []struct {
 		give         string
 		giveProgress float64
@@ -304,72 +286,61 @@ func TestEngine_SetProgress(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.give, func(t *testing.T) {
+			t.Parallel()
 			e, s := newTestEngine(defaultCfg())
 			_, _ = s.Allocate("task-1", big.NewInt(1000000))
 
 			err := e.SetProgress("task-1", tt.giveProgress)
 			if tt.wantErr {
-				if err == nil {
-					t.Fatal("SetProgress() expected error, got nil")
-				}
+				require.Error(t, err)
 				return
 			}
-			if err != nil {
-				t.Fatalf("SetProgress() unexpected error: %v", err)
-			}
+			require.NoError(t, err)
 			tb, _ := s.Get("task-1")
-			if tb.Progress != tt.giveProgress {
-				t.Errorf("Progress = %f, want %f", tb.Progress, tt.giveProgress)
-			}
+			assert.InDelta(t, tt.giveProgress, tb.Progress, 0.001)
 		})
 	}
 }
 
 func TestEngine_Close(t *testing.T) {
+	t.Parallel()
+
 	e, s := newTestEngine(defaultCfg())
 	_, _ = s.Allocate("task-1", big.NewInt(1000000))
 	_ = e.Record("task-1", SpendEntry{Amount: big.NewInt(300000), PeerDID: "did:peer:123"})
 	_ = e.Record("task-1", SpendEntry{Amount: big.NewInt(200000), PeerDID: "did:peer:456"})
 
 	report, err := e.Close("task-1")
-	if err != nil {
-		t.Fatalf("Close() unexpected error: %v", err)
-	}
-	if report.TotalSpent.Cmp(big.NewInt(500000)) != 0 {
-		t.Errorf("TotalSpent = %s, want 500000", report.TotalSpent)
-	}
-	if report.EntryCount != 2 {
-		t.Errorf("EntryCount = %d, want 2", report.EntryCount)
-	}
-	if report.Status != StatusClosed {
-		t.Errorf("Status = %q, want %q", report.Status, StatusClosed)
-	}
+	require.NoError(t, err)
+	assert.Equal(t, 0, report.TotalSpent.Cmp(big.NewInt(500000)))
+	assert.Equal(t, 2, report.EntryCount)
+	assert.Equal(t, StatusClosed, report.Status)
 }
 
 func TestEngine_Close_AlreadyClosed(t *testing.T) {
+	t.Parallel()
+
 	e, s := newTestEngine(defaultCfg())
 	_, _ = s.Allocate("task-1", big.NewInt(1000000))
 	_, _ = e.Close("task-1")
 	_, err := e.Close("task-1")
-	if !errors.Is(err, ErrBudgetClosed) {
-		t.Fatalf("second Close() error = %v, want ErrBudgetClosed", err)
-	}
+	require.ErrorIs(t, err, ErrBudgetClosed)
 }
 
 func TestEngine_BurnRate(t *testing.T) {
+	t.Parallel()
+
 	e, s := newTestEngine(defaultCfg())
 	_, _ = s.Allocate("task-1", big.NewInt(1000000))
 
 	rate, err := e.BurnRate("task-1")
-	if err != nil {
-		t.Fatalf("BurnRate() unexpected error: %v", err)
-	}
-	if rate.Sign() != 0 {
-		t.Errorf("BurnRate() with no spending = %s, want 0", rate)
-	}
+	require.NoError(t, err)
+	assert.Equal(t, 0, rate.Sign())
 }
 
 func TestEngine_ThresholdAlerts(t *testing.T) {
+	t.Parallel()
+
 	var mu sync.Mutex
 	var alerts []float64
 
@@ -384,48 +355,40 @@ func TestEngine_ThresholdAlerts(t *testing.T) {
 	}))
 	_, _ = s.Allocate("task-1", big.NewInt(1000))
 
-	// Spend 500 → 50% → triggers 0.5
+	// Spend 500 -> 50% -> triggers 0.5
 	_ = e.Record("task-1", SpendEntry{Amount: big.NewInt(500), PeerDID: "did:peer:123"})
 
 	mu.Lock()
-	if len(alerts) != 1 || alerts[0] != 0.5 {
-		t.Fatalf("after 50%% spend: alerts = %v, want [0.5]", alerts)
-	}
+	require.Len(t, alerts, 1)
+	assert.Equal(t, 0.5, alerts[0])
 	mu.Unlock()
 
-	// Spend 310 → 81% → triggers 0.8
+	// Spend 310 -> 81% -> triggers 0.8
 	_ = e.Record("task-1", SpendEntry{Amount: big.NewInt(310), PeerDID: "did:peer:123"})
 
 	mu.Lock()
-	if len(alerts) != 2 || alerts[1] != 0.8 {
-		t.Fatalf("after 81%% spend: alerts = %v, want [0.5, 0.8]", alerts)
-	}
+	require.Len(t, alerts, 2)
+	assert.Equal(t, 0.8, alerts[1])
 	mu.Unlock()
 
 	// No re-trigger
 	_ = e.Record("task-1", SpendEntry{Amount: big.NewInt(10), PeerDID: "did:peer:123"})
 	mu.Lock()
-	if len(alerts) != 2 {
-		t.Errorf("expected no re-trigger, got %d alerts", len(alerts))
-	}
+	assert.Len(t, alerts, 2)
 	mu.Unlock()
 }
 
 func TestEngine_GuardInterface(t *testing.T) {
+	t.Parallel()
+
 	e, s := newTestEngine(defaultCfg())
 	_, _ = s.Allocate("task-1", big.NewInt(1000000))
 
 	var g Guard = e
 
-	if err := g.Check("task-1", big.NewInt(100)); err != nil {
-		t.Fatalf("Guard.Check() unexpected error: %v", err)
-	}
+	require.NoError(t, g.Check("task-1", big.NewInt(100)))
 	release, err := g.Reserve("task-1", big.NewInt(200000))
-	if err != nil {
-		t.Fatalf("Guard.Reserve() unexpected error: %v", err)
-	}
+	require.NoError(t, err)
 	release()
-	if err := g.Record("task-1", SpendEntry{Amount: big.NewInt(100), PeerDID: "did:peer:123"}); err != nil {
-		t.Fatalf("Guard.Record() unexpected error: %v", err)
-	}
+	require.NoError(t, g.Record("task-1", SpendEntry{Amount: big.NewInt(100), PeerDID: "did:peer:123"}))
 }

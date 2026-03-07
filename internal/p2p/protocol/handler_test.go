@@ -7,6 +7,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	"go.uber.org/zap"
 
 	"github.com/langoai/lango/internal/p2p/firewall"
@@ -56,6 +58,8 @@ func createSession(sessions *handshake.SessionStore, peerDID string) string {
 }
 
 func TestHandleToolInvoke_NilApprovalFn_DefaultDeny(t *testing.T) {
+	t.Parallel()
+
 	h, sessions := testHandler()
 	// Do NOT set approvalFn — it stays nil.
 
@@ -70,15 +74,13 @@ func TestHandleToolInvoke_NilApprovalFn_DefaultDeny(t *testing.T) {
 	}
 
 	resp := h.handleRequest(context.Background(), nil, req)
-	if resp.Status != ResponseStatusDenied {
-		t.Errorf("expected status 'denied', got %q", resp.Status)
-	}
-	if resp.Error != ErrNoApprovalHandler.Error() {
-		t.Errorf("unexpected error message: %s", resp.Error)
-	}
+	assert.Equal(t, ResponseStatusDenied, resp.Status)
+	assert.Equal(t, ErrNoApprovalHandler.Error(), resp.Error)
 }
 
 func TestHandleToolInvokePaid_NilApprovalFn_DefaultDeny(t *testing.T) {
+	t.Parallel()
+
 	h, sessions := testHandler()
 	// Do NOT set approvalFn.
 
@@ -93,15 +95,13 @@ func TestHandleToolInvokePaid_NilApprovalFn_DefaultDeny(t *testing.T) {
 	}
 
 	resp := h.handleRequest(context.Background(), nil, req)
-	if resp.Status != ResponseStatusDenied {
-		t.Errorf("expected status 'denied', got %q", resp.Status)
-	}
-	if resp.Error != ErrNoApprovalHandler.Error() {
-		t.Errorf("unexpected error message: %s", resp.Error)
-	}
+	assert.Equal(t, ResponseStatusDenied, resp.Status)
+	assert.Equal(t, ErrNoApprovalHandler.Error(), resp.Error)
 }
 
 func TestHandleToolInvoke_Approved(t *testing.T) {
+	t.Parallel()
+
 	h, sessions := testHandler()
 	h.SetApprovalFunc(func(_ context.Context, _, _ string, _ map[string]interface{}) (bool, error) {
 		return true, nil
@@ -118,12 +118,12 @@ func TestHandleToolInvoke_Approved(t *testing.T) {
 	}
 
 	resp := h.handleRequest(context.Background(), nil, req)
-	if resp.Status != ResponseStatusOK {
-		t.Errorf("expected status 'ok', got %q (error: %s)", resp.Status, resp.Error)
-	}
+	assert.Equal(t, ResponseStatusOK, resp.Status, "error: %s", resp.Error)
 }
 
 func TestHandleToolInvoke_Denied(t *testing.T) {
+	t.Parallel()
+
 	h, sessions := testHandler()
 	h.SetApprovalFunc(func(_ context.Context, _, _ string, _ map[string]interface{}) (bool, error) {
 		return false, nil
@@ -140,15 +140,13 @@ func TestHandleToolInvoke_Denied(t *testing.T) {
 	}
 
 	resp := h.handleRequest(context.Background(), nil, req)
-	if resp.Status != ResponseStatusDenied {
-		t.Errorf("expected status 'denied', got %q", resp.Status)
-	}
-	if resp.Error != ErrDeniedByOwner.Error() {
-		t.Errorf("unexpected error: %s", resp.Error)
-	}
+	assert.Equal(t, ResponseStatusDenied, resp.Status)
+	assert.Equal(t, ErrDeniedByOwner.Error(), resp.Error)
 }
 
 func TestHandleToolInvoke_ApprovalError(t *testing.T) {
+	t.Parallel()
+
 	h, sessions := testHandler()
 	h.SetApprovalFunc(func(_ context.Context, _, _ string, _ map[string]interface{}) (bool, error) {
 		return false, fmt.Errorf("approval service unavailable")
@@ -165,12 +163,12 @@ func TestHandleToolInvoke_ApprovalError(t *testing.T) {
 	}
 
 	resp := h.handleRequest(context.Background(), nil, req)
-	if resp.Status != ResponseStatusError {
-		t.Errorf("expected status 'error', got %q", resp.Status)
-	}
+	assert.Equal(t, ResponseStatusError, resp.Status)
 }
 
 func TestHandleToolInvokePaid_Approved(t *testing.T) {
+	t.Parallel()
+
 	h, sessions := testHandler()
 	h.SetApprovalFunc(func(_ context.Context, _, _ string, _ map[string]interface{}) (bool, error) {
 		return true, nil
@@ -187,12 +185,12 @@ func TestHandleToolInvokePaid_Approved(t *testing.T) {
 	}
 
 	resp := h.handleRequest(context.Background(), nil, req)
-	if resp.Status != ResponseStatusOK {
-		t.Errorf("expected status 'ok', got %q (error: %s)", resp.Status, resp.Error)
-	}
+	assert.Equal(t, ResponseStatusOK, resp.Status, "error: %s", resp.Error)
 }
 
 func TestResponseJSON_DefaultDeny(t *testing.T) {
+	t.Parallel()
+
 	h, sessions := testHandler()
 	peerDID := "did:key:peer-json"
 	token := createSession(sessions, peerDID)
@@ -207,15 +205,9 @@ func TestResponseJSON_DefaultDeny(t *testing.T) {
 	resp := h.handleRequest(context.Background(), nil, req)
 
 	data, err := json.Marshal(resp)
-	if err != nil {
-		t.Fatalf("marshal response: %v", err)
-	}
+	require.NoError(t, err)
 
 	var decoded Response
-	if err := json.Unmarshal(data, &decoded); err != nil {
-		t.Fatalf("unmarshal response: %v", err)
-	}
-	if decoded.Status != ResponseStatusDenied {
-		t.Errorf("expected denied in JSON, got %q", decoded.Status)
-	}
+	require.NoError(t, json.Unmarshal(data, &decoded))
+	assert.Equal(t, ResponseStatusDenied, decoded.Status)
 }

@@ -4,6 +4,7 @@ import (
 	"testing"
 
 	"github.com/langoai/lango/internal/config"
+	"github.com/stretchr/testify/require"
 )
 
 func TestInitSupervisor(t *testing.T) {
@@ -18,10 +19,6 @@ func TestInitSupervisor(t *testing.T) {
 	}
 
 	sv, err := initSupervisor(cfg)
-	if err != nil {
-		t.Fatalf("initSupervisor() returned error: %v", err)
-	}
-	if sv == nil {
-		t.Fatal("expected supervisor to be initialized")
-	}
+	require.NoError(t, err)
+	require.NotNil(t, sv, "expected supervisor to be initialized")
 }

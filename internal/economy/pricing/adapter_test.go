@@ -4,53 +4,52 @@ import (
 	"math/big"
 	"testing"
 
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+
 	"github.com/langoai/lango/internal/config"
 )
 
 func TestAdaptToPricingFunc_FreeTool(t *testing.T) {
+	t.Parallel()
+
 	engine := newTestEngine(t, config.DynamicPricingConfig{})
 
 	fn := engine.AdaptToPricingFunc()
 	price, isFree := fn("unknown")
-	if !isFree {
-		t.Error("expected free tool")
-	}
-	if price != "" {
-		t.Errorf("price = %q, want empty", price)
-	}
+	assert.True(t, isFree)
+	assert.Empty(t, price)
 }
 
 func TestAdaptToPricingFunc_PaidTool(t *testing.T) {
+	t.Parallel()
+
 	engine := newTestEngine(t, config.DynamicPricingConfig{})
 	engine.SetBasePrice("search", usdc(1))
 
 	fn := engine.AdaptToPricingFunc()
 	price, isFree := fn("search")
-	if isFree {
-		t.Error("expected paid tool")
-	}
-	if price != "1.00" {
-		t.Errorf("price = %q, want %q", price, "1.00")
-	}
+	assert.False(t, isFree)
+	assert.Equal(t, "1.00", price)
 }
 
 func TestAdaptToPricingFuncWithPeer(t *testing.T) {
+	t.Parallel()
+
 	engine := newTestEngine(t, config.DynamicPricingConfig{TrustDiscount: 0.10})
 	engine.SetBasePrice("search", usdc(1))
 	engine.SetReputation(mockReputation(map[string]float64{"did:key:alice": 0.9}))
 
 	fn := engine.AdaptToPricingFuncWithPeer("did:key:alice")
 	price, isFree := fn("search")
-	if isFree {
-		t.Error("expected paid tool")
-	}
-	// Trust score 0.9 > 0.8 threshold → 10% discount → 0.90
-	if price != "0.90" {
-		t.Errorf("price = %q, want %q", price, "0.90")
-	}
+	assert.False(t, isFree)
+	// Trust score 0.9 > 0.8 threshold -> 10% discount -> 0.90
+	assert.Equal(t, "0.90", price)
 }
 
 func TestFormatUSDC(t *testing.T) {
+	t.Parallel()
+
 	tests := []struct {
 		give *big.Int
 		want string
@@ -68,15 +67,15 @@ func TestFormatUSDC(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.want, func(t *testing.T) {
-			got := formatUSDC(tt.give)
-			if got != tt.want {
-				t.Errorf("formatUSDC(%s) = %q, want %q", tt.give, got, tt.want)
-			}
+			t.Parallel()
+			assert.Equal(t, tt.want, formatUSDC(tt.give))
 		})
 	}
 }
 
 func TestMapToolPricer_LoadInto(t *testing.T) {
+	t.Parallel()
+
 	prices := map[string]*big.Int{
 		"search":  usdc(1),
 		"compute": usdc(5),
@@ -87,23 +86,17 @@ func TestMapToolPricer_LoadInto(t *testing.T) {
 	pricer.LoadInto(engine)
 
 	quote, err := engine.Quote(nil, "search", "")
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if quote.FinalPrice.Cmp(usdc(1)) != 0 {
-		t.Errorf("search price = %s, want %s", quote.FinalPrice, usdc(1))
-	}
+	require.NoError(t, err)
+	assert.Equal(t, 0, quote.FinalPrice.Cmp(usdc(1)))
 
 	quote, err = engine.Quote(nil, "compute", "")
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if quote.FinalPrice.Cmp(usdc(5)) != 0 {
-		t.Errorf("compute price = %s, want %s", quote.FinalPrice, usdc(5))
-	}
+	require.NoError(t, err)
+	assert.Equal(t, 0, quote.FinalPrice.Cmp(usdc(5)))
 }
 
 func TestMapToolPricer_DefensiveCopy(t *testing.T) {
+	t.Parallel()
+
 	original := map[string]*big.Int{"search": usdc(1)}
 	pricer := NewMapToolPricer(original, nil)
 
@@ -114,10 +107,6 @@ func TestMapToolPricer_DefensiveCopy(t *testing.T) {
 	pricer.LoadInto(engine)
 
 	quote, err := engine.Quote(nil, "search", "")
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if quote.FinalPrice.Cmp(usdc(1)) != 0 {
-		t.Errorf("pricer should have defensive copy, got %s", quote.FinalPrice)
-	}
+	require.NoError(t, err)
+	assert.Equal(t, 0, quote.FinalPrice.Cmp(usdc(1)))
 }

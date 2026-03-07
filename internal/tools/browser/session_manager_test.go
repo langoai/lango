@@ -3,16 +3,19 @@ package browser
 import (
 	"testing"
 	"time"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestSessionManager_EnsureSession_CreatesOnce(t *testing.T) {
+	t.Parallel()
+
 	tool, err := New(Config{
 		Headless:       true,
 		SessionTimeout: 5 * time.Minute,
 	})
-	if err != nil {
-		t.Fatalf("new tool: %v", err)
-	}
+	require.NoError(t, err)
 
 	sm := NewSessionManager(tool)
 	defer sm.Close()
@@ -23,48 +26,38 @@ func TestSessionManager_EnsureSession_CreatesOnce(t *testing.T) {
 		// Browser may not be available in CI; skip gracefully
 		t.Skipf("browser not available: %v", err)
 	}
-	if id1 == "" {
-		t.Fatal("expected non-empty session ID")
-	}
+	require.NotEmpty(t, id1)
 
 	// Second call reuses the same session
 	id2, err := sm.EnsureSession()
-	if err != nil {
-		t.Fatalf("ensure session (2nd): %v", err)
-	}
-	if id1 != id2 {
-		t.Errorf("expected same session ID, got %q and %q", id1, id2)
-	}
+	require.NoError(t, err)
+	assert.Equal(t, id1, id2)
 }
 
 func TestSessionManager_Close(t *testing.T) {
+	t.Parallel()
+
 	tool, err := New(Config{
 		Headless:       true,
 		SessionTimeout: 5 * time.Minute,
 	})
-	if err != nil {
-		t.Fatalf("new tool: %v", err)
-	}
+	require.NoError(t, err)
 
 	sm := NewSessionManager(tool)
 
 	// Close without any session should not error
-	if err := sm.Close(); err != nil {
-		t.Fatalf("close: %v", err)
-	}
+	require.NoError(t, sm.Close())
 }
 
 func TestSessionManager_Tool(t *testing.T) {
+	t.Parallel()
+
 	tool, err := New(Config{
 		Headless:       true,
 		SessionTimeout: 5 * time.Minute,
 	})
-	if err != nil {
-		t.Fatalf("new tool: %v", err)
-	}
+	require.NoError(t, err)
 
 	sm := NewSessionManager(tool)
-	if sm.Tool() != tool {
-		t.Error("Tool() should return the underlying tool")
-	}
+	assert.Equal(t, tool, sm.Tool())
 }

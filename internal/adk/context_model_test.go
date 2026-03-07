@@ -2,8 +2,11 @@ package adk
 
 import (
 	"context"
+	"strings"
 	"testing"
 
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	"go.uber.org/zap"
 	"google.golang.org/adk/model"
 	"google.golang.org/genai"
@@ -65,6 +68,8 @@ func newTestContextAdapter(t *testing.T, mp MemoryProvider) *ContextAwareModelAd
 }
 
 func TestGenerateContent_SessionKeyFromContext(t *testing.T) {
+	t.Parallel()
+
 	mp := &mockMemoryProvider{
 		observations: []memory.Observation{{Content: "user prefers dark mode"}},
 		reflections:  []memory.Reflection{{Content: "user is a developer"}},
@@ -81,18 +86,15 @@ func TestGenerateContent_SessionKeyFromContext(t *testing.T) {
 
 	seq := adapter.GenerateContent(ctx, req, false)
 	for _, err := range seq {
-		if err != nil {
-			t.Fatalf("unexpected error: %v", err)
-		}
+		require.NoError(t, err)
 	}
 
-	if mp.lastSessionKey != "telegram:123:456" {
-		t.Errorf("want session key %q passed to memory provider, got %q",
-			"telegram:123:456", mp.lastSessionKey)
-	}
+	assert.Equal(t, "telegram:123:456", mp.lastSessionKey)
 }
 
 func TestGenerateContent_NoSessionKey_SkipsMemory(t *testing.T) {
+	t.Parallel()
+
 	mp := &mockMemoryProvider{
 		observations: []memory.Observation{{Content: "should not appear"}},
 	}
@@ -109,18 +111,16 @@ func TestGenerateContent_NoSessionKey_SkipsMemory(t *testing.T) {
 
 	seq := adapter.GenerateContent(ctx, req, false)
 	for _, err := range seq {
-		if err != nil {
-			t.Fatalf("unexpected error: %v", err)
-		}
+		require.NoError(t, err)
 	}
 
 	// Memory provider should not have been called.
-	if mp.lastSessionKey != "" {
-		t.Errorf("memory provider should not be called without session key, got %q", mp.lastSessionKey)
-	}
+	assert.Empty(t, mp.lastSessionKey, "memory provider should not be called without session key")
 }
 
 func TestGenerateContent_SessionKey_UpdatesRuntimeAdapter(t *testing.T) {
+	t.Parallel()
+
 	adapter := newTestContextAdapter(t, nil)
 	ra := NewRuntimeContextAdapter(2, false, false, true)
 	adapter.WithRuntimeAdapter(ra)
@@ -135,21 +135,17 @@ func TestGenerateContent_SessionKey_UpdatesRuntimeAdapter(t *testing.T) {
 
 	seq := adapter.GenerateContent(ctx, req, false)
 	for _, err := range seq {
-		if err != nil {
-			t.Fatalf("unexpected error: %v", err)
-		}
+		require.NoError(t, err)
 	}
 
 	rc := ra.GetRuntimeContext()
-	if rc.SessionKey != "discord:guild:chan" {
-		t.Errorf("want runtime session key %q, got %q", "discord:guild:chan", rc.SessionKey)
-	}
-	if rc.ChannelType != "discord" {
-		t.Errorf("want channel type %q, got %q", "discord", rc.ChannelType)
-	}
+	assert.Equal(t, "discord:guild:chan", rc.SessionKey)
+	assert.Equal(t, "discord", rc.ChannelType)
 }
 
 func TestGenerateContent_MemoryInjectedIntoPrompt(t *testing.T) {
+	t.Parallel()
+
 	mp := &mockMemoryProvider{
 		observations: []memory.Observation{{Content: "user prefers Go"}},
 		reflections:  []memory.Reflection{{Content: "experienced developer"}},
@@ -178,43 +174,18 @@ func TestGenerateContent_MemoryInjectedIntoPrompt(t *testing.T) {
 
 	seq := adapter.GenerateContent(ctx, req, false)
 	for _, err := range seq {
-		if err != nil {
-			t.Fatalf("unexpected error: %v", err)
-		}
+		require.NoError(t, err)
 	}
 
 	// Verify system instruction was augmented with memory content.
 	msgs := p.lastParams.Messages
-	if len(msgs) < 2 {
-		t.Fatalf("expected at least 2 messages (system + user), got %d", len(msgs))
-	}
+	require.GreaterOrEqual(t, len(msgs), 2, "expected at least 2 messages (system + user)")
 
 	systemMsg := msgs[0]
-	if systemMsg.Role != "system" {
-		t.Fatalf("expected first message to be system, got %q", systemMsg.Role)
-	}
+	require.Equal(t, "system", string(systemMsg.Role))
 
 	// The system prompt should contain memory sections.
-	if !containsSubstring(systemMsg.Content, "Conversation Memory") {
-		t.Error("system prompt should contain 'Conversation Memory' section")
-	}
-	if !containsSubstring(systemMsg.Content, "user prefers Go") {
-		t.Error("system prompt should contain observation content")
-	}
-	if !containsSubstring(systemMsg.Content, "experienced developer") {
-		t.Error("system prompt should contain reflection content")
-	}
-}
-
-func containsSubstring(s, sub string) bool {
-	return len(s) >= len(sub) && (s == sub || len(s) > 0 && contains(s, sub))
-}
-
-func contains(s, sub string) bool {
-	for i := 0; i <= len(s)-len(sub); i++ {
-		if s[i:i+len(sub)] == sub {
-			return true
-		}
-	}
-	return false
+	assert.True(t, strings.Contains(systemMsg.Content, "Conversation Memory"), "system prompt should contain 'Conversation Memory' section")
+	assert.True(t, strings.Contains(systemMsg.Content, "user prefers Go"), "system prompt should contain observation content")
+	assert.True(t, strings.Contains(systemMsg.Content, "experienced developer"), "system prompt should contain reflection content")
 }

@@ -110,3 +110,158 @@ func TestFormatContent_NoTruncation(t *testing.T) {
 	result := formatContent([]sdkmcp.Content{text}, 1000)
 	assert.Equal(t, "short", result)
 }
+
+func TestFormatContent_MultipleTextParts(t *testing.T) {
+	t.Parallel()
+
+	parts := []sdkmcp.Content{
+		&sdkmcp.TextContent{Text: "line1"},
+		&sdkmcp.TextContent{Text: "line2"},
+	}
+	result := formatContent(parts, 0)
+	assert.Equal(t, "line1\nline2", result)
+}
+
+func TestFormatContent_ImageContent(t *testing.T) {
+	t.Parallel()
+
+	img := &sdkmcp.ImageContent{
+		MIMEType: "image/png",
+		Data:     []byte("iVBORw0KGgo="),
+	}
+	result := formatContent([]sdkmcp.Content{img}, 0)
+	assert.Contains(t, result, "[Image: image/png")
+}
+
+func TestFormatContent_AudioContent(t *testing.T) {
+	t.Parallel()
+
+	audio := &sdkmcp.AudioContent{
+		MIMEType: "audio/mp3",
+		Data:     []byte("AAAA"),
+	}
+	result := formatContent([]sdkmcp.Content{audio}, 0)
+	assert.Contains(t, result, "[Audio: audio/mp3]")
+}
+
+func TestFormatContent_ZeroMaxTokens(t *testing.T) {
+	t.Parallel()
+
+	text := &sdkmcp.TextContent{Text: "Hello World, this is a long text"}
+	result := formatContent([]sdkmcp.Content{text}, 0)
+	assert.Equal(t, "Hello World, this is a long text", result)
+}
+
+func TestExtractText_SingleText(t *testing.T) {
+	t.Parallel()
+
+	content := []sdkmcp.Content{
+		&sdkmcp.TextContent{Text: "error message"},
+	}
+	assert.Equal(t, "error message", extractText(content))
+}
+
+func TestExtractText_MultipleText(t *testing.T) {
+	t.Parallel()
+
+	content := []sdkmcp.Content{
+		&sdkmcp.TextContent{Text: "line 1"},
+		&sdkmcp.TextContent{Text: "line 2"},
+	}
+	assert.Equal(t, "line 1\nline 2", extractText(content))
+}
+
+func TestExtractText_Empty(t *testing.T) {
+	t.Parallel()
+
+	assert.Equal(t, "unknown error", extractText(nil))
+	assert.Equal(t, "unknown error", extractText([]sdkmcp.Content{}))
+}
+
+func TestExtractText_NonTextContent(t *testing.T) {
+	t.Parallel()
+
+	content := []sdkmcp.Content{
+		&sdkmcp.ImageContent{MIMEType: "image/png", Data: []byte("data")},
+	}
+	assert.Equal(t, "unknown error", extractText(content))
+}
+
+func TestBuildParams_EnumField(t *testing.T) {
+	t.Parallel()
+
+	schema := map[string]any{
+		"type": "object",
+		"properties": map[string]any{
+			"color": map[string]any{
+				"type":        "string",
+				"description": "Favorite color",
+				"enum":        []any{"red", "green", "blue"},
+			},
+		},
+	}
+
+	params := buildParams(schema)
+	assert.Len(t, params, 1)
+	colorDef := params["color"].(map[string]interface{})
+	assert.Equal(t, "string", colorDef["type"])
+	assert.Equal(t, "Favorite color", colorDef["description"])
+	assert.NotNil(t, colorDef["enum"])
+}
+
+func TestBuildParams_PropertyWithoutType(t *testing.T) {
+	t.Parallel()
+
+	schema := map[string]any{
+		"type": "object",
+		"properties": map[string]any{
+			"field": map[string]any{
+				"description": "A field without explicit type",
+			},
+		},
+	}
+
+	params := buildParams(schema)
+	assert.Len(t, params, 1)
+	fieldDef := params["field"].(map[string]interface{})
+	assert.Equal(t, "string", fieldDef["type"])
+}
+
+func TestBuildParams_NonMapProperty(t *testing.T) {
+	t.Parallel()
+
+	schema := map[string]any{
+		"type": "object",
+		"properties": map[string]any{
+			"weird": "just a string",
+		},
+	}
+
+	params := buildParams(schema)
+	assert.Len(t, params, 1)
+	weirdDef := params["weird"].(map[string]interface{})
+	assert.Equal(t, "string", weirdDef["type"])
+}
+
+func TestBuildParams_JSONRoundTrip(t *testing.T) {
+	t.Parallel()
+
+	// Test a struct type that requires JSON round-trip
+	type schemaStruct struct {
+		Type       string         `json:"type"`
+		Properties map[string]any `json:"properties"`
+	}
+	schema := schemaStruct{
+		Type: "object",
+		Properties: map[string]any{
+			"name": map[string]any{
+				"type":        "string",
+				"description": "The name",
+			},
+		},
+	}
+
+	params := buildParams(schema)
+	assert.Len(t, params, 1)
+	assert.Contains(t, params, "name")
+}

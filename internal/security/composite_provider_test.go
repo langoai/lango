@@ -3,6 +3,9 @@ package security
 import (
 	"context"
 	"testing"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 // mockConnectionChecker for testing
@@ -41,6 +44,8 @@ func (m *mockCryptoProvider) Decrypt(ctx context.Context, keyID string, cipherte
 }
 
 func TestCompositeProvider_UsesPrimaryWhenConnected(t *testing.T) {
+	t.Parallel()
+
 	primary := &mockCryptoProvider{encryptResult: []byte("primary-encrypted")}
 	fallback := &mockCryptoProvider{encryptResult: []byte("fallback-encrypted")}
 	checker := &mockConnectionChecker{connected: true}
@@ -48,28 +53,16 @@ func TestCompositeProvider_UsesPrimaryWhenConnected(t *testing.T) {
 	composite := NewCompositeCryptoProvider(primary, fallback, checker)
 
 	result, err := composite.Encrypt(context.Background(), "key1", []byte("data"))
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	if string(result) != "primary-encrypted" {
-		t.Errorf("expected primary result, got %s", result)
-	}
-
-	if !primary.called {
-		t.Error("primary should have been called")
-	}
-
-	if fallback.called {
-		t.Error("fallback should not have been called")
-	}
-
-	if composite.UsedLocal() {
-		t.Error("should not have used local")
-	}
+	require.NoError(t, err)
+	assert.Equal(t, "primary-encrypted", string(result))
+	assert.True(t, primary.called, "primary should have been called")
+	assert.False(t, fallback.called, "fallback should not have been called")
+	assert.False(t, composite.UsedLocal(), "should not have used local")
 }
 
 func TestCompositeProvider_UsesFallbackWhenDisconnected(t *testing.T) {
+	t.Parallel()
+
 	primary := &mockCryptoProvider{encryptResult: []byte("primary-encrypted")}
 	fallback := &mockCryptoProvider{encryptResult: []byte("fallback-encrypted")}
 	checker := &mockConnectionChecker{connected: false}
@@ -77,38 +70,26 @@ func TestCompositeProvider_UsesFallbackWhenDisconnected(t *testing.T) {
 	composite := NewCompositeCryptoProvider(primary, fallback, checker)
 
 	result, err := composite.Encrypt(context.Background(), "key1", []byte("data"))
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	if string(result) != "fallback-encrypted" {
-		t.Errorf("expected fallback result, got %s", result)
-	}
-
-	if primary.called {
-		t.Error("primary should not have been called")
-	}
-
-	if !fallback.called {
-		t.Error("fallback should have been called")
-	}
-
-	if !composite.UsedLocal() {
-		t.Error("should have used local")
-	}
+	require.NoError(t, err)
+	assert.Equal(t, "fallback-encrypted", string(result))
+	assert.False(t, primary.called, "primary should not have been called")
+	assert.True(t, fallback.called, "fallback should have been called")
+	assert.True(t, composite.UsedLocal(), "should have used local")
 }
 
 func TestCompositeProvider_ErrorsWhenNoProvider(t *testing.T) {
+	t.Parallel()
+
 	checker := &mockConnectionChecker{connected: false}
 	composite := NewCompositeCryptoProvider(nil, nil, checker)
 
 	_, err := composite.Encrypt(context.Background(), "key1", []byte("data"))
-	if err == nil {
-		t.Error("expected error when no provider available")
-	}
+	assert.Error(t, err, "expected error when no provider available")
 }
 
 func TestCompositeProvider_Sign(t *testing.T) {
+	t.Parallel()
+
 	primary := &mockCryptoProvider{signResult: []byte("primary-sig")}
 	fallback := &mockCryptoProvider{signResult: []byte("fallback-sig")}
 	checker := &mockConnectionChecker{connected: true}
@@ -116,27 +97,19 @@ func TestCompositeProvider_Sign(t *testing.T) {
 	composite := NewCompositeCryptoProvider(primary, fallback, checker)
 
 	result, err := composite.Sign(context.Background(), "key1", []byte("data"))
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	if string(result) != "primary-sig" {
-		t.Errorf("expected primary signature, got %s", result)
-	}
+	require.NoError(t, err)
+	assert.Equal(t, "primary-sig", string(result))
 }
 
 func TestCompositeProvider_Decrypt(t *testing.T) {
+	t.Parallel()
+
 	fallback := &mockCryptoProvider{decryptResult: []byte("decrypted-data")}
 	checker := &mockConnectionChecker{connected: false}
 
 	composite := NewCompositeCryptoProvider(nil, fallback, checker)
 
 	result, err := composite.Decrypt(context.Background(), "key1", []byte("encrypted"))
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	if string(result) != "decrypted-data" {
-		t.Errorf("expected decrypted data, got %s", result)
-	}
+	require.NoError(t, err)
+	assert.Equal(t, "decrypted-data", string(result))
 }

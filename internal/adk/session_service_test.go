@@ -7,6 +7,9 @@ import (
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+
 	internal "github.com/langoai/lango/internal/session"
 	"google.golang.org/adk/model"
 	"google.golang.org/adk/session"
@@ -26,6 +29,8 @@ func newTestEvent(author string, role string, text string) *session.Event {
 }
 
 func TestAppendEvent_UpdatesInMemoryHistory(t *testing.T) {
+	t.Parallel()
+
 	store := newMockStore()
 	sess := &internal.Session{
 		Key:       "test-session",
@@ -40,29 +45,21 @@ func TestAppendEvent_UpdatesInMemoryHistory(t *testing.T) {
 
 	evt := newTestEvent("user", "user", "hello")
 
-	if err := svc.AppendEvent(context.Background(), adapter, evt); err != nil {
-		t.Fatalf("AppendEvent: %v", err)
-	}
+	require.NoError(t, svc.AppendEvent(context.Background(), adapter, evt))
 
 	// Verify in-memory history was updated
-	if len(adapter.sess.History) != 1 {
-		t.Fatalf("expected 1 message in history, got %d", len(adapter.sess.History))
-	}
-	if adapter.sess.History[0].Role != "user" {
-		t.Errorf("expected role 'user', got %q", adapter.sess.History[0].Role)
-	}
-	if adapter.sess.History[0].Content != "hello" {
-		t.Errorf("expected content 'hello', got %q", adapter.sess.History[0].Content)
-	}
+	require.Len(t, adapter.sess.History, 1)
+	assert.Equal(t, "user", string(adapter.sess.History[0].Role))
+	assert.Equal(t, "hello", adapter.sess.History[0].Content)
 
 	// Events() should now return the message
 	events := adapter.Events()
-	if events.Len() != 1 {
-		t.Errorf("expected Events().Len() == 1, got %d", events.Len())
-	}
+	assert.Equal(t, 1, events.Len())
 }
 
 func TestAppendEvent_MultipleEvents_AccumulateHistory(t *testing.T) {
+	t.Parallel()
+
 	store := newMockStore()
 	sess := &internal.Session{
 		Key:       "test-session",
@@ -76,34 +73,24 @@ func TestAppendEvent_MultipleEvents_AccumulateHistory(t *testing.T) {
 	svc := NewSessionServiceAdapter(store, "lango-agent")
 
 	// Append user message
-	if err := svc.AppendEvent(context.Background(), adapter, newTestEvent("user", "user", "hello")); err != nil {
-		t.Fatalf("AppendEvent user: %v", err)
-	}
+	require.NoError(t, svc.AppendEvent(context.Background(), adapter, newTestEvent("user", "user", "hello")))
 
 	// Append assistant message
-	if err := svc.AppendEvent(context.Background(), adapter, newTestEvent("lango-agent", "model", "hi there")); err != nil {
-		t.Fatalf("AppendEvent assistant: %v", err)
-	}
+	require.NoError(t, svc.AppendEvent(context.Background(), adapter, newTestEvent("lango-agent", "model", "hi there")))
 
 	// Verify both messages in in-memory history
-	if len(adapter.sess.History) != 2 {
-		t.Fatalf("expected 2 messages in history, got %d", len(adapter.sess.History))
-	}
-	if adapter.sess.History[0].Role != "user" {
-		t.Errorf("expected first role 'user', got %q", adapter.sess.History[0].Role)
-	}
-	if adapter.sess.History[1].Role != "assistant" {
-		t.Errorf("expected second role 'assistant', got %q", adapter.sess.History[1].Role)
-	}
+	require.Len(t, adapter.sess.History, 2)
+	assert.Equal(t, "user", string(adapter.sess.History[0].Role))
+	assert.Equal(t, "assistant", string(adapter.sess.History[1].Role))
 
 	// Events() should see both messages
 	events := adapter.Events()
-	if events.Len() != 2 {
-		t.Errorf("expected Events().Len() == 2, got %d", events.Len())
-	}
+	assert.Equal(t, 2, events.Len())
 }
 
 func TestAppendEvent_StateDelta_SkipsHistory(t *testing.T) {
+	t.Parallel()
+
 	store := newMockStore()
 	sess := &internal.Session{
 		Key:       "test-session",
@@ -125,17 +112,15 @@ func TestAppendEvent_StateDelta_SkipsHistory(t *testing.T) {
 		},
 	}
 
-	if err := svc.AppendEvent(context.Background(), adapter, evt); err != nil {
-		t.Fatalf("AppendEvent: %v", err)
-	}
+	require.NoError(t, svc.AppendEvent(context.Background(), adapter, evt))
 
 	// State-delta-only events should not append to history
-	if len(adapter.sess.History) != 0 {
-		t.Errorf("expected 0 messages for state-delta event, got %d", len(adapter.sess.History))
-	}
+	assert.Empty(t, adapter.sess.History, "expected 0 messages for state-delta event")
 }
 
 func TestAppendEvent_DBAndMemoryBothUpdated(t *testing.T) {
+	t.Parallel()
+
 	store := newMockStore()
 	sess := &internal.Session{
 		Key:       "test-session",
@@ -149,26 +134,20 @@ func TestAppendEvent_DBAndMemoryBothUpdated(t *testing.T) {
 	svc := NewSessionServiceAdapter(store, "lango-agent")
 
 	evt := newTestEvent("user", "user", "hello")
-	if err := svc.AppendEvent(context.Background(), adapter, evt); err != nil {
-		t.Fatalf("AppendEvent: %v", err)
-	}
+	require.NoError(t, svc.AppendEvent(context.Background(), adapter, evt))
 
 	// Verify DB store has the message
 	dbMsgs := store.messages["test-session"]
-	if len(dbMsgs) != 1 {
-		t.Fatalf("expected 1 message in DB store, got %d", len(dbMsgs))
-	}
-	if dbMsgs[0].Content != "hello" {
-		t.Errorf("expected DB content 'hello', got %q", dbMsgs[0].Content)
-	}
+	require.Len(t, dbMsgs, 1)
+	assert.Equal(t, "hello", dbMsgs[0].Content)
 
 	// Verify in-memory history also has the message
-	if len(adapter.sess.History) != 1 {
-		t.Fatalf("expected 1 message in memory, got %d", len(adapter.sess.History))
-	}
+	require.Len(t, adapter.sess.History, 1)
 }
 
 func TestAppendEvent_PreservesAuthor(t *testing.T) {
+	t.Parallel()
+
 	store := newMockStore()
 	sess := &internal.Session{
 		Key:       "test-session",
@@ -182,29 +161,21 @@ func TestAppendEvent_PreservesAuthor(t *testing.T) {
 	svc := NewSessionServiceAdapter(store, "lango-orchestrator")
 
 	evt := newTestEvent("lango-orchestrator", "model", "hello from orchestrator")
-	if err := svc.AppendEvent(context.Background(), adapter, evt); err != nil {
-		t.Fatalf("AppendEvent: %v", err)
-	}
+	require.NoError(t, svc.AppendEvent(context.Background(), adapter, evt))
 
 	// Verify author was preserved in in-memory history
-	if len(adapter.sess.History) != 1 {
-		t.Fatalf("expected 1 message, got %d", len(adapter.sess.History))
-	}
-	if adapter.sess.History[0].Author != "lango-orchestrator" {
-		t.Errorf("expected author 'lango-orchestrator', got %q", adapter.sess.History[0].Author)
-	}
+	require.Len(t, adapter.sess.History, 1)
+	assert.Equal(t, "lango-orchestrator", adapter.sess.History[0].Author)
 
 	// Verify author was preserved in DB store
 	dbMsgs := store.messages["test-session"]
-	if len(dbMsgs) != 1 {
-		t.Fatalf("expected 1 DB message, got %d", len(dbMsgs))
-	}
-	if dbMsgs[0].Author != "lango-orchestrator" {
-		t.Errorf("expected DB author 'lango-orchestrator', got %q", dbMsgs[0].Author)
-	}
+	require.Len(t, dbMsgs, 1)
+	assert.Equal(t, "lango-orchestrator", dbMsgs[0].Author)
 }
 
 func TestAppendEvent_PreservesFunctionCallID(t *testing.T) {
+	t.Parallel()
+
 	store := newMockStore()
 	sess := &internal.Session{
 		Key:       "test-session",
@@ -235,26 +206,18 @@ func TestAppendEvent_PreservesFunctionCallID(t *testing.T) {
 		},
 	}
 
-	if err := svc.AppendEvent(context.Background(), adapter, evt); err != nil {
-		t.Fatalf("AppendEvent: %v", err)
-	}
+	require.NoError(t, svc.AppendEvent(context.Background(), adapter, evt))
 
-	if len(adapter.sess.History) != 1 {
-		t.Fatalf("expected 1 message, got %d", len(adapter.sess.History))
-	}
+	require.Len(t, adapter.sess.History, 1)
 	msg := adapter.sess.History[0]
-	if len(msg.ToolCalls) != 1 {
-		t.Fatalf("expected 1 tool call, got %d", len(msg.ToolCalls))
-	}
-	if msg.ToolCalls[0].ID != "adk-original-uuid-123" {
-		t.Errorf("expected original ID 'adk-original-uuid-123', got %q", msg.ToolCalls[0].ID)
-	}
-	if msg.ToolCalls[0].Name != "exec" {
-		t.Errorf("expected name 'exec', got %q", msg.ToolCalls[0].Name)
-	}
+	require.Len(t, msg.ToolCalls, 1)
+	assert.Equal(t, "adk-original-uuid-123", msg.ToolCalls[0].ID)
+	assert.Equal(t, "exec", msg.ToolCalls[0].Name)
 }
 
 func TestAppendEvent_FunctionCallFallbackID(t *testing.T) {
+	t.Parallel()
+
 	store := newMockStore()
 	sess := &internal.Session{
 		Key:       "test-session",
@@ -284,17 +247,15 @@ func TestAppendEvent_FunctionCallFallbackID(t *testing.T) {
 		},
 	}
 
-	if err := svc.AppendEvent(context.Background(), adapter, evt); err != nil {
-		t.Fatalf("AppendEvent: %v", err)
-	}
+	require.NoError(t, svc.AppendEvent(context.Background(), adapter, evt))
 
 	msg := adapter.sess.History[0]
-	if msg.ToolCalls[0].ID != "call_search" {
-		t.Errorf("expected fallback ID 'call_search', got %q", msg.ToolCalls[0].ID)
-	}
+	assert.Equal(t, "call_search", msg.ToolCalls[0].ID)
 }
 
 func TestAppendEvent_SavesFunctionResponseMetadata(t *testing.T) {
+	t.Parallel()
+
 	store := newMockStore()
 	sess := &internal.Session{
 		Key:       "test-session",
@@ -325,37 +286,25 @@ func TestAppendEvent_SavesFunctionResponseMetadata(t *testing.T) {
 		},
 	}
 
-	if err := svc.AppendEvent(context.Background(), adapter, evt); err != nil {
-		t.Fatalf("AppendEvent: %v", err)
-	}
+	require.NoError(t, svc.AppendEvent(context.Background(), adapter, evt))
 
-	if len(adapter.sess.History) != 1 {
-		t.Fatalf("expected 1 message, got %d", len(adapter.sess.History))
-	}
+	require.Len(t, adapter.sess.History, 1)
 	msg := adapter.sess.History[0]
 
 	// Should have ToolCalls with FunctionResponse metadata
-	if len(msg.ToolCalls) != 1 {
-		t.Fatalf("expected 1 tool call, got %d", len(msg.ToolCalls))
-	}
+	require.Len(t, msg.ToolCalls, 1)
 	tc := msg.ToolCalls[0]
-	if tc.ID != "adk-original-uuid-123" {
-		t.Errorf("expected ID 'adk-original-uuid-123', got %q", tc.ID)
-	}
-	if tc.Name != "exec" {
-		t.Errorf("expected Name 'exec', got %q", tc.Name)
-	}
-	if tc.Output == "" {
-		t.Error("expected non-empty Output")
-	}
+	assert.Equal(t, "adk-original-uuid-123", tc.ID)
+	assert.Equal(t, "exec", tc.Name)
+	assert.NotEmpty(t, tc.Output)
 
 	// Content should also contain the response for backward compatibility
-	if msg.Content == "" {
-		t.Error("expected non-empty Content for backward compat")
-	}
+	assert.NotEmpty(t, msg.Content, "expected non-empty Content for backward compat")
 }
 
 func TestSessionServiceAdapter_Get_ExpiredSession_AutoRenews(t *testing.T) {
+	t.Parallel()
+
 	store := newMockStore()
 	// Seed an expired session
 	store.sessions["expired-sess"] = &internal.Session{
@@ -369,33 +318,23 @@ func TestSessionServiceAdapter_Get_ExpiredSession_AutoRenews(t *testing.T) {
 	resp, err := service.Get(context.Background(), &session.GetRequest{
 		SessionID: "expired-sess",
 	})
-	if err != nil {
-		t.Fatalf("expected auto-renew, got error: %v", err)
-	}
-	if resp.Session.ID() != "expired-sess" {
-		t.Errorf("expected session ID 'expired-sess', got %q", resp.Session.ID())
-	}
+	require.NoError(t, err, "expected auto-renew")
+	assert.Equal(t, "expired-sess", resp.Session.ID())
 
 	// Old session should have been deleted and replaced
-	if store.expiredKeys["expired-sess"] {
-		t.Error("expected expiredKeys entry to be cleared after delete")
-	}
+	assert.False(t, store.expiredKeys["expired-sess"], "expected expiredKeys entry to be cleared after delete")
 
 	// Verify session exists in store (recreated)
 	sess, err := store.Get("expired-sess")
-	if err != nil {
-		t.Fatalf("expected session in store after auto-renew, got error: %v", err)
-	}
-	if sess == nil {
-		t.Fatal("expected non-nil session after auto-renew")
-	}
+	require.NoError(t, err, "expected session in store after auto-renew")
+	require.NotNil(t, sess, "expected non-nil session after auto-renew")
 	// Old metadata should not carry over (new session is blank)
-	if sess.Metadata["old"] == "data" {
-		t.Error("expected old metadata to be cleared in renewed session")
-	}
+	assert.NotEqual(t, "data", sess.Metadata["old"], "expected old metadata to be cleared in renewed session")
 }
 
 func TestSessionServiceAdapter_Get_ExpiredSession_DeleteFails(t *testing.T) {
+	t.Parallel()
+
 	store := newMockStore()
 	store.sessions["fail-del"] = &internal.Session{Key: "fail-del"}
 	store.expiredKeys["fail-del"] = true
@@ -406,12 +345,8 @@ func TestSessionServiceAdapter_Get_ExpiredSession_DeleteFails(t *testing.T) {
 	_, err := service.Get(context.Background(), &session.GetRequest{
 		SessionID: "fail-del",
 	})
-	if err == nil {
-		t.Fatal("expected error when delete fails")
-	}
-	if !errors.Is(err, store.deleteErr) {
-		t.Errorf("expected wrapped disk full error, got: %v", err)
-	}
+	require.Error(t, err, "expected error when delete fails")
+	assert.True(t, errors.Is(err, store.deleteErr), "expected wrapped disk full error")
 }
 
 // Verify the LLMResponse field is unused in model import (for compile check)

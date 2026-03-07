@@ -4,6 +4,9 @@ import (
 	"context"
 	"errors"
 	"testing"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 // --- test helpers ---
@@ -24,10 +27,10 @@ func (h *stubPreHook) Pre(_ HookContext) (PreHookResult, error) {
 }
 
 type stubPostHook struct {
-	name     string
-	priority int
-	err      error
-	called   bool
+	name      string
+	priority  int
+	err       error
+	called    bool
 	gotResult interface{}
 	gotErr    error
 }
@@ -44,6 +47,8 @@ func (h *stubPostHook) Post(_ HookContext, result interface{}, toolErr error) er
 // --- HookRegistry tests ---
 
 func TestHookRegistry_RunPre(t *testing.T) {
+	t.Parallel()
+
 	tests := []struct {
 		give       string
 		preHooks   []*stubPreHook
@@ -92,6 +97,8 @@ func TestHookRegistry_RunPre(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.give, func(t *testing.T) {
+			t.Parallel()
+
 			reg := NewHookRegistry()
 			for _, h := range tt.preHooks {
 				reg.RegisterPre(h)
@@ -104,25 +111,21 @@ func TestHookRegistry_RunPre(t *testing.T) {
 			})
 
 			if tt.wantErr {
-				if err == nil {
-					t.Fatal("expected error, got nil")
-				}
+				require.Error(t, err)
 				return
 			}
-			if err != nil {
-				t.Fatalf("unexpected error: %v", err)
-			}
-			if result.Action != tt.wantAction {
-				t.Errorf("Action = %d, want %d", result.Action, tt.wantAction)
-			}
-			if tt.wantReason != "" && result.BlockReason != tt.wantReason {
-				t.Errorf("BlockReason = %q, want %q", result.BlockReason, tt.wantReason)
+			require.NoError(t, err)
+			assert.Equal(t, tt.wantAction, result.Action)
+			if tt.wantReason != "" {
+				assert.Equal(t, tt.wantReason, result.BlockReason)
 			}
 		})
 	}
 }
 
 func TestHookRegistry_RunPre_PriorityOrdering(t *testing.T) {
+	t.Parallel()
+
 	var order []string
 
 	makeHook := func(name string, priority int) *orderPreHook {
@@ -136,22 +139,14 @@ func TestHookRegistry_RunPre_PriorityOrdering(t *testing.T) {
 	reg.RegisterPre(makeHook("second", 20))
 
 	_, err := reg.RunPre(HookContext{Ctx: context.Background()})
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
+	require.NoError(t, err)
 
-	want := []string{"first", "second", "third"}
-	if len(order) != len(want) {
-		t.Fatalf("order = %v, want %v", order, want)
-	}
-	for i := range want {
-		if order[i] != want[i] {
-			t.Errorf("order[%d] = %q, want %q", i, order[i], want[i])
-		}
-	}
+	assert.Equal(t, []string{"first", "second", "third"}, order)
 }
 
 func TestHookRegistry_RunPre_BlockStopsEarly(t *testing.T) {
+	t.Parallel()
+
 	blocker := &stubPreHook{
 		name:     "blocker",
 		priority: 1,
@@ -168,18 +163,14 @@ func TestHookRegistry_RunPre_BlockStopsEarly(t *testing.T) {
 	reg.RegisterPre(after)
 
 	result, err := reg.RunPre(HookContext{Ctx: context.Background()})
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if result.Action != Block {
-		t.Errorf("Action = %d, want Block", result.Action)
-	}
-	if after.called {
-		t.Error("hook after blocker should not have been called")
-	}
+	require.NoError(t, err)
+	assert.Equal(t, Block, result.Action)
+	assert.False(t, after.called, "hook after blocker should not have been called")
 }
 
 func TestHookRegistry_RunPre_ModifyPassesParams(t *testing.T) {
+	t.Parallel()
+
 	modifiedParams := map[string]interface{}{"key": "modified"}
 	modifier := &stubPreHook{
 		name:     "modifier",
@@ -198,16 +189,14 @@ func TestHookRegistry_RunPre_ModifyPassesParams(t *testing.T) {
 		Params: map[string]interface{}{"key": "original"},
 		Ctx:    context.Background(),
 	})
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
+	require.NoError(t, err)
 
-	if v, ok := capturer.receivedParams["key"].(string); !ok || v != "modified" {
-		t.Errorf("capturer received params[key] = %v, want %q", capturer.receivedParams["key"], "modified")
-	}
+	assert.Equal(t, "modified", capturer.receivedParams["key"])
 }
 
 func TestHookRegistry_RunPost(t *testing.T) {
+	t.Parallel()
+
 	tests := []struct {
 		give      string
 		postHooks []*stubPostHook
@@ -236,23 +225,26 @@ func TestHookRegistry_RunPost(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.give, func(t *testing.T) {
+			t.Parallel()
+
 			reg := NewHookRegistry()
 			for _, h := range tt.postHooks {
 				reg.RegisterPost(h)
 			}
 
 			err := reg.RunPost(HookContext{Ctx: context.Background()}, "result", nil)
-			if tt.wantErr && err == nil {
-				t.Fatal("expected error, got nil")
-			}
-			if !tt.wantErr && err != nil {
-				t.Fatalf("unexpected error: %v", err)
+			if tt.wantErr {
+				require.Error(t, err)
+			} else {
+				require.NoError(t, err)
 			}
 		})
 	}
 }
 
 func TestHookRegistry_RunPost_PriorityOrdering(t *testing.T) {
+	t.Parallel()
+
 	var order []string
 
 	makeHook := func(name string, priority int) *orderPostHook {
@@ -265,22 +257,14 @@ func TestHookRegistry_RunPost_PriorityOrdering(t *testing.T) {
 	reg.RegisterPost(makeHook("second", 20))
 
 	err := reg.RunPost(HookContext{Ctx: context.Background()}, "result", nil)
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
+	require.NoError(t, err)
 
-	want := []string{"first", "second", "third"}
-	if len(order) != len(want) {
-		t.Fatalf("order = %v, want %v", order, want)
-	}
-	for i := range want {
-		if order[i] != want[i] {
-			t.Errorf("order[%d] = %q, want %q", i, order[i], want[i])
-		}
-	}
+	assert.Equal(t, []string{"first", "second", "third"}, order)
 }
 
 func TestHookRegistry_RunPost_ErrorStopsEarly(t *testing.T) {
+	t.Parallel()
+
 	failing := &stubPostHook{name: "failing", priority: 1, err: errors.New("fail")}
 	after := &stubPostHook{name: "after", priority: 2}
 
@@ -289,15 +273,13 @@ func TestHookRegistry_RunPost_ErrorStopsEarly(t *testing.T) {
 	reg.RegisterPost(after)
 
 	err := reg.RunPost(HookContext{Ctx: context.Background()}, "result", nil)
-	if err == nil {
-		t.Fatal("expected error")
-	}
-	if after.called {
-		t.Error("hook after failing should not have been called")
-	}
+	require.Error(t, err)
+	assert.False(t, after.called, "hook after failing should not have been called")
 }
 
 func TestHookRegistry_RunPost_ReceivesToolResult(t *testing.T) {
+	t.Parallel()
+
 	hook := &stubPostHook{name: "observer", priority: 1}
 
 	reg := NewHookRegistry()
@@ -307,20 +289,16 @@ func TestHookRegistry_RunPost_ReceivesToolResult(t *testing.T) {
 	wantErr := errors.New("tool error")
 
 	err := reg.RunPost(HookContext{Ctx: context.Background()}, wantResult, wantErr)
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if hook.gotResult != wantResult {
-		t.Errorf("gotResult = %v, want %q", hook.gotResult, wantResult)
-	}
-	if hook.gotErr != wantErr {
-		t.Errorf("gotErr = %v, want %v", hook.gotErr, wantErr)
-	}
+	require.NoError(t, err)
+	assert.Equal(t, wantResult, hook.gotResult)
+	assert.Equal(t, wantErr, hook.gotErr)
 }
 
 // --- AgentName context helpers ---
 
 func TestAgentNameContext(t *testing.T) {
+	t.Parallel()
+
 	tests := []struct {
 		give     string
 		setName  string
@@ -339,14 +317,14 @@ func TestAgentNameContext(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.give, func(t *testing.T) {
+			t.Parallel()
+
 			ctx := context.Background()
 			if tt.setName != "" {
 				ctx = WithAgentName(ctx, tt.setName)
 			}
 			got := AgentNameFromContext(ctx)
-			if got != tt.wantName {
-				t.Errorf("AgentNameFromContext() = %q, want %q", got, tt.wantName)
-			}
+			assert.Equal(t, tt.wantName, got)
 		})
 	}
 }

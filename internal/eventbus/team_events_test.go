@@ -3,9 +3,14 @@ package eventbus
 import (
 	"testing"
 	"time"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestTeamEventNames(t *testing.T) {
+	t.Parallel()
+
 	tests := []struct {
 		give Event
 		want string
@@ -24,14 +29,15 @@ func TestTeamEventNames(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.want, func(t *testing.T) {
-			if got := tt.give.EventName(); got != tt.want {
-				t.Errorf("EventName() = %q, want %q", got, tt.want)
-			}
+			t.Parallel()
+			assert.Equal(t, tt.want, tt.give.EventName())
 		})
 	}
 }
 
 func TestTeamEvents_PublishSubscribe(t *testing.T) {
+	t.Parallel()
+
 	bus := New()
 
 	var received []Event
@@ -50,18 +56,10 @@ func TestTeamEvents_PublishSubscribe(t *testing.T) {
 	bus.Publish(TeamTaskCompletedEvent{TeamID: "t1", ToolName: "search", Successful: 2, Failed: 1, Duration: time.Second})
 	bus.Publish(TeamDisbandedEvent{TeamID: "t1", Reason: "task complete"})
 
-	if len(received) != 3 {
-		t.Fatalf("received %d events, want 3", len(received))
-	}
+	require.Len(t, received, 3)
 
 	// Verify ordering.
-	if _, ok := received[0].(TeamFormedEvent); !ok {
-		t.Errorf("event[0] type = %T, want TeamFormedEvent", received[0])
-	}
-	if _, ok := received[1].(TeamTaskCompletedEvent); !ok {
-		t.Errorf("event[1] type = %T, want TeamTaskCompletedEvent", received[1])
-	}
-	if _, ok := received[2].(TeamDisbandedEvent); !ok {
-		t.Errorf("event[2] type = %T, want TeamDisbandedEvent", received[2])
-	}
+	assert.IsType(t, TeamFormedEvent{}, received[0])
+	assert.IsType(t, TeamTaskCompletedEvent{}, received[1])
+	assert.IsType(t, TeamDisbandedEvent{}, received[2])
 }

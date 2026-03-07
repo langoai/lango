@@ -7,6 +7,8 @@ import (
 )
 
 func TestFormatMarkdown(t *testing.T) {
+	t.Parallel()
+
 	tests := []struct {
 		give string
 		want string
@@ -71,6 +73,8 @@ func TestFormatMarkdown(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.give, func(t *testing.T) {
+			t.Parallel()
+
 			got := FormatMarkdown(tt.give)
 			assert.Equal(t, tt.want, got)
 		})

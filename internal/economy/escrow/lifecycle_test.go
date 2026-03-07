@@ -7,6 +7,8 @@ import (
 )
 
 func TestCanTransition(t *testing.T) {
+	t.Parallel()
+
 	tests := []struct {
 		give string
 		from EscrowStatus
@@ -33,12 +35,15 @@ func TestCanTransition(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.give, func(t *testing.T) {
+			t.Parallel()
 			assert.Equal(t, tt.want, canTransition(tt.from, tt.to))
 		})
 	}
 }
 
 func TestValidateTransition(t *testing.T) {
+	t.Parallel()
+
 	tests := []struct {
 		give    string
 		from    EscrowStatus
@@ -51,6 +56,7 @@ func TestValidateTransition(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.give, func(t *testing.T) {
+			t.Parallel()
 			err := validateTransition(tt.from, tt.to)
 			if tt.wantErr {
 				assert.ErrorIs(t, err, ErrInvalidTransition)

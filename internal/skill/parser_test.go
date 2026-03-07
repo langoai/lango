@@ -1,11 +1,15 @@
 package skill
 
 import (
-	"strings"
 	"testing"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestParseSkillMD_Script(t *testing.T) {
+	t.Parallel()
+
 	content := `---
 name: serve
 description: Start the lango server
@@ -16,30 +20,20 @@ status: active
 ` + "```sh\nlango serve\n```\n"
 
 	entry, err := ParseSkillMD([]byte(content))
-	if err != nil {
-		t.Fatalf("ParseSkillMD: %v", err)
-	}
+	require.NoError(t, err)
 
-	if entry.Name != "serve" {
-		t.Errorf("Name = %q, want %q", entry.Name, "serve")
-	}
-	if entry.Type != "script" {
-		t.Errorf("Type = %q, want %q", entry.Type, "script")
-	}
-	if entry.Status != "active" {
-		t.Errorf("Status = %q, want %q", entry.Status, "active")
-	}
+	assert.Equal(t, "serve", entry.Name)
+	assert.Equal(t, SkillTypeScript, entry.Type)
+	assert.Equal(t, SkillStatusActive, entry.Status)
 
 	script, ok := entry.Definition["script"].(string)
-	if !ok {
-		t.Fatal("Definition[\"script\"] not a string")
-	}
-	if script != "lango serve" {
-		t.Errorf("script = %q, want %q", script, "lango serve")
-	}
+	require.True(t, ok, "Definition[\"script\"] not a string")
+	assert.Equal(t, "lango serve", script)
 }
 
 func TestParseSkillMD_Template(t *testing.T) {
+	t.Parallel()
+
 	content := `---
 name: greet
 description: Greet someone
@@ -50,24 +44,18 @@ status: active
 ` + "```template\nHello {{.Name}}!\n```\n"
 
 	entry, err := ParseSkillMD([]byte(content))
-	if err != nil {
-		t.Fatalf("ParseSkillMD: %v", err)
-	}
+	require.NoError(t, err)
 
-	if entry.Type != "template" {
-		t.Errorf("Type = %q, want %q", entry.Type, "template")
-	}
+	assert.Equal(t, SkillTypeTemplate, entry.Type)
 
 	tmpl, ok := entry.Definition["template"].(string)
-	if !ok {
-		t.Fatal("Definition[\"template\"] not a string")
-	}
-	if tmpl != "Hello {{.Name}}!" {
-		t.Errorf("template = %q, want %q", tmpl, "Hello {{.Name}}!")
-	}
+	require.True(t, ok, "Definition[\"template\"] not a string")
+	assert.Equal(t, "Hello {{.Name}}!", tmpl)
 }
 
 func TestParseSkillMD_Composite(t *testing.T) {
+	t.Parallel()
+
 	content := `---
 name: deploy
 description: Deploy workflow
@@ -81,24 +69,18 @@ status: active
 		"### Step 2\n\n```json\n{\"tool\": \"exec\", \"params\": {\"command\": \"deploy\"}}\n```\n"
 
 	entry, err := ParseSkillMD([]byte(content))
-	if err != nil {
-		t.Fatalf("ParseSkillMD: %v", err)
-	}
+	require.NoError(t, err)
 
-	if entry.Type != "composite" {
-		t.Errorf("Type = %q, want %q", entry.Type, "composite")
-	}
+	assert.Equal(t, SkillTypeComposite, entry.Type)
 
 	steps, ok := entry.Definition["steps"].([]interface{})
-	if !ok {
-		t.Fatal("Definition[\"steps\"] not a []interface{}")
-	}
-	if len(steps) != 2 {
-		t.Fatalf("len(steps) = %d, want 2", len(steps))
-	}
+	require.True(t, ok, "Definition[\"steps\"] not a []interface{}")
+	assert.Len(t, steps, 2)
 }
 
 func TestParseSkillMD_WithParameters(t *testing.T) {
+	t.Parallel()
+
 	content := `---
 name: greet
 description: Greet someone
@@ -110,41 +92,33 @@ status: active
 		"## Parameters\n\n```json\n{\"type\": \"object\", \"properties\": {\"Name\": {\"type\": \"string\"}}}\n```\n"
 
 	entry, err := ParseSkillMD([]byte(content))
-	if err != nil {
-		t.Fatalf("ParseSkillMD: %v", err)
-	}
+	require.NoError(t, err)
 
-	if entry.Parameters == nil {
-		t.Fatal("Parameters is nil, want non-nil")
-	}
-	if _, ok := entry.Parameters["type"]; !ok {
-		t.Error("Parameters missing 'type' key")
-	}
+	require.NotNil(t, entry.Parameters)
+	assert.Contains(t, entry.Parameters, "type")
 }
 
 func TestParseSkillMD_MissingFrontmatter(t *testing.T) {
+	t.Parallel()
+
 	content := "no frontmatter here"
 	_, err := ParseSkillMD([]byte(content))
-	if err == nil {
-		t.Fatal("expected error for missing frontmatter")
-	}
-	if !strings.Contains(err.Error(), "frontmatter") {
-		t.Errorf("error = %q, want to contain 'frontmatter'", err.Error())
-	}
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "frontmatter")
 }
 
 func TestParseSkillMD_MissingName(t *testing.T) {
+	t.Parallel()
+
 	content := "---\ndescription: test\ntype: script\n---\n\n```sh\necho hi\n```\n"
 	_, err := ParseSkillMD([]byte(content))
-	if err == nil {
-		t.Fatal("expected error for missing name")
-	}
-	if !strings.Contains(err.Error(), "name is required") {
-		t.Errorf("error = %q, want to contain 'name is required'", err.Error())
-	}
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "name is required")
 }
 
 func TestParseSkillMD_Instruction(t *testing.T) {
+	t.Parallel()
+
 	content := `---
 name: obsidian-markdown
 description: Obsidian-flavored Markdown reference guide
@@ -159,31 +133,21 @@ Use **bold** and *italic* in Obsidian.
 Use [[wikilinks]] for internal links.`
 
 	entry, err := ParseSkillMD([]byte(content))
-	if err != nil {
-		t.Fatalf("ParseSkillMD: %v", err)
-	}
+	require.NoError(t, err)
 
-	if entry.Name != "obsidian-markdown" {
-		t.Errorf("Name = %q, want %q", entry.Name, "obsidian-markdown")
-	}
+	assert.Equal(t, "obsidian-markdown", entry.Name)
 	// No explicit type → defaults to "instruction".
-	if entry.Type != "instruction" {
-		t.Errorf("Type = %q, want %q", entry.Type, "instruction")
-	}
-	if entry.Status != "active" {
-		t.Errorf("Status = %q, want %q", entry.Status, "active")
-	}
+	assert.Equal(t, SkillTypeInstruction, entry.Type)
+	assert.Equal(t, SkillStatusActive, entry.Status)
 
 	body, ok := entry.Definition["content"].(string)
-	if !ok {
-		t.Fatal("Definition[\"content\"] not a string")
-	}
-	if !strings.Contains(body, "[[wikilinks]]") {
-		t.Errorf("content missing [[wikilinks]], got %q", body)
-	}
+	require.True(t, ok, "Definition[\"content\"] not a string")
+	assert.Contains(t, body, "[[wikilinks]]")
 }
 
 func TestRenderSkillMD_Instruction(t *testing.T) {
+	t.Parallel()
+
 	original := &SkillEntry{
 		Name:        "guide-skill",
 		Description: "A guide",
@@ -194,28 +158,20 @@ func TestRenderSkillMD_Instruction(t *testing.T) {
 	}
 
 	rendered, err := RenderSkillMD(original)
-	if err != nil {
-		t.Fatalf("RenderSkillMD: %v", err)
-	}
+	require.NoError(t, err)
 
 	parsed, err := ParseSkillMD(rendered)
-	if err != nil {
-		t.Fatalf("ParseSkillMD (roundtrip): %v", err)
-	}
+	require.NoError(t, err)
 
-	if parsed.Type != "instruction" {
-		t.Errorf("Type = %q, want %q", parsed.Type, "instruction")
-	}
-	if parsed.Source != "https://github.com/owner/repo" {
-		t.Errorf("Source = %q, want %q", parsed.Source, "https://github.com/owner/repo")
-	}
+	assert.Equal(t, SkillTypeInstruction, parsed.Type)
+	assert.Equal(t, "https://github.com/owner/repo", parsed.Source)
 	content, _ := parsed.Definition["content"].(string)
-	if !strings.Contains(content, "Some instructions.") {
-		t.Errorf("content = %q, want to contain 'Some instructions.'", content)
-	}
+	assert.Contains(t, content, "Some instructions.")
 }
 
 func TestParseSkillMD_WithSource(t *testing.T) {
+	t.Parallel()
+
 	content := `---
 name: imported-skill
 description: An imported skill
@@ -226,30 +182,22 @@ source: https://github.com/owner/repo
 Reference content here.`
 
 	entry, err := ParseSkillMD([]byte(content))
-	if err != nil {
-		t.Fatalf("ParseSkillMD: %v", err)
-	}
+	require.NoError(t, err)
 
-	if entry.Source != "https://github.com/owner/repo" {
-		t.Errorf("Source = %q, want %q", entry.Source, "https://github.com/owner/repo")
-	}
+	assert.Equal(t, "https://github.com/owner/repo", entry.Source)
 
 	// Render and re-parse to test roundtrip.
 	rendered, err := RenderSkillMD(entry)
-	if err != nil {
-		t.Fatalf("RenderSkillMD: %v", err)
-	}
+	require.NoError(t, err)
 
 	reparsed, err := ParseSkillMD(rendered)
-	if err != nil {
-		t.Fatalf("ParseSkillMD (roundtrip): %v", err)
-	}
-	if reparsed.Source != entry.Source {
-		t.Errorf("Source roundtrip = %q, want %q", reparsed.Source, entry.Source)
-	}
+	require.NoError(t, err)
+	assert.Equal(t, entry.Source, reparsed.Source)
 }
 
 func TestParseSkillMD_AllowedTools(t *testing.T) {
+	t.Parallel()
+
 	content := `---
 name: deploy-skill
 description: Deployment skill
@@ -263,22 +211,15 @@ allowed-tools: exec fs_write fs_read
 ` + "```json\n{\"tool\": \"exec\", \"params\": {\"command\": \"deploy\"}}\n```\n"
 
 	entry, err := ParseSkillMD([]byte(content))
-	if err != nil {
-		t.Fatalf("ParseSkillMD: %v", err)
-	}
+	require.NoError(t, err)
 
-	if len(entry.AllowedTools) != 3 {
-		t.Fatalf("len(AllowedTools) = %d, want 3", len(entry.AllowedTools))
-	}
-	want := []string{"exec", "fs_write", "fs_read"}
-	for i, w := range want {
-		if entry.AllowedTools[i] != w {
-			t.Errorf("AllowedTools[%d] = %q, want %q", i, entry.AllowedTools[i], w)
-		}
-	}
+	require.Len(t, entry.AllowedTools, 3)
+	assert.Equal(t, []string{"exec", "fs_write", "fs_read"}, entry.AllowedTools)
 }
 
 func TestRenderSkillMD_AllowedTools_Roundtrip(t *testing.T) {
+	t.Parallel()
+
 	original := &SkillEntry{
 		Name:         "deploy-skill",
 		Description:  "Deployment skill",
@@ -289,24 +230,18 @@ func TestRenderSkillMD_AllowedTools_Roundtrip(t *testing.T) {
 	}
 
 	rendered, err := RenderSkillMD(original)
-	if err != nil {
-		t.Fatalf("RenderSkillMD: %v", err)
-	}
+	require.NoError(t, err)
 
 	parsed, err := ParseSkillMD(rendered)
-	if err != nil {
-		t.Fatalf("ParseSkillMD (roundtrip): %v", err)
-	}
+	require.NoError(t, err)
 
-	if len(parsed.AllowedTools) != 2 {
-		t.Fatalf("len(AllowedTools) = %d, want 2", len(parsed.AllowedTools))
-	}
-	if parsed.AllowedTools[0] != "exec" || parsed.AllowedTools[1] != "fs_write" {
-		t.Errorf("AllowedTools = %v, want [exec fs_write]", parsed.AllowedTools)
-	}
+	require.Len(t, parsed.AllowedTools, 2)
+	assert.Equal(t, []string{"exec", "fs_write"}, parsed.AllowedTools)
 }
 
 func TestParseSkillMD_NoAllowedTools(t *testing.T) {
+	t.Parallel()
+
 	content := `---
 name: basic-skill
 description: Basic skill
@@ -317,16 +252,14 @@ status: active
 ` + "```sh\necho hello\n```\n"
 
 	entry, err := ParseSkillMD([]byte(content))
-	if err != nil {
-		t.Fatalf("ParseSkillMD: %v", err)
-	}
+	require.NoError(t, err)
 
-	if len(entry.AllowedTools) != 0 {
-		t.Errorf("len(AllowedTools) = %d, want 0", len(entry.AllowedTools))
-	}
+	assert.Empty(t, entry.AllowedTools)
 }
 
 func TestRenderSkillMD_Roundtrip(t *testing.T) {
+	t.Parallel()
+
 	original := &SkillEntry{
 		Name:        "test-skill",
 		Description: "A test skill",
@@ -337,30 +270,16 @@ func TestRenderSkillMD_Roundtrip(t *testing.T) {
 	}
 
 	rendered, err := RenderSkillMD(original)
-	if err != nil {
-		t.Fatalf("RenderSkillMD: %v", err)
-	}
+	require.NoError(t, err)
 
 	parsed, err := ParseSkillMD(rendered)
-	if err != nil {
-		t.Fatalf("ParseSkillMD (roundtrip): %v", err)
-	}
+	require.NoError(t, err)
 
-	if parsed.Name != original.Name {
-		t.Errorf("Name = %q, want %q", parsed.Name, original.Name)
-	}
-	if parsed.Description != original.Description {
-		t.Errorf("Description = %q, want %q", parsed.Description, original.Description)
-	}
-	if parsed.Type != original.Type {
-		t.Errorf("Type = %q, want %q", parsed.Type, original.Type)
-	}
-	if parsed.Status != original.Status {
-		t.Errorf("Status = %q, want %q", parsed.Status, original.Status)
-	}
+	assert.Equal(t, original.Name, parsed.Name)
+	assert.Equal(t, original.Description, parsed.Description)
+	assert.Equal(t, original.Type, parsed.Type)
+	assert.Equal(t, original.Status, parsed.Status)
 
 	script, _ := parsed.Definition["script"].(string)
-	if script != "echo hello" {
-		t.Errorf("script = %q, want %q", script, "echo hello")
-	}
+	assert.Equal(t, "echo hello", script)
 }

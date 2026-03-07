@@ -47,6 +47,8 @@ func validOwnershipAssignment() (*circuits.WalletOwnershipCircuit, *circuits.Wal
 }
 
 func TestProverService_CompileAndProve_PlonK(t *testing.T) {
+	t.Parallel()
+
 	cfg := Config{
 		CacheDir: t.TempDir(),
 		Scheme:   SchemePlonk,
@@ -70,6 +72,8 @@ func TestProverService_CompileAndProve_PlonK(t *testing.T) {
 }
 
 func TestProverService_CompileAndProve_Groth16(t *testing.T) {
+	t.Parallel()
+
 	cfg := Config{
 		CacheDir: t.TempDir(),
 		Scheme:   SchemeGroth16,
@@ -92,6 +96,8 @@ func TestProverService_CompileAndProve_Groth16(t *testing.T) {
 }
 
 func TestProverService_Verify_Valid(t *testing.T) {
+	t.Parallel()
+
 	cfg := Config{
 		CacheDir: t.TempDir(),
 		Scheme:   SchemePlonk,
@@ -120,6 +126,8 @@ func TestProverService_Verify_Valid(t *testing.T) {
 }
 
 func TestProverService_Verify_Invalid(t *testing.T) {
+	t.Parallel()
+
 	cfg := Config{
 		CacheDir: t.TempDir(),
 		Scheme:   SchemePlonk,
@@ -162,6 +170,8 @@ func TestProverService_Verify_Invalid(t *testing.T) {
 }
 
 func TestProverService_DoubleCompile_Idempotent(t *testing.T) {
+	t.Parallel()
+
 	cfg := Config{
 		CacheDir: t.TempDir(),
 		Scheme:   SchemePlonk,
@@ -183,6 +193,8 @@ func TestProverService_DoubleCompile_Idempotent(t *testing.T) {
 }
 
 func TestProverService_ProveUncompiled_Error(t *testing.T) {
+	t.Parallel()
+
 	cfg := Config{
 		CacheDir: t.TempDir(),
 		Scheme:   SchemePlonk,

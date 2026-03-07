@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"testing"
 
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	"go.uber.org/zap"
 
 	"github.com/langoai/lango/internal/graph"
@@ -48,6 +50,8 @@ func (s *fakeGraphStore) AllTriples(_ context.Context) ([]graph.Triple, error)  
 func (s *fakeGraphStore) Close() error                                           { return nil }
 
 func TestGraphEngine_RecordErrorGraph_WithCallback(t *testing.T) {
+	t.Parallel()
+
 	logger := zap.NewNop().Sugar()
 
 	var callbackTriples []graph.Triple
@@ -64,9 +68,7 @@ func TestGraphEngine_RecordErrorGraph_WithCallback(t *testing.T) {
 	// Call recordErrorGraph directly (bypasses store.SearchLearningEntities since graphStore is nil).
 	ge.recordErrorGraph(context.Background(), "test-session", "exec", fmt.Errorf("permission denied"))
 
-	if len(callbackTriples) < 2 {
-		t.Fatalf("want at least 2 triples, got %d", len(callbackTriples))
-	}
+	require.GreaterOrEqual(t, len(callbackTriples), 2, "want at least 2 triples")
 
 	// Check that CausedBy and InSession triples are present.
 	var hasCausedBy, hasInSession bool
@@ -79,32 +81,22 @@ func TestGraphEngine_RecordErrorGraph_WithCallback(t *testing.T) {
 		}
 	}
 
-	if !hasCausedBy {
-		t.Error("want CausedBy triple")
-	}
-	if !hasInSession {
-		t.Error("want InSession triple")
-	}
+	assert.True(t, hasCausedBy, "want CausedBy triple")
+	assert.True(t, hasInSession, "want InSession triple")
 }
 
 func TestGraphEngine_RecordErrorGraph_DirectStore(t *testing.T) {
-	gs := &fakeGraphStore{}
+	t.Parallel()
+
 	logger := zap.NewNop().Sugar()
 
 	ge := &GraphEngine{
 		Engine:      &Engine{store: nil, logger: logger},
-		graphStore:  gs,
+		graphStore:  nil,
 		propagation: 0.3,
 		logger:      logger,
 	}
 	// No callback — triples go to store directly.
-	// Note: graphStore.QueryBySubjectPredicate returns nil,nil so no SimilarTo search
-	// but store.SearchLearningEntities will be called on e.store which is nil.
-	// Since graphStore is non-nil, the code calls SearchLearningEntities.
-	// We need graphStore nil or a real store. Let's test without graphStore search.
-
-	// Instead test the direct-store path with no SimilarTo search by using nil graphStore
-	// The test above already covers the callback path. Here we test store write path.
 	ge.graphStore = nil // force callback path only
 	ge.SetGraphCallback(nil)
 
@@ -114,6 +106,8 @@ func TestGraphEngine_RecordErrorGraph_DirectStore(t *testing.T) {
 }
 
 func TestGraphEngine_RecordFix(t *testing.T) {
+	t.Parallel()
+
 	gs := &fakeGraphStore{}
 	logger := zap.NewNop().Sugar()
 
@@ -127,9 +121,7 @@ func TestGraphEngine_RecordFix(t *testing.T) {
 	// Without callback — should use direct store.
 	ge.RecordFix(context.Background(), "timeout error", "increase timeout", "session-1")
 
-	if len(gs.triples) != 2 {
-		t.Fatalf("want 2 triples, got %d", len(gs.triples))
-	}
+	require.Len(t, gs.triples, 2)
 
 	var hasResolvedBy, hasLearnedFrom bool
 	for _, triple := range gs.triples {
@@ -141,15 +133,13 @@ func TestGraphEngine_RecordFix(t *testing.T) {
 		}
 	}
 
-	if !hasResolvedBy {
-		t.Error("want ResolvedBy triple")
-	}
-	if !hasLearnedFrom {
-		t.Error("want LearnedFrom triple")
-	}
+	assert.True(t, hasResolvedBy, "want ResolvedBy triple")
+	assert.True(t, hasLearnedFrom, "want LearnedFrom triple")
 }
 
 func TestGraphEngine_RecordFixWithCallback(t *testing.T) {
+	t.Parallel()
+
 	logger := zap.NewNop().Sugar()
 
 	var callbackTriples []graph.Triple
@@ -165,12 +155,12 @@ func TestGraphEngine_RecordFixWithCallback(t *testing.T) {
 
 	ge.RecordFix(context.Background(), "some error", "some fix", "session-2")
 
-	if len(callbackTriples) != 2 {
-		t.Fatalf("want 2 triples via callback, got %d", len(callbackTriples))
-	}
+	require.Len(t, callbackTriples, 2, "want 2 triples via callback")
 }
 
 func TestSanitizeForNode(t *testing.T) {
+	t.Parallel()
+
 	tests := []struct {
 		give string
 		want string
@@ -181,22 +171,21 @@ func TestSanitizeForNode(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.give, func(t *testing.T) {
+			t.Parallel()
 			got := sanitizeForNode(tt.give)
-			if got != tt.want {
-				t.Errorf("sanitizeForNode(%q) = %q, want %q", tt.give, got, tt.want)
-			}
+			assert.Equal(t, tt.want, got)
 		})
 	}
 }
 
 func TestSanitizeForNode_Truncation(t *testing.T) {
+	t.Parallel()
+
 	long := ""
 	for range 100 {
 		long += "a"
 	}
 
 	result := sanitizeForNode(long)
-	if len(result) != 64 {
-		t.Errorf("want max length 64, got %d", len(result))
-	}
+	assert.Len(t, result, 64, "want max length 64")
 }

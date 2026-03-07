@@ -11,6 +11,8 @@ import (
 
 	"github.com/langoai/lango/internal/ent/enttest"
 	"github.com/langoai/lango/internal/security"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	_ "github.com/mattn/go-sqlite3"
 )
 
@@ -33,6 +35,8 @@ func (m *mockCryptoProvider) Sign(ctx context.Context, keyID string, payload []b
 }
 
 func TestCryptoTool_Hash(t *testing.T) {
+	t.Parallel()
+
 	client := enttest.Open(t, "sqlite3", "file:ent?mode=memory&_fk=1")
 	t.Cleanup(func() { client.Close() })
 
@@ -86,37 +90,30 @@ func TestCryptoTool_Hash(t *testing.T) {
 		t.Run(tt.give, func(t *testing.T) {
 			result, err := tool.Hash(ctx, tt.params)
 			if tt.wantError {
-				if err == nil {
-					t.Fatal("expected error, got nil")
-				}
+				require.Error(t, err)
 				return
 			}
-			if err != nil {
-				t.Fatalf("unexpected error: %v", err)
-			}
+			require.NoError(t, err)
 			m, ok := result.(map[string]interface{})
-			if !ok {
-				t.Fatalf("expected map result, got %T", result)
-			}
-			if m["algorithm"] != tt.wantAlgo {
-				t.Errorf("algorithm: want %s, got %s", tt.wantAlgo, m["algorithm"])
-			}
-			if tt.wantHash != "" && m["hash"] != tt.wantHash {
-				t.Errorf("hash: want %s, got %s", tt.wantHash, m["hash"])
+			require.True(t, ok, "expected map result, got %T", result)
+			assert.Equal(t, tt.wantAlgo, m["algorithm"])
+			if tt.wantHash != "" {
+				assert.Equal(t, tt.wantHash, m["hash"])
 			}
 		})
 	}
 }
 
 func TestCryptoTool_Encrypt(t *testing.T) {
+	t.Parallel()
+
 	client := enttest.Open(t, "sqlite3", "file:ent?mode=memory&_fk=1")
 	t.Cleanup(func() { client.Close() })
 
 	ctx := context.Background()
 	registry := security.NewKeyRegistry(client)
-	if _, err := registry.RegisterKey(ctx, "default", "local", security.KeyTypeEncryption); err != nil {
-		t.Fatalf("register key: %v", err)
-	}
+	_, err := registry.RegisterKey(ctx, "default", "local", security.KeyTypeEncryption)
+	require.NoError(t, err)
 
 	refs := security.NewRefStore()
 
@@ -152,32 +149,19 @@ func TestCryptoTool_Encrypt(t *testing.T) {
 		t.Run(tt.give, func(t *testing.T) {
 			result, err := tool.Encrypt(ctx, tt.params)
 			if tt.wantError {
-				if err == nil {
-					t.Fatal("expected error, got nil")
-				}
+				require.Error(t, err)
 				return
 			}
-			if err != nil {
-				t.Fatalf("unexpected error: %v", err)
-			}
+			require.NoError(t, err)
 			m, ok := result.(map[string]interface{})
-			if !ok {
-				t.Fatalf("expected map result, got %T", result)
-			}
+			require.True(t, ok, "expected map result, got %T", result)
 			ciphertext, ok := m["ciphertext"].(string)
-			if !ok {
-				t.Fatal("expected ciphertext to be string")
-			}
+			require.True(t, ok, "expected ciphertext to be string")
 			// Verify it's valid base64
 			decoded, err := base64.StdEncoding.DecodeString(ciphertext)
-			if err != nil {
-				t.Fatalf("ciphertext is not valid base64: %v", err)
-			}
+			require.NoError(t, err, "ciphertext is not valid base64")
 			// Mock reverses bytes, so decoded should be reversed "hello"
-			want := "olleh"
-			if string(decoded) != want {
-				t.Errorf("decoded ciphertext: want %q, got %q", want, string(decoded))
-			}
+			assert.Equal(t, "olleh", string(decoded))
 		})
 	}
 
@@ -190,21 +174,20 @@ func TestCryptoTool_Encrypt(t *testing.T) {
 		}
 		errTool := New(errMock, registry, refs, nil)
 		_, err := errTool.Encrypt(ctx, map[string]interface{}{"data": "hello"})
-		if err == nil {
-			t.Fatal("expected error from provider failure")
-		}
+		require.Error(t, err)
 	})
 }
 
 func TestCryptoTool_Decrypt(t *testing.T) {
+	t.Parallel()
+
 	client := enttest.Open(t, "sqlite3", "file:ent?mode=memory&_fk=1")
 	t.Cleanup(func() { client.Close() })
 
 	ctx := context.Background()
 	registry := security.NewKeyRegistry(client)
-	if _, err := registry.RegisterKey(ctx, "default", "local", security.KeyTypeEncryption); err != nil {
-		t.Fatalf("register key: %v", err)
-	}
+	_, err := registry.RegisterKey(ctx, "default", "local", security.KeyTypeEncryption)
+	require.NoError(t, err)
 
 	refs := security.NewRefStore()
 
@@ -229,49 +212,34 @@ func TestCryptoTool_Decrypt(t *testing.T) {
 
 	t.Run("decrypt returns reference token", func(t *testing.T) {
 		encResult, err := tool.Encrypt(ctx, map[string]interface{}{"data": "secret"})
-		if err != nil {
-			t.Fatalf("encrypt: %v", err)
-		}
+		require.NoError(t, err)
 		encMap := encResult.(map[string]interface{})
 		ciphertext := encMap["ciphertext"].(string)
 
 		decResult, err := tool.Decrypt(ctx, map[string]interface{}{"ciphertext": ciphertext})
-		if err != nil {
-			t.Fatalf("decrypt: %v", err)
-		}
+		require.NoError(t, err)
 		decMap := decResult.(map[string]interface{})
 
 		// Value should be a reference token, not plaintext
 		dataStr, ok := decMap["data"].(string)
-		if !ok {
-			t.Fatalf("expected data to be string, got %T", decMap["data"])
-		}
-		if !strings.HasPrefix(dataStr, "{{decrypt:") || !strings.HasSuffix(dataStr, "}}") {
-			t.Errorf("expected reference token {{decrypt:...}}, got %q", dataStr)
-		}
+		require.True(t, ok, "expected data to be string, got %T", decMap["data"])
+		assert.True(t, strings.HasPrefix(dataStr, "{{decrypt:"))
+		assert.True(t, strings.HasSuffix(dataStr, "}}"))
 
 		// RefStore should resolve the token to actual plaintext
 		val, ok := refs.Resolve(dataStr)
-		if !ok {
-			t.Fatalf("RefStore could not resolve %q", dataStr)
-		}
-		if string(val) != "secret" {
-			t.Errorf("resolved value: want %q, got %q", "secret", val)
-		}
+		require.True(t, ok, "RefStore could not resolve %q", dataStr)
+		assert.Equal(t, "secret", string(val))
 	})
 
 	t.Run("empty ciphertext error", func(t *testing.T) {
 		_, err := tool.Decrypt(ctx, map[string]interface{}{"ciphertext": ""})
-		if err == nil {
-			t.Fatal("expected error for empty ciphertext")
-		}
+		require.Error(t, err)
 	})
 
 	t.Run("invalid base64 error", func(t *testing.T) {
 		_, err := tool.Decrypt(ctx, map[string]interface{}{"ciphertext": "not-valid-base64!!!"})
-		if err == nil {
-			t.Fatal("expected error for invalid base64")
-		}
+		require.Error(t, err)
 	})
 
 	t.Run("provider error", func(t *testing.T) {
@@ -283,13 +251,13 @@ func TestCryptoTool_Decrypt(t *testing.T) {
 		errTool := New(errMock, registry, refs, nil)
 		validB64 := base64.StdEncoding.EncodeToString([]byte("data"))
 		_, err := errTool.Decrypt(ctx, map[string]interface{}{"ciphertext": validB64})
-		if err == nil {
-			t.Fatal("expected error from provider failure")
-		}
+		require.Error(t, err)
 	})
 }
 
 func TestCryptoTool_Sign(t *testing.T) {
+	t.Parallel()
+
 	client := enttest.Open(t, "sqlite3", "file:ent?mode=memory&_fk=1")
 	t.Cleanup(func() { client.Close() })
 
@@ -332,23 +300,19 @@ func TestCryptoTool_Sign(t *testing.T) {
 		t.Run(tt.give, func(t *testing.T) {
 			result, err := tool.Sign(ctx, tt.params)
 			if tt.wantError {
-				if err == nil {
-					t.Fatal("expected error, got nil")
-				}
+				require.Error(t, err)
 				return
 			}
-			if err != nil {
-				t.Fatalf("unexpected error: %v", err)
-			}
+			require.NoError(t, err)
 			m := result.(map[string]interface{})
-			if m["signature"] != tt.wantSig {
-				t.Errorf("signature: want %s, got %s", tt.wantSig, m["signature"])
-			}
+			assert.Equal(t, tt.wantSig, m["signature"])
 		})
 	}
 }
 
 func TestCryptoTool_Keys(t *testing.T) {
+	t.Parallel()
+
 	client := enttest.Open(t, "sqlite3", "file:ent?mode=memory&_fk=1")
 	t.Cleanup(func() { client.Close() })
 
@@ -359,28 +323,22 @@ func TestCryptoTool_Keys(t *testing.T) {
 	tool := New(mock, registry, refs, nil)
 
 	// Register 2 keys
-	if _, err := registry.RegisterKey(ctx, "key1", "remote1", security.KeyTypeEncryption); err != nil {
-		t.Fatalf("register key1: %v", err)
-	}
-	if _, err := registry.RegisterKey(ctx, "key2", "remote2", security.KeyTypeSigning); err != nil {
-		t.Fatalf("register key2: %v", err)
-	}
+	_, err := registry.RegisterKey(ctx, "key1", "remote1", security.KeyTypeEncryption)
+	require.NoError(t, err)
+	_, err = registry.RegisterKey(ctx, "key2", "remote2", security.KeyTypeSigning)
+	require.NoError(t, err)
 
 	result, err := tool.Keys(ctx, nil)
-	if err != nil {
-		t.Fatalf("Keys: %v", err)
-	}
+	require.NoError(t, err)
 	m := result.(map[string]interface{})
 	count, ok := m["count"].(int)
-	if !ok {
-		t.Fatalf("expected count to be int, got %T", m["count"])
-	}
-	if count != 2 {
-		t.Errorf("count: want 2, got %d", count)
-	}
+	require.True(t, ok, "expected count to be int, got %T", m["count"])
+	assert.Equal(t, 2, count)
 }
 
 func TestMapToStruct(t *testing.T) {
+	t.Parallel()
+
 	tests := []struct {
 		give      string
 		input     map[string]interface{}
@@ -403,22 +361,20 @@ func TestMapToStruct(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.give, func(t *testing.T) {
+			t.Parallel()
+
 			var p HashParams
 			err := mapToStruct(tt.input, &p)
 			if tt.wantError {
-				if err == nil {
-					t.Fatal("expected error, got nil")
-				}
+				require.Error(t, err)
 				return
 			}
-			if err != nil {
-				t.Fatalf("unexpected error: %v", err)
+			require.NoError(t, err)
+			if tt.wantData != "" {
+				assert.Equal(t, tt.wantData, p.Data)
 			}
-			if tt.wantData != "" && p.Data != tt.wantData {
-				t.Errorf("Data: want %q, got %q", tt.wantData, p.Data)
-			}
-			if tt.wantAlgo != "" && p.Algorithm != tt.wantAlgo {
-				t.Errorf("Algorithm: want %q, got %q", tt.wantAlgo, p.Algorithm)
+			if tt.wantAlgo != "" {
+				assert.Equal(t, tt.wantAlgo, p.Algorithm)
 			}
 		})
 	}

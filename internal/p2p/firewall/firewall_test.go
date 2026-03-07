@@ -3,10 +3,14 @@ package firewall
 import (
 	"testing"
 
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	"go.uber.org/zap"
 )
 
 func TestValidateRule_AllowWildcardPeerAndTools(t *testing.T) {
+	t.Parallel()
+
 	tests := []struct {
 		give    ACLRule
 		wantErr bool
@@ -47,67 +51,61 @@ func TestValidateRule_AllowWildcardPeerAndTools(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.give.PeerDID+"/"+string(tt.give.Action), func(t *testing.T) {
+			t.Parallel()
 			err := ValidateRule(tt.give)
-			if tt.wantErr && err == nil {
-				t.Error("expected error for overly permissive rule")
-			}
-			if !tt.wantErr && err != nil {
-				t.Errorf("unexpected error: %v", err)
+			if tt.wantErr {
+				assert.Error(t, err, "expected error for overly permissive rule")
+			} else {
+				assert.NoError(t, err)
 			}
 		})
 	}
 }
 
 func TestAddRule_RejectsOverlyPermissive(t *testing.T) {
+	t.Parallel()
+
 	logger, _ := zap.NewDevelopment()
 	fw := New(nil, logger.Sugar())
 
 	err := fw.AddRule(ACLRule{PeerDID: WildcardAll, Action: ACLActionAllow, Tools: []string{WildcardAll}})
-	if err == nil {
-		t.Error("expected AddRule to reject wildcard allow rule")
-	}
+	assert.Error(t, err, "expected AddRule to reject wildcard allow rule")
 
 	// Verify the rule was NOT added.
 	rules := fw.Rules()
-	if len(rules) != 0 {
-		t.Errorf("expected no rules, got %d", len(rules))
-	}
+	assert.Empty(t, rules)
 }
 
 func TestAddRule_AcceptsValidRule(t *testing.T) {
+	t.Parallel()
+
 	logger, _ := zap.NewDevelopment()
 	fw := New(nil, logger.Sugar())
 
 	err := fw.AddRule(ACLRule{PeerDID: "did:key:peer-1", Action: ACLActionAllow, Tools: []string{"echo"}})
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
+	require.NoError(t, err)
 
 	rules := fw.Rules()
-	if len(rules) != 1 {
-		t.Fatalf("expected 1 rule, got %d", len(rules))
-	}
-	if rules[0].PeerDID != "did:key:peer-1" {
-		t.Errorf("unexpected peer DID: %s", rules[0].PeerDID)
-	}
+	require.Len(t, rules, 1)
+	assert.Equal(t, "did:key:peer-1", rules[0].PeerDID)
 }
 
 func TestAddRule_AcceptsDenyWildcard(t *testing.T) {
+	t.Parallel()
+
 	logger, _ := zap.NewDevelopment()
 	fw := New(nil, logger.Sugar())
 
 	err := fw.AddRule(ACLRule{PeerDID: WildcardAll, Action: ACLActionDeny, Tools: []string{WildcardAll}})
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
+	require.NoError(t, err)
 
 	rules := fw.Rules()
-	if len(rules) != 1 {
-		t.Fatalf("expected 1 rule, got %d", len(rules))
-	}
+	require.Len(t, rules, 1)
 }
 
 func TestNew_WarnsOnOverlyPermissiveInitialRules(t *testing.T) {
+	t.Parallel()
+
 	// Should not panic — just logs a warning for backward compatibility.
 	logger, _ := zap.NewDevelopment()
 	fw := New([]ACLRule{
@@ -116,7 +114,5 @@ func TestNew_WarnsOnOverlyPermissiveInitialRules(t *testing.T) {
 
 	// Rule is still loaded (backward compat).
 	rules := fw.Rules()
-	if len(rules) != 1 {
-		t.Fatalf("expected 1 rule (backward compat), got %d", len(rules))
-	}
+	require.Len(t, rules, 1)
 }

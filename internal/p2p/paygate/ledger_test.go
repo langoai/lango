@@ -9,6 +9,8 @@ import (
 )
 
 func TestDeferredLedger_Add(t *testing.T) {
+	t.Parallel()
+
 	l := NewDeferredLedger()
 	id := l.Add("did:peer:a", "tool-x", "0.50")
 
@@ -22,6 +24,8 @@ func TestDeferredLedger_Add(t *testing.T) {
 }
 
 func TestDeferredLedger_Settle(t *testing.T) {
+	t.Parallel()
+
 	l := NewDeferredLedger()
 	id := l.Add("did:peer:b", "tool-y", "1.00")
 
@@ -33,12 +37,16 @@ func TestDeferredLedger_Settle(t *testing.T) {
 }
 
 func TestDeferredLedger_Settle_NotFound(t *testing.T) {
+	t.Parallel()
+
 	l := NewDeferredLedger()
 	ok := l.Settle("nonexistent-id", "0xabc")
 	assert.False(t, ok)
 }
 
 func TestDeferredLedger_PendingByPeer(t *testing.T) {
+	t.Parallel()
+
 	l := NewDeferredLedger()
 	l.Add("did:peer:alice", "tool-1", "0.10")
 	l.Add("did:peer:bob", "tool-2", "0.20")
@@ -55,6 +63,8 @@ func TestDeferredLedger_PendingByPeer(t *testing.T) {
 }
 
 func TestDeferredLedger_ConcurrentAccess(t *testing.T) {
+	t.Parallel()
+
 	l := NewDeferredLedger()
 	var wg sync.WaitGroup
 	ids := make([]string, 100)
@@ -87,6 +97,8 @@ func TestDeferredLedger_ConcurrentAccess(t *testing.T) {
 }
 
 func TestDeferredLedger_MultipleAdds(t *testing.T) {
+	t.Parallel()
+
 	l := NewDeferredLedger()
 	id1 := l.Add("did:peer:a", "tool-1", "0.50")
 	id2 := l.Add("did:peer:a", "tool-2", "1.00")

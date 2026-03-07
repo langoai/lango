@@ -43,6 +43,8 @@ func (m *mockComponent) Stop(_ context.Context) error {
 }
 
 func TestRegistry_StartOrder(t *testing.T) {
+	t.Parallel()
+
 	tracker := &orderTracker{}
 	r := NewRegistry()
 
@@ -58,6 +60,8 @@ func TestRegistry_StartOrder(t *testing.T) {
 }
 
 func TestRegistry_StopReverseOrder(t *testing.T) {
+	t.Parallel()
+
 	tracker := &orderTracker{}
 	r := NewRegistry()
 
@@ -77,6 +81,8 @@ func TestRegistry_StopReverseOrder(t *testing.T) {
 }
 
 func TestRegistry_RollbackOnFailure(t *testing.T) {
+	t.Parallel()
+
 	tracker := &orderTracker{}
 	errBoom := errors.New("boom")
 	r := NewRegistry()
@@ -95,6 +101,8 @@ func TestRegistry_RollbackOnFailure(t *testing.T) {
 }
 
 func TestRegistry_EmptyRegistry(t *testing.T) {
+	t.Parallel()
+
 	r := NewRegistry()
 
 	var wg sync.WaitGroup
@@ -106,6 +114,8 @@ func TestRegistry_EmptyRegistry(t *testing.T) {
 }
 
 func TestRegistry_SamePriorityPreservesOrder(t *testing.T) {
+	t.Parallel()
+
 	tracker := &orderTracker{}
 	r := NewRegistry()
 

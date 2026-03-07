@@ -7,6 +7,9 @@ import (
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+
 	"github.com/langoai/lango/internal/config"
 )
 
@@ -36,6 +39,8 @@ func mockReputationErr(e error) ReputationQuerier {
 }
 
 func TestNew(t *testing.T) {
+	t.Parallel()
+
 	tests := []struct {
 		give    string
 		giveCfg config.DynamicPricingConfig
@@ -62,18 +67,20 @@ func TestNew(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.give, func(t *testing.T) {
+			t.Parallel()
 			_, err := New(tt.giveCfg)
-			if tt.wantErr && err == nil {
-				t.Fatal("expected error, got nil")
-			}
-			if !tt.wantErr && err != nil {
-				t.Fatalf("unexpected error: %v", err)
+			if tt.wantErr {
+				require.Error(t, err)
+			} else {
+				require.NoError(t, err)
 			}
 		})
 	}
 }
 
 func TestEngine_Quote(t *testing.T) {
+	t.Parallel()
+
 	tests := []struct {
 		give         string
 		givePrices   map[string]*big.Int
@@ -233,6 +240,7 @@ func TestEngine_Quote(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.give, func(t *testing.T) {
+			t.Parallel()
 			engine := newTestEngine(t, tt.giveCfg)
 			for name, price := range tt.givePrices {
 				engine.SetBasePrice(name, price)
@@ -246,102 +254,80 @@ func TestEngine_Quote(t *testing.T) {
 
 			quote, err := engine.Quote(context.Background(), tt.giveTool, tt.givePeerDID)
 			if tt.wantErr {
-				if err == nil {
-					t.Fatal("expected error, got nil")
-				}
+				require.Error(t, err)
 				return
 			}
-			if err != nil {
-				t.Fatalf("unexpected error: %v", err)
-			}
+			require.NoError(t, err)
 
-			if quote.IsFree != tt.wantFree {
-				t.Errorf("IsFree = %v, want %v", quote.IsFree, tt.wantFree)
-			}
+			assert.Equal(t, tt.wantFree, quote.IsFree)
 			if tt.wantFree {
 				return
 			}
 
-			if quote.FinalPrice.Int64() < tt.wantPriceMin || quote.FinalPrice.Int64() > tt.wantPriceMax {
-				t.Errorf("FinalPrice = %s, want [%d, %d]",
-					quote.FinalPrice, tt.wantPriceMin, tt.wantPriceMax)
-			}
-			if len(quote.Modifiers) < tt.wantModMin {
-				t.Errorf("modifier count = %d, want >= %d", len(quote.Modifiers), tt.wantModMin)
-			}
+			assert.True(t, quote.FinalPrice.Int64() >= tt.wantPriceMin && quote.FinalPrice.Int64() <= tt.wantPriceMax,
+				"FinalPrice = %s, want [%d, %d]", quote.FinalPrice, tt.wantPriceMin, tt.wantPriceMax)
+			assert.GreaterOrEqual(t, len(quote.Modifiers), tt.wantModMin)
 		})
 	}
 }
 
 func TestEngine_Quote_Fields(t *testing.T) {
+	t.Parallel()
+
 	engine := newTestEngine(t, config.DynamicPricingConfig{})
 	engine.SetBasePrice("search", usdc(1))
 	engine.SetReputation(mockReputation(map[string]float64{"did:key:alice": 0.5}))
 
 	quote, err := engine.Quote(context.Background(), "search", "did:key:alice")
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
+	require.NoError(t, err)
 
-	if quote.ToolName != "search" {
-		t.Errorf("ToolName = %q, want %q", quote.ToolName, "search")
-	}
-	if quote.Currency != "USDC" {
-		t.Errorf("Currency = %q, want %q", quote.Currency, "USDC")
-	}
-	if quote.PeerDID != "did:key:alice" {
-		t.Errorf("PeerDID = %q, want %q", quote.PeerDID, "did:key:alice")
-	}
-	if quote.BasePrice.Cmp(usdc(1)) != 0 {
-		t.Errorf("BasePrice = %s, want %s", quote.BasePrice, usdc(1))
-	}
-	if quote.ValidUntil.Before(time.Now()) {
-		t.Error("ValidUntil should be in the future")
-	}
+	assert.Equal(t, "search", quote.ToolName)
+	assert.Equal(t, "USDC", quote.Currency)
+	assert.Equal(t, "did:key:alice", quote.PeerDID)
+	assert.Equal(t, 0, quote.BasePrice.Cmp(usdc(1)))
+	assert.True(t, quote.ValidUntil.After(time.Now()))
 }
 
 func TestEngine_Quote_ReputationError(t *testing.T) {
+	t.Parallel()
+
 	engine := newTestEngine(t, config.DynamicPricingConfig{})
 	engine.SetBasePrice("search", usdc(1))
 	engine.SetReputation(mockReputationErr(errors.New("db down")))
 
 	_, err := engine.Quote(context.Background(), "search", "did:key:alice")
-	if err == nil {
-		t.Fatal("expected error, got nil")
-	}
+	require.Error(t, err)
 }
 
 func TestEngine_Quote_NilReputation(t *testing.T) {
+	t.Parallel()
+
 	engine := newTestEngine(t, config.DynamicPricingConfig{})
 	engine.SetBasePrice("search", usdc(1))
 
 	quote, err := engine.Quote(context.Background(), "search", "did:key:alice")
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if quote.FinalPrice.Cmp(usdc(1)) != 0 {
-		t.Errorf("FinalPrice = %s, want %s (no discount without reputation)", quote.FinalPrice, usdc(1))
-	}
+	require.NoError(t, err)
+	assert.Equal(t, 0, quote.FinalPrice.Cmp(usdc(1)))
 }
 
 func TestEngine_Quote_BasePriceNotMutated(t *testing.T) {
+	t.Parallel()
+
 	engine := newTestEngine(t, config.DynamicPricingConfig{})
 	original := usdc(1)
 	engine.SetBasePrice("search", original)
 	engine.SetReputation(mockReputation(map[string]float64{"peer": 0.9}))
 
 	_, err := engine.Quote(context.Background(), "search", "peer")
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
+	require.NoError(t, err)
 
 	// The original value should not be mutated (SetBasePrice copies).
-	if original.Cmp(usdc(1)) != 0 {
-		t.Errorf("original price mutated to %s", original)
-	}
+	assert.Equal(t, 0, original.Cmp(usdc(1)))
 }
 
 func TestEngine_SetBasePriceFromString(t *testing.T) {
+	t.Parallel()
+
 	tests := []struct {
 		give      string
 		givePrice string
@@ -356,30 +342,25 @@ func TestEngine_SetBasePriceFromString(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.give, func(t *testing.T) {
+			t.Parallel()
 			engine := newTestEngine(t, config.DynamicPricingConfig{})
 			err := engine.SetBasePriceFromString("tool", tt.givePrice)
 			if tt.wantErr {
-				if err == nil {
-					t.Fatal("expected error")
-				}
+				require.Error(t, err)
 				return
 			}
-			if err != nil {
-				t.Fatalf("unexpected error: %v", err)
-			}
+			require.NoError(t, err)
 
 			quote, err := engine.Quote(context.Background(), "tool", "")
-			if err != nil {
-				t.Fatalf("Quote error: %v", err)
-			}
-			if quote.FinalPrice.Int64() != tt.wantPrice {
-				t.Errorf("FinalPrice = %d, want %d", quote.FinalPrice.Int64(), tt.wantPrice)
-			}
+			require.NoError(t, err)
+			assert.Equal(t, tt.wantPrice, quote.FinalPrice.Int64())
 		})
 	}
 }
 
 func TestEngine_AddRemoveRule(t *testing.T) {
+	t.Parallel()
+
 	engine := newTestEngine(t, config.DynamicPricingConfig{})
 
 	engine.AddRule(PricingRule{
@@ -390,18 +371,16 @@ func TestEngine_AddRemoveRule(t *testing.T) {
 	})
 
 	rules := engine.Rules()
-	if len(rules) != 1 {
-		t.Fatalf("expected 1 rule, got %d", len(rules))
-	}
+	require.Len(t, rules, 1)
 
 	engine.RemoveRule("surge")
 	rules = engine.Rules()
-	if len(rules) != 0 {
-		t.Errorf("expected 0 rules after remove, got %d", len(rules))
-	}
+	assert.Len(t, rules, 0)
 }
 
 func TestHasModifierType(t *testing.T) {
+	t.Parallel()
+
 	tests := []struct {
 		give     string
 		giveMods []PriceModifier
@@ -430,10 +409,8 @@ func TestHasModifierType(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.give, func(t *testing.T) {
-			got := hasModifierType(tt.giveMods, tt.giveType)
-			if got != tt.want {
-				t.Errorf("hasModifierType() = %v, want %v", got, tt.want)
-			}
+			t.Parallel()
+			assert.Equal(t, tt.want, hasModifierType(tt.giveMods, tt.giveType))
 		})
 	}
 }

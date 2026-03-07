@@ -3,14 +3,18 @@ package toolchain
 import (
 	"context"
 	"errors"
-	"strings"
 	"testing"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 
 	"github.com/langoai/lango/internal/agent"
 	"github.com/langoai/lango/internal/session"
 )
 
 func TestWithHooks_NormalFlow(t *testing.T) {
+	t.Parallel()
+
 	preHook := &stubPreHook{
 		name:     "pre",
 		priority: 1,
@@ -34,27 +38,17 @@ func TestWithHooks_NormalFlow(t *testing.T) {
 	wrapped := Chain(tool, WithHooks(reg))
 	result, err := wrapped.Handler(context.Background(), map[string]interface{}{"k": "v"})
 
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if !handlerCalled {
-		t.Error("handler was not called")
-	}
-	if result != "result-value" {
-		t.Errorf("result = %v, want %q", result, "result-value")
-	}
-	if !preHook.called {
-		t.Error("pre-hook was not called")
-	}
-	if !postHook.called {
-		t.Error("post-hook was not called")
-	}
-	if postHook.gotResult != "result-value" {
-		t.Errorf("post-hook gotResult = %v, want %q", postHook.gotResult, "result-value")
-	}
+	require.NoError(t, err)
+	assert.True(t, handlerCalled, "handler was not called")
+	assert.Equal(t, "result-value", result)
+	assert.True(t, preHook.called, "pre-hook was not called")
+	assert.True(t, postHook.called, "post-hook was not called")
+	assert.Equal(t, "result-value", postHook.gotResult)
 }
 
 func TestWithHooks_PreHookBlocks(t *testing.T) {
+	t.Parallel()
+
 	reg := NewHookRegistry()
 	reg.RegisterPre(&stubPreHook{
 		name:     "blocker",
@@ -71,18 +65,14 @@ func TestWithHooks_PreHookBlocks(t *testing.T) {
 	wrapped := Chain(tool, WithHooks(reg))
 	_, err := wrapped.Handler(context.Background(), nil)
 
-	if err == nil {
-		t.Fatal("expected error when blocked")
-	}
-	if !strings.Contains(err.Error(), "rate limit exceeded") {
-		t.Errorf("error = %q, want to contain %q", err.Error(), "rate limit exceeded")
-	}
-	if handlerCalled {
-		t.Error("handler should not be called when blocked")
-	}
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "rate limit exceeded")
+	assert.False(t, handlerCalled, "handler should not be called when blocked")
 }
 
 func TestWithHooks_PreHookModifiesParams(t *testing.T) {
+	t.Parallel()
+
 	modifiedParams := map[string]interface{}{"key": "modified-value"}
 	reg := NewHookRegistry()
 	reg.RegisterPre(&stubPreHook{
@@ -100,15 +90,13 @@ func TestWithHooks_PreHookModifiesParams(t *testing.T) {
 	wrapped := Chain(tool, WithHooks(reg))
 	_, err := wrapped.Handler(context.Background(), map[string]interface{}{"key": "original"})
 
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if v, ok := receivedParams["key"].(string); !ok || v != "modified-value" {
-		t.Errorf("handler received params[key] = %v, want %q", receivedParams["key"], "modified-value")
-	}
+	require.NoError(t, err)
+	assert.Equal(t, "modified-value", receivedParams["key"])
 }
 
 func TestWithHooks_PostHookErrorDoesNotAffectResult(t *testing.T) {
+	t.Parallel()
+
 	reg := NewHookRegistry()
 	reg.RegisterPost(&stubPostHook{
 		name:     "failing-post",
@@ -124,15 +112,13 @@ func TestWithHooks_PostHookErrorDoesNotAffectResult(t *testing.T) {
 	result, err := wrapped.Handler(context.Background(), nil)
 
 	// Post-hook errors are logged, not propagated to caller.
-	if err != nil {
-		t.Fatalf("unexpected error: %v (post-hook errors should be logged, not returned)", err)
-	}
-	if result != "tool-result" {
-		t.Errorf("result = %v, want %q", result, "tool-result")
-	}
+	require.NoError(t, err)
+	assert.Equal(t, "tool-result", result)
 }
 
 func TestWithHooks_PreHookError(t *testing.T) {
+	t.Parallel()
+
 	reg := NewHookRegistry()
 	reg.RegisterPre(&stubPreHook{
 		name:     "err-hook",
@@ -149,15 +135,13 @@ func TestWithHooks_PreHookError(t *testing.T) {
 	wrapped := Chain(tool, WithHooks(reg))
 	_, err := wrapped.Handler(context.Background(), nil)
 
-	if err == nil {
-		t.Fatal("expected error from pre-hook failure")
-	}
-	if handlerCalled {
-		t.Error("handler should not be called when pre-hook errors")
-	}
+	require.Error(t, err)
+	assert.False(t, handlerCalled, "handler should not be called when pre-hook errors")
 }
 
 func TestWithHooks_ContextPropagation(t *testing.T) {
+	t.Parallel()
+
 	// Verify that agent name and session key are propagated to HookContext.
 	var capturedCtx HookContext
 	capturingHook := &captureHookCtxPreHook{captured: &capturedCtx}
@@ -176,21 +160,15 @@ func TestWithHooks_ContextPropagation(t *testing.T) {
 	wrapped := Chain(tool, WithHooks(reg))
 	_, err := wrapped.Handler(ctx, map[string]interface{}{"p": "v"})
 
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if capturedCtx.ToolName != "my_tool" {
-		t.Errorf("ToolName = %q, want %q", capturedCtx.ToolName, "my_tool")
-	}
-	if capturedCtx.AgentName != "researcher" {
-		t.Errorf("AgentName = %q, want %q", capturedCtx.AgentName, "researcher")
-	}
-	if capturedCtx.SessionKey != "session-abc" {
-		t.Errorf("SessionKey = %q, want %q", capturedCtx.SessionKey, "session-abc")
-	}
+	require.NoError(t, err)
+	assert.Equal(t, "my_tool", capturedCtx.ToolName)
+	assert.Equal(t, "researcher", capturedCtx.AgentName)
+	assert.Equal(t, "session-abc", capturedCtx.SessionKey)
 }
 
 func TestWithHooks_CompatibleWithChainAll(t *testing.T) {
+	t.Parallel()
+
 	reg := NewHookRegistry()
 	reg.RegisterPre(&stubPreHook{
 		name:     "noop",
@@ -204,22 +182,18 @@ func TestWithHooks_CompatibleWithChainAll(t *testing.T) {
 	}
 
 	wrapped := ChainAll(tools, WithHooks(reg))
-	if len(wrapped) != 2 {
-		t.Fatalf("len = %d, want 2", len(wrapped))
-	}
+	require.Len(t, wrapped, 2)
 
 	for i, w := range wrapped {
 		result, err := w.Handler(context.Background(), nil)
-		if err != nil {
-			t.Errorf("tool[%d] error: %v", i, err)
-		}
-		if result != tools[i].Name {
-			t.Errorf("tool[%d] result = %v, want %q", i, result, tools[i].Name)
-		}
+		require.NoError(t, err)
+		assert.Equal(t, tools[i].Name, result)
 	}
 }
 
 func TestWithHooks_ToolErrorPassedToPostHook(t *testing.T) {
+	t.Parallel()
+
 	postHook := &stubPostHook{name: "observer", priority: 1}
 	reg := NewHookRegistry()
 	reg.RegisterPost(postHook)
@@ -232,12 +206,8 @@ func TestWithHooks_ToolErrorPassedToPostHook(t *testing.T) {
 	wrapped := Chain(tool, WithHooks(reg))
 	_, err := wrapped.Handler(context.Background(), nil)
 
-	if !errors.Is(err, toolErr) {
-		t.Errorf("err = %v, want %v", err, toolErr)
-	}
-	if postHook.gotErr != toolErr {
-		t.Errorf("post-hook gotErr = %v, want %v", postHook.gotErr, toolErr)
-	}
+	assert.ErrorIs(t, err, toolErr)
+	assert.Equal(t, toolErr, postHook.gotErr)
 }
 
 // --- test helpers ---

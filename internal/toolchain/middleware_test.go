@@ -6,6 +6,9 @@ import (
 	"fmt"
 	"testing"
 
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+
 	"github.com/langoai/lango/internal/agent"
 	"github.com/langoai/lango/internal/approval"
 	"github.com/langoai/lango/internal/config"
@@ -20,16 +23,18 @@ func makeTool(name string, handler agent.ToolHandler) *agent.Tool {
 }
 
 func TestChain_NoMiddleware(t *testing.T) {
+	t.Parallel()
+
 	tool := makeTool("test", func(_ context.Context, _ map[string]interface{}) (interface{}, error) {
 		return "ok", nil
 	})
 	result := Chain(tool)
-	if result != tool {
-		t.Error("expected same tool when no middlewares")
-	}
+	assert.Same(t, tool, result)
 }
 
 func TestChain_OrderOuterToInner(t *testing.T) {
+	t.Parallel()
+
 	var order []string
 
 	mw := func(label string) Middleware {
@@ -52,17 +57,12 @@ func TestChain_OrderOuterToInner(t *testing.T) {
 	_, _ = wrapped.Handler(context.Background(), nil)
 
 	want := []string{"A:before", "B:before", "C:before", "handler", "C:after", "B:after", "A:after"}
-	if len(order) != len(want) {
-		t.Fatalf("got %v, want %v", order, want)
-	}
-	for i := range want {
-		if order[i] != want[i] {
-			t.Errorf("order[%d] = %q, want %q", i, order[i], want[i])
-		}
-	}
+	assert.Equal(t, want, order)
 }
 
 func TestChain_PreservesToolMetadata(t *testing.T) {
+	t.Parallel()
+
 	tool := &agent.Tool{
 		Name:        "my_tool",
 		Description: "desc",
@@ -76,18 +76,14 @@ func TestChain_PreservesToolMetadata(t *testing.T) {
 	noop := func(_ *agent.Tool, next agent.ToolHandler) agent.ToolHandler { return next }
 	result := Chain(tool, noop)
 
-	if result.Name != tool.Name {
-		t.Errorf("Name = %q, want %q", result.Name, tool.Name)
-	}
-	if result.Description != tool.Description {
-		t.Errorf("Description = %q, want %q", result.Description, tool.Description)
-	}
-	if result.SafetyLevel != tool.SafetyLevel {
-		t.Errorf("SafetyLevel = %d, want %d", result.SafetyLevel, tool.SafetyLevel)
-	}
+	assert.Equal(t, tool.Name, result.Name)
+	assert.Equal(t, tool.Description, result.Description)
+	assert.Equal(t, tool.SafetyLevel, result.SafetyLevel)
 }
 
 func TestChainAll_WrapsAllTools(t *testing.T) {
+	t.Parallel()
+
 	var calls int
 	counter := func(_ *agent.Tool, next agent.ToolHandler) agent.ToolHandler {
 		return func(ctx context.Context, params map[string]interface{}) (interface{}, error) {
@@ -107,28 +103,26 @@ func TestChainAll_WrapsAllTools(t *testing.T) {
 		_, _ = w.Handler(context.Background(), nil)
 	}
 
-	if calls != 3 {
-		t.Errorf("calls = %d, want 3", calls)
-	}
+	assert.Equal(t, 3, calls)
 }
 
 func TestChainAll_NoMiddleware(t *testing.T) {
+	t.Parallel()
+
 	tools := []*agent.Tool{
 		makeTool("a", nil),
 		makeTool("b", nil),
 	}
 	result := ChainAll(tools)
-	if len(result) != len(tools) {
-		t.Fatalf("len = %d, want %d", len(result), len(tools))
-	}
+	require.Len(t, result, len(tools))
 	for i, r := range result {
-		if r != tools[i] {
-			t.Errorf("result[%d] is not the same tool", i)
-		}
+		assert.Same(t, tools[i], r)
 	}
 }
 
 func TestConditionalMiddleware_BrowserRecoverySkipsNonBrowser(t *testing.T) {
+	t.Parallel()
+
 	var called bool
 	// Simulate WithBrowserRecovery's conditional logic: only applies to browser_ tools.
 	conditional := func(tool *agent.Tool, next agent.ToolHandler) agent.ToolHandler {
@@ -147,9 +141,7 @@ func TestConditionalMiddleware_BrowserRecoverySkipsNonBrowser(t *testing.T) {
 	})
 	wrapped := Chain(tool, conditional)
 	_, _ = wrapped.Handler(context.Background(), nil)
-	if called {
-		t.Error("conditional middleware should not have been called for non-browser tool")
-	}
+	assert.False(t, called, "conditional middleware should not have been called for non-browser tool")
 
 	// Browser tool: middleware should be called.
 	browserTool := makeTool("browser_navigate", func(_ context.Context, _ map[string]interface{}) (interface{}, error) {
@@ -157,12 +149,12 @@ func TestConditionalMiddleware_BrowserRecoverySkipsNonBrowser(t *testing.T) {
 	})
 	wrapped = Chain(browserTool, conditional)
 	_, _ = wrapped.Handler(context.Background(), nil)
-	if !called {
-		t.Error("conditional middleware should have been called for browser tool")
-	}
+	assert.True(t, called, "conditional middleware should have been called for browser tool")
 }
 
 func TestMiddleware_ShortCircuit(t *testing.T) {
+	t.Parallel()
+
 	denied := errors.New("denied")
 	blocker := func(_ *agent.Tool, _ agent.ToolHandler) agent.ToolHandler {
 		return func(_ context.Context, _ map[string]interface{}) (interface{}, error) {
@@ -178,15 +170,13 @@ func TestMiddleware_ShortCircuit(t *testing.T) {
 
 	wrapped := Chain(tool, blocker)
 	_, err := wrapped.Handler(context.Background(), nil)
-	if !errors.Is(err, denied) {
-		t.Errorf("err = %v, want %v", err, denied)
-	}
-	if innerCalled {
-		t.Error("inner handler should not have been called when middleware short-circuits")
-	}
+	assert.ErrorIs(t, err, denied)
+	assert.False(t, innerCalled, "inner handler should not have been called when middleware short-circuits")
 }
 
 func TestNeedsApproval(t *testing.T) {
+	t.Parallel()
+
 	tests := []struct {
 		give     string
 		tool     *agent.Tool
@@ -245,15 +235,17 @@ func TestNeedsApproval(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.give, func(t *testing.T) {
+			t.Parallel()
+
 			got := NeedsApproval(tt.tool, tt.ic)
-			if got != tt.wantNeed {
-				t.Errorf("NeedsApproval() = %v, want %v", got, tt.wantNeed)
-			}
+			assert.Equal(t, tt.wantNeed, got)
 		})
 	}
 }
 
 func TestBuildApprovalSummary(t *testing.T) {
+	t.Parallel()
+
 	tests := []struct {
 		give       string
 		toolName   string
@@ -282,10 +274,10 @@ func TestBuildApprovalSummary(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.give, func(t *testing.T) {
+			t.Parallel()
+
 			got := BuildApprovalSummary(tt.toolName, tt.params)
-			if got != tt.wantPrefix {
-				t.Errorf("BuildApprovalSummary() = %q, want %q", got, tt.wantPrefix)
-			}
+			assert.Equal(t, tt.wantPrefix, got)
 		})
 	}
 }
@@ -315,6 +307,8 @@ func (m *mockObserver) OnToolResult(_ context.Context, sessionKey, toolName stri
 }
 
 func TestWithLearning_ObservesToolResult(t *testing.T) {
+	t.Parallel()
+
 	obs := &mockObserver{}
 	mw := WithLearning(obs)
 
@@ -326,28 +320,17 @@ func TestWithLearning_ObservesToolResult(t *testing.T) {
 	params := map[string]interface{}{"key": "val"}
 	result, err := wrapped.Handler(context.Background(), params)
 
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if result != "result-value" {
-		t.Errorf("result = %v, want %q", result, "result-value")
-	}
-	if len(obs.calls) != 1 {
-		t.Fatalf("observer calls = %d, want 1", len(obs.calls))
-	}
-	call := obs.calls[0]
-	if call.toolName != "my_tool" {
-		t.Errorf("toolName = %q, want %q", call.toolName, "my_tool")
-	}
-	if call.result != "result-value" {
-		t.Errorf("result = %v, want %q", call.result, "result-value")
-	}
-	if call.err != nil {
-		t.Errorf("err = %v, want nil", call.err)
-	}
+	require.NoError(t, err)
+	assert.Equal(t, "result-value", result)
+	require.Len(t, obs.calls, 1)
+	assert.Equal(t, "my_tool", obs.calls[0].toolName)
+	assert.Equal(t, "result-value", obs.calls[0].result)
+	assert.NoError(t, obs.calls[0].err)
 }
 
 func TestWithLearning_ObservesError(t *testing.T) {
+	t.Parallel()
+
 	obs := &mockObserver{}
 	mw := WithLearning(obs)
 	wantErr := errors.New("tool failed")
@@ -359,15 +342,9 @@ func TestWithLearning_ObservesError(t *testing.T) {
 	wrapped := Chain(tool, mw)
 	_, err := wrapped.Handler(context.Background(), nil)
 
-	if !errors.Is(err, wantErr) {
-		t.Errorf("err = %v, want %v", err, wantErr)
-	}
-	if len(obs.calls) != 1 {
-		t.Fatalf("observer calls = %d, want 1", len(obs.calls))
-	}
-	if obs.calls[0].err != wantErr {
-		t.Errorf("observed err = %v, want %v", obs.calls[0].err, wantErr)
-	}
+	assert.ErrorIs(t, err, wantErr)
+	require.Len(t, obs.calls, 1)
+	assert.Equal(t, wantErr, obs.calls[0].err)
 }
 
 // --- WithApproval middleware tests ---
@@ -386,6 +363,8 @@ func (m *mockApprovalProvider) RequestApproval(_ context.Context, req approval.A
 func (m *mockApprovalProvider) CanHandle(_ string) bool { return true }
 
 func TestWithApproval_DeniedExecution(t *testing.T) {
+	t.Parallel()
+
 	ap := &mockApprovalProvider{response: approval.ApprovalResponse{Approved: false}}
 	ic := config.InterceptorConfig{ApprovalPolicy: config.ApprovalPolicyAll}
 
@@ -402,15 +381,13 @@ func TestWithApproval_DeniedExecution(t *testing.T) {
 	wrapped := Chain(tool, mw)
 	_, err := wrapped.Handler(context.Background(), nil)
 
-	if err == nil {
-		t.Fatal("expected error when denied")
-	}
-	if ap.received == nil {
-		t.Fatal("approval provider was not consulted")
-	}
+	require.Error(t, err)
+	require.NotNil(t, ap.received, "approval provider was not consulted")
 }
 
 func TestWithApproval_ApprovedExecution(t *testing.T) {
+	t.Parallel()
+
 	ap := &mockApprovalProvider{response: approval.ApprovalResponse{Approved: true}}
 	ic := config.InterceptorConfig{ApprovalPolicy: config.ApprovalPolicyAll}
 
@@ -428,18 +405,14 @@ func TestWithApproval_ApprovedExecution(t *testing.T) {
 	wrapped := Chain(tool, mw)
 	result, err := wrapped.Handler(context.Background(), nil)
 
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if !called {
-		t.Error("handler was not called after approval")
-	}
-	if result != "ok" {
-		t.Errorf("result = %v, want %q", result, "ok")
-	}
+	require.NoError(t, err)
+	assert.True(t, called, "handler was not called after approval")
+	assert.Equal(t, "ok", result)
 }
 
 func TestWithApproval_GrantStoreAutoApproves(t *testing.T) {
+	t.Parallel()
+
 	ap := &mockApprovalProvider{response: approval.ApprovalResponse{Approved: false}}
 	gs := approval.NewGrantStore()
 	gs.Grant("", "exec") // pre-grant for empty session key
@@ -459,18 +432,14 @@ func TestWithApproval_GrantStoreAutoApproves(t *testing.T) {
 	wrapped := Chain(tool, mw)
 	_, err := wrapped.Handler(context.Background(), nil)
 
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if !called {
-		t.Error("handler should be auto-approved via grant store")
-	}
-	if ap.received != nil {
-		t.Error("approval provider should not have been consulted (grant store bypass)")
-	}
+	require.NoError(t, err)
+	assert.True(t, called, "handler should be auto-approved via grant store")
+	assert.Nil(t, ap.received, "approval provider should not have been consulted (grant store bypass)")
 }
 
 func TestWithApproval_AlwaysAllowRecordsGrant(t *testing.T) {
+	t.Parallel()
+
 	ap := &mockApprovalProvider{response: approval.ApprovalResponse{Approved: true, AlwaysAllow: true}}
 	gs := approval.NewGrantStore()
 	ic := config.InterceptorConfig{ApprovalPolicy: config.ApprovalPolicyAll}
@@ -487,12 +456,12 @@ func TestWithApproval_AlwaysAllowRecordsGrant(t *testing.T) {
 	wrapped := Chain(tool, mw)
 	_, _ = wrapped.Handler(context.Background(), nil)
 
-	if !gs.IsGranted("", "exec") {
-		t.Error("grant should have been recorded for always-allow response")
-	}
+	assert.True(t, gs.IsGranted("", "exec"), "grant should have been recorded for always-allow response")
 }
 
 func TestWithApproval_ExemptToolSkipsApproval(t *testing.T) {
+	t.Parallel()
+
 	ap := &mockApprovalProvider{response: approval.ApprovalResponse{Approved: false}}
 	ic := config.InterceptorConfig{
 		ApprovalPolicy: config.ApprovalPolicyAll,
@@ -513,17 +482,15 @@ func TestWithApproval_ExemptToolSkipsApproval(t *testing.T) {
 	wrapped := Chain(tool, mw)
 	_, err := wrapped.Handler(context.Background(), nil)
 
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if !called {
-		t.Error("exempt tool should bypass approval")
-	}
+	require.NoError(t, err)
+	assert.True(t, called, "exempt tool should bypass approval")
 }
 
 // --- WithBrowserRecovery middleware tests ---
 
 func TestWithBrowserRecovery_PanicRecovery(t *testing.T) {
+	t.Parallel()
+
 	mw := WithBrowserRecovery(nil) // nil SessionManager — Close will not be called on first attempt
 
 	attempts := 0
@@ -536,34 +503,21 @@ func TestWithBrowserRecovery_PanicRecovery(t *testing.T) {
 	})
 
 	wrapped := Chain(tool, mw)
-	// The first call panics, recover wraps it in ErrBrowserPanic, then retry succeeds.
-	// Note: sm.Close() will panic on nil receiver, so we test the panic→error conversion path.
-	// To test full retry, we need a non-nil SessionManager. Instead, we verify the panic
-	// is converted to an ErrBrowserPanic error.
 	result, err := wrapped.Handler(context.Background(), nil)
 
-	// With nil SessionManager, sm.Close() will panic too. The deferred recover catches the
-	// initial panic and wraps it. The retry path calls sm.Close() which panics on nil.
-	// So we expect an ErrBrowserPanic error from the original panic.
 	if err != nil {
 		// Expected: the panic was caught and wrapped.
-		if !errors.Is(err, browser.ErrBrowserPanic) {
-			t.Errorf("err = %v, want ErrBrowserPanic", err)
-		}
+		assert.ErrorIs(t, err, browser.ErrBrowserPanic)
 	} else {
 		// If somehow recovery + retry worked, check result.
-		if result != "recovered" {
-			t.Errorf("result = %v, want %q", result, "recovered")
-		}
+		assert.Equal(t, "recovered", result)
 	}
-	if attempts < 1 {
-		t.Error("handler should have been called at least once")
-	}
+	assert.GreaterOrEqual(t, attempts, 1, "handler should have been called at least once")
 }
 
 func TestWithBrowserRecovery_ErrorRetryOnce(t *testing.T) {
-	// Create a mock session manager via a browser tool mock is complex,
-	// so we test the ErrBrowserPanic error path directly.
+	t.Parallel()
+
 	mw := WithBrowserRecovery(nil)
 
 	tool := makeTool("browser_navigate", func(_ context.Context, _ map[string]interface{}) (interface{}, error) {
@@ -573,14 +527,12 @@ func TestWithBrowserRecovery_ErrorRetryOnce(t *testing.T) {
 	wrapped := Chain(tool, mw)
 	_, err := wrapped.Handler(context.Background(), nil)
 
-	// The handler returns ErrBrowserPanic, middleware tries sm.Close() (nil → panic).
-	// The deferred recovery catches that and returns ErrBrowserPanic.
-	if err == nil {
-		t.Fatal("expected error")
-	}
+	require.Error(t, err)
 }
 
 func TestWithBrowserRecovery_NonBrowserToolPassthrough(t *testing.T) {
+	t.Parallel()
+
 	mw := WithBrowserRecovery(nil)
 
 	var called bool
@@ -592,20 +544,16 @@ func TestWithBrowserRecovery_NonBrowserToolPassthrough(t *testing.T) {
 	wrapped := Chain(tool, mw)
 	result, err := wrapped.Handler(context.Background(), nil)
 
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if !called {
-		t.Error("handler was not called")
-	}
-	if result != "ok" {
-		t.Errorf("result = %v, want %q", result, "ok")
-	}
+	require.NoError(t, err)
+	assert.True(t, called, "handler was not called")
+	assert.Equal(t, "ok", result)
 }
 
 // --- BuildApprovalSummary extended tests ---
 
 func TestBuildApprovalSummary_Extended(t *testing.T) {
+	t.Parallel()
+
 	tests := []struct {
 		give     string
 		toolName string
@@ -742,19 +690,21 @@ func TestBuildApprovalSummary_Extended(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.give, func(t *testing.T) {
+			t.Parallel()
+
 			got := BuildApprovalSummary(tt.toolName, tt.params)
-			if got != tt.want {
-				t.Errorf("BuildApprovalSummary(%q) = %q, want %q", tt.toolName, got, tt.want)
-			}
+			assert.Equal(t, tt.want, got)
 		})
 	}
 }
 
 func TestTruncate(t *testing.T) {
+	t.Parallel()
+
 	tests := []struct {
-		give    string
-		maxLen  int
-		want    string
+		give   string
+		maxLen int
+		want   string
 	}{
 		{"short", 10, "short"},
 		{"exactly10!", 10, "exactly10!"},
@@ -763,10 +713,10 @@ func TestTruncate(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(fmt.Sprintf("%d/%s", tt.maxLen, tt.give), func(t *testing.T) {
+			t.Parallel()
+
 			got := Truncate(tt.give, tt.maxLen)
-			if got != tt.want {
-				t.Errorf("Truncate(%q, %d) = %q, want %q", tt.give, tt.maxLen, got, tt.want)
-			}
+			assert.Equal(t, tt.want, got)
 		})
 	}
 }

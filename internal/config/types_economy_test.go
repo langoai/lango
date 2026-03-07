@@ -3,64 +3,36 @@ package config
 import (
 	"testing"
 	"time"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestEconomyConfig_ZeroValues(t *testing.T) {
+	t.Parallel()
+
 	var cfg EconomyConfig
 
-	if cfg.Enabled {
-		t.Error("Enabled should default to false")
-	}
-
-	if cfg.Budget.DefaultMax != "" {
-		t.Error("Budget.DefaultMax should default to empty string")
-	}
-	if cfg.Budget.AlertThresholds != nil {
-		t.Error("Budget.AlertThresholds should default to nil")
-	}
-	if cfg.Budget.HardLimit != nil {
-		t.Error("Budget.HardLimit should default to nil (use-default sentinel)")
-	}
-
-	if cfg.Risk.EscrowThreshold != "" {
-		t.Error("Risk.EscrowThreshold should default to empty string")
-	}
-	if cfg.Risk.HighTrustScore != 0 {
-		t.Error("Risk.HighTrustScore should default to 0")
-	}
-	if cfg.Risk.MediumTrustScore != 0 {
-		t.Error("Risk.MediumTrustScore should default to 0")
-	}
-
-	if cfg.Negotiate.Enabled {
-		t.Error("Negotiate.Enabled should default to false")
-	}
-	if cfg.Negotiate.MaxRounds != 0 {
-		t.Error("Negotiate.MaxRounds should default to 0")
-	}
-	if cfg.Negotiate.Timeout != 0 {
-		t.Error("Negotiate.Timeout should default to 0")
-	}
-
-	if cfg.Escrow.Enabled {
-		t.Error("Escrow.Enabled should default to false")
-	}
-	if cfg.Escrow.DefaultTimeout != 0 {
-		t.Error("Escrow.DefaultTimeout should default to 0")
-	}
-	if cfg.Escrow.MaxMilestones != 0 {
-		t.Error("Escrow.MaxMilestones should default to 0")
-	}
-
-	if cfg.Pricing.Enabled {
-		t.Error("Pricing.Enabled should default to false")
-	}
-	if cfg.Pricing.MinPrice != "" {
-		t.Error("Pricing.MinPrice should default to empty string")
-	}
+	assert.False(t, cfg.Enabled)
+	assert.Empty(t, cfg.Budget.DefaultMax)
+	assert.Nil(t, cfg.Budget.AlertThresholds)
+	assert.Nil(t, cfg.Budget.HardLimit)
+	assert.Empty(t, cfg.Risk.EscrowThreshold)
+	assert.Zero(t, cfg.Risk.HighTrustScore)
+	assert.Zero(t, cfg.Risk.MediumTrustScore)
+	assert.False(t, cfg.Negotiate.Enabled)
+	assert.Zero(t, cfg.Negotiate.MaxRounds)
+	assert.Zero(t, cfg.Negotiate.Timeout)
+	assert.False(t, cfg.Escrow.Enabled)
+	assert.Zero(t, cfg.Escrow.DefaultTimeout)
+	assert.Zero(t, cfg.Escrow.MaxMilestones)
+	assert.False(t, cfg.Pricing.Enabled)
+	assert.Empty(t, cfg.Pricing.MinPrice)
 }
 
 func TestBudgetConfig_HardLimitPointer(t *testing.T) {
+	t.Parallel()
+
 	hardLimit := true
 	cfg := BudgetConfig{
 		DefaultMax:      "10.00",
@@ -68,18 +40,15 @@ func TestBudgetConfig_HardLimitPointer(t *testing.T) {
 		HardLimit:       &hardLimit,
 	}
 
-	if cfg.DefaultMax != "10.00" {
-		t.Errorf("DefaultMax = %q, want %q", cfg.DefaultMax, "10.00")
-	}
-	if len(cfg.AlertThresholds) != 3 {
-		t.Errorf("AlertThresholds length = %d, want 3", len(cfg.AlertThresholds))
-	}
-	if cfg.HardLimit == nil || !*cfg.HardLimit {
-		t.Error("HardLimit should be non-nil and true")
-	}
+	assert.Equal(t, "10.00", cfg.DefaultMax)
+	assert.Len(t, cfg.AlertThresholds, 3)
+	require.NotNil(t, cfg.HardLimit)
+	assert.True(t, *cfg.HardLimit)
 }
 
 func TestNegotiationConfig_Timeout(t *testing.T) {
+	t.Parallel()
+
 	cfg := NegotiationConfig{
 		Enabled:       true,
 		MaxRounds:     5,
@@ -88,15 +57,13 @@ func TestNegotiationConfig_Timeout(t *testing.T) {
 		MaxDiscount:   0.2,
 	}
 
-	if cfg.Timeout != 5*time.Minute {
-		t.Errorf("Timeout = %v, want 5m", cfg.Timeout)
-	}
-	if cfg.MaxDiscount != 0.2 {
-		t.Errorf("MaxDiscount = %f, want 0.2", cfg.MaxDiscount)
-	}
+	assert.Equal(t, 5*time.Minute, cfg.Timeout)
+	assert.InDelta(t, 0.2, cfg.MaxDiscount, 1e-9)
 }
 
 func TestEscrowConfig_Durations(t *testing.T) {
+	t.Parallel()
+
 	cfg := EscrowConfig{
 		Enabled:        true,
 		DefaultTimeout: 24 * time.Hour,
@@ -105,18 +72,14 @@ func TestEscrowConfig_Durations(t *testing.T) {
 		DisputeWindow:  time.Hour,
 	}
 
-	if cfg.DefaultTimeout != 24*time.Hour {
-		t.Errorf("DefaultTimeout = %v, want 24h", cfg.DefaultTimeout)
-	}
-	if cfg.DisputeWindow != time.Hour {
-		t.Errorf("DisputeWindow = %v, want 1h", cfg.DisputeWindow)
-	}
+	assert.Equal(t, 24*time.Hour, cfg.DefaultTimeout)
+	assert.Equal(t, time.Hour, cfg.DisputeWindow)
 }
 
 func TestConfigHasEconomyField(t *testing.T) {
+	t.Parallel()
+
 	var cfg Config
 	cfg.Economy.Enabled = true
-	if !cfg.Economy.Enabled {
-		t.Error("Config.Economy.Enabled should be settable")
-	}
+	assert.True(t, cfg.Economy.Enabled)
 }

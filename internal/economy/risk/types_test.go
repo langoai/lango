@@ -2,9 +2,13 @@ package risk
 
 import (
 	"testing"
+
+	"github.com/stretchr/testify/assert"
 )
 
 func TestRiskLevel_StringValues(t *testing.T) {
+	t.Parallel()
+
 	tests := []struct {
 		give string
 		want RiskLevel
@@ -17,14 +21,15 @@ func TestRiskLevel_StringValues(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.give, func(t *testing.T) {
-			if string(tt.want) != tt.give {
-				t.Errorf("RiskLevel %q: got %q, want %q", tt.give, string(tt.want), tt.give)
-			}
+			t.Parallel()
+			assert.Equal(t, tt.give, string(tt.want))
 		})
 	}
 }
 
 func TestStrategy_StringValues(t *testing.T) {
+	t.Parallel()
+
 	tests := []struct {
 		give string
 		want Strategy
@@ -38,14 +43,15 @@ func TestStrategy_StringValues(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.give, func(t *testing.T) {
-			if string(tt.want) != tt.give {
-				t.Errorf("Strategy %q: got %q, want %q", tt.give, string(tt.want), tt.give)
-			}
+			t.Parallel()
+			assert.Equal(t, tt.give, string(tt.want))
 		})
 	}
 }
 
 func TestVerifiability_StringValues(t *testing.T) {
+	t.Parallel()
+
 	tests := []struct {
 		give string
 		want Verifiability
@@ -57,14 +63,15 @@ func TestVerifiability_StringValues(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.give, func(t *testing.T) {
-			if string(tt.want) != tt.give {
-				t.Errorf("Verifiability %q: got %q, want %q", tt.give, string(tt.want), tt.give)
-			}
+			t.Parallel()
+			assert.Equal(t, tt.give, string(tt.want))
 		})
 	}
 }
 
 func TestFactor_ValueWeightRanges(t *testing.T) {
+	t.Parallel()
+
 	tests := []struct {
 		give      string
 		wantValid bool
@@ -109,12 +116,10 @@ func TestFactor_ValueWeightRanges(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.give, func(t *testing.T) {
+			t.Parallel()
 			valid := tt.factor.Value >= 0.0 && tt.factor.Value <= 1.0 &&
 				tt.factor.Weight >= 0.0 && tt.factor.Weight <= 1.0
-			if valid != tt.wantValid {
-				t.Errorf("Factor %q: valid=%v, wantValid=%v (value=%.1f, weight=%.1f)",
-					tt.give, valid, tt.wantValid, tt.factor.Value, tt.factor.Weight)
-			}
+			assert.Equal(t, tt.wantValid, valid)
 		})
 	}
 }

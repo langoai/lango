@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/require"
 	"go.uber.org/zap"
 
 	"github.com/langoai/lango/internal/ent/enttest"
@@ -16,6 +17,8 @@ import (
 )
 
 func TestAnalysisBuffer_StartStop(t *testing.T) {
+	t.Parallel()
+
 	logger := zap.NewNop().Sugar()
 	gen := &fakeTextGenerator{response: "[]"}
 
@@ -41,6 +44,8 @@ func TestAnalysisBuffer_StartStop(t *testing.T) {
 }
 
 func TestAnalysisBuffer_TriggerAnalysis(t *testing.T) {
+	t.Parallel()
+
 	logger := zap.NewNop().Sugar()
 
 	client := enttest.Open(t, "sqlite3", "file:ent?mode=memory&_fk=1")
@@ -81,15 +86,13 @@ func TestAnalysisBuffer_TriggerAnalysis(t *testing.T) {
 	// Verify knowledge was extracted.
 	ctx := context.Background()
 	entries, err := store.SearchKnowledge(ctx, "buffer analysis", "", 10)
-	if err != nil {
-		t.Fatalf("SearchKnowledge: %v", err)
-	}
-	if len(entries) == 0 {
-		t.Fatal("expected knowledge entry from buffer analysis trigger")
-	}
+	require.NoError(t, err)
+	require.NotEmpty(t, entries, "expected knowledge entry from buffer analysis trigger")
 }
 
 func TestAnalysisBuffer_SessionEnd(t *testing.T) {
+	t.Parallel()
+
 	logger := zap.NewNop().Sugar()
 
 	client := enttest.Open(t, "sqlite3", "file:ent?mode=memory&_fk=1")
@@ -128,15 +131,13 @@ func TestAnalysisBuffer_SessionEnd(t *testing.T) {
 
 	ctx := context.Background()
 	entries, err := store.SearchKnowledge(ctx, "session end", "", 10)
-	if err != nil {
-		t.Fatalf("SearchKnowledge: %v", err)
-	}
-	if len(entries) == 0 {
-		t.Fatal("expected knowledge entry from session-end analysis")
-	}
+	require.NoError(t, err)
+	require.NotEmpty(t, entries, "expected knowledge entry from session-end analysis")
 }
 
 func TestAnalysisBuffer_BelowThreshold(t *testing.T) {
+	t.Parallel()
+
 	logger := zap.NewNop().Sugar()
 
 	client := enttest.Open(t, "sqlite3", "file:ent?mode=memory&_fk=1")

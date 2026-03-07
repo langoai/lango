@@ -7,10 +7,15 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+
 	entlearning "github.com/langoai/lango/internal/ent/learning"
 )
 
 func TestExtractErrorPattern(t *testing.T) {
+	t.Parallel()
+
 	tests := []struct {
 		give string
 		want string
@@ -47,15 +52,16 @@ func TestExtractErrorPattern(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.give, func(t *testing.T) {
+			t.Parallel()
 			got := extractErrorPattern(errors.New(tt.give))
-			if got != tt.want {
-				t.Errorf("extractErrorPattern(%q) = %q, want %q", tt.give, got, tt.want)
-			}
+			assert.Equal(t, tt.want, got)
 		})
 	}
 }
 
 func TestCategorizeError(t *testing.T) {
+	t.Parallel()
+
 	tests := []struct {
 		give     string
 		giveErr  error
@@ -138,15 +144,16 @@ func TestCategorizeError(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.give, func(t *testing.T) {
+			t.Parallel()
 			got := categorizeError(tt.giveTool, tt.giveErr)
-			if got != tt.want {
-				t.Errorf("categorizeError(%q, %v) = %q, want %q", tt.giveTool, tt.giveErr, got, tt.want)
-			}
+			assert.Equal(t, tt.want, got)
 		})
 	}
 }
 
 func TestIsDeadlineExceeded(t *testing.T) {
+	t.Parallel()
+
 	tests := []struct {
 		give string
 		err  error
@@ -171,62 +178,54 @@ func TestIsDeadlineExceeded(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.give, func(t *testing.T) {
+			t.Parallel()
 			got := isDeadlineExceeded(tt.err)
-			if got != tt.want {
-				t.Errorf("isDeadlineExceeded(%v) = %v, want %v", tt.err, got, tt.want)
-			}
+			assert.Equal(t, tt.want, got)
 		})
 	}
 }
 
 func TestSummarizeParams(t *testing.T) {
+	t.Parallel()
+
 	longStr := strings.Repeat("a", 250)
 
 	t.Run("nil params returns nil", func(t *testing.T) {
+		t.Parallel()
 		got := summarizeParams(nil)
-		if got != nil {
-			t.Fatalf("summarizeParams(nil) = %v, want nil", got)
-		}
+		assert.Nil(t, got)
 	})
 
 	t.Run("short string stays unchanged", func(t *testing.T) {
+		t.Parallel()
 		give := map[string]interface{}{"key": "hello"}
 		got := summarizeParams(give)
-		if val, ok := got["key"]; !ok || val != "hello" {
-			t.Errorf("summarizeParams short string: got %v, want %q", got["key"], "hello")
-		}
+		assert.Equal(t, "hello", got["key"])
 	})
 
 	t.Run("long string truncated to 203 chars", func(t *testing.T) {
+		t.Parallel()
 		give := map[string]interface{}{"key": longStr}
 		got := summarizeParams(give)
 		val, ok := got["key"].(string)
-		if !ok {
-			t.Fatalf("expected string, got %T", got["key"])
-		}
-		if len(val) != 203 {
-			t.Errorf("truncated length = %d, want 203", len(val))
-		}
-		if !strings.HasSuffix(val, "...") {
-			t.Errorf("truncated string should end with '...', got suffix %q", val[len(val)-3:])
-		}
+		require.True(t, ok, "expected string, got %T", got["key"])
+		assert.Len(t, val, 203)
+		assert.True(t, strings.HasSuffix(val, "..."), "truncated string should end with '...'")
 	})
 
 	t.Run("slice becomes [N items]", func(t *testing.T) {
+		t.Parallel()
 		give := map[string]interface{}{
 			"list": []interface{}{1, 2, 3},
 		}
 		got := summarizeParams(give)
-		if val, ok := got["list"]; !ok || val != "[3 items]" {
-			t.Errorf("summarizeParams slice: got %v, want %q", got["list"], "[3 items]")
-		}
+		assert.Equal(t, "[3 items]", got["list"])
 	})
 
 	t.Run("int stays unchanged", func(t *testing.T) {
+		t.Parallel()
 		give := map[string]interface{}{"count": 42}
 		got := summarizeParams(give)
-		if val, ok := got["count"]; !ok || val != 42 {
-			t.Errorf("summarizeParams int: got %v, want %d", got["count"], 42)
-		}
+		assert.Equal(t, 42, got["count"])
 	})
 }

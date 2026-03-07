@@ -5,6 +5,9 @@ import (
 	"errors"
 	"math/big"
 	"testing"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func testSession() *NegotiationSession {
@@ -20,6 +23,8 @@ func testSession() *NegotiationSession {
 }
 
 func TestAutoStrategy_GenerateCounter(t *testing.T) {
+	t.Parallel()
+
 	tests := []struct {
 		give        string
 		basePrice   int64
@@ -69,44 +74,41 @@ func TestAutoStrategy_GenerateCounter(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.give, func(t *testing.T) {
+			t.Parallel()
 			s := NewAutoStrategy(big.NewInt(tt.basePrice), tt.maxDiscount)
 			got := s.GenerateCounter(big.NewInt(tt.proposed), tt.round, tt.maxRounds)
-			if got.Cmp(big.NewInt(tt.wantPrice)) != 0 {
-				t.Errorf("GenerateCounter() = %s, want %d", got, tt.wantPrice)
-			}
+			assert.Equal(t, 0, got.Cmp(big.NewInt(tt.wantPrice)), "GenerateCounter() = %s, want %d", got, tt.wantPrice)
 		})
 	}
 }
 
 func TestAutoNegotiator_AcceptAll(t *testing.T) {
+	t.Parallel()
+
 	an := NewAutoNegotiator(StrategyConfig{Strategy: StrategyAcceptAll}, nil)
 	ctx := context.Background()
 
 	incoming := Proposal{Terms: Terms{Price: big.NewInt(99999)}}
 	d, err := an.Evaluate(ctx, testSession(), incoming)
-	if err != nil {
-		t.Fatalf("Evaluate() error: %v", err)
-	}
-	if d.Action != ActionAccept {
-		t.Errorf("Action = %q, want %q", d.Action, ActionAccept)
-	}
+	require.NoError(t, err)
+	assert.Equal(t, ActionAccept, d.Action)
 }
 
 func TestAutoNegotiator_RejectAll(t *testing.T) {
+	t.Parallel()
+
 	an := NewAutoNegotiator(StrategyConfig{Strategy: StrategyRejectAll}, nil)
 	ctx := context.Background()
 
 	incoming := Proposal{Terms: Terms{Price: big.NewInt(1)}}
 	d, err := an.Evaluate(ctx, testSession(), incoming)
-	if err != nil {
-		t.Fatalf("Evaluate() error: %v", err)
-	}
-	if d.Action != ActionReject {
-		t.Errorf("Action = %q, want %q", d.Action, ActionReject)
-	}
+	require.NoError(t, err)
+	assert.Equal(t, ActionReject, d.Action)
 }
 
 func TestAutoNegotiator_BudgetBound(t *testing.T) {
+	t.Parallel()
+
 	tests := []struct {
 		give       string
 		maxPrice   int64
@@ -135,6 +137,7 @@ func TestAutoNegotiator_BudgetBound(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.give, func(t *testing.T) {
+			t.Parallel()
 			an := NewAutoNegotiator(StrategyConfig{
 				Strategy: StrategyBudgetBound,
 				MaxPrice: big.NewInt(tt.maxPrice),
@@ -147,17 +150,15 @@ func TestAutoNegotiator_BudgetBound(t *testing.T) {
 			}}
 
 			d, err := an.Evaluate(context.Background(), testSession(), incoming)
-			if err != nil {
-				t.Fatalf("Evaluate() error: %v", err)
-			}
-			if d.Action != tt.wantAction {
-				t.Errorf("Action = %q, want %q", d.Action, tt.wantAction)
-			}
+			require.NoError(t, err)
+			assert.Equal(t, tt.wantAction, d.Action)
 		})
 	}
 }
 
 func TestAutoNegotiator_BudgetBound_PricingFallback(t *testing.T) {
+	t.Parallel()
+
 	pricing := func(_ string, _ string) (*big.Int, error) {
 		return big.NewInt(5000), nil
 	}
@@ -170,15 +171,13 @@ func TestAutoNegotiator_BudgetBound_PricingFallback(t *testing.T) {
 	}}
 
 	d, err := an.Evaluate(context.Background(), testSession(), incoming)
-	if err != nil {
-		t.Fatalf("Evaluate() error: %v", err)
-	}
-	if d.Action != ActionAccept {
-		t.Errorf("Action = %q, want %q", d.Action, ActionAccept)
-	}
+	require.NoError(t, err)
+	assert.Equal(t, ActionAccept, d.Action)
 }
 
 func TestAutoNegotiator_BudgetBound_PricingError(t *testing.T) {
+	t.Parallel()
+
 	pricing := func(_ string, _ string) (*big.Int, error) {
 		return nil, errors.New("network error")
 	}
@@ -191,34 +190,26 @@ func TestAutoNegotiator_BudgetBound_PricingError(t *testing.T) {
 	}}
 
 	d, err := an.Evaluate(context.Background(), testSession(), incoming)
-	if err != nil {
-		t.Fatalf("Evaluate() error: %v", err)
-	}
-	if d.Action != ActionReject {
-		t.Errorf("Action = %q, want %q", d.Action, ActionReject)
-	}
-	if d.Reason != "price lookup failed" {
-		t.Errorf("Reason = %q, want %q", d.Reason, "price lookup failed")
-	}
+	require.NoError(t, err)
+	assert.Equal(t, ActionReject, d.Action)
+	assert.Equal(t, "price lookup failed", d.Reason)
 }
 
 func TestAutoNegotiator_BudgetBound_NoMaxPrice(t *testing.T) {
+	t.Parallel()
+
 	an := NewAutoNegotiator(StrategyConfig{Strategy: StrategyBudgetBound}, nil)
 
 	incoming := Proposal{Terms: Terms{Price: big.NewInt(100)}}
 	d, err := an.Evaluate(context.Background(), testSession(), incoming)
-	if err != nil {
-		t.Fatalf("Evaluate() error: %v", err)
-	}
-	if d.Action != ActionReject {
-		t.Errorf("Action = %q, want %q", d.Action, ActionReject)
-	}
-	if d.Reason != "no max price configured" {
-		t.Errorf("Reason = %q, want %q", d.Reason, "no max price configured")
-	}
+	require.NoError(t, err)
+	assert.Equal(t, ActionReject, d.Action)
+	assert.Equal(t, "no max price configured", d.Reason)
 }
 
 func TestAutoNegotiator_CounterSplit(t *testing.T) {
+	t.Parallel()
+
 	tests := []struct {
 		give       string
 		maxPrice   int64
@@ -244,6 +235,7 @@ func TestAutoNegotiator_CounterSplit(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.give, func(t *testing.T) {
+			t.Parallel()
 			an := NewAutoNegotiator(StrategyConfig{
 				Strategy: StrategyCounterSplit,
 				MaxPrice: big.NewInt(tt.maxPrice),
@@ -256,20 +248,16 @@ func TestAutoNegotiator_CounterSplit(t *testing.T) {
 			}}
 
 			d, err := an.Evaluate(context.Background(), testSession(), incoming)
-			if err != nil {
-				t.Fatalf("Evaluate() error: %v", err)
-			}
-			if d.Action != tt.wantAction {
-				t.Errorf("Action = %q, want %q", d.Action, tt.wantAction)
-			}
-			if d.Terms.Price.Cmp(big.NewInt(tt.wantPrice)) != 0 {
-				t.Errorf("Price = %s, want %d", d.Terms.Price, tt.wantPrice)
-			}
+			require.NoError(t, err)
+			assert.Equal(t, tt.wantAction, d.Action)
+			assert.Equal(t, 0, d.Terms.Price.Cmp(big.NewInt(tt.wantPrice)))
 		})
 	}
 }
 
 func TestAutoNegotiator_CounterSplit_NoRoundsLeft(t *testing.T) {
+	t.Parallel()
+
 	an := NewAutoNegotiator(StrategyConfig{
 		Strategy: StrategyCounterSplit,
 		MaxPrice: big.NewInt(3000),
@@ -286,26 +274,18 @@ func TestAutoNegotiator_CounterSplit_NoRoundsLeft(t *testing.T) {
 	}}
 
 	d, err := an.Evaluate(context.Background(), session, incoming)
-	if err != nil {
-		t.Fatalf("Evaluate() error: %v", err)
-	}
-	if d.Action != ActionReject {
-		t.Errorf("Action = %q, want %q", d.Action, ActionReject)
-	}
-	if d.Reason != "no counter rounds remaining" {
-		t.Errorf("Reason = %q, want %q", d.Reason, "no counter rounds remaining")
-	}
+	require.NoError(t, err)
+	assert.Equal(t, ActionReject, d.Action)
+	assert.Equal(t, "no counter rounds remaining", d.Reason)
 }
 
 func TestAutoNegotiator_UnknownStrategy(t *testing.T) {
+	t.Parallel()
+
 	an := NewAutoNegotiator(StrategyConfig{Strategy: "unknown"}, nil)
 
 	incoming := Proposal{Terms: Terms{Price: big.NewInt(100)}}
 	d, err := an.Evaluate(context.Background(), testSession(), incoming)
-	if err != nil {
-		t.Fatalf("Evaluate() error: %v", err)
-	}
-	if d.Action != ActionReject {
-		t.Errorf("Action = %q, want %q", d.Action, ActionReject)
-	}
+	require.NoError(t, err)
+	assert.Equal(t, ActionReject, d.Action)
 }

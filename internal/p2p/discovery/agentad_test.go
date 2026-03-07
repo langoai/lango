@@ -15,12 +15,16 @@ func testLogger() *zap.SugaredLogger {
 }
 
 func TestNewAdService(t *testing.T) {
+	t.Parallel()
+
 	svc := NewAdService(AdServiceConfig{Logger: testLogger()})
 	require.NotNil(t, svc)
 	assert.NotNil(t, svc.ads)
 }
 
 func TestStoreAd_Valid(t *testing.T) {
+	t.Parallel()
+
 	svc := NewAdService(AdServiceConfig{Logger: testLogger()})
 
 	ad := &AgentAd{
@@ -39,6 +43,8 @@ func TestStoreAd_Valid(t *testing.T) {
 }
 
 func TestStoreAd_MissingDID(t *testing.T) {
+	t.Parallel()
+
 	svc := NewAdService(AdServiceConfig{Logger: testLogger()})
 
 	ad := &AgentAd{Name: "no-did-agent"}
@@ -48,6 +54,8 @@ func TestStoreAd_MissingDID(t *testing.T) {
 }
 
 func TestStoreAd_ZKVerification_Pass(t *testing.T) {
+	t.Parallel()
+
 	verifier := func(cred *ZKCredential) (bool, error) { return true, nil }
 	svc := NewAdService(AdServiceConfig{
 		Logger:   testLogger(),
@@ -72,6 +80,8 @@ func TestStoreAd_ZKVerification_Pass(t *testing.T) {
 }
 
 func TestStoreAd_ZKVerification_Fail(t *testing.T) {
+	t.Parallel()
+
 	verifier := func(cred *ZKCredential) (bool, error) { return false, nil }
 	svc := NewAdService(AdServiceConfig{
 		Logger:   testLogger(),
@@ -97,6 +107,8 @@ func TestStoreAd_ZKVerification_Fail(t *testing.T) {
 }
 
 func TestStoreAd_ExpiredCredential_Skipped(t *testing.T) {
+	t.Parallel()
+
 	called := false
 	verifier := func(cred *ZKCredential) (bool, error) {
 		called = true
@@ -126,6 +138,8 @@ func TestStoreAd_ExpiredCredential_Skipped(t *testing.T) {
 }
 
 func TestStoreAd_TimestampOrdering(t *testing.T) {
+	t.Parallel()
+
 	svc := NewAdService(AdServiceConfig{Logger: testLogger()})
 
 	older := &AgentAd{
@@ -148,6 +162,8 @@ func TestStoreAd_TimestampOrdering(t *testing.T) {
 }
 
 func TestDiscover_EmptyTags_ReturnsAll(t *testing.T) {
+	t.Parallel()
+
 	svc := NewAdService(AdServiceConfig{Logger: testLogger()})
 
 	for _, did := range []string{"did:lango:a", "did:lango:b", "did:lango:c"} {
@@ -160,6 +176,8 @@ func TestDiscover_EmptyTags_ReturnsAll(t *testing.T) {
 }
 
 func TestDiscover_WithTags_Filters(t *testing.T) {
+	t.Parallel()
+
 	svc := NewAdService(AdServiceConfig{Logger: testLogger()})
 
 	require.NoError(t, svc.StoreAd(&AgentAd{
@@ -176,6 +194,8 @@ func TestDiscover_WithTags_Filters(t *testing.T) {
 }
 
 func TestDiscover_NoMatches(t *testing.T) {
+	t.Parallel()
+
 	svc := NewAdService(AdServiceConfig{Logger: testLogger()})
 
 	require.NoError(t, svc.StoreAd(&AgentAd{
@@ -188,6 +208,8 @@ func TestDiscover_NoMatches(t *testing.T) {
 }
 
 func TestDiscoverByCapability(t *testing.T) {
+	t.Parallel()
+
 	svc := NewAdService(AdServiceConfig{Logger: testLogger()})
 
 	require.NoError(t, svc.StoreAd(&AgentAd{
@@ -206,6 +228,8 @@ func TestDiscoverByCapability(t *testing.T) {
 }
 
 func TestMatchesTags(t *testing.T) {
+	t.Parallel()
+
 	tests := []struct {
 		name     string
 		adTags   []string
@@ -222,6 +246,8 @@ func TestMatchesTags(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
 			assert.Equal(t, tt.expected, matchesTags(tt.adTags, tt.query))
 		})
 	}
