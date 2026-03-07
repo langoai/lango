@@ -13,6 +13,7 @@ import (
 	"github.com/langoai/lango/internal/bootstrap"
 	"github.com/langoai/lango/internal/config"
 	"github.com/langoai/lango/internal/embedding"
+	"github.com/langoai/lango/internal/eventbus"
 	"github.com/langoai/lango/internal/gateway"
 	"github.com/langoai/lango/internal/knowledge"
 	"github.com/langoai/lango/internal/orchestration"
@@ -253,8 +254,9 @@ type agentDeps struct {
 	scanner *agent.SecretScanner
 	sr      *skill.Registry
 	lc      *librarianComponents
-	catalog *toolcatalog.Catalog
-	p2pc    *p2pComponents
+	catalog  *toolcatalog.Catalog
+	p2pc     *p2pComponents
+	eventBus *eventbus.Bus
 }
 
 // initAgent creates the ADK agent with the given tools and provider proxy.
@@ -297,6 +299,11 @@ func initAgent(ctx context.Context, deps *agentDeps) (*adk.Agent, error) {
 
 	proxy := supervisor.NewProviderProxy(sv, cfg.Agent.Provider, cfg.Agent.Model, proxyOpts...)
 	modelAdapter := adk.NewModelAdapter(proxy, cfg.Agent.Model)
+
+	// Wire token usage callback for observability.
+	if deps.eventBus != nil {
+		wireModelAdapterTokenUsage(modelAdapter, deps.eventBus)
+	}
 
 	// Build structured system prompt
 	builder := buildPromptBuilder(&cfg.Agent)

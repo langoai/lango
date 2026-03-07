@@ -23,6 +23,7 @@ import (
 	"github.com/langoai/lango/internal/ent/schema"
 	"github.com/langoai/lango/internal/ent/secret"
 	"github.com/langoai/lango/internal/ent/session"
+	"github.com/langoai/lango/internal/ent/tokenusage"
 	"github.com/langoai/lango/internal/ent/workflowrun"
 	"github.com/langoai/lango/internal/ent/workflowsteprun"
 )
@@ -443,6 +444,40 @@ func init() {
 	session.DefaultUpdatedAt = sessionDescUpdatedAt.Default.(func() time.Time)
 	// session.UpdateDefaultUpdatedAt holds the default value on update for the updated_at field.
 	session.UpdateDefaultUpdatedAt = sessionDescUpdatedAt.UpdateDefault.(func() time.Time)
+	tokenusageFields := schema.TokenUsage{}.Fields()
+	_ = tokenusageFields
+	// tokenusageDescProvider is the schema descriptor for provider field.
+	tokenusageDescProvider := tokenusageFields[2].Descriptor()
+	// tokenusage.ProviderValidator is a validator for the "provider" field. It is called by the builders before save.
+	tokenusage.ProviderValidator = tokenusageDescProvider.Validators[0].(func(string) error)
+	// tokenusageDescModel is the schema descriptor for model field.
+	tokenusageDescModel := tokenusageFields[3].Descriptor()
+	// tokenusage.ModelValidator is a validator for the "model" field. It is called by the builders before save.
+	tokenusage.ModelValidator = tokenusageDescModel.Validators[0].(func(string) error)
+	// tokenusageDescInputTokens is the schema descriptor for input_tokens field.
+	tokenusageDescInputTokens := tokenusageFields[5].Descriptor()
+	// tokenusage.DefaultInputTokens holds the default value on creation for the input_tokens field.
+	tokenusage.DefaultInputTokens = tokenusageDescInputTokens.Default.(int64)
+	// tokenusageDescOutputTokens is the schema descriptor for output_tokens field.
+	tokenusageDescOutputTokens := tokenusageFields[6].Descriptor()
+	// tokenusage.DefaultOutputTokens holds the default value on creation for the output_tokens field.
+	tokenusage.DefaultOutputTokens = tokenusageDescOutputTokens.Default.(int64)
+	// tokenusageDescTotalTokens is the schema descriptor for total_tokens field.
+	tokenusageDescTotalTokens := tokenusageFields[7].Descriptor()
+	// tokenusage.DefaultTotalTokens holds the default value on creation for the total_tokens field.
+	tokenusage.DefaultTotalTokens = tokenusageDescTotalTokens.Default.(int64)
+	// tokenusageDescCacheTokens is the schema descriptor for cache_tokens field.
+	tokenusageDescCacheTokens := tokenusageFields[8].Descriptor()
+	// tokenusage.DefaultCacheTokens holds the default value on creation for the cache_tokens field.
+	tokenusage.DefaultCacheTokens = tokenusageDescCacheTokens.Default.(int64)
+	// tokenusageDescTimestamp is the schema descriptor for timestamp field.
+	tokenusageDescTimestamp := tokenusageFields[9].Descriptor()
+	// tokenusage.DefaultTimestamp holds the default value on creation for the timestamp field.
+	tokenusage.DefaultTimestamp = tokenusageDescTimestamp.Default.(func() time.Time)
+	// tokenusageDescID is the schema descriptor for id field.
+	tokenusageDescID := tokenusageFields[0].Descriptor()
+	// tokenusage.DefaultID holds the default value on creation for the id field.
+	tokenusage.DefaultID = tokenusageDescID.Default.(func() uuid.UUID)
 	workflowrunFields := schema.WorkflowRun{}.Fields()
 	_ = workflowrunFields
 	// workflowrunDescWorkflowName is the schema descriptor for workflow_name field.

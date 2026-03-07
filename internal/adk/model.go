@@ -11,9 +11,13 @@ import (
 	"google.golang.org/genai"
 )
 
+// TokenUsageCallback is called when a provider returns token usage data.
+type TokenUsageCallback func(providerID, model string, input, output, total, cache int64)
+
 type ModelAdapter struct {
-	p     provider.Provider
-	model string
+	p            provider.Provider
+	model        string
+	OnTokenUsage TokenUsageCallback
 }
 
 func NewModelAdapter(p provider.Provider, model string) *ModelAdapter {
@@ -124,6 +128,11 @@ func (m *ModelAdapter) GenerateContent(ctx context.Context, req *model.LLMReques
 					// Thought text filtered at provider level; no action needed.
 
 				case provider.StreamEventDone:
+					// Forward token usage to callback if available.
+					if evt.Usage != nil && m.OnTokenUsage != nil {
+						m.OnTokenUsage(m.p.ID(), m.model, evt.Usage.InputTokens, evt.Usage.OutputTokens, evt.Usage.TotalTokens, evt.Usage.CacheTokens)
+					}
+
 					// Final event: include accumulated full text so ADK
 					// stores a complete assistant message in the session.
 					var finalParts []*genai.Part
@@ -179,7 +188,10 @@ func (m *ModelAdapter) GenerateContent(ctx context.Context, req *model.LLMReques
 				case provider.StreamEventThought:
 					// Thought text filtered at provider level; no action needed.
 				case provider.StreamEventDone:
-					// Ignored — we build the final response below.
+					// Forward token usage to callback if available.
+					if evt.Usage != nil && m.OnTokenUsage != nil {
+						m.OnTokenUsage(m.p.ID(), m.model, evt.Usage.InputTokens, evt.Usage.OutputTokens, evt.Usage.TotalTokens, evt.Usage.CacheTokens)
+					}
 				case provider.StreamEventError:
 					yield(nil, evt.Error)
 					return

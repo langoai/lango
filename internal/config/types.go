@@ -80,6 +80,9 @@ type Config struct {
 	// Economy layer configuration (budget, risk, escrow, pricing, negotiation)
 	Economy EconomyConfig `mapstructure:"economy" json:"economy"`
 
+	// Observability configuration (token tracking, health, audit, metrics)
+	Observability ObservabilityConfig `mapstructure:"observability" json:"observability"`
+
 	// Providers configuration
 	Providers map[string]ProviderConfig `mapstructure:"providers" json:"providers"`
 }

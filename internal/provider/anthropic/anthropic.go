@@ -41,8 +41,10 @@ func (p *AnthropicProvider) Generate(ctx context.Context, params provider.Genera
 	stream := p.client.Messages.NewStreaming(ctx, msgParams)
 
 	return func(yield func(provider.StreamEvent, error) bool) {
+		var accMsg anthropic.Message
 		for stream.Next() {
 			evt := stream.Current()
+			_ = accMsg.Accumulate(evt)
 
 			switch evt.Type {
 			case "content_block_delta":
@@ -86,7 +88,19 @@ func (p *AnthropicProvider) Generate(ctx context.Context, params provider.Genera
 			return
 		}
 
-		yield(provider.StreamEvent{Type: provider.StreamEventDone}, nil)
+		var usage *provider.Usage
+		if accMsg.Usage.InputTokens > 0 || accMsg.Usage.OutputTokens > 0 {
+			usage = &provider.Usage{
+				InputTokens:  int64(accMsg.Usage.InputTokens),
+				OutputTokens: int64(accMsg.Usage.OutputTokens),
+				TotalTokens:  int64(accMsg.Usage.InputTokens) + int64(accMsg.Usage.OutputTokens),
+			}
+			if accMsg.Usage.CacheCreationInputTokens > 0 || accMsg.Usage.CacheReadInputTokens > 0 {
+				usage.CacheTokens = int64(accMsg.Usage.CacheCreationInputTokens) + int64(accMsg.Usage.CacheReadInputTokens)
+			}
+		}
+
+		yield(provider.StreamEvent{Type: provider.StreamEventDone, Usage: usage}, nil)
 	}, nil
 }
 

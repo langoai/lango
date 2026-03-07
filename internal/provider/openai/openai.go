@@ -57,10 +57,11 @@ func (p *OpenAIProvider) Generate(ctx context.Context, params provider.GenerateP
 	return func(yield func(provider.StreamEvent, error) bool) {
 		defer stream.Close()
 
+		var usage *provider.Usage
 		for {
 			response, err := stream.Recv()
 			if errors.Is(err, io.EOF) {
-				yield(provider.StreamEvent{Type: provider.StreamEventDone}, nil)
+				yield(provider.StreamEvent{Type: provider.StreamEventDone, Usage: usage}, nil)
 				return
 			}
 			if err != nil {
@@ -69,6 +70,14 @@ func (p *OpenAIProvider) Generate(ctx context.Context, params provider.GenerateP
 			}
 
 			if len(response.Choices) == 0 {
+				// Usage chunk: last chunk with IncludeUsage has no choices but has Usage.
+				if response.Usage != nil {
+					usage = &provider.Usage{
+						InputTokens:  int64(response.Usage.PromptTokens),
+						OutputTokens: int64(response.Usage.CompletionTokens),
+						TotalTokens:  int64(response.Usage.TotalTokens),
+					}
+				}
 				continue
 			}
 			delta := response.Choices[0].Delta
@@ -151,11 +160,12 @@ func (p *OpenAIProvider) convertParams(params provider.GenerateParams) (openai.C
 	}
 
 	req := openai.ChatCompletionRequest{
-		Model:       params.Model,
-		Messages:    msgs,
-		MaxTokens:   params.MaxTokens,
-		Temperature: float32(params.Temperature),
-		Stream:      true,
+		Model:         params.Model,
+		Messages:      msgs,
+		MaxTokens:     params.MaxTokens,
+		Temperature:   float32(params.Temperature),
+		Stream:        true,
+		StreamOptions: &openai.StreamOptions{IncludeUsage: true},
 	}
 
 	if len(params.Tools) > 0 {

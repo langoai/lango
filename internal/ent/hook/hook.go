@@ -201,6 +201,18 @@ func (f SessionFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value, err
 	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.SessionMutation", m)
 }
 
+// The TokenUsageFunc type is an adapter to allow the use of ordinary
+// function as TokenUsage mutator.
+type TokenUsageFunc func(context.Context, *ent.TokenUsageMutation) (ent.Value, error)
+
+// Mutate calls f(ctx, m).
+func (f TokenUsageFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value, error) {
+	if mv, ok := m.(*ent.TokenUsageMutation); ok {
+		return f(ctx, mv)
+	}
+	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.TokenUsageMutation", m)
+}
+
 // The WorkflowRunFunc type is an adapter to allow the use of ordinary
 // function as WorkflowRun mutator.
 type WorkflowRunFunc func(context.Context, *ent.WorkflowRunMutation) (ent.Value, error)
