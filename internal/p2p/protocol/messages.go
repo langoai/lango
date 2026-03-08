@@ -143,6 +143,6 @@ type NegotiatePayload struct {
 	SessionID string `json:"sessionId,omitempty"` // empty for initial proposal
 	Action    string `json:"action"`              // "propose", "counter", "accept", "reject"
 	ToolName  string `json:"toolName,omitempty"`
-	Price     string `json:"price,omitempty"`     // USDC amount as string
+	Price     string `json:"price,omitempty"` // USDC amount as string
 	Reason    string `json:"reason,omitempty"`
 }

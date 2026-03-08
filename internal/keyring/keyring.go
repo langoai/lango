@@ -71,4 +71,3 @@ func (t SecurityTier) String() string {
 		return "none"
 	}
 }
-

@@ -17,10 +17,10 @@ type stubModule struct {
 	initFn    func(ctx context.Context, r Resolver) (*ModuleResult, error)
 }
 
-func (s *stubModule) Name() string            { return s.name }
-func (s *stubModule) Provides() []Provides     { return s.provides }
-func (s *stubModule) DependsOn() []Provides    { return s.dependsOn }
-func (s *stubModule) Enabled() bool            { return s.enabled }
+func (s *stubModule) Name() string          { return s.name }
+func (s *stubModule) Provides() []Provides  { return s.provides }
+func (s *stubModule) DependsOn() []Provides { return s.dependsOn }
+func (s *stubModule) Enabled() bool         { return s.enabled }
 func (s *stubModule) Init(ctx context.Context, r Resolver) (*ModuleResult, error) {
 	if s.initFn != nil {
 		return s.initFn(ctx, r)

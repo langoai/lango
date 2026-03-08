@@ -87,10 +87,10 @@ func TestApprovalFnDefaultDeny(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
-		give            string
-		autoApprove     bool
-		hasRepStore     bool
-		wantApproved    bool
+		give         string
+		autoApprove  bool
+		hasRepStore  bool
+		wantApproved bool
 	}{
 		{
 			give:         "auto-approve off, no rep store → deny",

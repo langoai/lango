@@ -31,18 +31,18 @@ type MemoryProvider interface {
 // Before each LLM call, it retrieves relevant knowledge and injects it
 // into the system instruction.
 type ContextAwareModelAdapter struct {
-	inner              *ModelAdapter
-	retriever          *knowledge.ContextRetriever
-	memoryProvider     MemoryProvider
-	ragService         *embedding.RAGService
-	ragOpts            embedding.RetrieveOptions
-	graphRAG           *graph.GraphRAGService
-	runtimeAdapter     *RuntimeContextAdapter
-	basePrompt         string
-	maxReflections     int
-	maxObservations    int
-	memoryTokenBudget  int // max tokens for the memory section; 0 = default (4000)
-	logger             *zap.SugaredLogger
+	inner             *ModelAdapter
+	retriever         *knowledge.ContextRetriever
+	memoryProvider    MemoryProvider
+	ragService        *embedding.RAGService
+	ragOpts           embedding.RetrieveOptions
+	graphRAG          *graph.GraphRAGService
+	runtimeAdapter    *RuntimeContextAdapter
+	basePrompt        string
+	maxReflections    int
+	maxObservations   int
+	memoryTokenBudget int // max tokens for the memory section; 0 = default (4000)
+	logger            *zap.SugaredLogger
 }
 
 // NewContextAwareModelAdapter creates a context-aware model adapter.

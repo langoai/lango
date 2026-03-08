@@ -2,9 +2,9 @@ package app
 
 import (
 	"github.com/langoai/lango/internal/agent"
+	"github.com/langoai/lango/internal/security"
 	toolcrypto "github.com/langoai/lango/internal/tools/crypto"
 	toolsecrets "github.com/langoai/lango/internal/tools/secrets"
-	"github.com/langoai/lango/internal/security"
 )
 
 // buildCryptoTools wraps crypto.Tool methods as agent tools.

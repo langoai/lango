@@ -19,13 +19,13 @@ var _ escrow.SettlementExecutor = (*VaultSettler)(nil)
 // VaultSettler implements SettlementExecutor using per-deal LangoVault contracts
 // created via the LangoVaultFactory.
 type VaultSettler struct {
-	factory     *FactoryClient
-	caller      contract.ContractCaller
-	tokenAddr   common.Address
-	implAddr    common.Address
-	arbitrator  common.Address
-	chainID     int64
-	logger      *zap.SugaredLogger
+	factory    *FactoryClient
+	caller     contract.ContractCaller
+	tokenAddr  common.Address
+	implAddr   common.Address
+	arbitrator common.Address
+	chainID    int64
+	logger     *zap.SugaredLogger
 
 	// vaultMap tracks escrowID → vault address.
 	vaultMap map[string]common.Address

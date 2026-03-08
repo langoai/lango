@@ -17,7 +17,7 @@ type Scheduler struct {
 	executor  *Executor
 	mu        sync.RWMutex
 	entries   map[string]robfigcron.EntryID // jobID -> cron entry
-	semaphore chan struct{}                  // limits concurrent job execution
+	semaphore chan struct{}                 // limits concurrent job execution
 	maxJobs   int
 	timezone  string
 	logger    *zap.SugaredLogger

@@ -120,9 +120,9 @@ func TestStoreList(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
-		give     string
-		setup    func(Store)
-		wantLen  int
+		give    string
+		setup   func(Store)
+		wantLen int
 	}{
 		{
 			give:    "empty store",

@@ -9,13 +9,13 @@ import (
 
 // HarnessPolicy defines the off-chain harness constraints.
 type HarnessPolicy struct {
-	MaxTxAmount      *big.Int         `json:"maxTxAmount"`
-	DailyLimit       *big.Int         `json:"dailyLimit"`
-	MonthlyLimit     *big.Int         `json:"monthlyLimit"`
-	AllowedTargets   []common.Address `json:"allowedTargets"`
-	AllowedFunctions []string         `json:"allowedFunctions"`
-	RequiredRiskScore float64         `json:"requiredRiskScore"`
-	AutoApproveBelow *big.Int         `json:"autoApproveBelow"`
+	MaxTxAmount       *big.Int         `json:"maxTxAmount"`
+	DailyLimit        *big.Int         `json:"dailyLimit"`
+	MonthlyLimit      *big.Int         `json:"monthlyLimit"`
+	AllowedTargets    []common.Address `json:"allowedTargets"`
+	AllowedFunctions  []string         `json:"allowedFunctions"`
+	RequiredRiskScore float64          `json:"requiredRiskScore"`
+	AutoApproveBelow  *big.Int         `json:"autoApproveBelow"`
 }
 
 // SpendTracker tracks cumulative spending.

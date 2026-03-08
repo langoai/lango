@@ -35,7 +35,6 @@ type SecurityEventTracker interface {
 // CardProvider returns the local agent card as a map.
 type CardProvider func() map[string]interface{}
 
-
 // PayGateChecker checks payment for a tool invocation.
 type PayGateChecker interface {
 	Check(peerDID, toolName string, payload map[string]interface{}) (PayGateResult, error)

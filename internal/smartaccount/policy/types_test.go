@@ -29,13 +29,13 @@ func TestSpendTracker_ResetIfNeeded(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
-		give              string
-		dailySpent        int64
-		monthlySpent      int64
-		lastDailyReset    time.Duration // offset from "now"
-		lastMonthlyReset  time.Duration // offset from "now"
-		wantDailyReset    bool
-		wantMonthlyReset  bool
+		give             string
+		dailySpent       int64
+		monthlySpent     int64
+		lastDailyReset   time.Duration // offset from "now"
+		lastMonthlyReset time.Duration // offset from "now"
+		wantDailyReset   bool
+		wantMonthlyReset bool
 	}{
 		{
 			give:             "no_reset_within_windows",

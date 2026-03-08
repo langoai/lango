@@ -17,8 +17,8 @@ type mockProvider struct {
 	embedCalls int
 }
 
-func (m *mockProvider) ID() string       { return "mock" }
-func (m *mockProvider) Dimensions() int  { return m.dim }
+func (m *mockProvider) ID() string      { return "mock" }
+func (m *mockProvider) Dimensions() int { return m.dim }
 
 func (m *mockProvider) Embed(_ context.Context, texts []string) ([][]float32, error) {
 	m.embedCalls++

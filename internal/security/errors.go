@@ -11,7 +11,7 @@ var (
 	ErrDecryptionFailed = errors.New("decryption failed")
 
 	// KMS errors
-	ErrKMSUnavailable = errors.New("KMS service unavailable")
+	ErrKMSUnavailable  = errors.New("KMS service unavailable")
 	ErrKMSAccessDenied = errors.New("KMS access denied")
 	ErrKMSKeyDisabled  = errors.New("KMS key is disabled")
 	ErrKMSThrottled    = errors.New("KMS request throttled")

@@ -186,6 +186,6 @@ type dummyComponent struct {
 	name string
 }
 
-func (d *dummyComponent) Name() string                                    { return d.name }
+func (d *dummyComponent) Name() string                                     { return d.name }
 func (d *dummyComponent) Start(_ context.Context, _ *sync.WaitGroup) error { return nil }
 func (d *dummyComponent) Stop(_ context.Context) error                     { return nil }

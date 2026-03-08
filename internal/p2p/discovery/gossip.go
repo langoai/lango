@@ -19,23 +19,23 @@ const TopicAgentCard = "/lango/agentcard/1.0.0"
 
 // GossipCard is an agent card propagated via GossipSub.
 type GossipCard struct {
-	Name         string       `json:"name"`
-	Description  string       `json:"description"`
-	DID          string       `json:"did,omitempty"`
-	Multiaddrs   []string     `json:"multiaddrs,omitempty"`
-	Capabilities []string     `json:"capabilities,omitempty"`
-	Pricing      *PricingInfo `json:"pricing,omitempty"`
+	Name          string         `json:"name"`
+	Description   string         `json:"description"`
+	DID           string         `json:"did,omitempty"`
+	Multiaddrs    []string       `json:"multiaddrs,omitempty"`
+	Capabilities  []string       `json:"capabilities,omitempty"`
+	Pricing       *PricingInfo   `json:"pricing,omitempty"`
 	ZKCredentials []ZKCredential `json:"zkCredentials,omitempty"`
-	PeerID       string       `json:"peerId"`
-	Timestamp    time.Time    `json:"timestamp"`
+	PeerID        string         `json:"peerId"`
+	Timestamp     time.Time      `json:"timestamp"`
 }
 
 // PricingInfo describes the pricing for an agent's services.
 type PricingInfo struct {
-	Currency    string            `json:"currency"`    // e.g. "USDC"
-	PerQuery    string            `json:"perQuery"`    // per-query price
-	PerMinute   string            `json:"perMinute"`   // per-minute price
-	ToolPrices  map[string]string `json:"toolPrices"`  // per-tool pricing
+	Currency   string            `json:"currency"`   // e.g. "USDC"
+	PerQuery   string            `json:"perQuery"`   // per-query price
+	PerMinute  string            `json:"perMinute"`  // per-minute price
+	ToolPrices map[string]string `json:"toolPrices"` // per-tool pricing
 }
 
 // ZKCredential is a zero-knowledge proof of agent capability.

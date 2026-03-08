@@ -25,7 +25,7 @@ type TPMProvider struct {
 	sealedDir string
 }
 
-var _ Provider   = (*TPMProvider)(nil)
+var _ Provider = (*TPMProvider)(nil)
 var _ KeyChecker = (*TPMProvider)(nil)
 
 // NewTPMProvider creates a new TPMProvider.

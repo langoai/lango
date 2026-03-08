@@ -30,8 +30,8 @@ func NewOpenAIProvider(apiKey string, model string, dimensions int) *OpenAIProvi
 	}
 }
 
-func (p *OpenAIProvider) ID() string       { return "openai" }
-func (p *OpenAIProvider) Dimensions() int  { return p.dimensions }
+func (p *OpenAIProvider) ID() string      { return "openai" }
+func (p *OpenAIProvider) Dimensions() int { return p.dimensions }
 
 // Embed generates embeddings for the given texts.
 func (p *OpenAIProvider) Embed(ctx context.Context, texts []string) ([][]float32, error) {

@@ -11,9 +11,9 @@ func TestRegexDetector_BasicDetection(t *testing.T) {
 	})
 
 	tests := []struct {
-		give       string
-		wantCount  int
-		wantNames  []string
+		give      string
+		wantCount int
+		wantNames []string
 	}{
 		{
 			give:      "My email is test@example.com",
@@ -102,9 +102,9 @@ func TestRegexDetector_CreditCardWithLuhn(t *testing.T) {
 		give      string
 		wantCount int
 	}{
-		{give: "Card: 4111111111111111", wantCount: 1},       // Valid Visa
-		{give: "Card: 4111111111111112", wantCount: 0},       // Invalid Luhn
-		{give: "Card: 5500-0000-0000-0004", wantCount: 1},    // Valid MC
+		{give: "Card: 4111111111111111", wantCount: 1},    // Valid Visa
+		{give: "Card: 4111111111111112", wantCount: 0},    // Invalid Luhn
+		{give: "Card: 5500-0000-0000-0004", wantCount: 1}, // Valid MC
 	}
 
 	for _, tt := range tests {
@@ -128,9 +128,9 @@ func TestRegexDetector_DisabledBuiltins(t *testing.T) {
 		give      string
 		wantCount int
 	}{
-		{give: "test@example.com", wantCount: 0},         // email disabled
-		{give: "900101-1234567", wantCount: 0},            // kr_rrn disabled
-		{give: "Call 123-456-7890", wantCount: 1},          // us_phone still active
+		{give: "test@example.com", wantCount: 0},  // email disabled
+		{give: "900101-1234567", wantCount: 0},    // kr_rrn disabled
+		{give: "Call 123-456-7890", wantCount: 1}, // us_phone still active
 	}
 
 	for _, tt := range tests {

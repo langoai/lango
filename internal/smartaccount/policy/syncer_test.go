@@ -157,12 +157,12 @@ func TestPullFromChain(t *testing.T) {
 	account := common.HexToAddress("0xABCD")
 
 	tests := []struct {
-		give         string
-		prePolicy    *HarnessPolicy
-		onChainCfg   *bindings.SpendingConfig
-		wantPerTx    *big.Int
-		wantDaily    *big.Int
-		wantMonthly  *big.Int
+		give        string
+		prePolicy   *HarnessPolicy
+		onChainCfg  *bindings.SpendingConfig
+		wantPerTx   *big.Int
+		wantDaily   *big.Int
+		wantMonthly *big.Int
 	}{
 		{
 			give:      "updates existing policy with on-chain values",

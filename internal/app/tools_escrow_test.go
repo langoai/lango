@@ -14,7 +14,7 @@ import (
 // testSettler satisfies escrow.SettlementExecutor with no-op operations for tests.
 type testSettler struct{}
 
-func (s *testSettler) Lock(_ context.Context, _ string, _ *big.Int) error   { return nil }
+func (s *testSettler) Lock(_ context.Context, _ string, _ *big.Int) error    { return nil }
 func (s *testSettler) Release(_ context.Context, _ string, _ *big.Int) error { return nil }
 func (s *testSettler) Refund(_ context.Context, _ string, _ *big.Int) error  { return nil }
 

@@ -36,9 +36,9 @@ func (a *AlchemyProvider) SponsorUserOp(ctx context.Context, req *SponsorRequest
 
 	params := []interface{}{
 		map[string]interface{}{
-			"policyId":       a.policyID,
-			"entryPoint":     req.EntryPoint.Hex(),
-			"userOperation":  opMap,
+			"policyId":      a.policyID,
+			"entryPoint":    req.EntryPoint.Hex(),
+			"userOperation": opMap,
 		},
 	}
 

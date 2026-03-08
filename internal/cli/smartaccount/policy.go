@@ -230,4 +230,3 @@ func valueOrNA(s string) string {
 	}
 	return s
 }
-

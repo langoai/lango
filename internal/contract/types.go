@@ -13,7 +13,7 @@ import (
 type ContractCallRequest struct {
 	ChainID int64          `json:"chainId"`
 	Address common.Address `json:"address"`
-	ABI     string         `json:"abi"`     // JSON ABI string
+	ABI     string         `json:"abi"` // JSON ABI string
 	Method  string         `json:"method"`
 	Args    []interface{}  `json:"args"`
 	Value   *big.Int       `json:"value,omitempty"` // ETH value for payable functions

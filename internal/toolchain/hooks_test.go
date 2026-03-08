@@ -19,8 +19,8 @@ type stubPreHook struct {
 	called   bool
 }
 
-func (h *stubPreHook) Name() string     { return h.name }
-func (h *stubPreHook) Priority() int    { return h.priority }
+func (h *stubPreHook) Name() string  { return h.name }
+func (h *stubPreHook) Priority() int { return h.priority }
 func (h *stubPreHook) Pre(_ HookContext) (PreHookResult, error) {
 	h.called = true
 	return h.result, h.err

@@ -28,7 +28,7 @@ import (
 type ProofScheme string
 
 const (
-	SchemePlonk  ProofScheme = "plonk"
+	SchemePlonk   ProofScheme = "plonk"
 	SchemeGroth16 ProofScheme = "groth16"
 )
 

@@ -10,9 +10,9 @@ import (
 
 func TestMapCategory(t *testing.T) {
 	tests := []struct {
-		give     string
-		wantCat  entknowledge.Category
-		wantErr  bool
+		give    string
+		wantCat entknowledge.Category
+		wantErr bool
 	}{
 		{give: "preference", wantCat: entknowledge.CategoryPreference},
 		{give: "fact", wantCat: entknowledge.CategoryFact},

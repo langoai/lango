@@ -783,9 +783,9 @@ func TestUpdateConfigFromForm_KMSFields(t *testing.T) {
 
 func TestDerefBool(t *testing.T) {
 	tests := []struct {
-		give    *bool
-		def     bool
-		want    bool
+		give *bool
+		def  bool
+		want bool
 	}{
 		{give: nil, def: true, want: true},
 		{give: nil, def: false, want: false},

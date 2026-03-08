@@ -11,9 +11,9 @@ import (
 
 	"github.com/langoai/lango/internal/ent/enttest"
 	"github.com/langoai/lango/internal/security"
+	_ "github.com/mattn/go-sqlite3"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	_ "github.com/mattn/go-sqlite3"
 )
 
 type mockCryptoProvider struct {

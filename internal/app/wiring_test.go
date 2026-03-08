@@ -59,8 +59,8 @@ func TestBuildAgentOptions_ErrorCorrectionWithNilKC(t *testing.T) {
 
 func TestModelTokenBudget(t *testing.T) {
 	tests := []struct {
-		give     string
-		wantGt0  bool
+		give    string
+		wantGt0 bool
 	}{
 		{give: "gpt-4", wantGt0: true},
 		{give: "gemini-2.0-flash", wantGt0: true},

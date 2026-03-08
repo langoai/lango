@@ -25,11 +25,11 @@ func TestCatalog_RegisterAndGet(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
-		name     string
-		give     []*agent.Tool
-		lookup   string
-		wantOK   bool
-		wantCat  string
+		name    string
+		give    []*agent.Tool
+		lookup  string
+		wantOK  bool
+		wantCat string
 	}{
 		{
 			name:    "registered tool found",

@@ -47,11 +47,11 @@ func DefaultEngineConfig() EngineConfig {
 
 // Engine manages the escrow lifecycle.
 type Engine struct {
-	store    Store
-	settler  SettlementExecutor
-	cfg      EngineConfig
-	mu       sync.Mutex
-	nowFunc  func() time.Time
+	store   Store
+	settler SettlementExecutor
+	cfg     EngineConfig
+	mu      sync.Mutex
+	nowFunc func() time.Time
 }
 
 // NewEngine creates a new escrow engine.
@@ -66,13 +66,13 @@ func NewEngine(store Store, settler SettlementExecutor, cfg EngineConfig) *Engin
 
 // CreateRequest holds the parameters for creating an escrow.
 type CreateRequest struct {
-	BuyerDID  string
-	SellerDID string
-	Amount    *big.Int
-	Reason    string
-	TaskID    string
+	BuyerDID   string
+	SellerDID  string
+	Amount     *big.Int
+	Reason     string
+	TaskID     string
 	Milestones []MilestoneRequest
-	ExpiresAt *time.Time
+	ExpiresAt  *time.Time
 }
 
 // MilestoneRequest defines a milestone at creation time.

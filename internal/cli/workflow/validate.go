@@ -36,9 +36,9 @@ func newValidateCmd() *cobra.Command {
 
 			type validateOutput struct {
 				Valid    bool   `json:"valid"`
-				File    string `json:"file"`
-				Name    string `json:"name"`
-				Steps   int    `json:"steps"`
+				File     string `json:"file"`
+				Name     string `json:"name"`
+				Steps    int    `json:"steps"`
 				Schedule string `json:"schedule,omitempty"`
 			}
 

@@ -18,7 +18,7 @@ type MockEmbeddingProvider struct {
 	EmbedDimension int
 	Vectors        [][]float32
 
-	EmbedErr  error
+	EmbedErr   error
 	embedCalls int
 	lastTexts  []string
 }

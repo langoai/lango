@@ -370,7 +370,7 @@ func TestSubmitUserOp_PaymasterTwoPhase(t *testing.T) {
 			json.NewEncoder(w).Encode(map[string]interface{}{
 				"jsonrpc": "2.0",
 				"id":      2,
-				"result": "0xabcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890",
+				"result":  "0xabcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890",
 			})
 		}
 	}))
@@ -537,7 +537,7 @@ func TestSubmitUserOp_PaymasterGasOverrides(t *testing.T) {
 			json.NewEncoder(w).Encode(map[string]interface{}{
 				"jsonrpc": "2.0",
 				"id":      2,
-				"result": "0xabcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890",
+				"result":  "0xabcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890",
 			})
 		}
 	}))

@@ -145,4 +145,3 @@ func buildApprovalSummary(toolName string, params map[string]interface{}) string
 func truncate(s string, maxLen int) string {
 	return toolchain.Truncate(s, maxLen)
 }
-

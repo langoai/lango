@@ -176,10 +176,10 @@ func TestEngineFund(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
-		give      string
-		setup     func(*Engine) string
-		lockErr   error
-		wantErr   bool
+		give    string
+		setup   func(*Engine) string
+		lockErr error
+		wantErr bool
 	}{
 		{
 			give: "success",

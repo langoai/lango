@@ -15,12 +15,12 @@ import (
 
 func newReadCmd(cfgLoader func() (*config.Config, error)) *cobra.Command {
 	var (
-		address  string
-		abiFile  string
-		method   string
-		argsStr  string
-		chainID  int64
-		asJSON   bool
+		address string
+		abiFile string
+		method  string
+		argsStr string
+		chainID int64
+		asJSON  bool
 	)
 
 	cmd := &cobra.Command{

@@ -29,7 +29,7 @@ type PaymentAgreement struct {
 	Mode        PaymentMode `json:"mode"`
 	PricePerUse string      `json:"pricePerUse"` // decimal string, e.g. "0.50"
 	Currency    string      `json:"currency"`
-	MaxUses     int         `json:"maxUses"`     // 0 = unlimited
+	MaxUses     int         `json:"maxUses"` // 0 = unlimited
 	ValidUntil  time.Time   `json:"validUntil"`
 	AgreedAt    time.Time   `json:"agreedAt"`
 }

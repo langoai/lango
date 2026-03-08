@@ -25,7 +25,7 @@ type PriceModifier struct {
 // Quote represents a computed price for a tool invocation.
 type Quote struct {
 	ToolName   string          `json:"toolName"`
-	BasePrice  *big.Int        `json:"basePrice"`  // in smallest USDC units
+	BasePrice  *big.Int        `json:"basePrice"` // in smallest USDC units
 	FinalPrice *big.Int        `json:"finalPrice"`
 	Currency   string          `json:"currency"` // "USDC"
 	Modifiers  []PriceModifier `json:"modifiers"`

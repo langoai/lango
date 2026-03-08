@@ -26,9 +26,9 @@ type SmartAccountSessionConfig struct {
 // SmartAccountPaymasterConfig defines paymaster settings for gasless transactions.
 type SmartAccountPaymasterConfig struct {
 	Enabled          bool   `mapstructure:"enabled" json:"enabled"`
-	Provider         string `mapstructure:"provider" json:"provider"`                 // "circle"|"pimlico"|"alchemy"
+	Provider         string `mapstructure:"provider" json:"provider"` // "circle"|"pimlico"|"alchemy"
 	RPCURL           string `mapstructure:"rpcURL" json:"rpcURL"`
-	TokenAddress     string `mapstructure:"tokenAddress" json:"tokenAddress"`         // USDC address
+	TokenAddress     string `mapstructure:"tokenAddress" json:"tokenAddress"` // USDC address
 	PaymasterAddress string `mapstructure:"paymasterAddress" json:"paymasterAddress"`
 	PolicyID         string `mapstructure:"policyId" json:"policyId,omitempty"`
 	FallbackMode     string `mapstructure:"fallbackMode" json:"fallbackMode,omitempty"` // "abort"|"direct"

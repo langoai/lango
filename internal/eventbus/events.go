@@ -150,4 +150,3 @@ type TrustUpdatedEvent struct {
 
 // EventName implements Event.
 func (e TrustUpdatedEvent) EventName() string { return "trust.updated" }
-

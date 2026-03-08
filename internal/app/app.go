@@ -26,9 +26,9 @@ import (
 	"github.com/langoai/lango/internal/session"
 	"github.com/langoai/lango/internal/toolcatalog"
 	"github.com/langoai/lango/internal/toolchain"
-	"github.com/langoai/lango/internal/wallet"
 	"github.com/langoai/lango/internal/tools/browser"
 	"github.com/langoai/lango/internal/tools/filesystem"
+	"github.com/langoai/lango/internal/wallet"
 	x402pkg "github.com/langoai/lango/internal/x402"
 )
 

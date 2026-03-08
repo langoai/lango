@@ -18,7 +18,7 @@ type State struct {
 	Result  Result
 
 	// Internal state passed between phases.
-	Home    string
+	Home     string
 	LangoDir string
 
 	// Encryption detection.
@@ -42,8 +42,8 @@ type State struct {
 	FirstRun bool
 
 	// Crypto.
-	DBKey    string
-	Crypto   security.CryptoProvider
+	DBKey  string
+	Crypto security.CryptoProvider
 }
 
 // Phase represents a single step in the bootstrap pipeline.

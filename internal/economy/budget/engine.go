@@ -298,4 +298,3 @@ func (e *Engine) checkThresholds(tb *TaskBudget) {
 		e.alertCallback(tb.TaskID, threshold)
 	}
 }
-

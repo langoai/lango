@@ -255,4 +255,3 @@ func mapCategory(analysisType string) (entknowledge.Category, error) {
 		return "", fmt.Errorf("unrecognized knowledge type: %q", analysisType)
 	}
 }
-

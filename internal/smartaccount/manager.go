@@ -22,16 +22,16 @@ var _ AccountManager = (*Manager)(nil)
 // Manager implements AccountManager for Safe-based smart accounts
 // with ERC-7579 module support and ERC-4337 UserOp submission.
 type Manager struct {
-	factory      *Factory
-	bundler      *bundler.Client
-	caller       contract.ContractCaller
-	wallet       wallet.WalletProvider
-	chainID      int64
-	entryPoint   common.Address
-	accountAddr  common.Address
-	modules      []ModuleInfo
-	paymasterFn  PaymasterDataFunc
-	mu           sync.Mutex
+	factory     *Factory
+	bundler     *bundler.Client
+	caller      contract.ContractCaller
+	wallet      wallet.WalletProvider
+	chainID     int64
+	entryPoint  common.Address
+	accountAddr common.Address
+	modules     []ModuleInfo
+	paymasterFn PaymasterDataFunc
+	mu          sync.Mutex
 }
 
 // NewManager creates a smart account manager.
@@ -292,8 +292,9 @@ func (m *Manager) Execute(
 // submitUserOp constructs a UserOp, estimates gas, signs it,
 // and submits it via the bundler.
 // When a paymaster function is set, uses a 2-phase flow:
-//   Phase 1: stub paymasterAndData for gas estimation
-//   Phase 2: final paymasterAndData with optional gas overrides
+//
+//	Phase 1: stub paymasterAndData for gas estimation
+//	Phase 2: final paymasterAndData with optional gas overrides
 func (m *Manager) submitUserOp(
 	ctx context.Context,
 	calldata []byte,

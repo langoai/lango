@@ -59,9 +59,9 @@ func WithAgentErrorFixProvider(p ErrorFixProvider) AgentOption {
 
 // Agent wraps the ADK runner for integration with Lango.
 type Agent struct {
-	runner         *runner.Runner
-	adkAgent       adk_agent.Agent
-	maxTurns       int              // 0 = defaultMaxTurns
+	runner           *runner.Runner
+	adkAgent         adk_agent.Agent
+	maxTurns         int              // 0 = defaultMaxTurns
 	errorFixProvider ErrorFixProvider // optional: for self-correction on errors
 }
 

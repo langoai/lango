@@ -34,8 +34,8 @@ func (m *mockWallet) PublicKey(_ context.Context) ([]byte, error) {
 	return ethcrypto.CompressPubkey(&key.PublicKey), nil
 }
 
-func (m *mockWallet) Address(_ context.Context) (string, error)                  { return "", nil }
-func (m *mockWallet) Balance(_ context.Context) (*big.Int, error)                { return nil, nil }
+func (m *mockWallet) Address(_ context.Context) (string, error)                   { return "", nil }
+func (m *mockWallet) Balance(_ context.Context) (*big.Int, error)                 { return nil, nil }
 func (m *mockWallet) SignTransaction(_ context.Context, _ []byte) ([]byte, error) { return nil, nil }
 
 func newTestHandshaker(t *testing.T, w *mockWallet) *Handshaker {

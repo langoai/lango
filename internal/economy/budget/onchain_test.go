@@ -13,24 +13,24 @@ func TestOnChainTracker_Record(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
-		give       string
+		give        string
 		giveAmounts []int64
-		wantTotal  int64
+		wantTotal   int64
 	}{
 		{
-			give:       "single record",
+			give:        "single record",
 			giveAmounts: []int64{100},
-			wantTotal:  100,
+			wantTotal:   100,
 		},
 		{
-			give:       "multiple records accumulate",
+			give:        "multiple records accumulate",
 			giveAmounts: []int64{100, 200, 300},
-			wantTotal:  600,
+			wantTotal:   600,
 		},
 		{
-			give:       "zero amount",
+			give:        "zero amount",
 			giveAmounts: []int64{0},
-			wantTotal:  0,
+			wantTotal:   0,
 		},
 	}
 
@@ -74,10 +74,10 @@ func TestOnChainTracker_Callback(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
-		give           string
-		giveAmounts    []int64
-		wantCalls      int
-		wantLastSpent  int64
+		give          string
+		giveAmounts   []int64
+		wantCalls     int
+		wantLastSpent int64
 	}{
 		{
 			give:          "callback called on each record",
@@ -139,10 +139,10 @@ func TestOnChainTracker_Reset(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
-		give          string
-		giveSession   string
-		giveAmount    int64
-		resetSession  string
+		give           string
+		giveSession    string
+		giveAmount     int64
+		resetSession   string
 		wantAfterReset int64
 	}{
 		{

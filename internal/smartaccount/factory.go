@@ -77,7 +77,9 @@ func NewFactory(
 
 // ComputeAddress computes the counterfactual Safe address via CREATE2.
 // Uses the SafeProxyFactory's salt derivation:
-//   deploymentSalt = keccak256(keccak256(initializer) ++ saltNonce)
+//
+//	deploymentSalt = keccak256(keccak256(initializer) ++ saltNonce)
+//
 // and the proxy initCode hash for the CREATE2 formula.
 func (f *Factory) ComputeAddress(
 	owner common.Address,
@@ -234,14 +236,14 @@ func buildSafeInitializer(
 	owners := []common.Address{owner}
 	data, err := parsed.Pack(
 		"setup",
-		owners,                // _owners
-		big.NewInt(1),         // _threshold
-		safe7579Addr,          // to (7579 adapter setup as delegate call)
-		[]byte{},              // data (empty, setup done post-deploy)
-		fallbackAddr,          // fallbackHandler
-		common.Address{},      // paymentToken (zero, no payment)
-		big.NewInt(0),         // payment
-		common.Address{},      // paymentReceiver (zero)
+		owners,           // _owners
+		big.NewInt(1),    // _threshold
+		safe7579Addr,     // to (7579 adapter setup as delegate call)
+		[]byte{},         // data (empty, setup done post-deploy)
+		fallbackAddr,     // fallbackHandler
+		common.Address{}, // paymentToken (zero, no payment)
+		big.NewInt(0),    // payment
+		common.Address{}, // paymentReceiver (zero)
 	)
 	if err != nil {
 		return nil

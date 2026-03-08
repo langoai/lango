@@ -243,17 +243,17 @@ func initAuth(cfg *config.Config, store session.Store) *gateway.AuthManager {
 
 // agentDeps groups the dependencies needed by initAgent to reduce parameter sprawl.
 type agentDeps struct {
-	sv      *supervisor.Supervisor
-	cfg     *config.Config
-	store   session.Store
-	tools   []*agent.Tool
-	kc      *knowledgeComponents
-	mc      *memoryComponents
-	ec      *embeddingComponents
-	gc      *graphComponents
-	scanner *agent.SecretScanner
-	sr      *skill.Registry
-	lc      *librarianComponents
+	sv       *supervisor.Supervisor
+	cfg      *config.Config
+	store    session.Store
+	tools    []*agent.Tool
+	kc       *knowledgeComponents
+	mc       *memoryComponents
+	ec       *embeddingComponents
+	gc       *graphComponents
+	scanner  *agent.SecretScanner
+	sr       *skill.Registry
+	lc       *librarianComponents
 	catalog  *toolcatalog.Catalog
 	p2pc     *p2pComponents
 	eventBus *eventbus.Bus

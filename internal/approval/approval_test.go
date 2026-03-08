@@ -10,11 +10,11 @@ import (
 
 // mockProvider is a test provider that handles a specific prefix.
 type mockProvider struct {
-	prefix  string
-	result  bool
-	err     error
-	called  bool
-	callMu  sync.Mutex
+	prefix string
+	result bool
+	err    error
+	called bool
+	callMu sync.Mutex
 }
 
 func (m *mockProvider) RequestApproval(_ context.Context, _ ApprovalRequest) (ApprovalResponse, error) {
@@ -315,13 +315,13 @@ func TestCompositeProvider_NonP2PStillUsesTTY(t *testing.T) {
 
 func TestGatewayProvider(t *testing.T) {
 	tests := []struct {
-		give           string
-		hasCompanions  bool
-		approveResult  bool
-		approveErr     error
-		wantCanHandle  bool
-		wantApproved   bool
-		wantErr        bool
+		give          string
+		hasCompanions bool
+		approveResult bool
+		approveErr    error
+		wantCanHandle bool
+		wantApproved  bool
+		wantErr       bool
 	}{
 		{
 			give:          "with companions, approved",

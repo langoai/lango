@@ -16,11 +16,11 @@ import (
 //   - MiMC(SourceDataHash, AgentKeyProof, Timestamp) == ResponseHash
 //   - MinTimestamp <= Timestamp <= MaxTimestamp (freshness)
 type ResponseAttestationCircuit struct {
-	ResponseHash   frontend.Variable `gnark:",public"`
-	AgentDIDHash   frontend.Variable `gnark:",public"`
-	Timestamp      frontend.Variable `gnark:",public"`
-	MinTimestamp   frontend.Variable `gnark:",public"`
-	MaxTimestamp   frontend.Variable `gnark:",public"`
+	ResponseHash frontend.Variable `gnark:",public"`
+	AgentDIDHash frontend.Variable `gnark:",public"`
+	Timestamp    frontend.Variable `gnark:",public"`
+	MinTimestamp frontend.Variable `gnark:",public"`
+	MaxTimestamp frontend.Variable `gnark:",public"`
 
 	SourceDataHash frontend.Variable `gnark:""`
 	AgentKeyProof  frontend.Variable `gnark:""`

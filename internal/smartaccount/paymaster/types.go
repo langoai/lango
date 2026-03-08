@@ -16,16 +16,16 @@ type PaymasterProvider interface {
 
 // SponsorRequest contains UserOp data for paymaster sponsorship.
 type SponsorRequest struct {
-	UserOp     *UserOpData        `json:"userOp"`
-	EntryPoint common.Address     `json:"entryPoint"`
-	ChainID    int64              `json:"chainId"`
-	Stub       bool               `json:"stub"`
-	Context    map[string]string  `json:"context,omitempty"`
+	UserOp     *UserOpData       `json:"userOp"`
+	EntryPoint common.Address    `json:"entryPoint"`
+	ChainID    int64             `json:"chainId"`
+	Stub       bool              `json:"stub"`
+	Context    map[string]string `json:"context,omitempty"`
 }
 
 // SponsorResult contains paymaster response data.
 type SponsorResult struct {
-	PaymasterAndData []byte       `json:"paymasterAndData"`
+	PaymasterAndData []byte        `json:"paymasterAndData"`
 	GasOverrides     *GasOverrides `json:"gasOverrides,omitempty"`
 }
 

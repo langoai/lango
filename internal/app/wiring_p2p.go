@@ -203,8 +203,8 @@ func initP2P(cfg *config.Config, wp wallet.WalletProvider, pc *paymentComponents
 				ResponseHash: responseHash,
 				AgentDIDHash: agentDIDHash,
 				Timestamp:    now,
-				MinTimestamp:  now - 300, // 5-minute window
-				MaxTimestamp:  now + 30,  // 30-second future grace
+				MinTimestamp: now - 300, // 5-minute window
+				MaxTimestamp: now + 30,  // 30-second future grace
 			}
 			proof, err := zkProver.Prove(context.Background(), "response_attestation", assignment)
 			if err != nil {

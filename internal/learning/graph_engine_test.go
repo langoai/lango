@@ -46,7 +46,7 @@ func (s *fakeGraphStore) Traverse(context.Context, string, int, []string) ([]gra
 func (s *fakeGraphStore) Count(context.Context) (int, error)                     { return len(s.triples), nil }
 func (s *fakeGraphStore) PredicateStats(context.Context) (map[string]int, error) { return nil, nil }
 func (s *fakeGraphStore) ClearAll(context.Context) error                         { s.triples = nil; return nil }
-func (s *fakeGraphStore) AllTriples(_ context.Context) ([]graph.Triple, error)    { return s.triples, nil }
+func (s *fakeGraphStore) AllTriples(_ context.Context) ([]graph.Triple, error)   { return s.triples, nil }
 func (s *fakeGraphStore) Close() error                                           { return nil }
 
 func TestGraphEngine_RecordErrorGraph_WithCallback(t *testing.T) {

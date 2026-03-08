@@ -16,7 +16,7 @@ type mockStartable struct {
 }
 
 func (m *mockStartable) Start(_ *sync.WaitGroup) { m.started = true }
-func (m *mockStartable) Stop()                    { m.stopped = true }
+func (m *mockStartable) Stop()                   { m.stopped = true }
 
 func TestNewSimpleComponent(t *testing.T) {
 	t.Parallel()

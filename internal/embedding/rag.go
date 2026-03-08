@@ -5,8 +5,8 @@ import (
 	"fmt"
 	"time"
 
-	"golang.org/x/sync/errgroup"
 	"go.uber.org/zap"
+	"golang.org/x/sync/errgroup"
 )
 
 // RAGResult represents a single retrieval result with original content.

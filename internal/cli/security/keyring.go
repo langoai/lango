@@ -75,8 +75,8 @@ the passphrase to avoid exposing it to same-UID attacks via plain OS keyring.`,
 
 			if err := secureProvider.Set(keyring.Service, keyring.KeyMasterPassphrase, pass); err != nil {
 				if errors.Is(err, keyring.ErrEntitlement) {
-					return fmt.Errorf("biometric storage unavailable (binary not codesigned)\n"+
-						"  Tip: codesign the binary: make codesign\n"+
+					return fmt.Errorf("biometric storage unavailable (binary not codesigned)\n" +
+						"  Tip: codesign the binary: make codesign\n" +
 						"  Note: also ensure device passcode is set (required for biometric Keychain)")
 				}
 				return fmt.Errorf("store passphrase: %w", err)

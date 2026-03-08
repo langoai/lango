@@ -20,12 +20,12 @@ func TestValidator_Check(t *testing.T) {
 	now := time.Now()
 
 	tests := []struct {
-		give       string
-		policy     *HarnessPolicy
-		tracker    *SpendTracker
-		call       *sa.ContractCall
-		wantErr    error
-		wantNoErr  bool
+		give      string
+		policy    *HarnessPolicy
+		tracker   *SpendTracker
+		call      *sa.ContractCall
+		wantErr   error
+		wantNoErr bool
 	}{
 		{
 			give: "allowed call passes all checks",

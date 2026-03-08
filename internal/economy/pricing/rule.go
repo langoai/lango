@@ -8,7 +8,7 @@ import (
 
 // RuleCondition defines when a pricing rule applies.
 type RuleCondition struct {
-	ToolPattern   string  `json:"toolPattern,omitempty"`   // glob pattern for tool name
+	ToolPattern   string  `json:"toolPattern,omitempty"` // glob pattern for tool name
 	MinTrustScore float64 `json:"minTrustScore,omitempty"`
 	MaxTrustScore float64 `json:"maxTrustScore,omitempty"`
 	PeerDID       string  `json:"peerDid,omitempty"` // specific peer

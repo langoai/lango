@@ -275,8 +275,8 @@ import (
 // stored items (BiometryCurrentSet), providing stronger security than BiometryAny.
 type BiometricProvider struct{}
 
-var _ Provider    = (*BiometricProvider)(nil)
-var _ KeyChecker  = (*BiometricProvider)(nil)
+var _ Provider = (*BiometricProvider)(nil)
+var _ KeyChecker = (*BiometricProvider)(nil)
 
 // NewBiometricProvider creates a new BiometricProvider.
 // Returns ErrBiometricNotAvailable if Touch ID hardware is not available.
