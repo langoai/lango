@@ -2,9 +2,11 @@ package app
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"time"
 
+	"github.com/langoai/lango/internal/adk"
 	"github.com/langoai/lango/internal/approval"
 	"github.com/langoai/lango/internal/channels/discord"
 	"github.com/langoai/lango/internal/channels/slack"
@@ -133,7 +135,27 @@ func (a *App) runAgent(ctx context.Context, sessionKey, input string) (string, e
 		"timeout", timeout.String(),
 		"input_len", len(input))
 
-	ctx, cancel := context.WithTimeout(ctx, timeout)
+	var cancel context.CancelFunc
+	var extDeadline *ExtendableDeadline
+	var runOpts []adk.RunOption
+
+	if a.Config.Agent.AutoExtendTimeout {
+		maxTimeout := a.Config.Agent.MaxRequestTimeout
+		if maxTimeout <= 0 {
+			maxTimeout = timeout * 3
+		}
+		ctx, extDeadline = NewExtendableDeadline(ctx, timeout, maxTimeout)
+		cancel = extDeadline.Stop
+		runOpts = append(runOpts, adk.WithOnActivity(func() {
+			extDeadline.Extend()
+		}))
+		logger().Debugw("auto-extend timeout enabled",
+			"session", sessionKey,
+			"baseTimeout", timeout.String(),
+			"maxTimeout", maxTimeout.String())
+	} else {
+		ctx, cancel = context.WithTimeout(ctx, timeout)
+	}
 	defer cancel()
 
 	// Warn when approaching timeout (80%).
@@ -146,7 +168,7 @@ func (a *App) runAgent(ctx context.Context, sessionKey, input string) (string, e
 	defer warnTimer.Stop()
 
 	ctx = session.WithSessionKey(ctx, sessionKey)
-	response, err := a.Agent.RunAndCollect(ctx, sessionKey, input)
+	response, err := a.Agent.RunAndCollect(ctx, sessionKey, input, runOpts...)
 
 	// Trigger async buffers after agent turn regardless of error.
 	if a.MemoryBuffer != nil {
@@ -157,14 +179,26 @@ func (a *App) runAgent(ctx context.Context, sessionKey, input string) (string, e
 	}
 
 	elapsed := time.Since(start)
-	if err != nil && ctx.Err() == context.DeadlineExceeded {
-		logger().Errorw("agent request timed out",
-			"session", sessionKey,
-			"elapsed", elapsed.String(),
-			"timeout", timeout.String())
-		return "", fmt.Errorf("request timed out after %v", timeout)
-	}
 	if err != nil {
+		// Check if the error carries a partial result we can recover.
+		var agentErr *adk.AgentError
+		if errors.As(err, &agentErr) && agentErr.Partial != "" {
+			logger().Warnw("agent request failed with partial result",
+				"session", sessionKey,
+				"elapsed", elapsed.String(),
+				"code", string(agentErr.Code),
+				"partial_len", len(agentErr.Partial))
+			return formatPartialResponse(agentErr.Partial, agentErr), nil
+		}
+
+		if ctx.Err() == context.DeadlineExceeded {
+			logger().Errorw("agent request timed out",
+				"session", sessionKey,
+				"elapsed", elapsed.String(),
+				"timeout", timeout.String())
+			return "", fmt.Errorf("request timed out after %v", timeout)
+		}
+
 		logger().Warnw("agent request failed",
 			"session", sessionKey,
 			"elapsed", elapsed.String(),

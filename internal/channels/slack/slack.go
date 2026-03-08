@@ -2,6 +2,7 @@ package slack
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net/http"
 	"strings"
@@ -271,13 +272,25 @@ func (c *Channel) handleMessage(ctx context.Context, eventType, channelID, userI
 		// Post a placeholder "Thinking..." message while processing
 		placeholderTS, placeholderErr := c.postThinking(channelID, threadTS)
 
+		// Start periodic progress updates on the placeholder.
+		var stopProgress func()
+		if placeholderErr == nil {
+			stopProgress = c.startProgressUpdates(channelID, placeholderTS)
+		}
+
 		response, err := c.handler(ctx, incoming)
+
+		// Stop progress updates before modifying the placeholder.
+		if stopProgress != nil {
+			stopProgress()
+		}
+
 		if err != nil {
 			logger.Errorw("handler error", "error", err)
 			c.sendError(channelID, threadTS, err)
 			// Clean up placeholder on error
 			if placeholderErr == nil {
-				_ = c.updateThinking(channelID, placeholderTS, fmt.Sprintf("Error: %s", err.Error()))
+				_ = c.updateThinking(channelID, placeholderTS, fmt.Sprintf("❌ %s", formatChannelError(err)))
 			}
 			return
 		}
@@ -343,6 +356,33 @@ func (c *Channel) postThinking(channelID, threadTS string) (string, error) {
 	return ts, nil
 }
 
+// startProgressUpdates periodically updates the thinking placeholder with elapsed time.
+// Returns a stop function that must be called before the placeholder is replaced.
+func (c *Channel) startProgressUpdates(channelID, messageTS string) func() {
+	start := time.Now()
+	done := make(chan struct{})
+	var once sync.Once
+
+	go func() {
+		ticker := time.NewTicker(15 * time.Second)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-done:
+				return
+			case <-ticker.C:
+				elapsed := time.Since(start).Truncate(time.Second)
+				text := fmt.Sprintf("_Thinking... (%s)_", elapsed)
+				if err := c.updateThinking(channelID, messageTS, text); err != nil {
+					logger.Warnw("progress update error", "error", err)
+				}
+			}
+		}
+	}()
+
+	return func() { once.Do(func() { close(done) }) }
+}
+
 // updateThinking replaces a placeholder message with the given text.
 func (c *Channel) updateThinking(channelID, messageTS, text string) error {
 	_, _, _, err := c.api.UpdateMessage(channelID, messageTS, slack.MsgOptionText(text, false))
@@ -388,12 +428,25 @@ func (c *Channel) cleanText(text string) string {
 	return strings.TrimSpace(text)
 }
 
-// sendError sends an error message
+// sendError sends an error message with user-friendly formatting.
 func (c *Channel) sendError(channelID, threadTS string, err error) {
 	_ = c.Send(channelID, &OutgoingMessage{
-		Text:     fmt.Sprintf("❌ Error: %s", err.Error()),
+		Text:     fmt.Sprintf("❌ %s", formatChannelError(err)),
 		ThreadTS: threadTS,
 	})
+}
+
+// formatChannelError returns a user-friendly error message.
+// If the error implements UserMessage(), that is used; otherwise falls back to Error().
+func formatChannelError(err error) string {
+	type userMessager interface {
+		UserMessage() string
+	}
+	var um userMessager
+	if errors.As(err, &um) {
+		return um.UserMessage()
+	}
+	return fmt.Sprintf("Error: %s", err.Error())
 }
 
 // Stop stops the Slack bot

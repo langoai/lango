@@ -11,10 +11,11 @@ import (
 
 // MockSession implements Session interface for testing
 type MockSession struct {
-	Handlers     []interface{}
-	SentMessages []string
-	State        *discordgo.State
-	TypingCalls  []string
+	Handlers      []interface{}
+	SentMessages  []string
+	EditedMessages []string
+	State         *discordgo.State
+	TypingCalls   []string
 }
 
 func (m *MockSession) Open() error {
@@ -32,7 +33,7 @@ func (m *MockSession) AddHandler(handler interface{}) func() {
 
 func (m *MockSession) ChannelMessageSend(channelID string, content string, options ...discordgo.RequestOption) (*discordgo.Message, error) {
 	m.SentMessages = append(m.SentMessages, content)
-	return &discordgo.Message{Content: content}, nil
+	return &discordgo.Message{ID: "mock-msg-id", Content: content}, nil
 }
 
 func (m *MockSession) ChannelMessageSendComplex(channelID string, data *discordgo.MessageSend, options ...discordgo.RequestOption) (*discordgo.Message, error) {
@@ -41,6 +42,9 @@ func (m *MockSession) ChannelMessageSendComplex(channelID string, data *discordg
 }
 
 func (m *MockSession) ChannelMessageEditComplex(edit *discordgo.MessageEdit, options ...discordgo.RequestOption) (*discordgo.Message, error) {
+	if edit.Content != nil {
+		m.EditedMessages = append(m.EditedMessages, *edit.Content)
+	}
 	return &discordgo.Message{}, nil
 }
 
@@ -114,13 +118,13 @@ func TestDiscordChannel(t *testing.T) {
 		},
 	})
 
-	// Verify typing indicator was sent
-	require.NotEmpty(t, mockSession.TypingCalls, "expected typing indicator to be sent")
-	assert.Equal(t, "chan-1", mockSession.TypingCalls[0])
+	// Verify thinking placeholder was sent
+	require.NotEmpty(t, mockSession.SentMessages, "expected thinking placeholder to be sent")
+	assert.Equal(t, "_Thinking..._", mockSession.SentMessages[0])
 
-	// Verify response was sent
-	require.Len(t, mockSession.SentMessages, 1)
-	assert.Equal(t, "World", mockSession.SentMessages[0])
+	// Verify response was sent via edit (placeholder replaced with response)
+	require.NotEmpty(t, mockSession.EditedMessages, "expected response via edit")
+	assert.Equal(t, "World", mockSession.EditedMessages[0])
 }
 
 func TestDiscordTypingIndicator(t *testing.T) {
@@ -161,14 +165,14 @@ func TestDiscordTypingIndicator(t *testing.T) {
 		},
 	})
 
-	// Typing should have been called at least once for the channel
-	require.NotEmpty(t, mockSession.TypingCalls, "expected at least one typing call")
+	// Thinking placeholder should have been posted
+	require.NotEmpty(t, mockSession.SentMessages, "expected thinking placeholder to be sent")
 	found := false
-	for _, ch := range mockSession.TypingCalls {
-		if ch == "chan-typing" {
+	for _, msg := range mockSession.SentMessages {
+		if msg == "_Thinking..._" {
 			found = true
 			break
 		}
 	}
-	assert.True(t, found, "expected typing call for 'chan-typing'")
+	assert.True(t, found, "expected thinking placeholder message")
 }

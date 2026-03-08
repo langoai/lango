@@ -198,6 +198,29 @@ func (s *Server) handleChatMessage(client *Client, params json.RawMessage) (inte
 	})
 	defer warnTimer.Stop()
 
+	// Start periodic progress broadcast every 15s.
+	progressStart := time.Now()
+	progressDone := make(chan struct{})
+	var progressOnce sync.Once
+	go func() {
+		ticker := time.NewTicker(15 * time.Second)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-progressDone:
+				return
+			case <-ticker.C:
+				elapsed := time.Since(progressStart).Truncate(time.Second)
+				s.BroadcastToSession(sessionKey, "agent.progress", map[string]string{
+					"sessionKey": sessionKey,
+					"elapsed":    elapsed.String(),
+					"message":    fmt.Sprintf("Thinking... (%s)", elapsed),
+				})
+			}
+		}
+	}()
+	stopProgress := func() { progressOnce.Do(func() { close(progressDone) }) }
+
 	ctx = session.WithSessionKey(ctx, sessionKey)
 	response, err := s.agent.RunStreaming(ctx, sessionKey, req.Message, func(chunk string) {
 		s.BroadcastToSession(sessionKey, "agent.chunk", map[string]string{
@@ -205,6 +228,9 @@ func (s *Server) handleChatMessage(client *Client, params json.RawMessage) (inte
 			"chunk":      chunk,
 		})
 	})
+
+	// Stop progress updates now that the agent has finished.
+	stopProgress()
 
 	// Fire turn-complete callbacks (buffer triggers, etc.) regardless of error.
 	for _, cb := range s.turnCallbacks {
@@ -221,16 +247,34 @@ func (s *Server) handleChatMessage(client *Client, params json.RawMessage) (inte
 	if err != nil {
 		// Classify the error for UI display.
 		errType := "unknown"
-		if ctx.Err() == context.DeadlineExceeded {
+		errCode := ""
+		partial := ""
+		hint := ""
+		userMsg := err.Error()
+
+		var agentErr *adk.AgentError
+		if errors.As(err, &agentErr) {
+			errType = string(agentErr.Code)
+			errCode = string(agentErr.Code)
+			partial = agentErr.Partial
+			userMsg = agentErr.UserMessage()
+		} else if ctx.Err() == context.DeadlineExceeded {
 			errType = "timeout"
+		}
+
+		if partial != "" {
+			hint = "Partial result was recovered. Check the 'partial' field."
 		}
 
 		// Notify UI of the error so it can stop thinking indicators
 		// and display a user-visible error message.
 		s.BroadcastToSession(sessionKey, "agent.error", map[string]string{
 			"sessionKey": sessionKey,
-			"error":      err.Error(),
+			"error":      userMsg,
 			"type":       errType,
+			"code":       errCode,
+			"partial":    partial,
+			"hint":       hint,
 		})
 		return nil, err
 	}
