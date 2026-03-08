@@ -30,6 +30,7 @@ Examples:
 	cmd.AddCommand(sessionCmd(bootLoader))
 	cmd.AddCommand(moduleCmd(bootLoader))
 	cmd.AddCommand(policyCmd(bootLoader))
+	cmd.AddCommand(paymasterCmd(bootLoader))
 
 	return cmd
 }

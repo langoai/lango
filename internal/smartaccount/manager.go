@@ -21,15 +21,16 @@ var _ AccountManager = (*Manager)(nil)
 // Manager implements AccountManager for Safe-based smart accounts
 // with ERC-7579 module support and ERC-4337 UserOp submission.
 type Manager struct {
-	factory     *Factory
-	bundler     *bundler.Client
-	caller      contract.ContractCaller
-	wallet      wallet.WalletProvider
-	chainID     int64
-	entryPoint  common.Address
-	accountAddr common.Address
-	modules     []ModuleInfo
-	mu          sync.Mutex
+	factory      *Factory
+	bundler      *bundler.Client
+	caller       contract.ContractCaller
+	wallet       wallet.WalletProvider
+	chainID      int64
+	entryPoint   common.Address
+	accountAddr  common.Address
+	modules      []ModuleInfo
+	paymasterFn  PaymasterDataFunc
+	mu           sync.Mutex
 }
 
 // NewManager creates a smart account manager.
@@ -50,6 +51,13 @@ func NewManager(
 		entryPoint: entryPoint,
 		modules:    make([]ModuleInfo, 0),
 	}
+}
+
+// SetPaymasterFunc sets the paymaster callback for gasless transactions.
+func (m *Manager) SetPaymasterFunc(fn PaymasterDataFunc) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.paymasterFn = fn
 }
 
 // GetOrDeploy returns the account info, deploying if needed.
@@ -282,6 +290,9 @@ func (m *Manager) Execute(
 
 // submitUserOp constructs a UserOp, estimates gas, signs it,
 // and submits it via the bundler.
+// When a paymaster function is set, uses a 2-phase flow:
+//   Phase 1: stub paymasterAndData for gas estimation
+//   Phase 2: final paymasterAndData with optional gas overrides
 func (m *Manager) submitUserOp(
 	ctx context.Context,
 	calldata []byte,
@@ -300,6 +311,15 @@ func (m *Manager) submitUserOp(
 		Signature:            []byte{},
 	}
 
+	// Phase 1: get stub paymasterAndData for gas estimation.
+	if m.paymasterFn != nil {
+		stubData, _, err := m.paymasterFn(ctx, op, true)
+		if err != nil {
+			return "", fmt.Errorf("paymaster stub: %w", err)
+		}
+		op.PaymasterAndData = stubData
+	}
+
 	// Estimate gas via bundler.
 	bOp := toBundlerOp(op)
 	gasEstimate, err := m.bundler.EstimateGas(ctx, bOp)
@@ -309,6 +329,26 @@ func (m *Manager) submitUserOp(
 	op.CallGasLimit = gasEstimate.CallGasLimit
 	op.VerificationGasLimit = gasEstimate.VerificationGasLimit
 	op.PreVerificationGas = gasEstimate.PreVerificationGas
+
+	// Phase 2: get final paymasterAndData with gas overrides.
+	if m.paymasterFn != nil {
+		finalData, overrides, err := m.paymasterFn(ctx, op, false)
+		if err != nil {
+			return "", fmt.Errorf("paymaster final: %w", err)
+		}
+		op.PaymasterAndData = finalData
+		if overrides != nil {
+			if overrides.CallGasLimit != nil {
+				op.CallGasLimit = overrides.CallGasLimit
+			}
+			if overrides.VerificationGasLimit != nil {
+				op.VerificationGasLimit = overrides.VerificationGasLimit
+			}
+			if overrides.PreVerificationGas != nil {
+				op.PreVerificationGas = overrides.PreVerificationGas
+			}
+		}
+	}
 
 	// Compute the UserOp hash for signing.
 	opHash := m.computeUserOpHash(op)

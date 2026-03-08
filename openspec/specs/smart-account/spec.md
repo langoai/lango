@@ -79,6 +79,10 @@ Package `internal/smartaccount/bindings/`:
 - `deploy`, `info`, `session create/list/revoke`, `module list/install`, `policy show/set`
 - All support `--output json|table` format
 
+### R13: Session Key Paymaster Allowlist
+
+The `SessionPolicy` struct SHALL include an `allowedPaymasters` field (address array). When non-empty, `validateUserOp` SHALL enforce that the paymaster address in `paymasterAndData` is in the allowlist. Empty array = all paymasters allowed (backward compatible). Short paymasterAndData (< 20 bytes) skips the check. `_setSession` persists the array.
+
 ### R12: Economy Integration
 
 Callback-based integrations (no direct smartaccount imports):

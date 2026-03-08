@@ -12,12 +12,13 @@ import (
 
 	"github.com/langoai/lango/internal/agent"
 	sa "github.com/langoai/lango/internal/smartaccount"
+	"github.com/langoai/lango/internal/smartaccount/paymaster"
 	"github.com/langoai/lango/internal/wallet"
 )
 
 // buildSmartAccountTools creates the agent tools for the smart account subsystem.
 func buildSmartAccountTools(sac *smartAccountComponents) []*agent.Tool {
-	return []*agent.Tool{
+	tools := []*agent.Tool{
 		smartAccountDeployTool(sac),
 		smartAccountInfoTool(sac),
 		sessionKeyCreateTool(sac),
@@ -28,7 +29,10 @@ func buildSmartAccountTools(sac *smartAccountComponents) []*agent.Tool {
 		moduleInstallTool(sac),
 		moduleUninstallTool(sac),
 		spendingStatusTool(sac),
+		paymasterStatusTool(sac),
+		paymasterApproveTool(sac),
 	}
+	return tools
 }
 
 func smartAccountDeployTool(sac *smartAccountComponents) *agent.Tool {
@@ -607,6 +611,103 @@ func spendingStatusTool(sac *smartAccountComponents) *agent.Tool {
 			result["registeredModules"] = modList
 
 			return result, nil
+		},
+	}
+}
+
+func paymasterStatusTool(sac *smartAccountComponents) *agent.Tool {
+	return &agent.Tool{
+		Name:        "paymaster_status",
+		Description: "Check paymaster configuration and USDC approval status for gasless transactions",
+		SafetyLevel: agent.SafetyLevelSafe,
+		Parameters: map[string]interface{}{
+			"type":       "object",
+			"properties": map[string]interface{}{},
+		},
+		Handler: func(ctx context.Context, params map[string]interface{}) (interface{}, error) {
+			result := map[string]interface{}{
+				"enabled": sac.paymasterProvider != nil,
+			}
+
+			if sac.paymasterProvider != nil {
+				result["provider"] = sac.paymasterProvider.Type()
+			} else {
+				result["provider"] = "none"
+			}
+
+			return result, nil
+		},
+	}
+}
+
+func paymasterApproveTool(sac *smartAccountComponents) *agent.Tool {
+	return &agent.Tool{
+		Name:        "paymaster_approve",
+		Description: "Approve USDC spending for the paymaster to enable gasless transactions",
+		SafetyLevel: agent.SafetyLevelDangerous,
+		Parameters: map[string]interface{}{
+			"type": "object",
+			"properties": map[string]interface{}{
+				"token_address": map[string]interface{}{
+					"type":        "string",
+					"description": "USDC token contract address (hex)",
+				},
+				"paymaster_address": map[string]interface{}{
+					"type":        "string",
+					"description": "Paymaster contract address (hex)",
+				},
+				"amount": map[string]interface{}{
+					"type":        "string",
+					"description": "USDC amount to approve (e.g. '1000.00'). Use 'max' for unlimited approval.",
+				},
+			},
+			"required": []string{"token_address", "paymaster_address", "amount"},
+		},
+		Handler: func(ctx context.Context, params map[string]interface{}) (interface{}, error) {
+			tokenStr, _ := params["token_address"].(string)
+			pmStr, _ := params["paymaster_address"].(string)
+			amountStr, _ := params["amount"].(string)
+
+			if tokenStr == "" || pmStr == "" || amountStr == "" {
+				return nil, fmt.Errorf("token_address, paymaster_address, and amount are required")
+			}
+
+			tokenAddr := common.HexToAddress(tokenStr)
+			pmAddr := common.HexToAddress(pmStr)
+
+			var amount *big.Int
+			if amountStr == "max" {
+				// MaxUint256
+				amount = new(big.Int).Sub(new(big.Int).Lsh(big.NewInt(1), 256), big.NewInt(1))
+			} else {
+				parsed, err := wallet.ParseUSDC(amountStr)
+				if err != nil {
+					return nil, fmt.Errorf("parse amount %q: %w", amountStr, err)
+				}
+				amount = parsed
+			}
+
+			approval := paymaster.NewApprovalCall(tokenAddr, pmAddr, amount)
+
+			call := sa.ContractCall{
+				Target:      approval.TokenAddress,
+				Value:       big.NewInt(0),
+				Data:        approval.ApproveCalldata,
+				FunctionSig: "approve(address,uint256)",
+			}
+
+			txHash, err := sac.manager.Execute(ctx, []sa.ContractCall{call})
+			if err != nil {
+				return nil, fmt.Errorf("approve USDC: %w", err)
+			}
+
+			return map[string]interface{}{
+				"txHash":    txHash,
+				"token":     tokenAddr.Hex(),
+				"paymaster": pmAddr.Hex(),
+				"amount":    amountStr,
+				"status":    "approved",
+			}, nil
 		},
 	}
 }

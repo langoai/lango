@@ -162,6 +162,21 @@ contract LangoSessionValidator is IERC7579Module, ISessionValidator {
             }
         }
 
+        // Check paymaster allowlist
+        if (session.allowedPaymasters.length > 0 && userOp.paymasterAndData.length >= 20) {
+            address paymaster = address(bytes20(userOp.paymasterAndData[:20]));
+            bool paymasterAllowed = false;
+            for (uint256 i = 0; i < session.allowedPaymasters.length; i++) {
+                if (session.allowedPaymasters[i] == paymaster) {
+                    paymasterAllowed = true;
+                    break;
+                }
+            }
+            if (!paymasterAllowed) {
+                return 1;
+            }
+        }
+
         // Pack validAfter and validUntil into validationData
         // validationData = sigFailed (0) | validUntil (6 bytes) | validAfter (6 bytes)
         return _packValidationData(session.validAfter, session.validUntil);
@@ -186,6 +201,7 @@ contract LangoSessionValidator is IERC7579Module, ISessionValidator {
         s.validAfter = policy.validAfter;
         s.validUntil = policy.validUntil;
         s.active = policy.active;
+        s.allowedPaymasters = policy.allowedPaymasters;
     }
 
     function _isActive(address account, address sessionKey) internal view returns (bool) {

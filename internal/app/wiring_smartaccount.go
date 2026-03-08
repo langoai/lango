@@ -15,19 +15,21 @@ import (
 	sa "github.com/langoai/lango/internal/smartaccount"
 	"github.com/langoai/lango/internal/smartaccount/bundler"
 	"github.com/langoai/lango/internal/smartaccount/module"
+	"github.com/langoai/lango/internal/smartaccount/paymaster"
 	"github.com/langoai/lango/internal/smartaccount/policy"
 	sasession "github.com/langoai/lango/internal/smartaccount/session"
 )
 
 // smartAccountComponents holds optional smart account subsystem components.
 type smartAccountComponents struct {
-	manager        sa.AccountManager
-	sessionManager *sasession.Manager
-	policyEngine   *policy.Engine
-	moduleRegistry *module.Registry
-	bundlerClient  *bundler.Client
-	onChainTracker *budget.OnChainTracker
-	sessionGuard   *sentinel.SessionGuard
+	manager           sa.AccountManager
+	sessionManager    *sasession.Manager
+	policyEngine      *policy.Engine
+	moduleRegistry    *module.Registry
+	bundlerClient     *bundler.Client
+	onChainTracker    *budget.OnChainTracker
+	sessionGuard      *sentinel.SessionGuard
+	paymasterProvider paymaster.PaymasterProvider
 }
 
 // initSmartAccount creates the smart account subsystem if enabled.
@@ -80,7 +82,50 @@ func initSmartAccount(
 		common.HexToAddress(cfg.SmartAccount.FallbackHandler),
 		pc.chainID,
 	)
-	sac.manager = sa.NewManager(factory, sac.bundlerClient, caller, pc.wallet, pc.chainID, entryPoint)
+	mgr := sa.NewManager(factory, sac.bundlerClient, caller, pc.wallet, pc.chainID, entryPoint)
+	sac.manager = mgr
+
+	// 5a. Paymaster provider (optional)
+	if cfg.SmartAccount.Paymaster.Enabled {
+		provider := initPaymasterProvider(cfg.SmartAccount.Paymaster)
+		if provider != nil {
+			sac.paymasterProvider = provider
+			mgr.SetPaymasterFunc(func(ctx context.Context, op *sa.UserOperation, stub bool) ([]byte, *sa.PaymasterGasOverrides, error) {
+				req := &paymaster.SponsorRequest{
+					UserOp: &paymaster.UserOpData{
+						Sender:               op.Sender,
+						Nonce:                op.Nonce,
+						InitCode:             op.InitCode,
+						CallData:             op.CallData,
+						CallGasLimit:         op.CallGasLimit,
+						VerificationGasLimit: op.VerificationGasLimit,
+						PreVerificationGas:   op.PreVerificationGas,
+						MaxFeePerGas:         op.MaxFeePerGas,
+						MaxPriorityFeePerGas: op.MaxPriorityFeePerGas,
+						PaymasterAndData:     op.PaymasterAndData,
+						Signature:            op.Signature,
+					},
+					EntryPoint: entryPoint,
+					ChainID:    pc.chainID,
+					Stub:       stub,
+				}
+				result, err := provider.SponsorUserOp(ctx, req)
+				if err != nil {
+					return nil, nil, err
+				}
+				var gasOverrides *sa.PaymasterGasOverrides
+				if result.GasOverrides != nil {
+					gasOverrides = &sa.PaymasterGasOverrides{
+						CallGasLimit:         result.GasOverrides.CallGasLimit,
+						VerificationGasLimit: result.GasOverrides.VerificationGasLimit,
+						PreVerificationGas:   result.GasOverrides.PreVerificationGas,
+					}
+				}
+				return result.PaymasterAndData, gasOverrides, nil
+			})
+			logger().Info("smart account: paymaster wired", "provider", provider.Type())
+		}
+	}
 
 	// 6. Wire risk engine → policy engine (callback, no direct import)
 	if econc != nil && econc.riskEngine != nil {
@@ -119,6 +164,25 @@ func initSmartAccount(
 
 	logger().Info("smart account subsystem initialized")
 	return sac
+}
+
+// initPaymasterProvider creates a paymaster provider based on config.
+func initPaymasterProvider(cfg config.SmartAccountPaymasterConfig) paymaster.PaymasterProvider {
+	if cfg.RPCURL == "" {
+		logger().Warn("paymaster enabled but no rpcURL configured")
+		return nil
+	}
+	switch cfg.Provider {
+	case "circle":
+		return paymaster.NewCircleProvider(cfg.RPCURL)
+	case "pimlico":
+		return paymaster.NewPimlicoProvider(cfg.RPCURL, cfg.PolicyID)
+	case "alchemy":
+		return paymaster.NewAlchemyProvider(cfg.RPCURL, cfg.PolicyID)
+	default:
+		logger().Warn("unknown paymaster provider", "provider", cfg.Provider)
+		return nil
+	}
 }
 
 // registerDefaultModules registers well-known Lango module descriptors.

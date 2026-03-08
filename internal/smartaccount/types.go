@@ -106,6 +106,18 @@ type AccountInfo struct {
 	EntryPoint   common.Address `json:"entryPoint"`
 }
 
+// PaymasterGasOverrides allows paymaster to override gas estimates.
+type PaymasterGasOverrides struct {
+	CallGasLimit         *big.Int
+	VerificationGasLimit *big.Int
+	PreVerificationGas   *big.Int
+}
+
+// PaymasterDataFunc obtains paymasterAndData for a UserOp.
+// When stub is true, returns temporary data for gas estimation.
+// When stub is false, returns final signed data with optional gas overrides.
+type PaymasterDataFunc func(ctx context.Context, op *UserOperation, stub bool) ([]byte, *PaymasterGasOverrides, error)
+
 // AccountManager defines the smart account management interface.
 type AccountManager interface {
 	// GetOrDeploy returns the account address, deploying if needed.

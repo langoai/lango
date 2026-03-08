@@ -274,6 +274,8 @@ contract LangoSessionValidatorTest is Test {
         bytes4[] memory functions = new bytes4[](1);
         functions[0] = bytes4(0xdeadbeef);
 
+        address[] memory emptyPaymasters = new address[](0);
+
         return ISessionValidator.SessionPolicy({
             allowedTargets: targets,
             allowedFunctions: functions,
@@ -281,7 +283,8 @@ contract LangoSessionValidatorTest is Test {
             spentAmount: 0,
             validAfter: validAfter,
             validUntil: validUntil,
-            active: true
+            active: true,
+            allowedPaymasters: emptyPaymasters
         });
     }
 

@@ -12,6 +12,7 @@ interface ISessionValidator {
         uint48 validAfter;
         uint48 validUntil;
         bool active;
+        address[] allowedPaymasters; // empty = all paymasters allowed
     }
 
     event SessionKeyRegistered(address indexed account, address indexed sessionKey, uint48 validUntil);
