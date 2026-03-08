@@ -108,6 +108,10 @@ type App struct {
 	EconomyNegotiation interface{} // *negotiation.Engine
 	EconomyEscrow      interface{} // *escrow.Engine
 
+	// Smart Account Components (optional, ERC-7579 modular accounts)
+	SmartAccountManager    interface{}             // *smartaccount.Manager
+	SmartAccountComponents *smartAccountComponents // full components for CLI access
+
 	// MCP Components (optional, external MCP server integration)
 	MCPManager *mcp.ServerManager
 

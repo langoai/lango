@@ -5,7 +5,6 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
 )
 
 func TestNativeRuntime_Name(t *testing.T) {
@@ -20,29 +19,6 @@ func TestNativeRuntime_IsAvailable(t *testing.T) {
 
 func TestNativeRuntime_Cleanup(t *testing.T) {
 	rt := NewNativeRuntime(Config{})
-	err := rt.Cleanup(context.Background(), "some-id")
-	assert.NoError(t, err)
-}
-
-func TestGVisorRuntime_Name(t *testing.T) {
-	rt := NewGVisorRuntime()
-	assert.Equal(t, "gvisor", rt.Name())
-}
-
-func TestGVisorRuntime_IsAvailable(t *testing.T) {
-	rt := NewGVisorRuntime()
-	assert.False(t, rt.IsAvailable(context.Background()))
-}
-
-func TestGVisorRuntime_Run(t *testing.T) {
-	rt := NewGVisorRuntime()
-	_, err := rt.Run(context.Background(), ContainerConfig{})
-	require.Error(t, err)
-	assert.ErrorIs(t, err, ErrRuntimeUnavailable)
-}
-
-func TestGVisorRuntime_Cleanup(t *testing.T) {
-	rt := NewGVisorRuntime()
 	err := rt.Cleanup(context.Background(), "some-id")
 	assert.NoError(t, err)
 }

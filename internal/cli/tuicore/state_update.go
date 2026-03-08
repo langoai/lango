@@ -647,6 +647,58 @@ func (s *ConfigState) UpdateConfigFromForm(form *FormModel) {
 			s.Current.Observability.Metrics.Enabled = f.Checked
 		case "obs_metrics_format":
 			s.Current.Observability.Metrics.Format = val
+
+		// Smart Account
+		case "sa_enabled":
+			s.Current.SmartAccount.Enabled = f.Checked
+		case "sa_factory_address":
+			s.Current.SmartAccount.FactoryAddress = val
+		case "sa_entrypoint_address":
+			s.Current.SmartAccount.EntryPointAddress = val
+		case "sa_safe7579_address":
+			s.Current.SmartAccount.Safe7579Address = val
+		case "sa_fallback_handler":
+			s.Current.SmartAccount.FallbackHandler = val
+		case "sa_bundler_url":
+			s.Current.SmartAccount.BundlerURL = val
+
+		// Smart Account Session
+		case "sa_session_max_duration":
+			if d, err := time.ParseDuration(val); err == nil {
+				s.Current.SmartAccount.Session.MaxDuration = d
+			}
+		case "sa_session_default_gas_limit":
+			if i, err := strconv.ParseUint(val, 10, 64); err == nil {
+				s.Current.SmartAccount.Session.DefaultGasLimit = i
+			}
+		case "sa_session_max_active_keys":
+			if i, err := strconv.Atoi(val); err == nil {
+				s.Current.SmartAccount.Session.MaxActiveKeys = i
+			}
+
+		// Smart Account Paymaster
+		case "sa_paymaster_enabled":
+			s.Current.SmartAccount.Paymaster.Enabled = f.Checked
+		case "sa_paymaster_provider":
+			s.Current.SmartAccount.Paymaster.Provider = val
+		case "sa_paymaster_rpc_url":
+			s.Current.SmartAccount.Paymaster.RPCURL = val
+		case "sa_paymaster_token_address":
+			s.Current.SmartAccount.Paymaster.TokenAddress = val
+		case "sa_paymaster_address":
+			s.Current.SmartAccount.Paymaster.PaymasterAddress = val
+		case "sa_paymaster_policy_id":
+			s.Current.SmartAccount.Paymaster.PolicyID = val
+		case "sa_paymaster_fallback_mode":
+			s.Current.SmartAccount.Paymaster.FallbackMode = val
+
+		// Smart Account Modules
+		case "sa_modules_session_validator":
+			s.Current.SmartAccount.Modules.SessionValidatorAddress = val
+		case "sa_modules_spending_hook":
+			s.Current.SmartAccount.Modules.SpendingHookAddress = val
+		case "sa_modules_escrow_executor":
+			s.Current.SmartAccount.Modules.EscrowExecutorAddress = val
 		}
 	}
 }

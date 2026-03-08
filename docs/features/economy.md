@@ -259,6 +259,16 @@ Created --> Deposited --> WorkSubmitted --> Released
 | `escrow.onchain.dispute` | On-chain dispute raised |
 | `escrow.onchain.resolved` | On-chain dispute resolved |
 
+### Smart Account Integration
+
+When smart accounts are enabled (`smartAccount.enabled`), the economy layer integrates with three smart account components:
+
+- **On-Chain Spending Tracker** — Tracks session key spending against budget limits. Budget alerts trigger when thresholds are crossed.
+- **Session Guard** — The Security Sentinel can trigger emergency session key revocation when anomalies are detected (rapid creation, large withdrawal, repeated dispute).
+- **Risk Adapter** — The risk engine feeds into the smart account policy engine, dynamically adjusting spending limits based on peer trust scores.
+
+See [Smart Accounts](smart-accounts.md) for full details.
+
 ## Security Sentinel
 
 The Security Sentinel monitors escrow activity for suspicious patterns and generates alerts. It runs as a background engine that analyzes escrow events in real time.

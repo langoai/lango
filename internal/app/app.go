@@ -272,6 +272,19 @@ func New(boot *bootstrap.Result) (*App, error) {
 			app.P2PAgentPool = p2pc.agentPool
 			app.P2PTeamCoordinator = p2pc.coordinator
 			app.P2PAgentProvider = p2pc.provider
+
+			// Register NonceCache lifecycle so it is stopped on shutdown.
+			if p2pc.nonceCache != nil {
+				nc := p2pc.nonceCache
+				app.registry.Register(lifecycle.NewFuncComponent("p2p-nonce-cache",
+					func(_ context.Context, _ *sync.WaitGroup) error { return nil },
+					func(_ context.Context) error {
+						nc.Stop()
+						return nil
+					},
+				), lifecycle.PriorityNetwork)
+			}
+
 			// Wire P2P payment tool.
 			p2pTools := buildP2PTools(p2pc)
 			p2pTools = append(p2pTools, buildP2PPaymentTool(p2pc, pc)...)
@@ -405,6 +418,23 @@ func New(boot *bootstrap.Result) (*App, error) {
 		})
 		catalog.Register("contract", ctTools)
 		logger().Info("contract interaction tools registered")
+	}
+
+	// 5p'. Smart Account (optional, requires payment + contract)
+	sacc := initSmartAccount(cfg, pc, econc, bus)
+	if sacc != nil {
+		app.SmartAccountManager = sacc.manager
+		app.SmartAccountComponents = sacc
+		saTools := buildSmartAccountTools(sacc)
+		tools = append(tools, saTools...)
+		catalog.RegisterCategory(toolcatalog.Category{
+			Name:        "smartaccount",
+			Description: "ERC-7579 smart account management",
+			ConfigKey:   "smartAccount.enabled",
+			Enabled:     true,
+		})
+		catalog.Register("smartaccount", saTools)
+		logger().Info("smart account tools registered")
 	}
 
 	// 5q. Observability (optional — metrics, health, token tracking)

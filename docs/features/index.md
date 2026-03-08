@@ -96,6 +96,14 @@ Lango provides a comprehensive set of features for building intelligent AI agent
 
     [:octicons-arrow-right-24: Learn more](contracts.md)
 
+-   :bank: **[Smart Accounts](smart-accounts.md)** :material-flask-outline:{ title="Experimental" }
+
+    ---
+
+    ERC-7579 modular smart accounts with session keys, ERC-4337 paymaster support, and on-chain policy enforcement.
+
+    [:octicons-arrow-right-24: Learn more](smart-accounts.md)
+
 -   :bar_chart: **[Observability](observability.md)** :material-flask-outline:{ title="Experimental" }
 
     ---
@@ -151,6 +159,7 @@ Lango provides a comprehensive set of features for building intelligent AI agent
 | P2P Network | Experimental | `p2p.enabled` |
 | P2P Economy | Experimental | `economy.enabled` |
 | Smart Contracts | Experimental | `payment.enabled` |
+| Smart Accounts | Experimental | `smartAccount.enabled` |
 | Observability | Experimental | `observability.enabled` |
 | Skill System | Stable | `skill.enabled` |
 | Proactive Librarian | Experimental | `librarian.enabled` |

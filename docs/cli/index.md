@@ -139,6 +139,22 @@ Lango provides a comprehensive command-line interface built with [Cobra](https:/
 | `lango economy negotiate status` | Show negotiation protocol status |
 | `lango economy escrow status` | Show escrow service status |
 
+### Smart Account
+
+| Command | Description |
+|---------|-------------|
+| `lango account info` | Show smart account configuration and status |
+| `lango account deploy` | Deploy a new Safe smart account with ERC-7579 adapter |
+| `lango account session list` | List active session keys |
+| `lango account session create` | Create a new session key |
+| `lango account session revoke` | Revoke a session key or all session keys |
+| `lango account module list` | List registered ERC-7579 modules |
+| `lango account module install` | Install an ERC-7579 module |
+| `lango account policy show` | Show current harness policy configuration |
+| `lango account policy set` | Set harness policy limits |
+| `lango account paymaster status` | Show paymaster configuration and approval status |
+| `lango account paymaster approve` | Approve USDC spending for the paymaster |
+
 ### Contract
 
 | Command | Description |
