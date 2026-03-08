@@ -60,6 +60,7 @@ This project includes experimental AI Agent features and is currently in an unst
 - 💰 **P2P Economy** — Budget management, trust-based risk assessment, dynamic pricing with peer discounts, P2P negotiation protocol, and milestone-based escrow with on-chain Hub/Vault dual-mode settlement
 - 🛡️ **Security Sentinel** — Real-time anomaly detection for on-chain escrow (rapid creation, large withdrawal, repeated dispute, unusual timing, balance drop)
 - 📜 **Smart Contracts** — EVM smart contract interaction with ABI caching, view/pure reads, state-changing calls, and Foundry-based escrow contracts (LangoEscrowHub, LangoVault, LangoVaultFactory)
+- 🏦 **Smart Accounts** — ERC-7579 modular smart accounts (Safe-based), ERC-4337 account abstraction with session keys, gasless USDC transactions via paymaster (Circle/Pimlico/Alchemy), on-chain spending limits, and hierarchical session key management
 - 👥 **P2P Teams** — Task-scoped agent groups with role-based delegation, conflict resolution (trust_weighted, majority_vote, leader_decides, fail_on_conflict), assignment strategies, and payment coordination
 - 📊 **Observability** — Token usage tracking, health monitoring, audit logging, and metrics endpoints
 
@@ -232,6 +233,18 @@ lango economy escrow sentinel status  Show Security Sentinel engine status
 lango contract read [flags]     Read a smart contract method (--address, --method, --abi, --args)
 lango contract call [flags]     Execute a state-changing contract method (--address, --method, --value)
 lango contract abi load [flags] Load and cache a contract ABI (--address, --file)
+
+lango account info               Show smart account configuration and status
+lango account deploy             Deploy a new Safe smart account with ERC-7579 adapter
+lango account session list       List active session keys
+lango account session create     Create a new session key
+lango account session revoke     Revoke a session key (or --all)
+lango account module list        List registered ERC-7579 modules
+lango account module install     Install an ERC-7579 module
+lango account policy show        Show current harness policy configuration
+lango account policy set         Set harness policy limits
+lango account paymaster status   Show paymaster configuration and approval status
+lango account paymaster approve  Approve USDC spending for the paymaster
 
 lango metrics                   Show system metrics snapshot
 lango metrics sessions          Show per-session token usage

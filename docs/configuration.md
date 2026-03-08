@@ -818,6 +818,69 @@ Each firewall rule entry:
 
 ---
 
+## Smart Account
+
+!!! warning "Experimental"
+    Smart Account support is experimental. See [Smart Accounts](features/smart-accounts.md).
+
+> **Settings:** `lango settings` → Smart Account / SA Session Keys / SA Paymaster / SA Modules
+
+```json
+{
+  "smartAccount": {
+    "enabled": false,
+    "factoryAddress": "",
+    "entryPointAddress": "",
+    "safe7579Address": "",
+    "fallbackHandler": "",
+    "bundlerURL": "",
+    "session": {
+      "maxDuration": "24h",
+      "defaultGasLimit": 500000,
+      "maxActiveKeys": 10
+    },
+    "paymaster": {
+      "enabled": false,
+      "provider": "circle",
+      "rpcURL": "",
+      "tokenAddress": "",
+      "paymasterAddress": "",
+      "policyId": "",
+      "fallbackMode": "abort"
+    },
+    "modules": {
+      "sessionValidatorAddress": "",
+      "spendingHookAddress": "",
+      "escrowExecutorAddress": ""
+    }
+  }
+}
+```
+
+| Key | Type | Default | Description |
+|-----|------|---------|-------------|
+| `smartAccount.enabled` | `bool` | `false` | Enable ERC-7579 smart account subsystem |
+| `smartAccount.factoryAddress` | `string` | | Safe factory contract address |
+| `smartAccount.entryPointAddress` | `string` | | ERC-4337 EntryPoint contract address |
+| `smartAccount.safe7579Address` | `string` | | Safe7579 adapter contract address |
+| `smartAccount.fallbackHandler` | `string` | | Safe fallback handler contract address |
+| `smartAccount.bundlerURL` | `string` | | ERC-4337 bundler RPC endpoint URL |
+| `smartAccount.session.maxDuration` | `duration` | `24h` | Maximum allowed session key duration |
+| `smartAccount.session.defaultGasLimit` | `uint64` | `500000` | Default gas limit for session key operations |
+| `smartAccount.session.maxActiveKeys` | `int` | `10` | Maximum number of active session keys |
+| `smartAccount.paymaster.enabled` | `bool` | `false` | Enable paymaster for gasless transactions |
+| `smartAccount.paymaster.provider` | `string` | `circle` | Paymaster provider (`circle`, `pimlico`, `alchemy`) |
+| `smartAccount.paymaster.rpcURL` | `string` | | Paymaster provider RPC endpoint |
+| `smartAccount.paymaster.tokenAddress` | `string` | | USDC token contract address |
+| `smartAccount.paymaster.paymasterAddress` | `string` | | Paymaster contract address |
+| `smartAccount.paymaster.policyId` | `string` | | Provider-specific policy ID (optional) |
+| `smartAccount.paymaster.fallbackMode` | `string` | `abort` | Behavior when paymaster fails (`abort`, `direct`) |
+| `smartAccount.modules.sessionValidatorAddress` | `string` | | LangoSessionValidator module contract address |
+| `smartAccount.modules.spendingHookAddress` | `string` | | LangoSpendingHook module contract address |
+| `smartAccount.modules.escrowExecutorAddress` | `string` | | LangoEscrowExecutor module contract address |
+
+---
+
 ## Observability
 
 !!! warning "Experimental"

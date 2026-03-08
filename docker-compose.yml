@@ -18,6 +18,7 @@ services:
       # - LANGO_P2P=true                 # Enable P2P networking
       # - LANGO_AGENT_MEMORY=true        # Enable per-agent persistent memory
       # - LANGO_HOOKS=true               # Enable tool execution hooks
+      # - LANGO_SMART_ACCOUNT=true       # Enable ERC-7579 smart account
 
   presidio-analyzer:
     image: mcr.microsoft.com/presidio-analyzer:latest

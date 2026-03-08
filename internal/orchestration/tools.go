@@ -101,18 +101,18 @@ If a task does not match your capabilities:
 	},
 	{
 		Name:        "vault",
-		Description: "Security operations: encryption, secret management, and blockchain payments",
+		Description: "Security operations: encryption, secret management, blockchain payments, and smart accounts",
 		Instruction: `## What You Do
-You handle security-sensitive operations: encrypt/decrypt data, manage secrets and passwords, sign/verify, and process blockchain payments (USDC on Base).
+You handle security-sensitive operations: encrypt/decrypt data, manage secrets and passwords, sign/verify, process blockchain payments (USDC on Base), and manage ERC-7579 smart accounts (deploy, session keys, modules, policies, paymaster).
 
 ## Input Format
-A security operation to perform with required parameters (data to encrypt, secret to store/retrieve, payment details).
+A security operation to perform with required parameters (data to encrypt, secret to store/retrieve, payment details, smart account operation details).
 
 ## Output Format
-Return operation results: encrypted/decrypted data, confirmation of secret storage, payment transaction hash/status.
+Return operation results: encrypted/decrypted data, confirmation of secret storage, payment transaction hash/status, smart account deployment/session/module/policy results.
 
 ## Constraints
-- Only perform cryptographic, secret management, and payment operations.
+- Only perform cryptographic, secret management, payment, and smart account operations.
 - Never execute shell commands, browse the web, or manage files.
 - Never search knowledge bases or manage memory.
 - Handle sensitive data carefully — never log secrets or private keys in plain text.
@@ -124,8 +124,8 @@ If a task does not match your capabilities:
 2. Do NOT tell the user to ask another agent.
 3. IMMEDIATELY call transfer_to_agent with agent_name "lango-orchestrator".
 4. Do NOT output any text before the transfer_to_agent call.`,
-		Prefixes: []string{"crypto_", "secrets_", "payment_", "p2p_"},
-		Keywords: []string{"encrypt", "decrypt", "sign", "hash", "secret", "password", "payment", "wallet", "USDC", "peer", "p2p", "connect", "handshake", "firewall", "zkp"},
+		Prefixes: []string{"crypto_", "secrets_", "payment_", "p2p_", "smart_account_", "session_key_", "session_execute", "policy_check", "module_", "spending_", "paymaster_"},
+		Keywords: []string{"encrypt", "decrypt", "sign", "hash", "secret", "password", "payment", "wallet", "USDC", "peer", "p2p", "connect", "handshake", "firewall", "zkp", "smart account", "session key", "paymaster", "ERC-7579", "ERC-4337", "module", "policy", "deploy account"},
 		Accepts:  "A security operation (crypto, secret, or payment) with parameters",
 		Returns:  "Encrypted/decrypted data, secret confirmation, or payment transaction status",
 		CannotDo: []string{"shell commands", "file operations", "web browsing", "knowledge search", "memory management"},
@@ -373,6 +373,13 @@ var capabilityMap = map[string]string{
 	"cron_":          "cron job scheduling",
 	"bg_":            "background task execution",
 	"workflow_":      "workflow pipeline execution",
+	"smart_account_": "smart account management (ERC-7579)",
+	"session_key_":   "session key management",
+	"session_execute": "session key transaction execution",
+	"policy_check":   "policy engine validation",
+	"module_":        "ERC-7579 module management",
+	"spending_":      "on-chain spending tracking",
+	"paymaster_":     "paymaster management (gasless transactions)",
 }
 
 // toolCapability returns a human-readable capability for a tool name based

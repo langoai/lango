@@ -103,6 +103,18 @@ EIP-1167 Minimal Proxy factory for LangoVault. Each call to `createVault()` clon
 
 **Events:** `VaultCreated`
 
+### ERC-7579 Module Contracts
+
+Lango deploys three custom ERC-7579 modules on the Safe smart account:
+
+| Module | Type | Description |
+|--------|------|-------------|
+| **LangoSessionValidator** | Validator | Validates session key signatures and enforces per-session spending limits |
+| **LangoSpendingHook** | Hook | Tracks on-chain spending per session key, enforces daily/monthly aggregate limits |
+| **LangoEscrowExecutor** | Executor | Executes escrow operations (deposit, release, refund) through the smart account |
+
+These modules are configured via `smartAccount.modules.*` keys and installed using `lango account module install`. See [Smart Accounts](smart-accounts.md) for details.
+
 ### Foundry Setup
 
 ```

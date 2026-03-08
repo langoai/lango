@@ -328,6 +328,22 @@ func (e *Editor) handleMenuSelection(id string) tea.Cmd {
 		e.activeForm = NewWorkflowForm(e.state.Current)
 		e.activeForm.Focus = true
 		e.step = StepForm
+	case "smartaccount":
+		e.activeForm = NewSmartAccountForm(e.state.Current)
+		e.activeForm.Focus = true
+		e.step = StepForm
+	case "smartaccount_session":
+		e.activeForm = NewSmartAccountSessionForm(e.state.Current)
+		e.activeForm.Focus = true
+		e.step = StepForm
+	case "smartaccount_paymaster":
+		e.activeForm = NewSmartAccountPaymasterForm(e.state.Current)
+		e.activeForm.Focus = true
+		e.step = StepForm
+	case "smartaccount_modules":
+		e.activeForm = NewSmartAccountModulesForm(e.state.Current)
+		e.activeForm.Focus = true
+		e.step = StepForm
 	case "mcp":
 		e.activeForm = NewMCPForm(e.state.Current)
 		e.activeForm.Focus = true
