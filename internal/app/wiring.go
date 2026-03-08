@@ -156,9 +156,6 @@ func initSecurity(cfg *config.Config, store session.Store, boot *bootstrap.Resul
 		logger().Info("security initialized (rpc provider)")
 		return provider, keys, secrets, nil
 
-	case "enclave":
-		return nil, nil, nil, fmt.Errorf("enclave provider not yet implemented")
-
 	case "aws-kms", "gcp-kms", "azure-kv", "pkcs11":
 		kmsProvider, err := security.NewKMSProvider(security.KMSProviderName(cfg.Security.Signer.Provider), cfg.Security.KMS)
 		if err != nil {
@@ -194,7 +191,10 @@ func initSecurity(cfg *config.Config, store session.Store, boot *bootstrap.Resul
 		return finalProvider, keys, secrets, nil
 
 	default:
-		return nil, nil, nil, fmt.Errorf("unknown security provider: %s", cfg.Security.Signer.Provider)
+		return nil, nil, nil, fmt.Errorf(
+			"unsupported security provider %q: valid providers are local, rpc, aws-kms, gcp-kms, azure-kv, pkcs11",
+			cfg.Security.Signer.Provider,
+		)
 	}
 }
 

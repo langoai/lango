@@ -91,22 +91,42 @@ func TestInitSecurity_EmptyProvider(t *testing.T) {
 	assert.Nil(t, secrets)
 }
 
-func TestInitSecurity_UnknownProvider(t *testing.T) {
-	cfg := config.DefaultConfig()
-	cfg.Security.Signer.Provider = "nonexistent"
+func TestInitSecurity_UnsupportedProvider(t *testing.T) {
+	tests := []struct {
+		give string
+	}{
+		{give: "enclave"},
+		{give: "nonexistent"},
+		{give: "hashicorp-vault"},
+		{give: ""},
+	}
 
-	_, _, _, err := initSecurity(cfg, nil, nil)
-	require.Error(t, err)
-	assert.Contains(t, err.Error(), "unknown security provider")
-}
+	validProviders := []string{"local", "rpc", "aws-kms", "gcp-kms", "azure-kv", "pkcs11"}
 
-func TestInitSecurity_EnclaveNotImplemented(t *testing.T) {
-	cfg := config.DefaultConfig()
-	cfg.Security.Signer.Provider = "enclave"
+	for _, tt := range tests {
+		t.Run(tt.give, func(t *testing.T) {
+			cfg := config.DefaultConfig()
+			cfg.Security.Signer.Provider = tt.give
 
-	_, _, _, err := initSecurity(cfg, nil, nil)
-	require.Error(t, err)
-	assert.Contains(t, err.Error(), "not yet implemented")
+			_, _, _, err := initSecurity(cfg, nil, nil)
+
+			if tt.give == "" {
+				// Empty provider is a no-op, not an error.
+				assert.NoError(t, err)
+				return
+			}
+
+			require.Error(t, err)
+			assert.Contains(t, err.Error(), "unsupported security provider")
+			assert.Contains(t, err.Error(), tt.give)
+
+			// Verify the error message lists all valid providers.
+			for _, valid := range validProviders {
+				assert.Contains(t, err.Error(), valid,
+					"error should list valid provider %q", valid)
+			}
+		})
+	}
 }
 
 func TestInitSecurity_LocalRequiresBootstrap(t *testing.T) {

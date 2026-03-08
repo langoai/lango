@@ -3,6 +3,7 @@ package telegram
 import (
 	"context"
 	"fmt"
+	"io"
 	"net/http"
 	"strings"
 	"sync"
@@ -382,6 +383,9 @@ func (c *Channel) sendError(chatID int64, replyTo int, err error) {
 	})
 }
 
+// downloadTimeout is the maximum time allowed for downloading a file.
+const downloadTimeout = 30 * time.Second
+
 // DownloadFile downloads a file by file ID
 func (c *Channel) DownloadFile(fileID string) ([]byte, error) {
 	file, err := c.bot.GetFile(tgbotapi.FileConfig{FileID: fileID})
@@ -389,11 +393,41 @@ func (c *Channel) DownloadFile(fileID string) ([]byte, error) {
 		return nil, fmt.Errorf("get file: %w", err)
 	}
 
-	url := file.Link(c.config.BotToken)
-	_ = url // Would download from URL
+	fileURL := file.Link(c.config.BotToken)
 
-	// Note: actual download implementation would fetch from url
-	return nil, fmt.Errorf("download not implemented")
+	ctx, cancel := context.WithTimeout(context.Background(), downloadTimeout)
+	defer cancel()
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, fileURL, nil)
+	if err != nil {
+		return nil, fmt.Errorf("create download request: %w", err)
+	}
+
+	client := c.config.HTTPClient
+	if client == nil {
+		client = http.DefaultClient
+	}
+
+	resp, err := client.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("download file: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("download file: HTTP %d", resp.StatusCode)
+	}
+
+	data, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("read file body: %w", err)
+	}
+
+	if len(data) == 0 {
+		return nil, fmt.Errorf("download file: empty response body")
+	}
+
+	return data, nil
 }
 
 // isAllowed checks if a user/chat is allowed
