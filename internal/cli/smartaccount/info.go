@@ -1,6 +1,7 @@
 package smartaccount
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -22,52 +23,55 @@ func infoCmd(bootLoader BootLoader) *cobra.Command {
 			}
 			defer boot.DBClient.Close()
 
-			cfg := boot.Config
+			deps, err := initSmartAccountDeps(boot)
+			if err != nil {
+				return err
+			}
+			defer deps.cleanup()
 
-			type moduleAddresses struct {
-				SessionValidator string `json:"sessionValidator"`
-				SpendingHook     string `json:"spendingHook"`
-				EscrowExecutor   string `json:"escrowExecutor"`
+			ctx := context.Background()
+			info, err := deps.manager.Info(ctx)
+			if err != nil {
+				return fmt.Errorf("get account info: %w", err)
 			}
 
-			type sessionConfig struct {
-				MaxDuration string `json:"maxDuration"`
-				MaxKeys     int    `json:"maxKeys"`
-				DefaultGas  uint64 `json:"defaultGasLimit"`
+			type moduleEntry struct {
+				Name    string `json:"name"`
+				Type    string `json:"type"`
+				Address string `json:"address"`
 			}
 
 			type accountInfo struct {
-				Enabled    bool            `json:"enabled"`
-				Factory    string          `json:"factory"`
-				EntryPoint string          `json:"entryPoint"`
-				Safe7579   string          `json:"safe7579"`
-				Fallback   string          `json:"fallbackHandler"`
-				Bundler    string          `json:"bundler"`
-				Session    sessionConfig   `json:"session"`
-				Modules    moduleAddresses `json:"modules"`
+				Address    string        `json:"address"`
+				IsDeployed bool          `json:"isDeployed"`
+				Owner      string        `json:"ownerAddress"`
+				ChainID    int64         `json:"chainId"`
+				EntryPoint string        `json:"entryPoint"`
+				Modules    []moduleEntry `json:"modules"`
+				Paymaster  bool          `json:"paymasterEnabled"`
 			}
 
-			info := accountInfo{
-				Enabled:    cfg.SmartAccount.Enabled,
-				Factory:    cfg.SmartAccount.FactoryAddress,
-				EntryPoint: cfg.SmartAccount.EntryPointAddress,
-				Safe7579:   cfg.SmartAccount.Safe7579Address,
-				Fallback:   cfg.SmartAccount.FallbackHandler,
-				Bundler:    cfg.SmartAccount.BundlerURL,
-				Session: sessionConfig{
-					MaxDuration: cfg.SmartAccount.Session.MaxDuration.String(),
-					MaxKeys:     cfg.SmartAccount.Session.MaxActiveKeys,
-					DefaultGas:  cfg.SmartAccount.Session.DefaultGasLimit,
-				},
-				Modules: moduleAddresses{
-					SessionValidator: cfg.SmartAccount.Modules.SessionValidatorAddress,
-					SpendingHook:     cfg.SmartAccount.Modules.SpendingHookAddress,
-					EscrowExecutor:   cfg.SmartAccount.Modules.EscrowExecutorAddress,
-				},
+			modules := make([]moduleEntry, 0, len(info.Modules))
+			for _, m := range info.Modules {
+				modules = append(modules, moduleEntry{
+					Name:    m.Name,
+					Type:    m.Type.String(),
+					Address: m.Address.Hex(),
+				})
+			}
+
+			result := accountInfo{
+				Address:    info.Address.Hex(),
+				IsDeployed: info.IsDeployed,
+				Owner:      info.OwnerAddress.Hex(),
+				ChainID:    info.ChainID,
+				EntryPoint: info.EntryPoint.Hex(),
+				Modules:    modules,
+				Paymaster:  deps.paymasterProv != nil,
 			}
 
 			if output == "json" {
-				data, marshalErr := json.MarshalIndent(info, "", "  ")
+				data, marshalErr := json.MarshalIndent(result, "", "  ")
 				if marshalErr != nil {
 					return fmt.Errorf("marshal json: %w", marshalErr)
 				}
@@ -76,26 +80,26 @@ func infoCmd(bootLoader BootLoader) *cobra.Command {
 			}
 
 			w := tabwriter.NewWriter(os.Stdout, 0, 4, 2, ' ', 0)
-			fmt.Fprintln(w, "Smart Account Configuration")
-			fmt.Fprintln(w, "===========================")
-			fmt.Fprintf(w, "Enabled:\t%v\n", info.Enabled)
-			fmt.Fprintf(w, "Factory:\t%s\n", info.Factory)
-			fmt.Fprintf(w, "Entry Point:\t%s\n", info.EntryPoint)
-			fmt.Fprintf(w, "Safe7579:\t%s\n", info.Safe7579)
-			fmt.Fprintf(w, "Fallback Handler:\t%s\n", info.Fallback)
-			fmt.Fprintf(w, "Bundler URL:\t%s\n", info.Bundler)
+			fmt.Fprintln(w, "Smart Account Info")
+			fmt.Fprintln(w, "==================")
+			fmt.Fprintf(w, "Address:\t%s\n", result.Address)
+			fmt.Fprintf(w, "Deployed:\t%v\n", result.IsDeployed)
+			fmt.Fprintf(w, "Owner:\t%s\n", result.Owner)
+			fmt.Fprintf(w, "Chain ID:\t%d\n", result.ChainID)
+			fmt.Fprintf(w, "Entry Point:\t%s\n", result.EntryPoint)
+			fmt.Fprintf(w, "Paymaster:\t%v\n", result.Paymaster)
 			fmt.Fprintln(w)
-			fmt.Fprintln(w, "Session Configuration")
-			fmt.Fprintln(w, "---------------------")
-			fmt.Fprintf(w, "Max Duration:\t%s\n", info.Session.MaxDuration)
-			fmt.Fprintf(w, "Max Active Keys:\t%d\n", info.Session.MaxKeys)
-			fmt.Fprintf(w, "Default Gas Limit:\t%d\n", info.Session.DefaultGas)
-			fmt.Fprintln(w)
-			fmt.Fprintln(w, "Module Addresses")
-			fmt.Fprintln(w, "----------------")
-			fmt.Fprintf(w, "Session Validator:\t%s\n", info.Modules.SessionValidator)
-			fmt.Fprintf(w, "Spending Hook:\t%s\n", info.Modules.SpendingHook)
-			fmt.Fprintf(w, "Escrow Executor:\t%s\n", info.Modules.EscrowExecutor)
+
+			if len(result.Modules) > 0 {
+				fmt.Fprintln(w, "Installed Modules")
+				fmt.Fprintln(w, "-----------------")
+				fmt.Fprintln(w, "NAME\tTYPE\tADDRESS")
+				for _, m := range result.Modules {
+					fmt.Fprintf(w, "%s\t%s\t%s\n", m.Name, m.Type, m.Address)
+				}
+			} else {
+				fmt.Fprintln(w, "No modules installed.")
+			}
 
 			return w.Flush()
 		},

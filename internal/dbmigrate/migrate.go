@@ -10,9 +10,17 @@ import (
 	"database/sql"
 	"fmt"
 	"os"
+	"strings"
 
 	_ "github.com/mattn/go-sqlite3" // SQLite driver (SQLCipher when linked with libsqlcipher)
 )
+
+// escapePassphrase escapes single quotes for SQLCipher PRAGMA values.
+// SQLCipher PRAGMA key does not support parameterized queries, so
+// single quotes must be doubled to prevent SQL injection.
+func escapePassphrase(s string) string {
+	return strings.ReplaceAll(s, "'", "''")
+}
 
 // MigrateToEncrypted converts a plaintext SQLite DB to a SQLCipher-encrypted database.
 // The original file is backed up and securely deleted after successful migration.
@@ -50,7 +58,7 @@ func MigrateToEncrypted(dbPath, passphrase string, cipherPageSize int) error {
 	}
 
 	// Attach the encrypted target and export.
-	attachSQL := fmt.Sprintf("ATTACH DATABASE '%s' AS target KEY '%s'", tmpPath, passphrase)
+	attachSQL := fmt.Sprintf("ATTACH DATABASE '%s' AS target KEY '%s'", escapePassphrase(tmpPath), escapePassphrase(passphrase))
 	if _, err := srcDB.Exec(attachSQL); err != nil {
 		return fmt.Errorf("attach encrypted target: %w", err)
 	}
@@ -120,7 +128,7 @@ func DecryptToPlaintext(dbPath, passphrase string, cipherPageSize int) error {
 	defer srcDB.Close()
 
 	// Set the key PRAGMA to decrypt.
-	if _, err := srcDB.Exec(fmt.Sprintf("PRAGMA key = '%s'", passphrase)); err != nil {
+	if _, err := srcDB.Exec(fmt.Sprintf("PRAGMA key = '%s'", escapePassphrase(passphrase))); err != nil {
 		return fmt.Errorf("set pragma key: %w", err)
 	}
 	if _, err := srcDB.Exec(fmt.Sprintf("PRAGMA cipher_page_size = %d", cipherPageSize)); err != nil {
@@ -132,7 +140,7 @@ func DecryptToPlaintext(dbPath, passphrase string, cipherPageSize int) error {
 	}
 
 	// Attach plaintext target (empty key = no encryption).
-	attachSQL := fmt.Sprintf("ATTACH DATABASE '%s' AS target KEY ''", tmpPath)
+	attachSQL := fmt.Sprintf("ATTACH DATABASE '%s' AS target KEY ''", escapePassphrase(tmpPath))
 	if _, err := srcDB.Exec(attachSQL); err != nil {
 		return fmt.Errorf("attach plaintext target: %w", err)
 	}
@@ -217,7 +225,7 @@ func verifyEncryptedDB(path, passphrase string, cipherPageSize int) error {
 	}
 	defer db.Close()
 
-	if _, err := db.Exec(fmt.Sprintf("PRAGMA key = '%s'", passphrase)); err != nil {
+	if _, err := db.Exec(fmt.Sprintf("PRAGMA key = '%s'", escapePassphrase(passphrase))); err != nil {
 		return err
 	}
 	if _, err := db.Exec(fmt.Sprintf("PRAGMA cipher_page_size = %d", cipherPageSize)); err != nil {

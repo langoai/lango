@@ -31,6 +31,7 @@ type SmartAccountPaymasterConfig struct {
 	TokenAddress     string `mapstructure:"tokenAddress" json:"tokenAddress"`         // USDC address
 	PaymasterAddress string `mapstructure:"paymasterAddress" json:"paymasterAddress"`
 	PolicyID         string `mapstructure:"policyId" json:"policyId,omitempty"`
+	FallbackMode     string `mapstructure:"fallbackMode" json:"fallbackMode,omitempty"` // "abort"|"direct"
 }
 
 // SmartAccountModulesConfig defines module contract addresses.

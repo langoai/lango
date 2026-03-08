@@ -22,7 +22,8 @@ const SessionValidatorABI = `[
 					{"name": "spentAmount", "type": "uint256"},
 					{"name": "validAfter", "type": "uint48"},
 					{"name": "validUntil", "type": "uint48"},
-					{"name": "active", "type": "bool"}
+					{"name": "active", "type": "bool"},
+					{"name": "allowedPaymasters", "type": "address[]"}
 				],
 				"name": "policy",
 				"type": "tuple"
@@ -56,7 +57,8 @@ const SessionValidatorABI = `[
 					{"name": "spentAmount", "type": "uint256"},
 					{"name": "validAfter", "type": "uint48"},
 					{"name": "validUntil", "type": "uint48"},
-					{"name": "active", "type": "bool"}
+					{"name": "active", "type": "bool"},
+					{"name": "allowedPaymasters", "type": "address[]"}
 				],
 				"name": "",
 				"type": "tuple"

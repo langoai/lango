@@ -1,12 +1,16 @@
 package smartaccount
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"os"
 	"text/tabwriter"
 
+	"github.com/ethereum/go-ethereum/common"
 	"github.com/spf13/cobra"
+
+	sa "github.com/langoai/lango/internal/smartaccount"
 )
 
 func moduleCmd(bootLoader BootLoader) *cobra.Command {
@@ -17,7 +21,7 @@ func moduleCmd(bootLoader BootLoader) *cobra.Command {
 
 Examples:
   lango account module list
-  lango account module install <module-name>`,
+  lango account module install <module-address> --type validator`,
 	}
 
 	cmd.AddCommand(moduleListCmd(bootLoader))
@@ -31,7 +35,7 @@ func moduleListCmd(bootLoader BootLoader) *cobra.Command {
 
 	cmd := &cobra.Command{
 		Use:   "list",
-		Short: "List configured ERC-7579 modules",
+		Short: "List registered ERC-7579 modules",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			boot, err := bootLoader()
 			if err != nil {
@@ -39,42 +43,33 @@ func moduleListCmd(bootLoader BootLoader) *cobra.Command {
 			}
 			defer boot.DBClient.Close()
 
-			cfg := boot.Config
-			if !cfg.SmartAccount.Enabled {
-				return fmt.Errorf("smart account not enabled in config")
+			deps, err := initSmartAccountDeps(boot)
+			if err != nil {
+				return err
 			}
+			defer deps.cleanup()
+
+			modules := deps.moduleRegistry.List()
 
 			type moduleEntry struct {
 				Name    string `json:"name"`
 				Type    string `json:"type"`
 				Address string `json:"address"`
+				Version string `json:"version"`
 			}
 
-			modules := make([]moduleEntry, 0, 3)
-			if cfg.SmartAccount.Modules.SessionValidatorAddress != "" {
-				modules = append(modules, moduleEntry{
-					Name:    "SessionValidator",
-					Type:    "validator",
-					Address: cfg.SmartAccount.Modules.SessionValidatorAddress,
-				})
-			}
-			if cfg.SmartAccount.Modules.SpendingHookAddress != "" {
-				modules = append(modules, moduleEntry{
-					Name:    "SpendingHook",
-					Type:    "hook",
-					Address: cfg.SmartAccount.Modules.SpendingHookAddress,
-				})
-			}
-			if cfg.SmartAccount.Modules.EscrowExecutorAddress != "" {
-				modules = append(modules, moduleEntry{
-					Name:    "EscrowExecutor",
-					Type:    "executor",
-					Address: cfg.SmartAccount.Modules.EscrowExecutorAddress,
+			entries := make([]moduleEntry, 0, len(modules))
+			for _, m := range modules {
+				entries = append(entries, moduleEntry{
+					Name:    m.Name,
+					Type:    m.Type.String(),
+					Address: m.Address.Hex(),
+					Version: m.Version,
 				})
 			}
 
 			if output == "json" {
-				data, marshalErr := json.MarshalIndent(modules, "", "  ")
+				data, marshalErr := json.MarshalIndent(entries, "", "  ")
 				if marshalErr != nil {
 					return fmt.Errorf("marshal json: %w", marshalErr)
 				}
@@ -82,15 +77,15 @@ func moduleListCmd(bootLoader BootLoader) *cobra.Command {
 				return nil
 			}
 
-			if len(modules) == 0 {
-				fmt.Println("No modules configured.")
+			if len(entries) == 0 {
+				fmt.Println("No modules registered.")
 				return nil
 			}
 
 			w := tabwriter.NewWriter(os.Stdout, 0, 4, 2, ' ', 0)
-			fmt.Fprintln(w, "NAME\tTYPE\tADDRESS")
-			for _, m := range modules {
-				fmt.Fprintf(w, "%s\t%s\t%s\n", m.Name, m.Type, m.Address)
+			fmt.Fprintln(w, "NAME\tTYPE\tADDRESS\tVERSION")
+			for _, m := range entries {
+				fmt.Fprintf(w, "%s\t%s\t%s\t%s\n", m.Name, m.Type, m.Address, m.Version)
 			}
 			return w.Flush()
 		},
@@ -101,9 +96,11 @@ func moduleListCmd(bootLoader BootLoader) *cobra.Command {
 }
 
 func moduleInstallCmd(bootLoader BootLoader) *cobra.Command {
+	var moduleType string
+
 	cmd := &cobra.Command{
-		Use:   "install <module-name>",
-		Short: "Install an ERC-7579 module",
+		Use:   "install <module-address>",
+		Short: "Install an ERC-7579 module on the smart account",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			boot, err := bootLoader()
@@ -112,20 +109,48 @@ func moduleInstallCmd(bootLoader BootLoader) *cobra.Command {
 			}
 			defer boot.DBClient.Close()
 
-			cfg := boot.Config
-			if !cfg.SmartAccount.Enabled {
-				return fmt.Errorf("smart account not enabled in config")
+			deps, err := initSmartAccountDeps(boot)
+			if err != nil {
+				return err
+			}
+			defer deps.cleanup()
+
+			addrStr := args[0]
+			if !common.IsHexAddress(addrStr) {
+				return fmt.Errorf("invalid module address: %s", addrStr)
+			}
+			addr := common.HexToAddress(addrStr)
+
+			// Parse module type.
+			var modType sa.ModuleType
+			switch moduleType {
+			case "validator":
+				modType = sa.ModuleTypeValidator
+			case "executor":
+				modType = sa.ModuleTypeExecutor
+			case "fallback":
+				modType = sa.ModuleTypeFallback
+			case "hook":
+				modType = sa.ModuleTypeHook
+			default:
+				return fmt.Errorf("unknown module type %q (use: validator, executor, fallback, hook)", moduleType)
 			}
 
-			moduleName := args[0]
-			fmt.Printf("Installing module: %s\n", moduleName)
-			fmt.Println()
-			fmt.Println("Note: Module installation requires a running server (lango serve).")
-			fmt.Println("Use the 'smart_account_install_module' agent tool for actual installation.")
+			ctx := context.Background()
+			txHash, err := deps.manager.InstallModule(ctx, modType, addr, []byte{})
+			if err != nil {
+				return fmt.Errorf("install module: %w", err)
+			}
+
+			fmt.Printf("Module installed successfully.\n")
+			fmt.Printf("  Address:  %s\n", addr.Hex())
+			fmt.Printf("  Type:     %s\n", modType.String())
+			fmt.Printf("  Tx Hash:  %s\n", txHash)
 
 			return nil
 		},
 	}
 
+	cmd.Flags().StringVar(&moduleType, "type", "validator", "module type (validator|executor|fallback|hook)")
 	return cmd
 }

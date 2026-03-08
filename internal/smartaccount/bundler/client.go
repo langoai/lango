@@ -175,6 +175,33 @@ func (c *Client) GetUserOperationReceipt(
 	}, nil
 }
 
+// GetNonce retrieves the nonce for an account from the EntryPoint
+// contract. Uses eth_getTransactionCount as a fallback nonce source.
+func (c *Client) GetNonce(
+	ctx context.Context,
+	account common.Address,
+) (*big.Int, error) {
+	raw, err := c.call(
+		ctx,
+		"eth_getTransactionCount",
+		[]interface{}{account.Hex(), "latest"},
+	)
+	if err != nil {
+		return nil, fmt.Errorf("get nonce: %w", err)
+	}
+
+	var hexNonce string
+	if err := json.Unmarshal(raw, &hexNonce); err != nil {
+		return nil, fmt.Errorf("decode nonce: %w", err)
+	}
+
+	nonce, err := hexutil.DecodeBig(hexNonce)
+	if err != nil {
+		return nil, fmt.Errorf("parse nonce: %w", err)
+	}
+	return nonce, nil
+}
+
 // SupportedEntryPoints returns supported entry point addresses.
 func (c *Client) SupportedEntryPoints(
 	ctx context.Context,

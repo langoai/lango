@@ -3,6 +3,7 @@ package app
 import (
 	"context"
 	"fmt"
+	"sync"
 	"time"
 
 	"github.com/consensys/gnark/frontend"
@@ -27,6 +28,7 @@ import (
 	"github.com/langoai/lango/internal/payment/contracts"
 	"github.com/langoai/lango/internal/security"
 	"github.com/langoai/lango/internal/wallet"
+	"github.com/libp2p/go-libp2p/core/peer"
 	libp2pproto "github.com/libp2p/go-libp2p/core/protocol"
 )
 
@@ -35,6 +37,7 @@ type p2pComponents struct {
 	node        *p2p.Node
 	sessions    *handshake.SessionStore
 	handshaker  *handshake.Handshaker
+	nonceCache  *handshake.NonceCache
 	fw          *firewall.Firewall
 	gossip      *discovery.GossipService
 	identity    *identity.WalletDIDProvider
@@ -100,9 +103,29 @@ func initP2P(cfg *config.Config, wp wallet.WalletProvider, pc *paymentComponents
 	if hsTimeout <= 0 {
 		hsTimeout = 30 * time.Second
 	}
+
+	// Wire default-deny approval function. repStore is created later, so
+	// capture it by pointer and assign after initialization.
+	var repStoreRef *reputation.Store
+	approvalFn := func(ctx context.Context, pending *handshake.PendingHandshake) (bool, error) {
+		if cfg.P2P.AutoApproveKnownPeers && repStoreRef != nil {
+			score, err := repStoreRef.GetScore(ctx, pending.PeerDID)
+			if err != nil {
+				return false, nil
+			}
+			minScore := cfg.P2P.MinTrustScore
+			if minScore <= 0 {
+				minScore = 0.3
+			}
+			return score >= minScore, nil
+		}
+		return false, nil // default: deny unknown peers
+	}
+
 	hsCfg := handshake.Config{
 		Wallet:                 wp,
 		Sessions:               sessions,
+		ApprovalFn:             approvalFn,
 		ZKEnabled:              cfg.P2P.ZKHandshake,
 		Timeout:                hsTimeout,
 		AutoApproveKnown:       cfg.P2P.AutoApproveKnownPeers,
@@ -114,9 +137,14 @@ func initP2P(cfg *config.Config, wp wallet.WalletProvider, pc *paymentComponents
 	// Wire ZK prover/verifier into handshake if available.
 	if zkProver != nil && cfg.P2P.ZKHandshake {
 		hsCfg.ZKProver = func(ctx context.Context, challenge []byte) ([]byte, error) {
+			// Sign the challenge with wallet's private key for ZK proof.
+			sig, signErr := wp.SignMessage(ctx, challenge)
+			if signErr != nil {
+				return nil, fmt.Errorf("sign ZK challenge: %w", signErr)
+			}
 			assignment := &circuits.WalletOwnershipCircuit{
 				Challenge: challenge,
-				Response:  challenge, // simplified: use challenge as witness in MVP
+				Response:  sig,
 			}
 			proof, err := zkProver.Prove(ctx, "wallet_ownership", assignment)
 			if err != nil {
@@ -206,6 +234,9 @@ func initP2P(cfg *config.Config, wp wallet.WalletProvider, pc *paymentComponents
 		pLogger.Infow("P2P reputation system enabled", "minTrustScore", minScore)
 	}
 
+	// Back-fill repStoreRef so the approval closure can query reputation.
+	repStoreRef = repStore
+
 	// Register handshake protocol handlers (v1.0 legacy + v1.1 signed challenge).
 	node.Host().SetStreamHandler(libp2pproto.ID(handshake.ProtocolID), handshaker.StreamHandler())
 	node.Host().SetStreamHandler(libp2pproto.ID(handshake.ProtocolIDv11), handshaker.StreamHandlerV11())
@@ -218,10 +249,23 @@ func initP2P(cfg *config.Config, wp wallet.WalletProvider, pc *paymentComponents
 		localDID = d.ID
 	}
 
-	// Create A2A-over-P2P protocol handler.
+	agentName := cfg.A2A.AgentName
+	if agentName == "" {
+		agentName = "lango"
+	}
+
+	// Create A2A-over-P2P protocol handler with card provider.
+	cardFn := func() map[string]interface{} {
+		return map[string]interface{}{
+			"name":   agentName,
+			"did":    localDID,
+			"peerID": node.PeerID().String(),
+		}
+	}
 	handler := p2pproto.NewHandler(p2pproto.HandlerConfig{
 		Sessions: sessions,
 		Firewall: fw,
+		CardFn:   cardFn,
 		LocalDID: localDID,
 		Logger:   pLogger,
 	})
@@ -247,10 +291,6 @@ func initP2P(cfg *config.Config, wp wallet.WalletProvider, pc *paymentComponents
 		gossipInterval = 30 * time.Second
 	}
 
-	agentName := cfg.A2A.AgentName
-	if agentName == "" {
-		agentName = "lango"
-	}
 	// Wire payment gate if pricing is enabled.
 	var pg *paygate.Gate
 	if cfg.P2P.Pricing.Enabled && pc != nil {
@@ -368,6 +408,12 @@ func initP2P(cfg *config.Config, wp wallet.WalletProvider, pc *paymentComponents
 		}
 	}
 
+	// Start gossip service for peer discovery and card propagation.
+	if gossip != nil {
+		var gossipWg sync.WaitGroup
+		gossip.Start(&gossipWg)
+	}
+
 	pLogger.Infow("P2P networking initialized",
 		"peerID", node.PeerID(),
 		"did", localDID,
@@ -398,8 +444,50 @@ func initP2P(cfg *config.Config, wp wallet.WalletProvider, pc *paymentComponents
 	// Create team coordinator for distributed agent collaboration.
 	var coord *team.Coordinator
 	invokeFn := func(ctx context.Context, peerID, toolName string, params map[string]interface{}) (map[string]interface{}, error) {
-		// Default invoke function — can be overridden via handler wiring.
-		return nil, fmt.Errorf("P2P team invoke not configured for peer %s", peerID)
+		// Decode the peer ID string into a libp2p peer.ID.
+		pid, err := peer.Decode(peerID)
+		if err != nil {
+			return nil, fmt.Errorf("decode peer ID %q: %w", peerID, err)
+		}
+
+		// Find a valid session token for this peer by scanning the agent pool
+		// to resolve PeerID → DID, then looking up the session.
+		var token string
+		for _, a := range pool.List() {
+			if a.PeerID == peerID {
+				if sess := sessions.Get(a.DID); sess != nil {
+					token = sess.Token
+				}
+				break
+			}
+		}
+		if token == "" {
+			return nil, fmt.Errorf("no active session for peer %s", peerID)
+		}
+
+		// Open a stream to the remote peer and send a tool invocation request.
+		s, err := node.Host().NewStream(ctx, pid, libp2pproto.ID(p2pproto.ProtocolID))
+		if err != nil {
+			return nil, fmt.Errorf("open stream to %s: %w", peerID, err)
+		}
+		defer s.Close()
+
+		payload := map[string]interface{}{
+			"toolName": toolName,
+			"params":   params,
+		}
+		resp, err := p2pproto.SendRequest(ctx, s, p2pproto.RequestToolInvoke, token, payload)
+		if err != nil {
+			return nil, fmt.Errorf("invoke %s on peer %s: %w", toolName, peerID, err)
+		}
+		if resp.Status != p2pproto.ResponseStatusOK {
+			errMsg := resp.Error
+			if errMsg == "" {
+				errMsg = "unknown remote error"
+			}
+			return nil, fmt.Errorf("remote tool %s: %s", toolName, errMsg)
+		}
+		return resp.Result, nil
 	}
 	coord = team.NewCoordinator(team.CoordinatorConfig{
 		Pool:     pool,
@@ -417,6 +505,7 @@ func initP2P(cfg *config.Config, wp wallet.WalletProvider, pc *paymentComponents
 		node:        node,
 		sessions:    sessions,
 		handshaker:  handshaker,
+		nonceCache:  nonceCache,
 		fw:          fw,
 		gossip:      gossip,
 		identity:    idProvider,

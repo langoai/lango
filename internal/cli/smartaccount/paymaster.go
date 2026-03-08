@@ -1,12 +1,19 @@
 package smartaccount
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
+	"math"
+	"math/big"
 	"os"
 	"text/tabwriter"
 
+	"github.com/ethereum/go-ethereum/common"
 	"github.com/spf13/cobra"
+
+	sa "github.com/langoai/lango/internal/smartaccount"
+	"github.com/langoai/lango/internal/smartaccount/paymaster"
 )
 
 func paymasterCmd(bootLoader BootLoader) *cobra.Command {
@@ -34,12 +41,13 @@ func paymasterStatusCmd(bootLoader BootLoader) *cobra.Command {
 			}
 			defer boot.DBClient.Close()
 
-			cfg := boot.Config
-			if !cfg.SmartAccount.Enabled {
-				return fmt.Errorf("smart account not enabled in config")
+			deps, err := initSmartAccountDeps(boot)
+			if err != nil {
+				return err
 			}
+			defer deps.cleanup()
 
-			pmCfg := cfg.SmartAccount.Paymaster
+			pmCfg := deps.cfg.Paymaster
 
 			type statusInfo struct {
 				Enabled          bool   `json:"enabled"`
@@ -48,6 +56,7 @@ func paymasterStatusCmd(bootLoader BootLoader) *cobra.Command {
 				TokenAddress     string `json:"tokenAddress"`
 				PaymasterAddress string `json:"paymasterAddress"`
 				PolicyID         string `json:"policyId,omitempty"`
+				ProviderType     string `json:"providerType,omitempty"`
 			}
 
 			info := statusInfo{
@@ -57,6 +66,10 @@ func paymasterStatusCmd(bootLoader BootLoader) *cobra.Command {
 				TokenAddress:     pmCfg.TokenAddress,
 				PaymasterAddress: pmCfg.PaymasterAddress,
 				PolicyID:         pmCfg.PolicyID,
+			}
+
+			if deps.paymasterProv != nil {
+				info.ProviderType = deps.paymasterProv.Type()
 			}
 
 			if output == "json" {
@@ -72,17 +85,16 @@ func paymasterStatusCmd(bootLoader BootLoader) *cobra.Command {
 			w := tabwriter.NewWriter(os.Stdout, 0, 4, 2, ' ', 0)
 			fmt.Fprintf(w, "  Enabled:\t%v\n", info.Enabled)
 			fmt.Fprintf(w, "  Provider:\t%s\n", info.Provider)
+			if info.ProviderType != "" {
+				fmt.Fprintf(w, "  Provider Type:\t%s\n", info.ProviderType)
+			}
 			fmt.Fprintf(w, "  RPC URL:\t%s\n", info.RPCURL)
 			fmt.Fprintf(w, "  Token:\t%s\n", info.TokenAddress)
 			fmt.Fprintf(w, "  Paymaster:\t%s\n", info.PaymasterAddress)
 			if info.PolicyID != "" {
 				fmt.Fprintf(w, "  Policy ID:\t%s\n", info.PolicyID)
 			}
-			if flushErr := w.Flush(); flushErr != nil {
-				return fmt.Errorf("flush output: %w", flushErr)
-			}
-
-			return nil
+			return w.Flush()
 		},
 	}
 
@@ -112,30 +124,70 @@ Examples:
 			}
 			defer boot.DBClient.Close()
 
-			cfg := boot.Config
-			if !cfg.SmartAccount.Enabled {
-				return fmt.Errorf("smart account not enabled in config")
+			deps, err := initSmartAccountDeps(boot)
+			if err != nil {
+				return err
 			}
-			if !cfg.SmartAccount.Paymaster.Enabled {
+			defer deps.cleanup()
+
+			pmCfg := deps.cfg.Paymaster
+			if !pmCfg.Enabled {
 				return fmt.Errorf("paymaster not enabled in config")
 			}
 
-			type approveInfo struct {
+			tokenAddr := common.HexToAddress(pmCfg.TokenAddress)
+			paymasterAddr := common.HexToAddress(pmCfg.PaymasterAddress)
+
+			// Parse amount (USDC has 6 decimals).
+			var approveAmount *big.Int
+			if amount == "max" {
+				// MaxUint256 for unlimited approval.
+				approveAmount = new(big.Int).Sub(
+					new(big.Int).Lsh(big.NewInt(1), 256),
+					big.NewInt(1),
+				)
+			} else {
+				// Parse as float and convert to 6-decimal integer.
+				var f float64
+				if _, scanErr := fmt.Sscanf(amount, "%f", &f); scanErr != nil {
+					return fmt.Errorf("parse amount %q: %w", amount, scanErr)
+				}
+				// Convert to smallest unit (6 decimals for USDC).
+				approveAmount = new(big.Int).SetInt64(int64(f * math.Pow(10, 6)))
+			}
+
+			// Build the approve calldata.
+			approvalCall := paymaster.NewApprovalCall(tokenAddr, paymasterAddr, approveAmount)
+
+			// Execute via smart account.
+			ctx := context.Background()
+			txHash, err := deps.manager.Execute(ctx, []sa.ContractCall{
+				{
+					Target: approvalCall.TokenAddress,
+					Value:  big.NewInt(0),
+					Data:   approvalCall.ApproveCalldata,
+				},
+			})
+			if err != nil {
+				return fmt.Errorf("execute approval: %w", err)
+			}
+
+			type approveResult struct {
 				Token     string `json:"token"`
 				Paymaster string `json:"paymaster"`
 				Amount    string `json:"amount"`
-				Note      string `json:"note"`
+				TxHash    string `json:"txHash"`
 			}
 
-			info := approveInfo{
-				Token:     cfg.SmartAccount.Paymaster.TokenAddress,
-				Paymaster: cfg.SmartAccount.Paymaster.PaymasterAddress,
+			result := approveResult{
+				Token:     tokenAddr.Hex(),
+				Paymaster: paymasterAddr.Hex(),
 				Amount:    amount,
-				Note:      "Use the 'paymaster_approve' agent tool for actual on-chain approval.",
+				TxHash:    txHash,
 			}
 
 			if output == "json" {
-				data, marshalErr := json.MarshalIndent(info, "", "  ")
+				data, marshalErr := json.MarshalIndent(result, "", "  ")
 				if marshalErr != nil {
 					return fmt.Errorf("marshal json: %w", marshalErr)
 				}
@@ -143,20 +195,13 @@ Examples:
 				return nil
 			}
 
-			fmt.Println("Paymaster USDC Approval")
+			fmt.Println("Paymaster USDC Approval Submitted")
 			w := tabwriter.NewWriter(os.Stdout, 0, 4, 2, ' ', 0)
-			fmt.Fprintf(w, "  Token:\t%s\n", info.Token)
-			fmt.Fprintf(w, "  Paymaster:\t%s\n", info.Paymaster)
-			fmt.Fprintf(w, "  Amount:\t%s USDC\n", info.Amount)
-			if flushErr := w.Flush(); flushErr != nil {
-				return fmt.Errorf("flush output: %w", flushErr)
-			}
-
-			fmt.Println()
-			fmt.Println("Note: Full approval requires a running server (lango serve).")
-			fmt.Println("Use the 'paymaster_approve' agent tool for actual on-chain approval.")
-
-			return nil
+			fmt.Fprintf(w, "  Token:\t%s\n", result.Token)
+			fmt.Fprintf(w, "  Paymaster:\t%s\n", result.Paymaster)
+			fmt.Fprintf(w, "  Amount:\t%s USDC\n", result.Amount)
+			fmt.Fprintf(w, "  Tx Hash:\t%s\n", result.TxHash)
+			return w.Flush()
 		},
 	}
 

@@ -14,42 +14,57 @@ import (
 const SpendingHookABI = `[
 	{
 		"inputs": [
-			{"name": "account", "type": "address"}
+			{"name": "perTxLimit", "type": "uint256"},
+			{"name": "dailyLimit", "type": "uint256"},
+			{"name": "cumulativeLimit", "type": "uint256"}
 		],
-		"name": "getSpentAmount",
-		"outputs": [{"name": "", "type": "uint256"}],
-		"stateMutability": "view",
-		"type": "function"
-	},
-	{
-		"inputs": [
-			{"name": "account", "type": "address"}
-		],
-		"name": "getLimit",
-		"outputs": [{"name": "", "type": "uint256"}],
-		"stateMutability": "view",
-		"type": "function"
-	},
-	{
-		"inputs": [
-			{"name": "account", "type": "address"}
-		],
-		"name": "resetSpentAmount",
+		"name": "setLimits",
 		"outputs": [],
 		"stateMutability": "nonpayable",
+		"type": "function"
+	},
+	{
+		"inputs": [
+			{"name": "account", "type": "address"}
+		],
+		"name": "getConfig",
+		"outputs": [
+			{"name": "perTxLimit", "type": "uint256"},
+			{"name": "dailyLimit", "type": "uint256"},
+			{"name": "cumulativeLimit", "type": "uint256"}
+		],
+		"stateMutability": "view",
 		"type": "function"
 	},
 	{
 		"inputs": [
 			{"name": "account", "type": "address"},
-			{"name": "limit", "type": "uint256"}
+			{"name": "sessionKey", "type": "address"}
 		],
-		"name": "setLimit",
-		"outputs": [],
-		"stateMutability": "nonpayable",
+		"name": "getSpendState",
+		"outputs": [
+			{"name": "dailySpent", "type": "uint256"},
+			{"name": "cumulativeSpent", "type": "uint256"},
+			{"name": "lastResetDay", "type": "uint256"}
+		],
+		"stateMutability": "view",
 		"type": "function"
 	}
 ]`
+
+// SpendingConfig represents the spending limits for an account.
+type SpendingConfig struct {
+	PerTxLimit      *big.Int
+	DailyLimit      *big.Int
+	CumulativeLimit *big.Int
+}
+
+// SpendState represents the current spending state for a session.
+type SpendState struct {
+	DailySpent      *big.Int
+	CumulativeSpent *big.Int
+	LastResetDay    *big.Int
+}
 
 // SpendingHookClient provides typed access to the
 // LangoSpendingHook contract.
@@ -74,101 +89,102 @@ func NewSpendingHookClient(
 	}
 }
 
-// GetSpentAmount returns the amount spent by an account.
-func (c *SpendingHookClient) GetSpentAmount(
+// SetLimits configures the spending limits for the caller's account.
+func (c *SpendingHookClient) SetLimits(
 	ctx context.Context,
-	account common.Address,
-) (*big.Int, error) {
-	result, err := c.caller.Read(
-		ctx, contract.ContractCallRequest{
-			ChainID: c.chainID,
-			Address: c.address,
-			ABI:     c.abiJSON,
-			Method:  "getSpentAmount",
-			Args:    []interface{}{account},
-		},
-	)
-	if err != nil {
-		return nil, fmt.Errorf(
-			"get spent amount: %w", err,
-		)
-	}
-	if len(result.Data) > 0 {
-		if v, ok := result.Data[0].(*big.Int); ok {
-			return v, nil
-		}
-	}
-	return big.NewInt(0), nil
-}
-
-// GetLimit returns the spending limit for an account.
-func (c *SpendingHookClient) GetLimit(
-	ctx context.Context,
-	account common.Address,
-) (*big.Int, error) {
-	result, err := c.caller.Read(
-		ctx, contract.ContractCallRequest{
-			ChainID: c.chainID,
-			Address: c.address,
-			ABI:     c.abiJSON,
-			Method:  "getLimit",
-			Args:    []interface{}{account},
-		},
-	)
-	if err != nil {
-		return nil, fmt.Errorf(
-			"get limit: %w", err,
-		)
-	}
-	if len(result.Data) > 0 {
-		if v, ok := result.Data[0].(*big.Int); ok {
-			return v, nil
-		}
-	}
-	return big.NewInt(0), nil
-}
-
-// ResetSpentAmount resets the spent amount for an account.
-func (c *SpendingHookClient) ResetSpentAmount(
-	ctx context.Context,
-	account common.Address,
+	perTxLimit, dailyLimit, cumulativeLimit *big.Int,
 ) (string, error) {
 	result, err := c.caller.Write(
 		ctx, contract.ContractCallRequest{
 			ChainID: c.chainID,
 			Address: c.address,
 			ABI:     c.abiJSON,
-			Method:  "resetSpentAmount",
-			Args:    []interface{}{account},
+			Method:  "setLimits",
+			Args:    []interface{}{perTxLimit, dailyLimit, cumulativeLimit},
 		},
 	)
 	if err != nil {
 		return "", fmt.Errorf(
-			"reset spent amount: %w", err,
+			"set limits: %w", err,
 		)
 	}
 	return result.TxHash, nil
 }
 
-// SetLimit sets the spending limit for an account.
-func (c *SpendingHookClient) SetLimit(
+// GetConfig retrieves the spending limits for an account.
+func (c *SpendingHookClient) GetConfig(
 	ctx context.Context,
 	account common.Address,
-	limit *big.Int,
-) (string, error) {
-	result, err := c.caller.Write(
+) (*SpendingConfig, error) {
+	result, err := c.caller.Read(
 		ctx, contract.ContractCallRequest{
 			ChainID: c.chainID,
 			Address: c.address,
 			ABI:     c.abiJSON,
-			Method:  "setLimit",
-			Args:    []interface{}{account, limit},
+			Method:  "getConfig",
+			Args:    []interface{}{account},
 		},
 	)
 	if err != nil {
-		return "", fmt.Errorf(
-			"set limit: %w", err,
+		return nil, fmt.Errorf(
+			"get config: %w", err,
 		)
 	}
-	return result.TxHash, nil
+	if len(result.Data) >= 3 {
+		config := &SpendingConfig{}
+		if v, ok := result.Data[0].(*big.Int); ok {
+			config.PerTxLimit = v
+		}
+		if v, ok := result.Data[1].(*big.Int); ok {
+			config.DailyLimit = v
+		}
+		if v, ok := result.Data[2].(*big.Int); ok {
+			config.CumulativeLimit = v
+		}
+		return config, nil
+	}
+	return &SpendingConfig{
+		PerTxLimit:      big.NewInt(0),
+		DailyLimit:      big.NewInt(0),
+		CumulativeLimit: big.NewInt(0),
+	}, nil
+}
+
+// GetSpendState retrieves the spending state for an account's session key.
+func (c *SpendingHookClient) GetSpendState(
+	ctx context.Context,
+	account, sessionKey common.Address,
+) (*SpendState, error) {
+	result, err := c.caller.Read(
+		ctx, contract.ContractCallRequest{
+			ChainID: c.chainID,
+			Address: c.address,
+			ABI:     c.abiJSON,
+			Method:  "getSpendState",
+			Args:    []interface{}{account, sessionKey},
+		},
+	)
+	if err != nil {
+		return nil, fmt.Errorf(
+			"get spend state: %w", err,
+		)
+	}
+	if len(result.Data) >= 3 {
+		state := &SpendState{}
+		if v, ok := result.Data[0].(*big.Int); ok {
+			state.DailySpent = v
+		}
+		if v, ok := result.Data[1].(*big.Int); ok {
+			state.CumulativeSpent = v
+		}
+		if v, ok := result.Data[2].(*big.Int); ok {
+			state.LastResetDay = v
+		}
+		return state, nil
+	}
+	return &SpendState{
+		DailySpent:      big.NewInt(0),
+		CumulativeSpent: big.NewInt(0),
+		LastResetDay:    big.NewInt(0),
+	}, nil
 }

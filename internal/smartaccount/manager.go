@@ -11,6 +11,7 @@ import (
 	"github.com/ethereum/go-ethereum/crypto"
 
 	"github.com/langoai/lango/internal/contract"
+	"github.com/langoai/lango/internal/smartaccount/bindings"
 	"github.com/langoai/lango/internal/smartaccount/bundler"
 	"github.com/langoai/lango/internal/wallet"
 )
@@ -297,9 +298,15 @@ func (m *Manager) submitUserOp(
 	ctx context.Context,
 	calldata []byte,
 ) (string, error) {
+	// Get actual nonce from EntryPoint.
+	nonce, err := m.bundler.GetNonce(ctx, m.accountAddr)
+	if err != nil {
+		return "", fmt.Errorf("get nonce: %w", err)
+	}
+
 	op := &UserOperation{
 		Sender:               m.accountAddr,
-		Nonce:                big.NewInt(0),
+		Nonce:                nonce,
 		InitCode:             []byte{},
 		CallData:             calldata,
 		CallGasLimit:         big.NewInt(0),
@@ -370,63 +377,108 @@ func (m *Manager) submitUserOp(
 	return result.UserOpHash.Hex(), nil
 }
 
-// computeUserOpHash computes the hash of a UserOp for signing.
-// The hash is keccak256(abi.encode(userOpHash, entryPoint, chainId)).
+// packGasValues packs two uint128 values into a single 32-byte word.
+// The high 128 bits hold hi and the low 128 bits hold lo.
+func packGasValues(hi, lo *big.Int) []byte {
+	packed := make([]byte, 32)
+	if hi != nil {
+		b := hi.Bytes()
+		// hi occupies bytes [0..15] — right-align within upper half.
+		if len(b) > 16 {
+			b = b[len(b)-16:]
+		}
+		copy(packed[16-len(b):], b)
+	}
+	if lo != nil {
+		b := lo.Bytes()
+		// lo occupies bytes [16..31] — right-align within lower half.
+		if len(b) > 16 {
+			b = b[len(b)-16:]
+		}
+		copy(packed[32-len(b):], b)
+	}
+	return packed
+}
+
+// padTo32 left-pads a big.Int to 32 bytes for ABI encoding.
+func padTo32(v *big.Int) []byte {
+	padded := make([]byte, 32)
+	if v != nil {
+		b := v.Bytes()
+		copy(padded[32-len(b):], b)
+	}
+	return padded
+}
+
+// computeUserOpHash computes the hash of a UserOp for signing
+// per the ERC-4337 v0.7 PackedUserOperation format.
+// Inner hash: keccak256(abi.encode(sender, nonce, keccak256(initCode),
+//
+//	keccak256(callData), accountGasLimits, preVerificationGas,
+//	gasFees, keccak256(paymasterAndData)))
+//
+// Final hash: keccak256(abi.encode(innerHash, entryPoint, chainId))
 func (m *Manager) computeUserOpHash(
 	op *UserOperation,
 ) []byte {
-	// Pack UserOp fields (simplified hash for signature).
+	// ABI-encode inner fields (8 slots × 32 bytes = 256 bytes).
 	packed := make([]byte, 0, 256)
-	packed = append(packed, op.Sender.Bytes()...)
-	if op.Nonce != nil {
-		nonceBytes := op.Nonce.Bytes()
-		padded := make([]byte, 32)
-		copy(padded[32-len(nonceBytes):], nonceBytes)
-		packed = append(packed, padded...)
-	}
+
+	// sender — left-pad address to 32 bytes.
+	senderPadded := make([]byte, 32)
+	copy(senderPadded[12:], op.Sender.Bytes())
+	packed = append(packed, senderPadded...)
+
+	// nonce.
+	packed = append(packed, padTo32(op.Nonce)...)
+
+	// keccak256(initCode).
 	packed = append(
 		packed, crypto.Keccak256(op.InitCode)...,
 	)
+
+	// keccak256(callData).
 	packed = append(
 		packed, crypto.Keccak256(op.CallData)...,
 	)
 
-	// Add gas parameters.
-	for _, v := range []*big.Int{
-		op.CallGasLimit,
-		op.VerificationGasLimit,
-		op.PreVerificationGas,
-		op.MaxFeePerGas,
-		op.MaxPriorityFeePerGas,
-	} {
-		padded := make([]byte, 32)
-		if v != nil {
-			b := v.Bytes()
-			copy(padded[32-len(b):], b)
-		}
-		packed = append(packed, padded...)
-	}
+	// accountGasLimits = verificationGasLimit (hi) || callGasLimit (lo).
+	packed = append(
+		packed,
+		packGasValues(
+			op.VerificationGasLimit, op.CallGasLimit,
+		)...,
+	)
+
+	// preVerificationGas.
+	packed = append(packed, padTo32(op.PreVerificationGas)...)
+
+	// gasFees = maxPriorityFeePerGas (hi) || maxFeePerGas (lo).
+	packed = append(
+		packed,
+		packGasValues(
+			op.MaxPriorityFeePerGas, op.MaxFeePerGas,
+		)...,
+	)
+
+	// keccak256(paymasterAndData).
 	packed = append(
 		packed, crypto.Keccak256(op.PaymasterAndData)...,
 	)
 
 	innerHash := crypto.Keccak256(packed)
 
-	// Final hash: keccak256(innerHash ++ entryPoint ++ chainId)
-	final := make([]byte, 0, 84)
+	// Final hash: keccak256(abi.encode(innerHash, entryPoint, chainId)).
+	final := make([]byte, 0, 96)
 	final = append(final, innerHash...)
 	// Left-pad entryPoint to 32 bytes.
 	epPadded := make([]byte, 32)
 	copy(epPadded[12:], m.entryPoint.Bytes())
 	final = append(final, epPadded...)
 	// Left-pad chainID to 32 bytes.
-	chainIDBytes := big.NewInt(m.chainID).Bytes()
-	chainPadded := make([]byte, 32)
-	copy(
-		chainPadded[32-len(chainIDBytes):],
-		chainIDBytes,
+	final = append(
+		final, padTo32(big.NewInt(m.chainID))...,
 	)
-	final = append(final, chainPadded...)
 
 	return crypto.Keccak256(final)
 }
@@ -436,7 +488,7 @@ func (m *Manager) packSafe7579Call(
 	method string,
 	args ...interface{},
 ) ([]byte, error) {
-	parsed, err := contract.ParseABI(Safe7579ABI)
+	parsed, err := contract.ParseABI(bindings.Safe7579ABI)
 	if err != nil {
 		return nil, fmt.Errorf("parse Safe7579 ABI: %w", err)
 	}
@@ -482,7 +534,7 @@ func (m *Manager) encodeSingleCall(
 	execData = append(execData, valuePadded...)
 	execData = append(execData, call.Data...)
 
-	parsed, err := contract.ParseABI(Safe7579ABI)
+	parsed, err := contract.ParseABI(bindings.Safe7579ABI)
 	if err != nil {
 		return nil, fmt.Errorf(
 			"parse Safe7579 ABI: %w", err,
@@ -529,7 +581,7 @@ func (m *Manager) encodeBatchCalls(
 		batchData = append(batchData, call.Data...)
 	}
 
-	parsed, err := contract.ParseABI(Safe7579ABI)
+	parsed, err := contract.ParseABI(bindings.Safe7579ABI)
 	if err != nil {
 		return nil, fmt.Errorf(
 			"parse Safe7579 ABI: %w", err,

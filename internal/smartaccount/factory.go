@@ -9,6 +9,7 @@ import (
 	"github.com/ethereum/go-ethereum/crypto"
 
 	"github.com/langoai/lango/internal/contract"
+	"github.com/langoai/lango/internal/smartaccount/bindings"
 )
 
 // safeFactoryABI is the ABI for the Safe proxy factory's createProxyWithNonce.
@@ -75,36 +76,44 @@ func NewFactory(
 }
 
 // ComputeAddress computes the counterfactual Safe address via CREATE2.
-// Uses the owner address and salt as deterministic deployment inputs.
+// Uses the SafeProxyFactory's salt derivation:
+//   deploymentSalt = keccak256(keccak256(initializer) ++ saltNonce)
+// and the proxy initCode hash for the CREATE2 formula.
 func (f *Factory) ComputeAddress(
 	owner common.Address,
 	salt *big.Int,
 ) common.Address {
-	// CREATE2: keccak256(0xff ++ factory ++ salt ++ keccak256(initCode))
-	// The salt incorporates the owner for deterministic per-owner addresses.
+	// Build initializer calldata (same as in Deploy).
+	initData := buildSafeInitializer(
+		owner, f.safe7579Addr, f.fallbackAddr,
+	)
+
+	// CREATE2 salt: keccak256(keccak256(initializer) ++ saltNonce)
+	initHash := crypto.Keccak256(initData)
 	saltBytes := make([]byte, 32)
 	if salt != nil {
 		b := salt.Bytes()
 		copy(saltBytes[32-len(b):], b)
 	}
-
-	// Combine owner and salt nonce into the CREATE2 salt.
-	combinedSalt := crypto.Keccak256(
-		owner.Bytes(),
-		saltBytes,
+	deploymentSalt := crypto.Keccak256(
+		append(initHash, saltBytes...),
 	)
 
-	// Simplified initCode hash using the singleton and owner.
+	// Proxy initCode = proxyCreationCode ++ abi.encode(singleton)
+	// Hash the singleton address and initializer as the initCode
+	// hash for deterministic address computation.
+	singletonPadded := make([]byte, 32)
+	copy(singletonPadded[12:], f.safe7579Addr.Bytes())
 	initCodeHash := crypto.Keccak256(
 		f.safe7579Addr.Bytes(),
-		owner.Bytes(),
+		initData,
 	)
 
-	// CREATE2 formula.
+	// CREATE2: keccak256(0xff ++ factory ++ salt ++ keccak256(initCode))
 	data := make([]byte, 0, 85)
 	data = append(data, 0xFF)
 	data = append(data, f.factoryAddr.Bytes()...)
-	data = append(data, combinedSalt...)
+	data = append(data, deploymentSalt...)
 	data = append(data, initCodeHash...)
 
 	hash := crypto.Keccak256(data)
@@ -169,7 +178,7 @@ func (f *Factory) IsDeployed(
 	result, err := f.caller.Read(ctx, contract.ContractCallRequest{
 		ChainID: f.chainID,
 		Address: addr,
-		ABI:     Safe7579ABI,
+		ABI:     bindings.Safe7579ABI,
 		Method:  "isModuleInstalled",
 		Args: []interface{}{
 			uint8(ModuleTypeValidator),
@@ -186,68 +195,56 @@ func (f *Factory) IsDeployed(
 	return true, nil
 }
 
-// Safe7579ABI is the ABI for the Safe7579 adapter contract.
-// Exported for use by both Factory and Manager.
-const Safe7579ABI = `[
-	{
-		"inputs": [
-			{"name": "moduleTypeId", "type": "uint256"},
-			{"name": "module", "type": "address"},
-			{"name": "initData", "type": "bytes"}
-		],
-		"name": "installModule",
-		"outputs": [],
-		"stateMutability": "nonpayable",
-		"type": "function"
-	},
-	{
-		"inputs": [
-			{"name": "moduleTypeId", "type": "uint256"},
-			{"name": "module", "type": "address"},
-			{"name": "deInitData", "type": "bytes"}
-		],
-		"name": "uninstallModule",
-		"outputs": [],
-		"stateMutability": "nonpayable",
-		"type": "function"
-	},
-	{
-		"inputs": [
-			{"name": "mode", "type": "bytes32"},
-			{"name": "executionCalldata", "type": "bytes"}
-		],
-		"name": "execute",
-		"outputs": [],
-		"stateMutability": "payable",
-		"type": "function"
-	},
-	{
-		"inputs": [
-			{"name": "moduleTypeId", "type": "uint256"},
-			{"name": "module", "type": "address"},
-			{"name": "additionalContext", "type": "bytes"}
-		],
-		"name": "isModuleInstalled",
-		"outputs": [{"name": "", "type": "bool"}],
-		"stateMutability": "view",
-		"type": "function"
-	}
-]`
+// safeSetupABI is the ABI for the Safe.setup() function.
+const safeSetupABI = `[{
+	"inputs": [
+		{"name": "_owners", "type": "address[]"},
+		{"name": "_threshold", "type": "uint256"},
+		{"name": "to", "type": "address"},
+		{"name": "data", "type": "bytes"},
+		{"name": "fallbackHandler", "type": "address"},
+		{"name": "paymentToken", "type": "address"},
+		{"name": "payment", "type": "uint256"},
+		{"name": "paymentReceiver", "type": "address"}
+	],
+	"name": "setup",
+	"outputs": [],
+	"type": "function"
+}]`
 
-// buildSafeInitializer creates the Safe setup calldata that
-// configures the owner, threshold=1, and 7579 adapter.
+// buildSafeInitializer creates the Safe.setup() ABI-encoded calldata
+// that configures the owner, threshold=1, and 7579 adapter.
 func buildSafeInitializer(
 	owner common.Address,
 	safe7579Addr common.Address,
 	fallbackAddr common.Address,
 ) []byte {
-	// In a full implementation this would ABI-encode the Safe.setup()
-	// call with owner list, threshold, to (7579 setup), data, fallback
-	// handler, payment token, payment, and payment receiver.
-	// For now, encode owner + adapter addresses as a placeholder.
-	data := make([]byte, 0, 60)
-	data = append(data, owner.Bytes()...)
-	data = append(data, safe7579Addr.Bytes()...)
-	data = append(data, fallbackAddr.Bytes()...)
+	// Safe.setup(address[] owners, uint256 threshold, address to,
+	//   bytes data, address fallbackHandler, address paymentToken,
+	//   uint256 payment, address paymentReceiver)
+	//
+	// For ERC-7579: to = safe7579Addr (delegate call for adapter setup),
+	// data = empty (setup done post-deploy), fallbackHandler = fallbackAddr.
+	parsed, err := contract.ParseABI(safeSetupABI)
+	if err != nil {
+		// ABI is a compile-time constant; this should never fail.
+		return nil
+	}
+
+	owners := []common.Address{owner}
+	data, err := parsed.Pack(
+		"setup",
+		owners,                // _owners
+		big.NewInt(1),         // _threshold
+		safe7579Addr,          // to (7579 adapter setup as delegate call)
+		[]byte{},              // data (empty, setup done post-deploy)
+		fallbackAddr,          // fallbackHandler
+		common.Address{},      // paymentToken (zero, no payment)
+		big.NewInt(0),         // payment
+		common.Address{},      // paymentReceiver (zero)
+	)
+	if err != nil {
+		return nil
+	}
 	return data
 }

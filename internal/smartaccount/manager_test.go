@@ -278,7 +278,7 @@ func TestFactoryComputeAddress(t *testing.T) {
 func TestSubmitUserOp_NoPaymaster(t *testing.T) {
 	t.Parallel()
 
-	// Mock bundler: estimateGas → send
+	// Mock bundler: getNonce → estimateGas → send
 	callCount := 0
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		var req struct {
@@ -290,6 +290,12 @@ func TestSubmitUserOp_NoPaymaster(t *testing.T) {
 		callCount++
 
 		switch req.Method {
+		case "eth_getTransactionCount":
+			json.NewEncoder(w).Encode(map[string]interface{}{
+				"jsonrpc": "2.0",
+				"id":      callCount,
+				"result":  "0x5",
+			})
 		case "eth_estimateUserOperationGas":
 			json.NewEncoder(w).Encode(map[string]interface{}{
 				"jsonrpc": "2.0",
@@ -344,6 +350,12 @@ func TestSubmitUserOp_PaymasterTwoPhase(t *testing.T) {
 
 		w.Header().Set("Content-Type", "application/json")
 		switch req.Method {
+		case "eth_getTransactionCount":
+			json.NewEncoder(w).Encode(map[string]interface{}{
+				"jsonrpc": "2.0",
+				"id":      1,
+				"result":  "0x0",
+			})
 		case "eth_estimateUserOperationGas":
 			json.NewEncoder(w).Encode(map[string]interface{}{
 				"jsonrpc": "2.0",
@@ -501,6 +513,12 @@ func TestSubmitUserOp_PaymasterGasOverrides(t *testing.T) {
 
 		w.Header().Set("Content-Type", "application/json")
 		switch req.Method {
+		case "eth_getTransactionCount":
+			json.NewEncoder(w).Encode(map[string]interface{}{
+				"jsonrpc": "2.0",
+				"id":      1,
+				"result":  "0x3",
+			})
 		case "eth_estimateUserOperationGas":
 			json.NewEncoder(w).Encode(map[string]interface{}{
 				"jsonrpc": "2.0",

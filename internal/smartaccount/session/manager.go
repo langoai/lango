@@ -2,6 +2,7 @@ package session
 
 import (
 	"context"
+	"encoding/hex"
 	"fmt"
 	"math/big"
 	"sync"
@@ -180,9 +181,7 @@ func (m *Manager) Create(
 		if encErr != nil {
 			return nil, fmt.Errorf("encrypt session key: %w", encErr)
 		}
-		// Store encrypted bytes as the ref value.
-		_ = encrypted
-		keyRef = keyID
+		keyRef = hex.EncodeToString(encrypted)
 	}
 
 	now := time.Now()
@@ -318,7 +317,11 @@ func (m *Manager) SignUserOp(
 	// Decrypt private key material.
 	privKeyBytes := []byte(key.PrivateKeyRef)
 	if m.decrypt != nil {
-		decrypted, decErr := m.decrypt(ctx, key.PrivateKeyRef, nil)
+		ciphertext, hexErr := hex.DecodeString(key.PrivateKeyRef)
+		if hexErr != nil {
+			return nil, fmt.Errorf("decode encrypted key: %w", hexErr)
+		}
+		decrypted, decErr := m.decrypt(ctx, key.ID, ciphertext)
 		if decErr != nil {
 			return nil, fmt.Errorf("decrypt session key: %w", decErr)
 		}

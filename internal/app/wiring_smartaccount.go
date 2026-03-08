@@ -3,6 +3,7 @@ package app
 import (
 	"context"
 	"math/big"
+	"time"
 
 	"github.com/ethereum/go-ethereum/common"
 
@@ -13,6 +14,7 @@ import (
 	"github.com/langoai/lango/internal/economy/risk"
 	"github.com/langoai/lango/internal/eventbus"
 	sa "github.com/langoai/lango/internal/smartaccount"
+	"github.com/langoai/lango/internal/smartaccount/bindings"
 	"github.com/langoai/lango/internal/smartaccount/bundler"
 	"github.com/langoai/lango/internal/smartaccount/module"
 	"github.com/langoai/lango/internal/smartaccount/paymaster"
@@ -30,6 +32,36 @@ type smartAccountComponents struct {
 	onChainTracker    *budget.OnChainTracker
 	sessionGuard      *sentinel.SessionGuard
 	paymasterProvider paymaster.PaymasterProvider
+}
+
+// SessionManager returns the session key manager.
+func (sac *smartAccountComponents) SessionManager() *sasession.Manager {
+	return sac.sessionManager
+}
+
+// PolicyEngine returns the policy engine.
+func (sac *smartAccountComponents) PolicyEngine() *policy.Engine {
+	return sac.policyEngine
+}
+
+// OnChainTracker returns the on-chain spending tracker.
+func (sac *smartAccountComponents) OnChainTracker() *budget.OnChainTracker {
+	return sac.onChainTracker
+}
+
+// PaymasterProvider returns the paymaster provider, or nil if not configured.
+func (sac *smartAccountComponents) PaymasterProvider() paymaster.PaymasterProvider {
+	return sac.paymasterProvider
+}
+
+// ModuleRegistry returns the module registry.
+func (sac *smartAccountComponents) ModuleRegistry() *module.Registry {
+	return sac.moduleRegistry
+}
+
+// BundlerClient returns the bundler client.
+func (sac *smartAccountComponents) BundlerClient() *bundler.Client {
+	return sac.bundlerClient
 }
 
 // initSmartAccount creates the smart account subsystem if enabled.
@@ -67,6 +99,25 @@ func initSmartAccount(
 	if cfg.SmartAccount.Session.MaxActiveKeys > 0 {
 		sessionOpts = append(sessionOpts, sasession.WithMaxKeys(cfg.SmartAccount.Session.MaxActiveKeys))
 	}
+
+	// Wire on-chain registration/revocation if SessionValidator is configured.
+	if cfg.SmartAccount.Modules.SessionValidatorAddress != "" {
+		svABICache := contract.NewABICache()
+		svCaller := contract.NewCaller(pc.rpcClient, pc.wallet, pc.chainID, svABICache)
+		svAddr := common.HexToAddress(cfg.SmartAccount.Modules.SessionValidatorAddress)
+		svClient := bindings.NewSessionValidatorClient(svCaller, svAddr, pc.chainID)
+
+		sessionOpts = append(sessionOpts,
+			sasession.WithOnChainRegistration(func(ctx context.Context, addr common.Address, p sa.SessionPolicy) (string, error) {
+				return svClient.RegisterSessionKey(ctx, addr, toOnChainPolicy(p))
+			}),
+			sasession.WithOnChainRevocation(func(ctx context.Context, addr common.Address) (string, error) {
+				return svClient.RevokeSessionKey(ctx, addr)
+			}),
+		)
+		logger().Info("smart account: session on-chain wiring configured", "validator", svAddr.Hex())
+	}
+
 	sac.sessionManager = sasession.NewManager(sessionStore, sessionOpts...)
 
 	// 4. Policy engine
@@ -159,6 +210,14 @@ func initSmartAccount(
 	// 8. On-chain spending tracker
 	sac.onChainTracker = budget.NewOnChainTracker()
 	if econc != nil && econc.budgetEngine != nil {
+		be := econc.budgetEngine
+		sac.onChainTracker.SetCallback(func(sessionID string, spent *big.Int) {
+			_ = be.Record(sessionID, budget.SpendEntry{
+				Amount:    new(big.Int).Set(spent),
+				Reason:    "on-chain spend sync",
+				Timestamp: time.Now(),
+			})
+		})
 		logger().Info("smart account: budget sync wired")
 	}
 
@@ -167,21 +226,79 @@ func initSmartAccount(
 }
 
 // initPaymasterProvider creates a paymaster provider based on config.
+// The provider is wrapped with RecoverableProvider for transient error retry
+// and fallback behavior.
 func initPaymasterProvider(cfg config.SmartAccountPaymasterConfig) paymaster.PaymasterProvider {
 	if cfg.RPCURL == "" {
 		logger().Warn("paymaster enabled but no rpcURL configured")
 		return nil
 	}
+	var inner paymaster.PaymasterProvider
 	switch cfg.Provider {
 	case "circle":
-		return paymaster.NewCircleProvider(cfg.RPCURL)
+		inner = paymaster.NewCircleProvider(cfg.RPCURL)
 	case "pimlico":
-		return paymaster.NewPimlicoProvider(cfg.RPCURL, cfg.PolicyID)
+		inner = paymaster.NewPimlicoProvider(cfg.RPCURL, cfg.PolicyID)
 	case "alchemy":
-		return paymaster.NewAlchemyProvider(cfg.RPCURL, cfg.PolicyID)
+		inner = paymaster.NewAlchemyProvider(cfg.RPCURL, cfg.PolicyID)
 	default:
 		logger().Warn("unknown paymaster provider", "provider", cfg.Provider)
 		return nil
+	}
+
+	// Wrap with recovery (retry + fallback).
+	rcfg := paymaster.DefaultRecoveryConfig()
+	if cfg.FallbackMode == "direct" {
+		rcfg.FallbackMode = paymaster.FallbackDirectGas
+	}
+	return paymaster.NewRecoverableProvider(inner, rcfg)
+}
+
+// toOnChainPolicy converts a Go SessionPolicy to the on-chain tuple format
+// expected by LangoSessionValidator. Time values are converted to uint48
+// timestamps, function selectors from hex strings to [4]byte arrays.
+func toOnChainPolicy(p sa.SessionPolicy) interface{} {
+	// Convert function selectors from hex strings to [4]byte.
+	var funcSelectors [][4]byte
+	for _, hexSel := range p.AllowedFunctions {
+		sel := common.FromHex(hexSel)
+		if len(sel) >= 4 {
+			var s [4]byte
+			copy(s[:], sel[:4])
+			funcSelectors = append(funcSelectors, s)
+		}
+	}
+
+	spendLimit := p.SpendLimit
+	if spendLimit == nil {
+		spendLimit = new(big.Int)
+	}
+	spentAmount := p.SpentAmount
+	if spentAmount == nil {
+		spentAmount = new(big.Int)
+	}
+
+	// Return as an anonymous struct matching the Solidity tuple.
+	type onChainPolicy struct {
+		AllowedTargets    []common.Address
+		AllowedFunctions  [][4]byte
+		SpendLimit        *big.Int
+		SpentAmount       *big.Int
+		ValidAfter        *big.Int // uint48
+		ValidUntil        *big.Int // uint48
+		Active            bool
+		AllowedPaymasters []common.Address
+	}
+
+	return onChainPolicy{
+		AllowedTargets:    p.AllowedTargets,
+		AllowedFunctions:  funcSelectors,
+		SpendLimit:        spendLimit,
+		SpentAmount:       spentAmount,
+		ValidAfter:        big.NewInt(p.ValidAfter.Unix()),
+		ValidUntil:        big.NewInt(p.ValidUntil.Unix()),
+		Active:            true,
+		AllowedPaymasters: p.AllowedPaymasters,
 	}
 }
 

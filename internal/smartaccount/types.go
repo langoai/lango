@@ -58,11 +58,14 @@ func (sk *SessionKey) IsActive() bool { return !sk.Revoked && !sk.IsExpired() }
 
 // SessionPolicy defines the constraints for a session key.
 type SessionPolicy struct {
-	AllowedTargets   []common.Address `json:"allowedTargets"`
-	AllowedFunctions []string         `json:"allowedFunctions"` // 4-byte hex selectors
-	SpendLimit       *big.Int         `json:"spendLimit"`
-	ValidAfter       time.Time        `json:"validAfter"`
-	ValidUntil       time.Time        `json:"validUntil"`
+	AllowedTargets    []common.Address `json:"allowedTargets"`
+	AllowedFunctions  []string         `json:"allowedFunctions"` // 4-byte hex selectors
+	SpendLimit        *big.Int         `json:"spendLimit"`
+	SpentAmount       *big.Int         `json:"spentAmount,omitempty"`
+	ValidAfter        time.Time        `json:"validAfter"`
+	ValidUntil        time.Time        `json:"validUntil"`
+	Active            bool             `json:"active"`
+	AllowedPaymasters []common.Address `json:"allowedPaymasters,omitempty"`
 }
 
 // ModuleInfo describes an installed ERC-7579 module.
