@@ -407,6 +407,22 @@ func New(boot *bootstrap.Result) (*App, error) {
 		logger().Info("contract interaction tools registered")
 	}
 
+	// 5p'. Smart Account (optional, requires payment + contract)
+	sacc := initSmartAccount(cfg, pc, econc, bus)
+	if sacc != nil {
+		app.SmartAccountManager = sacc.manager
+		saTools := buildSmartAccountTools(sacc)
+		tools = append(tools, saTools...)
+		catalog.RegisterCategory(toolcatalog.Category{
+			Name:        "smartaccount",
+			Description: "ERC-7579 smart account management",
+			ConfigKey:   "smartAccount.enabled",
+			Enabled:     true,
+		})
+		catalog.Register("smartaccount", saTools)
+		logger().Info("smart account tools registered")
+	}
+
 	// 5q. Observability (optional — metrics, health, token tracking)
 	obsc := initObservability(cfg, boot.DBClient, bus)
 	if obsc != nil {

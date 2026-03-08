@@ -80,6 +80,9 @@ type Config struct {
 	// Economy layer configuration (budget, risk, escrow, pricing, negotiation)
 	Economy EconomyConfig `mapstructure:"economy" json:"economy"`
 
+	// Smart Account configuration (ERC-7579 modular accounts)
+	SmartAccount SmartAccountConfig `mapstructure:"smartAccount" json:"smartAccount"`
+
 	// Observability configuration (token tracking, health, audit, metrics)
 	Observability ObservabilityConfig `mapstructure:"observability" json:"observability"`
 

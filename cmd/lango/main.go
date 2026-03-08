@@ -24,6 +24,7 @@ import (
 	clicron "github.com/langoai/lango/internal/cli/cron"
 	clicontract "github.com/langoai/lango/internal/cli/contract"
 	clieconomy "github.com/langoai/lango/internal/cli/economy"
+	cliaccount "github.com/langoai/lango/internal/cli/smartaccount"
 	climcp "github.com/langoai/lango/internal/cli/mcp"
 	climetrics "github.com/langoai/lango/internal/cli/metrics"
 	"github.com/langoai/lango/internal/cli/doctor"
@@ -233,6 +234,12 @@ func main() {
 	contractCmd := clicontract.NewContractCmd(contractCfgLoader)
 	contractCmd.GroupID = "infra"
 	rootCmd.AddCommand(contractCmd)
+
+	accountCmd := cliaccount.NewAccountCmd(func() (*bootstrap.Result, error) {
+		return bootstrap.Run(bootstrap.Options{})
+	})
+	accountCmd.GroupID = "infra"
+	rootCmd.AddCommand(accountCmd)
 
 	metricsCmd := climetrics.NewMetricsCmd()
 	metricsCmd.GroupID = "data"
