@@ -36,6 +36,7 @@ passphrase.txt
 
 !lango.example.json
 !contracts/deployments/*.json
+!internal/**/abi/*.json
 /lango
 
 .cursor/
