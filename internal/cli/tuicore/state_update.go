@@ -49,6 +49,12 @@ func (s *ConfigState) UpdateConfigFromForm(form *FormModel) {
 			if d, err := time.ParseDuration(val); err == nil {
 				s.Current.Agent.ToolTimeout = d
 			}
+		case "auto_extend_timeout":
+			s.Current.Agent.AutoExtendTimeout = (val == "true")
+		case "max_request_timeout":
+			if d, err := time.ParseDuration(val); err == nil {
+				s.Current.Agent.MaxRequestTimeout = d
+			}
 
 		// Server
 		case "host":

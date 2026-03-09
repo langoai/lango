@@ -56,7 +56,9 @@ LLM agent settings including model selection, prompt configuration, and timeouts
     "requestTimeout": "5m",
     "toolTimeout": "2m",
     "multiAgent": false,
-    "agentsDir": ""
+    "agentsDir": "",
+    "autoExtendTimeout": false,
+    "maxRequestTimeout": ""
   }
 }
 ```
@@ -75,6 +77,8 @@ LLM agent settings including model selection, prompt configuration, and timeouts
 | `agent.toolTimeout` | `duration` | `2m` | Maximum duration for a single tool call |
 | `agent.multiAgent` | `bool` | `false` | Enable [multi-agent orchestration](features/multi-agent.md) |
 | `agent.agentsDir` | `string` | `""` | Directory containing user-defined [AGENT.md](features/multi-agent.md#custom-agent-definitions) agent definitions |
+| `agent.autoExtendTimeout` | `bool` | `false` | Auto-extend deadline when agent activity is detected |
+| `agent.maxRequestTimeout` | `duration` | | Absolute max when auto-extend enabled (default: 3× requestTimeout) |
 
 ---
 

@@ -2,6 +2,7 @@ package discord
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net/http"
 	"strings"
@@ -183,20 +184,40 @@ func (c *Channel) onMessageCreate(s *discordgo.Session, m *discordgo.MessageCrea
 		"authorId", m.Author.ID,
 	)
 
-	// Show typing indicator while processing
-	stopThinking := c.startTyping(m.ChannelID)
+	// Post a "Thinking..." placeholder and start progress updates.
+	placeholder, placeholderErr := c.postThinking(m.ChannelID)
+	var stopProgress func()
+	if placeholderErr == nil {
+		stopProgress = c.startProgressUpdates(m.ChannelID, placeholder.ID)
+	} else {
+		// Fall back to typing indicator if posting failed.
+		stopFallback := c.startTyping(m.ChannelID)
+		stopProgress = stopFallback
+	}
+
 	response, err := c.handler(c.ctx, incoming)
-	stopThinking()
+	stopProgress()
 
 	if err != nil {
 		logger.Errorw("handler error", "error", err)
-		c.sendError(m.ChannelID, err)
+		// Update placeholder with error message if possible.
+		if placeholderErr == nil {
+			errText := fmt.Sprintf("❌ %s", formatChannelError(err))
+			c.editPlaceholder(m.ChannelID, placeholder.ID, errText)
+		} else {
+			c.sendError(m.ChannelID, err)
+		}
 		return
 	}
 
 	if response != nil && response.Content != "" {
-		if err := c.Send(m.ChannelID, response); err != nil {
-			logger.Errorw("send error", "error", err)
+		// Replace placeholder with actual response.
+		if placeholderErr == nil {
+			c.editPlaceholder(m.ChannelID, placeholder.ID, response.Content)
+		} else {
+			if err := c.Send(m.ChannelID, response); err != nil {
+				logger.Errorw("send error", "error", err)
+			}
 		}
 	}
 }
@@ -251,6 +272,59 @@ func (c *Channel) startTyping(channelID string) func() {
 			case <-ticker.C:
 				if err := c.session.ChannelTyping(channelID); err != nil {
 					logger.Warnw("typing indicator refresh error", "error", err)
+				}
+			}
+		}
+	}()
+
+	return func() { once.Do(func() { close(done) }) }
+}
+
+// postThinking sends a "Thinking..." placeholder message.
+func (c *Channel) postThinking(channelID string) (*discordgo.Message, error) {
+	return c.session.ChannelMessageSend(channelID, "_Thinking..._")
+}
+
+// editPlaceholder edits an existing placeholder message with new content.
+func (c *Channel) editPlaceholder(channelID, messageID, content string) {
+	// Split if content exceeds Discord limit.
+	if len(content) > 2000 {
+		content = content[:1997] + "..."
+	}
+	_, err := c.session.ChannelMessageEditComplex(&discordgo.MessageEdit{
+		Channel: channelID,
+		ID:      messageID,
+		Content: &content,
+	})
+	if err != nil {
+		logger.Warnw("edit placeholder failed", "error", err)
+	}
+}
+
+// startProgressUpdates periodically edits the thinking placeholder with elapsed time.
+// Returns a stop function that must be called before the placeholder is replaced.
+func (c *Channel) startProgressUpdates(channelID, messageID string) func() {
+	start := time.Now()
+	done := make(chan struct{})
+	var once sync.Once
+
+	go func() {
+		ticker := time.NewTicker(15 * time.Second)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-done:
+				return
+			case <-ticker.C:
+				elapsed := time.Since(start).Truncate(time.Second)
+				text := fmt.Sprintf("_Thinking... (%s)_", elapsed)
+				_, err := c.session.ChannelMessageEditComplex(&discordgo.MessageEdit{
+					Channel: channelID,
+					ID:      messageID,
+					Content: &text,
+				})
+				if err != nil {
+					logger.Warnw("progress update error", "error", err)
 				}
 			}
 		}
@@ -365,9 +439,22 @@ func (c *Channel) isGuildAllowed(guildID string) bool {
 	return false
 }
 
-// sendError sends an error message
+// sendError sends an error message with user-friendly formatting.
 func (c *Channel) sendError(channelID string, err error) {
-	_, _ = c.session.ChannelMessageSend(channelID, fmt.Sprintf("❌ Error: %s", err.Error()))
+	_, _ = c.session.ChannelMessageSend(channelID, fmt.Sprintf("❌ %s", formatChannelError(err)))
+}
+
+// formatChannelError returns a user-friendly error message.
+// If the error implements UserMessage(), that is used; otherwise falls back to Error().
+func formatChannelError(err error) string {
+	type userMessager interface {
+		UserMessage() string
+	}
+	var um userMessager
+	if errors.As(err, &um) {
+		return um.UserMessage()
+	}
+	return fmt.Sprintf("Error: %s", err.Error())
 }
 
 // splitMessage splits a message into chunks

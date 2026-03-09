@@ -154,6 +154,14 @@ type AgentConfig struct {
 	// Zero means use the default.
 	MaxDelegationRounds int `mapstructure:"maxDelegationRounds" json:"maxDelegationRounds"`
 
+	// AutoExtendTimeout enables automatic deadline extension when agent activity is detected.
+	// When true, the timeout is extended on each agent event (tool call, text chunk) up to MaxRequestTimeout.
+	AutoExtendTimeout bool `mapstructure:"autoExtendTimeout" json:"autoExtendTimeout"`
+
+	// MaxRequestTimeout is the absolute maximum duration for a request when auto-extend is enabled.
+	// Defaults to 3x RequestTimeout (e.g. 15m if RequestTimeout is 5m).
+	MaxRequestTimeout time.Duration `mapstructure:"maxRequestTimeout" json:"maxRequestTimeout"`
+
 	// AgentsDir is the directory containing user-defined AGENT.md files.
 	// Structure: <dir>/<name>/AGENT.md
 	// If empty, only built-in agents are used.

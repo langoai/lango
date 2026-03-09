@@ -152,6 +152,19 @@ func NewAgentForm(cfg *config.Config) *tuicore.FormModel {
 		Description: "Maximum execution time allowed for a single tool invocation",
 	})
 
+	form.AddField(&tuicore.Field{
+		Key: "auto_extend_timeout", Label: "Auto-Extend Timeout", Type: tuicore.InputBool,
+		Checked:     cfg.Agent.AutoExtendTimeout,
+		Description: "Automatically extend deadline when agent is actively producing output",
+	})
+
+	form.AddField(&tuicore.Field{
+		Key: "max_request_timeout", Label: "Max Request Timeout", Type: tuicore.InputText,
+		Value:       cfg.Agent.MaxRequestTimeout.String(),
+		Placeholder: "15m (default: 3× request timeout)",
+		Description: "Absolute maximum timeout when auto-extend is enabled",
+	})
+
 	return &form
 }
 

@@ -263,9 +263,13 @@ func isDelegationEvent(e *session.Event) bool {
 // RunAndCollect executes the agent and returns the full text response.
 // If the agent encounters a "failed to find agent" error (hallucinated agent
 // name), it sends a correction message and retries once.
-func (a *Agent) RunAndCollect(ctx context.Context, sessionID, input string) (string, error) {
+func (a *Agent) RunAndCollect(ctx context.Context, sessionID, input string, opts ...RunOption) (string, error) {
+	var ro runOptions
+	for _, o := range opts {
+		o(&ro)
+	}
 	start := time.Now()
-	resp, err := a.runAndCollectOnce(ctx, sessionID, input)
+	resp, err := a.runAndCollectOnce(ctx, sessionID, input, &ro)
 	if err == nil {
 		// Safety net: detect [REJECT] text from sub-agents that failed to
 		// call transfer_to_agent and force re-routing through the orchestrator.
@@ -277,7 +281,7 @@ func (a *Agent) RunAndCollect(ctx context.Context, sessionID, input string) (str
 				"[System: A sub-agent could not handle this request. "+
 					"Re-evaluate and route to a different agent or answer directly. "+
 					"Original user request: %s]", input)
-			retryResp, retryErr := a.runAndCollectOnce(ctx, sessionID, correction)
+			retryResp, retryErr := a.runAndCollectOnce(ctx, sessionID, correction, &ro)
 			if retryErr == nil && retryResp != "" && !containsRejectPattern(retryResp) {
 				return retryResp, nil
 			}
@@ -309,13 +313,17 @@ func (a *Agent) RunAndCollect(ctx context.Context, sessionID, input string) (str
 					"session", sessionID,
 					"fix", fix,
 					"elapsed", time.Since(start).String())
-				retryResp, retryErr := a.runAndCollectOnce(ctx, sessionID, correction)
+				retryResp, retryErr := a.runAndCollectOnce(ctx, sessionID, correction, &ro)
 				if retryErr == nil {
 					return retryResp, nil
 				}
 				logger().Warnw("learned fix retry failed",
 					"session", sessionID,
 					"error", retryErr)
+				// Prefer whichever partial result is longer.
+				if retryResp != "" && len(retryResp) > len(resp) {
+					resp = retryResp
+				}
 			}
 		}
 
@@ -323,7 +331,8 @@ func (a *Agent) RunAndCollect(ctx context.Context, sessionID, input string) (str
 			"session", sessionID,
 			"elapsed", time.Since(start).String(),
 			"error", err)
-		return "", err
+		// Return partial result from the best attempt if available.
+		return resp, err
 	}
 
 	// Build correction message and retry once.
@@ -338,15 +347,21 @@ func (a *Agent) RunAndCollect(ctx context.Context, sessionID, input string) (str
 		"elapsed", time.Since(start).String())
 
 	retryStart := time.Now()
-	resp, err = a.runAndCollectOnce(ctx, sessionID, correction)
-	if err != nil {
+	retryResp, retryErr := a.runAndCollectOnce(ctx, sessionID, correction, &ro)
+	if retryErr != nil {
 		logger().Errorw("agent hallucination retry failed",
 			"session", sessionID,
 			"retry_elapsed", time.Since(retryStart).String(),
 			"total_elapsed", time.Since(start).String(),
-			"error", err)
-		return "", err
+			"error", retryErr)
+		// Return best partial result from either attempt.
+		if retryResp != "" && len(retryResp) > len(resp) {
+			resp = retryResp
+		}
+		return resp, retryErr
 	}
+	resp = retryResp
+	err = nil
 
 	logger().Infow("agent hallucination retry succeeded",
 		"session", sessionID,
@@ -360,13 +375,22 @@ func (a *Agent) RunAndCollect(ctx context.Context, sessionID, input string) (str
 // It tracks whether partial (streaming) events were seen to avoid
 // double-counting text that appears in both partial chunks and the
 // final non-partial response.
-func (a *Agent) runAndCollectOnce(ctx context.Context, sessionID, input string) (string, error) {
+func (a *Agent) runAndCollectOnce(ctx context.Context, sessionID, input string, ro *runOptions) (string, error) {
 	var b strings.Builder
 	var sawPartial bool
 
+	start := time.Now()
+
 	for event, err := range a.Run(ctx, sessionID, input) {
 		if err != nil {
-			return "", fmt.Errorf("agent error: %w", err)
+			partial := b.String()
+			return partial, &AgentError{
+				Code:    classifyError(err),
+				Message: "agent error",
+				Cause:   err,
+				Partial: partial,
+				Elapsed: time.Since(start),
+			}
 		}
 
 		// Log agent event for multi-agent observability.
@@ -385,6 +409,13 @@ func (a *Agent) runAndCollectOnce(ctx context.Context, sessionID, input string) 
 
 		if event.Content == nil {
 			continue
+		}
+
+		// Signal activity for deadline extension.
+		if ro != nil && ro.onActivity != nil {
+			if hasText(event) || hasFunctionCalls(event) {
+				ro.onActivity()
+			}
 		}
 
 		if event.Partial {
@@ -412,7 +443,14 @@ func (a *Agent) runAndCollectOnce(ctx context.Context, sessionID, input string) 
 	// without yielding an error. Check context after iteration to detect
 	// timeout that the iterator failed to propagate.
 	if err := ctx.Err(); err != nil {
-		return "", fmt.Errorf("agent error: %w", err)
+		partial := b.String()
+		return partial, &AgentError{
+			Code:    ErrTimeout,
+			Message: "agent error",
+			Cause:   err,
+			Partial: partial,
+			Elapsed: time.Since(start),
+		}
 	}
 
 	return b.String(), nil
@@ -457,22 +495,55 @@ func subAgentNames(a adk_agent.Agent) []string {
 	return names
 }
 
+// RunOption configures optional behavior for a single agent run.
+type RunOption func(*runOptions)
+
+type runOptions struct {
+	onActivity func()
+}
+
+// WithOnActivity sets a callback that is invoked whenever the agent produces
+// activity (text chunks, function calls). Useful for extending deadlines.
+func WithOnActivity(fn func()) RunOption {
+	return func(o *runOptions) { o.onActivity = fn }
+}
+
 // ChunkCallback is called for each streaming text chunk during agent execution.
 type ChunkCallback func(chunk string)
 
 // RunStreaming executes the agent and streams partial text chunks via the callback.
 // It returns the full accumulated response text for backward compatibility.
-func (a *Agent) RunStreaming(ctx context.Context, sessionID, input string, onChunk ChunkCallback) (string, error) {
+func (a *Agent) RunStreaming(ctx context.Context, sessionID, input string, onChunk ChunkCallback, opts ...RunOption) (string, error) {
+	var ro runOptions
+	for _, o := range opts {
+		o(&ro)
+	}
+
 	var b strings.Builder
 	var sawPartial bool
+	start := time.Now()
 
 	for event, err := range a.Run(ctx, sessionID, input) {
 		if err != nil {
-			return "", fmt.Errorf("agent error: %w", err)
+			partial := b.String()
+			return partial, &AgentError{
+				Code:    classifyError(err),
+				Message: "agent error",
+				Cause:   err,
+				Partial: partial,
+				Elapsed: time.Since(start),
+			}
 		}
 
 		if event.Content == nil {
 			continue
+		}
+
+		// Signal activity for deadline extension.
+		if ro.onActivity != nil {
+			if hasText(event) || hasFunctionCalls(event) {
+				ro.onActivity()
+			}
 		}
 
 		if event.Partial {
@@ -499,7 +570,14 @@ func (a *Agent) RunStreaming(ctx context.Context, sessionID, input string, onChu
 	// without yielding an error. Check context after iteration to detect
 	// timeout that the iterator failed to propagate.
 	if err := ctx.Err(); err != nil {
-		return "", fmt.Errorf("agent error: %w", err)
+		partial := b.String()
+		return partial, &AgentError{
+			Code:    ErrTimeout,
+			Message: "agent error",
+			Cause:   err,
+			Partial: partial,
+			Elapsed: time.Since(start),
+		}
 	}
 
 	return b.String(), nil
