@@ -1,9 +1,7 @@
 ## Purpose
 
 Define the `lango settings` command that provides a comprehensive, interactive menu-based configuration editor for all aspects of the encrypted configuration profile.
-
 ## Requirements
-
 ### Requirement: Configuration Coverage
 The settings editor SHALL support editing all configuration sections:
 1. **Providers** — Add, edit, delete multi-provider configurations
@@ -34,10 +32,16 @@ The settings editor SHALL support editing all configuration sections:
 26. **Security Keyring** — OS keyring enabled
 27. **Security DB Encryption** — SQLCipher enabled, cipher page size
 28. **Security KMS** — Region, key ID, endpoint, fallback, timeout, retries, Azure vault/version, PKCS#11 module/slot/PIN/key label
+29. **Economy** — Enabled, budget (defaultMax, hardLimit, alertThresholds)
+30. **Economy Risk** — Escrow threshold, high trust score, medium trust score
+31. **Economy Negotiation** — Enabled, max rounds, timeout, auto-negotiate, max discount
+32. **Economy Escrow** — Enabled, default timeout, max milestones, auto-release, dispute window
+33. **Economy Pricing** — Enabled, trust discount, volume discount, min price
+34. **Observability** — Enabled, tokens (enabled, persist, retention), health (enabled, interval), audit (enabled, retention), metrics (enabled, format)
 
 #### Scenario: Menu categories
 - **WHEN** user launches `lango settings`
-- **THEN** the menu SHALL display all categories including P2P Network, P2P ZKP, P2P Pricing, P2P Owner Protection, P2P Sandbox, Security Keyring, Security DB Encryption, Security KMS, grouped under "P2P Network" and "Security" sections in order: Providers, Agent, Server, Channels, Tools, Session, Security, Auth, Knowledge, Skill, Observational Memory, Embedding & RAG, Graph Store, Multi-Agent, A2A Protocol, Payment, Cron Scheduler, Background Tasks, Workflow Engine, Librarian, P2P Network, P2P ZKP, P2P Pricing, P2P Owner Protection, P2P Sandbox, Security Keyring, Security DB Encryption, Security KMS, Save & Exit, Cancel
+- **THEN** the menu SHALL display all categories including Economy (5 sub-forms), Observability, grouped under "Economy" and "Infrastructure" sections respectively
 
 #### Scenario: Provider form includes github
 - **WHEN** user opens the provider add/edit form
@@ -303,10 +307,11 @@ The sections SHALL be, in order:
 1. **Core** — Providers, Agent, Server, Session
 2. **Communication** — Channels, Tools, Multi-Agent, A2A Protocol
 3. **AI & Knowledge** — Knowledge, Skill, Observational Memory, Embedding & RAG, Graph Store, Librarian
-4. **Infrastructure** — Payment, Cron Scheduler, Background Tasks, Workflow Engine
-5. **P2P Network** — P2P Network, P2P ZKP, P2P Pricing, P2P Owner Protection, P2P Sandbox
-6. **Security** — Security, Auth, Security Keyring, Security DB Encryption, Security KMS
-7. *(untitled)* — Save & Exit, Cancel
+4. **Economy** — Economy, Economy Risk, Economy Negotiation, Economy Escrow, Economy Pricing
+5. **Infrastructure** — Payment, Cron Scheduler, Background Tasks, Workflow Engine, Observability
+6. **P2P Network** — P2P Network, P2P ZKP, P2P Pricing, P2P Owner Protection, P2P Sandbox
+7. **Security** — Security, Auth, Security Keyring, Security DB Encryption, Security KMS
+8. *(untitled)* — Save & Exit, Cancel
 
 #### Scenario: Section headers displayed
 - **WHEN** user views the settings menu in normal (non-search) mode
@@ -626,3 +631,79 @@ The `NewProviderFromConfig` function SHALL support creating lightweight provider
 #### Scenario: Provider without API key
 - **WHEN** creating a non-Ollama provider with empty API key
 - **THEN** `NewProviderFromConfig` SHALL return nil
+
+### Requirement: Economy settings forms
+The settings TUI SHALL provide 5 Economy configuration forms:
+- `NewEconomyForm(cfg)` — economy.enabled, budget.defaultMax, budget.hardLimit, budget.alertThresholds
+- `NewEconomyRiskForm(cfg)` — risk.escrowThreshold, risk.highTrustScore, risk.mediumTrustScore
+- `NewEconomyNegotiationForm(cfg)` — negotiate.enabled, maxRounds, timeout, autoNegotiate, maxDiscount
+- `NewEconomyEscrowForm(cfg)` — escrow.enabled, defaultTimeout, maxMilestones, autoRelease, disputeWindow
+- `NewEconomyPricingForm(cfg)` — pricing.enabled, trustDiscount, volumeDiscount, minPrice
+
+#### Scenario: User edits economy base settings
+- **WHEN** user selects "Economy" from the settings menu
+- **THEN** the editor SHALL display a form with Enabled toggle, Budget Default Max, Hard Limit, and Alert Thresholds fields pre-populated from `config.Economy`
+
+#### Scenario: User edits economy risk settings
+- **WHEN** user selects "Economy Risk" from the settings menu
+- **THEN** the editor SHALL display a form with escrow threshold, high trust score, and medium trust score fields
+
+#### Scenario: User edits economy negotiation settings
+- **WHEN** user selects "Economy Negotiation" from the settings menu
+- **THEN** the editor SHALL display a form with enabled toggle, max rounds, timeout, auto-negotiate, and max discount fields
+
+#### Scenario: User edits economy escrow settings
+- **WHEN** user selects "Economy Escrow" from the settings menu
+- **THEN** the editor SHALL display a form with enabled toggle, default timeout, max milestones, auto-release, and dispute window fields
+
+#### Scenario: User edits economy pricing settings
+- **WHEN** user selects "Economy Pricing" from the settings menu
+- **THEN** the editor SHALL display a form with enabled toggle, trust discount, volume discount, and min price fields
+
+### Requirement: Observability settings form
+The settings TUI SHALL provide an Observability configuration form with fields for observability.enabled, tokens (enabled, persistHistory, retentionDays), health (enabled, interval), audit (enabled, retentionDays), and metrics (enabled, format).
+
+#### Scenario: User edits observability settings
+- **WHEN** user selects "Observability" from the settings menu
+- **THEN** the editor SHALL display a form with all observability fields pre-populated from `config.Observability`
+
+### Requirement: Economy and observability state update
+The `UpdateConfigFromForm()` function SHALL handle all economy and observability form field keys, mapping them to the corresponding config struct fields.
+
+#### Scenario: Economy form fields saved
+- **WHEN** user edits economy form fields and navigates back
+- **THEN** the config state SHALL be updated for all economy.* fields including budget, risk, negotiation, escrow, and pricing sub-configs
+
+#### Scenario: Observability form fields saved
+- **WHEN** user edits observability form fields and navigates back
+- **THEN** the config state SHALL be updated for all observability.* fields including tokens, health, audit, and metrics sub-configs
+
+### Requirement: TUI on-chain escrow form
+The system SHALL provide a TUI form (`NewEconomyEscrowOnChainForm`) for configuring on-chain escrow settings with 10 fields: enabled, mode, hubAddress, vaultFactoryAddress, vaultImplementation, arbitratorAddress, tokenAddress, pollInterval, receiptTimeout, maxRetries.
+
+#### Scenario: Form creation
+- **WHEN** the user selects "On-Chain Escrow" from the settings menu
+- **THEN** a form with 10 fields matching `EscrowOnChainConfig` and `EscrowSettlementConfig` is displayed
+
+#### Scenario: Mode validation
+- **WHEN** the user enters a value other than "hub" or "vault" for the mode field
+- **THEN** a validation error "must be 'hub' or 'vault'" is shown
+
+#### Scenario: Max retries validation
+- **WHEN** the user enters a negative number for max retries
+- **THEN** a validation error "must be a non-negative integer" is shown
+
+### Requirement: Menu category for on-chain escrow
+The system SHALL include an `economy_escrow_onchain` category in the Economy section of the settings menu with title "On-Chain Escrow" and description "Hub/Vault mode, contracts, settlement".
+
+#### Scenario: Menu navigation
+- **WHEN** the user navigates the settings menu to the Economy section
+- **THEN** "On-Chain Escrow" appears as a selectable category
+
+### Requirement: Editor wiring for on-chain escrow
+The system SHALL wire the `economy_escrow_onchain` menu selection to the `NewEconomyEscrowOnChainForm` in `editor.go`.
+
+#### Scenario: Menu selection handler
+- **WHEN** the user selects `economy_escrow_onchain` from the menu
+- **THEN** `handleMenuSelection` returns the on-chain escrow form model
+

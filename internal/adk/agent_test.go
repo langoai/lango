@@ -13,6 +13,8 @@ import (
 )
 
 func TestExtractMissingAgent(t *testing.T) {
+	t.Parallel()
+
 	tests := []struct {
 		name string
 		give error
@@ -42,6 +44,7 @@ func TestExtractMissingAgent(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			got := extractMissingAgent(tt.give)
 			assert.Equal(t, tt.want, got)
 		})
@@ -49,6 +52,8 @@ func TestExtractMissingAgent(t *testing.T) {
 }
 
 func TestHasFunctionCalls(t *testing.T) {
+	t.Parallel()
+
 	tests := []struct {
 		give string
 		evt  *session.Event
@@ -87,12 +92,15 @@ func TestHasFunctionCalls(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.give, func(t *testing.T) {
+			t.Parallel()
 			assert.Equal(t, tt.want, hasFunctionCalls(tt.evt))
 		})
 	}
 }
 
 func TestIsDelegationEvent(t *testing.T) {
+	t.Parallel()
+
 	tests := []struct {
 		give string
 		evt  *session.Event
@@ -125,6 +133,7 @@ func TestIsDelegationEvent(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.give, func(t *testing.T) {
+			t.Parallel()
 			assert.Equal(t, tt.want, isDelegationEvent(tt.evt))
 		})
 	}
@@ -141,6 +150,8 @@ func TestIsDelegationEvent(t *testing.T) {
 // after cancellation/deadline. The pattern is identical to the production code path.
 
 func TestContainsRejectPattern(t *testing.T) {
+	t.Parallel()
+
 	tests := []struct {
 		give string
 		want bool
@@ -157,12 +168,15 @@ func TestContainsRejectPattern(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.give, func(t *testing.T) {
+			t.Parallel()
 			assert.Equal(t, tt.want, containsRejectPattern(tt.give))
 		})
 	}
 }
 
 func TestTruncate(t *testing.T) {
+	t.Parallel()
+
 	tests := []struct {
 		give string
 		n    int
@@ -178,12 +192,15 @@ func TestTruncate(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.give, func(t *testing.T) {
+			t.Parallel()
 			assert.Equal(t, tt.want, truncate(tt.give, tt.n))
 		})
 	}
 }
 
 func TestContextErrCheck_Canceled(t *testing.T) {
+	t.Parallel()
+
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
 
@@ -192,6 +209,8 @@ func TestContextErrCheck_Canceled(t *testing.T) {
 }
 
 func TestContextErrCheck_DeadlineExceeded(t *testing.T) {
+	t.Parallel()
+
 	ctx, cancel := context.WithTimeout(context.Background(), 0)
 	defer cancel()
 

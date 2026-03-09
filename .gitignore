@@ -35,6 +35,8 @@ go.work.sum
 passphrase.txt
 
 !lango.example.json
+!contracts/deployments/*.json
+!internal/**/abi/*.json
 /lango
 
 .cursor/
@@ -44,6 +46,11 @@ passphrase.txt
 # Build output
 bin/
 dist/
+
+# Foundry
+contracts/out/
+contracts/cache/
+contracts/lib/
 
 # Coverage reports
 .coverage/

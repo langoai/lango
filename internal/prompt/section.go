@@ -30,6 +30,6 @@ func (s SectionID) Values() []SectionID {
 // PromptSection produces a titled block of text for the system prompt.
 type PromptSection interface {
 	ID() SectionID
-	Priority() int // Lower = first. Identity=100, Safety=200, ...
+	Priority() int  // Lower = first. Identity=100, Safety=200, ...
 	Render() string // Empty string = omitted
 }

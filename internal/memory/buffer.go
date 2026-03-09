@@ -26,11 +26,11 @@ type Buffer struct {
 	reflector *Reflector
 	store     *Store
 
-	messageTokenThreshold              int
-	observationTokenThreshold          int
-	reflectionConsolidationThreshold   int // min reflections before meta-reflection; 0 = default (5)
-	getMessages                        MessageProvider
-	compactor                          MessageCompactor // optional: compact observed messages
+	messageTokenThreshold            int
+	observationTokenThreshold        int
+	reflectionConsolidationThreshold int // min reflections before meta-reflection; 0 = default (5)
+	getMessages                      MessageProvider
+	compactor                        MessageCompactor // optional: compact observed messages
 
 	// lastObserved tracks the last observed message index per session.
 	mu           sync.Mutex

@@ -19,13 +19,13 @@ func newMockStore() *mockStore {
 	return &mockStore{sessions: make(map[string]*Session)}
 }
 
-func (m *mockStore) Create(s *Session) error           { m.sessions[s.Key] = s; return nil }
-func (m *mockStore) Get(key string) (*Session, error)   { return m.sessions[key], nil }
-func (m *mockStore) Update(s *Session) error            { m.sessions[s.Key] = s; return nil }
-func (m *mockStore) Delete(key string) error            { delete(m.sessions, key); return nil }
-func (m *mockStore) Close() error                       { return nil }
-func (m *mockStore) GetSalt(_ string) ([]byte, error)   { return nil, nil }
-func (m *mockStore) SetSalt(_ string, _ []byte) error   { return nil }
+func (m *mockStore) Create(s *Session) error          { m.sessions[s.Key] = s; return nil }
+func (m *mockStore) Get(key string) (*Session, error) { return m.sessions[key], nil }
+func (m *mockStore) Update(s *Session) error          { m.sessions[s.Key] = s; return nil }
+func (m *mockStore) Delete(key string) error          { delete(m.sessions, key); return nil }
+func (m *mockStore) Close() error                     { return nil }
+func (m *mockStore) GetSalt(_ string) ([]byte, error) { return nil, nil }
+func (m *mockStore) SetSalt(_ string, _ []byte) error { return nil }
 
 func (m *mockStore) AppendMessage(key string, msg Message) error {
 	s := m.sessions[key]
@@ -37,6 +37,7 @@ func (m *mockStore) AppendMessage(key string, msg Message) error {
 }
 
 func TestNewChildSession(t *testing.T) {
+	t.Parallel()
 	cs := NewChildSession("parent-1", "operator", ChildSessionConfig{
 		MaxMessages: 100,
 	})
@@ -49,6 +50,7 @@ func TestNewChildSession(t *testing.T) {
 }
 
 func TestChildSession_AppendMessage(t *testing.T) {
+	t.Parallel()
 	cs := NewChildSession("p1", "agent", ChildSessionConfig{MaxMessages: 3})
 
 	for i := 0; i < 5; i++ {
@@ -62,6 +64,7 @@ func TestChildSession_AppendMessage(t *testing.T) {
 }
 
 func TestChildSession_AppendMessage_Unlimited(t *testing.T) {
+	t.Parallel()
 	cs := NewChildSession("p1", "agent", ChildSessionConfig{})
 
 	for i := 0; i < 10; i++ {
@@ -72,6 +75,7 @@ func TestChildSession_AppendMessage_Unlimited(t *testing.T) {
 }
 
 func TestInMemoryChildStore_ForkChild(t *testing.T) {
+	t.Parallel()
 	store := newMockStore()
 	_ = store.Create(&Session{
 		Key: "parent-1",
@@ -108,6 +112,7 @@ func TestInMemoryChildStore_ForkChild(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			child, err := cs.ForkChild("parent-1", "test-agent", ChildSessionConfig{
 				InheritHistory: tt.giveInherit,
 			})
@@ -118,6 +123,7 @@ func TestInMemoryChildStore_ForkChild(t *testing.T) {
 }
 
 func TestInMemoryChildStore_MergeChild_Summary(t *testing.T) {
+	t.Parallel()
 	store := newMockStore()
 	_ = store.Create(&Session{Key: "parent-1"})
 
@@ -139,6 +145,7 @@ func TestInMemoryChildStore_MergeChild_Summary(t *testing.T) {
 }
 
 func TestInMemoryChildStore_MergeChild_FullHistory(t *testing.T) {
+	t.Parallel()
 	store := newMockStore()
 	_ = store.Create(&Session{Key: "parent-1"})
 
@@ -158,6 +165,7 @@ func TestInMemoryChildStore_MergeChild_FullHistory(t *testing.T) {
 }
 
 func TestInMemoryChildStore_MergeChild_AlreadyMerged(t *testing.T) {
+	t.Parallel()
 	store := newMockStore()
 	_ = store.Create(&Session{Key: "parent-1"})
 
@@ -175,6 +183,7 @@ func TestInMemoryChildStore_MergeChild_AlreadyMerged(t *testing.T) {
 }
 
 func TestInMemoryChildStore_DiscardChild(t *testing.T) {
+	t.Parallel()
 	store := newMockStore()
 	_ = store.Create(&Session{Key: "parent-1"})
 
@@ -191,6 +200,7 @@ func TestInMemoryChildStore_DiscardChild(t *testing.T) {
 }
 
 func TestInMemoryChildStore_ChildrenOf(t *testing.T) {
+	t.Parallel()
 	store := newMockStore()
 	_ = store.Create(&Session{Key: "parent-1"})
 	_ = store.Create(&Session{Key: "parent-2"})
@@ -211,6 +221,7 @@ func TestInMemoryChildStore_ChildrenOf(t *testing.T) {
 }
 
 func TestChildSession_IsMerged(t *testing.T) {
+	t.Parallel()
 	cs := NewChildSession("p1", "agent", ChildSessionConfig{})
 	assert.False(t, cs.IsMerged())
 

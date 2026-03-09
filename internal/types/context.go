@@ -14,9 +14,9 @@ type detachedCtx struct {
 }
 
 func (c *detachedCtx) Deadline() (time.Time, bool) { return time.Time{}, false }
-func (c *detachedCtx) Done() <-chan struct{}        { return nil }
-func (c *detachedCtx) Err() error                   { return nil }
-func (c *detachedCtx) Value(key any) any            { return c.parent.Value(key) }
+func (c *detachedCtx) Done() <-chan struct{}       { return nil }
+func (c *detachedCtx) Err() error                  { return nil }
+func (c *detachedCtx) Value(key any) any           { return c.parent.Value(key) }
 
 // DetachContext returns a new context that is independent of the parent's
 // cancellation and deadline but preserves all context values.

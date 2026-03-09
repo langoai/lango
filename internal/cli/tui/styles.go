@@ -107,9 +107,9 @@ var (
 
 	// FieldDescStyle for field description/help text
 	FieldDescStyle = lipgloss.NewStyle().
-				Foreground(Dim).
-				Italic(true).
-				PaddingLeft(2)
+			Foreground(Dim).
+			Italic(true).
+			PaddingLeft(2)
 )
 
 // Check result indicators

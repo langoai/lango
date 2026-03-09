@@ -8,6 +8,9 @@ import (
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+
 	internal "github.com/langoai/lango/internal/session"
 	"github.com/langoai/lango/internal/types"
 	"google.golang.org/adk/session"
@@ -67,6 +70,8 @@ func (m *mockStore) SetSalt(name string, salt []byte) error { return nil }
 // --- StateAdapter tests ---
 
 func TestStateAdapter_SetGet(t *testing.T) {
+	t.Parallel()
+
 	sess := &internal.Session{
 		Key:      "test-session",
 		Metadata: make(map[string]string),
@@ -79,53 +84,37 @@ func TestStateAdapter_SetGet(t *testing.T) {
 
 	// Test Set string
 	err := state.Set("foo", "bar")
-	if err != nil {
-		t.Fatalf("Set failed: %v", err)
-	}
+	require.NoError(t, err)
 
 	// Verify update in store
 	updatedSess, _ := store.Get("test-session")
-	if updatedSess.Metadata["foo"] != "bar" {
-		t.Errorf("expected 'bar', got %v", updatedSess.Metadata["foo"])
-	}
+	assert.Equal(t, "bar", updatedSess.Metadata["foo"])
 
 	// Test Get string
 	val, err := state.Get("foo")
-	if err != nil {
-		t.Fatalf("Get failed: %v", err)
-	}
-	if val != "bar" {
-		t.Errorf("expected 'bar', got %v", val)
-	}
+	require.NoError(t, err)
+	assert.Equal(t, "bar", val)
 
 	// Test Set complex object (should be JSON encoded)
 	obj := map[string]int{"a": 1}
 	err = state.Set("obj", obj)
-	if err != nil {
-		t.Fatalf("Set complex failed: %v", err)
-	}
+	require.NoError(t, err)
 
 	// Verify JSON in metadata
 	expectedJSON, _ := json.Marshal(obj)
-	if updatedSess.Metadata["obj"] != string(expectedJSON) {
-		t.Errorf("expected JSON %s, got %s", string(expectedJSON), updatedSess.Metadata["obj"])
-	}
+	assert.Equal(t, string(expectedJSON), updatedSess.Metadata["obj"])
 
 	// Test Get complex object
 	val, err = state.Get("obj")
-	if err != nil {
-		t.Fatalf("Get complex failed: %v", err)
-	}
+	require.NoError(t, err)
 	valMap, ok := val.(map[string]any)
-	if !ok {
-		t.Fatalf("expected map[string]any, got %T", val)
-	}
-	if valMap["a"] != float64(1) { // JSON numbers are float64
-		t.Errorf("expected 1, got %v", valMap["a"])
-	}
+	require.True(t, ok, "expected map[string]any, got %T", val)
+	assert.Equal(t, float64(1), valMap["a"]) // JSON numbers are float64
 }
 
 func TestStateAdapter_GetNonExistent(t *testing.T) {
+	t.Parallel()
+
 	sess := &internal.Session{
 		Key:      "test-session",
 		Metadata: make(map[string]string),
@@ -137,12 +126,12 @@ func TestStateAdapter_GetNonExistent(t *testing.T) {
 	state := adapter.State()
 
 	_, err := state.Get("nonexistent")
-	if err != session.ErrStateKeyNotExist {
-		t.Errorf("expected ErrStateKeyNotExist, got %v", err)
-	}
+	assert.ErrorIs(t, err, session.ErrStateKeyNotExist)
 }
 
 func TestStateAdapter_SetNilMetadata(t *testing.T) {
+	t.Parallel()
+
 	sess := &internal.Session{
 		Key: "test-session",
 		// Metadata is nil
@@ -155,20 +144,16 @@ func TestStateAdapter_SetNilMetadata(t *testing.T) {
 
 	// Set should initialize metadata if nil
 	err := state.Set("key", "value")
-	if err != nil {
-		t.Fatalf("Set failed: %v", err)
-	}
+	require.NoError(t, err)
 
 	val, err := state.Get("key")
-	if err != nil {
-		t.Fatalf("Get failed: %v", err)
-	}
-	if val != "value" {
-		t.Errorf("expected 'value', got %v", val)
-	}
+	require.NoError(t, err)
+	assert.Equal(t, "value", val)
 }
 
 func TestStateAdapter_All(t *testing.T) {
+	t.Parallel()
+
 	sess := &internal.Session{
 		Key: "test-session",
 		Metadata: map[string]string{
@@ -187,28 +172,23 @@ func TestStateAdapter_All(t *testing.T) {
 		count++
 		switch k {
 		case "key1":
-			if v != "value1" {
-				t.Errorf("expected 'value1', got %v", v)
-			}
+			assert.Equal(t, "value1", v)
 		case "key2":
 			m, ok := v.(map[string]any)
-			if !ok {
-				t.Errorf("expected map for key2, got %T", v)
-			} else if m["nested"] != true {
-				t.Errorf("expected nested=true, got %v", m["nested"])
-			}
+			require.True(t, ok, "expected map for key2, got %T", v)
+			assert.Equal(t, true, m["nested"])
 		default:
 			t.Errorf("unexpected key %q", k)
 		}
 	}
-	if count != 2 {
-		t.Errorf("expected 2 entries, got %d", count)
-	}
+	assert.Equal(t, 2, count)
 }
 
 // --- SessionAdapter tests ---
 
 func TestSessionAdapter_BasicFields(t *testing.T) {
+	t.Parallel()
+
 	now := time.Now()
 	sess := &internal.Session{
 		Key:       "sess-123",
@@ -217,23 +197,17 @@ func TestSessionAdapter_BasicFields(t *testing.T) {
 	store := newMockStore()
 	adapter := NewSessionAdapter(sess, store, "lango-agent")
 
-	if adapter.ID() != "sess-123" {
-		t.Errorf("expected ID 'sess-123', got %q", adapter.ID())
-	}
-	if adapter.AppName() != "lango" {
-		t.Errorf("expected AppName 'lango', got %q", adapter.AppName())
-	}
-	if adapter.UserID() != "user" {
-		t.Errorf("expected UserID 'user', got %q", adapter.UserID())
-	}
-	if !adapter.LastUpdateTime().Equal(now) {
-		t.Errorf("expected LastUpdateTime %v, got %v", now, adapter.LastUpdateTime())
-	}
+	assert.Equal(t, "sess-123", adapter.ID())
+	assert.Equal(t, "lango", adapter.AppName())
+	assert.Equal(t, "user", adapter.UserID())
+	assert.True(t, adapter.LastUpdateTime().Equal(now))
 }
 
 // --- EventsAdapter tests ---
 
 func TestEventsAdapter(t *testing.T) {
+	t.Parallel()
+
 	now := time.Now()
 	sess := &internal.Session{
 		History: []internal.Message{
@@ -248,17 +222,15 @@ func TestEventsAdapter(t *testing.T) {
 	count := 0
 	for event := range events.All() {
 		count++
-		if event.Timestamp.IsZero() {
-			t.Error("expected non-zero timestamp")
-		}
+		assert.False(t, event.Timestamp.IsZero(), "expected non-zero timestamp")
 	}
 
-	if count != 2 {
-		t.Errorf("expected 2 events, got %d", count)
-	}
+	assert.Equal(t, 2, count)
 }
 
 func TestEventsAdapter_AuthorMapping(t *testing.T) {
+	t.Parallel()
+
 	now := time.Now()
 	sess := &internal.Session{
 		History: []internal.Message{
@@ -275,17 +247,17 @@ func TestEventsAdapter_AuthorMapping(t *testing.T) {
 	expectedAuthors := []string{"user", "lango-agent", "tool", "tool"}
 	i := 0
 	for evt := range events.All() {
-		if i < len(expectedAuthors) && evt.Author != expectedAuthors[i] {
-			t.Errorf("event %d: expected author %q, got %q", i, expectedAuthors[i], evt.Author)
+		if i < len(expectedAuthors) {
+			assert.Equal(t, expectedAuthors[i], evt.Author, "event %d author mismatch", i)
 		}
 		i++
 	}
-	if i != 4 {
-		t.Errorf("expected 4 events, got %d", i)
-	}
+	assert.Equal(t, 4, i)
 }
 
 func TestEventsAdapter_AuthorMapping_MultiAgent(t *testing.T) {
+	t.Parallel()
+
 	now := time.Now()
 	sess := &internal.Session{
 		History: []internal.Message{
@@ -305,17 +277,17 @@ func TestEventsAdapter_AuthorMapping_MultiAgent(t *testing.T) {
 	expectedAuthors := []string{"user", "lango-orchestrator", "user", "lango-orchestrator"}
 	i := 0
 	for evt := range events.All() {
-		if i < len(expectedAuthors) && evt.Author != expectedAuthors[i] {
-			t.Errorf("event %d: expected author %q, got %q", i, expectedAuthors[i], evt.Author)
+		if i < len(expectedAuthors) {
+			assert.Equal(t, expectedAuthors[i], evt.Author, "event %d author mismatch", i)
 		}
 		i++
 	}
-	if i != 4 {
-		t.Errorf("expected 4 events, got %d", i)
-	}
+	assert.Equal(t, 4, i)
 }
 
 func TestEventsAdapter_Truncation(t *testing.T) {
+	t.Parallel()
+
 	// Create 150 small messages with alternating roles — all fit within default token budget.
 	var msgs []internal.Message
 	now := time.Now()
@@ -333,27 +305,23 @@ func TestEventsAdapter_Truncation(t *testing.T) {
 	events := adapter.Events()
 
 	// All 150 small messages should fit within the default token budget.
-	if events.Len() != 150 {
-		t.Errorf("expected Len=150, got %d", events.Len())
-	}
+	assert.Equal(t, 150, events.Len())
 
 	// Count events from All()
 	count := 0
 	for range events.All() {
 		count++
 	}
-	if count != 150 {
-		t.Errorf("expected 150 events from All(), got %d", count)
-	}
+	assert.Equal(t, 150, count)
 
 	// With an explicit small budget, messages should be truncated.
 	budgetEvents := adapter.EventsWithTokenBudget(30)
-	if budgetEvents.Len() >= 150 {
-		t.Errorf("expected truncation with small budget, got %d", budgetEvents.Len())
-	}
+	assert.Less(t, budgetEvents.Len(), 150, "expected truncation with small budget")
 }
 
 func TestEventsAdapter_WithToolCalls(t *testing.T) {
+	t.Parallel()
+
 	now := time.Now()
 	sess := &internal.Session{
 		History: []internal.Message{
@@ -378,49 +346,39 @@ func TestEventsAdapter_WithToolCalls(t *testing.T) {
 	count := 0
 	for evt := range events.All() {
 		count++
-		if evt.Content == nil {
-			t.Fatal("expected non-nil content")
-		}
+		require.NotNil(t, evt.Content)
 		hasFunctionCall := false
 		for _, p := range evt.Content.Parts {
 			if p.FunctionCall != nil {
 				hasFunctionCall = true
-				if p.FunctionCall.Name != "exec" {
-					t.Errorf("expected function name 'exec', got %q", p.FunctionCall.Name)
-				}
-				if p.FunctionCall.Args["command"] != "ls" {
-					t.Errorf("expected arg command='ls', got %v", p.FunctionCall.Args["command"])
-				}
+				assert.Equal(t, "exec", p.FunctionCall.Name)
+				assert.Equal(t, "ls", p.FunctionCall.Args["command"])
 			}
 		}
-		if !hasFunctionCall {
-			t.Error("expected a FunctionCall part in event")
-		}
+		assert.True(t, hasFunctionCall, "expected a FunctionCall part in event")
 	}
-	if count != 1 {
-		t.Errorf("expected 1 event, got %d", count)
-	}
+	assert.Equal(t, 1, count)
 }
 
 func TestEventsAdapter_EmptyHistory(t *testing.T) {
+	t.Parallel()
+
 	sess := &internal.Session{}
 	adapter := NewSessionAdapter(sess, &mockStore{}, "lango-agent")
 	events := adapter.Events()
 
-	if events.Len() != 0 {
-		t.Errorf("expected Len=0, got %d", events.Len())
-	}
+	assert.Equal(t, 0, events.Len())
 
 	count := 0
 	for range events.All() {
 		count++
 	}
-	if count != 0 {
-		t.Errorf("expected 0 events, got %d", count)
-	}
+	assert.Equal(t, 0, count)
 }
 
 func TestEventsAdapter_At(t *testing.T) {
+	t.Parallel()
+
 	now := time.Now()
 	sess := &internal.Session{
 		History: []internal.Message{
@@ -434,26 +392,21 @@ func TestEventsAdapter_At(t *testing.T) {
 	events := adapter.Events()
 
 	evt0 := events.At(0)
-	if evt0 == nil {
-		t.Fatal("expected non-nil event at index 0")
-	}
-	if evt0.LLMResponse.Content.Parts[0].Text != "first" {
-		t.Errorf("expected 'first', got %q", evt0.LLMResponse.Content.Parts[0].Text)
-	}
+	require.NotNil(t, evt0, "expected non-nil event at index 0")
+	assert.Equal(t, "first", evt0.LLMResponse.Content.Parts[0].Text)
 
 	evt2 := events.At(2)
-	if evt2 == nil {
-		t.Fatal("expected non-nil event at index 2")
-	}
-	if evt2.LLMResponse.Content.Parts[0].Text != "third" {
-		t.Errorf("expected 'third', got %q", evt2.LLMResponse.Content.Parts[0].Text)
-	}
+	require.NotNil(t, evt2, "expected non-nil event at index 2")
+	assert.Equal(t, "third", evt2.LLMResponse.Content.Parts[0].Text)
 }
 
 // --- Token-Budget Truncation tests ---
 
 func TestEventsAdapter_TokenBudgetTruncation(t *testing.T) {
+	t.Parallel()
+
 	t.Run("includes all messages within budget", func(t *testing.T) {
+		t.Parallel()
 		var msgs []internal.Message
 		roles := []types.MessageRole{"user", "assistant"}
 		for i := range 6 {
@@ -467,12 +420,11 @@ func TestEventsAdapter_TokenBudgetTruncation(t *testing.T) {
 			history:     msgs,
 			tokenBudget: 10000,
 		}
-		if adapter.Len() != 6 {
-			t.Errorf("expected 6, got %d", adapter.Len())
-		}
+		assert.Equal(t, 6, adapter.Len())
 	})
 
 	t.Run("truncates when budget exceeded", func(t *testing.T) {
+		t.Parallel()
 		var msgs []internal.Message
 		// Each message has 400 chars content = ~100 tokens + 4 overhead = ~104 tokens
 		for range 20 {
@@ -491,15 +443,12 @@ func TestEventsAdapter_TokenBudgetTruncation(t *testing.T) {
 			tokenBudget: 500, // can fit ~4-5 messages
 		}
 		resultLen := adapter.Len()
-		if resultLen >= 20 {
-			t.Errorf("expected truncation, got %d", resultLen)
-		}
-		if resultLen < 1 {
-			t.Error("expected at least 1 message")
-		}
+		assert.Less(t, resultLen, 20, "expected truncation")
+		assert.GreaterOrEqual(t, resultLen, 1, "expected at least 1 message")
 	})
 
 	t.Run("always includes at least one message", func(t *testing.T) {
+		t.Parallel()
 		msgs := []internal.Message{{
 			Role:      "user",
 			Content:   string(make([]byte, 40000)), // huge message
@@ -509,22 +458,20 @@ func TestEventsAdapter_TokenBudgetTruncation(t *testing.T) {
 			history:     msgs,
 			tokenBudget: 10,
 		}
-		if adapter.Len() != 1 {
-			t.Errorf("expected 1 message, got %d", adapter.Len())
-		}
+		assert.Equal(t, 1, adapter.Len())
 	})
 
 	t.Run("empty history", func(t *testing.T) {
+		t.Parallel()
 		adapter := &EventsAdapter{
 			history:     nil,
 			tokenBudget: 100,
 		}
-		if adapter.Len() != 0 {
-			t.Errorf("expected 0, got %d", adapter.Len())
-		}
+		assert.Equal(t, 0, adapter.Len())
 	})
 
 	t.Run("preserves most recent messages", func(t *testing.T) {
+		t.Parallel()
 		var msgs []internal.Message
 		for i := range 10 {
 			content := ""
@@ -543,20 +490,16 @@ func TestEventsAdapter_TokenBudgetTruncation(t *testing.T) {
 			tokenBudget: 30,
 		}
 		truncated := adapter.truncatedHistory()
-		if len(truncated) != 2 {
-			t.Fatalf("expected 2 messages, got %d", len(truncated))
-		}
+		require.Len(t, truncated, 2)
 		// Should be the last 2 messages
-		if truncated[0].Content != msgs[8].Content {
-			t.Error("expected 9th message (index 8)")
-		}
-		if truncated[1].Content != msgs[9].Content {
-			t.Error("expected 10th message (index 9)")
-		}
+		assert.Equal(t, msgs[8].Content, truncated[0].Content, "expected 9th message (index 8)")
+		assert.Equal(t, msgs[9].Content, truncated[1].Content, "expected 10th message (index 9)")
 	})
 }
 
 func TestEventsAdapter_DefaultTokenBudget(t *testing.T) {
+	t.Parallel()
+
 	var msgs []internal.Message
 	roles := []types.MessageRole{"user", "assistant"}
 	for i := range 150 {
@@ -573,17 +516,18 @@ func TestEventsAdapter_DefaultTokenBudget(t *testing.T) {
 	}
 	// With DefaultTokenBudget (32000) and tiny messages (~1 token each),
 	// all 150 messages should fit within the budget.
-	if adapter.Len() != 150 {
-		t.Errorf("expected all 150 messages within default budget, got %d", adapter.Len())
-	}
+	assert.Equal(t, 150, adapter.Len())
 }
 
 // --- FunctionResponse reconstruction tests ---
 
 func TestEventsAdapter_FunctionResponseReconstruction(t *testing.T) {
+	t.Parallel()
+
 	now := time.Now()
 
 	t.Run("new format with ToolCalls metadata", func(t *testing.T) {
+		t.Parallel()
 		sess := &internal.Session{
 			History: []internal.Message{
 				{Role: "user", Content: "run ls", Timestamp: now},
@@ -611,57 +555,38 @@ func TestEventsAdapter_FunctionResponseReconstruction(t *testing.T) {
 			events = append(events, evt)
 		}
 
-		if len(events) != 3 {
-			t.Fatalf("expected 3 events, got %d", len(events))
-		}
+		require.Len(t, events, 3)
 
 		// Verify assistant event has FunctionCall with ID
 		assistantEvt := events[1]
-		if assistantEvt.Content.Role != "assistant" {
-			t.Errorf("expected role 'assistant', got %q", assistantEvt.Content.Role)
-		}
+		assert.Equal(t, "assistant", assistantEvt.Content.Role)
 		var fc *genai.FunctionCall
 		for _, p := range assistantEvt.Content.Parts {
 			if p.FunctionCall != nil {
 				fc = p.FunctionCall
 			}
 		}
-		if fc == nil {
-			t.Fatal("expected FunctionCall part in assistant event")
-		}
-		if fc.ID != "adk-abc-123" {
-			t.Errorf("expected FunctionCall.ID 'adk-abc-123', got %q", fc.ID)
-		}
-		if fc.Name != "exec" {
-			t.Errorf("expected FunctionCall.Name 'exec', got %q", fc.Name)
-		}
+		require.NotNil(t, fc, "expected FunctionCall part in assistant event")
+		assert.Equal(t, "adk-abc-123", fc.ID)
+		assert.Equal(t, "exec", fc.Name)
 
 		// Verify tool event has FunctionResponse
 		toolEvt := events[2]
-		if toolEvt.Content.Role != "function" {
-			t.Errorf("expected role 'function', got %q", toolEvt.Content.Role)
-		}
+		assert.Equal(t, "function", toolEvt.Content.Role)
 		var fr *genai.FunctionResponse
 		for _, p := range toolEvt.Content.Parts {
 			if p.FunctionResponse != nil {
 				fr = p.FunctionResponse
 			}
 		}
-		if fr == nil {
-			t.Fatal("expected FunctionResponse part in tool event")
-		}
-		if fr.ID != "adk-abc-123" {
-			t.Errorf("expected FunctionResponse.ID 'adk-abc-123', got %q", fr.ID)
-		}
-		if fr.Name != "exec" {
-			t.Errorf("expected FunctionResponse.Name 'exec', got %q", fr.Name)
-		}
-		if fr.Response["result"] != "file.txt" {
-			t.Errorf("expected response result 'file.txt', got %v", fr.Response["result"])
-		}
+		require.NotNil(t, fr, "expected FunctionResponse part in tool event")
+		assert.Equal(t, "adk-abc-123", fr.ID)
+		assert.Equal(t, "exec", fr.Name)
+		assert.Equal(t, "file.txt", fr.Response["result"])
 	})
 
 	t.Run("legacy format without ToolCalls on tool message", func(t *testing.T) {
+		t.Parallel()
 		sess := &internal.Session{
 			History: []internal.Message{
 				{Role: "user", Content: "run ls", Timestamp: now},
@@ -687,33 +612,24 @@ func TestEventsAdapter_FunctionResponseReconstruction(t *testing.T) {
 			events = append(events, evt)
 		}
 
-		if len(events) != 3 {
-			t.Fatalf("expected 3 events, got %d", len(events))
-		}
+		require.Len(t, events, 3)
 
 		// Verify tool event has FunctionResponse reconstructed from legacy
 		toolEvt := events[2]
-		if toolEvt.Content.Role != "function" {
-			t.Errorf("expected role 'function', got %q", toolEvt.Content.Role)
-		}
+		assert.Equal(t, "function", toolEvt.Content.Role)
 		var fr *genai.FunctionResponse
 		for _, p := range toolEvt.Content.Parts {
 			if p.FunctionResponse != nil {
 				fr = p.FunctionResponse
 			}
 		}
-		if fr == nil {
-			t.Fatal("expected FunctionResponse part in legacy tool event")
-		}
-		if fr.ID != "call_exec" {
-			t.Errorf("expected FunctionResponse.ID 'call_exec', got %q", fr.ID)
-		}
-		if fr.Name != "exec" {
-			t.Errorf("expected FunctionResponse.Name 'exec', got %q", fr.Name)
-		}
+		require.NotNil(t, fr, "expected FunctionResponse part in legacy tool event")
+		assert.Equal(t, "call_exec", fr.ID)
+		assert.Equal(t, "exec", fr.Name)
 	})
 
 	t.Run("tool message without preceding assistant ToolCalls falls back to text", func(t *testing.T) {
+		t.Parallel()
 		sess := &internal.Session{
 			History: []internal.Message{
 				{Role: "user", Content: "hello", Timestamp: now},
@@ -732,9 +648,7 @@ func TestEventsAdapter_FunctionResponseReconstruction(t *testing.T) {
 			events = append(events, evt)
 		}
 
-		if len(events) != 2 {
-			t.Fatalf("expected 2 events, got %d", len(events))
-		}
+		require.Len(t, events, 2)
 
 		toolEvt := events[1]
 		// Should fall back to text since no context to reconstruct FunctionResponse
@@ -744,16 +658,17 @@ func TestEventsAdapter_FunctionResponseReconstruction(t *testing.T) {
 				hasText = true
 			}
 		}
-		if !hasText {
-			t.Error("expected text part in tool event without FunctionResponse context")
-		}
+		assert.True(t, hasText, "expected text part in tool event without FunctionResponse context")
 	})
 }
 
 func TestEventsAdapter_ConsecutiveRoleMerging(t *testing.T) {
+	t.Parallel()
+
 	now := time.Now()
 
 	t.Run("consecutive assistant turns are merged", func(t *testing.T) {
+		t.Parallel()
 		sess := &internal.Session{
 			History: []internal.Message{
 				{Role: "user", Content: "hello", Timestamp: now},
@@ -766,16 +681,13 @@ func TestEventsAdapter_ConsecutiveRoleMerging(t *testing.T) {
 		for evt := range adapter.All() {
 			events = append(events, evt)
 		}
-		if len(events) != 2 {
-			t.Fatalf("expected 2 events (merged), got %d", len(events))
-		}
+		require.Len(t, events, 2, "expected 2 events (merged)")
 		// Second event should have 2 text parts from the merged assistant turns.
-		if len(events[1].Content.Parts) != 2 {
-			t.Errorf("expected 2 parts in merged event, got %d", len(events[1].Content.Parts))
-		}
+		assert.Len(t, events[1].Content.Parts, 2, "expected 2 parts in merged event")
 	})
 
 	t.Run("alternating roles are not merged", func(t *testing.T) {
+		t.Parallel()
 		sess := &internal.Session{
 			History: []internal.Message{
 				{Role: "user", Content: "hello", Timestamp: now},
@@ -788,12 +700,11 @@ func TestEventsAdapter_ConsecutiveRoleMerging(t *testing.T) {
 		for evt := range adapter.All() {
 			events = append(events, evt)
 		}
-		if len(events) != 3 {
-			t.Errorf("expected 3 events (no merging), got %d", len(events))
-		}
+		assert.Len(t, events, 3, "expected 3 events (no merging)")
 	})
 
 	t.Run("Len matches All count", func(t *testing.T) {
+		t.Parallel()
 		sess := &internal.Session{
 			History: []internal.Message{
 				{Role: "user", Content: "a", Timestamp: now},
@@ -807,17 +718,16 @@ func TestEventsAdapter_ConsecutiveRoleMerging(t *testing.T) {
 		for range adapter.All() {
 			count++
 		}
-		if adapter.Len() != count {
-			t.Errorf("Len()=%d != All() count=%d", adapter.Len(), count)
-		}
-		if count != 3 {
-			t.Errorf("expected 3 events, got %d", count)
-		}
+		assert.Equal(t, adapter.Len(), count, "Len() should match All() count")
+		assert.Equal(t, 3, count)
 	})
 }
 
 func TestEventsAdapter_TruncationSequenceSafety(t *testing.T) {
+	t.Parallel()
+
 	t.Run("skips leading tool message after truncation", func(t *testing.T) {
+		t.Parallel()
 		var msgs []internal.Message
 		// Create many messages so truncation kicks in
 		for i := range 20 {
@@ -846,13 +756,13 @@ func TestEventsAdapter_TruncationSequenceSafety(t *testing.T) {
 
 		if len(truncated) > 0 {
 			first := truncated[0]
-			if first.Role == "tool" || first.Role == "function" {
-				t.Error("truncated history should not start with tool/function message")
-			}
+			assert.NotEqual(t, "tool", string(first.Role), "truncated history should not start with tool message")
+			assert.NotEqual(t, "function", string(first.Role), "truncated history should not start with function message")
 		}
 	})
 
 	t.Run("does not skip trailing FunctionCall without truncation", func(t *testing.T) {
+		t.Parallel()
 		msgs := []internal.Message{
 			{Role: "user", Content: "hello", Timestamp: time.Now()},
 			{
@@ -870,15 +780,15 @@ func TestEventsAdapter_TruncationSequenceSafety(t *testing.T) {
 		}
 		truncated := adapter.truncatedHistory()
 
-		if len(truncated) != 2 {
-			t.Errorf("expected 2 messages (no truncation), got %d", len(truncated))
-		}
+		assert.Len(t, truncated, 2, "expected 2 messages (no truncation)")
 	})
 }
 
 // --- SessionServiceAdapter tests ---
 
 func TestSessionServiceAdapter_Create(t *testing.T) {
+	t.Parallel()
+
 	store := newMockStore()
 	service := NewSessionServiceAdapter(store, "lango-agent")
 
@@ -888,24 +798,18 @@ func TestSessionServiceAdapter_Create(t *testing.T) {
 			"key": "value",
 		},
 	})
-	if err != nil {
-		t.Fatalf("Create failed: %v", err)
-	}
-	if resp.Session.ID() != "new-session" {
-		t.Errorf("expected session ID 'new-session', got %q", resp.Session.ID())
-	}
+	require.NoError(t, err)
+	assert.Equal(t, "new-session", resp.Session.ID())
 
 	// Verify state was set
 	val, err := resp.Session.State().Get("key")
-	if err != nil {
-		t.Fatalf("Get state failed: %v", err)
-	}
-	if val != "value" {
-		t.Errorf("expected 'value', got %v", val)
-	}
+	require.NoError(t, err)
+	assert.Equal(t, "value", val)
 }
 
 func TestSessionServiceAdapter_Get(t *testing.T) {
+	t.Parallel()
+
 	store := newMockStore()
 	store.Create(&internal.Session{
 		Key:      "existing",
@@ -917,15 +821,13 @@ func TestSessionServiceAdapter_Get(t *testing.T) {
 	resp, err := service.Get(context.Background(), &session.GetRequest{
 		SessionID: "existing",
 	})
-	if err != nil {
-		t.Fatalf("Get failed: %v", err)
-	}
-	if resp.Session.ID() != "existing" {
-		t.Errorf("expected session ID 'existing', got %q", resp.Session.ID())
-	}
+	require.NoError(t, err)
+	assert.Equal(t, "existing", resp.Session.ID())
 }
 
 func TestSessionServiceAdapter_GetAutoCreate(t *testing.T) {
+	t.Parallel()
+
 	store := newMockStore()
 	service := NewSessionServiceAdapter(store, "lango-agent")
 
@@ -933,21 +835,13 @@ func TestSessionServiceAdapter_GetAutoCreate(t *testing.T) {
 	resp, err := service.Get(context.Background(), &session.GetRequest{
 		SessionID: "auto-created",
 	})
-	if err != nil {
-		t.Fatalf("expected auto-create, got error: %v", err)
-	}
-	if resp.Session.ID() != "auto-created" {
-		t.Fatalf("expected session ID 'auto-created', got %q", resp.Session.ID())
-	}
+	require.NoError(t, err, "expected auto-create")
+	require.Equal(t, "auto-created", resp.Session.ID())
 
 	// Verify session now exists in store
 	sess, err := store.Get("auto-created")
-	if err != nil {
-		t.Fatalf("expected session in store, got error: %v", err)
-	}
-	if sess.Key != "auto-created" {
-		t.Fatalf("expected key 'auto-created', got %q", sess.Key)
-	}
+	require.NoError(t, err, "expected session in store")
+	assert.Equal(t, "auto-created", sess.Key)
 }
 
 // uniqueMockStore simulates UNIQUE constraint errors on concurrent Create.
@@ -993,6 +887,8 @@ func (m *uniqueMockStore) GetSalt(string) ([]byte, error)               { return
 func (m *uniqueMockStore) SetSalt(string, []byte) error                 { return nil }
 
 func TestSessionServiceAdapter_GetAutoCreate_Concurrent(t *testing.T) {
+	t.Parallel()
+
 	store := newUniqueMockStore()
 	service := NewSessionServiceAdapter(store, "lango-agent")
 
@@ -1012,13 +908,13 @@ func TestSessionServiceAdapter_GetAutoCreate_Concurrent(t *testing.T) {
 	wg.Wait()
 
 	for i, err := range errs {
-		if err != nil {
-			t.Errorf("goroutine %d failed: %v", i, err)
-		}
+		assert.NoError(t, err, "goroutine %d failed", i)
 	}
 }
 
 func TestSessionServiceAdapter_Delete(t *testing.T) {
+	t.Parallel()
+
 	store := newMockStore()
 	store.Create(&internal.Session{Key: "to-delete"})
 
@@ -1027,32 +923,28 @@ func TestSessionServiceAdapter_Delete(t *testing.T) {
 	err := service.Delete(context.Background(), &session.DeleteRequest{
 		SessionID: "to-delete",
 	})
-	if err != nil {
-		t.Fatalf("Delete failed: %v", err)
-	}
+	require.NoError(t, err)
 
 	// Verify deleted
 	s, _ := store.Get("to-delete")
-	if s != nil {
-		t.Error("expected session to be deleted")
-	}
+	assert.Nil(t, s, "expected session to be deleted")
 }
 
 func TestSessionServiceAdapter_List(t *testing.T) {
+	t.Parallel()
+
 	store := newMockStore()
 	service := NewSessionServiceAdapter(store, "lango-agent")
 
 	resp, err := service.List(context.Background(), &session.ListRequest{})
-	if err != nil {
-		t.Fatalf("List failed: %v", err)
-	}
+	require.NoError(t, err)
 	// Currently returns empty
-	if resp == nil {
-		t.Fatal("expected non-nil response")
-	}
+	require.NotNil(t, resp)
 }
 
 func TestSessionServiceAdapter_AppendEvent_UserMessage(t *testing.T) {
+	t.Parallel()
+
 	store := newMockStore()
 	sess := &internal.Session{
 		Key:     "sess-1",
@@ -1067,30 +959,21 @@ func TestSessionServiceAdapter_AppendEvent_UserMessage(t *testing.T) {
 		Author:    "user",
 		Timestamp: time.Now(),
 	}
-	// Simulate user content via LLMResponse structure
-	// (ADK events always carry LLMResponse)
-	// For user message, content role is "user"
-	// We need to import genai for this
-	// Since the test is in the adk package, we can use genai directly
 
 	err := service.AppendEvent(context.Background(), adapter, evt)
-	if err != nil {
-		t.Fatalf("AppendEvent failed: %v", err)
-	}
+	require.NoError(t, err)
 
 	// Verify message was appended
 	updated, _ := store.Get("sess-1")
-	if len(updated.History) != 1 {
-		t.Fatalf("expected 1 message in history, got %d", len(updated.History))
-	}
-	if updated.History[0].Role != "user" {
-		t.Errorf("expected role 'user', got %q", updated.History[0].Role)
-	}
+	require.Len(t, updated.History, 1)
+	assert.Equal(t, "user", string(updated.History[0].Role))
 }
 
 // --- convertMessages tests ---
 
 func TestConvertMessages_RoleMapping(t *testing.T) {
+	t.Parallel()
+
 	tests := []struct {
 		give string
 		want string
@@ -1103,37 +986,32 @@ func TestConvertMessages_RoleMapping(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.give, func(t *testing.T) {
+			t.Parallel()
 			msgs, err := convertMessages([]*genai.Content{{
 				Role:  tt.give,
 				Parts: []*genai.Part{{Text: "test"}},
 			}})
-			if err != nil {
-				t.Fatalf("convertMessages failed: %v", err)
-			}
-			if len(msgs) != 1 {
-				t.Fatalf("expected 1 message, got %d", len(msgs))
-			}
-			if msgs[0].Role != tt.want {
-				t.Errorf("expected role %q, got %q", tt.want, msgs[0].Role)
-			}
+			require.NoError(t, err)
+			require.Len(t, msgs, 1)
+			assert.Equal(t, tt.want, string(msgs[0].Role))
 		})
 	}
 }
 
 func TestConvertMessages_TextContent(t *testing.T) {
+	t.Parallel()
+
 	msgs, err := convertMessages([]*genai.Content{{
 		Role:  "user",
 		Parts: []*genai.Part{{Text: "hello world"}},
 	}})
-	if err != nil {
-		t.Fatalf("convertMessages failed: %v", err)
-	}
-	if msgs[0].Content != "hello world" {
-		t.Errorf("expected 'hello world', got %q", msgs[0].Content)
-	}
+	require.NoError(t, err)
+	assert.Equal(t, "hello world", msgs[0].Content)
 }
 
 func TestConvertMessages_FunctionCall(t *testing.T) {
+	t.Parallel()
+
 	msgs, err := convertMessages([]*genai.Content{{
 		Role: "model",
 		Parts: []*genai.Part{{
@@ -1143,18 +1021,14 @@ func TestConvertMessages_FunctionCall(t *testing.T) {
 			},
 		}},
 	}})
-	if err != nil {
-		t.Fatalf("convertMessages failed: %v", err)
-	}
-	if len(msgs[0].ToolCalls) != 1 {
-		t.Fatalf("expected 1 tool call, got %d", len(msgs[0].ToolCalls))
-	}
-	if msgs[0].ToolCalls[0].Name != "exec" {
-		t.Errorf("expected tool name 'exec', got %q", msgs[0].ToolCalls[0].Name)
-	}
+	require.NoError(t, err)
+	require.Len(t, msgs[0].ToolCalls, 1)
+	assert.Equal(t, "exec", msgs[0].ToolCalls[0].Name)
 }
 
 func TestConvertMessages_FunctionResponse(t *testing.T) {
+	t.Parallel()
+
 	msgs, err := convertMessages([]*genai.Content{{
 		Role: "function",
 		Parts: []*genai.Part{{
@@ -1164,52 +1038,41 @@ func TestConvertMessages_FunctionResponse(t *testing.T) {
 			},
 		}},
 	}})
-	if err != nil {
-		t.Fatalf("convertMessages failed: %v", err)
-	}
-	if msgs[0].Role != "tool" {
-		t.Errorf("expected role 'tool', got %q", msgs[0].Role)
-	}
-	if msgs[0].Content == "" {
-		t.Error("expected non-empty content from function response")
-	}
-	if msgs[0].Metadata == nil || msgs[0].Metadata["tool_call_id"] != "exec" {
-		t.Errorf("expected tool_call_id metadata, got %v", msgs[0].Metadata)
-	}
+	require.NoError(t, err)
+	assert.Equal(t, "tool", string(msgs[0].Role))
+	assert.NotEmpty(t, msgs[0].Content, "expected non-empty content from function response")
+	require.NotNil(t, msgs[0].Metadata)
+	assert.Equal(t, "exec", msgs[0].Metadata["tool_call_id"])
 }
 
 func TestConvertMessages_Empty(t *testing.T) {
+	t.Parallel()
+
 	msgs, err := convertMessages(nil)
-	if err != nil {
-		t.Fatalf("convertMessages failed: %v", err)
-	}
-	if len(msgs) != 0 {
-		t.Errorf("expected 0 messages, got %d", len(msgs))
-	}
+	require.NoError(t, err)
+	assert.Empty(t, msgs)
 }
 
 func TestConvertTools_NilConfig(t *testing.T) {
+	t.Parallel()
+
 	tools, err := convertTools(nil)
-	if err != nil {
-		t.Fatalf("convertTools(nil) failed: %v", err)
-	}
-	if len(tools) != 0 {
-		t.Errorf("expected 0 tools, got %d", len(tools))
-	}
+	require.NoError(t, err)
+	assert.Empty(t, tools)
 }
 
 func TestConvertTools_NilTools(t *testing.T) {
+	t.Parallel()
+
 	cfg := &genai.GenerateContentConfig{}
 	tools, err := convertTools(cfg)
-	if err != nil {
-		t.Fatalf("convertTools failed: %v", err)
-	}
-	if len(tools) != 0 {
-		t.Errorf("expected 0 tools, got %d", len(tools))
-	}
+	require.NoError(t, err)
+	assert.Empty(t, tools)
 }
 
 func TestConvertTools_WithFunctionDeclarations(t *testing.T) {
+	t.Parallel()
+
 	cfg := &genai.GenerateContentConfig{
 		Tools: []*genai.Tool{{
 			FunctionDeclarations: []*genai.FunctionDeclaration{{
@@ -1226,16 +1089,8 @@ func TestConvertTools_WithFunctionDeclarations(t *testing.T) {
 	}
 
 	tools, err := convertTools(cfg)
-	if err != nil {
-		t.Fatalf("convertTools failed: %v", err)
-	}
-	if len(tools) != 1 {
-		t.Fatalf("expected 1 tool, got %d", len(tools))
-	}
-	if tools[0].Name != "test_tool" {
-		t.Errorf("expected tool name 'test_tool', got %q", tools[0].Name)
-	}
-	if tools[0].Description != "A test tool" {
-		t.Errorf("expected description 'A test tool', got %q", tools[0].Description)
-	}
+	require.NoError(t, err)
+	require.Len(t, tools, 1)
+	assert.Equal(t, "test_tool", tools[0].Name)
+	assert.Equal(t, "A test tool", tools[0].Description)
 }

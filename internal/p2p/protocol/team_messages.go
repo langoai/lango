@@ -22,11 +22,11 @@ const (
 
 // TeamInvitePayload is the payload for a team invitation.
 type TeamInvitePayload struct {
-	TeamID      string   `json:"teamId"`
-	TeamName    string   `json:"teamName"`
-	Goal        string   `json:"goal"`
-	LeaderDID   string   `json:"leaderDid"`
-	Role        string   `json:"role"`
+	TeamID       string   `json:"teamId"`
+	TeamName     string   `json:"teamName"`
+	Goal         string   `json:"goal"`
+	LeaderDID    string   `json:"leaderDid"`
+	Role         string   `json:"role"`
 	Capabilities []string `json:"capabilities"`
 }
 

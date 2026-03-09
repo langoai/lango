@@ -1,3 +1,7 @@
+## Purpose
+
+Event-driven on-chain settlement service for P2P paid tool invocations. Subscribes to ToolExecutionPaidEvent and executes EIP-3009 transferWithAuthorization transactions with retry, nonce serialization, and reputation feedback.
+## Requirements
 ### Requirement: Event-driven settlement trigger
 The settlement service SHALL subscribe to `ToolExecutionPaidEvent` from the event bus and process settlements asynchronously in a separate goroutine.
 
@@ -67,3 +71,15 @@ Settlement transactions SHALL be recorded in the `PaymentTx` table with `payment
 #### Scenario: Settlement creates DB record
 - **WHEN** a settlement is initiated
 - **THEN** a `PaymentTx` record is created with status `pending` and method `p2p_settlement`
+
+### Requirement: Settlement documentation
+The system SHALL document P2P settlement workflow in `docs/features/economy.md`, covering settlement config keys and receipt confirmation flow.
+
+#### Scenario: Settlement config documented
+- **WHEN** a user reads the on-chain escrow section in economy.md
+- **THEN** they find `economy.escrow.settlement.receiptTimeout` and `economy.escrow.settlement.maxRetries` documented
+
+#### Scenario: Settlement in configuration.md
+- **WHEN** a user reads `docs/configuration.md`
+- **THEN** settlement config keys are listed in the escrow configuration table
+

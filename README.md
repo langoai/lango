@@ -3,21 +3,29 @@
 </div>
 <br>
 
+
 # Lango 🐿️
+[![Ask DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/langoai/lango)
+[![CI](https://github.com/langoai/lango/actions/workflows/ci.yml/badge.svg)](https://github.com/langoai/lango/actions/workflows/ci.yml)
+[![Go Version](https://img.shields.io/github/go-mod/go-version/langoai/lango)](https://github.com/langoai/lango)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![Go Report Card](https://goreportcard.com/badge/github.com/langoai/lango)](https://goreportcard.com/report/github.com/langoai/lango)
 
 **A sovereign AI agent runtime with built-in commerce.** Lango is a high-performance agent in Go that lets AI agents discover each other, negotiate, transact, and collaborate — without intermediaries.
 
 ### Why Lango?
 
-Most agent frameworks stop at tool-calling. Lango goes further — it gives agents an **economic layer**:
+Most agent frameworks stop at tool-calling. Lango goes further — it gives agents a full **sovereign economic stack**:
 
-- **Peer-to-Peer Agent Economy** — Agents discover, authenticate, and trade capabilities over libp2p. No central hub. No vendor lock-in.
-- **Native Payments** — USDC transactions on Base L2, with spending limits, daily caps, and automatic X402 HTTP payment negotiation (Coinbase SDK).
-- **Trust & Reputation** — Every interaction builds a verifiable reputation score. Trusted peers get post-pay terms; new peers prepay.
-- **Zero-Knowledge Security** — ZK proofs for handshake authentication and response attestation. Agents prove identity and output integrity without revealing internals.
-- **Knowledge as Currency** — Self-learning knowledge graph, observational memory, and RAG-powered context retrieval — agents that get smarter with every interaction can charge for their expertise.
-- **Multi-Agent Orchestration** — Hierarchical sub-agent teams with role-based delegation, P2P team coordination, and DAG-based workflow pipelines.
-- **Open Interoperability** — A2A protocol for remote agent discovery, MCP integration for external tools, and multi-provider AI support (OpenAI, Anthropic, Gemini, Ollama).
+- **Peer-to-Peer Agent Economy** — Agents discover, authenticate, negotiate prices, and trade capabilities over libp2p with budget management, trust-based risk assessment, and dynamic pricing. No central hub. No vendor lock-in.
+- **On-Chain Settlement** — USDC payments on Base L2 with EIP-3009 authorization, milestone-based escrow (Hub/Vault dual-mode), Foundry smart contracts, and a Security Sentinel that detects anomalies in real time.
+- **Smart Accounts** — ERC-7579 modular smart accounts (Safe-based) with ERC-4337 account abstraction, hierarchical session keys, gasless USDC transactions via paymaster, and on-chain spending limits.
+- **Trust & Reputation** — Every interaction builds a verifiable reputation score. Trusted peers get post-pay terms and price discounts; new peers prepay or use escrow.
+- **Zero-Knowledge Security** — ZK proofs (Plonk/Groth16) for handshake authentication and response attestation. Agents prove identity and output integrity without revealing internals. Hardware keyring and Cloud KMS support.
+- **Knowledge as Currency** — Self-learning knowledge graph, observational memory, and hybrid vector + graph RAG retrieval — agents that get smarter with every interaction can charge for their expertise.
+- **Multi-Agent Orchestration** — Hierarchical sub-agent teams with role-based delegation, P2P team coordination with conflict resolution strategies, and DAG-based workflow pipelines.
+- **Open Interoperability** — A2A protocol for remote agent discovery, MCP integration for external tool servers, and multi-provider AI support (OpenAI, Anthropic, Gemini, Ollama).
+- **Production Observability** — Token usage tracking, health monitoring, audit logging, and metrics endpoints for operational visibility.
 
 Single binary. <100ms startup. <250MB memory. Just Go.
 
@@ -49,9 +57,14 @@ This project includes experimental AI Agent features and is currently in an unst
 - 🧬 **Agent Memory** - Per-agent persistent memory for cross-session context retention
 - 📡 **Event Bus** - Typed synchronous pub/sub for internal component communication
 - 🪝 **Tool Hooks** - Middleware chain for tool execution (security filter, access control, event publishing, knowledge save)
-- 👥 **P2P Teams** - Task-scoped agent groups with role-based delegation (Leader, Worker, Reviewer, Observer)
 - 🏊 **Agent Pool** - P2P agent pool with health checking and weighted selection
 - 💰 **P2P Settlement** - On-chain USDC settlement with EIP-3009, receipt tracking, and retry
+- 💰 **P2P Economy** — Budget management, trust-based risk assessment, dynamic pricing with peer discounts, P2P negotiation protocol, and milestone-based escrow with on-chain Hub/Vault dual-mode settlement
+- 🛡️ **Security Sentinel** — Real-time anomaly detection for on-chain escrow (rapid creation, large withdrawal, repeated dispute, unusual timing, balance drop)
+- 📜 **Smart Contracts** — EVM smart contract interaction with ABI caching, view/pure reads, state-changing calls, and Foundry-based escrow contracts (LangoEscrowHub, LangoVault, LangoVaultFactory)
+- 🏦 **Smart Accounts** — ERC-7579 modular smart accounts (Safe-based), ERC-4337 account abstraction with session keys, gasless USDC transactions via paymaster (Circle/Pimlico/Alchemy), on-chain spending limits, and hierarchical session key management
+- 👥 **P2P Teams** — Task-scoped agent groups with role-based delegation, conflict resolution (trust_weighted, majority_vote, leader_decides, fail_on_conflict), assignment strategies, and payment coordination
+- 📊 **Observability** — Token usage tracking, health monitoring, audit logging, and metrics endpoints
 
 ## Quick Start
 
@@ -210,6 +223,37 @@ lango p2p team disband <id>      Disband an active team
 lango p2p zkp status             Show ZKP configuration
 lango p2p zkp circuits           List compiled ZKP circuits
 
+lango economy budget status     Show budget allocation status
+lango economy risk status       Show risk assessment configuration
+lango economy pricing status    Show dynamic pricing configuration
+lango economy negotiate status  Show negotiation protocol status
+lango economy escrow status     Show escrow service configuration
+lango economy escrow list       Show escrow summary (on-chain mode, addresses)
+lango economy escrow show       Show detailed on-chain escrow configuration (--id)
+lango economy escrow sentinel status  Show Security Sentinel engine status
+
+lango contract read [flags]     Read a smart contract method (--address, --method, --abi, --args)
+lango contract call [flags]     Execute a state-changing contract method (--address, --method, --value)
+lango contract abi load [flags] Load and cache a contract ABI (--address, --file)
+
+lango account info               Show smart account configuration and status
+lango account deploy             Deploy a new Safe smart account with ERC-7579 adapter
+lango account session list       List active session keys
+lango account session create     Create a new session key
+lango account session revoke     Revoke a session key (or --all)
+lango account module list        List registered ERC-7579 modules
+lango account module install     Install an ERC-7579 module
+lango account policy show        Show current harness policy configuration
+lango account policy set         Set harness policy limits
+lango account paymaster status   Show paymaster configuration and approval status
+lango account paymaster approve  Approve USDC spending for the paymaster
+
+lango metrics                   Show system metrics snapshot
+lango metrics sessions          Show per-session token usage
+lango metrics tools             Show per-tool metrics
+lango metrics agents            Show per-agent metrics
+lango metrics history [--days]  Show historical metrics
+
 lango bg list                    List background tasks
 lango bg status <id>             Show background task status
 lango bg cancel <id>             Cancel a running background task
@@ -265,11 +309,18 @@ lango/
 │   │   ├── prompt/         #   interactive prompt utilities
 │   │   ├── security/       #   lango security status/secrets/migrate-passphrase/keyring/db-migrate/db-decrypt/kms
 │   │   ├── p2p/            #   lango p2p status/peers/connect/disconnect/firewall/discover/identity/reputation/pricing/session/sandbox
+│   │   ├── economy/       #   lango economy budget/risk/pricing/negotiate/escrow status/list/show/sentinel
+│   │   ├── contract/      #   lango contract read/call/abi
+│   │   ├── metrics/       #   lango metrics [sessions|tools|agents|history]
 │   │   └── tui/            #   TUI components and views
 │   ├── config/             # Config loading, env var substitution, validation
 │   ├── configstore/        # Encrypted config profile storage (Ent-backed)
 │   ├── ctxkeys/            # Context key helpers for agent name propagation
 │   ├── a2a/                # A2A protocol server and remote agent loading
+│   ├── economy/             # P2P economy layer (budget, risk, pricing, negotiation, escrow)
+│   │   └── escrow/          #   Milestone escrow engine, on-chain settlement
+│   │       ├── hub/         #     Hub/Vault settlers, contract clients
+│   │       └── sentinel/    #     Security Sentinel anomaly detection
 │   ├── embedding/          # Embedding providers (OpenAI, Google, local) and RAG
 │   ├── ent/                # Ent ORM schemas and generated code
 │   ├── eventbus/           # Typed synchronous event pub/sub
@@ -291,10 +342,12 @@ lango/
 │   ├── security/           # Crypto providers, key registry, secrets store, companion discovery, KMS providers
 │   ├── session/            # Ent-based SQLite session store
 │   ├── skill/              # File-based skill system (SKILL.md parser, FileSkillStore, registry, executor, GitHub importer with git clone + HTTP fallback, resource directories)
+│   ├── contract/            # EVM smart contract interaction, ABI cache
 │   ├── cron/               # Cron scheduler (robfig/cron/v3), job store, executor, delivery
 │   ├── background/         # Background task manager, notifications, monitoring
 │   ├── workflow/            # DAG workflow engine, YAML parser, state persistence
 │   ├── payment/            # Blockchain payment service (USDC on EVM chains, X402 audit trail)
+│   ├── observability/       # Metrics, token tracking, health checks, audit logging
 │   ├── p2p/                # P2P networking (libp2p node, identity, handshake, firewall, discovery, ZKP)
 │   │   ├── team/           #   P2P team coordination
 │   │   ├── agentpool/      #   Agent pool with health checking
@@ -307,6 +360,7 @@ lango/
 │   ├── toolchain/          # Middleware chain for tool wrapping
 │   ├── tools/              # browser, crypto, exec, filesystem, secrets, payment
 │   └── types/              # Shared types (ProviderType, Role, RPCSenderFunc)
+├── contracts/              # Foundry-based Solidity contracts (LangoEscrowHub, LangoVault, LangoVaultFactory)
 ├── prompts/                # Default prompt .md files (embedded via go:embed)
 ├── skills/                 # Skill system scaffold (go:embed). Built-in skills were removed — Lango's passphrase-based security model makes it impractical for the agent to invoke CLI commands as skills
 └── openspec/               # Specifications (OpenSpec workflow)
@@ -357,6 +411,8 @@ All settings are managed via `lango onboard` (guided wizard), `lango settings` (
 | `agent.errorCorrectionEnabled`                         | bool     | `true`                      | Enable learning-based error correction (requires knowledge system)                                                |
 | `agent.maxDelegationRounds`                            | int      | `10`                        | Max orchestrator→sub-agent delegation rounds per turn (multi-agent only)                                          |
 | `agent.agentsDir`                                      | string   |                             | Directory containing user-defined AGENT.md files                                                                  |
+| `agent.autoExtendTimeout`                              | bool     | `false`                     | Auto-extend deadline when agent is actively producing output                                                      |
+| `agent.maxRequestTimeout`                              | duration | -                           | Absolute max timeout when auto-extend is enabled (default: 3× requestTimeout)                                    |
 | **Providers**                                          |          |                             |                                                                                                                   |
 | `providers.<id>.type`                                  | string   | -                           | Provider type (openai, anthropic, gemini)                                                                         |
 | `providers.<id>.apiKey`                                | string   | -                           | Provider API key                                                                                                  |
@@ -534,7 +590,145 @@ All settings are managed via `lango onboard` (guided wizard), `lango settings` (
 | `hooks.eventPublishing`                                | bool     | `false`                     | Publish tool execution events to event bus                                                                        |
 | `hooks.knowledgeSave`                                  | bool     | `false`                     | Auto-save knowledge from tool results                                                                             |
 | `hooks.blockedCommands`                                | []string | `[]`                        | Command patterns to block (security filter)                                                                       |
+| **Economy** (🧪 Experimental Features)                 |          |                             |                                                                                                                   |
+| `economy.enabled`                                      | bool     | `false`                     | Enable P2P economy layer                                                                                          |
+| `economy.budget.defaultMax`                            | string   | `"10.00"`                   | Default max budget per task in USDC                                                                               |
+| `economy.budget.alertThresholds`                       | []float  | `[0.5, 0.8, 0.95]`         | Percentage thresholds for budget alerts                                                                           |
+| `economy.budget.hardLimit`                             | bool     | `true`                      | Enforce budget as hard cap                                                                                        |
+| `economy.risk.escrowThreshold`                         | string   | `"5.00"`                    | USDC amount above which escrow is forced                                                                          |
+| `economy.risk.highTrustScore`                          | float    | `0.8`                       | Min trust score for DirectPay                                                                                     |
+| `economy.risk.mediumTrustScore`                        | float    | `0.5`                       | Min trust score for non-ZK strategies                                                                             |
+| `economy.negotiate.enabled`                            | bool     | `false`                     | Enable P2P negotiation protocol                                                                                   |
+| `economy.negotiate.maxRounds`                          | int      | `5`                         | Max counter-offers per session                                                                                    |
+| `economy.negotiate.timeout`                            | duration | `5m`                        | Negotiation session timeout                                                                                       |
+| `economy.negotiate.autoNegotiate`                      | bool     | `false`                     | Enable automatic counter-offer generation                                                                         |
+| `economy.negotiate.maxDiscount`                        | float    | `0.2`                       | Max discount for auto-negotiation (0–1)                                                                           |
+| `economy.escrow.enabled`                               | bool     | `false`                     | Enable milestone-based escrow                                                                                     |
+| `economy.escrow.defaultTimeout`                        | duration | `24h`                       | Escrow expiration timeout                                                                                         |
+| `economy.escrow.maxMilestones`                         | int      | `10`                        | Max milestones per escrow                                                                                         |
+| `economy.escrow.autoRelease`                           | bool     | `false`                     | Auto-release when all milestones met                                                                              |
+| `economy.escrow.disputeWindow`                         | duration | `1h`                        | Time window for disputes after completion                                                                         |
+| `economy.escrow.settlement.receiptTimeout`             | duration | `2m`                        | Max wait for on-chain confirmation                                                                                |
+| `economy.escrow.settlement.maxRetries`                 | int      | `3`                         | Max transaction submission retries                                                                                |
+| `economy.escrow.onChain.enabled`                       | bool     | `false`                     | Enable on-chain escrow mode                                                                                       |
+| `economy.escrow.onChain.mode`                          | string   | `"hub"`                     | On-chain pattern: `hub` or `vault`                                                                                |
+| `economy.escrow.onChain.hubAddress`                    | string   | -                           | LangoEscrowHub contract address                                                                                   |
+| `economy.escrow.onChain.vaultFactoryAddress`           | string   | -                           | LangoVaultFactory contract address                                                                                |
+| `economy.escrow.onChain.vaultImplementation`           | string   | -                           | LangoVault implementation address (clone target)                                                                  |
+| `economy.escrow.onChain.arbitratorAddress`             | string   | -                           | Dispute arbitrator address                                                                                        |
+| `economy.escrow.onChain.pollInterval`                  | duration | `15s`                       | Event monitor polling interval                                                                                    |
+| `economy.escrow.onChain.tokenAddress`                  | string   | -                           | ERC-20 USDC contract address                                                                                      |
+| `economy.pricing.enabled`                              | bool     | `false`                     | Enable dynamic pricing                                                                                            |
+| `economy.pricing.trustDiscount`                        | float    | `0.1`                       | Max discount for high-trust peers (0–1)                                                                           |
+| `economy.pricing.volumeDiscount`                       | float    | `0.05`                      | Max discount for high-volume peers (0–1)                                                                          |
+| `economy.pricing.minPrice`                             | string   | `"0.01"`                    | Minimum price floor in USDC                                                                                       |
+| **Smart Account** (🧪 Experimental Features)           |          |                             |                                                                                                                   |
+| `smartAccount.enabled`                                 | bool     | `false`                     | Enable ERC-7579 smart account subsystem                                                                           |
+| `smartAccount.factoryAddress`                          | string   | -                           | ERC-7579 account factory address                                                                                  |
+| `smartAccount.entryPointAddress`                       | string   | -                           | ERC-4337 EntryPoint address                                                                                       |
+| `smartAccount.safe7579Address`                         | string   | -                           | Safe7579 adapter address                                                                                          |
+| `smartAccount.fallbackHandler`                         | string   | -                           | Fallback handler address                                                                                          |
+| `smartAccount.bundlerURL`                              | string   | -                           | UserOp bundler endpoint                                                                                           |
+| `smartAccount.session.maxDuration`                     | duration | -                           | Max session key lifetime                                                                                          |
+| `smartAccount.session.defaultGasLimit`                 | uint64   | -                           | Gas limit per UserOp                                                                                              |
+| `smartAccount.session.maxActiveKeys`                   | int      | -                           | Max concurrent session keys                                                                                       |
+| `smartAccount.modules.sessionValidatorAddress`         | string   | -                           | LangoSessionValidator module address                                                                              |
+| `smartAccount.modules.spendingHookAddress`             | string   | -                           | LangoSpendingHook module address                                                                                  |
+| `smartAccount.modules.escrowExecutorAddress`           | string   | -                           | LangoEscrowExecutor module address                                                                                |
+| `smartAccount.paymaster.enabled`                       | bool     | `false`                     | Enable paymaster for gasless transactions                                                                         |
+| `smartAccount.paymaster.provider`                      | string   | -                           | Paymaster provider: `circle`, `pimlico`, `alchemy`                                                                |
+| `smartAccount.paymaster.rpcURL`                        | string   | -                           | Paymaster RPC endpoint                                                                                            |
+| `smartAccount.paymaster.tokenAddress`                  | string   | -                           | USDC token address for paymaster                                                                                  |
+| `smartAccount.paymaster.paymasterAddress`              | string   | -                           | Paymaster contract address                                                                                        |
+| `smartAccount.paymaster.policyId`                      | string   | -                           | Optional paymaster policy ID                                                                                      |
+| `smartAccount.paymaster.fallbackMode`                  | string   | `"abort"`                   | Fallback when paymaster fails: `abort` or `direct`                                                                |
 
+
+## On-Chain Economy (Base Sepolia Testnet)
+
+Lango smart contracts are deployed on **Base Sepolia** (chain ID `84532`). These are shared infrastructure contracts — all Lango agents use the same deployed instances.
+
+### Deployed Contract Addresses
+
+| Contract | Address | Description |
+|----------|---------|-------------|
+| LangoEscrowHub | `0x1820A1C403A5811660a4893Ae028862208e4f7A8` | Centralized milestone-based escrow |
+| LangoVault (impl) | `0x18167Daeca7A09B32D8BE93c73737B95B64A7ff8` | Vault clone target (EIP-1167) |
+| LangoVaultFactory | `0x1CA47128D7fdDD0D875C3AeC7274C894F2c792C2` | Creates individual vault instances |
+| LangoSessionValidator | `0xB52877B5E27F77795Fbe59101D07CA81dbd3f8aC` | ERC-7579 session key validator |
+| LangoSpendingHook | `0xc428774991dBDf6645E254be793cb93A66cd9b4B` | ERC-7579 on-chain spending limits |
+| LangoEscrowExecutor | `0x5d08310987C5B59cB03F01363142656C5AE23997` | ERC-7579 escrow execution module |
+| USDC (canonical) | `0x036CbD53842c5426634e7929541eC2318f3dCF7e` | Base Sepolia USDC |
+| Arbitrator | `0x4BDBDE4A725A83820B7A94cD5dB523eb4515dDAd` | Testnet dispute arbitrator |
+
+> Full deployment manifest: [`contracts/deployments/84532.json`](contracts/deployments/84532.json)
+
+### Configuration
+
+Enable on-chain economy with the deployed Base Sepolia contracts:
+
+```bash
+# Economy — on-chain escrow (hub mode)
+lango config set economy.enabled true
+lango config set economy.escrow.enabled true
+lango config set economy.escrow.onChain.enabled true
+lango config set economy.escrow.onChain.mode hub
+lango config set economy.escrow.onChain.hubAddress "0x1820A1C403A5811660a4893Ae028862208e4f7A8"
+lango config set economy.escrow.onChain.vaultFactoryAddress "0x1CA47128D7fdDD0D875C3AeC7274C894F2c792C2"
+lango config set economy.escrow.onChain.vaultImplementation "0x18167Daeca7A09B32D8BE93c73737B95B64A7ff8"
+lango config set economy.escrow.onChain.arbitratorAddress "0x4BDBDE4A725A83820B7A94cD5dB523eb4515dDAd"
+lango config set economy.escrow.onChain.tokenAddress "0x036CbD53842c5426634e7929541eC2318f3dCF7e"
+
+# Smart Account — ERC-7579 modules
+lango config set smartAccount.enabled true
+lango config set smartAccount.modules.sessionValidatorAddress "0xB52877B5E27F77795Fbe59101D07CA81dbd3f8aC"
+lango config set smartAccount.modules.spendingHookAddress "0xc428774991dBDf6645E254be793cb93A66cd9b4B"
+lango config set smartAccount.modules.escrowExecutorAddress "0x5d08310987C5B59cB03F01363142656C5AE23997"
+
+# Payment network (required for on-chain operations)
+lango config set payment.enabled true
+lango config set payment.network.chainId 84532
+lango config set payment.network.rpcUrl "https://sepolia.base.org"
+lango config set payment.network.usdcContract "0x036CbD53842c5426634e7929541eC2318f3dCF7e"
+```
+
+### Getting Testnet USDC
+
+1. Get Base Sepolia ETH from the [Base Faucet](https://www.base.org/faucet)
+2. Get testnet USDC from the [Circle Faucet](https://faucet.circle.com/) (select Base Sepolia)
+
+### Escrow Modes
+
+- **Hub mode** (`economy.escrow.onChain.mode: "hub"`) — All deals go through the shared `LangoEscrowHub`. Simpler, single contract manages all escrows.
+- **Vault mode** (`economy.escrow.onChain.mode: "vault"`) — Each deal gets its own `LangoVault` clone via `LangoVaultFactory`. Better isolation per deal.
+
+### Redeploying Contracts
+
+To deploy your own instance (e.g., for local development):
+
+```bash
+cd contracts
+cp .env.example .env   # fill in BASESCAN_API_KEY
+
+# Import your wallet key into Foundry encrypted keystore (one-time)
+cast wallet import my-deployer --interactive
+
+# Deploy with canonical USDC
+forge script script/Deploy.s.sol \
+  --rpc-url base_sepolia \
+  --account my-deployer \
+  --sender <YOUR_ADDRESS> \
+  --broadcast --verify -vvvv
+
+# Deploy with MockUSDC (for testing)
+DEPLOY_MOCK_USDC=true forge script script/Deploy.s.sol \
+  --rpc-url base_sepolia \
+  --account my-deployer \
+  --sender <YOUR_ADDRESS> \
+  --broadcast -vvvv
+```
+
+Deployed addresses are written to `contracts/deployments/<chainId>.json`.
 
 ## System Prompts
 

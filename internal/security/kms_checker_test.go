@@ -35,17 +35,23 @@ func (m *mockHealthCryptoProvider) Sign(_ context.Context, _ string, _ []byte) (
 }
 
 func TestNewKMSHealthChecker_DefaultProbeInterval(t *testing.T) {
+	t.Parallel()
+
 	checker := NewKMSHealthChecker(&mockHealthCryptoProvider{}, "test-key", 0)
 	require.NotNil(t, checker)
 	assert.Equal(t, 30*time.Second, checker.probeInterval)
 }
 
 func TestNewKMSHealthChecker_CustomProbeInterval(t *testing.T) {
+	t.Parallel()
+
 	checker := NewKMSHealthChecker(&mockHealthCryptoProvider{}, "test-key", 10*time.Second)
 	assert.Equal(t, 10*time.Second, checker.probeInterval)
 }
 
 func TestKMSHealthChecker_Healthy(t *testing.T) {
+	t.Parallel()
+
 	provider := &mockHealthCryptoProvider{}
 	checker := NewKMSHealthChecker(provider, "test-key", time.Minute)
 
@@ -53,6 +59,8 @@ func TestKMSHealthChecker_Healthy(t *testing.T) {
 }
 
 func TestKMSHealthChecker_Unhealthy_EncryptFails(t *testing.T) {
+	t.Parallel()
+
 	provider := &mockHealthCryptoProvider{encryptErr: fmt.Errorf("kms unreachable")}
 	checker := NewKMSHealthChecker(provider, "test-key", time.Minute)
 
@@ -60,6 +68,8 @@ func TestKMSHealthChecker_Unhealthy_EncryptFails(t *testing.T) {
 }
 
 func TestKMSHealthChecker_Unhealthy_DecryptFails(t *testing.T) {
+	t.Parallel()
+
 	provider := &mockHealthCryptoProvider{decryptErr: fmt.Errorf("decrypt failed")}
 	checker := NewKMSHealthChecker(provider, "test-key", time.Minute)
 
@@ -67,6 +77,8 @@ func TestKMSHealthChecker_Unhealthy_DecryptFails(t *testing.T) {
 }
 
 func TestKMSHealthChecker_CacheFresh(t *testing.T) {
+	t.Parallel()
+
 	callCount := 0
 	provider := &countingCryptoProvider{count: &callCount}
 	checker := NewKMSHealthChecker(provider, "test-key", time.Minute)
@@ -83,6 +95,8 @@ func TestKMSHealthChecker_CacheFresh(t *testing.T) {
 }
 
 func TestKMSHealthChecker_CacheExpired(t *testing.T) {
+	t.Parallel()
+
 	callCount := 0
 	provider := &countingCryptoProvider{count: &callCount}
 	checker := NewKMSHealthChecker(provider, "test-key", 10*time.Millisecond)

@@ -23,7 +23,7 @@ func NewStaticSection(id SectionID, priority int, title, content string) *Static
 }
 
 func (s *StaticSection) ID() SectionID { return s.id }
-func (s *StaticSection) Priority() int  { return s.priority }
+func (s *StaticSection) Priority() int { return s.priority }
 
 // Render returns the section content with an optional title header.
 func (s *StaticSection) Render() string {

@@ -13,17 +13,17 @@ import (
 
 // AgentAd is a structured service advertisement (Context Flyer).
 type AgentAd struct {
-	DID          string            `json:"did"`
-	Name         string            `json:"name"`
-	Description  string            `json:"description"`
-	Tags         []string          `json:"tags"`
-	Capabilities []string          `json:"capabilities,omitempty"`
-	Pricing      *PricingInfo      `json:"pricing,omitempty"`
-	ZKCredentials []ZKCredential   `json:"zkCredentials,omitempty"`
-	Multiaddrs   []string          `json:"multiaddrs,omitempty"`
-	PeerID       string            `json:"peerId"`
-	Timestamp    time.Time         `json:"timestamp"`
-	Metadata     map[string]string `json:"metadata,omitempty"`
+	DID           string            `json:"did"`
+	Name          string            `json:"name"`
+	Description   string            `json:"description"`
+	Tags          []string          `json:"tags"`
+	Capabilities  []string          `json:"capabilities,omitempty"`
+	Pricing       *PricingInfo      `json:"pricing,omitempty"`
+	ZKCredentials []ZKCredential    `json:"zkCredentials,omitempty"`
+	Multiaddrs    []string          `json:"multiaddrs,omitempty"`
+	PeerID        string            `json:"peerId"`
+	Timestamp     time.Time         `json:"timestamp"`
+	Metadata      map[string]string `json:"metadata,omitempty"`
 }
 
 // AdService manages agent advertisement and discovery via DHT provider records.

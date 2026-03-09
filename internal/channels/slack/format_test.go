@@ -7,6 +7,8 @@ import (
 )
 
 func TestFormatMrkdwn(t *testing.T) {
+	t.Parallel()
+
 	tests := []struct {
 		give string
 		want string
@@ -63,6 +65,8 @@ func TestFormatMrkdwn(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.give, func(t *testing.T) {
+			t.Parallel()
+
 			got := FormatMrkdwn(tt.give)
 			assert.Equal(t, tt.want, got)
 		})

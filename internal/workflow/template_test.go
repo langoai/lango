@@ -63,9 +63,9 @@ func TestPlaceholderRe_Matches(t *testing.T) {
 		{"{{my_step.result}}", true},
 		{"{{Step1.result}}", true},
 		{"{{123.result}}", true},
-		{"{{.result}}", false},          // empty step ID
-		{"{{step1.output}}", false},     // wrong suffix
-		{"{{ step1.result }}", false},   // spaces
+		{"{{.result}}", false},        // empty step ID
+		{"{{step1.output}}", false},   // wrong suffix
+		{"{{ step1.result }}", false}, // spaces
 		{"text without placeholders", false},
 	}
 

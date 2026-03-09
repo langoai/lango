@@ -9,6 +9,8 @@ import (
 )
 
 func TestMapKnowledgeCategory(t *testing.T) {
+	t.Parallel()
+
 	tests := []struct {
 		give    string
 		wantCat entknowledge.Category
@@ -27,6 +29,7 @@ func TestMapKnowledgeCategory(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.give, func(t *testing.T) {
+			t.Parallel()
 			got, err := mapKnowledgeCategory(tt.give)
 			if tt.wantErr {
 				require.Error(t, err)

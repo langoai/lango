@@ -10,6 +10,8 @@ import (
 )
 
 func TestLoadFromDir_OverridesKnownFile(t *testing.T) {
+	t.Parallel()
+
 	dir := t.TempDir()
 	err := os.WriteFile(filepath.Join(dir, "AGENTS.md"), []byte("Custom identity"), 0644)
 	require.NoError(t, err)
@@ -21,6 +23,8 @@ func TestLoadFromDir_OverridesKnownFile(t *testing.T) {
 }
 
 func TestLoadFromDir_AddsCustomSection(t *testing.T) {
+	t.Parallel()
+
 	dir := t.TempDir()
 	err := os.WriteFile(filepath.Join(dir, "MY_RULES.md"), []byte("Custom rule content"), 0644)
 	require.NoError(t, err)
@@ -32,6 +36,8 @@ func TestLoadFromDir_AddsCustomSection(t *testing.T) {
 }
 
 func TestLoadFromDir_IgnoresEmptyFiles(t *testing.T) {
+	t.Parallel()
+
 	dir := t.TempDir()
 	err := os.WriteFile(filepath.Join(dir, "AGENTS.md"), []byte(""), 0644)
 	require.NoError(t, err)
@@ -43,6 +49,8 @@ func TestLoadFromDir_IgnoresEmptyFiles(t *testing.T) {
 }
 
 func TestLoadFromDir_IgnoresNonMdFiles(t *testing.T) {
+	t.Parallel()
+
 	dir := t.TempDir()
 	err := os.WriteFile(filepath.Join(dir, "notes.txt"), []byte("not a prompt"), 0644)
 	require.NoError(t, err)
@@ -53,6 +61,8 @@ func TestLoadFromDir_IgnoresNonMdFiles(t *testing.T) {
 }
 
 func TestLoadFromDir_NonExistentDir(t *testing.T) {
+	t.Parallel()
+
 	b := LoadFromDir("/nonexistent/path", nil)
 	result := b.Build()
 	// Should fall back to defaults
@@ -60,6 +70,8 @@ func TestLoadFromDir_NonExistentDir(t *testing.T) {
 }
 
 func TestLoadFromDir_OverridesMultipleSections(t *testing.T) {
+	t.Parallel()
+
 	dir := t.TempDir()
 	require.NoError(t, os.WriteFile(filepath.Join(dir, "AGENTS.md"), []byte("My agent"), 0644))
 	require.NoError(t, os.WriteFile(filepath.Join(dir, "SAFETY.md"), []byte("My safety rules"), 0644))
@@ -76,6 +88,8 @@ func TestLoadFromDir_OverridesMultipleSections(t *testing.T) {
 // --- LoadAgentFromDir tests ---
 
 func TestLoadAgentFromDir_OverridesIdentity(t *testing.T) {
+	t.Parallel()
+
 	dir := t.TempDir()
 	require.NoError(t, os.WriteFile(filepath.Join(dir, "IDENTITY.md"), []byte("Custom agent identity"), 0644))
 
@@ -91,6 +105,8 @@ func TestLoadAgentFromDir_OverridesIdentity(t *testing.T) {
 }
 
 func TestLoadAgentFromDir_OverridesSafety(t *testing.T) {
+	t.Parallel()
+
 	dir := t.TempDir()
 	require.NoError(t, os.WriteFile(filepath.Join(dir, "SAFETY.md"), []byte("Agent-specific safety"), 0644))
 
@@ -104,6 +120,8 @@ func TestLoadAgentFromDir_OverridesSafety(t *testing.T) {
 }
 
 func TestLoadAgentFromDir_AddsCustomSection(t *testing.T) {
+	t.Parallel()
+
 	dir := t.TempDir()
 	require.NoError(t, os.WriteFile(filepath.Join(dir, "MY_RULES.md"), []byte("Custom rules"), 0644))
 
@@ -118,6 +136,8 @@ func TestLoadAgentFromDir_AddsCustomSection(t *testing.T) {
 }
 
 func TestLoadAgentFromDir_NonExistentDir(t *testing.T) {
+	t.Parallel()
+
 	base := NewBuilder()
 	base.Add(NewStaticSection(SectionSafety, 200, "Safety Guidelines", "Shared safety"))
 
@@ -127,6 +147,8 @@ func TestLoadAgentFromDir_NonExistentDir(t *testing.T) {
 }
 
 func TestLoadAgentFromDir_DoesNotMutateBase(t *testing.T) {
+	t.Parallel()
+
 	dir := t.TempDir()
 	require.NoError(t, os.WriteFile(filepath.Join(dir, "IDENTITY.md"), []byte("Override"), 0644))
 
@@ -142,6 +164,8 @@ func TestLoadAgentFromDir_DoesNotMutateBase(t *testing.T) {
 }
 
 func TestLoadAgentFromDir_IgnoresEmptyFiles(t *testing.T) {
+	t.Parallel()
+
 	dir := t.TempDir()
 	require.NoError(t, os.WriteFile(filepath.Join(dir, "IDENTITY.md"), []byte("   "), 0644))
 
@@ -154,6 +178,8 @@ func TestLoadAgentFromDir_IgnoresEmptyFiles(t *testing.T) {
 }
 
 func TestLoadFromDir_CustomSectionPriorityAfterDefaults(t *testing.T) {
+	t.Parallel()
+
 	dir := t.TempDir()
 	require.NoError(t, os.WriteFile(filepath.Join(dir, "EXTRA.md"), []byte("extra content"), 0644))
 

@@ -131,7 +131,7 @@ func DefaultConfig() *Config {
 			MaxMessageTokenBudget:            8000,
 			MaxReflectionsInContext:          5,
 			MaxObservationsInContext:         20,
-			MemoryTokenBudget:               4000,
+			MemoryTokenBudget:                4000,
 			ReflectionConsolidationThreshold: 5,
 		},
 		Librarian: LibrarianConfig{

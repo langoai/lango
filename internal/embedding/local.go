@@ -38,8 +38,8 @@ func NewLocalProvider(baseURL, model string, dimensions int) *LocalProvider {
 	}
 }
 
-func (p *LocalProvider) ID() string       { return "local" }
-func (p *LocalProvider) Dimensions() int  { return p.dimensions }
+func (p *LocalProvider) ID() string      { return "local" }
+func (p *LocalProvider) Dimensions() int { return p.dimensions }
 
 // Embed generates embeddings for the given texts.
 func (p *LocalProvider) Embed(ctx context.Context, texts []string) ([][]float32, error) {

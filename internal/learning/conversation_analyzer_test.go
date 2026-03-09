@@ -5,6 +5,8 @@ import (
 	"encoding/json"
 	"testing"
 
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	"go.uber.org/zap"
 
 	"github.com/langoai/lango/internal/ent/enttest"
@@ -25,6 +27,8 @@ func (g *fakeTextGenerator) GenerateText(_ context.Context, _, _ string) (string
 }
 
 func TestConversationAnalyzer_Analyze_Fact(t *testing.T) {
+	t.Parallel()
+
 	client := enttest.Open(t, "sqlite3", "file:ent?mode=memory&_fk=1")
 	t.Cleanup(func() { client.Close() })
 
@@ -46,21 +50,17 @@ func TestConversationAnalyzer_Analyze_Fact(t *testing.T) {
 
 	ctx := context.Background()
 	err := analyzer.Analyze(ctx, "test-session", msgs)
-	if err != nil {
-		t.Fatalf("Analyze: %v", err)
-	}
+	require.NoError(t, err)
 
 	// Verify knowledge was saved.
 	entries, err := store.SearchKnowledge(ctx, "Go modules", "", 10)
-	if err != nil {
-		t.Fatalf("SearchKnowledge: %v", err)
-	}
-	if len(entries) == 0 {
-		t.Fatal("expected at least one knowledge entry after analysis")
-	}
+	require.NoError(t, err)
+	require.NotEmpty(t, entries, "expected at least one knowledge entry after analysis")
 }
 
 func TestConversationAnalyzer_Analyze_Correction(t *testing.T) {
+	t.Parallel()
+
 	client := enttest.Open(t, "sqlite3", "file:ent?mode=memory&_fk=1")
 	t.Cleanup(func() { client.Close() })
 
@@ -81,32 +81,28 @@ func TestConversationAnalyzer_Analyze_Correction(t *testing.T) {
 
 	ctx := context.Background()
 	err := analyzer.Analyze(ctx, "test-session", msgs)
-	if err != nil {
-		t.Fatalf("Analyze: %v", err)
-	}
+	require.NoError(t, err)
 
 	// Verify learning was saved — search by trigger prefix used in saveResult.
 	learnings, err := store.SearchLearnings(ctx, "conversation:style", "", 10)
-	if err != nil {
-		t.Fatalf("SearchLearnings: %v", err)
-	}
-	if len(learnings) == 0 {
-		t.Fatal("expected at least one learning entry after correction analysis")
-	}
+	require.NoError(t, err)
+	require.NotEmpty(t, learnings, "expected at least one learning entry after correction analysis")
 }
 
 func TestConversationAnalyzer_Analyze_EmptyMessages(t *testing.T) {
+	t.Parallel()
+
 	logger := zap.NewNop().Sugar()
 	gen := &fakeTextGenerator{response: "[]"}
 	analyzer := NewConversationAnalyzer(gen, nil, logger)
 
 	err := analyzer.Analyze(context.Background(), "test", nil)
-	if err != nil {
-		t.Fatalf("Analyze with empty messages should not error: %v", err)
-	}
+	require.NoError(t, err)
 }
 
 func TestConversationAnalyzer_Analyze_InvalidJSON(t *testing.T) {
+	t.Parallel()
+
 	client := enttest.Open(t, "sqlite3", "file:ent?mode=memory&_fk=1")
 	t.Cleanup(func() { client.Close() })
 
@@ -122,12 +118,12 @@ func TestConversationAnalyzer_Analyze_InvalidJSON(t *testing.T) {
 
 	// Should not error — invalid JSON is non-fatal.
 	err := analyzer.Analyze(context.Background(), "test", msgs)
-	if err != nil {
-		t.Fatalf("Analyze should not error on invalid JSON: %v", err)
-	}
+	require.NoError(t, err)
 }
 
 func TestConversationAnalyzer_GraphCallback(t *testing.T) {
+	t.Parallel()
+
 	client := enttest.Open(t, "sqlite3", "file:ent?mode=memory&_fk=1")
 	t.Cleanup(func() { client.Close() })
 
@@ -154,14 +150,8 @@ func TestConversationAnalyzer_GraphCallback(t *testing.T) {
 	}
 
 	ctx := context.Background()
-	if err := analyzer.Analyze(ctx, "test", msgs); err != nil {
-		t.Fatalf("Analyze: %v", err)
-	}
+	require.NoError(t, analyzer.Analyze(ctx, "test", msgs))
 
-	if len(callbackTriples) == 0 {
-		t.Fatal("expected graph callback to receive triples")
-	}
-	if callbackTriples[0].Subject != "service:A" {
-		t.Errorf("want subject %q, got %q", "service:A", callbackTriples[0].Subject)
-	}
+	require.NotEmpty(t, callbackTriples, "expected graph callback to receive triples")
+	assert.Equal(t, "service:A", callbackTriples[0].Subject)
 }

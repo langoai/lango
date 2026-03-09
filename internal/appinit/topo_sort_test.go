@@ -3,6 +3,9 @@ package appinit
 import (
 	"context"
 	"testing"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 // stubModule is a minimal Module implementation for testing.
@@ -14,10 +17,10 @@ type stubModule struct {
 	initFn    func(ctx context.Context, r Resolver) (*ModuleResult, error)
 }
 
-func (s *stubModule) Name() string            { return s.name }
-func (s *stubModule) Provides() []Provides     { return s.provides }
-func (s *stubModule) DependsOn() []Provides    { return s.dependsOn }
-func (s *stubModule) Enabled() bool            { return s.enabled }
+func (s *stubModule) Name() string          { return s.name }
+func (s *stubModule) Provides() []Provides  { return s.provides }
+func (s *stubModule) DependsOn() []Provides { return s.dependsOn }
+func (s *stubModule) Enabled() bool         { return s.enabled }
 func (s *stubModule) Init(ctx context.Context, r Resolver) (*ModuleResult, error) {
 	if s.initFn != nil {
 		return s.initFn(ctx, r)
@@ -26,6 +29,8 @@ func (s *stubModule) Init(ctx context.Context, r Resolver) (*ModuleResult, error
 }
 
 func TestTopoSort(t *testing.T) {
+	t.Parallel()
+
 	tests := []struct {
 		give      string
 		modules   []Module
@@ -116,36 +121,20 @@ func TestTopoSort(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.give, func(t *testing.T) {
+			t.Parallel()
+
 			got, err := TopoSort(tt.modules)
 			if tt.wantErr {
-				if err == nil {
-					t.Fatal("expected error, got nil")
-				}
+				require.Error(t, err)
 				return
 			}
-			if err != nil {
-				t.Fatalf("unexpected error: %v", err)
-			}
+			require.NoError(t, err)
 
-			if len(got) != len(tt.wantOrder) {
-				names := moduleNames(got)
-				t.Fatalf("want %d modules %v, got %d modules %v",
-					len(tt.wantOrder), tt.wantOrder, len(got), names)
-			}
+			require.Len(t, got, len(tt.wantOrder))
 
 			for i, m := range got {
-				if m.Name() != tt.wantOrder[i] {
-					t.Errorf("position %d: want %q, got %q", i, tt.wantOrder[i], m.Name())
-				}
+				assert.Equal(t, tt.wantOrder[i], m.Name(), "position %d", i)
 			}
 		})
 	}
-}
-
-func moduleNames(modules []Module) []string {
-	names := make([]string, len(modules))
-	for i, m := range modules {
-		names[i] = m.Name()
-	}
-	return names
 }

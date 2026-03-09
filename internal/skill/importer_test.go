@@ -11,10 +11,15 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+
 	"go.uber.org/zap"
 )
 
 func TestParseGitHubURL(t *testing.T) {
+	t.Parallel()
+
 	tests := []struct {
 		give       string
 		wantOwner  string
@@ -59,33 +64,25 @@ func TestParseGitHubURL(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.give, func(t *testing.T) {
+			t.Parallel()
+
 			ref, err := ParseGitHubURL(tt.give)
 			if tt.wantErr {
-				if err == nil {
-					t.Fatal("expected error, got nil")
-				}
+				require.Error(t, err)
 				return
 			}
-			if err != nil {
-				t.Fatalf("ParseGitHubURL: %v", err)
-			}
-			if ref.Owner != tt.wantOwner {
-				t.Errorf("Owner = %q, want %q", ref.Owner, tt.wantOwner)
-			}
-			if ref.Repo != tt.wantRepo {
-				t.Errorf("Repo = %q, want %q", ref.Repo, tt.wantRepo)
-			}
-			if ref.Branch != tt.wantBranch {
-				t.Errorf("Branch = %q, want %q", ref.Branch, tt.wantBranch)
-			}
-			if ref.Path != tt.wantPath {
-				t.Errorf("Path = %q, want %q", ref.Path, tt.wantPath)
-			}
+			require.NoError(t, err)
+			assert.Equal(t, tt.wantOwner, ref.Owner)
+			assert.Equal(t, tt.wantRepo, ref.Repo)
+			assert.Equal(t, tt.wantBranch, ref.Branch)
+			assert.Equal(t, tt.wantPath, ref.Path)
 		})
 	}
 }
 
 func TestIsGitHubURL(t *testing.T) {
+	t.Parallel()
+
 	tests := []struct {
 		give string
 		want bool
@@ -98,15 +95,16 @@ func TestIsGitHubURL(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.give, func(t *testing.T) {
-			got := IsGitHubURL(tt.give)
-			if got != tt.want {
-				t.Errorf("IsGitHubURL(%q) = %v, want %v", tt.give, got, tt.want)
-			}
+			t.Parallel()
+
+			assert.Equal(t, tt.want, IsGitHubURL(tt.give))
 		})
 	}
 }
 
 func TestDiscoverSkills(t *testing.T) {
+	t.Parallel()
+
 	entries := []gitHubContentsEntry{
 		{Name: "obsidian-web-clipper", Type: "dir", Path: "obsidian-web-clipper"},
 		{Name: "obsidian-markdown", Type: "dir", Path: "obsidian-markdown"},
@@ -156,15 +154,13 @@ This is the content.`
 
 	im2 := NewImporterWithClient(ts3.Client(), logger)
 	body, err := im2.FetchFromURL(context.Background(), ts3.URL+"/SKILL.md")
-	if err != nil {
-		t.Fatalf("FetchFromURL: %v", err)
-	}
-	if string(body) != raw {
-		t.Errorf("body = %q, want %q", string(body), raw)
-	}
+	require.NoError(t, err)
+	assert.Equal(t, raw, string(body))
 }
 
 func TestFetchSkillMD(t *testing.T) {
+	t.Parallel()
+
 	skillContent := `---
 name: obsidian-markdown
 description: Obsidian Markdown reference
@@ -190,21 +186,17 @@ Use Obsidian-flavored markdown for notes.`
 	im := NewImporterWithClient(ts.Client(), logger)
 
 	body, err := im.FetchFromURL(context.Background(), ts.URL+"/contents/obsidian-markdown/SKILL.md")
-	if err != nil {
-		t.Fatalf("FetchFromURL: %v", err)
-	}
+	require.NoError(t, err)
 
 	// The response is a JSON object, parse it to get the base64 content.
 	var file gitHubFileResponse
-	if err := json.Unmarshal(body, &file); err != nil {
-		t.Fatalf("parse response: %v", err)
-	}
-	if file.Encoding != "base64" {
-		t.Fatalf("encoding = %q, want base64", file.Encoding)
-	}
+	require.NoError(t, json.Unmarshal(body, &file))
+	assert.Equal(t, "base64", file.Encoding)
 }
 
 func TestFetchFromURL(t *testing.T) {
+	t.Parallel()
+
 	raw := `---
 name: external-skill
 description: An external skill
@@ -222,31 +214,21 @@ Some reference content here.`
 	im := NewImporterWithClient(ts.Client(), logger)
 
 	body, err := im.FetchFromURL(context.Background(), ts.URL+"/SKILL.md")
-	if err != nil {
-		t.Fatalf("FetchFromURL: %v", err)
-	}
-	if string(body) != raw {
-		t.Errorf("body mismatch")
-	}
+	require.NoError(t, err)
+	assert.Equal(t, raw, string(body))
 
 	// Parse the fetched content.
 	entry, err := ParseSkillMD(body)
-	if err != nil {
-		t.Fatalf("ParseSkillMD: %v", err)
-	}
-	if entry.Name != "external-skill" {
-		t.Errorf("Name = %q, want %q", entry.Name, "external-skill")
-	}
-	if entry.Type != "instruction" {
-		t.Errorf("Type = %q, want %q", entry.Type, "instruction")
-	}
+	require.NoError(t, err)
+	assert.Equal(t, "external-skill", entry.Name)
+	assert.Equal(t, SkillTypeInstruction, entry.Type)
 	content, _ := entry.Definition["content"].(string)
-	if content != "Some reference content here." {
-		t.Errorf("content = %q, want %q", content, "Some reference content here.")
-	}
+	assert.Equal(t, "Some reference content here.", content)
 }
 
 func TestHasGit(t *testing.T) {
+	t.Parallel()
+
 	// On most dev machines, git is available.
 	got := hasGit()
 	// We don't assert a specific value since CI might not have git,
@@ -255,57 +237,49 @@ func TestHasGit(t *testing.T) {
 }
 
 func TestCopyResourceDirs(t *testing.T) {
+	t.Parallel()
+
 	logger := zap.NewNop().Sugar()
 	dir := filepath.Join(t.TempDir(), "skills")
 	store := NewFileSkillStore(dir, logger)
 	ctx := context.Background()
 
 	// Save a skill first.
-	if err := store.Save(ctx, SkillEntry{
+	require.NoError(t, store.Save(ctx, SkillEntry{
 		Name:       "res-skill",
 		Type:       "instruction",
 		Status:     "active",
 		Definition: map[string]interface{}{"content": "test"},
-	}); err != nil {
-		t.Fatalf("Save: %v", err)
-	}
+	}))
 
 	// Create a fake cloned skill directory with resources.
 	srcDir := t.TempDir()
 	scriptsDir := filepath.Join(srcDir, "scripts")
-	if err := os.MkdirAll(scriptsDir, 0o755); err != nil {
-		t.Fatalf("mkdir: %v", err)
-	}
-	if err := os.WriteFile(filepath.Join(scriptsDir, "setup.sh"), []byte("#!/bin/bash\necho hi"), 0o644); err != nil {
-		t.Fatalf("write: %v", err)
-	}
+	require.NoError(t, os.MkdirAll(scriptsDir, 0o755))
+	require.NoError(t, os.WriteFile(filepath.Join(scriptsDir, "setup.sh"), []byte("#!/bin/bash\necho hi"), 0o644))
 
 	copyResourceDirs(ctx, srcDir, "res-skill", store)
 
 	// Verify the resource was copied.
 	got, err := os.ReadFile(filepath.Join(dir, "res-skill", "scripts", "setup.sh"))
-	if err != nil {
-		t.Fatalf("read resource: %v", err)
-	}
-	if string(got) != "#!/bin/bash\necho hi" {
-		t.Errorf("resource content = %q, want %q", string(got), "#!/bin/bash\necho hi")
-	}
+	require.NoError(t, err)
+	assert.Equal(t, "#!/bin/bash\necho hi", string(got))
 }
 
 func TestCopyResourceDirs_NoResources(t *testing.T) {
+	t.Parallel()
+
 	logger := zap.NewNop().Sugar()
 	dir := filepath.Join(t.TempDir(), "skills")
 	store := NewFileSkillStore(dir, logger)
 	ctx := context.Background()
 
-	if err := store.Save(ctx, SkillEntry{
+	require.NoError(t, store.Save(ctx, SkillEntry{
 		Name:       "no-res-skill",
 		Type:       "instruction",
 		Status:     "active",
 		Definition: map[string]interface{}{"content": "test"},
-	}); err != nil {
-		t.Fatalf("Save: %v", err)
-	}
+	}))
 
 	// Empty source dir — should not panic.
 	srcDir := t.TempDir()
@@ -314,13 +288,14 @@ func TestCopyResourceDirs_NoResources(t *testing.T) {
 	// Verify no resource dirs were created.
 	for _, d := range resourceDirs {
 		path := filepath.Join(dir, "no-res-skill", d)
-		if _, err := os.Stat(path); err == nil {
-			t.Errorf("unexpected resource dir %s exists", d)
-		}
+		_, err := os.Stat(path)
+		assert.True(t, os.IsNotExist(err), "unexpected resource dir %s exists", d)
 	}
 }
 
 func TestImportViaGit_LocalCloneSimulation(t *testing.T) {
+	t.Parallel()
+
 	// Simulate what importViaGit does with a local directory structure.
 	logger := zap.NewNop().Sugar()
 	dir := filepath.Join(t.TempDir(), "skills")
@@ -330,9 +305,7 @@ func TestImportViaGit_LocalCloneSimulation(t *testing.T) {
 	// Create a fake cloned repo structure.
 	cloneDir := t.TempDir()
 	skillDir := filepath.Join(cloneDir, "my-imported-skill")
-	if err := os.MkdirAll(skillDir, 0o755); err != nil {
-		t.Fatalf("mkdir: %v", err)
-	}
+	require.NoError(t, os.MkdirAll(skillDir, 0o755))
 
 	skillContent := `---
 name: my-imported-skill
@@ -343,57 +316,39 @@ status: active
 
 This is imported content.`
 
-	if err := os.WriteFile(filepath.Join(skillDir, "SKILL.md"), []byte(skillContent), 0o644); err != nil {
-		t.Fatalf("write SKILL.md: %v", err)
-	}
+	require.NoError(t, os.WriteFile(filepath.Join(skillDir, "SKILL.md"), []byte(skillContent), 0o644))
 
 	// Add resource files.
 	assetsDir := filepath.Join(skillDir, "assets")
-	if err := os.MkdirAll(assetsDir, 0o755); err != nil {
-		t.Fatalf("mkdir assets: %v", err)
-	}
-	if err := os.WriteFile(filepath.Join(assetsDir, "logo.png"), []byte("fake-png"), 0o644); err != nil {
-		t.Fatalf("write asset: %v", err)
-	}
+	require.NoError(t, os.MkdirAll(assetsDir, 0o755))
+	require.NoError(t, os.WriteFile(filepath.Join(assetsDir, "logo.png"), []byte("fake-png"), 0o644))
 
 	// Read and parse SKILL.md like importViaGit does.
 	raw, err := os.ReadFile(filepath.Join(skillDir, "SKILL.md"))
-	if err != nil {
-		t.Fatalf("read SKILL.md: %v", err)
-	}
+	require.NoError(t, err)
 
 	entry, err := ParseSkillMD(raw)
-	if err != nil {
-		t.Fatalf("parse SKILL.md: %v", err)
-	}
+	require.NoError(t, err)
 	entry.Source = "https://github.com/test/repo"
 
-	if err := store.Save(ctx, *entry); err != nil {
-		t.Fatalf("save: %v", err)
-	}
+	require.NoError(t, store.Save(ctx, *entry))
 
 	copyResourceDirs(ctx, skillDir, entry.Name, store)
 
 	// Verify skill was saved.
 	got, err := store.Get(ctx, "my-imported-skill")
-	if err != nil {
-		t.Fatalf("Get: %v", err)
-	}
-	if got.Source != "https://github.com/test/repo" {
-		t.Errorf("Source = %q, want %q", got.Source, "https://github.com/test/repo")
-	}
+	require.NoError(t, err)
+	assert.Equal(t, "https://github.com/test/repo", got.Source)
 
 	// Verify resource was copied.
 	asset, err := os.ReadFile(filepath.Join(dir, "my-imported-skill", "assets", "logo.png"))
-	if err != nil {
-		t.Fatalf("read asset: %v", err)
-	}
-	if string(asset) != "fake-png" {
-		t.Errorf("asset content = %q, want %q", string(asset), "fake-png")
-	}
+	require.NoError(t, err)
+	assert.Equal(t, "fake-png", string(asset))
 }
 
 func TestImportFromRepo(t *testing.T) {
+	t.Parallel()
+
 	// Prepare skill content.
 	skill1 := `---
 name: skill-one
@@ -448,33 +403,17 @@ Content for skill two.`
 	ctx := context.Background()
 
 	entry1, err := im.ImportSingle(ctx, []byte(skill1), "https://github.com/owner/repo", store)
-	if err != nil {
-		t.Fatalf("ImportSingle skill-one: %v", err)
-	}
-	if entry1.Name != "skill-one" {
-		t.Errorf("entry1.Name = %q, want %q", entry1.Name, "skill-one")
-	}
-	if entry1.Source != "https://github.com/owner/repo" {
-		t.Errorf("entry1.Source = %q, want %q", entry1.Source, "https://github.com/owner/repo")
-	}
-	if entry1.Type != "instruction" {
-		t.Errorf("entry1.Type = %q, want %q", entry1.Type, "instruction")
-	}
+	require.NoError(t, err)
+	assert.Equal(t, "skill-one", entry1.Name)
+	assert.Equal(t, "https://github.com/owner/repo", entry1.Source)
+	assert.Equal(t, SkillTypeInstruction, entry1.Type)
 
 	entry2, err := im.ImportSingle(ctx, []byte(skill2), "https://github.com/owner/repo", store)
-	if err != nil {
-		t.Fatalf("ImportSingle skill-two: %v", err)
-	}
-	if entry2.Name != "skill-two" {
-		t.Errorf("entry2.Name = %q, want %q", entry2.Name, "skill-two")
-	}
+	require.NoError(t, err)
+	assert.Equal(t, "skill-two", entry2.Name)
 
 	// Verify both are persisted.
 	active, err := store.ListActive(ctx)
-	if err != nil {
-		t.Fatalf("ListActive: %v", err)
-	}
-	if len(active) != 2 {
-		t.Fatalf("len(active) = %d, want 2", len(active))
-	}
+	require.NoError(t, err)
+	assert.Len(t, active, 2)
 }

@@ -9,6 +9,8 @@ import (
 )
 
 func TestBuilder_Add_And_Build(t *testing.T) {
+	t.Parallel()
+
 	b := NewBuilder()
 	b.Add(NewStaticSection("b", 200, "B", "second"))
 	b.Add(NewStaticSection("a", 100, "A", "first"))
@@ -22,6 +24,8 @@ func TestBuilder_Add_And_Build(t *testing.T) {
 }
 
 func TestBuilder_Add_ReplacesExistingID(t *testing.T) {
+	t.Parallel()
+
 	b := NewBuilder()
 	b.Add(NewStaticSection("id1", 100, "Old", "old content"))
 	b.Add(NewStaticSection("id1", 100, "New", "new content"))
@@ -32,6 +36,8 @@ func TestBuilder_Add_ReplacesExistingID(t *testing.T) {
 }
 
 func TestBuilder_Remove(t *testing.T) {
+	t.Parallel()
+
 	b := NewBuilder()
 	b.Add(NewStaticSection("keep", 100, "Keep", "keep me"))
 	b.Add(NewStaticSection("drop", 200, "Drop", "drop me"))
@@ -43,6 +49,8 @@ func TestBuilder_Remove(t *testing.T) {
 }
 
 func TestBuilder_Remove_NonExistent(t *testing.T) {
+	t.Parallel()
+
 	b := NewBuilder()
 	b.Add(NewStaticSection("a", 100, "A", "content"))
 	b.Remove("nonexistent") // should not panic
@@ -50,6 +58,8 @@ func TestBuilder_Remove_NonExistent(t *testing.T) {
 }
 
 func TestBuilder_Has(t *testing.T) {
+	t.Parallel()
+
 	b := NewBuilder()
 	assert.False(t, b.Has("missing"))
 
@@ -58,6 +68,8 @@ func TestBuilder_Has(t *testing.T) {
 }
 
 func TestBuilder_Build_SkipsEmptyRenders(t *testing.T) {
+	t.Parallel()
+
 	b := NewBuilder()
 	b.Add(NewStaticSection("visible", 100, "", "content"))
 	b.Add(NewStaticSection("empty", 200, "Empty", ""))
@@ -67,11 +79,15 @@ func TestBuilder_Build_SkipsEmptyRenders(t *testing.T) {
 }
 
 func TestBuilder_Build_Empty(t *testing.T) {
+	t.Parallel()
+
 	b := NewBuilder()
 	assert.Equal(t, "", b.Build())
 }
 
 func TestBuilder_Clone(t *testing.T) {
+	t.Parallel()
+
 	b := NewBuilder()
 	b.Add(NewStaticSection("a", 100, "A", "alpha"))
 	b.Add(NewStaticSection("b", 200, "B", "bravo"))
@@ -93,6 +109,8 @@ func TestBuilder_Clone(t *testing.T) {
 }
 
 func TestBuilder_Clone_Empty(t *testing.T) {
+	t.Parallel()
+
 	b := NewBuilder()
 	clone := b.Clone()
 	clone.Add(NewStaticSection("x", 100, "", "x"))
@@ -101,6 +119,8 @@ func TestBuilder_Clone_Empty(t *testing.T) {
 }
 
 func TestBuilder_PrioritySorting(t *testing.T) {
+	t.Parallel()
+
 	b := NewBuilder()
 	b.Add(NewStaticSection("c", 300, "", "third"))
 	b.Add(NewStaticSection("a", 100, "", "first"))

@@ -16,6 +16,7 @@ import (
 	"github.com/langoai/lango/internal/ent/configprofile"
 	"github.com/langoai/lango/internal/ent/cronjob"
 	"github.com/langoai/lango/internal/ent/cronjobhistory"
+	"github.com/langoai/lango/internal/ent/escrowdeal"
 	"github.com/langoai/lango/internal/ent/externalref"
 	"github.com/langoai/lango/internal/ent/inquiry"
 	"github.com/langoai/lango/internal/ent/key"
@@ -28,6 +29,7 @@ import (
 	"github.com/langoai/lango/internal/ent/reflection"
 	"github.com/langoai/lango/internal/ent/secret"
 	"github.com/langoai/lango/internal/ent/session"
+	"github.com/langoai/lango/internal/ent/tokenusage"
 	"github.com/langoai/lango/internal/ent/workflowrun"
 	"github.com/langoai/lango/internal/ent/workflowsteprun"
 )
@@ -94,6 +96,7 @@ func checkColumn(t, c string) error {
 			configprofile.Table:   configprofile.ValidColumn,
 			cronjob.Table:         cronjob.ValidColumn,
 			cronjobhistory.Table:  cronjobhistory.ValidColumn,
+			escrowdeal.Table:      escrowdeal.ValidColumn,
 			externalref.Table:     externalref.ValidColumn,
 			inquiry.Table:         inquiry.ValidColumn,
 			key.Table:             key.ValidColumn,
@@ -106,6 +109,7 @@ func checkColumn(t, c string) error {
 			reflection.Table:      reflection.ValidColumn,
 			secret.Table:          secret.ValidColumn,
 			session.Table:         session.ValidColumn,
+			tokenusage.Table:      tokenusage.ValidColumn,
 			workflowrun.Table:     workflowrun.ValidColumn,
 			workflowsteprun.Table: workflowsteprun.ValidColumn,
 		})

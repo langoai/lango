@@ -5,7 +5,7 @@
 - Skills that wrap `lango` CLI commands will fail — the CLI requires passphrase authentication that is unavailable in agent mode.
 
 ### Exec Tool
-- **NEVER use exec to run `lango` CLI commands** (e.g., `lango security`, `lango memory`, `lango graph`, `lango p2p`, `lango config`, `lango cron`, `lango bg`, `lango workflow`, `lango payment`, `lango serve`, `lango doctor`, etc.). Every `lango` command requires passphrase authentication during bootstrap and **will fail** when spawned as a non-interactive subprocess. Use the built-in tools instead — they run in-process and do not require authentication.
+- **NEVER use exec to run `lango` CLI commands** (e.g., `lango security`, `lango memory`, `lango graph`, `lango p2p`, `lango config`, `lango cron`, `lango bg`, `lango workflow`, `lango payment`, `lango economy`, `lango metrics`, `lango contract`, `lango account`, `lango serve`, `lango doctor`, etc.). Every `lango` command requires passphrase authentication during bootstrap and **will fail** when spawned as a non-interactive subprocess. Use the built-in tools instead — they run in-process and do not require authentication.
 - If you need functionality that has no built-in tool equivalent (e.g., `lango config`, `lango doctor`, `lango settings`), inform the user and ask them to run the command directly in their terminal.
 - Prefer read-only commands first (`cat`, `ls`, `grep`, `ps`) before modifying anything.
 - Set appropriate timeouts for long-running commands. Default is 30 seconds.
@@ -115,3 +115,55 @@
 - **Signed challenges**: Protocol v1.1 uses ECDSA-signed challenges. When `p2p.requireSignedChallenge` is true, only peers supporting v1.1 can connect. Legacy v1.0 peers will be rejected.
 - **KMS latency**: When a Cloud KMS provider is configured (`aws-kms`, `gcp-kms`, `azure-kv`, `pkcs11`), cryptographic operations incur network roundtrip latency. The system retries transient errors automatically with exponential backoff. If KMS is unreachable and `kms.fallbackToLocal` is enabled, operations fall back to local mode.
 - **Credential revocation**: Revoked DIDs are tracked in the gossip discovery layer. Use `maxCredentialAge` to enforce credential freshness — stale credentials are rejected even if not explicitly revoked. Gossip refresh propagates revocations across the network.
+
+### Economy Tool
+- `economy_budget_allocate` allocates a spending budget for a task. Specify `taskId` and optional `amount` (USDC, e.g. '5.00'). Returns budget ID and status.
+- `economy_budget_status` checks the current budget burn rate for a task.
+- `economy_budget_close` closes a task budget and returns a final report with total spent and entry count.
+- `economy_risk_assess` evaluates the risk level for a peer transaction. Specify `peerDid`, `amount` (USDC), and optional `verifiability` (high/medium/low). Returns risk level, risk score, recommended strategy (DirectPay/Escrow/EscrowWithZK/Reject), trust score, and explanation.
+- `economy_price_quote` gets a price quote for a tool invocation, optionally applying peer-specific trust discounts. Specify `toolName` and optional `peerDid`. Returns base price, final price, and currency.
+- `economy_negotiate` starts a price negotiation with a peer. Specify `peerDid`, `toolName`, and `price` (USDC). Returns session ID, phase, and round number.
+- `economy_negotiate_status` checks the status of a negotiation session by `sessionId`. Returns current phase, round, max rounds, and current terms.
+- **Economy workflow**: (1) `economy_budget_allocate` to set spending limits, (2) `economy_risk_assess` to evaluate the transaction, (3) `economy_price_quote` to get the price, (4) optionally `economy_negotiate` to negotiate, (5) `escrow_create` for high-value transactions.
+
+### Escrow Tool
+- `escrow_create` creates a new escrow deal between buyer and seller with milestones. Specify `buyerDid`, `sellerDid`, `amount` (USDC), `reason`, and `milestones` array (each with `description` and `amount`). Returns `escrowId`, `status`, and `amount`.
+- `escrow_fund` funds an escrow with USDC. In on-chain mode, also deposits to the smart contract. Specify `escrowId`. Returns `escrowId`, `status`, `amount`, and `onChainTxHash` (if on-chain).
+- `escrow_activate` activates a funded escrow so work can begin. Specify `escrowId`. Returns `escrowId` and `status`.
+- `escrow_submit_work` submits a work hash as proof of completion. Specify `escrowId` and `workHash`. Returns `escrowId`, `status`, `workHash`, and `onChainTxHash` (if on-chain).
+- `escrow_release` releases escrow funds to the seller. Specify `escrowId`. Returns `escrowId`, `status`, and `onChainTxHash` (if on-chain).
+- `escrow_refund` refunds escrow funds to the buyer. Specify `escrowId`. Returns `escrowId`, `status`, and `onChainTxHash` (if on-chain).
+- `escrow_dispute` raises a dispute on an escrow. Specify `escrowId` and `note`. Returns `escrowId`, `status`, and `onChainTxHash` (if on-chain).
+- `escrow_resolve` resolves a disputed escrow as arbitrator. Specify `escrowId`, `favor` (buyer/seller), and `sellerPercent` (0-100). Returns `escrowId`, `favor`, `sellerAmount`, `buyerAmount`, and `onChainTxHash` (if on-chain).
+- `escrow_status` gets detailed escrow status including on-chain state if available. Specify `escrowId`. Returns `escrowId`, `buyerDid`, `sellerDid`, `amount`, `status`, `reason`, `milestones`, `expiresAt`, plus `onChainStatus`/`onChainAmount` if on-chain.
+- `escrow_list` lists all escrows with optional filter. Specify `filter` (all/active/disputed) and optional `peerDid`. Returns `count` and `escrows[]`.
+- **Escrow workflow (on-chain)**: (1) `escrow_create` to set up the deal, (2) `escrow_fund` to deposit USDC, (3) `escrow_activate` to begin work, (4) `escrow_submit_work` to submit proof, (5) `escrow_release` to pay the seller — or `escrow_dispute` to raise a dispute, then `escrow_resolve` to settle.
+
+### Sentinel Tool
+- `sentinel_status` gets Security Sentinel engine status including running state and alert counts. No parameters required.
+- `sentinel_alerts` lists security alerts with optional severity filter. Specify `severity` (critical/high/medium/low) and optional `limit` (default 20). Returns `count` and `alerts[]`.
+- `sentinel_config` shows current Security Sentinel detection thresholds. No parameters required. Returns `rapidCreationWindow`, `rapidCreationMax`, `largeWithdrawalAmount`, and other threshold values.
+- `sentinel_acknowledge` acknowledges and dismisses a security alert by ID. Specify `alertId`. Returns `alertId` and `acknowledged`.
+
+### Smart Account Tool
+- `smart_account_deploy` deploys a new Safe smart account with ERC-7579 modules. Returns `address`, `isDeployed`, `ownerAddress`, `chainId`, `entryPoint`, and `modules` array. **Safety: Dangerous** — creates an on-chain smart account.
+- `smart_account_info` gets smart account information without deploying. Returns the same fields as deploy. **Safety: Safe** — read-only query.
+- `session_key_create` creates a new session key with scoped permissions. Specify `targets` (required, array of hex addresses), `duration` (required, e.g. '1h', '24h'), optional `functions` (array of 4-byte hex selectors), optional `spend_limit` (USDC, e.g. '10.00'), and optional `parent_id` for task-scoped child sessions. Returns `sessionId`, `address`, `expiresAt`, `parentId`, target and function counts. **Safety: Dangerous**.
+- `session_key_list` lists all session keys and their status (active, expired, revoked). Returns `sessions` array with `sessionId`, `address`, `status`, `parentId`, `expiresAt`, `createdAt`, and `total` count. **Safety: Safe**.
+- `session_key_revoke` revokes a session key and all its child sessions. Specify `session_id` (required). Returns `sessionId` and `status`. **Safety: Dangerous**.
+- `session_execute` executes a contract call using a session key. Specify `session_id` (required), `target` (required, hex address), optional `value` (wei), optional `data` (hex calldata), and optional `function_sig` (e.g. 'transfer(address,uint256)'). The call is validated against the policy engine, signed with the session key, and submitted via the bundler. Returns `txHash`, `sessionId`, `target`. **Safety: Dangerous** — sends on-chain transactions.
+- `policy_check` validates a contract call against the policy engine without executing it. Specify `target` (required, hex address), optional `value` (wei), and optional `function_sig`. Returns `allowed` (bool) and optionally `reason` if denied. **Safety: Safe** — dry-run validation only.
+- `module_install` installs an ERC-7579 module on the smart account. Specify `module_type` (required, 1=validator, 2=executor, 3=fallback, 4=hook), `address` (required, hex), and optional `init_data` (hex). Returns `txHash`, `moduleType`, `address`, `status`. **Safety: Dangerous**.
+- `module_uninstall` uninstalls an ERC-7579 module from the smart account. Specify `module_type` (required, 1-4) and `address` (required, hex). Returns `txHash`, `moduleType`, `address`, `status`. **Safety: Dangerous**.
+- `spending_status` views on-chain spending status and registered module information. Optional `session_id` to query spending for a specific session. Returns `onChainSpent` (if session specified) and `registeredModules` array with name, address, type, version. **Safety: Safe**.
+- `paymaster_status` checks paymaster configuration and provider type. Returns `enabled` (bool) and `provider` (circle/pimlico/alchemy/none). **Safety: Safe**.
+- `paymaster_approve` approves USDC spending for the paymaster contract. Specify `token_address` (required, hex), `paymaster_address` (required, hex), and `amount` (required, USDC e.g. '1000.00' or 'max' for unlimited). Returns `txHash`, `token`, `paymaster`, `amount`, `status`. **Safety: Dangerous** — approves token spending.
+- **Smart Account workflow**: (1) `smart_account_deploy` to create a Safe account, (2) `session_key_create` to create scoped session keys, (3) `policy_check` to validate calls before executing, (4) `session_execute` to execute transactions via session keys, (5) `spending_status` to monitor on-chain spending.
+- **Paymaster workflow**: (1) `paymaster_status` to check paymaster configuration, (2) `paymaster_approve` to approve USDC for the paymaster, then transactions via `session_execute` will be gasless.
+- **NEVER use exec to run `lango account` commands** — these require passphrase authentication. Use the built-in smart account tools instead.
+
+### Contract Tool
+- `contract_abi_load` pre-loads and caches a contract ABI for faster subsequent calls. Provide `address` and `abi` (JSON string), and optionally `chainId`. Always load the ABI before calling read/write methods.
+- `contract_read` calls a view/pure smart contract method (no gas cost, no state change). Specify `address`, `abi`, `method`, and optional `args` array and `chainId`. Returns the decoded result.
+- `contract_call` sends a state-changing transaction to a smart contract (costs gas). Specify `address`, `abi`, `method`, optional `args`, optional `value` (ETH to send, e.g. '0.01'), and optional `chainId`. Requires a funded wallet. Returns transaction hash and gas used.
+- **Contract workflow**: (1) `contract_abi_load` to cache the ABI, (2) `contract_read` to inspect state, (3) `contract_call` only when state changes are needed.

@@ -21,19 +21,23 @@ import (
 	cliagent "github.com/langoai/lango/internal/cli/agent"
 	cliapproval "github.com/langoai/lango/internal/cli/approval"
 	clibg "github.com/langoai/lango/internal/cli/bg"
+	clicontract "github.com/langoai/lango/internal/cli/contract"
 	clicron "github.com/langoai/lango/internal/cli/cron"
-	climcp "github.com/langoai/lango/internal/cli/mcp"
 	"github.com/langoai/lango/internal/cli/doctor"
+	clieconomy "github.com/langoai/lango/internal/cli/economy"
 	cligraph "github.com/langoai/lango/internal/cli/graph"
 	clilearning "github.com/langoai/lango/internal/cli/learning"
 	clilibrarian "github.com/langoai/lango/internal/cli/librarian"
+	climcp "github.com/langoai/lango/internal/cli/mcp"
 	climemory "github.com/langoai/lango/internal/cli/memory"
+	climetrics "github.com/langoai/lango/internal/cli/metrics"
 	"github.com/langoai/lango/internal/cli/onboard"
 	clip2p "github.com/langoai/lango/internal/cli/p2p"
-	"github.com/langoai/lango/internal/cli/tui"
 	clipayment "github.com/langoai/lango/internal/cli/payment"
 	clisecurity "github.com/langoai/lango/internal/cli/security"
 	"github.com/langoai/lango/internal/cli/settings"
+	cliaccount "github.com/langoai/lango/internal/cli/smartaccount"
+	"github.com/langoai/lango/internal/cli/tui"
 	cliworkflow "github.com/langoai/lango/internal/cli/workflow"
 	"github.com/langoai/lango/internal/config"
 	"github.com/langoai/lango/internal/configstore"
@@ -206,6 +210,40 @@ func main() {
 	mcpCmd := climcp.NewMCPCmd(mcpCfgLoader, mcpBootLoader)
 	mcpCmd.GroupID = "infra"
 	rootCmd.AddCommand(mcpCmd)
+
+	economyCfgLoader := func() (*config.Config, error) {
+		boot, err := bootstrap.Run(bootstrap.Options{})
+		if err != nil {
+			return nil, err
+		}
+		defer boot.DBClient.Close()
+		return boot.Config, nil
+	}
+	economyCmd := clieconomy.NewEconomyCmd(economyCfgLoader)
+	economyCmd.GroupID = "infra"
+	rootCmd.AddCommand(economyCmd)
+
+	contractCfgLoader := func() (*config.Config, error) {
+		boot, err := bootstrap.Run(bootstrap.Options{})
+		if err != nil {
+			return nil, err
+		}
+		defer boot.DBClient.Close()
+		return boot.Config, nil
+	}
+	contractCmd := clicontract.NewContractCmd(contractCfgLoader)
+	contractCmd.GroupID = "infra"
+	rootCmd.AddCommand(contractCmd)
+
+	accountCmd := cliaccount.NewAccountCmd(func() (*bootstrap.Result, error) {
+		return bootstrap.Run(bootstrap.Options{})
+	})
+	accountCmd.GroupID = "infra"
+	rootCmd.AddCommand(accountCmd)
+
+	metricsCmd := climetrics.NewMetricsCmd()
+	metricsCmd.GroupID = "data"
+	rootCmd.AddCommand(metricsCmd)
 
 	cronCmd := clicron.NewCronCmd(func() (*bootstrap.Result, error) {
 		return bootstrap.Run(bootstrap.Options{})

@@ -3,11 +3,16 @@ package adk
 import (
 	"testing"
 
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+
 	"github.com/langoai/lango/internal/agent"
 	"github.com/langoai/lango/internal/knowledge"
 )
 
 func TestToolRegistryAdapter_ListTools(t *testing.T) {
+	t.Parallel()
+
 	tools := []*agent.Tool{
 		{Name: "exec", Description: "Execute commands"},
 		{Name: "read", Description: "Read files"},
@@ -15,18 +20,14 @@ func TestToolRegistryAdapter_ListTools(t *testing.T) {
 	adapter := NewToolRegistryAdapter(tools)
 
 	got := adapter.ListTools()
-	if len(got) != 2 {
-		t.Fatalf("want 2 tools, got %d", len(got))
-	}
-	if got[0].Name != "exec" {
-		t.Errorf("want exec, got %s", got[0].Name)
-	}
-	if got[1].Name != "read" {
-		t.Errorf("want read, got %s", got[1].Name)
-	}
+	require.Len(t, got, 2)
+	assert.Equal(t, "exec", got[0].Name)
+	assert.Equal(t, "read", got[1].Name)
 }
 
 func TestToolRegistryAdapter_SearchTools(t *testing.T) {
+	t.Parallel()
+
 	adapter := NewToolRegistryAdapter([]*agent.Tool{
 		{Name: "exec_command", Description: "Execute shell commands"},
 		{Name: "read_file", Description: "Read file contents"},
@@ -49,18 +50,19 @@ func TestToolRegistryAdapter_SearchTools(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.give, func(t *testing.T) {
+			t.Parallel()
 			got := adapter.SearchTools(tt.give, tt.giveLimit)
-			if len(got) != tt.wantCount {
-				t.Fatalf("want %d results, got %d", tt.wantCount, len(got))
-			}
-			if tt.wantCount > 0 && got[0].Name != tt.wantFirst {
-				t.Errorf("want first %s, got %s", tt.wantFirst, got[0].Name)
+			require.Len(t, got, tt.wantCount)
+			if tt.wantCount > 0 {
+				assert.Equal(t, tt.wantFirst, got[0].Name)
 			}
 		})
 	}
 }
 
 func TestToolRegistryAdapter_BoundaryCopy(t *testing.T) {
+	t.Parallel()
+
 	tools := []*agent.Tool{
 		{Name: "original", Description: "Original tool"},
 	}
@@ -70,49 +72,37 @@ func TestToolRegistryAdapter_BoundaryCopy(t *testing.T) {
 	tools[0].Name = "mutated"
 
 	got := adapter.ListTools()
-	if got[0].Name != "original" {
-		t.Errorf("boundary copy violated: want original, got %s", got[0].Name)
-	}
+	assert.Equal(t, "original", got[0].Name, "boundary copy violated")
 }
 
 func TestRuntimeContextAdapter(t *testing.T) {
-	adapter := NewRuntimeContextAdapter(5, true, true, false)
+	t.Parallel()
 
 	t.Run("defaults", func(t *testing.T) {
+		t.Parallel()
+		adapter := NewRuntimeContextAdapter(5, true, true, false)
 		rc := adapter.GetRuntimeContext()
-		if rc.ActiveToolCount != 5 {
-			t.Errorf("want 5 tools, got %d", rc.ActiveToolCount)
-		}
-		if !rc.EncryptionEnabled {
-			t.Error("want encryption enabled")
-		}
-		if !rc.KnowledgeEnabled {
-			t.Error("want knowledge enabled")
-		}
-		if rc.MemoryEnabled {
-			t.Error("want memory disabled")
-		}
-		if rc.ChannelType != "direct" {
-			t.Errorf("want direct channel, got %s", rc.ChannelType)
-		}
-		if rc.SessionKey != "" {
-			t.Errorf("want empty session key, got %s", rc.SessionKey)
-		}
+		assert.Equal(t, 5, rc.ActiveToolCount)
+		assert.True(t, rc.EncryptionEnabled, "want encryption enabled")
+		assert.True(t, rc.KnowledgeEnabled, "want knowledge enabled")
+		assert.False(t, rc.MemoryEnabled, "want memory disabled")
+		assert.Equal(t, "direct", rc.ChannelType)
+		assert.Empty(t, rc.SessionKey)
 	})
 
 	t.Run("SetSession updates state", func(t *testing.T) {
+		t.Parallel()
+		adapter := NewRuntimeContextAdapter(5, true, true, false)
 		adapter.SetSession("telegram:123:456")
 		rc := adapter.GetRuntimeContext()
-		if rc.SessionKey != "telegram:123:456" {
-			t.Errorf("want telegram:123:456, got %s", rc.SessionKey)
-		}
-		if rc.ChannelType != "telegram" {
-			t.Errorf("want telegram, got %s", rc.ChannelType)
-		}
+		assert.Equal(t, "telegram:123:456", rc.SessionKey)
+		assert.Equal(t, "telegram", rc.ChannelType)
 	})
 }
 
 func TestDeriveChannelType(t *testing.T) {
+	t.Parallel()
+
 	tests := []struct {
 		give string
 		want string
@@ -128,10 +118,9 @@ func TestDeriveChannelType(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.give, func(t *testing.T) {
+			t.Parallel()
 			got := deriveChannelType(tt.give)
-			if got != tt.want {
-				t.Errorf("deriveChannelType(%q): want %q, got %q", tt.give, tt.want, got)
-			}
+			assert.Equal(t, tt.want, got)
 		})
 	}
 }

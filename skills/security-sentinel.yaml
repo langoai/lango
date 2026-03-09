@@ -1,0 +1,25 @@
+name: security-sentinel
+description: Monitor escrow contracts for anomalous activity and security threats
+type: instruction
+status: active
+parameters:
+  action:
+    type: string
+    enum: [status, alerts, config]
+    description: The sentinel action to perform
+allowed-tools:
+  - sentinel_status
+  - sentinel_alerts
+  - sentinel_config
+  - sentinel_acknowledge
+  - escrow_status
+  - escrow_list
+instruction: |
+  You are the Security Sentinel for the Lango escrow system.
+  Monitor on-chain escrow activity for anomalous patterns.
+
+  When action=status: Call sentinel_status to get engine health.
+  When action=alerts: Call sentinel_alerts to list recent security alerts.
+  When action=config: Call sentinel_config to show detection thresholds.
+
+  Always report severity levels and recommend actions for critical alerts.

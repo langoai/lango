@@ -33,10 +33,10 @@ const (
 type Role string
 
 const (
-	RoleLeader    Role = "leader"
-	RoleWorker    Role = "worker"
-	RoleReviewer  Role = "reviewer"
-	RoleObserver  Role = "observer"
+	RoleLeader   Role = "leader"
+	RoleWorker   Role = "worker"
+	RoleReviewer Role = "reviewer"
+	RoleObserver Role = "observer"
 )
 
 // TeamStatus represents the lifecycle state of a team.

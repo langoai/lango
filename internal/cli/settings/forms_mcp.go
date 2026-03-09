@@ -206,4 +206,3 @@ func formatKeyValuePairs(m map[string]string) string {
 	}
 	return strings.Join(pairs, ",")
 }
-

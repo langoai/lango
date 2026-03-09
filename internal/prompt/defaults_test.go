@@ -8,6 +8,8 @@ import (
 )
 
 func TestDefaultBuilder_ContainsAllSections(t *testing.T) {
+	t.Parallel()
+
 	b := DefaultBuilder()
 	assert.True(t, b.Has(SectionIdentity))
 	assert.True(t, b.Has(SectionSafety))
@@ -16,17 +18,23 @@ func TestDefaultBuilder_ContainsAllSections(t *testing.T) {
 }
 
 func TestDefaultBuilder_IncludesConversationRules(t *testing.T) {
+	t.Parallel()
+
 	result := DefaultBuilder().Build()
 	assert.Contains(t, result, "Answer only the current question")
 	assert.Contains(t, result, "Do not repeat")
 }
 
 func TestDefaultBuilder_IncludesIdentity(t *testing.T) {
+	t.Parallel()
+
 	result := DefaultBuilder().Build()
 	assert.Contains(t, result, "You are Lango")
 }
 
 func TestDefaultBuilder_SectionOrder(t *testing.T) {
+	t.Parallel()
+
 	result := DefaultBuilder().Build()
 	idxIdentity := strings.Index(result, "You are Lango")
 	idxSafety := strings.Index(result, "Safety Guidelines")
@@ -39,9 +47,11 @@ func TestDefaultBuilder_SectionOrder(t *testing.T) {
 }
 
 func TestDefaultBuilder_UsesEmbeddedContent(t *testing.T) {
+	t.Parallel()
+
 	result := DefaultBuilder().Build()
 	// Verify embedded content is loaded (not fallbacks)
-	assert.Contains(t, result, "ten tool categories")
+	assert.Contains(t, result, "thirteen tool categories")
 	assert.Contains(t, result, "Never expose secrets")
 	assert.Contains(t, result, "Exec Tool")
 }

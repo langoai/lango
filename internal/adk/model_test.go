@@ -5,6 +5,9 @@ import (
 	"iter"
 	"testing"
 
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+
 	"github.com/langoai/lango/internal/provider"
 	"google.golang.org/adk/model"
 	"google.golang.org/genai"
@@ -38,15 +41,17 @@ func (m *mockProvider) ListModels(_ context.Context) ([]provider.ModelInfo, erro
 }
 
 func TestModelAdapter_Name(t *testing.T) {
+	t.Parallel()
+
 	p := &mockProvider{id: "test-provider"}
 	adapter := NewModelAdapter(p, "test-model")
 
-	if adapter.Name() != "test-model" {
-		t.Errorf("expected 'test-model', got %q", adapter.Name())
-	}
+	assert.Equal(t, "test-model", adapter.Name())
 }
 
 func TestModelAdapter_GenerateContent_TextDelta(t *testing.T) {
+	t.Parallel()
+
 	p := &mockProvider{
 		id: "test",
 		events: []provider.StreamEvent{
@@ -62,34 +67,24 @@ func TestModelAdapter_GenerateContent_TextDelta(t *testing.T) {
 
 	var responses []*model.LLMResponse
 	for resp, err := range seq {
-		if err != nil {
-			t.Fatalf("unexpected error: %v", err)
-		}
+		require.NoError(t, err)
 		responses = append(responses, resp)
 	}
 
-	if len(responses) != 3 {
-		t.Fatalf("expected 3 responses, got %d", len(responses))
-	}
+	require.Len(t, responses, 3)
 
 	// First two should be partial text
-	if !responses[0].Partial {
-		t.Error("expected first response to be partial")
-	}
-	if responses[0].Content.Parts[0].Text != "Hello " {
-		t.Errorf("expected 'Hello ', got %q", responses[0].Content.Parts[0].Text)
-	}
+	assert.True(t, responses[0].Partial, "expected first response to be partial")
+	assert.Equal(t, "Hello ", responses[0].Content.Parts[0].Text)
 
 	// Last should be turn complete
-	if !responses[2].TurnComplete {
-		t.Error("expected last response to be turn complete")
-	}
-	if responses[2].Partial {
-		t.Error("expected last response to not be partial")
-	}
+	assert.True(t, responses[2].TurnComplete, "expected last response to be turn complete")
+	assert.False(t, responses[2].Partial, "expected last response to not be partial")
 }
 
 func TestModelAdapter_GenerateContent_ProviderError(t *testing.T) {
+	t.Parallel()
+
 	p := &mockProvider{
 		id:  "test",
 		err: context.DeadlineExceeded,
@@ -100,15 +95,15 @@ func TestModelAdapter_GenerateContent_ProviderError(t *testing.T) {
 	seq := adapter.GenerateContent(context.Background(), req, false)
 
 	for _, err := range seq {
-		if err == nil {
-			t.Fatal("expected error from provider")
-		}
+		require.Error(t, err, "expected error from provider")
 		return // Only check first yield
 	}
 	t.Fatal("expected at least one yield")
 }
 
 func TestModelAdapter_GenerateContent_ToolCall(t *testing.T) {
+	t.Parallel()
+
 	p := &mockProvider{
 		id: "test",
 		events: []provider.StreamEvent{
@@ -130,44 +125,32 @@ func TestModelAdapter_GenerateContent_ToolCall(t *testing.T) {
 
 	var responses []*model.LLMResponse
 	for resp, err := range seq {
-		if err != nil {
-			t.Fatalf("unexpected error: %v", err)
-		}
+		require.NoError(t, err)
 		responses = append(responses, resp)
 	}
 
 	// Non-streaming mode accumulates all events into a single response.
-	if len(responses) != 1 {
-		t.Fatalf("expected 1 response, got %d", len(responses))
-	}
+	require.Len(t, responses, 1)
 
 	resp := responses[0]
-	if !resp.TurnComplete {
-		t.Error("expected response to be turn complete")
-	}
-	if resp.Partial {
-		t.Error("expected response to not be partial")
-	}
+	assert.True(t, resp.TurnComplete, "expected response to be turn complete")
+	assert.False(t, resp.Partial, "expected response to not be partial")
 
 	// Should have the function call part.
 	hasFuncCall := false
 	for _, p := range resp.Content.Parts {
 		if p.FunctionCall != nil {
 			hasFuncCall = true
-			if p.FunctionCall.Name != "exec" {
-				t.Errorf("expected function name 'exec', got %q", p.FunctionCall.Name)
-			}
-			if p.FunctionCall.Args["command"] != "ls" {
-				t.Errorf("expected arg command='ls', got %v", p.FunctionCall.Args["command"])
-			}
+			assert.Equal(t, "exec", p.FunctionCall.Name)
+			assert.Equal(t, "ls", p.FunctionCall.Args["command"])
 		}
 	}
-	if !hasFuncCall {
-		t.Error("expected a FunctionCall part")
-	}
+	assert.True(t, hasFuncCall, "expected a FunctionCall part")
 }
 
 func TestModelAdapter_GenerateContent_StreamError(t *testing.T) {
+	t.Parallel()
+
 	p := &mockProvider{
 		id: "test",
 		events: []provider.StreamEvent{
@@ -187,12 +170,12 @@ func TestModelAdapter_GenerateContent_StreamError(t *testing.T) {
 			break
 		}
 	}
-	if !gotError {
-		t.Error("expected error event to propagate")
-	}
+	assert.True(t, gotError, "expected error event to propagate")
 }
 
 func TestModelAdapter_GenerateContent_SystemInstruction(t *testing.T) {
+	t.Parallel()
+
 	p := &mockProvider{
 		id: "test",
 		events: []provider.StreamEvent{
@@ -219,28 +202,20 @@ func TestModelAdapter_GenerateContent_SystemInstruction(t *testing.T) {
 	seq := adapter.GenerateContent(context.Background(), req, false)
 
 	for _, err := range seq {
-		if err != nil {
-			t.Fatalf("unexpected error: %v", err)
-		}
+		require.NoError(t, err)
 	}
 
 	// Verify system message is prepended to messages
 	msgs := p.lastParams.Messages
-	if len(msgs) < 2 {
-		t.Fatalf("expected at least 2 messages (system + user), got %d", len(msgs))
-	}
-	if msgs[0].Role != "system" {
-		t.Errorf("expected first message role 'system', got %q", msgs[0].Role)
-	}
-	if msgs[0].Content != "You are a helpful assistant.\nAlways be concise." {
-		t.Errorf("unexpected system content: %q", msgs[0].Content)
-	}
-	if msgs[1].Role != "user" {
-		t.Errorf("expected second message role 'user', got %q", msgs[1].Role)
-	}
+	require.GreaterOrEqual(t, len(msgs), 2, "expected at least 2 messages (system + user)")
+	assert.Equal(t, "system", string(msgs[0].Role))
+	assert.Equal(t, "You are a helpful assistant.\nAlways be concise.", msgs[0].Content)
+	assert.Equal(t, "user", string(msgs[1].Role))
 }
 
 func TestModelAdapter_GenerateContent_NoSystemInstruction(t *testing.T) {
+	t.Parallel()
+
 	p := &mockProvider{
 		id: "test",
 		events: []provider.StreamEvent{
@@ -259,17 +234,11 @@ func TestModelAdapter_GenerateContent_NoSystemInstruction(t *testing.T) {
 	seq := adapter.GenerateContent(context.Background(), req, false)
 
 	for _, err := range seq {
-		if err != nil {
-			t.Fatalf("unexpected error: %v", err)
-		}
+		require.NoError(t, err)
 	}
 
 	// Without system instruction, only the user message should be present
 	msgs := p.lastParams.Messages
-	if len(msgs) != 1 {
-		t.Fatalf("expected 1 message, got %d", len(msgs))
-	}
-	if msgs[0].Role != "user" {
-		t.Errorf("expected role 'user', got %q", msgs[0].Role)
-	}
+	require.Len(t, msgs, 1)
+	assert.Equal(t, "user", string(msgs[0].Role))
 }

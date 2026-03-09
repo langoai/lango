@@ -5,18 +5,23 @@ import (
 	"errors"
 	"testing"
 
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+
 	"github.com/langoai/lango/internal/eventbus"
 )
 
 func TestEventBusHook_Post(t *testing.T) {
+	t.Parallel()
+
 	tests := []struct {
-		give          string
-		toolName      string
-		agentName     string
-		sessionKey    string
-		toolErr       error
-		wantSuccess   bool
-		wantErrMsg    string
+		give        string
+		toolName    string
+		agentName   string
+		sessionKey  string
+		toolErr     error
+		wantSuccess bool
+		wantErrMsg  string
 	}{
 		{
 			give:        "successful tool execution publishes success event",
@@ -39,6 +44,8 @@ func TestEventBusHook_Post(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.give, func(t *testing.T) {
+			t.Parallel()
+
 			bus := eventbus.New()
 
 			var received *ToolExecutedEvent
@@ -47,51 +54,78 @@ func TestEventBusHook_Post(t *testing.T) {
 			})
 
 			hook := NewEventBusHook(bus)
-			err := hook.Post(HookContext{
+			ctx := HookContext{
 				ToolName:   tt.toolName,
 				AgentName:  tt.agentName,
 				SessionKey: tt.sessionKey,
 				Ctx:        context.Background(),
-			}, "some-result", tt.toolErr)
+			}
 
-			if err != nil {
-				t.Fatalf("unexpected error: %v", err)
-			}
-			if received == nil {
-				t.Fatal("event was not published")
-			}
-			if received.ToolName != tt.toolName {
-				t.Errorf("ToolName = %q, want %q", received.ToolName, tt.toolName)
-			}
-			if received.AgentName != tt.agentName {
-				t.Errorf("AgentName = %q, want %q", received.AgentName, tt.agentName)
-			}
-			if received.SessionKey != tt.sessionKey {
-				t.Errorf("SessionKey = %q, want %q", received.SessionKey, tt.sessionKey)
-			}
-			if received.Success != tt.wantSuccess {
-				t.Errorf("Success = %v, want %v", received.Success, tt.wantSuccess)
-			}
-			if received.Error != tt.wantErrMsg {
-				t.Errorf("Error = %q, want %q", received.Error, tt.wantErrMsg)
-			}
+			// Call Pre to record start time, then Post to publish event.
+			_, err := hook.Pre(ctx)
+			require.NoError(t, err)
+
+			err = hook.Post(ctx, "some-result", tt.toolErr)
+			require.NoError(t, err)
+			require.NotNil(t, received, "event was not published")
+			assert.Equal(t, tt.toolName, received.ToolName)
+			assert.Equal(t, tt.agentName, received.AgentName)
+			assert.Equal(t, tt.sessionKey, received.SessionKey)
+			assert.Equal(t, tt.wantSuccess, received.Success)
+			assert.Equal(t, tt.wantErrMsg, received.Error)
+			assert.Greater(t, received.Duration, int64(0))
 		})
 	}
 }
 
-func TestEventBusHook_Metadata(t *testing.T) {
+func TestEventBusHook_PreContinues(t *testing.T) {
+	t.Parallel()
+
 	hook := NewEventBusHook(eventbus.New())
-	if hook.Name() != "eventbus" {
-		t.Errorf("Name() = %q, want %q", hook.Name(), "eventbus")
-	}
-	if hook.Priority() != 50 {
-		t.Errorf("Priority() = %d, want 50", hook.Priority())
-	}
+	result, err := hook.Pre(HookContext{
+		ToolName:   "test",
+		AgentName:  "agent",
+		SessionKey: "sess",
+		Ctx:        context.Background(),
+	})
+	require.NoError(t, err)
+	assert.Equal(t, Continue, result.Action)
+}
+
+func TestEventBusHook_PostWithoutPre(t *testing.T) {
+	t.Parallel()
+
+	bus := eventbus.New()
+
+	var received *ToolExecutedEvent
+	eventbus.SubscribeTyped(bus, func(e ToolExecutedEvent) {
+		received = &e
+	})
+
+	hook := NewEventBusHook(bus)
+	// Call Post without Pre — duration should be zero but no panic.
+	err := hook.Post(HookContext{
+		ToolName:   "test",
+		AgentName:  "agent",
+		SessionKey: "sess",
+		Ctx:        context.Background(),
+	}, nil, nil)
+	require.NoError(t, err)
+	require.NotNil(t, received, "event was not published")
+	assert.Zero(t, received.Duration)
+}
+
+func TestEventBusHook_Metadata(t *testing.T) {
+	t.Parallel()
+
+	hook := NewEventBusHook(eventbus.New())
+	assert.Equal(t, "eventbus", hook.Name())
+	assert.Equal(t, 50, hook.Priority())
 }
 
 func TestToolExecutedEvent_EventName(t *testing.T) {
+	t.Parallel()
+
 	e := ToolExecutedEvent{}
-	if e.EventName() != "tool.executed" {
-		t.Errorf("EventName() = %q, want %q", e.EventName(), "tool.executed")
-	}
+	assert.Equal(t, "tool.executed", e.EventName())
 }

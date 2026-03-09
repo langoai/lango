@@ -57,6 +57,18 @@ func (f CronJobHistoryFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Val
 	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.CronJobHistoryMutation", m)
 }
 
+// The EscrowDealFunc type is an adapter to allow the use of ordinary
+// function as EscrowDeal mutator.
+type EscrowDealFunc func(context.Context, *ent.EscrowDealMutation) (ent.Value, error)
+
+// Mutate calls f(ctx, m).
+func (f EscrowDealFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value, error) {
+	if mv, ok := m.(*ent.EscrowDealMutation); ok {
+		return f(ctx, mv)
+	}
+	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.EscrowDealMutation", m)
+}
+
 // The ExternalRefFunc type is an adapter to allow the use of ordinary
 // function as ExternalRef mutator.
 type ExternalRefFunc func(context.Context, *ent.ExternalRefMutation) (ent.Value, error)
@@ -199,6 +211,18 @@ func (f SessionFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value, err
 		return f(ctx, mv)
 	}
 	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.SessionMutation", m)
+}
+
+// The TokenUsageFunc type is an adapter to allow the use of ordinary
+// function as TokenUsage mutator.
+type TokenUsageFunc func(context.Context, *ent.TokenUsageMutation) (ent.Value, error)
+
+// Mutate calls f(ctx, m).
+func (f TokenUsageFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value, error) {
+	if mv, ok := m.(*ent.TokenUsageMutation); ok {
+		return f(ctx, mv)
+	}
+	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.TokenUsageMutation", m)
 }
 
 // The WorkflowRunFunc type is an adapter to allow the use of ordinary

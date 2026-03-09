@@ -10,6 +10,7 @@ import (
 	"github.com/langoai/lango/internal/ent/configprofile"
 	"github.com/langoai/lango/internal/ent/cronjob"
 	"github.com/langoai/lango/internal/ent/cronjobhistory"
+	"github.com/langoai/lango/internal/ent/escrowdeal"
 	"github.com/langoai/lango/internal/ent/externalref"
 	"github.com/langoai/lango/internal/ent/inquiry"
 	"github.com/langoai/lango/internal/ent/key"
@@ -23,6 +24,7 @@ import (
 	"github.com/langoai/lango/internal/ent/schema"
 	"github.com/langoai/lango/internal/ent/secret"
 	"github.com/langoai/lango/internal/ent/session"
+	"github.com/langoai/lango/internal/ent/tokenusage"
 	"github.com/langoai/lango/internal/ent/workflowrun"
 	"github.com/langoai/lango/internal/ent/workflowsteprun"
 )
@@ -131,6 +133,44 @@ func init() {
 	cronjobhistoryDescID := cronjobhistoryFields[0].Descriptor()
 	// cronjobhistory.DefaultID holds the default value on creation for the id field.
 	cronjobhistory.DefaultID = cronjobhistoryDescID.Default.(func() uuid.UUID)
+	escrowdealFields := schema.EscrowDeal{}.Fields()
+	_ = escrowdealFields
+	// escrowdealDescEscrowID is the schema descriptor for escrow_id field.
+	escrowdealDescEscrowID := escrowdealFields[0].Descriptor()
+	// escrowdeal.EscrowIDValidator is a validator for the "escrow_id" field. It is called by the builders before save.
+	escrowdeal.EscrowIDValidator = escrowdealDescEscrowID.Validators[0].(func(string) error)
+	// escrowdealDescBuyerDid is the schema descriptor for buyer_did field.
+	escrowdealDescBuyerDid := escrowdealFields[1].Descriptor()
+	// escrowdeal.BuyerDidValidator is a validator for the "buyer_did" field. It is called by the builders before save.
+	escrowdeal.BuyerDidValidator = escrowdealDescBuyerDid.Validators[0].(func(string) error)
+	// escrowdealDescSellerDid is the schema descriptor for seller_did field.
+	escrowdealDescSellerDid := escrowdealFields[2].Descriptor()
+	// escrowdeal.SellerDidValidator is a validator for the "seller_did" field. It is called by the builders before save.
+	escrowdeal.SellerDidValidator = escrowdealDescSellerDid.Validators[0].(func(string) error)
+	// escrowdealDescTotalAmount is the schema descriptor for total_amount field.
+	escrowdealDescTotalAmount := escrowdealFields[3].Descriptor()
+	// escrowdeal.TotalAmountValidator is a validator for the "total_amount" field. It is called by the builders before save.
+	escrowdeal.TotalAmountValidator = escrowdealDescTotalAmount.Validators[0].(func(string) error)
+	// escrowdealDescStatus is the schema descriptor for status field.
+	escrowdealDescStatus := escrowdealFields[4].Descriptor()
+	// escrowdeal.DefaultStatus holds the default value on creation for the status field.
+	escrowdeal.DefaultStatus = escrowdealDescStatus.Default.(string)
+	// escrowdeal.StatusValidator is a validator for the "status" field. It is called by the builders before save.
+	escrowdeal.StatusValidator = escrowdealDescStatus.Validators[0].(func(string) error)
+	// escrowdealDescChainID is the schema descriptor for chain_id field.
+	escrowdealDescChainID := escrowdealFields[9].Descriptor()
+	// escrowdeal.DefaultChainID holds the default value on creation for the chain_id field.
+	escrowdeal.DefaultChainID = escrowdealDescChainID.Default.(int64)
+	// escrowdealDescCreatedAt is the schema descriptor for created_at field.
+	escrowdealDescCreatedAt := escrowdealFields[15].Descriptor()
+	// escrowdeal.DefaultCreatedAt holds the default value on creation for the created_at field.
+	escrowdeal.DefaultCreatedAt = escrowdealDescCreatedAt.Default.(func() time.Time)
+	// escrowdealDescUpdatedAt is the schema descriptor for updated_at field.
+	escrowdealDescUpdatedAt := escrowdealFields[16].Descriptor()
+	// escrowdeal.DefaultUpdatedAt holds the default value on creation for the updated_at field.
+	escrowdeal.DefaultUpdatedAt = escrowdealDescUpdatedAt.Default.(func() time.Time)
+	// escrowdeal.UpdateDefaultUpdatedAt holds the default value on update for the updated_at field.
+	escrowdeal.UpdateDefaultUpdatedAt = escrowdealDescUpdatedAt.UpdateDefault.(func() time.Time)
 	externalrefFields := schema.ExternalRef{}.Fields()
 	_ = externalrefFields
 	// externalrefDescName is the schema descriptor for name field.
@@ -443,6 +483,40 @@ func init() {
 	session.DefaultUpdatedAt = sessionDescUpdatedAt.Default.(func() time.Time)
 	// session.UpdateDefaultUpdatedAt holds the default value on update for the updated_at field.
 	session.UpdateDefaultUpdatedAt = sessionDescUpdatedAt.UpdateDefault.(func() time.Time)
+	tokenusageFields := schema.TokenUsage{}.Fields()
+	_ = tokenusageFields
+	// tokenusageDescProvider is the schema descriptor for provider field.
+	tokenusageDescProvider := tokenusageFields[2].Descriptor()
+	// tokenusage.ProviderValidator is a validator for the "provider" field. It is called by the builders before save.
+	tokenusage.ProviderValidator = tokenusageDescProvider.Validators[0].(func(string) error)
+	// tokenusageDescModel is the schema descriptor for model field.
+	tokenusageDescModel := tokenusageFields[3].Descriptor()
+	// tokenusage.ModelValidator is a validator for the "model" field. It is called by the builders before save.
+	tokenusage.ModelValidator = tokenusageDescModel.Validators[0].(func(string) error)
+	// tokenusageDescInputTokens is the schema descriptor for input_tokens field.
+	tokenusageDescInputTokens := tokenusageFields[5].Descriptor()
+	// tokenusage.DefaultInputTokens holds the default value on creation for the input_tokens field.
+	tokenusage.DefaultInputTokens = tokenusageDescInputTokens.Default.(int64)
+	// tokenusageDescOutputTokens is the schema descriptor for output_tokens field.
+	tokenusageDescOutputTokens := tokenusageFields[6].Descriptor()
+	// tokenusage.DefaultOutputTokens holds the default value on creation for the output_tokens field.
+	tokenusage.DefaultOutputTokens = tokenusageDescOutputTokens.Default.(int64)
+	// tokenusageDescTotalTokens is the schema descriptor for total_tokens field.
+	tokenusageDescTotalTokens := tokenusageFields[7].Descriptor()
+	// tokenusage.DefaultTotalTokens holds the default value on creation for the total_tokens field.
+	tokenusage.DefaultTotalTokens = tokenusageDescTotalTokens.Default.(int64)
+	// tokenusageDescCacheTokens is the schema descriptor for cache_tokens field.
+	tokenusageDescCacheTokens := tokenusageFields[8].Descriptor()
+	// tokenusage.DefaultCacheTokens holds the default value on creation for the cache_tokens field.
+	tokenusage.DefaultCacheTokens = tokenusageDescCacheTokens.Default.(int64)
+	// tokenusageDescTimestamp is the schema descriptor for timestamp field.
+	tokenusageDescTimestamp := tokenusageFields[9].Descriptor()
+	// tokenusage.DefaultTimestamp holds the default value on creation for the timestamp field.
+	tokenusage.DefaultTimestamp = tokenusageDescTimestamp.Default.(func() time.Time)
+	// tokenusageDescID is the schema descriptor for id field.
+	tokenusageDescID := tokenusageFields[0].Descriptor()
+	// tokenusage.DefaultID holds the default value on creation for the id field.
+	tokenusage.DefaultID = tokenusageDescID.Default.(func() uuid.UUID)
 	workflowrunFields := schema.WorkflowRun{}.Fields()
 	_ = workflowrunFields
 	// workflowrunDescWorkflowName is the schema descriptor for workflow_name field.

@@ -9,6 +9,8 @@ import (
 )
 
 func TestInvalidate_SessionBecomesInvalid(t *testing.T) {
+	t.Parallel()
+
 	store, err := NewSessionStore(24 * time.Hour)
 	require.NoError(t, err)
 
@@ -30,6 +32,8 @@ func TestInvalidate_SessionBecomesInvalid(t *testing.T) {
 }
 
 func TestInvalidateAll_AllSessionsInvalidated(t *testing.T) {
+	t.Parallel()
+
 	store, err := NewSessionStore(24 * time.Hour)
 	require.NoError(t, err)
 
@@ -55,6 +59,8 @@ func TestInvalidateAll_AllSessionsInvalidated(t *testing.T) {
 }
 
 func TestInvalidateByCondition_SelectiveInvalidation(t *testing.T) {
+	t.Parallel()
+
 	store, err := NewSessionStore(24 * time.Hour)
 	require.NoError(t, err)
 
@@ -78,6 +84,8 @@ func TestInvalidateByCondition_SelectiveInvalidation(t *testing.T) {
 }
 
 func TestValidate_ReturnsFalseForInvalidated(t *testing.T) {
+	t.Parallel()
+
 	store, err := NewSessionStore(24 * time.Hour)
 	require.NoError(t, err)
 
@@ -92,6 +100,8 @@ func TestValidate_ReturnsFalseForInvalidated(t *testing.T) {
 }
 
 func TestInvalidationHistory_ReturnsRecords(t *testing.T) {
+	t.Parallel()
+
 	store, err := NewSessionStore(24 * time.Hour)
 	require.NoError(t, err)
 
@@ -117,6 +127,8 @@ func TestInvalidationHistory_ReturnsRecords(t *testing.T) {
 }
 
 func TestInvalidationCallback_FiredOnInvalidate(t *testing.T) {
+	t.Parallel()
+
 	store, err := NewSessionStore(24 * time.Hour)
 	require.NoError(t, err)
 
@@ -137,6 +149,8 @@ func TestInvalidationCallback_FiredOnInvalidate(t *testing.T) {
 }
 
 func TestInvalidateNonExistent_StillRecordsHistory(t *testing.T) {
+	t.Parallel()
+
 	store, err := NewSessionStore(24 * time.Hour)
 	require.NoError(t, err)
 
@@ -149,6 +163,8 @@ func TestInvalidateNonExistent_StillRecordsHistory(t *testing.T) {
 }
 
 func TestCleanup_RemovesInvalidatedSessions(t *testing.T) {
+	t.Parallel()
+
 	store, err := NewSessionStore(1 * time.Millisecond)
 	require.NoError(t, err)
 

@@ -16,6 +16,8 @@ import (
 )
 
 func TestNew_Defaults(t *testing.T) {
+	t.Parallel()
+
 	svc := New(Config{
 		Logger: zap.NewNop().Sugar(),
 	})
@@ -25,6 +27,8 @@ func TestNew_Defaults(t *testing.T) {
 }
 
 func TestNew_CustomConfig(t *testing.T) {
+	t.Parallel()
+
 	svc := New(Config{
 		ReceiptTimeout: 5 * time.Minute,
 		MaxRetries:     5,
@@ -35,6 +39,8 @@ func TestNew_CustomConfig(t *testing.T) {
 }
 
 func TestSubscribe_RegistersHandler(t *testing.T) {
+	t.Parallel()
+
 	svc := New(Config{
 		Logger: zap.NewNop().Sugar(),
 	})
@@ -45,6 +51,8 @@ func TestSubscribe_RegistersHandler(t *testing.T) {
 }
 
 func TestHandleEvent_NilAuth(t *testing.T) {
+	t.Parallel()
+
 	svc := New(Config{
 		Logger: zap.NewNop().Sugar(),
 	})
@@ -58,6 +66,8 @@ func TestHandleEvent_NilAuth(t *testing.T) {
 }
 
 func TestHandleEvent_WrongAuthType(t *testing.T) {
+	t.Parallel()
+
 	svc := New(Config{
 		Logger: zap.NewNop().Sugar(),
 	})
@@ -86,6 +96,8 @@ func (m *mockRepRecorder) RecordFailure(_ context.Context, _ string) error {
 }
 
 func TestHandleEvent_FailureRecordsReputation(t *testing.T) {
+	t.Parallel()
+
 	rec := &mockRepRecorder{}
 	svc := New(Config{
 		Logger: zap.NewNop().Sugar(),

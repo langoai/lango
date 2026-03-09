@@ -6,18 +6,18 @@ import "time"
 type Workflow struct {
 	Name        string   `yaml:"name"`
 	Description string   `yaml:"description"`
-	Schedule    string   `yaml:"schedule"`    // optional cron expression
-	DeliverTo   []string `yaml:"deliver_to"`  // optional result delivery targets
+	Schedule    string   `yaml:"schedule"`   // optional cron expression
+	DeliverTo   []string `yaml:"deliver_to"` // optional result delivery targets
 	Steps       []Step   `yaml:"steps"`
 }
 
 // Step represents a single unit of work in a workflow.
 type Step struct {
 	ID        string        `yaml:"id"`
-	Agent     string        `yaml:"agent"`      // executor | researcher | planner | memory-manager
-	Prompt    string        `yaml:"prompt"`      // Go template with {{step-id.result}}
+	Agent     string        `yaml:"agent"`  // executor | researcher | planner | memory-manager
+	Prompt    string        `yaml:"prompt"` // Go template with {{step-id.result}}
 	DependsOn []string      `yaml:"depends_on"`
-	DeliverTo []string      `yaml:"deliver_to"`  // per-step delivery
+	DeliverTo []string      `yaml:"deliver_to"` // per-step delivery
 	Timeout   time.Duration `yaml:"timeout"`
 }
 

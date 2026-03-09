@@ -4,9 +4,11 @@ import (
 	"context"
 	"os"
 	"path/filepath"
-	"strings"
 	"testing"
 	"testing/fstest"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 
 	"go.uber.org/zap"
 )
@@ -18,6 +20,8 @@ func newTestFileStore(t *testing.T) *FileSkillStore {
 }
 
 func TestFileSkillStore_SaveAndGet(t *testing.T) {
+	t.Parallel()
+
 	store := newTestFileStore(t)
 	ctx := context.Background()
 
@@ -29,226 +33,182 @@ func TestFileSkillStore_SaveAndGet(t *testing.T) {
 		Definition:  map[string]interface{}{"script": "echo hello"},
 	}
 
-	if err := store.Save(ctx, entry); err != nil {
-		t.Fatalf("Save: %v", err)
-	}
+	require.NoError(t, store.Save(ctx, entry))
 
 	got, err := store.Get(ctx, "test-skill")
-	if err != nil {
-		t.Fatalf("Get: %v", err)
-	}
+	require.NoError(t, err)
 
-	if got.Name != "test-skill" {
-		t.Errorf("Name = %q, want %q", got.Name, "test-skill")
-	}
-	if got.Description != "A test skill" {
-		t.Errorf("Description = %q, want %q", got.Description, "A test skill")
-	}
-	if got.Status != "active" {
-		t.Errorf("Status = %q, want %q", got.Status, "active")
-	}
+	assert.Equal(t, "test-skill", got.Name)
+	assert.Equal(t, "A test skill", got.Description)
+	assert.Equal(t, SkillStatusActive, got.Status)
 
 	script, _ := got.Definition["script"].(string)
-	if script != "echo hello" {
-		t.Errorf("script = %q, want %q", script, "echo hello")
-	}
+	assert.Equal(t, "echo hello", script)
 }
 
 func TestFileSkillStore_SaveEmptyName(t *testing.T) {
+	t.Parallel()
+
 	store := newTestFileStore(t)
 	ctx := context.Background()
 
 	err := store.Save(ctx, SkillEntry{Name: ""})
-	if err == nil {
-		t.Fatal("expected error for empty name")
-	}
+	require.Error(t, err)
 }
 
 func TestFileSkillStore_GetNotFound(t *testing.T) {
+	t.Parallel()
+
 	store := newTestFileStore(t)
 	ctx := context.Background()
 
 	_, err := store.Get(ctx, "nonexistent")
-	if err == nil {
-		t.Fatal("expected error for nonexistent skill")
-	}
-	if !strings.Contains(err.Error(), "not found") {
-		t.Errorf("error = %q, want to contain 'not found'", err.Error())
-	}
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "not found")
 }
 
 func TestFileSkillStore_ListActive(t *testing.T) {
+	t.Parallel()
+
 	store := newTestFileStore(t)
 	ctx := context.Background()
 
 	// Save active and draft skills.
-	if err := store.Save(ctx, SkillEntry{
+	require.NoError(t, store.Save(ctx, SkillEntry{
 		Name:        "active-skill",
 		Description: "active",
 		Type:        "script",
 		Status:      "active",
 		Definition:  map[string]interface{}{"script": "echo active"},
-	}); err != nil {
-		t.Fatalf("Save active: %v", err)
-	}
+	}))
 
-	if err := store.Save(ctx, SkillEntry{
+	require.NoError(t, store.Save(ctx, SkillEntry{
 		Name:        "draft-skill",
 		Description: "draft",
 		Type:        "script",
 		Status:      "draft",
 		Definition:  map[string]interface{}{"script": "echo draft"},
-	}); err != nil {
-		t.Fatalf("Save draft: %v", err)
-	}
+	}))
 
 	entries, err := store.ListActive(ctx)
-	if err != nil {
-		t.Fatalf("ListActive: %v", err)
-	}
+	require.NoError(t, err)
 
-	if len(entries) != 1 {
-		t.Fatalf("len(entries) = %d, want 1", len(entries))
-	}
-	if entries[0].Name != "active-skill" {
-		t.Errorf("entries[0].Name = %q, want %q", entries[0].Name, "active-skill")
-	}
+	require.Len(t, entries, 1)
+	assert.Equal(t, "active-skill", entries[0].Name)
 }
 
 func TestFileSkillStore_ListActive_EmptyDir(t *testing.T) {
+	t.Parallel()
+
 	store := newTestFileStore(t)
 	ctx := context.Background()
 
 	entries, err := store.ListActive(ctx)
-	if err != nil {
-		t.Fatalf("ListActive: %v", err)
-	}
-	if len(entries) != 0 {
-		t.Errorf("len(entries) = %d, want 0", len(entries))
-	}
+	require.NoError(t, err)
+	assert.Empty(t, entries)
 }
 
 func TestFileSkillStore_Activate(t *testing.T) {
+	t.Parallel()
+
 	store := newTestFileStore(t)
 	ctx := context.Background()
 
-	if err := store.Save(ctx, SkillEntry{
+	require.NoError(t, store.Save(ctx, SkillEntry{
 		Name:        "my-skill",
 		Description: "test",
 		Type:        "script",
 		Status:      "draft",
 		Definition:  map[string]interface{}{"script": "echo hi"},
-	}); err != nil {
-		t.Fatalf("Save: %v", err)
-	}
+	}))
 
 	// Verify it's not active.
 	entries, _ := store.ListActive(ctx)
-	if len(entries) != 0 {
-		t.Fatalf("ListActive before activate: len = %d, want 0", len(entries))
-	}
+	require.Empty(t, entries)
 
-	if err := store.Activate(ctx, "my-skill"); err != nil {
-		t.Fatalf("Activate: %v", err)
-	}
+	require.NoError(t, store.Activate(ctx, "my-skill"))
 
 	entries, _ = store.ListActive(ctx)
-	if len(entries) != 1 {
-		t.Fatalf("ListActive after activate: len = %d, want 1", len(entries))
-	}
+	require.Len(t, entries, 1)
 }
 
 func TestFileSkillStore_Delete(t *testing.T) {
+	t.Parallel()
+
 	store := newTestFileStore(t)
 	ctx := context.Background()
 
-	if err := store.Save(ctx, SkillEntry{
+	require.NoError(t, store.Save(ctx, SkillEntry{
 		Name:        "deleteme",
 		Description: "test",
 		Type:        "script",
 		Status:      "active",
 		Definition:  map[string]interface{}{"script": "echo hi"},
-	}); err != nil {
-		t.Fatalf("Save: %v", err)
-	}
+	}))
 
-	if err := store.Delete(ctx, "deleteme"); err != nil {
-		t.Fatalf("Delete: %v", err)
-	}
+	require.NoError(t, store.Delete(ctx, "deleteme"))
 
 	_, err := store.Get(ctx, "deleteme")
-	if err == nil {
-		t.Fatal("expected error after delete")
-	}
+	require.Error(t, err)
 }
 
 func TestFileSkillStore_DeleteNotFound(t *testing.T) {
+	t.Parallel()
+
 	store := newTestFileStore(t)
 	ctx := context.Background()
 
 	err := store.Delete(ctx, "nonexistent")
-	if err == nil {
-		t.Fatal("expected error for nonexistent delete")
-	}
+	require.Error(t, err)
 }
 
 func TestFileSkillStore_SaveResource(t *testing.T) {
+	t.Parallel()
+
 	store := newTestFileStore(t)
 	ctx := context.Background()
 
 	// Ensure skill directory exists first.
-	if err := store.Save(ctx, SkillEntry{
+	require.NoError(t, store.Save(ctx, SkillEntry{
 		Name:       "my-skill",
 		Type:       "instruction",
 		Status:     "active",
 		Definition: map[string]interface{}{"content": "test"},
-	}); err != nil {
-		t.Fatalf("Save: %v", err)
-	}
+	}))
 
 	data := []byte("#!/bin/bash\necho hello")
-	if err := store.SaveResource(ctx, "my-skill", "scripts/setup.sh", data); err != nil {
-		t.Fatalf("SaveResource: %v", err)
-	}
+	require.NoError(t, store.SaveResource(ctx, "my-skill", "scripts/setup.sh", data))
 
 	// Verify the file was written.
 	got, err := os.ReadFile(filepath.Join(store.dir, "my-skill", "scripts", "setup.sh"))
-	if err != nil {
-		t.Fatalf("read resource: %v", err)
-	}
-	if string(got) != string(data) {
-		t.Errorf("resource content = %q, want %q", string(got), string(data))
-	}
+	require.NoError(t, err)
+	assert.Equal(t, string(data), string(got))
 }
 
 func TestFileSkillStore_SaveResource_NestedDir(t *testing.T) {
+	t.Parallel()
+
 	store := newTestFileStore(t)
 	ctx := context.Background()
 
-	if err := store.Save(ctx, SkillEntry{
+	require.NoError(t, store.Save(ctx, SkillEntry{
 		Name:       "nested-skill",
 		Type:       "instruction",
 		Status:     "active",
 		Definition: map[string]interface{}{"content": "test"},
-	}); err != nil {
-		t.Fatalf("Save: %v", err)
-	}
+	}))
 
 	data := []byte("reference content")
-	if err := store.SaveResource(ctx, "nested-skill", "references/deep/nested/doc.md", data); err != nil {
-		t.Fatalf("SaveResource: %v", err)
-	}
+	require.NoError(t, store.SaveResource(ctx, "nested-skill", "references/deep/nested/doc.md", data))
 
 	got, err := os.ReadFile(filepath.Join(store.dir, "nested-skill", "references", "deep", "nested", "doc.md"))
-	if err != nil {
-		t.Fatalf("read resource: %v", err)
-	}
-	if string(got) != string(data) {
-		t.Errorf("resource content = %q, want %q", string(got), string(data))
-	}
+	require.NoError(t, err)
+	assert.Equal(t, string(data), string(got))
 }
 
 func TestFileSkillStore_EnsureDefaults(t *testing.T) {
+	t.Parallel()
+
 	store := newTestFileStore(t)
 
 	// Create an in-memory FS with a default skill.
@@ -261,33 +221,21 @@ func TestFileSkillStore_EnsureDefaults(t *testing.T) {
 		},
 	}
 
-	if err := store.EnsureDefaults(defaultFS); err != nil {
-		t.Fatalf("EnsureDefaults: %v", err)
-	}
+	require.NoError(t, store.EnsureDefaults(defaultFS))
 
 	// Verify skills were deployed.
 	ctx := context.Background()
 	entries, err := store.ListActive(ctx)
-	if err != nil {
-		t.Fatalf("ListActive: %v", err)
-	}
-	if len(entries) != 2 {
-		t.Fatalf("len(entries) = %d, want 2", len(entries))
-	}
+	require.NoError(t, err)
+	require.Len(t, entries, 2)
 
 	// Run again — should not overwrite.
 	// First, modify one to verify it's not replaced.
 	customPath := filepath.Join(store.dir, "serve", "SKILL.md")
-	if err := os.WriteFile(customPath, []byte("---\nname: serve\ndescription: Custom\ntype: script\nstatus: active\n---\n\n```sh\nlango serve --custom\n```\n"), 0o644); err != nil {
-		t.Fatalf("write custom: %v", err)
-	}
+	require.NoError(t, os.WriteFile(customPath, []byte("---\nname: serve\ndescription: Custom\ntype: script\nstatus: active\n---\n\n```sh\nlango serve --custom\n```\n"), 0o644))
 
-	if err := store.EnsureDefaults(defaultFS); err != nil {
-		t.Fatalf("EnsureDefaults (second run): %v", err)
-	}
+	require.NoError(t, store.EnsureDefaults(defaultFS))
 
 	got, _ := store.Get(ctx, "serve")
-	if got.Description != "Custom" {
-		t.Errorf("Description = %q, want %q (should not be overwritten)", got.Description, "Custom")
-	}
+	assert.Equal(t, "Custom", got.Description)
 }

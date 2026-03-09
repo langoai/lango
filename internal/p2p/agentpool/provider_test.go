@@ -14,6 +14,8 @@ func newTestPool(t *testing.T) *Pool {
 }
 
 func TestPoolProvider_AvailableAgents(t *testing.T) {
+	t.Parallel()
+
 	pool := newTestPool(t)
 	require.NoError(t, pool.Add(&Agent{DID: "did:1", Name: "agent-a", Status: StatusHealthy, Capabilities: []string{"code"}}))
 	require.NoError(t, pool.Add(&Agent{DID: "did:2", Name: "agent-b", Status: StatusUnhealthy, Capabilities: []string{"search"}}))
@@ -35,6 +37,8 @@ func TestPoolProvider_AvailableAgents(t *testing.T) {
 }
 
 func TestPoolProvider_FindForCapability(t *testing.T) {
+	t.Parallel()
+
 	pool := newTestPool(t)
 	require.NoError(t, pool.Add(&Agent{DID: "did:1", Name: "coder", Status: StatusHealthy, Capabilities: []string{"code", "review"}}))
 	require.NoError(t, pool.Add(&Agent{DID: "did:2", Name: "searcher", Status: StatusHealthy, Capabilities: []string{"search"}}))
@@ -55,6 +59,7 @@ func TestPoolProvider_FindForCapability(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			agents := provider.FindForCapability(tt.capability)
 			assert.Len(t, agents, tt.wantCount)
 		})
@@ -62,6 +67,8 @@ func TestPoolProvider_FindForCapability(t *testing.T) {
 }
 
 func TestPoolProvider_EmptyPool(t *testing.T) {
+	t.Parallel()
+
 	pool := newTestPool(t)
 	provider := NewPoolProvider(pool, nil)
 
@@ -70,6 +77,8 @@ func TestPoolProvider_EmptyPool(t *testing.T) {
 }
 
 func TestDynamicAgentInfo_Fields(t *testing.T) {
+	t.Parallel()
+
 	pool := newTestPool(t)
 	require.NoError(t, pool.Add(&Agent{
 		DID:          "did:test:123",

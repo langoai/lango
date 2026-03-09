@@ -10,7 +10,7 @@ import (
 type Status int
 
 const (
-	Pending   Status = iota + 1
+	Pending Status = iota + 1
 	Running
 	Done
 	Failed
@@ -60,7 +60,7 @@ type Task struct {
 	OriginSession string // original session key
 	StartedAt     time.Time
 	CompletedAt   time.Time
-	TokensUsed   int
+	TokensUsed    int
 	mu            sync.RWMutex
 	cancelFn      context.CancelFunc
 }
@@ -77,7 +77,7 @@ type TaskSnapshot struct {
 	OriginSession string    `json:"origin_session"`
 	StartedAt     time.Time `json:"started_at"`
 	CompletedAt   time.Time `json:"completed_at,omitempty"`
-	TokensUsed   int       `json:"tokens_used"`
+	TokensUsed    int       `json:"tokens_used"`
 }
 
 // SetRunning transitions the task to the Running state and records the start time.
@@ -132,6 +132,6 @@ func (t *Task) Snapshot() TaskSnapshot {
 		OriginSession: t.OriginSession,
 		StartedAt:     t.StartedAt,
 		CompletedAt:   t.CompletedAt,
-		TokensUsed:   t.TokensUsed,
+		TokensUsed:    t.TokensUsed,
 	}
 }

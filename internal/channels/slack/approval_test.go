@@ -8,6 +8,8 @@ import (
 
 	"github.com/langoai/lango/internal/approval"
 	slackapi "github.com/slack-go/slack"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 // MockApprovalClient extends MockClient with UpdateMessage tracking.
@@ -38,6 +40,8 @@ func (m *MockApprovalClient) UpdateMessage(channelID, timestamp string, options 
 }
 
 func TestSlackApprovalProvider_CanHandle(t *testing.T) {
+	t.Parallel()
+
 	tests := []struct {
 		give string
 		want bool
@@ -52,14 +56,16 @@ func TestSlackApprovalProvider_CanHandle(t *testing.T) {
 	p := NewApprovalProvider(&MockApprovalClient{}, 30*time.Second)
 	for _, tt := range tests {
 		t.Run(tt.give, func(t *testing.T) {
-			if got := p.CanHandle(tt.give); got != tt.want {
-				t.Errorf("CanHandle(%q) = %v, want %v", tt.give, got, tt.want)
-			}
+			t.Parallel()
+
+			assert.Equal(t, tt.want, p.CanHandle(tt.give))
 		})
 	}
 }
 
 func TestSlackApprovalProvider_Approve(t *testing.T) {
+	t.Parallel()
+
 	client := &MockApprovalClient{
 		MockClient: MockClient{
 			PostMessageFunc: func(channelID string, options ...slackapi.MsgOption) (string, string, error) {
@@ -92,12 +98,8 @@ func TestSlackApprovalProvider_Approve(t *testing.T) {
 
 	select {
 	case <-done:
-		if err != nil {
-			t.Fatalf("unexpected error: %v", err)
-		}
-		if !resp.Approved {
-			t.Error("expected approved=true")
-		}
+		require.NoError(t, err)
+		assert.True(t, resp.Approved)
 	case <-time.After(2 * time.Second):
 		t.Fatal("timeout")
 	}
@@ -106,12 +108,12 @@ func TestSlackApprovalProvider_Approve(t *testing.T) {
 	client.mu.Lock()
 	updateCount := len(client.UpdateMessages)
 	client.mu.Unlock()
-	if updateCount == 0 {
-		t.Error("expected UpdateMessage to be called to remove buttons")
-	}
+	assert.NotZero(t, updateCount, "expected UpdateMessage to be called to remove buttons")
 }
 
 func TestSlackApprovalProvider_Deny(t *testing.T) {
+	t.Parallel()
+
 	client := &MockApprovalClient{
 		MockClient: MockClient{
 			PostMessageFunc: func(channelID string, options ...slackapi.MsgOption) (string, string, error) {
@@ -143,18 +145,16 @@ func TestSlackApprovalProvider_Deny(t *testing.T) {
 
 	select {
 	case <-done:
-		if err != nil {
-			t.Fatalf("unexpected error: %v", err)
-		}
-		if resp.Approved {
-			t.Error("expected approved=false")
-		}
+		require.NoError(t, err)
+		assert.False(t, resp.Approved)
 	case <-time.After(2 * time.Second):
 		t.Fatal("timeout")
 	}
 }
 
 func TestSlackApprovalProvider_Timeout(t *testing.T) {
+	t.Parallel()
+
 	client := &MockApprovalClient{
 		MockClient: MockClient{
 			PostMessageFunc: func(channelID string, options ...slackapi.MsgOption) (string, string, error) {
@@ -172,23 +172,19 @@ func TestSlackApprovalProvider_Timeout(t *testing.T) {
 	}
 
 	resp, err := p.RequestApproval(context.Background(), req)
-	if err == nil {
-		t.Fatal("expected timeout error")
-	}
-	if resp.Approved {
-		t.Error("expected approved=false on timeout")
-	}
+	require.Error(t, err)
+	assert.False(t, resp.Approved)
 
 	// Verify expired message was sent via UpdateMessage
 	client.mu.Lock()
 	updateCount := len(client.UpdateMessages)
 	client.mu.Unlock()
-	if updateCount == 0 {
-		t.Error("expected UpdateMessage to be called on timeout for expired message")
-	}
+	assert.NotZero(t, updateCount, "expected UpdateMessage to be called on timeout for expired message")
 }
 
 func TestSlackApprovalProvider_UnknownAction(t *testing.T) {
+	t.Parallel()
+
 	p := NewApprovalProvider(&MockApprovalClient{}, 5*time.Second)
 
 	// Should not panic on unknown action
@@ -196,6 +192,8 @@ func TestSlackApprovalProvider_UnknownAction(t *testing.T) {
 }
 
 func TestSlackApprovalProvider_DuplicateAction(t *testing.T) {
+	t.Parallel()
+
 	client := &MockApprovalClient{
 		MockClient: MockClient{
 			PostMessageFunc: func(channelID string, options ...slackapi.MsgOption) (string, string, error) {
@@ -231,12 +229,8 @@ func TestSlackApprovalProvider_DuplicateAction(t *testing.T) {
 
 	select {
 	case <-done:
-		if err != nil {
-			t.Fatalf("unexpected error: %v", err)
-		}
-		if !resp.Approved {
-			t.Error("expected approved=true from first action")
-		}
+		require.NoError(t, err)
+		assert.True(t, resp.Approved, "expected approved=true from first action")
 	case <-time.After(2 * time.Second):
 		t.Fatal("timeout")
 	}
@@ -245,7 +239,5 @@ func TestSlackApprovalProvider_DuplicateAction(t *testing.T) {
 	client.mu.Lock()
 	updateCount := len(client.UpdateMessages)
 	client.mu.Unlock()
-	if updateCount != 1 {
-		t.Errorf("expected 1 UpdateMessage call, got %d", updateCount)
-	}
+	assert.Equal(t, 1, updateCount)
 }

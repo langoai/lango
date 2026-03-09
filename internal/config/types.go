@@ -77,6 +77,15 @@ type Config struct {
 	// MCP server integration configuration
 	MCP MCPConfig `mapstructure:"mcp" json:"mcp"`
 
+	// Economy layer configuration (budget, risk, escrow, pricing, negotiation)
+	Economy EconomyConfig `mapstructure:"economy" json:"economy"`
+
+	// Smart Account configuration (ERC-7579 modular accounts)
+	SmartAccount SmartAccountConfig `mapstructure:"smartAccount" json:"smartAccount"`
+
+	// Observability configuration (token tracking, health, audit, metrics)
+	Observability ObservabilityConfig `mapstructure:"observability" json:"observability"`
+
 	// Providers configuration
 	Providers map[string]ProviderConfig `mapstructure:"providers" json:"providers"`
 }
@@ -144,6 +153,14 @@ type AgentConfig struct {
 	// MaxDelegationRounds limits orchestrator→sub-agent delegation rounds per turn (default: 10).
 	// Zero means use the default.
 	MaxDelegationRounds int `mapstructure:"maxDelegationRounds" json:"maxDelegationRounds"`
+
+	// AutoExtendTimeout enables automatic deadline extension when agent activity is detected.
+	// When true, the timeout is extended on each agent event (tool call, text chunk) up to MaxRequestTimeout.
+	AutoExtendTimeout bool `mapstructure:"autoExtendTimeout" json:"autoExtendTimeout"`
+
+	// MaxRequestTimeout is the absolute maximum duration for a request when auto-extend is enabled.
+	// Defaults to 3x RequestTimeout (e.g. 15m if RequestTimeout is 5m).
+	MaxRequestTimeout time.Duration `mapstructure:"maxRequestTimeout" json:"maxRequestTimeout"`
 
 	// AgentsDir is the directory containing user-defined AGENT.md files.
 	// Structure: <dir>/<name>/AGENT.md

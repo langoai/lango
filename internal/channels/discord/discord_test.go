@@ -5,12 +5,15 @@ import (
 	"testing"
 
 	"github.com/bwmarrin/discordgo"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 // MockSession implements Session interface for testing
 type MockSession struct {
 	Handlers      []interface{}
 	SentMessages  []string
+	EditedMessages []string
 	State         *discordgo.State
 	TypingCalls   []string
 }
@@ -30,7 +33,7 @@ func (m *MockSession) AddHandler(handler interface{}) func() {
 
 func (m *MockSession) ChannelMessageSend(channelID string, content string, options ...discordgo.RequestOption) (*discordgo.Message, error) {
 	m.SentMessages = append(m.SentMessages, content)
-	return &discordgo.Message{Content: content}, nil
+	return &discordgo.Message{ID: "mock-msg-id", Content: content}, nil
 }
 
 func (m *MockSession) ChannelMessageSendComplex(channelID string, data *discordgo.MessageSend, options ...discordgo.RequestOption) (*discordgo.Message, error) {
@@ -39,6 +42,9 @@ func (m *MockSession) ChannelMessageSendComplex(channelID string, data *discordg
 }
 
 func (m *MockSession) ChannelMessageEditComplex(edit *discordgo.MessageEdit, options ...discordgo.RequestOption) (*discordgo.Message, error) {
+	if edit.Content != nil {
+		m.EditedMessages = append(m.EditedMessages, *edit.Content)
+	}
 	return &discordgo.Message{}, nil
 }
 
@@ -60,6 +66,8 @@ func (m *MockSession) GetState() *discordgo.State {
 }
 
 func TestDiscordChannel(t *testing.T) {
+	t.Parallel()
+
 	// Setup Mock
 	state := &discordgo.State{}
 	state.User = &discordgo.User{
@@ -76,22 +84,16 @@ func TestDiscordChannel(t *testing.T) {
 	}
 
 	channel, err := New(cfg)
-	if err != nil {
-		t.Fatalf("failed to create channel: %v", err)
-	}
+	require.NoError(t, err)
 
 	// Set a handler that replies
 	channel.SetHandler(func(ctx context.Context, msg *IncomingMessage) (*OutgoingMessage, error) {
-		if msg.Content != "Hello" {
-			t.Errorf("expected 'Hello', got '%s'", msg.Content)
-		}
+		assert.Equal(t, "Hello", msg.Content)
 		return &OutgoingMessage{Content: "World"}, nil
 	})
 
 	// Start (registers handler)
-	if err := channel.Start(context.Background()); err != nil {
-		t.Fatalf("failed to start: %v", err)
-	}
+	require.NoError(t, channel.Start(context.Background()))
 
 	// Retrieve registered message handler (first one registered)
 	var handlerFunc func(*discordgo.Session, *discordgo.MessageCreate)
@@ -101,9 +103,7 @@ func TestDiscordChannel(t *testing.T) {
 			break
 		}
 	}
-	if handlerFunc == nil {
-		t.Fatalf("message handler not registered or wrong type")
-	}
+	require.NotNil(t, handlerFunc, "message handler not registered or wrong type")
 
 	// Simulate incoming message
 	handlerFunc(nil, &discordgo.MessageCreate{
@@ -118,31 +118,25 @@ func TestDiscordChannel(t *testing.T) {
 		},
 	})
 
-	// Verify typing indicator was sent
-	if len(mockSession.TypingCalls) == 0 {
-		t.Error("expected typing indicator to be sent")
-	} else if mockSession.TypingCalls[0] != "chan-1" {
-		t.Errorf("expected typing on 'chan-1', got '%s'", mockSession.TypingCalls[0])
-	}
+	// Verify thinking placeholder was sent
+	require.NotEmpty(t, mockSession.SentMessages, "expected thinking placeholder to be sent")
+	assert.Equal(t, "_Thinking..._", mockSession.SentMessages[0])
 
-	// Verify response was sent
-	if len(mockSession.SentMessages) != 1 {
-		t.Errorf("expected 1 sent message, got %d", len(mockSession.SentMessages))
-	} else if mockSession.SentMessages[0] != "World" {
-		t.Errorf("expected 'World', got '%s'", mockSession.SentMessages[0])
-	}
+	// Verify response was sent via edit (placeholder replaced with response)
+	require.NotEmpty(t, mockSession.EditedMessages, "expected response via edit")
+	assert.Equal(t, "World", mockSession.EditedMessages[0])
 }
 
 func TestDiscordTypingIndicator(t *testing.T) {
+	t.Parallel()
+
 	state := &discordgo.State{}
 	state.User = &discordgo.User{ID: "bot-123", Username: "TestBot"}
 	mockSession := &MockSession{State: state}
 
 	cfg := Config{BotToken: "TEST_TOKEN", Session: mockSession}
 	channel, err := New(cfg)
-	if err != nil {
-		t.Fatalf("new channel: %v", err)
-	}
+	require.NoError(t, err)
 
 	handlerCalled := make(chan struct{})
 	channel.SetHandler(func(ctx context.Context, msg *IncomingMessage) (*OutgoingMessage, error) {
@@ -150,9 +144,7 @@ func TestDiscordTypingIndicator(t *testing.T) {
 		return &OutgoingMessage{Content: "done"}, nil
 	})
 
-	if err := channel.Start(context.Background()); err != nil {
-		t.Fatalf("start: %v", err)
-	}
+	require.NoError(t, channel.Start(context.Background()))
 
 	// Find the message handler
 	var handlerFunc func(*discordgo.Session, *discordgo.MessageCreate)
@@ -162,9 +154,7 @@ func TestDiscordTypingIndicator(t *testing.T) {
 			break
 		}
 	}
-	if handlerFunc == nil {
-		t.Fatal("message handler not registered")
-	}
+	require.NotNil(t, handlerFunc, "message handler not registered")
 
 	handlerFunc(nil, &discordgo.MessageCreate{
 		Message: &discordgo.Message{
@@ -175,18 +165,14 @@ func TestDiscordTypingIndicator(t *testing.T) {
 		},
 	})
 
-	// Typing should have been called at least once for the channel
-	if len(mockSession.TypingCalls) == 0 {
-		t.Error("expected at least one typing call")
-	}
+	// Thinking placeholder should have been posted
+	require.NotEmpty(t, mockSession.SentMessages, "expected thinking placeholder to be sent")
 	found := false
-	for _, ch := range mockSession.TypingCalls {
-		if ch == "chan-typing" {
+	for _, msg := range mockSession.SentMessages {
+		if msg == "_Thinking..._" {
 			found = true
 			break
 		}
 	}
-	if !found {
-		t.Error("expected typing call for 'chan-typing'")
-	}
+	assert.True(t, found, "expected thinking placeholder message")
 }

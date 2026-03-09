@@ -13,6 +13,7 @@ import (
 	"github.com/langoai/lango/internal/bootstrap"
 	"github.com/langoai/lango/internal/config"
 	"github.com/langoai/lango/internal/embedding"
+	"github.com/langoai/lango/internal/eventbus"
 	"github.com/langoai/lango/internal/gateway"
 	"github.com/langoai/lango/internal/knowledge"
 	"github.com/langoai/lango/internal/orchestration"
@@ -155,9 +156,6 @@ func initSecurity(cfg *config.Config, store session.Store, boot *bootstrap.Resul
 		logger().Info("security initialized (rpc provider)")
 		return provider, keys, secrets, nil
 
-	case "enclave":
-		return nil, nil, nil, fmt.Errorf("enclave provider not yet implemented")
-
 	case "aws-kms", "gcp-kms", "azure-kv", "pkcs11":
 		kmsProvider, err := security.NewKMSProvider(security.KMSProviderName(cfg.Security.Signer.Provider), cfg.Security.KMS)
 		if err != nil {
@@ -193,7 +191,10 @@ func initSecurity(cfg *config.Config, store session.Store, boot *bootstrap.Resul
 		return finalProvider, keys, secrets, nil
 
 	default:
-		return nil, nil, nil, fmt.Errorf("unknown security provider: %s", cfg.Security.Signer.Provider)
+		return nil, nil, nil, fmt.Errorf(
+			"unsupported security provider %q: valid providers are local, rpc, aws-kms, gcp-kms, azure-kv, pkcs11",
+			cfg.Security.Signer.Provider,
+		)
 	}
 }
 
@@ -242,19 +243,20 @@ func initAuth(cfg *config.Config, store session.Store) *gateway.AuthManager {
 
 // agentDeps groups the dependencies needed by initAgent to reduce parameter sprawl.
 type agentDeps struct {
-	sv      *supervisor.Supervisor
-	cfg     *config.Config
-	store   session.Store
-	tools   []*agent.Tool
-	kc      *knowledgeComponents
-	mc      *memoryComponents
-	ec      *embeddingComponents
-	gc      *graphComponents
-	scanner *agent.SecretScanner
-	sr      *skill.Registry
-	lc      *librarianComponents
-	catalog *toolcatalog.Catalog
-	p2pc    *p2pComponents
+	sv       *supervisor.Supervisor
+	cfg      *config.Config
+	store    session.Store
+	tools    []*agent.Tool
+	kc       *knowledgeComponents
+	mc       *memoryComponents
+	ec       *embeddingComponents
+	gc       *graphComponents
+	scanner  *agent.SecretScanner
+	sr       *skill.Registry
+	lc       *librarianComponents
+	catalog  *toolcatalog.Catalog
+	p2pc     *p2pComponents
+	eventBus *eventbus.Bus
 }
 
 // initAgent creates the ADK agent with the given tools and provider proxy.
@@ -297,6 +299,11 @@ func initAgent(ctx context.Context, deps *agentDeps) (*adk.Agent, error) {
 
 	proxy := supervisor.NewProviderProxy(sv, cfg.Agent.Provider, cfg.Agent.Model, proxyOpts...)
 	modelAdapter := adk.NewModelAdapter(proxy, cfg.Agent.Model)
+
+	// Wire token usage callback for observability.
+	if deps.eventBus != nil {
+		wireModelAdapterTokenUsage(modelAdapter, deps.eventBus)
+	}
 
 	// Build structured system prompt
 	builder := buildPromptBuilder(&cfg.Agent)

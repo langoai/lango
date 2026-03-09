@@ -21,7 +21,7 @@ type VectorRetrieveOptions struct {
 	Collections []string
 	Limit       int
 	SessionKey  string
-	MaxDistance  float32
+	MaxDistance float32
 }
 
 // VectorRetriever retrieves results from a vector store. Implemented by

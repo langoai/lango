@@ -5,6 +5,9 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+
 	"go.uber.org/zap"
 )
 
@@ -15,6 +18,8 @@ func newTestExecutor(t *testing.T) *Executor {
 }
 
 func TestValidateScript(t *testing.T) {
+	t.Parallel()
+
 	tests := []struct {
 		give    string
 		wantErr bool
@@ -35,22 +40,27 @@ func TestValidateScript(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.give, func(t *testing.T) {
+			t.Parallel()
+
 			err := executor.ValidateScript(tt.give)
-			if tt.wantErr && err == nil {
-				t.Errorf("ValidateScript(%q) = nil, want error", tt.give)
-			}
-			if !tt.wantErr && err != nil {
-				t.Errorf("ValidateScript(%q) = %v, want nil", tt.give, err)
+			if tt.wantErr {
+				assert.Error(t, err)
+			} else {
+				assert.NoError(t, err)
 			}
 		})
 	}
 }
 
 func TestExecute_Composite(t *testing.T) {
+	t.Parallel()
+
 	executor := newTestExecutor(t)
 	ctx := context.Background()
 
 	t.Run("normal plan returned", func(t *testing.T) {
+		t.Parallel()
+
 		sk := SkillEntry{
 			Name: "test-composite",
 			Type: "composite",
@@ -63,31 +73,21 @@ func TestExecute_Composite(t *testing.T) {
 		}
 
 		result, err := executor.Execute(ctx, sk, nil)
-		if err != nil {
-			t.Fatalf("Execute composite: %v", err)
-		}
+		require.NoError(t, err)
 
 		resultMap, ok := result.(map[string]interface{})
-		if !ok {
-			t.Fatalf("result is %T, want map[string]interface{}", result)
-		}
-		if resultMap["skill"] != "test-composite" {
-			t.Errorf("result[\"skill\"] = %v, want %q", resultMap["skill"], "test-composite")
-		}
-		if resultMap["type"] != "composite" {
-			t.Errorf("result[\"type\"] = %v, want %q", resultMap["type"], "composite")
-		}
+		require.True(t, ok, "result is %T, want map[string]interface{}", result)
+		assert.Equal(t, "test-composite", resultMap["skill"])
+		assert.Equal(t, "composite", resultMap["type"])
 
 		plan, ok := resultMap["plan"].([]map[string]interface{})
-		if !ok {
-			t.Fatalf("result[\"plan\"] is %T, want []map[string]interface{}", resultMap["plan"])
-		}
-		if len(plan) != 2 {
-			t.Fatalf("len(plan) = %d, want 2", len(plan))
-		}
+		require.True(t, ok, "result[\"plan\"] is %T, want []map[string]interface{}", resultMap["plan"])
+		assert.Len(t, plan, 2)
 	})
 
 	t.Run("missing steps key", func(t *testing.T) {
+		t.Parallel()
+
 		sk := SkillEntry{
 			Name:       "no-steps",
 			Type:       "composite",
@@ -95,15 +95,13 @@ func TestExecute_Composite(t *testing.T) {
 		}
 
 		_, err := executor.Execute(ctx, sk, nil)
-		if err == nil {
-			t.Fatal("expected error for missing steps, got nil")
-		}
-		if !strings.Contains(err.Error(), "missing 'steps'") {
-			t.Errorf("error = %q, want to contain %q", err.Error(), "missing 'steps'")
-		}
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "missing 'steps'")
 	})
 
 	t.Run("steps not array", func(t *testing.T) {
+		t.Parallel()
+
 		sk := SkillEntry{
 			Name: "bad-steps",
 			Type: "composite",
@@ -113,15 +111,13 @@ func TestExecute_Composite(t *testing.T) {
 		}
 
 		_, err := executor.Execute(ctx, sk, nil)
-		if err == nil {
-			t.Fatal("expected error for non-array steps, got nil")
-		}
-		if !strings.Contains(err.Error(), "must be an array") {
-			t.Errorf("error = %q, want to contain %q", err.Error(), "must be an array")
-		}
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "must be an array")
 	})
 
 	t.Run("step not object", func(t *testing.T) {
+		t.Parallel()
+
 		sk := SkillEntry{
 			Name: "bad-step",
 			Type: "composite",
@@ -131,20 +127,20 @@ func TestExecute_Composite(t *testing.T) {
 		}
 
 		_, err := executor.Execute(ctx, sk, nil)
-		if err == nil {
-			t.Fatal("expected error for non-object step, got nil")
-		}
-		if !strings.Contains(err.Error(), "not an object") {
-			t.Errorf("error = %q, want to contain %q", err.Error(), "not an object")
-		}
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "not an object")
 	})
 }
 
 func TestExecute_Template(t *testing.T) {
+	t.Parallel()
+
 	executor := newTestExecutor(t)
 	ctx := context.Background()
 
 	t.Run("normal rendering with params", func(t *testing.T) {
+		t.Parallel()
+
 		sk := SkillEntry{
 			Name: "greet",
 			Type: "template",
@@ -154,20 +150,16 @@ func TestExecute_Template(t *testing.T) {
 		}
 
 		result, err := executor.Execute(ctx, sk, map[string]interface{}{"Name": "World"})
-		if err != nil {
-			t.Fatalf("Execute template: %v", err)
-		}
+		require.NoError(t, err)
 
 		got, ok := result.(string)
-		if !ok {
-			t.Fatalf("result is %T, want string", result)
-		}
-		if got != "Hello World!" {
-			t.Errorf("result = %q, want %q", got, "Hello World!")
-		}
+		require.True(t, ok, "result is %T, want string", result)
+		assert.Equal(t, "Hello World!", got)
 	})
 
 	t.Run("missing template key", func(t *testing.T) {
+		t.Parallel()
+
 		sk := SkillEntry{
 			Name:       "no-tmpl",
 			Type:       "template",
@@ -175,15 +167,13 @@ func TestExecute_Template(t *testing.T) {
 		}
 
 		_, err := executor.Execute(ctx, sk, nil)
-		if err == nil {
-			t.Fatal("expected error for missing template, got nil")
-		}
-		if !strings.Contains(err.Error(), "missing 'template'") {
-			t.Errorf("error = %q, want to contain %q", err.Error(), "missing 'template'")
-		}
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "missing 'template'")
 	})
 
 	t.Run("invalid template syntax", func(t *testing.T) {
+		t.Parallel()
+
 		sk := SkillEntry{
 			Name: "bad-tmpl",
 			Type: "template",
@@ -193,20 +183,20 @@ func TestExecute_Template(t *testing.T) {
 		}
 
 		_, err := executor.Execute(ctx, sk, nil)
-		if err == nil {
-			t.Fatal("expected error for invalid template syntax, got nil")
-		}
-		if !strings.Contains(err.Error(), "parse template") {
-			t.Errorf("error = %q, want to contain %q", err.Error(), "parse template")
-		}
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "parse template")
 	})
 }
 
 func TestExecute_Script(t *testing.T) {
+	t.Parallel()
+
 	executor := newTestExecutor(t)
 	ctx := context.Background()
 
 	t.Run("safe script execution", func(t *testing.T) {
+		t.Parallel()
+
 		sk := SkillEntry{
 			Name: "echo-test",
 			Type: "script",
@@ -216,20 +206,16 @@ func TestExecute_Script(t *testing.T) {
 		}
 
 		result, err := executor.Execute(ctx, sk, nil)
-		if err != nil {
-			t.Fatalf("Execute script: %v", err)
-		}
+		require.NoError(t, err)
 
 		got, ok := result.(string)
-		if !ok {
-			t.Fatalf("result is %T, want string", result)
-		}
-		if strings.TrimSpace(got) != "hello" {
-			t.Errorf("result = %q, want %q", strings.TrimSpace(got), "hello")
-		}
+		require.True(t, ok, "result is %T, want string", result)
+		assert.Equal(t, "hello", strings.TrimSpace(got))
 	})
 
 	t.Run("dangerous script blocked", func(t *testing.T) {
+		t.Parallel()
+
 		sk := SkillEntry{
 			Name: "danger",
 			Type: "script",
@@ -239,16 +225,14 @@ func TestExecute_Script(t *testing.T) {
 		}
 
 		_, err := executor.Execute(ctx, sk, nil)
-		if err == nil {
-			t.Fatal("expected error for dangerous script, got nil")
-		}
-		if !strings.Contains(err.Error(), "dangerous pattern") {
-			t.Errorf("error = %q, want to contain %q", err.Error(), "dangerous pattern")
-		}
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "dangerous pattern")
 	})
 }
 
 func TestExecute_UnknownType(t *testing.T) {
+	t.Parallel()
+
 	executor := newTestExecutor(t)
 	ctx := context.Background()
 
@@ -259,10 +243,6 @@ func TestExecute_UnknownType(t *testing.T) {
 	}
 
 	_, err := executor.Execute(ctx, sk, nil)
-	if err == nil {
-		t.Fatal("expected error for unknown type, got nil")
-	}
-	if !strings.Contains(err.Error(), "unknown skill type") {
-		t.Errorf("error = %q, want to contain %q", err.Error(), "unknown skill type")
-	}
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "unknown skill type")
 }

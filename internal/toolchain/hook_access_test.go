@@ -3,9 +3,14 @@ package toolchain
 import (
 	"context"
 	"testing"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestAgentAccessControlHook_Pre(t *testing.T) {
+	t.Parallel()
+
 	tests := []struct {
 		give         string
 		allowedTools map[string]map[string]bool
@@ -91,6 +96,8 @@ func TestAgentAccessControlHook_Pre(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.give, func(t *testing.T) {
+			t.Parallel()
+
 			hook := &AgentAccessControlHook{
 				AllowedTools: tt.allowedTools,
 				DeniedTools:  tt.deniedTools,
@@ -102,25 +109,19 @@ func TestAgentAccessControlHook_Pre(t *testing.T) {
 				Ctx:       context.Background(),
 			})
 
-			if err != nil {
-				t.Fatalf("unexpected error: %v", err)
-			}
-			if result.Action != tt.wantAction {
-				t.Errorf("Action = %d, want %d", result.Action, tt.wantAction)
-			}
-			if tt.wantReason != "" && result.BlockReason != tt.wantReason {
-				t.Errorf("BlockReason = %q, want %q", result.BlockReason, tt.wantReason)
+			require.NoError(t, err)
+			assert.Equal(t, tt.wantAction, result.Action)
+			if tt.wantReason != "" {
+				assert.Equal(t, tt.wantReason, result.BlockReason)
 			}
 		})
 	}
 }
 
 func TestAgentAccessControlHook_Metadata(t *testing.T) {
+	t.Parallel()
+
 	hook := &AgentAccessControlHook{}
-	if hook.Name() != "agent_access_control" {
-		t.Errorf("Name() = %q, want %q", hook.Name(), "agent_access_control")
-	}
-	if hook.Priority() != 20 {
-		t.Errorf("Priority() = %d, want 20", hook.Priority())
-	}
+	assert.Equal(t, "agent_access_control", hook.Name())
+	assert.Equal(t, 20, hook.Priority())
 }

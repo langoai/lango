@@ -57,7 +57,7 @@ type Challenge struct {
 	Nonce     []byte `json:"nonce"`
 	Timestamp int64  `json:"timestamp"`
 	SenderDID string `json:"senderDid"`
-	PublicKey []byte `json:"publicKey,omitempty"`  // v1.1: initiator's public key
+	PublicKey []byte `json:"publicKey,omitempty"` // v1.1: initiator's public key
 	Signature []byte `json:"signature,omitempty"` // v1.1: ECDSA signature over canonical payload
 }
 
@@ -78,32 +78,32 @@ type SessionAck struct {
 
 // Handshaker manages peer authentication using wallet signatures or ZK proofs.
 type Handshaker struct {
-	wallet                wallet.WalletProvider
-	sessions              *SessionStore
-	approvalFn            ApprovalFunc
-	zkProver              ZKProverFunc
-	zkVerifier            ZKVerifierFunc
-	zkEnabled             bool
-	timeout               time.Duration
-	autoApproveKnown      bool
-	nonceCache            *NonceCache
+	wallet                 wallet.WalletProvider
+	sessions               *SessionStore
+	approvalFn             ApprovalFunc
+	zkProver               ZKProverFunc
+	zkVerifier             ZKVerifierFunc
+	zkEnabled              bool
+	timeout                time.Duration
+	autoApproveKnown       bool
+	nonceCache             *NonceCache
 	requireSignedChallenge bool
-	logger                *zap.SugaredLogger
+	logger                 *zap.SugaredLogger
 }
 
 // Config configures the Handshaker.
 type Config struct {
-	Wallet                wallet.WalletProvider
-	Sessions              *SessionStore
-	ApprovalFn            ApprovalFunc
-	ZKProver              ZKProverFunc
-	ZKVerifier            ZKVerifierFunc
-	ZKEnabled             bool
-	Timeout               time.Duration
-	AutoApproveKnown      bool
-	NonceCache            *NonceCache
+	Wallet                 wallet.WalletProvider
+	Sessions               *SessionStore
+	ApprovalFn             ApprovalFunc
+	ZKProver               ZKProverFunc
+	ZKVerifier             ZKVerifierFunc
+	ZKEnabled              bool
+	Timeout                time.Duration
+	AutoApproveKnown       bool
+	NonceCache             *NonceCache
 	RequireSignedChallenge bool
-	Logger                *zap.SugaredLogger
+	Logger                 *zap.SugaredLogger
 }
 
 // NewHandshaker creates a new peer authenticator.

@@ -145,7 +145,7 @@ func (a *ragServiceAdapter) Retrieve(ctx context.Context, query string, opts gra
 		Collections: opts.Collections,
 		Limit:       opts.Limit,
 		SessionKey:  opts.SessionKey,
-		MaxDistance:  opts.MaxDistance,
+		MaxDistance: opts.MaxDistance,
 	}
 
 	results, err := a.inner.Retrieve(ctx, query, embOpts)

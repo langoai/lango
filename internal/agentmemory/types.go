@@ -7,8 +7,8 @@ type MemoryScope string
 
 const (
 	ScopeInstance MemoryScope = "instance" // specific to one agent instance
-	ScopeType    MemoryScope = "type"     // shared across agents of same type
-	ScopeGlobal  MemoryScope = "global"   // shared across all agents
+	ScopeType     MemoryScope = "type"     // shared across agents of same type
+	ScopeGlobal   MemoryScope = "global"   // shared across all agents
 )
 
 // MemoryKind categorizes memory entries.

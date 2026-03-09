@@ -129,6 +129,50 @@ Lango provides a comprehensive command-line interface built with [Cobra](https:/
 | `lango p2p zkp status` | Show ZKP configuration |
 | `lango p2p zkp circuits` | List compiled ZKP circuits |
 
+### Economy
+
+| Command | Description |
+|---------|-------------|
+| `lango economy budget status` | Show budget allocation status |
+| `lango economy risk status` | Show risk assessment configuration |
+| `lango economy pricing status` | Show dynamic pricing configuration |
+| `lango economy negotiate status` | Show negotiation protocol status |
+| `lango economy escrow status` | Show escrow service status |
+
+### Smart Account
+
+| Command | Description |
+|---------|-------------|
+| `lango account info` | Show smart account configuration and status |
+| `lango account deploy` | Deploy a new Safe smart account with ERC-7579 adapter |
+| `lango account session list` | List active session keys |
+| `lango account session create` | Create a new session key |
+| `lango account session revoke` | Revoke a session key or all session keys |
+| `lango account module list` | List registered ERC-7579 modules |
+| `lango account module install` | Install an ERC-7579 module |
+| `lango account policy show` | Show current harness policy configuration |
+| `lango account policy set` | Set harness policy limits |
+| `lango account paymaster status` | Show paymaster configuration and approval status |
+| `lango account paymaster approve` | Approve USDC spending for the paymaster |
+
+### Contract
+
+| Command | Description |
+|---------|-------------|
+| `lango contract read` | Call a view/pure smart contract method |
+| `lango contract call` | Execute a state-changing contract method |
+| `lango contract abi load` | Load and cache a contract ABI |
+
+### Metrics
+
+| Command | Description |
+|---------|-------------|
+| `lango metrics` | Show system metrics snapshot |
+| `lango metrics sessions` | Show per-session token usage |
+| `lango metrics tools` | Show per-tool metrics |
+| `lango metrics agents` | Show per-agent metrics |
+| `lango metrics history` | Show historical metrics |
+
 ### Automation
 
 | Command | Description |

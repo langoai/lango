@@ -2,7 +2,9 @@ package telegram
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	"strings"
 	"sync"
@@ -199,20 +201,40 @@ func (c *Channel) handleUpdate(ctx context.Context, update tgbotapi.Update) {
 		"userId", incoming.UserID,
 	)
 
-	// Show typing indicator while processing
-	stopThinking := c.startTyping(incoming.ChatID)
+	// Post a "Thinking..." placeholder and start progress updates.
+	thinkingMsg, thinkingErr := c.postThinking(incoming.ChatID)
+	var stopProgress func()
+	if thinkingErr == nil {
+		stopProgress = c.startProgressUpdates(incoming.ChatID, thinkingMsg.MessageID)
+	} else {
+		// Fall back to typing indicator if posting failed.
+		stopFallback := c.startTyping(incoming.ChatID)
+		stopProgress = stopFallback
+	}
+
 	response, err := c.handler(ctx, incoming)
-	stopThinking()
+	stopProgress()
 
 	if err != nil {
 		logger().Errorw("handler error", "error", err)
-		c.sendError(incoming.ChatID, msg.MessageID, err)
+		// Update placeholder with error message if possible.
+		if thinkingErr == nil {
+			errText := fmt.Sprintf("❌ %s", formatChannelError(err))
+			c.editMessage(incoming.ChatID, thinkingMsg.MessageID, errText)
+		} else {
+			c.sendError(incoming.ChatID, msg.MessageID, err)
+		}
 		return
 	}
 
 	if response != nil && response.Text != "" {
-		if err := c.Send(incoming.ChatID, response); err != nil {
-			logger().Errorw("send error", "error", err)
+		// Replace placeholder with actual response.
+		if thinkingErr == nil {
+			c.editMessage(incoming.ChatID, thinkingMsg.MessageID, response.Text)
+		} else {
+			if err := c.Send(incoming.ChatID, response); err != nil {
+				logger().Errorw("send error", "error", err)
+			}
 		}
 	}
 }
@@ -269,6 +291,56 @@ func (c *Channel) startTyping(chatID int64) func() {
 			case <-ticker.C:
 				if _, err := c.bot.Request(action); err != nil {
 					logger().Warnw("typing indicator refresh error", "error", err)
+				}
+			}
+		}
+	}()
+
+	return func() { once.Do(func() { close(done) }) }
+}
+
+// postThinking sends a "Thinking..." placeholder message and returns the sent message.
+func (c *Channel) postThinking(chatID int64) (tgbotapi.Message, error) {
+	msg := tgbotapi.NewMessage(chatID, "_Thinking..._")
+	msg.ParseMode = "Markdown"
+	return c.bot.Send(msg)
+}
+
+// editMessage edits an existing message with new text.
+func (c *Channel) editMessage(chatID int64, messageID int, text string) {
+	formatted := FormatMarkdown(text)
+	edit := tgbotapi.NewEditMessageText(chatID, messageID, formatted)
+	edit.ParseMode = "Markdown"
+	if _, err := c.bot.Send(edit); err != nil {
+		// Retry as plain text if Markdown fails.
+		plainEdit := tgbotapi.NewEditMessageText(chatID, messageID, text)
+		if _, retryErr := c.bot.Send(plainEdit); retryErr != nil {
+			logger().Warnw("edit message failed", "error", retryErr)
+		}
+	}
+}
+
+// startProgressUpdates periodically edits the thinking placeholder with elapsed time.
+// Returns a stop function that must be called before the placeholder is replaced.
+func (c *Channel) startProgressUpdates(chatID int64, messageID int) func() {
+	start := time.Now()
+	done := make(chan struct{})
+	var once sync.Once
+
+	go func() {
+		ticker := time.NewTicker(15 * time.Second)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-done:
+				return
+			case <-ticker.C:
+				elapsed := time.Since(start).Truncate(time.Second)
+				text := fmt.Sprintf("_Thinking... (%s)_", elapsed)
+				edit := tgbotapi.NewEditMessageText(chatID, messageID, text)
+				edit.ParseMode = "Markdown"
+				if _, err := c.bot.Send(edit); err != nil {
+					logger().Warnw("progress update error", "error", err)
 				}
 			}
 		}
@@ -374,13 +446,29 @@ func (c *Channel) splitMessage(text string, maxLen int) []string {
 	return chunks
 }
 
-// sendError sends an error message
+// sendError sends an error message with user-friendly formatting.
 func (c *Channel) sendError(chatID int64, replyTo int, err error) {
 	_ = c.Send(chatID, &OutgoingMessage{
-		Text:      fmt.Sprintf("❌ Error: %s", err.Error()),
+		Text:      fmt.Sprintf("❌ %s", formatChannelError(err)),
 		ReplyToID: replyTo,
 	})
 }
+
+// formatChannelError returns a user-friendly error message.
+// If the error implements UserMessage(), that is used; otherwise falls back to Error().
+func formatChannelError(err error) string {
+	type userMessager interface {
+		UserMessage() string
+	}
+	var um userMessager
+	if errors.As(err, &um) {
+		return um.UserMessage()
+	}
+	return fmt.Sprintf("Error: %s", err.Error())
+}
+
+// downloadTimeout is the maximum time allowed for downloading a file.
+const downloadTimeout = 30 * time.Second
 
 // DownloadFile downloads a file by file ID
 func (c *Channel) DownloadFile(fileID string) ([]byte, error) {
@@ -389,11 +477,41 @@ func (c *Channel) DownloadFile(fileID string) ([]byte, error) {
 		return nil, fmt.Errorf("get file: %w", err)
 	}
 
-	url := file.Link(c.config.BotToken)
-	_ = url // Would download from URL
+	fileURL := file.Link(c.config.BotToken)
 
-	// Note: actual download implementation would fetch from url
-	return nil, fmt.Errorf("download not implemented")
+	ctx, cancel := context.WithTimeout(context.Background(), downloadTimeout)
+	defer cancel()
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, fileURL, nil)
+	if err != nil {
+		return nil, fmt.Errorf("create download request: %w", err)
+	}
+
+	client := c.config.HTTPClient
+	if client == nil {
+		client = http.DefaultClient
+	}
+
+	resp, err := client.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("download file: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("download file: HTTP %d", resp.StatusCode)
+	}
+
+	data, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("read file body: %w", err)
+	}
+
+	if len(data) == 0 {
+		return nil, fmt.Errorf("download file: empty response body")
+	}
+
+	return data, nil
 }
 
 // isAllowed checks if a user/chat is allowed

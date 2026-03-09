@@ -56,7 +56,9 @@ LLM agent settings including model selection, prompt configuration, and timeouts
     "requestTimeout": "5m",
     "toolTimeout": "2m",
     "multiAgent": false,
-    "agentsDir": ""
+    "agentsDir": "",
+    "autoExtendTimeout": false,
+    "maxRequestTimeout": ""
   }
 }
 ```
@@ -75,6 +77,8 @@ LLM agent settings including model selection, prompt configuration, and timeouts
 | `agent.toolTimeout` | `duration` | `2m` | Maximum duration for a single tool call |
 | `agent.multiAgent` | `bool` | `false` | Enable [multi-agent orchestration](features/multi-agent.md) |
 | `agent.agentsDir` | `string` | `""` | Directory containing user-defined [AGENT.md](features/multi-agent.md#custom-agent-definitions) agent definitions |
+| `agent.autoExtendTimeout` | `bool` | `false` | Auto-extend deadline when agent activity is detected |
+| `agent.maxRequestTimeout` | `duration` | | Absolute max when auto-extend enabled (default: 3× requestTimeout) |
 
 ---
 
@@ -720,6 +724,211 @@ Each firewall rule entry:
 | `p2p.toolIsolation.container.cpuQuotaUs` | `int` | `0` | Docker CPU quota in microseconds (0 = unlimited) |
 | `p2p.toolIsolation.container.poolSize` | `int` | `0` | Pre-warmed containers in pool (0 = disabled) |
 | `p2p.toolIsolation.container.poolIdleTimeout` | `duration` | `5m` | Idle timeout before pool containers are recycled |
+
+---
+
+## Economy
+
+!!! warning "Experimental"
+    The P2P economy layer is experimental. See [P2P Economy](features/economy.md).
+
+> **Settings:** `lango settings` → Economy
+
+```json
+{
+  "economy": {
+    "enabled": false,
+    "budget": {
+      "defaultMax": "10.00",
+      "alertThresholds": [0.5, 0.8, 0.95],
+      "hardLimit": true
+    },
+    "risk": {
+      "escrowThreshold": "5.00",
+      "highTrustScore": 0.8,
+      "mediumTrustScore": 0.5
+    },
+    "negotiate": {
+      "enabled": false,
+      "maxRounds": 5,
+      "timeout": "5m",
+      "autoNegotiate": false,
+      "maxDiscount": 0.2
+    },
+    "escrow": {
+      "enabled": false,
+      "defaultTimeout": "24h",
+      "maxMilestones": 10,
+      "autoRelease": false,
+      "disputeWindow": "1h",
+      "settlement": {
+        "receiptTimeout": "2m",
+        "maxRetries": 3
+      },
+      "onChain": {
+        "enabled": false,
+        "mode": "hub",
+        "hubAddress": "",
+        "vaultFactoryAddress": "",
+        "vaultImplementation": "",
+        "arbitratorAddress": "",
+        "tokenAddress": "",
+        "pollInterval": "15s"
+      }
+    },
+    "pricing": {
+      "enabled": false,
+      "trustDiscount": 0.1,
+      "volumeDiscount": 0.05,
+      "minPrice": "0.01"
+    }
+  }
+}
+```
+
+| Key | Type | Default | Description |
+|-----|------|---------|-------------|
+| `economy.enabled` | `bool` | `false` | Enable the P2P economy layer |
+| `economy.budget.defaultMax` | `string` | `10.00` | Default maximum budget per task in USDC |
+| `economy.budget.alertThresholds` | `[]float64` | `[0.5, 0.8, 0.95]` | Budget usage percentages that trigger alerts |
+| `economy.budget.hardLimit` | `bool` | `true` | Enforce budget as a hard cap (reject overspend) |
+| `economy.risk.escrowThreshold` | `string` | `5.00` | USDC amount above which escrow is forced |
+| `economy.risk.highTrustScore` | `float64` | `0.8` | Minimum trust score for DirectPay strategy |
+| `economy.risk.mediumTrustScore` | `float64` | `0.5` | Minimum trust score for non-ZK strategies |
+| `economy.negotiate.enabled` | `bool` | `false` | Enable P2P negotiation protocol |
+| `economy.negotiate.maxRounds` | `int` | `5` | Maximum counter-offers per negotiation |
+| `economy.negotiate.timeout` | `duration` | `5m` | Negotiation session timeout |
+| `economy.negotiate.autoNegotiate` | `bool` | `false` | Auto-generate counter-offers |
+| `economy.negotiate.maxDiscount` | `float64` | `0.2` | Maximum discount for auto-negotiation (0-1) |
+| `economy.escrow.enabled` | `bool` | `false` | Enable milestone-based escrow |
+| `economy.escrow.defaultTimeout` | `duration` | `24h` | Escrow expiration timeout |
+| `economy.escrow.maxMilestones` | `int` | `10` | Maximum milestones per escrow |
+| `economy.escrow.autoRelease` | `bool` | `false` | Auto-release funds when all milestones met |
+| `economy.escrow.disputeWindow` | `duration` | `1h` | Time window for disputes after completion |
+| `economy.escrow.settlement.receiptTimeout` | `duration` | `2m` | Max wait for on-chain receipt confirmation |
+| `economy.escrow.settlement.maxRetries` | `int` | `3` | Max transaction submission retries |
+| `economy.escrow.onChain.enabled` | `bool` | `false` | Enable on-chain escrow mode |
+| `economy.escrow.onChain.mode` | `string` | `hub` | On-chain escrow pattern: `hub` or `vault` |
+| `economy.escrow.onChain.hubAddress` | `string` | | Deployed LangoEscrowHub contract address |
+| `economy.escrow.onChain.vaultFactoryAddress` | `string` | | Deployed LangoVaultFactory contract address |
+| `economy.escrow.onChain.vaultImplementation` | `string` | | LangoVault implementation address for cloning |
+| `economy.escrow.onChain.arbitratorAddress` | `string` | | Dispute arbitrator address |
+| `economy.escrow.onChain.tokenAddress` | `string` | | ERC-20 token (USDC) contract address |
+| `economy.escrow.onChain.pollInterval` | `duration` | `15s` | Event monitor polling interval |
+| `economy.pricing.enabled` | `bool` | `false` | Enable dynamic pricing adjustments |
+| `economy.pricing.trustDiscount` | `float64` | `0.1` | Max discount for high-trust peers (0-1) |
+| `economy.pricing.volumeDiscount` | `float64` | `0.05` | Max discount for high-volume peers (0-1) |
+| `economy.pricing.minPrice` | `string` | `0.01` | Minimum price floor in USDC |
+
+---
+
+## Smart Account
+
+!!! warning "Experimental"
+    Smart Account support is experimental. See [Smart Accounts](features/smart-accounts.md).
+
+> **Settings:** `lango settings` → Smart Account / SA Session Keys / SA Paymaster / SA Modules
+
+```json
+{
+  "smartAccount": {
+    "enabled": false,
+    "factoryAddress": "",
+    "entryPointAddress": "",
+    "safe7579Address": "",
+    "fallbackHandler": "",
+    "bundlerURL": "",
+    "session": {
+      "maxDuration": "24h",
+      "defaultGasLimit": 500000,
+      "maxActiveKeys": 10
+    },
+    "paymaster": {
+      "enabled": false,
+      "provider": "circle",
+      "rpcURL": "",
+      "tokenAddress": "",
+      "paymasterAddress": "",
+      "policyId": "",
+      "fallbackMode": "abort"
+    },
+    "modules": {
+      "sessionValidatorAddress": "",
+      "spendingHookAddress": "",
+      "escrowExecutorAddress": ""
+    }
+  }
+}
+```
+
+| Key | Type | Default | Description |
+|-----|------|---------|-------------|
+| `smartAccount.enabled` | `bool` | `false` | Enable ERC-7579 smart account subsystem |
+| `smartAccount.factoryAddress` | `string` | | Safe factory contract address |
+| `smartAccount.entryPointAddress` | `string` | | ERC-4337 EntryPoint contract address |
+| `smartAccount.safe7579Address` | `string` | | Safe7579 adapter contract address |
+| `smartAccount.fallbackHandler` | `string` | | Safe fallback handler contract address |
+| `smartAccount.bundlerURL` | `string` | | ERC-4337 bundler RPC endpoint URL |
+| `smartAccount.session.maxDuration` | `duration` | `24h` | Maximum allowed session key duration |
+| `smartAccount.session.defaultGasLimit` | `uint64` | `500000` | Default gas limit for session key operations |
+| `smartAccount.session.maxActiveKeys` | `int` | `10` | Maximum number of active session keys |
+| `smartAccount.paymaster.enabled` | `bool` | `false` | Enable paymaster for gasless transactions |
+| `smartAccount.paymaster.provider` | `string` | `circle` | Paymaster provider (`circle`, `pimlico`, `alchemy`) |
+| `smartAccount.paymaster.rpcURL` | `string` | | Paymaster provider RPC endpoint |
+| `smartAccount.paymaster.tokenAddress` | `string` | | USDC token contract address |
+| `smartAccount.paymaster.paymasterAddress` | `string` | | Paymaster contract address |
+| `smartAccount.paymaster.policyId` | `string` | | Provider-specific policy ID (optional) |
+| `smartAccount.paymaster.fallbackMode` | `string` | `abort` | Behavior when paymaster fails (`abort`, `direct`) |
+| `smartAccount.modules.sessionValidatorAddress` | `string` | | LangoSessionValidator module contract address |
+| `smartAccount.modules.spendingHookAddress` | `string` | | LangoSpendingHook module contract address |
+| `smartAccount.modules.escrowExecutorAddress` | `string` | | LangoEscrowExecutor module contract address |
+
+---
+
+## Observability
+
+!!! warning "Experimental"
+    The observability system is experimental. See [Observability](features/observability.md).
+
+> **Settings:** `lango settings` → Observability
+
+```json
+{
+  "observability": {
+    "enabled": false,
+    "tokens": {
+      "enabled": true,
+      "persistHistory": false,
+      "retentionDays": 30
+    },
+    "health": {
+      "enabled": true,
+      "interval": "30s"
+    },
+    "audit": {
+      "enabled": false,
+      "retentionDays": 90
+    },
+    "metrics": {
+      "enabled": true,
+      "format": "json"
+    }
+  }
+}
+```
+
+| Key | Type | Default | Description |
+|-----|------|---------|-------------|
+| `observability.enabled` | `bool` | `false` | Enable the observability subsystem |
+| `observability.tokens.enabled` | `bool` | `true` | Enable token usage tracking |
+| `observability.tokens.persistHistory` | `bool` | `false` | Persist token usage to database |
+| `observability.tokens.retentionDays` | `int` | `30` | Days to retain token usage records |
+| `observability.health.enabled` | `bool` | `true` | Enable health check monitoring |
+| `observability.health.interval` | `duration` | `30s` | Health check probe interval |
+| `observability.audit.enabled` | `bool` | `false` | Enable audit logging |
+| `observability.audit.retentionDays` | `int` | `90` | Days to retain audit records |
+| `observability.metrics.enabled` | `bool` | `true` | Enable metrics export endpoint |
+| `observability.metrics.format` | `string` | `json` | Metrics export format (`json`, `prometheus`) |
 
 ---
 

@@ -8,6 +8,8 @@ import (
 
 	"github.com/bwmarrin/discordgo"
 	"github.com/langoai/lango/internal/approval"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 // MockApprovalSession extends MockSession with InteractionRespond and ChannelMessageEditComplex tracking.
@@ -45,6 +47,8 @@ func (m *MockApprovalSession) ChannelMessageSendComplex(channelID string, data *
 }
 
 func TestDiscordApprovalProvider_CanHandle(t *testing.T) {
+	t.Parallel()
+
 	tests := []struct {
 		give string
 		want bool
@@ -63,14 +67,16 @@ func TestDiscordApprovalProvider_CanHandle(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.give, func(t *testing.T) {
-			if got := p.CanHandle(tt.give); got != tt.want {
-				t.Errorf("CanHandle(%q) = %v, want %v", tt.give, got, tt.want)
-			}
+			t.Parallel()
+
+			assert.Equal(t, tt.want, p.CanHandle(tt.give))
 		})
 	}
 }
 
 func TestDiscordApprovalProvider_Approve(t *testing.T) {
+	t.Parallel()
+
 	state := &discordgo.State{}
 	state.User = &discordgo.User{ID: "bot-1"}
 	sess := &MockApprovalSession{MockSession: MockSession{State: state}}
@@ -106,18 +112,16 @@ func TestDiscordApprovalProvider_Approve(t *testing.T) {
 
 	select {
 	case <-done:
-		if err != nil {
-			t.Fatalf("unexpected error: %v", err)
-		}
-		if !resp.Approved {
-			t.Error("expected approved=true")
-		}
+		require.NoError(t, err)
+		assert.True(t, resp.Approved)
 	case <-time.After(2 * time.Second):
 		t.Fatal("timeout")
 	}
 }
 
 func TestDiscordApprovalProvider_Deny(t *testing.T) {
+	t.Parallel()
+
 	state := &discordgo.State{}
 	state.User = &discordgo.User{ID: "bot-1"}
 	sess := &MockApprovalSession{MockSession: MockSession{State: state}}
@@ -152,18 +156,16 @@ func TestDiscordApprovalProvider_Deny(t *testing.T) {
 
 	select {
 	case <-done:
-		if err != nil {
-			t.Fatalf("unexpected error: %v", err)
-		}
-		if resp.Approved {
-			t.Error("expected approved=false")
-		}
+		require.NoError(t, err)
+		assert.False(t, resp.Approved)
 	case <-time.After(2 * time.Second):
 		t.Fatal("timeout")
 	}
 }
 
 func TestDiscordApprovalProvider_Timeout(t *testing.T) {
+	t.Parallel()
+
 	state := &discordgo.State{}
 	state.User = &discordgo.User{ID: "bot-1"}
 	sess := &MockApprovalSession{MockSession: MockSession{State: state}}
@@ -177,23 +179,19 @@ func TestDiscordApprovalProvider_Timeout(t *testing.T) {
 	}
 
 	resp, err := p.RequestApproval(context.Background(), req)
-	if err == nil {
-		t.Fatal("expected timeout error")
-	}
-	if resp.Approved {
-		t.Error("expected approved=false on timeout")
-	}
+	require.Error(t, err)
+	assert.False(t, resp.Approved)
 
 	// Verify ChannelMessageEditComplex was called on timeout
 	sess.mu.Lock()
 	editCount := len(sess.EditedMessages)
 	sess.mu.Unlock()
-	if editCount == 0 {
-		t.Error("expected ChannelMessageEditComplex to be called on timeout")
-	}
+	assert.NotZero(t, editCount, "expected ChannelMessageEditComplex to be called on timeout")
 }
 
 func TestDiscordApprovalProvider_ContextCancellation(t *testing.T) {
+	t.Parallel()
+
 	state := &discordgo.State{}
 	state.User = &discordgo.User{ID: "bot-1"}
 	sess := &MockApprovalSession{MockSession: MockSession{State: state}}
@@ -221,16 +219,12 @@ func TestDiscordApprovalProvider_ContextCancellation(t *testing.T) {
 
 	select {
 	case <-done:
-		if err == nil {
-			t.Fatal("expected context cancelled error")
-		}
+		require.Error(t, err)
 		// Verify expired message was edited
 		sess.mu.Lock()
 		editCount := len(sess.EditedMessages)
 		sess.mu.Unlock()
-		if editCount == 0 {
-			t.Error("expected ChannelMessageEditComplex to be called on context cancellation")
-		}
+		assert.NotZero(t, editCount, "expected ChannelMessageEditComplex to be called on context cancellation")
 	case <-time.After(2 * time.Second):
 		t.Fatal("timeout waiting for cancellation")
 	}

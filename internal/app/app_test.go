@@ -6,6 +6,7 @@ import (
 
 	"github.com/langoai/lango/internal/bootstrap"
 	"github.com/langoai/lango/internal/config"
+	"github.com/stretchr/testify/require"
 )
 
 // testBoot creates a minimal bootstrap.Result for testing.
@@ -30,18 +31,10 @@ func TestNew_MinimalConfig(t *testing.T) {
 	}
 
 	app, err := New(testBoot(t, cfg))
-	if err != nil {
-		t.Fatalf("New() returned error: %v", err)
-	}
-	if app.Agent == nil {
-		t.Fatal("expected agent to be initialized")
-	}
-	if app.Gateway == nil {
-		t.Fatal("expected gateway to be initialized")
-	}
-	if app.Store == nil {
-		t.Fatal("expected store to be initialized")
-	}
+	require.NoError(t, err)
+	require.NotNil(t, app.Agent, "expected agent to be initialized")
+	require.NotNil(t, app.Gateway, "expected gateway to be initialized")
+	require.NotNil(t, app.Store, "expected store to be initialized")
 }
 
 func TestNew_SecurityDisabledByDefault(t *testing.T) {
@@ -58,9 +51,7 @@ func TestNew_SecurityDisabledByDefault(t *testing.T) {
 
 	// Security is not configured — should not block startup
 	_, err := New(testBoot(t, cfg))
-	if err != nil {
-		t.Fatalf("New() should succeed without security config, got: %v", err)
-	}
+	require.NoError(t, err, "New() should succeed without security config")
 }
 
 func TestNew_NoProviders(t *testing.T) {
@@ -68,9 +59,7 @@ func TestNew_NoProviders(t *testing.T) {
 	cfg.Providers = nil
 	cfg.Session.DatabasePath = filepath.Join(t.TempDir(), "test.db")
 	_, err := New(testBoot(t, cfg))
-	if err == nil {
-		t.Fatal("expected error when no providers configured")
-	}
+	require.Error(t, err, "expected error when no providers configured")
 }
 
 func TestNew_InvalidProviderType(t *testing.T) {
@@ -80,7 +69,5 @@ func TestNew_InvalidProviderType(t *testing.T) {
 	}
 	cfg.Session.DatabasePath = filepath.Join(t.TempDir(), "test.db")
 	_, err := New(testBoot(t, cfg))
-	if err == nil {
-		t.Fatal("expected error for invalid provider type")
-	}
+	require.Error(t, err, "expected error for invalid provider type")
 }

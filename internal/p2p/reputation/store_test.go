@@ -7,6 +7,8 @@ import (
 )
 
 func TestCalculateScore(t *testing.T) {
+	t.Parallel()
+
 	tests := []struct {
 		give      string
 		successes int
@@ -67,6 +69,7 @@ func TestCalculateScore(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.give, func(t *testing.T) {
+			t.Parallel()
 			got := CalculateScore(tt.successes, tt.failures, tt.timeouts)
 			assert.InDelta(t, tt.want, got, 1e-9)
 		})
@@ -74,6 +77,8 @@ func TestCalculateScore(t *testing.T) {
 }
 
 func TestCalculateScore_Progression(t *testing.T) {
+	t.Parallel()
+
 	// Score should monotonically increase as successes grow with no failures.
 	var prev float64
 	for i := 1; i <= 100; i++ {
@@ -88,6 +93,8 @@ func TestCalculateScore_Progression(t *testing.T) {
 }
 
 func TestCalculateScore_FailurePenalty(t *testing.T) {
+	t.Parallel()
+
 	// Failures should penalize more heavily than timeouts.
 	scoreWithFailure := CalculateScore(5, 1, 0)
 	scoreWithTimeout := CalculateScore(5, 0, 1)

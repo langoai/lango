@@ -6,8 +6,8 @@ import (
 
 func TestCAIP2Network(t *testing.T) {
 	tests := []struct {
-		give    int64
-		want    string
+		give int64
+		want string
 	}{
 		{give: 1, want: "eip155:1"},
 		{give: 8453, want: "eip155:8453"},

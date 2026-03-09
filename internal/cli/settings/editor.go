@@ -328,6 +328,22 @@ func (e *Editor) handleMenuSelection(id string) tea.Cmd {
 		e.activeForm = NewWorkflowForm(e.state.Current)
 		e.activeForm.Focus = true
 		e.step = StepForm
+	case "smartaccount":
+		e.activeForm = NewSmartAccountForm(e.state.Current)
+		e.activeForm.Focus = true
+		e.step = StepForm
+	case "smartaccount_session":
+		e.activeForm = NewSmartAccountSessionForm(e.state.Current)
+		e.activeForm.Focus = true
+		e.step = StepForm
+	case "smartaccount_paymaster":
+		e.activeForm = NewSmartAccountPaymasterForm(e.state.Current)
+		e.activeForm.Focus = true
+		e.step = StepForm
+	case "smartaccount_modules":
+		e.activeForm = NewSmartAccountModulesForm(e.state.Current)
+		e.activeForm.Focus = true
+		e.step = StepForm
 	case "mcp":
 		e.activeForm = NewMCPForm(e.state.Current)
 		e.activeForm.Focus = true
@@ -345,6 +361,34 @@ func (e *Editor) handleMenuSelection(id string) tea.Cmd {
 		e.step = StepForm
 	case "librarian":
 		e.activeForm = NewLibrarianForm(e.state.Current)
+		e.activeForm.Focus = true
+		e.step = StepForm
+	case "economy":
+		e.activeForm = NewEconomyForm(e.state.Current)
+		e.activeForm.Focus = true
+		e.step = StepForm
+	case "economy_risk":
+		e.activeForm = NewEconomyRiskForm(e.state.Current)
+		e.activeForm.Focus = true
+		e.step = StepForm
+	case "economy_negotiation":
+		e.activeForm = NewEconomyNegotiationForm(e.state.Current)
+		e.activeForm.Focus = true
+		e.step = StepForm
+	case "economy_escrow":
+		e.activeForm = NewEconomyEscrowForm(e.state.Current)
+		e.activeForm.Focus = true
+		e.step = StepForm
+	case "economy_escrow_onchain":
+		e.activeForm = NewEconomyEscrowOnChainForm(e.state.Current)
+		e.activeForm.Focus = true
+		e.step = StepForm
+	case "economy_pricing":
+		e.activeForm = NewEconomyPricingForm(e.state.Current)
+		e.activeForm.Focus = true
+		e.step = StepForm
+	case "observability":
+		e.activeForm = NewObservabilityForm(e.state.Current)
 		e.activeForm.Focus = true
 		e.step = StepForm
 	case "p2p":

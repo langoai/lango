@@ -20,6 +20,8 @@ type Tx struct {
 	CronJob *CronJobClient
 	// CronJobHistory is the client for interacting with the CronJobHistory builders.
 	CronJobHistory *CronJobHistoryClient
+	// EscrowDeal is the client for interacting with the EscrowDeal builders.
+	EscrowDeal *EscrowDealClient
 	// ExternalRef is the client for interacting with the ExternalRef builders.
 	ExternalRef *ExternalRefClient
 	// Inquiry is the client for interacting with the Inquiry builders.
@@ -44,6 +46,8 @@ type Tx struct {
 	Secret *SecretClient
 	// Session is the client for interacting with the Session builders.
 	Session *SessionClient
+	// TokenUsage is the client for interacting with the TokenUsage builders.
+	TokenUsage *TokenUsageClient
 	// WorkflowRun is the client for interacting with the WorkflowRun builders.
 	WorkflowRun *WorkflowRunClient
 	// WorkflowStepRun is the client for interacting with the WorkflowStepRun builders.
@@ -183,6 +187,7 @@ func (tx *Tx) init() {
 	tx.ConfigProfile = NewConfigProfileClient(tx.config)
 	tx.CronJob = NewCronJobClient(tx.config)
 	tx.CronJobHistory = NewCronJobHistoryClient(tx.config)
+	tx.EscrowDeal = NewEscrowDealClient(tx.config)
 	tx.ExternalRef = NewExternalRefClient(tx.config)
 	tx.Inquiry = NewInquiryClient(tx.config)
 	tx.Key = NewKeyClient(tx.config)
@@ -195,6 +200,7 @@ func (tx *Tx) init() {
 	tx.Reflection = NewReflectionClient(tx.config)
 	tx.Secret = NewSecretClient(tx.config)
 	tx.Session = NewSessionClient(tx.config)
+	tx.TokenUsage = NewTokenUsageClient(tx.config)
 	tx.WorkflowRun = NewWorkflowRunClient(tx.config)
 	tx.WorkflowStepRun = NewWorkflowStepRunClient(tx.config)
 }

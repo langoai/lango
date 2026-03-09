@@ -2,66 +2,57 @@ package skill
 
 import (
 	"testing"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestBuildCompositeSkill(t *testing.T) {
+	t.Parallel()
+
 	t.Run("basic fields and steps conversion", func(t *testing.T) {
+		t.Parallel()
+
 		steps := []SkillStep{
 			{Tool: "read", Params: map[string]interface{}{"path": "/tmp"}},
 			{Tool: "write", Params: map[string]interface{}{"path": "/out"}},
 		}
 		got := BuildCompositeSkill("my-skill", "does things", steps, nil)
 
-		if got.Name != "my-skill" {
-			t.Errorf("Name = %q, want %q", got.Name, "my-skill")
-		}
-		if got.Description != "does things" {
-			t.Errorf("Description = %q, want %q", got.Description, "does things")
-		}
-		if got.Type != "composite" {
-			t.Errorf("Type = %q, want %q", got.Type, "composite")
-		}
-		if !got.RequiresApproval {
-			t.Error("RequiresApproval = false, want true")
-		}
+		assert.Equal(t, "my-skill", got.Name)
+		assert.Equal(t, "does things", got.Description)
+		assert.Equal(t, SkillTypeComposite, got.Type)
+		assert.True(t, got.RequiresApproval)
 
 		stepDefs, ok := got.Definition["steps"].([]interface{})
-		if !ok {
-			t.Fatalf("Definition[\"steps\"] is %T, want []interface{}", got.Definition["steps"])
-		}
-		if len(stepDefs) != 2 {
-			t.Fatalf("len(steps) = %d, want 2", len(stepDefs))
-		}
+		require.True(t, ok, "Definition[\"steps\"] is %T, want []interface{}", got.Definition["steps"])
+		require.Len(t, stepDefs, 2)
 
 		first, ok := stepDefs[0].(map[string]interface{})
-		if !ok {
-			t.Fatalf("stepDefs[0] is %T, want map[string]interface{}", stepDefs[0])
-		}
-		if first["tool"] != "read" {
-			t.Errorf("stepDefs[0][\"tool\"] = %v, want %q", first["tool"], "read")
-		}
+		require.True(t, ok, "stepDefs[0] is %T, want map[string]interface{}", stepDefs[0])
+		assert.Equal(t, "read", first["tool"])
 	})
 
 	t.Run("nil params leaves Parameters nil", func(t *testing.T) {
+		t.Parallel()
+
 		got := BuildCompositeSkill("s", "d", nil, nil)
-		if got.Parameters != nil {
-			t.Errorf("Parameters = %v, want nil", got.Parameters)
-		}
+		assert.Nil(t, got.Parameters)
 	})
 
 	t.Run("non-nil params sets Parameters", func(t *testing.T) {
+		t.Parallel()
+
 		params := map[string]interface{}{"key": "value"}
 		got := BuildCompositeSkill("s", "d", nil, params)
-		if got.Parameters == nil {
-			t.Fatal("Parameters is nil, want non-nil")
-		}
-		if got.Parameters["key"] != "value" {
-			t.Errorf("Parameters[\"key\"] = %v, want %q", got.Parameters["key"], "value")
-		}
+		require.NotNil(t, got.Parameters)
+		assert.Equal(t, "value", got.Parameters["key"])
 	})
 }
 
 func TestBuildScriptSkill(t *testing.T) {
+	t.Parallel()
+
 	tests := []struct {
 		give       string
 		giveScript string
@@ -81,34 +72,29 @@ func TestBuildScriptSkill(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.give, func(t *testing.T) {
+			t.Parallel()
+
 			got := BuildScriptSkill("run", "runs script", tt.giveScript, tt.giveParams)
 
-			if got.Type != "script" {
-				t.Errorf("Type = %q, want %q", got.Type, "script")
-			}
-			if !got.RequiresApproval {
-				t.Error("RequiresApproval = false, want true")
-			}
+			assert.Equal(t, SkillTypeScript, got.Type)
+			assert.True(t, got.RequiresApproval)
 
 			script, ok := got.Definition["script"].(string)
-			if !ok {
-				t.Fatalf("Definition[\"script\"] is %T, want string", got.Definition["script"])
-			}
-			if script != tt.giveScript {
-				t.Errorf("Definition[\"script\"] = %q, want %q", script, tt.giveScript)
-			}
+			require.True(t, ok, "Definition[\"script\"] is %T, want string", got.Definition["script"])
+			assert.Equal(t, tt.giveScript, script)
 
-			if tt.giveParams != nil && got.Parameters == nil {
-				t.Error("Parameters is nil, want non-nil")
-			}
-			if tt.giveParams == nil && got.Parameters != nil {
-				t.Errorf("Parameters = %v, want nil", got.Parameters)
+			if tt.giveParams != nil {
+				assert.NotNil(t, got.Parameters)
+			} else {
+				assert.Nil(t, got.Parameters)
 			}
 		})
 	}
 }
 
 func TestBuildTemplateSkill(t *testing.T) {
+	t.Parallel()
+
 	tests := []struct {
 		give         string
 		giveTemplate string
@@ -128,28 +114,21 @@ func TestBuildTemplateSkill(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.give, func(t *testing.T) {
+			t.Parallel()
+
 			got := BuildTemplateSkill("tmpl", "renders template", tt.giveTemplate, tt.giveParams)
 
-			if got.Type != "template" {
-				t.Errorf("Type = %q, want %q", got.Type, "template")
-			}
-			if !got.RequiresApproval {
-				t.Error("RequiresApproval = false, want true")
-			}
+			assert.Equal(t, SkillTypeTemplate, got.Type)
+			assert.True(t, got.RequiresApproval)
 
 			tmpl, ok := got.Definition["template"].(string)
-			if !ok {
-				t.Fatalf("Definition[\"template\"] is %T, want string", got.Definition["template"])
-			}
-			if tmpl != tt.giveTemplate {
-				t.Errorf("Definition[\"template\"] = %q, want %q", tmpl, tt.giveTemplate)
-			}
+			require.True(t, ok, "Definition[\"template\"] is %T, want string", got.Definition["template"])
+			assert.Equal(t, tt.giveTemplate, tmpl)
 
-			if tt.giveParams != nil && got.Parameters == nil {
-				t.Error("Parameters is nil, want non-nil")
-			}
-			if tt.giveParams == nil && got.Parameters != nil {
-				t.Errorf("Parameters = %v, want nil", got.Parameters)
+			if tt.giveParams != nil {
+				assert.NotNil(t, got.Parameters)
+			} else {
+				assert.Nil(t, got.Parameters)
 			}
 		})
 	}

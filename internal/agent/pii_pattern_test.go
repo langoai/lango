@@ -36,8 +36,8 @@ func TestBuiltinPatterns_HaveCategories(t *testing.T) {
 
 func TestLookupBuiltinPattern(t *testing.T) {
 	tests := []struct {
-		give     string
-		wantOK   bool
+		give   string
+		wantOK bool
 	}{
 		{give: "email", wantOK: true},
 		{give: "kr_rrn", wantOK: true},
@@ -58,7 +58,7 @@ func TestBuiltinPattern_Email(t *testing.T) {
 	re := regexp.MustCompile(builtinPatternMap["email"].Pattern)
 
 	tests := []struct {
-		give    string
+		give      string
 		wantMatch bool
 	}{
 		{give: "user@example.com", wantMatch: true},
@@ -156,11 +156,11 @@ func TestBuiltinPattern_CreditCard(t *testing.T) {
 		give      string
 		wantMatch bool
 	}{
-		{give: "4111111111111111", wantMatch: true},   // Visa
+		{give: "4111111111111111", wantMatch: true},    // Visa
 		{give: "4111-1111-1111-1111", wantMatch: true}, // Visa with dashes
-		{give: "5500000000000004", wantMatch: true},   // Mastercard
-		{give: "371449635398431", wantMatch: true},    // AMEX
-		{give: "6011111111111117", wantMatch: true},   // Discover
+		{give: "5500000000000004", wantMatch: true},    // Mastercard
+		{give: "371449635398431", wantMatch: true},     // AMEX
+		{give: "6011111111111117", wantMatch: true},    // Discover
 		{give: "1234567890123456", wantMatch: false},   // Invalid prefix
 	}
 
@@ -176,8 +176,8 @@ func TestBuiltinPattern_CreditCard(t *testing.T) {
 
 func TestValidateLuhn(t *testing.T) {
 	tests := []struct {
-		give    string
-		wantOK  bool
+		give   string
+		wantOK bool
 	}{
 		{give: "4111111111111111", wantOK: true},
 		{give: "4111-1111-1111-1111", wantOK: true},
@@ -227,9 +227,9 @@ func TestBuiltinPattern_KRLandline(t *testing.T) {
 		give      string
 		wantMatch bool
 	}{
-		{give: "02-1234-5678", wantMatch: true},   // Seoul
-		{give: "031-123-4567", wantMatch: true},    // Gyeonggi
-		{give: "051-1234-5678", wantMatch: true},   // Busan
+		{give: "02-1234-5678", wantMatch: true},  // Seoul
+		{give: "031-123-4567", wantMatch: true},  // Gyeonggi
+		{give: "051-1234-5678", wantMatch: true}, // Busan
 	}
 
 	for _, tt := range tests {

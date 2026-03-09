@@ -30,6 +30,7 @@ func TestNewAgentForm_AllFields(t *testing.T) {
 		"provider", "model", "maxtokens", "temp",
 		"prompts_dir", "fallback_provider", "fallback_model",
 		"request_timeout", "tool_timeout",
+		"auto_extend_timeout", "max_request_timeout",
 	}
 
 	if len(form.Fields) != len(wantKeys) {
@@ -783,9 +784,9 @@ func TestUpdateConfigFromForm_KMSFields(t *testing.T) {
 
 func TestDerefBool(t *testing.T) {
 	tests := []struct {
-		give    *bool
-		def     bool
-		want    bool
+		give *bool
+		def  bool
+		want bool
 	}{
 		{give: nil, def: true, want: true},
 		{give: nil, def: false, want: false},

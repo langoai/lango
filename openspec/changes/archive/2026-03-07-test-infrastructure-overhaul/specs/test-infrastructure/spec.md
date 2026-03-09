@@ -1,0 +1,84 @@
+## ADDED Requirements
+
+### Requirement: Shared test helper package
+The system SHALL provide an `internal/testutil/` package with shared test utilities including `NopLogger()`, `TestEntClient(t)`, and `SkipShort(t)` helper functions.
+
+#### Scenario: NopLogger returns usable logger
+- **WHEN** a test calls `testutil.NopLogger()`
+- **THEN** the returned `*zap.SugaredLogger` SHALL be non-nil and SHALL not panic on log calls
+
+#### Scenario: TestEntClient returns functional client
+- **WHEN** a test calls `testutil.TestEntClient(t)`
+- **THEN** the returned `*ent.Client` SHALL be backed by an in-memory SQLite database with auto-migration
+- **THEN** the client SHALL be automatically closed when the test completes via `t.Cleanup()`
+
+#### Scenario: SkipShort skips in short mode
+- **WHEN** a test calls `testutil.SkipShort(t)` and the test is run with `-short` flag
+- **THEN** the test SHALL be skipped
+
+### Requirement: Canonical mock implementations
+The system SHALL provide thread-safe mock implementations for core interfaces: `session.Store`, `provider.Provider`, `embedding.EmbeddingProvider`, `graph.Store`, `security.CryptoProvider`, `cron.Store`, and utility types `TextGenerator`, `AgentRunner`, `ChannelSender`.
+
+#### Scenario: Mocks are thread-safe
+- **WHEN** a mock is accessed concurrently from parallel subtests
+- **THEN** no data races SHALL occur (verified by `-race` flag)
+
+#### Scenario: Mocks support error injection
+- **WHEN** a test sets an error field on a mock (e.g., `mock.CreateErr = errors.New("fail")`)
+- **THEN** the corresponding method SHALL return that error
+
+#### Scenario: Mocks support call inspection
+- **WHEN** a test calls inspection methods (e.g., `mock.CreateCalls()`)
+- **THEN** the mock SHALL return the accurate count of method invocations
+
+#### Scenario: Compile-time interface verification
+- **WHEN** the testutil package is compiled
+- **THEN** each mock SHALL have a compile-time interface check (e.g., `var _ session.Store = (*MockSessionStore)(nil)`)
+
+### Requirement: Testify assertion standardization
+All test files SHALL use `testify/assert` for non-fatal assertions and `testify/require` for fatal assertions. Raw `if`/`t.Errorf`/`t.Fatalf` patterns SHALL be converted.
+
+#### Scenario: Fatal error checks use require
+- **WHEN** a test checks an error that would prevent the test from continuing
+- **THEN** it SHALL use `require.NoError(t, err)` instead of `if err != nil { t.Fatalf(...) }`
+
+#### Scenario: Non-fatal checks use assert
+- **WHEN** a test checks a value that does not prevent continuation
+- **THEN** it SHALL use `assert.Equal(t, want, got)` instead of `if got != want { t.Errorf(...) }`
+
+### Requirement: Parallel test execution
+All test functions and subtests SHALL include `t.Parallel()` at their top, except tests in `internal/app/` which may depend on shared initialization state.
+
+#### Scenario: Top-level test parallelism
+- **WHEN** a test function is defined outside of `internal/app/`
+- **THEN** it SHALL call `t.Parallel()` as its first statement
+
+#### Scenario: Subtest parallelism
+- **WHEN** a `t.Run()` subtest is defined outside of `internal/app/`
+- **THEN** it SHALL call `t.Parallel()` as its first statement inside the closure
+
+### Requirement: Zero-coverage package tests
+The system SHALL provide test files for packages with 0% coverage: `cron`, `logging`, and `mdparse`.
+
+#### Scenario: Cron package test coverage
+- **WHEN** tests are run for `internal/cron/`
+- **THEN** coverage SHALL be at least 70% covering scheduler lifecycle, executor, and delivery
+
+#### Scenario: Logging package test coverage
+- **WHEN** tests are run for `internal/logging/`
+- **THEN** coverage SHALL be at least 80% covering logger creation and level configuration
+
+#### Scenario: Mdparse package test coverage
+- **WHEN** tests are run for `internal/mdparse/`
+- **THEN** coverage SHALL be at least 90% covering frontmatter parsing edge cases
+
+### Requirement: Performance benchmarks
+The system SHALL provide benchmark functions with `b.ReportAllocs()` for hot-path code in types, memory, prompt, graph, asyncbuf, and embedding packages.
+
+#### Scenario: Benchmark functions exist
+- **WHEN** benchmarks are run with `go test -bench=.`
+- **THEN** at least 15 benchmark functions SHALL execute across the 6 packages
+
+#### Scenario: Benchmarks report allocations
+- **WHEN** a benchmark function runs
+- **THEN** it SHALL call `b.ReportAllocs()` to report memory allocation statistics

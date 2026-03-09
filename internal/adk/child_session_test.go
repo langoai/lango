@@ -12,6 +12,8 @@ import (
 )
 
 func TestStructuredSummarizer(t *testing.T) {
+	t.Parallel()
+
 	tests := []struct {
 		name     string
 		give     []session.Message
@@ -44,6 +46,7 @@ func TestStructuredSummarizer(t *testing.T) {
 	s := &StructuredSummarizer{}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			got, err := s.Summarize(tt.give)
 			require.NoError(t, err)
 			assert.Equal(t, tt.wantText, got)
@@ -52,6 +55,8 @@ func TestStructuredSummarizer(t *testing.T) {
 }
 
 func TestChildSessionContext(t *testing.T) {
+	t.Parallel()
+
 	ctx := context.Background()
 
 	_, ok := ChildSessionFromContext(ctx)

@@ -16,6 +16,7 @@ import (
 	"github.com/langoai/lango/internal/ent/configprofile"
 	"github.com/langoai/lango/internal/ent/cronjob"
 	"github.com/langoai/lango/internal/ent/cronjobhistory"
+	"github.com/langoai/lango/internal/ent/escrowdeal"
 	"github.com/langoai/lango/internal/ent/externalref"
 	"github.com/langoai/lango/internal/ent/inquiry"
 	"github.com/langoai/lango/internal/ent/key"
@@ -30,6 +31,7 @@ import (
 	"github.com/langoai/lango/internal/ent/schema"
 	"github.com/langoai/lango/internal/ent/secret"
 	"github.com/langoai/lango/internal/ent/session"
+	"github.com/langoai/lango/internal/ent/tokenusage"
 	"github.com/langoai/lango/internal/ent/workflowrun"
 	"github.com/langoai/lango/internal/ent/workflowsteprun"
 )
@@ -47,6 +49,7 @@ const (
 	TypeConfigProfile   = "ConfigProfile"
 	TypeCronJob         = "CronJob"
 	TypeCronJobHistory  = "CronJobHistory"
+	TypeEscrowDeal      = "EscrowDeal"
 	TypeExternalRef     = "ExternalRef"
 	TypeInquiry         = "Inquiry"
 	TypeKey             = "Key"
@@ -59,6 +62,7 @@ const (
 	TypeReflection      = "Reflection"
 	TypeSecret          = "Secret"
 	TypeSession         = "Session"
+	TypeTokenUsage      = "TokenUsage"
 	TypeWorkflowRun     = "WorkflowRun"
 	TypeWorkflowStepRun = "WorkflowStepRun"
 )
@@ -3224,6 +3228,1480 @@ func (m *CronJobHistoryMutation) ClearEdge(name string) error {
 // It returns an error if the edge is not defined in the schema.
 func (m *CronJobHistoryMutation) ResetEdge(name string) error {
 	return fmt.Errorf("unknown CronJobHistory edge %s", name)
+}
+
+// EscrowDealMutation represents an operation that mutates the EscrowDeal nodes in the graph.
+type EscrowDealMutation struct {
+	config
+	op               Op
+	typ              string
+	id               *int
+	escrow_id        *string
+	buyer_did        *string
+	seller_did       *string
+	total_amount     *string
+	status           *string
+	milestones       *[]byte
+	task_id          *string
+	reason           *string
+	dispute_note     *string
+	chain_id         *int64
+	addchain_id      *int64
+	hub_address      *string
+	on_chain_deal_id *string
+	deposit_tx_hash  *string
+	release_tx_hash  *string
+	refund_tx_hash   *string
+	created_at       *time.Time
+	updated_at       *time.Time
+	expires_at       *time.Time
+	clearedFields    map[string]struct{}
+	done             bool
+	oldValue         func(context.Context) (*EscrowDeal, error)
+	predicates       []predicate.EscrowDeal
+}
+
+var _ ent.Mutation = (*EscrowDealMutation)(nil)
+
+// escrowdealOption allows management of the mutation configuration using functional options.
+type escrowdealOption func(*EscrowDealMutation)
+
+// newEscrowDealMutation creates new mutation for the EscrowDeal entity.
+func newEscrowDealMutation(c config, op Op, opts ...escrowdealOption) *EscrowDealMutation {
+	m := &EscrowDealMutation{
+		config:        c,
+		op:            op,
+		typ:           TypeEscrowDeal,
+		clearedFields: make(map[string]struct{}),
+	}
+	for _, opt := range opts {
+		opt(m)
+	}
+	return m
+}
+
+// withEscrowDealID sets the ID field of the mutation.
+func withEscrowDealID(id int) escrowdealOption {
+	return func(m *EscrowDealMutation) {
+		var (
+			err   error
+			once  sync.Once
+			value *EscrowDeal
+		)
+		m.oldValue = func(ctx context.Context) (*EscrowDeal, error) {
+			once.Do(func() {
+				if m.done {
+					err = errors.New("querying old values post mutation is not allowed")
+				} else {
+					value, err = m.Client().EscrowDeal.Get(ctx, id)
+				}
+			})
+			return value, err
+		}
+		m.id = &id
+	}
+}
+
+// withEscrowDeal sets the old EscrowDeal of the mutation.
+func withEscrowDeal(node *EscrowDeal) escrowdealOption {
+	return func(m *EscrowDealMutation) {
+		m.oldValue = func(context.Context) (*EscrowDeal, error) {
+			return node, nil
+		}
+		m.id = &node.ID
+	}
+}
+
+// Client returns a new `ent.Client` from the mutation. If the mutation was
+// executed in a transaction (ent.Tx), a transactional client is returned.
+func (m EscrowDealMutation) Client() *Client {
+	client := &Client{config: m.config}
+	client.init()
+	return client
+}
+
+// Tx returns an `ent.Tx` for mutations that were executed in transactions;
+// it returns an error otherwise.
+func (m EscrowDealMutation) Tx() (*Tx, error) {
+	if _, ok := m.driver.(*txDriver); !ok {
+		return nil, errors.New("ent: mutation is not running in a transaction")
+	}
+	tx := &Tx{config: m.config}
+	tx.init()
+	return tx, nil
+}
+
+// ID returns the ID value in the mutation. Note that the ID is only available
+// if it was provided to the builder or after it was returned from the database.
+func (m *EscrowDealMutation) ID() (id int, exists bool) {
+	if m.id == nil {
+		return
+	}
+	return *m.id, true
+}
+
+// IDs queries the database and returns the entity ids that match the mutation's predicate.
+// That means, if the mutation is applied within a transaction with an isolation level such
+// as sql.LevelSerializable, the returned ids match the ids of the rows that will be updated
+// or updated by the mutation.
+func (m *EscrowDealMutation) IDs(ctx context.Context) ([]int, error) {
+	switch {
+	case m.op.Is(OpUpdateOne | OpDeleteOne):
+		id, exists := m.ID()
+		if exists {
+			return []int{id}, nil
+		}
+		fallthrough
+	case m.op.Is(OpUpdate | OpDelete):
+		return m.Client().EscrowDeal.Query().Where(m.predicates...).IDs(ctx)
+	default:
+		return nil, fmt.Errorf("IDs is not allowed on %s operations", m.op)
+	}
+}
+
+// SetEscrowID sets the "escrow_id" field.
+func (m *EscrowDealMutation) SetEscrowID(s string) {
+	m.escrow_id = &s
+}
+
+// EscrowID returns the value of the "escrow_id" field in the mutation.
+func (m *EscrowDealMutation) EscrowID() (r string, exists bool) {
+	v := m.escrow_id
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldEscrowID returns the old "escrow_id" field's value of the EscrowDeal entity.
+// If the EscrowDeal object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *EscrowDealMutation) OldEscrowID(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldEscrowID is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldEscrowID requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldEscrowID: %w", err)
+	}
+	return oldValue.EscrowID, nil
+}
+
+// ResetEscrowID resets all changes to the "escrow_id" field.
+func (m *EscrowDealMutation) ResetEscrowID() {
+	m.escrow_id = nil
+}
+
+// SetBuyerDid sets the "buyer_did" field.
+func (m *EscrowDealMutation) SetBuyerDid(s string) {
+	m.buyer_did = &s
+}
+
+// BuyerDid returns the value of the "buyer_did" field in the mutation.
+func (m *EscrowDealMutation) BuyerDid() (r string, exists bool) {
+	v := m.buyer_did
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldBuyerDid returns the old "buyer_did" field's value of the EscrowDeal entity.
+// If the EscrowDeal object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *EscrowDealMutation) OldBuyerDid(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldBuyerDid is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldBuyerDid requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldBuyerDid: %w", err)
+	}
+	return oldValue.BuyerDid, nil
+}
+
+// ResetBuyerDid resets all changes to the "buyer_did" field.
+func (m *EscrowDealMutation) ResetBuyerDid() {
+	m.buyer_did = nil
+}
+
+// SetSellerDid sets the "seller_did" field.
+func (m *EscrowDealMutation) SetSellerDid(s string) {
+	m.seller_did = &s
+}
+
+// SellerDid returns the value of the "seller_did" field in the mutation.
+func (m *EscrowDealMutation) SellerDid() (r string, exists bool) {
+	v := m.seller_did
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldSellerDid returns the old "seller_did" field's value of the EscrowDeal entity.
+// If the EscrowDeal object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *EscrowDealMutation) OldSellerDid(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldSellerDid is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldSellerDid requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldSellerDid: %w", err)
+	}
+	return oldValue.SellerDid, nil
+}
+
+// ResetSellerDid resets all changes to the "seller_did" field.
+func (m *EscrowDealMutation) ResetSellerDid() {
+	m.seller_did = nil
+}
+
+// SetTotalAmount sets the "total_amount" field.
+func (m *EscrowDealMutation) SetTotalAmount(s string) {
+	m.total_amount = &s
+}
+
+// TotalAmount returns the value of the "total_amount" field in the mutation.
+func (m *EscrowDealMutation) TotalAmount() (r string, exists bool) {
+	v := m.total_amount
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldTotalAmount returns the old "total_amount" field's value of the EscrowDeal entity.
+// If the EscrowDeal object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *EscrowDealMutation) OldTotalAmount(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldTotalAmount is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldTotalAmount requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldTotalAmount: %w", err)
+	}
+	return oldValue.TotalAmount, nil
+}
+
+// ResetTotalAmount resets all changes to the "total_amount" field.
+func (m *EscrowDealMutation) ResetTotalAmount() {
+	m.total_amount = nil
+}
+
+// SetStatus sets the "status" field.
+func (m *EscrowDealMutation) SetStatus(s string) {
+	m.status = &s
+}
+
+// Status returns the value of the "status" field in the mutation.
+func (m *EscrowDealMutation) Status() (r string, exists bool) {
+	v := m.status
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldStatus returns the old "status" field's value of the EscrowDeal entity.
+// If the EscrowDeal object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *EscrowDealMutation) OldStatus(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldStatus is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldStatus requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldStatus: %w", err)
+	}
+	return oldValue.Status, nil
+}
+
+// ResetStatus resets all changes to the "status" field.
+func (m *EscrowDealMutation) ResetStatus() {
+	m.status = nil
+}
+
+// SetMilestones sets the "milestones" field.
+func (m *EscrowDealMutation) SetMilestones(b []byte) {
+	m.milestones = &b
+}
+
+// Milestones returns the value of the "milestones" field in the mutation.
+func (m *EscrowDealMutation) Milestones() (r []byte, exists bool) {
+	v := m.milestones
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldMilestones returns the old "milestones" field's value of the EscrowDeal entity.
+// If the EscrowDeal object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *EscrowDealMutation) OldMilestones(ctx context.Context) (v []byte, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldMilestones is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldMilestones requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldMilestones: %w", err)
+	}
+	return oldValue.Milestones, nil
+}
+
+// ClearMilestones clears the value of the "milestones" field.
+func (m *EscrowDealMutation) ClearMilestones() {
+	m.milestones = nil
+	m.clearedFields[escrowdeal.FieldMilestones] = struct{}{}
+}
+
+// MilestonesCleared returns if the "milestones" field was cleared in this mutation.
+func (m *EscrowDealMutation) MilestonesCleared() bool {
+	_, ok := m.clearedFields[escrowdeal.FieldMilestones]
+	return ok
+}
+
+// ResetMilestones resets all changes to the "milestones" field.
+func (m *EscrowDealMutation) ResetMilestones() {
+	m.milestones = nil
+	delete(m.clearedFields, escrowdeal.FieldMilestones)
+}
+
+// SetTaskID sets the "task_id" field.
+func (m *EscrowDealMutation) SetTaskID(s string) {
+	m.task_id = &s
+}
+
+// TaskID returns the value of the "task_id" field in the mutation.
+func (m *EscrowDealMutation) TaskID() (r string, exists bool) {
+	v := m.task_id
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldTaskID returns the old "task_id" field's value of the EscrowDeal entity.
+// If the EscrowDeal object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *EscrowDealMutation) OldTaskID(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldTaskID is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldTaskID requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldTaskID: %w", err)
+	}
+	return oldValue.TaskID, nil
+}
+
+// ClearTaskID clears the value of the "task_id" field.
+func (m *EscrowDealMutation) ClearTaskID() {
+	m.task_id = nil
+	m.clearedFields[escrowdeal.FieldTaskID] = struct{}{}
+}
+
+// TaskIDCleared returns if the "task_id" field was cleared in this mutation.
+func (m *EscrowDealMutation) TaskIDCleared() bool {
+	_, ok := m.clearedFields[escrowdeal.FieldTaskID]
+	return ok
+}
+
+// ResetTaskID resets all changes to the "task_id" field.
+func (m *EscrowDealMutation) ResetTaskID() {
+	m.task_id = nil
+	delete(m.clearedFields, escrowdeal.FieldTaskID)
+}
+
+// SetReason sets the "reason" field.
+func (m *EscrowDealMutation) SetReason(s string) {
+	m.reason = &s
+}
+
+// Reason returns the value of the "reason" field in the mutation.
+func (m *EscrowDealMutation) Reason() (r string, exists bool) {
+	v := m.reason
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldReason returns the old "reason" field's value of the EscrowDeal entity.
+// If the EscrowDeal object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *EscrowDealMutation) OldReason(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldReason is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldReason requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldReason: %w", err)
+	}
+	return oldValue.Reason, nil
+}
+
+// ClearReason clears the value of the "reason" field.
+func (m *EscrowDealMutation) ClearReason() {
+	m.reason = nil
+	m.clearedFields[escrowdeal.FieldReason] = struct{}{}
+}
+
+// ReasonCleared returns if the "reason" field was cleared in this mutation.
+func (m *EscrowDealMutation) ReasonCleared() bool {
+	_, ok := m.clearedFields[escrowdeal.FieldReason]
+	return ok
+}
+
+// ResetReason resets all changes to the "reason" field.
+func (m *EscrowDealMutation) ResetReason() {
+	m.reason = nil
+	delete(m.clearedFields, escrowdeal.FieldReason)
+}
+
+// SetDisputeNote sets the "dispute_note" field.
+func (m *EscrowDealMutation) SetDisputeNote(s string) {
+	m.dispute_note = &s
+}
+
+// DisputeNote returns the value of the "dispute_note" field in the mutation.
+func (m *EscrowDealMutation) DisputeNote() (r string, exists bool) {
+	v := m.dispute_note
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldDisputeNote returns the old "dispute_note" field's value of the EscrowDeal entity.
+// If the EscrowDeal object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *EscrowDealMutation) OldDisputeNote(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldDisputeNote is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldDisputeNote requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldDisputeNote: %w", err)
+	}
+	return oldValue.DisputeNote, nil
+}
+
+// ClearDisputeNote clears the value of the "dispute_note" field.
+func (m *EscrowDealMutation) ClearDisputeNote() {
+	m.dispute_note = nil
+	m.clearedFields[escrowdeal.FieldDisputeNote] = struct{}{}
+}
+
+// DisputeNoteCleared returns if the "dispute_note" field was cleared in this mutation.
+func (m *EscrowDealMutation) DisputeNoteCleared() bool {
+	_, ok := m.clearedFields[escrowdeal.FieldDisputeNote]
+	return ok
+}
+
+// ResetDisputeNote resets all changes to the "dispute_note" field.
+func (m *EscrowDealMutation) ResetDisputeNote() {
+	m.dispute_note = nil
+	delete(m.clearedFields, escrowdeal.FieldDisputeNote)
+}
+
+// SetChainID sets the "chain_id" field.
+func (m *EscrowDealMutation) SetChainID(i int64) {
+	m.chain_id = &i
+	m.addchain_id = nil
+}
+
+// ChainID returns the value of the "chain_id" field in the mutation.
+func (m *EscrowDealMutation) ChainID() (r int64, exists bool) {
+	v := m.chain_id
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldChainID returns the old "chain_id" field's value of the EscrowDeal entity.
+// If the EscrowDeal object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *EscrowDealMutation) OldChainID(ctx context.Context) (v int64, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldChainID is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldChainID requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldChainID: %w", err)
+	}
+	return oldValue.ChainID, nil
+}
+
+// AddChainID adds i to the "chain_id" field.
+func (m *EscrowDealMutation) AddChainID(i int64) {
+	if m.addchain_id != nil {
+		*m.addchain_id += i
+	} else {
+		m.addchain_id = &i
+	}
+}
+
+// AddedChainID returns the value that was added to the "chain_id" field in this mutation.
+func (m *EscrowDealMutation) AddedChainID() (r int64, exists bool) {
+	v := m.addchain_id
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ClearChainID clears the value of the "chain_id" field.
+func (m *EscrowDealMutation) ClearChainID() {
+	m.chain_id = nil
+	m.addchain_id = nil
+	m.clearedFields[escrowdeal.FieldChainID] = struct{}{}
+}
+
+// ChainIDCleared returns if the "chain_id" field was cleared in this mutation.
+func (m *EscrowDealMutation) ChainIDCleared() bool {
+	_, ok := m.clearedFields[escrowdeal.FieldChainID]
+	return ok
+}
+
+// ResetChainID resets all changes to the "chain_id" field.
+func (m *EscrowDealMutation) ResetChainID() {
+	m.chain_id = nil
+	m.addchain_id = nil
+	delete(m.clearedFields, escrowdeal.FieldChainID)
+}
+
+// SetHubAddress sets the "hub_address" field.
+func (m *EscrowDealMutation) SetHubAddress(s string) {
+	m.hub_address = &s
+}
+
+// HubAddress returns the value of the "hub_address" field in the mutation.
+func (m *EscrowDealMutation) HubAddress() (r string, exists bool) {
+	v := m.hub_address
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldHubAddress returns the old "hub_address" field's value of the EscrowDeal entity.
+// If the EscrowDeal object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *EscrowDealMutation) OldHubAddress(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldHubAddress is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldHubAddress requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldHubAddress: %w", err)
+	}
+	return oldValue.HubAddress, nil
+}
+
+// ClearHubAddress clears the value of the "hub_address" field.
+func (m *EscrowDealMutation) ClearHubAddress() {
+	m.hub_address = nil
+	m.clearedFields[escrowdeal.FieldHubAddress] = struct{}{}
+}
+
+// HubAddressCleared returns if the "hub_address" field was cleared in this mutation.
+func (m *EscrowDealMutation) HubAddressCleared() bool {
+	_, ok := m.clearedFields[escrowdeal.FieldHubAddress]
+	return ok
+}
+
+// ResetHubAddress resets all changes to the "hub_address" field.
+func (m *EscrowDealMutation) ResetHubAddress() {
+	m.hub_address = nil
+	delete(m.clearedFields, escrowdeal.FieldHubAddress)
+}
+
+// SetOnChainDealID sets the "on_chain_deal_id" field.
+func (m *EscrowDealMutation) SetOnChainDealID(s string) {
+	m.on_chain_deal_id = &s
+}
+
+// OnChainDealID returns the value of the "on_chain_deal_id" field in the mutation.
+func (m *EscrowDealMutation) OnChainDealID() (r string, exists bool) {
+	v := m.on_chain_deal_id
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldOnChainDealID returns the old "on_chain_deal_id" field's value of the EscrowDeal entity.
+// If the EscrowDeal object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *EscrowDealMutation) OldOnChainDealID(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldOnChainDealID is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldOnChainDealID requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldOnChainDealID: %w", err)
+	}
+	return oldValue.OnChainDealID, nil
+}
+
+// ClearOnChainDealID clears the value of the "on_chain_deal_id" field.
+func (m *EscrowDealMutation) ClearOnChainDealID() {
+	m.on_chain_deal_id = nil
+	m.clearedFields[escrowdeal.FieldOnChainDealID] = struct{}{}
+}
+
+// OnChainDealIDCleared returns if the "on_chain_deal_id" field was cleared in this mutation.
+func (m *EscrowDealMutation) OnChainDealIDCleared() bool {
+	_, ok := m.clearedFields[escrowdeal.FieldOnChainDealID]
+	return ok
+}
+
+// ResetOnChainDealID resets all changes to the "on_chain_deal_id" field.
+func (m *EscrowDealMutation) ResetOnChainDealID() {
+	m.on_chain_deal_id = nil
+	delete(m.clearedFields, escrowdeal.FieldOnChainDealID)
+}
+
+// SetDepositTxHash sets the "deposit_tx_hash" field.
+func (m *EscrowDealMutation) SetDepositTxHash(s string) {
+	m.deposit_tx_hash = &s
+}
+
+// DepositTxHash returns the value of the "deposit_tx_hash" field in the mutation.
+func (m *EscrowDealMutation) DepositTxHash() (r string, exists bool) {
+	v := m.deposit_tx_hash
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldDepositTxHash returns the old "deposit_tx_hash" field's value of the EscrowDeal entity.
+// If the EscrowDeal object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *EscrowDealMutation) OldDepositTxHash(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldDepositTxHash is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldDepositTxHash requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldDepositTxHash: %w", err)
+	}
+	return oldValue.DepositTxHash, nil
+}
+
+// ClearDepositTxHash clears the value of the "deposit_tx_hash" field.
+func (m *EscrowDealMutation) ClearDepositTxHash() {
+	m.deposit_tx_hash = nil
+	m.clearedFields[escrowdeal.FieldDepositTxHash] = struct{}{}
+}
+
+// DepositTxHashCleared returns if the "deposit_tx_hash" field was cleared in this mutation.
+func (m *EscrowDealMutation) DepositTxHashCleared() bool {
+	_, ok := m.clearedFields[escrowdeal.FieldDepositTxHash]
+	return ok
+}
+
+// ResetDepositTxHash resets all changes to the "deposit_tx_hash" field.
+func (m *EscrowDealMutation) ResetDepositTxHash() {
+	m.deposit_tx_hash = nil
+	delete(m.clearedFields, escrowdeal.FieldDepositTxHash)
+}
+
+// SetReleaseTxHash sets the "release_tx_hash" field.
+func (m *EscrowDealMutation) SetReleaseTxHash(s string) {
+	m.release_tx_hash = &s
+}
+
+// ReleaseTxHash returns the value of the "release_tx_hash" field in the mutation.
+func (m *EscrowDealMutation) ReleaseTxHash() (r string, exists bool) {
+	v := m.release_tx_hash
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldReleaseTxHash returns the old "release_tx_hash" field's value of the EscrowDeal entity.
+// If the EscrowDeal object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *EscrowDealMutation) OldReleaseTxHash(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldReleaseTxHash is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldReleaseTxHash requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldReleaseTxHash: %w", err)
+	}
+	return oldValue.ReleaseTxHash, nil
+}
+
+// ClearReleaseTxHash clears the value of the "release_tx_hash" field.
+func (m *EscrowDealMutation) ClearReleaseTxHash() {
+	m.release_tx_hash = nil
+	m.clearedFields[escrowdeal.FieldReleaseTxHash] = struct{}{}
+}
+
+// ReleaseTxHashCleared returns if the "release_tx_hash" field was cleared in this mutation.
+func (m *EscrowDealMutation) ReleaseTxHashCleared() bool {
+	_, ok := m.clearedFields[escrowdeal.FieldReleaseTxHash]
+	return ok
+}
+
+// ResetReleaseTxHash resets all changes to the "release_tx_hash" field.
+func (m *EscrowDealMutation) ResetReleaseTxHash() {
+	m.release_tx_hash = nil
+	delete(m.clearedFields, escrowdeal.FieldReleaseTxHash)
+}
+
+// SetRefundTxHash sets the "refund_tx_hash" field.
+func (m *EscrowDealMutation) SetRefundTxHash(s string) {
+	m.refund_tx_hash = &s
+}
+
+// RefundTxHash returns the value of the "refund_tx_hash" field in the mutation.
+func (m *EscrowDealMutation) RefundTxHash() (r string, exists bool) {
+	v := m.refund_tx_hash
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldRefundTxHash returns the old "refund_tx_hash" field's value of the EscrowDeal entity.
+// If the EscrowDeal object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *EscrowDealMutation) OldRefundTxHash(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldRefundTxHash is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldRefundTxHash requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldRefundTxHash: %w", err)
+	}
+	return oldValue.RefundTxHash, nil
+}
+
+// ClearRefundTxHash clears the value of the "refund_tx_hash" field.
+func (m *EscrowDealMutation) ClearRefundTxHash() {
+	m.refund_tx_hash = nil
+	m.clearedFields[escrowdeal.FieldRefundTxHash] = struct{}{}
+}
+
+// RefundTxHashCleared returns if the "refund_tx_hash" field was cleared in this mutation.
+func (m *EscrowDealMutation) RefundTxHashCleared() bool {
+	_, ok := m.clearedFields[escrowdeal.FieldRefundTxHash]
+	return ok
+}
+
+// ResetRefundTxHash resets all changes to the "refund_tx_hash" field.
+func (m *EscrowDealMutation) ResetRefundTxHash() {
+	m.refund_tx_hash = nil
+	delete(m.clearedFields, escrowdeal.FieldRefundTxHash)
+}
+
+// SetCreatedAt sets the "created_at" field.
+func (m *EscrowDealMutation) SetCreatedAt(t time.Time) {
+	m.created_at = &t
+}
+
+// CreatedAt returns the value of the "created_at" field in the mutation.
+func (m *EscrowDealMutation) CreatedAt() (r time.Time, exists bool) {
+	v := m.created_at
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldCreatedAt returns the old "created_at" field's value of the EscrowDeal entity.
+// If the EscrowDeal object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *EscrowDealMutation) OldCreatedAt(ctx context.Context) (v time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldCreatedAt is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldCreatedAt requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldCreatedAt: %w", err)
+	}
+	return oldValue.CreatedAt, nil
+}
+
+// ResetCreatedAt resets all changes to the "created_at" field.
+func (m *EscrowDealMutation) ResetCreatedAt() {
+	m.created_at = nil
+}
+
+// SetUpdatedAt sets the "updated_at" field.
+func (m *EscrowDealMutation) SetUpdatedAt(t time.Time) {
+	m.updated_at = &t
+}
+
+// UpdatedAt returns the value of the "updated_at" field in the mutation.
+func (m *EscrowDealMutation) UpdatedAt() (r time.Time, exists bool) {
+	v := m.updated_at
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldUpdatedAt returns the old "updated_at" field's value of the EscrowDeal entity.
+// If the EscrowDeal object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *EscrowDealMutation) OldUpdatedAt(ctx context.Context) (v time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldUpdatedAt is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldUpdatedAt requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldUpdatedAt: %w", err)
+	}
+	return oldValue.UpdatedAt, nil
+}
+
+// ResetUpdatedAt resets all changes to the "updated_at" field.
+func (m *EscrowDealMutation) ResetUpdatedAt() {
+	m.updated_at = nil
+}
+
+// SetExpiresAt sets the "expires_at" field.
+func (m *EscrowDealMutation) SetExpiresAt(t time.Time) {
+	m.expires_at = &t
+}
+
+// ExpiresAt returns the value of the "expires_at" field in the mutation.
+func (m *EscrowDealMutation) ExpiresAt() (r time.Time, exists bool) {
+	v := m.expires_at
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldExpiresAt returns the old "expires_at" field's value of the EscrowDeal entity.
+// If the EscrowDeal object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *EscrowDealMutation) OldExpiresAt(ctx context.Context) (v time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldExpiresAt is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldExpiresAt requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldExpiresAt: %w", err)
+	}
+	return oldValue.ExpiresAt, nil
+}
+
+// ResetExpiresAt resets all changes to the "expires_at" field.
+func (m *EscrowDealMutation) ResetExpiresAt() {
+	m.expires_at = nil
+}
+
+// Where appends a list predicates to the EscrowDealMutation builder.
+func (m *EscrowDealMutation) Where(ps ...predicate.EscrowDeal) {
+	m.predicates = append(m.predicates, ps...)
+}
+
+// WhereP appends storage-level predicates to the EscrowDealMutation builder. Using this method,
+// users can use type-assertion to append predicates that do not depend on any generated package.
+func (m *EscrowDealMutation) WhereP(ps ...func(*sql.Selector)) {
+	p := make([]predicate.EscrowDeal, len(ps))
+	for i := range ps {
+		p[i] = ps[i]
+	}
+	m.Where(p...)
+}
+
+// Op returns the operation name.
+func (m *EscrowDealMutation) Op() Op {
+	return m.op
+}
+
+// SetOp allows setting the mutation operation.
+func (m *EscrowDealMutation) SetOp(op Op) {
+	m.op = op
+}
+
+// Type returns the node type of this mutation (EscrowDeal).
+func (m *EscrowDealMutation) Type() string {
+	return m.typ
+}
+
+// Fields returns all fields that were changed during this mutation. Note that in
+// order to get all numeric fields that were incremented/decremented, call
+// AddedFields().
+func (m *EscrowDealMutation) Fields() []string {
+	fields := make([]string, 0, 18)
+	if m.escrow_id != nil {
+		fields = append(fields, escrowdeal.FieldEscrowID)
+	}
+	if m.buyer_did != nil {
+		fields = append(fields, escrowdeal.FieldBuyerDid)
+	}
+	if m.seller_did != nil {
+		fields = append(fields, escrowdeal.FieldSellerDid)
+	}
+	if m.total_amount != nil {
+		fields = append(fields, escrowdeal.FieldTotalAmount)
+	}
+	if m.status != nil {
+		fields = append(fields, escrowdeal.FieldStatus)
+	}
+	if m.milestones != nil {
+		fields = append(fields, escrowdeal.FieldMilestones)
+	}
+	if m.task_id != nil {
+		fields = append(fields, escrowdeal.FieldTaskID)
+	}
+	if m.reason != nil {
+		fields = append(fields, escrowdeal.FieldReason)
+	}
+	if m.dispute_note != nil {
+		fields = append(fields, escrowdeal.FieldDisputeNote)
+	}
+	if m.chain_id != nil {
+		fields = append(fields, escrowdeal.FieldChainID)
+	}
+	if m.hub_address != nil {
+		fields = append(fields, escrowdeal.FieldHubAddress)
+	}
+	if m.on_chain_deal_id != nil {
+		fields = append(fields, escrowdeal.FieldOnChainDealID)
+	}
+	if m.deposit_tx_hash != nil {
+		fields = append(fields, escrowdeal.FieldDepositTxHash)
+	}
+	if m.release_tx_hash != nil {
+		fields = append(fields, escrowdeal.FieldReleaseTxHash)
+	}
+	if m.refund_tx_hash != nil {
+		fields = append(fields, escrowdeal.FieldRefundTxHash)
+	}
+	if m.created_at != nil {
+		fields = append(fields, escrowdeal.FieldCreatedAt)
+	}
+	if m.updated_at != nil {
+		fields = append(fields, escrowdeal.FieldUpdatedAt)
+	}
+	if m.expires_at != nil {
+		fields = append(fields, escrowdeal.FieldExpiresAt)
+	}
+	return fields
+}
+
+// Field returns the value of a field with the given name. The second boolean
+// return value indicates that this field was not set, or was not defined in the
+// schema.
+func (m *EscrowDealMutation) Field(name string) (ent.Value, bool) {
+	switch name {
+	case escrowdeal.FieldEscrowID:
+		return m.EscrowID()
+	case escrowdeal.FieldBuyerDid:
+		return m.BuyerDid()
+	case escrowdeal.FieldSellerDid:
+		return m.SellerDid()
+	case escrowdeal.FieldTotalAmount:
+		return m.TotalAmount()
+	case escrowdeal.FieldStatus:
+		return m.Status()
+	case escrowdeal.FieldMilestones:
+		return m.Milestones()
+	case escrowdeal.FieldTaskID:
+		return m.TaskID()
+	case escrowdeal.FieldReason:
+		return m.Reason()
+	case escrowdeal.FieldDisputeNote:
+		return m.DisputeNote()
+	case escrowdeal.FieldChainID:
+		return m.ChainID()
+	case escrowdeal.FieldHubAddress:
+		return m.HubAddress()
+	case escrowdeal.FieldOnChainDealID:
+		return m.OnChainDealID()
+	case escrowdeal.FieldDepositTxHash:
+		return m.DepositTxHash()
+	case escrowdeal.FieldReleaseTxHash:
+		return m.ReleaseTxHash()
+	case escrowdeal.FieldRefundTxHash:
+		return m.RefundTxHash()
+	case escrowdeal.FieldCreatedAt:
+		return m.CreatedAt()
+	case escrowdeal.FieldUpdatedAt:
+		return m.UpdatedAt()
+	case escrowdeal.FieldExpiresAt:
+		return m.ExpiresAt()
+	}
+	return nil, false
+}
+
+// OldField returns the old value of the field from the database. An error is
+// returned if the mutation operation is not UpdateOne, or the query to the
+// database failed.
+func (m *EscrowDealMutation) OldField(ctx context.Context, name string) (ent.Value, error) {
+	switch name {
+	case escrowdeal.FieldEscrowID:
+		return m.OldEscrowID(ctx)
+	case escrowdeal.FieldBuyerDid:
+		return m.OldBuyerDid(ctx)
+	case escrowdeal.FieldSellerDid:
+		return m.OldSellerDid(ctx)
+	case escrowdeal.FieldTotalAmount:
+		return m.OldTotalAmount(ctx)
+	case escrowdeal.FieldStatus:
+		return m.OldStatus(ctx)
+	case escrowdeal.FieldMilestones:
+		return m.OldMilestones(ctx)
+	case escrowdeal.FieldTaskID:
+		return m.OldTaskID(ctx)
+	case escrowdeal.FieldReason:
+		return m.OldReason(ctx)
+	case escrowdeal.FieldDisputeNote:
+		return m.OldDisputeNote(ctx)
+	case escrowdeal.FieldChainID:
+		return m.OldChainID(ctx)
+	case escrowdeal.FieldHubAddress:
+		return m.OldHubAddress(ctx)
+	case escrowdeal.FieldOnChainDealID:
+		return m.OldOnChainDealID(ctx)
+	case escrowdeal.FieldDepositTxHash:
+		return m.OldDepositTxHash(ctx)
+	case escrowdeal.FieldReleaseTxHash:
+		return m.OldReleaseTxHash(ctx)
+	case escrowdeal.FieldRefundTxHash:
+		return m.OldRefundTxHash(ctx)
+	case escrowdeal.FieldCreatedAt:
+		return m.OldCreatedAt(ctx)
+	case escrowdeal.FieldUpdatedAt:
+		return m.OldUpdatedAt(ctx)
+	case escrowdeal.FieldExpiresAt:
+		return m.OldExpiresAt(ctx)
+	}
+	return nil, fmt.Errorf("unknown EscrowDeal field %s", name)
+}
+
+// SetField sets the value of a field with the given name. It returns an error if
+// the field is not defined in the schema, or if the type mismatched the field
+// type.
+func (m *EscrowDealMutation) SetField(name string, value ent.Value) error {
+	switch name {
+	case escrowdeal.FieldEscrowID:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetEscrowID(v)
+		return nil
+	case escrowdeal.FieldBuyerDid:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetBuyerDid(v)
+		return nil
+	case escrowdeal.FieldSellerDid:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetSellerDid(v)
+		return nil
+	case escrowdeal.FieldTotalAmount:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetTotalAmount(v)
+		return nil
+	case escrowdeal.FieldStatus:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetStatus(v)
+		return nil
+	case escrowdeal.FieldMilestones:
+		v, ok := value.([]byte)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetMilestones(v)
+		return nil
+	case escrowdeal.FieldTaskID:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetTaskID(v)
+		return nil
+	case escrowdeal.FieldReason:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetReason(v)
+		return nil
+	case escrowdeal.FieldDisputeNote:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetDisputeNote(v)
+		return nil
+	case escrowdeal.FieldChainID:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetChainID(v)
+		return nil
+	case escrowdeal.FieldHubAddress:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetHubAddress(v)
+		return nil
+	case escrowdeal.FieldOnChainDealID:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetOnChainDealID(v)
+		return nil
+	case escrowdeal.FieldDepositTxHash:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetDepositTxHash(v)
+		return nil
+	case escrowdeal.FieldReleaseTxHash:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetReleaseTxHash(v)
+		return nil
+	case escrowdeal.FieldRefundTxHash:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetRefundTxHash(v)
+		return nil
+	case escrowdeal.FieldCreatedAt:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetCreatedAt(v)
+		return nil
+	case escrowdeal.FieldUpdatedAt:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetUpdatedAt(v)
+		return nil
+	case escrowdeal.FieldExpiresAt:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetExpiresAt(v)
+		return nil
+	}
+	return fmt.Errorf("unknown EscrowDeal field %s", name)
+}
+
+// AddedFields returns all numeric fields that were incremented/decremented during
+// this mutation.
+func (m *EscrowDealMutation) AddedFields() []string {
+	var fields []string
+	if m.addchain_id != nil {
+		fields = append(fields, escrowdeal.FieldChainID)
+	}
+	return fields
+}
+
+// AddedField returns the numeric value that was incremented/decremented on a field
+// with the given name. The second boolean return value indicates that this field
+// was not set, or was not defined in the schema.
+func (m *EscrowDealMutation) AddedField(name string) (ent.Value, bool) {
+	switch name {
+	case escrowdeal.FieldChainID:
+		return m.AddedChainID()
+	}
+	return nil, false
+}
+
+// AddField adds the value to the field with the given name. It returns an error if
+// the field is not defined in the schema, or if the type mismatched the field
+// type.
+func (m *EscrowDealMutation) AddField(name string, value ent.Value) error {
+	switch name {
+	case escrowdeal.FieldChainID:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddChainID(v)
+		return nil
+	}
+	return fmt.Errorf("unknown EscrowDeal numeric field %s", name)
+}
+
+// ClearedFields returns all nullable fields that were cleared during this
+// mutation.
+func (m *EscrowDealMutation) ClearedFields() []string {
+	var fields []string
+	if m.FieldCleared(escrowdeal.FieldMilestones) {
+		fields = append(fields, escrowdeal.FieldMilestones)
+	}
+	if m.FieldCleared(escrowdeal.FieldTaskID) {
+		fields = append(fields, escrowdeal.FieldTaskID)
+	}
+	if m.FieldCleared(escrowdeal.FieldReason) {
+		fields = append(fields, escrowdeal.FieldReason)
+	}
+	if m.FieldCleared(escrowdeal.FieldDisputeNote) {
+		fields = append(fields, escrowdeal.FieldDisputeNote)
+	}
+	if m.FieldCleared(escrowdeal.FieldChainID) {
+		fields = append(fields, escrowdeal.FieldChainID)
+	}
+	if m.FieldCleared(escrowdeal.FieldHubAddress) {
+		fields = append(fields, escrowdeal.FieldHubAddress)
+	}
+	if m.FieldCleared(escrowdeal.FieldOnChainDealID) {
+		fields = append(fields, escrowdeal.FieldOnChainDealID)
+	}
+	if m.FieldCleared(escrowdeal.FieldDepositTxHash) {
+		fields = append(fields, escrowdeal.FieldDepositTxHash)
+	}
+	if m.FieldCleared(escrowdeal.FieldReleaseTxHash) {
+		fields = append(fields, escrowdeal.FieldReleaseTxHash)
+	}
+	if m.FieldCleared(escrowdeal.FieldRefundTxHash) {
+		fields = append(fields, escrowdeal.FieldRefundTxHash)
+	}
+	return fields
+}
+
+// FieldCleared returns a boolean indicating if a field with the given name was
+// cleared in this mutation.
+func (m *EscrowDealMutation) FieldCleared(name string) bool {
+	_, ok := m.clearedFields[name]
+	return ok
+}
+
+// ClearField clears the value of the field with the given name. It returns an
+// error if the field is not defined in the schema.
+func (m *EscrowDealMutation) ClearField(name string) error {
+	switch name {
+	case escrowdeal.FieldMilestones:
+		m.ClearMilestones()
+		return nil
+	case escrowdeal.FieldTaskID:
+		m.ClearTaskID()
+		return nil
+	case escrowdeal.FieldReason:
+		m.ClearReason()
+		return nil
+	case escrowdeal.FieldDisputeNote:
+		m.ClearDisputeNote()
+		return nil
+	case escrowdeal.FieldChainID:
+		m.ClearChainID()
+		return nil
+	case escrowdeal.FieldHubAddress:
+		m.ClearHubAddress()
+		return nil
+	case escrowdeal.FieldOnChainDealID:
+		m.ClearOnChainDealID()
+		return nil
+	case escrowdeal.FieldDepositTxHash:
+		m.ClearDepositTxHash()
+		return nil
+	case escrowdeal.FieldReleaseTxHash:
+		m.ClearReleaseTxHash()
+		return nil
+	case escrowdeal.FieldRefundTxHash:
+		m.ClearRefundTxHash()
+		return nil
+	}
+	return fmt.Errorf("unknown EscrowDeal nullable field %s", name)
+}
+
+// ResetField resets all changes in the mutation for the field with the given name.
+// It returns an error if the field is not defined in the schema.
+func (m *EscrowDealMutation) ResetField(name string) error {
+	switch name {
+	case escrowdeal.FieldEscrowID:
+		m.ResetEscrowID()
+		return nil
+	case escrowdeal.FieldBuyerDid:
+		m.ResetBuyerDid()
+		return nil
+	case escrowdeal.FieldSellerDid:
+		m.ResetSellerDid()
+		return nil
+	case escrowdeal.FieldTotalAmount:
+		m.ResetTotalAmount()
+		return nil
+	case escrowdeal.FieldStatus:
+		m.ResetStatus()
+		return nil
+	case escrowdeal.FieldMilestones:
+		m.ResetMilestones()
+		return nil
+	case escrowdeal.FieldTaskID:
+		m.ResetTaskID()
+		return nil
+	case escrowdeal.FieldReason:
+		m.ResetReason()
+		return nil
+	case escrowdeal.FieldDisputeNote:
+		m.ResetDisputeNote()
+		return nil
+	case escrowdeal.FieldChainID:
+		m.ResetChainID()
+		return nil
+	case escrowdeal.FieldHubAddress:
+		m.ResetHubAddress()
+		return nil
+	case escrowdeal.FieldOnChainDealID:
+		m.ResetOnChainDealID()
+		return nil
+	case escrowdeal.FieldDepositTxHash:
+		m.ResetDepositTxHash()
+		return nil
+	case escrowdeal.FieldReleaseTxHash:
+		m.ResetReleaseTxHash()
+		return nil
+	case escrowdeal.FieldRefundTxHash:
+		m.ResetRefundTxHash()
+		return nil
+	case escrowdeal.FieldCreatedAt:
+		m.ResetCreatedAt()
+		return nil
+	case escrowdeal.FieldUpdatedAt:
+		m.ResetUpdatedAt()
+		return nil
+	case escrowdeal.FieldExpiresAt:
+		m.ResetExpiresAt()
+		return nil
+	}
+	return fmt.Errorf("unknown EscrowDeal field %s", name)
+}
+
+// AddedEdges returns all edge names that were set/added in this mutation.
+func (m *EscrowDealMutation) AddedEdges() []string {
+	edges := make([]string, 0, 0)
+	return edges
+}
+
+// AddedIDs returns all IDs (to other nodes) that were added for the given edge
+// name in this mutation.
+func (m *EscrowDealMutation) AddedIDs(name string) []ent.Value {
+	return nil
+}
+
+// RemovedEdges returns all edge names that were removed in this mutation.
+func (m *EscrowDealMutation) RemovedEdges() []string {
+	edges := make([]string, 0, 0)
+	return edges
+}
+
+// RemovedIDs returns all IDs (to other nodes) that were removed for the edge with
+// the given name in this mutation.
+func (m *EscrowDealMutation) RemovedIDs(name string) []ent.Value {
+	return nil
+}
+
+// ClearedEdges returns all edge names that were cleared in this mutation.
+func (m *EscrowDealMutation) ClearedEdges() []string {
+	edges := make([]string, 0, 0)
+	return edges
+}
+
+// EdgeCleared returns a boolean which indicates if the edge with the given name
+// was cleared in this mutation.
+func (m *EscrowDealMutation) EdgeCleared(name string) bool {
+	return false
+}
+
+// ClearEdge clears the value of the edge with the given name. It returns an error
+// if that edge is not defined in the schema.
+func (m *EscrowDealMutation) ClearEdge(name string) error {
+	return fmt.Errorf("unknown EscrowDeal unique edge %s", name)
+}
+
+// ResetEdge resets all changes to the edge with the given name in this mutation.
+// It returns an error if the edge is not defined in the schema.
+func (m *EscrowDealMutation) ResetEdge(name string) error {
+	return fmt.Errorf("unknown EscrowDeal edge %s", name)
 }
 
 // ExternalRefMutation represents an operation that mutates the ExternalRef nodes in the graph.
@@ -13062,6 +14540,946 @@ func (m *SessionMutation) ResetEdge(name string) error {
 		return nil
 	}
 	return fmt.Errorf("unknown Session edge %s", name)
+}
+
+// TokenUsageMutation represents an operation that mutates the TokenUsage nodes in the graph.
+type TokenUsageMutation struct {
+	config
+	op               Op
+	typ              string
+	id               *uuid.UUID
+	session_key      *string
+	provider         *string
+	model            *string
+	agent_name       *string
+	input_tokens     *int64
+	addinput_tokens  *int64
+	output_tokens    *int64
+	addoutput_tokens *int64
+	total_tokens     *int64
+	addtotal_tokens  *int64
+	cache_tokens     *int64
+	addcache_tokens  *int64
+	timestamp        *time.Time
+	clearedFields    map[string]struct{}
+	done             bool
+	oldValue         func(context.Context) (*TokenUsage, error)
+	predicates       []predicate.TokenUsage
+}
+
+var _ ent.Mutation = (*TokenUsageMutation)(nil)
+
+// tokenusageOption allows management of the mutation configuration using functional options.
+type tokenusageOption func(*TokenUsageMutation)
+
+// newTokenUsageMutation creates new mutation for the TokenUsage entity.
+func newTokenUsageMutation(c config, op Op, opts ...tokenusageOption) *TokenUsageMutation {
+	m := &TokenUsageMutation{
+		config:        c,
+		op:            op,
+		typ:           TypeTokenUsage,
+		clearedFields: make(map[string]struct{}),
+	}
+	for _, opt := range opts {
+		opt(m)
+	}
+	return m
+}
+
+// withTokenUsageID sets the ID field of the mutation.
+func withTokenUsageID(id uuid.UUID) tokenusageOption {
+	return func(m *TokenUsageMutation) {
+		var (
+			err   error
+			once  sync.Once
+			value *TokenUsage
+		)
+		m.oldValue = func(ctx context.Context) (*TokenUsage, error) {
+			once.Do(func() {
+				if m.done {
+					err = errors.New("querying old values post mutation is not allowed")
+				} else {
+					value, err = m.Client().TokenUsage.Get(ctx, id)
+				}
+			})
+			return value, err
+		}
+		m.id = &id
+	}
+}
+
+// withTokenUsage sets the old TokenUsage of the mutation.
+func withTokenUsage(node *TokenUsage) tokenusageOption {
+	return func(m *TokenUsageMutation) {
+		m.oldValue = func(context.Context) (*TokenUsage, error) {
+			return node, nil
+		}
+		m.id = &node.ID
+	}
+}
+
+// Client returns a new `ent.Client` from the mutation. If the mutation was
+// executed in a transaction (ent.Tx), a transactional client is returned.
+func (m TokenUsageMutation) Client() *Client {
+	client := &Client{config: m.config}
+	client.init()
+	return client
+}
+
+// Tx returns an `ent.Tx` for mutations that were executed in transactions;
+// it returns an error otherwise.
+func (m TokenUsageMutation) Tx() (*Tx, error) {
+	if _, ok := m.driver.(*txDriver); !ok {
+		return nil, errors.New("ent: mutation is not running in a transaction")
+	}
+	tx := &Tx{config: m.config}
+	tx.init()
+	return tx, nil
+}
+
+// SetID sets the value of the id field. Note that this
+// operation is only accepted on creation of TokenUsage entities.
+func (m *TokenUsageMutation) SetID(id uuid.UUID) {
+	m.id = &id
+}
+
+// ID returns the ID value in the mutation. Note that the ID is only available
+// if it was provided to the builder or after it was returned from the database.
+func (m *TokenUsageMutation) ID() (id uuid.UUID, exists bool) {
+	if m.id == nil {
+		return
+	}
+	return *m.id, true
+}
+
+// IDs queries the database and returns the entity ids that match the mutation's predicate.
+// That means, if the mutation is applied within a transaction with an isolation level such
+// as sql.LevelSerializable, the returned ids match the ids of the rows that will be updated
+// or updated by the mutation.
+func (m *TokenUsageMutation) IDs(ctx context.Context) ([]uuid.UUID, error) {
+	switch {
+	case m.op.Is(OpUpdateOne | OpDeleteOne):
+		id, exists := m.ID()
+		if exists {
+			return []uuid.UUID{id}, nil
+		}
+		fallthrough
+	case m.op.Is(OpUpdate | OpDelete):
+		return m.Client().TokenUsage.Query().Where(m.predicates...).IDs(ctx)
+	default:
+		return nil, fmt.Errorf("IDs is not allowed on %s operations", m.op)
+	}
+}
+
+// SetSessionKey sets the "session_key" field.
+func (m *TokenUsageMutation) SetSessionKey(s string) {
+	m.session_key = &s
+}
+
+// SessionKey returns the value of the "session_key" field in the mutation.
+func (m *TokenUsageMutation) SessionKey() (r string, exists bool) {
+	v := m.session_key
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldSessionKey returns the old "session_key" field's value of the TokenUsage entity.
+// If the TokenUsage object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *TokenUsageMutation) OldSessionKey(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldSessionKey is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldSessionKey requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldSessionKey: %w", err)
+	}
+	return oldValue.SessionKey, nil
+}
+
+// ClearSessionKey clears the value of the "session_key" field.
+func (m *TokenUsageMutation) ClearSessionKey() {
+	m.session_key = nil
+	m.clearedFields[tokenusage.FieldSessionKey] = struct{}{}
+}
+
+// SessionKeyCleared returns if the "session_key" field was cleared in this mutation.
+func (m *TokenUsageMutation) SessionKeyCleared() bool {
+	_, ok := m.clearedFields[tokenusage.FieldSessionKey]
+	return ok
+}
+
+// ResetSessionKey resets all changes to the "session_key" field.
+func (m *TokenUsageMutation) ResetSessionKey() {
+	m.session_key = nil
+	delete(m.clearedFields, tokenusage.FieldSessionKey)
+}
+
+// SetProvider sets the "provider" field.
+func (m *TokenUsageMutation) SetProvider(s string) {
+	m.provider = &s
+}
+
+// Provider returns the value of the "provider" field in the mutation.
+func (m *TokenUsageMutation) Provider() (r string, exists bool) {
+	v := m.provider
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldProvider returns the old "provider" field's value of the TokenUsage entity.
+// If the TokenUsage object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *TokenUsageMutation) OldProvider(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldProvider is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldProvider requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldProvider: %w", err)
+	}
+	return oldValue.Provider, nil
+}
+
+// ResetProvider resets all changes to the "provider" field.
+func (m *TokenUsageMutation) ResetProvider() {
+	m.provider = nil
+}
+
+// SetModel sets the "model" field.
+func (m *TokenUsageMutation) SetModel(s string) {
+	m.model = &s
+}
+
+// Model returns the value of the "model" field in the mutation.
+func (m *TokenUsageMutation) Model() (r string, exists bool) {
+	v := m.model
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldModel returns the old "model" field's value of the TokenUsage entity.
+// If the TokenUsage object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *TokenUsageMutation) OldModel(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldModel is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldModel requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldModel: %w", err)
+	}
+	return oldValue.Model, nil
+}
+
+// ResetModel resets all changes to the "model" field.
+func (m *TokenUsageMutation) ResetModel() {
+	m.model = nil
+}
+
+// SetAgentName sets the "agent_name" field.
+func (m *TokenUsageMutation) SetAgentName(s string) {
+	m.agent_name = &s
+}
+
+// AgentName returns the value of the "agent_name" field in the mutation.
+func (m *TokenUsageMutation) AgentName() (r string, exists bool) {
+	v := m.agent_name
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldAgentName returns the old "agent_name" field's value of the TokenUsage entity.
+// If the TokenUsage object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *TokenUsageMutation) OldAgentName(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldAgentName is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldAgentName requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldAgentName: %w", err)
+	}
+	return oldValue.AgentName, nil
+}
+
+// ClearAgentName clears the value of the "agent_name" field.
+func (m *TokenUsageMutation) ClearAgentName() {
+	m.agent_name = nil
+	m.clearedFields[tokenusage.FieldAgentName] = struct{}{}
+}
+
+// AgentNameCleared returns if the "agent_name" field was cleared in this mutation.
+func (m *TokenUsageMutation) AgentNameCleared() bool {
+	_, ok := m.clearedFields[tokenusage.FieldAgentName]
+	return ok
+}
+
+// ResetAgentName resets all changes to the "agent_name" field.
+func (m *TokenUsageMutation) ResetAgentName() {
+	m.agent_name = nil
+	delete(m.clearedFields, tokenusage.FieldAgentName)
+}
+
+// SetInputTokens sets the "input_tokens" field.
+func (m *TokenUsageMutation) SetInputTokens(i int64) {
+	m.input_tokens = &i
+	m.addinput_tokens = nil
+}
+
+// InputTokens returns the value of the "input_tokens" field in the mutation.
+func (m *TokenUsageMutation) InputTokens() (r int64, exists bool) {
+	v := m.input_tokens
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldInputTokens returns the old "input_tokens" field's value of the TokenUsage entity.
+// If the TokenUsage object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *TokenUsageMutation) OldInputTokens(ctx context.Context) (v int64, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldInputTokens is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldInputTokens requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldInputTokens: %w", err)
+	}
+	return oldValue.InputTokens, nil
+}
+
+// AddInputTokens adds i to the "input_tokens" field.
+func (m *TokenUsageMutation) AddInputTokens(i int64) {
+	if m.addinput_tokens != nil {
+		*m.addinput_tokens += i
+	} else {
+		m.addinput_tokens = &i
+	}
+}
+
+// AddedInputTokens returns the value that was added to the "input_tokens" field in this mutation.
+func (m *TokenUsageMutation) AddedInputTokens() (r int64, exists bool) {
+	v := m.addinput_tokens
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ResetInputTokens resets all changes to the "input_tokens" field.
+func (m *TokenUsageMutation) ResetInputTokens() {
+	m.input_tokens = nil
+	m.addinput_tokens = nil
+}
+
+// SetOutputTokens sets the "output_tokens" field.
+func (m *TokenUsageMutation) SetOutputTokens(i int64) {
+	m.output_tokens = &i
+	m.addoutput_tokens = nil
+}
+
+// OutputTokens returns the value of the "output_tokens" field in the mutation.
+func (m *TokenUsageMutation) OutputTokens() (r int64, exists bool) {
+	v := m.output_tokens
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldOutputTokens returns the old "output_tokens" field's value of the TokenUsage entity.
+// If the TokenUsage object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *TokenUsageMutation) OldOutputTokens(ctx context.Context) (v int64, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldOutputTokens is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldOutputTokens requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldOutputTokens: %w", err)
+	}
+	return oldValue.OutputTokens, nil
+}
+
+// AddOutputTokens adds i to the "output_tokens" field.
+func (m *TokenUsageMutation) AddOutputTokens(i int64) {
+	if m.addoutput_tokens != nil {
+		*m.addoutput_tokens += i
+	} else {
+		m.addoutput_tokens = &i
+	}
+}
+
+// AddedOutputTokens returns the value that was added to the "output_tokens" field in this mutation.
+func (m *TokenUsageMutation) AddedOutputTokens() (r int64, exists bool) {
+	v := m.addoutput_tokens
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ResetOutputTokens resets all changes to the "output_tokens" field.
+func (m *TokenUsageMutation) ResetOutputTokens() {
+	m.output_tokens = nil
+	m.addoutput_tokens = nil
+}
+
+// SetTotalTokens sets the "total_tokens" field.
+func (m *TokenUsageMutation) SetTotalTokens(i int64) {
+	m.total_tokens = &i
+	m.addtotal_tokens = nil
+}
+
+// TotalTokens returns the value of the "total_tokens" field in the mutation.
+func (m *TokenUsageMutation) TotalTokens() (r int64, exists bool) {
+	v := m.total_tokens
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldTotalTokens returns the old "total_tokens" field's value of the TokenUsage entity.
+// If the TokenUsage object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *TokenUsageMutation) OldTotalTokens(ctx context.Context) (v int64, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldTotalTokens is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldTotalTokens requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldTotalTokens: %w", err)
+	}
+	return oldValue.TotalTokens, nil
+}
+
+// AddTotalTokens adds i to the "total_tokens" field.
+func (m *TokenUsageMutation) AddTotalTokens(i int64) {
+	if m.addtotal_tokens != nil {
+		*m.addtotal_tokens += i
+	} else {
+		m.addtotal_tokens = &i
+	}
+}
+
+// AddedTotalTokens returns the value that was added to the "total_tokens" field in this mutation.
+func (m *TokenUsageMutation) AddedTotalTokens() (r int64, exists bool) {
+	v := m.addtotal_tokens
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ResetTotalTokens resets all changes to the "total_tokens" field.
+func (m *TokenUsageMutation) ResetTotalTokens() {
+	m.total_tokens = nil
+	m.addtotal_tokens = nil
+}
+
+// SetCacheTokens sets the "cache_tokens" field.
+func (m *TokenUsageMutation) SetCacheTokens(i int64) {
+	m.cache_tokens = &i
+	m.addcache_tokens = nil
+}
+
+// CacheTokens returns the value of the "cache_tokens" field in the mutation.
+func (m *TokenUsageMutation) CacheTokens() (r int64, exists bool) {
+	v := m.cache_tokens
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldCacheTokens returns the old "cache_tokens" field's value of the TokenUsage entity.
+// If the TokenUsage object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *TokenUsageMutation) OldCacheTokens(ctx context.Context) (v int64, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldCacheTokens is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldCacheTokens requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldCacheTokens: %w", err)
+	}
+	return oldValue.CacheTokens, nil
+}
+
+// AddCacheTokens adds i to the "cache_tokens" field.
+func (m *TokenUsageMutation) AddCacheTokens(i int64) {
+	if m.addcache_tokens != nil {
+		*m.addcache_tokens += i
+	} else {
+		m.addcache_tokens = &i
+	}
+}
+
+// AddedCacheTokens returns the value that was added to the "cache_tokens" field in this mutation.
+func (m *TokenUsageMutation) AddedCacheTokens() (r int64, exists bool) {
+	v := m.addcache_tokens
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ResetCacheTokens resets all changes to the "cache_tokens" field.
+func (m *TokenUsageMutation) ResetCacheTokens() {
+	m.cache_tokens = nil
+	m.addcache_tokens = nil
+}
+
+// SetTimestamp sets the "timestamp" field.
+func (m *TokenUsageMutation) SetTimestamp(t time.Time) {
+	m.timestamp = &t
+}
+
+// Timestamp returns the value of the "timestamp" field in the mutation.
+func (m *TokenUsageMutation) Timestamp() (r time.Time, exists bool) {
+	v := m.timestamp
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldTimestamp returns the old "timestamp" field's value of the TokenUsage entity.
+// If the TokenUsage object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *TokenUsageMutation) OldTimestamp(ctx context.Context) (v time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldTimestamp is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldTimestamp requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldTimestamp: %w", err)
+	}
+	return oldValue.Timestamp, nil
+}
+
+// ResetTimestamp resets all changes to the "timestamp" field.
+func (m *TokenUsageMutation) ResetTimestamp() {
+	m.timestamp = nil
+}
+
+// Where appends a list predicates to the TokenUsageMutation builder.
+func (m *TokenUsageMutation) Where(ps ...predicate.TokenUsage) {
+	m.predicates = append(m.predicates, ps...)
+}
+
+// WhereP appends storage-level predicates to the TokenUsageMutation builder. Using this method,
+// users can use type-assertion to append predicates that do not depend on any generated package.
+func (m *TokenUsageMutation) WhereP(ps ...func(*sql.Selector)) {
+	p := make([]predicate.TokenUsage, len(ps))
+	for i := range ps {
+		p[i] = ps[i]
+	}
+	m.Where(p...)
+}
+
+// Op returns the operation name.
+func (m *TokenUsageMutation) Op() Op {
+	return m.op
+}
+
+// SetOp allows setting the mutation operation.
+func (m *TokenUsageMutation) SetOp(op Op) {
+	m.op = op
+}
+
+// Type returns the node type of this mutation (TokenUsage).
+func (m *TokenUsageMutation) Type() string {
+	return m.typ
+}
+
+// Fields returns all fields that were changed during this mutation. Note that in
+// order to get all numeric fields that were incremented/decremented, call
+// AddedFields().
+func (m *TokenUsageMutation) Fields() []string {
+	fields := make([]string, 0, 9)
+	if m.session_key != nil {
+		fields = append(fields, tokenusage.FieldSessionKey)
+	}
+	if m.provider != nil {
+		fields = append(fields, tokenusage.FieldProvider)
+	}
+	if m.model != nil {
+		fields = append(fields, tokenusage.FieldModel)
+	}
+	if m.agent_name != nil {
+		fields = append(fields, tokenusage.FieldAgentName)
+	}
+	if m.input_tokens != nil {
+		fields = append(fields, tokenusage.FieldInputTokens)
+	}
+	if m.output_tokens != nil {
+		fields = append(fields, tokenusage.FieldOutputTokens)
+	}
+	if m.total_tokens != nil {
+		fields = append(fields, tokenusage.FieldTotalTokens)
+	}
+	if m.cache_tokens != nil {
+		fields = append(fields, tokenusage.FieldCacheTokens)
+	}
+	if m.timestamp != nil {
+		fields = append(fields, tokenusage.FieldTimestamp)
+	}
+	return fields
+}
+
+// Field returns the value of a field with the given name. The second boolean
+// return value indicates that this field was not set, or was not defined in the
+// schema.
+func (m *TokenUsageMutation) Field(name string) (ent.Value, bool) {
+	switch name {
+	case tokenusage.FieldSessionKey:
+		return m.SessionKey()
+	case tokenusage.FieldProvider:
+		return m.Provider()
+	case tokenusage.FieldModel:
+		return m.Model()
+	case tokenusage.FieldAgentName:
+		return m.AgentName()
+	case tokenusage.FieldInputTokens:
+		return m.InputTokens()
+	case tokenusage.FieldOutputTokens:
+		return m.OutputTokens()
+	case tokenusage.FieldTotalTokens:
+		return m.TotalTokens()
+	case tokenusage.FieldCacheTokens:
+		return m.CacheTokens()
+	case tokenusage.FieldTimestamp:
+		return m.Timestamp()
+	}
+	return nil, false
+}
+
+// OldField returns the old value of the field from the database. An error is
+// returned if the mutation operation is not UpdateOne, or the query to the
+// database failed.
+func (m *TokenUsageMutation) OldField(ctx context.Context, name string) (ent.Value, error) {
+	switch name {
+	case tokenusage.FieldSessionKey:
+		return m.OldSessionKey(ctx)
+	case tokenusage.FieldProvider:
+		return m.OldProvider(ctx)
+	case tokenusage.FieldModel:
+		return m.OldModel(ctx)
+	case tokenusage.FieldAgentName:
+		return m.OldAgentName(ctx)
+	case tokenusage.FieldInputTokens:
+		return m.OldInputTokens(ctx)
+	case tokenusage.FieldOutputTokens:
+		return m.OldOutputTokens(ctx)
+	case tokenusage.FieldTotalTokens:
+		return m.OldTotalTokens(ctx)
+	case tokenusage.FieldCacheTokens:
+		return m.OldCacheTokens(ctx)
+	case tokenusage.FieldTimestamp:
+		return m.OldTimestamp(ctx)
+	}
+	return nil, fmt.Errorf("unknown TokenUsage field %s", name)
+}
+
+// SetField sets the value of a field with the given name. It returns an error if
+// the field is not defined in the schema, or if the type mismatched the field
+// type.
+func (m *TokenUsageMutation) SetField(name string, value ent.Value) error {
+	switch name {
+	case tokenusage.FieldSessionKey:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetSessionKey(v)
+		return nil
+	case tokenusage.FieldProvider:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetProvider(v)
+		return nil
+	case tokenusage.FieldModel:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetModel(v)
+		return nil
+	case tokenusage.FieldAgentName:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetAgentName(v)
+		return nil
+	case tokenusage.FieldInputTokens:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetInputTokens(v)
+		return nil
+	case tokenusage.FieldOutputTokens:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetOutputTokens(v)
+		return nil
+	case tokenusage.FieldTotalTokens:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetTotalTokens(v)
+		return nil
+	case tokenusage.FieldCacheTokens:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetCacheTokens(v)
+		return nil
+	case tokenusage.FieldTimestamp:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetTimestamp(v)
+		return nil
+	}
+	return fmt.Errorf("unknown TokenUsage field %s", name)
+}
+
+// AddedFields returns all numeric fields that were incremented/decremented during
+// this mutation.
+func (m *TokenUsageMutation) AddedFields() []string {
+	var fields []string
+	if m.addinput_tokens != nil {
+		fields = append(fields, tokenusage.FieldInputTokens)
+	}
+	if m.addoutput_tokens != nil {
+		fields = append(fields, tokenusage.FieldOutputTokens)
+	}
+	if m.addtotal_tokens != nil {
+		fields = append(fields, tokenusage.FieldTotalTokens)
+	}
+	if m.addcache_tokens != nil {
+		fields = append(fields, tokenusage.FieldCacheTokens)
+	}
+	return fields
+}
+
+// AddedField returns the numeric value that was incremented/decremented on a field
+// with the given name. The second boolean return value indicates that this field
+// was not set, or was not defined in the schema.
+func (m *TokenUsageMutation) AddedField(name string) (ent.Value, bool) {
+	switch name {
+	case tokenusage.FieldInputTokens:
+		return m.AddedInputTokens()
+	case tokenusage.FieldOutputTokens:
+		return m.AddedOutputTokens()
+	case tokenusage.FieldTotalTokens:
+		return m.AddedTotalTokens()
+	case tokenusage.FieldCacheTokens:
+		return m.AddedCacheTokens()
+	}
+	return nil, false
+}
+
+// AddField adds the value to the field with the given name. It returns an error if
+// the field is not defined in the schema, or if the type mismatched the field
+// type.
+func (m *TokenUsageMutation) AddField(name string, value ent.Value) error {
+	switch name {
+	case tokenusage.FieldInputTokens:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddInputTokens(v)
+		return nil
+	case tokenusage.FieldOutputTokens:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddOutputTokens(v)
+		return nil
+	case tokenusage.FieldTotalTokens:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddTotalTokens(v)
+		return nil
+	case tokenusage.FieldCacheTokens:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddCacheTokens(v)
+		return nil
+	}
+	return fmt.Errorf("unknown TokenUsage numeric field %s", name)
+}
+
+// ClearedFields returns all nullable fields that were cleared during this
+// mutation.
+func (m *TokenUsageMutation) ClearedFields() []string {
+	var fields []string
+	if m.FieldCleared(tokenusage.FieldSessionKey) {
+		fields = append(fields, tokenusage.FieldSessionKey)
+	}
+	if m.FieldCleared(tokenusage.FieldAgentName) {
+		fields = append(fields, tokenusage.FieldAgentName)
+	}
+	return fields
+}
+
+// FieldCleared returns a boolean indicating if a field with the given name was
+// cleared in this mutation.
+func (m *TokenUsageMutation) FieldCleared(name string) bool {
+	_, ok := m.clearedFields[name]
+	return ok
+}
+
+// ClearField clears the value of the field with the given name. It returns an
+// error if the field is not defined in the schema.
+func (m *TokenUsageMutation) ClearField(name string) error {
+	switch name {
+	case tokenusage.FieldSessionKey:
+		m.ClearSessionKey()
+		return nil
+	case tokenusage.FieldAgentName:
+		m.ClearAgentName()
+		return nil
+	}
+	return fmt.Errorf("unknown TokenUsage nullable field %s", name)
+}
+
+// ResetField resets all changes in the mutation for the field with the given name.
+// It returns an error if the field is not defined in the schema.
+func (m *TokenUsageMutation) ResetField(name string) error {
+	switch name {
+	case tokenusage.FieldSessionKey:
+		m.ResetSessionKey()
+		return nil
+	case tokenusage.FieldProvider:
+		m.ResetProvider()
+		return nil
+	case tokenusage.FieldModel:
+		m.ResetModel()
+		return nil
+	case tokenusage.FieldAgentName:
+		m.ResetAgentName()
+		return nil
+	case tokenusage.FieldInputTokens:
+		m.ResetInputTokens()
+		return nil
+	case tokenusage.FieldOutputTokens:
+		m.ResetOutputTokens()
+		return nil
+	case tokenusage.FieldTotalTokens:
+		m.ResetTotalTokens()
+		return nil
+	case tokenusage.FieldCacheTokens:
+		m.ResetCacheTokens()
+		return nil
+	case tokenusage.FieldTimestamp:
+		m.ResetTimestamp()
+		return nil
+	}
+	return fmt.Errorf("unknown TokenUsage field %s", name)
+}
+
+// AddedEdges returns all edge names that were set/added in this mutation.
+func (m *TokenUsageMutation) AddedEdges() []string {
+	edges := make([]string, 0, 0)
+	return edges
+}
+
+// AddedIDs returns all IDs (to other nodes) that were added for the given edge
+// name in this mutation.
+func (m *TokenUsageMutation) AddedIDs(name string) []ent.Value {
+	return nil
+}
+
+// RemovedEdges returns all edge names that were removed in this mutation.
+func (m *TokenUsageMutation) RemovedEdges() []string {
+	edges := make([]string, 0, 0)
+	return edges
+}
+
+// RemovedIDs returns all IDs (to other nodes) that were removed for the edge with
+// the given name in this mutation.
+func (m *TokenUsageMutation) RemovedIDs(name string) []ent.Value {
+	return nil
+}
+
+// ClearedEdges returns all edge names that were cleared in this mutation.
+func (m *TokenUsageMutation) ClearedEdges() []string {
+	edges := make([]string, 0, 0)
+	return edges
+}
+
+// EdgeCleared returns a boolean which indicates if the edge with the given name
+// was cleared in this mutation.
+func (m *TokenUsageMutation) EdgeCleared(name string) bool {
+	return false
+}
+
+// ClearEdge clears the value of the edge with the given name. It returns an error
+// if that edge is not defined in the schema.
+func (m *TokenUsageMutation) ClearEdge(name string) error {
+	return fmt.Errorf("unknown TokenUsage unique edge %s", name)
+}
+
+// ResetEdge resets all changes to the edge with the given name in this mutation.
+// It returns an error if the edge is not defined in the schema.
+func (m *TokenUsageMutation) ResetEdge(name string) error {
+	return fmt.Errorf("unknown TokenUsage edge %s", name)
 }
 
 // WorkflowRunMutation represents an operation that mutates the WorkflowRun nodes in the graph.

@@ -28,10 +28,14 @@ func generateTestPubkey(t *testing.T) []byte {
 }
 
 func TestDIDPrefix_Constant(t *testing.T) {
+	t.Parallel()
+
 	assert.Equal(t, "did:lango:", DIDPrefix)
 }
 
 func TestDIDFromPublicKey_Valid(t *testing.T) {
+	t.Parallel()
+
 	pubkey := generateTestPubkey(t)
 
 	did, err := DIDFromPublicKey(pubkey)
@@ -50,6 +54,8 @@ func TestDIDFromPublicKey_Valid(t *testing.T) {
 }
 
 func TestDIDFromPublicKey_EmptyKey(t *testing.T) {
+	t.Parallel()
+
 	did, err := DIDFromPublicKey(nil)
 	assert.Error(t, err)
 	assert.Nil(t, did)
@@ -61,6 +67,8 @@ func TestDIDFromPublicKey_EmptyKey(t *testing.T) {
 }
 
 func TestParseDID_Valid_Roundtrip(t *testing.T) {
+	t.Parallel()
+
 	pubkey := generateTestPubkey(t)
 
 	original, err := DIDFromPublicKey(pubkey)
@@ -76,6 +84,8 @@ func TestParseDID_Valid_Roundtrip(t *testing.T) {
 }
 
 func TestParseDID_InvalidPrefix(t *testing.T) {
+	t.Parallel()
+
 	did, err := ParseDID("did:other:abc123")
 	assert.Error(t, err)
 	assert.Nil(t, did)
@@ -83,6 +93,8 @@ func TestParseDID_InvalidPrefix(t *testing.T) {
 }
 
 func TestParseDID_EmptyKey(t *testing.T) {
+	t.Parallel()
+
 	did, err := ParseDID("did:lango:")
 	assert.Error(t, err)
 	assert.Nil(t, did)
@@ -90,6 +102,8 @@ func TestParseDID_EmptyKey(t *testing.T) {
 }
 
 func TestParseDID_InvalidHex(t *testing.T) {
+	t.Parallel()
+
 	did, err := ParseDID("did:lango:ZZZZ_not_hex")
 	assert.Error(t, err)
 	assert.Nil(t, did)
@@ -97,6 +111,8 @@ func TestParseDID_InvalidHex(t *testing.T) {
 }
 
 func TestVerifyDID_Matching(t *testing.T) {
+	t.Parallel()
+
 	pubkey := generateTestPubkey(t)
 	did, err := DIDFromPublicKey(pubkey)
 	require.NoError(t, err)
@@ -107,6 +123,8 @@ func TestVerifyDID_Matching(t *testing.T) {
 }
 
 func TestVerifyDID_Mismatched(t *testing.T) {
+	t.Parallel()
+
 	pubkey := generateTestPubkey(t)
 	did, err := DIDFromPublicKey(pubkey)
 	require.NoError(t, err)
@@ -123,6 +141,8 @@ func TestVerifyDID_Mismatched(t *testing.T) {
 }
 
 func TestVerifyDID_NilDID(t *testing.T) {
+	t.Parallel()
+
 	provider := NewProvider(&mockWalletProvider{}, testLogger())
 	err := provider.VerifyDID(nil, peer.ID("somepeerid"))
 	assert.Error(t, err)
@@ -130,6 +150,8 @@ func TestVerifyDID_NilDID(t *testing.T) {
 }
 
 func TestWalletDIDProvider_DID_Caching(t *testing.T) {
+	t.Parallel()
+
 	pubkey := generateTestPubkey(t)
 	mock := &mockWalletProvider{pubkey: pubkey}
 	provider := NewProvider(mock, testLogger())
@@ -145,6 +167,8 @@ func TestWalletDIDProvider_DID_Caching(t *testing.T) {
 }
 
 func TestWalletDIDProvider_DID_WalletError(t *testing.T) {
+	t.Parallel()
+
 	mock := &mockWalletProvider{err: fmt.Errorf("wallet locked")}
 	provider := NewProvider(mock, testLogger())
 

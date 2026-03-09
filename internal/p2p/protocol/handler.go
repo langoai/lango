@@ -35,7 +35,6 @@ type SecurityEventTracker interface {
 // CardProvider returns the local agent card as a map.
 type CardProvider func() map[string]interface{}
 
-
 // PayGateChecker checks payment for a tool invocation.
 type PayGateChecker interface {
 	Check(peerDID, toolName string, payload map[string]interface{}) (PayGateResult, error)
@@ -58,6 +57,9 @@ type PayGateResult struct {
 	SettlementID string                 // deferred settlement ID for post-pay
 }
 
+// NegotiateHandler processes negotiation protocol messages.
+type NegotiateHandler func(ctx context.Context, peerDID string, payload NegotiatePayload) (map[string]interface{}, error)
+
 // Handler processes A2A-over-P2P messages on libp2p streams.
 type Handler struct {
 	sessions       *handshake.SessionStore
@@ -69,6 +71,7 @@ type Handler struct {
 	approvalFn     ToolApprovalFunc
 	securityEvents SecurityEventTracker
 	eventBus       *eventbus.Bus
+	negotiator     NegotiateHandler
 	localDID       string
 	logger         *zap.SugaredLogger
 }
@@ -128,6 +131,11 @@ func (h *Handler) SetEventBus(bus *eventbus.Bus) {
 	h.eventBus = bus
 }
 
+// SetNegotiator sets the handler for negotiation protocol messages.
+func (h *Handler) SetNegotiator(fn NegotiateHandler) {
+	h.negotiator = fn
+}
+
 // StreamHandler returns a libp2p stream handler for incoming A2A messages.
 func (h *Handler) StreamHandler() network.StreamHandler {
 	return func(s network.Stream) {
@@ -172,6 +180,8 @@ func (h *Handler) handleRequest(ctx context.Context, s network.Stream, req *Requ
 		return h.handlePriceQuery(ctx, req, peerDID)
 	case RequestToolInvokePaid:
 		return h.handleToolInvokePaid(ctx, req, peerDID)
+	case RequestNegotiatePropose, RequestNegotiateRespond:
+		return h.handleNegotiate(ctx, req, peerDID)
 	default:
 		return &Response{
 			RequestID: req.RequestID,
@@ -579,6 +589,40 @@ func (h *Handler) sendError(s network.Stream, reqID, msg string) {
 		Timestamp: time.Now(),
 	}
 	_ = json.NewEncoder(s).Encode(resp)
+}
+
+// handleNegotiate processes negotiation protocol messages.
+func (h *Handler) handleNegotiate(ctx context.Context, req *Request, peerDID string) *Response {
+	if h.negotiator == nil {
+		return &Response{
+			RequestID: req.RequestID,
+			Status:    ResponseStatusError,
+			Error:     "negotiation not configured",
+			Timestamp: time.Now(),
+		}
+	}
+
+	var payload NegotiatePayload
+	if raw, err := json.Marshal(req.Payload); err == nil {
+		_ = json.Unmarshal(raw, &payload)
+	}
+
+	result, err := h.negotiator(ctx, peerDID, payload)
+	if err != nil {
+		return &Response{
+			RequestID: req.RequestID,
+			Status:    ResponseStatusError,
+			Error:     err.Error(),
+			Timestamp: time.Now(),
+		}
+	}
+
+	return &Response{
+		RequestID: req.RequestID,
+		Status:    ResponseStatusOK,
+		Result:    result,
+		Timestamp: time.Now(),
+	}
 }
 
 // SendRequest sends an A2A request to a remote peer over a stream.

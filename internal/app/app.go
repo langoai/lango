@@ -20,14 +20,15 @@ import (
 	"github.com/langoai/lango/internal/eventbus"
 	"github.com/langoai/lango/internal/lifecycle"
 	"github.com/langoai/lango/internal/logging"
+	"github.com/langoai/lango/internal/observability/audit"
 	"github.com/langoai/lango/internal/sandbox"
 	"github.com/langoai/lango/internal/security"
 	"github.com/langoai/lango/internal/session"
 	"github.com/langoai/lango/internal/toolcatalog"
 	"github.com/langoai/lango/internal/toolchain"
-	"github.com/langoai/lango/internal/wallet"
 	"github.com/langoai/lango/internal/tools/browser"
 	"github.com/langoai/lango/internal/tools/filesystem"
+	"github.com/langoai/lango/internal/wallet"
 	x402pkg "github.com/langoai/lango/internal/x402"
 )
 
@@ -271,6 +272,19 @@ func New(boot *bootstrap.Result) (*App, error) {
 			app.P2PAgentPool = p2pc.agentPool
 			app.P2PTeamCoordinator = p2pc.coordinator
 			app.P2PAgentProvider = p2pc.provider
+
+			// Register NonceCache lifecycle so it is stopped on shutdown.
+			if p2pc.nonceCache != nil {
+				nc := p2pc.nonceCache
+				app.registry.Register(lifecycle.NewFuncComponent("p2p-nonce-cache",
+					func(_ context.Context, _ *sync.WaitGroup) error { return nil },
+					func(_ context.Context) error {
+						nc.Stop()
+						return nil
+					},
+				), lifecycle.PriorityNetwork)
+			}
+
 			// Wire P2P payment tool.
 			p2pTools := buildP2PTools(p2pc)
 			p2pTools = append(p2pTools, buildP2PPaymentTool(p2pc, pc)...)
@@ -342,6 +356,95 @@ func New(boot *bootstrap.Result) (*App, error) {
 		catalog.Register("mcp", mgmtTools)
 	}
 
+	// 5o. Economy Layer (optional — budget, risk, pricing, negotiation, escrow)
+	econc := initEconomy(cfg, p2pc, pc, bus)
+	if econc != nil {
+		app.EconomyBudget = econc.budgetEngine
+		app.EconomyRisk = econc.riskEngine
+		app.EconomyPricing = econc.pricingEngine
+		app.EconomyNegotiation = econc.negotiationEngine
+		app.EconomyEscrow = econc.escrowEngine
+
+		econTools := buildEconomyTools(econc)
+		tools = append(tools, econTools...)
+		catalog.RegisterCategory(toolcatalog.Category{
+			Name:        "economy",
+			Description: "P2P economy (budget, risk, pricing, negotiation, escrow)",
+			ConfigKey:   "economy.enabled",
+			Enabled:     true,
+		})
+		catalog.Register("economy", econTools)
+		logger().Info("economy tools registered")
+
+		// 5o'. On-chain escrow tools (if escrow engine is available)
+		if econc.escrowEngine != nil && econc.escrowSettler != nil {
+			escrowTools := buildOnChainEscrowTools(econc.escrowEngine, econc.escrowSettler)
+			tools = append(tools, escrowTools...)
+			catalog.RegisterCategory(toolcatalog.Category{
+				Name:        "escrow",
+				Description: "On-chain escrow management (hub/vault/custodian)",
+				ConfigKey:   "economy.escrow.enabled",
+				Enabled:     true,
+			})
+			catalog.Register("escrow", escrowTools)
+			logger().Info("on-chain escrow tools registered")
+		}
+
+		// 5o''. Sentinel tools (if sentinel engine is available)
+		if econc.sentinelEngine != nil {
+			sentTools := buildSentinelTools(econc.sentinelEngine)
+			tools = append(tools, sentTools...)
+			catalog.RegisterCategory(toolcatalog.Category{
+				Name:        "sentinel",
+				Description: "Security Sentinel anomaly detection",
+				ConfigKey:   "economy.escrow.enabled",
+				Enabled:     true,
+			})
+			catalog.Register("sentinel", sentTools)
+			logger().Info("sentinel tools registered")
+		}
+	}
+
+	// 5p. Contract interaction (optional, requires payment)
+	cc := initContract(pc)
+	if cc != nil {
+		ctTools := buildContractTools(cc.caller)
+		tools = append(tools, ctTools...)
+		catalog.RegisterCategory(toolcatalog.Category{
+			Name:        "contract",
+			Description: "Smart contract interaction",
+			ConfigKey:   "payment.enabled",
+			Enabled:     true,
+		})
+		catalog.Register("contract", ctTools)
+		logger().Info("contract interaction tools registered")
+	}
+
+	// 5p'. Smart Account (optional, requires payment + contract)
+	sacc := initSmartAccount(cfg, pc, econc, bus)
+	if sacc != nil {
+		app.SmartAccountManager = sacc.manager
+		app.SmartAccountComponents = sacc
+		saTools := buildSmartAccountTools(sacc)
+		tools = append(tools, saTools...)
+		catalog.RegisterCategory(toolcatalog.Category{
+			Name:        "smartaccount",
+			Description: "ERC-7579 smart account management",
+			ConfigKey:   "smartAccount.enabled",
+			Enabled:     true,
+		})
+		catalog.Register("smartaccount", saTools)
+		logger().Info("smart account tools registered")
+	}
+
+	// 5q. Observability (optional — metrics, health, token tracking)
+	obsc := initObservability(cfg, boot.DBClient, bus)
+	if obsc != nil {
+		app.MetricsCollector = obsc.collector
+		app.HealthRegistry = obsc.healthRegistry
+		app.TokenStore = obsc.tokenStore
+	}
+
 	// 6. Auth
 	auth := initAuth(cfg, store)
 
@@ -360,7 +463,9 @@ func New(boot *bootstrap.Result) (*App, error) {
 			hookRegistry.RegisterPre(toolchain.NewAgentAccessControlHook(nil))
 		}
 		if cfg.Hooks.EventPublishing && bus != nil {
-			hookRegistry.RegisterPost(toolchain.NewEventBusHook(bus))
+			ebHook := toolchain.NewEventBusHook(bus)
+			hookRegistry.RegisterPre(ebHook)
+			hookRegistry.RegisterPost(ebHook)
 		}
 
 		tools = toolchain.ChainAll(tools, toolchain.WithHooks(hookRegistry))
@@ -410,19 +515,20 @@ func New(boot *bootstrap.Result) (*App, error) {
 
 	// 9. ADK Agent (scanner is passed for output-side secret scanning)
 	adkAgent, err := initAgent(context.Background(), &agentDeps{
-		sv:      sv,
-		cfg:     cfg,
-		store:   store,
-		tools:   tools,
-		kc:      kc,
-		mc:      mc,
-		ec:      ec,
-		gc:      gc,
-		scanner: scanner,
-		sr:      registry,
-		lc:      lc,
-		catalog: catalog,
-		p2pc:    p2pc,
+		sv:       sv,
+		cfg:      cfg,
+		store:    store,
+		tools:    tools,
+		kc:       kc,
+		mc:       mc,
+		ec:       ec,
+		gc:       gc,
+		scanner:  scanner,
+		sr:       registry,
+		lc:       lc,
+		catalog:  catalog,
+		p2pc:     p2pc,
+		eventBus: bus,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("create agent: %w", err)
@@ -542,6 +648,19 @@ func New(boot *bootstrap.Result) (*App, error) {
 		logger().Info("P2P REST API routes registered")
 	}
 
+	// 9d. Observability API routes
+	if obsc != nil {
+		registerObservabilityRoutes(app.Gateway.Router(), obsc.collector, obsc.healthRegistry, obsc.tokenStore)
+		logger().Info("observability API routes registered")
+	}
+
+	// 9e. Audit recorder (optional)
+	if cfg.Observability.Audit.Enabled && boot.DBClient != nil {
+		auditRec := audit.NewRecorder(boot.DBClient)
+		auditRec.Subscribe(bus)
+		logger().Info("audit recorder wired to event bus")
+	}
+
 	// 10. Channels
 	if err := app.initChannels(); err != nil {
 		logger().Errorw("initialize channels", "error", err)
@@ -572,7 +691,10 @@ func New(boot *bootstrap.Result) (*App, error) {
 		})
 	}
 
-	// 16. Register lifecycle components for ordered startup/shutdown.
+	// 16. Observability lifecycle (token store cleanup on shutdown).
+	registerObservabilityLifecycle(app.registry, obsc, cfg)
+
+	// 17. Register lifecycle components for ordered startup/shutdown.
 	app.registerLifecycleComponents()
 
 	return app, nil

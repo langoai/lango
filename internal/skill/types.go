@@ -58,6 +58,6 @@ type SkillEntry struct {
 	Status           SkillStatus
 	CreatedBy        string
 	RequiresApproval bool
-	Source       string   // import source URL (empty for locally created)
-	AllowedTools []string // pre-approved tools (from "allowed-tools" frontmatter)
+	Source           string   // import source URL (empty for locally created)
+	AllowedTools     []string // pre-approved tools (from "allowed-tools" frontmatter)
 }

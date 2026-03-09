@@ -45,6 +45,8 @@ func makeValidAuth(to string, amount *big.Int) map[string]interface{} {
 }
 
 func TestCheck_FreeTool(t *testing.T) {
+	t.Parallel()
+
 	gate := testGate(func(toolName string) (string, bool) {
 		return "", true
 	})
@@ -57,6 +59,8 @@ func TestCheck_FreeTool(t *testing.T) {
 }
 
 func TestCheck_PaidNoAuth(t *testing.T) {
+	t.Parallel()
+
 	gate := testGate(func(toolName string) (string, bool) {
 		return "0.50", false
 	})
@@ -72,6 +76,8 @@ func TestCheck_PaidNoAuth(t *testing.T) {
 }
 
 func TestCheck_PaidWithValidAuth(t *testing.T) {
+	t.Parallel()
+
 	gate := testGate(func(toolName string) (string, bool) {
 		return "0.50", false
 	})
@@ -88,6 +94,8 @@ func TestCheck_PaidWithValidAuth(t *testing.T) {
 }
 
 func TestCheck_PaidInsufficientAmount(t *testing.T) {
+	t.Parallel()
+
 	gate := testGate(func(toolName string) (string, bool) {
 		return "1.00", false
 	})
@@ -104,6 +112,8 @@ func TestCheck_PaidInsufficientAmount(t *testing.T) {
 }
 
 func TestCheck_ExpiredAuth(t *testing.T) {
+	t.Parallel()
+
 	gate := testGate(func(toolName string) (string, bool) {
 		return "0.50", false
 	})
@@ -122,6 +132,8 @@ func TestCheck_ExpiredAuth(t *testing.T) {
 }
 
 func TestCheck_RecipientMismatch(t *testing.T) {
+	t.Parallel()
+
 	gate := testGate(func(toolName string) (string, bool) {
 		return "0.50", false
 	})
@@ -139,6 +151,8 @@ func TestCheck_RecipientMismatch(t *testing.T) {
 }
 
 func TestCheck_InvalidAuthType(t *testing.T) {
+	t.Parallel()
+
 	gate := testGate(func(toolName string) (string, bool) {
 		return "0.50", false
 	})
@@ -152,6 +166,8 @@ func TestCheck_InvalidAuthType(t *testing.T) {
 }
 
 func TestParseUSDC(t *testing.T) {
+	t.Parallel()
+
 	tests := []struct {
 		give    string
 		want    int64
@@ -169,6 +185,7 @@ func TestParseUSDC(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.give, func(t *testing.T) {
+			t.Parallel()
 			got, err := ParseUSDC(tt.give)
 			if tt.wantErr {
 				assert.Error(t, err)
@@ -181,6 +198,8 @@ func TestParseUSDC(t *testing.T) {
 }
 
 func TestBuildQuote(t *testing.T) {
+	t.Parallel()
+
 	gate := testGate(nil)
 	quote := gate.BuildQuote("my-tool", "2.50")
 

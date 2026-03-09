@@ -96,6 +96,10 @@ lint:
 generate:
 	$(GOCMD) generate ./...
 
+## check-abi: Verify ABI bindings match Solidity sources
+check-abi:
+	@bash scripts/check-abi.sh
+
 ## ci: Run full local CI pipeline (fmt-check → vet → lint → test)
 ci: fmt-check vet lint test
 
@@ -176,7 +180,7 @@ help:
 .PHONY: build build-linux build-darwin build-all install \
         dev run \
         test test-short test-p2p bench coverage \
-        fmt fmt-check vet lint generate ci \
+        fmt fmt-check vet lint generate check-abi ci \
         deps \
         codesign \
         sandbox-image \

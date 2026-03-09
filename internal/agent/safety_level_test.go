@@ -12,8 +12,8 @@ func TestSafetyLevel_String(t *testing.T) {
 		{give: SafetyLevelSafe, want: "safe"},
 		{give: SafetyLevelModerate, want: "moderate"},
 		{give: SafetyLevelDangerous, want: "dangerous"},
-		{give: 0, want: "dangerous"},   // zero value → fail-safe
-		{give: 99, want: "dangerous"},  // unknown → fail-safe
+		{give: 0, want: "dangerous"},  // zero value → fail-safe
+		{give: 99, want: "dangerous"}, // unknown → fail-safe
 	}
 
 	for _, tt := range tests {
@@ -34,7 +34,7 @@ func TestSafetyLevel_IsDangerous(t *testing.T) {
 		{give: SafetyLevelSafe, want: false},
 		{give: SafetyLevelModerate, want: false},
 		{give: SafetyLevelDangerous, want: true},
-		{give: 0, want: true},  // zero value → dangerous
+		{give: 0, want: true}, // zero value → dangerous
 	}
 
 	for _, tt := range tests {

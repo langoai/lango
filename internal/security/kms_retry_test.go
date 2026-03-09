@@ -10,6 +10,8 @@ import (
 )
 
 func TestWithRetry_ImmediateSuccess(t *testing.T) {
+	t.Parallel()
+
 	calls := 0
 	err := withRetry(context.Background(), 3, func() error {
 		calls++
@@ -20,6 +22,8 @@ func TestWithRetry_ImmediateSuccess(t *testing.T) {
 }
 
 func TestWithRetry_TransientThenSuccess(t *testing.T) {
+	t.Parallel()
+
 	calls := 0
 	err := withRetry(context.Background(), 3, func() error {
 		calls++
@@ -33,6 +37,8 @@ func TestWithRetry_TransientThenSuccess(t *testing.T) {
 }
 
 func TestWithRetry_NonTransientError(t *testing.T) {
+	t.Parallel()
+
 	calls := 0
 	err := withRetry(context.Background(), 3, func() error {
 		calls++
@@ -44,6 +50,8 @@ func TestWithRetry_NonTransientError(t *testing.T) {
 }
 
 func TestWithRetry_ExhaustsRetries(t *testing.T) {
+	t.Parallel()
+
 	calls := 0
 	err := withRetry(context.Background(), 2, func() error {
 		calls++
@@ -55,6 +63,8 @@ func TestWithRetry_ExhaustsRetries(t *testing.T) {
 }
 
 func TestWithRetry_ContextCancelled(t *testing.T) {
+	t.Parallel()
+
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
 
@@ -69,6 +79,8 @@ func TestWithRetry_ContextCancelled(t *testing.T) {
 }
 
 func TestIsTransient(t *testing.T) {
+	t.Parallel()
+
 	tests := []struct {
 		give error
 		want bool
@@ -84,6 +96,7 @@ func TestIsTransient(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.give.Error(), func(t *testing.T) {
+			t.Parallel()
 			assert.Equal(t, tt.want, IsTransient(tt.give))
 		})
 	}

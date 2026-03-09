@@ -29,6 +29,7 @@ func mimcHash(elems ...*big.Int) *big.Int {
 // --- WalletOwnership Tests ---
 
 func TestWalletOwnership_Valid(t *testing.T) {
+	// gnark test.Assert uses global state that is not safe for t.Parallel().
 	assert := test.NewAssert(t)
 
 	response := big.NewInt(42)
@@ -46,6 +47,7 @@ func TestWalletOwnership_Valid(t *testing.T) {
 }
 
 func TestWalletOwnership_InvalidResponse(t *testing.T) {
+	// gnark test.Assert uses global state that is not safe for t.Parallel().
 	assert := test.NewAssert(t)
 
 	response := big.NewInt(42)
@@ -65,6 +67,7 @@ func TestWalletOwnership_InvalidResponse(t *testing.T) {
 }
 
 func TestWalletOwnership_WrongChallenge(t *testing.T) {
+	// gnark test.Assert uses global state that is not safe for t.Parallel().
 	assert := test.NewAssert(t)
 
 	response := big.NewInt(42)
@@ -86,6 +89,7 @@ func TestWalletOwnership_WrongChallenge(t *testing.T) {
 // --- ResponseAttestation Tests ---
 
 func TestResponseAttestation_Valid(t *testing.T) {
+	// gnark test.Assert uses global state that is not safe for t.Parallel().
 	assert := test.NewAssert(t)
 
 	agentKeyProof := big.NewInt(777)
@@ -102,8 +106,8 @@ func TestResponseAttestation_Valid(t *testing.T) {
 		ResponseHash:   responseHash,
 		AgentDIDHash:   agentDIDHash,
 		Timestamp:      timestamp,
-		MinTimestamp:    minTimestamp,
-		MaxTimestamp:    maxTimestamp,
+		MinTimestamp:   minTimestamp,
+		MaxTimestamp:   maxTimestamp,
 		SourceDataHash: sourceDataHash,
 		AgentKeyProof:  agentKeyProof,
 	}
@@ -112,6 +116,7 @@ func TestResponseAttestation_Valid(t *testing.T) {
 }
 
 func TestResponseAttestation_WrongAgentKey(t *testing.T) {
+	// gnark test.Assert uses global state that is not safe for t.Parallel().
 	assert := test.NewAssert(t)
 
 	agentKeyProof := big.NewInt(777)
@@ -130,8 +135,8 @@ func TestResponseAttestation_WrongAgentKey(t *testing.T) {
 		ResponseHash:   responseHash,
 		AgentDIDHash:   agentDIDHash,
 		Timestamp:      timestamp,
-		MinTimestamp:    minTimestamp,
-		MaxTimestamp:    maxTimestamp,
+		MinTimestamp:   minTimestamp,
+		MaxTimestamp:   maxTimestamp,
 		SourceDataHash: sourceDataHash,
 		AgentKeyProof:  wrongAgentKey,
 	}
@@ -140,6 +145,7 @@ func TestResponseAttestation_WrongAgentKey(t *testing.T) {
 }
 
 func TestResponseAttestation_WrongTimestamp(t *testing.T) {
+	// gnark test.Assert uses global state that is not safe for t.Parallel().
 	assert := test.NewAssert(t)
 
 	agentKeyProof := big.NewInt(777)
@@ -158,8 +164,8 @@ func TestResponseAttestation_WrongTimestamp(t *testing.T) {
 		ResponseHash:   responseHash,
 		AgentDIDHash:   agentDIDHash,
 		Timestamp:      wrongTimestamp,
-		MinTimestamp:    minTimestamp,
-		MaxTimestamp:    maxTimestamp,
+		MinTimestamp:   minTimestamp,
+		MaxTimestamp:   maxTimestamp,
 		SourceDataHash: sourceDataHash,
 		AgentKeyProof:  agentKeyProof,
 	}
@@ -168,6 +174,7 @@ func TestResponseAttestation_WrongTimestamp(t *testing.T) {
 }
 
 func TestResponseAttestation_TimestampBelowMin(t *testing.T) {
+	// gnark test.Assert uses global state that is not safe for t.Parallel().
 	assert := test.NewAssert(t)
 
 	agentKeyProof := big.NewInt(777)
@@ -184,8 +191,8 @@ func TestResponseAttestation_TimestampBelowMin(t *testing.T) {
 		ResponseHash:   responseHash,
 		AgentDIDHash:   agentDIDHash,
 		Timestamp:      timestamp,
-		MinTimestamp:    minTimestamp,
-		MaxTimestamp:    maxTimestamp,
+		MinTimestamp:   minTimestamp,
+		MaxTimestamp:   maxTimestamp,
 		SourceDataHash: sourceDataHash,
 		AgentKeyProof:  agentKeyProof,
 	}
@@ -194,6 +201,7 @@ func TestResponseAttestation_TimestampBelowMin(t *testing.T) {
 }
 
 func TestResponseAttestation_TimestampAboveMax(t *testing.T) {
+	// gnark test.Assert uses global state that is not safe for t.Parallel().
 	assert := test.NewAssert(t)
 
 	agentKeyProof := big.NewInt(777)
@@ -210,8 +218,8 @@ func TestResponseAttestation_TimestampAboveMax(t *testing.T) {
 		ResponseHash:   responseHash,
 		AgentDIDHash:   agentDIDHash,
 		Timestamp:      timestamp,
-		MinTimestamp:    minTimestamp,
-		MaxTimestamp:    maxTimestamp,
+		MinTimestamp:   minTimestamp,
+		MaxTimestamp:   maxTimestamp,
 		SourceDataHash: sourceDataHash,
 		AgentKeyProof:  agentKeyProof,
 	}
@@ -222,6 +230,7 @@ func TestResponseAttestation_TimestampAboveMax(t *testing.T) {
 // --- BalanceRange Tests ---
 
 func TestBalanceRange_Above(t *testing.T) {
+	// gnark test.Assert uses global state that is not safe for t.Parallel().
 	assert := test.NewAssert(t)
 
 	circuit := &BalanceRangeCircuit{}
@@ -234,6 +243,7 @@ func TestBalanceRange_Above(t *testing.T) {
 }
 
 func TestBalanceRange_Below(t *testing.T) {
+	// gnark test.Assert uses global state that is not safe for t.Parallel().
 	assert := test.NewAssert(t)
 
 	circuit := &BalanceRangeCircuit{}
@@ -246,6 +256,7 @@ func TestBalanceRange_Below(t *testing.T) {
 }
 
 func TestBalanceRange_Equal(t *testing.T) {
+	// gnark test.Assert uses global state that is not safe for t.Parallel().
 	assert := test.NewAssert(t)
 
 	circuit := &BalanceRangeCircuit{}
@@ -260,6 +271,7 @@ func TestBalanceRange_Equal(t *testing.T) {
 // --- AgentCapability Tests ---
 
 func TestAgentCapability_Valid(t *testing.T) {
+	// gnark test.Assert uses global state that is not safe for t.Parallel().
 	assert := test.NewAssert(t)
 
 	testHash := big.NewInt(1234)
@@ -284,6 +296,7 @@ func TestAgentCapability_Valid(t *testing.T) {
 }
 
 func TestAgentCapability_BelowMinimum(t *testing.T) {
+	// gnark test.Assert uses global state that is not safe for t.Parallel().
 	assert := test.NewAssert(t)
 
 	testHash := big.NewInt(1234)
@@ -308,6 +321,7 @@ func TestAgentCapability_BelowMinimum(t *testing.T) {
 }
 
 func TestAgentCapability_WrongBinding(t *testing.T) {
+	// gnark test.Assert uses global state that is not safe for t.Parallel().
 	assert := test.NewAssert(t)
 
 	testHash := big.NewInt(1234)
@@ -332,6 +346,7 @@ func TestAgentCapability_WrongBinding(t *testing.T) {
 }
 
 func TestAgentCapability_WrongAgentTestBinding(t *testing.T) {
+	// gnark test.Assert uses global state that is not safe for t.Parallel().
 	assert := test.NewAssert(t)
 
 	testHash := big.NewInt(1234)

@@ -24,9 +24,9 @@ func newTestSearchSelectForm(options []string, value string) FormModel {
 
 func TestInputSearchSelect_FilterBySubstring(t *testing.T) {
 	tests := []struct {
-		give       string
-		wantCount  int
-		wantFirst  string
+		give      string
+		wantCount int
+		wantFirst string
 	}{
 		{give: "", wantCount: 4, wantFirst: "claude-3-opus"},
 		{give: "claude", wantCount: 2, wantFirst: "claude-3-opus"},

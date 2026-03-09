@@ -4,10 +4,14 @@ import (
 	"context"
 	"testing"
 
+	"github.com/stretchr/testify/require"
+
 	"github.com/langoai/lango/internal/agent"
 )
 
 func TestAdaptTool_ParameterDef(t *testing.T) {
+	t.Parallel()
+
 	tool := &agent.Tool{
 		Name:        "test_tool",
 		Description: "A test tool",
@@ -28,15 +32,13 @@ func TestAdaptTool_ParameterDef(t *testing.T) {
 	}
 
 	adkTool, err := AdaptTool(tool)
-	if err != nil {
-		t.Fatalf("AdaptTool failed: %v", err)
-	}
-	if adkTool == nil {
-		t.Fatal("expected non-nil tool")
-	}
+	require.NoError(t, err)
+	require.NotNil(t, adkTool)
 }
 
 func TestAdaptTool_MapParams(t *testing.T) {
+	t.Parallel()
+
 	tool := &agent.Tool{
 		Name:        "map_tool",
 		Description: "A tool with map params",
@@ -53,15 +55,13 @@ func TestAdaptTool_MapParams(t *testing.T) {
 	}
 
 	adkTool, err := AdaptTool(tool)
-	if err != nil {
-		t.Fatalf("AdaptTool failed: %v", err)
-	}
-	if adkTool == nil {
-		t.Fatal("expected non-nil tool")
-	}
+	require.NoError(t, err)
+	require.NotNil(t, adkTool)
 }
 
 func TestAdaptTool_FallbackParams(t *testing.T) {
+	t.Parallel()
+
 	// Test with an unknown param type (not ParameterDef, not map)
 	tool := &agent.Tool{
 		Name:        "fallback_tool",
@@ -75,15 +75,13 @@ func TestAdaptTool_FallbackParams(t *testing.T) {
 	}
 
 	adkTool, err := AdaptTool(tool)
-	if err != nil {
-		t.Fatalf("AdaptTool failed: %v", err)
-	}
-	if adkTool == nil {
-		t.Fatal("expected non-nil tool")
-	}
+	require.NoError(t, err)
+	require.NotNil(t, adkTool)
 }
 
 func TestAdaptTool_NoParams(t *testing.T) {
+	t.Parallel()
+
 	tool := &agent.Tool{
 		Name:        "no_params_tool",
 		Description: "A tool with no params",
@@ -94,15 +92,13 @@ func TestAdaptTool_NoParams(t *testing.T) {
 	}
 
 	adkTool, err := AdaptTool(tool)
-	if err != nil {
-		t.Fatalf("AdaptTool failed: %v", err)
-	}
-	if adkTool == nil {
-		t.Fatal("expected non-nil tool")
-	}
+	require.NoError(t, err)
+	require.NotNil(t, adkTool)
 }
 
 func TestAdaptTool_WithEnum(t *testing.T) {
+	t.Parallel()
+
 	tool := &agent.Tool{
 		Name:        "enum_tool",
 		Description: "A tool with enum param",
@@ -120,10 +116,6 @@ func TestAdaptTool_WithEnum(t *testing.T) {
 	}
 
 	adkTool, err := AdaptTool(tool)
-	if err != nil {
-		t.Fatalf("AdaptTool failed: %v", err)
-	}
-	if adkTool == nil {
-		t.Fatal("expected non-nil tool")
-	}
+	require.NoError(t, err)
+	require.NotNil(t, adkTool)
 }

@@ -38,8 +38,8 @@ func NewGoogleProvider(apiKey string, model string, dimensions int) (*GoogleProv
 	}, nil
 }
 
-func (p *GoogleProvider) ID() string       { return "google" }
-func (p *GoogleProvider) Dimensions() int  { return p.dimensions }
+func (p *GoogleProvider) ID() string      { return "google" }
+func (p *GoogleProvider) Dimensions() int { return p.dimensions }
 
 // Embed generates embeddings for the given texts.
 func (p *GoogleProvider) Embed(ctx context.Context, texts []string) ([][]float32, error) {

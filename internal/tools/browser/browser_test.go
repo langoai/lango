@@ -8,9 +8,13 @@ import (
 	"time"
 
 	"github.com/langoai/lango/internal/tools/browser"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestBrowserIntegration(t *testing.T) {
+	t.Parallel()
+
 	if testing.Short() {
 		t.Skip("skipping integration test in short mode")
 	}
@@ -44,85 +48,51 @@ func TestBrowserIntegration(t *testing.T) {
 	}
 
 	tool, err := browser.New(cfg)
-	if err != nil {
-		t.Fatalf("failed to create browser tool: %v", err)
-	}
+	require.NoError(t, err, "create browser tool")
 	defer tool.Close()
 
 	// Test NewSession
 	sessionID, err := tool.NewSession()
-	if err != nil {
-		t.Fatalf("failed to create session: %v", err)
-	}
+	require.NoError(t, err, "create session")
 
 	ctx := context.Background()
 
 	// Test Navigate
-	if err := tool.Navigate(ctx, sessionID, ts.URL); err != nil {
-		t.Fatalf("failed to navigate: %v", err)
-	}
+	require.NoError(t, tool.Navigate(ctx, sessionID, ts.URL), "navigate")
 
 	// Test GetText (Header)
 	text, err := tool.GetText(sessionID, "#header")
-	if err != nil {
-		t.Fatalf("failed to get text: %v", err)
-	}
-	if text != "Hello World" {
-		t.Errorf("expected 'Hello World', got '%s'", text)
-	}
+	require.NoError(t, err, "get text")
+	assert.Equal(t, "Hello World", text)
 
 	// Test Click
-	if err := tool.Click(ctx, sessionID, "#btn"); err != nil {
-		t.Fatalf("failed to click: %v", err)
-	}
+	require.NoError(t, tool.Click(ctx, sessionID, "#btn"), "click")
 
 	// Wait for result update
-	time.Sleep(100 * time.Millisecond) // simple wait, ideally use WaitForSelector logic or Eval
+	time.Sleep(100 * time.Millisecond)
 
 	text, err = tool.GetText(sessionID, "#result")
-	if err != nil {
-		t.Fatalf("failed to get result text: %v", err)
-	}
-	if text != "Clicked" {
-		t.Errorf("expected 'Clicked', got '%s'", text)
-	}
+	require.NoError(t, err, "get result text")
+	assert.Equal(t, "Clicked", text)
 
 	// Test Type
-	if err := tool.Type(ctx, sessionID, "#inp", "test input"); err != nil {
-		t.Fatalf("failed to type: %v", err)
-	}
+	require.NoError(t, tool.Type(ctx, sessionID, "#inp", "test input"), "type")
 
 	val, err := tool.Eval(sessionID, `() => document.getElementById('inp').value`)
-	if err != nil {
-		t.Fatalf("failed to eval value: %v", err)
-	}
-	if val.(string) != "test input" {
-		t.Errorf("expected 'test input', got '%s'", val)
-	}
+	require.NoError(t, err, "eval value")
+	assert.Equal(t, "test input", val.(string))
 
 	// Test Screenshot
 	sst, err := tool.Screenshot(sessionID, false)
-	if err != nil {
-		t.Fatalf("failed to screenshot: %v", err)
-	}
-	if len(sst.Data) == 0 {
-		t.Error("screenshot data empty")
-	}
+	require.NoError(t, err, "screenshot")
+	assert.NotEmpty(t, sst.Data)
 
 	// Test GetElementInfo
 	info, err := tool.GetElementInfo(sessionID, "#header")
-	if err != nil {
-		t.Fatalf("failed to get element info: %v", err)
-	}
-	if info.TagName != "H1" {
-		t.Errorf("expected tag H1, got %s", info.TagName)
-	}
-	if info.ID != "header" {
-		t.Errorf("expected id header, got %s", info.ID)
-	}
+	require.NoError(t, err, "get element info")
+	assert.Equal(t, "H1", info.TagName)
+	assert.Equal(t, "header", info.ID)
 
 	// Test CloseSession
-	if err := tool.CloseSession(sessionID); err != nil {
-		t.Fatalf("failed to close session: %v", err)
-	}
+	require.NoError(t, tool.CloseSession(sessionID), "close session")
 }

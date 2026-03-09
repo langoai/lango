@@ -165,6 +165,7 @@ func (p *GeminiProvider) Generate(ctx context.Context, params provider.GenerateP
 	streamIter := p.client.Models.GenerateContentStream(ctx, model, contents, conf)
 
 	return func(yield func(provider.StreamEvent, error) bool) {
+		var lastUsage *provider.Usage
 		for resp, err := range streamIter {
 			if err != nil {
 				yield(provider.StreamEvent{Type: provider.StreamEventError, Error: err}, err)
@@ -210,8 +211,16 @@ func (p *GeminiProvider) Generate(ctx context.Context, params provider.GenerateP
 					}
 				}
 			}
+
+			if resp.UsageMetadata != nil {
+				lastUsage = &provider.Usage{
+					InputTokens:  int64(resp.UsageMetadata.PromptTokenCount),
+					OutputTokens: int64(resp.UsageMetadata.CandidatesTokenCount),
+					TotalTokens:  int64(resp.UsageMetadata.TotalTokenCount),
+				}
+			}
 		}
-		yield(provider.StreamEvent{Type: provider.StreamEventDone}, nil)
+		yield(provider.StreamEvent{Type: provider.StreamEventDone, Usage: lastUsage}, nil)
 	}, nil
 }
 
