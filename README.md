@@ -590,7 +590,145 @@ All settings are managed via `lango onboard` (guided wizard), `lango settings` (
 | `hooks.eventPublishing`                                | bool     | `false`                     | Publish tool execution events to event bus                                                                        |
 | `hooks.knowledgeSave`                                  | bool     | `false`                     | Auto-save knowledge from tool results                                                                             |
 | `hooks.blockedCommands`                                | []string | `[]`                        | Command patterns to block (security filter)                                                                       |
+| **Economy** (🧪 Experimental Features)                 |          |                             |                                                                                                                   |
+| `economy.enabled`                                      | bool     | `false`                     | Enable P2P economy layer                                                                                          |
+| `economy.budget.defaultMax`                            | string   | `"10.00"`                   | Default max budget per task in USDC                                                                               |
+| `economy.budget.alertThresholds`                       | []float  | `[0.5, 0.8, 0.95]`         | Percentage thresholds for budget alerts                                                                           |
+| `economy.budget.hardLimit`                             | bool     | `true`                      | Enforce budget as hard cap                                                                                        |
+| `economy.risk.escrowThreshold`                         | string   | `"5.00"`                    | USDC amount above which escrow is forced                                                                          |
+| `economy.risk.highTrustScore`                          | float    | `0.8`                       | Min trust score for DirectPay                                                                                     |
+| `economy.risk.mediumTrustScore`                        | float    | `0.5`                       | Min trust score for non-ZK strategies                                                                             |
+| `economy.negotiate.enabled`                            | bool     | `false`                     | Enable P2P negotiation protocol                                                                                   |
+| `economy.negotiate.maxRounds`                          | int      | `5`                         | Max counter-offers per session                                                                                    |
+| `economy.negotiate.timeout`                            | duration | `5m`                        | Negotiation session timeout                                                                                       |
+| `economy.negotiate.autoNegotiate`                      | bool     | `false`                     | Enable automatic counter-offer generation                                                                         |
+| `economy.negotiate.maxDiscount`                        | float    | `0.2`                       | Max discount for auto-negotiation (0–1)                                                                           |
+| `economy.escrow.enabled`                               | bool     | `false`                     | Enable milestone-based escrow                                                                                     |
+| `economy.escrow.defaultTimeout`                        | duration | `24h`                       | Escrow expiration timeout                                                                                         |
+| `economy.escrow.maxMilestones`                         | int      | `10`                        | Max milestones per escrow                                                                                         |
+| `economy.escrow.autoRelease`                           | bool     | `false`                     | Auto-release when all milestones met                                                                              |
+| `economy.escrow.disputeWindow`                         | duration | `1h`                        | Time window for disputes after completion                                                                         |
+| `economy.escrow.settlement.receiptTimeout`             | duration | `2m`                        | Max wait for on-chain confirmation                                                                                |
+| `economy.escrow.settlement.maxRetries`                 | int      | `3`                         | Max transaction submission retries                                                                                |
+| `economy.escrow.onChain.enabled`                       | bool     | `false`                     | Enable on-chain escrow mode                                                                                       |
+| `economy.escrow.onChain.mode`                          | string   | `"hub"`                     | On-chain pattern: `hub` or `vault`                                                                                |
+| `economy.escrow.onChain.hubAddress`                    | string   | -                           | LangoEscrowHub contract address                                                                                   |
+| `economy.escrow.onChain.vaultFactoryAddress`           | string   | -                           | LangoVaultFactory contract address                                                                                |
+| `economy.escrow.onChain.vaultImplementation`           | string   | -                           | LangoVault implementation address (clone target)                                                                  |
+| `economy.escrow.onChain.arbitratorAddress`             | string   | -                           | Dispute arbitrator address                                                                                        |
+| `economy.escrow.onChain.pollInterval`                  | duration | `15s`                       | Event monitor polling interval                                                                                    |
+| `economy.escrow.onChain.tokenAddress`                  | string   | -                           | ERC-20 USDC contract address                                                                                      |
+| `economy.pricing.enabled`                              | bool     | `false`                     | Enable dynamic pricing                                                                                            |
+| `economy.pricing.trustDiscount`                        | float    | `0.1`                       | Max discount for high-trust peers (0–1)                                                                           |
+| `economy.pricing.volumeDiscount`                       | float    | `0.05`                      | Max discount for high-volume peers (0–1)                                                                          |
+| `economy.pricing.minPrice`                             | string   | `"0.01"`                    | Minimum price floor in USDC                                                                                       |
+| **Smart Account** (🧪 Experimental Features)           |          |                             |                                                                                                                   |
+| `smartAccount.enabled`                                 | bool     | `false`                     | Enable ERC-7579 smart account subsystem                                                                           |
+| `smartAccount.factoryAddress`                          | string   | -                           | ERC-7579 account factory address                                                                                  |
+| `smartAccount.entryPointAddress`                       | string   | -                           | ERC-4337 EntryPoint address                                                                                       |
+| `smartAccount.safe7579Address`                         | string   | -                           | Safe7579 adapter address                                                                                          |
+| `smartAccount.fallbackHandler`                         | string   | -                           | Fallback handler address                                                                                          |
+| `smartAccount.bundlerURL`                              | string   | -                           | UserOp bundler endpoint                                                                                           |
+| `smartAccount.session.maxDuration`                     | duration | -                           | Max session key lifetime                                                                                          |
+| `smartAccount.session.defaultGasLimit`                 | uint64   | -                           | Gas limit per UserOp                                                                                              |
+| `smartAccount.session.maxActiveKeys`                   | int      | -                           | Max concurrent session keys                                                                                       |
+| `smartAccount.modules.sessionValidatorAddress`         | string   | -                           | LangoSessionValidator module address                                                                              |
+| `smartAccount.modules.spendingHookAddress`             | string   | -                           | LangoSpendingHook module address                                                                                  |
+| `smartAccount.modules.escrowExecutorAddress`           | string   | -                           | LangoEscrowExecutor module address                                                                                |
+| `smartAccount.paymaster.enabled`                       | bool     | `false`                     | Enable paymaster for gasless transactions                                                                         |
+| `smartAccount.paymaster.provider`                      | string   | -                           | Paymaster provider: `circle`, `pimlico`, `alchemy`                                                                |
+| `smartAccount.paymaster.rpcURL`                        | string   | -                           | Paymaster RPC endpoint                                                                                            |
+| `smartAccount.paymaster.tokenAddress`                  | string   | -                           | USDC token address for paymaster                                                                                  |
+| `smartAccount.paymaster.paymasterAddress`              | string   | -                           | Paymaster contract address                                                                                        |
+| `smartAccount.paymaster.policyId`                      | string   | -                           | Optional paymaster policy ID                                                                                      |
+| `smartAccount.paymaster.fallbackMode`                  | string   | `"abort"`                   | Fallback when paymaster fails: `abort` or `direct`                                                                |
 
+
+## On-Chain Economy (Base Sepolia Testnet)
+
+Lango smart contracts are deployed on **Base Sepolia** (chain ID `84532`). These are shared infrastructure contracts — all Lango agents use the same deployed instances.
+
+### Deployed Contract Addresses
+
+| Contract | Address | Description |
+|----------|---------|-------------|
+| LangoEscrowHub | `0x1820A1C403A5811660a4893Ae028862208e4f7A8` | Centralized milestone-based escrow |
+| LangoVault (impl) | `0x18167Daeca7A09B32D8BE93c73737B95B64A7ff8` | Vault clone target (EIP-1167) |
+| LangoVaultFactory | `0x1CA47128D7fdDD0D875C3AeC7274C894F2c792C2` | Creates individual vault instances |
+| LangoSessionValidator | `0xB52877B5E27F77795Fbe59101D07CA81dbd3f8aC` | ERC-7579 session key validator |
+| LangoSpendingHook | `0xc428774991dBDf6645E254be793cb93A66cd9b4B` | ERC-7579 on-chain spending limits |
+| LangoEscrowExecutor | `0x5d08310987C5B59cB03F01363142656C5AE23997` | ERC-7579 escrow execution module |
+| USDC (canonical) | `0x036CbD53842c5426634e7929541eC2318f3dCF7e` | Base Sepolia USDC |
+| Arbitrator | `0x4BDBDE4A725A83820B7A94cD5dB523eb4515dDAd` | Testnet dispute arbitrator |
+
+> Full deployment manifest: [`contracts/deployments/84532.json`](contracts/deployments/84532.json)
+
+### Configuration
+
+Enable on-chain economy with the deployed Base Sepolia contracts:
+
+```bash
+# Economy — on-chain escrow (hub mode)
+lango config set economy.enabled true
+lango config set economy.escrow.enabled true
+lango config set economy.escrow.onChain.enabled true
+lango config set economy.escrow.onChain.mode hub
+lango config set economy.escrow.onChain.hubAddress "0x1820A1C403A5811660a4893Ae028862208e4f7A8"
+lango config set economy.escrow.onChain.vaultFactoryAddress "0x1CA47128D7fdDD0D875C3AeC7274C894F2c792C2"
+lango config set economy.escrow.onChain.vaultImplementation "0x18167Daeca7A09B32D8BE93c73737B95B64A7ff8"
+lango config set economy.escrow.onChain.arbitratorAddress "0x4BDBDE4A725A83820B7A94cD5dB523eb4515dDAd"
+lango config set economy.escrow.onChain.tokenAddress "0x036CbD53842c5426634e7929541eC2318f3dCF7e"
+
+# Smart Account — ERC-7579 modules
+lango config set smartAccount.enabled true
+lango config set smartAccount.modules.sessionValidatorAddress "0xB52877B5E27F77795Fbe59101D07CA81dbd3f8aC"
+lango config set smartAccount.modules.spendingHookAddress "0xc428774991dBDf6645E254be793cb93A66cd9b4B"
+lango config set smartAccount.modules.escrowExecutorAddress "0x5d08310987C5B59cB03F01363142656C5AE23997"
+
+# Payment network (required for on-chain operations)
+lango config set payment.enabled true
+lango config set payment.network.chainId 84532
+lango config set payment.network.rpcUrl "https://sepolia.base.org"
+lango config set payment.network.usdcContract "0x036CbD53842c5426634e7929541eC2318f3dCF7e"
+```
+
+### Getting Testnet USDC
+
+1. Get Base Sepolia ETH from the [Base Faucet](https://www.base.org/faucet)
+2. Get testnet USDC from the [Circle Faucet](https://faucet.circle.com/) (select Base Sepolia)
+
+### Escrow Modes
+
+- **Hub mode** (`economy.escrow.onChain.mode: "hub"`) — All deals go through the shared `LangoEscrowHub`. Simpler, single contract manages all escrows.
+- **Vault mode** (`economy.escrow.onChain.mode: "vault"`) — Each deal gets its own `LangoVault` clone via `LangoVaultFactory`. Better isolation per deal.
+
+### Redeploying Contracts
+
+To deploy your own instance (e.g., for local development):
+
+```bash
+cd contracts
+cp .env.example .env   # fill in BASESCAN_API_KEY
+
+# Import your wallet key into Foundry encrypted keystore (one-time)
+cast wallet import my-deployer --interactive
+
+# Deploy with canonical USDC
+forge script script/Deploy.s.sol \
+  --rpc-url base_sepolia \
+  --account my-deployer \
+  --sender <YOUR_ADDRESS> \
+  --broadcast --verify -vvvv
+
+# Deploy with MockUSDC (for testing)
+DEPLOY_MOCK_USDC=true forge script script/Deploy.s.sol \
+  --rpc-url base_sepolia \
+  --account my-deployer \
+  --sender <YOUR_ADDRESS> \
+  --broadcast -vvvv
+```
+
+Deployed addresses are written to `contracts/deployments/<chainId>.json`.
 
 ## System Prompts
 
