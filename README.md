@@ -15,15 +15,17 @@
 
 ### Why Lango?
 
-Most agent frameworks stop at tool-calling. Lango goes further — it gives agents an **economic layer**:
+Most agent frameworks stop at tool-calling. Lango goes further — it gives agents a full **sovereign economic stack**:
 
-- **Peer-to-Peer Agent Economy** — Agents discover, authenticate, and trade capabilities over libp2p. No central hub. No vendor lock-in.
-- **Native Payments** — USDC transactions on Base L2, with spending limits, daily caps, and automatic X402 HTTP payment negotiation (Coinbase SDK).
-- **Trust & Reputation** — Every interaction builds a verifiable reputation score. Trusted peers get post-pay terms; new peers prepay.
-- **Zero-Knowledge Security** — ZK proofs for handshake authentication and response attestation. Agents prove identity and output integrity without revealing internals.
-- **Knowledge as Currency** — Self-learning knowledge graph, observational memory, and RAG-powered context retrieval — agents that get smarter with every interaction can charge for their expertise.
-- **Multi-Agent Orchestration** — Hierarchical sub-agent teams with role-based delegation, P2P team coordination, and DAG-based workflow pipelines.
-- **Open Interoperability** — A2A protocol for remote agent discovery, MCP integration for external tools, and multi-provider AI support (OpenAI, Anthropic, Gemini, Ollama).
+- **Peer-to-Peer Agent Economy** — Agents discover, authenticate, negotiate prices, and trade capabilities over libp2p with budget management, trust-based risk assessment, and dynamic pricing. No central hub. No vendor lock-in.
+- **On-Chain Settlement** — USDC payments on Base L2 with EIP-3009 authorization, milestone-based escrow (Hub/Vault dual-mode), Foundry smart contracts, and a Security Sentinel that detects anomalies in real time.
+- **Smart Accounts** — ERC-7579 modular smart accounts (Safe-based) with ERC-4337 account abstraction, hierarchical session keys, gasless USDC transactions via paymaster, and on-chain spending limits.
+- **Trust & Reputation** — Every interaction builds a verifiable reputation score. Trusted peers get post-pay terms and price discounts; new peers prepay or use escrow.
+- **Zero-Knowledge Security** — ZK proofs (Plonk/Groth16) for handshake authentication and response attestation. Agents prove identity and output integrity without revealing internals. Hardware keyring and Cloud KMS support.
+- **Knowledge as Currency** — Self-learning knowledge graph, observational memory, and hybrid vector + graph RAG retrieval — agents that get smarter with every interaction can charge for their expertise.
+- **Multi-Agent Orchestration** — Hierarchical sub-agent teams with role-based delegation, P2P team coordination with conflict resolution strategies, and DAG-based workflow pipelines.
+- **Open Interoperability** — A2A protocol for remote agent discovery, MCP integration for external tool servers, and multi-provider AI support (OpenAI, Anthropic, Gemini, Ollama).
+- **Production Observability** — Token usage tracking, health monitoring, audit logging, and metrics endpoints for operational visibility.
 
 Single binary. <100ms startup. <250MB memory. Just Go.
 
