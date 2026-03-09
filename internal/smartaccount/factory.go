@@ -38,17 +38,6 @@ const safeFactoryABI = `[
 	}
 ]`
 
-// safeCodeAtABI is a minimal ABI for checking deployed code.
-const safeCodeAtABI = `[
-	{
-		"inputs": [{"name": "addr", "type": "address"}],
-		"name": "getCode",
-		"outputs": [{"name": "", "type": "bytes"}],
-		"stateMutability": "view",
-		"type": "function"
-	}
-]`
-
 // Factory handles Safe smart account deployment.
 type Factory struct {
 	caller       contract.ContractCaller

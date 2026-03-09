@@ -40,20 +40,13 @@ func initEconomy(cfg *config.Config, p2pc *p2pComponents, pc *paymentComponents,
 
 	ec := &economyComponents{}
 
-	// 1. Budget Engine
+	// 1. Budget Engine — collect options first, create engine after risk engine.
 	budgetStore := budget.NewStore()
 	var budgetOpts []budget.Option
 	if bus != nil {
 		budgetOpts = append(budgetOpts, budget.WithAlertCallback(func(taskID string, pct float64) {
 			bus.Publish(eventbus.BudgetAlertEvent{TaskID: taskID, Threshold: pct})
 		}))
-	}
-	budgetEngine, err := budget.NewEngine(budgetStore, cfg.Economy.Budget, budgetOpts...)
-	if err != nil {
-		logger().Warnw("budget engine init", "error", err)
-	} else {
-		ec.budgetEngine = budgetEngine
-		logger().Info("economy: budget engine initialized")
 	}
 
 	// 2. Risk Engine — wire reputation querier from P2P if available.
@@ -76,8 +69,8 @@ func initEconomy(cfg *config.Config, p2pc *p2pComponents, pc *paymentComponents,
 		logger().Info("economy: risk engine initialized")
 	}
 
-	// Wire risk assessor into budget engine for spend checks.
-	if ec.budgetEngine != nil && ec.riskEngine != nil {
+	// Wire risk assessor into budget options before creating engine.
+	if ec.riskEngine != nil {
 		riskEng := ec.riskEngine
 		budgetOpts = append(budgetOpts, budget.WithRiskAssessor(
 			func(ctx context.Context, peerDID string, amount *big.Int) error {
@@ -91,6 +84,15 @@ func initEconomy(cfg *config.Config, p2pc *p2pComponents, pc *paymentComponents,
 				return nil
 			},
 		))
+	}
+
+	// Create budget engine with all collected options.
+	budgetEngine, err := budget.NewEngine(budgetStore, cfg.Economy.Budget, budgetOpts...)
+	if err != nil {
+		logger().Warnw("budget engine init", "error", err)
+	} else {
+		ec.budgetEngine = budgetEngine
+		logger().Info("economy: budget engine initialized")
 	}
 
 	// 3. Pricing Engine

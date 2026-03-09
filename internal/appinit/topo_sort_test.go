@@ -138,11 +138,3 @@ func TestTopoSort(t *testing.T) {
 		})
 	}
 }
-
-func moduleNames(modules []Module) []string {
-	names := make([]string, len(modules))
-	for i, m := range modules {
-		names[i] = m.Name()
-	}
-	return names
-}

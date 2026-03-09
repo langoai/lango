@@ -181,18 +181,6 @@ func parseDealResult(data []interface{}) (*OnChainDeal, error) {
 		return nil, fmt.Errorf("empty deal result")
 	}
 
-	// The getDeal function returns a struct as a tuple.
-	// go-ethereum ABI decoder returns structs as anonymous struct.
-	type abiDeal struct {
-		Buyer    common.Address
-		Seller   common.Address
-		Token    common.Address
-		Amount   *big.Int
-		Deadline *big.Int
-		Status   uint8
-		WorkHash [32]byte
-	}
-
 	// Try direct struct assertion.
 	if d, ok := data[0].(struct {
 		Buyer    common.Address

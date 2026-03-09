@@ -45,40 +45,6 @@ func (w *mockWallet) PublicKey(
 	return make([]byte, 33), nil
 }
 
-// mockContractCaller implements contract.ContractCaller for testing.
-type mockContractCaller struct {
-	readResult  *mockCallResult
-	writeResult *mockCallResult
-	readErr     error
-	writeErr    error
-}
-
-type mockCallResult struct {
-	Data    []interface{}
-	TxHash  string
-	GasUsed uint64
-}
-
-func (c *mockContractCaller) Read(
-	_ context.Context, _ mockCallRequest,
-) (*mockCallResult, error) {
-	if c.readErr != nil {
-		return nil, c.readErr
-	}
-	return c.readResult, nil
-}
-
-func (c *mockContractCaller) Write(
-	_ context.Context, _ mockCallRequest,
-) (*mockCallResult, error) {
-	if c.writeErr != nil {
-		return nil, c.writeErr
-	}
-	return c.writeResult, nil
-}
-
-type mockCallRequest struct{}
-
 func TestNewManager(t *testing.T) {
 	t.Parallel()
 

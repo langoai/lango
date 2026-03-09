@@ -17,8 +17,8 @@ func TestGenerateSessionKey(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, key)
 
-	assert.NotNil(t, key.PublicKey.X, "public key X must be set")
-	assert.NotNil(t, key.PublicKey.Y, "public key Y must be set")
+	assert.NotNil(t, key.X, "public key X must be set")
+	assert.NotNil(t, key.Y, "public key Y must be set")
 	assert.Equal(t, crypto.S256(), key.Curve,
 		"key must use secp256k1 curve")
 }
@@ -62,9 +62,9 @@ func TestSerializeDeserializePrivateKey_Roundtrip(t *testing.T) {
 
 			assert.Equal(t, original.D.Bytes(), restored.D.Bytes(),
 				"private key D must match after roundtrip")
-			assert.Equal(t, original.PublicKey.X.Bytes(), restored.PublicKey.X.Bytes(),
+			assert.Equal(t, original.X.Bytes(), restored.X.Bytes(),
 				"public key X must match after roundtrip")
-			assert.Equal(t, original.PublicKey.Y.Bytes(), restored.PublicKey.Y.Bytes(),
+			assert.Equal(t, original.Y.Bytes(), restored.Y.Bytes(),
 				"public key Y must match after roundtrip")
 		})
 	}
@@ -176,9 +176,9 @@ func TestSerializePublicKey_Recoverable(t *testing.T) {
 	require.NoError(t, err, "decompression must succeed")
 	require.NotNil(t, recovered, "recovered key must not be nil")
 
-	assert.Equal(t, key.PublicKey.X.Bytes(), recovered.X.Bytes(),
+	assert.Equal(t, key.X.Bytes(), recovered.X.Bytes(),
 		"recovered X must match original")
-	assert.Equal(t, key.PublicKey.Y.Bytes(), recovered.Y.Bytes(),
+	assert.Equal(t, key.Y.Bytes(), recovered.Y.Bytes(),
 		"recovered Y must match original")
 }
 
@@ -244,8 +244,8 @@ func TestDeserializePrivateKey_PreservesPublicKey(t *testing.T) {
 	require.NoError(t, err)
 
 	// Public key should be fully reconstructed.
-	assert.True(t, restored.PublicKey.IsOnCurve(
-		restored.PublicKey.X, restored.PublicKey.Y,
+	assert.True(t, restored.IsOnCurve(
+		restored.X, restored.Y,
 	), "restored public key must be on curve")
 
 	// Signing with restored key should be verifiable with original pub key.
@@ -310,7 +310,7 @@ func TestGenerateSessionKey_Secp256k1(t *testing.T) {
 
 	// Verify the curve parameters match secp256k1.
 	want := crypto.S256().Params()
-	got := key.Curve.Params()
+	got := key.Params()
 	assert.Equal(t, want.N, got.N, "curve order N must match secp256k1")
 	assert.Equal(t, want.P, got.P, "field prime P must match secp256k1")
 }
@@ -332,9 +332,9 @@ func TestAddressFromPublicKey_ManualKey(t *testing.T) {
 	require.NoError(t, err)
 
 	pub := &ecdsa.PublicKey{
-		Curve: key.PublicKey.Curve,
-		X:     key.PublicKey.X,
-		Y:     key.PublicKey.Y,
+		Curve: key.Curve,
+		X:     key.X,
+		Y:     key.Y,
 	}
 
 	addr := AddressFromPublicKey(pub)

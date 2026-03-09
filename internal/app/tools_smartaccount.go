@@ -478,7 +478,7 @@ func moduleInstallTool(sac *smartAccountComponents) *agent.Tool {
 		},
 		Handler: func(ctx context.Context, params map[string]interface{}) (interface{}, error) {
 			// Parse module type — JSON numbers come as float64
-			moduleTypeRaw, _ := params["module_type"]
+			moduleTypeRaw := params["module_type"]
 			var moduleType sa.ModuleType
 			switch v := moduleTypeRaw.(type) {
 			case float64:
@@ -541,7 +541,7 @@ func moduleUninstallTool(sac *smartAccountComponents) *agent.Tool {
 			"required": []string{"module_type", "address"},
 		},
 		Handler: func(ctx context.Context, params map[string]interface{}) (interface{}, error) {
-			moduleTypeRaw, _ := params["module_type"]
+			moduleTypeRaw := params["module_type"]
 			var moduleType sa.ModuleType
 			switch v := moduleTypeRaw.(type) {
 			case float64:

@@ -58,14 +58,6 @@ func (m *MockBotAPI) getSentMessages() []tgbotapi.Chattable {
 	return result
 }
 
-func (m *MockBotAPI) getRequestCalls() []tgbotapi.Chattable {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	result := make([]tgbotapi.Chattable, len(m.RequestCalls))
-	copy(result, m.RequestCalls)
-	return result
-}
-
 func (m *MockBotAPI) StopReceivingUpdates() {
 }
 

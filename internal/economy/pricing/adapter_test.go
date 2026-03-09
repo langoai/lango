@@ -1,6 +1,7 @@
 package pricing
 
 import (
+	"context"
 	"math/big"
 	"testing"
 
@@ -85,11 +86,11 @@ func TestMapToolPricer_LoadInto(t *testing.T) {
 	engine := newTestEngine(t, config.DynamicPricingConfig{})
 	pricer.LoadInto(engine)
 
-	quote, err := engine.Quote(nil, "search", "")
+	quote, err := engine.Quote(context.Background(), "search", "")
 	require.NoError(t, err)
 	assert.Equal(t, 0, quote.FinalPrice.Cmp(usdc(1)))
 
-	quote, err = engine.Quote(nil, "compute", "")
+	quote, err = engine.Quote(context.Background(), "compute", "")
 	require.NoError(t, err)
 	assert.Equal(t, 0, quote.FinalPrice.Cmp(usdc(5)))
 }
@@ -106,7 +107,7 @@ func TestMapToolPricer_DefensiveCopy(t *testing.T) {
 	engine := newTestEngine(t, config.DynamicPricingConfig{})
 	pricer.LoadInto(engine)
 
-	quote, err := engine.Quote(nil, "search", "")
+	quote, err := engine.Quote(context.Background(), "search", "")
 	require.NoError(t, err)
 	assert.Equal(t, 0, quote.FinalPrice.Cmp(usdc(1)))
 }
