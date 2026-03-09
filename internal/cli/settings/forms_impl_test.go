@@ -30,6 +30,7 @@ func TestNewAgentForm_AllFields(t *testing.T) {
 		"provider", "model", "maxtokens", "temp",
 		"prompts_dir", "fallback_provider", "fallback_model",
 		"request_timeout", "tool_timeout",
+		"auto_extend_timeout", "max_request_timeout",
 	}
 
 	if len(form.Fields) != len(wantKeys) {

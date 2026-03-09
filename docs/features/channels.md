@@ -131,6 +131,7 @@ All channels share the following capabilities:
 - **Tool approval** -- Interactive approval prompts forwarded to the originating channel
 - **Message formatting** -- Markdown/rich text adapted per platform
 - **Delivery targets** -- Automation systems (cron, background, workflow) can deliver results to any enabled channel
+- **Progressive thinking** -- Real-time "Thinking... (30s)" placeholder updates showing elapsed time
 
 ## Multiple Channels
 
