@@ -35,6 +35,7 @@ go.work.sum
 passphrase.txt
 
 !lango.example.json
+!contracts/deployments/*.json
 /lango
 
 .cursor/
