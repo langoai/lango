@@ -24,7 +24,6 @@ import (
 	"github.com/langoai/lango/internal/sandbox"
 	"github.com/langoai/lango/internal/security"
 	"github.com/langoai/lango/internal/p2p/gitbundle"
-	"github.com/langoai/lango/internal/p2p/workspace"
 	"github.com/langoai/lango/internal/session"
 	"github.com/langoai/lango/internal/toolcatalog"
 	"github.com/langoai/lango/internal/toolchain"
@@ -319,32 +318,8 @@ func New(boot *bootstrap.Result) (*App, error) {
 
 			wsc := initWorkspace(cfg, p2pc.node, localDID, sessionValidator)
 			if wsc != nil {
-				// Wire chronicler triple adder to graph store if available.
-				if wsc.chronicler != nil && app.GraphStore != nil {
-					gs := app.GraphStore
-					wsc.chronicler = workspace.NewChronicler(func(ctx context.Context, triples []workspace.Triple) error {
-						// Convert workspace triples to graph triples.
-						type graphTriple struct {
-							Subject   string
-							Predicate string
-							Object    string
-						}
-						gTriples := make([]graphTriple, len(triples))
-						for i, t := range triples {
-							gTriples[i] = graphTriple{Subject: t.Subject, Predicate: t.Predicate, Object: t.Object}
-						}
-						_ = gs // graph store wiring deferred to avoid import cycle
-						return nil
-					}, logger())
-				}
-
 				// Build and register workspace tools.
-				wsTools := buildWorkspaceTools(&workspaceComponents{
-					manager:    wsc.manager,
-					gitService: wsc.gitService,
-					gossip:     wsc.gossip,
-					tracker:    wsc.tracker,
-				})
+				wsTools := buildWorkspaceTools(wsc)
 				tools = append(tools, wsTools...)
 				catalog.RegisterCategory(toolcatalog.Category{
 					Name:        "workspace",

@@ -19,8 +19,8 @@ Manages bare git repositories per workspace under `~/.lango/workspaces/{id}/repo
 ### Service
 Git bundle operations wrapping BareRepoStore.
 - CreateBundle: `git bundle create --all` via CLI
-- ApplyBundle: `git bundle unbundle` + fetch via CLI
-- Log: Commit listing across all refs via go-git
+- ApplyBundle: `git bundle unbundle` via CLI (single step, no redundant fetch)
+- Log: Commit listing across all refs via go-git, uses sentinel error for limit control
 - Diff: `git diff` between two commits via CLI
 - Leaves: DAG leaf detection (commits with no children)
 
@@ -30,7 +30,8 @@ libp2p stream handler for `/lango/p2p-git/1.0.0`.
 - Session-based authentication via SessionValidator callback
 - 50MB default bundle size limit
 - 5-minute request timeout
-- JSON protocol with base64-encoded bundle data
+- Streaming JSON decoder for memory-efficient request parsing
+- Response status uses `StatusOK`/`StatusError` constants
 
 ## Agent Tools
 

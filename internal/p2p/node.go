@@ -35,6 +35,8 @@ type Node struct {
 	host   host.Host
 	dht    *dht.IpfsDHT
 	ps     *pubsub.PubSub
+	psOnce sync.Once
+	psErr  error
 	cfg    config.P2PConfig
 	logger *zap.SugaredLogger
 	cancel context.CancelFunc
@@ -201,15 +203,10 @@ func (n *Node) Host() host.Host { return n.host }
 
 // PubSub returns the shared GossipSub instance, creating it on first access.
 func (n *Node) PubSub() (*pubsub.PubSub, error) {
-	if n.ps != nil {
-		return n.ps, nil
-	}
-	ps, err := pubsub.NewGossipSub(context.Background(), n.host)
-	if err != nil {
-		return nil, fmt.Errorf("create gossipsub: %w", err)
-	}
-	n.ps = ps
-	return ps, nil
+	n.psOnce.Do(func() {
+		n.ps, n.psErr = pubsub.NewGossipSub(context.Background(), n.host)
+	})
+	return n.ps, n.psErr
 }
 
 // SetStreamHandler registers a protocol stream handler on the host.

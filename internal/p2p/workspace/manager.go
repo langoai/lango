@@ -1,6 +1,7 @@
 package workspace
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -99,7 +100,7 @@ func (m *Manager) Create(ctx context.Context, req CreateRequest) (*Workspace, er
 		Members: []*Member{
 			{
 				DID:      m.localDID,
-				Role:     "creator",
+				Role:     RoleCreator,
 				JoinedAt: now,
 			},
 		},
@@ -139,7 +140,7 @@ func (m *Manager) Join(ctx context.Context, workspaceID string) error {
 
 	ws.Members = append(ws.Members, &Member{
 		DID:      m.localDID,
-		Role:     "member",
+		Role:     RoleMember,
 		JoinedAt: time.Now(),
 	})
 	ws.UpdatedAt = time.Now()
@@ -301,18 +302,7 @@ func (m *Manager) Read(ctx context.Context, workspaceID string, opts ReadOptions
 		c := b.Cursor()
 
 		for k, v := c.Seek(prefix); k != nil && len(messages) < opts.Limit; k, v = c.Next() {
-			// Check prefix match.
-			if len(k) < len(prefix) {
-				break
-			}
-			match := true
-			for i := range prefix {
-				if k[i] != prefix[i] {
-					match = false
-					break
-				}
-			}
-			if !match {
+			if !bytes.HasPrefix(k, prefix) {
 				break
 			}
 

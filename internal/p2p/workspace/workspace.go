@@ -25,11 +25,19 @@ type Workspace struct {
 	Metadata  map[string]string `json:"metadata,omitempty"`
 }
 
+// Role represents a member's role in a workspace.
+type Role string
+
+const (
+	RoleCreator Role = "creator"
+	RoleMember  Role = "member"
+)
+
 // Member represents a participant in a workspace.
 type Member struct {
 	DID      string    `json:"did"`
 	Name     string    `json:"name,omitempty"`
-	Role     string    `json:"role"`
+	Role     Role      `json:"role"`
 	JoinedAt time.Time `json:"joinedAt"`
 }
 

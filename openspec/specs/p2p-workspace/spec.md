@@ -11,7 +11,7 @@ Collaborative workspaces where P2P agents share code and messages without a cent
 ## Types
 
 - **Workspace**: ID, Name, Goal, Status (Forming/Active/Archived), Members, Metadata
-- **Member**: DID, Name, Role (creator/member), JoinedAt
+- **Member**: DID, Name, Role (`Role` type: RoleCreator/RoleMember), JoinedAt
 - **Message**: ID, Type, WorkspaceID, SenderDID, Content, Metadata, ParentID, Timestamp
 - **MessageType**: TASK_PROPOSAL, LOG_STREAM, COMMIT_SIGNAL, KNOWLEDGE_SHARE, MEMBER_JOINED, MEMBER_LEFT
 
@@ -24,9 +24,10 @@ BoltDB-backed workspace lifecycle manager with in-memory cache.
 - Config: `p2p.workspace.*` (enabled, dataDir, maxWorkspaces, maxBundleSizeBytes, chroniclerEnabled, autoSandbox, contributionTracking)
 
 ### WorkspaceGossip
-Per-workspace GossipSub topic management using shared PubSub instance from Node.
+Per-workspace GossipSub topic management using shared PubSub instance from Node (`sync.Once`-protected).
 - Topics: `/lango/workspace/{id}`
 - Subscribe/Unsubscribe/Publish/Stop
+- Constructed once with message handler pre-configured
 
 ### Chronicler
 Persists workspace messages as graph triples via TripleAdder callback.
@@ -36,6 +37,7 @@ Persists workspace messages as graph triples via TripleAdder callback.
 ### ContributionTracker
 In-memory per-member contribution tracking per workspace.
 - Tracks: commits, codeBytes, messages, lastActive
+- Remove: cleanup data for a workspace
 
 ## Events
 

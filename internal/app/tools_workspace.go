@@ -6,20 +6,11 @@ import (
 	"time"
 
 	"github.com/langoai/lango/internal/agent"
-	"github.com/langoai/lango/internal/p2p/gitbundle"
 	"github.com/langoai/lango/internal/p2p/workspace"
 )
 
-// workspaceComponents holds workspace-related dependencies for tool creation.
-type workspaceComponents struct {
-	manager    *workspace.Manager
-	gitService *gitbundle.Service
-	gossip     *workspace.WorkspaceGossip
-	tracker    *workspace.ContributionTracker
-}
-
 // buildWorkspaceTools creates workspace management tools.
-func buildWorkspaceTools(wc *workspaceComponents) []*agent.Tool {
+func buildWorkspaceTools(wc *wsComponents) []*agent.Tool {
 	var tools []*agent.Tool
 
 	// Workspace CRUD tools
@@ -326,7 +317,7 @@ func buildWorkspaceTools(wc *workspaceComponents) []*agent.Tool {
 }
 
 // buildGitTools creates git bundle tools.
-func buildGitTools(wc *workspaceComponents) []*agent.Tool {
+func buildGitTools(wc *wsComponents) []*agent.Tool {
 	return []*agent.Tool{
 		{
 			Name:        "p2p_git_init",

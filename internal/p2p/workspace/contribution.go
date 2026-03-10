@@ -77,6 +77,13 @@ func (t *ContributionTracker) List(workspaceID string) []*Contribution {
 	return result
 }
 
+// Remove deletes all contribution data for a workspace.
+func (t *ContributionTracker) Remove(workspaceID string) {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	delete(t.data, workspaceID)
+}
+
 func (t *ContributionTracker) getOrCreate(workspaceID, did string) *Contribution {
 	ws, ok := t.data[workspaceID]
 	if !ok {

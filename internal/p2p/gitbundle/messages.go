@@ -28,9 +28,14 @@ type Request struct {
 	Timestamp   time.Time       `json:"timestamp"`
 }
 
+const (
+	StatusOK    = "ok"
+	StatusError = "error"
+)
+
 // Response is a git protocol response.
 type Response struct {
-	Status string          `json:"status"` // "ok" or "error"
+	Status string          `json:"status"`
 	Error  string          `json:"error,omitempty"`
 	Data   json.RawMessage `json:"data,omitempty"`
 }

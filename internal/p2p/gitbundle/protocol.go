@@ -51,16 +51,10 @@ func (h *Handler) StreamHandler() network.StreamHandler {
 		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
 		defer cancel()
 
-		// Read request.
-		data, err := io.ReadAll(io.LimitReader(s, h.maxBundle+4096)) // extra for metadata
-		if err != nil {
-			h.writeError(s, "read request: "+err.Error())
-			return
-		}
-
+		// Read request using streaming decoder to avoid double-buffering.
 		var req Request
-		if err := json.Unmarshal(data, &req); err != nil {
-			h.writeError(s, "unmarshal request: "+err.Error())
+		if err := json.NewDecoder(io.LimitReader(s, h.maxBundle+4096)).Decode(&req); err != nil {
+			h.writeError(s, "decode request: "+err.Error())
 			return
 		}
 
@@ -183,7 +177,7 @@ func (h *Handler) handleDiff(ctx context.Context, s network.Stream, req Request)
 }
 
 func (h *Handler) writeResponse(s network.Stream, data interface{}) {
-	resp := Response{Status: "ok"}
+	resp := Response{Status: StatusOK}
 	if data != nil {
 		raw, err := json.Marshal(data)
 		if err != nil {
@@ -198,7 +192,7 @@ func (h *Handler) writeResponse(s network.Stream, data interface{}) {
 
 func (h *Handler) writeError(s network.Stream, msg string) {
 	h.logger.Warn("git protocol error", zap.String("error", msg))
-	resp := Response{Status: "error", Error: msg}
+	resp := Response{Status: StatusError, Error: msg}
 	b, _ := json.Marshal(resp)
 	_, _ = s.Write(b)
 }

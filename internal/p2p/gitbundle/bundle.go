@@ -8,11 +8,15 @@ import (
 	"strings"
 	"time"
 
+	"errors"
+
 	"github.com/go-git/go-git/v5"
 	"github.com/go-git/go-git/v5/plumbing"
 	"github.com/go-git/go-git/v5/plumbing/object"
 	"go.uber.org/zap"
 )
+
+var errLimitReached = errors.New("limit reached")
 
 // CommitInfo represents a summary of a git commit.
 type CommitInfo struct {
@@ -97,17 +101,6 @@ func (s *Service) ApplyBundle(ctx context.Context, workspaceID string, bundle []
 		return fmt.Errorf("git bundle unbundle: %s: %w", stderr.String(), err)
 	}
 
-	// Fetch the unbundled refs.
-	cmd2 := exec.CommandContext(ctx, "git", "fetch", "-", "--all")
-	cmd2.Dir = repoPath
-	cmd2.Stdin = bytes.NewReader(bundle)
-
-	var stderr2 bytes.Buffer
-	cmd2.Stderr = &stderr2
-
-	// fetch from bundle may fail if refs already exist; that's OK.
-	_ = cmd2.Run()
-
 	s.logger.Info("applied git bundle", zap.String("workspace", workspaceID))
 	return nil
 }
@@ -152,7 +145,7 @@ func (s *Service) Log(ctx context.Context, workspaceID string, limit int) ([]Com
 
 		return iter.ForEach(func(c *object.Commit) error {
 			if len(commits) >= limit {
-				return fmt.Errorf("limit reached")
+				return errLimitReached
 			}
 			if seen[c.Hash] {
 				return nil
@@ -168,7 +161,7 @@ func (s *Service) Log(ctx context.Context, workspaceID string, limit int) ([]Com
 			return nil
 		})
 	})
-	if err != nil && err.Error() != "limit reached" {
+	if err != nil && !errors.Is(err, errLimitReached) {
 		return nil, fmt.Errorf("iterate commits: %w", err)
 	}
 

@@ -48,7 +48,7 @@ func newWorkspaceCreateCmd(bootLoader func() (*bootstrap.Result, error)) *cobra.
 			defer boot.DBClient.Close()
 
 			if !boot.Config.P2P.Enabled {
-				return fmt.Errorf("P2P networking is not enabled (set p2p.enabled = true)")
+				return errP2PDisabled
 			}
 			if !boot.Config.P2P.Workspace.Enabled {
 				return fmt.Errorf("P2P workspace is not enabled (set p2p.workspace.enabled = true)")
@@ -94,7 +94,7 @@ func newWorkspaceListCmd(bootLoader func() (*bootstrap.Result, error)) *cobra.Co
 			defer boot.DBClient.Close()
 
 			if !boot.Config.P2P.Enabled {
-				return fmt.Errorf("P2P networking is not enabled (set p2p.enabled = true)")
+				return errP2PDisabled
 			}
 
 			if jsonOutput {
@@ -131,7 +131,7 @@ func newWorkspaceStatusCmd(bootLoader func() (*bootstrap.Result, error)) *cobra.
 			defer boot.DBClient.Close()
 
 			if !boot.Config.P2P.Enabled {
-				return fmt.Errorf("P2P networking is not enabled (set p2p.enabled = true)")
+				return errP2PDisabled
 			}
 
 			_ = args[0] // workspaceID
@@ -169,7 +169,7 @@ func newWorkspaceJoinCmd(bootLoader func() (*bootstrap.Result, error)) *cobra.Co
 			defer boot.DBClient.Close()
 
 			if !boot.Config.P2P.Enabled {
-				return fmt.Errorf("P2P networking is not enabled (set p2p.enabled = true)")
+				return errP2PDisabled
 			}
 
 			_ = args[0] // workspaceID
@@ -196,7 +196,7 @@ func newWorkspaceLeaveCmd(bootLoader func() (*bootstrap.Result, error)) *cobra.C
 			defer boot.DBClient.Close()
 
 			if !boot.Config.P2P.Enabled {
-				return fmt.Errorf("P2P networking is not enabled (set p2p.enabled = true)")
+				return errP2PDisabled
 			}
 
 			_ = args[0] // workspaceID

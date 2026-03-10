@@ -57,15 +57,11 @@ func initWorkspace(cfg *config.Config, node *p2p.Node, localDID string, sessionV
 		return nil
 	}
 
-	// Create workspace manager.
-	maxWS := wsCfg.MaxWorkspaces
-	if maxWS <= 0 {
-		maxWS = 10
-	}
+	// Create workspace manager (Manager defaults MaxWorkspaces to 10 if <= 0).
 	mgr, err := workspace.NewManager(workspace.ManagerConfig{
 		DB:            db,
 		LocalDID:      localDID,
-		MaxWorkspaces: maxWS,
+		MaxWorkspaces: wsCfg.MaxWorkspaces,
 		Logger:        log,
 	})
 	if err != nil {
@@ -95,19 +91,6 @@ func initWorkspace(cfg *config.Config, node *p2p.Node, localDID string, sessionV
 	node.SetStreamHandler(gitbundle.ProtocolID, gitHdl.StreamHandler())
 	log.Infow("registered git protocol handler", "protocol", gitbundle.ProtocolID)
 
-	// Create workspace gossip (per-workspace GossipSub topics).
-	var wsGossip *workspace.WorkspaceGossip
-	ps, err := node.PubSub()
-	if err != nil {
-		log.Warnw("get PubSub for workspace gossip", "error", err)
-	} else {
-		wsGossip = workspace.NewWorkspaceGossip(workspace.GossipConfig{
-			PubSub:  ps,
-			LocalID: node.PeerID(),
-			Logger:  log,
-		})
-	}
-
 	// Create contribution tracker if enabled.
 	var tracker *workspace.ContributionTracker
 	if wsCfg.ContributionTracking {
@@ -115,7 +98,7 @@ func initWorkspace(cfg *config.Config, node *p2p.Node, localDID string, sessionV
 		log.Info("workspace contribution tracking enabled")
 	}
 
-	// Create chronicler if enabled and gossip handler is available.
+	// Create chronicler if enabled.
 	var chronicler *workspace.Chronicler
 	if wsCfg.ChroniclerEnabled {
 		// Chronicler uses a callback to avoid direct graph store import.
@@ -124,8 +107,12 @@ func initWorkspace(cfg *config.Config, node *p2p.Node, localDID string, sessionV
 		log.Info("workspace chronicler enabled (triple adder pending)")
 	}
 
-	// Wire gossip message handler to chronicler and tracker.
-	if wsGossip != nil {
+	// Create workspace gossip with message handler already wired.
+	var wsGossip *workspace.WorkspaceGossip
+	ps, err := node.PubSub()
+	if err != nil {
+		log.Warnw("get PubSub for workspace gossip", "error", err)
+	} else {
 		wsGossip = workspace.NewWorkspaceGossip(workspace.GossipConfig{
 			PubSub:  ps,
 			LocalID: node.PeerID(),
@@ -143,7 +130,7 @@ func initWorkspace(cfg *config.Config, node *p2p.Node, localDID string, sessionV
 
 	log.Infow("P2P workspace initialized",
 		"dataDir", dataDir,
-		"maxWorkspaces", maxWS,
+		"maxWorkspaces", wsCfg.MaxWorkspaces,
 		"contributionTracking", wsCfg.ContributionTracking,
 		"chronicler", wsCfg.ChroniclerEnabled,
 	)

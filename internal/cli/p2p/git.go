@@ -43,7 +43,7 @@ func newGitInitCmd(bootLoader func() (*bootstrap.Result, error)) *cobra.Command 
 			defer boot.DBClient.Close()
 
 			if !boot.Config.P2P.Enabled {
-				return fmt.Errorf("P2P networking is not enabled (set p2p.enabled = true)")
+				return errP2PDisabled
 			}
 
 			_ = args[0] // workspaceID
@@ -74,7 +74,7 @@ func newGitLogCmd(bootLoader func() (*bootstrap.Result, error)) *cobra.Command {
 			defer boot.DBClient.Close()
 
 			if !boot.Config.P2P.Enabled {
-				return fmt.Errorf("P2P networking is not enabled (set p2p.enabled = true)")
+				return errP2PDisabled
 			}
 
 			_ = args[0] // workspaceID
@@ -111,7 +111,7 @@ func newGitDiffCmd(bootLoader func() (*bootstrap.Result, error)) *cobra.Command 
 			defer boot.DBClient.Close()
 
 			if !boot.Config.P2P.Enabled {
-				return fmt.Errorf("P2P networking is not enabled (set p2p.enabled = true)")
+				return errP2PDisabled
 			}
 
 			fmt.Println("Diff requires a running server. Use 'lango serve' and the p2p_git_diff tool.")
@@ -135,7 +135,7 @@ func newGitPushCmd(bootLoader func() (*bootstrap.Result, error)) *cobra.Command 
 			defer boot.DBClient.Close()
 
 			if !boot.Config.P2P.Enabled {
-				return fmt.Errorf("P2P networking is not enabled (set p2p.enabled = true)")
+				return errP2PDisabled
 			}
 
 			fmt.Println("Push requires a running server. Use 'lango serve' and the p2p_git_push tool.")
@@ -159,7 +159,7 @@ func newGitFetchCmd(bootLoader func() (*bootstrap.Result, error)) *cobra.Command
 			defer boot.DBClient.Close()
 
 			if !boot.Config.P2P.Enabled {
-				return fmt.Errorf("P2P networking is not enabled (set p2p.enabled = true)")
+				return errP2PDisabled
 			}
 
 			fmt.Println("Fetch requires a running server. Use 'lango serve' and the agent tools.")
