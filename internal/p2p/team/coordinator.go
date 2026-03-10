@@ -207,6 +207,17 @@ func (c *Coordinator) FormTeam(ctx context.Context, req FormTeamRequest) (*Team,
 		"members", t.MemberCount(),
 	)
 
+	// Publish team-formed event.
+	if c.bus != nil {
+		c.bus.Publish(eventbus.TeamFormedEvent{
+			TeamID:    t.ID,
+			Name:      t.Name,
+			Goal:      t.Goal,
+			LeaderDID: t.LeaderDID,
+			Members:   t.MemberCount(),
+		})
+	}
+
 	// Publish events for each member that joined.
 	if c.bus != nil {
 		for _, m := range t.Members() {
@@ -252,6 +263,15 @@ func (c *Coordinator) DelegateTask(ctx context.Context, teamID, toolName string,
 		return nil, fmt.Errorf("no workers in team %q", teamID)
 	}
 
+	// Publish task-delegated event.
+	if c.bus != nil {
+		c.bus.Publish(eventbus.TeamTaskDelegatedEvent{
+			TeamID:   teamID,
+			ToolName: toolName,
+			Workers:  len(workers),
+		})
+	}
+
 	// Dispatch to all workers concurrently.
 	results := make([]TaskResult, len(workers))
 	var wg sync.WaitGroup
@@ -279,12 +299,51 @@ func (c *Coordinator) DelegateTask(ctx context.Context, teamID, toolName string,
 	}
 
 	wg.Wait()
+
+	// Publish task-completed event.
+	if c.bus != nil {
+		var successful, failed int
+		var totalDuration time.Duration
+		for _, r := range results {
+			if r.Err == nil {
+				successful++
+			} else {
+				failed++
+			}
+			totalDuration += r.Duration
+		}
+		c.bus.Publish(eventbus.TeamTaskCompletedEvent{
+			TeamID:     teamID,
+			ToolName:   toolName,
+			Successful: successful,
+			Failed:     failed,
+			Duration:   totalDuration / time.Duration(len(results)),
+		})
+	}
+
 	return results, nil
 }
 
 // CollectResults resolves conflicts from delegated task results using the configured resolver.
-func (c *Coordinator) CollectResults(results []TaskResult) (map[string]interface{}, error) {
-	return c.resolver(results)
+func (c *Coordinator) CollectResults(teamID, toolName string, results []TaskResult) (map[string]interface{}, error) {
+	resolved, err := c.resolver(results)
+	if err != nil && c.bus != nil {
+		// Count unique successful members for conflict detection.
+		var successCount int
+		for _, r := range results {
+			if r.Err == nil {
+				successCount++
+			}
+		}
+		if successCount > 1 {
+			c.bus.Publish(eventbus.TeamConflictDetectedEvent{
+				TeamID:   teamID,
+				ToolName: toolName,
+				Members:  successCount,
+			})
+		}
+	}
+	return resolved, err
 }
 
 // DisbandTeam marks a team as disbanded and removes it from the coordinator.
@@ -310,6 +369,13 @@ func (c *Coordinator) DisbandTeam(teamID string) error {
 
 	t.Disband()
 	delete(c.teams, teamID)
+
+	if c.bus != nil {
+		c.bus.Publish(eventbus.TeamDisbandedEvent{
+			TeamID: teamID,
+			Reason: "team disbanded",
+		})
+	}
 
 	c.logger.Infow("team disbanded", "teamID", teamID, "name", t.Name)
 	return nil

@@ -294,6 +294,13 @@ func New(boot *bootstrap.Result) (*App, error) {
 			catalog.RegisterCategory(toolcatalog.Category{Name: "p2p", Description: "Peer-to-peer networking", ConfigKey: "p2p.enabled", Enabled: true})
 			catalog.Register("p2p", p2pTools)
 
+			// Team coordination tools.
+			if p2pc.coordinator != nil {
+				teamTools := buildTeamTools(p2pc.coordinator)
+				tools = append(tools, teamTools...)
+				catalog.Register("p2p", teamTools)
+			}
+
 			// 5h'''. P2P Workspace + Git (optional, requires P2P node)
 			var sessionValidator gitbundle.SessionValidator
 			if p2pc.sessions != nil {
@@ -351,6 +358,11 @@ func New(boot *bootstrap.Result) (*App, error) {
 							return nil
 						},
 					), lifecycle.PriorityNetwork)
+				}
+
+				// Wire workspace-team bridge.
+				if p2pc.coordinator != nil && wsc.manager != nil {
+					wireWorkspaceTeamBridge(bus, wsc.manager, wsc.tracker, wsc.gossip, logger())
 				}
 
 				logger().Info("P2P workspace tools registered")
@@ -465,6 +477,23 @@ func New(boot *bootstrap.Result) (*App, error) {
 			})
 			catalog.Register("sentinel", sentTools)
 			logger().Info("sentinel tools registered")
+		}
+	}
+
+	// 5o'''. Team-Economy Bridges (event-driven)
+	if p2pc != nil && p2pc.coordinator != nil {
+		if econc != nil && econc.escrowEngine != nil {
+			wireTeamEscrowBridge(bus, econc.escrowEngine, p2pc.coordinator, logger())
+		}
+		if econc != nil && econc.budgetEngine != nil {
+			wireTeamBudgetBridge(bus, econc.budgetEngine, p2pc.coordinator, logger())
+		}
+
+		// Team-Escrow convenience tools (requires both coordinator + escrow).
+		if econc != nil && econc.escrowEngine != nil {
+			teTools := buildTeamEscrowTools(p2pc.coordinator, econc.escrowEngine, econc.budgetEngine)
+			tools = append(tools, teTools...)
+			catalog.Register("p2p", teTools)
 		}
 	}
 

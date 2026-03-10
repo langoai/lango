@@ -497,6 +497,56 @@ func initP2P(cfg *config.Config, wp wallet.WalletProvider, pc *paymentComponents
 		Logger:   pLogger,
 	})
 
+	// Wire team protocol handler.
+	if coord != nil {
+		router := &p2pproto.TeamRouter{
+			OnInvite: func(ctx context.Context, peerDID string, payload p2pproto.TeamInvitePayload) (map[string]interface{}, error) {
+				// Accept invitation by acknowledging the team exists.
+				t, err := coord.GetTeam(payload.TeamID)
+				if err != nil {
+					return nil, fmt.Errorf("team not found: %w", err)
+				}
+				_ = t // team exists, invitation acknowledged
+				return map[string]interface{}{
+					"teamId":   payload.TeamID,
+					"accepted": true,
+				}, nil
+			},
+			OnAccept: func(ctx context.Context, peerDID string, payload p2pproto.TeamAcceptPayload) (map[string]interface{}, error) {
+				return map[string]interface{}{
+					"teamId":   payload.TeamID,
+					"accepted": payload.Accepted,
+				}, nil
+			},
+			OnTask: func(ctx context.Context, peerDID string, payload p2pproto.TeamTaskPayload) (map[string]interface{}, error) {
+				// Execute the task locally via the coordinator's invoke function.
+				result, err := invokeFn(ctx, "", payload.ToolName, payload.Params)
+				if err != nil {
+					return nil, err
+				}
+				return result, nil
+			},
+			OnResult: func(ctx context.Context, peerDID string, payload p2pproto.TeamResultPayload) (map[string]interface{}, error) {
+				return map[string]interface{}{
+					"teamId":   payload.TeamID,
+					"taskId":   payload.TaskID,
+					"received": true,
+				}, nil
+			},
+			OnDisband: func(ctx context.Context, peerDID string, payload p2pproto.TeamDisbandPayload) (map[string]interface{}, error) {
+				if err := coord.DisbandTeam(payload.TeamID); err != nil {
+					return nil, err
+				}
+				return map[string]interface{}{
+					"teamId":    payload.TeamID,
+					"disbanded": true,
+				}, nil
+			},
+		}
+		handler.SetTeamHandler(router.Handle)
+		pLogger.Info("P2P team protocol handler wired")
+	}
+
 	pLogger.Infow("P2P agent pool and team coordinator initialized",
 		"selectorWeights", "default",
 	)
