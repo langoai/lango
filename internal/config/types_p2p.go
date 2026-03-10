@@ -66,6 +66,9 @@ type P2PConfig struct {
 	// RequireSignedChallenge rejects unsigned challenges from peers when true.
 	// When false (default), unsigned legacy challenges are accepted for backward compatibility.
 	RequireSignedChallenge bool `mapstructure:"requireSignedChallenge" json:"requireSignedChallenge"`
+
+	// Workspace configures collaborative workspace settings for P2P agent co-work.
+	Workspace WorkspaceConfig `mapstructure:"workspace" json:"workspace"`
 }
 
 // ToolIsolationConfig configures subprocess isolation for P2P tool execution.
@@ -177,6 +180,30 @@ type ZKPConfig struct {
 
 	// MaxCredentialAge is the maximum age for ZK credentials (e.g. "24h").
 	MaxCredentialAge string `mapstructure:"maxCredentialAge" json:"maxCredentialAge"`
+}
+
+// WorkspaceConfig configures collaborative workspace settings for P2P agent co-work.
+type WorkspaceConfig struct {
+	// Enabled turns on collaborative workspaces.
+	Enabled bool `mapstructure:"enabled" json:"enabled"`
+
+	// DataDir is the directory for storing workspace data.
+	DataDir string `mapstructure:"dataDir" json:"dataDir"`
+
+	// MaxWorkspaces is the maximum number of concurrent workspaces.
+	MaxWorkspaces int `mapstructure:"maxWorkspaces" json:"maxWorkspaces"`
+
+	// MaxBundleSizeBytes is the maximum size of a workspace bundle in bytes.
+	MaxBundleSizeBytes int64 `mapstructure:"maxBundleSizeBytes" json:"maxBundleSizeBytes"`
+
+	// ChroniclerEnabled turns on workspace activity chronicling.
+	ChroniclerEnabled bool `mapstructure:"chroniclerEnabled" json:"chroniclerEnabled"`
+
+	// AutoSandbox automatically sandboxes workspace operations.
+	AutoSandbox bool `mapstructure:"autoSandbox" json:"autoSandbox"`
+
+	// ContributionTracking enables tracking of per-agent contributions.
+	ContributionTracking bool `mapstructure:"contributionTracking" json:"contributionTracking"`
 }
 
 // FirewallRule defines an ACL rule for the knowledge firewall.

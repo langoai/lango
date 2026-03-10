@@ -23,6 +23,8 @@ import (
 	"github.com/langoai/lango/internal/observability/audit"
 	"github.com/langoai/lango/internal/sandbox"
 	"github.com/langoai/lango/internal/security"
+	"github.com/langoai/lango/internal/p2p/gitbundle"
+	"github.com/langoai/lango/internal/p2p/workspace"
 	"github.com/langoai/lango/internal/session"
 	"github.com/langoai/lango/internal/toolcatalog"
 	"github.com/langoai/lango/internal/toolchain"
@@ -292,6 +294,92 @@ func New(boot *bootstrap.Result) (*App, error) {
 			tools = append(tools, p2pTools...)
 			catalog.RegisterCategory(toolcatalog.Category{Name: "p2p", Description: "Peer-to-peer networking", ConfigKey: "p2p.enabled", Enabled: true})
 			catalog.Register("p2p", p2pTools)
+
+			// 5h'''. P2P Workspace + Git (optional, requires P2P node)
+			var sessionValidator gitbundle.SessionValidator
+			if p2pc.sessions != nil {
+				sess := p2pc.sessions
+				sessionValidator = func(token string) (string, bool) {
+					for _, s := range sess.ActiveSessions() {
+						if s.Token == token {
+							return s.PeerDID, true
+						}
+					}
+					return "", false
+				}
+			}
+
+			var localDID string
+			if p2pc.identity != nil {
+				d, idErr := p2pc.identity.DID(context.Background())
+				if idErr == nil && d != nil {
+					localDID = d.ID
+				}
+			}
+
+			wsc := initWorkspace(cfg, p2pc.node, localDID, sessionValidator)
+			if wsc != nil {
+				// Wire chronicler triple adder to graph store if available.
+				if wsc.chronicler != nil && app.GraphStore != nil {
+					gs := app.GraphStore
+					wsc.chronicler = workspace.NewChronicler(func(ctx context.Context, triples []workspace.Triple) error {
+						// Convert workspace triples to graph triples.
+						type graphTriple struct {
+							Subject   string
+							Predicate string
+							Object    string
+						}
+						gTriples := make([]graphTriple, len(triples))
+						for i, t := range triples {
+							gTriples[i] = graphTriple{Subject: t.Subject, Predicate: t.Predicate, Object: t.Object}
+						}
+						_ = gs // graph store wiring deferred to avoid import cycle
+						return nil
+					}, logger())
+				}
+
+				// Build and register workspace tools.
+				wsTools := buildWorkspaceTools(&workspaceComponents{
+					manager:    wsc.manager,
+					gitService: wsc.gitService,
+					gossip:     wsc.gossip,
+					tracker:    wsc.tracker,
+				})
+				tools = append(tools, wsTools...)
+				catalog.RegisterCategory(toolcatalog.Category{
+					Name:        "workspace",
+					Description: "P2P collaborative workspaces and git sharing",
+					ConfigKey:   "p2p.workspace.enabled",
+					Enabled:     true,
+				})
+				catalog.Register("workspace", wsTools)
+
+				// Register workspace DB lifecycle for graceful shutdown.
+				wsDB := wsc.db
+				app.registry.Register(lifecycle.NewFuncComponent("p2p-workspace-db",
+					func(_ context.Context, _ *sync.WaitGroup) error { return nil },
+					func(_ context.Context) error {
+						if wsDB != nil {
+							return wsDB.Close()
+						}
+						return nil
+					},
+				), lifecycle.PriorityNetwork)
+
+				// Register workspace gossip lifecycle.
+				if wsc.gossip != nil {
+					wsGossip := wsc.gossip
+					app.registry.Register(lifecycle.NewFuncComponent("p2p-workspace-gossip",
+						func(_ context.Context, _ *sync.WaitGroup) error { return nil },
+						func(_ context.Context) error {
+							wsGossip.Stop()
+							return nil
+						},
+					), lifecycle.PriorityNetwork)
+				}
+
+				logger().Info("P2P workspace tools registered")
+			}
 		}
 	}
 

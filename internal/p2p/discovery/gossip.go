@@ -75,6 +75,7 @@ type GossipService struct {
 // GossipConfig configures the gossip service.
 type GossipConfig struct {
 	Host      host.Host
+	PubSub    *pubsub.PubSub // optional pre-created PubSub instance
 	LocalCard *GossipCard
 	Interval  time.Duration
 	Verifier  ZKCredentialVerifier
@@ -83,9 +84,13 @@ type GossipConfig struct {
 
 // NewGossipService creates a new gossip-based discovery service.
 func NewGossipService(cfg GossipConfig) (*GossipService, error) {
-	ps, err := pubsub.NewGossipSub(context.Background(), cfg.Host)
-	if err != nil {
-		return nil, fmt.Errorf("create gossipsub: %w", err)
+	ps := cfg.PubSub
+	if ps == nil {
+		var err error
+		ps, err = pubsub.NewGossipSub(context.Background(), cfg.Host)
+		if err != nil {
+			return nil, fmt.Errorf("create gossipsub: %w", err)
+		}
 	}
 
 	topic, err := ps.Join(TopicAgentCard)

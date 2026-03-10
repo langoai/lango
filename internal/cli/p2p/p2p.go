@@ -47,6 +47,8 @@ func NewP2PCmd(bootLoader func() (*bootstrap.Result, error)) *cobra.Command {
 	cmd.AddCommand(newSandboxCmd(bootLoader))
 	cmd.AddCommand(newTeamCmd(bootLoader))
 	cmd.AddCommand(newZKPCmd(bootLoader))
+	cmd.AddCommand(newWorkspaceCmd(bootLoader))
+	cmd.AddCommand(newGitCmd(bootLoader))
 
 	return cmd
 }

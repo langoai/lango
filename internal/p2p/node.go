@@ -10,6 +10,7 @@ import (
 
 	"github.com/libp2p/go-libp2p"
 	dht "github.com/libp2p/go-libp2p-kad-dht"
+	pubsub "github.com/libp2p/go-libp2p-pubsub"
 	"github.com/libp2p/go-libp2p/core/crypto"
 	"github.com/libp2p/go-libp2p/core/host"
 	"github.com/libp2p/go-libp2p/core/network"
@@ -33,6 +34,7 @@ const nodeKeySecret = "p2p.node.privatekey"
 type Node struct {
 	host   host.Host
 	dht    *dht.IpfsDHT
+	ps     *pubsub.PubSub
 	cfg    config.P2PConfig
 	logger *zap.SugaredLogger
 	cancel context.CancelFunc
@@ -196,6 +198,19 @@ func (n *Node) ConnectedPeers() []peer.ID {
 
 // Host returns the underlying libp2p host for protocol registration.
 func (n *Node) Host() host.Host { return n.host }
+
+// PubSub returns the shared GossipSub instance, creating it on first access.
+func (n *Node) PubSub() (*pubsub.PubSub, error) {
+	if n.ps != nil {
+		return n.ps, nil
+	}
+	ps, err := pubsub.NewGossipSub(context.Background(), n.host)
+	if err != nil {
+		return nil, fmt.Errorf("create gossipsub: %w", err)
+	}
+	n.ps = ps
+	return ps, nil
+}
 
 // SetStreamHandler registers a protocol stream handler on the host.
 func (n *Node) SetStreamHandler(protocolID string, handler network.StreamHandler) {
