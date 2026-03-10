@@ -60,11 +60,21 @@ func (s *Service) CreateBundle(ctx context.Context, workspaceID string) ([]byte,
 
 	if err := cmd.Run(); err != nil {
 		// Empty repo is not an error — just no bundle to create.
-		if strings.Contains(stderr.String(), "empty bundle") ||
-			strings.Contains(stderr.String(), "Refusing to create empty bundle") {
+		// Check English error messages and also handle non-English locales by
+		// detecting exit code 128 (git's fatal error for empty bundle).
+		stderrStr := stderr.String()
+		isEmptyBundle := strings.Contains(stderrStr, "empty bundle") ||
+			strings.Contains(stderrStr, "Refusing to create empty bundle")
+		if !isEmptyBundle {
+			var exitErr *exec.ExitError
+			if errors.As(err, &exitErr) && exitErr.ExitCode() == 128 {
+				isEmptyBundle = true
+			}
+		}
+		if isEmptyBundle {
 			return nil, "", nil
 		}
-		return nil, "", fmt.Errorf("git bundle create: %s: %w", stderr.String(), err)
+		return nil, "", fmt.Errorf("git bundle create: %s: %w", stderrStr, err)
 	}
 
 	// Get HEAD hash.

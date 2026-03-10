@@ -116,6 +116,22 @@
 - **KMS latency**: When a Cloud KMS provider is configured (`aws-kms`, `gcp-kms`, `azure-kv`, `pkcs11`), cryptographic operations incur network roundtrip latency. The system retries transient errors automatically with exponential backoff. If KMS is unreachable and `kms.fallbackToLocal` is enabled, operations fall back to local mode.
 - **Credential revocation**: Revoked DIDs are tracked in the gossip discovery layer. Use `maxCredentialAge` to enforce credential freshness — stale credentials are rejected even if not explicitly revoked. Gossip refresh propagates revocations across the network.
 
+### P2P Workspace Tool
+- `p2p_workspace_create` creates a collaborative workspace. Specify `name` (required), optional `goal`, and optional `metadata` (key-value pairs). Returns `workspaceId`, `name`, `status` (forming), and `members`. Use this to start a new co-work session.
+- `p2p_workspace_join` joins an existing workspace by ID. Specify `workspace_id` (required). The local agent is added as a member.
+- `p2p_workspace_leave` leaves a workspace. Specify `workspace_id` (required). The local agent is removed from the members list.
+- `p2p_workspace_list` lists all known workspaces with status, member count, and name. No parameters required.
+- `p2p_workspace_status` shows detailed workspace status including members and contributions. Specify `workspace_id` (required).
+- `p2p_workspace_post` posts a message to a workspace. Specify `workspace_id` (required), `type` (TASK_PROPOSAL, LOG_STREAM, COMMIT_SIGNAL, KNOWLEDGE_SHARE), and `content` (required).
+- `p2p_workspace_read` reads messages from a workspace. Specify `workspace_id` (required), optional `limit`, `sender_did`, and `types` filter.
+- `p2p_workspace_activate` transitions a workspace from forming to active. Specify `workspace_id` (required).
+- `p2p_workspace_archive` archives a completed workspace. Specify `workspace_id` (required).
+- `p2p_git_init` initializes a bare git repository for a workspace. Specify `workspace_id` (required).
+- `p2p_git_push` creates a git bundle from the workspace repo and pushes to peers. Specify `workspace_id` (required). Returns bundle size and HEAD hash.
+- `p2p_git_fetch` fetches a git bundle from workspace peers. Specify `workspace_id` (required).
+- **Workspace workflow**: (1) `p2p_workspace_create` to start a co-work session, (2) `p2p_workspace_join` for peers to join, (3) `p2p_workspace_activate` when ready, (4) `p2p_workspace_post` for collaboration messages, (5) `p2p_git_init` + `p2p_git_push`/`p2p_git_fetch` for code exchange, (6) `p2p_workspace_archive` when done.
+- Workspaces are runtime structures — they require a running server (`lango serve`). Use `p2p_workspace_list` to verify available workspaces before joining.
+
 ### Economy Tool
 - `economy_budget_allocate` allocates a spending budget for a task. Specify `taskId` and optional `amount` (USDC, e.g. '5.00'). Returns budget ID and status.
 - `economy_budget_status` checks the current budget burn rate for a task.

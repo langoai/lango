@@ -64,6 +64,7 @@ This project includes experimental AI Agent features and is currently in an unst
 - 📜 **Smart Contracts** — EVM smart contract interaction with ABI caching, view/pure reads, state-changing calls, and Foundry-based escrow contracts (LangoEscrowHub, LangoVault, LangoVaultFactory)
 - 🏦 **Smart Accounts** — ERC-7579 modular smart accounts (Safe-based), ERC-4337 account abstraction with session keys, gasless USDC transactions via paymaster (Circle/Pimlico/Alchemy), on-chain spending limits, and hierarchical session key management
 - 👥 **P2P Teams** — Task-scoped agent groups with role-based delegation, conflict resolution (trust_weighted, majority_vote, leader_decides, fail_on_conflict), assignment strategies, and payment coordination
+- 🤝 **P2P Workspaces** — Collaborative workspaces with lifecycle management, message channels (task proposals, log streams, commit signals), git bundle exchange, contribution tracking, and graph store chronicling
 - 📊 **Observability** — Token usage tracking, health monitoring, audit logging, and metrics endpoints
 
 ## Quick Start
@@ -222,6 +223,16 @@ lango p2p team status <id>       Show team details and member status
 lango p2p team disband <id>      Disband an active team
 lango p2p zkp status             Show ZKP configuration
 lango p2p zkp circuits           List compiled ZKP circuits
+lango p2p workspace create       Create a collaborative workspace
+lango p2p workspace list         List all workspaces
+lango p2p workspace status <id>  Show workspace status and members
+lango p2p workspace join <id>    Join a workspace
+lango p2p workspace leave <id>   Leave a workspace
+lango p2p git init <ws-id>       Initialize workspace git repo
+lango p2p git log <ws-id>        Show workspace commit history
+lango p2p git diff <ws-id>       Show diff between commits
+lango p2p git push <ws-id>       Create and push git bundle
+lango p2p git fetch <ws-id>      Fetch and apply git bundle
 
 lango economy budget status     Show budget allocation status
 lango economy risk status       Show risk assessment configuration

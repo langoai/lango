@@ -131,5 +131,7 @@ func AllChecks() []Check {
 		&EconomyCheck{},
 		&ContractCheck{},
 		&ObservabilityCheck{},
+		// P2P Workspace
+		&WorkspaceCheck{},
 	}
 }

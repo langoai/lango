@@ -4,7 +4,7 @@ title: Home
 
 # Lango
 
-**A high-performance AI agent framework built with Go.**
+**A high-performance AI agent built with Go.**
 
 Single binary. Multi-provider AI. Self-learning knowledge system.
 
