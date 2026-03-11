@@ -4,6 +4,7 @@ package team
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"sync"
 	"time"
@@ -16,7 +17,8 @@ var (
 	ErrAlreadyMember  = errors.New("agent is already a team member")
 	ErrNotMember      = errors.New("agent is not a team member")
 	ErrTeamDisbanded  = errors.New("team has been disbanded")
-	ErrConflict       = errors.New("conflicting results from team members")
+	ErrConflict          = errors.New("conflicting results from team members")
+	ErrTeamShuttingDown  = errors.New("team is shutting down")
 )
 
 // MemberStatus represents the operational state of a team member.
@@ -45,8 +47,9 @@ type TeamStatus string
 const (
 	StatusForming   TeamStatus = "forming"
 	StatusActive    TeamStatus = "active"
-	StatusCompleted TeamStatus = "completed"
-	StatusDisbanded TeamStatus = "disbanded"
+	StatusCompleted    TeamStatus = "completed"
+	StatusShuttingDown TeamStatus = "shutting_down"
+	StatusDisbanded    TeamStatus = "disbanded"
 )
 
 // Member represents an agent participating in a team.
@@ -170,7 +173,7 @@ func (t *Team) MemberCount() int {
 	return len(t.members)
 }
 
-// ActiveMembers returns members that are not in MemberLeft or MemberFailed state.
+// ActiveMembers returns deep copies of members that are not in MemberLeft or MemberFailed state.
 func (t *Team) ActiveMembers() []*Member {
 	t.mu.RLock()
 	defer t.mu.RUnlock()
@@ -178,7 +181,7 @@ func (t *Team) ActiveMembers() []*Member {
 	var result []*Member
 	for _, m := range t.members {
 		if m.Status != MemberLeft && m.Status != MemberFailed {
-			result = append(result, m)
+			result = append(result, m.Clone())
 		}
 	}
 	return result
@@ -271,6 +274,72 @@ func (f *ContextFilter) Filter(metadata map[string]string) map[string]string {
 		result[k] = v
 	}
 	return result
+}
+
+// teamJSON is a helper struct for JSON serialization of Team.
+// It mirrors Team but exposes members as a slice instead of a map.
+type teamJSON struct {
+	ID          string     `json:"id"`
+	Name        string     `json:"name"`
+	Goal        string     `json:"goal"`
+	LeaderDID   string     `json:"leaderDid"`
+	Status      TeamStatus `json:"status"`
+	MaxMembers  int        `json:"maxMembers"`
+	Budget      float64    `json:"budget"`
+	Spent       float64    `json:"spent"`
+	CreatedAt   time.Time  `json:"createdAt"`
+	DisbandedAt time.Time  `json:"disbandedAt,omitempty"`
+	Members     []*Member  `json:"members"`
+}
+
+// MarshalJSON implements json.Marshaler. Converts the internal members map to a slice.
+func (t *Team) MarshalJSON() ([]byte, error) {
+	t.mu.RLock()
+	defer t.mu.RUnlock()
+
+	members := make([]*Member, 0, len(t.members))
+	for _, m := range t.members {
+		members = append(members, m.Clone())
+	}
+
+	return json.Marshal(teamJSON{
+		ID:          t.ID,
+		Name:        t.Name,
+		Goal:        t.Goal,
+		LeaderDID:   t.LeaderDID,
+		Status:      t.Status,
+		MaxMembers:  t.MaxMembers,
+		Budget:      t.Budget,
+		Spent:       t.Spent,
+		CreatedAt:   t.CreatedAt,
+		DisbandedAt: t.DisbandedAt,
+		Members:     members,
+	})
+}
+
+// UnmarshalJSON implements json.Unmarshaler. Converts the members slice back to a map.
+func (t *Team) UnmarshalJSON(data []byte) error {
+	var j teamJSON
+	if err := json.Unmarshal(data, &j); err != nil {
+		return err
+	}
+
+	t.ID = j.ID
+	t.Name = j.Name
+	t.Goal = j.Goal
+	t.LeaderDID = j.LeaderDID
+	t.Status = j.Status
+	t.MaxMembers = j.MaxMembers
+	t.Budget = j.Budget
+	t.Spent = j.Spent
+	t.CreatedAt = j.CreatedAt
+	t.DisbandedAt = j.DisbandedAt
+	t.members = make(map[string]*Member, len(j.Members))
+	for _, m := range j.Members {
+		t.members[m.DID] = m
+	}
+
+	return nil
 }
 
 // TaskResultSummary holds the summarized result of a delegated task.

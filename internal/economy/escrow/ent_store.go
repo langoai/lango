@@ -104,6 +104,29 @@ func (s *EntStore) List() []*EscrowEntry {
 	return result
 }
 
+// ListByStatus returns escrow entries matching the given status.
+func (s *EntStore) ListByStatus(status EscrowStatus) []*EscrowEntry {
+	ctx := context.Background()
+
+	deals, err := s.client.EscrowDeal.Query().
+		Where(escrowdeal.Status(string(status))).
+		Order(escrowdeal.ByCreatedAt()).
+		All(ctx)
+	if err != nil {
+		return nil
+	}
+
+	result := make([]*EscrowEntry, 0, len(deals))
+	for _, d := range deals {
+		entry, err := dealToEntry(d)
+		if err != nil {
+			continue
+		}
+		result = append(result, entry)
+	}
+	return result
+}
+
 // ListByPeer returns escrow entries where the peer is buyer or seller.
 func (s *EntStore) ListByPeer(peerDID string) []*EscrowEntry {
 	ctx := context.Background()

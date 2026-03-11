@@ -1,0 +1,11 @@
+{
+  "beaconVaultFactory": "0xD3A77bb2bC0aeAF5f619b346952c91C51bBcC679",
+  "chainId": 84532,
+  "deployer": "0x4BDBDE4A725A83820B7A94cD5dB523eb4515dDAd",
+  "directSettler": "0x55B9825a8761220d263048c54D1B15199eF95f0e",
+  "escrowHubV2Implementation": "0x66D6b19fb75316D8708064b1116D075b2B29eB0D",
+  "escrowHubV2Proxy": "0x6cE1189A6aA7ffdc603cEf7bFaB351474315265E",
+  "milestoneSettler": "0xcD353412ddf08F1a49B5D34E35f0b581B4e58842",
+  "vaultV2Beacon": "0x879613ec72faDdd1F7a1a0889D01B9fCEf3B9514",
+  "vaultV2Implementation": "0x5a95C9f4f735b8Af8A8DAf409EE81b3AfB35b72F"
+}

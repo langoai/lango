@@ -23,6 +23,7 @@ import (
 	"github.com/langoai/lango/internal/observability/audit"
 	"github.com/langoai/lango/internal/sandbox"
 	"github.com/langoai/lango/internal/security"
+	"github.com/langoai/lango/internal/p2p/gitbundle"
 	"github.com/langoai/lango/internal/session"
 	"github.com/langoai/lango/internal/toolcatalog"
 	"github.com/langoai/lango/internal/toolchain"
@@ -38,10 +39,13 @@ func logger() *zap.SugaredLogger { return logging.App() }
 func New(boot *bootstrap.Result) (*App, error) {
 	cfg := boot.Config
 	bus := eventbus.New()
+	ctx, cancel := context.WithCancel(context.Background())
 	app := &App{
 		Config:   cfg,
 		EventBus: bus,
 		registry: lifecycle.NewRegistry(),
+		ctx:      ctx,
+		cancel:   cancel,
 	}
 
 	// 1. Supervisor (holds provider secrets, exec tool)
@@ -292,6 +296,80 @@ func New(boot *bootstrap.Result) (*App, error) {
 			tools = append(tools, p2pTools...)
 			catalog.RegisterCategory(toolcatalog.Category{Name: "p2p", Description: "Peer-to-peer networking", ConfigKey: "p2p.enabled", Enabled: true})
 			catalog.Register("p2p", p2pTools)
+
+			// Team coordination tools.
+			if p2pc.coordinator != nil {
+				teamTools := buildTeamTools(p2pc.coordinator)
+				tools = append(tools, teamTools...)
+				catalog.Register("p2p", teamTools)
+			}
+
+			// 5h'''. P2P Workspace + Git (optional, requires P2P node)
+			var sessionValidator gitbundle.SessionValidator
+			if p2pc.sessions != nil {
+				sess := p2pc.sessions
+				sessionValidator = func(token string) (string, bool) {
+					for _, s := range sess.ActiveSessions() {
+						if s.Token == token {
+							return s.PeerDID, true
+						}
+					}
+					return "", false
+				}
+			}
+
+			var localDID string
+			if p2pc.identity != nil {
+				d, idErr := p2pc.identity.DID(context.Background())
+				if idErr == nil && d != nil {
+					localDID = d.ID
+				}
+			}
+
+			wsc := initWorkspace(cfg, p2pc.node, localDID, sessionValidator)
+			if wsc != nil {
+				// Build and register workspace tools.
+				wsTools := buildWorkspaceTools(wsc)
+				tools = append(tools, wsTools...)
+				catalog.RegisterCategory(toolcatalog.Category{
+					Name:        "workspace",
+					Description: "P2P collaborative workspaces and git sharing",
+					ConfigKey:   "p2p.workspace.enabled",
+					Enabled:     true,
+				})
+				catalog.Register("workspace", wsTools)
+
+				// Register workspace DB lifecycle for graceful shutdown.
+				wsDB := wsc.db
+				app.registry.Register(lifecycle.NewFuncComponent("p2p-workspace-db",
+					func(_ context.Context, _ *sync.WaitGroup) error { return nil },
+					func(_ context.Context) error {
+						if wsDB != nil {
+							return wsDB.Close()
+						}
+						return nil
+					},
+				), lifecycle.PriorityNetwork)
+
+				// Register workspace gossip lifecycle.
+				if wsc.gossip != nil {
+					wsGossip := wsc.gossip
+					app.registry.Register(lifecycle.NewFuncComponent("p2p-workspace-gossip",
+						func(_ context.Context, _ *sync.WaitGroup) error { return nil },
+						func(_ context.Context) error {
+							wsGossip.Stop()
+							return nil
+						},
+					), lifecycle.PriorityNetwork)
+				}
+
+				// Wire workspace-team bridge.
+				if p2pc.coordinator != nil && wsc.manager != nil {
+					wireWorkspaceTeamBridge(bus, wsc.manager, wsc.tracker, wsc.gossip, logger())
+				}
+
+				logger().Info("P2P workspace tools registered")
+			}
 		}
 	}
 
@@ -402,6 +480,48 @@ func New(boot *bootstrap.Result) (*App, error) {
 			})
 			catalog.Register("sentinel", sentTools)
 			logger().Info("sentinel tools registered")
+		}
+
+		// Register economy lifecycle components (EventMonitor, DanglingDetector).
+		registerEconomyLifecycle(app.registry, econc)
+	}
+
+	// Register health monitor lifecycle (requires coordinator).
+	if p2pc != nil && p2pc.healthMonitor != nil {
+		app.registry.Register(p2pc.healthMonitor, lifecycle.PriorityAutomation)
+	}
+
+	// 5o'''. Team-Economy Bridges (event-driven)
+	if p2pc != nil && p2pc.coordinator != nil {
+		if econc != nil && econc.escrowEngine != nil {
+			wireTeamEscrowBridge(bus, econc.escrowEngine, p2pc.coordinator, logger())
+		}
+		if econc != nil && econc.budgetEngine != nil {
+			wireTeamBudgetBridge(app.ctx, bus, econc.budgetEngine, p2pc.coordinator, logger())
+		}
+
+		// Team-Reputation bridge: reputation tracking + low-score eviction.
+		if p2pc.reputation != nil {
+			minRepScore := cfg.P2P.Team.MinReputationScore
+			if minRepScore <= 0 {
+				minRepScore = cfg.P2P.MinTrustScore
+			}
+			if minRepScore <= 0 {
+				minRepScore = 0.3
+			}
+			initTeamReputationBridge(bus, p2pc.coordinator, p2pc.reputation, minRepScore, logger())
+		}
+
+		// Team-Shutdown bridge: budget exhaustion → graceful shutdown.
+		if econc != nil && econc.budgetEngine != nil {
+			initTeamShutdownBridge(bus, p2pc.coordinator, logger())
+		}
+
+		// Team-Escrow convenience tools (requires both coordinator + escrow).
+		if econc != nil && econc.escrowEngine != nil {
+			teTools := buildTeamEscrowTools(p2pc.coordinator, econc.escrowEngine, econc.budgetEngine)
+			tools = append(tools, teTools...)
+			catalog.Register("p2p", teTools)
 		}
 	}
 
@@ -826,6 +946,11 @@ func (a *App) Start(ctx context.Context) error {
 // Stop stops the application services and waits for all goroutines to exit.
 func (a *App) Stop(ctx context.Context) error {
 	logger().Info("stopping application")
+
+	// Cancel app-level context to signal fire-and-forget goroutines.
+	if a.cancel != nil {
+		a.cancel()
+	}
 
 	// Stop all lifecycle-managed components in reverse startup order.
 	_ = a.registry.StopAll(ctx)

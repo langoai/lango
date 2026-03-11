@@ -3,6 +3,7 @@ package team
 import (
 	"context"
 	"errors"
+	"sync"
 	"testing"
 	"time"
 
@@ -10,6 +11,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.uber.org/zap"
 
+	"github.com/langoai/lango/internal/eventbus"
 	"github.com/langoai/lango/internal/p2p/agentpool"
 )
 
@@ -260,4 +262,168 @@ func TestListTeams(t *testing.T) {
 
 	teams := coord.ListTeams()
 	assert.Len(t, teams, 2)
+}
+
+func setupCoordinatorWithBus(t *testing.T) (*Coordinator, *agentpool.Pool, *eventbus.Bus) {
+	t.Helper()
+	pool := agentpool.New(testLogger())
+
+	_ = pool.Add(&agentpool.Agent{
+		DID:          "did:leader",
+		Name:         "leader",
+		PeerID:       "peer-leader",
+		Capabilities: []string{"coordinate"},
+		Status:       agentpool.StatusHealthy,
+		TrustScore:   0.95,
+	})
+	_ = pool.Add(&agentpool.Agent{
+		DID:          "did:worker1",
+		Name:         "worker-1",
+		PeerID:       "peer-w1",
+		Capabilities: []string{"search"},
+		Status:       agentpool.StatusHealthy,
+		TrustScore:   0.8,
+	})
+	_ = pool.Add(&agentpool.Agent{
+		DID:          "did:worker2",
+		Name:         "worker-2",
+		PeerID:       "peer-w2",
+		Capabilities: []string{"search"},
+		Status:       agentpool.StatusHealthy,
+		TrustScore:   0.7,
+	})
+
+	invokeFn := func(_ context.Context, peerID, toolName string, params map[string]interface{}) (map[string]interface{}, error) {
+		return map[string]interface{}{"tool": toolName, "from": peerID}, nil
+	}
+
+	bus := eventbus.New()
+	sel := agentpool.NewSelector(pool, agentpool.DefaultWeights())
+	coord := NewCoordinator(CoordinatorConfig{
+		Pool:     pool,
+		Selector: sel,
+		InvokeFn: invokeFn,
+		Bus:      bus,
+		Logger:   testLogger(),
+	})
+
+	return coord, pool, bus
+}
+
+func TestFormTeam_PublishesFormedEvent(t *testing.T) {
+	t.Parallel()
+
+	coord, _, bus := setupCoordinatorWithBus(t)
+
+	var mu sync.Mutex
+	var received []eventbus.TeamFormedEvent
+
+	eventbus.SubscribeTyped(bus, func(e eventbus.TeamFormedEvent) {
+		mu.Lock()
+		defer mu.Unlock()
+		received = append(received, e)
+	})
+
+	_, err := coord.FormTeam(context.Background(), FormTeamRequest{
+		TeamID:      "t-formed",
+		Name:        "formed-team",
+		Goal:        "test formation events",
+		LeaderDID:   "did:leader",
+		Capability:  "search",
+		MemberCount: 2,
+	})
+	require.NoError(t, err)
+
+	mu.Lock()
+	defer mu.Unlock()
+	require.Len(t, received, 1)
+	assert.Equal(t, "t-formed", received[0].TeamID)
+	assert.Equal(t, "formed-team", received[0].Name)
+	assert.Equal(t, "test formation events", received[0].Goal)
+	assert.Equal(t, "did:leader", received[0].LeaderDID)
+	assert.GreaterOrEqual(t, received[0].Members, 2)
+}
+
+func TestDelegateTask_PublishesEvents(t *testing.T) {
+	t.Parallel()
+
+	coord, _, bus := setupCoordinatorWithBus(t)
+
+	var muD sync.Mutex
+	var delegated []eventbus.TeamTaskDelegatedEvent
+
+	var muC sync.Mutex
+	var completed []eventbus.TeamTaskCompletedEvent
+
+	eventbus.SubscribeTyped(bus, func(e eventbus.TeamTaskDelegatedEvent) {
+		muD.Lock()
+		defer muD.Unlock()
+		delegated = append(delegated, e)
+	})
+	eventbus.SubscribeTyped(bus, func(e eventbus.TeamTaskCompletedEvent) {
+		muC.Lock()
+		defer muC.Unlock()
+		completed = append(completed, e)
+	})
+
+	_, err := coord.FormTeam(context.Background(), FormTeamRequest{
+		TeamID:      "t-delegate",
+		Name:        "delegate-team",
+		Goal:        "test delegation events",
+		LeaderDID:   "did:leader",
+		Capability:  "search",
+		MemberCount: 2,
+	})
+	require.NoError(t, err)
+
+	_, err = coord.DelegateTask(context.Background(), "t-delegate", "web_search", map[string]interface{}{"q": "test"})
+	require.NoError(t, err)
+
+	muD.Lock()
+	require.Len(t, delegated, 1)
+	assert.Equal(t, "t-delegate", delegated[0].TeamID)
+	assert.Equal(t, "web_search", delegated[0].ToolName)
+	assert.GreaterOrEqual(t, delegated[0].Workers, 1)
+	muD.Unlock()
+
+	muC.Lock()
+	require.Len(t, completed, 1)
+	assert.Equal(t, "t-delegate", completed[0].TeamID)
+	assert.Equal(t, "web_search", completed[0].ToolName)
+	assert.GreaterOrEqual(t, completed[0].Successful, 1)
+	assert.Equal(t, 0, completed[0].Failed)
+	muC.Unlock()
+}
+
+func TestDisbandTeam_PublishesDisbandedEvent(t *testing.T) {
+	t.Parallel()
+
+	coord, _, bus := setupCoordinatorWithBus(t)
+
+	var mu sync.Mutex
+	var received []eventbus.TeamDisbandedEvent
+
+	eventbus.SubscribeTyped(bus, func(e eventbus.TeamDisbandedEvent) {
+		mu.Lock()
+		defer mu.Unlock()
+		received = append(received, e)
+	})
+
+	_, err := coord.FormTeam(context.Background(), FormTeamRequest{
+		TeamID:      "t-disband",
+		Name:        "disband-team",
+		Goal:        "test disband events",
+		LeaderDID:   "did:leader",
+		Capability:  "search",
+		MemberCount: 1,
+	})
+	require.NoError(t, err)
+
+	require.NoError(t, coord.DisbandTeam("t-disband"))
+
+	mu.Lock()
+	defer mu.Unlock()
+	require.Len(t, received, 1)
+	assert.Equal(t, "t-disband", received[0].TeamID)
+	assert.Equal(t, "team disbanded", received[0].Reason)
 }

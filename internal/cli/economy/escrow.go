@@ -120,6 +120,7 @@ func newEscrowShowCmd(cfgLoader func() (*config.Config, error)) *cobra.Command {
 			fmt.Printf("  Arbitrator:           %s\n", valueOrDefault(oc.ArbitratorAddress, "(not set)"))
 			fmt.Printf("  Token Address:        %s\n", valueOrDefault(oc.TokenAddress, "(not set)"))
 			fmt.Printf("  Poll Interval:        %s\n", oc.PollInterval)
+			fmt.Printf("  Confirmation Depth:   %d\n", oc.ConfirmationDepth)
 
 			st := cfg.Economy.Escrow.Settlement
 			fmt.Println("\nSettlement:")

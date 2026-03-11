@@ -62,6 +62,10 @@ test-short:
 test-p2p:
 	$(GOTEST) -v -race ./internal/p2p/... ./internal/wallet/...
 
+## test-workspace: Run P2P workspace and git bundle tests
+test-workspace:
+	$(GOTEST) -v -race ./internal/p2p/workspace/... ./internal/p2p/gitbundle/...
+
 ## bench: Run benchmarks
 bench:
 	$(GOTEST) -bench=. -benchmem ./...
@@ -179,7 +183,7 @@ help:
 
 .PHONY: build build-linux build-darwin build-all install \
         dev run \
-        test test-short test-p2p bench coverage \
+        test test-short test-p2p test-workspace bench coverage \
         fmt fmt-check vet lint generate check-abi ci \
         deps \
         codesign \

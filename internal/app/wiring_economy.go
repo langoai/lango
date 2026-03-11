@@ -16,6 +16,7 @@ import (
 	"github.com/langoai/lango/internal/economy/pricing"
 	"github.com/langoai/lango/internal/economy/risk"
 	"github.com/langoai/lango/internal/eventbus"
+	"github.com/langoai/lango/internal/lifecycle"
 	p2pproto "github.com/langoai/lango/internal/p2p/protocol"
 	"github.com/langoai/lango/internal/payment"
 )
@@ -29,6 +30,8 @@ type economyComponents struct {
 	escrowEngine      *escrow.Engine
 	escrowSettler     escrow.SettlementExecutor
 	sentinelEngine    *sentinel.Engine
+	eventMonitor      *hub.EventMonitor
+	danglingDetector  *hub.DanglingDetector
 }
 
 // initEconomy creates the economy layer components if enabled.
@@ -222,6 +225,42 @@ func initEconomy(cfg *config.Config, p2pc *p2pComponents, pc *paymentComponents,
 			ec.sentinelEngine = sentinelEngine
 			logger().Info("economy: sentinel engine initialized")
 		}
+
+		// 5b. On-chain event reconciliation (requires on-chain mode + RPC).
+		oc := cfg.Economy.Escrow.OnChain
+		if oc.Enabled && pc != nil && pc.rpcClient != nil {
+			hubAddr := common.HexToAddress(oc.HubAddress)
+
+			// EventMonitor: watches on-chain contract events.
+			monitorOpts := []hub.MonitorOption{
+				hub.WithMonitorLogger(logger()),
+			}
+			if oc.PollInterval > 0 {
+				monitorOpts = append(monitorOpts, hub.WithPollInterval(oc.PollInterval))
+			}
+			confirmDepth := uint64(2) // Base L2 default
+			if oc.ConfirmationDepth > 0 {
+				confirmDepth = oc.ConfirmationDepth
+			}
+			monitorOpts = append(monitorOpts, hub.WithConfirmationDepth(confirmDepth))
+			monitor, err := hub.NewEventMonitor(pc.rpcClient, bus, nil, hubAddr, monitorOpts...)
+			if err != nil {
+				logger().Warnw("event monitor init", "error", err)
+			} else {
+				ec.eventMonitor = monitor
+				logger().Info("economy: event monitor initialized")
+			}
+
+			// DanglingDetector: expires stuck pending escrows.
+			dd := hub.NewDanglingDetector(escrowStore, escrowEngine, bus,
+				hub.WithDanglingLogger(logger()),
+			)
+			ec.danglingDetector = dd
+			logger().Info("economy: dangling detector initialized")
+
+			// Wire on-chain events to escrow engine state transitions.
+			initOnChainEscrowBridge(bus, escrowEngine, logger())
+		}
 	}
 
 	return ec
@@ -278,7 +317,7 @@ func selectSettler(cfg *config.Config, pc *paymentComponents) escrow.SettlementE
 		return settler
 	}
 
-	return noopSettler{}
+	return escrow.NoopSettler{}
 }
 
 // handleNegotiateProtocol routes P2P negotiation messages to the negotiation engine.
@@ -346,11 +385,15 @@ func handleNegotiateProtocol(ctx context.Context, ne *negotiation.Engine, localD
 	}
 }
 
-// noopSettler is a placeholder settlement executor for escrow.
-type noopSettler struct{}
-
-var _ escrow.SettlementExecutor = (*noopSettler)(nil)
-
-func (noopSettler) Lock(_ context.Context, _ string, _ *big.Int) error    { return nil }
-func (noopSettler) Release(_ context.Context, _ string, _ *big.Int) error { return nil }
-func (noopSettler) Refund(_ context.Context, _ string, _ *big.Int) error  { return nil }
+// registerEconomyLifecycle registers economy lifecycle components with the registry.
+func registerEconomyLifecycle(reg *lifecycle.Registry, ec *economyComponents) {
+	if ec == nil {
+		return
+	}
+	if ec.eventMonitor != nil {
+		reg.Register(ec.eventMonitor, lifecycle.PriorityNetwork)
+	}
+	if ec.danglingDetector != nil {
+		reg.Register(ec.danglingDetector, lifecycle.PriorityAutomation)
+	}
+}

@@ -144,6 +144,10 @@ type App struct {
 	// Lifecycle registry manages component startup/shutdown ordering.
 	registry *lifecycle.Registry
 
+	// ctx/cancel for signalling shutdown to fire-and-forget goroutines.
+	ctx    context.Context
+	cancel context.CancelFunc
+
 	// wg tracks background goroutines for graceful shutdown
 	wg sync.WaitGroup
 }

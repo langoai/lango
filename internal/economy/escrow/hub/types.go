@@ -59,3 +59,34 @@ type VaultInfo struct {
 	Buyer        common.Address
 	Seller       common.Address
 }
+
+// OnChainDealType represents the deal type on V2 contracts.
+type OnChainDealType uint8
+
+const (
+	DealTypeSimple    OnChainDealType = 0
+	DealTypeMilestone OnChainDealType = 1
+	DealTypeTeam      OnChainDealType = 2
+)
+
+// String returns the human-readable deal type name.
+func (t OnChainDealType) String() string {
+	switch t {
+	case DealTypeSimple:
+		return "simple"
+	case DealTypeMilestone:
+		return "milestone"
+	case DealTypeTeam:
+		return "team"
+	default:
+		return "unknown"
+	}
+}
+
+// OnChainDealV2 extends OnChainDeal with V2 fields (refId, settler, dealType).
+type OnChainDealV2 struct {
+	OnChainDeal
+	DealType OnChainDealType
+	RefId    [32]byte
+	Settler  common.Address
+}

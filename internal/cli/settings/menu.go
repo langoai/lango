@@ -142,6 +142,7 @@ func NewMenuModel() MenuModel {
 					{"p2p_pricing", "P2P Pricing", "Paid tool invocations"},
 					{"p2p_owner", "P2P Owner Protection", "Owner PII leak prevention"},
 					{"p2p_sandbox", "P2P Sandbox", "Tool isolation, container sandbox"},
+				{"p2p_workspace", "P2P Workspace", "Workspaces, git bundles"},
 				},
 			},
 			{

@@ -3,11 +3,15 @@ package app
 import (
 	"context"
 	"fmt"
+	"os"
+	"path/filepath"
 	"sync"
 	"time"
 
 	"github.com/consensys/gnark/frontend"
 	"github.com/ethereum/go-ethereum/common"
+
+	bolt "go.etcd.io/bbolt"
 
 	"github.com/langoai/lango/internal/config"
 	"github.com/langoai/lango/internal/ent"
@@ -34,22 +38,23 @@ import (
 
 // p2pComponents holds optional P2P networking components.
 type p2pComponents struct {
-	node        *p2p.Node
-	sessions    *handshake.SessionStore
-	handshaker  *handshake.Handshaker
-	nonceCache  *handshake.NonceCache
-	fw          *firewall.Firewall
-	gossip      *discovery.GossipService
-	identity    *identity.WalletDIDProvider
-	handler     *p2pproto.Handler
-	payGate     *paygate.Gate
-	reputation  *reputation.Store
-	pricingCfg  config.P2PPricingConfig
-	pricingFn   func(toolName string) (string, bool)
-	agentPool   *agentpool.Pool
-	selector    *agentpool.Selector
-	coordinator *team.Coordinator
-	provider    *agentpool.PoolProvider
+	node           *p2p.Node
+	sessions       *handshake.SessionStore
+	handshaker     *handshake.Handshaker
+	nonceCache     *handshake.NonceCache
+	fw             *firewall.Firewall
+	gossip         *discovery.GossipService
+	identity       *identity.WalletDIDProvider
+	handler        *p2pproto.Handler
+	payGate        *paygate.Gate
+	reputation     *reputation.Store
+	pricingCfg     config.P2PPricingConfig
+	pricingFn      func(toolName string) (string, bool)
+	agentPool      *agentpool.Pool
+	selector       *agentpool.Selector
+	coordinator    *team.Coordinator
+	provider       *agentpool.PoolProvider
+	healthMonitor  *team.HealthMonitor
 }
 
 // initP2P creates the P2P networking components if enabled.
@@ -441,6 +446,34 @@ func initP2P(cfg *config.Config, wp wallet.WalletProvider, pc *paymentComponents
 	selector := agentpool.NewSelector(pool, agentpool.DefaultWeights())
 	provider := agentpool.NewPoolProvider(pool, selector)
 
+	// Open BoltDB for team persistence.
+	var teamStore team.TeamStore
+	wsDataDir := cfg.P2P.Workspace.DataDir
+	if wsDataDir == "" {
+		home, _ := os.UserHomeDir()
+		if home != "" {
+			wsDataDir = filepath.Join(home, ".lango", "workspaces")
+		}
+	}
+	if wsDataDir != "" {
+		teamDBDir := filepath.Join(wsDataDir, "teams")
+		if err := os.MkdirAll(teamDBDir, 0o700); err == nil {
+			teamDB, err := bolt.Open(filepath.Join(teamDBDir, "teams.db"), 0o600, nil)
+			if err != nil {
+				pLogger.Warnw("open team BoltDB", "error", err)
+			} else {
+				bs, err := team.NewBoltStore(teamDB, pLogger)
+				if err != nil {
+					pLogger.Warnw("create team BoltStore", "error", err)
+					teamDB.Close()
+				} else {
+					teamStore = bs
+					pLogger.Info("team persistence store initialized")
+				}
+			}
+		}
+	}
+
 	// Create team coordinator for distributed agent collaboration.
 	var coord *team.Coordinator
 	invokeFn := func(ctx context.Context, peerID, toolName string, params map[string]interface{}) (map[string]interface{}, error) {
@@ -494,8 +527,87 @@ func initP2P(cfg *config.Config, wp wallet.WalletProvider, pc *paymentComponents
 		Selector: selector,
 		InvokeFn: invokeFn,
 		Bus:      bus,
+		Store:    teamStore,
 		Logger:   pLogger,
 	})
+
+	// Load persisted teams from previous session.
+	if err := coord.LoadPersistedTeams(); err != nil {
+		pLogger.Warnw("load persisted teams", "error", err)
+	}
+
+	// Wire team protocol handler.
+	if coord != nil {
+		router := &p2pproto.TeamRouter{
+			OnInvite: func(ctx context.Context, peerDID string, payload p2pproto.TeamInvitePayload) (map[string]interface{}, error) {
+				// Accept invitation by acknowledging the team exists.
+				t, err := coord.GetTeam(payload.TeamID)
+				if err != nil {
+					return nil, fmt.Errorf("team not found: %w", err)
+				}
+				_ = t // team exists, invitation acknowledged
+				return map[string]interface{}{
+					"teamId":   payload.TeamID,
+					"accepted": true,
+				}, nil
+			},
+			OnAccept: func(ctx context.Context, peerDID string, payload p2pproto.TeamAcceptPayload) (map[string]interface{}, error) {
+				return map[string]interface{}{
+					"teamId":   payload.TeamID,
+					"accepted": payload.Accepted,
+				}, nil
+			},
+			OnTask: func(ctx context.Context, peerDID string, payload p2pproto.TeamTaskPayload) (map[string]interface{}, error) {
+				// Execute the task locally via the coordinator's invoke function.
+				result, err := invokeFn(ctx, "", payload.ToolName, payload.Params)
+				if err != nil {
+					return nil, err
+				}
+				return result, nil
+			},
+			OnResult: func(ctx context.Context, peerDID string, payload p2pproto.TeamResultPayload) (map[string]interface{}, error) {
+				return map[string]interface{}{
+					"teamId":   payload.TeamID,
+					"taskId":   payload.TaskID,
+					"received": true,
+				}, nil
+			},
+			OnDisband: func(ctx context.Context, peerDID string, payload p2pproto.TeamDisbandPayload) (map[string]interface{}, error) {
+				if err := coord.DisbandTeam(payload.TeamID); err != nil {
+					return nil, err
+				}
+				return map[string]interface{}{
+					"teamId":    payload.TeamID,
+					"disbanded": true,
+				}, nil
+			},
+		}
+		handler.SetTeamHandler(router.Handle)
+		pLogger.Info("P2P team protocol handler wired")
+	}
+
+	// Create health monitor for periodic team member health checks.
+	var healthMon *team.HealthMonitor
+	if coord != nil {
+		healthInterval := cfg.P2P.Team.HealthCheckInterval
+		if healthInterval <= 0 {
+			healthInterval = 30 * time.Second
+		}
+		maxMissed := cfg.P2P.Team.MaxMissedHeartbeats
+		if maxMissed <= 0 {
+			maxMissed = 3
+		}
+		healthMon = team.NewHealthMonitor(team.HealthMonitorConfig{
+			Coordinator: coord,
+			Bus:         bus,
+			Logger:      pLogger,
+			Interval:    healthInterval,
+			MaxMissed:   maxMissed,
+			InvokeFn:    invokeFn,
+		})
+		pLogger.Infow("team health monitor created",
+			"interval", healthInterval, "maxMissed", maxMissed)
+	}
 
 	pLogger.Infow("P2P agent pool and team coordinator initialized",
 		"selectorWeights", "default",
@@ -516,8 +628,9 @@ func initP2P(cfg *config.Config, wp wallet.WalletProvider, pc *paymentComponents
 		pricingFn:   extPricingFn,
 		agentPool:   pool,
 		selector:    selector,
-		coordinator: coord,
-		provider:    provider,
+		coordinator:   coord,
+		provider:      provider,
+		healthMonitor: healthMon,
 	}
 }
 

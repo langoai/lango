@@ -371,6 +371,15 @@ Configure the proving scheme and SRS (Structured Reference String) source:
         "networkMode": "none",
         "poolSize": 0
       }
+    },
+    "workspace": {
+      "enabled": false,
+      "dataDir": "~/.lango/workspaces",
+      "maxWorkspaces": 10,
+      "maxBundleSizeBytes": 0,
+      "chroniclerEnabled": false,
+      "autoSandbox": false,
+      "contributionTracking": false
     }
   }
 }
@@ -436,6 +445,16 @@ lango p2p team status <id>                      # Show team details
 lango p2p team disband <id>                     # Disband an active team
 lango p2p zkp status                            # Show ZKP configuration
 lango p2p zkp circuits                          # List ZKP circuits
+lango p2p workspace create <name>               # Create a collaborative workspace
+lango p2p workspace list                        # List all workspaces
+lango p2p workspace status <id>                 # Show workspace status and members
+lango p2p workspace join <id>                   # Join a workspace
+lango p2p workspace leave <id>                  # Leave a workspace
+lango p2p git init <workspace-id>               # Initialize workspace git repo
+lango p2p git log <workspace-id>                # Show workspace commit history
+lango p2p git diff <workspace-id> <from> <to>   # Show diff between commits
+lango p2p git push <workspace-id>               # Create and push git bundle
+lango p2p git fetch <workspace-id>              # Fetch and apply git bundle
 ```
 
 See the [P2P CLI Reference](../cli/p2p.md) for detailed command documentation.
@@ -656,6 +675,92 @@ The event bus publishes team lifecycle events:
 | `team.leader.changed` | Team leader replaced |
 
 Source: `internal/eventbus/team_events.go`
+
+## Collaborative Workspaces
+
+Workspaces are collaborative environments where multiple agents share code, messages, and context within a P2P network. Each workspace has a lifecycle, members, and optional features like chronicling and contribution tracking.
+
+### Workspace Lifecycle
+
+| Status | Description |
+|--------|-------------|
+| `forming` | Workspace created, waiting for members to join |
+| `active` | Workspace is active with participating agents |
+| `archived` | Workspace completed or disbanded |
+
+### Members and Roles
+
+| Role | Description |
+|------|-------------|
+| `creator` | Agent that created the workspace |
+| `member` | Agent that joined the workspace |
+
+### Message Types
+
+Workspace messages facilitate real-time collaboration:
+
+| Type | Description |
+|------|-------------|
+| `TASK_PROPOSAL` | Propose a task for workspace members |
+| `LOG_STREAM` | Share log output in real-time |
+| `COMMIT_SIGNAL` | Signal that code has been committed |
+| `KNOWLEDGE_SHARE` | Share knowledge or context |
+| `MEMBER_JOINED` | A member joined the workspace |
+| `MEMBER_LEFT` | A member left the workspace |
+
+### GossipSub Topics
+
+Workspaces use GossipSub for real-time message distribution:
+- Topic per workspace: `/lango/workspace/<workspace-id>`
+- Members subscribe on join, unsubscribe on leave
+
+### Chronicler
+
+When `chroniclerEnabled` is true, workspace messages are persisted as graph triples for long-term knowledge retention. Each message generates triples:
+- `workspace:message:<id>` → type, workspace, sender, content, timestamp
+- Reply chains are linked via `replyTo` predicates
+
+Source: `internal/p2p/workspace/chronicler.go`
+
+### Contribution Tracking
+
+When `contributionTracking` is true, per-agent metrics are collected:
+- **Commits**: Number of git commits per member
+- **Code Bytes**: Total code contribution size
+- **Messages**: Number of workspace messages posted
+- **Last Active**: Most recent activity timestamp
+
+Source: `internal/p2p/workspace/contribution.go`
+
+## Git Bundle Exchange
+
+Git bundle exchange enables atomic code sharing between workspace members using bare git repositories and the git bundle protocol.
+
+### Architecture
+
+- **Bare Repo Store**: Each workspace gets an isolated bare git repository at `<dataDir>/<workspaceID>/repo.git`
+- **Bundle Protocol**: Uses `git bundle create/unbundle` for transfer (leverages git CLI for reliability)
+- **P2P Transport**: Bundles are transferred over the P2P network protocol `/lango/p2p-git/1.0.0`
+
+### Bundle Workflow
+
+1. **Init**: Initialize a bare repo for a workspace (`Service.Init`)
+2. **Create Bundle**: Package all refs into a bundle (`Service.CreateBundle`) → returns bytes + HEAD hash
+3. **Transfer**: Send bundle over P2P to workspace members
+4. **Apply Bundle**: Receiver unbundles into their bare repo (`Service.ApplyBundle`)
+
+### DAG Leaf Detection
+
+`Service.Leaves()` identifies commits with no children — useful for detecting divergent branches and potential merge conflicts across distributed agents.
+
+### Configuration
+
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| `maxBundleSizeBytes` | int64 | `0` | Maximum bundle size (0 = unlimited) |
+| `dataDir` | string | `~/.lango/workspaces` | Base directory for workspace repos |
+
+Source: `internal/p2p/gitbundle/`
 
 ## Agent Pool
 
