@@ -314,3 +314,118 @@ func TestMonitor_Name(t *testing.T) {
 	m := testMonitor(t, nil)
 	assert.Equal(t, "escrow-event-monitor", m.Name())
 }
+
+// ---- extractDealAndAddress tests ----
+
+func TestExtractDealAndAddress_V1(t *testing.T) {
+	t.Parallel()
+	m := testMonitor(t, nil)
+
+	// V1 layout: [sig, dealId, addr] — 3 topics.
+	dealID := big.NewInt(42)
+	addr := common.HexToAddress("0xBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB")
+	log := types.Log{
+		Topics: []common.Hash{
+			{},
+			common.BigToHash(dealID),
+			common.BytesToHash(addr.Bytes()),
+		},
+	}
+
+	gotDealID, gotAddr := m.extractDealAndAddress(log, false)
+	assert.Equal(t, "42", gotDealID)
+	assert.Equal(t, addr.Hex(), gotAddr)
+}
+
+func TestExtractDealAndAddress_V2(t *testing.T) {
+	t.Parallel()
+	m := testMonitor(t, nil)
+
+	// V2 layout: [sig, refId, dealId, addr] — 4 topics.
+	refID := common.BigToHash(big.NewInt(99))
+	dealID := big.NewInt(55)
+	addr := common.HexToAddress("0xCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC")
+	log := types.Log{
+		Topics: []common.Hash{
+			{},
+			refID,
+			common.BigToHash(dealID),
+			common.BytesToHash(addr.Bytes()),
+		},
+	}
+
+	gotDealID, gotAddr := m.extractDealAndAddress(log, true)
+	assert.Equal(t, "55", gotDealID)
+	assert.Equal(t, addr.Hex(), gotAddr)
+}
+
+// ---- extractDealID tests ----
+
+func TestExtractDealID_V1(t *testing.T) {
+	t.Parallel()
+	m := testMonitor(t, nil)
+
+	// V1 layout: [sig, dealId, ...] — dealID at index 1.
+	dealID := big.NewInt(100)
+	log := types.Log{
+		Topics: []common.Hash{
+			{},
+			common.BigToHash(dealID),
+		},
+	}
+
+	got := m.extractDealID(log, false)
+	assert.Equal(t, "100", got)
+}
+
+func TestExtractDealID_V2(t *testing.T) {
+	t.Parallel()
+	m := testMonitor(t, nil)
+
+	// V2 layout: [sig, refId, dealId, ...] — dealID at index 2.
+	refID := common.BigToHash(big.NewInt(77))
+	dealID := big.NewInt(200)
+	log := types.Log{
+		Topics: []common.Hash{
+			{},
+			refID,
+			common.BigToHash(dealID),
+		},
+	}
+
+	got := m.extractDealID(log, true)
+	assert.Equal(t, "200", got)
+}
+
+// ---- isV2Event tests ----
+
+func TestIsV2Event(t *testing.T) {
+	t.Parallel()
+	m := testMonitor(t, nil)
+
+	tests := []struct {
+		give       string
+		eventName  string
+		topicCount int
+		wantV2     bool
+	}{
+		{give: "Deposited 3 topics (V1)", eventName: "Deposited", topicCount: 3, wantV2: false},
+		{give: "Deposited 4 topics (V2)", eventName: "Deposited", topicCount: 4, wantV2: true},
+		{give: "Released 3 topics (V1)", eventName: "Released", topicCount: 3, wantV2: false},
+		{give: "Released 4 topics (V2)", eventName: "Released", topicCount: 4, wantV2: true},
+		{give: "Disputed always V1", eventName: "Disputed", topicCount: 3, wantV2: false},
+		{give: "DisputeRaised always V2", eventName: "DisputeRaised", topicCount: 3, wantV2: true},
+		{give: "DealResolved V1", eventName: "DealResolved", topicCount: 2, wantV2: false},
+		{give: "SettlementFinalized V2", eventName: "SettlementFinalized", topicCount: 3, wantV2: true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.give, func(t *testing.T) {
+			t.Parallel()
+			topics := make([]common.Hash, tt.topicCount)
+			log := types.Log{Topics: topics}
+			got := m.isV2Event(tt.eventName, log)
+			assert.Equal(t, tt.wantV2, got)
+		})
+	}
+}

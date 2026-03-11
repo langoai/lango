@@ -93,6 +93,7 @@ type CoordinatorConfig struct {
 	Conflict         ConflictStrategy
 	Assignment       AssignmentStrategy
 	Bus              *eventbus.Bus
+	Store            TeamStore
 	Logger           *zap.SugaredLogger
 }
 
@@ -105,6 +106,7 @@ type Coordinator struct {
 	conflict   ConflictStrategy
 	assignment AssignmentStrategy
 	bus        *eventbus.Bus
+	store      TeamStore
 	logger     *zap.SugaredLogger
 
 	mu    sync.RWMutex
@@ -133,6 +135,7 @@ func NewCoordinator(cfg CoordinatorConfig) *Coordinator {
 		conflict:   conflict,
 		assignment: assignment,
 		bus:        cfg.Bus,
+		store:      cfg.Store,
 		logger:     cfg.Logger,
 		teams:      make(map[string]*Team),
 	}
@@ -201,6 +204,13 @@ func (c *Coordinator) FormTeam(ctx context.Context, req FormTeamRequest) (*Team,
 	c.teams[t.ID] = t
 	c.mu.Unlock()
 
+	// Persist to store if available.
+	if c.store != nil {
+		if err := c.store.Save(t); err != nil {
+			c.logger.Warnw("persist team after formation", "teamID", t.ID, "error", err)
+		}
+	}
+
 	c.logger.Infow("team formed",
 		"teamID", t.ID,
 		"name", t.Name,
@@ -249,6 +259,10 @@ func (c *Coordinator) DelegateTask(ctx context.Context, teamID, toolName string,
 	t, err := c.GetTeam(teamID)
 	if err != nil {
 		return nil, err
+	}
+
+	if t.Status == StatusShuttingDown {
+		return nil, ErrTeamShuttingDown
 	}
 
 	members := t.Members()
@@ -321,6 +335,13 @@ func (c *Coordinator) DelegateTask(ctx context.Context, teamID, toolName string,
 		})
 	}
 
+	// Persist updated team state after task completion (spend may have changed).
+	if c.store != nil {
+		if err := c.store.Save(t); err != nil {
+			c.logger.Warnw("persist team after task completion", "teamID", teamID, "error", err)
+		}
+	}
+
 	return results, nil
 }
 
@@ -370,6 +391,13 @@ func (c *Coordinator) DisbandTeam(teamID string) error {
 	t.Disband()
 	delete(c.teams, teamID)
 
+	// Remove from persistent store.
+	if c.store != nil {
+		if err := c.store.Delete(teamID); err != nil {
+			c.logger.Warnw("delete team from store", "teamID", teamID, "error", err)
+		}
+	}
+
 	if c.bus != nil {
 		c.bus.Publish(eventbus.TeamDisbandedEvent{
 			TeamID: teamID,
@@ -378,6 +406,31 @@ func (c *Coordinator) DisbandTeam(teamID string) error {
 	}
 
 	c.logger.Infow("team disbanded", "teamID", teamID, "name", t.Name)
+	return nil
+}
+
+// LoadPersistedTeams loads all teams from the persistent store into memory.
+// This should be called during startup to restore teams from a previous session.
+func (c *Coordinator) LoadPersistedTeams() error {
+	if c.store == nil {
+		return nil
+	}
+
+	teams, err := c.store.LoadAll()
+	if err != nil {
+		return fmt.Errorf("load persisted teams: %w", err)
+	}
+
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	for _, t := range teams {
+		if t.Status == StatusActive || t.Status == StatusForming {
+			c.teams[t.ID] = t
+		}
+	}
+
+	c.logger.Infow("loaded persisted teams", "count", len(teams))
 	return nil
 }
 

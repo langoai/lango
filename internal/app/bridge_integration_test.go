@@ -18,7 +18,6 @@ import (
 	"github.com/langoai/lango/internal/p2p/team"
 )
 
-// noopSettler is already defined in wiring_economy.go; reuse it for tests.
 
 func bridgeTestLog() *zap.SugaredLogger { return zap.NewNop().Sugar() }
 
@@ -68,7 +67,7 @@ func setupBridgeTestEnv(t *testing.T) (
 	escrowStore := escrow.NewMemoryStore()
 	escrowCfg := escrow.DefaultEngineConfig()
 	escrowCfg.AutoRelease = false
-	escrowEngine := escrow.NewEngine(escrowStore, &noopSettler{}, escrowCfg)
+	escrowEngine := escrow.NewEngine(escrowStore, escrow.NoopSettler{}, escrowCfg)
 
 	// Budget engine with in-memory store.
 	budgetStore := budget.NewStore()
@@ -128,7 +127,7 @@ func TestBridge_TeamFormed_CreatesEscrowAndBudget(t *testing.T) {
 	log := bridgeTestLog()
 
 	wireTeamEscrowBridge(bus, escrowEngine, coord, log)
-	wireTeamBudgetBridge(bus, budgetEngine, coord, log)
+	wireTeamBudgetBridge(context.Background(), bus, budgetEngine, coord, log)
 
 	formTeamWithBudget(t, context.Background(), coord, bus,
 		"team-1", "test-team", "test goal", 10.0, 2)
@@ -151,7 +150,7 @@ func TestBridge_TeamTaskCompleted_CompletesMilestoneAndRecordsBudget(t *testing.
 	log := bridgeTestLog()
 
 	wireTeamEscrowBridge(bus, escrowEngine, coord, log)
-	wireTeamBudgetBridge(bus, budgetEngine, coord, log)
+	wireTeamBudgetBridge(context.Background(), bus, budgetEngine, coord, log)
 
 	formTeamWithBudget(t, context.Background(), coord, bus,
 		"team-2", "task-team", "complete tasks", 5.0, 2)
@@ -221,7 +220,7 @@ func TestBridge_FullLifecycle_ReleasesOnAllMilestonesCompleted(t *testing.T) {
 	log := bridgeTestLog()
 
 	wireTeamEscrowBridge(bus, escrowEngine, coord, log)
-	wireTeamBudgetBridge(bus, budgetEngine, coord, log)
+	wireTeamBudgetBridge(context.Background(), bus, budgetEngine, coord, log)
 
 	// 1. Form team with budget.
 	formTeamWithBudget(t, context.Background(), coord, bus,
@@ -270,7 +269,7 @@ func TestBridge_NoBudget_SkipsBridges(t *testing.T) {
 	log := bridgeTestLog()
 
 	wireTeamEscrowBridge(bus, escrowEngine, coord, log)
-	wireTeamBudgetBridge(bus, budgetEngine, coord, log)
+	wireTeamBudgetBridge(context.Background(), bus, budgetEngine, coord, log)
 
 	// Form team WITHOUT setting a budget (Budget stays at 0).
 	_, err := coord.FormTeam(context.Background(), team.FormTeamRequest{

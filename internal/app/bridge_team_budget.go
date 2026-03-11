@@ -1,6 +1,7 @@
 package app
 
 import (
+	"context"
 	"fmt"
 	"math/big"
 	"time"
@@ -13,7 +14,7 @@ import (
 )
 
 // wireTeamBudgetBridge subscribes to team events and auto-manages budget lifecycle.
-func wireTeamBudgetBridge(bus *eventbus.Bus, budgetEngine *budget.Engine, coord *team.Coordinator, log *zap.SugaredLogger) {
+func wireTeamBudgetBridge(ctx context.Context, bus *eventbus.Bus, budgetEngine *budget.Engine, coord *team.Coordinator, log *zap.SugaredLogger) {
 	// TeamFormed → allocate budget if team has budget > 0.
 	eventbus.SubscribeTyped(bus, func(ev eventbus.TeamFormedEvent) {
 		t, err := coord.GetTeam(ev.TeamID)
@@ -63,12 +64,16 @@ func wireTeamBudgetBridge(bus *eventbus.Bus, budgetEngine *budget.Engine, coord 
 			return
 		}
 
-		// Release reservation after a timeout (will be committed by Record on completion).
+		// Release reservation after a timeout or on context cancellation.
 		go func() {
 			timer := time.NewTimer(5 * time.Minute)
 			defer timer.Stop()
-			<-timer.C
-			releaseFn()
+			select {
+			case <-timer.C:
+				releaseFn()
+			case <-ctx.Done():
+				releaseFn()
+			}
 		}()
 
 		log.Debugw("team-budget bridge: budget reserved",

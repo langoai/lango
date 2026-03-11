@@ -39,10 +39,13 @@ func logger() *zap.SugaredLogger { return logging.App() }
 func New(boot *bootstrap.Result) (*App, error) {
 	cfg := boot.Config
 	bus := eventbus.New()
+	ctx, cancel := context.WithCancel(context.Background())
 	app := &App{
 		Config:   cfg,
 		EventBus: bus,
 		registry: lifecycle.NewRegistry(),
+		ctx:      ctx,
+		cancel:   cancel,
 	}
 
 	// 1. Supervisor (holds provider secrets, exec tool)
@@ -478,6 +481,14 @@ func New(boot *bootstrap.Result) (*App, error) {
 			catalog.Register("sentinel", sentTools)
 			logger().Info("sentinel tools registered")
 		}
+
+		// Register economy lifecycle components (EventMonitor, DanglingDetector).
+		registerEconomyLifecycle(app.registry, econc)
+	}
+
+	// Register health monitor lifecycle (requires coordinator).
+	if p2pc != nil && p2pc.healthMonitor != nil {
+		app.registry.Register(p2pc.healthMonitor, lifecycle.PriorityAutomation)
 	}
 
 	// 5o'''. Team-Economy Bridges (event-driven)
@@ -486,7 +497,24 @@ func New(boot *bootstrap.Result) (*App, error) {
 			wireTeamEscrowBridge(bus, econc.escrowEngine, p2pc.coordinator, logger())
 		}
 		if econc != nil && econc.budgetEngine != nil {
-			wireTeamBudgetBridge(bus, econc.budgetEngine, p2pc.coordinator, logger())
+			wireTeamBudgetBridge(app.ctx, bus, econc.budgetEngine, p2pc.coordinator, logger())
+		}
+
+		// Team-Reputation bridge: reputation tracking + low-score eviction.
+		if p2pc.reputation != nil {
+			minRepScore := cfg.P2P.Team.MinReputationScore
+			if minRepScore <= 0 {
+				minRepScore = cfg.P2P.MinTrustScore
+			}
+			if minRepScore <= 0 {
+				minRepScore = 0.3
+			}
+			initTeamReputationBridge(bus, p2pc.coordinator, p2pc.reputation, minRepScore, logger())
+		}
+
+		// Team-Shutdown bridge: budget exhaustion → graceful shutdown.
+		if econc != nil && econc.budgetEngine != nil {
+			initTeamShutdownBridge(bus, p2pc.coordinator, logger())
 		}
 
 		// Team-Escrow convenience tools (requires both coordinator + escrow).
@@ -918,6 +946,11 @@ func (a *App) Start(ctx context.Context) error {
 // Stop stops the application services and waits for all goroutines to exit.
 func (a *App) Stop(ctx context.Context) error {
 	logger().Info("stopping application")
+
+	// Cancel app-level context to signal fire-and-forget goroutines.
+	if a.cancel != nil {
+		a.cancel()
+	}
 
 	// Stop all lifecycle-managed components in reverse startup order.
 	_ = a.registry.StopAll(ctx)

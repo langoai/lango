@@ -204,6 +204,69 @@ func TestStoreListByPeer(t *testing.T) {
 	}
 }
 
+func TestStoreListByStatus(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		give       string
+		status     EscrowStatus
+		setup      func(Store)
+		wantLen    int
+		wantIDs    []string
+	}{
+		{
+			give:   "filters pending only",
+			status: StatusPending,
+			setup: func(s Store) {
+				_ = s.Create(newTestEntry("e1", "did:buyer:1", "did:seller:1"))
+				e2 := newTestEntry("e2", "did:buyer:2", "did:seller:2")
+				e2.Status = StatusFunded
+				_ = s.Create(e2)
+				_ = s.Create(newTestEntry("e3", "did:buyer:3", "did:seller:3"))
+			},
+			wantLen: 2, // e1 and e3 are pending
+		},
+		{
+			give:   "filters funded only",
+			status: StatusFunded,
+			setup: func(s Store) {
+				_ = s.Create(newTestEntry("e1", "did:buyer:1", "did:seller:1"))
+				e2 := newTestEntry("e2", "did:buyer:2", "did:seller:2")
+				e2.Status = StatusFunded
+				_ = s.Create(e2)
+			},
+			wantLen: 1,
+		},
+		{
+			give:    "empty result when no match",
+			status:  StatusDisputed,
+			setup:   func(s Store) {
+				_ = s.Create(newTestEntry("e1", "did:buyer:1", "did:seller:1"))
+			},
+			wantLen: 0,
+		},
+		{
+			give:    "empty store",
+			status:  StatusPending,
+			setup:   func(s Store) {},
+			wantLen: 0,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.give, func(t *testing.T) {
+			t.Parallel()
+			s := NewMemoryStore()
+			tt.setup(s)
+			result := s.ListByStatus(tt.status)
+			assert.Len(t, result, tt.wantLen)
+			for _, e := range result {
+				assert.Equal(t, tt.status, e.Status)
+			}
+		})
+	}
+}
+
 func TestStoreUpdate(t *testing.T) {
 	t.Parallel()
 

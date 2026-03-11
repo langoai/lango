@@ -1,0 +1,285 @@
+[
+  {
+    "inputs": [{"internalType": "address", "name": "owner_", "type": "address"}],
+    "name": "initialize",
+    "outputs": [],
+    "stateMutability": "nonpayable",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      {"internalType": "address", "name": "seller", "type": "address"},
+      {"internalType": "address", "name": "token", "type": "address"},
+      {"internalType": "uint256", "name": "amount", "type": "uint256"},
+      {"internalType": "bytes32", "name": "refId", "type": "bytes32"}
+    ],
+    "name": "directSettle",
+    "outputs": [],
+    "stateMutability": "nonpayable",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      {"internalType": "address", "name": "seller", "type": "address"},
+      {"internalType": "address", "name": "token", "type": "address"},
+      {"internalType": "uint256", "name": "amount", "type": "uint256"},
+      {"internalType": "uint256", "name": "deadline", "type": "uint256"},
+      {"internalType": "bytes32", "name": "refId", "type": "bytes32"}
+    ],
+    "name": "createSimpleEscrow",
+    "outputs": [{"internalType": "uint256", "name": "dealId", "type": "uint256"}],
+    "stateMutability": "nonpayable",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      {"internalType": "address", "name": "seller", "type": "address"},
+      {"internalType": "address", "name": "token", "type": "address"},
+      {"internalType": "uint256", "name": "totalAmount", "type": "uint256"},
+      {"internalType": "uint256[]", "name": "milestoneAmounts", "type": "uint256[]"},
+      {"internalType": "uint256", "name": "deadline", "type": "uint256"},
+      {"internalType": "bytes32", "name": "refId", "type": "bytes32"}
+    ],
+    "name": "createMilestoneEscrow",
+    "outputs": [{"internalType": "uint256", "name": "dealId", "type": "uint256"}],
+    "stateMutability": "nonpayable",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      {"internalType": "address[]", "name": "members", "type": "address[]"},
+      {"internalType": "address", "name": "token", "type": "address"},
+      {"internalType": "uint256", "name": "totalAmount", "type": "uint256"},
+      {"internalType": "uint256[]", "name": "shares", "type": "uint256[]"},
+      {"internalType": "uint256", "name": "deadline", "type": "uint256"},
+      {"internalType": "bytes32", "name": "refId", "type": "bytes32"}
+    ],
+    "name": "createTeamEscrow",
+    "outputs": [{"internalType": "uint256", "name": "dealId", "type": "uint256"}],
+    "stateMutability": "nonpayable",
+    "type": "function"
+  },
+  {
+    "inputs": [{"internalType": "uint256", "name": "dealId", "type": "uint256"}],
+    "name": "deposit",
+    "outputs": [],
+    "stateMutability": "nonpayable",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      {"internalType": "uint256", "name": "dealId", "type": "uint256"},
+      {"internalType": "bytes32", "name": "workHash", "type": "bytes32"}
+    ],
+    "name": "submitWork",
+    "outputs": [],
+    "stateMutability": "nonpayable",
+    "type": "function"
+  },
+  {
+    "inputs": [{"internalType": "uint256", "name": "dealId", "type": "uint256"}],
+    "name": "release",
+    "outputs": [],
+    "stateMutability": "nonpayable",
+    "type": "function"
+  },
+  {
+    "inputs": [{"internalType": "uint256", "name": "dealId", "type": "uint256"}],
+    "name": "refund",
+    "outputs": [],
+    "stateMutability": "nonpayable",
+    "type": "function"
+  },
+  {
+    "inputs": [{"internalType": "uint256", "name": "dealId", "type": "uint256"}],
+    "name": "dispute",
+    "outputs": [],
+    "stateMutability": "nonpayable",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      {"internalType": "uint256", "name": "dealId", "type": "uint256"},
+      {"internalType": "uint256", "name": "sellerAmount", "type": "uint256"},
+      {"internalType": "uint256", "name": "buyerAmount", "type": "uint256"}
+    ],
+    "name": "resolveDispute",
+    "outputs": [],
+    "stateMutability": "nonpayable",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      {"internalType": "uint256", "name": "dealId", "type": "uint256"},
+      {"internalType": "uint256", "name": "index", "type": "uint256"}
+    ],
+    "name": "completeMilestone",
+    "outputs": [],
+    "stateMutability": "nonpayable",
+    "type": "function"
+  },
+  {
+    "inputs": [{"internalType": "uint256", "name": "dealId", "type": "uint256"}],
+    "name": "releaseMilestone",
+    "outputs": [],
+    "stateMutability": "nonpayable",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      {"internalType": "bytes32", "name": "settlerType", "type": "bytes32"},
+      {"internalType": "address", "name": "settler", "type": "address"}
+    ],
+    "name": "registerSettler",
+    "outputs": [],
+    "stateMutability": "nonpayable",
+    "type": "function"
+  },
+  {
+    "inputs": [{"internalType": "uint256", "name": "dealId", "type": "uint256"}],
+    "name": "getDeal",
+    "outputs": [
+      {
+        "components": [
+          {"internalType": "address", "name": "buyer", "type": "address"},
+          {"internalType": "address", "name": "seller", "type": "address"},
+          {"internalType": "address", "name": "token", "type": "address"},
+          {"internalType": "uint256", "name": "amount", "type": "uint256"},
+          {"internalType": "uint256", "name": "deadline", "type": "uint256"},
+          {"internalType": "uint8", "name": "status", "type": "uint8"},
+          {"internalType": "uint8", "name": "dealType", "type": "uint8"},
+          {"internalType": "bytes32", "name": "workHash", "type": "bytes32"},
+          {"internalType": "bytes32", "name": "refId", "type": "bytes32"},
+          {"internalType": "address", "name": "settler", "type": "address"}
+        ],
+        "internalType": "struct LangoEscrowHubV2.Deal",
+        "name": "",
+        "type": "tuple"
+      }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [{"internalType": "uint256", "name": "dealId", "type": "uint256"}],
+    "name": "getTeamDeal",
+    "outputs": [
+      {"internalType": "address[]", "name": "members", "type": "address[]"},
+      {"internalType": "uint256[]", "name": "shares", "type": "uint256[]"}
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [],
+    "name": "nextDealId",
+    "outputs": [{"internalType": "uint256", "name": "", "type": "uint256"}],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [],
+    "name": "owner",
+    "outputs": [{"internalType": "address", "name": "", "type": "address"}],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "anonymous": false,
+    "inputs": [
+      {"indexed": true, "internalType": "bytes32", "name": "refId", "type": "bytes32"},
+      {"indexed": true, "internalType": "uint256", "name": "dealId", "type": "uint256"},
+      {"indexed": false, "internalType": "address", "name": "buyer", "type": "address"},
+      {"indexed": false, "internalType": "address", "name": "seller", "type": "address"},
+      {"indexed": false, "internalType": "uint256", "name": "amount", "type": "uint256"}
+    ],
+    "name": "EscrowOpened",
+    "type": "event"
+  },
+  {
+    "anonymous": false,
+    "inputs": [
+      {"indexed": true, "internalType": "bytes32", "name": "refId", "type": "bytes32"},
+      {"indexed": true, "internalType": "uint256", "name": "dealId", "type": "uint256"},
+      {"indexed": false, "internalType": "uint256", "name": "milestoneIndex", "type": "uint256"},
+      {"indexed": false, "internalType": "uint256", "name": "amount", "type": "uint256"}
+    ],
+    "name": "MilestoneReached",
+    "type": "event"
+  },
+  {
+    "anonymous": false,
+    "inputs": [
+      {"indexed": true, "internalType": "bytes32", "name": "refId", "type": "bytes32"},
+      {"indexed": true, "internalType": "uint256", "name": "dealId", "type": "uint256"},
+      {"indexed": false, "internalType": "address", "name": "initiator", "type": "address"}
+    ],
+    "name": "DisputeRaised",
+    "type": "event"
+  },
+  {
+    "anonymous": false,
+    "inputs": [
+      {"indexed": true, "internalType": "bytes32", "name": "refId", "type": "bytes32"},
+      {"indexed": true, "internalType": "uint256", "name": "dealId", "type": "uint256"},
+      {"indexed": false, "internalType": "address", "name": "settler", "type": "address"},
+      {"indexed": false, "internalType": "uint256", "name": "sellerAmount", "type": "uint256"},
+      {"indexed": false, "internalType": "uint256", "name": "buyerRefund", "type": "uint256"}
+    ],
+    "name": "SettlementFinalized",
+    "type": "event"
+  },
+  {
+    "anonymous": false,
+    "inputs": [
+      {"indexed": true, "internalType": "bytes32", "name": "refId", "type": "bytes32"},
+      {"indexed": true, "internalType": "uint256", "name": "dealId", "type": "uint256"},
+      {"indexed": true, "internalType": "address", "name": "buyer", "type": "address"},
+      {"indexed": false, "internalType": "uint256", "name": "amount", "type": "uint256"}
+    ],
+    "name": "Deposited",
+    "type": "event"
+  },
+  {
+    "anonymous": false,
+    "inputs": [
+      {"indexed": true, "internalType": "bytes32", "name": "refId", "type": "bytes32"},
+      {"indexed": true, "internalType": "uint256", "name": "dealId", "type": "uint256"},
+      {"indexed": true, "internalType": "address", "name": "seller", "type": "address"},
+      {"indexed": false, "internalType": "bytes32", "name": "workHash", "type": "bytes32"}
+    ],
+    "name": "WorkSubmitted",
+    "type": "event"
+  },
+  {
+    "anonymous": false,
+    "inputs": [
+      {"indexed": true, "internalType": "bytes32", "name": "refId", "type": "bytes32"},
+      {"indexed": true, "internalType": "uint256", "name": "dealId", "type": "uint256"},
+      {"indexed": true, "internalType": "address", "name": "seller", "type": "address"},
+      {"indexed": false, "internalType": "uint256", "name": "amount", "type": "uint256"}
+    ],
+    "name": "Released",
+    "type": "event"
+  },
+  {
+    "anonymous": false,
+    "inputs": [
+      {"indexed": true, "internalType": "bytes32", "name": "refId", "type": "bytes32"},
+      {"indexed": true, "internalType": "uint256", "name": "dealId", "type": "uint256"},
+      {"indexed": true, "internalType": "address", "name": "buyer", "type": "address"},
+      {"indexed": false, "internalType": "uint256", "name": "amount", "type": "uint256"}
+    ],
+    "name": "Refunded",
+    "type": "event"
+  },
+  {
+    "anonymous": false,
+    "inputs": [
+      {"indexed": true, "internalType": "bytes32", "name": "settlerType", "type": "bytes32"},
+      {"indexed": false, "internalType": "address", "name": "settler", "type": "address"}
+    ],
+    "name": "SettlerRegistered",
+    "type": "event"
+  }
+]

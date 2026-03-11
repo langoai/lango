@@ -109,7 +109,7 @@ The system SHALL provide three Solidity contracts: LangoEscrowHub (master multi-
 - **THEN** an EIP-1167 minimal proxy clone of LangoVault is created and VaultCreated event is emitted
 
 ### Requirement: Go ABI embedding and typed clients
-The system SHALL embed compiled ABI JSON files via `//go:embed` in `internal/economy/escrow/hub/abi/`. HubClient, VaultClient, and FactoryClient SHALL wrap `contract.Caller` for type-safe contract interaction.
+The system SHALL embed compiled ABI JSON files via `//go:embed` in `internal/economy/escrow/hub/abi/`. HubClient, VaultClient, FactoryClient, HubV2Client SHALL wrap `contract.Caller` for type-safe contract interaction. V2 ABI files (`LangoEscrowHubV2.abi.json`, `LangoVaultV2.abi.json`) SHALL be embedded alongside V1 ABIs.
 
 #### Scenario: HubClient creates a deal
 - **WHEN** HubClient.CreateDeal is called with seller, token, amount, and deadline
@@ -119,8 +119,12 @@ The system SHALL embed compiled ABI JSON files via `//go:embed` in `internal/eco
 - **WHEN** FactoryClient.CreateVault is called with seller, token, amount, deadline, and arbitrator
 - **THEN** it calls the factory contract and returns VaultInfo with vault address and tx hash
 
+#### Scenario: V2 ABI accessor functions
+- **WHEN** `HubV2ABIJSON()` or `VaultV2ABIJSON()` is called
+- **THEN** it SHALL return the raw ABI JSON string for the respective V2 contract
+
 ### Requirement: Dual-mode settlement executors
-The system SHALL provide HubSettler and VaultSettler implementing the existing `SettlementExecutor` interface (Lock/Release/Refund). Config field `economy.escrow.onChain.mode` SHALL select between "hub" and "vault" modes.
+The system SHALL provide HubSettler and VaultSettler implementing the existing `SettlementExecutor` interface (Lock/Release/Refund). Config field `economy.escrow.onChain.mode` SHALL select between "hub" and "vault" modes. HubSettler SHALL additionally support V2 deal correlation via `SetDealMappingByDID(did, dealID)` for mapping DIDs to on-chain deal IDs.
 
 #### Scenario: Hub mode settlement
 - **WHEN** config has `economy.escrow.onChain.mode=hub` and `hubAddress` is set
@@ -133,6 +137,10 @@ The system SHALL provide HubSettler and VaultSettler implementing the existing `
 #### Scenario: Fallback to custodian
 - **WHEN** on-chain mode is enabled but required addresses are missing
 - **THEN** selectSettler falls back to existing USDCSettler with a warning log
+
+#### Scenario: V2 deal mapping by DID
+- **WHEN** `HubSettler.SetDealMappingByDID(did, dealID)` is called
+- **THEN** the settler SHALL store the DID-to-dealID mapping and `GetDealID(did)` SHALL return the stored dealID
 
 ### Requirement: Persistent escrow storage via Ent
 The system SHALL provide an EntStore implementing the existing `escrow.Store` interface with additional on-chain tracking methods: SetOnChainDealID, GetByOnChainDealID, SetTxHash.
@@ -207,4 +215,68 @@ The system SHALL mention on-chain Hub/Vault escrow, Foundry contracts, and escro
 #### Scenario: Feature bullets updated
 - **WHEN** a user reads README.md features section
 - **THEN** on-chain escrow and Foundry contracts are mentioned
+
+### Requirement: V2 event handling in EventMonitor
+The EventMonitor SHALL detect and correctly parse V2 contract events that include refId as an extra indexed topic. V2 events use a 4-topic layout `[sig, refId, dealId, addr]` compared to V1's 3-topic layout `[sig, dealId, addr]`.
+
+#### Scenario: V2 deposit event detection
+- **WHEN** a V2 Deposited event is emitted with 4 topics `[sig, refId, dealId, buyer]`
+- **THEN** the EventMonitor SHALL detect it as a V2 event via `isV2Event()` and extract dealID from topic index 2 and buyer from topic index 3
+
+#### Scenario: V1 event backward compatibility
+- **WHEN** a V1 Deposited event is emitted with 3 topics `[sig, dealId, buyer]`
+- **THEN** the EventMonitor SHALL handle it as a V1 event and extract dealID from topic index 1 and buyer from topic index 2
+
+#### Scenario: V2-only event names
+- **WHEN** events named `SettlementFinalized`, `EscrowOpened`, or `MilestoneReached` are received
+- **THEN** the EventMonitor SHALL treat them as V2 events unconditionally
+
+#### Scenario: DisputeRaised vs Disputed event distinction
+- **WHEN** a `DisputeRaised` event is received (V2 naming)
+- **THEN** the EventMonitor SHALL treat it as a V2 dispute event with refId at topic index 1 and dealID at topic index 2
+
+### Requirement: DanglingDetector periodic scan
+The `DanglingDetector` SHALL periodically scan for escrows stuck in `Pending` status beyond `maxPending` duration and expire them. The scan SHALL use `Store.ListByStatus(StatusPending)` instead of loading all escrows via `Store.List()`.
+
+#### Scenario: Scan expires old pending escrows
+- **WHEN** the scan runs and an escrow has been in `Pending` status longer than `maxPending`
+- **THEN** the detector SHALL call `Engine.Expire` on that escrow and publish an `EscrowDanglingEvent`
+
+#### Scenario: Scan skips non-pending escrows
+- **WHEN** the scan runs
+- **THEN** the detector SHALL NOT load or iterate escrows in non-pending statuses
+
+#### Scenario: Configurable scan parameters
+- **WHEN** `DanglingDetector` is created with `WithScanInterval(d)` and `WithMaxPending(d)` options
+- **THEN** the detector SHALL scan at the specified interval and use the specified max pending threshold
+
+#### Scenario: Lifecycle management
+- **WHEN** `DanglingDetector.Start()` and `DanglingDetector.Stop()` are called
+- **THEN** the detector SHALL start and stop its background scan goroutine gracefully
+
+### Requirement: EscrowDanglingEvent for stuck escrow alerting
+The system SHALL define an `EscrowDanglingEvent` type in `internal/eventbus/economy_events.go` published when a dangling escrow is detected and expired.
+
+#### Scenario: Event fields
+- **WHEN** an `EscrowDanglingEvent` is published
+- **THEN** it SHALL contain EscrowID, BuyerDID, SellerDID, Amount, PendingSince, and Action fields
+
+#### Scenario: Event name
+- **WHEN** `EscrowDanglingEvent.EventName()` is called
+- **THEN** it SHALL return `"escrow.dangling"`
+
+### Requirement: Monitor V1/V2 topic offset helpers
+The `EventMonitor` SHALL use helper methods to extract deal ID and address from log topics, abstracting the V1/V2 topic offset difference.
+
+#### Scenario: extractDealAndAddress for V1 events
+- **WHEN** a V1 event log is processed (3 topics: [sig, dealId, addr])
+- **THEN** `extractDealAndAddress` SHALL return `topicToBigInt(log, 1)` as dealID and `topicToAddress(log, 2)` as address
+
+#### Scenario: extractDealAndAddress for V2 events
+- **WHEN** a V2 event log is processed (4 topics: [sig, refId, dealId, addr])
+- **THEN** `extractDealAndAddress` SHALL return `topicToBigInt(log, 2)` as dealID and `topicToAddress(log, 3)` as address
+
+#### Scenario: extractDealID for resolution events
+- **WHEN** a DealResolved or SettlementFinalized event is processed
+- **THEN** `extractDealID` SHALL return the correct dealID regardless of V1/V2 layout
 

@@ -1,6 +1,9 @@
 package eventbus
 
-import "math/big"
+import (
+	"math/big"
+	"time"
+)
 
 // BudgetAlertEvent is published when a task budget crosses a configured threshold.
 type BudgetAlertEvent struct {
@@ -153,3 +156,16 @@ type EscrowOnChainResolvedEvent struct {
 
 // EventName implements Event.
 func (e EscrowOnChainResolvedEvent) EventName() string { return "escrow.onchain.resolved" }
+
+// EscrowDanglingEvent is published when an escrow is stuck in Pending too long.
+type EscrowDanglingEvent struct {
+	EscrowID     string
+	BuyerDID     string
+	SellerDID    string
+	Amount       string // string representation of *big.Int
+	PendingSince time.Time
+	Action       string // "expired", "refunded"
+}
+
+// EventName implements Event.
+func (e EscrowDanglingEvent) EventName() string { return "escrow.dangling" }

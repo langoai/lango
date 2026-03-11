@@ -69,6 +69,9 @@ type P2PConfig struct {
 
 	// Workspace configures collaborative workspace settings for P2P agent co-work.
 	Workspace WorkspaceConfig `mapstructure:"workspace" json:"workspace"`
+
+	// Team configures team health monitoring and membership policies.
+	Team TeamConfig `mapstructure:"team" json:"team"`
 }
 
 // ToolIsolationConfig configures subprocess isolation for P2P tool execution.
@@ -204,6 +207,18 @@ type WorkspaceConfig struct {
 
 	// ContributionTracking enables tracking of per-agent contributions.
 	ContributionTracking bool `mapstructure:"contributionTracking" json:"contributionTracking"`
+}
+
+// TeamConfig configures team health monitoring and membership policies.
+type TeamConfig struct {
+	// HealthCheckInterval is the interval between team health pings (default: 30s).
+	HealthCheckInterval time.Duration `mapstructure:"healthCheckInterval" json:"healthCheckInterval"`
+
+	// MaxMissedHeartbeats is the maximum consecutive missed pings before a member is unhealthy (default: 3).
+	MaxMissedHeartbeats int `mapstructure:"maxMissedHeartbeats" json:"maxMissedHeartbeats"`
+
+	// MinReputationScore is the minimum reputation to remain on a team (default: 0.3).
+	MinReputationScore float64 `mapstructure:"minReputationScore" json:"minReputationScore"`
 }
 
 // FirewallRule defines an ACL rule for the knowledge firewall.
