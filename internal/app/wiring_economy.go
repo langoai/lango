@@ -238,6 +238,11 @@ func initEconomy(cfg *config.Config, p2pc *p2pComponents, pc *paymentComponents,
 			if oc.PollInterval > 0 {
 				monitorOpts = append(monitorOpts, hub.WithPollInterval(oc.PollInterval))
 			}
+			confirmDepth := uint64(2) // Base L2 default
+			if oc.ConfirmationDepth > 0 {
+				confirmDepth = oc.ConfirmationDepth
+			}
+			monitorOpts = append(monitorOpts, hub.WithConfirmationDepth(confirmDepth))
 			monitor, err := hub.NewEventMonitor(pc.rpcClient, bus, nil, hubAddr, monitorOpts...)
 			if err != nil {
 				logger().Warnw("event monitor init", "error", err)

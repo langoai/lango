@@ -130,6 +130,10 @@ type EscrowOnChainConfig struct {
 	// PollInterval is the event monitor polling interval (default: 15s).
 	PollInterval time.Duration `mapstructure:"pollInterval" json:"pollInterval"`
 
+	// ConfirmationDepth is the number of blocks to wait before processing events
+	// to protect against L2 reorgs (default: 2 for Base L2).
+	ConfirmationDepth uint64 `mapstructure:"confirmationDepth" json:"confirmationDepth"`
+
 	// TokenAddress is the ERC-20 token (USDC) contract address.
 	TokenAddress string `mapstructure:"tokenAddress" json:"tokenAddress"`
 }

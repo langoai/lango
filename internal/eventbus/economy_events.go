@@ -157,6 +157,18 @@ type EscrowOnChainResolvedEvent struct {
 // EventName implements Event.
 func (e EscrowOnChainResolvedEvent) EventName() string { return "escrow.onchain.resolved" }
 
+// EscrowReorgDetectedEvent is published when a chain reorganization is detected
+// by the event monitor (safeBlock < lastBlock).
+type EscrowReorgDetectedEvent struct {
+	PreviousBlock uint64
+	NewBlock      uint64
+	Depth         uint64
+	ExceedsDepth  bool // reorg deeper than confirmationDepth
+}
+
+// EventName implements Event.
+func (e EscrowReorgDetectedEvent) EventName() string { return "escrow.reorg.detected" }
+
 // EscrowDanglingEvent is published when an escrow is stuck in Pending too long.
 type EscrowDanglingEvent struct {
 	EscrowID     string

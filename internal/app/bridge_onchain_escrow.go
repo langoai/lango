@@ -79,6 +79,19 @@ func initOnChainEscrowBridge(bus *eventbus.Bus, engine *escrow.Engine, log *zap.
 		}
 	})
 
+	// Reorg detection alert.
+	eventbus.SubscribeTyped(bus, func(ev eventbus.EscrowReorgDetectedEvent) {
+		if ev.ExceedsDepth {
+			log.Errorw("CRITICAL: deep reorg exceeds confirmation depth",
+				"previousBlock", ev.PreviousBlock, "newBlock", ev.NewBlock,
+				"depth", ev.Depth)
+		} else {
+			log.Warnw("reorg detected, rolled back to safe block",
+				"previousBlock", ev.PreviousBlock, "newBlock", ev.NewBlock,
+				"depth", ev.Depth)
+		}
+	})
+
 	log.Info("on-chain escrow bridge initialized")
 }
 

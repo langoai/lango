@@ -11,11 +11,17 @@ import (
 	ethabi "github.com/ethereum/go-ethereum/accounts/abi"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
-	"github.com/ethereum/go-ethereum/ethclient"
 	"go.uber.org/zap"
 
 	"github.com/langoai/lango/internal/eventbus"
 )
+
+// BlockchainClient abstracts the RPC calls needed by EventMonitor.
+// *ethclient.Client satisfies this interface.
+type BlockchainClient interface {
+	HeaderByNumber(ctx context.Context, number *big.Int) (*types.Header, error)
+	FilterLogs(ctx context.Context, q ethereum.FilterQuery) ([]types.Log, error)
+}
 
 // OnChainStore provides escrow ID resolution from on-chain deal IDs.
 type OnChainStore interface {
@@ -23,15 +29,20 @@ type OnChainStore interface {
 }
 
 // EventMonitor watches on-chain escrow contract events and publishes them
-// to the event bus. Uses eth_getLogs polling.
+// to the event bus. Uses eth_getLogs polling with confirmation depth buffer
+// to protect against L2 reorgs.
 type EventMonitor struct {
-	rpc          *ethclient.Client
+	rpc          BlockchainClient
 	bus          *eventbus.Bus
 	store        OnChainStore
 	hubAddr      common.Address
 	hubABI       *ethabi.ABI
 	pollInterval time.Duration
 	logger       *zap.SugaredLogger
+
+	confirmationDepth uint64
+	blockHashes       map[uint64]common.Hash // block hash cache for reorg detection
+	maxHashCache      int                    // max entries in blockHashes
 
 	lastBlock uint64
 	stopCh    chan struct{}
@@ -61,9 +72,17 @@ func WithMonitorLogger(l *zap.SugaredLogger) MonitorOption {
 	}
 }
 
+// WithConfirmationDepth sets the number of blocks to wait before processing events.
+// This protects against L2 reorgs by only processing blocks that are depth-confirmed.
+func WithConfirmationDepth(depth uint64) MonitorOption {
+	return func(m *EventMonitor) {
+		m.confirmationDepth = depth
+	}
+}
+
 // NewEventMonitor creates a new contract event monitor.
 func NewEventMonitor(
-	rpc *ethclient.Client,
+	rpc BlockchainClient,
 	bus *eventbus.Bus,
 	store OnChainStore,
 	hubAddr common.Address,
@@ -83,6 +102,8 @@ func NewEventMonitor(
 		pollInterval: 15 * time.Second,
 		logger:       zap.NewNop().Sugar(),
 		stopCh:       make(chan struct{}),
+		blockHashes:  make(map[uint64]common.Hash),
+		maxHashCache: 256,
 	}
 	for _, o := range opts {
 		o(m)
@@ -162,7 +183,8 @@ func (m *EventMonitor) poll() {
 	}
 }
 
-// fetchAndPublish queries logs from lastBlock+1 to latest and publishes events.
+// fetchAndPublish queries logs from lastBlock+1 to safeBlock and publishes events.
+// safeBlock = latest - confirmationDepth to protect against reorgs.
 func (m *EventMonitor) fetchAndPublish() error {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
@@ -173,28 +195,127 @@ func (m *EventMonitor) fetchAndPublish() error {
 	}
 
 	latest := header.Number.Uint64()
-	if latest <= m.lastBlock {
+
+	// Apply confirmation depth buffer.
+	safeBlock := latest
+	if m.confirmationDepth > 0 && latest > m.confirmationDepth {
+		safeBlock = latest - m.confirmationDepth
+	}
+
+	// Reorg detection: if safeBlock fell behind our lastBlock, the chain reorganized.
+	if safeBlock < m.lastBlock {
+		reorgDepth := m.lastBlock - safeBlock
+		exceeds := m.confirmationDepth > 0 && reorgDepth > m.confirmationDepth
+		m.logger.Warnw("reorg detected",
+			"previousBlock", m.lastBlock, "newSafeBlock", safeBlock,
+			"reorgDepth", reorgDepth, "exceedsConfirmationDepth", exceeds)
+		m.bus.Publish(eventbus.EscrowReorgDetectedEvent{
+			PreviousBlock: m.lastBlock,
+			NewBlock:      safeBlock,
+			Depth:         reorgDepth,
+			ExceedsDepth:  exceeds,
+		})
+		// Roll back to safeBlock so we re-process from the correct point.
+		m.lastBlock = safeBlock
+		return nil
+	}
+
+	if safeBlock <= m.lastBlock {
 		return nil
 	}
 
 	fromBlock := m.lastBlock + 1
+
+	// Block hash continuity check for silent reorg detection.
+	if err := m.checkBlockHashContinuity(ctx, fromBlock); err != nil {
+		m.logger.Warnw("block hash continuity check failed", "block", fromBlock, "error", err)
+	}
+
 	query := ethereum.FilterQuery{
 		FromBlock: new(big.Int).SetUint64(fromBlock),
-		ToBlock:   new(big.Int).SetUint64(latest),
+		ToBlock:   new(big.Int).SetUint64(safeBlock),
 		Addresses: []common.Address{m.hubAddr},
 	}
 
 	logs, err := m.rpc.FilterLogs(ctx, query)
 	if err != nil {
-		return fmt.Errorf("filter logs [%d, %d]: %w", fromBlock, latest, err)
+		return fmt.Errorf("filter logs [%d, %d]: %w", fromBlock, safeBlock, err)
 	}
 
 	for _, log := range logs {
 		m.processLog(log)
 	}
 
-	m.lastBlock = latest
+	// Cache block hashes for future continuity checks.
+	m.cacheBlockHash(ctx, safeBlock)
+
+	m.lastBlock = safeBlock
 	return nil
+}
+
+// checkBlockHashContinuity verifies that the parent block hash hasn't changed,
+// which would indicate a silent reorg within the confirmation window.
+func (m *EventMonitor) checkBlockHashContinuity(ctx context.Context, fromBlock uint64) error {
+	if fromBlock == 0 {
+		return nil
+	}
+	prevBlock := fromBlock - 1
+	cachedHash, ok := m.blockHashes[prevBlock]
+	if !ok {
+		return nil
+	}
+
+	header, err := m.rpc.HeaderByNumber(ctx, new(big.Int).SetUint64(prevBlock))
+	if err != nil {
+		return fmt.Errorf("get block %d header: %w", prevBlock, err)
+	}
+
+	currentHash := header.Hash()
+	if cachedHash != currentHash {
+		m.logger.Warnw("silent reorg detected via hash mismatch",
+			"block", prevBlock, "cachedHash", cachedHash.Hex(), "currentHash", currentHash.Hex())
+		m.bus.Publish(eventbus.EscrowReorgDetectedEvent{
+			PreviousBlock: m.lastBlock,
+			NewBlock:      prevBlock,
+			Depth:         m.lastBlock - prevBlock,
+			ExceedsDepth:  false,
+		})
+		m.lastBlock = prevBlock
+	}
+	return nil
+}
+
+// cacheBlockHash stores a block's hash for future reorg detection.
+func (m *EventMonitor) cacheBlockHash(ctx context.Context, blockNum uint64) {
+	header, err := m.rpc.HeaderByNumber(ctx, new(big.Int).SetUint64(blockNum))
+	if err != nil {
+		return
+	}
+	m.blockHashes[blockNum] = header.Hash()
+	m.trimBlockHashCache()
+}
+
+// trimBlockHashCache removes old entries to keep cache bounded.
+func (m *EventMonitor) trimBlockHashCache() {
+	if len(m.blockHashes) <= m.maxHashCache {
+		return
+	}
+	// Find minimum block number and remove entries below threshold.
+	var minBlock uint64
+	first := true
+	for b := range m.blockHashes {
+		if first || b < minBlock {
+			minBlock = b
+			first = false
+		}
+	}
+	// Remove oldest half of entries.
+	threshold := minBlock + uint64(m.maxHashCache/2)
+	for b := range m.blockHashes {
+		if b < threshold {
+			delete(m.blockHashes, b)
+		}
+	}
 }
 
 // processLog decodes a single log entry and publishes the corresponding event.

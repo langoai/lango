@@ -58,6 +58,7 @@ economy:
       arbitratorAddress: "0x..."
       tokenAddress: "0x..."    # USDC contract
       pollInterval: 15s
+      confirmationDepth: 2     # blocks to wait for reorg protection (default: 2)
 ```
 
 ## Security Sentinel
@@ -156,6 +157,28 @@ The system SHALL provide an EventMonitor that polls `eth_getLogs` at configurabl
 - **WHEN** a Deposited event is emitted on the hub contract
 - **THEN** EventMonitor publishes EscrowOnChainDepositEvent to eventbus with deal ID, buyer, amount, and tx hash
 
+### Requirement: On-chain escrow configuration with confirmation depth
+The EscrowOnChainConfig SHALL include a `ConfirmationDepth` field (uint64) that specifies the number of blocks to wait before processing on-chain events. When the value is 0 or unset, the system SHALL use a default of 2 blocks for Base L2 reorg protection.
+
+#### Scenario: Config with explicit confirmation depth
+- **WHEN** `economy.escrow.onChain.confirmationDepth` is set to 5
+- **THEN** the EventMonitor SHALL use confirmationDepth=5
+
+#### Scenario: Config with zero confirmation depth
+- **WHEN** `economy.escrow.onChain.confirmationDepth` is 0 or unset
+- **THEN** the system SHALL apply a default of 2 blocks
+
+### Requirement: Reorg event alerting in escrow bridge
+The on-chain escrow bridge SHALL subscribe to `EscrowReorgDetectedEvent` and log the event. Deep reorgs (ExceedsDepth=true) SHALL be logged at ERROR level with CRITICAL prefix. Shallow reorgs SHALL be logged at WARN level.
+
+#### Scenario: Deep reorg logging
+- **WHEN** EscrowReorgDetectedEvent is received with ExceedsDepth=true
+- **THEN** the bridge SHALL log at ERROR level including previousBlock, newBlock, and depth
+
+#### Scenario: Shallow reorg logging
+- **WHEN** EscrowReorgDetectedEvent is received with ExceedsDepth=false
+- **THEN** the bridge SHALL log at WARN level including previousBlock, newBlock, and depth
+
 ### Requirement: Escrow agent tools
 The system SHALL provide 10 escrow tools: escrow_create, escrow_fund, escrow_activate, escrow_submit_work, escrow_release, escrow_refund, escrow_dispute, escrow_resolve, escrow_status, escrow_list. State-changing tools SHALL be marked as dangerous.
 
@@ -168,7 +191,7 @@ The system SHALL provide: `lango economy escrow list` (config summary), `lango e
 
 #### Scenario: CLI shows on-chain config
 - **WHEN** user runs `lango economy escrow show`
-- **THEN** system displays hub address, vault factory, arbitrator, token address, and poll interval
+- **THEN** system displays hub address, vault factory, arbitrator, token address, poll interval, and confirmation depth
 
 ### Requirement: On-chain escrow documentation in economy.md
 The system SHALL include documentation for on-chain escrow (Hub/Vault dual-mode) in `docs/features/economy.md`, covering deal lifecycle, contract architecture, and configuration.
