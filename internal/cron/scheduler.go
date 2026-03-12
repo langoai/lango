@@ -26,28 +26,39 @@ type Scheduler struct {
 	logger         *zap.SugaredLogger
 }
 
+// SchedulerConfig holds optional configuration for the Scheduler.
+type SchedulerConfig struct {
+	Timezone       string
+	MaxJobs        int
+	DefaultTimeout time.Duration
+	Logger         *zap.SugaredLogger
+}
+
 // New creates a new Scheduler.
-func New(store Store, executor *Executor, timezone string, maxJobs int, defaultTimeout time.Duration, logger *zap.SugaredLogger) *Scheduler {
-	if maxJobs <= 0 {
-		maxJobs = 5
+func New(store Store, executor *Executor, cfg SchedulerConfig) *Scheduler {
+	if cfg.MaxJobs <= 0 {
+		cfg.MaxJobs = 5
 	}
-	if timezone == "" {
-		timezone = "UTC"
+	if cfg.Timezone == "" {
+		cfg.Timezone = "UTC"
 	}
-	if defaultTimeout <= 0 {
-		defaultTimeout = 30 * time.Minute
+	if cfg.DefaultTimeout <= 0 {
+		cfg.DefaultTimeout = 30 * time.Minute
+	}
+	if cfg.Logger == nil {
+		cfg.Logger = zap.NewNop().Sugar()
 	}
 
 	return &Scheduler{
 		store:          store,
 		executor:       executor,
 		entries:        make(map[string]robfigcron.EntryID),
-		semaphore:      make(chan struct{}, maxJobs),
-		maxJobs:        maxJobs,
-		defaultTimeout: defaultTimeout,
-		timezone:       timezone,
+		semaphore:      make(chan struct{}, cfg.MaxJobs),
+		maxJobs:        cfg.MaxJobs,
+		defaultTimeout: cfg.DefaultTimeout,
+		timezone:       cfg.Timezone,
 		shutdownCh:     make(chan struct{}),
-		logger:         logger,
+		logger:         cfg.Logger,
 	}
 }
 

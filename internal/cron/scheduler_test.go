@@ -205,7 +205,12 @@ func (m *mockAgentRunner) callCount() int {
 func newTestScheduler(store *mockStore, runner *mockAgentRunner) *Scheduler {
 	logger := zap.NewNop().Sugar()
 	executor := NewExecutor(runner, nil, store, logger)
-	return New(store, executor, "UTC", 5, 30*time.Minute, logger)
+	return New(store, executor, SchedulerConfig{
+		Timezone:       "UTC",
+		MaxJobs:        5,
+		DefaultTimeout: 30 * time.Minute,
+		Logger:         logger,
+	})
 }
 
 // --- scheduler tests ---
@@ -218,7 +223,7 @@ func TestNew_DefaultMaxJobs(t *testing.T) {
 	logger := zap.NewNop().Sugar()
 	executor := NewExecutor(runner, nil, store, logger)
 
-	s := New(store, executor, "", 0, 0, logger)
+	s := New(store, executor, SchedulerConfig{Logger: logger})
 
 	assert.Equal(t, 5, s.maxJobs)
 	assert.Equal(t, "UTC", s.timezone)
@@ -233,7 +238,12 @@ func TestNew_CustomValues(t *testing.T) {
 	logger := zap.NewNop().Sugar()
 	executor := NewExecutor(runner, nil, store, logger)
 
-	s := New(store, executor, "America/New_York", 10, 15*time.Minute, logger)
+	s := New(store, executor, SchedulerConfig{
+		Timezone:       "America/New_York",
+		MaxJobs:        10,
+		DefaultTimeout: 15 * time.Minute,
+		Logger:         logger,
+	})
 
 	assert.Equal(t, 10, s.maxJobs)
 	assert.Equal(t, "America/New_York", s.timezone)
@@ -247,7 +257,11 @@ func TestNew_NegativeMaxJobs(t *testing.T) {
 	logger := zap.NewNop().Sugar()
 	executor := NewExecutor(&mockAgentRunner{}, nil, store, logger)
 
-	s := New(store, executor, "UTC", -3, 0, logger)
+	s := New(store, executor, SchedulerConfig{
+		Timezone: "UTC",
+		MaxJobs:  -3,
+		Logger:   logger,
+	})
 
 	assert.Equal(t, 5, s.maxJobs)
 }
@@ -297,7 +311,11 @@ func TestScheduler_StartWithInvalidTimezone(t *testing.T) {
 	logger := zap.NewNop().Sugar()
 	executor := NewExecutor(&mockAgentRunner{}, nil, store, logger)
 
-	s := New(store, executor, "Invalid/Timezone", 5, 0, logger)
+	s := New(store, executor, SchedulerConfig{
+		Timezone: "Invalid/Timezone",
+		MaxJobs:  5,
+		Logger:   logger,
+	})
 
 	err := s.Start(context.Background())
 	require.Error(t, err)
@@ -312,7 +330,11 @@ func TestScheduler_StartWithListEnabledError(t *testing.T) {
 	logger := zap.NewNop().Sugar()
 	executor := NewExecutor(&mockAgentRunner{}, nil, store, logger)
 
-	s := New(store, executor, "UTC", 5, 0, logger)
+	s := New(store, executor, SchedulerConfig{
+		Timezone: "UTC",
+		MaxJobs:  5,
+		Logger:   logger,
+	})
 
 	err := s.Start(context.Background())
 	require.Error(t, err)
@@ -512,7 +534,12 @@ func TestScheduler_ExecuteWithSemaphore_ShutdownAbortsAcquisition(t *testing.T) 
 	logger := zap.NewNop().Sugar()
 	executor := NewExecutor(runner, nil, store, logger)
 	// Create scheduler with semaphore size 1.
-	s := New(store, executor, "UTC", 1, 5*time.Second, logger)
+	s := New(store, executor, SchedulerConfig{
+		Timezone:       "UTC",
+		MaxJobs:        1,
+		DefaultTimeout: 5 * time.Second,
+		Logger:         logger,
+	})
 
 	require.NoError(t, s.Start(context.Background()))
 

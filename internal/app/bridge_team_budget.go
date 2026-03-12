@@ -27,7 +27,7 @@ func wireTeamBudgetBridge(ctx context.Context, bus *eventbus.Bus, budgetEngine *
 			return
 		}
 
-		totalBudget := floatToBudgetAmount(t.Budget)
+		totalBudget := floatToMicroUSDC(t.Budget)
 		_, err = budgetEngine.Allocate(ev.TeamID, totalBudget)
 		if err != nil {
 			log.Warnw("team-budget bridge: allocate budget", "teamID", ev.TeamID, "error", err)
@@ -113,9 +113,3 @@ func wireTeamBudgetBridge(ctx context.Context, bus *eventbus.Bus, budgetEngine *
 	log.Info("team-budget bridge wired")
 }
 
-// floatToBudgetAmount converts a float64 dollar amount to budget wei (6 decimals).
-// Note: this is identical to floatToUSDC but kept separate to avoid coupling.
-func floatToBudgetAmount(amount float64) *big.Int {
-	microUSDC := int64(amount * 1_000_000)
-	return big.NewInt(microUSDC)
-}

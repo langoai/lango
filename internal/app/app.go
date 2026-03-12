@@ -309,18 +309,15 @@ func New(boot *bootstrap.Result) (*App, error) {
 			if p2pc.sessions != nil {
 				sess := p2pc.sessions
 				sessionValidator = func(token string) (string, bool) {
-					for _, s := range sess.ActiveSessions() {
-						if s.Token == token {
-							return s.PeerDID, true
-						}
-					}
-					return "", false
+					return sess.GetByToken(token)
 				}
 			}
 
 			var localDID string
 			if p2pc.identity != nil {
-				d, idErr := p2pc.identity.DID(context.Background())
+				didCtx, didCancel := context.WithTimeout(context.Background(), 5*time.Second)
+				d, idErr := p2pc.identity.DID(didCtx)
+				didCancel()
 				if idErr == nil && d != nil {
 					localDID = d.ID
 				}

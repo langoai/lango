@@ -12,11 +12,15 @@ const ProtocolID = "/lango/p2p-git/1.0.0"
 type RequestType string
 
 const (
-	RequestPushBundle  RequestType = "push_bundle"
-	RequestFetchByHash RequestType = "fetch_by_hash"
-	RequestListCommits RequestType = "list_commits"
-	RequestFindLeaves  RequestType = "find_leaves"
-	RequestDiff        RequestType = "diff"
+	RequestPushBundle              RequestType = "push_bundle"
+	RequestFetchByHash             RequestType = "fetch_by_hash"
+	RequestListCommits             RequestType = "list_commits"
+	RequestFindLeaves              RequestType = "find_leaves"
+	RequestDiff                    RequestType = "diff"
+	RequestPushIncrementalBundle   RequestType = "push_incremental_bundle"
+	RequestFetchIncremental        RequestType = "fetch_incremental"
+	RequestVerifyBundle            RequestType = "verify_bundle"
+	RequestHasCommit               RequestType = "has_commit"
 )
 
 // Request is a git protocol request.
@@ -82,4 +86,46 @@ type FindLeavesResponse struct {
 // DiffResponse contains a diff output.
 type DiffResponse struct {
 	Diff string `json:"diff"`
+}
+
+// PushIncrementalBundlePayload contains an incremental git bundle.
+type PushIncrementalBundlePayload struct {
+	Bundle     []byte `json:"bundle"`
+	BaseCommit string `json:"baseCommit"`
+	CommitMsg  string `json:"commitMsg"`
+	SenderDID  string `json:"senderDid"`
+}
+
+// FetchIncrementalPayload requests an incremental bundle from a base commit.
+type FetchIncrementalPayload struct {
+	BaseCommit string `json:"baseCommit"`
+}
+
+// VerifyBundlePayload contains a bundle to verify.
+type VerifyBundlePayload struct {
+	Bundle []byte `json:"bundle"`
+}
+
+// HasCommitPayload checks if a commit exists in the workspace.
+type HasCommitPayload struct {
+	CommitHash string `json:"commitHash"`
+}
+
+// HasCommitResponse indicates whether a commit exists.
+type HasCommitResponse struct {
+	Exists bool   `json:"exists"`
+	Hash   string `json:"hash"`
+}
+
+// FetchIncrementalResponse contains an incremental bundle.
+type FetchIncrementalResponse struct {
+	Bundle     []byte `json:"bundle"`
+	HeadCommit string `json:"headCommit"`
+	IsFull     bool   `json:"isFull"`
+}
+
+// VerifyBundleResponse indicates the verification result.
+type VerifyBundleResponse struct {
+	Valid   bool   `json:"valid"`
+	Message string `json:"message,omitempty"`
 }

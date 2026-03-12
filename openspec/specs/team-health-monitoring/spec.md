@@ -30,6 +30,10 @@ The HealthMonitor SHALL ping all non-leader active members of active teams at th
 - **WHEN** a member's consecutive miss count reaches or exceeds the maxMissed threshold
 - **THEN** a `TeamMemberUnhealthyEvent` SHALL be published with the member's DID, name, miss count, and lastSeen timestamp
 
+#### Scenario: Separate context for git state collection
+- **WHEN** a health ping succeeds and a GitStateProvider is configured
+- **THEN** the monitor SHALL create a separate timeout context for git state collection, independent of the ping context, so that git state calls are not starved by ping latency
+
 ### Requirement: Aggregate health events
 The HealthMonitor SHALL publish a `TeamHealthCheckEvent` after each team-level sweep.
 
@@ -58,3 +62,7 @@ The HealthMonitor SHALL start and stop cleanly with a goroutine-safe lifecycle.
 #### Scenario: Stop halts check loop
 - **WHEN** `Stop()` is called
 - **THEN** the health check goroutine SHALL exit cleanly and the WaitGroup SHALL complete
+
+#### Scenario: Restart does not duplicate subscriptions
+- **WHEN** `Start()` is called multiple times (e.g., after a restart)
+- **THEN** event bus subscriptions SHALL be registered exactly once via `sync.Once`, preventing duplicate handler accumulation

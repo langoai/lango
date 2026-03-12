@@ -56,8 +56,9 @@ func buildTeamTools(coord *team.Coordinator) []*agent.Tool {
 				return nil, fmt.Errorf("form team: %w", err)
 			}
 
-			members := make([]map[string]interface{}, 0)
-			for _, m := range t.Members() {
+			allMembers := t.Members()
+			members := make([]map[string]interface{}, 0, len(allMembers))
+			for _, m := range allMembers {
 				members = append(members, map[string]interface{}{
 					"did":    m.DID,
 					"name":   m.Name,
@@ -163,8 +164,9 @@ func buildTeamTools(coord *team.Coordinator) []*agent.Tool {
 				return nil, err
 			}
 
-			members := make([]map[string]interface{}, 0)
-			for _, m := range t.Members() {
+			allMembers := t.Members()
+			members := make([]map[string]interface{}, 0, len(allMembers))
+			for _, m := range allMembers {
 				members = append(members, map[string]interface{}{
 					"did":          m.DID,
 					"name":         m.Name,

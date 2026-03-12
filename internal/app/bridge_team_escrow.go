@@ -43,7 +43,7 @@ func wireTeamEscrowBridge(bus *eventbus.Bus, escrowEngine *escrow.Engine, coord 
 		}
 
 		// Split budget equally among workers as milestones.
-		totalAmount := floatToUSDC(t.Budget)
+		totalAmount := floatToMicroUSDC(t.Budget)
 		perWorker := new(big.Int).Div(totalAmount, big.NewInt(int64(len(workers))))
 		// Adjust last worker to account for integer division rounding.
 		remainder := new(big.Int).Sub(totalAmount, new(big.Int).Mul(perWorker, big.NewInt(int64(len(workers)))))
@@ -171,9 +171,3 @@ func wireTeamEscrowBridge(bus *eventbus.Bus, escrowEngine *escrow.Engine, coord 
 	log.Info("team-escrow bridge wired")
 }
 
-// floatToUSDC converts a float64 dollar amount to USDC smallest unit (6 decimals).
-func floatToUSDC(amount float64) *big.Int {
-	// USDC has 6 decimal places: 1 USDC = 1_000_000 micro-units.
-	microUSDC := int64(amount * 1_000_000)
-	return big.NewInt(microUSDC)
-}

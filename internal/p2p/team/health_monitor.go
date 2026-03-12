@@ -23,19 +23,44 @@ type HealthMonitor struct {
 	mu        sync.RWMutex
 	missCount map[string]map[string]int // teamID -> memberDID -> consecutive misses
 	lastSeen  map[string]map[string]time.Time
+	gitState  map[string]map[string]string // workspaceID -> memberDID -> headHash
 
-	stopCh chan struct{}
-	wg     sync.WaitGroup
+	gitStateProv GitStateProvider
+	workspaceIDs func() []string
+
+	subsOnce sync.Once // ensures event subscriptions are registered only once
+	stopCh   chan struct{}
+	wg       sync.WaitGroup
 }
 
 // HealthMonitorConfig configures the health monitor.
 type HealthMonitorConfig struct {
-	Coordinator *Coordinator
-	Bus         *eventbus.Bus
-	Logger      *zap.SugaredLogger
-	Interval    time.Duration
-	MaxMissed   int
-	InvokeFn    InvokeFunc
+	Coordinator      *Coordinator
+	Bus              *eventbus.Bus
+	Logger           *zap.SugaredLogger
+	Interval         time.Duration
+	MaxMissed        int
+	InvokeFn         InvokeFunc
+	GitStateProvider GitStateProvider
+	WorkspaceIDsFn   func() []string
+}
+
+// GitStateProvider returns the HEAD commit hash for a workspace from a given member.
+type GitStateProvider func(ctx context.Context, peerID, workspaceID string) (string, error)
+
+// MemberGitState records a member's known HEAD hash for a workspace.
+type MemberGitState struct {
+	MemberDID string
+	HeadHash  string
+	UpdatedAt time.Time
+}
+
+// GitDivergence describes when a member's HEAD differs from the majority.
+type GitDivergence struct {
+	WorkspaceID  string
+	MemberDID    string
+	MemberHead   string
+	MajorityHead string
 }
 
 // NewHealthMonitor creates a health monitor with the given configuration.
@@ -49,15 +74,18 @@ func NewHealthMonitor(cfg HealthMonitorConfig) *HealthMonitor {
 		maxMissed = 3
 	}
 	return &HealthMonitor{
-		coordinator: cfg.Coordinator,
-		bus:         cfg.Bus,
-		logger:      cfg.Logger,
-		interval:    interval,
-		maxMissed:   maxMissed,
-		invokeFn:    cfg.InvokeFn,
-		missCount:   make(map[string]map[string]int),
-		lastSeen:    make(map[string]map[string]time.Time),
-		stopCh:      make(chan struct{}),
+		coordinator:  cfg.Coordinator,
+		bus:          cfg.Bus,
+		logger:       cfg.Logger,
+		interval:     interval,
+		maxMissed:    maxMissed,
+		invokeFn:     cfg.InvokeFn,
+		missCount:    make(map[string]map[string]int),
+		lastSeen:     make(map[string]map[string]time.Time),
+		gitState:     make(map[string]map[string]string),
+		gitStateProv: cfg.GitStateProvider,
+		workspaceIDs: cfg.WorkspaceIDsFn,
+		stopCh:       make(chan struct{}),
 	}
 }
 
@@ -68,13 +96,15 @@ func (h *HealthMonitor) Name() string { return "team-health-monitor" }
 // and subscribes to task completion events for counter resets.
 func (h *HealthMonitor) Start(_ context.Context, wg *sync.WaitGroup) error {
 	if h.bus != nil {
-		// Subscribe to task completion events to reset miss counters for successful members.
-		eventbus.SubscribeTyped(h.bus, func(ev eventbus.TeamTaskCompletedEvent) {
-			h.resetTeamCounters(ev.TeamID)
-		})
-		// Clean up maps when teams are disbanded to prevent memory leaks.
-		eventbus.SubscribeTyped(h.bus, func(ev eventbus.TeamDisbandedEvent) {
-			h.cleanupTeam(ev.TeamID)
+		h.subsOnce.Do(func() {
+			// Subscribe to task completion events to reset miss counters for successful members.
+			eventbus.SubscribeTyped(h.bus, func(ev eventbus.TeamTaskCompletedEvent) {
+				h.resetTeamCounters(ev.TeamID)
+			})
+			// Clean up maps when teams are disbanded to prevent memory leaks.
+			eventbus.SubscribeTyped(h.bus, func(ev eventbus.TeamDisbandedEvent) {
+				h.cleanupTeam(ev.TeamID)
+			})
 		})
 	}
 
@@ -165,10 +195,10 @@ func (h *HealthMonitor) pingMember(teamID string, m *Member) {
 		return
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-	defer cancel()
+	pingCtx, pingCancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer pingCancel()
 
-	_, err := h.invokeFn(ctx, m.PeerID, "health_ping", map[string]interface{}{
+	_, err := h.invokeFn(pingCtx, m.PeerID, "health_ping", map[string]interface{}{
 		"teamId": teamID,
 	})
 
@@ -191,6 +221,19 @@ func (h *HealthMonitor) pingMember(teamID string, m *Member) {
 
 	// Ping succeeded: reset counter and update last seen.
 	h.resetMemberCounter(teamID, m.DID)
+
+	// Collect git state if provider is configured.
+	// Use a separate context so git state calls get their own timeout budget.
+	if h.gitStateProv != nil && h.workspaceIDs != nil {
+		gsCtx, gsCancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer gsCancel()
+		for _, wsID := range h.workspaceIDs() {
+			headHash, gsErr := h.gitStateProv(gsCtx, m.PeerID, wsID)
+			if gsErr == nil && headHash != "" {
+				h.updateGitState(wsID, m.DID, headHash)
+			}
+		}
+	}
 }
 
 // incrementMiss increments and returns the miss counter for a member.
@@ -270,4 +313,61 @@ func (h *HealthMonitor) getLastSeen(teamID, did string) time.Time {
 		return time.Time{}
 	}
 	return h.lastSeen[teamID][did]
+}
+
+// updateGitState records a member's HEAD hash for a workspace.
+func (h *HealthMonitor) updateGitState(workspaceID, memberDID, headHash string) {
+	if headHash == "" {
+		return
+	}
+	h.mu.Lock()
+	defer h.mu.Unlock()
+
+	if h.gitState[workspaceID] == nil {
+		h.gitState[workspaceID] = make(map[string]string)
+	}
+	h.gitState[workspaceID][memberDID] = headHash
+}
+
+// DetectDivergence checks if members have different HEAD commits for a workspace.
+// It returns a list of members whose HEAD differs from the majority.
+func (h *HealthMonitor) DetectDivergence(workspaceID string) []GitDivergence {
+	h.mu.RLock()
+	defer h.mu.RUnlock()
+
+	heads := h.gitState[workspaceID]
+	if len(heads) <= 1 {
+		return nil
+	}
+
+	// Count HEAD hash frequency to find majority.
+	freq := make(map[string]int, len(heads))
+	for _, hash := range heads {
+		freq[hash]++
+	}
+
+	// Find majority HEAD.
+	var majorityHead string
+	maxCount := 0
+	for hash, count := range freq {
+		if count > maxCount {
+			maxCount = count
+			majorityHead = hash
+		}
+	}
+
+	// Collect divergent members.
+	var divergent []GitDivergence
+	for did, hash := range heads {
+		if hash != majorityHead {
+			divergent = append(divergent, GitDivergence{
+				WorkspaceID:  workspaceID,
+				MemberDID:    did,
+				MemberHead:   hash,
+				MajorityHead: majorityHead,
+			})
+		}
+	}
+
+	return divergent
 }

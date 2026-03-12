@@ -112,13 +112,11 @@ func (dd *DanglingDetector) run() {
 
 // scan iterates pending escrows and expires those stuck too long.
 func (dd *DanglingDetector) scan() {
-	entries := dd.store.ListByStatus(escrow.StatusPending)
+	cutoff := time.Now().Add(-dd.maxPending)
+	entries := dd.store.ListByStatusBefore(escrow.StatusPending, cutoff)
 	now := time.Now()
 
 	for _, entry := range entries {
-		if now.Sub(entry.CreatedAt) < dd.maxPending {
-			continue
-		}
 
 		dd.logger.Warnw("dangling escrow detected",
 			"escrowID", entry.ID,

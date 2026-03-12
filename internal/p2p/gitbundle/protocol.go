@@ -84,6 +84,14 @@ func (h *Handler) StreamHandler() network.StreamHandler {
 			h.handleFindLeaves(ctx, s, req)
 		case RequestDiff:
 			h.handleDiff(ctx, s, req)
+		case RequestPushIncrementalBundle:
+			h.handlePushIncrementalBundle(ctx, s, req)
+		case RequestFetchIncremental:
+			h.handleFetchIncremental(ctx, s, req)
+		case RequestVerifyBundle:
+			h.handleVerifyBundle(ctx, s, req)
+		case RequestHasCommit:
+			h.handleHasCommit(ctx, s, req)
 		default:
 			h.writeError(s, fmt.Sprintf("unknown request type: %s", req.Type))
 		}
@@ -174,6 +182,90 @@ func (h *Handler) handleDiff(ctx context.Context, s network.Stream, req Request)
 	}
 
 	h.writeResponse(s, &DiffResponse{Diff: diff})
+}
+
+func (h *Handler) handlePushIncrementalBundle(ctx context.Context, s network.Stream, req Request) {
+	var payload PushIncrementalBundlePayload
+	if err := json.Unmarshal(req.Payload, &payload); err != nil {
+		h.writeError(s, "unmarshal incremental push payload: "+err.Error())
+		return
+	}
+
+	if int64(len(payload.Bundle)) > h.maxBundle {
+		h.writeError(s, fmt.Sprintf("bundle too large: %d > %d", len(payload.Bundle), h.maxBundle))
+		return
+	}
+
+	if err := h.service.SafeApplyBundle(ctx, req.WorkspaceID, payload.Bundle); err != nil {
+		h.writeError(s, "safe apply bundle: "+err.Error())
+		return
+	}
+
+	h.writeResponse(s, &PushBundleResponse{
+		Applied: true,
+		Message: "incremental bundle applied safely",
+	})
+}
+
+func (h *Handler) handleFetchIncremental(ctx context.Context, s network.Stream, req Request) {
+	var payload FetchIncrementalPayload
+	if err := json.Unmarshal(req.Payload, &payload); err != nil {
+		h.writeError(s, "unmarshal fetch incremental payload: "+err.Error())
+		return
+	}
+
+	bundle, hash, err := h.service.CreateIncrementalBundle(ctx, req.WorkspaceID, payload.BaseCommit)
+	if err != nil {
+		h.writeError(s, "create incremental bundle: "+err.Error())
+		return
+	}
+
+	if bundle == nil {
+		h.writeError(s, "empty repository")
+		return
+	}
+
+	h.writeResponse(s, &FetchIncrementalResponse{
+		Bundle:     bundle,
+		HeadCommit: hash,
+	})
+}
+
+func (h *Handler) handleVerifyBundle(ctx context.Context, s network.Stream, req Request) {
+	var payload VerifyBundlePayload
+	if err := json.Unmarshal(req.Payload, &payload); err != nil {
+		h.writeError(s, "unmarshal verify payload: "+err.Error())
+		return
+	}
+
+	if err := h.service.VerifyBundle(ctx, req.WorkspaceID, payload.Bundle); err != nil {
+		h.writeResponse(s, &VerifyBundleResponse{
+			Valid:   false,
+			Message: err.Error(),
+		})
+		return
+	}
+
+	h.writeResponse(s, &VerifyBundleResponse{Valid: true})
+}
+
+func (h *Handler) handleHasCommit(ctx context.Context, s network.Stream, req Request) {
+	var payload HasCommitPayload
+	if err := json.Unmarshal(req.Payload, &payload); err != nil {
+		h.writeError(s, "unmarshal has_commit payload: "+err.Error())
+		return
+	}
+
+	exists, err := h.service.HasCommit(ctx, req.WorkspaceID, payload.CommitHash)
+	if err != nil {
+		h.writeError(s, "has commit: "+err.Error())
+		return
+	}
+
+	h.writeResponse(s, &HasCommitResponse{
+		Exists: exists,
+		Hash:   payload.CommitHash,
+	})
 }
 
 func (h *Handler) writeResponse(s network.Stream, data interface{}) {
