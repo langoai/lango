@@ -304,13 +304,13 @@ The settings TUI SHALL provide a "Security KMS" form with conditional field visi
 The settings menu SHALL organize categories into named sections. Each section SHALL have a title header rendered above its categories with a visual separator line between sections.
 
 The sections SHALL be, in order:
-1. **Core** — Providers, Agent, Server, Session
-2. **Communication** — Channels, Tools, Multi-Agent, A2A Protocol
-3. **AI & Knowledge** — Knowledge, Skill, Observational Memory, Embedding & RAG, Graph Store, Librarian
-4. **Economy** — Economy, Economy Risk, Economy Negotiation, Economy Escrow, Economy Pricing
-5. **Infrastructure** — Payment, Cron Scheduler, Background Tasks, Workflow Engine, Observability
-6. **P2P Network** — P2P Network, P2P ZKP, P2P Pricing, P2P Owner Protection, P2P Sandbox
-7. **Security** — Security, Auth, Security Keyring, Security DB Encryption, Security KMS
+1. **Core** — Providers, Agent, Channels, Tools, Server (advanced), Session (advanced)
+2. **AI & Knowledge** — Knowledge, Skill, Observational Memory, Embedding & RAG, Graph Store, Librarian, Agent Memory (advanced), Multi-Agent (advanced), A2A Protocol (advanced), Hooks (advanced)
+3. **Automation** — Cron Scheduler, Background Tasks, Workflow Engine
+4. **Payment & Account** — Payment, Smart Account (advanced), SA Session Keys (advanced), SA Paymaster (advanced), SA Modules (advanced)
+5. **P2P & Economy** — P2P Network, P2P Workspace, P2P ZKP, P2P Pricing, P2P Owner Protection, P2P Sandbox, Economy, Economy Risk, Economy Negotiation, Economy Escrow, On-Chain Escrow, Economy Pricing
+6. **Integrations** — MCP Settings, MCP Server List (advanced), Observability (advanced)
+7. **Security** — Security, Auth (advanced), Security Keyring (advanced), Security DB Encryption (advanced), Security KMS (advanced)
 8. *(untitled)* — Save & Exit, Cancel
 
 #### Scenario: Section headers displayed
@@ -320,6 +320,10 @@ The sections SHALL be, in order:
 #### Scenario: Flat cursor across sections
 - **WHEN** user navigates with arrow keys
 - **THEN** the cursor SHALL move through all categories across sections as a flat list, skipping section headers
+
+#### Scenario: Hidden sections in basic mode
+- **WHEN** settings menu is in basic mode (default)
+- **THEN** sections with only advanced categories (e.g., P2P & Economy with all advanced items) are hidden entirely
 
 ### Requirement: Keyword Search
 The settings menu SHALL support real-time keyword search to filter categories.

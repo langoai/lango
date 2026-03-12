@@ -17,7 +17,10 @@ import (
 
 // NewCommand creates the onboard command.
 func NewCommand() *cobra.Command {
-	var profileName string
+	var (
+		profileName string
+		preset      string
+	)
 
 	cmd := &cobra.Command{
 		Use:   "onboard",
@@ -30,6 +33,12 @@ func NewCommand() *cobra.Command {
   4. Security & Auth  — Privacy interceptor, PII redaction, approval policy
   5. Test Config      — Validate your configuration
 
+Use --preset to start from a purpose-built template:
+  minimal       Basic AI agent (quick start)
+  researcher    Knowledge, RAG, Graph (research/analysis)
+  collaborator  P2P team, payment, workspace (collaboration)
+  full          All features enabled (power user)
+
 For the full configuration editor with all options, use "lango settings".
 
 All settings including API keys are saved in an encrypted profile (~/.lango/lango.db).
@@ -39,16 +48,21 @@ See Also:
   lango config   - View/manage configuration profiles
   lango doctor   - Diagnose configuration issues`,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return runOnboard(profileName)
+			return runOnboard(profileName, preset)
 		},
 	}
 
 	cmd.Flags().StringVar(&profileName, "profile", "default", "Profile name to create or edit")
+	cmd.Flags().StringVar(&preset, "preset", "", "Start from a preset (minimal, researcher, collaborator, full)")
 
 	return cmd
 }
 
-func runOnboard(profileName string) error {
+func runOnboard(profileName, preset string) error {
+	if preset != "" && !config.IsValidPreset(preset) {
+		return fmt.Errorf("unknown preset %q (valid: minimal, researcher, collaborator, full)", preset)
+	}
+
 	boot, err := bootstrap.Run(bootstrap.Options{})
 	if err != nil {
 		return fmt.Errorf("bootstrap: %w", err)
@@ -57,12 +71,16 @@ func runOnboard(profileName string) error {
 
 	ctx := context.Background()
 
-	initialCfg, isNew, err := loadOrDefault(ctx, boot.ConfigStore, profileName)
+	initialCfg, isNew, err := loadOrDefault(ctx, boot.ConfigStore, profileName, preset)
 	if err != nil {
 		return fmt.Errorf("load profile %q: %w", profileName, err)
 	}
 
 	tui.SetProfile(profileName)
+
+	if preset != "" {
+		fmt.Printf("\n  Using preset: %s\n\n", preset)
+	}
 
 	p := tea.NewProgram(NewWizard(initialCfg))
 	model, err := p.Run()
@@ -95,39 +113,78 @@ func runOnboard(profileName string) error {
 		}
 	}
 
-	printNextSteps(profileName)
+	printNextSteps(profileName, cfg)
 
 	return nil
 }
 
-func loadOrDefault(ctx context.Context, store *configstore.Store, name string) (*config.Config, bool, error) {
+func loadOrDefault(ctx context.Context, store *configstore.Store, name, preset string) (*config.Config, bool, error) {
 	cfg, err := store.Load(ctx, name)
 	if err == nil {
 		return cfg, false, nil
 	}
 	if errors.Is(err, configstore.ErrProfileNotFound) {
+		if preset != "" {
+			return config.PresetConfig(preset), true, nil
+		}
 		return config.DefaultConfig(), true, nil
 	}
 	return nil, false, err
 }
 
-func printNextSteps(profileName string) {
-	fmt.Printf("\n%s Configuration saved to encrypted profile %q\n", "\u2713", profileName)
+func printNextSteps(profileName string, cfg *config.Config) {
+	fmt.Printf("\n%s Configuration saved to encrypted profile %q\n", tui.CheckPass, profileName)
 	fmt.Println("  Storage: ~/.lango/lango.db")
 
-	fmt.Println("\nNext steps:")
-	fmt.Println("  1. Start Lango:")
-	fmt.Println("     lango serve")
-	fmt.Println("\n  2. (Optional) Run doctor to verify setup:")
-	fmt.Println("     lango doctor")
-	fmt.Println("\n  3. Fine-tune all settings:")
-	fmt.Println("     lango settings")
-	fmt.Println("\n  Profile management:")
-	fmt.Println("     lango config list    \u2014 list all profiles")
-	fmt.Println("     lango config use     \u2014 switch active profile")
+	fmt.Println("\n  Next: lango serve")
 
-	fmt.Println("\n  Advanced features (optional):")
-	fmt.Println("     Agent Memory    \u2014 enable per-agent persistent memory via lango settings > Agent Memory")
-	fmt.Println("     Tool Hooks      \u2014 configure tool middleware (learning, approval) via lango settings > Security")
-	fmt.Println("     Librarian       \u2014 enable proactive knowledge extraction via lango settings > Librarian")
+	// Recommend features that are currently disabled.
+	type rec struct {
+		name     string
+		desc     string
+		enabled  bool
+		category string
+	}
+	recommendations := []rec{
+		{"Knowledge & RAG", "AI learns from conversations", cfg.Knowledge.Enabled, "Knowledge"},
+		{"Observational Memory", "Auto-recognize patterns", cfg.ObservationalMemory.Enabled, "Observational Memory"},
+		{"Cron Scheduler", "Automate scheduled tasks", cfg.Cron.Enabled, "Cron Scheduler"},
+		{"MCP Integrations", "Connect external tool servers", cfg.MCP.Enabled, "MCP Settings"},
+	}
+
+	var disabled []rec
+	for _, r := range recommendations {
+		if !r.enabled {
+			disabled = append(disabled, r)
+		}
+	}
+
+	if len(disabled) > 0 {
+		fmt.Println("\n  Recommended features (enable in 'lango settings'):")
+		for _, r := range disabled {
+			fmt.Printf("    %s %-22s %s\n",
+				tui.MutedStyle.Render("\u2022"),
+				r.name,
+				tui.MutedStyle.Render("\u2014 "+r.desc),
+			)
+		}
+	}
+
+	// Advanced features hint
+	fmt.Println("\n  Advanced features (when needed):")
+	fmt.Printf("    %s %-22s %s\n",
+		tui.MutedStyle.Render("\u2022"),
+		"P2P Network",
+		tui.MutedStyle.Render("\u2014 collaborate with other agents"),
+	)
+	fmt.Printf("    %s %-22s %s\n",
+		tui.MutedStyle.Render("\u2022"),
+		"Payment & Economy",
+		tui.MutedStyle.Render("\u2014 on-chain payments and budget management"),
+	)
+
+	fmt.Println("\n  Quick presets:")
+	fmt.Println("    lango config create <name> --preset researcher")
+	fmt.Println("    lango config create <name> --preset collaborator")
+	fmt.Println("    lango config create <name> --preset full")
 }

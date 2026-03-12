@@ -8,6 +8,7 @@ import (
 	"os"
 	"os/signal"
 	"strconv"
+	"strings"
 	"syscall"
 	"text/tabwriter"
 	"time"
@@ -37,6 +38,7 @@ import (
 	clisecurity "github.com/langoai/lango/internal/cli/security"
 	"github.com/langoai/lango/internal/cli/settings"
 	cliaccount "github.com/langoai/lango/internal/cli/smartaccount"
+	clistatus "github.com/langoai/lango/internal/cli/status"
 	"github.com/langoai/lango/internal/cli/tui"
 	cliworkflow "github.com/langoai/lango/internal/cli/workflow"
 	"github.com/langoai/lango/internal/config"
@@ -70,35 +72,45 @@ func main() {
 	}
 
 	rootCmd.AddGroup(
-		&cobra.Group{ID: "core", Title: "Core:"},
-		&cobra.Group{ID: "config", Title: "Configuration:"},
-		&cobra.Group{ID: "data", Title: "Data & AI:"},
-		&cobra.Group{ID: "infra", Title: "Infrastructure:"},
+		&cobra.Group{ID: "start", Title: "Getting Started:"},
+		&cobra.Group{ID: "ai", Title: "AI & Knowledge:"},
+		&cobra.Group{ID: "auto", Title: "Automation:"},
+		&cobra.Group{ID: "net", Title: "Network & Economy:"},
+		&cobra.Group{ID: "sys", Title: "Security & System:"},
 	)
 
+	// --- Getting Started ---
 	rootCmd.AddCommand(serveCmd())
-	rootCmd.AddCommand(versionCmd())
-	rootCmd.AddCommand(healthCmd())
-	rootCmd.AddCommand(configCmd())
-
-	doctorCmd := doctor.NewCommand()
-	doctorCmd.GroupID = "config"
-	rootCmd.AddCommand(doctorCmd)
 
 	onboardCmd := onboard.NewCommand()
-	onboardCmd.GroupID = "config"
+	onboardCmd.GroupID = "start"
 	rootCmd.AddCommand(onboardCmd)
 
+	doctorCmd := doctor.NewCommand()
+	doctorCmd.GroupID = "start"
+	rootCmd.AddCommand(doctorCmd)
+
 	settingsCmd := settings.NewCommand()
-	settingsCmd.GroupID = "config"
+	settingsCmd.GroupID = "start"
 	rootCmd.AddCommand(settingsCmd)
 
+	statusCmd := clistatus.NewStatusCmd(func() (*bootstrap.Result, error) {
+		return bootstrap.Run(bootstrap.Options{})
+	})
+	statusCmd.GroupID = "start"
+	rootCmd.AddCommand(statusCmd)
+
+	rootCmd.AddCommand(versionCmd())
+	rootCmd.AddCommand(configCmd())
+
+	// --- Security & System ---
 	securityCmd := clisecurity.NewSecurityCmd(func() (*bootstrap.Result, error) {
 		return bootstrap.Run(bootstrap.Options{})
 	})
-	securityCmd.GroupID = "infra"
+	securityCmd.GroupID = "sys"
 	rootCmd.AddCommand(securityCmd)
 
+	// --- AI & Knowledge ---
 	memoryCmd := climemory.NewMemoryCmd(func() (*config.Config, error) {
 		boot, err := bootstrap.Run(bootstrap.Options{})
 		if err != nil {
@@ -107,7 +119,7 @@ func main() {
 		defer boot.DBClient.Close()
 		return boot.Config, nil
 	})
-	memoryCmd.GroupID = "data"
+	memoryCmd.GroupID = "ai"
 	rootCmd.AddCommand(memoryCmd)
 
 	agentCmd := cliagent.NewAgentCmd(func() (*config.Config, error) {
@@ -118,7 +130,7 @@ func main() {
 		defer boot.DBClient.Close()
 		return boot.Config, nil
 	})
-	agentCmd.GroupID = "data"
+	agentCmd.GroupID = "ai"
 	rootCmd.AddCommand(agentCmd)
 
 	graphCmd := cligraph.NewGraphCmd(func() (*config.Config, error) {
@@ -129,7 +141,7 @@ func main() {
 		defer boot.DBClient.Close()
 		return boot.Config, nil
 	})
-	graphCmd.GroupID = "data"
+	graphCmd.GroupID = "ai"
 	rootCmd.AddCommand(graphCmd)
 
 	a2aCmd := clia2a.NewA2ACmd(func() (*config.Config, error) {
@@ -140,7 +152,7 @@ func main() {
 		defer boot.DBClient.Close()
 		return boot.Config, nil
 	})
-	a2aCmd.GroupID = "data"
+	a2aCmd.GroupID = "ai"
 	rootCmd.AddCommand(a2aCmd)
 
 	learningCfgLoader := func() (*config.Config, error) {
@@ -155,7 +167,7 @@ func main() {
 		return bootstrap.Run(bootstrap.Options{})
 	}
 	learningCmd := clilearning.NewLearningCmd(learningCfgLoader, learningBootLoader)
-	learningCmd.GroupID = "data"
+	learningCmd.GroupID = "ai"
 	rootCmd.AddCommand(learningCmd)
 
 	librarianCfgLoader := func() (*config.Config, error) {
@@ -170,31 +182,74 @@ func main() {
 		return bootstrap.Run(bootstrap.Options{})
 	}
 	librarianCmd := clilibrarian.NewLibrarianCmd(librarianCfgLoader, librarianBootLoader)
-	librarianCmd.GroupID = "data"
+	librarianCmd.GroupID = "ai"
 	rootCmd.AddCommand(librarianCmd)
 
-	approvalCmd := cliapproval.NewApprovalCmd(func() (*config.Config, error) {
+	metricsCmd := climetrics.NewMetricsCmd()
+	metricsCmd.GroupID = "ai"
+	rootCmd.AddCommand(metricsCmd)
+
+	// --- Automation ---
+	cronCmd := clicron.NewCronCmd(func() (*bootstrap.Result, error) {
+		return bootstrap.Run(bootstrap.Options{})
+	})
+	cronCmd.GroupID = "auto"
+	rootCmd.AddCommand(cronCmd)
+
+	workflowCmd := cliworkflow.NewWorkflowCmd(func() (*bootstrap.Result, error) {
+		return bootstrap.Run(bootstrap.Options{})
+	})
+	workflowCmd.GroupID = "auto"
+	rootCmd.AddCommand(workflowCmd)
+
+	bgCmd := clibg.NewBgCmd(func() (*background.Manager, error) {
+		return nil, fmt.Errorf("bg commands require a running server (use 'lango serve' first)")
+	})
+	bgCmd.GroupID = "auto"
+	rootCmd.AddCommand(bgCmd)
+
+	// --- Network & Economy ---
+	p2pCmd := clip2p.NewP2PCmd(func() (*bootstrap.Result, error) {
+		return bootstrap.Run(bootstrap.Options{})
+	})
+	p2pCmd.GroupID = "net"
+	rootCmd.AddCommand(p2pCmd)
+
+	paymentCmd := clipayment.NewPaymentCmd(func() (*bootstrap.Result, error) {
+		return bootstrap.Run(bootstrap.Options{})
+	})
+	paymentCmd.GroupID = "net"
+	rootCmd.AddCommand(paymentCmd)
+
+	economyCfgLoader := func() (*config.Config, error) {
 		boot, err := bootstrap.Run(bootstrap.Options{})
 		if err != nil {
 			return nil, err
 		}
 		defer boot.DBClient.Close()
 		return boot.Config, nil
-	})
-	approvalCmd.GroupID = "infra"
-	rootCmd.AddCommand(approvalCmd)
+	}
+	economyCmd := clieconomy.NewEconomyCmd(economyCfgLoader)
+	economyCmd.GroupID = "net"
+	rootCmd.AddCommand(economyCmd)
 
-	paymentCmd := clipayment.NewPaymentCmd(func() (*bootstrap.Result, error) {
+	contractCfgLoader := func() (*config.Config, error) {
+		boot, err := bootstrap.Run(bootstrap.Options{})
+		if err != nil {
+			return nil, err
+		}
+		defer boot.DBClient.Close()
+		return boot.Config, nil
+	}
+	contractCmd := clicontract.NewContractCmd(contractCfgLoader)
+	contractCmd.GroupID = "net"
+	rootCmd.AddCommand(contractCmd)
+
+	accountCmd := cliaccount.NewAccountCmd(func() (*bootstrap.Result, error) {
 		return bootstrap.Run(bootstrap.Options{})
 	})
-	paymentCmd.GroupID = "infra"
-	rootCmd.AddCommand(paymentCmd)
-
-	p2pCmd := clip2p.NewP2PCmd(func() (*bootstrap.Result, error) {
-		return bootstrap.Run(bootstrap.Options{})
-	})
-	p2pCmd.GroupID = "infra"
-	rootCmd.AddCommand(p2pCmd)
+	accountCmd.GroupID = "net"
+	rootCmd.AddCommand(accountCmd)
 
 	mcpCfgLoader := func() (*config.Config, error) {
 		boot, err := bootstrap.Run(bootstrap.Options{})
@@ -208,60 +263,24 @@ func main() {
 		return bootstrap.Run(bootstrap.Options{})
 	}
 	mcpCmd := climcp.NewMCPCmd(mcpCfgLoader, mcpBootLoader)
-	mcpCmd.GroupID = "infra"
+	mcpCmd.GroupID = "net"
 	rootCmd.AddCommand(mcpCmd)
 
-	economyCfgLoader := func() (*config.Config, error) {
+	// --- Security & System (continued) ---
+	approvalCmd := cliapproval.NewApprovalCmd(func() (*config.Config, error) {
 		boot, err := bootstrap.Run(bootstrap.Options{})
 		if err != nil {
 			return nil, err
 		}
 		defer boot.DBClient.Close()
 		return boot.Config, nil
-	}
-	economyCmd := clieconomy.NewEconomyCmd(economyCfgLoader)
-	economyCmd.GroupID = "infra"
-	rootCmd.AddCommand(economyCmd)
-
-	contractCfgLoader := func() (*config.Config, error) {
-		boot, err := bootstrap.Run(bootstrap.Options{})
-		if err != nil {
-			return nil, err
-		}
-		defer boot.DBClient.Close()
-		return boot.Config, nil
-	}
-	contractCmd := clicontract.NewContractCmd(contractCfgLoader)
-	contractCmd.GroupID = "infra"
-	rootCmd.AddCommand(contractCmd)
-
-	accountCmd := cliaccount.NewAccountCmd(func() (*bootstrap.Result, error) {
-		return bootstrap.Run(bootstrap.Options{})
 	})
-	accountCmd.GroupID = "infra"
-	rootCmd.AddCommand(accountCmd)
+	approvalCmd.GroupID = "sys"
+	rootCmd.AddCommand(approvalCmd)
 
-	metricsCmd := climetrics.NewMetricsCmd()
-	metricsCmd.GroupID = "data"
-	rootCmd.AddCommand(metricsCmd)
-
-	cronCmd := clicron.NewCronCmd(func() (*bootstrap.Result, error) {
-		return bootstrap.Run(bootstrap.Options{})
-	})
-	cronCmd.GroupID = "infra"
-	rootCmd.AddCommand(cronCmd)
-
-	workflowCmd := cliworkflow.NewWorkflowCmd(func() (*bootstrap.Result, error) {
-		return bootstrap.Run(bootstrap.Options{})
-	})
-	workflowCmd.GroupID = "infra"
-	rootCmd.AddCommand(workflowCmd)
-
-	bgCmd := clibg.NewBgCmd(func() (*background.Manager, error) {
-		return nil, fmt.Errorf("bg commands require a running server (use 'lango serve' first)")
-	})
-	bgCmd.GroupID = "infra"
-	rootCmd.AddCommand(bgCmd)
+	healthCmd := healthCmd()
+	healthCmd.GroupID = "sys"
+	rootCmd.AddCommand(healthCmd)
 
 	if err := rootCmd.Execute(); err != nil {
 		fmt.Fprintln(os.Stderr, err)
@@ -278,7 +297,7 @@ func serveCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:     "serve",
 		Short:   "Start the gateway server",
-		GroupID: "core",
+		GroupID: "start",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			// Bootstrap: DB + crypto + config profile
 			boot, err := bootstrap.Run(bootstrap.Options{})
@@ -336,6 +355,9 @@ func serveCmd() *cobra.Command {
 				return err
 			}
 
+			// Print startup summary
+			fmt.Print(startupSummary(cfg))
+
 			// Wait for shutdown
 			<-ctx.Done()
 			return nil
@@ -347,7 +369,7 @@ func versionCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:     "version",
 		Short:   "Print version information",
-		GroupID: "core",
+		GroupID: "start",
 		Run: func(cmd *cobra.Command, args []string) {
 			fmt.Printf("lango %s (built %s)\n", Version, BuildTime)
 		},
@@ -358,9 +380,8 @@ func healthCmd() *cobra.Command {
 	var port int
 
 	cmd := &cobra.Command{
-		Use:     "health",
-		Short:   "Check gateway health (replaces curl in Docker HEALTHCHECK)",
-		GroupID: "core",
+		Use:   "health",
+		Short: "Check gateway health (replaces curl in Docker HEALTHCHECK)",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			url := "http://localhost:" + strconv.Itoa(port) + "/health"
 			client := &http.Client{Timeout: 5 * time.Second}
@@ -388,7 +409,7 @@ func configCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:     "config",
 		Short:   "Configuration profile management",
-		GroupID: "config",
+		GroupID: "sys",
 		Long: `Configuration profile management.
 
 Manage multiple configuration profiles for different environments or setups.
@@ -452,12 +473,29 @@ func configListCmd() *cobra.Command {
 }
 
 func configCreateCmd() *cobra.Command {
-	return &cobra.Command{
+	var preset string
+
+	cmd := &cobra.Command{
 		Use:   "create <name>",
-		Short: "Create a new profile with default configuration",
-		Args:  cobra.ExactArgs(1),
+		Short: "Create a new profile (optionally from a preset)",
+		Long: `Create a new configuration profile.
+
+Use --preset to start from a purpose-built template:
+  minimal       Basic AI agent (quick start)
+  researcher    Knowledge, RAG, Graph (research/analysis)
+  collaborator  P2P team, payment, workspace (collaboration)
+  full          All features enabled (power user)
+
+Examples:
+  lango config create my-profile
+  lango config create research-bot --preset researcher`,
+		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			name := args[0]
+
+			if preset != "" && !config.IsValidPreset(preset) {
+				return fmt.Errorf("unknown preset %q (valid: minimal, researcher, collaborator, full)", preset)
+			}
 
 			boot, err := bootstrapForConfig()
 			if err != nil {
@@ -475,15 +513,28 @@ func configCreateCmd() *cobra.Command {
 				return fmt.Errorf("profile %q already exists", name)
 			}
 
-			cfg := config.DefaultConfig()
+			var cfg *config.Config
+			if preset != "" {
+				cfg = config.PresetConfig(preset)
+			} else {
+				cfg = config.DefaultConfig()
+			}
+
 			if err := boot.ConfigStore.Save(ctx, name, cfg); err != nil {
 				return fmt.Errorf("create profile: %w", err)
 			}
 
-			fmt.Printf("Profile %q created with default configuration.\n", name)
+			if preset != "" {
+				fmt.Printf("Profile %q created from preset %q.\n", name, preset)
+			} else {
+				fmt.Printf("Profile %q created with default configuration.\n", name)
+			}
 			return nil
 		},
 	}
+
+	cmd.Flags().StringVar(&preset, "preset", "", "Preset template (minimal, researcher, collaborator, full)")
+	return cmd
 }
 
 func configUseCmd() *cobra.Command {
@@ -634,4 +685,48 @@ func configValidateCmd() *cobra.Command {
 			return nil
 		},
 	}
+}
+
+func startupSummary(cfg *config.Config) string {
+	var channels []string
+	if cfg.Channels.Telegram.Enabled {
+		channels = append(channels, "telegram")
+	}
+	if cfg.Channels.Discord.Enabled {
+		channels = append(channels, "discord")
+	}
+	if cfg.Channels.Slack.Enabled {
+		channels = append(channels, "slack")
+	}
+
+	channelDetail := "none"
+	if len(channels) > 0 {
+		channelDetail = strings.Join(channels, ", ")
+	}
+
+	features := []tui.FeatureLine{
+		{"Gateway", cfg.Server.HTTPEnabled, fmt.Sprintf("http://%s:%d", cfg.Server.Host, cfg.Server.Port)},
+		{"Channels", len(channels) > 0, channelDetail},
+		{"Knowledge", cfg.Knowledge.Enabled, ""},
+		{"Embedding & RAG", cfg.Embedding.Provider != "", cfg.Embedding.Provider},
+		{"Graph", cfg.Graph.Enabled, ""},
+		{"Obs. Memory", cfg.ObservationalMemory.Enabled, ""},
+		{"Cron", cfg.Cron.Enabled, ""},
+		{"MCP", cfg.MCP.Enabled, mcpServerCount(cfg)},
+		{"P2P", cfg.P2P.Enabled, ""},
+		{"Payment", cfg.Payment.Enabled, ""},
+	}
+
+	return tui.StartupSummary(features)
+}
+
+func mcpServerCount(cfg *config.Config) string {
+	if !cfg.MCP.Enabled {
+		return ""
+	}
+	n := len(cfg.MCP.Servers)
+	if n == 0 {
+		return ""
+	}
+	return fmt.Sprintf("%d server(s)", n)
 }
