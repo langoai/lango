@@ -14,6 +14,12 @@ const (
 	MessageTypeKnowledgeShare MessageType = "KNOWLEDGE_SHARE"
 	MessageTypeMemberJoined   MessageType = "MEMBER_JOINED"
 	MessageTypeMemberLeft     MessageType = "MEMBER_LEFT"
+
+	// Conflict and branch collaboration message types.
+	MessageTypeConflictReport MessageType = "CONFLICT_REPORT"
+	MessageTypeBranchCreated  MessageType = "BRANCH_CREATED"
+	MessageTypeBranchMerged   MessageType = "BRANCH_MERGED"
+	MessageTypeSyncRequest    MessageType = "SYNC_REQUEST"
 )
 
 // Message represents a message posted to a workspace.

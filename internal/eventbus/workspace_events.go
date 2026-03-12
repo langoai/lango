@@ -66,3 +66,20 @@ type WorkspaceArchivedEvent struct {
 
 // EventName implements Event.
 func (e WorkspaceArchivedEvent) EventName() string { return "workspace.archived" }
+
+// WorkspaceGitDivergenceEvent is published when team members have divergent git HEADs.
+type WorkspaceGitDivergenceEvent struct {
+	WorkspaceID  string
+	MajorityHead string
+	Divergent    []GitDivergenceInfo
+	DetectedAt   time.Time
+}
+
+// GitDivergenceInfo describes a member whose HEAD diverges from the majority.
+type GitDivergenceInfo struct {
+	MemberDID string
+	HeadHash  string
+}
+
+// EventName implements Event.
+func (e WorkspaceGitDivergenceEvent) EventName() string { return "workspace.git.divergence" }

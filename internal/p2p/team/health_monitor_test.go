@@ -192,3 +192,76 @@ func TestHealthMonitor_DefaultValues(t *testing.T) {
 	assert.Equal(t, 30*time.Second, hm.interval)
 	assert.Equal(t, 3, hm.maxMissed)
 }
+
+func TestHealthMonitor_GitStateTracking(t *testing.T) {
+	t.Parallel()
+
+	hm := NewHealthMonitor(HealthMonitorConfig{
+		Coordinator: &Coordinator{teams: make(map[string]*Team)},
+		Bus:         eventbus.New(),
+		Logger:      testLogger(),
+		Interval:    time.Hour,
+		MaxMissed:   3,
+	})
+
+	// Manually update git state.
+	hm.updateGitState("ws-1", "did:agent-1", "aaa")
+	hm.updateGitState("ws-1", "did:agent-2", "aaa")
+	hm.updateGitState("ws-1", "did:agent-3", "bbb")
+
+	divergent := hm.DetectDivergence("ws-1")
+	assert.Len(t, divergent, 1)
+	assert.Equal(t, "did:agent-3", divergent[0].MemberDID)
+	assert.Equal(t, "bbb", divergent[0].MemberHead)
+	assert.Equal(t, "aaa", divergent[0].MajorityHead)
+}
+
+func TestHealthMonitor_DetectDivergence_NoMembers(t *testing.T) {
+	t.Parallel()
+
+	hm := NewHealthMonitor(HealthMonitorConfig{
+		Coordinator: &Coordinator{teams: make(map[string]*Team)},
+		Bus:         eventbus.New(),
+		Logger:      testLogger(),
+		Interval:    time.Hour,
+		MaxMissed:   3,
+	})
+
+	divergent := hm.DetectDivergence("ws-nonexistent")
+	assert.Nil(t, divergent)
+}
+
+func TestHealthMonitor_DetectDivergence_AllSame(t *testing.T) {
+	t.Parallel()
+
+	hm := NewHealthMonitor(HealthMonitorConfig{
+		Coordinator: &Coordinator{teams: make(map[string]*Team)},
+		Bus:         eventbus.New(),
+		Logger:      testLogger(),
+		Interval:    time.Hour,
+		MaxMissed:   3,
+	})
+
+	hm.updateGitState("ws-1", "did:a", "same-hash")
+	hm.updateGitState("ws-1", "did:b", "same-hash")
+
+	divergent := hm.DetectDivergence("ws-1")
+	assert.Empty(t, divergent)
+}
+
+func TestHealthMonitor_UpdateGitState_EmptyHash(t *testing.T) {
+	t.Parallel()
+
+	hm := NewHealthMonitor(HealthMonitorConfig{
+		Coordinator: &Coordinator{teams: make(map[string]*Team)},
+		Bus:         eventbus.New(),
+		Logger:      testLogger(),
+		Interval:    time.Hour,
+		MaxMissed:   3,
+	})
+
+	// Empty hash should be a no-op.
+	hm.updateGitState("ws-1", "did:a", "")
+	divergent := hm.DetectDivergence("ws-1")
+	assert.Nil(t, divergent)
+}

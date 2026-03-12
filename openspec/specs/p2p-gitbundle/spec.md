@@ -26,7 +26,7 @@ Git bundle operations wrapping BareRepoStore.
 
 ### Protocol
 libp2p stream handler for `/lango/p2p-git/1.0.0`.
-- Request types: push_bundle, fetch_by_hash, list_commits, find_leaves, diff
+- Request types: push_bundle, fetch_by_hash, list_commits, find_leaves, diff, push_incremental_bundle, fetch_incremental, verify_bundle, has_commit
 - Session-based authentication via SessionValidator callback
 - 50MB default bundle size limit
 - 5-minute request timeout
@@ -47,3 +47,24 @@ libp2p stream handler for `/lango/p2p-git/1.0.0`.
 - Sprawling DAG model — no branches, navigate by commit hash
 - go-git for programmatic access, git CLI for bundle operations
 - Base64 JSON transport consistent with A2A protocol
+
+## Incremental Bundle Protocol
+
+### Requirement: Incremental bundle protocol messages
+The git bundle protocol SHALL support four new request types: push_incremental_bundle, fetch_incremental, verify_bundle, and has_commit.
+
+#### Scenario: Push incremental bundle
+- **WHEN** a push_incremental_bundle request is received with a valid bundle
+- **THEN** the handler calls SafeApplyBundle and returns PushBundleResponse with Applied=true
+
+#### Scenario: Fetch incremental bundle
+- **WHEN** a fetch_incremental request is received with a base commit hash
+- **THEN** the handler calls CreateIncrementalBundle and returns FetchIncrementalResponse with the bundle and HEAD hash
+
+#### Scenario: Verify bundle
+- **WHEN** a verify_bundle request is received
+- **THEN** the handler calls VerifyBundle and returns VerifyBundleResponse with Valid=true or Valid=false with message
+
+#### Scenario: Has commit check
+- **WHEN** a has_commit request is received
+- **THEN** the handler calls HasCommit and returns HasCommitResponse with Exists boolean

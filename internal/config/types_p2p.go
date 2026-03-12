@@ -207,6 +207,15 @@ type WorkspaceConfig struct {
 
 	// ContributionTracking enables tracking of per-agent contributions.
 	ContributionTracking bool `mapstructure:"contributionTracking" json:"contributionTracking"`
+
+	// EnableIncrementalBundle enables incremental bundle creation (base..HEAD) instead of full repo bundles.
+	EnableIncrementalBundle bool `mapstructure:"enableIncrementalBundle" json:"enableIncrementalBundle"`
+
+	// BranchPerTask creates isolated task/{id} branches for each agent task to avoid conflicts.
+	BranchPerTask bool `mapstructure:"branchPerTask" json:"branchPerTask"`
+
+	// MaxIncrementalBundleSizeBytes is the maximum size of an incremental bundle in bytes.
+	MaxIncrementalBundleSizeBytes int64 `mapstructure:"maxIncrementalBundleSizeBytes" json:"maxIncrementalBundleSizeBytes"`
 }
 
 // TeamConfig configures team health monitoring and membership policies.
@@ -219,6 +228,12 @@ type TeamConfig struct {
 
 	// MinReputationScore is the minimum reputation to remain on a team (default: 0.3).
 	MinReputationScore float64 `mapstructure:"minReputationScore" json:"minReputationScore"`
+
+	// GitStateTracking enables tracking git HEAD hashes from health ping responses.
+	GitStateTracking bool `mapstructure:"gitStateTracking" json:"gitStateTracking"`
+
+	// AutoSyncOnDivergence automatically triggers sync when git state divergence is detected.
+	AutoSyncOnDivergence bool `mapstructure:"autoSyncOnDivergence" json:"autoSyncOnDivergence"`
 }
 
 // FirewallRule defines an ACL rule for the knowledge firewall.
