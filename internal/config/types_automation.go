@@ -19,6 +19,9 @@ type CronConfig struct {
 	// How long to retain job execution history (e.g. "30d", "720h").
 	HistoryRetention string `mapstructure:"historyRetention" json:"historyRetention"`
 
+	// DefaultJobTimeout is the maximum duration for a single job execution (default: 30m).
+	DefaultJobTimeout time.Duration `mapstructure:"defaultJobTimeout" json:"defaultJobTimeout"`
+
 	// Default delivery channels when deliver_to is not specified (e.g. ["telegram"]).
 	DefaultDeliverTo []string `mapstructure:"defaultDeliverTo" json:"defaultDeliverTo"`
 }

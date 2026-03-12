@@ -102,11 +102,11 @@ func init() {
 	// cronjob.DefaultEnabled holds the default value on creation for the enabled field.
 	cronjob.DefaultEnabled = cronjobDescEnabled.Default.(bool)
 	// cronjobDescCreatedAt is the schema descriptor for created_at field.
-	cronjobDescCreatedAt := cronjobFields[11].Descriptor()
+	cronjobDescCreatedAt := cronjobFields[12].Descriptor()
 	// cronjob.DefaultCreatedAt holds the default value on creation for the created_at field.
 	cronjob.DefaultCreatedAt = cronjobDescCreatedAt.Default.(func() time.Time)
 	// cronjobDescUpdatedAt is the schema descriptor for updated_at field.
-	cronjobDescUpdatedAt := cronjobFields[12].Descriptor()
+	cronjobDescUpdatedAt := cronjobFields[13].Descriptor()
 	// cronjob.DefaultUpdatedAt holds the default value on creation for the updated_at field.
 	cronjob.DefaultUpdatedAt = cronjobDescUpdatedAt.Default.(func() time.Time)
 	// cronjob.UpdateDefaultUpdatedAt holds the default value on update for the updated_at field.

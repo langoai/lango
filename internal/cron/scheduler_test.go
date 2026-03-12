@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -25,6 +26,7 @@ type mockStore struct {
 	deleteErr      error
 	getErr         error
 	updateErr      error
+	upsertErr      error
 	saveHistoryErr error
 }
 
@@ -109,6 +111,25 @@ func (m *mockStore) Update(_ context.Context, job Job) error {
 	return nil
 }
 
+func (m *mockStore) Upsert(_ context.Context, job Job) (*Job, bool, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if m.upsertErr != nil {
+		return nil, false, m.upsertErr
+	}
+	// Check if job with same name exists.
+	if existing, ok := m.jobs[job.Name]; ok {
+		job.ID = existing.ID
+		m.jobs[job.Name] = job
+		return &job, true, nil
+	}
+	if job.ID == "" {
+		job.ID = fmt.Sprintf("mock-%d", len(m.jobs)+1)
+	}
+	m.jobs[job.Name] = job
+	return &job, false, nil
+}
+
 func (m *mockStore) Delete(_ context.Context, id string) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -173,6 +194,20 @@ func (m *mockAgentRunner) Run(_ context.Context, sessionKey string, prompt strin
 	return m.response, m.err
 }
 
+func (m *mockAgentRunner) callCount() int {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return len(m.calls)
+}
+
+// --- helper ---
+
+func newTestScheduler(store *mockStore, runner *mockAgentRunner) *Scheduler {
+	logger := zap.NewNop().Sugar()
+	executor := NewExecutor(runner, nil, store, logger)
+	return New(store, executor, "UTC", 5, 30*time.Minute, logger)
+}
+
 // --- scheduler tests ---
 
 func TestNew_DefaultMaxJobs(t *testing.T) {
@@ -183,10 +218,11 @@ func TestNew_DefaultMaxJobs(t *testing.T) {
 	logger := zap.NewNop().Sugar()
 	executor := NewExecutor(runner, nil, store, logger)
 
-	s := New(store, executor, "", 0, logger)
+	s := New(store, executor, "", 0, 0, logger)
 
 	assert.Equal(t, 5, s.maxJobs)
 	assert.Equal(t, "UTC", s.timezone)
+	assert.Equal(t, 30*time.Minute, s.defaultTimeout)
 }
 
 func TestNew_CustomValues(t *testing.T) {
@@ -197,10 +233,11 @@ func TestNew_CustomValues(t *testing.T) {
 	logger := zap.NewNop().Sugar()
 	executor := NewExecutor(runner, nil, store, logger)
 
-	s := New(store, executor, "America/New_York", 10, logger)
+	s := New(store, executor, "America/New_York", 10, 15*time.Minute, logger)
 
 	assert.Equal(t, 10, s.maxJobs)
 	assert.Equal(t, "America/New_York", s.timezone)
+	assert.Equal(t, 15*time.Minute, s.defaultTimeout)
 }
 
 func TestNew_NegativeMaxJobs(t *testing.T) {
@@ -210,7 +247,7 @@ func TestNew_NegativeMaxJobs(t *testing.T) {
 	logger := zap.NewNop().Sugar()
 	executor := NewExecutor(&mockAgentRunner{}, nil, store, logger)
 
-	s := New(store, executor, "UTC", -3, logger)
+	s := New(store, executor, "UTC", -3, 0, logger)
 
 	assert.Equal(t, 5, s.maxJobs)
 }
@@ -219,11 +256,8 @@ func TestScheduler_StartStop(t *testing.T) {
 	t.Parallel()
 
 	store := newMockStore()
-	logger := zap.NewNop().Sugar()
 	runner := &mockAgentRunner{response: "ok"}
-	executor := NewExecutor(runner, nil, store, logger)
-
-	s := New(store, executor, "UTC", 5, logger)
+	s := newTestScheduler(store, runner)
 
 	err := s.Start(context.Background())
 	require.NoError(t, err)
@@ -243,11 +277,8 @@ func TestScheduler_StartWithJobs(t *testing.T) {
 		Prompt:       "do something",
 		Enabled:      true,
 	}
-	logger := zap.NewNop().Sugar()
 	runner := &mockAgentRunner{response: "ok"}
-	executor := NewExecutor(runner, nil, store, logger)
-
-	s := New(store, executor, "UTC", 5, logger)
+	s := newTestScheduler(store, runner)
 
 	err := s.Start(context.Background())
 	require.NoError(t, err)
@@ -266,7 +297,7 @@ func TestScheduler_StartWithInvalidTimezone(t *testing.T) {
 	logger := zap.NewNop().Sugar()
 	executor := NewExecutor(&mockAgentRunner{}, nil, store, logger)
 
-	s := New(store, executor, "Invalid/Timezone", 5, logger)
+	s := New(store, executor, "Invalid/Timezone", 5, 0, logger)
 
 	err := s.Start(context.Background())
 	require.Error(t, err)
@@ -281,7 +312,7 @@ func TestScheduler_StartWithListEnabledError(t *testing.T) {
 	logger := zap.NewNop().Sugar()
 	executor := NewExecutor(&mockAgentRunner{}, nil, store, logger)
 
-	s := New(store, executor, "UTC", 5, logger)
+	s := New(store, executor, "UTC", 5, 0, logger)
 
 	err := s.Start(context.Background())
 	require.Error(t, err)
@@ -299,10 +330,8 @@ func TestScheduler_StartSkipsInvalidSchedule(t *testing.T) {
 		Schedule:     "???",
 		Enabled:      true,
 	}
-	logger := zap.NewNop().Sugar()
-	executor := NewExecutor(&mockAgentRunner{}, nil, store, logger)
-
-	s := New(store, executor, "UTC", 5, logger)
+	runner := &mockAgentRunner{}
+	s := newTestScheduler(store, runner)
 
 	err := s.Start(context.Background())
 	require.NoError(t, err)
@@ -318,14 +347,202 @@ func TestScheduler_StopWithoutStart(t *testing.T) {
 	t.Parallel()
 
 	store := newMockStore()
-	logger := zap.NewNop().Sugar()
-	executor := NewExecutor(&mockAgentRunner{}, nil, store, logger)
-
-	s := New(store, executor, "UTC", 5, logger)
+	runner := &mockAgentRunner{}
+	s := newTestScheduler(store, runner)
 
 	// Should not panic.
 	s.Stop()
 }
+
+// --- Unit 1: Idempotent AddJob ---
+
+func TestScheduler_AddJob_CreatesNew(t *testing.T) {
+	t.Parallel()
+
+	store := newMockStore()
+	runner := &mockAgentRunner{response: "ok"}
+	s := newTestScheduler(store, runner)
+
+	require.NoError(t, s.Start(context.Background()))
+	defer s.Stop()
+
+	updated, err := s.AddJob(context.Background(), Job{
+		Name:         "new-job",
+		ScheduleType: "every",
+		Schedule:     "1h",
+		Prompt:       "do stuff",
+		Enabled:      true,
+	})
+	require.NoError(t, err)
+	assert.False(t, updated)
+
+	s.mu.RLock()
+	assert.Len(t, s.entries, 1)
+	s.mu.RUnlock()
+}
+
+func TestScheduler_AddJob_UpdatesExisting(t *testing.T) {
+	t.Parallel()
+
+	store := newMockStore()
+	runner := &mockAgentRunner{response: "ok"}
+	s := newTestScheduler(store, runner)
+
+	require.NoError(t, s.Start(context.Background()))
+	defer s.Stop()
+
+	// Create first.
+	updated, err := s.AddJob(context.Background(), Job{
+		Name:         "my-job",
+		ScheduleType: "every",
+		Schedule:     "1h",
+		Prompt:       "original prompt",
+		Enabled:      true,
+	})
+	require.NoError(t, err)
+	assert.False(t, updated)
+
+	// Upsert with same name, different prompt.
+	updated, err = s.AddJob(context.Background(), Job{
+		Name:         "my-job",
+		ScheduleType: "every",
+		Schedule:     "30m",
+		Prompt:       "updated prompt",
+		Enabled:      true,
+	})
+	require.NoError(t, err)
+	assert.True(t, updated)
+
+	// Should still have only 1 entry.
+	s.mu.RLock()
+	assert.Len(t, s.entries, 1)
+	s.mu.RUnlock()
+
+	// Verify the stored job was updated.
+	store.mu.Lock()
+	j := store.jobs["my-job"]
+	store.mu.Unlock()
+	assert.Equal(t, "updated prompt", j.Prompt)
+	assert.Equal(t, "30m", j.Schedule)
+}
+
+// --- Unit 2: "at" schedule fires only once ---
+
+func TestScheduler_AtJob_FiresOnlyOnce(t *testing.T) {
+	t.Parallel()
+
+	store := newMockStore()
+	runner := &mockAgentRunner{response: "done"}
+	s := newTestScheduler(store, runner)
+
+	require.NoError(t, s.Start(context.Background()))
+	defer s.Stop()
+
+	pastTime := time.Now().Add(-1 * time.Hour).UTC().Format(time.RFC3339)
+	updated, err := s.AddJob(context.Background(), Job{
+		Name:         "one-time",
+		ScheduleType: "at",
+		Schedule:     pastTime,
+		Prompt:       "run once",
+		Enabled:      true,
+	})
+	require.NoError(t, err)
+	assert.False(t, updated)
+
+	// Wait for the job to fire (past-time schedule triggers at ~1s).
+	time.Sleep(3 * time.Second)
+
+	// sync.Once ensures exactly one execution despite @every 1s trigger.
+	assert.Equal(t, 1, runner.callCount())
+}
+
+// --- Unit 3: Timeout ---
+
+func TestScheduler_ExecuteWithSemaphore_UsesDefaultTimeout(t *testing.T) {
+	t.Parallel()
+
+	store := newMockStore()
+	runner := &mockAgentRunner{response: "ok"}
+	s := newTestScheduler(store, runner)
+	// Override with short timeout for testing.
+	s.defaultTimeout = 5 * time.Second
+
+	require.NoError(t, s.Start(context.Background()))
+	defer s.Stop()
+
+	s.executeWithSemaphore(Job{
+		ID:           "test-id",
+		Name:         "test-job",
+		ScheduleType: "every",
+		Schedule:     "1h",
+		Prompt:       "test",
+	})
+
+	assert.Equal(t, 1, runner.callCount())
+}
+
+func TestScheduler_ExecuteWithSemaphore_UsesJobTimeout(t *testing.T) {
+	t.Parallel()
+
+	store := newMockStore()
+	runner := &mockAgentRunner{response: "ok"}
+	s := newTestScheduler(store, runner)
+	s.defaultTimeout = 1 * time.Hour
+
+	require.NoError(t, s.Start(context.Background()))
+	defer s.Stop()
+
+	s.executeWithSemaphore(Job{
+		ID:           "test-id",
+		Name:         "test-job",
+		ScheduleType: "every",
+		Schedule:     "1h",
+		Prompt:       "test",
+		Timeout:      10 * time.Second,
+	})
+
+	assert.Equal(t, 1, runner.callCount())
+}
+
+func TestScheduler_ExecuteWithSemaphore_ShutdownAbortsAcquisition(t *testing.T) {
+	t.Parallel()
+
+	store := newMockStore()
+	runner := &mockAgentRunner{response: "ok"}
+	logger := zap.NewNop().Sugar()
+	executor := NewExecutor(runner, nil, store, logger)
+	// Create scheduler with semaphore size 1.
+	s := New(store, executor, "UTC", 1, 5*time.Second, logger)
+
+	require.NoError(t, s.Start(context.Background()))
+
+	// Fill the semaphore.
+	s.semaphore <- struct{}{}
+
+	var executed atomic.Bool
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		s.executeWithSemaphore(Job{
+			ID:     "blocked",
+			Name:   "blocked-job",
+			Prompt: "test",
+		})
+		executed.Store(true)
+	}()
+
+	// Give the goroutine time to reach the select.
+	time.Sleep(50 * time.Millisecond)
+
+	// Shutdown should unblock it via shutdownCh.
+	s.Stop()
+	<-done
+
+	// The job should not have executed (runner should have 0 calls).
+	assert.Equal(t, 0, runner.callCount())
+}
+
+// --- buildCronSpec tests ---
 
 func TestBuildCronSpec(t *testing.T) {
 	t.Parallel()

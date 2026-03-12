@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"time"
 
 	"github.com/langoai/lango/internal/agent"
 	"github.com/langoai/lango/internal/background"
@@ -29,6 +30,7 @@ func buildCronTools(scheduler *cronpkg.Scheduler, defaultDeliverTo []string) []*
 					"prompt":        map[string]interface{}{"type": "string", "description": "The prompt to execute on each run"},
 					"session_mode":  map[string]interface{}{"type": "string", "description": "Session mode: isolated (new session each run) or main (shared session)", "enum": []string{"isolated", "main"}},
 					"deliver_to":    map[string]interface{}{"type": "array", "items": map[string]interface{}{"type": "string"}, "description": "Channels to deliver results to (e.g. telegram:CHAT_ID, discord:CHANNEL_ID, slack:CHANNEL_ID)"},
+					"timeout":       map[string]interface{}{"type": "string", "description": "Per-job timeout as Go duration (e.g. 10m, 1h). Overrides the default job timeout."},
 				},
 				"required": []string{"name", "schedule_type", "schedule", "prompt"},
 			},
@@ -67,6 +69,15 @@ func buildCronTools(scheduler *cronpkg.Scheduler, defaultDeliverTo []string) []*
 					copy(deliverTo, defaultDeliverTo)
 				}
 
+				var timeout time.Duration
+				if t, ok := params["timeout"].(string); ok && t != "" {
+					var parseErr error
+					timeout, parseErr = time.ParseDuration(t)
+					if parseErr != nil {
+						return nil, fmt.Errorf("parse timeout %q: %w", t, parseErr)
+					}
+				}
+
 				job := cronpkg.Job{
 					Name:         name,
 					ScheduleType: scheduleType,
@@ -74,17 +85,26 @@ func buildCronTools(scheduler *cronpkg.Scheduler, defaultDeliverTo []string) []*
 					Prompt:       prompt,
 					SessionMode:  sessionMode,
 					DeliverTo:    deliverTo,
+					Timeout:      timeout,
 					Enabled:      true,
 				}
 
-				if err := scheduler.AddJob(ctx, job); err != nil {
+				updated, err := scheduler.AddJob(ctx, job)
+				if err != nil {
 					return nil, fmt.Errorf("add cron job: %w", err)
 				}
 
+				status := "created"
+				verb := "created"
+				if updated {
+					status = "updated"
+					verb = "updated"
+				}
+
 				return map[string]interface{}{
-					"status":  "created",
+					"status":  status,
 					"name":    name,
-					"message": fmt.Sprintf("Cron job '%s' created with schedule %s=%s", name, scheduleType, schedule),
+					"message": fmt.Sprintf("Cron job '%s' %s with schedule %s=%s", name, verb, scheduleType, schedule),
 				}, nil
 			},
 		},

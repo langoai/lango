@@ -80,6 +80,7 @@ var (
 		{Name: "deliver_to", Type: field.TypeJSON, Nullable: true},
 		{Name: "timezone", Type: field.TypeString, Default: "UTC"},
 		{Name: "enabled", Type: field.TypeBool, Default: true},
+		{Name: "timeout_ms", Type: field.TypeInt64, Nullable: true},
 		{Name: "last_run_at", Type: field.TypeTime, Nullable: true},
 		{Name: "next_run_at", Type: field.TypeTime, Nullable: true},
 		{Name: "created_at", Type: field.TypeTime},
@@ -99,7 +100,7 @@ var (
 			{
 				Name:    "cronjob_next_run_at",
 				Unique:  false,
-				Columns: []*schema.Column{CronJobsColumns[10]},
+				Columns: []*schema.Column{CronJobsColumns[11]},
 			},
 		},
 	}

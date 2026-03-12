@@ -85,6 +85,11 @@ func Enabled(v bool) predicate.CronJob {
 	return predicate.CronJob(sql.FieldEQ(FieldEnabled, v))
 }
 
+// TimeoutMs applies equality check predicate on the "timeout_ms" field. It's identical to TimeoutMsEQ.
+func TimeoutMs(v int64) predicate.CronJob {
+	return predicate.CronJob(sql.FieldEQ(FieldTimeoutMs, v))
+}
+
 // LastRunAt applies equality check predicate on the "last_run_at" field. It's identical to LastRunAtEQ.
 func LastRunAt(v time.Time) predicate.CronJob {
 	return predicate.CronJob(sql.FieldEQ(FieldLastRunAt, v))
@@ -468,6 +473,56 @@ func EnabledEQ(v bool) predicate.CronJob {
 // EnabledNEQ applies the NEQ predicate on the "enabled" field.
 func EnabledNEQ(v bool) predicate.CronJob {
 	return predicate.CronJob(sql.FieldNEQ(FieldEnabled, v))
+}
+
+// TimeoutMsEQ applies the EQ predicate on the "timeout_ms" field.
+func TimeoutMsEQ(v int64) predicate.CronJob {
+	return predicate.CronJob(sql.FieldEQ(FieldTimeoutMs, v))
+}
+
+// TimeoutMsNEQ applies the NEQ predicate on the "timeout_ms" field.
+func TimeoutMsNEQ(v int64) predicate.CronJob {
+	return predicate.CronJob(sql.FieldNEQ(FieldTimeoutMs, v))
+}
+
+// TimeoutMsIn applies the In predicate on the "timeout_ms" field.
+func TimeoutMsIn(vs ...int64) predicate.CronJob {
+	return predicate.CronJob(sql.FieldIn(FieldTimeoutMs, vs...))
+}
+
+// TimeoutMsNotIn applies the NotIn predicate on the "timeout_ms" field.
+func TimeoutMsNotIn(vs ...int64) predicate.CronJob {
+	return predicate.CronJob(sql.FieldNotIn(FieldTimeoutMs, vs...))
+}
+
+// TimeoutMsGT applies the GT predicate on the "timeout_ms" field.
+func TimeoutMsGT(v int64) predicate.CronJob {
+	return predicate.CronJob(sql.FieldGT(FieldTimeoutMs, v))
+}
+
+// TimeoutMsGTE applies the GTE predicate on the "timeout_ms" field.
+func TimeoutMsGTE(v int64) predicate.CronJob {
+	return predicate.CronJob(sql.FieldGTE(FieldTimeoutMs, v))
+}
+
+// TimeoutMsLT applies the LT predicate on the "timeout_ms" field.
+func TimeoutMsLT(v int64) predicate.CronJob {
+	return predicate.CronJob(sql.FieldLT(FieldTimeoutMs, v))
+}
+
+// TimeoutMsLTE applies the LTE predicate on the "timeout_ms" field.
+func TimeoutMsLTE(v int64) predicate.CronJob {
+	return predicate.CronJob(sql.FieldLTE(FieldTimeoutMs, v))
+}
+
+// TimeoutMsIsNil applies the IsNil predicate on the "timeout_ms" field.
+func TimeoutMsIsNil() predicate.CronJob {
+	return predicate.CronJob(sql.FieldIsNull(FieldTimeoutMs))
+}
+
+// TimeoutMsNotNil applies the NotNil predicate on the "timeout_ms" field.
+func TimeoutMsNotNil() predicate.CronJob {
+	return predicate.CronJob(sql.FieldNotNull(FieldTimeoutMs))
 }
 
 // LastRunAtEQ applies the EQ predicate on the "last_run_at" field.

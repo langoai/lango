@@ -32,6 +32,7 @@ type Engine struct {
 
 	mu      sync.Mutex
 	cancels map[string]context.CancelFunc
+	wg      sync.WaitGroup
 }
 
 // NewEngine creates a new workflow execution engine.
@@ -113,7 +114,9 @@ func (e *Engine) RunAsync(ctx context.Context, w *Workflow) (string, error) {
 		}
 	}
 
+	e.wg.Add(1)
 	go func() {
+		defer e.wg.Done()
 		if _, runErr := e.runDAG(detached, runID, w, dag); runErr != nil {
 			e.logger.Warnw("async workflow failed", "runID", runID, "error", runErr)
 		}
@@ -390,14 +393,16 @@ func (e *Engine) ListRuns(ctx context.Context, limit int) ([]RunStatus, error) {
 	return e.state.ListRuns(ctx, limit)
 }
 
-// Shutdown cancels all running workflows.
+// Shutdown cancels all running workflows and waits for goroutines to finish.
 func (e *Engine) Shutdown() {
 	e.mu.Lock()
-	defer e.mu.Unlock()
 	for runID, cancel := range e.cancels {
 		cancel()
 		e.logger.Infow("workflow cancelled during shutdown", "runID", runID)
 	}
+	e.mu.Unlock()
+
+	e.wg.Wait()
 	e.logger.Info("workflow engine shut down")
 }
 
