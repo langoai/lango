@@ -93,6 +93,20 @@ func (_c *CronJobCreate) SetNillableEnabled(v *bool) *CronJobCreate {
 	return _c
 }
 
+// SetTimeoutMs sets the "timeout_ms" field.
+func (_c *CronJobCreate) SetTimeoutMs(v int64) *CronJobCreate {
+	_c.mutation.SetTimeoutMs(v)
+	return _c
+}
+
+// SetNillableTimeoutMs sets the "timeout_ms" field if the given value is not nil.
+func (_c *CronJobCreate) SetNillableTimeoutMs(v *int64) *CronJobCreate {
+	if v != nil {
+		_c.SetTimeoutMs(*v)
+	}
+	return _c
+}
+
 // SetLastRunAt sets the "last_run_at" field.
 func (_c *CronJobCreate) SetLastRunAt(v time.Time) *CronJobCreate {
 	_c.mutation.SetLastRunAt(v)
@@ -339,6 +353,10 @@ func (_c *CronJobCreate) createSpec() (*CronJob, *sqlgraph.CreateSpec) {
 	if value, ok := _c.mutation.Enabled(); ok {
 		_spec.SetField(cronjob.FieldEnabled, field.TypeBool, value)
 		_node.Enabled = value
+	}
+	if value, ok := _c.mutation.TimeoutMs(); ok {
+		_spec.SetField(cronjob.FieldTimeoutMs, field.TypeInt64, value)
+		_node.TimeoutMs = &value
 	}
 	if value, ok := _c.mutation.LastRunAt(); ok {
 		_spec.SetField(cronjob.FieldLastRunAt, field.TypeTime, value)

@@ -112,6 +112,7 @@ func DefaultConfig() *Config {
 			MaxConcurrentJobs:  5,
 			DefaultSessionMode: "isolated",
 			HistoryRetention:   "720h",
+			DefaultJobTimeout:  30 * time.Minute,
 		},
 		Background: BackgroundConfig{
 			Enabled:            false,
@@ -246,6 +247,7 @@ func Load(configPath string) (*Config, error) {
 	v.SetDefault("cron.maxConcurrentJobs", defaults.Cron.MaxConcurrentJobs)
 	v.SetDefault("cron.defaultSessionMode", defaults.Cron.DefaultSessionMode)
 	v.SetDefault("cron.historyRetention", defaults.Cron.HistoryRetention)
+	v.SetDefault("cron.defaultJobTimeout", defaults.Cron.DefaultJobTimeout)
 	v.SetDefault("cron.defaultDeliverTo", defaults.Cron.DefaultDeliverTo)
 	v.SetDefault("background.enabled", defaults.Background.Enabled)
 	v.SetDefault("background.yieldMs", defaults.Background.YieldMs)

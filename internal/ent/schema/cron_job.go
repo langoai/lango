@@ -44,6 +44,10 @@ func (CronJob) Fields() []ent.Field {
 			Comment("Timezone for schedule evaluation"),
 		field.Bool("enabled").
 			Default(true),
+		field.Int64("timeout_ms").
+			Optional().
+			Nillable().
+			Comment("Per-job timeout in milliseconds (overrides default)"),
 		field.Time("last_run_at").
 			Optional().
 			Nillable().
