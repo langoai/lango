@@ -25,6 +25,21 @@ var ErrEmptyRepo = errors.New("empty repository")
 // ErrMissingPrerequisite indicates the bundle requires commits not present in the repo.
 var ErrMissingPrerequisite = errors.New("missing prerequisite commits")
 
+// runGit executes a git command in the given repo directory and returns stdout.
+func runGit(ctx context.Context, repoPath string, args ...string) (string, error) {
+	cmd := exec.CommandContext(ctx, "git", args...)
+	cmd.Dir = repoPath
+
+	var stdout, stderr bytes.Buffer
+	cmd.Stdout = &stdout
+	cmd.Stderr = &stderr
+
+	if err := cmd.Run(); err != nil {
+		return "", fmt.Errorf("git %s: %s: %w", args[0], stderr.String(), err)
+	}
+	return stdout.String(), nil
+}
+
 // CommitInfo represents a summary of a git commit.
 type CommitInfo struct {
 	Hash      string    `json:"hash"`
@@ -187,20 +202,7 @@ func (s *Service) Log(ctx context.Context, workspaceID string, limit int) ([]Com
 
 // Diff returns the diff between two commits.
 func (s *Service) Diff(ctx context.Context, workspaceID, from, to string) (string, error) {
-	repoPath := s.store.RepoPath(workspaceID)
-
-	cmd := exec.CommandContext(ctx, "git", "diff", from, to)
-	cmd.Dir = repoPath
-
-	var stdout, stderr bytes.Buffer
-	cmd.Stdout = &stdout
-	cmd.Stderr = &stderr
-
-	if err := cmd.Run(); err != nil {
-		return "", fmt.Errorf("git diff: %s: %w", stderr.String(), err)
-	}
-
-	return stdout.String(), nil
+	return runGit(ctx, s.store.RepoPath(workspaceID), "diff", from, to)
 }
 
 // Leaves returns the DAG leaf commits (commits with no children).
@@ -364,19 +366,13 @@ func (s *Service) VerifyBundle(ctx context.Context, workspaceID string, bundleDa
 
 // snapshotRefs captures the current state of all refs in the workspace repo.
 func (s *Service) snapshotRefs(ctx context.Context, workspaceID string) (map[string]string, error) {
-	repoPath := s.store.RepoPath(workspaceID)
-	cmd := exec.CommandContext(ctx, "git", "for-each-ref", "--format=%(refname) %(objectname)")
-	cmd.Dir = repoPath
-
-	var stdout bytes.Buffer
-	cmd.Stdout = &stdout
-
-	if err := cmd.Run(); err != nil {
+	output, err := runGit(ctx, s.store.RepoPath(workspaceID), "for-each-ref", "--format=%(refname) %(objectname)")
+	if err != nil {
 		return nil, fmt.Errorf("for-each-ref: %w", err)
 	}
 
 	snapshot := make(map[string]string)
-	for _, line := range strings.Split(strings.TrimSpace(stdout.String()), "\n") {
+	for _, line := range strings.Split(strings.TrimSpace(output), "\n") {
 		if line == "" {
 			continue
 		}

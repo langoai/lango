@@ -205,3 +205,15 @@ The `disableOneTimeJob` method SHALL only handle DB persistence (setting `Enable
 - **WHEN** a one-time ("at") job fires
 - **THEN** `registerJob`'s sync.Once wrapper SHALL call `unregisterJob`, and `disableOneTimeJob` SHALL only update the job's Enabled flag to false in the database
 
+
+
+### Requirement: Scheduler config struct
+The `Scheduler` constructor SHALL accept a `SchedulerConfig` struct for optional parameters instead of positional arguments. The constructor signature SHALL be `New(store Store, executor *Executor, cfg SchedulerConfig) *Scheduler`.
+
+#### Scenario: Default config values
+- **WHEN** `New()` is called with a zero-value `SchedulerConfig`
+- **THEN** defaults SHALL be applied: Timezone="UTC", MaxJobs=5, DefaultTimeout=30m, Logger=zap.NewNop().Sugar()
+
+#### Scenario: Custom config values
+- **WHEN** `New()` is called with a populated `SchedulerConfig`
+- **THEN** the provided values SHALL override the defaults

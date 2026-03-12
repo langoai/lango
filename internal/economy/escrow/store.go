@@ -19,6 +19,7 @@ type Store interface {
 	List() []*EscrowEntry
 	ListByPeer(peerDID string) []*EscrowEntry
 	ListByStatus(status EscrowStatus) []*EscrowEntry
+	ListByStatusBefore(status EscrowStatus, before time.Time) []*EscrowEntry
 	Update(entry *EscrowEntry) error
 	Delete(id string) error
 }
@@ -80,6 +81,19 @@ func (s *memoryStore) ListByStatus(status EscrowStatus) []*EscrowEntry {
 	var result []*EscrowEntry
 	for _, e := range s.escrows {
 		if e.Status == status {
+			result = append(result, e)
+		}
+	}
+	return result
+}
+
+func (s *memoryStore) ListByStatusBefore(status EscrowStatus, before time.Time) []*EscrowEntry {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	var result []*EscrowEntry
+	for _, e := range s.escrows {
+		if e.Status == status && e.CreatedAt.Before(before) {
 			result = append(result, e)
 		}
 	}

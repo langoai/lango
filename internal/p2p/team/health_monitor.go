@@ -28,8 +28,9 @@ type HealthMonitor struct {
 	gitStateProv GitStateProvider
 	workspaceIDs func() []string
 
-	stopCh chan struct{}
-	wg     sync.WaitGroup
+	subsOnce sync.Once // ensures event subscriptions are registered only once
+	stopCh   chan struct{}
+	wg       sync.WaitGroup
 }
 
 // HealthMonitorConfig configures the health monitor.
@@ -95,13 +96,15 @@ func (h *HealthMonitor) Name() string { return "team-health-monitor" }
 // and subscribes to task completion events for counter resets.
 func (h *HealthMonitor) Start(_ context.Context, wg *sync.WaitGroup) error {
 	if h.bus != nil {
-		// Subscribe to task completion events to reset miss counters for successful members.
-		eventbus.SubscribeTyped(h.bus, func(ev eventbus.TeamTaskCompletedEvent) {
-			h.resetTeamCounters(ev.TeamID)
-		})
-		// Clean up maps when teams are disbanded to prevent memory leaks.
-		eventbus.SubscribeTyped(h.bus, func(ev eventbus.TeamDisbandedEvent) {
-			h.cleanupTeam(ev.TeamID)
+		h.subsOnce.Do(func() {
+			// Subscribe to task completion events to reset miss counters for successful members.
+			eventbus.SubscribeTyped(h.bus, func(ev eventbus.TeamTaskCompletedEvent) {
+				h.resetTeamCounters(ev.TeamID)
+			})
+			// Clean up maps when teams are disbanded to prevent memory leaks.
+			eventbus.SubscribeTyped(h.bus, func(ev eventbus.TeamDisbandedEvent) {
+				h.cleanupTeam(ev.TeamID)
+			})
 		})
 	}
 
@@ -192,10 +195,10 @@ func (h *HealthMonitor) pingMember(teamID string, m *Member) {
 		return
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-	defer cancel()
+	pingCtx, pingCancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer pingCancel()
 
-	_, err := h.invokeFn(ctx, m.PeerID, "health_ping", map[string]interface{}{
+	_, err := h.invokeFn(pingCtx, m.PeerID, "health_ping", map[string]interface{}{
 		"teamId": teamID,
 	})
 
@@ -220,9 +223,12 @@ func (h *HealthMonitor) pingMember(teamID string, m *Member) {
 	h.resetMemberCounter(teamID, m.DID)
 
 	// Collect git state if provider is configured.
+	// Use a separate context so git state calls get their own timeout budget.
 	if h.gitStateProv != nil && h.workspaceIDs != nil {
+		gsCtx, gsCancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer gsCancel()
 		for _, wsID := range h.workspaceIDs() {
-			headHash, gsErr := h.gitStateProv(ctx, m.PeerID, wsID)
+			headHash, gsErr := h.gitStateProv(gsCtx, m.PeerID, wsID)
 			if gsErr == nil && headHash != "" {
 				h.updateGitState(wsID, m.DID, headHash)
 			}

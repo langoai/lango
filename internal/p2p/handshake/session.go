@@ -150,6 +150,19 @@ func (s *SessionStore) ActiveSessions() []*Session {
 	return active
 }
 
+// GetByToken looks up an active session by its token and returns the peer DID.
+func (s *SessionStore) GetByToken(token string) (string, bool) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	for _, sess := range s.sessions {
+		if sess.Token == token && !sess.IsExpired() && !sess.Invalidated {
+			return sess.PeerDID, true
+		}
+	}
+	return "", false
+}
+
 // Cleanup removes all expired and invalidated sessions.
 func (s *SessionStore) Cleanup() int {
 	s.mu.Lock()
