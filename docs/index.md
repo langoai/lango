@@ -129,6 +129,24 @@ See the [Installation Guide](getting-started/installation.md) for detailed instr
 
     OIDC authentication and OAuth login flow for secure access control.
 
+-   :office: **P2P Workspaces**
+
+    ---
+
+    Collaborative environments for multi-agent code sharing with git bundle exchange, chronicling, and contribution tracking.
+
+-   :handshake: **P2P Teams**
+
+    ---
+
+    Task-scoped multi-agent collaboration with role-based assignment, conflict resolution, and payment coordination.
+
+-   :package: **Config Presets**
+
+    ---
+
+    Pre-built configuration templates for common deployment scenarios. Quick-start with `lango onboard --preset`.
+
 </div>
 
 ## Next Steps

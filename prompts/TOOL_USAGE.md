@@ -56,6 +56,7 @@
 - `cron_remove` permanently deletes a job and its history.
 - `cron_history` shows past executions for a specific job — use this to verify jobs are running as expected.
 - Each job runs in an isolated session by default. Specify `deliver_to` to send results to a channel (telegram, discord, slack).
+- `cron_add` accepts an optional `timeout` parameter (e.g. `"5m"`, `"30s"`) to set a per-job execution timeout. When set, the job is cancelled if it exceeds this duration. If omitted, the global default timeout applies.
 
 ### Background Tool
 - `bg_submit` starts an async agent task and returns a `task_id` immediately. The task runs independently in the background.
@@ -183,3 +184,14 @@
 - `contract_read` calls a view/pure smart contract method (no gas cost, no state change). Specify `address`, `abi`, `method`, and optional `args` array and `chainId`. Returns the decoded result.
 - `contract_call` sends a state-changing transaction to a smart contract (costs gas). Specify `address`, `abi`, `method`, optional `args`, optional `value` (ETH to send, e.g. '0.01'), and optional `chainId`. Requires a funded wallet. Returns transaction hash and gas used.
 - **Contract workflow**: (1) `contract_abi_load` to cache the ABI, (2) `contract_read` to inspect state, (3) `contract_call` only when state changes are needed.
+
+### Team Tool
+- `team_form` creates a new P2P agent team by discovering and recruiting agents with a specific capability. Specify `name` (required), `goal` (required), `capability` (required — capability tag to recruit), `memberCount` (required — number of workers), and `leaderDid` (required — DID of the team leader). Returns `teamId`, `name`, `goal`, `status`, `members[]` (each with `did`, `name`, `role`, `status`), and `createdAt`.
+- `team_delegate` delegates a tool invocation to all workers in a team and collects results with conflict resolution. Specify `teamId` (required), `toolName` (required — tool to invoke on workers), and optional `params` (parameters to pass). Returns `teamId`, `toolName`, `individualResults[]` (each with `memberDid`, `duration`, `result` or `error`), and either `resolvedResult` (consensus) or `conflictError`.
+- `team_status` shows detailed team information including members and budget. Specify `teamId` (required). Returns `teamId`, `name`, `goal`, `status`, `leaderDid`, `budget`, `spent`, `members[]` (each with `did`, `name`, `role`, `status`, `capabilities`, `trustScore`, `joinedAt`), and `createdAt`.
+- `team_list` lists all active P2P agent teams. No parameters required. Returns `teams[]` (each with `teamId`, `name`, `goal`, `status`, `members` count) and `count`.
+- `team_disband` disbands an existing P2P agent team. Specify `teamId` (required). Returns `disbanded` (the team ID).
+- `team_form_with_budget` forms a team with automatic escrow and budget allocation in a single step. Specify `name`, `goal`, `capability`, `memberCount`, `leaderDid` (all required), `budget` (required — total USDC), and optional `milestones[]` (each with `description` and `amount`; if empty, auto-splits evenly among workers). Returns `teamId`, `name`, `goal`, `status`, `escrowId`, `budgetId`, `budget`, `members[]`, `milestones` count, and `createdAt`.
+- `team_complete_milestone` marks a team escrow milestone as complete and auto-releases funds when all milestones are done. Specify `escrowId` (required), `milestoneId` (required), and optional `evidence`. Returns `escrowId`, `milestoneId`, `status`, `completedMilestones`, `totalMilestones`, `allCompleted`, and optionally `released` (true) or `releaseError`.
+- **Team workflow**: (1) `team_form` or `team_form_with_budget` to create a team, (2) `team_status` to inspect members, (3) `team_delegate` to assign work, (4) `team_complete_milestone` to settle escrow milestones, (5) `team_disband` when done.
+- **Budget-integrated workflow**: (1) `team_form_with_budget` (creates team + escrow + budget in one call), (2) `team_delegate` for each task, (3) `team_complete_milestone` per milestone (auto-releases USDC on final milestone), (4) `team_disband`.

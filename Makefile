@@ -66,6 +66,18 @@ test-p2p:
 test-workspace:
 	$(GOTEST) -v -race ./internal/p2p/workspace/... ./internal/p2p/gitbundle/...
 
+## test-team: Run P2P team coordination tests
+test-team:
+	$(GOTEST) -v -race ./internal/p2p/team/...
+
+## test-economy: Run economy subsystem tests
+test-economy:
+	$(GOTEST) -v -race ./internal/economy/...
+
+## test-bridges: Run bridge integration tests
+test-bridges:
+	$(GOTEST) -v -race ./internal/app/... -run Bridge
+
 ## bench: Run benchmarks
 bench:
 	$(GOTEST) -bench=. -benchmem ./...
@@ -183,7 +195,7 @@ help:
 
 .PHONY: build build-linux build-darwin build-all install \
         dev run \
-        test test-short test-p2p test-workspace bench coverage \
+        test test-short test-p2p test-workspace test-team test-economy test-bridges bench coverage \
         fmt fmt-check vet lint generate check-abi ci \
         deps \
         codesign \

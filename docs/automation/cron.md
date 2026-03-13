@@ -35,6 +35,32 @@ lango cron add --name "deploy-reminder" \
   --prompt "Remind team about the deployment window"
 ```
 
+### Per-Job Timeout
+
+Each job can specify a per-job timeout that overrides the global `cron.defaultJobTimeout`. If no per-job timeout is set, the global default (30 minutes) applies.
+
+```bash
+# 5-minute timeout for a quick check
+lango cron add --name "quick-check" \
+  --every 30m \
+  --prompt "Check API latency" \
+  --timeout 5m
+
+# 2-hour timeout for a long-running report
+lango cron add --name "monthly-report" \
+  --schedule "0 2 1 * *" \
+  --prompt "Generate full monthly report" \
+  --timeout 2h
+```
+
+The `timeout` parameter accepts Go duration syntax (e.g., `5m`, `1h30m`, `2h`). Precedence:
+
+1. **Per-job `--timeout`** — if set on the job, this value is used
+2. **Global `cron.defaultJobTimeout`** — fallback when the job has no explicit timeout (default: `30m`)
+
+!!! note "Idempotent Upsert"
+    Re-adding a job with the same `--name` updates the existing job instead of creating a duplicate. This makes it safe to re-run `cron add` commands — the schedule, prompt, timeout, and delivery settings are updated in place.
+
 ### List Jobs
 
 ```bash
@@ -99,6 +125,7 @@ Job results are delivered to configured communication channels after execution. 
     "timezone": "Asia/Seoul",
     "maxConcurrentJobs": 5,
     "defaultSessionMode": "isolated",
+    "defaultJobTimeout": "30m",
     "historyRetention": "30d",
     "defaultDeliverTo": ["telegram"]
   }
@@ -112,6 +139,7 @@ Job results are delivered to configured communication channels after execution. 
 | `cron.maxConcurrentJobs` | `int` | `5` | Maximum concurrently executing jobs |
 | `cron.defaultSessionMode` | `string` | `"isolated"` | Default session mode for new jobs |
 | `cron.historyRetention` | `string` | - | Duration to retain execution history |
+| `cron.defaultJobTimeout` | `string` | `"30m"` | Default timeout for job execution (Go duration) |
 | `cron.defaultDeliverTo` | `[]string` | `[]` | Default delivery channels |
 
 ## Architecture

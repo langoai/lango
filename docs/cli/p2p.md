@@ -816,10 +816,158 @@ Fetched bundle from did:lango:03def... (8.2 KB)
 Applied 3 new commits.
 ```
 
+### Incremental Bundles
+
+Instead of transferring the entire repository history every time, Lango supports incremental bundles that contain only commits after a known base commit. This significantly reduces transfer size for active workspaces.
+
+The `CreateIncrementalBundle` operation takes a base commit hash and produces a bundle containing only `baseCommit..HEAD`. If the base commit is not found in the repository, it falls back to a full bundle automatically.
+
+Before applying a received bundle, `VerifyBundle` checks that the bundle's prerequisite commits exist in the local repo. `SafeApplyBundle` combines verification, ref snapshot, application, and automatic rollback on failure into a single atomic operation:
+
+1. **Verify** — check prerequisites are present
+2. **Snapshot** — capture current ref state
+3. **Apply** — unbundle into the repository
+4. **Rollback** — if apply fails, restore refs from the snapshot
+
+`HasCommit` checks whether a specific commit exists locally, which is useful for determining the correct base commit before requesting an incremental bundle from a peer.
+
+---
+
+### lango p2p git branch
+
+Manage task branches within a workspace repository. Task branches use the `task/{taskID}` naming convention and support the full lifecycle: create, list, merge, and delete.
+
+#### lango p2p git branch create
+
+Create a task branch in the workspace repository.
+
+```
+lango p2p git branch create <workspace-id> --task <task-id> [--base <branch>]
+```
+
+| Flag | Type | Default | Description |
+|------|------|---------|-------------|
+| `--task` | string | *required* | Task ID (branch will be named `task/{taskID}`) |
+| `--base` | string | `HEAD` | Base branch to create from |
+
+The operation is idempotent — if the branch already exists, it succeeds without error.
+
+**Example:**
+
+```bash
+$ lango p2p git branch create a1b2c3d4-... --task TASK-42
+Created branch task/TASK-42 in workspace a1b2c3d4-...
+```
+
+#### lango p2p git branch list
+
+List all branches in the workspace repository.
+
+```
+lango p2p git branch list <workspace-id> [--json]
+```
+
+| Flag | Type | Default | Description |
+|------|------|---------|-------------|
+| `--json` | bool | `false` | Output as JSON |
+
+**Example:**
+
+```bash
+$ lango p2p git branch list a1b2c3d4-...
+NAME              COMMIT    HEAD  UPDATED
+main              abc1234   *     2026-03-10T10:30:00Z
+task/TASK-42      def5678         2026-03-10T11:00:00Z
+task/TASK-43      ghi9012         2026-03-10T11:15:00Z
+```
+
+#### lango p2p git branch merge
+
+Merge a task branch into a target branch. Uses `git merge-tree --write-tree` for conflict detection in bare repositories without needing a working tree.
+
+```
+lango p2p git branch merge <workspace-id> --task <task-id> [--into <branch>]
+```
+
+| Flag | Type | Default | Description |
+|------|------|---------|-------------|
+| `--task` | string | *required* | Task ID of the source branch (`task/{taskID}`) |
+| `--into` | string | `main` | Target branch to merge into |
+
+If conflicts are detected, the merge is aborted and conflicting file paths are reported.
+
+**Example (success):**
+
+```bash
+$ lango p2p git branch merge a1b2c3d4-... --task TASK-42
+Merged task/TASK-42 into main (commit: abc1234)
+```
+
+**Example (conflict):**
+
+```bash
+$ lango p2p git branch merge a1b2c3d4-... --task TASK-43
+Merge conflict between task/TASK-43 and main:
+  - src/optimizer.go
+  - src/config.go
+```
+
+#### lango p2p git branch delete
+
+Delete a task branch from the workspace repository.
+
+```
+lango p2p git branch delete <workspace-id> --task <task-id>
+```
+
+| Flag | Type | Default | Description |
+|------|------|---------|-------------|
+| `--task` | string | *required* | Task ID of the branch to delete |
+
+The operation is idempotent — if the branch does not exist, it succeeds without error.
+
+**Example:**
+
+```bash
+$ lango p2p git branch delete a1b2c3d4-... --task TASK-42
+Deleted branch task/TASK-42 from workspace a1b2c3d4-...
+```
+
+---
+
+### Workflow Example: Task Branch Lifecycle
+
+A typical collaboration workflow using task branches and incremental bundles:
+
+```bash
+# 1. Initialize workspace and create a task branch
+lango p2p git init a1b2c3d4-...
+lango p2p git branch create a1b2c3d4-... --task TASK-42
+
+# 2. Work on the task branch (commits are made via agent tools)
+#    ... agent writes code and commits to task/TASK-42 ...
+
+# 3. Push an incremental bundle to peers (only new commits since last sync)
+lango p2p git push a1b2c3d4-...
+
+# 4. Peers fetch and safely apply the bundle
+lango p2p git fetch a1b2c3d4-...
+
+# 5. Merge the completed task branch into main
+lango p2p git branch merge a1b2c3d4-... --task TASK-42
+
+# 6. Clean up the task branch
+lango p2p git branch delete a1b2c3d4-... --task TASK-42
+```
+
 ### Git Bundle Features
 
 - **Bare Repositories**: Each workspace has an isolated bare git repo at `~/.lango/workspaces/<id>/repo.git`
 - **Bundle Protocol**: Uses `git bundle create/unbundle` for atomic transfers over the P2P network
+- **Incremental Bundles**: Transfer only new commits since a known base, with automatic full-bundle fallback
+- **Safe Apply**: Verify prerequisites, snapshot refs, apply, and auto-rollback on failure
+- **Task Branches**: Per-task isolation via `task/{taskID}` branches with idempotent create/delete
+- **Conflict Detection**: `git merge-tree --write-tree` detects merge conflicts without a working tree
 - **DAG Leaf Detection**: Identifies leaf commits (no children) for conflict detection
 - **Size Limits**: Configurable `maxBundleSizeBytes` to prevent oversized transfers
 

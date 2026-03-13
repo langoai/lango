@@ -65,6 +65,13 @@ This project includes experimental AI Agent features and is currently in an unst
 - 🏦 **Smart Accounts** — ERC-7579 modular smart accounts (Safe-based), ERC-4337 account abstraction with session keys, gasless USDC transactions via paymaster (Circle/Pimlico/Alchemy), on-chain spending limits, and hierarchical session key management
 - 👥 **P2P Teams** — Task-scoped agent groups with role-based delegation, conflict resolution (trust_weighted, majority_vote, leader_decides, fail_on_conflict), assignment strategies, and payment coordination
 - 🤝 **P2P Workspaces** — Collaborative workspaces with lifecycle management, message channels (task proposals, log streams, commit signals), git bundle exchange, contribution tracking, and graph store chronicling
+- 🏥 **Team Health Monitoring** — Periodic health checks for P2P team members with event bus integration and automatic status tracking
+- 📦 **Incremental Git Bundles** — Delta-based git bundle creation for efficient workspace code exchange, with bundle store and protocol layer
+- 🌿 **Task Branch Management** — Per-task branch creation and lifecycle management in workspace git repositories
+- 🎛️ **Config Presets** — Purpose-built configuration templates (minimal, researcher, collaborator, full) for quick onboarding
+- 🔌 **Event-Driven Bridges** — Decoupled event bus bridges between team/escrow/reputation/budget/workspace subsystems
+- 🔗 **EventMonitor Reorg Protection** — Confirmation-depth-based L2 reorg detection with safe-block processing for on-chain escrow events
+- 📜 **Escrow Hub V2** — UUPS-upgradeable master escrow hub with pluggable settler pattern, supporting simple/milestone/team deal types
 - 📊 **Observability** — Token usage tracking, health monitoring, audit logging, and metrics endpoints
 
 ## Quick Start
@@ -116,7 +123,9 @@ For the full configuration editor with all options, use `lango settings`.
 lango serve                      Start the gateway server
 lango version                    Print version and build info
 lango health [--port N]          Check gateway health (default port: 18789)
+lango status [--output json]     Unified system status dashboard (config, server, features)
 lango onboard                    Guided 5-step setup wizard for first-time configuration
+lango onboard --preset <name>    Start from a preset (minimal, researcher, collaborator, full)
 lango settings                   Full interactive configuration editor (all options)
 lango doctor [--fix] [--json]    Diagnostics and health checks
 
@@ -179,7 +188,7 @@ lango payment info [--json]      Show wallet and payment system info
 lango payment send [flags]       Send USDC payment (--to, --amount, --purpose required; --force, --json)
 lango payment x402 [--json]      Show X402 auto-pay configuration
 
-lango cron add [flags]           Add a cron job (--name, --schedule/--every/--at, --prompt, --deliver, --timezone)
+lango cron add [flags]           Add a cron job (--name, --schedule/--every/--at, --prompt, --deliver, --timezone, --timeout)
 lango cron list                  List all cron jobs
 lango cron delete <id-or-name>   Delete a cron job
 lango cron pause <id-or-name>    Pause a cron job
@@ -360,7 +369,9 @@ lango/
 │   ├── payment/            # Blockchain payment service (USDC on EVM chains, X402 audit trail)
 │   ├── observability/       # Metrics, token tracking, health checks, audit logging
 │   ├── p2p/                # P2P networking (libp2p node, identity, handshake, firewall, discovery, ZKP)
-│   │   ├── team/           #   P2P team coordination
+│   │   ├── team/           #   P2P team coordination with health monitoring
+│   │   ├── workspace/      #   Collaborative workspace lifecycle and messaging
+│   │   ├── gitbundle/      #   Incremental git bundle store, task branches, protocol
 │   │   ├── agentpool/      #   Agent pool with health checking
 │   │   └── settlement/     #   On-chain USDC settlement
 │   ├── supervisor/         # Provider proxy, privileged tool execution

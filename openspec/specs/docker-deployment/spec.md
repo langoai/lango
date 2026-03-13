@@ -50,6 +50,14 @@ The system SHALL provide a docker-compose.yml with a single lango service.
 - **THEN** the lango service SHALL expose port 18789
 - **AND** volumes SHALL persist data to lango-data volume
 
+#### Scenario: Workspace volume defined
+- **WHEN** a user inspects `docker-compose.yml` volumes section
+- **THEN** `lango-workspaces` SHALL be listed as a named volume for P2P workspace data persistence
+
+#### Scenario: Team and economy environment variables
+- **WHEN** a user inspects `docker-compose.yml` environment section
+- **THEN** `LANGO_TEAM=true` and `LANGO_ECONOMY=true` SHALL be present as commented variables for optional feature activation
+
 #### Scenario: Single service deployment
 - **WHEN** running `docker compose up -d`
 - **THEN** only the lango service SHALL start

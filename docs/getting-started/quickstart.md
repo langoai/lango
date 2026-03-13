@@ -24,6 +24,21 @@ Run the guided setup wizard:
 ./bin/lango onboard
 ```
 
+Or start from a preset template to skip manual feature selection:
+
+```bash
+./bin/lango onboard --preset <name>
+```
+
+| Preset | Description |
+|--------|-------------|
+| `minimal` | Basic AI agent (quick start) |
+| `researcher` | Knowledge, RAG, Graph (research/analysis) |
+| `collaborator` | P2P team, payment, workspace (collaboration) |
+| `full` | All features enabled (power user) |
+
+See [Configuration Presets](../features/config-presets.md) for full details on what each preset enables.
+
 The wizard walks you through five steps:
 
 ### 1. Provider Setup

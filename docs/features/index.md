@@ -142,6 +142,30 @@ Lango provides a comprehensive set of features for building intelligent AI agent
 
     [:octicons-arrow-right-24: Learn more](system-prompts.md)
 
+-   :office: **[P2P Workspaces](p2p-network.md#collaborative-workspaces)** :material-flask-outline:{ title="Experimental" }
+
+    ---
+
+    Collaborative environments where multiple agents share code, messages, and context with git bundle exchange and contribution tracking.
+
+    [:octicons-arrow-right-24: Learn more](p2p-network.md#collaborative-workspaces)
+
+-   :handshake: **[P2P Teams](p2p-network.md#p2p-team-coordination)** :material-flask-outline:{ title="Experimental" }
+
+    ---
+
+    Task-scoped multi-agent collaboration with role assignment, conflict resolution, budget tracking, and payment coordination.
+
+    [:octicons-arrow-right-24: Learn more](p2p-network.md#p2p-team-coordination)
+
+-   :package: **[Config Presets](config-presets.md)**
+
+    ---
+
+    Pre-built configuration templates for common deployment scenarios. Quick-start your agent with sensible defaults.
+
+    [:octicons-arrow-right-24: Learn more](config-presets.md)
+
 </div>
 
 ## Feature Status
@@ -165,6 +189,9 @@ Lango provides a comprehensive set of features for building intelligent AI agent
 | Proactive Librarian | Experimental | `librarian.enabled` |
 | System Prompts | Stable | `agent.promptsDir` |
 | Agent Memory | Experimental | `agentMemory.enabled` |
+| P2P Workspaces | Experimental | `p2p.workspace.enabled` |
+| P2P Teams | Experimental | `p2p.enabled` + team coordination |
+| Config Presets | Stable | `lango onboard --preset` |
 | Tool Hooks | Experimental | `hooks.enabled` |
 | Tool Catalog | Internal | — |
 | Event Bus | Internal | — |
