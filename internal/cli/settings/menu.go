@@ -10,11 +10,18 @@ import (
 	"github.com/langoai/lango/internal/cli/tui"
 )
 
+// Tier constants for category visibility.
+const (
+	TierBasic    = 0
+	TierAdvanced = 1
+)
+
 // Category represents a configuration category in the menu.
 type Category struct {
 	ID    string
 	Title string
 	Desc  string
+	Tier  int // TierBasic or TierAdvanced
 }
 
 // Section groups related categories under a heading.
@@ -25,11 +32,12 @@ type Section struct {
 
 // MenuModel manages the configuration menu.
 type MenuModel struct {
-	Sections []Section
-	Cursor   int
-	Selected string
-	Width    int
-	Height   int
+	Sections     []Section
+	Cursor       int
+	Selected     string
+	Width        int
+	Height       int
+	showAdvanced bool
 
 	// Search
 	searching   bool
@@ -46,6 +54,19 @@ func (m *MenuModel) allCategories() []Category {
 	return all
 }
 
+// visibleCategories returns categories respecting the current tier filter.
+func (m *MenuModel) visibleCategories() []Category {
+	var vis []Category
+	for _, s := range m.Sections {
+		for _, c := range s.Categories {
+			if m.showAdvanced || c.Tier == TierBasic {
+				vis = append(vis, c)
+			}
+		}
+	}
+	return vis
+}
+
 // AllCategories returns a flat list of all categories (public, for tests).
 func (m MenuModel) AllCategories() []Category {
 	return m.allCategories()
@@ -56,12 +77,17 @@ func (m MenuModel) IsSearching() bool {
 	return m.searching
 }
 
+// ShowAdvanced returns the current advanced mode state.
+func (m MenuModel) ShowAdvanced() bool {
+	return m.showAdvanced
+}
+
 // selectableItems returns the list the cursor currently navigates.
 func (m *MenuModel) selectableItems() []Category {
 	if m.searching && m.filtered != nil {
 		return m.filtered
 	}
-	return m.allCategories()
+	return m.visibleCategories()
 }
 
 // NewMenuModel creates a new menu model with grouped configuration categories.
@@ -79,86 +105,86 @@ func NewMenuModel() MenuModel {
 			{
 				Title: "Core",
 				Categories: []Category{
-					{"providers", "Providers", "Multi-provider configurations"},
-					{"agent", "Agent", "Provider, Model, Key"},
-					{"server", "Server", "Host, Port, Networking"},
-					{"session", "Session", "Database, TTL, History"},
-				},
-			},
-			{
-				Title: "Communication",
-				Categories: []Category{
-					{"channels", "Channels", "Telegram, Discord, Slack"},
-					{"tools", "Tools", "Exec, Browser, Filesystem"},
-					{"multi_agent", "Multi-Agent", "Orchestration mode"},
-					{"a2a", "A2A Protocol", "Agent-to-Agent, remote agents"},
-					{"hooks", "Hooks", "Tool execution hooks, security filter"},
+					{"providers", "Providers", "Multi-provider configurations", TierBasic},
+					{"agent", "Agent", "Provider, Model, Key", TierBasic},
+					{"channels", "Channels", "Telegram, Discord, Slack", TierBasic},
+					{"tools", "Tools", "Exec, Browser, Filesystem", TierBasic},
+					{"server", "Server", "Host, Port, Networking", TierAdvanced},
+					{"session", "Session", "Database, TTL, History", TierAdvanced},
 				},
 			},
 			{
 				Title: "AI & Knowledge",
 				Categories: []Category{
-					{"knowledge", "Knowledge", "Learning, Context limits"},
-					{"skill", "Skill", "File-based skill system"},
-					{"observational_memory", "Observational Memory", "Observer, Reflector, Thresholds"},
-					{"embedding", "Embedding & RAG", "Provider, Model, RAG settings"},
-					{"graph", "Graph Store", "Knowledge graph, GraphRAG settings"},
-					{"librarian", "Librarian", "Proactive knowledge extraction"},
-					{"agent_memory", "Agent Memory", "Per-agent persistent memory"},
+					{"knowledge", "Knowledge", "Learning, Context limits", TierBasic},
+					{"skill", "Skill", "File-based skill system", TierBasic},
+					{"observational_memory", "Observational Memory", "Observer, Reflector, Thresholds", TierBasic},
+					{"embedding", "Embedding & RAG", "Provider, Model, RAG settings", TierBasic},
+					{"graph", "Graph Store", "Knowledge graph, GraphRAG settings", TierAdvanced},
+					{"librarian", "Librarian", "Proactive knowledge extraction", TierAdvanced},
+					{"agent_memory", "Agent Memory", "Per-agent persistent memory", TierAdvanced},
+					{"multi_agent", "Multi-Agent", "Orchestration mode", TierAdvanced},
+					{"a2a", "A2A Protocol", "Agent-to-Agent, remote agents", TierAdvanced},
+					{"hooks", "Hooks", "Tool execution hooks, security filter", TierAdvanced},
 				},
 			},
 			{
-				Title: "Infrastructure",
+				Title: "Automation",
 				Categories: []Category{
-					{"payment", "Payment", "Blockchain wallet, spending limits"},
-					{"cron", "Cron Scheduler", "Scheduled jobs, timezone, history"},
-					{"background", "Background Tasks", "Async tasks, concurrency limits"},
-					{"workflow", "Workflow Engine", "DAG workflows, timeouts, state"},
-					{"smartaccount", "Smart Account", "ERC-7579 account, session keys, modules"},
-					{"smartaccount_session", "SA Session Keys", "Duration, gas limits, active keys"},
-					{"smartaccount_paymaster", "SA Paymaster", "Gasless USDC transactions (Circle/Pimlico/Alchemy)"},
-					{"smartaccount_modules", "SA Modules", "Module contract addresses"},
-					{"mcp", "MCP Settings", "Global MCP server settings"},
-					{"mcp_servers", "MCP Server List", "Add, edit, remove MCP servers"},
-					{"observability", "Observability", "Token tracking, health, metrics"},
+					{"cron", "Cron Scheduler", "Scheduled jobs, timezone, history", TierBasic},
+					{"background", "Background Tasks", "Async tasks, concurrency limits", TierAdvanced},
+					{"workflow", "Workflow Engine", "DAG workflows, timeouts, state", TierAdvanced},
 				},
 			},
 			{
-				Title: "Economy",
+				Title: "Payment & Account",
 				Categories: []Category{
-					{"economy", "Economy", "Budget, risk, pricing settings"},
-					{"economy_risk", "Economy Risk", "Trust-based risk assessment"},
-					{"economy_negotiation", "Economy Negotiation", "P2P price negotiation"},
-					{"economy_escrow", "Economy Escrow", "Milestone-based escrow"},
-					{"economy_escrow_onchain", "On-Chain Escrow", "Hub/Vault mode, contracts, settlement"},
-					{"economy_pricing", "Economy Pricing", "Dynamic pricing rules"},
+					{"payment", "Payment", "Blockchain wallet, spending limits", TierBasic},
+					{"smartaccount", "Smart Account", "ERC-7579 account, session keys, modules", TierAdvanced},
+					{"smartaccount_session", "SA Session Keys", "Duration, gas limits, active keys", TierAdvanced},
+					{"smartaccount_paymaster", "SA Paymaster", "Gasless USDC transactions", TierAdvanced},
+					{"smartaccount_modules", "SA Modules", "Module contract addresses", TierAdvanced},
 				},
 			},
 			{
-				Title: "P2P Network",
+				Title: "P2P & Economy",
 				Categories: []Category{
-					{"p2p", "P2P Network", "Peer-to-peer networking, discovery"},
-					{"p2p_zkp", "P2P ZKP", "Zero-knowledge proof settings"},
-					{"p2p_pricing", "P2P Pricing", "Paid tool invocations"},
-					{"p2p_owner", "P2P Owner Protection", "Owner PII leak prevention"},
-					{"p2p_sandbox", "P2P Sandbox", "Tool isolation, container sandbox"},
-				{"p2p_workspace", "P2P Workspace", "Workspaces, git bundles"},
+					{"p2p", "P2P Network", "Peer-to-peer networking, discovery", TierAdvanced},
+					{"p2p_workspace", "P2P Workspace", "Workspaces, git bundles", TierAdvanced},
+					{"p2p_zkp", "P2P ZKP", "Zero-knowledge proof settings", TierAdvanced},
+					{"p2p_pricing", "P2P Pricing", "Paid tool invocations", TierAdvanced},
+					{"p2p_owner", "P2P Owner Protection", "Owner PII leak prevention", TierAdvanced},
+					{"p2p_sandbox", "P2P Sandbox", "Tool isolation, container sandbox", TierAdvanced},
+					{"economy", "Economy", "Budget, risk, pricing settings", TierAdvanced},
+					{"economy_risk", "Economy Risk", "Trust-based risk assessment", TierAdvanced},
+					{"economy_negotiation", "Economy Negotiation", "P2P price negotiation", TierAdvanced},
+					{"economy_escrow", "Economy Escrow", "Milestone-based escrow", TierAdvanced},
+					{"economy_escrow_onchain", "On-Chain Escrow", "Hub/Vault mode, contracts, settlement", TierAdvanced},
+					{"economy_pricing", "Economy Pricing", "Dynamic pricing rules", TierAdvanced},
+				},
+			},
+			{
+				Title: "Integrations",
+				Categories: []Category{
+					{"mcp", "MCP Settings", "Global MCP server settings", TierBasic},
+					{"mcp_servers", "MCP Server List", "Add, edit, remove MCP servers", TierAdvanced},
+					{"observability", "Observability", "Token tracking, health, metrics", TierAdvanced},
 				},
 			},
 			{
 				Title: "Security",
 				Categories: []Category{
-					{"security", "Security", "PII, Approval, Encryption"},
-					{"auth", "Auth", "OIDC provider configuration"},
-					{"security_db", "Security DB Encryption", "SQLCipher database encryption"},
-					{"security_kms", "Security KMS", "Cloud KMS / HSM backends"},
+					{"security", "Security", "PII, Approval, Encryption", TierBasic},
+					{"auth", "Auth", "OIDC provider configuration", TierAdvanced},
+					{"security_db", "Security DB Encryption", "SQLCipher database encryption", TierAdvanced},
+					{"security_kms", "Security KMS", "Cloud KMS / HSM backends", TierAdvanced},
 				},
 			},
 			{
 				Title: "",
 				Categories: []Category{
-					{"save", "Save & Exit", "Save encrypted profile"},
-					{"cancel", "Cancel", "Exit without saving"},
+					{"save", "Save & Exit", "Save encrypted profile", TierBasic},
+					{"cancel", "Cancel", "Exit without saving", TierBasic},
 				},
 			},
 		},
@@ -203,7 +229,7 @@ func (m MenuModel) Update(msg tea.Msg) (MenuModel, tea.Cmd) {
 					m.Cursor--
 				}
 				return m, nil
-			case "down", "tab":
+			case "down":
 				items := m.selectableItems()
 				if m.Cursor < len(items)-1 {
 					m.Cursor++
@@ -226,6 +252,17 @@ func (m MenuModel) Update(msg tea.Msg) (MenuModel, tea.Cmd) {
 			m.searchInput.SetValue("")
 			m.Cursor = 0
 			return m, textinput.Blink
+		case "tab":
+			m.showAdvanced = !m.showAdvanced
+			// Clamp cursor to visible items.
+			items := m.selectableItems()
+			if m.Cursor >= len(items) {
+				m.Cursor = len(items) - 1
+			}
+			if m.Cursor < 0 {
+				m.Cursor = 0
+			}
+			return m, nil
 		case "up", "k":
 			if m.Cursor > 0 {
 				m.Cursor--
@@ -247,6 +284,7 @@ func (m MenuModel) Update(msg tea.Msg) (MenuModel, tea.Cmd) {
 }
 
 // applyFilter updates the filtered list based on the current search query.
+// Search always covers all categories regardless of tier.
 func (m *MenuModel) applyFilter() {
 	query := strings.ToLower(strings.TrimSpace(m.searchInput.Value()))
 	if query == "" {
@@ -304,15 +342,20 @@ func (m MenuModel) View() string {
 	b.WriteString("\n")
 	if m.searching {
 		b.WriteString(tui.HelpBar(
-			tui.HelpEntry("↑↓", "Navigate"),
+			tui.HelpEntry("\u2191\u2193", "Navigate"),
 			tui.HelpEntry("Enter", "Select"),
 			tui.HelpEntry("Esc", "Cancel"),
 		))
 	} else {
+		tierLabel := "Show Advanced"
+		if m.showAdvanced {
+			tierLabel = "Show Basic"
+		}
 		b.WriteString(tui.HelpBar(
-			tui.HelpEntry("↑↓", "Navigate"),
+			tui.HelpEntry("\u2191\u2193", "Navigate"),
 			tui.HelpEntry("Enter", "Select"),
 			tui.HelpEntry("/", "Search"),
+			tui.HelpEntry("Tab", tierLabel),
 			tui.HelpEntry("Esc", "Back"),
 		))
 	}
@@ -322,21 +365,34 @@ func (m MenuModel) View() string {
 
 func (m MenuModel) renderGroupedView(b *strings.Builder) {
 	globalIdx := 0
-	for si, section := range m.Sections {
+	first := true
+	for _, section := range m.Sections {
+		// Filter categories by tier.
+		var visible []Category
+		for _, c := range section.Categories {
+			if m.showAdvanced || c.Tier == TierBasic {
+				visible = append(visible, c)
+			}
+		}
+		if len(visible) == 0 {
+			continue
+		}
+
 		// Section header
 		if section.Title != "" {
-			if si > 0 {
-				b.WriteString(tui.SeparatorLineStyle.Render("  " + strings.Repeat("─", 38)))
+			if !first {
+				b.WriteString(tui.SeparatorLineStyle.Render("  " + strings.Repeat("\u2500", 38)))
 				b.WriteString("\n")
 			}
 			b.WriteString(tui.SectionHeaderStyle.Render(section.Title))
 			b.WriteString("\n")
-		} else if si > 0 {
-			b.WriteString(tui.SeparatorLineStyle.Render("  " + strings.Repeat("─", 38)))
+		} else if !first {
+			b.WriteString(tui.SeparatorLineStyle.Render("  " + strings.Repeat("\u2500", 38)))
 			b.WriteString("\n")
 		}
+		first = false
 
-		for _, cat := range section.Categories {
+		for _, cat := range visible {
 			m.renderItem(b, cat, globalIdx)
 			globalIdx++
 		}
@@ -367,7 +423,7 @@ func (m MenuModel) renderItem(b *strings.Builder, cat Category, idx int) {
 	descStyle := lipgloss.NewStyle().Foreground(tui.Dim)
 
 	if isSelected {
-		cursor = tui.CursorStyle.Render("▸ ")
+		cursor = tui.CursorStyle.Render("\u25b8 ")
 		titleStyle = titleStyle.Foreground(tui.Accent).Bold(true)
 		descStyle = descStyle.Foreground(tui.Accent)
 	}
