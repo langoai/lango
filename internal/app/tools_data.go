@@ -8,6 +8,7 @@ import (
 
 	"github.com/langoai/lango/internal/agent"
 	"github.com/langoai/lango/internal/embedding"
+	"github.com/langoai/lango/internal/toolparam"
 	"github.com/langoai/lango/internal/graph"
 	"github.com/langoai/lango/internal/librarian"
 	"github.com/langoai/lango/internal/memory"
@@ -33,22 +34,12 @@ func buildGraphTools(gs graph.Store) []*agent.Tool {
 				"required": []string{"start_node"},
 			},
 			Handler: func(ctx context.Context, params map[string]interface{}) (interface{}, error) {
-				startNode, _ := params["start_node"].(string)
-				if startNode == "" {
-					return nil, fmt.Errorf("missing start_node parameter")
+				startNode, err := toolparam.RequireString(params, "start_node")
+				if err != nil {
+					return nil, err
 				}
-				maxDepth := 2
-				if d, ok := params["max_depth"].(float64); ok && d > 0 {
-					maxDepth = int(d)
-				}
-				var predicates []string
-				if raw, ok := params["predicates"].([]interface{}); ok {
-					for _, p := range raw {
-						if s, ok := p.(string); ok {
-							predicates = append(predicates, s)
-						}
-					}
-				}
+				maxDepth := toolparam.OptionalInt(params, "max_depth", 2)
+				predicates := toolparam.StringSlice(params, "predicates")
 				triples, err := gs.Traverse(ctx, startNode, maxDepth, predicates)
 				if err != nil {
 					return nil, fmt.Errorf("graph traverse: %w", err)
@@ -69,9 +60,9 @@ func buildGraphTools(gs graph.Store) []*agent.Tool {
 				},
 			},
 			Handler: func(ctx context.Context, params map[string]interface{}) (interface{}, error) {
-				subject, _ := params["subject"].(string)
-				object, _ := params["object"].(string)
-				predicate, _ := params["predicate"].(string)
+				subject := toolparam.OptionalString(params, "subject", "")
+				object := toolparam.OptionalString(params, "object", "")
+				predicate := toolparam.OptionalString(params, "predicate", "")
 
 				if subject == "" && object == "" {
 					return nil, fmt.Errorf("either subject or object is required")
@@ -112,22 +103,12 @@ func buildRAGTools(ragSvc *embedding.RAGService) []*agent.Tool {
 				"required": []string{"query"},
 			},
 			Handler: func(ctx context.Context, params map[string]interface{}) (interface{}, error) {
-				query, _ := params["query"].(string)
-				if query == "" {
-					return nil, fmt.Errorf("missing query parameter")
+				query, err := toolparam.RequireString(params, "query")
+				if err != nil {
+					return nil, err
 				}
-				limit := 5
-				if l, ok := params["limit"].(float64); ok && l > 0 {
-					limit = int(l)
-				}
-				var collections []string
-				if raw, ok := params["collections"].([]interface{}); ok {
-					for _, c := range raw {
-						if s, ok := c.(string); ok {
-							collections = append(collections, s)
-						}
-					}
-				}
+				limit := toolparam.OptionalInt(params, "limit", 5)
+				collections := toolparam.StringSlice(params, "collections")
 				sessionKey := session.SessionKeyFromContext(ctx)
 				results, err := ragSvc.Retrieve(ctx, query, embedding.RetrieveOptions{
 					Limit:       limit,
@@ -157,10 +138,7 @@ func buildMemoryAgentTools(ms *memory.Store) []*agent.Tool {
 				},
 			},
 			Handler: func(ctx context.Context, params map[string]interface{}) (interface{}, error) {
-				sessionKey, _ := params["session_key"].(string)
-				if sessionKey == "" {
-					sessionKey = session.SessionKeyFromContext(ctx)
-				}
+				sessionKey := toolparam.OptionalString(params, "session_key", session.SessionKeyFromContext(ctx))
 				observations, err := ms.ListObservations(ctx, sessionKey)
 				if err != nil {
 					return nil, fmt.Errorf("list observations: %w", err)
@@ -179,10 +157,7 @@ func buildMemoryAgentTools(ms *memory.Store) []*agent.Tool {
 				},
 			},
 			Handler: func(ctx context.Context, params map[string]interface{}) (interface{}, error) {
-				sessionKey, _ := params["session_key"].(string)
-				if sessionKey == "" {
-					sessionKey = session.SessionKeyFromContext(ctx)
-				}
+				sessionKey := toolparam.OptionalString(params, "session_key", session.SessionKeyFromContext(ctx))
 				reflections, err := ms.ListReflections(ctx, sessionKey)
 				if err != nil {
 					return nil, fmt.Errorf("list reflections: %w", err)
@@ -213,14 +188,8 @@ func buildLibrarianTools(is *librarian.InquiryStore) []*agent.Tool {
 				},
 			},
 			Handler: func(ctx context.Context, params map[string]interface{}) (interface{}, error) {
-				sessionKey, _ := params["session_key"].(string)
-				if sessionKey == "" {
-					sessionKey = session.SessionKeyFromContext(ctx)
-				}
-				limit := 5
-				if l, ok := params["limit"].(float64); ok && l > 0 {
-					limit = int(l)
-				}
+				sessionKey := toolparam.OptionalString(params, "session_key", session.SessionKeyFromContext(ctx))
+				limit := toolparam.OptionalInt(params, "limit", 5)
 				inquiries, err := is.ListPendingInquiries(ctx, sessionKey, limit)
 				if err != nil {
 					return nil, fmt.Errorf("list pending inquiries: %w", err)
@@ -240,9 +209,9 @@ func buildLibrarianTools(is *librarian.InquiryStore) []*agent.Tool {
 				"required": []string{"inquiry_id"},
 			},
 			Handler: func(ctx context.Context, params map[string]interface{}) (interface{}, error) {
-				idStr, ok := params["inquiry_id"].(string)
-				if !ok || idStr == "" {
-					return nil, fmt.Errorf("missing inquiry_id parameter")
+				idStr, err := toolparam.RequireString(params, "inquiry_id")
+				if err != nil {
+					return nil, err
 				}
 				id, err := uuid.Parse(idStr)
 				if err != nil {

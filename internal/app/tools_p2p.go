@@ -11,6 +11,7 @@ import (
 
 	"github.com/langoai/lango/internal/agent"
 	"github.com/langoai/lango/internal/p2p/discovery"
+	"github.com/langoai/lango/internal/toolparam"
 	"github.com/langoai/lango/internal/p2p/firewall"
 	"github.com/langoai/lango/internal/p2p/handshake"
 	"github.com/langoai/lango/internal/p2p/identity"
@@ -78,9 +79,9 @@ func buildP2PTools(pc *p2pComponents) []*agent.Tool {
 				"required": []string{"multiaddr"},
 			},
 			Handler: func(ctx context.Context, params map[string]interface{}) (interface{}, error) {
-				addr, _ := params["multiaddr"].(string)
-				if addr == "" {
-					return nil, fmt.Errorf("missing multiaddr parameter")
+				addr, err := toolparam.RequireString(params, "multiaddr")
+				if err != nil {
+					return nil, err
 				}
 
 				// Parse multiaddr and extract peer info.
@@ -140,9 +141,9 @@ func buildP2PTools(pc *p2pComponents) []*agent.Tool {
 				"required": []string{"peer_did"},
 			},
 			Handler: func(ctx context.Context, params map[string]interface{}) (interface{}, error) {
-				peerDID, _ := params["peer_did"].(string)
-				if peerDID == "" {
-					return nil, fmt.Errorf("missing peer_did parameter")
+				peerDID, err := toolparam.RequireString(params, "peer_did")
+				if err != nil {
+					return nil, err
 				}
 				pc.sessions.Remove(peerDID)
 				return map[string]interface{}{
@@ -187,13 +188,15 @@ func buildP2PTools(pc *p2pComponents) []*agent.Tool {
 				"required": []string{"peer_did", "tool_name"},
 			},
 			Handler: func(ctx context.Context, params map[string]interface{}) (interface{}, error) {
-				peerDID, _ := params["peer_did"].(string)
-				toolName, _ := params["tool_name"].(string)
-				paramStr, _ := params["params"].(string)
-
-				if peerDID == "" || toolName == "" {
-					return nil, fmt.Errorf("peer_did and tool_name are required")
+				peerDID, err := toolparam.RequireString(params, "peer_did")
+				if err != nil {
+					return nil, err
 				}
+				toolName, err := toolparam.RequireString(params, "tool_name")
+				if err != nil {
+					return nil, err
+				}
+				paramStr := toolparam.OptionalString(params, "params", "")
 
 				sess := pc.sessions.Get(peerDID)
 				if sess == nil {
@@ -270,25 +273,18 @@ func buildP2PTools(pc *p2pComponents) []*agent.Tool {
 				"required": []string{"peer_did", "action"},
 			},
 			Handler: func(ctx context.Context, params map[string]interface{}) (interface{}, error) {
-				peerDID, _ := params["peer_did"].(string)
-				action, _ := params["action"].(string)
-				if peerDID == "" || action == "" {
-					return nil, fmt.Errorf("peer_did and action are required")
+				peerDID, err := toolparam.RequireString(params, "peer_did")
+				if err != nil {
+					return nil, err
+				}
+				action, err := toolparam.RequireString(params, "action")
+				if err != nil {
+					return nil, err
 				}
 
-				var tools []string
-				if raw, ok := params["tools"].([]interface{}); ok {
-					for _, v := range raw {
-						if s, ok := v.(string); ok {
-							tools = append(tools, s)
-						}
-					}
-				}
+				tools := toolparam.StringSlice(params, "tools")
 
-				var rateLimit int
-				if rl, ok := params["rate_limit"].(float64); ok {
-					rateLimit = int(rl)
-				}
+				rateLimit := toolparam.OptionalInt(params, "rate_limit", 0)
 
 				rule := firewall.ACLRule{
 					PeerDID:   peerDID,
@@ -318,9 +314,9 @@ func buildP2PTools(pc *p2pComponents) []*agent.Tool {
 				"required": []string{"peer_did"},
 			},
 			Handler: func(ctx context.Context, params map[string]interface{}) (interface{}, error) {
-				peerDID, _ := params["peer_did"].(string)
-				if peerDID == "" {
-					return nil, fmt.Errorf("missing peer_did parameter")
+				peerDID, err := toolparam.RequireString(params, "peer_did")
+				if err != nil {
+					return nil, err
 				}
 				removed := pc.fw.RemoveRule(peerDID)
 				return map[string]interface{}{
@@ -343,10 +339,13 @@ func buildP2PTools(pc *p2pComponents) []*agent.Tool {
 				"required": []string{"peer_did", "tool_name"},
 			},
 			Handler: func(ctx context.Context, params map[string]interface{}) (interface{}, error) {
-				peerDID, _ := params["peer_did"].(string)
-				toolName, _ := params["tool_name"].(string)
-				if peerDID == "" || toolName == "" {
-					return nil, fmt.Errorf("peer_did and tool_name are required")
+				peerDID, err := toolparam.RequireString(params, "peer_did")
+				if err != nil {
+					return nil, err
+				}
+				toolName, err := toolparam.RequireString(params, "tool_name")
+				if err != nil {
+					return nil, err
 				}
 
 				sess := pc.sessions.Get(peerDID)
@@ -397,9 +396,9 @@ func buildP2PTools(pc *p2pComponents) []*agent.Tool {
 				"required": []string{"peer_did"},
 			},
 			Handler: func(ctx context.Context, params map[string]interface{}) (interface{}, error) {
-				peerDID, _ := params["peer_did"].(string)
-				if peerDID == "" {
-					return nil, fmt.Errorf("peer_did is required")
+				peerDID, err := toolparam.RequireString(params, "peer_did")
+				if err != nil {
+					return nil, err
 				}
 
 				if pc.reputation == nil {
@@ -443,7 +442,7 @@ func buildP2PTools(pc *p2pComponents) []*agent.Tool {
 				},
 			},
 			Handler: func(ctx context.Context, params map[string]interface{}) (interface{}, error) {
-				capability, _ := params["capability"].(string)
+				capability := toolparam.OptionalString(params, "capability", "")
 
 				if pc.gossip == nil {
 					return map[string]interface{}{"peers": []interface{}{}, "count": 0, "message": "gossip not enabled"}, nil
@@ -494,13 +493,15 @@ func buildP2PPaymentTool(p2pc *p2pComponents, pc *paymentComponents) []*agent.To
 				"required": []string{"peer_did", "amount"},
 			},
 			Handler: func(ctx context.Context, params map[string]interface{}) (interface{}, error) {
-				peerDID, _ := params["peer_did"].(string)
-				amount, _ := params["amount"].(string)
-				memo, _ := params["memo"].(string)
-
-				if peerDID == "" || amount == "" {
-					return nil, fmt.Errorf("peer_did and amount are required")
+				peerDID, err := toolparam.RequireString(params, "peer_did")
+				if err != nil {
+					return nil, err
 				}
+				amount, err := toolparam.RequireString(params, "amount")
+				if err != nil {
+					return nil, err
+				}
+				memo := toolparam.OptionalString(params, "memo", "")
 
 				// Verify session exists for this peer.
 				sess := p2pc.sessions.Get(peerDID)
@@ -597,13 +598,15 @@ func buildP2PPaidInvokeTool(p2pc *p2pComponents, pc *paymentComponents) []*agent
 				"required": []string{"peer_did", "tool_name"},
 			},
 			Handler: func(ctx context.Context, params map[string]interface{}) (interface{}, error) {
-				peerDID, _ := params["peer_did"].(string)
-				toolName, _ := params["tool_name"].(string)
-				paramStr, _ := params["params"].(string)
-
-				if peerDID == "" || toolName == "" {
-					return nil, fmt.Errorf("peer_did and tool_name are required")
+				peerDID, err := toolparam.RequireString(params, "peer_did")
+				if err != nil {
+					return nil, err
 				}
+				toolName, err := toolparam.RequireString(params, "tool_name")
+				if err != nil {
+					return nil, err
+				}
+				paramStr := toolparam.OptionalString(params, "params", "")
 
 				// 1. Verify active session.
 				sess := p2pc.sessions.Get(peerDID)

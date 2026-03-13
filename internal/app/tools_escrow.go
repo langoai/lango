@@ -9,6 +9,7 @@ import (
 	"github.com/langoai/lango/internal/agent"
 	"github.com/langoai/lango/internal/economy/escrow"
 	"github.com/langoai/lango/internal/economy/escrow/hub"
+	"github.com/langoai/lango/internal/toolparam"
 	"github.com/langoai/lango/internal/wallet"
 )
 
@@ -56,14 +57,19 @@ func escrowCreateTool(ee *escrow.Engine) *agent.Tool {
 			"required": []string{"buyerDid", "sellerDid", "amount", "milestones"},
 		},
 		Handler: func(ctx context.Context, params map[string]interface{}) (interface{}, error) {
-			buyerDID, _ := params["buyerDid"].(string)
-			sellerDID, _ := params["sellerDid"].(string)
-			amtStr, _ := params["amount"].(string)
-			reason, _ := params["reason"].(string)
-
-			if buyerDID == "" || sellerDID == "" || amtStr == "" {
-				return nil, fmt.Errorf("buyerDid, sellerDid, and amount are required")
+			buyerDID, err := toolparam.RequireString(params, "buyerDid")
+			if err != nil {
+				return nil, err
 			}
+			sellerDID, err := toolparam.RequireString(params, "sellerDid")
+			if err != nil {
+				return nil, err
+			}
+			amtStr, err := toolparam.RequireString(params, "amount")
+			if err != nil {
+				return nil, err
+			}
+			reason := toolparam.OptionalString(params, "reason", "")
 
 			totalAmount, err := wallet.ParseUSDC(amtStr)
 			if err != nil {
@@ -121,9 +127,9 @@ func escrowFundTool(ee *escrow.Engine, settler escrow.SettlementExecutor) *agent
 			"required": []string{"escrowId"},
 		},
 		Handler: func(ctx context.Context, params map[string]interface{}) (interface{}, error) {
-			escrowID, _ := params["escrowId"].(string)
-			if escrowID == "" {
-				return nil, fmt.Errorf("escrowId is required")
+			escrowID, err := toolparam.RequireString(params, "escrowId")
+			if err != nil {
+				return nil, err
 			}
 
 			entry, err := ee.Fund(ctx, escrowID)
@@ -180,9 +186,9 @@ func escrowActivateTool(ee *escrow.Engine) *agent.Tool {
 			"required": []string{"escrowId"},
 		},
 		Handler: func(ctx context.Context, params map[string]interface{}) (interface{}, error) {
-			escrowID, _ := params["escrowId"].(string)
-			if escrowID == "" {
-				return nil, fmt.Errorf("escrowId is required")
+			escrowID, err := toolparam.RequireString(params, "escrowId")
+			if err != nil {
+				return nil, err
 			}
 
 			entry, err := ee.Activate(ctx, escrowID)
@@ -211,10 +217,13 @@ func escrowSubmitWorkTool(ee *escrow.Engine, settler escrow.SettlementExecutor) 
 			"required": []string{"escrowId", "workHash"},
 		},
 		Handler: func(ctx context.Context, params map[string]interface{}) (interface{}, error) {
-			escrowID, _ := params["escrowId"].(string)
-			workHashStr, _ := params["workHash"].(string)
-			if escrowID == "" || workHashStr == "" {
-				return nil, fmt.Errorf("escrowId and workHash are required")
+			escrowID, err := toolparam.RequireString(params, "escrowId")
+			if err != nil {
+				return nil, err
+			}
+			workHashStr, err := toolparam.RequireString(params, "workHash")
+			if err != nil {
+				return nil, err
 			}
 
 			// Verify the escrow exists and is active.
@@ -274,9 +283,9 @@ func escrowReleaseTool(ee *escrow.Engine, settler escrow.SettlementExecutor) *ag
 			"required": []string{"escrowId"},
 		},
 		Handler: func(ctx context.Context, params map[string]interface{}) (interface{}, error) {
-			escrowID, _ := params["escrowId"].(string)
-			if escrowID == "" {
-				return nil, fmt.Errorf("escrowId is required")
+			escrowID, err := toolparam.RequireString(params, "escrowId")
+			if err != nil {
+				return nil, err
 			}
 
 			entry, err := ee.Release(ctx, escrowID)
@@ -332,9 +341,9 @@ func escrowRefundTool(ee *escrow.Engine, settler escrow.SettlementExecutor) *age
 			"required": []string{"escrowId"},
 		},
 		Handler: func(ctx context.Context, params map[string]interface{}) (interface{}, error) {
-			escrowID, _ := params["escrowId"].(string)
-			if escrowID == "" {
-				return nil, fmt.Errorf("escrowId is required")
+			escrowID, err := toolparam.RequireString(params, "escrowId")
+			if err != nil {
+				return nil, err
 			}
 
 			entry, err := ee.Refund(ctx, escrowID)
@@ -391,10 +400,13 @@ func escrowDisputeTool(ee *escrow.Engine, settler escrow.SettlementExecutor) *ag
 			"required": []string{"escrowId", "note"},
 		},
 		Handler: func(ctx context.Context, params map[string]interface{}) (interface{}, error) {
-			escrowID, _ := params["escrowId"].(string)
-			note, _ := params["note"].(string)
-			if escrowID == "" || note == "" {
-				return nil, fmt.Errorf("escrowId and note are required")
+			escrowID, err := toolparam.RequireString(params, "escrowId")
+			if err != nil {
+				return nil, err
+			}
+			note, err := toolparam.RequireString(params, "note")
+			if err != nil {
+				return nil, err
 			}
 
 			entry, err := ee.Dispute(ctx, escrowID, note)
@@ -452,12 +464,15 @@ func escrowResolveTool(ee *escrow.Engine, settler escrow.SettlementExecutor) *ag
 			"required": []string{"escrowId", "favor", "sellerPercent"},
 		},
 		Handler: func(ctx context.Context, params map[string]interface{}) (interface{}, error) {
-			escrowID, _ := params["escrowId"].(string)
-			favor, _ := params["favor"].(string)
-			sellerPctFloat, _ := params["sellerPercent"].(float64)
-			if escrowID == "" || favor == "" {
-				return nil, fmt.Errorf("escrowId and favor are required")
+			escrowID, err := toolparam.RequireString(params, "escrowId")
+			if err != nil {
+				return nil, err
 			}
+			favor, err := toolparam.RequireString(params, "favor")
+			if err != nil {
+				return nil, err
+			}
+			sellerPctFloat, _ := params["sellerPercent"].(float64)
 			if sellerPctFloat < 0 || sellerPctFloat > 100 {
 				return nil, fmt.Errorf("sellerPercent must be between 0 and 100")
 			}
@@ -523,9 +538,9 @@ func escrowStatusTool(ee *escrow.Engine, settler escrow.SettlementExecutor) *age
 			"required": []string{"escrowId"},
 		},
 		Handler: func(ctx context.Context, params map[string]interface{}) (interface{}, error) {
-			escrowID, _ := params["escrowId"].(string)
-			if escrowID == "" {
-				return nil, fmt.Errorf("escrowId is required")
+			escrowID, err := toolparam.RequireString(params, "escrowId")
+			if err != nil {
+				return nil, err
 			}
 
 			entry, err := ee.Get(escrowID)
@@ -603,8 +618,8 @@ func escrowListTool(ee *escrow.Engine) *agent.Tool {
 			},
 		},
 		Handler: func(ctx context.Context, params map[string]interface{}) (interface{}, error) {
-			filter, _ := params["filter"].(string)
-			peerDID, _ := params["peerDid"].(string)
+			filter := toolparam.OptionalString(params, "filter", "")
+			peerDID := toolparam.OptionalString(params, "peerDid", "")
 
 			var entries []*escrow.EscrowEntry
 			if peerDID != "" {

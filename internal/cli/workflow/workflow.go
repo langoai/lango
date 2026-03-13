@@ -127,7 +127,7 @@ func newWorkflowListCmd(bootLoader func() (*bootstrap.Result, error)) *cobra.Com
 
 			engine := initEngine(boot)
 			if engine == nil {
-				return fmt.Errorf("workflow engine is not enabled")
+				return ErrWorkflowDisabled
 			}
 
 			runs, err := engine.ListRuns(context.Background(), limit)
@@ -170,7 +170,7 @@ func newWorkflowStatusCmd(bootLoader func() (*bootstrap.Result, error)) *cobra.C
 
 			engine := initEngine(boot)
 			if engine == nil {
-				return fmt.Errorf("workflow engine is not enabled")
+				return ErrWorkflowDisabled
 			}
 
 			status, err := engine.Status(context.Background(), args[0])
@@ -213,7 +213,7 @@ func newWorkflowCancelCmd(bootLoader func() (*bootstrap.Result, error)) *cobra.C
 
 			engine := initEngine(boot)
 			if engine == nil {
-				return fmt.Errorf("workflow engine is not enabled")
+				return ErrWorkflowDisabled
 			}
 
 			if err := engine.Cancel(args[0]); err != nil {
@@ -241,7 +241,7 @@ func newWorkflowHistoryCmd(bootLoader func() (*bootstrap.Result, error)) *cobra.
 
 			engine := initEngine(boot)
 			if engine == nil {
-				return fmt.Errorf("workflow engine is not enabled")
+				return ErrWorkflowDisabled
 			}
 
 			runs, err := engine.ListRuns(context.Background(), limit)

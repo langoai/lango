@@ -165,9 +165,9 @@ func TestEntStore_OnChainTracking(t *testing.T) {
 	assert.Equal(t, "escrow-oc1", got.ID)
 
 	// SetTxHash
-	require.NoError(t, store.SetTxHash("escrow-oc1", "deposit", "0xabc"))
-	require.NoError(t, store.SetTxHash("escrow-oc1", "release", "0xdef"))
-	require.NoError(t, store.SetTxHash("escrow-oc1", "refund", "0x123"))
+	require.NoError(t, store.SetTxHash("escrow-oc1", TxDeposit, "0xabc"))
+	require.NoError(t, store.SetTxHash("escrow-oc1", TxRelease, "0xdef"))
+	require.NoError(t, store.SetTxHash("escrow-oc1", TxRefund, "0x123"))
 
 	// Verify by re-reading the ent record directly
 	deal, err := client.EscrowDeal.Query().Only(t.Context())
@@ -177,7 +177,7 @@ func TestEntStore_OnChainTracking(t *testing.T) {
 	assert.Equal(t, "0x123", deal.RefundTxHash)
 
 	// Unknown field should error
-	err = store.SetTxHash("escrow-oc1", "invalid", "0x999")
+	err = store.SetTxHash("escrow-oc1", TransactionType("invalid"), "0x999")
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "unknown field")
 }
@@ -222,7 +222,7 @@ func TestEntStore_Errors(t *testing.T) {
 	})
 
 	t.Run("set tx hash not found", func(t *testing.T) {
-		err := store.SetTxHash("nonexistent", "deposit", "0xabc")
+		err := store.SetTxHash("nonexistent", TxDeposit, "0xabc")
 		assert.True(t, errors.Is(err, ErrEscrowNotFound))
 	})
 }

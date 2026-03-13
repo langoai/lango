@@ -7,6 +7,7 @@ import (
 
 	"github.com/langoai/lango/internal/agent"
 	"github.com/langoai/lango/internal/p2p/workspace"
+	"github.com/langoai/lango/internal/toolparam"
 )
 
 // buildWorkspaceTools creates workspace management tools.
@@ -27,11 +28,11 @@ func buildWorkspaceTools(wc *wsComponents) []*agent.Tool {
 			"required": []string{"name", "goal"},
 		},
 		Handler: func(ctx context.Context, params map[string]interface{}) (interface{}, error) {
-			name, _ := params["name"].(string)
-			goal, _ := params["goal"].(string)
-			if name == "" {
-				return nil, fmt.Errorf("missing name parameter")
+			name, err := toolparam.RequireString(params, "name")
+			if err != nil {
+				return nil, err
 			}
+			goal := toolparam.OptionalString(params, "goal", "")
 
 			ws, err := wc.manager.Create(ctx, workspace.CreateRequest{
 				Name: name,
@@ -68,9 +69,9 @@ func buildWorkspaceTools(wc *wsComponents) []*agent.Tool {
 			"required": []string{"workspaceId"},
 		},
 		Handler: func(ctx context.Context, params map[string]interface{}) (interface{}, error) {
-			wsID, _ := params["workspaceId"].(string)
-			if wsID == "" {
-				return nil, fmt.Errorf("missing workspaceId parameter")
+			wsID, err := toolparam.RequireString(params, "workspaceId")
+			if err != nil {
+				return nil, err
 			}
 
 			if err := wc.manager.Join(ctx, wsID); err != nil {
@@ -97,9 +98,9 @@ func buildWorkspaceTools(wc *wsComponents) []*agent.Tool {
 			"required": []string{"workspaceId"},
 		},
 		Handler: func(ctx context.Context, params map[string]interface{}) (interface{}, error) {
-			wsID, _ := params["workspaceId"].(string)
-			if wsID == "" {
-				return nil, fmt.Errorf("missing workspaceId parameter")
+			wsID, err := toolparam.RequireString(params, "workspaceId")
+			if err != nil {
+				return nil, err
 			}
 
 			if err := wc.manager.Leave(ctx, wsID); err != nil {
@@ -154,9 +155,9 @@ func buildWorkspaceTools(wc *wsComponents) []*agent.Tool {
 			"required": []string{"workspaceId"},
 		},
 		Handler: func(ctx context.Context, params map[string]interface{}) (interface{}, error) {
-			wsID, _ := params["workspaceId"].(string)
-			if wsID == "" {
-				return nil, fmt.Errorf("missing workspaceId parameter")
+			wsID, err := toolparam.RequireString(params, "workspaceId")
+			if err != nil {
+				return nil, err
 			}
 
 			ws, err := wc.manager.Get(ctx, wsID)
@@ -220,18 +221,16 @@ func buildWorkspaceTools(wc *wsComponents) []*agent.Tool {
 			"required": []string{"workspaceId", "content"},
 		},
 		Handler: func(ctx context.Context, params map[string]interface{}) (interface{}, error) {
-			wsID, _ := params["workspaceId"].(string)
-			content, _ := params["content"].(string)
-			msgType, _ := params["type"].(string)
-			parentID, _ := params["parentId"].(string)
-
-			if wsID == "" || content == "" {
-				return nil, fmt.Errorf("missing workspaceId or content parameter")
+			wsID, err := toolparam.RequireString(params, "workspaceId")
+			if err != nil {
+				return nil, err
 			}
-
-			if msgType == "" {
-				msgType = string(workspace.MessageTypeKnowledgeShare)
+			content, err := toolparam.RequireString(params, "content")
+			if err != nil {
+				return nil, err
 			}
+			msgType := toolparam.OptionalString(params, "type", string(workspace.MessageTypeKnowledgeShare))
+			parentID := toolparam.OptionalString(params, "parentId", "")
 
 			msg := workspace.Message{
 				Type:      workspace.MessageType(msgType),
@@ -273,18 +272,15 @@ func buildWorkspaceTools(wc *wsComponents) []*agent.Tool {
 			"required": []string{"workspaceId"},
 		},
 		Handler: func(ctx context.Context, params map[string]interface{}) (interface{}, error) {
-			wsID, _ := params["workspaceId"].(string)
-			if wsID == "" {
-				return nil, fmt.Errorf("missing workspaceId parameter")
+			wsID, err := toolparam.RequireString(params, "workspaceId")
+			if err != nil {
+				return nil, err
 			}
 
-			limit := 20
-			if l, ok := params["limit"].(float64); ok {
-				limit = int(l)
-			}
+			limit := toolparam.OptionalInt(params, "limit", 20)
 
 			opts := workspace.ReadOptions{Limit: limit}
-			if t, ok := params["type"].(string); ok && t != "" {
+			if t := toolparam.OptionalString(params, "type", ""); t != "" {
 				opts.Types = []string{t}
 			}
 
@@ -331,9 +327,9 @@ func buildGitTools(wc *wsComponents) []*agent.Tool {
 				"required": []string{"workspaceId"},
 			},
 			Handler: func(ctx context.Context, params map[string]interface{}) (interface{}, error) {
-				wsID, _ := params["workspaceId"].(string)
-				if wsID == "" {
-					return nil, fmt.Errorf("missing workspaceId parameter")
+				wsID, err := toolparam.RequireString(params, "workspaceId")
+				if err != nil {
+					return nil, err
 				}
 				if err := wc.gitService.Init(ctx, wsID); err != nil {
 					return nil, err
@@ -354,11 +350,11 @@ func buildGitTools(wc *wsComponents) []*agent.Tool {
 				"required": []string{"workspaceId"},
 			},
 			Handler: func(ctx context.Context, params map[string]interface{}) (interface{}, error) {
-				wsID, _ := params["workspaceId"].(string)
-				message, _ := params["message"].(string)
-				if wsID == "" {
-					return nil, fmt.Errorf("missing workspaceId parameter")
+				wsID, err := toolparam.RequireString(params, "workspaceId")
+				if err != nil {
+					return nil, err
 				}
+				message := toolparam.OptionalString(params, "message", "")
 
 				bundle, hash, err := wc.gitService.CreateBundle(ctx, wsID)
 				if err != nil {
@@ -405,14 +401,11 @@ func buildGitTools(wc *wsComponents) []*agent.Tool {
 				"required": []string{"workspaceId"},
 			},
 			Handler: func(ctx context.Context, params map[string]interface{}) (interface{}, error) {
-				wsID, _ := params["workspaceId"].(string)
-				if wsID == "" {
-					return nil, fmt.Errorf("missing workspaceId parameter")
+				wsID, err := toolparam.RequireString(params, "workspaceId")
+				if err != nil {
+					return nil, err
 				}
-				limit := 20
-				if l, ok := params["limit"].(float64); ok {
-					limit = int(l)
-				}
+				limit := toolparam.OptionalInt(params, "limit", 20)
 				commits, err := wc.gitService.Log(ctx, wsID, limit)
 				if err != nil {
 					return nil, err
@@ -443,11 +436,17 @@ func buildGitTools(wc *wsComponents) []*agent.Tool {
 				"required": []string{"workspaceId", "from", "to"},
 			},
 			Handler: func(ctx context.Context, params map[string]interface{}) (interface{}, error) {
-				wsID, _ := params["workspaceId"].(string)
-				from, _ := params["from"].(string)
-				to, _ := params["to"].(string)
-				if wsID == "" || from == "" || to == "" {
-					return nil, fmt.Errorf("missing required parameters")
+				wsID, err := toolparam.RequireString(params, "workspaceId")
+				if err != nil {
+					return nil, err
+				}
+				from, err := toolparam.RequireString(params, "from")
+				if err != nil {
+					return nil, err
+				}
+				to, err := toolparam.RequireString(params, "to")
+				if err != nil {
+					return nil, err
 				}
 				diff, err := wc.gitService.Diff(ctx, wsID, from, to)
 				if err != nil {
@@ -468,9 +467,9 @@ func buildGitTools(wc *wsComponents) []*agent.Tool {
 				"required": []string{"workspaceId"},
 			},
 			Handler: func(ctx context.Context, params map[string]interface{}) (interface{}, error) {
-				wsID, _ := params["workspaceId"].(string)
-				if wsID == "" {
-					return nil, fmt.Errorf("missing workspaceId parameter")
+				wsID, err := toolparam.RequireString(params, "workspaceId")
+				if err != nil {
+					return nil, err
 				}
 				leaves, err := wc.gitService.Leaves(ctx, wsID)
 				if err != nil {

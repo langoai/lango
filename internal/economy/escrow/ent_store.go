@@ -281,8 +281,8 @@ func (s *EntStore) GetByOnChainDealID(dealID string) (*EscrowEntry, error) {
 }
 
 // SetTxHash sets a transaction hash field on an escrow entry.
-// The field parameter must be one of: "deposit", "release", "refund".
-func (s *EntStore) SetTxHash(escrowID, field, txHash string) error {
+// The field parameter must be one of: TxDeposit, TxRelease, TxRefund.
+func (s *EntStore) SetTxHash(escrowID string, field TransactionType, txHash string) error {
 	ctx := context.Background()
 
 	deal, err := s.client.EscrowDeal.Query().
@@ -297,11 +297,11 @@ func (s *EntStore) SetTxHash(escrowID, field, txHash string) error {
 
 	builder := deal.Update()
 	switch field {
-	case "deposit":
+	case TxDeposit:
 		builder.SetDepositTxHash(txHash)
-	case "release":
+	case TxRelease:
 		builder.SetReleaseTxHash(txHash)
-	case "refund":
+	case TxRefund:
 		builder.SetRefundTxHash(txHash)
 	default:
 		return fmt.Errorf("set tx hash %q: unknown field %q", escrowID, field)
