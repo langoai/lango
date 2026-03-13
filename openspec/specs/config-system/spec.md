@@ -36,7 +36,7 @@ The system SHALL substitute environment variables in configuration values.
 - **THEN** an error SHALL be logged and default used if available
 
 ### Requirement: Configuration validation
-The configuration system SHALL validate that at least one provider is configured with a non-empty `apiKey` or valid OAuth token. It SHALL validate that `agent.provider` references an existing key in the `providers` map. It SHALL NOT require `agent.apiKey` (this field no longer exists).
+The configuration system SHALL validate that at least one provider is configured with a non-empty `apiKey` or valid OAuth token. It SHALL validate that `agent.provider` references an existing key in the `providers` map. It SHALL NOT require `agent.apiKey` (this field no longer exists). The `Validate()` function SHALL reference exported package-level validation maps (`ValidLogLevels`, `ValidLogFormats`, `ValidSignerProviders`, `ValidWalletProviders`, `ValidZKPSchemes`, `ValidContainerRuntimes`, `ValidMCPTransports`) from `config/constants.go` instead of inline map literals.
 
 #### Scenario: Valid configuration
 - **WHEN** config has `agent.provider: "google"` and `providers.google.type: "gemini"` with a valid `apiKey`
@@ -45,6 +45,14 @@ The configuration system SHALL validate that at least one provider is configured
 #### Scenario: Invalid configuration
 - **WHEN** config has `agent.provider: "google"` but no `google` key in `providers` map
 - **THEN** validation SHALL fail with a clear error message
+
+#### Scenario: Validation map reuse
+- **WHEN** `config.Validate()` checks the log level value
+- **THEN** it uses `config.ValidLogLevels` map defined in `constants.go`
+
+#### Scenario: External access to valid values
+- **WHEN** another package needs to validate a config value (e.g., CLI flag validation)
+- **THEN** it can import and use `config.ValidLogLevels` directly
 
 ### Requirement: Default values
 The configuration system SHALL apply sensible defaults for all non-credential fields. The minimum viable configuration SHALL require only: `agent.provider`, `providers.<name>.type`, `providers.<name>.apiKey`, and one channel's `enabled: true` + token. All other fields SHALL have defaults:

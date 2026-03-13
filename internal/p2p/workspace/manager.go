@@ -125,7 +125,7 @@ func (m *Manager) Join(ctx context.Context, workspaceID string) error {
 
 	ws, ok := m.workspaces[workspaceID]
 	if !ok {
-		return fmt.Errorf("workspace %s not found", workspaceID)
+		return fmt.Errorf("workspace %s: %w", workspaceID, ErrWorkspaceNotFound)
 	}
 	if ws.Status == StatusArchived {
 		return fmt.Errorf("workspace %s is archived", workspaceID)
@@ -160,7 +160,7 @@ func (m *Manager) Leave(ctx context.Context, workspaceID string) error {
 
 	ws, ok := m.workspaces[workspaceID]
 	if !ok {
-		return fmt.Errorf("workspace %s not found", workspaceID)
+		return fmt.Errorf("workspace %s: %w", workspaceID, ErrWorkspaceNotFound)
 	}
 
 	members := make([]*Member, 0, len(ws.Members))
@@ -199,7 +199,7 @@ func (m *Manager) Get(ctx context.Context, workspaceID string) (*Workspace, erro
 
 	ws, ok := m.workspaces[workspaceID]
 	if !ok {
-		return nil, fmt.Errorf("workspace %s not found", workspaceID)
+		return nil, fmt.Errorf("workspace %s: %w", workspaceID, ErrWorkspaceNotFound)
 	}
 	return ws, nil
 }
@@ -211,7 +211,7 @@ func (m *Manager) Activate(ctx context.Context, workspaceID string) error {
 
 	ws, ok := m.workspaces[workspaceID]
 	if !ok {
-		return fmt.Errorf("workspace %s not found", workspaceID)
+		return fmt.Errorf("workspace %s: %w", workspaceID, ErrWorkspaceNotFound)
 	}
 	if ws.Status != StatusForming {
 		return fmt.Errorf("workspace %s is not in forming state", workspaceID)
@@ -235,7 +235,7 @@ func (m *Manager) Archive(ctx context.Context, workspaceID string) error {
 
 	ws, ok := m.workspaces[workspaceID]
 	if !ok {
-		return fmt.Errorf("workspace %s not found", workspaceID)
+		return fmt.Errorf("workspace %s: %w", workspaceID, ErrWorkspaceNotFound)
 	}
 
 	ws.Status = StatusArchived
@@ -255,7 +255,7 @@ func (m *Manager) Post(ctx context.Context, workspaceID string, msg Message) err
 	ws, ok := m.workspaces[workspaceID]
 	m.mu.RUnlock()
 	if !ok {
-		return fmt.Errorf("workspace %s not found", workspaceID)
+		return fmt.Errorf("workspace %s: %w", workspaceID, ErrWorkspaceNotFound)
 	}
 	if ws.Status == StatusArchived {
 		return fmt.Errorf("workspace %s is archived", workspaceID)
@@ -287,7 +287,7 @@ func (m *Manager) Read(ctx context.Context, workspaceID string, opts ReadOptions
 	_, ok := m.workspaces[workspaceID]
 	m.mu.RUnlock()
 	if !ok {
-		return nil, fmt.Errorf("workspace %s not found", workspaceID)
+		return nil, fmt.Errorf("workspace %s: %w", workspaceID, ErrWorkspaceNotFound)
 	}
 
 	if opts.Limit <= 0 {
@@ -355,7 +355,7 @@ func (m *Manager) AddMember(ctx context.Context, workspaceID string, member *Mem
 
 	ws, ok := m.workspaces[workspaceID]
 	if !ok {
-		return fmt.Errorf("workspace %s not found", workspaceID)
+		return fmt.Errorf("workspace %s: %w", workspaceID, ErrWorkspaceNotFound)
 	}
 
 	for _, mem := range ws.Members {

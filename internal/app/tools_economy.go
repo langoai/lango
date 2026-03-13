@@ -11,6 +11,7 @@ import (
 	"github.com/langoai/lango/internal/economy/negotiation"
 	"github.com/langoai/lango/internal/economy/pricing"
 	"github.com/langoai/lango/internal/economy/risk"
+	"github.com/langoai/lango/internal/toolparam"
 	"github.com/langoai/lango/internal/wallet"
 )
 
@@ -52,12 +53,12 @@ func buildBudgetTools(be *budget.Engine) []*agent.Tool {
 				"required": []string{"taskId"},
 			},
 			Handler: func(ctx context.Context, params map[string]interface{}) (interface{}, error) {
-				taskID, _ := params["taskId"].(string)
-				if taskID == "" {
-					return nil, fmt.Errorf("taskId is required")
+				taskID, err := toolparam.RequireString(params, "taskId")
+				if err != nil {
+					return nil, err
 				}
 				var total *big.Int
-				if amtStr, ok := params["amount"].(string); ok && amtStr != "" {
+				if amtStr := toolparam.OptionalString(params, "amount", ""); amtStr != "" {
 					parsed, err := wallet.ParseUSDC(amtStr)
 					if err != nil {
 						return nil, fmt.Errorf("parse amount %q: %w", amtStr, err)
@@ -87,9 +88,9 @@ func buildBudgetTools(be *budget.Engine) []*agent.Tool {
 				"required": []string{"taskId"},
 			},
 			Handler: func(ctx context.Context, params map[string]interface{}) (interface{}, error) {
-				taskID, _ := params["taskId"].(string)
-				if taskID == "" {
-					return nil, fmt.Errorf("taskId is required")
+				taskID, err := toolparam.RequireString(params, "taskId")
+				if err != nil {
+					return nil, err
 				}
 				rate, err := be.BurnRate(taskID)
 				if err != nil {
@@ -113,9 +114,9 @@ func buildBudgetTools(be *budget.Engine) []*agent.Tool {
 				"required": []string{"taskId"},
 			},
 			Handler: func(ctx context.Context, params map[string]interface{}) (interface{}, error) {
-				taskID, _ := params["taskId"].(string)
-				if taskID == "" {
-					return nil, fmt.Errorf("taskId is required")
+				taskID, err := toolparam.RequireString(params, "taskId")
+				if err != nil {
+					return nil, err
 				}
 				report, err := be.Close(taskID)
 				if err != nil {
@@ -148,17 +149,20 @@ func buildRiskTools(re *risk.Engine) []*agent.Tool {
 				"required": []string{"peerDid", "amount"},
 			},
 			Handler: func(ctx context.Context, params map[string]interface{}) (interface{}, error) {
-				peerDID, _ := params["peerDid"].(string)
-				amtStr, _ := params["amount"].(string)
-				if peerDID == "" || amtStr == "" {
-					return nil, fmt.Errorf("peerDid and amount are required")
+				peerDID, err := toolparam.RequireString(params, "peerDid")
+				if err != nil {
+					return nil, err
+				}
+				amtStr, err := toolparam.RequireString(params, "amount")
+				if err != nil {
+					return nil, err
 				}
 				amount, err := wallet.ParseUSDC(amtStr)
 				if err != nil {
 					return nil, fmt.Errorf("parse amount: %w", err)
 				}
 				v := risk.VerifiabilityMedium
-				if vs, ok := params["verifiability"].(string); ok {
+				if vs := toolparam.OptionalString(params, "verifiability", ""); vs != "" {
 					v = risk.Verifiability(vs)
 				}
 				assessment, err := re.Assess(ctx, peerDID, amount, v)
@@ -193,11 +197,17 @@ func buildNegotiationTools(ne *negotiation.Engine) []*agent.Tool {
 				"required": []string{"peerDid", "toolName", "price"},
 			},
 			Handler: func(ctx context.Context, params map[string]interface{}) (interface{}, error) {
-				peerDID, _ := params["peerDid"].(string)
-				toolName, _ := params["toolName"].(string)
-				priceStr, _ := params["price"].(string)
-				if peerDID == "" || toolName == "" || priceStr == "" {
-					return nil, fmt.Errorf("peerDid, toolName, and price are required")
+				peerDID, err := toolparam.RequireString(params, "peerDid")
+				if err != nil {
+					return nil, err
+				}
+				toolName, err := toolparam.RequireString(params, "toolName")
+				if err != nil {
+					return nil, err
+				}
+				priceStr, err := toolparam.RequireString(params, "price")
+				if err != nil {
+					return nil, err
 				}
 				price, err := wallet.ParseUSDC(priceStr)
 				if err != nil {
@@ -231,9 +241,9 @@ func buildNegotiationTools(ne *negotiation.Engine) []*agent.Tool {
 				"required": []string{"sessionId"},
 			},
 			Handler: func(ctx context.Context, params map[string]interface{}) (interface{}, error) {
-				sessionID, _ := params["sessionId"].(string)
-				if sessionID == "" {
-					return nil, fmt.Errorf("sessionId is required")
+				sessionID, err := toolparam.RequireString(params, "sessionId")
+				if err != nil {
+					return nil, err
 				}
 				sess, err := ne.Get(sessionID)
 				if err != nil {
@@ -285,10 +295,10 @@ func buildEscrowTools(ee *escrow.Engine) []*agent.Tool {
 				"required": []string{"buyerDid", "sellerDid", "amount", "milestones"},
 			},
 			Handler: func(ctx context.Context, params map[string]interface{}) (interface{}, error) {
-				buyerDID, _ := params["buyerDid"].(string)
-				sellerDID, _ := params["sellerDid"].(string)
-				amtStr, _ := params["amount"].(string)
-				reasonStr, _ := params["reason"].(string)
+				buyerDID := toolparam.OptionalString(params, "buyerDid", "")
+				sellerDID := toolparam.OptionalString(params, "sellerDid", "")
+				amtStr := toolparam.OptionalString(params, "amount", "")
+				reasonStr := toolparam.OptionalString(params, "reason", "")
 
 				totalAmount, err := wallet.ParseUSDC(amtStr)
 				if err != nil {
@@ -345,9 +355,9 @@ func buildEscrowTools(ee *escrow.Engine) []*agent.Tool {
 				"required": []string{"escrowId", "milestoneId"},
 			},
 			Handler: func(ctx context.Context, params map[string]interface{}) (interface{}, error) {
-				escrowID, _ := params["escrowId"].(string)
-				milestoneID, _ := params["milestoneId"].(string)
-				evidence, _ := params["evidence"].(string)
+				escrowID := toolparam.OptionalString(params, "escrowId", "")
+				milestoneID := toolparam.OptionalString(params, "milestoneId", "")
+				evidence := toolparam.OptionalString(params, "evidence", "")
 				entry, err := ee.CompleteMilestone(ctx, escrowID, milestoneID, evidence)
 				if err != nil {
 					return nil, err
@@ -372,7 +382,7 @@ func buildEscrowTools(ee *escrow.Engine) []*agent.Tool {
 				"required": []string{"escrowId"},
 			},
 			Handler: func(ctx context.Context, params map[string]interface{}) (interface{}, error) {
-				escrowID, _ := params["escrowId"].(string)
+				escrowID := toolparam.OptionalString(params, "escrowId", "")
 				entry, err := ee.Get(escrowID)
 				if err != nil {
 					return nil, err
@@ -408,7 +418,7 @@ func buildEscrowTools(ee *escrow.Engine) []*agent.Tool {
 				"required": []string{"escrowId"},
 			},
 			Handler: func(ctx context.Context, params map[string]interface{}) (interface{}, error) {
-				escrowID, _ := params["escrowId"].(string)
+				escrowID := toolparam.OptionalString(params, "escrowId", "")
 				entry, err := ee.Release(ctx, escrowID)
 				if err != nil {
 					return nil, err
@@ -432,8 +442,8 @@ func buildEscrowTools(ee *escrow.Engine) []*agent.Tool {
 				"required": []string{"escrowId", "note"},
 			},
 			Handler: func(ctx context.Context, params map[string]interface{}) (interface{}, error) {
-				escrowID, _ := params["escrowId"].(string)
-				note, _ := params["note"].(string)
+				escrowID := toolparam.OptionalString(params, "escrowId", "")
+				note := toolparam.OptionalString(params, "note", "")
 				entry, err := ee.Dispute(ctx, escrowID, note)
 				if err != nil {
 					return nil, err
@@ -462,11 +472,11 @@ func buildPricingTools(pe *pricing.Engine) []*agent.Tool {
 				"required": []string{"toolName"},
 			},
 			Handler: func(ctx context.Context, params map[string]interface{}) (interface{}, error) {
-				toolName, _ := params["toolName"].(string)
-				peerDID, _ := params["peerDid"].(string)
-				if toolName == "" {
-					return nil, fmt.Errorf("toolName is required")
+				toolName, err := toolparam.RequireString(params, "toolName")
+				if err != nil {
+					return nil, err
 				}
+				peerDID := toolparam.OptionalString(params, "peerDid", "")
 				quote, err := pe.Quote(ctx, toolName, peerDID)
 				if err != nil {
 					return nil, err

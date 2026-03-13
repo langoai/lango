@@ -7,6 +7,17 @@ import (
 
 	"github.com/langoai/lango/internal/agent"
 	"github.com/langoai/lango/internal/tools/browser"
+	"github.com/langoai/lango/internal/toolparam"
+)
+
+// Browser action constants.
+const (
+	actionClick   = "click"
+	actionType    = "type"
+	actionEval    = "eval"
+	actionGetText = "get_text"
+	actionGetInfo = "get_element_info"
+	actionWait    = "wait"
 )
 
 func buildBrowserTools(sm *browser.SessionManager) []*agent.Tool {
@@ -26,9 +37,9 @@ func buildBrowserTools(sm *browser.SessionManager) []*agent.Tool {
 				"required": []string{"url"},
 			},
 			Handler: func(ctx context.Context, params map[string]interface{}) (interface{}, error) {
-				url, ok := params["url"].(string)
-				if !ok || url == "" {
-					return nil, fmt.Errorf("missing url parameter")
+				url, err := toolparam.RequireString(params, "url")
+				if err != nil {
+					return nil, err
 				}
 
 				sessionID, err := sm.EnsureSession()
@@ -53,7 +64,7 @@ func buildBrowserTools(sm *browser.SessionManager) []*agent.Tool {
 					"action": map[string]interface{}{
 						"type":        "string",
 						"description": "The action to perform",
-						"enum":        []string{"click", "type", "eval", "get_text", "get_element_info", "wait"},
+						"enum":        []string{actionClick, actionType, actionEval, actionGetText, actionGetInfo, actionWait},
 					},
 					"selector": map[string]interface{}{
 						"type":        "string",
@@ -71,9 +82,9 @@ func buildBrowserTools(sm *browser.SessionManager) []*agent.Tool {
 				"required": []string{"action"},
 			},
 			Handler: func(ctx context.Context, params map[string]interface{}) (interface{}, error) {
-				action, ok := params["action"].(string)
-				if !ok || action == "" {
-					return nil, fmt.Errorf("missing action parameter")
+				action, err := toolparam.RequireString(params, "action")
+				if err != nil {
+					return nil, err
 				}
 
 				sessionID, err := sm.EnsureSession()
@@ -81,17 +92,17 @@ func buildBrowserTools(sm *browser.SessionManager) []*agent.Tool {
 					return nil, err
 				}
 
-				selector, _ := params["selector"].(string)
-				text, _ := params["text"].(string)
+				selector := toolparam.OptionalString(params, "selector", "")
+				text := toolparam.OptionalString(params, "text", "")
 
 				switch action {
-				case "click":
+				case actionClick:
 					if selector == "" {
 						return nil, fmt.Errorf("selector required for click action")
 					}
 					return nil, sm.Tool().Click(ctx, sessionID, selector)
 
-				case "type":
+				case actionType:
 					if selector == "" {
 						return nil, fmt.Errorf("selector required for type action")
 					}
@@ -100,32 +111,29 @@ func buildBrowserTools(sm *browser.SessionManager) []*agent.Tool {
 					}
 					return nil, sm.Tool().Type(ctx, sessionID, selector, text)
 
-				case "eval":
+				case actionEval:
 					if text == "" {
 						return nil, fmt.Errorf("text (JavaScript) required for eval action")
 					}
 					return sm.Tool().Eval(sessionID, text)
 
-				case "get_text":
+				case actionGetText:
 					if selector == "" {
 						return nil, fmt.Errorf("selector required for get_text action")
 					}
 					return sm.Tool().GetText(sessionID, selector)
 
-				case "get_element_info":
+				case actionGetInfo:
 					if selector == "" {
 						return nil, fmt.Errorf("selector required for get_element_info action")
 					}
 					return sm.Tool().GetElementInfo(sessionID, selector)
 
-				case "wait":
+				case actionWait:
 					if selector == "" {
 						return nil, fmt.Errorf("selector required for wait action")
 					}
-					timeout := 10 * time.Second
-					if t, ok := params["timeout"].(float64); ok && t > 0 {
-						timeout = time.Duration(t) * time.Second
-					}
+					timeout := time.Duration(toolparam.OptionalInt(params, "timeout", 10)) * time.Second
 					return nil, sm.Tool().WaitForSelector(ctx, sessionID, selector, timeout)
 
 				default:
@@ -152,7 +160,7 @@ func buildBrowserTools(sm *browser.SessionManager) []*agent.Tool {
 					return nil, err
 				}
 
-				fullPage, _ := params["fullPage"].(bool)
+				fullPage := toolparam.OptionalBool(params, "fullPage", false)
 				return sm.Tool().Screenshot(sessionID, fullPage)
 			},
 		},

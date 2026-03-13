@@ -416,23 +416,17 @@ func Validate(cfg *Config) error {
 	}
 
 	// Validate logging config
-	validLevels := map[string]bool{"debug": true, "info": true, "warn": true, "error": true}
-	if !validLevels[cfg.Logging.Level] {
+	if !ValidLogLevels[cfg.Logging.Level] {
 		errs = append(errs, fmt.Sprintf("invalid log level: %s (must be debug, info, warn, or error)", cfg.Logging.Level))
 	}
 
-	validFormats := map[string]bool{"json": true, "console": true}
-	if !validFormats[cfg.Logging.Format] {
+	if !ValidLogFormats[cfg.Logging.Format] {
 		errs = append(errs, fmt.Sprintf("invalid log format: %s (must be json or console)", cfg.Logging.Format))
 	}
 
 	// Validate security config
 	if cfg.Security.Signer.Provider != "" {
-		validProviders := map[string]bool{
-			"local": true, "rpc": true, "enclave": true,
-			"aws-kms": true, "gcp-kms": true, "azure-kv": true, "pkcs11": true,
-		}
-		if !validProviders[cfg.Security.Signer.Provider] {
+		if !ValidSignerProviders[cfg.Security.Signer.Provider] {
 			errs = append(errs, fmt.Sprintf("invalid security.signer.provider: %q (must be local, rpc, enclave, aws-kms, gcp-kms, azure-kv, or pkcs11)", cfg.Security.Signer.Provider))
 		}
 		if cfg.Security.Signer.Provider == "rpc" && cfg.Security.Signer.RPCUrl == "" {
@@ -478,8 +472,7 @@ func Validate(cfg *Config) error {
 		if cfg.Payment.Network.RPCURL == "" {
 			errs = append(errs, "payment.network.rpcUrl is required when payment is enabled")
 		}
-		validWalletProviders := map[string]bool{"local": true, "rpc": true, "composite": true}
-		if !validWalletProviders[cfg.Payment.WalletProvider] {
+		if !ValidWalletProviders[cfg.Payment.WalletProvider] {
 			errs = append(errs, fmt.Sprintf("invalid payment.walletProvider: %q (must be local, rpc, or composite)", cfg.Payment.WalletProvider))
 		}
 	}
@@ -489,16 +482,14 @@ func Validate(cfg *Config) error {
 		if !cfg.Payment.Enabled {
 			errs = append(errs, "p2p requires payment.enabled (wallet needed for identity)")
 		}
-		validSchemes := map[string]bool{"plonk": true, "groth16": true}
-		if cfg.P2P.ZKP.ProvingScheme != "" && !validSchemes[cfg.P2P.ZKP.ProvingScheme] {
+		if cfg.P2P.ZKP.ProvingScheme != "" && !ValidZKPSchemes[cfg.P2P.ZKP.ProvingScheme] {
 			errs = append(errs, fmt.Sprintf("invalid p2p.zkp.provingScheme: %q (must be plonk or groth16)", cfg.P2P.ZKP.ProvingScheme))
 		}
 	}
 
 	// Validate container sandbox config
 	if cfg.P2P.ToolIsolation.Container.Enabled {
-		validRuntimes := map[string]bool{"auto": true, "docker": true, "gvisor": true, "native": true}
-		if !validRuntimes[cfg.P2P.ToolIsolation.Container.Runtime] {
+		if !ValidContainerRuntimes[cfg.P2P.ToolIsolation.Container.Runtime] {
 			errs = append(errs, fmt.Sprintf("invalid p2p.toolIsolation.container.runtime: %q (must be auto, docker, gvisor, or native)", cfg.P2P.ToolIsolation.Container.Runtime))
 		}
 	}
@@ -506,8 +497,7 @@ func Validate(cfg *Config) error {
 	// Validate MCP config
 	if cfg.MCP.Enabled {
 		for name, srv := range cfg.MCP.Servers {
-			validTransports := map[string]bool{"": true, "stdio": true, "http": true, "sse": true}
-			if !validTransports[srv.Transport] {
+			if !ValidMCPTransports[srv.Transport] {
 				errs = append(errs, fmt.Sprintf("mcp.servers.%s.transport %q is not supported (must be stdio, http, or sse)", name, srv.Transport))
 			}
 			switch srv.Transport {

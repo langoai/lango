@@ -7,6 +7,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/langoai/lango/internal/agent"
+	"github.com/langoai/lango/internal/toolparam"
 	"github.com/langoai/lango/internal/p2p/team"
 )
 
@@ -31,18 +32,20 @@ func buildTeamTools(coord *team.Coordinator) []*agent.Tool {
 			"required": []string{"name", "goal", "capability", "memberCount", "leaderDid"},
 		},
 		Handler: func(ctx context.Context, params map[string]interface{}) (interface{}, error) {
-			name, _ := params["name"].(string)
-			goal, _ := params["goal"].(string)
-			capability, _ := params["capability"].(string)
-			leaderDID, _ := params["leaderDid"].(string)
-			memberCount := 1
-			if mc, ok := params["memberCount"].(float64); ok {
-				memberCount = int(mc)
+			name, err := toolparam.RequireString(params, "name")
+			if err != nil {
+				return nil, err
 			}
-
-			if name == "" || capability == "" || leaderDID == "" {
-				return nil, fmt.Errorf("missing required parameters")
+			goal := toolparam.OptionalString(params, "goal", "")
+			capability, err := toolparam.RequireString(params, "capability")
+			if err != nil {
+				return nil, err
 			}
+			leaderDID, err := toolparam.RequireString(params, "leaderDid")
+			if err != nil {
+				return nil, err
+			}
+			memberCount := toolparam.OptionalInt(params, "memberCount", 1)
 
 			t, err := coord.FormTeam(ctx, team.FormTeamRequest{
 				TeamID:      uuid.New().String(),
@@ -93,12 +96,15 @@ func buildTeamTools(coord *team.Coordinator) []*agent.Tool {
 			"required": []string{"teamId", "toolName"},
 		},
 		Handler: func(ctx context.Context, params map[string]interface{}) (interface{}, error) {
-			teamID, _ := params["teamId"].(string)
-			toolName, _ := params["toolName"].(string)
-			toolParams, _ := params["params"].(map[string]interface{})
-			if teamID == "" || toolName == "" {
-				return nil, fmt.Errorf("missing teamId or toolName")
+			teamID, err := toolparam.RequireString(params, "teamId")
+			if err != nil {
+				return nil, err
 			}
+			toolName, err := toolparam.RequireString(params, "toolName")
+			if err != nil {
+				return nil, err
+			}
+			toolParams, _ := params["params"].(map[string]interface{})
 			if toolParams == nil {
 				toolParams = map[string]interface{}{}
 			}
@@ -154,9 +160,9 @@ func buildTeamTools(coord *team.Coordinator) []*agent.Tool {
 			"required": []string{"teamId"},
 		},
 		Handler: func(ctx context.Context, params map[string]interface{}) (interface{}, error) {
-			teamID, _ := params["teamId"].(string)
-			if teamID == "" {
-				return nil, fmt.Errorf("missing teamId")
+			teamID, err := toolparam.RequireString(params, "teamId")
+			if err != nil {
+				return nil, err
 			}
 
 			t, err := coord.GetTeam(teamID)
@@ -230,9 +236,9 @@ func buildTeamTools(coord *team.Coordinator) []*agent.Tool {
 			"required": []string{"teamId"},
 		},
 		Handler: func(ctx context.Context, params map[string]interface{}) (interface{}, error) {
-			teamID, _ := params["teamId"].(string)
-			if teamID == "" {
-				return nil, fmt.Errorf("missing teamId")
+			teamID, err := toolparam.RequireString(params, "teamId")
+			if err != nil {
+				return nil, err
 			}
 
 			if err := coord.DisbandTeam(teamID); err != nil {

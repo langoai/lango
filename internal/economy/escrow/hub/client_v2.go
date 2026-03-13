@@ -39,19 +39,39 @@ func NewHubV2Client(caller contract.ContractCaller, address common.Address, chai
 	}
 }
 
-// DirectSettle transfers tokens directly from buyer to seller without escrow.
-func (c *HubV2Client) DirectSettle(ctx context.Context, seller, token common.Address, amount *big.Int, refId [32]byte) (string, error) {
+// writeMethod executes a state-changing contract call and returns the transaction hash.
+func (c *HubV2Client) writeMethod(ctx context.Context, method string, args ...interface{}) (string, error) {
 	result, err := c.caller.Write(ctx, contract.ContractCallRequest{
 		ChainID: c.chainID,
 		Address: c.address,
 		ABI:     c.abiJSON,
-		Method:  "directSettle",
-		Args:    []interface{}{seller, token, amount, refId},
+		Method:  method,
+		Args:    args,
 	})
 	if err != nil {
-		return "", fmt.Errorf("direct settle: %w", err)
+		return "", fmt.Errorf("%s: %w", method, err)
 	}
 	return result.TxHash, nil
+}
+
+// readMethod executes a read-only contract call and returns the result data.
+func (c *HubV2Client) readMethod(ctx context.Context, method string, args ...interface{}) ([]interface{}, error) {
+	result, err := c.caller.Read(ctx, contract.ContractCallRequest{
+		ChainID: c.chainID,
+		Address: c.address,
+		ABI:     c.abiJSON,
+		Method:  method,
+		Args:    args,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("%s: %w", method, err)
+	}
+	return result.Data, nil
+}
+
+// DirectSettle transfers tokens directly from buyer to seller without escrow.
+func (c *HubV2Client) DirectSettle(ctx context.Context, seller, token common.Address, amount *big.Int, refId [32]byte) (string, error) {
+	return c.writeMethod(ctx, MethodDirectSettle, seller, token, amount, refId)
 }
 
 // CreateSimpleEscrow creates a simple escrow deal with refId.
@@ -60,7 +80,7 @@ func (c *HubV2Client) CreateSimpleEscrow(ctx context.Context, seller, token comm
 		ChainID: c.chainID,
 		Address: c.address,
 		ABI:     c.abiJSON,
-		Method:  "createSimpleEscrow",
+		Method:  MethodCreateSimpleEscrow,
 		Args:    []interface{}{seller, token, amount, deadline, refId},
 	})
 	if err != nil {
@@ -83,7 +103,7 @@ func (c *HubV2Client) CreateMilestoneEscrow(
 		ChainID: c.chainID,
 		Address: c.address,
 		ABI:     c.abiJSON,
-		Method:  "createMilestoneEscrow",
+		Method:  MethodCreateMilestoneEscrow,
 		Args:    []interface{}{seller, token, totalAmount, milestoneAmounts, deadline, refId},
 	})
 	if err != nil {
@@ -107,7 +127,7 @@ func (c *HubV2Client) CreateTeamEscrow(
 		ChainID: c.chainID,
 		Address: c.address,
 		ABI:     c.abiJSON,
-		Method:  "createTeamEscrow",
+		Method:  MethodCreateTeamEscrow,
 		Args:    []interface{}{members, token, totalAmount, shares, deadline, refId},
 	})
 	if err != nil {
@@ -119,137 +139,56 @@ func (c *HubV2Client) CreateTeamEscrow(
 
 // CompleteMilestone marks a milestone as completed on a milestone-type deal.
 func (c *HubV2Client) CompleteMilestone(ctx context.Context, dealID *big.Int, index *big.Int) (string, error) {
-	result, err := c.caller.Write(ctx, contract.ContractCallRequest{
-		ChainID: c.chainID,
-		Address: c.address,
-		ABI:     c.abiJSON,
-		Method:  "completeMilestone",
-		Args:    []interface{}{dealID, index},
-	})
-	if err != nil {
-		return "", fmt.Errorf("complete milestone deal %s idx %s: %w", dealID, index, err)
-	}
-	return result.TxHash, nil
+	return c.writeMethod(ctx, MethodCompleteMilestone, dealID, index)
 }
 
 // ReleaseMilestone releases funds for completed milestones.
 func (c *HubV2Client) ReleaseMilestone(ctx context.Context, dealID *big.Int) (string, error) {
-	result, err := c.caller.Write(ctx, contract.ContractCallRequest{
-		ChainID: c.chainID,
-		Address: c.address,
-		ABI:     c.abiJSON,
-		Method:  "releaseMilestone",
-		Args:    []interface{}{dealID},
-	})
-	if err != nil {
-		return "", fmt.Errorf("release milestone deal %s: %w", dealID, err)
-	}
-	return result.TxHash, nil
+	return c.writeMethod(ctx, MethodReleaseMilestone, dealID)
 }
 
 // Deposit deposits ERC-20 tokens into the V2 escrow.
 func (c *HubV2Client) Deposit(ctx context.Context, dealID *big.Int) (string, error) {
-	result, err := c.caller.Write(ctx, contract.ContractCallRequest{
-		ChainID: c.chainID,
-		Address: c.address,
-		ABI:     c.abiJSON,
-		Method:  "deposit",
-		Args:    []interface{}{dealID},
-	})
-	if err != nil {
-		return "", fmt.Errorf("deposit deal %s: %w", dealID, err)
-	}
-	return result.TxHash, nil
+	return c.writeMethod(ctx, MethodDeposit, dealID)
 }
 
 // Release releases escrow funds to the seller.
 func (c *HubV2Client) Release(ctx context.Context, dealID *big.Int) (string, error) {
-	result, err := c.caller.Write(ctx, contract.ContractCallRequest{
-		ChainID: c.chainID,
-		Address: c.address,
-		ABI:     c.abiJSON,
-		Method:  "release",
-		Args:    []interface{}{dealID},
-	})
-	if err != nil {
-		return "", fmt.Errorf("release deal %s: %w", dealID, err)
-	}
-	return result.TxHash, nil
+	return c.writeMethod(ctx, MethodRelease, dealID)
 }
 
 // Refund returns escrow funds to the buyer.
 func (c *HubV2Client) Refund(ctx context.Context, dealID *big.Int) (string, error) {
-	result, err := c.caller.Write(ctx, contract.ContractCallRequest{
-		ChainID: c.chainID,
-		Address: c.address,
-		ABI:     c.abiJSON,
-		Method:  "refund",
-		Args:    []interface{}{dealID},
-	})
-	if err != nil {
-		return "", fmt.Errorf("refund deal %s: %w", dealID, err)
-	}
-	return result.TxHash, nil
+	return c.writeMethod(ctx, MethodRefund, dealID)
 }
 
 // Dispute raises a dispute on a deal.
 func (c *HubV2Client) Dispute(ctx context.Context, dealID *big.Int) (string, error) {
-	result, err := c.caller.Write(ctx, contract.ContractCallRequest{
-		ChainID: c.chainID,
-		Address: c.address,
-		ABI:     c.abiJSON,
-		Method:  "dispute",
-		Args:    []interface{}{dealID},
-	})
-	if err != nil {
-		return "", fmt.Errorf("dispute deal %s: %w", dealID, err)
-	}
-	return result.TxHash, nil
+	return c.writeMethod(ctx, MethodDispute, dealID)
 }
 
 // ResolveDispute resolves a disputed deal via arbitrator split.
 func (c *HubV2Client) ResolveDispute(ctx context.Context, dealID, sellerAmount, buyerAmount *big.Int) (string, error) {
-	result, err := c.caller.Write(ctx, contract.ContractCallRequest{
-		ChainID: c.chainID,
-		Address: c.address,
-		ABI:     c.abiJSON,
-		Method:  "resolveDispute",
-		Args:    []interface{}{dealID, sellerAmount, buyerAmount},
-	})
-	if err != nil {
-		return "", fmt.Errorf("resolve dispute deal %s: %w", dealID, err)
-	}
-	return result.TxHash, nil
+	return c.writeMethod(ctx, MethodResolveDispute, dealID, sellerAmount, buyerAmount)
 }
 
 // GetDealV2 reads the on-chain V2 deal state including refId and settler.
 func (c *HubV2Client) GetDealV2(ctx context.Context, dealID *big.Int) (*OnChainDealV2, error) {
-	result, err := c.caller.Read(ctx, contract.ContractCallRequest{
-		ChainID: c.chainID,
-		Address: c.address,
-		ABI:     c.abiJSON,
-		Method:  "getDeal",
-		Args:    []interface{}{dealID},
-	})
+	data, err := c.readMethod(ctx, MethodGetDeal, dealID)
 	if err != nil {
-		return nil, fmt.Errorf("get deal v2 %s: %w", dealID, err)
+		return nil, err
 	}
-	return parseDealV2Result(result.Data)
+	return parseDealV2Result(data)
 }
 
 // NextDealID reads the next deal ID counter from the V2 hub.
 func (c *HubV2Client) NextDealID(ctx context.Context) (*big.Int, error) {
-	result, err := c.caller.Read(ctx, contract.ContractCallRequest{
-		ChainID: c.chainID,
-		Address: c.address,
-		ABI:     c.abiJSON,
-		Method:  "nextDealId",
-	})
+	data, err := c.readMethod(ctx, MethodNextDealID)
 	if err != nil {
-		return nil, fmt.Errorf("next deal id: %w", err)
+		return nil, err
 	}
-	if len(result.Data) > 0 {
-		if id, ok := result.Data[0].(*big.Int); ok {
+	if len(data) > 0 {
+		if id, ok := data[0].(*big.Int); ok {
 			return id, nil
 		}
 	}

@@ -10,6 +10,7 @@ import (
 
 	"github.com/langoai/lango/internal/agent"
 	"github.com/langoai/lango/internal/config"
+	"github.com/langoai/lango/internal/toolparam"
 	entknowledge "github.com/langoai/lango/internal/ent/knowledge"
 	entlearning "github.com/langoai/lango/internal/ent/learning"
 	"github.com/langoai/lango/internal/knowledge"
@@ -36,28 +37,26 @@ func buildMetaTools(store *knowledge.Store, engine *learning.Engine, registry *s
 				"required": []string{"key", "category", "content"},
 			},
 			Handler: func(ctx context.Context, params map[string]interface{}) (interface{}, error) {
-				key, _ := params["key"].(string)
-				category, _ := params["category"].(string)
-				content, _ := params["content"].(string)
-				source, _ := params["source"].(string)
-
-				if key == "" || category == "" || content == "" {
-					return nil, fmt.Errorf("key, category, and content are required")
+				key, err := toolparam.RequireString(params, "key")
+				if err != nil {
+					return nil, err
 				}
+				category, err := toolparam.RequireString(params, "category")
+				if err != nil {
+					return nil, err
+				}
+				content, err := toolparam.RequireString(params, "content")
+				if err != nil {
+					return nil, err
+				}
+				source := toolparam.OptionalString(params, "source", "")
 
 				cat := entknowledge.Category(category)
 				if err := entknowledge.CategoryValidator(cat); err != nil {
 					return nil, fmt.Errorf("invalid category %q: %w", category, err)
 				}
 
-				var tags []string
-				if rawTags, ok := params["tags"].([]interface{}); ok {
-					for _, t := range rawTags {
-						if s, ok := t.(string); ok {
-							tags = append(tags, s)
-						}
-					}
-				}
+				tags := toolparam.StringSlice(params, "tags")
 
 				entry := knowledge.KnowledgeEntry{
 					Key:      key,
@@ -99,8 +98,8 @@ func buildMetaTools(store *knowledge.Store, engine *learning.Engine, registry *s
 				"required": []string{"query"},
 			},
 			Handler: func(ctx context.Context, params map[string]interface{}) (interface{}, error) {
-				query, _ := params["query"].(string)
-				category, _ := params["category"].(string)
+				query := toolparam.OptionalString(params, "query", "")
+				category := toolparam.OptionalString(params, "category", "")
 
 				entries, err := store.SearchKnowledge(ctx, query, category, 10)
 				if err != nil {
@@ -129,18 +128,17 @@ func buildMetaTools(store *knowledge.Store, engine *learning.Engine, registry *s
 				"required": []string{"trigger", "fix"},
 			},
 			Handler: func(ctx context.Context, params map[string]interface{}) (interface{}, error) {
-				trigger, _ := params["trigger"].(string)
-				errorPattern, _ := params["error_pattern"].(string)
-				diagnosis, _ := params["diagnosis"].(string)
-				fix, _ := params["fix"].(string)
-				category, _ := params["category"].(string)
-
-				if trigger == "" || fix == "" {
-					return nil, fmt.Errorf("trigger and fix are required")
+				trigger, err := toolparam.RequireString(params, "trigger")
+				if err != nil {
+					return nil, err
 				}
-				if category == "" {
-					category = "general"
+				fix, err := toolparam.RequireString(params, "fix")
+				if err != nil {
+					return nil, err
 				}
+				errorPattern := toolparam.OptionalString(params, "error_pattern", "")
+				diagnosis := toolparam.OptionalString(params, "diagnosis", "")
+				category := toolparam.OptionalString(params, "category", "general")
 
 				entry := knowledge.LearningEntry{
 					Trigger:      trigger,
@@ -181,8 +179,8 @@ func buildMetaTools(store *knowledge.Store, engine *learning.Engine, registry *s
 				"required": []string{"query"},
 			},
 			Handler: func(ctx context.Context, params map[string]interface{}) (interface{}, error) {
-				query, _ := params["query"].(string)
-				category, _ := params["category"].(string)
+				query := toolparam.OptionalString(params, "query", "")
+				category := toolparam.OptionalString(params, "category", "")
 
 				entries, err := store.SearchLearnings(ctx, query, category, 10)
 				if err != nil {
@@ -211,13 +209,21 @@ func buildMetaTools(store *knowledge.Store, engine *learning.Engine, registry *s
 				"required": []string{"name", "description", "type", "definition"},
 			},
 			Handler: func(ctx context.Context, params map[string]interface{}) (interface{}, error) {
-				name, _ := params["name"].(string)
-				description, _ := params["description"].(string)
-				skillType, _ := params["type"].(string)
-				definitionStr, _ := params["definition"].(string)
-
-				if name == "" || description == "" || skillType == "" || definitionStr == "" {
-					return nil, fmt.Errorf("name, description, type, and definition are required")
+				name, err := toolparam.RequireString(params, "name")
+				if err != nil {
+					return nil, err
+				}
+				description, err := toolparam.RequireString(params, "description")
+				if err != nil {
+					return nil, err
+				}
+				skillType, err := toolparam.RequireString(params, "type")
+				if err != nil {
+					return nil, err
+				}
+				definitionStr, err := toolparam.RequireString(params, "definition")
+				if err != nil {
+					return nil, err
 				}
 
 				var definition map[string]interface{}
@@ -326,12 +332,11 @@ func buildMetaTools(store *knowledge.Store, engine *learning.Engine, registry *s
 					return nil, fmt.Errorf("skill system is not enabled")
 				}
 
-				url, _ := params["url"].(string)
-				skillName, _ := params["skill_name"].(string)
-
-				if url == "" {
-					return nil, fmt.Errorf("url is required")
+				url, err := toolparam.RequireString(params, "url")
+				if err != nil {
+					return nil, err
 				}
+				skillName := toolparam.OptionalString(params, "skill_name", "")
 
 				importer := skill.NewImporter(logger())
 

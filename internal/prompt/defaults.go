@@ -8,6 +8,7 @@ const (
 	fallbackIdentity          = "You are Lango, a powerful AI assistant."
 	fallbackSafety            = "Never expose secrets. Confirm before destructive operations."
 	fallbackConversationRules = "Focus on the current question. Do not repeat previous answers."
+	fallbackOutputPrinciples  = "Never echo raw tool output. Summarize results for the user."
 	fallbackToolUsage         = "Prefer read operations before writes. Report errors clearly."
 )
 
@@ -21,7 +22,7 @@ func defaultContent(filename, fallback string) string {
 	return string(data)
 }
 
-// DefaultBuilder returns a Builder pre-loaded with the four built-in sections.
+// DefaultBuilder returns a Builder pre-loaded with the five built-in sections.
 func DefaultBuilder() *Builder {
 	b := NewBuilder()
 	b.Add(NewStaticSection(SectionIdentity, 100, "",
@@ -30,6 +31,8 @@ func DefaultBuilder() *Builder {
 		defaultContent("SAFETY.md", fallbackSafety)))
 	b.Add(NewStaticSection(SectionConversationRules, 300, "Conversation Rules",
 		defaultContent("CONVERSATION_RULES.md", fallbackConversationRules)))
+	b.Add(NewStaticSection(SectionOutputPrinciples, 350, "Output Principles",
+		defaultContent("OUTPUT_PRINCIPLES.md", fallbackOutputPrinciples)))
 	b.Add(NewStaticSection(SectionToolUsage, 400, "Tool Usage Guidelines",
 		defaultContent("TOOL_USAGE.md", fallbackToolUsage)))
 	return b

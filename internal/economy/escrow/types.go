@@ -19,6 +19,15 @@ const (
 	StatusRefunded  EscrowStatus = "refunded"
 )
 
+// TransactionType represents the type of an escrow transaction.
+type TransactionType string
+
+const (
+	TxDeposit TransactionType = "deposit"
+	TxRelease TransactionType = "release"
+	TxRefund  TransactionType = "refund"
+)
+
 // MilestoneStatus represents the status of a single milestone.
 type MilestoneStatus string
 

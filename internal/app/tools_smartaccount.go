@@ -12,6 +12,7 @@ import (
 
 	"github.com/langoai/lango/internal/agent"
 	sa "github.com/langoai/lango/internal/smartaccount"
+	"github.com/langoai/lango/internal/toolparam"
 	"github.com/langoai/lango/internal/smartaccount/paymaster"
 	"github.com/langoai/lango/internal/wallet"
 )
@@ -259,9 +260,9 @@ func sessionKeyRevokeTool(sac *smartAccountComponents) *agent.Tool {
 			"required": []string{"session_id"},
 		},
 		Handler: func(ctx context.Context, params map[string]interface{}) (interface{}, error) {
-			sessionID, _ := params["session_id"].(string)
-			if sessionID == "" {
-				return nil, fmt.Errorf("session_id is required")
+			sessionID, err := toolparam.RequireString(params, "session_id")
+			if err != nil {
+				return nil, err
 			}
 			if err := sac.sessionManager.Revoke(ctx, sessionID); err != nil {
 				return nil, err
@@ -306,10 +307,13 @@ func sessionExecuteTool(sac *smartAccountComponents) *agent.Tool {
 			"required": []string{"session_id", "target"},
 		},
 		Handler: func(ctx context.Context, params map[string]interface{}) (interface{}, error) {
-			sessionID, _ := params["session_id"].(string)
-			targetStr, _ := params["target"].(string)
-			if sessionID == "" || targetStr == "" {
-				return nil, fmt.Errorf("session_id and target are required")
+			sessionID, err := toolparam.RequireString(params, "session_id")
+			if err != nil {
+				return nil, err
+			}
+			targetStr, err := toolparam.RequireString(params, "target")
+			if err != nil {
+				return nil, err
 			}
 
 			target := common.HexToAddress(targetStr)
@@ -366,15 +370,14 @@ func sessionExecuteTool(sac *smartAccountComponents) *agent.Tool {
 				PaymasterAndData:     []byte{},
 				Signature:            []byte{},
 			}
-			_, err := sac.sessionManager.SignUserOp(ctx, sessionID, stubOp)
-			if err != nil {
+			if _, err := sac.sessionManager.SignUserOp(ctx, sessionID, stubOp); err != nil {
 				return nil, fmt.Errorf("sign with session key: %w", err)
 			}
 
 			// Execute via the account manager
-			txHash, err := sac.manager.Execute(ctx, []sa.ContractCall{call})
-			if err != nil {
-				return nil, fmt.Errorf("execute call: %w", err)
+			txHash, execErr := sac.manager.Execute(ctx, []sa.ContractCall{call})
+			if execErr != nil {
+				return nil, fmt.Errorf("execute call: %w", execErr)
 			}
 
 			// Record spend if value > 0
@@ -415,9 +418,9 @@ func policyCheckTool(sac *smartAccountComponents) *agent.Tool {
 			"required": []string{"target"},
 		},
 		Handler: func(ctx context.Context, params map[string]interface{}) (interface{}, error) {
-			targetStr, _ := params["target"].(string)
-			if targetStr == "" {
-				return nil, fmt.Errorf("target is required")
+			targetStr, err := toolparam.RequireString(params, "target")
+			if err != nil {
+				return nil, err
 			}
 			target := common.HexToAddress(targetStr)
 
@@ -437,8 +440,7 @@ func policyCheckTool(sac *smartAccountComponents) *agent.Tool {
 				FunctionSig: functionSig,
 			}
 
-			err := sac.policyEngine.Validate(target, call)
-			if err != nil {
+			if err := sac.policyEngine.Validate(target, call); err != nil {
 				return map[string]interface{}{
 					"allowed": false,
 					"reason":  err.Error(),
@@ -489,9 +491,9 @@ func moduleInstallTool(sac *smartAccountComponents) *agent.Tool {
 				return nil, fmt.Errorf("module_type must be an integer (1-4)")
 			}
 
-			addrStr, _ := params["address"].(string)
-			if addrStr == "" {
-				return nil, fmt.Errorf("address is required")
+			addrStr, err := toolparam.RequireString(params, "address")
+			if err != nil {
+				return nil, err
 			}
 			addr := common.HexToAddress(addrStr)
 
@@ -552,9 +554,9 @@ func moduleUninstallTool(sac *smartAccountComponents) *agent.Tool {
 				return nil, fmt.Errorf("module_type must be an integer (1-4)")
 			}
 
-			addrStr, _ := params["address"].(string)
-			if addrStr == "" {
-				return nil, fmt.Errorf("address is required")
+			addrStr, err := toolparam.RequireString(params, "address")
+			if err != nil {
+				return nil, err
 			}
 			addr := common.HexToAddress(addrStr)
 
@@ -664,12 +666,17 @@ func paymasterApproveTool(sac *smartAccountComponents) *agent.Tool {
 			"required": []string{"token_address", "paymaster_address", "amount"},
 		},
 		Handler: func(ctx context.Context, params map[string]interface{}) (interface{}, error) {
-			tokenStr, _ := params["token_address"].(string)
-			pmStr, _ := params["paymaster_address"].(string)
-			amountStr, _ := params["amount"].(string)
-
-			if tokenStr == "" || pmStr == "" || amountStr == "" {
-				return nil, fmt.Errorf("token_address, paymaster_address, and amount are required")
+			tokenStr, err := toolparam.RequireString(params, "token_address")
+			if err != nil {
+				return nil, err
+			}
+			pmStr, err := toolparam.RequireString(params, "paymaster_address")
+			if err != nil {
+				return nil, err
+			}
+			amountStr, err := toolparam.RequireString(params, "amount")
+			if err != nil {
+				return nil, err
 			}
 
 			tokenAddr := common.HexToAddress(tokenStr)

@@ -77,7 +77,7 @@ func TestHubClient_Deposit_Error(t *testing.T) {
 	_, err := client.Deposit(context.Background(), big.NewInt(0))
 
 	require.Error(t, err)
-	assert.Contains(t, err.Error(), "deposit deal")
+	assert.Contains(t, err.Error(), "deposit")
 }
 
 func TestHubClient_SubmitWork_Success(t *testing.T) {
@@ -147,7 +147,7 @@ func TestHubClient_GetDeal_Error(t *testing.T) {
 	_, err := client.GetDeal(context.Background(), big.NewInt(0))
 
 	require.Error(t, err)
-	assert.Contains(t, err.Error(), "get deal")
+	assert.Contains(t, err.Error(), "getDeal")
 }
 
 func TestHubClient_NextDealID_Success(t *testing.T) {

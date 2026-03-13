@@ -213,6 +213,11 @@ func (a *App) runAgent(ctx context.Context, sessionKey, input string) (string, e
 		response = emptyResponseFallback
 	}
 
+	// Apply response sanitization.
+	if a.Sanitizer != nil && a.Sanitizer.Enabled() {
+		response = a.Sanitizer.Sanitize(response)
+	}
+
 	logger().Infow("agent request completed",
 		"session", sessionKey,
 		"elapsed", elapsed.String(),

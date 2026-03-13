@@ -11,6 +11,7 @@ import (
 	"github.com/langoai/lango/internal/background"
 	cronpkg "github.com/langoai/lango/internal/cron"
 	"github.com/langoai/lango/internal/session"
+	"github.com/langoai/lango/internal/toolparam"
 	"github.com/langoai/lango/internal/workflow"
 )
 
@@ -35,27 +36,25 @@ func buildCronTools(scheduler *cronpkg.Scheduler, defaultDeliverTo []string) []*
 				"required": []string{"name", "schedule_type", "schedule", "prompt"},
 			},
 			Handler: func(ctx context.Context, params map[string]interface{}) (interface{}, error) {
-				name, _ := params["name"].(string)
-				scheduleType, _ := params["schedule_type"].(string)
-				schedule, _ := params["schedule"].(string)
-				prompt, _ := params["prompt"].(string)
-				sessionMode, _ := params["session_mode"].(string)
+				name, err := toolparam.RequireString(params, "name")
+				if err != nil {
+					return nil, err
+				}
+				scheduleType, err := toolparam.RequireString(params, "schedule_type")
+				if err != nil {
+					return nil, err
+				}
+				schedule, err := toolparam.RequireString(params, "schedule")
+				if err != nil {
+					return nil, err
+				}
+				prompt, err := toolparam.RequireString(params, "prompt")
+				if err != nil {
+					return nil, err
+				}
+				sessionMode := toolparam.OptionalString(params, "session_mode", "isolated")
 
-				if name == "" || scheduleType == "" || schedule == "" || prompt == "" {
-					return nil, fmt.Errorf("name, schedule_type, schedule, and prompt are required")
-				}
-				if sessionMode == "" {
-					sessionMode = "isolated"
-				}
-
-				var deliverTo []string
-				if raw, ok := params["deliver_to"].([]interface{}); ok {
-					for _, v := range raw {
-						if s, ok := v.(string); ok {
-							deliverTo = append(deliverTo, s)
-						}
-					}
-				}
+				deliverTo := toolparam.StringSlice(params, "deliver_to")
 
 				// Auto-detect channel from session context.
 				if len(deliverTo) == 0 {
@@ -136,9 +135,9 @@ func buildCronTools(scheduler *cronpkg.Scheduler, defaultDeliverTo []string) []*
 				"required": []string{"id"},
 			},
 			Handler: func(ctx context.Context, params map[string]interface{}) (interface{}, error) {
-				id, _ := params["id"].(string)
-				if id == "" {
-					return nil, fmt.Errorf("missing id parameter")
+				id, err := toolparam.RequireString(params, "id")
+				if err != nil {
+					return nil, err
 				}
 				if err := scheduler.PauseJob(ctx, id); err != nil {
 					return nil, fmt.Errorf("pause cron job: %w", err)
@@ -158,9 +157,9 @@ func buildCronTools(scheduler *cronpkg.Scheduler, defaultDeliverTo []string) []*
 				"required": []string{"id"},
 			},
 			Handler: func(ctx context.Context, params map[string]interface{}) (interface{}, error) {
-				id, _ := params["id"].(string)
-				if id == "" {
-					return nil, fmt.Errorf("missing id parameter")
+				id, err := toolparam.RequireString(params, "id")
+				if err != nil {
+					return nil, err
 				}
 				if err := scheduler.ResumeJob(ctx, id); err != nil {
 					return nil, fmt.Errorf("resume cron job: %w", err)
@@ -180,9 +179,9 @@ func buildCronTools(scheduler *cronpkg.Scheduler, defaultDeliverTo []string) []*
 				"required": []string{"id"},
 			},
 			Handler: func(ctx context.Context, params map[string]interface{}) (interface{}, error) {
-				id, _ := params["id"].(string)
-				if id == "" {
-					return nil, fmt.Errorf("missing id parameter")
+				id, err := toolparam.RequireString(params, "id")
+				if err != nil {
+					return nil, err
 				}
 				if err := scheduler.RemoveJob(ctx, id); err != nil {
 					return nil, fmt.Errorf("remove cron job: %w", err)
@@ -202,11 +201,8 @@ func buildCronTools(scheduler *cronpkg.Scheduler, defaultDeliverTo []string) []*
 				},
 			},
 			Handler: func(ctx context.Context, params map[string]interface{}) (interface{}, error) {
-				jobID, _ := params["job_id"].(string)
-				limit := 20
-				if l, ok := params["limit"].(float64); ok && l > 0 {
-					limit = int(l)
-				}
+				jobID := toolparam.OptionalString(params, "job_id", "")
+				limit := toolparam.OptionalInt(params, "limit", 20)
 
 				var entries []cronpkg.HistoryEntry
 				var err error
@@ -240,11 +236,11 @@ func buildBackgroundTools(mgr *background.Manager, defaultDeliverTo []string) []
 				"required": []string{"prompt"},
 			},
 			Handler: func(ctx context.Context, params map[string]interface{}) (interface{}, error) {
-				prompt, _ := params["prompt"].(string)
-				if prompt == "" {
-					return nil, fmt.Errorf("missing prompt parameter")
+				prompt, err := toolparam.RequireString(params, "prompt")
+				if err != nil {
+					return nil, err
 				}
-				channel, _ := params["channel"].(string)
+				channel := toolparam.OptionalString(params, "channel", "")
 
 				// Auto-detect channel from session context.
 				if channel == "" {
@@ -283,9 +279,9 @@ func buildBackgroundTools(mgr *background.Manager, defaultDeliverTo []string) []
 				"required": []string{"task_id"},
 			},
 			Handler: func(ctx context.Context, params map[string]interface{}) (interface{}, error) {
-				taskID, _ := params["task_id"].(string)
-				if taskID == "" {
-					return nil, fmt.Errorf("missing task_id parameter")
+				taskID, err := toolparam.RequireString(params, "task_id")
+				if err != nil {
+					return nil, err
 				}
 				snap, err := mgr.Status(taskID)
 				if err != nil {
@@ -319,9 +315,9 @@ func buildBackgroundTools(mgr *background.Manager, defaultDeliverTo []string) []
 				"required": []string{"task_id"},
 			},
 			Handler: func(ctx context.Context, params map[string]interface{}) (interface{}, error) {
-				taskID, _ := params["task_id"].(string)
-				if taskID == "" {
-					return nil, fmt.Errorf("missing task_id parameter")
+				taskID, err := toolparam.RequireString(params, "task_id")
+				if err != nil {
+					return nil, err
 				}
 				result, err := mgr.Result(taskID)
 				if err != nil {
@@ -342,9 +338,9 @@ func buildBackgroundTools(mgr *background.Manager, defaultDeliverTo []string) []
 				"required": []string{"task_id"},
 			},
 			Handler: func(ctx context.Context, params map[string]interface{}) (interface{}, error) {
-				taskID, _ := params["task_id"].(string)
-				if taskID == "" {
-					return nil, fmt.Errorf("missing task_id parameter")
+				taskID, err := toolparam.RequireString(params, "task_id")
+				if err != nil {
+					return nil, err
 				}
 				if err := mgr.Cancel(taskID); err != nil {
 					return nil, fmt.Errorf("cancel background task: %w", err)
@@ -370,8 +366,8 @@ func buildWorkflowTools(engine *workflow.Engine, stateDir string, defaultDeliver
 				},
 			},
 			Handler: func(ctx context.Context, params map[string]interface{}) (interface{}, error) {
-				filePath, _ := params["file_path"].(string)
-				yamlContent, _ := params["yaml_content"].(string)
+				filePath := toolparam.OptionalString(params, "file_path", "")
+				yamlContent := toolparam.OptionalString(params, "yaml_content", "")
 
 				if filePath == "" && yamlContent == "" {
 					return nil, fmt.Errorf("either file_path or yaml_content is required")
@@ -424,9 +420,9 @@ func buildWorkflowTools(engine *workflow.Engine, stateDir string, defaultDeliver
 				"required": []string{"run_id"},
 			},
 			Handler: func(ctx context.Context, params map[string]interface{}) (interface{}, error) {
-				runID, _ := params["run_id"].(string)
-				if runID == "" {
-					return nil, fmt.Errorf("missing run_id parameter")
+				runID, err := toolparam.RequireString(params, "run_id")
+				if err != nil {
+					return nil, err
 				}
 				status, err := engine.Status(ctx, runID)
 				if err != nil {
@@ -446,10 +442,7 @@ func buildWorkflowTools(engine *workflow.Engine, stateDir string, defaultDeliver
 				},
 			},
 			Handler: func(ctx context.Context, params map[string]interface{}) (interface{}, error) {
-				limit := 20
-				if l, ok := params["limit"].(float64); ok && l > 0 {
-					limit = int(l)
-				}
+				limit := toolparam.OptionalInt(params, "limit", 20)
 				runs, err := engine.ListRuns(ctx, limit)
 				if err != nil {
 					return nil, fmt.Errorf("list workflow runs: %w", err)
@@ -469,9 +462,9 @@ func buildWorkflowTools(engine *workflow.Engine, stateDir string, defaultDeliver
 				"required": []string{"run_id"},
 			},
 			Handler: func(ctx context.Context, params map[string]interface{}) (interface{}, error) {
-				runID, _ := params["run_id"].(string)
-				if runID == "" {
-					return nil, fmt.Errorf("missing run_id parameter")
+				runID, err := toolparam.RequireString(params, "run_id")
+				if err != nil {
+					return nil, err
 				}
 				if err := engine.Cancel(runID); err != nil {
 					return nil, fmt.Errorf("cancel workflow: %w", err)
@@ -492,11 +485,13 @@ func buildWorkflowTools(engine *workflow.Engine, stateDir string, defaultDeliver
 				"required": []string{"name", "yaml_content"},
 			},
 			Handler: func(ctx context.Context, params map[string]interface{}) (interface{}, error) {
-				name, _ := params["name"].(string)
-				yamlContent, _ := params["yaml_content"].(string)
-
-				if name == "" || yamlContent == "" {
-					return nil, fmt.Errorf("name and yaml_content are required")
+				name, err := toolparam.RequireString(params, "name")
+				if err != nil {
+					return nil, err
+				}
+				yamlContent, err := toolparam.RequireString(params, "yaml_content")
+				if err != nil {
+					return nil, err
 				}
 
 				// Validate the YAML before saving.

@@ -12,17 +12,28 @@ const (
 	SeverityLow      AlertSeverity = "low"
 )
 
+// AlertMetadata holds structured metadata for alerts.
+type AlertMetadata struct {
+	Count           int    `json:"count,omitempty"`
+	Window          string `json:"window,omitempty"`
+	Amount          string `json:"amount,omitempty"`
+	Threshold       string `json:"threshold,omitempty"`
+	Elapsed         string `json:"elapsed,omitempty"`
+	PreviousBalance string `json:"previousBalance,omitempty"`
+	NewBalance      string `json:"newBalance,omitempty"`
+}
+
 // Alert represents a detected anomaly.
 type Alert struct {
-	ID           string                 `json:"id"`
-	Severity     AlertSeverity          `json:"severity"`
-	Type         string                 `json:"type"`
-	Message      string                 `json:"message"`
-	DealID       string                 `json:"dealId,omitempty"`
-	PeerDID      string                 `json:"peerDid,omitempty"`
-	Timestamp    time.Time              `json:"timestamp"`
-	Acknowledged bool                   `json:"acknowledged"`
-	Metadata     map[string]interface{} `json:"metadata,omitempty"`
+	ID           string        `json:"id"`
+	Severity     AlertSeverity `json:"severity"`
+	Type         string        `json:"type"`
+	Message      string        `json:"message"`
+	DealID       string        `json:"dealId,omitempty"`
+	PeerDID      string        `json:"peerDid,omitempty"`
+	Timestamp    time.Time     `json:"timestamp"`
+	Acknowledged bool          `json:"acknowledged"`
+	Metadata     AlertMetadata `json:"metadata,omitempty"`
 }
 
 // SentinelConfig holds detection thresholds.
