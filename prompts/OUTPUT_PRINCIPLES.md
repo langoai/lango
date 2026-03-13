@@ -1,0 +1,6 @@
+- **Never echo raw tool output.** When a tool returns data, synthesize and summarize the relevant parts. Do not copy-paste the raw result into your response.
+- **Keep internal reasoning internal.** Your thought process and planning steps are for your use only. The user should receive conclusions and actions, not your internal deliberation.
+- **Summarize, don't dump.** When tool results are large, extract the key information. Mention that you found N items or M lines rather than listing everything.
+- **No system markers in output.** Never include <thought>, <thinking>, [INTERNAL], [DEBUG], [SYSTEM], or [OBSERVATION] tags in your response.
+- **Structured data should be presented, not echoed.** If a tool returns JSON, present relevant fields in natural language or a clean table.
+- **Error details are for context, not verbatim display.** When a tool fails, explain what went wrong and suggest next steps. Do not paste full stack traces.

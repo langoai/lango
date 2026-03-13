@@ -17,6 +17,7 @@ import (
 	"github.com/gorilla/websocket"
 	"github.com/langoai/lango/internal/adk"
 	"github.com/langoai/lango/internal/approval"
+	"github.com/langoai/lango/internal/gatekeeper"
 	"github.com/langoai/lango/internal/logging"
 	"github.com/langoai/lango/internal/security"
 	"github.com/langoai/lango/internal/session"
@@ -48,6 +49,7 @@ type Server struct {
 	pendingApprovals   map[string]chan approval.ApprovalResponse
 	pendingApprovalsMu sync.Mutex
 	turnCallbacks      []TurnCallback
+	sanitizer          *gatekeeper.Sanitizer
 }
 
 // Config holds gateway server configuration
@@ -223,6 +225,12 @@ func (s *Server) handleChatMessage(client *Client, params json.RawMessage) (inte
 
 	ctx = session.WithSessionKey(ctx, sessionKey)
 	response, err := s.agent.RunStreaming(ctx, sessionKey, req.Message, func(chunk string) {
+		if s.sanitizer != nil && s.sanitizer.Enabled() {
+			chunk = s.sanitizer.Sanitize(chunk)
+		}
+		if chunk == "" {
+			return
+		}
 		s.BroadcastToSession(sessionKey, "agent.chunk", map[string]string{
 			"sessionKey": sessionKey,
 			"chunk":      chunk,
@@ -242,6 +250,11 @@ func (s *Server) handleChatMessage(client *Client, params json.RawMessage) (inte
 		response = emptyResponseFallback
 		logger().Warnw("empty agent response, using fallback",
 			"session", sessionKey)
+	}
+
+	// Apply response sanitization.
+	if err == nil && s.sanitizer != nil && s.sanitizer.Enabled() {
+		response = s.sanitizer.Sanitize(response)
 	}
 
 	if err != nil {
@@ -516,6 +529,11 @@ func (s *Server) Router() chi.Router {
 // SetAgent sets the agent on the server (used for deferred wiring).
 func (s *Server) SetAgent(agent *adk.Agent) {
 	s.agent = agent
+}
+
+// SetSanitizer sets the response sanitizer for output gatekeeper filtering.
+func (s *Server) SetSanitizer(san *gatekeeper.Sanitizer) {
+	s.sanitizer = san
 }
 
 // OnTurnComplete registers a callback that fires after each agent turn.

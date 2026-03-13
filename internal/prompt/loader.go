@@ -20,6 +20,7 @@ var sectionFiles = map[string]sectionFileInfo{
 	"AGENTS.md":             {SectionIdentity, 100, ""},
 	"SAFETY.md":             {SectionSafety, 200, "Safety Guidelines"},
 	"CONVERSATION_RULES.md": {SectionConversationRules, 300, "Conversation Rules"},
+	"OUTPUT_PRINCIPLES.md":  {SectionOutputPrinciples, 350, "Output Principles"},
 	"TOOL_USAGE.md":         {SectionToolUsage, 400, "Tool Usage Guidelines"},
 }
 

@@ -1,0 +1,94 @@
+### Requirement: Tool output truncation
+The system SHALL truncate tool execution results that exceed a configurable character limit before they enter the model context. The default limit SHALL be 8000 characters. Truncated results SHALL include a `"\n... [output truncated]"` marker. Error results SHALL pass through without truncation.
+
+#### Scenario: String result under limit
+- **WHEN** a tool returns a string result of 5000 characters with maxOutputChars set to 8000
+- **THEN** the result SHALL pass through unchanged
+
+#### Scenario: String result over limit
+- **WHEN** a tool returns a string result of 12000 characters with maxOutputChars set to 8000
+- **THEN** the result SHALL be truncated to 8000 characters followed by `"\n... [output truncated]"`
+
+#### Scenario: Map result over limit
+- **WHEN** a tool returns a map result whose JSON serialization exceeds maxOutputChars
+- **THEN** the JSON string SHALL be truncated to maxOutputChars followed by the truncation marker
+
+#### Scenario: Error result passthrough
+- **WHEN** a tool returns an error
+- **THEN** the result and error SHALL pass through without truncation
+
+#### Scenario: Default limit applied
+- **WHEN** maxOutputChars is zero or negative
+- **THEN** the system SHALL use the default limit of 8000 characters
+
+### Requirement: Response sanitization
+The system SHALL sanitize model responses before delivering them to users. Sanitization SHALL remove internal content that is not intended for end users. Each sanitization rule SHALL be independently configurable via `*bool` toggle (nil defaults to enabled).
+
+#### Scenario: Thought tag removal
+- **WHEN** the model response contains `<thought>...</thought>` or `<thinking>...</thinking>` blocks
+- **THEN** those blocks SHALL be removed from the response
+
+#### Scenario: Code block preservation
+- **WHEN** the model response contains thought/thinking tags inside a code block (``` delimiters)
+- **THEN** the tags inside code blocks SHALL NOT be removed
+
+#### Scenario: Internal marker removal
+- **WHEN** the model response contains lines starting with `[INTERNAL]`, `[DEBUG]`, `[SYSTEM]`, or `[OBSERVATION]`
+- **THEN** those lines SHALL be removed from the response
+
+#### Scenario: Large JSON block replacement
+- **WHEN** the model response contains a JSON code block exceeding the rawJsonThreshold (default 500 characters)
+- **THEN** the code block SHALL be replaced with `[Large data block omitted]`
+
+#### Scenario: Small JSON block preservation
+- **WHEN** the model response contains a JSON code block under the rawJsonThreshold
+- **THEN** the code block SHALL be preserved unchanged
+
+#### Scenario: Custom pattern application
+- **WHEN** custom regex patterns are configured in `gatekeeper.customPatterns`
+- **THEN** matching content SHALL be removed from the response
+
+#### Scenario: Blank line normalization
+- **WHEN** the response contains three or more consecutive newlines
+- **THEN** they SHALL be collapsed to exactly two newlines
+
+#### Scenario: Disabled sanitizer passthrough
+- **WHEN** the gatekeeper is disabled (`gatekeeper.enabled: false`)
+- **THEN** the response SHALL pass through unchanged
+
+### Requirement: System prompt output principles
+The system SHALL include an "Output Principles" section in the system prompt at priority 350 (between Conversation Rules at 300 and Tool Usage at 400). The section SHALL instruct the model to never echo raw tool output, keep internal reasoning internal, summarize large results, avoid system markers, present structured data in natural language, and explain errors without full stack traces.
+
+#### Scenario: Output principles in system prompt
+- **WHEN** the system prompt is built using DefaultBuilder
+- **THEN** the prompt SHALL contain an "Output Principles" section with instructions about output behavior
+
+#### Scenario: Priority ordering
+- **WHEN** the system prompt is rendered
+- **THEN** Output Principles SHALL appear after Conversation Rules and before Tool Usage Guidelines
+
+#### Scenario: File override support
+- **WHEN** a custom `OUTPUT_PRINCIPLES.md` file exists in the prompts directory
+- **THEN** it SHALL override the default embedded output principles content
+
+### Requirement: Gateway response sanitization
+The system SHALL apply sanitization to both streaming chunks and final responses in the gateway server. Sanitization SHALL be applied only when a sanitizer is configured and enabled.
+
+#### Scenario: Chunk sanitization
+- **WHEN** the agent produces a streaming chunk and a sanitizer is configured
+- **THEN** the chunk SHALL be sanitized before broadcasting to WebSocket clients
+
+#### Scenario: Empty chunk suppression
+- **WHEN** a chunk becomes empty after sanitization
+- **THEN** the empty chunk SHALL NOT be broadcast to clients
+
+#### Scenario: Final response sanitization
+- **WHEN** the agent completes and returns a final response with a sanitizer configured
+- **THEN** the response SHALL be sanitized before returning to the caller
+
+### Requirement: Channel response sanitization
+The system SHALL apply sanitization to agent responses in all channel handlers (Telegram, Discord, Slack). Sanitization SHALL be applied after the agent run completes and before the response is returned to the channel adapter.
+
+#### Scenario: Channel response filtering
+- **WHEN** the agent returns a response via runAgent() and a sanitizer is configured and enabled
+- **THEN** the response SHALL be sanitized before returning to the channel handler

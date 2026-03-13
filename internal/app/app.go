@@ -18,6 +18,7 @@ import (
 	"github.com/langoai/lango/internal/bootstrap"
 	"github.com/langoai/lango/internal/config"
 	"github.com/langoai/lango/internal/eventbus"
+	"github.com/langoai/lango/internal/gatekeeper"
 	"github.com/langoai/lango/internal/lifecycle"
 	"github.com/langoai/lango/internal/logging"
 	"github.com/langoai/lango/internal/observability/audit"
@@ -52,6 +53,13 @@ func New(boot *bootstrap.Result) (*App, error) {
 	sv, err := initSupervisor(cfg)
 	if err != nil {
 		return nil, fmt.Errorf("create supervisor: %w", err)
+	}
+
+	// 1b. Response sanitizer (output gatekeeper)
+	if san, initErr := gatekeeper.NewSanitizer(cfg.Gatekeeper); initErr != nil {
+		logger().Warnw("gatekeeper sanitizer init error, disabled", "error", initErr)
+	} else {
+		app.Sanitizer = san
 	}
 
 	// 2. Session Store — reuse the DB client opened during bootstrap.
@@ -567,6 +575,16 @@ func New(boot *bootstrap.Result) (*App, error) {
 
 	// 7. Gateway (created before agent so we can wire approval)
 	app.Gateway = initGateway(cfg, nil, app.Store, auth)
+	if app.Sanitizer != nil {
+		app.Gateway.SetSanitizer(app.Sanitizer)
+	}
+
+	// 7a. Tool output truncation — cap tool results before they enter model context.
+	maxChars := cfg.Tools.MaxOutputChars
+	if maxChars <= 0 {
+		maxChars = 8000
+	}
+	tools = toolchain.ChainAll(tools, toolchain.WithTruncate(maxChars))
 
 	// 7b. Tool Execution Hooks
 	if cfg.Hooks.Enabled || cfg.Agent.MultiAgent {

@@ -15,6 +15,8 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/langoai/lango/internal/approval"
+	"github.com/langoai/lango/internal/config"
+	"github.com/langoai/lango/internal/gatekeeper"
 )
 
 func TestGatewayServer(t *testing.T) {
@@ -440,6 +442,67 @@ func TestWarningBroadcast_ApproachingTimeout(t *testing.T) {
 	default:
 		t.Error("expected agent.warning broadcast after 80% timeout")
 	}
+}
+
+func TestSetSanitizer_SanitizesChunksAndResponse(t *testing.T) {
+	t.Parallel()
+	cfg := Config{
+		Host:             "localhost",
+		Port:             0,
+		HTTPEnabled:      true,
+		WebSocketEnabled: true,
+	}
+	server := New(cfg, nil, nil, nil, nil)
+
+	san, err := gatekeeper.NewSanitizer(config.GatekeeperConfig{})
+	require.NoError(t, err)
+	server.SetSanitizer(san)
+
+	assert.NotNil(t, server.sanitizer)
+	assert.True(t, server.sanitizer.Enabled())
+
+	// Verify sanitizer strips thought tags from text.
+	got := server.sanitizer.Sanitize("Hello <thought>internal</thought> world")
+	assert.Equal(t, "Hello  world", got)
+}
+
+func TestSetSanitizer_DisabledPassthrough(t *testing.T) {
+	t.Parallel()
+	cfg := Config{
+		Host:             "localhost",
+		Port:             0,
+		HTTPEnabled:      true,
+		WebSocketEnabled: true,
+	}
+	server := New(cfg, nil, nil, nil, nil)
+
+	disabled := false
+	san, err := gatekeeper.NewSanitizer(config.GatekeeperConfig{
+		Enabled: &disabled,
+	})
+	require.NoError(t, err)
+	server.SetSanitizer(san)
+
+	assert.False(t, server.sanitizer.Enabled())
+
+	// Disabled sanitizer should pass through unchanged.
+	got := server.sanitizer.Sanitize("Hello <thought>internal</thought> world")
+	assert.Equal(t, "Hello <thought>internal</thought> world", got)
+}
+
+func TestSetSanitizer_NilSanitizerSafe(t *testing.T) {
+	t.Parallel()
+	cfg := Config{
+		Host:             "localhost",
+		Port:             0,
+		HTTPEnabled:      true,
+		WebSocketEnabled: true,
+	}
+	server := New(cfg, nil, nil, nil, nil)
+
+	// SetSanitizer(nil) should not panic.
+	server.SetSanitizer(nil)
+	assert.Nil(t, server.sanitizer)
 }
 
 func TestApprovalTimeout_UsesConfigTimeout(t *testing.T) {

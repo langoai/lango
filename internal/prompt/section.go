@@ -8,6 +8,7 @@ const (
 	SectionAgentIdentity     SectionID = "agent_identity"
 	SectionSafety            SectionID = "safety"
 	SectionConversationRules SectionID = "conversation_rules"
+	SectionOutputPrinciples  SectionID = "output_principles"
 	SectionToolUsage         SectionID = "tool_usage"
 	SectionCustom            SectionID = "custom"
 	SectionAutomation        SectionID = "automation"
@@ -16,7 +17,7 @@ const (
 // Valid reports whether s is a known section ID.
 func (s SectionID) Valid() bool {
 	switch s {
-	case SectionIdentity, SectionAgentIdentity, SectionSafety, SectionConversationRules, SectionToolUsage, SectionCustom, SectionAutomation:
+	case SectionIdentity, SectionAgentIdentity, SectionSafety, SectionConversationRules, SectionOutputPrinciples, SectionToolUsage, SectionCustom, SectionAutomation:
 		return true
 	}
 	return false
@@ -24,7 +25,7 @@ func (s SectionID) Valid() bool {
 
 // Values returns all known section IDs.
 func (s SectionID) Values() []SectionID {
-	return []SectionID{SectionIdentity, SectionAgentIdentity, SectionSafety, SectionConversationRules, SectionToolUsage, SectionCustom, SectionAutomation}
+	return []SectionID{SectionIdentity, SectionAgentIdentity, SectionSafety, SectionConversationRules, SectionOutputPrinciples, SectionToolUsage, SectionCustom, SectionAutomation}
 }
 
 // PromptSection produces a titled block of text for the system prompt.

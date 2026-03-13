@@ -83,6 +83,9 @@ type Config struct {
 	// Smart Account configuration (ERC-7579 modular accounts)
 	SmartAccount SmartAccountConfig `mapstructure:"smartAccount" json:"smartAccount"`
 
+	// Gatekeeper configuration (response sanitization)
+	Gatekeeper GatekeeperConfig `mapstructure:"gatekeeper" json:"gatekeeper"`
+
 	// Observability configuration (token tracking, health, audit, metrics)
 	Observability ObservabilityConfig `mapstructure:"observability" json:"observability"`
 
@@ -258,9 +261,10 @@ type SessionConfig struct {
 
 // ToolsConfig defines tool-specific settings
 type ToolsConfig struct {
-	Exec       ExecToolConfig       `mapstructure:"exec" json:"exec"`
-	Filesystem FilesystemToolConfig `mapstructure:"filesystem" json:"filesystem"`
-	Browser    BrowserToolConfig    `mapstructure:"browser" json:"browser"`
+	Exec           ExecToolConfig       `mapstructure:"exec" json:"exec"`
+	Filesystem     FilesystemToolConfig `mapstructure:"filesystem" json:"filesystem"`
+	Browser        BrowserToolConfig    `mapstructure:"browser" json:"browser"`
+	MaxOutputChars int                  `mapstructure:"maxOutputChars" json:"maxOutputChars"`
 }
 
 // HooksConfig defines tool execution hook settings.
@@ -309,6 +313,27 @@ type FilesystemToolConfig struct {
 type AgentMemoryConfig struct {
 	// Enable agent memory system
 	Enabled bool `mapstructure:"enabled" json:"enabled"`
+}
+
+// GatekeeperConfig defines response sanitization (output gatekeeper) settings.
+type GatekeeperConfig struct {
+	// Master switch (nil defaults to true — enabled by default)
+	Enabled *bool `mapstructure:"enabled" json:"enabled"`
+
+	// Strip <thought>/<thinking> tags from responses
+	StripThoughtTags *bool `mapstructure:"stripThoughtTags" json:"stripThoughtTags"`
+
+	// Strip lines starting with [INTERNAL], [DEBUG], [SYSTEM], [OBSERVATION]
+	StripInternalMarkers *bool `mapstructure:"stripInternalMarkers" json:"stripInternalMarkers"`
+
+	// Replace large raw JSON code blocks with a placeholder
+	StripRawJSON *bool `mapstructure:"stripRawJSON" json:"stripRawJSON"`
+
+	// Character threshold for raw JSON replacement (default: 500)
+	RawJSONThreshold int `mapstructure:"rawJsonThreshold" json:"rawJsonThreshold"`
+
+	// Additional regex patterns to strip from responses
+	CustomPatterns []string `mapstructure:"customPatterns" json:"customPatterns"`
 }
 
 // BrowserToolConfig defines browser automation settings

@@ -14,6 +14,7 @@ import (
 	cronpkg "github.com/langoai/lango/internal/cron"
 	"github.com/langoai/lango/internal/embedding"
 	"github.com/langoai/lango/internal/eventbus"
+	"github.com/langoai/lango/internal/gatekeeper"
 	"github.com/langoai/lango/internal/gateway"
 	"github.com/langoai/lango/internal/graph"
 	"github.com/langoai/lango/internal/knowledge"
@@ -111,6 +112,9 @@ type App struct {
 	// Smart Account Components (optional, ERC-7579 modular accounts)
 	SmartAccountManager    interface{}             // *smartaccount.Manager
 	SmartAccountComponents *smartAccountComponents // full components for CLI access
+
+	// Gatekeeper (response sanitizer)
+	Sanitizer *gatekeeper.Sanitizer
 
 	// MCP Components (optional, external MCP server integration)
 	MCPManager *mcp.ServerManager
