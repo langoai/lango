@@ -110,6 +110,21 @@ func (m *Manager) GetOrDeploy(
 		return nil, fmt.Errorf("deploy account: %w", err)
 	}
 	m.accountAddr = addr
+
+	// Verify deployment on-chain.
+	verified, err := m.factory.IsDeployed(ctx, addr)
+	if err != nil {
+		return nil, fmt.Errorf(
+			"verify deployment %s: %w", addr.Hex(), err,
+		)
+	}
+	if !verified {
+		return nil, fmt.Errorf(
+			"deploy account %s: on-chain verification found no code",
+			addr.Hex(),
+		)
+	}
+
 	return m.buildInfo(ownerAddr, true), nil
 }
 
@@ -328,6 +343,14 @@ func (m *Manager) submitUserOp(
 		op.PaymasterAndData = stubData
 	}
 
+	// Fetch gas fee parameters from the network.
+	gasFees, err := m.bundler.GetGasFees(ctx)
+	if err != nil {
+		return "", fmt.Errorf("get gas fees: %w", err)
+	}
+	op.MaxFeePerGas = gasFees.MaxFeePerGas
+	op.MaxPriorityFeePerGas = gasFees.MaxPriorityFeePerGas
+
 	// Estimate gas via bundler.
 	bOp := toBundlerOp(op)
 	gasEstimate, err := m.bundler.EstimateGas(ctx, bOp)
@@ -361,8 +384,10 @@ func (m *Manager) submitUserOp(
 	// Compute the UserOp hash for signing.
 	opHash := m.computeUserOpHash(op)
 
-	// Sign with wallet.
-	sig, err := m.wallet.SignMessage(ctx, opHash)
+	// Sign with wallet — use SignTransaction (raw sign) instead of
+	// SignMessage which adds an extra keccak256, causing double-hashing
+	// since computeUserOpHash already returns a keccak256 digest.
+	sig, err := m.wallet.SignTransaction(ctx, opHash)
 	if err != nil {
 		return "", fmt.Errorf("sign user op: %w", err)
 	}

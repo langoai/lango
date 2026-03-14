@@ -47,6 +47,12 @@ type GasEstimate struct {
 	PreVerificationGas   *big.Int `json:"preVerificationGas"`
 }
 
+// GasFees contains EIP-1559 gas fee parameters.
+type GasFees struct {
+	MaxFeePerGas         *big.Int
+	MaxPriorityFeePerGas *big.Int
+}
+
 // jsonrpcRequest is a JSON-RPC 2.0 request.
 type jsonrpcRequest struct {
 	JSONRPC string        `json:"jsonrpc"`

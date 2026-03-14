@@ -175,31 +175,123 @@ func (c *Client) GetUserOperationReceipt(
 	}, nil
 }
 
+// getNonceSelector is the function selector for
+// EntryPoint.getNonce(address,uint192) → 0x35567e1a.
+var getNonceSelector = common.FromHex("0x35567e1a")
+
 // GetNonce retrieves the nonce for an account from the EntryPoint
-// contract. Uses eth_getTransactionCount as a fallback nonce source.
+// contract via eth_call to EntryPoint.getNonce(address, key=0).
 func (c *Client) GetNonce(
 	ctx context.Context,
 	account common.Address,
 ) (*big.Int, error) {
+	// ABI-encode: getNonce(address sender, uint192 key)
+	// selector (4 bytes) + address padded to 32 + key padded to 32
+	calldata := make([]byte, 0, 68)
+	calldata = append(calldata, getNonceSelector...)
+	// Left-pad address to 32 bytes.
+	addrPadded := make([]byte, 32)
+	copy(addrPadded[12:], account.Bytes())
+	calldata = append(calldata, addrPadded...)
+	// key = 0 (32 zero bytes for sequential nonce).
+	calldata = append(calldata, make([]byte, 32)...)
+
+	callMsg := map[string]interface{}{
+		"to":   c.entryPoint.Hex(),
+		"data": hexutil.Encode(calldata),
+	}
+
 	raw, err := c.call(
 		ctx,
-		"eth_getTransactionCount",
-		[]interface{}{account.Hex(), "latest"},
+		"eth_call",
+		[]interface{}{callMsg, "latest"},
 	)
 	if err != nil {
-		return nil, fmt.Errorf("get nonce: %w", err)
+		return nil, fmt.Errorf("get entrypoint nonce: %w", err)
 	}
 
-	var hexNonce string
-	if err := json.Unmarshal(raw, &hexNonce); err != nil {
-		return nil, fmt.Errorf("decode nonce: %w", err)
+	var hexResult string
+	if err := json.Unmarshal(raw, &hexResult); err != nil {
+		return nil, fmt.Errorf("decode nonce result: %w", err)
 	}
 
-	nonce, err := hexutil.DecodeBig(hexNonce)
+	// eth_call returns ABI-encoded uint256 (0-padded to 32 bytes).
+	// Use hexutil.Decode (accepts leading zeros) instead of DecodeBig.
+	resultBytes, err := hexutil.Decode(hexResult)
 	if err != nil {
 		return nil, fmt.Errorf("parse nonce: %w", err)
 	}
-	return nonce, nil
+	return new(big.Int).SetBytes(resultBytes), nil
+}
+
+// defaultMaxPriorityFeeWei is the fallback priority fee (1.5 gwei)
+// when eth_maxPriorityFeePerGas is not supported.
+const defaultMaxPriorityFeeWei = 1_500_000_000
+
+// baseFeeMultiplier doubles the base fee for safety margin.
+const baseFeeMultiplier = 2
+
+// GetGasFees retrieves EIP-1559 gas fee parameters from the network.
+// Uses eth_maxPriorityFeePerGas for priority fee and the latest block
+// header for base fee. Falls back to defaults if RPC calls fail.
+func (c *Client) GetGasFees(
+	ctx context.Context,
+) (*GasFees, error) {
+	// Get priority fee from RPC.
+	priorityFee := big.NewInt(defaultMaxPriorityFeeWei)
+	raw, err := c.call(
+		ctx,
+		"eth_maxPriorityFeePerGas",
+		nil,
+	)
+	if err == nil {
+		var hexFee string
+		if jsonErr := json.Unmarshal(raw, &hexFee); jsonErr == nil {
+			if decoded, decErr := hexutil.DecodeBig(hexFee); decErr == nil {
+				priorityFee = decoded
+			}
+		}
+	}
+	// If eth_maxPriorityFeePerGas fails, use the default — not an error.
+
+	// Get base fee from latest block.
+	raw, err = c.call(
+		ctx,
+		"eth_getBlockByNumber",
+		[]interface{}{"latest", false},
+	)
+	if err != nil {
+		return nil, fmt.Errorf("get latest block: %w", err)
+	}
+
+	var block struct {
+		BaseFeePerGas string `json:"baseFeePerGas"`
+	}
+	if err := json.Unmarshal(raw, &block); err != nil {
+		return nil, fmt.Errorf("decode block: %w", err)
+	}
+
+	baseFee := big.NewInt(1_000_000_000) // 1 gwei default
+	if block.BaseFeePerGas != "" {
+		if decoded, decErr := hexutil.DecodeBig(
+			block.BaseFeePerGas,
+		); decErr == nil {
+			baseFee = decoded
+		}
+	}
+
+	// maxFeePerGas = 2 * baseFee + priorityFee
+	maxFee := new(big.Int).Add(
+		new(big.Int).Mul(
+			baseFee, big.NewInt(baseFeeMultiplier),
+		),
+		priorityFee,
+	)
+
+	return &GasFees{
+		MaxFeePerGas:         maxFee,
+		MaxPriorityFeePerGas: priorityFee,
+	}, nil
 }
 
 // SupportedEntryPoints returns supported entry point addresses.

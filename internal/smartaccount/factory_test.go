@@ -50,6 +50,7 @@ func (s *stubContractCaller) Write(
 func newTestFactory(caller contract.ContractCaller) *Factory {
 	return NewFactory(
 		caller,
+		nil, // rpc client not needed for unit tests
 		common.HexToAddress("0xAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"),
 		common.HexToAddress("0xBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB"),
 		common.HexToAddress("0xCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC"),
@@ -137,12 +138,14 @@ func TestComputeAddress_DifferentFactoryAddresses(t *testing.T) {
 
 	f1 := NewFactory(
 		nil,
+		nil,
 		common.HexToAddress("0xAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"),
 		common.HexToAddress("0xBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB"),
 		common.HexToAddress("0xCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC"),
 		84532,
 	)
 	f2 := NewFactory(
+		nil,
 		nil,
 		common.HexToAddress("0xDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDD"),
 		common.HexToAddress("0xBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB"),
@@ -237,12 +240,8 @@ func TestBuildSafeInitializer_DifferentOwners(t *testing.T) {
 func TestDeploy_Success(t *testing.T) {
 	t.Parallel()
 
-	deployedAddr := common.HexToAddress(
-		"0xDeployedDeployedDeployedDeployedDeployed",
-	)
 	caller := &stubContractCaller{
 		writeResult: &contract.ContractCallResult{
-			Data:   []interface{}{deployedAddr},
 			TxHash: "0xabc123",
 		},
 	}
@@ -251,10 +250,13 @@ func TestDeploy_Success(t *testing.T) {
 	owner := common.HexToAddress(
 		"0x1234567890abcdef1234567890abcdef12345678",
 	)
+	salt := big.NewInt(0)
 
-	addr, txHash, err := f.Deploy(context.Background(), owner, big.NewInt(0))
+	addr, txHash, err := f.Deploy(context.Background(), owner, salt)
 	require.NoError(t, err)
-	assert.Equal(t, deployedAddr, addr)
+	// Deploy now always returns the computed deterministic address.
+	expected := f.ComputeAddress(owner, salt)
+	assert.Equal(t, expected, addr)
 	assert.Equal(t, "0xabc123", txHash)
 	assert.Equal(t, 1, caller.writeCalls)
 	assert.Equal(t, "createProxyWithNonce", caller.lastWrite.Method)
@@ -329,37 +331,15 @@ func TestDeploy_WriteError(t *testing.T) {
 	assert.ErrorIs(t, err, caller.writeErr)
 }
 
-func TestIsDeployed_True(t *testing.T) {
+func TestIsDeployed_NilRPC(t *testing.T) {
 	t.Parallel()
 
-	caller := &stubContractCaller{
-		readResult: &contract.ContractCallResult{
-			Data: []interface{}{false},
-		},
-	}
-
-	f := newTestFactory(caller)
+	f := newTestFactory(&stubContractCaller{})
 	addr := common.HexToAddress("0xABCDABCDABCDABCDABCDABCDABCDABCDABCDABCD")
 
-	deployed, err := f.IsDeployed(context.Background(), addr)
-	require.NoError(t, err)
-	assert.True(t, deployed)
-	assert.Equal(t, 1, caller.readCalls)
-}
-
-func TestIsDeployed_False(t *testing.T) {
-	t.Parallel()
-
-	caller := &stubContractCaller{
-		readErr: errors.New("execution reverted"),
-	}
-
-	f := newTestFactory(caller)
-	addr := common.HexToAddress("0xABCDABCDABCDABCDABCDABCDABCDABCDABCDABCD")
-
-	deployed, err := f.IsDeployed(context.Background(), addr)
-	require.NoError(t, err, "read error should not propagate")
-	assert.False(t, deployed)
+	_, err := f.IsDeployed(context.Background(), addr)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "rpc client not configured")
 }
 
 func TestNewFactory(t *testing.T) {
@@ -370,7 +350,7 @@ func TestNewFactory(t *testing.T) {
 	safe7579 := common.HexToAddress("0x7579")
 	fallback := common.HexToAddress("0xFB00")
 
-	f := NewFactory(caller, factoryAddr, safe7579, fallback, 1)
+	f := NewFactory(caller, nil, factoryAddr, safe7579, fallback, 1)
 	require.NotNil(t, f)
 	assert.Equal(t, factoryAddr, f.factoryAddr)
 	assert.Equal(t, safe7579, f.safe7579Addr)

@@ -100,10 +100,22 @@ func newMockBundlerServer(t *testing.T) *httptest.Server {
 
 			w.Header().Set("Content-Type", "application/json")
 			switch req.Method {
-			case "eth_getTransactionCount":
+			case "eth_call":
 				json.NewEncoder(w).Encode(map[string]interface{}{
 					"jsonrpc": "2.0", "id": 1,
-					"result": "0x0",
+					"result": "0x0000000000000000000000000000000000000000000000000000000000000000",
+				})
+			case "eth_maxPriorityFeePerGas":
+				json.NewEncoder(w).Encode(map[string]interface{}{
+					"jsonrpc": "2.0", "id": 1,
+					"result": "0x59682f00",
+				})
+			case "eth_getBlockByNumber":
+				json.NewEncoder(w).Encode(map[string]interface{}{
+					"jsonrpc": "2.0", "id": 1,
+					"result": map[string]interface{}{
+						"baseFeePerGas": "0x3b9aca00",
+					},
 				})
 			case "eth_estimateUserOperationGas":
 				json.NewEncoder(w).Encode(map[string]interface{}{

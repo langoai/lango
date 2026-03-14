@@ -2,6 +2,7 @@ package contract
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"math/big"
 	"sync"
@@ -14,6 +15,12 @@ import (
 
 	"github.com/langoai/lango/internal/payment"
 	"github.com/langoai/lango/internal/wallet"
+)
+
+// Sentinel errors for contract call operations.
+var (
+	ErrTxReverted     = errors.New("transaction reverted")
+	ErrReceiptTimeout = errors.New("receipt timeout")
 )
 
 // DefaultTimeout is the default context timeout for contract calls.
@@ -191,9 +198,14 @@ func (c *Caller) Write(ctx context.Context, req ContractCallRequest) (*ContractC
 	// Wait for receipt.
 	receipt, err := c.waitForReceipt(ctx, signedTx.Hash())
 	if err != nil {
-		return &ContractCallResult{
-			TxHash: signedTx.Hash().Hex(),
-		}, nil // tx submitted but receipt unavailable
+		return nil, fmt.Errorf("wait for receipt %s: %w", signedTx.Hash().Hex(), err)
+	}
+
+	if receipt.Status != types.ReceiptStatusSuccessful {
+		return nil, fmt.Errorf(
+			"tx %s reverted (status=%d): %w",
+			signedTx.Hash().Hex(), receipt.Status, ErrTxReverted,
+		)
 	}
 
 	return &ContractCallResult{
@@ -221,7 +233,7 @@ func (c *Caller) waitForReceipt(ctx context.Context, txHash common.Hash) (*types
 
 		select {
 		case <-deadline:
-			return nil, fmt.Errorf("receipt timeout for %s", txHash.Hex())
+			return nil, fmt.Errorf("receipt timeout for %s: %w", txHash.Hex(), ErrReceiptTimeout)
 		case <-ctx.Done():
 			return nil, ctx.Err()
 		case <-time.After(delay):

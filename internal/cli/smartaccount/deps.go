@@ -110,6 +110,7 @@ func initSmartAccountDeps(boot *bootstrap.Result) (*smartAccountDeps, error) {
 	caller := contract.NewCaller(rpcClient, wp, chainID, abiCache)
 	factory := sa.NewFactory(
 		caller,
+		rpcClient,
 		common.HexToAddress(cfg.SmartAccount.FactoryAddress),
 		common.HexToAddress(cfg.SmartAccount.Safe7579Address),
 		common.HexToAddress(cfg.SmartAccount.FallbackHandler),

@@ -7,9 +7,9 @@ import (
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/crypto"
+	"github.com/ethereum/go-ethereum/ethclient"
 
 	"github.com/langoai/lango/internal/contract"
-	"github.com/langoai/lango/internal/smartaccount/bindings"
 )
 
 // safeFactoryABI is the ABI for the Safe proxy factory's createProxyWithNonce.
@@ -41,6 +41,7 @@ const safeFactoryABI = `[
 // Factory handles Safe smart account deployment.
 type Factory struct {
 	caller       contract.ContractCaller
+	rpc          *ethclient.Client
 	factoryAddr  common.Address
 	safe7579Addr common.Address
 	fallbackAddr common.Address
@@ -50,6 +51,7 @@ type Factory struct {
 // NewFactory creates a smart account factory.
 func NewFactory(
 	caller contract.ContractCaller,
+	rpc *ethclient.Client,
 	factoryAddr common.Address,
 	safe7579Addr common.Address,
 	fallbackAddr common.Address,
@@ -57,6 +59,7 @@ func NewFactory(
 ) *Factory {
 	return &Factory{
 		caller:       caller,
+		rpc:          rpc,
 		factoryAddr:  factoryAddr,
 		safe7579Addr: safe7579Addr,
 		fallbackAddr: fallbackAddr,
@@ -145,45 +148,30 @@ func (f *Factory) Deploy(
 			fmt.Errorf("deploy safe account: %w", err)
 	}
 
-	// Extract the proxy address from the result.
-	if len(result.Data) > 0 {
-		if addr, ok := result.Data[0].(common.Address); ok {
-			return addr, result.TxHash, nil
-		}
-	}
-
-	// If the result data doesn't contain the address directly,
-	// compute it deterministically.
+	// The proxy address is deterministic — compute it from CREATE2.
 	computed := f.ComputeAddress(owner, salt)
 	return computed, result.TxHash, nil
 }
 
-// IsDeployed checks if the account has code deployed at its address.
+// IsDeployed checks if the account has code deployed at its address
+// by calling eth_getCode via the RPC client.
 func (f *Factory) IsDeployed(
 	ctx context.Context,
 	addr common.Address,
 ) (bool, error) {
-	// Use a Read call to check if code exists at the address.
-	// We attempt to call a view function; if the contract has code
-	// the call proceeds, otherwise it fails.
-	result, err := f.caller.Read(ctx, contract.ContractCallRequest{
-		ChainID: f.chainID,
-		Address: addr,
-		ABI:     bindings.Safe7579ABI,
-		Method:  "isModuleInstalled",
-		Args: []interface{}{
-			uint8(ModuleTypeValidator),
-			common.Address{},
-			[]byte{},
-		},
-	})
-	if err != nil {
-		// If the call fails, the contract is likely not deployed.
-		return false, nil
+	if f.rpc == nil {
+		return false, fmt.Errorf(
+			"check deployment %s: rpc client not configured",
+			addr.Hex(),
+		)
 	}
-	// If the call succeeds, the contract exists.
-	_ = result
-	return true, nil
+	code, err := f.rpc.CodeAt(ctx, addr, nil)
+	if err != nil {
+		return false, fmt.Errorf(
+			"get code at %s: %w", addr.Hex(), err,
+		)
+	}
+	return len(code) > 0, nil
 }
 
 // safeSetupABI is the ABI for the Safe.setup() function.
