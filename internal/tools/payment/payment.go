@@ -79,15 +79,22 @@ func buildSendTool(svc *payment.Service) *agent.Tool {
 				return nil, err
 			}
 
-			return map[string]interface{}{
-				"status":  "submitted",
+			result := map[string]interface{}{
+				"status":  receipt.Status,
 				"txHash":  receipt.TxHash,
 				"amount":  receipt.Amount,
 				"from":    receipt.From,
 				"to":      receipt.To,
 				"chainId": receipt.ChainID,
 				"network": wallet.NetworkName(receipt.ChainID),
-			}, nil
+			}
+			if receipt.GasUsed > 0 {
+				result["gasUsed"] = receipt.GasUsed
+			}
+			if receipt.BlockNumber > 0 {
+				result["blockNumber"] = receipt.BlockNumber
+			}
+			return result, nil
 		},
 	}
 }

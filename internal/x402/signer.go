@@ -38,15 +38,19 @@ func (p *LocalSignerProvider) EvmSigner(ctx context.Context) (evm.ClientEvmSigne
 		return nil, fmt.Errorf("load wallet key: %w", err)
 	}
 
-	keyHex := hex.EncodeToString(keyBytes)
+	// Encode to hex using a mutable []byte buffer so we can zero it after use.
+	// Go strings are immutable, so []byte(str) creates a copy — zeroing the
+	// copy does not clear the original. Work with []byte throughout.
+	keyHexBytes := make([]byte, hex.EncodedLen(len(keyBytes)))
+	hex.Encode(keyHexBytes, keyBytes)
+
 	// Zero raw key bytes immediately.
 	for i := range keyBytes {
 		keyBytes[i] = 0
 	}
 
-	signer, err := evmsigners.NewClientSignerFromPrivateKey(keyHex)
-	// Zero hex string by overwriting the backing array.
-	keyHexBytes := []byte(keyHex)
+	signer, err := evmsigners.NewClientSignerFromPrivateKey(string(keyHexBytes))
+	// Zero hex buffer.
 	for i := range keyHexBytes {
 		keyHexBytes[i] = 0
 	}

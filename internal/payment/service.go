@@ -3,7 +3,9 @@ package payment
 import (
 	"context"
 	"fmt"
+	"log"
 	"math/big"
+	"sync"
 	"time"
 
 	"github.com/ethereum/go-ethereum"
@@ -22,6 +24,12 @@ const DefaultHistoryLimit = 20
 
 const purposeX402AutoPayment = "X402 auto-payment"
 
+// DefaultReceiptTimeout is the maximum time to wait for on-chain confirmation.
+const DefaultReceiptTimeout = 2 * time.Minute
+
+// DefaultMaxRetries is the default number of transaction submission attempts.
+const DefaultMaxRetries = 3
+
 // Service orchestrates blockchain payment operations.
 type Service struct {
 	wallet    wallet.WalletProvider
@@ -30,6 +38,11 @@ type Service struct {
 	client    *ent.Client
 	rpcClient *ethclient.Client
 	chainID   int64
+
+	// nonceMu serializes transaction building to prevent nonce collisions.
+	nonceMu        sync.Mutex
+	receiptTimeout time.Duration
+	maxRetries     int
 }
 
 // NewService creates a payment service.
@@ -42,12 +55,14 @@ func NewService(
 	chainID int64,
 ) *Service {
 	return &Service{
-		wallet:    wp,
-		limiter:   limiter,
-		builder:   builder,
-		client:    client,
-		rpcClient: rpcClient,
-		chainID:   chainID,
+		wallet:         wp,
+		limiter:        limiter,
+		builder:        builder,
+		client:         client,
+		rpcClient:      rpcClient,
+		chainID:        chainID,
+		receiptTimeout: DefaultReceiptTimeout,
+		maxRetries:     DefaultMaxRetries,
 	}
 }
 
@@ -93,55 +108,79 @@ func (s *Service) Send(ctx context.Context, req PaymentRequest) (*PaymentReceipt
 		return nil, fmt.Errorf("create tx record: %w", err)
 	}
 
-	// Build transaction
+	// Build, sign, and submit under nonce lock to prevent collisions.
+	s.nonceMu.Lock()
+
 	from := common.HexToAddress(fromAddr)
 	to := common.HexToAddress(req.To)
 	tx, err := s.builder.BuildTransferTx(ctx, from, to, amount)
 	if err != nil {
+		s.nonceMu.Unlock()
 		s.failTx(ctx, ptx.ID, err)
 		return nil, fmt.Errorf("build transaction: %w", err)
 	}
 
-	// Sign transaction
 	signer := types.LatestSignerForChainID(big.NewInt(s.chainID))
-	txHash := signer.Hash(tx)
-	sig, err := s.wallet.SignTransaction(ctx, txHash.Bytes())
+	txSigHash := signer.Hash(tx)
+	sig, err := s.wallet.SignTransaction(ctx, txSigHash.Bytes())
 	if err != nil {
+		s.nonceMu.Unlock()
 		s.failTx(ctx, ptx.ID, err)
 		return nil, fmt.Errorf("sign transaction: %w", err)
 	}
 
 	signedTx, err := tx.WithSignature(signer, sig)
 	if err != nil {
+		s.nonceMu.Unlock()
 		s.failTx(ctx, ptx.ID, err)
 		return nil, fmt.Errorf("apply signature: %w", err)
 	}
 
-	// Submit transaction
-	if err := s.rpcClient.SendTransaction(ctx, signedTx); err != nil {
+	// Submit with retry (exponential backoff).
+	txHashHex, err := s.submitWithRetry(ctx, signedTx)
+	s.nonceMu.Unlock()
+	if err != nil {
 		s.failTx(ctx, ptx.ID, err)
 		return nil, fmt.Errorf("submit transaction: %w", err)
 	}
 
-	// Update record with tx hash
-	txHashHex := signedTx.Hash().Hex()
+	// Update record to submitted.
 	s.client.PaymentTx.UpdateOneID(ptx.ID).
 		SetTxHash(txHashHex).
 		SetStatus(paymenttx.StatusSubmitted).
 		SaveX(ctx)
 
-	// Record spending
-	// Non-fatal: tx already submitted, ignore spending record error.
+	// Wait for on-chain confirmation.
+	receipt, err := s.waitForConfirmation(ctx, signedTx.Hash())
+	if err != nil {
+		s.failTx(ctx, ptx.ID, err)
+		return nil, fmt.Errorf("confirm transaction: %w", err)
+	}
+
+	if receipt.Status != types.ReceiptStatusSuccessful {
+		txErr := fmt.Errorf("tx %s reverted (status=%d)", txHashHex, receipt.Status)
+		s.failTx(ctx, ptx.ID, txErr)
+		return nil, txErr
+	}
+
+	// Update record to confirmed.
+	s.client.PaymentTx.UpdateOneID(ptx.ID).
+		SetStatus(paymenttx.StatusConfirmed).
+		SaveX(ctx)
+
+	// Record spending — non-fatal since tx is already confirmed.
 	_ = s.limiter.Record(ctx, amount)
 
 	return &PaymentReceipt{
-		TxHash:    txHashHex,
-		Status:    string(paymenttx.StatusSubmitted),
-		Amount:    req.Amount,
-		From:      fromAddr,
-		To:        req.To,
-		ChainID:   s.chainID,
-		Timestamp: time.Now(),
+		TxHash:      txHashHex,
+		Status:      string(paymenttx.StatusConfirmed),
+		Amount:      req.Amount,
+		From:        fromAddr,
+		To:          req.To,
+		ChainID:     s.chainID,
+		GasUsed:     receipt.GasUsed,
+		BlockNumber: receipt.BlockNumber.Uint64(),
+		Timestamp:   time.Now(),
 	}, nil
 }
 
@@ -233,6 +272,54 @@ func (s *Service) WalletAddress(ctx context.Context) (string, error) {
 // ChainID returns the configured chain ID.
 func (s *Service) ChainID() int64 {
 	return s.chainID
+}
+
+// submitWithRetry sends the signed transaction with exponential backoff.
+func (s *Service) submitWithRetry(ctx context.Context, tx *types.Transaction) (string, error) {
+	var lastErr error
+	for attempt := 0; attempt < s.maxRetries; attempt++ {
+		if err := s.rpcClient.SendTransaction(ctx, tx); err == nil {
+			return tx.Hash().Hex(), nil
+		} else {
+			lastErr = err
+		}
+
+		log.Printf("payment tx submission retry attempt=%d error=%v", attempt+1, lastErr)
+
+		backoff := time.Duration(1<<uint(attempt)) * time.Second
+		select {
+		case <-ctx.Done():
+			return "", ctx.Err()
+		case <-time.After(backoff):
+		}
+	}
+	return "", fmt.Errorf("submit after %d retries: %w", s.maxRetries, lastErr)
+}
+
+// waitForConfirmation polls for a transaction receipt with exponential backoff.
+func (s *Service) waitForConfirmation(ctx context.Context, txHash common.Hash) (*types.Receipt, error) {
+	deadline := time.After(s.receiptTimeout)
+	backoff := 1 * time.Second
+	maxBackoff := 16 * time.Second
+
+	for {
+		receipt, err := s.rpcClient.TransactionReceipt(ctx, txHash)
+		if err == nil {
+			return receipt, nil
+		}
+
+		select {
+		case <-deadline:
+			return nil, fmt.Errorf("receipt timeout for %s after %v", txHash.Hex(), s.receiptTimeout)
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		case <-time.After(backoff):
+		}
+
+		if backoff < maxBackoff {
+			backoff *= 2
+		}
+	}
 }
 
 // failTx marks a transaction as failed with an error message.

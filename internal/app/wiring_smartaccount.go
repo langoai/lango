@@ -118,6 +118,12 @@ func initSmartAccount(
 		logger().Info("smart account: session on-chain wiring configured", "validator", svAddr.Hex())
 	}
 
+	// Provide entryPoint and chainID for correct UserOp hash computation.
+	sessionOpts = append(sessionOpts,
+		sasession.WithEntryPoint(entryPoint),
+		sasession.WithChainID(pc.chainID),
+	)
+
 	sac.sessionManager = sasession.NewManager(sessionStore, sessionOpts...)
 
 	// 4. Policy engine

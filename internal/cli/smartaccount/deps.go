@@ -100,6 +100,12 @@ func initSmartAccountDeps(boot *bootstrap.Result) (*smartAccountDeps, error) {
 	if cfg.SmartAccount.Session.MaxActiveKeys > 0 {
 		sessionOpts = append(sessionOpts, sasession.WithMaxKeys(cfg.SmartAccount.Session.MaxActiveKeys))
 	}
+	// Provide entryPoint and chainID for correct UserOp hash computation.
+	sessionOpts = append(sessionOpts,
+		sasession.WithEntryPoint(entryPoint),
+		sasession.WithChainID(chainID),
+	)
+
 	deps.sessionManager = sasession.NewManager(sessionStore, sessionOpts...)
 
 	// 4. Policy engine.
