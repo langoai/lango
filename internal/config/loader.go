@@ -3,6 +3,7 @@ package config
 import (
 	"fmt"
 	"os"
+	"path/filepath"
 	"regexp"
 	"strings"
 	"time"
@@ -16,6 +17,7 @@ var envVarRegex = regexp.MustCompile(`\$\{([^}]+)\}`)
 // DefaultConfig returns a Config with sensible defaults
 func DefaultConfig() *Config {
 	return &Config{
+		DataRoot: "~/.lango",
 		Server: ServerConfig{
 			Host:             "localhost",
 			Port:             18789,
@@ -200,6 +202,7 @@ func Load(configPath string) (*Config, error) {
 
 	// Set defaults from DefaultConfig
 	defaults := DefaultConfig()
+	v.SetDefault("dataRoot", defaults.DataRoot)
 	v.SetDefault("server.host", defaults.Server.Host)
 	v.SetDefault("server.port", defaults.Server.Port)
 	v.SetDefault("server.httpEnabled", defaults.Server.HTTPEnabled)
@@ -338,6 +341,12 @@ func Load(configPath string) (*Config, error) {
 
 	// Apply environment variable substitution
 	substituteEnvVars(cfg)
+
+	// Normalize and validate data paths under DataRoot.
+	NormalizePaths(cfg)
+	if err := ValidateDataPaths(cfg); err != nil {
+		return nil, err
+	}
 
 	// Validate configuration
 	if err := Validate(cfg); err != nil {
@@ -517,6 +526,91 @@ func Validate(cfg *Config) error {
 		return fmt.Errorf("configuration validation failed:\n  - %s", strings.Join(errs, "\n  - "))
 	}
 
+	return nil
+}
+
+// expandTilde replaces a leading ~ with the given home directory.
+func expandTilde(path, home string) string {
+	if home == "" || (!strings.HasPrefix(path, "~/") && path != "~") {
+		return path
+	}
+	return filepath.Join(home, path[1:])
+}
+
+// NormalizePaths resolves relative data paths to be under DataRoot and
+// expands ~ in all path fields. Call after Load/Unmarshal.
+func NormalizePaths(cfg *Config) {
+	home, _ := os.UserHomeDir()
+
+	if cfg.DataRoot == "" {
+		cfg.DataRoot = "~/.lango"
+	}
+	cfg.DataRoot = expandTilde(cfg.DataRoot, home)
+
+	// Normalize each configurable data path.
+	normalizePath(&cfg.Session.DatabasePath, cfg.DataRoot, home)
+	normalizePath(&cfg.Graph.DatabasePath, cfg.DataRoot, home)
+	normalizePath(&cfg.Skill.SkillsDir, cfg.DataRoot, home)
+	normalizePath(&cfg.Workflow.StateDir, cfg.DataRoot, home)
+	normalizePath(&cfg.P2P.KeyDir, cfg.DataRoot, home)
+	normalizePath(&cfg.P2P.ZKP.ProofCacheDir, cfg.DataRoot, home)
+	normalizePath(&cfg.P2P.Workspace.DataDir, cfg.DataRoot, home)
+}
+
+// normalizePath expands ~ and resolves relative paths under dataRoot.
+func normalizePath(p *string, dataRoot, home string) {
+	if p == nil || *p == "" {
+		return
+	}
+	*p = expandTilde(*p, home)
+
+	// If path is relative (not starting with /), resolve under dataRoot.
+	if !filepath.IsAbs(*p) {
+		*p = filepath.Join(dataRoot, *p)
+	}
+	*p = filepath.Clean(*p)
+}
+
+// ValidateDataPaths checks that all configurable data paths reside under DataRoot.
+// Must be called after NormalizePaths (paths are already cleaned absolute paths).
+func ValidateDataPaths(cfg *Config) error {
+	if cfg.DataRoot == "" {
+		return nil
+	}
+
+	root := filepath.Clean(cfg.DataRoot)
+	rootPrefix := root + string(os.PathSeparator)
+
+	type pathEntry struct {
+		field string
+		value string
+	}
+
+	entries := []pathEntry{
+		{"session.databasePath", cfg.Session.DatabasePath},
+		{"graph.databasePath", cfg.Graph.DatabasePath},
+		{"skill.skillsDir", cfg.Skill.SkillsDir},
+		{"workflow.stateDir", cfg.Workflow.StateDir},
+		{"p2p.keyDir", cfg.P2P.KeyDir},
+		{"p2p.zkp.proofCacheDir", cfg.P2P.ZKP.ProofCacheDir},
+		{"p2p.workspace.dataDir", cfg.P2P.Workspace.DataDir},
+	}
+
+	var errs []string
+	for _, e := range entries {
+		if e.value == "" {
+			continue
+		}
+		cleaned := filepath.Clean(e.value)
+		// Path must be equal to or under the data root.
+		if cleaned != root && !strings.HasPrefix(cleaned, rootPrefix) {
+			errs = append(errs, fmt.Sprintf("%s (%q) must be under data root (%s)", e.field, e.value, root))
+		}
+	}
+
+	if len(errs) > 0 {
+		return fmt.Errorf("data path validation failed:\n  - %s", strings.Join(errs, "\n  - "))
+	}
 	return nil
 }
 

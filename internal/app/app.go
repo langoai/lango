@@ -24,6 +24,7 @@ import (
 	"github.com/langoai/lango/internal/observability/audit"
 	"github.com/langoai/lango/internal/sandbox"
 	"github.com/langoai/lango/internal/security"
+	execpkg "github.com/langoai/lango/internal/tools/exec"
 	"github.com/langoai/lango/internal/p2p/gitbundle"
 	"github.com/langoai/lango/internal/session"
 	"github.com/langoai/lango/internal/toolcatalog"
@@ -111,7 +112,13 @@ func New(boot *bootstrap.Result) (*App, error) {
 		"background": cfg.Background.Enabled,
 		"workflow":   cfg.Workflow.Enabled,
 	}
-	tools := buildTools(sv, fsConfig, browserSM, automationAvailable)
+
+	// Build exec command guard protecting the data root and any additional paths.
+	protectedPaths := []string{cfg.DataRoot}
+	protectedPaths = append(protectedPaths, cfg.Tools.Exec.AdditionalProtectedPaths...)
+	cmdGuard := execpkg.NewCommandGuard(protectedPaths)
+
+	tools := buildTools(sv, fsConfig, browserSM, automationAvailable, cmdGuard)
 
 	// Tool Catalog — register every built-in tool for dynamic discovery/dispatch.
 	catalog := toolcatalog.New()
@@ -586,18 +593,19 @@ func New(boot *bootstrap.Result) (*App, error) {
 	}
 	tools = toolchain.ChainAll(tools, toolchain.WithTruncate(maxChars))
 
-	// 7b. Tool Execution Hooks
-	if cfg.Hooks.Enabled || cfg.Agent.MultiAgent {
+	// 7b. Tool Execution Hooks — SecurityFilterHook is always active (not config-gated).
+	{
 		hookRegistry := toolchain.NewHookRegistry()
 
-		// Register built-in hooks based on configuration.
-		if cfg.Hooks.SecurityFilter {
-			hookRegistry.RegisterPre(toolchain.NewSecurityFilterHook(cfg.Hooks.BlockedCommands))
-		}
+		// SecurityFilterHook is always registered with default dangerous patterns
+		// merged with any user-configured patterns. This cannot be disabled.
+		hookRegistry.RegisterPre(toolchain.NewSecurityFilterHook(cfg.Hooks.BlockedCommands))
+
+		// Optional hooks gated by configuration.
 		if cfg.Hooks.AccessControl {
 			hookRegistry.RegisterPre(toolchain.NewAgentAccessControlHook(nil))
 		}
-		if cfg.Hooks.EventPublishing && bus != nil {
+		if (cfg.Hooks.Enabled || cfg.Agent.MultiAgent) && cfg.Hooks.EventPublishing && bus != nil {
 			ebHook := toolchain.NewEventBusHook(bus)
 			hookRegistry.RegisterPre(ebHook)
 			hookRegistry.RegisterPost(ebHook)

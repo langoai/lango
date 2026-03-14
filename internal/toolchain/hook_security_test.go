@@ -2,6 +2,7 @@ package toolchain
 
 import (
 	"context"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -102,4 +103,66 @@ func TestSecurityFilterHook_Metadata(t *testing.T) {
 	hook := &SecurityFilterHook{}
 	assert.Equal(t, "security_filter", hook.Name())
 	assert.Equal(t, 10, hook.Priority())
+}
+
+func TestDefaultBlockedPatterns(t *testing.T) {
+	t.Parallel()
+
+	patterns := DefaultBlockedPatterns()
+	assert.True(t, len(patterns) > 0, "default patterns should not be empty")
+
+	// Verify critical patterns are present.
+	patternsStr := strings.Join(patterns, "|")
+	for _, must := range []string{"rm -rf /", "mkfs.", "dd if=/dev/zero"} {
+		assert.Contains(t, patternsStr, must, "default patterns should contain %q", must)
+	}
+}
+
+func TestNewSecurityFilterHook_MergesDefaults(t *testing.T) {
+	t.Parallel()
+
+	hook := NewSecurityFilterHook([]string{"custom_pattern", "rm -rf /"})
+
+	// Should contain defaults + custom pattern.
+	assert.Contains(t, hook.BlockedPatterns, "custom_pattern", "user pattern should be included")
+	assert.Contains(t, hook.BlockedPatterns, "rm -rf /", "default pattern should be included")
+
+	// Should not duplicate "rm -rf /" (appears in both defaults and user patterns).
+	count := 0
+	for _, p := range hook.BlockedPatterns {
+		if p == "rm -rf /" {
+			count++
+		}
+	}
+	assert.Equal(t, 1, count, "duplicate patterns should be deduplicated")
+}
+
+func TestSecurityFilterHook_DefaultPatternsBlock(t *testing.T) {
+	t.Parallel()
+
+	hook := NewSecurityFilterHook(nil)
+
+	tests := []struct {
+		give       string
+		wantAction PreHookAction
+	}{
+		{"rm -rf /", Block},
+		{"mkfs.ext4 /dev/sda1", Block},
+		{"dd if=/dev/zero of=/dev/sda", Block},
+		{"echo hello", Continue},
+		{"go build ./...", Continue},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.give, func(t *testing.T) {
+			t.Parallel()
+			result, err := hook.Pre(HookContext{
+				ToolName: "exec",
+				Params:   map[string]interface{}{"command": tt.give},
+				Ctx:      context.Background(),
+			})
+			require.NoError(t, err)
+			assert.Equal(t, tt.wantAction, result.Action, "command: %q", tt.give)
+		})
+	}
 }

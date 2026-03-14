@@ -5,6 +5,8 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	execpkg "github.com/langoai/lango/internal/tools/exec"
 )
 
 func TestBlockLangoExec_SkillGuards(t *testing.T) {
@@ -118,4 +120,34 @@ func TestBlockLangoExec_DisabledFeature(t *testing.T) {
 	msg = blockLangoExec("lango graph query", auto)
 	require.NotEmpty(t, msg, "expected blocked message for graph")
 	assert.NotContains(t, msg, "Enable the", "graph guard should not suggest enabling a feature")
+}
+
+func TestBlockProtectedPaths(t *testing.T) {
+	guard := execpkg.NewCommandGuard([]string{"~/.lango"})
+
+	tests := []struct {
+		give        string
+		wantBlocked bool
+	}{
+		{"sqlite3 ~/.lango/lango.db", true},
+		{"cat ~/.lango/keyfile", true},
+		{"kill 1", true},
+		{"pkill lango", true},
+		{"go build ./...", false},
+		{"sqlite3 /tmp/test.db", false},
+		{"ls -la", false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.give, func(t *testing.T) {
+			msg := blockProtectedPaths(tt.give, guard)
+			gotBlocked := msg != ""
+			assert.Equal(t, tt.wantBlocked, gotBlocked, "blockProtectedPaths(%q) msg=%q", tt.give, msg)
+		})
+	}
+}
+
+func TestBlockProtectedPaths_NilGuard(t *testing.T) {
+	msg := blockProtectedPaths("sqlite3 ~/.lango/lango.db", nil)
+	assert.Empty(t, msg, "nil guard should not block anything")
 }
