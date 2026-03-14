@@ -27,10 +27,11 @@ func NewCommand() *cobra.Command {
 Unlike "lango onboard" (which is a guided wizard for first-time setup), this editor
 gives you free navigation across every configuration section.
 
-By default, only essential categories are shown. Press Tab to toggle Advanced mode
-and see all categories. Press "/" to search across all categories by keyword.
+All categories are visible by default. Advanced items are marked with an ADV badge.
+Press Tab to toggle between showing all categories and basic-only view.
+Press "/" to search, or use smart filters: @basic, @advanced, @enabled, @modified.
 
-  Core:             Providers, Agent, Channels, Tools
+  Core:             Providers, Agent, Channels, Tools, Logging, Gatekeeper, Output Manager
   AI & Knowledge:   Knowledge, Skill, Observational Memory, Embedding & RAG
   Automation:       Cron, Background, Workflow
   Payment & Account: Payment, Smart Account
@@ -41,9 +42,11 @@ and see all categories. Press "/" to search across all categories by keyword.
 All settings including API keys are saved in an encrypted profile (~/.lango/lango.db).
 
 See Also:
-  lango config   - View/manage configuration profiles
-  lango onboard  - Guided setup wizard
-  lango doctor   - Diagnose configuration issues`,
+  lango config get  - Read a config value by dot-path
+  lango config set  - Set a config value (passphrase required)
+  lango config keys - List available config keys
+  lango onboard     - Guided setup wizard
+  lango doctor      - Diagnose configuration issues`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return runSettings(profileName)
 		},

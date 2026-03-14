@@ -782,6 +782,297 @@ func TestUpdateConfigFromForm_KMSFields(t *testing.T) {
 	}
 }
 
+func TestNewMenuModel_ShowAdvancedByDefault(t *testing.T) {
+	menu := NewMenuModel()
+	if !menu.ShowAdvanced() {
+		t.Error("showAdvanced should be true by default")
+	}
+}
+
+func TestNewMenuModel_HasNewSystemCategories(t *testing.T) {
+	menu := NewMenuModel()
+
+	wantIDs := []string{"logging", "gatekeeper", "output_manager"}
+
+	for _, id := range wantIDs {
+		found := false
+		for _, cat := range menu.AllCategories() {
+			if cat.ID == id {
+				found = true
+				if cat.Tier != TierAdvanced {
+					t.Errorf("category %q should be TierAdvanced", id)
+				}
+				break
+			}
+		}
+		if !found {
+			t.Errorf("menu missing %q category", id)
+		}
+	}
+}
+
+func TestNewLoggingForm_AllFields(t *testing.T) {
+	cfg := defaultTestConfig()
+	form := NewLoggingForm(cfg)
+
+	wantKeys := []string{"log_level", "log_format", "log_output_path"}
+
+	if len(form.Fields) != len(wantKeys) {
+		t.Fatalf("expected %d fields, got %d", len(wantKeys), len(form.Fields))
+	}
+
+	for _, key := range wantKeys {
+		if f := fieldByKey(form, key); f == nil {
+			t.Errorf("missing field %q", key)
+		}
+	}
+
+	if f := fieldByKey(form, "log_level"); f.Value != "info" {
+		t.Errorf("log_level: want %q, got %q", "info", f.Value)
+	}
+	if f := fieldByKey(form, "log_format"); f.Type != tuicore.InputSelect {
+		t.Errorf("log_format: want InputSelect, got %d", f.Type)
+	}
+}
+
+func TestNewGatekeeperForm_AllFields(t *testing.T) {
+	cfg := defaultTestConfig()
+	form := NewGatekeeperForm(cfg)
+
+	wantKeys := []string{
+		"gk_enabled", "gk_strip_thought_tags", "gk_strip_internal_markers",
+		"gk_strip_raw_json", "gk_raw_json_threshold", "gk_custom_patterns",
+	}
+
+	if len(form.Fields) != len(wantKeys) {
+		t.Fatalf("expected %d fields, got %d", len(wantKeys), len(form.Fields))
+	}
+
+	for _, key := range wantKeys {
+		if f := fieldByKey(form, key); f == nil {
+			t.Errorf("missing field %q", key)
+		}
+	}
+
+	// Default: enabled = true (derefBool nil => true)
+	if f := fieldByKey(form, "gk_enabled"); !f.Checked {
+		t.Error("gk_enabled: want true by default")
+	}
+}
+
+func TestNewOutputManagerForm_AllFields(t *testing.T) {
+	cfg := defaultTestConfig()
+	form := NewOutputManagerForm(cfg)
+
+	wantKeys := []string{
+		"om_mgr_enabled", "om_mgr_token_budget",
+		"om_mgr_head_ratio", "om_mgr_tail_ratio",
+	}
+
+	if len(form.Fields) != len(wantKeys) {
+		t.Fatalf("expected %d fields, got %d", len(wantKeys), len(form.Fields))
+	}
+
+	for _, key := range wantKeys {
+		if f := fieldByKey(form, key); f == nil {
+			t.Errorf("missing field %q", key)
+		}
+	}
+}
+
+func TestUpdateConfigFromForm_LoggingFields(t *testing.T) {
+	state := tuicore.NewConfigState()
+	form := tuicore.NewFormModel("test")
+	form.AddField(&tuicore.Field{Key: "log_level", Type: tuicore.InputSelect, Value: "debug"})
+	form.AddField(&tuicore.Field{Key: "log_format", Type: tuicore.InputSelect, Value: "json"})
+	form.AddField(&tuicore.Field{Key: "log_output_path", Type: tuicore.InputText, Value: "/var/log/lango.log"})
+
+	state.UpdateConfigFromForm(&form)
+
+	if state.Current.Logging.Level != "debug" {
+		t.Errorf("Logging.Level: want %q, got %q", "debug", state.Current.Logging.Level)
+	}
+	if state.Current.Logging.Format != "json" {
+		t.Errorf("Logging.Format: want %q, got %q", "json", state.Current.Logging.Format)
+	}
+	if state.Current.Logging.OutputPath != "/var/log/lango.log" {
+		t.Errorf("Logging.OutputPath: want %q, got %q", "/var/log/lango.log", state.Current.Logging.OutputPath)
+	}
+}
+
+func TestUpdateConfigFromForm_GatekeeperFields(t *testing.T) {
+	state := tuicore.NewConfigState()
+	form := tuicore.NewFormModel("test")
+	form.AddField(&tuicore.Field{Key: "gk_enabled", Type: tuicore.InputBool, Checked: false})
+	form.AddField(&tuicore.Field{Key: "gk_strip_thought_tags", Type: tuicore.InputBool, Checked: true})
+	form.AddField(&tuicore.Field{Key: "gk_raw_json_threshold", Type: tuicore.InputInt, Value: "1000"})
+	form.AddField(&tuicore.Field{Key: "gk_custom_patterns", Type: tuicore.InputText, Value: "\\[SECRET\\],\\bkey=\\w+"})
+
+	state.UpdateConfigFromForm(&form)
+
+	gk := state.Current.Gatekeeper
+	if gk.Enabled == nil || *gk.Enabled {
+		t.Error("Gatekeeper.Enabled: want false")
+	}
+	if gk.StripThoughtTags == nil || !*gk.StripThoughtTags {
+		t.Error("Gatekeeper.StripThoughtTags: want true")
+	}
+	if gk.RawJSONThreshold != 1000 {
+		t.Errorf("Gatekeeper.RawJSONThreshold: want 1000, got %d", gk.RawJSONThreshold)
+	}
+	if len(gk.CustomPatterns) != 2 {
+		t.Errorf("Gatekeeper.CustomPatterns: want 2 patterns, got %d", len(gk.CustomPatterns))
+	}
+}
+
+func TestUpdateConfigFromForm_OutputManagerFields(t *testing.T) {
+	state := tuicore.NewConfigState()
+	form := tuicore.NewFormModel("test")
+	form.AddField(&tuicore.Field{Key: "om_mgr_enabled", Type: tuicore.InputBool, Checked: true})
+	form.AddField(&tuicore.Field{Key: "om_mgr_token_budget", Type: tuicore.InputInt, Value: "3000"})
+	form.AddField(&tuicore.Field{Key: "om_mgr_head_ratio", Type: tuicore.InputText, Value: "0.6"})
+	form.AddField(&tuicore.Field{Key: "om_mgr_tail_ratio", Type: tuicore.InputText, Value: "0.4"})
+
+	state.UpdateConfigFromForm(&form)
+
+	om := state.Current.Tools.OutputManager
+	if om.Enabled == nil || !*om.Enabled {
+		t.Error("OutputManager.Enabled: want true")
+	}
+	if om.TokenBudget != 3000 {
+		t.Errorf("OutputManager.TokenBudget: want 3000, got %d", om.TokenBudget)
+	}
+	if om.HeadRatio != 0.6 {
+		t.Errorf("OutputManager.HeadRatio: want 0.6, got %f", om.HeadRatio)
+	}
+	if om.TailRatio != 0.4 {
+		t.Errorf("OutputManager.TailRatio: want 0.4, got %f", om.TailRatio)
+	}
+}
+
+func TestUpdateConfigFromForm_OnChainEscrowFields(t *testing.T) {
+	state := tuicore.NewConfigState()
+	form := tuicore.NewFormModel("test")
+	form.AddField(&tuicore.Field{Key: "economy_escrow_onchain_enabled", Type: tuicore.InputBool, Checked: true})
+	form.AddField(&tuicore.Field{Key: "economy_escrow_onchain_mode", Type: tuicore.InputText, Value: "hub"})
+	form.AddField(&tuicore.Field{Key: "economy_escrow_onchain_hub_address", Type: tuicore.InputText, Value: "0x1234"})
+	form.AddField(&tuicore.Field{Key: "economy_escrow_onchain_vault_factory", Type: tuicore.InputText, Value: "0x5678"})
+	form.AddField(&tuicore.Field{Key: "economy_escrow_onchain_vault_impl", Type: tuicore.InputText, Value: "0xabcd"})
+	form.AddField(&tuicore.Field{Key: "economy_escrow_onchain_arbitrator", Type: tuicore.InputText, Value: "0xdead"})
+	form.AddField(&tuicore.Field{Key: "economy_escrow_onchain_token", Type: tuicore.InputText, Value: "0xbeef"})
+	form.AddField(&tuicore.Field{Key: "economy_escrow_onchain_poll_interval", Type: tuicore.InputText, Value: "30s"})
+	form.AddField(&tuicore.Field{Key: "economy_escrow_onchain_confirmation_depth", Type: tuicore.InputInt, Value: "5"})
+	form.AddField(&tuicore.Field{Key: "economy_escrow_settlement_receipt_timeout", Type: tuicore.InputText, Value: "3m"})
+	form.AddField(&tuicore.Field{Key: "economy_escrow_settlement_max_retries", Type: tuicore.InputInt, Value: "5"})
+
+	state.UpdateConfigFromForm(&form)
+
+	oc := state.Current.Economy.Escrow.OnChain
+	if !oc.Enabled {
+		t.Error("OnChain.Enabled: want true")
+	}
+	if oc.Mode != "hub" {
+		t.Errorf("OnChain.Mode: want %q, got %q", "hub", oc.Mode)
+	}
+	if oc.HubAddress != "0x1234" {
+		t.Errorf("OnChain.HubAddress: want %q, got %q", "0x1234", oc.HubAddress)
+	}
+	if oc.VaultFactoryAddress != "0x5678" {
+		t.Errorf("OnChain.VaultFactoryAddress: want %q, got %q", "0x5678", oc.VaultFactoryAddress)
+	}
+	if oc.VaultImplementation != "0xabcd" {
+		t.Errorf("OnChain.VaultImplementation: want %q, got %q", "0xabcd", oc.VaultImplementation)
+	}
+	if oc.ArbitratorAddress != "0xdead" {
+		t.Errorf("OnChain.ArbitratorAddress: want %q, got %q", "0xdead", oc.ArbitratorAddress)
+	}
+	if oc.TokenAddress != "0xbeef" {
+		t.Errorf("OnChain.TokenAddress: want %q, got %q", "0xbeef", oc.TokenAddress)
+	}
+	if oc.PollInterval != 30*time.Second {
+		t.Errorf("OnChain.PollInterval: want 30s, got %v", oc.PollInterval)
+	}
+	if oc.ConfirmationDepth != 5 {
+		t.Errorf("OnChain.ConfirmationDepth: want 5, got %d", oc.ConfirmationDepth)
+	}
+
+	st := state.Current.Economy.Escrow.Settlement
+	if st.ReceiptTimeout != 3*time.Minute {
+		t.Errorf("Settlement.ReceiptTimeout: want 3m, got %v", st.ReceiptTimeout)
+	}
+	if st.MaxRetries != 5 {
+		t.Errorf("Settlement.MaxRetries: want 5, got %d", st.MaxRetries)
+	}
+}
+
+func TestMenuModel_SmartFilter_Basic(t *testing.T) {
+	menu := NewMenuModel()
+	menu.searching = true
+	menu.searchInput.SetValue("@basic")
+	menu.applyFilter()
+
+	if menu.filtered == nil {
+		t.Fatal("filtered should not be nil after @basic filter")
+	}
+
+	for _, cat := range menu.filtered {
+		if cat.Tier != TierBasic {
+			t.Errorf("@basic filter returned advanced category: %q", cat.ID)
+		}
+	}
+}
+
+func TestMenuModel_SmartFilter_Advanced(t *testing.T) {
+	menu := NewMenuModel()
+	menu.searching = true
+	menu.searchInput.SetValue("@advanced")
+	menu.applyFilter()
+
+	if menu.filtered == nil {
+		t.Fatal("filtered should not be nil after @advanced filter")
+	}
+
+	for _, cat := range menu.filtered {
+		if cat.Tier != TierAdvanced {
+			t.Errorf("@advanced filter returned basic category: %q", cat.ID)
+		}
+	}
+}
+
+func TestMenuModel_SmartFilter_Enabled(t *testing.T) {
+	menu := NewMenuModel()
+	menu.EnabledChecker = func(id string) bool {
+		return id == "agent" || id == "knowledge"
+	}
+	menu.searching = true
+	menu.searchInput.SetValue("@enabled")
+	menu.applyFilter()
+
+	if menu.filtered == nil {
+		t.Fatal("filtered should not be nil after @enabled filter")
+	}
+	if len(menu.filtered) != 2 {
+		t.Errorf("expected 2 enabled categories, got %d", len(menu.filtered))
+	}
+}
+
+func TestMenuModel_SmartFilter_Modified(t *testing.T) {
+	menu := NewMenuModel()
+	menu.DirtyChecker = func(id string) bool {
+		return id == "agent"
+	}
+	menu.searching = true
+	menu.searchInput.SetValue("@modified")
+	menu.applyFilter()
+
+	if menu.filtered == nil {
+		t.Fatal("filtered should not be nil after @modified filter")
+	}
+	if len(menu.filtered) != 1 || menu.filtered[0].ID != "agent" {
+		t.Errorf("expected [agent], got %v", menu.filtered)
+	}
+}
+
 func TestDerefBool(t *testing.T) {
 	tests := []struct {
 		give *bool

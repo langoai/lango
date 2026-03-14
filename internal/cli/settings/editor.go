@@ -51,20 +51,98 @@ type Editor struct {
 
 // NewEditor creates a new settings editor with default config.
 func NewEditor() *Editor {
-	return &Editor{
+	e := &Editor{
 		step:  StepWelcome,
 		state: tuicore.NewConfigState(),
 		menu:  NewMenuModel(),
 	}
+	e.wireMenuCheckers()
+	return e
 }
 
 // NewEditorWithConfig creates a new settings editor pre-loaded with the given config.
 func NewEditorWithConfig(cfg *config.Config) *Editor {
-	return &Editor{
+	e := &Editor{
 		step:  StepWelcome,
 		state: tuicore.NewConfigStateWith(cfg),
 		menu:  NewMenuModel(),
 	}
+	e.wireMenuCheckers()
+	return e
+}
+
+// wireMenuCheckers connects the dirty/enabled checkers to the menu.
+func (e *Editor) wireMenuCheckers() {
+	e.menu.DirtyChecker = func(id string) bool {
+		return e.state.IsDirty(id)
+	}
+	e.menu.EnabledChecker = func(id string) bool {
+		return categoryIsEnabled(e.state.Current, id)
+	}
+}
+
+// categoryIsEnabled returns true if the feature associated with the category is enabled.
+func categoryIsEnabled(cfg *config.Config, id string) bool {
+	switch id {
+	case "channels":
+		return cfg.Channels.Telegram.Enabled || cfg.Channels.Discord.Enabled || cfg.Channels.Slack.Enabled
+	case "knowledge":
+		return cfg.Knowledge.Enabled
+	case "skill":
+		return cfg.Skill.Enabled
+	case "observational_memory":
+		return cfg.ObservationalMemory.Enabled
+	case "embedding":
+		return cfg.Embedding.Provider != ""
+	case "graph":
+		return cfg.Graph.Enabled
+	case "librarian":
+		return cfg.Librarian.Enabled
+	case "agent_memory":
+		return cfg.AgentMemory.Enabled
+	case "multi_agent":
+		return cfg.Agent.MultiAgent
+	case "a2a":
+		return cfg.A2A.Enabled
+	case "hooks":
+		return cfg.Hooks.Enabled
+	case "cron":
+		return cfg.Cron.Enabled
+	case "background":
+		return cfg.Background.Enabled
+	case "workflow":
+		return cfg.Workflow.Enabled
+	case "payment":
+		return cfg.Payment.Enabled
+	case "smartaccount", "smartaccount_session", "smartaccount_paymaster", "smartaccount_modules":
+		return cfg.SmartAccount.Enabled
+	case "p2p", "p2p_workspace", "p2p_zkp", "p2p_pricing", "p2p_owner", "p2p_sandbox":
+		return cfg.P2P.Enabled
+	case "economy", "economy_risk", "economy_negotiation", "economy_escrow", "economy_escrow_onchain", "economy_pricing":
+		return cfg.Economy.Enabled
+	case "mcp", "mcp_servers":
+		return cfg.MCP.Enabled
+	case "observability":
+		return cfg.Observability.Enabled
+	case "security":
+		return cfg.Security.Interceptor.Enabled
+	case "gatekeeper":
+		return derefBoolCfg(cfg.Gatekeeper.Enabled, true)
+	case "output_manager":
+		return derefBoolCfg(cfg.Tools.OutputManager.Enabled, true)
+	case "server":
+		return cfg.Server.HTTPEnabled
+	default:
+		return false
+	}
+}
+
+// derefBoolCfg safely dereferences a *bool with a default.
+func derefBoolCfg(p *bool, def bool) bool {
+	if p == nil {
+		return def
+	}
+	return *p
 }
 
 // Init implements tea.Model.
@@ -278,6 +356,18 @@ func (e *Editor) handleMenuSelection(id string) tea.Cmd {
 		e.step = StepForm
 	case "session":
 		e.activeForm = NewSessionForm(e.state.Current)
+		e.activeForm.Focus = true
+		e.step = StepForm
+	case "logging":
+		e.activeForm = NewLoggingForm(e.state.Current)
+		e.activeForm.Focus = true
+		e.step = StepForm
+	case "gatekeeper":
+		e.activeForm = NewGatekeeperForm(e.state.Current)
+		e.activeForm.Focus = true
+		e.step = StepForm
+	case "output_manager":
+		e.activeForm = NewOutputManagerForm(e.state.Current)
 		e.activeForm.Focus = true
 		e.step = StepForm
 	case "security":
@@ -500,6 +590,32 @@ func (e *Editor) viewWelcome() string {
 	b.WriteString("\n")
 	b.WriteString(tui.MutedStyle.Render("All settings are saved to an encrypted local profile."))
 	b.WriteString("\n\n")
+
+	// Category summary
+	all := e.menu.allCategories()
+	basic, adv := 0, 0
+	for _, c := range all {
+		if c.Tier == TierBasic {
+			basic++
+		} else {
+			adv++
+		}
+	}
+	total := basic + adv
+	summary := fmt.Sprintf("%d categories (%d basic, %d advanced)", total, basic, adv)
+	b.WriteString(tui.MutedStyle.Render(summary))
+	b.WriteString("\n\n")
+
+	// Tips
+	b.WriteString(tui.MutedStyle.Render("Tips:"))
+	b.WriteString("\n")
+	b.WriteString(tui.MutedStyle.Render("  / Search across all categories"))
+	b.WriteString("\n")
+	b.WriteString(tui.MutedStyle.Render("  @basic @advanced @enabled @modified — smart filters"))
+	b.WriteString("\n")
+	b.WriteString(tui.MutedStyle.Render("  Tab to toggle basic/advanced view"))
+	b.WriteString("\n\n")
+
 	b.WriteString(tui.HelpBar(
 		tui.HelpEntry("Enter", "Start"),
 		tui.HelpEntry("Esc", "Quit"),

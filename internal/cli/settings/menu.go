@@ -43,6 +43,10 @@ type MenuModel struct {
 	searching   bool
 	searchInput textinput.Model
 	filtered    []Category // filtered results (nil when not searching)
+
+	// Checkers for smart filters
+	DirtyChecker   func(string) bool // returns true if category config has been modified
+	EnabledChecker func(string) bool // returns true if category feature is enabled
 }
 
 // allCategories returns a flat list of all selectable categories across sections.
@@ -101,6 +105,7 @@ func NewMenuModel() MenuModel {
 	si.TextStyle = lipgloss.NewStyle().Foreground(tui.Foreground)
 
 	return MenuModel{
+		showAdvanced: true,
 		Sections: []Section{
 			{
 				Title: "Core",
@@ -111,6 +116,9 @@ func NewMenuModel() MenuModel {
 					{"tools", "Tools", "Exec, Browser, Filesystem", TierBasic},
 					{"server", "Server", "Host, Port, Networking", TierAdvanced},
 					{"session", "Session", "Database, TTL, History", TierAdvanced},
+					{"logging", "Logging", "Level, Format, Output path", TierAdvanced},
+					{"gatekeeper", "Gatekeeper", "Response sanitization filters", TierAdvanced},
+					{"output_manager", "Output Manager", "Token budget, compression ratios", TierAdvanced},
 				},
 			},
 			{
@@ -284,6 +292,7 @@ func (m MenuModel) Update(msg tea.Msg) (MenuModel, tea.Cmd) {
 }
 
 // applyFilter updates the filtered list based on the current search query.
+// Supports smart filter prefixes: @basic, @advanced, @modified, @enabled.
 // Search always covers all categories regardless of tier.
 func (m *MenuModel) applyFilter() {
 	query := strings.ToLower(strings.TrimSpace(m.searchInput.Value()))
@@ -293,8 +302,57 @@ func (m *MenuModel) applyFilter() {
 		return
 	}
 
-	var results []Category
 	all := m.allCategories()
+
+	// Handle smart filter prefixes
+	switch query {
+	case "@basic":
+		var results []Category
+		for _, cat := range all {
+			if cat.Tier == TierBasic {
+				results = append(results, cat)
+			}
+		}
+		m.filtered = results
+		m.Cursor = 0
+		return
+	case "@advanced":
+		var results []Category
+		for _, cat := range all {
+			if cat.Tier == TierAdvanced {
+				results = append(results, cat)
+			}
+		}
+		m.filtered = results
+		m.Cursor = 0
+		return
+	case "@modified":
+		if m.DirtyChecker != nil {
+			var results []Category
+			for _, cat := range all {
+				if m.DirtyChecker(cat.ID) {
+					results = append(results, cat)
+				}
+			}
+			m.filtered = results
+			m.Cursor = 0
+			return
+		}
+	case "@enabled":
+		if m.EnabledChecker != nil {
+			var results []Category
+			for _, cat := range all {
+				if m.EnabledChecker(cat.ID) {
+					results = append(results, cat)
+				}
+			}
+			m.filtered = results
+			m.Cursor = 0
+			return
+		}
+	}
+
+	var results []Category
 	for _, cat := range all {
 		title := strings.ToLower(cat.Title)
 		desc := strings.ToLower(cat.Desc)
@@ -314,6 +372,15 @@ func (m MenuModel) View() string {
 	// Search bar — always visible
 	if m.searching {
 		b.WriteString(tui.SearchBarStyle.Render(m.searchInput.View()))
+		// Show filter hints when search input is empty
+		if strings.TrimSpace(m.searchInput.Value()) == "" {
+			filterHint := lipgloss.NewStyle().
+				Foreground(tui.Dim).
+				Italic(true).
+				PaddingLeft(1)
+			b.WriteString("\n")
+			b.WriteString(filterHint.Render("@basic  @advanced  @enabled  @modified"))
+		}
 	} else {
 		hint := lipgloss.NewStyle().
 			Foreground(tui.Dim).
@@ -347,9 +414,9 @@ func (m MenuModel) View() string {
 			tui.HelpEntry("Esc", "Cancel"),
 		))
 	} else {
-		tierLabel := "Show Advanced"
+		tierLabel := "Show All"
 		if m.showAdvanced {
-			tierLabel = "Show Basic"
+			tierLabel = "Basic Only"
 		}
 		b.WriteString(tui.HelpBar(
 			tui.HelpEntry("\u2191\u2193", "Navigate"),
@@ -432,6 +499,12 @@ func (m MenuModel) renderItem(b *strings.Builder, cat Category, idx int) {
 	title := cat.Title
 	desc := cat.Desc
 
+	// ADV badge for advanced categories
+	badge := ""
+	if cat.Tier == TierAdvanced {
+		badge = " " + tui.BadgeAdvancedStyle.Render("ADV")
+	}
+
 	if m.searching && m.searchInput.Value() != "" {
 		query := strings.ToLower(strings.TrimSpace(m.searchInput.Value()))
 		highlightedTitle := m.highlightMatch(title, query, isSelected)
@@ -443,12 +516,14 @@ func (m MenuModel) renderItem(b *strings.Builder, cat Category, idx int) {
 			b.WriteString(" ")
 			b.WriteString(highlightedDesc)
 		}
+		b.WriteString(badge)
 	} else {
 		b.WriteString(cursor)
 		b.WriteString(titleStyle.Render(title))
 		if desc != "" {
 			b.WriteString(descStyle.Render(desc))
 		}
+		b.WriteString(badge)
 	}
 	b.WriteString("\n")
 }
