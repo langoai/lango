@@ -17,6 +17,7 @@ import (
 	"github.com/gorilla/websocket"
 	"github.com/langoai/lango/internal/adk"
 	"github.com/langoai/lango/internal/approval"
+	"github.com/langoai/lango/internal/deadline"
 	"github.com/langoai/lango/internal/gatekeeper"
 	"github.com/langoai/lango/internal/logging"
 	"github.com/langoai/lango/internal/security"
@@ -61,6 +62,8 @@ type Config struct {
 	AllowedOrigins   []string
 	ApprovalTimeout  time.Duration
 	RequestTimeout   time.Duration
+	IdleTimeout      time.Duration // inactivity timeout (0 = disabled)
+	MaxTimeout       time.Duration // absolute hard ceiling
 }
 
 // Client represents a connected WebSocket client
@@ -180,18 +183,36 @@ func (s *Server) handleChatMessage(client *Client, params json.RawMessage) (inte
 		"sessionKey": sessionKey,
 	})
 
-	timeout := s.config.RequestTimeout
-	if timeout <= 0 {
-		timeout = 5 * time.Minute
+	var (
+		ctx         context.Context
+		cancel      context.CancelFunc
+		extDeadline *deadline.ExtendableDeadline
+		runOpts     []adk.RunOption
+	)
+
+	idleTimeout := s.config.IdleTimeout
+	hardCeiling := s.config.MaxTimeout
+	if hardCeiling <= 0 {
+		hardCeiling = s.config.RequestTimeout
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), timeout)
+	if hardCeiling <= 0 {
+		hardCeiling = 5 * time.Minute
+	}
+
+	if idleTimeout > 0 {
+		ctx, extDeadline = deadline.New(context.Background(), idleTimeout, hardCeiling)
+		cancel = extDeadline.Stop
+		runOpts = append(runOpts, adk.WithOnActivity(extDeadline.Extend))
+	} else {
+		ctx, cancel = context.WithTimeout(context.Background(), hardCeiling)
+	}
 	defer cancel()
 
 	// Warn UI when approaching timeout (80%).
-	warnTimer := time.AfterFunc(time.Duration(float64(timeout)*0.8), func() {
+	warnTimer := time.AfterFunc(time.Duration(float64(hardCeiling)*0.8), func() {
 		logger().Warnw("agent request approaching timeout",
 			"session", sessionKey,
-			"timeout", timeout.String())
+			"timeout", hardCeiling.String())
 		s.BroadcastToSession(sessionKey, "agent.warning", map[string]string{
 			"sessionKey": sessionKey,
 			"message":    "Request is taking longer than expected",
@@ -235,7 +256,7 @@ func (s *Server) handleChatMessage(client *Client, params json.RawMessage) (inte
 			"sessionKey": sessionKey,
 			"chunk":      chunk,
 		})
-	})
+	}, runOpts...)
 
 	// Stop progress updates now that the agent has finished.
 	stopProgress()
@@ -271,8 +292,23 @@ func (s *Server) handleChatMessage(client *Client, params json.RawMessage) (inte
 			errCode = string(agentErr.Code)
 			partial = agentErr.Partial
 			userMsg = agentErr.UserMessage()
-		} else if ctx.Err() == context.DeadlineExceeded {
-			errType = "timeout"
+		}
+
+		if ctx.Err() != nil {
+			errType = string(deadline.ReasonMaxTimeout)
+			if extDeadline != nil {
+				switch extDeadline.Reason() {
+				case deadline.ReasonIdle:
+					errType = string(deadline.ReasonIdle)
+					errCode = string(adk.ErrIdleTimeout)
+				case deadline.ReasonMaxTimeout:
+					errType = string(deadline.ReasonMaxTimeout)
+				}
+			}
+			// Annotate session to prevent error leak.
+			if s.store != nil {
+				_ = s.store.AnnotateTimeout(sessionKey, partial)
+			}
 		}
 
 		if partial != "" {

@@ -18,22 +18,24 @@ type MockSessionStore struct {
 	salts    map[string][]byte
 
 	// Configurable error injection
-	CreateErr        error
-	GetErr           error
-	UpdateErr        error
-	DeleteErr        error
-	AppendMessageErr error
-	CloseErr         error
-	GetSaltErr       error
-	SetSaltErr       error
+	CreateErr           error
+	GetErr              error
+	UpdateErr           error
+	DeleteErr           error
+	AppendMessageErr    error
+	AnnotateTimeoutErr  error
+	CloseErr            error
+	GetSaltErr          error
+	SetSaltErr          error
 
 	// Call counters
-	createCalls        int
-	getCalls           int
-	updateCalls        int
-	deleteCalls        int
-	appendMessageCalls int
-	closeCalls         int
+	createCalls           int
+	getCalls              int
+	updateCalls           int
+	deleteCalls           int
+	appendMessageCalls    int
+	annotateTimeoutCalls  int
+	closeCalls            int
 }
 
 // NewMockSessionStore creates a new MockSessionStore.
@@ -109,6 +111,28 @@ func (m *MockSessionStore) AppendMessage(key string, msg session.Message) error 
 	return nil
 }
 
+func (m *MockSessionStore) AnnotateTimeout(key string, partial string) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.annotateTimeoutCalls++
+	if m.AnnotateTimeoutErr != nil {
+		return m.AnnotateTimeoutErr
+	}
+	s, ok := m.sessions[key]
+	if !ok {
+		return fmt.Errorf("session %q not found", key)
+	}
+	content := "[This response was interrupted due to a timeout]"
+	if partial != "" {
+		content = partial + "\n\n---\n" + content
+	}
+	s.History = append(s.History, session.Message{
+		Role:    "assistant",
+		Content: content,
+	})
+	return nil
+}
+
 func (m *MockSessionStore) Close() error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -174,6 +198,13 @@ func (m *MockSessionStore) AppendMessageCalls() int {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	return m.appendMessageCalls
+}
+
+// AnnotateTimeoutCalls returns the number of AnnotateTimeout calls.
+func (m *MockSessionStore) AnnotateTimeoutCalls() int {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return m.annotateTimeoutCalls
 }
 
 // CloseCalls returns the number of Close calls.

@@ -12,6 +12,7 @@ import (
 	"github.com/langoai/lango/internal/agentregistry"
 	"github.com/langoai/lango/internal/bootstrap"
 	"github.com/langoai/lango/internal/config"
+	"github.com/langoai/lango/internal/deadline"
 	"github.com/langoai/lango/internal/embedding"
 	"github.com/langoai/lango/internal/eventbus"
 	"github.com/langoai/lango/internal/gateway"
@@ -551,6 +552,13 @@ func buildAgentOptions(cfg *config.Config, kc *knowledgeComponents) []adk.AgentO
 
 // initGateway creates the gateway server.
 func initGateway(cfg *config.Config, adkAgent *adk.Agent, store session.Store, auth *gateway.AuthManager) *gateway.Server {
+	idle, ceiling := deadline.ResolveTimeouts(deadline.TimeoutConfig{
+		IdleTimeout:       cfg.Agent.IdleTimeout,
+		RequestTimeout:    cfg.Agent.RequestTimeout,
+		AutoExtendTimeout: cfg.Agent.AutoExtendTimeout,
+		MaxRequestTimeout: cfg.Agent.MaxRequestTimeout,
+	})
+
 	return gateway.New(gateway.Config{
 		Host:             cfg.Server.Host,
 		Port:             cfg.Server.Port,
@@ -558,6 +566,8 @@ func initGateway(cfg *config.Config, adkAgent *adk.Agent, store session.Store, a
 		WebSocketEnabled: cfg.Server.WebSocketEnabled,
 		AllowedOrigins:   cfg.Server.AllowedOrigins,
 		RequestTimeout:   cfg.Agent.RequestTimeout,
+		IdleTimeout:      idle,
+		MaxTimeout:       ceiling,
 	}, adkAgent, nil, store, auth)
 }
 

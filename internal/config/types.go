@@ -170,6 +170,12 @@ type AgentConfig struct {
 	// Defaults to 3x RequestTimeout (e.g. 15m if RequestTimeout is 5m).
 	MaxRequestTimeout time.Duration `mapstructure:"maxRequestTimeout" json:"maxRequestTimeout"`
 
+	// IdleTimeout is the duration of inactivity (no streaming chunks, tool calls, or model responses)
+	// before a request is timed out. When set, RequestTimeout becomes the hard ceiling.
+	// Set to -1 to disable idle timeout and use fixed RequestTimeout instead.
+	// Default: 0 (disabled for backward compatibility; new installs should set 2m).
+	IdleTimeout time.Duration `mapstructure:"idleTimeout" json:"idleTimeout"`
+
 	// AgentsDir is the directory containing user-defined AGENT.md files.
 	// Structure: <dir>/<name>/AGENT.md
 	// If empty, only built-in agents are used.
