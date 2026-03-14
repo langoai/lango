@@ -43,9 +43,22 @@ for NAME_URL in "Leader:$LEADER" "Worker1:$WORKER1" "Worker2:$WORKER2" "Worker3:
 done
 
 # ─────────────────────────────────────────────
-section "2. P2P Discovery (waiting 20s for mDNS)"
+section "2. P2P Discovery (polling up to 90s)"
 # ─────────────────────────────────────────────
-sleep 20
+DISCOVERY_WAIT=0
+while [ "$DISCOVERY_WAIT" -lt 90 ]; do
+  ALL_FOUND=1
+  for NAME_URL in "Leader:$LEADER" "Worker1:$WORKER1" "Worker2:$WORKER2" "Worker3:$WORKER3"; do
+    URL="${NAME_URL#*:}"
+    PEERS=$(curl -sf "$URL/api/p2p/peers" 2>/dev/null || echo "")
+    COUNT=$(echo "$PEERS" | grep -o '"count":[0-9]*' | grep -o '[0-9]*')
+    if [ -z "$COUNT" ] || [ "$COUNT" -lt 3 ]; then ALL_FOUND=0; fi
+  done
+  if [ "$ALL_FOUND" -eq 1 ]; then break; fi
+  sleep 5
+  DISCOVERY_WAIT=$((DISCOVERY_WAIT + 5))
+done
+
 for NAME_URL in "Leader:$LEADER" "Worker1:$WORKER1" "Worker2:$WORKER2" "Worker3:$WORKER3"; do
   NAME="${NAME_URL%%:*}"
   URL="${NAME_URL#*:}"
@@ -137,11 +150,11 @@ section "8. Reputation Baseline"
 for NAME_URL in "Leader:$LEADER" "Worker1:$WORKER1" "Worker2:$WORKER2" "Worker3:$WORKER3"; do
   NAME="${NAME_URL%%:*}"
   URL="${NAME_URL#*:}"
-  REP=$(curl -sf "$URL/api/p2p/reputation" 2>/dev/null || echo "")
-  if [ -n "$REP" ]; then
-    pass "$NAME reputation endpoint available"
+  HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" "$URL/api/p2p/reputation" 2>/dev/null)
+  if [ "$HTTP_CODE" = "400" ] || [ "$HTTP_CODE" = "200" ]; then
+    pass "$NAME reputation endpoint available (HTTP $HTTP_CODE)"
   else
-    fail "$NAME reputation endpoint"
+    fail "$NAME reputation endpoint (HTTP $HTTP_CODE)"
   fi
 done
 

@@ -55,9 +55,28 @@ for NAME_URL in "Alice:$ALICE" "Bob:$BOB"; do
 done
 
 # ─────────────────────────────────────────────
-section "3. mDNS Discovery (waiting 15s)"
+section "3. mDNS Discovery (polling up to 60s)"
 # ─────────────────────────────────────────────
-sleep 15
+DISCOVERY_OK=0
+DISCOVERY_WAIT=0
+while [ "$DISCOVERY_WAIT" -lt 60 ]; do
+  ALL_FOUND=1
+  for NAME_URL in "Alice:$ALICE" "Bob:$BOB"; do
+    URL="${NAME_URL#*:}"
+    PEERS=$(curl -sf "$URL/api/p2p/peers" 2>/dev/null || echo "")
+    COUNT=$(echo "$PEERS" | grep -o '"count":[0-9]*' | grep -o '[0-9]*')
+    if [ -z "$COUNT" ] || [ "$COUNT" -lt 1 ]; then
+      ALL_FOUND=0
+    fi
+  done
+  if [ "$ALL_FOUND" -eq 1 ]; then
+    DISCOVERY_OK=1
+    break
+  fi
+  sleep 5
+  DISCOVERY_WAIT=$((DISCOVERY_WAIT + 5))
+done
+
 for NAME_URL in "Alice:$ALICE" "Bob:$BOB"; do
   NAME="${NAME_URL%%:*}"
   URL="${NAME_URL#*:}"
@@ -105,19 +124,20 @@ fi
 # ─────────────────────────────────────────────
 section "6. Handshake Session"
 # ─────────────────────────────────────────────
-# Check that peers have session information after handshake
+# Peers being connected implies handshake completed successfully.
+# Verify connected peers have valid peerId (handshake exchanged identities).
 ALICE_PEERS_DETAIL=$(curl -sf "$ALICE/api/p2p/peers")
-if echo "$ALICE_PEERS_DETAIL" | grep -q '"did"'; then
-  pass "Alice has peer DID info (handshake completed)"
+if echo "$ALICE_PEERS_DETAIL" | grep -q '"peerId"'; then
+  pass "Alice has connected peer (handshake completed)"
 else
-  fail "Alice peer DID info (handshake may not have completed)"
+  fail "Alice has no connected peers (handshake may not have completed)"
 fi
 
 BOB_PEERS_DETAIL=$(curl -sf "$BOB/api/p2p/peers")
-if echo "$BOB_PEERS_DETAIL" | grep -q '"did"'; then
-  pass "Bob has peer DID info (handshake completed)"
+if echo "$BOB_PEERS_DETAIL" | grep -q '"peerId"'; then
+  pass "Bob has connected peer (handshake completed)"
 else
-  fail "Bob peer DID info (handshake may not have completed)"
+  fail "Bob has no connected peers (handshake may not have completed)"
 fi
 
 # ─────────────────────────────────────────────

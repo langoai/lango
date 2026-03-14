@@ -59,9 +59,22 @@ for NAME_ADDR in "MockUSDC:$USDC_ADDRESS" "EscrowHubV2:$HUB_ADDRESS" "MilestoneS
 done
 
 # ─────────────────────────────────────────────
-section "3. P2P Discovery (waiting 15s)"
+section "3. P2P Discovery (polling up to 60s)"
 # ─────────────────────────────────────────────
-sleep 15
+DISCOVERY_WAIT=0
+while [ "$DISCOVERY_WAIT" -lt 60 ]; do
+  ALL_FOUND=1
+  for NAME_URL in "Alice:$ALICE" "Bob:$BOB"; do
+    URL="${NAME_URL#*:}"
+    PEERS=$(curl -sf "$URL/api/p2p/peers" 2>/dev/null || echo "")
+    COUNT=$(echo "$PEERS" | grep -o '"count":[0-9]*' | grep -o '[0-9]*')
+    if [ -z "$COUNT" ] || [ "$COUNT" -lt 1 ]; then ALL_FOUND=0; fi
+  done
+  if [ "$ALL_FOUND" -eq 1 ]; then break; fi
+  sleep 5
+  DISCOVERY_WAIT=$((DISCOVERY_WAIT + 5))
+done
+
 for NAME_URL in "Alice:$ALICE" "Bob:$BOB"; do
   NAME="${NAME_URL%%:*}"
   URL="${NAME_URL#*:}"
@@ -158,8 +171,8 @@ if [ -n "$USDC_ADDRESS" ]; then
   DEPLOYER_KEY="0x2a871d0798f97d79848a013d4936a73bf4cc922c825d33c1cf7073dff6d409c6"
   # Mint to Bob to simulate hub release (stub has no release function)
   MILESTONE_AMOUNT="3000000"  # 3 USDC
-  cast send "$USDC_ADDRESS" "mint(address,uint256)" "$BOB_ADDR" "$MILESTONE_AMOUNT" \
-    --rpc-url "$RPC" --private-key "$DEPLOYER_KEY" >/dev/null 2>&1 && \
+  docker compose exec -T anvil cast send "$USDC_ADDRESS" "mint(address,uint256)" "$BOB_ADDR" "$MILESTONE_AMOUNT" \
+    --rpc-url "http://localhost:8545" --private-key "$DEPLOYER_KEY" >/dev/null 2>&1 && \
     pass "Milestone 1: 3 USDC released to Bob" || \
     fail "Milestone 1 release"
 
