@@ -211,8 +211,8 @@ func TestFactoryComputeAddress(t *testing.T) {
 	t.Parallel()
 
 	f := NewFactory(
-		nil, // caller not used for compute
-		nil, // rpc not used for compute
+		&stubContractCaller{}, // stub for proxyCreationCode
+		nil,                   // rpc not used for compute
 		common.HexToAddress("0xAAAA"),
 		common.HexToAddress("0xBBBB"),
 		common.HexToAddress("0xCCCC"),
@@ -222,8 +222,15 @@ func TestFactoryComputeAddress(t *testing.T) {
 	owner := common.HexToAddress(
 		"0x1234567890abcdef1234567890abcdef12345678",
 	)
-	addr1 := f.ComputeAddress(owner, big.NewInt(0))
-	addr2 := f.ComputeAddress(owner, big.NewInt(0))
+	ctx := context.Background()
+	addr1, err := f.ComputeAddress(ctx, owner, big.NewInt(0))
+	if err != nil {
+		t.Fatalf("ComputeAddress: %v", err)
+	}
+	addr2, err := f.ComputeAddress(ctx, owner, big.NewInt(0))
+	if err != nil {
+		t.Fatalf("ComputeAddress: %v", err)
+	}
 
 	// Same inputs should produce same address.
 	if addr1 != addr2 {
@@ -234,7 +241,10 @@ func TestFactoryComputeAddress(t *testing.T) {
 	}
 
 	// Different salt should produce different address.
-	addr3 := f.ComputeAddress(owner, big.NewInt(1))
+	addr3, err := f.ComputeAddress(ctx, owner, big.NewInt(1))
+	if err != nil {
+		t.Fatalf("ComputeAddress: %v", err)
+	}
 	if addr1 == addr3 {
 		t.Error(
 			"different salts should produce different addresses",
@@ -293,6 +303,17 @@ func TestSubmitUserOp_NoPaymaster(t *testing.T) {
 				"id":      callCount,
 				"result":  "0xabcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890",
 			})
+		case "eth_getUserOperationReceipt":
+			json.NewEncoder(w).Encode(map[string]interface{}{
+				"jsonrpc": "2.0",
+				"id":      callCount,
+				"result": map[string]interface{}{
+					"userOpHash":      "0xabcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890",
+					"transactionHash": "0x1111111111111111111111111111111111111111111111111111111111111111",
+					"success":         true,
+					"actualGasUsed":   "0x5208",
+				},
+			})
 		}
 	}))
 	defer srv.Close()
@@ -314,6 +335,10 @@ func TestSubmitUserOp_NoPaymaster(t *testing.T) {
 	}
 	if txHash == "" {
 		t.Error("want non-empty txHash")
+	}
+	// txHash should now be the on-chain tx hash, not the userOp hash
+	if txHash != "0x1111111111111111111111111111111111111111111111111111111111111111" {
+		t.Errorf("want on-chain txHash, got %s", txHash)
 	}
 }
 
@@ -366,6 +391,17 @@ func TestSubmitUserOp_PaymasterTwoPhase(t *testing.T) {
 				"jsonrpc": "2.0",
 				"id":      2,
 				"result":  "0xabcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890",
+			})
+		case "eth_getUserOperationReceipt":
+			json.NewEncoder(w).Encode(map[string]interface{}{
+				"jsonrpc": "2.0",
+				"id":      3,
+				"result": map[string]interface{}{
+					"userOpHash":      "0xabcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890",
+					"transactionHash": "0x2222222222222222222222222222222222222222222222222222222222222222",
+					"success":         true,
+					"actualGasUsed":   "0x5208",
+				},
 			})
 		}
 	}))
@@ -571,6 +607,17 @@ func TestSubmitUserOp_PaymasterGasOverrides(t *testing.T) {
 				"jsonrpc": "2.0",
 				"id":      2,
 				"result":  "0xabcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890",
+			})
+		case "eth_getUserOperationReceipt":
+			json.NewEncoder(w).Encode(map[string]interface{}{
+				"jsonrpc": "2.0",
+				"id":      3,
+				"result": map[string]interface{}{
+					"userOpHash":      "0xabcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890",
+					"transactionHash": "0x3333333333333333333333333333333333333333333333333333333333333333",
+					"success":         true,
+					"actualGasUsed":   "0x5208",
+				},
 			})
 		}
 	}))

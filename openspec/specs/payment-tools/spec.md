@@ -60,3 +60,18 @@ The `payment_x402_fetch` tool SHALL use the `payment_` prefix in its tool name t
 #### Scenario: Tool name matches payment prefix convention
 - **WHEN** listing all payment tools
 - **THEN** `payment_x402_fetch` follows the same `payment_` prefix convention as `payment_send`, `payment_balance`, `payment_history`, `payment_limits`, `payment_wallet_info`, and `payment_create_wallet`
+
+### Requirement: Payment send tool status reporting
+The payment_send tool SHALL return the actual on-chain status from the receipt instead of a hardcoded "submitted" string. When available, the tool SHALL include gasUsed and blockNumber in the response.
+
+#### Scenario: Confirmed payment response
+- **WHEN** a payment is confirmed on-chain
+- **THEN** the tool response SHALL include `status: "confirmed"`, `gasUsed`, and `blockNumber` from the receipt
+
+#### Scenario: Failed payment response
+- **WHEN** a payment transaction reverts on-chain
+- **THEN** the tool SHALL return an error (not a success response with status "submitted")
+
+#### Scenario: Response includes gas metadata
+- **WHEN** gasUsed > 0 in the receipt
+- **THEN** the tool response SHALL include the gasUsed field

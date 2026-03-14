@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"math/big"
+	"sync"
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/crypto"
@@ -12,7 +13,7 @@ import (
 	"github.com/langoai/lango/internal/contract"
 )
 
-// safeFactoryABI is the ABI for the Safe proxy factory's createProxyWithNonce.
+// safeFactoryABI is the ABI for the Safe proxy factory.
 const safeFactoryABI = `[
 	{
 		"inputs": [
@@ -26,14 +27,10 @@ const safeFactoryABI = `[
 		"type": "function"
 	},
 	{
-		"inputs": [
-			{"name": "_singleton", "type": "address"},
-			{"name": "initializer", "type": "bytes"},
-			{"name": "saltNonce", "type": "uint256"}
-		],
+		"inputs": [],
 		"name": "proxyCreationCode",
 		"outputs": [{"name": "", "type": "bytes"}],
-		"stateMutability": "view",
+		"stateMutability": "pure",
 		"type": "function"
 	}
 ]`
@@ -46,6 +43,10 @@ type Factory struct {
 	safe7579Addr common.Address
 	fallbackAddr common.Address
 	chainID      int64
+
+	// proxyCode caches the result of proxyCreationCode() view call.
+	proxyCodeMu sync.Mutex
+	proxyCode   []byte
 }
 
 // NewFactory creates a smart account factory.
@@ -74,9 +75,10 @@ func NewFactory(
 //
 // and the proxy initCode hash for the CREATE2 formula.
 func (f *Factory) ComputeAddress(
+	ctx context.Context,
 	owner common.Address,
 	salt *big.Int,
-) common.Address {
+) (common.Address, error) {
 	// Build initializer calldata (same as in Deploy).
 	initData := buildSafeInitializer(
 		owner, f.safe7579Addr, f.fallbackAddr,
@@ -94,14 +96,15 @@ func (f *Factory) ComputeAddress(
 	)
 
 	// Proxy initCode = proxyCreationCode ++ abi.encode(singleton)
-	// Hash the singleton address and initializer as the initCode
-	// hash for deterministic address computation.
+	proxyCode, err := f.getProxyCreationCode(ctx)
+	if err != nil {
+		return common.Address{}, fmt.Errorf("get proxy creation code: %w", err)
+	}
+
 	singletonPadded := make([]byte, 32)
 	copy(singletonPadded[12:], f.safe7579Addr.Bytes())
-	initCodeHash := crypto.Keccak256(
-		f.safe7579Addr.Bytes(),
-		initData,
-	)
+	initCode := append(proxyCode, singletonPadded...)
+	initCodeHash := crypto.Keccak256(initCode)
 
 	// CREATE2: keccak256(0xff ++ factory ++ salt ++ keccak256(initCode))
 	data := make([]byte, 0, 85)
@@ -111,7 +114,40 @@ func (f *Factory) ComputeAddress(
 	data = append(data, initCodeHash...)
 
 	hash := crypto.Keccak256(data)
-	return common.BytesToAddress(hash[12:])
+	return common.BytesToAddress(hash[12:]), nil
+}
+
+// getProxyCreationCode retrieves and caches the proxy creation code from the factory.
+func (f *Factory) getProxyCreationCode(ctx context.Context) ([]byte, error) {
+	f.proxyCodeMu.Lock()
+	defer f.proxyCodeMu.Unlock()
+
+	if f.proxyCode != nil {
+		return f.proxyCode, nil
+	}
+
+	result, err := f.caller.Read(ctx, contract.ContractCallRequest{
+		ChainID: f.chainID,
+		Address: f.factoryAddr,
+		ABI:     safeFactoryABI,
+		Method:  "proxyCreationCode",
+		Args:    []interface{}{},
+	})
+	if err != nil {
+		return nil, fmt.Errorf("call proxyCreationCode: %w", err)
+	}
+
+	if len(result.Data) == 0 {
+		return nil, fmt.Errorf("proxyCreationCode returned empty data")
+	}
+
+	code, ok := result.Data[0].([]byte)
+	if !ok {
+		return nil, fmt.Errorf("proxyCreationCode: unexpected return type %T", result.Data[0])
+	}
+
+	f.proxyCode = code
+	return code, nil
 }
 
 // Deploy deploys a new Safe account with ERC-7579 adapter.
@@ -148,8 +184,19 @@ func (f *Factory) Deploy(
 			fmt.Errorf("deploy safe account: %w", err)
 	}
 
-	// The proxy address is deterministic — compute it from CREATE2.
-	computed := f.ComputeAddress(owner, salt)
+	// Try to parse the actual deployed address from the return data.
+	if len(result.Data) > 0 {
+		if addr, ok := result.Data[0].(common.Address); ok {
+			return addr, result.TxHash, nil
+		}
+	}
+
+	// Fallback: compute the deterministic address via CREATE2.
+	computed, compErr := f.ComputeAddress(ctx, owner, salt)
+	if compErr != nil {
+		return common.Address{}, result.TxHash,
+			fmt.Errorf("compute deployed address: %w", compErr)
+	}
 	return computed, result.TxHash, nil
 }
 

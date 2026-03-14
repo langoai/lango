@@ -168,6 +168,8 @@ func TestIntegration_SessionKeyLifecycle(t *testing.T) {
 
 	mgr := session.NewManager(store,
 		session.WithEncryption(encryptFn, decryptFn),
+		session.WithEntryPoint(common.HexToAddress("0x5FF137D4b0FDCD49DcA30c7CF57E578a026d2789")),
+		session.WithChainID(84532),
 		session.WithOnChainRegistration(
 			func(_ context.Context, addr common.Address, _ sa.SessionPolicy) (string, error) {
 				registeredAddr = addr
@@ -204,19 +206,9 @@ func TestIntegration_SessionKeyLifecycle(t *testing.T) {
 	require.Len(t, sig, 65, "ECDSA signature should be 65 bytes")
 
 	// 4. Verify the signature by recovering the signer address.
-	//    Reconstruct the hash the same way session.hashUserOp does.
-	var hashData []byte
-	hashData = append(hashData, op.Sender.Bytes()...)
-	hashData = append(hashData, op.Nonce.Bytes()...)
-	hashData = append(hashData, op.InitCode...)
-	hashData = append(hashData, op.CallData...)
-	hashData = append(hashData, op.CallGasLimit.Bytes()...)
-	hashData = append(hashData, op.VerificationGasLimit.Bytes()...)
-	hashData = append(hashData, op.PreVerificationGas.Bytes()...)
-	hashData = append(hashData, op.MaxFeePerGas.Bytes()...)
-	hashData = append(hashData, op.MaxPriorityFeePerGas.Bytes()...)
-	hashData = append(hashData, op.PaymasterAndData...)
-	digest := crypto.Keccak256(hashData)
+	//    Use ComputeUserOpHash which matches the EntryPoint's hash algorithm.
+	entryPoint := common.HexToAddress("0x5FF137D4b0FDCD49DcA30c7CF57E578a026d2789")
+	digest := sa.ComputeUserOpHash(op, entryPoint, 84532)
 
 	recoveredPub, err := crypto.Ecrecover(digest, sig)
 	require.NoError(t, err)
@@ -493,6 +485,8 @@ func TestIntegration_EncryptionDecryption(t *testing.T) {
 
 	mgr := session.NewManager(store,
 		session.WithEncryption(encryptFn, decryptFn),
+		session.WithEntryPoint(common.HexToAddress("0x5FF137D4b0FDCD49DcA30c7CF57E578a026d2789")),
+		session.WithChainID(84532),
 	)
 
 	// 1. Create a session key.
@@ -515,19 +509,9 @@ func TestIntegration_EncryptionDecryption(t *testing.T) {
 	require.Len(t, sig, 65, "ECDSA signature should be 65 bytes")
 
 	// 4. Verify the signature by recovering the signer address.
-	//    Reconstruct the hash the same way session.hashUserOp does.
-	var hashData []byte
-	hashData = append(hashData, op.Sender.Bytes()...)
-	hashData = append(hashData, op.Nonce.Bytes()...)
-	hashData = append(hashData, op.InitCode...)
-	hashData = append(hashData, op.CallData...)
-	hashData = append(hashData, op.CallGasLimit.Bytes()...)
-	hashData = append(hashData, op.VerificationGasLimit.Bytes()...)
-	hashData = append(hashData, op.PreVerificationGas.Bytes()...)
-	hashData = append(hashData, op.MaxFeePerGas.Bytes()...)
-	hashData = append(hashData, op.MaxPriorityFeePerGas.Bytes()...)
-	hashData = append(hashData, op.PaymasterAndData...)
-	digest := crypto.Keccak256(hashData)
+	//    Use ComputeUserOpHash which matches the EntryPoint's hash algorithm.
+	entryPoint := common.HexToAddress("0x5FF137D4b0FDCD49DcA30c7CF57E578a026d2789")
+	digest := sa.ComputeUserOpHash(op, entryPoint, 84532)
 
 	recoveredPub, err := crypto.Ecrecover(digest, sig)
 	require.NoError(t, err)

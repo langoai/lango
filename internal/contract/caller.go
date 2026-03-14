@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log"
 	"math/big"
 	"sync"
 	"time"
@@ -149,6 +150,7 @@ func (c *Caller) Write(ctx context.Context, req ContractCallRequest) (*ContractC
 	}
 	baseFee := header.BaseFee
 	if baseFee == nil {
+		log.Printf("WARNING: block header missing baseFee, using fallback %d wei", payment.DefaultBaseFeeWei)
 		baseFee = big.NewInt(payment.DefaultBaseFeeWei)
 	}
 	maxPriorityFee := big.NewInt(payment.DefaultMaxPriorityFeeWei)
@@ -188,7 +190,7 @@ func (c *Caller) Write(ctx context.Context, req ContractCallRequest) (*ContractC
 			break
 		}
 		if attempt < c.maxRetries-1 {
-			time.Sleep(time.Duration(attempt+1) * 500 * time.Millisecond)
+			time.Sleep(time.Duration(1<<uint(attempt)) * time.Second)
 		}
 	}
 	if submitErr != nil {

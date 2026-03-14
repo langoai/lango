@@ -74,8 +74,13 @@ type testWallet struct {
 	key *ecdsa.PrivateKey
 }
 
+func (w *testWallet) SignTransaction(_ context.Context, rawTx []byte) ([]byte, error) {
+	return crypto.Sign(rawTx, w.key)
+}
+
 func (w *testWallet) SignMessage(_ context.Context, message []byte) ([]byte, error) {
-	return crypto.Sign(message, w.key)
+	hash := crypto.Keccak256(message)
+	return crypto.Sign(hash, w.key)
 }
 
 func (w *testWallet) Address(_ context.Context) (string, error) {
