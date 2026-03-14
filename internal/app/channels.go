@@ -11,6 +11,7 @@ import (
 	"github.com/langoai/lango/internal/channels/discord"
 	"github.com/langoai/lango/internal/channels/slack"
 	"github.com/langoai/lango/internal/channels/telegram"
+	"github.com/langoai/lango/internal/deadline"
 	"github.com/langoai/lango/internal/session"
 	"github.com/langoai/lango/internal/types"
 )
@@ -124,46 +125,38 @@ const emptyResponseFallback = "I processed your message but couldn't formulate a
 // (approval providers, learning engine, etc.) can route by channel.
 // After each agent turn, buffers (memory, analysis) are triggered for async processing.
 func (a *App) runAgent(ctx context.Context, sessionKey, input string) (string, error) {
-	timeout := a.Config.Agent.RequestTimeout
-	if timeout <= 0 {
-		timeout = 5 * time.Minute
-	}
+	idleTimeout, hardCeiling := a.resolveTimeouts()
 
 	start := time.Now()
 	logger().Debugw("agent request started",
 		"session", sessionKey,
-		"timeout", timeout.String(),
+		"idleTimeout", idleTimeout.String(),
+		"hardCeiling", hardCeiling.String(),
 		"input_len", len(input))
 
 	var cancel context.CancelFunc
-	var extDeadline *ExtendableDeadline
+	var extDeadline *deadline.ExtendableDeadline
 	var runOpts []adk.RunOption
 
-	if a.Config.Agent.AutoExtendTimeout {
-		maxTimeout := a.Config.Agent.MaxRequestTimeout
-		if maxTimeout <= 0 {
-			maxTimeout = timeout * 3
-		}
-		ctx, extDeadline = NewExtendableDeadline(ctx, timeout, maxTimeout)
+	if idleTimeout > 0 {
+		ctx, extDeadline = deadline.New(ctx, idleTimeout, hardCeiling)
 		cancel = extDeadline.Stop
-		runOpts = append(runOpts, adk.WithOnActivity(func() {
-			extDeadline.Extend()
-		}))
-		logger().Debugw("auto-extend timeout enabled",
+		runOpts = append(runOpts, adk.WithOnActivity(extDeadline.Extend))
+		logger().Debugw("idle timeout enabled",
 			"session", sessionKey,
-			"baseTimeout", timeout.String(),
-			"maxTimeout", maxTimeout.String())
+			"idleTimeout", idleTimeout.String(),
+			"hardCeiling", hardCeiling.String())
 	} else {
-		ctx, cancel = context.WithTimeout(ctx, timeout)
+		ctx, cancel = context.WithTimeout(ctx, hardCeiling)
 	}
 	defer cancel()
 
-	// Warn when approaching timeout (80%).
-	warnTimer := time.AfterFunc(time.Duration(float64(timeout)*0.8), func() {
+	// Warn when approaching timeout (80% of hard ceiling).
+	warnTimer := time.AfterFunc(time.Duration(float64(hardCeiling)*0.8), func() {
 		logger().Warnw("agent request approaching timeout",
 			"session", sessionKey,
 			"elapsed", time.Since(start).String(),
-			"timeout", timeout.String())
+			"hardCeiling", hardCeiling.String())
 	})
 	defer warnTimer.Stop()
 
@@ -188,15 +181,40 @@ func (a *App) runAgent(ctx context.Context, sessionKey, input string) (string, e
 				"elapsed", elapsed.String(),
 				"code", string(agentErr.Code),
 				"partial_len", len(agentErr.Partial))
+			// Annotate session so next turn doesn't see incomplete history.
+			if a.Store != nil {
+				_ = a.Store.AnnotateTimeout(sessionKey, agentErr.Partial)
+			}
 			return formatPartialResponse(agentErr.Partial, agentErr), nil
 		}
 
-		if ctx.Err() == context.DeadlineExceeded {
+		if ctx.Err() != nil {
+			// Determine the specific timeout reason.
+			errCode := adk.ErrTimeout
+			errMsg := fmt.Sprintf("request timed out after %v", hardCeiling)
+			if extDeadline != nil {
+				switch extDeadline.Reason() {
+				case deadline.ReasonIdle:
+					errCode = adk.ErrIdleTimeout
+					errMsg = fmt.Sprintf("no activity for %v", idleTimeout)
+				case deadline.ReasonMaxTimeout:
+					errMsg = fmt.Sprintf("maximum time limit (%v) exceeded", hardCeiling)
+				}
+			}
 			logger().Errorw("agent request timed out",
 				"session", sessionKey,
 				"elapsed", elapsed.String(),
-				"timeout", timeout.String())
-			return "", fmt.Errorf("request timed out after %v", timeout)
+				"reason", string(errCode))
+			// Annotate session to prevent error leak into next turn.
+			if a.Store != nil {
+				_ = a.Store.AnnotateTimeout(sessionKey, "")
+			}
+			return "", &adk.AgentError{
+				Code:    errCode,
+				Message: errMsg,
+				Cause:   ctx.Err(),
+				Elapsed: elapsed,
+			}
 		}
 
 		logger().Warnw("agent request failed",
@@ -223,4 +241,16 @@ func (a *App) runAgent(ctx context.Context, sessionKey, input string) (string, e
 		"elapsed", elapsed.String(),
 		"response_len", len(response))
 	return response, nil
+}
+
+// resolveTimeouts determines the idle timeout and hard ceiling based on config.
+// Delegates to deadline.ResolveTimeouts for the actual logic.
+func (a *App) resolveTimeouts() (idleTimeout, hardCeiling time.Duration) {
+	cfg := a.Config.Agent
+	return deadline.ResolveTimeouts(deadline.TimeoutConfig{
+		IdleTimeout:       cfg.IdleTimeout,
+		RequestTimeout:    cfg.RequestTimeout,
+		AutoExtendTimeout: cfg.AutoExtendTimeout,
+		MaxRequestTimeout: cfg.MaxRequestTimeout,
+	})
 }

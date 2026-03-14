@@ -46,6 +46,7 @@ func (m *mockStore) Delete(key string) error {
 }
 
 func (m *mockStore) AppendMessage(_ string, _ session.Message) error { return nil }
+func (m *mockStore) AnnotateTimeout(_ string, _ string) error        { return nil }
 func (m *mockStore) Close() error                                    { return nil }
 func (m *mockStore) GetSalt(_ string) ([]byte, error)                { return nil, nil }
 func (m *mockStore) SetSalt(_ string, _ []byte) error                { return nil }

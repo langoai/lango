@@ -12,11 +12,12 @@ import (
 type ErrorCode string
 
 const (
-	ErrTimeout    ErrorCode = "E001"
-	ErrModelError ErrorCode = "E002"
-	ErrToolError  ErrorCode = "E003"
-	ErrTurnLimit  ErrorCode = "E004"
-	ErrInternal   ErrorCode = "E005"
+	ErrTimeout     ErrorCode = "E001"
+	ErrModelError  ErrorCode = "E002"
+	ErrToolError   ErrorCode = "E003"
+	ErrTurnLimit   ErrorCode = "E004"
+	ErrInternal    ErrorCode = "E005"
+	ErrIdleTimeout ErrorCode = "E006"
 )
 
 // AgentError is a structured error type that preserves partial results
@@ -57,6 +58,11 @@ func (e *AgentError) UserMessage() string {
 			return fmt.Sprintf("[%s] The agent reached its turn limit. A partial response was recovered — see above.", e.Code)
 		}
 		return fmt.Sprintf("[%s] The agent reached its maximum turn limit. Try a simpler request.", e.Code)
+	case ErrIdleTimeout:
+		if e.Partial != "" {
+			return fmt.Sprintf("[%s] The request was cancelled due to %s of inactivity. A partial response was recovered — see above.", e.Code, e.Elapsed.Truncate(time.Second))
+		}
+		return fmt.Sprintf("[%s] The request was cancelled due to %s of inactivity. The agent may be stuck — try rephrasing your question.", e.Code, e.Elapsed.Truncate(time.Second))
 	default:
 		return fmt.Sprintf("[%s] An internal error occurred. Please try again.", e.Code)
 	}
