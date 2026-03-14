@@ -1,5 +1,5 @@
 <div align="center">
-  <img src="./logo.png" alt="Lango Logo">
+  <img src="./banner.png" alt="Lango Banner">
 </div>
 <br>
 
