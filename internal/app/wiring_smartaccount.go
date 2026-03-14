@@ -128,6 +128,7 @@ func initSmartAccount(
 	caller := contract.NewCaller(pc.rpcClient, pc.wallet, pc.chainID, abiCache)
 	factory := sa.NewFactory(
 		caller,
+		pc.rpcClient,
 		common.HexToAddress(cfg.SmartAccount.FactoryAddress),
 		common.HexToAddress(cfg.SmartAccount.Safe7579Address),
 		common.HexToAddress(cfg.SmartAccount.FallbackHandler),

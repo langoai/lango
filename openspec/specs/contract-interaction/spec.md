@@ -42,7 +42,7 @@ The system SHALL provide a `Caller.Read()` method that packs arguments via `abi.
 - **THEN** an error containing the method name is returned
 
 ### Requirement: Contract caller writes state-changing transactions
-The system SHALL provide a `Caller.Write()` method that packs arguments, builds an EIP-1559 transaction (nonce, gas estimation, base fee), signs via `wallet.WalletProvider`, submits with retry, and polls for receipt confirmation.
+The system SHALL provide a `Caller.Write()` method that packs arguments, builds an EIP-1559 transaction (nonce, gas estimation, base fee), signs via `wallet.WalletProvider`, submits with retry, and polls for receipt confirmation. Write() SHALL check the receipt status after waiting for the transaction receipt. If the receipt status is not successful (ReceiptStatusSuccessful), Write() SHALL return an ErrTxReverted error with the transaction hash and status. If the receipt times out, Write() SHALL return an ErrReceiptTimeout error instead of silently returning a partial result.
 
 #### Scenario: Successful write transaction
 - **WHEN** `Write` is called with valid parameters and the RPC is available
@@ -51,6 +51,14 @@ The system SHALL provide a `Caller.Write()` method that packs arguments, builds 
 #### Scenario: Nonce serialization prevents collisions
 - **WHEN** multiple concurrent `Write` calls are made
 - **THEN** nonce acquisition is serialized via mutex to prevent nonce reuse
+
+#### Scenario: Transaction reverts on-chain
+- **WHEN** a Write() call submits a transaction that gets mined but reverts
+- **THEN** Write() returns an error wrapping ErrTxReverted with the tx hash and receipt status
+
+#### Scenario: Receipt timeout
+- **WHEN** a Write() call submits a transaction but the receipt is not available within the timeout period
+- **THEN** Write() returns an error wrapping ErrReceiptTimeout with the tx hash
 
 ### Requirement: Agent tools expose contract interaction
 The system SHALL register three agent tools: `contract_read` (SafetyLevel Safe), `contract_call` (SafetyLevel Dangerous), and `contract_abi_load` (SafetyLevel Safe). Tools SHALL be registered under the `"contract"` catalog category.

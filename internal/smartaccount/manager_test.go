@@ -212,6 +212,7 @@ func TestFactoryComputeAddress(t *testing.T) {
 
 	f := NewFactory(
 		nil, // caller not used for compute
+		nil, // rpc not used for compute
 		common.HexToAddress("0xAAAA"),
 		common.HexToAddress("0xBBBB"),
 		common.HexToAddress("0xCCCC"),
@@ -256,11 +257,25 @@ func TestSubmitUserOp_NoPaymaster(t *testing.T) {
 		callCount++
 
 		switch req.Method {
-		case "eth_getTransactionCount":
+		case "eth_call":
 			json.NewEncoder(w).Encode(map[string]interface{}{
 				"jsonrpc": "2.0",
 				"id":      callCount,
-				"result":  "0x5",
+				"result":  "0x0000000000000000000000000000000000000000000000000000000000000005",
+			})
+		case "eth_maxPriorityFeePerGas":
+			json.NewEncoder(w).Encode(map[string]interface{}{
+				"jsonrpc": "2.0",
+				"id":      callCount,
+				"result":  "0x59682f00",
+			})
+		case "eth_getBlockByNumber":
+			json.NewEncoder(w).Encode(map[string]interface{}{
+				"jsonrpc": "2.0",
+				"id":      callCount,
+				"result": map[string]interface{}{
+					"baseFeePerGas": "0x3b9aca00",
+				},
 			})
 		case "eth_estimateUserOperationGas":
 			json.NewEncoder(w).Encode(map[string]interface{}{
@@ -316,11 +331,25 @@ func TestSubmitUserOp_PaymasterTwoPhase(t *testing.T) {
 
 		w.Header().Set("Content-Type", "application/json")
 		switch req.Method {
-		case "eth_getTransactionCount":
+		case "eth_call":
 			json.NewEncoder(w).Encode(map[string]interface{}{
 				"jsonrpc": "2.0",
 				"id":      1,
-				"result":  "0x0",
+				"result":  "0x0000000000000000000000000000000000000000000000000000000000000000",
+			})
+		case "eth_maxPriorityFeePerGas":
+			json.NewEncoder(w).Encode(map[string]interface{}{
+				"jsonrpc": "2.0",
+				"id":      1,
+				"result":  "0x59682f00",
+			})
+		case "eth_getBlockByNumber":
+			json.NewEncoder(w).Encode(map[string]interface{}{
+				"jsonrpc": "2.0",
+				"id":      1,
+				"result": map[string]interface{}{
+					"baseFeePerGas": "0x3b9aca00",
+				},
 			})
 		case "eth_estimateUserOperationGas":
 			json.NewEncoder(w).Encode(map[string]interface{}{
@@ -383,10 +412,26 @@ func TestSubmitUserOp_PaymasterStubFails(t *testing.T) {
 	t.Parallel()
 
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var req struct {
+			Method string `json:"method"`
+		}
+		json.NewDecoder(r.Body).Decode(&req)
+
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(map[string]interface{}{
-			"jsonrpc": "2.0", "id": 1, "result": "0x0",
-		})
+		switch req.Method {
+		case "eth_getBlockByNumber":
+			json.NewEncoder(w).Encode(map[string]interface{}{
+				"jsonrpc": "2.0",
+				"id":      1,
+				"result": map[string]interface{}{
+					"baseFeePerGas": "0x3b9aca00",
+				},
+			})
+		default:
+			json.NewEncoder(w).Encode(map[string]interface{}{
+				"jsonrpc": "2.0", "id": 1, "result": "0x0000000000000000000000000000000000000000000000000000000000000000",
+			})
+		}
 	}))
 	defer srv.Close()
 
@@ -434,9 +479,17 @@ func TestSubmitUserOp_PaymasterFinalFails(t *testing.T) {
 					"preVerificationGas":   "0x5208",
 				},
 			})
+		case "eth_getBlockByNumber":
+			json.NewEncoder(w).Encode(map[string]interface{}{
+				"jsonrpc": "2.0",
+				"id":      1,
+				"result": map[string]interface{}{
+					"baseFeePerGas": "0x3b9aca00",
+				},
+			})
 		default:
 			json.NewEncoder(w).Encode(map[string]interface{}{
-				"jsonrpc": "2.0", "id": 1, "result": "0x0",
+				"jsonrpc": "2.0", "id": 1, "result": "0x0000000000000000000000000000000000000000000000000000000000000000",
 			})
 		}
 	}))
@@ -479,11 +532,25 @@ func TestSubmitUserOp_PaymasterGasOverrides(t *testing.T) {
 
 		w.Header().Set("Content-Type", "application/json")
 		switch req.Method {
-		case "eth_getTransactionCount":
+		case "eth_call":
 			json.NewEncoder(w).Encode(map[string]interface{}{
 				"jsonrpc": "2.0",
 				"id":      1,
-				"result":  "0x3",
+				"result":  "0x0000000000000000000000000000000000000000000000000000000000000003",
+			})
+		case "eth_maxPriorityFeePerGas":
+			json.NewEncoder(w).Encode(map[string]interface{}{
+				"jsonrpc": "2.0",
+				"id":      1,
+				"result":  "0x59682f00",
+			})
+		case "eth_getBlockByNumber":
+			json.NewEncoder(w).Encode(map[string]interface{}{
+				"jsonrpc": "2.0",
+				"id":      1,
+				"result": map[string]interface{}{
+					"baseFeePerGas": "0x3b9aca00",
+				},
 			})
 		case "eth_estimateUserOperationGas":
 			json.NewEncoder(w).Encode(map[string]interface{}{
