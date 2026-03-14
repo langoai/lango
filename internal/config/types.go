@@ -8,6 +8,11 @@ import (
 
 // Config is the root configuration structure for lango
 type Config struct {
+	// DataRoot is the root directory for all lango data files (default: ~/.lango/).
+	// All configurable data paths (database, graph, skills, etc.) must reside under this directory.
+	// This can be overridden (e.g., for Docker: /data/lango/) but all sub-paths must stay under it.
+	DataRoot string `mapstructure:"dataRoot" json:"dataRoot,omitempty"`
+
 	// Server configuration
 	Server ServerConfig `mapstructure:"server" json:"server"`
 
@@ -298,6 +303,10 @@ type ExecToolConfig struct {
 
 	// Working directory (empty = current)
 	WorkDir string `mapstructure:"workDir" json:"workDir"`
+
+	// AdditionalProtectedPaths specifies extra paths that the exec tool
+	// should block access to (in addition to the DataRoot).
+	AdditionalProtectedPaths []string `mapstructure:"additionalProtectedPaths" json:"additionalProtectedPaths,omitempty"`
 }
 
 // FilesystemToolConfig defines file access settings

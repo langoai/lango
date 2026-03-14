@@ -6,9 +6,17 @@ import (
 
 	"github.com/langoai/lango/internal/agent"
 	"github.com/langoai/lango/internal/supervisor"
+	execpkg "github.com/langoai/lango/internal/tools/exec"
 )
 
-func buildExecTools(sv *supervisor.Supervisor, automationAvailable map[string]bool) []*agent.Tool {
+// BlockedResult is the structured response returned when a command is blocked
+// by security guards (CLI guard, path guard, etc.).
+type BlockedResult struct {
+	Blocked bool   `json:"blocked"`
+	Message string `json:"message"`
+}
+
+func buildExecTools(sv *supervisor.Supervisor, automationAvailable map[string]bool, guard *execpkg.CommandGuard) []*agent.Tool {
 	return []*agent.Tool{
 		{
 			Name:        "exec",
@@ -30,7 +38,10 @@ func buildExecTools(sv *supervisor.Supervisor, automationAvailable map[string]bo
 					return nil, fmt.Errorf("missing command parameter")
 				}
 				if msg := blockLangoExec(cmd, automationAvailable); msg != "" {
-					return map[string]interface{}{"blocked": true, "message": msg}, nil
+					return &BlockedResult{Blocked: true, Message: msg}, nil
+				}
+				if msg := blockProtectedPaths(cmd, guard); msg != "" {
+					return &BlockedResult{Blocked: true, Message: msg}, nil
 				}
 				return sv.ExecuteTool(ctx, cmd)
 			},
@@ -55,7 +66,10 @@ func buildExecTools(sv *supervisor.Supervisor, automationAvailable map[string]bo
 					return nil, fmt.Errorf("missing command parameter")
 				}
 				if msg := blockLangoExec(cmd, automationAvailable); msg != "" {
-					return map[string]interface{}{"blocked": true, "message": msg}, nil
+					return &BlockedResult{Blocked: true, Message: msg}, nil
+				}
+				if msg := blockProtectedPaths(cmd, guard); msg != "" {
+					return &BlockedResult{Blocked: true, Message: msg}, nil
 				}
 				return sv.StartBackground(cmd)
 			},
