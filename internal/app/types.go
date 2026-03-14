@@ -16,6 +16,7 @@ import (
 	"github.com/langoai/lango/internal/eventbus"
 	"github.com/langoai/lango/internal/gatekeeper"
 	"github.com/langoai/lango/internal/gateway"
+	"github.com/langoai/lango/internal/tooloutput"
 	"github.com/langoai/lango/internal/graph"
 	"github.com/langoai/lango/internal/knowledge"
 	"github.com/langoai/lango/internal/learning"
@@ -112,6 +113,9 @@ type App struct {
 	// Smart Account Components (optional, ERC-7579 modular accounts)
 	SmartAccountManager    interface{}             // *smartaccount.Manager
 	SmartAccountComponents *smartAccountComponents // full components for CLI access
+
+	// Output Store (compressed tool output retrieval)
+	OutputStore *tooloutput.OutputStore
 
 	// Gatekeeper (response sanitizer)
 	Sanitizer *gatekeeper.Sanitizer
