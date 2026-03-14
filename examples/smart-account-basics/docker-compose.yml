@@ -1,0 +1,71 @@
+# Smart Account Basics Integration Test
+# 1 Lango agent with Anvil demonstrating ERC-4337 Smart Account deployment,
+# session key management, and policy engine validation.
+
+services:
+  # Local Ethereum node (Foundry Anvil) — deterministic accounts, chainId 31337
+  anvil:
+    image: ghcr.io/foundry-rs/foundry:latest
+    entrypoint: ["anvil", "--host", "0.0.0.0", "--chain-id", "31337"]
+    ports:
+      - "8545:8545"
+    networks:
+      - sa-net
+    healthcheck:
+      test: ["CMD", "cast", "block-number", "--rpc-url", "http://localhost:8545"]
+      interval: 2s
+      timeout: 5s
+      retries: 30
+
+  # One-shot setup: deploy MockUSDC, EntryPoint stub, and Factory stub
+  setup:
+    image: ghcr.io/foundry-rs/foundry:latest
+    user: root
+    depends_on:
+      anvil:
+        condition: service_healthy
+    volumes:
+      - ./contracts:/contracts:ro
+      - ./scripts:/scripts:ro
+      - shared:/shared
+    entrypoint: ["sh", "/contracts/deploy-infra.sh"]
+    networks:
+      - sa-net
+
+  agent:
+    image: lango:latest
+    build:
+      context: ../..
+      dockerfile: Dockerfile
+    depends_on:
+      setup:
+        condition: service_completed_successfully
+    environment:
+      LANGO_CONFIG_FILE: /configs/agent.json
+      LANGO_PASSPHRASE_FILE: /secrets/agent-passphrase.txt
+      AGENT_PRIVATE_KEY: "0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80"
+      AGENT_NAME: agent
+    volumes:
+      - ./configs:/configs:ro
+      - ./secrets:/secrets:ro
+      - ./docker-entrypoint-sa.sh:/usr/local/bin/docker-entrypoint-sa.sh:ro
+      - shared:/shared:ro
+    entrypoint: ["sh", "/usr/local/bin/docker-entrypoint-sa.sh"]
+    command: ["serve"]
+    ports:
+      - "18789:18789"
+    networks:
+      - sa-net
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "http://localhost:18789/health"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+      start_period: 15s
+
+volumes:
+  shared:
+
+networks:
+  sa-net:
+    driver: bridge
