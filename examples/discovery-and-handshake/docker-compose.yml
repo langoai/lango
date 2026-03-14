@@ -1,0 +1,60 @@
+# P2P Discovery & Handshake Integration Test
+# 2 Lango agents (Alice, Bob) demonstrating mDNS discovery,
+# GossipSub agent cards, and DID-based handshake v1.1 with signed challenges.
+
+services:
+  alice:
+    image: lango:latest
+    build:
+      context: ../..
+      dockerfile: Dockerfile
+    environment:
+      LANGO_CONFIG_FILE: /configs/alice.json
+      LANGO_PASSPHRASE_FILE: /secrets/alice-passphrase.txt
+      AGENT_NAME: alice
+    volumes:
+      - ./configs:/configs:ro
+      - ./secrets:/secrets:ro
+      - ./docker-entrypoint-p2p.sh:/usr/local/bin/docker-entrypoint-p2p.sh:ro
+    entrypoint: ["sh", "/usr/local/bin/docker-entrypoint-p2p.sh"]
+    command: ["serve"]
+    ports:
+      - "18789:18789"
+    networks:
+      - p2p-net
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "http://localhost:18789/health"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+      start_period: 10s
+
+  bob:
+    image: lango:latest
+    build:
+      context: ../..
+      dockerfile: Dockerfile
+    environment:
+      LANGO_CONFIG_FILE: /configs/bob.json
+      LANGO_PASSPHRASE_FILE: /secrets/bob-passphrase.txt
+      AGENT_NAME: bob
+    volumes:
+      - ./configs:/configs:ro
+      - ./secrets:/secrets:ro
+      - ./docker-entrypoint-p2p.sh:/usr/local/bin/docker-entrypoint-p2p.sh:ro
+    entrypoint: ["sh", "/usr/local/bin/docker-entrypoint-p2p.sh"]
+    command: ["serve"]
+    ports:
+      - "18790:18790"
+    networks:
+      - p2p-net
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "http://localhost:18790/health"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+      start_period: 10s
+
+networks:
+  p2p-net:
+    driver: bridge

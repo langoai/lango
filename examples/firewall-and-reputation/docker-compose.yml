@@ -1,0 +1,86 @@
+# Firewall & Reputation Integration Test
+# 3 Lango agents demonstrating ACL-based firewall rules,
+# per-peer rate limiting, reputation scoring, and OwnerShield PII protection.
+
+services:
+  alice:
+    image: lango:latest
+    build:
+      context: ../..
+      dockerfile: Dockerfile
+    environment:
+      LANGO_CONFIG_FILE: /configs/alice.json
+      LANGO_PASSPHRASE_FILE: /secrets/alice-passphrase.txt
+      AGENT_NAME: alice
+    volumes:
+      - ./configs:/configs:ro
+      - ./secrets:/secrets:ro
+      - ./docker-entrypoint-p2p.sh:/usr/local/bin/docker-entrypoint-p2p.sh:ro
+    entrypoint: ["sh", "/usr/local/bin/docker-entrypoint-p2p.sh"]
+    command: ["serve"]
+    ports:
+      - "18789:18789"
+    networks:
+      - p2p-net
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "http://localhost:18789/health"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+      start_period: 10s
+
+  bob:
+    image: lango:latest
+    build:
+      context: ../..
+      dockerfile: Dockerfile
+    environment:
+      LANGO_CONFIG_FILE: /configs/bob.json
+      LANGO_PASSPHRASE_FILE: /secrets/bob-passphrase.txt
+      AGENT_NAME: bob
+    volumes:
+      - ./configs:/configs:ro
+      - ./secrets:/secrets:ro
+      - ./docker-entrypoint-p2p.sh:/usr/local/bin/docker-entrypoint-p2p.sh:ro
+    entrypoint: ["sh", "/usr/local/bin/docker-entrypoint-p2p.sh"]
+    command: ["serve"]
+    ports:
+      - "18790:18790"
+    networks:
+      - p2p-net
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "http://localhost:18790/health"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+      start_period: 10s
+
+  charlie:
+    image: lango:latest
+    build:
+      context: ../..
+      dockerfile: Dockerfile
+    environment:
+      LANGO_CONFIG_FILE: /configs/charlie.json
+      LANGO_PASSPHRASE_FILE: /secrets/charlie-passphrase.txt
+      AGENT_NAME: charlie
+    volumes:
+      - ./configs:/configs:ro
+      - ./secrets:/secrets:ro
+      - ./docker-entrypoint-p2p.sh:/usr/local/bin/docker-entrypoint-p2p.sh:ro
+    entrypoint: ["sh", "/usr/local/bin/docker-entrypoint-p2p.sh"]
+    command: ["serve"]
+    ports:
+      - "18791:18791"
+    networks:
+      - p2p-net
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "http://localhost:18791/health"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+      start_period: 10s
+
+networks:
+  p2p-net:
+    driver: bridge
