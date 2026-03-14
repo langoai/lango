@@ -21,6 +21,7 @@ import (
 	clia2a "github.com/langoai/lango/internal/cli/a2a"
 	cliagent "github.com/langoai/lango/internal/cli/agent"
 	cliapproval "github.com/langoai/lango/internal/cli/approval"
+	cliconfigcmd "github.com/langoai/lango/internal/cli/configcmd"
 	clibg "github.com/langoai/lango/internal/cli/bg"
 	clicontract "github.com/langoai/lango/internal/cli/contract"
 	clicron "github.com/langoai/lango/internal/cli/cron"
@@ -427,6 +428,35 @@ See Also:
 	cmd.AddCommand(configImportCmd())
 	cmd.AddCommand(configExportCmd())
 	cmd.AddCommand(configValidateCmd())
+
+	// get/set/keys — config value inspection & modification
+	cmd.AddCommand(cliconfigcmd.NewGetCmd(func() (*config.Config, error) {
+		boot, err := bootstrapForConfig()
+		if err != nil {
+			return nil, err
+		}
+		defer boot.DBClient.Close()
+		return boot.Config, nil
+	}))
+	cmd.AddCommand(cliconfigcmd.NewSetCmd(
+		func() (*config.Config, error) {
+			boot, err := bootstrapForConfig()
+			if err != nil {
+				return nil, err
+			}
+			// Note: DBClient kept open for save; closed after save in saver.
+			return boot.Config, nil
+		},
+		func(cfg *config.Config) error {
+			boot, err := bootstrapForConfig()
+			if err != nil {
+				return err
+			}
+			defer boot.DBClient.Close()
+			return boot.ConfigStore.Save(context.Background(), boot.ProfileName, cfg)
+		},
+	))
+	cmd.AddCommand(cliconfigcmd.NewKeysCmd())
 
 	return cmd
 }

@@ -110,6 +110,13 @@ var (
 			Foreground(Dim).
 			Italic(true).
 			PaddingLeft(2)
+
+	// BadgeAdvancedStyle for the ADV badge on advanced categories
+	BadgeAdvancedStyle = lipgloss.NewStyle().
+				Foreground(Foreground).
+				Background(Muted).
+				Bold(true).
+				Padding(0, 1)
 )
 
 // Check result indicators
