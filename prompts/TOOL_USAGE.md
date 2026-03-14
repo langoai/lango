@@ -18,8 +18,20 @@
 - Always verify existence before modifying: use `fs_read` or `fs_list` to confirm the target exists and contains what you expect.
 - Follow the read-modify-write pattern: read the current content, apply changes, write the result.
 - Writes are atomic — the file is written to a temporary location first, then renamed. This prevents partial writes.
-- Respect the 10MB read size limit. For larger files, use exec tool with `head`, `tail`, or `awk` to read specific sections.
+- Respect the 10MB read size limit. For larger files, use `fs_read` with `offset` and `limit` to read specific line ranges, or use `fs_stat` to check file size and line count first.
+- Use `fs_stat` to inspect file metadata (size, line count, modification time) without reading content. Useful for deciding whether to read a file fully or in ranges.
+- `fs_read` supports optional `offset` (1-indexed line number) and `limit` (max lines) parameters. When used, the response includes `totalLines` and `size` metadata. Use these for large files instead of reading everything.
 - Use `fs_mkdir` to ensure parent directories exist before writing new files.
+
+### Tool Output Management
+- When a tool result exceeds the token budget, the output manager automatically compresses it and injects `_meta` metadata.
+- `_meta.tier` indicates compression level: `small` (no compression), `medium` (head+tail), `large` (aggressive compression).
+- `_meta.storedRef` contains a UUID reference when the full output was stored. Use `tool_output_get` to retrieve it.
+- `tool_output_get` retrieves stored output by reference. Three modes:
+  - `full` (default): returns the entire stored content.
+  - `range`: returns a line range with `offset` (0-indexed) and `limit`. Useful for paginating through large outputs.
+  - `grep`: returns lines matching a `pattern` (regex). Useful for finding specific content in large outputs.
+- Stored outputs expire after 10 minutes. If expired, re-run the original tool.
 
 ### Browser Tool
 - Sessions are created automatically on the first browser action — you do not need to manage session lifecycle.

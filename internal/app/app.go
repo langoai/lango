@@ -29,6 +29,7 @@ import (
 	"github.com/langoai/lango/internal/session"
 	"github.com/langoai/lango/internal/toolcatalog"
 	"github.com/langoai/lango/internal/toolchain"
+	"github.com/langoai/lango/internal/tooloutput"
 	"github.com/langoai/lango/internal/tools/browser"
 	"github.com/langoai/lango/internal/tools/filesystem"
 	"github.com/langoai/lango/internal/wallet"
@@ -586,12 +587,15 @@ func New(boot *bootstrap.Result) (*App, error) {
 		app.Gateway.SetSanitizer(app.Sanitizer)
 	}
 
-	// 7a. Tool output truncation — cap tool results before they enter model context.
-	maxChars := cfg.Tools.MaxOutputChars
-	if maxChars <= 0 {
-		maxChars = 8000
-	}
-	tools = toolchain.ChainAll(tools, toolchain.WithTruncate(maxChars))
+	// 7a. Tool output management — token-based tiered compression.
+	outputStore := tooloutput.NewOutputStore(10 * time.Minute)
+	app.registry.Register(outputStore, lifecycle.PriorityCore)
+	app.OutputStore = outputStore
+	outputTools := buildOutputTools(outputStore)
+	tools = append(tools, outputTools...)
+	catalog.RegisterCategory(toolcatalog.Category{Name: "output", Description: "Tool output retrieval", Enabled: true})
+	catalog.Register("output", outputTools)
+	tools = toolchain.ChainAll(tools, toolchain.WithOutputManager(cfg.Tools.OutputManager, outputStore))
 
 	// 7b. Tool Execution Hooks — SecurityFilterHook is always active (not config-gated).
 	{

@@ -269,6 +269,7 @@ type ToolsConfig struct {
 	Exec           ExecToolConfig       `mapstructure:"exec" json:"exec"`
 	Filesystem     FilesystemToolConfig `mapstructure:"filesystem" json:"filesystem"`
 	Browser        BrowserToolConfig    `mapstructure:"browser" json:"browser"`
+	OutputManager  OutputManagerConfig  `mapstructure:"outputManager" json:"outputManager"`
 	MaxOutputChars int                  `mapstructure:"maxOutputChars" json:"maxOutputChars"`
 }
 
@@ -343,6 +344,21 @@ type GatekeeperConfig struct {
 
 	// Additional regex patterns to strip from responses
 	CustomPatterns []string `mapstructure:"customPatterns" json:"customPatterns"`
+}
+
+// OutputManagerConfig defines token-based output management settings.
+type OutputManagerConfig struct {
+	// Master switch (nil defaults to true — enabled by default)
+	Enabled *bool `mapstructure:"enabled" json:"enabled"`
+
+	// Maximum token budget for tool output (default: 2000)
+	TokenBudget int `mapstructure:"tokenBudget" json:"tokenBudget"`
+
+	// Ratio of head content to preserve during compression (default: 0.7)
+	HeadRatio float64 `mapstructure:"headRatio" json:"headRatio"`
+
+	// Ratio of tail content to preserve during compression (default: 0.3)
+	TailRatio float64 `mapstructure:"tailRatio" json:"tailRatio"`
 }
 
 // BrowserToolConfig defines browser automation settings

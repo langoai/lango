@@ -99,6 +99,152 @@ func TestFileSizeLimit(t *testing.T) {
 	require.Error(t, err)
 }
 
+func TestStat(t *testing.T) {
+	t.Parallel()
+
+	tool := New(Config{})
+	tmpDir := t.TempDir()
+
+	tests := []struct {
+		give      string
+		setup     func(t *testing.T) string
+		wantErr   bool
+		wantLines int
+		wantIsDir bool
+	}{
+		{
+			give: "regular file",
+			setup: func(t *testing.T) string {
+				p := filepath.Join(tmpDir, "stat_regular.txt")
+				require.NoError(t, os.WriteFile(p, []byte("line1\nline2\nline3"), 0644))
+				return p
+			},
+			wantLines: 3,
+			wantIsDir: false,
+		},
+		{
+			give: "directory",
+			setup: func(t *testing.T) string {
+				p := filepath.Join(tmpDir, "stat_dir")
+				require.NoError(t, os.MkdirAll(p, 0755))
+				return p
+			},
+			wantLines: 0,
+			wantIsDir: true,
+		},
+		{
+			give: "non-existent file",
+			setup: func(t *testing.T) string {
+				return filepath.Join(tmpDir, "does_not_exist.txt")
+			},
+			wantErr: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.give, func(t *testing.T) {
+			t.Parallel()
+
+			path := tt.setup(t)
+			result, err := tool.Stat(path)
+
+			if tt.wantErr {
+				require.Error(t, err)
+				return
+			}
+
+			require.NoError(t, err)
+			assert.Equal(t, tt.wantLines, result.Lines)
+			assert.Equal(t, tt.wantIsDir, result.IsDir)
+			assert.NotZero(t, result.ModTime)
+			assert.NotEmpty(t, result.Permission)
+
+			if !tt.wantIsDir {
+				assert.Greater(t, result.Size, int64(0))
+			}
+		})
+	}
+}
+
+func TestReadWithMeta(t *testing.T) {
+	t.Parallel()
+
+	tool := New(Config{})
+	tmpDir := t.TempDir()
+	testFile := filepath.Join(tmpDir, "readmeta.txt")
+	require.NoError(t, os.WriteFile(testFile, []byte("line1\nline2\nline3\nline4\nline5"), 0644))
+
+	tests := []struct {
+		give       string
+		giveOffset int
+		giveLimit  int
+		wantContent string
+		wantTotal   int
+		wantOffset  int
+		wantLimit   int
+	}{
+		{
+			give:        "full read offset=0 limit=0",
+			giveOffset:  0,
+			giveLimit:   0,
+			wantContent: "line1\nline2\nline3\nline4\nline5",
+			wantTotal:   5,
+			wantOffset:  1,
+			wantLimit:   0,
+		},
+		{
+			give:        "with offset",
+			giveOffset:  3,
+			giveLimit:   0,
+			wantContent: "line3\nline4\nline5",
+			wantTotal:   5,
+			wantOffset:  3,
+			wantLimit:   0,
+		},
+		{
+			give:        "with limit",
+			giveOffset:  0,
+			giveLimit:   2,
+			wantContent: "line1\nline2",
+			wantTotal:   5,
+			wantOffset:  1,
+			wantLimit:   2,
+		},
+		{
+			give:        "offset and limit combined",
+			giveOffset:  2,
+			giveLimit:   2,
+			wantContent: "line2\nline3",
+			wantTotal:   5,
+			wantOffset:  2,
+			wantLimit:   2,
+		},
+		{
+			give:        "large offset beyond file",
+			giveOffset:  100,
+			giveLimit:   0,
+			wantContent: "",
+			wantTotal:   5,
+			wantOffset:  100,
+			wantLimit:   0,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.give, func(t *testing.T) {
+			t.Parallel()
+
+			result, err := tool.ReadWithMeta(testFile, tt.giveOffset, tt.giveLimit)
+			require.NoError(t, err)
+			assert.Equal(t, tt.wantContent, result.Content)
+			assert.Equal(t, tt.wantTotal, result.TotalLines)
+			assert.Equal(t, tt.wantOffset, result.Offset)
+			assert.Equal(t, tt.wantLimit, result.Limit)
+			assert.Greater(t, result.Size, int64(0))
+		})
+	}
+}
+
 func TestBlockedPaths(t *testing.T) {
 	t.Parallel()
 
