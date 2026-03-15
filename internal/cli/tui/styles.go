@@ -117,6 +117,13 @@ var (
 				Background(Muted).
 				Bold(true).
 				Padding(0, 1)
+
+	// BadgeDependencyStyle for the dependency warning badge on categories
+	BadgeDependencyStyle = lipgloss.NewStyle().
+				Foreground(Foreground).
+				Background(Warning).
+				Bold(true).
+				Padding(0, 1)
 )
 
 // Check result indicators

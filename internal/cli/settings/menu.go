@@ -60,8 +60,9 @@ type MenuModel struct {
 	filtered    []Category // filtered results (nil when not searching)
 
 	// Checkers for smart filters
-	DirtyChecker   func(string) bool // returns true if category config has been modified
-	EnabledChecker func(string) bool // returns true if category feature is enabled
+	DirtyChecker      func(string) bool // returns true if category config has been modified
+	EnabledChecker    func(string) bool // returns true if category feature is enabled
+	DependencyChecker func(string) int  // returns count of unmet required dependencies
 }
 
 // allCategories returns a flat list of all selectable categories across sections.
@@ -436,6 +437,18 @@ func (m *MenuModel) applyFilter() {
 			m.Cursor = 0
 			return
 		}
+	case "@ready":
+		if m.DependencyChecker != nil {
+			var results []Category
+			for _, cat := range all {
+				if m.DependencyChecker(cat.ID) == 0 {
+					results = append(results, cat)
+				}
+			}
+			m.filtered = results
+			m.Cursor = 0
+			return
+		}
 	}
 
 	var results []Category
@@ -465,7 +478,7 @@ func (m MenuModel) View() string {
 				Italic(true).
 				PaddingLeft(1)
 			b.WriteString("\n")
-			b.WriteString(filterHint.Render("@basic  @advanced  @enabled  @modified"))
+			b.WriteString(filterHint.Render("@basic  @advanced  @enabled  @modified  @ready"))
 		}
 	} else {
 		hint := lipgloss.NewStyle().
@@ -613,6 +626,14 @@ func (m MenuModel) renderItem(b *strings.Builder, cat Category, idx int) {
 		badge = " " + tui.BadgeAdvancedStyle.Render("ADV")
 	}
 
+	// Dependency warning badge
+	depBadge := ""
+	if m.DependencyChecker != nil {
+		if n := m.DependencyChecker(cat.ID); n > 0 {
+			depBadge = " " + tui.BadgeDependencyStyle.Render(fmt.Sprintf("⚠ %d", n))
+		}
+	}
+
 	if m.searching && m.searchInput.Value() != "" {
 		query := strings.ToLower(strings.TrimSpace(m.searchInput.Value()))
 		highlightedTitle := m.highlightMatch(title, query, isSelected)
@@ -625,6 +646,7 @@ func (m MenuModel) renderItem(b *strings.Builder, cat Category, idx int) {
 			b.WriteString(highlightedDesc)
 		}
 		b.WriteString(badge)
+		b.WriteString(depBadge)
 	} else {
 		b.WriteString(cursor)
 		b.WriteString(titleStyle.Render(title))
@@ -632,6 +654,7 @@ func (m MenuModel) renderItem(b *strings.Builder, cat Category, idx int) {
 			b.WriteString(descStyle.Render(desc))
 		}
 		b.WriteString(badge)
+		b.WriteString(depBadge)
 	}
 	b.WriteString("\n")
 }
