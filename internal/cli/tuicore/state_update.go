@@ -761,6 +761,8 @@ func (s *ConfigState) UpdateConfigFromForm(form *FormModel) {
 			s.Current.SmartAccount.Paymaster.Enabled = f.Checked
 		case "sa_paymaster_provider":
 			s.Current.SmartAccount.Paymaster.Provider = val
+		case "sa_paymaster_mode":
+			s.Current.SmartAccount.Paymaster.Mode = val
 		case "sa_paymaster_rpc_url":
 			s.Current.SmartAccount.Paymaster.RPCURL = val
 		case "sa_paymaster_token_address":

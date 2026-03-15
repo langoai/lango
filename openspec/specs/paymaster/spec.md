@@ -76,11 +76,19 @@ The system SHALL provide `BuildApproveCalldata(spender, amount)` and `NewApprova
 - **THEN** it SHALL return 68 bytes: 4-byte selector `0x095ea7b3` + 32-byte address + 32-byte amount
 
 ### Requirement: Paymaster configuration
-The system SHALL support `SmartAccountPaymasterConfig` with enabled, provider, rpcURL, tokenAddress, paymasterAddress, and policyId fields.
+The system SHALL support `SmartAccountPaymasterConfig` with enabled, provider, mode, rpcURL, tokenAddress, paymasterAddress, and policyId fields. The `mode` field accepts `"rpc"` (default) or `"permit"`.
 
 #### Scenario: Provider selection
 - **WHEN** config specifies provider as "circle", "pimlico", or "alchemy"
 - **THEN** the corresponding provider SHALL be initialized during app wiring
+
+#### Scenario: Mode field defaults to rpc
+- **WHEN** `mode` is empty or omitted in config
+- **THEN** the system SHALL treat it as `"rpc"` mode and require `rpcURL`
+
+#### Scenario: Permit mode does not require rpcURL
+- **WHEN** `mode` is `"permit"`
+- **THEN** the system SHALL NOT require `rpcURL` and SHALL use the wallet provider and RPC client for permit signing
 
 ### Requirement: Paymaster agent tools
 The system SHALL provide `paymaster_status` (Safe) and `paymaster_approve` (Dangerous) agent tools.
@@ -100,6 +108,22 @@ The system SHALL provide `lango account paymaster status` and `lango account pay
 - **WHEN** `lango account paymaster status` is run
 - **THEN** it SHALL display paymaster configuration in table or JSON format
 
+#### Scenario: CLI status output includes mode
+- **WHEN** `lango account paymaster status` is run
+- **THEN** it SHALL display the `mode` field (`rpc` or `permit`) in both table and JSON output
+
+#### Scenario: CLI status omits RPC URL in permit mode
+- **WHEN** paymaster mode is `permit` and no RPC URL is configured
+- **THEN** the status output SHALL omit the RPC URL line in table format
+
 #### Scenario: CLI approve with amount flag
 - **WHEN** `lango account paymaster approve --amount 1000.00` is run
 - **THEN** it SHALL show the approval details and instruct to use the agent tool for execution
+
+#### Scenario: TUI form includes mode selection
+- **WHEN** the user opens the SA Paymaster Configuration form
+- **THEN** a Mode select field SHALL be available with options `rpc` and `permit`
+
+#### Scenario: TUI state update handles mode
+- **WHEN** the user changes the Mode field in the TUI form
+- **THEN** the config state SHALL be updated with the selected mode value

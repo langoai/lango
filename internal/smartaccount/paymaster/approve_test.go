@@ -133,7 +133,7 @@ func TestNewApprovalCall_Fields(t *testing.T) {
 	t.Parallel()
 
 	tokenAddr := common.HexToAddress("0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48")
-	paymasterAddr := common.HexToAddress("0x5FF137D4b0FDCD49DcA30c7CF57E578a026d2789")
+	paymasterAddr := common.HexToAddress("0x0000000071727De22E5E9d8BAf0edAc6f37da032")
 	amount := big.NewInt(10_000_000)
 
 	call := NewApprovalCall(tokenAddr, paymasterAddr, amount)

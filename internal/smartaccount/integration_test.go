@@ -168,7 +168,7 @@ func TestIntegration_SessionKeyLifecycle(t *testing.T) {
 
 	mgr := session.NewManager(store,
 		session.WithEncryption(encryptFn, decryptFn),
-		session.WithEntryPoint(common.HexToAddress("0x5FF137D4b0FDCD49DcA30c7CF57E578a026d2789")),
+		session.WithEntryPoint(common.HexToAddress("0x0000000071727De22E5E9d8BAf0edAc6f37da032")),
 		session.WithChainID(84532),
 		session.WithOnChainRegistration(
 			func(_ context.Context, addr common.Address, _ sa.SessionPolicy) (string, error) {
@@ -207,7 +207,7 @@ func TestIntegration_SessionKeyLifecycle(t *testing.T) {
 
 	// 4. Verify the signature by recovering the signer address.
 	//    Use ComputeUserOpHash which matches the EntryPoint's hash algorithm.
-	entryPoint := common.HexToAddress("0x5FF137D4b0FDCD49DcA30c7CF57E578a026d2789")
+	entryPoint := common.HexToAddress("0x0000000071727De22E5E9d8BAf0edAc6f37da032")
 	digest := sa.ComputeUserOpHash(op, entryPoint, 84532)
 
 	recoveredPub, err := crypto.Ecrecover(digest, sig)
@@ -240,7 +240,7 @@ func TestIntegration_PaymasterTwoPhase(t *testing.T) {
 	defer srv.Close()
 
 	entryPoint := common.HexToAddress(
-		"0x5FF137D4b0FDCD49DcA30c7CF57E578a026d2789",
+		"0x0000000071727De22E5E9d8BAf0edAc6f37da032",
 	)
 	wp := &mockWalletProvider{
 		addr: "0x1234567890abcdef1234567890abcdef12345678",
@@ -485,7 +485,7 @@ func TestIntegration_EncryptionDecryption(t *testing.T) {
 
 	mgr := session.NewManager(store,
 		session.WithEncryption(encryptFn, decryptFn),
-		session.WithEntryPoint(common.HexToAddress("0x5FF137D4b0FDCD49DcA30c7CF57E578a026d2789")),
+		session.WithEntryPoint(common.HexToAddress("0x0000000071727De22E5E9d8BAf0edAc6f37da032")),
 		session.WithChainID(84532),
 	)
 
@@ -510,7 +510,7 @@ func TestIntegration_EncryptionDecryption(t *testing.T) {
 
 	// 4. Verify the signature by recovering the signer address.
 	//    Use ComputeUserOpHash which matches the EntryPoint's hash algorithm.
-	entryPoint := common.HexToAddress("0x5FF137D4b0FDCD49DcA30c7CF57E578a026d2789")
+	entryPoint := common.HexToAddress("0x0000000071727De22E5E9d8BAf0edAc6f37da032")
 	digest := sa.ComputeUserOpHash(op, entryPoint, 84532)
 
 	recoveredPub, err := crypto.Ecrecover(digest, sig)

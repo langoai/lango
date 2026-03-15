@@ -49,7 +49,7 @@ func TestNewManager(t *testing.T) {
 	t.Parallel()
 
 	entryPoint := common.HexToAddress(
-		"0x5FF137D4b0FDCD49DcA30c7CF57E578a026d2789",
+		"0x0000000071727De22E5E9d8BAf0edAc6f37da032",
 	)
 	wp := &mockWallet{
 		addr: "0x1234567890abcdef1234567890abcdef12345678",
@@ -175,7 +175,7 @@ func TestComputeUserOpHash(t *testing.T) {
 	t.Parallel()
 
 	entryPoint := common.HexToAddress(
-		"0x5FF137D4b0FDCD49DcA30c7CF57E578a026d2789",
+		"0x0000000071727De22E5E9d8BAf0edAc6f37da032",
 	)
 	m := &Manager{
 		chainID:    84532,
@@ -318,7 +318,7 @@ func TestSubmitUserOp_NoPaymaster(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	entryPoint := common.HexToAddress("0x5FF137D4b0FDCD49DcA30c7CF57E578a026d2789")
+	entryPoint := common.HexToAddress("0x0000000071727De22E5E9d8BAf0edAc6f37da032")
 	wp := &mockWallet{addr: "0x1234567890abcdef1234567890abcdef12345678"}
 	bundlerClient := bundler.NewClient(srv.URL, entryPoint)
 
@@ -407,7 +407,7 @@ func TestSubmitUserOp_PaymasterTwoPhase(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	entryPoint := common.HexToAddress("0x5FF137D4b0FDCD49DcA30c7CF57E578a026d2789")
+	entryPoint := common.HexToAddress("0x0000000071727De22E5E9d8BAf0edAc6f37da032")
 	wp := &mockWallet{addr: "0x1234567890abcdef1234567890abcdef12345678"}
 	bundlerClient := bundler.NewClient(srv.URL, entryPoint)
 
@@ -471,7 +471,7 @@ func TestSubmitUserOp_PaymasterStubFails(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	entryPoint := common.HexToAddress("0x5FF137D4b0FDCD49DcA30c7CF57E578a026d2789")
+	entryPoint := common.HexToAddress("0x0000000071727De22E5E9d8BAf0edAc6f37da032")
 	wp := &mockWallet{addr: "0x1234567890abcdef1234567890abcdef12345678"}
 	bundlerClient := bundler.NewClient(srv.URL, entryPoint)
 
@@ -531,7 +531,7 @@ func TestSubmitUserOp_PaymasterFinalFails(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	entryPoint := common.HexToAddress("0x5FF137D4b0FDCD49DcA30c7CF57E578a026d2789")
+	entryPoint := common.HexToAddress("0x0000000071727De22E5E9d8BAf0edAc6f37da032")
 	wp := &mockWallet{addr: "0x1234567890abcdef1234567890abcdef12345678"}
 	bundlerClient := bundler.NewClient(srv.URL, entryPoint)
 
@@ -623,7 +623,7 @@ func TestSubmitUserOp_PaymasterGasOverrides(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	entryPoint := common.HexToAddress("0x5FF137D4b0FDCD49DcA30c7CF57E578a026d2789")
+	entryPoint := common.HexToAddress("0x0000000071727De22E5E9d8BAf0edAc6f37da032")
 	wp := &mockWallet{addr: "0x1234567890abcdef1234567890abcdef12345678"}
 	bundlerClient := bundler.NewClient(srv.URL, entryPoint)
 

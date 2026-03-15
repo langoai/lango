@@ -874,7 +874,8 @@ Each firewall rule entry:
 | `smartAccount.session.maxActiveKeys` | `int` | `10` | Maximum number of active session keys |
 | `smartAccount.paymaster.enabled` | `bool` | `false` | Enable paymaster for gasless transactions |
 | `smartAccount.paymaster.provider` | `string` | `circle` | Paymaster provider (`circle`, `pimlico`, `alchemy`) |
-| `smartAccount.paymaster.rpcURL` | `string` | | Paymaster provider RPC endpoint |
+| `smartAccount.paymaster.mode` | `string` | `rpc` | Paymaster mode: `rpc` (API-based) or `permit` (on-chain EIP-2612) |
+| `smartAccount.paymaster.rpcURL` | `string` | | Paymaster provider RPC endpoint (required for `rpc` mode) |
 | `smartAccount.paymaster.tokenAddress` | `string` | | USDC token contract address |
 | `smartAccount.paymaster.paymasterAddress` | `string` | | Paymaster contract address |
 | `smartAccount.paymaster.policyId` | `string` | | Provider-specific policy ID (optional) |

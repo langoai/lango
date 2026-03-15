@@ -127,7 +127,7 @@ func initSmartAccountDeps(boot *bootstrap.Result) (*smartAccountDeps, error) {
 
 	// 6. Paymaster provider (optional).
 	if cfg.SmartAccount.Paymaster.Enabled {
-		provider := initPaymasterProvider(cfg.SmartAccount.Paymaster)
+		provider := initPaymasterProvider(cfg.SmartAccount.Paymaster, wp, rpcClient, chainID)
 		if provider != nil {
 			deps.paymasterProv = provider
 			mgr.SetPaymasterFunc(func(ctx context.Context, op *sa.UserOperation, stub bool) ([]byte, *sa.PaymasterGasOverrides, error) {
@@ -170,7 +170,24 @@ func initSmartAccountDeps(boot *bootstrap.Result) (*smartAccountDeps, error) {
 }
 
 // initPaymasterProvider creates a paymaster provider based on config.
-func initPaymasterProvider(cfg config.SmartAccountPaymasterConfig) paymaster.PaymasterProvider {
+// When mode="permit" and provider="circle", uses on-chain permit mode (no RPC URL needed).
+func initPaymasterProvider(
+	cfg config.SmartAccountPaymasterConfig,
+	wp wallet.WalletProvider,
+	rpcClient *ethclient.Client,
+	chainID int64,
+) paymaster.PaymasterProvider {
+	// Permit mode: on-chain paymaster, no RPC URL required.
+	if cfg.Mode == "permit" && cfg.Provider == "circle" {
+		if wp == nil || rpcClient == nil {
+			return nil
+		}
+		pmAddr := common.HexToAddress(cfg.PaymasterAddress)
+		tokenAddr := common.HexToAddress(cfg.TokenAddress)
+		return paymaster.NewCirclePermitProvider(pmAddr, tokenAddr, chainID, wp, rpcClient)
+	}
+
+	// RPC mode (default).
 	if cfg.RPCURL == "" {
 		return nil
 	}

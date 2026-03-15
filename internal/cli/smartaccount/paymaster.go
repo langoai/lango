@@ -52,16 +52,23 @@ func paymasterStatusCmd(bootLoader BootLoader) *cobra.Command {
 			type statusInfo struct {
 				Enabled          bool   `json:"enabled"`
 				Provider         string `json:"provider"`
-				RPCURL           string `json:"rpcURL"`
+				Mode             string `json:"mode"`
+				RPCURL           string `json:"rpcURL,omitempty"`
 				TokenAddress     string `json:"tokenAddress"`
 				PaymasterAddress string `json:"paymasterAddress"`
 				PolicyID         string `json:"policyId,omitempty"`
 				ProviderType     string `json:"providerType,omitempty"`
 			}
 
+			mode := pmCfg.Mode
+			if mode == "" {
+				mode = "rpc"
+			}
+
 			info := statusInfo{
 				Enabled:          pmCfg.Enabled,
 				Provider:         pmCfg.Provider,
+				Mode:             mode,
 				RPCURL:           pmCfg.RPCURL,
 				TokenAddress:     pmCfg.TokenAddress,
 				PaymasterAddress: pmCfg.PaymasterAddress,
@@ -85,10 +92,13 @@ func paymasterStatusCmd(bootLoader BootLoader) *cobra.Command {
 			w := tabwriter.NewWriter(os.Stdout, 0, 4, 2, ' ', 0)
 			fmt.Fprintf(w, "  Enabled:\t%v\n", info.Enabled)
 			fmt.Fprintf(w, "  Provider:\t%s\n", info.Provider)
+			fmt.Fprintf(w, "  Mode:\t%s\n", info.Mode)
 			if info.ProviderType != "" {
 				fmt.Fprintf(w, "  Provider Type:\t%s\n", info.ProviderType)
 			}
-			fmt.Fprintf(w, "  RPC URL:\t%s\n", info.RPCURL)
+			if info.RPCURL != "" {
+				fmt.Fprintf(w, "  RPC URL:\t%s\n", info.RPCURL)
+			}
 			fmt.Fprintf(w, "  Token:\t%s\n", info.TokenAddress)
 			fmt.Fprintf(w, "  Paymaster:\t%s\n", info.PaymasterAddress)
 			if info.PolicyID != "" {
