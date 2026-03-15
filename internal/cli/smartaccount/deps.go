@@ -45,6 +45,10 @@ func initSmartAccountDeps(boot *bootstrap.Result) (*smartAccountDeps, error) {
 		return nil, fmt.Errorf("smart account requires payment to be enabled (set payment.enabled = true)")
 	}
 
+	if err := cfg.SmartAccount.Validate(); err != nil {
+		return nil, fmt.Errorf("smart account config: %w", err)
+	}
+
 	// Build secrets store for wallet key management.
 	ctx := context.Background()
 	registry := security.NewKeyRegistry(boot.DBClient)
@@ -114,10 +118,15 @@ func initSmartAccountDeps(boot *bootstrap.Result) (*smartAccountDeps, error) {
 	// 5. Account manager + factory.
 	abiCache := contract.NewABICache()
 	caller := contract.NewCaller(rpcClient, wp, chainID, abiCache)
+	singletonAddr := cfg.SmartAccount.SafeSingletonAddress
+	if singletonAddr == "" {
+		singletonAddr = "0x29fcB43b46531BcA003ddC8FCB67FFE91900C762" // Safe L2 v1.4.1
+	}
 	factory := sa.NewFactory(
 		caller,
 		rpcClient,
 		common.HexToAddress(cfg.SmartAccount.FactoryAddress),
+		common.HexToAddress(singletonAddr),
 		common.HexToAddress(cfg.SmartAccount.Safe7579Address),
 		common.HexToAddress(cfg.SmartAccount.FallbackHandler),
 		chainID,

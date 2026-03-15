@@ -11,6 +11,7 @@ import (
 
 	"github.com/langoai/lango/internal/agent"
 	"github.com/langoai/lango/internal/ctxkeys"
+	"github.com/langoai/lango/internal/logging"
 )
 
 // AdaptTool converts an internal agent.Tool to an ADK tool.Tool.
@@ -87,6 +88,7 @@ func adaptToolWithOptions(t *agent.Tool, agentName string, timeout time.Duration
 		InputSchema: buildInputSchema(t),
 	}
 
+	toolName := t.Name
 	handler := func(ctx tool.Context, args map[string]any) (any, error) {
 		// Inject agent name into context so hooks/middleware can identify the owning agent.
 		var callCtx context.Context = ctx
@@ -94,19 +96,31 @@ func adaptToolWithOptions(t *agent.Tool, agentName string, timeout time.Duration
 			callCtx = ctxkeys.WithAgentName(ctx, agentName)
 		}
 
+		var result any
+		var err error
+
 		if timeout > 0 {
 			var cancel context.CancelFunc
 			callCtx, cancel = context.WithTimeout(callCtx, timeout)
 			defer cancel()
 
-			result, err := t.Handler(callCtx, args)
+			result, err = t.Handler(callCtx, args)
 			if err != nil && callCtx.Err() == context.DeadlineExceeded {
-				return nil, fmt.Errorf("tool %q timed out after %v", t.Name, timeout)
+				err = fmt.Errorf("tool %q timed out after %v", toolName, timeout)
 			}
-			return result, err
+		} else {
+			result, err = t.Handler(callCtx, args)
 		}
 
-		return t.Handler(callCtx, args)
+		if err != nil {
+			logging.Agent().Warnw("tool call failed",
+				"tool", toolName,
+				"agent", agentName,
+				"error", err,
+			)
+		}
+
+		return result, err
 	}
 
 	return functiontool.New(cfg, handler)

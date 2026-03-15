@@ -1,17 +1,21 @@
 package config
 
-import "time"
+import (
+	"fmt"
+	"time"
+)
 
 // SmartAccountConfig defines ERC-7579 smart account settings.
 type SmartAccountConfig struct {
-	Enabled           bool   `mapstructure:"enabled" json:"enabled"`
-	FactoryAddress    string `mapstructure:"factoryAddress" json:"factoryAddress"`
-	EntryPointAddress string `mapstructure:"entryPointAddress" json:"entryPointAddress"`
-	Safe7579Address   string `mapstructure:"safe7579Address" json:"safe7579Address"`
-	FallbackHandler   string `mapstructure:"fallbackHandler" json:"fallbackHandler"`
-	BundlerURL        string `mapstructure:"bundlerURL" json:"bundlerURL"`
+	Enabled              bool   `mapstructure:"enabled" json:"enabled"`
+	FactoryAddress       string `mapstructure:"factoryAddress" json:"factoryAddress"`
+	EntryPointAddress    string `mapstructure:"entryPointAddress" json:"entryPointAddress"`
+	SafeSingletonAddress string `mapstructure:"safeSingletonAddress" json:"safeSingletonAddress"` // Safe L2 singleton implementation
+	Safe7579Address      string `mapstructure:"safe7579Address" json:"safe7579Address"`
+	FallbackHandler      string `mapstructure:"fallbackHandler" json:"fallbackHandler"`
+	BundlerURL           string `mapstructure:"bundlerURL" json:"bundlerURL"`
 
-	Session   SmartAccountSessionConfig   `mapstructure:"session" json:"session"`
+	Session SmartAccountSessionConfig `mapstructure:"session" json:"session"`
 	Modules   SmartAccountModulesConfig   `mapstructure:"modules" json:"modules"`
 	Paymaster SmartAccountPaymasterConfig `mapstructure:"paymaster" json:"paymaster"`
 }
@@ -40,4 +44,21 @@ type SmartAccountModulesConfig struct {
 	SessionValidatorAddress string `mapstructure:"sessionValidatorAddress" json:"sessionValidatorAddress"`
 	SpendingHookAddress     string `mapstructure:"spendingHookAddress" json:"spendingHookAddress"`
 	EscrowExecutorAddress   string `mapstructure:"escrowExecutorAddress" json:"escrowExecutorAddress"`
+}
+
+// Validate checks that required fields are set when smart account is enabled.
+func (c SmartAccountConfig) Validate() error {
+	if !c.Enabled {
+		return nil
+	}
+	if c.EntryPointAddress == "" {
+		return fmt.Errorf("smartAccount.entryPointAddress is required")
+	}
+	if c.FactoryAddress == "" {
+		return fmt.Errorf("smartAccount.factoryAddress is required")
+	}
+	if c.BundlerURL == "" {
+		return fmt.Errorf("smartAccount.bundlerURL is required")
+	}
+	return nil
 }

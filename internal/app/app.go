@@ -127,6 +127,8 @@ func New(boot *bootstrap.Result) (*App, error) {
 	catalog.RegisterCategory(toolcatalog.Category{Name: "filesystem", Description: "File system operations", Enabled: true})
 	if cfg.Tools.Browser.Enabled {
 		catalog.RegisterCategory(toolcatalog.Category{Name: "browser", Description: "Web browsing", ConfigKey: "tools.browser.enabled", Enabled: true})
+	} else {
+		catalog.RegisterCategory(toolcatalog.Category{Name: "browser", Description: "Web browsing (disabled)", ConfigKey: "tools.browser.enabled", Enabled: false})
 	}
 	// Register base tools (exec, fs, browser) all at once.
 	for _, t := range tools {
@@ -155,6 +157,8 @@ func New(boot *bootstrap.Result) (*App, error) {
 		catalog.RegisterCategory(toolcatalog.Category{Name: "crypto", Description: "Cryptographic operations", ConfigKey: "security.signer.provider", Enabled: true})
 		catalog.Register("crypto", ct)
 		logger().Info("crypto tools registered")
+	} else {
+		catalog.RegisterCategory(toolcatalog.Category{Name: "crypto", Description: "Cryptographic operations (disabled)", ConfigKey: "security.signer.provider", Enabled: false})
 	}
 	if app.Secrets != nil {
 		st := buildSecretsTools(app.Secrets, refs, scanner)
@@ -162,6 +166,8 @@ func New(boot *bootstrap.Result) (*App, error) {
 		catalog.RegisterCategory(toolcatalog.Category{Name: "secrets", Description: "Secret management", ConfigKey: "security.secrets.enabled", Enabled: true})
 		catalog.Register("secrets", st)
 		logger().Info("secrets tools registered")
+	} else {
+		catalog.RegisterCategory(toolcatalog.Category{Name: "secrets", Description: "Secret management (disabled)", ConfigKey: "security.secrets.enabled", Enabled: false})
 	}
 
 	// 5d. Graph Store (optional) — initialized before knowledge so GraphEngine can be wired.
@@ -192,6 +198,8 @@ func New(boot *bootstrap.Result) (*App, error) {
 		tools = append(tools, metaTools...)
 		catalog.RegisterCategory(toolcatalog.Category{Name: "meta", Description: "Knowledge, learning, and skill management", ConfigKey: "knowledge.enabled", Enabled: true})
 		catalog.Register("meta", metaTools)
+	} else {
+		catalog.RegisterCategory(toolcatalog.Category{Name: "meta", Description: "Knowledge & learning (disabled)", ConfigKey: "knowledge.enabled", Enabled: false})
 	}
 
 	// 5b. Observational Memory (optional)
@@ -234,6 +242,8 @@ func New(boot *bootstrap.Result) (*App, error) {
 		tools = append(tools, gt...)
 		catalog.RegisterCategory(toolcatalog.Category{Name: "graph", Description: "Knowledge graph traversal", ConfigKey: "graph.enabled", Enabled: true})
 		catalog.Register("graph", gt)
+	} else {
+		catalog.RegisterCategory(toolcatalog.Category{Name: "graph", Description: "Knowledge graph (disabled)", ConfigKey: "graph.enabled", Enabled: false})
 	}
 
 	// 5f. RAG tools (optional)
@@ -242,6 +252,8 @@ func New(boot *bootstrap.Result) (*App, error) {
 		tools = append(tools, rt...)
 		catalog.RegisterCategory(toolcatalog.Category{Name: "rag", Description: "Retrieval-augmented generation", ConfigKey: "embedding.rag.enabled", Enabled: true})
 		catalog.Register("rag", rt)
+	} else {
+		catalog.RegisterCategory(toolcatalog.Category{Name: "rag", Description: "RAG retrieval (disabled)", ConfigKey: "embedding.provider", Enabled: false})
 	}
 
 	// 5g. Memory agent tools (optional)
@@ -250,6 +262,8 @@ func New(boot *bootstrap.Result) (*App, error) {
 		tools = append(tools, mt...)
 		catalog.RegisterCategory(toolcatalog.Category{Name: "memory", Description: "Observational memory", ConfigKey: "observationalMemory.enabled", Enabled: true})
 		catalog.Register("memory", mt)
+	} else {
+		catalog.RegisterCategory(toolcatalog.Category{Name: "memory", Description: "Observational memory (disabled)", ConfigKey: "observationalMemory.enabled", Enabled: false})
 	}
 
 	// 5g'. Agent Memory tools (optional, per-agent persistent memory)
@@ -261,6 +275,8 @@ func New(boot *bootstrap.Result) (*App, error) {
 		catalog.RegisterCategory(toolcatalog.Category{Name: "agent_memory", Description: "Per-agent persistent memory", ConfigKey: "agentMemory.enabled", Enabled: true})
 		catalog.Register("agent_memory", amTools)
 		logger().Info("agent memory tools enabled")
+	} else {
+		catalog.RegisterCategory(toolcatalog.Category{Name: "agent_memory", Description: "Per-agent memory (disabled)", ConfigKey: "agentMemory.enabled", Enabled: false})
 	}
 
 	// 5h. Payment tools (optional)
@@ -382,7 +398,22 @@ func New(boot *bootstrap.Result) (*App, error) {
 				}
 
 				logger().Info("P2P workspace tools registered")
+			} else if cfg.P2P.Workspace.Enabled {
+				catalog.RegisterCategory(toolcatalog.Category{Name: "workspace", Description: "P2P workspaces (disabled)", ConfigKey: "p2p.workspace.enabled", Enabled: false})
 			}
+		} else {
+			catalog.RegisterCategory(toolcatalog.Category{Name: "p2p", Description: "P2P networking (disabled — payment required)", ConfigKey: "p2p.enabled", Enabled: false})
+		}
+	} else {
+		catalog.RegisterCategory(toolcatalog.Category{Name: "payment", Description: "Blockchain payments (disabled)", ConfigKey: "payment.enabled", Enabled: false})
+		catalog.RegisterCategory(toolcatalog.Category{Name: "contract", Description: "Smart contract interaction (disabled)", ConfigKey: "payment.enabled", Enabled: false})
+		if cfg.P2P.Enabled {
+			catalog.RegisterCategory(toolcatalog.Category{Name: "p2p", Description: "P2P networking (disabled — payment required)", ConfigKey: "p2p.enabled", Enabled: false})
+		} else {
+			catalog.RegisterCategory(toolcatalog.Category{Name: "p2p", Description: "P2P networking (disabled)", ConfigKey: "p2p.enabled", Enabled: false})
+		}
+		if cfg.P2P.Workspace.Enabled {
+			catalog.RegisterCategory(toolcatalog.Category{Name: "workspace", Description: "P2P workspaces (disabled)", ConfigKey: "p2p.workspace.enabled", Enabled: false})
 		}
 	}
 
@@ -392,6 +423,8 @@ func New(boot *bootstrap.Result) (*App, error) {
 		tools = append(tools, lt...)
 		catalog.RegisterCategory(toolcatalog.Category{Name: "librarian", Description: "Knowledge inquiries and gap detection", ConfigKey: "librarian.enabled", Enabled: true})
 		catalog.Register("librarian", lt)
+	} else {
+		catalog.RegisterCategory(toolcatalog.Category{Name: "librarian", Description: "Knowledge inquiries (disabled)", ConfigKey: "librarian.enabled", Enabled: false})
 	}
 
 	// 5j. Cron Scheduling (optional) — initialized before agent so tools get approval-wrapped.
@@ -471,6 +504,8 @@ func New(boot *bootstrap.Result) (*App, error) {
 		mgmtTools := buildMCPManagementTools(mcpc.manager)
 		tools = append(tools, mgmtTools...)
 		catalog.Register("mcp", mgmtTools)
+	} else {
+		catalog.RegisterCategory(toolcatalog.Category{Name: "mcp", Description: "MCP plugins (disabled)", ConfigKey: "mcp.enabled", Enabled: false})
 	}
 
 	// 5o. Economy Layer (optional — budget, risk, pricing, negotiation, escrow)
@@ -523,6 +558,8 @@ func New(boot *bootstrap.Result) (*App, error) {
 
 		// Register economy lifecycle components (EventMonitor, DanglingDetector).
 		registerEconomyLifecycle(app.registry, econc)
+	} else {
+		catalog.RegisterCategory(toolcatalog.Category{Name: "economy", Description: "P2P economy (disabled)", ConfigKey: "economy.enabled", Enabled: false})
 	}
 
 	// Register health monitor lifecycle (requires coordinator).
@@ -577,10 +614,13 @@ func New(boot *bootstrap.Result) (*App, error) {
 		})
 		catalog.Register("contract", ctTools)
 		logger().Info("contract interaction tools registered")
+	} else if pc != nil {
+		// pc exists but contract init failed — register disabled separately.
+		catalog.RegisterCategory(toolcatalog.Category{Name: "contract", Description: "Smart contract interaction (disabled)", ConfigKey: "payment.enabled", Enabled: false})
 	}
 
 	// 5p'. Smart Account (optional, requires payment + contract)
-	sacc := initSmartAccount(cfg, pc, econc, bus)
+	sacc := initSmartAccount(cfg, pc, econc, bus, app.registry)
 	if sacc != nil {
 		app.SmartAccountManager = sacc.manager
 		app.SmartAccountComponents = sacc
@@ -597,7 +637,7 @@ func New(boot *bootstrap.Result) (*App, error) {
 	} else {
 		catalog.RegisterCategory(toolcatalog.Category{
 			Name:        "smartaccount",
-			Description: "ERC-7579 smart account management (disabled — set smartAccount.enabled=true and payment.enabled=true)",
+			Description: "ERC-7579 smart account management (disabled — requires: smartAccount.enabled, payment.enabled, entryPointAddress, factoryAddress, bundlerURL; recommended: economy.enabled)",
 			ConfigKey:   "smartAccount.enabled",
 			Enabled:     false,
 		})
@@ -609,6 +649,8 @@ func New(boot *bootstrap.Result) (*App, error) {
 		app.MetricsCollector = obsc.collector
 		app.HealthRegistry = obsc.healthRegistry
 		app.TokenStore = obsc.tokenStore
+	} else {
+		catalog.RegisterCategory(toolcatalog.Category{Name: "observability", Description: "Metrics & health (disabled)", ConfigKey: "observability.enabled", Enabled: false})
 	}
 
 	// Log tool registration summary for diagnostics.

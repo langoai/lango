@@ -62,6 +62,13 @@ func (g *SessionGuard) Start() {
 	g.active = true
 }
 
+// Stop deactivates the session guard so it no longer processes alerts.
+func (g *SessionGuard) Stop() {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	g.active = false
+}
+
 // handleAlert processes a sentinel alert and takes action.
 func (g *SessionGuard) handleAlert(ev eventbus.Event) {
 	alert, ok := ev.(SentinelAlertEvent)
@@ -71,6 +78,10 @@ func (g *SessionGuard) handleAlert(ev eventbus.Event) {
 
 	g.mu.Lock()
 	defer g.mu.Unlock()
+
+	if !g.active {
+		return
+	}
 
 	switch alert.Alert.Severity {
 	case SeverityCritical, SeverityHigh:

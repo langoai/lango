@@ -42,6 +42,13 @@ func initPayment(cfg *config.Config, store session.Store, secrets *security.Secr
 
 	client := entStore.Client()
 
+	// Validate RPC URL before attempting to connect.
+	if cfg.Payment.Network.RPCURL == "" {
+		logger().Warn("payment RPC URL not configured",
+			"fix", "set payment.network.rpcUrl via 'lango config set'")
+		return nil
+	}
+
 	// Create RPC client for blockchain interaction
 	rpcClient, err := ethclient.Dial(cfg.Payment.Network.RPCURL)
 	if err != nil {
@@ -114,6 +121,7 @@ func initX402(cfg *config.Config, secrets *security.SecretsStore, limiter wallet
 		return nil
 	}
 	if secrets == nil {
+		logger().Warn("X402 interceptor requires security.signer, skipping")
 		return nil
 	}
 

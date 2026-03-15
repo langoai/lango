@@ -3,6 +3,7 @@ package app
 import (
 	"context"
 	"math/big"
+	"sync"
 	"time"
 
 	"github.com/ethereum/go-ethereum"
@@ -14,6 +15,7 @@ import (
 	"github.com/langoai/lango/internal/economy/escrow/sentinel"
 	"github.com/langoai/lango/internal/economy/risk"
 	"github.com/langoai/lango/internal/eventbus"
+	"github.com/langoai/lango/internal/lifecycle"
 	sa "github.com/langoai/lango/internal/smartaccount"
 	"github.com/langoai/lango/internal/smartaccount/bindings"
 	"github.com/langoai/lango/internal/smartaccount/bundler"
@@ -82,6 +84,7 @@ func initSmartAccount(
 	pc *paymentComponents,
 	econc *economyComponents,
 	bus *eventbus.Bus,
+	reg *lifecycle.Registry,
 ) *smartAccountComponents {
 	if !cfg.SmartAccount.Enabled {
 		logger().Info("smart account disabled",
@@ -91,6 +94,13 @@ func initSmartAccount(
 	if pc == nil {
 		logger().Warn("smart account requires payment components",
 			"fix", "set payment.enabled=true with payment.rpcUrl and payment.privateKey")
+		return nil
+	}
+
+	if err := cfg.SmartAccount.Validate(); err != nil {
+		logger().Warn("smart account config incomplete",
+			"error", err,
+			"fix", "set missing fields via 'lango config set'")
 		return nil
 	}
 
@@ -146,10 +156,17 @@ func initSmartAccount(
 	// 5. Account manager + factory
 	abiCache := contract.NewABICache()
 	caller := contract.NewCaller(pc.rpcClient, pc.wallet, pc.chainID, abiCache)
+	// Resolve Safe singleton address: explicit config > default Safe L2 v1.4.1.
+	singletonAddr := cfg.SmartAccount.SafeSingletonAddress
+	if singletonAddr == "" {
+		singletonAddr = "0x29fcB43b46531BcA003ddC8FCB67FFE91900C762" // Safe L2 v1.4.1
+		logger().Info("smart account: using default Safe L2 v1.4.1 singleton")
+	}
 	factory := sa.NewFactory(
 		caller,
 		pc.rpcClient,
 		common.HexToAddress(cfg.SmartAccount.FactoryAddress),
+		common.HexToAddress(singletonAddr),
 		common.HexToAddress(cfg.SmartAccount.Safe7579Address),
 		common.HexToAddress(cfg.SmartAccount.FallbackHandler),
 		pc.chainID,
@@ -214,6 +231,9 @@ func initSmartAccount(
 			}, nil
 		})
 		logger().Info("smart account: risk engine wired to policy")
+	} else {
+		logger().Warn("smart account: risk engine not wired, spending controls unavailable",
+			"fix", "enable economy via 'lango config set economy.enabled true'")
 	}
 
 	// 7. Wire sentinel → session guard
@@ -225,7 +245,15 @@ func initSmartAccount(
 		})
 		guard.Start()
 		sac.sessionGuard = guard
+		if reg != nil {
+			reg.Register(lifecycle.NewFuncComponent("smart-account-session-guard",
+				func(_ context.Context, _ *sync.WaitGroup) error { return nil },
+				func(_ context.Context) error { guard.Stop(); return nil },
+			), lifecycle.PriorityAutomation)
+		}
 		logger().Info("smart account: sentinel session guard wired")
+	} else {
+		logger().Warn("smart account: sentinel session guard not wired, anomaly detection unavailable")
 	}
 
 	// 8. On-chain spending tracker
