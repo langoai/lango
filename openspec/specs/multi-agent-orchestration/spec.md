@@ -415,3 +415,11 @@ The orchestration package SHALL provide `DynamicToolSet` (map[string][]*agent.To
 #### Scenario: PartitionTools still works
 - **WHEN** PartitionTools is called
 - **THEN** it SHALL return the same results as before (backward compatible)
+
+### Requirement: Diagnostics section in orchestrator prompt
+The orchestrator system prompt SHALL include a Diagnostics section instructing the orchestrator to use `builtin_list` or `builtin_health` when tools appear to be missing or a feature is not working.
+
+#### Scenario: Orchestrator prompt contains diagnostics guidance
+- **WHEN** `buildOrchestratorInstruction()` generates the orchestrator prompt
+- **THEN** the prompt SHALL contain a "Diagnostics" section
+- **AND** the section SHALL reference `builtin_health` as the diagnostic tool

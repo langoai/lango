@@ -64,6 +64,7 @@ func blockLangoExec(cmd string, automationAvailable map[string]bool) string {
 		{"lango payment", "", "payment_send, payment_create_wallet, payment_x402_fetch"},
 		{"lango mcp", "", "mcp_status, mcp_tools"},
 		{"lango contract", "", "contract_read, contract_call, contract_abi_load"},
+		{"lango account", "", "smart_account_deploy, smart_account_info, session_key_create, session_key_list, session_key_revoke, session_execute, policy_check, module_install, module_uninstall, spending_status, paymaster_status, paymaster_approve"},
 	}
 
 	for _, g := range guards {

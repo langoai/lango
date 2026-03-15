@@ -7,12 +7,14 @@ import (
 	"github.com/langoai/lango/internal/agent"
 )
 
-// BuildDispatcher returns two meta-tools that provide dynamic access to
-// the catalog: builtin_list (discovery) and builtin_invoke (proxy execution).
+// BuildDispatcher returns meta-tools that provide dynamic access to
+// the catalog: builtin_list (discovery), builtin_invoke (proxy execution),
+// and builtin_health (diagnostics).
 func BuildDispatcher(catalog *Catalog) []*agent.Tool {
 	return []*agent.Tool{
 		buildListTool(catalog),
 		buildInvokeTool(catalog),
+		buildHealthTool(catalog),
 	}
 }
 
@@ -121,6 +123,51 @@ func buildInvokeTool(catalog *Catalog) *agent.Tool {
 			return map[string]interface{}{
 				"tool":   toolName,
 				"result": result,
+			}, nil
+		},
+	}
+}
+
+// buildHealthTool creates the builtin_health tool for diagnosing tool registration status.
+func buildHealthTool(catalog *Catalog) *agent.Tool {
+	return &agent.Tool{
+		Name: "builtin_health",
+		Description: "Diagnose tool registration status. Shows all categories (enabled and disabled) " +
+			"with required config keys. Use this when tools appear to be missing.",
+		SafetyLevel: agent.SafetyLevelSafe,
+		Parameters: map[string]interface{}{
+			"type":       "object",
+			"properties": map[string]interface{}{},
+		},
+		Handler: func(ctx context.Context, params map[string]interface{}) (interface{}, error) {
+			categories := catalog.ListCategories()
+
+			var enabled []map[string]interface{}
+			var disabled []map[string]interface{}
+
+			for _, cat := range categories {
+				entry := map[string]interface{}{
+					"name":        cat.Name,
+					"description": cat.Description,
+				}
+				if cat.ConfigKey != "" {
+					entry["config_key"] = cat.ConfigKey
+				}
+
+				if cat.Enabled {
+					tools := catalog.ListTools(cat.Name)
+					entry["tool_count"] = len(tools)
+					enabled = append(enabled, entry)
+				} else {
+					entry["hint"] = fmt.Sprintf("Enable via config key: %s", cat.ConfigKey)
+					disabled = append(disabled, entry)
+				}
+			}
+
+			return map[string]interface{}{
+				"enabled_categories":  enabled,
+				"disabled_categories": disabled,
+				"total_tools":         catalog.ToolCount(),
 			}, nil
 		},
 	}

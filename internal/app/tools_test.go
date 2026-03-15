@@ -76,6 +76,7 @@ func TestBlockLangoExec_AllSubcommands(t *testing.T) {
 		{give: "lango p2p status", wantBlocked: true, wantContain: "p2p_"},
 		{give: "lango security keyring status", wantBlocked: true, wantContain: "crypto_"},
 		{give: "lango payment send", wantBlocked: true, wantContain: "payment_"},
+		{give: "lango account deploy", wantBlocked: true, wantContain: "smart_account_deploy"},
 
 		// Phase 2: catch-all for subcommands without in-process equivalents
 		{give: "lango config list", wantBlocked: true, wantContain: "passphrase"},

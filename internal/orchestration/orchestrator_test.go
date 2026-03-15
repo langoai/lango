@@ -723,7 +723,9 @@ func TestBuildOrchestratorInstruction_DelegateOnly(t *testing.T) {
 	got := buildOrchestratorInstruction("base", nil, 5, nil)
 
 	assert.Contains(t, got, "You do NOT have tools")
-	assert.NotContains(t, got, "builtin_list")
+	// Diagnostics section may reference builtin_list/builtin_health for self-diagnosis.
+	assert.Contains(t, got, "Diagnostics")
+	assert.Contains(t, got, "builtin_health")
 }
 
 func TestBuildOrchestratorInstruction_HasAssessStep(t *testing.T) {

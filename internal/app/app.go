@@ -568,6 +568,13 @@ func New(boot *bootstrap.Result) (*App, error) {
 		})
 		catalog.Register("smartaccount", saTools)
 		logger().Info("smart account tools registered")
+	} else {
+		catalog.RegisterCategory(toolcatalog.Category{
+			Name:        "smartaccount",
+			Description: "ERC-7579 smart account management (disabled — set smartAccount.enabled=true and payment.enabled=true)",
+			ConfigKey:   "smartAccount.enabled",
+			Enabled:     false,
+		})
 	}
 
 	// 5q. Observability (optional — metrics, health, token tracking)
