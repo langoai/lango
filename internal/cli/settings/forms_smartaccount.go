@@ -117,11 +117,22 @@ func NewSmartAccountPaymasterForm(cfg *config.Config) *tuicore.FormModel {
 		Description: "Paymaster service provider",
 	})
 
+	mode := cfg.SmartAccount.Paymaster.Mode
+	if mode == "" {
+		mode = "rpc"
+	}
+	form.AddField(&tuicore.Field{
+		Key: "sa_paymaster_mode", Label: "Mode", Type: tuicore.InputSelect,
+		Value:       mode,
+		Options:     []string{"rpc", "permit"},
+		Description: "Paymaster mode: rpc (API-based) or permit (on-chain EIP-2612, no API key)",
+	})
+
 	form.AddField(&tuicore.Field{
 		Key: "sa_paymaster_rpc_url", Label: "RPC URL", Type: tuicore.InputText,
 		Value:       cfg.SmartAccount.Paymaster.RPCURL,
 		Placeholder: "https://paymaster.example.com",
-		Description: "Paymaster service RPC endpoint URL",
+		Description: "Paymaster service RPC endpoint URL (required for rpc mode)",
 	})
 
 	form.AddField(&tuicore.Field{

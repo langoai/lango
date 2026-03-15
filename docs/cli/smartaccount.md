@@ -374,22 +374,20 @@ lango account paymaster status [--output table|json]
 $ lango account paymaster status
 Paymaster Status
   Enabled:       true
-  Provider:      pimlico
-  Provider Type: pimlico
-  RPC URL:       https://api.pimlico.io/v2/...
+  Provider:      circle
+  Mode:          permit
+  Provider Type: circle-permit
   Token:         0x036CbD53842c5426634e7929541eC2318f3dCF7e
-  Paymaster:     0x00000000009726632680AF5d2E20f3c706e2F00e
-  Policy ID:     sp_my_policy_id
+  Paymaster:     0x31BE08D380A21fc740883c0BC434FcFc88740b58
 
 $ lango account paymaster status --output json
 {
   "enabled": true,
-  "provider": "pimlico",
-  "rpcURL": "https://api.pimlico.io/v2/...",
+  "provider": "circle",
+  "mode": "permit",
   "tokenAddress": "0x036CbD53842c5426634e7929541eC2318f3dCF7e",
-  "paymasterAddress": "0x00000000009726632680AF5d2E20f3c706e2F00e",
-  "policyId": "sp_my_policy_id",
-  "providerType": "pimlico"
+  "paymasterAddress": "0x31BE08D380A21fc740883c0BC434FcFc88740b58",
+  "providerType": "circle-permit"
 }
 ```
 

@@ -118,15 +118,16 @@ Revoking a session key cascades to all children:
 
 ## Paymaster
 
-The paymaster subsystem enables gasless USDC transactions via ERC-4337 paymasters. Three provider implementations are available, each using the standard `pm_sponsorUserOperation` JSON-RPC method (Alchemy uses `alchemy_requestGasAndPaymasterAndData`).
+The paymaster subsystem enables gasless USDC transactions via ERC-4337 v0.7 paymasters. Providers are available in two modes: **RPC** (API-based) and **permit** (on-chain EIP-2612, no API key required).
 
 ### Providers
 
-| Provider | Type String | RPC Method | Notes |
-|----------|------------|------------|-------|
-| **Circle** | `circle` | `pm_sponsorUserOperation` | Basic paymaster sponsorship |
-| **Pimlico** | `pimlico` | `pm_sponsorUserOperation` | Supports `sponsorshipPolicyId` context |
-| **Alchemy** | `alchemy` | `alchemy_requestGasAndPaymasterAndData` | Combined gas + paymaster endpoint with `policyId` |
+| Provider | Type String | Mode | RPC Method | Notes |
+|----------|------------|------|------------|-------|
+| **Circle** | `circle` | rpc | `pm_sponsorUserOperation` | API-based paymaster sponsorship |
+| **Circle Permit** | `circle-permit` | permit | (on-chain) | EIP-2612 permit — no API key, pays gas in USDC |
+| **Pimlico** | `pimlico` | rpc | `pm_sponsorUserOperation` | Supports `sponsorshipPolicyId` context |
+| **Alchemy** | `alchemy` | rpc | `alchemy_requestGasAndPaymasterAndData` | Combined gas + paymaster endpoint with `policyId` |
 
 ### Recovery and Fallback
 
@@ -148,7 +149,8 @@ Before gasless transactions can work, the smart account must approve the paymast
 |-----|---------|-------------|
 | `smartAccount.paymaster.enabled` | `false` | Enable paymaster integration |
 | `smartAccount.paymaster.provider` | - | Provider name: `circle`, `pimlico`, or `alchemy` |
-| `smartAccount.paymaster.rpcURL` | - | Paymaster RPC endpoint URL |
+| `smartAccount.paymaster.mode` | `rpc` | Paymaster mode: `rpc` (API-based) or `permit` (on-chain EIP-2612) |
+| `smartAccount.paymaster.rpcURL` | - | Paymaster RPC endpoint URL (required for `rpc` mode) |
 | `smartAccount.paymaster.tokenAddress` | - | USDC token contract address |
 | `smartAccount.paymaster.paymasterAddress` | - | Paymaster contract address |
 | `smartAccount.paymaster.policyId` | - | Sponsorship policy ID (Pimlico/Alchemy) |
@@ -277,10 +279,9 @@ The smart account system integrates with several other Lango subsystems:
     "paymaster": {
       "enabled": true,
       "provider": "circle",
-      "rpcURL": "https://paymaster.example.com/rpc",
-      "tokenAddress": "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48",
-      "paymasterAddress": "0x...",
-      "policyId": "",
+      "mode": "permit",
+      "tokenAddress": "0x036CbD53842c5426634e7929541eC2318f3dCF7e",
+      "paymasterAddress": "0x31BE08D380A21fc740883c0BC434FcFc88740b58",
       "fallbackMode": "abort"
     },
     "modules": {
