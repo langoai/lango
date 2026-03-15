@@ -1,6 +1,8 @@
 package settings
 
 import (
+	"fmt"
+	"strconv"
 	"strings"
 
 	"github.com/charmbracelet/bubbles/textinput"
@@ -30,6 +32,14 @@ type Section struct {
 	Categories []Category
 }
 
+// menuLevel tracks the current navigation depth.
+type menuLevel int
+
+const (
+	levelSections   menuLevel = iota // Level 1: section list
+	levelCategories                  // Level 2: categories within a section
+)
+
 // MenuModel manages the configuration menu.
 type MenuModel struct {
 	Sections     []Section
@@ -39,14 +49,20 @@ type MenuModel struct {
 	Height       int
 	showAdvanced bool
 
+	// Hierarchical navigation
+	level            menuLevel
+	activeSectionIdx int // index into Sections for Level 2
+	sectionCursor    int // cursor position at Level 1 (restored on Esc from Level 2)
+
 	// Search
 	searching   bool
 	searchInput textinput.Model
 	filtered    []Category // filtered results (nil when not searching)
 
 	// Checkers for smart filters
-	DirtyChecker   func(string) bool // returns true if category config has been modified
-	EnabledChecker func(string) bool // returns true if category feature is enabled
+	DirtyChecker      func(string) bool // returns true if category config has been modified
+	EnabledChecker    func(string) bool // returns true if category feature is enabled
+	DependencyChecker func(string) int  // returns count of unmet required dependencies
 }
 
 // allCategories returns a flat list of all selectable categories across sections.
@@ -86,12 +102,60 @@ func (m MenuModel) ShowAdvanced() bool {
 	return m.showAdvanced
 }
 
+// InCategoryLevel returns true when the menu is at Level 2 (categories within a section).
+func (m MenuModel) InCategoryLevel() bool {
+	return m.level == levelCategories
+}
+
+// ActiveSectionTitle returns the title of the currently active section (Level 2).
+func (m MenuModel) ActiveSectionTitle() string {
+	if m.activeSectionIdx >= 0 && m.activeSectionIdx < len(m.Sections) {
+		return m.Sections[m.activeSectionIdx].Title
+	}
+	return ""
+}
+
 // selectableItems returns the list the cursor currently navigates.
 func (m *MenuModel) selectableItems() []Category {
 	if m.searching && m.filtered != nil {
 		return m.filtered
 	}
-	return m.visibleCategories()
+	if m.level == levelSections {
+		return m.level1Items()
+	}
+	return m.activeSectionCategories()
+}
+
+// level1Items builds the item list for Level 1 (section list + save/cancel).
+func (m *MenuModel) level1Items() []Category {
+	var items []Category
+	for i, s := range m.Sections {
+		if s.Title == "" {
+			items = append(items, s.Categories...)
+		} else {
+			items = append(items, Category{
+				ID:    fmt.Sprintf("__section_%d", i),
+				Title: s.Title,
+				Desc:  fmt.Sprintf("%d settings", len(s.Categories)),
+			})
+		}
+	}
+	return items
+}
+
+// activeSectionCategories returns categories from the active section, filtered by tier.
+func (m *MenuModel) activeSectionCategories() []Category {
+	if m.activeSectionIdx < 0 || m.activeSectionIdx >= len(m.Sections) {
+		return nil
+	}
+	section := m.Sections[m.activeSectionIdx]
+	var vis []Category
+	for _, c := range section.Categories {
+		if m.showAdvanced || c.Tier == TierBasic {
+			vis = append(vis, c)
+		}
+	}
+	return vis
 }
 
 // NewMenuModel creates a new menu model with grouped configuration categories.
@@ -105,7 +169,9 @@ func NewMenuModel() MenuModel {
 	si.TextStyle = lipgloss.NewStyle().Foreground(tui.Foreground)
 
 	return MenuModel{
-		showAdvanced: true,
+		showAdvanced:     true,
+		level:            levelSections,
+		activeSectionIdx: -1,
 		Sections: []Section{
 			{
 				Title: "Core",
@@ -260,7 +326,16 @@ func (m MenuModel) Update(msg tea.Msg) (MenuModel, tea.Cmd) {
 			m.searchInput.SetValue("")
 			m.Cursor = 0
 			return m, textinput.Blink
+		case "esc":
+			if m.level == levelCategories {
+				m.level = levelSections
+				m.Cursor = m.sectionCursor
+				return m, nil
+			}
 		case "tab":
+			if m.level == levelSections {
+				return m, nil
+			}
 			m.showAdvanced = !m.showAdvanced
 			// Clamp cursor to visible items.
 			items := m.selectableItems()
@@ -282,9 +357,21 @@ func (m MenuModel) Update(msg tea.Msg) (MenuModel, tea.Cmd) {
 			}
 		case "enter":
 			items := m.selectableItems()
-			if len(items) > 0 && m.Cursor < len(items) {
-				m.Selected = items[m.Cursor].ID
+			if len(items) == 0 || m.Cursor >= len(items) {
+				return m, nil
 			}
+			item := items[m.Cursor]
+			if m.level == levelSections && strings.HasPrefix(item.ID, "__section_") {
+				sIdx, _ := strconv.Atoi(strings.TrimPrefix(item.ID, "__section_"))
+				if sIdx >= 0 && sIdx < len(m.Sections) {
+					m.sectionCursor = m.Cursor
+					m.activeSectionIdx = sIdx
+					m.level = levelCategories
+					m.Cursor = 0
+				}
+				return m, nil
+			}
+			m.Selected = item.ID
 			return m, nil
 		}
 	}
@@ -350,6 +437,18 @@ func (m *MenuModel) applyFilter() {
 			m.Cursor = 0
 			return
 		}
+	case "@ready":
+		if m.DependencyChecker != nil {
+			var results []Category
+			for _, cat := range all {
+				if m.DependencyChecker(cat.ID) == 0 {
+					results = append(results, cat)
+				}
+			}
+			m.filtered = results
+			m.Cursor = 0
+			return
+		}
 	}
 
 	var results []Category
@@ -379,7 +478,7 @@ func (m MenuModel) View() string {
 				Italic(true).
 				PaddingLeft(1)
 			b.WriteString("\n")
-			b.WriteString(filterHint.Render("@basic  @advanced  @enabled  @modified"))
+			b.WriteString(filterHint.Render("@basic  @advanced  @enabled  @modified  @ready"))
 		}
 	} else {
 		hint := lipgloss.NewStyle().
@@ -390,12 +489,24 @@ func (m MenuModel) View() string {
 	}
 	b.WriteString("\n\n")
 
+	// Section header with tab indicator (Level 2 only, outside search results)
+	if m.level == levelCategories && !(m.searching && m.filtered != nil) {
+		section := m.Sections[m.activeSectionIdx]
+		headerStyle := lipgloss.NewStyle().Foreground(tui.Primary).Bold(true).PaddingLeft(2)
+		b.WriteString(headerStyle.Render(section.Title))
+		b.WriteString("  ")
+		b.WriteString(m.renderTabIndicator())
+		b.WriteString("\n\n")
+	}
+
 	// Menu body
 	var body strings.Builder
 	if m.searching && m.filtered != nil {
 		m.renderFilteredView(&body)
+	} else if m.level == levelCategories {
+		m.renderCategoryDetailView(&body)
 	} else {
-		m.renderGroupedView(&body)
+		m.renderSectionListView(&body)
 	}
 
 	// Wrap in container
@@ -413,7 +524,7 @@ func (m MenuModel) View() string {
 			tui.HelpEntry("Enter", "Select"),
 			tui.HelpEntry("Esc", "Cancel"),
 		))
-	} else {
+	} else if m.level == levelCategories {
 		tierLabel := "Show All"
 		if m.showAdvanced {
 			tierLabel = "Basic Only"
@@ -425,45 +536,55 @@ func (m MenuModel) View() string {
 			tui.HelpEntry("Tab", tierLabel),
 			tui.HelpEntry("Esc", "Back"),
 		))
+	} else {
+		b.WriteString(tui.HelpBar(
+			tui.HelpEntry("\u2191\u2193", "Navigate"),
+			tui.HelpEntry("Enter", "Select"),
+			tui.HelpEntry("/", "Search"),
+			tui.HelpEntry("Esc", "Back"),
+		))
 	}
 
 	return b.String()
 }
 
-func (m MenuModel) renderGroupedView(b *strings.Builder) {
-	globalIdx := 0
-	first := true
-	for _, section := range m.Sections {
-		// Filter categories by tier.
-		var visible []Category
-		for _, c := range section.Categories {
-			if m.showAdvanced || c.Tier == TierBasic {
-				visible = append(visible, c)
-			}
+func (m MenuModel) renderSectionListView(b *strings.Builder) {
+	items := m.level1Items()
+	namedCount := 0
+	for _, s := range m.Sections {
+		if s.Title != "" {
+			namedCount++
 		}
-		if len(visible) == 0 {
-			continue
-		}
-
-		// Section header
-		if section.Title != "" {
-			if !first {
-				b.WriteString(tui.SeparatorLineStyle.Render("  " + strings.Repeat("\u2500", 38)))
-				b.WriteString("\n")
-			}
-			b.WriteString(tui.SectionHeaderStyle.Render(section.Title))
-			b.WriteString("\n")
-		} else if !first {
+	}
+	for i, item := range items {
+		if i == namedCount {
 			b.WriteString(tui.SeparatorLineStyle.Render("  " + strings.Repeat("\u2500", 38)))
 			b.WriteString("\n")
 		}
-		first = false
-
-		for _, cat := range visible {
-			m.renderItem(b, cat, globalIdx)
-			globalIdx++
-		}
+		m.renderItem(b, item, i)
 	}
+}
+
+func (m MenuModel) renderCategoryDetailView(b *strings.Builder) {
+	cats := m.activeSectionCategories()
+	if len(cats) == 0 {
+		noResult := lipgloss.NewStyle().Foreground(tui.Muted).Italic(true)
+		b.WriteString(noResult.Render("  No basic settings. Press Tab to show all."))
+		b.WriteString("\n")
+		return
+	}
+	for i, cat := range cats {
+		m.renderItem(b, cat, i)
+	}
+}
+
+func (m MenuModel) renderTabIndicator() string {
+	activeStyle := lipgloss.NewStyle().Foreground(tui.Primary).Bold(true)
+	inactiveStyle := lipgloss.NewStyle().Foreground(tui.Dim)
+	if m.showAdvanced {
+		return inactiveStyle.Render("[Basic]") + " " + activeStyle.Render("[All]")
+	}
+	return activeStyle.Render("[Basic]") + " " + inactiveStyle.Render("[All]")
 }
 
 func (m MenuModel) renderFilteredView(b *strings.Builder) {
@@ -505,6 +626,14 @@ func (m MenuModel) renderItem(b *strings.Builder, cat Category, idx int) {
 		badge = " " + tui.BadgeAdvancedStyle.Render("ADV")
 	}
 
+	// Dependency warning badge
+	depBadge := ""
+	if m.DependencyChecker != nil {
+		if n := m.DependencyChecker(cat.ID); n > 0 {
+			depBadge = " " + tui.BadgeDependencyStyle.Render(fmt.Sprintf("⚠ %d", n))
+		}
+	}
+
 	if m.searching && m.searchInput.Value() != "" {
 		query := strings.ToLower(strings.TrimSpace(m.searchInput.Value()))
 		highlightedTitle := m.highlightMatch(title, query, isSelected)
@@ -517,6 +646,7 @@ func (m MenuModel) renderItem(b *strings.Builder, cat Category, idx int) {
 			b.WriteString(highlightedDesc)
 		}
 		b.WriteString(badge)
+		b.WriteString(depBadge)
 	} else {
 		b.WriteString(cursor)
 		b.WriteString(titleStyle.Render(title))
@@ -524,6 +654,7 @@ func (m MenuModel) renderItem(b *strings.Builder, cat Category, idx int) {
 			b.WriteString(descStyle.Render(desc))
 		}
 		b.WriteString(badge)
+		b.WriteString(depBadge)
 	}
 	b.WriteString("\n")
 }
