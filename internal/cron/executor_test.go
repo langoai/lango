@@ -184,3 +184,95 @@ func TestExecutor_Execute_MainSessionMode(t *testing.T) {
 	require.NotNil(t, result)
 	assert.Equal(t, "ok", result.Response)
 }
+
+func TestExecutor_Execute_InjectsHistoryContext(t *testing.T) {
+	t.Parallel()
+
+	runner := &mockAgentRunner{response: "new response"}
+	store := newMockStore()
+	// Pre-populate history.
+	store.history = []HistoryEntry{
+		{JobID: "job-h1", Result: "previous output 1"},
+		{JobID: "job-h1", Result: "previous output 2"},
+	}
+	logger := zap.NewNop().Sugar()
+	executor := NewExecutor(runner, nil, store, logger)
+
+	job := Job{
+		ID:          "job-h1",
+		Name:        "history-job",
+		Prompt:      "give me a bible verse",
+		SessionMode: "isolated",
+	}
+
+	result := executor.Execute(context.Background(), job)
+	require.NotNil(t, result)
+	assert.NoError(t, result.Error)
+
+	// The runner should have received an enriched prompt containing history.
+	runner.mu.Lock()
+	require.Len(t, runner.calls, 1)
+	prompt := runner.calls[0]
+	runner.mu.Unlock()
+
+	assert.Contains(t, prompt, "Previous outputs")
+	assert.Contains(t, prompt, "previous output 1")
+	assert.Contains(t, prompt, "previous output 2")
+	assert.Contains(t, prompt, "give me a bible verse")
+
+	// History should be saved with the original prompt, not the enriched one.
+	store.mu.Lock()
+	require.Len(t, store.history, 3) // 2 pre-existing + 1 new
+	assert.Equal(t, "give me a bible verse", store.history[2].Prompt)
+	store.mu.Unlock()
+}
+
+func TestExecutor_Execute_NoHistory_OriginalPrompt(t *testing.T) {
+	t.Parallel()
+
+	runner := &mockAgentRunner{response: "ok"}
+	store := newMockStore()
+	logger := zap.NewNop().Sugar()
+	executor := NewExecutor(runner, nil, store, logger)
+
+	job := Job{
+		ID:          "job-noh",
+		Name:        "no-history-job",
+		Prompt:      "original prompt only",
+		SessionMode: "isolated",
+	}
+
+	executor.Execute(context.Background(), job)
+
+	runner.mu.Lock()
+	require.Len(t, runner.calls, 1)
+	assert.Equal(t, "original prompt only", runner.calls[0])
+	runner.mu.Unlock()
+}
+
+func TestExecutor_Execute_HistoryQueryError_Graceful(t *testing.T) {
+	t.Parallel()
+
+	runner := &mockAgentRunner{response: "ok"}
+	store := newMockStore()
+	store.listHistoryErr = fmt.Errorf("db read failed")
+	logger := zap.NewNop().Sugar()
+	executor := NewExecutor(runner, nil, store, logger)
+
+	job := Job{
+		ID:          "job-herr",
+		Name:        "history-error-job",
+		Prompt:      "fallback prompt",
+		SessionMode: "isolated",
+	}
+
+	result := executor.Execute(context.Background(), job)
+	require.NotNil(t, result)
+	assert.NoError(t, result.Error)
+
+	// Should fall back to original prompt.
+	runner.mu.Lock()
+	require.Len(t, runner.calls, 1)
+	assert.Equal(t, "fallback prompt", runner.calls[0])
+	runner.mu.Unlock()
+}

@@ -424,6 +424,32 @@ func New(boot *bootstrap.Result) (*App, error) {
 		logger().Info("workflow tools registered")
 	}
 
+	// Register disabled categories for systems that are off, so builtin_health can report them.
+	if !cfg.Cron.Enabled {
+		catalog.RegisterCategory(toolcatalog.Category{
+			Name:        "cron",
+			Description: "Cron job scheduling (disabled)",
+			ConfigKey:   "cron.enabled",
+			Enabled:     false,
+		})
+	}
+	if !cfg.Background.Enabled {
+		catalog.RegisterCategory(toolcatalog.Category{
+			Name:        "background",
+			Description: "Background task execution (disabled)",
+			ConfigKey:   "background.enabled",
+			Enabled:     false,
+		})
+	}
+	if !cfg.Workflow.Enabled {
+		catalog.RegisterCategory(toolcatalog.Category{
+			Name:        "workflow",
+			Description: "Workflow pipeline execution (disabled)",
+			ConfigKey:   "workflow.enabled",
+			Enabled:     false,
+		})
+	}
+
 	// 5m. Dispatcher tools — dynamic access to all registered built-in tools.
 	dispatcherTools := toolcatalog.BuildDispatcher(catalog)
 	tools = append(tools, dispatcherTools...)
@@ -584,6 +610,9 @@ func New(boot *bootstrap.Result) (*App, error) {
 		app.HealthRegistry = obsc.healthRegistry
 		app.TokenStore = obsc.tokenStore
 	}
+
+	// Log tool registration summary for diagnostics.
+	logToolRegistrationSummary(catalog)
 
 	// 6. Auth
 	auth := initAuth(cfg, store)
@@ -1023,6 +1052,25 @@ func (a *App) Stop(ctx context.Context) error {
 	}
 
 	return nil
+}
+
+// logToolRegistrationSummary logs a diagnostic summary of registered tool categories.
+func logToolRegistrationSummary(catalog *toolcatalog.Catalog) {
+	categories := catalog.ListCategories()
+	var enabledNames []string
+	var disabledNames []string
+	for _, cat := range categories {
+		if cat.Enabled {
+			enabledNames = append(enabledNames, fmt.Sprintf("%s(%d)", cat.Name, len(catalog.ToolNamesForCategory(cat.Name))))
+		} else {
+			disabledNames = append(disabledNames, cat.Name)
+		}
+	}
+	logger().Infow("tool registration complete",
+		"total", catalog.ToolCount(),
+		"enabled", strings.Join(enabledNames, ", "),
+		"disabled", strings.Join(disabledNames, ", "),
+	)
 }
 
 // registerConfigSecrets extracts sensitive values from config and registers

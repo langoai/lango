@@ -314,6 +314,11 @@ func initAgent(ctx context.Context, deps *agentDeps) (*adk.Agent, error) {
 		builder.Add(buildAutomationPromptSection(cfg))
 	}
 
+	// Add dynamic tool catalog guide so the LLM knows what tool categories are available.
+	if deps.catalog != nil {
+		builder.Add(buildToolCatalogSection(deps.catalog))
+	}
+
 	systemPrompt := builder.Build()
 
 	// If knowledge is enabled, wrap with context-aware adapter
@@ -569,6 +574,51 @@ func initGateway(cfg *config.Config, adkAgent *adk.Agent, store session.Store, a
 		IdleTimeout:      idle,
 		MaxTimeout:       ceiling,
 	}, adkAgent, nil, store, auth)
+}
+
+// buildToolCatalogSection creates a dynamic prompt section listing active tool
+// categories with their tool names, so the LLM can discover available tools.
+func buildToolCatalogSection(catalog *toolcatalog.Catalog) *prompt.StaticSection {
+	summary := catalog.EnabledCategorySummary()
+	if len(summary) == 0 {
+		return prompt.NewStaticSection(prompt.SectionToolCatalog, 410, "", "")
+	}
+
+	var b strings.Builder
+	b.WriteString("You have access to the following tool categories:\n\n")
+
+	categories := catalog.ListCategories()
+	for _, cat := range categories {
+		names, ok := summary[cat.Name]
+		if !ok {
+			continue
+		}
+		// Show up to 8 tool names per category to keep the prompt manageable.
+		display := names
+		suffix := ""
+		if len(display) > 8 {
+			display = display[:8]
+			suffix = fmt.Sprintf(", ... +%d more", len(names)-8)
+		}
+		fmt.Fprintf(&b, "- **%s** (%s): %s%s\n",
+			cat.Name, cat.Description,
+			strings.Join(display, ", "), suffix)
+	}
+
+	// Note disabled categories.
+	var disabled []string
+	for _, cat := range categories {
+		if !cat.Enabled && cat.ConfigKey != "" {
+			disabled = append(disabled, fmt.Sprintf("%s (%s)", cat.Name, cat.ConfigKey))
+		}
+	}
+	if len(disabled) > 0 {
+		fmt.Fprintf(&b, "\nDisabled categories (enable via config): %s\n", strings.Join(disabled, ", "))
+	}
+
+	b.WriteString("\nUse builtin_health to diagnose tool registration, or builtin_list to discover all tools.")
+
+	return prompt.NewStaticSection(prompt.SectionToolCatalog, 410, "Available Tool Categories", b.String())
 }
 
 // buildAutomationPromptSection creates a dynamic prompt section describing

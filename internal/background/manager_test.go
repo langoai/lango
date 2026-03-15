@@ -142,3 +142,59 @@ func TestStatus_String(t *testing.T) {
 	assert.Equal(t, "cancelled", Cancelled.String())
 	assert.Equal(t, "unknown", Status(0).String())
 }
+
+func TestTask_Fail_PreservesCancelledStatus(t *testing.T) {
+	task := &Task{
+		ID:     "t1",
+		Status: Pending,
+	}
+
+	// Cancel the task first.
+	task.Cancel()
+	assert.Equal(t, Cancelled, task.Status)
+
+	// Fail should not overwrite Cancelled.
+	task.Fail("some error")
+	assert.Equal(t, Cancelled, task.Status)
+	assert.Empty(t, task.Error)
+}
+
+func TestTask_Complete_PreservesCancelledStatus(t *testing.T) {
+	task := &Task{
+		ID:     "t2",
+		Status: Pending,
+	}
+
+	// Cancel the task first.
+	task.Cancel()
+	assert.Equal(t, Cancelled, task.Status)
+
+	// Complete should not overwrite Cancelled.
+	task.Complete("result")
+	assert.Equal(t, Cancelled, task.Status)
+	assert.Empty(t, task.Result)
+}
+
+func TestManager_Cancel_PreservesStatus(t *testing.T) {
+	// Use a slow runner to keep the task in-flight.
+	runner := &mockRunner{result: "done", delay: 2 * time.Second}
+	mgr := NewManager(runner, nil, 5, time.Minute, testLogger())
+
+	id, err := mgr.Submit(context.Background(), "slow task", Origin{})
+	require.NoError(t, err)
+
+	// Wait for task to start running.
+	time.Sleep(100 * time.Millisecond)
+
+	// Cancel the task.
+	err = mgr.Cancel(id)
+	require.NoError(t, err)
+
+	// Wait for the runner goroutine to finish (it should see context cancelled).
+	time.Sleep(200 * time.Millisecond)
+
+	// The status should remain Cancelled, not Failed.
+	snap, err := mgr.Status(id)
+	require.NoError(t, err)
+	assert.Equal(t, Cancelled, snap.Status)
+}

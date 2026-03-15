@@ -133,7 +133,7 @@ func buildHealthTool(catalog *Catalog) *agent.Tool {
 	return &agent.Tool{
 		Name: "builtin_health",
 		Description: "Diagnose tool registration status. Shows all categories (enabled and disabled) " +
-			"with required config keys. Use this when tools appear to be missing.",
+			"with tool names and required config keys. Use this when tools appear to be missing.",
 		SafetyLevel: agent.SafetyLevelSafe,
 		Parameters: map[string]interface{}{
 			"type":       "object",
@@ -155,11 +155,14 @@ func buildHealthTool(catalog *Catalog) *agent.Tool {
 				}
 
 				if cat.Enabled {
-					tools := catalog.ListTools(cat.Name)
-					entry["tool_count"] = len(tools)
+					toolNames := catalog.ToolNamesForCategory(cat.Name)
+					entry["tool_count"] = len(toolNames)
+					entry["tools"] = toolNames
 					enabled = append(enabled, entry)
 				} else {
-					entry["hint"] = fmt.Sprintf("Enable via config key: %s", cat.ConfigKey)
+					entry["hint"] = fmt.Sprintf(
+						"Enable with: lango config set %s true", cat.ConfigKey,
+					)
 					disabled = append(disabled, entry)
 				}
 			}

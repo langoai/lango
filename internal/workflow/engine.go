@@ -198,6 +198,15 @@ func (e *Engine) runDAG(ctx context.Context, runID string, w *Workflow, dag *DAG
 				sem <- struct{}{}
 				defer func() { <-sem }()
 
+				// Check context cancellation after acquiring semaphore.
+				if ctx.Err() != nil {
+					mu.Lock()
+					stepErrs = append(stepErrs, fmt.Sprintf("step %q: %s", sid, ctx.Err()))
+					completed[sid] = true
+					mu.Unlock()
+					return
+				}
+
 				step := stepMap[sid]
 				stepResult, execErr := e.executeStep(ctx, runID, w.Name, step, results)
 
@@ -274,6 +283,11 @@ func (e *Engine) executeStep(
 	step *Step,
 	currentResults map[string]string,
 ) (string, error) {
+	// Check context cancellation before starting.
+	if ctx.Err() != nil {
+		return "", ctx.Err()
+	}
+
 	// Render prompt template.
 	rendered, err := RenderPrompt(step.Prompt, currentResults)
 	if err != nil {
@@ -297,8 +311,8 @@ func (e *Engine) executeStep(
 	stepCtx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 
-	// Generate session key.
-	sessionKey := fmt.Sprintf("workflow:%s:%s", workflowName, step.ID)
+	// Generate session key — include runID to isolate sessions across re-runs.
+	sessionKey := fmt.Sprintf("workflow:%s:%s:%s", workflowName, runID, step.ID)
 
 	// Execute via agent runner.
 	result, err := e.runner.Run(stepCtx, sessionKey, rendered)

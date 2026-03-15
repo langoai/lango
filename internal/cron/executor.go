@@ -11,6 +11,12 @@ import (
 	"go.uber.org/zap"
 )
 
+// recentHistoryLimit is the maximum number of previous results to inject into the prompt.
+const recentHistoryLimit = 10
+
+// maxResultPreviewLen is the maximum characters to include from each history result.
+const maxResultPreviewLen = 200
+
 // AgentRunner is the interface for executing agent turns.
 // This avoids import cycles -- wiring.go will provide the concrete implementation.
 type AgentRunner interface {
@@ -64,7 +70,9 @@ func (e *Executor) Execute(ctx context.Context, job Job) *JobResult {
 		stopTyping = e.delivery.StartTyping(ctx, job.DeliverTo)
 	}
 
-	response, err := e.runner.Run(ctx, sessionKey, job.Prompt)
+	enrichedPrompt := e.buildPromptWithHistory(ctx, job)
+
+	response, err := e.runner.Run(ctx, sessionKey, enrichedPrompt)
 	stopTyping()
 	duration := time.Since(startedAt)
 
@@ -116,6 +124,36 @@ func (e *Executor) Execute(ctx context.Context, job Job) *JobResult {
 	}
 
 	return result
+}
+
+// buildPromptWithHistory enriches the job prompt with recent execution history
+// so the LLM can avoid repeating the same output.
+func (e *Executor) buildPromptWithHistory(ctx context.Context, job Job) string {
+	entries, err := e.store.ListHistory(ctx, job.ID, recentHistoryLimit)
+	if err != nil {
+		e.logger.Debugw("list history for prompt enrichment (falling back to original prompt)",
+			"job", job.Name,
+			"error", err,
+		)
+		return job.Prompt
+	}
+
+	if len(entries) == 0 {
+		return job.Prompt
+	}
+
+	var b strings.Builder
+	b.WriteString("[Previous outputs — do NOT repeat these, produce something different]\n")
+	for i, entry := range entries {
+		preview := entry.Result
+		if len(preview) > maxResultPreviewLen {
+			preview = preview[:maxResultPreviewLen] + "..."
+		}
+		fmt.Fprintf(&b, "%d. %s\n", i+1, preview)
+	}
+	b.WriteString("\n")
+	b.WriteString(job.Prompt)
+	return b.String()
 }
 
 // saveHistory persists the execution result to the history store.

@@ -458,13 +458,15 @@ type routingEntry struct {
 	Description  string
 	Keywords     []string
 	Capabilities []string
+	ToolNames    []string
 	Accepts      string
 	Returns      string
 	CannotDo     []string
 }
 
-// buildRoutingEntry creates a routing entry from an AgentSpec and its resolved capabilities.
-func buildRoutingEntry(spec AgentSpec, caps string) routingEntry {
+// buildRoutingEntry creates a routing entry from an AgentSpec, its resolved capabilities,
+// and the assigned tool list.
+func buildRoutingEntry(spec AgentSpec, caps string, tools []*agent.Tool) routingEntry {
 	desc := spec.Description
 	if caps != "" {
 		desc = fmt.Sprintf("%s. Capabilities: %s", spec.Description, caps)
@@ -486,11 +488,18 @@ func buildRoutingEntry(spec AgentSpec, caps string) routingEntry {
 	// Deduplicate capabilities.
 	mergedCaps = dedup(mergedCaps)
 
+	// Collect tool names for routing visibility.
+	toolNames := make([]string, 0, len(tools))
+	for _, t := range tools {
+		toolNames = append(toolNames, t.Name)
+	}
+
 	return routingEntry{
 		Name:         spec.Name,
 		Description:  desc,
 		Keywords:     spec.Keywords,
 		Capabilities: mergedCaps,
+		ToolNames:    toolNames,
 		Accepts:      spec.Accepts,
 		Returns:      spec.Returns,
 		CannotDo:     spec.CannotDo,
@@ -529,6 +538,15 @@ func buildOrchestratorInstruction(basePrompt string, entries []routingEntry, max
 		fmt.Fprintf(&b, "- **Keywords**: [%s]\n", strings.Join(e.Keywords, ", "))
 		if len(e.Capabilities) > 0 {
 			fmt.Fprintf(&b, "- **Capabilities**: [%s]\n", strings.Join(e.Capabilities, ", "))
+		}
+		if len(e.ToolNames) > 0 {
+			display := e.ToolNames
+			if len(display) > 10 {
+				display = display[:10]
+				fmt.Fprintf(&b, "- **Tools**: %s, ... +%d more\n", strings.Join(display, ", "), len(e.ToolNames)-10)
+			} else {
+				fmt.Fprintf(&b, "- **Tools**: %s\n", strings.Join(display, ", "))
+			}
 		}
 		fmt.Fprintf(&b, "- **Accepts**: %s\n", e.Accepts)
 		fmt.Fprintf(&b, "- **Returns**: %s\n", e.Returns)

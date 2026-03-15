@@ -195,6 +195,12 @@ func (m *Manager) execute(ctx context.Context, task *Task) {
 	result, err := m.runner.Run(ctx, sessionKey, task.Prompt)
 	stopTyping()
 
+	// If the context was cancelled (user cancellation or timeout),
+	// don't overwrite the Cancelled status set by Cancel().
+	if ctx.Err() != nil {
+		return
+	}
+
 	if err != nil {
 		task.Fail(err.Error())
 		m.logger.Warnw("task failed", "taskID", task.ID, "error", err)

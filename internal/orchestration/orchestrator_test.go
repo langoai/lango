@@ -313,7 +313,7 @@ func TestBuildAgentTree_RoutingTableInInstruction(t *testing.T) {
 		if len(st) == 0 && !spec.AlwaysInclude {
 			continue
 		}
-		entries = append(entries, buildRoutingEntry(spec, capabilityDescription(st)))
+		entries = append(entries, buildRoutingEntry(spec, capabilityDescription(st), st))
 	}
 
 	inst := buildOrchestratorInstruction("test prompt", entries, 5, rs.Unmatched)
@@ -574,7 +574,7 @@ func TestBuildRoutingEntry(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := buildRoutingEntry(tt.give, tt.giveCaps)
+			got := buildRoutingEntry(tt.give, tt.giveCaps, nil)
 
 			assert.Equal(t, tt.wantName, got.Name)
 			assert.Equal(t, tt.wantDesc, got.Description)
