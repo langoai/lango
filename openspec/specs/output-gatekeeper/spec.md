@@ -1,25 +1,13 @@
-### Requirement: Tool output truncation
-The system SHALL truncate tool execution results that exceed a configurable character limit before they enter the model context. The default limit SHALL be 8000 characters. Truncated results SHALL include a `"\n... [output truncated]"` marker. Error results SHALL pass through without truncation.
+### Requirement: Tool output size management
+The system SHALL manage tool output size using token-based tiered compression via `WithOutputManager` middleware instead of character-based truncation. The middleware SHALL classify outputs into Small/Medium/Large tiers and apply content-aware compression.
 
-#### Scenario: String result under limit
-- **WHEN** a tool returns a string result of 5000 characters with maxOutputChars set to 8000
-- **THEN** the result SHALL pass through unchanged
+#### Scenario: Output within budget
+- **WHEN** a tool returns output within the token budget
+- **THEN** the output SHALL pass through with `_meta` metadata injected
 
-#### Scenario: String result over limit
-- **WHEN** a tool returns a string result of 12000 characters with maxOutputChars set to 8000
-- **THEN** the result SHALL be truncated to 8000 characters followed by `"\n... [output truncated]"`
-
-#### Scenario: Map result over limit
-- **WHEN** a tool returns a map result whose JSON serialization exceeds maxOutputChars
-- **THEN** the JSON string SHALL be truncated to maxOutputChars followed by the truncation marker
-
-#### Scenario: Error result passthrough
-- **WHEN** a tool returns an error
-- **THEN** the result and error SHALL pass through without truncation
-
-#### Scenario: Default limit applied
-- **WHEN** maxOutputChars is zero or negative
-- **THEN** the system SHALL use the default limit of 8000 characters
+#### Scenario: Output exceeding budget
+- **WHEN** a tool returns output exceeding the token budget
+- **THEN** the output SHALL be compressed using content-type-specific strategies and `_meta.compressed` SHALL be `true`
 
 ### Requirement: Response sanitization
 The system SHALL sanitize model responses before delivering them to users. Sanitization SHALL remove internal content that is not intended for end users. Each sanitization rule SHALL be independently configurable via `*bool` toggle (nil defaults to enabled).
