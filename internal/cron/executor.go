@@ -126,6 +126,11 @@ func (e *Executor) Execute(ctx context.Context, job Job) *JobResult {
 	return result
 }
 
+// automationPrefix is prepended to prompts sent to the agent runner so that
+// the orchestrator recognises them as automated tasks requiring tool execution
+// (not simple conversational requests).
+const automationPrefix = "[Automated Task — Execute the following task using tools. Do NOT answer from general knowledge alone.]\n\n"
+
 // buildPromptWithHistory enriches the job prompt with recent execution history
 // so the LLM can avoid repeating the same output.
 func (e *Executor) buildPromptWithHistory(ctx context.Context, job Job) string {
@@ -135,14 +140,15 @@ func (e *Executor) buildPromptWithHistory(ctx context.Context, job Job) string {
 			"job", job.Name,
 			"error", err,
 		)
-		return job.Prompt
+		return automationPrefix + "Task: " + job.Prompt
 	}
 
 	if len(entries) == 0 {
-		return job.Prompt
+		return automationPrefix + "Task: " + job.Prompt
 	}
 
 	var b strings.Builder
+	b.WriteString(automationPrefix)
 	b.WriteString("[Previous outputs — do NOT repeat these, produce something different]\n")
 	for i, entry := range entries {
 		preview := entry.Result
@@ -152,6 +158,7 @@ func (e *Executor) buildPromptWithHistory(ctx context.Context, job Job) string {
 		fmt.Fprintf(&b, "%d. %s\n", i+1, preview)
 	}
 	b.WriteString("\n")
+	b.WriteString("Task: ")
 	b.WriteString(job.Prompt)
 	return b.String()
 }

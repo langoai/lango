@@ -564,6 +564,15 @@ func buildOrchestratorInstruction(basePrompt string, entries []routingEntry, max
 		fmt.Fprintf(&b, "The following tools are available but not assigned to a specific agent: %s. Handle requests for these tools directly or choose the closest matching agent.\n", strings.Join(names, ", "))
 	}
 
+	b.WriteString(`
+## Automated Task Handling
+When a prompt starts with "[Automated Task":
+- This is from a scheduled cron job, background task, or workflow step.
+- ALWAYS delegate to the appropriate sub-agent based on the TASK CONTENT.
+- NEVER respond directly — the task requires tool execution.
+- Route based on what the task asks to DO (search → librarian, execute command → operator, browse web → navigator, etc.), NOT based on scheduling keywords.
+`)
+
 	fmt.Fprintf(&b, `
 ## Decision Protocol
 Before delegating, follow these steps:

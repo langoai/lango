@@ -11,6 +11,10 @@ import (
 	"go.uber.org/zap"
 )
 
+// automationPrefix is prepended to prompts sent to the agent runner so that
+// the orchestrator recognises them as automated tasks requiring tool execution.
+const automationPrefix = "[Automated Task — Execute the following task using tools. Do NOT answer from general knowledge alone.]\n\n"
+
 // AgentRunner executes agent prompts (avoids import cycles with orchestration).
 type AgentRunner interface {
 	Run(ctx context.Context, sessionKey string, prompt string) (string, error)
@@ -313,6 +317,9 @@ func (e *Engine) executeStep(
 
 	// Generate session key — include runID to isolate sessions across re-runs.
 	sessionKey := fmt.Sprintf("workflow:%s:%s:%s", workflowName, runID, step.ID)
+
+	// Enrich with automation prefix so the orchestrator routes correctly.
+	rendered = automationPrefix + "Task: " + rendered
 
 	// Execute via agent runner.
 	result, err := e.runner.Run(stepCtx, sessionKey, rendered)

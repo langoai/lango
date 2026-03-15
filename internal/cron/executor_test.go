@@ -209,16 +209,17 @@ func TestExecutor_Execute_InjectsHistoryContext(t *testing.T) {
 	require.NotNil(t, result)
 	assert.NoError(t, result.Error)
 
-	// The runner should have received an enriched prompt containing history.
+	// The runner should have received an enriched prompt containing history and automation prefix.
 	runner.mu.Lock()
 	require.Len(t, runner.calls, 1)
 	prompt := runner.calls[0]
 	runner.mu.Unlock()
 
+	assert.Contains(t, prompt, "[Automated Task")
 	assert.Contains(t, prompt, "Previous outputs")
 	assert.Contains(t, prompt, "previous output 1")
 	assert.Contains(t, prompt, "previous output 2")
-	assert.Contains(t, prompt, "give me a bible verse")
+	assert.Contains(t, prompt, "Task: give me a bible verse")
 
 	// History should be saved with the original prompt, not the enriched one.
 	store.mu.Lock()
@@ -246,7 +247,8 @@ func TestExecutor_Execute_NoHistory_OriginalPrompt(t *testing.T) {
 
 	runner.mu.Lock()
 	require.Len(t, runner.calls, 1)
-	assert.Equal(t, "original prompt only", runner.calls[0])
+	assert.Contains(t, runner.calls[0], "[Automated Task")
+	assert.Contains(t, runner.calls[0], "Task: original prompt only")
 	runner.mu.Unlock()
 }
 
@@ -270,9 +272,10 @@ func TestExecutor_Execute_HistoryQueryError_Graceful(t *testing.T) {
 	require.NotNil(t, result)
 	assert.NoError(t, result.Error)
 
-	// Should fall back to original prompt.
+	// Should fall back to original prompt with automation prefix.
 	runner.mu.Lock()
 	require.Len(t, runner.calls, 1)
-	assert.Equal(t, "fallback prompt", runner.calls[0])
+	assert.Contains(t, runner.calls[0], "[Automated Task")
+	assert.Contains(t, runner.calls[0], "Task: fallback prompt")
 	runner.mu.Unlock()
 }

@@ -13,6 +13,10 @@ import (
 	"go.uber.org/zap"
 )
 
+// automationPrefix is prepended to prompts sent to the agent runner so that
+// the orchestrator recognises them as automated tasks requiring tool execution.
+const automationPrefix = "[Automated Task — Execute the following task using tools. Do NOT answer from general knowledge alone.]\n\n"
+
 // AgentRunner executes agent prompts.
 type AgentRunner interface {
 	Run(ctx context.Context, sessionKey string, prompt string) (string, error)
@@ -192,7 +196,8 @@ func (m *Manager) execute(ctx context.Context, task *Task) {
 	}
 
 	sessionKey := "bg:" + task.ID
-	result, err := m.runner.Run(ctx, sessionKey, task.Prompt)
+	enrichedPrompt := automationPrefix + "Task: " + task.Prompt
+	result, err := m.runner.Run(ctx, sessionKey, enrichedPrompt)
 	stopTyping()
 
 	// If the context was cancelled (user cancellation or timeout),

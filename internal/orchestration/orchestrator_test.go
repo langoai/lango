@@ -736,6 +736,24 @@ func TestBuildOrchestratorInstruction_HasAssessStep(t *testing.T) {
 	assert.Contains(t, got, "respond directly")
 }
 
+func TestBuildOrchestratorInstruction_HasAutomatedTaskHandling(t *testing.T) {
+	got := buildOrchestratorInstruction("base", nil, 5, nil)
+
+	assert.Contains(t, got, "## Automated Task Handling")
+	assert.Contains(t, got, `[Automated Task`)
+	assert.Contains(t, got, "ALWAYS delegate")
+	assert.Contains(t, got, "NEVER respond directly")
+	assert.Contains(t, got, "TASK CONTENT")
+
+	// Automated Task Handling must appear BEFORE Decision Protocol
+	// so the orchestrator checks it first.
+	autoIdx := strings.Index(got, "## Automated Task Handling")
+	decisionIdx := strings.Index(got, "## Decision Protocol")
+	assert.Greater(t, autoIdx, 0, "Automated Task Handling section should exist")
+	assert.Greater(t, decisionIdx, 0, "Decision Protocol section should exist")
+	assert.Less(t, autoIdx, decisionIdx, "Automated Task Handling should come before Decision Protocol")
+}
+
 func TestBuildOrchestratorInstruction_HasReRoutingProtocol(t *testing.T) {
 	got := buildOrchestratorInstruction("base", nil, 5, nil)
 
