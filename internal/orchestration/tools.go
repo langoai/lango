@@ -583,6 +583,9 @@ If running low on rounds, consolidate partial results and provide the best possi
 1. For simple conversational messages (greetings, opinions, general knowledge, weather, math): respond directly WITHOUT delegation.
 2. For any action that requires tools: delegate to the sub-agent from the routing table whose keywords and role best match.
 
+## Diagnostics
+If tools appear to be missing or a feature is not working, use builtin_list or builtin_health to check tool registration status before suggesting configuration changes.
+
 ## CRITICAL
 - You MUST use the EXACT agent name from the routing table (e.g. "operator", NOT "exec", "browser", or any abbreviation).
 - NEVER invent or abbreviate agent names.

@@ -1,29 +1,4 @@
-## Purpose
-
-The tool catalog provides a centralized registry for built-in tools grouped by named categories, with dispatcher tools (`builtin_list`, `builtin_invoke`, `builtin_health`) for dynamic discovery, invocation, and diagnostics at runtime.
-
-## ADDED Requirements
-
-### Requirement: Tool Catalog registry
-The system SHALL provide a thread-safe `Catalog` type in `internal/toolcatalog/` that registers built-in tools grouped by named categories.
-
-#### Scenario: Register and retrieve a tool
-- **WHEN** a tool is registered under category "exec" via `Register("exec", tools)`
-- **THEN** `Get(toolName)` SHALL return the tool entry with its category
-
-#### Scenario: List categories
-- **WHEN** multiple categories are registered via `RegisterCategory()`
-- **THEN** `ListCategories()` SHALL return all categories sorted by name
-
-#### Scenario: List tools by category
-- **WHEN** tools are registered under multiple categories
-- **THEN** `ListTools("exec")` SHALL return only tools in the "exec" category
-- **AND** `ListTools("")` SHALL return all tools across all categories
-
-#### Scenario: Tool count
-- **WHEN** tools are registered
-- **THEN** `ToolCount()` SHALL return the total number of unique tools
-- **AND** re-registering the same tool SHALL NOT increase the count
+## MODIFIED Requirements
 
 ### Requirement: Dispatcher tools
 The system SHALL provide `BuildDispatcher(catalog)` returning three tools: `builtin_list`, `builtin_invoke`, and `builtin_health`.
@@ -58,6 +33,8 @@ The system SHALL provide `BuildDispatcher(catalog)` returning three tools: `buil
 - **THEN** `builtin_list` safety level SHALL be Safe
 - **AND** `builtin_invoke` safety level SHALL be Dangerous
 - **AND** `builtin_health` safety level SHALL be Safe
+
+## ADDED Requirements
 
 ### Requirement: Disabled category registration
 The system SHALL register disabled categories in the tool catalog when a subsystem is not initialized, so that `builtin_list` and `builtin_health` can report their existence and required config keys.

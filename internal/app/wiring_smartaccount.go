@@ -84,11 +84,13 @@ func initSmartAccount(
 	bus *eventbus.Bus,
 ) *smartAccountComponents {
 	if !cfg.SmartAccount.Enabled {
-		logger().Info("smart account disabled")
+		logger().Info("smart account disabled",
+			"fix", "set smartAccount.enabled=true via 'lango config set smartAccount.enabled true'")
 		return nil
 	}
 	if pc == nil {
-		logger().Warn("smart account requires payment components")
+		logger().Warn("smart account requires payment components",
+			"fix", "set payment.enabled=true with payment.rpcUrl and payment.privateKey")
 		return nil
 	}
 
