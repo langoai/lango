@@ -170,6 +170,10 @@ func (e *Editor) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					// Let the menu handle esc to cancel search
 					break
 				}
+				if e.menu.InCategoryLevel() {
+					// Let menu.Update() handle Level2 → Level1 transition
+					break
+				}
 				e.step = StepWelcome
 				return e, nil
 			case StepProvidersList:
@@ -537,7 +541,11 @@ func (e *Editor) View() string {
 	// Dynamic breadcrumb header
 	switch e.step {
 	case StepWelcome, StepMenu:
-		b.WriteString(tui.Breadcrumb("Settings"))
+		if e.menu.InCategoryLevel() {
+			b.WriteString(tui.Breadcrumb("Settings", e.menu.ActiveSectionTitle()))
+		} else {
+			b.WriteString(tui.Breadcrumb("Settings"))
+		}
 	case StepForm:
 		formTitle := ""
 		if e.activeForm != nil {
@@ -613,7 +621,7 @@ func (e *Editor) viewWelcome() string {
 	b.WriteString("\n")
 	b.WriteString(tui.MutedStyle.Render("  @basic @advanced @enabled @modified — smart filters"))
 	b.WriteString("\n")
-	b.WriteString(tui.MutedStyle.Render("  Tab to toggle basic/advanced view"))
+	b.WriteString(tui.MutedStyle.Render("  Select a section, then browse its settings"))
 	b.WriteString("\n\n")
 
 	b.WriteString(tui.HelpBar(
