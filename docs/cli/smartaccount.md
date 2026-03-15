@@ -33,7 +33,7 @@ Address:      0x1234abcd5678ef901234abcdef567890abcdef12
 Deployed:     true
 Owner:        0x5678abcd1234ef567890abcdef1234567890abcd
 Chain ID:     84532
-Entry Point:  0x5FF137D4b0FDCD49DcA30c7CF57E578a026d2789
+Entry Point:  0x0000000071727De22E5E9d8BAf0edAc6f37da032
 Paymaster:    true
 
 Installed Modules
@@ -78,7 +78,7 @@ Smart Account Deployed
   Deployed:    true
   Owner:       0x5678abcd1234ef567890abcdef1234567890abcd
   Chain ID:    84532
-  Entry Point: 0x5FF137D4b0FDCD49DcA30c7CF57E578a026d2789
+  Entry Point: 0x0000000071727De22E5E9d8BAf0edAc6f37da032
   Modules:     3
 
 $ lango account deploy --output json
@@ -87,7 +87,7 @@ $ lango account deploy --output json
   "isDeployed": true,
   "ownerAddress": "0x5678abcd1234ef567890abcdef1234567890abcd",
   "chainId": 84532,
-  "entryPoint": "0x5FF137D4b0FDCD49DcA30c7CF57E578a026d2789",
+  "entryPoint": "0x0000000071727De22E5E9d8BAf0edAc6f37da032",
   "moduleCount": 3
 }
 ```

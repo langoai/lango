@@ -265,7 +265,7 @@ The smart account system integrates with several other Lango subsystems:
   "smartAccount": {
     "enabled": true,
     "factoryAddress": "0x...",
-    "entryPointAddress": "0x5FF137D4b0FDCD49DcA30c7CF57E578a026d2789",
+    "entryPointAddress": "0x0000000071727De22E5E9d8BAf0edAc6f37da032",
     "safe7579Address": "0x...",
     "fallbackHandler": "0x...",
     "bundlerURL": "https://bundler.example.com/rpc",
