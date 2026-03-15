@@ -5,6 +5,7 @@ import (
 	"math/big"
 	"time"
 
+	"github.com/ethereum/go-ethereum"
 	"github.com/ethereum/go-ethereum/common"
 
 	"github.com/langoai/lango/internal/config"
@@ -21,6 +22,17 @@ import (
 	"github.com/langoai/lango/internal/smartaccount/policy"
 	sasession "github.com/langoai/lango/internal/smartaccount/session"
 )
+
+// walletProvider is satisfied by wallet.WalletProvider (permit.PermitSigner).
+type walletProvider interface {
+	SignTransaction(ctx context.Context, rawTx []byte) ([]byte, error)
+	Address(ctx context.Context) (string, error)
+}
+
+// ethCallerClient is satisfied by *ethclient.Client (permit.EthCaller).
+type ethCallerClient interface {
+	CallContract(ctx context.Context, msg ethereum.CallMsg, block *big.Int) ([]byte, error)
+}
 
 // smartAccountComponents holds optional smart account subsystem components.
 type smartAccountComponents struct {
@@ -145,7 +157,7 @@ func initSmartAccount(
 
 	// 5a. Paymaster provider (optional)
 	if cfg.SmartAccount.Paymaster.Enabled {
-		provider := initPaymasterProvider(cfg.SmartAccount.Paymaster)
+		provider := initPaymasterProvider(cfg.SmartAccount.Paymaster, pc.wallet, pc.rpcClient, pc.chainID)
 		if provider != nil {
 			sac.paymasterProvider = provider
 			mgr.SetPaymasterFunc(func(ctx context.Context, op *sa.UserOperation, stub bool) ([]byte, *sa.PaymasterGasOverrides, error) {
@@ -235,7 +247,37 @@ func initSmartAccount(
 // initPaymasterProvider creates a paymaster provider based on config.
 // The provider is wrapped with RecoverableProvider for transient error retry
 // and fallback behavior.
-func initPaymasterProvider(cfg config.SmartAccountPaymasterConfig) paymaster.PaymasterProvider {
+//
+// When mode="permit" and provider="circle", a CirclePermitProvider is created
+// that uses EIP-2612 permit signatures — no RPC URL needed.
+func initPaymasterProvider(
+	cfg config.SmartAccountPaymasterConfig,
+	wp walletProvider,
+	rpcClient ethCallerClient,
+	chainID int64,
+) paymaster.PaymasterProvider {
+	// Permit mode: on-chain paymaster, no RPC URL required.
+	if cfg.Mode == "permit" && cfg.Provider == "circle" {
+		if wp == nil {
+			logger().Warn("circle permit paymaster requires wallet provider")
+			return nil
+		}
+		if rpcClient == nil {
+			logger().Warn("circle permit paymaster requires RPC client")
+			return nil
+		}
+		pmAddr := common.HexToAddress(cfg.PaymasterAddress)
+		tokenAddr := common.HexToAddress(cfg.TokenAddress)
+		inner := paymaster.NewCirclePermitProvider(pmAddr, tokenAddr, chainID, wp, rpcClient)
+
+		rcfg := paymaster.DefaultRecoveryConfig()
+		if cfg.FallbackMode == "direct" {
+			rcfg.FallbackMode = paymaster.FallbackDirectGas
+		}
+		return paymaster.NewRecoverableProvider(inner, rcfg)
+	}
+
+	// RPC mode (default): requires rpcURL.
 	if cfg.RPCURL == "" {
 		logger().Warn("paymaster enabled but no rpcURL configured")
 		return nil

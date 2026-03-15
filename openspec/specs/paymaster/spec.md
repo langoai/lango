@@ -76,11 +76,19 @@ The system SHALL provide `BuildApproveCalldata(spender, amount)` and `NewApprova
 - **THEN** it SHALL return 68 bytes: 4-byte selector `0x095ea7b3` + 32-byte address + 32-byte amount
 
 ### Requirement: Paymaster configuration
-The system SHALL support `SmartAccountPaymasterConfig` with enabled, provider, rpcURL, tokenAddress, paymasterAddress, and policyId fields.
+The system SHALL support `SmartAccountPaymasterConfig` with enabled, provider, mode, rpcURL, tokenAddress, paymasterAddress, and policyId fields. The `mode` field accepts `"rpc"` (default) or `"permit"`.
 
 #### Scenario: Provider selection
 - **WHEN** config specifies provider as "circle", "pimlico", or "alchemy"
 - **THEN** the corresponding provider SHALL be initialized during app wiring
+
+#### Scenario: Mode field defaults to rpc
+- **WHEN** `mode` is empty or omitted in config
+- **THEN** the system SHALL treat it as `"rpc"` mode and require `rpcURL`
+
+#### Scenario: Permit mode does not require rpcURL
+- **WHEN** `mode` is `"permit"`
+- **THEN** the system SHALL NOT require `rpcURL` and SHALL use the wallet provider and RPC client for permit signing
 
 ### Requirement: Paymaster agent tools
 The system SHALL provide `paymaster_status` (Safe) and `paymaster_approve` (Dangerous) agent tools.

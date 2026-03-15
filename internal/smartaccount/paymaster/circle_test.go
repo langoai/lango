@@ -2,6 +2,7 @@ package paymaster
 
 import (
 	"context"
+	"crypto/ecdsa"
 	"encoding/json"
 	"math/big"
 	"net/http"
@@ -9,7 +10,9 @@ import (
 	"testing"
 	"time"
 
+	"github.com/ethereum/go-ethereum"
 	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethereum/go-ethereum/crypto"
 )
 
 func TestCircleProvider_SponsorUserOp(t *testing.T) {
@@ -219,5 +222,191 @@ func TestNewApprovalCall(t *testing.T) {
 	}
 	if len(call.ApproveCalldata) != 68 {
 		t.Errorf("want calldata len 68, got %d", len(call.ApproveCalldata))
+	}
+}
+
+// --- CirclePermitProvider tests ---
+
+type testPermitSigner struct {
+	key     *ecdsa.PrivateKey
+	address common.Address
+}
+
+func newTestPermitSigner(t *testing.T) *testPermitSigner {
+	t.Helper()
+	key, err := crypto.GenerateKey()
+	if err != nil {
+		t.Fatalf("generate key: %v", err)
+	}
+	return &testPermitSigner{
+		key:     key,
+		address: crypto.PubkeyToAddress(key.PublicKey),
+	}
+}
+
+func (s *testPermitSigner) SignTransaction(_ context.Context, rawTx []byte) ([]byte, error) {
+	return crypto.Sign(rawTx, s.key)
+}
+
+func (s *testPermitSigner) Address(_ context.Context) (string, error) {
+	return s.address.Hex(), nil
+}
+
+type testEthCaller struct {
+	nonce *big.Int
+}
+
+func (c *testEthCaller) CallContract(_ context.Context, _ ethereum.CallMsg, _ *big.Int) ([]byte, error) {
+	result := make([]byte, 32)
+	if c.nonce != nil {
+		c.nonce.FillBytes(result)
+	}
+	return result, nil
+}
+
+func TestCirclePermitProvider_Type(t *testing.T) {
+	t.Parallel()
+
+	p := NewCirclePermitProvider(
+		common.HexToAddress("0x31BE08D380A21fc740883c0BC434FcFc88740b58"),
+		common.HexToAddress("0x036CbD53842c5426634e7929541eC2318f3dCF7e"),
+		84532,
+		newTestPermitSigner(t),
+		&testEthCaller{},
+	)
+	if p.Type() != "circle-permit" {
+		t.Errorf("want type 'circle-permit', got %q", p.Type())
+	}
+}
+
+func TestCirclePermitProvider_SponsorUserOp_Stub(t *testing.T) {
+	t.Parallel()
+
+	signer := newTestPermitSigner(t)
+	p := NewCirclePermitProvider(
+		common.HexToAddress("0x31BE08D380A21fc740883c0BC434FcFc88740b58"),
+		common.HexToAddress("0x036CbD53842c5426634e7929541eC2318f3dCF7e"),
+		84532,
+		signer,
+		&testEthCaller{},
+	)
+
+	req := &SponsorRequest{
+		UserOp: &UserOpData{
+			Sender:               common.HexToAddress("0x1234"),
+			Nonce:                big.NewInt(0),
+			InitCode:             []byte{},
+			CallData:             []byte{0x01},
+			CallGasLimit:         big.NewInt(100000),
+			VerificationGasLimit: big.NewInt(50000),
+			PreVerificationGas:   big.NewInt(21000),
+			MaxFeePerGas:         big.NewInt(2000000000),
+			MaxPriorityFeePerGas: big.NewInt(1000000000),
+			PaymasterAndData:     []byte{},
+			Signature:            []byte{},
+		},
+		EntryPoint: common.HexToAddress("0x0000000071727De22E5E9d8BAf0edAc6f37da032"),
+		ChainID:    84532,
+		Stub:       true,
+	}
+
+	result, err := p.SponsorUserOp(context.Background(), req)
+	if err != nil {
+		t.Fatalf("stub sponsor: %v", err)
+	}
+
+	// Stub PaymasterAndData: prefix(52) + paymasterData(118) = 170 bytes.
+	if len(result.PaymasterAndData) != 170 {
+		t.Errorf("want stub PaymasterAndData len 170, got %d", len(result.PaymasterAndData))
+	}
+
+	// First 20 bytes should be the paymaster address.
+	gotAddr := common.BytesToAddress(result.PaymasterAndData[:20])
+	wantAddr := common.HexToAddress("0x31BE08D380A21fc740883c0BC434FcFc88740b58")
+	if gotAddr != wantAddr {
+		t.Errorf("want paymaster addr %s, got %s", wantAddr.Hex(), gotAddr.Hex())
+	}
+}
+
+func TestCirclePermitProvider_SponsorUserOp_Real(t *testing.T) {
+	t.Parallel()
+
+	signer := newTestPermitSigner(t)
+	caller := &testEthCaller{nonce: big.NewInt(3)}
+	p := NewCirclePermitProvider(
+		common.HexToAddress("0x31BE08D380A21fc740883c0BC434FcFc88740b58"),
+		common.HexToAddress("0x036CbD53842c5426634e7929541eC2318f3dCF7e"),
+		84532,
+		signer,
+		caller,
+	)
+
+	req := &SponsorRequest{
+		UserOp: &UserOpData{
+			Sender:               signer.address,
+			Nonce:                big.NewInt(0),
+			InitCode:             []byte{},
+			CallData:             []byte{0x01},
+			CallGasLimit:         big.NewInt(100000),
+			VerificationGasLimit: big.NewInt(50000),
+			PreVerificationGas:   big.NewInt(21000),
+			MaxFeePerGas:         big.NewInt(2000000000),
+			MaxPriorityFeePerGas: big.NewInt(1000000000),
+			PaymasterAndData:     []byte{},
+			Signature:            []byte{},
+		},
+		EntryPoint: common.HexToAddress("0x0000000071727De22E5E9d8BAf0edAc6f37da032"),
+		ChainID:    84532,
+		Stub:       false,
+	}
+
+	result, err := p.SponsorUserOp(context.Background(), req)
+	if err != nil {
+		t.Fatalf("real sponsor: %v", err)
+	}
+
+	// Full PaymasterAndData: prefix(52) + paymasterData(118) = 170 bytes.
+	if len(result.PaymasterAndData) != 170 {
+		t.Errorf("want PaymasterAndData len 170, got %d", len(result.PaymasterAndData))
+	}
+
+	pmd := result.PaymasterAndData
+
+	// Verify paymaster address.
+	gotAddr := common.BytesToAddress(pmd[:20])
+	wantAddr := common.HexToAddress("0x31BE08D380A21fc740883c0BC434FcFc88740b58")
+	if gotAddr != wantAddr {
+		t.Errorf("want paymaster addr %s, got %s", wantAddr.Hex(), gotAddr.Hex())
+	}
+
+	// Verify mode byte.
+	if pmd[52] != 0x01 {
+		t.Errorf("want mode 0x01, got 0x%02x", pmd[52])
+	}
+
+	// Verify token address in paymasterData.
+	gotToken := common.BytesToAddress(pmd[53:73])
+	wantToken := common.HexToAddress("0x036CbD53842c5426634e7929541eC2318f3dCF7e")
+	if gotToken != wantToken {
+		t.Errorf("want token addr %s, got %s", wantToken.Hex(), gotToken.Hex())
+	}
+
+	// Verify amount (10 USDC = 10_000_000 in 6 decimals).
+	amount := new(big.Int).SetBytes(pmd[73:105])
+	if amount.Int64() != 10_000_000 {
+		t.Errorf("want amount 10000000, got %d", amount.Int64())
+	}
+
+	// Signature should be non-zero (65 bytes at offset 105).
+	sig := pmd[105:170]
+	allZero := true
+	for _, b := range sig {
+		if b != 0 {
+			allZero = false
+			break
+		}
+	}
+	if allZero {
+		t.Error("signature should not be all zeros")
 	}
 }

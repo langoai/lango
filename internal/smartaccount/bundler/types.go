@@ -45,6 +45,10 @@ type GasEstimate struct {
 	CallGasLimit         *big.Int `json:"callGasLimit"`
 	VerificationGasLimit *big.Int `json:"verificationGasLimit"`
 	PreVerificationGas   *big.Int `json:"preVerificationGas"`
+
+	// v0.7 paymaster gas fields (optional, nil if bundler does not return them).
+	PaymasterVerificationGasLimit *big.Int `json:"paymasterVerificationGasLimit,omitempty"`
+	PaymasterPostOpGasLimit       *big.Int `json:"paymasterPostOpGasLimit,omitempty"`
 }
 
 // GasFees contains EIP-1559 gas fee parameters.

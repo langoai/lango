@@ -93,9 +93,11 @@ func (c *Client) EstimateGas(
 	}
 
 	var result struct {
-		CallGasLimit         string `json:"callGasLimit"`
-		VerificationGasLimit string `json:"verificationGasLimit"`
-		PreVerificationGas   string `json:"preVerificationGas"`
+		CallGasLimit                  string `json:"callGasLimit"`
+		VerificationGasLimit          string `json:"verificationGasLimit"`
+		PreVerificationGas            string `json:"preVerificationGas"`
+		PaymasterVerificationGasLimit string `json:"paymasterVerificationGasLimit,omitempty"`
+		PaymasterPostOpGasLimit       string `json:"paymasterPostOpGasLimit,omitempty"`
 	}
 	if err := json.Unmarshal(raw, &result); err != nil {
 		return nil, fmt.Errorf("decode gas estimate: %w", err)
@@ -124,11 +126,25 @@ func (c *Client) EstimateGas(
 		)
 	}
 
-	return &GasEstimate{
+	estimate := &GasEstimate{
 		CallGasLimit:         callGas,
 		VerificationGasLimit: verificationGas,
 		PreVerificationGas:   preVerificationGas,
-	}, nil
+	}
+
+	// v0.7 paymaster gas fields (optional).
+	if result.PaymasterVerificationGasLimit != "" {
+		if v, decErr := hexutil.DecodeBig(result.PaymasterVerificationGasLimit); decErr == nil {
+			estimate.PaymasterVerificationGasLimit = v
+		}
+	}
+	if result.PaymasterPostOpGasLimit != "" {
+		if v, decErr := hexutil.DecodeBig(result.PaymasterPostOpGasLimit); decErr == nil {
+			estimate.PaymasterPostOpGasLimit = v
+		}
+	}
+
+	return estimate, nil
 }
 
 // GetUserOperationReceipt gets the receipt for a UserOp hash.
@@ -387,37 +403,58 @@ func (c *Client) call(
 	return rpcResp.Result, nil
 }
 
-// userOpToMap converts a UserOp to the JSON-RPC hex-encoded
+// userOpToMap converts a UserOp to the v0.7 JSON-RPC hex-encoded
 // format expected by ERC-4337 bundlers.
+//
+// v0.7 splits composite fields:
+//   - initCode (≥20 bytes) → factory (20) + factoryData (rest)
+//   - paymasterAndData (≥52 bytes) → paymaster (20) + paymasterVerificationGasLimit (16)
+//     + paymasterPostOpGasLimit (16) + paymasterData (rest)
 func userOpToMap(
 	op *UserOperation,
 ) map[string]interface{} {
 	m := map[string]interface{}{
-		"sender":   op.Sender.Hex(),
-		"nonce":    encodeBigInt(op.Nonce),
-		"initCode": hexutil.Encode(op.InitCode),
-		"callData": hexutil.Encode(op.CallData),
-		"callGasLimit": encodeBigInt(
-			op.CallGasLimit,
-		),
-		"verificationGasLimit": encodeBigInt(
-			op.VerificationGasLimit,
-		),
-		"preVerificationGas": encodeBigInt(
-			op.PreVerificationGas,
-		),
-		"maxFeePerGas": encodeBigInt(
-			op.MaxFeePerGas,
-		),
-		"maxPriorityFeePerGas": encodeBigInt(
-			op.MaxPriorityFeePerGas,
-		),
-		"paymasterAndData": hexutil.Encode(
-			op.PaymasterAndData,
-		),
-		"signature": hexutil.Encode(op.Signature),
+		"sender":               op.Sender.Hex(),
+		"nonce":                encodeBigInt(op.Nonce),
+		"callData":             hexutil.Encode(op.CallData),
+		"callGasLimit":         encodeBigInt(op.CallGasLimit),
+		"verificationGasLimit": encodeBigInt(op.VerificationGasLimit),
+		"preVerificationGas":   encodeBigInt(op.PreVerificationGas),
+		"maxFeePerGas":         encodeBigInt(op.MaxFeePerGas),
+		"maxPriorityFeePerGas": encodeBigInt(op.MaxPriorityFeePerGas),
+		"signature":            hexutil.Encode(op.Signature),
 	}
+
+	// v0.7: split initCode → factory + factoryData.
+	if len(op.InitCode) >= 20 {
+		m["factory"] = common.BytesToAddress(op.InitCode[:20]).Hex()
+		m["factoryData"] = hexutil.Encode(op.InitCode[20:])
+	} else {
+		m["factory"] = "0x"
+		m["factoryData"] = "0x"
+	}
+
+	// v0.7: split paymasterAndData → paymaster + gas limits + data.
+	if len(op.PaymasterAndData) >= 52 {
+		pm := op.PaymasterAndData
+		m["paymaster"] = common.BytesToAddress(pm[:20]).Hex()
+		m["paymasterVerificationGasLimit"] = encodeUint128Hex(pm[20:36])
+		m["paymasterPostOpGasLimit"] = encodeUint128Hex(pm[36:52])
+		m["paymasterData"] = hexutil.Encode(pm[52:])
+	} else {
+		m["paymaster"] = "0x"
+		m["paymasterVerificationGasLimit"] = "0x0"
+		m["paymasterPostOpGasLimit"] = "0x0"
+		m["paymasterData"] = "0x"
+	}
+
 	return m
+}
+
+// encodeUint128Hex encodes a 16-byte big-endian uint128 as a hex string.
+func encodeUint128Hex(b []byte) string {
+	v := new(big.Int).SetBytes(b)
+	return hexutil.EncodeBig(v)
 }
 
 // encodeBigInt encodes a *big.Int to a hex string,
