@@ -179,6 +179,38 @@ func TestSessionGuard_Start_Idempotent(t *testing.T) {
 	assert.Equal(t, 1, revokeCount, "idempotent start should not double-subscribe")
 }
 
+func TestSessionGuard_Stop_DisablesAlertHandling(t *testing.T) {
+	t.Parallel()
+
+	bus := eventbus.New()
+	guard := NewSessionGuard(bus)
+
+	var mu sync.Mutex
+	revoked := false
+	guard.SetRevokeFunc(func() error {
+		mu.Lock()
+		defer mu.Unlock()
+		revoked = true
+		return nil
+	})
+
+	guard.Start()
+	guard.Stop()
+
+	// Alert after Stop() should be ignored.
+	bus.Publish(SentinelAlertEvent{
+		Alert: Alert{
+			Severity: SeverityCritical,
+			Type:     "test_after_stop",
+			Message:  "should be ignored",
+		},
+	})
+
+	mu.Lock()
+	defer mu.Unlock()
+	assert.False(t, revoked, "alert after Stop() should not trigger revoke")
+}
+
 func TestSessionGuard_WrongEventType_Ignored(t *testing.T) {
 	t.Parallel()
 

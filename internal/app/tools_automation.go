@@ -130,14 +130,18 @@ func buildCronTools(scheduler *cronpkg.Scheduler, defaultDeliverTo []string) []*
 			Parameters: map[string]interface{}{
 				"type": "object",
 				"properties": map[string]interface{}{
-					"id": map[string]interface{}{"type": "string", "description": "The cron job ID to pause"},
+					"id": map[string]interface{}{"type": "string", "description": "The cron job ID or name"},
 				},
 				"required": []string{"id"},
 			},
 			Handler: func(ctx context.Context, params map[string]interface{}) (interface{}, error) {
-				id, err := toolparam.RequireString(params, "id")
+				nameOrID, err := toolparam.RequireString(params, "id")
 				if err != nil {
 					return nil, err
+				}
+				id, err := scheduler.ResolveJobID(ctx, nameOrID)
+				if err != nil {
+					return nil, fmt.Errorf("pause cron job: %w", err)
 				}
 				if err := scheduler.PauseJob(ctx, id); err != nil {
 					return nil, fmt.Errorf("pause cron job: %w", err)
@@ -152,14 +156,18 @@ func buildCronTools(scheduler *cronpkg.Scheduler, defaultDeliverTo []string) []*
 			Parameters: map[string]interface{}{
 				"type": "object",
 				"properties": map[string]interface{}{
-					"id": map[string]interface{}{"type": "string", "description": "The cron job ID to resume"},
+					"id": map[string]interface{}{"type": "string", "description": "The cron job ID or name"},
 				},
 				"required": []string{"id"},
 			},
 			Handler: func(ctx context.Context, params map[string]interface{}) (interface{}, error) {
-				id, err := toolparam.RequireString(params, "id")
+				nameOrID, err := toolparam.RequireString(params, "id")
 				if err != nil {
 					return nil, err
+				}
+				id, err := scheduler.ResolveJobID(ctx, nameOrID)
+				if err != nil {
+					return nil, fmt.Errorf("resume cron job: %w", err)
 				}
 				if err := scheduler.ResumeJob(ctx, id); err != nil {
 					return nil, fmt.Errorf("resume cron job: %w", err)
@@ -174,14 +182,18 @@ func buildCronTools(scheduler *cronpkg.Scheduler, defaultDeliverTo []string) []*
 			Parameters: map[string]interface{}{
 				"type": "object",
 				"properties": map[string]interface{}{
-					"id": map[string]interface{}{"type": "string", "description": "The cron job ID to remove"},
+					"id": map[string]interface{}{"type": "string", "description": "The cron job ID or name"},
 				},
 				"required": []string{"id"},
 			},
 			Handler: func(ctx context.Context, params map[string]interface{}) (interface{}, error) {
-				id, err := toolparam.RequireString(params, "id")
+				nameOrID, err := toolparam.RequireString(params, "id")
 				if err != nil {
 					return nil, err
+				}
+				id, err := scheduler.ResolveJobID(ctx, nameOrID)
+				if err != nil {
+					return nil, fmt.Errorf("remove cron job: %w", err)
 				}
 				if err := scheduler.RemoveJob(ctx, id); err != nil {
 					return nil, fmt.Errorf("remove cron job: %w", err)

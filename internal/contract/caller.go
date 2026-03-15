@@ -15,6 +15,7 @@ import (
 	"github.com/ethereum/go-ethereum/ethclient"
 
 	"github.com/langoai/lango/internal/payment"
+	"github.com/langoai/lango/internal/smartaccount/bundler"
 	"github.com/langoai/lango/internal/wallet"
 )
 
@@ -85,6 +86,9 @@ func (c *Caller) Read(ctx context.Context, req ContractCallRequest) (*ContractCa
 		Data: data,
 	}, nil)
 	if err != nil {
+		if reason := extractRevertReason(err); reason != "" {
+			return nil, fmt.Errorf("call contract %s.%s (revert: %s): %w", addr.Hex(), req.Method, reason, err)
+		}
 		return nil, fmt.Errorf("call contract %s.%s: %w", addr.Hex(), req.Method, err)
 	}
 
@@ -140,6 +144,15 @@ func (c *Caller) Write(ctx context.Context, req ContractCallRequest) (*ContractC
 		Value: value,
 	})
 	if err != nil {
+		// Try to extract revert reason from the error directly.
+		reason := extractRevertReason(err)
+		// If direct extraction fails, replay as eth_call to get revert data.
+		if reason == "" {
+			reason = c.replayForRevertReason(ctx, from, to, data, value, nil)
+		}
+		if reason != "" {
+			return nil, fmt.Errorf("estimate gas (revert: %s): %w", reason, err)
+		}
 		return nil, fmt.Errorf("estimate gas: %w", err)
 	}
 
@@ -204,6 +217,14 @@ func (c *Caller) Write(ctx context.Context, req ContractCallRequest) (*ContractC
 	}
 
 	if receipt.Status != types.ReceiptStatusSuccessful {
+		// Replay the call to extract the revert reason.
+		reason := c.replayForRevertReason(ctx, from, to, data, value, receipt.BlockNumber)
+		if reason != "" {
+			return nil, fmt.Errorf(
+				"tx %s reverted (status=%d, reason: %s): %w",
+				signedTx.Hash().Hex(), receipt.Status, reason, ErrTxReverted,
+			)
+		}
 		return nil, fmt.Errorf(
 			"tx %s reverted (status=%d): %w",
 			signedTx.Hash().Hex(), receipt.Status, ErrTxReverted,
@@ -220,6 +241,47 @@ func (c *Caller) Write(ctx context.Context, req ContractCallRequest) (*ContractC
 func (c *Caller) LoadABI(chainID int64, address common.Address, abiJSON string) error {
 	_, err := c.cache.GetOrParse(chainID, address, abiJSON)
 	return err
+}
+
+// dataError is an interface implemented by go-ethereum RPC errors that
+// carry revert data (e.g., rpc.DataError).
+type dataError interface {
+	ErrorData() interface{}
+}
+
+// extractRevertReason attempts to extract a revert reason from a go-ethereum
+// RPC error. go-ethereum wraps revert data in errors implementing dataError.
+func extractRevertReason(err error) string {
+	var de dataError
+	if errors.As(err, &de) {
+		switch v := de.ErrorData().(type) {
+		case string:
+			return bundler.DecodeRevertReason(v)
+		}
+	}
+	return ""
+}
+
+// replayForRevertReason replays a failed transaction as eth_call at the
+// block where it reverted. This extracts the revert reason from the EVM.
+func (c *Caller) replayForRevertReason(
+	ctx context.Context,
+	from, to common.Address,
+	data []byte,
+	value *big.Int,
+	blockNum *big.Int,
+) string {
+	toAddr := to
+	_, err := c.rpc.CallContract(ctx, ethereum.CallMsg{
+		From:  from,
+		To:    &toAddr,
+		Data:  data,
+		Value: value,
+	}, blockNum)
+	if err != nil {
+		return extractRevertReason(err)
+	}
+	return ""
 }
 
 // waitForReceipt polls for a transaction receipt with exponential backoff.

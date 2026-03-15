@@ -735,6 +735,8 @@ func (s *ConfigState) UpdateConfigFromForm(form *FormModel) {
 			s.Current.SmartAccount.FactoryAddress = val
 		case "sa_entrypoint_address":
 			s.Current.SmartAccount.EntryPointAddress = val
+		case "sa_singleton_address":
+			s.Current.SmartAccount.SafeSingletonAddress = val
 		case "sa_safe7579_address":
 			s.Current.SmartAccount.Safe7579Address = val
 		case "sa_fallback_handler":

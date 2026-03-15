@@ -33,10 +33,17 @@ func NewSmartAccountForm(cfg *config.Config) *tuicore.FormModel {
 	})
 
 	form.AddField(&tuicore.Field{
+		Key: "sa_singleton_address", Label: "Safe Singleton", Type: tuicore.InputText,
+		Value:       cfg.SmartAccount.SafeSingletonAddress,
+		Placeholder: "0x29fcB43b46531BcA003ddC8FCB67FFE91900C762",
+		Description: "Safe L2 singleton implementation address (default: Safe L2 v1.4.1)",
+	})
+
+	form.AddField(&tuicore.Field{
 		Key: "sa_safe7579_address", Label: "Safe7579 Address", Type: tuicore.InputText,
 		Value:       cfg.SmartAccount.Safe7579Address,
 		Placeholder: "0x...",
-		Description: "Safe7579 adapter contract address",
+		Description: "Safe7579 ERC-7579 adapter contract address",
 	})
 
 	form.AddField(&tuicore.Field{

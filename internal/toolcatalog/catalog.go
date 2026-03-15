@@ -115,3 +115,38 @@ func (c *Catalog) ToolCount() int {
 	defer c.mu.RUnlock()
 	return len(c.tools)
 }
+
+// ToolNamesForCategory returns tool names registered under the given category.
+func (c *Catalog) ToolNamesForCategory(category string) []string {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	var names []string
+	for _, name := range c.order {
+		if c.tools[name].Category == category {
+			names = append(names, name)
+		}
+	}
+	return names
+}
+
+// EnabledCategorySummary returns a map of enabled category name → tool name list.
+func (c *Catalog) EnabledCategorySummary() map[string][]string {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	summary := make(map[string][]string)
+	for _, cat := range c.categories {
+		if !cat.Enabled {
+			continue
+		}
+		var names []string
+		for _, n := range c.order {
+			if c.tools[n].Category == cat.Name {
+				names = append(names, n)
+			}
+		}
+		if len(names) > 0 {
+			summary[cat.Name] = names
+		}
+	}
+	return summary
+}

@@ -124,8 +124,8 @@ If a task does not match your capabilities:
 2. Do NOT tell the user to ask another agent.
 3. IMMEDIATELY call transfer_to_agent with agent_name "lango-orchestrator".
 4. Do NOT output any text before the transfer_to_agent call.`,
-		Prefixes: []string{"crypto_", "secrets_", "payment_", "p2p_", "smart_account_", "session_key_", "session_execute", "policy_check", "module_", "spending_", "paymaster_"},
-		Keywords: []string{"encrypt", "decrypt", "sign", "hash", "secret", "password", "payment", "wallet", "USDC", "peer", "p2p", "connect", "handshake", "firewall", "zkp", "smart account", "session key", "paymaster", "ERC-7579", "ERC-4337", "module", "policy", "deploy account"},
+		Prefixes: []string{"crypto_", "secrets_", "payment_", "p2p_", "smart_account_", "session_key_", "session_execute", "policy_check", "module_", "spending_", "paymaster_", "economy_", "escrow_", "sentinel_", "contract_"},
+		Keywords: []string{"encrypt", "decrypt", "sign", "hash", "secret", "password", "payment", "wallet", "USDC", "peer", "p2p", "connect", "handshake", "firewall", "zkp", "smart account", "session key", "paymaster", "ERC-7579", "ERC-4337", "module", "policy", "deploy account", "economy", "budget", "escrow", "sentinel", "contract", "negotiate", "pricing", "risk"},
 		Accepts:  "A security operation (crypto, secret, or payment) with parameters",
 		Returns:  "Encrypted/decrypted data, secret confirmation, or payment transaction status",
 		CannotDo: []string{"shell commands", "file operations", "web browsing", "knowledge search", "memory management"},
@@ -380,6 +380,10 @@ var capabilityMap = map[string]string{
 	"module_":         "ERC-7579 module management",
 	"spending_":       "on-chain spending tracking",
 	"paymaster_":      "paymaster management (gasless transactions)",
+	"economy_":        "P2P economy (budget, risk, pricing, negotiation, escrow)",
+	"escrow_":         "on-chain escrow management",
+	"sentinel_":       "security sentinel anomaly detection",
+	"contract_":       "smart contract interaction",
 }
 
 // toolCapability returns a human-readable capability for a tool name based
@@ -458,13 +462,15 @@ type routingEntry struct {
 	Description  string
 	Keywords     []string
 	Capabilities []string
+	ToolNames    []string
 	Accepts      string
 	Returns      string
 	CannotDo     []string
 }
 
-// buildRoutingEntry creates a routing entry from an AgentSpec and its resolved capabilities.
-func buildRoutingEntry(spec AgentSpec, caps string) routingEntry {
+// buildRoutingEntry creates a routing entry from an AgentSpec, its resolved capabilities,
+// and the assigned tool list.
+func buildRoutingEntry(spec AgentSpec, caps string, tools []*agent.Tool) routingEntry {
 	desc := spec.Description
 	if caps != "" {
 		desc = fmt.Sprintf("%s. Capabilities: %s", spec.Description, caps)
@@ -486,11 +492,18 @@ func buildRoutingEntry(spec AgentSpec, caps string) routingEntry {
 	// Deduplicate capabilities.
 	mergedCaps = dedup(mergedCaps)
 
+	// Collect tool names for routing visibility.
+	toolNames := make([]string, 0, len(tools))
+	for _, t := range tools {
+		toolNames = append(toolNames, t.Name)
+	}
+
 	return routingEntry{
 		Name:         spec.Name,
 		Description:  desc,
 		Keywords:     spec.Keywords,
 		Capabilities: mergedCaps,
+		ToolNames:    toolNames,
 		Accepts:      spec.Accepts,
 		Returns:      spec.Returns,
 		CannotDo:     spec.CannotDo,
@@ -530,6 +543,15 @@ func buildOrchestratorInstruction(basePrompt string, entries []routingEntry, max
 		if len(e.Capabilities) > 0 {
 			fmt.Fprintf(&b, "- **Capabilities**: [%s]\n", strings.Join(e.Capabilities, ", "))
 		}
+		if len(e.ToolNames) > 0 {
+			display := e.ToolNames
+			if len(display) > 10 {
+				display = display[:10]
+				fmt.Fprintf(&b, "- **Tools**: %s, ... +%d more\n", strings.Join(display, ", "), len(e.ToolNames)-10)
+			} else {
+				fmt.Fprintf(&b, "- **Tools**: %s\n", strings.Join(display, ", "))
+			}
+		}
 		fmt.Fprintf(&b, "- **Accepts**: %s\n", e.Accepts)
 		fmt.Fprintf(&b, "- **Returns**: %s\n", e.Returns)
 		if len(e.CannotDo) > 0 {
@@ -545,6 +567,15 @@ func buildOrchestratorInstruction(basePrompt string, entries []routingEntry, max
 		}
 		fmt.Fprintf(&b, "The following tools are available but not assigned to a specific agent: %s. Handle requests for these tools directly or choose the closest matching agent.\n", strings.Join(names, ", "))
 	}
+
+	b.WriteString(`
+## Automated Task Handling
+When a prompt starts with "[Automated Task":
+- This is from a scheduled cron job, background task, or workflow step.
+- ALWAYS delegate to the appropriate sub-agent based on the TASK CONTENT.
+- NEVER respond directly — the task requires tool execution.
+- Route based on what the task asks to DO (search → librarian, execute command → operator, browse web → navigator, etc.), NOT based on scheduling keywords.
+`)
 
 	fmt.Fprintf(&b, `
 ## Decision Protocol

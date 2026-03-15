@@ -6,6 +6,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/google/uuid"
 	robfigcron "github.com/robfig/cron/v3"
 	"go.uber.org/zap"
 )
@@ -17,6 +18,8 @@ type Scheduler struct {
 	executor       *Executor
 	mu             sync.RWMutex
 	entries        map[string]robfigcron.EntryID // jobID -> cron entry
+	inFlight       map[string]context.CancelFunc // jobID -> cancel for running executions
+	inFlightMu     sync.Mutex
 	semaphore      chan struct{}                 // limits concurrent job execution
 	maxJobs        int
 	defaultTimeout time.Duration
@@ -53,6 +56,7 @@ func New(store Store, executor *Executor, cfg SchedulerConfig) *Scheduler {
 		store:          store,
 		executor:       executor,
 		entries:        make(map[string]robfigcron.EntryID),
+		inFlight:       make(map[string]context.CancelFunc),
 		semaphore:      make(chan struct{}, cfg.MaxJobs),
 		maxJobs:        cfg.MaxJobs,
 		defaultTimeout: cfg.DefaultTimeout,
@@ -112,6 +116,14 @@ func (s *Scheduler) Stop() {
 		// Signal shutdown to unblock context-aware semaphore acquisition.
 		close(s.shutdownCh)
 
+		// Cancel all in-flight job executions.
+		s.inFlightMu.Lock()
+		for id, cancel := range s.inFlight {
+			cancel()
+			delete(s.inFlight, id)
+		}
+		s.inFlightMu.Unlock()
+
 		ctx := s.cron.Stop()
 		<-ctx.Done()
 
@@ -159,6 +171,7 @@ func (s *Scheduler) AddJob(ctx context.Context, job Job) (bool, error) {
 // RemoveJob removes a job from the scheduler and deletes it from the store.
 func (s *Scheduler) RemoveJob(ctx context.Context, id string) error {
 	s.unregisterJob(id)
+	s.cancelInFlight(id)
 
 	if err := s.store.Delete(ctx, id); err != nil {
 		return fmt.Errorf("delete cron job %q: %w", id, err)
@@ -176,6 +189,7 @@ func (s *Scheduler) PauseJob(ctx context.Context, id string) error {
 	}
 
 	s.unregisterJob(id)
+	s.cancelInFlight(id)
 
 	job.Enabled = false
 	if err := s.store.Update(ctx, *job); err != nil {
@@ -275,6 +289,32 @@ func (s *Scheduler) unregisterJob(id string) {
 	}
 }
 
+// cancelInFlight cancels a currently executing job, if any.
+func (s *Scheduler) cancelInFlight(id string) {
+	s.inFlightMu.Lock()
+	defer s.inFlightMu.Unlock()
+
+	if cancel, ok := s.inFlight[id]; ok {
+		cancel()
+		delete(s.inFlight, id)
+	}
+}
+
+// ResolveJobID resolves a name-or-ID string to a job UUID.
+// If the input is a valid UUID it is returned as-is; otherwise it is
+// looked up by name via the store.
+func (s *Scheduler) ResolveJobID(ctx context.Context, nameOrID string) (string, error) {
+	if _, err := uuid.Parse(nameOrID); err == nil {
+		return nameOrID, nil
+	}
+
+	job, err := s.store.GetByName(ctx, nameOrID)
+	if err != nil {
+		return "", fmt.Errorf("resolve job %q: %w", nameOrID, err)
+	}
+	return job.ID, nil
+}
+
 // executeWithSemaphore runs a job while respecting the concurrency limit.
 func (s *Scheduler) executeWithSemaphore(job Job) {
 	// Context-aware semaphore acquisition: abort if shutting down.
@@ -292,6 +332,16 @@ func (s *Scheduler) executeWithSemaphore(job Job) {
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()
+
+	// Register in-flight so RemoveJob/PauseJob can cancel.
+	s.inFlightMu.Lock()
+	s.inFlight[job.ID] = cancel
+	s.inFlightMu.Unlock()
+	defer func() {
+		s.inFlightMu.Lock()
+		delete(s.inFlight, job.ID)
+		s.inFlightMu.Unlock()
+	}()
 
 	s.executor.Execute(ctx, job)
 

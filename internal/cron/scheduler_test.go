@@ -28,6 +28,7 @@ type mockStore struct {
 	updateErr      error
 	upsertErr      error
 	saveHistoryErr error
+	listHistoryErr error
 }
 
 func newMockStore() *mockStore {
@@ -158,6 +159,9 @@ func (m *mockStore) SaveHistory(_ context.Context, entry HistoryEntry) error {
 func (m *mockStore) ListHistory(_ context.Context, jobID string, limit int) ([]HistoryEntry, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
+	if m.listHistoryErr != nil {
+		return nil, m.listHistoryErr
+	}
 	var result []HistoryEntry
 	for _, h := range m.history {
 		if h.JobID == jobID {
@@ -692,4 +696,100 @@ func TestBuildSessionKey(t *testing.T) {
 			}
 		})
 	}
+}
+
+// --- InFlight cancellation tests ---
+
+func TestScheduler_RemoveJob_CancelsInFlight(t *testing.T) {
+	t.Parallel()
+
+	store := newMockStore()
+	// Use a slow runner so the job is still in-flight when we remove it.
+	runner := &mockAgentRunner{response: "ok"}
+	logger := zap.NewNop().Sugar()
+	executor := NewExecutor(runner, nil, store, logger)
+	s := New(store, executor, SchedulerConfig{
+		Timezone:       "UTC",
+		MaxJobs:        5,
+		DefaultTimeout: 30 * time.Second,
+		Logger:         logger,
+	})
+
+	require.NoError(t, s.Start(context.Background()))
+	defer s.Stop()
+
+	jobID := "inflight-job-1"
+	store.mu.Lock()
+	store.jobs["inflight-test"] = Job{
+		ID:           jobID,
+		Name:         "inflight-test",
+		ScheduleType: "every",
+		Schedule:     "1h",
+		Prompt:       "test",
+		Enabled:      true,
+	}
+	store.mu.Unlock()
+
+	// Manually register an in-flight cancel.
+	ctx, cancel := context.WithCancel(context.Background())
+	s.inFlightMu.Lock()
+	s.inFlight[jobID] = cancel
+	s.inFlightMu.Unlock()
+
+	// RemoveJob should cancel the in-flight context.
+	err := s.RemoveJob(context.Background(), jobID)
+	require.NoError(t, err)
+
+	// The context should now be cancelled.
+	assert.Error(t, ctx.Err())
+	assert.Equal(t, context.Canceled, ctx.Err())
+
+	// InFlight map should be cleaned up.
+	s.inFlightMu.Lock()
+	_, exists := s.inFlight[jobID]
+	s.inFlightMu.Unlock()
+	assert.False(t, exists)
+}
+
+// --- ResolveJobID tests ---
+
+func TestScheduler_ResolveJobID_ByUUID(t *testing.T) {
+	t.Parallel()
+
+	store := newMockStore()
+	runner := &mockAgentRunner{}
+	s := newTestScheduler(store, runner)
+
+	validUUID := "550e8400-e29b-41d4-a716-446655440000"
+	resolved, err := s.ResolveJobID(context.Background(), validUUID)
+	require.NoError(t, err)
+	assert.Equal(t, validUUID, resolved)
+}
+
+func TestScheduler_ResolveJobID_ByName(t *testing.T) {
+	t.Parallel()
+
+	store := newMockStore()
+	store.jobs["my-cron-job"] = Job{
+		ID:   "550e8400-e29b-41d4-a716-446655440000",
+		Name: "my-cron-job",
+	}
+	runner := &mockAgentRunner{}
+	s := newTestScheduler(store, runner)
+
+	resolved, err := s.ResolveJobID(context.Background(), "my-cron-job")
+	require.NoError(t, err)
+	assert.Equal(t, "550e8400-e29b-41d4-a716-446655440000", resolved)
+}
+
+func TestScheduler_ResolveJobID_NotFound(t *testing.T) {
+	t.Parallel()
+
+	store := newMockStore()
+	runner := &mockAgentRunner{}
+	s := newTestScheduler(store, runner)
+
+	_, err := s.ResolveJobID(context.Background(), "nonexistent-job")
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "resolve job")
 }

@@ -62,9 +62,10 @@ func newTestFactory(caller contract.ContractCaller) *Factory {
 	return NewFactory(
 		caller,
 		nil, // rpc client not needed for unit tests
-		common.HexToAddress("0xAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"),
-		common.HexToAddress("0xBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB"),
-		common.HexToAddress("0xCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC"),
+		common.HexToAddress("0xAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"), // factory
+		common.HexToAddress("0x1111111111111111111111111111111111111111"), // singleton
+		common.HexToAddress("0xBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB"), // safe7579
+		common.HexToAddress("0xCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC"), // fallback
 		84532,
 	)
 }
@@ -161,6 +162,7 @@ func TestComputeAddress_DifferentFactoryAddresses(t *testing.T) {
 		stub,
 		nil,
 		common.HexToAddress("0xAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"),
+		common.HexToAddress("0x1111111111111111111111111111111111111111"),
 		common.HexToAddress("0xBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB"),
 		common.HexToAddress("0xCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC"),
 		84532,
@@ -169,6 +171,7 @@ func TestComputeAddress_DifferentFactoryAddresses(t *testing.T) {
 		stub,
 		nil,
 		common.HexToAddress("0xDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDD"),
+		common.HexToAddress("0x1111111111111111111111111111111111111111"),
 		common.HexToAddress("0xBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB"),
 		common.HexToAddress("0xCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC"),
 		84532,
@@ -376,12 +379,14 @@ func TestNewFactory(t *testing.T) {
 
 	caller := &stubContractCaller{}
 	factoryAddr := common.HexToAddress("0xFACE")
+	singleton := common.HexToAddress("0x5AFE")
 	safe7579 := common.HexToAddress("0x7579")
 	fallback := common.HexToAddress("0xFB00")
 
-	f := NewFactory(caller, nil, factoryAddr, safe7579, fallback, 1)
+	f := NewFactory(caller, nil, factoryAddr, singleton, safe7579, fallback, 1)
 	require.NotNil(t, f)
 	assert.Equal(t, factoryAddr, f.factoryAddr)
+	assert.Equal(t, singleton, f.singletonAddr)
 	assert.Equal(t, safe7579, f.safe7579Addr)
 	assert.Equal(t, fallback, f.fallbackAddr)
 	assert.Equal(t, int64(1), f.chainID)

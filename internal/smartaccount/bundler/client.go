@@ -392,6 +392,16 @@ func (c *Client) call(
 	}
 
 	if rpcResp.Error != nil {
+		reason := rpcResp.Error.RevertReason()
+		if reason != "" {
+			return nil, fmt.Errorf(
+				"bundler RPC error %d: %s (reason: %s): %w",
+				rpcResp.Error.Code,
+				rpcResp.Error.Message,
+				reason,
+				ErrBundlerError,
+			)
+		}
 		return nil, fmt.Errorf(
 			"bundler RPC error %d: %s: %w",
 			rpcResp.Error.Code,

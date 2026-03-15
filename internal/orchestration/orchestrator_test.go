@@ -313,7 +313,7 @@ func TestBuildAgentTree_RoutingTableInInstruction(t *testing.T) {
 		if len(st) == 0 && !spec.AlwaysInclude {
 			continue
 		}
-		entries = append(entries, buildRoutingEntry(spec, capabilityDescription(st)))
+		entries = append(entries, buildRoutingEntry(spec, capabilityDescription(st), st))
 	}
 
 	inst := buildOrchestratorInstruction("test prompt", entries, 5, rs.Unmatched)
@@ -574,7 +574,7 @@ func TestBuildRoutingEntry(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := buildRoutingEntry(tt.give, tt.giveCaps)
+			got := buildRoutingEntry(tt.give, tt.giveCaps, nil)
 
 			assert.Equal(t, tt.wantName, got.Name)
 			assert.Equal(t, tt.wantDesc, got.Description)
@@ -734,6 +734,24 @@ func TestBuildOrchestratorInstruction_HasAssessStep(t *testing.T) {
 	assert.Contains(t, got, "0. ASSESS")
 	assert.Contains(t, got, "simple conversational request")
 	assert.Contains(t, got, "respond directly")
+}
+
+func TestBuildOrchestratorInstruction_HasAutomatedTaskHandling(t *testing.T) {
+	got := buildOrchestratorInstruction("base", nil, 5, nil)
+
+	assert.Contains(t, got, "## Automated Task Handling")
+	assert.Contains(t, got, `[Automated Task`)
+	assert.Contains(t, got, "ALWAYS delegate")
+	assert.Contains(t, got, "NEVER respond directly")
+	assert.Contains(t, got, "TASK CONTENT")
+
+	// Automated Task Handling must appear BEFORE Decision Protocol
+	// so the orchestrator checks it first.
+	autoIdx := strings.Index(got, "## Automated Task Handling")
+	decisionIdx := strings.Index(got, "## Decision Protocol")
+	assert.Greater(t, autoIdx, 0, "Automated Task Handling section should exist")
+	assert.Greater(t, decisionIdx, 0, "Decision Protocol section should exist")
+	assert.Less(t, autoIdx, decisionIdx, "Automated Task Handling should come before Decision Protocol")
 }
 
 func TestBuildOrchestratorInstruction_HasReRoutingProtocol(t *testing.T) {

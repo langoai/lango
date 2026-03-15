@@ -37,12 +37,13 @@ const safeFactoryABI = `[
 
 // Factory handles Safe smart account deployment.
 type Factory struct {
-	caller       contract.ContractCaller
-	rpc          *ethclient.Client
-	factoryAddr  common.Address
-	safe7579Addr common.Address
-	fallbackAddr common.Address
-	chainID      int64
+	caller        contract.ContractCaller
+	rpc           *ethclient.Client
+	factoryAddr   common.Address
+	singletonAddr common.Address // Safe L2 singleton (proxy implementation)
+	safe7579Addr  common.Address // ERC-7579 adapter (delegate call target during setup)
+	fallbackAddr  common.Address
+	chainID       int64
 
 	// proxyCode caches the result of proxyCreationCode() view call.
 	proxyCodeMu sync.Mutex
@@ -50,21 +51,25 @@ type Factory struct {
 }
 
 // NewFactory creates a smart account factory.
+// singletonAddr is the Safe L2 implementation contract (the proxy delegates to this).
+// safe7579Addr is the ERC-7579 adapter, called via delegate call during setup.
 func NewFactory(
 	caller contract.ContractCaller,
 	rpc *ethclient.Client,
 	factoryAddr common.Address,
+	singletonAddr common.Address,
 	safe7579Addr common.Address,
 	fallbackAddr common.Address,
 	chainID int64,
 ) *Factory {
 	return &Factory{
-		caller:       caller,
-		rpc:          rpc,
-		factoryAddr:  factoryAddr,
-		safe7579Addr: safe7579Addr,
-		fallbackAddr: fallbackAddr,
-		chainID:      chainID,
+		caller:        caller,
+		rpc:           rpc,
+		factoryAddr:   factoryAddr,
+		singletonAddr: singletonAddr,
+		safe7579Addr:  safe7579Addr,
+		fallbackAddr:  fallbackAddr,
+		chainID:       chainID,
 	}
 }
 
@@ -102,7 +107,7 @@ func (f *Factory) ComputeAddress(
 	}
 
 	singletonPadded := make([]byte, 32)
-	copy(singletonPadded[12:], f.safe7579Addr.Bytes())
+	copy(singletonPadded[12:], f.singletonAddr.Bytes())
 	initCode := append(proxyCode, singletonPadded...)
 	initCodeHash := crypto.Keccak256(initCode)
 
@@ -174,7 +179,7 @@ func (f *Factory) Deploy(
 		ABI:     safeFactoryABI,
 		Method:  "createProxyWithNonce",
 		Args: []interface{}{
-			f.safe7579Addr,
+			f.singletonAddr,
 			initData,
 			saltNonce,
 		},

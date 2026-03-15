@@ -213,9 +213,10 @@ func TestFactoryComputeAddress(t *testing.T) {
 	f := NewFactory(
 		&stubContractCaller{}, // stub for proxyCreationCode
 		nil,                   // rpc not used for compute
-		common.HexToAddress("0xAAAA"),
-		common.HexToAddress("0xBBBB"),
-		common.HexToAddress("0xCCCC"),
+		common.HexToAddress("0xAAAA"), // factory
+		common.HexToAddress("0x1111"), // singleton
+		common.HexToAddress("0xBBBB"), // safe7579
+		common.HexToAddress("0xCCCC"), // fallback
 		84532,
 	)
 

@@ -26,6 +26,11 @@ type observabilityComponents struct {
 // initObservability creates observability components if enabled.
 func initObservability(cfg *config.Config, dbClient *ent.Client, bus *eventbus.Bus) *observabilityComponents {
 	if !cfg.Observability.Enabled {
+		if cfg.Observability.Tokens.Enabled || cfg.Observability.Health.Enabled {
+			logger().Warn("observability disabled but sub-features enabled; sub-features ignored",
+				"tokens.enabled", cfg.Observability.Tokens.Enabled,
+				"health.enabled", cfg.Observability.Health.Enabled)
+		}
 		logger().Info("observability disabled")
 		return nil
 	}
@@ -63,9 +68,18 @@ func initObservability(cfg *config.Config, dbClient *ent.Client, bus *eventbus.B
 		logger().Info("observability: token tracker subscribed to event bus")
 	}
 
-	// 5. Subscribe to ToolExecutedEvent for tool metrics
+	// 5. Subscribe to ToolExecutedEvent for tool metrics + error logging
 	eventbus.SubscribeTyped[toolchain.ToolExecutedEvent](bus, func(evt toolchain.ToolExecutedEvent) {
 		oc.collector.RecordToolExecution(evt.ToolName, evt.AgentName, evt.Duration, evt.Success)
+		if !evt.Success && evt.Error != "" {
+			logger().Warnw("tool execution failed",
+				"tool", evt.ToolName,
+				"agent", evt.AgentName,
+				"session", evt.SessionKey,
+				"duration", evt.Duration,
+				"error", evt.Error,
+			)
+		}
 	})
 	logger().Info("observability: tool execution metrics wired")
 
