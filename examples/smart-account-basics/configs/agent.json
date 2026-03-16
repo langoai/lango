@@ -1,0 +1,69 @@
+{
+  "server": {
+    "host": "0.0.0.0",
+    "port": 18789,
+    "httpEnabled": true,
+    "webSocketEnabled": false
+  },
+  "agent": {
+    "provider": "",
+    "model": ""
+  },
+  "payment": {
+    "enabled": true,
+    "walletProvider": "local",
+    "network": {
+      "chainId": 31337,
+      "rpcUrl": "http://anvil:8545",
+      "usdcContract": "PLACEHOLDER_USDC_ADDRESS"
+    },
+    "limits": {
+      "maxPerTx": "100.00",
+      "maxDaily": "1000.00",
+      "autoApproveBelow": "50.00"
+    }
+  },
+  "smartAccount": {
+    "enabled": true,
+    "entryPointAddress": "PLACEHOLDER_ENTRYPOINT_ADDRESS",
+    "factoryAddress": "PLACEHOLDER_FACTORY_ADDRESS",
+    "bundlerURL": "http://anvil:8545",
+    "session": {
+      "maxDuration": "24h",
+      "defaultGasLimit": 500000,
+      "maxActiveKeys": 10
+    },
+    "modules": {
+      "sessionValidatorAddress": "",
+      "spendingHookAddress": "",
+      "escrowExecutorAddress": ""
+    }
+  },
+  "p2p": {
+    "enabled": false
+  },
+  "a2a": {
+    "enabled": true,
+    "agentName": "SmartAccountAgent",
+    "agentDescription": "Smart Account Basics Test Agent",
+    "baseUrl": "http://agent:18789"
+  },
+  "security": {
+    "signer": {
+      "provider": "local"
+    },
+    "interceptor": {
+      "enabled": false,
+      "headlessAutoApprove": true
+    }
+  },
+  "knowledge": {
+    "enabled": false
+  },
+  "observationalMemory": {
+    "enabled": false
+  },
+  "graph": {
+    "enabled": false
+  }
+}

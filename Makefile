@@ -62,21 +62,21 @@ test-short:
 test-p2p:
 	$(GOTEST) -v -race ./internal/p2p/... ./internal/wallet/...
 
-## test-workspace: Run P2P workspace and git bundle tests
-test-workspace:
-	$(GOTEST) -v -race ./internal/p2p/workspace/... ./internal/p2p/gitbundle/...
+## test-security: Run security, sandbox, and keyring tests
+test-security:
+	$(GOTEST) -v -race ./internal/security/... ./internal/sandbox/... ./internal/keyring/...
 
-## test-team: Run P2P team coordination tests
-test-team:
-	$(GOTEST) -v -race ./internal/p2p/team/...
+## test-graph: Run graph store and GraphRAG tests
+test-graph:
+	$(GOTEST) -v -race ./internal/graph/...
 
-## test-economy: Run economy subsystem tests
+## test-mcp: Run MCP plugin integration tests
+test-mcp:
+	$(GOTEST) -v -race ./internal/mcp/...
+
+## test-economy: Run economy layer tests (budget, escrow, pricing)
 test-economy:
 	$(GOTEST) -v -race ./internal/economy/...
-
-## test-bridges: Run bridge integration tests
-test-bridges:
-	$(GOTEST) -v -race ./internal/app/... -run Bridge
 
 ## bench: Run benchmarks
 bench:
@@ -195,7 +195,7 @@ help:
 
 .PHONY: build build-linux build-darwin build-all install \
         dev run \
-        test test-short test-p2p test-workspace test-team test-economy test-bridges bench coverage \
+        test test-short test-p2p test-security test-graph test-mcp test-economy bench coverage \
         fmt fmt-check vet lint generate check-abi ci \
         deps \
         codesign \

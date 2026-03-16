@@ -159,6 +159,93 @@ When `p2p.zkAttestation` is enabled, P2P responses include a `ResponseAttestatio
 
 ZK credentials have a configurable maximum age (`p2p.zkp.maxCredentialAge`). Credentials older than this duration are rejected during agent card validation, even if not explicitly revoked.
 
+The gossip discovery service maintains a set of revoked DIDs. Cards from revoked DIDs are rejected outright. Credentials that exceed `maxCredentialAge` since issuance are treated as stale and discarded, even if not explicitly revoked.
+
+## Signed Challenge Authentication (v1.1)
+
+The handshake protocol supports two versions:
+
+| Protocol | ID | Description |
+|----------|----|-------------|
+| **v1.0** | `/lango/handshake/1.0.0` | Unsigned challenges (legacy) |
+| **v1.1** | `/lango/handshake/1.1.0` | Signed challenges with ECDSA |
+
+### v1.1 Challenge Signing
+
+In v1.1, the initiator signs the challenge to prove ownership of the claimed DID. The signed challenge includes:
+
+- **PublicKey** -- The initiator's compressed public key
+- **Signature** -- ECDSA signature over the canonical payload
+
+The canonical payload is constructed as:
+
+```
+Keccak256(nonce || bigEndian(timestamp, 8) || utf8(senderDID))
+```
+
+The responder verifies the signature by recovering the public key from the ECDSA signature and comparing it with the claimed key.
+
+### Timestamp Validation
+
+Challenge timestamps are validated against two windows to prevent replay and time-skew attacks:
+
+| Check | Window | Description |
+|-------|--------|-------------|
+| Staleness | 5 minutes | Challenges older than 5 minutes are rejected |
+| Future drift | 30 seconds | Challenges more than 30 seconds in the future are rejected |
+
+### Strict Mode
+
+When `p2p.requireSignedChallenge` is `true`, unsigned (v1.0) challenges are rejected outright. This enforces that all peers must use the v1.1 protocol with ECDSA-signed challenges.
+
+## Nonce Replay Protection
+
+The `NonceCache` prevents nonce replay attacks by tracking recently seen challenge nonces.
+
+### Mechanism
+
+- Each nonce is a 32-byte random value generated per challenge
+- The cache uses a fixed-size byte array key (`[32]byte`) for constant-time lookup
+- `CheckAndRecord(nonce)` returns `true` on first occurrence and `false` on replay
+- Nonces that have already been seen cause the handshake to fail immediately
+
+### Lifecycle
+
+- `Start()` -- Begins periodic cleanup using a ticker goroutine at half the TTL interval
+- `Stop()` -- Halts the cleanup goroutine
+- `Cleanup()` -- Removes expired entries older than the configured TTL
+
+The cleanup interval is set to `TTL / 2` to ensure expired nonces are removed promptly while avoiding excessive cleanup overhead.
+
+## Session Security
+
+### Session Invalidation
+
+Sessions can be invalidated for multiple reasons:
+
+| Reason | Trigger |
+|--------|---------|
+| `logout` | Explicit user logout |
+| `reputation_drop` | Peer trust score falls below the minimum threshold |
+| `repeated_failures` | Consecutive tool execution failures exceed the maximum (default: 5) |
+| `manual_revoke` | Manual revocation via CLI |
+| `security_event` | Security-related event |
+
+The `SessionStore` supports three invalidation methods:
+
+- `Invalidate(peerDID, reason)` -- Invalidate a single peer's session
+- `InvalidateAll(reason)` -- Invalidate all active sessions
+- `InvalidateByCondition(reason, predicate)` -- Invalidate sessions matching a predicate function
+
+All invalidations are recorded in an `InvalidationHistory` for audit purposes. An optional `onInvalidate` callback is fired for each invalidated session.
+
+### Security Event Handler
+
+The `SecurityEventHandler` provides automatic session invalidation based on runtime events:
+
+- **Repeated tool failures** -- Tracks consecutive failures per peer. When `maxFailures` (default: 5) is reached, the session is auto-invalidated with reason `repeated_failures`. The counter resets on success.
+- **Reputation drops** -- When a peer's reputation score drops below `minTrustScore`, the session is auto-invalidated with reason `reputation_drop`.
+
 ## Configuration
 
 | Setting | Default | Description |
@@ -177,4 +264,7 @@ ZK credentials have a configurable maximum age (`p2p.zkp.maxCredentialAge`). Cre
 ```bash
 lango p2p zkp status         # Show ZKP configuration and compiled circuits
 lango p2p zkp circuits       # List available circuits with constraint counts
+lango p2p session list       # List active P2P sessions
+lango p2p session revoke     # Revoke a specific session
+lango p2p session revoke-all # Revoke all sessions
 ```

@@ -299,6 +299,126 @@ Hooks are automatically wired based on enabled features:
 - Approval hooks require `security.interceptor.enabled: true`
 - Event hooks require the event bus to be initialized
 
+## P2P Team Coordination
+
+When P2P networking is enabled, agents can form dynamic, task-scoped teams across the network. The team coordination system is implemented in `internal/p2p/team/`.
+
+### Team Lifecycle
+
+A team follows a four-state lifecycle:
+
+```
+Forming ──► Active ──► Completed
+                  └──► Disbanded
+```
+
+| Status | Description |
+|--------|-------------|
+| `forming` | Team is being assembled from the agent pool |
+| `active` | Team is executing tasks |
+| `completed` | Team goal has been achieved |
+| `disbanded` | Team has been dissolved |
+
+### Member Roles
+
+Each team member is assigned a role that determines their responsibilities:
+
+| Role | Description |
+|------|-------------|
+| `leader` | Coordinates the team, assigns tasks, reviews results |
+| `worker` | Executes delegated tasks |
+| `reviewer` | Reviews work output from other members |
+| `observer` | Monitors team progress without active participation |
+
+### Team Formation
+
+The `Coordinator` forms teams by selecting agents from the `agentpool.Pool` based on capability matching:
+
+1. The leader agent is added from the pool by DID
+2. Worker agents are selected via `Selector.SelectN()` filtered by required capability
+3. The team transitions to `active` status
+4. `TeamMemberJoinedEvent` is published for each member via the event bus
+
+### Task Delegation
+
+Tasks are delegated to all worker members concurrently. Each worker receives a `ScopedContext` carrying the team ID, member DID, and role so downstream handlers can identify the execution context.
+
+Results are collected from all workers and passed through a conflict resolver to produce the final output.
+
+### Conflict Resolution
+
+When multiple workers produce different results, a conflict resolution strategy determines the final output:
+
+| Strategy | Behavior |
+|----------|----------|
+| `trust_weighted` | Picks the result from the fastest successful agent (proxy for trust) |
+| `majority_vote` | Picks the most common successful result |
+| `leader_decides` | Returns the first successful result for leader review |
+| `fail_on_conflict` | Fails if more than one distinct successful result exists |
+
+### Payment Negotiation
+
+The `Negotiator` handles payment terms between team leaders and members. Payment mode is selected based on trust score:
+
+| Mode | Condition | Description |
+|------|-----------|-------------|
+| `free` | Price is zero | No payment required |
+| `postpay` | Trust score >= 0.7 | Pay after task completion |
+| `prepay` | Trust score < 0.7 | Pay before task execution |
+
+Payment agreements track per-use pricing, currency (USDC), maximum uses, and validity windows.
+
+### Context Filtering
+
+The `ContextFilter` controls which metadata is shared with team members. It supports allow-list and exclude-list patterns to prevent sensitive data from leaking across team boundaries.
+
+### Team Events
+
+The event bus publishes lifecycle events for team operations:
+
+| Event | Description |
+|-------|-------------|
+| `team.formed` | A new team was created |
+| `team.disbanded` | A team was dissolved |
+| `team.member.joined` | An agent joined a team |
+| `team.member.left` | An agent left a team |
+| `team.task.delegated` | A task was sent to workers |
+| `team.task.completed` | A delegated task finished |
+| `team.conflict.detected` | Conflicting results were found |
+| `team.payment.agreed` | Payment terms were negotiated |
+| `team.health.check` | A team health sweep completed |
+| `team.leader.changed` | The team leader was replaced |
+
+## P2P Agent Pool
+
+The `agentpool` package manages discovered P2P agents with health tracking, weighted selection, and capability-based filtering.
+
+### Agent Health Status
+
+Each pooled agent has a health status derived from heartbeats and invocation success rates:
+
+| Status | Description |
+|--------|-------------|
+| `healthy` | Agent is responding normally |
+| `degraded` | Agent is slow or has elevated error rates |
+| `unhealthy` | Agent is not responding |
+| `unknown` | No health data available yet |
+
+### Performance Tracking
+
+The pool tracks runtime performance metrics per agent:
+
+- **Average latency** (milliseconds)
+- **Success rate** (0.0 - 1.0)
+- **Total call count**
+- **Trust score** and **price per call**
+- **Last seen** and **last healthy** timestamps
+- **Consecutive failure count**
+
+### Agent Selection
+
+The `Selector` chooses agents for team formation using capability matching and trust-weighted scoring. `SelectN(capability, count)` returns the top N agents that advertise the requested capability.
+
 ## CLI Commands
 
 ### Agent Status

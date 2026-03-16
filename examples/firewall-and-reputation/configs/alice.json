@@ -1,0 +1,65 @@
+{
+  "server": {
+    "host": "0.0.0.0",
+    "port": 18789,
+    "httpEnabled": true,
+    "webSocketEnabled": false
+  },
+  "agent": {
+    "provider": "",
+    "model": ""
+  },
+  "payment": {
+    "enabled": true,
+    "walletProvider": "local",
+    "network": {
+      "chainId": 31337,
+      "rpcUrl": "http://localhost:8545"
+    }
+  },
+  "p2p": {
+    "enabled": true,
+    "listenAddrs": ["/ip4/0.0.0.0/tcp/9001"],
+    "enableMdns": true,
+    "maxPeers": 50,
+    "autoApproveKnownPeers": true,
+    "requireSignedChallenge": true,
+    "firewallRules": [
+      {
+        "peerDid": "*",
+        "action": "allow",
+        "tools": ["knowledge_search", "web_search"],
+        "rateLimit": 5
+      },
+      {
+        "peerDid": "*",
+        "action": "deny",
+        "tools": ["browser_navigate", "file_read", "shell_exec"]
+      }
+    ],
+    "gossipInterval": "5s",
+    "zkHandshake": false,
+    "zkAttestation": false,
+    "ownerProtection": {
+      "ownerName": "Alice Smith",
+      "ownerEmail": "alice@example.com",
+      "ownerPhone": "+1-555-0100",
+      "blockConversations": true
+    },
+    "minTrustScore": 0.5
+  },
+  "a2a": {
+    "enabled": true,
+    "agentName": "Alice",
+    "agentDescription": "Firewall Test Provider (Alice) — restrictive ACL",
+    "capabilities": ["research", "knowledge"],
+    "baseUrl": "http://alice:18789"
+  },
+  "security": {
+    "signer": { "provider": "local" },
+    "interceptor": { "enabled": false, "headlessAutoApprove": true }
+  },
+  "knowledge": { "enabled": false },
+  "observationalMemory": { "enabled": false },
+  "graph": { "enabled": false }
+}

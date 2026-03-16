@@ -48,7 +48,7 @@ RUN chmod +x /usr/local/bin/docker-entrypoint.sh
 # Build with --build-arg INSTALL_GO=true to enable.
 ARG INSTALL_GO=false
 RUN if [ "$INSTALL_GO" = "true" ]; then \
-        curl -fsSL https://go.dev/dl/go1.25.linux-amd64.tar.gz \
+        curl -fsSL https://go.dev/dl/go1.25.4.linux-amd64.tar.gz \
         | tar -C /usr/local -xzf - ; \
     fi
 

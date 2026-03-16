@@ -43,8 +43,10 @@ The example agents are configured with the following approval and payment settin
 ## Prerequisites
 
 - Docker & Docker Compose v2
-- `cast` (from [Foundry](https://getfoundry.sh/)) — required for balance checks in the test script
 - `curl` — for HTTP health/API checks
+- `jq` — optional, for pretty-printing JSON in manual API checks
+
+> **Note**: `cast` (Foundry) is **not** needed on the host. The test script runs `cast` inside the `anvil` container.
 
 ## Quick Start
 
@@ -96,14 +98,38 @@ make all
 
 ## REST API Endpoints
 
-| Endpoint             | Method | Description                     |
-|----------------------|--------|---------------------------------|
-| `/health`            | GET    | Health check                    |
-| `/api/p2p/status`    | GET    | Peer ID, listen addrs, peer count |
-| `/api/p2p/peers`     | GET    | List connected peers + addresses |
-| `/api/p2p/identity`  | GET    | Local DID string                |
-| `/api/p2p/reputation`| GET    | Peer trust score and history    |
-| `/api/p2p/pricing`   | GET    | Tool pricing configuration      |
+| Endpoint                              | Method | Description                           |
+|---------------------------------------|--------|---------------------------------------|
+| `/health`                             | GET    | Health check                          |
+| `/api/p2p/status`                     | GET    | Peer ID, listen addrs, peer count     |
+| `/api/p2p/peers`                      | GET    | List connected peers + addresses      |
+| `/api/p2p/identity`                   | GET    | Local DID and peer ID                 |
+| `/api/p2p/reputation?peer_did=<did>`  | GET    | Peer trust score (`peer_did` required)|
+| `/api/p2p/pricing`                    | GET    | Tool pricing configuration            |
+| `/api/p2p/pricing?tool=<name>`        | GET    | Price for a specific tool             |
+
+## File Structure
+
+```
+examples/p2p-trading/
+  configs/              # Per-agent JSON config (server port, P2P, payment)
+    alice.json
+    bob.json
+    charlie.json
+  contracts/
+    MockUSDC.sol        # Minimal ERC-20 for integration tests (6 decimals)
+  scripts/
+    setup-anvil.sh      # Deploy MockUSDC + mint 1000 USDC per agent
+    test-p2p-trading.sh # Integration test suite (6 sections)
+    wait-for-health.sh  # Poll until an HTTP endpoint returns 200
+  secrets/
+    alice-passphrase.txt
+    bob-passphrase.txt
+    charlie-passphrase.txt
+  docker-compose.yml
+  docker-entrypoint-p2p.sh  # Agent bootstrap: wait for USDC addr, import config, store wallet key
+  Makefile
+```
 
 ## Troubleshooting
 
@@ -117,7 +143,8 @@ docker compose logs alice
 # Manual API check
 curl http://localhost:18789/api/p2p/status | jq .
 
-# Check USDC balance on-chain
-cast call $(cat /tmp/usdc-addr) "balanceOf(address)(uint256)" \
+# Check USDC balance on-chain (runs cast inside the anvil container)
+USDC=$(docker compose exec -T alice cat /shared/usdc-address.txt | tr -d '[:space:]')
+docker compose exec -T anvil cast call "$USDC" "balanceOf(address)(uint256)" \
   0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266 --rpc-url http://localhost:8545
 ```

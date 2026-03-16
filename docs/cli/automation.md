@@ -359,31 +359,37 @@ m3n4o5p6  Daily Report Pipeline completed  3/3
 Validate a workflow YAML file without executing it. Checks syntax, step dependencies, and DAG structure for cycles.
 
 ```
-lango workflow validate <file.flow.yaml>
+lango workflow validate <file.flow.yaml> [--json]
 ```
 
 | Argument | Required | Description |
 |----------|----------|-------------|
 | `file.flow.yaml` | Yes | Path to the workflow YAML file to validate |
 
-**Example:**
+| Flag | Type | Default | Description |
+|------|------|---------|-------------|
+| `--json` | bool | `false` | Output results as JSON |
+
+**Examples:**
 
 ```bash
 $ lango workflow validate ./daily-report.flow.yaml
-Workflow: Daily Report Pipeline
+Workflow "./daily-report.flow.yaml" is valid.
+  Name:     Daily Report Pipeline
   Steps:    3
   Schedule: 0 9 * * *
-  Valid:    true
 
-Step Dependencies:
-  fetch-data     → (none)
-  analyze        → fetch-data
-  report         → analyze
+$ lango workflow validate ./daily-report.flow.yaml --json
+{
+  "valid": true,
+  "file": "./daily-report.flow.yaml",
+  "name": "Daily Report Pipeline",
+  "steps": 3,
+  "schedule": "0 9 * * *"
+}
 
 $ lango workflow validate ./broken.flow.yaml
-Validation failed:
-  - Step "report" depends on unknown step "nonexistent"
-  - Cycle detected: analyze → report → analyze
+Error: validate "./broken.flow.yaml": ...
 ```
 
 !!! tip

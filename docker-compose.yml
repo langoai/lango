@@ -6,23 +6,20 @@ services:
     restart: unless-stopped
     ports:
       - "18789:18789"
-      # - "9000:9000"   # P2P libp2p (uncomment to enable P2P networking, workspaces, and team coordination)
+      # - "9000:9000"   # P2P libp2p (uncomment to enable P2P networking)
     volumes:
       - lango-data:/home/lango/.lango
-      # - lango-workspaces:/home/lango/.lango/workspaces  # Workspace data (uncomment for persistence)
     secrets:
       - lango_config
       - lango_passphrase
     environment:
       - LANGO_PROFILE=default
-      # - LANGO_MULTI_AGENT=true        # Enable multi-agent orchestration
-      # - LANGO_P2P=true                 # Enable P2P networking
-      # - LANGO_AGENT_MEMORY=true        # Enable per-agent persistent memory
-      # - LANGO_HOOKS=true               # Enable tool execution hooks
-      # - LANGO_SMART_ACCOUNT=true       # Enable ERC-7579 smart account
-      # - LANGO_WORKSPACE=true            # Enable P2P collaborative workspaces
-      # - LANGO_TEAM=true                  # Enable P2P team coordination
-      # - LANGO_ECONOMY=true               # Enable P2P economy (budget, pricing, escrow)
+      # Feature flags are managed via encrypted config profiles, not env vars.
+      # Use 'lango settings' or 'lango config import' to configure features:
+      #   agent.multiAgent, p2p.enabled, agentMemory.enabled, hooks.enabled,
+      #   smartAccount.enabled, graph.enabled, a2a.enabled, mcp.enabled,
+      #   cron.enabled, background.enabled, workflow.enabled, economy.enabled,
+      #   observability.enabled
 
   presidio-analyzer:
     image: mcr.microsoft.com/presidio-analyzer:latest
@@ -41,4 +38,3 @@ secrets:
 
 volumes:
   lango-data:
-  lango-workspaces:
