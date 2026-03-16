@@ -349,5 +349,193 @@ func TestSessionServiceAdapter_Get_ExpiredSession_DeleteFails(t *testing.T) {
 	assert.True(t, errors.Is(err, store.deleteErr), "expected wrapped disk full error")
 }
 
+func TestAppendEvent_FunctionResponseRoleCorrection(t *testing.T) {
+	t.Parallel()
+
+	store := newMockStore()
+	sess := &internal.Session{
+		Key:       "test-session",
+		Metadata:  make(map[string]string),
+		CreatedAt: time.Now(),
+		UpdatedAt: time.Now(),
+	}
+	store.Create(sess)
+
+	adapter := NewSessionAdapter(sess, store, "lango-agent")
+	svc := NewSessionServiceAdapter(store, "lango-agent")
+
+	// ADK sends FunctionResponse with Content.Role="user" — this is the bug.
+	evt := &session.Event{
+		Timestamp: time.Now(),
+		Author:    "tool",
+		LLMResponse: model.LLMResponse{
+			Content: &genai.Content{
+				Role: "user", // ADK bug: should be "function" but ADK sets "user"
+				Parts: []*genai.Part{{
+					FunctionResponse: &genai.FunctionResponse{
+						ID:       "call_abc",
+						Name:     "exec",
+						Response: map[string]any{"output": "file.txt"},
+					},
+				}},
+			},
+		},
+	}
+
+	require.NoError(t, svc.AppendEvent(context.Background(), adapter, evt))
+
+	require.Len(t, adapter.sess.History, 1)
+	msg := adapter.sess.History[0]
+	// Role should be corrected to "tool", not left as "user"
+	assert.Equal(t, "tool", string(msg.Role), "FunctionResponse role should be corrected to tool")
+	// ToolCalls should have the response metadata
+	require.Len(t, msg.ToolCalls, 1)
+	assert.NotEmpty(t, msg.ToolCalls[0].Output)
+}
+
+func TestAppendEvent_FunctionCallRoleUnchanged(t *testing.T) {
+	t.Parallel()
+
+	store := newMockStore()
+	sess := &internal.Session{
+		Key:       "test-session",
+		Metadata:  make(map[string]string),
+		CreatedAt: time.Now(),
+		UpdatedAt: time.Now(),
+	}
+	store.Create(sess)
+
+	adapter := NewSessionAdapter(sess, store, "lango-agent")
+	svc := NewSessionServiceAdapter(store, "lango-agent")
+
+	// FunctionCall event — role should NOT be changed
+	evt := &session.Event{
+		Timestamp: time.Now(),
+		Author:    "lango-agent",
+		LLMResponse: model.LLMResponse{
+			Content: &genai.Content{
+				Role: "model",
+				Parts: []*genai.Part{{
+					FunctionCall: &genai.FunctionCall{
+						ID:   "call_abc",
+						Name: "exec",
+						Args: map[string]any{"command": "ls"},
+					},
+				}},
+			},
+		},
+	}
+
+	require.NoError(t, svc.AppendEvent(context.Background(), adapter, evt))
+
+	require.Len(t, adapter.sess.History, 1)
+	msg := adapter.sess.History[0]
+	// Role should remain "assistant" (normalized from "model")
+	assert.Equal(t, "assistant", string(msg.Role), "FunctionCall role should remain assistant")
+}
+
+func TestSessionRetry_OrphanedFunctionCallRegression(t *testing.T) {
+	t.Parallel()
+
+	store := newMockStore()
+	sess := &internal.Session{
+		Key:       "test-session",
+		Metadata:  make(map[string]string),
+		CreatedAt: time.Now(),
+		UpdatedAt: time.Now(),
+	}
+	store.Create(sess)
+
+	adapter := NewSessionAdapter(sess, store, "lango-agent")
+	svc := NewSessionServiceAdapter(store, "lango-agent")
+
+	// 1. Append FunctionCall event (role "model" → normalized to "assistant")
+	fcEvt := &session.Event{
+		Timestamp: time.Now(),
+		Author:    "lango-agent",
+		LLMResponse: model.LLMResponse{
+			Content: &genai.Content{
+				Role: "model",
+				Parts: []*genai.Part{{
+					FunctionCall: &genai.FunctionCall{
+						ID:   "call_xyz",
+						Name: "search",
+						Args: map[string]any{"query": "test"},
+					},
+				}},
+			},
+		},
+	}
+	require.NoError(t, svc.AppendEvent(context.Background(), adapter, fcEvt))
+
+	// 2. Append FunctionResponse event with ADK's buggy role="user"
+	frEvt := &session.Event{
+		Timestamp: time.Now(),
+		Author:    "tool",
+		LLMResponse: model.LLMResponse{
+			Content: &genai.Content{
+				Role: "user", // ADK bug
+				Parts: []*genai.Part{{
+					FunctionResponse: &genai.FunctionResponse{
+						ID:       "call_xyz",
+						Name:     "search",
+						Response: map[string]any{"results": []string{"a", "b"}},
+					},
+				}},
+			},
+		},
+	}
+	require.NoError(t, svc.AppendEvent(context.Background(), adapter, frEvt))
+
+	// 3. Read back via EventsAdapter — FunctionResponse should be properly reconstructed
+	events := adapter.Events()
+	var evts []*session.Event
+	for evt := range events.All() {
+		evts = append(evts, evt)
+	}
+
+	require.Len(t, evts, 2, "expected 2 events (FunctionCall + FunctionResponse)")
+
+	// FunctionCall event
+	assert.Equal(t, "assistant", evts[0].Content.Role)
+	require.Len(t, evts[0].Content.Parts, 1)
+	require.NotNil(t, evts[0].Content.Parts[0].FunctionCall)
+	assert.Equal(t, "search", evts[0].Content.Parts[0].FunctionCall.Name)
+
+	// FunctionResponse event — must be "function" role, not "user"
+	assert.Equal(t, "function", evts[1].Content.Role)
+	require.Len(t, evts[1].Content.Parts, 1)
+	require.NotNil(t, evts[1].Content.Parts[0].FunctionResponse)
+	assert.Equal(t, "call_xyz", evts[1].Content.Parts[0].FunctionResponse.ID)
+	assert.Equal(t, "search", evts[1].Content.Parts[0].FunctionResponse.Name)
+
+	// 4. Convert to provider messages — should NOT have orphaned FunctionCall
+	var contents []*genai.Content
+	for evt := range events.All() {
+		if evt.Content != nil {
+			contents = append(contents, evt.Content)
+		}
+	}
+	// Re-read events (EventsAdapter caches, so create fresh adapter)
+	freshAdapter := NewSessionAdapter(sess, store, "lango-agent")
+	freshEvents := freshAdapter.Events()
+	contents = nil
+	for evt := range freshEvents.All() {
+		if evt.Content != nil {
+			contents = append(contents, evt.Content)
+		}
+	}
+
+	msgs, err := convertMessages(contents)
+	require.NoError(t, err)
+
+	// Verify: should have assistant (with ToolCalls) + tool (with tool_call_id)
+	require.Len(t, msgs, 2)
+	assert.Equal(t, "assistant", msgs[0].Role)
+	assert.Len(t, msgs[0].ToolCalls, 1)
+	assert.Equal(t, "tool", msgs[1].Role)
+	assert.NotNil(t, msgs[1].Metadata["tool_call_id"])
+}
+
 // Verify the LLMResponse field is unused in model import (for compile check)
 var _ = model.LLMResponse{}

@@ -663,6 +663,105 @@ func TestEventsAdapter_FunctionResponseReconstruction(t *testing.T) {
 	})
 }
 
+func TestEventsAdapter_FunctionResponseUserRole(t *testing.T) {
+	t.Parallel()
+
+	now := time.Now()
+	// Simulate FunctionResponse stored with wrong role "user" (ADK bug).
+	sess := &internal.Session{
+		History: []internal.Message{
+			{Role: "user", Content: "run ls", Timestamp: now},
+			{
+				Role: "assistant",
+				ToolCalls: []internal.ToolCall{
+					{ID: "call_abc", Name: "exec", Input: `{"command":"ls"}`},
+				},
+				Timestamp: now.Add(time.Second),
+			},
+			{
+				Role: "user", // ADK incorrectly stores FunctionResponse as "user"
+				ToolCalls: []internal.ToolCall{
+					{ID: "call_abc", Name: "exec", Output: `{"result":"file.txt"}`},
+				},
+				Content:   `{"result":"file.txt"}`,
+				Timestamp: now.Add(2 * time.Second),
+			},
+		},
+	}
+
+	adapter := &EventsAdapter{history: sess.History, rootAgentName: "lango-agent"}
+	var events []*session.Event
+	for evt := range adapter.All() {
+		events = append(events, evt)
+	}
+
+	require.Len(t, events, 3)
+
+	// The FunctionResponse event should be reconstructed with "function" role,
+	// not "user", even though it was stored as "user".
+	toolEvt := events[2]
+	assert.Equal(t, "function", toolEvt.Content.Role)
+	var fr *genai.FunctionResponse
+	for _, p := range toolEvt.Content.Parts {
+		if p.FunctionResponse != nil {
+			fr = p.FunctionResponse
+		}
+	}
+	require.NotNil(t, fr, "expected FunctionResponse part in corrected event")
+	assert.Equal(t, "call_abc", fr.ID)
+	assert.Equal(t, "exec", fr.Name)
+	assert.Equal(t, "file.txt", fr.Response["result"])
+	// Author should be "tool", not "user"
+	assert.Equal(t, "tool", toolEvt.Author)
+}
+
+func TestEventsAdapter_FunctionResponseToolRole(t *testing.T) {
+	t.Parallel()
+
+	now := time.Now()
+	// FunctionResponse stored with correct role "tool" — no correction needed.
+	sess := &internal.Session{
+		History: []internal.Message{
+			{Role: "user", Content: "run ls", Timestamp: now},
+			{
+				Role: "assistant",
+				ToolCalls: []internal.ToolCall{
+					{ID: "call_abc", Name: "exec", Input: `{"command":"ls"}`},
+				},
+				Timestamp: now.Add(time.Second),
+			},
+			{
+				Role: "tool", // Correct role
+				ToolCalls: []internal.ToolCall{
+					{ID: "call_abc", Name: "exec", Output: `{"result":"file.txt"}`},
+				},
+				Content:   `{"result":"file.txt"}`,
+				Timestamp: now.Add(2 * time.Second),
+			},
+		},
+	}
+
+	adapter := &EventsAdapter{history: sess.History, rootAgentName: "lango-agent"}
+	var events []*session.Event
+	for evt := range adapter.All() {
+		events = append(events, evt)
+	}
+
+	require.Len(t, events, 3)
+
+	toolEvt := events[2]
+	assert.Equal(t, "function", toolEvt.Content.Role)
+	var fr *genai.FunctionResponse
+	for _, p := range toolEvt.Content.Parts {
+		if p.FunctionResponse != nil {
+			fr = p.FunctionResponse
+		}
+	}
+	require.NotNil(t, fr, "expected FunctionResponse part")
+	assert.Equal(t, "call_abc", fr.ID)
+	assert.Equal(t, "exec", fr.Name)
+}
+
 func TestEventsAdapter_ConsecutiveRoleMerging(t *testing.T) {
 	t.Parallel()
 

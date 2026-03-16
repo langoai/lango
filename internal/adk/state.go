@@ -241,10 +241,25 @@ func (e *EventsAdapter) All() iter.Seq[*session.Event] {
 		}
 
 		for _, msg := range msgs {
+			role := msg.Role
+
+			// Correct role for FunctionResponse messages stored with wrong role.
+			// ADK stores FunctionResponse events with Content.Role="user", but
+			// session reconstruction requires the "tool" role so that
+			// FunctionResponse parts are properly emitted.
+			if role == types.RoleUser {
+				for _, tc := range msg.ToolCalls {
+					if tc.Output != "" {
+						role = types.RoleTool
+						break
+					}
+				}
+			}
+
 			// Map Author: use stored author if available, otherwise derive from role.
 			author := msg.Author
 			if author == "" {
-				switch msg.Role {
+				switch role {
 				case types.RoleUser:
 					author = "user"
 				case types.RoleAssistant, types.RoleModel:
@@ -264,7 +279,6 @@ func (e *EventsAdapter) All() iter.Seq[*session.Event] {
 				}
 			}
 
-			role := msg.Role
 			var parts []*genai.Part
 
 			switch role {

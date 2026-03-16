@@ -38,11 +38,37 @@ func AdaptToolForAgentWithTimeout(t *agent.Tool, agentName string, timeout time.
 }
 
 // buildInputSchema builds a JSON Schema from an agent.Tool's parameter definitions.
+// It supports three formats:
+//  1. Full JSON Schema from SchemaBuilder.Build(): {"type":"object","properties":{...},"required":[...]}
+//  2. Flat map of ParameterDef values: {"name": ParameterDef{...}}
+//  3. Flat map of raw maps: {"name": {"type":"string","description":"..."}}
 func buildInputSchema(t *agent.Tool) *jsonschema.Schema {
 	props := make(map[string]*jsonschema.Schema)
 	var required []string
 
-	for name, paramDef := range t.Parameters {
+	// Detect full JSON Schema format (from SchemaBuilder.Build()):
+	// {"type": "object", "properties": {...}, "required": [...]}
+	params := t.Parameters
+	if propsRaw, ok := params["properties"]; ok {
+		if propsMap, ok := propsRaw.(map[string]interface{}); ok {
+			// Extract top-level required array
+			if reqRaw, ok := params["required"]; ok {
+				if reqSlice, ok := reqRaw.([]string); ok {
+					required = reqSlice
+				} else if reqIface, ok := reqRaw.([]interface{}); ok {
+					for _, r := range reqIface {
+						if s, ok := r.(string); ok {
+							required = append(required, s)
+						}
+					}
+				}
+			}
+			// Use nested properties map instead of top-level
+			params = propsMap
+		}
+	}
+
+	for name, paramDef := range params {
 		s := &jsonschema.Schema{}
 
 		if pd, ok := paramDef.(agent.ParameterDef); ok {
@@ -63,6 +89,16 @@ func buildInputSchema(t *agent.Tool) *jsonschema.Schema {
 			}
 			if d, ok := pdMap["description"].(string); ok {
 				s.Description = d
+			}
+			if enumRaw, ok := pdMap["enum"]; ok {
+				if enumStrs, ok := enumRaw.([]string); ok {
+					s.Enum = make([]any, len(enumStrs))
+					for i, v := range enumStrs {
+						s.Enum[i] = v
+					}
+				} else if enumIface, ok := enumRaw.([]interface{}); ok {
+					s.Enum = enumIface
+				}
 			}
 			if r, ok := pdMap["required"].(bool); ok && r {
 				required = append(required, name)

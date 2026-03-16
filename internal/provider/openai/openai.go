@@ -98,8 +98,8 @@ func (p *OpenAIProvider) Generate(ctx context.Context, params provider.GenerateP
 					if !yield(provider.StreamEvent{
 						Type: provider.StreamEventToolCall,
 						ToolCall: &provider.ToolCall{
-							ID: tc.ID,
-							// Usually ID is string.
+							Index:     tc.Index,
+							ID:        tc.ID,
 							Name:      tc.Function.Name,
 							Arguments: tc.Function.Arguments,
 						},
@@ -140,18 +140,24 @@ func (p *OpenAIProvider) convertParams(params provider.GenerateParams) (openai.C
 			Content: m.Content,
 		}
 		if len(m.ToolCalls) > 0 {
-			tcs := make([]openai.ToolCall, len(m.ToolCalls))
-			for j, tc := range m.ToolCalls {
-				tcs[j] = openai.ToolCall{
+			tcs := make([]openai.ToolCall, 0, len(m.ToolCalls))
+			for _, tc := range m.ToolCalls {
+				if tc.Name == "" {
+					logger.Warnw("filtering tool call with empty name", "id", tc.ID)
+					continue
+				}
+				tcs = append(tcs, openai.ToolCall{
 					ID:   tc.ID,
 					Type: openai.ToolTypeFunction,
 					Function: openai.FunctionCall{
 						Name:      tc.Name,
 						Arguments: tc.Arguments,
 					},
-				}
+				})
 			}
-			msg.ToolCalls = tcs
+			if len(tcs) > 0 {
+				msg.ToolCalls = tcs
+			}
 		}
 		if toolCallID, ok := m.Metadata["tool_call_id"].(string); ok {
 			msg.ToolCallID = toolCallID
@@ -169,22 +175,24 @@ func (p *OpenAIProvider) convertParams(params provider.GenerateParams) (openai.C
 	}
 
 	if len(params.Tools) > 0 {
-		tools := make([]openai.Tool, len(params.Tools))
-		for i, t := range params.Tools {
-			// Parameters should be map[string]interface{}
-			// We need to marshal it to match openai-go structure expectation or just assign if compatible
-			// sashabaranov/go-openai expects FunctionDefinition.Parameters to be interface{} (usually map or json.RawMessage)
-
-			tools[i] = openai.Tool{
+		tools := make([]openai.Tool, 0, len(params.Tools))
+		for _, t := range params.Tools {
+			if t.Name == "" {
+				logger.Warnw("filtering tool with empty name")
+				continue
+			}
+			tools = append(tools, openai.Tool{
 				Type: openai.ToolTypeFunction,
 				Function: &openai.FunctionDefinition{
 					Name:        t.Name,
 					Description: t.Description,
 					Parameters:  t.Parameters,
 				},
-			}
+			})
 		}
-		req.Tools = tools
+		if len(tools) > 0 {
+			req.Tools = tools
+		}
 	}
 
 	return req, nil

@@ -13,6 +13,8 @@ import (
 	"google.golang.org/genai"
 )
 
+func intPtr(v int) *int { return &v }
+
 type mockProvider struct {
 	id         string
 	events     []provider.StreamEvent
@@ -241,4 +243,399 @@ func TestModelAdapter_GenerateContent_NoSystemInstruction(t *testing.T) {
 	msgs := p.lastParams.Messages
 	require.Len(t, msgs, 1)
 	assert.Equal(t, "user", string(msgs[0].Role))
+}
+
+// --- toolCallAccumulator tests ---
+
+func TestToolCallAccumulator_SingleComplete(t *testing.T) {
+	t.Parallel()
+	var acc toolCallAccumulator
+	acc.add(&provider.ToolCall{
+		Index:     intPtr(0),
+		ID:        "call_1",
+		Name:      "exec",
+		Arguments: `{"command":"ls"}`,
+	})
+
+	parts := acc.done()
+	require.Len(t, parts, 1)
+	assert.Equal(t, "exec", parts[0].FunctionCall.Name)
+	assert.Equal(t, "call_1", parts[0].FunctionCall.ID)
+	assert.Equal(t, "ls", parts[0].FunctionCall.Args["command"])
+}
+
+func TestToolCallAccumulator_OpenAIStreaming(t *testing.T) {
+	t.Parallel()
+	var acc toolCallAccumulator
+
+	// First chunk: Index=0, ID+Name present, partial args
+	acc.add(&provider.ToolCall{
+		Index:     intPtr(0),
+		ID:        "call_abc",
+		Name:      "exec",
+		Arguments: `{"comma`,
+	})
+	// Second chunk: Index=0, only args continuation
+	acc.add(&provider.ToolCall{
+		Index:     intPtr(0),
+		Arguments: `nd":"ls"}`,
+	})
+
+	parts := acc.done()
+	require.Len(t, parts, 1)
+	assert.Equal(t, "exec", parts[0].FunctionCall.Name)
+	assert.Equal(t, "call_abc", parts[0].FunctionCall.ID)
+	assert.Equal(t, "ls", parts[0].FunctionCall.Args["command"])
+}
+
+func TestToolCallAccumulator_OpenAIMultipleCalls(t *testing.T) {
+	t.Parallel()
+	var acc toolCallAccumulator
+
+	// Interleaved chunks for two different tool calls
+	acc.add(&provider.ToolCall{Index: intPtr(0), ID: "c1", Name: "exec", Arguments: `{"a`})
+	acc.add(&provider.ToolCall{Index: intPtr(1), ID: "c2", Name: "read", Arguments: `{"p`})
+	acc.add(&provider.ToolCall{Index: intPtr(0), Arguments: `":"1"}`})
+	acc.add(&provider.ToolCall{Index: intPtr(1), Arguments: `":"2"}`})
+
+	parts := acc.done()
+	require.Len(t, parts, 2)
+
+	// Sorted by index
+	assert.Equal(t, "exec", parts[0].FunctionCall.Name)
+	assert.Equal(t, "c1", parts[0].FunctionCall.ID)
+	assert.Equal(t, "1", parts[0].FunctionCall.Args["a"])
+
+	assert.Equal(t, "read", parts[1].FunctionCall.Name)
+	assert.Equal(t, "c2", parts[1].FunctionCall.ID)
+	assert.Equal(t, "2", parts[1].FunctionCall.Args["p"])
+}
+
+func TestToolCallAccumulator_AnthropicStreaming(t *testing.T) {
+	t.Parallel()
+	var acc toolCallAccumulator
+
+	// Anthropic start: ID+Name, no Index
+	acc.add(&provider.ToolCall{ID: "tool_1", Name: "exec"})
+	// Anthropic delta: only args, no Index/ID/Name
+	acc.add(&provider.ToolCall{Arguments: `{"command":"ls"}`})
+
+	parts := acc.done()
+	require.Len(t, parts, 1)
+	assert.Equal(t, "exec", parts[0].FunctionCall.Name)
+	assert.Equal(t, "tool_1", parts[0].FunctionCall.ID)
+	assert.Equal(t, "ls", parts[0].FunctionCall.Args["command"])
+}
+
+func TestToolCallAccumulator_AnthropicMultipleCalls(t *testing.T) {
+	t.Parallel()
+	var acc toolCallAccumulator
+
+	// First tool
+	acc.add(&provider.ToolCall{ID: "tool_1", Name: "exec"})
+	acc.add(&provider.ToolCall{Arguments: `{"a":"1"}`})
+	// Second tool
+	acc.add(&provider.ToolCall{ID: "tool_2", Name: "read"})
+	acc.add(&provider.ToolCall{Arguments: `{"b":"2"}`})
+
+	parts := acc.done()
+	require.Len(t, parts, 2)
+	assert.Equal(t, "exec", parts[0].FunctionCall.Name)
+	assert.Equal(t, "1", parts[0].FunctionCall.Args["a"])
+	assert.Equal(t, "read", parts[1].FunctionCall.Name)
+	assert.Equal(t, "2", parts[1].FunctionCall.Args["b"])
+}
+
+func TestToolCallAccumulator_OrphanDeltaDropped(t *testing.T) {
+	t.Parallel()
+	var acc toolCallAccumulator
+
+	// Delta with no preceding start — should be dropped
+	acc.add(&provider.ToolCall{Arguments: `{"x":"y"}`})
+
+	parts := acc.done()
+	assert.Empty(t, parts)
+}
+
+func TestToolCallAccumulator_EmptyNameDropped(t *testing.T) {
+	t.Parallel()
+	var acc toolCallAccumulator
+
+	// Entry with Index but no Name ever set
+	acc.add(&provider.ToolCall{Index: intPtr(0), ID: "call_x", Arguments: `{"a":"b"}`})
+
+	parts := acc.done()
+	assert.Empty(t, parts)
+}
+
+func TestToolCallAccumulator_IDPreserved(t *testing.T) {
+	t.Parallel()
+	var acc toolCallAccumulator
+
+	acc.add(&provider.ToolCall{Index: intPtr(0), ID: "call_custom_id", Name: "my_tool", Arguments: `{}`})
+
+	parts := acc.done()
+	require.Len(t, parts, 1)
+	assert.Equal(t, "call_custom_id", parts[0].FunctionCall.ID)
+}
+
+func TestGenerateContent_StreamingToolCallRegression(t *testing.T) {
+	t.Parallel()
+
+	// Simulate OpenAI streaming pattern: first chunk has Name+ID, subsequent
+	// chunks only have partial arguments. Previously each chunk was stored as
+	// a separate FunctionCall part, causing empty-name parts in the session.
+	p := &mockProvider{
+		id: "test",
+		events: []provider.StreamEvent{
+			{
+				Type: provider.StreamEventToolCall,
+				ToolCall: &provider.ToolCall{
+					Index:     intPtr(0),
+					ID:        "call_abc",
+					Name:      "exec",
+					Arguments: `{"comma`,
+				},
+			},
+			{
+				Type: provider.StreamEventToolCall,
+				ToolCall: &provider.ToolCall{
+					Index:     intPtr(0),
+					Arguments: `nd":"l`,
+				},
+			},
+			{
+				Type: provider.StreamEventToolCall,
+				ToolCall: &provider.ToolCall{
+					Index:     intPtr(0),
+					Arguments: `s"}`,
+				},
+			},
+			{Type: provider.StreamEventDone},
+		},
+	}
+	adapter := NewModelAdapter(p, "test-model")
+
+	req := &model.LLMRequest{Model: "test-model"}
+	seq := adapter.GenerateContent(context.Background(), req, true)
+
+	var responses []*model.LLMResponse
+	for resp, err := range seq {
+		require.NoError(t, err)
+		responses = append(responses, resp)
+	}
+
+	// Expect: 1 partial yield (first chunk with Name) + 1 final done
+	require.Len(t, responses, 2, "expected 1 partial + 1 done response")
+
+	// First response: partial tool call yield (has Name)
+	partial := responses[0]
+	require.NotNil(t, partial.Content)
+	require.Len(t, partial.Content.Parts, 1)
+	assert.Equal(t, "exec", partial.Content.Parts[0].FunctionCall.Name)
+	assert.Equal(t, "call_abc", partial.Content.Parts[0].FunctionCall.ID)
+
+	// Final response: complete, assembled tool call
+	final := responses[1]
+	assert.True(t, final.TurnComplete)
+	assert.False(t, final.Partial)
+
+	// Verify no empty-name parts
+	for _, p := range final.Content.Parts {
+		if p.FunctionCall != nil {
+			assert.NotEmpty(t, p.FunctionCall.Name, "final response must not have empty function call name")
+		}
+	}
+
+	// Verify assembled result
+	require.Len(t, final.Content.Parts, 1)
+	fc := final.Content.Parts[0].FunctionCall
+	assert.Equal(t, "exec", fc.Name)
+	assert.Equal(t, "call_abc", fc.ID)
+	assert.Equal(t, "ls", fc.Args["command"])
+}
+
+func TestConvertMessages_EmptyFunctionCallName(t *testing.T) {
+	t.Parallel()
+
+	contents := []*genai.Content{
+		{
+			Role: "model",
+			Parts: []*genai.Part{
+				{FunctionCall: &genai.FunctionCall{ID: "call_1", Name: "valid", Args: map[string]any{"a": "b"}}},
+				{FunctionCall: &genai.FunctionCall{ID: "call_2", Name: "", Args: map[string]any{"c": "d"}}},
+			},
+		},
+	}
+
+	msgs, err := convertMessages(contents)
+	require.NoError(t, err)
+	require.Len(t, msgs, 1)
+	// Only the valid tool call should be present
+	assert.Len(t, msgs[0].ToolCalls, 1)
+	assert.Equal(t, "valid", msgs[0].ToolCalls[0].Name)
+}
+
+func TestConvertMessages_OrphanedFunctionCall(t *testing.T) {
+	t.Parallel()
+
+	// Assistant FunctionCall followed by user message without tool response
+	contents := []*genai.Content{
+		{
+			Role: "model",
+			Parts: []*genai.Part{{
+				FunctionCall: &genai.FunctionCall{
+					ID:   "call_orphan",
+					Name: "exec",
+					Args: map[string]any{"cmd": "ls"},
+				},
+			}},
+		},
+		{
+			Role:  "user",
+			Parts: []*genai.Part{{Text: "retry please"}},
+		},
+	}
+
+	msgs, err := convertMessages(contents)
+	require.NoError(t, err)
+
+	// Should be: assistant + synthetic tool response + user = 3 messages
+	require.Len(t, msgs, 3, "expected synthetic tool response injected")
+	assert.Equal(t, "assistant", msgs[0].Role)
+	assert.Equal(t, "tool", msgs[1].Role)
+	assert.Equal(t, "call_orphan", msgs[1].Metadata["tool_call_id"])
+	assert.Contains(t, msgs[1].Content, "interrupted")
+	assert.Equal(t, "user", msgs[2].Role)
+}
+
+func TestConvertMessages_MatchedFunctionCall(t *testing.T) {
+	t.Parallel()
+
+	// Assistant FunctionCall with matching tool response — no injection needed
+	contents := []*genai.Content{
+		{
+			Role: "model",
+			Parts: []*genai.Part{{
+				FunctionCall: &genai.FunctionCall{
+					ID:   "call_matched",
+					Name: "exec",
+					Args: map[string]any{"cmd": "ls"},
+				},
+			}},
+		},
+		{
+			Role: "function",
+			Parts: []*genai.Part{{
+				FunctionResponse: &genai.FunctionResponse{
+					ID:       "call_matched",
+					Name:     "exec",
+					Response: map[string]any{"output": "file.txt"},
+				},
+			}},
+		},
+		{
+			Role:  "user",
+			Parts: []*genai.Part{{Text: "thanks"}},
+		},
+	}
+
+	msgs, err := convertMessages(contents)
+	require.NoError(t, err)
+
+	// Should remain 3 messages — no injection
+	require.Len(t, msgs, 3, "expected no synthetic injection for matched call")
+	assert.Equal(t, "assistant", msgs[0].Role)
+	assert.Equal(t, "tool", msgs[1].Role)
+	assert.Equal(t, "user", msgs[2].Role)
+}
+
+func TestConvertMessages_PendingFunctionCallNotTouched(t *testing.T) {
+	t.Parallel()
+
+	// Assistant FunctionCall at end of history — pending, should not be touched
+	contents := []*genai.Content{
+		{
+			Role:  "user",
+			Parts: []*genai.Part{{Text: "run ls"}},
+		},
+		{
+			Role: "model",
+			Parts: []*genai.Part{{
+				FunctionCall: &genai.FunctionCall{
+					ID:   "call_pending",
+					Name: "exec",
+					Args: map[string]any{"cmd": "ls"},
+				},
+			}},
+		},
+	}
+
+	msgs, err := convertMessages(contents)
+	require.NoError(t, err)
+
+	// Should remain 2 messages — pending call at end is untouched
+	require.Len(t, msgs, 2, "expected pending FunctionCall at end to be untouched")
+	assert.Equal(t, "user", msgs[0].Role)
+	assert.Equal(t, "assistant", msgs[1].Role)
+}
+
+func TestRepairOrphanedFunctionCalls_PartialResponse(t *testing.T) {
+	t.Parallel()
+
+	// Assistant with 2 FunctionCalls, but only 1 has a tool response
+	msgs := []provider.Message{
+		{
+			Role: "assistant",
+			ToolCalls: []provider.ToolCall{
+				{ID: "call_a", Name: "exec", Arguments: `{"cmd":"ls"}`},
+				{ID: "call_b", Name: "read", Arguments: `{"path":"foo"}`},
+			},
+		},
+		{
+			Role:     "tool",
+			Content:  `{"result":"ok"}`,
+			Metadata: map[string]interface{}{"tool_call_id": "call_a"},
+		},
+		{
+			Role:    "user",
+			Content: "next",
+		},
+	}
+
+	result := repairOrphanedFunctionCalls(msgs)
+
+	// Should inject synthetic response for call_b only.
+	// The synthetic response is injected right after the assistant message,
+	// so order is: assistant + synthetic_tool(call_b) + tool(call_a) + user = 4
+	require.Len(t, result, 4, "expected synthetic response for unanswered call_b")
+	assert.Equal(t, "assistant", result[0].Role)
+	// Synthetic for unanswered call_b injected immediately after assistant
+	assert.Equal(t, "tool", result[1].Role)
+	assert.Equal(t, "call_b", result[1].Metadata["tool_call_id"])
+	assert.Contains(t, result[1].Content, "interrupted")
+	// Original tool response for call_a
+	assert.Equal(t, "tool", result[2].Role)
+	assert.Equal(t, "call_a", result[2].Metadata["tool_call_id"])
+	assert.Equal(t, "user", result[3].Role)
+}
+
+func TestConvertTools_EmptyName(t *testing.T) {
+	t.Parallel()
+
+	cfg := &genai.GenerateContentConfig{
+		Tools: []*genai.Tool{
+			{
+				FunctionDeclarations: []*genai.FunctionDeclaration{
+					{Name: "valid_tool", Description: "A valid tool"},
+					{Name: "", Description: "Invalid tool with empty name"},
+				},
+			},
+		},
+	}
+
+	tools, err := convertTools(cfg)
+	require.NoError(t, err)
+	assert.Len(t, tools, 1)
+	assert.Equal(t, "valid_tool", tools[0].Name)
 }
