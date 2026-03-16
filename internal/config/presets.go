@@ -57,6 +57,7 @@ func PresetConfig(name string) *Config {
 	case PresetCollaborator:
 		cfg.P2P.Enabled = true
 		cfg.Payment.Enabled = true
+		cfg.Payment.Network.RPCURL = "https://sepolia.base.org"
 		cfg.Economy.Enabled = true
 		return cfg
 

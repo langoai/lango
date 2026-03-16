@@ -57,6 +57,7 @@ func TestPresetConfig_Collaborator(t *testing.T) {
 
 	assert.True(t, cfg.P2P.Enabled)
 	assert.True(t, cfg.Payment.Enabled)
+	assert.Equal(t, "https://sepolia.base.org", cfg.Payment.Network.RPCURL)
 	assert.True(t, cfg.Economy.Enabled)
 	// Should not enable knowledge features.
 	assert.False(t, cfg.Knowledge.Enabled)

@@ -438,22 +438,27 @@ See Also:
 		defer boot.DBClient.Close()
 		return boot.Config, nil
 	}))
+	var setBootResult *bootstrap.Result
 	cmd.AddCommand(cliconfigcmd.NewSetCmd(
-		func() (*config.Config, error) {
+		func() (*config.Config, func(), error) {
 			boot, err := bootstrapForConfig()
 			if err != nil {
-				return nil, err
+				return nil, nil, err
 			}
-			// Note: DBClient kept open for save; closed after save in saver.
-			return boot.Config, nil
+			setBootResult = boot
+			cleanup := func() {
+				boot.DBClient.Close()
+				setBootResult = nil
+			}
+			return boot.Config, cleanup, nil
 		},
 		func(cfg *config.Config) error {
-			boot, err := bootstrapForConfig()
-			if err != nil {
-				return err
+			if setBootResult == nil {
+				return fmt.Errorf("internal error: bootstrap result not available")
 			}
-			defer boot.DBClient.Close()
-			return boot.ConfigStore.Save(context.Background(), boot.ProfileName, cfg)
+			return setBootResult.ConfigStore.Save(
+				context.Background(), setBootResult.ProfileName, cfg,
+			)
 		},
 	))
 	cmd.AddCommand(cliconfigcmd.NewKeysCmd())

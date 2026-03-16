@@ -2,8 +2,19 @@
 
 Define the configuration loading, saving, and migration system for encrypted SQLite profiles.
 ## Requirements
+### Requirement: PostLoad one-stop normalization and validation
+The `config` package SHALL export a `PostLoad(*Config) error` function that applies all post-load processing in order: legacy migration, environment variable substitution, path normalization, path validation, and full config validation. All operations MUST be idempotent — calling PostLoad multiple times on the same config SHALL produce the same result.
+
+#### Scenario: PostLoad applies full processing chain
+- **WHEN** `PostLoad(cfg)` is called on a freshly deserialized config
+- **THEN** the config has legacy fields migrated, env vars expanded, paths normalized to absolute, data paths validated under DataRoot, and full config validation applied
+
+#### Scenario: PostLoad is idempotent
+- **WHEN** `PostLoad(cfg)` is called twice on the same config
+- **THEN** the second call produces no additional changes and returns the same result
+
 ### Requirement: Configuration loading
-The system SHALL load configuration through the bootstrap process from an encrypted SQLite database profile instead of directly from a plaintext JSON file. The `config.Load()` function SHALL be retained for migration purposes only.
+The system SHALL load configuration through the bootstrap process from an encrypted SQLite database profile instead of directly from a plaintext JSON file. The `config.Load()` function SHALL be retained for migration purposes only. `Load()` SHALL delegate all post-load processing to `PostLoad()` instead of calling individual steps separately.
 
 #### Scenario: Normal startup
 - **WHEN** the application starts via `lango serve`
@@ -12,6 +23,10 @@ The system SHALL load configuration through the bootstrap process from an encryp
 #### Scenario: Migration loading
 - **WHEN** `config.Load()` is called during JSON import
 - **THEN** the JSON file is read with environment variable substitution (existing behavior preserved)
+
+#### Scenario: Load delegates to PostLoad
+- **WHEN** `config.Load(path)` is called
+- **THEN** after unmarshalling, it calls `PostLoad(cfg)` once and returns the result
 
 ### Requirement: Configuration save
 The system SHALL save configuration through `configstore.Store.Save()` which encrypts and stores in the database. The legacy `config.Save()` function SHALL be removed.

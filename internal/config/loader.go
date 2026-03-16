@@ -339,24 +339,25 @@ func Load(configPath string) (*Config, error) {
 		return nil, fmt.Errorf("unmarshal config: %w", err)
 	}
 
-	// Migrate legacy fields.
-	cfg.MigrateEmbeddingProvider()
-
-	// Apply environment variable substitution
-	substituteEnvVars(cfg)
-
-	// Normalize and validate data paths under DataRoot.
-	NormalizePaths(cfg)
-	if err := ValidateDataPaths(cfg); err != nil {
-		return nil, err
-	}
-
-	// Validate configuration
-	if err := Validate(cfg); err != nil {
+	// Post-load: migrate, substitute env vars, normalize paths, validate.
+	if err := PostLoad(cfg); err != nil {
 		return nil, err
 	}
 
 	return cfg, nil
+}
+
+// PostLoad applies post-load processing: legacy migration, env substitution,
+// path normalization, path validation, and full config validation.
+// All operations are idempotent — safe to call multiple times on the same config.
+func PostLoad(cfg *Config) error {
+	cfg.MigrateEmbeddingProvider()
+	substituteEnvVars(cfg)
+	NormalizePaths(cfg)
+	if err := ValidateDataPaths(cfg); err != nil {
+		return err
+	}
+	return Validate(cfg)
 }
 
 // substituteEnvVars replaces ${VAR} patterns with environment variable values
