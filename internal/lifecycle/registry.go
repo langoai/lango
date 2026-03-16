@@ -76,3 +76,14 @@ func (r *Registry) Len() int {
 	defer r.mu.Unlock()
 	return len(r.entries)
 }
+
+// Names returns the names of all registered components in registration order.
+func (r *Registry) Names() []string {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	names := make([]string, len(r.entries))
+	for i, e := range r.entries {
+		names[i] = e.Component.Name()
+	}
+	return names
+}
