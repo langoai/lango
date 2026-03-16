@@ -51,6 +51,8 @@ type Server struct {
 	pendingApprovalsMu sync.Mutex
 	turnCallbacks      []TurnCallback
 	sanitizer          *gatekeeper.Sanitizer
+	shutdownCtx        context.Context
+	shutdownCancel     context.CancelFunc
 }
 
 // Config holds gateway server configuration
@@ -105,6 +107,7 @@ type RPCHandler func(client *Client, params json.RawMessage) (interface{}, error
 // New creates a new gateway server
 func New(cfg Config, agent *adk.Agent, provider *security.RPCProvider, store session.Store, auth *AuthManager) *Server {
 	originChecker := makeOriginChecker(cfg.AllowedOrigins)
+	shutdownCtx, shutdownCancel := context.WithCancel(context.Background())
 
 	s := &Server{
 		config:           cfg,
@@ -116,6 +119,8 @@ func New(cfg Config, agent *adk.Agent, provider *security.RPCProvider, store ses
 		clients:          make(map[string]*Client),
 		handlers:         make(map[string]RPCHandler),
 		pendingApprovals: make(map[string]chan approval.ApprovalResponse),
+		shutdownCtx:      shutdownCtx,
+		shutdownCancel:   shutdownCancel,
 		upgrader: websocket.Upgrader{
 			ReadBufferSize:  1024,
 			WriteBufferSize: 1024,
@@ -200,11 +205,11 @@ func (s *Server) handleChatMessage(client *Client, params json.RawMessage) (inte
 	}
 
 	if idleTimeout > 0 {
-		ctx, extDeadline = deadline.New(context.Background(), idleTimeout, hardCeiling)
+		ctx, extDeadline = deadline.New(s.shutdownCtx, idleTimeout, hardCeiling)
 		cancel = extDeadline.Stop
 		runOpts = append(runOpts, adk.WithOnActivity(extDeadline.Extend))
 	} else {
-		ctx, cancel = context.WithTimeout(context.Background(), hardCeiling)
+		ctx, cancel = context.WithTimeout(s.shutdownCtx, hardCeiling)
 	}
 	defer cancel()
 
@@ -605,6 +610,9 @@ func (s *Server) Start() error {
 
 // Shutdown gracefully shuts down the server
 func (s *Server) Shutdown(ctx context.Context) error {
+	// Cancel all in-flight request contexts so agent runs stop immediately.
+	s.shutdownCancel()
+
 	// Close all WebSocket connections
 	s.clientsMu.Lock()
 	for _, client := range s.clients {

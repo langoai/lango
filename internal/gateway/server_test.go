@@ -505,6 +505,74 @@ func TestSetSanitizer_NilSanitizerSafe(t *testing.T) {
 	assert.Nil(t, server.sanitizer)
 }
 
+func TestShutdown_CancelsInflightRequestContexts(t *testing.T) {
+	t.Parallel()
+	cfg := Config{
+		Host:             "localhost",
+		Port:             0,
+		HTTPEnabled:      true,
+		WebSocketEnabled: true,
+	}
+	server := New(cfg, nil, nil, nil, nil)
+
+	// Derive a child context from shutdownCtx (same as handleChatMessage does).
+	ctx, cancel := context.WithTimeout(server.shutdownCtx, 5*time.Minute)
+	defer cancel()
+
+	// shutdownCancel should propagate to the child.
+	server.shutdownCancel()
+
+	select {
+	case <-ctx.Done():
+		assert.ErrorIs(t, ctx.Err(), context.Canceled)
+	case <-time.After(time.Second):
+		t.Fatal("child context was not cancelled after shutdownCancel")
+	}
+}
+
+func TestShutdown_CancelsApprovalWait(t *testing.T) {
+	t.Parallel()
+	cfg := Config{
+		Host:             "localhost",
+		Port:             0,
+		HTTPEnabled:      true,
+		WebSocketEnabled: true,
+		ApprovalTimeout:  30 * time.Second, // long timeout — should NOT be reached
+	}
+	server := New(cfg, nil, nil, nil, nil)
+
+	// Register a fake companion so RequestApproval doesn't short-circuit.
+	server.clientsMu.Lock()
+	server.clients["companion-1"] = &Client{
+		ID:   "companion-1",
+		Type: "companion",
+		Send: make(chan []byte, 256),
+	}
+	server.clientsMu.Unlock()
+
+	// Use shutdownCtx as parent (matches real request flow).
+	ctx, cancel := context.WithTimeout(server.shutdownCtx, 30*time.Second)
+	defer cancel()
+
+	done := make(chan error, 1)
+	go func() {
+		_, err := server.RequestApproval(ctx, "dangerous action")
+		done <- err
+	}()
+
+	// Simulate Ctrl+C — cancel all in-flight contexts.
+	time.Sleep(50 * time.Millisecond) // let goroutine enter select
+	server.shutdownCancel()
+
+	select {
+	case err := <-done:
+		// Must return context.Canceled, NOT ErrApprovalTimeout.
+		assert.ErrorIs(t, err, context.Canceled)
+	case <-time.After(2 * time.Second):
+		t.Fatal("RequestApproval did not return after shutdown — this is the bug")
+	}
+}
+
 func TestApprovalTimeout_UsesConfigTimeout(t *testing.T) {
 	t.Parallel()
 	cfg := Config{
