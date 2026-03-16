@@ -476,10 +476,11 @@ func TestConvertMessages_EmptyFunctionCallName(t *testing.T) {
 	assert.Equal(t, "valid", msgs[0].ToolCalls[0].Name)
 }
 
-func TestConvertMessages_OrphanedFunctionCall(t *testing.T) {
+func TestConvertMessages_OrphanedFunctionCall_NoRepair(t *testing.T) {
 	t.Parallel()
 
-	// Assistant FunctionCall followed by user message without tool response
+	// Assistant FunctionCall followed by user message without tool response.
+	// convertMessages no longer repairs orphans — that is provider-specific.
 	contents := []*genai.Content{
 		{
 			Role: "model",
@@ -500,13 +501,10 @@ func TestConvertMessages_OrphanedFunctionCall(t *testing.T) {
 	msgs, err := convertMessages(contents)
 	require.NoError(t, err)
 
-	// Should be: assistant + synthetic tool response + user = 3 messages
-	require.Len(t, msgs, 3, "expected synthetic tool response injected")
+	// Should pass through as-is: assistant + user = 2 messages (no synthetic injection)
+	require.Len(t, msgs, 2, "expected no synthetic tool response from shared convertMessages")
 	assert.Equal(t, "assistant", msgs[0].Role)
-	assert.Equal(t, "tool", msgs[1].Role)
-	assert.Equal(t, "call_orphan", msgs[1].Metadata["tool_call_id"])
-	assert.Contains(t, msgs[1].Content, "interrupted")
-	assert.Equal(t, "user", msgs[2].Role)
+	assert.Equal(t, "user", msgs[1].Role)
 }
 
 func TestConvertMessages_MatchedFunctionCall(t *testing.T) {
@@ -547,6 +545,8 @@ func TestConvertMessages_MatchedFunctionCall(t *testing.T) {
 	require.Len(t, msgs, 3, "expected no synthetic injection for matched call")
 	assert.Equal(t, "assistant", msgs[0].Role)
 	assert.Equal(t, "tool", msgs[1].Role)
+	assert.Equal(t, "call_matched", msgs[1].Metadata["tool_call_id"])
+	assert.Equal(t, "exec", msgs[1].Metadata["tool_call_name"])
 	assert.Equal(t, "user", msgs[2].Role)
 }
 
@@ -580,45 +580,8 @@ func TestConvertMessages_PendingFunctionCallNotTouched(t *testing.T) {
 	assert.Equal(t, "assistant", msgs[1].Role)
 }
 
-func TestRepairOrphanedFunctionCalls_PartialResponse(t *testing.T) {
-	t.Parallel()
-
-	// Assistant with 2 FunctionCalls, but only 1 has a tool response
-	msgs := []provider.Message{
-		{
-			Role: "assistant",
-			ToolCalls: []provider.ToolCall{
-				{ID: "call_a", Name: "exec", Arguments: `{"cmd":"ls"}`},
-				{ID: "call_b", Name: "read", Arguments: `{"path":"foo"}`},
-			},
-		},
-		{
-			Role:     "tool",
-			Content:  `{"result":"ok"}`,
-			Metadata: map[string]interface{}{"tool_call_id": "call_a"},
-		},
-		{
-			Role:    "user",
-			Content: "next",
-		},
-	}
-
-	result := repairOrphanedFunctionCalls(msgs)
-
-	// Should inject synthetic response for call_b only.
-	// The synthetic response is injected right after the assistant message,
-	// so order is: assistant + synthetic_tool(call_b) + tool(call_a) + user = 4
-	require.Len(t, result, 4, "expected synthetic response for unanswered call_b")
-	assert.Equal(t, "assistant", result[0].Role)
-	// Synthetic for unanswered call_b injected immediately after assistant
-	assert.Equal(t, "tool", result[1].Role)
-	assert.Equal(t, "call_b", result[1].Metadata["tool_call_id"])
-	assert.Contains(t, result[1].Content, "interrupted")
-	// Original tool response for call_a
-	assert.Equal(t, "tool", result[2].Role)
-	assert.Equal(t, "call_a", result[2].Metadata["tool_call_id"])
-	assert.Equal(t, "user", result[3].Role)
-}
+// TestRepairOrphanedFunctionCalls_PartialResponse moved to openai_test.go as
+// repairOrphanedToolCalls is now an OpenAI-specific private helper.
 
 func TestConvertTools_EmptyName(t *testing.T) {
 	t.Parallel()

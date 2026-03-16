@@ -367,60 +367,12 @@ func convertMessages(contents []*genai.Content) ([]provider.Message, error) {
 					id = p.FunctionResponse.Name
 				}
 				msg.Metadata["tool_call_id"] = id
+				msg.Metadata["tool_call_name"] = p.FunctionResponse.Name
 			}
 		}
 		msgs = append(msgs, msg)
 	}
-	msgs = repairOrphanedFunctionCalls(msgs)
 	return msgs, nil
-}
-
-// repairOrphanedFunctionCalls injects synthetic error responses ONLY when
-// an assistant FunctionCall is followed by a user message without an
-// intervening tool response. Pending calls at the end of history are
-// never touched — they represent in-flight tool execution.
-func repairOrphanedFunctionCalls(msgs []provider.Message) []provider.Message {
-	var result []provider.Message
-	for i, msg := range msgs {
-		result = append(result, msg)
-		if msg.Role != "assistant" || len(msg.ToolCalls) == 0 {
-			continue
-		}
-		// Scan forward: check whether each tool call has a matching tool response
-		// before the next non-tool message.
-		answered := make(map[string]bool)
-		hasFollowingUser := false
-		for j := i + 1; j < len(msgs); j++ {
-			if msgs[j].Role == "tool" {
-				if id, ok := msgs[j].Metadata["tool_call_id"].(string); ok {
-					answered[id] = true
-				}
-				continue
-			}
-			// Non-tool message (user, assistant, etc.) — orphan boundary
-			hasFollowingUser = true
-			break
-		}
-		// Pending calls at end of history are valid (response pending)
-		if !hasFollowingUser {
-			continue
-		}
-		// Inject synthetic response only for unanswered calls
-		for _, tc := range msg.ToolCalls {
-			if tc.ID != "" && !answered[tc.ID] {
-				logger().Warnw("injecting synthetic tool response for orphaned FunctionCall",
-					"call_id", tc.ID, "name", tc.Name)
-				result = append(result, provider.Message{
-					Role:    "tool",
-					Content: `{"error":"tool call was interrupted and did not complete"}`,
-					Metadata: map[string]interface{}{
-						"tool_call_id": tc.ID,
-					},
-				})
-			}
-		}
-	}
-	return result
 }
 
 // extractSystemText concatenates all text parts from a genai.Content into a single string.

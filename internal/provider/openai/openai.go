@@ -133,8 +133,9 @@ func (p *OpenAIProvider) ListModels(ctx context.Context) ([]provider.ModelInfo, 
 }
 
 func (p *OpenAIProvider) convertParams(params provider.GenerateParams) (openai.ChatCompletionRequest, error) {
-	msgs := make([]openai.ChatCompletionMessage, len(params.Messages))
-	for i, m := range params.Messages {
+	repairedMsgs := repairOrphanedToolCalls(params.Messages)
+	msgs := make([]openai.ChatCompletionMessage, len(repairedMsgs))
+	for i, m := range repairedMsgs {
 		msg := openai.ChatCompletionMessage{
 			Role:    m.Role,
 			Content: m.Content,
@@ -196,4 +197,51 @@ func (p *OpenAIProvider) convertParams(params provider.GenerateParams) (openai.C
 	}
 
 	return req, nil
+}
+
+// repairOrphanedToolCalls injects synthetic error responses when an assistant
+// tool call is followed by a non-tool message without a matching tool response.
+// OpenAI API returns 400 without this repair. Pending calls at history end are untouched.
+func repairOrphanedToolCalls(msgs []provider.Message) []provider.Message {
+	var result []provider.Message
+	for i, msg := range msgs {
+		result = append(result, msg)
+		if msg.Role != "assistant" || len(msg.ToolCalls) == 0 {
+			continue
+		}
+		// Scan forward: check whether each tool call has a matching tool response
+		// before the next non-tool message.
+		answered := make(map[string]bool, len(msg.ToolCalls))
+		hasFollowingUser := false
+		for j := i + 1; j < len(msgs); j++ {
+			if msgs[j].Role == "tool" {
+				if id, ok := msgs[j].Metadata["tool_call_id"].(string); ok {
+					answered[id] = true
+				}
+				continue
+			}
+			// Non-tool message (user, assistant, etc.) — orphan boundary
+			hasFollowingUser = true
+			break
+		}
+		// Pending calls at end of history are valid (response pending)
+		if !hasFollowingUser {
+			continue
+		}
+		// Inject synthetic response only for unanswered calls
+		for _, tc := range msg.ToolCalls {
+			if tc.ID != "" && !answered[tc.ID] {
+				logger.Warnw("injecting synthetic tool response for orphaned tool call",
+					"call_id", tc.ID, "name", tc.Name)
+				result = append(result, provider.Message{
+					Role:    "tool",
+					Content: `{"error":"tool call was interrupted and did not complete"}`,
+					Metadata: map[string]interface{}{
+						"tool_call_id": tc.ID,
+					},
+				})
+			}
+		}
+	}
+	return result
 }
