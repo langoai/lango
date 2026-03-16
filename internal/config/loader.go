@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"reflect"
 	"regexp"
 	"strings"
 	"time"
@@ -54,11 +55,21 @@ func DefaultConfig() *Config {
 				Headless:       true,
 				SessionTimeout: 5 * time.Minute,
 			},
+			OutputManager: OutputManagerConfig{
+				TokenBudget: 2000,
+				HeadRatio:   0.7,
+				TailRatio:   0.3,
+			},
 		},
 		Security: SecurityConfig{
 			Interceptor: InterceptorConfig{
 				Enabled:        true,
 				ApprovalPolicy: ApprovalPolicyDangerous,
+				Presidio: PresidioConfig{
+					URL:            "http://localhost:5002",
+					ScoreThreshold: 0.7,
+					Language:       "en",
+				},
 			},
 			DBEncryption: DBEncryptionConfig{
 				Enabled:        false,
@@ -196,122 +207,67 @@ func boolPtr(b bool) *bool {
 	return &b
 }
 
+// setDefaultsFromStruct recursively walks a struct using mapstructure tags
+// and calls v.SetDefault for each non-zero leaf value. This ensures
+// DefaultConfig() is the single source of truth for all default values.
+func setDefaultsFromStruct(v *viper.Viper, prefix string, val reflect.Value) {
+	typ := val.Type()
+	for i := 0; i < typ.NumField(); i++ {
+		field := typ.Field(i)
+		fieldVal := val.Field(i)
+
+		tag := field.Tag.Get("mapstructure")
+		if tag == "" || tag == "-" {
+			continue
+		}
+
+		key := tag
+		if prefix != "" {
+			key = prefix + "." + tag
+		}
+
+		// Dereference pointers.
+		actual := fieldVal
+		if actual.Kind() == reflect.Ptr {
+			if actual.IsNil() {
+				continue
+			}
+			actual = actual.Elem()
+		}
+
+		switch actual.Kind() {
+		case reflect.Struct:
+			// Recurse into nested config sections.
+			setDefaultsFromStruct(v, key, actual)
+		case reflect.Map:
+			// Skip maps — they contain dynamic user content, not static defaults.
+			continue
+		case reflect.Slice:
+			if actual.Len() > 0 {
+				v.SetDefault(key, actual.Interface())
+			}
+		default:
+			if actual.IsZero() {
+				continue
+			}
+			// Convert string-based custom types (ApprovalPolicy, Confidence, etc.)
+			// to plain string so viper stores them consistently.
+			if actual.Kind() == reflect.String {
+				v.SetDefault(key, actual.String())
+			} else {
+				v.SetDefault(key, actual.Interface())
+			}
+		}
+	}
+}
+
 // Load reads configuration from file and environment
 func Load(configPath string) (*Config, error) {
 	v := viper.New()
 
-	// Set defaults from DefaultConfig
+	// Set defaults from DefaultConfig — single source of truth.
 	defaults := DefaultConfig()
-	v.SetDefault("dataRoot", defaults.DataRoot)
-	v.SetDefault("server.host", defaults.Server.Host)
-	v.SetDefault("server.port", defaults.Server.Port)
-	v.SetDefault("server.httpEnabled", defaults.Server.HTTPEnabled)
-	v.SetDefault("server.wsEnabled", defaults.Server.WebSocketEnabled)
-	v.SetDefault("agent.provider", defaults.Agent.Provider)
-	v.SetDefault("agent.model", defaults.Agent.Model)
-	v.SetDefault("agent.maxTokens", defaults.Agent.MaxTokens)
-	v.SetDefault("agent.temperature", defaults.Agent.Temperature)
-	v.SetDefault("agent.requestTimeout", defaults.Agent.RequestTimeout)
-	v.SetDefault("agent.toolTimeout", defaults.Agent.ToolTimeout)
-	v.SetDefault("logging.level", defaults.Logging.Level)
-	v.SetDefault("logging.format", defaults.Logging.Format)
-	v.SetDefault("session.databasePath", defaults.Session.DatabasePath)
-	v.SetDefault("session.ttl", defaults.Session.TTL)
-	v.SetDefault("session.maxHistoryTurns", defaults.Session.MaxHistoryTurns)
-	v.SetDefault("tools.exec.defaultTimeout", defaults.Tools.Exec.DefaultTimeout)
-	v.SetDefault("tools.exec.allowBackground", defaults.Tools.Exec.AllowBackground)
-	v.SetDefault("tools.filesystem.maxReadSize", defaults.Tools.Filesystem.MaxReadSize)
-	v.SetDefault("tools.browser.enabled", defaults.Tools.Browser.Enabled)
-	v.SetDefault("tools.browser.headless", defaults.Tools.Browser.Headless)
-	v.SetDefault("tools.browser.sessionTimeout", defaults.Tools.Browser.SessionTimeout)
-	v.SetDefault("tools.outputManager.tokenBudget", 2000)
-	v.SetDefault("tools.outputManager.headRatio", 0.7)
-	v.SetDefault("tools.outputManager.tailRatio", 0.3)
-	v.SetDefault("security.interceptor.enabled", defaults.Security.Interceptor.Enabled)
-	v.SetDefault("security.interceptor.approvalPolicy", string(defaults.Security.Interceptor.ApprovalPolicy))
-	v.SetDefault("security.dbEncryption.enabled", defaults.Security.DBEncryption.Enabled)
-	v.SetDefault("security.dbEncryption.cipherPageSize", defaults.Security.DBEncryption.CipherPageSize)
-	v.SetDefault("security.kms.fallbackToLocal", defaults.Security.KMS.FallbackToLocal)
-	v.SetDefault("security.kms.timeoutPerOperation", defaults.Security.KMS.TimeoutPerOperation)
-	v.SetDefault("security.kms.maxRetries", defaults.Security.KMS.MaxRetries)
-	v.SetDefault("graph.enabled", defaults.Graph.Enabled)
-	v.SetDefault("graph.backend", defaults.Graph.Backend)
-	v.SetDefault("graph.maxTraversalDepth", defaults.Graph.MaxTraversalDepth)
-	v.SetDefault("graph.maxExpansionResults", defaults.Graph.MaxExpansionResults)
-	v.SetDefault("a2a.enabled", defaults.A2A.Enabled)
-	v.SetDefault("payment.enabled", defaults.Payment.Enabled)
-	v.SetDefault("payment.walletProvider", defaults.Payment.WalletProvider)
-	v.SetDefault("payment.network.chainId", defaults.Payment.Network.ChainID)
-	v.SetDefault("payment.network.usdcContract", defaults.Payment.Network.USDCContract)
-	v.SetDefault("payment.limits.maxPerTx", defaults.Payment.Limits.MaxPerTx)
-	v.SetDefault("payment.limits.maxDaily", defaults.Payment.Limits.MaxDaily)
-	v.SetDefault("payment.limits.autoApproveBelow", defaults.Payment.Limits.AutoApproveBelow)
-	v.SetDefault("payment.x402.autoIntercept", defaults.Payment.X402.AutoIntercept)
-	v.SetDefault("payment.x402.maxAutoPayAmount", defaults.Payment.X402.MaxAutoPayAmount)
-	v.SetDefault("cron.enabled", defaults.Cron.Enabled)
-	v.SetDefault("cron.timezone", defaults.Cron.Timezone)
-	v.SetDefault("cron.maxConcurrentJobs", defaults.Cron.MaxConcurrentJobs)
-	v.SetDefault("cron.defaultSessionMode", defaults.Cron.DefaultSessionMode)
-	v.SetDefault("cron.historyRetention", defaults.Cron.HistoryRetention)
-	v.SetDefault("cron.defaultJobTimeout", defaults.Cron.DefaultJobTimeout)
-	v.SetDefault("cron.defaultDeliverTo", defaults.Cron.DefaultDeliverTo)
-	v.SetDefault("background.enabled", defaults.Background.Enabled)
-	v.SetDefault("background.yieldMs", defaults.Background.YieldMs)
-	v.SetDefault("background.maxConcurrentTasks", defaults.Background.MaxConcurrentTasks)
-	v.SetDefault("background.defaultDeliverTo", defaults.Background.DefaultDeliverTo)
-	v.SetDefault("workflow.enabled", defaults.Workflow.Enabled)
-	v.SetDefault("workflow.maxConcurrentSteps", defaults.Workflow.MaxConcurrentSteps)
-	v.SetDefault("workflow.defaultTimeout", defaults.Workflow.DefaultTimeout)
-	v.SetDefault("workflow.stateDir", defaults.Workflow.StateDir)
-	v.SetDefault("workflow.defaultDeliverTo", defaults.Workflow.DefaultDeliverTo)
-	v.SetDefault("librarian.enabled", defaults.Librarian.Enabled)
-	v.SetDefault("librarian.observationThreshold", defaults.Librarian.ObservationThreshold)
-	v.SetDefault("librarian.inquiryCooldownTurns", defaults.Librarian.InquiryCooldownTurns)
-	v.SetDefault("librarian.maxPendingInquiries", defaults.Librarian.MaxPendingInquiries)
-	v.SetDefault("librarian.autoSaveConfidence", defaults.Librarian.AutoSaveConfidence)
-	v.SetDefault("observationalMemory.enabled", defaults.ObservationalMemory.Enabled)
-	v.SetDefault("observationalMemory.messageTokenThreshold", defaults.ObservationalMemory.MessageTokenThreshold)
-	v.SetDefault("observationalMemory.observationTokenThreshold", defaults.ObservationalMemory.ObservationTokenThreshold)
-	v.SetDefault("observationalMemory.maxMessageTokenBudget", defaults.ObservationalMemory.MaxMessageTokenBudget)
-	v.SetDefault("observationalMemory.maxReflectionsInContext", defaults.ObservationalMemory.MaxReflectionsInContext)
-	v.SetDefault("observationalMemory.maxObservationsInContext", defaults.ObservationalMemory.MaxObservationsInContext)
-	v.SetDefault("observationalMemory.memoryTokenBudget", defaults.ObservationalMemory.MemoryTokenBudget)
-	v.SetDefault("observationalMemory.reflectionConsolidationThreshold", defaults.ObservationalMemory.ReflectionConsolidationThreshold)
-	v.SetDefault("security.interceptor.presidio.url", "http://localhost:5002")
-	v.SetDefault("security.interceptor.presidio.scoreThreshold", 0.7)
-	v.SetDefault("security.interceptor.presidio.language", "en")
-	v.SetDefault("skill.enabled", defaults.Skill.Enabled)
-	v.SetDefault("skill.skillsDir", defaults.Skill.SkillsDir)
-	v.SetDefault("skill.allowImport", defaults.Skill.AllowImport)
-	v.SetDefault("skill.maxBulkImport", defaults.Skill.MaxBulkImport)
-	v.SetDefault("skill.importConcurrency", defaults.Skill.ImportConcurrency)
-	v.SetDefault("skill.importTimeout", defaults.Skill.ImportTimeout)
-	v.SetDefault("mcp.enabled", defaults.MCP.Enabled)
-	v.SetDefault("mcp.defaultTimeout", defaults.MCP.DefaultTimeout)
-	v.SetDefault("mcp.maxOutputTokens", defaults.MCP.MaxOutputTokens)
-	v.SetDefault("mcp.healthCheckInterval", defaults.MCP.HealthCheckInterval)
-	v.SetDefault("mcp.autoReconnect", defaults.MCP.AutoReconnect)
-	v.SetDefault("mcp.maxReconnectAttempts", defaults.MCP.MaxReconnectAttempts)
-	v.SetDefault("p2p.enabled", defaults.P2P.Enabled)
-	v.SetDefault("p2p.listenAddrs", defaults.P2P.ListenAddrs)
-	v.SetDefault("p2p.keyDir", defaults.P2P.KeyDir)
-	v.SetDefault("p2p.nodeKeyName", "p2p.node.privatekey")
-	v.SetDefault("p2p.enableRelay", defaults.P2P.EnableRelay)
-	v.SetDefault("p2p.enableMdns", defaults.P2P.EnableMDNS)
-	v.SetDefault("p2p.maxPeers", defaults.P2P.MaxPeers)
-	v.SetDefault("p2p.handshakeTimeout", defaults.P2P.HandshakeTimeout)
-	v.SetDefault("p2p.sessionTokenTtl", defaults.P2P.SessionTokenTTL)
-	v.SetDefault("p2p.gossipInterval", defaults.P2P.GossipInterval)
-	v.SetDefault("p2p.zkHandshake", defaults.P2P.ZKHandshake)
-	v.SetDefault("p2p.zkAttestation", defaults.P2P.ZKAttestation)
-	v.SetDefault("p2p.zkp.proofCacheDir", defaults.P2P.ZKP.ProofCacheDir)
-	v.SetDefault("p2p.zkp.provingScheme", defaults.P2P.ZKP.ProvingScheme)
-	v.SetDefault("p2p.toolIsolation.container.enabled", defaults.P2P.ToolIsolation.Container.Enabled)
-	v.SetDefault("p2p.toolIsolation.container.runtime", defaults.P2P.ToolIsolation.Container.Runtime)
-	v.SetDefault("p2p.toolIsolation.container.image", defaults.P2P.ToolIsolation.Container.Image)
-	v.SetDefault("p2p.toolIsolation.container.networkMode", defaults.P2P.ToolIsolation.Container.NetworkMode)
-	v.SetDefault("p2p.toolIsolation.container.poolSize", defaults.P2P.ToolIsolation.Container.PoolSize)
-	v.SetDefault("p2p.toolIsolation.container.poolIdleTimeout", defaults.P2P.ToolIsolation.Container.PoolIdleTimeout)
+	setDefaultsFromStruct(v, "", reflect.ValueOf(defaults).Elem())
 
 	// Configure viper
 	v.SetConfigType("json")

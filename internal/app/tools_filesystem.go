@@ -14,15 +14,12 @@ func buildFilesystemTools(fsTool *filesystem.Tool) []*agent.Tool {
 			Name:        "fs_read",
 			Description: "Read a file. Supports optional offset/limit for partial reads.",
 			SafetyLevel: agent.SafetyLevelSafe,
-			Parameters: map[string]interface{}{
-				"type": "object",
-				"properties": map[string]interface{}{
-					"path":   map[string]interface{}{"type": "string", "description": "The file path to read"},
-					"offset": map[string]interface{}{"type": "integer", "description": "Start reading from this line number (1-indexed, default: read from beginning)"},
-					"limit":  map[string]interface{}{"type": "integer", "description": "Maximum number of lines to return (default: all lines)"},
-				},
-				"required": []string{"path"},
-			},
+			Parameters: agent.Schema().
+				Str("path", "The file path to read").
+				Int("offset", "Start reading from this line number (1-indexed, default: read from beginning)").
+				Int("limit", "Maximum number of lines to return (default: all lines)").
+				Required("path").
+				Build(),
 			Handler: func(ctx context.Context, params map[string]interface{}) (interface{}, error) {
 				path, err := toolparam.RequireString(params, "path")
 				if err != nil {
@@ -42,13 +39,10 @@ func buildFilesystemTools(fsTool *filesystem.Tool) []*agent.Tool {
 			Name:        "fs_list",
 			Description: "List contents of a directory",
 			SafetyLevel: agent.SafetyLevelSafe,
-			Parameters: map[string]interface{}{
-				"type": "object",
-				"properties": map[string]interface{}{
-					"path": map[string]interface{}{"type": "string", "description": "The directory path to list"},
-				},
-				"required": []string{"path"},
-			},
+			Parameters: agent.Schema().
+				Str("path", "The directory path to list").
+				Required("path").
+				Build(),
 			Handler: func(ctx context.Context, params map[string]interface{}) (interface{}, error) {
 				path := toolparam.OptionalString(params, "path", ".")
 				return fsTool.ListDir(path)
@@ -58,14 +52,11 @@ func buildFilesystemTools(fsTool *filesystem.Tool) []*agent.Tool {
 			Name:        "fs_write",
 			Description: "Write content to a file",
 			SafetyLevel: agent.SafetyLevelDangerous,
-			Parameters: map[string]interface{}{
-				"type": "object",
-				"properties": map[string]interface{}{
-					"path":    map[string]interface{}{"type": "string", "description": "The file path to write to"},
-					"content": map[string]interface{}{"type": "string", "description": "The content to write"},
-				},
-				"required": []string{"path", "content"},
-			},
+			Parameters: agent.Schema().
+				Str("path", "The file path to write to").
+				Str("content", "The content to write").
+				Required("path", "content").
+				Build(),
 			Handler: func(ctx context.Context, params map[string]interface{}) (interface{}, error) {
 				path, err := toolparam.RequireString(params, "path")
 				if err != nil {
@@ -79,16 +70,13 @@ func buildFilesystemTools(fsTool *filesystem.Tool) []*agent.Tool {
 			Name:        "fs_edit",
 			Description: "Edit a file by replacing a line range",
 			SafetyLevel: agent.SafetyLevelDangerous,
-			Parameters: map[string]interface{}{
-				"type": "object",
-				"properties": map[string]interface{}{
-					"path":      map[string]interface{}{"type": "string", "description": "The file path to edit"},
-					"startLine": map[string]interface{}{"type": "integer", "description": "The starting line number (1-indexed)"},
-					"endLine":   map[string]interface{}{"type": "integer", "description": "The ending line number (inclusive)"},
-					"content":   map[string]interface{}{"type": "string", "description": "The new content for the specified range"},
-				},
-				"required": []string{"path", "startLine", "endLine", "content"},
-			},
+			Parameters: agent.Schema().
+				Str("path", "The file path to edit").
+				Int("startLine", "The starting line number (1-indexed)").
+				Int("endLine", "The ending line number (inclusive)").
+				Str("content", "The new content for the specified range").
+				Required("path", "startLine", "endLine", "content").
+				Build(),
 			Handler: func(ctx context.Context, params map[string]interface{}) (interface{}, error) {
 				path, err := toolparam.RequireString(params, "path")
 				if err != nil {
@@ -104,13 +92,10 @@ func buildFilesystemTools(fsTool *filesystem.Tool) []*agent.Tool {
 			Name:        "fs_mkdir",
 			Description: "Create a directory",
 			SafetyLevel: agent.SafetyLevelModerate,
-			Parameters: map[string]interface{}{
-				"type": "object",
-				"properties": map[string]interface{}{
-					"path": map[string]interface{}{"type": "string", "description": "The directory path to create"},
-				},
-				"required": []string{"path"},
-			},
+			Parameters: agent.Schema().
+				Str("path", "The directory path to create").
+				Required("path").
+				Build(),
 			Handler: func(ctx context.Context, params map[string]interface{}) (interface{}, error) {
 				path, err := toolparam.RequireString(params, "path")
 				if err != nil {
@@ -123,13 +108,10 @@ func buildFilesystemTools(fsTool *filesystem.Tool) []*agent.Tool {
 			Name:        "fs_delete",
 			Description: "Delete a file or directory",
 			SafetyLevel: agent.SafetyLevelDangerous,
-			Parameters: map[string]interface{}{
-				"type": "object",
-				"properties": map[string]interface{}{
-					"path": map[string]interface{}{"type": "string", "description": "The path to delete"},
-				},
-				"required": []string{"path"},
-			},
+			Parameters: agent.Schema().
+				Str("path", "The path to delete").
+				Required("path").
+				Build(),
 			Handler: func(ctx context.Context, params map[string]interface{}) (interface{}, error) {
 				path, err := toolparam.RequireString(params, "path")
 				if err != nil {
@@ -142,13 +124,10 @@ func buildFilesystemTools(fsTool *filesystem.Tool) []*agent.Tool {
 			Name:        "fs_stat",
 			Description: "Get file metadata (size, line count, modification time) without reading content",
 			SafetyLevel: agent.SafetyLevelSafe,
-			Parameters: map[string]interface{}{
-				"type": "object",
-				"properties": map[string]interface{}{
-					"path": map[string]interface{}{"type": "string", "description": "The file path to inspect"},
-				},
-				"required": []string{"path"},
-			},
+			Parameters: agent.Schema().
+				Str("path", "The file path to inspect").
+				Required("path").
+				Build(),
 			Handler: func(ctx context.Context, params map[string]interface{}) (interface{}, error) {
 				path, err := toolparam.RequireString(params, "path")
 				if err != nil {

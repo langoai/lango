@@ -3,8 +3,11 @@ package config
 import (
 	"os"
 	"path/filepath"
+	"reflect"
 	"testing"
+	"time"
 
+	"github.com/spf13/viper"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -255,4 +258,111 @@ func TestSubstituteEnvVars_SlackAppTokenAndSigningSecret(t *testing.T) {
 
 	assert.Equal(t, "xapp-token", cfg.Channels.Slack.AppToken)
 	assert.Equal(t, "signing-secret", cfg.Channels.Slack.SigningSecret)
+}
+
+// TestDefaultsParity verifies that viper defaults produced by the walker
+// match DefaultConfig() field-by-field after unmarshal.
+func TestDefaultsParity(t *testing.T) {
+	t.Parallel()
+
+	expected := DefaultConfig()
+
+	// Build viper with walker-generated defaults and unmarshal into a fresh Config.
+	v := viper.New()
+	setDefaultsFromStruct(v, "", reflect.ValueOf(expected).Elem())
+	v.SetConfigType("json")
+
+	got := &Config{}
+	require.NoError(t, v.Unmarshal(got))
+
+	// Compare section by section for clearer error messages.
+	assert.Equal(t, expected.DataRoot, got.DataRoot, "DataRoot")
+	assert.Equal(t, expected.Server, got.Server, "Server")
+	assert.Equal(t, expected.Agent, got.Agent, "Agent")
+	assert.Equal(t, expected.Logging, got.Logging, "Logging")
+	assert.Equal(t, expected.Session, got.Session, "Session")
+	assert.Equal(t, expected.Tools, got.Tools, "Tools")
+	assert.Equal(t, expected.Security.Interceptor.Enabled, got.Security.Interceptor.Enabled, "Security.Interceptor.Enabled")
+	assert.Equal(t, expected.Security.Interceptor.ApprovalPolicy, got.Security.Interceptor.ApprovalPolicy, "Security.Interceptor.ApprovalPolicy")
+	assert.Equal(t, expected.Security.Interceptor.Presidio, got.Security.Interceptor.Presidio, "Security.Interceptor.Presidio")
+	assert.Equal(t, expected.Security.DBEncryption, got.Security.DBEncryption, "Security.DBEncryption")
+	assert.Equal(t, expected.Security.KMS.FallbackToLocal, got.Security.KMS.FallbackToLocal, "Security.KMS.FallbackToLocal")
+	assert.Equal(t, expected.Security.KMS.TimeoutPerOperation, got.Security.KMS.TimeoutPerOperation, "Security.KMS.TimeoutPerOperation")
+	assert.Equal(t, expected.Security.KMS.MaxRetries, got.Security.KMS.MaxRetries, "Security.KMS.MaxRetries")
+	assert.Equal(t, expected.Knowledge, got.Knowledge, "Knowledge")
+	assert.Equal(t, expected.ObservationalMemory, got.ObservationalMemory, "ObservationalMemory")
+	assert.Equal(t, expected.Graph, got.Graph, "Graph")
+	assert.Equal(t, expected.Skill, got.Skill, "Skill")
+	assert.Equal(t, expected.Librarian.Enabled, got.Librarian.Enabled, "Librarian.Enabled")
+	assert.Equal(t, expected.Librarian.ObservationThreshold, got.Librarian.ObservationThreshold, "Librarian.ObservationThreshold")
+	assert.Equal(t, expected.Librarian.InquiryCooldownTurns, got.Librarian.InquiryCooldownTurns, "Librarian.InquiryCooldownTurns")
+	assert.Equal(t, expected.Librarian.MaxPendingInquiries, got.Librarian.MaxPendingInquiries, "Librarian.MaxPendingInquiries")
+	assert.Equal(t, expected.Librarian.AutoSaveConfidence, got.Librarian.AutoSaveConfidence, "Librarian.AutoSaveConfidence")
+	assert.Equal(t, expected.MCP, got.MCP, "MCP")
+	assert.Equal(t, expected.Payment, got.Payment, "Payment")
+	assert.Equal(t, expected.Cron, got.Cron, "Cron")
+	assert.Equal(t, expected.Background, got.Background, "Background")
+	assert.Equal(t, expected.Workflow, got.Workflow, "Workflow")
+	assert.Equal(t, expected.P2P.Enabled, got.P2P.Enabled, "P2P.Enabled")
+	assert.Equal(t, expected.P2P.ListenAddrs, got.P2P.ListenAddrs, "P2P.ListenAddrs")
+	assert.Equal(t, expected.P2P.KeyDir, got.P2P.KeyDir, "P2P.KeyDir")
+	assert.Equal(t, expected.P2P.EnableRelay, got.P2P.EnableRelay, "P2P.EnableRelay")
+	assert.Equal(t, expected.P2P.EnableMDNS, got.P2P.EnableMDNS, "P2P.EnableMDNS")
+	assert.Equal(t, expected.P2P.MaxPeers, got.P2P.MaxPeers, "P2P.MaxPeers")
+	assert.Equal(t, expected.P2P.HandshakeTimeout, got.P2P.HandshakeTimeout, "P2P.HandshakeTimeout")
+	assert.Equal(t, expected.P2P.SessionTokenTTL, got.P2P.SessionTokenTTL, "P2P.SessionTokenTTL")
+	assert.Equal(t, expected.P2P.GossipInterval, got.P2P.GossipInterval, "P2P.GossipInterval")
+	assert.Equal(t, expected.P2P.ZKHandshake, got.P2P.ZKHandshake, "P2P.ZKHandshake")
+	assert.Equal(t, expected.P2P.ZKAttestation, got.P2P.ZKAttestation, "P2P.ZKAttestation")
+	assert.Equal(t, expected.P2P.ZKP, got.P2P.ZKP, "P2P.ZKP")
+	assert.Equal(t, expected.P2P.ToolIsolation.Enabled, got.P2P.ToolIsolation.Enabled, "P2P.ToolIsolation.Enabled")
+	assert.Equal(t, expected.P2P.ToolIsolation.TimeoutPerTool, got.P2P.ToolIsolation.TimeoutPerTool, "P2P.ToolIsolation.TimeoutPerTool")
+	assert.Equal(t, expected.P2P.ToolIsolation.MaxMemoryMB, got.P2P.ToolIsolation.MaxMemoryMB, "P2P.ToolIsolation.MaxMemoryMB")
+	assert.Equal(t, expected.P2P.ToolIsolation.Container.Runtime, got.P2P.ToolIsolation.Container.Runtime, "P2P.ToolIsolation.Container.Runtime")
+	assert.Equal(t, expected.P2P.ToolIsolation.Container.Image, got.P2P.ToolIsolation.Container.Image, "P2P.ToolIsolation.Container.Image")
+	assert.Equal(t, expected.P2P.ToolIsolation.Container.NetworkMode, got.P2P.ToolIsolation.Container.NetworkMode, "P2P.ToolIsolation.Container.NetworkMode")
+	assert.Equal(t, expected.P2P.ToolIsolation.Container.PoolIdleTimeout, got.P2P.ToolIsolation.Container.PoolIdleTimeout, "P2P.ToolIsolation.Container.PoolIdleTimeout")
+}
+
+// TestSetDefaultsFromStruct_DurationHandling verifies that time.Duration fields
+// survive the walker → viper → unmarshal round-trip.
+func TestSetDefaultsFromStruct_DurationHandling(t *testing.T) {
+	t.Parallel()
+
+	expected := DefaultConfig()
+
+	v := viper.New()
+	setDefaultsFromStruct(v, "", reflect.ValueOf(expected).Elem())
+	v.SetConfigType("json")
+
+	got := &Config{}
+	require.NoError(t, v.Unmarshal(got))
+
+	assert.Equal(t, 5*time.Minute, got.Agent.RequestTimeout)
+	assert.Equal(t, 2*time.Minute, got.Agent.ToolTimeout)
+	assert.Equal(t, 30*time.Second, got.Tools.Exec.DefaultTimeout)
+	assert.Equal(t, 5*time.Minute, got.Tools.Browser.SessionTimeout)
+	assert.Equal(t, 24*time.Hour, got.Session.TTL)
+	assert.Equal(t, 30*time.Minute, got.Cron.DefaultJobTimeout)
+	assert.Equal(t, 10*time.Minute, got.Workflow.DefaultTimeout)
+	assert.Equal(t, 30*time.Second, got.P2P.HandshakeTimeout)
+	assert.Equal(t, 5*time.Minute, got.P2P.ToolIsolation.Container.PoolIdleTimeout)
+}
+
+// TestSetDefaultsFromStruct_PointerBoolHandling verifies *bool fields are set correctly.
+func TestSetDefaultsFromStruct_PointerBoolHandling(t *testing.T) {
+	t.Parallel()
+
+	expected := DefaultConfig()
+
+	v := viper.New()
+	setDefaultsFromStruct(v, "", reflect.ValueOf(expected).Elem())
+	v.SetConfigType("json")
+
+	got := &Config{}
+	require.NoError(t, v.Unmarshal(got))
+
+	// ReadOnlyRootfs should be boolPtr(true)
+	require.NotNil(t, got.P2P.ToolIsolation.Container.ReadOnlyRootfs, "ReadOnlyRootfs should not be nil")
+	assert.True(t, *got.P2P.ToolIsolation.Container.ReadOnlyRootfs, "ReadOnlyRootfs should be true")
 }

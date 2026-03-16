@@ -89,3 +89,15 @@ The system SHALL provide a `lango config validate` command that validates the ac
 - **WHEN** the active profile's config passes validation
 - **THEN** the message "Profile \"default\" configuration is valid." is displayed
 
+### Requirement: Config profile commands in configcmd package
+The config profile subcommands (list, create, use, delete, import, export, validate) SHALL be defined in the `configcmd` package via `configcmd.NewConfigCmd()`, not inline in main.go. The returned `*cobra.Command` SHALL include all 7 profile subcommands.
+
+#### Scenario: NewConfigCmd provides all profile subcommands
+- **WHEN** `configcmd.NewConfigCmd(bootLoader)` is called
+- **THEN** the returned command SHALL include subcommands: list, create, use, delete, import, export, validate
+
+#### Scenario: main.go delegates to configcmd
+- **WHEN** the root command is assembled in main.go
+- **THEN** config profile commands SHALL be added via configcmd.NewConfigCmd()
+- **THEN** main.go SHALL NOT contain RunE implementations for profile commands
+

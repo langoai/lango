@@ -1,0 +1,24 @@
+// Package cliboot provides common bootstrap loaders for CLI subcommands.
+// Each function satisfies a standard callback signature used by command constructors.
+package cliboot
+
+import (
+	"github.com/langoai/lango/internal/bootstrap"
+	"github.com/langoai/lango/internal/config"
+)
+
+// BootResult runs bootstrap and returns the full result.
+// The caller is responsible for closing boot.DBClient.
+func BootResult() (*bootstrap.Result, error) {
+	return bootstrap.Run(bootstrap.Options{})
+}
+
+// Config runs bootstrap, returns only the config, and closes the DB client.
+func Config() (*config.Config, error) {
+	boot, err := bootstrap.Run(bootstrap.Options{})
+	if err != nil {
+		return nil, err
+	}
+	defer boot.DBClient.Close()
+	return boot.Config, nil
+}
