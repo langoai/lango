@@ -18,6 +18,7 @@ The system SHALL provide `PresetConfig(name)` that returns a Config with feature
 #### Scenario: Collaborator preset
 - **WHEN** PresetConfig("collaborator") is called
 - **THEN** P2P, Payment, Economy are enabled; Knowledge features remain disabled
+- **AND** `payment.network.rpcUrl` is set to `https://sepolia.base.org` to match the default ChainID 84532 (Base Sepolia)
 
 #### Scenario: Full preset
 - **WHEN** PresetConfig("full") is called

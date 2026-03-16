@@ -26,16 +26,10 @@ func buildBrowserTools(sm *browser.SessionManager) []*agent.Tool {
 			Name:        "browser_navigate",
 			Description: "Navigate the browser to a URL and return the page title, URL, and a text snippet",
 			SafetyLevel: agent.SafetyLevelDangerous,
-			Parameters: map[string]interface{}{
-				"type": "object",
-				"properties": map[string]interface{}{
-					"url": map[string]interface{}{
-						"type":        "string",
-						"description": "The URL to navigate to",
-					},
-				},
-				"required": []string{"url"},
-			},
+			Parameters: agent.Schema().
+				Str("url", "The URL to navigate to").
+				Required("url").
+				Build(),
 			Handler: func(ctx context.Context, params map[string]interface{}) (interface{}, error) {
 				url, err := toolparam.RequireString(params, "url")
 				if err != nil {
@@ -58,29 +52,13 @@ func buildBrowserTools(sm *browser.SessionManager) []*agent.Tool {
 			Name:        "browser_action",
 			Description: "Perform an action on the current browser page: click, type, eval, get_text, get_element_info, or wait",
 			SafetyLevel: agent.SafetyLevelDangerous,
-			Parameters: map[string]interface{}{
-				"type": "object",
-				"properties": map[string]interface{}{
-					"action": map[string]interface{}{
-						"type":        "string",
-						"description": "The action to perform",
-						"enum":        []string{actionClick, actionType, actionEval, actionGetText, actionGetInfo, actionWait},
-					},
-					"selector": map[string]interface{}{
-						"type":        "string",
-						"description": "CSS selector for the target element (required for click, type, get_text, get_element_info, wait)",
-					},
-					"text": map[string]interface{}{
-						"type":        "string",
-						"description": "Text to type (required for type action) or JavaScript to evaluate (required for eval action)",
-					},
-					"timeout": map[string]interface{}{
-						"type":        "integer",
-						"description": "Timeout in seconds for wait action (default: 10)",
-					},
-				},
-				"required": []string{"action"},
-			},
+			Parameters: agent.Schema().
+				Enum("action", "The action to perform", actionClick, actionType, actionEval, actionGetText, actionGetInfo, actionWait).
+				Str("selector", "CSS selector for the target element (required for click, type, get_text, get_element_info, wait)").
+				Str("text", "Text to type (required for type action) or JavaScript to evaluate (required for eval action)").
+				Int("timeout", "Timeout in seconds for wait action (default: 10)").
+				Required("action").
+				Build(),
 			Handler: func(ctx context.Context, params map[string]interface{}) (interface{}, error) {
 				action, err := toolparam.RequireString(params, "action")
 				if err != nil {
@@ -145,15 +123,9 @@ func buildBrowserTools(sm *browser.SessionManager) []*agent.Tool {
 			Name:        "browser_screenshot",
 			Description: "Capture a screenshot of the current browser page as base64 PNG",
 			SafetyLevel: agent.SafetyLevelSafe,
-			Parameters: map[string]interface{}{
-				"type": "object",
-				"properties": map[string]interface{}{
-					"fullPage": map[string]interface{}{
-						"type":        "boolean",
-						"description": "Capture the full scrollable page (default: false)",
-					},
-				},
-			},
+			Parameters: agent.Schema().
+				Bool("fullPage", "Capture the full scrollable page (default: false)").
+				Build(),
 			Handler: func(ctx context.Context, params map[string]interface{}) (interface{}, error) {
 				sessionID, err := sm.EnsureSession()
 				if err != nil {

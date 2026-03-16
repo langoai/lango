@@ -2,8 +2,19 @@
 
 Define the configuration loading, saving, and migration system for encrypted SQLite profiles.
 ## Requirements
+### Requirement: PostLoad one-stop normalization and validation
+The `config` package SHALL export a `PostLoad(*Config) error` function that applies all post-load processing in order: legacy migration, environment variable substitution, path normalization, path validation, and full config validation. All operations MUST be idempotent — calling PostLoad multiple times on the same config SHALL produce the same result.
+
+#### Scenario: PostLoad applies full processing chain
+- **WHEN** `PostLoad(cfg)` is called on a freshly deserialized config
+- **THEN** the config has legacy fields migrated, env vars expanded, paths normalized to absolute, data paths validated under DataRoot, and full config validation applied
+
+#### Scenario: PostLoad is idempotent
+- **WHEN** `PostLoad(cfg)` is called twice on the same config
+- **THEN** the second call produces no additional changes and returns the same result
+
 ### Requirement: Configuration loading
-The system SHALL load configuration through the bootstrap process from an encrypted SQLite database profile instead of directly from a plaintext JSON file. The `config.Load()` function SHALL be retained for migration purposes only.
+The system SHALL load configuration through the bootstrap process from an encrypted SQLite database profile instead of directly from a plaintext JSON file. The `config.Load()` function SHALL be retained for migration purposes only. `Load()` SHALL delegate all post-load processing to `PostLoad()` instead of calling individual steps separately.
 
 #### Scenario: Normal startup
 - **WHEN** the application starts via `lango serve`
@@ -12,6 +23,10 @@ The system SHALL load configuration through the bootstrap process from an encryp
 #### Scenario: Migration loading
 - **WHEN** `config.Load()` is called during JSON import
 - **THEN** the JSON file is read with environment variable substitution (existing behavior preserved)
+
+#### Scenario: Load delegates to PostLoad
+- **WHEN** `config.Load(path)` is called
+- **THEN** after unmarshalling, it calls `PostLoad(cfg)` once and returns the result
 
 ### Requirement: Configuration save
 The system SHALL save configuration through `configstore.Store.Save()` which encrypts and stores in the database. The legacy `config.Save()` function SHALL be removed.
@@ -55,57 +70,23 @@ The configuration system SHALL validate that at least one provider is configured
 - **THEN** it can import and use `config.ValidLogLevels` directly
 
 ### Requirement: Default values
-The configuration system SHALL apply sensible defaults for all non-credential fields. The minimum viable configuration SHALL require only: `agent.provider`, `providers.<name>.type`, `providers.<name>.apiKey`, and one channel's `enabled: true` + token. All other fields SHALL have defaults:
-- `server.host`: `"localhost"`
-- `server.port`: `18789`
-- `server.httpEnabled`: `true`
-- `server.wsEnabled`: `true`
-- `session.databasePath`: `"~/.lango/lango.db"`
-- `session.maxHistoryTurns`: `100`
-- `logging.level`: `"info"`
-- `logging.format`: `"console"`
-- `agent.maxTokens`: `4096`
-- `agent.temperature`: `0.7`
-- `tools.exec.defaultTimeout`: `30s`
-- `tools.exec.allowBackground`: `true`
-- `tools.filesystem.maxReadSize`: `1048576` (1MB)
-- `tools.browser.headless`: `true`
-- `tools.browser.sessionTimeout`: `5m`
-- `librarian.enabled`: `false`
-- `librarian.observationThreshold`: `2`
-- `librarian.inquiryCooldownTurns`: `3`
-- `librarian.maxPendingInquiries`: `2`
-- `librarian.autoSaveConfidence`: `"high"`
-- `observationalMemory.enabled`: `false`
-- `observationalMemory.messageTokenThreshold`: `1000`
-- `observationalMemory.observationTokenThreshold`: `2000`
-- `observationalMemory.maxMessageTokenBudget`: `8000`
-- `observationalMemory.maxReflectionsInContext`: `5`
-- `observationalMemory.maxObservationsInContext`: `20`
-- `observationalMemory.memoryTokenBudget`: `4000`
-- `observationalMemory.reflectionConsolidationThreshold`: `5`
+DefaultConfig() SHALL be the single source of truth for all config default values. Load() SHALL derive all viper defaults by walking the DefaultConfig() struct recursively using mapstructure tags and calling v.SetDefault() for each non-zero leaf field. Manual v.SetDefault() calls for individual config keys SHALL NOT exist in the loading path.
 
-#### Scenario: Missing optional field
-- **WHEN** a configuration field is not specified
-- **THEN** the system SHALL use the default value listed above
-- **THEN** no error or warning SHALL be emitted for missing optional fields
+#### Scenario: Load uses struct walker for defaults
+- **WHEN** `config.Load(path)` is called
+- **THEN** it SHALL walk `DefaultConfig()` struct via `setDefaultsFromStruct()` to populate all viper defaults
 
-#### Scenario: Session database path defaults to lango.db
-- **WHEN** `session.databasePath` is not specified in the configuration
-- **THEN** the system SHALL default to `"~/.lango/lango.db"`
-- **THEN** standalone CLI commands (doctor, memory list) SHALL open this path as fallback
+#### Scenario: New config fields are automatically defaulted
+- **WHEN** a developer adds a new field with a mapstructure tag and non-zero default in DefaultConfig()
+- **THEN** Load() SHALL apply that default automatically without manual SetDefault calls
 
-#### Scenario: Minimal configuration startup
-- **WHEN** config contains only `agent.provider`, one provider entry with `type` and `apiKey`, and one channel with `enabled: true` and token
-- **THEN** the application SHALL start successfully with all defaults applied
+#### Scenario: No manual SetDefault in load path
+- **WHEN** the Load() function is inspected
+- **THEN** there SHALL be zero manual v.SetDefault() calls outside the walker
 
-#### Scenario: Librarian defaults applied
-- **WHEN** the `librarian` section is omitted from configuration
-- **THEN** the system SHALL apply default values: enabled=false, observationThreshold=2, inquiryCooldownTurns=3, maxPendingInquiries=2, autoSaveConfidence="high"
-
-#### Scenario: ObservationalMemory defaults applied
-- **WHEN** the `observationalMemory` section is omitted from configuration
-- **THEN** the system SHALL apply default values: enabled=false, messageTokenThreshold=1000, observationTokenThreshold=2000, maxMessageTokenBudget=8000, maxReflectionsInContext=5, maxObservationsInContext=20, memoryTokenBudget=4000, reflectionConsolidationThreshold=5
+#### Scenario: Parity between DefaultConfig and viper unmarshal
+- **WHEN** DefaultConfig() is compared with a Config produced by viper unmarshal using only walker-derived defaults
+- **THEN** all non-zero fields SHALL match
 
 ### Requirement: DataRoot enforces data path boundaries
 The Config SHALL include a `DataRoot` field (default: `~/.lango/`) that defines the root directory for all lango data files. All configurable data paths (session.databasePath, graph.databasePath, skill.skillsDir, workflow.stateDir, p2p.keyDir, p2p.zkp.proofCacheDir, p2p.workspace.dataDir) MUST reside under DataRoot. The `NormalizePaths()` function SHALL expand tildes and resolve relative paths under DataRoot. The `ValidateDataPaths()` function SHALL reject any path outside DataRoot with a clear error message.

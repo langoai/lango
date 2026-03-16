@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 
 	"github.com/langoai/lango/internal/cli/prompt"
+	"github.com/langoai/lango/internal/config"
 	"github.com/langoai/lango/internal/configstore"
 	"github.com/langoai/lango/internal/keyring"
 	"github.com/langoai/lango/internal/security"
@@ -232,7 +233,6 @@ func phaseLoadProfile() Phase {
 		Run: func(ctx context.Context, s *State) error {
 			store := configstore.NewStore(s.Client, s.Crypto)
 			s.Result.ConfigStore = store
-
 			profileName := s.Options.ForceProfile
 
 			if profileName != "" {
@@ -242,26 +242,28 @@ func phaseLoadProfile() Phase {
 				}
 				s.Result.Config = cfg
 				s.Result.ProfileName = profileName
-				return nil
-			}
-
-			name, cfg, err := store.LoadActive(ctx)
-			if err != nil && !errors.Is(err, configstore.ErrNoActiveProfile) {
-				return fmt.Errorf("load active profile: %w", err)
-			}
-
-			if errors.Is(err, configstore.ErrNoActiveProfile) {
-				resultCfg, resultName, handleErr := handleNoProfile(ctx, store)
-				if handleErr != nil {
-					return handleErr
+			} else {
+				name, cfg, err := store.LoadActive(ctx)
+				if err != nil && !errors.Is(err, configstore.ErrNoActiveProfile) {
+					return fmt.Errorf("load active profile: %w", err)
 				}
-				s.Result.Config = resultCfg
-				s.Result.ProfileName = resultName
-				return nil
+				if errors.Is(err, configstore.ErrNoActiveProfile) {
+					resultCfg, resultName, handleErr := handleNoProfile(ctx, store)
+					if handleErr != nil {
+						return handleErr
+					}
+					s.Result.Config = resultCfg
+					s.Result.ProfileName = resultName
+				} else {
+					s.Result.Config = cfg
+					s.Result.ProfileName = name
+				}
 			}
 
-			s.Result.Config = cfg
-			s.Result.ProfileName = name
+			// Single post-load: normalize + validate for all branches.
+			if err := config.PostLoad(s.Result.Config); err != nil {
+				return fmt.Errorf("post-load config: %w", err)
+			}
 			return nil
 		},
 	}

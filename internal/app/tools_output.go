@@ -16,17 +16,14 @@ func buildOutputTools(store *tooloutput.OutputStore) []*agent.Tool {
 			Name:        "tool_output_get",
 			Description: "Retrieve full or partial stored tool output by reference. Use when a tool result was compressed and you need more detail.",
 			SafetyLevel: agent.SafetyLevelSafe,
-			Parameters: map[string]interface{}{
-				"type": "object",
-				"properties": map[string]interface{}{
-					"ref":     map[string]interface{}{"type": "string", "description": "The stored output reference (UUID from _meta.storedRef)"},
-					"mode":    map[string]interface{}{"type": "string", "description": "Retrieval mode: full (default), range, or grep", "enum": []string{"full", "range", "grep"}},
-					"offset":  map[string]interface{}{"type": "integer", "description": "Line offset for range mode (0-indexed, default 0)"},
-					"limit":   map[string]interface{}{"type": "integer", "description": "Max lines to return for range mode (default 100)"},
-					"pattern": map[string]interface{}{"type": "string", "description": "Regex pattern for grep mode"},
-				},
-				"required": []string{"ref"},
-			},
+			Parameters: agent.Schema().
+				Str("ref", "The stored output reference (UUID from _meta.storedRef)").
+				Enum("mode", "Retrieval mode: full (default), range, or grep", "full", "range", "grep").
+				Int("offset", "Line offset for range mode (0-indexed, default 0)").
+				Int("limit", "Max lines to return for range mode (default 100)").
+				Str("pattern", "Regex pattern for grep mode").
+				Required("ref").
+				Build(),
 			Handler: func(ctx context.Context, params map[string]interface{}) (interface{}, error) {
 				ref, err := toolparam.RequireString(params, "ref")
 				if err != nil {

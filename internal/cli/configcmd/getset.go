@@ -52,8 +52,10 @@ Examples:
 
 // NewSetCmd creates the "config set <dot.path> <value>" command.
 // The passphrase is implicitly verified via bootstrap (caller must bootstrap first).
+// cfgLoader returns (config, cleanup, error). cleanup closes bootstrap resources
+// and is called via defer in RunE so resources are released on all code paths.
 func NewSetCmd(
-	cfgLoader func() (*config.Config, error),
+	cfgLoader func() (*config.Config, func(), error),
 	cfgSaver func(*config.Config) error,
 ) *cobra.Command {
 	cmd := &cobra.Command{
@@ -71,7 +73,10 @@ Examples:
   lango config set economy.budget.defaultMax 20.00`,
 		Args: cobra.ExactArgs(2),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			cfg, err := cfgLoader()
+			cfg, cleanup, err := cfgLoader()
+			if cleanup != nil {
+				defer cleanup()
+			}
 			if err != nil {
 				return fmt.Errorf("load config: %w", err)
 			}

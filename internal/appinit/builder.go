@@ -26,9 +26,10 @@ func (b *Builder) AddModule(m Module) *Builder {
 
 // BuildResult holds the aggregated output from all initialized modules.
 type BuildResult struct {
-	Tools      []*agent.Tool
-	Components []lifecycle.ComponentEntry
-	Resolver   Resolver
+	Tools          []*agent.Tool
+	Components     []lifecycle.ComponentEntry
+	CatalogEntries []CatalogEntry
+	Resolver       Resolver
 }
 
 // Build sorts modules by dependency order, initializes each in sequence,
@@ -42,6 +43,7 @@ func (b *Builder) Build(ctx context.Context) (*BuildResult, error) {
 	resolver := newMapResolver()
 	var tools []*agent.Tool
 	var components []lifecycle.ComponentEntry
+	var catalogEntries []CatalogEntry
 
 	for _, m := range sorted {
 		result, err := m.Init(ctx, resolver)
@@ -54,6 +56,7 @@ func (b *Builder) Build(ctx context.Context) (*BuildResult, error) {
 
 		tools = append(tools, result.Tools...)
 		components = append(components, result.Components...)
+		catalogEntries = append(catalogEntries, result.CatalogEntries...)
 
 		for key, val := range result.Values {
 			resolver.set(key, val)
@@ -61,8 +64,9 @@ func (b *Builder) Build(ctx context.Context) (*BuildResult, error) {
 	}
 
 	return &BuildResult{
-		Tools:      tools,
-		Components: components,
-		Resolver:   resolver,
+		Tools:          tools,
+		Components:     components,
+		CatalogEntries: catalogEntries,
+		Resolver:       resolver,
 	}, nil
 }

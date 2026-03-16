@@ -22,16 +22,10 @@ func buildExecTools(sv *supervisor.Supervisor, automationAvailable map[string]bo
 			Name:        "exec",
 			Description: "Execute shell commands",
 			SafetyLevel: agent.SafetyLevelDangerous,
-			Parameters: map[string]interface{}{
-				"type": "object",
-				"properties": map[string]interface{}{
-					"command": map[string]interface{}{
-						"type":        "string",
-						"description": "The shell command to execute",
-					},
-				},
-				"required": []string{"command"},
-			},
+			Parameters: agent.Schema().
+				Str("command", "The shell command to execute").
+				Required("command").
+				Build(),
 			Handler: func(ctx context.Context, params map[string]interface{}) (interface{}, error) {
 				cmd, ok := params["command"].(string)
 				if !ok {
@@ -50,16 +44,10 @@ func buildExecTools(sv *supervisor.Supervisor, automationAvailable map[string]bo
 			Name:        "exec_bg",
 			Description: "Execute a shell command in the background",
 			SafetyLevel: agent.SafetyLevelDangerous,
-			Parameters: map[string]interface{}{
-				"type": "object",
-				"properties": map[string]interface{}{
-					"command": map[string]interface{}{
-						"type":        "string",
-						"description": "The shell command to execute",
-					},
-				},
-				"required": []string{"command"},
-			},
+			Parameters: agent.Schema().
+				Str("command", "The shell command to execute").
+				Required("command").
+				Build(),
 			Handler: func(ctx context.Context, params map[string]interface{}) (interface{}, error) {
 				cmd, ok := params["command"].(string)
 				if !ok {
@@ -78,16 +66,10 @@ func buildExecTools(sv *supervisor.Supervisor, automationAvailable map[string]bo
 			Name:        "exec_status",
 			Description: "Check the status of a background process",
 			SafetyLevel: agent.SafetyLevelSafe,
-			Parameters: map[string]interface{}{
-				"type": "object",
-				"properties": map[string]interface{}{
-					"id": map[string]interface{}{
-						"type":        "string",
-						"description": "The background process ID returned by exec_bg",
-					},
-				},
-				"required": []string{"id"},
-			},
+			Parameters: agent.Schema().
+				Str("id", "The background process ID returned by exec_bg").
+				Required("id").
+				Build(),
 			Handler: func(ctx context.Context, params map[string]interface{}) (interface{}, error) {
 				id, ok := params["id"].(string)
 				if !ok {
@@ -100,16 +82,10 @@ func buildExecTools(sv *supervisor.Supervisor, automationAvailable map[string]bo
 			Name:        "exec_stop",
 			Description: "Stop a background process",
 			SafetyLevel: agent.SafetyLevelDangerous,
-			Parameters: map[string]interface{}{
-				"type": "object",
-				"properties": map[string]interface{}{
-					"id": map[string]interface{}{
-						"type":        "string",
-						"description": "The background process ID returned by exec_bg",
-					},
-				},
-				"required": []string{"id"},
-			},
+			Parameters: agent.Schema().
+				Str("id", "The background process ID returned by exec_bg").
+				Required("id").
+				Build(),
 			Handler: func(ctx context.Context, params map[string]interface{}) (interface{}, error) {
 				id, ok := params["id"].(string)
 				if !ok {
