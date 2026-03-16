@@ -54,7 +54,7 @@ func TestDefaultBuilder_UsesEmbeddedContent(t *testing.T) {
 
 	result := DefaultBuilder().Build()
 	// Verify embedded content is loaded (not fallbacks)
-	assert.Contains(t, result, "fifteen tool categories")
+	assert.Contains(t, result, "twenty-two tool categories")
 	assert.Contains(t, result, "Never expose secrets")
 	assert.Contains(t, result, "Exec Tool")
 }
