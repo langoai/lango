@@ -257,7 +257,14 @@ Use 'lango serve' to start and 'lango economy escrow sentinel alerts'
 (via agent tools) to view detected alerts.
 ```
 
-When on-chain escrow is disabled:
+When escrow is disabled:
+
+```bash
+$ lango economy escrow sentinel status
+Escrow is disabled. Sentinel is not active.
+```
+
+When only on-chain escrow is disabled:
 
 ```bash
 $ lango economy escrow sentinel status

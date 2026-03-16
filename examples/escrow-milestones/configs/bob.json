@@ -1,0 +1,78 @@
+{
+  "server": {
+    "host": "0.0.0.0",
+    "port": 18790,
+    "httpEnabled": true,
+    "webSocketEnabled": false
+  },
+  "agent": { "provider": "", "model": "" },
+  "payment": {
+    "enabled": true,
+    "walletProvider": "local",
+    "network": {
+      "chainId": 31337,
+      "rpcUrl": "http://anvil:8545",
+      "usdcContract": "PLACEHOLDER_USDC_ADDRESS"
+    },
+    "limits": {
+      "maxPerTx": "100.00",
+      "maxDaily": "1000.00",
+      "autoApproveBelow": "50.00"
+    }
+  },
+  "economy": {
+    "enabled": true,
+    "budget": {
+      "defaultMax": "50.00",
+      "alertThresholds": [0.5, 0.8, 0.95]
+    },
+    "escrow": {
+      "enabled": true,
+      "defaultTimeout": "24h",
+      "maxMilestones": 10,
+      "autoRelease": true,
+      "onChain": {
+        "enabled": true,
+        "mode": "hub",
+        "contractVersion": "v2",
+        "hubV2Address": "PLACEHOLDER_HUB_V2_ADDRESS",
+        "milestoneSettlerAddress": "PLACEHOLDER_MILESTONE_SETTLER_ADDRESS",
+        "directSettlerAddress": "PLACEHOLDER_DIRECT_SETTLER_ADDRESS",
+        "tokenAddress": "PLACEHOLDER_USDC_ADDRESS"
+      }
+    }
+  },
+  "p2p": {
+    "enabled": true,
+    "listenAddrs": ["/ip4/0.0.0.0/tcp/9002"],
+    "enableMdns": true,
+    "maxPeers": 50,
+    "autoApproveKnownPeers": true,
+    "firewallRules": [
+      { "peerDid": "*", "action": "allow", "tools": ["*"] }
+    ],
+    "gossipInterval": "5s",
+    "zkHandshake": false,
+    "zkAttestation": false,
+    "ownerProtection": {
+      "ownerName": "Bob",
+      "ownerEmail": "",
+      "ownerPhone": "",
+      "blockConversations": true
+    },
+    "minTrustScore": 0.3
+  },
+  "a2a": {
+    "enabled": true,
+    "agentName": "Bob",
+    "agentDescription": "Escrow Test Seller (Bob)",
+    "baseUrl": "http://bob:18790"
+  },
+  "security": {
+    "signer": { "provider": "local" },
+    "interceptor": { "enabled": false, "headlessAutoApprove": true }
+  },
+  "knowledge": { "enabled": false },
+  "observationalMemory": { "enabled": false },
+  "graph": { "enabled": false }
+}

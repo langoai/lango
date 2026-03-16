@@ -1,5 +1,5 @@
 <div align="center">
-  <img src="./banner.png" alt="Lango Banner">
+  <img src="./logo.png" alt="Lango Logo">
 </div>
 <br>
 
@@ -64,14 +64,6 @@ This project includes experimental AI Agent features and is currently in an unst
 - 📜 **Smart Contracts** — EVM smart contract interaction with ABI caching, view/pure reads, state-changing calls, and Foundry-based escrow contracts (LangoEscrowHub, LangoVault, LangoVaultFactory)
 - 🏦 **Smart Accounts** — ERC-7579 modular smart accounts (Safe-based), ERC-4337 account abstraction with session keys, gasless USDC transactions via paymaster (Circle/Pimlico/Alchemy), on-chain spending limits, and hierarchical session key management
 - 👥 **P2P Teams** — Task-scoped agent groups with role-based delegation, conflict resolution (trust_weighted, majority_vote, leader_decides, fail_on_conflict), assignment strategies, and payment coordination
-- 🤝 **P2P Workspaces** — Collaborative workspaces with lifecycle management, message channels (task proposals, log streams, commit signals), git bundle exchange, contribution tracking, and graph store chronicling
-- 🏥 **Team Health Monitoring** — Periodic health checks for P2P team members with event bus integration and automatic status tracking
-- 📦 **Incremental Git Bundles** — Delta-based git bundle creation for efficient workspace code exchange, with bundle store and protocol layer
-- 🌿 **Task Branch Management** — Per-task branch creation and lifecycle management in workspace git repositories
-- 🎛️ **Config Presets** — Purpose-built configuration templates (minimal, researcher, collaborator, full) for quick onboarding
-- 🔌 **Event-Driven Bridges** — Decoupled event bus bridges between team/escrow/reputation/budget/workspace subsystems
-- 🔗 **EventMonitor Reorg Protection** — Confirmation-depth-based L2 reorg detection with safe-block processing for on-chain escrow events
-- 📜 **Escrow Hub V2** — UUPS-upgradeable master escrow hub with pluggable settler pattern, supporting simple/milestone/team deal types
 - 📊 **Observability** — Token usage tracking, health monitoring, audit logging, and metrics endpoints
 
 ## Quick Start
@@ -123,9 +115,7 @@ For the full configuration editor with all options, use `lango settings`.
 lango serve                      Start the gateway server
 lango version                    Print version and build info
 lango health [--port N]          Check gateway health (default port: 18789)
-lango status [--output json]     Unified system status dashboard (config, server, features)
 lango onboard                    Guided 5-step setup wizard for first-time configuration
-lango onboard --preset <name>    Start from a preset (minimal, researcher, collaborator, full)
 lango settings                   Full interactive configuration editor (all options)
 lango doctor [--fix] [--json]    Diagnostics and health checks
 
@@ -188,7 +178,7 @@ lango payment info [--json]      Show wallet and payment system info
 lango payment send [flags]       Send USDC payment (--to, --amount, --purpose required; --force, --json)
 lango payment x402 [--json]      Show X402 auto-pay configuration
 
-lango cron add [flags]           Add a cron job (--name, --schedule/--every/--at, --prompt, --deliver, --timezone, --timeout)
+lango cron add [flags]           Add a cron job (--name, --schedule/--every/--at, --prompt, --deliver, --timezone)
 lango cron list                  List all cron jobs
 lango cron delete <id-or-name>   Delete a cron job
 lango cron pause <id-or-name>    Pause a cron job
@@ -232,16 +222,6 @@ lango p2p team status <id>       Show team details and member status
 lango p2p team disband <id>      Disband an active team
 lango p2p zkp status             Show ZKP configuration
 lango p2p zkp circuits           List compiled ZKP circuits
-lango p2p workspace create       Create a collaborative workspace
-lango p2p workspace list         List all workspaces
-lango p2p workspace status <id>  Show workspace status and members
-lango p2p workspace join <id>    Join a workspace
-lango p2p workspace leave <id>   Leave a workspace
-lango p2p git init <ws-id>       Initialize workspace git repo
-lango p2p git log <ws-id>        Show workspace commit history
-lango p2p git diff <ws-id>       Show diff between commits
-lango p2p git push <ws-id>       Create and push git bundle
-lango p2p git fetch <ws-id>      Fetch and apply git bundle
 
 lango economy budget status     Show budget allocation status
 lango economy risk status       Show risk assessment configuration
@@ -314,10 +294,13 @@ lango/
 │   ├── channels/           # Telegram, Discord, Slack integrations
 │   ├── cli/                # CLI commands
 │   │   ├── tuicore/        #   Shared TUI components (FormModel, Field types)
-│   │   ├── agent/          #   lango agent status/list
-│   │   ├── common/         #   shared CLI helpers
+│   │   ├── clitypes/       #   Shared CLI type definitions (provider loaders)
+│   │   ├── agent/          #   lango agent status/list/tools/hooks
+│   │   ├── approval/       #   lango approval status
 │   │   ├── doctor/         #   lango doctor (diagnostics)
 │   │   ├── graph/          #   lango graph status/query/stats/clear
+│   │   ├── learning/       #   lango learning status/history
+│   │   ├── librarian/      #   lango librarian status/inquiries
 │   │   ├── memory/         #   lango memory list/status/clear
 │   │   ├── onboard/        #   lango onboard (5-step guided wizard)
 │   │   ├── settings/       #   lango settings (full configuration editor)
@@ -325,22 +308,27 @@ lango/
 │   │   ├── cron/           #   lango cron add/list/delete/pause/resume/history
 │   │   ├── bg/             #   lango bg list/status/cancel/result
 │   │   ├── workflow/       #   lango workflow run/list/status/cancel/history
-│   │   ├── mcp/           #   lango mcp list/add/remove/get/test/enable/disable
+│   │   ├── mcp/            #   lango mcp list/add/remove/get/test/enable/disable
 │   │   ├── prompt/         #   interactive prompt utilities
 │   │   ├── security/       #   lango security status/secrets/migrate-passphrase/keyring/db-migrate/db-decrypt/kms
-│   │   ├── p2p/            #   lango p2p status/peers/connect/disconnect/firewall/discover/identity/reputation/pricing/session/sandbox
-│   │   ├── economy/       #   lango economy budget/risk/pricing/negotiate/escrow status/list/show/sentinel
-│   │   ├── contract/      #   lango contract read/call/abi
-│   │   ├── metrics/       #   lango metrics [sessions|tools|agents|history]
+│   │   ├── p2p/            #   lango p2p status/peers/connect/disconnect/firewall/discover/identity/reputation/pricing/session/sandbox/team/zkp
+│   │   ├── economy/        #   lango economy budget/risk/pricing/negotiate/escrow status/list/show/sentinel
+│   │   ├── contract/       #   lango contract read/call/abi
+│   │   ├── smartaccount/   #   lango account info/deploy/session/module/policy/paymaster
+│   │   ├── metrics/        #   lango metrics [sessions|tools|agents|history]
 │   │   └── tui/            #   TUI components and views
 │   ├── config/             # Config loading, env var substitution, validation
 │   ├── configstore/        # Encrypted config profile storage (Ent-backed)
 │   ├── ctxkeys/            # Context key helpers for agent name propagation
 │   ├── a2a/                # A2A protocol server and remote agent loading
 │   ├── economy/             # P2P economy layer (budget, risk, pricing, negotiation, escrow)
-│   │   └── escrow/          #   Milestone escrow engine, on-chain settlement
-│   │       ├── hub/         #     Hub/Vault settlers, contract clients
-│   │       └── sentinel/    #     Security Sentinel anomaly detection
+│   │   ├── budget/          #   Task budget allocation and tracking
+│   │   ├── escrow/          #   Milestone escrow engine, on-chain settlement
+│   │   │   ├── hub/         #     Hub/Vault settlers, contract clients
+│   │   │   └── sentinel/    #     Security Sentinel anomaly detection
+│   │   ├── negotiation/     #   P2P price negotiation protocol
+│   │   ├── pricing/         #   Dynamic pricing with trust/volume discounts
+│   │   └── risk/            #   Trust-based risk assessment
 │   ├── embedding/          # Embedding providers (OpenAI, Google, local) and RAG
 │   ├── ent/                # Ent ORM schemas and generated code
 │   ├── eventbus/           # Typed synchronous event pub/sub
@@ -353,7 +341,8 @@ lango/
 │   ├── memory/             # Observational memory (observer, reflector, token counter)
 │   ├── orchestration/      # Multi-agent orchestration (operator, navigator, vault, librarian, automator, planner, chronicler)
 │   ├── keyring/            # Hardware keyring integration (Touch ID / TPM 2.0)
-│   ├── passphrase/         # Passphrase prompt and validation helpers
+│   ├── mdparse/            # Markdown frontmatter parser (YAML extraction)
+│   ├── prompt/             # System prompt builder, section loader, defaults
 │   ├── provider/           # AI provider interface and implementations
 │   │   ├── anthropic/      #   Claude models
 │   │   ├── gemini/         #   Google Gemini models
@@ -369,15 +358,29 @@ lango/
 │   ├── payment/            # Blockchain payment service (USDC on EVM chains, X402 audit trail)
 │   ├── observability/       # Metrics, token tracking, health checks, audit logging
 │   ├── p2p/                # P2P networking (libp2p node, identity, handshake, firewall, discovery, ZKP)
-│   │   ├── team/           #   P2P team coordination with health monitoring
-│   │   ├── workspace/      #   Collaborative workspace lifecycle and messaging
-│   │   ├── gitbundle/      #   Incremental git bundle store, task branches, protocol
-│   │   ├── agentpool/      #   Agent pool with health checking
-│   │   └── settlement/     #   On-chain USDC settlement
+│   │   ├── agentpool/      #   Agent pool with health checking and weighted selection
+│   │   ├── discovery/      #   GossipSub agent card propagation, credential revocation
+│   │   ├── firewall/       #   Default deny-all ACL with per-peer, per-tool rules
+│   │   ├── handshake/      #   ZK-enhanced authentication, session store, nonce cache
+│   │   ├── identity/       #   DID identity derivation (did:lango:<pubkey>)
+│   │   ├── paygate/        #   Payment gate, ledger, trust-based pricing
+│   │   ├── protocol/       #   P2P protocol handler, remote agent, message types
+│   │   ├── reputation/     #   Trust score tracking based on exchange outcomes
+│   │   ├── settlement/     #   On-chain USDC settlement (EIP-3009)
+│   │   ├── team/           #   P2P team coordination with conflict resolution
+│   │   └── zkp/            #   ZK proofs (Plonk/Groth16), circuits (ownership, balance, capability, attestation)
+│   ├── smartaccount/       # ERC-7579 smart accounts (Safe-based, ERC-4337 account abstraction)
+│   │   ├── bindings/       #   Contract ABI bindings (Safe7579, SessionValidator, SpendingHook, EscrowExecutor)
+│   │   ├── bundler/        #   ERC-4337 UserOp bundler client
+│   │   ├── module/         #   ERC-7579 module registry and ABI encoder
+│   │   ├── paymaster/      #   Gasless USDC transactions (Circle, Pimlico, Alchemy providers)
+│   │   ├── policy/         #   Spending policy engine, on-chain syncer, validator
+│   │   └── session/        #   Hierarchical session key management, crypto, store
 │   ├── supervisor/         # Provider proxy, privileged tool execution
+│   ├── testutil/           # Test mocks and helpers (crypto, embedding, graph, provider, session)
 │   ├── wallet/             # Wallet providers (local, rpc, composite), spending limiter
 │   ├── x402/               # X402 V2 payment protocol (Coinbase SDK, EIP-3009 signing)
-│   ├── mcp/               # MCP server connection, tool adaptation, multi-scope config
+│   ├── mcp/                # MCP server connection, tool adaptation, multi-scope config
 │   ├── toolcatalog/        # Thread-safe tool registry with categories
 │   ├── toolchain/          # Middleware chain for tool wrapping
 │   ├── tools/              # browser, crypto, exec, filesystem, secrets, payment
@@ -664,6 +667,20 @@ All settings are managed via `lango onboard` (guided wizard), `lango settings` (
 | `smartAccount.paymaster.paymasterAddress`              | string   | -                           | Paymaster contract address                                                                                        |
 | `smartAccount.paymaster.policyId`                      | string   | -                           | Optional paymaster policy ID                                                                                      |
 | `smartAccount.paymaster.fallbackMode`                  | string   | `"abort"`                   | Fallback when paymaster fails: `abort` or `direct`                                                                |
+| **MCP** (🧪 Experimental Features)                     |          |                             |                                                                                                                   |
+| `mcp.enabled`                                          | bool     | `false`                     | Enable MCP server integration                                                                                     |
+| `mcp.defaultTimeout`                                   | duration | `30s`                       | Default timeout for MCP operations                                                                                |
+| `mcp.maxOutputTokens`                                  | int      | `25000`                     | Max output size from MCP tool calls                                                                               |
+| `mcp.healthCheckInterval`                              | duration | `30s`                       | Periodic server health probe interval                                                                             |
+| `mcp.autoReconnect`                                    | bool     | `true`                      | Auto-reconnect on connection loss                                                                                 |
+| `mcp.maxReconnectAttempts`                             | int      | `5`                         | Max reconnection attempts                                                                                         |
+| `mcp.servers.<name>.transport`                         | string   | `"stdio"`                   | Transport type: `stdio`, `http`, `sse`                                                                            |
+| `mcp.servers.<name>.command`                           | string   | -                           | Executable for stdio transport                                                                                    |
+| `mcp.servers.<name>.args`                              | []string | -                           | Command-line arguments for stdio transport                                                                        |
+| `mcp.servers.<name>.url`                               | string   | -                           | Endpoint for http/sse transport                                                                                   |
+| `mcp.servers.<name>.enabled`                           | bool     | `true`                      | Whether this server is active                                                                                     |
+| `mcp.servers.<name>.timeout`                           | duration | -                           | Override default timeout for this server                                                                          |
+| `mcp.servers.<name>.safetyLevel`                       | string   | `"dangerous"`               | Tool safety level: `safe`, `moderate`, `dangerous`                                                                |
 
 
 ## On-Chain Economy (Base Sepolia Testnet)
@@ -687,31 +704,50 @@ Lango smart contracts are deployed on **Base Sepolia** (chain ID `84532`). These
 
 ### Configuration
 
-Enable on-chain economy with the deployed Base Sepolia contracts:
+Enable on-chain economy with the deployed Base Sepolia contracts. Export your profile, add the settings, and re-import:
 
 ```bash
-# Economy — on-chain escrow (hub mode)
-lango config set economy.enabled true
-lango config set economy.escrow.enabled true
-lango config set economy.escrow.onChain.enabled true
-lango config set economy.escrow.onChain.mode hub
-lango config set economy.escrow.onChain.hubAddress "0x1820A1C403A5811660a4893Ae028862208e4f7A8"
-lango config set economy.escrow.onChain.vaultFactoryAddress "0x1CA47128D7fdDD0D875C3AeC7274C894F2c792C2"
-lango config set economy.escrow.onChain.vaultImplementation "0x18167Daeca7A09B32D8BE93c73737B95B64A7ff8"
-lango config set economy.escrow.onChain.arbitratorAddress "0x4BDBDE4A725A83820B7A94cD5dB523eb4515dDAd"
-lango config set economy.escrow.onChain.tokenAddress "0x036CbD53842c5426634e7929541eC2318f3dCF7e"
+lango config export default > /tmp/config.json
+# Edit /tmp/config.json to add the economy, smartAccount, and payment settings below
+lango config import /tmp/config.json --profile default
+```
 
-# Smart Account — ERC-7579 modules
-lango config set smartAccount.enabled true
-lango config set smartAccount.modules.sessionValidatorAddress "0xB52877B5E27F77795Fbe59101D07CA81dbd3f8aC"
-lango config set smartAccount.modules.spendingHookAddress "0xc428774991dBDf6645E254be793cb93A66cd9b4B"
-lango config set smartAccount.modules.escrowExecutorAddress "0x5d08310987C5B59cB03F01363142656C5AE23997"
+Add these settings to your config JSON:
 
-# Payment network (required for on-chain operations)
-lango config set payment.enabled true
-lango config set payment.network.chainId 84532
-lango config set payment.network.rpcUrl "https://sepolia.base.org"
-lango config set payment.network.usdcContract "0x036CbD53842c5426634e7929541eC2318f3dCF7e"
+```json
+{
+  "economy": {
+    "enabled": true,
+    "escrow": {
+      "enabled": true,
+      "onChain": {
+        "enabled": true,
+        "mode": "hub",
+        "hubAddress": "0x1820A1C403A5811660a4893Ae028862208e4f7A8",
+        "vaultFactoryAddress": "0x1CA47128D7fdDD0D875C3AeC7274C894F2c792C2",
+        "vaultImplementation": "0x18167Daeca7A09B32D8BE93c73737B95B64A7ff8",
+        "arbitratorAddress": "0x4BDBDE4A725A83820B7A94cD5dB523eb4515dDAd",
+        "tokenAddress": "0x036CbD53842c5426634e7929541eC2318f3dCF7e"
+      }
+    }
+  },
+  "smartAccount": {
+    "enabled": true,
+    "modules": {
+      "sessionValidatorAddress": "0xB52877B5E27F77795Fbe59101D07CA81dbd3f8aC",
+      "spendingHookAddress": "0xc428774991dBDf6645E254be793cb93A66cd9b4B",
+      "escrowExecutorAddress": "0x5d08310987C5B59cB03F01363142656C5AE23997"
+    }
+  },
+  "payment": {
+    "enabled": true,
+    "network": {
+      "chainId": 84532,
+      "rpcUrl": "https://sepolia.base.org",
+      "usdcContract": "0x036CbD53842c5426634e7929541eC2318f3dCF7e"
+    }
+  }
+}
 ```
 
 ### Getting Testnet USDC
