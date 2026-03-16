@@ -79,13 +79,18 @@ func (sac *smartAccountComponents) BundlerClient() *bundler.Client {
 }
 
 // initSmartAccount creates the smart account subsystem if enabled.
+// smartAccountResult holds the init result including optional lifecycle entries.
+type smartAccountResult struct {
+	components *smartAccountComponents
+	lifecycle  []lifecycle.ComponentEntry
+}
+
 func initSmartAccount(
 	cfg *config.Config,
 	pc *paymentComponents,
 	econc *economyComponents,
 	bus *eventbus.Bus,
-	reg *lifecycle.Registry,
-) *smartAccountComponents {
+) *smartAccountResult {
 	if !cfg.SmartAccount.Enabled {
 		logger().Info("smart account disabled",
 			"fix", "set smartAccount.enabled=true via 'lango config set smartAccount.enabled true'")
@@ -105,6 +110,7 @@ func initSmartAccount(
 	}
 
 	sac := &smartAccountComponents{}
+	var lcEntries []lifecycle.ComponentEntry
 
 	// 1. Bundler client
 	entryPoint := common.HexToAddress(cfg.SmartAccount.EntryPointAddress)
@@ -245,12 +251,13 @@ func initSmartAccount(
 		})
 		guard.Start()
 		sac.sessionGuard = guard
-		if reg != nil {
-			reg.Register(lifecycle.NewFuncComponent("smart-account-session-guard",
+		lcEntries = append(lcEntries, lifecycle.ComponentEntry{
+			Component: lifecycle.NewFuncComponent("smart-account-session-guard",
 				func(_ context.Context, _ *sync.WaitGroup) error { return nil },
 				func(_ context.Context) error { guard.Stop(); return nil },
-			), lifecycle.PriorityAutomation)
-		}
+			),
+			Priority: lifecycle.PriorityAutomation,
+		})
 		logger().Info("smart account: sentinel session guard wired")
 	} else {
 		logger().Warn("smart account: sentinel session guard not wired, anomaly detection unavailable")
@@ -271,7 +278,7 @@ func initSmartAccount(
 	}
 
 	logger().Info("smart account subsystem initialized")
-	return sac
+	return &smartAccountResult{components: sac, lifecycle: lcEntries}
 }
 
 // initPaymasterProvider creates a paymaster provider based on config.

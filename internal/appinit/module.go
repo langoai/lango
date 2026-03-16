@@ -32,6 +32,7 @@ const (
 	ProvidesObservability Provides = "observability"
 	ProvidesMCP          Provides = "mcp"
 	ProvidesWorkspace    Provides = "workspace"
+	ProvidesBaseTools    Provides = "base_tools"
 )
 
 // Resolver provides access to initialized module results.

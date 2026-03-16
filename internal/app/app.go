@@ -3,8 +3,6 @@ package app
 import (
 	"context"
 	"fmt"
-	"os"
-	"path/filepath"
 	"strings"
 	"sync"
 	"time"
@@ -13,27 +11,26 @@ import (
 
 	"github.com/langoai/lango/internal/a2a"
 	"github.com/langoai/lango/internal/agent"
-	"github.com/langoai/lango/internal/agentmemory"
+	"github.com/langoai/lango/internal/appinit"
 	"github.com/langoai/lango/internal/approval"
+	"github.com/langoai/lango/internal/background"
 	"github.com/langoai/lango/internal/bootstrap"
+	cronpkg "github.com/langoai/lango/internal/cron"
 	"github.com/langoai/lango/internal/config"
 	"github.com/langoai/lango/internal/eventbus"
-	"github.com/langoai/lango/internal/gatekeeper"
+	"github.com/langoai/lango/internal/gateway"
+	"github.com/langoai/lango/internal/learning"
 	"github.com/langoai/lango/internal/lifecycle"
+	"github.com/langoai/lango/internal/skill"
 	"github.com/langoai/lango/internal/logging"
 	"github.com/langoai/lango/internal/observability/audit"
 	"github.com/langoai/lango/internal/sandbox"
-	"github.com/langoai/lango/internal/security"
-	execpkg "github.com/langoai/lango/internal/tools/exec"
-	"github.com/langoai/lango/internal/p2p/gitbundle"
 	"github.com/langoai/lango/internal/session"
 	"github.com/langoai/lango/internal/toolcatalog"
 	"github.com/langoai/lango/internal/toolchain"
 	"github.com/langoai/lango/internal/tooloutput"
-	"github.com/langoai/lango/internal/tools/browser"
-	"github.com/langoai/lango/internal/tools/filesystem"
 	"github.com/langoai/lango/internal/wallet"
-	x402pkg "github.com/langoai/lango/internal/x402"
+	"github.com/langoai/lango/internal/workflow"
 )
 
 func logger() *zap.SugaredLogger { return logging.App() }
@@ -51,621 +48,46 @@ func New(boot *bootstrap.Result) (*App, error) {
 		cancel:   cancel,
 	}
 
-	// 1. Supervisor (holds provider secrets, exec tool)
-	sv, err := initSupervisor(cfg)
+	// ── Phase A: Module Build ──
+
+	builder := appinit.NewBuilder()
+	builder.AddModule(&foundationModule{cfg: cfg, boot: boot})
+	builder.AddModule(&intelligenceModule{cfg: cfg, boot: boot, rawDB: boot.RawDB})
+	builder.AddModule(&automationModule{cfg: cfg, app: app})
+	builder.AddModule(&networkModule{cfg: cfg, boot: boot, bus: bus, app: app})
+	builder.AddModule(&extensionModule{cfg: cfg, boot: boot, bus: bus})
+
+	buildResult, err := builder.Build(ctx)
 	if err != nil {
-		return nil, fmt.Errorf("create supervisor: %w", err)
+		return nil, fmt.Errorf("module build: %w", err)
 	}
 
-	// 1b. Response sanitizer (output gatekeeper)
-	if san, initErr := gatekeeper.NewSanitizer(cfg.Gatekeeper); initErr != nil {
-		logger().Warnw("gatekeeper sanitizer init error, disabled", "error", initErr)
-	} else {
-		app.Sanitizer = san
-	}
+	resolver := buildResult.Resolver
+	tools := buildResult.Tools
 
-	// 2. Session Store — reuse the DB client opened during bootstrap.
-	store, err := initSessionStore(cfg, boot)
-	if err != nil {
-		return nil, fmt.Errorf("create session store: %w", err)
-	}
-	app.Store = store
+	// ── Phase B: Post-Build Wiring ──
 
-	// 3. Security — reuse the crypto provider initialized during bootstrap.
-	crypto, keys, secrets, err := initSecurity(cfg, store, boot)
-	if err != nil {
-		return nil, fmt.Errorf("security init: %w", err)
-	}
-	app.Crypto = crypto
-	app.Keys = keys
-	app.Secrets = secrets
+	// B1. Populate app fields from resolver.
+	populateAppFields(app, resolver)
 
-	// 4. Base tools (exec + filesystem + optional browser)
-	// Block agent access to the ~/.lango/ directory.
-	var blockedPaths []string
-	if home, err := os.UserHomeDir(); err == nil {
-		blockedPaths = append(blockedPaths,
-			filepath.Join(home, ".lango")+string(os.PathSeparator))
-	}
-	fsConfig := filesystem.Config{
-		MaxReadSize:  cfg.Tools.Filesystem.MaxReadSize,
-		AllowedPaths: cfg.Tools.Filesystem.AllowedPaths,
-		BlockedPaths: blockedPaths,
-	}
+	// B2. Build catalog from module CatalogEntries.
+	catalog := buildCatalogFromEntries(buildResult.CatalogEntries)
 
-	var browserSM *browser.SessionManager
-	if cfg.Tools.Browser.Enabled {
-		bt, err := browser.New(browser.Config{
-			Headless:       cfg.Tools.Browser.Headless,
-			BrowserBin:     cfg.Tools.Browser.BrowserBin,
-			SessionTimeout: cfg.Tools.Browser.SessionTimeout,
-		})
-		if err != nil {
-			return nil, fmt.Errorf("create browser tool: %w", err)
-		}
-		browserSM = browser.NewSessionManager(bt)
-		app.Browser = browserSM
-		logger().Info("browser tools enabled")
-	}
-
-	automationAvailable := map[string]bool{
-		"cron":       cfg.Cron.Enabled,
-		"background": cfg.Background.Enabled,
-		"workflow":   cfg.Workflow.Enabled,
-	}
-
-	// Build exec command guard protecting the data root and any additional paths.
-	protectedPaths := []string{cfg.DataRoot}
-	protectedPaths = append(protectedPaths, cfg.Tools.Exec.AdditionalProtectedPaths...)
-	cmdGuard := execpkg.NewCommandGuard(protectedPaths)
-
-	tools := buildTools(sv, fsConfig, browserSM, automationAvailable, cmdGuard)
-
-	// Tool Catalog — register every built-in tool for dynamic discovery/dispatch.
-	catalog := toolcatalog.New()
-	catalog.RegisterCategory(toolcatalog.Category{Name: "exec", Description: "Shell command execution", Enabled: true})
-	catalog.RegisterCategory(toolcatalog.Category{Name: "filesystem", Description: "File system operations", Enabled: true})
-	if cfg.Tools.Browser.Enabled {
-		catalog.RegisterCategory(toolcatalog.Category{Name: "browser", Description: "Web browsing", ConfigKey: "tools.browser.enabled", Enabled: true})
-	} else {
-		catalog.RegisterCategory(toolcatalog.Category{Name: "browser", Description: "Web browsing (disabled)", ConfigKey: "tools.browser.enabled", Enabled: false})
-	}
-	// Register base tools (exec, fs, browser) all at once.
-	for _, t := range tools {
-		switch {
-		case strings.HasPrefix(t.Name, "exec"):
-			catalog.Register("exec", []*agent.Tool{t})
-		case strings.HasPrefix(t.Name, "fs_"):
-			catalog.Register("filesystem", []*agent.Tool{t})
-		case strings.HasPrefix(t.Name, "browser_"):
-			catalog.Register("browser", []*agent.Tool{t})
-		}
-	}
-
-	// 4b. Crypto/Secrets tools (if security is enabled)
-	// RefStore holds opaque references; plaintext never reaches agent context.
-	// SecretScanner detects leaked secrets in model output.
-	refs := security.NewRefStore()
-	scanner := agent.NewSecretScanner()
-
-	// Register config secrets to prevent leakage in model output.
-	registerConfigSecrets(scanner, cfg)
-
-	if app.Crypto != nil && app.Keys != nil {
-		ct := buildCryptoTools(app.Crypto, app.Keys, refs, scanner)
-		tools = append(tools, ct...)
-		catalog.RegisterCategory(toolcatalog.Category{Name: "crypto", Description: "Cryptographic operations", ConfigKey: "security.signer.provider", Enabled: true})
-		catalog.Register("crypto", ct)
-		logger().Info("crypto tools registered")
-	} else {
-		catalog.RegisterCategory(toolcatalog.Category{Name: "crypto", Description: "Cryptographic operations (disabled)", ConfigKey: "security.signer.provider", Enabled: false})
-	}
-	if app.Secrets != nil {
-		st := buildSecretsTools(app.Secrets, refs, scanner)
-		tools = append(tools, st...)
-		catalog.RegisterCategory(toolcatalog.Category{Name: "secrets", Description: "Secret management", ConfigKey: "security.secrets.enabled", Enabled: true})
-		catalog.Register("secrets", st)
-		logger().Info("secrets tools registered")
-	} else {
-		catalog.RegisterCategory(toolcatalog.Category{Name: "secrets", Description: "Secret management (disabled)", ConfigKey: "security.secrets.enabled", Enabled: false})
-	}
-
-	// 5d. Graph Store (optional) — initialized before knowledge so GraphEngine can be wired.
-	gc := initGraphStore(cfg)
-	if gc != nil {
-		app.GraphStore = gc.store
-		app.GraphBuffer = gc.buffer
-	}
-
-	// 5. Skills (file-based, independent of knowledge)
-	registry := initSkills(cfg, tools)
-	if registry != nil {
-		app.SkillRegistry = registry
-		tools = append(tools, registry.LoadedSkills()...)
-	}
-
-	// 5a. Knowledge system (optional, non-blocking)
-	kc := initKnowledge(cfg, store, gc)
-	if kc != nil {
-		app.KnowledgeStore = kc.store
-		app.LearningEngine = kc.engine
-
-		// Wrap base tools with learning observer (Engine or GraphEngine)
-		tools = toolchain.ChainAll(tools, toolchain.WithLearning(kc.observer))
-
-		// Add meta-tools
-		metaTools := buildMetaTools(kc.store, kc.engine, registry, cfg.Skill)
-		tools = append(tools, metaTools...)
-		catalog.RegisterCategory(toolcatalog.Category{Name: "meta", Description: "Knowledge, learning, and skill management", ConfigKey: "knowledge.enabled", Enabled: true})
-		catalog.Register("meta", metaTools)
-	} else {
-		catalog.RegisterCategory(toolcatalog.Category{Name: "meta", Description: "Knowledge & learning (disabled)", ConfigKey: "knowledge.enabled", Enabled: false})
-	}
-
-	// 5b. Observational Memory (optional)
-	mc := initMemory(cfg, store, sv)
-	if mc != nil {
-		app.MemoryStore = mc.store
-		app.MemoryBuffer = mc.buffer
-	}
-
-	// 5c. Embedding / RAG (optional)
-	ec := initEmbedding(cfg, boot.RawDB, kc, mc)
-	if ec != nil {
-		app.EmbeddingBuffer = ec.buffer
-		app.RAGService = ec.ragService
-	}
-
-	// 5d'. Wire graph callbacks into knowledge and memory stores.
-	if gc != nil {
-		wireGraphCallbacks(gc, kc, mc, sv, cfg)
-		// Initialize Graph RAG hybrid retrieval.
-		initGraphRAG(cfg, gc, ec)
-	}
-
-	// 5d''. Conversation Analysis (optional)
-	ab := initConversationAnalysis(cfg, sv, store, kc, gc)
-	if ab != nil {
-		app.AnalysisBuffer = ab
-	}
-
-	// 5d'''. Proactive Librarian (optional)
-	lc := initLibrarian(cfg, sv, store, kc, mc, gc)
-	if lc != nil {
-		app.LibrarianInquiryStore = lc.inquiryStore
-		app.LibrarianProactiveBuffer = lc.proactiveBuffer
-	}
-
-	// 5e. Graph tools (optional)
-	if gc != nil {
-		gt := buildGraphTools(gc.store)
-		tools = append(tools, gt...)
-		catalog.RegisterCategory(toolcatalog.Category{Name: "graph", Description: "Knowledge graph traversal", ConfigKey: "graph.enabled", Enabled: true})
-		catalog.Register("graph", gt)
-	} else {
-		catalog.RegisterCategory(toolcatalog.Category{Name: "graph", Description: "Knowledge graph (disabled)", ConfigKey: "graph.enabled", Enabled: false})
-	}
-
-	// 5f. RAG tools (optional)
-	if ec != nil && ec.ragService != nil {
-		rt := buildRAGTools(ec.ragService)
-		tools = append(tools, rt...)
-		catalog.RegisterCategory(toolcatalog.Category{Name: "rag", Description: "Retrieval-augmented generation", ConfigKey: "embedding.rag.enabled", Enabled: true})
-		catalog.Register("rag", rt)
-	} else {
-		catalog.RegisterCategory(toolcatalog.Category{Name: "rag", Description: "RAG retrieval (disabled)", ConfigKey: "embedding.provider", Enabled: false})
-	}
-
-	// 5g. Memory agent tools (optional)
-	if mc != nil {
-		mt := buildMemoryAgentTools(mc.store)
-		tools = append(tools, mt...)
-		catalog.RegisterCategory(toolcatalog.Category{Name: "memory", Description: "Observational memory", ConfigKey: "observationalMemory.enabled", Enabled: true})
-		catalog.Register("memory", mt)
-	} else {
-		catalog.RegisterCategory(toolcatalog.Category{Name: "memory", Description: "Observational memory (disabled)", ConfigKey: "observationalMemory.enabled", Enabled: false})
-	}
-
-	// 5g'. Agent Memory tools (optional, per-agent persistent memory)
-	if cfg.AgentMemory.Enabled {
-		amStore := agentmemory.NewInMemoryStore()
-		app.AgentMemoryStore = amStore
-		amTools := buildAgentMemoryTools(amStore)
-		tools = append(tools, amTools...)
-		catalog.RegisterCategory(toolcatalog.Category{Name: "agent_memory", Description: "Per-agent persistent memory", ConfigKey: "agentMemory.enabled", Enabled: true})
-		catalog.Register("agent_memory", amTools)
-		logger().Info("agent memory tools enabled")
-	} else {
-		catalog.RegisterCategory(toolcatalog.Category{Name: "agent_memory", Description: "Per-agent memory (disabled)", ConfigKey: "agentMemory.enabled", Enabled: false})
-	}
-
-	// 5h. Payment tools (optional)
-	pc := initPayment(cfg, store, app.Secrets)
-	var p2pc *p2pComponents
-	var x402Interceptor *x402pkg.Interceptor
-	if pc != nil {
-		app.WalletProvider = pc.wallet
-		app.PaymentService = pc.service
-
-		// 5h'. X402 interceptor (optional, requires payment)
-		xc := initX402(cfg, app.Secrets, pc.limiter)
-		if xc != nil {
-			x402Interceptor = xc.interceptor
-			app.X402Interceptor = xc.interceptor
-		}
-
-		pt := buildPaymentTools(pc, x402Interceptor)
-		tools = append(tools, pt...)
-		catalog.RegisterCategory(toolcatalog.Category{Name: "payment", Description: "Blockchain payments (USDC on Base)", ConfigKey: "payment.enabled", Enabled: true})
-		catalog.Register("payment", pt)
-
-		// 5h''. P2P networking (optional, requires wallet)
-		// Use the single global bus so settlement and other P2P subscribers
-		// receive tool execution events published by EventBusHook.
-		p2pc = initP2P(cfg, pc.wallet, pc, boot.DBClient, app.Secrets, bus)
-		if p2pc != nil {
-			app.P2PNode = p2pc.node
-			app.P2PAgentPool = p2pc.agentPool
-			app.P2PTeamCoordinator = p2pc.coordinator
-			app.P2PAgentProvider = p2pc.provider
-
-			// Register NonceCache lifecycle so it is stopped on shutdown.
-			if p2pc.nonceCache != nil {
-				nc := p2pc.nonceCache
-				app.registry.Register(lifecycle.NewFuncComponent("p2p-nonce-cache",
-					func(_ context.Context, _ *sync.WaitGroup) error { return nil },
-					func(_ context.Context) error {
-						nc.Stop()
-						return nil
-					},
-				), lifecycle.PriorityNetwork)
-			}
-
-			// Wire P2P payment tool.
-			p2pTools := buildP2PTools(p2pc)
-			p2pTools = append(p2pTools, buildP2PPaymentTool(p2pc, pc)...)
-			p2pTools = append(p2pTools, buildP2PPaidInvokeTool(p2pc, pc)...)
-			tools = append(tools, p2pTools...)
-			catalog.RegisterCategory(toolcatalog.Category{Name: "p2p", Description: "Peer-to-peer networking", ConfigKey: "p2p.enabled", Enabled: true})
-			catalog.Register("p2p", p2pTools)
-
-			// Team coordination tools.
-			if p2pc.coordinator != nil {
-				teamTools := buildTeamTools(p2pc.coordinator)
-				tools = append(tools, teamTools...)
-				catalog.Register("p2p", teamTools)
-			}
-
-			// 5h'''. P2P Workspace + Git (optional, requires P2P node)
-			var sessionValidator gitbundle.SessionValidator
-			if p2pc.sessions != nil {
-				sess := p2pc.sessions
-				sessionValidator = func(token string) (string, bool) {
-					return sess.GetByToken(token)
-				}
-			}
-
-			var localDID string
-			if p2pc.identity != nil {
-				didCtx, didCancel := context.WithTimeout(context.Background(), 5*time.Second)
-				d, idErr := p2pc.identity.DID(didCtx)
-				didCancel()
-				if idErr == nil && d != nil {
-					localDID = d.ID
-				}
-			}
-
-			wsc := initWorkspace(cfg, p2pc.node, localDID, sessionValidator)
-			if wsc != nil {
-				// Build and register workspace tools.
-				wsTools := buildWorkspaceTools(wsc)
-				tools = append(tools, wsTools...)
-				catalog.RegisterCategory(toolcatalog.Category{
-					Name:        "workspace",
-					Description: "P2P collaborative workspaces and git sharing",
-					ConfigKey:   "p2p.workspace.enabled",
-					Enabled:     true,
-				})
-				catalog.Register("workspace", wsTools)
-
-				// Register workspace DB lifecycle for graceful shutdown.
-				wsDB := wsc.db
-				app.registry.Register(lifecycle.NewFuncComponent("p2p-workspace-db",
-					func(_ context.Context, _ *sync.WaitGroup) error { return nil },
-					func(_ context.Context) error {
-						if wsDB != nil {
-							return wsDB.Close()
-						}
-						return nil
-					},
-				), lifecycle.PriorityNetwork)
-
-				// Register workspace gossip lifecycle.
-				if wsc.gossip != nil {
-					wsGossip := wsc.gossip
-					app.registry.Register(lifecycle.NewFuncComponent("p2p-workspace-gossip",
-						func(_ context.Context, _ *sync.WaitGroup) error { return nil },
-						func(_ context.Context) error {
-							wsGossip.Stop()
-							return nil
-						},
-					), lifecycle.PriorityNetwork)
-				}
-
-				// Wire workspace-team bridge.
-				if p2pc.coordinator != nil && wsc.manager != nil {
-					wireWorkspaceTeamBridge(bus, wsc.manager, wsc.tracker, wsc.gossip, logger())
-				}
-
-				logger().Info("P2P workspace tools registered")
-			} else if cfg.P2P.Workspace.Enabled {
-				catalog.RegisterCategory(toolcatalog.Category{Name: "workspace", Description: "P2P workspaces (disabled)", ConfigKey: "p2p.workspace.enabled", Enabled: false})
-			}
-		} else {
-			catalog.RegisterCategory(toolcatalog.Category{Name: "p2p", Description: "P2P networking (disabled — payment required)", ConfigKey: "p2p.enabled", Enabled: false})
-		}
-	} else {
-		catalog.RegisterCategory(toolcatalog.Category{Name: "payment", Description: "Blockchain payments (disabled)", ConfigKey: "payment.enabled", Enabled: false})
-		catalog.RegisterCategory(toolcatalog.Category{Name: "contract", Description: "Smart contract interaction (disabled)", ConfigKey: "payment.enabled", Enabled: false})
-		if cfg.P2P.Enabled {
-			catalog.RegisterCategory(toolcatalog.Category{Name: "p2p", Description: "P2P networking (disabled — payment required)", ConfigKey: "p2p.enabled", Enabled: false})
-		} else {
-			catalog.RegisterCategory(toolcatalog.Category{Name: "p2p", Description: "P2P networking (disabled)", ConfigKey: "p2p.enabled", Enabled: false})
-		}
-		if cfg.P2P.Workspace.Enabled {
-			catalog.RegisterCategory(toolcatalog.Category{Name: "workspace", Description: "P2P workspaces (disabled)", ConfigKey: "p2p.workspace.enabled", Enabled: false})
-		}
-	}
-
-	// 5i. Librarian tools (optional)
-	if lc != nil {
-		lt := buildLibrarianTools(lc.inquiryStore)
-		tools = append(tools, lt...)
-		catalog.RegisterCategory(toolcatalog.Category{Name: "librarian", Description: "Knowledge inquiries and gap detection", ConfigKey: "librarian.enabled", Enabled: true})
-		catalog.Register("librarian", lt)
-	} else {
-		catalog.RegisterCategory(toolcatalog.Category{Name: "librarian", Description: "Knowledge inquiries (disabled)", ConfigKey: "librarian.enabled", Enabled: false})
-	}
-
-	// 5j. Cron Scheduling (optional) — initialized before agent so tools get approval-wrapped.
-	app.CronScheduler = initCron(cfg, store, app)
-	if app.CronScheduler != nil {
-		cronTools := buildCronTools(app.CronScheduler, cfg.Cron.DefaultDeliverTo)
-		tools = append(tools, cronTools...)
-		catalog.RegisterCategory(toolcatalog.Category{Name: "cron", Description: "Cron job scheduling", ConfigKey: "cron.enabled", Enabled: true})
-		catalog.Register("cron", cronTools)
-		logger().Info("cron tools registered")
-	}
-
-	// 5k. Background Tasks (optional)
-	app.BackgroundManager = initBackground(cfg, app)
-	if app.BackgroundManager != nil {
-		bgTools := buildBackgroundTools(app.BackgroundManager, cfg.Background.DefaultDeliverTo)
-		tools = append(tools, bgTools...)
-		catalog.RegisterCategory(toolcatalog.Category{Name: "background", Description: "Background task execution", ConfigKey: "background.enabled", Enabled: true})
-		catalog.Register("background", bgTools)
-		logger().Info("background tools registered")
-	}
-
-	// 5l. Workflow Engine (optional)
-	app.WorkflowEngine = initWorkflow(cfg, store, app)
-	if app.WorkflowEngine != nil {
-		wfTools := buildWorkflowTools(app.WorkflowEngine, cfg.Workflow.StateDir, cfg.Workflow.DefaultDeliverTo)
-		tools = append(tools, wfTools...)
-		catalog.RegisterCategory(toolcatalog.Category{Name: "workflow", Description: "Workflow pipeline execution", ConfigKey: "workflow.enabled", Enabled: true})
-		catalog.Register("workflow", wfTools)
-		logger().Info("workflow tools registered")
-	}
-
-	// Register disabled categories for systems that are off, so builtin_health can report them.
-	if !cfg.Cron.Enabled {
-		catalog.RegisterCategory(toolcatalog.Category{
-			Name:        "cron",
-			Description: "Cron job scheduling (disabled)",
-			ConfigKey:   "cron.enabled",
-			Enabled:     false,
-		})
-	}
-	if !cfg.Background.Enabled {
-		catalog.RegisterCategory(toolcatalog.Category{
-			Name:        "background",
-			Description: "Background task execution (disabled)",
-			ConfigKey:   "background.enabled",
-			Enabled:     false,
-		})
-	}
-	if !cfg.Workflow.Enabled {
-		catalog.RegisterCategory(toolcatalog.Category{
-			Name:        "workflow",
-			Description: "Workflow pipeline execution (disabled)",
-			ConfigKey:   "workflow.enabled",
-			Enabled:     false,
-		})
-	}
-
-	// 5m. Dispatcher tools — dynamic access to all registered built-in tools.
+	// B3. Dispatcher tools — dynamic access to all registered built-in tools.
 	dispatcherTools := toolcatalog.BuildDispatcher(catalog)
 	tools = append(tools, dispatcherTools...)
 	app.ToolCatalog = catalog
 
-	// 5n. MCP Plugins (optional — external MCP server tools)
-	mcpc := initMCP(cfg)
-	if mcpc != nil {
-		app.MCPManager = mcpc.manager
-		tools = append(tools, mcpc.tools...)
-		catalog.RegisterCategory(toolcatalog.Category{
-			Name:        "mcp",
-			Description: "MCP plugin tools (external servers)",
-			ConfigKey:   "mcp.enabled",
-			Enabled:     true,
-		})
-		catalog.Register("mcp", mcpc.tools)
-		// Register management meta-tools
-		mgmtTools := buildMCPManagementTools(mcpc.manager)
-		tools = append(tools, mgmtTools...)
-		catalog.Register("mcp", mgmtTools)
-	} else {
-		catalog.RegisterCategory(toolcatalog.Category{Name: "mcp", Description: "MCP plugins (disabled)", ConfigKey: "mcp.enabled", Enabled: false})
-	}
-
-	// 5o. Economy Layer (optional — budget, risk, pricing, negotiation, escrow)
-	econc := initEconomy(cfg, p2pc, pc, bus)
-	if econc != nil {
-		app.EconomyBudget = econc.budgetEngine
-		app.EconomyRisk = econc.riskEngine
-		app.EconomyPricing = econc.pricingEngine
-		app.EconomyNegotiation = econc.negotiationEngine
-		app.EconomyEscrow = econc.escrowEngine
-
-		econTools := buildEconomyTools(econc)
-		tools = append(tools, econTools...)
-		catalog.RegisterCategory(toolcatalog.Category{
-			Name:        "economy",
-			Description: "P2P economy (budget, risk, pricing, negotiation, escrow)",
-			ConfigKey:   "economy.enabled",
-			Enabled:     true,
-		})
-		catalog.Register("economy", econTools)
-		logger().Info("economy tools registered")
-
-		// 5o'. On-chain escrow tools (if escrow engine is available)
-		if econc.escrowEngine != nil && econc.escrowSettler != nil {
-			escrowTools := buildOnChainEscrowTools(econc.escrowEngine, econc.escrowSettler)
-			tools = append(tools, escrowTools...)
-			catalog.RegisterCategory(toolcatalog.Category{
-				Name:        "escrow",
-				Description: "On-chain escrow management (hub/vault/custodian)",
-				ConfigKey:   "economy.escrow.enabled",
-				Enabled:     true,
-			})
-			catalog.Register("escrow", escrowTools)
-			logger().Info("on-chain escrow tools registered")
-		}
-
-		// 5o''. Sentinel tools (if sentinel engine is available)
-		if econc.sentinelEngine != nil {
-			sentTools := buildSentinelTools(econc.sentinelEngine)
-			tools = append(tools, sentTools...)
-			catalog.RegisterCategory(toolcatalog.Category{
-				Name:        "sentinel",
-				Description: "Security Sentinel anomaly detection",
-				ConfigKey:   "economy.escrow.enabled",
-				Enabled:     true,
-			})
-			catalog.Register("sentinel", sentTools)
-			logger().Info("sentinel tools registered")
-		}
-
-		// Register economy lifecycle components (EventMonitor, DanglingDetector).
-		registerEconomyLifecycle(app.registry, econc)
-	} else {
-		catalog.RegisterCategory(toolcatalog.Category{Name: "economy", Description: "P2P economy (disabled)", ConfigKey: "economy.enabled", Enabled: false})
-	}
-
-	// Register health monitor lifecycle (requires coordinator).
-	if p2pc != nil && p2pc.healthMonitor != nil {
-		app.registry.Register(p2pc.healthMonitor, lifecycle.PriorityAutomation)
-	}
-
-	// 5o'''. Team-Economy Bridges (event-driven)
-	if p2pc != nil && p2pc.coordinator != nil {
-		if econc != nil && econc.escrowEngine != nil {
-			wireTeamEscrowBridge(bus, econc.escrowEngine, p2pc.coordinator, logger())
-		}
-		if econc != nil && econc.budgetEngine != nil {
-			wireTeamBudgetBridge(app.ctx, bus, econc.budgetEngine, p2pc.coordinator, logger())
-		}
-
-		// Team-Reputation bridge: reputation tracking + low-score eviction.
-		if p2pc.reputation != nil {
-			minRepScore := cfg.P2P.Team.MinReputationScore
-			if minRepScore <= 0 {
-				minRepScore = cfg.P2P.MinTrustScore
-			}
-			if minRepScore <= 0 {
-				minRepScore = 0.3
-			}
-			initTeamReputationBridge(bus, p2pc.coordinator, p2pc.reputation, minRepScore, logger())
-		}
-
-		// Team-Shutdown bridge: budget exhaustion → graceful shutdown.
-		if econc != nil && econc.budgetEngine != nil {
-			initTeamShutdownBridge(bus, p2pc.coordinator, logger())
-		}
-
-		// Team-Escrow convenience tools (requires both coordinator + escrow).
-		if econc != nil && econc.escrowEngine != nil {
-			teTools := buildTeamEscrowTools(p2pc.coordinator, econc.escrowEngine, econc.budgetEngine)
-			tools = append(tools, teTools...)
-			catalog.Register("p2p", teTools)
+	// B4. Cross-cutting middleware (order matters).
+	// B4a. WithLearning — wrap all tools with learning observer.
+	iv, _ := resolver.Resolve(appinit.ProvidesKnowledge).(*intelligenceValues)
+	if iv != nil && iv.Observer != nil {
+		if obs, ok := iv.Observer.(learning.ToolResultObserver); ok {
+			tools = toolchain.ChainAll(tools, toolchain.WithLearning(obs))
 		}
 	}
 
-	// 5p. Contract interaction (optional, requires payment)
-	cc := initContract(pc)
-	if cc != nil {
-		ctTools := buildContractTools(cc.caller)
-		tools = append(tools, ctTools...)
-		catalog.RegisterCategory(toolcatalog.Category{
-			Name:        "contract",
-			Description: "Smart contract interaction",
-			ConfigKey:   "payment.enabled",
-			Enabled:     true,
-		})
-		catalog.Register("contract", ctTools)
-		logger().Info("contract interaction tools registered")
-	} else if pc != nil {
-		// pc exists but contract init failed — register disabled separately.
-		catalog.RegisterCategory(toolcatalog.Category{Name: "contract", Description: "Smart contract interaction (disabled)", ConfigKey: "payment.enabled", Enabled: false})
-	}
-
-	// 5p'. Smart Account (optional, requires payment + contract)
-	sacc := initSmartAccount(cfg, pc, econc, bus, app.registry)
-	if sacc != nil {
-		app.SmartAccountManager = sacc.manager
-		app.SmartAccountComponents = sacc
-		saTools := buildSmartAccountTools(sacc)
-		tools = append(tools, saTools...)
-		catalog.RegisterCategory(toolcatalog.Category{
-			Name:        "smartaccount",
-			Description: "ERC-7579 smart account management",
-			ConfigKey:   "smartAccount.enabled",
-			Enabled:     true,
-		})
-		catalog.Register("smartaccount", saTools)
-		logger().Info("smart account tools registered")
-	} else {
-		catalog.RegisterCategory(toolcatalog.Category{
-			Name:        "smartaccount",
-			Description: "ERC-7579 smart account management (disabled — requires: smartAccount.enabled, payment.enabled, entryPointAddress, factoryAddress, bundlerURL; recommended: economy.enabled)",
-			ConfigKey:   "smartAccount.enabled",
-			Enabled:     false,
-		})
-	}
-
-	// 5q. Observability (optional — metrics, health, token tracking)
-	obsc := initObservability(cfg, boot.DBClient, bus)
-	if obsc != nil {
-		app.MetricsCollector = obsc.collector
-		app.HealthRegistry = obsc.healthRegistry
-		app.TokenStore = obsc.tokenStore
-	} else {
-		catalog.RegisterCategory(toolcatalog.Category{Name: "observability", Description: "Metrics & health (disabled)", ConfigKey: "observability.enabled", Enabled: false})
-	}
-
-	// Log tool registration summary for diagnostics.
-	logToolRegistrationSummary(catalog)
-
-	// 6. Auth
-	auth := initAuth(cfg, store)
-
-	// 7. Gateway (created before agent so we can wire approval)
-	app.Gateway = initGateway(cfg, nil, app.Store, auth)
-	if app.Sanitizer != nil {
-		app.Gateway.SetSanitizer(app.Sanitizer)
-	}
-
-	// 7a. Tool output management — token-based tiered compression.
+	// B4b. Tool output management — token-based tiered compression.
 	outputStore := tooloutput.NewOutputStore(10 * time.Minute)
 	app.registry.Register(outputStore, lifecycle.PriorityCore)
 	app.OutputStore = outputStore
@@ -675,53 +97,26 @@ func New(boot *bootstrap.Result) (*App, error) {
 	catalog.Register("output", outputTools)
 	tools = toolchain.ChainAll(tools, toolchain.WithOutputManager(cfg.Tools.OutputManager, outputStore))
 
-	// 7b. Tool Execution Hooks — SecurityFilterHook is always active (not config-gated).
-	{
-		hookRegistry := toolchain.NewHookRegistry()
+	// B4c. Tool Execution Hooks.
+	hookRegistry := buildHookRegistry(cfg, bus)
+	tools = toolchain.ChainAll(tools, toolchain.WithHooks(hookRegistry))
+	app.HookRegistry = hookRegistry
+	logger().Infow("tool hooks enabled",
+		"preHooks", len(hookRegistry.PreHooks()),
+		"postHooks", len(hookRegistry.PostHooks()),
+	)
 
-		// SecurityFilterHook is always registered with default dangerous patterns
-		// merged with any user-configured patterns. This cannot be disabled.
-		hookRegistry.RegisterPre(toolchain.NewSecurityFilterHook(cfg.Hooks.BlockedCommands))
-
-		// Optional hooks gated by configuration.
-		if cfg.Hooks.AccessControl {
-			hookRegistry.RegisterPre(toolchain.NewAgentAccessControlHook(nil))
-		}
-		if (cfg.Hooks.Enabled || cfg.Agent.MultiAgent) && cfg.Hooks.EventPublishing && bus != nil {
-			ebHook := toolchain.NewEventBusHook(bus)
-			hookRegistry.RegisterPre(ebHook)
-			hookRegistry.RegisterPost(ebHook)
-		}
-
-		tools = toolchain.ChainAll(tools, toolchain.WithHooks(hookRegistry))
-		logger().Infow("tool hooks enabled",
-			"preHooks", len(hookRegistry.PreHooks()),
-			"postHooks", len(hookRegistry.PostHooks()),
-		)
+	// B5. Auth + Gateway.
+	fv := resolver.Resolve(appinit.ProvidesSupervisor).(*foundationValues)
+	auth := initAuth(cfg, fv.Store)
+	app.Gateway = initGateway(cfg, nil, app.Store, auth)
+	if app.Sanitizer != nil {
+		app.Gateway.SetSanitizer(app.Sanitizer)
 	}
 
-	// 8. Build composite approval provider and tool approval wrapper
-	composite := approval.NewCompositeProvider()
-	composite.Register(approval.NewGatewayProvider(app.Gateway))
-	if cfg.Security.Interceptor.HeadlessAutoApprove {
-		composite.SetTTYFallback(&approval.HeadlessProvider{})
-		logger().Warn("headless auto-approve enabled — all tool executions will be auto-approved")
-	} else {
-		composite.SetTTYFallback(&approval.TTYProvider{})
-	}
-	// P2P sessions use a dedicated fallback to prevent HeadlessProvider
-	// from auto-approving remote peer requests.
-	if cfg.P2P.Enabled {
-		composite.SetP2PFallback(&approval.TTYProvider{})
-		logger().Info("P2P approval routed to TTY (HeadlessProvider blocked for remote peers)")
-	}
+	// B4d. Build composite approval provider and tool approval wrapper.
+	composite, grantStore := buildApprovalProvider(cfg, app.Gateway)
 	app.ApprovalProvider = composite
-
-	grantStore := approval.NewGrantStore()
-	// P2P grants expire after 1 hour to limit the window of implicit trust.
-	if cfg.P2P.Enabled {
-		grantStore.SetTTL(time.Hour)
-	}
 	app.GrantStore = grantStore
 
 	policy := cfg.Security.Interceptor.ApprovalPolicy
@@ -730,27 +125,33 @@ func New(boot *bootstrap.Result) (*App, error) {
 	}
 	if policy != config.ApprovalPolicyNone {
 		var limiter wallet.SpendingLimiter
-		if pc != nil {
-			limiter = pc.limiter
+		nv, _ := resolver.Resolve(appinit.ProvidesPayment).(*paymentComponents)
+		if nv != nil {
+			limiter = nv.limiter
 		}
 		tools = toolchain.ChainAll(tools,
 			toolchain.WithApproval(cfg.Security.Interceptor, composite, grantStore, limiter))
 		logger().Infow("tool approval enabled", "policy", string(policy))
 	}
 
-	// 9. ADK Agent (scanner is passed for output-side secret scanning)
+	// Log tool registration summary for diagnostics.
+	logToolRegistrationSummary(catalog)
+
+	// B6. Agent creation.
+	scanner := fv.Scanner
+	p2pc, _ := resolver.Resolve(appinit.ProvidesP2P).(*p2pComponents)
 	adkAgent, err := initAgent(context.Background(), &agentDeps{
-		sv:       sv,
+		sv:       fv.Supervisor,
 		cfg:      cfg,
-		store:    store,
+		store:    fv.Store,
 		tools:    tools,
-		kc:       kc,
-		mc:       mc,
-		ec:       ec,
-		gc:       gc,
+		kc:       resolveKC(iv),
+		mc:       resolveMC(iv),
+		ec:       resolveEC(iv),
+		gc:       resolveGC(iv),
 		scanner:  scanner,
-		sr:       registry,
-		lc:       lc,
+		sr:       resolveSR(iv),
+		lc:       resolveLC(iv),
 		catalog:  catalog,
 		p2pc:     p2pc,
 		eventBus: bus,
@@ -759,20 +160,192 @@ func New(boot *bootstrap.Result) (*App, error) {
 		return nil, fmt.Errorf("create agent: %w", err)
 	}
 	app.Agent = adkAgent
-
-	// Update gateway with the created agent
 	app.Gateway.SetAgent(adkAgent)
 
-	// 9b. A2A Server (if multi-agent and A2A enabled)
+	// B7. Post-agent wiring.
+	wirePostAgent(app, resolver, tools, bus, composite, grantStore, boot)
+
+	// B8. Channels.
+	if err := app.initChannels(); err != nil {
+		logger().Errorw("initialize channels", "error", err)
+	}
+
+	// B9. Memory compaction + turn callbacks.
+	wireMemoryAndTurnCallbacks(app, iv, fv)
+
+	// B10. Lifecycle registration (module components + gateway + channels).
+	for _, entry := range buildResult.Components {
+		app.registry.Register(entry.Component, entry.Priority)
+	}
+	registerPostBuildLifecycle(app)
+
+	return app, nil
+}
+
+// populateAppFields maps resolver values to app struct fields.
+func populateAppFields(app *App, r appinit.Resolver) {
+	// Foundation.
+	if fv, ok := r.Resolve(appinit.ProvidesSupervisor).(*foundationValues); ok {
+		app.Store = fv.Store
+		app.Crypto = fv.Crypto
+		app.Keys = fv.Keys
+		app.Secrets = fv.Secrets
+		app.Sanitizer = fv.Sanitizer
+		if fv.BrowserSM != nil {
+			app.Browser = fv.BrowserSM
+		}
+	}
+
+	// Intelligence.
+	if iv, ok := r.Resolve(appinit.ProvidesKnowledge).(*intelligenceValues); ok {
+		if iv.KC != nil {
+			app.KnowledgeStore = iv.KC.store
+			app.LearningEngine = iv.KC.engine
+		}
+		if iv.MC != nil {
+			app.MemoryStore = iv.MC.store
+			app.MemoryBuffer = iv.MC.buffer
+		}
+		if iv.EC != nil {
+			app.EmbeddingBuffer = iv.EC.buffer
+			app.RAGService = iv.EC.ragService
+		}
+		if iv.GC != nil {
+			app.GraphStore = iv.GC.store
+			app.GraphBuffer = iv.GC.buffer
+		}
+		if iv.LC != nil {
+			app.LibrarianInquiryStore = iv.LC.inquiryStore
+			app.LibrarianProactiveBuffer = iv.LC.proactiveBuffer
+		}
+		if iv.AB != nil {
+			if ab, ok := iv.AB.(*learning.AnalysisBuffer); ok {
+				app.AnalysisBuffer = ab
+			}
+		}
+		if sr, ok := iv.SkillRegistry.(*skill.Registry); ok {
+			app.SkillRegistry = sr
+		}
+		app.AgentMemoryStore = iv.AgentMemoryStore
+	}
+
+	// Automation.
+	if av, ok := r.Resolve(appinit.ProvidesAutomation).(*automationValues); ok {
+		if cs, ok := av.CronScheduler.(*cronpkg.Scheduler); ok {
+			app.CronScheduler = cs
+		}
+		if bm, ok := av.BackgroundManager.(*background.Manager); ok {
+			app.BackgroundManager = bm
+		}
+		if we, ok := av.WorkflowEngine.(*workflow.Engine); ok {
+			app.WorkflowEngine = we
+		}
+	}
+
+	// Network.
+	if pc, ok := r.Resolve(appinit.ProvidesPayment).(*paymentComponents); ok && pc != nil {
+		app.WalletProvider = pc.wallet
+		app.PaymentService = pc.service
+	}
+	if p2pc, ok := r.Resolve(appinit.ProvidesP2P).(*p2pComponents); ok && p2pc != nil {
+		app.P2PNode = p2pc.node
+		app.P2PAgentPool = p2pc.agentPool
+		app.P2PTeamCoordinator = p2pc.coordinator
+		app.P2PAgentProvider = p2pc.provider
+	}
+	if econc, ok := r.Resolve(appinit.ProvidesEconomy).(*economyComponents); ok && econc != nil {
+		app.EconomyBudget = econc.budgetEngine
+		app.EconomyRisk = econc.riskEngine
+		app.EconomyPricing = econc.pricingEngine
+		app.EconomyNegotiation = econc.negotiationEngine
+		app.EconomyEscrow = econc.escrowEngine
+	}
+	if sacc, ok := r.Resolve(appinit.ProvidesSmartAccount).(*smartAccountComponents); ok && sacc != nil {
+		app.SmartAccountManager = sacc.manager
+		app.SmartAccountComponents = sacc
+	}
+
+	// Extension.
+	if mcpc, ok := r.Resolve(appinit.ProvidesMCP).(*mcpComponents); ok && mcpc != nil {
+		app.MCPManager = mcpc.manager
+	}
+	if obsc, ok := r.Resolve(appinit.ProvidesObservability).(*observabilityComponents); ok && obsc != nil {
+		app.MetricsCollector = obsc.collector
+		app.HealthRegistry = obsc.healthRegistry
+		app.TokenStore = obsc.tokenStore
+	}
+}
+
+// buildCatalogFromEntries converts module CatalogEntries into a toolcatalog.Catalog.
+func buildCatalogFromEntries(entries []appinit.CatalogEntry) *toolcatalog.Catalog {
+	catalog := toolcatalog.New()
+	for _, e := range entries {
+		catalog.RegisterCategory(toolcatalog.Category{
+			Name:        e.Category,
+			Description: e.Description,
+			ConfigKey:   e.ConfigKey,
+			Enabled:     e.Enabled,
+		})
+		if len(e.Tools) > 0 {
+			catalog.Register(e.Category, e.Tools)
+		}
+	}
+	return catalog
+}
+
+// buildHookRegistry constructs the tool execution hook registry.
+func buildHookRegistry(cfg *config.Config, bus *eventbus.Bus) *toolchain.HookRegistry {
+	hookRegistry := toolchain.NewHookRegistry()
+	hookRegistry.RegisterPre(toolchain.NewSecurityFilterHook(cfg.Hooks.BlockedCommands))
+	if cfg.Hooks.AccessControl {
+		hookRegistry.RegisterPre(toolchain.NewAgentAccessControlHook(nil))
+	}
+	if (cfg.Hooks.Enabled || cfg.Agent.MultiAgent) && cfg.Hooks.EventPublishing && bus != nil {
+		ebHook := toolchain.NewEventBusHook(bus)
+		hookRegistry.RegisterPre(ebHook)
+		hookRegistry.RegisterPost(ebHook)
+	}
+	return hookRegistry
+}
+
+// buildApprovalProvider constructs the composite approval provider and grant store.
+func buildApprovalProvider(cfg *config.Config, gw *gateway.Server) (*approval.CompositeProvider, *approval.GrantStore) {
+	composite := approval.NewCompositeProvider()
+	composite.Register(approval.NewGatewayProvider(gw))
+	if cfg.Security.Interceptor.HeadlessAutoApprove {
+		composite.SetTTYFallback(&approval.HeadlessProvider{})
+		logger().Warn("headless auto-approve enabled — all tool executions will be auto-approved")
+	} else {
+		composite.SetTTYFallback(&approval.TTYProvider{})
+	}
+	if cfg.P2P.Enabled {
+		composite.SetP2PFallback(&approval.TTYProvider{})
+		logger().Info("P2P approval routed to TTY (HeadlessProvider blocked for remote peers)")
+	}
+
+	grantStore := approval.NewGrantStore()
+	if cfg.P2P.Enabled {
+		grantStore.SetTTL(time.Hour)
+	}
+
+	return composite, grantStore
+}
+
+// wirePostAgent handles A2A, P2P executor, routes, and audit after agent creation.
+func wirePostAgent(app *App, r appinit.Resolver, tools []*agent.Tool, bus *eventbus.Bus, composite *approval.CompositeProvider, grantStore *approval.GrantStore, boot *bootstrap.Result) {
+	cfg := app.Config
+	adkAgent := app.Agent
+
+	// A2A Server.
 	if cfg.A2A.Enabled && cfg.Agent.MultiAgent && adkAgent.ADKAgent() != nil {
 		a2aServer := a2a.NewServer(cfg.A2A, adkAgent.ADKAgent(), logger())
 		a2aServer.RegisterRoutes(app.Gateway.Router())
 	}
 
-	// 9c. P2P executor + REST API routes (if P2P enabled)
+	// P2P executor + REST API routes.
+	p2pc, _ := r.Resolve(appinit.ProvidesP2P).(*p2pComponents)
+	pc, _ := r.Resolve(appinit.ProvidesPayment).(*paymentComponents)
 	if p2pc != nil {
-		// Wire executor callback so remote peers can invoke local tools.
-		// Capture the tools slice in a closure for direct tool dispatch.
 		if p2pc.handler != nil {
 			toolIndex := make(map[string]*agent.Tool, len(tools))
 			for _, t := range tools {
@@ -787,7 +360,6 @@ func New(boot *bootstrap.Result) (*App, error) {
 				if err != nil {
 					return nil, err
 				}
-				// Coerce the result to map[string]interface{}.
 				switch v := result.(type) {
 				case map[string]interface{}:
 					return v, nil
@@ -796,7 +368,7 @@ func New(boot *bootstrap.Result) (*App, error) {
 				}
 			})
 
-			// Wire sandbox executor for P2P tool isolation if enabled.
+			// Sandbox executor for P2P tool isolation.
 			if cfg.P2P.ToolIsolation.Enabled {
 				sbxCfg := sandbox.Config{
 					Enabled:        true,
@@ -822,17 +394,13 @@ func New(boot *bootstrap.Result) (*App, error) {
 				})
 			}
 
-			// Wire owner approval callback for inbound remote tool invocations.
+			// Owner approval callback for inbound remote tool invocations.
 			if pc != nil {
 				p2pc.handler.SetApprovalFunc(func(ctx context.Context, peerDID, toolName string, params map[string]interface{}) (bool, error) {
-					// Never auto-approve dangerous tools via P2P.
-					// Unknown tools (not in index) are also treated as dangerous.
 					t, known := toolIndex[toolName]
 					if !known || t.SafetyLevel.IsDangerous() {
 						goto requireApproval
 					}
-
-					// For non-dangerous paid tools, check if the amount is auto-approvable.
 					if p2pc.pricingFn != nil {
 						if priceStr, isFree := p2pc.pricingFn(toolName); !isFree {
 							amt, err := wallet.ParseUSDC(priceStr)
@@ -846,9 +414,7 @@ func New(boot *bootstrap.Result) (*App, error) {
 							}
 						}
 					}
-
 				requireApproval:
-					// Fall back to composite approval provider.
 					req := approval.ApprovalRequest{
 						ID:         fmt.Sprintf("p2p-%d", time.Now().UnixNano()),
 						ToolName:   toolName,
@@ -859,9 +425,8 @@ func New(boot *bootstrap.Result) (*App, error) {
 					}
 					resp, err := composite.RequestApproval(ctx, req)
 					if err != nil {
-						return false, nil // fail-closed
+						return false, nil
 					}
-					// Record grant to avoid double-approval (handler approvalFn + tool's wrapWithApproval).
 					if resp.Approved && grantStore != nil {
 						grantStore.Grant("p2p:"+peerDID, toolName)
 					}
@@ -873,155 +438,76 @@ func New(boot *bootstrap.Result) (*App, error) {
 		logger().Info("P2P REST API routes registered")
 	}
 
-	// 9d. Observability API routes
+	// Observability API routes.
+	obsc, _ := r.Resolve(appinit.ProvidesObservability).(*observabilityComponents)
 	if obsc != nil {
 		registerObservabilityRoutes(app.Gateway.Router(), obsc.collector, obsc.healthRegistry, obsc.tokenStore)
 		logger().Info("observability API routes registered")
 	}
 
-	// 9e. Audit recorder (optional)
+	// Audit recorder.
 	if cfg.Observability.Audit.Enabled && boot.DBClient != nil {
 		auditRec := audit.NewRecorder(boot.DBClient)
 		auditRec.Subscribe(bus)
 		logger().Info("audit recorder wired to event bus")
 	}
+}
 
-	// 10. Channels
-	if err := app.initChannels(); err != nil {
-		logger().Errorw("initialize channels", "error", err)
-	}
-
-	// 11. Wire memory compaction (optional)
-	if mc != nil && mc.buffer != nil {
-		if entStore, ok := store.(*session.EntStore); ok {
-			mc.buffer.SetCompactor(entStore.CompactMessages)
+// wireMemoryAndTurnCallbacks wires memory compaction and gateway turn callbacks.
+func wireMemoryAndTurnCallbacks(app *App, iv *intelligenceValues, fv *foundationValues) {
+	// Memory compaction.
+	if iv != nil && iv.MC != nil && iv.MC.buffer != nil {
+		if entStore, ok := fv.Store.(*session.EntStore); ok {
+			iv.MC.buffer.SetCompactor(entStore.CompactMessages)
 			logger().Info("observational memory compaction wired")
 		}
 	}
 
-	// 15. Wire gateway turn callbacks for buffer triggers
+	// Gateway turn callbacks for buffer triggers.
 	if app.MemoryBuffer != nil {
 		app.Gateway.OnTurnComplete(func(sessionKey string) {
 			app.MemoryBuffer.Trigger(sessionKey)
 		})
 	}
-	if app.AnalysisBuffer != nil {
-		app.Gateway.OnTurnComplete(func(sessionKey string) {
-			app.AnalysisBuffer.Trigger(sessionKey)
-		})
+	if iv != nil && iv.AB != nil {
+		if ab, ok := iv.AB.(interface{ Trigger(string) }); ok {
+			app.Gateway.OnTurnComplete(func(sessionKey string) {
+				ab.Trigger(sessionKey)
+			})
+		}
 	}
 	if app.LibrarianProactiveBuffer != nil {
 		app.Gateway.OnTurnComplete(func(sessionKey string) {
 			app.LibrarianProactiveBuffer.Trigger(sessionKey)
 		})
 	}
-
-	// 16. Observability lifecycle (token store cleanup on shutdown).
-	registerObservabilityLifecycle(app.registry, obsc, cfg)
-
-	// 17. Register lifecycle components for ordered startup/shutdown.
-	app.registerLifecycleComponents()
-
-	return app, nil
 }
 
-// registerLifecycleComponents registers all startable/stoppable components
-// with the lifecycle registry using appropriate adapters and priorities.
-func (a *App) registerLifecycleComponents() {
-	reg := a.registry
+// registerPostBuildLifecycle registers gateway and channel lifecycle components.
+// Module components are already registered from buildResult.Components.
+func registerPostBuildLifecycle(app *App) {
+	reg := app.registry
 
-	// Gateway — runs blocking in a goroutine, shutdown via context.
+	// Gateway.
 	reg.Register(lifecycle.NewFuncComponent("gateway",
 		func(_ context.Context, wg *sync.WaitGroup) error {
 			wg.Add(1)
 			go func() {
 				defer wg.Done()
-				if err := a.Gateway.Start(); err != nil {
+				if err := app.Gateway.Start(); err != nil {
 					logger().Errorw("gateway server error", "error", err)
 				}
 			}()
 			return nil
 		},
 		func(ctx context.Context) error {
-			return a.Gateway.Shutdown(ctx)
+			return app.Gateway.Shutdown(ctx)
 		},
 	), lifecycle.PriorityNetwork)
 
-	// Buffers — all implement Startable (Start(*sync.WaitGroup) / Stop()).
-	if a.MemoryBuffer != nil {
-		reg.Register(lifecycle.NewSimpleComponent("memory-buffer", a.MemoryBuffer), lifecycle.PriorityBuffer)
-	}
-	if a.EmbeddingBuffer != nil {
-		reg.Register(lifecycle.NewSimpleComponent("embedding-buffer", a.EmbeddingBuffer), lifecycle.PriorityBuffer)
-	}
-	if a.GraphBuffer != nil {
-		reg.Register(lifecycle.NewSimpleComponent("graph-buffer", a.GraphBuffer), lifecycle.PriorityBuffer)
-	}
-	if a.AnalysisBuffer != nil {
-		reg.Register(lifecycle.NewSimpleComponent("analysis-buffer", a.AnalysisBuffer), lifecycle.PriorityBuffer)
-	}
-	if a.LibrarianProactiveBuffer != nil {
-		reg.Register(lifecycle.NewSimpleComponent("librarian-proactive-buffer", a.LibrarianProactiveBuffer), lifecycle.PriorityBuffer)
-	}
-
-	// P2P Node — Start(*sync.WaitGroup) error / Stop() error.
-	if a.P2PNode != nil {
-		reg.Register(lifecycle.NewFuncComponent("p2p-node",
-			func(_ context.Context, wg *sync.WaitGroup) error {
-				return a.P2PNode.Start(wg)
-			},
-			func(_ context.Context) error {
-				return a.P2PNode.Stop()
-			},
-		), lifecycle.PriorityNetwork)
-	}
-
-	// Cron Scheduler — Start(ctx) error / Stop().
-	if a.CronScheduler != nil {
-		reg.Register(lifecycle.NewFuncComponent("cron-scheduler",
-			func(ctx context.Context, _ *sync.WaitGroup) error {
-				return a.CronScheduler.Start(ctx)
-			},
-			func(_ context.Context) error {
-				a.CronScheduler.Stop()
-				return nil
-			},
-		), lifecycle.PriorityAutomation)
-	}
-
-	// Background Manager — no Start, only Shutdown().
-	if a.BackgroundManager != nil {
-		reg.Register(lifecycle.NewFuncComponent("background-manager",
-			func(_ context.Context, _ *sync.WaitGroup) error { return nil },
-			func(_ context.Context) error {
-				a.BackgroundManager.Shutdown()
-				return nil
-			},
-		), lifecycle.PriorityAutomation)
-	}
-
-	// Workflow Engine — no Start, only Shutdown().
-	if a.WorkflowEngine != nil {
-		reg.Register(lifecycle.NewFuncComponent("workflow-engine",
-			func(_ context.Context, _ *sync.WaitGroup) error { return nil },
-			func(_ context.Context) error {
-				a.WorkflowEngine.Shutdown()
-				return nil
-			},
-		), lifecycle.PriorityAutomation)
-	}
-
-	// MCP Manager — disconnect all servers on shutdown.
-	if a.MCPManager != nil {
-		reg.Register(lifecycle.NewFuncComponent("mcp-manager",
-			func(_ context.Context, _ *sync.WaitGroup) error { return nil },
-			func(ctx context.Context) error { return a.MCPManager.DisconnectAll(ctx) },
-		), lifecycle.PriorityNetwork)
-	}
-
-	// Channels — each runs blocking in a goroutine, Stop() to signal.
-	for i, ch := range a.Channels {
-		ch := ch // capture for closure
+	// Channels.
+	for i, ch := range app.Channels {
+		ch := ch
 		name := fmt.Sprintf("channel-%d", i)
 		reg.Register(lifecycle.NewFuncComponent(name,
 			func(ctx context.Context, wg *sync.WaitGroup) error {
@@ -1041,6 +527,54 @@ func (a *App) registerLifecycleComponents() {
 		), lifecycle.PriorityNetwork)
 	}
 }
+
+// Resolver helper functions for safe type assertions.
+func resolveKC(iv *intelligenceValues) *knowledgeComponents {
+	if iv == nil {
+		return nil
+	}
+	return iv.KC
+}
+func resolveMC(iv *intelligenceValues) *memoryComponents {
+	if iv == nil {
+		return nil
+	}
+	return iv.MC
+}
+func resolveEC(iv *intelligenceValues) *embeddingComponents {
+	if iv == nil {
+		return nil
+	}
+	return iv.EC
+}
+func resolveGC(iv *intelligenceValues) *graphComponents {
+	if iv == nil {
+		return nil
+	}
+	return iv.GC
+}
+func resolveLC(iv *intelligenceValues) *librarianComponents {
+	if iv == nil {
+		return nil
+	}
+	return iv.LC
+}
+func resolveSR(iv *intelligenceValues) *skill.Registry {
+	if iv == nil || iv.SkillRegistry == nil {
+		return nil
+	}
+	sr, _ := iv.SkillRegistry.(*skill.Registry)
+	return sr
+}
+
+// resolveAB extracts the AnalysisBuffer from intelligence values.
+func resolveAB(iv *intelligenceValues) interface{} {
+	if iv == nil {
+		return nil
+	}
+	return iv.AB
+}
+
 
 // Start starts the application services using the lifecycle registry.
 func (a *App) Start(ctx context.Context) error {

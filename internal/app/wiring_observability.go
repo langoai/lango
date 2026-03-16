@@ -1,14 +1,10 @@
 package app
 
 import (
-	"context"
-	"sync"
-
 	"github.com/langoai/lango/internal/adk"
 	"github.com/langoai/lango/internal/config"
 	"github.com/langoai/lango/internal/ent"
 	"github.com/langoai/lango/internal/eventbus"
-	"github.com/langoai/lango/internal/lifecycle"
 	"github.com/langoai/lango/internal/observability"
 	"github.com/langoai/lango/internal/observability/health"
 	"github.com/langoai/lango/internal/observability/token"
@@ -104,29 +100,3 @@ func wireModelAdapterTokenUsage(adapter *adk.ModelAdapter, bus *eventbus.Bus) {
 	}
 }
 
-// registerObservabilityLifecycle registers observability components with the lifecycle registry.
-func registerObservabilityLifecycle(reg *lifecycle.Registry, oc *observabilityComponents, cfg *config.Config) {
-	if oc == nil {
-		return
-	}
-
-	// Token store cleanup on shutdown
-	if oc.tokenStore != nil && cfg.Observability.Tokens.RetentionDays > 0 {
-		retDays := cfg.Observability.Tokens.RetentionDays
-		store := oc.tokenStore
-		reg.Register(lifecycle.NewFuncComponent("observability-token-cleanup",
-			func(_ context.Context, _ *sync.WaitGroup) error { return nil },
-			func(ctx context.Context) error {
-				count, err := store.Cleanup(ctx, retDays)
-				if err != nil {
-					logger().Warnw("token usage cleanup", "error", err)
-					return nil
-				}
-				if count > 0 {
-					logger().Infow("token usage cleanup", "deleted", count, "retentionDays", retDays)
-				}
-				return nil
-			},
-		), lifecycle.PriorityCore)
-	}
-}

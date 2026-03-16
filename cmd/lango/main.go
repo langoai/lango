@@ -191,7 +191,7 @@ func serveCmd() *cobra.Command {
 		Short:   "Start the gateway server",
 		GroupID: "start",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			boot, err := bootstrap.Run(bootstrap.Options{})
+			boot, err := cliboot.BootResult()
 			if err != nil {
 				return fmt.Errorf("bootstrap: %w", err)
 			}

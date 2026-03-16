@@ -176,7 +176,7 @@ Session storage and lifecycle settings.
 |-----|------|---------|-------------|
 | `session.databasePath` | `string` | `~/.lango/data.db` | Path to the SQLite session database |
 | `session.ttl` | `duration` | | Session time-to-live before expiration (empty = no expiration) |
-| `session.maxHistoryTurns` | `int` | | Maximum conversation turns to retain per session |
+| `session.maxHistoryTurns` | `int` | `50` | Maximum conversation turns to retain per session |
 
 ---
 
@@ -264,7 +264,7 @@ The security interceptor controls tool execution approval and PII protection. Se
 | Key | Type | Default | Description |
 |-----|------|---------|-------------|
 | `security.interceptor.presidio.enabled` | `bool` | `false` | Enable Microsoft Presidio for advanced PII detection |
-| `security.interceptor.presidio.url` | `string` | | Presidio analyzer service URL |
+| `security.interceptor.presidio.url` | `string` | `http://localhost:5002` | Presidio analyzer service URL |
 | `security.interceptor.presidio.scoreThreshold` | `float64` | `0.7` | Minimum confidence score (0.0 - 1.0) |
 | `security.interceptor.presidio.language` | `string` | `en` | Language for PII analysis |
 
@@ -340,7 +340,7 @@ Communication channel configurations.
 
 | Key | Type | Default | Description |
 |-----|------|---------|-------------|
-| `tools.exec.defaultTimeout` | `duration` | | Default timeout for shell command execution |
+| `tools.exec.defaultTimeout` | `duration` | `30s` | Default timeout for shell command execution |
 | `tools.exec.allowBackground` | `bool` | `true` | Allow background command execution |
 | `tools.exec.workDir` | `string` | | Working directory for command execution |
 
@@ -348,7 +348,7 @@ Communication channel configurations.
 
 | Key | Type | Default | Description |
 |-----|------|---------|-------------|
-| `tools.filesystem.maxReadSize` | `int` | | Maximum file read size in bytes |
+| `tools.filesystem.maxReadSize` | `int` | `10485760` | Maximum file read size in bytes (10 MB) |
 | `tools.filesystem.allowedPaths` | `[]string` | | Allowed filesystem paths (empty = all) |
 
 ### Browser Tool
@@ -358,6 +358,16 @@ Communication channel configurations.
 | `tools.browser.enabled` | `bool` | `false` | Enable browser automation tool |
 | `tools.browser.headless` | `bool` | `true` | Run browser in headless mode |
 | `tools.browser.sessionTimeout` | `duration` | `5m` | Browser session timeout |
+
+### Output Manager
+
+Token-based tiered compression for large tool outputs. Applied as middleware to all tools.
+
+| Key | Type | Default | Description |
+|-----|------|---------|-------------|
+| `tools.outputManager.tokenBudget` | `int` | `2000` | Maximum tokens before output is compressed |
+| `tools.outputManager.headRatio` | `float` | `0.7` | Fraction of budget allocated to output head |
+| `tools.outputManager.tailRatio` | `float` | `0.3` | Fraction of budget allocated to output tail |
 
 ---
 
@@ -651,7 +661,7 @@ Each remote agent entry:
 | `p2p.listenAddrs` | `[]string` | `["/ip4/0.0.0.0/tcp/9000"]` | Multiaddrs to listen on |
 | `p2p.bootstrapPeers` | `[]string` | `[]` | Initial peers for DHT bootstrapping |
 | `p2p.keyDir` | `string` | `~/.lango/p2p` | Directory for node key persistence |
-| `p2p.enableRelay` | `bool` | `false` | Act as relay for NAT traversal |
+| `p2p.enableRelay` | `bool` | `true` | Act as relay for NAT traversal |
 | `p2p.enableMdns` | `bool` | `true` | Enable mDNS for LAN discovery |
 | `p2p.maxPeers` | `int` | `50` | Maximum connected peers |
 | `p2p.handshakeTimeout` | `duration` | `30s` | Maximum handshake duration |
@@ -715,7 +725,7 @@ Each firewall rule entry:
 |-----|------|---------|-------------|
 | `p2p.toolIsolation.enabled` | `bool` | `false` | Enable subprocess isolation for remote peer tool invocations |
 | `p2p.toolIsolation.timeoutPerTool` | `duration` | `30s` | Maximum duration for a single tool execution |
-| `p2p.toolIsolation.maxMemoryMB` | `int` | `512` | Soft memory limit per subprocess in megabytes |
+| `p2p.toolIsolation.maxMemoryMB` | `int` | `256` | Soft memory limit per subprocess in megabytes |
 | `p2p.toolIsolation.container.enabled` | `bool` | `false` | Use container-based sandbox instead of subprocess |
 | `p2p.toolIsolation.container.runtime` | `string` | `auto` | Container runtime: `auto`, `docker`, `gvisor`, `native` |
 | `p2p.toolIsolation.container.image` | `string` | `lango-sandbox:latest` | Docker image for sandbox container |

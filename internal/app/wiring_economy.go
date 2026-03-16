@@ -16,7 +16,6 @@ import (
 	"github.com/langoai/lango/internal/economy/pricing"
 	"github.com/langoai/lango/internal/economy/risk"
 	"github.com/langoai/lango/internal/eventbus"
-	"github.com/langoai/lango/internal/lifecycle"
 	p2pproto "github.com/langoai/lango/internal/p2p/protocol"
 	"github.com/langoai/lango/internal/payment"
 )
@@ -385,15 +384,3 @@ func handleNegotiateProtocol(ctx context.Context, ne *negotiation.Engine, localD
 	}
 }
 
-// registerEconomyLifecycle registers economy lifecycle components with the registry.
-func registerEconomyLifecycle(reg *lifecycle.Registry, ec *economyComponents) {
-	if ec == nil {
-		return
-	}
-	if ec.eventMonitor != nil {
-		reg.Register(ec.eventMonitor, lifecycle.PriorityNetwork)
-	}
-	if ec.danglingDetector != nil {
-		reg.Register(ec.danglingDetector, lifecycle.PriorityAutomation)
-	}
-}
