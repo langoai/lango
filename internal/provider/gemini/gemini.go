@@ -156,6 +156,11 @@ func (p *GeminiProvider) Generate(ctx context.Context, params provider.GenerateP
 		model = "gemini-3-flash-preview"
 	}
 
+	// Safety net: catch obviously wrong models (e.g., "gpt-5.3-codex" routed here).
+	if err := provider.ValidateModelProvider("gemini", model); err != nil {
+		return nil, fmt.Errorf("gemini provider: %w", err)
+	}
+
 	temp := float32(params.Temperature)
 	maxTokens := int32(params.MaxTokens)
 
