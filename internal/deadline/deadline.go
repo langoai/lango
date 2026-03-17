@@ -28,6 +28,7 @@ type ExtendableDeadline struct {
 	cancel   context.CancelFunc
 	reason   Reason
 	done     bool
+	clamped  bool // true when idle extension was clamped to remaining max time
 }
 
 // New creates a new ExtendableDeadline.
@@ -49,7 +50,11 @@ func New(parent context.Context, idleTimeout, maxTimeout time.Duration) (context
 		ed.mu.Lock()
 		defer ed.mu.Unlock()
 		if !ed.done {
-			ed.reason = ReasonIdle
+			if ed.clamped {
+				ed.reason = ReasonMaxTimeout
+			} else {
+				ed.reason = ReasonIdle
+			}
 			ed.done = true
 			cancel()
 		}
@@ -88,6 +93,7 @@ func (ed *ExtendableDeadline) Extend() {
 	extension := ed.idleTimeout
 	if extension > remaining {
 		extension = remaining
+		ed.clamped = true
 	}
 
 	ed.timer.Reset(extension)
