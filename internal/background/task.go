@@ -89,18 +89,28 @@ func (t *Task) SetRunning() {
 }
 
 // Complete transitions the task to the Done state with the given result.
+// If the task is already Cancelled, the transition is skipped to preserve
+// the cancellation status.
 func (t *Task) Complete(result string) {
 	t.mu.Lock()
 	defer t.mu.Unlock()
+	if t.Status == Cancelled {
+		return
+	}
 	t.Status = Done
 	t.Result = result
 	t.CompletedAt = time.Now()
 }
 
 // Fail transitions the task to the Failed state with the given error message.
+// If the task is already Cancelled, the transition is skipped to preserve
+// the cancellation status.
 func (t *Task) Fail(errMsg string) {
 	t.mu.Lock()
 	defer t.mu.Unlock()
+	if t.Status == Cancelled {
+		return
+	}
 	t.Status = Failed
 	t.Error = errMsg
 	t.CompletedAt = time.Now()

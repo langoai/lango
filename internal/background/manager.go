@@ -13,6 +13,10 @@ import (
 	"go.uber.org/zap"
 )
 
+// automationPrefix is prepended to prompts sent to the agent runner so that
+// the orchestrator recognises them as automated tasks requiring tool execution.
+const automationPrefix = "[Automated Task — Execute the following task using tools. Do NOT answer from general knowledge alone.]\n\n"
+
 // AgentRunner executes agent prompts.
 type AgentRunner interface {
 	Run(ctx context.Context, sessionKey string, prompt string) (string, error)
@@ -28,6 +32,7 @@ type Origin struct {
 type Manager struct {
 	tasks       map[string]*Task
 	mu          sync.RWMutex
+	wg          sync.WaitGroup
 	maxTasks    int
 	taskTimeout time.Duration
 	runner      AgentRunner
@@ -84,7 +89,11 @@ func (m *Manager) Submit(ctx context.Context, prompt string, origin Origin) (str
 
 	m.logger.Infow("task submitted", "taskID", id, "channel", origin.Channel)
 
-	go m.execute(taskCtx, task)
+	m.wg.Add(1)
+	go func() {
+		defer m.wg.Done()
+		m.execute(taskCtx, task)
+	}()
 
 	return id, nil
 }
@@ -154,16 +163,21 @@ func (m *Manager) Result(id string) (string, error) {
 }
 
 func (m *Manager) execute(ctx context.Context, task *Task) {
-	// Acquire concurrency semaphore.
-	m.sem <- struct{}{}
+	// Context-aware semaphore acquisition: abort if context cancelled.
+	select {
+	case m.sem <- struct{}{}:
+	case <-ctx.Done():
+		task.Fail("context cancelled waiting for semaphore")
+		return
+	}
 	defer func() { <-m.sem }()
 
 	task.SetRunning()
 	m.logger.Infow("task running", "taskID", task.ID)
 
-	// Send start notification (best-effort).
+	// Send start notification (best-effort, use task context).
 	if m.notify != nil {
-		if notifyErr := m.notify.NotifyStart(context.Background(), task); notifyErr != nil {
+		if notifyErr := m.notify.NotifyStart(ctx, task); notifyErr != nil {
 			m.logger.Warnw("start notification send error", "taskID", task.ID, "error", notifyErr)
 		}
 	}
@@ -182,8 +196,15 @@ func (m *Manager) execute(ctx context.Context, task *Task) {
 	}
 
 	sessionKey := "bg:" + task.ID
-	result, err := m.runner.Run(ctx, sessionKey, task.Prompt)
+	enrichedPrompt := automationPrefix + "Task: " + task.Prompt
+	result, err := m.runner.Run(ctx, sessionKey, enrichedPrompt)
 	stopTyping()
+
+	// If the context was cancelled (user cancellation or timeout),
+	// don't overwrite the Cancelled status set by Cancel().
+	if ctx.Err() != nil {
+		return
+	}
 
 	if err != nil {
 		task.Fail(err.Error())
@@ -193,24 +214,26 @@ func (m *Manager) execute(ctx context.Context, task *Task) {
 		m.logger.Infow("task completed", "taskID", task.ID)
 	}
 
-	// Send notification (best-effort).
+	// Send completion notification (best-effort, detach from task context).
 	if m.notify != nil {
-		if notifyErr := m.notify.Notify(context.Background(), task); notifyErr != nil {
+		if notifyErr := m.notify.Notify(types.DetachContext(ctx), task); notifyErr != nil {
 			m.logger.Warnw("notification send error", "taskID", task.ID, "error", notifyErr)
 		}
 	}
 }
 
-// Shutdown cancels all Pending/Running tasks.
+// Shutdown cancels all Pending/Running tasks and waits for goroutines to finish.
 func (m *Manager) Shutdown() {
 	m.mu.Lock()
-	defer m.mu.Unlock()
 	for _, task := range m.tasks {
 		snap := task.Snapshot()
 		if snap.Status == Pending || snap.Status == Running {
 			task.Cancel()
 		}
 	}
+	m.mu.Unlock()
+
+	m.wg.Wait()
 	m.logger.Info("background manager shut down")
 }
 

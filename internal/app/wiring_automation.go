@@ -50,7 +50,17 @@ func initCron(cfg *config.Config, store session.Store, app *App) *cronpkg.Schedu
 		tz = "UTC"
 	}
 
-	scheduler := cronpkg.New(cronStore, executor, tz, maxJobs, logger())
+	defaultJobTimeout := cfg.Cron.DefaultJobTimeout
+	if defaultJobTimeout <= 0 {
+		defaultJobTimeout = 30 * time.Minute
+	}
+
+	scheduler := cronpkg.New(cronStore, executor, cronpkg.SchedulerConfig{
+		Timezone:       tz,
+		MaxJobs:        maxJobs,
+		DefaultTimeout: defaultJobTimeout,
+		Logger:         logger(),
+	})
 
 	logger().Infow("cron scheduling initialized",
 		"timezone", tz,

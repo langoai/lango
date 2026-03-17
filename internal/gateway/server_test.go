@@ -15,6 +15,8 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/langoai/lango/internal/approval"
+	"github.com/langoai/lango/internal/config"
+	"github.com/langoai/lango/internal/gatekeeper"
 )
 
 func TestGatewayServer(t *testing.T) {
@@ -439,6 +441,135 @@ func TestWarningBroadcast_ApproachingTimeout(t *testing.T) {
 		assert.Equal(t, "Request is taking longer than expected", payload["message"])
 	default:
 		t.Error("expected agent.warning broadcast after 80% timeout")
+	}
+}
+
+func TestSetSanitizer_SanitizesChunksAndResponse(t *testing.T) {
+	t.Parallel()
+	cfg := Config{
+		Host:             "localhost",
+		Port:             0,
+		HTTPEnabled:      true,
+		WebSocketEnabled: true,
+	}
+	server := New(cfg, nil, nil, nil, nil)
+
+	san, err := gatekeeper.NewSanitizer(config.GatekeeperConfig{})
+	require.NoError(t, err)
+	server.SetSanitizer(san)
+
+	assert.NotNil(t, server.sanitizer)
+	assert.True(t, server.sanitizer.Enabled())
+
+	// Verify sanitizer strips thought tags from text.
+	got := server.sanitizer.Sanitize("Hello <thought>internal</thought> world")
+	assert.Equal(t, "Hello  world", got)
+}
+
+func TestSetSanitizer_DisabledPassthrough(t *testing.T) {
+	t.Parallel()
+	cfg := Config{
+		Host:             "localhost",
+		Port:             0,
+		HTTPEnabled:      true,
+		WebSocketEnabled: true,
+	}
+	server := New(cfg, nil, nil, nil, nil)
+
+	disabled := false
+	san, err := gatekeeper.NewSanitizer(config.GatekeeperConfig{
+		Enabled: &disabled,
+	})
+	require.NoError(t, err)
+	server.SetSanitizer(san)
+
+	assert.False(t, server.sanitizer.Enabled())
+
+	// Disabled sanitizer should pass through unchanged.
+	got := server.sanitizer.Sanitize("Hello <thought>internal</thought> world")
+	assert.Equal(t, "Hello <thought>internal</thought> world", got)
+}
+
+func TestSetSanitizer_NilSanitizerSafe(t *testing.T) {
+	t.Parallel()
+	cfg := Config{
+		Host:             "localhost",
+		Port:             0,
+		HTTPEnabled:      true,
+		WebSocketEnabled: true,
+	}
+	server := New(cfg, nil, nil, nil, nil)
+
+	// SetSanitizer(nil) should not panic.
+	server.SetSanitizer(nil)
+	assert.Nil(t, server.sanitizer)
+}
+
+func TestShutdown_CancelsInflightRequestContexts(t *testing.T) {
+	t.Parallel()
+	cfg := Config{
+		Host:             "localhost",
+		Port:             0,
+		HTTPEnabled:      true,
+		WebSocketEnabled: true,
+	}
+	server := New(cfg, nil, nil, nil, nil)
+
+	// Derive a child context from shutdownCtx (same as handleChatMessage does).
+	ctx, cancel := context.WithTimeout(server.shutdownCtx, 5*time.Minute)
+	defer cancel()
+
+	// shutdownCancel should propagate to the child.
+	server.shutdownCancel()
+
+	select {
+	case <-ctx.Done():
+		assert.ErrorIs(t, ctx.Err(), context.Canceled)
+	case <-time.After(time.Second):
+		t.Fatal("child context was not cancelled after shutdownCancel")
+	}
+}
+
+func TestShutdown_CancelsApprovalWait(t *testing.T) {
+	t.Parallel()
+	cfg := Config{
+		Host:             "localhost",
+		Port:             0,
+		HTTPEnabled:      true,
+		WebSocketEnabled: true,
+		ApprovalTimeout:  30 * time.Second, // long timeout — should NOT be reached
+	}
+	server := New(cfg, nil, nil, nil, nil)
+
+	// Register a fake companion so RequestApproval doesn't short-circuit.
+	server.clientsMu.Lock()
+	server.clients["companion-1"] = &Client{
+		ID:   "companion-1",
+		Type: "companion",
+		Send: make(chan []byte, 256),
+	}
+	server.clientsMu.Unlock()
+
+	// Use shutdownCtx as parent (matches real request flow).
+	ctx, cancel := context.WithTimeout(server.shutdownCtx, 30*time.Second)
+	defer cancel()
+
+	done := make(chan error, 1)
+	go func() {
+		_, err := server.RequestApproval(ctx, "dangerous action")
+		done <- err
+	}()
+
+	// Simulate Ctrl+C — cancel all in-flight contexts.
+	time.Sleep(50 * time.Millisecond) // let goroutine enter select
+	server.shutdownCancel()
+
+	select {
+	case err := <-done:
+		// Must return context.Canceled, NOT ErrApprovalTimeout.
+		assert.ErrorIs(t, err, context.Canceled)
+	case <-time.After(2 * time.Second):
+		t.Fatal("RequestApproval did not return after shutdown — this is the bug")
 	}
 }
 

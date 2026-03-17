@@ -21,6 +21,25 @@ The system SHALL execute a complete bootstrap sequence: ensure data directory â†
 - **WHEN** no profiles exist in the database
 - **THEN** the system creates a default profile with `config.DefaultConfig()` and sets it as active
 
+### Requirement: Profile loading applies PostLoad normalization
+The `phaseLoadProfile` phase SHALL call `config.PostLoad()` exactly once at the end, after all branches (explicit profile, active profile, default profile) have set the config. No branch SHALL return early before PostLoad is applied.
+
+#### Scenario: Explicit profile gets PostLoad applied
+- **WHEN** `ForceProfile` is set and the profile is loaded successfully
+- **THEN** `PostLoad()` is called on the loaded config before the phase completes
+
+#### Scenario: Active profile gets PostLoad applied
+- **WHEN** an active profile exists and is loaded
+- **THEN** `PostLoad()` is called on the loaded config before the phase completes
+
+#### Scenario: Default profile gets PostLoad applied
+- **WHEN** no active profile exists and a default is created via `handleNoProfile`
+- **THEN** `PostLoad()` is called on the created config before the phase completes
+
+#### Scenario: PostLoad failure fails the phase
+- **WHEN** `PostLoad()` returns an error on the loaded config
+- **THEN** the phase returns that error wrapped with context
+
 ### Requirement: Shared database client
 The bootstrap Result SHALL include the `*ent.Client` so downstream components (session store, key registry) can reuse it without opening a second connection. The underlying `*sql.DB` SHALL be configured with WAL journal mode, a busy_timeout of 5000ms, MaxOpenConns of 4, and MaxIdleConns of 4. These settings SHALL be applied in bootstrap before creating the Ent client, and no downstream component SHALL override connection pool settings on the shared `*sql.DB`.
 

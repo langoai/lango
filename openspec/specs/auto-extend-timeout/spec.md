@@ -19,23 +19,27 @@ The system SHALL support `AutoExtendTimeout` (bool) and `MaxRequestTimeout` (dur
 - **THEN** the maximum timeout SHALL default to 3 times `RequestTimeout`
 
 ### Requirement: ExtendableDeadline mechanism
-The system SHALL provide an `ExtendableDeadline` that wraps a context with a resettable timer. Each call to `Extend()` resets the deadline by `baseTimeout` from now, but never beyond `maxTimeout` from creation time.
+The system SHALL provide an `ExtendableDeadline` in the `internal/deadline` package (extracted from `internal/app`) that wraps a context with a resettable idle timer. Each call to `Extend()` resets the deadline by `idleTimeout` from now, but never beyond `maxTimeout` from creation time. The type SHALL expose a `Reason()` method returning the cause of expiry: `"idle"`, `"max_timeout"`, or `"cancelled"`.
 
 #### Scenario: Expires without extension
-- **WHEN** no `Extend()` is called within `baseTimeout`
-- **THEN** the context SHALL be canceled after `baseTimeout`
+- **WHEN** no `Extend()` is called within `idleTimeout`
+- **THEN** the context SHALL be canceled after `idleTimeout` and `Reason()` SHALL return `"idle"`
 
 #### Scenario: Extended by activity
-- **WHEN** `Extend()` is called before `baseTimeout` expires
-- **THEN** the deadline SHALL be reset to `baseTimeout` from the time of the call
+- **WHEN** `Extend()` is called before `idleTimeout` expires
+- **THEN** the deadline SHALL be reset to `idleTimeout` from the time of the call
 
 #### Scenario: Respects max timeout
 - **WHEN** `Extend()` is called repeatedly
-- **THEN** the context SHALL be canceled no later than `maxTimeout` from creation time
+- **THEN** the context SHALL be canceled no later than `maxTimeout` from creation time and `Reason()` SHALL return `"max_timeout"`
 
 #### Scenario: Stop cancels immediately
 - **WHEN** `Stop()` is called
-- **THEN** the context SHALL be canceled immediately
+- **THEN** the context SHALL be canceled immediately and `Reason()` SHALL return `"cancelled"`
+
+#### Scenario: Backward-compatible alias
+- **WHEN** code in `internal/app` references `ExtendableDeadline` or `NewExtendableDeadline`
+- **THEN** the type alias and wrapper function SHALL delegate to `internal/deadline` without behavioral changes
 
 ### Requirement: Activity callback in agent runs
 The agent `RunAndCollect` and `RunStreaming` methods SHALL accept an optional `WithOnActivity` callback that is invoked on each text chunk or function call event.
@@ -53,11 +57,19 @@ The agent `RunAndCollect` and `RunStreaming` methods SHALL accept an optional `W
 - **THEN** no activity callback SHALL be invoked (no panic or error)
 
 ### Requirement: Auto-extend wiring in runAgent
-When `AutoExtendTimeout` is enabled, `runAgent()` SHALL wire `WithOnActivity` to call `ExtendableDeadline.Extend()`, so each agent event extends the deadline.
+When idle timeout is active (via `IdleTimeout > 0` or legacy `AutoExtendTimeout = true`), `runAgent()` SHALL use `resolveTimeouts()` to determine idle and ceiling values, create an `ExtendableDeadline`, and wire `WithOnActivity` to call `Extend()`.
 
-#### Scenario: Agent activity extends deadline
-- **WHEN** the agent is actively producing output and `AutoExtendTimeout` is true
-- **THEN** the request timeout SHALL be extended on each event up to `MaxRequestTimeout`
+#### Scenario: IdleTimeout config takes precedence
+- **WHEN** `IdleTimeout` is set to a positive duration
+- **THEN** `resolveTimeouts()` SHALL use it as the idle timeout regardless of `AutoExtendTimeout`
+
+#### Scenario: Legacy AutoExtendTimeout mapping
+- **WHEN** `AutoExtendTimeout` is true and `IdleTimeout` is zero
+- **THEN** `resolveTimeouts()` SHALL map `RequestTimeout` as idle and `MaxRequestTimeout` as ceiling
+
+#### Scenario: Default fixed timeout preserved
+- **WHEN** neither `IdleTimeout` nor `AutoExtendTimeout` is set
+- **THEN** `resolveTimeouts()` SHALL return idle=0 with `RequestTimeout` as a fixed ceiling
 
 ### Requirement: Auto-extend timeout config documented in README
 The README.md config table SHALL include `agent.autoExtendTimeout` (bool, default `false`) and `agent.maxRequestTimeout` (duration, default 3× requestTimeout) rows after the `agent.agentsDir` row.

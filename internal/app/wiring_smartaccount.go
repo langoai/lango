@@ -3,8 +3,10 @@ package app
 import (
 	"context"
 	"math/big"
+	"sync"
 	"time"
 
+	"github.com/ethereum/go-ethereum"
 	"github.com/ethereum/go-ethereum/common"
 
 	"github.com/langoai/lango/internal/config"
@@ -13,6 +15,7 @@ import (
 	"github.com/langoai/lango/internal/economy/escrow/sentinel"
 	"github.com/langoai/lango/internal/economy/risk"
 	"github.com/langoai/lango/internal/eventbus"
+	"github.com/langoai/lango/internal/lifecycle"
 	sa "github.com/langoai/lango/internal/smartaccount"
 	"github.com/langoai/lango/internal/smartaccount/bindings"
 	"github.com/langoai/lango/internal/smartaccount/bundler"
@@ -21,6 +24,17 @@ import (
 	"github.com/langoai/lango/internal/smartaccount/policy"
 	sasession "github.com/langoai/lango/internal/smartaccount/session"
 )
+
+// walletProvider is satisfied by wallet.WalletProvider (permit.PermitSigner).
+type walletProvider interface {
+	SignTransaction(ctx context.Context, rawTx []byte) ([]byte, error)
+	Address(ctx context.Context) (string, error)
+}
+
+// ethCallerClient is satisfied by *ethclient.Client (permit.EthCaller).
+type ethCallerClient interface {
+	CallContract(ctx context.Context, msg ethereum.CallMsg, block *big.Int) ([]byte, error)
+}
 
 // smartAccountComponents holds optional smart account subsystem components.
 type smartAccountComponents struct {
@@ -65,22 +79,38 @@ func (sac *smartAccountComponents) BundlerClient() *bundler.Client {
 }
 
 // initSmartAccount creates the smart account subsystem if enabled.
+// smartAccountResult holds the init result including optional lifecycle entries.
+type smartAccountResult struct {
+	components *smartAccountComponents
+	lifecycle  []lifecycle.ComponentEntry
+}
+
 func initSmartAccount(
 	cfg *config.Config,
 	pc *paymentComponents,
 	econc *economyComponents,
 	bus *eventbus.Bus,
-) *smartAccountComponents {
+) *smartAccountResult {
 	if !cfg.SmartAccount.Enabled {
-		logger().Info("smart account disabled")
+		logger().Info("smart account disabled",
+			"fix", "set smartAccount.enabled=true via 'lango config set smartAccount.enabled true'")
 		return nil
 	}
 	if pc == nil {
-		logger().Warn("smart account requires payment components")
+		logger().Warn("smart account requires payment components",
+			"fix", "set payment.enabled=true with payment.rpcUrl and payment.privateKey")
+		return nil
+	}
+
+	if err := cfg.SmartAccount.Validate(); err != nil {
+		logger().Warn("smart account config incomplete",
+			"error", err,
+			"fix", "set missing fields via 'lango config set'")
 		return nil
 	}
 
 	sac := &smartAccountComponents{}
+	var lcEntries []lifecycle.ComponentEntry
 
 	// 1. Bundler client
 	entryPoint := common.HexToAddress(cfg.SmartAccount.EntryPointAddress)
@@ -118,6 +148,12 @@ func initSmartAccount(
 		logger().Info("smart account: session on-chain wiring configured", "validator", svAddr.Hex())
 	}
 
+	// Provide entryPoint and chainID for correct UserOp hash computation.
+	sessionOpts = append(sessionOpts,
+		sasession.WithEntryPoint(entryPoint),
+		sasession.WithChainID(pc.chainID),
+	)
+
 	sac.sessionManager = sasession.NewManager(sessionStore, sessionOpts...)
 
 	// 4. Policy engine
@@ -126,9 +162,17 @@ func initSmartAccount(
 	// 5. Account manager + factory
 	abiCache := contract.NewABICache()
 	caller := contract.NewCaller(pc.rpcClient, pc.wallet, pc.chainID, abiCache)
+	// Resolve Safe singleton address: explicit config > default Safe L2 v1.4.1.
+	singletonAddr := cfg.SmartAccount.SafeSingletonAddress
+	if singletonAddr == "" {
+		singletonAddr = "0x29fcB43b46531BcA003ddC8FCB67FFE91900C762" // Safe L2 v1.4.1
+		logger().Info("smart account: using default Safe L2 v1.4.1 singleton")
+	}
 	factory := sa.NewFactory(
 		caller,
+		pc.rpcClient,
 		common.HexToAddress(cfg.SmartAccount.FactoryAddress),
+		common.HexToAddress(singletonAddr),
 		common.HexToAddress(cfg.SmartAccount.Safe7579Address),
 		common.HexToAddress(cfg.SmartAccount.FallbackHandler),
 		pc.chainID,
@@ -138,7 +182,7 @@ func initSmartAccount(
 
 	// 5a. Paymaster provider (optional)
 	if cfg.SmartAccount.Paymaster.Enabled {
-		provider := initPaymasterProvider(cfg.SmartAccount.Paymaster)
+		provider := initPaymasterProvider(cfg.SmartAccount.Paymaster, pc.wallet, pc.rpcClient, pc.chainID)
 		if provider != nil {
 			sac.paymasterProvider = provider
 			mgr.SetPaymasterFunc(func(ctx context.Context, op *sa.UserOperation, stub bool) ([]byte, *sa.PaymasterGasOverrides, error) {
@@ -193,6 +237,9 @@ func initSmartAccount(
 			}, nil
 		})
 		logger().Info("smart account: risk engine wired to policy")
+	} else {
+		logger().Warn("smart account: risk engine not wired, spending controls unavailable",
+			"fix", "enable economy via 'lango config set economy.enabled true'")
 	}
 
 	// 7. Wire sentinel → session guard
@@ -204,7 +251,16 @@ func initSmartAccount(
 		})
 		guard.Start()
 		sac.sessionGuard = guard
+		lcEntries = append(lcEntries, lifecycle.ComponentEntry{
+			Component: lifecycle.NewFuncComponent("smart-account-session-guard",
+				func(_ context.Context, _ *sync.WaitGroup) error { return nil },
+				func(_ context.Context) error { guard.Stop(); return nil },
+			),
+			Priority: lifecycle.PriorityAutomation,
+		})
 		logger().Info("smart account: sentinel session guard wired")
+	} else {
+		logger().Warn("smart account: sentinel session guard not wired, anomaly detection unavailable")
 	}
 
 	// 8. On-chain spending tracker
@@ -222,13 +278,43 @@ func initSmartAccount(
 	}
 
 	logger().Info("smart account subsystem initialized")
-	return sac
+	return &smartAccountResult{components: sac, lifecycle: lcEntries}
 }
 
 // initPaymasterProvider creates a paymaster provider based on config.
 // The provider is wrapped with RecoverableProvider for transient error retry
 // and fallback behavior.
-func initPaymasterProvider(cfg config.SmartAccountPaymasterConfig) paymaster.PaymasterProvider {
+//
+// When mode="permit" and provider="circle", a CirclePermitProvider is created
+// that uses EIP-2612 permit signatures — no RPC URL needed.
+func initPaymasterProvider(
+	cfg config.SmartAccountPaymasterConfig,
+	wp walletProvider,
+	rpcClient ethCallerClient,
+	chainID int64,
+) paymaster.PaymasterProvider {
+	// Permit mode: on-chain paymaster, no RPC URL required.
+	if cfg.Mode == "permit" && cfg.Provider == "circle" {
+		if wp == nil {
+			logger().Warn("circle permit paymaster requires wallet provider")
+			return nil
+		}
+		if rpcClient == nil {
+			logger().Warn("circle permit paymaster requires RPC client")
+			return nil
+		}
+		pmAddr := common.HexToAddress(cfg.PaymasterAddress)
+		tokenAddr := common.HexToAddress(cfg.TokenAddress)
+		inner := paymaster.NewCirclePermitProvider(pmAddr, tokenAddr, chainID, wp, rpcClient)
+
+		rcfg := paymaster.DefaultRecoveryConfig()
+		if cfg.FallbackMode == "direct" {
+			rcfg.FallbackMode = paymaster.FallbackDirectGas
+		}
+		return paymaster.NewRecoverableProvider(inner, rcfg)
+	}
+
+	// RPC mode (default): requires rpcURL.
 	if cfg.RPCURL == "" {
 		logger().Warn("paymaster enabled but no rpcURL configured")
 		return nil

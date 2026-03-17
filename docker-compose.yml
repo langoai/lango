@@ -14,11 +14,12 @@ services:
       - lango_passphrase
     environment:
       - LANGO_PROFILE=default
-      # - LANGO_MULTI_AGENT=true        # Enable multi-agent orchestration
-      # - LANGO_P2P=true                 # Enable P2P networking
-      # - LANGO_AGENT_MEMORY=true        # Enable per-agent persistent memory
-      # - LANGO_HOOKS=true               # Enable tool execution hooks
-      # - LANGO_SMART_ACCOUNT=true       # Enable ERC-7579 smart account
+      # Feature flags are managed via encrypted config profiles, not env vars.
+      # Use 'lango settings' or 'lango config import' to configure features:
+      #   agent.multiAgent, p2p.enabled, agentMemory.enabled, hooks.enabled,
+      #   smartAccount.enabled, graph.enabled, a2a.enabled, mcp.enabled,
+      #   cron.enabled, background.enabled, workflow.enabled, economy.enabled,
+      #   observability.enabled
 
   presidio-analyzer:
     image: mcr.microsoft.com/presidio-analyzer:latest

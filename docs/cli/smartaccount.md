@@ -33,7 +33,7 @@ Address:      0x1234abcd5678ef901234abcdef567890abcdef12
 Deployed:     true
 Owner:        0x5678abcd1234ef567890abcdef1234567890abcd
 Chain ID:     84532
-Entry Point:  0x5FF137D4b0FDCD49DcA30c7CF57E578a026d2789
+Entry Point:  0x0000000071727De22E5E9d8BAf0edAc6f37da032
 Paymaster:    true
 
 Installed Modules
@@ -78,7 +78,7 @@ Smart Account Deployed
   Deployed:    true
   Owner:       0x5678abcd1234ef567890abcdef1234567890abcd
   Chain ID:    84532
-  Entry Point: 0x5FF137D4b0FDCD49DcA30c7CF57E578a026d2789
+  Entry Point: 0x0000000071727De22E5E9d8BAf0edAc6f37da032
   Modules:     3
 
 $ lango account deploy --output json
@@ -87,7 +87,7 @@ $ lango account deploy --output json
   "isDeployed": true,
   "ownerAddress": "0x5678abcd1234ef567890abcdef1234567890abcd",
   "chainId": 84532,
-  "entryPoint": "0x5FF137D4b0FDCD49DcA30c7CF57E578a026d2789",
+  "entryPoint": "0x0000000071727De22E5E9d8BAf0edAc6f37da032",
   "moduleCount": 3
 }
 ```
@@ -374,22 +374,20 @@ lango account paymaster status [--output table|json]
 $ lango account paymaster status
 Paymaster Status
   Enabled:       true
-  Provider:      pimlico
-  Provider Type: pimlico
-  RPC URL:       https://api.pimlico.io/v2/...
+  Provider:      circle
+  Mode:          permit
+  Provider Type: circle-permit
   Token:         0x036CbD53842c5426634e7929541eC2318f3dCF7e
-  Paymaster:     0x00000000009726632680AF5d2E20f3c706e2F00e
-  Policy ID:     sp_my_policy_id
+  Paymaster:     0x31BE08D380A21fc740883c0BC434FcFc88740b58
 
 $ lango account paymaster status --output json
 {
   "enabled": true,
-  "provider": "pimlico",
-  "rpcURL": "https://api.pimlico.io/v2/...",
+  "provider": "circle",
+  "mode": "permit",
   "tokenAddress": "0x036CbD53842c5426634e7929541eC2318f3dCF7e",
-  "paymasterAddress": "0x00000000009726632680AF5d2E20f3c706e2F00e",
-  "policyId": "sp_my_policy_id",
-  "providerType": "pimlico"
+  "paymasterAddress": "0x31BE08D380A21fc740883c0BC434FcFc88740b58",
+  "providerType": "circle-permit"
 }
 ```
 

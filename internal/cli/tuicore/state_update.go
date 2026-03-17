@@ -514,6 +514,46 @@ func (s *ConfigState) UpdateConfigFromForm(form *FormModel) {
 		case "kms_pkcs11_key_label":
 			s.Current.Security.KMS.PKCS11.KeyLabel = val
 
+		// Logging
+		case "log_level":
+			s.Current.Logging.Level = val
+		case "log_format":
+			s.Current.Logging.Format = val
+		case "log_output_path":
+			s.Current.Logging.OutputPath = val
+
+		// Gatekeeper
+		case "gk_enabled":
+			s.Current.Gatekeeper.Enabled = boolPtr(f.Checked)
+		case "gk_strip_thought_tags":
+			s.Current.Gatekeeper.StripThoughtTags = boolPtr(f.Checked)
+		case "gk_strip_internal_markers":
+			s.Current.Gatekeeper.StripInternalMarkers = boolPtr(f.Checked)
+		case "gk_strip_raw_json":
+			s.Current.Gatekeeper.StripRawJSON = boolPtr(f.Checked)
+		case "gk_raw_json_threshold":
+			if i, err := strconv.Atoi(val); err == nil {
+				s.Current.Gatekeeper.RawJSONThreshold = i
+			}
+		case "gk_custom_patterns":
+			s.Current.Gatekeeper.CustomPatterns = splitCSV(val)
+
+		// Output Manager
+		case "om_mgr_enabled":
+			s.Current.Tools.OutputManager.Enabled = boolPtr(f.Checked)
+		case "om_mgr_token_budget":
+			if i, err := strconv.Atoi(val); err == nil {
+				s.Current.Tools.OutputManager.TokenBudget = i
+			}
+		case "om_mgr_head_ratio":
+			if fv, err := strconv.ParseFloat(val, 64); err == nil {
+				s.Current.Tools.OutputManager.HeadRatio = fv
+			}
+		case "om_mgr_tail_ratio":
+			if fv, err := strconv.ParseFloat(val, 64); err == nil {
+				s.Current.Tools.OutputManager.TailRatio = fv
+			}
+
 		// Hooks
 		case "hooks_enabled":
 			s.Current.Hooks.Enabled = f.Checked
@@ -612,6 +652,40 @@ func (s *ConfigState) UpdateConfigFromForm(form *FormModel) {
 				s.Current.Economy.Escrow.DisputeWindow = d
 			}
 
+		// Economy Escrow On-Chain
+		case "economy_escrow_onchain_enabled":
+			s.Current.Economy.Escrow.OnChain.Enabled = f.Checked
+		case "economy_escrow_onchain_mode":
+			s.Current.Economy.Escrow.OnChain.Mode = val
+		case "economy_escrow_onchain_hub_address":
+			s.Current.Economy.Escrow.OnChain.HubAddress = val
+		case "economy_escrow_onchain_vault_factory":
+			s.Current.Economy.Escrow.OnChain.VaultFactoryAddress = val
+		case "economy_escrow_onchain_vault_impl":
+			s.Current.Economy.Escrow.OnChain.VaultImplementation = val
+		case "economy_escrow_onchain_arbitrator":
+			s.Current.Economy.Escrow.OnChain.ArbitratorAddress = val
+		case "economy_escrow_onchain_token":
+			s.Current.Economy.Escrow.OnChain.TokenAddress = val
+		case "economy_escrow_onchain_poll_interval":
+			if d, err := time.ParseDuration(val); err == nil {
+				s.Current.Economy.Escrow.OnChain.PollInterval = d
+			}
+		case "economy_escrow_onchain_confirmation_depth":
+			if u, err := strconv.ParseUint(val, 10, 64); err == nil {
+				s.Current.Economy.Escrow.OnChain.ConfirmationDepth = u
+			}
+
+		// Economy Escrow Settlement
+		case "economy_escrow_settlement_receipt_timeout":
+			if d, err := time.ParseDuration(val); err == nil {
+				s.Current.Economy.Escrow.Settlement.ReceiptTimeout = d
+			}
+		case "economy_escrow_settlement_max_retries":
+			if i, err := strconv.Atoi(val); err == nil {
+				s.Current.Economy.Escrow.Settlement.MaxRetries = i
+			}
+
 		// Economy Pricing
 		case "economy_pricing_enabled":
 			s.Current.Economy.Pricing.Enabled = f.Checked
@@ -661,6 +735,8 @@ func (s *ConfigState) UpdateConfigFromForm(form *FormModel) {
 			s.Current.SmartAccount.FactoryAddress = val
 		case "sa_entrypoint_address":
 			s.Current.SmartAccount.EntryPointAddress = val
+		case "sa_singleton_address":
+			s.Current.SmartAccount.SafeSingletonAddress = val
 		case "sa_safe7579_address":
 			s.Current.SmartAccount.Safe7579Address = val
 		case "sa_fallback_handler":
@@ -687,6 +763,8 @@ func (s *ConfigState) UpdateConfigFromForm(form *FormModel) {
 			s.Current.SmartAccount.Paymaster.Enabled = f.Checked
 		case "sa_paymaster_provider":
 			s.Current.SmartAccount.Paymaster.Provider = val
+		case "sa_paymaster_mode":
+			s.Current.SmartAccount.Paymaster.Mode = val
 		case "sa_paymaster_rpc_url":
 			s.Current.SmartAccount.Paymaster.RPCURL = val
 		case "sa_paymaster_token_address":

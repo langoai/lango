@@ -2,10 +2,10 @@ package app
 
 import (
 	"context"
-	"fmt"
 
 	"github.com/langoai/lango/internal/agent"
 	"github.com/langoai/lango/internal/economy/escrow/sentinel"
+	"github.com/langoai/lango/internal/toolparam"
 )
 
 // buildSentinelTools creates agent tools for the Security Sentinel engine.
@@ -53,12 +53,8 @@ func sentinelAlertsTool(se *sentinel.Engine) *agent.Tool {
 			},
 		},
 		Handler: func(ctx context.Context, params map[string]interface{}) (interface{}, error) {
-			severity, _ := params["severity"].(string)
-			limitFloat, _ := params["limit"].(float64)
-			limit := 20
-			if limitFloat > 0 {
-				limit = int(limitFloat)
-			}
+			severity := toolparam.OptionalString(params, "severity", "")
+			limit := toolparam.OptionalInt(params, "limit", 20)
 
 			var alerts []sentinel.Alert
 			if severity != "" {
@@ -133,9 +129,9 @@ func sentinelAcknowledgeTool(se *sentinel.Engine) *agent.Tool {
 			"required": []string{"alertId"},
 		},
 		Handler: func(ctx context.Context, params map[string]interface{}) (interface{}, error) {
-			alertID, _ := params["alertId"].(string)
-			if alertID == "" {
-				return nil, fmt.Errorf("alertId is required")
+			alertID, err := toolparam.RequireString(params, "alertId")
+			if err != nil {
+				return nil, err
 			}
 
 			if err := se.Acknowledge(alertID); err != nil {

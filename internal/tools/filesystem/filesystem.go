@@ -296,6 +296,142 @@ func (t *Tool) Copy(src, dst string) error {
 	return nil
 }
 
+// StatResult holds file metadata without reading content.
+type StatResult struct {
+	Path       string `json:"path"`
+	Size       int64  `json:"size"`
+	Lines      int    `json:"lines"`
+	ModTime    int64  `json:"modTime"`
+	IsDir      bool   `json:"isDir"`
+	Permission string `json:"permission"`
+}
+
+// ReadResult holds file content with metadata.
+type ReadResult struct {
+	Content    string `json:"content"`
+	TotalLines int    `json:"totalLines"`
+	Size       int64  `json:"size"`
+	Offset     int    `json:"offset,omitempty"`
+	Limit      int    `json:"limit,omitempty"`
+}
+
+// Stat returns file metadata without reading the full content.
+// Line count is computed by scanning newlines (efficient, doesn't load full file into memory).
+func (t *Tool) Stat(path string) (*StatResult, error) {
+	absPath, err := t.validatePath(path)
+	if err != nil {
+		return nil, err
+	}
+
+	info, err := os.Stat(absPath)
+	if err != nil {
+		return nil, fmt.Errorf("stat %s: %w", path, err)
+	}
+
+	result := &StatResult{
+		Path:       absPath,
+		Size:       info.Size(),
+		ModTime:    info.ModTime().Unix(),
+		IsDir:      info.IsDir(),
+		Permission: info.Mode().Perm().String(),
+	}
+
+	// Count lines for regular files
+	if !info.IsDir() {
+		lines, err := countLines(absPath)
+		if err != nil {
+			return nil, fmt.Errorf("count lines %s: %w", path, err)
+		}
+		result.Lines = lines
+	}
+
+	return result, nil
+}
+
+// ReadWithMeta reads a file with offset/limit support and returns content + metadata.
+// offset is 1-indexed line number (0 or 1 = start from beginning).
+// limit is max lines to return (0 = all lines).
+func (t *Tool) ReadWithMeta(path string, offset, limit int) (*ReadResult, error) {
+	absPath, err := t.validatePath(path)
+	if err != nil {
+		return nil, err
+	}
+
+	info, err := os.Stat(absPath)
+	if err != nil {
+		return nil, fmt.Errorf("file not found: %s", path)
+	}
+
+	if info.IsDir() {
+		return nil, fmt.Errorf("cannot read directory: %s", path)
+	}
+
+	if info.Size() > t.config.MaxReadSize {
+		return nil, fmt.Errorf("file too large: %d bytes (max %d)", info.Size(), t.config.MaxReadSize)
+	}
+
+	file, err := os.Open(absPath)
+	if err != nil {
+		return nil, fmt.Errorf("open file: %w", err)
+	}
+	defer file.Close()
+
+	// Normalize offset: 0 and 1 both mean "start from beginning"
+	if offset < 1 {
+		offset = 1
+	}
+
+	scanner := bufio.NewScanner(file)
+	var selected []string
+	totalLines := 0
+
+	for scanner.Scan() {
+		totalLines++
+		line := scanner.Text()
+
+		// Skip lines before offset
+		if totalLines < offset {
+			continue
+		}
+
+		// Check limit
+		if limit > 0 && len(selected) >= limit {
+			continue
+		}
+
+		selected = append(selected, line)
+	}
+
+	if err := scanner.Err(); err != nil {
+		return nil, fmt.Errorf("read file: %w", err)
+	}
+
+	return &ReadResult{
+		Content:    strings.Join(selected, "\n"),
+		TotalLines: totalLines,
+		Size:       info.Size(),
+		Offset:     offset,
+		Limit:      limit,
+	}, nil
+}
+
+// countLines counts the number of newline-delimited lines in a file
+// by scanning without loading the entire file into memory.
+func countLines(path string) (int, error) {
+	file, err := os.Open(path)
+	if err != nil {
+		return 0, err
+	}
+	defer file.Close()
+
+	count := 0
+	scanner := bufio.NewScanner(file)
+	for scanner.Scan() {
+		count++
+	}
+	return count, scanner.Err()
+}
+
 // validatePath checks if a path is safe and converts to absolute
 func (t *Tool) validatePath(path string) (string, error) {
 	// Convert to absolute path

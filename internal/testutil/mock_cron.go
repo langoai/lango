@@ -110,6 +110,27 @@ func (m *MockCronStore) Update(_ context.Context, job cron.Job) error {
 	return nil
 }
 
+func (m *MockCronStore) Upsert(_ context.Context, job cron.Job) (*cron.Job, bool, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	for id, existing := range m.jobs {
+		if existing.Name == job.Name {
+			if m.UpdateErr != nil {
+				return nil, false, m.UpdateErr
+			}
+			job.ID = id
+			m.jobs[id] = job
+			return &job, true, nil
+		}
+	}
+	if m.CreateErr != nil {
+		return nil, false, m.CreateErr
+	}
+	m.createCalls++
+	m.jobs[job.ID] = job
+	return &job, false, nil
+}
+
 func (m *MockCronStore) Delete(_ context.Context, id string) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()

@@ -96,7 +96,9 @@ func (p *ProviderProxy) Generate(ctx context.Context, params provider.GeneratePa
 	if err != nil && p.fallbackProviderID != "" {
 		logger.Warnw("primary provider failed, trying fallback", "provider", p.providerID, "fallback", p.fallbackProviderID, "error", err)
 
-		stream, err = p.supervisor.Generate(ctx, p.fallbackProviderID, p.fallbackModel, params)
+		fallbackParams := params
+		fallbackParams.Model = ""
+		stream, err = p.supervisor.Generate(ctx, p.fallbackProviderID, p.fallbackModel, fallbackParams)
 		if err != nil {
 			return nil, fmt.Errorf("fallback provider %q: %w", p.fallbackProviderID, err)
 		}

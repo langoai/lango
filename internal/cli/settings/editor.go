@@ -21,6 +21,7 @@ const (
 	StepProvidersList
 	StepAuthProvidersList
 	StepMCPServersList
+	StepSetupFlow
 	StepComplete
 )
 
@@ -39,6 +40,15 @@ type Editor struct {
 	activeAuthProviderID string
 	activeMCPServerName  string
 
+	// Dependency discovery
+	depIndex   *DependencyIndex
+	depPanel   *DependencyPanel
+	panelFocus bool     // true when the dependency panel has focus (vs. the form)
+	navStack   []string // navigation stack for jump-to-dependency flow
+
+	// Guided setup flow
+	setupFlow *SetupFlow
+
 	// UI State
 	width  int
 	height int
@@ -51,20 +61,106 @@ type Editor struct {
 
 // NewEditor creates a new settings editor with default config.
 func NewEditor() *Editor {
-	return &Editor{
-		step:  StepWelcome,
-		state: tuicore.NewConfigState(),
-		menu:  NewMenuModel(),
+	e := &Editor{
+		step:     StepWelcome,
+		state:    tuicore.NewConfigState(),
+		menu:     NewMenuModel(),
+		depIndex: NewDependencyIndex(),
 	}
+	e.wireMenuCheckers()
+	return e
 }
 
 // NewEditorWithConfig creates a new settings editor pre-loaded with the given config.
 func NewEditorWithConfig(cfg *config.Config) *Editor {
-	return &Editor{
-		step:  StepWelcome,
-		state: tuicore.NewConfigStateWith(cfg),
-		menu:  NewMenuModel(),
+	e := &Editor{
+		step:     StepWelcome,
+		state:    tuicore.NewConfigStateWith(cfg),
+		menu:     NewMenuModel(),
+		depIndex: NewDependencyIndex(),
 	}
+	e.wireMenuCheckers()
+	return e
+}
+
+// wireMenuCheckers connects the dirty/enabled/dependency checkers to the menu.
+func (e *Editor) wireMenuCheckers() {
+	e.menu.DirtyChecker = func(id string) bool {
+		return e.state.IsDirty(id)
+	}
+	e.menu.EnabledChecker = func(id string) bool {
+		return categoryIsEnabled(e.state.Current, id)
+	}
+	e.menu.DependencyChecker = func(id string) int {
+		if e.depIndex == nil {
+			return 0
+		}
+		return e.depIndex.UnmetRequired(id, e.state.Current)
+	}
+}
+
+// categoryIsEnabled returns true if the feature associated with the category is enabled.
+func categoryIsEnabled(cfg *config.Config, id string) bool {
+	switch id {
+	case "channels":
+		return cfg.Channels.Telegram.Enabled || cfg.Channels.Discord.Enabled || cfg.Channels.Slack.Enabled
+	case "knowledge":
+		return cfg.Knowledge.Enabled
+	case "skill":
+		return cfg.Skill.Enabled
+	case "observational_memory":
+		return cfg.ObservationalMemory.Enabled
+	case "embedding":
+		return cfg.Embedding.Provider != ""
+	case "graph":
+		return cfg.Graph.Enabled
+	case "librarian":
+		return cfg.Librarian.Enabled
+	case "agent_memory":
+		return cfg.AgentMemory.Enabled
+	case "multi_agent":
+		return cfg.Agent.MultiAgent
+	case "a2a":
+		return cfg.A2A.Enabled
+	case "hooks":
+		return cfg.Hooks.Enabled
+	case "cron":
+		return cfg.Cron.Enabled
+	case "background":
+		return cfg.Background.Enabled
+	case "workflow":
+		return cfg.Workflow.Enabled
+	case "payment":
+		return cfg.Payment.Enabled
+	case "smartaccount", "smartaccount_session", "smartaccount_paymaster", "smartaccount_modules":
+		return cfg.SmartAccount.Enabled
+	case "p2p", "p2p_workspace", "p2p_zkp", "p2p_pricing", "p2p_owner", "p2p_sandbox":
+		return cfg.P2P.Enabled
+	case "economy", "economy_risk", "economy_negotiation", "economy_escrow", "economy_escrow_onchain", "economy_pricing":
+		return cfg.Economy.Enabled
+	case "mcp", "mcp_servers":
+		return cfg.MCP.Enabled
+	case "observability":
+		return cfg.Observability.Enabled
+	case "security":
+		return cfg.Security.Interceptor.Enabled
+	case "gatekeeper":
+		return derefBoolCfg(cfg.Gatekeeper.Enabled, true)
+	case "output_manager":
+		return derefBoolCfg(cfg.Tools.OutputManager.Enabled, true)
+	case "server":
+		return cfg.Server.HTTPEnabled
+	default:
+		return false
+	}
+}
+
+// derefBoolCfg safely dereferences a *bool with a default.
+func derefBoolCfg(p *bool, def bool) bool {
+	if p == nil {
+		return def
+	}
+	return *p
 }
 
 // Init implements tea.Model.
@@ -92,6 +188,10 @@ func (e *Editor) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					// Let the menu handle esc to cancel search
 					break
 				}
+				if e.menu.InCategoryLevel() {
+					// Let menu.Update() handle Level2 → Level1 transition
+					break
+				}
 				e.step = StepWelcome
 				return e, nil
 			case StepProvidersList:
@@ -103,7 +203,19 @@ func (e *Editor) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			case StepMCPServersList:
 				e.step = StepMenu
 				return e, nil
+			case StepSetupFlow:
+				if e.setupFlow != nil {
+					e.setupFlow.Cancel()
+				}
+				e.setupFlow = nil
+				e.step = StepMenu
+				return e, nil
 			case StepForm:
+				// If panel has focus, Esc switches focus back to the form
+				if e.panelFocus && e.depPanel != nil {
+					e.panelFocus = false
+					return e, nil
+				}
 				// If a search-select dropdown is open, let the form handle Esc
 				// (closes dropdown only, does not exit the form).
 				if e.activeForm != nil && e.activeForm.HasOpenDropdown() {
@@ -119,6 +231,11 @@ func (e *Editor) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					} else {
 						e.state.UpdateConfigFromForm(e.activeForm)
 					}
+				}
+				// Pop nav stack if we jumped to a dependency
+				if len(e.navStack) > 0 {
+					e.popNavStack()
+					return e, nil
 				}
 				if e.activeAuthProviderID != "" || e.isAuthProviderForm() {
 					e.step = StepAuthProvidersList
@@ -136,6 +253,8 @@ func (e *Editor) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				e.activeProviderID = ""
 				e.activeAuthProviderID = ""
 				e.activeMCPServerName = ""
+				e.depPanel = nil
+				e.panelFocus = false
 				return e, nil
 			}
 		}
@@ -164,10 +283,73 @@ func (e *Editor) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 
 	case StepForm:
+		// Handle panel focus key events
+		if e.panelFocus && e.depPanel != nil {
+			if msg, ok := msg.(tea.KeyMsg); ok {
+				switch msg.String() {
+				case "up", "k":
+					e.depPanel.MoveUp()
+					return e, nil
+				case "down", "j":
+					e.depPanel.MoveDown()
+					return e, nil
+				case "enter":
+					if e.depPanel.SelectedIsUnmet() {
+						e.jumpToDependency(e.depPanel.SelectedCategoryID())
+					}
+					return e, nil
+				case "s":
+					// Start guided setup flow
+					if e.depPanel.UnmetCount() > 0 {
+						e.startSetupFlow()
+					}
+					return e, nil
+				case "tab":
+					// Switch focus to the form
+					e.panelFocus = false
+					return e, nil
+				}
+			}
+		}
+
+		// Handle tab key to switch focus to panel when panel exists
+		if e.depPanel != nil && !e.panelFocus {
+			if msg, ok := msg.(tea.KeyMsg); ok && msg.String() == "tab" {
+				e.panelFocus = true
+				return e, nil
+			}
+		}
+
 		if e.activeForm != nil {
 			var formCmd tea.Cmd
 			*e.activeForm, formCmd = e.activeForm.Update(msg)
 			cmd = formCmd
+		}
+
+	case StepSetupFlow:
+		if e.setupFlow != nil {
+			if msg, ok := msg.(tea.KeyMsg); ok {
+				switch msg.String() {
+				case "ctrl+n":
+					e.setupFlow.NextStep()
+					if e.setupFlow.State() == SetupCompleted {
+						e.completeSetupFlow()
+					}
+					return e, nil
+				case "ctrl+s":
+					e.setupFlow.SkipStep()
+					if e.setupFlow.State() == SetupCompleted {
+						e.completeSetupFlow()
+					}
+					return e, nil
+				}
+			}
+			// Forward other messages to the setup flow's active form
+			if sf := e.setupFlow.ActiveForm(); sf != nil {
+				var formCmd tea.Cmd
+				*sf, formCmd = sf.Update(msg)
+				cmd = formCmd
+			}
 		}
 
 	case StepProvidersList:
@@ -259,172 +441,20 @@ func (e *Editor) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 }
 
 func (e *Editor) handleMenuSelection(id string) tea.Cmd {
+	// Handle special (non-form) selections first.
 	switch id {
-	case "agent":
-		e.activeForm = NewAgentForm(e.state.Current)
-		e.activeForm.Focus = true
-		e.step = StepForm
-	case "server":
-		e.activeForm = NewServerForm(e.state.Current)
-		e.activeForm.Focus = true
-		e.step = StepForm
-	case "channels":
-		e.activeForm = NewChannelsForm(e.state.Current)
-		e.activeForm.Focus = true
-		e.step = StepForm
-	case "tools":
-		e.activeForm = NewToolsForm(e.state.Current)
-		e.activeForm.Focus = true
-		e.step = StepForm
-	case "session":
-		e.activeForm = NewSessionForm(e.state.Current)
-		e.activeForm.Focus = true
-		e.step = StepForm
-	case "security":
-		e.activeForm = NewSecurityForm(e.state.Current)
-		e.activeForm.Focus = true
-		e.step = StepForm
-	case "knowledge":
-		e.activeForm = NewKnowledgeForm(e.state.Current)
-		e.activeForm.Focus = true
-		e.step = StepForm
-	case "skill":
-		e.activeForm = NewSkillForm(e.state.Current)
-		e.activeForm.Focus = true
-		e.step = StepForm
-	case "observational_memory":
-		e.activeForm = NewObservationalMemoryForm(e.state.Current)
-		e.activeForm.Focus = true
-		e.step = StepForm
-	case "embedding":
-		e.activeForm = NewEmbeddingForm(e.state.Current)
-		e.activeForm.Focus = true
-		e.step = StepForm
-	case "graph":
-		e.activeForm = NewGraphForm(e.state.Current)
-		e.activeForm.Focus = true
-		e.step = StepForm
-	case "multi_agent":
-		e.activeForm = NewMultiAgentForm(e.state.Current)
-		e.activeForm.Focus = true
-		e.step = StepForm
-	case "a2a":
-		e.activeForm = NewA2AForm(e.state.Current)
-		e.activeForm.Focus = true
-		e.step = StepForm
-	case "payment":
-		e.activeForm = NewPaymentForm(e.state.Current)
-		e.activeForm.Focus = true
-		e.step = StepForm
-	case "cron":
-		e.activeForm = NewCronForm(e.state.Current)
-		e.activeForm.Focus = true
-		e.step = StepForm
-	case "background":
-		e.activeForm = NewBackgroundForm(e.state.Current)
-		e.activeForm.Focus = true
-		e.step = StepForm
-	case "workflow":
-		e.activeForm = NewWorkflowForm(e.state.Current)
-		e.activeForm.Focus = true
-		e.step = StepForm
-	case "smartaccount":
-		e.activeForm = NewSmartAccountForm(e.state.Current)
-		e.activeForm.Focus = true
-		e.step = StepForm
-	case "smartaccount_session":
-		e.activeForm = NewSmartAccountSessionForm(e.state.Current)
-		e.activeForm.Focus = true
-		e.step = StepForm
-	case "smartaccount_paymaster":
-		e.activeForm = NewSmartAccountPaymasterForm(e.state.Current)
-		e.activeForm.Focus = true
-		e.step = StepForm
-	case "smartaccount_modules":
-		e.activeForm = NewSmartAccountModulesForm(e.state.Current)
-		e.activeForm.Focus = true
-		e.step = StepForm
-	case "mcp":
-		e.activeForm = NewMCPForm(e.state.Current)
-		e.activeForm.Focus = true
-		e.step = StepForm
 	case "mcp_servers":
 		e.mcpServersList = NewMCPServersListModel(e.state.Current)
 		e.step = StepMCPServersList
-	case "hooks":
-		e.activeForm = NewHooksForm(e.state.Current)
-		e.activeForm.Focus = true
-		e.step = StepForm
-	case "agent_memory":
-		e.activeForm = NewAgentMemoryForm(e.state.Current)
-		e.activeForm.Focus = true
-		e.step = StepForm
-	case "librarian":
-		e.activeForm = NewLibrarianForm(e.state.Current)
-		e.activeForm.Focus = true
-		e.step = StepForm
-	case "economy":
-		e.activeForm = NewEconomyForm(e.state.Current)
-		e.activeForm.Focus = true
-		e.step = StepForm
-	case "economy_risk":
-		e.activeForm = NewEconomyRiskForm(e.state.Current)
-		e.activeForm.Focus = true
-		e.step = StepForm
-	case "economy_negotiation":
-		e.activeForm = NewEconomyNegotiationForm(e.state.Current)
-		e.activeForm.Focus = true
-		e.step = StepForm
-	case "economy_escrow":
-		e.activeForm = NewEconomyEscrowForm(e.state.Current)
-		e.activeForm.Focus = true
-		e.step = StepForm
-	case "economy_escrow_onchain":
-		e.activeForm = NewEconomyEscrowOnChainForm(e.state.Current)
-		e.activeForm.Focus = true
-		e.step = StepForm
-	case "economy_pricing":
-		e.activeForm = NewEconomyPricingForm(e.state.Current)
-		e.activeForm.Focus = true
-		e.step = StepForm
-	case "observability":
-		e.activeForm = NewObservabilityForm(e.state.Current)
-		e.activeForm.Focus = true
-		e.step = StepForm
-	case "p2p":
-		e.activeForm = NewP2PForm(e.state.Current)
-		e.activeForm.Focus = true
-		e.step = StepForm
-	case "p2p_zkp":
-		e.activeForm = NewP2PZKPForm(e.state.Current)
-		e.activeForm.Focus = true
-		e.step = StepForm
-	case "p2p_pricing":
-		e.activeForm = NewP2PPricingForm(e.state.Current)
-		e.activeForm.Focus = true
-		e.step = StepForm
-	case "p2p_owner":
-		e.activeForm = NewP2POwnerProtectionForm(e.state.Current)
-		e.activeForm.Focus = true
-		e.step = StepForm
-	case "p2p_sandbox":
-		e.activeForm = NewP2PSandboxForm(e.state.Current)
-		e.activeForm.Focus = true
-		e.step = StepForm
-	case "security_db":
-		e.activeForm = NewDBEncryptionForm(e.state.Current)
-		e.activeForm.Focus = true
-		e.step = StepForm
-	case "security_kms":
-		e.activeForm = NewKMSForm(e.state.Current)
-		e.activeForm.Focus = true
-		e.step = StepForm
+		return nil
 	case "auth":
 		e.authProvidersList = NewAuthProvidersListModel(e.state.Current)
 		e.step = StepAuthProvidersList
+		return nil
 	case "providers":
 		e.providersList = NewProvidersListModel(e.state.Current)
 		e.step = StepProvidersList
+		return nil
 	case "save":
 		e.Completed = true
 		return tea.Quit
@@ -432,6 +462,14 @@ func (e *Editor) handleMenuSelection(id string) tea.Cmd {
 		e.err = fmt.Errorf("settings cancelled")
 		e.Cancelled = true
 		return tea.Quit
+	}
+
+	// Try to create a form for this category.
+	if form := createFormForCategory(id, e.state.Current); form != nil {
+		e.activeForm = form
+		e.activeForm.Focus = true
+		e.step = StepForm
+		e.attachDependencyPanel(id)
 	}
 	return nil
 }
@@ -443,13 +481,27 @@ func (e *Editor) View() string {
 	// Dynamic breadcrumb header
 	switch e.step {
 	case StepWelcome, StepMenu:
-		b.WriteString(tui.Breadcrumb("Settings"))
+		if e.menu.InCategoryLevel() {
+			b.WriteString(tui.Breadcrumb("Settings", e.menu.ActiveSectionTitle()))
+		} else {
+			b.WriteString(tui.Breadcrumb("Settings"))
+		}
 	case StepForm:
+		segments := []string{"Settings"}
+		// Show navigation chain if jumped from another form
+		segments = append(segments, e.navStack...)
 		formTitle := ""
 		if e.activeForm != nil {
 			formTitle = e.activeForm.Title
 		}
-		b.WriteString(tui.Breadcrumb("Settings", formTitle))
+		segments = append(segments, formTitle)
+		b.WriteString(tui.Breadcrumb(segments...))
+	case StepSetupFlow:
+		targetLabel := ""
+		if e.setupFlow != nil {
+			targetLabel = e.setupFlow.TargetID()
+		}
+		b.WriteString(tui.Breadcrumb("Settings", "Setup", targetLabel))
 	case StepProvidersList:
 		b.WriteString(tui.Breadcrumb("Settings", "Providers"))
 	case StepAuthProvidersList:
@@ -470,8 +522,18 @@ func (e *Editor) View() string {
 		b.WriteString(e.menu.View())
 
 	case StepForm:
+		// Render dependency panel above form if present
+		if e.depPanel != nil {
+			b.WriteString(e.depPanel.View())
+			b.WriteString("\n")
+		}
 		if e.activeForm != nil {
 			b.WriteString(e.activeForm.View())
+		}
+
+	case StepSetupFlow:
+		if e.setupFlow != nil {
+			b.WriteString(e.setupFlow.View())
 		}
 
 	case StepProvidersList:
@@ -496,6 +558,32 @@ func (e *Editor) viewWelcome() string {
 	b.WriteString("\n")
 	b.WriteString(tui.MutedStyle.Render("All settings are saved to an encrypted local profile."))
 	b.WriteString("\n\n")
+
+	// Category summary
+	all := e.menu.allCategories()
+	basic, adv := 0, 0
+	for _, c := range all {
+		if c.Tier == TierBasic {
+			basic++
+		} else {
+			adv++
+		}
+	}
+	total := basic + adv
+	summary := fmt.Sprintf("%d categories (%d basic, %d advanced)", total, basic, adv)
+	b.WriteString(tui.MutedStyle.Render(summary))
+	b.WriteString("\n\n")
+
+	// Tips
+	b.WriteString(tui.MutedStyle.Render("Tips:"))
+	b.WriteString("\n")
+	b.WriteString(tui.MutedStyle.Render("  / Search across all categories"))
+	b.WriteString("\n")
+	b.WriteString(tui.MutedStyle.Render("  @basic @advanced @enabled @modified @ready — smart filters"))
+	b.WriteString("\n")
+	b.WriteString(tui.MutedStyle.Render("  Select a section, then browse its settings"))
+	b.WriteString("\n\n")
+
 	b.WriteString(tui.HelpBar(
 		tui.HelpEntry("Enter", "Start"),
 		tui.HelpEntry("Esc", "Quit"),
@@ -528,4 +616,108 @@ func (e *Editor) isMCPServerForm() bool {
 		return false
 	}
 	return strings.Contains(e.activeForm.Title, "MCP Server")
+}
+
+// attachDependencyPanel creates a dependency panel for the given category ID.
+func (e *Editor) attachDependencyPanel(categoryID string) {
+	e.depPanel = nil
+	e.panelFocus = false
+	if e.depIndex == nil {
+		return
+	}
+	results := e.depIndex.Evaluate(categoryID, e.state.Current)
+	panel := NewDependencyPanel(categoryID, results)
+	if panel != nil {
+		e.depPanel = panel
+		// Auto-focus panel if there are unmet required deps
+		if panel.UnmetCount() > 0 {
+			e.panelFocus = true
+		}
+	}
+}
+
+// jumpToDependency pushes the current form onto the nav stack and opens the dependency's form.
+func (e *Editor) jumpToDependency(targetCategoryID string) {
+	// Save current form
+	if e.activeForm != nil {
+		e.state.UpdateConfigFromForm(e.activeForm)
+	}
+
+	// Push current category onto nav stack
+	if e.depPanel != nil {
+		e.navStack = append(e.navStack, e.depPanel.CategoryID)
+	}
+
+	// Open the dependency's form
+	e.activeForm = createFormForCategory(targetCategoryID, e.state.Current)
+	if e.activeForm != nil {
+		e.activeForm.Focus = true
+	}
+
+	// Attach dependency panel for the new form
+	e.attachDependencyPanel(targetCategoryID)
+}
+
+// popNavStack returns to the previous form in the navigation stack.
+func (e *Editor) popNavStack() {
+	if len(e.navStack) == 0 {
+		return
+	}
+
+	// Pop the last category
+	prevID := e.navStack[len(e.navStack)-1]
+	e.navStack = e.navStack[:len(e.navStack)-1]
+
+	// Open the previous category's form
+	e.activeForm = createFormForCategory(prevID, e.state.Current)
+	if e.activeForm != nil {
+		e.activeForm.Focus = true
+	}
+
+	// Re-evaluate dependency panel for the restored form
+	e.attachDependencyPanel(prevID)
+}
+
+// startSetupFlow creates and enters a guided setup flow.
+func (e *Editor) startSetupFlow() {
+	if e.depPanel == nil || e.depIndex == nil {
+		return
+	}
+
+	categoryID := e.depPanel.CategoryID
+
+	// Save current form
+	if e.activeForm != nil {
+		e.state.UpdateConfigFromForm(e.activeForm)
+	}
+
+	// Collect transitive unmet dependencies
+	unmetDeps := e.depIndex.AllTransitiveUnmet(categoryID, e.state.Current)
+	sf := NewSetupFlow(categoryID, unmetDeps, e.state)
+	if sf == nil {
+		return
+	}
+
+	e.setupFlow = sf
+	e.step = StepSetupFlow
+	e.depPanel = nil
+	e.panelFocus = false
+}
+
+// completeSetupFlow finishes the guided setup and opens the target form.
+func (e *Editor) completeSetupFlow() {
+	if e.setupFlow == nil {
+		return
+	}
+
+	targetID := e.setupFlow.TargetID()
+	e.setupFlow = nil
+
+	// Open the original target form
+	e.activeForm = createFormForCategory(targetID, e.state.Current)
+	if e.activeForm != nil {
+		e.activeForm.Focus = true
+	}
+	e.step = StepForm
+	e.attachDependencyPanel(targetID)
 }

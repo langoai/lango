@@ -36,12 +36,27 @@ The package SHALL provide a `WithHooks(registry)` function that returns a `Middl
 - **WHEN** WithHooks middleware is applied via ChainAll
 - **THEN** PreHooks SHALL execute before each tool and PostHooks after each tool
 
-### Requirement: SecurityFilterHook
-A built-in SecurityFilterHook (priority 10) SHALL block dangerous shell commands (rm -rf /, format, mkfs) from executing via tool calls.
+### Requirement: SecurityFilterHook blocks dangerous command patterns
+The SecurityFilterHook (priority 10) SHALL include a set of default blocked patterns that are always active regardless of user configuration. Default patterns SHALL include catastrophic operations: `rm -rf /`, `mkfs.`, `dd if=/dev/zero`, fork bomb, `> /dev/sda`, `chmod -R 777 /`, `dd if=/dev/random`, `mv / `. User-configured patterns SHALL be merged with defaults, with case-insensitive deduplication. All patterns SHALL be pre-lowercased at construction time to avoid repeated lowercasing in the Pre() hot path.
 
-#### Scenario: Dangerous command blocked
-- **WHEN** a tool call attempts to execute "rm -rf /"
-- **THEN** SecurityFilterHook SHALL block the execution with an appropriate message
+#### Scenario: Default pattern blocks rm -rf
+- **WHEN** agent executes `rm -rf /` via exec tool
+- **THEN** SecurityFilterHook blocks it with reason "command matches blocked pattern: rm -rf /"
+
+#### Scenario: User patterns merged with defaults
+- **WHEN** SecurityFilterHook is constructed with user pattern "DROP TABLE"
+- **THEN** both default patterns and "DROP TABLE" are active
+
+#### Scenario: Duplicate patterns deduplicated
+- **WHEN** user configures "rm -rf /" which is already a default
+- **THEN** the pattern appears only once in the merged list
+
+### Requirement: SecurityFilterHook always registered
+The SecurityFilterHook SHALL be registered unconditionally in the tool hook pipeline, not gated by `cfg.Hooks.Enabled` or `cfg.Hooks.SecurityFilter`. Other hooks (AccessControl, EventPublishing) remain config-gated.
+
+#### Scenario: Security hook active without config
+- **WHEN** hooks.enabled is false and hooks.securityFilter is false
+- **THEN** SecurityFilterHook is still active with default patterns
 
 ### Requirement: AgentAccessControlHook
 A built-in AgentAccessControlHook (priority 20) SHALL enforce per-agent tool access control lists, blocking tools not in the agent's allowed set.

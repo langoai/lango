@@ -11,6 +11,10 @@ import (
 	"go.uber.org/zap"
 )
 
+// automationPrefix is prepended to prompts sent to the agent runner so that
+// the orchestrator recognises them as automated tasks requiring tool execution.
+const automationPrefix = "[Automated Task — Execute the following task using tools. Do NOT answer from general knowledge alone.]\n\n"
+
 // AgentRunner executes agent prompts (avoids import cycles with orchestration).
 type AgentRunner interface {
 	Run(ctx context.Context, sessionKey string, prompt string) (string, error)
@@ -32,6 +36,7 @@ type Engine struct {
 
 	mu      sync.Mutex
 	cancels map[string]context.CancelFunc
+	wg      sync.WaitGroup
 }
 
 // NewEngine creates a new workflow execution engine.
@@ -113,7 +118,9 @@ func (e *Engine) RunAsync(ctx context.Context, w *Workflow) (string, error) {
 		}
 	}
 
+	e.wg.Add(1)
 	go func() {
+		defer e.wg.Done()
 		if _, runErr := e.runDAG(detached, runID, w, dag); runErr != nil {
 			e.logger.Warnw("async workflow failed", "runID", runID, "error", runErr)
 		}
@@ -195,6 +202,15 @@ func (e *Engine) runDAG(ctx context.Context, runID string, w *Workflow, dag *DAG
 				sem <- struct{}{}
 				defer func() { <-sem }()
 
+				// Check context cancellation after acquiring semaphore.
+				if ctx.Err() != nil {
+					mu.Lock()
+					stepErrs = append(stepErrs, fmt.Sprintf("step %q: %s", sid, ctx.Err()))
+					completed[sid] = true
+					mu.Unlock()
+					return
+				}
+
 				step := stepMap[sid]
 				stepResult, execErr := e.executeStep(ctx, runID, w.Name, step, results)
 
@@ -271,6 +287,11 @@ func (e *Engine) executeStep(
 	step *Step,
 	currentResults map[string]string,
 ) (string, error) {
+	// Check context cancellation before starting.
+	if ctx.Err() != nil {
+		return "", ctx.Err()
+	}
+
 	// Render prompt template.
 	rendered, err := RenderPrompt(step.Prompt, currentResults)
 	if err != nil {
@@ -294,8 +315,11 @@ func (e *Engine) executeStep(
 	stepCtx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 
-	// Generate session key.
-	sessionKey := fmt.Sprintf("workflow:%s:%s", workflowName, step.ID)
+	// Generate session key — include runID to isolate sessions across re-runs.
+	sessionKey := fmt.Sprintf("workflow:%s:%s:%s", workflowName, runID, step.ID)
+
+	// Enrich with automation prefix so the orchestrator routes correctly.
+	rendered = automationPrefix + "Task: " + rendered
 
 	// Execute via agent runner.
 	result, err := e.runner.Run(stepCtx, sessionKey, rendered)
@@ -390,14 +414,16 @@ func (e *Engine) ListRuns(ctx context.Context, limit int) ([]RunStatus, error) {
 	return e.state.ListRuns(ctx, limit)
 }
 
-// Shutdown cancels all running workflows.
+// Shutdown cancels all running workflows and waits for goroutines to finish.
 func (e *Engine) Shutdown() {
 	e.mu.Lock()
-	defer e.mu.Unlock()
 	for runID, cancel := range e.cancels {
 		cancel()
 		e.logger.Infow("workflow cancelled during shutdown", "runID", runID)
 	}
+	e.mu.Unlock()
+
+	e.wg.Wait()
 	e.logger.Info("workflow engine shut down")
 }
 

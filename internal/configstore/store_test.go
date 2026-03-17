@@ -2,6 +2,7 @@ package configstore
 
 import (
 	"context"
+	"path/filepath"
 	"testing"
 	"time"
 
@@ -78,6 +79,10 @@ func TestStore_SaveLoadRoundTrip(t *testing.T) {
 	assert.Equal(t, original.Agent.Model, loaded.Agent.Model)
 	assert.Equal(t, original.Agent.MaxTokens, loaded.Agent.MaxTokens)
 	assert.Equal(t, original.Logging.Level, loaded.Logging.Level)
+
+	// PostLoad in Save normalizes tilde paths to absolute.
+	assert.True(t, filepath.IsAbs(loaded.Session.DatabasePath),
+		"DatabasePath should be absolute after Save (PostLoad normalization)")
 }
 
 func TestStore_SaveUpdatesExisting(t *testing.T) {

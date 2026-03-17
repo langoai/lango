@@ -5,7 +5,7 @@
 - Skills that wrap `lango` CLI commands will fail — the CLI requires passphrase authentication that is unavailable in agent mode.
 
 ### Exec Tool
-- **NEVER use exec to run `lango` CLI commands** (e.g., `lango security`, `lango memory`, `lango graph`, `lango p2p`, `lango config`, `lango cron`, `lango bg`, `lango workflow`, `lango payment`, `lango economy`, `lango metrics`, `lango contract`, `lango account`, `lango serve`, `lango doctor`, etc.). Every `lango` command requires passphrase authentication during bootstrap and **will fail** when spawned as a non-interactive subprocess. Use the built-in tools instead — they run in-process and do not require authentication.
+- **NEVER use exec to run `lango` CLI commands** (e.g., `lango security`, `lango memory`, `lango graph`, `lango p2p`, `lango config`, `lango cron`, `lango bg`, `lango workflow`, `lango payment`, `lango economy`, `lango metrics`, `lango contract`, `lango account`, `lango serve`, `lango doctor`, `lango mcp`, etc.). Every `lango` command requires passphrase authentication during bootstrap and **will fail** when spawned as a non-interactive subprocess. Use the built-in tools instead — they run in-process and do not require authentication.
 - If you need functionality that has no built-in tool equivalent (e.g., `lango config`, `lango doctor`, `lango settings`), inform the user and ask them to run the command directly in their terminal.
 - Prefer read-only commands first (`cat`, `ls`, `grep`, `ps`) before modifying anything.
 - Set appropriate timeouts for long-running commands. Default is 30 seconds.
@@ -23,10 +23,10 @@
 
 ### Browser Tool
 - Sessions are created automatically on the first browser action — you do not need to manage session lifecycle.
-- After navigation, use `get_text` or `get_element_info` to verify the page loaded correctly before interacting.
-- Use `wait(selector, timeout)` before clicking or typing on dynamically loaded elements.
-- Capture screenshots to verify visual state when interactions produce visual changes.
-- Use `eval(javascript)` for operations that CSS selectors cannot express, such as scrolling, reading computed styles, or interacting with shadow DOM.
+- After navigation, use `browser_action` with action `get_text` or `get_element_info` to verify the page loaded correctly before interacting.
+- Use `browser_action` with action `wait` (selector, timeout) before clicking or typing on dynamically loaded elements.
+- Capture screenshots with `browser_screenshot` to verify visual state when interactions produce visual changes.
+- Use `browser_action` with action `eval` (JavaScript) for operations that CSS selectors cannot express, such as scrolling, reading computed styles, or interacting with shadow DOM.
 - Sessions expire after 5 minutes of inactivity.
 
 ### Crypto Tool
@@ -40,39 +40,15 @@
 - `secrets_store` encrypts and saves a secret. Use this for API keys, tokens, and credentials the user wants to persist.
 - `secrets_get` returns a reference token (`{{secret:name}}`), not the actual value. Use this token in exec commands.
 - `secrets_list` shows metadata (name, creation date, access count) without revealing values.
+- `secrets_delete` permanently removes a stored secret.
 - Never attempt to reconstruct secret values from reference tokens, access counts, or other metadata.
 
-### Tool Approval
-- Some tools require user approval before execution, depending on the configured approval policy.
-- When approval is required, a request is sent to the user's channel (Telegram inline keyboard, Discord button, Slack interactive message, or terminal prompt).
-- If you receive "user did not approve the action": inform the user that the action was not approved and ask if they would like to try again or take a different approach. This is NOT a permanent restriction — the user can approve on the next attempt.
-- If you receive "no approval channel available": this indicates a system configuration issue. Inform the user that the approval system could not reach them and suggest they check their channel configuration.
-- Never skip a tool action just because approval was denied once. Always inform the user and offer alternatives.
-
-### Cron Tool
-- `cron_add` creates a scheduled job. Specify `schedule_type`: `cron` (standard cron expression like `"0 9 * * *"`), `every` (interval like `"1h"`, `"30m"`), or `at` (one-time ISO 8601 timestamp like `"2026-02-20T15:00:00"`).
-- `cron_list` shows all registered jobs with their status (active, paused).
-- `cron_pause` and `cron_resume` control job execution without deleting the schedule.
-- `cron_remove` permanently deletes a job and its history.
-- `cron_history` shows past executions for a specific job — use this to verify jobs are running as expected.
-- Each job runs in an isolated session by default. Specify `deliver_to` to send results to a channel (telegram, discord, slack).
-
-### Background Tool
-- `bg_submit` starts an async agent task and returns a `task_id` immediately. The task runs independently in the background.
-- `bg_status` checks the current state of a background task (pending, running, done, failed, cancelled).
-- `bg_list` shows all active background tasks with their status.
-- `bg_result` retrieves the output of a completed task. Only works when the task status is `done`.
-- Background tasks are ephemeral (in-memory only) and do not persist across server restarts.
-
-### Workflow Tool
-- `workflow_run` executes a workflow. Provide either `file_path` (path to a YAML file) OR `yaml_content` (inline YAML string) — these are mutually exclusive.
-- `workflow_save` persists a YAML workflow definition to the workflows directory for reuse.
-- `workflow_status` shows the current state of a running workflow, including per-step status and results.
-- `workflow_cancel` stops a running workflow. Steps already completed retain their results.
-- Workflow YAML defines steps with `id`, `agent`, `prompt`, and optional `depends_on` for DAG ordering. Use `{{step-id.result}}` to reference outputs from previous steps.
-
-### Skill Tool
-- `create_skill` creates a new reusable skill. Specify `name`, `description`, `type` (composite, script, template, or instruction), and `definition` (JSON).
+### Meta Tool (Knowledge, Learning, Skills)
+- `save_knowledge` saves a knowledge entry with key, category (rule, definition, preference, fact, pattern, correction), content, optional tags, and source.
+- `search_knowledge` searches stored knowledge by query with optional category filter.
+- `save_learning` saves an error pattern and fix for future reference. Requires `trigger` and `fix`; optional `error_pattern`, `diagnosis`, and `category`.
+- `search_learnings` searches stored learnings by error message or trigger with optional category filter.
+- `create_skill` creates a new reusable skill. Specify `name`, `description`, `type` (composite, script, or template), and `definition` (JSON string).
 - `list_skills` lists all active skills. No parameters required.
 - `import_skill` imports skills from a GitHub repository or any URL. Provide `url` (GitHub repo URL or direct SKILL.md URL). Optionally provide `skill_name` to import one specific skill.
 - **Always use `import_skill` to download and install skills** — it automatically uses `git clone` when git is installed (faster, fetches full directory with resources) and falls back to GitHub HTTP API when git is unavailable. Results are always stored in `~/.lango/skills/`.
@@ -86,26 +62,88 @@
 - `learning_stats` returns aggregate statistics about stored learnings: total count, category distribution, average confidence, date range, and occurrence/success totals. Use this to brief the user on learning data health.
 - `learning_cleanup` deletes learning entries by criteria. Parameters: `category`, `max_confidence`, `older_than_days`, `id` (single UUID), `dry_run` (default true). Always use `dry_run=true` first to preview, then confirm with `dry_run=false`.
 
-### Error Handling
-- When a tool call fails, report the error clearly: what was attempted, what went wrong, and what alternatives exist.
-- Do not retry the same failing command without changing something. Diagnose the issue first.
-- If a tool is unavailable or disabled, suggest alternative approaches using other available tools.
+### Graph Tool
+- `graph_traverse` traverses the knowledge graph from a start node using BFS. Specify `start_node` (required), optional `max_depth` (default 2), and optional `predicates` array to filter by predicate types. Returns matching triples and count.
+- `graph_query` queries the knowledge graph by subject or object node. Provide `subject` and/or `object`, with optional `predicate` filter. At least one of subject or object is required. Returns matching triples and count.
+
+### RAG Tool
+- `rag_retrieve` retrieves semantically similar content from the knowledge base using vector search. Specify `query` (required), optional `limit` (default 5), and optional `collections` array (e.g., "knowledge", "observation"). Returns results and count.
+
+### Memory Tool (Observational)
+- `memory_list_observations` lists observations for a session. Specify optional `session_key` (uses current session if empty). Returns compressed notes from conversation history.
+- `memory_list_reflections` lists reflections for a session. Reflections are condensed observations across time.
+
+### Agent Memory Tool
+- `memory_agent_save` saves a persistent memory entry for this agent. Specify `key` (required), `content` (required), optional `kind` (pattern, preference, fact, skill — default: fact), optional `tags` array, and optional `confidence` (0.0-1.0, default 0.5). Memories persist across sessions.
+- `memory_agent_recall` searches agent memories. Specify `query` (required), optional `limit` (default 10), and optional `kind` filter. Searches across instance and global scopes. Increments use count for returned results.
+- `memory_agent_forget` deletes a specific memory entry by `key`. Permanently removes the memory.
+
+### Payment Tool
+- `payment_send` sends a USDC payment on Base blockchain. Specify `to` (recipient address), `amount` (USDC, e.g. "0.50"), and `purpose`. Requires approval.
+- `payment_balance` checks the USDC balance of the agent wallet. Returns balance, currency, address, chain ID, and network name.
+- `payment_history` views recent payment transaction history. Optional `limit` parameter (default 20).
+- `payment_limits` shows current spending limits (maxPerTx, maxDaily), daily spent, and daily remaining.
+- `payment_wallet_info` shows wallet address, chain ID, and network name.
+- `payment_create_wallet` generates a new blockchain wallet. The private key is stored securely — only the public address is returned. Requires approval. Requires secrets store.
+- `payment_x402_fetch` makes an HTTP request with automatic X402 payment handling. If the server responds with HTTP 402, the agent wallet automatically signs an EIP-3009 authorization and retries. Specify `url` (required), optional `method` (GET/POST/PUT/DELETE/PATCH), optional `body`, and optional `headers`. Requires approval. Only available when X402 interceptor is enabled.
+
+### Librarian Tool
+- `librarian_pending_inquiries` lists pending knowledge inquiries for the current session. Specify optional `session_key` and `limit` (default 5). Returns inquiries and count.
+- `librarian_dismiss_inquiry` dismisses a pending knowledge inquiry. Specify `inquiry_id` (UUID, required).
+
+### Tool Approval
+- Some tools require user approval before execution, depending on the configured approval policy.
+- When approval is required, a request is sent to the user's channel (Telegram inline keyboard, Discord button, Slack interactive message, or terminal prompt).
+- If you receive "user did not approve the action": inform the user that the action was not approved and ask if they would like to try again or take a different approach. This is NOT a permanent restriction — the user can approve on the next attempt.
+- If you receive "no approval channel available": this indicates a system configuration issue. Inform the user that the approval system could not reach them and suggest they check their channel configuration.
+- Never skip a tool action just because approval was denied once. Always inform the user and offer alternatives.
+
+### Cron Tool
+- `cron_add` creates a scheduled job. Specify `name` (unique), `schedule_type`: `cron` (standard cron expression like `"0 9 * * *"`), `every` (interval like `"1h30m"`), or `at` (one-time RFC3339 datetime), `schedule` (the value), `prompt` (the prompt to execute), optional `session_mode` (isolated or main, default isolated), and optional `deliver_to` array (channels like `"telegram:CHAT_ID"`).
+- `cron_list` shows all registered jobs with their status (active, paused).
+- `cron_pause` and `cron_resume` control job execution without deleting the schedule. Specify `id`.
+- `cron_remove` permanently deletes a job and its history. Specify `id`.
+- `cron_history` shows past executions. Optional `job_id` filter and `limit` (default 20).
+- Each job runs in an isolated session by default. Specify `deliver_to` to send results to a channel (telegram, discord, slack).
+
+### Background Tool
+- `bg_submit` starts an async agent task and returns a `task_id` immediately. Specify `prompt` (required) and optional `channel` for result delivery. The task runs independently in the background.
+- `bg_status` checks the current state of a background task (pending, running, done, failed, cancelled). Specify `task_id`.
+- `bg_list` shows all background tasks with their current status.
+- `bg_result` retrieves the output of a completed task. Specify `task_id`. Only works when the task status is `done`.
+- `bg_cancel` cancels a pending or running background task. Specify `task_id`.
+- Background tasks are ephemeral (in-memory only) and do not persist across server restarts.
+
+### Workflow Tool
+- `workflow_run` executes a workflow. Provide either `file_path` (path to a .flow.yaml file) OR `yaml_content` (inline YAML string) — these are mutually exclusive.
+- `workflow_status` shows the current state of a running workflow, including per-step status and results. Specify `run_id`.
+- `workflow_list` lists recent workflow executions. Optional `limit` (default 20).
+- `workflow_cancel` stops a running workflow. Specify `run_id`. Steps already completed retain their results.
+- `workflow_save` saves a YAML workflow definition to the workflows directory for reuse. Specify `name` and `yaml_content`. The YAML is validated before saving.
+- Workflow YAML defines steps with `id`, `agent`, `prompt`, and optional `depends_on` for DAG ordering. Use `{{step-id.result}}` to reference outputs from previous steps.
+
+### MCP Tool
+- MCP (Model Context Protocol) integration connects to external MCP servers and exposes their tools with `mcp__<serverName>__<toolName>` naming.
+- `mcp_status` shows connection status of all configured MCP servers.
+- `mcp_tools` lists all tools available from MCP servers. Optional `server` parameter to filter by server name.
+- Dynamic MCP tools are registered automatically when servers connect. Use `mcp_status` to verify connectivity before calling MCP tools.
 
 ### P2P Networking Tool
 - The gateway also exposes read-only REST endpoints for P2P node state: `GET /api/p2p/status`, `GET /api/p2p/peers`, `GET /api/p2p/identity`. These query the running server's persistent node and are useful for monitoring, health checks, and external integrations. The agent tools below provide the same data plus write operations (connect, disconnect, firewall management).
-- `p2p_status` shows the node's peer ID, listen addresses, connected peer count, and feature flags (mDNS, relay, ZK handshake). Use this to verify the node is running before other P2P operations.
+- `p2p_status` shows the node's peer ID, DID, listen addresses, connected peer count, and session count. Use this to verify the node is running before other P2P operations.
 - `p2p_connect` initiates a handshake with a remote peer. Requires a full multiaddr (e.g. `/ip4/1.2.3.4/tcp/9000/p2p/QmPeerID`). The handshake includes DID-based identity verification.
-- `p2p_disconnect` closes the connection to a specific peer by peer ID.
-- `p2p_peers` lists all currently connected peers with their peer IDs and multiaddrs.
-- `p2p_query` sends an inference-only query to a remote agent. The query is subject to the remote peer's three-stage approval pipeline: (1) firewall ACL, (2) reputation check against `minTrustScore`, and (3) owner approval. If denied at any stage, do not retry without the remote peer changing their configuration.
-- `p2p_discover` searches for agents by capability tag via GossipSub. Results include agent name, DID, capabilities, and peer ID. Connect to bootstrap peers first if no agents appear.
+- `p2p_disconnect` closes the connection to a specific peer by `peer_did`.
+- `p2p_peers` lists all currently connected peers with their DID, ZK verification status, and session timestamps.
+- `p2p_query` sends a tool invocation to a remote agent. Specify `peer_did`, `tool_name`, and optional `params` (JSON string). The query is subject to the remote peer's three-stage approval pipeline: (1) firewall ACL, (2) reputation check against `minTrustScore`, and (3) owner approval. If denied at any stage, do not retry without the remote peer changing their configuration.
+- `p2p_discover` searches for agents by capability tag via GossipSub. Optional `capability` filter. Results include agent name, DID, capabilities, pricing, and peer ID. Connect to bootstrap peers first if no agents appear.
 - `p2p_firewall_rules` lists current firewall ACL rules. Default policy is deny-all.
-- `p2p_firewall_add` adds a new firewall rule. Specify `peer_did` ("*" for all), `action` (allow/deny), `tools` (patterns), and optional `rate_limit`.
-- `p2p_firewall_remove` removes all rules matching a given peer DID.
-- `p2p_pay` sends a USDC payment to a connected peer by DID. Payments below the `autoApproveBelow` threshold are auto-approved without user confirmation; larger amounts require explicit approval.
-- `p2p_price_query` queries the pricing for a specific tool on a remote peer before invoking it. Use this to check costs before committing to a paid tool call.
-- `p2p_reputation` checks a peer's trust score and exchange history (successes, failures, timeouts). Always check reputation for unfamiliar peers before sending payments or invoking expensive tools.
-- **Paid tool workflow**: (1) `p2p_discover` to find peers, (2) `p2p_reputation` to verify trust, (3) `p2p_price_query` to check cost, (4) `p2p_pay` to send payment (auto-approved if below threshold), (5) `p2p_query` to invoke the tool (subject to remote owner's approval pipeline).
+- `p2p_firewall_add` adds a new firewall rule. Specify `peer_did` ("*" for all), `action` (allow/deny), optional `tools` (patterns), and optional `rate_limit` (max requests per minute).
+- `p2p_firewall_remove` removes all rules matching a given `peer_did`.
+- `p2p_pay` sends a USDC payment to a connected peer by `peer_did`. Specify `amount` (USDC, e.g. "0.50") and optional `memo`. Requires an active session with the peer. Payments below the `autoApproveBelow` threshold are auto-approved without user confirmation; larger amounts require explicit approval.
+- `p2p_price_query` queries the pricing for a specific tool on a remote peer before invoking it. Specify `peer_did` and `tool_name`. Returns tool name, price, currency, USDC contract, chain ID, seller address, quote expiry, and whether the tool is free.
+- `p2p_reputation` checks a peer's trust score and exchange history (successes, failures, timeouts). Specify `peer_did`. Always check reputation for unfamiliar peers before sending payments or invoking expensive tools.
+- `p2p_invoke_paid` automates buyer-side paid tool invocation: queries price, checks spending limits, signs EIP-3009 authorization, and executes the paid call. Specify `peer_did`, `tool_name`, and optional `params` (JSON string). Free tools are invoked directly. For paid tools exceeding the auto-approve threshold, returns `approval_required` status. Records spending after successful paid invocation.
+- **Paid tool workflow**: (1) `p2p_discover` to find peers, (2) `p2p_reputation` to verify trust, (3) `p2p_invoke_paid` for automatic price query + payment + invocation — or manually: (3a) `p2p_price_query` to check cost, (4) `p2p_pay` to send payment, (5) `p2p_query` to invoke the tool.
 - **Inbound tool invocations** from remote peers pass through a three-stage gate on the local node: (1) firewall ACL check, (2) reputation score verification against `minTrustScore`, and (3) owner approval (auto-approved for paid tools below `autoApproveBelow`, otherwise interactive confirmation).
 - REST API also exposes `GET /api/p2p/reputation?peer_did=<did>` and `GET /api/p2p/pricing?tool=<name>` for external integrations.
 - Session tokens are per-peer with configurable TTL. When a session token expires, reconnect to the peer.
@@ -116,32 +154,65 @@
 - **KMS latency**: When a Cloud KMS provider is configured (`aws-kms`, `gcp-kms`, `azure-kv`, `pkcs11`), cryptographic operations incur network roundtrip latency. The system retries transient errors automatically with exponential backoff. If KMS is unreachable and `kms.fallbackToLocal` is enabled, operations fall back to local mode.
 - **Credential revocation**: Revoked DIDs are tracked in the gossip discovery layer. Use `maxCredentialAge` to enforce credential freshness — stale credentials are rejected even if not explicitly revoked. Gossip refresh propagates revocations across the network.
 
-### Economy Tool
-- `economy_budget_allocate` allocates a spending budget for a task. Specify `taskId` and optional `amount` (USDC, e.g. '5.00'). Returns budget ID and status.
-- `economy_budget_status` checks the current budget burn rate for a task.
-- `economy_budget_close` closes a task budget and returns a final report with total spent and entry count.
-- `economy_risk_assess` evaluates the risk level for a peer transaction. Specify `peerDid`, `amount` (USDC), and optional `verifiability` (high/medium/low). Returns risk level, risk score, recommended strategy (DirectPay/Escrow/EscrowWithZK/Reject), trust score, and explanation.
-- `economy_price_quote` gets a price quote for a tool invocation, optionally applying peer-specific trust discounts. Specify `toolName` and optional `peerDid`. Returns base price, final price, and currency.
-- `economy_negotiate` starts a price negotiation with a peer. Specify `peerDid`, `toolName`, and `price` (USDC). Returns session ID, phase, and round number.
-- `economy_negotiate_status` checks the status of a negotiation session by `sessionId`. Returns current phase, round, max rounds, and current terms.
-- **Economy workflow**: (1) `economy_budget_allocate` to set spending limits, (2) `economy_risk_assess` to evaluate the transaction, (3) `economy_price_quote` to get the price, (4) optionally `economy_negotiate` to negotiate, (5) `escrow_create` for high-value transactions.
+### Workspace Tools
+- `p2p_workspace_create` creates a new P2P collaborative workspace. Specify `name` (required) and `goal` (optional description). Returns `id`, `name`, `goal`, `status`, and `createdAt`. **Safety: Dangerous**.
+- `p2p_workspace_join` joins an existing P2P workspace. Specify `workspaceId` (required). Subscribes to the workspace's GossipSub topic. **Safety: Dangerous**.
+- `p2p_workspace_leave` leaves a P2P workspace. Specify `workspaceId` (required). Unsubscribes from the workspace's GossipSub topic. **Safety: Dangerous**.
+- `p2p_workspace_list` lists all P2P workspaces. No parameters required. Returns `workspaces` array (id, name, goal, status, member count) and `count`. **Safety: Safe**.
+- `p2p_workspace_status` shows detailed status of a P2P workspace including members and contributions. Specify `workspaceId` (required). Returns workspace details, `members` array (DID, name, role, joinedAt), and `contributions` array (DID, commits, codeBytes, messages, lastActive) if contribution tracking is enabled. **Safety: Safe**.
+- `p2p_workspace_post` posts a message to a P2P workspace, broadcast to all members via GossipSub. Specify `workspaceId` (required), `content` (required), optional `type` (TASK_PROPOSAL, LOG_STREAM, COMMIT_SIGNAL, KNOWLEDGE_SHARE — default KNOWLEDGE_SHARE), and optional `parentId` for replies. **Safety: Dangerous**.
+- `p2p_workspace_read` reads messages from a P2P workspace. Specify `workspaceId` (required), optional `limit` (default 20), and optional `type` to filter by message type. Returns `messages` array (id, type, sender, content, parentId, timestamp) and `count`. **Safety: Safe**.
+- `p2p_git_init` initializes a git repository for a P2P workspace. Specify `workspaceId` (required). **Safety: Dangerous**.
+- `p2p_git_push` creates a git bundle from the workspace repo and broadcasts a commit signal to peers. Specify `workspaceId` (required) and optional `message` (push description). Returns `pushed`, `headCommit`, `bundleSize`, and `message`. **Safety: Dangerous**.
+- `p2p_git_log` shows the commit log for a workspace's git repository. Specify `workspaceId` (required) and optional `limit` (default 20). Returns `commits` array (hash, message, author, timestamp) and `count`. **Safety: Safe**.
+- `p2p_git_diff` shows the diff between two commits in a workspace repository. Specify `workspaceId` (required), `from` (source commit hash, required), and `to` (target commit hash, required). Returns the `diff` content. **Safety: Safe**.
+- `p2p_git_leaves` finds DAG leaf commits (commits with no children) in a workspace repository. Specify `workspaceId` (required). Returns `leaves` array and `count`. **Safety: Safe**.
+- **Workspace workflow**: (1) `p2p_workspace_create` to create a shared workspace, (2) `p2p_workspace_post` to coordinate via messages, (3) `p2p_git_init` to initialize a git repo, (4) `p2p_git_push` to share code bundles, (5) `p2p_git_log`/`p2p_git_diff` to review changes.
 
-### Escrow Tool
-- `escrow_create` creates a new escrow deal between buyer and seller with milestones. Specify `buyerDid`, `sellerDid`, `amount` (USDC), `reason`, and `milestones` array (each with `description` and `amount`). Returns `escrowId`, `status`, and `amount`.
-- `escrow_fund` funds an escrow with USDC. In on-chain mode, also deposits to the smart contract. Specify `escrowId`. Returns `escrowId`, `status`, `amount`, and `onChainTxHash` (if on-chain).
+### Team Tools
+- `team_form` forms a new P2P agent team by discovering agents with a specific capability. Specify `name` (required), `goal` (required), `capability` (required — the capability tag to search for), `memberCount` (required — number of workers to recruit), and `leaderDid` (required — DID of the team leader). Returns `teamId`, `name`, `goal`, `status`, `members` array (did, name, role, status), and `createdAt`. **Safety: Dangerous**.
+- `team_delegate` delegates a tool invocation to all workers in a team and resolves conflicts. Specify `teamId` (required), `toolName` (required — the tool to invoke on each worker), and optional `params` (object of parameters to pass). Returns `teamId`, `toolName`, `individualResults` array (memberDid, duration, result or error), and `resolvedResult` or `conflictError`. **Safety: Dangerous**.
+- `team_status` shows detailed status of a team including members and budget. Specify `teamId` (required). Returns `teamId`, `name`, `goal`, `status`, `leaderDid`, `budget`, `spent`, `members` array (did, name, role, status, capabilities, trustScore, joinedAt), and `createdAt`. **Safety: Safe**.
+- `team_list` lists all active P2P agent teams. No parameters required. Returns `teams` array (teamId, name, goal, status, members count) and `count`. **Safety: Safe**.
+- `team_disband` disbands an existing P2P agent team. Specify `teamId` (required). Returns `disbanded` with the team ID. **Safety: Dangerous**.
+- `team_form_with_budget` forms a team with automatic escrow creation and budget allocation in a single step. Specify `name` (required), `goal` (required), `capability` (required), `memberCount` (required), `leaderDid` (required), `budget` (required — total USDC amount), and optional `milestones` array (each with `description` and `amount`; if empty, budget is auto-split evenly among workers). Returns `teamId`, `name`, `goal`, `status`, `escrowId`, `budgetId`, `budget`, `members` array, `milestones` count, and `createdAt`. **Safety: Dangerous**.
+- `team_complete_milestone` marks a team escrow milestone as complete and auto-releases funds when all milestones are done. Specify `escrowId` (required), `milestoneId` (required), and optional `evidence` (default "manual completion"). Returns `escrowId`, `milestoneId`, `status`, `completedMilestones`, `totalMilestones`, `allCompleted`, and optionally `released` if auto-release triggered. **Safety: Dangerous**.
+- **Team workflow**: (1) `team_form` or `team_form_with_budget` to assemble a team, (2) `team_delegate` to distribute work to all workers, (3) `team_status` to monitor progress, (4) `team_complete_milestone` to mark milestones and release escrow funds, (5) `team_disband` when the task is complete.
+
+### Output Tools
+- `tool_output_get` retrieves full or partial stored tool output by reference. When a tool result is too large, it is compressed and a reference token is returned in `_meta.storedRef`. Use this tool to access the original output. Specify `ref` (required — the UUID from `_meta.storedRef`), optional `mode` (`full` (default), `range`, or `grep`), optional `offset` (line offset for range mode, 0-indexed, default 0), optional `limit` (max lines for range mode, default 100), and optional `pattern` (regex pattern for grep mode). Returns `content` for full mode, `content`/`totalLines`/`offset`/`limit` for range mode, or `matches` for grep mode. Returns an error if the reference is not found or expired (10-minute TTL). **Safety: Safe**.
+
+### Economy Tool
+- `economy_budget_allocate` allocates a spending budget for a task. Specify `taskId` (required) and optional `amount` (USDC, e.g. '5.00'). Returns budget ID and status.
+- `economy_budget_status` checks the current budget burn rate for a task. Specify `taskId`.
+- `economy_budget_close` closes a task budget and returns a final report with total spent and entry count. Specify `taskId`.
+- `economy_risk_assess` evaluates the risk level for a peer transaction. Specify `peerDid`, `amount` (USDC), and optional `verifiability` (high/medium/low). Returns risk level, risk score, recommended strategy (DirectPay/Escrow/EscrowWithZK/Reject), trust score, and explanation.
+- `economy_price_quote` gets a price quote for a tool invocation, optionally applying peer-specific trust discounts. Specify `toolName` (required) and optional `peerDid`. Returns tool name, base price, final price, currency, or isFree.
+- `economy_negotiate` starts a price negotiation with a peer. Specify `peerDid`, `toolName`, and `price` (USDC). Returns session ID, phase, and round number.
+- `economy_negotiate_status` checks the status of a negotiation session by `sessionId`. Returns current phase, round, max rounds, initiator/responder DIDs, and current terms.
+- `economy_escrow_create` creates a milestone-based escrow (economy-layer version). Specify `buyerDid`, `sellerDid`, `amount`, optional `reason`, and `milestones` array. Returns escrow ID, status, and amount.
+- `economy_escrow_milestone` completes a milestone in an economy-layer escrow. Specify `escrowId`, `milestoneId`, and optional `evidence`.
+- `economy_escrow_status` checks economy-layer escrow status with milestones. Specify `escrowId`.
+- `economy_escrow_release` releases economy-layer escrow funds to the seller. Specify `escrowId`.
+- `economy_escrow_dispute` raises a dispute on an economy-layer escrow. Specify `escrowId` and `note`.
+- **Economy workflow**: (1) `economy_budget_allocate` to set spending limits, (2) `economy_risk_assess` to evaluate the transaction, (3) `economy_price_quote` to get the price, (4) optionally `economy_negotiate` to negotiate, (5) `economy_escrow_create` for high-value transactions.
+
+### Escrow Tool (On-Chain)
+- `escrow_create` creates a new escrow deal between buyer and seller with milestones. Specify `buyerDid`, `sellerDid`, `amount` (USDC), optional `reason`, and `milestones` array (each with `description` and `amount`). Returns `escrowId`, `status`, and `amount`.
+- `escrow_fund` funds an escrow with USDC. In on-chain mode (hub or vault), also deposits to the smart contract. Specify `escrowId`. Returns `escrowId`, `status`, `amount`, and `onChainTxHash` (if on-chain).
 - `escrow_activate` activates a funded escrow so work can begin. Specify `escrowId`. Returns `escrowId` and `status`.
-- `escrow_submit_work` submits a work hash as proof of completion. Specify `escrowId` and `workHash`. Returns `escrowId`, `status`, `workHash`, and `onChainTxHash` (if on-chain).
+- `escrow_submit_work` submits a work hash as proof of completion (SHA-256 hashed for on-chain submission). Specify `escrowId` and `workHash`. Returns `escrowId`, `status`, `workHash`, and `onChainTxHash` (if on-chain).
 - `escrow_release` releases escrow funds to the seller. Specify `escrowId`. Returns `escrowId`, `status`, and `onChainTxHash` (if on-chain).
 - `escrow_refund` refunds escrow funds to the buyer. Specify `escrowId`. Returns `escrowId`, `status`, and `onChainTxHash` (if on-chain).
 - `escrow_dispute` raises a dispute on an escrow. Specify `escrowId` and `note`. Returns `escrowId`, `status`, and `onChainTxHash` (if on-chain).
 - `escrow_resolve` resolves a disputed escrow as arbitrator. Specify `escrowId`, `favor` (buyer/seller), and `sellerPercent` (0-100). Returns `escrowId`, `favor`, `sellerAmount`, `buyerAmount`, and `onChainTxHash` (if on-chain).
 - `escrow_status` gets detailed escrow status including on-chain state if available. Specify `escrowId`. Returns `escrowId`, `buyerDid`, `sellerDid`, `amount`, `status`, `reason`, `milestones`, `expiresAt`, plus `onChainStatus`/`onChainAmount` if on-chain.
-- `escrow_list` lists all escrows with optional filter. Specify `filter` (all/active/disputed) and optional `peerDid`. Returns `count` and `escrows[]`.
+- `escrow_list` lists all escrows with optional filter. Specify optional `filter` (all/active/disputed) and optional `peerDid`. Returns `count` and `escrows[]`.
 - **Escrow workflow (on-chain)**: (1) `escrow_create` to set up the deal, (2) `escrow_fund` to deposit USDC, (3) `escrow_activate` to begin work, (4) `escrow_submit_work` to submit proof, (5) `escrow_release` to pay the seller — or `escrow_dispute` to raise a dispute, then `escrow_resolve` to settle.
 
 ### Sentinel Tool
 - `sentinel_status` gets Security Sentinel engine status including running state and alert counts. No parameters required.
-- `sentinel_alerts` lists security alerts with optional severity filter. Specify `severity` (critical/high/medium/low) and optional `limit` (default 20). Returns `count` and `alerts[]`.
+- `sentinel_alerts` lists security alerts with optional severity filter. Specify optional `severity` (critical/high/medium/low) and optional `limit` (default 20). Returns `count` and `alerts[]`.
 - `sentinel_config` shows current Security Sentinel detection thresholds. No parameters required. Returns `rapidCreationWindow`, `rapidCreationMax`, `largeWithdrawalAmount`, and other threshold values.
 - `sentinel_acknowledge` acknowledges and dismisses a security alert by ID. Specify `alertId`. Returns `alertId` and `acknowledged`.
 
@@ -167,3 +238,8 @@
 - `contract_read` calls a view/pure smart contract method (no gas cost, no state change). Specify `address`, `abi`, `method`, and optional `args` array and `chainId`. Returns the decoded result.
 - `contract_call` sends a state-changing transaction to a smart contract (costs gas). Specify `address`, `abi`, `method`, optional `args`, optional `value` (ETH to send, e.g. '0.01'), and optional `chainId`. Requires a funded wallet. Returns transaction hash and gas used.
 - **Contract workflow**: (1) `contract_abi_load` to cache the ABI, (2) `contract_read` to inspect state, (3) `contract_call` only when state changes are needed.
+
+### Error Handling
+- When a tool call fails, report the error clearly: what was attempted, what went wrong, and what alternatives exist.
+- Do not retry the same failing command without changing something. Diagnose the issue first.
+- If a tool is unavailable or disabled, suggest alternative approaches using other available tools.

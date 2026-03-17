@@ -7,6 +7,17 @@ import (
 
 	"github.com/langoai/lango/internal/agent"
 	"github.com/langoai/lango/internal/tools/browser"
+	"github.com/langoai/lango/internal/toolparam"
+)
+
+// Browser action constants.
+const (
+	actionClick   = "click"
+	actionType    = "type"
+	actionEval    = "eval"
+	actionGetText = "get_text"
+	actionGetInfo = "get_element_info"
+	actionWait    = "wait"
 )
 
 func buildBrowserTools(sm *browser.SessionManager) []*agent.Tool {
@@ -15,20 +26,14 @@ func buildBrowserTools(sm *browser.SessionManager) []*agent.Tool {
 			Name:        "browser_navigate",
 			Description: "Navigate the browser to a URL and return the page title, URL, and a text snippet",
 			SafetyLevel: agent.SafetyLevelDangerous,
-			Parameters: map[string]interface{}{
-				"type": "object",
-				"properties": map[string]interface{}{
-					"url": map[string]interface{}{
-						"type":        "string",
-						"description": "The URL to navigate to",
-					},
-				},
-				"required": []string{"url"},
-			},
+			Parameters: agent.Schema().
+				Str("url", "The URL to navigate to").
+				Required("url").
+				Build(),
 			Handler: func(ctx context.Context, params map[string]interface{}) (interface{}, error) {
-				url, ok := params["url"].(string)
-				if !ok || url == "" {
-					return nil, fmt.Errorf("missing url parameter")
+				url, err := toolparam.RequireString(params, "url")
+				if err != nil {
+					return nil, err
 				}
 
 				sessionID, err := sm.EnsureSession()
@@ -47,33 +52,17 @@ func buildBrowserTools(sm *browser.SessionManager) []*agent.Tool {
 			Name:        "browser_action",
 			Description: "Perform an action on the current browser page: click, type, eval, get_text, get_element_info, or wait",
 			SafetyLevel: agent.SafetyLevelDangerous,
-			Parameters: map[string]interface{}{
-				"type": "object",
-				"properties": map[string]interface{}{
-					"action": map[string]interface{}{
-						"type":        "string",
-						"description": "The action to perform",
-						"enum":        []string{"click", "type", "eval", "get_text", "get_element_info", "wait"},
-					},
-					"selector": map[string]interface{}{
-						"type":        "string",
-						"description": "CSS selector for the target element (required for click, type, get_text, get_element_info, wait)",
-					},
-					"text": map[string]interface{}{
-						"type":        "string",
-						"description": "Text to type (required for type action) or JavaScript to evaluate (required for eval action)",
-					},
-					"timeout": map[string]interface{}{
-						"type":        "integer",
-						"description": "Timeout in seconds for wait action (default: 10)",
-					},
-				},
-				"required": []string{"action"},
-			},
+			Parameters: agent.Schema().
+				Enum("action", "The action to perform", actionClick, actionType, actionEval, actionGetText, actionGetInfo, actionWait).
+				Str("selector", "CSS selector for the target element (required for click, type, get_text, get_element_info, wait)").
+				Str("text", "Text to type (required for type action) or JavaScript to evaluate (required for eval action)").
+				Int("timeout", "Timeout in seconds for wait action (default: 10)").
+				Required("action").
+				Build(),
 			Handler: func(ctx context.Context, params map[string]interface{}) (interface{}, error) {
-				action, ok := params["action"].(string)
-				if !ok || action == "" {
-					return nil, fmt.Errorf("missing action parameter")
+				action, err := toolparam.RequireString(params, "action")
+				if err != nil {
+					return nil, err
 				}
 
 				sessionID, err := sm.EnsureSession()
@@ -81,17 +70,17 @@ func buildBrowserTools(sm *browser.SessionManager) []*agent.Tool {
 					return nil, err
 				}
 
-				selector, _ := params["selector"].(string)
-				text, _ := params["text"].(string)
+				selector := toolparam.OptionalString(params, "selector", "")
+				text := toolparam.OptionalString(params, "text", "")
 
 				switch action {
-				case "click":
+				case actionClick:
 					if selector == "" {
 						return nil, fmt.Errorf("selector required for click action")
 					}
 					return nil, sm.Tool().Click(ctx, sessionID, selector)
 
-				case "type":
+				case actionType:
 					if selector == "" {
 						return nil, fmt.Errorf("selector required for type action")
 					}
@@ -100,32 +89,29 @@ func buildBrowserTools(sm *browser.SessionManager) []*agent.Tool {
 					}
 					return nil, sm.Tool().Type(ctx, sessionID, selector, text)
 
-				case "eval":
+				case actionEval:
 					if text == "" {
 						return nil, fmt.Errorf("text (JavaScript) required for eval action")
 					}
 					return sm.Tool().Eval(sessionID, text)
 
-				case "get_text":
+				case actionGetText:
 					if selector == "" {
 						return nil, fmt.Errorf("selector required for get_text action")
 					}
 					return sm.Tool().GetText(sessionID, selector)
 
-				case "get_element_info":
+				case actionGetInfo:
 					if selector == "" {
 						return nil, fmt.Errorf("selector required for get_element_info action")
 					}
 					return sm.Tool().GetElementInfo(sessionID, selector)
 
-				case "wait":
+				case actionWait:
 					if selector == "" {
 						return nil, fmt.Errorf("selector required for wait action")
 					}
-					timeout := 10 * time.Second
-					if t, ok := params["timeout"].(float64); ok && t > 0 {
-						timeout = time.Duration(t) * time.Second
-					}
+					timeout := time.Duration(toolparam.OptionalInt(params, "timeout", 10)) * time.Second
 					return nil, sm.Tool().WaitForSelector(ctx, sessionID, selector, timeout)
 
 				default:
@@ -137,22 +123,16 @@ func buildBrowserTools(sm *browser.SessionManager) []*agent.Tool {
 			Name:        "browser_screenshot",
 			Description: "Capture a screenshot of the current browser page as base64 PNG",
 			SafetyLevel: agent.SafetyLevelSafe,
-			Parameters: map[string]interface{}{
-				"type": "object",
-				"properties": map[string]interface{}{
-					"fullPage": map[string]interface{}{
-						"type":        "boolean",
-						"description": "Capture the full scrollable page (default: false)",
-					},
-				},
-			},
+			Parameters: agent.Schema().
+				Bool("fullPage", "Capture the full scrollable page (default: false)").
+				Build(),
 			Handler: func(ctx context.Context, params map[string]interface{}) (interface{}, error) {
 				sessionID, err := sm.EnsureSession()
 				if err != nil {
 					return nil, err
 				}
 
-				fullPage, _ := params["fullPage"].(bool)
+				fullPage := toolparam.OptionalBool(params, "fullPage", false)
 				return sm.Tool().Screenshot(sessionID, fullPage)
 			},
 		},

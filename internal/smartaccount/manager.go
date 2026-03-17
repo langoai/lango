@@ -90,7 +90,10 @@ func (m *Manager) GetOrDeploy(
 
 	// Compute the deterministic address.
 	salt := big.NewInt(0)
-	computed := m.factory.ComputeAddress(ownerAddr, salt)
+	computed, err := m.factory.ComputeAddress(ctx, ownerAddr, salt)
+	if err != nil {
+		return nil, fmt.Errorf("compute address: %w", err)
+	}
 
 	// Check if already deployed at computed address.
 	deployed, err := m.factory.IsDeployed(ctx, computed)
@@ -110,6 +113,21 @@ func (m *Manager) GetOrDeploy(
 		return nil, fmt.Errorf("deploy account: %w", err)
 	}
 	m.accountAddr = addr
+
+	// Verify deployment on-chain.
+	verified, err := m.factory.IsDeployed(ctx, addr)
+	if err != nil {
+		return nil, fmt.Errorf(
+			"verify deployment %s: %w", addr.Hex(), err,
+		)
+	}
+	if !verified {
+		return nil, fmt.Errorf(
+			"deploy account %s: on-chain verification found no code",
+			addr.Hex(),
+		)
+	}
+
 	return m.buildInfo(ownerAddr, true), nil
 }
 
@@ -128,9 +146,13 @@ func (m *Manager) Info(
 	if m.accountAddr == (common.Address{}) {
 		// Compute deterministic address.
 		salt := big.NewInt(0)
-		m.accountAddr = m.factory.ComputeAddress(
-			ownerAddr, salt,
+		addr, err := m.factory.ComputeAddress(
+			ctx, ownerAddr, salt,
 		)
+		if err != nil {
+			return nil, fmt.Errorf("compute address: %w", err)
+		}
+		m.accountAddr = addr
 	}
 
 	deployed, err := m.factory.IsDeployed(
@@ -328,6 +350,14 @@ func (m *Manager) submitUserOp(
 		op.PaymasterAndData = stubData
 	}
 
+	// Fetch gas fee parameters from the network.
+	gasFees, err := m.bundler.GetGasFees(ctx)
+	if err != nil {
+		return "", fmt.Errorf("get gas fees: %w", err)
+	}
+	op.MaxFeePerGas = gasFees.MaxFeePerGas
+	op.MaxPriorityFeePerGas = gasFees.MaxPriorityFeePerGas
+
 	// Estimate gas via bundler.
 	bOp := toBundlerOp(op)
 	gasEstimate, err := m.bundler.EstimateGas(ctx, bOp)
@@ -361,8 +391,10 @@ func (m *Manager) submitUserOp(
 	// Compute the UserOp hash for signing.
 	opHash := m.computeUserOpHash(op)
 
-	// Sign with wallet.
-	sig, err := m.wallet.SignMessage(ctx, opHash)
+	// Sign with wallet — use SignTransaction (raw sign) instead of
+	// SignMessage which adds an extra keccak256, causing double-hashing
+	// since computeUserOpHash already returns a keccak256 digest.
+	sig, err := m.wallet.SignTransaction(ctx, opHash)
 	if err != nil {
 		return "", fmt.Errorf("sign user op: %w", err)
 	}
@@ -375,7 +407,56 @@ func (m *Manager) submitUserOp(
 		return "", fmt.Errorf("submit user op: %w", err)
 	}
 
-	return result.UserOpHash.Hex(), nil
+	// Wait for the UserOp to be included in a transaction.
+	receipt, err := m.waitForUserOpReceipt(ctx, result.UserOpHash)
+	if err != nil {
+		return "", fmt.Errorf("wait for user op receipt: %w", err)
+	}
+
+	if !receipt.Success {
+		return "", fmt.Errorf("user op %s reverted on-chain", result.UserOpHash.Hex())
+	}
+
+	return receipt.TxHash.Hex(), nil
+}
+
+// userOpReceiptTimeout is the maximum time to wait for a UserOp receipt.
+const userOpReceiptTimeout = 2 * time.Minute
+
+// waitForUserOpReceipt polls the bundler for a UserOp receipt with
+// exponential backoff. The bundler's GetUserOperationReceipt returns the
+// actual on-chain transaction hash once the UserOp is included in a block.
+func (m *Manager) waitForUserOpReceipt(
+	ctx context.Context,
+	userOpHash common.Hash,
+) (*bundler.UserOpResult, error) {
+	deadline := time.After(userOpReceiptTimeout)
+	backoff := 1 * time.Second
+	maxBackoff := 16 * time.Second
+
+	for {
+		receipt, err := m.bundler.GetUserOperationReceipt(
+			ctx, userOpHash,
+		)
+		if err == nil {
+			return receipt, nil
+		}
+
+		select {
+		case <-deadline:
+			return nil, fmt.Errorf(
+				"receipt timeout for user op %s",
+				userOpHash.Hex(),
+			)
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		case <-time.After(backoff):
+		}
+
+		if backoff < maxBackoff {
+			backoff *= 2
+		}
+	}
 }
 
 // packGasValues packs two uint128 values into a single 32-byte word.
@@ -411,7 +492,14 @@ func padTo32(v *big.Int) []byte {
 	return padded
 }
 
-// computeUserOpHash computes the hash of a UserOp for signing
+// computeUserOpHash delegates to the package-level function.
+func (m *Manager) computeUserOpHash(
+	op *UserOperation,
+) []byte {
+	return ComputeUserOpHash(op, m.entryPoint, m.chainID)
+}
+
+// ComputeUserOpHash computes the hash of a UserOp for signing
 // per the ERC-4337 v0.7 PackedUserOperation format.
 // Inner hash: keccak256(abi.encode(sender, nonce, keccak256(initCode),
 //
@@ -419,8 +507,10 @@ func padTo32(v *big.Int) []byte {
 //	gasFees, keccak256(paymasterAndData)))
 //
 // Final hash: keccak256(abi.encode(innerHash, entryPoint, chainId))
-func (m *Manager) computeUserOpHash(
+func ComputeUserOpHash(
 	op *UserOperation,
+	entryPoint common.Address,
+	chainID int64,
 ) []byte {
 	// ABI-encode inner fields (8 slots × 32 bytes = 256 bytes).
 	packed := make([]byte, 0, 256)
@@ -474,11 +564,11 @@ func (m *Manager) computeUserOpHash(
 	final = append(final, innerHash...)
 	// Left-pad entryPoint to 32 bytes.
 	epPadded := make([]byte, 32)
-	copy(epPadded[12:], m.entryPoint.Bytes())
+	copy(epPadded[12:], entryPoint.Bytes())
 	final = append(final, epPadded...)
 	// Left-pad chainID to 32 bytes.
 	final = append(
-		final, padTo32(big.NewInt(m.chainID))...,
+		final, padTo32(big.NewInt(chainID))...,
 	)
 
 	return crypto.Keccak256(final)

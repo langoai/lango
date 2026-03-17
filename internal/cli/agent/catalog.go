@@ -95,6 +95,7 @@ func buildToolCategories(cfg *config.Config) []toolCategoryInfo {
 		{Name: "agent_memory", Description: "Per-agent persistent memory", ConfigKey: "agentMemory.enabled", Enabled: cfg.AgentMemory.Enabled},
 		{Name: "payment", Description: "Blockchain payments (USDC on Base)", ConfigKey: "payment.enabled", Enabled: cfg.Payment.Enabled},
 		{Name: "p2p", Description: "Peer-to-peer networking", ConfigKey: "p2p.enabled", Enabled: cfg.P2P.Enabled},
+		{Name: "workspace", Description: "P2P workspace collaboration and git bundles", ConfigKey: "p2p.workspace.enabled", Enabled: cfg.P2P.Workspace.Enabled},
 		{Name: "librarian", Description: "Knowledge inquiries and gap detection", ConfigKey: "librarian.enabled", Enabled: cfg.Librarian.Enabled},
 		{Name: "cron", Description: "Cron job scheduling", ConfigKey: "cron.enabled", Enabled: cfg.Cron.Enabled},
 		{Name: "background", Description: "Background task execution", ConfigKey: "background.enabled", Enabled: cfg.Background.Enabled},

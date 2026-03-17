@@ -97,8 +97,14 @@ type EscrowOnChainConfig struct {
 	// Mode selects the on-chain escrow pattern: "hub" or "vault".
 	Mode string `mapstructure:"mode" json:"mode"`
 
+	// ContractVersion selects the contract version: "v1" or "v2" (default: auto-detect).
+	ContractVersion string `mapstructure:"contractVersion" json:"contractVersion"`
+
 	// HubAddress is the deployed LangoEscrowHub contract address.
 	HubAddress string `mapstructure:"hubAddress" json:"hubAddress"`
+
+	// HubV2Address is the deployed LangoEscrowHubV2 proxy address (UUPS).
+	HubV2Address string `mapstructure:"hubV2Address" json:"hubV2Address"`
 
 	// VaultFactoryAddress is the deployed LangoVaultFactory contract address.
 	VaultFactoryAddress string `mapstructure:"vaultFactoryAddress" json:"vaultFactoryAddress"`
@@ -106,14 +112,42 @@ type EscrowOnChainConfig struct {
 	// VaultImplementation is the LangoVault implementation address for cloning.
 	VaultImplementation string `mapstructure:"vaultImplementation" json:"vaultImplementation"`
 
+	// BeaconAddress is the UpgradeableBeacon address for V2 vaults.
+	BeaconAddress string `mapstructure:"beaconAddress" json:"beaconAddress"`
+
+	// BeaconFactoryAddress is the LangoBeaconVaultFactory address for V2 vaults.
+	BeaconFactoryAddress string `mapstructure:"beaconFactoryAddress" json:"beaconFactoryAddress"`
+
+	// DirectSettlerAddress is the deployed DirectSettler contract address (V2).
+	DirectSettlerAddress string `mapstructure:"directSettlerAddress" json:"directSettlerAddress"`
+
+	// MilestoneSettlerAddress is the deployed MilestoneSettler contract address (V2).
+	MilestoneSettlerAddress string `mapstructure:"milestoneSettlerAddress" json:"milestoneSettlerAddress"`
+
 	// ArbitratorAddress is the dispute arbitrator address.
 	ArbitratorAddress string `mapstructure:"arbitratorAddress" json:"arbitratorAddress"`
 
 	// PollInterval is the event monitor polling interval (default: 15s).
 	PollInterval time.Duration `mapstructure:"pollInterval" json:"pollInterval"`
 
+	// ConfirmationDepth is the number of blocks to wait before processing events
+	// to protect against L2 reorgs (default: 2 for Base L2).
+	ConfirmationDepth uint64 `mapstructure:"confirmationDepth" json:"confirmationDepth"`
+
 	// TokenAddress is the ERC-20 token (USDC) contract address.
 	TokenAddress string `mapstructure:"tokenAddress" json:"tokenAddress"`
+}
+
+// IsV2 returns true if the on-chain config uses V2 contracts.
+// Auto-detects based on HubV2Address presence when ContractVersion is empty.
+func (c EscrowOnChainConfig) IsV2() bool {
+	if c.ContractVersion == "v2" {
+		return true
+	}
+	if c.ContractVersion == "v1" {
+		return false
+	}
+	return c.HubV2Address != "" || c.BeaconFactoryAddress != ""
 }
 
 // EscrowSettlementConfig configures on-chain settlement parameters for escrow.

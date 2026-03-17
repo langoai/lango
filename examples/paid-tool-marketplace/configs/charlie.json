@@ -1,0 +1,80 @@
+{
+  "server": {
+    "host": "0.0.0.0",
+    "port": 18791,
+    "httpEnabled": true,
+    "webSocketEnabled": false
+  },
+  "agent": {
+    "provider": "",
+    "model": ""
+  },
+  "payment": {
+    "enabled": true,
+    "walletProvider": "local",
+    "network": {
+      "chainId": 31337,
+      "rpcUrl": "http://anvil:8545",
+      "usdcContract": "PLACEHOLDER_USDC_ADDRESS"
+    },
+    "limits": {
+      "maxPerTx": "100.00",
+      "maxDaily": "1000.00",
+      "autoApproveBelow": "50.00"
+    }
+  },
+  "p2p": {
+    "enabled": true,
+    "listenAddrs": ["/ip4/0.0.0.0/tcp/9003"],
+    "enableMdns": true,
+    "maxPeers": 50,
+    "autoApproveKnownPeers": true,
+    "requireSignedChallenge": true,
+    "firewallRules": [
+      {
+        "peerDid": "*",
+        "action": "allow",
+        "tools": ["*"]
+      }
+    ],
+    "gossipInterval": "5s",
+    "zkHandshake": false,
+    "zkAttestation": false,
+    "pricing": {
+      "enabled": true,
+      "perQuery": "0.10"
+    },
+    "ownerProtection": {
+      "ownerName": "Charlie",
+      "ownerEmail": "",
+      "ownerPhone": "",
+      "blockConversations": true
+    },
+    "minTrustScore": 0.3
+  },
+  "a2a": {
+    "enabled": true,
+    "agentName": "Charlie",
+    "agentDescription": "Paid Tool Marketplace Buyer (Charlie) — high trust",
+    "capabilities": ["research", "coding"],
+    "baseUrl": "http://charlie:18791"
+  },
+  "security": {
+    "signer": {
+      "provider": "local"
+    },
+    "interceptor": {
+      "enabled": false,
+      "headlessAutoApprove": true
+    }
+  },
+  "knowledge": {
+    "enabled": false
+  },
+  "observationalMemory": {
+    "enabled": false
+  },
+  "graph": {
+    "enabled": false
+  }
+}

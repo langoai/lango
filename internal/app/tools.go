@@ -11,6 +11,7 @@ import (
 	"github.com/langoai/lango/internal/supervisor"
 	"github.com/langoai/lango/internal/toolchain"
 	"github.com/langoai/lango/internal/tools/browser"
+	execpkg "github.com/langoai/lango/internal/tools/exec"
 	"github.com/langoai/lango/internal/tools/filesystem"
 	"github.com/langoai/lango/internal/types"
 )
@@ -18,11 +19,11 @@ import (
 // buildTools creates the set of tools available to the agent.
 // When browserSM is non-nil, browser tools are included.
 // automationAvailable indicates which automation features are enabled (cron, background, workflow).
-func buildTools(sv *supervisor.Supervisor, fsCfg filesystem.Config, browserSM *browser.SessionManager, automationAvailable map[string]bool) []*agent.Tool {
+func buildTools(sv *supervisor.Supervisor, fsCfg filesystem.Config, browserSM *browser.SessionManager, automationAvailable map[string]bool, guard *execpkg.CommandGuard) []*agent.Tool {
 	var tools []*agent.Tool
 
 	// Exec tools (delegated to Supervisor for security isolation)
-	tools = append(tools, buildExecTools(sv, automationAvailable)...)
+	tools = append(tools, buildExecTools(sv, automationAvailable, guard)...)
 
 	// Filesystem tools
 	fsTool := filesystem.New(fsCfg)
@@ -63,6 +64,7 @@ func blockLangoExec(cmd string, automationAvailable map[string]bool) string {
 		{"lango payment", "", "payment_send, payment_create_wallet, payment_x402_fetch"},
 		{"lango mcp", "", "mcp_status, mcp_tools"},
 		{"lango contract", "", "contract_read, contract_call, contract_abi_load"},
+		{"lango account", "", "smart_account_deploy, smart_account_info, session_key_create, session_key_list, session_key_revoke, session_execute, policy_check, module_install, module_uninstall, spending_status, paymaster_status, paymaster_approve"},
 	}
 
 	for _, g := range guards {
@@ -103,6 +105,20 @@ func blockLangoExec(cmd string, automationAvailable map[string]bool) string {
 			"Example: import_skill(url: \"<url>\")"
 	}
 
+	return ""
+}
+
+// blockProtectedPaths checks if the command attempts to access protected data
+// paths or execute dangerous process management commands.
+// Returns a guidance message if blocked, or empty string if allowed.
+func blockProtectedPaths(cmd string, guard *execpkg.CommandGuard) string {
+	if guard == nil {
+		return ""
+	}
+	blocked, reason := guard.CheckCommand(cmd)
+	if blocked {
+		return reason
+	}
 	return ""
 }
 

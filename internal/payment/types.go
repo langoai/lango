@@ -24,15 +24,17 @@ type PaymentRequest struct {
 	PaymentMethod string `json:"paymentMethod,omitempty"`
 }
 
-// PaymentReceipt is returned after a payment is submitted.
+// PaymentReceipt is returned after a payment is confirmed on-chain.
 type PaymentReceipt struct {
-	TxHash    string    `json:"txHash"`
-	Status    string    `json:"status"`
-	Amount    string    `json:"amount"`
-	From      string    `json:"from"`
-	To        string    `json:"to"`
-	ChainID   int64     `json:"chainId"`
-	Timestamp time.Time `json:"timestamp"`
+	TxHash      string    `json:"txHash"`
+	Status      string    `json:"status"`
+	Amount      string    `json:"amount"`
+	From        string    `json:"from"`
+	To          string    `json:"to"`
+	ChainID     int64     `json:"chainId"`
+	GasUsed     uint64    `json:"gasUsed,omitempty"`
+	BlockNumber uint64    `json:"blockNumber,omitempty"`
+	Timestamp   time.Time `json:"timestamp"`
 }
 
 // TransactionInfo combines a receipt with contextual information.

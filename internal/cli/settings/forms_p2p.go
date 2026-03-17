@@ -355,3 +355,70 @@ func NewP2PSandboxForm(cfg *config.Config) *tuicore.FormModel {
 
 	return &form
 }
+
+// NewP2PWorkspaceForm creates the P2P Workspace configuration form.
+func NewP2PWorkspaceForm(cfg *config.Config) *tuicore.FormModel {
+	form := tuicore.NewFormModel("P2P Workspace Configuration")
+
+	wsEnabled := &tuicore.Field{
+		Key: "ws_enabled", Label: "Enabled", Type: tuicore.InputBool,
+		Checked:     cfg.P2P.Workspace.Enabled,
+		Description: "Enable collaborative workspaces for multi-agent co-work",
+	}
+	form.AddField(wsEnabled)
+	isWSEnabled := func() bool { return wsEnabled.Checked }
+
+	form.AddField(&tuicore.Field{
+		Key: "ws_data_dir", Label: "Data Directory", Type: tuicore.InputText,
+		Value:       cfg.P2P.Workspace.DataDir,
+		Placeholder: "~/.lango/workspaces",
+		Description: "Directory for storing workspace data and git bundles",
+	})
+
+	form.AddField(&tuicore.Field{
+		Key: "ws_max_workspaces", Label: "Max Workspaces", Type: tuicore.InputInt,
+		Value:       strconv.Itoa(cfg.P2P.Workspace.MaxWorkspaces),
+		Description: "Maximum number of concurrent active workspaces",
+		Validate: func(s string) error {
+			if i, err := strconv.Atoi(s); err != nil || i <= 0 {
+				return fmt.Errorf("must be a positive integer")
+			}
+			return nil
+		},
+	})
+
+	form.AddField(&tuicore.Field{
+		Key: "ws_max_bundle_size", Label: "Max Bundle Size (bytes)", Type: tuicore.InputInt,
+		Value:       strconv.FormatInt(cfg.P2P.Workspace.MaxBundleSizeBytes, 10),
+		Description: "Maximum git bundle size in bytes (0 = unlimited)",
+		Validate: func(s string) error {
+			if i, err := strconv.ParseInt(s, 10, 64); err != nil || i < 0 {
+				return fmt.Errorf("must be a non-negative integer")
+			}
+			return nil
+		},
+	})
+
+	form.AddField(&tuicore.Field{
+		Key: "ws_chronicler", Label: "Chronicler", Type: tuicore.InputBool,
+		Checked:     cfg.P2P.Workspace.ChroniclerEnabled,
+		Description: "Record workspace activity as triples in the graph store",
+		VisibleWhen: isWSEnabled,
+	})
+
+	form.AddField(&tuicore.Field{
+		Key: "ws_auto_sandbox", Label: "Auto Sandbox", Type: tuicore.InputBool,
+		Checked:     cfg.P2P.Workspace.AutoSandbox,
+		Description: "Automatically sandbox workspace operations for isolation",
+		VisibleWhen: isWSEnabled,
+	})
+
+	form.AddField(&tuicore.Field{
+		Key: "ws_contribution_tracking", Label: "Contribution Tracking", Type: tuicore.InputBool,
+		Checked:     cfg.P2P.Workspace.ContributionTracking,
+		Description: "Track per-agent contribution metrics (commits, messages, code bytes)",
+		VisibleWhen: isWSEnabled,
+	})
+
+	return &form
+}

@@ -145,6 +145,33 @@ func (_u *CronJobUpdate) SetNillableEnabled(v *bool) *CronJobUpdate {
 	return _u
 }
 
+// SetTimeoutMs sets the "timeout_ms" field.
+func (_u *CronJobUpdate) SetTimeoutMs(v int64) *CronJobUpdate {
+	_u.mutation.ResetTimeoutMs()
+	_u.mutation.SetTimeoutMs(v)
+	return _u
+}
+
+// SetNillableTimeoutMs sets the "timeout_ms" field if the given value is not nil.
+func (_u *CronJobUpdate) SetNillableTimeoutMs(v *int64) *CronJobUpdate {
+	if v != nil {
+		_u.SetTimeoutMs(*v)
+	}
+	return _u
+}
+
+// AddTimeoutMs adds value to the "timeout_ms" field.
+func (_u *CronJobUpdate) AddTimeoutMs(v int64) *CronJobUpdate {
+	_u.mutation.AddTimeoutMs(v)
+	return _u
+}
+
+// ClearTimeoutMs clears the value of the "timeout_ms" field.
+func (_u *CronJobUpdate) ClearTimeoutMs() *CronJobUpdate {
+	_u.mutation.ClearTimeoutMs()
+	return _u
+}
+
 // SetLastRunAt sets the "last_run_at" field.
 func (_u *CronJobUpdate) SetLastRunAt(v time.Time) *CronJobUpdate {
 	_u.mutation.SetLastRunAt(v)
@@ -301,6 +328,15 @@ func (_u *CronJobUpdate) sqlSave(ctx context.Context) (_node int, err error) {
 	if value, ok := _u.mutation.Enabled(); ok {
 		_spec.SetField(cronjob.FieldEnabled, field.TypeBool, value)
 	}
+	if value, ok := _u.mutation.TimeoutMs(); ok {
+		_spec.SetField(cronjob.FieldTimeoutMs, field.TypeInt64, value)
+	}
+	if value, ok := _u.mutation.AddedTimeoutMs(); ok {
+		_spec.AddField(cronjob.FieldTimeoutMs, field.TypeInt64, value)
+	}
+	if _u.mutation.TimeoutMsCleared() {
+		_spec.ClearField(cronjob.FieldTimeoutMs, field.TypeInt64)
+	}
 	if value, ok := _u.mutation.LastRunAt(); ok {
 		_spec.SetField(cronjob.FieldLastRunAt, field.TypeTime, value)
 	}
@@ -449,6 +485,33 @@ func (_u *CronJobUpdateOne) SetNillableEnabled(v *bool) *CronJobUpdateOne {
 	if v != nil {
 		_u.SetEnabled(*v)
 	}
+	return _u
+}
+
+// SetTimeoutMs sets the "timeout_ms" field.
+func (_u *CronJobUpdateOne) SetTimeoutMs(v int64) *CronJobUpdateOne {
+	_u.mutation.ResetTimeoutMs()
+	_u.mutation.SetTimeoutMs(v)
+	return _u
+}
+
+// SetNillableTimeoutMs sets the "timeout_ms" field if the given value is not nil.
+func (_u *CronJobUpdateOne) SetNillableTimeoutMs(v *int64) *CronJobUpdateOne {
+	if v != nil {
+		_u.SetTimeoutMs(*v)
+	}
+	return _u
+}
+
+// AddTimeoutMs adds value to the "timeout_ms" field.
+func (_u *CronJobUpdateOne) AddTimeoutMs(v int64) *CronJobUpdateOne {
+	_u.mutation.AddTimeoutMs(v)
+	return _u
+}
+
+// ClearTimeoutMs clears the value of the "timeout_ms" field.
+func (_u *CronJobUpdateOne) ClearTimeoutMs() *CronJobUpdateOne {
+	_u.mutation.ClearTimeoutMs()
 	return _u
 }
 
@@ -637,6 +700,15 @@ func (_u *CronJobUpdateOne) sqlSave(ctx context.Context) (_node *CronJob, err er
 	}
 	if value, ok := _u.mutation.Enabled(); ok {
 		_spec.SetField(cronjob.FieldEnabled, field.TypeBool, value)
+	}
+	if value, ok := _u.mutation.TimeoutMs(); ok {
+		_spec.SetField(cronjob.FieldTimeoutMs, field.TypeInt64, value)
+	}
+	if value, ok := _u.mutation.AddedTimeoutMs(); ok {
+		_spec.AddField(cronjob.FieldTimeoutMs, field.TypeInt64, value)
+	}
+	if _u.mutation.TimeoutMsCleared() {
+		_spec.ClearField(cronjob.FieldTimeoutMs, field.TypeInt64)
 	}
 	if value, ok := _u.mutation.LastRunAt(); ok {
 		_spec.SetField(cronjob.FieldLastRunAt, field.TypeTime, value)

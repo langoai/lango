@@ -45,6 +45,16 @@ type GasEstimate struct {
 	CallGasLimit         *big.Int `json:"callGasLimit"`
 	VerificationGasLimit *big.Int `json:"verificationGasLimit"`
 	PreVerificationGas   *big.Int `json:"preVerificationGas"`
+
+	// v0.7 paymaster gas fields (optional, nil if bundler does not return them).
+	PaymasterVerificationGasLimit *big.Int `json:"paymasterVerificationGasLimit,omitempty"`
+	PaymasterPostOpGasLimit       *big.Int `json:"paymasterPostOpGasLimit,omitempty"`
+}
+
+// GasFees contains EIP-1559 gas fee parameters.
+type GasFees struct {
+	MaxFeePerGas         *big.Int
+	MaxPriorityFeePerGas *big.Int
 }
 
 // jsonrpcRequest is a JSON-RPC 2.0 request.
@@ -64,6 +74,29 @@ type jsonrpcResponse struct {
 }
 
 type jsonrpcError struct {
-	Code    int    `json:"code"`
-	Message string `json:"message"`
+	Code    int              `json:"code"`
+	Message string           `json:"message"`
+	Data    *json.RawMessage `json:"data,omitempty"`
+}
+
+// RevertReason attempts to extract a human-readable revert reason
+// from the error data field. Returns empty string if unavailable.
+func (e *jsonrpcError) RevertReason() string {
+	if e.Data == nil {
+		return ""
+	}
+
+	// data may be a string (hex-encoded revert data) or a nested object.
+	var hexData string
+	if err := json.Unmarshal(*e.Data, &hexData); err != nil {
+		// Try nested object with "data" field (some bundlers wrap it).
+		var nested struct {
+			Data string `json:"data"`
+		}
+		if err2 := json.Unmarshal(*e.Data, &nested); err2 == nil {
+			hexData = nested.Data
+		}
+	}
+
+	return DecodeRevertReason(hexData)
 }

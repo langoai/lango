@@ -87,10 +87,10 @@ lango onboard [--profile <name>]
 
 The wizard walks through five steps:
 
-1. **Provider Setup** -- Choose an AI provider and enter API credentials
-2. **Agent Config** -- Select model, max tokens, and temperature
-3. **Channel Setup** -- Configure Telegram, Discord, or Slack
-4. **Security & Auth** -- Enable privacy interceptor and PII protection
+1. **Provider Setup** -- Choose an AI provider (Anthropic, OpenAI, Gemini, Ollama, GitHub) and enter API credentials
+2. **Agent Config** -- Select model (auto-fetched from provider), max tokens, and temperature
+3. **Channel Setup** -- Configure Telegram, Discord, or Slack (or skip)
+4. **Security & Auth** -- Privacy interceptor, PII redaction, approval policy
 5. **Test Config** -- Validate your configuration
 
 All settings are saved to an encrypted profile in `~/.lango/lango.db`.
@@ -115,10 +115,25 @@ $ lango onboard --profile staging
 Open the full interactive configuration editor. Provides access to all configuration options organized by category, including advanced features like embedding, graph, payment, and automation settings.
 
 ```
-lango settings
+lango settings [--profile <name>]
 ```
 
-The settings editor uses a TUI menu interface where you can navigate through categories and edit individual values. Changes are saved to the active encrypted profile.
+| Flag | Type | Default | Description |
+|------|------|---------|-------------|
+| `--profile` | string | `default` | Profile name to edit |
+
+The settings editor uses a TUI menu interface where you can navigate through categories and edit individual values. Categories are organized into groups:
+
+- **Core:** Providers, Agent, Server, Session
+- **Communication:** Channels, Tools, Multi-Agent, A2A Protocol
+- **AI & Knowledge:** Knowledge, Skill, Observational Memory, Embedding & RAG, Graph Store, Librarian
+- **Infrastructure:** Payment, Cron Scheduler, Background Tasks, Workflow Engine
+- **P2P Network:** P2P Network, P2P ZKP, P2P Pricing, P2P Owner Protection, P2P Sandbox
+- **Security:** Security, Auth, Security DB Encryption, Security KMS
+
+Press `/` to search across all categories by keyword.
+
+Changes are saved to the active encrypted profile.
 
 !!! note
     This command requires an interactive terminal. For scripted configuration, use `lango config import` with a JSON file.
@@ -138,23 +153,29 @@ lango doctor [--fix] [--json]
 | `--fix` | bool | `false` | Attempt to automatically fix issues |
 | `--json` | bool | `false` | Output results as JSON |
 
-**Checks performed:**
+**Checks performed (20 total):**
 
-- Encrypted configuration profile validity
-- API key and provider configuration
-- Channel token validation
+- Configuration profile validity
+- AI provider configuration and API keys
+- API key security (env-var best practices)
+- Channel token validation (Telegram, Discord, Slack)
 - Session database accessibility
-- Server port availability
-- Security configuration (signer, interceptor, passphrase)
-- Embedding provider connectivity
-- Graph store status
-- Multi-agent configuration
-- A2A remote agent connectivity
-- Output scanning and PII detection settings
+- Server port availability / network configuration
+- Security configuration (signer, interceptor, encryption)
+- Companion connectivity (WebSocket gateway status)
+- Observational memory configuration
+- Output scanning and interceptor settings
+- Embedding / RAG provider and model setup
+- Graph store configuration
+- Multi-agent orchestration settings
+- A2A protocol connectivity
 - Tool hooks configuration
 - Agent registry health
 - Librarian status
 - Approval system status
+- Economy layer configuration
+- Contract configuration
+- Observability configuration
 
 **Examples:**
 
@@ -171,3 +192,184 @@ $ lango doctor --json
 
 !!! tip
     Run `lango doctor` after `lango onboard` to verify your setup is correct. If issues are found, the `--fix` flag can resolve common problems automatically.
+
+---
+
+## lango config
+
+Configuration profile management. Manage multiple configuration profiles for different environments or setups.
+
+```
+lango config <subcommand>
+```
+
+### lango config list
+
+List all configuration profiles.
+
+```
+lango config list
+```
+
+**Output columns:**
+
+| Column | Description |
+|--------|-------------|
+| NAME | Profile name |
+| ACTIVE | `*` if currently active |
+| VERSION | Profile version number |
+| CREATED | Creation timestamp |
+| UPDATED | Last updated timestamp |
+
+**Example:**
+
+```bash
+$ lango config list
+NAME      ACTIVE  VERSION  CREATED              UPDATED
+default   *       3        2026-02-10 08:00:00  2026-02-20 14:30:00
+staging           1        2026-02-15 10:00:00  2026-02-15 10:00:00
+```
+
+---
+
+### lango config create
+
+Create a new profile with default configuration.
+
+```
+lango config create <name>
+```
+
+| Argument | Required | Description |
+|----------|----------|-------------|
+| `name` | Yes | Name for the new profile |
+
+**Example:**
+
+```bash
+$ lango config create staging
+Profile "staging" created with default configuration.
+```
+
+---
+
+### lango config use
+
+Switch to a different configuration profile.
+
+```
+lango config use <name>
+```
+
+| Argument | Required | Description |
+|----------|----------|-------------|
+| `name` | Yes | Profile name to activate |
+
+**Example:**
+
+```bash
+$ lango config use staging
+Switched to profile "staging".
+```
+
+---
+
+### lango config delete
+
+Delete a configuration profile. Prompts for confirmation unless `--force` is used.
+
+```
+lango config delete <name> [--force]
+```
+
+| Argument | Required | Description |
+|----------|----------|-------------|
+| `name` | Yes | Profile name to delete |
+
+| Flag | Type | Default | Description |
+|------|------|---------|-------------|
+| `--force`, `-f` | bool | `false` | Skip confirmation prompt |
+
+**Example:**
+
+```bash
+$ lango config delete staging
+Delete profile "staging"? This cannot be undone. [y/N]: y
+Profile "staging" deleted.
+
+$ lango config delete staging --force
+Profile "staging" deleted.
+```
+
+---
+
+### lango config import
+
+Import and encrypt a JSON configuration file. The source file is deleted after import for security.
+
+```
+lango config import <file> [--profile <name>]
+```
+
+| Argument | Required | Description |
+|----------|----------|-------------|
+| `file` | Yes | Path to the JSON configuration file |
+
+| Flag | Type | Default | Description |
+|------|------|---------|-------------|
+| `--profile` | string | `default` | Name for the imported profile |
+
+**Example:**
+
+```bash
+$ lango config import ./config.json --profile production
+Imported "./config.json" as profile "production" (now active).
+Source file deleted for security.
+```
+
+---
+
+### lango config export
+
+Export a profile as plaintext JSON. Requires passphrase verification via bootstrap.
+
+```
+lango config export <name>
+```
+
+| Argument | Required | Description |
+|----------|----------|-------------|
+| `name` | Yes | Profile name to export |
+
+**Example:**
+
+```bash
+$ lango config export default
+WARNING: exported configuration contains sensitive values in plaintext.
+{
+  "agent": {
+    "provider": "anthropic",
+    ...
+  }
+}
+```
+
+!!! warning
+    The exported JSON contains sensitive values (API keys, tokens) in plaintext. Handle with care.
+
+---
+
+### lango config validate
+
+Validate the active configuration profile.
+
+```
+lango config validate
+```
+
+**Example:**
+
+```bash
+$ lango config validate
+Profile "default" configuration is valid.
+```

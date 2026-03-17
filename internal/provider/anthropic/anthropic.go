@@ -33,6 +33,11 @@ func (p *AnthropicProvider) ID() string {
 }
 
 func (p *AnthropicProvider) Generate(ctx context.Context, params provider.GenerateParams) (iter.Seq2[provider.StreamEvent, error], error) {
+	// Safety net: catch obviously wrong models (e.g., "gpt-5.3-codex" routed here).
+	if err := provider.ValidateModelProvider("anthropic", params.Model); err != nil {
+		return nil, fmt.Errorf("anthropic provider: %w", err)
+	}
+
 	msgParams, err := p.convertParams(params)
 	if err != nil {
 		return nil, err

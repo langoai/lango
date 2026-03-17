@@ -6,40 +6,63 @@ import (
 	"sync"
 	"time"
 
+	"github.com/google/uuid"
 	robfigcron "github.com/robfig/cron/v3"
 	"go.uber.org/zap"
 )
 
 // Scheduler manages cron job registration, lifecycle, and concurrent execution.
 type Scheduler struct {
-	cron      *robfigcron.Cron
-	store     Store
-	executor  *Executor
-	mu        sync.RWMutex
-	entries   map[string]robfigcron.EntryID // jobID -> cron entry
-	semaphore chan struct{}                 // limits concurrent job execution
-	maxJobs   int
-	timezone  string
-	logger    *zap.SugaredLogger
+	cron           *robfigcron.Cron
+	store          Store
+	executor       *Executor
+	mu             sync.RWMutex
+	entries        map[string]robfigcron.EntryID // jobID -> cron entry
+	inFlight       map[string]context.CancelFunc // jobID -> cancel for running executions
+	inFlightMu     sync.Mutex
+	semaphore      chan struct{}                 // limits concurrent job execution
+	maxJobs        int
+	defaultTimeout time.Duration
+	timezone       string
+	shutdownCh     chan struct{}
+	stopOnce       sync.Once
+	logger         *zap.SugaredLogger
+}
+
+// SchedulerConfig holds optional configuration for the Scheduler.
+type SchedulerConfig struct {
+	Timezone       string
+	MaxJobs        int
+	DefaultTimeout time.Duration
+	Logger         *zap.SugaredLogger
 }
 
 // New creates a new Scheduler.
-func New(store Store, executor *Executor, timezone string, maxJobs int, logger *zap.SugaredLogger) *Scheduler {
-	if maxJobs <= 0 {
-		maxJobs = 5
+func New(store Store, executor *Executor, cfg SchedulerConfig) *Scheduler {
+	if cfg.MaxJobs <= 0 {
+		cfg.MaxJobs = 5
 	}
-	if timezone == "" {
-		timezone = "UTC"
+	if cfg.Timezone == "" {
+		cfg.Timezone = "UTC"
+	}
+	if cfg.DefaultTimeout <= 0 {
+		cfg.DefaultTimeout = 30 * time.Minute
+	}
+	if cfg.Logger == nil {
+		cfg.Logger = zap.NewNop().Sugar()
 	}
 
 	return &Scheduler{
-		store:     store,
-		executor:  executor,
-		entries:   make(map[string]robfigcron.EntryID),
-		semaphore: make(chan struct{}, maxJobs),
-		maxJobs:   maxJobs,
-		timezone:  timezone,
-		logger:    logger,
+		store:          store,
+		executor:       executor,
+		entries:        make(map[string]robfigcron.EntryID),
+		inFlight:       make(map[string]context.CancelFunc),
+		semaphore:      make(chan struct{}, cfg.MaxJobs),
+		maxJobs:        cfg.MaxJobs,
+		defaultTimeout: cfg.DefaultTimeout,
+		timezone:       cfg.Timezone,
+		shutdownCh:     make(chan struct{}),
+		logger:         cfg.Logger,
 	}
 }
 
@@ -83,52 +106,72 @@ func (s *Scheduler) Start(ctx context.Context) error {
 }
 
 // Stop gracefully shuts down the scheduler and waits for running jobs to drain.
+// It is safe to call Stop multiple times.
 func (s *Scheduler) Stop() {
-	if s.cron == nil {
-		return
-	}
+	s.stopOnce.Do(func() {
+		if s.cron == nil {
+			return
+		}
 
-	ctx := s.cron.Stop()
-	<-ctx.Done()
+		// Signal shutdown to unblock context-aware semaphore acquisition.
+		close(s.shutdownCh)
 
-	s.mu.Lock()
-	s.entries = make(map[string]robfigcron.EntryID)
-	s.mu.Unlock()
+		// Cancel all in-flight job executions.
+		s.inFlightMu.Lock()
+		for id, cancel := range s.inFlight {
+			cancel()
+			delete(s.inFlight, id)
+		}
+		s.inFlightMu.Unlock()
 
-	s.logger.Info("cron scheduler stopped")
+		ctx := s.cron.Stop()
+		<-ctx.Done()
+
+		s.mu.Lock()
+		s.entries = make(map[string]robfigcron.EntryID)
+		s.mu.Unlock()
+
+		s.logger.Info("cron scheduler stopped")
+	})
 }
 
-// AddJob creates a new job in the store and registers it with the scheduler.
-func (s *Scheduler) AddJob(ctx context.Context, job Job) error {
-	if err := s.store.Create(ctx, job); err != nil {
-		return fmt.Errorf("store cron job: %w", err)
+// AddJob creates or updates a job in the store and registers it with the scheduler.
+// Returns true if an existing job was updated, false if a new one was created.
+func (s *Scheduler) AddJob(ctx context.Context, job Job) (bool, error) {
+	stored, updated, err := s.store.Upsert(ctx, job)
+	if err != nil {
+		return false, fmt.Errorf("upsert cron job: %w", err)
 	}
 
-	// Re-read the job to get the generated ID and defaults.
-	stored, err := s.store.GetByName(ctx, job.Name)
-	if err != nil {
-		return fmt.Errorf("read back cron job %q: %w", job.Name, err)
+	// If updating, unregister the old cron entry before re-registering.
+	if updated {
+		s.unregisterJob(stored.ID)
 	}
 
 	if stored.Enabled && s.cron != nil {
 		if err := s.registerJob(*stored); err != nil {
-			return fmt.Errorf("register cron job %q: %w", job.Name, err)
+			return false, fmt.Errorf("register cron job %q: %w", job.Name, err)
 		}
 	}
 
-	s.logger.Infow("cron job added",
+	action := "added"
+	if updated {
+		action = "updated"
+	}
+	s.logger.Infow("cron job "+action,
 		"job", stored.Name,
 		"id", stored.ID,
 		"schedule_type", stored.ScheduleType,
 		"schedule", stored.Schedule,
 	)
 
-	return nil
+	return updated, nil
 }
 
 // RemoveJob removes a job from the scheduler and deletes it from the store.
 func (s *Scheduler) RemoveJob(ctx context.Context, id string) error {
 	s.unregisterJob(id)
+	s.cancelInFlight(id)
 
 	if err := s.store.Delete(ctx, id); err != nil {
 		return fmt.Errorf("delete cron job %q: %w", id, err)
@@ -146,6 +189,7 @@ func (s *Scheduler) PauseJob(ctx context.Context, id string) error {
 	}
 
 	s.unregisterJob(id)
+	s.cancelInFlight(id)
 
 	job.Enabled = false
 	if err := s.store.Update(ctx, *job); err != nil {
@@ -203,9 +247,24 @@ func (s *Scheduler) registerJob(job Job) error {
 	// Capture job by value for the closure.
 	j := job
 
-	entryID, err := s.cron.AddFunc(spec, func() {
-		s.executeWithSemaphore(j)
-	})
+	// For "at" (one-time) jobs, wrap with sync.Once to guarantee single execution
+	// regardless of how the cron library fires the trigger.
+	var addFunc func()
+	if j.ScheduleType == "at" {
+		var once sync.Once
+		addFunc = func() {
+			once.Do(func() {
+				s.unregisterJob(j.ID)
+				s.executeWithSemaphore(j)
+			})
+		}
+	} else {
+		addFunc = func() {
+			s.executeWithSemaphore(j)
+		}
+	}
+
+	entryID, err := s.cron.AddFunc(spec, addFunc)
 	if err != nil {
 		return fmt.Errorf("add cron entry for job %q: %w", job.Name, err)
 	}
@@ -230,13 +289,60 @@ func (s *Scheduler) unregisterJob(id string) {
 	}
 }
 
+// cancelInFlight cancels a currently executing job, if any.
+func (s *Scheduler) cancelInFlight(id string) {
+	s.inFlightMu.Lock()
+	defer s.inFlightMu.Unlock()
+
+	if cancel, ok := s.inFlight[id]; ok {
+		cancel()
+		delete(s.inFlight, id)
+	}
+}
+
+// ResolveJobID resolves a name-or-ID string to a job UUID.
+// If the input is a valid UUID it is returned as-is; otherwise it is
+// looked up by name via the store.
+func (s *Scheduler) ResolveJobID(ctx context.Context, nameOrID string) (string, error) {
+	if _, err := uuid.Parse(nameOrID); err == nil {
+		return nameOrID, nil
+	}
+
+	job, err := s.store.GetByName(ctx, nameOrID)
+	if err != nil {
+		return "", fmt.Errorf("resolve job %q: %w", nameOrID, err)
+	}
+	return job.ID, nil
+}
+
 // executeWithSemaphore runs a job while respecting the concurrency limit.
 func (s *Scheduler) executeWithSemaphore(job Job) {
-	// Acquire semaphore slot.
-	s.semaphore <- struct{}{}
+	// Context-aware semaphore acquisition: abort if shutting down.
+	select {
+	case s.semaphore <- struct{}{}:
+	case <-s.shutdownCh:
+		return
+	}
 	defer func() { <-s.semaphore }()
 
-	ctx := context.Background()
+	// Determine per-job or default timeout.
+	timeout := s.defaultTimeout
+	if job.Timeout > 0 {
+		timeout = job.Timeout
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), timeout)
+	defer cancel()
+
+	// Register in-flight so RemoveJob/PauseJob can cancel.
+	s.inFlightMu.Lock()
+	s.inFlight[job.ID] = cancel
+	s.inFlightMu.Unlock()
+	defer func() {
+		s.inFlightMu.Lock()
+		delete(s.inFlight, job.ID)
+		s.inFlightMu.Unlock()
+	}()
+
 	s.executor.Execute(ctx, job)
 
 	// For "at" (one-time) jobs, disable after execution.
@@ -246,9 +352,8 @@ func (s *Scheduler) executeWithSemaphore(job Job) {
 }
 
 // disableOneTimeJob disables a one-time ("at") job after it has fired.
+// Note: unregisterJob is already called by the sync.Once wrapper in registerJob.
 func (s *Scheduler) disableOneTimeJob(ctx context.Context, job Job) {
-	s.unregisterJob(job.ID)
-
 	job.Enabled = false
 	if err := s.store.Update(ctx, job); err != nil {
 		s.logger.Warnw("disable one-time job after execution",

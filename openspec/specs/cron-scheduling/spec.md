@@ -5,13 +5,23 @@ Define the cron scheduling system that enables periodic, interval-based, and one
 ### Requirement: Cron job persistence
 The system SHALL persist cron jobs in the Ent ORM with fields: id (UUID), name (unique), schedule_type (at/every/cron), schedule, prompt, session_mode, deliver_to ([]string), timezone, enabled, last_run_at, next_run_at, and timestamps.
 
+The `Store.Upsert` method SHALL return `(*Job, bool, error)` where the first return value is the persisted job (with generated ID and defaults populated), the second indicates whether an existing job was updated, and the third is any error.
+
 #### Scenario: Create a cron job
 - **WHEN** a cron job is created with name "news-summary", schedule "0 9 * * *", and prompt "Summarize today's news"
 - **THEN** the job SHALL be persisted in the database with enabled=true and schedule_type="cron"
 
+#### Scenario: Upsert returns persisted job on create
+- **WHEN** `Upsert` is called for a job name that does not exist
+- **THEN** the method SHALL create the job, read it back to populate the generated ID, and return `(*Job, false, nil)`
+
+#### Scenario: Upsert returns persisted job on update
+- **WHEN** `Upsert` is called for a job name that already exists
+- **THEN** the method SHALL update the existing job, preserving its ID and CreatedAt, and return `(*Job, true, nil)`
+
 #### Scenario: Unique name constraint
 - **WHEN** a cron job is created with a name that already exists
-- **THEN** the system SHALL return an error indicating the name is already taken
+- **THEN** the system SHALL update the existing job via Upsert rather than returning an error
 
 ### Requirement: Schedule type support
 The system SHALL support three schedule types: "cron" (standard cron expressions), "every" (interval durations like "1h"), and "at" (one-time ISO 8601 timestamps).
@@ -31,9 +41,13 @@ The system SHALL support three schedule types: "cron" (standard cron expressions
 ### Requirement: Job lifecycle management
 The system SHALL support adding, removing, pausing, and resuming cron jobs at runtime without restarting the scheduler.
 
+`AddJob` SHALL use the `*Job` returned by `Upsert` directly, without an additional `GetByName` query.
+
+The `cron_remove`, `cron_pause`, and `cron_resume` tool handlers SHALL accept either a job ID (UUID) or job name, using `scheduler.ResolveJobID()` to resolve names to IDs before calling the scheduler methods.
+
 #### Scenario: Pause a running job
 - **WHEN** a job is paused via PauseJob()
-- **THEN** the job SHALL be marked as disabled and removed from the cron runner
+- **THEN** the job SHALL be marked as disabled, removed from the cron runner, and any in-flight execution SHALL be cancelled
 
 #### Scenario: Resume a paused job
 - **WHEN** a paused job is resumed via ResumeJob()
@@ -41,7 +55,19 @@ The system SHALL support adding, removing, pausing, and resuming cron jobs at ru
 
 #### Scenario: Remove a job
 - **WHEN** a job is removed via RemoveJob()
-- **THEN** the job SHALL be deleted from the database and unregistered from the cron runner
+- **THEN** the job SHALL be deleted from the database, unregistered from the cron runner, and any in-flight execution SHALL be cancelled
+
+#### Scenario: Remove by name
+- **WHEN** `cron_remove` is called with a job name instead of UUID
+- **THEN** the handler SHALL resolve the name to a UUID via `ResolveJobID` and proceed with removal
+
+#### Scenario: AddJob creates new job
+- **WHEN** AddJob is called with a new job name
+- **THEN** the scheduler SHALL upsert the job, register it with the cron runner, and return `(false, nil)`
+
+#### Scenario: AddJob updates existing job
+- **WHEN** AddJob is called with an existing job name
+- **THEN** the scheduler SHALL upsert the job, unregister the old entry, re-register with the new schedule, and return `(true, nil)`
 
 ### Requirement: Isolated session execution
 The system SHALL execute each cron job in an isolated agent session with a key following the pattern "cron:<jobName>:<timestamp>".
@@ -163,3 +189,90 @@ The `Delivery` struct SHALL accept a `TypingIndicator` in addition to `ChannelSe
 - **WHEN** `StartTyping` is called with targets `["telegram:123", "discord:456"]`
 - **THEN** typing indicators SHALL start on both channels and the returned stop function SHALL stop both
 
+### Requirement: Idempotent scheduler shutdown
+The `Scheduler.Stop()` method SHALL be idempotent — calling it multiple times SHALL NOT panic. The method SHALL use `sync.Once` to ensure the shutdown sequence (close shutdownCh, drain cron entries, clear entries map) executes exactly once.
+
+#### Scenario: Stop called once
+- **WHEN** `Stop()` is called on a started scheduler
+- **THEN** the scheduler SHALL close shutdownCh, wait for the cron runner to drain, clear entries, and log "cron scheduler stopped"
+
+#### Scenario: Stop called twice
+- **WHEN** `Stop()` is called twice on the same scheduler
+- **THEN** the second call SHALL be a no-op without panic
+
+#### Scenario: Stop called without Start
+- **WHEN** `Stop()` is called on a scheduler that was never started (cron is nil)
+- **THEN** the method SHALL be a no-op without panic
+
+### Requirement: One-time job unregistration is single-responsibility
+The `disableOneTimeJob` method SHALL only handle DB persistence (setting `Enabled=false`). It SHALL NOT call `unregisterJob`, as the `sync.Once` wrapper in `registerJob` already handles cron entry removal for one-time jobs.
+
+#### Scenario: One-time job disabled after execution
+- **WHEN** a one-time ("at") job fires
+- **THEN** `registerJob`'s sync.Once wrapper SHALL call `unregisterJob`, and `disableOneTimeJob` SHALL only update the job's Enabled flag to false in the database
+
+
+
+### Requirement: History-aware prompt enrichment
+The executor SHALL enrich cron job prompts with recent execution history before sending to the agent runner. The system SHALL query up to 10 recent history entries for the job, prepend them as a "previous outputs" section instructing the LLM not to repeat them, and truncate each result preview to 200 characters. If the history query fails, the executor SHALL gracefully fall back to the original prompt without enrichment.
+
+#### Scenario: Prompt enriched with history
+- **WHEN** a cron job executes and has 3 previous history entries
+- **THEN** the executor SHALL prepend a "Previous outputs — do NOT repeat these" section listing all 3 results before the original prompt
+
+#### Scenario: No history available
+- **WHEN** a cron job executes for the first time with no history entries
+- **THEN** the executor SHALL use the original prompt without modification
+
+#### Scenario: History query failure
+- **WHEN** the history query returns an error
+- **THEN** the executor SHALL log a debug-level message and use the original prompt without modification
+
+#### Scenario: History saved with original prompt
+- **WHEN** a cron job executes with history enrichment
+- **THEN** the history entry SHALL record the original prompt (not the enriched version) to prevent prefix accumulation
+
+### Requirement: In-flight execution cancellation
+The scheduler SHALL track currently executing jobs via an `inFlight` map of jobID to context.CancelFunc. When `RemoveJob()` or `PauseJob()` is called, the scheduler SHALL cancel any in-flight execution for that job in addition to unregistering it from the cron runner. When `Stop()` is called, the scheduler SHALL cancel all in-flight executions before stopping the cron runner.
+
+#### Scenario: Remove cancels in-flight execution
+- **WHEN** `RemoveJob()` is called while the job is executing
+- **THEN** the scheduler SHALL cancel the execution context AND delete the job from the store
+
+#### Scenario: Pause cancels in-flight execution
+- **WHEN** `PauseJob()` is called while the job is executing
+- **THEN** the scheduler SHALL cancel the execution context AND mark the job as disabled
+
+#### Scenario: Stop cancels all in-flight executions
+- **WHEN** `Stop()` is called with jobs currently executing
+- **THEN** the scheduler SHALL cancel all in-flight execution contexts before waiting for the cron runner to drain
+
+#### Scenario: In-flight map cleanup
+- **WHEN** a job execution completes normally
+- **THEN** the scheduler SHALL remove the job's entry from the inFlight map via defer
+
+### Requirement: Name-or-ID job resolution
+The scheduler SHALL provide a `ResolveJobID(ctx, nameOrID) (string, error)` method that accepts either a UUID string or a job name. If the input is a valid UUID, it SHALL be returned as-is. Otherwise, the scheduler SHALL look up the job by name via `store.GetByName()` and return the job's ID.
+
+#### Scenario: Resolve by UUID
+- **WHEN** `ResolveJobID` is called with a valid UUID string
+- **THEN** the method SHALL return the UUID without a store query
+
+#### Scenario: Resolve by name
+- **WHEN** `ResolveJobID` is called with a non-UUID string matching an existing job name
+- **THEN** the method SHALL return the job's UUID from the store
+
+#### Scenario: Name not found
+- **WHEN** `ResolveJobID` is called with a non-UUID string that does not match any job name
+- **THEN** the method SHALL return an error
+
+### Requirement: Scheduler config struct
+The `Scheduler` constructor SHALL accept a `SchedulerConfig` struct for optional parameters instead of positional arguments. The constructor signature SHALL be `New(store Store, executor *Executor, cfg SchedulerConfig) *Scheduler`.
+
+#### Scenario: Default config values
+- **WHEN** `New()` is called with a zero-value `SchedulerConfig`
+- **THEN** defaults SHALL be applied: Timezone="UTC", MaxJobs=5, DefaultTimeout=30m, Logger=zap.NewNop().Sugar()
+
+#### Scenario: Custom config values
+- **WHEN** `New()` is called with a populated `SchedulerConfig`
+- **THEN** the provided values SHALL override the defaults

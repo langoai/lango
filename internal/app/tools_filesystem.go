@@ -2,9 +2,9 @@ package app
 
 import (
 	"context"
-	"fmt"
 
 	"github.com/langoai/lango/internal/agent"
+	"github.com/langoai/lango/internal/toolparam"
 	"github.com/langoai/lango/internal/tools/filesystem"
 )
 
@@ -12,19 +12,25 @@ func buildFilesystemTools(fsTool *filesystem.Tool) []*agent.Tool {
 	return []*agent.Tool{
 		{
 			Name:        "fs_read",
-			Description: "Read a file",
+			Description: "Read a file. Supports optional offset/limit for partial reads.",
 			SafetyLevel: agent.SafetyLevelSafe,
-			Parameters: map[string]interface{}{
-				"type": "object",
-				"properties": map[string]interface{}{
-					"path": map[string]interface{}{"type": "string", "description": "The file path to read"},
-				},
-				"required": []string{"path"},
-			},
+			Parameters: agent.Schema().
+				Str("path", "The file path to read").
+				Int("offset", "Start reading from this line number (1-indexed, default: read from beginning)").
+				Int("limit", "Maximum number of lines to return (default: all lines)").
+				Required("path").
+				Build(),
 			Handler: func(ctx context.Context, params map[string]interface{}) (interface{}, error) {
-				path, ok := params["path"].(string)
-				if !ok {
-					return nil, fmt.Errorf("missing path parameter")
+				path, err := toolparam.RequireString(params, "path")
+				if err != nil {
+					return nil, err
+				}
+
+				offset := toolparam.OptionalInt(params, "offset", 0)
+				limit := toolparam.OptionalInt(params, "limit", 0)
+
+				if offset > 0 || limit > 0 {
+					return fsTool.ReadWithMeta(path, offset, limit)
 				}
 				return fsTool.Read(path)
 			},
@@ -33,18 +39,12 @@ func buildFilesystemTools(fsTool *filesystem.Tool) []*agent.Tool {
 			Name:        "fs_list",
 			Description: "List contents of a directory",
 			SafetyLevel: agent.SafetyLevelSafe,
-			Parameters: map[string]interface{}{
-				"type": "object",
-				"properties": map[string]interface{}{
-					"path": map[string]interface{}{"type": "string", "description": "The directory path to list"},
-				},
-				"required": []string{"path"},
-			},
+			Parameters: agent.Schema().
+				Str("path", "The directory path to list").
+				Required("path").
+				Build(),
 			Handler: func(ctx context.Context, params map[string]interface{}) (interface{}, error) {
-				path, _ := params["path"].(string)
-				if path == "" {
-					path = "."
-				}
+				path := toolparam.OptionalString(params, "path", ".")
 				return fsTool.ListDir(path)
 			},
 		},
@@ -52,20 +52,17 @@ func buildFilesystemTools(fsTool *filesystem.Tool) []*agent.Tool {
 			Name:        "fs_write",
 			Description: "Write content to a file",
 			SafetyLevel: agent.SafetyLevelDangerous,
-			Parameters: map[string]interface{}{
-				"type": "object",
-				"properties": map[string]interface{}{
-					"path":    map[string]interface{}{"type": "string", "description": "The file path to write to"},
-					"content": map[string]interface{}{"type": "string", "description": "The content to write"},
-				},
-				"required": []string{"path", "content"},
-			},
+			Parameters: agent.Schema().
+				Str("path", "The file path to write to").
+				Str("content", "The content to write").
+				Required("path", "content").
+				Build(),
 			Handler: func(ctx context.Context, params map[string]interface{}) (interface{}, error) {
-				path, _ := params["path"].(string)
-				content, _ := params["content"].(string)
-				if path == "" {
-					return nil, fmt.Errorf("missing path parameter")
+				path, err := toolparam.RequireString(params, "path")
+				if err != nil {
+					return nil, err
 				}
+				content := toolparam.OptionalString(params, "content", "")
 				return nil, fsTool.Write(path, content)
 			},
 		},
@@ -73,35 +70,21 @@ func buildFilesystemTools(fsTool *filesystem.Tool) []*agent.Tool {
 			Name:        "fs_edit",
 			Description: "Edit a file by replacing a line range",
 			SafetyLevel: agent.SafetyLevelDangerous,
-			Parameters: map[string]interface{}{
-				"type": "object",
-				"properties": map[string]interface{}{
-					"path":      map[string]interface{}{"type": "string", "description": "The file path to edit"},
-					"startLine": map[string]interface{}{"type": "integer", "description": "The starting line number (1-indexed)"},
-					"endLine":   map[string]interface{}{"type": "integer", "description": "The ending line number (inclusive)"},
-					"content":   map[string]interface{}{"type": "string", "description": "The new content for the specified range"},
-				},
-				"required": []string{"path", "startLine", "endLine", "content"},
-			},
+			Parameters: agent.Schema().
+				Str("path", "The file path to edit").
+				Int("startLine", "The starting line number (1-indexed)").
+				Int("endLine", "The ending line number (inclusive)").
+				Str("content", "The new content for the specified range").
+				Required("path", "startLine", "endLine", "content").
+				Build(),
 			Handler: func(ctx context.Context, params map[string]interface{}) (interface{}, error) {
-				path, _ := params["path"].(string)
-				content, _ := params["content"].(string)
-				if path == "" {
-					return nil, fmt.Errorf("missing path parameter")
+				path, err := toolparam.RequireString(params, "path")
+				if err != nil {
+					return nil, err
 				}
-
-				var startLine, endLine int
-				if sl, ok := params["startLine"].(float64); ok {
-					startLine = int(sl)
-				} else if sl, ok := params["startLine"].(int); ok {
-					startLine = sl
-				}
-				if el, ok := params["endLine"].(float64); ok {
-					endLine = int(el)
-				} else if el, ok := params["endLine"].(int); ok {
-					endLine = el
-				}
-
+				content := toolparam.OptionalString(params, "content", "")
+				startLine := toolparam.OptionalInt(params, "startLine", 0)
+				endLine := toolparam.OptionalInt(params, "endLine", 0)
 				return nil, fsTool.Edit(path, startLine, endLine, content)
 			},
 		},
@@ -109,17 +92,14 @@ func buildFilesystemTools(fsTool *filesystem.Tool) []*agent.Tool {
 			Name:        "fs_mkdir",
 			Description: "Create a directory",
 			SafetyLevel: agent.SafetyLevelModerate,
-			Parameters: map[string]interface{}{
-				"type": "object",
-				"properties": map[string]interface{}{
-					"path": map[string]interface{}{"type": "string", "description": "The directory path to create"},
-				},
-				"required": []string{"path"},
-			},
+			Parameters: agent.Schema().
+				Str("path", "The directory path to create").
+				Required("path").
+				Build(),
 			Handler: func(ctx context.Context, params map[string]interface{}) (interface{}, error) {
-				path, _ := params["path"].(string)
-				if path == "" {
-					return nil, fmt.Errorf("missing path parameter")
+				path, err := toolparam.RequireString(params, "path")
+				if err != nil {
+					return nil, err
 				}
 				return nil, fsTool.Mkdir(path)
 			},
@@ -128,19 +108,32 @@ func buildFilesystemTools(fsTool *filesystem.Tool) []*agent.Tool {
 			Name:        "fs_delete",
 			Description: "Delete a file or directory",
 			SafetyLevel: agent.SafetyLevelDangerous,
-			Parameters: map[string]interface{}{
-				"type": "object",
-				"properties": map[string]interface{}{
-					"path": map[string]interface{}{"type": "string", "description": "The path to delete"},
-				},
-				"required": []string{"path"},
-			},
+			Parameters: agent.Schema().
+				Str("path", "The path to delete").
+				Required("path").
+				Build(),
 			Handler: func(ctx context.Context, params map[string]interface{}) (interface{}, error) {
-				path, _ := params["path"].(string)
-				if path == "" {
-					return nil, fmt.Errorf("missing path parameter")
+				path, err := toolparam.RequireString(params, "path")
+				if err != nil {
+					return nil, err
 				}
 				return nil, fsTool.Delete(path)
+			},
+		},
+		{
+			Name:        "fs_stat",
+			Description: "Get file metadata (size, line count, modification time) without reading content",
+			SafetyLevel: agent.SafetyLevelSafe,
+			Parameters: agent.Schema().
+				Str("path", "The file path to inspect").
+				Required("path").
+				Build(),
+			Handler: func(ctx context.Context, params map[string]interface{}) (interface{}, error) {
+				path, err := toolparam.RequireString(params, "path")
+				if err != nil {
+					return nil, err
+				}
+				return fsTool.Stat(path)
 			},
 		},
 	}

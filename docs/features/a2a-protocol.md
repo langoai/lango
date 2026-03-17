@@ -143,13 +143,13 @@ Remote agents are configured via the config file. Use the config export/edit/imp
 
 ```bash
 # Export current config
-lango config export > config.yaml
+lango config export > config.json
 
 # Edit to add remote agents under a2a.remoteAgents
 # ...
 
 # Import updated config
-lango config import config.yaml
+lango config import config.json
 ```
 
 !!! tip "Requires Multi-Agent Mode"

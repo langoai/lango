@@ -50,6 +50,11 @@ type Store interface {
 	Delete(key string) error
 	// AppendMessage adds a message to session history
 	AppendMessage(key string, msg Message) error
+	// AnnotateTimeout appends a synthetic assistant message to indicate that the
+	// previous turn was interrupted by a timeout. This prevents incomplete history
+	// from leaking into subsequent turns.
+	// partial is any partial response text accumulated before the timeout.
+	AnnotateTimeout(key string, partial string) error
 	// Close closes the store
 	Close() error
 

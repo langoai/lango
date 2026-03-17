@@ -113,6 +113,28 @@ func TestRegistry_EmptyRegistry(t *testing.T) {
 	require.NoError(t, err)
 }
 
+func TestRegistry_Names(t *testing.T) {
+	t.Parallel()
+
+	tracker := &orderTracker{}
+	r := NewRegistry()
+
+	r.Register(&mockComponent{name: "alpha", tracker: tracker}, PriorityInfra)
+	r.Register(&mockComponent{name: "beta", tracker: tracker}, PriorityBuffer)
+	r.Register(&mockComponent{name: "gamma", tracker: tracker}, PriorityNetwork)
+
+	names := r.Names()
+	assert.Equal(t, []string{"alpha", "beta", "gamma"}, names)
+}
+
+func TestRegistry_Names_Empty(t *testing.T) {
+	t.Parallel()
+
+	r := NewRegistry()
+	names := r.Names()
+	assert.Empty(t, names)
+}
+
 func TestRegistry_SamePriorityPreservesOrder(t *testing.T) {
 	t.Parallel()
 

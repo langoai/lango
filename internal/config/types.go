@@ -8,6 +8,11 @@ import (
 
 // Config is the root configuration structure for lango
 type Config struct {
+	// DataRoot is the root directory for all lango data files (default: ~/.lango/).
+	// All configurable data paths (database, graph, skills, etc.) must reside under this directory.
+	// This can be overridden (e.g., for Docker: /data/lango/) but all sub-paths must stay under it.
+	DataRoot string `mapstructure:"dataRoot" json:"dataRoot,omitempty"`
+
 	// Server configuration
 	Server ServerConfig `mapstructure:"server" json:"server"`
 
@@ -82,6 +87,9 @@ type Config struct {
 
 	// Smart Account configuration (ERC-7579 modular accounts)
 	SmartAccount SmartAccountConfig `mapstructure:"smartAccount" json:"smartAccount"`
+
+	// Gatekeeper configuration (response sanitization)
+	Gatekeeper GatekeeperConfig `mapstructure:"gatekeeper" json:"gatekeeper"`
 
 	// Observability configuration (token tracking, health, audit, metrics)
 	Observability ObservabilityConfig `mapstructure:"observability" json:"observability"`
@@ -161,6 +169,12 @@ type AgentConfig struct {
 	// MaxRequestTimeout is the absolute maximum duration for a request when auto-extend is enabled.
 	// Defaults to 3x RequestTimeout (e.g. 15m if RequestTimeout is 5m).
 	MaxRequestTimeout time.Duration `mapstructure:"maxRequestTimeout" json:"maxRequestTimeout"`
+
+	// IdleTimeout is the duration of inactivity (no streaming chunks, tool calls, or model responses)
+	// before a request is timed out. When set, RequestTimeout becomes the hard ceiling.
+	// Set to -1 to disable idle timeout and use fixed RequestTimeout instead.
+	// Default: 0 (disabled for backward compatibility; new installs should set 2m).
+	IdleTimeout time.Duration `mapstructure:"idleTimeout" json:"idleTimeout"`
 
 	// AgentsDir is the directory containing user-defined AGENT.md files.
 	// Structure: <dir>/<name>/AGENT.md
@@ -258,9 +272,11 @@ type SessionConfig struct {
 
 // ToolsConfig defines tool-specific settings
 type ToolsConfig struct {
-	Exec       ExecToolConfig       `mapstructure:"exec" json:"exec"`
-	Filesystem FilesystemToolConfig `mapstructure:"filesystem" json:"filesystem"`
-	Browser    BrowserToolConfig    `mapstructure:"browser" json:"browser"`
+	Exec           ExecToolConfig       `mapstructure:"exec" json:"exec"`
+	Filesystem     FilesystemToolConfig `mapstructure:"filesystem" json:"filesystem"`
+	Browser        BrowserToolConfig    `mapstructure:"browser" json:"browser"`
+	OutputManager  OutputManagerConfig  `mapstructure:"outputManager" json:"outputManager"`
+	MaxOutputChars int                  `mapstructure:"maxOutputChars" json:"maxOutputChars"`
 }
 
 // HooksConfig defines tool execution hook settings.
@@ -294,6 +310,10 @@ type ExecToolConfig struct {
 
 	// Working directory (empty = current)
 	WorkDir string `mapstructure:"workDir" json:"workDir"`
+
+	// AdditionalProtectedPaths specifies extra paths that the exec tool
+	// should block access to (in addition to the DataRoot).
+	AdditionalProtectedPaths []string `mapstructure:"additionalProtectedPaths" json:"additionalProtectedPaths,omitempty"`
 }
 
 // FilesystemToolConfig defines file access settings
@@ -309,6 +329,42 @@ type FilesystemToolConfig struct {
 type AgentMemoryConfig struct {
 	// Enable agent memory system
 	Enabled bool `mapstructure:"enabled" json:"enabled"`
+}
+
+// GatekeeperConfig defines response sanitization (output gatekeeper) settings.
+type GatekeeperConfig struct {
+	// Master switch (nil defaults to true — enabled by default)
+	Enabled *bool `mapstructure:"enabled" json:"enabled"`
+
+	// Strip <thought>/<thinking> tags from responses
+	StripThoughtTags *bool `mapstructure:"stripThoughtTags" json:"stripThoughtTags"`
+
+	// Strip lines starting with [INTERNAL], [DEBUG], [SYSTEM], [OBSERVATION]
+	StripInternalMarkers *bool `mapstructure:"stripInternalMarkers" json:"stripInternalMarkers"`
+
+	// Replace large raw JSON code blocks with a placeholder
+	StripRawJSON *bool `mapstructure:"stripRawJSON" json:"stripRawJSON"`
+
+	// Character threshold for raw JSON replacement (default: 500)
+	RawJSONThreshold int `mapstructure:"rawJsonThreshold" json:"rawJsonThreshold"`
+
+	// Additional regex patterns to strip from responses
+	CustomPatterns []string `mapstructure:"customPatterns" json:"customPatterns"`
+}
+
+// OutputManagerConfig defines token-based output management settings.
+type OutputManagerConfig struct {
+	// Master switch (nil defaults to true — enabled by default)
+	Enabled *bool `mapstructure:"enabled" json:"enabled"`
+
+	// Maximum token budget for tool output (default: 2000)
+	TokenBudget int `mapstructure:"tokenBudget" json:"tokenBudget"`
+
+	// Ratio of head content to preserve during compression (default: 0.7)
+	HeadRatio float64 `mapstructure:"headRatio" json:"headRatio"`
+
+	// Ratio of tail content to preserve during compression (default: 0.3)
+	TailRatio float64 `mapstructure:"tailRatio" json:"tailRatio"`
 }
 
 // BrowserToolConfig defines browser automation settings

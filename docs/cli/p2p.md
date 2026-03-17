@@ -567,3 +567,302 @@ capability           true      512          plonk
 balance_range        true      128          plonk
 attestation          true      389          plonk
 ```
+
+---
+
+## lango p2p workspace
+
+Manage P2P workspaces — collaborative environments where agents share code, messages, and git bundles. See the [Collaborative Workspaces](../features/p2p-network.md#collaborative-workspaces) section for details.
+
+### lango p2p workspace create
+
+Create a new collaborative workspace.
+
+```
+lango p2p workspace create <name> [--goal <goal>] [--json]
+```
+
+| Argument | Required | Description |
+|----------|----------|-------------|
+| `name` | Yes | Workspace name |
+
+| Flag | Type | Default | Description |
+|------|------|---------|-------------|
+| `--goal` | string | `""` | Description of the workspace goal |
+| `--json` | bool | `false` | Output as JSON |
+
+**Example:**
+
+```bash
+$ lango p2p workspace create "research-project" --goal "Collaborative research on RAG optimization"
+Workspace created: a1b2c3d4-5678-9012-abcd-ef1234567890
+  Name:   research-project
+  Status: forming
+  Goal:   Collaborative research on RAG optimization
+```
+
+### lango p2p workspace list
+
+List all known workspaces.
+
+```
+lango p2p workspace list [--json]
+```
+
+| Flag | Type | Default | Description |
+|------|------|---------|-------------|
+| `--json` | bool | `false` | Output as JSON |
+
+**Example:**
+
+```bash
+$ lango p2p workspace list
+ID                                    STATUS    MEMBERS  NAME
+a1b2c3d4-5678-9012-abcd-ef1234567890  active    3        research-project
+e5f6g7h8-9012-3456-cdef-ab1234567890  forming   1        code-review
+```
+
+### lango p2p workspace status
+
+Show detailed workspace status including members and contributions.
+
+```
+lango p2p workspace status <id> [--json]
+```
+
+| Argument | Required | Description |
+|----------|----------|-------------|
+| `id` | Yes | Workspace ID |
+
+| Flag | Type | Default | Description |
+|------|------|---------|-------------|
+| `--json` | bool | `false` | Output as JSON |
+
+**Example:**
+
+```bash
+$ lango p2p workspace status a1b2c3d4-5678-9012-abcd-ef1234567890
+Workspace: a1b2c3d4-5678-9012-abcd-ef1234567890
+  Name:    research-project
+  Status:  active
+  Goal:    Collaborative research on RAG optimization
+
+Members:
+  DID                          ROLE       JOINED
+  did:lango:02abc...           creator    2026-03-10T09:00:00Z
+  did:lango:03def...           member     2026-03-10T09:15:00Z
+```
+
+### lango p2p workspace join
+
+Join an existing workspace.
+
+```
+lango p2p workspace join <id>
+```
+
+| Argument | Required | Description |
+|----------|----------|-------------|
+| `id` | Yes | Workspace ID to join |
+
+**Example:**
+
+```bash
+$ lango p2p workspace join a1b2c3d4-5678-9012-abcd-ef1234567890
+Joined workspace a1b2c3d4-5678-9012-abcd-ef1234567890.
+```
+
+### lango p2p workspace leave
+
+Leave a workspace.
+
+```
+lango p2p workspace leave <id>
+```
+
+| Argument | Required | Description |
+|----------|----------|-------------|
+| `id` | Yes | Workspace ID to leave |
+
+**Example:**
+
+```bash
+$ lango p2p workspace leave a1b2c3d4-5678-9012-abcd-ef1234567890
+Left workspace a1b2c3d4-5678-9012-abcd-ef1234567890.
+```
+
+### Workspace Features
+
+Workspaces support configurable collaboration features:
+
+- **Lifecycle**: `forming` → `active` → `archived`
+- **Message Types**: `TASK_PROPOSAL`, `LOG_STREAM`, `COMMIT_SIGNAL`, `KNOWLEDGE_SHARE`, `MEMBER_JOINED`, `MEMBER_LEFT`
+- **Chronicler**: Persists workspace messages as graph triples for knowledge retention
+- **Contribution Tracking**: Per-agent metrics (commits, code bytes, messages)
+- **Auto Sandbox**: Optionally isolate workspace operations in sandboxed environments
+
+Workspaces are runtime structures managed by the running server. Use `lango serve` to start the server and create workspaces via the agent tools (`p2p_workspace_create`, `p2p_workspace_join`).
+
+---
+
+## lango p2p git
+
+Manage git bundle exchange for workspace code collaboration. Workspaces use bare git repositories with bundle-based transfer for atomic code sharing.
+
+### lango p2p git init
+
+Initialize a bare git repository for a workspace.
+
+```
+lango p2p git init <workspace-id>
+```
+
+| Argument | Required | Description |
+|----------|----------|-------------|
+| `workspace-id` | Yes | Workspace ID |
+
+**Example:**
+
+```bash
+$ lango p2p git init a1b2c3d4-5678-9012-abcd-ef1234567890
+Initialized bare repo for workspace a1b2c3d4-5678-9012-abcd-ef1234567890.
+```
+
+### lango p2p git log
+
+Show recent commits in a workspace repository.
+
+```
+lango p2p git log <workspace-id> [--limit <n>] [--json]
+```
+
+| Argument | Required | Description |
+|----------|----------|-------------|
+| `workspace-id` | Yes | Workspace ID |
+
+| Flag | Type | Default | Description |
+|------|------|---------|-------------|
+| `--limit` | int | `20` | Maximum number of commits to show |
+| `--json` | bool | `false` | Output as JSON |
+
+**Example:**
+
+```bash
+$ lango p2p git log a1b2c3d4-5678-9012-abcd-ef1234567890 --limit 5
+HASH       AUTHOR          TIMESTAMP                MESSAGE
+abc1234    agent-alpha     2026-03-10T10:30:00Z     Add RAG optimization module
+def5678    agent-beta      2026-03-10T10:15:00Z     Initial project structure
+```
+
+### lango p2p git diff
+
+Show diff between two commits in a workspace repository.
+
+```
+lango p2p git diff <workspace-id> <from> <to>
+```
+
+| Argument | Required | Description |
+|----------|----------|-------------|
+| `workspace-id` | Yes | Workspace ID |
+| `from` | Yes | Source commit hash |
+| `to` | Yes | Target commit hash |
+
+**Example:**
+
+```bash
+$ lango p2p git diff a1b2c3d4-... abc1234 def5678
+diff --git a/rag/optimizer.go b/rag/optimizer.go
+...
+```
+
+### lango p2p git push
+
+Create a git bundle from the workspace repository and push to peers.
+
+```
+lango p2p git push <workspace-id>
+```
+
+| Argument | Required | Description |
+|----------|----------|-------------|
+| `workspace-id` | Yes | Workspace ID |
+
+**Example:**
+
+```bash
+$ lango p2p git push a1b2c3d4-5678-9012-abcd-ef1234567890
+Bundle created (12.4 KB), HEAD: abc1234
+Pushed to 2 workspace peers.
+```
+
+### lango p2p git fetch
+
+Fetch a git bundle from workspace peers and apply to the local repository.
+
+```
+lango p2p git fetch <workspace-id>
+```
+
+| Argument | Required | Description |
+|----------|----------|-------------|
+| `workspace-id` | Yes | Workspace ID |
+
+**Example:**
+
+```bash
+$ lango p2p git fetch a1b2c3d4-5678-9012-abcd-ef1234567890
+Fetched bundle from did:lango:03def... (8.2 KB)
+Applied 3 new commits.
+```
+
+### Incremental Bundles
+
+Instead of transferring the entire repository history every time, Lango supports incremental bundles that contain only commits after a known base commit. This significantly reduces transfer size for active workspaces.
+
+The `CreateIncrementalBundle` operation takes a base commit hash and produces a bundle containing only `baseCommit..HEAD`. If the base commit is not found in the repository, it falls back to a full bundle automatically.
+
+Before applying a received bundle, `VerifyBundle` checks that the bundle's prerequisite commits exist in the local repo. `SafeApplyBundle` combines verification, ref snapshot, application, and automatic rollback on failure into a single atomic operation:
+
+1. **Verify** — check prerequisites are present
+2. **Snapshot** — capture current ref state
+3. **Apply** — unbundle into the repository
+4. **Rollback** — if apply fails, restore refs from the snapshot
+
+`HasCommit` checks whether a specific commit exists locally, which is useful for determining the correct base commit before requesting an incremental bundle from a peer.
+
+---
+
+### Workflow Example: Git Bundle Exchange
+
+A typical collaboration workflow using git bundles:
+
+```bash
+# 1. Initialize the workspace git repository
+lango p2p git init a1b2c3d4-...
+
+# 2. Check the commit log
+lango p2p git log a1b2c3d4-... --limit 10
+
+# 3. Push a bundle to peers (agent commits are shared as bundles)
+lango p2p git push a1b2c3d4-...
+
+# 4. Peers fetch and safely apply the bundle
+lango p2p git fetch a1b2c3d4-...
+
+# 5. Compare changes between commits
+lango p2p git diff a1b2c3d4-... abc1234 def5678
+```
+
+### Git Bundle Features
+
+- **Bare Repositories**: Each workspace has an isolated bare git repo at `~/.lango/workspaces/<id>/repo.git`
+- **Bundle Protocol**: Uses `git bundle create/unbundle` for atomic transfers over the P2P network
+- **Incremental Bundles**: Transfer only new commits since a known base, with automatic full-bundle fallback
+- **Safe Apply**: Verify prerequisites, snapshot refs, apply, and auto-rollback on failure
+- **Task Branches** (library): Per-task isolation via `task/{taskID}` branches, managed by agent tools at runtime
+- **Conflict Detection** (library): `git merge-tree --write-tree` detects merge conflicts without a working tree
+- **DAG Leaf Detection**: Identifies leaf commits (no children) for conflict detection
+- **Size Limits**: Configurable `maxBundleSizeBytes` to prevent oversized transfers
+
+Git operations require the `git` binary to be installed and available in PATH.

@@ -15,6 +15,9 @@ import (
 
 // WalletSigner abstracts wallet signing to avoid direct wallet package imports.
 type WalletSigner interface {
+	// SignTransaction signs raw bytes (no additional hashing).
+	SignTransaction(ctx context.Context, rawTx []byte) ([]byte, error)
+	// SignMessage signs an arbitrary message (applies keccak256 before signing).
 	SignMessage(ctx context.Context, message []byte) ([]byte, error)
 	Address(ctx context.Context) (string, error)
 }
@@ -119,9 +122,12 @@ func Sign(
 		return nil, fmt.Errorf("typed data hash: %w", err)
 	}
 
-	sig, err := wallet.SignMessage(ctx, hash)
+	// Use SignTransaction (raw sign) because TypedDataHash already returns
+	// a keccak256 digest. SignMessage would double-hash, producing an
+	// invalid signature for on-chain verification.
+	sig, err := wallet.SignTransaction(ctx, hash)
 	if err != nil {
-		return nil, fmt.Errorf("sign message: %w", err)
+		return nil, fmt.Errorf("sign typed data: %w", err)
 	}
 
 	if len(sig) != 65 {

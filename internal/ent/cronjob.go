@@ -35,6 +35,8 @@ type CronJob struct {
 	Timezone string `json:"timezone,omitempty"`
 	// Enabled holds the value of the "enabled" field.
 	Enabled bool `json:"enabled,omitempty"`
+	// Per-job timeout in milliseconds (overrides default)
+	TimeoutMs *int64 `json:"timeout_ms,omitempty"`
 	// When the job last executed
 	LastRunAt *time.Time `json:"last_run_at,omitempty"`
 	// When the job will next execute
@@ -55,6 +57,8 @@ func (*CronJob) scanValues(columns []string) ([]any, error) {
 			values[i] = new([]byte)
 		case cronjob.FieldEnabled:
 			values[i] = new(sql.NullBool)
+		case cronjob.FieldTimeoutMs:
+			values[i] = new(sql.NullInt64)
 		case cronjob.FieldName, cronjob.FieldScheduleType, cronjob.FieldSchedule, cronjob.FieldPrompt, cronjob.FieldSessionMode, cronjob.FieldTimezone:
 			values[i] = new(sql.NullString)
 		case cronjob.FieldLastRunAt, cronjob.FieldNextRunAt, cronjob.FieldCreatedAt, cronjob.FieldUpdatedAt:
@@ -131,6 +135,13 @@ func (_m *CronJob) assignValues(columns []string, values []any) error {
 				return fmt.Errorf("unexpected type %T for field enabled", values[i])
 			} else if value.Valid {
 				_m.Enabled = value.Bool
+			}
+		case cronjob.FieldTimeoutMs:
+			if value, ok := values[i].(*sql.NullInt64); !ok {
+				return fmt.Errorf("unexpected type %T for field timeout_ms", values[i])
+			} else if value.Valid {
+				_m.TimeoutMs = new(int64)
+				*_m.TimeoutMs = value.Int64
 			}
 		case cronjob.FieldLastRunAt:
 			if value, ok := values[i].(*sql.NullTime); !ok {
@@ -217,6 +228,11 @@ func (_m *CronJob) String() string {
 	builder.WriteString(", ")
 	builder.WriteString("enabled=")
 	builder.WriteString(fmt.Sprintf("%v", _m.Enabled))
+	builder.WriteString(", ")
+	if v := _m.TimeoutMs; v != nil {
+		builder.WriteString("timeout_ms=")
+		builder.WriteString(fmt.Sprintf("%v", *v))
+	}
 	builder.WriteString(", ")
 	if v := _m.LastRunAt; v != nil {
 		builder.WriteString("last_run_at=")

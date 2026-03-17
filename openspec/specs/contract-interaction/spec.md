@@ -42,7 +42,7 @@ The system SHALL provide a `Caller.Read()` method that packs arguments via `abi.
 - **THEN** an error containing the method name is returned
 
 ### Requirement: Contract caller writes state-changing transactions
-The system SHALL provide a `Caller.Write()` method that packs arguments, builds an EIP-1559 transaction (nonce, gas estimation, base fee), signs via `wallet.WalletProvider`, submits with retry, and polls for receipt confirmation.
+The system SHALL provide a `Caller.Write()` method that packs arguments, builds an EIP-1559 transaction (nonce, gas estimation, base fee), signs via `wallet.WalletProvider`, submits with retry, and polls for receipt confirmation. Write() SHALL check the receipt status after waiting for the transaction receipt. If the receipt status is not successful (ReceiptStatusSuccessful), Write() SHALL return an ErrTxReverted error with the transaction hash and status. If the receipt times out, Write() SHALL return an ErrReceiptTimeout error instead of silently returning a partial result.
 
 #### Scenario: Successful write transaction
 - **WHEN** `Write` is called with valid parameters and the RPC is available
@@ -51,6 +51,14 @@ The system SHALL provide a `Caller.Write()` method that packs arguments, builds 
 #### Scenario: Nonce serialization prevents collisions
 - **WHEN** multiple concurrent `Write` calls are made
 - **THEN** nonce acquisition is serialized via mutex to prevent nonce reuse
+
+#### Scenario: Transaction reverts on-chain
+- **WHEN** a Write() call submits a transaction that gets mined but reverts
+- **THEN** Write() returns an error wrapping ErrTxReverted with the tx hash and receipt status
+
+#### Scenario: Receipt timeout
+- **WHEN** a Write() call submits a transaction but the receipt is not available within the timeout period
+- **THEN** Write() returns an error wrapping ErrReceiptTimeout with the tx hash
 
 ### Requirement: Agent tools expose contract interaction
 The system SHALL register three agent tools: `contract_read` (SafetyLevel Safe), `contract_call` (SafetyLevel Dangerous), and `contract_abi_load` (SafetyLevel Safe). Tools SHALL be registered under the `"contract"` catalog category.
@@ -91,3 +99,24 @@ The documentation site SHALL include a `docs/cli/contract.md` page documenting `
 #### Scenario: Each subcommand documented with flags
 - **WHEN** a user reads the contract CLI reference
 - **THEN** each subcommand SHALL include a flags table with `--address`, `--abi`, `--method`, `--args`, `--chain-id`, and `--output` flags documented
+
+### Requirement: Transaction retry backoff
+The contract caller SHALL use exponential backoff for transaction submission retries: 1s, 2s, 4s (doubling each attempt) instead of linear backoff.
+
+#### Scenario: Exponential backoff timing
+- **WHEN** a transaction submission fails and is retried
+- **THEN** the delay between attempts SHALL follow exponential backoff: `2^attempt` seconds (1s, 2s, 4s)
+
+### Requirement: Gas fee fallback warning
+The contract caller SHALL log a WARNING when the block header's baseFee is nil and a fallback value is used.
+
+#### Scenario: Missing baseFee triggers warning
+- **WHEN** the block header does not contain a baseFee field
+- **THEN** the caller SHALL log a warning message and use the default fallback value
+
+### Requirement: X402 key material zeroing
+The X402 signer SHALL zero key material using mutable byte slices. Converting a Go string to `[]byte` creates a copy; zeroing the copy does not clear the original string. The signer SHALL encode the key directly into a `[]byte` buffer using `hex.Encode` and zero that buffer after use.
+
+#### Scenario: Key hex buffer is properly zeroed
+- **WHEN** an EVM signer is created from a private key
+- **THEN** the hex-encoded key material SHALL be stored in a mutable `[]byte` buffer (not derived from a string) and zeroed after the signer is created

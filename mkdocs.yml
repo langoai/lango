@@ -118,6 +118,12 @@ nav:
     - Skill System: features/skills.md
     - Proactive Librarian: features/librarian.md
     - System Prompts: features/system-prompts.md
+    - Smart Accounts: features/smart-accounts.md
+    - Config Presets: features/config-presets.md
+    - ZKP: features/zkp.md
+    - Learning: features/learning.md
+    - Agent Format: features/agent-format.md
+    - MCP Integration: features/mcp-integration.md
   - Automation:
     - automation/index.md
     - Cron Scheduling: automation/cron.md
@@ -145,6 +151,9 @@ nav:
     - Contract Commands: cli/contract.md
     - Metrics Commands: cli/metrics.md
     - Automation Commands: cli/automation.md
+    - Status Dashboard: cli/status.md
+    - MCP Commands: cli/mcp.md
+    - Smart Account Commands: cli/smartaccount.md
   - Gateway & API:
     - gateway/index.md
     - HTTP API: gateway/http-api.md

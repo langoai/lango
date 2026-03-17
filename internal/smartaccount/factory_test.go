@@ -30,6 +30,14 @@ func (s *stubContractCaller) Read(
 ) (*contract.ContractCallResult, error) {
 	s.readCalls++
 	s.lastRead = req
+
+	// Return dummy proxy creation code for proxyCreationCode() calls.
+	if req.Method == "proxyCreationCode" {
+		return &contract.ContractCallResult{
+			Data: []interface{}{[]byte{0x60, 0x80, 0x60, 0x40}},
+		}, nil
+	}
+
 	if s.readErr != nil {
 		return nil, s.readErr
 	}
@@ -48,11 +56,16 @@ func (s *stubContractCaller) Write(
 }
 
 func newTestFactory(caller contract.ContractCaller) *Factory {
+	if caller == nil {
+		caller = &stubContractCaller{}
+	}
 	return NewFactory(
 		caller,
-		common.HexToAddress("0xAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"),
-		common.HexToAddress("0xBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB"),
-		common.HexToAddress("0xCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC"),
+		nil, // rpc client not needed for unit tests
+		common.HexToAddress("0xAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"), // factory
+		common.HexToAddress("0x1111111111111111111111111111111111111111"), // singleton
+		common.HexToAddress("0xBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB"), // safe7579
+		common.HexToAddress("0xCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC"), // fallback
 		84532,
 	)
 }
@@ -79,8 +92,10 @@ func TestComputeAddress_Deterministic(t *testing.T) {
 		t.Run(tt.give, func(t *testing.T) {
 			t.Parallel()
 
-			addr1 := f.ComputeAddress(owner, tt.giveSalt)
-			addr2 := f.ComputeAddress(owner, tt.giveSalt)
+			addr1, err1 := f.ComputeAddress(context.Background(), owner, tt.giveSalt)
+			require.NoError(t, err1)
+			addr2, err2 := f.ComputeAddress(context.Background(), owner, tt.giveSalt)
+			require.NoError(t, err2)
 
 			assert.Equal(t, addr1, addr2,
 				"same inputs must produce same address")
@@ -98,9 +113,13 @@ func TestComputeAddress_DifferentSaltsDifferentAddresses(t *testing.T) {
 		"0x1234567890abcdef1234567890abcdef12345678",
 	)
 
-	addr0 := f.ComputeAddress(owner, big.NewInt(0))
-	addr1 := f.ComputeAddress(owner, big.NewInt(1))
-	addr2 := f.ComputeAddress(owner, big.NewInt(2))
+	ctx := context.Background()
+	addr0, err := f.ComputeAddress(ctx, owner, big.NewInt(0))
+	require.NoError(t, err)
+	addr1, err := f.ComputeAddress(ctx, owner, big.NewInt(1))
+	require.NoError(t, err)
+	addr2, err := f.ComputeAddress(ctx, owner, big.NewInt(2))
+	require.NoError(t, err)
 
 	assert.NotEqual(t, addr0, addr1, "salt 0 vs 1")
 	assert.NotEqual(t, addr1, addr2, "salt 1 vs 2")
@@ -120,8 +139,11 @@ func TestComputeAddress_DifferentOwnersDifferentAddresses(t *testing.T) {
 		"0x2222222222222222222222222222222222222222",
 	)
 
-	addrA := f.ComputeAddress(ownerA, salt)
-	addrB := f.ComputeAddress(ownerB, salt)
+	ctx := context.Background()
+	addrA, err := f.ComputeAddress(ctx, ownerA, salt)
+	require.NoError(t, err)
+	addrB, err := f.ComputeAddress(ctx, ownerB, salt)
+	require.NoError(t, err)
 
 	assert.NotEqual(t, addrA, addrB,
 		"different owners must produce different addresses")
@@ -135,23 +157,31 @@ func TestComputeAddress_DifferentFactoryAddresses(t *testing.T) {
 	)
 	salt := big.NewInt(0)
 
+	stub := &stubContractCaller{}
 	f1 := NewFactory(
+		stub,
 		nil,
 		common.HexToAddress("0xAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"),
+		common.HexToAddress("0x1111111111111111111111111111111111111111"),
 		common.HexToAddress("0xBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB"),
 		common.HexToAddress("0xCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC"),
 		84532,
 	)
 	f2 := NewFactory(
+		stub,
 		nil,
 		common.HexToAddress("0xDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDD"),
+		common.HexToAddress("0x1111111111111111111111111111111111111111"),
 		common.HexToAddress("0xBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB"),
 		common.HexToAddress("0xCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC"),
 		84532,
 	)
 
-	addr1 := f1.ComputeAddress(owner, salt)
-	addr2 := f2.ComputeAddress(owner, salt)
+	ctx := context.Background()
+	addr1, err := f1.ComputeAddress(ctx, owner, salt)
+	require.NoError(t, err)
+	addr2, err := f2.ComputeAddress(ctx, owner, salt)
+	require.NoError(t, err)
 
 	assert.NotEqual(t, addr1, addr2,
 		"different factory addresses must produce different addresses")
@@ -165,8 +195,11 @@ func TestComputeAddress_NilSaltEqualsZeroSalt(t *testing.T) {
 		"0x1234567890abcdef1234567890abcdef12345678",
 	)
 
-	addrNil := f.ComputeAddress(owner, nil)
-	addrZero := f.ComputeAddress(owner, big.NewInt(0))
+	ctx := context.Background()
+	addrNil, err := f.ComputeAddress(ctx, owner, nil)
+	require.NoError(t, err)
+	addrZero, err := f.ComputeAddress(ctx, owner, big.NewInt(0))
+	require.NoError(t, err)
 
 	assert.Equal(t, addrNil, addrZero,
 		"nil salt and zero salt must produce the same address")
@@ -237,12 +270,8 @@ func TestBuildSafeInitializer_DifferentOwners(t *testing.T) {
 func TestDeploy_Success(t *testing.T) {
 	t.Parallel()
 
-	deployedAddr := common.HexToAddress(
-		"0xDeployedDeployedDeployedDeployedDeployed",
-	)
 	caller := &stubContractCaller{
 		writeResult: &contract.ContractCallResult{
-			Data:   []interface{}{deployedAddr},
 			TxHash: "0xabc123",
 		},
 	}
@@ -251,10 +280,14 @@ func TestDeploy_Success(t *testing.T) {
 	owner := common.HexToAddress(
 		"0x1234567890abcdef1234567890abcdef12345678",
 	)
+	salt := big.NewInt(0)
 
-	addr, txHash, err := f.Deploy(context.Background(), owner, big.NewInt(0))
+	addr, txHash, err := f.Deploy(context.Background(), owner, salt)
 	require.NoError(t, err)
-	assert.Equal(t, deployedAddr, addr)
+	// Deploy now always returns the computed deterministic address.
+	expected, compErr := f.ComputeAddress(context.Background(), owner, salt)
+	require.NoError(t, compErr)
+	assert.Equal(t, expected, addr)
 	assert.Equal(t, "0xabc123", txHash)
 	assert.Equal(t, 1, caller.writeCalls)
 	assert.Equal(t, "createProxyWithNonce", caller.lastWrite.Method)
@@ -281,7 +314,8 @@ func TestDeploy_FallsBackToComputedAddress(t *testing.T) {
 	assert.Equal(t, "0xdef456", txHash)
 
 	// Should fall back to computed address.
-	expected := f.ComputeAddress(owner, salt)
+	expected, compErr := f.ComputeAddress(context.Background(), owner, salt)
+	require.NoError(t, compErr)
 	assert.Equal(t, expected, addr)
 }
 
@@ -329,37 +363,15 @@ func TestDeploy_WriteError(t *testing.T) {
 	assert.ErrorIs(t, err, caller.writeErr)
 }
 
-func TestIsDeployed_True(t *testing.T) {
+func TestIsDeployed_NilRPC(t *testing.T) {
 	t.Parallel()
 
-	caller := &stubContractCaller{
-		readResult: &contract.ContractCallResult{
-			Data: []interface{}{false},
-		},
-	}
-
-	f := newTestFactory(caller)
+	f := newTestFactory(&stubContractCaller{})
 	addr := common.HexToAddress("0xABCDABCDABCDABCDABCDABCDABCDABCDABCDABCD")
 
-	deployed, err := f.IsDeployed(context.Background(), addr)
-	require.NoError(t, err)
-	assert.True(t, deployed)
-	assert.Equal(t, 1, caller.readCalls)
-}
-
-func TestIsDeployed_False(t *testing.T) {
-	t.Parallel()
-
-	caller := &stubContractCaller{
-		readErr: errors.New("execution reverted"),
-	}
-
-	f := newTestFactory(caller)
-	addr := common.HexToAddress("0xABCDABCDABCDABCDABCDABCDABCDABCDABCDABCD")
-
-	deployed, err := f.IsDeployed(context.Background(), addr)
-	require.NoError(t, err, "read error should not propagate")
-	assert.False(t, deployed)
+	_, err := f.IsDeployed(context.Background(), addr)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "rpc client not configured")
 }
 
 func TestNewFactory(t *testing.T) {
@@ -367,12 +379,14 @@ func TestNewFactory(t *testing.T) {
 
 	caller := &stubContractCaller{}
 	factoryAddr := common.HexToAddress("0xFACE")
+	singleton := common.HexToAddress("0x5AFE")
 	safe7579 := common.HexToAddress("0x7579")
 	fallback := common.HexToAddress("0xFB00")
 
-	f := NewFactory(caller, factoryAddr, safe7579, fallback, 1)
+	f := NewFactory(caller, nil, factoryAddr, singleton, safe7579, fallback, 1)
 	require.NotNil(t, f)
 	assert.Equal(t, factoryAddr, f.factoryAddr)
+	assert.Equal(t, singleton, f.singletonAddr)
 	assert.Equal(t, safe7579, f.safe7579Addr)
 	assert.Equal(t, fallback, f.fallbackAddr)
 	assert.Equal(t, int64(1), f.chainID)

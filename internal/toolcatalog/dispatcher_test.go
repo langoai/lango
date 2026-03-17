@@ -40,13 +40,14 @@ func setupCatalog() *Catalog {
 	return c
 }
 
-func TestBuildDispatcher_ReturnsTwo(t *testing.T) {
+func TestBuildDispatcher_ReturnsThree(t *testing.T) {
 	t.Parallel()
 
 	tools := BuildDispatcher(setupCatalog())
-	require.Len(t, tools, 2)
+	require.Len(t, tools, 3)
 	assert.Equal(t, "builtin_list", tools[0].Name)
 	assert.Equal(t, "builtin_invoke", tools[1].Name)
+	assert.Equal(t, "builtin_health", tools[2].Name)
 }
 
 func TestBuiltinList_AllTools(t *testing.T) {
@@ -178,4 +179,77 @@ func TestDispatcher_SafetyLevels(t *testing.T) {
 	tools := BuildDispatcher(setupCatalog())
 	assert.Equal(t, agent.SafetyLevelSafe, tools[0].SafetyLevel, "builtin_list should be safe")
 	assert.Equal(t, agent.SafetyLevelDangerous, tools[1].SafetyLevel, "builtin_invoke should be dangerous")
+	assert.Equal(t, agent.SafetyLevelSafe, tools[2].SafetyLevel, "builtin_health should be safe")
+}
+
+func TestBuiltinHealth_ShowsDisabledCategories(t *testing.T) {
+	t.Parallel()
+
+	c := New()
+	c.RegisterCategory(Category{Name: "exec", Description: "exec tools", Enabled: true})
+	c.RegisterCategory(Category{Name: "smartaccount", Description: "ERC-7579 (disabled)", ConfigKey: "smartAccount.enabled", Enabled: false})
+	c.Register("exec", []*agent.Tool{
+		{
+			Name:        "exec_shell",
+			Description: "execute a shell command",
+			SafetyLevel: agent.SafetyLevelDangerous,
+			Handler: func(ctx context.Context, params map[string]interface{}) (interface{}, error) {
+				return nil, nil
+			},
+		},
+	})
+
+	tools := BuildDispatcher(c)
+	healthTool := tools[2]
+
+	result, err := healthTool.Handler(context.Background(), map[string]interface{}{})
+	require.NoError(t, err)
+
+	m, ok := result.(map[string]interface{})
+	require.True(t, ok)
+
+	enabled, ok := m["enabled_categories"].([]map[string]interface{})
+	require.True(t, ok)
+	assert.Len(t, enabled, 1)
+	assert.Equal(t, "exec", enabled[0]["name"])
+
+	// Verify enabled categories include tool names.
+	toolNames, ok := enabled[0]["tools"].([]string)
+	require.True(t, ok)
+	assert.Equal(t, []string{"exec_shell"}, toolNames)
+
+	disabled, ok := m["disabled_categories"].([]map[string]interface{})
+	require.True(t, ok)
+	assert.Len(t, disabled, 1)
+	assert.Equal(t, "smartaccount", disabled[0]["name"])
+	assert.Contains(t, disabled[0]["hint"], "lango config set smartAccount.enabled true")
+}
+
+func TestBuiltinHealth_ToolNamesPerCategory(t *testing.T) {
+	t.Parallel()
+
+	c := New()
+	c.RegisterCategory(Category{Name: "cron", Description: "cron tools", ConfigKey: "cron.enabled", Enabled: true})
+	c.Register("cron", []*agent.Tool{
+		{Name: "cron_add", Description: "add cron job", SafetyLevel: agent.SafetyLevelSafe,
+			Handler: func(ctx context.Context, params map[string]interface{}) (interface{}, error) { return nil, nil }},
+		{Name: "cron_list", Description: "list cron jobs", SafetyLevel: agent.SafetyLevelSafe,
+			Handler: func(ctx context.Context, params map[string]interface{}) (interface{}, error) { return nil, nil }},
+		{Name: "cron_remove", Description: "remove cron job", SafetyLevel: agent.SafetyLevelDangerous,
+			Handler: func(ctx context.Context, params map[string]interface{}) (interface{}, error) { return nil, nil }},
+	})
+
+	tools := BuildDispatcher(c)
+	healthTool := tools[2]
+
+	result, err := healthTool.Handler(context.Background(), map[string]interface{}{})
+	require.NoError(t, err)
+
+	m := result.(map[string]interface{})
+	enabled := m["enabled_categories"].([]map[string]interface{})
+	require.Len(t, enabled, 1)
+
+	toolNames := enabled[0]["tools"].([]string)
+	assert.Equal(t, []string{"cron_add", "cron_list", "cron_remove"}, toolNames)
+	assert.Equal(t, 3, enabled[0]["tool_count"])
 }

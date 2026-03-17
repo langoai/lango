@@ -98,8 +98,8 @@ func (p *OpenAIProvider) Generate(ctx context.Context, params provider.GenerateP
 					if !yield(provider.StreamEvent{
 						Type: provider.StreamEventToolCall,
 						ToolCall: &provider.ToolCall{
-							ID: tc.ID,
-							// Usually ID is string.
+							Index:     tc.Index,
+							ID:        tc.ID,
 							Name:      tc.Function.Name,
 							Arguments: tc.Function.Arguments,
 						},
@@ -133,25 +133,32 @@ func (p *OpenAIProvider) ListModels(ctx context.Context) ([]provider.ModelInfo, 
 }
 
 func (p *OpenAIProvider) convertParams(params provider.GenerateParams) (openai.ChatCompletionRequest, error) {
-	msgs := make([]openai.ChatCompletionMessage, len(params.Messages))
-	for i, m := range params.Messages {
+	repairedMsgs := repairOrphanedToolCalls(params.Messages)
+	msgs := make([]openai.ChatCompletionMessage, len(repairedMsgs))
+	for i, m := range repairedMsgs {
 		msg := openai.ChatCompletionMessage{
 			Role:    m.Role,
 			Content: m.Content,
 		}
 		if len(m.ToolCalls) > 0 {
-			tcs := make([]openai.ToolCall, len(m.ToolCalls))
-			for j, tc := range m.ToolCalls {
-				tcs[j] = openai.ToolCall{
+			tcs := make([]openai.ToolCall, 0, len(m.ToolCalls))
+			for _, tc := range m.ToolCalls {
+				if tc.Name == "" {
+					logger.Warnw("filtering tool call with empty name", "id", tc.ID)
+					continue
+				}
+				tcs = append(tcs, openai.ToolCall{
 					ID:   tc.ID,
 					Type: openai.ToolTypeFunction,
 					Function: openai.FunctionCall{
 						Name:      tc.Name,
 						Arguments: tc.Arguments,
 					},
-				}
+				})
 			}
-			msg.ToolCalls = tcs
+			if len(tcs) > 0 {
+				msg.ToolCalls = tcs
+			}
 		}
 		if toolCallID, ok := m.Metadata["tool_call_id"].(string); ok {
 			msg.ToolCallID = toolCallID
@@ -169,23 +176,127 @@ func (p *OpenAIProvider) convertParams(params provider.GenerateParams) (openai.C
 	}
 
 	if len(params.Tools) > 0 {
-		tools := make([]openai.Tool, len(params.Tools))
-		for i, t := range params.Tools {
-			// Parameters should be map[string]interface{}
-			// We need to marshal it to match openai-go structure expectation or just assign if compatible
-			// sashabaranov/go-openai expects FunctionDefinition.Parameters to be interface{} (usually map or json.RawMessage)
-
-			tools[i] = openai.Tool{
+		tools := make([]openai.Tool, 0, len(params.Tools))
+		for _, t := range params.Tools {
+			if t.Name == "" {
+				logger.Warnw("filtering tool with empty name")
+				continue
+			}
+			tools = append(tools, openai.Tool{
 				Type: openai.ToolTypeFunction,
 				Function: &openai.FunctionDefinition{
 					Name:        t.Name,
 					Description: t.Description,
 					Parameters:  t.Parameters,
+					Strict:      canUseStrictMode(t.Parameters),
 				},
-			}
+			})
 		}
-		req.Tools = tools
+		if len(tools) > 0 {
+			req.Tools = tools
+		}
 	}
 
 	return req, nil
+}
+
+// canUseStrictMode returns true when a tool's parameter schema satisfies OpenAI's
+// strict mode requirements: additionalProperties must be false, and every
+// declared property must be listed in "required".
+func canUseStrictMode(params map[string]interface{}) bool {
+	if params == nil {
+		return false
+	}
+	// Must have additionalProperties: false.
+	ap, ok := params["additionalProperties"]
+	if !ok {
+		return false
+	}
+	if apBool, ok := ap.(bool); !ok || apBool {
+		return false
+	}
+	// All properties must be in required.
+	propsRaw, ok := params["properties"]
+	if !ok {
+		return true // no properties, nothing to require
+	}
+	propsMap, ok := propsRaw.(map[string]interface{})
+	if !ok {
+		return false
+	}
+	if len(propsMap) == 0 {
+		return true
+	}
+	reqRaw, ok := params["required"]
+	if !ok {
+		return false // has properties but no required
+	}
+	reqSet := make(map[string]bool)
+	switch req := reqRaw.(type) {
+	case []string:
+		for _, r := range req {
+			reqSet[r] = true
+		}
+	case []interface{}:
+		for _, r := range req {
+			if s, ok := r.(string); ok {
+				reqSet[s] = true
+			}
+		}
+	default:
+		return false
+	}
+	for name := range propsMap {
+		if !reqSet[name] {
+			return false
+		}
+	}
+	return true
+}
+
+// repairOrphanedToolCalls injects synthetic error responses when an assistant
+// tool call is followed by a non-tool message without a matching tool response.
+// OpenAI API returns 400 without this repair. Pending calls at history end are untouched.
+func repairOrphanedToolCalls(msgs []provider.Message) []provider.Message {
+	var result []provider.Message
+	for i, msg := range msgs {
+		result = append(result, msg)
+		if msg.Role != "assistant" || len(msg.ToolCalls) == 0 {
+			continue
+		}
+		// Scan forward: check whether each tool call has a matching tool response
+		// before the next non-tool message.
+		answered := make(map[string]bool, len(msg.ToolCalls))
+		hasFollowingUser := false
+		for j := i + 1; j < len(msgs); j++ {
+			if msgs[j].Role == "tool" {
+				if id, ok := msgs[j].Metadata["tool_call_id"].(string); ok {
+					answered[id] = true
+				}
+				continue
+			}
+			// Non-tool message (user, assistant, etc.) — orphan boundary
+			hasFollowingUser = true
+			break
+		}
+		// Pending calls at end of history are valid (response pending)
+		if !hasFollowingUser {
+			continue
+		}
+		// Inject synthetic response only for unanswered calls
+		for _, tc := range msg.ToolCalls {
+			if tc.ID != "" && !answered[tc.ID] {
+				logger.Warnw("injecting synthetic tool response for orphaned tool call",
+					"call_id", tc.ID, "name", tc.Name)
+				result = append(result, provider.Message{
+					Role:    "tool",
+					Content: `{"error":"tool call was interrupted and did not complete"}`,
+					Metadata: map[string]interface{}{
+						"tool_call_id": tc.ID,
+					},
+				})
+			}
+		}
+	}
+	return result
 }

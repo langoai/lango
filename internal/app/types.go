@@ -14,7 +14,9 @@ import (
 	cronpkg "github.com/langoai/lango/internal/cron"
 	"github.com/langoai/lango/internal/embedding"
 	"github.com/langoai/lango/internal/eventbus"
+	"github.com/langoai/lango/internal/gatekeeper"
 	"github.com/langoai/lango/internal/gateway"
+	"github.com/langoai/lango/internal/tooloutput"
 	"github.com/langoai/lango/internal/graph"
 	"github.com/langoai/lango/internal/knowledge"
 	"github.com/langoai/lango/internal/learning"
@@ -112,6 +114,12 @@ type App struct {
 	SmartAccountManager    interface{}             // *smartaccount.Manager
 	SmartAccountComponents *smartAccountComponents // full components for CLI access
 
+	// Output Store (compressed tool output retrieval)
+	OutputStore *tooloutput.OutputStore
+
+	// Gatekeeper (response sanitizer)
+	Sanitizer *gatekeeper.Sanitizer
+
 	// MCP Components (optional, external MCP server integration)
 	MCPManager *mcp.ServerManager
 
@@ -143,6 +151,10 @@ type App struct {
 
 	// Lifecycle registry manages component startup/shutdown ordering.
 	registry *lifecycle.Registry
+
+	// ctx/cancel for signalling shutdown to fire-and-forget goroutines.
+	ctx    context.Context
+	cancel context.CancelFunc
 
 	// wg tracks background goroutines for graceful shutdown
 	wg sync.WaitGroup

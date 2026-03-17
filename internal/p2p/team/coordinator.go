@@ -93,6 +93,7 @@ type CoordinatorConfig struct {
 	Conflict         ConflictStrategy
 	Assignment       AssignmentStrategy
 	Bus              *eventbus.Bus
+	Store            TeamStore
 	Logger           *zap.SugaredLogger
 }
 
@@ -105,6 +106,7 @@ type Coordinator struct {
 	conflict   ConflictStrategy
 	assignment AssignmentStrategy
 	bus        *eventbus.Bus
+	store      TeamStore
 	logger     *zap.SugaredLogger
 
 	mu    sync.RWMutex
@@ -133,6 +135,7 @@ func NewCoordinator(cfg CoordinatorConfig) *Coordinator {
 		conflict:   conflict,
 		assignment: assignment,
 		bus:        cfg.Bus,
+		store:      cfg.Store,
 		logger:     cfg.Logger,
 		teams:      make(map[string]*Team),
 	}
@@ -201,11 +204,29 @@ func (c *Coordinator) FormTeam(ctx context.Context, req FormTeamRequest) (*Team,
 	c.teams[t.ID] = t
 	c.mu.Unlock()
 
+	// Persist to store if available.
+	if c.store != nil {
+		if err := c.store.Save(t); err != nil {
+			c.logger.Warnw("persist team after formation", "teamID", t.ID, "error", err)
+		}
+	}
+
 	c.logger.Infow("team formed",
 		"teamID", t.ID,
 		"name", t.Name,
 		"members", t.MemberCount(),
 	)
+
+	// Publish team-formed event.
+	if c.bus != nil {
+		c.bus.Publish(eventbus.TeamFormedEvent{
+			TeamID:    t.ID,
+			Name:      t.Name,
+			Goal:      t.Goal,
+			LeaderDID: t.LeaderDID,
+			Members:   t.MemberCount(),
+		})
+	}
 
 	// Publish events for each member that joined.
 	if c.bus != nil {
@@ -240,6 +261,10 @@ func (c *Coordinator) DelegateTask(ctx context.Context, teamID, toolName string,
 		return nil, err
 	}
 
+	if t.Status == StatusShuttingDown {
+		return nil, ErrTeamShuttingDown
+	}
+
 	members := t.Members()
 	var workers []*Member
 	for _, m := range members {
@@ -250,6 +275,15 @@ func (c *Coordinator) DelegateTask(ctx context.Context, teamID, toolName string,
 
 	if len(workers) == 0 {
 		return nil, fmt.Errorf("no workers in team %q", teamID)
+	}
+
+	// Publish task-delegated event.
+	if c.bus != nil {
+		c.bus.Publish(eventbus.TeamTaskDelegatedEvent{
+			TeamID:   teamID,
+			ToolName: toolName,
+			Workers:  len(workers),
+		})
 	}
 
 	// Dispatch to all workers concurrently.
@@ -279,12 +313,58 @@ func (c *Coordinator) DelegateTask(ctx context.Context, teamID, toolName string,
 	}
 
 	wg.Wait()
+
+	// Publish task-completed event.
+	if c.bus != nil {
+		var successful, failed int
+		var totalDuration time.Duration
+		for _, r := range results {
+			if r.Err == nil {
+				successful++
+			} else {
+				failed++
+			}
+			totalDuration += r.Duration
+		}
+		c.bus.Publish(eventbus.TeamTaskCompletedEvent{
+			TeamID:     teamID,
+			ToolName:   toolName,
+			Successful: successful,
+			Failed:     failed,
+			Duration:   totalDuration / time.Duration(len(results)),
+		})
+	}
+
+	// Persist updated team state after task completion (spend may have changed).
+	if c.store != nil {
+		if err := c.store.Save(t); err != nil {
+			c.logger.Warnw("persist team after task completion", "teamID", teamID, "error", err)
+		}
+	}
+
 	return results, nil
 }
 
 // CollectResults resolves conflicts from delegated task results using the configured resolver.
-func (c *Coordinator) CollectResults(results []TaskResult) (map[string]interface{}, error) {
-	return c.resolver(results)
+func (c *Coordinator) CollectResults(teamID, toolName string, results []TaskResult) (map[string]interface{}, error) {
+	resolved, err := c.resolver(results)
+	if err != nil && c.bus != nil {
+		// Count unique successful members for conflict detection.
+		var successCount int
+		for _, r := range results {
+			if r.Err == nil {
+				successCount++
+			}
+		}
+		if successCount > 1 {
+			c.bus.Publish(eventbus.TeamConflictDetectedEvent{
+				TeamID:   teamID,
+				ToolName: toolName,
+				Members:  successCount,
+			})
+		}
+	}
+	return resolved, err
 }
 
 // DisbandTeam marks a team as disbanded and removes it from the coordinator.
@@ -311,7 +391,46 @@ func (c *Coordinator) DisbandTeam(teamID string) error {
 	t.Disband()
 	delete(c.teams, teamID)
 
+	// Remove from persistent store.
+	if c.store != nil {
+		if err := c.store.Delete(teamID); err != nil {
+			c.logger.Warnw("delete team from store", "teamID", teamID, "error", err)
+		}
+	}
+
+	if c.bus != nil {
+		c.bus.Publish(eventbus.TeamDisbandedEvent{
+			TeamID: teamID,
+			Reason: "team disbanded",
+		})
+	}
+
 	c.logger.Infow("team disbanded", "teamID", teamID, "name", t.Name)
+	return nil
+}
+
+// LoadPersistedTeams loads all teams from the persistent store into memory.
+// This should be called during startup to restore teams from a previous session.
+func (c *Coordinator) LoadPersistedTeams() error {
+	if c.store == nil {
+		return nil
+	}
+
+	teams, err := c.store.LoadAll()
+	if err != nil {
+		return fmt.Errorf("load persisted teams: %w", err)
+	}
+
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	for _, t := range teams {
+		if t.Status == StatusActive || t.Status == StatusForming {
+			c.teams[t.ID] = t
+		}
+	}
+
+	c.logger.Infow("loaded persisted teams", "count", len(teams))
 	return nil
 }
 

@@ -4,12 +4,121 @@ import (
 	"context"
 	"encoding/json"
 	"iter"
+	"sort"
 	"strings"
 
 	"github.com/langoai/lango/internal/provider"
 	"google.golang.org/adk/model"
 	"google.golang.org/genai"
 )
+
+// accumEntry holds the accumulated state for a single tool call being assembled
+// from streaming chunks.
+type accumEntry struct {
+	index            int
+	id               string
+	name             string
+	args             strings.Builder
+	thought          bool
+	thoughtSignature []byte
+}
+
+// toolCallAccumulator assembles streaming tool call deltas into complete FunctionCall parts.
+// It supports both OpenAI (Index-based correlation) and Anthropic (ID/Name start + orphan delta)
+// streaming patterns.
+type toolCallAccumulator struct {
+	entries   map[int]*accumEntry
+	nextIndex int // auto-increment for entries without explicit Index
+	lastIndex int // last active entry for orphan deltas
+	hasAny    bool
+}
+
+func (a *toolCallAccumulator) add(tc *provider.ToolCall) {
+	if tc == nil {
+		return
+	}
+	if a.entries == nil {
+		a.entries = make(map[int]*accumEntry)
+	}
+
+	// Resolve entry index via fallback chain.
+	var idx int
+	switch {
+	case tc.Index != nil:
+		// OpenAI: explicit chunk correlation index
+		idx = *tc.Index
+	case tc.ID != "" || tc.Name != "":
+		// Anthropic start: new tool call, assign synthetic index
+		idx = a.nextIndex
+		a.nextIndex++
+	default:
+		// Anthropic delta / orphan: append to last active entry
+		if !a.hasAny {
+			logger().Warnw("dropping orphan tool call delta", "args_len", len(tc.Arguments))
+			return
+		}
+		idx = a.lastIndex
+	}
+
+	if _, exists := a.entries[idx]; !exists {
+		a.entries[idx] = &accumEntry{index: idx}
+	}
+	a.lastIndex = idx
+	a.hasAny = true
+
+	e := a.entries[idx]
+	if tc.ID != "" {
+		e.id = tc.ID
+	}
+	if tc.Name != "" {
+		e.name = tc.Name
+	}
+	if tc.Arguments != "" {
+		e.args.WriteString(tc.Arguments)
+	}
+	if tc.Thought {
+		e.thought = true
+	}
+	if len(tc.ThoughtSignature) > 0 {
+		e.thoughtSignature = tc.ThoughtSignature
+	}
+}
+
+func (a *toolCallAccumulator) done() []*genai.Part {
+	// Sort by index for deterministic output.
+	indices := make([]int, 0, len(a.entries))
+	for idx := range a.entries {
+		indices = append(indices, idx)
+	}
+	sort.Ints(indices)
+
+	parts := make([]*genai.Part, 0, len(indices))
+	for _, idx := range indices {
+		e := a.entries[idx]
+		if e.name == "" {
+			logger().Warnw("dropping accumulated tool call with empty name", "index", idx, "id", e.id)
+			continue
+		}
+		args := make(map[string]any)
+		if raw := e.args.String(); raw != "" {
+			_ = json.Unmarshal([]byte(raw), &args)
+		}
+		id := e.id
+		if id == "" {
+			id = "call_" + e.name
+		}
+		parts = append(parts, &genai.Part{
+			FunctionCall: &genai.FunctionCall{
+				ID:   id,
+				Name: e.name,
+				Args: args,
+			},
+			Thought:          e.thought,
+			ThoughtSignature: e.thoughtSignature,
+		})
+	}
+	return parts
+}
 
 // TokenUsageCallback is called when a provider returns token usage data.
 type TokenUsageCallback func(providerID, model string, input, output, total, cache int64)
@@ -78,7 +187,7 @@ func (m *ModelAdapter) GenerateContent(ctx context.Context, req *model.LLMReques
 			// and include accumulated full text in the final done event
 			// so the ADK runner stores the complete response in the session.
 			var accumulated strings.Builder
-			var toolParts []*genai.Part
+			var toolAccum toolCallAccumulator
 
 			for evt, err := range pSeq {
 				if err != nil {
@@ -101,18 +210,28 @@ func (m *ModelAdapter) GenerateContent(ctx context.Context, req *model.LLMReques
 					}
 
 				case provider.StreamEventToolCall:
-					if evt.ToolCall != nil {
+					toolAccum.add(evt.ToolCall)
+					// Yield partial tool call notification only when Name is present
+					// (first chunk with identity). Subsequent arg-only deltas are
+					// accumulated silently to avoid storing incomplete FunctionCalls.
+					if evt.ToolCall != nil && evt.ToolCall.Name != "" {
 						args := make(map[string]any)
-						_ = json.Unmarshal([]byte(evt.ToolCall.Arguments), &args)
+						if evt.ToolCall.Arguments != "" {
+							_ = json.Unmarshal([]byte(evt.ToolCall.Arguments), &args)
+						}
+						id := evt.ToolCall.ID
+						if id == "" {
+							id = "call_" + evt.ToolCall.Name
+						}
 						part := &genai.Part{
 							FunctionCall: &genai.FunctionCall{
+								ID:   id,
 								Name: evt.ToolCall.Name,
 								Args: args,
 							},
 							Thought:          evt.ToolCall.Thought,
 							ThoughtSignature: evt.ToolCall.ThoughtSignature,
 						}
-						toolParts = append(toolParts, part)
 						resp := &model.LLMResponse{
 							Content: &genai.Content{
 								Role:  "model",
@@ -133,13 +252,14 @@ func (m *ModelAdapter) GenerateContent(ctx context.Context, req *model.LLMReques
 						m.OnTokenUsage(m.p.ID(), m.model, evt.Usage.InputTokens, evt.Usage.OutputTokens, evt.Usage.TotalTokens, evt.Usage.CacheTokens)
 					}
 
-					// Final event: include accumulated full text so ADK
-					// stores a complete assistant message in the session.
+					// Final event: include accumulated full text and fully
+					// assembled tool calls so ADK stores a complete assistant
+					// message in the session.
 					var finalParts []*genai.Part
 					if text := accumulated.String(); text != "" {
 						finalParts = append(finalParts, &genai.Part{Text: text})
 					}
-					finalParts = append(finalParts, toolParts...)
+					finalParts = append(finalParts, toolAccum.done()...)
 					resp := &model.LLMResponse{
 						Content: &genai.Content{
 							Role:  "model",
@@ -161,7 +281,7 @@ func (m *ModelAdapter) GenerateContent(ctx context.Context, req *model.LLMReques
 			// Non-streaming mode: accumulate all events internally and
 			// yield a single complete response for session storage.
 			var textAccum strings.Builder
-			var toolParts []*genai.Part
+			var toolAccum toolCallAccumulator
 
 			for evt, err := range pSeq {
 				if err != nil {
@@ -173,18 +293,7 @@ func (m *ModelAdapter) GenerateContent(ctx context.Context, req *model.LLMReques
 				case provider.StreamEventPlainText:
 					textAccum.WriteString(evt.Text)
 				case provider.StreamEventToolCall:
-					if evt.ToolCall != nil {
-						args := make(map[string]any)
-						_ = json.Unmarshal([]byte(evt.ToolCall.Arguments), &args)
-						toolParts = append(toolParts, &genai.Part{
-							FunctionCall: &genai.FunctionCall{
-								Name: evt.ToolCall.Name,
-								Args: args,
-							},
-							Thought:          evt.ToolCall.Thought,
-							ThoughtSignature: evt.ToolCall.ThoughtSignature,
-						})
-					}
+					toolAccum.add(evt.ToolCall)
 				case provider.StreamEventThought:
 					// Thought text filtered at provider level; no action needed.
 				case provider.StreamEventDone:
@@ -202,7 +311,7 @@ func (m *ModelAdapter) GenerateContent(ctx context.Context, req *model.LLMReques
 			if text := textAccum.String(); text != "" {
 				parts = append(parts, &genai.Part{Text: text})
 			}
-			parts = append(parts, toolParts...)
+			parts = append(parts, toolAccum.done()...)
 
 			yield(&model.LLMResponse{
 				Content:      &genai.Content{Role: "model", Parts: parts},
@@ -230,6 +339,10 @@ func convertMessages(contents []*genai.Content) ([]provider.Message, error) {
 				msg.Content += p.Text
 			}
 			if p.FunctionCall != nil {
+				if p.FunctionCall.Name == "" {
+					logger().Warnw("skipping FunctionCall with empty name", "role", c.Role, "id", p.FunctionCall.ID)
+					continue
+				}
 				b, _ := json.Marshal(p.FunctionCall.Args)
 				id := p.FunctionCall.ID
 				if id == "" {
@@ -254,6 +367,7 @@ func convertMessages(contents []*genai.Content) ([]provider.Message, error) {
 					id = p.FunctionResponse.Name
 				}
 				msg.Metadata["tool_call_id"] = id
+				msg.Metadata["tool_call_name"] = p.FunctionResponse.Name
 			}
 		}
 		msgs = append(msgs, msg)
@@ -284,11 +398,20 @@ func convertTools(cfg *genai.GenerateContentConfig) ([]provider.Tool, error) {
 	for _, t := range cfg.Tools {
 		if t.FunctionDeclarations != nil {
 			for _, fd := range t.FunctionDeclarations {
-				// Convert Schema to map
+				if fd.Name == "" {
+					logger().Warnw("skipping FunctionDeclaration with empty name")
+					continue
+				}
+				// Convert schema to map. ADK v0.5.0+ uses ParametersJsonSchema
+				// (a *jsonschema.Schema), while legacy tools use Parameters (*genai.Schema).
 				schemaMap := make(map[string]interface{})
-				if fd.Parameters != nil {
-					// genai.Schema to map is complex if we recurse.
-					// But we can json marshal/unmarshal
+				switch {
+				case fd.ParametersJsonSchema != nil:
+					b, err := json.Marshal(fd.ParametersJsonSchema)
+					if err == nil {
+						_ = json.Unmarshal(b, &schemaMap)
+					}
+				case fd.Parameters != nil:
 					b, err := json.Marshal(fd.Parameters)
 					if err == nil {
 						_ = json.Unmarshal(b, &schemaMap)

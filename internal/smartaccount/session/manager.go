@@ -42,6 +42,8 @@ type Manager struct {
 	decrypt     CryptoDecryptFunc
 	registerFn  RegisterOnChainFunc
 	revokeFn    RevokeOnChainFunc
+	entryPoint  common.Address
+	chainID     int64
 	maxDuration time.Duration
 	maxKeys     int
 	mu          sync.Mutex
@@ -116,6 +118,24 @@ func (o maxKeysOption) apply(m *Manager) { m.maxKeys = o.n }
 // WithMaxKeys sets the maximum number of active session keys.
 func WithMaxKeys(n int) ManagerOption {
 	return maxKeysOption{n: n}
+}
+
+type entryPointOption struct{ addr common.Address }
+
+func (o entryPointOption) apply(m *Manager) { m.entryPoint = o.addr }
+
+// WithEntryPoint sets the ERC-4337 EntryPoint address for UserOp hash computation.
+func WithEntryPoint(addr common.Address) ManagerOption {
+	return entryPointOption{addr: addr}
+}
+
+type chainIDOption struct{ id int64 }
+
+func (o chainIDOption) apply(m *Manager) { m.chainID = o.id }
+
+// WithChainID sets the chain ID for UserOp hash computation.
+func WithChainID(id int64) ManagerOption {
+	return chainIDOption{id: id}
 }
 
 // Create creates a new session key with the given policy.
@@ -333,42 +353,15 @@ func (m *Manager) SignUserOp(
 		return nil, fmt.Errorf("restore session key: %w", err)
 	}
 
-	// Hash the UserOp fields to produce a signing digest.
-	hash := hashUserOp(userOp)
+	// Hash the UserOp using the same algorithm as the EntryPoint
+	// to produce a signing digest that matches on-chain verification.
+	hash := sa.ComputeUserOpHash(userOp, m.entryPoint, m.chainID)
 
 	sig, err := crypto.Sign(hash, privKey)
 	if err != nil {
 		return nil, fmt.Errorf("sign user op: %w", err)
 	}
 	return sig, nil
-}
-
-// hashUserOp produces a keccak256 hash of the UserOperation fields.
-func hashUserOp(op *sa.UserOperation) []byte {
-	var data []byte
-	data = append(data, op.Sender.Bytes()...)
-	if op.Nonce != nil {
-		data = append(data, op.Nonce.Bytes()...)
-	}
-	data = append(data, op.InitCode...)
-	data = append(data, op.CallData...)
-	if op.CallGasLimit != nil {
-		data = append(data, op.CallGasLimit.Bytes()...)
-	}
-	if op.VerificationGasLimit != nil {
-		data = append(data, op.VerificationGasLimit.Bytes()...)
-	}
-	if op.PreVerificationGas != nil {
-		data = append(data, op.PreVerificationGas.Bytes()...)
-	}
-	if op.MaxFeePerGas != nil {
-		data = append(data, op.MaxFeePerGas.Bytes()...)
-	}
-	if op.MaxPriorityFeePerGas != nil {
-		data = append(data, op.MaxPriorityFeePerGas.Bytes()...)
-	}
-	data = append(data, op.PaymasterAndData...)
-	return crypto.Keccak256(data)
 }
 
 // CleanupExpired removes expired session keys and returns the count removed.

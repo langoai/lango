@@ -105,3 +105,37 @@ type TeamLeaderChangedEvent struct {
 
 // EventName implements Event.
 func (e TeamLeaderChangedEvent) EventName() string { return "team.leader.changed" }
+
+// TeamMemberUnhealthyEvent is published when a team member misses too many health pings.
+type TeamMemberUnhealthyEvent struct {
+	TeamID      string
+	MemberDID   string
+	MemberName  string
+	MissedPings int
+	LastSeenAt  time.Time
+}
+
+// EventName implements Event.
+func (e TeamMemberUnhealthyEvent) EventName() string { return "team.member.unhealthy" }
+
+// TeamBudgetWarningEvent is published when a team's budget crosses a warning threshold.
+type TeamBudgetWarningEvent struct {
+	TeamID    string
+	Threshold float64
+	Spent     float64
+	Budget    float64
+}
+
+// EventName implements Event.
+func (e TeamBudgetWarningEvent) EventName() string { return "team.budget.warning" }
+
+// TeamGracefulShutdownEvent is published when a team undergoes graceful shutdown.
+type TeamGracefulShutdownEvent struct {
+	TeamID         string
+	Reason         string
+	BundlesCreated int
+	MembersSettled int
+}
+
+// EventName implements Event.
+func (e TeamGracefulShutdownEvent) EventName() string { return "team.graceful.shutdown" }

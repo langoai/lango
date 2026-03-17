@@ -31,6 +31,8 @@ const (
 	FieldTimezone = "timezone"
 	// FieldEnabled holds the string denoting the enabled field in the database.
 	FieldEnabled = "enabled"
+	// FieldTimeoutMs holds the string denoting the timeout_ms field in the database.
+	FieldTimeoutMs = "timeout_ms"
 	// FieldLastRunAt holds the string denoting the last_run_at field in the database.
 	FieldLastRunAt = "last_run_at"
 	// FieldNextRunAt holds the string denoting the next_run_at field in the database.
@@ -54,6 +56,7 @@ var Columns = []string{
 	FieldDeliverTo,
 	FieldTimezone,
 	FieldEnabled,
+	FieldTimeoutMs,
 	FieldLastRunAt,
 	FieldNextRunAt,
 	FieldCreatedAt,
@@ -158,6 +161,11 @@ func ByTimezone(opts ...sql.OrderTermOption) OrderOption {
 // ByEnabled orders the results by the enabled field.
 func ByEnabled(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldEnabled, opts...).ToFunc()
+}
+
+// ByTimeoutMs orders the results by the timeout_ms field.
+func ByTimeoutMs(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldTimeoutMs, opts...).ToFunc()
 }
 
 // ByLastRunAt orders the results by the last_run_at field.

@@ -62,6 +62,22 @@ test-short:
 test-p2p:
 	$(GOTEST) -v -race ./internal/p2p/... ./internal/wallet/...
 
+## test-security: Run security, sandbox, and keyring tests
+test-security:
+	$(GOTEST) -v -race ./internal/security/... ./internal/sandbox/... ./internal/keyring/...
+
+## test-graph: Run graph store and GraphRAG tests
+test-graph:
+	$(GOTEST) -v -race ./internal/graph/...
+
+## test-mcp: Run MCP plugin integration tests
+test-mcp:
+	$(GOTEST) -v -race ./internal/mcp/...
+
+## test-economy: Run economy layer tests (budget, escrow, pricing)
+test-economy:
+	$(GOTEST) -v -race ./internal/economy/...
+
 ## bench: Run benchmarks
 bench:
 	$(GOTEST) -bench=. -benchmem ./...
@@ -179,7 +195,7 @@ help:
 
 .PHONY: build build-linux build-darwin build-all install \
         dev run \
-        test test-short test-p2p bench coverage \
+        test test-short test-p2p test-security test-graph test-mcp test-economy bench coverage \
         fmt fmt-check vet lint generate check-abi ci \
         deps \
         codesign \

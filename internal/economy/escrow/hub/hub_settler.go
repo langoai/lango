@@ -2,8 +2,10 @@ package hub
 
 import (
 	"context"
+	"fmt"
 	"math/big"
 	"sync"
+	"time"
 
 	"github.com/ethereum/go-ethereum/common"
 	"go.uber.org/zap"
@@ -23,7 +25,8 @@ type HubSettler struct {
 	chainID   int64
 	logger    *zap.SugaredLogger
 
-	// dealMap tracks escrowID → on-chain dealID (set by wiring layer).
+	// dealMap tracks key → on-chain dealID.
+	// Keys are either escrow IDs (via SetDealMapping) or DIDs (via Lock).
 	dealMap map[string]*big.Int
 	mu      sync.RWMutex
 }
@@ -55,6 +58,21 @@ func NewHubSettler(caller contract.ContractCaller, hubAddr, tokenAddr common.Add
 	return s
 }
 
+// NewHubSettlerOffline creates a hub settler without a hub client (offline/test mode).
+// All on-chain operations become no-ops with warning logs.
+func NewHubSettlerOffline(tokenAddr common.Address, chainID int64, opts ...HubSettlerOption) *HubSettler {
+	s := &HubSettler{
+		tokenAddr: tokenAddr,
+		chainID:   chainID,
+		logger:    zap.NewNop().Sugar(),
+		dealMap:   make(map[string]*big.Int),
+	}
+	for _, o := range opts {
+		o(s)
+	}
+	return s
+}
+
 // SetDealMapping associates a local escrow ID with an on-chain deal ID.
 func (s *HubSettler) SetDealMapping(escrowID string, dealID *big.Int) {
 	s.mu.Lock()
@@ -62,37 +80,105 @@ func (s *HubSettler) SetDealMapping(escrowID string, dealID *big.Int) {
 	s.dealMap[escrowID] = new(big.Int).Set(dealID)
 }
 
-// GetDealID returns the on-chain deal ID for a local escrow ID.
-func (s *HubSettler) GetDealID(escrowID string) (*big.Int, bool) {
+// SetDealMappingByDID associates a DID with an on-chain deal ID.
+func (s *HubSettler) SetDealMappingByDID(did string, dealID *big.Int) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.dealMap[did] = new(big.Int).Set(dealID)
+}
+
+// GetDealID returns the on-chain deal ID for a local escrow ID or DID.
+func (s *HubSettler) GetDealID(key string) (*big.Int, bool) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
-	id, ok := s.dealMap[escrowID]
+	id, ok := s.dealMap[key]
 	return id, ok
 }
 
-// Lock verifies balance sufficiency (hub model — funds held in hub contract after deposit).
-// The actual on-chain createDeal + deposit is handled by the escrow tools layer
-// since the SettlementExecutor.Lock signature only receives buyerDID + amount.
-func (s *HubSettler) Lock(_ context.Context, buyerDID string, amount *big.Int) error {
-	s.logger.Infow("hub settler lock",
-		"buyerDID", buyerDID, "amount", amount.String())
+// Lock creates an on-chain deal and deposits funds.
+// If the hub client is nil (offline mode), this is a no-op.
+func (s *HubSettler) Lock(ctx context.Context, buyerDID string, amount *big.Int) error {
+	if s.hub == nil {
+		s.logger.Warnw("hub client nil, skipping on-chain lock", "buyer", buyerDID, "amount", amount)
+		return nil
+	}
+
+	deadline := new(big.Int).SetInt64(time.Now().Add(24 * time.Hour).Unix())
+	dealID, txHash, err := s.hub.CreateDeal(ctx, common.Address{}, s.tokenAddr, amount, deadline)
+	if err != nil {
+		return fmt.Errorf("create deal: %w", err)
+	}
+
+	depositTx, err := s.hub.Deposit(ctx, dealID)
+	if err != nil {
+		return fmt.Errorf("deposit deal %s: %w", dealID, err)
+	}
+
+	s.mu.Lock()
+	s.dealMap[buyerDID] = dealID
+	s.mu.Unlock()
+
+	s.logger.Infow("funds locked on-chain",
+		"dealID", dealID, "createTx", txHash, "depositTx", depositTx,
+		"buyerDID", buyerDID, "amount", amount)
 	return nil
 }
 
 // Release releases funds on the hub contract for the given seller.
+// If the hub client is nil (offline mode), this is a no-op.
 func (s *HubSettler) Release(ctx context.Context, sellerDID string, amount *big.Int) error {
-	s.logger.Infow("hub settler release",
-		"sellerDID", sellerDID, "amount", amount.String())
-	// Note: release is called from Engine.Release which knows the escrowID.
-	// The actual hub.Release(dealID) call is done in the tools layer
-	// where we have access to the escrowID → dealID mapping.
+	if s.hub == nil {
+		s.logger.Warnw("hub client nil, skipping on-chain release", "seller", sellerDID)
+		return nil
+	}
+
+	s.mu.RLock()
+	dealID, ok := s.dealMap[sellerDID]
+	s.mu.RUnlock()
+	if !ok {
+		return fmt.Errorf("release: no deal mapping for seller %s", sellerDID)
+	}
+
+	txHash, err := s.hub.Release(ctx, dealID)
+	if err != nil {
+		return fmt.Errorf("release deal %s: %w", dealID, err)
+	}
+
+	s.mu.Lock()
+	delete(s.dealMap, sellerDID)
+	s.mu.Unlock()
+
+	s.logger.Infow("funds released on-chain",
+		"dealID", dealID, "txHash", txHash, "seller", sellerDID)
 	return nil
 }
 
 // Refund refunds funds on the hub contract to the given buyer.
+// If the hub client is nil (offline mode), this is a no-op.
 func (s *HubSettler) Refund(ctx context.Context, buyerDID string, amount *big.Int) error {
-	s.logger.Infow("hub settler refund",
-		"buyerDID", buyerDID, "amount", amount.String())
+	if s.hub == nil {
+		s.logger.Warnw("hub client nil, skipping on-chain refund", "buyer", buyerDID)
+		return nil
+	}
+
+	s.mu.RLock()
+	dealID, ok := s.dealMap[buyerDID]
+	s.mu.RUnlock()
+	if !ok {
+		return fmt.Errorf("refund: no deal mapping for buyer %s", buyerDID)
+	}
+
+	txHash, err := s.hub.Refund(ctx, dealID)
+	if err != nil {
+		return fmt.Errorf("refund deal %s: %w", dealID, err)
+	}
+
+	s.mu.Lock()
+	delete(s.dealMap, buyerDID)
+	s.mu.Unlock()
+
+	s.logger.Infow("funds refunded on-chain",
+		"dealID", dealID, "txHash", txHash, "buyer", buyerDID)
 	return nil
 }
 

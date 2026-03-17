@@ -151,3 +151,70 @@ The escrow engine SHALL use `USDCSettler` as the `SettlementExecutor` when `paym
 #### Scenario: Settlement failure reverts release
 - **WHEN** on-chain settlement fails
 - **THEN** escrow remains in "completed" state and an error is logged
+
+### Requirement: Store ListByStatus query
+The escrow `Store` interface SHALL provide a `ListByStatus(status EscrowStatus) []*EscrowEntry` method that returns only escrows matching the given status.
+
+#### Scenario: Query pending escrows
+- **WHEN** `ListByStatus(StatusPending)` is called on a store containing escrows in pending, funded, and active statuses
+- **THEN** the result SHALL contain only escrows with `Status == StatusPending`
+
+#### Scenario: No matching escrows
+- **WHEN** `ListByStatus(StatusDisputed)` is called on a store with no disputed escrows
+- **THEN** the result SHALL be an empty (or nil) slice
+
+### Requirement: Exported NoopSettler type
+The escrow package SHALL export a `NoopSettler` struct that implements `SettlementExecutor` with no-op operations. All packages requiring a placeholder settler SHALL use `escrow.NoopSettler{}` instead of defining local noop types.
+
+#### Scenario: NoopSettler satisfies interface
+- **WHEN** `escrow.NoopSettler{}` is used as a `SettlementExecutor`
+- **THEN** `Lock`, `Release`, and `Refund` SHALL return nil without performing any operations
+
+#### Scenario: Compile-time interface check
+- **WHEN** the escrow package is compiled
+- **THEN** a `var _ SettlementExecutor = (*NoopSettler)(nil)` check SHALL verify interface compliance
+
+
+### Requirement: Store ListByStatusBefore filtered query
+The escrow `Store` interface SHALL provide a `ListByStatusBefore(status EscrowStatus, before time.Time) []*EscrowEntry` method that returns only escrows matching the given status AND created before the specified time.
+
+#### Scenario: Query old pending escrows
+- **WHEN** `ListByStatusBefore(StatusPending, cutoffTime)` is called
+- **THEN** the result SHALL contain only escrows with `Status == StatusPending` AND `CreatedAt < cutoffTime`
+
+#### Scenario: No matching escrows
+- **WHEN** `ListByStatusBefore` is called with criteria that match no entries
+- **THEN** the result SHALL be an empty (or nil) slice
+
+#### Scenario: EntStore filters at DB level
+- **WHEN** the `EntStore` implementation handles `ListByStatusBefore`
+- **THEN** the query SHALL use ent predicates (`escrowdeal.Status` + `escrowdeal.CreatedAtLT`) to filter at the database level rather than loading all entries into memory
+
+### Requirement: Hub client contract method invocation
+The `HubClient` SHALL use `writeMethod` and `readMethod` helper methods to eliminate boilerplate in contract call methods. Each public method (Deposit, SubmitWork, Release, Refund, Dispute, ResolveDispute) SHALL delegate to these helpers.
+
+#### Scenario: writeMethod wraps contract write call
+- **WHEN** `Deposit(ctx, dealID)` is called
+- **THEN** it delegates to `writeMethod(ctx, MethodDeposit, dealID)` which handles request construction and error wrapping
+
+#### Scenario: readMethod wraps contract read call
+- **WHEN** `NextDealID(ctx)` is called
+- **THEN** it delegates to `readMethod(ctx, MethodNextDealID)` which handles request construction and error wrapping
+
+#### Scenario: Error messages use method name
+- **WHEN** a contract call fails
+- **THEN** the error is wrapped as `"<methodName>: <underlying error>"` (e.g., `"deposit: rpc down"`)
+
+### Requirement: Contract method name constants
+The `hub` package SHALL define exported constants for all contract method names (V1 and V2). All client code SHALL reference these constants instead of string literals.
+
+#### Scenario: Method constant usage
+- **WHEN** `HubClient.Deposit` constructs a contract call
+- **THEN** it uses `MethodDeposit` constant ("deposit") instead of a string literal
+
+### Requirement: Transaction type constants
+The escrow package SHALL define a `TransactionType` string type with constants `TxDeposit`, `TxRelease`, and `TxRefund`.
+
+#### Scenario: Transaction type usage
+- **WHEN** escrow store records a transaction
+- **THEN** it uses `TxDeposit`/`TxRelease`/`TxRefund` constants instead of string literals

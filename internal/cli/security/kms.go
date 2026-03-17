@@ -62,7 +62,7 @@ func newKMSStatusCmd(bootLoader func() (*bootstrap.Result, error)) *cobra.Comman
 
 			if isKMS {
 				// Try to create the provider to check connectivity.
-				kmsProvider, provErr := sec.NewKMSProvider(sec.KMSProviderName(provider), cfg.Security.KMS)
+				kmsProvider, provErr := sec.NewKMSProvider(sec.KMSProviderName(provider), cfg.Security.KMS) //nolint:staticcheck // stubs always error; real impls use build tags
 				if provErr != nil {
 					s.Status = fmt.Sprintf("error: %v", provErr)
 				} else {
@@ -115,7 +115,7 @@ func newKMSTestCmd(bootLoader func() (*bootstrap.Result, error)) *cobra.Command 
 				return fmt.Errorf("current provider %q is not a KMS provider", provider)
 			}
 
-			kmsProvider, err := sec.NewKMSProvider(sec.KMSProviderName(provider), cfg.Security.KMS)
+			kmsProvider, err := sec.NewKMSProvider(sec.KMSProviderName(provider), cfg.Security.KMS) //nolint:staticcheck // stubs always error; real impls use build tags
 			if err != nil {
 				return fmt.Errorf("create KMS provider: %w", err)
 			}

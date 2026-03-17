@@ -1,0 +1,64 @@
+{
+  "server": {
+    "host": "0.0.0.0",
+    "port": 18790,
+    "httpEnabled": true,
+    "webSocketEnabled": false
+  },
+  "agent": {
+    "provider": "",
+    "model": ""
+  },
+  "payment": {
+    "enabled": true,
+    "walletProvider": "local",
+    "network": {
+      "chainId": 31337,
+      "rpcUrl": "http://localhost:8545"
+    }
+  },
+  "p2p": {
+    "enabled": true,
+    "listenAddrs": ["/ip4/0.0.0.0/tcp/9002"],
+    "enableMdns": true,
+    "maxPeers": 50,
+    "autoApproveKnownPeers": true,
+    "requireSignedChallenge": true,
+    "firewallRules": [
+      {
+        "peerDid": "*",
+        "action": "allow",
+        "tools": ["*"]
+      }
+    ],
+    "gossipInterval": "5s",
+    "zkHandshake": false,
+    "zkAttestation": false,
+    "ownerProtection": {
+      "ownerName": "Bob",
+      "ownerEmail": "",
+      "ownerPhone": "",
+      "blockConversations": true
+    },
+    "minTrustScore": 0.3
+  },
+  "a2a": {
+    "enabled": true,
+    "agentName": "Bob",
+    "agentDescription": "Discovery & Handshake Test Agent (Bob)",
+    "capabilities": ["coding"],
+    "baseUrl": "http://bob:18790"
+  },
+  "security": {
+    "signer": {
+      "provider": "local"
+    },
+    "interceptor": {
+      "enabled": false,
+      "headlessAutoApprove": true
+    }
+  },
+  "knowledge": { "enabled": false },
+  "observationalMemory": { "enabled": false },
+  "graph": { "enabled": false }
+}

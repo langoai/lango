@@ -4,15 +4,16 @@ import (
 	"context"
 	"fmt"
 	"math/big"
+	"sync"
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/crypto"
+	"github.com/ethereum/go-ethereum/ethclient"
 
 	"github.com/langoai/lango/internal/contract"
-	"github.com/langoai/lango/internal/smartaccount/bindings"
 )
 
-// safeFactoryABI is the ABI for the Safe proxy factory's createProxyWithNonce.
+// safeFactoryABI is the ABI for the Safe proxy factory.
 const safeFactoryABI = `[
 	{
 		"inputs": [
@@ -26,41 +27,49 @@ const safeFactoryABI = `[
 		"type": "function"
 	},
 	{
-		"inputs": [
-			{"name": "_singleton", "type": "address"},
-			{"name": "initializer", "type": "bytes"},
-			{"name": "saltNonce", "type": "uint256"}
-		],
+		"inputs": [],
 		"name": "proxyCreationCode",
 		"outputs": [{"name": "", "type": "bytes"}],
-		"stateMutability": "view",
+		"stateMutability": "pure",
 		"type": "function"
 	}
 ]`
 
 // Factory handles Safe smart account deployment.
 type Factory struct {
-	caller       contract.ContractCaller
-	factoryAddr  common.Address
-	safe7579Addr common.Address
-	fallbackAddr common.Address
-	chainID      int64
+	caller        contract.ContractCaller
+	rpc           *ethclient.Client
+	factoryAddr   common.Address
+	singletonAddr common.Address // Safe L2 singleton (proxy implementation)
+	safe7579Addr  common.Address // ERC-7579 adapter (delegate call target during setup)
+	fallbackAddr  common.Address
+	chainID       int64
+
+	// proxyCode caches the result of proxyCreationCode() view call.
+	proxyCodeMu sync.Mutex
+	proxyCode   []byte
 }
 
 // NewFactory creates a smart account factory.
+// singletonAddr is the Safe L2 implementation contract (the proxy delegates to this).
+// safe7579Addr is the ERC-7579 adapter, called via delegate call during setup.
 func NewFactory(
 	caller contract.ContractCaller,
+	rpc *ethclient.Client,
 	factoryAddr common.Address,
+	singletonAddr common.Address,
 	safe7579Addr common.Address,
 	fallbackAddr common.Address,
 	chainID int64,
 ) *Factory {
 	return &Factory{
-		caller:       caller,
-		factoryAddr:  factoryAddr,
-		safe7579Addr: safe7579Addr,
-		fallbackAddr: fallbackAddr,
-		chainID:      chainID,
+		caller:        caller,
+		rpc:           rpc,
+		factoryAddr:   factoryAddr,
+		singletonAddr: singletonAddr,
+		safe7579Addr:  safe7579Addr,
+		fallbackAddr:  fallbackAddr,
+		chainID:       chainID,
 	}
 }
 
@@ -71,9 +80,10 @@ func NewFactory(
 //
 // and the proxy initCode hash for the CREATE2 formula.
 func (f *Factory) ComputeAddress(
+	ctx context.Context,
 	owner common.Address,
 	salt *big.Int,
-) common.Address {
+) (common.Address, error) {
 	// Build initializer calldata (same as in Deploy).
 	initData := buildSafeInitializer(
 		owner, f.safe7579Addr, f.fallbackAddr,
@@ -91,14 +101,15 @@ func (f *Factory) ComputeAddress(
 	)
 
 	// Proxy initCode = proxyCreationCode ++ abi.encode(singleton)
-	// Hash the singleton address and initializer as the initCode
-	// hash for deterministic address computation.
+	proxyCode, err := f.getProxyCreationCode(ctx)
+	if err != nil {
+		return common.Address{}, fmt.Errorf("get proxy creation code: %w", err)
+	}
+
 	singletonPadded := make([]byte, 32)
-	copy(singletonPadded[12:], f.safe7579Addr.Bytes())
-	initCodeHash := crypto.Keccak256(
-		f.safe7579Addr.Bytes(),
-		initData,
-	)
+	copy(singletonPadded[12:], f.singletonAddr.Bytes())
+	initCode := append(proxyCode, singletonPadded...)
+	initCodeHash := crypto.Keccak256(initCode)
 
 	// CREATE2: keccak256(0xff ++ factory ++ salt ++ keccak256(initCode))
 	data := make([]byte, 0, 85)
@@ -108,7 +119,40 @@ func (f *Factory) ComputeAddress(
 	data = append(data, initCodeHash...)
 
 	hash := crypto.Keccak256(data)
-	return common.BytesToAddress(hash[12:])
+	return common.BytesToAddress(hash[12:]), nil
+}
+
+// getProxyCreationCode retrieves and caches the proxy creation code from the factory.
+func (f *Factory) getProxyCreationCode(ctx context.Context) ([]byte, error) {
+	f.proxyCodeMu.Lock()
+	defer f.proxyCodeMu.Unlock()
+
+	if f.proxyCode != nil {
+		return f.proxyCode, nil
+	}
+
+	result, err := f.caller.Read(ctx, contract.ContractCallRequest{
+		ChainID: f.chainID,
+		Address: f.factoryAddr,
+		ABI:     safeFactoryABI,
+		Method:  "proxyCreationCode",
+		Args:    []interface{}{},
+	})
+	if err != nil {
+		return nil, fmt.Errorf("call proxyCreationCode: %w", err)
+	}
+
+	if len(result.Data) == 0 {
+		return nil, fmt.Errorf("proxyCreationCode returned empty data")
+	}
+
+	code, ok := result.Data[0].([]byte)
+	if !ok {
+		return nil, fmt.Errorf("proxyCreationCode: unexpected return type %T", result.Data[0])
+	}
+
+	f.proxyCode = code
+	return code, nil
 }
 
 // Deploy deploys a new Safe account with ERC-7579 adapter.
@@ -135,7 +179,7 @@ func (f *Factory) Deploy(
 		ABI:     safeFactoryABI,
 		Method:  "createProxyWithNonce",
 		Args: []interface{}{
-			f.safe7579Addr,
+			f.singletonAddr,
 			initData,
 			saltNonce,
 		},
@@ -145,45 +189,41 @@ func (f *Factory) Deploy(
 			fmt.Errorf("deploy safe account: %w", err)
 	}
 
-	// Extract the proxy address from the result.
+	// Try to parse the actual deployed address from the return data.
 	if len(result.Data) > 0 {
 		if addr, ok := result.Data[0].(common.Address); ok {
 			return addr, result.TxHash, nil
 		}
 	}
 
-	// If the result data doesn't contain the address directly,
-	// compute it deterministically.
-	computed := f.ComputeAddress(owner, salt)
+	// Fallback: compute the deterministic address via CREATE2.
+	computed, compErr := f.ComputeAddress(ctx, owner, salt)
+	if compErr != nil {
+		return common.Address{}, result.TxHash,
+			fmt.Errorf("compute deployed address: %w", compErr)
+	}
 	return computed, result.TxHash, nil
 }
 
-// IsDeployed checks if the account has code deployed at its address.
+// IsDeployed checks if the account has code deployed at its address
+// by calling eth_getCode via the RPC client.
 func (f *Factory) IsDeployed(
 	ctx context.Context,
 	addr common.Address,
 ) (bool, error) {
-	// Use a Read call to check if code exists at the address.
-	// We attempt to call a view function; if the contract has code
-	// the call proceeds, otherwise it fails.
-	result, err := f.caller.Read(ctx, contract.ContractCallRequest{
-		ChainID: f.chainID,
-		Address: addr,
-		ABI:     bindings.Safe7579ABI,
-		Method:  "isModuleInstalled",
-		Args: []interface{}{
-			uint8(ModuleTypeValidator),
-			common.Address{},
-			[]byte{},
-		},
-	})
-	if err != nil {
-		// If the call fails, the contract is likely not deployed.
-		return false, nil
+	if f.rpc == nil {
+		return false, fmt.Errorf(
+			"check deployment %s: rpc client not configured",
+			addr.Hex(),
+		)
 	}
-	// If the call succeeds, the contract exists.
-	_ = result
-	return true, nil
+	code, err := f.rpc.CodeAt(ctx, addr, nil)
+	if err != nil {
+		return false, fmt.Errorf(
+			"get code at %s: %w", addr.Hex(), err,
+		)
+	}
+	return len(code) > 0, nil
 }
 
 // safeSetupABI is the ABI for the Safe.setup() function.

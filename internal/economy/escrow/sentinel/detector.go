@@ -19,23 +19,50 @@ var (
 	_ Detector = (*BalanceDropDetector)(nil)
 )
 
-// RapidCreationDetector tracks creation timestamps per peer.
-// If more than Max deals from the same peer arrive in Window, it alerts.
-type RapidCreationDetector struct {
-	mu     sync.Mutex
-	window time.Duration
-	max    int
-	// peerDID -> list of creation timestamps
+// windowCounter tracks timestamped events per key within a sliding window.
+type windowCounter struct {
+	mu      sync.Mutex
+	window  time.Duration
+	max     int
 	history map[string][]time.Time
 }
 
-// NewRapidCreationDetector creates a detector for rapid escrow creation.
-func NewRapidCreationDetector(window time.Duration, max int) *RapidCreationDetector {
-	return &RapidCreationDetector{
+// newWindowCounter creates a new window counter.
+func newWindowCounter(window time.Duration, max int) windowCounter {
+	return windowCounter{
 		window:  window,
 		max:     max,
 		history: make(map[string][]time.Time),
 	}
+}
+
+// record adds a timestamp for key, prunes entries outside the window, and returns the current count.
+func (wc *windowCounter) record(key string) int {
+	now := time.Now()
+	cutoff := now.Add(-wc.window)
+
+	pruned := make([]time.Time, 0, len(wc.history[key]))
+	for _, t := range wc.history[key] {
+		if t.After(cutoff) {
+			pruned = append(pruned, t)
+		}
+	}
+	pruned = append(pruned, now)
+	wc.history[key] = pruned
+
+	return len(pruned)
+}
+
+
+// RapidCreationDetector tracks creation timestamps per peer.
+// If more than Max deals from the same peer arrive in Window, it alerts.
+type RapidCreationDetector struct {
+	windowCounter
+}
+
+// NewRapidCreationDetector creates a detector for rapid escrow creation.
+func NewRapidCreationDetector(window time.Duration, max int) *RapidCreationDetector {
+	return &RapidCreationDetector{windowCounter: newWindowCounter(window, max)}
 }
 
 func (d *RapidCreationDetector) Name() string { return "rapid_creation" }
@@ -49,33 +76,17 @@ func (d *RapidCreationDetector) Analyze(event interface{}) *Alert {
 	d.mu.Lock()
 	defer d.mu.Unlock()
 
-	now := time.Now()
-	peer := ev.PayerDID
-	cutoff := now.Add(-d.window)
-
-	// Prune old entries.
-	pruned := make([]time.Time, 0, len(d.history[peer]))
-	for _, t := range d.history[peer] {
-		if t.After(cutoff) {
-			pruned = append(pruned, t)
-		}
-	}
-	pruned = append(pruned, now)
-	d.history[peer] = pruned
-
-	if len(pruned) > d.max {
+	count := d.record(ev.PayerDID)
+	if count > d.max {
 		return &Alert{
 			ID:        uuid.New().String(),
 			Severity:  SeverityHigh,
 			Type:      "rapid_creation",
-			Message:   fmt.Sprintf("peer %s created %d escrows in %s", peer, len(pruned), d.window),
+			Message:   fmt.Sprintf("peer %s created %d escrows in %s", ev.PayerDID, count, d.window),
 			DealID:    ev.EscrowID,
-			PeerDID:   peer,
-			Timestamp: now,
-			Metadata: map[string]interface{}{
-				"count":  len(pruned),
-				"window": d.window.String(),
-			},
+			PeerDID:   ev.PayerDID,
+			Timestamp: time.Now(),
+			Metadata:  AlertMetadata{Count: count, Window: d.window.String()},
 		}
 	}
 	return nil
@@ -117,28 +128,18 @@ func (d *LargeWithdrawalDetector) Analyze(event interface{}) *Alert {
 		Message:   fmt.Sprintf("large withdrawal of %s from escrow %s", ev.Amount.String(), ev.EscrowID),
 		DealID:    ev.EscrowID,
 		Timestamp: now,
-		Metadata: map[string]interface{}{
-			"amount":    ev.Amount.String(),
-			"threshold": d.threshold.String(),
-		},
+		Metadata:  AlertMetadata{Amount: ev.Amount.String(), Threshold: d.threshold.String()},
 	}
 }
 
 // RepeatedDisputeDetector tracks disputes per peer within a window.
 type RepeatedDisputeDetector struct {
-	mu      sync.Mutex
-	window  time.Duration
-	max     int
-	history map[string][]time.Time
+	windowCounter
 }
 
 // NewRepeatedDisputeDetector creates a detector for repeated disputes.
 func NewRepeatedDisputeDetector(window time.Duration, max int) *RepeatedDisputeDetector {
-	return &RepeatedDisputeDetector{
-		window:  window,
-		max:     max,
-		history: make(map[string][]time.Time),
-	}
+	return &RepeatedDisputeDetector{windowCounter: newWindowCounter(window, max)}
 }
 
 func (d *RepeatedDisputeDetector) Name() string { return "repeated_dispute" }
@@ -154,32 +155,18 @@ func (d *RepeatedDisputeDetector) Analyze(event interface{}) *Alert {
 	d.mu.Lock()
 	defer d.mu.Unlock()
 
-	now := time.Now()
 	peer := ev.EscrowID
-	cutoff := now.Add(-d.window)
-
-	pruned := make([]time.Time, 0, len(d.history[peer]))
-	for _, t := range d.history[peer] {
-		if t.After(cutoff) {
-			pruned = append(pruned, t)
-		}
-	}
-	pruned = append(pruned, now)
-	d.history[peer] = pruned
-
-	if len(pruned) > d.max {
+	count := d.record(peer)
+	if count > d.max {
 		return &Alert{
 			ID:        uuid.New().String(),
 			Severity:  SeverityHigh,
 			Type:      "repeated_dispute",
-			Message:   fmt.Sprintf("escrow %s triggered %d milestone events in %s", peer, len(pruned), d.window),
+			Message:   fmt.Sprintf("escrow %s triggered %d milestone events in %s", peer, count, d.window),
 			DealID:    ev.EscrowID,
 			PeerDID:   peer,
-			Timestamp: now,
-			Metadata: map[string]interface{}{
-				"count":  len(pruned),
-				"window": d.window.String(),
-			},
+			Timestamp: time.Now(),
+			Metadata:  AlertMetadata{Count: count, Window: d.window.String()},
 		}
 	}
 	return nil
@@ -229,10 +216,7 @@ func (d *UnusualTimingDetector) Analyze(event interface{}) *Alert {
 				Message:   fmt.Sprintf("escrow %s created and released within %s (possible wash trade)", ev.EscrowID, elapsed.Round(time.Millisecond)),
 				DealID:    ev.EscrowID,
 				Timestamp: now,
-				Metadata: map[string]interface{}{
-					"elapsed": elapsed.String(),
-					"window":  d.window.String(),
-				},
+				Metadata:  AlertMetadata{Elapsed: elapsed.String(), Window: d.window.String()},
 			}
 		}
 	}
@@ -281,10 +265,7 @@ func (d *BalanceDropDetector) Analyze(event interface{}) *Alert {
 			Type:      "balance_drop",
 			Message:   fmt.Sprintf("balance dropped from %s to %s (>50%%)", d.previousBalance.String(), ev.NewBalance.String()),
 			Timestamp: now,
-			Metadata: map[string]interface{}{
-				"previousBalance": d.previousBalance.String(),
-				"newBalance":      ev.NewBalance.String(),
-			},
+			Metadata:  AlertMetadata{PreviousBalance: d.previousBalance.String(), NewBalance: ev.NewBalance.String()},
 		}
 		d.previousBalance = new(big.Int).Set(ev.NewBalance)
 		return alert

@@ -7,9 +7,12 @@ import (
 	"iter"
 	"strings"
 
+	"github.com/langoai/lango/internal/logging"
 	"github.com/langoai/lango/internal/provider"
 	"google.golang.org/genai"
 )
+
+var logger = logging.SubsystemSugar("provider.gemini")
 
 type GeminiProvider struct {
 	client *genai.Client
@@ -38,7 +41,7 @@ func (p *GeminiProvider) Generate(ctx context.Context, params provider.GenerateP
 	var contents []*genai.Content
 	var systemParts []*genai.Part
 
-	for _, m := range params.Messages {
+	for i, m := range params.Messages {
 		if m.Role == "system" {
 			systemParts = append(systemParts, &genai.Part{Text: m.Content})
 			continue
@@ -48,8 +51,12 @@ func (p *GeminiProvider) Generate(ctx context.Context, params provider.GenerateP
 			toolCallID, _ := m.Metadata["tool_call_id"].(string)
 			toolCallName, _ := m.Metadata["tool_call_name"].(string)
 
+			// Backward compat: infer name from preceding assistant's FunctionCall
+			if toolCallName == "" && toolCallID != "" {
+				toolCallName = inferToolNameFromHistory(params.Messages, i, toolCallID)
+			}
+
 			if toolCallID == "" || toolCallName == "" {
-				// Fallback or skip if missing info
 				continue
 			}
 
@@ -68,6 +75,7 @@ func (p *GeminiProvider) Generate(ctx context.Context, params provider.GenerateP
 				Parts: []*genai.Part{
 					{
 						FunctionResponse: &genai.FunctionResponse{
+							ID:       toolCallID,
 							Name:     toolCallName,
 							Response: responseContent,
 						},
@@ -89,15 +97,21 @@ func (p *GeminiProvider) Generate(ctx context.Context, params provider.GenerateP
 
 		// If assistant message has tool calls, add them as parts
 		if role == "model" && len(m.ToolCalls) > 0 {
-			// If content is empty/present, we append ToolCalls
-			// Note: Gemini can have text AND parts.
 			for _, tc := range m.ToolCalls {
+				// Drop corrupted thinking entries: Thought flag set but signature lost in persistence
+				if tc.Thought && len(tc.ThoughtSignature) == 0 {
+					logger.Warnw("dropping replayed FunctionCall with Thought=true but empty ThoughtSignature",
+						"name", tc.Name, "id", tc.ID)
+					continue
+				}
+
 				var args map[string]interface{}
 				if err := json.Unmarshal([]byte(tc.Arguments), &args); err != nil {
 					args = make(map[string]interface{})
 				}
 				p := &genai.Part{
 					FunctionCall: &genai.FunctionCall{
+						ID:   tc.ID,
 						Name: tc.Name,
 						Args: args,
 					},
@@ -140,6 +154,11 @@ func (p *GeminiProvider) Generate(ctx context.Context, params provider.GenerateP
 	// Alias "gemini" to a valid model
 	if model == "gemini" {
 		model = "gemini-3-flash-preview"
+	}
+
+	// Safety net: catch obviously wrong models (e.g., "gpt-5.3-codex" routed here).
+	if err := provider.ValidateModelProvider("gemini", model); err != nil {
+		return nil, fmt.Errorf("gemini provider: %w", err)
 	}
 
 	temp := float32(params.Temperature)
@@ -198,7 +217,7 @@ func (p *GeminiProvider) Generate(ctx context.Context, params provider.GenerateP
 							if !yield(provider.StreamEvent{
 								Type: provider.StreamEventToolCall,
 								ToolCall: &provider.ToolCall{
-									ID:               part.FunctionCall.Name, // Use name as ID if ID missing
+									ID:               resolveFunctionCallID(part.FunctionCall),
 									Name:             part.FunctionCall.Name,
 									Arguments:        string(argsJSON),
 									Thought:          part.Thought,
@@ -253,4 +272,31 @@ func convertSchema(schemaMap map[string]interface{}) (*genai.Schema, error) {
 		return nil, err
 	}
 	return &s, nil
+}
+
+// resolveFunctionCallID returns the FunctionCall.ID if non-empty, falling back to Name.
+func resolveFunctionCallID(fc *genai.FunctionCall) string {
+	if fc.ID != "" {
+		return fc.ID
+	}
+	return fc.Name
+}
+
+// inferToolNameFromHistory scans backward from position idx looking for the
+// nearest preceding assistant message whose ToolCalls contain a matching ID,
+// and returns the corresponding Name. Returns "" if no match is found.
+func inferToolNameFromHistory(msgs []provider.Message, idx int, toolCallID string) string {
+	for j := idx - 1; j >= 0; j-- {
+		if msgs[j].Role != "assistant" {
+			continue
+		}
+		for _, tc := range msgs[j].ToolCalls {
+			if tc.ID == toolCallID {
+				return tc.Name
+			}
+		}
+		// Only check the nearest assistant message to avoid wrong inference.
+		return ""
+	}
+	return ""
 }

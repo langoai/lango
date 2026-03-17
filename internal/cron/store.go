@@ -20,6 +20,7 @@ type Store interface {
 	List(ctx context.Context) ([]Job, error)
 	ListEnabled(ctx context.Context) ([]Job, error)
 	Update(ctx context.Context, job Job) error
+	Upsert(ctx context.Context, job Job) (stored *Job, updated bool, err error)
 	Delete(ctx context.Context, id string) error
 	SaveHistory(ctx context.Context, entry HistoryEntry) error
 	ListHistory(ctx context.Context, jobID string, limit int) ([]HistoryEntry, error)
@@ -49,6 +50,10 @@ func (s *EntStore) Create(ctx context.Context, job Job) error {
 
 	if len(job.DeliverTo) > 0 {
 		builder.SetDeliverTo(job.DeliverTo)
+	}
+
+	if job.Timeout > 0 {
+		builder.SetTimeoutMs(job.Timeout.Milliseconds())
 	}
 
 	if job.LastRunAt != nil {
@@ -147,6 +152,12 @@ func (s *EntStore) Update(ctx context.Context, job Job) error {
 		builder.SetDeliverTo(job.DeliverTo)
 	} else {
 		builder.ClearDeliverTo()
+	}
+
+	if job.Timeout > 0 {
+		builder.SetTimeoutMs(job.Timeout.Milliseconds())
+	} else {
+		builder.ClearTimeoutMs()
 	}
 
 	if job.LastRunAt != nil {
@@ -253,6 +264,30 @@ func (s *EntStore) ListAllHistory(ctx context.Context, limit int) ([]HistoryEntr
 	return entHistoriesToDomain(rows), nil
 }
 
+// Upsert creates a new cron job or updates an existing one by name.
+// Returns the persisted job, whether it was an update, and any error.
+func (s *EntStore) Upsert(ctx context.Context, job Job) (*Job, bool, error) {
+	existing, err := s.GetByName(ctx, job.Name)
+	if err == nil && existing != nil {
+		job.ID = existing.ID
+		job.CreatedAt = existing.CreatedAt
+		if updateErr := s.Update(ctx, job); updateErr != nil {
+			return nil, false, fmt.Errorf("upsert update cron job %q: %w", job.Name, updateErr)
+		}
+		return &job, true, nil
+	}
+
+	if createErr := s.Create(ctx, job); createErr != nil {
+		return nil, false, fmt.Errorf("upsert create cron job %q: %w", job.Name, createErr)
+	}
+	// Read back to get the generated ID.
+	created, readErr := s.GetByName(ctx, job.Name)
+	if readErr != nil {
+		return nil, false, fmt.Errorf("read back cron job %q: %w", job.Name, readErr)
+	}
+	return created, false, nil
+}
+
 // entCronJobToDomain converts an Ent CronJob entity to the domain Job type.
 func entCronJobToDomain(e *ent.CronJob) Job {
 	j := Job{
@@ -265,6 +300,10 @@ func entCronJobToDomain(e *ent.CronJob) Job {
 		Timezone:     e.Timezone,
 		Enabled:      e.Enabled,
 		CreatedAt:    e.CreatedAt,
+	}
+
+	if e.TimeoutMs != nil && *e.TimeoutMs > 0 {
+		j.Timeout = time.Duration(*e.TimeoutMs) * time.Millisecond
 	}
 
 	if len(e.DeliverTo) > 0 {

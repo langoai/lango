@@ -260,6 +260,19 @@ func NewEconomyEscrowOnChainForm(cfg *config.Config) *tuicore.FormModel {
 	})
 
 	form.AddField(&tuicore.Field{
+		Key: "economy_escrow_onchain_confirmation_depth", Label: "Confirmation Depth", Type: tuicore.InputInt,
+		Value:       strconv.FormatUint(oc.ConfirmationDepth, 10),
+		Placeholder: "2 (blocks to wait for reorg protection)",
+		Description: "Number of blocks to wait before processing events (0 = use default 2)",
+		Validate: func(s string) error {
+			if _, err := strconv.ParseUint(s, 10, 64); err != nil {
+				return fmt.Errorf("must be a non-negative integer")
+			}
+			return nil
+		},
+	})
+
+	form.AddField(&tuicore.Field{
 		Key: "economy_escrow_settlement_receipt_timeout", Label: "Receipt Timeout", Type: tuicore.InputText,
 		Value:       st.ReceiptTimeout.String(),
 		Placeholder: "2m",

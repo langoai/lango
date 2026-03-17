@@ -35,7 +35,13 @@ func NewStore(client *ent.Client, crypto security.CryptoProvider) *Store {
 
 // Save serializes the config to JSON, encrypts it, and stores it as a profile.
 // If a profile with the given name already exists, it is updated.
+// PostLoad normalizes paths and validates the config in-place before persisting,
+// so the stored form is always canonical.
 func (s *Store) Save(ctx context.Context, name string, cfg *config.Config) error {
+	if err := config.PostLoad(cfg); err != nil {
+		return fmt.Errorf("validate config: %w", err)
+	}
+
 	plainJSON, err := json.Marshal(cfg)
 	if err != nil {
 		return fmt.Errorf("marshal config: %w", err)

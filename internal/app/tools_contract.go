@@ -9,6 +9,7 @@ import (
 
 	"github.com/langoai/lango/internal/agent"
 	"github.com/langoai/lango/internal/contract"
+	"github.com/langoai/lango/internal/toolparam"
 )
 
 // buildContractTools creates agent tools for smart contract interaction.
@@ -107,15 +108,15 @@ func buildContractTools(caller *contract.Caller) []*agent.Tool {
 				"required": []string{"address", "abi"},
 			},
 			Handler: func(ctx context.Context, params map[string]interface{}) (interface{}, error) {
-				addrStr, _ := params["address"].(string)
-				abiJSON, _ := params["abi"].(string)
-				if addrStr == "" || abiJSON == "" {
-					return nil, fmt.Errorf("address and abi are required")
+				addrStr, err := toolparam.RequireString(params, "address")
+				if err != nil {
+					return nil, err
 				}
-				chainID := int64(0)
-				if v, ok := params["chainId"].(float64); ok {
-					chainID = int64(v)
+				abiJSON, err := toolparam.RequireString(params, "abi")
+				if err != nil {
+					return nil, err
 				}
+				chainID := int64(toolparam.OptionalInt(params, "chainId", 0))
 				addr := common.HexToAddress(addrStr)
 				if err := caller.LoadABI(chainID, addr, abiJSON); err != nil {
 					return nil, err
@@ -131,18 +132,20 @@ func buildContractTools(caller *contract.Caller) []*agent.Tool {
 
 // parseContractCallParams extracts a ContractCallRequest from tool parameters.
 func parseContractCallParams(params map[string]interface{}) (*contract.ContractCallRequest, error) {
-	addrStr, _ := params["address"].(string)
-	abiJSON, _ := params["abi"].(string)
-	method, _ := params["method"].(string)
-
-	if addrStr == "" || abiJSON == "" || method == "" {
-		return nil, fmt.Errorf("address, abi, and method are required")
+	addrStr, err := toolparam.RequireString(params, "address")
+	if err != nil {
+		return nil, err
+	}
+	abiJSON, err := toolparam.RequireString(params, "abi")
+	if err != nil {
+		return nil, err
+	}
+	method, err := toolparam.RequireString(params, "method")
+	if err != nil {
+		return nil, err
 	}
 
-	var chainID int64
-	if v, ok := params["chainId"].(float64); ok {
-		chainID = int64(v)
-	}
+	chainID := int64(toolparam.OptionalInt(params, "chainId", 0))
 
 	var args []interface{}
 	if rawArgs, ok := params["args"].([]interface{}); ok {

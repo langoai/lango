@@ -58,7 +58,7 @@ func TestSendUserOperation(t *testing.T) {
 	)
 	defer srv.Close()
 
-	entryPoint := common.HexToAddress("0x5FF137D4b0FDCD49DcA30c7CF57E578a026d2789")
+	entryPoint := common.HexToAddress("0x0000000071727De22E5E9d8BAf0edAc6f37da032")
 	c := NewClient(srv.URL, entryPoint)
 
 	result, err := c.SendUserOperation(
@@ -111,7 +111,7 @@ func TestEstimateGas(t *testing.T) {
 	)
 	defer srv.Close()
 
-	entryPoint := common.HexToAddress("0x5FF137D4b0FDCD49DcA30c7CF57E578a026d2789")
+	entryPoint := common.HexToAddress("0x0000000071727De22E5E9d8BAf0edAc6f37da032")
 	c := NewClient(srv.URL, entryPoint)
 
 	estimate, err := c.EstimateGas(
@@ -161,7 +161,7 @@ func TestSendUserOperationRPCError(t *testing.T) {
 	)
 	defer srv.Close()
 
-	entryPoint := common.HexToAddress("0x5FF137D4b0FDCD49DcA30c7CF57E578a026d2789")
+	entryPoint := common.HexToAddress("0x0000000071727De22E5E9d8BAf0edAc6f37da032")
 	c := NewClient(srv.URL, entryPoint)
 
 	_, err := c.SendUserOperation(
@@ -202,7 +202,7 @@ func TestGetUserOperationReceipt(t *testing.T) {
 	)
 	defer srv.Close()
 
-	entryPoint := common.HexToAddress("0x5FF137D4b0FDCD49DcA30c7CF57E578a026d2789")
+	entryPoint := common.HexToAddress("0x0000000071727De22E5E9d8BAf0edAc6f37da032")
 	c := NewClient(srv.URL, entryPoint)
 
 	result, err := c.GetUserOperationReceipt(
@@ -223,7 +223,7 @@ func TestGetUserOperationReceipt(t *testing.T) {
 func TestSupportedEntryPoints(t *testing.T) {
 	t.Parallel()
 
-	ep := "0x5FF137D4b0FDCD49DcA30c7CF57E578a026d2789"
+	ep := "0x0000000071727De22E5E9d8BAf0edAc6f37da032"
 	srv := httptest.NewServer(
 		http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			var req jsonrpcRequest

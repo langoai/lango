@@ -60,6 +60,9 @@ type PayGateResult struct {
 // NegotiateHandler processes negotiation protocol messages.
 type NegotiateHandler func(ctx context.Context, peerDID string, payload NegotiatePayload) (map[string]interface{}, error)
 
+// TeamHandler processes team-related protocol messages.
+type TeamHandler func(ctx context.Context, peerDID string, reqType RequestType, payload map[string]interface{}) (map[string]interface{}, error)
+
 // Handler processes A2A-over-P2P messages on libp2p streams.
 type Handler struct {
 	sessions       *handshake.SessionStore
@@ -72,6 +75,7 @@ type Handler struct {
 	securityEvents SecurityEventTracker
 	eventBus       *eventbus.Bus
 	negotiator     NegotiateHandler
+	teamHandler    TeamHandler
 	localDID       string
 	logger         *zap.SugaredLogger
 }
@@ -136,6 +140,11 @@ func (h *Handler) SetNegotiator(fn NegotiateHandler) {
 	h.negotiator = fn
 }
 
+// SetTeamHandler sets the handler for team protocol messages.
+func (h *Handler) SetTeamHandler(fn TeamHandler) {
+	h.teamHandler = fn
+}
+
 // StreamHandler returns a libp2p stream handler for incoming A2A messages.
 func (h *Handler) StreamHandler() network.StreamHandler {
 	return func(s network.Stream) {
@@ -182,6 +191,8 @@ func (h *Handler) handleRequest(ctx context.Context, s network.Stream, req *Requ
 		return h.handleToolInvokePaid(ctx, req, peerDID)
 	case RequestNegotiatePropose, RequestNegotiateRespond:
 		return h.handleNegotiate(ctx, req, peerDID)
+	case RequestTeamInvite, RequestTeamAccept, RequestTeamTask, RequestTeamResult, RequestTeamDisband:
+		return h.handleTeamMessage(ctx, req, peerDID)
 	default:
 		return &Response{
 			RequestID: req.RequestID,
@@ -608,6 +619,35 @@ func (h *Handler) handleNegotiate(ctx context.Context, req *Request, peerDID str
 	}
 
 	result, err := h.negotiator(ctx, peerDID, payload)
+	if err != nil {
+		return &Response{
+			RequestID: req.RequestID,
+			Status:    ResponseStatusError,
+			Error:     err.Error(),
+			Timestamp: time.Now(),
+		}
+	}
+
+	return &Response{
+		RequestID: req.RequestID,
+		Status:    ResponseStatusOK,
+		Result:    result,
+		Timestamp: time.Now(),
+	}
+}
+
+// handleTeamMessage routes team protocol messages to the team handler.
+func (h *Handler) handleTeamMessage(ctx context.Context, req *Request, peerDID string) *Response {
+	if h.teamHandler == nil {
+		return &Response{
+			RequestID: req.RequestID,
+			Status:    ResponseStatusError,
+			Error:     "team handler not configured",
+			Timestamp: time.Now(),
+		}
+	}
+
+	result, err := h.teamHandler(ctx, peerDID, req.Type, req.Payload)
 	if err != nil {
 		return &Response{
 			RequestID: req.RequestID,

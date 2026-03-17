@@ -14,6 +14,11 @@ var (
 	_profile   = "default"
 )
 
+// GetVersion returns the current version string.
+func GetVersion() string {
+	return _version
+}
+
 // SetVersionInfo injects version and build time from main.go.
 func SetVersionInfo(version, buildTime string) {
 	_version = version
@@ -74,4 +79,38 @@ func ServeBanner() string {
 	b.WriteString("\n\n")
 
 	return b.String()
+}
+
+// StartupSummary renders activated features based on config flags.
+// Each entry is a key string mapped to an enabled bool and optional detail.
+func StartupSummary(features []FeatureLine) string {
+	if len(features) == 0 {
+		return ""
+	}
+
+	var b strings.Builder
+
+	header := lipgloss.NewStyle().Bold(true).Foreground(Foreground).Render("Features:")
+	b.WriteString("  " + header + "\n")
+
+	for _, f := range features {
+		if f.Enabled {
+			detail := f.Name
+			if f.Detail != "" {
+				detail += "  " + MutedStyle.Render(f.Detail)
+			}
+			b.WriteString("    " + FormatPass(detail) + "\n")
+		} else {
+			b.WriteString("    " + FormatFail(f.Name) + "\n")
+		}
+	}
+
+	return b.String()
+}
+
+// FeatureLine describes a single feature for startup summary.
+type FeatureLine struct {
+	Name    string
+	Enabled bool
+	Detail  string
 }

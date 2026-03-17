@@ -225,6 +225,59 @@ Uses a single **LangoEscrowHub** contract that holds multiple deals. All escrows
 
 Uses **LangoVaultFactory** to deploy a per-deal **LangoVault** via EIP-1167 minimal proxy (clone). Each escrow gets its own isolated contract instance, providing stronger separation of funds.
 
+### Hub V2
+
+The `HubV2Client` provides typed access to the UUPS-upgradeable **LangoEscrowHubV2** contract. It extends V1 with `refId` support (a `[32]byte` reference identifier for cross-system correlation) and new deal types.
+
+**Key methods:**
+
+| Method | Description |
+|--------|-------------|
+| `DirectSettle` | Transfer tokens directly from buyer to seller without escrow (instant settlement with `refId`) |
+| `CreateSimpleEscrow` | Create a simple escrow deal with `refId` |
+| `CreateMilestoneEscrow` | Create a milestone-based escrow with per-milestone amounts and `refId` |
+| `CreateTeamEscrow` | Create a team escrow with proportional shares across multiple members |
+| `CompleteMilestone` | Mark a specific milestone index as completed |
+| `ReleaseMilestone` | Release funds for all completed milestones |
+| `GetDealV2` | Read on-chain deal state including `refId`, `DealType`, and `Settler` |
+
+**On-chain deal types:** Simple, Milestone, Team.
+
+The V2 event monitor auto-detects V1 vs V2 events by topic count (V2 events have `refId` as an extra indexed parameter, giving them 4 topics instead of 3).
+
+Source: `internal/economy/escrow/hub/client_v2.go`
+
+### Milestone Settler
+
+The `HubSettler` implements `SettlementExecutor` using the LangoEscrowHub contract. It manages the full on-chain lifecycle:
+
+- **Lock** -- Creates a deal on-chain and deposits funds. Maps `buyerDID` to the on-chain `dealID` for future operations.
+- **Release** -- Releases funds to the seller by looking up the deal ID from the DID mapping.
+- **Refund** -- Refunds funds to the buyer and removes the deal mapping.
+
+The settler supports offline mode (`NewHubSettlerOffline`) where all on-chain operations become no-ops with warning logs, useful for testing.
+
+Deal ID mappings can be set explicitly via `SetDealMapping(escrowID, dealID)` or `SetDealMappingByDID(did, dealID)` for integration with the team-escrow bridge.
+
+Source: `internal/economy/escrow/hub/hub_settler.go`
+
+### Dangling Escrow Detector
+
+The `DanglingDetector` is a lifecycle component that periodically scans for escrows stuck in `Pending` status longer than a configurable threshold. It auto-expires stale escrows and publishes an `EscrowDanglingEvent`.
+
+**Behavior:**
+
+1. Every `scanInterval` (default: 5m), query all escrows with `StatusPending` created before `now - maxPending`
+2. For each dangling escrow, call `engine.Expire()` to transition it to expired
+3. Publish `EscrowDanglingEvent` with escrow details and `action: "expired"`
+
+| Config | Default | Description |
+|--------|---------|-------------|
+| `scanInterval` | `5m` | Time between scan sweeps |
+| `maxPending` | `10m` | Maximum time an escrow can stay in Pending |
+
+Source: `internal/economy/escrow/hub/dangling_detector.go`
+
 ### On-Chain Deal States
 
 ```
@@ -247,6 +300,9 @@ Created --> Deposited --> WorkSubmitted --> Released
 | `economy.escrow.onChain.arbitratorAddress` | `-` | On-chain arbitrator wallet address |
 | `economy.escrow.onChain.tokenAddress` | `-` | ERC-20 token (USDC) contract address |
 | `economy.escrow.onChain.pollInterval` | `15s` | Interval for polling on-chain state |
+| `economy.escrow.onChain.confirmationDepth` | `2` | Blocks to wait before processing events (reorg protection) |
+| `economy.escrow.onChain.directSettlerAddress` | `-` | Deployed DirectSettler contract address (V2) |
+| `economy.escrow.onChain.milestoneSettlerAddress` | `-` | Deployed MilestoneSettler contract address (V2) |
 
 ### On-Chain Events
 
@@ -321,6 +377,8 @@ All economy events are published on the event bus:
 | `escrow.onchain.refund` | On-chain escrow funds refunded |
 | `escrow.onchain.dispute` | On-chain dispute raised |
 | `escrow.onchain.resolved` | On-chain dispute resolved |
+| `escrow.reorg.detected` | Chain reorganization detected by event monitor |
+| `escrow.dangling` | Escrow stuck in Pending auto-expired |
 
 ## Configuration
 
@@ -371,7 +429,10 @@ All economy events are published on the event bus:
         "vaultImplementation": "",
         "arbitratorAddress": "",
         "tokenAddress": "",
-        "pollInterval": "15s"
+        "pollInterval": "15s",
+        "confirmationDepth": 2,
+        "directSettlerAddress": "",
+        "milestoneSettlerAddress": ""
       }
     }
   }

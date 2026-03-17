@@ -17,6 +17,8 @@ import (
 	"github.com/gorilla/websocket"
 	"github.com/langoai/lango/internal/adk"
 	"github.com/langoai/lango/internal/approval"
+	"github.com/langoai/lango/internal/deadline"
+	"github.com/langoai/lango/internal/gatekeeper"
 	"github.com/langoai/lango/internal/logging"
 	"github.com/langoai/lango/internal/security"
 	"github.com/langoai/lango/internal/session"
@@ -48,6 +50,9 @@ type Server struct {
 	pendingApprovals   map[string]chan approval.ApprovalResponse
 	pendingApprovalsMu sync.Mutex
 	turnCallbacks      []TurnCallback
+	sanitizer          *gatekeeper.Sanitizer
+	shutdownCtx        context.Context
+	shutdownCancel     context.CancelFunc
 }
 
 // Config holds gateway server configuration
@@ -59,6 +64,8 @@ type Config struct {
 	AllowedOrigins   []string
 	ApprovalTimeout  time.Duration
 	RequestTimeout   time.Duration
+	IdleTimeout      time.Duration // inactivity timeout (0 = disabled)
+	MaxTimeout       time.Duration // absolute hard ceiling
 }
 
 // Client represents a connected WebSocket client
@@ -100,6 +107,7 @@ type RPCHandler func(client *Client, params json.RawMessage) (interface{}, error
 // New creates a new gateway server
 func New(cfg Config, agent *adk.Agent, provider *security.RPCProvider, store session.Store, auth *AuthManager) *Server {
 	originChecker := makeOriginChecker(cfg.AllowedOrigins)
+	shutdownCtx, shutdownCancel := context.WithCancel(context.Background())
 
 	s := &Server{
 		config:           cfg,
@@ -111,6 +119,8 @@ func New(cfg Config, agent *adk.Agent, provider *security.RPCProvider, store ses
 		clients:          make(map[string]*Client),
 		handlers:         make(map[string]RPCHandler),
 		pendingApprovals: make(map[string]chan approval.ApprovalResponse),
+		shutdownCtx:      shutdownCtx,
+		shutdownCancel:   shutdownCancel,
 		upgrader: websocket.Upgrader{
 			ReadBufferSize:  1024,
 			WriteBufferSize: 1024,
@@ -178,18 +188,36 @@ func (s *Server) handleChatMessage(client *Client, params json.RawMessage) (inte
 		"sessionKey": sessionKey,
 	})
 
-	timeout := s.config.RequestTimeout
-	if timeout <= 0 {
-		timeout = 5 * time.Minute
+	var (
+		ctx         context.Context
+		cancel      context.CancelFunc
+		extDeadline *deadline.ExtendableDeadline
+		runOpts     []adk.RunOption
+	)
+
+	idleTimeout := s.config.IdleTimeout
+	hardCeiling := s.config.MaxTimeout
+	if hardCeiling <= 0 {
+		hardCeiling = s.config.RequestTimeout
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), timeout)
+	if hardCeiling <= 0 {
+		hardCeiling = 5 * time.Minute
+	}
+
+	if idleTimeout > 0 {
+		ctx, extDeadline = deadline.New(s.shutdownCtx, idleTimeout, hardCeiling)
+		cancel = extDeadline.Stop
+		runOpts = append(runOpts, adk.WithOnActivity(extDeadline.Extend))
+	} else {
+		ctx, cancel = context.WithTimeout(s.shutdownCtx, hardCeiling)
+	}
 	defer cancel()
 
 	// Warn UI when approaching timeout (80%).
-	warnTimer := time.AfterFunc(time.Duration(float64(timeout)*0.8), func() {
+	warnTimer := time.AfterFunc(time.Duration(float64(hardCeiling)*0.8), func() {
 		logger().Warnw("agent request approaching timeout",
 			"session", sessionKey,
-			"timeout", timeout.String())
+			"timeout", hardCeiling.String())
 		s.BroadcastToSession(sessionKey, "agent.warning", map[string]string{
 			"sessionKey": sessionKey,
 			"message":    "Request is taking longer than expected",
@@ -223,11 +251,17 @@ func (s *Server) handleChatMessage(client *Client, params json.RawMessage) (inte
 
 	ctx = session.WithSessionKey(ctx, sessionKey)
 	response, err := s.agent.RunStreaming(ctx, sessionKey, req.Message, func(chunk string) {
+		if s.sanitizer != nil && s.sanitizer.Enabled() {
+			chunk = s.sanitizer.Sanitize(chunk)
+		}
+		if chunk == "" {
+			return
+		}
 		s.BroadcastToSession(sessionKey, "agent.chunk", map[string]string{
 			"sessionKey": sessionKey,
 			"chunk":      chunk,
 		})
-	})
+	}, runOpts...)
 
 	// Stop progress updates now that the agent has finished.
 	stopProgress()
@@ -244,6 +278,11 @@ func (s *Server) handleChatMessage(client *Client, params json.RawMessage) (inte
 			"session", sessionKey)
 	}
 
+	// Apply response sanitization.
+	if err == nil && s.sanitizer != nil && s.sanitizer.Enabled() {
+		response = s.sanitizer.Sanitize(response)
+	}
+
 	if err != nil {
 		// Classify the error for UI display.
 		errType := "unknown"
@@ -258,8 +297,23 @@ func (s *Server) handleChatMessage(client *Client, params json.RawMessage) (inte
 			errCode = string(agentErr.Code)
 			partial = agentErr.Partial
 			userMsg = agentErr.UserMessage()
-		} else if ctx.Err() == context.DeadlineExceeded {
-			errType = "timeout"
+		}
+
+		if ctx.Err() != nil {
+			errType = string(deadline.ReasonMaxTimeout)
+			if extDeadline != nil {
+				switch extDeadline.Reason() {
+				case deadline.ReasonIdle:
+					errType = string(deadline.ReasonIdle)
+					errCode = string(adk.ErrIdleTimeout)
+				case deadline.ReasonMaxTimeout:
+					errType = string(deadline.ReasonMaxTimeout)
+				}
+			}
+			// Annotate session to prevent error leak.
+			if s.store != nil {
+				_ = s.store.AnnotateTimeout(sessionKey, partial)
+			}
 		}
 
 		if partial != "" {
@@ -518,6 +572,11 @@ func (s *Server) SetAgent(agent *adk.Agent) {
 	s.agent = agent
 }
 
+// SetSanitizer sets the response sanitizer for output gatekeeper filtering.
+func (s *Server) SetSanitizer(san *gatekeeper.Sanitizer) {
+	s.sanitizer = san
+}
+
 // OnTurnComplete registers a callback that fires after each agent turn.
 func (s *Server) OnTurnComplete(cb TurnCallback) {
 	s.turnCallbacks = append(s.turnCallbacks, cb)
@@ -551,6 +610,9 @@ func (s *Server) Start() error {
 
 // Shutdown gracefully shuts down the server
 func (s *Server) Shutdown(ctx context.Context) error {
+	// Cancel all in-flight request contexts so agent runs stop immediately.
+	s.shutdownCancel()
+
 	// Close all WebSocket connections
 	s.clientsMu.Lock()
 	for _, client := range s.clients {

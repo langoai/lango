@@ -3,10 +3,13 @@ package config
 import (
 	"fmt"
 	"os"
+	"path/filepath"
+	"reflect"
 	"regexp"
 	"strings"
 	"time"
 
+	"github.com/langoai/lango/internal/provider"
 	"github.com/langoai/lango/internal/types"
 	"github.com/spf13/viper"
 )
@@ -16,6 +19,7 @@ var envVarRegex = regexp.MustCompile(`\$\{([^}]+)\}`)
 // DefaultConfig returns a Config with sensible defaults
 func DefaultConfig() *Config {
 	return &Config{
+		DataRoot: "~/.lango",
 		Server: ServerConfig{
 			Host:             "localhost",
 			Port:             18789,
@@ -52,11 +56,21 @@ func DefaultConfig() *Config {
 				Headless:       true,
 				SessionTimeout: 5 * time.Minute,
 			},
+			OutputManager: OutputManagerConfig{
+				TokenBudget: 2000,
+				HeadRatio:   0.7,
+				TailRatio:   0.3,
+			},
 		},
 		Security: SecurityConfig{
 			Interceptor: InterceptorConfig{
 				Enabled:        true,
 				ApprovalPolicy: ApprovalPolicyDangerous,
+				Presidio: PresidioConfig{
+					URL:            "http://localhost:5002",
+					ScoreThreshold: 0.7,
+					Language:       "en",
+				},
 			},
 			DBEncryption: DBEncryptionConfig{
 				Enabled:        false,
@@ -112,6 +126,7 @@ func DefaultConfig() *Config {
 			MaxConcurrentJobs:  5,
 			DefaultSessionMode: "isolated",
 			HistoryRetention:   "720h",
+			DefaultJobTimeout:  30 * time.Minute,
 		},
 		Background: BackgroundConfig{
 			Enabled:            false,
@@ -193,117 +208,67 @@ func boolPtr(b bool) *bool {
 	return &b
 }
 
+// setDefaultsFromStruct recursively walks a struct using mapstructure tags
+// and calls v.SetDefault for each non-zero leaf value. This ensures
+// DefaultConfig() is the single source of truth for all default values.
+func setDefaultsFromStruct(v *viper.Viper, prefix string, val reflect.Value) {
+	typ := val.Type()
+	for i := 0; i < typ.NumField(); i++ {
+		field := typ.Field(i)
+		fieldVal := val.Field(i)
+
+		tag := field.Tag.Get("mapstructure")
+		if tag == "" || tag == "-" {
+			continue
+		}
+
+		key := tag
+		if prefix != "" {
+			key = prefix + "." + tag
+		}
+
+		// Dereference pointers.
+		actual := fieldVal
+		if actual.Kind() == reflect.Ptr {
+			if actual.IsNil() {
+				continue
+			}
+			actual = actual.Elem()
+		}
+
+		switch actual.Kind() {
+		case reflect.Struct:
+			// Recurse into nested config sections.
+			setDefaultsFromStruct(v, key, actual)
+		case reflect.Map:
+			// Skip maps — they contain dynamic user content, not static defaults.
+			continue
+		case reflect.Slice:
+			if actual.Len() > 0 {
+				v.SetDefault(key, actual.Interface())
+			}
+		default:
+			if actual.IsZero() {
+				continue
+			}
+			// Convert string-based custom types (ApprovalPolicy, Confidence, etc.)
+			// to plain string so viper stores them consistently.
+			if actual.Kind() == reflect.String {
+				v.SetDefault(key, actual.String())
+			} else {
+				v.SetDefault(key, actual.Interface())
+			}
+		}
+	}
+}
+
 // Load reads configuration from file and environment
 func Load(configPath string) (*Config, error) {
 	v := viper.New()
 
-	// Set defaults from DefaultConfig
+	// Set defaults from DefaultConfig — single source of truth.
 	defaults := DefaultConfig()
-	v.SetDefault("server.host", defaults.Server.Host)
-	v.SetDefault("server.port", defaults.Server.Port)
-	v.SetDefault("server.httpEnabled", defaults.Server.HTTPEnabled)
-	v.SetDefault("server.wsEnabled", defaults.Server.WebSocketEnabled)
-	v.SetDefault("agent.provider", defaults.Agent.Provider)
-	v.SetDefault("agent.model", defaults.Agent.Model)
-	v.SetDefault("agent.maxTokens", defaults.Agent.MaxTokens)
-	v.SetDefault("agent.temperature", defaults.Agent.Temperature)
-	v.SetDefault("agent.requestTimeout", defaults.Agent.RequestTimeout)
-	v.SetDefault("agent.toolTimeout", defaults.Agent.ToolTimeout)
-	v.SetDefault("logging.level", defaults.Logging.Level)
-	v.SetDefault("logging.format", defaults.Logging.Format)
-	v.SetDefault("session.databasePath", defaults.Session.DatabasePath)
-	v.SetDefault("session.ttl", defaults.Session.TTL)
-	v.SetDefault("session.maxHistoryTurns", defaults.Session.MaxHistoryTurns)
-	v.SetDefault("tools.exec.defaultTimeout", defaults.Tools.Exec.DefaultTimeout)
-	v.SetDefault("tools.exec.allowBackground", defaults.Tools.Exec.AllowBackground)
-	v.SetDefault("tools.filesystem.maxReadSize", defaults.Tools.Filesystem.MaxReadSize)
-	v.SetDefault("tools.browser.enabled", defaults.Tools.Browser.Enabled)
-	v.SetDefault("tools.browser.headless", defaults.Tools.Browser.Headless)
-	v.SetDefault("tools.browser.sessionTimeout", defaults.Tools.Browser.SessionTimeout)
-	v.SetDefault("security.interceptor.enabled", defaults.Security.Interceptor.Enabled)
-	v.SetDefault("security.interceptor.approvalPolicy", string(defaults.Security.Interceptor.ApprovalPolicy))
-	v.SetDefault("security.dbEncryption.enabled", defaults.Security.DBEncryption.Enabled)
-	v.SetDefault("security.dbEncryption.cipherPageSize", defaults.Security.DBEncryption.CipherPageSize)
-	v.SetDefault("security.kms.fallbackToLocal", defaults.Security.KMS.FallbackToLocal)
-	v.SetDefault("security.kms.timeoutPerOperation", defaults.Security.KMS.TimeoutPerOperation)
-	v.SetDefault("security.kms.maxRetries", defaults.Security.KMS.MaxRetries)
-	v.SetDefault("graph.enabled", defaults.Graph.Enabled)
-	v.SetDefault("graph.backend", defaults.Graph.Backend)
-	v.SetDefault("graph.maxTraversalDepth", defaults.Graph.MaxTraversalDepth)
-	v.SetDefault("graph.maxExpansionResults", defaults.Graph.MaxExpansionResults)
-	v.SetDefault("a2a.enabled", defaults.A2A.Enabled)
-	v.SetDefault("payment.enabled", defaults.Payment.Enabled)
-	v.SetDefault("payment.walletProvider", defaults.Payment.WalletProvider)
-	v.SetDefault("payment.network.chainId", defaults.Payment.Network.ChainID)
-	v.SetDefault("payment.network.usdcContract", defaults.Payment.Network.USDCContract)
-	v.SetDefault("payment.limits.maxPerTx", defaults.Payment.Limits.MaxPerTx)
-	v.SetDefault("payment.limits.maxDaily", defaults.Payment.Limits.MaxDaily)
-	v.SetDefault("payment.limits.autoApproveBelow", defaults.Payment.Limits.AutoApproveBelow)
-	v.SetDefault("payment.x402.autoIntercept", defaults.Payment.X402.AutoIntercept)
-	v.SetDefault("payment.x402.maxAutoPayAmount", defaults.Payment.X402.MaxAutoPayAmount)
-	v.SetDefault("cron.enabled", defaults.Cron.Enabled)
-	v.SetDefault("cron.timezone", defaults.Cron.Timezone)
-	v.SetDefault("cron.maxConcurrentJobs", defaults.Cron.MaxConcurrentJobs)
-	v.SetDefault("cron.defaultSessionMode", defaults.Cron.DefaultSessionMode)
-	v.SetDefault("cron.historyRetention", defaults.Cron.HistoryRetention)
-	v.SetDefault("cron.defaultDeliverTo", defaults.Cron.DefaultDeliverTo)
-	v.SetDefault("background.enabled", defaults.Background.Enabled)
-	v.SetDefault("background.yieldMs", defaults.Background.YieldMs)
-	v.SetDefault("background.maxConcurrentTasks", defaults.Background.MaxConcurrentTasks)
-	v.SetDefault("background.defaultDeliverTo", defaults.Background.DefaultDeliverTo)
-	v.SetDefault("workflow.enabled", defaults.Workflow.Enabled)
-	v.SetDefault("workflow.maxConcurrentSteps", defaults.Workflow.MaxConcurrentSteps)
-	v.SetDefault("workflow.defaultTimeout", defaults.Workflow.DefaultTimeout)
-	v.SetDefault("workflow.stateDir", defaults.Workflow.StateDir)
-	v.SetDefault("workflow.defaultDeliverTo", defaults.Workflow.DefaultDeliverTo)
-	v.SetDefault("librarian.enabled", defaults.Librarian.Enabled)
-	v.SetDefault("librarian.observationThreshold", defaults.Librarian.ObservationThreshold)
-	v.SetDefault("librarian.inquiryCooldownTurns", defaults.Librarian.InquiryCooldownTurns)
-	v.SetDefault("librarian.maxPendingInquiries", defaults.Librarian.MaxPendingInquiries)
-	v.SetDefault("librarian.autoSaveConfidence", defaults.Librarian.AutoSaveConfidence)
-	v.SetDefault("observationalMemory.enabled", defaults.ObservationalMemory.Enabled)
-	v.SetDefault("observationalMemory.messageTokenThreshold", defaults.ObservationalMemory.MessageTokenThreshold)
-	v.SetDefault("observationalMemory.observationTokenThreshold", defaults.ObservationalMemory.ObservationTokenThreshold)
-	v.SetDefault("observationalMemory.maxMessageTokenBudget", defaults.ObservationalMemory.MaxMessageTokenBudget)
-	v.SetDefault("observationalMemory.maxReflectionsInContext", defaults.ObservationalMemory.MaxReflectionsInContext)
-	v.SetDefault("observationalMemory.maxObservationsInContext", defaults.ObservationalMemory.MaxObservationsInContext)
-	v.SetDefault("observationalMemory.memoryTokenBudget", defaults.ObservationalMemory.MemoryTokenBudget)
-	v.SetDefault("observationalMemory.reflectionConsolidationThreshold", defaults.ObservationalMemory.ReflectionConsolidationThreshold)
-	v.SetDefault("security.interceptor.presidio.url", "http://localhost:5002")
-	v.SetDefault("security.interceptor.presidio.scoreThreshold", 0.7)
-	v.SetDefault("security.interceptor.presidio.language", "en")
-	v.SetDefault("skill.enabled", defaults.Skill.Enabled)
-	v.SetDefault("skill.skillsDir", defaults.Skill.SkillsDir)
-	v.SetDefault("skill.allowImport", defaults.Skill.AllowImport)
-	v.SetDefault("skill.maxBulkImport", defaults.Skill.MaxBulkImport)
-	v.SetDefault("skill.importConcurrency", defaults.Skill.ImportConcurrency)
-	v.SetDefault("skill.importTimeout", defaults.Skill.ImportTimeout)
-	v.SetDefault("mcp.enabled", defaults.MCP.Enabled)
-	v.SetDefault("mcp.defaultTimeout", defaults.MCP.DefaultTimeout)
-	v.SetDefault("mcp.maxOutputTokens", defaults.MCP.MaxOutputTokens)
-	v.SetDefault("mcp.healthCheckInterval", defaults.MCP.HealthCheckInterval)
-	v.SetDefault("mcp.autoReconnect", defaults.MCP.AutoReconnect)
-	v.SetDefault("mcp.maxReconnectAttempts", defaults.MCP.MaxReconnectAttempts)
-	v.SetDefault("p2p.enabled", defaults.P2P.Enabled)
-	v.SetDefault("p2p.listenAddrs", defaults.P2P.ListenAddrs)
-	v.SetDefault("p2p.keyDir", defaults.P2P.KeyDir)
-	v.SetDefault("p2p.nodeKeyName", "p2p.node.privatekey")
-	v.SetDefault("p2p.enableRelay", defaults.P2P.EnableRelay)
-	v.SetDefault("p2p.enableMdns", defaults.P2P.EnableMDNS)
-	v.SetDefault("p2p.maxPeers", defaults.P2P.MaxPeers)
-	v.SetDefault("p2p.handshakeTimeout", defaults.P2P.HandshakeTimeout)
-	v.SetDefault("p2p.sessionTokenTtl", defaults.P2P.SessionTokenTTL)
-	v.SetDefault("p2p.gossipInterval", defaults.P2P.GossipInterval)
-	v.SetDefault("p2p.zkHandshake", defaults.P2P.ZKHandshake)
-	v.SetDefault("p2p.zkAttestation", defaults.P2P.ZKAttestation)
-	v.SetDefault("p2p.zkp.proofCacheDir", defaults.P2P.ZKP.ProofCacheDir)
-	v.SetDefault("p2p.zkp.provingScheme", defaults.P2P.ZKP.ProvingScheme)
-	v.SetDefault("p2p.toolIsolation.container.enabled", defaults.P2P.ToolIsolation.Container.Enabled)
-	v.SetDefault("p2p.toolIsolation.container.runtime", defaults.P2P.ToolIsolation.Container.Runtime)
-	v.SetDefault("p2p.toolIsolation.container.image", defaults.P2P.ToolIsolation.Container.Image)
-	v.SetDefault("p2p.toolIsolation.container.networkMode", defaults.P2P.ToolIsolation.Container.NetworkMode)
-	v.SetDefault("p2p.toolIsolation.container.poolSize", defaults.P2P.ToolIsolation.Container.PoolSize)
-	v.SetDefault("p2p.toolIsolation.container.poolIdleTimeout", defaults.P2P.ToolIsolation.Container.PoolIdleTimeout)
+	setDefaultsFromStruct(v, "", reflect.ValueOf(defaults).Elem())
 
 	// Configure viper
 	v.SetConfigType("json")
@@ -331,18 +296,25 @@ func Load(configPath string) (*Config, error) {
 		return nil, fmt.Errorf("unmarshal config: %w", err)
 	}
 
-	// Migrate legacy fields.
-	cfg.MigrateEmbeddingProvider()
-
-	// Apply environment variable substitution
-	substituteEnvVars(cfg)
-
-	// Validate configuration
-	if err := Validate(cfg); err != nil {
+	// Post-load: migrate, substitute env vars, normalize paths, validate.
+	if err := PostLoad(cfg); err != nil {
 		return nil, err
 	}
 
 	return cfg, nil
+}
+
+// PostLoad applies post-load processing: legacy migration, env substitution,
+// path normalization, path validation, and full config validation.
+// All operations are idempotent — safe to call multiple times on the same config.
+func PostLoad(cfg *Config) error {
+	cfg.MigrateEmbeddingProvider()
+	substituteEnvVars(cfg)
+	NormalizePaths(cfg)
+	if err := ValidateDataPaths(cfg); err != nil {
+		return err
+	}
+	return Validate(cfg)
 }
 
 // substituteEnvVars replaces ${VAR} patterns with environment variable values
@@ -413,24 +385,43 @@ func Validate(cfg *Config) error {
 		}
 	}
 
+	// Validate agent.fallbackProvider references an existing key in providers map
+	if cfg.Agent.FallbackProvider != "" && len(cfg.Providers) > 0 {
+		if _, ok := cfg.Providers[cfg.Agent.FallbackProvider]; !ok {
+			errs = append(errs, fmt.Sprintf("agent.fallbackProvider %q not found in providers map (available: %v)", cfg.Agent.FallbackProvider, providerKeys(cfg.Providers)))
+		}
+	}
+
+	// Validate provider-model compatibility (primary)
+	if cfg.Agent.Provider != "" && cfg.Agent.Model != "" {
+		if pCfg, ok := cfg.Providers[cfg.Agent.Provider]; ok {
+			if err := provider.ValidateModelProvider(string(pCfg.Type), cfg.Agent.Model); err != nil {
+				errs = append(errs, fmt.Sprintf("agent.model %q incompatible with provider %q (type %s): %v", cfg.Agent.Model, cfg.Agent.Provider, pCfg.Type, err))
+			}
+		}
+	}
+
+	// Validate provider-model compatibility (fallback)
+	if cfg.Agent.FallbackProvider != "" && cfg.Agent.FallbackModel != "" {
+		if pCfg, ok := cfg.Providers[cfg.Agent.FallbackProvider]; ok {
+			if err := provider.ValidateModelProvider(string(pCfg.Type), cfg.Agent.FallbackModel); err != nil {
+				errs = append(errs, fmt.Sprintf("agent.fallbackModel %q incompatible with fallbackProvider %q (type %s): %v", cfg.Agent.FallbackModel, cfg.Agent.FallbackProvider, pCfg.Type, err))
+			}
+		}
+	}
+
 	// Validate logging config
-	validLevels := map[string]bool{"debug": true, "info": true, "warn": true, "error": true}
-	if !validLevels[cfg.Logging.Level] {
+	if !ValidLogLevels[cfg.Logging.Level] {
 		errs = append(errs, fmt.Sprintf("invalid log level: %s (must be debug, info, warn, or error)", cfg.Logging.Level))
 	}
 
-	validFormats := map[string]bool{"json": true, "console": true}
-	if !validFormats[cfg.Logging.Format] {
+	if !ValidLogFormats[cfg.Logging.Format] {
 		errs = append(errs, fmt.Sprintf("invalid log format: %s (must be json or console)", cfg.Logging.Format))
 	}
 
 	// Validate security config
 	if cfg.Security.Signer.Provider != "" {
-		validProviders := map[string]bool{
-			"local": true, "rpc": true, "enclave": true,
-			"aws-kms": true, "gcp-kms": true, "azure-kv": true, "pkcs11": true,
-		}
-		if !validProviders[cfg.Security.Signer.Provider] {
+		if !ValidSignerProviders[cfg.Security.Signer.Provider] {
 			errs = append(errs, fmt.Sprintf("invalid security.signer.provider: %q (must be local, rpc, enclave, aws-kms, gcp-kms, azure-kv, or pkcs11)", cfg.Security.Signer.Provider))
 		}
 		if cfg.Security.Signer.Provider == "rpc" && cfg.Security.Signer.RPCUrl == "" {
@@ -476,8 +467,7 @@ func Validate(cfg *Config) error {
 		if cfg.Payment.Network.RPCURL == "" {
 			errs = append(errs, "payment.network.rpcUrl is required when payment is enabled")
 		}
-		validWalletProviders := map[string]bool{"local": true, "rpc": true, "composite": true}
-		if !validWalletProviders[cfg.Payment.WalletProvider] {
+		if !ValidWalletProviders[cfg.Payment.WalletProvider] {
 			errs = append(errs, fmt.Sprintf("invalid payment.walletProvider: %q (must be local, rpc, or composite)", cfg.Payment.WalletProvider))
 		}
 	}
@@ -487,16 +477,14 @@ func Validate(cfg *Config) error {
 		if !cfg.Payment.Enabled {
 			errs = append(errs, "p2p requires payment.enabled (wallet needed for identity)")
 		}
-		validSchemes := map[string]bool{"plonk": true, "groth16": true}
-		if cfg.P2P.ZKP.ProvingScheme != "" && !validSchemes[cfg.P2P.ZKP.ProvingScheme] {
+		if cfg.P2P.ZKP.ProvingScheme != "" && !ValidZKPSchemes[cfg.P2P.ZKP.ProvingScheme] {
 			errs = append(errs, fmt.Sprintf("invalid p2p.zkp.provingScheme: %q (must be plonk or groth16)", cfg.P2P.ZKP.ProvingScheme))
 		}
 	}
 
 	// Validate container sandbox config
 	if cfg.P2P.ToolIsolation.Container.Enabled {
-		validRuntimes := map[string]bool{"auto": true, "docker": true, "gvisor": true, "native": true}
-		if !validRuntimes[cfg.P2P.ToolIsolation.Container.Runtime] {
+		if !ValidContainerRuntimes[cfg.P2P.ToolIsolation.Container.Runtime] {
 			errs = append(errs, fmt.Sprintf("invalid p2p.toolIsolation.container.runtime: %q (must be auto, docker, gvisor, or native)", cfg.P2P.ToolIsolation.Container.Runtime))
 		}
 	}
@@ -504,8 +492,7 @@ func Validate(cfg *Config) error {
 	// Validate MCP config
 	if cfg.MCP.Enabled {
 		for name, srv := range cfg.MCP.Servers {
-			validTransports := map[string]bool{"": true, "stdio": true, "http": true, "sse": true}
-			if !validTransports[srv.Transport] {
+			if !ValidMCPTransports[srv.Transport] {
 				errs = append(errs, fmt.Sprintf("mcp.servers.%s.transport %q is not supported (must be stdio, http, or sse)", name, srv.Transport))
 			}
 			switch srv.Transport {
@@ -525,6 +512,91 @@ func Validate(cfg *Config) error {
 		return fmt.Errorf("configuration validation failed:\n  - %s", strings.Join(errs, "\n  - "))
 	}
 
+	return nil
+}
+
+// expandTilde replaces a leading ~ with the given home directory.
+func expandTilde(path, home string) string {
+	if home == "" || (!strings.HasPrefix(path, "~/") && path != "~") {
+		return path
+	}
+	return filepath.Join(home, path[1:])
+}
+
+// NormalizePaths resolves relative data paths to be under DataRoot and
+// expands ~ in all path fields. Call after Load/Unmarshal.
+func NormalizePaths(cfg *Config) {
+	home, _ := os.UserHomeDir()
+
+	if cfg.DataRoot == "" {
+		cfg.DataRoot = "~/.lango"
+	}
+	cfg.DataRoot = expandTilde(cfg.DataRoot, home)
+
+	// Normalize each configurable data path.
+	normalizePath(&cfg.Session.DatabasePath, cfg.DataRoot, home)
+	normalizePath(&cfg.Graph.DatabasePath, cfg.DataRoot, home)
+	normalizePath(&cfg.Skill.SkillsDir, cfg.DataRoot, home)
+	normalizePath(&cfg.Workflow.StateDir, cfg.DataRoot, home)
+	normalizePath(&cfg.P2P.KeyDir, cfg.DataRoot, home)
+	normalizePath(&cfg.P2P.ZKP.ProofCacheDir, cfg.DataRoot, home)
+	normalizePath(&cfg.P2P.Workspace.DataDir, cfg.DataRoot, home)
+}
+
+// normalizePath expands ~ and resolves relative paths under dataRoot.
+func normalizePath(p *string, dataRoot, home string) {
+	if p == nil || *p == "" {
+		return
+	}
+	*p = expandTilde(*p, home)
+
+	// If path is relative (not starting with /), resolve under dataRoot.
+	if !filepath.IsAbs(*p) {
+		*p = filepath.Join(dataRoot, *p)
+	}
+	*p = filepath.Clean(*p)
+}
+
+// ValidateDataPaths checks that all configurable data paths reside under DataRoot.
+// Must be called after NormalizePaths (paths are already cleaned absolute paths).
+func ValidateDataPaths(cfg *Config) error {
+	if cfg.DataRoot == "" {
+		return nil
+	}
+
+	root := filepath.Clean(cfg.DataRoot)
+	rootPrefix := root + string(os.PathSeparator)
+
+	type pathEntry struct {
+		field string
+		value string
+	}
+
+	entries := []pathEntry{
+		{"session.databasePath", cfg.Session.DatabasePath},
+		{"graph.databasePath", cfg.Graph.DatabasePath},
+		{"skill.skillsDir", cfg.Skill.SkillsDir},
+		{"workflow.stateDir", cfg.Workflow.StateDir},
+		{"p2p.keyDir", cfg.P2P.KeyDir},
+		{"p2p.zkp.proofCacheDir", cfg.P2P.ZKP.ProofCacheDir},
+		{"p2p.workspace.dataDir", cfg.P2P.Workspace.DataDir},
+	}
+
+	var errs []string
+	for _, e := range entries {
+		if e.value == "" {
+			continue
+		}
+		cleaned := filepath.Clean(e.value)
+		// Path must be equal to or under the data root.
+		if cleaned != root && !strings.HasPrefix(cleaned, rootPrefix) {
+			errs = append(errs, fmt.Sprintf("%s (%q) must be under data root (%s)", e.field, e.value, root))
+		}
+	}
+
+	if len(errs) > 0 {
+		return fmt.Errorf("data path validation failed:\n  - %s", strings.Join(errs, "\n  - "))
+	}
 	return nil
 }
 

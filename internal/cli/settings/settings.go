@@ -25,27 +25,28 @@ func NewCommand() *cobra.Command {
 		Long: `The settings command opens an interactive menu-based editor for all Lango configuration.
 
 Unlike "lango onboard" (which is a guided wizard for first-time setup), this editor
-gives you free navigation across every configuration section. Categories are organized
-into groups:
+gives you free navigation across every configuration section.
 
-  Core:           Providers, Agent, Server, Session
-  Communication:  Channels, Tools, Multi-Agent, A2A Protocol
-  AI & Knowledge: Knowledge, Skill, Observational Memory, Embedding & RAG,
-                  Graph Store, Librarian
-  Infrastructure: Payment, Cron Scheduler, Background Tasks, Workflow Engine
-  P2P Network:    P2P Network, P2P ZKP, P2P Pricing, P2P Owner Protection,
-                  P2P Sandbox
-  Security:       Security, Auth, Security DB Encryption,
-                  Security KMS
+All categories are visible by default. Advanced items are marked with an ADV badge.
+Press Tab to toggle between showing all categories and basic-only view.
+Press "/" to search, or use smart filters: @basic, @advanced, @enabled, @modified.
 
-Press "/" to search across all categories by keyword.
+  Core:             Providers, Agent, Channels, Tools, Logging, Gatekeeper, Output Manager
+  AI & Knowledge:   Knowledge, Skill, Observational Memory, Embedding & RAG
+  Automation:       Cron, Background, Workflow
+  Payment & Account: Payment, Smart Account
+  P2P & Economy:    P2P Network, Economy, Escrow
+  Integrations:     MCP, Observability
+  Security:         Security, Auth, DB Encryption, KMS
 
 All settings including API keys are saved in an encrypted profile (~/.lango/lango.db).
 
 See Also:
-  lango config   - View/manage configuration profiles
-  lango onboard  - Guided setup wizard
-  lango doctor   - Diagnose configuration issues`,
+  lango config get  - Read a config value by dot-path
+  lango config set  - Set a config value (passphrase required)
+  lango config keys - List available config keys
+  lango onboard     - Guided setup wizard
+  lango doctor      - Diagnose configuration issues`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return runSettings(profileName)
 		},

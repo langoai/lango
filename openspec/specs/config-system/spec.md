@@ -2,8 +2,19 @@
 
 Define the configuration loading, saving, and migration system for encrypted SQLite profiles.
 ## Requirements
+### Requirement: PostLoad one-stop normalization and validation
+The `config` package SHALL export a `PostLoad(*Config) error` function that applies all post-load processing in order: legacy migration, environment variable substitution, path normalization, path validation, and full config validation. All operations MUST be idempotent — calling PostLoad multiple times on the same config SHALL produce the same result.
+
+#### Scenario: PostLoad applies full processing chain
+- **WHEN** `PostLoad(cfg)` is called on a freshly deserialized config
+- **THEN** the config has legacy fields migrated, env vars expanded, paths normalized to absolute, data paths validated under DataRoot, and full config validation applied
+
+#### Scenario: PostLoad is idempotent
+- **WHEN** `PostLoad(cfg)` is called twice on the same config
+- **THEN** the second call produces no additional changes and returns the same result
+
 ### Requirement: Configuration loading
-The system SHALL load configuration through the bootstrap process from an encrypted SQLite database profile instead of directly from a plaintext JSON file. The `config.Load()` function SHALL be retained for migration purposes only.
+The system SHALL load configuration through the bootstrap process from an encrypted SQLite database profile instead of directly from a plaintext JSON file. The `config.Load()` function SHALL be retained for migration purposes only. `Load()` SHALL delegate all post-load processing to `PostLoad()` instead of calling individual steps separately.
 
 #### Scenario: Normal startup
 - **WHEN** the application starts via `lango serve`
@@ -12,6 +23,10 @@ The system SHALL load configuration through the bootstrap process from an encryp
 #### Scenario: Migration loading
 - **WHEN** `config.Load()` is called during JSON import
 - **THEN** the JSON file is read with environment variable substitution (existing behavior preserved)
+
+#### Scenario: Load delegates to PostLoad
+- **WHEN** `config.Load(path)` is called
+- **THEN** after unmarshalling, it calls `PostLoad(cfg)` once and returns the result
 
 ### Requirement: Configuration save
 The system SHALL save configuration through `configstore.Store.Save()` which encrypts and stores in the database. The legacy `config.Save()` function SHALL be removed.
@@ -35,8 +50,30 @@ The system SHALL substitute environment variables in configuration values.
 - **WHEN** a referenced environment variable is not set
 - **THEN** an error SHALL be logged and default used if available
 
+### Requirement: Fallback provider existence validation
+`config.Validate()` SHALL verify that `agent.fallbackProvider` (when set) references an existing key in the `providers` map.
+
+#### Scenario: Fallback provider not in providers map
+- **WHEN** `agent.fallbackProvider` is set to a value not present in the `providers` map
+- **THEN** validation SHALL fail with an error identifying the missing provider
+
+#### Scenario: Fallback provider exists
+- **WHEN** `agent.fallbackProvider` references a valid key in the `providers` map
+- **THEN** validation SHALL pass (no error for this check)
+
+### Requirement: Provider-model compatibility validation at startup
+`config.Validate()` SHALL check both primary (`agent.provider`/`agent.model`) and fallback (`agent.fallbackProvider`/`agent.fallbackModel`) pairs for model-provider compatibility using `ValidateModelProvider`.
+
+#### Scenario: Primary model incompatible with provider type
+- **WHEN** `agent.model` is `gpt-5.3-codex` and `agent.provider` references a gemini-type provider
+- **THEN** validation SHALL fail with an error describing the mismatch
+
+#### Scenario: Fallback model incompatible with fallback provider type
+- **WHEN** `agent.fallbackModel` is `claude-sonnet-4-5-20250514` and `agent.fallbackProvider` references an openai-type provider
+- **THEN** validation SHALL fail with an error describing the mismatch
+
 ### Requirement: Configuration validation
-The configuration system SHALL validate that at least one provider is configured with a non-empty `apiKey` or valid OAuth token. It SHALL validate that `agent.provider` references an existing key in the `providers` map. It SHALL NOT require `agent.apiKey` (this field no longer exists).
+The configuration system SHALL validate that at least one provider is configured with a non-empty `apiKey` or valid OAuth token. It SHALL validate that `agent.provider` references an existing key in the `providers` map. It SHALL NOT require `agent.apiKey` (this field no longer exists). The `Validate()` function SHALL reference exported package-level validation maps (`ValidLogLevels`, `ValidLogFormats`, `ValidSignerProviders`, `ValidWalletProviders`, `ValidZKPSchemes`, `ValidContainerRuntimes`, `ValidMCPTransports`) from `config/constants.go` instead of inline map literals.
 
 #### Scenario: Valid configuration
 - **WHEN** config has `agent.provider: "google"` and `providers.google.type: "gemini"` with a valid `apiKey`
@@ -46,58 +83,58 @@ The configuration system SHALL validate that at least one provider is configured
 - **WHEN** config has `agent.provider: "google"` but no `google` key in `providers` map
 - **THEN** validation SHALL fail with a clear error message
 
+#### Scenario: Validation map reuse
+- **WHEN** `config.Validate()` checks the log level value
+- **THEN** it uses `config.ValidLogLevels` map defined in `constants.go`
+
+#### Scenario: External access to valid values
+- **WHEN** another package needs to validate a config value (e.g., CLI flag validation)
+- **THEN** it can import and use `config.ValidLogLevels` directly
+
 ### Requirement: Default values
-The configuration system SHALL apply sensible defaults for all non-credential fields. The minimum viable configuration SHALL require only: `agent.provider`, `providers.<name>.type`, `providers.<name>.apiKey`, and one channel's `enabled: true` + token. All other fields SHALL have defaults:
-- `server.host`: `"localhost"`
-- `server.port`: `18789`
-- `server.httpEnabled`: `true`
-- `server.wsEnabled`: `true`
-- `session.databasePath`: `"~/.lango/lango.db"`
-- `session.maxHistoryTurns`: `100`
-- `logging.level`: `"info"`
-- `logging.format`: `"console"`
-- `agent.maxTokens`: `4096`
-- `agent.temperature`: `0.7`
-- `tools.exec.defaultTimeout`: `30s`
-- `tools.exec.allowBackground`: `true`
-- `tools.filesystem.maxReadSize`: `1048576` (1MB)
-- `tools.browser.headless`: `true`
-- `tools.browser.sessionTimeout`: `5m`
-- `librarian.enabled`: `false`
-- `librarian.observationThreshold`: `2`
-- `librarian.inquiryCooldownTurns`: `3`
-- `librarian.maxPendingInquiries`: `2`
-- `librarian.autoSaveConfidence`: `"high"`
-- `observationalMemory.enabled`: `false`
-- `observationalMemory.messageTokenThreshold`: `1000`
-- `observationalMemory.observationTokenThreshold`: `2000`
-- `observationalMemory.maxMessageTokenBudget`: `8000`
-- `observationalMemory.maxReflectionsInContext`: `5`
-- `observationalMemory.maxObservationsInContext`: `20`
-- `observationalMemory.memoryTokenBudget`: `4000`
-- `observationalMemory.reflectionConsolidationThreshold`: `5`
+DefaultConfig() SHALL be the single source of truth for all config default values. Load() SHALL derive all viper defaults by walking the DefaultConfig() struct recursively using mapstructure tags and calling v.SetDefault() for each non-zero leaf field. Manual v.SetDefault() calls for individual config keys SHALL NOT exist in the loading path.
 
-#### Scenario: Missing optional field
-- **WHEN** a configuration field is not specified
-- **THEN** the system SHALL use the default value listed above
-- **THEN** no error or warning SHALL be emitted for missing optional fields
+#### Scenario: Load uses struct walker for defaults
+- **WHEN** `config.Load(path)` is called
+- **THEN** it SHALL walk `DefaultConfig()` struct via `setDefaultsFromStruct()` to populate all viper defaults
 
-#### Scenario: Session database path defaults to lango.db
-- **WHEN** `session.databasePath` is not specified in the configuration
-- **THEN** the system SHALL default to `"~/.lango/lango.db"`
-- **THEN** standalone CLI commands (doctor, memory list) SHALL open this path as fallback
+#### Scenario: New config fields are automatically defaulted
+- **WHEN** a developer adds a new field with a mapstructure tag and non-zero default in DefaultConfig()
+- **THEN** Load() SHALL apply that default automatically without manual SetDefault calls
 
-#### Scenario: Minimal configuration startup
-- **WHEN** config contains only `agent.provider`, one provider entry with `type` and `apiKey`, and one channel with `enabled: true` and token
-- **THEN** the application SHALL start successfully with all defaults applied
+#### Scenario: No manual SetDefault in load path
+- **WHEN** the Load() function is inspected
+- **THEN** there SHALL be zero manual v.SetDefault() calls outside the walker
 
-#### Scenario: Librarian defaults applied
-- **WHEN** the `librarian` section is omitted from configuration
-- **THEN** the system SHALL apply default values: enabled=false, observationThreshold=2, inquiryCooldownTurns=3, maxPendingInquiries=2, autoSaveConfidence="high"
+#### Scenario: Parity between DefaultConfig and viper unmarshal
+- **WHEN** DefaultConfig() is compared with a Config produced by viper unmarshal using only walker-derived defaults
+- **THEN** all non-zero fields SHALL match
 
-#### Scenario: ObservationalMemory defaults applied
-- **WHEN** the `observationalMemory` section is omitted from configuration
-- **THEN** the system SHALL apply default values: enabled=false, messageTokenThreshold=1000, observationTokenThreshold=2000, maxMessageTokenBudget=8000, maxReflectionsInContext=5, maxObservationsInContext=20, memoryTokenBudget=4000, reflectionConsolidationThreshold=5
+### Requirement: DataRoot enforces data path boundaries
+The Config SHALL include a `DataRoot` field (default: `~/.lango/`) that defines the root directory for all lango data files. All configurable data paths (session.databasePath, graph.databasePath, skill.skillsDir, workflow.stateDir, p2p.keyDir, p2p.zkp.proofCacheDir, p2p.workspace.dataDir) MUST reside under DataRoot. The `NormalizePaths()` function SHALL expand tildes and resolve relative paths under DataRoot. The `ValidateDataPaths()` function SHALL reject any path outside DataRoot with a clear error message.
+
+#### Scenario: Default paths pass validation
+- **WHEN** config uses default paths (all under ~/.lango/)
+- **THEN** NormalizePaths and ValidateDataPaths succeed
+
+#### Scenario: External path rejected
+- **WHEN** graph.databasePath is set to "/tmp/graph.db"
+- **THEN** ValidateDataPaths returns error "graph.databasePath must be under data root"
+
+#### Scenario: Relative path resolved under DataRoot
+- **WHEN** graph.databasePath is set to "graph.db" (relative)
+- **THEN** NormalizePaths resolves it to `<DataRoot>/graph.db`
+
+#### Scenario: Custom DataRoot accepted
+- **WHEN** DataRoot is set to "/data/lango" and all paths are under it
+- **THEN** validation passes
+
+### Requirement: ExecToolConfig supports additional protected paths
+The ExecToolConfig SHALL include an `AdditionalProtectedPaths` field that specifies extra paths for CommandGuard to protect, in addition to DataRoot.
+
+#### Scenario: Additional path protected
+- **WHEN** additionalProtectedPaths includes "/var/secrets"
+- **THEN** exec commands accessing /var/secrets are blocked
 
 ### Requirement: ExpandEnvVars is exported
 The `config` package SHALL export `ExpandEnvVars(s string) string` as a public function that replaces `${VAR}` patterns with environment variable values. Variables not set in the environment SHALL be left as-is.

@@ -9,6 +9,7 @@ Lango provides a comprehensive command-line interface built with [Cobra](https:/
 | `lango serve` | Start the gateway server |
 | `lango version` | Print version and build info |
 | `lango health` | Check gateway health |
+| `lango status` | [Unified status dashboard](status.md) (health, config, features) |
 | `lango onboard` | Guided 5-step setup wizard |
 | `lango settings` | Full interactive configuration editor |
 | `lango doctor` | Diagnostics and health checks |

@@ -13,6 +13,7 @@ type Job struct {
 	DeliverTo    []string
 	Timezone     string
 	Enabled      bool
+	Timeout      time.Duration // per-job timeout (0 = use default)
 	LastRunAt    *time.Time
 	NextRunAt    *time.Time
 	CreatedAt    time.Time

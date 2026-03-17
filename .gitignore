@@ -37,11 +37,15 @@ passphrase.txt
 !lango.example.json
 !contracts/deployments/*.json
 !internal/**/abi/*.json
+!examples/**/configs/*.json
 /lango
 
 .cursor/
 .vscode/
 .claude/
+.agents/
+
+AGENTS.md 
 
 # Build output
 bin/

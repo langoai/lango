@@ -26,13 +26,13 @@ func TestLocalUserOpSigner_SignUserOp(t *testing.T) {
 		{
 			give:       "base sepolia",
 			userOpHash: crypto.Keccak256([]byte("test-op-1")),
-			entryPoint: common.HexToAddress("0x5FF137D4b0FDCD49DcA30c7CF57E578a026d2789"),
+			entryPoint: common.HexToAddress("0x0000000071727De22E5E9d8BAf0edAc6f37da032"),
 			chainID:    big.NewInt(84532),
 		},
 		{
 			give:       "mainnet",
 			userOpHash: crypto.Keccak256([]byte("test-op-2")),
-			entryPoint: common.HexToAddress("0x5FF137D4b0FDCD49DcA30c7CF57E578a026d2789"),
+			entryPoint: common.HexToAddress("0x0000000071727De22E5E9d8BAf0edAc6f37da032"),
 			chainID:    big.NewInt(1),
 		},
 	}

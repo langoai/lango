@@ -216,3 +216,75 @@ func (a *P2PRemoteAgent) InvokeToolPaid(
 
 	return resp, nil
 }
+
+// SendTeamInvite sends a team invitation to the remote agent.
+func (a *P2PRemoteAgent) SendTeamInvite(ctx context.Context, invite TeamInvitePayload) (*Response, error) {
+	s, err := a.host.NewStream(ctx, a.peerID, ProtocolID)
+	if err != nil {
+		return nil, fmt.Errorf("open stream to %s: %w", a.peerID, err)
+	}
+	defer s.Close()
+
+	payload := map[string]interface{}{
+		"teamId":       invite.TeamID,
+		"teamName":     invite.TeamName,
+		"goal":         invite.Goal,
+		"leaderDid":    invite.LeaderDID,
+		"role":         invite.Role,
+		"capabilities": invite.Capabilities,
+	}
+
+	resp, err := SendRequest(ctx, s, RequestTeamInvite, a.token, payload)
+	if err != nil {
+		return nil, fmt.Errorf("team invite to %s: %w", a.name, err)
+	}
+
+	return resp, nil
+}
+
+// SendTeamTask delegates a task to the remote agent as a team member.
+func (a *P2PRemoteAgent) SendTeamTask(ctx context.Context, task TeamTaskPayload) (*Response, error) {
+	s, err := a.host.NewStream(ctx, a.peerID, ProtocolID)
+	if err != nil {
+		return nil, fmt.Errorf("open stream to %s: %w", a.peerID, err)
+	}
+	defer s.Close()
+
+	payload := map[string]interface{}{
+		"teamId":   task.TeamID,
+		"taskId":   task.TaskID,
+		"toolName": task.ToolName,
+		"params":   task.Params,
+	}
+	if !task.Deadline.IsZero() {
+		payload["deadline"] = task.Deadline
+	}
+
+	resp, err := SendRequest(ctx, s, RequestTeamTask, a.token, payload)
+	if err != nil {
+		return nil, fmt.Errorf("team task to %s: %w", a.name, err)
+	}
+
+	return resp, nil
+}
+
+// SendTeamDisband notifies the remote agent that the team is disbanding.
+func (a *P2PRemoteAgent) SendTeamDisband(ctx context.Context, disband TeamDisbandPayload) (*Response, error) {
+	s, err := a.host.NewStream(ctx, a.peerID, ProtocolID)
+	if err != nil {
+		return nil, fmt.Errorf("open stream to %s: %w", a.peerID, err)
+	}
+	defer s.Close()
+
+	payload := map[string]interface{}{
+		"teamId": disband.TeamID,
+		"reason": disband.Reason,
+	}
+
+	resp, err := SendRequest(ctx, s, RequestTeamDisband, a.token, payload)
+	if err != nil {
+		return nil, fmt.Errorf("team disband to %s: %w", a.name, err)
+	}
+
+	return resp, nil
+}

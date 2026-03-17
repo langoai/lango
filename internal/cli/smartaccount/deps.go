@@ -45,6 +45,10 @@ func initSmartAccountDeps(boot *bootstrap.Result) (*smartAccountDeps, error) {
 		return nil, fmt.Errorf("smart account requires payment to be enabled (set payment.enabled = true)")
 	}
 
+	if err := cfg.SmartAccount.Validate(); err != nil {
+		return nil, fmt.Errorf("smart account config: %w", err)
+	}
+
 	// Build secrets store for wallet key management.
 	ctx := context.Background()
 	registry := security.NewKeyRegistry(boot.DBClient)
@@ -100,6 +104,12 @@ func initSmartAccountDeps(boot *bootstrap.Result) (*smartAccountDeps, error) {
 	if cfg.SmartAccount.Session.MaxActiveKeys > 0 {
 		sessionOpts = append(sessionOpts, sasession.WithMaxKeys(cfg.SmartAccount.Session.MaxActiveKeys))
 	}
+	// Provide entryPoint and chainID for correct UserOp hash computation.
+	sessionOpts = append(sessionOpts,
+		sasession.WithEntryPoint(entryPoint),
+		sasession.WithChainID(chainID),
+	)
+
 	deps.sessionManager = sasession.NewManager(sessionStore, sessionOpts...)
 
 	// 4. Policy engine.
@@ -108,9 +118,15 @@ func initSmartAccountDeps(boot *bootstrap.Result) (*smartAccountDeps, error) {
 	// 5. Account manager + factory.
 	abiCache := contract.NewABICache()
 	caller := contract.NewCaller(rpcClient, wp, chainID, abiCache)
+	singletonAddr := cfg.SmartAccount.SafeSingletonAddress
+	if singletonAddr == "" {
+		singletonAddr = "0x29fcB43b46531BcA003ddC8FCB67FFE91900C762" // Safe L2 v1.4.1
+	}
 	factory := sa.NewFactory(
 		caller,
+		rpcClient,
 		common.HexToAddress(cfg.SmartAccount.FactoryAddress),
+		common.HexToAddress(singletonAddr),
 		common.HexToAddress(cfg.SmartAccount.Safe7579Address),
 		common.HexToAddress(cfg.SmartAccount.FallbackHandler),
 		chainID,
@@ -120,7 +136,7 @@ func initSmartAccountDeps(boot *bootstrap.Result) (*smartAccountDeps, error) {
 
 	// 6. Paymaster provider (optional).
 	if cfg.SmartAccount.Paymaster.Enabled {
-		provider := initPaymasterProvider(cfg.SmartAccount.Paymaster)
+		provider := initPaymasterProvider(cfg.SmartAccount.Paymaster, wp, rpcClient, chainID)
 		if provider != nil {
 			deps.paymasterProv = provider
 			mgr.SetPaymasterFunc(func(ctx context.Context, op *sa.UserOperation, stub bool) ([]byte, *sa.PaymasterGasOverrides, error) {
@@ -163,7 +179,24 @@ func initSmartAccountDeps(boot *bootstrap.Result) (*smartAccountDeps, error) {
 }
 
 // initPaymasterProvider creates a paymaster provider based on config.
-func initPaymasterProvider(cfg config.SmartAccountPaymasterConfig) paymaster.PaymasterProvider {
+// When mode="permit" and provider="circle", uses on-chain permit mode (no RPC URL needed).
+func initPaymasterProvider(
+	cfg config.SmartAccountPaymasterConfig,
+	wp wallet.WalletProvider,
+	rpcClient *ethclient.Client,
+	chainID int64,
+) paymaster.PaymasterProvider {
+	// Permit mode: on-chain paymaster, no RPC URL required.
+	if cfg.Mode == "permit" && cfg.Provider == "circle" {
+		if wp == nil || rpcClient == nil {
+			return nil
+		}
+		pmAddr := common.HexToAddress(cfg.PaymasterAddress)
+		tokenAddr := common.HexToAddress(cfg.TokenAddress)
+		return paymaster.NewCirclePermitProvider(pmAddr, tokenAddr, chainID, wp, rpcClient)
+	}
+
+	// RPC mode (default).
 	if cfg.RPCURL == "" {
 		return nil
 	}

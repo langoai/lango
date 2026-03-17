@@ -195,7 +195,7 @@ func buildSubAgent(cfg Config, spec AgentSpec, tools []*agent.Tool) (adk_agent.A
 		return nil, routingEntry{}, fmt.Errorf("create %s agent: %w", spec.Name, err)
 	}
 
-	return a, buildRoutingEntry(spec, caps), nil
+	return a, buildRoutingEntry(spec, caps, tools), nil
 }
 
 // adaptTools converts a slice of internal agent tools to ADK tools using the provided adapter.

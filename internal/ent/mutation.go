@@ -1382,6 +1382,8 @@ type CronJobMutation struct {
 	appenddeliver_to []string
 	timezone         *string
 	enabled          *bool
+	timeout_ms       *int64
+	addtimeout_ms    *int64
 	last_run_at      *time.Time
 	next_run_at      *time.Time
 	created_at       *time.Time
@@ -1813,6 +1815,76 @@ func (m *CronJobMutation) ResetEnabled() {
 	m.enabled = nil
 }
 
+// SetTimeoutMs sets the "timeout_ms" field.
+func (m *CronJobMutation) SetTimeoutMs(i int64) {
+	m.timeout_ms = &i
+	m.addtimeout_ms = nil
+}
+
+// TimeoutMs returns the value of the "timeout_ms" field in the mutation.
+func (m *CronJobMutation) TimeoutMs() (r int64, exists bool) {
+	v := m.timeout_ms
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldTimeoutMs returns the old "timeout_ms" field's value of the CronJob entity.
+// If the CronJob object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *CronJobMutation) OldTimeoutMs(ctx context.Context) (v *int64, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldTimeoutMs is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldTimeoutMs requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldTimeoutMs: %w", err)
+	}
+	return oldValue.TimeoutMs, nil
+}
+
+// AddTimeoutMs adds i to the "timeout_ms" field.
+func (m *CronJobMutation) AddTimeoutMs(i int64) {
+	if m.addtimeout_ms != nil {
+		*m.addtimeout_ms += i
+	} else {
+		m.addtimeout_ms = &i
+	}
+}
+
+// AddedTimeoutMs returns the value that was added to the "timeout_ms" field in this mutation.
+func (m *CronJobMutation) AddedTimeoutMs() (r int64, exists bool) {
+	v := m.addtimeout_ms
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ClearTimeoutMs clears the value of the "timeout_ms" field.
+func (m *CronJobMutation) ClearTimeoutMs() {
+	m.timeout_ms = nil
+	m.addtimeout_ms = nil
+	m.clearedFields[cronjob.FieldTimeoutMs] = struct{}{}
+}
+
+// TimeoutMsCleared returns if the "timeout_ms" field was cleared in this mutation.
+func (m *CronJobMutation) TimeoutMsCleared() bool {
+	_, ok := m.clearedFields[cronjob.FieldTimeoutMs]
+	return ok
+}
+
+// ResetTimeoutMs resets all changes to the "timeout_ms" field.
+func (m *CronJobMutation) ResetTimeoutMs() {
+	m.timeout_ms = nil
+	m.addtimeout_ms = nil
+	delete(m.clearedFields, cronjob.FieldTimeoutMs)
+}
+
 // SetLastRunAt sets the "last_run_at" field.
 func (m *CronJobMutation) SetLastRunAt(t time.Time) {
 	m.last_run_at = &t
@@ -2017,7 +2089,7 @@ func (m *CronJobMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *CronJobMutation) Fields() []string {
-	fields := make([]string, 0, 12)
+	fields := make([]string, 0, 13)
 	if m.name != nil {
 		fields = append(fields, cronjob.FieldName)
 	}
@@ -2041,6 +2113,9 @@ func (m *CronJobMutation) Fields() []string {
 	}
 	if m.enabled != nil {
 		fields = append(fields, cronjob.FieldEnabled)
+	}
+	if m.timeout_ms != nil {
+		fields = append(fields, cronjob.FieldTimeoutMs)
 	}
 	if m.last_run_at != nil {
 		fields = append(fields, cronjob.FieldLastRunAt)
@@ -2078,6 +2153,8 @@ func (m *CronJobMutation) Field(name string) (ent.Value, bool) {
 		return m.Timezone()
 	case cronjob.FieldEnabled:
 		return m.Enabled()
+	case cronjob.FieldTimeoutMs:
+		return m.TimeoutMs()
 	case cronjob.FieldLastRunAt:
 		return m.LastRunAt()
 	case cronjob.FieldNextRunAt:
@@ -2111,6 +2188,8 @@ func (m *CronJobMutation) OldField(ctx context.Context, name string) (ent.Value,
 		return m.OldTimezone(ctx)
 	case cronjob.FieldEnabled:
 		return m.OldEnabled(ctx)
+	case cronjob.FieldTimeoutMs:
+		return m.OldTimeoutMs(ctx)
 	case cronjob.FieldLastRunAt:
 		return m.OldLastRunAt(ctx)
 	case cronjob.FieldNextRunAt:
@@ -2184,6 +2263,13 @@ func (m *CronJobMutation) SetField(name string, value ent.Value) error {
 		}
 		m.SetEnabled(v)
 		return nil
+	case cronjob.FieldTimeoutMs:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetTimeoutMs(v)
+		return nil
 	case cronjob.FieldLastRunAt:
 		v, ok := value.(time.Time)
 		if !ok {
@@ -2219,13 +2305,21 @@ func (m *CronJobMutation) SetField(name string, value ent.Value) error {
 // AddedFields returns all numeric fields that were incremented/decremented during
 // this mutation.
 func (m *CronJobMutation) AddedFields() []string {
-	return nil
+	var fields []string
+	if m.addtimeout_ms != nil {
+		fields = append(fields, cronjob.FieldTimeoutMs)
+	}
+	return fields
 }
 
 // AddedField returns the numeric value that was incremented/decremented on a field
 // with the given name. The second boolean return value indicates that this field
 // was not set, or was not defined in the schema.
 func (m *CronJobMutation) AddedField(name string) (ent.Value, bool) {
+	switch name {
+	case cronjob.FieldTimeoutMs:
+		return m.AddedTimeoutMs()
+	}
 	return nil, false
 }
 
@@ -2234,6 +2328,13 @@ func (m *CronJobMutation) AddedField(name string) (ent.Value, bool) {
 // type.
 func (m *CronJobMutation) AddField(name string, value ent.Value) error {
 	switch name {
+	case cronjob.FieldTimeoutMs:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddTimeoutMs(v)
+		return nil
 	}
 	return fmt.Errorf("unknown CronJob numeric field %s", name)
 }
@@ -2244,6 +2345,9 @@ func (m *CronJobMutation) ClearedFields() []string {
 	var fields []string
 	if m.FieldCleared(cronjob.FieldDeliverTo) {
 		fields = append(fields, cronjob.FieldDeliverTo)
+	}
+	if m.FieldCleared(cronjob.FieldTimeoutMs) {
+		fields = append(fields, cronjob.FieldTimeoutMs)
 	}
 	if m.FieldCleared(cronjob.FieldLastRunAt) {
 		fields = append(fields, cronjob.FieldLastRunAt)
@@ -2267,6 +2371,9 @@ func (m *CronJobMutation) ClearField(name string) error {
 	switch name {
 	case cronjob.FieldDeliverTo:
 		m.ClearDeliverTo()
+		return nil
+	case cronjob.FieldTimeoutMs:
+		m.ClearTimeoutMs()
 		return nil
 	case cronjob.FieldLastRunAt:
 		m.ClearLastRunAt()
@@ -2305,6 +2412,9 @@ func (m *CronJobMutation) ResetField(name string) error {
 		return nil
 	case cronjob.FieldEnabled:
 		m.ResetEnabled()
+		return nil
+	case cronjob.FieldTimeoutMs:
+		m.ResetTimeoutMs()
 		return nil
 	case cronjob.FieldLastRunAt:
 		m.ResetLastRunAt()

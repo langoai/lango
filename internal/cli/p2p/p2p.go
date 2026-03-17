@@ -2,6 +2,7 @@
 package p2p
 
 import (
+	"errors"
 	"fmt"
 	"sync"
 	"time"
@@ -16,6 +17,8 @@ import (
 	"github.com/langoai/lango/internal/p2p/handshake"
 	"github.com/langoai/lango/internal/security"
 )
+
+var errP2PDisabled = errors.New("P2P networking is not enabled (set p2p.enabled = true)")
 
 // p2pDeps holds lazily-initialized P2P dependencies.
 type p2pDeps struct {
@@ -47,6 +50,8 @@ func NewP2PCmd(bootLoader func() (*bootstrap.Result, error)) *cobra.Command {
 	cmd.AddCommand(newSandboxCmd(bootLoader))
 	cmd.AddCommand(newTeamCmd(bootLoader))
 	cmd.AddCommand(newZKPCmd(bootLoader))
+	cmd.AddCommand(newWorkspaceCmd(bootLoader))
+	cmd.AddCommand(newGitCmd(bootLoader))
 
 	return cmd
 }
@@ -55,7 +60,7 @@ func NewP2PCmd(bootLoader func() (*bootstrap.Result, error)) *cobra.Command {
 func initP2PDeps(boot *bootstrap.Result) (*p2pDeps, error) {
 	cfg := boot.Config
 	if !cfg.P2P.Enabled {
-		return nil, fmt.Errorf("P2P networking is not enabled (set p2p.enabled = true)")
+		return nil, errP2PDisabled
 	}
 
 	logger := logging.Sugar()

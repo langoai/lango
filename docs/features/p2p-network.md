@@ -371,6 +371,15 @@ Configure the proving scheme and SRS (Structured Reference String) source:
         "networkMode": "none",
         "poolSize": 0
       }
+    },
+    "workspace": {
+      "enabled": false,
+      "dataDir": "~/.lango/workspaces",
+      "maxWorkspaces": 10,
+      "maxBundleSizeBytes": 0,
+      "chroniclerEnabled": false,
+      "autoSandbox": false,
+      "contributionTracking": false
     }
   }
 }
@@ -436,6 +445,16 @@ lango p2p team status <id>                      # Show team details
 lango p2p team disband <id>                     # Disband an active team
 lango p2p zkp status                            # Show ZKP configuration
 lango p2p zkp circuits                          # List ZKP circuits
+lango p2p workspace create <name>               # Create a collaborative workspace
+lango p2p workspace list                        # List all workspaces
+lango p2p workspace status <id>                 # Show workspace status and members
+lango p2p workspace join <id>                   # Join a workspace
+lango p2p workspace leave <id>                  # Leave a workspace
+lango p2p git init <workspace-id>               # Initialize workspace git repo
+lango p2p git log <workspace-id>                # Show workspace commit history
+lango p2p git diff <workspace-id> <from> <to>   # Show diff between commits
+lango p2p git push <workspace-id>               # Create and push git bundle
+lango p2p git fetch <workspace-id>              # Fetch and apply git bundle
 ```
 
 See the [P2P CLI Reference](../cli/p2p.md) for detailed command documentation.
@@ -624,6 +643,69 @@ Task assignment to team members follows one of three strategies:
 
 Source: `internal/p2p/team/coordinator.go`
 
+### Health Monitoring
+
+The `HealthMonitor` periodically pings team members to detect unresponsive agents. It runs as a lifecycle component alongside the coordinator.
+
+**How it works:**
+
+1. Every `interval` (default: 30s), the monitor sends a `health_ping` to each non-leader member
+2. If a member fails to respond, its consecutive miss counter increments
+3. When a member reaches `maxMissed` (default: 3) consecutive failures, a `TeamMemberUnhealthyEvent` is published
+4. On task completion, all miss counters for the team are reset
+5. On team disband, tracking data is cleaned up to prevent memory leaks
+
+| Config Field | Default | Description |
+|-------------|---------|-------------|
+| `interval` | `30s` | Time between health check sweeps |
+| `maxMissed` | `3` | Consecutive missed pings before unhealthy |
+
+**Events:**
+
+| Event | Description |
+|-------|-------------|
+| `team.member.unhealthy` | Member missed `maxMissed` consecutive pings |
+| `team.health.check` | Aggregate health sweep completed (healthy/total counts) |
+
+Source: `internal/p2p/team/health_monitor.go`
+
+### Graceful Shutdown
+
+The `GracefulShutdown` method performs an ordered team shutdown sequence:
+
+1. **Block new tasks** -- Sets team status to `StatusShuttingDown`, preventing new task delegation
+2. **Calculate settlement** -- Counts active members with recorded spend for proportional budget settlement
+3. **Persist state** -- Saves the shutting-down status to the team store
+4. **Publish event** -- Publishes `TeamGracefulShutdownEvent` with `MembersSettled` count
+5. **Disband** -- Calls `DisbandTeam` to finalize cleanup
+
+Graceful shutdown is triggered automatically by the **team-shutdown bridge** when a `BudgetExhaustedEvent` fires for the team's task ID. A `TeamBudgetWarningEvent` is also published when the budget crosses the 80% threshold.
+
+| Event | Description |
+|-------|-------------|
+| `team.graceful.shutdown` | Team shut down with reason and settlement count |
+| `team.budget.warning` | Budget crossed 80% threshold (threshold, spent, budget) |
+
+Source: `internal/p2p/team/coordinator_shutdown.go`
+
+### Git State Divergence Detection
+
+The health monitor optionally collects git HEAD hashes from workspace members during health checks. When a `GitStateProvider` is configured, each successful ping is followed by a git state query.
+
+`DetectDivergence(workspaceID)` compares collected HEAD hashes and identifies members whose HEAD differs from the majority:
+
+1. Count the frequency of each HEAD hash across all members
+2. Determine the majority HEAD (most common hash)
+3. Return a `GitDivergence` for each member whose HEAD differs
+
+When divergence is detected, a `WorkspaceGitDivergenceEvent` is published with the majority HEAD and a list of divergent members.
+
+| Event | Description |
+|-------|-------------|
+| `workspace.git.divergence` | Members have divergent git HEADs (majority vs divergent list) |
+
+Source: `internal/p2p/team/health_monitor.go`, `internal/eventbus/workspace_events.go`
+
 ### Payment Coordination
 
 The `PaymentCoordinator` negotiates payment terms between team leader and members. Payment mode is selected based on trust score:
@@ -653,9 +735,98 @@ The event bus publishes team lifecycle events:
 | `team.conflict.detected` | Conflicting results found from members |
 | `team.payment.agreed` | Payment terms negotiated with member |
 | `team.health.check` | Team-level health sweep completed |
+| `team.member.unhealthy` | Member missed consecutive health pings |
+| `team.budget.warning` | Team budget crossed 80% threshold |
+| `team.graceful.shutdown` | Team underwent graceful shutdown with settlement |
 | `team.leader.changed` | Team leader replaced |
 
 Source: `internal/eventbus/team_events.go`
+
+## Collaborative Workspaces
+
+Workspaces are collaborative environments where multiple agents share code, messages, and context within a P2P network. Each workspace has a lifecycle, members, and optional features like chronicling and contribution tracking.
+
+### Workspace Lifecycle
+
+| Status | Description |
+|--------|-------------|
+| `forming` | Workspace created, waiting for members to join |
+| `active` | Workspace is active with participating agents |
+| `archived` | Workspace completed or disbanded |
+
+### Members and Roles
+
+| Role | Description |
+|------|-------------|
+| `creator` | Agent that created the workspace |
+| `member` | Agent that joined the workspace |
+
+### Message Types
+
+Workspace messages facilitate real-time collaboration:
+
+| Type | Description |
+|------|-------------|
+| `TASK_PROPOSAL` | Propose a task for workspace members |
+| `LOG_STREAM` | Share log output in real-time |
+| `COMMIT_SIGNAL` | Signal that code has been committed |
+| `KNOWLEDGE_SHARE` | Share knowledge or context |
+| `MEMBER_JOINED` | A member joined the workspace |
+| `MEMBER_LEFT` | A member left the workspace |
+
+### GossipSub Topics
+
+Workspaces use GossipSub for real-time message distribution:
+- Topic per workspace: `/lango/workspace/<workspace-id>`
+- Members subscribe on join, unsubscribe on leave
+
+### Chronicler
+
+When `chroniclerEnabled` is true, workspace messages are persisted as graph triples for long-term knowledge retention. Each message generates triples:
+- `workspace:message:<id>` → type, workspace, sender, content, timestamp
+- Reply chains are linked via `replyTo` predicates
+
+Source: `internal/p2p/workspace/chronicler.go`
+
+### Contribution Tracking
+
+When `contributionTracking` is true, per-agent metrics are collected:
+- **Commits**: Number of git commits per member
+- **Code Bytes**: Total code contribution size
+- **Messages**: Number of workspace messages posted
+- **Last Active**: Most recent activity timestamp
+
+Source: `internal/p2p/workspace/contribution.go`
+
+## Git Bundle Exchange
+
+Git bundle exchange enables atomic code sharing between workspace members using bare git repositories and the git bundle protocol.
+
+### Architecture
+
+- **Bare Repo Store**: Each workspace gets an isolated bare git repository at `<dataDir>/<workspaceID>/repo.git`
+- **Bundle Protocol**: Uses `git bundle create/unbundle` for transfer (leverages git CLI for reliability)
+- **P2P Transport**: Bundles are transferred over the P2P network protocol `/lango/p2p-git/1.0.0`
+
+### Bundle Workflow
+
+1. **Init**: Initialize a bare repo for a workspace (`Service.Init`)
+2. **Create Bundle**: Package all refs into a bundle (`Service.CreateBundle`) → returns bytes + HEAD hash
+3. **Transfer**: Send bundle over P2P to workspace members
+4. **Apply Bundle**: Receiver unbundles into their bare repo (`Service.ApplyBundle`)
+
+### DAG Leaf Detection
+
+`Service.Leaves()` identifies commits with no children — useful for detecting divergent branches and potential merge conflicts across distributed agents.
+
+### Configuration
+
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| `maxBundleSizeBytes` | int64 | `0` | Maximum bundle size (0 = unlimited) |
+| `dataDir` | string | `~/.lango/workspaces` | Base directory for workspace repos |
+
+Source: `internal/p2p/gitbundle/`
 
 ## Agent Pool
 
@@ -719,6 +890,60 @@ Each peer interaction is recorded:
 - **REST API**: `GET /api/p2p/reputation?peer_did=<did>`
 
 New peers with no reputation record are given the benefit of the doubt (trusted by default).
+
+## Reorg Protection
+
+The on-chain escrow `EventMonitor` includes reorg protection to handle chain reorganizations on L2 networks.
+
+### Confirmation Depth
+
+The monitor applies a `confirmationDepth` buffer (default: 2 blocks for Base L2) before processing events. Only blocks at `latest - confirmationDepth` or earlier are considered safe.
+
+### Block Hash Cache
+
+A bounded `blockHashes` cache (max 256 entries) stores block hashes for continuity verification. Before processing new logs, the monitor checks that the parent block hash matches the cached value. A mismatch indicates a silent reorg within the confirmation window.
+
+### Reorg Detection
+
+Two mechanisms detect reorganizations:
+
+1. **Safe block regression** -- If `safeBlock < lastBlock`, the chain has reorganized. The monitor rolls back to `safeBlock` and re-processes from that point.
+2. **Hash continuity check** -- If the parent block's current hash differs from the cached hash, a silent reorg has occurred.
+
+When a reorg is detected, an `EscrowReorgDetectedEvent` is published:
+
+| Field | Description |
+|-------|-------------|
+| `PreviousBlock` | Last processed block before reorg |
+| `NewBlock` | New safe block after reorg |
+| `Depth` | Number of blocks reorganized |
+| `ExceedsDepth` | `true` if reorg depth exceeds `confirmationDepth` (critical) |
+
+The on-chain escrow bridge subscribes to this event and logs at `ERROR` level for deep reorgs that exceed confirmation depth.
+
+### Configuration
+
+| Key | Default | Description |
+|-----|---------|-------------|
+| `economy.escrow.onChain.confirmationDepth` | `2` | Blocks to wait before processing events |
+| `economy.escrow.onChain.pollInterval` | `15s` | Event monitor polling interval |
+
+Source: `internal/economy/escrow/hub/monitor.go`
+
+## Event-Driven Bridges
+
+The application layer wires P2P subsystems together through event-driven bridges. Each bridge subscribes to events from one subsystem and triggers actions in another, enabling decoupled cross-concern integration.
+
+| Bridge | Source Events | Target Actions |
+|--------|--------------|----------------|
+| **On-Chain Escrow** | `EscrowOnChain*` events, `EscrowReorgDetectedEvent` | Escrow engine state transitions (fund, activate, release, refund, dispute) |
+| **Team Budget** | `TeamFormed`, `TeamTaskDelegated`, `TeamTaskCompleted` | Budget allocation, reservation, and spend recording |
+| **Team Escrow** | `TeamFormed`, `TeamTaskCompleted`, `TeamDisbanded` | Escrow creation, milestone completion, release/refund on disband |
+| **Team Reputation** | `TeamMemberUnhealthy`, `TeamTaskCompleted`, `ReputationChanged` | Record timeout/success, kick low-reputation members |
+| **Team Shutdown** | `BudgetAlert` (>=80%), `BudgetExhausted` | Publish `TeamBudgetWarningEvent`, trigger `GracefulShutdown` |
+| **Workspace-Team** | `TeamFormed`, `TeamTaskCompleted`, `TeamDisbanded` | Auto-create workspace, record contributions, unsubscribe gossip |
+
+Source: `internal/app/bridge_*.go`
 
 ## Owner Shield
 
