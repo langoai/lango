@@ -567,14 +567,6 @@ func resolveSR(iv *intelligenceValues) *skill.Registry {
 	return sr
 }
 
-// resolveAB extracts the AnalysisBuffer from intelligence values.
-func resolveAB(iv *intelligenceValues) interface{} {
-	if iv == nil {
-		return nil
-	}
-	return iv.AB
-}
-
 
 // Start starts the application services using the lifecycle registry.
 func (a *App) Start(ctx context.Context) error {

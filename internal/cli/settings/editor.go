@@ -489,9 +489,7 @@ func (e *Editor) View() string {
 	case StepForm:
 		segments := []string{"Settings"}
 		// Show navigation chain if jumped from another form
-		for _, navID := range e.navStack {
-			segments = append(segments, navID)
-		}
+		segments = append(segments, e.navStack...)
 		formTitle := ""
 		if e.activeForm != nil {
 			formTitle = e.activeForm.Title

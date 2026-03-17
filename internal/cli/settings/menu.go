@@ -74,18 +74,6 @@ func (m *MenuModel) allCategories() []Category {
 	return all
 }
 
-// visibleCategories returns categories respecting the current tier filter.
-func (m *MenuModel) visibleCategories() []Category {
-	var vis []Category
-	for _, s := range m.Sections {
-		for _, c := range s.Categories {
-			if m.showAdvanced || c.Tier == TierBasic {
-				vis = append(vis, c)
-			}
-		}
-	}
-	return vis
-}
 
 // AllCategories returns a flat list of all categories (public, for tests).
 func (m MenuModel) AllCategories() []Category {
@@ -490,7 +478,7 @@ func (m MenuModel) View() string {
 	b.WriteString("\n\n")
 
 	// Section header with tab indicator (Level 2 only, outside search results)
-	if m.level == levelCategories && !(m.searching && m.filtered != nil) {
+	if m.level == levelCategories && (!m.searching || m.filtered == nil) {
 		section := m.Sections[m.activeSectionIdx]
 		headerStyle := lipgloss.NewStyle().Foreground(tui.Primary).Bold(true).PaddingLeft(2)
 		b.WriteString(headerStyle.Render(section.Title))

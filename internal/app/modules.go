@@ -65,16 +65,6 @@ type automationValues struct {
 	WorkflowEngine    interface{}
 }
 
-// networkValues holds the outputs of the network module.
-type networkValues struct {
-	PC   *paymentComponents
-	P2PC *p2pComponents
-	EconC *economyComponents
-	CC   *contractComponents
-	SAC  *smartAccountComponents
-	WSC  *wsComponents
-	X402 interface{}
-}
 
 // ─── Foundation Module ───
 

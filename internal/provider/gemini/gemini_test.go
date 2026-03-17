@@ -233,12 +233,13 @@ func TestFunctionCallID_InContent(t *testing.T) {
 	// Simulate content building (same logic as Generate)
 	var contents []*genai.Content
 	for i, m := range params.Messages {
-		if m.Role == "user" {
+		switch m.Role {
+		case "user":
 			contents = append(contents, &genai.Content{
 				Role:  "user",
 				Parts: []*genai.Part{{Text: m.Content}},
 			})
-		} else if m.Role == "assistant" {
+		case "assistant":
 			var parts []*genai.Part
 			for _, tc := range m.ToolCalls {
 				args := map[string]interface{}{}
@@ -251,7 +252,7 @@ func TestFunctionCallID_InContent(t *testing.T) {
 				})
 			}
 			contents = append(contents, &genai.Content{Role: "model", Parts: parts})
-		} else if m.Role == "tool" {
+		case "tool":
 			toolCallID, _ := m.Metadata["tool_call_id"].(string)
 			toolCallName, _ := m.Metadata["tool_call_name"].(string)
 			if toolCallName == "" && toolCallID != "" {

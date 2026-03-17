@@ -10,3 +10,7 @@ linters:
       - path: _test\.go
         linters:
           - errcheck
+      - linters:
+          - staticcheck
+        text: "SA5011"
+        path: _test\.go

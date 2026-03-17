@@ -342,16 +342,16 @@ func startupSummary(cfg *config.Config) string {
 	}
 
 	features := []tui.FeatureLine{
-		{"Gateway", cfg.Server.HTTPEnabled, fmt.Sprintf("http://%s:%d", cfg.Server.Host, cfg.Server.Port)},
-		{"Channels", len(channels) > 0, channelDetail},
-		{"Knowledge", cfg.Knowledge.Enabled, ""},
-		{"Embedding & RAG", cfg.Embedding.Provider != "", cfg.Embedding.Provider},
-		{"Graph", cfg.Graph.Enabled, ""},
-		{"Obs. Memory", cfg.ObservationalMemory.Enabled, ""},
-		{"Cron", cfg.Cron.Enabled, ""},
-		{"MCP", cfg.MCP.Enabled, mcpServerCount(cfg)},
-		{"P2P", cfg.P2P.Enabled, ""},
-		{"Payment", cfg.Payment.Enabled, ""},
+		{Name: "Gateway", Enabled: cfg.Server.HTTPEnabled, Detail: fmt.Sprintf("http://%s:%d", cfg.Server.Host, cfg.Server.Port)},
+		{Name: "Channels", Enabled: len(channels) > 0, Detail: channelDetail},
+		{Name: "Knowledge", Enabled: cfg.Knowledge.Enabled},
+		{Name: "Embedding & RAG", Enabled: cfg.Embedding.Provider != "", Detail: cfg.Embedding.Provider},
+		{Name: "Graph", Enabled: cfg.Graph.Enabled},
+		{Name: "Obs. Memory", Enabled: cfg.ObservationalMemory.Enabled},
+		{Name: "Cron", Enabled: cfg.Cron.Enabled},
+		{Name: "MCP", Enabled: cfg.MCP.Enabled, Detail: mcpServerCount(cfg)},
+		{Name: "P2P", Enabled: cfg.P2P.Enabled},
+		{Name: "Payment", Enabled: cfg.Payment.Enabled},
 	}
 
 	return tui.StartupSummary(features)

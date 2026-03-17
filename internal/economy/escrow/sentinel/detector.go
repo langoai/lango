@@ -53,10 +53,6 @@ func (wc *windowCounter) record(key string) int {
 	return len(pruned)
 }
 
-// exceeded returns true if the current count for key exceeds max.
-func (wc *windowCounter) exceeded(key string) bool {
-	return len(wc.history[key]) > wc.max
-}
 
 // RapidCreationDetector tracks creation timestamps per peer.
 // If more than Max deals from the same peer arrive in Window, it alerts.
