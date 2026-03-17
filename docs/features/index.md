@@ -112,11 +112,13 @@ Lango provides a comprehensive set of features for building intelligent AI agent
 
     [:octicons-arrow-right-24: Learn more](observability.md)
 
--   :brain: **Agent Memory** :material-flask-outline:{ title="Experimental" }
+-   :brain: **[Agent Memory](../cli/agent-memory.md)** :material-flask-outline:{ title="Experimental" }
 
     ---
 
     Per-agent persistent memory for cross-session context retention and experience accumulation.
+
+    [:octicons-arrow-right-24: Learn more](../cli/agent-memory.md)
 
 -   :toolbox: **[Skill System](skills.md)**
 
@@ -166,6 +168,14 @@ Lango provides a comprehensive set of features for building intelligent AI agent
 
     [:octicons-arrow-right-24: Learn more](config-presets.md)
 
+-   :electric_plug: **[MCP Integration](mcp-integration.md)**
+
+    ---
+
+    Connect to external MCP servers for stdio, HTTP, and SSE transports. Extend agent tooling with the Model Context Protocol.
+
+    [:octicons-arrow-right-24: Learn more](mcp-integration.md)
+
 </div>
 
 ## Feature Status
@@ -192,6 +202,7 @@ Lango provides a comprehensive set of features for building intelligent AI agent
 | P2P Workspaces | Experimental | `p2p.workspace.enabled` |
 | P2P Teams | Experimental | `p2p.enabled` + team coordination |
 | Config Presets | Stable | `lango onboard --preset` |
+| MCP Integration | Stable | `mcp.enabled` |
 | Tool Hooks | Experimental | `hooks.enabled` |
 | Tool Catalog | Internal | — |
 | Event Bus | Internal | — |

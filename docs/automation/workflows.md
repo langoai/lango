@@ -97,7 +97,7 @@ Workflow steps can be assigned to any of the built-in sub-agents:
 ### Run a Workflow
 
 ```bash
-lango workflow run --file review-pipeline.yaml
+lango workflow run review-pipeline.yaml
 ```
 
 ### List Runs
@@ -109,13 +109,13 @@ lango workflow list --limit 10
 ### Check Status
 
 ```bash
-lango workflow status --id <run-id>
+lango workflow status <run-id>
 ```
 
 ### Cancel a Run
 
 ```bash
-lango workflow cancel --id <run-id>
+lango workflow cancel <run-id>
 ```
 
 ### View History

@@ -56,11 +56,8 @@ services:
       - lango_passphrase
     environment:
       - LANGO_PROFILE=default
-      # - LANGO_MULTI_AGENT=true        # Enable multi-agent orchestration
-      # - LANGO_P2P=true                 # Enable P2P networking
-      # - LANGO_AGENT_MEMORY=true        # Enable per-agent persistent memory
-      # - LANGO_HOOKS=true               # Enable tool execution hooks
-      # - LANGO_SMART_ACCOUNT=true       # Enable ERC-7579 smart account
+      # Feature flags are managed via encrypted config profiles, not env vars.
+      # Use 'lango settings' or 'lango config import' to configure features.
 
 secrets:
   lango_config:
@@ -78,7 +75,7 @@ The named volume `lango-data` is mounted at `/home/lango/.lango` inside the cont
 
 ### P2P Networking
 
-To expose the libp2p listener for P2P agent communication, uncomment the `9000:9000` port mapping and set `LANGO_P2P=true`. The default listen addresses are `/ip4/0.0.0.0/tcp/9000` and `/ip4/0.0.0.0/udp/9000/quic-v1`.
+To expose the libp2p listener for P2P agent communication, uncomment the `9000:9000` port mapping and enable `p2p.enabled` in your config profile. The default listen addresses are `/ip4/0.0.0.0/tcp/9000` and `/ip4/0.0.0.0/udp/9000/quic-v1`.
 
 ### Presidio PII Profile
 
@@ -152,15 +149,11 @@ Use `docker inspect --format='{{.State.Health.Status}}' lango` to check containe
 
 ### Feature Flags
 
-These environment variables enable optional subsystems. Uncomment in `docker-compose.yml` or set at runtime:
+Feature flags (`agent.multiAgent`, `p2p.enabled`, `agentMemory.enabled`, `hooks.enabled`, `mcp.enabled`, etc.) are managed via encrypted config profiles, not environment variables. To configure features in a containerized deployment:
 
-| Variable | Description |
-|----------|-------------|
-| `LANGO_MULTI_AGENT` | Enable multi-agent orchestration (executor, researcher, planner, memory manager) |
-| `LANGO_P2P` | Enable P2P networking with libp2p (requires port 9000) |
-| `LANGO_AGENT_MEMORY` | Enable per-agent persistent memory |
-| `LANGO_HOOKS` | Enable tool execution hooks |
-| `LANGO_SMART_ACCOUNT` | Enable ERC-7579 smart account integration |
+- **Pre-built config**: Include the desired flags in your `config.json` before first run. The entrypoint imports it via `lango config import`.
+- **Running container**: Use `lango config set <key> <value>` or `lango settings` inside the container.
+- **Docker secrets**: Mount an updated `config.json` as a secret and recreate the container (remove `lango.db` to trigger re-import).
 
 ## Related
 

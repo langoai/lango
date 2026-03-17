@@ -117,6 +117,7 @@ lango version                    Print version and build info
 lango health [--port N]          Check gateway health (default port: 18789)
 lango onboard                    Guided 5-step setup wizard for first-time configuration
 lango settings                   Full interactive configuration editor (all options)
+lango status [--output json] [--addr] Show unified system status dashboard
 lango doctor [--fix] [--json]    Diagnostics and health checks
 
 lango config list                List all configuration profiles
@@ -220,6 +221,16 @@ lango p2p sandbox cleanup        Remove orphaned sandbox containers
 lango p2p team list              List active P2P teams
 lango p2p team status <id>       Show team details and member status
 lango p2p team disband <id>      Disband an active team
+lango p2p workspace create <name> Create a collaborative workspace (--goal, --json)
+lango p2p workspace list          List workspaces (--json)
+lango p2p workspace status <id>   Show workspace details (--json)
+lango p2p workspace join <id>     Join an existing workspace
+lango p2p workspace leave <id>    Leave a workspace
+lango p2p git init <workspace-id> Initialize git repo for a workspace
+lango p2p git log <workspace-id>  Show commit log (--limit, --json)
+lango p2p git diff <id> <from> <to> Show diff between commits
+lango p2p git push <workspace-id> Push git bundle to peers
+lango p2p git fetch <workspace-id> Fetch git bundle from peers
 lango p2p zkp status             Show ZKP configuration
 lango p2p zkp circuits           List compiled ZKP circuits
 
