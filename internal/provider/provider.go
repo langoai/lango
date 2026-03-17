@@ -50,6 +50,7 @@ type StreamEvent struct {
 
 // ToolCall represents a request for tool execution.
 type ToolCall struct {
+	Index            *int   // streaming chunk correlation (OpenAI Index field)
 	ID               string
 	Name             string
 	Arguments        string // JSON string

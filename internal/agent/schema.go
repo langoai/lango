@@ -42,6 +42,16 @@ func (b *SchemaBuilder) Bool(name, desc string) *SchemaBuilder {
 	return b
 }
 
+// Array adds an array property with items of the given type.
+func (b *SchemaBuilder) Array(name, itemType, desc string) *SchemaBuilder {
+	b.props[name] = map[string]interface{}{
+		"type":        "array",
+		"description": desc,
+		"items":       map[string]interface{}{"type": itemType},
+	}
+	return b
+}
+
 // Enum adds a string property with enumerated values.
 func (b *SchemaBuilder) Enum(name, desc string, values ...string) *SchemaBuilder {
 	b.props[name] = map[string]interface{}{
@@ -61,8 +71,9 @@ func (b *SchemaBuilder) Required(names ...string) *SchemaBuilder {
 // Build returns the JSON Schema as map[string]interface{}.
 func (b *SchemaBuilder) Build() map[string]interface{} {
 	result := map[string]interface{}{
-		"type":       "object",
-		"properties": b.props,
+		"type":                 "object",
+		"properties":           b.props,
+		"additionalProperties": false,
 	}
 	if len(b.required) > 0 {
 		result["required"] = b.required

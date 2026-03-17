@@ -27,6 +27,11 @@ func TestSchema_Build_SimpleString(t *testing.T) {
 	required, ok := got["required"].([]string)
 	assert.True(t, ok)
 	assert.Equal(t, []string{"command"}, required)
+
+	// additionalProperties must be false for OpenAI compatibility.
+	ap, hasAP := got["additionalProperties"]
+	assert.True(t, hasAP, "expected additionalProperties key")
+	assert.Equal(t, false, ap)
 }
 
 func TestSchema_Build_MultipleTypes(t *testing.T) {
@@ -66,6 +71,28 @@ func TestSchema_Build_Enum(t *testing.T) {
 
 	assert.Equal(t, "string", action["type"])
 	assert.Equal(t, []string{"click", "type", "eval"}, action["enum"])
+}
+
+func TestSchema_Build_Array(t *testing.T) {
+	t.Parallel()
+
+	got := Schema().
+		Array("tags", "string", "Tag list").
+		Required("tags").
+		Build()
+
+	props := got["properties"].(map[string]interface{})
+	tags := props["tags"].(map[string]interface{})
+
+	assert.Equal(t, "array", tags["type"])
+	assert.Equal(t, "Tag list", tags["description"])
+
+	items, ok := tags["items"].(map[string]interface{})
+	assert.True(t, ok, "expected items to be map[string]interface{}")
+	assert.Equal(t, "string", items["type"])
+
+	required := got["required"].([]string)
+	assert.Equal(t, []string{"tags"}, required)
 }
 
 func TestSchema_Build_NoRequired(t *testing.T) {

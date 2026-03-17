@@ -160,6 +160,22 @@ func (s *SessionServiceAdapter) AppendEvent(ctx context.Context, sess session.Se
 				msg.Content += string(responseBytes)
 			}
 		}
+		// Override role for FunctionResponse-only messages.
+		// ADK stores FunctionResponse with Content.Role="user", but
+		// correct session reconstruction requires the "tool" role.
+		hasFuncResponse := false
+		hasFuncCall := false
+		for _, tc := range msg.ToolCalls {
+			if tc.Output != "" {
+				hasFuncResponse = true
+			}
+			if tc.Input != "" {
+				hasFuncCall = true
+			}
+		}
+		if hasFuncResponse && !hasFuncCall {
+			msg.Role = types.RoleTool
+		}
 	} else {
 		// Event might be purely internal/state update without content?
 		// Ensure we don't save empty messages unless necessary.

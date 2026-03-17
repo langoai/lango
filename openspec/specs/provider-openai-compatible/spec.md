@@ -34,6 +34,21 @@ The system SHALL support streaming responses from OpenAI-compatible endpoints.
 - **THEN** it SHALL use the streaming Chat Completions API
 - **AND** SHALL yield StreamEvents as chunks arrive
 
+### Requirement: Tool parameter schema extraction
+The system SHALL extract tool parameter schemas from `genai.FunctionDeclaration` by checking `ParametersJsonSchema` first, then falling back to `Parameters`. When both fields are set, `ParametersJsonSchema` SHALL take priority.
+
+#### Scenario: ADK v0.5.0+ tool with ParametersJsonSchema
+- **WHEN** a `FunctionDeclaration` has `ParametersJsonSchema` set and `Parameters` nil
+- **THEN** the system SHALL use `ParametersJsonSchema` to build the tool's parameter schema
+
+#### Scenario: Legacy tool with Parameters only
+- **WHEN** a `FunctionDeclaration` has `Parameters` set and `ParametersJsonSchema` nil
+- **THEN** the system SHALL use `Parameters` to build the tool's parameter schema
+
+#### Scenario: Both fields set
+- **WHEN** a `FunctionDeclaration` has both `ParametersJsonSchema` and `Parameters` set
+- **THEN** the system SHALL use `ParametersJsonSchema` and ignore `Parameters`
+
 ### Requirement: Tool Calling Support
 The system SHALL support function/tool calling via the OpenAI tools API.
 
@@ -41,6 +56,21 @@ The system SHALL support function/tool calling via the OpenAI tools API.
 - **WHEN** GenerateParams contains Tools
 - **THEN** they SHALL be converted to OpenAI tool format
 - **AND** tool call responses SHALL be converted to StreamEvent format
+
+### Requirement: OpenAI strict mode for fully-required tools
+The system SHALL set `Strict: true` on OpenAI `FunctionDefinition` when all declared properties are listed in `required` and `additionalProperties` is `false`.
+
+#### Scenario: All properties required with additionalProperties false
+- **WHEN** a tool schema has `additionalProperties: false` and every property is in the `required` array
+- **THEN** the system SHALL set `Strict: true` on the OpenAI function definition
+
+#### Scenario: Optional property exists
+- **WHEN** a tool schema has `additionalProperties: false` but at least one property is not in `required`
+- **THEN** the system SHALL set `Strict: false`
+
+#### Scenario: No additionalProperties field
+- **WHEN** a tool schema does not include `additionalProperties`
+- **THEN** the system SHALL set `Strict: false`
 
 ### Requirement: API Key Configuration
 The system SHALL support API key authentication.
@@ -63,3 +93,32 @@ The OpenAI provider's `ListModels()` method SHALL log debug messages for request
 #### Scenario: Failed model listing logged
 - **WHEN** `ListModels()` fails with an error
 - **THEN** a debug log SHALL be emitted with provider ID and error details
+
+### Requirement: OpenAI provider forwards streaming tool call Index
+The OpenAI provider SHALL forward the `Index` field from the SDK's `ToolCall` struct to the `provider.ToolCall.Index` field in streaming events.
+
+#### Scenario: Streaming chunk with Index
+- **WHEN** an OpenAI streaming delta contains a ToolCall with Index=0
+- **THEN** the emitted `provider.StreamEvent.ToolCall.Index` is a pointer to 0
+
+### Requirement: convertParams filters empty-name tools
+The `convertParams` function SHALL exclude tools with empty Name from the request's Tools array.
+
+#### Scenario: Tool with empty name
+- **WHEN** a `GenerateParams` contains a Tool with Name=""
+- **THEN** the converted request's Tools array does not include that tool
+
+#### Scenario: All tools valid
+- **WHEN** all Tools have non-empty Names
+- **THEN** the converted request's Tools array contains all of them unchanged
+
+### Requirement: convertParams filters empty-name tool calls in messages
+The `convertParams` function SHALL exclude tool calls with empty Name from message ToolCalls arrays.
+
+#### Scenario: ToolCall with empty name in message
+- **WHEN** a message contains a ToolCall with Name=""
+- **THEN** the converted message's ToolCalls array does not include that entry
+
+#### Scenario: All tool calls valid
+- **WHEN** all ToolCalls in a message have non-empty Names
+- **THEN** the converted message's ToolCalls array contains all of them unchanged

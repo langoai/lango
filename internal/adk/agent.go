@@ -188,12 +188,50 @@ func (a *Agent) Run(ctx context.Context, sessionID string, input string) iter.Se
 	return func(yield func(*session.Event, error) bool) {
 		turnCount := 0
 		warnedAtThreshold := false
-		wrapUpGranted := false
+
+		// Delegation tracking (loop-level scope for budget expansion).
+		budgetExpanded := false
+		delegationCount := 0
+		uniqueAgents := make(map[string]struct{})
+		plannerInvolved := false
+
+		// Wrap-up tracking (loop-level scope).
+		wrapUpBudget := 1   // default: 1 wrap-up turn
+		wrapUpRemaining := 0
+		inWrapUp := false
 
 		for event, err := range inner {
 			if err != nil {
 				yield(nil, err)
 				return
+			}
+
+			// Track delegations for dynamic budget expansion.
+			if isDelegationEvent(event) {
+				target := event.Actions.TransferToAgent
+				delegationCount++
+				if target != "" && target != "lango-orchestrator" {
+					uniqueAgents[target] = struct{}{}
+					if target == "planner" {
+						plannerInvolved = true
+					}
+				}
+
+				// Expand budget once when multi-agent complexity is detected.
+				// Triggers: planner involvement OR 3+ delegations OR 2+ unique agents.
+				if !budgetExpanded && (plannerInvolved || delegationCount >= 3 || len(uniqueAgents) >= 2) {
+					budgetExpanded = true
+					oldMax := maxTurns
+					maxTurns = maxTurns * 3 / 2
+					wrapUpBudget = 3
+					logger().Infow("multi-agent task detected, expanding turn budget",
+						"session", sessionID,
+						"oldMaxTurns", oldMax,
+						"newMaxTurns", maxTurns,
+						"uniqueAgents", len(uniqueAgents),
+						"delegationCount", delegationCount,
+						"plannerInvolved", plannerInvolved)
+				}
 			}
 
 			// Count events containing function calls as agent turns.
@@ -213,25 +251,28 @@ func (a *Agent) Run(ctx context.Context, sessionID string, input string) iter.Se
 				}
 
 				if turnCount > maxTurns {
-					if !wrapUpGranted {
-						// Grant one wrap-up turn so the agent can finalize gracefully.
-						wrapUpGranted = true
-						logger().Warnw("agent turn limit reached, granting wrap-up turn",
+					if !inWrapUp {
+						inWrapUp = true
+						wrapUpRemaining = wrapUpBudget
+						logger().Warnw("agent turn limit reached, granting wrap-up",
+							"session", sessionID,
+							"turns", turnCount,
+							"maxTurns", maxTurns,
+							"wrapUpBudget", wrapUpBudget)
+					}
+					wrapUpRemaining--
+					if wrapUpRemaining < 0 {
+						logger().Warnw("agent max turns exceeded",
 							"session", sessionID,
 							"turns", turnCount,
 							"maxTurns", maxTurns)
-						if !yield(event, nil) {
-							return
-						}
-						continue
+						yield(nil, fmt.Errorf("agent exceeded maximum turn limit (%d)", maxTurns))
+						return
 					}
-					// Hard stop after wrap-up turn was consumed.
-					logger().Warnw("agent max turns exceeded",
-						"session", sessionID,
-						"turns", turnCount,
-						"maxTurns", maxTurns)
-					yield(nil, fmt.Errorf("agent exceeded maximum turn limit (%d)", maxTurns))
-					return
+					if !yield(event, nil) {
+						return
+					}
+					continue
 				}
 			}
 			if !yield(event, nil) {

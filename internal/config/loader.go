@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/langoai/lango/internal/provider"
 	"github.com/langoai/lango/internal/types"
 	"github.com/spf13/viper"
 )
@@ -381,6 +382,31 @@ func Validate(cfg *Config) error {
 	if cfg.Agent.Provider != "" && len(cfg.Providers) > 0 {
 		if _, ok := cfg.Providers[cfg.Agent.Provider]; !ok {
 			errs = append(errs, fmt.Sprintf("agent.provider %q not found in providers map (available: %v)", cfg.Agent.Provider, providerKeys(cfg.Providers)))
+		}
+	}
+
+	// Validate agent.fallbackProvider references an existing key in providers map
+	if cfg.Agent.FallbackProvider != "" && len(cfg.Providers) > 0 {
+		if _, ok := cfg.Providers[cfg.Agent.FallbackProvider]; !ok {
+			errs = append(errs, fmt.Sprintf("agent.fallbackProvider %q not found in providers map (available: %v)", cfg.Agent.FallbackProvider, providerKeys(cfg.Providers)))
+		}
+	}
+
+	// Validate provider-model compatibility (primary)
+	if cfg.Agent.Provider != "" && cfg.Agent.Model != "" {
+		if pCfg, ok := cfg.Providers[cfg.Agent.Provider]; ok {
+			if err := provider.ValidateModelProvider(string(pCfg.Type), cfg.Agent.Model); err != nil {
+				errs = append(errs, fmt.Sprintf("agent.model %q incompatible with provider %q (type %s): %v", cfg.Agent.Model, cfg.Agent.Provider, pCfg.Type, err))
+			}
+		}
+	}
+
+	// Validate provider-model compatibility (fallback)
+	if cfg.Agent.FallbackProvider != "" && cfg.Agent.FallbackModel != "" {
+		if pCfg, ok := cfg.Providers[cfg.Agent.FallbackProvider]; ok {
+			if err := provider.ValidateModelProvider(string(pCfg.Type), cfg.Agent.FallbackModel); err != nil {
+				errs = append(errs, fmt.Sprintf("agent.fallbackModel %q incompatible with fallbackProvider %q (type %s): %v", cfg.Agent.FallbackModel, cfg.Agent.FallbackProvider, pCfg.Type, err))
+			}
 		}
 	}
 
