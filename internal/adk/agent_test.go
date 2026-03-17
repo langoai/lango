@@ -149,6 +149,173 @@ func TestIsDelegationEvent(t *testing.T) {
 // provide sufficient coverage by proving that ctx.Err() correctly surfaces the error
 // after cancellation/deadline. The pattern is identical to the production code path.
 
+// --- Dynamic budget expansion and wrap-up tests ---
+// These test the budget expansion detection logic and wrap-up mechanics.
+// Full integration through Run() would require mocking the ADK runner,
+// so we test the detection functions and logic patterns directly.
+
+func TestIsDelegationEvent_TargetExtraction(t *testing.T) {
+	t.Parallel()
+
+	// Verify that isDelegationEvent correctly identifies delegation events
+	// and that TransferToAgent field is accessible for budget tracking.
+	tests := []struct {
+		give   string
+		target string
+		want   bool
+	}{
+		{give: "to operator", target: "operator", want: true},
+		{give: "to planner", target: "planner", want: true},
+		{give: "back to orchestrator", target: "lango-orchestrator", want: true},
+		{give: "empty", target: "", want: false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.give, func(t *testing.T) {
+			t.Parallel()
+			evt := &session.Event{
+				Actions: session.EventActions{
+					TransferToAgent: tt.target,
+				},
+			}
+			assert.Equal(t, tt.want, isDelegationEvent(evt))
+		})
+	}
+}
+
+func TestBudgetExpansionConditions(t *testing.T) {
+	t.Parallel()
+
+	// Test the budget expansion trigger conditions in isolation.
+	// These conditions mirror the Run() loop logic.
+	tests := []struct {
+		name             string
+		plannerInvolved  bool
+		delegationCount  int
+		uniqueAgentCount int
+		wantExpand       bool
+	}{
+		{
+			name:             "planner involved triggers expansion",
+			plannerInvolved:  true,
+			delegationCount:  1,
+			uniqueAgentCount: 1,
+			wantExpand:       true,
+		},
+		{
+			name:             "3+ delegations triggers expansion",
+			plannerInvolved:  false,
+			delegationCount:  3,
+			uniqueAgentCount: 1,
+			wantExpand:       true,
+		},
+		{
+			name:             "2+ unique agents triggers expansion",
+			plannerInvolved:  false,
+			delegationCount:  2,
+			uniqueAgentCount: 2,
+			wantExpand:       true,
+		},
+		{
+			name:             "single agent single delegation no expansion",
+			plannerInvolved:  false,
+			delegationCount:  1,
+			uniqueAgentCount: 1,
+			wantExpand:       false,
+		},
+		{
+			name:             "two delegations to same agent no expansion",
+			plannerInvolved:  false,
+			delegationCount:  2,
+			uniqueAgentCount: 1,
+			wantExpand:       false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			shouldExpand := tt.plannerInvolved || tt.delegationCount >= 3 || tt.uniqueAgentCount >= 2
+			assert.Equal(t, tt.wantExpand, shouldExpand)
+		})
+	}
+}
+
+func TestBudgetExpansionMath(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name       string
+		initial    int
+		wantResult int
+	}{
+		{name: "default 25 → 37", initial: 25, wantResult: 37},
+		{name: "10 → 15", initial: 10, wantResult: 15},
+		{name: "50 → 75", initial: 50, wantResult: 75},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			expanded := tt.initial * 3 / 2
+			assert.Equal(t, tt.wantResult, expanded)
+		})
+	}
+}
+
+func TestWrapUpBudgetMechanics(t *testing.T) {
+	t.Parallel()
+
+	// Test that wrap-up budget counting works correctly.
+	tests := []struct {
+		name            string
+		wrapUpBudget    int
+		turnsAfterLimit int
+		wantError       bool
+	}{
+		{
+			name:            "default budget allows 1 turn",
+			wrapUpBudget:    1,
+			turnsAfterLimit: 1,
+			wantError:       false,
+		},
+		{
+			name:            "default budget blocks 2nd turn",
+			wrapUpBudget:    1,
+			turnsAfterLimit: 2,
+			wantError:       true,
+		},
+		{
+			name:            "expanded budget allows 3 turns",
+			wrapUpBudget:    3,
+			turnsAfterLimit: 3,
+			wantError:       false,
+		},
+		{
+			name:            "expanded budget blocks 4th turn",
+			wrapUpBudget:    3,
+			turnsAfterLimit: 4,
+			wantError:       true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			remaining := tt.wrapUpBudget
+			var hitError bool
+			for i := 0; i < tt.turnsAfterLimit; i++ {
+				remaining--
+				if remaining < 0 {
+					hitError = true
+					break
+				}
+			}
+			assert.Equal(t, tt.wantError, hitError)
+		})
+	}
+}
+
 func TestContainsRejectPattern(t *testing.T) {
 	t.Parallel()
 

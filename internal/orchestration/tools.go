@@ -28,12 +28,28 @@ type AgentSpec struct {
 	Returns string
 	// CannotDo lists things this agent must not attempt (negative constraints).
 	CannotDo []string
+	// ExampleRequests are concrete routing examples for the orchestrator.
+	ExampleRequests []string
+	// Disambiguation explains when NOT to pick this agent (overlap resolution).
+	Disambiguation string
 	// AlwaysInclude creates this agent even with zero tools (e.g. Planner).
 	AlwaysInclude bool
 	// SessionIsolation indicates this agent should use a child session
 	// instead of the parent session.
 	SessionIsolation bool
 }
+
+// outputHandlingSection is appended to each non-planner sub-agent's instruction
+// to teach them how to handle compressed tool output.
+const outputHandlingSection = `
+
+## Output Handling
+Tool results may include a _meta field with compression info. After each tool call:
+- If _meta.compressed is false: output is complete, use directly.
+- If _meta.compressed is true and _meta.storedRef exists: call tool_output_get with that ref.
+  Use mode "grep" with a pattern, or mode "range" with offset/limit for large results.
+- If _meta.storedRef is null: full output unavailable, work with compressed content.
+- Never expose _meta fields to the user.`
 
 // agentSpecs is the ordered registry of all sub-agent specifications.
 // BuildAgentTree iterates this slice to create agents data-driven.
@@ -55,7 +71,7 @@ Return the raw result of the operation: command stdout/stderr, file contents, or
 - Report errors accurately without retrying unless explicitly asked.
 - Never perform web browsing, cryptographic operations, or payment transactions.
 - Never search knowledge bases or manage memory.
-- If a task does not match your capabilities, do NOT attempt to answer it.
+- If a task does not match your capabilities, do NOT attempt to answer it.` + outputHandlingSection + `
 
 ## Escalation Protocol
 If a task does not match your capabilities:
@@ -63,11 +79,13 @@ If a task does not match your capabilities:
 2. Do NOT tell the user to ask another agent.
 3. IMMEDIATELY call transfer_to_agent with agent_name "lango-orchestrator".
 4. Do NOT output any text before the transfer_to_agent call.`,
-		Prefixes: []string{"exec", "fs_", "skill_"},
-		Keywords: []string{"run", "execute", "command", "shell", "file", "read", "write", "edit", "delete", "skill"},
-		Accepts:  "A specific action to perform (command, file operation, or skill invocation)",
-		Returns:  "Command output, file contents, or skill execution results",
-		CannotDo: []string{"web browsing", "cryptographic operations", "payment transactions", "knowledge search", "memory management"},
+		Prefixes:        []string{"exec", "fs_", "skill_"},
+		Keywords:        []string{"run command", "execute command", "command", "shell", "terminal", "file read", "file write", "edit", "delete", "execute skill"},
+		Accepts:         "A specific action to perform (command, file operation, or skill invocation)",
+		Returns:         "Command output, file contents, or skill execution results",
+		CannotDo:        []string{"web browsing", "cryptographic operations", "payment transactions", "knowledge search", "memory management"},
+		ExampleRequests: []string{"Run ls -la in the current directory", "Read the contents of config.yaml", "Execute the deploy skill"},
+		Disambiguation:  "Not for knowledge search (→ librarian), not for 'save knowledge' (→ librarian), not for web browsing (→ navigator)",
 	},
 	{
 		Name:        "navigator",
@@ -85,7 +103,7 @@ Return page content, screenshot results, or interaction outcomes. Include the cu
 - Only perform web browsing operations. Do not execute shell commands or file operations.
 - Never perform cryptographic operations or payment transactions.
 - Never search knowledge bases or manage memory.
-- If a task does not match your capabilities, do NOT attempt to answer it.
+- If a task does not match your capabilities, do NOT attempt to answer it.` + outputHandlingSection + `
 
 ## Escalation Protocol
 If a task does not match your capabilities:
@@ -93,11 +111,13 @@ If a task does not match your capabilities:
 2. Do NOT tell the user to ask another agent.
 3. IMMEDIATELY call transfer_to_agent with agent_name "lango-orchestrator".
 4. Do NOT output any text before the transfer_to_agent call.`,
-		Prefixes: []string{"browser_"},
-		Keywords: []string{"browse", "web", "url", "page", "navigate", "click", "screenshot", "website"},
-		Accepts:  "A URL to visit or web interaction to perform",
-		Returns:  "Page content, screenshots, or interaction results with current URL",
-		CannotDo: []string{"shell commands", "file operations", "cryptographic operations", "payment transactions", "knowledge search"},
+		Prefixes:        []string{"browser_"},
+		Keywords:        []string{"browse", "open url", "visit website", "web page", "navigate to", "click", "screenshot", "website"},
+		Accepts:         "A URL to visit or web interaction to perform",
+		Returns:         "Page content, screenshots, or interaction results with current URL",
+		CannotDo:        []string{"shell commands", "file operations", "cryptographic operations", "payment transactions", "knowledge search"},
+		ExampleRequests: []string{"Open https://example.com and take a screenshot", "Click the login button on the current page", "Extract all links from this web page"},
+		Disambiguation:  "Not for knowledge search (→ librarian), not for 'search the web' without a URL (→ librarian)",
 	},
 	{
 		Name:        "vault",
@@ -116,7 +136,7 @@ Return operation results: encrypted/decrypted data, confirmation of secret stora
 - Never execute shell commands, browse the web, or manage files.
 - Never search knowledge bases or manage memory.
 - Handle sensitive data carefully — never log secrets or private keys in plain text.
-- If a task does not match your capabilities, do NOT attempt to answer it.
+- If a task does not match your capabilities, do NOT attempt to answer it.` + outputHandlingSection + `
 
 ## Escalation Protocol
 If a task does not match your capabilities:
@@ -124,11 +144,13 @@ If a task does not match your capabilities:
 2. Do NOT tell the user to ask another agent.
 3. IMMEDIATELY call transfer_to_agent with agent_name "lango-orchestrator".
 4. Do NOT output any text before the transfer_to_agent call.`,
-		Prefixes: []string{"crypto_", "secrets_", "payment_", "p2p_", "smart_account_", "session_key_", "session_execute", "policy_check", "module_", "spending_", "paymaster_", "economy_", "escrow_", "sentinel_", "contract_"},
-		Keywords: []string{"encrypt", "decrypt", "sign", "hash", "secret", "password", "payment", "wallet", "USDC", "peer", "p2p", "connect", "handshake", "firewall", "zkp", "smart account", "session key", "paymaster", "ERC-7579", "ERC-4337", "module", "policy", "deploy account", "economy", "budget", "escrow", "sentinel", "contract", "negotiate", "pricing", "risk"},
-		Accepts:  "A security operation (crypto, secret, or payment) with parameters",
-		Returns:  "Encrypted/decrypted data, secret confirmation, or payment transaction status",
-		CannotDo: []string{"shell commands", "file operations", "web browsing", "knowledge search", "memory management"},
+		Prefixes:        []string{"crypto_", "secrets_", "payment_", "p2p_", "smart_account_", "session_key_", "session_execute", "policy_check", "module_", "spending_", "paymaster_", "economy_", "escrow_", "sentinel_", "contract_"},
+		Keywords:        []string{"encrypt", "decrypt", "crypto sign", "hash data", "store secret", "password", "payment", "wallet", "USDC", "peer", "p2p connect", "handshake", "firewall", "zkp", "smart account", "session key", "paymaster", "ERC-7579", "ERC-4337", "module", "policy", "deploy account", "economy", "budget", "escrow", "sentinel", "contract", "negotiate", "pricing", "risk"},
+		Accepts:         "A security operation (crypto, secret, or payment) with parameters",
+		Returns:         "Encrypted/decrypted data, secret confirmation, or payment transaction status",
+		CannotDo:        []string{"shell commands", "file operations", "web browsing", "knowledge search", "memory management"},
+		ExampleRequests: []string{"Encrypt this message with AES", "Store my API key as a secret", "Send 10 USDC to this address", "Deploy a new smart account"},
+		Disambiguation:  "Not for 'hash' in file context (→ operator), not for 'connect' to a URL (→ navigator)",
 	},
 	{
 		Name:        "librarian",
@@ -151,7 +173,7 @@ Frame questions conversationally — not as a survey or checklist.
 - Only perform knowledge retrieval, persistence, learning data management, skill management, and inquiry operations.
 - Never execute shell commands, browse the web, or handle cryptographic operations.
 - Never manage conversational memory (observations, reflections).
-- If a task does not match your capabilities, do NOT attempt to answer it.
+- If a task does not match your capabilities, do NOT attempt to answer it.` + outputHandlingSection + `
 
 ## Escalation Protocol
 If a task does not match your capabilities:
@@ -159,11 +181,13 @@ If a task does not match your capabilities:
 2. Do NOT tell the user to ask another agent.
 3. IMMEDIATELY call transfer_to_agent with agent_name "lango-orchestrator".
 4. Do NOT output any text before the transfer_to_agent call.`,
-		Prefixes: []string{"search_", "rag_", "graph_", "save_knowledge", "save_learning", "learning_", "create_skill", "list_skills", "import_skill", "librarian_"},
-		Keywords: []string{"search", "find", "lookup", "knowledge", "learning", "retrieve", "graph", "RAG", "inquiry", "question", "gap"},
-		Accepts:  "A search query, knowledge to persist, learning data to review/clean, skill to create/list, or inquiry operation",
-		Returns:  "Search results with scores, knowledge save confirmation, learning stats/cleanup results, skill listings, or inquiry details",
-		CannotDo: []string{"shell commands", "web browsing", "cryptographic operations", "memory management (observations/reflections)"},
+		Prefixes:        []string{"search_", "rag_", "graph_", "save_knowledge", "save_learning", "learning_", "create_skill", "list_skills", "import_skill", "librarian_"},
+		Keywords:        []string{"search knowledge", "find information", "lookup", "knowledge", "learning", "retrieve", "graph", "RAG", "inquiry", "question", "gap", "save knowledge"},
+		Accepts:         "A search query, knowledge to persist, learning data to review/clean, skill to create/list, or inquiry operation",
+		Returns:         "Search results with scores, knowledge save confirmation, learning stats/cleanup results, skill listings, or inquiry details",
+		CannotDo:        []string{"shell commands", "web browsing", "cryptographic operations", "memory management (observations/reflections)"},
+		ExampleRequests: []string{"Search for information about Go concurrency patterns", "Save this knowledge: API rate limit is 100/min", "List all available skills", "Find what we know about the deployment process"},
+		Disambiguation:  "Not for 'find file' (→ operator), not for 'search URL' (→ navigator), not for 'skill execute/run' (→ operator)",
 	},
 	{
 		Name:        "automator",
@@ -181,7 +205,7 @@ Return confirmation of created schedules, task IDs for background jobs, or workf
 - Only manage cron jobs, background tasks, and workflows.
 - Never execute shell commands directly, browse the web, or handle cryptographic operations.
 - Never search knowledge bases or manage memory.
-- If a task does not match your capabilities, do NOT attempt to answer it.
+- If a task does not match your capabilities, do NOT attempt to answer it.` + outputHandlingSection + `
 
 ## Escalation Protocol
 If a task does not match your capabilities:
@@ -189,12 +213,13 @@ If a task does not match your capabilities:
 2. Do NOT tell the user to ask another agent.
 3. IMMEDIATELY call transfer_to_agent with agent_name "lango-orchestrator".
 4. Do NOT output any text before the transfer_to_agent call.`,
-		Prefixes: []string{"cron_", "bg_", "workflow_"},
-		Keywords: []string{"schedule", "cron", "every", "recurring", "background",
-			"async", "later", "workflow", "pipeline", "automate", "timer"},
-		Accepts:  "A scheduling request, background task, or workflow to execute/monitor",
-		Returns:  "Schedule confirmation, task IDs, or workflow execution status",
-		CannotDo: []string{"shell commands", "file operations", "web browsing", "cryptographic operations", "knowledge search"},
+		Prefixes:        []string{"cron_", "bg_", "workflow_"},
+		Keywords:        []string{"schedule task", "cron job", "recurring task", "background task", "async", "later", "workflow", "pipeline", "automate", "timer"},
+		Accepts:         "A scheduling request, background task, or workflow to execute/monitor",
+		Returns:         "Schedule confirmation, task IDs, or workflow execution status",
+		CannotDo:        []string{"shell commands", "file operations", "web browsing", "cryptographic operations", "knowledge search"},
+		ExampleRequests: []string{"Schedule a daily backup at 3am", "Run this task in the background", "Execute the data-pipeline workflow"},
+		Disambiguation:  "Not for 'run command now' (→ operator), not for one-time immediate execution (→ operator)",
 	},
 	{
 		Name:        "planner",
@@ -206,7 +231,13 @@ You decompose complex tasks into clear, actionable steps and design execution pl
 A complex task or goal that needs to be broken down into steps.
 
 ## Output Format
-A structured plan with numbered steps, dependencies between steps, and estimated complexity. Identify which sub-agent should handle each step.
+A structured plan using this format:
+[PLAN: <summary>]
+Step 1: <action> → agent: <name>
+Step 2: <action> → agent: <name> | depends_on: Step 1
+...
+
+Include dependencies between steps and estimated complexity. Identify which sub-agent should handle each step.
 
 ## Constraints
 - You have NO tools. Use reasoning and planning only.
@@ -221,11 +252,13 @@ If a task does not match your capabilities:
 2. Do NOT tell the user to ask another agent.
 3. IMMEDIATELY call transfer_to_agent with agent_name "lango-orchestrator".
 4. Do NOT output any text before the transfer_to_agent call.`,
-		Keywords:      []string{"plan", "decompose", "steps", "strategy", "how to", "break down"},
-		Accepts:       "A complex task or goal to decompose into actionable steps",
-		Returns:       "A structured plan with numbered steps, dependencies, and agent assignments",
-		CannotDo:      []string{"executing commands", "web browsing", "file operations", "any tool-based operations"},
-		AlwaysInclude: true,
+		Keywords:        []string{"make a plan", "decompose task", "list steps", "strategy", "how to", "break down"},
+		Accepts:         "A complex task or goal to decompose into actionable steps",
+		Returns:         "A structured plan with numbered steps, dependencies, and agent assignments",
+		CannotDo:        []string{"executing commands", "web browsing", "file operations", "any tool-based operations"},
+		ExampleRequests: []string{"Plan how to migrate the database to a new schema", "Break down the steps to deploy this service", "What steps are needed to set up monitoring?"},
+		Disambiguation:  "Not for simple single-step tasks (route directly), not for executing any actions (→ other agents)",
+		AlwaysInclude:   true,
 	},
 	{
 		Name:        "chronicler",
@@ -243,7 +276,7 @@ Return confirmation of stored observations, generated reflections, or recalled m
 - Only manage conversational memory (observations, reflections, recall).
 - Never execute commands, browse the web, or handle knowledge base search.
 - Never perform cryptographic operations or payments.
-- If a task does not match your capabilities, do NOT attempt to answer it.
+- If a task does not match your capabilities, do NOT attempt to answer it.` + outputHandlingSection + `
 
 ## Escalation Protocol
 If a task does not match your capabilities:
@@ -251,11 +284,13 @@ If a task does not match your capabilities:
 2. Do NOT tell the user to ask another agent.
 3. IMMEDIATELY call transfer_to_agent with agent_name "lango-orchestrator".
 4. Do NOT output any text before the transfer_to_agent call.`,
-		Prefixes: []string{"memory_", "observe_", "reflect_"},
-		Keywords: []string{"remember", "recall", "observation", "reflection", "memory", "history"},
-		Accepts:  "An observation to record, reflection topic, or memory query",
-		Returns:  "Stored observation confirmation, generated reflections, or recalled memories",
-		CannotDo: []string{"shell commands", "web browsing", "file operations", "knowledge search", "cryptographic operations"},
+		Prefixes:        []string{"memory_", "observe_", "reflect_"},
+		Keywords:        []string{"remember this", "recall conversation", "observation", "reflection", "conversation memory", "history"},
+		Accepts:         "An observation to record, reflection topic, or memory query",
+		Returns:         "Stored observation confirmation, generated reflections, or recalled memories",
+		CannotDo:        []string{"shell commands", "web browsing", "file operations", "knowledge search", "cryptographic operations"},
+		ExampleRequests: []string{"Remember that the user prefers dark mode", "Recall what we discussed about the API", "Create a reflection on today's debugging session"},
+		Disambiguation:  "Not for factual knowledge (→ librarian), not for 'save knowledge' (→ librarian), only for conversational/session memory",
 	},
 }
 
@@ -279,11 +314,20 @@ type RoleToolSet struct {
 // PartitionTools splits tools into role-specific sets based on tool name prefixes.
 // Matching order: Librarian → Chronicler → Automator → Navigator → Vault → Operator → Unmatched.
 // Unlike the previous implementation, unmatched tools are NOT assigned to any agent.
+// Tools with a "tool_output_" prefix are distributed to all non-empty, tool-bearing agent
+// sets (universal tools). Planner is excluded since it has no tools.
 func PartitionTools(tools []*agent.Tool) RoleToolSet {
 	var rs RoleToolSet
+	var universalTools []*agent.Tool
+
 	for _, t := range tools {
 		// Dispatcher tools stay with the orchestrator only.
 		if strings.HasPrefix(t.Name, "builtin_") {
+			continue
+		}
+		// Collect universal tools (output manager) for cross-agent distribution.
+		if strings.HasPrefix(t.Name, "tool_output_") {
+			universalTools = append(universalTools, t)
 			continue
 		}
 		switch {
@@ -303,6 +347,30 @@ func PartitionTools(tools []*agent.Tool) RoleToolSet {
 			rs.Unmatched = append(rs.Unmatched, t)
 		}
 	}
+
+	// Distribute universal tools to all non-empty, tool-bearing agent sets.
+	// Planner is intentionally excluded (LLM-only, no tools).
+	for _, ut := range universalTools {
+		if len(rs.Operator) > 0 {
+			rs.Operator = append(rs.Operator, ut)
+		}
+		if len(rs.Navigator) > 0 {
+			rs.Navigator = append(rs.Navigator, ut)
+		}
+		if len(rs.Vault) > 0 {
+			rs.Vault = append(rs.Vault, ut)
+		}
+		if len(rs.Librarian) > 0 {
+			rs.Librarian = append(rs.Librarian, ut)
+		}
+		if len(rs.Automator) > 0 {
+			rs.Automator = append(rs.Automator, ut)
+		}
+		if len(rs.Chronicler) > 0 {
+			rs.Chronicler = append(rs.Chronicler, ut)
+		}
+	}
+
 	return rs
 }
 
@@ -422,11 +490,19 @@ type DynamicToolSet map[string][]*agent.Tool
 // PartitionToolsDynamic splits tools into agent-specific sets based on the
 // given specs. Each tool is assigned to the first spec whose prefixes match.
 // Tools with a "builtin_" prefix are skipped (orchestrator-only).
+// Tools with a "tool_output_" prefix are distributed to all non-empty, tool-bearing
+// agent sets (excluding AlwaysInclude-only agents with no other tools).
 // Unmatched tools are stored under the empty-string key.
 func PartitionToolsDynamic(tools []*agent.Tool, specs []AgentSpec) DynamicToolSet {
 	ds := make(DynamicToolSet, len(specs)+1)
+	var universalTools []*agent.Tool
+
 	for _, t := range tools {
 		if strings.HasPrefix(t.Name, "builtin_") {
+			continue
+		}
+		if strings.HasPrefix(t.Name, "tool_output_") {
+			universalTools = append(universalTools, t)
 			continue
 		}
 		matched := false
@@ -441,6 +517,16 @@ func PartitionToolsDynamic(tools []*agent.Tool, specs []AgentSpec) DynamicToolSe
 			ds[""] = append(ds[""], t)
 		}
 	}
+
+	// Distribute universal tools to all non-empty, tool-bearing agent sets.
+	for _, ut := range universalTools {
+		for _, spec := range specs {
+			if len(ds[spec.Name]) > 0 {
+				ds[spec.Name] = append(ds[spec.Name], ut)
+			}
+		}
+	}
+
 	return ds
 }
 
@@ -458,14 +544,16 @@ func BuiltinSpecs() []AgentSpec {
 
 // routingEntry holds pre-formatted routing metadata for a single sub-agent.
 type routingEntry struct {
-	Name         string
-	Description  string
-	Keywords     []string
-	Capabilities []string
-	ToolNames    []string
-	Accepts      string
-	Returns      string
-	CannotDo     []string
+	Name            string
+	Description     string
+	Keywords        []string
+	Capabilities    []string
+	ToolNames       []string
+	Accepts         string
+	Returns         string
+	CannotDo        []string
+	ExampleRequests []string
+	Disambiguation  string
 }
 
 // buildRoutingEntry creates a routing entry from an AgentSpec, its resolved capabilities,
@@ -499,14 +587,16 @@ func buildRoutingEntry(spec AgentSpec, caps string, tools []*agent.Tool) routing
 	}
 
 	return routingEntry{
-		Name:         spec.Name,
-		Description:  desc,
-		Keywords:     spec.Keywords,
-		Capabilities: mergedCaps,
-		ToolNames:    toolNames,
-		Accepts:      spec.Accepts,
-		Returns:      spec.Returns,
-		CannotDo:     spec.CannotDo,
+		Name:            spec.Name,
+		Description:     desc,
+		Keywords:        spec.Keywords,
+		Capabilities:    mergedCaps,
+		ToolNames:       toolNames,
+		Accepts:         spec.Accepts,
+		Returns:         spec.Returns,
+		CannotDo:        spec.CannotDo,
+		ExampleRequests: spec.ExampleRequests,
+		Disambiguation:  spec.Disambiguation,
 	}
 }
 
@@ -543,14 +633,17 @@ func buildOrchestratorInstruction(basePrompt string, entries []routingEntry, max
 		if len(e.Capabilities) > 0 {
 			fmt.Fprintf(&b, "- **Capabilities**: [%s]\n", strings.Join(e.Capabilities, ", "))
 		}
-		if len(e.ToolNames) > 0 {
-			display := e.ToolNames
-			if len(display) > 10 {
-				display = display[:10]
-				fmt.Fprintf(&b, "- **Tools**: %s, ... +%d more\n", strings.Join(display, ", "), len(e.ToolNames)-10)
-			} else {
-				fmt.Fprintf(&b, "- **Tools**: %s\n", strings.Join(display, ", "))
+		if len(e.ExampleRequests) > 0 {
+			b.WriteString("- **Example Requests**:\n")
+			for _, ex := range e.ExampleRequests {
+				fmt.Fprintf(&b, "  - %q\n", ex)
 			}
+		}
+		if e.Disambiguation != "" {
+			fmt.Fprintf(&b, "- **When NOT this agent**: %s\n", e.Disambiguation)
+		}
+		if len(e.ToolNames) > 0 {
+			fmt.Fprintf(&b, "- **Tool count**: %d\n", len(e.ToolNames))
 		}
 		fmt.Fprintf(&b, "- **Accepts**: %s\n", e.Accepts)
 		fmt.Fprintf(&b, "- **Returns**: %s\n", e.Returns)
@@ -565,7 +658,7 @@ func buildOrchestratorInstruction(basePrompt string, entries []routingEntry, max
 		for i, t := range unmatched {
 			names[i] = t.Name
 		}
-		fmt.Fprintf(&b, "The following tools are available but not assigned to a specific agent: %s. Handle requests for these tools directly or choose the closest matching agent.\n", strings.Join(names, ", "))
+		fmt.Fprintf(&b, "These tools are not assigned to a specific agent: %s. Route to the agent whose role best matches the request context. If no agent matches, inform the user that the capability is not available.\n", strings.Join(names, ", "))
 	}
 
 	b.WriteString(`
@@ -581,21 +674,36 @@ When a prompt starts with "[Automated Task":
 ## Decision Protocol
 Before delegating, follow these steps:
 0. ASSESS: Is this a simple conversational request (greeting, general knowledge, opinion, weather, math, small talk)? If yes, respond directly — no delegation needed. You ARE capable of answering general knowledge questions.
+
+Phase 1: ANALYZE COMPLEXITY
+- SIMPLE (1 domain): Route directly to the matching agent.
+- COMPOUND (2 domains): Inline a 2-3 step plan, execute sequentially.
+- COMPLEX (3+ domains): Delegate to planner first, then execute the returned steps.
+
 1. CLASSIFY: Identify the domain of the request.
 2. MATCH: Use a two-stage matching process:
    a. **Keyword Match**: Compare request terms against each agent's Keywords list.
    b. **Capability Match**: If no strong keyword match, compare the request intent against each agent's Capabilities list using semantic similarity.
-   c. Pick the agent with the strongest combined signal across both stages.
-3. SELECT: Choose the best-matching agent.
+   c. **Example Match**: Check Example Requests for similar patterns.
+   d. Pick the agent with the strongest combined signal across all stages.
+3. SELECT: Choose the best-matching agent. Check "When NOT this agent" to avoid misrouting.
 4. VERIFY: Check the selected agent's "Cannot" list to ensure no conflict.
 5. DELEGATE: Transfer to the selected agent.
 
+## Disambiguation Rules
+- "search" + no URL → librarian | + URL → navigator
+- "find" + file context → operator | + topic → librarian
+- "save" + knowledge → librarian | + file → operator
+- "run" + "every/daily" → automator | + immediate → operator
+- "skill" + "create/list" → librarian | + "execute/run" → operator
+- "memory" + conversation → chronicler | + factual → librarian
+
 ## Re-Routing Protocol
 When a sub-agent transfers control back to you:
-- It means the sub-agent determined it cannot handle the request.
-- NEVER re-send the same request to the same agent.
-- Re-evaluate using the Decision Protocol above (starting from Step 0).
-- If no agent matches, answer the question yourself as a general-purpose assistant.
+- Review conversation history to identify which agents already failed.
+- NEVER re-delegate to an agent that already returned to you for the same request.
+- Re-evaluate from Step 0, excluding failed agents.
+- If two consecutive agents fail, answer directly as a general-purpose assistant.
 
 ## Round Budget Management
 You have a maximum of %d delegation rounds per user turn. Use them efficiently:
@@ -608,14 +716,20 @@ After each delegation, evaluate:
 2. Is the accumulated result sufficient to answer the user?
 3. If yes, respond directly. If no, delegate the next step.
 
-If running low on rounds, consolidate partial results and provide the best possible answer.
+If running low on rounds:
+- Prioritize completing the current step before responding.
+- If truly unable to finish, clearly tell the user what was completed and what remains, so they can continue in the next turn.
+- Do NOT silently omit steps or present incomplete results as if they were complete.
 
 ## Delegation Rules
 1. For simple conversational messages (greetings, opinions, general knowledge, weather, math): respond directly WITHOUT delegation.
 2. For any action that requires tools: delegate to the sub-agent from the routing table whose keywords and role best match.
 
-## Diagnostics
-If tools appear to be missing or a feature is not working, use builtin_list or builtin_health to check tool registration status before suggesting configuration changes.
+## Output Awareness
+Sub-agents may receive compressed tool output with _meta.compressed: true.
+They have tool_output_get to retrieve full content. If a sub-agent reports
+incomplete data, re-delegate with instructions to check _meta.storedRef.
+Never expose _meta or storedRef to the user.
 
 ## CRITICAL
 - You MUST use the EXACT agent name from the routing table (e.g. "operator", NOT "exec", "browser", or any abbreviation).

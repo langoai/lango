@@ -673,17 +673,19 @@ func TestCapabilityDescription(t *testing.T) {
 func TestBuildOrchestratorInstruction_ContainsRoutingTable(t *testing.T) {
 	entries := []routingEntry{
 		{
-			Name:        "operator",
-			Description: "System ops",
-			Keywords:    []string{"run", "execute"},
-			Accepts:     "A command",
-			Returns:     "Output",
-			CannotDo:    []string{"web browsing"},
+			Name:            "operator",
+			Description:     "System ops",
+			Keywords:        []string{"run command", "execute command"},
+			Accepts:         "A command",
+			Returns:         "Output",
+			CannotDo:        []string{"web browsing"},
+			ExampleRequests: []string{"Run ls -la in the current directory"},
+			Disambiguation:  "Not for knowledge search",
 		},
 		{
 			Name:        "planner",
 			Description: "Planning",
-			Keywords:    []string{"plan"},
+			Keywords:    []string{"make a plan"},
 			Accepts:     "A task",
 			Returns:     "A plan",
 		},
@@ -694,10 +696,14 @@ func TestBuildOrchestratorInstruction_ContainsRoutingTable(t *testing.T) {
 	assert.Contains(t, got, "base prompt")
 	assert.Contains(t, got, "### operator")
 	assert.Contains(t, got, "### planner")
-	assert.Contains(t, got, "run, execute")
+	assert.Contains(t, got, "run command, execute command")
 	assert.Contains(t, got, "web browsing")
 	assert.Contains(t, got, "Decision Protocol")
 	assert.Contains(t, got, "maximum of 5 delegation rounds")
+	assert.Contains(t, got, "Example Requests")
+	assert.Contains(t, got, "Run ls -la in the current directory")
+	assert.Contains(t, got, "When NOT this agent")
+	assert.Contains(t, got, "Not for knowledge search")
 }
 
 func TestBuildOrchestratorInstruction_UnmatchedTools(t *testing.T) {
@@ -711,6 +717,9 @@ func TestBuildOrchestratorInstruction_UnmatchedTools(t *testing.T) {
 	assert.Contains(t, got, "Unmatched Tools")
 	assert.Contains(t, got, "custom_action")
 	assert.Contains(t, got, "special_op")
+	// Unmatched tools should NOT suggest "handle directly".
+	assert.NotContains(t, got, "Handle requests for these tools directly")
+	assert.Contains(t, got, "Route to the agent whose role best matches")
 }
 
 func TestBuildOrchestratorInstruction_NoUnmatchedTools(t *testing.T) {
@@ -723,9 +732,9 @@ func TestBuildOrchestratorInstruction_DelegateOnly(t *testing.T) {
 	got := buildOrchestratorInstruction("base", nil, 5, nil)
 
 	assert.Contains(t, got, "You do NOT have tools")
-	// Diagnostics section may reference builtin_list/builtin_health for self-diagnosis.
-	assert.Contains(t, got, "Diagnostics")
-	assert.Contains(t, got, "builtin_health")
+	// Output Awareness section replaces the old Diagnostics section.
+	assert.Contains(t, got, "Output Awareness")
+	assert.NotContains(t, got, "builtin_health")
 }
 
 func TestBuildOrchestratorInstruction_HasAssessStep(t *testing.T) {
@@ -759,8 +768,9 @@ func TestBuildOrchestratorInstruction_HasReRoutingProtocol(t *testing.T) {
 
 	assert.Contains(t, got, "Re-Routing Protocol")
 	assert.Contains(t, got, "sub-agent transfers control back")
-	assert.Contains(t, got, "NEVER re-send the same request")
+	assert.Contains(t, got, "NEVER re-delegate to an agent that already returned")
 	assert.Contains(t, got, "general-purpose assistant")
+	assert.Contains(t, got, "two consecutive agents fail")
 }
 
 func TestBuildOrchestratorInstruction_DelegationRulesOrder(t *testing.T) {
@@ -1062,6 +1072,191 @@ func TestBuildOrchestratorInstruction_CapabilityMatchStep(t *testing.T) {
 	assert.Contains(t, got, "Keyword Match")
 	assert.Contains(t, got, "Capability Match")
 	assert.Contains(t, got, "semantic similarity")
+}
+
+// --- PartitionTools universal tool_output_ distribution tests ---
+
+func TestPartitionTools_UniversalToolOutputDistribution(t *testing.T) {
+	tools := []*agent.Tool{
+		newTestTool("exec_shell"),      // operator
+		newTestTool("browser_open"),    // navigator
+		newTestTool("search_web"),      // librarian
+		newTestTool("memory_store"),    // chronicler
+		newTestTool("tool_output_get"), // universal
+	}
+
+	got := PartitionTools(tools)
+
+	// tool_output_get should be distributed to all non-empty agent sets.
+	assert.Contains(t, toolNames(got.Operator), "tool_output_get", "operator should have tool_output_get")
+	assert.Contains(t, toolNames(got.Navigator), "tool_output_get", "navigator should have tool_output_get")
+	assert.Contains(t, toolNames(got.Librarian), "tool_output_get", "librarian should have tool_output_get")
+	assert.Contains(t, toolNames(got.Chronicler), "tool_output_get", "chronicler should have tool_output_get")
+
+	// Planner should NOT have tool_output_get (no tools at all).
+	assert.NotContains(t, toolNames(got.Planner), "tool_output_get", "planner should not have tool_output_get")
+
+	// Vault and Automator should NOT have it (no tools assigned in this test).
+	assert.Nil(t, got.Vault, "vault should have no tools")
+	assert.Nil(t, got.Automator, "automator should have no tools")
+
+	// tool_output_get should NOT appear in unmatched.
+	assert.NotContains(t, toolNames(got.Unmatched), "tool_output_get", "tool_output_get should not be unmatched")
+}
+
+func TestPartitionTools_UniversalToolNoDuplicate(t *testing.T) {
+	tools := []*agent.Tool{
+		newTestTool("exec_shell"),
+		newTestTool("tool_output_get"),
+	}
+
+	got := PartitionTools(tools)
+
+	// tool_output_get should appear exactly once in operator.
+	count := 0
+	for _, name := range toolNames(got.Operator) {
+		if name == "tool_output_get" {
+			count++
+		}
+	}
+	assert.Equal(t, 1, count, "tool_output_get should appear exactly once in operator")
+}
+
+func TestPartitionTools_UniversalToolNotDistributedToEmptyAgents(t *testing.T) {
+	// Only operator has tools; universal should only go to operator.
+	tools := []*agent.Tool{
+		newTestTool("exec_shell"),
+		newTestTool("tool_output_get"),
+	}
+
+	got := PartitionTools(tools)
+
+	assert.Contains(t, toolNames(got.Operator), "tool_output_get")
+	assert.Nil(t, got.Navigator, "navigator has no tools, should not get universal")
+	assert.Nil(t, got.Vault, "vault has no tools, should not get universal")
+	assert.Nil(t, got.Librarian, "librarian has no tools, should not get universal")
+	assert.Nil(t, got.Automator, "automator has no tools, should not get universal")
+	assert.Nil(t, got.Chronicler, "chronicler has no tools, should not get universal")
+}
+
+func TestPartitionToolsDynamic_UniversalToolDistribution(t *testing.T) {
+	tools := []*agent.Tool{
+		newTestTool("api_call"),
+		newTestTool("db_query"),
+		newTestTool("tool_output_get"),
+	}
+
+	specs := []AgentSpec{
+		{Name: "api-agent", Prefixes: []string{"api_"}},
+		{Name: "db-agent", Prefixes: []string{"db_"}},
+	}
+
+	got := PartitionToolsDynamic(tools, specs)
+
+	assert.Contains(t, toolNames(got["api-agent"]), "tool_output_get")
+	assert.Contains(t, toolNames(got["db-agent"]), "tool_output_get")
+	assert.NotContains(t, toolNames(got.Unmatched()), "tool_output_get")
+}
+
+// --- ExampleRequests and Disambiguation tests ---
+
+func TestAgentSpecs_AllHaveExampleRequestsAndDisambiguation(t *testing.T) {
+	for _, spec := range agentSpecs {
+		assert.NotEmpty(t, spec.ExampleRequests,
+			"spec %q must have ExampleRequests", spec.Name)
+		assert.NotEmpty(t, spec.Disambiguation,
+			"spec %q must have Disambiguation", spec.Name)
+	}
+}
+
+func TestBuildRoutingEntry_ExampleRequestsAndDisambiguation(t *testing.T) {
+	spec := AgentSpec{
+		Name:            "test",
+		Description:     "Test agent",
+		Keywords:        []string{"test"},
+		Accepts:         "A test",
+		Returns:         "Test output",
+		ExampleRequests: []string{"Do a test", "Run test suite"},
+		Disambiguation:  "Not for production tasks",
+	}
+
+	got := buildRoutingEntry(spec, "", nil)
+
+	assert.Equal(t, []string{"Do a test", "Run test suite"}, got.ExampleRequests)
+	assert.Equal(t, "Not for production tasks", got.Disambiguation)
+}
+
+func TestBuildOrchestratorInstruction_HasDisambiguationRules(t *testing.T) {
+	got := buildOrchestratorInstruction("base", nil, 5, nil)
+
+	assert.Contains(t, got, "Disambiguation Rules")
+	assert.Contains(t, got, "librarian | + URL → navigator")
+	assert.Contains(t, got, `"memory" + conversation → chronicler`)
+}
+
+func TestBuildOrchestratorInstruction_HasComplexityAnalysis(t *testing.T) {
+	got := buildOrchestratorInstruction("base", nil, 5, nil)
+
+	assert.Contains(t, got, "ANALYZE COMPLEXITY")
+	assert.Contains(t, got, "SIMPLE")
+	assert.Contains(t, got, "COMPOUND")
+	assert.Contains(t, got, "COMPLEX")
+}
+
+func TestBuildOrchestratorInstruction_HasOutputAwareness(t *testing.T) {
+	got := buildOrchestratorInstruction("base", nil, 5, nil)
+
+	assert.Contains(t, got, "Output Awareness")
+	assert.Contains(t, got, "tool_output_get")
+	assert.Contains(t, got, "_meta.compressed")
+}
+
+func TestBuildOrchestratorInstruction_NoPartialAnswerGuidance(t *testing.T) {
+	got := buildOrchestratorInstruction("base", nil, 5, nil)
+
+	// Old "partial answer" guidance should be replaced.
+	assert.NotContains(t, got, "consolidate partial results and provide the best possible answer")
+	// New guidance should prioritize completing current step.
+	assert.Contains(t, got, "Prioritize completing the current step")
+	assert.Contains(t, got, "what was completed and what remains")
+}
+
+func TestBuildOrchestratorInstruction_ToolCountInsteadOfNames(t *testing.T) {
+	entries := []routingEntry{
+		{
+			Name:      "operator",
+			Keywords:  []string{"run"},
+			ToolNames: []string{"exec_shell", "fs_read", "fs_write"},
+			Accepts:   "command",
+			Returns:   "output",
+		},
+	}
+
+	got := buildOrchestratorInstruction("base", entries, 5, nil)
+
+	// Should contain tool count, not individual tool names.
+	assert.Contains(t, got, "Tool count")
+	assert.Contains(t, got, "3")
+	// Should NOT list individual tool names in routing table.
+	assert.NotContains(t, got, "**Tools**: exec_shell")
+}
+
+// --- Output Handling in sub-agent instructions ---
+
+func TestAgentSpecs_NonPlannerHaveOutputHandling(t *testing.T) {
+	for _, spec := range agentSpecs {
+		if spec.Name == "planner" {
+			assert.NotContains(t, spec.Instruction, "## Output Handling",
+				"planner should NOT have Output Handling section")
+			continue
+		}
+		assert.Contains(t, spec.Instruction, "## Output Handling",
+			"spec %q should have Output Handling section", spec.Name)
+		assert.Contains(t, spec.Instruction, "tool_output_get",
+			"spec %q Output Handling should mention tool_output_get", spec.Name)
+		assert.Contains(t, spec.Instruction, "_meta.compressed",
+			"spec %q Output Handling should mention _meta.compressed", spec.Name)
+	}
 }
 
 // --- helpers ---
