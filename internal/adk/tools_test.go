@@ -122,6 +122,24 @@ func TestAdaptTool_WithEnum(t *testing.T) {
 	require.NotNil(t, adkTool)
 }
 
+func TestBuildInputSchema_AdditionalPropertiesFalse(t *testing.T) {
+	t.Parallel()
+
+	tool := &agent.Tool{
+		Name: "test",
+		Parameters: agent.Schema().
+			Str("command", "The command").
+			Required("command").
+			Build(),
+	}
+
+	schema := buildInputSchema(tool)
+	require.NotNil(t, schema.AdditionalProperties, "expected AdditionalProperties to be set")
+
+	// The "false schema" pattern: {not: {}} serializes to JSON false.
+	require.NotNil(t, schema.AdditionalProperties.Not, "expected Not field for false schema")
+}
+
 func TestBuildInputSchema_SchemaBuilder(t *testing.T) {
 	t.Parallel()
 
@@ -281,6 +299,97 @@ func TestBuildInputSchema_FlatMap(t *testing.T) {
 	assert.Equal(t, "string", schema.Properties["arg"].Type)
 	assert.Equal(t, "An argument", schema.Properties["arg"].Description)
 	assert.Contains(t, schema.Required, "arg")
+}
+
+func TestBuildInputSchema_ArrayWithItems(t *testing.T) {
+	t.Parallel()
+
+	tool := &agent.Tool{
+		Name: "array_tool",
+		Parameters: map[string]interface{}{
+			"args": map[string]interface{}{
+				"type":        "array",
+				"description": "Command arguments",
+				"items":       map[string]interface{}{"type": "string"},
+				"required":    true,
+			},
+		},
+	}
+
+	schema := buildInputSchema(tool)
+	assert.Equal(t, "object", schema.Type)
+
+	argsProp := schema.Properties["args"]
+	require.NotNil(t, argsProp)
+	assert.Equal(t, "array", argsProp.Type)
+	assert.Equal(t, "Command arguments", argsProp.Description)
+	require.NotNil(t, argsProp.Items, "array schema must have Items")
+	assert.Equal(t, "string", argsProp.Items.Type)
+	assert.Contains(t, schema.Required, "args")
+}
+
+func TestBuildInputSchema_ArrayWithObjectItems(t *testing.T) {
+	t.Parallel()
+
+	tool := &agent.Tool{
+		Name: "escrow_tool",
+		Parameters: map[string]interface{}{
+			"milestones": map[string]interface{}{
+				"type":        "array",
+				"description": "Escrow milestones",
+				"items": map[string]interface{}{
+					"type": "object",
+					"properties": map[string]interface{}{
+						"name": map[string]interface{}{
+							"type":        "string",
+							"description": "Milestone name",
+						},
+						"amount": map[string]interface{}{
+							"type":        "integer",
+							"description": "Amount in cents",
+						},
+					},
+					"required": []string{"name", "amount"},
+				},
+			},
+		},
+	}
+
+	schema := buildInputSchema(tool)
+	milestones := schema.Properties["milestones"]
+	require.NotNil(t, milestones)
+	assert.Equal(t, "array", milestones.Type)
+
+	items := milestones.Items
+	require.NotNil(t, items, "array schema must have Items")
+	assert.Equal(t, "object", items.Type)
+	require.NotNil(t, items.Properties)
+	assert.Equal(t, "string", items.Properties["name"].Type)
+	assert.Equal(t, "integer", items.Properties["amount"].Type)
+	assert.Equal(t, []string{"name", "amount"}, items.Required)
+}
+
+func TestBuildInputSchema_ArrayInFullSchemaFormat(t *testing.T) {
+	t.Parallel()
+
+	tool := &agent.Tool{
+		Name: "schema_builder_array",
+		Parameters: agent.Schema().
+			Array("tags", "string", "Tag list").
+			Required("tags").
+			Build(),
+	}
+
+	schema := buildInputSchema(tool)
+	assert.Equal(t, "object", schema.Type)
+
+	tagsProp := schema.Properties["tags"]
+	require.NotNil(t, tagsProp)
+	assert.Equal(t, "array", tagsProp.Type)
+	assert.Equal(t, "Tag list", tagsProp.Description)
+	require.NotNil(t, tagsProp.Items, "array schema must have Items")
+	assert.Equal(t, "string", tagsProp.Items.Type)
+	assert.Equal(t, []string{"tags"}, schema.Required)
 }
 
 func TestAdaptTool_SchemaBuilder(t *testing.T) {

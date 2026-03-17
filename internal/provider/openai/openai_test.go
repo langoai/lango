@@ -97,6 +97,146 @@ func TestConvertParams_ValidToolsUnchanged(t *testing.T) {
 	assert.Equal(t, "tool_b", req.Tools[1].Function.Name)
 }
 
+// --- canUseStrictMode tests ---
+
+func TestCanUseStrictMode(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		give string
+		params map[string]interface{}
+		want bool
+	}{
+		{
+			give: "all properties required with additionalProperties false",
+			params: map[string]interface{}{
+				"type": "object",
+				"properties": map[string]interface{}{
+					"command": map[string]interface{}{"type": "string"},
+				},
+				"required":             []string{"command"},
+				"additionalProperties": false,
+			},
+			want: true,
+		},
+		{
+			give: "optional property exists",
+			params: map[string]interface{}{
+				"type": "object",
+				"properties": map[string]interface{}{
+					"command": map[string]interface{}{"type": "string"},
+					"verbose": map[string]interface{}{"type": "boolean"},
+				},
+				"required":             []string{"command"},
+				"additionalProperties": false,
+			},
+			want: false,
+		},
+		{
+			give: "no additionalProperties field",
+			params: map[string]interface{}{
+				"type": "object",
+				"properties": map[string]interface{}{
+					"command": map[string]interface{}{"type": "string"},
+				},
+				"required": []string{"command"},
+			},
+			want: false,
+		},
+		{
+			give: "additionalProperties true",
+			params: map[string]interface{}{
+				"type": "object",
+				"properties": map[string]interface{}{
+					"command": map[string]interface{}{"type": "string"},
+				},
+				"required":             []string{"command"},
+				"additionalProperties": true,
+			},
+			want: false,
+		},
+		{
+			give: "nil params",
+			params: nil,
+			want: false,
+		},
+		{
+			give: "no properties with additionalProperties false",
+			params: map[string]interface{}{
+				"type":                 "object",
+				"additionalProperties": false,
+			},
+			want: true,
+		},
+		{
+			give: "required as []interface{}",
+			params: map[string]interface{}{
+				"type": "object",
+				"properties": map[string]interface{}{
+					"command": map[string]interface{}{"type": "string"},
+				},
+				"required":             []interface{}{"command"},
+				"additionalProperties": false,
+			},
+			want: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.give, func(t *testing.T) {
+			t.Parallel()
+			got := canUseStrictMode(tt.params)
+			assert.Equal(t, tt.want, got)
+		})
+	}
+}
+
+func TestConvertParams_StrictMode(t *testing.T) {
+	t.Parallel()
+
+	p := NewProvider("openai", "test-key", "")
+	params := provider.GenerateParams{
+		Model: "gpt-4",
+		Messages: []provider.Message{
+			{Role: "user", Content: "hello"},
+		},
+		Tools: []provider.Tool{
+			{
+				Name:        "strict_tool",
+				Description: "All params required",
+				Parameters: map[string]interface{}{
+					"type": "object",
+					"properties": map[string]interface{}{
+						"command": map[string]interface{}{"type": "string"},
+					},
+					"required":             []string{"command"},
+					"additionalProperties": false,
+				},
+			},
+			{
+				Name:        "non_strict_tool",
+				Description: "Has optional param",
+				Parameters: map[string]interface{}{
+					"type": "object",
+					"properties": map[string]interface{}{
+						"command": map[string]interface{}{"type": "string"},
+						"verbose": map[string]interface{}{"type": "boolean"},
+					},
+					"required":             []string{"command"},
+					"additionalProperties": false,
+				},
+			},
+		},
+	}
+
+	req, err := p.convertParams(params)
+	require.NoError(t, err)
+	require.Len(t, req.Tools, 2)
+
+	assert.True(t, req.Tools[0].Function.Strict, "strict_tool should have Strict=true")
+	assert.False(t, req.Tools[1].Function.Strict, "non_strict_tool should have Strict=false")
+}
+
 // --- repairOrphanedToolCalls tests ---
 
 func TestRepairOrphanedToolCalls_OrphanedCallGetsRepaired(t *testing.T) {

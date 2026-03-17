@@ -402,11 +402,16 @@ func convertTools(cfg *genai.GenerateContentConfig) ([]provider.Tool, error) {
 					logger().Warnw("skipping FunctionDeclaration with empty name")
 					continue
 				}
-				// Convert Schema to map
+				// Convert schema to map. ADK v0.5.0+ uses ParametersJsonSchema
+				// (a *jsonschema.Schema), while legacy tools use Parameters (*genai.Schema).
 				schemaMap := make(map[string]interface{})
-				if fd.Parameters != nil {
-					// genai.Schema to map is complex if we recurse.
-					// But we can json marshal/unmarshal
+				switch {
+				case fd.ParametersJsonSchema != nil:
+					b, err := json.Marshal(fd.ParametersJsonSchema)
+					if err == nil {
+						_ = json.Unmarshal(b, &schemaMap)
+					}
+				case fd.Parameters != nil:
 					b, err := json.Marshal(fd.Parameters)
 					if err == nil {
 						_ = json.Unmarshal(b, &schemaMap)

@@ -50,9 +50,20 @@ The `Build()` method SHALL return a `map[string]interface{}` that is directly as
 
 #### Scenario: Build produces valid schema map
 - **WHEN** `builder.Str("query", "Search query").Required("query").Build()` is called
-- **THEN** the returned map SHALL have keys `type`, `properties`, and `required`
+- **THEN** the returned map SHALL have keys `type`, `properties`, `additionalProperties`, and `required`
 - **THEN** `properties` SHALL contain the `query` property definition
 - **THEN** `required` SHALL be `["query"]`
+
+### Requirement: Schema output includes additionalProperties
+The `SchemaBuilder.Build()` method SHALL include `"additionalProperties": false` in the output schema. The `buildInputSchema()` function SHALL set the `AdditionalProperties` field to the JSON Schema false schema pattern.
+
+#### Scenario: SchemaBuilder output
+- **WHEN** `SchemaBuilder.Build()` is called
+- **THEN** the returned map SHALL contain `"additionalProperties": false`
+
+#### Scenario: buildInputSchema output
+- **WHEN** `buildInputSchema()` constructs a `jsonschema.Schema`
+- **THEN** the `AdditionalProperties` field SHALL be set to the false schema (`{Not: {}}`)
 
 #### Scenario: Build output is assignable to agent.Tool
 - **WHEN** the build output is assigned to `tool.Parameters`

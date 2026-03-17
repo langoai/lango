@@ -188,6 +188,7 @@ func (p *OpenAIProvider) convertParams(params provider.GenerateParams) (openai.C
 					Name:        t.Name,
 					Description: t.Description,
 					Parameters:  t.Parameters,
+					Strict:      canUseStrictMode(t.Parameters),
 				},
 			})
 		}
@@ -197,6 +198,60 @@ func (p *OpenAIProvider) convertParams(params provider.GenerateParams) (openai.C
 	}
 
 	return req, nil
+}
+
+// canUseStrictMode returns true when a tool's parameter schema satisfies OpenAI's
+// strict mode requirements: additionalProperties must be false, and every
+// declared property must be listed in "required".
+func canUseStrictMode(params map[string]interface{}) bool {
+	if params == nil {
+		return false
+	}
+	// Must have additionalProperties: false.
+	ap, ok := params["additionalProperties"]
+	if !ok {
+		return false
+	}
+	if apBool, ok := ap.(bool); !ok || apBool {
+		return false
+	}
+	// All properties must be in required.
+	propsRaw, ok := params["properties"]
+	if !ok {
+		return true // no properties, nothing to require
+	}
+	propsMap, ok := propsRaw.(map[string]interface{})
+	if !ok {
+		return false
+	}
+	if len(propsMap) == 0 {
+		return true
+	}
+	reqRaw, ok := params["required"]
+	if !ok {
+		return false // has properties but no required
+	}
+	reqSet := make(map[string]bool)
+	switch req := reqRaw.(type) {
+	case []string:
+		for _, r := range req {
+			reqSet[r] = true
+		}
+	case []interface{}:
+		for _, r := range req {
+			if s, ok := r.(string); ok {
+				reqSet[s] = true
+			}
+		}
+	default:
+		return false
+	}
+	for name := range propsMap {
+		if !reqSet[name] {
+			return false
+		}
+	}
+	return true
 }
 
 // repairOrphanedToolCalls injects synthetic error responses when an assistant

@@ -583,6 +583,139 @@ func TestConvertMessages_PendingFunctionCallNotTouched(t *testing.T) {
 // TestRepairOrphanedFunctionCalls_PartialResponse moved to openai_test.go as
 // repairOrphanedToolCalls is now an OpenAI-specific private helper.
 
+func TestConvertTools_ParametersJsonSchema(t *testing.T) {
+	t.Parallel()
+
+	// ADK v0.5.0+ sets ParametersJsonSchema, leaving Parameters nil.
+	jsonSchema := map[string]interface{}{
+		"type": "object",
+		"properties": map[string]interface{}{
+			"command": map[string]interface{}{
+				"type":        "string",
+				"description": "The command to run",
+			},
+		},
+		"required":             []string{"command"},
+		"additionalProperties": false,
+	}
+
+	cfg := &genai.GenerateContentConfig{
+		Tools: []*genai.Tool{
+			{
+				FunctionDeclarations: []*genai.FunctionDeclaration{
+					{
+						Name:                 "exec",
+						Description:          "Execute a command",
+						ParametersJsonSchema: jsonSchema,
+						// Parameters is nil — legacy field not set
+					},
+				},
+			},
+		},
+	}
+
+	tools, err := convertTools(cfg)
+	require.NoError(t, err)
+	require.Len(t, tools, 1)
+	assert.Equal(t, "exec", tools[0].Name)
+
+	// Verify schema was correctly extracted.
+	props, ok := tools[0].Parameters["properties"].(map[string]interface{})
+	require.True(t, ok, "expected properties map")
+	cmd, ok := props["command"].(map[string]interface{})
+	require.True(t, ok, "expected command property")
+	assert.Equal(t, "string", cmd["type"])
+
+	// Verify additionalProperties preserved.
+	ap, ok := tools[0].Parameters["additionalProperties"]
+	require.True(t, ok, "expected additionalProperties")
+	assert.Equal(t, false, ap)
+}
+
+func TestConvertTools_LegacyParameters(t *testing.T) {
+	t.Parallel()
+
+	// Legacy tools use Parameters (*genai.Schema), not ParametersJsonSchema.
+	cfg := &genai.GenerateContentConfig{
+		Tools: []*genai.Tool{
+			{
+				FunctionDeclarations: []*genai.FunctionDeclaration{
+					{
+						Name:        "read_file",
+						Description: "Read a file",
+						Parameters: &genai.Schema{
+							Type: genai.TypeObject,
+							Properties: map[string]*genai.Schema{
+								"path": {Type: genai.TypeString, Description: "File path"},
+							},
+							Required: []string{"path"},
+						},
+					},
+				},
+			},
+		},
+	}
+
+	tools, err := convertTools(cfg)
+	require.NoError(t, err)
+	require.Len(t, tools, 1)
+	assert.Equal(t, "read_file", tools[0].Name)
+
+	// Verify legacy schema was extracted.
+	props, ok := tools[0].Parameters["properties"].(map[string]interface{})
+	require.True(t, ok, "expected properties map from legacy Parameters")
+	_, ok = props["path"]
+	assert.True(t, ok, "expected path property")
+}
+
+func TestConvertTools_BothSet_ParametersJsonSchemaPriority(t *testing.T) {
+	t.Parallel()
+
+	// When both are set, ParametersJsonSchema takes priority.
+	jsonSchema := map[string]interface{}{
+		"type": "object",
+		"properties": map[string]interface{}{
+			"modern_param": map[string]interface{}{
+				"type":        "string",
+				"description": "Modern parameter",
+			},
+		},
+		"required": []string{"modern_param"},
+	}
+
+	cfg := &genai.GenerateContentConfig{
+		Tools: []*genai.Tool{
+			{
+				FunctionDeclarations: []*genai.FunctionDeclaration{
+					{
+						Name:                 "dual_tool",
+						Description:          "Has both schemas",
+						ParametersJsonSchema: jsonSchema,
+						Parameters: &genai.Schema{
+							Type: genai.TypeObject,
+							Properties: map[string]*genai.Schema{
+								"legacy_param": {Type: genai.TypeString},
+							},
+						},
+					},
+				},
+			},
+		},
+	}
+
+	tools, err := convertTools(cfg)
+	require.NoError(t, err)
+	require.Len(t, tools, 1)
+
+	// ParametersJsonSchema should win.
+	props, ok := tools[0].Parameters["properties"].(map[string]interface{})
+	require.True(t, ok)
+	_, hasModern := props["modern_param"]
+	_, hasLegacy := props["legacy_param"]
+	assert.True(t, hasModern, "expected modern_param from ParametersJsonSchema")
+	assert.False(t, hasLegacy, "expected legacy_param NOT present")
+}
+
 func TestConvertTools_EmptyName(t *testing.T) {
 	t.Parallel()
 
