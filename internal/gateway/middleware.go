@@ -21,10 +21,10 @@ func SessionFromContext(ctx context.Context) string {
 	return v
 }
 
-// requireAuth returns chi middleware that validates the lango_session cookie
+// RequireAuth returns chi middleware that validates the lango_session cookie
 // against the AuthManager's session store. If auth is nil (no OIDC configured),
 // all requests pass through unchanged (development/local mode).
-func requireAuth(auth *AuthManager) func(http.Handler) http.Handler {
+func RequireAuth(auth *AuthManager) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			// No auth configured — pass through (dev mode)

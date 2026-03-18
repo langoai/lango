@@ -546,10 +546,11 @@ func (s *Server) setupRoutes() {
 
 	// Protected routes — require auth when OIDC is configured
 	s.router.Group(func(r chi.Router) {
-		r.Use(requireAuth(s.auth))
+		r.Use(RequireAuth(s.auth))
 
 		if s.config.HTTPEnabled {
 			r.Get("/status", s.handleStatus)
+			r.Get("/playground", s.servePlayground)
 		}
 		if s.config.WebSocketEnabled {
 			r.Get("/ws", s.handleWebSocket)
@@ -667,8 +668,12 @@ func (s *Server) handleWebSocketConnection(w http.ResponseWriter, r *http.Reques
 
 	clientID := fmt.Sprintf("%s-%d", clientType, time.Now().UnixNano())
 
-	// Bind authenticated session to client (empty if no auth)
+	// Bind authenticated session to client; isolate unauthenticated clients
+	// by assigning the unique clientID as their session key.
 	sessionKey := SessionFromContext(r.Context())
+	if sessionKey == "" {
+		sessionKey = clientID
+	}
 
 	client := &Client{
 		ID:         clientID,

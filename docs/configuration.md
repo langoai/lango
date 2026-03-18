@@ -214,7 +214,7 @@ The security interceptor controls tool execution approval and PII protection. Se
 |-----|------|---------|-------------|
 | `security.interceptor.enabled` | `bool` | `true` | Enable the security interceptor |
 | `security.interceptor.redactPii` | `bool` | `false` | Enable PII redaction in messages |
-| `security.interceptor.approvalPolicy` | `string` | `dangerous` | Tool approval policy: `always`, `dangerous`, `never` |
+| `security.interceptor.approvalPolicy` | `string` | `dangerous` | Tool approval policy: `all`, `dangerous`, `configured`, `none` |
 | `security.interceptor.approvalTimeoutSec` | `int` | `30` | Timeout for approval requests (seconds) |
 | `security.interceptor.notifyChannel` | `string` | | Channel to send approval notifications |
 | `security.interceptor.sensitiveTools` | `[]string` | | Tools that always require approval |
@@ -939,7 +939,7 @@ Each firewall rule entry:
 | `observability.audit.enabled` | `bool` | `false` | Enable audit logging |
 | `observability.audit.retentionDays` | `int` | `90` | Days to retain audit records |
 | `observability.metrics.enabled` | `bool` | `true` | Enable metrics export endpoint |
-| `observability.metrics.format` | `string` | `json` | Metrics export format (`json`, `prometheus`) |
+| `observability.metrics.format` | `string` | `json` | Metrics export format (currently only `json` is implemented) |
 
 ---
 

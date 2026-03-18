@@ -123,6 +123,9 @@ func New(boot *bootstrap.Result) (*App, error) {
 	if policy == "" {
 		policy = config.ApprovalPolicyDangerous
 	}
+	if policy == config.ApprovalPolicyNone {
+		logger().Warnw("tool approval policy is set to 'none' -- all tool calls will execute without user confirmation; not recommended for production")
+	}
 	if policy != config.ApprovalPolicyNone {
 		var limiter wallet.SpendingLimiter
 		nv, _ := resolver.Resolve(appinit.ProvidesPayment).(*paymentComponents)
@@ -163,7 +166,7 @@ func New(boot *bootstrap.Result) (*App, error) {
 	app.Gateway.SetAgent(adkAgent)
 
 	// B7. Post-agent wiring.
-	wirePostAgent(app, resolver, tools, bus, composite, grantStore, boot)
+	wirePostAgent(app, resolver, tools, bus, composite, grantStore, boot, auth)
 
 	// B8. Channels.
 	if err := app.initChannels(); err != nil {
@@ -332,7 +335,7 @@ func buildApprovalProvider(cfg *config.Config, gw *gateway.Server) (*approval.Co
 }
 
 // wirePostAgent handles A2A, P2P executor, routes, and audit after agent creation.
-func wirePostAgent(app *App, r appinit.Resolver, tools []*agent.Tool, bus *eventbus.Bus, composite *approval.CompositeProvider, grantStore *approval.GrantStore, boot *bootstrap.Result) {
+func wirePostAgent(app *App, r appinit.Resolver, tools []*agent.Tool, bus *eventbus.Bus, composite *approval.CompositeProvider, grantStore *approval.GrantStore, boot *bootstrap.Result, auth *gateway.AuthManager) {
 	cfg := app.Config
 	adkAgent := app.Agent
 
@@ -434,7 +437,7 @@ func wirePostAgent(app *App, r appinit.Resolver, tools []*agent.Tool, bus *event
 				})
 			}
 		}
-		registerP2PRoutes(app.Gateway.Router(), p2pc)
+		registerP2PRoutes(app.Gateway.Router(), p2pc, auth)
 		logger().Info("P2P REST API routes registered")
 	}
 

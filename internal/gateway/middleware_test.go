@@ -53,7 +53,7 @@ func (m *mockStore) SetSalt(_ string, _ []byte) error                { return ni
 
 func TestRequireAuth_NilAuthPassesThrough(t *testing.T) {
 	t.Parallel()
-	handler := requireAuth(nil)(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+	handler := RequireAuth(nil)(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusOK)
 	}))
 
@@ -73,7 +73,7 @@ func TestRequireAuth_NoCookieReturns401(t *testing.T) {
 		store:     store,
 	}
 
-	handler := requireAuth(auth)(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+	handler := RequireAuth(auth)(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusOK)
 	}))
 
@@ -93,7 +93,7 @@ func TestRequireAuth_InvalidSessionReturns401(t *testing.T) {
 		store:     store,
 	}
 
-	handler := requireAuth(auth)(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+	handler := RequireAuth(auth)(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusOK)
 	}))
 
@@ -121,7 +121,7 @@ func TestRequireAuth_ValidSessionSetsContext(t *testing.T) {
 	}
 
 	var capturedSessionKey string
-	handler := requireAuth(auth)(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	handler := RequireAuth(auth)(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		capturedSessionKey = SessionFromContext(r.Context())
 		w.WriteHeader(http.StatusOK)
 	}))
