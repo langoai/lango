@@ -85,6 +85,17 @@ func (s *RunSnapshot) AllStepsTerminal() bool {
 	return true
 }
 
+// AllStepsSuccessful returns true if every step is completed.
+// Unlike AllStepsTerminal, failed/interrupted steps make this return false.
+func (s *RunSnapshot) AllStepsSuccessful() bool {
+	for i := range s.Steps {
+		if s.Steps[i].Status != StepStatusCompleted {
+			return false
+		}
+	}
+	return len(s.Steps) > 0
+}
+
 // AllCriteriaMet returns true if every acceptance criterion is met.
 func (s *RunSnapshot) AllCriteriaMet() bool {
 	for i := range s.AcceptanceState {
@@ -240,6 +251,16 @@ func applyEvent(snap *RunSnapshot, ev *JournalEvent) error {
 
 	case EventRunFailed:
 		snap.Status = RunStatusFailed
+
+	case EventCriterionMet:
+		var p CriterionMetPayload
+		if err := json.Unmarshal(ev.Payload, &p); err != nil {
+			return fmt.Errorf("unmarshal criterion_met: %w", err)
+		}
+		if p.Index >= 0 && p.Index < len(snap.AcceptanceState) {
+			snap.AcceptanceState[p.Index].Met = true
+			snap.AcceptanceState[p.Index].MetAt = &ev.Timestamp
+		}
 
 	case EventProjectionSynced:
 		// no-op for snapshot

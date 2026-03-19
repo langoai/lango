@@ -43,9 +43,10 @@ const (
 
 // ValidatorSpec specifies how a step or acceptance criterion is validated.
 type ValidatorSpec struct {
-	Type   ValidatorType     `json:"type"`
-	Target string            `json:"target,omitempty"`
-	Params map[string]string `json:"params,omitempty"`
+	Type    ValidatorType     `json:"type"`
+	Target  string            `json:"target,omitempty"`
+	Params  map[string]string `json:"params,omitempty"`
+	WorkDir string            `json:"work_dir,omitempty"` // set at runtime by workspace manager
 }
 
 // Step represents a discrete unit of work within a Run.

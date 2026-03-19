@@ -43,6 +43,7 @@ func (RunJournal) Fields() []ent.Field {
 				"run_completed",
 				"run_failed",
 				"projection_synced",
+				"criterion_met",
 			).
 			Comment("Event type"),
 		field.Time("timestamp").

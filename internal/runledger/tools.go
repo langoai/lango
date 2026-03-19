@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -28,7 +29,7 @@ func BuildTools(store RunLedgerStore, pev *PEVEngine) []*agent.Tool {
 		buildRunRead(store),
 		buildRunActive(store),
 		buildRunNote(store),
-		buildRunProposeStepResult(store),
+		buildRunProposeStepResult(store, pev),
 		buildRunApplyPolicy(store),
 		buildRunApproveStep(store, pev),
 		buildRunResume(store),
@@ -241,7 +242,7 @@ func buildRunNote(store RunLedgerStore) *agent.Tool {
 	}
 }
 
-func buildRunProposeStepResult(store RunLedgerStore) *agent.Tool {
+func buildRunProposeStepResult(store RunLedgerStore, pev *PEVEngine) *agent.Tool {
 	return &agent.Tool{
 		Name:        "run_propose_step_result",
 		Description: "Propose a step result with evidence. The execution agent cannot mark steps as complete — only propose results for PEV verification.",
@@ -281,12 +282,55 @@ func buildRunProposeStepResult(store RunLedgerStore) *agent.Tool {
 				return nil, fmt.Errorf("append step_result_proposed: %w", err)
 			}
 
-			return map[string]interface{}{
-				"status":  "proposed",
+			// Auto-trigger PEV verification.
+			snap, err := store.GetRunSnapshot(ctx, runID)
+			if err != nil {
+				return nil, fmt.Errorf("get snapshot for PEV: %w", err)
+			}
+			step := snap.FindStep(stepID)
+			if step == nil {
+				return nil, ErrStepNotFound
+			}
+
+			policyReq, verifyErr := pev.Verify(ctx, runID, step)
+			if verifyErr != nil {
+				return nil, fmt.Errorf("PEV verify step %q: %w", stepID, verifyErr)
+			}
+
+			if policyReq != nil {
+				return map[string]interface{}{
+					"status":         "verification_failed",
+					"run_id":         runID,
+					"step_id":        stepID,
+					"failure_reason": policyReq.Failure.Reason,
+					"retry_count":    policyReq.RetryCount,
+					"max_retries":    policyReq.MaxRetries,
+					"message":        "Validation failed. Orchestrator must apply a policy decision.",
+				}, nil
+			}
+
+			// Validation passed -> check run completion.
+			response := map[string]interface{}{
+				"status":  "verified",
 				"run_id":  runID,
 				"step_id": stepID,
-				"message": "Result proposed. Awaiting PEV verification.",
-			}, nil
+			}
+
+			runStatus, unmetDescs := checkRunCompletion(ctx, store, pev, runID)
+			response["run_status"] = runStatus
+			if len(unmetDescs) > 0 {
+				response["unmet_criteria"] = unmetDescs
+			}
+			switch runStatus {
+			case "completed":
+				response["message"] = "Step verified. All steps done. Run completed."
+			case "failed":
+				response["message"] = "Step verified but run failed (step failures or unmet criteria)."
+			default:
+				response["message"] = "Step verified and completed. Run still in progress."
+			}
+
+			return response, nil
 		},
 	}
 }
@@ -388,6 +432,29 @@ func buildRunApproveStep(store RunLedgerStore, pev *PEVEngine) *agent.Tool {
 				reason = "orchestrator approved"
 			}
 
+			// Load snapshot and find step.
+			snap, err := store.GetRunSnapshot(ctx, runID)
+			if err != nil {
+				return nil, fmt.Errorf("get snapshot: %w", err)
+			}
+			step := snap.FindStep(stepID)
+			if step == nil {
+				return nil, ErrStepNotFound
+			}
+
+			// Validator type must be orchestrator_approval.
+			if step.Validator.Type != ValidatorOrchestratorApproval {
+				return nil, fmt.Errorf("%w: run_approve_step only works for orchestrator_approval steps (this step uses %q)",
+					ErrAccessDenied, step.Validator.Type)
+			}
+
+			// Step must be in verify_pending or failed status.
+			// For orchestrator_approval steps, PEV auto-runs the validator which always
+			// fails, transitioning the step to "failed". The orchestrator then approves it.
+			if step.Status != StepStatusVerifyPending && step.Status != StepStatusFailed {
+				return nil, fmt.Errorf("step %q status is %q, expected verify_pending or failed", stepID, step.Status)
+			}
+
 			// Record as validation passed.
 			if err := store.RecordValidationResult(ctx, runID, stepID, ValidationResult{
 				Passed: true,
@@ -396,28 +463,20 @@ func buildRunApproveStep(store RunLedgerStore, pev *PEVEngine) *agent.Tool {
 				return nil, fmt.Errorf("record approval: %w", err)
 			}
 
-			snap, err := store.GetRunSnapshot(ctx, runID)
-			if err != nil {
-				return nil, fmt.Errorf("get snapshot: %w", err)
-			}
+			// Check run completion.
+			runStatus, unmetDescs := checkRunCompletion(ctx, store, pev, runID)
 
-			// Check if all steps are done and all criteria met.
-			if snap.AllStepsTerminal() && snap.AllCriteriaMet() {
-				now := time.Now()
-				_ = store.AppendJournalEvent(ctx, JournalEvent{
-					RunID:     runID,
-					Type:      EventRunCompleted,
-					Timestamp: now,
-					Payload:   marshalPayload(RunCompletedPayload{Summary: "all steps and criteria satisfied"}),
-				})
-			}
-
-			return map[string]interface{}{
+			response := map[string]interface{}{
 				"status":     "approved",
 				"run_id":     runID,
 				"step_id":    stepID,
-				"run_status": snap.Status,
-			}, nil
+				"run_status": runStatus,
+			}
+			if len(unmetDescs) > 0 {
+				response["unmet_criteria"] = unmetDescs
+			}
+
+			return response, nil
 		},
 	}
 }
@@ -454,6 +513,68 @@ func buildRunResume(store RunLedgerStore) *agent.Tool {
 	}
 }
 
+// checkRunCompletion checks if a run is complete and transitions its status.
+// Returns the run status string and any unmet acceptance criteria descriptions.
+func checkRunCompletion(ctx context.Context, store RunLedgerStore, pev *PEVEngine, runID string) (string, []string) {
+	snap, err := store.GetRunSnapshot(ctx, runID)
+	if err != nil {
+		return "running", nil
+	}
+
+	if !snap.AllStepsSuccessful() {
+		if snap.AllStepsTerminal() {
+			_ = store.AppendJournalEvent(ctx, JournalEvent{
+				RunID: runID,
+				Type:  EventRunFailed,
+				Payload: marshalPayload(RunFailedPayload{
+					Reason: "one or more steps failed or interrupted",
+				}),
+			})
+			return "failed", nil
+		}
+		return "running", nil
+	}
+
+	// All steps successful -> verify acceptance criteria.
+	unmet, _ := pev.VerifyAcceptanceCriteria(ctx, snap.AcceptanceState)
+
+	// Journal newly met criteria.
+	for i := range snap.AcceptanceState {
+		if snap.AcceptanceState[i].Met {
+			_ = store.AppendJournalEvent(ctx, JournalEvent{
+				RunID: runID,
+				Type:  EventCriterionMet,
+				Payload: marshalPayload(CriterionMetPayload{
+					Index:       i,
+					Description: snap.AcceptanceState[i].Description,
+				}),
+			})
+		}
+	}
+
+	if len(unmet) == 0 {
+		_ = store.AppendJournalEvent(ctx, JournalEvent{
+			RunID:   runID,
+			Type:    EventRunCompleted,
+			Payload: marshalPayload(RunCompletedPayload{Summary: "all steps and criteria satisfied"}),
+		})
+		return "completed", nil
+	}
+
+	var descs []string
+	for _, u := range unmet {
+		descs = append(descs, u.Description)
+	}
+	_ = store.AppendJournalEvent(ctx, JournalEvent{
+		RunID: runID,
+		Type:  EventRunFailed,
+		Payload: marshalPayload(RunFailedPayload{
+			Reason: "unmet acceptance criteria: " + strings.Join(descs, "; "),
+		}),
+	})
+	return "failed", descs
+}
+
 // checkRole verifies the caller has the required role.
 // In the current implementation, orchestrator agents have "orchestrator" or
 // "lango-orchestrator" as their agent name. Execution agents are everything else.
@@ -470,8 +591,9 @@ func checkRole(ctx context.Context, required callerRole) error {
 			return fmt.Errorf("%w: only orchestrator can call this tool (caller: %q)", ErrAccessDenied, agentName)
 		}
 	case roleExecution:
-		// execution agents are non-orchestrator agents
-		// but we also allow orchestrator for flexibility during initial rollout
+		if isOrchestrator {
+			return fmt.Errorf("%w: execution-only tool (caller: %q)", ErrAccessDenied, agentName)
+		}
 	}
 	return nil
 }

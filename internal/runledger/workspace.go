@@ -2,7 +2,9 @@ package runledger
 
 import (
 	"fmt"
+	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 )
 
@@ -56,6 +58,34 @@ func (m *WorkspaceManager) RemoveWorktree(path string) error {
 		return fmt.Errorf("remove worktree: %s: %w", strings.TrimSpace(string(output)), err)
 	}
 	return nil
+}
+
+// PrepareStepWorkspace handles the full workspace lifecycle for a coding step:
+// 1. Check if isolation needed (based on validator type)
+// 2. If not needed, return (WorkDir stays empty = current dir)
+// 3. Check dirty tree -> fail if dirty
+// 4. Create worktree -> set step.Validator.WorkDir
+// Returns a cleanup function that must be deferred.
+func (m *WorkspaceManager) PrepareStepWorkspace(step *Step, runID string) (cleanup func(), err error) {
+	if !NeedsIsolation(step) {
+		return func() {}, nil
+	}
+
+	if err := m.CheckDirtyTree(); err != nil {
+		return nil, fmt.Errorf("workspace isolation: %w", err)
+	}
+
+	path := filepath.Join(os.TempDir(), "runledger", runID, step.StepID)
+	if err := m.CreateWorktree(path, runID, step.StepID); err != nil {
+		return nil, fmt.Errorf("create worktree: %w", err)
+	}
+
+	step.Validator.WorkDir = path
+
+	return func() {
+		_ = m.RemoveWorktree(path)
+		step.Validator.WorkDir = ""
+	}, nil
 }
 
 // ExportPatch generates a patch file from a worktree using git format-patch.

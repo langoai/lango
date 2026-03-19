@@ -19,6 +19,9 @@ func (v *BuildPassValidator) Validate(ctx context.Context, spec ValidatorSpec, _
 		target = "./..."
 	}
 	cmd := exec.CommandContext(ctx, "go", "build", target)
+	if spec.WorkDir != "" {
+		cmd.Dir = spec.WorkDir
+	}
 	output, err := cmd.CombinedOutput()
 	if err != nil {
 		return &ValidationResult{
@@ -42,6 +45,9 @@ func (v *TestPassValidator) Validate(ctx context.Context, spec ValidatorSpec, _ 
 		target = "./..."
 	}
 	cmd := exec.CommandContext(ctx, "go", "test", target)
+	if spec.WorkDir != "" {
+		cmd.Dir = spec.WorkDir
+	}
 	output, err := cmd.CombinedOutput()
 	if err != nil {
 		return &ValidationResult{
@@ -68,6 +74,9 @@ func (v *FileChangedValidator) Validate(ctx context.Context, spec ValidatorSpec,
 		}, nil
 	}
 	cmd := exec.CommandContext(ctx, "git", "diff", "--name-only", "HEAD")
+	if spec.WorkDir != "" {
+		cmd.Dir = spec.WorkDir
+	}
 	output, err := cmd.CombinedOutput()
 	if err != nil {
 		return &ValidationResult{
@@ -119,7 +128,11 @@ func (v *ArtifactExistsValidator) Validate(_ context.Context, spec ValidatorSpec
 			Missing: []string{"target"},
 		}, nil
 	}
-	if _, err := os.Stat(spec.Target); err != nil {
+	target := spec.Target
+	if spec.WorkDir != "" {
+		target = filepath.Join(spec.WorkDir, spec.Target)
+	}
+	if _, err := os.Stat(target); err != nil {
 		return &ValidationResult{
 			Passed:  false,
 			Reason:  fmt.Sprintf("artifact not found: %s", spec.Target),
@@ -152,6 +165,9 @@ func (v *CommandPassValidator) Validate(ctx context.Context, spec ValidatorSpec,
 	}
 
 	cmd := exec.CommandContext(ctx, "sh", "-c", spec.Target)
+	if spec.WorkDir != "" {
+		cmd.Dir = spec.WorkDir
+	}
 	output, err := cmd.CombinedOutput()
 
 	actualExit := 0

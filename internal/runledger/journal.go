@@ -22,6 +22,7 @@ const (
 	EventRunCompleted          JournalEventType = "run_completed"
 	EventRunFailed             JournalEventType = "run_failed"
 	EventProjectionSynced      JournalEventType = "projection_synced"
+	EventCriterionMet          JournalEventType = "criterion_met"
 )
 
 // JournalEvent is a single append-only record in the RunLedger journal.
@@ -103,4 +104,10 @@ type RunCompletedPayload struct {
 // RunFailedPayload is the payload for EventRunFailed.
 type RunFailedPayload struct {
 	Reason string `json:"reason"`
+}
+
+// CriterionMetPayload is the payload for EventCriterionMet.
+type CriterionMetPayload struct {
+	Index       int    `json:"index"`
+	Description string `json:"description"`
 }

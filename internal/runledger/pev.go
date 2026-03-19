@@ -16,6 +16,7 @@ type Validator interface {
 type PEVEngine struct {
 	ledger     RunLedgerStore
 	validators map[ValidatorType]Validator
+	workspace  *WorkspaceManager // nil = no isolation (Phase 1 default)
 }
 
 // NewPEVEngine creates a PEV engine with the provided store and validators.
@@ -26,9 +27,38 @@ func NewPEVEngine(ledger RunLedgerStore, validators map[ValidatorType]Validator)
 	}
 }
 
+// WithWorkspace enables workspace isolation for coding steps.
+// Phase 1 default is nil (no isolation). Phase 3 activates with:
+//
+//	pev.WithWorkspace(NewWorkspaceManager())
+func (e *PEVEngine) WithWorkspace(ws *WorkspaceManager) *PEVEngine {
+	e.workspace = ws
+	return e
+}
+
 // Verify runs the step's validator and records the result in the journal.
 // Returns a PolicyRequest if validation fails, nil if it passes.
 func (e *PEVEngine) Verify(ctx context.Context, runID string, step *Step) (*PolicyRequest, error) {
+	// Workspace isolation: prepare before validation.
+	if e.workspace != nil {
+		cleanup, wsErr := e.workspace.PrepareStepWorkspace(step, runID)
+		if wsErr != nil {
+			// Fail-closed: workspace creation failed -> return as PolicyRequest.
+			return &PolicyRequest{
+				RunID:    runID,
+				StepID:   step.StepID,
+				StepGoal: step.Goal,
+				Failure: &ValidationResult{
+					Passed: false,
+					Reason: fmt.Sprintf("workspace isolation failed: %v", wsErr),
+				},
+				RetryCount: step.RetryCount,
+				MaxRetries: step.MaxRetries,
+			}, nil
+		}
+		defer cleanup()
+	}
+
 	v, ok := e.validators[step.Validator.Type]
 	if !ok {
 		return nil, fmt.Errorf("no validator registered for type %q", step.Validator.Type)
