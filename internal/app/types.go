@@ -24,6 +24,7 @@ import (
 	"github.com/langoai/lango/internal/lifecycle"
 	"github.com/langoai/lango/internal/mcp"
 	"github.com/langoai/lango/internal/memory"
+	"github.com/langoai/lango/internal/runledger"
 	"github.com/langoai/lango/internal/observability"
 	"github.com/langoai/lango/internal/observability/health"
 	"github.com/langoai/lango/internal/observability/token"
@@ -119,6 +120,10 @@ type App struct {
 
 	// Gatekeeper (response sanitizer)
 	Sanitizer *gatekeeper.Sanitizer
+
+	// RunLedger Components (optional, Task OS durable execution)
+	RunLedgerStore runledger.RunLedgerStore
+	RunLedgerPEV   *runledger.PEVEngine
 
 	// MCP Components (optional, external MCP server integration)
 	MCPManager *mcp.ServerManager

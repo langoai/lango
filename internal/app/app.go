@@ -56,6 +56,7 @@ func New(boot *bootstrap.Result) (*App, error) {
 	builder.AddModule(&automationModule{cfg: cfg, app: app})
 	builder.AddModule(&networkModule{cfg: cfg, boot: boot, bus: bus, app: app})
 	builder.AddModule(&extensionModule{cfg: cfg, boot: boot, bus: bus})
+	builder.AddModule(&runLedgerModule{cfg: cfg})
 
 	buildResult, err := builder.Build(ctx)
 	if err != nil {
@@ -276,6 +277,12 @@ func populateAppFields(app *App, r appinit.Resolver) {
 		app.MetricsCollector = obsc.collector
 		app.HealthRegistry = obsc.healthRegistry
 		app.TokenStore = obsc.tokenStore
+	}
+
+	// RunLedger.
+	if rlv, ok := r.Resolve(appinit.ProvidesRunLedger).(*runLedgerValues); ok && rlv != nil {
+		app.RunLedgerStore = rlv.store
+		app.RunLedgerPEV = rlv.pev
 	}
 }
 

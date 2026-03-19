@@ -31,6 +31,9 @@ import (
 	"github.com/langoai/lango/internal/ent/paymenttx"
 	"github.com/langoai/lango/internal/ent/peerreputation"
 	"github.com/langoai/lango/internal/ent/reflection"
+	"github.com/langoai/lango/internal/ent/runjournal"
+	"github.com/langoai/lango/internal/ent/runsnapshot"
+	"github.com/langoai/lango/internal/ent/runstep"
 	"github.com/langoai/lango/internal/ent/secret"
 	"github.com/langoai/lango/internal/ent/session"
 	"github.com/langoai/lango/internal/ent/tokenusage"
@@ -73,6 +76,12 @@ type Client struct {
 	PeerReputation *PeerReputationClient
 	// Reflection is the client for interacting with the Reflection builders.
 	Reflection *ReflectionClient
+	// RunJournal is the client for interacting with the RunJournal builders.
+	RunJournal *RunJournalClient
+	// RunSnapshot is the client for interacting with the RunSnapshot builders.
+	RunSnapshot *RunSnapshotClient
+	// RunStep is the client for interacting with the RunStep builders.
+	RunStep *RunStepClient
 	// Secret is the client for interacting with the Secret builders.
 	Secret *SecretClient
 	// Session is the client for interacting with the Session builders.
@@ -109,6 +118,9 @@ func (c *Client) init() {
 	c.PaymentTx = NewPaymentTxClient(c.config)
 	c.PeerReputation = NewPeerReputationClient(c.config)
 	c.Reflection = NewReflectionClient(c.config)
+	c.RunJournal = NewRunJournalClient(c.config)
+	c.RunSnapshot = NewRunSnapshotClient(c.config)
+	c.RunStep = NewRunStepClient(c.config)
 	c.Secret = NewSecretClient(c.config)
 	c.Session = NewSessionClient(c.config)
 	c.TokenUsage = NewTokenUsageClient(c.config)
@@ -221,6 +233,9 @@ func (c *Client) Tx(ctx context.Context) (*Tx, error) {
 		PaymentTx:       NewPaymentTxClient(cfg),
 		PeerReputation:  NewPeerReputationClient(cfg),
 		Reflection:      NewReflectionClient(cfg),
+		RunJournal:      NewRunJournalClient(cfg),
+		RunSnapshot:     NewRunSnapshotClient(cfg),
+		RunStep:         NewRunStepClient(cfg),
 		Secret:          NewSecretClient(cfg),
 		Session:         NewSessionClient(cfg),
 		TokenUsage:      NewTokenUsageClient(cfg),
@@ -260,6 +275,9 @@ func (c *Client) BeginTx(ctx context.Context, opts *sql.TxOptions) (*Tx, error) 
 		PaymentTx:       NewPaymentTxClient(cfg),
 		PeerReputation:  NewPeerReputationClient(cfg),
 		Reflection:      NewReflectionClient(cfg),
+		RunJournal:      NewRunJournalClient(cfg),
+		RunSnapshot:     NewRunSnapshotClient(cfg),
+		RunStep:         NewRunStepClient(cfg),
 		Secret:          NewSecretClient(cfg),
 		Session:         NewSessionClient(cfg),
 		TokenUsage:      NewTokenUsageClient(cfg),
@@ -296,8 +314,9 @@ func (c *Client) Use(hooks ...Hook) {
 	for _, n := range []interface{ Use(...Hook) }{
 		c.AuditLog, c.ConfigProfile, c.CronJob, c.CronJobHistory, c.EscrowDeal,
 		c.ExternalRef, c.Inquiry, c.Key, c.Knowledge, c.Learning, c.Message,
-		c.Observation, c.PaymentTx, c.PeerReputation, c.Reflection, c.Secret,
-		c.Session, c.TokenUsage, c.WorkflowRun, c.WorkflowStepRun,
+		c.Observation, c.PaymentTx, c.PeerReputation, c.Reflection, c.RunJournal,
+		c.RunSnapshot, c.RunStep, c.Secret, c.Session, c.TokenUsage, c.WorkflowRun,
+		c.WorkflowStepRun,
 	} {
 		n.Use(hooks...)
 	}
@@ -309,8 +328,9 @@ func (c *Client) Intercept(interceptors ...Interceptor) {
 	for _, n := range []interface{ Intercept(...Interceptor) }{
 		c.AuditLog, c.ConfigProfile, c.CronJob, c.CronJobHistory, c.EscrowDeal,
 		c.ExternalRef, c.Inquiry, c.Key, c.Knowledge, c.Learning, c.Message,
-		c.Observation, c.PaymentTx, c.PeerReputation, c.Reflection, c.Secret,
-		c.Session, c.TokenUsage, c.WorkflowRun, c.WorkflowStepRun,
+		c.Observation, c.PaymentTx, c.PeerReputation, c.Reflection, c.RunJournal,
+		c.RunSnapshot, c.RunStep, c.Secret, c.Session, c.TokenUsage, c.WorkflowRun,
+		c.WorkflowStepRun,
 	} {
 		n.Intercept(interceptors...)
 	}
@@ -349,6 +369,12 @@ func (c *Client) Mutate(ctx context.Context, m Mutation) (Value, error) {
 		return c.PeerReputation.mutate(ctx, m)
 	case *ReflectionMutation:
 		return c.Reflection.mutate(ctx, m)
+	case *RunJournalMutation:
+		return c.RunJournal.mutate(ctx, m)
+	case *RunSnapshotMutation:
+		return c.RunSnapshot.mutate(ctx, m)
+	case *RunStepMutation:
+		return c.RunStep.mutate(ctx, m)
 	case *SecretMutation:
 		return c.Secret.mutate(ctx, m)
 	case *SessionMutation:
@@ -2391,6 +2417,405 @@ func (c *ReflectionClient) mutate(ctx context.Context, m *ReflectionMutation) (V
 	}
 }
 
+// RunJournalClient is a client for the RunJournal schema.
+type RunJournalClient struct {
+	config
+}
+
+// NewRunJournalClient returns a client for the RunJournal from the given config.
+func NewRunJournalClient(c config) *RunJournalClient {
+	return &RunJournalClient{config: c}
+}
+
+// Use adds a list of mutation hooks to the hooks stack.
+// A call to `Use(f, g, h)` equals to `runjournal.Hooks(f(g(h())))`.
+func (c *RunJournalClient) Use(hooks ...Hook) {
+	c.hooks.RunJournal = append(c.hooks.RunJournal, hooks...)
+}
+
+// Intercept adds a list of query interceptors to the interceptors stack.
+// A call to `Intercept(f, g, h)` equals to `runjournal.Intercept(f(g(h())))`.
+func (c *RunJournalClient) Intercept(interceptors ...Interceptor) {
+	c.inters.RunJournal = append(c.inters.RunJournal, interceptors...)
+}
+
+// Create returns a builder for creating a RunJournal entity.
+func (c *RunJournalClient) Create() *RunJournalCreate {
+	mutation := newRunJournalMutation(c.config, OpCreate)
+	return &RunJournalCreate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// CreateBulk returns a builder for creating a bulk of RunJournal entities.
+func (c *RunJournalClient) CreateBulk(builders ...*RunJournalCreate) *RunJournalCreateBulk {
+	return &RunJournalCreateBulk{config: c.config, builders: builders}
+}
+
+// MapCreateBulk creates a bulk creation builder from the given slice. For each item in the slice, the function creates
+// a builder and applies setFunc on it.
+func (c *RunJournalClient) MapCreateBulk(slice any, setFunc func(*RunJournalCreate, int)) *RunJournalCreateBulk {
+	rv := reflect.ValueOf(slice)
+	if rv.Kind() != reflect.Slice {
+		return &RunJournalCreateBulk{err: fmt.Errorf("calling to RunJournalClient.MapCreateBulk with wrong type %T, need slice", slice)}
+	}
+	builders := make([]*RunJournalCreate, rv.Len())
+	for i := 0; i < rv.Len(); i++ {
+		builders[i] = c.Create()
+		setFunc(builders[i], i)
+	}
+	return &RunJournalCreateBulk{config: c.config, builders: builders}
+}
+
+// Update returns an update builder for RunJournal.
+func (c *RunJournalClient) Update() *RunJournalUpdate {
+	mutation := newRunJournalMutation(c.config, OpUpdate)
+	return &RunJournalUpdate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOne returns an update builder for the given entity.
+func (c *RunJournalClient) UpdateOne(_m *RunJournal) *RunJournalUpdateOne {
+	mutation := newRunJournalMutation(c.config, OpUpdateOne, withRunJournal(_m))
+	return &RunJournalUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOneID returns an update builder for the given id.
+func (c *RunJournalClient) UpdateOneID(id uuid.UUID) *RunJournalUpdateOne {
+	mutation := newRunJournalMutation(c.config, OpUpdateOne, withRunJournalID(id))
+	return &RunJournalUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// Delete returns a delete builder for RunJournal.
+func (c *RunJournalClient) Delete() *RunJournalDelete {
+	mutation := newRunJournalMutation(c.config, OpDelete)
+	return &RunJournalDelete{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// DeleteOne returns a builder for deleting the given entity.
+func (c *RunJournalClient) DeleteOne(_m *RunJournal) *RunJournalDeleteOne {
+	return c.DeleteOneID(_m.ID)
+}
+
+// DeleteOneID returns a builder for deleting the given entity by its id.
+func (c *RunJournalClient) DeleteOneID(id uuid.UUID) *RunJournalDeleteOne {
+	builder := c.Delete().Where(runjournal.ID(id))
+	builder.mutation.id = &id
+	builder.mutation.op = OpDeleteOne
+	return &RunJournalDeleteOne{builder}
+}
+
+// Query returns a query builder for RunJournal.
+func (c *RunJournalClient) Query() *RunJournalQuery {
+	return &RunJournalQuery{
+		config: c.config,
+		ctx:    &QueryContext{Type: TypeRunJournal},
+		inters: c.Interceptors(),
+	}
+}
+
+// Get returns a RunJournal entity by its id.
+func (c *RunJournalClient) Get(ctx context.Context, id uuid.UUID) (*RunJournal, error) {
+	return c.Query().Where(runjournal.ID(id)).Only(ctx)
+}
+
+// GetX is like Get, but panics if an error occurs.
+func (c *RunJournalClient) GetX(ctx context.Context, id uuid.UUID) *RunJournal {
+	obj, err := c.Get(ctx, id)
+	if err != nil {
+		panic(err)
+	}
+	return obj
+}
+
+// Hooks returns the client hooks.
+func (c *RunJournalClient) Hooks() []Hook {
+	return c.hooks.RunJournal
+}
+
+// Interceptors returns the client interceptors.
+func (c *RunJournalClient) Interceptors() []Interceptor {
+	return c.inters.RunJournal
+}
+
+func (c *RunJournalClient) mutate(ctx context.Context, m *RunJournalMutation) (Value, error) {
+	switch m.Op() {
+	case OpCreate:
+		return (&RunJournalCreate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdate:
+		return (&RunJournalUpdate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdateOne:
+		return (&RunJournalUpdateOne{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpDelete, OpDeleteOne:
+		return (&RunJournalDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
+	default:
+		return nil, fmt.Errorf("ent: unknown RunJournal mutation op: %q", m.Op())
+	}
+}
+
+// RunSnapshotClient is a client for the RunSnapshot schema.
+type RunSnapshotClient struct {
+	config
+}
+
+// NewRunSnapshotClient returns a client for the RunSnapshot from the given config.
+func NewRunSnapshotClient(c config) *RunSnapshotClient {
+	return &RunSnapshotClient{config: c}
+}
+
+// Use adds a list of mutation hooks to the hooks stack.
+// A call to `Use(f, g, h)` equals to `runsnapshot.Hooks(f(g(h())))`.
+func (c *RunSnapshotClient) Use(hooks ...Hook) {
+	c.hooks.RunSnapshot = append(c.hooks.RunSnapshot, hooks...)
+}
+
+// Intercept adds a list of query interceptors to the interceptors stack.
+// A call to `Intercept(f, g, h)` equals to `runsnapshot.Intercept(f(g(h())))`.
+func (c *RunSnapshotClient) Intercept(interceptors ...Interceptor) {
+	c.inters.RunSnapshot = append(c.inters.RunSnapshot, interceptors...)
+}
+
+// Create returns a builder for creating a RunSnapshot entity.
+func (c *RunSnapshotClient) Create() *RunSnapshotCreate {
+	mutation := newRunSnapshotMutation(c.config, OpCreate)
+	return &RunSnapshotCreate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// CreateBulk returns a builder for creating a bulk of RunSnapshot entities.
+func (c *RunSnapshotClient) CreateBulk(builders ...*RunSnapshotCreate) *RunSnapshotCreateBulk {
+	return &RunSnapshotCreateBulk{config: c.config, builders: builders}
+}
+
+// MapCreateBulk creates a bulk creation builder from the given slice. For each item in the slice, the function creates
+// a builder and applies setFunc on it.
+func (c *RunSnapshotClient) MapCreateBulk(slice any, setFunc func(*RunSnapshotCreate, int)) *RunSnapshotCreateBulk {
+	rv := reflect.ValueOf(slice)
+	if rv.Kind() != reflect.Slice {
+		return &RunSnapshotCreateBulk{err: fmt.Errorf("calling to RunSnapshotClient.MapCreateBulk with wrong type %T, need slice", slice)}
+	}
+	builders := make([]*RunSnapshotCreate, rv.Len())
+	for i := 0; i < rv.Len(); i++ {
+		builders[i] = c.Create()
+		setFunc(builders[i], i)
+	}
+	return &RunSnapshotCreateBulk{config: c.config, builders: builders}
+}
+
+// Update returns an update builder for RunSnapshot.
+func (c *RunSnapshotClient) Update() *RunSnapshotUpdate {
+	mutation := newRunSnapshotMutation(c.config, OpUpdate)
+	return &RunSnapshotUpdate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOne returns an update builder for the given entity.
+func (c *RunSnapshotClient) UpdateOne(_m *RunSnapshot) *RunSnapshotUpdateOne {
+	mutation := newRunSnapshotMutation(c.config, OpUpdateOne, withRunSnapshot(_m))
+	return &RunSnapshotUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOneID returns an update builder for the given id.
+func (c *RunSnapshotClient) UpdateOneID(id uuid.UUID) *RunSnapshotUpdateOne {
+	mutation := newRunSnapshotMutation(c.config, OpUpdateOne, withRunSnapshotID(id))
+	return &RunSnapshotUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// Delete returns a delete builder for RunSnapshot.
+func (c *RunSnapshotClient) Delete() *RunSnapshotDelete {
+	mutation := newRunSnapshotMutation(c.config, OpDelete)
+	return &RunSnapshotDelete{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// DeleteOne returns a builder for deleting the given entity.
+func (c *RunSnapshotClient) DeleteOne(_m *RunSnapshot) *RunSnapshotDeleteOne {
+	return c.DeleteOneID(_m.ID)
+}
+
+// DeleteOneID returns a builder for deleting the given entity by its id.
+func (c *RunSnapshotClient) DeleteOneID(id uuid.UUID) *RunSnapshotDeleteOne {
+	builder := c.Delete().Where(runsnapshot.ID(id))
+	builder.mutation.id = &id
+	builder.mutation.op = OpDeleteOne
+	return &RunSnapshotDeleteOne{builder}
+}
+
+// Query returns a query builder for RunSnapshot.
+func (c *RunSnapshotClient) Query() *RunSnapshotQuery {
+	return &RunSnapshotQuery{
+		config: c.config,
+		ctx:    &QueryContext{Type: TypeRunSnapshot},
+		inters: c.Interceptors(),
+	}
+}
+
+// Get returns a RunSnapshot entity by its id.
+func (c *RunSnapshotClient) Get(ctx context.Context, id uuid.UUID) (*RunSnapshot, error) {
+	return c.Query().Where(runsnapshot.ID(id)).Only(ctx)
+}
+
+// GetX is like Get, but panics if an error occurs.
+func (c *RunSnapshotClient) GetX(ctx context.Context, id uuid.UUID) *RunSnapshot {
+	obj, err := c.Get(ctx, id)
+	if err != nil {
+		panic(err)
+	}
+	return obj
+}
+
+// Hooks returns the client hooks.
+func (c *RunSnapshotClient) Hooks() []Hook {
+	return c.hooks.RunSnapshot
+}
+
+// Interceptors returns the client interceptors.
+func (c *RunSnapshotClient) Interceptors() []Interceptor {
+	return c.inters.RunSnapshot
+}
+
+func (c *RunSnapshotClient) mutate(ctx context.Context, m *RunSnapshotMutation) (Value, error) {
+	switch m.Op() {
+	case OpCreate:
+		return (&RunSnapshotCreate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdate:
+		return (&RunSnapshotUpdate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdateOne:
+		return (&RunSnapshotUpdateOne{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpDelete, OpDeleteOne:
+		return (&RunSnapshotDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
+	default:
+		return nil, fmt.Errorf("ent: unknown RunSnapshot mutation op: %q", m.Op())
+	}
+}
+
+// RunStepClient is a client for the RunStep schema.
+type RunStepClient struct {
+	config
+}
+
+// NewRunStepClient returns a client for the RunStep from the given config.
+func NewRunStepClient(c config) *RunStepClient {
+	return &RunStepClient{config: c}
+}
+
+// Use adds a list of mutation hooks to the hooks stack.
+// A call to `Use(f, g, h)` equals to `runstep.Hooks(f(g(h())))`.
+func (c *RunStepClient) Use(hooks ...Hook) {
+	c.hooks.RunStep = append(c.hooks.RunStep, hooks...)
+}
+
+// Intercept adds a list of query interceptors to the interceptors stack.
+// A call to `Intercept(f, g, h)` equals to `runstep.Intercept(f(g(h())))`.
+func (c *RunStepClient) Intercept(interceptors ...Interceptor) {
+	c.inters.RunStep = append(c.inters.RunStep, interceptors...)
+}
+
+// Create returns a builder for creating a RunStep entity.
+func (c *RunStepClient) Create() *RunStepCreate {
+	mutation := newRunStepMutation(c.config, OpCreate)
+	return &RunStepCreate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// CreateBulk returns a builder for creating a bulk of RunStep entities.
+func (c *RunStepClient) CreateBulk(builders ...*RunStepCreate) *RunStepCreateBulk {
+	return &RunStepCreateBulk{config: c.config, builders: builders}
+}
+
+// MapCreateBulk creates a bulk creation builder from the given slice. For each item in the slice, the function creates
+// a builder and applies setFunc on it.
+func (c *RunStepClient) MapCreateBulk(slice any, setFunc func(*RunStepCreate, int)) *RunStepCreateBulk {
+	rv := reflect.ValueOf(slice)
+	if rv.Kind() != reflect.Slice {
+		return &RunStepCreateBulk{err: fmt.Errorf("calling to RunStepClient.MapCreateBulk with wrong type %T, need slice", slice)}
+	}
+	builders := make([]*RunStepCreate, rv.Len())
+	for i := 0; i < rv.Len(); i++ {
+		builders[i] = c.Create()
+		setFunc(builders[i], i)
+	}
+	return &RunStepCreateBulk{config: c.config, builders: builders}
+}
+
+// Update returns an update builder for RunStep.
+func (c *RunStepClient) Update() *RunStepUpdate {
+	mutation := newRunStepMutation(c.config, OpUpdate)
+	return &RunStepUpdate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOne returns an update builder for the given entity.
+func (c *RunStepClient) UpdateOne(_m *RunStep) *RunStepUpdateOne {
+	mutation := newRunStepMutation(c.config, OpUpdateOne, withRunStep(_m))
+	return &RunStepUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOneID returns an update builder for the given id.
+func (c *RunStepClient) UpdateOneID(id uuid.UUID) *RunStepUpdateOne {
+	mutation := newRunStepMutation(c.config, OpUpdateOne, withRunStepID(id))
+	return &RunStepUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// Delete returns a delete builder for RunStep.
+func (c *RunStepClient) Delete() *RunStepDelete {
+	mutation := newRunStepMutation(c.config, OpDelete)
+	return &RunStepDelete{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// DeleteOne returns a builder for deleting the given entity.
+func (c *RunStepClient) DeleteOne(_m *RunStep) *RunStepDeleteOne {
+	return c.DeleteOneID(_m.ID)
+}
+
+// DeleteOneID returns a builder for deleting the given entity by its id.
+func (c *RunStepClient) DeleteOneID(id uuid.UUID) *RunStepDeleteOne {
+	builder := c.Delete().Where(runstep.ID(id))
+	builder.mutation.id = &id
+	builder.mutation.op = OpDeleteOne
+	return &RunStepDeleteOne{builder}
+}
+
+// Query returns a query builder for RunStep.
+func (c *RunStepClient) Query() *RunStepQuery {
+	return &RunStepQuery{
+		config: c.config,
+		ctx:    &QueryContext{Type: TypeRunStep},
+		inters: c.Interceptors(),
+	}
+}
+
+// Get returns a RunStep entity by its id.
+func (c *RunStepClient) Get(ctx context.Context, id uuid.UUID) (*RunStep, error) {
+	return c.Query().Where(runstep.ID(id)).Only(ctx)
+}
+
+// GetX is like Get, but panics if an error occurs.
+func (c *RunStepClient) GetX(ctx context.Context, id uuid.UUID) *RunStep {
+	obj, err := c.Get(ctx, id)
+	if err != nil {
+		panic(err)
+	}
+	return obj
+}
+
+// Hooks returns the client hooks.
+func (c *RunStepClient) Hooks() []Hook {
+	return c.hooks.RunStep
+}
+
+// Interceptors returns the client interceptors.
+func (c *RunStepClient) Interceptors() []Interceptor {
+	return c.inters.RunStep
+}
+
+func (c *RunStepClient) mutate(ctx context.Context, m *RunStepMutation) (Value, error) {
+	switch m.Op() {
+	case OpCreate:
+		return (&RunStepCreate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdate:
+		return (&RunStepUpdate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdateOne:
+		return (&RunStepUpdateOne{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpDelete, OpDeleteOne:
+		return (&RunStepDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
+	default:
+		return nil, fmt.Errorf("ent: unknown RunStep mutation op: %q", m.Op())
+	}
+}
+
 // SecretClient is a client for the Secret schema.
 type SecretClient struct {
 	config
@@ -3093,13 +3518,13 @@ type (
 	hooks struct {
 		AuditLog, ConfigProfile, CronJob, CronJobHistory, EscrowDeal, ExternalRef,
 		Inquiry, Key, Knowledge, Learning, Message, Observation, PaymentTx,
-		PeerReputation, Reflection, Secret, Session, TokenUsage, WorkflowRun,
-		WorkflowStepRun []ent.Hook
+		PeerReputation, Reflection, RunJournal, RunSnapshot, RunStep, Secret, Session,
+		TokenUsage, WorkflowRun, WorkflowStepRun []ent.Hook
 	}
 	inters struct {
 		AuditLog, ConfigProfile, CronJob, CronJobHistory, EscrowDeal, ExternalRef,
 		Inquiry, Key, Knowledge, Learning, Message, Observation, PaymentTx,
-		PeerReputation, Reflection, Secret, Session, TokenUsage, WorkflowRun,
-		WorkflowStepRun []ent.Interceptor
+		PeerReputation, Reflection, RunJournal, RunSnapshot, RunStep, Secret, Session,
+		TokenUsage, WorkflowRun, WorkflowStepRun []ent.Interceptor
 	}
 )

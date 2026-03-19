@@ -493,6 +493,118 @@ var (
 			},
 		},
 	}
+	// RunJournalsColumns holds the columns for the "run_journals" table.
+	RunJournalsColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeUUID},
+		{Name: "run_id", Type: field.TypeString},
+		{Name: "seq", Type: field.TypeInt64},
+		{Name: "type", Type: field.TypeEnum, Enums: []string{"run_created", "plan_attached", "step_started", "step_result_proposed", "step_validation_passed", "step_validation_failed", "policy_decision_applied", "note_written", "run_paused", "run_resumed", "run_completed", "run_failed", "projection_synced"}},
+		{Name: "timestamp", Type: field.TypeTime},
+		{Name: "payload", Type: field.TypeString, Size: 2147483647},
+	}
+	// RunJournalsTable holds the schema information for the "run_journals" table.
+	RunJournalsTable = &schema.Table{
+		Name:       "run_journals",
+		Columns:    RunJournalsColumns,
+		PrimaryKey: []*schema.Column{RunJournalsColumns[0]},
+		Indexes: []*schema.Index{
+			{
+				Name:    "runjournal_run_id_seq",
+				Unique:  true,
+				Columns: []*schema.Column{RunJournalsColumns[1], RunJournalsColumns[2]},
+			},
+			{
+				Name:    "runjournal_run_id",
+				Unique:  false,
+				Columns: []*schema.Column{RunJournalsColumns[1]},
+			},
+			{
+				Name:    "runjournal_type",
+				Unique:  false,
+				Columns: []*schema.Column{RunJournalsColumns[3]},
+			},
+			{
+				Name:    "runjournal_timestamp",
+				Unique:  false,
+				Columns: []*schema.Column{RunJournalsColumns[4]},
+			},
+		},
+	}
+	// RunSnapshotsColumns holds the columns for the "run_snapshots" table.
+	RunSnapshotsColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeUUID},
+		{Name: "run_id", Type: field.TypeString, Unique: true},
+		{Name: "session_key", Type: field.TypeString, Nullable: true},
+		{Name: "status", Type: field.TypeEnum, Enums: []string{"planning", "running", "paused", "completed", "failed"}, Default: "planning"},
+		{Name: "goal", Type: field.TypeString, Nullable: true},
+		{Name: "snapshot_data", Type: field.TypeString, Size: 2147483647},
+		{Name: "last_journal_seq", Type: field.TypeInt64, Default: 0},
+		{Name: "created_at", Type: field.TypeTime},
+		{Name: "updated_at", Type: field.TypeTime},
+	}
+	// RunSnapshotsTable holds the schema information for the "run_snapshots" table.
+	RunSnapshotsTable = &schema.Table{
+		Name:       "run_snapshots",
+		Columns:    RunSnapshotsColumns,
+		PrimaryKey: []*schema.Column{RunSnapshotsColumns[0]},
+		Indexes: []*schema.Index{
+			{
+				Name:    "runsnapshot_status",
+				Unique:  false,
+				Columns: []*schema.Column{RunSnapshotsColumns[3]},
+			},
+			{
+				Name:    "runsnapshot_session_key",
+				Unique:  false,
+				Columns: []*schema.Column{RunSnapshotsColumns[2]},
+			},
+			{
+				Name:    "runsnapshot_updated_at",
+				Unique:  false,
+				Columns: []*schema.Column{RunSnapshotsColumns[8]},
+			},
+		},
+	}
+	// RunStepsColumns holds the columns for the "run_steps" table.
+	RunStepsColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeUUID},
+		{Name: "run_id", Type: field.TypeString},
+		{Name: "step_id", Type: field.TypeString},
+		{Name: "step_index", Type: field.TypeInt, Default: 0},
+		{Name: "goal", Type: field.TypeString, Nullable: true},
+		{Name: "owner_agent", Type: field.TypeString, Nullable: true},
+		{Name: "status", Type: field.TypeEnum, Enums: []string{"pending", "in_progress", "verify_pending", "completed", "failed", "interrupted"}, Default: "pending"},
+		{Name: "result", Type: field.TypeString, Nullable: true, Size: 2147483647},
+		{Name: "evidence", Type: field.TypeString, Nullable: true, Size: 2147483647},
+		{Name: "validator_spec", Type: field.TypeString, Nullable: true, Size: 2147483647},
+		{Name: "retry_count", Type: field.TypeInt, Default: 0},
+		{Name: "max_retries", Type: field.TypeInt, Default: 2},
+		{Name: "created_at", Type: field.TypeTime},
+		{Name: "updated_at", Type: field.TypeTime},
+	}
+	// RunStepsTable holds the schema information for the "run_steps" table.
+	RunStepsTable = &schema.Table{
+		Name:       "run_steps",
+		Columns:    RunStepsColumns,
+		PrimaryKey: []*schema.Column{RunStepsColumns[0]},
+		Indexes: []*schema.Index{
+			{
+				Name:    "runstep_run_id",
+				Unique:  false,
+				Columns: []*schema.Column{RunStepsColumns[1]},
+			},
+			{
+				Name:    "runstep_run_id_step_id",
+				Unique:  true,
+				Columns: []*schema.Column{RunStepsColumns[1], RunStepsColumns[2]},
+			},
+			{
+				Name:    "runstep_status",
+				Unique:  false,
+				Columns: []*schema.Column{RunStepsColumns[6]},
+			},
+		},
+	}
 	// SecretsColumns holds the columns for the "secrets" table.
 	SecretsColumns = []*schema.Column{
 		{Name: "id", Type: field.TypeUUID},
@@ -683,6 +795,9 @@ var (
 		PaymentTxesTable,
 		PeerReputationsTable,
 		ReflectionsTable,
+		RunJournalsTable,
+		RunSnapshotsTable,
+		RunStepsTable,
 		SecretsTable,
 		SessionsTable,
 		TokenUsagesTable,

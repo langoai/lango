@@ -42,6 +42,12 @@ type Tx struct {
 	PeerReputation *PeerReputationClient
 	// Reflection is the client for interacting with the Reflection builders.
 	Reflection *ReflectionClient
+	// RunJournal is the client for interacting with the RunJournal builders.
+	RunJournal *RunJournalClient
+	// RunSnapshot is the client for interacting with the RunSnapshot builders.
+	RunSnapshot *RunSnapshotClient
+	// RunStep is the client for interacting with the RunStep builders.
+	RunStep *RunStepClient
 	// Secret is the client for interacting with the Secret builders.
 	Secret *SecretClient
 	// Session is the client for interacting with the Session builders.
@@ -198,6 +204,9 @@ func (tx *Tx) init() {
 	tx.PaymentTx = NewPaymentTxClient(tx.config)
 	tx.PeerReputation = NewPeerReputationClient(tx.config)
 	tx.Reflection = NewReflectionClient(tx.config)
+	tx.RunJournal = NewRunJournalClient(tx.config)
+	tx.RunSnapshot = NewRunSnapshotClient(tx.config)
+	tx.RunStep = NewRunStepClient(tx.config)
 	tx.Secret = NewSecretClient(tx.config)
 	tx.Session = NewSessionClient(tx.config)
 	tx.TokenUsage = NewTokenUsageClient(tx.config)
