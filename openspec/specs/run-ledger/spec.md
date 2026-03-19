@@ -3,9 +3,7 @@
 ## Purpose
 
 Durable execution engine that transforms Lango from an AI chatbot into a Task OS. Provides an append-only journal as the single source of truth, typed validators via a Propose-Evidence-Verify (PEV) engine, and policy-driven failure recovery for long-running agent tasks. Core principle: "the system proves completion, not the agent."
-
 ## Requirements
-
 ### Requirement: Append-Only Journal
 The system SHALL record all run state changes as `JournalEvent` records with monotonic sequence numbers. Events SHALL be immutable once written — no overwrite, no delete, only append.
 
@@ -201,45 +199,29 @@ The planner SHALL output strict JSON (optionally in ````json` fences). The syste
 - **THEN** `ParsePlannerOutput` returns `ErrInvalidPlanJSON`
 
 ### Requirement: Run Tools
-The system SHALL provide 8 agent tools with role-based access control.
+The system SHALL validate execution-agent step proposals before journaling them.
 
-#### Scenario: run_create (orchestrator only)
-- **WHEN** the orchestrator calls `run_create` with a valid plan JSON
-- **THEN** a run is created with `EventRunCreated` and `EventPlanAttached` journal events
-- **AND** a unique `run_id` is returned
+#### Scenario: Authorized proposal
+- **WHEN** an execution agent calls `run_propose_step_result` for its own step
+- **AND** the step exists
+- **AND** the step status is `in_progress`
+- **THEN** `EventStepResultProposed` is appended
+- **AND** auto-verification proceeds
 
-#### Scenario: run_read (any agent)
-- **WHEN** any agent calls `run_read` with a run_id
-- **THEN** the current `RunSnapshot` is returned
+#### Scenario: Unknown step rejected before journaling
+- **WHEN** an execution agent calls `run_propose_step_result` for a nonexistent step
+- **THEN** an error is returned
+- **AND** no `EventStepResultProposed` is appended
 
-#### Scenario: run_active (any agent)
-- **WHEN** any agent calls `run_active` with a run_id
-- **THEN** the currently active step or next executable step is returned
+#### Scenario: Wrong owner rejected before journaling
+- **WHEN** an execution agent calls `run_propose_step_result` for a step owned by a different agent
+- **THEN** `ErrAccessDenied` is returned
+- **AND** no `EventStepResultProposed` is appended
 
-#### Scenario: run_note (any agent)
-- **WHEN** any agent calls `run_note` with a key and value
-- **THEN** `EventNoteWritten` is recorded in the journal
-
-#### Scenario: run_propose_step_result (execution agents)
-- **WHEN** an execution agent calls `run_propose_step_result`
-- **THEN** `EventStepResultProposed` is recorded
-- **AND** the step is NOT marked as completed
-
-#### Scenario: run_apply_policy (orchestrator only)
-- **WHEN** the orchestrator calls `run_apply_policy` with an action
-- **THEN** `EventPolicyDecisionApplied` is recorded
-
-#### Scenario: run_approve_step (orchestrator only)
-- **WHEN** the orchestrator calls `run_approve_step`
-- **THEN** `EventStepValidationPassed` is recorded for the step
-
-#### Scenario: run_resume (orchestrator only)
-- **WHEN** the orchestrator calls `run_resume` on a paused run
-- **THEN** `EventRunResumed` is recorded and run status transitions to `running`
-
-#### Scenario: run_resume on non-paused run
-- **WHEN** `run_resume` is called on a running or completed run
-- **THEN** an error `ErrRunNotPaused` is returned
+#### Scenario: Wrong pre-state rejected before journaling
+- **WHEN** an execution agent calls `run_propose_step_result` for a step not in `in_progress`
+- **THEN** an error is returned
+- **AND** no `EventStepResultProposed` is appended
 
 ### Requirement: Resume Protocol
 Resume SHALL be opt-in only — no automatic resurrection. The system SHALL detect resume intent from user messages (Korean: 계속, 이어서, 마저; English: resume, continue) and present candidates for explicit confirmation.
@@ -258,15 +240,18 @@ Resume SHALL be opt-in only — no automatic resurrection. The system SHALL dete
 - **THEN** the stale run is NOT included
 
 ### Requirement: Workspace Isolation
-Coding steps (those with `build_pass`, `test_pass`, or `file_changed` validators) SHALL execute in git worktree isolation. If worktree creation fails, the step MUST NOT execute (fail-closed). Auto-merge SHALL be forbidden — only `git format-patch` → `git am` is permitted.
+Workspace preparation SHALL be retry-safe even when the same step is validated multiple times.
 
-#### Scenario: Dirty tree blocked
-- **WHEN** the working tree has uncommitted changes
-- **THEN** step execution is blocked with an error message
+#### Scenario: Repeated validation attempts
+- **WHEN** the same `run_id` and `step_id` require workspace preparation more than once
+- **THEN** each attempt uses a retry-safe worktree identity
+- **AND** previous attempts do not cause branch-exists failures
 
-#### Scenario: Worktree creation failure
-- **WHEN** `git worktree add` fails
-- **THEN** step execution is aborted (not run on base tree)
+#### Scenario: Phase 1 runtime readiness only
+- **WHEN** RunLedger is enabled in the current Phase 1 runtime
+- **THEN** validators support `work_dir`
+- **BUT** the app runtime does not yet activate `PEVEngine.WithWorkspace(...)`
+- **AND** full workspace isolation activation remains part of the later execution-isolation phase
 
 ### Requirement: Rollout Stages
 The system SHALL support 4 progressive rollout stages: Shadow (journal only), Write-Through (ledger first, then mirror), Authoritative Read (reads from ledger), Projection Retired (legacy removed).
@@ -323,3 +308,4 @@ Tool access SHALL be role-based. The orchestrator (agent name "orchestrator" or 
 - **THEN** the step MUST have the `orchestrator_approval` validator type
 - **AND** the step MUST be in `verify_pending` or `failed` status
 - **AND** if either condition is not met, an error is returned
+

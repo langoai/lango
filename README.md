@@ -56,7 +56,7 @@ This project includes experimental AI Agent features and is currently in an unst
 - 🏗️ **Agent Registry** - Custom agent definitions via AGENT.md files, dynamic routing with keyword + capability matching
 - 🧬 **Agent Memory** - Per-agent persistent memory for cross-session context retention
 - 📡 **Event Bus** - Typed synchronous pub/sub for internal component communication
-- 📒 **RunLedger (Task OS)** - Durable execution engine with PEV (Propose-Evidence-Verify) protocol, typed validators, 7 policy actions, workspace isolation, and acceptance criteria verification (🧪 Experimental)
+- 📒 **RunLedger (Task OS)** - Durable execution engine with PEV (Propose-Evidence-Verify) protocol, typed validators, 7 policy actions, phase-gated workspace isolation readiness, and acceptance criteria verification (🧪 Experimental)
 - 🪝 **Tool Hooks** - Middleware chain for tool execution (security filter, access control, event publishing, knowledge save)
 - 🏊 **Agent Pool** - P2P agent pool with health checking and weighted selection
 - 💰 **P2P Settlement** - On-chain USDC settlement with EIP-3009, receipt tracking, and retry

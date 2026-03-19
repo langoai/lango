@@ -270,6 +270,25 @@ func buildRunProposeStepResult(store RunLedgerStore, pev *PEVEngine) *agent.Tool
 				}
 			}
 
+			snap, err := store.GetRunSnapshot(ctx, runID)
+			if err != nil {
+				return nil, fmt.Errorf("get snapshot before propose: %w", err)
+			}
+			step := snap.FindStep(stepID)
+			if step == nil {
+				return nil, ErrStepNotFound
+			}
+
+			caller := toolchain.AgentNameFromContext(ctx)
+			if step.OwnerAgent != "" && step.OwnerAgent != caller {
+				return nil, fmt.Errorf("%w: step %q is owned by %q (caller: %q)",
+					ErrAccessDenied, stepID, step.OwnerAgent, caller)
+			}
+			if step.Status != StepStatusInProgress {
+				return nil, fmt.Errorf("step %q status is %q, expected in_progress",
+					stepID, step.Status)
+			}
+
 			if err := store.AppendJournalEvent(ctx, JournalEvent{
 				RunID: runID,
 				Type:  EventStepResultProposed,
@@ -283,14 +302,11 @@ func buildRunProposeStepResult(store RunLedgerStore, pev *PEVEngine) *agent.Tool
 			}
 
 			// Auto-trigger PEV verification.
-			snap, err := store.GetRunSnapshot(ctx, runID)
+			snap, err = store.GetRunSnapshot(ctx, runID)
 			if err != nil {
 				return nil, fmt.Errorf("get snapshot for PEV: %w", err)
 			}
-			step := snap.FindStep(stepID)
-			if step == nil {
-				return nil, ErrStepNotFound
-			}
+			step = snap.FindStep(stepID)
 
 			policyReq, verifyErr := pev.Verify(ctx, runID, step)
 			if verifyErr != nil {

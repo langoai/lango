@@ -181,7 +181,7 @@ func TestRunApplyPolicy_Retry(t *testing.T) {
 	planJSON := `{
 		"goal": "test retry",
 		"acceptance_criteria": [],
-		"steps": [{"id": "s1", "goal": "do", "owner_agent": "op", "validator": {"type": "build_pass"}}]
+		"steps": [{"id": "s1", "goal": "do", "owner_agent": "operator", "validator": {"type": "build_pass"}}]
 	}`
 	res, _ := tm["run_create"].call(ctx, map[string]interface{}{
 		"plan_json": planJSON, "session_key": "s1", "original_request": "test",
@@ -254,7 +254,7 @@ func TestRunApproveStep(t *testing.T) {
 	planJSON := `{
 		"goal": "test approval",
 		"acceptance_criteria": [],
-		"steps": [{"id": "s1", "goal": "review", "owner_agent": "op", "validator": {"type": "orchestrator_approval"}}]
+		"steps": [{"id": "s1", "goal": "review", "owner_agent": "operator", "validator": {"type": "orchestrator_approval"}}]
 	}`
 	res, _ := tm["run_create"].call(ctx, map[string]interface{}{
 		"plan_json": planJSON, "session_key": "s1", "original_request": "test",
@@ -320,7 +320,7 @@ func TestRunApproveStep_OrchestratorApproval(t *testing.T) {
 	planJSON := `{
 		"goal": "test approval",
 		"acceptance_criteria": [],
-		"steps": [{"id": "s1", "goal": "review", "owner_agent": "op", "validator": {"type": "orchestrator_approval"}}]
+		"steps": [{"id": "s1", "goal": "review", "owner_agent": "operator", "validator": {"type": "orchestrator_approval"}}]
 	}`
 	res, _ := tm["run_create"].call(ctx, map[string]interface{}{
 		"plan_json": planJSON, "session_key": "s1", "original_request": "test",
@@ -414,6 +414,116 @@ func TestProposeStepResult_OrchestratorBlocked(t *testing.T) {
 	assert.True(t, errors.Is(err, ErrAccessDenied))
 }
 
+func TestProposeStepResult_RejectWrongOwnerBeforeJournaling(t *testing.T) {
+	ctx := orchestratorCtx()
+	execCtx := executionCtx()
+	store := NewMemoryStore()
+	mockValidators := map[ValidatorType]Validator{
+		ValidatorBuildPass: &mockValidator{result: &ValidationResult{Passed: true, Reason: "ok"}},
+	}
+	pev := NewPEVEngine(store, mockValidators)
+	tm := toolMap(store, pev)
+
+	planJSON := `{
+		"goal": "owner check",
+		"acceptance_criteria": [],
+		"steps": [{"id": "s1", "goal": "build", "owner_agent": "vault", "validator": {"type": "build_pass"}}]
+	}`
+	res, _ := tm["run_create"].call(ctx, map[string]interface{}{
+		"plan_json": planJSON, "session_key": "s1", "original_request": "test",
+	})
+	runID := res.(map[string]interface{})["run_id"].(string)
+
+	_ = store.AppendJournalEvent(ctx, JournalEvent{
+		RunID: runID,
+		Type:  EventStepStarted,
+		Payload: marshalPayload(StepStartedPayload{
+			StepID: "s1",
+		}),
+	})
+
+	before, err := store.GetJournalEvents(ctx, runID)
+	require.NoError(t, err)
+
+	_, err = tm["run_propose_step_result"].call(execCtx, map[string]interface{}{
+		"run_id": runID, "step_id": "s1", "result": "done",
+	})
+	require.Error(t, err)
+	assert.True(t, errors.Is(err, ErrAccessDenied))
+
+	after, err := store.GetJournalEvents(ctx, runID)
+	require.NoError(t, err)
+	assert.Len(t, after, len(before))
+}
+
+func TestProposeStepResult_RejectWrongStateBeforeJournaling(t *testing.T) {
+	ctx := orchestratorCtx()
+	execCtx := executionCtx()
+	store := NewMemoryStore()
+	mockValidators := map[ValidatorType]Validator{
+		ValidatorBuildPass: &mockValidator{result: &ValidationResult{Passed: true, Reason: "ok"}},
+	}
+	pev := NewPEVEngine(store, mockValidators)
+	tm := toolMap(store, pev)
+
+	planJSON := `{
+		"goal": "state check",
+		"acceptance_criteria": [],
+		"steps": [{"id": "s1", "goal": "build", "owner_agent": "operator", "validator": {"type": "build_pass"}}]
+	}`
+	res, _ := tm["run_create"].call(ctx, map[string]interface{}{
+		"plan_json": planJSON, "session_key": "s1", "original_request": "test",
+	})
+	runID := res.(map[string]interface{})["run_id"].(string)
+
+	before, err := store.GetJournalEvents(ctx, runID)
+	require.NoError(t, err)
+
+	_, err = tm["run_propose_step_result"].call(execCtx, map[string]interface{}{
+		"run_id": runID, "step_id": "s1", "result": "done",
+	})
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "expected in_progress")
+
+	after, err := store.GetJournalEvents(ctx, runID)
+	require.NoError(t, err)
+	assert.Len(t, after, len(before))
+}
+
+func TestProposeStepResult_RejectUnknownStepBeforeJournaling(t *testing.T) {
+	ctx := orchestratorCtx()
+	execCtx := executionCtx()
+	store := NewMemoryStore()
+	mockValidators := map[ValidatorType]Validator{
+		ValidatorBuildPass: &mockValidator{result: &ValidationResult{Passed: true, Reason: "ok"}},
+	}
+	pev := NewPEVEngine(store, mockValidators)
+	tm := toolMap(store, pev)
+
+	planJSON := `{
+		"goal": "unknown step",
+		"acceptance_criteria": [],
+		"steps": [{"id": "s1", "goal": "build", "owner_agent": "operator", "validator": {"type": "build_pass"}}]
+	}`
+	res, _ := tm["run_create"].call(ctx, map[string]interface{}{
+		"plan_json": planJSON, "session_key": "s1", "original_request": "test",
+	})
+	runID := res.(map[string]interface{})["run_id"].(string)
+
+	before, err := store.GetJournalEvents(ctx, runID)
+	require.NoError(t, err)
+
+	_, err = tm["run_propose_step_result"].call(execCtx, map[string]interface{}{
+		"run_id": runID, "step_id": "missing", "result": "done",
+	})
+	require.Error(t, err)
+	assert.True(t, errors.Is(err, ErrStepNotFound))
+
+	after, err := store.GetJournalEvents(ctx, runID)
+	require.NoError(t, err)
+	assert.Len(t, after, len(before))
+}
+
 // --- Fix 2 tests: run_approve_step validator type validation ---
 
 func TestApproveStep_RejectNonOrchestratorApprovalType(t *testing.T) {
@@ -429,7 +539,7 @@ func TestApproveStep_RejectNonOrchestratorApprovalType(t *testing.T) {
 	planJSON := `{
 		"goal": "test",
 		"acceptance_criteria": [],
-		"steps": [{"id": "s1", "goal": "build", "owner_agent": "op", "validator": {"type": "build_pass"}}]
+		"steps": [{"id": "s1", "goal": "build", "owner_agent": "operator", "validator": {"type": "build_pass"}}]
 	}`
 	res, _ := tm["run_create"].call(ctx, map[string]interface{}{
 		"plan_json": planJSON, "session_key": "s1", "original_request": "test",
@@ -494,8 +604,8 @@ func TestProposeResult_AutoVerify_Pass(t *testing.T) {
 		"goal": "test verify",
 		"acceptance_criteria": [],
 		"steps": [
-			{"id": "s1", "goal": "build", "owner_agent": "op", "validator": {"type": "build_pass"}},
-			{"id": "s2", "goal": "build more", "owner_agent": "op", "validator": {"type": "build_pass"}, "depends_on": ["s1"]}
+			{"id": "s1", "goal": "build", "owner_agent": "operator", "validator": {"type": "build_pass"}},
+			{"id": "s2", "goal": "build more", "owner_agent": "operator", "validator": {"type": "build_pass"}, "depends_on": ["s1"]}
 		]
 	}`
 	res, _ := tm["run_create"].call(ctx, map[string]interface{}{
@@ -535,7 +645,7 @@ func TestProposeResult_AutoVerify_RunCompletion(t *testing.T) {
 		"acceptance_criteria": [
 			{"description": "build ok", "validator": {"type": "build_pass"}}
 		],
-		"steps": [{"id": "s1", "goal": "build", "owner_agent": "op", "validator": {"type": "build_pass"}}]
+		"steps": [{"id": "s1", "goal": "build", "owner_agent": "operator", "validator": {"type": "build_pass"}}]
 	}`
 	res, _ := tm["run_create"].call(ctx, map[string]interface{}{
 		"plan_json": planJSON, "session_key": "s1", "original_request": "test",
@@ -577,7 +687,7 @@ func TestProposeResult_AutoVerify_CriteriaUnmet(t *testing.T) {
 		"acceptance_criteria": [
 			{"description": "all tests pass", "validator": {"type": "test_pass"}}
 		],
-		"steps": [{"id": "s1", "goal": "build", "owner_agent": "op", "validator": {"type": "build_pass"}}]
+		"steps": [{"id": "s1", "goal": "build", "owner_agent": "operator", "validator": {"type": "build_pass"}}]
 	}`
 	res, _ := tm["run_create"].call(ctx, map[string]interface{}{
 		"plan_json": planJSON, "session_key": "s1", "original_request": "test",
@@ -612,7 +722,7 @@ func TestProposeResult_OrchestratorApproval_Flow(t *testing.T) {
 	planJSON := `{
 		"goal": "approval flow",
 		"acceptance_criteria": [],
-		"steps": [{"id": "s1", "goal": "review", "owner_agent": "op", "validator": {"type": "orchestrator_approval"}}]
+		"steps": [{"id": "s1", "goal": "review", "owner_agent": "operator", "validator": {"type": "orchestrator_approval"}}]
 	}`
 	res, _ := tm["run_create"].call(ctx, map[string]interface{}{
 		"plan_json": planJSON, "session_key": "s1", "original_request": "test",
@@ -645,7 +755,7 @@ func TestProposeResult_InfraError(t *testing.T) {
 	planJSON := `{
 		"goal": "infra error",
 		"acceptance_criteria": [],
-		"steps": [{"id": "s1", "goal": "build", "owner_agent": "op", "validator": {"type": "build_pass"}}]
+		"steps": [{"id": "s1", "goal": "build", "owner_agent": "operator", "validator": {"type": "build_pass"}}]
 	}`
 	res, _ := tm["run_create"].call(ctx, map[string]interface{}{
 		"plan_json": planJSON, "session_key": "s1", "original_request": "test",

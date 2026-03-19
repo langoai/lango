@@ -6,6 +6,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"time"
 )
 
 // WorkspaceManager handles git worktree isolation for coding steps.
@@ -41,12 +42,19 @@ func (m *WorkspaceManager) CheckDirtyTree() error {
 }
 
 // CreateWorktree creates a git worktree at the given path for isolated execution.
-// The branch name is derived from the run ID and step ID.
-func (m *WorkspaceManager) CreateWorktree(path, runID, stepID string) error {
-	branch := fmt.Sprintf("runledger/%s/%s", runID, stepID)
+func (m *WorkspaceManager) CreateWorktree(path, branch string) error {
 	cmd := exec.Command("git", "worktree", "add", "-b", branch, path)
 	if output, err := cmd.CombinedOutput(); err != nil {
 		return fmt.Errorf("create worktree: %s: %w", strings.TrimSpace(string(output)), err)
+	}
+	return nil
+}
+
+// DeleteBranch deletes a worktree branch after cleanup.
+func (m *WorkspaceManager) DeleteBranch(branch string) error {
+	cmd := exec.Command("git", "branch", "-D", branch)
+	if output, err := cmd.CombinedOutput(); err != nil {
+		return fmt.Errorf("delete branch: %s: %w", strings.TrimSpace(string(output)), err)
 	}
 	return nil
 }
@@ -75,8 +83,14 @@ func (m *WorkspaceManager) PrepareStepWorkspace(step *Step, runID string) (clean
 		return nil, fmt.Errorf("workspace isolation: %w", err)
 	}
 
-	path := filepath.Join(os.TempDir(), "runledger", runID, step.StepID)
-	if err := m.CreateWorktree(path, runID, step.StepID); err != nil {
+	suffix := fmt.Sprintf("%s-%d", step.StepID, time.Now().UnixNano())
+	path := filepath.Join(os.TempDir(), "runledger", runID, suffix)
+	branch := fmt.Sprintf("runledger/%s/%s", runID, suffix)
+
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		return nil, fmt.Errorf("create workspace parent: %w", err)
+	}
+	if err := m.CreateWorktree(path, branch); err != nil {
 		return nil, fmt.Errorf("create worktree: %w", err)
 	}
 
@@ -84,6 +98,7 @@ func (m *WorkspaceManager) PrepareStepWorkspace(step *Step, runID string) (clean
 
 	return func() {
 		_ = m.RemoveWorktree(path)
+		_ = m.DeleteBranch(branch)
 		step.Validator.WorkDir = ""
 	}, nil
 }

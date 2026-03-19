@@ -31,6 +31,9 @@ func (m *runLedgerModule) Enabled() bool { return m.cfg.RunLedger.Enabled }
 func (m *runLedgerModule) Init(_ context.Context, _ appinit.Resolver) (*appinit.ModuleResult, error) {
 	// Use in-memory store for Phase 1 (shadow mode).
 	// Ent-backed store will be implemented in Phase 2.
+	// Workspace-aware validation remains phase-gated: the PEV engine supports
+	// WithWorkspace(), but Phase 1 intentionally keeps runtime isolation disabled.
+	// Phase 4 activates workspace wiring as part of the execution-isolation rollout.
 	store := runledger.NewMemoryStore()
 	validators := runledger.DefaultValidators()
 	pev := runledger.NewPEVEngine(store, validators)

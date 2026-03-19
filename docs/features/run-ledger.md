@@ -173,7 +173,9 @@ Snapshots are materialized by replaying the full journal, or by applying a tail 
 
 The `WorkspaceManager` provides git worktree isolation for coding-related validators (`build_pass`, `test_pass`, `file_changed`). When enabled, each step executes in an isolated worktree at `$TMPDIR/runledger/<run_id>/<step_id>`.
 
-**Current status**: Phase 1 runs without isolation (workspace is `nil`). Phase 3 activates full isolation via:
+**Current status**: Phase 1 keeps runtime isolation disabled on purpose. The validator and
+workspace lifecycle code are ready, but the app runtime does not yet wire `WithWorkspace(...)`.
+The later execution-isolation phase activates full isolation via:
 
 ```go
 pev.WithWorkspace(NewWorkspaceManager())
