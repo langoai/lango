@@ -326,3 +326,10 @@ A new PresidioConfig struct SHALL define Enabled (bool), URL (string, default "h
 - **WHEN** no Presidio config is specified
 - **THEN** URL SHALL default to "http://localhost:5002", ScoreThreshold to 0.7, Language to "en"
 
+### Requirement: Provenance Configuration Section
+The Config struct SHALL include a `Provenance ProvenanceConfig` field with sub-struct `CheckpointConfig`. DefaultConfig SHALL set provenance defaults: enabled=false, autoOnStepComplete=true, autoOnPolicy=true, maxPerSession=100, retentionDays=30.
+
+#### Scenario: Default config includes provenance
+- **WHEN** DefaultConfig() is called
+- **THEN** the Provenance field is populated with default values
+

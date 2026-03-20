@@ -24,12 +24,14 @@ type EntStore struct {
 	client *ent.Client
 	locks  sync.Map
 	cache  sync.Map
+	opts   StoreOptions
 }
 
 // NewEntStore creates a new Ent-backed RunLedger store.
-func NewEntStore(client *ent.Client) *EntStore {
+func NewEntStore(client *ent.Client, opts ...StoreOption) *EntStore {
 	return &EntStore{
 		client: client,
+		opts:   applyStoreOptions(opts),
 	}
 }
 
@@ -82,6 +84,9 @@ func (s *EntStore) AppendJournalEvent(ctx context.Context, event JournalEvent) e
 		}()
 
 		if commitErr == nil {
+			if s.opts.AppendHook != nil {
+				s.opts.AppendHook(event)
+			}
 			return nil
 		}
 		_ = tx.Rollback()

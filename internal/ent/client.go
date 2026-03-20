@@ -30,12 +30,14 @@ import (
 	"github.com/langoai/lango/internal/ent/observation"
 	"github.com/langoai/lango/internal/ent/paymenttx"
 	"github.com/langoai/lango/internal/ent/peerreputation"
+	"github.com/langoai/lango/internal/ent/provenancecheckpoint"
 	"github.com/langoai/lango/internal/ent/reflection"
 	"github.com/langoai/lango/internal/ent/runjournal"
 	"github.com/langoai/lango/internal/ent/runsnapshot"
 	"github.com/langoai/lango/internal/ent/runstep"
 	"github.com/langoai/lango/internal/ent/secret"
 	"github.com/langoai/lango/internal/ent/session"
+	"github.com/langoai/lango/internal/ent/sessionprovenance"
 	"github.com/langoai/lango/internal/ent/tokenusage"
 	"github.com/langoai/lango/internal/ent/workflowrun"
 	"github.com/langoai/lango/internal/ent/workflowsteprun"
@@ -74,6 +76,8 @@ type Client struct {
 	PaymentTx *PaymentTxClient
 	// PeerReputation is the client for interacting with the PeerReputation builders.
 	PeerReputation *PeerReputationClient
+	// ProvenanceCheckpoint is the client for interacting with the ProvenanceCheckpoint builders.
+	ProvenanceCheckpoint *ProvenanceCheckpointClient
 	// Reflection is the client for interacting with the Reflection builders.
 	Reflection *ReflectionClient
 	// RunJournal is the client for interacting with the RunJournal builders.
@@ -86,6 +90,8 @@ type Client struct {
 	Secret *SecretClient
 	// Session is the client for interacting with the Session builders.
 	Session *SessionClient
+	// SessionProvenance is the client for interacting with the SessionProvenance builders.
+	SessionProvenance *SessionProvenanceClient
 	// TokenUsage is the client for interacting with the TokenUsage builders.
 	TokenUsage *TokenUsageClient
 	// WorkflowRun is the client for interacting with the WorkflowRun builders.
@@ -117,12 +123,14 @@ func (c *Client) init() {
 	c.Observation = NewObservationClient(c.config)
 	c.PaymentTx = NewPaymentTxClient(c.config)
 	c.PeerReputation = NewPeerReputationClient(c.config)
+	c.ProvenanceCheckpoint = NewProvenanceCheckpointClient(c.config)
 	c.Reflection = NewReflectionClient(c.config)
 	c.RunJournal = NewRunJournalClient(c.config)
 	c.RunSnapshot = NewRunSnapshotClient(c.config)
 	c.RunStep = NewRunStepClient(c.config)
 	c.Secret = NewSecretClient(c.config)
 	c.Session = NewSessionClient(c.config)
+	c.SessionProvenance = NewSessionProvenanceClient(c.config)
 	c.TokenUsage = NewTokenUsageClient(c.config)
 	c.WorkflowRun = NewWorkflowRunClient(c.config)
 	c.WorkflowStepRun = NewWorkflowStepRunClient(c.config)
@@ -216,31 +224,33 @@ func (c *Client) Tx(ctx context.Context) (*Tx, error) {
 	cfg := c.config
 	cfg.driver = tx
 	return &Tx{
-		ctx:             ctx,
-		config:          cfg,
-		AuditLog:        NewAuditLogClient(cfg),
-		ConfigProfile:   NewConfigProfileClient(cfg),
-		CronJob:         NewCronJobClient(cfg),
-		CronJobHistory:  NewCronJobHistoryClient(cfg),
-		EscrowDeal:      NewEscrowDealClient(cfg),
-		ExternalRef:     NewExternalRefClient(cfg),
-		Inquiry:         NewInquiryClient(cfg),
-		Key:             NewKeyClient(cfg),
-		Knowledge:       NewKnowledgeClient(cfg),
-		Learning:        NewLearningClient(cfg),
-		Message:         NewMessageClient(cfg),
-		Observation:     NewObservationClient(cfg),
-		PaymentTx:       NewPaymentTxClient(cfg),
-		PeerReputation:  NewPeerReputationClient(cfg),
-		Reflection:      NewReflectionClient(cfg),
-		RunJournal:      NewRunJournalClient(cfg),
-		RunSnapshot:     NewRunSnapshotClient(cfg),
-		RunStep:         NewRunStepClient(cfg),
-		Secret:          NewSecretClient(cfg),
-		Session:         NewSessionClient(cfg),
-		TokenUsage:      NewTokenUsageClient(cfg),
-		WorkflowRun:     NewWorkflowRunClient(cfg),
-		WorkflowStepRun: NewWorkflowStepRunClient(cfg),
+		ctx:                  ctx,
+		config:               cfg,
+		AuditLog:             NewAuditLogClient(cfg),
+		ConfigProfile:        NewConfigProfileClient(cfg),
+		CronJob:              NewCronJobClient(cfg),
+		CronJobHistory:       NewCronJobHistoryClient(cfg),
+		EscrowDeal:           NewEscrowDealClient(cfg),
+		ExternalRef:          NewExternalRefClient(cfg),
+		Inquiry:              NewInquiryClient(cfg),
+		Key:                  NewKeyClient(cfg),
+		Knowledge:            NewKnowledgeClient(cfg),
+		Learning:             NewLearningClient(cfg),
+		Message:              NewMessageClient(cfg),
+		Observation:          NewObservationClient(cfg),
+		PaymentTx:            NewPaymentTxClient(cfg),
+		PeerReputation:       NewPeerReputationClient(cfg),
+		ProvenanceCheckpoint: NewProvenanceCheckpointClient(cfg),
+		Reflection:           NewReflectionClient(cfg),
+		RunJournal:           NewRunJournalClient(cfg),
+		RunSnapshot:          NewRunSnapshotClient(cfg),
+		RunStep:              NewRunStepClient(cfg),
+		Secret:               NewSecretClient(cfg),
+		Session:              NewSessionClient(cfg),
+		SessionProvenance:    NewSessionProvenanceClient(cfg),
+		TokenUsage:           NewTokenUsageClient(cfg),
+		WorkflowRun:          NewWorkflowRunClient(cfg),
+		WorkflowStepRun:      NewWorkflowStepRunClient(cfg),
 	}, nil
 }
 
@@ -258,31 +268,33 @@ func (c *Client) BeginTx(ctx context.Context, opts *sql.TxOptions) (*Tx, error) 
 	cfg := c.config
 	cfg.driver = &txDriver{tx: tx, drv: c.driver}
 	return &Tx{
-		ctx:             ctx,
-		config:          cfg,
-		AuditLog:        NewAuditLogClient(cfg),
-		ConfigProfile:   NewConfigProfileClient(cfg),
-		CronJob:         NewCronJobClient(cfg),
-		CronJobHistory:  NewCronJobHistoryClient(cfg),
-		EscrowDeal:      NewEscrowDealClient(cfg),
-		ExternalRef:     NewExternalRefClient(cfg),
-		Inquiry:         NewInquiryClient(cfg),
-		Key:             NewKeyClient(cfg),
-		Knowledge:       NewKnowledgeClient(cfg),
-		Learning:        NewLearningClient(cfg),
-		Message:         NewMessageClient(cfg),
-		Observation:     NewObservationClient(cfg),
-		PaymentTx:       NewPaymentTxClient(cfg),
-		PeerReputation:  NewPeerReputationClient(cfg),
-		Reflection:      NewReflectionClient(cfg),
-		RunJournal:      NewRunJournalClient(cfg),
-		RunSnapshot:     NewRunSnapshotClient(cfg),
-		RunStep:         NewRunStepClient(cfg),
-		Secret:          NewSecretClient(cfg),
-		Session:         NewSessionClient(cfg),
-		TokenUsage:      NewTokenUsageClient(cfg),
-		WorkflowRun:     NewWorkflowRunClient(cfg),
-		WorkflowStepRun: NewWorkflowStepRunClient(cfg),
+		ctx:                  ctx,
+		config:               cfg,
+		AuditLog:             NewAuditLogClient(cfg),
+		ConfigProfile:        NewConfigProfileClient(cfg),
+		CronJob:              NewCronJobClient(cfg),
+		CronJobHistory:       NewCronJobHistoryClient(cfg),
+		EscrowDeal:           NewEscrowDealClient(cfg),
+		ExternalRef:          NewExternalRefClient(cfg),
+		Inquiry:              NewInquiryClient(cfg),
+		Key:                  NewKeyClient(cfg),
+		Knowledge:            NewKnowledgeClient(cfg),
+		Learning:             NewLearningClient(cfg),
+		Message:              NewMessageClient(cfg),
+		Observation:          NewObservationClient(cfg),
+		PaymentTx:            NewPaymentTxClient(cfg),
+		PeerReputation:       NewPeerReputationClient(cfg),
+		ProvenanceCheckpoint: NewProvenanceCheckpointClient(cfg),
+		Reflection:           NewReflectionClient(cfg),
+		RunJournal:           NewRunJournalClient(cfg),
+		RunSnapshot:          NewRunSnapshotClient(cfg),
+		RunStep:              NewRunStepClient(cfg),
+		Secret:               NewSecretClient(cfg),
+		Session:              NewSessionClient(cfg),
+		SessionProvenance:    NewSessionProvenanceClient(cfg),
+		TokenUsage:           NewTokenUsageClient(cfg),
+		WorkflowRun:          NewWorkflowRunClient(cfg),
+		WorkflowStepRun:      NewWorkflowStepRunClient(cfg),
 	}, nil
 }
 
@@ -314,9 +326,9 @@ func (c *Client) Use(hooks ...Hook) {
 	for _, n := range []interface{ Use(...Hook) }{
 		c.AuditLog, c.ConfigProfile, c.CronJob, c.CronJobHistory, c.EscrowDeal,
 		c.ExternalRef, c.Inquiry, c.Key, c.Knowledge, c.Learning, c.Message,
-		c.Observation, c.PaymentTx, c.PeerReputation, c.Reflection, c.RunJournal,
-		c.RunSnapshot, c.RunStep, c.Secret, c.Session, c.TokenUsage, c.WorkflowRun,
-		c.WorkflowStepRun,
+		c.Observation, c.PaymentTx, c.PeerReputation, c.ProvenanceCheckpoint,
+		c.Reflection, c.RunJournal, c.RunSnapshot, c.RunStep, c.Secret, c.Session,
+		c.SessionProvenance, c.TokenUsage, c.WorkflowRun, c.WorkflowStepRun,
 	} {
 		n.Use(hooks...)
 	}
@@ -328,9 +340,9 @@ func (c *Client) Intercept(interceptors ...Interceptor) {
 	for _, n := range []interface{ Intercept(...Interceptor) }{
 		c.AuditLog, c.ConfigProfile, c.CronJob, c.CronJobHistory, c.EscrowDeal,
 		c.ExternalRef, c.Inquiry, c.Key, c.Knowledge, c.Learning, c.Message,
-		c.Observation, c.PaymentTx, c.PeerReputation, c.Reflection, c.RunJournal,
-		c.RunSnapshot, c.RunStep, c.Secret, c.Session, c.TokenUsage, c.WorkflowRun,
-		c.WorkflowStepRun,
+		c.Observation, c.PaymentTx, c.PeerReputation, c.ProvenanceCheckpoint,
+		c.Reflection, c.RunJournal, c.RunSnapshot, c.RunStep, c.Secret, c.Session,
+		c.SessionProvenance, c.TokenUsage, c.WorkflowRun, c.WorkflowStepRun,
 	} {
 		n.Intercept(interceptors...)
 	}
@@ -367,6 +379,8 @@ func (c *Client) Mutate(ctx context.Context, m Mutation) (Value, error) {
 		return c.PaymentTx.mutate(ctx, m)
 	case *PeerReputationMutation:
 		return c.PeerReputation.mutate(ctx, m)
+	case *ProvenanceCheckpointMutation:
+		return c.ProvenanceCheckpoint.mutate(ctx, m)
 	case *ReflectionMutation:
 		return c.Reflection.mutate(ctx, m)
 	case *RunJournalMutation:
@@ -379,6 +393,8 @@ func (c *Client) Mutate(ctx context.Context, m Mutation) (Value, error) {
 		return c.Secret.mutate(ctx, m)
 	case *SessionMutation:
 		return c.Session.mutate(ctx, m)
+	case *SessionProvenanceMutation:
+		return c.SessionProvenance.mutate(ctx, m)
 	case *TokenUsageMutation:
 		return c.TokenUsage.mutate(ctx, m)
 	case *WorkflowRunMutation:
@@ -2284,6 +2300,139 @@ func (c *PeerReputationClient) mutate(ctx context.Context, m *PeerReputationMuta
 	}
 }
 
+// ProvenanceCheckpointClient is a client for the ProvenanceCheckpoint schema.
+type ProvenanceCheckpointClient struct {
+	config
+}
+
+// NewProvenanceCheckpointClient returns a client for the ProvenanceCheckpoint from the given config.
+func NewProvenanceCheckpointClient(c config) *ProvenanceCheckpointClient {
+	return &ProvenanceCheckpointClient{config: c}
+}
+
+// Use adds a list of mutation hooks to the hooks stack.
+// A call to `Use(f, g, h)` equals to `provenancecheckpoint.Hooks(f(g(h())))`.
+func (c *ProvenanceCheckpointClient) Use(hooks ...Hook) {
+	c.hooks.ProvenanceCheckpoint = append(c.hooks.ProvenanceCheckpoint, hooks...)
+}
+
+// Intercept adds a list of query interceptors to the interceptors stack.
+// A call to `Intercept(f, g, h)` equals to `provenancecheckpoint.Intercept(f(g(h())))`.
+func (c *ProvenanceCheckpointClient) Intercept(interceptors ...Interceptor) {
+	c.inters.ProvenanceCheckpoint = append(c.inters.ProvenanceCheckpoint, interceptors...)
+}
+
+// Create returns a builder for creating a ProvenanceCheckpoint entity.
+func (c *ProvenanceCheckpointClient) Create() *ProvenanceCheckpointCreate {
+	mutation := newProvenanceCheckpointMutation(c.config, OpCreate)
+	return &ProvenanceCheckpointCreate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// CreateBulk returns a builder for creating a bulk of ProvenanceCheckpoint entities.
+func (c *ProvenanceCheckpointClient) CreateBulk(builders ...*ProvenanceCheckpointCreate) *ProvenanceCheckpointCreateBulk {
+	return &ProvenanceCheckpointCreateBulk{config: c.config, builders: builders}
+}
+
+// MapCreateBulk creates a bulk creation builder from the given slice. For each item in the slice, the function creates
+// a builder and applies setFunc on it.
+func (c *ProvenanceCheckpointClient) MapCreateBulk(slice any, setFunc func(*ProvenanceCheckpointCreate, int)) *ProvenanceCheckpointCreateBulk {
+	rv := reflect.ValueOf(slice)
+	if rv.Kind() != reflect.Slice {
+		return &ProvenanceCheckpointCreateBulk{err: fmt.Errorf("calling to ProvenanceCheckpointClient.MapCreateBulk with wrong type %T, need slice", slice)}
+	}
+	builders := make([]*ProvenanceCheckpointCreate, rv.Len())
+	for i := 0; i < rv.Len(); i++ {
+		builders[i] = c.Create()
+		setFunc(builders[i], i)
+	}
+	return &ProvenanceCheckpointCreateBulk{config: c.config, builders: builders}
+}
+
+// Update returns an update builder for ProvenanceCheckpoint.
+func (c *ProvenanceCheckpointClient) Update() *ProvenanceCheckpointUpdate {
+	mutation := newProvenanceCheckpointMutation(c.config, OpUpdate)
+	return &ProvenanceCheckpointUpdate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOne returns an update builder for the given entity.
+func (c *ProvenanceCheckpointClient) UpdateOne(_m *ProvenanceCheckpoint) *ProvenanceCheckpointUpdateOne {
+	mutation := newProvenanceCheckpointMutation(c.config, OpUpdateOne, withProvenanceCheckpoint(_m))
+	return &ProvenanceCheckpointUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOneID returns an update builder for the given id.
+func (c *ProvenanceCheckpointClient) UpdateOneID(id uuid.UUID) *ProvenanceCheckpointUpdateOne {
+	mutation := newProvenanceCheckpointMutation(c.config, OpUpdateOne, withProvenanceCheckpointID(id))
+	return &ProvenanceCheckpointUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// Delete returns a delete builder for ProvenanceCheckpoint.
+func (c *ProvenanceCheckpointClient) Delete() *ProvenanceCheckpointDelete {
+	mutation := newProvenanceCheckpointMutation(c.config, OpDelete)
+	return &ProvenanceCheckpointDelete{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// DeleteOne returns a builder for deleting the given entity.
+func (c *ProvenanceCheckpointClient) DeleteOne(_m *ProvenanceCheckpoint) *ProvenanceCheckpointDeleteOne {
+	return c.DeleteOneID(_m.ID)
+}
+
+// DeleteOneID returns a builder for deleting the given entity by its id.
+func (c *ProvenanceCheckpointClient) DeleteOneID(id uuid.UUID) *ProvenanceCheckpointDeleteOne {
+	builder := c.Delete().Where(provenancecheckpoint.ID(id))
+	builder.mutation.id = &id
+	builder.mutation.op = OpDeleteOne
+	return &ProvenanceCheckpointDeleteOne{builder}
+}
+
+// Query returns a query builder for ProvenanceCheckpoint.
+func (c *ProvenanceCheckpointClient) Query() *ProvenanceCheckpointQuery {
+	return &ProvenanceCheckpointQuery{
+		config: c.config,
+		ctx:    &QueryContext{Type: TypeProvenanceCheckpoint},
+		inters: c.Interceptors(),
+	}
+}
+
+// Get returns a ProvenanceCheckpoint entity by its id.
+func (c *ProvenanceCheckpointClient) Get(ctx context.Context, id uuid.UUID) (*ProvenanceCheckpoint, error) {
+	return c.Query().Where(provenancecheckpoint.ID(id)).Only(ctx)
+}
+
+// GetX is like Get, but panics if an error occurs.
+func (c *ProvenanceCheckpointClient) GetX(ctx context.Context, id uuid.UUID) *ProvenanceCheckpoint {
+	obj, err := c.Get(ctx, id)
+	if err != nil {
+		panic(err)
+	}
+	return obj
+}
+
+// Hooks returns the client hooks.
+func (c *ProvenanceCheckpointClient) Hooks() []Hook {
+	return c.hooks.ProvenanceCheckpoint
+}
+
+// Interceptors returns the client interceptors.
+func (c *ProvenanceCheckpointClient) Interceptors() []Interceptor {
+	return c.inters.ProvenanceCheckpoint
+}
+
+func (c *ProvenanceCheckpointClient) mutate(ctx context.Context, m *ProvenanceCheckpointMutation) (Value, error) {
+	switch m.Op() {
+	case OpCreate:
+		return (&ProvenanceCheckpointCreate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdate:
+		return (&ProvenanceCheckpointUpdate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdateOne:
+		return (&ProvenanceCheckpointUpdateOne{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpDelete, OpDeleteOne:
+		return (&ProvenanceCheckpointDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
+	default:
+		return nil, fmt.Errorf("ent: unknown ProvenanceCheckpoint mutation op: %q", m.Op())
+	}
+}
+
 // ReflectionClient is a client for the Reflection schema.
 type ReflectionClient struct {
 	config
@@ -3114,6 +3263,139 @@ func (c *SessionClient) mutate(ctx context.Context, m *SessionMutation) (Value, 
 	}
 }
 
+// SessionProvenanceClient is a client for the SessionProvenance schema.
+type SessionProvenanceClient struct {
+	config
+}
+
+// NewSessionProvenanceClient returns a client for the SessionProvenance from the given config.
+func NewSessionProvenanceClient(c config) *SessionProvenanceClient {
+	return &SessionProvenanceClient{config: c}
+}
+
+// Use adds a list of mutation hooks to the hooks stack.
+// A call to `Use(f, g, h)` equals to `sessionprovenance.Hooks(f(g(h())))`.
+func (c *SessionProvenanceClient) Use(hooks ...Hook) {
+	c.hooks.SessionProvenance = append(c.hooks.SessionProvenance, hooks...)
+}
+
+// Intercept adds a list of query interceptors to the interceptors stack.
+// A call to `Intercept(f, g, h)` equals to `sessionprovenance.Intercept(f(g(h())))`.
+func (c *SessionProvenanceClient) Intercept(interceptors ...Interceptor) {
+	c.inters.SessionProvenance = append(c.inters.SessionProvenance, interceptors...)
+}
+
+// Create returns a builder for creating a SessionProvenance entity.
+func (c *SessionProvenanceClient) Create() *SessionProvenanceCreate {
+	mutation := newSessionProvenanceMutation(c.config, OpCreate)
+	return &SessionProvenanceCreate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// CreateBulk returns a builder for creating a bulk of SessionProvenance entities.
+func (c *SessionProvenanceClient) CreateBulk(builders ...*SessionProvenanceCreate) *SessionProvenanceCreateBulk {
+	return &SessionProvenanceCreateBulk{config: c.config, builders: builders}
+}
+
+// MapCreateBulk creates a bulk creation builder from the given slice. For each item in the slice, the function creates
+// a builder and applies setFunc on it.
+func (c *SessionProvenanceClient) MapCreateBulk(slice any, setFunc func(*SessionProvenanceCreate, int)) *SessionProvenanceCreateBulk {
+	rv := reflect.ValueOf(slice)
+	if rv.Kind() != reflect.Slice {
+		return &SessionProvenanceCreateBulk{err: fmt.Errorf("calling to SessionProvenanceClient.MapCreateBulk with wrong type %T, need slice", slice)}
+	}
+	builders := make([]*SessionProvenanceCreate, rv.Len())
+	for i := 0; i < rv.Len(); i++ {
+		builders[i] = c.Create()
+		setFunc(builders[i], i)
+	}
+	return &SessionProvenanceCreateBulk{config: c.config, builders: builders}
+}
+
+// Update returns an update builder for SessionProvenance.
+func (c *SessionProvenanceClient) Update() *SessionProvenanceUpdate {
+	mutation := newSessionProvenanceMutation(c.config, OpUpdate)
+	return &SessionProvenanceUpdate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOne returns an update builder for the given entity.
+func (c *SessionProvenanceClient) UpdateOne(_m *SessionProvenance) *SessionProvenanceUpdateOne {
+	mutation := newSessionProvenanceMutation(c.config, OpUpdateOne, withSessionProvenance(_m))
+	return &SessionProvenanceUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOneID returns an update builder for the given id.
+func (c *SessionProvenanceClient) UpdateOneID(id uuid.UUID) *SessionProvenanceUpdateOne {
+	mutation := newSessionProvenanceMutation(c.config, OpUpdateOne, withSessionProvenanceID(id))
+	return &SessionProvenanceUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// Delete returns a delete builder for SessionProvenance.
+func (c *SessionProvenanceClient) Delete() *SessionProvenanceDelete {
+	mutation := newSessionProvenanceMutation(c.config, OpDelete)
+	return &SessionProvenanceDelete{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// DeleteOne returns a builder for deleting the given entity.
+func (c *SessionProvenanceClient) DeleteOne(_m *SessionProvenance) *SessionProvenanceDeleteOne {
+	return c.DeleteOneID(_m.ID)
+}
+
+// DeleteOneID returns a builder for deleting the given entity by its id.
+func (c *SessionProvenanceClient) DeleteOneID(id uuid.UUID) *SessionProvenanceDeleteOne {
+	builder := c.Delete().Where(sessionprovenance.ID(id))
+	builder.mutation.id = &id
+	builder.mutation.op = OpDeleteOne
+	return &SessionProvenanceDeleteOne{builder}
+}
+
+// Query returns a query builder for SessionProvenance.
+func (c *SessionProvenanceClient) Query() *SessionProvenanceQuery {
+	return &SessionProvenanceQuery{
+		config: c.config,
+		ctx:    &QueryContext{Type: TypeSessionProvenance},
+		inters: c.Interceptors(),
+	}
+}
+
+// Get returns a SessionProvenance entity by its id.
+func (c *SessionProvenanceClient) Get(ctx context.Context, id uuid.UUID) (*SessionProvenance, error) {
+	return c.Query().Where(sessionprovenance.ID(id)).Only(ctx)
+}
+
+// GetX is like Get, but panics if an error occurs.
+func (c *SessionProvenanceClient) GetX(ctx context.Context, id uuid.UUID) *SessionProvenance {
+	obj, err := c.Get(ctx, id)
+	if err != nil {
+		panic(err)
+	}
+	return obj
+}
+
+// Hooks returns the client hooks.
+func (c *SessionProvenanceClient) Hooks() []Hook {
+	return c.hooks.SessionProvenance
+}
+
+// Interceptors returns the client interceptors.
+func (c *SessionProvenanceClient) Interceptors() []Interceptor {
+	return c.inters.SessionProvenance
+}
+
+func (c *SessionProvenanceClient) mutate(ctx context.Context, m *SessionProvenanceMutation) (Value, error) {
+	switch m.Op() {
+	case OpCreate:
+		return (&SessionProvenanceCreate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdate:
+		return (&SessionProvenanceUpdate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdateOne:
+		return (&SessionProvenanceUpdateOne{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpDelete, OpDeleteOne:
+		return (&SessionProvenanceDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
+	default:
+		return nil, fmt.Errorf("ent: unknown SessionProvenance mutation op: %q", m.Op())
+	}
+}
+
 // TokenUsageClient is a client for the TokenUsage schema.
 type TokenUsageClient struct {
 	config
@@ -3518,13 +3800,15 @@ type (
 	hooks struct {
 		AuditLog, ConfigProfile, CronJob, CronJobHistory, EscrowDeal, ExternalRef,
 		Inquiry, Key, Knowledge, Learning, Message, Observation, PaymentTx,
-		PeerReputation, Reflection, RunJournal, RunSnapshot, RunStep, Secret, Session,
-		TokenUsage, WorkflowRun, WorkflowStepRun []ent.Hook
+		PeerReputation, ProvenanceCheckpoint, Reflection, RunJournal, RunSnapshot,
+		RunStep, Secret, Session, SessionProvenance, TokenUsage, WorkflowRun,
+		WorkflowStepRun []ent.Hook
 	}
 	inters struct {
 		AuditLog, ConfigProfile, CronJob, CronJobHistory, EscrowDeal, ExternalRef,
 		Inquiry, Key, Knowledge, Learning, Message, Observation, PaymentTx,
-		PeerReputation, Reflection, RunJournal, RunSnapshot, RunStep, Secret, Session,
-		TokenUsage, WorkflowRun, WorkflowStepRun []ent.Interceptor
+		PeerReputation, ProvenanceCheckpoint, Reflection, RunJournal, RunSnapshot,
+		RunStep, Secret, Session, SessionProvenance, TokenUsage, WorkflowRun,
+		WorkflowStepRun []ent.Interceptor
 	}
 )

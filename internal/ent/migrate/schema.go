@@ -466,6 +466,51 @@ var (
 			},
 		},
 	}
+	// ProvenanceCheckpointsColumns holds the columns for the "provenance_checkpoints" table.
+	ProvenanceCheckpointsColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeUUID},
+		{Name: "session_key", Type: field.TypeString, Nullable: true},
+		{Name: "run_id", Type: field.TypeString, Nullable: true},
+		{Name: "label", Type: field.TypeString},
+		{Name: "trigger", Type: field.TypeEnum, Enums: []string{"manual", "step_complete", "policy_applied"}},
+		{Name: "journal_seq", Type: field.TypeInt64, Default: 0},
+		{Name: "git_ref", Type: field.TypeString, Nullable: true},
+		{Name: "metadata", Type: field.TypeString, Nullable: true, Size: 2147483647},
+		{Name: "created_at", Type: field.TypeTime},
+	}
+	// ProvenanceCheckpointsTable holds the schema information for the "provenance_checkpoints" table.
+	ProvenanceCheckpointsTable = &schema.Table{
+		Name:       "provenance_checkpoints",
+		Columns:    ProvenanceCheckpointsColumns,
+		PrimaryKey: []*schema.Column{ProvenanceCheckpointsColumns[0]},
+		Indexes: []*schema.Index{
+			{
+				Name:    "provenancecheckpoint_session_key",
+				Unique:  false,
+				Columns: []*schema.Column{ProvenanceCheckpointsColumns[1]},
+			},
+			{
+				Name:    "provenancecheckpoint_run_id",
+				Unique:  false,
+				Columns: []*schema.Column{ProvenanceCheckpointsColumns[2]},
+			},
+			{
+				Name:    "provenancecheckpoint_trigger",
+				Unique:  false,
+				Columns: []*schema.Column{ProvenanceCheckpointsColumns[4]},
+			},
+			{
+				Name:    "provenancecheckpoint_created_at",
+				Unique:  false,
+				Columns: []*schema.Column{ProvenanceCheckpointsColumns[8]},
+			},
+			{
+				Name:    "provenancecheckpoint_run_id_journal_seq",
+				Unique:  false,
+				Columns: []*schema.Column{ProvenanceCheckpointsColumns[2], ProvenanceCheckpointsColumns[5]},
+			},
+		},
+	}
 	// ReflectionsColumns holds the columns for the "reflections" table.
 	ReflectionsColumns = []*schema.Column{
 		{Name: "id", Type: field.TypeUUID},
@@ -498,7 +543,7 @@ var (
 		{Name: "id", Type: field.TypeUUID},
 		{Name: "run_id", Type: field.TypeString},
 		{Name: "seq", Type: field.TypeInt64},
-		{Name: "type", Type: field.TypeEnum, Enums: []string{"run_created", "plan_attached", "step_started", "step_result_proposed", "step_validation_passed", "step_validation_failed", "policy_decision_applied", "note_written", "run_paused", "run_resumed", "run_completed", "run_failed", "projection_synced"}},
+		{Name: "type", Type: field.TypeEnum, Enums: []string{"run_created", "plan_attached", "step_started", "step_result_proposed", "step_validation_passed", "step_validation_failed", "policy_decision_applied", "note_written", "run_paused", "run_resumed", "run_completed", "run_failed", "projection_synced", "criterion_met"}},
 		{Name: "timestamp", Type: field.TypeTime},
 		{Name: "payload", Type: field.TypeString, Size: 2147483647},
 	}
@@ -666,6 +711,53 @@ var (
 			},
 		},
 	}
+	// SessionProvenancesColumns holds the columns for the "session_provenances" table.
+	SessionProvenancesColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeUUID},
+		{Name: "session_key", Type: field.TypeString, Unique: true},
+		{Name: "parent_key", Type: field.TypeString, Nullable: true},
+		{Name: "agent_name", Type: field.TypeString},
+		{Name: "goal", Type: field.TypeString, Nullable: true},
+		{Name: "run_id", Type: field.TypeString, Nullable: true},
+		{Name: "workspace_id", Type: field.TypeString, Nullable: true},
+		{Name: "depth", Type: field.TypeInt, Default: 0},
+		{Name: "status", Type: field.TypeEnum, Enums: []string{"active", "merged", "discarded", "completed"}, Default: "active"},
+		{Name: "created_at", Type: field.TypeTime},
+		{Name: "closed_at", Type: field.TypeTime, Nullable: true},
+	}
+	// SessionProvenancesTable holds the schema information for the "session_provenances" table.
+	SessionProvenancesTable = &schema.Table{
+		Name:       "session_provenances",
+		Columns:    SessionProvenancesColumns,
+		PrimaryKey: []*schema.Column{SessionProvenancesColumns[0]},
+		Indexes: []*schema.Index{
+			{
+				Name:    "sessionprovenance_parent_key",
+				Unique:  false,
+				Columns: []*schema.Column{SessionProvenancesColumns[2]},
+			},
+			{
+				Name:    "sessionprovenance_agent_name",
+				Unique:  false,
+				Columns: []*schema.Column{SessionProvenancesColumns[3]},
+			},
+			{
+				Name:    "sessionprovenance_status",
+				Unique:  false,
+				Columns: []*schema.Column{SessionProvenancesColumns[8]},
+			},
+			{
+				Name:    "sessionprovenance_run_id",
+				Unique:  false,
+				Columns: []*schema.Column{SessionProvenancesColumns[5]},
+			},
+			{
+				Name:    "sessionprovenance_created_at",
+				Unique:  false,
+				Columns: []*schema.Column{SessionProvenancesColumns[9]},
+			},
+		},
+	}
 	// TokenUsagesColumns holds the columns for the "token_usages" table.
 	TokenUsagesColumns = []*schema.Column{
 		{Name: "id", Type: field.TypeUUID},
@@ -794,12 +886,14 @@ var (
 		ObservationsTable,
 		PaymentTxesTable,
 		PeerReputationsTable,
+		ProvenanceCheckpointsTable,
 		ReflectionsTable,
 		RunJournalsTable,
 		RunSnapshotsTable,
 		RunStepsTable,
 		SecretsTable,
 		SessionsTable,
+		SessionProvenancesTable,
 		TokenUsagesTable,
 		WorkflowRunsTable,
 		WorkflowStepRunsTable,

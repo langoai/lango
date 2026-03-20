@@ -32,6 +32,7 @@ const (
 	ProvidesObservability Provides = "observability"
 	ProvidesMCP          Provides = "mcp"
 	ProvidesRunLedger    Provides = "run_ledger"
+	ProvidesProvenance   Provides = "provenance"
 	ProvidesWorkspace    Provides = "workspace"
 	ProvidesBaseTools    Provides = "base_tools"
 )

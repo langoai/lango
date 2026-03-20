@@ -97,6 +97,9 @@ type Config struct {
 	// RunLedger configuration (Task OS — durable execution engine)
 	RunLedger RunLedgerConfig `mapstructure:"runLedger" json:"runLedger"`
 
+	// Provenance configuration (session checkpoints, attribution, session tree)
+	Provenance ProvenanceConfig `mapstructure:"provenance" json:"provenance"`
+
 	// Providers configuration
 	Providers map[string]ProviderConfig `mapstructure:"providers" json:"providers"`
 }

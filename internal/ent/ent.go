@@ -26,12 +26,14 @@ import (
 	"github.com/langoai/lango/internal/ent/observation"
 	"github.com/langoai/lango/internal/ent/paymenttx"
 	"github.com/langoai/lango/internal/ent/peerreputation"
+	"github.com/langoai/lango/internal/ent/provenancecheckpoint"
 	"github.com/langoai/lango/internal/ent/reflection"
 	"github.com/langoai/lango/internal/ent/runjournal"
 	"github.com/langoai/lango/internal/ent/runsnapshot"
 	"github.com/langoai/lango/internal/ent/runstep"
 	"github.com/langoai/lango/internal/ent/secret"
 	"github.com/langoai/lango/internal/ent/session"
+	"github.com/langoai/lango/internal/ent/sessionprovenance"
 	"github.com/langoai/lango/internal/ent/tokenusage"
 	"github.com/langoai/lango/internal/ent/workflowrun"
 	"github.com/langoai/lango/internal/ent/workflowsteprun"
@@ -95,29 +97,31 @@ var (
 func checkColumn(t, c string) error {
 	initCheck.Do(func() {
 		columnCheck = sql.NewColumnCheck(map[string]func(string) bool{
-			auditlog.Table:        auditlog.ValidColumn,
-			configprofile.Table:   configprofile.ValidColumn,
-			cronjob.Table:         cronjob.ValidColumn,
-			cronjobhistory.Table:  cronjobhistory.ValidColumn,
-			escrowdeal.Table:      escrowdeal.ValidColumn,
-			externalref.Table:     externalref.ValidColumn,
-			inquiry.Table:         inquiry.ValidColumn,
-			key.Table:             key.ValidColumn,
-			knowledge.Table:       knowledge.ValidColumn,
-			learning.Table:        learning.ValidColumn,
-			message.Table:         message.ValidColumn,
-			observation.Table:     observation.ValidColumn,
-			paymenttx.Table:       paymenttx.ValidColumn,
-			peerreputation.Table:  peerreputation.ValidColumn,
-			reflection.Table:      reflection.ValidColumn,
-			runjournal.Table:      runjournal.ValidColumn,
-			runsnapshot.Table:     runsnapshot.ValidColumn,
-			runstep.Table:         runstep.ValidColumn,
-			secret.Table:          secret.ValidColumn,
-			session.Table:         session.ValidColumn,
-			tokenusage.Table:      tokenusage.ValidColumn,
-			workflowrun.Table:     workflowrun.ValidColumn,
-			workflowsteprun.Table: workflowsteprun.ValidColumn,
+			auditlog.Table:             auditlog.ValidColumn,
+			configprofile.Table:        configprofile.ValidColumn,
+			cronjob.Table:              cronjob.ValidColumn,
+			cronjobhistory.Table:       cronjobhistory.ValidColumn,
+			escrowdeal.Table:           escrowdeal.ValidColumn,
+			externalref.Table:          externalref.ValidColumn,
+			inquiry.Table:              inquiry.ValidColumn,
+			key.Table:                  key.ValidColumn,
+			knowledge.Table:            knowledge.ValidColumn,
+			learning.Table:             learning.ValidColumn,
+			message.Table:              message.ValidColumn,
+			observation.Table:          observation.ValidColumn,
+			paymenttx.Table:            paymenttx.ValidColumn,
+			peerreputation.Table:       peerreputation.ValidColumn,
+			provenancecheckpoint.Table: provenancecheckpoint.ValidColumn,
+			reflection.Table:           reflection.ValidColumn,
+			runjournal.Table:           runjournal.ValidColumn,
+			runsnapshot.Table:          runsnapshot.ValidColumn,
+			runstep.Table:              runstep.ValidColumn,
+			secret.Table:               secret.ValidColumn,
+			session.Table:              session.ValidColumn,
+			sessionprovenance.Table:    sessionprovenance.ValidColumn,
+			tokenusage.Table:           tokenusage.ValidColumn,
+			workflowrun.Table:          workflowrun.ValidColumn,
+			workflowsteprun.Table:      workflowsteprun.ValidColumn,
 		})
 	})
 	return columnCheck(t, c)

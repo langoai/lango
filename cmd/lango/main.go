@@ -30,6 +30,7 @@ import (
 	clilearning "github.com/langoai/lango/internal/cli/learning"
 	clilibrarian "github.com/langoai/lango/internal/cli/librarian"
 	climcp "github.com/langoai/lango/internal/cli/mcp"
+	cliprovenance "github.com/langoai/lango/internal/cli/provenance"
 	clirun "github.com/langoai/lango/internal/cli/run"
 	climemory "github.com/langoai/lango/internal/cli/memory"
 	climetrics "github.com/langoai/lango/internal/cli/metrics"
@@ -143,6 +144,10 @@ func main() {
 	runCmd := clirun.NewRunCmd(cliboot.BootResult)
 	runCmd.GroupID = "auto"
 	rootCmd.AddCommand(runCmd)
+
+	provenanceCmd := cliprovenance.NewProvenanceCmd(cliboot.BootResult)
+	provenanceCmd.GroupID = "auto"
+	rootCmd.AddCommand(provenanceCmd)
 
 	bgCmd := clibg.NewBgCmd(func() (*background.Manager, error) {
 		return nil, fmt.Errorf("bg commands require a running server (use 'lango serve' first)")
@@ -357,6 +362,7 @@ func startupSummary(cfg *config.Config) string {
 		{Name: "MCP", Enabled: cfg.MCP.Enabled, Detail: mcpServerCount(cfg)},
 		{Name: "P2P", Enabled: cfg.P2P.Enabled},
 		{Name: "Payment", Enabled: cfg.Payment.Enabled},
+		{Name: "Provenance", Enabled: cfg.Provenance.Enabled},
 	}
 
 	return tui.StartupSummary(features)

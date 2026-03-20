@@ -150,6 +150,15 @@ func DefaultConfig() *Config {
 			ValidatorTimeout:   2 * time.Minute,
 			PlannerMaxRetries:  2,
 		},
+		Provenance: ProvenanceConfig{
+			Enabled: false,
+			Checkpoints: CheckpointConfig{
+				AutoOnStepComplete: true,
+				AutoOnPolicy:       true,
+				MaxPerSession:      100,
+				RetentionDays:      30,
+			},
+		},
 		ObservationalMemory: ObservationalMemoryConfig{
 			Enabled:                          false,
 			MessageTokenThreshold:            1000,

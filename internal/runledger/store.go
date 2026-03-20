@@ -58,20 +58,21 @@ type MemoryStore struct {
 	journals map[string][]JournalEvent // runID -> events
 	seqs     map[string]int64          // runID -> next seq
 	cache    map[string]*RunSnapshot   // runID -> cached snapshot
+	opts     StoreOptions
 }
 
 // NewMemoryStore creates a new in-memory RunLedgerStore.
-func NewMemoryStore() *MemoryStore {
+func NewMemoryStore(opts ...StoreOption) *MemoryStore {
 	return &MemoryStore{
 		journals: make(map[string][]JournalEvent),
 		seqs:     make(map[string]int64),
 		cache:    make(map[string]*RunSnapshot),
+		opts:     applyStoreOptions(opts),
 	}
 }
 
 func (m *MemoryStore) AppendJournalEvent(_ context.Context, event JournalEvent) error {
 	m.mu.Lock()
-	defer m.mu.Unlock()
 
 	if event.ID == "" {
 		event.ID = uuid.New().String()
@@ -86,6 +87,11 @@ func (m *MemoryStore) AppendJournalEvent(_ context.Context, event JournalEvent) 
 	m.seqs[event.RunID] = seq
 
 	m.journals[event.RunID] = append(m.journals[event.RunID], event)
+	m.mu.Unlock()
+
+	if m.opts.AppendHook != nil {
+		m.opts.AppendHook(event)
+	}
 	return nil
 }
 

@@ -8,22 +8,45 @@ import (
 	"github.com/langoai/lango/internal/types"
 )
 
+// SessionLifecycleEvent describes a session lifecycle transition.
+type SessionLifecycleEvent struct {
+	Type       string // "fork", "merge", "discard"
+	ChildKey   string
+	ParentKey  string
+	AgentName  string
+}
+
+// ChildStoreOption configures an InMemoryChildStore.
+type ChildStoreOption func(*InMemoryChildStore)
+
+// WithLifecycleHook registers a callback invoked after fork/merge/discard operations.
+func WithLifecycleHook(h func(SessionLifecycleEvent)) ChildStoreOption {
+	return func(s *InMemoryChildStore) {
+		s.lifecycleHook = h
+	}
+}
+
 // InMemoryChildStore implements ChildSessionStore using an in-memory map.
 // It wraps an existing Store for parent session access.
 type InMemoryChildStore struct {
-	parent      Store
-	mu          sync.RWMutex
-	children    map[string]*ChildSession // keyed by child session key
-	parentIndex map[string][]string      // parent key -> child keys
+	parent        Store
+	mu            sync.RWMutex
+	children      map[string]*ChildSession // keyed by child session key
+	parentIndex   map[string][]string      // parent key -> child keys
+	lifecycleHook func(SessionLifecycleEvent)
 }
 
 // NewInMemoryChildStore creates a new in-memory child session store.
-func NewInMemoryChildStore(parent Store) *InMemoryChildStore {
-	return &InMemoryChildStore{
+func NewInMemoryChildStore(parent Store, opts ...ChildStoreOption) *InMemoryChildStore {
+	s := &InMemoryChildStore{
 		parent:      parent,
 		children:    make(map[string]*ChildSession),
 		parentIndex: make(map[string][]string),
 	}
+	for _, opt := range opts {
+		opt(s)
+	}
+	return s
 }
 
 // Compile-time interface check.
@@ -55,6 +78,15 @@ func (s *InMemoryChildStore) ForkChild(parentKey, agentName string, cfg ChildSes
 	s.parentIndex[child.ParentKey] = append(s.parentIndex[child.ParentKey], child.Key)
 	s.mu.Unlock()
 
+	if s.lifecycleHook != nil {
+		s.lifecycleHook(SessionLifecycleEvent{
+			Type:      "fork",
+			ChildKey:  child.Key,
+			ParentKey: parentKey,
+			AgentName: agentName,
+		})
+	}
+
 	return child, nil
 }
 
@@ -76,19 +108,30 @@ func (s *InMemoryChildStore) MergeChild(childKey string, summary string) error {
 	// Determine what to append to parent.
 	if summary != "" {
 		// Append a single summary message instead of full history.
-		return s.parent.AppendMessage(child.ParentKey, Message{
+		if err := s.parent.AppendMessage(child.ParentKey, Message{
 			Role:      types.RoleAssistant,
 			Content:   summary,
 			Timestamp: time.Now(),
 			Author:    child.AgentName,
-		})
+		}); err != nil {
+			return err
+		}
+	} else {
+		// Append all child messages to parent.
+		for _, msg := range child.History {
+			if err := s.parent.AppendMessage(child.ParentKey, msg); err != nil {
+				return fmt.Errorf("append child message to parent: %w", err)
+			}
+		}
 	}
 
-	// Append all child messages to parent.
-	for _, msg := range child.History {
-		if err := s.parent.AppendMessage(child.ParentKey, msg); err != nil {
-			return fmt.Errorf("append child message to parent: %w", err)
-		}
+	if s.lifecycleHook != nil {
+		s.lifecycleHook(SessionLifecycleEvent{
+			Type:      "merge",
+			ChildKey:  childKey,
+			ParentKey: child.ParentKey,
+			AgentName: child.AgentName,
+		})
 	}
 	return nil
 }
@@ -96,10 +139,10 @@ func (s *InMemoryChildStore) MergeChild(childKey string, summary string) error {
 // DiscardChild removes a child session without merging.
 func (s *InMemoryChildStore) DiscardChild(childKey string) error {
 	s.mu.Lock()
-	defer s.mu.Unlock()
 
 	child, ok := s.children[childKey]
 	if !ok {
+		s.mu.Unlock()
 		return fmt.Errorf("child session %q not found", childKey)
 	}
 
@@ -116,7 +159,18 @@ func (s *InMemoryChildStore) DiscardChild(childKey string) error {
 		delete(s.parentIndex, parentKey)
 	}
 
+	agentName := child.AgentName
 	delete(s.children, childKey)
+	s.mu.Unlock()
+
+	if s.lifecycleHook != nil {
+		s.lifecycleHook(SessionLifecycleEvent{
+			Type:      "discard",
+			ChildKey:  childKey,
+			ParentKey: parentKey,
+			AgentName: agentName,
+		})
+	}
 	return nil
 }
 

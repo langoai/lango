@@ -58,6 +58,7 @@ func New(boot *bootstrap.Result) (*App, error) {
 	builder.AddModule(&networkModule{cfg: cfg, boot: boot, bus: bus, app: app})
 	builder.AddModule(&extensionModule{cfg: cfg, boot: boot, bus: bus})
 	builder.AddModule(&runLedgerModule{cfg: cfg, boot: boot})
+	builder.AddModule(&provenanceModule{cfg: cfg, boot: boot})
 
 	buildResult, err := builder.Build(ctx)
 	if err != nil {
