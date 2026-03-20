@@ -15,17 +15,18 @@ import (
 	"github.com/langoai/lango/internal/approval"
 	"github.com/langoai/lango/internal/background"
 	"github.com/langoai/lango/internal/bootstrap"
-	cronpkg "github.com/langoai/lango/internal/cron"
 	"github.com/langoai/lango/internal/config"
+	cronpkg "github.com/langoai/lango/internal/cron"
 	"github.com/langoai/lango/internal/eventbus"
 	"github.com/langoai/lango/internal/gateway"
 	"github.com/langoai/lango/internal/learning"
 	"github.com/langoai/lango/internal/lifecycle"
-	"github.com/langoai/lango/internal/skill"
 	"github.com/langoai/lango/internal/logging"
 	"github.com/langoai/lango/internal/observability/audit"
+	"github.com/langoai/lango/internal/runledger"
 	"github.com/langoai/lango/internal/sandbox"
 	"github.com/langoai/lango/internal/session"
+	"github.com/langoai/lango/internal/skill"
 	"github.com/langoai/lango/internal/toolcatalog"
 	"github.com/langoai/lango/internal/toolchain"
 	"github.com/langoai/lango/internal/tooloutput"
@@ -56,6 +57,7 @@ func New(boot *bootstrap.Result) (*App, error) {
 	builder.AddModule(&automationModule{cfg: cfg, app: app})
 	builder.AddModule(&networkModule{cfg: cfg, boot: boot, bus: bus, app: app})
 	builder.AddModule(&extensionModule{cfg: cfg, boot: boot, bus: bus})
+	builder.AddModule(&runLedgerModule{cfg: cfg, boot: boot})
 
 	buildResult, err := builder.Build(ctx)
 	if err != nil {
@@ -113,6 +115,9 @@ func New(boot *bootstrap.Result) (*App, error) {
 	if app.Sanitizer != nil {
 		app.Gateway.SetSanitizer(app.Sanitizer)
 	}
+	if app.RunLedgerStore != nil {
+		app.Gateway.SetRunLedgerStore(app.RunLedgerStore)
+	}
 
 	// B4d. Build composite approval provider and tool approval wrapper.
 	composite, grantStore := buildApprovalProvider(cfg, app.Gateway)
@@ -123,6 +128,9 @@ func New(boot *bootstrap.Result) (*App, error) {
 	if policy == "" {
 		policy = config.ApprovalPolicyDangerous
 	}
+	if policy == config.ApprovalPolicyNone {
+		logger().Warnw("tool approval policy is set to 'none' -- all tool calls will execute without user confirmation; not recommended for production")
+	}
 	if policy != config.ApprovalPolicyNone {
 		var limiter wallet.SpendingLimiter
 		nv, _ := resolver.Resolve(appinit.ProvidesPayment).(*paymentComponents)
@@ -132,6 +140,10 @@ func New(boot *bootstrap.Result) (*App, error) {
 		tools = toolchain.ChainAll(tools,
 			toolchain.WithApproval(cfg.Security.Interceptor, composite, grantStore, limiter))
 		logger().Infow("tool approval enabled", "policy", string(policy))
+	}
+
+	if app.RunLedgerStore != nil && cfg.RunLedger.WorkspaceIsolation {
+		tools = toolchain.ChainAll(tools, runledger.ToolProfileGuard(app.RunLedgerStore))
 	}
 
 	// Log tool registration summary for diagnostics.
@@ -155,6 +167,7 @@ func New(boot *bootstrap.Result) (*App, error) {
 		catalog:  catalog,
 		p2pc:     p2pc,
 		eventBus: bus,
+		rls:      app.RunLedgerStore,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("create agent: %w", err)
@@ -163,7 +176,7 @@ func New(boot *bootstrap.Result) (*App, error) {
 	app.Gateway.SetAgent(adkAgent)
 
 	// B7. Post-agent wiring.
-	wirePostAgent(app, resolver, tools, bus, composite, grantStore, boot)
+	wirePostAgent(app, resolver, tools, bus, composite, grantStore, boot, auth)
 
 	// B8. Channels.
 	if err := app.initChannels(); err != nil {
@@ -274,6 +287,12 @@ func populateAppFields(app *App, r appinit.Resolver) {
 		app.HealthRegistry = obsc.healthRegistry
 		app.TokenStore = obsc.tokenStore
 	}
+
+	// RunLedger.
+	if rlv, ok := r.Resolve(appinit.ProvidesRunLedger).(*runLedgerValues); ok && rlv != nil {
+		app.RunLedgerStore = rlv.store
+		app.RunLedgerPEV = rlv.pev
+	}
 }
 
 // buildCatalogFromEntries converts module CatalogEntries into a toolcatalog.Catalog.
@@ -332,7 +351,7 @@ func buildApprovalProvider(cfg *config.Config, gw *gateway.Server) (*approval.Co
 }
 
 // wirePostAgent handles A2A, P2P executor, routes, and audit after agent creation.
-func wirePostAgent(app *App, r appinit.Resolver, tools []*agent.Tool, bus *eventbus.Bus, composite *approval.CompositeProvider, grantStore *approval.GrantStore, boot *bootstrap.Result) {
+func wirePostAgent(app *App, r appinit.Resolver, tools []*agent.Tool, bus *eventbus.Bus, composite *approval.CompositeProvider, grantStore *approval.GrantStore, boot *bootstrap.Result, auth *gateway.AuthManager) {
 	cfg := app.Config
 	adkAgent := app.Agent
 
@@ -434,7 +453,7 @@ func wirePostAgent(app *App, r appinit.Resolver, tools []*agent.Tool, bus *event
 				})
 			}
 		}
-		registerP2PRoutes(app.Gateway.Router(), p2pc)
+		registerP2PRoutes(app.Gateway.Router(), p2pc, auth)
 		logger().Info("P2P REST API routes registered")
 	}
 
@@ -566,7 +585,6 @@ func resolveSR(iv *intelligenceValues) *skill.Registry {
 	sr, _ := iv.SkillRegistry.(*skill.Registry)
 	return sr
 }
-
 
 // Start starts the application services using the lifecycle registry.
 func (a *App) Start(ctx context.Context) error {

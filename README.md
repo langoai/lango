@@ -56,6 +56,7 @@ This project includes experimental AI Agent features and is currently in an unst
 - 🏗️ **Agent Registry** - Custom agent definitions via AGENT.md files, dynamic routing with keyword + capability matching
 - 🧬 **Agent Memory** - Per-agent persistent memory for cross-session context retention
 - 📡 **Event Bus** - Typed synchronous pub/sub for internal component communication
+- 📒 **RunLedger (Task OS)** - Durable execution engine with PEV (Propose-Evidence-Verify) protocol, typed validators, 7 policy actions, configuration-gated workspace isolation, and acceptance criteria verification (🧪 Experimental)
 - 🪝 **Tool Hooks** - Middleware chain for tool execution (security filter, access control, event publishing, knowledge save)
 - 🏊 **Agent Pool** - P2P agent pool with health checking and weighted selection
 - 💰 **P2P Settlement** - On-chain USDC settlement with EIP-3009, receipt tracking, and retry
@@ -269,6 +270,10 @@ lango bg list                    List background tasks
 lango bg status <id>             Show background task status
 lango bg cancel <id>             Cancel a running background task
 lango bg result <id>             Show completed task result
+
+lango run list                   List recent RunLedger runs from persistent snapshots
+lango run status                 Show RunLedger configuration and status
+lango run journal <run-id>       View persistent run journal events
 ```
 
 ### Diagnostics
@@ -327,6 +332,7 @@ lango/
 │   │   ├── contract/       #   lango contract read/call/abi
 │   │   ├── smartaccount/   #   lango account info/deploy/session/module/policy/paymaster
 │   │   ├── metrics/        #   lango metrics [sessions|tools|agents|history]
+│   │   ├── run/            #   lango run list/status/journal
 │   │   └── tui/            #   TUI components and views
 │   ├── config/             # Config loading, env var substitution, validation
 │   ├── configstore/        # Encrypted config profile storage (Ent-backed)
@@ -358,6 +364,7 @@ lango/
 │   │   ├── anthropic/      #   Claude models
 │   │   ├── gemini/         #   Google Gemini models
 │   │   └── openai/         #   OpenAI-compatible (GPT, Ollama, etc.)
+│   ├── runledger/          # RunLedger (Task OS): durable execution, PEV engine, typed validators, workspace isolation
 │   ├── sandbox/            # Tool execution isolation (subprocess/container)
 │   ├── security/           # Crypto providers, key registry, secrets store, companion discovery, KMS providers
 │   ├── session/            # Ent-based SQLite session store
@@ -692,6 +699,16 @@ All settings are managed via `lango onboard` (guided wizard), `lango settings` (
 | `mcp.servers.<name>.enabled`                           | bool     | `true`                      | Whether this server is active                                                                                     |
 | `mcp.servers.<name>.timeout`                           | duration | -                           | Override default timeout for this server                                                                          |
 | `mcp.servers.<name>.safetyLevel`                       | string   | `"dangerous"`               | Tool safety level: `safe`, `moderate`, `dangerous`                                                                |
+| **RunLedger (Task OS)** (🧪 Experimental Features)    |          |                             |                                                                                                                   |
+| `runLedger.enabled`                                    | bool     | `false`                     | Enable RunLedger durable execution engine                                                                         |
+| `runLedger.shadow`                                     | bool     | `false`                     | Shadow mode: journal records only, existing systems unaffected                                                    |
+| `runLedger.writeThrough`                               | bool     | `false`                     | All creates/updates go through ledger first, then mirror                                                          |
+| `runLedger.authoritativeRead`                          | bool     | `false`                     | State reads come from ledger snapshots only                                                                       |
+| `runLedger.workspaceIsolation`                         | bool     | `false`                     | Enable runtime workspace isolation for coding-step validation                                                      |
+| `runLedger.staleTtl`                                   | duration | `1h`                        | How long a paused run remains resumable                                                                           |
+| `runLedger.maxRunHistory`                              | int      | `100`                       | Maximum number of runs to keep (0 = unlimited)                                                                    |
+| `runLedger.validatorTimeout`                           | duration | `2m`                        | Timeout for individual validator execution                                                                        |
+| `runLedger.plannerMaxRetries`                          | int      | `2`                         | Reserved for planner retry wiring; currently surfaced in status only                                              |
 
 
 ## On-Chain Economy (Base Sepolia Testnet)

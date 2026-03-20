@@ -21,6 +21,9 @@ import (
 	"github.com/langoai/lango/internal/ent/paymenttx"
 	"github.com/langoai/lango/internal/ent/peerreputation"
 	"github.com/langoai/lango/internal/ent/reflection"
+	"github.com/langoai/lango/internal/ent/runjournal"
+	"github.com/langoai/lango/internal/ent/runsnapshot"
+	"github.com/langoai/lango/internal/ent/runstep"
 	"github.com/langoai/lango/internal/ent/schema"
 	"github.com/langoai/lango/internal/ent/secret"
 	"github.com/langoai/lango/internal/ent/session"
@@ -443,6 +446,80 @@ func init() {
 	reflectionDescID := reflectionFields[0].Descriptor()
 	// reflection.DefaultID holds the default value on creation for the id field.
 	reflection.DefaultID = reflectionDescID.Default.(func() uuid.UUID)
+	runjournalFields := schema.RunJournal{}.Fields()
+	_ = runjournalFields
+	// runjournalDescRunID is the schema descriptor for run_id field.
+	runjournalDescRunID := runjournalFields[1].Descriptor()
+	// runjournal.RunIDValidator is a validator for the "run_id" field. It is called by the builders before save.
+	runjournal.RunIDValidator = runjournalDescRunID.Validators[0].(func(string) error)
+	// runjournalDescTimestamp is the schema descriptor for timestamp field.
+	runjournalDescTimestamp := runjournalFields[4].Descriptor()
+	// runjournal.DefaultTimestamp holds the default value on creation for the timestamp field.
+	runjournal.DefaultTimestamp = runjournalDescTimestamp.Default.(func() time.Time)
+	// runjournalDescID is the schema descriptor for id field.
+	runjournalDescID := runjournalFields[0].Descriptor()
+	// runjournal.DefaultID holds the default value on creation for the id field.
+	runjournal.DefaultID = runjournalDescID.Default.(func() uuid.UUID)
+	runsnapshotFields := schema.RunSnapshot{}.Fields()
+	_ = runsnapshotFields
+	// runsnapshotDescRunID is the schema descriptor for run_id field.
+	runsnapshotDescRunID := runsnapshotFields[1].Descriptor()
+	// runsnapshot.RunIDValidator is a validator for the "run_id" field. It is called by the builders before save.
+	runsnapshot.RunIDValidator = runsnapshotDescRunID.Validators[0].(func(string) error)
+	// runsnapshotDescLastJournalSeq is the schema descriptor for last_journal_seq field.
+	runsnapshotDescLastJournalSeq := runsnapshotFields[6].Descriptor()
+	// runsnapshot.DefaultLastJournalSeq holds the default value on creation for the last_journal_seq field.
+	runsnapshot.DefaultLastJournalSeq = runsnapshotDescLastJournalSeq.Default.(int64)
+	// runsnapshotDescCreatedAt is the schema descriptor for created_at field.
+	runsnapshotDescCreatedAt := runsnapshotFields[7].Descriptor()
+	// runsnapshot.DefaultCreatedAt holds the default value on creation for the created_at field.
+	runsnapshot.DefaultCreatedAt = runsnapshotDescCreatedAt.Default.(func() time.Time)
+	// runsnapshotDescUpdatedAt is the schema descriptor for updated_at field.
+	runsnapshotDescUpdatedAt := runsnapshotFields[8].Descriptor()
+	// runsnapshot.DefaultUpdatedAt holds the default value on creation for the updated_at field.
+	runsnapshot.DefaultUpdatedAt = runsnapshotDescUpdatedAt.Default.(func() time.Time)
+	// runsnapshot.UpdateDefaultUpdatedAt holds the default value on update for the updated_at field.
+	runsnapshot.UpdateDefaultUpdatedAt = runsnapshotDescUpdatedAt.UpdateDefault.(func() time.Time)
+	// runsnapshotDescID is the schema descriptor for id field.
+	runsnapshotDescID := runsnapshotFields[0].Descriptor()
+	// runsnapshot.DefaultID holds the default value on creation for the id field.
+	runsnapshot.DefaultID = runsnapshotDescID.Default.(func() uuid.UUID)
+	runstepFields := schema.RunStep{}.Fields()
+	_ = runstepFields
+	// runstepDescRunID is the schema descriptor for run_id field.
+	runstepDescRunID := runstepFields[1].Descriptor()
+	// runstep.RunIDValidator is a validator for the "run_id" field. It is called by the builders before save.
+	runstep.RunIDValidator = runstepDescRunID.Validators[0].(func(string) error)
+	// runstepDescStepID is the schema descriptor for step_id field.
+	runstepDescStepID := runstepFields[2].Descriptor()
+	// runstep.StepIDValidator is a validator for the "step_id" field. It is called by the builders before save.
+	runstep.StepIDValidator = runstepDescStepID.Validators[0].(func(string) error)
+	// runstepDescStepIndex is the schema descriptor for step_index field.
+	runstepDescStepIndex := runstepFields[3].Descriptor()
+	// runstep.DefaultStepIndex holds the default value on creation for the step_index field.
+	runstep.DefaultStepIndex = runstepDescStepIndex.Default.(int)
+	// runstepDescRetryCount is the schema descriptor for retry_count field.
+	runstepDescRetryCount := runstepFields[10].Descriptor()
+	// runstep.DefaultRetryCount holds the default value on creation for the retry_count field.
+	runstep.DefaultRetryCount = runstepDescRetryCount.Default.(int)
+	// runstepDescMaxRetries is the schema descriptor for max_retries field.
+	runstepDescMaxRetries := runstepFields[11].Descriptor()
+	// runstep.DefaultMaxRetries holds the default value on creation for the max_retries field.
+	runstep.DefaultMaxRetries = runstepDescMaxRetries.Default.(int)
+	// runstepDescCreatedAt is the schema descriptor for created_at field.
+	runstepDescCreatedAt := runstepFields[12].Descriptor()
+	// runstep.DefaultCreatedAt holds the default value on creation for the created_at field.
+	runstep.DefaultCreatedAt = runstepDescCreatedAt.Default.(func() time.Time)
+	// runstepDescUpdatedAt is the schema descriptor for updated_at field.
+	runstepDescUpdatedAt := runstepFields[13].Descriptor()
+	// runstep.DefaultUpdatedAt holds the default value on creation for the updated_at field.
+	runstep.DefaultUpdatedAt = runstepDescUpdatedAt.Default.(func() time.Time)
+	// runstep.UpdateDefaultUpdatedAt holds the default value on update for the updated_at field.
+	runstep.UpdateDefaultUpdatedAt = runstepDescUpdatedAt.UpdateDefault.(func() time.Time)
+	// runstepDescID is the schema descriptor for id field.
+	runstepDescID := runstepFields[0].Descriptor()
+	// runstep.DefaultID holds the default value on creation for the id field.
+	runstep.DefaultID = runstepDescID.Default.(func() uuid.UUID)
 	secretFields := schema.Secret{}.Fields()
 	_ = secretFields
 	// secretDescName is the schema descriptor for name field.

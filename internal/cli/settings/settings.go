@@ -33,7 +33,7 @@ Press "/" to search, or use smart filters: @basic, @advanced, @enabled, @modifie
 
   Core:             Providers, Agent, Channels, Tools, Logging, Gatekeeper, Output Manager
   AI & Knowledge:   Knowledge, Skill, Observational Memory, Embedding & RAG
-  Automation:       Cron, Background, Workflow
+  Automation:       Cron, Background, Workflow, RunLedger
   Payment & Account: Payment, Smart Account
   P2P & Economy:    P2P Network, Economy, Escrow
   Integrations:     MCP, Observability

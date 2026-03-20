@@ -47,6 +47,23 @@ func (m *mockMemoryProvider) ListRecentObservations(_ context.Context, sessionKe
 // Compile-time check.
 var _ MemoryProvider = (*mockMemoryProvider)(nil)
 
+type mockRunSummaryProvider struct {
+	summaries []RunSummaryContext
+	maxSeq    int64
+	listCalls int
+	seqCalls  int
+}
+
+func (m *mockRunSummaryProvider) ListRunSummaries(_ context.Context, _ string, _ int) ([]RunSummaryContext, error) {
+	m.listCalls++
+	return m.summaries, nil
+}
+
+func (m *mockRunSummaryProvider) MaxJournalSeqForSession(_ context.Context, _ string) (int64, error) {
+	m.seqCalls++
+	return m.maxSeq, nil
+}
+
 func newTestContextAdapter(t *testing.T, mp MemoryProvider) *ContextAwareModelAdapter {
 	t.Helper()
 	p := &mockProvider{
@@ -188,4 +205,103 @@ func TestGenerateContent_MemoryInjectedIntoPrompt(t *testing.T) {
 	assert.True(t, strings.Contains(systemMsg.Content, "Conversation Memory"), "system prompt should contain 'Conversation Memory' section")
 	assert.True(t, strings.Contains(systemMsg.Content, "user prefers Go"), "system prompt should contain observation content")
 	assert.True(t, strings.Contains(systemMsg.Content, "experienced developer"), "system prompt should contain reflection content")
+}
+
+func TestGenerateContent_RunSummariesInjectedIntoPrompt(t *testing.T) {
+	t.Parallel()
+
+	p := &mockProvider{
+		id: "test",
+		events: []provider.StreamEvent{
+			{Type: provider.StreamEventPlainText, Text: "ok"},
+			{Type: provider.StreamEventDone},
+		},
+	}
+	inner := NewModelAdapter(p, "test-model")
+	builder := prompt.DefaultBuilder()
+	logger := zap.NewNop().Sugar()
+	adapter := NewContextAwareModelAdapter(inner, nil, builder, logger)
+	adapter.WithRunSummaryProvider(&mockRunSummaryProvider{
+		maxSeq: 1,
+		summaries: []RunSummaryContext{{
+			RunID:          "run-1",
+			Goal:           "Fix drift",
+			Status:         "running",
+			CurrentStep:    "Repair projection",
+			CurrentBlocker: "none",
+		}},
+	})
+
+	ctx := session.WithSessionKey(context.Background(), "test:session:run")
+	req := &model.LLMRequest{
+		Model: "test-model",
+		Contents: []*genai.Content{
+			{Role: "user", Parts: []*genai.Part{{Text: "continue"}}},
+		},
+	}
+
+	seq := adapter.GenerateContent(ctx, req, false)
+	for _, err := range seq {
+		require.NoError(t, err)
+	}
+
+	msgs := p.lastParams.Messages
+	require.GreaterOrEqual(t, len(msgs), 2)
+	systemMsg := msgs[0]
+	require.Equal(t, "system", string(systemMsg.Role))
+	assert.Contains(t, systemMsg.Content, "Active Runs")
+	assert.Contains(t, systemMsg.Content, "run-1")
+	assert.Contains(t, systemMsg.Content, "Repair projection")
+}
+
+func TestAssembleRunSummarySection_CacheHit(t *testing.T) {
+	t.Parallel()
+
+	provider := &mockRunSummaryProvider{
+		maxSeq: 1,
+		summaries: []RunSummaryContext{{
+			RunID:       "run-1",
+			Goal:        "Fix drift",
+			Status:      "running",
+			CurrentStep: "Repair projection",
+		}},
+	}
+
+	adapter := newTestContextAdapter(t, nil)
+	adapter.WithRunSummaryProvider(provider)
+
+	got1 := adapter.assembleRunSummarySection(context.Background(), "sess-1")
+	got2 := adapter.assembleRunSummarySection(context.Background(), "sess-1")
+
+	assert.Equal(t, got1, got2)
+	assert.Equal(t, 1, provider.listCalls)
+	assert.Equal(t, 2, provider.seqCalls)
+}
+
+func TestAssembleRunSummarySection_CacheInvalidatesOnSeqChange(t *testing.T) {
+	t.Parallel()
+
+	provider := &mockRunSummaryProvider{
+		maxSeq: 1,
+		summaries: []RunSummaryContext{{
+			RunID:  "run-1",
+			Goal:   "First",
+			Status: "running",
+		}},
+	}
+
+	adapter := newTestContextAdapter(t, nil)
+	adapter.WithRunSummaryProvider(provider)
+
+	got1 := adapter.assembleRunSummarySection(context.Background(), "sess-1")
+	provider.maxSeq = 2
+	provider.summaries = []RunSummaryContext{{
+		RunID:  "run-2",
+		Goal:   "Second",
+		Status: "paused",
+	}}
+	got2 := adapter.assembleRunSummarySection(context.Background(), "sess-1")
+
+	assert.NotEqual(t, got1, got2)
+	assert.Equal(t, 2, provider.listCalls)
 }

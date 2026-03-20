@@ -17,9 +17,11 @@ import (
 	"github.com/gorilla/websocket"
 	"github.com/langoai/lango/internal/adk"
 	"github.com/langoai/lango/internal/approval"
+	"github.com/langoai/lango/internal/config"
 	"github.com/langoai/lango/internal/deadline"
 	"github.com/langoai/lango/internal/gatekeeper"
 	"github.com/langoai/lango/internal/logging"
+	"github.com/langoai/lango/internal/runledger"
 	"github.com/langoai/lango/internal/security"
 	"github.com/langoai/lango/internal/session"
 )
@@ -40,6 +42,7 @@ type Server struct {
 	provider           *security.RPCProvider
 	auth               *AuthManager
 	store              session.Store
+	runLedgerStore     runledger.RunLedgerStore
 	router             chi.Router
 	httpServer         *http.Server
 	upgrader           websocket.Upgrader
@@ -66,6 +69,7 @@ type Config struct {
 	RequestTimeout   time.Duration
 	IdleTimeout      time.Duration // inactivity timeout (0 = disabled)
 	MaxTimeout       time.Duration // absolute hard ceiling
+	RunLedger        config.RunLedgerConfig
 }
 
 // Client represents a connected WebSocket client
@@ -156,14 +160,16 @@ func New(cfg Config, agent *adk.Agent, provider *security.RPCProvider, store ses
 // handleChatMessage processes chat messages via Agent
 func (s *Server) handleChatMessage(client *Client, params json.RawMessage) (interface{}, error) {
 	var req struct {
-		Message    string `json:"message"`
-		SessionKey string `json:"sessionKey"`
+		Message       string `json:"message"`
+		SessionKey    string `json:"sessionKey"`
+		ResumeRunID   string `json:"resumeRunId"`
+		ConfirmResume bool   `json:"confirmResume"`
 	}
 	if err := json.Unmarshal(params, &req); err != nil {
 		return nil, fmt.Errorf("invalid params: %w", err)
 	}
 
-	if req.Message == "" {
+	if req.Message == "" && !(req.ConfirmResume && req.ResumeRunID != "") {
 		return nil, fmt.Errorf("message is required")
 	}
 
@@ -177,6 +183,50 @@ func (s *Server) handleChatMessage(client *Client, params json.RawMessage) (inte
 	} else if req.SessionKey != "" {
 		// No auth — allow client-specified key
 		sessionKey = req.SessionKey
+	}
+
+	if s.runLedgerStore != nil {
+		rm := runledger.NewResumeManager(s.runLedgerStore, s.config.RunLedger.StaleTTL)
+
+		if req.ConfirmResume && req.ResumeRunID != "" {
+			resumeCtx, cancel := s.newResumeContext()
+			defer cancel()
+
+			if _, err := rm.Resume(resumeCtx, req.ResumeRunID, "user"); err != nil {
+				return nil, fmt.Errorf("resume run: %w", err)
+			}
+			s.BroadcastToSession(sessionKey, "agent.resume_confirmed", map[string]string{
+				"sessionKey": sessionKey,
+				"runId":      req.ResumeRunID,
+			})
+			return map[string]interface{}{
+				"resumed": true,
+				"runId":   req.ResumeRunID,
+			}, nil
+		}
+
+		if runledger.DetectResumeIntent(req.Message) {
+			resumeCtx, cancel := s.newResumeContext()
+			defer cancel()
+
+			candidates, err := rm.FindCandidates(resumeCtx, sessionKey)
+			if err != nil {
+				return nil, fmt.Errorf("find resume candidates: %w", err)
+			}
+			if len(candidates) > 0 {
+				payload := map[string]interface{}{
+					"sessionKey":  sessionKey,
+					"candidates":  candidates,
+					"message":     "Resume candidates found. Confirm one to continue.",
+					"requiresAck": true,
+				}
+				s.BroadcastToSession(sessionKey, "agent.resume_required", payload)
+				return map[string]interface{}{
+					"resumeRequired": true,
+					"candidates":     candidates,
+				}, nil
+			}
+		}
 	}
 
 	if s.agent == nil {
@@ -341,6 +391,17 @@ func (s *Server) handleChatMessage(client *Client, params json.RawMessage) (inte
 	return map[string]string{
 		"response": response,
 	}, nil
+}
+
+func (s *Server) newResumeContext() (context.Context, context.CancelFunc) {
+	timeout := s.config.MaxTimeout
+	if timeout <= 0 {
+		timeout = s.config.RequestTimeout
+	}
+	if timeout <= 0 {
+		timeout = 5 * time.Minute
+	}
+	return context.WithTimeout(s.shutdownCtx, timeout)
 }
 
 // BroadcastToSession sends an event to all UI clients belonging to a specific session.
@@ -546,10 +607,11 @@ func (s *Server) setupRoutes() {
 
 	// Protected routes — require auth when OIDC is configured
 	s.router.Group(func(r chi.Router) {
-		r.Use(requireAuth(s.auth))
+		r.Use(RequireAuth(s.auth))
 
 		if s.config.HTTPEnabled {
 			r.Get("/status", s.handleStatus)
+			r.Get("/playground", s.servePlayground)
 		}
 		if s.config.WebSocketEnabled {
 			r.Get("/ws", s.handleWebSocket)
@@ -575,6 +637,11 @@ func (s *Server) SetAgent(agent *adk.Agent) {
 // SetSanitizer sets the response sanitizer for output gatekeeper filtering.
 func (s *Server) SetSanitizer(san *gatekeeper.Sanitizer) {
 	s.sanitizer = san
+}
+
+// SetRunLedgerStore wires optional RunLedger access for resume and authoritative flows.
+func (s *Server) SetRunLedgerStore(store runledger.RunLedgerStore) {
+	s.runLedgerStore = store
 }
 
 // OnTurnComplete registers a callback that fires after each agent turn.
@@ -667,8 +734,12 @@ func (s *Server) handleWebSocketConnection(w http.ResponseWriter, r *http.Reques
 
 	clientID := fmt.Sprintf("%s-%d", clientType, time.Now().UnixNano())
 
-	// Bind authenticated session to client (empty if no auth)
+	// Bind authenticated session to client; isolate unauthenticated clients
+	// by assigning the unique clientID as their session key.
 	sessionKey := SessionFromContext(r.Context())
+	if sessionKey == "" {
+		sessionKey = clientID
+	}
 
 	client := &Client{
 		ID:         clientID,

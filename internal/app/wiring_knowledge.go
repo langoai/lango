@@ -2,10 +2,12 @@ package app
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 
-	"fmt"
+	"github.com/langoai/lango/internal/adk"
 	"github.com/langoai/lango/internal/agent"
 	"github.com/langoai/lango/internal/config"
 	"github.com/langoai/lango/internal/graph"
@@ -13,11 +15,11 @@ import (
 	"github.com/langoai/lango/internal/learning"
 	"github.com/langoai/lango/internal/librarian"
 	"github.com/langoai/lango/internal/provider"
+	"github.com/langoai/lango/internal/runledger"
 	"github.com/langoai/lango/internal/session"
 	"github.com/langoai/lango/internal/skill"
 	"github.com/langoai/lango/internal/supervisor"
 	"github.com/langoai/lango/skills"
-	"strings"
 )
 
 // knowledgeComponents holds optional self-learning components.
@@ -243,4 +245,41 @@ func (a *skillProviderAdapter) ListActiveSkillInfos(ctx context.Context) ([]know
 		}
 	}
 	return infos, nil
+}
+
+// runSummaryProviderAdapter adapts RunLedger summaries for ADK command-context injection.
+type runSummaryProviderAdapter struct {
+	store runledger.RunLedgerStore
+}
+
+func (a *runSummaryProviderAdapter) ListRunSummaries(
+	ctx context.Context,
+	sessionKey string,
+	limit int,
+) ([]adk.RunSummaryContext, error) {
+	summaries, err := a.store.ListRunSummariesBySession(ctx, sessionKey, limit)
+	if err != nil {
+		return nil, err
+	}
+	result := make([]adk.RunSummaryContext, 0, len(summaries))
+	for _, summary := range summaries {
+		if summary.Status != runledger.RunStatusRunning && summary.Status != runledger.RunStatusPaused {
+			continue
+		}
+		result = append(result, adk.RunSummaryContext{
+			RunID:          summary.RunID,
+			Goal:           summary.Goal,
+			Status:         string(summary.Status),
+			CurrentStep:    summary.CurrentStepGoal,
+			CurrentBlocker: summary.CurrentBlocker,
+		})
+	}
+	return result, nil
+}
+
+func (a *runSummaryProviderAdapter) MaxJournalSeqForSession(
+	ctx context.Context,
+	sessionKey string,
+) (int64, error) {
+	return a.store.MaxJournalSeqForSession(ctx, sessionKey)
 }

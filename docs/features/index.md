@@ -176,6 +176,14 @@ Lango provides a comprehensive set of features for building intelligent AI agent
 
     [:octicons-arrow-right-24: Learn more](mcp-integration.md)
 
+-   :ledger: **[RunLedger (Task OS)](run-ledger.md)** :material-flask-outline:{ title="Experimental" }
+
+    ---
+
+    Durable execution engine for multi-agent task orchestration with append-only journal, PEV verification, and typed validators.
+
+    [:octicons-arrow-right-24: Learn more](run-ledger.md)
+
 </div>
 
 ## Feature Status
@@ -203,6 +211,7 @@ Lango provides a comprehensive set of features for building intelligent AI agent
 | P2P Teams | Experimental | `p2p.enabled` + team coordination |
 | Config Presets | Stable | `lango onboard --preset` |
 | MCP Integration | Stable | `mcp.enabled` |
+| RunLedger (Task OS) | Experimental | `runLedger.enabled` |
 | Tool Hooks | Experimental | `hooks.enabled` |
 | Tool Catalog | Internal | — |
 | Event Bus | Internal | — |

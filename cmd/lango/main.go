@@ -30,6 +30,7 @@ import (
 	clilearning "github.com/langoai/lango/internal/cli/learning"
 	clilibrarian "github.com/langoai/lango/internal/cli/librarian"
 	climcp "github.com/langoai/lango/internal/cli/mcp"
+	clirun "github.com/langoai/lango/internal/cli/run"
 	climemory "github.com/langoai/lango/internal/cli/memory"
 	climetrics "github.com/langoai/lango/internal/cli/metrics"
 	"github.com/langoai/lango/internal/cli/onboard"
@@ -138,6 +139,10 @@ func main() {
 	workflowCmd := cliworkflow.NewWorkflowCmd(cliboot.BootResult)
 	workflowCmd.GroupID = "auto"
 	rootCmd.AddCommand(workflowCmd)
+
+	runCmd := clirun.NewRunCmd(cliboot.BootResult)
+	runCmd.GroupID = "auto"
+	rootCmd.AddCommand(runCmd)
 
 	bgCmd := clibg.NewBgCmd(func() (*background.Manager, error) {
 		return nil, fmt.Errorf("bg commands require a running server (use 'lango serve' first)")

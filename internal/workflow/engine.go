@@ -7,6 +7,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/langoai/lango/internal/session"
 	"github.com/langoai/lango/internal/types"
 	"go.uber.org/zap"
 )
@@ -28,7 +29,7 @@ type ChannelSender interface {
 // Engine orchestrates DAG-based workflow execution.
 type Engine struct {
 	runner         AgentRunner
-	state          *StateStore
+	state          RunStore
 	sender         ChannelSender
 	maxConcurrent  int
 	defaultTimeout time.Duration
@@ -42,7 +43,7 @@ type Engine struct {
 // NewEngine creates a new workflow execution engine.
 func NewEngine(
 	runner AgentRunner,
-	state *StateStore,
+	state RunStore,
 	sender ChannelSender,
 	maxConcurrent int,
 	defaultTimeout time.Duration,
@@ -317,6 +318,11 @@ func (e *Engine) executeStep(
 
 	// Generate session key — include runID to isolate sessions across re-runs.
 	sessionKey := fmt.Sprintf("workflow:%s:%s:%s", workflowName, runID, step.ID)
+	stepCtx = session.WithRunContext(stepCtx, session.RunContext{
+		SessionType: "workflow",
+		WorkflowID:  workflowName,
+		RunID:       runID,
+	})
 
 	// Enrich with automation prefix so the orchestrator routes correctly.
 	rendered = automationPrefix + "Task: " + rendered

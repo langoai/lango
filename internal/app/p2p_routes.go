@@ -7,6 +7,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 
+	"github.com/langoai/lango/internal/gateway"
 	"github.com/langoai/lango/internal/wallet"
 )
 
@@ -18,9 +19,11 @@ func writeJSON(w http.ResponseWriter, v interface{}) {
 }
 
 // registerP2PRoutes mounts P2P status endpoints on the gateway router.
-// Endpoints are public (no auth) since they expose only node metadata.
-func registerP2PRoutes(r chi.Router, p2pc *p2pComponents) {
+// When OIDC is configured, endpoints require authentication.
+// When auth is nil (dev mode), endpoints are accessible without authentication.
+func registerP2PRoutes(r chi.Router, p2pc *p2pComponents, auth *gateway.AuthManager) {
 	r.Route("/api/p2p", func(r chi.Router) {
+		r.Use(gateway.RequireAuth(auth))
 		r.Get("/status", p2pStatusHandler(p2pc))
 		r.Get("/peers", p2pPeersHandler(p2pc))
 		r.Get("/identity", p2pIdentityHandler(p2pc))

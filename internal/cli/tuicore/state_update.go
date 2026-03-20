@@ -319,6 +319,34 @@ func (s *ConfigState) UpdateConfigFromForm(form *FormModel) {
 		case "wf_default_deliver":
 			s.Current.Workflow.DefaultDeliverTo = splitCSV(val)
 
+		// RunLedger
+		case "runledger_enabled":
+			s.Current.RunLedger.Enabled = f.Checked
+		case "runledger_shadow":
+			s.Current.RunLedger.Shadow = f.Checked
+		case "runledger_write_through":
+			s.Current.RunLedger.WriteThrough = f.Checked
+		case "runledger_authoritative_read":
+			s.Current.RunLedger.AuthoritativeRead = f.Checked
+		case "runledger_workspace_isolation":
+			s.Current.RunLedger.WorkspaceIsolation = f.Checked
+		case "runledger_stale_ttl":
+			if d, err := time.ParseDuration(val); err == nil {
+				s.Current.RunLedger.StaleTTL = d
+			}
+		case "runledger_max_history":
+			if i, err := strconv.Atoi(val); err == nil {
+				s.Current.RunLedger.MaxRunHistory = i
+			}
+		case "runledger_validator_timeout":
+			if d, err := time.ParseDuration(val); err == nil {
+				s.Current.RunLedger.ValidatorTimeout = d
+			}
+		case "runledger_planner_retries":
+			if i, err := strconv.Atoi(val); err == nil {
+				s.Current.RunLedger.PlannerMaxRetries = i
+			}
+
 		// MCP
 		case "mcp_enabled":
 			s.Current.MCP.Enabled = f.Checked

@@ -1,7 +1,7 @@
 ## Requirements
 
 ### Requirement: Authentication Middleware
-The `requireAuth` middleware SHALL validate the `lango_session` cookie against the session store for all protected routes. When `auth` is nil (no OIDC configured), the middleware SHALL pass all requests through without validation.
+The `RequireAuth` (exported) middleware SHALL validate the `lango_session` cookie against the session store for all protected routes. When `auth` is nil (no OIDC configured), the middleware SHALL pass all requests through without validation. The function is exported so that non-gateway packages (e.g., `app`) can apply it to routes they register on the gateway router.
 
 #### Scenario: Nil auth passes through
 - **WHEN** the middleware is initialized with nil AuthManager
@@ -25,7 +25,7 @@ The `requireAuth` middleware SHALL validate the `lango_session` cookie against t
 The `SessionFromContext` function SHALL extract the authenticated session key from a request context. It SHALL return an empty string if no session is present.
 
 #### Scenario: Extract session from context
-- **WHEN** `SessionFromContext` is called on a context set by `requireAuth`
+- **WHEN** `SessionFromContext` is called on a context set by `RequireAuth`
 - **THEN** it SHALL return the authenticated session key
 
 #### Scenario: Empty context returns empty string
@@ -66,3 +66,12 @@ The `isSecure` function SHALL detect HTTPS connections both directly (TLS) and b
 #### Scenario: Plain HTTP
 - **WHEN** neither TLS nor X-Forwarded-Proto indicates HTTPS
 - **THEN** `isSecure` SHALL return false
+
+### Requirement: Session Isolation for Unauthenticated Clients
+When a WebSocket client connects without OIDC authentication, the server SHALL assign the client's unique `clientID` as its `SessionKey` so that `BroadcastToSession` delivers events only to that specific client, preventing cross-tab response bleed.
+
+#### Scenario: Unauthenticated client gets isolated session
+- **GIVEN** a WebSocket client connects without OIDC authentication
+- **WHEN** `SessionFromContext` returns an empty string
+- **THEN** the server SHALL assign the client's unique `clientID` as its `SessionKey`
+- **SO THAT** `BroadcastToSession` delivers events only to that specific client

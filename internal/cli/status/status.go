@@ -128,6 +128,7 @@ func collectFeatures(cfg *config.Config) []FeatureInfo {
 		{"Payment", cfg.Payment.Enabled, ""},
 		{"Economy", cfg.Economy.Enabled, ""},
 		{"A2A", cfg.A2A.Enabled, ""},
+		{"RunLedger", cfg.RunLedger.Enabled, ""},
 	}
 }
 

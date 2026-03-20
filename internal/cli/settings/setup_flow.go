@@ -268,6 +268,8 @@ func createFormForCategory(categoryID string, cfg *config.Config) *tuicore.FormM
 		return NewBackgroundForm(cfg)
 	case "workflow":
 		return NewWorkflowForm(cfg)
+	case "runledger":
+		return NewRunLedgerForm(cfg)
 	case "smartaccount":
 		return NewSmartAccountForm(cfg)
 	case "smartaccount_session":

@@ -94,6 +94,9 @@ type Config struct {
 	// Observability configuration (token tracking, health, audit, metrics)
 	Observability ObservabilityConfig `mapstructure:"observability" json:"observability"`
 
+	// RunLedger configuration (Task OS — durable execution engine)
+	RunLedger RunLedgerConfig `mapstructure:"runLedger" json:"runLedger"`
+
 	// Providers configuration
 	Providers map[string]ProviderConfig `mapstructure:"providers" json:"providers"`
 }

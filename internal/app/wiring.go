@@ -19,6 +19,7 @@ import (
 	"github.com/langoai/lango/internal/knowledge"
 	"github.com/langoai/lango/internal/orchestration"
 	"github.com/langoai/lango/internal/prompt"
+	"github.com/langoai/lango/internal/runledger"
 	"github.com/langoai/lango/internal/security"
 	"github.com/langoai/lango/internal/session"
 	"github.com/langoai/lango/internal/skill"
@@ -258,6 +259,7 @@ type agentDeps struct {
 	catalog  *toolcatalog.Catalog
 	p2pc     *p2pComponents
 	eventBus *eventbus.Bus
+	rls      runledger.RunLedgerStore
 }
 
 // initAgent creates the ADK agent with the given tools and provider proxy.
@@ -354,6 +356,9 @@ func initAgent(ctx context.Context, deps *agentDeps) (*adk.Agent, error) {
 
 		ctxAdapter := adk.NewContextAwareModelAdapter(modelAdapter, retriever, builder, logger())
 		ctxAdapter.WithRuntimeAdapter(runtimeAdapter)
+		if deps.rls != nil && cfg.RunLedger.Enabled && cfg.RunLedger.AuthoritativeRead {
+			ctxAdapter.WithRunSummaryProvider(&runSummaryProviderAdapter{store: deps.rls})
+		}
 
 		// Wire in observational memory if available
 		if mc != nil {
@@ -397,6 +402,9 @@ func initAgent(ctx context.Context, deps *agentDeps) (*adk.Agent, error) {
 		// OM without knowledge system — create minimal context-aware adapter
 		ctxAdapter := adk.NewContextAwareModelAdapter(modelAdapter, nil, builder, logger())
 		ctxAdapter.WithMemory(mc.store)
+		if deps.rls != nil && cfg.RunLedger.Enabled && cfg.RunLedger.AuthoritativeRead {
+			ctxAdapter.WithRunSummaryProvider(&runSummaryProviderAdapter{store: deps.rls})
+		}
 
 		// Apply memory context limits from config.
 		maxRef := cfg.ObservationalMemory.MaxReflectionsInContext
@@ -573,6 +581,7 @@ func initGateway(cfg *config.Config, adkAgent *adk.Agent, store session.Store, a
 		RequestTimeout:   cfg.Agent.RequestTimeout,
 		IdleTimeout:      idle,
 		MaxTimeout:       ceiling,
+		RunLedger:        cfg.RunLedger,
 	}, adkAgent, nil, store, auth)
 }
 

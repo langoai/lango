@@ -27,6 +27,9 @@ import (
 	"github.com/langoai/lango/internal/ent/paymenttx"
 	"github.com/langoai/lango/internal/ent/peerreputation"
 	"github.com/langoai/lango/internal/ent/reflection"
+	"github.com/langoai/lango/internal/ent/runjournal"
+	"github.com/langoai/lango/internal/ent/runsnapshot"
+	"github.com/langoai/lango/internal/ent/runstep"
 	"github.com/langoai/lango/internal/ent/secret"
 	"github.com/langoai/lango/internal/ent/session"
 	"github.com/langoai/lango/internal/ent/tokenusage"
@@ -107,6 +110,9 @@ func checkColumn(t, c string) error {
 			paymenttx.Table:       paymenttx.ValidColumn,
 			peerreputation.Table:  peerreputation.ValidColumn,
 			reflection.Table:      reflection.ValidColumn,
+			runjournal.Table:      runjournal.ValidColumn,
+			runsnapshot.Table:     runsnapshot.ValidColumn,
+			runstep.Table:         runstep.ValidColumn,
 			secret.Table:          secret.ValidColumn,
 			session.Table:         session.ValidColumn,
 			tokenusage.Table:      tokenusage.ValidColumn,

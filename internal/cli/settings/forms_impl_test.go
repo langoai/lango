@@ -249,6 +249,73 @@ func TestUpdateConfigFromForm_MaxHistoryTurns(t *testing.T) {
 	}
 }
 
+func TestNewRunLedgerForm_AllFields(t *testing.T) {
+	cfg := defaultTestConfig()
+	form := NewRunLedgerForm(cfg)
+
+	wantKeys := []string{
+		"runledger_enabled",
+		"runledger_shadow",
+		"runledger_write_through",
+		"runledger_authoritative_read",
+		"runledger_workspace_isolation",
+		"runledger_stale_ttl",
+		"runledger_max_history",
+		"runledger_validator_timeout",
+		"runledger_planner_retries",
+	}
+
+	if len(form.Fields) != len(wantKeys) {
+		t.Fatalf("expected %d fields, got %d", len(wantKeys), len(form.Fields))
+	}
+
+	for _, key := range wantKeys {
+		if f := fieldByKey(form, key); f == nil {
+			t.Errorf("missing field %q", key)
+		}
+	}
+
+	if f := fieldByKey(form, "runledger_stale_ttl"); f.Value != "1h0m0s" {
+		t.Errorf("runledger_stale_ttl: want %q, got %q", "1h0m0s", f.Value)
+	}
+	if f := fieldByKey(form, "runledger_validator_timeout"); f.Value != "2m0s" {
+		t.Errorf("runledger_validator_timeout: want %q, got %q", "2m0s", f.Value)
+	}
+}
+
+func TestUpdateConfigFromForm_RunLedgerFields(t *testing.T) {
+	state := tuicore.NewConfigState()
+	form := tuicore.NewFormModel("runledger")
+	form.AddField(&tuicore.Field{Key: "runledger_enabled", Type: tuicore.InputBool, Checked: true})
+	form.AddField(&tuicore.Field{Key: "runledger_shadow", Type: tuicore.InputBool, Checked: true})
+	form.AddField(&tuicore.Field{Key: "runledger_write_through", Type: tuicore.InputBool, Checked: true})
+	form.AddField(&tuicore.Field{Key: "runledger_authoritative_read", Type: tuicore.InputBool, Checked: true})
+	form.AddField(&tuicore.Field{Key: "runledger_workspace_isolation", Type: tuicore.InputBool, Checked: true})
+	form.AddField(&tuicore.Field{Key: "runledger_stale_ttl", Type: tuicore.InputText, Value: "90m"})
+	form.AddField(&tuicore.Field{Key: "runledger_max_history", Type: tuicore.InputInt, Value: "250"})
+	form.AddField(&tuicore.Field{Key: "runledger_validator_timeout", Type: tuicore.InputText, Value: "3m"})
+	form.AddField(&tuicore.Field{Key: "runledger_planner_retries", Type: tuicore.InputInt, Value: "5"})
+
+	state.UpdateConfigFromForm(&form)
+
+	rl := state.Current.RunLedger
+	if !rl.Enabled || !rl.Shadow || !rl.WriteThrough || !rl.AuthoritativeRead || !rl.WorkspaceIsolation {
+		t.Fatal("expected all runledger booleans to be true")
+	}
+	if rl.StaleTTL != 90*time.Minute {
+		t.Errorf("StaleTTL: want %v, got %v", 90*time.Minute, rl.StaleTTL)
+	}
+	if rl.MaxRunHistory != 250 {
+		t.Errorf("MaxRunHistory: want 250, got %d", rl.MaxRunHistory)
+	}
+	if rl.ValidatorTimeout != 3*time.Minute {
+		t.Errorf("ValidatorTimeout: want %v, got %v", 3*time.Minute, rl.ValidatorTimeout)
+	}
+	if rl.PlannerMaxRetries != 5 {
+		t.Errorf("PlannerMaxRetries: want 5, got %d", rl.PlannerMaxRetries)
+	}
+}
+
 func TestUpdateConfigFromForm_KnowledgeFields(t *testing.T) {
 	state := tuicore.NewConfigState()
 	form := tuicore.NewFormModel("test")

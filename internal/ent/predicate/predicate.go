@@ -51,6 +51,15 @@ type PeerReputation func(*sql.Selector)
 // Reflection is the predicate function for reflection builders.
 type Reflection func(*sql.Selector)
 
+// RunJournal is the predicate function for runjournal builders.
+type RunJournal func(*sql.Selector)
+
+// RunSnapshot is the predicate function for runsnapshot builders.
+type RunSnapshot func(*sql.Selector)
+
+// RunStep is the predicate function for runstep builders.
+type RunStep func(*sql.Selector)
+
 // Secret is the predicate function for secret builders.
 type Secret func(*sql.Selector)
 

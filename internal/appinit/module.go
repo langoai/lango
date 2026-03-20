@@ -31,6 +31,7 @@ const (
 	ProvidesSmartAccount Provides = "smart_account"
 	ProvidesObservability Provides = "observability"
 	ProvidesMCP          Provides = "mcp"
+	ProvidesRunLedger    Provides = "run_ledger"
 	ProvidesWorkspace    Provides = "workspace"
 	ProvidesBaseTools    Provides = "base_tools"
 )

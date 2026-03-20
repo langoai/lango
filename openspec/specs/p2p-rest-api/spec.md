@@ -61,3 +61,16 @@ The P2P REST endpoints SHALL be registered on the gateway router only when P2P c
 #### Scenario: P2P disabled
 - **WHEN** P2P is disabled in configuration
 - **THEN** no `/api/p2p/*` routes SHALL be registered on the gateway
+
+### Requirement: P2P endpoint authentication
+The P2P REST endpoints SHALL require authentication when OIDC is configured. `registerP2PRoutes` SHALL accept a `*gateway.AuthManager` parameter and apply `gateway.RequireAuth(auth)` middleware to the `/api/p2p` route group.
+
+#### Scenario: OIDC configured — unauthenticated request
+- **GIVEN** OIDC authentication is configured
+- **WHEN** an unauthenticated client requests any `/api/p2p/*` endpoint
+- **THEN** the server SHALL return 401 Unauthorized
+
+#### Scenario: OIDC not configured — backward compatible
+- **GIVEN** OIDC is not configured (dev mode)
+- **WHEN** a client requests any `/api/p2p/*` endpoint
+- **THEN** the request SHALL pass through without authentication

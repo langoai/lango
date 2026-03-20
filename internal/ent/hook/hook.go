@@ -189,6 +189,42 @@ func (f ReflectionFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value, 
 	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.ReflectionMutation", m)
 }
 
+// The RunJournalFunc type is an adapter to allow the use of ordinary
+// function as RunJournal mutator.
+type RunJournalFunc func(context.Context, *ent.RunJournalMutation) (ent.Value, error)
+
+// Mutate calls f(ctx, m).
+func (f RunJournalFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value, error) {
+	if mv, ok := m.(*ent.RunJournalMutation); ok {
+		return f(ctx, mv)
+	}
+	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.RunJournalMutation", m)
+}
+
+// The RunSnapshotFunc type is an adapter to allow the use of ordinary
+// function as RunSnapshot mutator.
+type RunSnapshotFunc func(context.Context, *ent.RunSnapshotMutation) (ent.Value, error)
+
+// Mutate calls f(ctx, m).
+func (f RunSnapshotFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value, error) {
+	if mv, ok := m.(*ent.RunSnapshotMutation); ok {
+		return f(ctx, mv)
+	}
+	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.RunSnapshotMutation", m)
+}
+
+// The RunStepFunc type is an adapter to allow the use of ordinary
+// function as RunStep mutator.
+type RunStepFunc func(context.Context, *ent.RunStepMutation) (ent.Value, error)
+
+// Mutate calls f(ctx, m).
+func (f RunStepFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value, error) {
+	if mv, ok := m.(*ent.RunStepMutation); ok {
+		return f(ctx, mv)
+	}
+	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.RunStepMutation", m)
+}
+
 // The SecretFunc type is an adapter to allow the use of ordinary
 // function as Secret mutator.
 type SecretFunc func(context.Context, *ent.SecretMutation) (ent.Value, error)
