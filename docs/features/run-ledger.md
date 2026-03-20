@@ -38,6 +38,9 @@ graph TD
 | `ResumeManager` | `internal/runledger` | Detection and execution of paused run resumption |
 | `BuildTools` | `internal/runledger` | Creates all `run_*` agent tools with role-based access control |
 
+**Current storage mode**: Phase 2 introduces an Ent-backed `RunLedgerStore` when the shared
+application database is available. `MemoryStore` remains for tests and non-bootstrapped paths.
+
 ## PEV Protocol
 
 The **Propose-Evidence-Verify** cycle enforces that execution agents cannot self-certify their own work. The flow is:
@@ -173,9 +176,10 @@ Snapshots are materialized by replaying the full journal, or by applying a tail 
 
 The `WorkspaceManager` provides git worktree isolation for coding-related validators (`build_pass`, `test_pass`, `file_changed`). When enabled, each step executes in an isolated worktree at `$TMPDIR/runledger/<run_id>/<step_id>`.
 
-**Current status**: Phase 1 keeps runtime isolation disabled on purpose. The validator and
-workspace lifecycle code are ready, but the app runtime does not yet wire `WithWorkspace(...)`.
-The later execution-isolation phase activates full isolation via:
+**Current status**: Run persistence is active in Phase 2, but runtime workspace isolation
+remains disabled on purpose. The validator and workspace lifecycle code are ready, but the
+app runtime does not yet wire `WithWorkspace(...)`. The later execution-isolation phase
+activates full isolation via:
 
 ```go
 pev.WithWorkspace(NewWorkspaceManager())
@@ -273,7 +277,8 @@ runLedger:
 lango run list
 ```
 
-Lists recent RunLedger runs. In Phase 1 (in-memory store), runs are only available during the current server session. Persistent storage is introduced in Phase 2.
+Lists recent RunLedger runs from the persistent RunLedger snapshot store when the shared
+application database is available.
 
 ### Run Status
 
@@ -289,7 +294,7 @@ Shows the current RunLedger configuration including enabled state, rollout stage
 lango run journal
 ```
 
-View the journal event log for a specific run. Requires persistent storage (Phase 2). In Phase 1, use the `run_read` tool via the agent to inspect run state.
+View the journal event log for a specific run from the persistent RunLedger journal store.
 
 ## Quick Start
 

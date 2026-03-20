@@ -4,6 +4,7 @@ import (
 	"context"
 
 	"github.com/langoai/lango/internal/appinit"
+	"github.com/langoai/lango/internal/bootstrap"
 	"github.com/langoai/lango/internal/config"
 	"github.com/langoai/lango/internal/runledger"
 )
@@ -16,7 +17,8 @@ type runLedgerValues struct {
 
 // runLedgerModule initializes the RunLedger Task OS subsystem.
 type runLedgerModule struct {
-	cfg *config.Config
+	cfg  *config.Config
+	boot *bootstrap.Result
 }
 
 func (m *runLedgerModule) Name() string { return "runledger" }
@@ -29,12 +31,15 @@ func (m *runLedgerModule) DependsOn() []appinit.Provides {
 func (m *runLedgerModule) Enabled() bool { return m.cfg.RunLedger.Enabled }
 
 func (m *runLedgerModule) Init(_ context.Context, _ appinit.Resolver) (*appinit.ModuleResult, error) {
-	// Use in-memory store for Phase 1 (shadow mode).
-	// Ent-backed store will be implemented in Phase 2.
+	// Phase 2 uses an Ent-backed store when the shared app database is available.
+	// MemoryStore remains as a fallback for tests and non-bootstrapped contexts.
 	// Workspace-aware validation remains phase-gated: the PEV engine supports
 	// WithWorkspace(), but Phase 1 intentionally keeps runtime isolation disabled.
 	// Phase 4 activates workspace wiring as part of the execution-isolation rollout.
-	store := runledger.NewMemoryStore()
+	store := runledger.RunLedgerStore(runledger.NewMemoryStore())
+	if m.boot != nil && m.boot.DBClient != nil {
+		store = runledger.NewEntStore(m.boot.DBClient)
+	}
 	validators := runledger.DefaultValidators()
 	pev := runledger.NewPEVEngine(store, validators)
 

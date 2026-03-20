@@ -271,9 +271,9 @@ lango bg status <id>             Show background task status
 lango bg cancel <id>             Cancel a running background task
 lango bg result <id>             Show completed task result
 
-lango run list                   List recent RunLedger runs
+lango run list                   List recent RunLedger runs from persistent snapshots
 lango run status                 Show RunLedger configuration and status
-lango run journal                View run journal events (Phase 2: persistent store)
+lango run journal <run-id>       View persistent run journal events
 ```
 
 ### Diagnostics

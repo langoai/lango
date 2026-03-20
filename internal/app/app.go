@@ -15,17 +15,17 @@ import (
 	"github.com/langoai/lango/internal/approval"
 	"github.com/langoai/lango/internal/background"
 	"github.com/langoai/lango/internal/bootstrap"
-	cronpkg "github.com/langoai/lango/internal/cron"
 	"github.com/langoai/lango/internal/config"
+	cronpkg "github.com/langoai/lango/internal/cron"
 	"github.com/langoai/lango/internal/eventbus"
 	"github.com/langoai/lango/internal/gateway"
 	"github.com/langoai/lango/internal/learning"
 	"github.com/langoai/lango/internal/lifecycle"
-	"github.com/langoai/lango/internal/skill"
 	"github.com/langoai/lango/internal/logging"
 	"github.com/langoai/lango/internal/observability/audit"
 	"github.com/langoai/lango/internal/sandbox"
 	"github.com/langoai/lango/internal/session"
+	"github.com/langoai/lango/internal/skill"
 	"github.com/langoai/lango/internal/toolcatalog"
 	"github.com/langoai/lango/internal/toolchain"
 	"github.com/langoai/lango/internal/tooloutput"
@@ -56,7 +56,7 @@ func New(boot *bootstrap.Result) (*App, error) {
 	builder.AddModule(&automationModule{cfg: cfg, app: app})
 	builder.AddModule(&networkModule{cfg: cfg, boot: boot, bus: bus, app: app})
 	builder.AddModule(&extensionModule{cfg: cfg, boot: boot, bus: bus})
-	builder.AddModule(&runLedgerModule{cfg: cfg})
+	builder.AddModule(&runLedgerModule{cfg: cfg, boot: boot})
 
 	buildResult, err := builder.Build(ctx)
 	if err != nil {
@@ -576,7 +576,6 @@ func resolveSR(iv *intelligenceValues) *skill.Registry {
 	sr, _ := iv.SkillRegistry.(*skill.Registry)
 	return sr
 }
-
 
 // Start starts the application services using the lifecycle registry.
 func (a *App) Start(ctx context.Context) error {

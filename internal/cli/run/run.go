@@ -2,11 +2,13 @@
 package run
 
 import (
+	"context"
 	"fmt"
 
 	"github.com/spf13/cobra"
 
 	"github.com/langoai/lango/internal/bootstrap"
+	"github.com/langoai/lango/internal/runledger"
 )
 
 // NewRunCmd creates the run command with lazy bootstrap loading.
@@ -19,7 +21,7 @@ func NewRunCmd(bootLoader func() (*bootstrap.Result, error)) *cobra.Command {
 
 	cmd.AddCommand(newListCmd(bootLoader))
 	cmd.AddCommand(newStatusCmd(bootLoader))
-	cmd.AddCommand(newJournalCmd())
+	cmd.AddCommand(newJournalCmd(bootLoader))
 
 	return cmd
 }
@@ -44,9 +46,19 @@ current server session. Persistent storage is introduced in Phase 2.`,
 				return nil
 			}
 
-			fmt.Println("RunLedger is enabled (Phase 1: in-memory store).")
-			fmt.Println("Runs are available only during the current server session.")
-			fmt.Println("Use 'lango serve' to start the server and interact with runs via agent tools.")
+			store := runledger.NewEntStore(boot.DBClient)
+			runs, err := store.ListRuns(context.Background(), boot.Config.RunLedger.MaxRunHistory)
+			if err != nil {
+				return fmt.Errorf("list runs: %w", err)
+			}
+			if len(runs) == 0 {
+				fmt.Println("No runs found.")
+				return nil
+			}
+			for _, run := range runs {
+				fmt.Printf("%s\t%s\t%s\t%d/%d\n",
+					run.RunID, run.Status, run.Goal, run.CompletedSteps, run.TotalSteps)
+			}
 			return nil
 		},
 	}
@@ -78,18 +90,31 @@ func newStatusCmd(bootLoader func() (*bootstrap.Result, error)) *cobra.Command {
 	}
 }
 
-func newJournalCmd() *cobra.Command {
+func newJournalCmd(bootLoader func() (*bootstrap.Result, error)) *cobra.Command {
 	return &cobra.Command{
-		Use:   "journal",
+		Use:   "journal <run-id>",
 		Short: "View run journal events",
-		Long: `View the journal event log for a specific run.
-
-This command requires persistent storage which is introduced in Phase 2.
-In Phase 1 (in-memory store), journal data is only available during the
-current server session via agent tools.`,
+		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			fmt.Println("Journal viewing requires persistent store (Phase 2).")
-			fmt.Println("In Phase 1, use run_read tool via the agent to inspect run state.")
+			boot, err := bootLoader()
+			if err != nil {
+				return fmt.Errorf("bootstrap: %w", err)
+			}
+			defer boot.DBClient.Close()
+
+			if !boot.Config.RunLedger.Enabled {
+				fmt.Println("RunLedger is disabled. Enable with: lango config set runLedger.enabled true")
+				return nil
+			}
+
+			store := runledger.NewEntStore(boot.DBClient)
+			events, err := store.GetJournalEvents(context.Background(), args[0])
+			if err != nil {
+				return fmt.Errorf("get journal events: %w", err)
+			}
+			for _, event := range events {
+				fmt.Printf("%d\t%s\t%s\n", event.Seq, event.Type, string(event.Payload))
+			}
 			return nil
 		},
 	}
