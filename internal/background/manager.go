@@ -22,6 +22,13 @@ type AgentRunner interface {
 	Run(ctx context.Context, sessionKey string, prompt string) (string, error)
 }
 
+// Projection mirrors background task lifecycle into another authority layer.
+// RunLedger uses this to create canonical task IDs and persist transitions.
+type Projection interface {
+	PrepareTask(ctx context.Context, prompt string, origin Origin) (string, error)
+	SyncTask(ctx context.Context, snap TaskSnapshot) error
+}
+
 // Origin identifies where a background task was initiated from.
 type Origin struct {
 	Channel string `json:"channel"`
@@ -37,6 +44,7 @@ type Manager struct {
 	taskTimeout time.Duration
 	runner      AgentRunner
 	notify      *Notification
+	projection  Projection
 	sem         chan struct{} // concurrency limiter
 	logger      *zap.SugaredLogger
 }
@@ -63,6 +71,12 @@ func NewManager(runner AgentRunner, notify *Notification, maxTasks int, taskTime
 	}
 }
 
+// WithProjection configures an optional projection hook for task lifecycle mirroring.
+func (m *Manager) WithProjection(projection Projection) *Manager {
+	m.projection = projection
+	return m
+}
+
 // Submit creates and enqueues a new background task. It returns the task ID on success.
 func (m *Manager) Submit(ctx context.Context, prompt string, origin Origin) (string, error) {
 	m.mu.Lock()
@@ -75,6 +89,14 @@ func (m *Manager) Submit(ctx context.Context, prompt string, origin Origin) (str
 	detached := types.DetachContext(ctx)
 	taskCtx, cancelFn := context.WithTimeout(detached, m.taskTimeout)
 	id := uuid.New().String()
+	if m.projection != nil {
+		preparedID, err := m.projection.PrepareTask(detached, prompt, origin)
+		if err != nil {
+			m.mu.Unlock()
+			return "", fmt.Errorf("submit task: prepare projection: %w", err)
+		}
+		id = preparedID
+	}
 
 	task := &Task{
 		ID:            id,
@@ -86,6 +108,8 @@ func (m *Manager) Submit(ctx context.Context, prompt string, origin Origin) (str
 	}
 	m.tasks[id] = task
 	m.mu.Unlock()
+
+	m.syncProjection(detached, task)
 
 	m.logger.Infow("task submitted", "taskID", id, "channel", origin.Channel)
 
@@ -114,6 +138,7 @@ func (m *Manager) Cancel(id string) error {
 	}
 
 	task.Cancel()
+	m.syncProjection(context.Background(), task)
 	m.logger.Infow("task cancelled", "taskID", id)
 	return nil
 }
@@ -173,6 +198,7 @@ func (m *Manager) execute(ctx context.Context, task *Task) {
 	defer func() { <-m.sem }()
 
 	task.SetRunning()
+	m.syncProjection(ctx, task)
 	m.logger.Infow("task running", "taskID", task.ID)
 
 	// Send start notification (best-effort, use task context).
@@ -208,9 +234,11 @@ func (m *Manager) execute(ctx context.Context, task *Task) {
 
 	if err != nil {
 		task.Fail(err.Error())
+		m.syncProjection(types.DetachContext(ctx), task)
 		m.logger.Warnw("task failed", "taskID", task.ID, "error", err)
 	} else {
 		task.Complete(result)
+		m.syncProjection(types.DetachContext(ctx), task)
 		m.logger.Infow("task completed", "taskID", task.ID)
 	}
 
@@ -247,4 +275,13 @@ func (m *Manager) activeCountLocked() int {
 		}
 	}
 	return count
+}
+
+func (m *Manager) syncProjection(ctx context.Context, task *Task) {
+	if m.projection == nil {
+		return
+	}
+	if err := m.projection.SyncTask(ctx, task.Snapshot()); err != nil {
+		m.logger.Warnw("background projection sync failed", "taskID", task.ID, "error", err)
+	}
 }

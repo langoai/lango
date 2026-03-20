@@ -24,6 +24,33 @@ func (m *mockRunner) Run(_ context.Context, _ string, _ string) (string, error) 
 	return m.result, m.err
 }
 
+type mockProjection struct {
+	id         string
+	prepared   int
+	synced     []TaskSnapshot
+	prepareErr error
+	syncErr    error
+}
+
+func (m *mockProjection) PrepareTask(_ context.Context, _ string, _ Origin) (string, error) {
+	if m.prepareErr != nil {
+		return "", m.prepareErr
+	}
+	m.prepared++
+	if m.id != "" {
+		return m.id, nil
+	}
+	return "projected-id", nil
+}
+
+func (m *mockProjection) SyncTask(_ context.Context, snap TaskSnapshot) error {
+	if m.syncErr != nil {
+		return m.syncErr
+	}
+	m.synced = append(m.synced, snap)
+	return nil
+}
+
 func testLogger() *zap.SugaredLogger {
 	return zap.NewNop().Sugar()
 }
@@ -106,6 +133,24 @@ func TestManager_Submit_And_Result(t *testing.T) {
 	result, err := mgr.Result(id)
 	require.NoError(t, err)
 	assert.Equal(t, "hello world", result)
+}
+
+func TestManager_WithProjection_UsesPreparedIDAndSyncsLifecycle(t *testing.T) {
+	runner := &mockRunner{result: "done"}
+	projection := &mockProjection{id: "run-ledger-id"}
+	mgr := NewManager(runner, nil, 5, time.Minute, testLogger()).
+		WithProjection(projection)
+
+	id, err := mgr.Submit(context.Background(), "test", Origin{})
+	require.NoError(t, err)
+	assert.Equal(t, "run-ledger-id", id)
+
+	time.Sleep(150 * time.Millisecond)
+
+	require.GreaterOrEqual(t, projection.prepared, 1)
+	require.NotEmpty(t, projection.synced)
+	assert.Equal(t, "run-ledger-id", projection.synced[len(projection.synced)-1].ID)
+	assert.Equal(t, Done, projection.synced[len(projection.synced)-1].Status)
 }
 
 func TestManager_Submit_RunnerError(t *testing.T) {

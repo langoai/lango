@@ -328,6 +328,31 @@ func (s *EntStore) GetRunSnapshot(ctx context.Context, runID string) (*RunSnapsh
 	return snap, nil
 }
 
+func (s *EntStore) ListRunSummariesBySession(ctx context.Context, sessionKey string, limit int) ([]RunSummary, error) {
+	query := s.client.RunSnapshot.Query().
+		Where(entrunsnapshot.SessionKeyEQ(sessionKey)).
+		Order(entrunsnapshot.ByUpdatedAt(sql.OrderDesc()))
+	if limit > 0 {
+		query = query.Limit(limit)
+	}
+
+	rows, err := query.All(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("list run summaries by session: %w", err)
+	}
+
+	result := make([]RunSummary, 0, len(rows))
+	for _, row := range rows {
+		var snap RunSnapshot
+		if err := json.Unmarshal([]byte(row.SnapshotData), &snap); err != nil {
+			return nil, fmt.Errorf("unmarshal session snapshot %q: %w", row.RunID, err)
+		}
+		snap.LastJournalSeq = row.LastJournalSeq
+		result = append(result, snap.ToSummary())
+	}
+	return result, nil
+}
+
 func decodeRunJournalRows(rows []*ent.RunJournal) ([]JournalEvent, error) {
 	events := make([]JournalEvent, 0, len(rows))
 	for _, row := range rows {

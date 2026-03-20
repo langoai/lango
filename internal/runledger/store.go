@@ -39,6 +39,9 @@ type RunLedgerStore interface {
 
 	// GetRunSnapshot returns the most up-to-date snapshot, using cache + tail replay.
 	GetRunSnapshot(ctx context.Context, runID string) (*RunSnapshot, error)
+
+	// ListRunSummariesBySession returns recent run summaries for a session.
+	ListRunSummariesBySession(ctx context.Context, sessionKey string, limit int) ([]RunSummary, error)
 }
 
 // MemoryStore is an in-memory implementation of RunLedgerStore for testing
@@ -217,4 +220,22 @@ func (m *MemoryStore) GetRunSnapshot(ctx context.Context, runID string) (*RunSna
 	}
 	_ = m.UpdateCachedSnapshot(ctx, snap)
 	return snap, nil
+}
+
+func (m *MemoryStore) ListRunSummariesBySession(ctx context.Context, sessionKey string, limit int) ([]RunSummary, error) {
+	runs, err := m.ListRuns(ctx, limit)
+	if err != nil {
+		return nil, err
+	}
+	var filtered []RunSummary
+	for _, run := range runs {
+		snap, snapErr := m.GetRunSnapshot(ctx, run.RunID)
+		if snapErr != nil {
+			continue
+		}
+		if snap.SessionKey == sessionKey {
+			filtered = append(filtered, run)
+		}
+	}
+	return filtered, nil
 }

@@ -11,9 +11,9 @@
 
 ## 3. Command Context
 
-- [ ] 3.1 Inject run summaries into agent command context
-- [ ] 3.2 Keep full journal/state on-demand only
-- [ ] 3.3 Add tests for context truncation resistance
+- [x] 3.1 Inject run summaries into agent command context
+- [x] 3.2 Keep full journal/state on-demand only
+- [x] 3.3 Add tests for context truncation resistance
 
 ## 4. Verification
 

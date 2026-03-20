@@ -12,6 +12,7 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/langoai/lango/internal/bootstrap"
+	"github.com/langoai/lango/internal/runledger"
 	"github.com/langoai/lango/internal/toolchain"
 	"github.com/langoai/lango/internal/workflow"
 )
@@ -130,6 +131,23 @@ func newWorkflowListCmd(bootLoader func() (*bootstrap.Result, error)) *cobra.Com
 				return ErrWorkflowDisabled
 			}
 
+			if runs, handled, err := maybeListRunsFromLedger(boot, limit); handled {
+				if err != nil {
+					return err
+				}
+				if len(runs) == 0 {
+					fmt.Println("No workflow runs found.")
+					return nil
+				}
+				w := tabwriter.NewWriter(os.Stdout, 0, 4, 2, ' ', 0)
+				fmt.Fprintln(w, "ID\tWORKFLOW\tSTATUS\tSTEPS")
+				for _, r := range runs {
+					fmt.Fprintf(w, "%s\t%s\t%s\t%d/%d\n",
+						shortID(r.RunID), r.WorkflowName, r.Status, r.CompletedSteps, r.TotalSteps)
+				}
+				return w.Flush()
+			}
+
 			runs, err := engine.ListRuns(context.Background(), limit)
 			if err != nil {
 				return fmt.Errorf("list runs: %w", err)
@@ -171,6 +189,28 @@ func newWorkflowStatusCmd(bootLoader func() (*bootstrap.Result, error)) *cobra.C
 			engine := initEngine(boot)
 			if engine == nil {
 				return ErrWorkflowDisabled
+			}
+
+			if status, handled, err := maybeStatusFromLedger(boot, args[0]); handled {
+				if err != nil {
+					return err
+				}
+				fmt.Printf("Run ID:    %s\n", status.RunID)
+				fmt.Printf("Workflow:  %s\n", status.WorkflowName)
+				fmt.Printf("Status:    %s\n", status.Status)
+				fmt.Printf("Progress:  %d/%d steps\n", status.CompletedSteps, status.TotalSteps)
+				if len(status.StepStatuses) > 0 {
+					fmt.Println("\nSteps:")
+					for _, s := range status.StepStatuses {
+						errInfo := ""
+						if s.Error != "" {
+							errInfo = " (" + truncate(s.Error, 40) + ")"
+						}
+						fmt.Printf("  %-20s  %-12s  agent=%-15s%s\n",
+							s.StepID, s.Status, s.Agent, errInfo)
+					}
+				}
+				return nil
 			}
 
 			status, err := engine.Status(context.Background(), args[0])
@@ -244,6 +284,23 @@ func newWorkflowHistoryCmd(bootLoader func() (*bootstrap.Result, error)) *cobra.
 				return ErrWorkflowDisabled
 			}
 
+			if runs, handled, err := maybeListRunsFromLedger(boot, limit); handled {
+				if err != nil {
+					return err
+				}
+				if len(runs) == 0 {
+					fmt.Println("No workflow history found.")
+					return nil
+				}
+				w := tabwriter.NewWriter(os.Stdout, 0, 4, 2, ' ', 0)
+				fmt.Fprintln(w, "ID\tWORKFLOW\tSTATUS\tSTEPS")
+				for _, r := range runs {
+					fmt.Fprintf(w, "%s\t%s\t%s\t%d/%d\n",
+						shortID(r.RunID), r.WorkflowName, r.Status, r.CompletedSteps, r.TotalSteps)
+				}
+				return w.Flush()
+			}
+
 			runs, err := engine.ListRuns(context.Background(), limit)
 			if err != nil {
 				return fmt.Errorf("list runs: %w", err)
@@ -280,6 +337,63 @@ func initEngine(boot *bootstrap.Result) *workflow.Engine {
 		boot.Config.Workflow.MaxConcurrentSteps,
 		boot.Config.Workflow.DefaultTimeout,
 		lg.Sugar())
+}
+
+func maybeListRunsFromLedger(
+	boot *bootstrap.Result,
+	limit int,
+) ([]workflow.RunStatus, bool, error) {
+	if !boot.Config.RunLedger.Enabled || !boot.Config.RunLedger.AuthoritativeRead {
+		return nil, false, nil
+	}
+	store := runledger.NewEntStore(boot.DBClient)
+	summaries, err := store.ListRuns(context.Background(), limit)
+	if err != nil {
+		return nil, true, fmt.Errorf("list workflow runs from RunLedger: %w", err)
+	}
+	result := make([]workflow.RunStatus, 0, len(summaries))
+	for _, summary := range summaries {
+		result = append(result, workflow.RunStatus{
+			RunID:          summary.RunID,
+			WorkflowName:   summary.Goal,
+			Status:         string(summary.Status),
+			TotalSteps:     summary.TotalSteps,
+			CompletedSteps: summary.CompletedSteps,
+		})
+	}
+	return result, true, nil
+}
+
+func maybeStatusFromLedger(
+	boot *bootstrap.Result,
+	runID string,
+) (*workflow.RunStatus, bool, error) {
+	if !boot.Config.RunLedger.Enabled || !boot.Config.RunLedger.AuthoritativeRead {
+		return nil, false, nil
+	}
+	store := runledger.NewEntStore(boot.DBClient)
+	snap, err := store.GetRunSnapshot(context.Background(), runID)
+	if err != nil {
+		return nil, true, fmt.Errorf("get workflow status from RunLedger: %w", err)
+	}
+	statuses := make([]workflow.StepStatus, 0, len(snap.Steps))
+	for _, step := range snap.Steps {
+		statuses = append(statuses, workflow.StepStatus{
+			StepID: step.StepID,
+			Agent:  step.OwnerAgent,
+			Status: string(step.Status),
+			Error:  "",
+		})
+	}
+	return &workflow.RunStatus{
+		RunID:          snap.RunID,
+		WorkflowName:   snap.Goal,
+		Status:         string(snap.Status),
+		TotalSteps:     len(snap.Steps),
+		CompletedSteps: snap.CompletedSteps(),
+		StartedAt:      snap.UpdatedAt,
+		StepStatuses:   statuses,
+	}, true, nil
 }
 
 func shortID(id string) string {

@@ -111,3 +111,10 @@ type CriterionMetPayload struct {
 	Index       int    `json:"index"`
 	Description string `json:"description"`
 }
+
+// ProjectionSyncPayload describes the result of syncing a projection target.
+type ProjectionSyncPayload struct {
+	Target string `json:"target"`
+	Status string `json:"status"`
+	Error  string `json:"error,omitempty"`
+}

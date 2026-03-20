@@ -159,6 +159,7 @@ func New(boot *bootstrap.Result) (*App, error) {
 		catalog:  catalog,
 		p2pc:     p2pc,
 		eventBus: bus,
+		rls:      app.RunLedgerStore,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("create agent: %w", err)

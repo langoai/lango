@@ -93,6 +93,12 @@ func initBackground(cfg *config.Config, app *App) *background.Manager {
 	}
 
 	mgr := background.NewManager(runner, notify, maxTasks, taskTimeout, logger())
+	if app.RunLedgerStore != nil && cfg.RunLedger.Enabled && cfg.RunLedger.WriteThrough {
+		mgr.WithProjection(runledger.NewBackgroundWriteThrough(
+			app.RunLedgerStore,
+			runledger.RolloutConfig{Stage: runledger.StageWriteThrough},
+		))
+	}
 
 	logger().Infow("background task manager initialized",
 		"maxConcurrentTasks", maxTasks,

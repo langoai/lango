@@ -6,15 +6,15 @@
 
 ## 2. Canonical Write Path
 
-- [ ] 2.1 Add write-through adapters for workflow and background execution
-- [ ] 2.2 Ensure projections reuse the canonical RunLedger `run_id`
-- [ ] 2.3 Add projection sync markers and degraded-projection handling
+- [x] 2.1 Add write-through adapters for workflow and background execution
+- [x] 2.2 Ensure projections reuse the canonical RunLedger `run_id`
+- [x] 2.3 Add projection sync markers and degraded-projection handling
 
 ## 3. Replay and Repair
 
-- [ ] 3.1 Add projection drift detection
-- [ ] 3.2 Add projection rebuild/replay API
-- [ ] 3.3 Add tests for projection failure then replay recovery
+- [x] 3.1 Add projection drift detection
+- [x] 3.2 Add projection rebuild/replay API
+- [x] 3.3 Add tests for projection failure then replay recovery
 
 ## 4. Downstream
 
