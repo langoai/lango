@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"iter"
 	"strings"
+	"sync"
 
 	"go.uber.org/zap"
 	"golang.org/x/sync/errgroup"
@@ -30,6 +31,7 @@ type MemoryProvider interface {
 // RunSummaryProvider retrieves active RunLedger summaries for a session.
 type RunSummaryProvider interface {
 	ListRunSummaries(ctx context.Context, sessionKey string, limit int) ([]RunSummaryContext, error)
+	MaxJournalSeqForSession(ctx context.Context, sessionKey string) (int64, error)
 }
 
 // RunSummaryContext is the compact command-context view injected from RunLedger.
@@ -53,6 +55,7 @@ type ContextAwareModelAdapter struct {
 	graphRAG           *graph.GraphRAGService
 	runtimeAdapter     *RuntimeContextAdapter
 	runSummaryProvider RunSummaryProvider
+	runSummaryCache    *runSummaryCache
 	basePrompt         string
 	maxReflections     int
 	maxObservations    int
@@ -74,6 +77,9 @@ func NewContextAwareModelAdapter(
 		retriever:  retriever,
 		basePrompt: builder.Build(),
 		logger:     logger,
+		runSummaryCache: &runSummaryCache{
+			entries: make(map[string]summaryCacheEntry),
+		},
 	}
 }
 
@@ -314,12 +320,23 @@ func (m *ContextAwareModelAdapter) assembleRunSummarySection(ctx context.Context
 	if m.runSummaryProvider == nil {
 		return ""
 	}
+
+	maxSeq, err := m.runSummaryProvider.MaxJournalSeqForSession(ctx, sessionKey)
+	if err != nil {
+		m.logger.Warnw("run summary max seq retrieval error", "error", err)
+		return ""
+	}
+	if cached, ok := m.getCachedRunSummary(sessionKey, maxSeq); ok {
+		return cached
+	}
+
 	summaries, err := m.runSummaryProvider.ListRunSummaries(ctx, sessionKey, 3)
 	if err != nil {
 		m.logger.Warnw("run summary retrieval error", "error", err)
 		return ""
 	}
 	if len(summaries) == 0 {
+		m.storeCachedRunSummary(sessionKey, maxSeq, "")
 		return ""
 	}
 
@@ -343,7 +360,49 @@ func (m *ContextAwareModelAdapter) assembleRunSummarySection(ctx context.Context
 		}
 		b.WriteString("\n")
 	}
-	return b.String()
+	assembled := b.String()
+	m.storeCachedRunSummary(sessionKey, maxSeq, assembled)
+	return assembled
+}
+
+type runSummaryCache struct {
+	mu      sync.RWMutex
+	entries map[string]summaryCacheEntry
+}
+
+type summaryCacheEntry struct {
+	summary string
+	maxSeq  int64
+}
+
+func (m *ContextAwareModelAdapter) getCachedRunSummary(sessionKey string, maxSeq int64) (string, bool) {
+	if m.runSummaryCache == nil {
+		return "", false
+	}
+	m.runSummaryCache.mu.RLock()
+	defer m.runSummaryCache.mu.RUnlock()
+
+	entry, ok := m.runSummaryCache.entries[sessionKey]
+	if !ok || entry.maxSeq != maxSeq {
+		return "", false
+	}
+	return entry.summary, true
+}
+
+func (m *ContextAwareModelAdapter) storeCachedRunSummary(
+	sessionKey string,
+	maxSeq int64,
+	summary string,
+) {
+	if m.runSummaryCache == nil {
+		return
+	}
+	m.runSummaryCache.mu.Lock()
+	defer m.runSummaryCache.mu.Unlock()
+	m.runSummaryCache.entries[sessionKey] = summaryCacheEntry{
+		summary: summary,
+		maxSeq:  maxSeq,
+	}
 }
 
 // assembleGraphRAGSection builds a combined section from vector search + graph expansion.

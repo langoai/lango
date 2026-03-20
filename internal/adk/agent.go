@@ -18,6 +18,7 @@ import (
 	"google.golang.org/genai"
 
 	"github.com/langoai/lango/internal/logging"
+	"github.com/langoai/lango/internal/runledger"
 	internal "github.com/langoai/lango/internal/session"
 )
 
@@ -166,6 +167,8 @@ func (a *Agent) ADKAgent() adk_agent.Agent {
 // Run executes the agent for a given session and returns an event iterator.
 // It enforces a maximum turn limit to prevent unbounded tool-calling loops.
 func (a *Agent) Run(ctx context.Context, sessionID string, input string) iter.Seq2[*session.Event, error] {
+	ctx = runledger.WithSnapshotCache(ctx)
+
 	// Create user content
 	userMsg := &genai.Content{
 		Role:  "user",
@@ -196,7 +199,7 @@ func (a *Agent) Run(ctx context.Context, sessionID string, input string) iter.Se
 		plannerInvolved := false
 
 		// Wrap-up tracking (loop-level scope).
-		wrapUpBudget := 1   // default: 1 wrap-up turn
+		wrapUpBudget := 1 // default: 1 wrap-up turn
 		wrapUpRemaining := 0
 		inWrapUp := false
 

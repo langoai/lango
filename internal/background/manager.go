@@ -9,6 +9,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/langoai/lango/internal/approval"
+	"github.com/langoai/lango/internal/session"
 	"github.com/langoai/lango/internal/types"
 	"go.uber.org/zap"
 )
@@ -222,6 +223,10 @@ func (m *Manager) execute(ctx context.Context, task *Task) {
 	}
 
 	sessionKey := "bg:" + task.ID
+	ctx = session.WithRunContext(ctx, session.RunContext{
+		SessionType: "background",
+		RunID:       task.ID,
+	})
 	enrichedPrompt := automationPrefix + "Task: " + task.Prompt
 	result, err := m.runner.Run(ctx, sessionKey, enrichedPrompt)
 	stopTyping()

@@ -2,6 +2,7 @@ package runledger
 
 import (
 	"context"
+	"sync/atomic"
 	"testing"
 
 	"github.com/langoai/lango/internal/agent"
@@ -11,20 +12,34 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+type countingRunLedgerStore struct {
+	*MemoryStore
+	getCalls atomic.Int32
+}
+
+func (s *countingRunLedgerStore) GetRunSnapshot(ctx context.Context, runID string) (*RunSnapshot, error) {
+	s.getCalls.Add(1)
+	return s.MemoryStore.GetRunSnapshot(ctx, runID)
+}
+
 func TestToolProfileGuard_AllowsCodingToolsForCodingProfile(t *testing.T) {
 	store := NewMemoryStore()
 	ctx := context.Background()
 	seedActiveRun(t, store, "run-1", []string{string(ToolProfileCoding)})
 
 	tool := &agent.Tool{
-		Name: "exec_command",
+		Name: "exec",
 		Handler: func(ctx context.Context, params map[string]interface{}) (interface{}, error) {
 			return "ok", nil
 		},
 	}
 	guarded := toolchain.Chain(tool, ToolProfileGuard(store))
 
-	runCtx := toolchain.WithAgentName(session.WithSessionKey(ctx, "workflow:wf:run-1:step-1"), "operator")
+	runCtx := toolchain.WithAgentName(session.WithRunContext(ctx, session.RunContext{
+		SessionType: "workflow",
+		WorkflowID:  "wf",
+		RunID:       "run-1",
+	}), "operator")
 	result, err := guarded.Handler(runCtx, nil)
 	require.NoError(t, err)
 	assert.Equal(t, "ok", result)
@@ -36,14 +51,18 @@ func TestToolProfileGuard_BlocksDisallowedTools(t *testing.T) {
 	seedActiveRun(t, store, "run-2", []string{string(ToolProfileSupervisor)})
 
 	tool := &agent.Tool{
-		Name: "exec_command",
+		Name: "exec",
 		Handler: func(ctx context.Context, params map[string]interface{}) (interface{}, error) {
 			return "ok", nil
 		},
 	}
 	guarded := toolchain.Chain(tool, ToolProfileGuard(store))
 
-	runCtx := toolchain.WithAgentName(session.WithSessionKey(ctx, "workflow:wf:run-2:step-1"), "operator")
+	runCtx := toolchain.WithAgentName(session.WithRunContext(ctx, session.RunContext{
+		SessionType: "workflow",
+		WorkflowID:  "wf",
+		RunID:       "run-2",
+	}), "operator")
 	_, err := guarded.Handler(runCtx, nil)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "not allowed")
@@ -62,10 +81,125 @@ func TestToolProfileGuard_AllowsRunInspectionToolsForSupervisorProfile(t *testin
 	}
 	guarded := toolchain.Chain(tool, ToolProfileGuard(store))
 
-	runCtx := toolchain.WithAgentName(session.WithSessionKey(ctx, "workflow:wf:run-3:step-1"), "operator")
+	runCtx := toolchain.WithAgentName(session.WithRunContext(ctx, session.RunContext{
+		SessionType: "workflow",
+		WorkflowID:  "wf",
+		RunID:       "run-3",
+	}), "operator")
 	result, err := guarded.Handler(runCtx, nil)
 	require.NoError(t, err)
 	assert.Equal(t, "ok", result)
+}
+
+func TestToolProfileGuard_ExecutionAgentDeniedOrchestratorRunTool(t *testing.T) {
+	store := NewMemoryStore()
+	ctx := context.Background()
+	seedActiveRun(t, store, "run-4", []string{string(ToolProfileCoding)})
+
+	tool := &agent.Tool{
+		Name: "run_create",
+		Handler: func(ctx context.Context, params map[string]interface{}) (interface{}, error) {
+			return "ok", nil
+		},
+	}
+	guarded := toolchain.Chain(tool, ToolProfileGuard(store))
+
+	runCtx := toolchain.WithAgentName(session.WithRunContext(ctx, session.RunContext{
+		SessionType: "workflow",
+		WorkflowID:  "wf",
+		RunID:       "run-4",
+	}), "operator")
+	_, err := guarded.Handler(runCtx, nil)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "not allowed")
+}
+
+func TestToolProfileGuard_ExactMatchDoesNotAllowUnrelatedTool(t *testing.T) {
+	store := NewMemoryStore()
+	ctx := context.Background()
+	seedActiveRun(t, store, "run-5", []string{string(ToolProfileCoding)})
+
+	tool := &agent.Tool{
+		Name: "execute_payment",
+		Handler: func(ctx context.Context, params map[string]interface{}) (interface{}, error) {
+			return "ok", nil
+		},
+	}
+	guarded := toolchain.Chain(tool, ToolProfileGuard(store))
+
+	runCtx := toolchain.WithAgentName(session.WithRunContext(ctx, session.RunContext{
+		SessionType: "workflow",
+		WorkflowID:  "wf",
+		RunID:       "run-5",
+	}), "operator")
+	_, err := guarded.Handler(runCtx, nil)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "not allowed")
+}
+
+func TestRunIDFromSessionContext_UsesRunContext(t *testing.T) {
+	ctx := session.WithRunContext(context.Background(), session.RunContext{
+		SessionType: "workflow",
+		WorkflowID:  "wf:with:colon",
+		RunID:       "run-6",
+	})
+
+	assert.Equal(t, "run-6", runIDFromSessionContext(ctx))
+}
+
+func TestToolProfileGuard_SnapshotCacheHit(t *testing.T) {
+	store := &countingRunLedgerStore{MemoryStore: NewMemoryStore()}
+	ctx := context.Background()
+	seedActiveRun(t, store.MemoryStore, "run-7", []string{string(ToolProfileCoding)})
+
+	tool := &agent.Tool{
+		Name: "exec",
+		Handler: func(ctx context.Context, params map[string]interface{}) (interface{}, error) {
+			return "ok", nil
+		},
+	}
+	guarded := toolchain.Chain(tool, ToolProfileGuard(store))
+
+	runCtx := toolchain.WithAgentName(session.WithRunContext(
+		WithSnapshotCache(ctx),
+		session.RunContext{SessionType: "workflow", WorkflowID: "wf", RunID: "run-7"},
+	), "operator")
+
+	_, err := guarded.Handler(runCtx, nil)
+	require.NoError(t, err)
+	_, err = guarded.Handler(runCtx, nil)
+	require.NoError(t, err)
+	assert.Equal(t, int32(1), store.getCalls.Load())
+}
+
+func TestToolProfileGuard_SnapshotCacheCrossTurnIsolation(t *testing.T) {
+	store := &countingRunLedgerStore{MemoryStore: NewMemoryStore()}
+	ctx := context.Background()
+	seedActiveRun(t, store.MemoryStore, "run-8", []string{string(ToolProfileCoding)})
+
+	tool := &agent.Tool{
+		Name: "exec",
+		Handler: func(ctx context.Context, params map[string]interface{}) (interface{}, error) {
+			return "ok", nil
+		},
+	}
+	guarded := toolchain.Chain(tool, ToolProfileGuard(store))
+
+	runCtx1 := toolchain.WithAgentName(session.WithRunContext(
+		WithSnapshotCache(ctx),
+		session.RunContext{SessionType: "workflow", WorkflowID: "wf", RunID: "run-8"},
+	), "operator")
+	_, err := guarded.Handler(runCtx1, nil)
+	require.NoError(t, err)
+
+	runCtx2 := toolchain.WithAgentName(session.WithRunContext(
+		WithSnapshotCache(ctx),
+		session.RunContext{SessionType: "workflow", WorkflowID: "wf", RunID: "run-8"},
+	), "operator")
+	_, err = guarded.Handler(runCtx2, nil)
+	require.NoError(t, err)
+
+	assert.Equal(t, int32(2), store.getCalls.Load())
 }
 
 func seedActiveRun(t *testing.T, store *MemoryStore, runID string, profiles []string) {

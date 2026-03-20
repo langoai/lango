@@ -22,6 +22,9 @@ const (
 	roleAny          callerRole = "any"
 )
 
+// SystemCallerName is the explicit identity for trusted internal callers.
+const SystemCallerName = "system"
+
 // BuildTools creates all run_* tools with access control.
 func BuildTools(store RunLedgerStore, pev *PEVEngine) []*agent.Tool {
 	return []*agent.Tool{
@@ -176,20 +179,20 @@ func buildRunActive(store RunLedgerStore) *agent.Tool {
 					}, nil
 				}
 				return map[string]interface{}{
-					"status":        "next_available",
-					"run_id":        runID,
-					"next_step":     next,
-					"run_status":    snap.Status,
+					"status":     "next_available",
+					"run_id":     runID,
+					"next_step":  next,
+					"run_status": snap.Status,
 				}, nil
 			}
 
 			step := snap.FindStep(snap.CurrentStepID)
 			return map[string]interface{}{
-				"status":      "active",
-				"run_id":      runID,
-				"step":        step,
-				"blocker":     snap.CurrentBlocker,
-				"run_status":  snap.Status,
+				"status":     "active",
+				"run_id":     runID,
+				"step":       step,
+				"blocker":    snap.CurrentBlocker,
+				"run_status": snap.Status,
 			}, nil
 		},
 	}
@@ -546,23 +549,30 @@ func checkRunCompletion(ctx context.Context, store RunLedgerStore, pev *PEVEngin
 					Reason: "one or more steps failed or interrupted",
 				}),
 			})
+			if pev != nil {
+				_ = pev.maybePruneRunHistory(ctx)
+			}
 			return "failed", nil
 		}
 		return "running", nil
 	}
 
 	// All steps successful -> verify acceptance criteria.
-	unmet, _ := pev.VerifyAcceptanceCriteria(ctx, snap.AcceptanceState)
+	beforeMet := make([]bool, len(snap.AcceptanceState))
+	for i := range snap.AcceptanceState {
+		beforeMet[i] = snap.AcceptanceState[i].Met
+	}
+	unmet, evaluated, _ := pev.VerifyAcceptanceCriteria(ctx, snap.AcceptanceState)
 
 	// Journal newly met criteria.
-	for i := range snap.AcceptanceState {
-		if snap.AcceptanceState[i].Met {
+	for i := range evaluated {
+		if !beforeMet[i] && evaluated[i].Met {
 			_ = store.AppendJournalEvent(ctx, JournalEvent{
 				RunID: runID,
 				Type:  EventCriterionMet,
 				Payload: marshalPayload(CriterionMetPayload{
 					Index:       i,
-					Description: snap.AcceptanceState[i].Description,
+					Description: evaluated[i].Description,
 				}),
 			})
 		}
@@ -574,6 +584,9 @@ func checkRunCompletion(ctx context.Context, store RunLedgerStore, pev *PEVEngin
 			Type:    EventRunCompleted,
 			Payload: marshalPayload(RunCompletedPayload{Summary: "all steps and criteria satisfied"}),
 		})
+		if pev != nil {
+			_ = pev.maybePruneRunHistory(ctx)
+		}
 		return "completed", nil
 	}
 
@@ -588,6 +601,9 @@ func checkRunCompletion(ctx context.Context, store RunLedgerStore, pev *PEVEngin
 			Reason: "unmet acceptance criteria: " + strings.Join(descs, "; "),
 		}),
 	})
+	if pev != nil {
+		_ = pev.maybePruneRunHistory(ctx)
+	}
 	return "failed", descs
 }
 
@@ -599,7 +615,10 @@ func checkRole(ctx context.Context, required callerRole) error {
 		return nil
 	}
 	agentName := toolchain.AgentNameFromContext(ctx)
-	isOrchestrator := agentName == "orchestrator" || agentName == "lango-orchestrator" || agentName == ""
+	if agentName == "" {
+		return fmt.Errorf("%w: caller identity is required", ErrAccessDenied)
+	}
+	isOrchestrator := isOrchestratorAgentName(agentName)
 
 	switch required {
 	case roleOrchestrator:
@@ -612,4 +631,10 @@ func checkRole(ctx context.Context, required callerRole) error {
 		}
 	}
 	return nil
+}
+
+func isOrchestratorAgentName(agentName string) bool {
+	return agentName == "orchestrator" ||
+		agentName == "lango-orchestrator" ||
+		agentName == SystemCallerName
 }

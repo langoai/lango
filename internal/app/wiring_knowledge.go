@@ -263,6 +263,9 @@ func (a *runSummaryProviderAdapter) ListRunSummaries(
 	}
 	result := make([]adk.RunSummaryContext, 0, len(summaries))
 	for _, summary := range summaries {
+		if summary.Status != runledger.RunStatusRunning && summary.Status != runledger.RunStatusPaused {
+			continue
+		}
 		result = append(result, adk.RunSummaryContext{
 			RunID:          summary.RunID,
 			Goal:           summary.Goal,
@@ -272,4 +275,11 @@ func (a *runSummaryProviderAdapter) ListRunSummaries(
 		})
 	}
 	return result, nil
+}
+
+func (a *runSummaryProviderAdapter) MaxJournalSeqForSession(
+	ctx context.Context,
+	sessionKey string,
+) (int64, error) {
+	return a.store.MaxJournalSeqForSession(ctx, sessionKey)
 }

@@ -97,7 +97,7 @@ func initBackground(cfg *config.Config, app *App) *background.Manager {
 		mgr.WithProjection(runledger.NewBackgroundWriteThrough(
 			app.RunLedgerStore,
 			runledger.RolloutConfig{Stage: runledger.StageWriteThrough},
-		))
+		).WithMaxHistory(cfg.RunLedger.MaxRunHistory))
 	}
 
 	logger().Infow("background task manager initialized",
@@ -128,7 +128,7 @@ func initWorkflow(cfg *config.Config, store session.Store, app *App, rlv *runLed
 			rlv.store,
 			workflow.NewStateStore(client, logger()),
 			runledger.RolloutConfig{Stage: runledger.StageWriteThrough},
-		)
+		).WithMaxHistory(cfg.RunLedger.MaxRunHistory)
 	}
 	runner := &agentRunnerAdapter{app: app}
 	sender := newChannelSender(app)

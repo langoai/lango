@@ -3,6 +3,7 @@ package runledger
 import (
 	"context"
 	"fmt"
+	"time"
 )
 
 // Validator executes a specific validation strategy against step evidence.
@@ -17,6 +18,8 @@ type PEVEngine struct {
 	ledger     RunLedgerStore
 	validators map[ValidatorType]Validator
 	workspace  *WorkspaceManager // nil = no isolation (Phase 1 default)
+	timeout    time.Duration
+	maxHistory int
 }
 
 // NewPEVEngine creates a PEV engine with the provided store and validators.
@@ -33,6 +36,18 @@ func NewPEVEngine(ledger RunLedgerStore, validators map[ValidatorType]Validator)
 //	pev.WithWorkspace(NewWorkspaceManager())
 func (e *PEVEngine) WithWorkspace(ws *WorkspaceManager) *PEVEngine {
 	e.workspace = ws
+	return e
+}
+
+// WithTimeout configures a validator execution deadline.
+func (e *PEVEngine) WithTimeout(timeout time.Duration) *PEVEngine {
+	e.timeout = timeout
+	return e
+}
+
+// WithMaxRunHistory configures how many runs should be retained in the store.
+func (e *PEVEngine) WithMaxRunHistory(maxHistory int) *PEVEngine {
+	e.maxHistory = maxHistory
 	return e
 }
 
@@ -69,7 +84,14 @@ func (e *PEVEngine) Verify(ctx context.Context, runID string, step *Step) (*Poli
 		return nil, fmt.Errorf("no validator registered for type %q", step.Validator.Type)
 	}
 
-	result, err := v.Validate(ctx, step.Validator, step.Evidence)
+	validateCtx := ctx
+	cancel := func() {}
+	if e.timeout > 0 {
+		validateCtx, cancel = context.WithTimeout(ctx, e.timeout)
+	}
+	defer cancel()
+
+	result, err := v.Validate(validateCtx, step.Validator, step.Evidence)
 	if err != nil {
 		return nil, fmt.Errorf("validator %q: %w", step.Validator.Type, err)
 	}
@@ -93,34 +115,45 @@ func (e *PEVEngine) Verify(ctx context.Context, runID string, step *Step) (*Poli
 }
 
 // VerifyAcceptanceCriteria checks all acceptance criteria against the current state.
-// Returns the list of unmet criteria.
-func (e *PEVEngine) VerifyAcceptanceCriteria(ctx context.Context, criteria []AcceptanceCriterion) ([]AcceptanceCriterion, error) {
-	var unmet []AcceptanceCriterion
+// It returns both unmet criteria and a fully evaluated copy.
+func (e *PEVEngine) VerifyAcceptanceCriteria(
+	ctx context.Context,
+	criteria []AcceptanceCriterion,
+) ([]AcceptanceCriterion, []AcceptanceCriterion, error) {
+	evaluated := make([]AcceptanceCriterion, len(criteria))
 	for i := range criteria {
-		if criteria[i].Met {
+		evaluated[i] = copyAcceptanceCriterion(criteria[i])
+	}
+
+	unmet := make([]AcceptanceCriterion, 0, len(evaluated))
+	for i := range evaluated {
+		if evaluated[i].Met {
 			continue
 		}
-		v, ok := e.validators[criteria[i].Validator.Type]
+		v, ok := e.validators[evaluated[i].Validator.Type]
 		if !ok {
-			unmet = append(unmet, criteria[i])
+			unmet = append(unmet, copyAcceptanceCriterion(evaluated[i]))
 			continue
 		}
-		result, err := v.Validate(ctx, criteria[i].Validator, nil)
+		result, err := v.Validate(ctx, evaluated[i].Validator, nil)
 		if err != nil {
-			unmet = append(unmet, criteria[i])
+			unmet = append(unmet, copyAcceptanceCriterion(evaluated[i]))
 			continue
 		}
 		if result.Passed {
-			criteria[i].Met = true
-			now := ctx.Value(ctxKeyNow{})
-			if now == nil {
-				// fallback: don't set MetAt
-			}
-		} else {
-			unmet = append(unmet, criteria[i])
+			now := time.Now()
+			evaluated[i].Met = true
+			evaluated[i].MetAt = &now
+			continue
 		}
+		unmet = append(unmet, copyAcceptanceCriterion(evaluated[i]))
 	}
-	return unmet, nil
+	return unmet, evaluated, nil
 }
 
-type ctxKeyNow struct{}
+func (e *PEVEngine) maybePruneRunHistory(ctx context.Context) error {
+	if e.maxHistory <= 0 {
+		return nil
+	}
+	return e.ledger.PruneOldRuns(ctx, e.maxHistory)
+}

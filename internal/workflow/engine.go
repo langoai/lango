@@ -7,6 +7,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/langoai/lango/internal/session"
 	"github.com/langoai/lango/internal/types"
 	"go.uber.org/zap"
 )
@@ -317,6 +318,11 @@ func (e *Engine) executeStep(
 
 	// Generate session key — include runID to isolate sessions across re-runs.
 	sessionKey := fmt.Sprintf("workflow:%s:%s:%s", workflowName, runID, step.ID)
+	stepCtx = session.WithRunContext(stepCtx, session.RunContext{
+		SessionType: "workflow",
+		WorkflowID:  workflowName,
+		RunID:       runID,
+	})
 
 	// Enrich with automation prefix so the orchestrator routes correctly.
 	rendered = automationPrefix + "Task: " + rendered

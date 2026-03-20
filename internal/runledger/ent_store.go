@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"strings"
 	"sync"
 	"time"
 
@@ -21,22 +22,18 @@ var _ RunLedgerStore = (*EntStore)(nil)
 // EntStore persists RunLedger journal events and cached projections in Ent.
 type EntStore struct {
 	client *ent.Client
-	mu     sync.Mutex
-	cache  map[string]*RunSnapshot
+	locks  sync.Map
+	cache  sync.Map
 }
 
 // NewEntStore creates a new Ent-backed RunLedger store.
 func NewEntStore(client *ent.Client) *EntStore {
 	return &EntStore{
 		client: client,
-		cache:  make(map[string]*RunSnapshot),
 	}
 }
 
 func (s *EntStore) AppendJournalEvent(ctx context.Context, event JournalEvent) error {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
 	if event.RunID == "" {
 		return fmt.Errorf("append journal event: run_id is required")
 	}
@@ -47,45 +44,53 @@ func (s *EntStore) AppendJournalEvent(ctx context.Context, event JournalEvent) e
 		event.Timestamp = time.Now()
 	}
 
-	tx, err := s.client.Tx(ctx)
-	if err != nil {
-		return fmt.Errorf("begin tx: %w", err)
-	}
-	defer func() {
+	for attempt := 0; attempt < 10; attempt++ {
+		tx, err := s.client.Tx(ctx)
 		if err != nil {
-			_ = tx.Rollback()
+			return fmt.Errorf("begin tx: %w", err)
 		}
-	}()
 
-	last, qErr := tx.RunJournal.Query().
-		Where(entrunjournal.RunIDEQ(event.RunID)).
-		Order(entrunjournal.BySeq(sql.OrderDesc())).
-		First(ctx)
-	if qErr != nil && !ent.IsNotFound(qErr) {
-		err = fmt.Errorf("query latest seq: %w", qErr)
-		return err
+		commitErr := func() error {
+			last, qErr := tx.RunJournal.Query().
+				Where(entrunjournal.RunIDEQ(event.RunID)).
+				Order(entrunjournal.BySeq(sql.OrderDesc())).
+				First(ctx)
+			if qErr != nil && !ent.IsNotFound(qErr) {
+				return fmt.Errorf("query latest seq: %w", qErr)
+			}
+
+			nextSeq := int64(1)
+			if last != nil {
+				nextSeq = last.Seq + 1
+			}
+
+			if _, err := tx.RunJournal.Create().
+				SetID(uuid.MustParse(event.ID)).
+				SetRunID(event.RunID).
+				SetSeq(nextSeq).
+				SetType(entrunjournal.Type(event.Type)).
+				SetTimestamp(event.Timestamp).
+				SetPayload(string(event.Payload)).
+				Save(ctx); err != nil {
+				return fmt.Errorf("create run_journal: %w", err)
+			}
+
+			if err := tx.Commit(); err != nil {
+				return fmt.Errorf("commit journal event: %w", err)
+			}
+			return nil
+		}()
+
+		if commitErr == nil {
+			return nil
+		}
+		_ = tx.Rollback()
+		if !shouldRetryAppendJournalError(commitErr) || attempt == 9 {
+			return commitErr
+		}
+		time.Sleep(time.Duration(attempt+1) * 10 * time.Millisecond)
 	}
 
-	event.Seq = 1
-	if last != nil {
-		event.Seq = last.Seq + 1
-	}
-
-	if _, err = tx.RunJournal.Create().
-		SetID(uuid.MustParse(event.ID)).
-		SetRunID(event.RunID).
-		SetSeq(event.Seq).
-		SetType(entrunjournal.Type(event.Type)).
-		SetTimestamp(event.Timestamp).
-		SetPayload(string(event.Payload)).
-		Save(ctx); err != nil {
-		err = fmt.Errorf("create run_journal: %w", err)
-		return err
-	}
-
-	if err = tx.Commit(); err != nil {
-		return fmt.Errorf("commit journal event: %w", err)
-	}
 	return nil
 }
 
@@ -148,12 +153,14 @@ func (s *EntStore) RecordValidationResult(ctx context.Context, runID, stepID str
 }
 
 func (s *EntStore) GetCachedSnapshot(ctx context.Context, runID string) (*RunSnapshot, int64, error) {
-	s.mu.Lock()
-	if snap, ok := s.cache[runID]; ok {
-		s.mu.Unlock()
+	lock := s.runLock(runID)
+	lock.Lock()
+	if cached, ok := s.cache.Load(runID); ok {
+		snap := cached.(*RunSnapshot)
+		lock.Unlock()
 		return snap, snap.LastJournalSeq, nil
 	}
-	s.mu.Unlock()
+	lock.Unlock()
 
 	row, err := s.client.RunSnapshot.Query().
 		Where(entrunsnapshot.RunIDEQ(runID)).
@@ -174,9 +181,9 @@ func (s *EntStore) GetCachedSnapshot(ctx context.Context, runID string) (*RunSna
 		snap.RunID = runID
 	}
 
-	s.mu.Lock()
-	s.cache[runID] = &snap
-	s.mu.Unlock()
+	lock.Lock()
+	s.cache.Store(runID, &snap)
+	lock.Unlock()
 	return &snap, row.LastJournalSeq, nil
 }
 
@@ -267,9 +274,10 @@ func (s *EntStore) UpdateCachedSnapshot(ctx context.Context, snapshot *RunSnapsh
 		return fmt.Errorf("commit snapshot tx: %w", err)
 	}
 
-	s.mu.Lock()
-	s.cache[snapshot.RunID] = snapshot
-	s.mu.Unlock()
+	lock := s.runLock(snapshot.RunID)
+	lock.Lock()
+	s.cache.Store(snapshot.RunID, snapshot.DeepCopy())
+	lock.Unlock()
 	return nil
 }
 
@@ -307,15 +315,16 @@ func (s *EntStore) GetRunSnapshot(ctx context.Context, runID string) (*RunSnapsh
 			return nil, err
 		}
 		if len(tail) == 0 {
-			return cached, nil
+			return cached.DeepCopy(), nil
 		}
-		if err := ApplyTail(cached, tail); err != nil {
+		snap := cached.DeepCopy()
+		if err := ApplyTail(snap, tail); err != nil {
 			return nil, fmt.Errorf("apply tail: %w", err)
 		}
-		if err := s.UpdateCachedSnapshot(ctx, cached); err != nil {
+		if err := s.UpdateCachedSnapshot(ctx, snap); err != nil {
 			return nil, err
 		}
-		return cached, nil
+		return snap, nil
 	}
 
 	snap, err := s.MaterializeRunSnapshot(ctx, runID)
@@ -351,6 +360,106 @@ func (s *EntStore) ListRunSummariesBySession(ctx context.Context, sessionKey str
 		result = append(result, snap.ToSummary())
 	}
 	return result, nil
+}
+
+func (s *EntStore) MaxJournalSeqForSession(ctx context.Context, sessionKey string) (int64, error) {
+	rows, err := s.client.RunSnapshot.Query().
+		Where(entrunsnapshot.SessionKeyEQ(sessionKey)).
+		All(ctx)
+	if err != nil {
+		return 0, fmt.Errorf("query max journal seq for session: %w", err)
+	}
+
+	var maxSeq int64
+	for _, row := range rows {
+		if row.LastJournalSeq > maxSeq {
+			maxSeq = row.LastJournalSeq
+		}
+	}
+	return maxSeq, nil
+}
+
+func (s *EntStore) PruneOldRuns(ctx context.Context, maxKeep int) error {
+	if maxKeep <= 0 {
+		return nil
+	}
+
+	total, err := s.client.RunSnapshot.Query().Count(ctx)
+	if err != nil {
+		return fmt.Errorf("count run snapshots: %w", err)
+	}
+	excess := total - maxKeep
+	if excess <= 0 {
+		return nil
+	}
+
+	rows, err := s.client.RunSnapshot.Query().
+		Where(
+			entrunsnapshot.StatusIn(
+				entrunsnapshot.Status(string(RunStatusCompleted)),
+				entrunsnapshot.Status(string(RunStatusFailed)),
+			),
+		).
+		Order(entrunsnapshot.ByCreatedAt(sql.OrderAsc())).
+		Limit(excess).
+		All(ctx)
+	if err != nil {
+		return fmt.Errorf("query prune candidates: %w", err)
+	}
+	if len(rows) == 0 {
+		return nil
+	}
+
+	tx, err := s.client.Tx(ctx)
+	if err != nil {
+		return fmt.Errorf("begin prune tx: %w", err)
+	}
+	defer func() {
+		if err != nil {
+			_ = tx.Rollback()
+		}
+	}()
+
+	runIDs := make([]string, 0, len(rows))
+	for _, row := range rows {
+		runIDs = append(runIDs, row.RunID)
+	}
+
+	if _, err = tx.RunJournal.Delete().Where(entrunjournal.RunIDIn(runIDs...)).Exec(ctx); err != nil {
+		err = fmt.Errorf("delete run journals: %w", err)
+		return err
+	}
+	if _, err = tx.RunStep.Delete().Where(entrunstep.RunIDIn(runIDs...)).Exec(ctx); err != nil {
+		err = fmt.Errorf("delete run steps: %w", err)
+		return err
+	}
+	if _, err = tx.RunSnapshot.Delete().Where(entrunsnapshot.RunIDIn(runIDs...)).Exec(ctx); err != nil {
+		err = fmt.Errorf("delete run snapshots: %w", err)
+		return err
+	}
+	if err = tx.Commit(); err != nil {
+		return fmt.Errorf("commit prune tx: %w", err)
+	}
+
+	for _, runID := range runIDs {
+		s.cache.Delete(runID)
+	}
+
+	return nil
+}
+
+func (s *EntStore) runLock(runID string) *sync.Mutex {
+	lock, _ := s.locks.LoadOrStore(runID, &sync.Mutex{})
+	return lock.(*sync.Mutex)
+}
+
+func shouldRetryAppendJournalError(err error) bool {
+	if ent.IsConstraintError(err) {
+		return true
+	}
+	msg := strings.ToLower(err.Error())
+	return strings.Contains(msg, "database table is locked") ||
+		strings.Contains(msg, "database is locked")
 }
 
 func decodeRunJournalRows(rows []*ent.RunJournal) ([]JournalEvent, error) {

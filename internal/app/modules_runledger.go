@@ -42,6 +42,8 @@ func (m *runLedgerModule) Init(_ context.Context, _ appinit.Resolver) (*appinit.
 	}
 	validators := runledger.DefaultValidators()
 	pev := runledger.NewPEVEngine(store, validators)
+	pev.WithTimeout(m.cfg.RunLedger.ValidatorTimeout)
+	pev.WithMaxRunHistory(m.cfg.RunLedger.MaxRunHistory)
 	if m.cfg.RunLedger.WorkspaceIsolation {
 		pev.WithWorkspace(runledger.NewWorkspaceManager())
 	}

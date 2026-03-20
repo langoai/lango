@@ -17,6 +17,7 @@ import (
 	"github.com/gorilla/websocket"
 	"github.com/langoai/lango/internal/adk"
 	"github.com/langoai/lango/internal/approval"
+	"github.com/langoai/lango/internal/config"
 	"github.com/langoai/lango/internal/deadline"
 	"github.com/langoai/lango/internal/gatekeeper"
 	"github.com/langoai/lango/internal/logging"
@@ -68,6 +69,7 @@ type Config struct {
 	RequestTimeout   time.Duration
 	IdleTimeout      time.Duration // inactivity timeout (0 = disabled)
 	MaxTimeout       time.Duration // absolute hard ceiling
+	RunLedger        config.RunLedgerConfig
 }
 
 // Client represents a connected WebSocket client
@@ -167,7 +169,7 @@ func (s *Server) handleChatMessage(client *Client, params json.RawMessage) (inte
 		return nil, fmt.Errorf("invalid params: %w", err)
 	}
 
-	if req.Message == "" {
+	if req.Message == "" && !(req.ConfirmResume && req.ResumeRunID != "") {
 		return nil, fmt.Errorf("message is required")
 	}
 
@@ -183,10 +185,31 @@ func (s *Server) handleChatMessage(client *Client, params json.RawMessage) (inte
 		sessionKey = req.SessionKey
 	}
 
-	if s.runLedgerStore != nil && runledger.DetectResumeIntent(req.Message) {
-		rm := runledger.NewResumeManager(s.runLedgerStore, time.Hour)
-		if !req.ConfirmResume {
-			candidates, err := rm.FindCandidates(context.Background(), sessionKey)
+	if s.runLedgerStore != nil {
+		rm := runledger.NewResumeManager(s.runLedgerStore, s.config.RunLedger.StaleTTL)
+
+		if req.ConfirmResume && req.ResumeRunID != "" {
+			resumeCtx, cancel := s.newResumeContext()
+			defer cancel()
+
+			if _, err := rm.Resume(resumeCtx, req.ResumeRunID, "user"); err != nil {
+				return nil, fmt.Errorf("resume run: %w", err)
+			}
+			s.BroadcastToSession(sessionKey, "agent.resume_confirmed", map[string]string{
+				"sessionKey": sessionKey,
+				"runId":      req.ResumeRunID,
+			})
+			return map[string]interface{}{
+				"resumed": true,
+				"runId":   req.ResumeRunID,
+			}, nil
+		}
+
+		if runledger.DetectResumeIntent(req.Message) {
+			resumeCtx, cancel := s.newResumeContext()
+			defer cancel()
+
+			candidates, err := rm.FindCandidates(resumeCtx, sessionKey)
 			if err != nil {
 				return nil, fmt.Errorf("find resume candidates: %w", err)
 			}
@@ -203,14 +226,6 @@ func (s *Server) handleChatMessage(client *Client, params json.RawMessage) (inte
 					"candidates":     candidates,
 				}, nil
 			}
-		} else if req.ResumeRunID != "" {
-			if _, err := rm.Resume(context.Background(), req.ResumeRunID, "user"); err != nil {
-				return nil, fmt.Errorf("resume run: %w", err)
-			}
-			s.BroadcastToSession(sessionKey, "agent.resume_confirmed", map[string]string{
-				"sessionKey": sessionKey,
-				"runId":      req.ResumeRunID,
-			})
 		}
 	}
 
@@ -376,6 +391,17 @@ func (s *Server) handleChatMessage(client *Client, params json.RawMessage) (inte
 	return map[string]string{
 		"response": response,
 	}, nil
+}
+
+func (s *Server) newResumeContext() (context.Context, context.CancelFunc) {
+	timeout := s.config.MaxTimeout
+	if timeout <= 0 {
+		timeout = s.config.RequestTimeout
+	}
+	if timeout <= 0 {
+		timeout = 5 * time.Minute
+	}
+	return context.WithTimeout(s.shutdownCtx, timeout)
 }
 
 // BroadcastToSession sends an event to all UI clients belonging to a specific session.

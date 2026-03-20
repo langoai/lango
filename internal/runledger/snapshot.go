@@ -23,6 +23,33 @@ type RunSnapshot struct {
 	UpdatedAt       time.Time             `json:"updated_at"`
 }
 
+// DeepCopy returns a fully independent copy of the snapshot.
+func (s *RunSnapshot) DeepCopy() *RunSnapshot {
+	if s == nil {
+		return nil
+	}
+
+	cp := *s
+	cp.Steps = make([]Step, len(s.Steps))
+	for i := range s.Steps {
+		cp.Steps[i] = copyStep(s.Steps[i])
+	}
+
+	cp.AcceptanceState = make([]AcceptanceCriterion, len(s.AcceptanceState))
+	for i := range s.AcceptanceState {
+		cp.AcceptanceState[i] = copyAcceptanceCriterion(s.AcceptanceState[i])
+	}
+
+	if s.Notes != nil {
+		cp.Notes = make(map[string]string, len(s.Notes))
+		for k, v := range s.Notes {
+			cp.Notes[k] = v
+		}
+	}
+
+	return &cp
+}
+
 // CompletedSteps counts how many steps have StepStatusCompleted.
 func (s *RunSnapshot) CompletedSteps() int {
 	n := 0
@@ -320,4 +347,52 @@ func applyPolicyToSnapshot(snap *RunSnapshot, stepID string, decision *PolicyDec
 	case PolicyEscalate:
 		snap.CurrentBlocker = "escalated: " + decision.Reason
 	}
+}
+
+func copyStep(step Step) Step {
+	cp := step
+	cp.Evidence = copyEvidenceSlice(step.Evidence)
+	cp.Validator = copyValidatorSpec(step.Validator)
+	cp.ToolProfile = copyStringSlice(step.ToolProfile)
+	cp.DependsOn = copyStringSlice(step.DependsOn)
+	return cp
+}
+
+func copyValidatorSpec(spec ValidatorSpec) ValidatorSpec {
+	cp := spec
+	if spec.Params != nil {
+		cp.Params = make(map[string]string, len(spec.Params))
+		for k, v := range spec.Params {
+			cp.Params[k] = v
+		}
+	}
+	return cp
+}
+
+func copyAcceptanceCriterion(criterion AcceptanceCriterion) AcceptanceCriterion {
+	cp := criterion
+	cp.Validator = copyValidatorSpec(criterion.Validator)
+	if criterion.MetAt != nil {
+		ts := *criterion.MetAt
+		cp.MetAt = &ts
+	}
+	return cp
+}
+
+func copyEvidenceSlice(src []Evidence) []Evidence {
+	if src == nil {
+		return nil
+	}
+	dst := make([]Evidence, len(src))
+	copy(dst, src)
+	return dst
+}
+
+func copyStringSlice(src []string) []string {
+	if src == nil {
+		return nil
+	}
+	dst := make([]string, len(src))
+	copy(dst, src)
+	return dst
 }

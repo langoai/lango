@@ -42,6 +42,13 @@ type RunLedgerStore interface {
 
 	// ListRunSummariesBySession returns recent run summaries for a session.
 	ListRunSummariesBySession(ctx context.Context, sessionKey string, limit int) ([]RunSummary, error)
+
+	// MaxJournalSeqForSession returns the highest last_journal_seq across the
+	// session's runs, or 0 when the session has no runs.
+	MaxJournalSeqForSession(ctx context.Context, sessionKey string) (int64, error)
+
+	// PruneOldRuns removes the oldest terminal runs until at most maxKeep remain.
+	PruneOldRuns(ctx context.Context, maxKeep int) error
 }
 
 // MemoryStore is an in-memory implementation of RunLedgerStore for testing
@@ -152,7 +159,7 @@ func (m *MemoryStore) UpdateCachedSnapshot(_ context.Context, snapshot *RunSnaps
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
-	m.cache[snapshot.RunID] = snapshot
+	m.cache[snapshot.RunID] = snapshot.DeepCopy()
 	return nil
 }
 
@@ -204,13 +211,14 @@ func (m *MemoryStore) GetRunSnapshot(ctx context.Context, runID string) (*RunSna
 			return nil, err
 		}
 		if len(tail) == 0 {
-			return cached, nil
+			return cached.DeepCopy(), nil
 		}
-		if err := ApplyTail(cached, tail); err != nil {
+		snap := cached.DeepCopy()
+		if err := ApplyTail(snap, tail); err != nil {
 			return nil, fmt.Errorf("apply tail: %w", err)
 		}
-		_ = m.UpdateCachedSnapshot(ctx, cached)
-		return cached, nil
+		_ = m.UpdateCachedSnapshot(ctx, snap)
+		return snap, nil
 	}
 
 	// Full materialize.
@@ -238,4 +246,77 @@ func (m *MemoryStore) ListRunSummariesBySession(ctx context.Context, sessionKey 
 		}
 	}
 	return filtered, nil
+}
+
+func (m *MemoryStore) MaxJournalSeqForSession(_ context.Context, sessionKey string) (int64, error) {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+
+	var maxSeq int64
+	for runID, events := range m.journals {
+		if len(events) == 0 {
+			continue
+		}
+		snap, err := MaterializeFromJournal(events)
+		if err != nil {
+			continue
+		}
+		if snap.SessionKey != sessionKey {
+			continue
+		}
+		if seq := m.seqs[runID]; seq > maxSeq {
+			maxSeq = seq
+		}
+	}
+	return maxSeq, nil
+}
+
+func (m *MemoryStore) PruneOldRuns(_ context.Context, maxKeep int) error {
+	if maxKeep <= 0 {
+		return nil
+	}
+
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	total := len(m.journals)
+	excess := total - maxKeep
+	if excess <= 0 {
+		return nil
+	}
+
+	type runInfo struct {
+		runID     string
+		createdAt time.Time
+	}
+
+	var terminal []runInfo
+	for runID, events := range m.journals {
+		snap, err := MaterializeFromJournal(events)
+		if err != nil {
+			continue
+		}
+		if snap.Status != RunStatusCompleted && snap.Status != RunStatusFailed {
+			continue
+		}
+		createdAt := time.Time{}
+		if len(events) > 0 {
+			createdAt = events[0].Timestamp
+		}
+		terminal = append(terminal, runInfo{runID: runID, createdAt: createdAt})
+	}
+
+	sort.Slice(terminal, func(i, j int) bool {
+		return terminal[i].createdAt.Before(terminal[j].createdAt)
+	})
+
+	if excess > len(terminal) {
+		excess = len(terminal)
+	}
+	for i := 0; i < excess; i++ {
+		delete(m.journals, terminal[i].runID)
+		delete(m.seqs, terminal[i].runID)
+		delete(m.cache, terminal[i].runID)
+	}
+	return nil
 }

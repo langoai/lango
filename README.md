@@ -56,7 +56,7 @@ This project includes experimental AI Agent features and is currently in an unst
 - 🏗️ **Agent Registry** - Custom agent definitions via AGENT.md files, dynamic routing with keyword + capability matching
 - 🧬 **Agent Memory** - Per-agent persistent memory for cross-session context retention
 - 📡 **Event Bus** - Typed synchronous pub/sub for internal component communication
-- 📒 **RunLedger (Task OS)** - Durable execution engine with PEV (Propose-Evidence-Verify) protocol, typed validators, 7 policy actions, phase-gated workspace isolation readiness, and acceptance criteria verification (🧪 Experimental)
+- 📒 **RunLedger (Task OS)** - Durable execution engine with PEV (Propose-Evidence-Verify) protocol, typed validators, 7 policy actions, configuration-gated workspace isolation, and acceptance criteria verification (🧪 Experimental)
 - 🪝 **Tool Hooks** - Middleware chain for tool execution (security filter, access control, event publishing, knowledge save)
 - 🏊 **Agent Pool** - P2P agent pool with health checking and weighted selection
 - 💰 **P2P Settlement** - On-chain USDC settlement with EIP-3009, receipt tracking, and retry
@@ -706,9 +706,9 @@ All settings are managed via `lango onboard` (guided wizard), `lango settings` (
 | `runLedger.authoritativeRead`                          | bool     | `false`                     | State reads come from ledger snapshots only                                                                       |
 | `runLedger.workspaceIsolation`                         | bool     | `false`                     | Enable runtime workspace isolation for coding-step validation                                                      |
 | `runLedger.staleTtl`                                   | duration | `1h`                        | How long a paused run remains resumable                                                                           |
-| `runLedger.maxRunHistory`                              | int      | `0`                         | Maximum number of runs to keep (0 = unlimited)                                                                    |
+| `runLedger.maxRunHistory`                              | int      | `100`                       | Maximum number of runs to keep (0 = unlimited)                                                                    |
 | `runLedger.validatorTimeout`                           | duration | `2m`                        | Timeout for individual validator execution                                                                        |
-| `runLedger.plannerMaxRetries`                          | int      | `2`                         | Retries for malformed planner output                                                                              |
+| `runLedger.plannerMaxRetries`                          | int      | `2`                         | Reserved for planner retry wiring; currently surfaced in status only                                              |
 
 
 ## On-Chain Economy (Base Sepolia Testnet)

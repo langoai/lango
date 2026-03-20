@@ -30,10 +30,7 @@ func newListCmd(bootLoader func() (*bootstrap.Result, error)) *cobra.Command {
 	return &cobra.Command{
 		Use:   "list",
 		Short: "List recent runs",
-		Long: `List recent RunLedger runs.
-
-Phase 1 uses an in-memory store, so runs are only available during the
-current server session. Persistent storage is introduced in Phase 2.`,
+		Long: `List recent RunLedger runs from the persistent snapshot store.`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			boot, err := bootLoader()
 			if err != nil {

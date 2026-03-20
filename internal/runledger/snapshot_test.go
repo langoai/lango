@@ -231,3 +231,70 @@ func TestApplyPolicyToSnapshot_Abort(t *testing.T) {
 	assert.Equal(t, RunStatusFailed, snap.Status)
 	assert.Equal(t, "unrecoverable", snap.CurrentBlocker)
 }
+
+func TestRunSnapshot_DeepCopy(t *testing.T) {
+	now := time.Now()
+	snap := &RunSnapshot{
+		RunID:           "run-1",
+		SessionKey:      "session-1",
+		OriginalRequest: "original",
+		Goal:            "goal",
+		Status:          RunStatusRunning,
+		CurrentStepID:   "s1",
+		CurrentBlocker:  "none",
+		AcceptanceState: []AcceptanceCriterion{{
+			Description: "criterion",
+			Validator: ValidatorSpec{
+				Type:   ValidatorBuildPass,
+				Target: "./...",
+				Params: map[string]string{"k": "v"},
+			},
+			Met:   true,
+			MetAt: &now,
+		}},
+		Steps: []Step{{
+			StepID:     "s1",
+			Goal:       "step",
+			OwnerAgent: "operator",
+			Status:     StepStatusInProgress,
+			Evidence: []Evidence{{
+				Type:    "file",
+				Content: "a.go",
+			}},
+			Validator: ValidatorSpec{
+				Type:   ValidatorBuildPass,
+				Target: "./internal/runledger",
+				Params: map[string]string{"mode": "fast"},
+			},
+			ToolProfile: []string{string(ToolProfileCoding)},
+			DependsOn:   []string{"root"},
+		}},
+		Notes:          map[string]string{"note": "value"},
+		LastJournalSeq: 7,
+		UpdatedAt:      now,
+	}
+
+	cp := snap.DeepCopy()
+	require.NotNil(t, cp)
+	require.NotSame(t, snap, cp)
+	require.NotSame(t, &snap.Steps[0], &cp.Steps[0])
+	require.NotSame(t, snap.AcceptanceState[0].MetAt, cp.AcceptanceState[0].MetAt)
+
+	cp.Steps[0].Evidence[0].Content = "b.go"
+	cp.Steps[0].Validator.Params["mode"] = "slow"
+	cp.Steps[0].DependsOn[0] = "other"
+	cp.Steps[0].ToolProfile[0] = string(ToolProfileSupervisor)
+	cp.AcceptanceState[0].Validator.Params["k"] = "changed"
+	*cp.AcceptanceState[0].MetAt = now.Add(time.Hour)
+	cp.Notes["note"] = "updated"
+	cp.Steps = append(cp.Steps, Step{StepID: "s2"})
+
+	assert.Equal(t, "a.go", snap.Steps[0].Evidence[0].Content)
+	assert.Equal(t, "fast", snap.Steps[0].Validator.Params["mode"])
+	assert.Equal(t, "root", snap.Steps[0].DependsOn[0])
+	assert.Equal(t, string(ToolProfileCoding), snap.Steps[0].ToolProfile[0])
+	assert.Equal(t, "v", snap.AcceptanceState[0].Validator.Params["k"])
+	assert.True(t, snap.AcceptanceState[0].MetAt.Equal(now))
+	assert.Equal(t, "value", snap.Notes["note"])
+	assert.Len(t, snap.Steps, 1)
+}

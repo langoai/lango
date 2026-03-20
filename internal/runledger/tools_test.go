@@ -14,7 +14,7 @@ import (
 
 // orchestratorCtx returns a context that identifies the caller as the orchestrator.
 func orchestratorCtx() context.Context {
-	return context.Background() // empty agent name = orchestrator
+	return ctxkeys.WithAgentName(context.Background(), "orchestrator")
 }
 
 // executionCtx returns a context that identifies the caller as an execution agent.
@@ -401,6 +401,18 @@ func TestCheckRole_ExecutionAgentAllowedForExecutionTools(t *testing.T) {
 	require.NoError(t, err)
 }
 
+func TestCheckRole_EmptyAgentDeniedForOrchestratorTools(t *testing.T) {
+	err := checkRole(context.Background(), roleOrchestrator)
+	require.Error(t, err)
+	assert.True(t, errors.Is(err, ErrAccessDenied))
+}
+
+func TestCheckRole_SystemCallerAllowedForOrchestratorTools(t *testing.T) {
+	ctx := ctxkeys.WithAgentName(context.Background(), SystemCallerName)
+	err := checkRole(ctx, roleOrchestrator)
+	require.NoError(t, err)
+}
+
 func TestProposeStepResult_OrchestratorBlocked(t *testing.T) {
 	ctx := orchestratorCtx()
 	store := NewMemoryStore()
@@ -667,6 +679,59 @@ func TestProposeResult_AutoVerify_RunCompletion(t *testing.T) {
 
 	snap, _ := store.GetRunSnapshot(ctx, runID)
 	assert.Equal(t, RunStatusCompleted, snap.Status)
+}
+
+func TestCheckRunCompletion_DoesNotDuplicateCriterionMet(t *testing.T) {
+	ctx := orchestratorCtx()
+	store := NewMemoryStore()
+	pev := NewPEVEngine(store, map[ValidatorType]Validator{
+		ValidatorBuildPass: &mockValidator{
+			result: &ValidationResult{Passed: true, Reason: "ok"},
+		},
+	})
+
+	require.NoError(t, store.AppendJournalEvent(ctx, JournalEvent{
+		RunID:   "run-dedupe",
+		Type:    EventRunCreated,
+		Payload: marshalPayload(RunCreatedPayload{SessionKey: "s1", Goal: "dedupe"}),
+	}))
+	require.NoError(t, store.AppendJournalEvent(ctx, JournalEvent{
+		RunID: "run-dedupe",
+		Type:  EventPlanAttached,
+		Payload: marshalPayload(PlanAttachedPayload{
+			Steps: []Step{{
+				StepID:     "s1",
+				Goal:       "work",
+				OwnerAgent: "operator",
+				Status:     StepStatusCompleted,
+				Validator:  ValidatorSpec{Type: ValidatorBuildPass},
+				MaxRetries: DefaultMaxRetries,
+			}},
+			AcceptanceCriteria: []AcceptanceCriterion{{
+				Description: "build passes",
+				Validator:   ValidatorSpec{Type: ValidatorBuildPass},
+			}},
+		}),
+	}))
+
+	status, unmet := checkRunCompletion(ctx, store, pev, "run-dedupe")
+	assert.Equal(t, "completed", status)
+	assert.Empty(t, unmet)
+
+	status, unmet = checkRunCompletion(ctx, store, pev, "run-dedupe")
+	assert.Equal(t, "completed", status)
+	assert.Empty(t, unmet)
+
+	events, err := store.GetJournalEvents(ctx, "run-dedupe")
+	require.NoError(t, err)
+
+	criterionMetCount := 0
+	for _, event := range events {
+		if event.Type == EventCriterionMet {
+			criterionMetCount++
+		}
+	}
+	assert.Equal(t, 1, criterionMetCount)
 }
 
 func TestProposeResult_AutoVerify_CriteriaUnmet(t *testing.T) {

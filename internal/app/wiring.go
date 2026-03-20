@@ -581,6 +581,7 @@ func initGateway(cfg *config.Config, adkAgent *adk.Agent, store session.Store, a
 		RequestTimeout:   cfg.Agent.RequestTimeout,
 		IdleTimeout:      idle,
 		MaxTimeout:       ceiling,
+		RunLedger:        cfg.RunLedger,
 	}, adkAgent, nil, store, auth)
 }
 

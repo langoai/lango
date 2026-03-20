@@ -3,6 +3,7 @@ package runledger
 import (
 	"context"
 	"fmt"
+	"log"
 	"strings"
 
 	"github.com/google/uuid"
@@ -10,6 +11,13 @@ import (
 	"github.com/langoai/lango/internal/background"
 	"github.com/langoai/lango/internal/workflow"
 )
+
+func logProjectionSyncWarning(runID string, err error) {
+	if err == nil {
+		return
+	}
+	log.Printf("WARN projection sync %s: %v", runID, err)
+}
 
 // RolloutStage controls how deeply the RunLedger is integrated.
 type RolloutStage int
@@ -65,6 +73,7 @@ type WorkflowWriteThrough struct {
 	ledger   RunLedgerStore
 	original WorkflowProjectionStore
 	enabled  bool
+	maxKeep  int
 }
 
 // ProjectionDrift describes a mismatch between RunLedger and a projection target.
@@ -85,6 +94,12 @@ func NewWorkflowWriteThrough(
 		original: original,
 		enabled:  cfg.IsWriteThrough(),
 	}
+}
+
+// WithMaxHistory configures pruning of old terminal runs after completion.
+func (w *WorkflowWriteThrough) WithMaxHistory(maxKeep int) *WorkflowWriteThrough {
+	w.maxKeep = maxKeep
+	return w
 }
 
 func (w *WorkflowWriteThrough) CreateRun(ctx context.Context, wf *workflow.Workflow) (string, error) {
@@ -137,11 +152,15 @@ func (w *WorkflowWriteThrough) CreateRun(ctx context.Context, wf *workflow.Workf
 	}
 
 	if err := w.original.CreateRunWithID(ctx, runID, wf); err != nil {
-		_ = appendProjectionSyncEvent(ctx, w.ledger, runID, "workflow", "degraded", err)
+		logProjectionSyncWarning(runID, appendProjectionSyncEvent(
+			ctx, w.ledger, runID, "workflow", "degraded", err,
+		))
 		return "", fmt.Errorf("create workflow projection: %w", err)
 	}
 	if err := w.original.UpdateRunStatus(ctx, runID, "running"); err != nil {
-		_ = appendProjectionSyncEvent(ctx, w.ledger, runID, "workflow", "degraded", err)
+		logProjectionSyncWarning(runID, appendProjectionSyncEvent(
+			ctx, w.ledger, runID, "workflow", "degraded", err,
+		))
 		return "", fmt.Errorf("set workflow projection running: %w", err)
 	}
 	if err := appendProjectionSyncEvent(ctx, w.ledger, runID, "workflow", "synced", nil); err != nil {
@@ -153,12 +172,16 @@ func (w *WorkflowWriteThrough) CreateRun(ctx context.Context, wf *workflow.Workf
 func (w *WorkflowWriteThrough) UpdateRunStatus(ctx context.Context, runID string, status string) error {
 	if err := w.original.UpdateRunStatus(ctx, runID, status); err != nil {
 		if w.enabled {
-			_ = appendProjectionSyncEvent(ctx, w.ledger, runID, "workflow", "degraded", err)
+			logProjectionSyncWarning(runID, appendProjectionSyncEvent(
+				ctx, w.ledger, runID, "workflow", "degraded", err,
+			))
 		}
 		return err
 	}
 	if w.enabled {
-		_ = appendProjectionSyncEvent(ctx, w.ledger, runID, "workflow", "synced", nil)
+		logProjectionSyncWarning(runID, appendProjectionSyncEvent(
+			ctx, w.ledger, runID, "workflow", "synced", nil,
+		))
 	}
 	return nil
 }
@@ -178,15 +201,24 @@ func (w *WorkflowWriteThrough) CompleteRun(ctx context.Context, runID string, st
 		}); err != nil {
 			return fmt.Errorf("append workflow completion event: %w", err)
 		}
+		if w.maxKeep > 0 {
+			if err := w.ledger.PruneOldRuns(ctx, w.maxKeep); err != nil {
+				return fmt.Errorf("prune old runs: %w", err)
+			}
+		}
 	}
 	if err := w.original.CompleteRun(ctx, runID, status, errMsg); err != nil {
 		if w.enabled {
-			_ = appendProjectionSyncEvent(ctx, w.ledger, runID, "workflow", "degraded", err)
+			logProjectionSyncWarning(runID, appendProjectionSyncEvent(
+				ctx, w.ledger, runID, "workflow", "degraded", err,
+			))
 		}
 		return err
 	}
 	if w.enabled {
-		_ = appendProjectionSyncEvent(ctx, w.ledger, runID, "workflow", "synced", nil)
+		logProjectionSyncWarning(runID, appendProjectionSyncEvent(
+			ctx, w.ledger, runID, "workflow", "synced", nil,
+		))
 	}
 	return nil
 }
@@ -194,12 +226,16 @@ func (w *WorkflowWriteThrough) CompleteRun(ctx context.Context, runID string, st
 func (w *WorkflowWriteThrough) CreateStepRun(ctx context.Context, runID string, step workflow.Step, renderedPrompt string) error {
 	if err := w.original.CreateStepRun(ctx, runID, step, renderedPrompt); err != nil {
 		if w.enabled {
-			_ = appendProjectionSyncEvent(ctx, w.ledger, runID, "workflow", "degraded", err)
+			logProjectionSyncWarning(runID, appendProjectionSyncEvent(
+				ctx, w.ledger, runID, "workflow", "degraded", err,
+			))
 		}
 		return err
 	}
 	if w.enabled {
-		_ = appendProjectionSyncEvent(ctx, w.ledger, runID, "workflow", "synced", nil)
+		logProjectionSyncWarning(runID, appendProjectionSyncEvent(
+			ctx, w.ledger, runID, "workflow", "synced", nil,
+		))
 	}
 	return nil
 }
@@ -250,12 +286,16 @@ func (w *WorkflowWriteThrough) UpdateStepStatus(
 	}
 	if err := w.original.UpdateStepStatus(ctx, runID, stepID, status, result, errMsg); err != nil {
 		if w.enabled {
-			_ = appendProjectionSyncEvent(ctx, w.ledger, runID, "workflow", "degraded", err)
+			logProjectionSyncWarning(runID, appendProjectionSyncEvent(
+				ctx, w.ledger, runID, "workflow", "degraded", err,
+			))
 		}
 		return err
 	}
 	if w.enabled {
-		_ = appendProjectionSyncEvent(ctx, w.ledger, runID, "workflow", "synced", nil)
+		logProjectionSyncWarning(runID, appendProjectionSyncEvent(
+			ctx, w.ledger, runID, "workflow", "synced", nil,
+		))
 	}
 	return nil
 }
@@ -425,6 +465,7 @@ func mapRunStepStatus(status StepStatus) string {
 type BackgroundWriteThrough struct {
 	ledger  RunLedgerStore
 	enabled bool
+	maxKeep int
 }
 
 // NewBackgroundWriteThrough creates a background projection adapter backed by RunLedger.
@@ -433,6 +474,12 @@ func NewBackgroundWriteThrough(ledger RunLedgerStore, cfg RolloutConfig) *Backgr
 		ledger:  ledger,
 		enabled: cfg.IsWriteThrough(),
 	}
+}
+
+// WithMaxHistory configures pruning of old terminal runs after completion.
+func (b *BackgroundWriteThrough) WithMaxHistory(maxKeep int) *BackgroundWriteThrough {
+	b.maxKeep = maxKeep
+	return b
 }
 
 func (b *BackgroundWriteThrough) PrepareTask(
@@ -531,6 +578,11 @@ func (b *BackgroundWriteThrough) SyncTask(ctx context.Context, snap background.T
 		}); err != nil {
 			return err
 		}
+		if b.maxKeep > 0 {
+			if err := b.ledger.PruneOldRuns(ctx, b.maxKeep); err != nil {
+				return err
+			}
+		}
 	case "failed":
 		if err := b.ledger.RecordValidationResult(ctx, snap.ID, "background-task", ValidationResult{
 			Passed: false,
@@ -548,6 +600,11 @@ func (b *BackgroundWriteThrough) SyncTask(ctx context.Context, snap background.T
 		}); err != nil {
 			return err
 		}
+		if b.maxKeep > 0 {
+			if err := b.ledger.PruneOldRuns(ctx, b.maxKeep); err != nil {
+				return err
+			}
+		}
 	case "cancelled":
 		if err := b.ledger.AppendJournalEvent(ctx, JournalEvent{
 			RunID:   snap.ID,
@@ -555,6 +612,11 @@ func (b *BackgroundWriteThrough) SyncTask(ctx context.Context, snap background.T
 			Payload: marshalPayload(RunFailedPayload{Reason: "background task cancelled"}),
 		}); err != nil {
 			return err
+		}
+		if b.maxKeep > 0 {
+			if err := b.ledger.PruneOldRuns(ctx, b.maxKeep); err != nil {
+				return err
+			}
 		}
 	}
 

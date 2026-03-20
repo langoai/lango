@@ -49,10 +49,19 @@ var _ MemoryProvider = (*mockMemoryProvider)(nil)
 
 type mockRunSummaryProvider struct {
 	summaries []RunSummaryContext
+	maxSeq    int64
+	listCalls int
+	seqCalls  int
 }
 
 func (m *mockRunSummaryProvider) ListRunSummaries(_ context.Context, _ string, _ int) ([]RunSummaryContext, error) {
+	m.listCalls++
 	return m.summaries, nil
+}
+
+func (m *mockRunSummaryProvider) MaxJournalSeqForSession(_ context.Context, _ string) (int64, error) {
+	m.seqCalls++
+	return m.maxSeq, nil
 }
 
 func newTestContextAdapter(t *testing.T, mp MemoryProvider) *ContextAwareModelAdapter {
@@ -213,6 +222,7 @@ func TestGenerateContent_RunSummariesInjectedIntoPrompt(t *testing.T) {
 	logger := zap.NewNop().Sugar()
 	adapter := NewContextAwareModelAdapter(inner, nil, builder, logger)
 	adapter.WithRunSummaryProvider(&mockRunSummaryProvider{
+		maxSeq: 1,
 		summaries: []RunSummaryContext{{
 			RunID:          "run-1",
 			Goal:           "Fix drift",
@@ -242,4 +252,56 @@ func TestGenerateContent_RunSummariesInjectedIntoPrompt(t *testing.T) {
 	assert.Contains(t, systemMsg.Content, "Active Runs")
 	assert.Contains(t, systemMsg.Content, "run-1")
 	assert.Contains(t, systemMsg.Content, "Repair projection")
+}
+
+func TestAssembleRunSummarySection_CacheHit(t *testing.T) {
+	t.Parallel()
+
+	provider := &mockRunSummaryProvider{
+		maxSeq: 1,
+		summaries: []RunSummaryContext{{
+			RunID:       "run-1",
+			Goal:        "Fix drift",
+			Status:      "running",
+			CurrentStep: "Repair projection",
+		}},
+	}
+
+	adapter := newTestContextAdapter(t, nil)
+	adapter.WithRunSummaryProvider(provider)
+
+	got1 := adapter.assembleRunSummarySection(context.Background(), "sess-1")
+	got2 := adapter.assembleRunSummarySection(context.Background(), "sess-1")
+
+	assert.Equal(t, got1, got2)
+	assert.Equal(t, 1, provider.listCalls)
+	assert.Equal(t, 2, provider.seqCalls)
+}
+
+func TestAssembleRunSummarySection_CacheInvalidatesOnSeqChange(t *testing.T) {
+	t.Parallel()
+
+	provider := &mockRunSummaryProvider{
+		maxSeq: 1,
+		summaries: []RunSummaryContext{{
+			RunID:  "run-1",
+			Goal:   "First",
+			Status: "running",
+		}},
+	}
+
+	adapter := newTestContextAdapter(t, nil)
+	adapter.WithRunSummaryProvider(provider)
+
+	got1 := adapter.assembleRunSummarySection(context.Background(), "sess-1")
+	provider.maxSeq = 2
+	provider.summaries = []RunSummaryContext{{
+		RunID:  "run-2",
+		Goal:   "Second",
+		Status: "paused",
+	}}
+	got2 := adapter.assembleRunSummarySection(context.Background(), "sess-1")
+
+	assert.NotEqual(t, got1, got2)
+	assert.Equal(t, 2, provider.listCalls)
 }

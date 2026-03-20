@@ -687,10 +687,61 @@ func TestHandleChatMessage_ResumeConfirmResumesRun(t *testing.T) {
 	}))
 
 	client := &Client{ID: "ui-2", Type: "ui", Server: server, SessionKey: "sess-2"}
-	_, err := server.handleChatMessage(client, json.RawMessage(`{"message":"resume","confirmResume":true,"resumeRunId":"run-2"}`))
-	require.ErrorIs(t, err, ErrAgentNotReady)
+	result, err := server.handleChatMessage(client, json.RawMessage(`{"message":"resume","confirmResume":true,"resumeRunId":"run-2"}`))
+	require.NoError(t, err)
+	body := result.(map[string]interface{})
+	assert.Equal(t, true, body["resumed"])
+	assert.Equal(t, "run-2", body["runId"])
 
 	snap, snapErr := store.GetRunSnapshot(ctx, "run-2")
+	require.NoError(t, snapErr)
+	assert.Equal(t, runledger.RunStatusRunning, snap.Status)
+}
+
+func TestHandleChatMessage_ResumeConfirmWithoutIntentKeyword(t *testing.T) {
+	t.Parallel()
+
+	server := New(Config{
+		RunLedger: config.RunLedgerConfig{StaleTTL: 30 * time.Minute},
+	}, nil, nil, nil, nil)
+	store := runledger.NewMemoryStore()
+	server.SetRunLedgerStore(store)
+
+	ctx := context.Background()
+	require.NoError(t, store.AppendJournalEvent(ctx, runledger.JournalEvent{
+		RunID:   "run-3",
+		Type:    runledger.EventRunCreated,
+		Payload: resumePayload(runledger.RunCreatedPayload{SessionKey: "sess-3", Goal: "resume me"}),
+	}))
+	require.NoError(t, store.AppendJournalEvent(ctx, runledger.JournalEvent{
+		RunID: "run-3",
+		Type:  runledger.EventPlanAttached,
+		Payload: resumePayload(runledger.PlanAttachedPayload{
+			Steps: []runledger.Step{{
+				StepID:     "step-1",
+				Goal:       "work",
+				OwnerAgent: "operator",
+				Status:     runledger.StepStatusPending,
+				Validator:  runledger.ValidatorSpec{Type: runledger.ValidatorBuildPass},
+				MaxRetries: runledger.DefaultMaxRetries,
+			}},
+		}),
+	}))
+	require.NoError(t, store.AppendJournalEvent(ctx, runledger.JournalEvent{
+		RunID:   "run-3",
+		Type:    runledger.EventRunPaused,
+		Payload: resumePayload(runledger.RunPausedPayload{Reason: "paused"}),
+	}))
+
+	client := &Client{ID: "ui-3", Type: "ui", Server: server, SessionKey: "sess-3"}
+	result, err := server.handleChatMessage(client, json.RawMessage(`{"message":"yes","confirmResume":true,"resumeRunId":"run-3"}`))
+	require.NoError(t, err)
+
+	body := result.(map[string]interface{})
+	assert.Equal(t, true, body["resumed"])
+	assert.Equal(t, "run-3", body["runId"])
+
+	snap, snapErr := store.GetRunSnapshot(ctx, "run-3")
 	require.NoError(t, snapErr)
 	assert.Equal(t, runledger.RunStatusRunning, snap.Status)
 }

@@ -1,7 +1,9 @@
 package runledger
 
 import (
+	"bytes"
 	"encoding/json"
+	"log"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -27,6 +29,20 @@ func TestMarshalPayload(t *testing.T) {
 		raw := marshalPayload(tt.give)
 		assert.JSONEq(t, tt.wantJSON, string(raw))
 	}
+}
+
+func TestMarshalPayload_LogsWarningOnError(t *testing.T) {
+	var buf bytes.Buffer
+	prevWriter := log.Writer()
+	prevFlags := log.Flags()
+	log.SetOutput(&buf)
+	log.SetFlags(0)
+	defer log.SetOutput(prevWriter)
+	defer log.SetFlags(prevFlags)
+
+	raw := marshalPayload(make(chan int))
+	assert.Equal(t, "{}", string(raw))
+	assert.Contains(t, buf.String(), "WARN marshalPayload:")
 }
 
 func TestValidatorTypeConstants(t *testing.T) {

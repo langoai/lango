@@ -34,7 +34,7 @@ graph TD
 |-----------|---------|------|
 | `RunLedgerStore` | `internal/runledger` | Persistence interface -- journal is the source of truth, snapshots are cached projections |
 | `PEVEngine` | `internal/runledger` | Propose-Evidence-Verify engine that runs typed validators and records outcomes |
-| `WorkspaceManager` | `internal/runledger` | Git worktree isolation for coding steps (Phase 3 full activation) |
+| `WorkspaceManager` | `internal/runledger` | Git worktree isolation for coding steps, activated by `runLedger.workspaceIsolation` |
 | `ResumeManager` | `internal/runledger` | Detection and execution of paused run resumption |
 | `BuildTools` | `internal/runledger` | Creates all `run_*` agent tools with role-based access control |
 
@@ -221,7 +221,7 @@ Tools are partitioned by caller role. The orchestrator and execution agents have
 | `run_active` | Get the currently active or next executable step |
 | `run_note` | Read or write a scratchpad note on a run |
 
-Role detection is based on the agent name in context: agents named `orchestrator` or `lango-orchestrator` are treated as orchestrators; all others are execution agents.
+Role detection is based on the agent name in context: `orchestrator`, `lango-orchestrator`, and the explicit internal `system` caller are treated as orchestrators. Empty agent names are rejected for role-gated tools.
 
 ## Rollout Stages
 
@@ -268,7 +268,7 @@ runLedger:
 | `runLedger.staleTtl` | duration | `1h` | How long a paused run remains resumable |
 | `runLedger.maxRunHistory` | int | `100` | Maximum number of runs to keep (0 = unlimited) |
 | `runLedger.validatorTimeout` | duration | `2m` | Timeout for individual validator execution |
-| `runLedger.plannerMaxRetries` | int | `2` | How many times a malformed planner output is retried |
+| `runLedger.plannerMaxRetries` | int | `2` | Reserved for planner retry wiring; currently surfaced in status only |
 
 ## CLI Commands
 

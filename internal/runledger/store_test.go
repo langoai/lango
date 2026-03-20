@@ -2,7 +2,9 @@ package runledger
 
 import (
 	"context"
+	"sync"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -171,4 +173,183 @@ func TestMemoryStore_GetJournalEvents_NotFound(t *testing.T) {
 	_, err := store.GetJournalEvents(ctx, "nonexistent")
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "no journal events")
+}
+
+func TestMemoryStore_PruneOldRuns(t *testing.T) {
+	ctx := context.Background()
+	store := NewMemoryStore()
+
+	seedRunForPrune := func(runID string, status RunStatus) {
+		require.NoError(t, store.AppendJournalEvent(ctx, JournalEvent{
+			RunID:   runID,
+			Type:    EventRunCreated,
+			Payload: marshalPayload(RunCreatedPayload{SessionKey: "s1", Goal: runID}),
+		}))
+		require.NoError(t, store.AppendJournalEvent(ctx, JournalEvent{
+			RunID: runID,
+			Type:  EventPlanAttached,
+			Payload: marshalPayload(PlanAttachedPayload{
+				Steps: []Step{{
+					StepID:     "s1",
+					Goal:       "work",
+					OwnerAgent: "operator",
+					Status:     StepStatusPending,
+					Validator:  ValidatorSpec{Type: ValidatorBuildPass},
+					MaxRetries: DefaultMaxRetries,
+				}},
+			}),
+		}))
+		switch status {
+		case RunStatusCompleted:
+			require.NoError(t, store.AppendJournalEvent(ctx, JournalEvent{
+				RunID:   runID,
+				Type:    EventRunCompleted,
+				Payload: marshalPayload(RunCompletedPayload{Summary: "done"}),
+			}))
+		case RunStatusFailed:
+			require.NoError(t, store.AppendJournalEvent(ctx, JournalEvent{
+				RunID:   runID,
+				Type:    EventRunFailed,
+				Payload: marshalPayload(RunFailedPayload{Reason: "failed"}),
+			}))
+		}
+	}
+
+	seedRunForPrune("run-1", RunStatusCompleted)
+	seedRunForPrune("run-2", RunStatusFailed)
+	seedRunForPrune("run-3", RunStatusRunning)
+	seedRunForPrune("run-4", RunStatusRunning)
+
+	require.NoError(t, store.PruneOldRuns(ctx, 2))
+
+	runs, err := store.ListRuns(ctx, 10)
+	require.NoError(t, err)
+	require.Len(t, runs, 2)
+	assert.ElementsMatch(t, []string{"run-3", "run-4"}, []string{runs[0].RunID, runs[1].RunID})
+}
+
+func TestMemoryStore_GetRunSnapshot_ReturnsIndependentCopy(t *testing.T) {
+	ctx := context.Background()
+	store := NewMemoryStore()
+
+	require.NoError(t, store.AppendJournalEvent(ctx, JournalEvent{
+		RunID:   "run-copy",
+		Type:    EventRunCreated,
+		Payload: marshalPayload(RunCreatedPayload{SessionKey: "s1", Goal: "copy"}),
+	}))
+	require.NoError(t, store.AppendJournalEvent(ctx, JournalEvent{
+		RunID: "run-copy",
+		Type:  EventPlanAttached,
+		Payload: marshalPayload(PlanAttachedPayload{
+			Steps: []Step{{
+				StepID:     "s1",
+				Goal:       "work",
+				OwnerAgent: "operator",
+				Status:     StepStatusPending,
+				Validator: ValidatorSpec{
+					Type:   ValidatorBuildPass,
+					Params: map[string]string{"mode": "fast"},
+				},
+				ToolProfile: []string{string(ToolProfileCoding)},
+				DependsOn:   []string{"root"},
+			}},
+			AcceptanceCriteria: []AcceptanceCriterion{{
+				Description: "build",
+				Validator:   ValidatorSpec{Type: ValidatorBuildPass},
+			}},
+		}),
+	}))
+
+	snap, err := store.GetRunSnapshot(ctx, "run-copy")
+	require.NoError(t, err)
+	snap.Steps[0].Goal = "changed"
+	snap.Steps[0].Validator.Params["mode"] = "slow"
+	snap.AcceptanceState[0].Met = true
+
+	again, err := store.GetRunSnapshot(ctx, "run-copy")
+	require.NoError(t, err)
+	assert.Equal(t, "work", again.Steps[0].Goal)
+	assert.Equal(t, "fast", again.Steps[0].Validator.Params["mode"])
+	assert.False(t, again.AcceptanceState[0].Met)
+}
+
+func TestMemoryStore_GetRunSnapshot_RaceRegression(t *testing.T) {
+	ctx := context.Background()
+	store := NewMemoryStore()
+
+	require.NoError(t, store.AppendJournalEvent(ctx, JournalEvent{
+		RunID:   "run-race",
+		Type:    EventRunCreated,
+		Payload: marshalPayload(RunCreatedPayload{SessionKey: "s1", Goal: "race"}),
+	}))
+	require.NoError(t, store.AppendJournalEvent(ctx, JournalEvent{
+		RunID: "run-race",
+		Type:  EventPlanAttached,
+		Payload: marshalPayload(PlanAttachedPayload{
+			Steps: []Step{{
+				StepID:     "s1",
+				Goal:       "work",
+				OwnerAgent: "operator",
+				Status:     StepStatusPending,
+				Validator:  ValidatorSpec{Type: ValidatorBuildPass},
+			}},
+		}),
+	}))
+
+	initial, err := store.GetRunSnapshot(ctx, "run-race")
+	require.NoError(t, err)
+
+	done := make(chan struct{})
+	errCh := make(chan error, 1)
+	var wg sync.WaitGroup
+
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		for {
+			select {
+			case <-done:
+				return
+			default:
+				_ = initial.LastJournalSeq
+				if len(initial.Steps) > 0 {
+					_ = initial.Steps[0].Status
+				}
+			}
+		}
+	}()
+
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		for i := 0; i < 50; i++ {
+			if err := store.AppendJournalEvent(ctx, JournalEvent{
+				RunID:   "run-race",
+				Type:    EventNoteWritten,
+				Payload: marshalPayload(NoteWrittenPayload{Key: "k", Value: "v"}),
+			}); err != nil {
+				select {
+				case errCh <- err:
+				default:
+				}
+				return
+			}
+			if _, err := store.GetRunSnapshot(ctx, "run-race"); err != nil {
+				select {
+				case errCh <- err:
+				default:
+				}
+				return
+			}
+		}
+	}()
+
+	time.Sleep(50 * time.Millisecond)
+	close(done)
+	wg.Wait()
+	select {
+	case err := <-errCh:
+		require.NoError(t, err)
+	default:
+	}
 }

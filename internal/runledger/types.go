@@ -2,6 +2,7 @@ package runledger
 
 import (
 	"encoding/json"
+	"log"
 	"time"
 )
 
@@ -90,9 +91,9 @@ type ValidationResult struct {
 
 // PlannerOutput is the deserialized JSON returned by the Planner agent.
 type PlannerOutput struct {
-	Goal               string              `json:"goal"`
+	Goal               string                    `json:"goal"`
 	AcceptanceCriteria []AcceptanceCriteriaInput `json:"acceptance_criteria"`
-	Steps              []StepInput         `json:"steps"`
+	Steps              []StepInput               `json:"steps"`
 }
 
 // AcceptanceCriteriaInput is the planner's acceptance criterion format.
@@ -113,16 +114,16 @@ type StepInput struct {
 
 // RunSummary is a compressed representation of a Run for context injection.
 type RunSummary struct {
-	RunID              string `json:"run_id"`
-	Goal               string `json:"goal"`
+	RunID              string    `json:"run_id"`
+	Goal               string    `json:"goal"`
 	Status             RunStatus `json:"status"`
-	TotalSteps         int    `json:"total_steps"`
-	CompletedSteps     int    `json:"completed_steps"`
-	CurrentStepGoal    string `json:"current_step_goal,omitempty"`
-	CurrentStepStatus  string `json:"current_step_status,omitempty"`
-	CurrentBlocker     string `json:"current_blocker,omitempty"`
-	UnmetCriteria      []string `json:"unmet_criteria,omitempty"`
-	LastVerifiedResult string `json:"last_verified_result,omitempty"`
+	TotalSteps         int       `json:"total_steps"`
+	CompletedSteps     int       `json:"completed_steps"`
+	CurrentStepGoal    string    `json:"current_step_goal,omitempty"`
+	CurrentStepStatus  string    `json:"current_step_status,omitempty"`
+	CurrentBlocker     string    `json:"current_blocker,omitempty"`
+	UnmetCriteria      []string  `json:"unmet_criteria,omitempty"`
+	LastVerifiedResult string    `json:"last_verified_result,omitempty"`
 }
 
 // ToolProfile defines which tools are accessible during a step.
@@ -142,6 +143,7 @@ const DefaultMaxRetries = 2
 func marshalPayload(v interface{}) json.RawMessage {
 	data, err := json.Marshal(v)
 	if err != nil {
+		log.Printf("WARN marshalPayload: %v", err)
 		return json.RawMessage(`{}`)
 	}
 	return data

@@ -5,7 +5,7 @@
 Durable execution engine that transforms Lango from an AI chatbot into a Task OS. Provides an append-only journal as the single source of truth, typed validators via a Propose-Evidence-Verify (PEV) engine, and policy-driven failure recovery for long-running agent tasks. Core principle: "the system proves completion, not the agent."
 ## Requirements
 ### Requirement: Append-Only Journal
-The system SHALL provide an Ent-backed persistent journal implementation for RunLedger.
+The system SHALL provide an Ent-backed persistent journal implementation for RunLedger. `AppendJournalEvent` SHALL NOT acquire a Go-level mutex — the database transaction and `(run_id, seq)` unique constraint SHALL provide serialization.
 
 #### Scenario: Journal survives restart
 - **WHEN** the process restarts after journal events are appended
@@ -16,38 +16,47 @@ The system SHALL provide an Ent-backed persistent journal implementation for Run
 - **THEN** the module uses an Ent-backed `RunLedgerStore`
 - **AND** `MemoryStore` remains a fallback for tests and non-bootstrapped contexts
 
+#### Scenario: Concurrent journal appends to same run
+- **WHEN** two goroutines concurrently call `AppendJournalEvent` for the same run
+- **THEN** both events SHALL be persisted with distinct sequence numbers
+- **AND** the `(run_id, seq)` unique constraint SHALL prevent duplicate sequences
+
+#### Scenario: Concurrent journal appends to different runs
+- **WHEN** two goroutines concurrently call `AppendJournalEvent` for different runs
+- **THEN** neither goroutine SHALL block the other at the Go-level
+- **AND** both events SHALL be persisted independently
+
 ### Requirement: Materialized Snapshots
-The system SHALL support authoritative-read mode where run-state reads come from RunLedger snapshots.
+The system SHALL support authoritative-read mode where run-state reads come from RunLedger snapshots. The in-memory snapshot cache SHALL use per-run locking instead of a global mutex, so that operations on different runs do not contend.
 
 #### Scenario: Authoritative snapshot read
 - **WHEN** authoritative-read is enabled
 - **THEN** run-state consumers read from `RunSnapshot`
 - **AND** projection mirrors are no longer treated as authoritative
 
+#### Scenario: Per-run cache isolation
+- **WHEN** two goroutines concurrently call `GetCachedSnapshot` for different run IDs
+- **THEN** neither goroutine SHALL block the other
+- **AND** each goroutine SHALL receive the correct snapshot for its run
+
+#### Scenario: Per-run cache write safety
+- **WHEN** two goroutines concurrently call `UpdateCachedSnapshot` and `GetCachedSnapshot` for the same run ID
+- **THEN** the per-run lock SHALL serialize access
+- **AND** no data race SHALL occur
+
 ### Requirement: Run Lifecycle
-A Run SHALL transition through statuses: `planning` → `running` → `paused` | `completed` | `failed`. Status transitions SHALL occur only through journal events.
+`checkRunCompletion` SHALL only journal `EventCriterionMet` for criteria that are **newly** met — criteria that transitioned from `Met=false` to `Met=true` during the current verification pass.
 
-#### Scenario: Run created
-- **WHEN** `EventRunCreated` is recorded
-- **THEN** the run status is set to `planning`
+#### Scenario: Already-met criteria are not re-journaled
+- **GIVEN** a run where criterion 0 was already met (journaled in a previous pass)
+- **WHEN** `checkRunCompletion` runs and criterion 1 is newly met
+- **THEN** only one `EventCriterionMet` journal entry is appended (for criterion 1)
+- **AND** no duplicate entry is created for criterion 0
 
-#### Scenario: Plan attached
-- **WHEN** `EventPlanAttached` is recorded with steps and acceptance criteria
-- **THEN** the run status transitions to `running`
-
-#### Scenario: Run paused
-- **WHEN** `EventRunPaused` is recorded (e.g., turn limit reached)
-- **THEN** the run status transitions to `paused`
-
-#### Scenario: Run completed
-- **WHEN** all steps are terminal AND all acceptance criteria are met
-- **THEN** `EventRunCompleted` is recorded and status transitions to `completed`
-
-#### Scenario: Run completion check after step verification
-- **WHEN** a step verification passes and `checkRunCompletion` is invoked
-- **THEN** if all steps are successful: acceptance criteria are verified, `EventCriterionMet` is journaled for each satisfied criterion, and run transitions to `completed` or `failed`
-- **AND** if all steps are terminal but NOT all successful: run transitions to `failed`
-- **AND** if steps are still running: run remains in `running` status
+#### Scenario: First-time met criteria are journaled
+- **GIVEN** a run where no criteria have been met yet
+- **WHEN** `checkRunCompletion` runs and criteria 0 and 2 pass validation
+- **THEN** exactly two `EventCriterionMet` journal entries are appended (for indices 0 and 2)
 
 ### Requirement: Step Lifecycle
 Each step SHALL transition: `pending` → `in_progress` → `verify_pending` → `completed` | `failed` | `interrupted`. Execution agents MUST NOT directly change step status to `completed` — only the PEV engine MAY do so.
@@ -85,28 +94,23 @@ Steps SHALL declare dependencies via `DependsOn` (list of step IDs). A step MUST
 - **THEN** nil is returned
 
 ### Requirement: PEV Engine
-The system SHALL provide a Propose-Evidence-Verify engine that runs typed validators against step results. The PEV engine SHALL record validation results in the journal. It SHALL NOT modify step status directly — status changes happen via journal event replay.
+`VerifyAcceptanceCriteria` SHALL NOT mutate its input slice. It SHALL return both the list of unmet criteria and a fully evaluated copy of the criteria slice.
 
-#### Scenario: Validator passes
-- **WHEN** the PEV engine runs a validator and it passes
-- **THEN** `EventStepValidationPassed` is recorded
-- **AND** no `PolicyRequest` is returned
+#### Scenario: Input criteria slice is not mutated
+- **GIVEN** a criteria slice where all items have `Met = false`
+- **WHEN** `VerifyAcceptanceCriteria` is called and some criteria pass validation
+- **THEN** the original criteria slice items still have `Met = false`
+- **AND** the returned evaluated copy has `Met = true` for passing criteria
 
-#### Scenario: Validator fails
-- **WHEN** the PEV engine runs a validator and it fails
-- **THEN** `EventStepValidationFailed` is recorded
-- **AND** a `PolicyRequest` is returned with failure details, retry count, and max retries
+#### Scenario: MetAt is set on newly met criteria
+- **WHEN** a criterion passes validation in `VerifyAcceptanceCriteria`
+- **THEN** the evaluated copy has `Met = true` and `MetAt` set to the current time via `time.Now()`
+- **AND** `MetAt` is not nil
 
-#### Scenario: Unknown validator type
-- **WHEN** a step references an unregistered validator type
-- **THEN** an error is returned
-
-#### Scenario: Auto-verification on propose
-- **WHEN** an execution agent calls `run_propose_step_result`
-- **THEN** `EventStepResultProposed` is recorded
-- **AND** the PEV engine automatically runs the registered validator for the step — no manual trigger needed
-- **AND** on pass: `EventStepValidationPassed` is recorded, step transitions to `completed`, and run completion is checked
-- **AND** on fail: a structured payload is returned containing `failure_reason` for the orchestrator's policy decision
+#### Scenario: Dead ctxKeyNow code is removed
+- **WHEN** `VerifyAcceptanceCriteria` sets `MetAt` on a passing criterion
+- **THEN** it uses `time.Now()` directly
+- **AND** no context-value lookup for time injection exists
 
 ### Requirement: Typed Validators
 The system SHALL provide 6 built-in validators. Custom validator types SHALL NOT be supported to prevent auto-pass.
@@ -214,11 +218,23 @@ The system SHALL validate execution-agent step proposals before journaling them.
 - **AND** no `EventStepResultProposed` is appended
 
 ### Requirement: Resume Protocol
-Resume SHALL be integrated with gateway/session handling while remaining opt-in.
+Resume SHALL be integrated with gateway/session handling while remaining opt-in. The confirmed-resume check SHALL execute independently of resume-intent detection, and successful resume SHALL immediately return to the caller without falling through to the normal agent handler.
 
-#### Scenario: Resume candidate surfaced to user
-- **WHEN** a new request expresses resume intent and a resumable paused run exists
-- **THEN** the system presents resume candidates for explicit confirmation
+#### Scenario: Confirmed resume executes independently of intent detection
+- **WHEN** a request includes `confirmResume: true` and `resumeRunId` is non-empty
+- **THEN** the system invokes `ResumeManager.Resume` immediately
+- **AND** `DetectResumeIntent` is NOT called for this request
+- **AND** a `return` ends the handler after broadcasting `agent.resume_confirmed`
+
+#### Scenario: Resume uses shutdown-derived bounded context
+- **WHEN** the resume manager executes `FindCandidates` or `Resume`
+- **THEN** the context is derived from the server's shutdown context and bounded by request timeout / hard ceiling configuration
+- **AND** the operation respects server shutdown cancellation signals
+
+#### Scenario: Resume stale TTL from config
+- **WHEN** `NewResumeManager` is created
+- **THEN** its stale TTL uses `config.RunLedger.StaleTTL`
+- **AND** hardcoded `time.Hour` is not used
 
 ### Requirement: Workspace Isolation
 Production runtime SHALL activate workspace isolation for coding steps once the execution-isolation stage is enabled.
@@ -247,7 +263,7 @@ Write-through mode SHALL route workflow/background writes through RunLedger firs
 - **AND** the system records degraded projection state for later replay
 
 ### Requirement: Tool Governance
-The system SHALL expose tools to execution agents according to the active step's `ToolProfile`.
+The system SHALL expose tools to execution agents according to the active step's `ToolProfile`. The system SHALL cache the `RunSnapshot` within a single turn's context to avoid redundant store lookups. First tool call in a turn SHALL fetch and cache; subsequent calls in the same turn SHALL reuse the cached snapshot.
 
 #### Scenario: Coding profile
 - **WHEN** the active step uses the `coding` profile
@@ -257,16 +273,33 @@ The system SHALL expose tools to execution agents according to the active step's
 - **WHEN** the active step uses the `supervisor` profile
 - **THEN** only supervisor-safe run inspection/approval tools are available
 
+#### Scenario: Per-turn snapshot cache hit
+- **WHEN** `ToolProfileGuard` is invoked for the 2nd through Nth tool call in the same turn
+- **AND** a cached snapshot exists in the turn context for the same run ID
+- **THEN** the guard SHALL use the cached snapshot without calling `store.GetRunSnapshot()`
+
+#### Scenario: Per-turn snapshot cache miss
+- **WHEN** `ToolProfileGuard` is invoked for the first tool call in a turn
+- **AND** no cached snapshot exists in the turn context
+- **THEN** the guard SHALL call `store.GetRunSnapshot()`, cache the result in the turn context, and proceed with profile checking
+
+#### Scenario: Cache isolation across turns
+- **WHEN** a new turn begins with a fresh context
+- **THEN** the snapshot cache from the previous turn SHALL NOT be reused
+- **AND** the first tool call in the new turn SHALL fetch a fresh snapshot
+
 ### Requirement: Configuration
-The system SHALL provide `RunLedgerConfig` under the root config with fields: `enabled`, `shadow`, `writeThrough`, `authoritativeRead`, `workspaceIsolation`, `staleTtl` (default: 1h), `validatorTimeout` (default: 2m), `plannerMaxRetries` (default: 2), `maxRunHistory`.
+The system SHALL provide `RunLedgerConfig` under the root config with fields: `enabled`, `shadow`, `writeThrough`, `authoritativeRead`, `workspaceIsolation`, `staleTtl` (default: 1h), `validatorTimeout` (default: 2m), `plannerMaxRetries` (default: 2), `maxRunHistory`. All config values SHALL be wired to their respective runtime consumers.
 
-#### Scenario: Default config
-- **WHEN** no RunLedger config is provided
-- **THEN** the system defaults to disabled
+#### Scenario: ValidatorTimeout applied as context deadline
+- **WHEN** `PEVEngine.Verify` is invoked
+- **THEN** the validator execution uses a context with a deadline set to `config.RunLedger.ValidatorTimeout`
+- **AND** validators that exceed the timeout return a context deadline exceeded error
 
-#### Scenario: Enabled with shadow
-- **WHEN** `runLedger.enabled: true` and `runLedger.shadow: true`
-- **THEN** the RunLedger module initializes in shadow mode
+#### Scenario: MaxRunHistory triggers store-level pruning
+- **WHEN** a run transitions to a terminal status (`completed` or `failed`)
+- **THEN** the system invokes `PruneOldRuns(ctx, config.RunLedger.MaxRunHistory)`
+- **AND** runs exceeding the history limit are removed from the store (oldest first)
 
 ### Requirement: Ent Schemas
 The system SHALL provide 3 Ent schemas: `RunJournal` (append-only event log with run_id+seq unique index), `RunSnapshot` (cached materialized view with unique run_id), `RunStep` (step projection with run_id+step_id unique index).
@@ -277,22 +310,21 @@ The system SHALL provide 3 Ent schemas: `RunJournal` (append-only event log with
 - **THEN** a unique constraint violation occurs
 
 ### Requirement: Access Control
-Tool access SHALL be role-based. The orchestrator (agent name "orchestrator" or "lango-orchestrator") MAY call `run_create`, `run_apply_policy`, `run_approve_step`, `run_resume`. Execution agents MAY call `run_propose_step_result`. All agents MAY call `run_read`, `run_active`, `run_note`.
+Tool access SHALL be role-based. The orchestrator (agent name `"orchestrator"` or `"lango-orchestrator"`) MAY call `run_create`, `run_apply_policy`, `run_approve_step`, `run_resume`. Execution agents MAY call `run_propose_step_result`. All agents MAY call `run_read`, `run_active`, `run_note`. An empty agent name SHALL NOT be treated as orchestrator identity.
+
+#### Scenario: Empty agent name rejected
+- **WHEN** a caller has an empty agent name (`""`)
+- **THEN** `checkRole` returns `ErrAccessDenied` for orchestrator-only tools
+- **AND** the caller is NOT silently granted orchestrator privilege
+
+#### Scenario: System caller requires explicit identity
+- **WHEN** an internal system component needs orchestrator-level access
+- **THEN** it MUST set `SystemCallerName` (or an equivalent explicit identity) in the context
+- **AND** the empty-string identity is never treated as a valid caller
 
 #### Scenario: Execution agent blocked from run_create
 - **WHEN** a non-orchestrator agent calls `run_create`
 - **THEN** `ErrAccessDenied` is returned
-
-#### Scenario: Orchestrator blocked from execution-only tools
-- **WHEN** the orchestrator calls `run_propose_step_result`
-- **THEN** `ErrAccessDenied` is returned
-- **AND** only execution agents MAY call execution-only tools
-
-#### Scenario: run_approve_step restricted to orchestrator_approval steps
-- **WHEN** the orchestrator calls `run_approve_step` for a step
-- **THEN** the step MUST have the `orchestrator_approval` validator type
-- **AND** the step MUST be in `verify_pending` or `failed` status
-- **AND** if either condition is not met, an error is returned
 
 ### Requirement: CLI Journal Inspection
 The system SHALL let operators inspect persistent RunLedger data from the CLI.
@@ -306,9 +338,129 @@ The system SHALL let operators inspect persistent RunLedger data from the CLI.
 - **THEN** the command reads the persistent journal events for that run
 
 ### Requirement: Command Context
-The system SHALL inject active run summaries into command context.
+The system SHALL inject active run summaries into command context. The system SHALL cache assembled run summary strings per session with journal-sequence-based invalidation to avoid redundant queries on repeated LLM requests.
 
 #### Scenario: Active run summary injected
 - **WHEN** an active or paused resumable run exists for the session
 - **THEN** command context includes compact run summary, current blocker, and current step data
+
+#### Scenario: Summary cache hit
+- **WHEN** `assembleRunSummarySection` is called for a session
+- **AND** a cached summary exists for that session
+- **AND** the maximum journal sequence for the session's runs has not changed since the cache was populated
+- **THEN** the system SHALL return the cached summary string without querying the run summary store
+
+#### Scenario: Summary cache invalidation on journal change
+- **WHEN** `assembleRunSummarySection` is called for a session
+- **AND** a cached summary exists for that session
+- **AND** the maximum journal sequence for the session's runs has increased since the cache was populated
+- **THEN** the system SHALL discard the cached entry, query fresh summaries, assemble the string, and update the cache
+
+#### Scenario: Summary cache miss
+- **WHEN** `assembleRunSummarySection` is called for a session
+- **AND** no cached summary exists for that session
+- **THEN** the system SHALL query summaries from the store, assemble the string, store it in the cache with the current max journal sequence, and return it
+
+### Requirement: Session Key Structured Context
+The system SHALL provide a structured `RunContext` type in a shared package for workflow/background session identification, replacing fragile string-split parsing of session keys.
+
+#### Scenario: Workflow session provides RunContext
+- **WHEN** a workflow session is created with session key `"workflow:wf-123:run-456"`
+- **THEN** a `RunContext` struct with `SessionType="workflow"`, `WorkflowID="wf-123"`, `RunID="run-456"` is stored in the request context
+
+#### Scenario: Background session provides RunContext
+- **WHEN** a background session is created with session key `"bg:run-789"`
+- **THEN** a `RunContext` struct with `SessionType="background"`, `RunID="run-789"` is stored in the request context
+
+#### Scenario: Guard reads RunContext instead of parsing session key
+- **WHEN** `runIDFromSessionContext` resolves the run ID
+- **THEN** it reads from the `RunContext` context value
+- **AND** colon-split string parsing is NOT used
+
+### Requirement: Store-Level Run Pruning
+The system SHALL support pruning old runs from the store to enforce `MaxRunHistory`.
+
+#### Scenario: PruneOldRuns removes excess runs
+- **GIVEN** the store contains 150 runs and `MaxRunHistory` is 100
+- **WHEN** `PruneOldRuns(ctx, 100)` is invoked
+- **THEN** the 50 oldest completed/failed runs are removed
+- **AND** active/paused runs are never pruned regardless of age
+
+#### Scenario: PruneOldRuns is a no-op when under limit
+- **GIVEN** the store contains 50 runs and `MaxRunHistory` is 100
+- **WHEN** `PruneOldRuns(ctx, 100)` is invoked
+- **THEN** no runs are removed
+
+### Requirement: Snapshot Deep Copy
+The system SHALL provide a `RunSnapshot.DeepCopy()` method that returns a fully independent copy of the snapshot with no shared mutable state.
+
+#### Scenario: DeepCopy produces independent snapshot
+- **WHEN** `DeepCopy()` is called on a snapshot with steps, acceptance criteria, and notes
+- **THEN** the returned snapshot has the same field values
+- **AND** appending to `copy.Steps` does not affect the original's `Steps` slice
+- **AND** modifying `copy.Notes["key"]` does not affect the original's `Notes` map
+
+#### Scenario: DeepCopy preserves MetAt pointer semantics
+- **GIVEN** a snapshot with an `AcceptanceCriterion` where `MetAt` points to a time value
+- **WHEN** `DeepCopy()` is called
+- **THEN** the copy's `MetAt` is a new pointer with the same time value
+- **AND** modifying the copy's `MetAt` does not affect the original
+
+### Requirement: Marshal Payload Error Observability
+`marshalPayload` SHALL log a warning when JSON marshaling fails instead of silently returning an empty object.
+
+#### Scenario: Marshal failure is logged
+- **WHEN** `marshalPayload` receives a value that fails `json.Marshal` (e.g., channel type, cyclic reference)
+- **THEN** a warning-level log message is emitted containing the error details
+- **AND** the function still returns `{}` as a fallback
+- **AND** the caller's flow is not interrupted
+
+#### Scenario: Successful marshal is not logged
+- **WHEN** `marshalPayload` receives a valid serializable value
+- **THEN** no log message is emitted
+- **AND** the correct JSON bytes are returned
+
+### Requirement: Projection Sync Error Observability
+Projection sync errors in `writethrough.go` SHALL be logged at warning level instead of being discarded with `_ =`.
+
+#### Scenario: Degraded projection sync error is logged
+- **WHEN** `appendProjectionSyncEvent` returns an error in a write-through method
+- **THEN** a warning-level log message is emitted containing the run ID and error details
+- **AND** the outer operation continues (best-effort semantics preserved)
+
+#### Scenario: Successful projection sync is not logged
+- **WHEN** `appendProjectionSyncEvent` returns nil
+- **THEN** no warning log message is emitted
+
+### Requirement: Snapshot Lookup Benchmarks
+The system SHALL include benchmarks that measure ToolProfileGuard performance with and without the per-turn context-scoped cache.
+
+#### Scenario: Benchmark cached vs uncached guard
+- **WHEN** the benchmark suite runs `BenchmarkToolProfileGuard_WithCache` and `BenchmarkToolProfileGuard_NoCache`
+- **THEN** the cached variant SHALL complete in fewer allocations and less time per operation than the uncached variant for N > 1 tool calls per turn
+
+### Requirement: Summary Assembly Benchmarks
+The system SHALL include benchmarks that measure `assembleRunSummarySection` performance with and without the session-scoped cache.
+
+#### Scenario: Benchmark cache hit vs cache miss
+- **WHEN** the benchmark suite runs `BenchmarkAssembleRunSummary_CacheHit` and `BenchmarkAssembleRunSummary_CacheMiss`
+- **THEN** the cache-hit variant SHALL demonstrate reduced allocations and query count compared to the cache-miss variant
+
+### Requirement: EntStore Concurrency Benchmarks
+The system SHALL include benchmarks that measure EntStore performance under parallel run access with per-run locks versus the baseline global mutex.
+
+#### Scenario: Benchmark parallel runs
+- **WHEN** the benchmark suite runs `BenchmarkEntStore_ParallelRuns` with M concurrent runs and N goroutines per run
+- **THEN** the per-run lock variant SHALL demonstrate reduced total elapsed time compared to the global mutex baseline when M > 1
+
+### Requirement: Max Journal Sequence Query
+The store SHALL provide a method to retrieve the maximum journal sequence number for a session's runs, for use in cache invalidation.
+
+#### Scenario: Max sequence for active session
+- **WHEN** `MaxJournalSeqForSession` is called with a session key that has active runs
+- **THEN** the method SHALL return the highest `last_journal_seq` value across all run snapshots for that session
+
+#### Scenario: Max sequence for empty session
+- **WHEN** `MaxJournalSeqForSession` is called with a session key that has no runs
+- **THEN** the method SHALL return 0 and no error
 

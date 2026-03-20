@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -17,6 +18,13 @@ type mockValidator struct {
 
 func (m *mockValidator) Validate(_ context.Context, _ ValidatorSpec, _ []Evidence) (*ValidationResult, error) {
 	return m.result, m.err
+}
+
+type slowValidator struct{}
+
+func (s *slowValidator) Validate(ctx context.Context, _ ValidatorSpec, _ []Evidence) (*ValidationResult, error) {
+	<-ctx.Done()
+	return nil, ctx.Err()
 }
 
 func TestPEVEngine_Verify_Pass(t *testing.T) {
@@ -167,4 +175,63 @@ func TestPEVEngine_WorkspaceIsolationFailure(t *testing.T) {
 	assert.Nil(t, pev.workspace)
 	pev.WithWorkspace(ws)
 	assert.NotNil(t, pev.workspace)
+}
+
+func TestPEVEngine_Verify_RespectsTimeout(t *testing.T) {
+	ctx := context.Background()
+	store := NewMemoryStore()
+
+	require.NoError(t, store.AppendJournalEvent(ctx, JournalEvent{
+		RunID:   "run-timeout",
+		Type:    EventRunCreated,
+		Payload: marshalPayload(RunCreatedPayload{Goal: "timeout"}),
+	}))
+
+	pev := NewPEVEngine(store, map[ValidatorType]Validator{
+		ValidatorBuildPass: &slowValidator{},
+	}).WithTimeout(10 * time.Millisecond)
+
+	step := &Step{
+		StepID:    "s1",
+		Goal:      "slow step",
+		Validator: ValidatorSpec{Type: ValidatorBuildPass},
+	}
+
+	_, err := pev.Verify(ctx, "run-timeout", step)
+	require.Error(t, err)
+	assert.ErrorIs(t, err, context.DeadlineExceeded)
+}
+
+func TestPEVEngine_VerifyAcceptanceCriteria_DoesNotMutateInput(t *testing.T) {
+	ctx := context.Background()
+	pev := NewPEVEngine(NewMemoryStore(), map[ValidatorType]Validator{
+		ValidatorBuildPass: &mockValidator{
+			result: &ValidationResult{Passed: true, Reason: "ok"},
+		},
+		ValidatorTestPass: &mockValidator{
+			result: &ValidationResult{Passed: false, Reason: "fail"},
+		},
+	})
+
+	criteria := []AcceptanceCriterion{
+		{
+			Description: "build",
+			Validator:   ValidatorSpec{Type: ValidatorBuildPass},
+		},
+		{
+			Description: "tests",
+			Validator:   ValidatorSpec{Type: ValidatorTestPass},
+		},
+	}
+
+	unmet, evaluated, err := pev.VerifyAcceptanceCriteria(ctx, criteria)
+	require.NoError(t, err)
+	require.Len(t, unmet, 1)
+	require.Len(t, evaluated, 2)
+
+	assert.False(t, criteria[0].Met)
+	assert.Nil(t, criteria[0].MetAt)
+	assert.True(t, evaluated[0].Met)
+	assert.NotNil(t, evaluated[0].MetAt)
+	assert.False(t, evaluated[1].Met)
 }
