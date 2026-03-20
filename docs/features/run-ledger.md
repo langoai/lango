@@ -245,6 +245,15 @@ The `ResumeManager` handles run resumption with the following constraints:
 
 ## Configuration
 
+RunLedger settings are available in the interactive settings editor under:
+
+```bash
+lango settings
+```
+
+Navigation path:
+- `Automation` -> `RunLedger`
+
 ```yaml
 runLedger:
   enabled: true
@@ -269,6 +278,12 @@ runLedger:
 | `runLedger.maxRunHistory` | int | `100` | Maximum number of runs to keep (0 = unlimited) |
 | `runLedger.validatorTimeout` | duration | `2m` | Timeout for individual validator execution |
 | `runLedger.plannerMaxRetries` | int | `2` | Reserved for planner retry wiring; currently surfaced in status only |
+
+RunLedger configuration diagnostics are also included in:
+
+```bash
+lango doctor
+```
 
 ## CLI Commands
 

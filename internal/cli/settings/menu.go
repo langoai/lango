@@ -74,7 +74,6 @@ func (m *MenuModel) allCategories() []Category {
 	return all
 }
 
-
 // AllCategories returns a flat list of all categories (public, for tests).
 func (m MenuModel) AllCategories() []Category {
 	return m.allCategories()
@@ -196,6 +195,7 @@ func NewMenuModel() MenuModel {
 					{"cron", "Cron Scheduler", "Scheduled jobs, timezone, history", TierBasic},
 					{"background", "Background Tasks", "Async tasks, concurrency limits", TierAdvanced},
 					{"workflow", "Workflow Engine", "DAG workflows, timeouts, state", TierAdvanced},
+					{"runledger", "RunLedger", "Task OS durable execution, rollout, and validation controls", TierAdvanced},
 				},
 			},
 			{

@@ -29,7 +29,7 @@ func NewCommand() *cobra.Command {
 		Long: `The doctor command checks your Lango configuration and environment
 for common issues and can automatically fix some problems.
 
-Checks performed (14 total):
+Checks performed include:
   - Configuration profile validity
   - AI provider configuration and API keys
   - API key security (env-var best practices)
@@ -44,6 +44,7 @@ Checks performed (14 total):
   - Graph store configuration
   - Multi-agent orchestration settings
   - A2A protocol connectivity
+  - RunLedger configuration invariants
 
 Use --fix to attempt automatic repair of fixable issues.
 Use --json for machine-readable output.

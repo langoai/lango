@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/langoai/lango/internal/cli/tuicore"
 	"github.com/langoai/lango/internal/config"
@@ -151,6 +152,109 @@ func NewWorkflowForm(cfg *config.Config) *tuicore.FormModel {
 		Value:       strings.Join(cfg.Workflow.DefaultDeliverTo, ","),
 		Placeholder: "telegram,discord,slack (comma-separated)",
 		Description: "Default channels to deliver workflow completion results to",
+	})
+
+	return &form
+}
+
+// NewRunLedgerForm creates the RunLedger configuration form.
+func NewRunLedgerForm(cfg *config.Config) *tuicore.FormModel {
+	form := tuicore.NewFormModel("RunLedger Configuration")
+
+	form.AddField(&tuicore.Field{
+		Key: "runledger_enabled", Label: "Enabled", Type: tuicore.InputBool,
+		Checked:     cfg.RunLedger.Enabled,
+		Description: "Enable the RunLedger durable execution engine",
+	})
+
+	form.AddField(&tuicore.Field{
+		Key: "runledger_shadow", Label: "Shadow Mode", Type: tuicore.InputBool,
+		Checked:     cfg.RunLedger.Shadow,
+		Description: "Record journal events without making RunLedger authoritative",
+	})
+
+	form.AddField(&tuicore.Field{
+		Key: "runledger_write_through", Label: "Write-Through", Type: tuicore.InputBool,
+		Checked:     cfg.RunLedger.WriteThrough,
+		Description: "Mirror creates and updates through RunLedger before projections",
+	})
+
+	form.AddField(&tuicore.Field{
+		Key: "runledger_authoritative_read", Label: "Authoritative Read", Type: tuicore.InputBool,
+		Checked:     cfg.RunLedger.AuthoritativeRead,
+		Description: "Read run state from RunLedger snapshots instead of legacy projections",
+	})
+
+	form.AddField(&tuicore.Field{
+		Key: "runledger_workspace_isolation", Label: "Workspace Isolation", Type: tuicore.InputBool,
+		Checked:     cfg.RunLedger.WorkspaceIsolation,
+		Description: "Enable runtime worktree isolation for coding-step validation",
+	})
+
+	form.AddField(&tuicore.Field{
+		Key: "runledger_stale_ttl", Label: "Stale TTL", Type: tuicore.InputText,
+		Value:       cfg.RunLedger.StaleTTL.String(),
+		Placeholder: "1h",
+		Description: "How long a paused run remains resumable",
+		Validate: func(s string) error {
+			d, err := time.ParseDuration(s)
+			if err != nil {
+				return fmt.Errorf("must be a valid duration")
+			}
+			if d <= 0 {
+				return fmt.Errorf("must be greater than 0")
+			}
+			return nil
+		},
+	})
+
+	form.AddField(&tuicore.Field{
+		Key: "runledger_max_history", Label: "Max Run History", Type: tuicore.InputInt,
+		Value:       strconv.Itoa(cfg.RunLedger.MaxRunHistory),
+		Description: "Maximum number of runs to keep (0 = unlimited)",
+		Validate: func(s string) error {
+			i, err := strconv.Atoi(s)
+			if err != nil {
+				return fmt.Errorf("must be an integer")
+			}
+			if i < 0 {
+				return fmt.Errorf("must be 0 or greater")
+			}
+			return nil
+		},
+	})
+
+	form.AddField(&tuicore.Field{
+		Key: "runledger_validator_timeout", Label: "Validator Timeout", Type: tuicore.InputText,
+		Value:       cfg.RunLedger.ValidatorTimeout.String(),
+		Placeholder: "2m",
+		Description: "Timeout for individual validator execution",
+		Validate: func(s string) error {
+			d, err := time.ParseDuration(s)
+			if err != nil {
+				return fmt.Errorf("must be a valid duration")
+			}
+			if d <= 0 {
+				return fmt.Errorf("must be greater than 0")
+			}
+			return nil
+		},
+	})
+
+	form.AddField(&tuicore.Field{
+		Key: "runledger_planner_retries", Label: "Planner Max Retries", Type: tuicore.InputInt,
+		Value:       strconv.Itoa(cfg.RunLedger.PlannerMaxRetries),
+		Description: "Maximum retries for malformed planner output handling",
+		Validate: func(s string) error {
+			i, err := strconv.Atoi(s)
+			if err != nil {
+				return fmt.Errorf("must be an integer")
+			}
+			if i < 0 {
+				return fmt.Errorf("must be 0 or greater")
+			}
+			return nil
+		},
 	})
 
 	return &form

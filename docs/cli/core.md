@@ -122,13 +122,14 @@ lango settings [--profile <name>]
 |------|------|---------|-------------|
 | `--profile` | string | `default` | Profile name to edit |
 
-The settings editor uses a TUI menu interface where you can navigate through categories and edit individual values. Categories are organized into groups:
+The settings editor uses a TUI menu interface where you can navigate through categories and edit individual values. Categories are organized into sections:
 
-- **Core:** Providers, Agent, Server, Session
-- **Communication:** Channels, Tools, Multi-Agent, A2A Protocol
-- **AI & Knowledge:** Knowledge, Skill, Observational Memory, Embedding & RAG, Graph Store, Librarian
-- **Infrastructure:** Payment, Cron Scheduler, Background Tasks, Workflow Engine
-- **P2P Network:** P2P Network, P2P ZKP, P2P Pricing, P2P Owner Protection, P2P Sandbox
+- **Core:** Providers, Agent, Channels, Tools, Server, Session, Logging, Gatekeeper, Output Manager
+- **AI & Knowledge:** Knowledge, Skill, Observational Memory, Embedding & RAG, Graph Store, Librarian, Agent Memory, Multi-Agent, A2A Protocol, Hooks
+- **Automation:** Cron Scheduler, Background Tasks, Workflow Engine, RunLedger
+- **Payment & Account:** Payment, Smart Account, SA Session Keys, SA Paymaster, SA Modules
+- **P2P & Economy:** P2P Network, P2P Workspace, P2P ZKP, P2P Pricing, P2P Owner Protection, P2P Sandbox, Economy, Risk, Negotiation, Escrow, On-Chain Escrow, Pricing
+- **Integrations:** MCP Settings, MCP Server List, Observability
 - **Security:** Security, Auth, Security DB Encryption, Security KMS
 
 Press `/` to search across all categories by keyword.
@@ -153,7 +154,7 @@ lango doctor [--fix] [--json]
 | `--fix` | bool | `false` | Attempt to automatically fix issues |
 | `--json` | bool | `false` | Output results as JSON |
 
-**Checks performed (20 total):**
+**Checks performed include:**
 
 - Configuration profile validity
 - AI provider configuration and API keys
@@ -169,6 +170,7 @@ lango doctor [--fix] [--json]
 - Graph store configuration
 - Multi-agent orchestration settings
 - A2A protocol connectivity
+- RunLedger configuration invariants
 - Tool hooks configuration
 - Agent registry health
 - Librarian status
