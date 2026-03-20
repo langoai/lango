@@ -36,6 +36,11 @@ func (e *PEVEngine) WithWorkspace(ws *WorkspaceManager) *PEVEngine {
 	return e
 }
 
+// WorkspaceEnabled reports whether runtime workspace isolation is wired in.
+func (e *PEVEngine) WorkspaceEnabled() bool {
+	return e.workspace != nil
+}
+
 // Verify runs the step's validator and records the result in the journal.
 // Returns a PolicyRequest if validation fails, nil if it passes.
 func (e *PEVEngine) Verify(ctx context.Context, runID string, step *Step) (*PolicyRequest, error) {

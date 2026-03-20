@@ -1,6 +1,6 @@
 ## 1. Runtime Workspace Activation
 
-- [ ] 1.1 Enable workspace manager wiring behind the phase/stage gate
+- [x] 1.1 Enable workspace manager wiring behind the phase/stage gate
 - [ ] 1.2 Add app/runtime tests covering isolated validation paths
 
 ## 2. Retry-Safe Isolation

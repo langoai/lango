@@ -28,7 +28,7 @@ type ChannelSender interface {
 // Engine orchestrates DAG-based workflow execution.
 type Engine struct {
 	runner         AgentRunner
-	state          *StateStore
+	state          RunStore
 	sender         ChannelSender
 	maxConcurrent  int
 	defaultTimeout time.Duration
@@ -42,7 +42,7 @@ type Engine struct {
 // NewEngine creates a new workflow execution engine.
 func NewEngine(
 	runner AgentRunner,
-	state *StateStore,
+	state RunStore,
 	sender ChannelSender,
 	maxConcurrent int,
 	defaultTimeout time.Duration,

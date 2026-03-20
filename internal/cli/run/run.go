@@ -81,6 +81,7 @@ func newStatusCmd(bootLoader func() (*bootstrap.Result, error)) *cobra.Command {
 			fmt.Printf("  Shadow Mode:        %v\n", cfg.Shadow)
 			fmt.Printf("  Write-Through:      %v\n", cfg.WriteThrough)
 			fmt.Printf("  Authoritative Read: %v\n", cfg.AuthoritativeRead)
+			fmt.Printf("  Workspace Isolation:%v\n", cfg.WorkspaceIsolation)
 			fmt.Printf("  Stale TTL:          %v\n", cfg.StaleTTL)
 			fmt.Printf("  Max Run History:    %d\n", cfg.MaxRunHistory)
 			fmt.Printf("  Validator Timeout:  %v\n", cfg.ValidatorTimeout)

@@ -31,29 +31,29 @@ import (
 
 // foundationValues holds the outputs of the foundation module.
 type foundationValues struct {
-	Supervisor  *supervisor.Supervisor
-	Store       session.Store
-	Crypto      security.CryptoProvider
-	Keys        *security.KeyRegistry
-	Secrets     *security.SecretsStore
-	BrowserSM   *browser.SessionManager
-	Refs        *security.RefStore
-	Scanner     *agent.SecretScanner
-	Sanitizer   *gatekeeper.Sanitizer
-	CmdGuard    *execpkg.CommandGuard
-	FsConfig    filesystem.Config
-	AutoAvail   map[string]bool
+	Supervisor *supervisor.Supervisor
+	Store      session.Store
+	Crypto     security.CryptoProvider
+	Keys       *security.KeyRegistry
+	Secrets    *security.SecretsStore
+	BrowserSM  *browser.SessionManager
+	Refs       *security.RefStore
+	Scanner    *agent.SecretScanner
+	Sanitizer  *gatekeeper.Sanitizer
+	CmdGuard   *execpkg.CommandGuard
+	FsConfig   filesystem.Config
+	AutoAvail  map[string]bool
 }
 
 // intelligenceValues holds the outputs of the intelligence module.
 type intelligenceValues struct {
-	KC       *knowledgeComponents
-	MC       *memoryComponents
-	EC       *embeddingComponents
-	GC       *graphComponents
-	LC       *librarianComponents
-	AB       interface{} // *learning.AnalysisBuffer
-	Observer interface{} // learning.Observer — for WithLearning middleware
+	KC               *knowledgeComponents
+	MC               *memoryComponents
+	EC               *embeddingComponents
+	GC               *graphComponents
+	LC               *librarianComponents
+	AB               interface{} // *learning.AnalysisBuffer
+	Observer         interface{} // learning.Observer — for WithLearning middleware
 	SkillRegistry    interface{}
 	AgentMemoryStore agentmemory.Store
 }
@@ -65,7 +65,6 @@ type automationValues struct {
 	WorkflowEngine    interface{}
 }
 
-
 // ─── Foundation Module ───
 
 type foundationModule struct {
@@ -73,12 +72,12 @@ type foundationModule struct {
 	boot *bootstrap.Result
 }
 
-func (m *foundationModule) Name() string         { return "foundation" }
+func (m *foundationModule) Name() string { return "foundation" }
 func (m *foundationModule) Provides() []appinit.Provides {
 	return []appinit.Provides{appinit.ProvidesSupervisor, appinit.ProvidesSessionStore, appinit.ProvidesSecurity}
 }
 func (m *foundationModule) DependsOn() []appinit.Provides { return nil }
-func (m *foundationModule) Enabled() bool                  { return true }
+func (m *foundationModule) Enabled() bool                 { return true }
 
 func (m *foundationModule) Init(ctx context.Context, r appinit.Resolver) (*appinit.ModuleResult, error) {
 	cfg := m.cfg
@@ -237,7 +236,7 @@ type intelligenceModule struct {
 	rawDB *sql.DB
 }
 
-func (m *intelligenceModule) Name() string         { return "intelligence" }
+func (m *intelligenceModule) Name() string { return "intelligence" }
 func (m *intelligenceModule) Provides() []appinit.Provides {
 	return []appinit.Provides{appinit.ProvidesKnowledge, appinit.ProvidesMemory, appinit.ProvidesEmbedding, appinit.ProvidesGraph, appinit.ProvidesLibrarian, appinit.ProvidesSkills}
 }
@@ -406,16 +405,16 @@ func (m *intelligenceModule) Init(ctx context.Context, r appinit.Resolver) (*app
 // ─── Automation Module ───
 
 type automationModule struct {
-	cfg  *config.Config
-	app  *App // needed for AgentRunner interface at runtime
+	cfg *config.Config
+	app *App // needed for AgentRunner interface at runtime
 }
 
-func (m *automationModule) Name() string         { return "automation" }
+func (m *automationModule) Name() string { return "automation" }
 func (m *automationModule) Provides() []appinit.Provides {
 	return []appinit.Provides{appinit.ProvidesAutomation}
 }
 func (m *automationModule) DependsOn() []appinit.Provides {
-	return []appinit.Provides{appinit.ProvidesSessionStore}
+	return []appinit.Provides{appinit.ProvidesSessionStore, appinit.ProvidesRunLedger}
 }
 func (m *automationModule) Enabled() bool {
 	return m.cfg.Cron.Enabled || m.cfg.Background.Enabled || m.cfg.Workflow.Enabled
@@ -425,6 +424,7 @@ func (m *automationModule) Init(ctx context.Context, r appinit.Resolver) (*appin
 	cfg := m.cfg
 	fv := r.Resolve(appinit.ProvidesSupervisor).(*foundationValues)
 	store := fv.Store
+	rlv, _ := r.Resolve(appinit.ProvidesRunLedger).(*runLedgerValues)
 
 	var tools []*agent.Tool
 	var entries []appinit.CatalogEntry
@@ -462,7 +462,7 @@ func (m *automationModule) Init(ctx context.Context, r appinit.Resolver) (*appin
 		logger().Info("background tools registered")
 	}
 
-	wf := initWorkflow(cfg, store, m.app)
+	wf := initWorkflow(cfg, store, m.app, rlv)
 	if wf != nil {
 		wfTools := buildWorkflowTools(wf, cfg.Workflow.StateDir, cfg.Workflow.DefaultDeliverTo)
 		tools = append(tools, wfTools...)
@@ -512,7 +512,7 @@ type networkModule struct {
 	app  *App
 }
 
-func (m *networkModule) Name() string         { return "network" }
+func (m *networkModule) Name() string { return "network" }
 func (m *networkModule) Provides() []appinit.Provides {
 	return []appinit.Provides{appinit.ProvidesPayment, appinit.ProvidesP2P, appinit.ProvidesEconomy, appinit.ProvidesContract, appinit.ProvidesSmartAccount, appinit.ProvidesWorkspace}
 }
@@ -777,9 +777,9 @@ func (m *networkModule) Init(ctx context.Context, r appinit.Resolver) (*appinit.
 // ─── Extension Module ───
 
 type extensionModule struct {
-	cfg      *config.Config
-	boot     *bootstrap.Result
-	bus      *eventbus.Bus
+	cfg  *config.Config
+	boot *bootstrap.Result
+	bus  *eventbus.Bus
 }
 
 func (m *extensionModule) Name() string { return "extension" }
@@ -856,4 +856,3 @@ func (m *extensionModule) Init(ctx context.Context, r appinit.Resolver) (*appini
 		},
 	}, nil
 }
-

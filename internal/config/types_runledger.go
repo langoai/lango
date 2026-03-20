@@ -16,6 +16,9 @@ type RunLedgerConfig struct {
 	// AuthoritativeRead: state reads come from ledger snapshots only.
 	AuthoritativeRead bool `mapstructure:"authoritativeRead" json:"authoritativeRead"`
 
+	// WorkspaceIsolation enables runtime PEV workspace wiring for coding-step validation.
+	WorkspaceIsolation bool `mapstructure:"workspaceIsolation" json:"workspaceIsolation"`
+
 	// StaleTTL is how long a paused run remains resumable (default: 1h).
 	StaleTTL time.Duration `mapstructure:"staleTtl" json:"staleTtl"`
 

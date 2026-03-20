@@ -18,10 +18,10 @@ allow. Phase 4 turns the prepared pieces on and narrows the execution surface.
 
 ## Decisions
 
-### 1. Isolation is opt-in by rollout stage
+### 1. Isolation is opt-in by explicit config gate
 
-The runtime enables `WithWorkspace(NewWorkspaceManager())` only when the designated phase/stage
-gate is active, not merely when RunLedger exists.
+The runtime enables `WithWorkspace(NewWorkspaceManager())` only when
+`runLedger.workspaceIsolation` is enabled, not merely when RunLedger exists.
 
 ### 2. Tool governance is step-scoped
 

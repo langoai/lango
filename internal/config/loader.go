@@ -139,6 +139,17 @@ func DefaultConfig() *Config {
 			DefaultTimeout:     10 * time.Minute,
 			StateDir:           "~/.lango/workflows/",
 		},
+		RunLedger: RunLedgerConfig{
+			Enabled:            false,
+			Shadow:             false,
+			WriteThrough:       false,
+			AuthoritativeRead:  false,
+			WorkspaceIsolation: false,
+			StaleTTL:           time.Hour,
+			MaxRunHistory:      100,
+			ValidatorTimeout:   2 * time.Minute,
+			PlannerMaxRetries:  2,
+		},
 		ObservationalMemory: ObservationalMemoryConfig{
 			Enabled:                          false,
 			MessageTokenThreshold:            1000,

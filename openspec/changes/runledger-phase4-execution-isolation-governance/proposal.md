@@ -6,7 +6,7 @@ workspace isolation and step-scoped tool exposure.
 
 ## What Changes
 
-- Activate workspace isolation in the app runtime behind the phase gate.
+- Activate workspace isolation in the app runtime behind the explicit `runLedger.workspaceIsolation` gate.
 - Enforce step-scoped tool profiles during execution.
 - Tighten execution ownership and policy-application paths around isolated runs.
 - Update docs and operator guidance for fail-closed isolated execution.

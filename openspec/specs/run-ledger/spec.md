@@ -247,11 +247,15 @@ Workspace preparation SHALL be retry-safe even when the same step is validated m
 - **THEN** each attempt uses a retry-safe worktree identity
 - **AND** previous attempts do not cause branch-exists failures
 
-#### Scenario: Phase 1 runtime readiness only
-- **WHEN** RunLedger is enabled in the current Phase 1 runtime
-- **THEN** validators support `work_dir`
-- **BUT** the app runtime does not yet activate `PEVEngine.WithWorkspace(...)`
-- **AND** full workspace isolation activation remains part of the later execution-isolation phase
+#### Scenario: Workspace isolation gated by config
+- **WHEN** `runLedger.workspaceIsolation` is `false`
+- **THEN** validators still support `work_dir`
+- **BUT** the app runtime does not activate `PEVEngine.WithWorkspace(...)`
+
+#### Scenario: Workspace isolation activated
+- **WHEN** `runLedger.workspaceIsolation` is `true`
+- **THEN** the app runtime wires `PEVEngine.WithWorkspace(...)`
+- **AND** coding-step validators execute with runtime workspace isolation enabled
 
 ### Requirement: Rollout Stages
 The system SHALL support 4 progressive rollout stages: Shadow (journal only), Write-Through (ledger first, then mirror), Authoritative Read (reads from ledger), Projection Retired (legacy removed).
@@ -273,7 +277,7 @@ Each step SHALL have a `ToolProfile` that determines which tools are accessible.
 - **THEN** the `supervisor` profile is assigned
 
 ### Requirement: Configuration
-The system SHALL provide `RunLedgerConfig` under the root config with fields: `enabled`, `shadow`, `writeThrough`, `authoritativeRead`, `staleTtl` (default: 1h), `validatorTimeout` (default: 2m), `plannerMaxRetries` (default: 2), `maxRunHistory`.
+The system SHALL provide `RunLedgerConfig` under the root config with fields: `enabled`, `shadow`, `writeThrough`, `authoritativeRead`, `workspaceIsolation`, `staleTtl` (default: 1h), `validatorTimeout` (default: 2m), `plannerMaxRetries` (default: 2), `maxRunHistory`.
 
 #### Scenario: Default config
 - **WHEN** no RunLedger config is provided
@@ -308,4 +312,3 @@ Tool access SHALL be role-based. The orchestrator (agent name "orchestrator" or 
 - **THEN** the step MUST have the `orchestrator_approval` validator type
 - **AND** the step MUST be in `verify_pending` or `failed` status
 - **AND** if either condition is not met, an error is returned
-

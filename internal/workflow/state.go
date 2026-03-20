@@ -14,6 +14,20 @@ import (
 	"github.com/langoai/lango/internal/ent/workflowsteprun"
 )
 
+// RunStore is the persistence contract used by the workflow engine.
+type RunStore interface {
+	CreateRun(ctx context.Context, w *Workflow) (string, error)
+	UpdateRunStatus(ctx context.Context, runID string, status string) error
+	CompleteRun(ctx context.Context, runID string, status string, errMsg string) error
+	CreateStepRun(ctx context.Context, runID string, step Step, renderedPrompt string) error
+	UpdateStepStatus(ctx context.Context, runID string, stepID string, status string, result string, errMsg string) error
+	GetRunStatus(ctx context.Context, runID string) (*RunStatus, error)
+	GetStepResults(ctx context.Context, runID string) (map[string]string, error)
+	ListRuns(ctx context.Context, limit int) ([]RunStatus, error)
+}
+
+var _ RunStore = (*StateStore)(nil)
+
 // StateStore persists workflow execution state for resume capability.
 type StateStore struct {
 	client *ent.Client
@@ -43,6 +57,27 @@ func (s *StateStore) CreateRun(ctx context.Context, w *Workflow) (string, error)
 		return "", fmt.Errorf("create workflow run: %w", err)
 	}
 	return run.ID.String(), nil
+}
+
+// CreateRunWithID creates a new workflow run using a caller-provided canonical ID.
+func (s *StateStore) CreateRunWithID(ctx context.Context, runID string, w *Workflow) error {
+	uid, err := uuid.Parse(runID)
+	if err != nil {
+		return fmt.Errorf("parse run ID %q: %w", runID, err)
+	}
+	now := time.Now()
+	if _, err := s.client.WorkflowRun.Create().
+		SetID(uid).
+		SetWorkflowName(w.Name).
+		SetDescription(w.Description).
+		SetStatus(workflowrun.StatusPending).
+		SetTotalSteps(len(w.Steps)).
+		SetCompletedSteps(0).
+		SetStartedAt(now).
+		Save(ctx); err != nil {
+		return fmt.Errorf("create workflow run with id: %w", err)
+	}
+	return nil
 }
 
 // UpdateRunStatus updates the status of a workflow run.

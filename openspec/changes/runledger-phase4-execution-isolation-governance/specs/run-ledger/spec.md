@@ -4,7 +4,7 @@
 Production runtime SHALL activate workspace isolation for coding steps once the execution-isolation stage is enabled.
 
 #### Scenario: Runtime isolation active
-- **WHEN** the execution-isolation stage is enabled
+- **WHEN** `runLedger.workspaceIsolation` is enabled
 - **THEN** the app runtime wires `PEVEngine.WithWorkspace(...)`
 - **AND** coding-step validators execute inside isolated worktrees rather than the base tree
 

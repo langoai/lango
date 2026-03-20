@@ -7,6 +7,7 @@ import (
 	"github.com/langoai/lango/internal/background"
 	"github.com/langoai/lango/internal/config"
 	cronpkg "github.com/langoai/lango/internal/cron"
+	"github.com/langoai/lango/internal/runledger"
 	"github.com/langoai/lango/internal/session"
 	"github.com/langoai/lango/internal/workflow"
 )
@@ -102,7 +103,7 @@ func initBackground(cfg *config.Config, app *App) *background.Manager {
 }
 
 // initWorkflow creates the workflow engine if enabled.
-func initWorkflow(cfg *config.Config, store session.Store, app *App) *workflow.Engine {
+func initWorkflow(cfg *config.Config, store session.Store, app *App, rlv *runLedgerValues) *workflow.Engine {
 	if !cfg.Workflow.Enabled {
 		logger().Info("workflow engine disabled")
 		return nil
@@ -115,7 +116,14 @@ func initWorkflow(cfg *config.Config, store session.Store, app *App) *workflow.E
 	}
 
 	client := entStore.Client()
-	state := workflow.NewStateStore(client, logger())
+	var state workflow.RunStore = workflow.NewStateStore(client, logger())
+	if rlv != nil && rlv.store != nil && cfg.RunLedger.Enabled && cfg.RunLedger.WriteThrough {
+		state = runledger.NewWorkflowWriteThrough(
+			rlv.store,
+			workflow.NewStateStore(client, logger()),
+			runledger.RolloutConfig{Stage: runledger.StageWriteThrough},
+		)
+	}
 	runner := &agentRunnerAdapter{app: app}
 	sender := newChannelSender(app)
 

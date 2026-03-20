@@ -176,10 +176,9 @@ Snapshots are materialized by replaying the full journal, or by applying a tail 
 
 The `WorkspaceManager` provides git worktree isolation for coding-related validators (`build_pass`, `test_pass`, `file_changed`). When enabled, each step executes in an isolated worktree at `$TMPDIR/runledger/<run_id>/<step_id>`.
 
-**Current status**: Run persistence is active in Phase 2, but runtime workspace isolation
-remains disabled on purpose. The validator and workspace lifecycle code are ready, but the
-app runtime does not yet wire `WithWorkspace(...)`. The later execution-isolation phase
-activates full isolation via:
+**Current status**: Run persistence is active in Phase 2. Runtime workspace isolation is
+now gated by configuration and activates only when `runLedger.workspaceIsolation: true`.
+When the flag is off, validators still run without worktree isolation.
 
 ```go
 pev.WithWorkspace(NewWorkspaceManager())
@@ -252,6 +251,7 @@ runLedger:
   shadow: true
   writeThrough: false
   authoritativeRead: false
+  workspaceIsolation: false
   staleTtl: 1h
   maxRunHistory: 100
   validatorTimeout: 2m
@@ -264,6 +264,7 @@ runLedger:
 | `runLedger.shadow` | bool | `false` | Shadow mode: journal records only, existing systems unaffected |
 | `runLedger.writeThrough` | bool | `false` | All creates/updates go through ledger first |
 | `runLedger.authoritativeRead` | bool | `false` | State reads come from ledger snapshots only |
+| `runLedger.workspaceIsolation` | bool | `false` | Enable runtime worktree isolation for coding-step validation |
 | `runLedger.staleTtl` | duration | `1h` | How long a paused run remains resumable |
 | `runLedger.maxRunHistory` | int | `100` | Maximum number of runs to keep (0 = unlimited) |
 | `runLedger.validatorTimeout` | duration | `2m` | Timeout for individual validator execution |
