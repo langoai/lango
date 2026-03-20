@@ -23,6 +23,7 @@ import (
 	"github.com/langoai/lango/internal/lifecycle"
 	"github.com/langoai/lango/internal/logging"
 	"github.com/langoai/lango/internal/observability/audit"
+	"github.com/langoai/lango/internal/runledger"
 	"github.com/langoai/lango/internal/sandbox"
 	"github.com/langoai/lango/internal/session"
 	"github.com/langoai/lango/internal/skill"
@@ -139,6 +140,10 @@ func New(boot *bootstrap.Result) (*App, error) {
 		tools = toolchain.ChainAll(tools,
 			toolchain.WithApproval(cfg.Security.Interceptor, composite, grantStore, limiter))
 		logger().Infow("tool approval enabled", "policy", string(policy))
+	}
+
+	if app.RunLedgerStore != nil && cfg.RunLedger.WorkspaceIsolation {
+		tools = toolchain.ChainAll(tools, runledger.ToolProfileGuard(app.RunLedgerStore))
 	}
 
 	// Log tool registration summary for diagnostics.

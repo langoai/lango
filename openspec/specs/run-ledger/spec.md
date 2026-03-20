@@ -221,22 +221,17 @@ Resume SHALL be integrated with gateway/session handling while remaining opt-in.
 - **THEN** the system presents resume candidates for explicit confirmation
 
 ### Requirement: Workspace Isolation
-Workspace preparation SHALL be retry-safe even when the same step is validated multiple times.
+Production runtime SHALL activate workspace isolation for coding steps once the execution-isolation stage is enabled.
 
-#### Scenario: Repeated validation attempts
-- **WHEN** the same `run_id` and `step_id` require workspace preparation more than once
-- **THEN** each attempt uses a retry-safe worktree identity
-- **AND** previous attempts do not cause branch-exists failures
-
-#### Scenario: Workspace isolation gated by config
-- **WHEN** `runLedger.workspaceIsolation` is `false`
-- **THEN** validators still support `work_dir`
-- **BUT** the app runtime does not activate `PEVEngine.WithWorkspace(...)`
-
-#### Scenario: Workspace isolation activated
-- **WHEN** `runLedger.workspaceIsolation` is `true`
+#### Scenario: Runtime isolation active
+- **WHEN** `runLedger.workspaceIsolation` is enabled
 - **THEN** the app runtime wires `PEVEngine.WithWorkspace(...)`
-- **AND** coding-step validators execute with runtime workspace isolation enabled
+- **AND** coding-step validators execute inside isolated worktrees rather than the base tree
+
+#### Scenario: Retry-safe repeated validation
+- **WHEN** the same step is validated multiple times under isolation
+- **THEN** each attempt uses a retry-safe workspace identity
+- **AND** previous attempts do not block later ones via reused branch metadata
 
 ### Requirement: Rollout Stages
 Write-through mode SHALL route workflow/background writes through RunLedger first.
@@ -252,15 +247,15 @@ Write-through mode SHALL route workflow/background writes through RunLedger firs
 - **AND** the system records degraded projection state for later replay
 
 ### Requirement: Tool Governance
-Each step SHALL have a `ToolProfile` that determines which tools are accessible. Profiles: `coding` (exec, fs), `browser` (browser_*), `knowledge` (search_*, rag_*), `supervisor` (run_read, run_active, run_note only). If not specified, the profile SHALL be auto-inferred from the validator type.
+The system SHALL expose tools to execution agents according to the active step's `ToolProfile`.
 
-#### Scenario: Auto-infer coding profile
-- **WHEN** a step has a `build_pass` validator and no explicit tool profile
-- **THEN** the `coding` profile is assigned
+#### Scenario: Coding profile
+- **WHEN** the active step uses the `coding` profile
+- **THEN** only coding-safe execution tools are available
 
-#### Scenario: Auto-infer supervisor profile
-- **WHEN** a step has an `orchestrator_approval` validator
-- **THEN** the `supervisor` profile is assigned
+#### Scenario: Supervisor profile
+- **WHEN** the active step uses the `supervisor` profile
+- **THEN** only supervisor-safe run inspection/approval tools are available
 
 ### Requirement: Configuration
 The system SHALL provide `RunLedgerConfig` under the root config with fields: `enabled`, `shadow`, `writeThrough`, `authoritativeRead`, `workspaceIsolation`, `staleTtl` (default: 1h), `validatorTimeout` (default: 2m), `plannerMaxRetries` (default: 2), `maxRunHistory`.
