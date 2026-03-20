@@ -63,6 +63,72 @@ func TestResumeManager_FindCandidates(t *testing.T) {
 	assert.Equal(t, RunStatusPaused, candidates[0].Status)
 }
 
+func TestResumeManager_FindCandidates_ExcludesStaleRuns(t *testing.T) {
+	ctx := context.Background()
+	store := NewMemoryStore()
+
+	old := time.Now().Add(-2 * time.Hour)
+	_ = store.AppendJournalEvent(ctx, JournalEvent{
+		RunID:     "run-stale",
+		Type:      EventRunCreated,
+		Timestamp: old,
+		Payload: marshalPayload(RunCreatedPayload{
+			SessionKey: "session-1",
+			Goal:       "stale run",
+		}),
+	})
+	_ = store.AppendJournalEvent(ctx, JournalEvent{
+		RunID:     "run-stale",
+		Type:      EventPlanAttached,
+		Timestamp: old,
+		Payload: marshalPayload(PlanAttachedPayload{
+			Steps: []Step{{StepID: "s1", Goal: "work", OwnerAgent: "op", Status: StepStatusPending}},
+		}),
+	})
+	_ = store.AppendJournalEvent(ctx, JournalEvent{
+		RunID:     "run-stale",
+		Type:      EventRunPaused,
+		Timestamp: old,
+		Payload:   marshalPayload(RunPausedPayload{Reason: "turn limit"}),
+	})
+
+	rm := NewResumeManager(store, time.Hour)
+	candidates, err := rm.FindCandidates(ctx, "session-1")
+	require.NoError(t, err)
+	assert.Empty(t, candidates)
+}
+
+func TestResumeManager_FindCandidates_MultipleCandidatesSameSession(t *testing.T) {
+	ctx := context.Background()
+	store := NewMemoryStore()
+
+	for _, runID := range []string{"run-1", "run-2"} {
+		_ = store.AppendJournalEvent(ctx, JournalEvent{
+			RunID:   runID,
+			Type:    EventRunCreated,
+			Payload: marshalPayload(RunCreatedPayload{SessionKey: "session-1", Goal: runID}),
+		})
+		_ = store.AppendJournalEvent(ctx, JournalEvent{
+			RunID: runID,
+			Type:  EventPlanAttached,
+			Payload: marshalPayload(PlanAttachedPayload{
+				Steps: []Step{{StepID: "s1", Goal: "work", OwnerAgent: "op", Status: StepStatusPending}},
+			}),
+		})
+		_ = store.AppendJournalEvent(ctx, JournalEvent{
+			RunID:   runID,
+			Type:    EventRunPaused,
+			Payload: marshalPayload(RunPausedPayload{Reason: "turn limit"}),
+		})
+	}
+
+	rm := NewResumeManager(store, time.Hour)
+	candidates, err := rm.FindCandidates(ctx, "session-1")
+	require.NoError(t, err)
+	require.Len(t, candidates, 2)
+	assert.ElementsMatch(t, []string{"run-1", "run-2"}, []string{candidates[0].RunID, candidates[1].RunID})
+}
+
 func TestResumeManager_Resume(t *testing.T) {
 	ctx := context.Background()
 	store := NewMemoryStore()

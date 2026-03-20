@@ -114,6 +114,9 @@ func New(boot *bootstrap.Result) (*App, error) {
 	if app.Sanitizer != nil {
 		app.Gateway.SetSanitizer(app.Sanitizer)
 	}
+	if app.RunLedgerStore != nil {
+		app.Gateway.SetRunLedgerStore(app.RunLedgerStore)
+	}
 
 	// B4d. Build composite approval provider and tool approval wrapper.
 	composite, grantStore := buildApprovalProvider(cfg, app.Gateway)

@@ -17,6 +17,7 @@ import (
 	"github.com/langoai/lango/internal/approval"
 	"github.com/langoai/lango/internal/config"
 	"github.com/langoai/lango/internal/gatekeeper"
+	"github.com/langoai/lango/internal/runledger"
 )
 
 func TestGatewayServer(t *testing.T) {
@@ -595,4 +596,106 @@ func TestApprovalTimeout_UsesConfigTimeout(t *testing.T) {
 	_, err := server.RequestApproval(t.Context(), "test approval")
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "approval timeout")
+}
+
+func TestHandleChatMessage_ResumeIntentReturnsCandidates(t *testing.T) {
+	t.Parallel()
+
+	server := New(Config{}, nil, nil, nil, nil)
+	store := runledger.NewMemoryStore()
+	server.SetRunLedgerStore(store)
+
+	ctx := context.Background()
+	require.NoError(t, store.AppendJournalEvent(ctx, runledger.JournalEvent{
+		RunID:   "run-1",
+		Type:    runledger.EventRunCreated,
+		Payload: resumePayload(runledger.RunCreatedPayload{SessionKey: "sess-1", Goal: "resume me"}),
+	}))
+	require.NoError(t, store.AppendJournalEvent(ctx, runledger.JournalEvent{
+		RunID: "run-1",
+		Type:  runledger.EventPlanAttached,
+		Payload: resumePayload(runledger.PlanAttachedPayload{
+			Steps: []runledger.Step{{
+				StepID:     "step-1",
+				Goal:       "work",
+				OwnerAgent: "operator",
+				Status:     runledger.StepStatusPending,
+				Validator:  runledger.ValidatorSpec{Type: runledger.ValidatorBuildPass},
+				MaxRetries: runledger.DefaultMaxRetries,
+			}},
+		}),
+	}))
+	require.NoError(t, store.AppendJournalEvent(ctx, runledger.JournalEvent{
+		RunID:   "run-1",
+		Type:    runledger.EventRunPaused,
+		Payload: resumePayload(runledger.RunPausedPayload{Reason: "paused"}),
+	}))
+
+	sendCh := make(chan []byte, 8)
+	server.clientsMu.Lock()
+	server.clients["ui-1"] = &Client{ID: "ui-1", Type: "ui", SessionKey: "sess-1", Send: sendCh}
+	server.clientsMu.Unlock()
+
+	client := &Client{ID: "ui-1", Type: "ui", Server: server, SessionKey: "sess-1"}
+	result, err := server.handleChatMessage(client, json.RawMessage(`{"message":"계속해줘"}`))
+	require.NoError(t, err)
+
+	body := result.(map[string]interface{})
+	assert.Equal(t, true, body["resumeRequired"])
+
+	select {
+	case msg := <-sendCh:
+		var eventMsg map[string]interface{}
+		require.NoError(t, json.Unmarshal(msg, &eventMsg))
+		assert.Equal(t, "agent.resume_required", eventMsg["event"])
+	case <-time.After(time.Second):
+		t.Fatal("expected resume_required broadcast")
+	}
+}
+
+func TestHandleChatMessage_ResumeConfirmResumesRun(t *testing.T) {
+	t.Parallel()
+
+	server := New(Config{}, nil, nil, nil, nil)
+	store := runledger.NewMemoryStore()
+	server.SetRunLedgerStore(store)
+
+	ctx := context.Background()
+	require.NoError(t, store.AppendJournalEvent(ctx, runledger.JournalEvent{
+		RunID:   "run-2",
+		Type:    runledger.EventRunCreated,
+		Payload: resumePayload(runledger.RunCreatedPayload{SessionKey: "sess-2", Goal: "resume me"}),
+	}))
+	require.NoError(t, store.AppendJournalEvent(ctx, runledger.JournalEvent{
+		RunID: "run-2",
+		Type:  runledger.EventPlanAttached,
+		Payload: resumePayload(runledger.PlanAttachedPayload{
+			Steps: []runledger.Step{{
+				StepID:     "step-1",
+				Goal:       "work",
+				OwnerAgent: "operator",
+				Status:     runledger.StepStatusPending,
+				Validator:  runledger.ValidatorSpec{Type: runledger.ValidatorBuildPass},
+				MaxRetries: runledger.DefaultMaxRetries,
+			}},
+		}),
+	}))
+	require.NoError(t, store.AppendJournalEvent(ctx, runledger.JournalEvent{
+		RunID:   "run-2",
+		Type:    runledger.EventRunPaused,
+		Payload: resumePayload(runledger.RunPausedPayload{Reason: "paused"}),
+	}))
+
+	client := &Client{ID: "ui-2", Type: "ui", Server: server, SessionKey: "sess-2"}
+	_, err := server.handleChatMessage(client, json.RawMessage(`{"message":"resume","confirmResume":true,"resumeRunId":"run-2"}`))
+	require.ErrorIs(t, err, ErrAgentNotReady)
+
+	snap, snapErr := store.GetRunSnapshot(ctx, "run-2")
+	require.NoError(t, snapErr)
+	assert.Equal(t, runledger.RunStatusRunning, snap.Status)
+}
+
+func resumePayload(v interface{}) []byte {
+	data, _ := json.Marshal(v)
+	return data
 }

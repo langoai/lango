@@ -5,11 +5,13 @@ import (
 	"encoding/json"
 	"errors"
 	"testing"
+	"time"
 
 	_ "github.com/mattn/go-sqlite3"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/langoai/lango/internal/background"
 	"github.com/langoai/lango/internal/ent/enttest"
 	"github.com/langoai/lango/internal/workflow"
 	"go.uber.org/zap"
@@ -118,6 +120,31 @@ func TestDetectAndReplayWorkflowProjectionDrift(t *testing.T) {
 	assert.Nil(t, drift)
 }
 
+func TestBackgroundWriteThrough_SnapshotMatchesBackgroundTaskStatus(t *testing.T) {
+	client := enttest.Open(t, "sqlite3", "file:ent?mode=memory&_fk=1")
+	defer client.Close()
+
+	ledger := NewEntStore(client)
+	projection := NewBackgroundWriteThrough(ledger, RolloutConfig{
+		Stage: StageWriteThrough,
+	})
+	mgr := background.NewManager(&backgroundTestRunner{result: "done"}, nil, 5, time.Minute, zap.NewNop().Sugar()).
+		WithProjection(projection)
+
+	runID, err := mgr.Submit(context.Background(), "background prompt", background.Origin{
+		Session: "session-1",
+	})
+	require.NoError(t, err)
+
+	time.Sleep(150 * time.Millisecond)
+
+	snap, err := ledger.GetRunSnapshot(context.Background(), runID)
+	require.NoError(t, err)
+	assert.Equal(t, RunStatusCompleted, snap.Status)
+	require.Len(t, snap.Steps, 1)
+	assert.Equal(t, StepStatusCompleted, snap.Steps[0].Status)
+}
+
 type failingWorkflowProjectionStore struct {
 	err error
 }
@@ -163,4 +190,17 @@ func (f failingWorkflowProjectionStore) GetStepResults(_ context.Context, _ stri
 
 func (f failingWorkflowProjectionStore) ListRuns(_ context.Context, _ int) ([]workflow.RunStatus, error) {
 	return nil, f.err
+}
+
+type backgroundTestRunner struct {
+	result string
+	err    error
+	delay  time.Duration
+}
+
+func (m *backgroundTestRunner) Run(_ context.Context, _ string, _ string) (string, error) {
+	if m.delay > 0 {
+		time.Sleep(m.delay)
+	}
+	return m.result, m.err
 }

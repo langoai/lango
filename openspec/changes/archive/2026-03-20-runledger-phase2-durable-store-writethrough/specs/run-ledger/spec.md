@@ -24,17 +24,6 @@ The system SHALL persist cached snapshots and allow full rebuild from the journa
 - **THEN** the serialized snapshot is persisted in `RunSnapshot`
 - **AND** the step projection rows are refreshed in `RunStep`
 
-### Requirement: CLI Journal Inspection
-The system SHALL let operators inspect persistent RunLedger data from the CLI.
-
-#### Scenario: `lango run list`
-- **WHEN** the operator runs `lango run list`
-- **THEN** the command reads recent runs from the persistent RunLedger snapshot store
-
-#### Scenario: `lango run journal <run-id>`
-- **WHEN** the operator runs `lango run journal <run-id>`
-- **THEN** the command reads the persistent journal events for that run
-
 ### Requirement: Rollout Stages
 Write-through mode SHALL route workflow/background writes through RunLedger first.
 
@@ -47,3 +36,16 @@ Write-through mode SHALL route workflow/background writes through RunLedger firs
 - **WHEN** RunLedger append succeeds but projection sync fails
 - **THEN** the run remains valid in RunLedger
 - **AND** the system records degraded projection state for later replay
+
+## ADDED Requirements
+
+### Requirement: CLI Journal Inspection
+The system SHALL let operators inspect persistent RunLedger data from the CLI.
+
+#### Scenario: `lango run list`
+- **WHEN** the operator runs `lango run list`
+- **THEN** the command reads recent runs from the persistent RunLedger snapshot store
+
+#### Scenario: `lango run journal <run-id>`
+- **WHEN** the operator runs `lango run journal <run-id>`
+- **THEN** the command reads the persistent journal events for that run

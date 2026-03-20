@@ -20,6 +20,7 @@ import (
 	"github.com/langoai/lango/internal/deadline"
 	"github.com/langoai/lango/internal/gatekeeper"
 	"github.com/langoai/lango/internal/logging"
+	"github.com/langoai/lango/internal/runledger"
 	"github.com/langoai/lango/internal/security"
 	"github.com/langoai/lango/internal/session"
 )
@@ -40,6 +41,7 @@ type Server struct {
 	provider           *security.RPCProvider
 	auth               *AuthManager
 	store              session.Store
+	runLedgerStore     runledger.RunLedgerStore
 	router             chi.Router
 	httpServer         *http.Server
 	upgrader           websocket.Upgrader
@@ -156,8 +158,10 @@ func New(cfg Config, agent *adk.Agent, provider *security.RPCProvider, store ses
 // handleChatMessage processes chat messages via Agent
 func (s *Server) handleChatMessage(client *Client, params json.RawMessage) (interface{}, error) {
 	var req struct {
-		Message    string `json:"message"`
-		SessionKey string `json:"sessionKey"`
+		Message       string `json:"message"`
+		SessionKey    string `json:"sessionKey"`
+		ResumeRunID   string `json:"resumeRunId"`
+		ConfirmResume bool   `json:"confirmResume"`
 	}
 	if err := json.Unmarshal(params, &req); err != nil {
 		return nil, fmt.Errorf("invalid params: %w", err)
@@ -177,6 +181,37 @@ func (s *Server) handleChatMessage(client *Client, params json.RawMessage) (inte
 	} else if req.SessionKey != "" {
 		// No auth — allow client-specified key
 		sessionKey = req.SessionKey
+	}
+
+	if s.runLedgerStore != nil && runledger.DetectResumeIntent(req.Message) {
+		rm := runledger.NewResumeManager(s.runLedgerStore, time.Hour)
+		if !req.ConfirmResume {
+			candidates, err := rm.FindCandidates(context.Background(), sessionKey)
+			if err != nil {
+				return nil, fmt.Errorf("find resume candidates: %w", err)
+			}
+			if len(candidates) > 0 {
+				payload := map[string]interface{}{
+					"sessionKey":  sessionKey,
+					"candidates":  candidates,
+					"message":     "Resume candidates found. Confirm one to continue.",
+					"requiresAck": true,
+				}
+				s.BroadcastToSession(sessionKey, "agent.resume_required", payload)
+				return map[string]interface{}{
+					"resumeRequired": true,
+					"candidates":     candidates,
+				}, nil
+			}
+		} else if req.ResumeRunID != "" {
+			if _, err := rm.Resume(context.Background(), req.ResumeRunID, "user"); err != nil {
+				return nil, fmt.Errorf("resume run: %w", err)
+			}
+			s.BroadcastToSession(sessionKey, "agent.resume_confirmed", map[string]string{
+				"sessionKey": sessionKey,
+				"runId":      req.ResumeRunID,
+			})
+		}
 	}
 
 	if s.agent == nil {
@@ -576,6 +611,11 @@ func (s *Server) SetAgent(agent *adk.Agent) {
 // SetSanitizer sets the response sanitizer for output gatekeeper filtering.
 func (s *Server) SetSanitizer(san *gatekeeper.Sanitizer) {
 	s.sanitizer = san
+}
+
+// SetRunLedgerStore wires optional RunLedger access for resume and authoritative flows.
+func (s *Server) SetRunLedgerStore(store runledger.RunLedgerStore) {
+	s.runLedgerStore = store
 }
 
 // OnTurnComplete registers a callback that fires after each agent turn.

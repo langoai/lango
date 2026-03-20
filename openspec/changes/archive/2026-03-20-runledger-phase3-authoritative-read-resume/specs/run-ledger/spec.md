@@ -15,6 +15,8 @@ Resume SHALL be integrated with gateway/session handling while remaining opt-in.
 - **WHEN** a new request expresses resume intent and a resumable paused run exists
 - **THEN** the system presents resume candidates for explicit confirmation
 
+## ADDED Requirements
+
 ### Requirement: Command Context
 The system SHALL inject active run summaries into command context.
 

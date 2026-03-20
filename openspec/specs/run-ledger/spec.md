@@ -5,34 +5,24 @@
 Durable execution engine that transforms Lango from an AI chatbot into a Task OS. Provides an append-only journal as the single source of truth, typed validators via a Propose-Evidence-Verify (PEV) engine, and policy-driven failure recovery for long-running agent tasks. Core principle: "the system proves completion, not the agent."
 ## Requirements
 ### Requirement: Append-Only Journal
-The system SHALL record all run state changes as `JournalEvent` records with monotonic sequence numbers. Events SHALL be immutable once written — no overwrite, no delete, only append.
+The system SHALL provide an Ent-backed persistent journal implementation for RunLedger.
 
-#### Scenario: Event appended
-- **WHEN** a state change occurs (e.g., step started, result proposed)
-- **THEN** a `JournalEvent` is appended with auto-incremented `Seq` within the run
-- **AND** the event includes a typed `Payload` (JSON) and a `Timestamp`
+#### Scenario: Journal survives restart
+- **WHEN** the process restarts after journal events are appended
+- **THEN** the same run's journal events remain queryable
 
-#### Scenario: Event types
-- **GIVEN** the 14 event types: run_created, plan_attached, step_started, step_result_proposed, step_validation_passed, step_validation_failed, policy_decision_applied, note_written, run_paused, run_resumed, run_completed, run_failed, projection_synced, criterion_met
-- **WHEN** any run lifecycle transition occurs
-- **THEN** the corresponding event type is recorded
+#### Scenario: App runtime prefers Ent store
+- **WHEN** the shared application `ent.Client` is available during RunLedger module init
+- **THEN** the module uses an Ent-backed `RunLedgerStore`
+- **AND** `MemoryStore` remains a fallback for tests and non-bootstrapped contexts
 
 ### Requirement: Materialized Snapshots
-The system SHALL provide `RunSnapshot` as a cached projection derived entirely from the journal. Snapshots SHALL never be the source of truth — they MUST be rebuildable by replaying the journal.
+The system SHALL support authoritative-read mode where run-state reads come from RunLedger snapshots.
 
-#### Scenario: Full materialization
-- **WHEN** `MaterializeFromJournal(events)` is called with a complete event list
-- **THEN** a `RunSnapshot` is produced reflecting the current state of the run
-
-#### Scenario: Cached tail replay
-- **GIVEN** a cached snapshot at `LastJournalSeq = N`
-- **WHEN** new events exist with `Seq > N`
-- **THEN** only the tail events are replayed via `ApplyTail` instead of full replay
-- **AND** the cached snapshot is updated with the new `LastJournalSeq`
-
-#### Scenario: Empty journal
-- **WHEN** `MaterializeFromJournal` is called with an empty event list
-- **THEN** an error is returned
+#### Scenario: Authoritative snapshot read
+- **WHEN** authoritative-read is enabled
+- **THEN** run-state consumers read from `RunSnapshot`
+- **AND** projection mirrors are no longer treated as authoritative
 
 ### Requirement: Run Lifecycle
 A Run SHALL transition through statuses: `planning` → `running` → `paused` | `completed` | `failed`. Status transitions SHALL occur only through journal events.
@@ -224,20 +214,11 @@ The system SHALL validate execution-agent step proposals before journaling them.
 - **AND** no `EventStepResultProposed` is appended
 
 ### Requirement: Resume Protocol
-Resume SHALL be opt-in only — no automatic resurrection. The system SHALL detect resume intent from user messages (Korean: 계속, 이어서, 마저; English: resume, continue) and present candidates for explicit confirmation.
+Resume SHALL be integrated with gateway/session handling while remaining opt-in.
 
-#### Scenario: Resume intent detected
-- **WHEN** a user message contains "계속해줘" or "resume the task"
-- **THEN** `DetectResumeIntent` returns true
-
-#### Scenario: No resume intent
-- **WHEN** a user message contains "build a new feature"
-- **THEN** `DetectResumeIntent` returns false
-
-#### Scenario: Stale run excluded
-- **GIVEN** a paused run last updated more than `staleTTL` (default: 1h) ago
-- **WHEN** resume candidates are searched
-- **THEN** the stale run is NOT included
+#### Scenario: Resume candidate surfaced to user
+- **WHEN** a new request expresses resume intent and a resumable paused run exists
+- **THEN** the system presents resume candidates for explicit confirmation
 
 ### Requirement: Workspace Isolation
 Workspace preparation SHALL be retry-safe even when the same step is validated multiple times.
@@ -258,12 +239,17 @@ Workspace preparation SHALL be retry-safe even when the same step is validated m
 - **AND** coding-step validators execute with runtime workspace isolation enabled
 
 ### Requirement: Rollout Stages
-The system SHALL support 4 progressive rollout stages: Shadow (journal only), Write-Through (ledger first, then mirror), Authoritative Read (reads from ledger), Projection Retired (legacy removed).
+Write-through mode SHALL route workflow/background writes through RunLedger first.
 
-#### Scenario: Shadow mode
-- **GIVEN** `runLedger.shadow: true`
-- **WHEN** runs are created
-- **THEN** journal events are recorded but existing workflow/background systems operate unchanged
+#### Scenario: Write-through workflow create
+- **WHEN** write-through is enabled and a workflow run is created
+- **THEN** RunLedger creates the canonical `run_id` first
+- **AND** workflow projection writes use that same `run_id`
+
+#### Scenario: Projection sync failure
+- **WHEN** RunLedger append succeeds but projection sync fails
+- **THEN** the run remains valid in RunLedger
+- **AND** the system records degraded projection state for later replay
 
 ### Requirement: Tool Governance
 Each step SHALL have a `ToolProfile` that determines which tools are accessible. Profiles: `coding` (exec, fs), `browser` (browser_*), `knowledge` (search_*, rag_*), `supervisor` (run_read, run_active, run_note only). If not specified, the profile SHALL be auto-inferred from the validator type.
@@ -312,3 +298,22 @@ Tool access SHALL be role-based. The orchestrator (agent name "orchestrator" or 
 - **THEN** the step MUST have the `orchestrator_approval` validator type
 - **AND** the step MUST be in `verify_pending` or `failed` status
 - **AND** if either condition is not met, an error is returned
+
+### Requirement: CLI Journal Inspection
+The system SHALL let operators inspect persistent RunLedger data from the CLI.
+
+#### Scenario: `lango run list`
+- **WHEN** the operator runs `lango run list`
+- **THEN** the command reads recent runs from the persistent RunLedger snapshot store
+
+#### Scenario: `lango run journal <run-id>`
+- **WHEN** the operator runs `lango run journal <run-id>`
+- **THEN** the command reads the persistent journal events for that run
+
+### Requirement: Command Context
+The system SHALL inject active run summaries into command context.
+
+#### Scenario: Active run summary injected
+- **WHEN** an active or paused resumable run exists for the session
+- **THEN** command context includes compact run summary, current blocker, and current step data
+
