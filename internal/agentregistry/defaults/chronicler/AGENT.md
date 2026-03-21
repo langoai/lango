@@ -2,6 +2,7 @@
 name: chronicler
 description: "Conversational memory: observations, reflections, and session recall"
 status: active
+session_isolation: true
 prefixes:
   - memory_
   - observe_

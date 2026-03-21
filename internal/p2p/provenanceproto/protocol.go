@@ -21,10 +21,14 @@ type SessionValidator func(token string) (string, bool)
 // BundleImporter verifies and stores a provenance bundle payload.
 type BundleImporter func(ctx context.Context, peerDID string, data []byte) error
 
+// BundleExporter exports a signed provenance bundle for a remote peer request.
+type BundleExporter func(ctx context.Context, peerDID, sessionKey, redaction string) ([]byte, error)
+
 // Handler handles provenance protocol streams.
 type Handler struct {
 	validator SessionValidator
 	importer  BundleImporter
+	exporter  BundleExporter
 	maxBundle int64
 	logger    *zap.Logger
 }
@@ -33,6 +37,7 @@ type Handler struct {
 type HandlerConfig struct {
 	Validator     SessionValidator
 	Importer      BundleImporter
+	Exporter      BundleExporter
 	MaxBundleSize int64
 	Logger        *zap.Logger
 }
@@ -45,6 +50,7 @@ func NewHandler(cfg HandlerConfig) *Handler {
 	return &Handler{
 		validator: cfg.Validator,
 		importer:  cfg.Importer,
+		exporter:  cfg.Exporter,
 		maxBundle: cfg.MaxBundleSize,
 		logger:    cfg.Logger,
 	}
@@ -77,6 +83,8 @@ func (h *Handler) StreamHandler() network.StreamHandler {
 		switch req.Type {
 		case RequestPushBundle:
 			h.handlePushBundle(ctx, s, peerDID, req)
+		case RequestFetchBundle:
+			h.handleFetchBundle(ctx, s, peerDID, req)
 		default:
 			h.writeError(s, fmt.Sprintf("unknown request type: %s", req.Type))
 		}
@@ -125,6 +133,35 @@ func (h *Handler) writeResponse(s network.Stream, resp *PushBundleResponse) {
 	_ = json.NewEncoder(s).Encode(resp)
 }
 
+func (h *Handler) handleFetchBundle(ctx context.Context, s network.Stream, peerDID string, req Request) {
+	var payload FetchBundlePayload
+	if err := json.Unmarshal(req.Payload, &payload); err != nil {
+		h.writeFetchError(s, "unmarshal fetch payload: "+err.Error())
+		return
+	}
+	if payload.SessionKey == "" {
+		h.writeFetchError(s, "sessionKey is required")
+		return
+	}
+	if h.exporter == nil {
+		h.writeFetchError(s, "bundle exporter not configured")
+		return
+	}
+	data, err := h.exporter(ctx, peerDID, payload.SessionKey, payload.RedactionLevel)
+	if err != nil {
+		h.writeFetchError(s, "export provenance bundle: "+err.Error())
+		return
+	}
+	_ = json.NewEncoder(s).Encode(&FetchBundleResponse{
+		Bundle:  data,
+		Message: "provenance bundle exported",
+	})
+}
+
+func (h *Handler) writeFetchError(s network.Stream, message string) {
+	_ = json.NewEncoder(s).Encode(&FetchBundleResponse{Message: message})
+}
+
 // PushBundle sends a provenance bundle to a remote peer over the dedicated protocol.
 func PushBundle(ctx context.Context, host host.Host, peerID peer.ID, token string, bundle []byte) (*PushBundleResponse, error) {
 	stream, err := host.NewStream(ctx, peerID, protocol.ID(ProtocolID))
@@ -154,4 +191,41 @@ func PushBundle(ctx context.Context, host host.Host, peerID peer.ID, token strin
 		return &resp, errors.New(resp.Message)
 	}
 	return &resp, nil
+}
+
+// FetchBundle requests a signed provenance bundle from a remote peer.
+func FetchBundle(ctx context.Context, host host.Host, peerID peer.ID, token, sessionKey, redaction string) ([]byte, error) {
+	stream, err := host.NewStream(ctx, peerID, protocol.ID(ProtocolID))
+	if err != nil {
+		return nil, fmt.Errorf("open provenance stream: %w", err)
+	}
+	defer stream.Close()
+
+	payload, err := json.Marshal(FetchBundlePayload{
+		SessionKey:     sessionKey,
+		RedactionLevel: redaction,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("marshal provenance fetch payload: %w", err)
+	}
+	req := Request{
+		Type:    RequestFetchBundle,
+		Token:   token,
+		Payload: payload,
+	}
+	if err := json.NewEncoder(stream).Encode(&req); err != nil {
+		return nil, fmt.Errorf("send provenance fetch request: %w", err)
+	}
+
+	var resp FetchBundleResponse
+	if err := json.NewDecoder(stream).Decode(&resp); err != nil {
+		return nil, fmt.Errorf("decode provenance fetch response: %w", err)
+	}
+	if len(resp.Bundle) == 0 {
+		if resp.Message == "" {
+			resp.Message = "empty provenance bundle response"
+		}
+		return nil, errors.New(resp.Message)
+	}
+	return resp.Bundle, nil
 }

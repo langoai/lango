@@ -46,3 +46,38 @@ func TestPushBundleRoundTrip(t *testing.T) {
 	assert.True(t, resp.Stored)
 	assert.Equal(t, []byte("bundle-json"), imported)
 }
+
+func TestFetchBundleRoundTrip(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	server, err := libp2p.New()
+	require.NoError(t, err)
+	defer server.Close()
+
+	client, err := libp2p.New()
+	require.NoError(t, err)
+	defer client.Close()
+
+	require.NoError(t, client.Connect(ctx, peer.AddrInfo{
+		ID:    server.ID(),
+		Addrs: server.Addrs(),
+	}))
+
+	handler := NewHandler(HandlerConfig{
+		Validator: func(token string) (string, bool) {
+			return "did:lango:peer", token == "token"
+		},
+		Exporter: func(_ context.Context, peerDID, sessionKey, redaction string) ([]byte, error) {
+			assert.Equal(t, "did:lango:peer", peerDID)
+			assert.Equal(t, "sess-1", sessionKey)
+			assert.Equal(t, "content", redaction)
+			return []byte("bundle-json"), nil
+		},
+	})
+	server.SetStreamHandler(ProtocolID, handler.StreamHandler())
+
+	data, err := FetchBundle(ctx, client, server.ID(), "token", "sess-1", "content")
+	require.NoError(t, err)
+	assert.Equal(t, []byte("bundle-json"), data)
+}

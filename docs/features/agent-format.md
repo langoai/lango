@@ -63,7 +63,7 @@ For each issue found:
 | `returns` | string | No | `""` | Description of what this agent returns |
 | `cannot_do` | []string | No | `[]` | Explicit list of things this agent cannot do |
 | `always_include` | bool | No | `false` | Always include in the agent tree even with no matching tools |
-| `session_isolation` | bool | No | `false` | Run in isolated child sessions |
+| `session_isolation` | bool | No | `false` | Run in isolated child sessions at runtime; successful child runs summary-merge, failed child runs discard |
 
 ### Status Values
 

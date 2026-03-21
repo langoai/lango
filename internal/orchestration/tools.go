@@ -79,13 +79,14 @@ If a task does not match your capabilities:
 2. Do NOT tell the user to ask another agent.
 3. IMMEDIATELY call transfer_to_agent with agent_name "lango-orchestrator".
 4. Do NOT output any text before the transfer_to_agent call.`,
-		Prefixes:        []string{"exec", "fs_", "skill_"},
-		Keywords:        []string{"run command", "execute command", "command", "shell", "terminal", "file read", "file write", "edit", "delete", "execute skill"},
-		Accepts:         "A specific action to perform (command, file operation, or skill invocation)",
-		Returns:         "Command output, file contents, or skill execution results",
-		CannotDo:        []string{"web browsing", "cryptographic operations", "payment transactions", "knowledge search", "memory management"},
-		ExampleRequests: []string{"Run ls -la in the current directory", "Read the contents of config.yaml", "Execute the deploy skill"},
-		Disambiguation:  "Not for knowledge search (→ librarian), not for 'save knowledge' (→ librarian), not for web browsing (→ navigator)",
+		Prefixes:         []string{"exec", "fs_", "skill_"},
+		Keywords:         []string{"run command", "execute command", "command", "shell", "terminal", "file read", "file write", "edit", "delete", "execute skill"},
+		Accepts:          "A specific action to perform (command, file operation, or skill invocation)",
+		Returns:          "Command output, file contents, or skill execution results",
+		CannotDo:         []string{"web browsing", "cryptographic operations", "payment transactions", "knowledge search", "memory management"},
+		ExampleRequests:  []string{"Run ls -la in the current directory", "Read the contents of config.yaml", "Execute the deploy skill"},
+		Disambiguation:   "Not for knowledge search (→ librarian), not for 'save knowledge' (→ librarian), not for web browsing (→ navigator)",
+		SessionIsolation: true,
 	},
 	{
 		Name:        "navigator",
@@ -111,13 +112,14 @@ If a task does not match your capabilities:
 2. Do NOT tell the user to ask another agent.
 3. IMMEDIATELY call transfer_to_agent with agent_name "lango-orchestrator".
 4. Do NOT output any text before the transfer_to_agent call.`,
-		Prefixes:        []string{"browser_"},
-		Keywords:        []string{"browse", "open url", "visit website", "web page", "navigate to", "click", "screenshot", "website"},
-		Accepts:         "A URL to visit or web interaction to perform",
-		Returns:         "Page content, screenshots, or interaction results with current URL",
-		CannotDo:        []string{"shell commands", "file operations", "cryptographic operations", "payment transactions", "knowledge search"},
-		ExampleRequests: []string{"Open https://example.com and take a screenshot", "Click the login button on the current page", "Extract all links from this web page"},
-		Disambiguation:  "Not for knowledge search (→ librarian), not for 'search the web' without a URL (→ librarian)",
+		Prefixes:         []string{"browser_"},
+		Keywords:         []string{"browse", "open url", "visit website", "web page", "navigate to", "click", "screenshot", "website"},
+		Accepts:          "A URL to visit or web interaction to perform",
+		Returns:          "Page content, screenshots, or interaction results with current URL",
+		CannotDo:         []string{"shell commands", "file operations", "cryptographic operations", "payment transactions", "knowledge search"},
+		ExampleRequests:  []string{"Open https://example.com and take a screenshot", "Click the login button on the current page", "Extract all links from this web page"},
+		Disambiguation:   "Not for knowledge search (→ librarian), not for 'search the web' without a URL (→ librarian)",
+		SessionIsolation: true,
 	},
 	{
 		Name:        "vault",
@@ -144,13 +146,14 @@ If a task does not match your capabilities:
 2. Do NOT tell the user to ask another agent.
 3. IMMEDIATELY call transfer_to_agent with agent_name "lango-orchestrator".
 4. Do NOT output any text before the transfer_to_agent call.`,
-		Prefixes:        []string{"crypto_", "secrets_", "payment_", "p2p_", "smart_account_", "session_key_", "session_execute", "policy_check", "module_", "spending_", "paymaster_", "economy_", "escrow_", "sentinel_", "contract_"},
-		Keywords:        []string{"encrypt", "decrypt", "crypto sign", "hash data", "store secret", "password", "payment", "wallet", "USDC", "peer", "p2p connect", "handshake", "firewall", "zkp", "smart account", "session key", "paymaster", "ERC-7579", "ERC-4337", "module", "policy", "deploy account", "economy", "budget", "escrow", "sentinel", "contract", "negotiate", "pricing", "risk"},
-		Accepts:         "A security operation (crypto, secret, or payment) with parameters",
-		Returns:         "Encrypted/decrypted data, secret confirmation, or payment transaction status",
-		CannotDo:        []string{"shell commands", "file operations", "web browsing", "knowledge search", "memory management"},
-		ExampleRequests: []string{"Encrypt this message with AES", "Store my API key as a secret", "Send 10 USDC to this address", "Deploy a new smart account"},
-		Disambiguation:  "Not for 'hash' in file context (→ operator), not for 'connect' to a URL (→ navigator)",
+		Prefixes:         []string{"crypto_", "secrets_", "payment_", "p2p_", "smart_account_", "session_key_", "session_execute", "policy_check", "module_", "spending_", "paymaster_", "economy_", "escrow_", "sentinel_", "contract_"},
+		Keywords:         []string{"encrypt", "decrypt", "crypto sign", "hash data", "store secret", "password", "payment", "wallet", "USDC", "peer", "p2p connect", "handshake", "firewall", "zkp", "smart account", "session key", "paymaster", "ERC-7579", "ERC-4337", "module", "policy", "deploy account", "economy", "budget", "escrow", "sentinel", "contract", "negotiate", "pricing", "risk"},
+		Accepts:          "A security operation (crypto, secret, or payment) with parameters",
+		Returns:          "Encrypted/decrypted data, secret confirmation, or payment transaction status",
+		CannotDo:         []string{"shell commands", "file operations", "web browsing", "knowledge search", "memory management"},
+		ExampleRequests:  []string{"Encrypt this message with AES", "Store my API key as a secret", "Send 10 USDC to this address", "Deploy a new smart account"},
+		Disambiguation:   "Not for 'hash' in file context (→ operator), not for 'connect' to a URL (→ navigator)",
+		SessionIsolation: true,
 	},
 	{
 		Name:        "librarian",
@@ -181,13 +184,14 @@ If a task does not match your capabilities:
 2. Do NOT tell the user to ask another agent.
 3. IMMEDIATELY call transfer_to_agent with agent_name "lango-orchestrator".
 4. Do NOT output any text before the transfer_to_agent call.`,
-		Prefixes:        []string{"search_", "rag_", "graph_", "save_knowledge", "save_learning", "learning_", "create_skill", "list_skills", "import_skill", "librarian_"},
-		Keywords:        []string{"search knowledge", "find information", "lookup", "knowledge", "learning", "retrieve", "graph", "RAG", "inquiry", "question", "gap", "save knowledge"},
-		Accepts:         "A search query, knowledge to persist, learning data to review/clean, skill to create/list, or inquiry operation",
-		Returns:         "Search results with scores, knowledge save confirmation, learning stats/cleanup results, skill listings, or inquiry details",
-		CannotDo:        []string{"shell commands", "web browsing", "cryptographic operations", "memory management (observations/reflections)"},
-		ExampleRequests: []string{"Search for information about Go concurrency patterns", "Save this knowledge: API rate limit is 100/min", "List all available skills", "Find what we know about the deployment process"},
-		Disambiguation:  "Not for 'find file' (→ operator), not for 'search URL' (→ navigator), not for 'skill execute/run' (→ operator)",
+		Prefixes:         []string{"search_", "rag_", "graph_", "save_knowledge", "save_learning", "learning_", "create_skill", "list_skills", "import_skill", "librarian_"},
+		Keywords:         []string{"search knowledge", "find information", "lookup", "knowledge", "learning", "retrieve", "graph", "RAG", "inquiry", "question", "gap", "save knowledge"},
+		Accepts:          "A search query, knowledge to persist, learning data to review/clean, skill to create/list, or inquiry operation",
+		Returns:          "Search results with scores, knowledge save confirmation, learning stats/cleanup results, skill listings, or inquiry details",
+		CannotDo:         []string{"shell commands", "web browsing", "cryptographic operations", "memory management (observations/reflections)"},
+		ExampleRequests:  []string{"Search for information about Go concurrency patterns", "Save this knowledge: API rate limit is 100/min", "List all available skills", "Find what we know about the deployment process"},
+		Disambiguation:   "Not for 'find file' (→ operator), not for 'search URL' (→ navigator), not for 'skill execute/run' (→ operator)",
+		SessionIsolation: true,
 	},
 	{
 		Name:        "automator",
@@ -213,13 +217,14 @@ If a task does not match your capabilities:
 2. Do NOT tell the user to ask another agent.
 3. IMMEDIATELY call transfer_to_agent with agent_name "lango-orchestrator".
 4. Do NOT output any text before the transfer_to_agent call.`,
-		Prefixes:        []string{"cron_", "bg_", "workflow_"},
-		Keywords:        []string{"schedule task", "cron job", "recurring task", "background task", "async", "later", "workflow", "pipeline", "automate", "timer"},
-		Accepts:         "A scheduling request, background task, or workflow to execute/monitor",
-		Returns:         "Schedule confirmation, task IDs, or workflow execution status",
-		CannotDo:        []string{"shell commands", "file operations", "web browsing", "cryptographic operations", "knowledge search"},
-		ExampleRequests: []string{"Schedule a daily backup at 3am", "Run this task in the background", "Execute the data-pipeline workflow"},
-		Disambiguation:  "Not for 'run command now' (→ operator), not for one-time immediate execution (→ operator)",
+		Prefixes:         []string{"cron_", "bg_", "workflow_"},
+		Keywords:         []string{"schedule task", "cron job", "recurring task", "background task", "async", "later", "workflow", "pipeline", "automate", "timer"},
+		Accepts:          "A scheduling request, background task, or workflow to execute/monitor",
+		Returns:          "Schedule confirmation, task IDs, or workflow execution status",
+		CannotDo:         []string{"shell commands", "file operations", "web browsing", "cryptographic operations", "knowledge search"},
+		ExampleRequests:  []string{"Schedule a daily backup at 3am", "Run this task in the background", "Execute the data-pipeline workflow"},
+		Disambiguation:   "Not for 'run command now' (→ operator), not for one-time immediate execution (→ operator)",
+		SessionIsolation: true,
 	},
 	{
 		Name:        "planner",
@@ -292,6 +297,13 @@ If a task does not match your capabilities:
 		ExampleRequests: []string{"Remember that the user prefers dark mode", "Recall what we discussed about the API", "Create a reflection on today's debugging session"},
 		Disambiguation:  "Not for factual knowledge (→ librarian), not for 'save knowledge' (→ librarian), only for conversational/session memory",
 	},
+}
+
+// DefaultAgentSpecs returns a shallow copy of the built-in agent specs.
+func DefaultAgentSpecs() []AgentSpec {
+	out := make([]AgentSpec, len(agentSpecs))
+	copy(out, agentSpecs)
+	return out
 }
 
 // RoleToolSet defines which tools belong to each sub-agent role.

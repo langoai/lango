@@ -42,6 +42,7 @@ type agentOptions struct {
 	errorFixProvider    ErrorFixProvider
 	rootSessionObserver func(string)
 	childLifecycleHook  func(internal.SessionLifecycleEvent)
+	isolatedAgents      []string
 }
 
 // WithAgentTokenBudget sets the session history token budget.
@@ -68,6 +69,11 @@ func WithAgentRootSessionObserver(fn func(string)) AgentOption {
 // WithAgentChildLifecycleHook records synthetic child-session lifecycle events.
 func WithAgentChildLifecycleHook(fn func(internal.SessionLifecycleEvent)) AgentOption {
 	return func(o *agentOptions) { o.childLifecycleHook = fn }
+}
+
+// WithAgentIsolatedAgents marks agent names that should use child session history routing.
+func WithAgentIsolatedAgents(names []string) AgentOption {
+	return func(o *agentOptions) { o.isolatedAgents = append([]string(nil), names...) }
 }
 
 // Agent wraps the ADK runner for integration with Lango.
@@ -111,6 +117,9 @@ func NewAgent(ctx context.Context, tools []tool.Tool, mod model.LLM, systemPromp
 	if o.childLifecycleHook != nil {
 		sessService.WithChildLifecycleHook(o.childLifecycleHook)
 	}
+	if len(o.isolatedAgents) > 0 {
+		sessService.WithIsolatedAgents(o.isolatedAgents)
+	}
 
 	// Create Runner
 	runnerCfg := runner.Config{
@@ -150,6 +159,9 @@ func NewAgentFromADK(adkAgent adk_agent.Agent, store internal.Store, opts ...Age
 	}
 	if o.childLifecycleHook != nil {
 		sessService.WithChildLifecycleHook(o.childLifecycleHook)
+	}
+	if len(o.isolatedAgents) > 0 {
+		sessService.WithIsolatedAgents(o.isolatedAgents)
 	}
 
 	runnerCfg := runner.Config{
@@ -413,7 +425,7 @@ func (a *Agent) RunAndCollect(ctx context.Context, sessionID, input string, opts
 			"error", err)
 		// Return partial result from the best attempt if available.
 		if a.sessionService != nil {
-			_ = a.sessionService.CloseActiveChild(sessionID)
+			_ = a.sessionService.DiscardActiveChild(sessionID)
 		}
 		return resp, err
 	}
@@ -442,7 +454,7 @@ func (a *Agent) RunAndCollect(ctx context.Context, sessionID, input string, opts
 			resp = retryResp
 		}
 		if a.sessionService != nil {
-			_ = a.sessionService.CloseActiveChild(sessionID)
+			_ = a.sessionService.DiscardActiveChild(sessionID)
 		}
 		return resp, retryErr
 	}
@@ -473,6 +485,9 @@ func (a *Agent) runAndCollectOnce(ctx context.Context, sessionID, input string, 
 	for event, err := range a.Run(ctx, sessionID, input) {
 		if err != nil {
 			partial := b.String()
+			if a.sessionService != nil {
+				_ = a.sessionService.DiscardActiveChild(sessionID)
+			}
 			return partial, &AgentError{
 				Code:    classifyError(err),
 				Message: "agent error",
@@ -661,7 +676,7 @@ func (a *Agent) RunStreaming(ctx context.Context, sessionID, input string, onChu
 	if err := ctx.Err(); err != nil {
 		partial := b.String()
 		if a.sessionService != nil {
-			_ = a.sessionService.CloseActiveChild(sessionID)
+			_ = a.sessionService.DiscardActiveChild(sessionID)
 		}
 		return partial, &AgentError{
 			Code:    ErrTimeout,

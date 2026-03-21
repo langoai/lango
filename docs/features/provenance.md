@@ -26,6 +26,8 @@ lango provenance attribution show <session-key>
 lango provenance attribution report <session-key>
 lango provenance bundle export <session-key> --redaction content --out bundle.json
 lango provenance bundle import bundle.json
+lango p2p provenance push <peer-did> <session-key> --redaction content
+lango p2p provenance fetch <peer-did> <session-key> --redaction content
 ```
 
 ## Notes

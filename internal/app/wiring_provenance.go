@@ -91,6 +91,22 @@ func wireProvenanceRuntime(app *App, r appinit.Resolver) {
 			}
 			return nil
 		},
+		Exporter: func(ctx context.Context, peerDID, sessionKey, redaction string) ([]byte, error) {
+			if app == nil || app.WalletProvider == nil || p2pc.identity == nil {
+				return nil, fmt.Errorf("wallet-backed DID identity is required for provenance bundle export")
+			}
+			did, err := p2pc.identity.DID(ctx)
+			if err != nil {
+				return nil, err
+			}
+			_, data, err := pv.bundle.Export(ctx, sessionKey, provenance.RedactionLevel(redaction), did.ID, func(ctx context.Context, payload []byte) ([]byte, error) {
+				return app.WalletProvider.SignMessage(ctx, payload)
+			})
+			if err != nil {
+				return nil, err
+			}
+			return data, nil
+		},
 		Logger: logger().Desugar(),
 	})
 	p2pc.node.SetStreamHandler(provenanceproto.ProtocolID, handler.StreamHandler())

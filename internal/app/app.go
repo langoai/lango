@@ -469,7 +469,7 @@ func wirePostAgent(app *App, r appinit.Resolver, tools []*agent.Tool, bus *event
 				})
 			}
 		}
-		registerP2PRoutes(app.Gateway.Router(), p2pc, auth)
+		registerP2PRoutes(app.Gateway.Router(), app, p2pc, auth)
 		logger().Info("P2P REST API routes registered")
 	}
 

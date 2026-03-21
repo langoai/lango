@@ -159,6 +159,21 @@ The system SHALL provide working `lango provenance` CLI commands: status, checkp
 - **WHEN** `lango provenance bundle import <file>` is run
 - **THEN** the CLI verifies the signer DID and signature before storing provenance-owned records
 
+#### Scenario: Remote push command
+- **WHEN** `lango p2p provenance push <peer-did> <session-key> --redaction <level>` is run
+- **THEN** the CLI calls the running gateway
+- **AND** the gateway exports a signed bundle locally and sends it to the target peer over the provenance P2P protocol
+
+#### Scenario: Remote fetch command
+- **WHEN** `lango p2p provenance fetch <peer-did> <session-key> --redaction <level>` is run
+- **THEN** the CLI calls the running gateway
+- **AND** the gateway requests a signed bundle from the target peer over the provenance P2P protocol
+- **AND** the returned bundle is verify-and-store imported locally
+
+#### Scenario: Remote provenance exchange requires active session
+- **WHEN** there is no active authenticated session for the target peer DID
+- **THEN** remote push and fetch fail with an actionable error indicating that an active P2P session is required
+
 ### Requirement: Provenance App Module
 The provenance system SHALL be registered as an appinit.Module with name "provenance", providing ProvidesProvenance, depending on ProvidesRunLedger.
 
@@ -201,3 +216,11 @@ The system SHALL support signed provenance bundles with redaction levels `none`,
 #### Scenario: Tampered bundle rejected
 - **WHEN** a signed bundle payload is modified after signing
 - **THEN** verification fails and the bundle is rejected
+
+### Requirement: Provenance P2P Transport
+The provenance transport SHALL support both push and fetch flows.
+
+#### Scenario: Fetch bundle request
+- **WHEN** a peer receives a `fetch_bundle` provenance request with `session-key` and `redaction`
+- **THEN** it exports a signed provenance bundle for that session and redaction level
+- **AND** it returns the bundle over the provenance-specific P2P protocol

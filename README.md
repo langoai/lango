@@ -219,6 +219,8 @@ lango p2p session revoke-all     Revoke all active peer sessions
 lango p2p sandbox status         Show sandbox runtime status
 lango p2p sandbox test           Run sandbox smoke test
 lango p2p sandbox cleanup        Remove orphaned sandbox containers
+lango p2p provenance push <peer-did> <session-key>   Push signed provenance bundle via running server
+lango p2p provenance fetch <peer-did> <session-key>  Fetch and import signed provenance bundle via running server
 lango p2p team list              List active P2P teams
 lango p2p team status <id>       Show team details and member status
 lango p2p team disband <id>      Disband an active team
@@ -992,6 +994,8 @@ In addition to prefix-based tool partitioning, the orchestrator supports dynamic
 When `agentMemory.enabled` is `true`, each sub-agent maintains its own persistent memory store for cross-session context retention. This allows agents to accumulate domain-specific knowledge across conversations, improving task performance over time.
 
 Enable via `lango onboard` > Multi-Agent menu or set `agent.multiAgent: true` in import JSON. Use `lango agent status` and `lango agent list` to inspect.
+
+Built-in specialist agents honor isolated child-session routing at runtime. Their raw delegated turns stay in child session history, and only summary results merge back into the parent conversation.
 
 ## A2A Protocol (🧪 Experimental Features)
 

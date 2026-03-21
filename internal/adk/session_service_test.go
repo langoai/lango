@@ -231,7 +231,8 @@ func TestAppendEvent_EmitsChildLifecycle(t *testing.T) {
 	var events []internal.SessionLifecycleEvent
 	svc := NewSessionServiceAdapter(store, "lango-orchestrator").
 		WithRootSessionObserver(func(sessionKey string) { roots = append(roots, sessionKey) }).
-		WithChildLifecycleHook(func(ev internal.SessionLifecycleEvent) { events = append(events, ev) })
+		WithChildLifecycleHook(func(ev internal.SessionLifecycleEvent) { events = append(events, ev) }).
+		WithIsolatedAgents([]string{"operator"})
 
 	_, err := svc.Create(context.Background(), &session.CreateRequest{SessionID: "test-session"})
 	require.NoError(t, err)
@@ -244,6 +245,104 @@ func TestAppendEvent_EmitsChildLifecycle(t *testing.T) {
 	require.Len(t, events, 2)
 	assert.Equal(t, "fork", events[0].Type)
 	assert.Equal(t, "merge", events[1].Type)
+}
+
+func TestAppendEvent_IsolatedAgentWritesToChildHistory(t *testing.T) {
+	t.Parallel()
+
+	store := newMockStore()
+	sess := &internal.Session{
+		Key:       "test-session",
+		Metadata:  make(map[string]string),
+		CreatedAt: time.Now(),
+		UpdatedAt: time.Now(),
+	}
+	store.Create(sess)
+
+	adapter := NewSessionAdapter(sess, store, "lango-orchestrator")
+	svc := NewSessionServiceAdapter(store, "lango-orchestrator").
+		WithChildLifecycleHook(func(ev internal.SessionLifecycleEvent) {}).
+		WithIsolatedAgents([]string{"operator"})
+
+	require.NoError(t, svc.AppendEvent(context.Background(), adapter, newTestEvent("operator", "model", "isolated reply")))
+
+	assert.Empty(t, adapter.sess.History, "isolated agent should not write directly to parent history")
+	require.NotNil(t, svc.activeChild["test-session"])
+	require.Len(t, svc.activeChild["test-session"].child.History, 1)
+	assert.Equal(t, "isolated reply", svc.activeChild["test-session"].child.History[0].Content)
+}
+
+func TestCloseActiveChild_MergesSummaryAsRootAuthor(t *testing.T) {
+	t.Parallel()
+
+	store := newMockStore()
+	sess := &internal.Session{
+		Key:       "test-session",
+		Metadata:  make(map[string]string),
+		CreatedAt: time.Now(),
+		UpdatedAt: time.Now(),
+	}
+	store.Create(sess)
+
+	adapter := NewSessionAdapter(sess, store, "lango-orchestrator")
+	svc := NewSessionServiceAdapter(store, "lango-orchestrator").
+		WithChildLifecycleHook(func(ev internal.SessionLifecycleEvent) {}).
+		WithIsolatedAgents([]string{"operator"})
+
+	require.NoError(t, svc.AppendEvent(context.Background(), adapter, newTestEvent("operator", "model", "isolated reply")))
+	require.NoError(t, svc.CloseActiveChild("test-session"))
+
+	dbMsgs := store.messages["test-session"]
+	require.Len(t, dbMsgs, 1)
+	assert.Equal(t, "lango-orchestrator", dbMsgs[0].Author)
+	assert.Equal(t, "isolated reply", dbMsgs[0].Content)
+}
+
+func TestDiscardActiveChild_DoesNotMergeParentHistory(t *testing.T) {
+	t.Parallel()
+
+	store := newMockStore()
+	sess := &internal.Session{
+		Key:       "test-session",
+		Metadata:  make(map[string]string),
+		CreatedAt: time.Now(),
+		UpdatedAt: time.Now(),
+	}
+	store.Create(sess)
+
+	adapter := NewSessionAdapter(sess, store, "lango-orchestrator")
+	svc := NewSessionServiceAdapter(store, "lango-orchestrator").
+		WithChildLifecycleHook(func(ev internal.SessionLifecycleEvent) {}).
+		WithIsolatedAgents([]string{"operator"})
+
+	require.NoError(t, svc.AppendEvent(context.Background(), adapter, newTestEvent("operator", "model", "[REJECT] nope")))
+	require.NoError(t, svc.DiscardActiveChild("test-session"))
+
+	assert.Empty(t, store.messages["test-session"])
+	assert.Nil(t, svc.activeChild["test-session"])
+}
+
+func TestAppendEvent_NonIsolatedAgentUsesParentHistory(t *testing.T) {
+	t.Parallel()
+
+	store := newMockStore()
+	sess := &internal.Session{
+		Key:       "test-session",
+		Metadata:  make(map[string]string),
+		CreatedAt: time.Now(),
+		UpdatedAt: time.Now(),
+	}
+	store.Create(sess)
+
+	adapter := NewSessionAdapter(sess, store, "lango-orchestrator")
+	svc := NewSessionServiceAdapter(store, "lango-orchestrator").
+		WithChildLifecycleHook(func(ev internal.SessionLifecycleEvent) {}).
+		WithIsolatedAgents([]string{"operator"})
+
+	require.NoError(t, svc.AppendEvent(context.Background(), adapter, newTestEvent("planner", "model", "non-isolated reply")))
+
+	require.Len(t, adapter.sess.History, 1)
+	assert.Equal(t, "non-isolated reply", adapter.sess.History[0].Content)
 }
 
 func TestAppendEvent_FunctionCallFallbackID(t *testing.T) {

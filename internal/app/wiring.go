@@ -522,6 +522,7 @@ func initAgent(ctx context.Context, deps *agentDeps) (*adk.Agent, error) {
 		// Build agent options for multi-agent mode.
 		agentOpts := buildAgentOptions(cfg, kc)
 		agentOpts = append(agentOpts, buildProvenanceAgentOptions(deps.prov)...)
+		agentOpts = append(agentOpts, adk.WithAgentIsolatedAgents(isolatedAgentNames(orchCfg.Specs)))
 		adkAgent, err := adk.NewAgentFromADK(agentTree, store, agentOpts...)
 		if err != nil {
 			return nil, fmt.Errorf("adk multi-agent: %w", err)
@@ -538,6 +539,19 @@ func initAgent(ctx context.Context, deps *agentDeps) (*adk.Agent, error) {
 		return nil, fmt.Errorf("adk agent: %w", err)
 	}
 	return adkAgent, nil
+}
+
+func isolatedAgentNames(specs []orchestration.AgentSpec) []string {
+	if specs == nil {
+		specs = orchestration.DefaultAgentSpecs()
+	}
+	var out []string
+	for _, spec := range specs {
+		if spec.SessionIsolation {
+			out = append(out, spec.Name)
+		}
+	}
+	return out
 }
 
 // buildAgentOptions constructs AgentOption slice from config and knowledge components.

@@ -10,10 +10,10 @@ import (
 
 // SessionLifecycleEvent describes a session lifecycle transition.
 type SessionLifecycleEvent struct {
-	Type       string // "fork", "merge", "discard"
-	ChildKey   string
-	ParentKey  string
-	AgentName  string
+	Type      string // "fork", "merge", "discard"
+	ChildKey  string
+	ParentKey string
+	AgentName string
 }
 
 // ChildStoreOption configures an InMemoryChildStore.
@@ -92,6 +92,16 @@ func (s *InMemoryChildStore) ForkChild(parentKey, agentName string, cfg ChildSes
 
 // MergeChild merges a child session's messages back into the parent.
 func (s *InMemoryChildStore) MergeChild(childKey string, summary string) error {
+	return s.mergeChild(childKey, summary, "")
+}
+
+// MergeChildAsAuthor merges a child session summary back to the parent using
+// an explicit author instead of the child agent name.
+func (s *InMemoryChildStore) MergeChildAsAuthor(childKey, summary, author string) error {
+	return s.mergeChild(childKey, summary, author)
+}
+
+func (s *InMemoryChildStore) mergeChild(childKey string, summary string, authorOverride string) error {
 	s.mu.Lock()
 	child, ok := s.children[childKey]
 	if !ok {
@@ -107,12 +117,16 @@ func (s *InMemoryChildStore) MergeChild(childKey string, summary string) error {
 
 	// Determine what to append to parent.
 	if summary != "" {
+		author := child.AgentName
+		if authorOverride != "" {
+			author = authorOverride
+		}
 		// Append a single summary message instead of full history.
 		if err := s.parent.AppendMessage(child.ParentKey, Message{
 			Role:      types.RoleAssistant,
 			Content:   summary,
 			Timestamp: time.Now(),
-			Author:    child.AgentName,
+			Author:    author,
 		}); err != nil {
 			return err
 		}

@@ -2,6 +2,7 @@
 name: operator
 description: "System operations: shell commands, file I/O, and skill execution"
 status: active
+session_isolation: true
 prefixes:
   - exec
   - fs_
