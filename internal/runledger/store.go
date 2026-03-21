@@ -71,6 +71,19 @@ func NewMemoryStore(opts ...StoreOption) *MemoryStore {
 	}
 }
 
+// SetAppendHook adds an append hook, chaining with any existing hook.
+// Must be called before concurrent AppendJournalEvent calls (e.g., during app boot).
+func (m *MemoryStore) SetAppendHook(h func(JournalEvent)) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	prev := m.opts.AppendHook
+	if prev == nil {
+		m.opts.AppendHook = h
+	} else {
+		m.opts.AppendHook = func(e JournalEvent) { prev(e); h(e) }
+	}
+}
+
 func (m *MemoryStore) AppendJournalEvent(_ context.Context, event JournalEvent) error {
 	m.mu.Lock()
 

@@ -26,3 +26,9 @@ func applyStoreOptions(opts []StoreOption) StoreOptions {
 	}
 	return o
 }
+
+// AppendHookSetter is implemented by concrete store types that support
+// post-construction hook registration. Not part of RunLedgerStore.
+type AppendHookSetter interface {
+	SetAppendHook(func(JournalEvent))
+}

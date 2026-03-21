@@ -34,6 +34,9 @@ func (m *provenanceModule) Enabled() bool { return m.cfg.Provenance.Enabled }
 
 func (m *provenanceModule) Init(_ context.Context, r appinit.Resolver) (*appinit.ModuleResult, error) {
 	cpStore := provenance.CheckpointStore(provenance.NewMemoryStore())
+	if m.boot != nil && m.boot.DBClient != nil {
+		cpStore = provenance.NewEntCheckpointStore(m.boot.DBClient)
+	}
 	treeStore := provenance.SessionTreeStore(provenance.NewMemoryTreeStore())
 
 	// Resolve RunLedger store if available.
@@ -46,6 +49,13 @@ func (m *provenanceModule) Init(_ context.Context, r appinit.Resolver) (*appinit
 
 	cpService := provenance.NewCheckpointService(cpStore, ledgerStore, m.cfg.Provenance.Checkpoints)
 	sessionTree := provenance.NewSessionTree(treeStore)
+
+	// Register auto-checkpoint hook on the RunLedger store (post-construction).
+	if ledgerStore != nil {
+		if setter, ok := ledgerStore.(runledger.AppendHookSetter); ok {
+			setter.SetAppendHook(cpService.OnJournalEvent)
+		}
+	}
 
 	vals := &provenanceValues{
 		checkpointStore:   cpStore,

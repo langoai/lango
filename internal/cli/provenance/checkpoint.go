@@ -45,7 +45,7 @@ func newCheckpointListCmd(bootLoader func() (*bootstrap.Result, error)) *cobra.C
 				return nil
 			}
 
-			store := provenancepkg.NewMemoryStore() // Phase 1: in-memory; Ent store in Phase 2
+			store := provenancepkg.CheckpointStore(provenancepkg.NewEntCheckpointStore(boot.DBClient))
 			ctx := context.Background()
 
 			var checkpoints []provenancepkg.Checkpoint
@@ -103,7 +103,7 @@ func newCheckpointCreateCmd(bootLoader func() (*bootstrap.Result, error)) *cobra
 				return nil
 			}
 
-			cpStore := provenancepkg.NewMemoryStore()
+			cpStore := provenancepkg.CheckpointStore(provenancepkg.NewEntCheckpointStore(boot.DBClient))
 			ledgerStore := runledger.NewEntStore(boot.DBClient)
 			svc := provenancepkg.NewCheckpointService(cpStore, ledgerStore, boot.Config.Provenance.Checkpoints)
 
@@ -140,7 +140,7 @@ func newCheckpointShowCmd(bootLoader func() (*bootstrap.Result, error)) *cobra.C
 				return nil
 			}
 
-			store := provenancepkg.NewMemoryStore()
+			store := provenancepkg.CheckpointStore(provenancepkg.NewEntCheckpointStore(boot.DBClient))
 			cp, err := store.GetCheckpoint(context.Background(), args[0])
 			if err != nil {
 				return fmt.Errorf("get checkpoint: %w", err)

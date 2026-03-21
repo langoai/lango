@@ -354,3 +354,70 @@ func TestGetCachedSnapshot_ConcurrentDifferentRuns(t *testing.T) {
 		t.Fatal("GetCachedSnapshot for run-2 blocked on run-1 lock")
 	}
 }
+
+func TestEntStore_AppendHookReceivesSeq(t *testing.T) {
+	client := enttest.Open(t, "sqlite3", "file:ent?mode=memory&_fk=1")
+	defer client.Close()
+
+	var received []int64
+	store := NewEntStore(client, WithAppendHook(func(event JournalEvent) {
+		received = append(received, event.Seq)
+	}))
+	ctx := context.Background()
+
+	for i := 0; i < 3; i++ {
+		require.NoError(t, store.AppendJournalEvent(ctx, JournalEvent{
+			RunID:   "run-seq",
+			Type:    EventNoteWritten,
+			Payload: marshalPayload(NoteWrittenPayload{Key: "k", Value: "v"}),
+		}))
+	}
+
+	require.Len(t, received, 3)
+	assert.Equal(t, int64(1), received[0])
+	assert.Equal(t, int64(2), received[1])
+	assert.Equal(t, int64(3), received[2])
+}
+
+func TestEntStore_SetAppendHook(t *testing.T) {
+	client := enttest.Open(t, "sqlite3", "file:ent?mode=memory&_fk=1")
+	defer client.Close()
+
+	store := NewEntStore(client)
+	ctx := context.Background()
+
+	var hookCalled bool
+	store.SetAppendHook(func(_ JournalEvent) {
+		hookCalled = true
+	})
+
+	require.NoError(t, store.AppendJournalEvent(ctx, JournalEvent{
+		RunID:   "run-hook",
+		Type:    EventNoteWritten,
+		Payload: marshalPayload(NoteWrittenPayload{Key: "k", Value: "v"}),
+	}))
+
+	assert.True(t, hookCalled)
+}
+
+func TestEntStore_SetAppendHook_Chaining(t *testing.T) {
+	client := enttest.Open(t, "sqlite3", "file:ent?mode=memory&_fk=1")
+	defer client.Close()
+
+	var calls []string
+	store := NewEntStore(client, WithAppendHook(func(_ JournalEvent) {
+		calls = append(calls, "first")
+	}))
+	store.SetAppendHook(func(_ JournalEvent) {
+		calls = append(calls, "second")
+	})
+
+	ctx := context.Background()
+	require.NoError(t, store.AppendJournalEvent(ctx, JournalEvent{
+		RunID:   "run-chain",
+		Type:    EventNoteWritten,
+		Payload: marshalPayload(NoteWrittenPayload{Key: "k", Value: "v"}),
+	}))
+
+	assert.Equal(t, []string{"first", "second"}, calls)
+}

@@ -175,3 +175,41 @@ func TestAppendHook_Integration(t *testing.T) {
 	assert.Len(t, list, 1)
 	assert.Equal(t, TriggerStepComplete, list[0].Trigger)
 }
+
+func TestSetAppendHook_Integration(t *testing.T) {
+	// Simulates the real app wiring: ledger store is created first,
+	// then provenance module registers a hook via SetAppendHook.
+	cpStore := NewMemoryStore()
+	cfg := config.CheckpointConfig{
+		AutoOnStepComplete: true,
+		MaxPerSession:      100,
+	}
+
+	ledger := runledger.NewMemoryStore()
+	svc := NewCheckpointService(cpStore, ledger, cfg)
+
+	// Post-construction hook registration — mirrors modules_provenance.go wiring.
+	ledger.SetAppendHook(svc.OnJournalEvent)
+
+	ctx := context.Background()
+	require.NoError(t, ledger.AppendJournalEvent(ctx, runledger.JournalEvent{
+		RunID:   "run-1",
+		Type:    runledger.EventRunCreated,
+		Payload: testPayload(runledger.RunCreatedPayload{SessionKey: "sess-1", Goal: "test"}),
+	}))
+
+	require.NoError(t, ledger.AppendJournalEvent(ctx, runledger.JournalEvent{
+		RunID: "run-1",
+		Type:  runledger.EventStepValidationPassed,
+		Payload: testPayload(runledger.StepValidationPassedPayload{
+			StepID: "step-1",
+			Result: runledger.ValidationResult{Passed: true},
+		}),
+	}))
+
+	list, err := cpStore.ListByRun(ctx, "run-1")
+	require.NoError(t, err)
+	require.Len(t, list, 1)
+	assert.Equal(t, TriggerStepComplete, list[0].Trigger)
+	assert.Contains(t, list[0].Label, "step_validated_2")
+}

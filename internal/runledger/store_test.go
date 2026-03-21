@@ -353,3 +353,40 @@ func TestMemoryStore_GetRunSnapshot_RaceRegression(t *testing.T) {
 	default:
 	}
 }
+
+func TestMemoryStore_SetAppendHook(t *testing.T) {
+	store := NewMemoryStore()
+	ctx := context.Background()
+
+	var hookCalled bool
+	store.SetAppendHook(func(_ JournalEvent) {
+		hookCalled = true
+	})
+
+	require.NoError(t, store.AppendJournalEvent(ctx, JournalEvent{
+		RunID:   "run-1",
+		Type:    EventNoteWritten,
+		Payload: marshalPayload(NoteWrittenPayload{Key: "k", Value: "v"}),
+	}))
+
+	assert.True(t, hookCalled)
+}
+
+func TestMemoryStore_SetAppendHook_Chaining(t *testing.T) {
+	var calls []string
+	store := NewMemoryStore(WithAppendHook(func(_ JournalEvent) {
+		calls = append(calls, "first")
+	}))
+	store.SetAppendHook(func(_ JournalEvent) {
+		calls = append(calls, "second")
+	})
+
+	ctx := context.Background()
+	require.NoError(t, store.AppendJournalEvent(ctx, JournalEvent{
+		RunID:   "run-1",
+		Type:    EventNoteWritten,
+		Payload: marshalPayload(NoteWrittenPayload{Key: "k", Value: "v"}),
+	}))
+
+	assert.Equal(t, []string{"first", "second"}, calls)
+}
