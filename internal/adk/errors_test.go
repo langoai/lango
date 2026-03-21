@@ -147,6 +147,16 @@ func TestClassifyError(t *testing.T) {
 			want: ErrModelError,
 		},
 		{
+			give: "thought_signature error",
+			err:  fmt.Errorf("invalid thought_signature in request"),
+			want: ErrModelError,
+		},
+		{
+			give: "thoughtSignature camelCase error",
+			err:  fmt.Errorf("field thoughtSignature is not valid"),
+			want: ErrModelError,
+		},
+		{
 			give: "generic error",
 			err:  fmt.Errorf("something unknown"),
 			want: ErrInternal,

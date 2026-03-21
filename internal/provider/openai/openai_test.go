@@ -345,6 +345,113 @@ func TestRepairOrphanedToolCalls_MatchedCallNoRepair(t *testing.T) {
 	require.Len(t, result, 3, "expected no synthetic injection for matched call")
 }
 
+func TestConvertParams_ThoughtCallsFiltered(t *testing.T) {
+	t.Parallel()
+
+	p := NewProvider("openai", "test-key", "")
+	params := provider.GenerateParams{
+		Model: "gpt-4",
+		Messages: []provider.Message{
+			{Role: "user", Content: "hello"},
+			{
+				Role: "assistant",
+				ToolCalls: []provider.ToolCall{
+					{ID: "call_thought", Name: "think", Arguments: `{}`, Thought: true, ThoughtSignature: []byte("sig")},
+					{ID: "call_real", Name: "exec", Arguments: `{"cmd":"ls"}`},
+				},
+			},
+			{
+				Role:     "tool",
+				Content:  `{"thought":"internal"}`,
+				Metadata: map[string]interface{}{"tool_call_id": "call_thought"},
+			},
+			{
+				Role:     "tool",
+				Content:  `{"result":"files"}`,
+				Metadata: map[string]interface{}{"tool_call_id": "call_real"},
+			},
+			{Role: "user", Content: "thanks"},
+		},
+	}
+
+	req, err := p.convertParams(params)
+	require.NoError(t, err)
+
+	// The thought tool call and its response should be filtered out.
+	// Expected: user + assistant(1 tool call) + tool(call_real) + user = 4 messages.
+	require.Len(t, req.Messages, 4, "thought call and its response should be dropped")
+
+	// Assistant should have only the real tool call.
+	assert.Len(t, req.Messages[1].ToolCalls, 1)
+	assert.Equal(t, "call_real", req.Messages[1].ToolCalls[0].ID)
+
+	// The remaining tool response should be for call_real.
+	assert.Equal(t, "tool", req.Messages[2].Role)
+	assert.Equal(t, "call_real", req.Messages[2].ToolCallID)
+}
+
+func TestConvertParams_ThoughtCallsAllDropped(t *testing.T) {
+	t.Parallel()
+
+	p := NewProvider("openai", "test-key", "")
+	params := provider.GenerateParams{
+		Model: "gpt-4",
+		Messages: []provider.Message{
+			{Role: "user", Content: "hello"},
+			{
+				Role: "assistant",
+				ToolCalls: []provider.ToolCall{
+					{ID: "call_t1", Name: "think", Arguments: `{}`, Thought: true},
+				},
+			},
+			{
+				Role:     "tool",
+				Content:  `{}`,
+				Metadata: map[string]interface{}{"tool_call_id": "call_t1"},
+			},
+			{Role: "user", Content: "ok"},
+		},
+	}
+
+	req, err := p.convertParams(params)
+	require.NoError(t, err)
+
+	// Both thought call and response dropped. Assistant with no tool calls remains.
+	// Expected: user + assistant(no tool calls) + user = 3 messages.
+	require.Len(t, req.Messages, 3)
+	assert.Len(t, req.Messages[1].ToolCalls, 0)
+}
+
+func TestConvertParams_NoThoughtCallsUnchanged(t *testing.T) {
+	t.Parallel()
+
+	p := NewProvider("openai", "test-key", "")
+	params := provider.GenerateParams{
+		Model: "gpt-4",
+		Messages: []provider.Message{
+			{Role: "user", Content: "hello"},
+			{
+				Role: "assistant",
+				ToolCalls: []provider.ToolCall{
+					{ID: "call_1", Name: "exec", Arguments: `{"cmd":"ls"}`},
+				},
+			},
+			{
+				Role:     "tool",
+				Content:  `{"result":"files"}`,
+				Metadata: map[string]interface{}{"tool_call_id": "call_1"},
+			},
+			{Role: "user", Content: "thanks"},
+		},
+	}
+
+	req, err := p.convertParams(params)
+	require.NoError(t, err)
+	require.Len(t, req.Messages, 4, "no thought calls means no filtering")
+	assert.Len(t, req.Messages[1].ToolCalls, 1)
+	assert.Equal(t, "call_1", req.Messages[1].ToolCalls[0].ID)
+}
+
 func TestConvertParams_RepairIntegration(t *testing.T) {
 	t.Parallel()
 

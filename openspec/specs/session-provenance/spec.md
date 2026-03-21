@@ -98,7 +98,7 @@ The config system SHALL include a `provenance` section with: `enabled` (bool), `
 - **THEN** defaults are: enabled=false, autoOnStepComplete=true, autoOnPolicy=true, maxPerSession=100, retentionDays=30
 
 ### Requirement: Provenance CLI
-The system SHALL provide `lango provenance` CLI commands: status, checkpoint (list|create|show), session (tree|list), attribution (show|report).
+The system SHALL provide `lango provenance` CLI commands: status, checkpoint (list|create|show), session (tree|list), attribution (show|report). Session tree/list and attribution show/report are not yet implemented and SHALL display placeholder messages.
 
 #### Scenario: Status command
 - **WHEN** `lango provenance status` is run
@@ -106,11 +106,19 @@ The system SHALL provide `lango provenance` CLI commands: status, checkpoint (li
 
 #### Scenario: Checkpoint list with filters
 - **WHEN** `lango provenance checkpoint list --run <id>` is run
-- **THEN** checkpoints for that run are displayed
+- **THEN** checkpoints for that run are displayed from persistent Ent store
 
 #### Scenario: Disabled provenance message
 - **WHEN** any provenance command is run with provenance.enabled=false
 - **THEN** the system displays an enable instruction message
+
+#### Scenario: Session commands show placeholder
+- **WHEN** `lango provenance session tree` or `lango provenance session list` is run
+- **THEN** the CLI prints a "not yet implemented" message
+
+#### Scenario: Attribution commands show placeholder
+- **WHEN** `lango provenance attribution show` or `lango provenance attribution report` is run
+- **THEN** the CLI prints a "not yet implemented (Phase 3)" message
 
 ### Requirement: Provenance App Module
 The provenance system SHALL be registered as an appinit.Module with name "provenance", providing ProvidesProvenance, depending on ProvidesRunLedger.

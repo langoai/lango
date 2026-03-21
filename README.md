@@ -274,6 +274,15 @@ lango bg result <id>             Show completed task result
 lango run list                   List recent RunLedger runs from persistent snapshots
 lango run status                 Show RunLedger configuration and status
 lango run journal <run-id>       View persistent run journal events
+
+lango provenance status          Show provenance configuration and state
+lango provenance checkpoint list List checkpoints (--run <id>, --session <key>)
+lango provenance checkpoint create <label>  Create a manual checkpoint (--run <id>)
+lango provenance checkpoint show <id>       Show checkpoint details
+lango provenance session tree    (not yet implemented)
+lango provenance session list    (not yet implemented)
+lango provenance attribution show   (not yet implemented)
+lango provenance attribution report (not yet implemented)
 ```
 
 ### Diagnostics
@@ -333,6 +342,7 @@ lango/
 │   │   ├── smartaccount/   #   lango account info/deploy/session/module/policy/paymaster
 │   │   ├── metrics/        #   lango metrics [sessions|tools|agents|history]
 │   │   ├── run/            #   lango run list/status/journal
+│   │   ├── provenance/     #   lango provenance status/checkpoint/session/attribution
 │   │   └── tui/            #   TUI components and views
 │   ├── config/             # Config loading, env var substitution, validation
 │   ├── configstore/        # Encrypted config profile storage (Ent-backed)

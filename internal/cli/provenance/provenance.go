@@ -12,7 +12,7 @@ func NewProvenanceCmd(bootLoader func() (*bootstrap.Result, error)) *cobra.Comma
 	cmd := &cobra.Command{
 		Use:   "provenance",
 		Short: "Session provenance: checkpoints, session tree, attribution",
-		Long:  "Manage session provenance data including checkpoints, session trees, and contribution attribution.",
+		Long:  "Manage session provenance data including checkpoints (persistent), session trees (not yet implemented), and contribution attribution (not yet implemented).",
 	}
 
 	cmd.AddCommand(newStatusCmd(bootLoader))
