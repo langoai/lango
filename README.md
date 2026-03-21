@@ -100,6 +100,8 @@ lango serve
 lango config validate
 ```
 
+`lango serve` performs graceful shutdown on the first `Ctrl+C`/`SIGTERM` with a 10-second deadline. If shutdown is already in progress, a second `Ctrl+C` forces immediate exit with code `130`.
+
 The onboard wizard guides you through 5 steps:
 
 1. **Provider Setup** — Choose an AI provider and enter API credentials

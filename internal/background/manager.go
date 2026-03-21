@@ -256,7 +256,7 @@ func (m *Manager) execute(ctx context.Context, task *Task) {
 }
 
 // Shutdown cancels all Pending/Running tasks and waits for goroutines to finish.
-func (m *Manager) Shutdown() {
+func (m *Manager) Shutdown(ctx context.Context) error {
 	m.mu.Lock()
 	for _, task := range m.tasks {
 		snap := task.Snapshot()
@@ -266,8 +266,21 @@ func (m *Manager) Shutdown() {
 	}
 	m.mu.Unlock()
 
-	m.wg.Wait()
+	done := make(chan struct{})
+	go func() {
+		m.wg.Wait()
+		close(done)
+	}()
+
+	select {
+	case <-done:
+	case <-ctx.Done():
+		m.logger.Warnw("background manager shutdown timed out", "error", ctx.Err())
+		return ctx.Err()
+	}
+
 	m.logger.Info("background manager shut down")
+	return nil
 }
 
 // activeCountLocked returns the number of non-terminal tasks. Caller must hold m.mu.

@@ -455,7 +455,7 @@ func (m *automationModule) Init(ctx context.Context, r appinit.Resolver) (*appin
 		components = append(components, lifecycle.ComponentEntry{
 			Component: lifecycle.NewFuncComponent("background-manager",
 				func(_ context.Context, _ *sync.WaitGroup) error { return nil },
-				func(_ context.Context) error { bm.Shutdown(); return nil },
+				func(ctx context.Context) error { return bm.Shutdown(ctx) },
 			),
 			Priority: lifecycle.PriorityAutomation,
 		})
@@ -471,7 +471,7 @@ func (m *automationModule) Init(ctx context.Context, r appinit.Resolver) (*appin
 		components = append(components, lifecycle.ComponentEntry{
 			Component: lifecycle.NewFuncComponent("workflow-engine",
 				func(_ context.Context, _ *sync.WaitGroup) error { return nil },
-				func(_ context.Context) error { we.Shutdown(); return nil },
+				func(ctx context.Context) error { return we.Shutdown(ctx) },
 			),
 			Priority: lifecycle.PriorityAutomation,
 		})

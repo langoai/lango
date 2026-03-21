@@ -70,6 +70,7 @@ type Channel struct {
 	approval *ApprovalProvider
 	botID    string
 	stopChan chan struct{}
+	stopOnce sync.Once
 	wg       sync.WaitGroup
 }
 
@@ -449,9 +450,24 @@ func formatChannelError(err error) string {
 	return fmt.Sprintf("Error: %s", err.Error())
 }
 
-// Stop stops the Slack bot
-func (c *Channel) Stop() {
-	close(c.stopChan)
-	c.wg.Wait()
+// Stop stops the Slack bot.
+func (c *Channel) Stop(ctx context.Context) error {
+	c.stopOnce.Do(func() {
+		close(c.stopChan)
+	})
+
+	done := make(chan struct{})
+	go func() {
+		c.wg.Wait()
+		close(done)
+	}()
+
+	select {
+	case <-done:
+	case <-ctx.Done():
+		return ctx.Err()
+	}
+
 	logger.Info("slack channel stopped")
+	return nil
 }

@@ -118,7 +118,7 @@ func TestRegisterPostBuildLifecycle_Names(t *testing.T) {
 type noopChannel struct{}
 
 func (n *noopChannel) Start(_ context.Context) error { return nil }
-func (n *noopChannel) Stop()                         {}
+func (n *noopChannel) Stop(_ context.Context) error  { return nil }
 
 // ─── Layer 2: Integration Parity Tests ───
 

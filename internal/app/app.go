@@ -2,6 +2,7 @@ package app
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 	"sync"
@@ -555,9 +556,8 @@ func registerPostBuildLifecycle(app *App) {
 				}()
 				return nil
 			},
-			func(_ context.Context) error {
-				ch.Stop()
-				return nil
+			func(ctx context.Context) error {
+				return ch.Stop(ctx)
 			},
 		), lifecycle.PriorityNetwork)
 	}
@@ -618,7 +618,7 @@ func (a *App) Stop(ctx context.Context) error {
 	}
 
 	// Stop all lifecycle-managed components in reverse startup order.
-	_ = a.registry.StopAll(ctx)
+	stopErr := a.registry.StopAll(ctx)
 
 	// Wait for all background goroutines to finish.
 	done := make(chan struct{})
@@ -627,10 +627,12 @@ func (a *App) Stop(ctx context.Context) error {
 		close(done)
 	}()
 
+	var waitErr error
 	select {
 	case <-done:
 		logger().Info("all services stopped")
 	case <-ctx.Done():
+		waitErr = ctx.Err()
 		logger().Warnw("shutdown timed out waiting for services", "error", ctx.Err())
 	}
 
@@ -653,7 +655,7 @@ func (a *App) Stop(ctx context.Context) error {
 		}
 	}
 
-	return nil
+	return errors.Join(stopErr, waitErr)
 }
 
 // logToolRegistrationSummary logs a diagnostic summary of registered tool categories.

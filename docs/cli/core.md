@@ -15,7 +15,7 @@ The server reads configuration from the active encrypted profile and starts:
 - All configured channel adapters (Telegram, Discord, Slack)
 - Background systems (cron scheduler, workflow engine) if enabled
 
-Graceful shutdown is handled via `SIGINT` or `SIGTERM` with a 10-second timeout.
+Graceful shutdown is handled via `SIGINT` or `SIGTERM` with a 10-second timeout. If shutdown is already in progress, a second `Ctrl+C` forces immediate exit with code `130`.
 
 **Example:**
 

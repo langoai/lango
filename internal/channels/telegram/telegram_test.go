@@ -13,12 +13,14 @@ import (
 
 // MockBotAPI implements BotAPI interface
 type MockBotAPI struct {
-	mu                 sync.Mutex
-	GetUpdatesChanFunc func(config tgbotapi.UpdateConfig) tgbotapi.UpdatesChannel
-	SendFunc           func(c tgbotapi.Chattable) (tgbotapi.Message, error)
-	GetSelfFunc        func() tgbotapi.User
-	SentMessages       []tgbotapi.Chattable
-	RequestCalls       []tgbotapi.Chattable
+	mu                       sync.Mutex
+	GetUpdatesChanFunc       func(config tgbotapi.UpdateConfig) tgbotapi.UpdatesChannel
+	SendFunc                 func(c tgbotapi.Chattable) (tgbotapi.Message, error)
+	GetSelfFunc              func() tgbotapi.User
+	StopReceivingUpdatesFunc func()
+	SentMessages             []tgbotapi.Chattable
+	RequestCalls             []tgbotapi.Chattable
+	StopCalls                int
 }
 
 func (m *MockBotAPI) GetUpdatesChan(config tgbotapi.UpdateConfig) tgbotapi.UpdatesChannel {
@@ -59,6 +61,12 @@ func (m *MockBotAPI) getSentMessages() []tgbotapi.Chattable {
 }
 
 func (m *MockBotAPI) StopReceivingUpdates() {
+	m.mu.Lock()
+	m.StopCalls++
+	m.mu.Unlock()
+	if m.StopReceivingUpdatesFunc != nil {
+		m.StopReceivingUpdatesFunc()
+	}
 }
 
 func (m *MockBotAPI) GetSelf() tgbotapi.User {
@@ -100,7 +108,7 @@ func TestTelegramChannel(t *testing.T) {
 	defer cancel()
 
 	require.NoError(t, channel.Start(ctx))
-	defer channel.Stop()
+	defer func() { require.NoError(t, channel.Stop(context.Background())) }()
 
 	// Simulate incoming message
 	updatesCh <- tgbotapi.Update{
@@ -167,7 +175,7 @@ func TestTelegramTypingIndicator(t *testing.T) {
 	defer cancel()
 
 	require.NoError(t, channel.Start(ctx))
-	defer channel.Stop()
+	defer func() { require.NoError(t, channel.Stop(context.Background())) }()
 
 	updatesCh <- tgbotapi.Update{
 		UpdateID: 2,
@@ -199,4 +207,90 @@ func TestTelegramTypingIndicator(t *testing.T) {
 	case <-time.After(1 * time.Second):
 		t.Fatal("timeout waiting for handler")
 	}
+}
+
+func TestTelegramStopStopsReceivingUpdatesBeforeWait(t *testing.T) {
+	t.Parallel()
+
+	updatesCh := make(chan tgbotapi.Update)
+	stoppedUpdates := make(chan struct{})
+
+	mockBot := &MockBotAPI{
+		GetUpdatesChanFunc: func(config tgbotapi.UpdateConfig) tgbotapi.UpdatesChannel {
+			return updatesCh
+		},
+		StopReceivingUpdatesFunc: func() {
+			close(stoppedUpdates)
+			close(updatesCh)
+		},
+	}
+
+	cfg := Config{BotToken: "TEST_TOKEN", Bot: mockBot}
+	channel, err := New(cfg)
+	require.NoError(t, err)
+	channel.SetHandler(func(ctx context.Context, msg *IncomingMessage) (*OutgoingMessage, error) {
+		return &OutgoingMessage{Text: "ok"}, nil
+	})
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	require.NoError(t, channel.Start(ctx))
+
+	require.NoError(t, channel.Stop(context.Background()))
+
+	select {
+	case <-stoppedUpdates:
+	case <-time.After(200 * time.Millisecond):
+		t.Fatal("expected StopReceivingUpdates to be called")
+	}
+}
+
+func TestTelegramStopReturnsContextErrorWhenWorkersDoNotExit(t *testing.T) {
+	t.Parallel()
+
+	updatesCh := make(chan tgbotapi.Update, 1)
+	release := make(chan struct{})
+
+	mockBot := &MockBotAPI{
+		GetUpdatesChanFunc: func(config tgbotapi.UpdateConfig) tgbotapi.UpdatesChannel {
+			return updatesCh
+		},
+		StopReceivingUpdatesFunc: func() {
+			close(updatesCh)
+		},
+	}
+
+	cfg := Config{BotToken: "TEST_TOKEN", Bot: mockBot}
+	channel, err := New(cfg)
+	require.NoError(t, err)
+
+	channel.SetHandler(func(ctx context.Context, msg *IncomingMessage) (*OutgoingMessage, error) {
+		<-release
+		return &OutgoingMessage{Text: "done"}, nil
+	})
+
+	parentCtx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	require.NoError(t, channel.Start(parentCtx))
+
+	updatesCh <- tgbotapi.Update{
+		UpdateID: 3,
+		Message: &tgbotapi.Message{
+			MessageID: 300,
+			From:      &tgbotapi.User{ID: 777, UserName: "tester"},
+			Chat:      &tgbotapi.Chat{ID: 777, Type: "private"},
+			Text:      "block",
+		},
+	}
+
+	time.Sleep(50 * time.Millisecond)
+
+	stopCtx, stopCancel := context.WithTimeout(context.Background(), 20*time.Millisecond)
+	defer stopCancel()
+
+	err = channel.Stop(stopCtx)
+	require.ErrorIs(t, err, context.DeadlineExceeded)
+
+	close(release)
+	require.NoError(t, channel.Stop(context.Background()))
 }

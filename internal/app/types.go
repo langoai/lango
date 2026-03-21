@@ -175,5 +175,5 @@ type App struct {
 // Channel represents a communication channel (Telegram, Discord, Slack)
 type Channel interface {
 	Start(ctx context.Context) error
-	Stop()
+	Stop(ctx context.Context) error
 }
