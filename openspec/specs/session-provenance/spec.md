@@ -1,8 +1,11 @@
 # session-provenance Specification
 
 ## Purpose
-TBD - created by archiving change session-provenance. Update Purpose after archive.
+
+Durable provenance for checkpoints, session lineage, git-aware attribution, and signed provenance bundle exchange across local CLI and P2P workflows.
+
 ## Requirements
+
 ### Requirement: Checkpoint Creation
 The system SHALL support creating provenance checkpoints as thin metadata records referencing RunLedger journal positions. Checkpoints SHALL contain: ID, session_key, run_id, label, trigger type, journal_seq, optional git_ref, optional metadata, and created_at timestamp.
 
@@ -75,6 +78,10 @@ The system SHALL track session hierarchy through SessionNode records containing:
 - **WHEN** a subtree is requested for a root session with maxDepth
 - **THEN** the system returns the root plus all descendants up to maxDepth levels
 
+#### Scenario: Runtime child session lifecycle persists to Ent
+- **WHEN** runtime multi-agent child sessions fork, merge, or discard
+- **THEN** the corresponding session lineage is persisted in the `SessionProvenance` Ent store
+
 ### Requirement: Session Lifecycle Hook
 InMemoryChildStore SHALL accept a `WithLifecycleHook(func(SessionLifecycleEvent))` option. The hook SHALL be called after fork, merge, and discard operations succeed.
 
@@ -90,6 +97,22 @@ InMemoryChildStore SHALL accept a `WithLifecycleHook(func(SessionLifecycleEvent)
 - **WHEN** a child session is discarded
 - **THEN** the hook is called with type "discard"
 
+### Requirement: Attribution Tracking
+The system SHALL persist git-aware attribution records and join them with token usage for reporting.
+
+#### Scenario: Workspace merge creates attribution rows
+- **WHEN** a workspace branch merge completes
+- **THEN** provenance attribution rows are persisted with workspace id, commit hash, file path, and line deltas
+
+#### Scenario: Workspace bundle push creates attribution rows
+- **WHEN** a signed workspace bundle is created for push or broadcast
+- **THEN** provenance attribution rows are persisted for that workspace operation
+
+#### Scenario: Non-workspace session still reports token totals
+- **WHEN** a session has token usage but no workspace git evidence
+- **THEN** attribution reporting still succeeds
+- **AND** author/session token totals are populated
+
 ### Requirement: Provenance Configuration
 The config system SHALL include a `provenance` section with: `enabled` (bool), `checkpoints.autoOnStepComplete` (bool), `checkpoints.autoOnPolicy` (bool), `checkpoints.maxPerSession` (int), `checkpoints.retentionDays` (int).
 
@@ -98,7 +121,7 @@ The config system SHALL include a `provenance` section with: `enabled` (bool), `
 - **THEN** defaults are: enabled=false, autoOnStepComplete=true, autoOnPolicy=true, maxPerSession=100, retentionDays=30
 
 ### Requirement: Provenance CLI
-The system SHALL provide `lango provenance` CLI commands: status, checkpoint (list|create|show), session (tree|list), attribution (show|report). Session tree/list and attribution show/report are not yet implemented and SHALL display placeholder messages.
+The system SHALL provide working `lango provenance` CLI commands: status, checkpoint (list|create|show), session (tree|list), attribution (show|report), and bundle (export|import).
 
 #### Scenario: Status command
 - **WHEN** `lango provenance status` is run
@@ -112,31 +135,40 @@ The system SHALL provide `lango provenance` CLI commands: status, checkpoint (li
 - **WHEN** any provenance command is run with provenance.enabled=false
 - **THEN** the system displays an enable instruction message
 
-#### Scenario: Session commands show placeholder
-- **WHEN** `lango provenance session tree` or `lango provenance session list` is run
-- **THEN** the CLI prints a "not yet implemented" message
+#### Scenario: Session tree command
+- **WHEN** `lango provenance session tree <session-key> --depth <n>` is run
+- **THEN** the CLI prints the persisted session subtree up to the requested depth
 
-#### Scenario: Attribution commands show placeholder
-- **WHEN** `lango provenance attribution show` or `lango provenance attribution report` is run
-- **THEN** the CLI prints a "not yet implemented (Phase 3)" message
+#### Scenario: Session list command
+- **WHEN** `lango provenance session list --limit <n> --status <status>` is run
+- **THEN** the CLI returns persisted session nodes ordered by `created_at` descending
+
+#### Scenario: Attribution show command
+- **WHEN** `lango provenance attribution show <session-key>` is run
+- **THEN** the CLI returns raw attribution rows and token rollup data for the session
+
+#### Scenario: Attribution report command
+- **WHEN** `lango provenance attribution report <session-key>` is run
+- **THEN** the CLI returns aggregated attribution data by author and by file
+
+#### Scenario: Bundle export command
+- **WHEN** `lango provenance bundle export <session-key> --redaction <level>` is run
+- **THEN** the CLI emits a signed provenance bundle with the selected redaction level
+
+#### Scenario: Bundle import command
+- **WHEN** `lango provenance bundle import <file>` is run
+- **THEN** the CLI verifies the signer DID and signature before storing provenance-owned records
 
 ### Requirement: Provenance App Module
 The provenance system SHALL be registered as an appinit.Module with name "provenance", providing ProvidesProvenance, depending on ProvidesRunLedger.
 
 #### Scenario: Module initialization
 - **WHEN** the provenance module is enabled and RunLedger is available
-- **THEN** the module initializes CheckpointService and SessionTree with RunLedger store access
+- **THEN** the module initializes checkpoint, session tree, attribution, and bundle services
 
 #### Scenario: Module disabled
 - **WHEN** provenance.enabled is false
 - **THEN** the module is skipped during app initialization
-
-### Requirement: Ent Schema for Checkpoints
-The system SHALL define an Ent schema `ProvenanceCheckpoint` with fields: id (UUID), session_key, run_id, label, trigger (enum), journal_seq, git_ref, metadata (text), created_at. Indexes on session_key, run_id, trigger, created_at, and (run_id, journal_seq).
-
-#### Scenario: Schema generation
-- **WHEN** `go generate ./internal/ent/...` is run
-- **THEN** the ProvenanceCheckpoint entity code is generated without errors
 
 ### Requirement: Checkpoint Persistence
 The system SHALL persist checkpoints in the Ent database via `EntCheckpointStore` so that data survives process restarts. CLI commands and app modules MUST use `EntCheckpointStore` when `boot.DBClient` is available.
@@ -145,62 +177,27 @@ The system SHALL persist checkpoints in the Ent database via `EntCheckpointStore
 - **WHEN** a checkpoint is created via CLI or auto-trigger
 - **THEN** the checkpoint is persisted in the ProvenanceCheckpoint Ent table and is retrievable in subsequent CLI invocations
 
-#### Scenario: CLI checkpoint list returns persisted data
-- **WHEN** user runs `lango provenance checkpoint list --run <id>`
-- **THEN** the CLI uses `EntCheckpointStore(boot.DBClient)` and returns checkpoints from the database
-
-### Requirement: Auto-checkpoint Wiring
-The `CheckpointService.OnJournalEvent` hook SHALL be registered on the RunLedger store during app module initialization via `SetAppendHook`, enabling automatic checkpoint creation on qualifying journal events.
-
-#### Scenario: Auto-checkpoint on step validation
-- **WHEN** RunLedger appends a `step_validation_passed` event and `autoOnStepComplete` is enabled
-- **THEN** the hook fires and a checkpoint with trigger `step_complete` is automatically saved
-
-### Requirement: Correct Journal Sequence in Hooks
-The `EntStore.AppendJournalEvent` SHALL assign the correct `event.Seq` value before invoking the append hook, matching the behavior of `MemoryStore`.
-
-#### Scenario: Hook receives monotonic non-zero Seq
-- **WHEN** three journal events are appended to a run via EntStore
-- **THEN** the append hook receives Seq values 1, 2, 3 respectively
-
-### Requirement: Session CLI Placeholder
-Session tree and list CLI subcommands SHALL display a "not yet implemented" message until a persistent session tree store is available.
-
-#### Scenario: Session tree command
-- **WHEN** user runs `lango provenance session tree <key>`
-- **THEN** the CLI prints "Session tree: not yet implemented (requires persistent session tree store)"
-
-#### Scenario: Session list command
-- **WHEN** user runs `lango provenance session list`
-- **THEN** the CLI prints "Session list: not yet implemented (requires persistent session tree store)"
-
-### Requirement: EntCheckpointStore Implements CheckpointStore
-`EntCheckpointStore` SHALL implement all six methods of the `CheckpointStore` interface using the `ProvenanceCheckpoint` Ent schema. Error mapping: `ent.IsNotFound` → `ErrCheckpointNotFound`; invalid UUID → parse error.
-
-#### Scenario: Save and retrieve checkpoint
-- **WHEN** `SaveCheckpoint` is called with a valid checkpoint
-- **THEN** `GetCheckpoint` with the same ID returns the checkpoint with all fields preserved
-
-#### Scenario: Get non-existent checkpoint
-- **WHEN** `GetCheckpoint` is called with a valid UUID that does not exist
-- **THEN** `ErrCheckpointNotFound` is returned
-
-#### Scenario: Delete non-existent checkpoint
-- **WHEN** `DeleteCheckpoint` is called with a valid UUID that does not exist
-- **THEN** `ErrCheckpointNotFound` is returned
-
-#### Scenario: ListByRun orders by journal_seq ascending
-- **WHEN** multiple checkpoints exist for a run
-- **THEN** `ListByRun` returns them ordered by `journal_seq` ascending
-
-#### Scenario: ListBySession orders by created_at descending with limit
-- **WHEN** multiple checkpoints exist for a session
-- **THEN** `ListBySession` returns them ordered by `created_at` descending, limited to the requested count
-
 ### Requirement: Ent Schema for Session Provenance
 The system SHALL define an Ent schema `SessionProvenance` with fields: id (UUID), session_key (unique), parent_key, agent_name, goal, run_id, workspace_id, depth, status (enum), created_at, closed_at. Indexes on parent_key, agent_name, status, run_id, created_at.
 
-#### Scenario: Schema generation
+#### Scenario: Session provenance schema generation
 - **WHEN** `go generate ./internal/ent/...` is run
 - **THEN** the SessionProvenance entity code is generated without errors
 
+### Requirement: Ent Schema for Provenance Attribution
+The system SHALL define an Ent schema `ProvenanceAttribution` with fields: id, session_key, run_id, workspace_id, author_type, author_id, file_path, commit_hash, step_id, source, lines_added, lines_removed, created_at.
+
+#### Scenario: Attribution schema generation
+- **WHEN** `go generate ./internal/ent/...` is run
+- **THEN** the `ProvenanceAttribution` entity code is generated without errors
+
+### Requirement: Provenance Bundle Verification
+The system SHALL support signed provenance bundles with redaction levels `none`, `content`, and `full`.
+
+#### Scenario: Remote peer verifies signed bundle
+- **WHEN** a peer receives a provenance bundle over the provenance-specific P2P protocol
+- **THEN** it verifies the bundle signature against the signer DID public key before import
+
+#### Scenario: Tampered bundle rejected
+- **WHEN** a signed bundle payload is modified after signing
+- **THEN** verification fails and the bundle is rejected

@@ -19,6 +19,7 @@ import (
 	"github.com/langoai/lango/internal/knowledge"
 	"github.com/langoai/lango/internal/orchestration"
 	"github.com/langoai/lango/internal/prompt"
+	"github.com/langoai/lango/internal/provenance"
 	"github.com/langoai/lango/internal/runledger"
 	"github.com/langoai/lango/internal/security"
 	"github.com/langoai/lango/internal/session"
@@ -260,6 +261,7 @@ type agentDeps struct {
 	p2pc     *p2pComponents
 	eventBus *eventbus.Bus
 	rls      runledger.RunLedgerStore
+	prov     *provenanceValues
 }
 
 // initAgent creates the ADK agent with the given tools and provider proxy.
@@ -519,6 +521,7 @@ func initAgent(ctx context.Context, deps *agentDeps) (*adk.Agent, error) {
 
 		// Build agent options for multi-agent mode.
 		agentOpts := buildAgentOptions(cfg, kc)
+		agentOpts = append(agentOpts, buildProvenanceAgentOptions(deps.prov)...)
 		adkAgent, err := adk.NewAgentFromADK(agentTree, store, agentOpts...)
 		if err != nil {
 			return nil, fmt.Errorf("adk multi-agent: %w", err)
@@ -529,6 +532,7 @@ func initAgent(ctx context.Context, deps *agentDeps) (*adk.Agent, error) {
 	// Single-agent mode (default).
 	logger().Info("initializing agent runtime (ADK)...")
 	agentOpts := buildAgentOptions(cfg, kc)
+	agentOpts = append(agentOpts, buildProvenanceAgentOptions(deps.prov)...)
 	adkAgent, err := adk.NewAgent(ctx, adkTools, llm, systemPrompt, store, agentOpts...)
 	if err != nil {
 		return nil, fmt.Errorf("adk agent: %w", err)
@@ -561,6 +565,42 @@ func buildAgentOptions(cfg *config.Config, kc *knowledgeComponents) []adk.AgentO
 	}
 
 	return opts
+}
+
+func buildProvenanceAgentOptions(pv *provenanceValues) []adk.AgentOption {
+	if pv == nil || pv.sessionTree == nil {
+		return nil
+	}
+
+	rootObserver := func(sessionKey string) {
+		ctx := context.Background()
+		if _, err := pv.sessionTree.RegisterSession(ctx, sessionKey, "", "root", ""); err != nil && err != provenance.ErrInvalidSessionKey {
+			logger().Debugw("register provenance root session", "session", sessionKey, "error", err)
+		}
+	}
+
+	childHook := func(ev session.SessionLifecycleEvent) {
+		ctx := context.Background()
+		switch ev.Type {
+		case "fork":
+			if _, err := pv.sessionTree.RegisterSession(ctx, ev.ChildKey, ev.ParentKey, ev.AgentName, ""); err != nil {
+				logger().Debugw("register provenance child session", "child", ev.ChildKey, "parent", ev.ParentKey, "error", err)
+			}
+		case "merge":
+			if err := pv.sessionTree.CloseSession(ctx, ev.ChildKey, provenance.SessionStatusMerged); err != nil {
+				logger().Debugw("close provenance merged session", "child", ev.ChildKey, "error", err)
+			}
+		case "discard":
+			if err := pv.sessionTree.CloseSession(ctx, ev.ChildKey, provenance.SessionStatusDiscarded); err != nil {
+				logger().Debugw("close provenance discarded session", "child", ev.ChildKey, "error", err)
+			}
+		}
+	}
+
+	return []adk.AgentOption{
+		adk.WithAgentRootSessionObserver(rootObserver),
+		adk.WithAgentChildLifecycleHook(childHook),
+	}
 }
 
 // initGateway creates the gateway server.

@@ -279,10 +279,12 @@ lango provenance status          Show provenance configuration and state
 lango provenance checkpoint list List checkpoints (--run <id>, --session <key>)
 lango provenance checkpoint create <label>  Create a manual checkpoint (--run <id>)
 lango provenance checkpoint show <id>       Show checkpoint details
-lango provenance session tree    (not yet implemented)
-lango provenance session list    (not yet implemented)
-lango provenance attribution show   (not yet implemented)
-lango provenance attribution report (not yet implemented)
+lango provenance session tree <session-key>         Show persisted session lineage (--depth <n>)
+lango provenance session list [--limit] [--status]  List persisted session nodes
+lango provenance attribution show <session-key>     Show raw attribution rows + token rollup
+lango provenance attribution report <session-key>   Show aggregated attribution report
+lango provenance bundle export <session-key>        Export signed provenance bundle (--redaction, --out)
+lango provenance bundle import <file>               Verify and import provenance bundle
 ```
 
 ### Diagnostics

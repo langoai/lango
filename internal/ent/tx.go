@@ -40,6 +40,8 @@ type Tx struct {
 	PaymentTx *PaymentTxClient
 	// PeerReputation is the client for interacting with the PeerReputation builders.
 	PeerReputation *PeerReputationClient
+	// ProvenanceAttribution is the client for interacting with the ProvenanceAttribution builders.
+	ProvenanceAttribution *ProvenanceAttributionClient
 	// ProvenanceCheckpoint is the client for interacting with the ProvenanceCheckpoint builders.
 	ProvenanceCheckpoint *ProvenanceCheckpointClient
 	// Reflection is the client for interacting with the Reflection builders.
@@ -207,6 +209,7 @@ func (tx *Tx) init() {
 	tx.Observation = NewObservationClient(tx.config)
 	tx.PaymentTx = NewPaymentTxClient(tx.config)
 	tx.PeerReputation = NewPeerReputationClient(tx.config)
+	tx.ProvenanceAttribution = NewProvenanceAttributionClient(tx.config)
 	tx.ProvenanceCheckpoint = NewProvenanceCheckpointClient(tx.config)
 	tx.Reflection = NewReflectionClient(tx.config)
 	tx.RunJournal = NewRunJournalClient(tx.config)

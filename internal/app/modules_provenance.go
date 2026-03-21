@@ -6,6 +6,7 @@ import (
 	"github.com/langoai/lango/internal/appinit"
 	"github.com/langoai/lango/internal/bootstrap"
 	"github.com/langoai/lango/internal/config"
+	"github.com/langoai/lango/internal/observability/token"
 	"github.com/langoai/lango/internal/provenance"
 	"github.com/langoai/lango/internal/runledger"
 )
@@ -14,7 +15,11 @@ import (
 type provenanceValues struct {
 	checkpointStore   provenance.CheckpointStore
 	checkpointService *provenance.CheckpointService
+	sessionTreeStore  provenance.SessionTreeStore
 	sessionTree       *provenance.SessionTree
+	attributionStore  provenance.AttributionStore
+	attribution       *provenance.AttributionService
+	bundle            *provenance.BundleService
 }
 
 // provenanceModule initializes the session provenance subsystem.
@@ -34,10 +39,15 @@ func (m *provenanceModule) Enabled() bool { return m.cfg.Provenance.Enabled }
 
 func (m *provenanceModule) Init(_ context.Context, r appinit.Resolver) (*appinit.ModuleResult, error) {
 	cpStore := provenance.CheckpointStore(provenance.NewMemoryStore())
+	treeStore := provenance.SessionTreeStore(provenance.NewMemoryTreeStore())
+	attrStore := provenance.AttributionStore(provenance.NewMemoryAttributionStore())
+	var tokenStore provenance.TokenUsageReader
 	if m.boot != nil && m.boot.DBClient != nil {
 		cpStore = provenance.NewEntCheckpointStore(m.boot.DBClient)
+		treeStore = provenance.NewEntSessionTreeStore(m.boot.DBClient)
+		attrStore = provenance.NewEntAttributionStore(m.boot.DBClient)
+		tokenStore = token.NewEntTokenStore(m.boot.DBClient)
 	}
-	treeStore := provenance.SessionTreeStore(provenance.NewMemoryTreeStore())
 
 	// Resolve RunLedger store if available.
 	var ledgerStore runledger.RunLedgerStore
@@ -49,6 +59,8 @@ func (m *provenanceModule) Init(_ context.Context, r appinit.Resolver) (*appinit
 
 	cpService := provenance.NewCheckpointService(cpStore, ledgerStore, m.cfg.Provenance.Checkpoints)
 	sessionTree := provenance.NewSessionTree(treeStore)
+	attribution := provenance.NewAttributionService(attrStore, cpStore, tokenStore)
+	bundle := provenance.NewBundleService(cpStore, treeStore, attrStore, attribution)
 
 	// Register auto-checkpoint hook on the RunLedger store (post-construction).
 	if ledgerStore != nil {
@@ -60,7 +72,11 @@ func (m *provenanceModule) Init(_ context.Context, r appinit.Resolver) (*appinit
 	vals := &provenanceValues{
 		checkpointStore:   cpStore,
 		checkpointService: cpService,
+		sessionTreeStore:  treeStore,
 		sessionTree:       sessionTree,
+		attributionStore:  attrStore,
+		attribution:       attribution,
+		bundle:            bundle,
 	}
 
 	return &appinit.ModuleResult{

@@ -22,6 +22,7 @@ type wsComponents struct {
 	chronicler *workspace.Chronicler
 	tracker    *workspace.ContributionTracker
 	db         *bolt.DB
+	localDID   string
 }
 
 // initWorkspace creates workspace and git bundle components if enabled.
@@ -143,5 +144,6 @@ func initWorkspace(cfg *config.Config, node *p2p.Node, localDID string, sessionV
 		chronicler: chronicler,
 		tracker:    tracker,
 		db:         db,
+		localDID:   localDID,
 	}
 }

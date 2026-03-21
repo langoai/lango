@@ -73,6 +73,9 @@ func New(boot *bootstrap.Result) (*App, error) {
 	// B1. Populate app fields from resolver.
 	populateAppFields(app, resolver)
 
+	// B1b. Provenance runtime capture + transport wiring.
+	wireProvenanceRuntime(app, resolver)
+
 	// B2. Build catalog from module CatalogEntries.
 	catalog := buildCatalogFromEntries(buildResult.CatalogEntries)
 
@@ -169,6 +172,10 @@ func New(boot *bootstrap.Result) (*App, error) {
 		p2pc:     p2pc,
 		eventBus: bus,
 		rls:      app.RunLedgerStore,
+		prov: func() *provenanceValues {
+			pv, _ := resolver.Resolve(appinit.ProvidesProvenance).(*provenanceValues)
+			return pv
+		}(),
 	})
 	if err != nil {
 		return nil, fmt.Errorf("create agent: %w", err)
@@ -293,6 +300,14 @@ func populateAppFields(app *App, r appinit.Resolver) {
 	if rlv, ok := r.Resolve(appinit.ProvidesRunLedger).(*runLedgerValues); ok && rlv != nil {
 		app.RunLedgerStore = rlv.store
 		app.RunLedgerPEV = rlv.pev
+	}
+
+	// Provenance.
+	if pv, ok := r.Resolve(appinit.ProvidesProvenance).(*provenanceValues); ok && pv != nil {
+		app.ProvenanceCheckpoints = pv.checkpointService
+		app.ProvenanceSessionTree = pv.sessionTree
+		app.ProvenanceAttribution = pv.attribution
+		app.ProvenanceBundle = pv.bundle
 	}
 }
 

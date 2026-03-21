@@ -59,6 +59,19 @@ type SessionNode struct {
 	ClosedAt    *time.Time    `json:"closed_at,omitempty"`
 }
 
+// AttributionSource identifies how an attribution record was captured.
+type AttributionSource string
+
+const (
+	AttributionSourceWorkspaceMerge       AttributionSource = "workspace_merge"
+	AttributionSourceWorkspaceBundlePush  AttributionSource = "workspace_bundle_push"
+	AttributionSourceWorkspaceBundleApply AttributionSource = "workspace_bundle_apply"
+	AttributionSourceSessionFork          AttributionSource = "session_fork"
+	AttributionSourceSessionMerge         AttributionSource = "session_merge"
+	AttributionSourceSessionDiscard       AttributionSource = "session_discard"
+	AttributionSourceBundleImport         AttributionSource = "bundle_import"
+)
+
 // AuthorType identifies the kind of contributor.
 type AuthorType string
 
@@ -70,17 +83,20 @@ const (
 
 // Attribution records a coarse contribution by an author within a session.
 type Attribution struct {
-	ID           string       `json:"id"`
-	SessionKey   string       `json:"session_key"`
-	AuthorType   AuthorType   `json:"author_type"`
-	AuthorID     string       `json:"author_id"`
-	FilePath     string       `json:"file_path,omitempty"`
-	CommitHash   string       `json:"commit_hash,omitempty"`
-	StepID       string       `json:"step_id,omitempty"`
-	LinesAdded   int          `json:"lines_added"`
-	LinesRemoved int          `json:"lines_removed"`
-	TokensUsed   TokenSummary `json:"tokens_used"`
-	CreatedAt    time.Time    `json:"created_at"`
+	ID           string            `json:"id"`
+	SessionKey   string            `json:"session_key"`
+	RunID        string            `json:"run_id,omitempty"`
+	WorkspaceID  string            `json:"workspace_id,omitempty"`
+	AuthorType   AuthorType        `json:"author_type"`
+	AuthorID     string            `json:"author_id"`
+	FilePath     string            `json:"file_path,omitempty"`
+	CommitHash   string            `json:"commit_hash,omitempty"`
+	StepID       string            `json:"step_id,omitempty"`
+	Source       AttributionSource `json:"source,omitempty"`
+	LinesAdded   int               `json:"lines_added"`
+	LinesRemoved int               `json:"lines_removed"`
+	TokensUsed   TokenSummary      `json:"tokens_used"`
+	CreatedAt    time.Time         `json:"created_at"`
 }
 
 // AuthorStats summarizes an author's contributions.
@@ -120,11 +136,13 @@ const (
 
 // ProvenanceBundle is the portable container for provenance data.
 type ProvenanceBundle struct {
-	Version        string             `json:"version"`
-	Checkpoints    []Checkpoint       `json:"checkpoints"`
-	SessionTree    []SessionNode      `json:"session_tree,omitempty"`
-	Attributions   []Attribution      `json:"attributions,omitempty"`
-	Report         *AttributionReport `json:"report,omitempty"`
-	Signature      []byte             `json:"signature,omitempty"`
-	RedactionLevel RedactionLevel     `json:"redaction_level"`
+	Version            string             `json:"version"`
+	Checkpoints        []Checkpoint       `json:"checkpoints"`
+	SessionTree        []SessionNode      `json:"session_tree,omitempty"`
+	Attributions       []Attribution      `json:"attributions,omitempty"`
+	Report             *AttributionReport `json:"report,omitempty"`
+	SignerDID          string             `json:"signer_did,omitempty"`
+	SignatureAlgorithm string             `json:"signature_algorithm,omitempty"`
+	Signature          []byte             `json:"signature,omitempty"`
+	RedactionLevel     RedactionLevel     `json:"redaction_level"`
 }

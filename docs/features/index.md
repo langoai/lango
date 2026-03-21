@@ -184,6 +184,14 @@ Lango provides a comprehensive set of features for building intelligent AI agent
 
     [:octicons-arrow-right-24: Learn more](run-ledger.md)
 
+-   :bookmark_tabs: **[Session Provenance](provenance.md)** :material-flask-outline:{ title="Experimental" }
+
+    ---
+
+    Persistent checkpoints, session lineage, git-aware attribution, and signed provenance bundle export/import for auditable multi-agent work.
+
+    [:octicons-arrow-right-24: Learn more](provenance.md)
+
 </div>
 
 ## Feature Status
@@ -212,6 +220,7 @@ Lango provides a comprehensive set of features for building intelligent AI agent
 | Config Presets | Stable | `lango onboard --preset` |
 | MCP Integration | Stable | `mcp.enabled` |
 | RunLedger (Task OS) | Experimental | `runLedger.enabled` |
+| Session Provenance | Experimental | `provenance.enabled` |
 | Tool Hooks | Experimental | `hooks.enabled` |
 | Tool Catalog | Internal | — |
 | Event Bus | Internal | — |

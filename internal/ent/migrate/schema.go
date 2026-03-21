@@ -466,6 +466,65 @@ var (
 			},
 		},
 	}
+	// ProvenanceAttributionsColumns holds the columns for the "provenance_attributions" table.
+	ProvenanceAttributionsColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeUUID},
+		{Name: "session_key", Type: field.TypeString},
+		{Name: "run_id", Type: field.TypeString, Nullable: true},
+		{Name: "workspace_id", Type: field.TypeString, Nullable: true},
+		{Name: "author_type", Type: field.TypeString},
+		{Name: "author_id", Type: field.TypeString},
+		{Name: "file_path", Type: field.TypeString, Nullable: true},
+		{Name: "commit_hash", Type: field.TypeString, Nullable: true},
+		{Name: "step_id", Type: field.TypeString, Nullable: true},
+		{Name: "source", Type: field.TypeString},
+		{Name: "lines_added", Type: field.TypeInt, Default: 0},
+		{Name: "lines_removed", Type: field.TypeInt, Default: 0},
+		{Name: "created_at", Type: field.TypeTime},
+	}
+	// ProvenanceAttributionsTable holds the schema information for the "provenance_attributions" table.
+	ProvenanceAttributionsTable = &schema.Table{
+		Name:       "provenance_attributions",
+		Columns:    ProvenanceAttributionsColumns,
+		PrimaryKey: []*schema.Column{ProvenanceAttributionsColumns[0]},
+		Indexes: []*schema.Index{
+			{
+				Name:    "provenanceattribution_session_key",
+				Unique:  false,
+				Columns: []*schema.Column{ProvenanceAttributionsColumns[1]},
+			},
+			{
+				Name:    "provenanceattribution_workspace_id",
+				Unique:  false,
+				Columns: []*schema.Column{ProvenanceAttributionsColumns[3]},
+			},
+			{
+				Name:    "provenanceattribution_run_id",
+				Unique:  false,
+				Columns: []*schema.Column{ProvenanceAttributionsColumns[2]},
+			},
+			{
+				Name:    "provenanceattribution_author_id",
+				Unique:  false,
+				Columns: []*schema.Column{ProvenanceAttributionsColumns[5]},
+			},
+			{
+				Name:    "provenanceattribution_commit_hash",
+				Unique:  false,
+				Columns: []*schema.Column{ProvenanceAttributionsColumns[7]},
+			},
+			{
+				Name:    "provenanceattribution_file_path",
+				Unique:  false,
+				Columns: []*schema.Column{ProvenanceAttributionsColumns[6]},
+			},
+			{
+				Name:    "provenanceattribution_created_at",
+				Unique:  false,
+				Columns: []*schema.Column{ProvenanceAttributionsColumns[12]},
+			},
+		},
+	}
 	// ProvenanceCheckpointsColumns holds the columns for the "provenance_checkpoints" table.
 	ProvenanceCheckpointsColumns = []*schema.Column{
 		{Name: "id", Type: field.TypeUUID},
@@ -886,6 +945,7 @@ var (
 		ObservationsTable,
 		PaymentTxesTable,
 		PeerReputationsTable,
+		ProvenanceAttributionsTable,
 		ProvenanceCheckpointsTable,
 		ReflectionsTable,
 		RunJournalsTable,

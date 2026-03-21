@@ -48,6 +48,9 @@ type PaymentTx func(*sql.Selector)
 // PeerReputation is the predicate function for peerreputation builders.
 type PeerReputation func(*sql.Selector)
 
+// ProvenanceAttribution is the predicate function for provenanceattribution builders.
+type ProvenanceAttribution func(*sql.Selector)
+
 // ProvenanceCheckpoint is the predicate function for provenancecheckpoint builders.
 type ProvenanceCheckpoint func(*sql.Selector)
 

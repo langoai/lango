@@ -37,9 +37,11 @@ const defaultMaxTurns = 25
 type AgentOption func(*agentOptions)
 
 type agentOptions struct {
-	tokenBudget      int
-	maxTurns         int
-	errorFixProvider ErrorFixProvider
+	tokenBudget         int
+	maxTurns            int
+	errorFixProvider    ErrorFixProvider
+	rootSessionObserver func(string)
+	childLifecycleHook  func(internal.SessionLifecycleEvent)
 }
 
 // WithAgentTokenBudget sets the session history token budget.
@@ -58,12 +60,23 @@ func WithAgentErrorFixProvider(p ErrorFixProvider) AgentOption {
 	return func(o *agentOptions) { o.errorFixProvider = p }
 }
 
+// WithAgentRootSessionObserver records root session creation events.
+func WithAgentRootSessionObserver(fn func(string)) AgentOption {
+	return func(o *agentOptions) { o.rootSessionObserver = fn }
+}
+
+// WithAgentChildLifecycleHook records synthetic child-session lifecycle events.
+func WithAgentChildLifecycleHook(fn func(internal.SessionLifecycleEvent)) AgentOption {
+	return func(o *agentOptions) { o.childLifecycleHook = fn }
+}
+
 // Agent wraps the ADK runner for integration with Lango.
 type Agent struct {
 	runner           *runner.Runner
 	adkAgent         adk_agent.Agent
 	maxTurns         int              // 0 = defaultMaxTurns
 	errorFixProvider ErrorFixProvider // optional: for self-correction on errors
+	sessionService   *SessionServiceAdapter
 }
 
 // NewAgent creates a new Agent instance.
@@ -92,6 +105,12 @@ func NewAgent(ctx context.Context, tools []tool.Tool, mod model.LLM, systemPromp
 	if o.tokenBudget > 0 {
 		sessService.WithTokenBudget(o.tokenBudget)
 	}
+	if o.rootSessionObserver != nil {
+		sessService.WithRootSessionObserver(o.rootSessionObserver)
+	}
+	if o.childLifecycleHook != nil {
+		sessService.WithChildLifecycleHook(o.childLifecycleHook)
+	}
 
 	// Create Runner
 	runnerCfg := runner.Config{
@@ -110,6 +129,7 @@ func NewAgent(ctx context.Context, tools []tool.Tool, mod model.LLM, systemPromp
 		adkAgent:         adkAgent,
 		maxTurns:         o.maxTurns,
 		errorFixProvider: o.errorFixProvider,
+		sessionService:   sessService,
 	}, nil
 }
 
@@ -124,6 +144,12 @@ func NewAgentFromADK(adkAgent adk_agent.Agent, store internal.Store, opts ...Age
 	sessService := NewSessionServiceAdapter(store, adkAgent.Name())
 	if o.tokenBudget > 0 {
 		sessService.WithTokenBudget(o.tokenBudget)
+	}
+	if o.rootSessionObserver != nil {
+		sessService.WithRootSessionObserver(o.rootSessionObserver)
+	}
+	if o.childLifecycleHook != nil {
+		sessService.WithChildLifecycleHook(o.childLifecycleHook)
 	}
 
 	runnerCfg := runner.Config{
@@ -142,6 +168,7 @@ func NewAgentFromADK(adkAgent adk_agent.Agent, store internal.Store, opts ...Age
 		adkAgent:         adkAgent,
 		maxTurns:         o.maxTurns,
 		errorFixProvider: o.errorFixProvider,
+		sessionService:   sessService,
 	}, nil
 }
 
@@ -318,6 +345,9 @@ func (a *Agent) RunAndCollect(ctx context.Context, sessionID, input string, opts
 		// Safety net: detect [REJECT] text from sub-agents that failed to
 		// call transfer_to_agent and force re-routing through the orchestrator.
 		if resp != "" && containsRejectPattern(resp) && len(a.adkAgent.SubAgents()) > 0 {
+			if a.sessionService != nil {
+				_ = a.sessionService.DiscardActiveChild(sessionID)
+			}
 			logger().Warnw("sub-agent REJECT detected in text, forcing re-route",
 				"session", sessionID,
 				"response_preview", truncate(resp, 100))
@@ -327,9 +357,15 @@ func (a *Agent) RunAndCollect(ctx context.Context, sessionID, input string, opts
 					"Original user request: %s]", input)
 			retryResp, retryErr := a.runAndCollectOnce(ctx, sessionID, correction, &ro)
 			if retryErr == nil && retryResp != "" && !containsRejectPattern(retryResp) {
+				if a.sessionService != nil {
+					_ = a.sessionService.CloseActiveChild(sessionID)
+				}
 				return retryResp, nil
 			}
 			// Fall through with original response if retry also fails.
+		}
+		if a.sessionService != nil {
+			_ = a.sessionService.CloseActiveChild(sessionID)
 		}
 
 		if resp == "" {
@@ -376,6 +412,9 @@ func (a *Agent) RunAndCollect(ctx context.Context, sessionID, input string, opts
 			"elapsed", time.Since(start).String(),
 			"error", err)
 		// Return partial result from the best attempt if available.
+		if a.sessionService != nil {
+			_ = a.sessionService.CloseActiveChild(sessionID)
+		}
 		return resp, err
 	}
 
@@ -402,10 +441,16 @@ func (a *Agent) RunAndCollect(ctx context.Context, sessionID, input string, opts
 		if retryResp != "" && len(retryResp) > len(resp) {
 			resp = retryResp
 		}
+		if a.sessionService != nil {
+			_ = a.sessionService.CloseActiveChild(sessionID)
+		}
 		return resp, retryErr
 	}
 	resp = retryResp
 	err = nil
+	if a.sessionService != nil {
+		_ = a.sessionService.CloseActiveChild(sessionID)
+	}
 
 	logger().Infow("agent hallucination retry succeeded",
 		"session", sessionID,
@@ -615,6 +660,9 @@ func (a *Agent) RunStreaming(ctx context.Context, sessionID, input string, onChu
 	// timeout that the iterator failed to propagate.
 	if err := ctx.Err(); err != nil {
 		partial := b.String()
+		if a.sessionService != nil {
+			_ = a.sessionService.CloseActiveChild(sessionID)
+		}
 		return partial, &AgentError{
 			Code:    ErrTimeout,
 			Message: "agent error",
@@ -623,7 +671,9 @@ func (a *Agent) RunStreaming(ctx context.Context, sessionID, input string, onChu
 			Elapsed: time.Since(start),
 		}
 	}
-
+	if a.sessionService != nil {
+		_ = a.sessionService.CloseActiveChild(sessionID)
+	}
 	return b.String(), nil
 }
 

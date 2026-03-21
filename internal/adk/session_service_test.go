@@ -215,6 +215,37 @@ func TestAppendEvent_PreservesFunctionCallID(t *testing.T) {
 	assert.Equal(t, "exec", msg.ToolCalls[0].Name)
 }
 
+func TestAppendEvent_EmitsChildLifecycle(t *testing.T) {
+	t.Parallel()
+
+	store := newMockStore()
+	sess := &internal.Session{
+		Key:       "test-session",
+		Metadata:  make(map[string]string),
+		CreatedAt: time.Now(),
+		UpdatedAt: time.Now(),
+	}
+	store.Create(sess)
+
+	var roots []string
+	var events []internal.SessionLifecycleEvent
+	svc := NewSessionServiceAdapter(store, "lango-orchestrator").
+		WithRootSessionObserver(func(sessionKey string) { roots = append(roots, sessionKey) }).
+		WithChildLifecycleHook(func(ev internal.SessionLifecycleEvent) { events = append(events, ev) })
+
+	_, err := svc.Create(context.Background(), &session.CreateRequest{SessionID: "test-session"})
+	require.NoError(t, err)
+
+	adapter := NewSessionAdapter(sess, store, "lango-orchestrator")
+	require.NoError(t, svc.AppendEvent(context.Background(), adapter, newTestEvent("operator", "model", "sub-agent reply")))
+	require.NoError(t, svc.AppendEvent(context.Background(), adapter, newTestEvent("lango-orchestrator", "model", "merged back")))
+
+	require.Len(t, roots, 1)
+	require.Len(t, events, 2)
+	assert.Equal(t, "fork", events[0].Type)
+	assert.Equal(t, "merge", events[1].Type)
+}
+
 func TestAppendEvent_FunctionCallFallbackID(t *testing.T) {
 	t.Parallel()
 

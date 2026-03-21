@@ -30,6 +30,7 @@ import (
 	"github.com/langoai/lango/internal/ent/observation"
 	"github.com/langoai/lango/internal/ent/paymenttx"
 	"github.com/langoai/lango/internal/ent/peerreputation"
+	"github.com/langoai/lango/internal/ent/provenanceattribution"
 	"github.com/langoai/lango/internal/ent/provenancecheckpoint"
 	"github.com/langoai/lango/internal/ent/reflection"
 	"github.com/langoai/lango/internal/ent/runjournal"
@@ -76,6 +77,8 @@ type Client struct {
 	PaymentTx *PaymentTxClient
 	// PeerReputation is the client for interacting with the PeerReputation builders.
 	PeerReputation *PeerReputationClient
+	// ProvenanceAttribution is the client for interacting with the ProvenanceAttribution builders.
+	ProvenanceAttribution *ProvenanceAttributionClient
 	// ProvenanceCheckpoint is the client for interacting with the ProvenanceCheckpoint builders.
 	ProvenanceCheckpoint *ProvenanceCheckpointClient
 	// Reflection is the client for interacting with the Reflection builders.
@@ -123,6 +126,7 @@ func (c *Client) init() {
 	c.Observation = NewObservationClient(c.config)
 	c.PaymentTx = NewPaymentTxClient(c.config)
 	c.PeerReputation = NewPeerReputationClient(c.config)
+	c.ProvenanceAttribution = NewProvenanceAttributionClient(c.config)
 	c.ProvenanceCheckpoint = NewProvenanceCheckpointClient(c.config)
 	c.Reflection = NewReflectionClient(c.config)
 	c.RunJournal = NewRunJournalClient(c.config)
@@ -224,33 +228,34 @@ func (c *Client) Tx(ctx context.Context) (*Tx, error) {
 	cfg := c.config
 	cfg.driver = tx
 	return &Tx{
-		ctx:                  ctx,
-		config:               cfg,
-		AuditLog:             NewAuditLogClient(cfg),
-		ConfigProfile:        NewConfigProfileClient(cfg),
-		CronJob:              NewCronJobClient(cfg),
-		CronJobHistory:       NewCronJobHistoryClient(cfg),
-		EscrowDeal:           NewEscrowDealClient(cfg),
-		ExternalRef:          NewExternalRefClient(cfg),
-		Inquiry:              NewInquiryClient(cfg),
-		Key:                  NewKeyClient(cfg),
-		Knowledge:            NewKnowledgeClient(cfg),
-		Learning:             NewLearningClient(cfg),
-		Message:              NewMessageClient(cfg),
-		Observation:          NewObservationClient(cfg),
-		PaymentTx:            NewPaymentTxClient(cfg),
-		PeerReputation:       NewPeerReputationClient(cfg),
-		ProvenanceCheckpoint: NewProvenanceCheckpointClient(cfg),
-		Reflection:           NewReflectionClient(cfg),
-		RunJournal:           NewRunJournalClient(cfg),
-		RunSnapshot:          NewRunSnapshotClient(cfg),
-		RunStep:              NewRunStepClient(cfg),
-		Secret:               NewSecretClient(cfg),
-		Session:              NewSessionClient(cfg),
-		SessionProvenance:    NewSessionProvenanceClient(cfg),
-		TokenUsage:           NewTokenUsageClient(cfg),
-		WorkflowRun:          NewWorkflowRunClient(cfg),
-		WorkflowStepRun:      NewWorkflowStepRunClient(cfg),
+		ctx:                   ctx,
+		config:                cfg,
+		AuditLog:              NewAuditLogClient(cfg),
+		ConfigProfile:         NewConfigProfileClient(cfg),
+		CronJob:               NewCronJobClient(cfg),
+		CronJobHistory:        NewCronJobHistoryClient(cfg),
+		EscrowDeal:            NewEscrowDealClient(cfg),
+		ExternalRef:           NewExternalRefClient(cfg),
+		Inquiry:               NewInquiryClient(cfg),
+		Key:                   NewKeyClient(cfg),
+		Knowledge:             NewKnowledgeClient(cfg),
+		Learning:              NewLearningClient(cfg),
+		Message:               NewMessageClient(cfg),
+		Observation:           NewObservationClient(cfg),
+		PaymentTx:             NewPaymentTxClient(cfg),
+		PeerReputation:        NewPeerReputationClient(cfg),
+		ProvenanceAttribution: NewProvenanceAttributionClient(cfg),
+		ProvenanceCheckpoint:  NewProvenanceCheckpointClient(cfg),
+		Reflection:            NewReflectionClient(cfg),
+		RunJournal:            NewRunJournalClient(cfg),
+		RunSnapshot:           NewRunSnapshotClient(cfg),
+		RunStep:               NewRunStepClient(cfg),
+		Secret:                NewSecretClient(cfg),
+		Session:               NewSessionClient(cfg),
+		SessionProvenance:     NewSessionProvenanceClient(cfg),
+		TokenUsage:            NewTokenUsageClient(cfg),
+		WorkflowRun:           NewWorkflowRunClient(cfg),
+		WorkflowStepRun:       NewWorkflowStepRunClient(cfg),
 	}, nil
 }
 
@@ -268,33 +273,34 @@ func (c *Client) BeginTx(ctx context.Context, opts *sql.TxOptions) (*Tx, error) 
 	cfg := c.config
 	cfg.driver = &txDriver{tx: tx, drv: c.driver}
 	return &Tx{
-		ctx:                  ctx,
-		config:               cfg,
-		AuditLog:             NewAuditLogClient(cfg),
-		ConfigProfile:        NewConfigProfileClient(cfg),
-		CronJob:              NewCronJobClient(cfg),
-		CronJobHistory:       NewCronJobHistoryClient(cfg),
-		EscrowDeal:           NewEscrowDealClient(cfg),
-		ExternalRef:          NewExternalRefClient(cfg),
-		Inquiry:              NewInquiryClient(cfg),
-		Key:                  NewKeyClient(cfg),
-		Knowledge:            NewKnowledgeClient(cfg),
-		Learning:             NewLearningClient(cfg),
-		Message:              NewMessageClient(cfg),
-		Observation:          NewObservationClient(cfg),
-		PaymentTx:            NewPaymentTxClient(cfg),
-		PeerReputation:       NewPeerReputationClient(cfg),
-		ProvenanceCheckpoint: NewProvenanceCheckpointClient(cfg),
-		Reflection:           NewReflectionClient(cfg),
-		RunJournal:           NewRunJournalClient(cfg),
-		RunSnapshot:          NewRunSnapshotClient(cfg),
-		RunStep:              NewRunStepClient(cfg),
-		Secret:               NewSecretClient(cfg),
-		Session:              NewSessionClient(cfg),
-		SessionProvenance:    NewSessionProvenanceClient(cfg),
-		TokenUsage:           NewTokenUsageClient(cfg),
-		WorkflowRun:          NewWorkflowRunClient(cfg),
-		WorkflowStepRun:      NewWorkflowStepRunClient(cfg),
+		ctx:                   ctx,
+		config:                cfg,
+		AuditLog:              NewAuditLogClient(cfg),
+		ConfigProfile:         NewConfigProfileClient(cfg),
+		CronJob:               NewCronJobClient(cfg),
+		CronJobHistory:        NewCronJobHistoryClient(cfg),
+		EscrowDeal:            NewEscrowDealClient(cfg),
+		ExternalRef:           NewExternalRefClient(cfg),
+		Inquiry:               NewInquiryClient(cfg),
+		Key:                   NewKeyClient(cfg),
+		Knowledge:             NewKnowledgeClient(cfg),
+		Learning:              NewLearningClient(cfg),
+		Message:               NewMessageClient(cfg),
+		Observation:           NewObservationClient(cfg),
+		PaymentTx:             NewPaymentTxClient(cfg),
+		PeerReputation:        NewPeerReputationClient(cfg),
+		ProvenanceAttribution: NewProvenanceAttributionClient(cfg),
+		ProvenanceCheckpoint:  NewProvenanceCheckpointClient(cfg),
+		Reflection:            NewReflectionClient(cfg),
+		RunJournal:            NewRunJournalClient(cfg),
+		RunSnapshot:           NewRunSnapshotClient(cfg),
+		RunStep:               NewRunStepClient(cfg),
+		Secret:                NewSecretClient(cfg),
+		Session:               NewSessionClient(cfg),
+		SessionProvenance:     NewSessionProvenanceClient(cfg),
+		TokenUsage:            NewTokenUsageClient(cfg),
+		WorkflowRun:           NewWorkflowRunClient(cfg),
+		WorkflowStepRun:       NewWorkflowStepRunClient(cfg),
 	}, nil
 }
 
@@ -326,9 +332,10 @@ func (c *Client) Use(hooks ...Hook) {
 	for _, n := range []interface{ Use(...Hook) }{
 		c.AuditLog, c.ConfigProfile, c.CronJob, c.CronJobHistory, c.EscrowDeal,
 		c.ExternalRef, c.Inquiry, c.Key, c.Knowledge, c.Learning, c.Message,
-		c.Observation, c.PaymentTx, c.PeerReputation, c.ProvenanceCheckpoint,
-		c.Reflection, c.RunJournal, c.RunSnapshot, c.RunStep, c.Secret, c.Session,
-		c.SessionProvenance, c.TokenUsage, c.WorkflowRun, c.WorkflowStepRun,
+		c.Observation, c.PaymentTx, c.PeerReputation, c.ProvenanceAttribution,
+		c.ProvenanceCheckpoint, c.Reflection, c.RunJournal, c.RunSnapshot, c.RunStep,
+		c.Secret, c.Session, c.SessionProvenance, c.TokenUsage, c.WorkflowRun,
+		c.WorkflowStepRun,
 	} {
 		n.Use(hooks...)
 	}
@@ -340,9 +347,10 @@ func (c *Client) Intercept(interceptors ...Interceptor) {
 	for _, n := range []interface{ Intercept(...Interceptor) }{
 		c.AuditLog, c.ConfigProfile, c.CronJob, c.CronJobHistory, c.EscrowDeal,
 		c.ExternalRef, c.Inquiry, c.Key, c.Knowledge, c.Learning, c.Message,
-		c.Observation, c.PaymentTx, c.PeerReputation, c.ProvenanceCheckpoint,
-		c.Reflection, c.RunJournal, c.RunSnapshot, c.RunStep, c.Secret, c.Session,
-		c.SessionProvenance, c.TokenUsage, c.WorkflowRun, c.WorkflowStepRun,
+		c.Observation, c.PaymentTx, c.PeerReputation, c.ProvenanceAttribution,
+		c.ProvenanceCheckpoint, c.Reflection, c.RunJournal, c.RunSnapshot, c.RunStep,
+		c.Secret, c.Session, c.SessionProvenance, c.TokenUsage, c.WorkflowRun,
+		c.WorkflowStepRun,
 	} {
 		n.Intercept(interceptors...)
 	}
@@ -379,6 +387,8 @@ func (c *Client) Mutate(ctx context.Context, m Mutation) (Value, error) {
 		return c.PaymentTx.mutate(ctx, m)
 	case *PeerReputationMutation:
 		return c.PeerReputation.mutate(ctx, m)
+	case *ProvenanceAttributionMutation:
+		return c.ProvenanceAttribution.mutate(ctx, m)
 	case *ProvenanceCheckpointMutation:
 		return c.ProvenanceCheckpoint.mutate(ctx, m)
 	case *ReflectionMutation:
@@ -2300,6 +2310,139 @@ func (c *PeerReputationClient) mutate(ctx context.Context, m *PeerReputationMuta
 	}
 }
 
+// ProvenanceAttributionClient is a client for the ProvenanceAttribution schema.
+type ProvenanceAttributionClient struct {
+	config
+}
+
+// NewProvenanceAttributionClient returns a client for the ProvenanceAttribution from the given config.
+func NewProvenanceAttributionClient(c config) *ProvenanceAttributionClient {
+	return &ProvenanceAttributionClient{config: c}
+}
+
+// Use adds a list of mutation hooks to the hooks stack.
+// A call to `Use(f, g, h)` equals to `provenanceattribution.Hooks(f(g(h())))`.
+func (c *ProvenanceAttributionClient) Use(hooks ...Hook) {
+	c.hooks.ProvenanceAttribution = append(c.hooks.ProvenanceAttribution, hooks...)
+}
+
+// Intercept adds a list of query interceptors to the interceptors stack.
+// A call to `Intercept(f, g, h)` equals to `provenanceattribution.Intercept(f(g(h())))`.
+func (c *ProvenanceAttributionClient) Intercept(interceptors ...Interceptor) {
+	c.inters.ProvenanceAttribution = append(c.inters.ProvenanceAttribution, interceptors...)
+}
+
+// Create returns a builder for creating a ProvenanceAttribution entity.
+func (c *ProvenanceAttributionClient) Create() *ProvenanceAttributionCreate {
+	mutation := newProvenanceAttributionMutation(c.config, OpCreate)
+	return &ProvenanceAttributionCreate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// CreateBulk returns a builder for creating a bulk of ProvenanceAttribution entities.
+func (c *ProvenanceAttributionClient) CreateBulk(builders ...*ProvenanceAttributionCreate) *ProvenanceAttributionCreateBulk {
+	return &ProvenanceAttributionCreateBulk{config: c.config, builders: builders}
+}
+
+// MapCreateBulk creates a bulk creation builder from the given slice. For each item in the slice, the function creates
+// a builder and applies setFunc on it.
+func (c *ProvenanceAttributionClient) MapCreateBulk(slice any, setFunc func(*ProvenanceAttributionCreate, int)) *ProvenanceAttributionCreateBulk {
+	rv := reflect.ValueOf(slice)
+	if rv.Kind() != reflect.Slice {
+		return &ProvenanceAttributionCreateBulk{err: fmt.Errorf("calling to ProvenanceAttributionClient.MapCreateBulk with wrong type %T, need slice", slice)}
+	}
+	builders := make([]*ProvenanceAttributionCreate, rv.Len())
+	for i := 0; i < rv.Len(); i++ {
+		builders[i] = c.Create()
+		setFunc(builders[i], i)
+	}
+	return &ProvenanceAttributionCreateBulk{config: c.config, builders: builders}
+}
+
+// Update returns an update builder for ProvenanceAttribution.
+func (c *ProvenanceAttributionClient) Update() *ProvenanceAttributionUpdate {
+	mutation := newProvenanceAttributionMutation(c.config, OpUpdate)
+	return &ProvenanceAttributionUpdate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOne returns an update builder for the given entity.
+func (c *ProvenanceAttributionClient) UpdateOne(_m *ProvenanceAttribution) *ProvenanceAttributionUpdateOne {
+	mutation := newProvenanceAttributionMutation(c.config, OpUpdateOne, withProvenanceAttribution(_m))
+	return &ProvenanceAttributionUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOneID returns an update builder for the given id.
+func (c *ProvenanceAttributionClient) UpdateOneID(id uuid.UUID) *ProvenanceAttributionUpdateOne {
+	mutation := newProvenanceAttributionMutation(c.config, OpUpdateOne, withProvenanceAttributionID(id))
+	return &ProvenanceAttributionUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// Delete returns a delete builder for ProvenanceAttribution.
+func (c *ProvenanceAttributionClient) Delete() *ProvenanceAttributionDelete {
+	mutation := newProvenanceAttributionMutation(c.config, OpDelete)
+	return &ProvenanceAttributionDelete{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// DeleteOne returns a builder for deleting the given entity.
+func (c *ProvenanceAttributionClient) DeleteOne(_m *ProvenanceAttribution) *ProvenanceAttributionDeleteOne {
+	return c.DeleteOneID(_m.ID)
+}
+
+// DeleteOneID returns a builder for deleting the given entity by its id.
+func (c *ProvenanceAttributionClient) DeleteOneID(id uuid.UUID) *ProvenanceAttributionDeleteOne {
+	builder := c.Delete().Where(provenanceattribution.ID(id))
+	builder.mutation.id = &id
+	builder.mutation.op = OpDeleteOne
+	return &ProvenanceAttributionDeleteOne{builder}
+}
+
+// Query returns a query builder for ProvenanceAttribution.
+func (c *ProvenanceAttributionClient) Query() *ProvenanceAttributionQuery {
+	return &ProvenanceAttributionQuery{
+		config: c.config,
+		ctx:    &QueryContext{Type: TypeProvenanceAttribution},
+		inters: c.Interceptors(),
+	}
+}
+
+// Get returns a ProvenanceAttribution entity by its id.
+func (c *ProvenanceAttributionClient) Get(ctx context.Context, id uuid.UUID) (*ProvenanceAttribution, error) {
+	return c.Query().Where(provenanceattribution.ID(id)).Only(ctx)
+}
+
+// GetX is like Get, but panics if an error occurs.
+func (c *ProvenanceAttributionClient) GetX(ctx context.Context, id uuid.UUID) *ProvenanceAttribution {
+	obj, err := c.Get(ctx, id)
+	if err != nil {
+		panic(err)
+	}
+	return obj
+}
+
+// Hooks returns the client hooks.
+func (c *ProvenanceAttributionClient) Hooks() []Hook {
+	return c.hooks.ProvenanceAttribution
+}
+
+// Interceptors returns the client interceptors.
+func (c *ProvenanceAttributionClient) Interceptors() []Interceptor {
+	return c.inters.ProvenanceAttribution
+}
+
+func (c *ProvenanceAttributionClient) mutate(ctx context.Context, m *ProvenanceAttributionMutation) (Value, error) {
+	switch m.Op() {
+	case OpCreate:
+		return (&ProvenanceAttributionCreate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdate:
+		return (&ProvenanceAttributionUpdate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdateOne:
+		return (&ProvenanceAttributionUpdateOne{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpDelete, OpDeleteOne:
+		return (&ProvenanceAttributionDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
+	default:
+		return nil, fmt.Errorf("ent: unknown ProvenanceAttribution mutation op: %q", m.Op())
+	}
+}
+
 // ProvenanceCheckpointClient is a client for the ProvenanceCheckpoint schema.
 type ProvenanceCheckpointClient struct {
 	config
@@ -3800,15 +3943,15 @@ type (
 	hooks struct {
 		AuditLog, ConfigProfile, CronJob, CronJobHistory, EscrowDeal, ExternalRef,
 		Inquiry, Key, Knowledge, Learning, Message, Observation, PaymentTx,
-		PeerReputation, ProvenanceCheckpoint, Reflection, RunJournal, RunSnapshot,
-		RunStep, Secret, Session, SessionProvenance, TokenUsage, WorkflowRun,
-		WorkflowStepRun []ent.Hook
+		PeerReputation, ProvenanceAttribution, ProvenanceCheckpoint, Reflection,
+		RunJournal, RunSnapshot, RunStep, Secret, Session, SessionProvenance,
+		TokenUsage, WorkflowRun, WorkflowStepRun []ent.Hook
 	}
 	inters struct {
 		AuditLog, ConfigProfile, CronJob, CronJobHistory, EscrowDeal, ExternalRef,
 		Inquiry, Key, Knowledge, Learning, Message, Observation, PaymentTx,
-		PeerReputation, ProvenanceCheckpoint, Reflection, RunJournal, RunSnapshot,
-		RunStep, Secret, Session, SessionProvenance, TokenUsage, WorkflowRun,
-		WorkflowStepRun []ent.Interceptor
+		PeerReputation, ProvenanceAttribution, ProvenanceCheckpoint, Reflection,
+		RunJournal, RunSnapshot, RunStep, Secret, Session, SessionProvenance,
+		TokenUsage, WorkflowRun, WorkflowStepRun []ent.Interceptor
 	}
 )

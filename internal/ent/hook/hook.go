@@ -177,6 +177,18 @@ func (f PeerReputationFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Val
 	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.PeerReputationMutation", m)
 }
 
+// The ProvenanceAttributionFunc type is an adapter to allow the use of ordinary
+// function as ProvenanceAttribution mutator.
+type ProvenanceAttributionFunc func(context.Context, *ent.ProvenanceAttributionMutation) (ent.Value, error)
+
+// Mutate calls f(ctx, m).
+func (f ProvenanceAttributionFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value, error) {
+	if mv, ok := m.(*ent.ProvenanceAttributionMutation); ok {
+		return f(ctx, mv)
+	}
+	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.ProvenanceAttributionMutation", m)
+}
+
 // The ProvenanceCheckpointFunc type is an adapter to allow the use of ordinary
 // function as ProvenanceCheckpoint mutator.
 type ProvenanceCheckpointFunc func(context.Context, *ent.ProvenanceCheckpointMutation) (ent.Value, error)

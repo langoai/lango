@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"sync"
 	"time"
 
 	internal "github.com/langoai/lango/internal/session"
@@ -13,19 +14,46 @@ import (
 )
 
 type SessionServiceAdapter struct {
-	store         internal.Store
-	rootAgentName string
-	tokenBudget   int // 0 = use DefaultTokenBudget
+	store               internal.Store
+	rootAgentName       string
+	tokenBudget         int // 0 = use DefaultTokenBudget
+	rootSessionObserver func(string)
+	childStore          *internal.InMemoryChildStore
+	childMu             sync.Mutex
+	activeChild         map[string]*runtimeChild
+}
+
+type runtimeChild struct {
+	key   string
+	agent string
 }
 
 func NewSessionServiceAdapter(store internal.Store, rootAgentName string) *SessionServiceAdapter {
-	return &SessionServiceAdapter{store: store, rootAgentName: rootAgentName}
+	return &SessionServiceAdapter{
+		store:         store,
+		rootAgentName: rootAgentName,
+		activeChild:   make(map[string]*runtimeChild),
+	}
 }
 
 // WithTokenBudget sets the token budget for history truncation.
 // Use ModelTokenBudget(modelName) to derive an appropriate budget from the model name.
 func (s *SessionServiceAdapter) WithTokenBudget(budget int) *SessionServiceAdapter {
 	s.tokenBudget = budget
+	return s
+}
+
+// WithRootSessionObserver records root session creation events.
+func (s *SessionServiceAdapter) WithRootSessionObserver(fn func(string)) *SessionServiceAdapter {
+	s.rootSessionObserver = fn
+	return s
+}
+
+// WithChildLifecycleHook enables synthetic child-session lifecycle tracking.
+func (s *SessionServiceAdapter) WithChildLifecycleHook(h func(internal.SessionLifecycleEvent)) *SessionServiceAdapter {
+	if h != nil {
+		s.childStore = internal.NewInMemoryChildStore(s.store, internal.WithLifecycleHook(h))
+	}
 	return s
 }
 
@@ -53,6 +81,9 @@ func (s *SessionServiceAdapter) Create(ctx context.Context, req *session.CreateR
 
 	if err := s.store.Create(sess); err != nil {
 		return nil, err
+	}
+	if s.rootSessionObserver != nil {
+		s.rootSessionObserver(req.SessionID)
 	}
 
 	sa := NewSessionAdapter(sess, s.store, s.rootAgentName)
@@ -119,6 +150,8 @@ func (s *SessionServiceAdapter) Delete(ctx context.Context, req *session.DeleteR
 }
 
 func (s *SessionServiceAdapter) AppendEvent(ctx context.Context, sess session.Session, evt *session.Event) error {
+	s.trackChildLifecycle(evt, sess.ID())
+
 	// Map ADK event to internal message
 	msg := internal.Message{
 		Timestamp: evt.Timestamp,
@@ -211,4 +244,73 @@ func (s *SessionServiceAdapter) AppendEvent(ctx context.Context, sess session.Se
 	}
 
 	return nil
+}
+
+// CloseActiveChild merges any active synthetic child session for the parent session.
+func (s *SessionServiceAdapter) CloseActiveChild(sessionID string) error {
+	if s.childStore == nil {
+		return nil
+	}
+	s.childMu.Lock()
+	active := s.activeChild[sessionID]
+	if active == nil {
+		s.childMu.Unlock()
+		return nil
+	}
+	delete(s.activeChild, sessionID)
+	s.childMu.Unlock()
+	return s.childStore.MergeChild(active.key, "")
+}
+
+// DiscardActiveChild discards the current synthetic child session for the parent session.
+func (s *SessionServiceAdapter) DiscardActiveChild(sessionID string) error {
+	if s.childStore == nil {
+		return nil
+	}
+	s.childMu.Lock()
+	active := s.activeChild[sessionID]
+	if active == nil {
+		s.childMu.Unlock()
+		return nil
+	}
+	delete(s.activeChild, sessionID)
+	s.childMu.Unlock()
+	return s.childStore.DiscardChild(active.key)
+}
+
+func (s *SessionServiceAdapter) trackChildLifecycle(evt *session.Event, sessionID string) {
+	if s.childStore == nil || evt == nil {
+		return
+	}
+
+	author := evt.Author
+	if author == "" || author == "user" || author == s.rootAgentName {
+		_ = s.CloseActiveChild(sessionID)
+		return
+	}
+
+	s.childMu.Lock()
+	active := s.activeChild[sessionID]
+	s.childMu.Unlock()
+	if active != nil && active.agent == author {
+		if evt.Actions.TransferToAgent == s.rootAgentName && !hasText(evt) && !hasFunctionCalls(evt) {
+			_ = s.DiscardActiveChild(sessionID)
+		}
+		return
+	}
+
+	_ = s.CloseActiveChild(sessionID)
+	child, err := s.childStore.ForkChild(sessionID, author, internal.ChildSessionConfig{})
+	if err != nil {
+		logger().Debugw("fork synthetic child session", "session", sessionID, "author", author, "error", err)
+		return
+	}
+
+	s.childMu.Lock()
+	s.activeChild[sessionID] = &runtimeChild{key: child.Key, agent: author}
+	s.childMu.Unlock()
+
+	if evt.Actions.TransferToAgent == s.rootAgentName && !hasText(evt) && !hasFunctionCalls(evt) {
+		_ = s.DiscardActiveChild(sessionID)
+	}
 }

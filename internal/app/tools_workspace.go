@@ -374,8 +374,9 @@ func buildGitTools(wc *wsComponents) []*agent.Tool {
 				// Broadcast commit signal via workspace gossip.
 				if wc.gossip != nil {
 					msg := workspace.Message{
-						Type:    workspace.MessageTypeCommitSignal,
-						Content: fmt.Sprintf("pushed bundle (head: %s): %s", hash, message),
+						Type:      workspace.MessageTypeCommitSignal,
+						SenderDID: wc.localDID,
+						Content:   fmt.Sprintf("pushed bundle (head: %s): %s", hash, message),
 						Metadata: map[string]string{
 							"headCommit": hash,
 							"bundleSize": fmt.Sprintf("%d", len(bundle)),
