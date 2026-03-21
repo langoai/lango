@@ -35,3 +35,5 @@ lango p2p provenance fetch <peer-did> <session-key> --redaction content
 - Bundle export requires a local wallet identity so the bundle can be signed with a DID-verifiable signature.
 - Bundle import is verify-and-store only. It does not mutate existing session, run, or workspace state.
 - Attribution reports join persisted provenance rows with token usage records to produce per-author and per-file summaries.
+- Config-backed provenance behavior (`enabled`, auto-checkpoint settings, retention, per-session limits) can be edited through `lango settings` in the Automation section.
+- Agent-level `session_isolation` is not part of provenance settings. It remains an `AGENT.md` metadata field.

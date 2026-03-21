@@ -347,6 +347,22 @@ func (s *ConfigState) UpdateConfigFromForm(form *FormModel) {
 				s.Current.RunLedger.PlannerMaxRetries = i
 			}
 
+		// Provenance
+		case "provenance_enabled":
+			s.Current.Provenance.Enabled = f.Checked
+		case "provenance_auto_on_step_complete":
+			s.Current.Provenance.Checkpoints.AutoOnStepComplete = f.Checked
+		case "provenance_auto_on_policy":
+			s.Current.Provenance.Checkpoints.AutoOnPolicy = f.Checked
+		case "provenance_max_per_session":
+			if i, err := strconv.Atoi(val); err == nil {
+				s.Current.Provenance.Checkpoints.MaxPerSession = i
+			}
+		case "provenance_retention_days":
+			if i, err := strconv.Atoi(val); err == nil {
+				s.Current.Provenance.Checkpoints.RetentionDays = i
+			}
+
 		// MCP
 		case "mcp_enabled":
 			s.Current.MCP.Enabled = f.Checked

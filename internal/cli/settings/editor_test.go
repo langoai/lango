@@ -187,6 +187,26 @@ func TestMenu_AutomationIncludesRunLedger(t *testing.T) {
 	assert.True(t, found, "Automation section should include RunLedger category")
 }
 
+func TestMenu_AutomationIncludesProvenance(t *testing.T) {
+	m := NewMenuModel()
+
+	found := false
+	for _, section := range m.Sections {
+		if section.Title != "Automation" {
+			continue
+		}
+		for _, category := range section.Categories {
+			if category.ID == "provenance" {
+				found = true
+				assert.Equal(t, "Provenance", category.Title)
+				break
+			}
+		}
+	}
+
+	assert.True(t, found, "Automation section should include Provenance category")
+}
+
 func TestEditor_CtrlC_AlwaysQuits(t *testing.T) {
 	tests := []struct {
 		give string

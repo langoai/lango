@@ -196,6 +196,7 @@ func NewMenuModel() MenuModel {
 					{"background", "Background Tasks", "Async tasks, concurrency limits", TierAdvanced},
 					{"workflow", "Workflow Engine", "DAG workflows, timeouts, state", TierAdvanced},
 					{"runledger", "RunLedger", "Task OS durable execution, rollout, and validation controls", TierAdvanced},
+					{"provenance", "Provenance", "Checkpoints, retention, and auto-capture controls", TierAdvanced},
 				},
 			},
 			{

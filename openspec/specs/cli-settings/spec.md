@@ -713,3 +713,20 @@ The settings editor SHALL provide a RunLedger configuration form with the follow
 - **THEN** the config state SHALL be updated through `UpdateConfigFromForm`
 - **AND** all edited values SHALL persist into `config.RunLedger`
 
+### Requirement: Provenance configuration form
+The settings editor SHALL provide a Provenance configuration form with the following fields:
+
+- **Enabled** (`provenance_enabled`) — Boolean toggle
+- **Auto on Step Complete** (`provenance_auto_on_step_complete`) — Boolean toggle
+- **Auto on Policy** (`provenance_auto_on_policy`) — Boolean toggle
+- **Max Per Session** (`provenance_max_per_session`) — Integer input
+- **Retention Days** (`provenance_retention_days`) — Integer input
+
+#### Scenario: Edit Provenance settings
+- **WHEN** user selects `Provenance` from the settings menu
+- **THEN** the editor SHALL display a form with all provenance fields pre-populated from `config.Provenance`
+
+#### Scenario: Save Provenance settings
+- **WHEN** user edits Provenance fields and navigates back or saves
+- **THEN** the config state SHALL be updated through `UpdateConfigFromForm`
+- **AND** all edited values SHALL persist into `config.Provenance`

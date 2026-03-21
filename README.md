@@ -289,6 +289,8 @@ lango provenance bundle export <session-key>        Export signed provenance bun
 lango provenance bundle import <file>               Verify and import provenance bundle
 ```
 
+Provenance configuration (`provenance.*`) can be edited from `lango settings` under the Automation section. Agent-level `session_isolation` remains an `AGENT.md` field rather than a global settings toggle.
+
 ### Diagnostics
 
 Run the doctor command to check your setup:
