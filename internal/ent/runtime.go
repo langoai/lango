@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/langoai/lango/internal/ent/agentmemory"
 	"github.com/langoai/lango/internal/ent/auditlog"
 	"github.com/langoai/lango/internal/ent/configprofile"
 	"github.com/langoai/lango/internal/ent/cronjob"
@@ -39,6 +40,42 @@ import (
 // (default values, validators, hooks and policies) and stitches it
 // to their package variables.
 func init() {
+	agentmemoryFields := schema.AgentMemory{}.Fields()
+	_ = agentmemoryFields
+	// agentmemoryDescAgentName is the schema descriptor for agent_name field.
+	agentmemoryDescAgentName := agentmemoryFields[1].Descriptor()
+	// agentmemory.AgentNameValidator is a validator for the "agent_name" field. It is called by the builders before save.
+	agentmemory.AgentNameValidator = agentmemoryDescAgentName.Validators[0].(func(string) error)
+	// agentmemoryDescKey is the schema descriptor for key field.
+	agentmemoryDescKey := agentmemoryFields[4].Descriptor()
+	// agentmemory.KeyValidator is a validator for the "key" field. It is called by the builders before save.
+	agentmemory.KeyValidator = agentmemoryDescKey.Validators[0].(func(string) error)
+	// agentmemoryDescContent is the schema descriptor for content field.
+	agentmemoryDescContent := agentmemoryFields[5].Descriptor()
+	// agentmemory.ContentValidator is a validator for the "content" field. It is called by the builders before save.
+	agentmemory.ContentValidator = agentmemoryDescContent.Validators[0].(func(string) error)
+	// agentmemoryDescConfidence is the schema descriptor for confidence field.
+	agentmemoryDescConfidence := agentmemoryFields[6].Descriptor()
+	// agentmemory.DefaultConfidence holds the default value on creation for the confidence field.
+	agentmemory.DefaultConfidence = agentmemoryDescConfidence.Default.(float64)
+	// agentmemoryDescUseCount is the schema descriptor for use_count field.
+	agentmemoryDescUseCount := agentmemoryFields[7].Descriptor()
+	// agentmemory.DefaultUseCount holds the default value on creation for the use_count field.
+	agentmemory.DefaultUseCount = agentmemoryDescUseCount.Default.(int)
+	// agentmemoryDescCreatedAt is the schema descriptor for created_at field.
+	agentmemoryDescCreatedAt := agentmemoryFields[9].Descriptor()
+	// agentmemory.DefaultCreatedAt holds the default value on creation for the created_at field.
+	agentmemory.DefaultCreatedAt = agentmemoryDescCreatedAt.Default.(func() time.Time)
+	// agentmemoryDescUpdatedAt is the schema descriptor for updated_at field.
+	agentmemoryDescUpdatedAt := agentmemoryFields[10].Descriptor()
+	// agentmemory.DefaultUpdatedAt holds the default value on creation for the updated_at field.
+	agentmemory.DefaultUpdatedAt = agentmemoryDescUpdatedAt.Default.(func() time.Time)
+	// agentmemory.UpdateDefaultUpdatedAt holds the default value on update for the updated_at field.
+	agentmemory.UpdateDefaultUpdatedAt = agentmemoryDescUpdatedAt.UpdateDefault.(func() time.Time)
+	// agentmemoryDescID is the schema descriptor for id field.
+	agentmemoryDescID := agentmemoryFields[0].Descriptor()
+	// agentmemory.DefaultID holds the default value on creation for the id field.
+	agentmemory.DefaultID = agentmemoryDescID.Default.(func() uuid.UUID)
 	auditlogFields := schema.AuditLog{}.Fields()
 	_ = auditlogFields
 	// auditlogDescActor is the schema descriptor for actor field.

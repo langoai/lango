@@ -340,7 +340,7 @@ func (m *intelligenceModule) Init(ctx context.Context, r appinit.Resolver) (*app
 	// Agent Memory.
 	var amStore agentmemory.Store
 	if cfg.AgentMemory.Enabled {
-		amStore = agentmemory.NewInMemoryStore()
+		amStore = agentmemory.NewEntStore(m.boot.DBClient)
 		amTools := agentmemory.BuildTools(amStore)
 		tools = append(tools, amTools...)
 		entries = append(entries, appinit.CatalogEntry{Category: "agent_memory", Description: "Per-agent persistent memory", ConfigKey: "agentMemory.enabled", Enabled: true, Tools: amTools})

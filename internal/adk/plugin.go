@@ -1,5 +1,10 @@
 // Package adk — ADK Plugin Integration Spike
 //
+// SPIKE ONLY — not wired to production runtime.
+// These plugin constructors demonstrate ADK callback mapping feasibility.
+// They are NOT called from app wiring (internal/app/wiring.go).
+// Production integration requires EventBus bridge design (2nd phase).
+//
 // # Parity Gap Analysis: ADK plugin callbacks vs Lango toolchain middleware
 //
 // ## Summary
@@ -116,6 +121,8 @@ import (
 //
 // This demonstrates a cross-cutting concern that maps cleanly to ADK's
 // agent-level plugin model — no per-tool scoping needed.
+//
+// Spike implementation. Not called from app wiring.
 func NewEventLoggingPlugin() (*plugin.Plugin, error) {
 	return plugin.New(plugin.Config{
 		Name: "lango-event-logger",
@@ -220,6 +227,8 @@ func NewEventLoggingPlugin() (*plugin.Plugin, error) {
 // NewBeforeToolLoggingPlugin creates a spike plugin that logs tool invocations
 // via BeforeToolCallback. Demonstrates the callback firing for ALL tools
 // (agent-level scope) and shows how blocking would work.
+//
+// Spike implementation. Not called from app wiring.
 func NewBeforeToolLoggingPlugin() (*plugin.Plugin, error) {
 	return plugin.New(plugin.Config{
 		Name: "lango-tool-logger",
