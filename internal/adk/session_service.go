@@ -109,6 +109,15 @@ func (s *SessionServiceAdapter) Create(ctx context.Context, req *session.CreateR
 	return &session.CreateResponse{Session: sa}, nil
 }
 
+// Get retrieves a session by ID.
+//
+// CONTRACT DEVIATION: ADK's session.Service.Get() contract expects an error for
+// missing sessions. This implementation auto-creates missing sessions and
+// auto-renews expired sessions instead of returning an error. This is intentional
+// because lango's session lifecycle is self-managing — the caller should not need
+// to handle "not found" as a special case. The auto-create/renew behavior is
+// preserved for backward compatibility and must not be changed without updating
+// all callers.
 func (s *SessionServiceAdapter) Get(ctx context.Context, req *session.GetRequest) (*session.GetResponse, error) {
 	sess, err := s.store.Get(req.SessionID)
 	if err != nil {
@@ -254,6 +263,13 @@ func (s *SessionServiceAdapter) trackChildLifecycle(evt *session.Event, sessionI
 	}
 
 	_ = s.CloseActiveChild(sessionID)
+	s.forkChildSession(evt, sessionID, author)
+}
+
+// forkChildSession creates a new synthetic child session for the given author
+// and registers it as the active child. If the event immediately transfers back
+// to the root agent without content, the child is discarded.
+func (s *SessionServiceAdapter) forkChildSession(evt *session.Event, sessionID, author string) {
 	child, err := s.childStore.ForkChild(sessionID, author, internal.ChildSessionConfig{
 		SummarizeOnMerge: true,
 	})
@@ -314,32 +330,12 @@ func eventToMessage(evt *session.Event) (internal.Message, bool, error) {
 				msg.Content += p.Text
 			}
 			if p.FunctionCall != nil {
-				argsBytes, _ := json.Marshal(p.FunctionCall.Args)
-				id := p.FunctionCall.ID
-				if id == "" {
-					id = "call_" + p.FunctionCall.Name
-				}
-				tc := internal.ToolCall{
-					Name:             p.FunctionCall.Name,
-					Input:            string(argsBytes),
-					ID:               id,
-					Thought:          p.Thought,
-					ThoughtSignature: p.ThoughtSignature,
-				}
-				msg.ToolCalls = append(msg.ToolCalls, tc)
+				msg.ToolCalls = append(msg.ToolCalls, functionCallToToolCall(p.FunctionCall, p))
 			}
 			if p.FunctionResponse != nil {
-				responseBytes, _ := json.Marshal(p.FunctionResponse.Response)
-				id := p.FunctionResponse.ID
-				if id == "" {
-					id = "call_" + p.FunctionResponse.Name
-				}
-				msg.ToolCalls = append(msg.ToolCalls, internal.ToolCall{
-					ID:     id,
-					Name:   p.FunctionResponse.Name,
-					Output: string(responseBytes),
-				})
-				msg.Content += string(responseBytes)
+				tc := functionResponseToToolCall(p.FunctionResponse)
+				msg.ToolCalls = append(msg.ToolCalls, tc)
+				msg.Content += tc.Output
 			}
 		}
 		hasFuncResponse := false
