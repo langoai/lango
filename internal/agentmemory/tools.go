@@ -44,6 +44,9 @@ func buildSaveTool(store Store) *agent.Tool {
 			kind := KindFact
 			if k, ok := params["kind"].(string); ok && k != "" {
 				kind = MemoryKind(k)
+				if !kind.Valid() {
+					return nil, fmt.Errorf("invalid memory kind %q: must be pattern, preference, fact, or skill", k)
+				}
 			}
 
 			confidence := 0.5
@@ -113,20 +116,19 @@ func buildRecallTool(store Store) *agent.Tool {
 
 			agentName := agentNameOrDefault(ctx)
 
-			kindStr, _ := params["kind"].(string)
-
-			var results []*Entry
-			var err error
-
-			if kindStr != "" {
-				results, err = store.Search(agentName, SearchOptions{
-					Query: query,
-					Kind:  MemoryKind(kindStr),
-					Limit: limit,
-				})
-			} else {
-				results, err = store.SearchWithContext(agentName, query, limit)
+			var kind MemoryKind
+			if k, ok := params["kind"].(string); ok && k != "" {
+				kind = MemoryKind(k)
+				if !kind.Valid() {
+					return nil, fmt.Errorf("invalid memory kind %q: must be pattern, preference, fact, or skill", k)
+				}
 			}
+
+			results, err := store.SearchWithContextOptions(agentName, SearchOptions{
+				Query: query,
+				Kind:  kind,
+				Limit: limit,
+			})
 			if err != nil {
 				return nil, fmt.Errorf("recall agent memory: %w", err)
 			}
