@@ -1,24 +1,23 @@
-package app
+package sentinel
 
 import (
 	"context"
 
 	"github.com/langoai/lango/internal/agent"
-	"github.com/langoai/lango/internal/economy/escrow/sentinel"
 	"github.com/langoai/lango/internal/toolparam"
 )
 
-// buildSentinelTools creates agent tools for the Security Sentinel engine.
-func buildSentinelTools(se *sentinel.Engine) []*agent.Tool {
+// BuildTools creates agent tools for the Security Sentinel engine.
+func BuildTools(se *Engine) []*agent.Tool {
 	return []*agent.Tool{
-		sentinelStatusTool(se),
-		sentinelAlertsTool(se),
-		sentinelConfigTool(se),
-		sentinelAcknowledgeTool(se),
+		statusTool(se),
+		alertsTool(se),
+		configTool(se),
+		acknowledgeTool(se),
 	}
 }
 
-func sentinelStatusTool(se *sentinel.Engine) *agent.Tool {
+func statusTool(se *Engine) *agent.Tool {
 	return &agent.Tool{
 		Name:        "sentinel_status",
 		Description: "Get the Security Sentinel engine status including running state and alert counts",
@@ -33,7 +32,7 @@ func sentinelStatusTool(se *sentinel.Engine) *agent.Tool {
 	}
 }
 
-func sentinelAlertsTool(se *sentinel.Engine) *agent.Tool {
+func alertsTool(se *Engine) *agent.Tool {
 	return &agent.Tool{
 		Name:        "sentinel_alerts",
 		Description: "List security alerts from the Sentinel engine with optional severity filter",
@@ -56,9 +55,9 @@ func sentinelAlertsTool(se *sentinel.Engine) *agent.Tool {
 			severity := toolparam.OptionalString(params, "severity", "")
 			limit := toolparam.OptionalInt(params, "limit", 20)
 
-			var alerts []sentinel.Alert
+			var alerts []Alert
 			if severity != "" {
-				alerts = se.AlertsByLevel(sentinel.AlertSeverity(severity))
+				alerts = se.AlertsByLevel(AlertSeverity(severity))
 			} else {
 				alerts = se.Alerts()
 			}
@@ -93,7 +92,7 @@ func sentinelAlertsTool(se *sentinel.Engine) *agent.Tool {
 	}
 }
 
-func sentinelConfigTool(se *sentinel.Engine) *agent.Tool {
+func configTool(se *Engine) *agent.Tool {
 	return &agent.Tool{
 		Name:        "sentinel_config",
 		Description: "Show current Security Sentinel detection thresholds and configuration",
@@ -116,7 +115,7 @@ func sentinelConfigTool(se *sentinel.Engine) *agent.Tool {
 	}
 }
 
-func sentinelAcknowledgeTool(se *sentinel.Engine) *agent.Tool {
+func acknowledgeTool(se *Engine) *agent.Tool {
 	return &agent.Tool{
 		Name:        "sentinel_acknowledge",
 		Description: "Acknowledge and dismiss a security alert by ID",

@@ -1,4 +1,4 @@
-package app
+package team
 
 import (
 	"context"
@@ -11,11 +11,10 @@ import (
 	"github.com/langoai/lango/internal/agent"
 	"github.com/langoai/lango/internal/economy/budget"
 	"github.com/langoai/lango/internal/economy/escrow"
-	"github.com/langoai/lango/internal/p2p/team"
 )
 
-// buildTeamEscrowTools creates high-level workflow tools that combine team + escrow + budget.
-func buildTeamEscrowTools(coord *team.Coordinator, escrowEngine *escrow.Engine, budgetEngine *budget.Engine) []*agent.Tool {
+// BuildEscrowTools creates high-level workflow tools that combine team + escrow + budget.
+func BuildEscrowTools(coord *Coordinator, escrowEngine *escrow.Engine, budgetEngine *budget.Engine) []*agent.Tool {
 	var tools []*agent.Tool
 
 	// 1. team_form_with_budget — combines team formation + escrow creation + budget allocation.
@@ -66,7 +65,7 @@ func buildTeamEscrowTools(coord *team.Coordinator, escrowEngine *escrow.Engine, 
 
 			// Step 1: Form team.
 			teamID := uuid.New().String()
-			t, err := coord.FormTeam(ctx, team.FormTeamRequest{
+			t, err := coord.FormTeam(ctx, FormTeamRequest{
 				TeamID:      teamID,
 				Name:        name,
 				Goal:        goal,
@@ -82,9 +81,9 @@ func buildTeamEscrowTools(coord *team.Coordinator, escrowEngine *escrow.Engine, 
 			t.Budget = budgetAmount
 
 			// Collect workers.
-			var workers []*team.Member
+			var workers []*Member
 			for _, m := range t.Members() {
-				if m.Role == team.RoleWorker {
+				if m.Role == RoleWorker {
 					workers = append(workers, m)
 				}
 			}

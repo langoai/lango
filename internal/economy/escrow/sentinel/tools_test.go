@@ -1,4 +1,4 @@
-package app
+package sentinel_test
 
 import (
 	"context"
@@ -11,12 +11,12 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestBuildSentinelTools(t *testing.T) {
+func TestBuildTools(t *testing.T) {
 	t.Parallel()
 
 	bus := eventbus.New()
 	engine := sentinel.New(bus, sentinel.DefaultSentinelConfig())
-	tools := buildSentinelTools(engine)
+	tools := sentinel.BuildTools(engine)
 
 	assert.Len(t, tools, 4)
 
@@ -36,12 +36,12 @@ func TestBuildSentinelTools(t *testing.T) {
 	}
 }
 
-func TestBuildSentinelTools_SafetyLevels(t *testing.T) {
+func TestBuildTools_SafetyLevels(t *testing.T) {
 	t.Parallel()
 
 	bus := eventbus.New()
 	engine := sentinel.New(bus, sentinel.DefaultSentinelConfig())
-	tools := buildSentinelTools(engine)
+	tools := sentinel.BuildTools(engine)
 
 	toolMap := make(map[string]*agent.Tool, len(tools))
 	for _, tool := range tools {
@@ -68,12 +68,12 @@ func TestBuildSentinelTools_SafetyLevels(t *testing.T) {
 	}
 }
 
-func TestSentinelStatusTool_Handler(t *testing.T) {
+func TestStatusTool_Handler(t *testing.T) {
 	t.Parallel()
 
 	bus := eventbus.New()
 	engine := sentinel.New(bus, sentinel.DefaultSentinelConfig())
-	tools := buildSentinelTools(engine)
+	tools := sentinel.BuildTools(engine)
 
 	var statusTool *agent.Tool
 	for _, tool := range tools {
@@ -94,12 +94,12 @@ func TestSentinelStatusTool_Handler(t *testing.T) {
 	assert.Equal(t, 0, m["activeAlerts"])
 }
 
-func TestSentinelConfigTool_Handler(t *testing.T) {
+func TestConfigTool_Handler(t *testing.T) {
 	t.Parallel()
 
 	bus := eventbus.New()
 	engine := sentinel.New(bus, sentinel.DefaultSentinelConfig())
-	tools := buildSentinelTools(engine)
+	tools := sentinel.BuildTools(engine)
 
 	var cfgTool *agent.Tool
 	for _, tool := range tools {
@@ -120,12 +120,12 @@ func TestSentinelConfigTool_Handler(t *testing.T) {
 	assert.NotEmpty(t, m["washTradeWindow"])
 }
 
-func TestSentinelAlertsTool_EmptyList(t *testing.T) {
+func TestAlertsTool_EmptyList(t *testing.T) {
 	t.Parallel()
 
 	bus := eventbus.New()
 	engine := sentinel.New(bus, sentinel.DefaultSentinelConfig())
-	tools := buildSentinelTools(engine)
+	tools := sentinel.BuildTools(engine)
 
 	var alertsTool *agent.Tool
 	for _, tool := range tools {

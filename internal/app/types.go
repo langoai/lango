@@ -12,6 +12,11 @@ import (
 	"github.com/langoai/lango/internal/background"
 	"github.com/langoai/lango/internal/config"
 	cronpkg "github.com/langoai/lango/internal/cron"
+	"github.com/langoai/lango/internal/economy/budget"
+	"github.com/langoai/lango/internal/economy/escrow"
+	"github.com/langoai/lango/internal/economy/negotiation"
+	"github.com/langoai/lango/internal/economy/pricing"
+	"github.com/langoai/lango/internal/economy/risk"
 	"github.com/langoai/lango/internal/embedding"
 	"github.com/langoai/lango/internal/eventbus"
 	"github.com/langoai/lango/internal/gatekeeper"
@@ -35,6 +40,7 @@ import (
 	"github.com/langoai/lango/internal/security"
 	"github.com/langoai/lango/internal/session"
 	"github.com/langoai/lango/internal/skill"
+	sa "github.com/langoai/lango/internal/smartaccount"
 	"github.com/langoai/lango/internal/toolcatalog"
 	"github.com/langoai/lango/internal/toolchain"
 	"github.com/langoai/lango/internal/tooloutput"
@@ -106,14 +112,14 @@ type App struct {
 	WorkflowEngine *workflow.Engine
 
 	// Economy Components (optional, P2P economy layer)
-	EconomyBudget      interface{} // *budget.Engine
-	EconomyRisk        interface{} // *risk.Engine
-	EconomyPricing     interface{} // *pricing.Engine
-	EconomyNegotiation interface{} // *negotiation.Engine
-	EconomyEscrow      interface{} // *escrow.Engine
+	EconomyBudget      *budget.Engine
+	EconomyRisk        *risk.Engine
+	EconomyPricing     *pricing.Engine
+	EconomyNegotiation *negotiation.Engine
+	EconomyEscrow      *escrow.Engine
 
 	// Smart Account Components (optional, ERC-7579 modular accounts)
-	SmartAccountManager    interface{}             // *smartaccount.Manager
+	SmartAccountManager    sa.AccountManager
 	SmartAccountComponents *smartAccountComponents // full components for CLI access
 
 	// Output Store (compressed tool output retrieval)

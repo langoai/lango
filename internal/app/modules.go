@@ -12,19 +12,29 @@ import (
 	"github.com/langoai/lango/internal/agent"
 	"github.com/langoai/lango/internal/agentmemory"
 	"github.com/langoai/lango/internal/appinit"
+	"github.com/langoai/lango/internal/background"
 	"github.com/langoai/lango/internal/bootstrap"
 	"github.com/langoai/lango/internal/config"
+	cronpkg "github.com/langoai/lango/internal/cron"
 	"github.com/langoai/lango/internal/economy"
+	"github.com/langoai/lango/internal/economy/escrow/sentinel"
+	"github.com/langoai/lango/internal/embedding"
 	"github.com/langoai/lango/internal/eventbus"
 	"github.com/langoai/lango/internal/gatekeeper"
+	"github.com/langoai/lango/internal/graph"
+	"github.com/langoai/lango/internal/librarian"
 	"github.com/langoai/lango/internal/lifecycle"
+	"github.com/langoai/lango/internal/memory"
 	"github.com/langoai/lango/internal/p2p/gitbundle"
+	"github.com/langoai/lango/internal/p2p/team"
+	toolpayment "github.com/langoai/lango/internal/tools/payment"
 	"github.com/langoai/lango/internal/security"
 	"github.com/langoai/lango/internal/session"
 	"github.com/langoai/lango/internal/supervisor"
 	"github.com/langoai/lango/internal/tools/browser"
 	execpkg "github.com/langoai/lango/internal/tools/exec"
 	"github.com/langoai/lango/internal/tools/filesystem"
+	"github.com/langoai/lango/internal/workflow"
 	x402pkg "github.com/langoai/lango/internal/x402"
 )
 
@@ -300,7 +310,7 @@ func (m *intelligenceModule) Init(ctx context.Context, r appinit.Resolver) (*app
 
 	// Graph tools.
 	if gc != nil {
-		gt := buildGraphTools(gc.store)
+		gt := graph.BuildTools(gc.store)
 		tools = append(tools, gt...)
 		entries = append(entries, appinit.CatalogEntry{Category: "graph", Description: "Knowledge graph traversal", ConfigKey: "graph.enabled", Enabled: true, Tools: gt})
 	} else {
@@ -309,7 +319,7 @@ func (m *intelligenceModule) Init(ctx context.Context, r appinit.Resolver) (*app
 
 	// RAG tools.
 	if ec != nil && ec.ragService != nil {
-		rt := buildRAGTools(ec.ragService)
+		rt := embedding.BuildRAGTools(ec.ragService)
 		tools = append(tools, rt...)
 		entries = append(entries, appinit.CatalogEntry{Category: "rag", Description: "Retrieval-augmented generation", ConfigKey: "embedding.rag.enabled", Enabled: true, Tools: rt})
 	} else {
@@ -318,7 +328,7 @@ func (m *intelligenceModule) Init(ctx context.Context, r appinit.Resolver) (*app
 
 	// Memory tools.
 	if mc != nil {
-		mt := buildMemoryAgentTools(mc.store)
+		mt := memory.BuildObservationTools(mc.store)
 		tools = append(tools, mt...)
 		entries = append(entries, appinit.CatalogEntry{Category: "memory", Description: "Observational memory", ConfigKey: "observationalMemory.enabled", Enabled: true, Tools: mt})
 	} else {
@@ -329,7 +339,7 @@ func (m *intelligenceModule) Init(ctx context.Context, r appinit.Resolver) (*app
 	var amStore agentmemory.Store
 	if cfg.AgentMemory.Enabled {
 		amStore = agentmemory.NewInMemoryStore()
-		amTools := buildAgentMemoryTools(amStore)
+		amTools := agentmemory.BuildTools(amStore)
 		tools = append(tools, amTools...)
 		entries = append(entries, appinit.CatalogEntry{Category: "agent_memory", Description: "Per-agent persistent memory", ConfigKey: "agentMemory.enabled", Enabled: true, Tools: amTools})
 		logger().Info("agent memory tools enabled")
@@ -339,7 +349,7 @@ func (m *intelligenceModule) Init(ctx context.Context, r appinit.Resolver) (*app
 
 	// Librarian tools.
 	if lc != nil {
-		lt := buildLibrarianTools(lc.inquiryStore)
+		lt := librarian.BuildTools(lc.inquiryStore)
 		tools = append(tools, lt...)
 		entries = append(entries, appinit.CatalogEntry{Category: "librarian", Description: "Knowledge inquiries and gap detection", ConfigKey: "librarian.enabled", Enabled: true, Tools: lt})
 	} else {
@@ -434,7 +444,7 @@ func (m *automationModule) Init(ctx context.Context, r appinit.Resolver) (*appin
 
 	cron := initCron(cfg, store, m.app)
 	if cron != nil {
-		cronTools := buildCronTools(cron, cfg.Cron.DefaultDeliverTo)
+		cronTools := cronpkg.BuildTools(cron, cfg.Cron.DefaultDeliverTo)
 		tools = append(tools, cronTools...)
 		entries = append(entries, appinit.CatalogEntry{Category: "cron", Description: "Cron job scheduling", ConfigKey: "cron.enabled", Enabled: true, Tools: cronTools})
 		cs := cron // capture for closure
@@ -450,7 +460,7 @@ func (m *automationModule) Init(ctx context.Context, r appinit.Resolver) (*appin
 
 	bg := initBackground(cfg, m.app)
 	if bg != nil {
-		bgTools := buildBackgroundTools(bg, cfg.Background.DefaultDeliverTo)
+		bgTools := background.BuildTools(bg, cfg.Background.DefaultDeliverTo)
 		tools = append(tools, bgTools...)
 		entries = append(entries, appinit.CatalogEntry{Category: "background", Description: "Background task execution", ConfigKey: "background.enabled", Enabled: true, Tools: bgTools})
 		bm := bg // capture for closure
@@ -466,7 +476,7 @@ func (m *automationModule) Init(ctx context.Context, r appinit.Resolver) (*appin
 
 	wf := initWorkflow(cfg, store, m.app, rlv)
 	if wf != nil {
-		wfTools := buildWorkflowTools(wf, cfg.Workflow.StateDir, cfg.Workflow.DefaultDeliverTo)
+		wfTools := workflow.BuildTools(wf, cfg.Workflow.StateDir, cfg.Workflow.DefaultDeliverTo)
 		tools = append(tools, wfTools...)
 		entries = append(entries, appinit.CatalogEntry{Category: "workflow", Description: "Workflow pipeline execution", ConfigKey: "workflow.enabled", Enabled: true, Tools: wfTools})
 		we := wf // capture for closure
@@ -547,7 +557,7 @@ func (m *networkModule) Init(ctx context.Context, r appinit.Resolver) (*appinit.
 			x402Interceptor = xc.interceptor
 		}
 
-		pt := buildPaymentTools(pc, x402Interceptor)
+		pt := toolpayment.BuildTools(pc.service, pc.limiter, pc.secrets, pc.chainID, x402Interceptor)
 		tools = append(tools, pt...)
 		entries = append(entries, appinit.CatalogEntry{Category: "payment", Description: "Blockchain payments (USDC on Base)", ConfigKey: "payment.enabled", Enabled: true, Tools: pt})
 
@@ -586,7 +596,7 @@ func (m *networkModule) Init(ctx context.Context, r appinit.Resolver) (*appinit.
 
 			// Team coordination tools.
 			if p2pc.coordinator != nil {
-				teamTools := buildTeamTools(p2pc.coordinator)
+				teamTools := team.BuildTools(p2pc.coordinator)
 				tools = append(tools, teamTools...)
 			}
 
@@ -682,7 +692,7 @@ func (m *networkModule) Init(ctx context.Context, r appinit.Resolver) (*appinit.
 				entries = append(entries, appinit.CatalogEntry{Category: "escrow", Description: "On-chain escrow management", ConfigKey: "economy.escrow.enabled", Enabled: true, Tools: escrowTools})
 			}
 			if econc.sentinelEngine != nil {
-				sentTools := buildSentinelTools(econc.sentinelEngine)
+				sentTools := sentinel.BuildTools(econc.sentinelEngine)
 				tools = append(tools, sentTools...)
 				entries = append(entries, appinit.CatalogEntry{Category: "sentinel", Description: "Security Sentinel anomaly detection", ConfigKey: "economy.escrow.enabled", Enabled: true, Tools: sentTools})
 			}
@@ -727,7 +737,7 @@ func (m *networkModule) Init(ctx context.Context, r appinit.Resolver) (*appinit.
 			}
 			// Team-Escrow convenience tools.
 			if econc != nil && econc.escrowEngine != nil {
-				teTools := buildTeamEscrowTools(p2pc.coordinator, econc.escrowEngine, econc.budgetEngine)
+				teTools := team.BuildEscrowTools(p2pc.coordinator, econc.escrowEngine, econc.budgetEngine)
 				tools = append(tools, teTools...)
 			}
 		}

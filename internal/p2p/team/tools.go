@@ -1,4 +1,4 @@
-package app
+package team
 
 import (
 	"context"
@@ -8,11 +8,10 @@ import (
 	"github.com/google/uuid"
 	"github.com/langoai/lango/internal/agent"
 	"github.com/langoai/lango/internal/toolparam"
-	"github.com/langoai/lango/internal/p2p/team"
 )
 
-// buildTeamTools creates team coordination tools.
-func buildTeamTools(coord *team.Coordinator) []*agent.Tool {
+// BuildTools creates team coordination tools from a Coordinator.
+func BuildTools(coord *Coordinator) []*agent.Tool {
 	var tools []*agent.Tool
 
 	// 1. team_form — creates a new team
@@ -47,7 +46,7 @@ func buildTeamTools(coord *team.Coordinator) []*agent.Tool {
 			}
 			memberCount := toolparam.OptionalInt(params, "memberCount", 1)
 
-			t, err := coord.FormTeam(ctx, team.FormTeamRequest{
+			t, err := coord.FormTeam(ctx, FormTeamRequest{
 				TeamID:      uuid.New().String(),
 				Name:        name,
 				Goal:        goal,
