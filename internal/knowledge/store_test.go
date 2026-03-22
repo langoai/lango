@@ -11,6 +11,7 @@ import (
 
 	"github.com/langoai/lango/internal/ent/enttest"
 	entlearning "github.com/langoai/lango/internal/ent/learning"
+	"github.com/langoai/lango/internal/eventbus"
 	_ "github.com/mattn/go-sqlite3"
 )
 
@@ -716,5 +717,87 @@ func TestListLearnings(t *testing.T) {
 	}
 	if len(entries) != 2 {
 		t.Errorf("entries: want 2 (limit), got %d", len(entries))
+	}
+}
+
+// ── EventBus graph routing regression tests ──
+// These verify that NeedsGraph is correctly set per save path,
+// preserving the original SetGraphCallback behavior.
+
+func TestContentSavedEvent_NeedsGraph(t *testing.T) {
+	store := newTestStore(t)
+	bus := eventbus.New()
+	store.SetEventBus(bus)
+	ctx := context.Background()
+
+	var events []eventbus.ContentSavedEvent
+	eventbus.SubscribeTyped(bus, func(evt eventbus.ContentSavedEvent) {
+		events = append(events, evt)
+	})
+
+	tests := []struct {
+		give       string
+		wantGraph  bool
+		wantNew    bool
+		collection string
+		setup      func()
+	}{
+		{
+			give:       "new knowledge creation triggers graph",
+			wantGraph:  true,
+			wantNew:    true,
+			collection: "knowledge",
+			setup: func() {
+				events = nil
+				_ = store.SaveKnowledge(ctx, "s1", KnowledgeEntry{
+					Key: "test-new", Category: "fact", Content: "new content",
+				})
+			},
+		},
+		{
+			give:       "knowledge update skips graph",
+			wantGraph:  false,
+			wantNew:    false,
+			collection: "knowledge",
+			setup: func() {
+				events = nil
+				_ = store.SaveKnowledge(ctx, "s1", KnowledgeEntry{
+					Key: "test-new", Category: "fact", Content: "updated content",
+				})
+			},
+		},
+		{
+			give:       "learning save skips graph",
+			wantGraph:  false,
+			wantNew:    true,
+			collection: "learning",
+			setup: func() {
+				events = nil
+				_ = store.SaveLearning(ctx, "s1", LearningEntry{
+					Category: entlearning.CategoryToolError,
+					Trigger:  "test trigger",
+					Fix:      "test fix",
+				})
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.give, func(t *testing.T) {
+			tt.setup()
+			if len(events) != 1 {
+				t.Fatalf("want 1 event, got %d", len(events))
+			}
+			evt := events[0]
+			if evt.NeedsGraph != tt.wantGraph {
+				t.Errorf("NeedsGraph: want %v, got %v", tt.wantGraph, evt.NeedsGraph)
+			}
+			if evt.IsNew != tt.wantNew {
+				t.Errorf("IsNew: want %v, got %v", tt.wantNew, evt.IsNew)
+			}
+			if evt.Collection != tt.collection {
+				t.Errorf("Collection: want %q, got %q", tt.collection, evt.Collection)
+			}
+		})
 	}
 }

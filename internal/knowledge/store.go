@@ -16,18 +16,14 @@ import (
 	entknowledge "github.com/langoai/lango/internal/ent/knowledge"
 	entlearning "github.com/langoai/lango/internal/ent/learning"
 	"github.com/langoai/lango/internal/ent/predicate"
-	"github.com/langoai/lango/internal/types"
+	"github.com/langoai/lango/internal/eventbus"
 )
 
 // Store provides CRUD operations for knowledge, learning, skill, audit, and external ref entities.
 type Store struct {
 	client *ent.Client
 	logger *zap.SugaredLogger
-
-	// Optional embedding hook (nil = disabled).
-	onEmbed types.EmbedCallback
-	// Optional graph relationship hook (nil = disabled).
-	onGraph types.ContentCallback
+	bus    *eventbus.Bus // Optional event bus for cross-domain notifications.
 }
 
 // NewStore creates a new knowledge store.
@@ -38,14 +34,27 @@ func NewStore(client *ent.Client, logger *zap.SugaredLogger) *Store {
 	}
 }
 
-// SetEmbedCallback sets the optional embedding hook.
-func (s *Store) SetEmbedCallback(cb types.EmbedCallback) {
-	s.onEmbed = cb
+// SetEventBus sets the optional event bus for publishing content events.
+func (s *Store) SetEventBus(bus *eventbus.Bus) {
+	s.bus = bus
 }
 
-// SetGraphCallback sets the optional graph relationship hook.
-func (s *Store) SetGraphCallback(cb types.ContentCallback) {
-	s.onGraph = cb
+// publishContentSaved publishes a ContentSavedEvent if the bus is configured.
+// needsGraph mirrors the original SetGraphCallback behavior: only new knowledge
+// creation triggers graph processing; updates and learning saves are embed-only.
+func (s *Store) publishContentSaved(id, collection, content string, metadata map[string]string, isNew, needsGraph bool) {
+	if s.bus == nil {
+		return
+	}
+	s.bus.Publish(eventbus.ContentSavedEvent{
+		ID:         id,
+		Collection: collection,
+		Content:    content,
+		Metadata:   metadata,
+		Source:     "knowledge",
+		IsNew:      isNew,
+		NeedsGraph: needsGraph,
+	})
 }
 
 // SaveKnowledge creates or updates a knowledge entry by key.
@@ -73,12 +82,7 @@ func (s *Store) SaveKnowledge(ctx context.Context, sessionKey string, entry Know
 		}
 
 		meta := map[string]string{"category": string(entry.Category)}
-		if s.onEmbed != nil {
-			s.onEmbed(entry.Key, "knowledge", entry.Content, meta)
-		}
-		if s.onGraph != nil {
-			s.onGraph(entry.Key, "knowledge", entry.Content, meta)
-		}
+		s.publishContentSaved(entry.Key, "knowledge", entry.Content, meta, true, true)
 		return nil
 	}
 	if err != nil {
@@ -101,11 +105,9 @@ func (s *Store) SaveKnowledge(ctx context.Context, sessionKey string, entry Know
 		return fmt.Errorf("update knowledge: %w", err)
 	}
 
-	if s.onEmbed != nil {
-		s.onEmbed(entry.Key, "knowledge", entry.Content, map[string]string{
-			"category": string(entry.Category),
-		})
-	}
+	s.publishContentSaved(entry.Key, "knowledge", entry.Content, map[string]string{
+		"category": string(entry.Category),
+	}, false, false)
 	return nil
 }
 
@@ -245,15 +247,13 @@ func (s *Store) SaveLearning(ctx context.Context, sessionKey string, entry Learn
 		return fmt.Errorf("create learning: %w", err)
 	}
 
-	if s.onEmbed != nil {
-		content := entry.Trigger
-		if entry.Fix != "" {
-			content += "\n" + entry.Fix
-		}
-		s.onEmbed(created.ID.String(), "learning", content, map[string]string{
-			"category": string(entry.Category),
-		})
+	content := entry.Trigger
+	if entry.Fix != "" {
+		content += "\n" + entry.Fix
 	}
+	s.publishContentSaved(created.ID.String(), "learning", content, map[string]string{
+		"category": string(entry.Category),
+	}, true, false)
 
 	return nil
 }

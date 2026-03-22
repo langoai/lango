@@ -9,6 +9,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.uber.org/zap"
 
+	"github.com/langoai/lango/internal/eventbus"
 	"github.com/langoai/lango/internal/graph"
 )
 
@@ -49,21 +50,31 @@ func (s *fakeGraphStore) ClearAll(context.Context) error                        
 func (s *fakeGraphStore) AllTriples(_ context.Context) ([]graph.Triple, error)   { return s.triples, nil }
 func (s *fakeGraphStore) Close() error                                           { return nil }
 
-func TestGraphEngine_RecordErrorGraph_WithCallback(t *testing.T) {
+func TestGraphEngine_RecordErrorGraph_WithBus(t *testing.T) {
 	t.Parallel()
 
 	logger := zap.NewNop().Sugar()
 
+	bus := eventbus.New()
 	var callbackTriples []graph.Triple
+	eventbus.SubscribeTyped(bus, func(evt eventbus.TriplesExtractedEvent) {
+		for _, tr := range evt.Triples {
+			callbackTriples = append(callbackTriples, graph.Triple{
+				Subject:   tr.Subject,
+				Predicate: tr.Predicate,
+				Object:    tr.Object,
+				Metadata:  tr.Metadata,
+			})
+		}
+	})
+
 	ge := &GraphEngine{
 		Engine:      &Engine{store: nil, logger: logger},
-		graphStore:  nil, // no direct store — only callback
+		graphStore:  nil, // no direct store — only event bus
 		propagation: 0.3,
 		logger:      logger,
 	}
-	ge.SetGraphCallback(func(triples []graph.Triple) {
-		callbackTriples = append(callbackTriples, triples...)
-	})
+	ge.SetEventBus(bus)
 
 	// Call recordErrorGraph directly (bypasses store.SearchLearningEntities since graphStore is nil).
 	ge.recordErrorGraph(context.Background(), "test-session", "exec", fmt.Errorf("permission denied"))
@@ -96,9 +107,7 @@ func TestGraphEngine_RecordErrorGraph_DirectStore(t *testing.T) {
 		propagation: 0.3,
 		logger:      logger,
 	}
-	// No callback — triples go to store directly.
-	ge.graphStore = nil // force callback path only
-	ge.SetGraphCallback(nil)
+	// No bus and no store — triples are silently dropped.
 
 	// With both nil, recordErrorGraph should just return (no panic).
 	ge.recordErrorGraph(context.Background(), "s1", "tool1", fmt.Errorf("test error"))
@@ -137,25 +146,35 @@ func TestGraphEngine_RecordFix(t *testing.T) {
 	assert.True(t, hasLearnedFrom, "want LearnedFrom triple")
 }
 
-func TestGraphEngine_RecordFixWithCallback(t *testing.T) {
+func TestGraphEngine_RecordFixWithBus(t *testing.T) {
 	t.Parallel()
 
 	logger := zap.NewNop().Sugar()
 
+	bus := eventbus.New()
 	var callbackTriples []graph.Triple
+	eventbus.SubscribeTyped(bus, func(evt eventbus.TriplesExtractedEvent) {
+		for _, tr := range evt.Triples {
+			callbackTriples = append(callbackTriples, graph.Triple{
+				Subject:   tr.Subject,
+				Predicate: tr.Predicate,
+				Object:    tr.Object,
+				Metadata:  tr.Metadata,
+			})
+		}
+	})
+
 	ge := &GraphEngine{
 		Engine:      &Engine{store: nil, logger: logger},
 		graphStore:  nil,
 		propagation: 0.3,
 		logger:      logger,
 	}
-	ge.SetGraphCallback(func(triples []graph.Triple) {
-		callbackTriples = append(callbackTriples, triples...)
-	})
+	ge.SetEventBus(bus)
 
 	ge.RecordFix(context.Background(), "some error", "some fix", "session-2")
 
-	require.Len(t, callbackTriples, 2, "want 2 triples via callback")
+	require.Len(t, callbackTriples, 2, "want 2 triples via event bus")
 }
 
 func TestSanitizeForNode(t *testing.T) {

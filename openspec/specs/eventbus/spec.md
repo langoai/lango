@@ -51,7 +51,7 @@ The package SHALL define the following event types:
 
 | Event Type              | EventName             | Replaces                                          |
 |-------------------------|-----------------------|---------------------------------------------------|
-| ContentSavedEvent       | content.saved         | SetEmbedCallback, SetGraphCallback on stores      |
+| ContentSavedEvent       | content.saved         | SetEmbedCallback on stores (NeedsGraph routes graph) |
 | TriplesExtractedEvent   | triples.extracted     | SetGraphCallback on learning engines/analyzers    |
 | TurnCompletedEvent      | turn.completed        | Gateway.OnTurnComplete                            |
 | ReputationChangedEvent  | reputation.changed    | reputation.Store.SetOnChangeCallback              |
@@ -60,6 +60,25 @@ The package SHALL define the following event types:
 #### Scenario: Each event type has distinct name
 - **WHEN** all event types are inspected
 - **THEN** each SHALL have a unique `EventName()` return value
+
+### Requirement: ContentSavedEvent includes graph routing field
+`ContentSavedEvent` SHALL include a `NeedsGraph bool` field that controls whether graph triple extraction runs for this event. Publishers MUST set `NeedsGraph` according to the original callback semantics: `true` for new knowledge creation and memory observations/reflections, `false` for knowledge updates and learning saves.
+
+#### Scenario: New knowledge creation sets NeedsGraph true
+- **WHEN** knowledge store creates a new entry
+- **THEN** `ContentSavedEvent` is published with `IsNew: true, NeedsGraph: true`
+
+#### Scenario: Knowledge update sets NeedsGraph false
+- **WHEN** knowledge store updates an existing entry
+- **THEN** `ContentSavedEvent` is published with `IsNew: false, NeedsGraph: false`
+
+#### Scenario: Learning save sets NeedsGraph false
+- **WHEN** knowledge store saves a learning entry
+- **THEN** `ContentSavedEvent` is published with `IsNew: true, NeedsGraph: false`
+
+#### Scenario: Memory observation sets NeedsGraph true
+- **WHEN** memory store saves an observation
+- **THEN** `ContentSavedEvent` is published with `IsNew: true, NeedsGraph: true`
 
 ### Requirement: Triple type
 The package SHALL define a `Triple` struct mirroring `graph.Triple` (Subject, Predicate, Object, Metadata) to avoid importing the graph package, keeping eventbus dependency-free.

@@ -29,3 +29,17 @@ The team coordinator's `invokeFn` must route through the P2P protocol handler to
 ### REQ-6: SmartAccount components must be accessible
 
 All smart account sub-components (session manager, policy engine, module registry, bundler, paymaster, on-chain tracker) must be accessible via public accessor methods from the App struct.
+
+### REQ-7: Cross-domain callbacks replaced by EventBus
+
+The following SetXxxCallback methods SHALL be removed and replaced by EventBus publish/subscribe:
+- `SetEmbedCallback` on knowledge and memory stores → `ContentSavedEvent`
+- `SetGraphCallback` on knowledge, memory, and learning stores → `ContentSavedEvent` (NeedsGraph) + `TriplesExtractedEvent`
+- `SetOnChangeCallback` on reputation store → `ReputationChangedEvent`
+
+Stores SHALL accept `*eventbus.Bus` via `SetEventBus(bus)` method. When bus is nil, publish is silently skipped.
+
+**Scenarios:**
+- Given a knowledge store with EventBus set, when content is saved, then `ContentSavedEvent` is published.
+- Given a store with no bus (nil), when content is saved, then no panic occurs and no event is published.
+- Domain-internal hooks (negotiation.SetEventCallback, SessionStore.SetInvalidationCallback) SHALL NOT be removed.

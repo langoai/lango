@@ -7,7 +7,7 @@ import (
 	"go.uber.org/zap"
 
 	entlearning "github.com/langoai/lango/internal/ent/learning"
-	"github.com/langoai/lango/internal/graph"
+	"github.com/langoai/lango/internal/eventbus"
 	"github.com/langoai/lango/internal/knowledge"
 	"github.com/langoai/lango/internal/llm"
 	"github.com/langoai/lango/internal/session"
@@ -35,10 +35,10 @@ Output a JSON array. If nothing high-confidence is found, output [].`
 
 // SessionLearner extracts high-confidence knowledge at session end.
 type SessionLearner struct {
-	generator     llm.TextGenerator
-	store         *knowledge.Store
-	graphCallback GraphCallback
-	logger        *zap.SugaredLogger
+	generator llm.TextGenerator
+	store     *knowledge.Store
+	bus       *eventbus.Bus // Optional event bus for publishing triple events.
+	logger    *zap.SugaredLogger
 }
 
 // NewSessionLearner creates a new session learner.
@@ -54,9 +54,9 @@ func NewSessionLearner(
 	}
 }
 
-// SetGraphCallback sets the optional graph update hook.
-func (l *SessionLearner) SetGraphCallback(cb GraphCallback) {
-	l.graphCallback = cb
+// SetEventBus sets the optional event bus for publishing triple events.
+func (l *SessionLearner) SetEventBus(bus *eventbus.Bus) {
+	l.bus = bus
 }
 
 // LearnFromSession analyzes a complete session and stores high-confidence results.
@@ -132,12 +132,15 @@ func (l *SessionLearner) saveSessionResult(ctx context.Context, sessionKey strin
 	}
 
 	// Cross-reference graph triple.
-	if l.graphCallback != nil && r.Subject != "" && r.Predicate != "" && r.Object != "" {
-		l.graphCallback([]graph.Triple{{
-			Subject:   r.Subject,
-			Predicate: r.Predicate,
-			Object:    r.Object,
-		}})
+	if l.bus != nil && r.Subject != "" && r.Predicate != "" && r.Object != "" {
+		l.bus.Publish(eventbus.TriplesExtractedEvent{
+			Triples: []eventbus.Triple{{
+				Subject:   r.Subject,
+				Predicate: r.Predicate,
+				Object:    r.Object,
+			}},
+			Source: "learning",
+		})
 	}
 }
 

@@ -2,6 +2,7 @@ package app
 
 import (
 	"github.com/langoai/lango/internal/config"
+	"github.com/langoai/lango/internal/eventbus"
 	"github.com/langoai/lango/internal/memory"
 	"github.com/langoai/lango/internal/session"
 	"github.com/langoai/lango/internal/supervisor"
@@ -16,7 +17,7 @@ type memoryComponents struct {
 }
 
 // initMemory creates the observational memory components if enabled.
-func initMemory(cfg *config.Config, store session.Store, sv *supervisor.Supervisor) *memoryComponents {
+func initMemory(cfg *config.Config, store session.Store, sv *supervisor.Supervisor, bus *eventbus.Bus) *memoryComponents {
 	if !cfg.ObservationalMemory.Enabled {
 		logger().Info("observational memory disabled")
 		return nil
@@ -31,6 +32,9 @@ func initMemory(cfg *config.Config, store session.Store, sv *supervisor.Supervis
 	client := entStore.Client()
 	mLogger := logger()
 	mStore := memory.NewStore(client, mLogger)
+	if bus != nil {
+		mStore.SetEventBus(bus)
+	}
 
 	// Create provider proxy for observer/reflector LLM calls
 	provider := cfg.ObservationalMemory.Provider

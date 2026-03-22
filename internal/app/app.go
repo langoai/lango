@@ -87,7 +87,7 @@ func New(boot *bootstrap.Result) (*App, error) {
 
 	builder := appinit.NewBuilder()
 	builder.AddModule(&foundationModule{cfg: cfg, boot: boot})
-	builder.AddModule(&intelligenceModule{cfg: cfg, boot: boot, rawDB: boot.RawDB})
+	builder.AddModule(&intelligenceModule{cfg: cfg, boot: boot, rawDB: boot.RawDB, bus: bus})
 	builder.AddModule(&automationModule{cfg: cfg, app: app})
 	builder.AddModule(&networkModule{cfg: cfg, boot: boot, bus: bus, app: app})
 	builder.AddModule(&extensionModule{cfg: cfg, boot: boot, bus: bus})

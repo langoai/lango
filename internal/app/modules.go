@@ -14,6 +14,7 @@ import (
 	"github.com/langoai/lango/internal/appinit"
 	"github.com/langoai/lango/internal/bootstrap"
 	"github.com/langoai/lango/internal/config"
+	"github.com/langoai/lango/internal/economy"
 	"github.com/langoai/lango/internal/eventbus"
 	"github.com/langoai/lango/internal/gatekeeper"
 	"github.com/langoai/lango/internal/lifecycle"
@@ -234,6 +235,7 @@ type intelligenceModule struct {
 	cfg   *config.Config
 	boot  *bootstrap.Result
 	rawDB *sql.DB
+	bus   *eventbus.Bus
 }
 
 func (m *intelligenceModule) Name() string { return "intelligence" }
@@ -269,7 +271,7 @@ func (m *intelligenceModule) Init(ctx context.Context, r appinit.Resolver) (*app
 	}
 
 	// Knowledge.
-	kc := initKnowledge(cfg, store, gc)
+	kc := initKnowledge(cfg, store, gc, m.bus)
 	if kc != nil {
 		metaTools := buildMetaTools(kc.store, kc.engine, skillReg, cfg.Skill)
 		tools = append(tools, metaTools...)
@@ -279,22 +281,22 @@ func (m *intelligenceModule) Init(ctx context.Context, r appinit.Resolver) (*app
 	}
 
 	// Observational Memory.
-	mc := initMemory(cfg, store, sv)
+	mc := initMemory(cfg, store, sv, m.bus)
 
 	// Embedding / RAG.
-	ec := initEmbedding(cfg, m.rawDB, kc, mc)
+	ec := initEmbedding(cfg, m.rawDB, kc, mc, m.bus)
 
 	// Graph callbacks.
 	if gc != nil {
-		wireGraphCallbacks(gc, kc, mc, sv, cfg)
+		wireGraphCallbacks(gc, kc, mc, sv, cfg, m.bus)
 		initGraphRAG(cfg, gc, ec)
 	}
 
 	// Conversation Analysis.
-	ab := initConversationAnalysis(cfg, sv, store, kc, gc)
+	ab := initConversationAnalysis(cfg, sv, store, kc, gc, m.bus)
 
 	// Librarian.
-	lc := initLibrarian(cfg, sv, store, kc, mc, gc)
+	lc := initLibrarian(cfg, sv, store, kc, mc, gc, m.bus)
 
 	// Graph tools.
 	if gc != nil {
@@ -664,7 +666,13 @@ func (m *networkModule) Init(ctx context.Context, r appinit.Resolver) (*appinit.
 		// Economy.
 		econc = initEconomy(cfg, p2pc, pc, m.bus)
 		if econc != nil {
-			econTools := buildEconomyTools(econc)
+			econTools := economy.BuildTools(
+				econc.budgetEngine,
+				econc.riskEngine,
+				econc.negotiationEngine,
+				econc.escrowEngine,
+				econc.pricingEngine,
+			)
 			tools = append(tools, econTools...)
 			entries = append(entries, appinit.CatalogEntry{Category: "economy", Description: "P2P economy (budget, risk, pricing, negotiation, escrow)", ConfigKey: "economy.enabled", Enabled: true, Tools: econTools})
 

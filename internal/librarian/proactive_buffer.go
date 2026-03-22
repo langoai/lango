@@ -9,6 +9,7 @@ import (
 
 	"github.com/langoai/lango/internal/asyncbuf"
 	entknowledge "github.com/langoai/lango/internal/ent/knowledge"
+	"github.com/langoai/lango/internal/eventbus"
 	"github.com/langoai/lango/internal/knowledge"
 	"github.com/langoai/lango/internal/memory"
 	"github.com/langoai/lango/internal/session"
@@ -33,7 +34,7 @@ type ProactiveBuffer struct {
 	cooldownTurns        int
 	maxPending           int
 	autoSaveConfidence   types.Confidence
-	graphCallback        GraphCallback
+	bus                  *eventbus.Bus // Optional event bus for publishing triple events.
 
 	mu          sync.Mutex
 	turnCounter map[string]int // session_key -> turns since last inquiry
@@ -94,9 +95,9 @@ func NewProactiveBuffer(
 	return b
 }
 
-// SetGraphCallback sets the optional graph triple callback.
-func (b *ProactiveBuffer) SetGraphCallback(cb GraphCallback) {
-	b.graphCallback = cb
+// SetEventBus sets the optional event bus for publishing triple events.
+func (b *ProactiveBuffer) SetEventBus(bus *eventbus.Bus) {
+	b.bus = bus
 }
 
 // Start launches the background processing goroutine.
@@ -167,14 +168,17 @@ func (b *ProactiveBuffer) process(sessionKey string) {
 				b.logger.Infow("knowledge auto-saved", "key", ext.Key, "confidence", ext.Confidence)
 			}
 
-			// Graph callback for extracted triples.
-			if b.graphCallback != nil && ext.Subject != "" && ext.Predicate != "" && ext.Object != "" {
-				b.graphCallback([]Triple{{
-					Subject:   ext.Subject,
-					Predicate: ext.Predicate,
-					Object:    ext.Object,
-					Metadata:  map[string]string{"source": "proactive_librarian", "key": ext.Key},
-				}})
+			// Publish graph triples via event bus.
+			if b.bus != nil && ext.Subject != "" && ext.Predicate != "" && ext.Object != "" {
+				b.bus.Publish(eventbus.TriplesExtractedEvent{
+					Triples: []eventbus.Triple{{
+						Subject:   ext.Subject,
+						Predicate: ext.Predicate,
+						Object:    ext.Object,
+						Metadata:  map[string]string{"source": "proactive_librarian", "key": ext.Key},
+					}},
+					Source: "librarian",
+				})
 			}
 		}
 	}

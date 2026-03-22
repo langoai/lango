@@ -1,4 +1,4 @@
-package app
+package economy
 
 import (
 	"context"
@@ -15,24 +15,31 @@ import (
 	"github.com/langoai/lango/internal/wallet"
 )
 
-// buildEconomyTools creates economy layer tools from engine components.
-func buildEconomyTools(ec *economyComponents) []*agent.Tool {
+// BuildTools creates economy layer tools from domain engine components.
+// Nil engines are skipped gracefully.
+func BuildTools(
+	be *budget.Engine,
+	re *risk.Engine,
+	ne *negotiation.Engine,
+	ee *escrow.Engine,
+	pe *pricing.Engine,
+) []*agent.Tool {
 	tools := make([]*agent.Tool, 0, 12)
 
-	if ec.budgetEngine != nil {
-		tools = append(tools, buildBudgetTools(ec.budgetEngine)...)
+	if be != nil {
+		tools = append(tools, buildBudgetTools(be)...)
 	}
-	if ec.riskEngine != nil {
-		tools = append(tools, buildRiskTools(ec.riskEngine)...)
+	if re != nil {
+		tools = append(tools, buildRiskTools(re)...)
 	}
-	if ec.negotiationEngine != nil {
-		tools = append(tools, buildNegotiationTools(ec.negotiationEngine)...)
+	if ne != nil {
+		tools = append(tools, buildNegotiationTools(ne)...)
 	}
-	if ec.escrowEngine != nil {
-		tools = append(tools, buildEscrowTools(ec.escrowEngine)...)
+	if ee != nil {
+		tools = append(tools, buildEscrowTools(ee)...)
 	}
-	if ec.pricingEngine != nil {
-		tools = append(tools, buildPricingTools(ec.pricingEngine)...)
+	if pe != nil {
+		tools = append(tools, buildPricingTools(pe)...)
 	}
 
 	return tools

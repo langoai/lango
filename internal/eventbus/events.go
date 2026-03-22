@@ -1,13 +1,17 @@
 package eventbus
 
 // ContentSavedEvent is published when knowledge or memory content is saved.
-// Replaces: SetEmbedCallback, SetGraphCallback on knowledge and memory stores.
+// Replaces: SetEmbedCallback on knowledge and memory stores.
+// Graph wiring subscribes only when NeedsGraph is true, preserving the original
+// behavior where updates and learning saves skipped graph processing.
 type ContentSavedEvent struct {
 	ID         string
 	Collection string
 	Content    string
 	Metadata   map[string]string
 	Source     string // "knowledge" or "memory"
+	IsNew      bool   // true for first-time creation, false for updates
+	NeedsGraph bool   // true when graph triple extraction should also run
 }
 
 // EventName implements Event.

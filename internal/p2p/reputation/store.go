@@ -8,6 +8,7 @@ import (
 
 	"github.com/langoai/lango/internal/ent"
 	"github.com/langoai/lango/internal/ent/peerreputation"
+	"github.com/langoai/lango/internal/eventbus"
 	"go.uber.org/zap"
 )
 
@@ -24,9 +25,9 @@ type PeerDetails struct {
 
 // Store persists and queries peer reputation data.
 type Store struct {
-	client           *ent.Client
-	logger           *zap.SugaredLogger
-	onChangeCallback func(peerDID string, newScore float64)
+	client *ent.Client
+	logger *zap.SugaredLogger
+	bus    *eventbus.Bus // Optional event bus for reputation change notifications.
 }
 
 // NewStore creates a reputation store backed by the given ent client.
@@ -34,11 +35,20 @@ func NewStore(client *ent.Client, logger *zap.SugaredLogger) *Store {
 	return &Store{client: client, logger: logger}
 }
 
-// SetOnChangeCallback registers a function to be called whenever a peer's
-// trust score changes. This enables reactive security measures such as
-// session invalidation when scores drop below a threshold.
-func (s *Store) SetOnChangeCallback(fn func(peerDID string, newScore float64)) {
-	s.onChangeCallback = fn
+// SetEventBus sets the optional event bus for publishing reputation change events.
+func (s *Store) SetEventBus(bus *eventbus.Bus) {
+	s.bus = bus
+}
+
+// publishReputationChanged publishes a ReputationChangedEvent if the bus is configured.
+func (s *Store) publishReputationChanged(peerDID string, newScore float64) {
+	if s.bus == nil {
+		return
+	}
+	s.bus.Publish(eventbus.ReputationChangedEvent{
+		PeerDID:  peerDID,
+		NewScore: newScore,
+	})
 }
 
 // RecordSuccess increments the successful exchange count for a peer and
@@ -148,9 +158,7 @@ func (s *Store) upsert(
 			return fmt.Errorf("create peer reputation %q: %w", peerDID, createErr)
 		}
 		s.logger.Debugw("peer reputation created", "peerDID", peerDID, "score", score)
-		if s.onChangeCallback != nil {
-			s.onChangeCallback(peerDID, score)
-		}
+		s.publishReputationChanged(peerDID, score)
 		return nil
 	}
 
@@ -171,9 +179,7 @@ func (s *Store) upsert(
 		return fmt.Errorf("update peer reputation %q: %w", peerDID, err)
 	}
 	s.logger.Debugw("peer reputation updated", "peerDID", peerDID, "score", score)
-	if s.onChangeCallback != nil {
-		s.onChangeCallback(peerDID, score)
-	}
+	s.publishReputationChanged(peerDID, score)
 	return nil
 }
 

@@ -2,7 +2,7 @@ package app
 
 import (
 	"github.com/langoai/lango/internal/config"
-	"github.com/langoai/lango/internal/graph"
+	"github.com/langoai/lango/internal/eventbus"
 	"github.com/langoai/lango/internal/librarian"
 	"github.com/langoai/lango/internal/session"
 	"github.com/langoai/lango/internal/supervisor"
@@ -23,6 +23,7 @@ func initLibrarian(
 	kc *knowledgeComponents,
 	mc *memoryComponents,
 	gc *graphComponents,
+	bus *eventbus.Bus,
 ) *librarianComponents {
 	if !cfg.Librarian.Enabled {
 		logger().Info("proactive librarian disabled")
@@ -90,20 +91,9 @@ func initLibrarian(
 		getMessages, getObservations, bufCfg, lLogger,
 	)
 
-	// Wire graph callback if available.
-	if gc != nil && gc.buffer != nil {
-		buffer.SetGraphCallback(func(triples []librarian.Triple) {
-			graphTriples := make([]graph.Triple, len(triples))
-			for i, t := range triples {
-				graphTriples[i] = graph.Triple{
-					Subject:   t.Subject,
-					Predicate: t.Predicate,
-					Object:    t.Object,
-					Metadata:  t.Metadata,
-				}
-			}
-			gc.buffer.Enqueue(graph.GraphRequest{Triples: graphTriples})
-		})
+	// Wire event bus for graph triple publishing.
+	if bus != nil {
+		buffer.SetEventBus(bus)
 	}
 
 	logger().Infow("proactive librarian initialized",

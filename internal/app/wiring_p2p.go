@@ -284,8 +284,11 @@ func initP2P(cfg *config.Config, wp wallet.WalletProvider, pc *paymentComponents
 	}
 	secEvents := handshake.NewSecurityEventHandler(sessions, 5, minTrust, pLogger)
 	handler.SetSecurityEvents(secEvents)
-	if repStore != nil {
-		repStore.SetOnChangeCallback(secEvents.OnReputationChange)
+	if repStore != nil && bus != nil {
+		repStore.SetEventBus(bus)
+		eventbus.SubscribeTyped(bus, func(evt eventbus.ReputationChangedEvent) {
+			secEvents.OnReputationChange(evt.PeerDID, evt.NewScore)
+		})
 	}
 	pLogger.Info("P2P security event handler wired")
 

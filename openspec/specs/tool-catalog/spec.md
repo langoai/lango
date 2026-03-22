@@ -123,3 +123,14 @@ Every tool subsystem SHALL register a disabled category with the tool catalog wh
 - **WHEN** p2p.enabled is true but payment is disabled
 - **THEN** p2p disabled category description includes "(disabled — payment required)"
 
+### Requirement: Economy tools registered via domain package
+Economy tools SHALL be registered via `economy.BuildTools()` called from the network module's `Init()` method. The `app/tools_economy.go` file SHALL NOT exist.
+
+#### Scenario: Economy tools appear in catalog
+- **WHEN** economy is enabled and engines are initialized
+- **THEN** economy tools (budget, risk, negotiation, escrow, pricing) are registered in the "economy" catalog category via `economy.BuildTools()`
+
+#### Scenario: Excluded tools remain in app
+- **WHEN** economy is enabled
+- **THEN** `buildOnChainEscrowTools`, `buildSentinelTools`, `buildTeamEscrowTools` remain in `internal/app/`
+
