@@ -33,8 +33,7 @@ func newAttributionShowCmd(bootLoader func() (*bootstrap.Result, error)) *cobra.
 			}
 			defer boot.DBClient.Close()
 
-			if !boot.Config.Provenance.Enabled {
-				cmd.Println("Provenance is disabled. Enable with: lango config set provenance.enabled true")
+			if isProvenanceDisabled(boot, cmd) {
 				return nil
 			}
 
@@ -50,7 +49,7 @@ func newAttributionShowCmd(bootLoader func() (*bootstrap.Result, error)) *cobra.
 				view.TotalTokens.InputTokens, view.TotalTokens.OutputTokens, view.TotalTokens.TotalTokens)
 			for _, row := range view.Attributions {
 				cmd.Printf("%s\t%s\t%s\t%s\t+%d\t-%d\n",
-					row.CreatedAt.Format("2006-01-02 15:04:05"),
+					row.CreatedAt.Format(dateTimeFormat),
 					row.AuthorType,
 					row.AuthorID,
 					row.Source,
@@ -75,8 +74,7 @@ func newAttributionReportCmd(bootLoader func() (*bootstrap.Result, error)) *cobr
 			}
 			defer boot.DBClient.Close()
 
-			if !boot.Config.Provenance.Enabled {
-				cmd.Println("Provenance is disabled. Enable with: lango config set provenance.enabled true")
+			if isProvenanceDisabled(boot, cmd) {
 				return nil
 			}
 

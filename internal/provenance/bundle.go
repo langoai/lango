@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"maps"
 
 	"github.com/langoai/lango/internal/p2p/identity"
 )
@@ -47,6 +48,9 @@ func (s *BundleService) Export(
 	if sessionKey == "" {
 		return nil, nil, ErrInvalidSessionKey
 	}
+	if !level.Valid() {
+		return nil, nil, fmt.Errorf("%w: %q", ErrInvalidRedaction, level)
+	}
 	if signerDID == "" {
 		return nil, nil, fmt.Errorf("signer DID is required")
 	}
@@ -82,6 +86,9 @@ func (s *BundleService) Export(
 func (s *BundleService) Verify(bundle *ProvenanceBundle) error {
 	if bundle == nil {
 		return fmt.Errorf("nil provenance bundle")
+	}
+	if !bundle.RedactionLevel.Valid() {
+		return fmt.Errorf("%w: %q", ErrInvalidRedaction, bundle.RedactionLevel)
 	}
 	if bundle.SignerDID == "" {
 		return fmt.Errorf("bundle signer DID is required")
@@ -186,8 +193,8 @@ func redactBundle(bundle *ProvenanceBundle, level RedactionLevel) *ProvenanceBun
 	clone.Attributions = append([]Attribution(nil), bundle.Attributions...)
 	if bundle.Report != nil {
 		cp := *bundle.Report
-		cp.ByAuthor = cloneAuthorStats(bundle.Report.ByAuthor)
-		cp.ByFile = cloneFileStats(bundle.Report.ByFile)
+		cp.ByAuthor = maps.Clone(bundle.Report.ByAuthor)
+		cp.ByFile = maps.Clone(bundle.Report.ByFile)
 		clone.Report = &cp
 	}
 
@@ -226,24 +233,3 @@ func redactBundle(bundle *ProvenanceBundle, level RedactionLevel) *ProvenanceBun
 	}
 }
 
-func cloneAuthorStats(in map[string]AuthorStats) map[string]AuthorStats {
-	if len(in) == 0 {
-		return map[string]AuthorStats{}
-	}
-	out := make(map[string]AuthorStats, len(in))
-	for k, v := range in {
-		out[k] = v
-	}
-	return out
-}
-
-func cloneFileStats(in map[string]FileStats) map[string]FileStats {
-	if len(in) == 0 {
-		return map[string]FileStats{}
-	}
-	out := make(map[string]FileStats, len(in))
-	for k, v := range in {
-		out[k] = v
-	}
-	return out
-}

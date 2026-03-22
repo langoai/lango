@@ -37,6 +37,9 @@ func newBundleExportCmd(bootLoader func() (*bootstrap.Result, error)) *cobra.Com
 				return err
 			}
 			defer boot.DBClient.Close()
+			if isProvenanceDisabled(boot, cmd) {
+				return nil
+			}
 
 			svcs := loadServices(boot)
 			did, signFn, err := loadSigner(context.Background(), boot)
@@ -75,6 +78,9 @@ func newBundleImportCmd(bootLoader func() (*bootstrap.Result, error)) *cobra.Com
 				return err
 			}
 			defer boot.DBClient.Close()
+			if isProvenanceDisabled(boot, cmd) {
+				return nil
+			}
 
 			data, err := os.ReadFile(args[0])
 			if err != nil {

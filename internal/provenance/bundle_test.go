@@ -72,3 +72,58 @@ func TestBundleService_ExportImportVerify(t *testing.T) {
 	err = bundleSvc.Verify(&tampered)
 	require.Error(t, err)
 }
+
+func TestBundleService_Export_InvalidRedaction(t *testing.T) {
+	cpStore := NewMemoryStore()
+	treeStore := NewMemoryTreeStore()
+	attrStore := NewMemoryAttributionStore()
+	attrSvc := NewAttributionService(attrStore, cpStore, &stubTokenReader{})
+	bundleSvc := NewBundleService(cpStore, treeStore, attrStore, attrSvc)
+
+	did, signFn := testSigner(t)
+
+	_, _, err := bundleSvc.Export(context.Background(), "sess-1", RedactionLevel("invalid"), did, signFn)
+	require.ErrorIs(t, err, ErrInvalidRedaction)
+}
+
+func TestBundleService_Export_ValidRedactionLevels(t *testing.T) {
+	cpStore := NewMemoryStore()
+	treeStore := NewMemoryTreeStore()
+	attrStore := NewMemoryAttributionStore()
+	attrSvc := NewAttributionService(attrStore, cpStore, &stubTokenReader{})
+	bundleSvc := NewBundleService(cpStore, treeStore, attrStore, attrSvc)
+
+	did, signFn := testSigner(t)
+	ctx := context.Background()
+
+	tests := []struct {
+		give RedactionLevel
+	}{
+		{give: RedactionNone},
+		{give: RedactionContent},
+		{give: RedactionFull},
+	}
+	for _, tt := range tests {
+		t.Run(string(tt.give), func(t *testing.T) {
+			bundle, _, err := bundleSvc.Export(ctx, "sess-1", tt.give, did, signFn)
+			require.NoError(t, err)
+			assert.Equal(t, tt.give, bundle.RedactionLevel)
+		})
+	}
+}
+
+func TestBundleService_Verify_InvalidRedaction(t *testing.T) {
+	cpStore := NewMemoryStore()
+	treeStore := NewMemoryTreeStore()
+	attrStore := NewMemoryAttributionStore()
+	attrSvc := NewAttributionService(attrStore, cpStore, &stubTokenReader{})
+	bundleSvc := NewBundleService(cpStore, treeStore, attrStore, attrSvc)
+
+	bundle := &ProvenanceBundle{
+		Version:        "1",
+		RedactionLevel: RedactionLevel("bogus"),
+		SignerDID:      "did:example:123",
+	}
+	err := bundleSvc.Verify(bundle)
+	require.ErrorIs(t, err, ErrInvalidRedaction)
+}

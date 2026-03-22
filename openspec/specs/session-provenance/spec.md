@@ -131,9 +131,15 @@ The system SHALL provide working `lango provenance` CLI commands: status, checkp
 - **WHEN** `lango provenance checkpoint list --run <id>` is run
 - **THEN** checkpoints for that run are displayed from persistent Ent store
 
-#### Scenario: Disabled provenance message
-- **WHEN** any provenance command is run with provenance.enabled=false
-- **THEN** the system displays an enable instruction message
+#### Scenario: Disabled provenance message on data commands
+- **WHEN** any provenance command other than `status` is run with `provenance.enabled=false`
+- **THEN** the system prints "Provenance is disabled. Enable with: lango config set provenance.enabled true"
+- **AND** the command returns without performing any data operation
+
+#### Scenario: Disabled provenance status shows config
+- **WHEN** `lango provenance status` is run with `provenance.enabled=false`
+- **THEN** the system prints the provenance configuration (Enabled, Auto on Step Complete, etc.)
+- **AND** appends "Provenance is disabled. Enable with: lango config set provenance.enabled true" at the end
 
 #### Scenario: Session tree command
 - **WHEN** `lango provenance session tree <session-key> --depth <n>` is run
@@ -207,7 +213,17 @@ The system SHALL define an Ent schema `ProvenanceAttribution` with fields: id, s
 - **THEN** the `ProvenanceAttribution` entity code is generated without errors
 
 ### Requirement: Provenance Bundle Verification
-The system SHALL support signed provenance bundles with redaction levels `none`, `content`, and `full`.
+The system SHALL support signed provenance bundles with redaction levels `none`, `content`, and `full`. The system SHALL reject invalid redaction levels with `ErrInvalidRedaction` in both `Export()` and `Verify()`.
+
+#### Scenario: Export rejects invalid redaction
+- **WHEN** `Export()` is called with a redaction level that is not `none`, `content`, or `full`
+- **THEN** the system returns `ErrInvalidRedaction`
+- **AND** no bundle is created
+
+#### Scenario: Verify rejects invalid redaction in imported bundle
+- **WHEN** `Verify()` is called on a bundle whose `redaction_level` field is not `none`, `content`, or `full`
+- **THEN** the system returns `ErrInvalidRedaction`
+- **AND** the bundle is not imported
 
 #### Scenario: Remote peer verifies signed bundle
 - **WHEN** a peer receives a provenance bundle over the provenance-specific P2P protocol
@@ -217,6 +233,11 @@ The system SHALL support signed provenance bundles with redaction levels `none`,
 - **WHEN** a signed bundle payload is modified after signing
 - **THEN** verification fails and the bundle is rejected
 
+#### Scenario: HTTP route rejects invalid redaction early
+- **WHEN** a provenance push or fetch HTTP request contains an invalid redaction level
+- **THEN** the route handler returns HTTP 400 Bad Request with a message indicating valid options
+- **AND** no P2P connection is attempted
+
 ### Requirement: Provenance P2P Transport
 The provenance transport SHALL support both push and fetch flows.
 
@@ -224,3 +245,14 @@ The provenance transport SHALL support both push and fetch flows.
 - **WHEN** a peer receives a `fetch_bundle` provenance request with `session-key` and `redaction`
 - **THEN** it exports a signed provenance bundle for that session and redaction level
 - **AND** it returns the bundle over the provenance-specific P2P protocol
+
+### Requirement: RedactionLevel validation method
+The `RedactionLevel` type SHALL provide a `Valid()` method that returns `true` for `none`, `content`, and `full`, and `false` for all other values.
+
+#### Scenario: Valid redaction levels
+- **WHEN** `Valid()` is called on `RedactionNone`, `RedactionContent`, or `RedactionFull`
+- **THEN** it returns `true`
+
+#### Scenario: Invalid redaction levels
+- **WHEN** `Valid()` is called on any other `RedactionLevel` value
+- **THEN** it returns `false`

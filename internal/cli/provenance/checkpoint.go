@@ -40,8 +40,7 @@ func newCheckpointListCmd(bootLoader func() (*bootstrap.Result, error)) *cobra.C
 			}
 			defer boot.DBClient.Close()
 
-			if !boot.Config.Provenance.Enabled {
-				cmd.Println("Provenance is disabled. Enable with: lango config set provenance.enabled true")
+			if isProvenanceDisabled(boot, cmd) {
 				return nil
 			}
 
@@ -68,7 +67,7 @@ func newCheckpointListCmd(bootLoader func() (*bootstrap.Result, error)) *cobra.C
 
 			for _, cp := range checkpoints {
 				cmd.Printf("%s\t%s\t%s\tseq=%d\t%s\n",
-					cp.ID[:8], cp.Trigger, cp.Label, cp.JournalSeq, cp.CreatedAt.Format("2006-01-02 15:04:05"))
+					cp.ID[:8], cp.Trigger, cp.Label, cp.JournalSeq, cp.CreatedAt.Format(dateTimeFormat))
 			}
 			return nil
 		},
@@ -98,8 +97,7 @@ func newCheckpointCreateCmd(bootLoader func() (*bootstrap.Result, error)) *cobra
 			}
 			defer boot.DBClient.Close()
 
-			if !boot.Config.Provenance.Enabled {
-				cmd.Println("Provenance is disabled. Enable with: lango config set provenance.enabled true")
+			if isProvenanceDisabled(boot, cmd) {
 				return nil
 			}
 
@@ -135,8 +133,7 @@ func newCheckpointShowCmd(bootLoader func() (*bootstrap.Result, error)) *cobra.C
 			}
 			defer boot.DBClient.Close()
 
-			if !boot.Config.Provenance.Enabled {
-				cmd.Println("Provenance is disabled. Enable with: lango config set provenance.enabled true")
+			if isProvenanceDisabled(boot, cmd) {
 				return nil
 			}
 
@@ -153,7 +150,7 @@ func newCheckpointShowCmd(bootLoader func() (*bootstrap.Result, error)) *cobra.C
 			cmd.Printf("Run:         %s\n", cp.RunID)
 			cmd.Printf("Journal Seq: %d\n", cp.JournalSeq)
 			cmd.Printf("Git Ref:     %s\n", cp.GitRef)
-			cmd.Printf("Created:     %s\n", cp.CreatedAt.Format("2006-01-02 15:04:05"))
+			cmd.Printf("Created:     %s\n", cp.CreatedAt.Format(dateTimeFormat))
 			return nil
 		},
 	}

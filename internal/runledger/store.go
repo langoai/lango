@@ -102,6 +102,8 @@ func (m *MemoryStore) AppendJournalEvent(_ context.Context, event JournalEvent) 
 	m.journals[event.RunID] = append(m.journals[event.RunID], event)
 	m.mu.Unlock()
 
+	// AppendHook is called after releasing the lock to avoid deadlocks when
+	// the hook calls back into the store (e.g., provenance checkpoint creation).
 	if m.opts.AppendHook != nil {
 		m.opts.AppendHook(event)
 	}

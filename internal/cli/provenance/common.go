@@ -4,6 +4,8 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/spf13/cobra"
+
 	"github.com/langoai/lango/internal/bootstrap"
 	"github.com/langoai/lango/internal/observability/token"
 	"github.com/langoai/lango/internal/p2p/identity"
@@ -11,6 +13,17 @@ import (
 	"github.com/langoai/lango/internal/security"
 	"github.com/langoai/lango/internal/wallet"
 )
+
+const dateTimeFormat = "2006-01-02 15:04:05"
+
+// isProvenanceDisabled prints a notice and returns true if provenance is not enabled.
+func isProvenanceDisabled(boot *bootstrap.Result, cmd *cobra.Command) bool {
+	if boot.Config.Provenance.Enabled {
+		return false
+	}
+	cmd.Println("Provenance is disabled. Enable with: lango config set provenance.enabled true")
+	return true
+}
 
 type services struct {
 	checkpoints provenancepkg.CheckpointStore

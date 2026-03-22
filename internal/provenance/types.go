@@ -134,6 +134,15 @@ const (
 	RedactionFull    RedactionLevel = "full"
 )
 
+// Valid reports whether r is a recognised redaction level.
+func (r RedactionLevel) Valid() bool {
+	switch r {
+	case RedactionNone, RedactionContent, RedactionFull:
+		return true
+	}
+	return false
+}
+
 // ProvenanceBundle is the portable container for provenance data.
 type ProvenanceBundle struct {
 	Version            string             `json:"version"`

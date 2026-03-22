@@ -267,6 +267,40 @@ func setupProvenanceRouteRuntime(t *testing.T) (*App, *p2pComponents, host.Host,
 	return app, p2pc, serverHost, serverDID.ID, cleanup
 }
 
+func TestP2PProvenancePushHandler_InvalidRedaction(t *testing.T) {
+	app, p2pc, _, _, cleanup := setupProvenanceRouteRuntime(t)
+	defer cleanup()
+
+	router := chi.NewRouter()
+	registerP2PRoutes(router, app, p2pc, nil)
+
+	req := httptest.NewRequest(http.MethodPost, "/api/p2p/provenance/push",
+		strings.NewReader(`{"peerDid":"did:lango:abc","sessionKey":"sess-1","redaction":"bogus"}`))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusBadRequest, w.Code)
+	assert.Contains(t, w.Body.String(), "invalid redaction level")
+}
+
+func TestP2PProvenanceFetchHandler_InvalidRedaction(t *testing.T) {
+	app, p2pc, _, _, cleanup := setupProvenanceRouteRuntime(t)
+	defer cleanup()
+
+	router := chi.NewRouter()
+	registerP2PRoutes(router, app, p2pc, nil)
+
+	req := httptest.NewRequest(http.MethodPost, "/api/p2p/provenance/fetch",
+		strings.NewReader(`{"peerDid":"did:lango:abc","sessionKey":"sess-1","redaction":"invalid"}`))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusBadRequest, w.Code)
+	assert.Contains(t, w.Body.String(), "invalid redaction level")
+}
+
 func TestP2PProvenancePushHandler_RequiresActiveSession(t *testing.T) {
 	app, p2pc, _, _, cleanup := setupProvenanceRouteRuntime(t)
 	defer cleanup()

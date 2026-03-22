@@ -10,4 +10,5 @@ var (
 	ErrInvalidLabel       = errors.New("checkpoint label is required")
 	ErrInvalidRunID       = errors.New("run ID is required")
 	ErrInvalidSessionKey  = errors.New("session key is required")
+	ErrInvalidRedaction   = errors.New("invalid redaction level")
 )

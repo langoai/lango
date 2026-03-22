@@ -83,21 +83,25 @@ func (s *EntAttributionStore) ListBySession(ctx context.Context, sessionKey stri
 	}
 	out := make([]Attribution, 0, len(rows))
 	for _, row := range rows {
-		out = append(out, Attribution{
-			ID:           row.ID.String(),
-			SessionKey:   row.SessionKey,
-			RunID:        row.RunID,
-			WorkspaceID:  row.WorkspaceID,
-			AuthorType:   AuthorType(row.AuthorType),
-			AuthorID:     row.AuthorID,
-			FilePath:     row.FilePath,
-			CommitHash:   row.CommitHash,
-			StepID:       row.StepID,
-			Source:       AttributionSource(row.Source),
-			LinesAdded:   row.LinesAdded,
-			LinesRemoved: row.LinesRemoved,
-			CreatedAt:    row.CreatedAt,
-		})
+		out = append(out, entRowToAttribution(row))
 	}
 	return out, nil
+}
+
+func entRowToAttribution(row *ent.ProvenanceAttribution) Attribution {
+	return Attribution{
+		ID:           row.ID.String(),
+		SessionKey:   row.SessionKey,
+		RunID:        row.RunID,
+		WorkspaceID:  row.WorkspaceID,
+		AuthorType:   AuthorType(row.AuthorType),
+		AuthorID:     row.AuthorID,
+		FilePath:     row.FilePath,
+		CommitHash:   row.CommitHash,
+		StepID:       row.StepID,
+		Source:       AttributionSource(row.Source),
+		LinesAdded:   row.LinesAdded,
+		LinesRemoved: row.LinesRemoved,
+		CreatedAt:    row.CreatedAt,
+	}
 }

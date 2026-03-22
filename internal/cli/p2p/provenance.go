@@ -46,14 +46,8 @@ func newProvenancePushCmd(bootLoader func() (*bootstrap.Result, error)) *cobra.C
 			if !boot.Config.P2P.Enabled {
 				return errP2PDisabled
 			}
-			if addr == "" {
-				addr = fmt.Sprintf("http://%s:%d", boot.Config.Server.Host, boot.Config.Server.Port)
-			}
-			body := map[string]string{
-				"peerDid":    args[0],
-				"sessionKey": args[1],
-				"redaction":  redaction,
-			}
+			addr = gatewayAddr(addr, boot)
+			body := provenanceRequestBody(args[0], args[1], redaction)
 			var out map[string]any
 			if err := postJSON(addr, "/api/p2p/provenance/push", body, &out); err != nil {
 				return err
@@ -62,8 +56,7 @@ func newProvenancePushCmd(bootLoader func() (*bootstrap.Result, error)) *cobra.C
 			return nil
 		},
 	}
-	cmd.Flags().StringVar(&addr, "addr", "", "Gateway address (default: config server host/port)")
-	cmd.Flags().StringVar(&redaction, "redaction", "content", "Redaction level (none, content, full)")
+	addProvenanceExchangeFlags(cmd, &addr, &redaction)
 	return cmd
 }
 
@@ -86,14 +79,8 @@ func newProvenanceFetchCmd(bootLoader func() (*bootstrap.Result, error)) *cobra.
 			if !boot.Config.P2P.Enabled {
 				return errP2PDisabled
 			}
-			if addr == "" {
-				addr = fmt.Sprintf("http://%s:%d", boot.Config.Server.Host, boot.Config.Server.Port)
-			}
-			body := map[string]string{
-				"peerDid":    args[0],
-				"sessionKey": args[1],
-				"redaction":  redaction,
-			}
+			addr = gatewayAddr(addr, boot)
+			body := provenanceRequestBody(args[0], args[1], redaction)
 			var out map[string]any
 			if err := postJSON(addr, "/api/p2p/provenance/fetch", body, &out); err != nil {
 				return err
@@ -102,9 +89,28 @@ func newProvenanceFetchCmd(bootLoader func() (*bootstrap.Result, error)) *cobra.
 			return nil
 		},
 	}
-	cmd.Flags().StringVar(&addr, "addr", "", "Gateway address (default: config server host/port)")
-	cmd.Flags().StringVar(&redaction, "redaction", "content", "Redaction level (none, content, full)")
+	addProvenanceExchangeFlags(cmd, &addr, &redaction)
 	return cmd
+}
+
+func gatewayAddr(addr string, boot *bootstrap.Result) string {
+	if addr != "" {
+		return addr
+	}
+	return fmt.Sprintf("http://%s:%d", boot.Config.Server.Host, boot.Config.Server.Port)
+}
+
+func provenanceRequestBody(peerDID, sessionKey, redaction string) map[string]string {
+	return map[string]string{
+		"peerDid":    peerDID,
+		"sessionKey": sessionKey,
+		"redaction":  redaction,
+	}
+}
+
+func addProvenanceExchangeFlags(cmd *cobra.Command, addr, redaction *string) {
+	cmd.Flags().StringVar(addr, "addr", "", "Gateway address (default: config server host/port)")
+	cmd.Flags().StringVar(redaction, "redaction", "content", "Redaction level (none, content, full)")
 }
 
 func postJSON(addr, path string, body any, out any) error {

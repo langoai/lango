@@ -49,6 +49,9 @@ func newStatusCmd(bootLoader func() (*bootstrap.Result, error)) *cobra.Command {
 					cmd.Printf("  Session Tree Store:   persistent (%d sample node(s))\n", len(nodes))
 				}
 			}
+			if !cfg.Enabled {
+				cmd.Println("\nProvenance is disabled. Enable with: lango config set provenance.enabled true")
+			}
 			return nil
 		},
 	}

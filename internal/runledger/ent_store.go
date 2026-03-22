@@ -86,6 +86,8 @@ func (s *EntStore) AppendJournalEvent(ctx context.Context, event JournalEvent) e
 
 		if commitErr == nil {
 			event.Seq = nextSeq
+			// AppendHook is called after the transaction commits to avoid
+			// deadlocks when the hook calls back into the store.
 			if s.opts.AppendHook != nil {
 				s.opts.AppendHook(event)
 			}

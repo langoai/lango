@@ -3,6 +3,7 @@ package app
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
 
 	"github.com/go-chi/chi/v5"
@@ -278,6 +279,10 @@ func decodeProvenanceRequest(w http.ResponseWriter, r *http.Request) (*provenanc
 	}
 	if req.Redaction == "" {
 		req.Redaction = string(provenance.RedactionContent)
+	}
+	if !provenance.RedactionLevel(req.Redaction).Valid() {
+		http.Error(w, fmt.Sprintf("invalid redaction level %q: must be none, content, or full", req.Redaction), http.StatusBadRequest)
+		return nil, false
 	}
 	return &req, true
 }

@@ -34,6 +34,9 @@ func newSessionTreeCmd(bootLoader func() (*bootstrap.Result, error)) *cobra.Comm
 				return err
 			}
 			defer boot.DBClient.Close()
+			if isProvenanceDisabled(boot, cmd) {
+				return nil
+			}
 
 			svcs := loadServices(boot)
 			nodes, err := svcs.tree.GetTree(cmd.Context(), args[0], depth)
@@ -64,6 +67,9 @@ func newSessionListCmd(bootLoader func() (*bootstrap.Result, error)) *cobra.Comm
 				return err
 			}
 			defer boot.DBClient.Close()
+			if isProvenanceDisabled(boot, cmd) {
+				return nil
+			}
 
 			svcs := loadServices(boot)
 			nodes, err := svcs.treeStore.ListAll(cmd.Context(), limit)
