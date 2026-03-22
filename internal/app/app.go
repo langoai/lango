@@ -37,6 +37,39 @@ import (
 
 func logger() *zap.SugaredLogger { return logging.App() }
 
+// cleanupEntry pairs a name with its rollback function.
+type cleanupEntry struct {
+	name string
+	fn   func()
+}
+
+// cleanupStack accumulates rollback functions during Phase B wiring.
+// On failure, rollback() executes all cleanups in reverse order.
+// On success, clear() discards the stack (lifecycle registry takes ownership).
+type cleanupStack struct {
+	entries []cleanupEntry
+}
+
+// push adds a named cleanup function to the stack.
+func (s *cleanupStack) push(name string, fn func()) {
+	s.entries = append(s.entries, cleanupEntry{name: name, fn: fn})
+}
+
+// rollback executes all cleanups in reverse order (last-in, first-out).
+func (s *cleanupStack) rollback() {
+	for i := len(s.entries) - 1; i >= 0; i-- {
+		e := s.entries[i]
+		logger().Infow("rolling back Phase B step", "step", e.name)
+		e.fn()
+	}
+	s.entries = nil
+}
+
+// clear discards the cleanup stack without executing any cleanups.
+func (s *cleanupStack) clear() {
+	s.entries = nil
+}
+
 // New creates a new application instance from a bootstrap result.
 func New(boot *bootstrap.Result) (*App, error) {
 	cfg := boot.Config
@@ -54,7 +87,7 @@ func New(boot *bootstrap.Result) (*App, error) {
 
 	builder := appinit.NewBuilder()
 	builder.AddModule(&foundationModule{cfg: cfg, boot: boot})
-	builder.AddModule(&intelligenceModule{cfg: cfg, boot: boot, rawDB: boot.RawDB})
+	builder.AddModule(&intelligenceModule{cfg: cfg, boot: boot, rawDB: boot.RawDB, bus: bus})
 	builder.AddModule(&automationModule{cfg: cfg, app: app})
 	builder.AddModule(&networkModule{cfg: cfg, boot: boot, bus: bus, app: app})
 	builder.AddModule(&extensionModule{cfg: cfg, boot: boot, bus: bus})
@@ -70,6 +103,10 @@ func New(boot *bootstrap.Result) (*App, error) {
 	tools := buildResult.Tools
 
 	// ── Phase B: Post-Build Wiring ──
+	// Cleanup stack accumulates rollback functions during Phase B.
+	// On failure, cleanups run in reverse order (bootstrap pipeline pattern).
+	// On success, the stack is discarded — ownership transfers to the lifecycle registry.
+	var cleanups cleanupStack
 
 	// B1. Populate app fields from resolver.
 	populateAppFields(app, resolver)
@@ -98,7 +135,10 @@ func New(boot *bootstrap.Result) (*App, error) {
 	outputStore := tooloutput.NewOutputStore(10 * time.Minute)
 	app.registry.Register(outputStore, lifecycle.PriorityCore)
 	app.OutputStore = outputStore
-	outputTools := buildOutputTools(outputStore)
+	cleanups.push("output-store", func() {
+		_ = outputStore.Stop(context.Background())
+	})
+	outputTools := tooloutput.BuildTools(outputStore)
 	tools = append(tools, outputTools...)
 	catalog.RegisterCategory(toolcatalog.Category{Name: "output", Description: "Tool output retrieval", Enabled: true})
 	catalog.Register("output", outputTools)
@@ -123,6 +163,9 @@ func New(boot *bootstrap.Result) (*App, error) {
 	if app.RunLedgerStore != nil {
 		app.Gateway.SetRunLedgerStore(app.RunLedgerStore)
 	}
+	cleanups.push("gateway", func() {
+		_ = app.Gateway.Shutdown(context.Background())
+	})
 
 	// B4d. Build composite approval provider and tool approval wrapper.
 	composite, grantStore := buildApprovalProvider(cfg, app.Gateway)
@@ -179,6 +222,7 @@ func New(boot *bootstrap.Result) (*App, error) {
 		}(),
 	})
 	if err != nil {
+		cleanups.rollback()
 		return nil, fmt.Errorf("create agent: %w", err)
 	}
 	app.Agent = adkAgent
@@ -200,6 +244,9 @@ func New(boot *bootstrap.Result) (*App, error) {
 		app.registry.Register(entry.Component, entry.Priority)
 	}
 	registerPostBuildLifecycle(app)
+
+	// Phase B succeeded — discard rollback cleanups; lifecycle registry owns everything now.
+	cleanups.clear()
 
 	return app, nil
 }

@@ -5,6 +5,7 @@ import (
 
 	"github.com/langoai/lango/internal/config"
 	"github.com/langoai/lango/internal/embedding"
+	"github.com/langoai/lango/internal/eventbus"
 	"github.com/langoai/lango/internal/knowledge"
 	"github.com/langoai/lango/internal/memory"
 )
@@ -16,7 +17,7 @@ type embeddingComponents struct {
 }
 
 // initEmbedding creates the embedding pipeline and RAG service if configured.
-func initEmbedding(cfg *config.Config, rawDB *sql.DB, kc *knowledgeComponents, mc *memoryComponents) *embeddingComponents {
+func initEmbedding(cfg *config.Config, rawDB *sql.DB, kc *knowledgeComponents, mc *memoryComponents, bus *eventbus.Bus) *embeddingComponents {
 	emb := cfg.Embedding
 	if emb.Provider == "" {
 		logger().Info("embedding system disabled (no provider configured)")
@@ -75,20 +76,16 @@ func initEmbedding(cfg *config.Config, rawDB *sql.DB, kc *knowledgeComponents, m
 	resolver := embedding.NewStoreResolver(ks, ms)
 	ragService := embedding.NewRAGService(provider, vecStore, resolver, embLogger)
 
-	// Wire embed callbacks into stores so saves trigger async embedding.
-	embedCB := func(id, collection, content string, metadata map[string]string) {
-		buffer.Enqueue(embedding.EmbedRequest{
-			ID:         id,
-			Collection: collection,
-			Content:    content,
-			Metadata:   metadata,
+	// Subscribe to content.saved events to trigger async embedding.
+	if bus != nil {
+		eventbus.SubscribeTyped(bus, func(evt eventbus.ContentSavedEvent) {
+			buffer.Enqueue(embedding.EmbedRequest{
+				ID:         evt.ID,
+				Collection: evt.Collection,
+				Content:    evt.Content,
+				Metadata:   evt.Metadata,
+			})
 		})
-	}
-	if kc != nil {
-		kc.store.SetEmbedCallback(embedCB)
-	}
-	if mc != nil {
-		mc.store.SetEmbedCallback(embedCB)
 	}
 
 	logger().Infow("embedding system initialized",

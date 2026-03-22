@@ -10,7 +10,7 @@ import (
 	"github.com/langoai/lango/internal/adk"
 	"github.com/langoai/lango/internal/agent"
 	"github.com/langoai/lango/internal/config"
-	"github.com/langoai/lango/internal/graph"
+	"github.com/langoai/lango/internal/eventbus"
 	"github.com/langoai/lango/internal/knowledge"
 	"github.com/langoai/lango/internal/learning"
 	"github.com/langoai/lango/internal/librarian"
@@ -31,7 +31,7 @@ type knowledgeComponents struct {
 
 // initKnowledge creates the self-learning components if enabled.
 // When gc is provided, a GraphEngine is used as the observer instead of the base Engine.
-func initKnowledge(cfg *config.Config, store session.Store, gc *graphComponents) *knowledgeComponents {
+func initKnowledge(cfg *config.Config, store session.Store, gc *graphComponents, bus *eventbus.Bus) *knowledgeComponents {
 	if !cfg.Knowledge.Enabled {
 		logger().Info("knowledge system disabled")
 		return nil
@@ -47,6 +47,7 @@ func initKnowledge(cfg *config.Config, store session.Store, gc *graphComponents)
 	kLogger := logger()
 
 	kStore := knowledge.NewStore(client, kLogger)
+	kStore.SetEventBus(bus)
 
 	engine := learning.NewEngine(kStore, kLogger)
 
@@ -54,9 +55,7 @@ func initKnowledge(cfg *config.Config, store session.Store, gc *graphComponents)
 	var observer learning.ToolResultObserver = engine
 	if gc != nil {
 		graphEngine := learning.NewGraphEngine(kStore, gc.store, kLogger)
-		graphEngine.SetGraphCallback(func(triples []graph.Triple) {
-			gc.buffer.Enqueue(graph.GraphRequest{Triples: triples})
-		})
+		graphEngine.SetEventBus(bus)
 		observer = graphEngine
 		logger().Info("graph-enhanced learning engine initialized")
 	}
@@ -110,7 +109,7 @@ func initSkills(cfg *config.Config, baseTools []*agent.Tool) *skill.Registry {
 
 // initConversationAnalysis creates the conversation analysis pipeline if both
 // knowledge and observational memory are enabled.
-func initConversationAnalysis(cfg *config.Config, sv *supervisor.Supervisor, store session.Store, kc *knowledgeComponents, gc *graphComponents) *learning.AnalysisBuffer {
+func initConversationAnalysis(cfg *config.Config, sv *supervisor.Supervisor, store session.Store, kc *knowledgeComponents, gc *graphComponents, bus *eventbus.Bus) *learning.AnalysisBuffer {
 	if kc == nil {
 		return nil
 	}
@@ -134,16 +133,9 @@ func initConversationAnalysis(cfg *config.Config, sv *supervisor.Supervisor, sto
 	aLogger := logger()
 
 	analyzer := learning.NewConversationAnalyzer(generator, kc.store, aLogger)
+	analyzer.SetEventBus(bus)
 	learner := learning.NewSessionLearner(generator, kc.store, aLogger)
-
-	// Wire graph callbacks if graph store is available.
-	if gc != nil && gc.buffer != nil {
-		graphCB := func(triples []graph.Triple) {
-			gc.buffer.Enqueue(graph.GraphRequest{Triples: triples})
-		}
-		analyzer.SetGraphCallback(graphCB)
-		learner.SetGraphCallback(graphCB)
-	}
+	learner.SetEventBus(bus)
 
 	// Message provider.
 	getMessages := func(sessionKey string) ([]session.Message, error) {
@@ -170,7 +162,7 @@ func initConversationAnalysis(cfg *config.Config, sv *supervisor.Supervisor, sto
 	return buf
 }
 
-// providerTextGenerator adapts a supervisor.ProviderProxy to the memory.TextGenerator interface.
+// providerTextGenerator adapts a supervisor.ProviderProxy to the llm.TextGenerator interface.
 type providerTextGenerator struct {
 	proxy *supervisor.ProviderProxy
 }

@@ -1,6 +1,7 @@
 package agentmemory
 
 import (
+	"fmt"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -293,4 +294,98 @@ func TestInMemoryStore_Prune(t *testing.T) {
 	pruned, err = s.Prune("unknown", 0.5)
 	require.NoError(t, err)
 	assert.Equal(t, 0, pruned)
+}
+
+// ── Kind validation tests ──
+
+func TestInMemoryStore_Save_InvalidKind(t *testing.T) {
+	s := NewInMemoryStore()
+	err := s.Save(&Entry{
+		AgentName: "agent-1",
+		Key:       "test",
+		Content:   "content",
+		Kind:      MemoryKind("bogus"),
+	})
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "invalid memory kind")
+}
+
+func TestInMemoryStore_Save_EmptyKindAllowed(t *testing.T) {
+	s := NewInMemoryStore()
+	// Empty kind is allowed (defaults happen at handler level).
+	err := s.Save(&Entry{
+		AgentName: "agent-1",
+		Key:       "test",
+		Content:   "content",
+		Kind:      "",
+	})
+	require.NoError(t, err)
+}
+
+// ── SearchWithContextOptions: kind filter + scope fallback tests ──
+
+func TestSearchWithContextOptions_KindFilterWithGlobalFallback(t *testing.T) {
+	s := NewInMemoryStore()
+
+	// Instance entries for agent-1 (different kinds).
+	_ = s.Save(&Entry{AgentName: "agent-1", Key: "local-fact", Content: "go is typed", Kind: KindFact, Scope: ScopeInstance})
+	_ = s.Save(&Entry{AgentName: "agent-1", Key: "local-pattern", Content: "table driven tests", Kind: KindPattern, Scope: ScopeInstance})
+
+	// Global entry from another agent with matching kind.
+	_ = s.Save(&Entry{AgentName: "shared", Key: "global-fact", Content: "go is compiled", Kind: KindFact, Scope: ScopeGlobal})
+
+	results, err := s.SearchWithContextOptions("agent-1", SearchOptions{
+		Query: "go",
+		Kind:  KindFact,
+		Limit: 10,
+	})
+	require.NoError(t, err)
+
+	// Should include both instance fact AND global fact, but NOT the pattern.
+	assert.Len(t, results, 2, "expected instance fact + global fact")
+	names := make(map[string]bool)
+	for _, r := range results {
+		names[r.Key] = true
+		assert.Equal(t, KindFact, r.Kind)
+	}
+	assert.True(t, names["local-fact"], "instance fact should be included")
+	assert.True(t, names["global-fact"], "global fact should be included")
+}
+
+func TestSearchWithContextOptions_KindFilterSmallLimitWithManyOtherKinds(t *testing.T) {
+	s := NewInMemoryStore()
+
+	// Fill instance with many pattern entries to crowd out facts.
+	for i := 0; i < 20; i++ {
+		_ = s.Save(&Entry{
+			AgentName: "agent-1",
+			Key:       fmt.Sprintf("pattern-%d", i),
+			Content:   "some pattern about go",
+			Kind:      KindPattern,
+			Scope:     ScopeInstance,
+		})
+	}
+
+	// One instance fact.
+	_ = s.Save(&Entry{AgentName: "agent-1", Key: "instance-fact", Content: "go is fast", Kind: KindFact, Scope: ScopeInstance})
+
+	// One global fact from another agent.
+	_ = s.Save(&Entry{AgentName: "shared", Key: "global-fact", Content: "go has goroutines", Kind: KindFact, Scope: ScopeGlobal})
+
+	// With limit=2 and kind=fact, both facts should be found even though
+	// there are 20 pattern entries that would fill a naive limit*2 buffer.
+	results, err := s.SearchWithContextOptions("agent-1", SearchOptions{
+		Query: "go",
+		Kind:  KindFact,
+		Limit: 2,
+	})
+	require.NoError(t, err)
+	assert.Len(t, results, 2, "should find both facts despite 20 patterns")
+
+	names := make(map[string]bool)
+	for _, r := range results {
+		names[r.Key] = true
+	}
+	assert.True(t, names["instance-fact"])
+	assert.True(t, names["global-fact"])
 }

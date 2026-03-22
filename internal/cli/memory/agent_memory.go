@@ -16,7 +16,7 @@ func newAgentsCmd(cfgLoader func() (*config.Config, error)) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "agents",
 		Short: "Show agent memory configuration and status",
-		Long:  "Display agent memory system configuration. Agent memories are stored in-memory and available only while the server is running.",
+		Long:  "Display agent memory system configuration. Agent memories are persistent, retained across restarts.",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			cfg, err := cfgLoader()
 			if err != nil {
@@ -30,7 +30,7 @@ func newAgentsCmd(cfgLoader func() (*config.Config, error)) *cobra.Command {
 
 			out := agentMemoryStatus{
 				Enabled: cfg.AgentMemory.Enabled,
-				Note:    "Agent memories are stored in-memory. Use the running server API to list active agent memories.",
+				Note:    "Agent memories are persistent. Use the server API to list active agent memories.",
 			}
 
 			if jsonOutput {
@@ -42,9 +42,8 @@ func newAgentsCmd(cfgLoader func() (*config.Config, error)) *cobra.Command {
 			fmt.Println("Agent Memory")
 			fmt.Printf("  Enabled: %v\n", out.Enabled)
 			fmt.Println()
-			fmt.Println("  Note: Agent memories are stored in-memory and only available")
-			fmt.Println("  while the server is running. Use the server API to inspect")
-			fmt.Println("  active agent memories.")
+			fmt.Println("  Note: Agent memories are persistent, retained across restarts.")
+			fmt.Println("  Use the server API to inspect active agent memories.")
 
 			return nil
 		},
@@ -61,7 +60,7 @@ func newAgentCmd(cfgLoader func() (*config.Config, error)) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "agent <name>",
 		Short: "Show memories for a specific agent",
-		Long:  "Display stored memories for a named agent. Agent memories are in-memory only and require the server to be running.",
+		Long:  "Display stored memories for a named agent. Agent memories are persistent, retained across restarts.",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			cfg, err := cfgLoader()
@@ -82,7 +81,7 @@ func newAgentCmd(cfgLoader func() (*config.Config, error)) *cobra.Command {
 
 			out := agentInfo{
 				AgentName: agentName,
-				Note:      "Agent memories are stored in-memory. Connect to the running server to query memories.",
+				Note:      "Agent memories are persistent. Connect to the running server to query memories.",
 			}
 
 			if jsonOutput {
@@ -93,9 +92,8 @@ func newAgentCmd(cfgLoader func() (*config.Config, error)) *cobra.Command {
 
 			fmt.Printf("Agent Memory: %s\n", agentName)
 			fmt.Println()
-			fmt.Println("  Agent memories are stored in-memory and only available")
-			fmt.Println("  while the server is running. Connect to the running server")
-			fmt.Println("  API to query memories for this agent.")
+			fmt.Println("  Agent memories are persistent, retained across restarts.")
+			fmt.Println("  Connect to the running server API to query memories for this agent.")
 
 			return nil
 		},

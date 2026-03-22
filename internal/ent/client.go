@@ -16,6 +16,7 @@ import (
 	"entgo.io/ent/dialect"
 	"entgo.io/ent/dialect/sql"
 	"entgo.io/ent/dialect/sql/sqlgraph"
+	"github.com/langoai/lango/internal/ent/agentmemory"
 	"github.com/langoai/lango/internal/ent/auditlog"
 	"github.com/langoai/lango/internal/ent/configprofile"
 	"github.com/langoai/lango/internal/ent/cronjob"
@@ -49,6 +50,8 @@ type Client struct {
 	config
 	// Schema is the client for creating, migrating and dropping schema.
 	Schema *migrate.Schema
+	// AgentMemory is the client for interacting with the AgentMemory builders.
+	AgentMemory *AgentMemoryClient
 	// AuditLog is the client for interacting with the AuditLog builders.
 	AuditLog *AuditLogClient
 	// ConfigProfile is the client for interacting with the ConfigProfile builders.
@@ -112,6 +115,7 @@ func NewClient(opts ...Option) *Client {
 
 func (c *Client) init() {
 	c.Schema = migrate.NewSchema(c.driver)
+	c.AgentMemory = NewAgentMemoryClient(c.config)
 	c.AuditLog = NewAuditLogClient(c.config)
 	c.ConfigProfile = NewConfigProfileClient(c.config)
 	c.CronJob = NewCronJobClient(c.config)
@@ -230,6 +234,7 @@ func (c *Client) Tx(ctx context.Context) (*Tx, error) {
 	return &Tx{
 		ctx:                   ctx,
 		config:                cfg,
+		AgentMemory:           NewAgentMemoryClient(cfg),
 		AuditLog:              NewAuditLogClient(cfg),
 		ConfigProfile:         NewConfigProfileClient(cfg),
 		CronJob:               NewCronJobClient(cfg),
@@ -275,6 +280,7 @@ func (c *Client) BeginTx(ctx context.Context, opts *sql.TxOptions) (*Tx, error) 
 	return &Tx{
 		ctx:                   ctx,
 		config:                cfg,
+		AgentMemory:           NewAgentMemoryClient(cfg),
 		AuditLog:              NewAuditLogClient(cfg),
 		ConfigProfile:         NewConfigProfileClient(cfg),
 		CronJob:               NewCronJobClient(cfg),
@@ -307,7 +313,7 @@ func (c *Client) BeginTx(ctx context.Context, opts *sql.TxOptions) (*Tx, error) 
 // Debug returns a new debug-client. It's used to get verbose logging on specific operations.
 //
 //	client.Debug().
-//		AuditLog.
+//		AgentMemory.
 //		Query().
 //		Count(ctx)
 func (c *Client) Debug() *Client {
@@ -330,12 +336,12 @@ func (c *Client) Close() error {
 // In order to add hooks to a specific client, call: `client.Node.Use(...)`.
 func (c *Client) Use(hooks ...Hook) {
 	for _, n := range []interface{ Use(...Hook) }{
-		c.AuditLog, c.ConfigProfile, c.CronJob, c.CronJobHistory, c.EscrowDeal,
-		c.ExternalRef, c.Inquiry, c.Key, c.Knowledge, c.Learning, c.Message,
-		c.Observation, c.PaymentTx, c.PeerReputation, c.ProvenanceAttribution,
-		c.ProvenanceCheckpoint, c.Reflection, c.RunJournal, c.RunSnapshot, c.RunStep,
-		c.Secret, c.Session, c.SessionProvenance, c.TokenUsage, c.WorkflowRun,
-		c.WorkflowStepRun,
+		c.AgentMemory, c.AuditLog, c.ConfigProfile, c.CronJob, c.CronJobHistory,
+		c.EscrowDeal, c.ExternalRef, c.Inquiry, c.Key, c.Knowledge, c.Learning,
+		c.Message, c.Observation, c.PaymentTx, c.PeerReputation,
+		c.ProvenanceAttribution, c.ProvenanceCheckpoint, c.Reflection, c.RunJournal,
+		c.RunSnapshot, c.RunStep, c.Secret, c.Session, c.SessionProvenance,
+		c.TokenUsage, c.WorkflowRun, c.WorkflowStepRun,
 	} {
 		n.Use(hooks...)
 	}
@@ -345,12 +351,12 @@ func (c *Client) Use(hooks ...Hook) {
 // In order to add interceptors to a specific client, call: `client.Node.Intercept(...)`.
 func (c *Client) Intercept(interceptors ...Interceptor) {
 	for _, n := range []interface{ Intercept(...Interceptor) }{
-		c.AuditLog, c.ConfigProfile, c.CronJob, c.CronJobHistory, c.EscrowDeal,
-		c.ExternalRef, c.Inquiry, c.Key, c.Knowledge, c.Learning, c.Message,
-		c.Observation, c.PaymentTx, c.PeerReputation, c.ProvenanceAttribution,
-		c.ProvenanceCheckpoint, c.Reflection, c.RunJournal, c.RunSnapshot, c.RunStep,
-		c.Secret, c.Session, c.SessionProvenance, c.TokenUsage, c.WorkflowRun,
-		c.WorkflowStepRun,
+		c.AgentMemory, c.AuditLog, c.ConfigProfile, c.CronJob, c.CronJobHistory,
+		c.EscrowDeal, c.ExternalRef, c.Inquiry, c.Key, c.Knowledge, c.Learning,
+		c.Message, c.Observation, c.PaymentTx, c.PeerReputation,
+		c.ProvenanceAttribution, c.ProvenanceCheckpoint, c.Reflection, c.RunJournal,
+		c.RunSnapshot, c.RunStep, c.Secret, c.Session, c.SessionProvenance,
+		c.TokenUsage, c.WorkflowRun, c.WorkflowStepRun,
 	} {
 		n.Intercept(interceptors...)
 	}
@@ -359,6 +365,8 @@ func (c *Client) Intercept(interceptors ...Interceptor) {
 // Mutate implements the ent.Mutator interface.
 func (c *Client) Mutate(ctx context.Context, m Mutation) (Value, error) {
 	switch m := m.(type) {
+	case *AgentMemoryMutation:
+		return c.AgentMemory.mutate(ctx, m)
 	case *AuditLogMutation:
 		return c.AuditLog.mutate(ctx, m)
 	case *ConfigProfileMutation:
@@ -413,6 +421,139 @@ func (c *Client) Mutate(ctx context.Context, m Mutation) (Value, error) {
 		return c.WorkflowStepRun.mutate(ctx, m)
 	default:
 		return nil, fmt.Errorf("ent: unknown mutation type %T", m)
+	}
+}
+
+// AgentMemoryClient is a client for the AgentMemory schema.
+type AgentMemoryClient struct {
+	config
+}
+
+// NewAgentMemoryClient returns a client for the AgentMemory from the given config.
+func NewAgentMemoryClient(c config) *AgentMemoryClient {
+	return &AgentMemoryClient{config: c}
+}
+
+// Use adds a list of mutation hooks to the hooks stack.
+// A call to `Use(f, g, h)` equals to `agentmemory.Hooks(f(g(h())))`.
+func (c *AgentMemoryClient) Use(hooks ...Hook) {
+	c.hooks.AgentMemory = append(c.hooks.AgentMemory, hooks...)
+}
+
+// Intercept adds a list of query interceptors to the interceptors stack.
+// A call to `Intercept(f, g, h)` equals to `agentmemory.Intercept(f(g(h())))`.
+func (c *AgentMemoryClient) Intercept(interceptors ...Interceptor) {
+	c.inters.AgentMemory = append(c.inters.AgentMemory, interceptors...)
+}
+
+// Create returns a builder for creating a AgentMemory entity.
+func (c *AgentMemoryClient) Create() *AgentMemoryCreate {
+	mutation := newAgentMemoryMutation(c.config, OpCreate)
+	return &AgentMemoryCreate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// CreateBulk returns a builder for creating a bulk of AgentMemory entities.
+func (c *AgentMemoryClient) CreateBulk(builders ...*AgentMemoryCreate) *AgentMemoryCreateBulk {
+	return &AgentMemoryCreateBulk{config: c.config, builders: builders}
+}
+
+// MapCreateBulk creates a bulk creation builder from the given slice. For each item in the slice, the function creates
+// a builder and applies setFunc on it.
+func (c *AgentMemoryClient) MapCreateBulk(slice any, setFunc func(*AgentMemoryCreate, int)) *AgentMemoryCreateBulk {
+	rv := reflect.ValueOf(slice)
+	if rv.Kind() != reflect.Slice {
+		return &AgentMemoryCreateBulk{err: fmt.Errorf("calling to AgentMemoryClient.MapCreateBulk with wrong type %T, need slice", slice)}
+	}
+	builders := make([]*AgentMemoryCreate, rv.Len())
+	for i := 0; i < rv.Len(); i++ {
+		builders[i] = c.Create()
+		setFunc(builders[i], i)
+	}
+	return &AgentMemoryCreateBulk{config: c.config, builders: builders}
+}
+
+// Update returns an update builder for AgentMemory.
+func (c *AgentMemoryClient) Update() *AgentMemoryUpdate {
+	mutation := newAgentMemoryMutation(c.config, OpUpdate)
+	return &AgentMemoryUpdate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOne returns an update builder for the given entity.
+func (c *AgentMemoryClient) UpdateOne(_m *AgentMemory) *AgentMemoryUpdateOne {
+	mutation := newAgentMemoryMutation(c.config, OpUpdateOne, withAgentMemory(_m))
+	return &AgentMemoryUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOneID returns an update builder for the given id.
+func (c *AgentMemoryClient) UpdateOneID(id uuid.UUID) *AgentMemoryUpdateOne {
+	mutation := newAgentMemoryMutation(c.config, OpUpdateOne, withAgentMemoryID(id))
+	return &AgentMemoryUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// Delete returns a delete builder for AgentMemory.
+func (c *AgentMemoryClient) Delete() *AgentMemoryDelete {
+	mutation := newAgentMemoryMutation(c.config, OpDelete)
+	return &AgentMemoryDelete{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// DeleteOne returns a builder for deleting the given entity.
+func (c *AgentMemoryClient) DeleteOne(_m *AgentMemory) *AgentMemoryDeleteOne {
+	return c.DeleteOneID(_m.ID)
+}
+
+// DeleteOneID returns a builder for deleting the given entity by its id.
+func (c *AgentMemoryClient) DeleteOneID(id uuid.UUID) *AgentMemoryDeleteOne {
+	builder := c.Delete().Where(agentmemory.ID(id))
+	builder.mutation.id = &id
+	builder.mutation.op = OpDeleteOne
+	return &AgentMemoryDeleteOne{builder}
+}
+
+// Query returns a query builder for AgentMemory.
+func (c *AgentMemoryClient) Query() *AgentMemoryQuery {
+	return &AgentMemoryQuery{
+		config: c.config,
+		ctx:    &QueryContext{Type: TypeAgentMemory},
+		inters: c.Interceptors(),
+	}
+}
+
+// Get returns a AgentMemory entity by its id.
+func (c *AgentMemoryClient) Get(ctx context.Context, id uuid.UUID) (*AgentMemory, error) {
+	return c.Query().Where(agentmemory.ID(id)).Only(ctx)
+}
+
+// GetX is like Get, but panics if an error occurs.
+func (c *AgentMemoryClient) GetX(ctx context.Context, id uuid.UUID) *AgentMemory {
+	obj, err := c.Get(ctx, id)
+	if err != nil {
+		panic(err)
+	}
+	return obj
+}
+
+// Hooks returns the client hooks.
+func (c *AgentMemoryClient) Hooks() []Hook {
+	return c.hooks.AgentMemory
+}
+
+// Interceptors returns the client interceptors.
+func (c *AgentMemoryClient) Interceptors() []Interceptor {
+	return c.inters.AgentMemory
+}
+
+func (c *AgentMemoryClient) mutate(ctx context.Context, m *AgentMemoryMutation) (Value, error) {
+	switch m.Op() {
+	case OpCreate:
+		return (&AgentMemoryCreate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdate:
+		return (&AgentMemoryUpdate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdateOne:
+		return (&AgentMemoryUpdateOne{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpDelete, OpDeleteOne:
+		return (&AgentMemoryDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
+	default:
+		return nil, fmt.Errorf("ent: unknown AgentMemory mutation op: %q", m.Op())
 	}
 }
 
@@ -3941,17 +4082,17 @@ func (c *WorkflowStepRunClient) mutate(ctx context.Context, m *WorkflowStepRunMu
 // hooks and interceptors per client, for fast access.
 type (
 	hooks struct {
-		AuditLog, ConfigProfile, CronJob, CronJobHistory, EscrowDeal, ExternalRef,
-		Inquiry, Key, Knowledge, Learning, Message, Observation, PaymentTx,
-		PeerReputation, ProvenanceAttribution, ProvenanceCheckpoint, Reflection,
-		RunJournal, RunSnapshot, RunStep, Secret, Session, SessionProvenance,
-		TokenUsage, WorkflowRun, WorkflowStepRun []ent.Hook
+		AgentMemory, AuditLog, ConfigProfile, CronJob, CronJobHistory, EscrowDeal,
+		ExternalRef, Inquiry, Key, Knowledge, Learning, Message, Observation,
+		PaymentTx, PeerReputation, ProvenanceAttribution, ProvenanceCheckpoint,
+		Reflection, RunJournal, RunSnapshot, RunStep, Secret, Session,
+		SessionProvenance, TokenUsage, WorkflowRun, WorkflowStepRun []ent.Hook
 	}
 	inters struct {
-		AuditLog, ConfigProfile, CronJob, CronJobHistory, EscrowDeal, ExternalRef,
-		Inquiry, Key, Knowledge, Learning, Message, Observation, PaymentTx,
-		PeerReputation, ProvenanceAttribution, ProvenanceCheckpoint, Reflection,
-		RunJournal, RunSnapshot, RunStep, Secret, Session, SessionProvenance,
-		TokenUsage, WorkflowRun, WorkflowStepRun []ent.Interceptor
+		AgentMemory, AuditLog, ConfigProfile, CronJob, CronJobHistory, EscrowDeal,
+		ExternalRef, Inquiry, Key, Knowledge, Learning, Message, Observation,
+		PaymentTx, PeerReputation, ProvenanceAttribution, ProvenanceCheckpoint,
+		Reflection, RunJournal, RunSnapshot, RunStep, Secret, Session,
+		SessionProvenance, TokenUsage, WorkflowRun, WorkflowStepRun []ent.Interceptor
 	}
 )

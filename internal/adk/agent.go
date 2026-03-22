@@ -12,6 +12,7 @@ import (
 	adk_agent "google.golang.org/adk/agent"
 	"google.golang.org/adk/agent/llmagent"
 	"google.golang.org/adk/model"
+	"google.golang.org/adk/plugin"
 	"google.golang.org/adk/runner"
 	"google.golang.org/adk/session"
 	"google.golang.org/adk/tool"
@@ -43,6 +44,7 @@ type agentOptions struct {
 	rootSessionObserver func(string)
 	childLifecycleHook  func(internal.SessionLifecycleEvent)
 	isolatedAgents      []string
+	plugins             []*plugin.Plugin
 }
 
 // WithAgentTokenBudget sets the session history token budget.
@@ -74,6 +76,14 @@ func WithAgentChildLifecycleHook(fn func(internal.SessionLifecycleEvent)) AgentO
 // WithAgentIsolatedAgents marks agent names that should use child session history routing.
 func WithAgentIsolatedAgents(names []string) AgentOption {
 	return func(o *agentOptions) { o.isolatedAgents = append([]string(nil), names...) }
+}
+
+// WithPlugins adds ADK plugins to the runner configuration.
+// Plugins provide agent-level callbacks (BeforeTool, AfterTool, OnEvent, etc.)
+// that are executed by the ADK runner for every tool invocation.
+// Zero plugins preserves current behavior.
+func WithPlugins(plugins ...*plugin.Plugin) AgentOption {
+	return func(o *agentOptions) { o.plugins = append(o.plugins, plugins...) }
 }
 
 // Agent wraps the ADK runner for integration with Lango.
@@ -127,6 +137,11 @@ func NewAgent(ctx context.Context, tools []tool.Tool, mod model.LLM, systemPromp
 		Agent:          adkAgent,
 		SessionService: sessService,
 	}
+	if len(o.plugins) > 0 {
+		runnerCfg.PluginConfig = runner.PluginConfig{
+			Plugins: o.plugins,
+		}
+	}
 
 	r, err := runner.New(runnerCfg)
 	if err != nil {
@@ -168,6 +183,11 @@ func NewAgentFromADK(adkAgent adk_agent.Agent, store internal.Store, opts ...Age
 		AppName:        "lango",
 		Agent:          adkAgent,
 		SessionService: sessService,
+	}
+	if len(o.plugins) > 0 {
+		runnerCfg.PluginConfig = runner.PluginConfig{
+			Plugins: o.plugins,
+		}
 	}
 
 	r, err := runner.New(runnerCfg)

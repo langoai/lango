@@ -74,6 +74,24 @@ type P2PConfig struct {
 	Team TeamConfig `mapstructure:"team" json:"team"`
 }
 
+// GetKeyDir returns the legacy directory for persisting node keys.
+func (c P2PConfig) GetKeyDir() string { return c.KeyDir }
+
+// GetMaxPeers returns the maximum number of connected peers.
+func (c P2PConfig) GetMaxPeers() int { return c.MaxPeers }
+
+// GetListenAddrs returns the multiaddrs to listen on.
+func (c P2PConfig) GetListenAddrs() []string { return c.ListenAddrs }
+
+// GetEnableRelay reports whether this node acts as a relay for NAT traversal.
+func (c P2PConfig) GetEnableRelay() bool { return c.EnableRelay }
+
+// GetBootstrapPeers returns the initial peers for DHT bootstrapping.
+func (c P2PConfig) GetBootstrapPeers() []string { return c.BootstrapPeers }
+
+// GetEnableMDNS reports whether multicast DNS discovery is enabled.
+func (c P2PConfig) GetEnableMDNS() bool { return c.EnableMDNS }
+
 // ToolIsolationConfig configures subprocess isolation for P2P tool execution.
 type ToolIsolationConfig struct {
 	// Enabled turns on subprocess isolation for remote peer tool invocations.

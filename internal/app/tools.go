@@ -6,14 +6,13 @@ import (
 	"strings"
 
 	"github.com/langoai/lango/internal/agent"
+	"github.com/langoai/lango/internal/automation"
 	"github.com/langoai/lango/internal/config"
-	"github.com/langoai/lango/internal/session"
 	"github.com/langoai/lango/internal/supervisor"
 	"github.com/langoai/lango/internal/toolchain"
 	"github.com/langoai/lango/internal/tools/browser"
 	execpkg "github.com/langoai/lango/internal/tools/exec"
 	"github.com/langoai/lango/internal/tools/filesystem"
-	"github.com/langoai/lango/internal/types"
 )
 
 // buildTools creates the set of tools available to the agent.
@@ -22,16 +21,19 @@ import (
 func buildTools(sv *supervisor.Supervisor, fsCfg filesystem.Config, browserSM *browser.SessionManager, automationAvailable map[string]bool, guard *execpkg.CommandGuard) []*agent.Tool {
 	var tools []*agent.Tool
 
-	// Exec tools (delegated to Supervisor for security isolation)
-	tools = append(tools, buildExecTools(sv, automationAvailable, guard)...)
+	// Exec tools (delegated to Supervisor for security isolation).
+	// Guard functions stay in app — they depend on app-level knowledge.
+	langoGuard := func(cmd string) string { return blockLangoExec(cmd, automationAvailable) }
+	pathGuard := func(cmd string) string { return blockProtectedPaths(cmd, guard) }
+	tools = append(tools, execpkg.BuildTools(sv, langoGuard, pathGuard)...)
 
 	// Filesystem tools
 	fsTool := filesystem.New(fsCfg)
-	tools = append(tools, buildFilesystemTools(fsTool)...)
+	tools = append(tools, filesystem.BuildTools(fsTool)...)
 
 	// Browser tools (opt-in), wrapped with panic recovery
 	if browserSM != nil {
-		for _, bt := range buildBrowserTools(browserSM) {
+		for _, bt := range browser.BuildTools(browserSM) {
 			tools = append(tools, wrapBrowserHandler(bt, browserSM))
 		}
 	}
@@ -128,23 +130,9 @@ func wrapBrowserHandler(t *agent.Tool, sm *browser.SessionManager) *agent.Tool {
 	return toolchain.Chain(t, toolchain.WithBrowserRecovery(sm))
 }
 
-// detectChannelFromContext extracts the delivery target from the session key in context.
-// Returns "channel:targetID" (e.g. "telegram:123456789") or "" if no known channel prefix is found.
+// detectChannelFromContext delegates to automation.DetectChannelFromContext.
 func detectChannelFromContext(ctx context.Context) string {
-	sessionKey := session.SessionKeyFromContext(ctx)
-	if sessionKey == "" {
-		return ""
-	}
-	// Session key format: "channel:targetID:userID"
-	parts := strings.SplitN(sessionKey, ":", 3)
-	if len(parts) < 2 {
-		return ""
-	}
-	ch := types.ChannelType(parts[0])
-	if ch.Valid() {
-		return parts[0] + ":" + parts[1]
-	}
-	return ""
+	return automation.DetectChannelFromContext(ctx)
 }
 
 // needsApproval delegates to toolchain.NeedsApproval.

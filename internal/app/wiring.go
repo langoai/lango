@@ -282,7 +282,7 @@ func initAgent(ctx context.Context, deps *agentDeps) (*adk.Agent, error) {
 	toolTimeout := cfg.Agent.ToolTimeout
 	var adkTools []adk_tool.Tool
 	for _, t := range tools {
-		at, err := adk.AdaptToolWithTimeout(t, toolTimeout)
+		at, err := adk.AdaptToolForAgentWithTimeout(t, "lango-agent", toolTimeout)
 		if err != nil {
 			logger().Warnw("adapt tool error", "name", t.Name, "error", err)
 			continue
@@ -478,10 +478,12 @@ func initAgent(ctx context.Context, deps *agentDeps) (*adk.Agent, error) {
 		orchestratorPrompt := orchBuilder.Build()
 
 		orchCfg := orchestration.Config{
-			Tools:               tools,
-			Model:               llm,
-			SystemPrompt:        orchestratorPrompt,
-			AdaptTool:           adk.AdaptTool,
+			Tools:        tools,
+			Model:        llm,
+			SystemPrompt: orchestratorPrompt,
+			AdaptTool: func(t *agent.Tool, agentName string) (adk_tool.Tool, error) {
+				return adk.AdaptToolForAgentWithTimeout(t, agentName, cfg.Agent.ToolTimeout)
+			},
 			MaxDelegationRounds: cfg.Agent.MaxDelegationRounds,
 			SubAgentPrompt:      buildSubAgentPromptFunc(&cfg.Agent),
 			// UniversalTools intentionally omitted — the orchestrator must
@@ -588,6 +590,10 @@ func buildProvenanceAgentOptions(pv *provenanceValues) []adk.AgentOption {
 
 	rootObserver := func(sessionKey string) {
 		ctx := context.Background()
+		// Idempotent: skip if already registered (supports backfill from Get).
+		if _, err := pv.sessionTree.GetNode(ctx, sessionKey); err == nil {
+			return
+		}
 		if _, err := pv.sessionTree.RegisterSession(ctx, sessionKey, "", "root", ""); err != nil && err != provenance.ErrInvalidSessionKey {
 			logger().Debugw("register provenance root session", "session", sessionKey, "error", err)
 		}

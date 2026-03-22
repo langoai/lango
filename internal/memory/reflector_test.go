@@ -10,10 +10,11 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/langoai/lango/internal/ent/enttest"
+	"github.com/langoai/lango/internal/llm"
 	_ "github.com/mattn/go-sqlite3"
 )
 
-func newTestReflector(t *testing.T, gen TextGenerator) (*Reflector, *Store) {
+func newTestReflector(t *testing.T, gen llm.TextGenerator) (*Reflector, *Store) {
 	t.Helper()
 	client := enttest.Open(t, "sqlite3", "file:ent?mode=memory&_fk=1")
 	t.Cleanup(func() { client.Close() })

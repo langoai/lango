@@ -8,15 +8,11 @@ import (
 	"go.uber.org/zap"
 
 	entlearning "github.com/langoai/lango/internal/ent/learning"
-	"github.com/langoai/lango/internal/graph"
+	"github.com/langoai/lango/internal/eventbus"
 	"github.com/langoai/lango/internal/knowledge"
+	"github.com/langoai/lango/internal/llm"
 	"github.com/langoai/lango/internal/session"
 )
-
-// TextGenerator generates text from a prompt (mirrors memory.TextGenerator to avoid import cycle).
-type TextGenerator interface {
-	GenerateText(ctx context.Context, systemPrompt, userPrompt string) (string, error)
-}
 
 const conversationAnalyzerPrompt = `You are a knowledge extraction assistant. Analyze the following conversation and extract structured knowledge.
 
@@ -40,15 +36,15 @@ Focus on:
 
 // ConversationAnalyzer extracts knowledge from conversation turns using LLM analysis.
 type ConversationAnalyzer struct {
-	generator     TextGenerator
-	store         *knowledge.Store
-	graphCallback GraphCallback
-	logger        *zap.SugaredLogger
+	generator llm.TextGenerator
+	store     *knowledge.Store
+	bus       *eventbus.Bus // Optional event bus for publishing triple events.
+	logger    *zap.SugaredLogger
 }
 
 // NewConversationAnalyzer creates a new conversation analyzer.
 func NewConversationAnalyzer(
-	generator TextGenerator,
+	generator llm.TextGenerator,
 	store *knowledge.Store,
 	logger *zap.SugaredLogger,
 ) *ConversationAnalyzer {
@@ -59,9 +55,9 @@ func NewConversationAnalyzer(
 	}
 }
 
-// SetGraphCallback sets the optional graph update hook.
-func (a *ConversationAnalyzer) SetGraphCallback(cb GraphCallback) {
-	a.graphCallback = cb
+// SetEventBus sets the optional event bus for publishing triple events.
+func (a *ConversationAnalyzer) SetEventBus(bus *eventbus.Bus) {
+	a.bus = bus
 }
 
 // Analyze processes a batch of messages and extracts knowledge.
@@ -127,12 +123,15 @@ func (a *ConversationAnalyzer) saveResult(ctx context.Context, sessionKey string
 	}
 
 	// Emit graph triples if provided.
-	if a.graphCallback != nil && r.Subject != "" && r.Predicate != "" && r.Object != "" {
-		a.graphCallback([]graph.Triple{{
-			Subject:   r.Subject,
-			Predicate: r.Predicate,
-			Object:    r.Object,
-		}})
+	if a.bus != nil && r.Subject != "" && r.Predicate != "" && r.Object != "" {
+		a.bus.Publish(eventbus.TriplesExtractedEvent{
+			Triples: []eventbus.Triple{{
+				Subject:   r.Subject,
+				Predicate: r.Predicate,
+				Object:    r.Object,
+			}},
+			Source: "analysis",
+		})
 	}
 }
 

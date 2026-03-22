@@ -34,12 +34,12 @@ func (s *stubTool) Description() string { return "stub " + s.name }
 func (s *stubTool) IsLongRunning() bool { return false }
 
 // stubAdapter is a ToolAdapter that returns a stubTool without real ADK wiring.
-func stubAdapter(t *agent.Tool) (adk_tool.Tool, error) {
+func stubAdapter(t *agent.Tool, agentName string) (adk_tool.Tool, error) {
 	return &stubTool{name: t.Name}, nil
 }
 
 // failingAdapter always returns an error.
-func failingAdapter(t *agent.Tool) (adk_tool.Tool, error) {
+func failingAdapter(t *agent.Tool, agentName string) (adk_tool.Tool, error) {
 	return nil, fmt.Errorf("adapter error for %s", t.Name)
 }
 
@@ -275,7 +275,7 @@ func TestBuildAgentTree_UnmatchedToolsNotAssigned(t *testing.T) {
 	}
 
 	var adaptedTools []string
-	trackingAdapter := func(tool *agent.Tool) (adk_tool.Tool, error) {
+	trackingAdapter := func(tool *agent.Tool, agentName string) (adk_tool.Tool, error) {
 		adaptedTools = append(adaptedTools, tool.Name)
 		return &stubTool{name: tool.Name}, nil
 	}
@@ -378,7 +378,7 @@ func TestBuildAgentTree_AdapterError(t *testing.T) {
 
 func TestBuildAgentTree_OrchestratorHasNoDirectTools(t *testing.T) {
 	var adaptedTools []string
-	trackingAdapter := func(tool *agent.Tool) (adk_tool.Tool, error) {
+	trackingAdapter := func(tool *agent.Tool, agentName string) (adk_tool.Tool, error) {
 		adaptedTools = append(adaptedTools, tool.Name)
 		return &stubTool{name: tool.Name}, nil
 	}

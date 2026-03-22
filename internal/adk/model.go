@@ -23,14 +23,34 @@ type accumEntry struct {
 	thoughtSignature []byte
 }
 
+// accumulatorState represents the current phase of the tool call accumulator.
+type accumulatorState int
+
+const (
+	// stateIdle means no tool call has been started yet.
+	// A delta-only chunk (no Index, ID, or Name) arriving in this state is an
+	// orphaned delta and is dropped with a warning.
+	stateIdle accumulatorState = iota
+	// stateReceiving means at least one tool call entry exists.
+	// Delta-only chunks are appended to the active entry (activeIndex).
+	stateReceiving
+)
+
 // toolCallAccumulator assembles streaming tool call deltas into complete FunctionCall parts.
-// It supports both OpenAI (Index-based correlation) and Anthropic (ID/Name start + orphan delta)
-// streaming patterns.
+// It uses a provider-agnostic state machine (Idle → Receiving) instead of OpenAI/Anthropic
+// branching, making the orphaned-delta invariant explicit.
 type toolCallAccumulator struct {
-	entries   map[int]*accumEntry
-	nextIndex int // auto-increment for entries without explicit Index
-	lastIndex int // last active entry for orphan deltas
-	hasAny    bool
+	entries     map[int]*accumEntry
+	nextIndex   int              // auto-increment for entries without explicit Index
+	activeIndex int              // last active entry; valid only in stateReceiving
+	state       accumulatorState // current state machine phase
+}
+
+// isStartChunk returns true when the tool call chunk carries identity information
+// (an explicit Index, an ID, or a Name), indicating it starts or correlates with
+// a specific tool call entry.
+func isStartChunk(tc *provider.ToolCall) bool {
+	return tc.Index != nil || tc.ID != "" || tc.Name != ""
 }
 
 func (a *toolCallAccumulator) add(tc *provider.ToolCall) {
@@ -41,30 +61,37 @@ func (a *toolCallAccumulator) add(tc *provider.ToolCall) {
 		a.entries = make(map[int]*accumEntry)
 	}
 
-	// Resolve entry index via fallback chain.
+	// State machine: resolve the target entry index based on current state.
 	var idx int
 	switch {
-	case tc.Index != nil:
-		// OpenAI: explicit chunk correlation index
-		idx = *tc.Index
-	case tc.ID != "" || tc.Name != "":
-		// Anthropic start: new tool call, assign synthetic index
-		idx = a.nextIndex
-		a.nextIndex++
+	case isStartChunk(tc):
+		// Start or correlated chunk — valid in any state.
+		if tc.Index != nil {
+			// Provider supplies an explicit correlation index (e.g., OpenAI).
+			idx = *tc.Index
+		} else {
+			// No explicit index; assign a synthetic one (e.g., Anthropic start).
+			idx = a.nextIndex
+			a.nextIndex++
+		}
+		// Transition: Idle → Receiving (or stay in Receiving).
+		a.state = stateReceiving
+
 	default:
-		// Anthropic delta / orphan: append to last active entry
-		if !a.hasAny {
+		// Delta-only chunk: no Index, ID, or Name.
+		if a.state == stateIdle {
+			// Orphaned delta — no tool call has been started yet.
 			logger().Warnw("dropping orphan tool call delta", "args_len", len(tc.Arguments))
 			return
 		}
-		idx = a.lastIndex
+		// In Receiving state: append to the active entry.
+		idx = a.activeIndex
 	}
 
 	if _, exists := a.entries[idx]; !exists {
 		a.entries[idx] = &accumEntry{index: idx}
 	}
-	a.lastIndex = idx
-	a.hasAny = true
+	a.activeIndex = idx
 
 	e := a.entries[idx]
 	if tc.ID != "" {

@@ -54,7 +54,7 @@ This project includes experimental AI Agent features and is currently in an unst
 - 🌐 **Gateway** - WebSocket/HTTP server with real-time streaming
 - 🔑 **Auth** - OIDC authentication, OAuth login flow
 - 🏗️ **Agent Registry** - Custom agent definitions via AGENT.md files, dynamic routing with keyword + capability matching
-- 🧬 **Agent Memory** - Per-agent persistent memory for cross-session context retention
+- 🧬 **Agent Memory** - Per-agent persistent memory (retained across restarts)
 - 📡 **Event Bus** - Typed synchronous pub/sub for internal component communication
 - 📒 **RunLedger (Task OS)** - Durable execution engine with PEV (Propose-Evidence-Verify) protocol, typed validators, 7 policy actions, configuration-gated workspace isolation, and acceptance criteria verification (🧪 Experimental)
 - 🪝 **Tool Hooks** - Middleware chain for tool execution (security filter, access control, event publishing, knowledge save)
@@ -995,7 +995,7 @@ In addition to prefix-based tool partitioning, the orchestrator supports dynamic
 
 ### Agent Memory
 
-When `agentMemory.enabled` is `true`, each sub-agent maintains its own persistent memory store for cross-session context retention. This allows agents to accumulate domain-specific knowledge across conversations, improving task performance over time.
+When `agentMemory.enabled` is `true`, each sub-agent maintains its own persistent memory store backed by the database. This allows agents to accumulate domain-specific knowledge across sessions, improving task performance over time.
 
 Enable via `lango onboard` > Multi-Agent menu or set `agent.multiAgent: true` in import JSON. Use `lango agent status` and `lango agent list` to inspect.
 

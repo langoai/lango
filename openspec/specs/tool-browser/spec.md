@@ -179,3 +179,14 @@ The application layer SHALL wrap all browser tool handlers with panic recovery a
 - **WHEN** a browser tool handler returns `ErrBrowserPanic`
 - **THEN** the wrapper SHALL close the session manager and retry the handler once
 - **AND** if the retry succeeds, the result SHALL be returned normally
+
+#### Scenario: CDP target error on browser_navigate triggers retry
+- **WHEN** `browser_navigate` returns an error containing "Inspected target navigated or closed"
+- **THEN** the middleware SHALL close the browser session
+- **AND** retry the navigation once with a fresh session
+- **AND** if the retry also fails, return the error as-is
+
+#### Scenario: CDP target error on browser_action does NOT trigger retry
+- **WHEN** `browser_action` returns an error containing "Inspected target navigated or closed"
+- **THEN** the middleware SHALL NOT retry the action
+- **AND** the error SHALL be returned as-is

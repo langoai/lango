@@ -8,6 +8,53 @@ import (
 )
 
 var (
+	// AgentMemoriesColumns holds the columns for the "agent_memories" table.
+	AgentMemoriesColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeUUID},
+		{Name: "agent_name", Type: field.TypeString},
+		{Name: "scope", Type: field.TypeEnum, Enums: []string{"instance", "global"}},
+		{Name: "kind", Type: field.TypeEnum, Enums: []string{"pattern", "preference", "fact", "skill"}},
+		{Name: "key", Type: field.TypeString},
+		{Name: "content", Type: field.TypeString, Size: 2147483647},
+		{Name: "confidence", Type: field.TypeFloat64, Default: 0.5},
+		{Name: "use_count", Type: field.TypeInt, Default: 0},
+		{Name: "tags", Type: field.TypeJSON, Nullable: true},
+		{Name: "created_at", Type: field.TypeTime},
+		{Name: "updated_at", Type: field.TypeTime},
+	}
+	// AgentMemoriesTable holds the schema information for the "agent_memories" table.
+	AgentMemoriesTable = &schema.Table{
+		Name:       "agent_memories",
+		Columns:    AgentMemoriesColumns,
+		PrimaryKey: []*schema.Column{AgentMemoriesColumns[0]},
+		Indexes: []*schema.Index{
+			{
+				Name:    "agentmemory_agent_name_key",
+				Unique:  true,
+				Columns: []*schema.Column{AgentMemoriesColumns[1], AgentMemoriesColumns[4]},
+			},
+			{
+				Name:    "agentmemory_agent_name",
+				Unique:  false,
+				Columns: []*schema.Column{AgentMemoriesColumns[1]},
+			},
+			{
+				Name:    "agentmemory_scope",
+				Unique:  false,
+				Columns: []*schema.Column{AgentMemoriesColumns[2]},
+			},
+			{
+				Name:    "agentmemory_kind",
+				Unique:  false,
+				Columns: []*schema.Column{AgentMemoriesColumns[3]},
+			},
+			{
+				Name:    "agentmemory_confidence",
+				Unique:  false,
+				Columns: []*schema.Column{AgentMemoriesColumns[6]},
+			},
+		},
+	}
 	// AuditLogsColumns holds the columns for the "audit_logs" table.
 	AuditLogsColumns = []*schema.Column{
 		{Name: "id", Type: field.TypeUUID},
@@ -931,6 +978,7 @@ var (
 	}
 	// Tables holds all the tables in the schema.
 	Tables = []*schema.Table{
+		AgentMemoriesTable,
 		AuditLogsTable,
 		ConfigProfilesTable,
 		CronJobsTable,

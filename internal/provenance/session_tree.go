@@ -110,6 +110,11 @@ func NewSessionTree(store SessionTreeStore) *SessionTree {
 	return &SessionTree{store: store}
 }
 
+// GetNode retrieves a session node by key.
+func (t *SessionTree) GetNode(ctx context.Context, sessionKey string) (*SessionNode, error) {
+	return t.store.GetNode(ctx, sessionKey)
+}
+
 // RegisterSession creates a new node in the session tree.
 func (t *SessionTree) RegisterSession(ctx context.Context, sessionKey, parentKey, agentName, goal string) (*SessionNode, error) {
 	if sessionKey == "" {
