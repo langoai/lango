@@ -40,6 +40,10 @@ type Tx struct {
 	PaymentTx *PaymentTxClient
 	// PeerReputation is the client for interacting with the PeerReputation builders.
 	PeerReputation *PeerReputationClient
+	// ProvenanceAttribution is the client for interacting with the ProvenanceAttribution builders.
+	ProvenanceAttribution *ProvenanceAttributionClient
+	// ProvenanceCheckpoint is the client for interacting with the ProvenanceCheckpoint builders.
+	ProvenanceCheckpoint *ProvenanceCheckpointClient
 	// Reflection is the client for interacting with the Reflection builders.
 	Reflection *ReflectionClient
 	// RunJournal is the client for interacting with the RunJournal builders.
@@ -52,6 +56,8 @@ type Tx struct {
 	Secret *SecretClient
 	// Session is the client for interacting with the Session builders.
 	Session *SessionClient
+	// SessionProvenance is the client for interacting with the SessionProvenance builders.
+	SessionProvenance *SessionProvenanceClient
 	// TokenUsage is the client for interacting with the TokenUsage builders.
 	TokenUsage *TokenUsageClient
 	// WorkflowRun is the client for interacting with the WorkflowRun builders.
@@ -203,12 +209,15 @@ func (tx *Tx) init() {
 	tx.Observation = NewObservationClient(tx.config)
 	tx.PaymentTx = NewPaymentTxClient(tx.config)
 	tx.PeerReputation = NewPeerReputationClient(tx.config)
+	tx.ProvenanceAttribution = NewProvenanceAttributionClient(tx.config)
+	tx.ProvenanceCheckpoint = NewProvenanceCheckpointClient(tx.config)
 	tx.Reflection = NewReflectionClient(tx.config)
 	tx.RunJournal = NewRunJournalClient(tx.config)
 	tx.RunSnapshot = NewRunSnapshotClient(tx.config)
 	tx.RunStep = NewRunStepClient(tx.config)
 	tx.Secret = NewSecretClient(tx.config)
 	tx.Session = NewSessionClient(tx.config)
+	tx.SessionProvenance = NewSessionProvenanceClient(tx.config)
 	tx.TokenUsage = NewTokenUsageClient(tx.config)
 	tx.WorkflowRun = NewWorkflowRunClient(tx.config)
 	tx.WorkflowStepRun = NewWorkflowStepRunClient(tx.config)

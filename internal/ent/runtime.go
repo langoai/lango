@@ -20,6 +20,8 @@ import (
 	"github.com/langoai/lango/internal/ent/observation"
 	"github.com/langoai/lango/internal/ent/paymenttx"
 	"github.com/langoai/lango/internal/ent/peerreputation"
+	"github.com/langoai/lango/internal/ent/provenanceattribution"
+	"github.com/langoai/lango/internal/ent/provenancecheckpoint"
 	"github.com/langoai/lango/internal/ent/reflection"
 	"github.com/langoai/lango/internal/ent/runjournal"
 	"github.com/langoai/lango/internal/ent/runsnapshot"
@@ -27,6 +29,7 @@ import (
 	"github.com/langoai/lango/internal/ent/schema"
 	"github.com/langoai/lango/internal/ent/secret"
 	"github.com/langoai/lango/internal/ent/session"
+	"github.com/langoai/lango/internal/ent/sessionprovenance"
 	"github.com/langoai/lango/internal/ent/tokenusage"
 	"github.com/langoai/lango/internal/ent/workflowrun"
 	"github.com/langoai/lango/internal/ent/workflowsteprun"
@@ -420,6 +423,58 @@ func init() {
 	peerreputationDescID := peerreputationFields[0].Descriptor()
 	// peerreputation.DefaultID holds the default value on creation for the id field.
 	peerreputation.DefaultID = peerreputationDescID.Default.(func() uuid.UUID)
+	provenanceattributionFields := schema.ProvenanceAttribution{}.Fields()
+	_ = provenanceattributionFields
+	// provenanceattributionDescSessionKey is the schema descriptor for session_key field.
+	provenanceattributionDescSessionKey := provenanceattributionFields[1].Descriptor()
+	// provenanceattribution.SessionKeyValidator is a validator for the "session_key" field. It is called by the builders before save.
+	provenanceattribution.SessionKeyValidator = provenanceattributionDescSessionKey.Validators[0].(func(string) error)
+	// provenanceattributionDescAuthorType is the schema descriptor for author_type field.
+	provenanceattributionDescAuthorType := provenanceattributionFields[4].Descriptor()
+	// provenanceattribution.AuthorTypeValidator is a validator for the "author_type" field. It is called by the builders before save.
+	provenanceattribution.AuthorTypeValidator = provenanceattributionDescAuthorType.Validators[0].(func(string) error)
+	// provenanceattributionDescAuthorID is the schema descriptor for author_id field.
+	provenanceattributionDescAuthorID := provenanceattributionFields[5].Descriptor()
+	// provenanceattribution.AuthorIDValidator is a validator for the "author_id" field. It is called by the builders before save.
+	provenanceattribution.AuthorIDValidator = provenanceattributionDescAuthorID.Validators[0].(func(string) error)
+	// provenanceattributionDescSource is the schema descriptor for source field.
+	provenanceattributionDescSource := provenanceattributionFields[9].Descriptor()
+	// provenanceattribution.SourceValidator is a validator for the "source" field. It is called by the builders before save.
+	provenanceattribution.SourceValidator = provenanceattributionDescSource.Validators[0].(func(string) error)
+	// provenanceattributionDescLinesAdded is the schema descriptor for lines_added field.
+	provenanceattributionDescLinesAdded := provenanceattributionFields[10].Descriptor()
+	// provenanceattribution.DefaultLinesAdded holds the default value on creation for the lines_added field.
+	provenanceattribution.DefaultLinesAdded = provenanceattributionDescLinesAdded.Default.(int)
+	// provenanceattributionDescLinesRemoved is the schema descriptor for lines_removed field.
+	provenanceattributionDescLinesRemoved := provenanceattributionFields[11].Descriptor()
+	// provenanceattribution.DefaultLinesRemoved holds the default value on creation for the lines_removed field.
+	provenanceattribution.DefaultLinesRemoved = provenanceattributionDescLinesRemoved.Default.(int)
+	// provenanceattributionDescCreatedAt is the schema descriptor for created_at field.
+	provenanceattributionDescCreatedAt := provenanceattributionFields[12].Descriptor()
+	// provenanceattribution.DefaultCreatedAt holds the default value on creation for the created_at field.
+	provenanceattribution.DefaultCreatedAt = provenanceattributionDescCreatedAt.Default.(func() time.Time)
+	// provenanceattributionDescID is the schema descriptor for id field.
+	provenanceattributionDescID := provenanceattributionFields[0].Descriptor()
+	// provenanceattribution.DefaultID holds the default value on creation for the id field.
+	provenanceattribution.DefaultID = provenanceattributionDescID.Default.(func() uuid.UUID)
+	provenancecheckpointFields := schema.ProvenanceCheckpoint{}.Fields()
+	_ = provenancecheckpointFields
+	// provenancecheckpointDescLabel is the schema descriptor for label field.
+	provenancecheckpointDescLabel := provenancecheckpointFields[3].Descriptor()
+	// provenancecheckpoint.LabelValidator is a validator for the "label" field. It is called by the builders before save.
+	provenancecheckpoint.LabelValidator = provenancecheckpointDescLabel.Validators[0].(func(string) error)
+	// provenancecheckpointDescJournalSeq is the schema descriptor for journal_seq field.
+	provenancecheckpointDescJournalSeq := provenancecheckpointFields[5].Descriptor()
+	// provenancecheckpoint.DefaultJournalSeq holds the default value on creation for the journal_seq field.
+	provenancecheckpoint.DefaultJournalSeq = provenancecheckpointDescJournalSeq.Default.(int64)
+	// provenancecheckpointDescCreatedAt is the schema descriptor for created_at field.
+	provenancecheckpointDescCreatedAt := provenancecheckpointFields[8].Descriptor()
+	// provenancecheckpoint.DefaultCreatedAt holds the default value on creation for the created_at field.
+	provenancecheckpoint.DefaultCreatedAt = provenancecheckpointDescCreatedAt.Default.(func() time.Time)
+	// provenancecheckpointDescID is the schema descriptor for id field.
+	provenancecheckpointDescID := provenancecheckpointFields[0].Descriptor()
+	// provenancecheckpoint.DefaultID holds the default value on creation for the id field.
+	provenancecheckpoint.DefaultID = provenancecheckpointDescID.Default.(func() uuid.UUID)
 	reflectionFields := schema.Reflection{}.Fields()
 	_ = reflectionFields
 	// reflectionDescSessionKey is the schema descriptor for session_key field.
@@ -560,6 +615,28 @@ func init() {
 	session.DefaultUpdatedAt = sessionDescUpdatedAt.Default.(func() time.Time)
 	// session.UpdateDefaultUpdatedAt holds the default value on update for the updated_at field.
 	session.UpdateDefaultUpdatedAt = sessionDescUpdatedAt.UpdateDefault.(func() time.Time)
+	sessionprovenanceFields := schema.SessionProvenance{}.Fields()
+	_ = sessionprovenanceFields
+	// sessionprovenanceDescSessionKey is the schema descriptor for session_key field.
+	sessionprovenanceDescSessionKey := sessionprovenanceFields[1].Descriptor()
+	// sessionprovenance.SessionKeyValidator is a validator for the "session_key" field. It is called by the builders before save.
+	sessionprovenance.SessionKeyValidator = sessionprovenanceDescSessionKey.Validators[0].(func(string) error)
+	// sessionprovenanceDescAgentName is the schema descriptor for agent_name field.
+	sessionprovenanceDescAgentName := sessionprovenanceFields[3].Descriptor()
+	// sessionprovenance.AgentNameValidator is a validator for the "agent_name" field. It is called by the builders before save.
+	sessionprovenance.AgentNameValidator = sessionprovenanceDescAgentName.Validators[0].(func(string) error)
+	// sessionprovenanceDescDepth is the schema descriptor for depth field.
+	sessionprovenanceDescDepth := sessionprovenanceFields[7].Descriptor()
+	// sessionprovenance.DefaultDepth holds the default value on creation for the depth field.
+	sessionprovenance.DefaultDepth = sessionprovenanceDescDepth.Default.(int)
+	// sessionprovenanceDescCreatedAt is the schema descriptor for created_at field.
+	sessionprovenanceDescCreatedAt := sessionprovenanceFields[9].Descriptor()
+	// sessionprovenance.DefaultCreatedAt holds the default value on creation for the created_at field.
+	sessionprovenance.DefaultCreatedAt = sessionprovenanceDescCreatedAt.Default.(func() time.Time)
+	// sessionprovenanceDescID is the schema descriptor for id field.
+	sessionprovenanceDescID := sessionprovenanceFields[0].Descriptor()
+	// sessionprovenance.DefaultID holds the default value on creation for the id field.
+	sessionprovenance.DefaultID = sessionprovenanceDescID.Default.(func() uuid.UUID)
 	tokenusageFields := schema.TokenUsage{}.Fields()
 	_ = tokenusageFields
 	// tokenusageDescProvider is the schema descriptor for provider field.

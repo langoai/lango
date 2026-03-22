@@ -58,20 +58,34 @@ type MemoryStore struct {
 	journals map[string][]JournalEvent // runID -> events
 	seqs     map[string]int64          // runID -> next seq
 	cache    map[string]*RunSnapshot   // runID -> cached snapshot
+	opts     StoreOptions
 }
 
 // NewMemoryStore creates a new in-memory RunLedgerStore.
-func NewMemoryStore() *MemoryStore {
+func NewMemoryStore(opts ...StoreOption) *MemoryStore {
 	return &MemoryStore{
 		journals: make(map[string][]JournalEvent),
 		seqs:     make(map[string]int64),
 		cache:    make(map[string]*RunSnapshot),
+		opts:     applyStoreOptions(opts),
+	}
+}
+
+// SetAppendHook adds an append hook, chaining with any existing hook.
+// Must be called before concurrent AppendJournalEvent calls (e.g., during app boot).
+func (m *MemoryStore) SetAppendHook(h func(JournalEvent)) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	prev := m.opts.AppendHook
+	if prev == nil {
+		m.opts.AppendHook = h
+	} else {
+		m.opts.AppendHook = func(e JournalEvent) { prev(e); h(e) }
 	}
 }
 
 func (m *MemoryStore) AppendJournalEvent(_ context.Context, event JournalEvent) error {
 	m.mu.Lock()
-	defer m.mu.Unlock()
 
 	if event.ID == "" {
 		event.ID = uuid.New().String()
@@ -86,6 +100,13 @@ func (m *MemoryStore) AppendJournalEvent(_ context.Context, event JournalEvent) 
 	m.seqs[event.RunID] = seq
 
 	m.journals[event.RunID] = append(m.journals[event.RunID], event)
+	m.mu.Unlock()
+
+	// AppendHook is called after releasing the lock to avoid deadlocks when
+	// the hook calls back into the store (e.g., provenance checkpoint creation).
+	if m.opts.AppendHook != nil {
+		m.opts.AppendHook(event)
+	}
 	return nil
 }
 

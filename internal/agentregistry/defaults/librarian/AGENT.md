@@ -2,6 +2,7 @@
 name: librarian
 description: "Knowledge management: search, RAG, graph traversal, knowledge/learning/skill persistence, learning data management, and knowledge inquiries"
 status: active
+session_isolation: true
 prefixes:
   - search_
   - rag_

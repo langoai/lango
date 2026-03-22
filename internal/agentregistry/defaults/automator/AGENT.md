@@ -2,6 +2,7 @@
 name: automator
 description: "Automation: cron scheduling, background tasks, workflow orchestration"
 status: active
+session_isolation: true
 prefixes:
   - cron_
   - bg_

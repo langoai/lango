@@ -100,6 +100,8 @@ lango serve
 lango config validate
 ```
 
+`lango serve` performs graceful shutdown on the first `Ctrl+C`/`SIGTERM` with a 10-second deadline. If shutdown is already in progress, a second `Ctrl+C` forces immediate exit with code `130`.
+
 The onboard wizard guides you through 5 steps:
 
 1. **Provider Setup** — Choose an AI provider and enter API credentials
@@ -219,6 +221,8 @@ lango p2p session revoke-all     Revoke all active peer sessions
 lango p2p sandbox status         Show sandbox runtime status
 lango p2p sandbox test           Run sandbox smoke test
 lango p2p sandbox cleanup        Remove orphaned sandbox containers
+lango p2p provenance push <peer-did> <session-key>   Push signed provenance bundle via running server
+lango p2p provenance fetch <peer-did> <session-key>  Fetch and import signed provenance bundle via running server
 lango p2p team list              List active P2P teams
 lango p2p team status <id>       Show team details and member status
 lango p2p team disband <id>      Disband an active team
@@ -274,7 +278,20 @@ lango bg result <id>             Show completed task result
 lango run list                   List recent RunLedger runs from persistent snapshots
 lango run status                 Show RunLedger configuration and status
 lango run journal <run-id>       View persistent run journal events
+
+lango provenance status          Show provenance configuration and state
+lango provenance checkpoint list List checkpoints (--run <id>, --session <key>)
+lango provenance checkpoint create <label>  Create a manual checkpoint (--run <id>)
+lango provenance checkpoint show <id>       Show checkpoint details
+lango provenance session tree <session-key>         Show persisted session lineage (--depth <n>)
+lango provenance session list [--limit] [--status]  List persisted session nodes
+lango provenance attribution show <session-key>     Show raw attribution rows + token rollup
+lango provenance attribution report <session-key>   Show aggregated attribution report
+lango provenance bundle export <session-key>        Export signed provenance bundle (--redaction, --out)
+lango provenance bundle import <file>               Verify and import provenance bundle
 ```
+
+Provenance configuration (`provenance.*`) can be edited from `lango settings` under the Automation section. Agent-level `session_isolation` remains an `AGENT.md` field rather than a global settings toggle.
 
 ### Diagnostics
 
@@ -333,6 +350,7 @@ lango/
 │   │   ├── smartaccount/   #   lango account info/deploy/session/module/policy/paymaster
 │   │   ├── metrics/        #   lango metrics [sessions|tools|agents|history]
 │   │   ├── run/            #   lango run list/status/journal
+│   │   ├── provenance/     #   lango provenance status/checkpoint/session/attribution
 │   │   └── tui/            #   TUI components and views
 │   ├── config/             # Config loading, env var substitution, validation
 │   ├── configstore/        # Encrypted config profile storage (Ent-backed)
@@ -980,6 +998,8 @@ In addition to prefix-based tool partitioning, the orchestrator supports dynamic
 When `agentMemory.enabled` is `true`, each sub-agent maintains its own persistent memory store for cross-session context retention. This allows agents to accumulate domain-specific knowledge across conversations, improving task performance over time.
 
 Enable via `lango onboard` > Multi-Agent menu or set `agent.multiAgent: true` in import JSON. Use `lango agent status` and `lango agent list` to inspect.
+
+Built-in specialist agents honor isolated child-session routing at runtime. Their raw delegated turns stay in child session history, and only summary results merge back into the parent conversation.
 
 ## A2A Protocol (🧪 Experimental Features)
 

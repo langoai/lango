@@ -162,6 +162,57 @@ func containsOnlyFunctionResponses(c *genai.Content) bool {
 	return true
 }
 
+// dropOrphanedFunctionResponses removes FunctionResponse parts whose
+// corresponding FunctionCall was dropped (e.g., thought calls filtered
+// by the provider). It builds a set of surviving FunctionCall IDs/Names,
+// then strips any FunctionResponse that has no match.
+func dropOrphanedFunctionResponses(contents []*genai.Content) []*genai.Content {
+	// Collect surviving FunctionCall identifiers.
+	type callKey struct{ id, name string }
+	surviving := make(map[callKey]struct{})
+	for _, c := range contents {
+		for _, p := range c.Parts {
+			if p.FunctionCall != nil {
+				surviving[callKey{p.FunctionCall.ID, p.FunctionCall.Name}] = struct{}{}
+			}
+		}
+	}
+
+	result := make([]*genai.Content, 0, len(contents))
+	for _, c := range contents {
+		if !hasFunctionResponseParts(c) {
+			result = append(result, c)
+			continue
+		}
+
+		// Filter parts: keep non-FunctionResponse parts and matched responses.
+		var kept []*genai.Part
+		for _, p := range c.Parts {
+			if p.FunctionResponse == nil {
+				kept = append(kept, p)
+				continue
+			}
+			fr := p.FunctionResponse
+			_, byID := surviving[callKey{fr.ID, fr.Name}]
+			_, byName := surviving[callKey{"", fr.Name}]
+			_, byIDOnly := surviving[callKey{fr.ID, ""}]
+			if byID || byName || byIDOnly {
+				kept = append(kept, p)
+			} else {
+				logger.Warnw("dropping orphaned FunctionResponse",
+					"id", fr.ID, "name", fr.Name)
+			}
+		}
+
+		if len(kept) > 0 {
+			clone := cloneContent(c)
+			clone.Parts = kept
+			result = append(result, clone)
+		}
+	}
+	return result
+}
+
 // cloneContent creates a shallow copy of a Content so that mutations (e.g.
 // appending Parts) do not affect the original.
 func cloneContent(c *genai.Content) *genai.Content {

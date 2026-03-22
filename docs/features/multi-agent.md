@@ -218,6 +218,8 @@ Sub-agents operate in isolated child sessions forked from the parent conversatio
 
 The `ChildSessionServiceAdapter` manages the fork/merge lifecycle. A `Summarizer` extracts the key results from the child session before merging.
 
+Built-in specialist agents such as `operator`, `navigator`, `vault`, `librarian`, `automator`, and `chronicler` use child-session routing by default. `planner` remains on the parent-session path.
+
 ## Configuration
 
 > **Settings:** `lango settings` → Multi-Agent

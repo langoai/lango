@@ -30,12 +30,13 @@ import (
 	clilearning "github.com/langoai/lango/internal/cli/learning"
 	clilibrarian "github.com/langoai/lango/internal/cli/librarian"
 	climcp "github.com/langoai/lango/internal/cli/mcp"
-	clirun "github.com/langoai/lango/internal/cli/run"
 	climemory "github.com/langoai/lango/internal/cli/memory"
 	climetrics "github.com/langoai/lango/internal/cli/metrics"
 	"github.com/langoai/lango/internal/cli/onboard"
 	clip2p "github.com/langoai/lango/internal/cli/p2p"
 	clipayment "github.com/langoai/lango/internal/cli/payment"
+	cliprovenance "github.com/langoai/lango/internal/cli/provenance"
+	clirun "github.com/langoai/lango/internal/cli/run"
 	clisecurity "github.com/langoai/lango/internal/cli/security"
 	"github.com/langoai/lango/internal/cli/settings"
 	cliaccount "github.com/langoai/lango/internal/cli/smartaccount"
@@ -45,12 +46,20 @@ import (
 	"github.com/langoai/lango/internal/config"
 	"github.com/langoai/lango/internal/logging"
 	"github.com/langoai/lango/internal/sandbox"
+	"go.uber.org/zap"
 )
 
 var (
 	Version   = "dev"
 	BuildTime = "unknown"
 )
+
+var exitFn = os.Exit
+
+type stoppableApplication interface {
+	Start(ctx context.Context) error
+	Stop(ctx context.Context) error
+}
 
 func main() {
 	// Check if running as sandbox worker subprocess.
@@ -144,6 +153,10 @@ func main() {
 	runCmd.GroupID = "auto"
 	rootCmd.AddCommand(runCmd)
 
+	provenanceCmd := cliprovenance.NewProvenanceCmd(cliboot.BootResult)
+	provenanceCmd.GroupID = "auto"
+	rootCmd.AddCommand(provenanceCmd)
+
 	bgCmd := clibg.NewBgCmd(func() (*background.Manager, error) {
 		return nil, fmt.Errorf("bg commands require a running server (use 'lango serve' first)")
 	})
@@ -227,19 +240,11 @@ func serveCmd() *cobra.Command {
 			ctx, cancel := context.WithCancel(context.Background())
 			defer cancel()
 
-			sigChan := make(chan os.Signal, 1)
+			sigChan := make(chan os.Signal, 2)
 			signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
+			defer signal.Stop(sigChan)
 
-			go func() {
-				<-sigChan
-				log.Info("shutting down...")
-				shutdownCtx, shutdownCancel := context.WithTimeout(ctx, 10*time.Second)
-				defer shutdownCancel()
-				if err := application.Stop(shutdownCtx); err != nil {
-					log.Warnw("shutdown error", "error", err)
-				}
-				cancel()
-			}()
+			go watchServeSignals(ctx, application, log, sigChan, 10*time.Second, cancel, exitFn)
 
 			if err := application.Start(ctx); err != nil {
 				log.Errorw("startup error", "error", err)
@@ -251,6 +256,46 @@ func serveCmd() *cobra.Command {
 			<-ctx.Done()
 			return nil
 		},
+	}
+}
+
+func watchServeSignals(
+	ctx context.Context,
+	application stoppableApplication,
+	log *zap.SugaredLogger,
+	sigChan <-chan os.Signal,
+	shutdownTimeout time.Duration,
+	cancel context.CancelFunc,
+	forceExit func(int),
+) {
+	shutdownStarted := false
+
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case _, ok := <-sigChan:
+			if !ok {
+				return
+			}
+
+			if shutdownStarted {
+				log.Warn("received second interrupt, forcing exit")
+				forceExit(130)
+				return
+			}
+
+			shutdownStarted = true
+			log.Info("shutting down...")
+			go func() {
+				shutdownCtx, shutdownCancel := context.WithTimeout(ctx, shutdownTimeout)
+				defer shutdownCancel()
+				if err := application.Stop(shutdownCtx); err != nil {
+					log.Warnw("shutdown error", "error", err)
+				}
+				cancel()
+			}()
+		}
 	}
 }
 
@@ -357,6 +402,7 @@ func startupSummary(cfg *config.Config) string {
 		{Name: "MCP", Enabled: cfg.MCP.Enabled, Detail: mcpServerCount(cfg)},
 		{Name: "P2P", Enabled: cfg.P2P.Enabled},
 		{Name: "Payment", Enabled: cfg.Payment.Enabled},
+		{Name: "Provenance", Enabled: cfg.Provenance.Enabled},
 	}
 
 	return tui.StartupSummary(features)

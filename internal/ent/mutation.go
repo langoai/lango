@@ -27,6 +27,8 @@ import (
 	"github.com/langoai/lango/internal/ent/paymenttx"
 	"github.com/langoai/lango/internal/ent/peerreputation"
 	"github.com/langoai/lango/internal/ent/predicate"
+	"github.com/langoai/lango/internal/ent/provenanceattribution"
+	"github.com/langoai/lango/internal/ent/provenancecheckpoint"
 	"github.com/langoai/lango/internal/ent/reflection"
 	"github.com/langoai/lango/internal/ent/runjournal"
 	"github.com/langoai/lango/internal/ent/runsnapshot"
@@ -34,6 +36,7 @@ import (
 	"github.com/langoai/lango/internal/ent/schema"
 	"github.com/langoai/lango/internal/ent/secret"
 	"github.com/langoai/lango/internal/ent/session"
+	"github.com/langoai/lango/internal/ent/sessionprovenance"
 	"github.com/langoai/lango/internal/ent/tokenusage"
 	"github.com/langoai/lango/internal/ent/workflowrun"
 	"github.com/langoai/lango/internal/ent/workflowsteprun"
@@ -48,29 +51,32 @@ const (
 	OpUpdateOne = ent.OpUpdateOne
 
 	// Node types.
-	TypeAuditLog        = "AuditLog"
-	TypeConfigProfile   = "ConfigProfile"
-	TypeCronJob         = "CronJob"
-	TypeCronJobHistory  = "CronJobHistory"
-	TypeEscrowDeal      = "EscrowDeal"
-	TypeExternalRef     = "ExternalRef"
-	TypeInquiry         = "Inquiry"
-	TypeKey             = "Key"
-	TypeKnowledge       = "Knowledge"
-	TypeLearning        = "Learning"
-	TypeMessage         = "Message"
-	TypeObservation     = "Observation"
-	TypePaymentTx       = "PaymentTx"
-	TypePeerReputation  = "PeerReputation"
-	TypeReflection      = "Reflection"
-	TypeRunJournal      = "RunJournal"
-	TypeRunSnapshot     = "RunSnapshot"
-	TypeRunStep         = "RunStep"
-	TypeSecret          = "Secret"
-	TypeSession         = "Session"
-	TypeTokenUsage      = "TokenUsage"
-	TypeWorkflowRun     = "WorkflowRun"
-	TypeWorkflowStepRun = "WorkflowStepRun"
+	TypeAuditLog              = "AuditLog"
+	TypeConfigProfile         = "ConfigProfile"
+	TypeCronJob               = "CronJob"
+	TypeCronJobHistory        = "CronJobHistory"
+	TypeEscrowDeal            = "EscrowDeal"
+	TypeExternalRef           = "ExternalRef"
+	TypeInquiry               = "Inquiry"
+	TypeKey                   = "Key"
+	TypeKnowledge             = "Knowledge"
+	TypeLearning              = "Learning"
+	TypeMessage               = "Message"
+	TypeObservation           = "Observation"
+	TypePaymentTx             = "PaymentTx"
+	TypePeerReputation        = "PeerReputation"
+	TypeProvenanceAttribution = "ProvenanceAttribution"
+	TypeProvenanceCheckpoint  = "ProvenanceCheckpoint"
+	TypeReflection            = "Reflection"
+	TypeRunJournal            = "RunJournal"
+	TypeRunSnapshot           = "RunSnapshot"
+	TypeRunStep               = "RunStep"
+	TypeSecret                = "Secret"
+	TypeSession               = "Session"
+	TypeSessionProvenance     = "SessionProvenance"
+	TypeTokenUsage            = "TokenUsage"
+	TypeWorkflowRun           = "WorkflowRun"
+	TypeWorkflowStepRun       = "WorkflowStepRun"
 )
 
 // AuditLogMutation represents an operation that mutates the AuditLog nodes in the graph.
@@ -12495,6 +12501,1924 @@ func (m *PeerReputationMutation) ResetEdge(name string) error {
 	return fmt.Errorf("unknown PeerReputation edge %s", name)
 }
 
+// ProvenanceAttributionMutation represents an operation that mutates the ProvenanceAttribution nodes in the graph.
+type ProvenanceAttributionMutation struct {
+	config
+	op               Op
+	typ              string
+	id               *uuid.UUID
+	session_key      *string
+	run_id           *string
+	workspace_id     *string
+	author_type      *string
+	author_id        *string
+	file_path        *string
+	commit_hash      *string
+	step_id          *string
+	source           *string
+	lines_added      *int
+	addlines_added   *int
+	lines_removed    *int
+	addlines_removed *int
+	created_at       *time.Time
+	clearedFields    map[string]struct{}
+	done             bool
+	oldValue         func(context.Context) (*ProvenanceAttribution, error)
+	predicates       []predicate.ProvenanceAttribution
+}
+
+var _ ent.Mutation = (*ProvenanceAttributionMutation)(nil)
+
+// provenanceattributionOption allows management of the mutation configuration using functional options.
+type provenanceattributionOption func(*ProvenanceAttributionMutation)
+
+// newProvenanceAttributionMutation creates new mutation for the ProvenanceAttribution entity.
+func newProvenanceAttributionMutation(c config, op Op, opts ...provenanceattributionOption) *ProvenanceAttributionMutation {
+	m := &ProvenanceAttributionMutation{
+		config:        c,
+		op:            op,
+		typ:           TypeProvenanceAttribution,
+		clearedFields: make(map[string]struct{}),
+	}
+	for _, opt := range opts {
+		opt(m)
+	}
+	return m
+}
+
+// withProvenanceAttributionID sets the ID field of the mutation.
+func withProvenanceAttributionID(id uuid.UUID) provenanceattributionOption {
+	return func(m *ProvenanceAttributionMutation) {
+		var (
+			err   error
+			once  sync.Once
+			value *ProvenanceAttribution
+		)
+		m.oldValue = func(ctx context.Context) (*ProvenanceAttribution, error) {
+			once.Do(func() {
+				if m.done {
+					err = errors.New("querying old values post mutation is not allowed")
+				} else {
+					value, err = m.Client().ProvenanceAttribution.Get(ctx, id)
+				}
+			})
+			return value, err
+		}
+		m.id = &id
+	}
+}
+
+// withProvenanceAttribution sets the old ProvenanceAttribution of the mutation.
+func withProvenanceAttribution(node *ProvenanceAttribution) provenanceattributionOption {
+	return func(m *ProvenanceAttributionMutation) {
+		m.oldValue = func(context.Context) (*ProvenanceAttribution, error) {
+			return node, nil
+		}
+		m.id = &node.ID
+	}
+}
+
+// Client returns a new `ent.Client` from the mutation. If the mutation was
+// executed in a transaction (ent.Tx), a transactional client is returned.
+func (m ProvenanceAttributionMutation) Client() *Client {
+	client := &Client{config: m.config}
+	client.init()
+	return client
+}
+
+// Tx returns an `ent.Tx` for mutations that were executed in transactions;
+// it returns an error otherwise.
+func (m ProvenanceAttributionMutation) Tx() (*Tx, error) {
+	if _, ok := m.driver.(*txDriver); !ok {
+		return nil, errors.New("ent: mutation is not running in a transaction")
+	}
+	tx := &Tx{config: m.config}
+	tx.init()
+	return tx, nil
+}
+
+// SetID sets the value of the id field. Note that this
+// operation is only accepted on creation of ProvenanceAttribution entities.
+func (m *ProvenanceAttributionMutation) SetID(id uuid.UUID) {
+	m.id = &id
+}
+
+// ID returns the ID value in the mutation. Note that the ID is only available
+// if it was provided to the builder or after it was returned from the database.
+func (m *ProvenanceAttributionMutation) ID() (id uuid.UUID, exists bool) {
+	if m.id == nil {
+		return
+	}
+	return *m.id, true
+}
+
+// IDs queries the database and returns the entity ids that match the mutation's predicate.
+// That means, if the mutation is applied within a transaction with an isolation level such
+// as sql.LevelSerializable, the returned ids match the ids of the rows that will be updated
+// or updated by the mutation.
+func (m *ProvenanceAttributionMutation) IDs(ctx context.Context) ([]uuid.UUID, error) {
+	switch {
+	case m.op.Is(OpUpdateOne | OpDeleteOne):
+		id, exists := m.ID()
+		if exists {
+			return []uuid.UUID{id}, nil
+		}
+		fallthrough
+	case m.op.Is(OpUpdate | OpDelete):
+		return m.Client().ProvenanceAttribution.Query().Where(m.predicates...).IDs(ctx)
+	default:
+		return nil, fmt.Errorf("IDs is not allowed on %s operations", m.op)
+	}
+}
+
+// SetSessionKey sets the "session_key" field.
+func (m *ProvenanceAttributionMutation) SetSessionKey(s string) {
+	m.session_key = &s
+}
+
+// SessionKey returns the value of the "session_key" field in the mutation.
+func (m *ProvenanceAttributionMutation) SessionKey() (r string, exists bool) {
+	v := m.session_key
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldSessionKey returns the old "session_key" field's value of the ProvenanceAttribution entity.
+// If the ProvenanceAttribution object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *ProvenanceAttributionMutation) OldSessionKey(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldSessionKey is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldSessionKey requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldSessionKey: %w", err)
+	}
+	return oldValue.SessionKey, nil
+}
+
+// ResetSessionKey resets all changes to the "session_key" field.
+func (m *ProvenanceAttributionMutation) ResetSessionKey() {
+	m.session_key = nil
+}
+
+// SetRunID sets the "run_id" field.
+func (m *ProvenanceAttributionMutation) SetRunID(s string) {
+	m.run_id = &s
+}
+
+// RunID returns the value of the "run_id" field in the mutation.
+func (m *ProvenanceAttributionMutation) RunID() (r string, exists bool) {
+	v := m.run_id
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldRunID returns the old "run_id" field's value of the ProvenanceAttribution entity.
+// If the ProvenanceAttribution object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *ProvenanceAttributionMutation) OldRunID(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldRunID is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldRunID requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldRunID: %w", err)
+	}
+	return oldValue.RunID, nil
+}
+
+// ClearRunID clears the value of the "run_id" field.
+func (m *ProvenanceAttributionMutation) ClearRunID() {
+	m.run_id = nil
+	m.clearedFields[provenanceattribution.FieldRunID] = struct{}{}
+}
+
+// RunIDCleared returns if the "run_id" field was cleared in this mutation.
+func (m *ProvenanceAttributionMutation) RunIDCleared() bool {
+	_, ok := m.clearedFields[provenanceattribution.FieldRunID]
+	return ok
+}
+
+// ResetRunID resets all changes to the "run_id" field.
+func (m *ProvenanceAttributionMutation) ResetRunID() {
+	m.run_id = nil
+	delete(m.clearedFields, provenanceattribution.FieldRunID)
+}
+
+// SetWorkspaceID sets the "workspace_id" field.
+func (m *ProvenanceAttributionMutation) SetWorkspaceID(s string) {
+	m.workspace_id = &s
+}
+
+// WorkspaceID returns the value of the "workspace_id" field in the mutation.
+func (m *ProvenanceAttributionMutation) WorkspaceID() (r string, exists bool) {
+	v := m.workspace_id
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldWorkspaceID returns the old "workspace_id" field's value of the ProvenanceAttribution entity.
+// If the ProvenanceAttribution object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *ProvenanceAttributionMutation) OldWorkspaceID(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldWorkspaceID is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldWorkspaceID requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldWorkspaceID: %w", err)
+	}
+	return oldValue.WorkspaceID, nil
+}
+
+// ClearWorkspaceID clears the value of the "workspace_id" field.
+func (m *ProvenanceAttributionMutation) ClearWorkspaceID() {
+	m.workspace_id = nil
+	m.clearedFields[provenanceattribution.FieldWorkspaceID] = struct{}{}
+}
+
+// WorkspaceIDCleared returns if the "workspace_id" field was cleared in this mutation.
+func (m *ProvenanceAttributionMutation) WorkspaceIDCleared() bool {
+	_, ok := m.clearedFields[provenanceattribution.FieldWorkspaceID]
+	return ok
+}
+
+// ResetWorkspaceID resets all changes to the "workspace_id" field.
+func (m *ProvenanceAttributionMutation) ResetWorkspaceID() {
+	m.workspace_id = nil
+	delete(m.clearedFields, provenanceattribution.FieldWorkspaceID)
+}
+
+// SetAuthorType sets the "author_type" field.
+func (m *ProvenanceAttributionMutation) SetAuthorType(s string) {
+	m.author_type = &s
+}
+
+// AuthorType returns the value of the "author_type" field in the mutation.
+func (m *ProvenanceAttributionMutation) AuthorType() (r string, exists bool) {
+	v := m.author_type
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldAuthorType returns the old "author_type" field's value of the ProvenanceAttribution entity.
+// If the ProvenanceAttribution object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *ProvenanceAttributionMutation) OldAuthorType(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldAuthorType is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldAuthorType requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldAuthorType: %w", err)
+	}
+	return oldValue.AuthorType, nil
+}
+
+// ResetAuthorType resets all changes to the "author_type" field.
+func (m *ProvenanceAttributionMutation) ResetAuthorType() {
+	m.author_type = nil
+}
+
+// SetAuthorID sets the "author_id" field.
+func (m *ProvenanceAttributionMutation) SetAuthorID(s string) {
+	m.author_id = &s
+}
+
+// AuthorID returns the value of the "author_id" field in the mutation.
+func (m *ProvenanceAttributionMutation) AuthorID() (r string, exists bool) {
+	v := m.author_id
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldAuthorID returns the old "author_id" field's value of the ProvenanceAttribution entity.
+// If the ProvenanceAttribution object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *ProvenanceAttributionMutation) OldAuthorID(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldAuthorID is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldAuthorID requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldAuthorID: %w", err)
+	}
+	return oldValue.AuthorID, nil
+}
+
+// ResetAuthorID resets all changes to the "author_id" field.
+func (m *ProvenanceAttributionMutation) ResetAuthorID() {
+	m.author_id = nil
+}
+
+// SetFilePath sets the "file_path" field.
+func (m *ProvenanceAttributionMutation) SetFilePath(s string) {
+	m.file_path = &s
+}
+
+// FilePath returns the value of the "file_path" field in the mutation.
+func (m *ProvenanceAttributionMutation) FilePath() (r string, exists bool) {
+	v := m.file_path
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldFilePath returns the old "file_path" field's value of the ProvenanceAttribution entity.
+// If the ProvenanceAttribution object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *ProvenanceAttributionMutation) OldFilePath(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldFilePath is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldFilePath requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldFilePath: %w", err)
+	}
+	return oldValue.FilePath, nil
+}
+
+// ClearFilePath clears the value of the "file_path" field.
+func (m *ProvenanceAttributionMutation) ClearFilePath() {
+	m.file_path = nil
+	m.clearedFields[provenanceattribution.FieldFilePath] = struct{}{}
+}
+
+// FilePathCleared returns if the "file_path" field was cleared in this mutation.
+func (m *ProvenanceAttributionMutation) FilePathCleared() bool {
+	_, ok := m.clearedFields[provenanceattribution.FieldFilePath]
+	return ok
+}
+
+// ResetFilePath resets all changes to the "file_path" field.
+func (m *ProvenanceAttributionMutation) ResetFilePath() {
+	m.file_path = nil
+	delete(m.clearedFields, provenanceattribution.FieldFilePath)
+}
+
+// SetCommitHash sets the "commit_hash" field.
+func (m *ProvenanceAttributionMutation) SetCommitHash(s string) {
+	m.commit_hash = &s
+}
+
+// CommitHash returns the value of the "commit_hash" field in the mutation.
+func (m *ProvenanceAttributionMutation) CommitHash() (r string, exists bool) {
+	v := m.commit_hash
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldCommitHash returns the old "commit_hash" field's value of the ProvenanceAttribution entity.
+// If the ProvenanceAttribution object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *ProvenanceAttributionMutation) OldCommitHash(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldCommitHash is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldCommitHash requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldCommitHash: %w", err)
+	}
+	return oldValue.CommitHash, nil
+}
+
+// ClearCommitHash clears the value of the "commit_hash" field.
+func (m *ProvenanceAttributionMutation) ClearCommitHash() {
+	m.commit_hash = nil
+	m.clearedFields[provenanceattribution.FieldCommitHash] = struct{}{}
+}
+
+// CommitHashCleared returns if the "commit_hash" field was cleared in this mutation.
+func (m *ProvenanceAttributionMutation) CommitHashCleared() bool {
+	_, ok := m.clearedFields[provenanceattribution.FieldCommitHash]
+	return ok
+}
+
+// ResetCommitHash resets all changes to the "commit_hash" field.
+func (m *ProvenanceAttributionMutation) ResetCommitHash() {
+	m.commit_hash = nil
+	delete(m.clearedFields, provenanceattribution.FieldCommitHash)
+}
+
+// SetStepID sets the "step_id" field.
+func (m *ProvenanceAttributionMutation) SetStepID(s string) {
+	m.step_id = &s
+}
+
+// StepID returns the value of the "step_id" field in the mutation.
+func (m *ProvenanceAttributionMutation) StepID() (r string, exists bool) {
+	v := m.step_id
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldStepID returns the old "step_id" field's value of the ProvenanceAttribution entity.
+// If the ProvenanceAttribution object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *ProvenanceAttributionMutation) OldStepID(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldStepID is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldStepID requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldStepID: %w", err)
+	}
+	return oldValue.StepID, nil
+}
+
+// ClearStepID clears the value of the "step_id" field.
+func (m *ProvenanceAttributionMutation) ClearStepID() {
+	m.step_id = nil
+	m.clearedFields[provenanceattribution.FieldStepID] = struct{}{}
+}
+
+// StepIDCleared returns if the "step_id" field was cleared in this mutation.
+func (m *ProvenanceAttributionMutation) StepIDCleared() bool {
+	_, ok := m.clearedFields[provenanceattribution.FieldStepID]
+	return ok
+}
+
+// ResetStepID resets all changes to the "step_id" field.
+func (m *ProvenanceAttributionMutation) ResetStepID() {
+	m.step_id = nil
+	delete(m.clearedFields, provenanceattribution.FieldStepID)
+}
+
+// SetSource sets the "source" field.
+func (m *ProvenanceAttributionMutation) SetSource(s string) {
+	m.source = &s
+}
+
+// Source returns the value of the "source" field in the mutation.
+func (m *ProvenanceAttributionMutation) Source() (r string, exists bool) {
+	v := m.source
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldSource returns the old "source" field's value of the ProvenanceAttribution entity.
+// If the ProvenanceAttribution object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *ProvenanceAttributionMutation) OldSource(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldSource is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldSource requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldSource: %w", err)
+	}
+	return oldValue.Source, nil
+}
+
+// ResetSource resets all changes to the "source" field.
+func (m *ProvenanceAttributionMutation) ResetSource() {
+	m.source = nil
+}
+
+// SetLinesAdded sets the "lines_added" field.
+func (m *ProvenanceAttributionMutation) SetLinesAdded(i int) {
+	m.lines_added = &i
+	m.addlines_added = nil
+}
+
+// LinesAdded returns the value of the "lines_added" field in the mutation.
+func (m *ProvenanceAttributionMutation) LinesAdded() (r int, exists bool) {
+	v := m.lines_added
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldLinesAdded returns the old "lines_added" field's value of the ProvenanceAttribution entity.
+// If the ProvenanceAttribution object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *ProvenanceAttributionMutation) OldLinesAdded(ctx context.Context) (v int, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldLinesAdded is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldLinesAdded requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldLinesAdded: %w", err)
+	}
+	return oldValue.LinesAdded, nil
+}
+
+// AddLinesAdded adds i to the "lines_added" field.
+func (m *ProvenanceAttributionMutation) AddLinesAdded(i int) {
+	if m.addlines_added != nil {
+		*m.addlines_added += i
+	} else {
+		m.addlines_added = &i
+	}
+}
+
+// AddedLinesAdded returns the value that was added to the "lines_added" field in this mutation.
+func (m *ProvenanceAttributionMutation) AddedLinesAdded() (r int, exists bool) {
+	v := m.addlines_added
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ResetLinesAdded resets all changes to the "lines_added" field.
+func (m *ProvenanceAttributionMutation) ResetLinesAdded() {
+	m.lines_added = nil
+	m.addlines_added = nil
+}
+
+// SetLinesRemoved sets the "lines_removed" field.
+func (m *ProvenanceAttributionMutation) SetLinesRemoved(i int) {
+	m.lines_removed = &i
+	m.addlines_removed = nil
+}
+
+// LinesRemoved returns the value of the "lines_removed" field in the mutation.
+func (m *ProvenanceAttributionMutation) LinesRemoved() (r int, exists bool) {
+	v := m.lines_removed
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldLinesRemoved returns the old "lines_removed" field's value of the ProvenanceAttribution entity.
+// If the ProvenanceAttribution object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *ProvenanceAttributionMutation) OldLinesRemoved(ctx context.Context) (v int, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldLinesRemoved is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldLinesRemoved requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldLinesRemoved: %w", err)
+	}
+	return oldValue.LinesRemoved, nil
+}
+
+// AddLinesRemoved adds i to the "lines_removed" field.
+func (m *ProvenanceAttributionMutation) AddLinesRemoved(i int) {
+	if m.addlines_removed != nil {
+		*m.addlines_removed += i
+	} else {
+		m.addlines_removed = &i
+	}
+}
+
+// AddedLinesRemoved returns the value that was added to the "lines_removed" field in this mutation.
+func (m *ProvenanceAttributionMutation) AddedLinesRemoved() (r int, exists bool) {
+	v := m.addlines_removed
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ResetLinesRemoved resets all changes to the "lines_removed" field.
+func (m *ProvenanceAttributionMutation) ResetLinesRemoved() {
+	m.lines_removed = nil
+	m.addlines_removed = nil
+}
+
+// SetCreatedAt sets the "created_at" field.
+func (m *ProvenanceAttributionMutation) SetCreatedAt(t time.Time) {
+	m.created_at = &t
+}
+
+// CreatedAt returns the value of the "created_at" field in the mutation.
+func (m *ProvenanceAttributionMutation) CreatedAt() (r time.Time, exists bool) {
+	v := m.created_at
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldCreatedAt returns the old "created_at" field's value of the ProvenanceAttribution entity.
+// If the ProvenanceAttribution object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *ProvenanceAttributionMutation) OldCreatedAt(ctx context.Context) (v time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldCreatedAt is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldCreatedAt requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldCreatedAt: %w", err)
+	}
+	return oldValue.CreatedAt, nil
+}
+
+// ResetCreatedAt resets all changes to the "created_at" field.
+func (m *ProvenanceAttributionMutation) ResetCreatedAt() {
+	m.created_at = nil
+}
+
+// Where appends a list predicates to the ProvenanceAttributionMutation builder.
+func (m *ProvenanceAttributionMutation) Where(ps ...predicate.ProvenanceAttribution) {
+	m.predicates = append(m.predicates, ps...)
+}
+
+// WhereP appends storage-level predicates to the ProvenanceAttributionMutation builder. Using this method,
+// users can use type-assertion to append predicates that do not depend on any generated package.
+func (m *ProvenanceAttributionMutation) WhereP(ps ...func(*sql.Selector)) {
+	p := make([]predicate.ProvenanceAttribution, len(ps))
+	for i := range ps {
+		p[i] = ps[i]
+	}
+	m.Where(p...)
+}
+
+// Op returns the operation name.
+func (m *ProvenanceAttributionMutation) Op() Op {
+	return m.op
+}
+
+// SetOp allows setting the mutation operation.
+func (m *ProvenanceAttributionMutation) SetOp(op Op) {
+	m.op = op
+}
+
+// Type returns the node type of this mutation (ProvenanceAttribution).
+func (m *ProvenanceAttributionMutation) Type() string {
+	return m.typ
+}
+
+// Fields returns all fields that were changed during this mutation. Note that in
+// order to get all numeric fields that were incremented/decremented, call
+// AddedFields().
+func (m *ProvenanceAttributionMutation) Fields() []string {
+	fields := make([]string, 0, 12)
+	if m.session_key != nil {
+		fields = append(fields, provenanceattribution.FieldSessionKey)
+	}
+	if m.run_id != nil {
+		fields = append(fields, provenanceattribution.FieldRunID)
+	}
+	if m.workspace_id != nil {
+		fields = append(fields, provenanceattribution.FieldWorkspaceID)
+	}
+	if m.author_type != nil {
+		fields = append(fields, provenanceattribution.FieldAuthorType)
+	}
+	if m.author_id != nil {
+		fields = append(fields, provenanceattribution.FieldAuthorID)
+	}
+	if m.file_path != nil {
+		fields = append(fields, provenanceattribution.FieldFilePath)
+	}
+	if m.commit_hash != nil {
+		fields = append(fields, provenanceattribution.FieldCommitHash)
+	}
+	if m.step_id != nil {
+		fields = append(fields, provenanceattribution.FieldStepID)
+	}
+	if m.source != nil {
+		fields = append(fields, provenanceattribution.FieldSource)
+	}
+	if m.lines_added != nil {
+		fields = append(fields, provenanceattribution.FieldLinesAdded)
+	}
+	if m.lines_removed != nil {
+		fields = append(fields, provenanceattribution.FieldLinesRemoved)
+	}
+	if m.created_at != nil {
+		fields = append(fields, provenanceattribution.FieldCreatedAt)
+	}
+	return fields
+}
+
+// Field returns the value of a field with the given name. The second boolean
+// return value indicates that this field was not set, or was not defined in the
+// schema.
+func (m *ProvenanceAttributionMutation) Field(name string) (ent.Value, bool) {
+	switch name {
+	case provenanceattribution.FieldSessionKey:
+		return m.SessionKey()
+	case provenanceattribution.FieldRunID:
+		return m.RunID()
+	case provenanceattribution.FieldWorkspaceID:
+		return m.WorkspaceID()
+	case provenanceattribution.FieldAuthorType:
+		return m.AuthorType()
+	case provenanceattribution.FieldAuthorID:
+		return m.AuthorID()
+	case provenanceattribution.FieldFilePath:
+		return m.FilePath()
+	case provenanceattribution.FieldCommitHash:
+		return m.CommitHash()
+	case provenanceattribution.FieldStepID:
+		return m.StepID()
+	case provenanceattribution.FieldSource:
+		return m.Source()
+	case provenanceattribution.FieldLinesAdded:
+		return m.LinesAdded()
+	case provenanceattribution.FieldLinesRemoved:
+		return m.LinesRemoved()
+	case provenanceattribution.FieldCreatedAt:
+		return m.CreatedAt()
+	}
+	return nil, false
+}
+
+// OldField returns the old value of the field from the database. An error is
+// returned if the mutation operation is not UpdateOne, or the query to the
+// database failed.
+func (m *ProvenanceAttributionMutation) OldField(ctx context.Context, name string) (ent.Value, error) {
+	switch name {
+	case provenanceattribution.FieldSessionKey:
+		return m.OldSessionKey(ctx)
+	case provenanceattribution.FieldRunID:
+		return m.OldRunID(ctx)
+	case provenanceattribution.FieldWorkspaceID:
+		return m.OldWorkspaceID(ctx)
+	case provenanceattribution.FieldAuthorType:
+		return m.OldAuthorType(ctx)
+	case provenanceattribution.FieldAuthorID:
+		return m.OldAuthorID(ctx)
+	case provenanceattribution.FieldFilePath:
+		return m.OldFilePath(ctx)
+	case provenanceattribution.FieldCommitHash:
+		return m.OldCommitHash(ctx)
+	case provenanceattribution.FieldStepID:
+		return m.OldStepID(ctx)
+	case provenanceattribution.FieldSource:
+		return m.OldSource(ctx)
+	case provenanceattribution.FieldLinesAdded:
+		return m.OldLinesAdded(ctx)
+	case provenanceattribution.FieldLinesRemoved:
+		return m.OldLinesRemoved(ctx)
+	case provenanceattribution.FieldCreatedAt:
+		return m.OldCreatedAt(ctx)
+	}
+	return nil, fmt.Errorf("unknown ProvenanceAttribution field %s", name)
+}
+
+// SetField sets the value of a field with the given name. It returns an error if
+// the field is not defined in the schema, or if the type mismatched the field
+// type.
+func (m *ProvenanceAttributionMutation) SetField(name string, value ent.Value) error {
+	switch name {
+	case provenanceattribution.FieldSessionKey:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetSessionKey(v)
+		return nil
+	case provenanceattribution.FieldRunID:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetRunID(v)
+		return nil
+	case provenanceattribution.FieldWorkspaceID:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetWorkspaceID(v)
+		return nil
+	case provenanceattribution.FieldAuthorType:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetAuthorType(v)
+		return nil
+	case provenanceattribution.FieldAuthorID:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetAuthorID(v)
+		return nil
+	case provenanceattribution.FieldFilePath:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetFilePath(v)
+		return nil
+	case provenanceattribution.FieldCommitHash:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetCommitHash(v)
+		return nil
+	case provenanceattribution.FieldStepID:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetStepID(v)
+		return nil
+	case provenanceattribution.FieldSource:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetSource(v)
+		return nil
+	case provenanceattribution.FieldLinesAdded:
+		v, ok := value.(int)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetLinesAdded(v)
+		return nil
+	case provenanceattribution.FieldLinesRemoved:
+		v, ok := value.(int)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetLinesRemoved(v)
+		return nil
+	case provenanceattribution.FieldCreatedAt:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetCreatedAt(v)
+		return nil
+	}
+	return fmt.Errorf("unknown ProvenanceAttribution field %s", name)
+}
+
+// AddedFields returns all numeric fields that were incremented/decremented during
+// this mutation.
+func (m *ProvenanceAttributionMutation) AddedFields() []string {
+	var fields []string
+	if m.addlines_added != nil {
+		fields = append(fields, provenanceattribution.FieldLinesAdded)
+	}
+	if m.addlines_removed != nil {
+		fields = append(fields, provenanceattribution.FieldLinesRemoved)
+	}
+	return fields
+}
+
+// AddedField returns the numeric value that was incremented/decremented on a field
+// with the given name. The second boolean return value indicates that this field
+// was not set, or was not defined in the schema.
+func (m *ProvenanceAttributionMutation) AddedField(name string) (ent.Value, bool) {
+	switch name {
+	case provenanceattribution.FieldLinesAdded:
+		return m.AddedLinesAdded()
+	case provenanceattribution.FieldLinesRemoved:
+		return m.AddedLinesRemoved()
+	}
+	return nil, false
+}
+
+// AddField adds the value to the field with the given name. It returns an error if
+// the field is not defined in the schema, or if the type mismatched the field
+// type.
+func (m *ProvenanceAttributionMutation) AddField(name string, value ent.Value) error {
+	switch name {
+	case provenanceattribution.FieldLinesAdded:
+		v, ok := value.(int)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddLinesAdded(v)
+		return nil
+	case provenanceattribution.FieldLinesRemoved:
+		v, ok := value.(int)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddLinesRemoved(v)
+		return nil
+	}
+	return fmt.Errorf("unknown ProvenanceAttribution numeric field %s", name)
+}
+
+// ClearedFields returns all nullable fields that were cleared during this
+// mutation.
+func (m *ProvenanceAttributionMutation) ClearedFields() []string {
+	var fields []string
+	if m.FieldCleared(provenanceattribution.FieldRunID) {
+		fields = append(fields, provenanceattribution.FieldRunID)
+	}
+	if m.FieldCleared(provenanceattribution.FieldWorkspaceID) {
+		fields = append(fields, provenanceattribution.FieldWorkspaceID)
+	}
+	if m.FieldCleared(provenanceattribution.FieldFilePath) {
+		fields = append(fields, provenanceattribution.FieldFilePath)
+	}
+	if m.FieldCleared(provenanceattribution.FieldCommitHash) {
+		fields = append(fields, provenanceattribution.FieldCommitHash)
+	}
+	if m.FieldCleared(provenanceattribution.FieldStepID) {
+		fields = append(fields, provenanceattribution.FieldStepID)
+	}
+	return fields
+}
+
+// FieldCleared returns a boolean indicating if a field with the given name was
+// cleared in this mutation.
+func (m *ProvenanceAttributionMutation) FieldCleared(name string) bool {
+	_, ok := m.clearedFields[name]
+	return ok
+}
+
+// ClearField clears the value of the field with the given name. It returns an
+// error if the field is not defined in the schema.
+func (m *ProvenanceAttributionMutation) ClearField(name string) error {
+	switch name {
+	case provenanceattribution.FieldRunID:
+		m.ClearRunID()
+		return nil
+	case provenanceattribution.FieldWorkspaceID:
+		m.ClearWorkspaceID()
+		return nil
+	case provenanceattribution.FieldFilePath:
+		m.ClearFilePath()
+		return nil
+	case provenanceattribution.FieldCommitHash:
+		m.ClearCommitHash()
+		return nil
+	case provenanceattribution.FieldStepID:
+		m.ClearStepID()
+		return nil
+	}
+	return fmt.Errorf("unknown ProvenanceAttribution nullable field %s", name)
+}
+
+// ResetField resets all changes in the mutation for the field with the given name.
+// It returns an error if the field is not defined in the schema.
+func (m *ProvenanceAttributionMutation) ResetField(name string) error {
+	switch name {
+	case provenanceattribution.FieldSessionKey:
+		m.ResetSessionKey()
+		return nil
+	case provenanceattribution.FieldRunID:
+		m.ResetRunID()
+		return nil
+	case provenanceattribution.FieldWorkspaceID:
+		m.ResetWorkspaceID()
+		return nil
+	case provenanceattribution.FieldAuthorType:
+		m.ResetAuthorType()
+		return nil
+	case provenanceattribution.FieldAuthorID:
+		m.ResetAuthorID()
+		return nil
+	case provenanceattribution.FieldFilePath:
+		m.ResetFilePath()
+		return nil
+	case provenanceattribution.FieldCommitHash:
+		m.ResetCommitHash()
+		return nil
+	case provenanceattribution.FieldStepID:
+		m.ResetStepID()
+		return nil
+	case provenanceattribution.FieldSource:
+		m.ResetSource()
+		return nil
+	case provenanceattribution.FieldLinesAdded:
+		m.ResetLinesAdded()
+		return nil
+	case provenanceattribution.FieldLinesRemoved:
+		m.ResetLinesRemoved()
+		return nil
+	case provenanceattribution.FieldCreatedAt:
+		m.ResetCreatedAt()
+		return nil
+	}
+	return fmt.Errorf("unknown ProvenanceAttribution field %s", name)
+}
+
+// AddedEdges returns all edge names that were set/added in this mutation.
+func (m *ProvenanceAttributionMutation) AddedEdges() []string {
+	edges := make([]string, 0, 0)
+	return edges
+}
+
+// AddedIDs returns all IDs (to other nodes) that were added for the given edge
+// name in this mutation.
+func (m *ProvenanceAttributionMutation) AddedIDs(name string) []ent.Value {
+	return nil
+}
+
+// RemovedEdges returns all edge names that were removed in this mutation.
+func (m *ProvenanceAttributionMutation) RemovedEdges() []string {
+	edges := make([]string, 0, 0)
+	return edges
+}
+
+// RemovedIDs returns all IDs (to other nodes) that were removed for the edge with
+// the given name in this mutation.
+func (m *ProvenanceAttributionMutation) RemovedIDs(name string) []ent.Value {
+	return nil
+}
+
+// ClearedEdges returns all edge names that were cleared in this mutation.
+func (m *ProvenanceAttributionMutation) ClearedEdges() []string {
+	edges := make([]string, 0, 0)
+	return edges
+}
+
+// EdgeCleared returns a boolean which indicates if the edge with the given name
+// was cleared in this mutation.
+func (m *ProvenanceAttributionMutation) EdgeCleared(name string) bool {
+	return false
+}
+
+// ClearEdge clears the value of the edge with the given name. It returns an error
+// if that edge is not defined in the schema.
+func (m *ProvenanceAttributionMutation) ClearEdge(name string) error {
+	return fmt.Errorf("unknown ProvenanceAttribution unique edge %s", name)
+}
+
+// ResetEdge resets all changes to the edge with the given name in this mutation.
+// It returns an error if the edge is not defined in the schema.
+func (m *ProvenanceAttributionMutation) ResetEdge(name string) error {
+	return fmt.Errorf("unknown ProvenanceAttribution edge %s", name)
+}
+
+// ProvenanceCheckpointMutation represents an operation that mutates the ProvenanceCheckpoint nodes in the graph.
+type ProvenanceCheckpointMutation struct {
+	config
+	op             Op
+	typ            string
+	id             *uuid.UUID
+	session_key    *string
+	run_id         *string
+	label          *string
+	trigger        *provenancecheckpoint.Trigger
+	journal_seq    *int64
+	addjournal_seq *int64
+	git_ref        *string
+	metadata       *string
+	created_at     *time.Time
+	clearedFields  map[string]struct{}
+	done           bool
+	oldValue       func(context.Context) (*ProvenanceCheckpoint, error)
+	predicates     []predicate.ProvenanceCheckpoint
+}
+
+var _ ent.Mutation = (*ProvenanceCheckpointMutation)(nil)
+
+// provenancecheckpointOption allows management of the mutation configuration using functional options.
+type provenancecheckpointOption func(*ProvenanceCheckpointMutation)
+
+// newProvenanceCheckpointMutation creates new mutation for the ProvenanceCheckpoint entity.
+func newProvenanceCheckpointMutation(c config, op Op, opts ...provenancecheckpointOption) *ProvenanceCheckpointMutation {
+	m := &ProvenanceCheckpointMutation{
+		config:        c,
+		op:            op,
+		typ:           TypeProvenanceCheckpoint,
+		clearedFields: make(map[string]struct{}),
+	}
+	for _, opt := range opts {
+		opt(m)
+	}
+	return m
+}
+
+// withProvenanceCheckpointID sets the ID field of the mutation.
+func withProvenanceCheckpointID(id uuid.UUID) provenancecheckpointOption {
+	return func(m *ProvenanceCheckpointMutation) {
+		var (
+			err   error
+			once  sync.Once
+			value *ProvenanceCheckpoint
+		)
+		m.oldValue = func(ctx context.Context) (*ProvenanceCheckpoint, error) {
+			once.Do(func() {
+				if m.done {
+					err = errors.New("querying old values post mutation is not allowed")
+				} else {
+					value, err = m.Client().ProvenanceCheckpoint.Get(ctx, id)
+				}
+			})
+			return value, err
+		}
+		m.id = &id
+	}
+}
+
+// withProvenanceCheckpoint sets the old ProvenanceCheckpoint of the mutation.
+func withProvenanceCheckpoint(node *ProvenanceCheckpoint) provenancecheckpointOption {
+	return func(m *ProvenanceCheckpointMutation) {
+		m.oldValue = func(context.Context) (*ProvenanceCheckpoint, error) {
+			return node, nil
+		}
+		m.id = &node.ID
+	}
+}
+
+// Client returns a new `ent.Client` from the mutation. If the mutation was
+// executed in a transaction (ent.Tx), a transactional client is returned.
+func (m ProvenanceCheckpointMutation) Client() *Client {
+	client := &Client{config: m.config}
+	client.init()
+	return client
+}
+
+// Tx returns an `ent.Tx` for mutations that were executed in transactions;
+// it returns an error otherwise.
+func (m ProvenanceCheckpointMutation) Tx() (*Tx, error) {
+	if _, ok := m.driver.(*txDriver); !ok {
+		return nil, errors.New("ent: mutation is not running in a transaction")
+	}
+	tx := &Tx{config: m.config}
+	tx.init()
+	return tx, nil
+}
+
+// SetID sets the value of the id field. Note that this
+// operation is only accepted on creation of ProvenanceCheckpoint entities.
+func (m *ProvenanceCheckpointMutation) SetID(id uuid.UUID) {
+	m.id = &id
+}
+
+// ID returns the ID value in the mutation. Note that the ID is only available
+// if it was provided to the builder or after it was returned from the database.
+func (m *ProvenanceCheckpointMutation) ID() (id uuid.UUID, exists bool) {
+	if m.id == nil {
+		return
+	}
+	return *m.id, true
+}
+
+// IDs queries the database and returns the entity ids that match the mutation's predicate.
+// That means, if the mutation is applied within a transaction with an isolation level such
+// as sql.LevelSerializable, the returned ids match the ids of the rows that will be updated
+// or updated by the mutation.
+func (m *ProvenanceCheckpointMutation) IDs(ctx context.Context) ([]uuid.UUID, error) {
+	switch {
+	case m.op.Is(OpUpdateOne | OpDeleteOne):
+		id, exists := m.ID()
+		if exists {
+			return []uuid.UUID{id}, nil
+		}
+		fallthrough
+	case m.op.Is(OpUpdate | OpDelete):
+		return m.Client().ProvenanceCheckpoint.Query().Where(m.predicates...).IDs(ctx)
+	default:
+		return nil, fmt.Errorf("IDs is not allowed on %s operations", m.op)
+	}
+}
+
+// SetSessionKey sets the "session_key" field.
+func (m *ProvenanceCheckpointMutation) SetSessionKey(s string) {
+	m.session_key = &s
+}
+
+// SessionKey returns the value of the "session_key" field in the mutation.
+func (m *ProvenanceCheckpointMutation) SessionKey() (r string, exists bool) {
+	v := m.session_key
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldSessionKey returns the old "session_key" field's value of the ProvenanceCheckpoint entity.
+// If the ProvenanceCheckpoint object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *ProvenanceCheckpointMutation) OldSessionKey(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldSessionKey is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldSessionKey requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldSessionKey: %w", err)
+	}
+	return oldValue.SessionKey, nil
+}
+
+// ClearSessionKey clears the value of the "session_key" field.
+func (m *ProvenanceCheckpointMutation) ClearSessionKey() {
+	m.session_key = nil
+	m.clearedFields[provenancecheckpoint.FieldSessionKey] = struct{}{}
+}
+
+// SessionKeyCleared returns if the "session_key" field was cleared in this mutation.
+func (m *ProvenanceCheckpointMutation) SessionKeyCleared() bool {
+	_, ok := m.clearedFields[provenancecheckpoint.FieldSessionKey]
+	return ok
+}
+
+// ResetSessionKey resets all changes to the "session_key" field.
+func (m *ProvenanceCheckpointMutation) ResetSessionKey() {
+	m.session_key = nil
+	delete(m.clearedFields, provenancecheckpoint.FieldSessionKey)
+}
+
+// SetRunID sets the "run_id" field.
+func (m *ProvenanceCheckpointMutation) SetRunID(s string) {
+	m.run_id = &s
+}
+
+// RunID returns the value of the "run_id" field in the mutation.
+func (m *ProvenanceCheckpointMutation) RunID() (r string, exists bool) {
+	v := m.run_id
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldRunID returns the old "run_id" field's value of the ProvenanceCheckpoint entity.
+// If the ProvenanceCheckpoint object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *ProvenanceCheckpointMutation) OldRunID(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldRunID is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldRunID requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldRunID: %w", err)
+	}
+	return oldValue.RunID, nil
+}
+
+// ClearRunID clears the value of the "run_id" field.
+func (m *ProvenanceCheckpointMutation) ClearRunID() {
+	m.run_id = nil
+	m.clearedFields[provenancecheckpoint.FieldRunID] = struct{}{}
+}
+
+// RunIDCleared returns if the "run_id" field was cleared in this mutation.
+func (m *ProvenanceCheckpointMutation) RunIDCleared() bool {
+	_, ok := m.clearedFields[provenancecheckpoint.FieldRunID]
+	return ok
+}
+
+// ResetRunID resets all changes to the "run_id" field.
+func (m *ProvenanceCheckpointMutation) ResetRunID() {
+	m.run_id = nil
+	delete(m.clearedFields, provenancecheckpoint.FieldRunID)
+}
+
+// SetLabel sets the "label" field.
+func (m *ProvenanceCheckpointMutation) SetLabel(s string) {
+	m.label = &s
+}
+
+// Label returns the value of the "label" field in the mutation.
+func (m *ProvenanceCheckpointMutation) Label() (r string, exists bool) {
+	v := m.label
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldLabel returns the old "label" field's value of the ProvenanceCheckpoint entity.
+// If the ProvenanceCheckpoint object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *ProvenanceCheckpointMutation) OldLabel(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldLabel is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldLabel requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldLabel: %w", err)
+	}
+	return oldValue.Label, nil
+}
+
+// ResetLabel resets all changes to the "label" field.
+func (m *ProvenanceCheckpointMutation) ResetLabel() {
+	m.label = nil
+}
+
+// SetTrigger sets the "trigger" field.
+func (m *ProvenanceCheckpointMutation) SetTrigger(pr provenancecheckpoint.Trigger) {
+	m.trigger = &pr
+}
+
+// Trigger returns the value of the "trigger" field in the mutation.
+func (m *ProvenanceCheckpointMutation) Trigger() (r provenancecheckpoint.Trigger, exists bool) {
+	v := m.trigger
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldTrigger returns the old "trigger" field's value of the ProvenanceCheckpoint entity.
+// If the ProvenanceCheckpoint object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *ProvenanceCheckpointMutation) OldTrigger(ctx context.Context) (v provenancecheckpoint.Trigger, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldTrigger is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldTrigger requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldTrigger: %w", err)
+	}
+	return oldValue.Trigger, nil
+}
+
+// ResetTrigger resets all changes to the "trigger" field.
+func (m *ProvenanceCheckpointMutation) ResetTrigger() {
+	m.trigger = nil
+}
+
+// SetJournalSeq sets the "journal_seq" field.
+func (m *ProvenanceCheckpointMutation) SetJournalSeq(i int64) {
+	m.journal_seq = &i
+	m.addjournal_seq = nil
+}
+
+// JournalSeq returns the value of the "journal_seq" field in the mutation.
+func (m *ProvenanceCheckpointMutation) JournalSeq() (r int64, exists bool) {
+	v := m.journal_seq
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldJournalSeq returns the old "journal_seq" field's value of the ProvenanceCheckpoint entity.
+// If the ProvenanceCheckpoint object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *ProvenanceCheckpointMutation) OldJournalSeq(ctx context.Context) (v int64, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldJournalSeq is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldJournalSeq requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldJournalSeq: %w", err)
+	}
+	return oldValue.JournalSeq, nil
+}
+
+// AddJournalSeq adds i to the "journal_seq" field.
+func (m *ProvenanceCheckpointMutation) AddJournalSeq(i int64) {
+	if m.addjournal_seq != nil {
+		*m.addjournal_seq += i
+	} else {
+		m.addjournal_seq = &i
+	}
+}
+
+// AddedJournalSeq returns the value that was added to the "journal_seq" field in this mutation.
+func (m *ProvenanceCheckpointMutation) AddedJournalSeq() (r int64, exists bool) {
+	v := m.addjournal_seq
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ResetJournalSeq resets all changes to the "journal_seq" field.
+func (m *ProvenanceCheckpointMutation) ResetJournalSeq() {
+	m.journal_seq = nil
+	m.addjournal_seq = nil
+}
+
+// SetGitRef sets the "git_ref" field.
+func (m *ProvenanceCheckpointMutation) SetGitRef(s string) {
+	m.git_ref = &s
+}
+
+// GitRef returns the value of the "git_ref" field in the mutation.
+func (m *ProvenanceCheckpointMutation) GitRef() (r string, exists bool) {
+	v := m.git_ref
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldGitRef returns the old "git_ref" field's value of the ProvenanceCheckpoint entity.
+// If the ProvenanceCheckpoint object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *ProvenanceCheckpointMutation) OldGitRef(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldGitRef is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldGitRef requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldGitRef: %w", err)
+	}
+	return oldValue.GitRef, nil
+}
+
+// ClearGitRef clears the value of the "git_ref" field.
+func (m *ProvenanceCheckpointMutation) ClearGitRef() {
+	m.git_ref = nil
+	m.clearedFields[provenancecheckpoint.FieldGitRef] = struct{}{}
+}
+
+// GitRefCleared returns if the "git_ref" field was cleared in this mutation.
+func (m *ProvenanceCheckpointMutation) GitRefCleared() bool {
+	_, ok := m.clearedFields[provenancecheckpoint.FieldGitRef]
+	return ok
+}
+
+// ResetGitRef resets all changes to the "git_ref" field.
+func (m *ProvenanceCheckpointMutation) ResetGitRef() {
+	m.git_ref = nil
+	delete(m.clearedFields, provenancecheckpoint.FieldGitRef)
+}
+
+// SetMetadata sets the "metadata" field.
+func (m *ProvenanceCheckpointMutation) SetMetadata(s string) {
+	m.metadata = &s
+}
+
+// Metadata returns the value of the "metadata" field in the mutation.
+func (m *ProvenanceCheckpointMutation) Metadata() (r string, exists bool) {
+	v := m.metadata
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldMetadata returns the old "metadata" field's value of the ProvenanceCheckpoint entity.
+// If the ProvenanceCheckpoint object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *ProvenanceCheckpointMutation) OldMetadata(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldMetadata is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldMetadata requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldMetadata: %w", err)
+	}
+	return oldValue.Metadata, nil
+}
+
+// ClearMetadata clears the value of the "metadata" field.
+func (m *ProvenanceCheckpointMutation) ClearMetadata() {
+	m.metadata = nil
+	m.clearedFields[provenancecheckpoint.FieldMetadata] = struct{}{}
+}
+
+// MetadataCleared returns if the "metadata" field was cleared in this mutation.
+func (m *ProvenanceCheckpointMutation) MetadataCleared() bool {
+	_, ok := m.clearedFields[provenancecheckpoint.FieldMetadata]
+	return ok
+}
+
+// ResetMetadata resets all changes to the "metadata" field.
+func (m *ProvenanceCheckpointMutation) ResetMetadata() {
+	m.metadata = nil
+	delete(m.clearedFields, provenancecheckpoint.FieldMetadata)
+}
+
+// SetCreatedAt sets the "created_at" field.
+func (m *ProvenanceCheckpointMutation) SetCreatedAt(t time.Time) {
+	m.created_at = &t
+}
+
+// CreatedAt returns the value of the "created_at" field in the mutation.
+func (m *ProvenanceCheckpointMutation) CreatedAt() (r time.Time, exists bool) {
+	v := m.created_at
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldCreatedAt returns the old "created_at" field's value of the ProvenanceCheckpoint entity.
+// If the ProvenanceCheckpoint object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *ProvenanceCheckpointMutation) OldCreatedAt(ctx context.Context) (v time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldCreatedAt is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldCreatedAt requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldCreatedAt: %w", err)
+	}
+	return oldValue.CreatedAt, nil
+}
+
+// ResetCreatedAt resets all changes to the "created_at" field.
+func (m *ProvenanceCheckpointMutation) ResetCreatedAt() {
+	m.created_at = nil
+}
+
+// Where appends a list predicates to the ProvenanceCheckpointMutation builder.
+func (m *ProvenanceCheckpointMutation) Where(ps ...predicate.ProvenanceCheckpoint) {
+	m.predicates = append(m.predicates, ps...)
+}
+
+// WhereP appends storage-level predicates to the ProvenanceCheckpointMutation builder. Using this method,
+// users can use type-assertion to append predicates that do not depend on any generated package.
+func (m *ProvenanceCheckpointMutation) WhereP(ps ...func(*sql.Selector)) {
+	p := make([]predicate.ProvenanceCheckpoint, len(ps))
+	for i := range ps {
+		p[i] = ps[i]
+	}
+	m.Where(p...)
+}
+
+// Op returns the operation name.
+func (m *ProvenanceCheckpointMutation) Op() Op {
+	return m.op
+}
+
+// SetOp allows setting the mutation operation.
+func (m *ProvenanceCheckpointMutation) SetOp(op Op) {
+	m.op = op
+}
+
+// Type returns the node type of this mutation (ProvenanceCheckpoint).
+func (m *ProvenanceCheckpointMutation) Type() string {
+	return m.typ
+}
+
+// Fields returns all fields that were changed during this mutation. Note that in
+// order to get all numeric fields that were incremented/decremented, call
+// AddedFields().
+func (m *ProvenanceCheckpointMutation) Fields() []string {
+	fields := make([]string, 0, 8)
+	if m.session_key != nil {
+		fields = append(fields, provenancecheckpoint.FieldSessionKey)
+	}
+	if m.run_id != nil {
+		fields = append(fields, provenancecheckpoint.FieldRunID)
+	}
+	if m.label != nil {
+		fields = append(fields, provenancecheckpoint.FieldLabel)
+	}
+	if m.trigger != nil {
+		fields = append(fields, provenancecheckpoint.FieldTrigger)
+	}
+	if m.journal_seq != nil {
+		fields = append(fields, provenancecheckpoint.FieldJournalSeq)
+	}
+	if m.git_ref != nil {
+		fields = append(fields, provenancecheckpoint.FieldGitRef)
+	}
+	if m.metadata != nil {
+		fields = append(fields, provenancecheckpoint.FieldMetadata)
+	}
+	if m.created_at != nil {
+		fields = append(fields, provenancecheckpoint.FieldCreatedAt)
+	}
+	return fields
+}
+
+// Field returns the value of a field with the given name. The second boolean
+// return value indicates that this field was not set, or was not defined in the
+// schema.
+func (m *ProvenanceCheckpointMutation) Field(name string) (ent.Value, bool) {
+	switch name {
+	case provenancecheckpoint.FieldSessionKey:
+		return m.SessionKey()
+	case provenancecheckpoint.FieldRunID:
+		return m.RunID()
+	case provenancecheckpoint.FieldLabel:
+		return m.Label()
+	case provenancecheckpoint.FieldTrigger:
+		return m.Trigger()
+	case provenancecheckpoint.FieldJournalSeq:
+		return m.JournalSeq()
+	case provenancecheckpoint.FieldGitRef:
+		return m.GitRef()
+	case provenancecheckpoint.FieldMetadata:
+		return m.Metadata()
+	case provenancecheckpoint.FieldCreatedAt:
+		return m.CreatedAt()
+	}
+	return nil, false
+}
+
+// OldField returns the old value of the field from the database. An error is
+// returned if the mutation operation is not UpdateOne, or the query to the
+// database failed.
+func (m *ProvenanceCheckpointMutation) OldField(ctx context.Context, name string) (ent.Value, error) {
+	switch name {
+	case provenancecheckpoint.FieldSessionKey:
+		return m.OldSessionKey(ctx)
+	case provenancecheckpoint.FieldRunID:
+		return m.OldRunID(ctx)
+	case provenancecheckpoint.FieldLabel:
+		return m.OldLabel(ctx)
+	case provenancecheckpoint.FieldTrigger:
+		return m.OldTrigger(ctx)
+	case provenancecheckpoint.FieldJournalSeq:
+		return m.OldJournalSeq(ctx)
+	case provenancecheckpoint.FieldGitRef:
+		return m.OldGitRef(ctx)
+	case provenancecheckpoint.FieldMetadata:
+		return m.OldMetadata(ctx)
+	case provenancecheckpoint.FieldCreatedAt:
+		return m.OldCreatedAt(ctx)
+	}
+	return nil, fmt.Errorf("unknown ProvenanceCheckpoint field %s", name)
+}
+
+// SetField sets the value of a field with the given name. It returns an error if
+// the field is not defined in the schema, or if the type mismatched the field
+// type.
+func (m *ProvenanceCheckpointMutation) SetField(name string, value ent.Value) error {
+	switch name {
+	case provenancecheckpoint.FieldSessionKey:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetSessionKey(v)
+		return nil
+	case provenancecheckpoint.FieldRunID:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetRunID(v)
+		return nil
+	case provenancecheckpoint.FieldLabel:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetLabel(v)
+		return nil
+	case provenancecheckpoint.FieldTrigger:
+		v, ok := value.(provenancecheckpoint.Trigger)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetTrigger(v)
+		return nil
+	case provenancecheckpoint.FieldJournalSeq:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetJournalSeq(v)
+		return nil
+	case provenancecheckpoint.FieldGitRef:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetGitRef(v)
+		return nil
+	case provenancecheckpoint.FieldMetadata:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetMetadata(v)
+		return nil
+	case provenancecheckpoint.FieldCreatedAt:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetCreatedAt(v)
+		return nil
+	}
+	return fmt.Errorf("unknown ProvenanceCheckpoint field %s", name)
+}
+
+// AddedFields returns all numeric fields that were incremented/decremented during
+// this mutation.
+func (m *ProvenanceCheckpointMutation) AddedFields() []string {
+	var fields []string
+	if m.addjournal_seq != nil {
+		fields = append(fields, provenancecheckpoint.FieldJournalSeq)
+	}
+	return fields
+}
+
+// AddedField returns the numeric value that was incremented/decremented on a field
+// with the given name. The second boolean return value indicates that this field
+// was not set, or was not defined in the schema.
+func (m *ProvenanceCheckpointMutation) AddedField(name string) (ent.Value, bool) {
+	switch name {
+	case provenancecheckpoint.FieldJournalSeq:
+		return m.AddedJournalSeq()
+	}
+	return nil, false
+}
+
+// AddField adds the value to the field with the given name. It returns an error if
+// the field is not defined in the schema, or if the type mismatched the field
+// type.
+func (m *ProvenanceCheckpointMutation) AddField(name string, value ent.Value) error {
+	switch name {
+	case provenancecheckpoint.FieldJournalSeq:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddJournalSeq(v)
+		return nil
+	}
+	return fmt.Errorf("unknown ProvenanceCheckpoint numeric field %s", name)
+}
+
+// ClearedFields returns all nullable fields that were cleared during this
+// mutation.
+func (m *ProvenanceCheckpointMutation) ClearedFields() []string {
+	var fields []string
+	if m.FieldCleared(provenancecheckpoint.FieldSessionKey) {
+		fields = append(fields, provenancecheckpoint.FieldSessionKey)
+	}
+	if m.FieldCleared(provenancecheckpoint.FieldRunID) {
+		fields = append(fields, provenancecheckpoint.FieldRunID)
+	}
+	if m.FieldCleared(provenancecheckpoint.FieldGitRef) {
+		fields = append(fields, provenancecheckpoint.FieldGitRef)
+	}
+	if m.FieldCleared(provenancecheckpoint.FieldMetadata) {
+		fields = append(fields, provenancecheckpoint.FieldMetadata)
+	}
+	return fields
+}
+
+// FieldCleared returns a boolean indicating if a field with the given name was
+// cleared in this mutation.
+func (m *ProvenanceCheckpointMutation) FieldCleared(name string) bool {
+	_, ok := m.clearedFields[name]
+	return ok
+}
+
+// ClearField clears the value of the field with the given name. It returns an
+// error if the field is not defined in the schema.
+func (m *ProvenanceCheckpointMutation) ClearField(name string) error {
+	switch name {
+	case provenancecheckpoint.FieldSessionKey:
+		m.ClearSessionKey()
+		return nil
+	case provenancecheckpoint.FieldRunID:
+		m.ClearRunID()
+		return nil
+	case provenancecheckpoint.FieldGitRef:
+		m.ClearGitRef()
+		return nil
+	case provenancecheckpoint.FieldMetadata:
+		m.ClearMetadata()
+		return nil
+	}
+	return fmt.Errorf("unknown ProvenanceCheckpoint nullable field %s", name)
+}
+
+// ResetField resets all changes in the mutation for the field with the given name.
+// It returns an error if the field is not defined in the schema.
+func (m *ProvenanceCheckpointMutation) ResetField(name string) error {
+	switch name {
+	case provenancecheckpoint.FieldSessionKey:
+		m.ResetSessionKey()
+		return nil
+	case provenancecheckpoint.FieldRunID:
+		m.ResetRunID()
+		return nil
+	case provenancecheckpoint.FieldLabel:
+		m.ResetLabel()
+		return nil
+	case provenancecheckpoint.FieldTrigger:
+		m.ResetTrigger()
+		return nil
+	case provenancecheckpoint.FieldJournalSeq:
+		m.ResetJournalSeq()
+		return nil
+	case provenancecheckpoint.FieldGitRef:
+		m.ResetGitRef()
+		return nil
+	case provenancecheckpoint.FieldMetadata:
+		m.ResetMetadata()
+		return nil
+	case provenancecheckpoint.FieldCreatedAt:
+		m.ResetCreatedAt()
+		return nil
+	}
+	return fmt.Errorf("unknown ProvenanceCheckpoint field %s", name)
+}
+
+// AddedEdges returns all edge names that were set/added in this mutation.
+func (m *ProvenanceCheckpointMutation) AddedEdges() []string {
+	edges := make([]string, 0, 0)
+	return edges
+}
+
+// AddedIDs returns all IDs (to other nodes) that were added for the given edge
+// name in this mutation.
+func (m *ProvenanceCheckpointMutation) AddedIDs(name string) []ent.Value {
+	return nil
+}
+
+// RemovedEdges returns all edge names that were removed in this mutation.
+func (m *ProvenanceCheckpointMutation) RemovedEdges() []string {
+	edges := make([]string, 0, 0)
+	return edges
+}
+
+// RemovedIDs returns all IDs (to other nodes) that were removed for the edge with
+// the given name in this mutation.
+func (m *ProvenanceCheckpointMutation) RemovedIDs(name string) []ent.Value {
+	return nil
+}
+
+// ClearedEdges returns all edge names that were cleared in this mutation.
+func (m *ProvenanceCheckpointMutation) ClearedEdges() []string {
+	edges := make([]string, 0, 0)
+	return edges
+}
+
+// EdgeCleared returns a boolean which indicates if the edge with the given name
+// was cleared in this mutation.
+func (m *ProvenanceCheckpointMutation) EdgeCleared(name string) bool {
+	return false
+}
+
+// ClearEdge clears the value of the edge with the given name. It returns an error
+// if that edge is not defined in the schema.
+func (m *ProvenanceCheckpointMutation) ClearEdge(name string) error {
+	return fmt.Errorf("unknown ProvenanceCheckpoint unique edge %s", name)
+}
+
+// ResetEdge resets all changes to the edge with the given name in this mutation.
+// It returns an error if the edge is not defined in the schema.
+func (m *ProvenanceCheckpointMutation) ResetEdge(name string) error {
+	return fmt.Errorf("unknown ProvenanceCheckpoint edge %s", name)
+}
+
 // ReflectionMutation represents an operation that mutates the Reflection nodes in the graph.
 type ReflectionMutation struct {
 	config
@@ -17207,6 +19131,958 @@ func (m *SessionMutation) ResetEdge(name string) error {
 		return nil
 	}
 	return fmt.Errorf("unknown Session edge %s", name)
+}
+
+// SessionProvenanceMutation represents an operation that mutates the SessionProvenance nodes in the graph.
+type SessionProvenanceMutation struct {
+	config
+	op            Op
+	typ           string
+	id            *uuid.UUID
+	session_key   *string
+	parent_key    *string
+	agent_name    *string
+	goal          *string
+	run_id        *string
+	workspace_id  *string
+	depth         *int
+	adddepth      *int
+	status        *sessionprovenance.Status
+	created_at    *time.Time
+	closed_at     *time.Time
+	clearedFields map[string]struct{}
+	done          bool
+	oldValue      func(context.Context) (*SessionProvenance, error)
+	predicates    []predicate.SessionProvenance
+}
+
+var _ ent.Mutation = (*SessionProvenanceMutation)(nil)
+
+// sessionprovenanceOption allows management of the mutation configuration using functional options.
+type sessionprovenanceOption func(*SessionProvenanceMutation)
+
+// newSessionProvenanceMutation creates new mutation for the SessionProvenance entity.
+func newSessionProvenanceMutation(c config, op Op, opts ...sessionprovenanceOption) *SessionProvenanceMutation {
+	m := &SessionProvenanceMutation{
+		config:        c,
+		op:            op,
+		typ:           TypeSessionProvenance,
+		clearedFields: make(map[string]struct{}),
+	}
+	for _, opt := range opts {
+		opt(m)
+	}
+	return m
+}
+
+// withSessionProvenanceID sets the ID field of the mutation.
+func withSessionProvenanceID(id uuid.UUID) sessionprovenanceOption {
+	return func(m *SessionProvenanceMutation) {
+		var (
+			err   error
+			once  sync.Once
+			value *SessionProvenance
+		)
+		m.oldValue = func(ctx context.Context) (*SessionProvenance, error) {
+			once.Do(func() {
+				if m.done {
+					err = errors.New("querying old values post mutation is not allowed")
+				} else {
+					value, err = m.Client().SessionProvenance.Get(ctx, id)
+				}
+			})
+			return value, err
+		}
+		m.id = &id
+	}
+}
+
+// withSessionProvenance sets the old SessionProvenance of the mutation.
+func withSessionProvenance(node *SessionProvenance) sessionprovenanceOption {
+	return func(m *SessionProvenanceMutation) {
+		m.oldValue = func(context.Context) (*SessionProvenance, error) {
+			return node, nil
+		}
+		m.id = &node.ID
+	}
+}
+
+// Client returns a new `ent.Client` from the mutation. If the mutation was
+// executed in a transaction (ent.Tx), a transactional client is returned.
+func (m SessionProvenanceMutation) Client() *Client {
+	client := &Client{config: m.config}
+	client.init()
+	return client
+}
+
+// Tx returns an `ent.Tx` for mutations that were executed in transactions;
+// it returns an error otherwise.
+func (m SessionProvenanceMutation) Tx() (*Tx, error) {
+	if _, ok := m.driver.(*txDriver); !ok {
+		return nil, errors.New("ent: mutation is not running in a transaction")
+	}
+	tx := &Tx{config: m.config}
+	tx.init()
+	return tx, nil
+}
+
+// SetID sets the value of the id field. Note that this
+// operation is only accepted on creation of SessionProvenance entities.
+func (m *SessionProvenanceMutation) SetID(id uuid.UUID) {
+	m.id = &id
+}
+
+// ID returns the ID value in the mutation. Note that the ID is only available
+// if it was provided to the builder or after it was returned from the database.
+func (m *SessionProvenanceMutation) ID() (id uuid.UUID, exists bool) {
+	if m.id == nil {
+		return
+	}
+	return *m.id, true
+}
+
+// IDs queries the database and returns the entity ids that match the mutation's predicate.
+// That means, if the mutation is applied within a transaction with an isolation level such
+// as sql.LevelSerializable, the returned ids match the ids of the rows that will be updated
+// or updated by the mutation.
+func (m *SessionProvenanceMutation) IDs(ctx context.Context) ([]uuid.UUID, error) {
+	switch {
+	case m.op.Is(OpUpdateOne | OpDeleteOne):
+		id, exists := m.ID()
+		if exists {
+			return []uuid.UUID{id}, nil
+		}
+		fallthrough
+	case m.op.Is(OpUpdate | OpDelete):
+		return m.Client().SessionProvenance.Query().Where(m.predicates...).IDs(ctx)
+	default:
+		return nil, fmt.Errorf("IDs is not allowed on %s operations", m.op)
+	}
+}
+
+// SetSessionKey sets the "session_key" field.
+func (m *SessionProvenanceMutation) SetSessionKey(s string) {
+	m.session_key = &s
+}
+
+// SessionKey returns the value of the "session_key" field in the mutation.
+func (m *SessionProvenanceMutation) SessionKey() (r string, exists bool) {
+	v := m.session_key
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldSessionKey returns the old "session_key" field's value of the SessionProvenance entity.
+// If the SessionProvenance object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *SessionProvenanceMutation) OldSessionKey(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldSessionKey is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldSessionKey requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldSessionKey: %w", err)
+	}
+	return oldValue.SessionKey, nil
+}
+
+// ResetSessionKey resets all changes to the "session_key" field.
+func (m *SessionProvenanceMutation) ResetSessionKey() {
+	m.session_key = nil
+}
+
+// SetParentKey sets the "parent_key" field.
+func (m *SessionProvenanceMutation) SetParentKey(s string) {
+	m.parent_key = &s
+}
+
+// ParentKey returns the value of the "parent_key" field in the mutation.
+func (m *SessionProvenanceMutation) ParentKey() (r string, exists bool) {
+	v := m.parent_key
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldParentKey returns the old "parent_key" field's value of the SessionProvenance entity.
+// If the SessionProvenance object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *SessionProvenanceMutation) OldParentKey(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldParentKey is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldParentKey requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldParentKey: %w", err)
+	}
+	return oldValue.ParentKey, nil
+}
+
+// ClearParentKey clears the value of the "parent_key" field.
+func (m *SessionProvenanceMutation) ClearParentKey() {
+	m.parent_key = nil
+	m.clearedFields[sessionprovenance.FieldParentKey] = struct{}{}
+}
+
+// ParentKeyCleared returns if the "parent_key" field was cleared in this mutation.
+func (m *SessionProvenanceMutation) ParentKeyCleared() bool {
+	_, ok := m.clearedFields[sessionprovenance.FieldParentKey]
+	return ok
+}
+
+// ResetParentKey resets all changes to the "parent_key" field.
+func (m *SessionProvenanceMutation) ResetParentKey() {
+	m.parent_key = nil
+	delete(m.clearedFields, sessionprovenance.FieldParentKey)
+}
+
+// SetAgentName sets the "agent_name" field.
+func (m *SessionProvenanceMutation) SetAgentName(s string) {
+	m.agent_name = &s
+}
+
+// AgentName returns the value of the "agent_name" field in the mutation.
+func (m *SessionProvenanceMutation) AgentName() (r string, exists bool) {
+	v := m.agent_name
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldAgentName returns the old "agent_name" field's value of the SessionProvenance entity.
+// If the SessionProvenance object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *SessionProvenanceMutation) OldAgentName(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldAgentName is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldAgentName requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldAgentName: %w", err)
+	}
+	return oldValue.AgentName, nil
+}
+
+// ResetAgentName resets all changes to the "agent_name" field.
+func (m *SessionProvenanceMutation) ResetAgentName() {
+	m.agent_name = nil
+}
+
+// SetGoal sets the "goal" field.
+func (m *SessionProvenanceMutation) SetGoal(s string) {
+	m.goal = &s
+}
+
+// Goal returns the value of the "goal" field in the mutation.
+func (m *SessionProvenanceMutation) Goal() (r string, exists bool) {
+	v := m.goal
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldGoal returns the old "goal" field's value of the SessionProvenance entity.
+// If the SessionProvenance object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *SessionProvenanceMutation) OldGoal(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldGoal is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldGoal requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldGoal: %w", err)
+	}
+	return oldValue.Goal, nil
+}
+
+// ClearGoal clears the value of the "goal" field.
+func (m *SessionProvenanceMutation) ClearGoal() {
+	m.goal = nil
+	m.clearedFields[sessionprovenance.FieldGoal] = struct{}{}
+}
+
+// GoalCleared returns if the "goal" field was cleared in this mutation.
+func (m *SessionProvenanceMutation) GoalCleared() bool {
+	_, ok := m.clearedFields[sessionprovenance.FieldGoal]
+	return ok
+}
+
+// ResetGoal resets all changes to the "goal" field.
+func (m *SessionProvenanceMutation) ResetGoal() {
+	m.goal = nil
+	delete(m.clearedFields, sessionprovenance.FieldGoal)
+}
+
+// SetRunID sets the "run_id" field.
+func (m *SessionProvenanceMutation) SetRunID(s string) {
+	m.run_id = &s
+}
+
+// RunID returns the value of the "run_id" field in the mutation.
+func (m *SessionProvenanceMutation) RunID() (r string, exists bool) {
+	v := m.run_id
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldRunID returns the old "run_id" field's value of the SessionProvenance entity.
+// If the SessionProvenance object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *SessionProvenanceMutation) OldRunID(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldRunID is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldRunID requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldRunID: %w", err)
+	}
+	return oldValue.RunID, nil
+}
+
+// ClearRunID clears the value of the "run_id" field.
+func (m *SessionProvenanceMutation) ClearRunID() {
+	m.run_id = nil
+	m.clearedFields[sessionprovenance.FieldRunID] = struct{}{}
+}
+
+// RunIDCleared returns if the "run_id" field was cleared in this mutation.
+func (m *SessionProvenanceMutation) RunIDCleared() bool {
+	_, ok := m.clearedFields[sessionprovenance.FieldRunID]
+	return ok
+}
+
+// ResetRunID resets all changes to the "run_id" field.
+func (m *SessionProvenanceMutation) ResetRunID() {
+	m.run_id = nil
+	delete(m.clearedFields, sessionprovenance.FieldRunID)
+}
+
+// SetWorkspaceID sets the "workspace_id" field.
+func (m *SessionProvenanceMutation) SetWorkspaceID(s string) {
+	m.workspace_id = &s
+}
+
+// WorkspaceID returns the value of the "workspace_id" field in the mutation.
+func (m *SessionProvenanceMutation) WorkspaceID() (r string, exists bool) {
+	v := m.workspace_id
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldWorkspaceID returns the old "workspace_id" field's value of the SessionProvenance entity.
+// If the SessionProvenance object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *SessionProvenanceMutation) OldWorkspaceID(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldWorkspaceID is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldWorkspaceID requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldWorkspaceID: %w", err)
+	}
+	return oldValue.WorkspaceID, nil
+}
+
+// ClearWorkspaceID clears the value of the "workspace_id" field.
+func (m *SessionProvenanceMutation) ClearWorkspaceID() {
+	m.workspace_id = nil
+	m.clearedFields[sessionprovenance.FieldWorkspaceID] = struct{}{}
+}
+
+// WorkspaceIDCleared returns if the "workspace_id" field was cleared in this mutation.
+func (m *SessionProvenanceMutation) WorkspaceIDCleared() bool {
+	_, ok := m.clearedFields[sessionprovenance.FieldWorkspaceID]
+	return ok
+}
+
+// ResetWorkspaceID resets all changes to the "workspace_id" field.
+func (m *SessionProvenanceMutation) ResetWorkspaceID() {
+	m.workspace_id = nil
+	delete(m.clearedFields, sessionprovenance.FieldWorkspaceID)
+}
+
+// SetDepth sets the "depth" field.
+func (m *SessionProvenanceMutation) SetDepth(i int) {
+	m.depth = &i
+	m.adddepth = nil
+}
+
+// Depth returns the value of the "depth" field in the mutation.
+func (m *SessionProvenanceMutation) Depth() (r int, exists bool) {
+	v := m.depth
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldDepth returns the old "depth" field's value of the SessionProvenance entity.
+// If the SessionProvenance object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *SessionProvenanceMutation) OldDepth(ctx context.Context) (v int, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldDepth is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldDepth requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldDepth: %w", err)
+	}
+	return oldValue.Depth, nil
+}
+
+// AddDepth adds i to the "depth" field.
+func (m *SessionProvenanceMutation) AddDepth(i int) {
+	if m.adddepth != nil {
+		*m.adddepth += i
+	} else {
+		m.adddepth = &i
+	}
+}
+
+// AddedDepth returns the value that was added to the "depth" field in this mutation.
+func (m *SessionProvenanceMutation) AddedDepth() (r int, exists bool) {
+	v := m.adddepth
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ResetDepth resets all changes to the "depth" field.
+func (m *SessionProvenanceMutation) ResetDepth() {
+	m.depth = nil
+	m.adddepth = nil
+}
+
+// SetStatus sets the "status" field.
+func (m *SessionProvenanceMutation) SetStatus(s sessionprovenance.Status) {
+	m.status = &s
+}
+
+// Status returns the value of the "status" field in the mutation.
+func (m *SessionProvenanceMutation) Status() (r sessionprovenance.Status, exists bool) {
+	v := m.status
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldStatus returns the old "status" field's value of the SessionProvenance entity.
+// If the SessionProvenance object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *SessionProvenanceMutation) OldStatus(ctx context.Context) (v sessionprovenance.Status, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldStatus is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldStatus requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldStatus: %w", err)
+	}
+	return oldValue.Status, nil
+}
+
+// ResetStatus resets all changes to the "status" field.
+func (m *SessionProvenanceMutation) ResetStatus() {
+	m.status = nil
+}
+
+// SetCreatedAt sets the "created_at" field.
+func (m *SessionProvenanceMutation) SetCreatedAt(t time.Time) {
+	m.created_at = &t
+}
+
+// CreatedAt returns the value of the "created_at" field in the mutation.
+func (m *SessionProvenanceMutation) CreatedAt() (r time.Time, exists bool) {
+	v := m.created_at
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldCreatedAt returns the old "created_at" field's value of the SessionProvenance entity.
+// If the SessionProvenance object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *SessionProvenanceMutation) OldCreatedAt(ctx context.Context) (v time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldCreatedAt is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldCreatedAt requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldCreatedAt: %w", err)
+	}
+	return oldValue.CreatedAt, nil
+}
+
+// ResetCreatedAt resets all changes to the "created_at" field.
+func (m *SessionProvenanceMutation) ResetCreatedAt() {
+	m.created_at = nil
+}
+
+// SetClosedAt sets the "closed_at" field.
+func (m *SessionProvenanceMutation) SetClosedAt(t time.Time) {
+	m.closed_at = &t
+}
+
+// ClosedAt returns the value of the "closed_at" field in the mutation.
+func (m *SessionProvenanceMutation) ClosedAt() (r time.Time, exists bool) {
+	v := m.closed_at
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldClosedAt returns the old "closed_at" field's value of the SessionProvenance entity.
+// If the SessionProvenance object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *SessionProvenanceMutation) OldClosedAt(ctx context.Context) (v *time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldClosedAt is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldClosedAt requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldClosedAt: %w", err)
+	}
+	return oldValue.ClosedAt, nil
+}
+
+// ClearClosedAt clears the value of the "closed_at" field.
+func (m *SessionProvenanceMutation) ClearClosedAt() {
+	m.closed_at = nil
+	m.clearedFields[sessionprovenance.FieldClosedAt] = struct{}{}
+}
+
+// ClosedAtCleared returns if the "closed_at" field was cleared in this mutation.
+func (m *SessionProvenanceMutation) ClosedAtCleared() bool {
+	_, ok := m.clearedFields[sessionprovenance.FieldClosedAt]
+	return ok
+}
+
+// ResetClosedAt resets all changes to the "closed_at" field.
+func (m *SessionProvenanceMutation) ResetClosedAt() {
+	m.closed_at = nil
+	delete(m.clearedFields, sessionprovenance.FieldClosedAt)
+}
+
+// Where appends a list predicates to the SessionProvenanceMutation builder.
+func (m *SessionProvenanceMutation) Where(ps ...predicate.SessionProvenance) {
+	m.predicates = append(m.predicates, ps...)
+}
+
+// WhereP appends storage-level predicates to the SessionProvenanceMutation builder. Using this method,
+// users can use type-assertion to append predicates that do not depend on any generated package.
+func (m *SessionProvenanceMutation) WhereP(ps ...func(*sql.Selector)) {
+	p := make([]predicate.SessionProvenance, len(ps))
+	for i := range ps {
+		p[i] = ps[i]
+	}
+	m.Where(p...)
+}
+
+// Op returns the operation name.
+func (m *SessionProvenanceMutation) Op() Op {
+	return m.op
+}
+
+// SetOp allows setting the mutation operation.
+func (m *SessionProvenanceMutation) SetOp(op Op) {
+	m.op = op
+}
+
+// Type returns the node type of this mutation (SessionProvenance).
+func (m *SessionProvenanceMutation) Type() string {
+	return m.typ
+}
+
+// Fields returns all fields that were changed during this mutation. Note that in
+// order to get all numeric fields that were incremented/decremented, call
+// AddedFields().
+func (m *SessionProvenanceMutation) Fields() []string {
+	fields := make([]string, 0, 10)
+	if m.session_key != nil {
+		fields = append(fields, sessionprovenance.FieldSessionKey)
+	}
+	if m.parent_key != nil {
+		fields = append(fields, sessionprovenance.FieldParentKey)
+	}
+	if m.agent_name != nil {
+		fields = append(fields, sessionprovenance.FieldAgentName)
+	}
+	if m.goal != nil {
+		fields = append(fields, sessionprovenance.FieldGoal)
+	}
+	if m.run_id != nil {
+		fields = append(fields, sessionprovenance.FieldRunID)
+	}
+	if m.workspace_id != nil {
+		fields = append(fields, sessionprovenance.FieldWorkspaceID)
+	}
+	if m.depth != nil {
+		fields = append(fields, sessionprovenance.FieldDepth)
+	}
+	if m.status != nil {
+		fields = append(fields, sessionprovenance.FieldStatus)
+	}
+	if m.created_at != nil {
+		fields = append(fields, sessionprovenance.FieldCreatedAt)
+	}
+	if m.closed_at != nil {
+		fields = append(fields, sessionprovenance.FieldClosedAt)
+	}
+	return fields
+}
+
+// Field returns the value of a field with the given name. The second boolean
+// return value indicates that this field was not set, or was not defined in the
+// schema.
+func (m *SessionProvenanceMutation) Field(name string) (ent.Value, bool) {
+	switch name {
+	case sessionprovenance.FieldSessionKey:
+		return m.SessionKey()
+	case sessionprovenance.FieldParentKey:
+		return m.ParentKey()
+	case sessionprovenance.FieldAgentName:
+		return m.AgentName()
+	case sessionprovenance.FieldGoal:
+		return m.Goal()
+	case sessionprovenance.FieldRunID:
+		return m.RunID()
+	case sessionprovenance.FieldWorkspaceID:
+		return m.WorkspaceID()
+	case sessionprovenance.FieldDepth:
+		return m.Depth()
+	case sessionprovenance.FieldStatus:
+		return m.Status()
+	case sessionprovenance.FieldCreatedAt:
+		return m.CreatedAt()
+	case sessionprovenance.FieldClosedAt:
+		return m.ClosedAt()
+	}
+	return nil, false
+}
+
+// OldField returns the old value of the field from the database. An error is
+// returned if the mutation operation is not UpdateOne, or the query to the
+// database failed.
+func (m *SessionProvenanceMutation) OldField(ctx context.Context, name string) (ent.Value, error) {
+	switch name {
+	case sessionprovenance.FieldSessionKey:
+		return m.OldSessionKey(ctx)
+	case sessionprovenance.FieldParentKey:
+		return m.OldParentKey(ctx)
+	case sessionprovenance.FieldAgentName:
+		return m.OldAgentName(ctx)
+	case sessionprovenance.FieldGoal:
+		return m.OldGoal(ctx)
+	case sessionprovenance.FieldRunID:
+		return m.OldRunID(ctx)
+	case sessionprovenance.FieldWorkspaceID:
+		return m.OldWorkspaceID(ctx)
+	case sessionprovenance.FieldDepth:
+		return m.OldDepth(ctx)
+	case sessionprovenance.FieldStatus:
+		return m.OldStatus(ctx)
+	case sessionprovenance.FieldCreatedAt:
+		return m.OldCreatedAt(ctx)
+	case sessionprovenance.FieldClosedAt:
+		return m.OldClosedAt(ctx)
+	}
+	return nil, fmt.Errorf("unknown SessionProvenance field %s", name)
+}
+
+// SetField sets the value of a field with the given name. It returns an error if
+// the field is not defined in the schema, or if the type mismatched the field
+// type.
+func (m *SessionProvenanceMutation) SetField(name string, value ent.Value) error {
+	switch name {
+	case sessionprovenance.FieldSessionKey:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetSessionKey(v)
+		return nil
+	case sessionprovenance.FieldParentKey:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetParentKey(v)
+		return nil
+	case sessionprovenance.FieldAgentName:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetAgentName(v)
+		return nil
+	case sessionprovenance.FieldGoal:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetGoal(v)
+		return nil
+	case sessionprovenance.FieldRunID:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetRunID(v)
+		return nil
+	case sessionprovenance.FieldWorkspaceID:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetWorkspaceID(v)
+		return nil
+	case sessionprovenance.FieldDepth:
+		v, ok := value.(int)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetDepth(v)
+		return nil
+	case sessionprovenance.FieldStatus:
+		v, ok := value.(sessionprovenance.Status)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetStatus(v)
+		return nil
+	case sessionprovenance.FieldCreatedAt:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetCreatedAt(v)
+		return nil
+	case sessionprovenance.FieldClosedAt:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetClosedAt(v)
+		return nil
+	}
+	return fmt.Errorf("unknown SessionProvenance field %s", name)
+}
+
+// AddedFields returns all numeric fields that were incremented/decremented during
+// this mutation.
+func (m *SessionProvenanceMutation) AddedFields() []string {
+	var fields []string
+	if m.adddepth != nil {
+		fields = append(fields, sessionprovenance.FieldDepth)
+	}
+	return fields
+}
+
+// AddedField returns the numeric value that was incremented/decremented on a field
+// with the given name. The second boolean return value indicates that this field
+// was not set, or was not defined in the schema.
+func (m *SessionProvenanceMutation) AddedField(name string) (ent.Value, bool) {
+	switch name {
+	case sessionprovenance.FieldDepth:
+		return m.AddedDepth()
+	}
+	return nil, false
+}
+
+// AddField adds the value to the field with the given name. It returns an error if
+// the field is not defined in the schema, or if the type mismatched the field
+// type.
+func (m *SessionProvenanceMutation) AddField(name string, value ent.Value) error {
+	switch name {
+	case sessionprovenance.FieldDepth:
+		v, ok := value.(int)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddDepth(v)
+		return nil
+	}
+	return fmt.Errorf("unknown SessionProvenance numeric field %s", name)
+}
+
+// ClearedFields returns all nullable fields that were cleared during this
+// mutation.
+func (m *SessionProvenanceMutation) ClearedFields() []string {
+	var fields []string
+	if m.FieldCleared(sessionprovenance.FieldParentKey) {
+		fields = append(fields, sessionprovenance.FieldParentKey)
+	}
+	if m.FieldCleared(sessionprovenance.FieldGoal) {
+		fields = append(fields, sessionprovenance.FieldGoal)
+	}
+	if m.FieldCleared(sessionprovenance.FieldRunID) {
+		fields = append(fields, sessionprovenance.FieldRunID)
+	}
+	if m.FieldCleared(sessionprovenance.FieldWorkspaceID) {
+		fields = append(fields, sessionprovenance.FieldWorkspaceID)
+	}
+	if m.FieldCleared(sessionprovenance.FieldClosedAt) {
+		fields = append(fields, sessionprovenance.FieldClosedAt)
+	}
+	return fields
+}
+
+// FieldCleared returns a boolean indicating if a field with the given name was
+// cleared in this mutation.
+func (m *SessionProvenanceMutation) FieldCleared(name string) bool {
+	_, ok := m.clearedFields[name]
+	return ok
+}
+
+// ClearField clears the value of the field with the given name. It returns an
+// error if the field is not defined in the schema.
+func (m *SessionProvenanceMutation) ClearField(name string) error {
+	switch name {
+	case sessionprovenance.FieldParentKey:
+		m.ClearParentKey()
+		return nil
+	case sessionprovenance.FieldGoal:
+		m.ClearGoal()
+		return nil
+	case sessionprovenance.FieldRunID:
+		m.ClearRunID()
+		return nil
+	case sessionprovenance.FieldWorkspaceID:
+		m.ClearWorkspaceID()
+		return nil
+	case sessionprovenance.FieldClosedAt:
+		m.ClearClosedAt()
+		return nil
+	}
+	return fmt.Errorf("unknown SessionProvenance nullable field %s", name)
+}
+
+// ResetField resets all changes in the mutation for the field with the given name.
+// It returns an error if the field is not defined in the schema.
+func (m *SessionProvenanceMutation) ResetField(name string) error {
+	switch name {
+	case sessionprovenance.FieldSessionKey:
+		m.ResetSessionKey()
+		return nil
+	case sessionprovenance.FieldParentKey:
+		m.ResetParentKey()
+		return nil
+	case sessionprovenance.FieldAgentName:
+		m.ResetAgentName()
+		return nil
+	case sessionprovenance.FieldGoal:
+		m.ResetGoal()
+		return nil
+	case sessionprovenance.FieldRunID:
+		m.ResetRunID()
+		return nil
+	case sessionprovenance.FieldWorkspaceID:
+		m.ResetWorkspaceID()
+		return nil
+	case sessionprovenance.FieldDepth:
+		m.ResetDepth()
+		return nil
+	case sessionprovenance.FieldStatus:
+		m.ResetStatus()
+		return nil
+	case sessionprovenance.FieldCreatedAt:
+		m.ResetCreatedAt()
+		return nil
+	case sessionprovenance.FieldClosedAt:
+		m.ResetClosedAt()
+		return nil
+	}
+	return fmt.Errorf("unknown SessionProvenance field %s", name)
+}
+
+// AddedEdges returns all edge names that were set/added in this mutation.
+func (m *SessionProvenanceMutation) AddedEdges() []string {
+	edges := make([]string, 0, 0)
+	return edges
+}
+
+// AddedIDs returns all IDs (to other nodes) that were added for the given edge
+// name in this mutation.
+func (m *SessionProvenanceMutation) AddedIDs(name string) []ent.Value {
+	return nil
+}
+
+// RemovedEdges returns all edge names that were removed in this mutation.
+func (m *SessionProvenanceMutation) RemovedEdges() []string {
+	edges := make([]string, 0, 0)
+	return edges
+}
+
+// RemovedIDs returns all IDs (to other nodes) that were removed for the edge with
+// the given name in this mutation.
+func (m *SessionProvenanceMutation) RemovedIDs(name string) []ent.Value {
+	return nil
+}
+
+// ClearedEdges returns all edge names that were cleared in this mutation.
+func (m *SessionProvenanceMutation) ClearedEdges() []string {
+	edges := make([]string, 0, 0)
+	return edges
+}
+
+// EdgeCleared returns a boolean which indicates if the edge with the given name
+// was cleared in this mutation.
+func (m *SessionProvenanceMutation) EdgeCleared(name string) bool {
+	return false
+}
+
+// ClearEdge clears the value of the edge with the given name. It returns an error
+// if that edge is not defined in the schema.
+func (m *SessionProvenanceMutation) ClearEdge(name string) error {
+	return fmt.Errorf("unknown SessionProvenance unique edge %s", name)
+}
+
+// ResetEdge resets all changes to the edge with the given name in this mutation.
+// It returns an error if the edge is not defined in the schema.
+func (m *SessionProvenanceMutation) ResetEdge(name string) error {
+	return fmt.Errorf("unknown SessionProvenance edge %s", name)
 }
 
 // TokenUsageMutation represents an operation that mutates the TokenUsage nodes in the graph.

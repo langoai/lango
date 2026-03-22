@@ -2,6 +2,7 @@ package app
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 	"sync"
@@ -58,6 +59,7 @@ func New(boot *bootstrap.Result) (*App, error) {
 	builder.AddModule(&networkModule{cfg: cfg, boot: boot, bus: bus, app: app})
 	builder.AddModule(&extensionModule{cfg: cfg, boot: boot, bus: bus})
 	builder.AddModule(&runLedgerModule{cfg: cfg, boot: boot})
+	builder.AddModule(&provenanceModule{cfg: cfg, boot: boot})
 
 	buildResult, err := builder.Build(ctx)
 	if err != nil {
@@ -71,6 +73,9 @@ func New(boot *bootstrap.Result) (*App, error) {
 
 	// B1. Populate app fields from resolver.
 	populateAppFields(app, resolver)
+
+	// B1b. Provenance runtime capture + transport wiring.
+	wireProvenanceRuntime(app, resolver)
 
 	// B2. Build catalog from module CatalogEntries.
 	catalog := buildCatalogFromEntries(buildResult.CatalogEntries)
@@ -168,6 +173,10 @@ func New(boot *bootstrap.Result) (*App, error) {
 		p2pc:     p2pc,
 		eventBus: bus,
 		rls:      app.RunLedgerStore,
+		prov: func() *provenanceValues {
+			pv, _ := resolver.Resolve(appinit.ProvidesProvenance).(*provenanceValues)
+			return pv
+		}(),
 	})
 	if err != nil {
 		return nil, fmt.Errorf("create agent: %w", err)
@@ -292,6 +301,14 @@ func populateAppFields(app *App, r appinit.Resolver) {
 	if rlv, ok := r.Resolve(appinit.ProvidesRunLedger).(*runLedgerValues); ok && rlv != nil {
 		app.RunLedgerStore = rlv.store
 		app.RunLedgerPEV = rlv.pev
+	}
+
+	// Provenance.
+	if pv, ok := r.Resolve(appinit.ProvidesProvenance).(*provenanceValues); ok && pv != nil {
+		app.ProvenanceCheckpoints = pv.checkpointService
+		app.ProvenanceSessionTree = pv.sessionTree
+		app.ProvenanceAttribution = pv.attribution
+		app.ProvenanceBundle = pv.bundle
 	}
 }
 
@@ -453,7 +470,7 @@ func wirePostAgent(app *App, r appinit.Resolver, tools []*agent.Tool, bus *event
 				})
 			}
 		}
-		registerP2PRoutes(app.Gateway.Router(), p2pc, auth)
+		registerP2PRoutes(app.Gateway.Router(), app, p2pc, auth)
 		logger().Info("P2P REST API routes registered")
 	}
 
@@ -539,9 +556,8 @@ func registerPostBuildLifecycle(app *App) {
 				}()
 				return nil
 			},
-			func(_ context.Context) error {
-				ch.Stop()
-				return nil
+			func(ctx context.Context) error {
+				return ch.Stop(ctx)
 			},
 		), lifecycle.PriorityNetwork)
 	}
@@ -602,7 +618,7 @@ func (a *App) Stop(ctx context.Context) error {
 	}
 
 	// Stop all lifecycle-managed components in reverse startup order.
-	_ = a.registry.StopAll(ctx)
+	stopErr := a.registry.StopAll(ctx)
 
 	// Wait for all background goroutines to finish.
 	done := make(chan struct{})
@@ -611,10 +627,12 @@ func (a *App) Stop(ctx context.Context) error {
 		close(done)
 	}()
 
+	var waitErr error
 	select {
 	case <-done:
 		logger().Info("all services stopped")
 	case <-ctx.Done():
+		waitErr = ctx.Err()
 		logger().Warnw("shutdown timed out waiting for services", "error", ctx.Err())
 	}
 
@@ -637,7 +655,7 @@ func (a *App) Stop(ctx context.Context) error {
 		}
 	}
 
-	return nil
+	return errors.Join(stopErr, waitErr)
 }
 
 // logToolRegistrationSummary logs a diagnostic summary of registered tool categories.

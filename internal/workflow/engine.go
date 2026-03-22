@@ -421,7 +421,7 @@ func (e *Engine) ListRuns(ctx context.Context, limit int) ([]RunStatus, error) {
 }
 
 // Shutdown cancels all running workflows and waits for goroutines to finish.
-func (e *Engine) Shutdown() {
+func (e *Engine) Shutdown(ctx context.Context) error {
 	e.mu.Lock()
 	for runID, cancel := range e.cancels {
 		cancel()
@@ -429,8 +429,21 @@ func (e *Engine) Shutdown() {
 	}
 	e.mu.Unlock()
 
-	e.wg.Wait()
+	done := make(chan struct{})
+	go func() {
+		e.wg.Wait()
+		close(done)
+	}()
+
+	select {
+	case <-done:
+	case <-ctx.Done():
+		e.logger.Warnw("workflow engine shutdown timed out", "error", ctx.Err())
+		return ctx.Err()
+	}
+
 	e.logger.Info("workflow engine shut down")
+	return nil
 }
 
 // buildSummary formats a human-readable summary of workflow results.

@@ -259,3 +259,60 @@ func NewRunLedgerForm(cfg *config.Config) *tuicore.FormModel {
 
 	return &form
 }
+
+// NewProvenanceForm creates the Provenance configuration form.
+func NewProvenanceForm(cfg *config.Config) *tuicore.FormModel {
+	form := tuicore.NewFormModel("Provenance Configuration")
+
+	form.AddField(&tuicore.Field{
+		Key: "provenance_enabled", Label: "Enabled", Type: tuicore.InputBool,
+		Checked:     cfg.Provenance.Enabled,
+		Description: "Enable the session provenance subsystem",
+	})
+
+	form.AddField(&tuicore.Field{
+		Key: "provenance_auto_on_step_complete", Label: "Auto on Step Complete", Type: tuicore.InputBool,
+		Checked:     cfg.Provenance.Checkpoints.AutoOnStepComplete,
+		Description: "Automatically create a checkpoint when a RunLedger step validates successfully",
+	})
+
+	form.AddField(&tuicore.Field{
+		Key: "provenance_auto_on_policy", Label: "Auto on Policy", Type: tuicore.InputBool,
+		Checked:     cfg.Provenance.Checkpoints.AutoOnPolicy,
+		Description: "Automatically create a checkpoint when a RunLedger policy decision is applied",
+	})
+
+	form.AddField(&tuicore.Field{
+		Key: "provenance_max_per_session", Label: "Max Per Session", Type: tuicore.InputInt,
+		Value:       strconv.Itoa(cfg.Provenance.Checkpoints.MaxPerSession),
+		Description: "Maximum checkpoints to keep per session (0 = unlimited)",
+		Validate: func(s string) error {
+			i, err := strconv.Atoi(s)
+			if err != nil {
+				return fmt.Errorf("must be an integer")
+			}
+			if i < 0 {
+				return fmt.Errorf("must be 0 or greater")
+			}
+			return nil
+		},
+	})
+
+	form.AddField(&tuicore.Field{
+		Key: "provenance_retention_days", Label: "Retention Days", Type: tuicore.InputInt,
+		Value:       strconv.Itoa(cfg.Provenance.Checkpoints.RetentionDays),
+		Description: "How long checkpoints are retained before pruning (0 = unlimited)",
+		Validate: func(s string) error {
+			i, err := strconv.Atoi(s)
+			if err != nil {
+				return fmt.Errorf("must be an integer")
+			}
+			if i < 0 {
+				return fmt.Errorf("must be 0 or greater")
+			}
+			return nil
+		},
+	})
+
+	return &form
+}

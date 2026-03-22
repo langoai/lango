@@ -2,6 +2,7 @@
 name: vault
 description: "Security operations: encryption, secret management, blockchain payments, and smart accounts"
 status: active
+session_isolation: true
 prefixes:
   - crypto_
   - secrets_

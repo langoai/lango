@@ -95,6 +95,12 @@ func classifyError(err error) ErrorCode {
 		return ErrToolError
 	}
 
+	// thought_signature errors — Gemini API rejects replayed thought data.
+	// Classify as model error to skip learning-based retry (not a fixable tool error).
+	if strings.Contains(msg, "thought_signature") || strings.Contains(msg, "thoughtSignature") {
+		return ErrModelError
+	}
+
 	// Model errors
 	if strings.Contains(msg, "model") || strings.Contains(msg, "429") || strings.Contains(msg, "rate limit") ||
 		strings.Contains(msg, "500") || strings.Contains(msg, "503") {

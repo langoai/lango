@@ -2,6 +2,7 @@
 name: navigator
 description: "Web browsing: page navigation, interaction, and screenshots"
 status: active
+session_isolation: true
 prefixes:
   - browser_
 keywords:

@@ -16,7 +16,6 @@ import (
 	"github.com/langoai/lango/internal/eventbus"
 	"github.com/langoai/lango/internal/gatekeeper"
 	"github.com/langoai/lango/internal/gateway"
-	"github.com/langoai/lango/internal/tooloutput"
 	"github.com/langoai/lango/internal/graph"
 	"github.com/langoai/lango/internal/knowledge"
 	"github.com/langoai/lango/internal/learning"
@@ -24,7 +23,6 @@ import (
 	"github.com/langoai/lango/internal/lifecycle"
 	"github.com/langoai/lango/internal/mcp"
 	"github.com/langoai/lango/internal/memory"
-	"github.com/langoai/lango/internal/runledger"
 	"github.com/langoai/lango/internal/observability"
 	"github.com/langoai/lango/internal/observability/health"
 	"github.com/langoai/lango/internal/observability/token"
@@ -32,11 +30,14 @@ import (
 	"github.com/langoai/lango/internal/p2p/agentpool"
 	"github.com/langoai/lango/internal/p2p/team"
 	"github.com/langoai/lango/internal/payment"
+	"github.com/langoai/lango/internal/provenance"
+	"github.com/langoai/lango/internal/runledger"
 	"github.com/langoai/lango/internal/security"
 	"github.com/langoai/lango/internal/session"
 	"github.com/langoai/lango/internal/skill"
 	"github.com/langoai/lango/internal/toolcatalog"
 	"github.com/langoai/lango/internal/toolchain"
+	"github.com/langoai/lango/internal/tooloutput"
 	"github.com/langoai/lango/internal/wallet"
 	"github.com/langoai/lango/internal/workflow"
 	x402pkg "github.com/langoai/lango/internal/x402"
@@ -125,6 +126,12 @@ type App struct {
 	RunLedgerStore runledger.RunLedgerStore
 	RunLedgerPEV   *runledger.PEVEngine
 
+	// Provenance Components (optional)
+	ProvenanceCheckpoints *provenance.CheckpointService
+	ProvenanceSessionTree *provenance.SessionTree
+	ProvenanceAttribution *provenance.AttributionService
+	ProvenanceBundle      *provenance.BundleService
+
 	// MCP Components (optional, external MCP server integration)
 	MCPManager *mcp.ServerManager
 
@@ -168,5 +175,5 @@ type App struct {
 // Channel represents a communication channel (Telegram, Discord, Slack)
 type Channel interface {
 	Start(ctx context.Context) error
-	Stop()
+	Stop(ctx context.Context) error
 }

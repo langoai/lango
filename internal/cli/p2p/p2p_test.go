@@ -29,7 +29,7 @@ func TestNewP2PCmd_Structure(t *testing.T) {
 		"status", "peers", "connect", "disconnect",
 		"firewall", "discover", "identity", "reputation",
 		"pricing", "session", "sandbox", "team", "zkp",
-		"workspace", "git",
+		"provenance", "workspace", "git",
 	}
 
 	subCmds := make(map[string]bool)
@@ -44,7 +44,7 @@ func TestNewP2PCmd_Structure(t *testing.T) {
 
 func TestNewP2PCmd_SubcommandCount(t *testing.T) {
 	cmd := NewP2PCmd(dummyBootLoader())
-	assert.Equal(t, 15, len(cmd.Commands()), "expected 15 P2P subcommands")
+	assert.Equal(t, 16, len(cmd.Commands()), "expected 16 P2P subcommands")
 }
 
 func TestStatusCmd_HasFlags(t *testing.T) {

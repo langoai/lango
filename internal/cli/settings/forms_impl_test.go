@@ -316,6 +316,65 @@ func TestUpdateConfigFromForm_RunLedgerFields(t *testing.T) {
 	}
 }
 
+func TestNewProvenanceForm_AllFields(t *testing.T) {
+	cfg := defaultTestConfig()
+	form := NewProvenanceForm(cfg)
+
+	wantKeys := []string{
+		"provenance_enabled",
+		"provenance_auto_on_step_complete",
+		"provenance_auto_on_policy",
+		"provenance_max_per_session",
+		"provenance_retention_days",
+	}
+
+	if len(form.Fields) != len(wantKeys) {
+		t.Fatalf("expected %d fields, got %d", len(wantKeys), len(form.Fields))
+	}
+
+	for _, key := range wantKeys {
+		if f := fieldByKey(form, key); f == nil {
+			t.Errorf("missing field %q", key)
+		}
+	}
+
+	if f := fieldByKey(form, "provenance_max_per_session"); f.Value != "100" {
+		t.Errorf("provenance_max_per_session: want %q, got %q", "100", f.Value)
+	}
+	if f := fieldByKey(form, "provenance_retention_days"); f.Value != "30" {
+		t.Errorf("provenance_retention_days: want %q, got %q", "30", f.Value)
+	}
+}
+
+func TestUpdateConfigFromForm_ProvenanceFields(t *testing.T) {
+	state := tuicore.NewConfigState()
+	form := tuicore.NewFormModel("provenance")
+	form.AddField(&tuicore.Field{Key: "provenance_enabled", Type: tuicore.InputBool, Checked: true})
+	form.AddField(&tuicore.Field{Key: "provenance_auto_on_step_complete", Type: tuicore.InputBool, Checked: false})
+	form.AddField(&tuicore.Field{Key: "provenance_auto_on_policy", Type: tuicore.InputBool, Checked: false})
+	form.AddField(&tuicore.Field{Key: "provenance_max_per_session", Type: tuicore.InputInt, Value: "250"})
+	form.AddField(&tuicore.Field{Key: "provenance_retention_days", Type: tuicore.InputInt, Value: "90"})
+
+	state.UpdateConfigFromForm(&form)
+
+	p := state.Current.Provenance
+	if !p.Enabled {
+		t.Fatal("expected provenance enabled to be true")
+	}
+	if p.Checkpoints.AutoOnStepComplete {
+		t.Fatal("expected auto_on_step_complete to be false")
+	}
+	if p.Checkpoints.AutoOnPolicy {
+		t.Fatal("expected auto_on_policy to be false")
+	}
+	if p.Checkpoints.MaxPerSession != 250 {
+		t.Errorf("MaxPerSession: want 250, got %d", p.Checkpoints.MaxPerSession)
+	}
+	if p.Checkpoints.RetentionDays != 90 {
+		t.Errorf("RetentionDays: want 90, got %d", p.Checkpoints.RetentionDays)
+	}
+}
+
 func TestUpdateConfigFromForm_KnowledgeFields(t *testing.T) {
 	state := tuicore.NewConfigState()
 	form := tuicore.NewFormModel("test")

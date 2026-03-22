@@ -76,6 +76,7 @@ const (
 	TypeRunCompleted          Type = "run_completed"
 	TypeRunFailed             Type = "run_failed"
 	TypeProjectionSynced      Type = "projection_synced"
+	TypeCriterionMet          Type = "criterion_met"
 )
 
 func (_type Type) String() string {
@@ -85,7 +86,7 @@ func (_type Type) String() string {
 // TypeValidator is a validator for the "type" field enum values. It is called by the builders before save.
 func TypeValidator(_type Type) error {
 	switch _type {
-	case TypeRunCreated, TypePlanAttached, TypeStepStarted, TypeStepResultProposed, TypeStepValidationPassed, TypeStepValidationFailed, TypePolicyDecisionApplied, TypeNoteWritten, TypeRunPaused, TypeRunResumed, TypeRunCompleted, TypeRunFailed, TypeProjectionSynced:
+	case TypeRunCreated, TypePlanAttached, TypeStepStarted, TypeStepResultProposed, TypeStepValidationPassed, TypeStepValidationFailed, TypePolicyDecisionApplied, TypeNoteWritten, TypeRunPaused, TypeRunResumed, TypeRunCompleted, TypeRunFailed, TypeProjectionSynced, TypeCriterionMet:
 		return nil
 	default:
 		return fmt.Errorf("runjournal: invalid enum value for type field: %q", _type)

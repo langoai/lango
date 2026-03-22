@@ -24,12 +24,14 @@ type EntStore struct {
 	client *ent.Client
 	locks  sync.Map
 	cache  sync.Map
+	opts   StoreOptions
 }
 
 // NewEntStore creates a new Ent-backed RunLedger store.
-func NewEntStore(client *ent.Client) *EntStore {
+func NewEntStore(client *ent.Client, opts ...StoreOption) *EntStore {
 	return &EntStore{
 		client: client,
+		opts:   applyStoreOptions(opts),
 	}
 }
 
@@ -44,6 +46,7 @@ func (s *EntStore) AppendJournalEvent(ctx context.Context, event JournalEvent) e
 		event.Timestamp = time.Now()
 	}
 
+	var nextSeq int64
 	for attempt := 0; attempt < 10; attempt++ {
 		tx, err := s.client.Tx(ctx)
 		if err != nil {
@@ -59,7 +62,7 @@ func (s *EntStore) AppendJournalEvent(ctx context.Context, event JournalEvent) e
 				return fmt.Errorf("query latest seq: %w", qErr)
 			}
 
-			nextSeq := int64(1)
+			nextSeq = int64(1)
 			if last != nil {
 				nextSeq = last.Seq + 1
 			}
@@ -82,6 +85,12 @@ func (s *EntStore) AppendJournalEvent(ctx context.Context, event JournalEvent) e
 		}()
 
 		if commitErr == nil {
+			event.Seq = nextSeq
+			// AppendHook is called after the transaction commits to avoid
+			// deadlocks when the hook calls back into the store.
+			if s.opts.AppendHook != nil {
+				s.opts.AppendHook(event)
+			}
 			return nil
 		}
 		_ = tx.Rollback()
@@ -451,6 +460,17 @@ func (s *EntStore) PruneOldRuns(ctx context.Context, maxKeep int) error {
 func (s *EntStore) runLock(runID string) *sync.Mutex {
 	lock, _ := s.locks.LoadOrStore(runID, &sync.Mutex{})
 	return lock.(*sync.Mutex)
+}
+
+// SetAppendHook adds an append hook, chaining with any existing hook.
+// Must be called before concurrent AppendJournalEvent calls (e.g., during app boot).
+func (s *EntStore) SetAppendHook(h func(JournalEvent)) {
+	prev := s.opts.AppendHook
+	if prev == nil {
+		s.opts.AppendHook = h
+	} else {
+		s.opts.AppendHook = func(e JournalEvent) { prev(e); h(e) }
+	}
 }
 
 func shouldRetryAppendJournalError(err error) bool {

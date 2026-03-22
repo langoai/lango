@@ -482,8 +482,9 @@ func splitMessage(text string, maxLen int) []string {
 	return chunks
 }
 
-// Stop stops the Discord bot
-func (c *Channel) Stop() {
+// Stop stops the Discord bot.
+func (c *Channel) Stop(_ context.Context) error {
 	c.session.Close()
 	logger.Info("discord channel stopped")
+	return nil
 }

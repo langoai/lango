@@ -50,8 +50,10 @@ type CommitInfo struct {
 
 // Service provides git bundle operations for workspace repositories.
 type Service struct {
-	store  *BareRepoStore
-	logger *zap.Logger
+	store           *BareRepoStore
+	logger          *zap.Logger
+	onBundleCreated BundleCreatedHook
+	onMerge         MergeHook
 }
 
 // NewService creates a new git bundle service.
@@ -60,6 +62,16 @@ func NewService(store *BareRepoStore, logger *zap.Logger) *Service {
 		store:  store,
 		logger: logger,
 	}
+}
+
+// SetBundleCreatedHook registers a post-create bundle hook.
+func (s *Service) SetBundleCreatedHook(h BundleCreatedHook) {
+	s.onBundleCreated = h
+}
+
+// SetMergeHook registers a post-merge hook.
+func (s *Service) SetMergeHook(h MergeHook) {
+	s.onMerge = h
 }
 
 // Init initializes a bare repository for a workspace.
@@ -108,6 +120,10 @@ func (s *Service) CreateBundle(ctx context.Context, workspaceID string) ([]byte,
 	head, err := repo.Head()
 	if err != nil {
 		return stdout.Bytes(), "", nil
+	}
+
+	if s.onBundleCreated != nil {
+		s.onBundleCreated(ctx, workspaceID, head.Hash().String(), len(stdout.Bytes()))
 	}
 
 	return stdout.Bytes(), head.Hash().String(), nil
@@ -203,6 +219,38 @@ func (s *Service) Log(ctx context.Context, workspaceID string, limit int) ([]Com
 // Diff returns the diff between two commits.
 func (s *Service) Diff(ctx context.Context, workspaceID, from, to string) (string, error) {
 	return runGit(ctx, s.store.RepoPath(workspaceID), "diff", from, to)
+}
+
+// DiffNumStat returns per-file added/removed line counts between two commits.
+func (s *Service) DiffNumStat(ctx context.Context, workspaceID, from, to string) ([]FileStat, error) {
+	out, err := runGit(ctx, s.store.RepoPath(workspaceID), "diff", "--numstat", from, to)
+	if err != nil {
+		return nil, err
+	}
+	var stats []FileStat
+	for _, line := range strings.Split(strings.TrimSpace(out), "\n") {
+		if line == "" {
+			continue
+		}
+		parts := strings.Split(line, "\t")
+		if len(parts) < 3 {
+			continue
+		}
+		added := 0
+		removed := 0
+		if parts[0] != "-" {
+			fmt.Sscanf(parts[0], "%d", &added)
+		}
+		if parts[1] != "-" {
+			fmt.Sscanf(parts[1], "%d", &removed)
+		}
+		stats = append(stats, FileStat{
+			FilePath:     parts[2],
+			LinesAdded:   added,
+			LinesRemoved: removed,
+		})
+	}
+	return stats, nil
 }
 
 // Leaves returns the DAG leaf commits (commits with no children).
