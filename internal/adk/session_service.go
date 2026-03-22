@@ -138,6 +138,11 @@ func (s *SessionServiceAdapter) Get(ctx context.Context, req *session.GetRequest
 	if sess == nil {
 		return s.getOrCreate(ctx, req)
 	}
+	// Backfill provenance tree for sessions that existed before provenance was
+	// initialized or were created externally. The observer is idempotent.
+	if s.rootSessionObserver != nil {
+		s.rootSessionObserver(req.SessionID)
+	}
 	sa := NewSessionAdapter(sess, s.store, s.rootAgentName)
 	sa.tokenBudget = s.tokenBudget
 	return &session.GetResponse{Session: sa}, nil

@@ -590,6 +590,10 @@ func buildProvenanceAgentOptions(pv *provenanceValues) []adk.AgentOption {
 
 	rootObserver := func(sessionKey string) {
 		ctx := context.Background()
+		// Idempotent: skip if already registered (supports backfill from Get).
+		if _, err := pv.sessionTree.GetNode(ctx, sessionKey); err == nil {
+			return
+		}
 		if _, err := pv.sessionTree.RegisterSession(ctx, sessionKey, "", "root", ""); err != nil && err != provenance.ErrInvalidSessionKey {
 			logger().Debugw("register provenance root session", "session", sessionKey, "error", err)
 		}
