@@ -6,21 +6,18 @@ import (
 	"strings"
 
 	"go.uber.org/zap"
-)
 
-// TextGenerator generates text from an LLM for entity extraction.
-type TextGenerator interface {
-	GenerateText(ctx context.Context, systemPrompt, userPrompt string) (string, error)
-}
+	"github.com/langoai/lango/internal/llm"
+)
 
 // Extractor uses an LLM to extract entities and relationships from text.
 type Extractor struct {
-	generator TextGenerator
+	generator llm.TextGenerator
 	logger    *zap.SugaredLogger
 }
 
 // NewExtractor creates a new LLM-based entity/relationship extractor.
-func NewExtractor(generator TextGenerator, logger *zap.SugaredLogger) *Extractor {
+func NewExtractor(generator llm.TextGenerator, logger *zap.SugaredLogger) *Extractor {
 	return &Extractor{
 		generator: generator,
 		logger:    logger,

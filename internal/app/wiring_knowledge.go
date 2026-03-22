@@ -170,7 +170,7 @@ func initConversationAnalysis(cfg *config.Config, sv *supervisor.Supervisor, sto
 	return buf
 }
 
-// providerTextGenerator adapts a supervisor.ProviderProxy to the memory.TextGenerator interface.
+// providerTextGenerator adapts a supervisor.ProviderProxy to the llm.TextGenerator interface.
 type providerTextGenerator struct {
 	proxy *supervisor.ProviderProxy
 }

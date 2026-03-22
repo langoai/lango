@@ -9,6 +9,7 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/langoai/lango/internal/knowledge"
+	"github.com/langoai/lango/internal/llm"
 	"github.com/langoai/lango/internal/session"
 	"github.com/langoai/lango/internal/types"
 )
@@ -39,7 +40,7 @@ Rules:
 
 // InquiryProcessor detects user answers to pending inquiries and saves knowledge.
 type InquiryProcessor struct {
-	generator      TextGenerator
+	generator      llm.TextGenerator
 	inquiryStore   *InquiryStore
 	knowledgeStore *knowledge.Store
 	logger         *zap.SugaredLogger
@@ -47,7 +48,7 @@ type InquiryProcessor struct {
 
 // NewInquiryProcessor creates a new inquiry processor.
 func NewInquiryProcessor(
-	generator TextGenerator,
+	generator llm.TextGenerator,
 	inquiryStore *InquiryStore,
 	knowledgeStore *knowledge.Store,
 	logger *zap.SugaredLogger,

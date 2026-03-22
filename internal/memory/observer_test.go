@@ -10,6 +10,7 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/langoai/lango/internal/ent/enttest"
+	"github.com/langoai/lango/internal/llm"
 	"github.com/langoai/lango/internal/session"
 	_ "github.com/mattn/go-sqlite3"
 )
@@ -23,7 +24,7 @@ func (m *mockGenerator) GenerateText(_ context.Context, _, _ string) (string, er
 	return m.response, m.err
 }
 
-func newTestObserver(t *testing.T, gen TextGenerator) (*Observer, *Store) {
+func newTestObserver(t *testing.T, gen llm.TextGenerator) (*Observer, *Store) {
 	t.Helper()
 	client := enttest.Open(t, "sqlite3", "file:ent?mode=memory&_fk=1")
 	t.Cleanup(func() { client.Close() })

@@ -1,10 +1,10 @@
 package librarian
 
 import (
-	"context"
 	"time"
 
 	"github.com/google/uuid"
+
 	"github.com/langoai/lango/internal/types"
 )
 
@@ -51,11 +51,6 @@ type Inquiry struct {
 	SourceObservationID string
 	CreatedAt           time.Time
 	ResolvedAt          *time.Time
-}
-
-// TextGenerator abstracts LLM text generation for the librarian package.
-type TextGenerator interface {
-	GenerateText(ctx context.Context, systemPrompt, userPrompt string) (string, error)
 }
 
 // GraphCallback is an optional hook for saving graph triples.

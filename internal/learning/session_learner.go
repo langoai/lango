@@ -9,6 +9,7 @@ import (
 	entlearning "github.com/langoai/lango/internal/ent/learning"
 	"github.com/langoai/lango/internal/graph"
 	"github.com/langoai/lango/internal/knowledge"
+	"github.com/langoai/lango/internal/llm"
 	"github.com/langoai/lango/internal/session"
 	"github.com/langoai/lango/internal/types"
 )
@@ -34,7 +35,7 @@ Output a JSON array. If nothing high-confidence is found, output [].`
 
 // SessionLearner extracts high-confidence knowledge at session end.
 type SessionLearner struct {
-	generator     TextGenerator
+	generator     llm.TextGenerator
 	store         *knowledge.Store
 	graphCallback GraphCallback
 	logger        *zap.SugaredLogger
@@ -42,7 +43,7 @@ type SessionLearner struct {
 
 // NewSessionLearner creates a new session learner.
 func NewSessionLearner(
-	generator TextGenerator,
+	generator llm.TextGenerator,
 	store *knowledge.Store,
 	logger *zap.SugaredLogger,
 ) *SessionLearner {

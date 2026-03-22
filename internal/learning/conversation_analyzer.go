@@ -10,13 +10,9 @@ import (
 	entlearning "github.com/langoai/lango/internal/ent/learning"
 	"github.com/langoai/lango/internal/graph"
 	"github.com/langoai/lango/internal/knowledge"
+	"github.com/langoai/lango/internal/llm"
 	"github.com/langoai/lango/internal/session"
 )
-
-// TextGenerator generates text from a prompt (mirrors memory.TextGenerator to avoid import cycle).
-type TextGenerator interface {
-	GenerateText(ctx context.Context, systemPrompt, userPrompt string) (string, error)
-}
 
 const conversationAnalyzerPrompt = `You are a knowledge extraction assistant. Analyze the following conversation and extract structured knowledge.
 
@@ -40,7 +36,7 @@ Focus on:
 
 // ConversationAnalyzer extracts knowledge from conversation turns using LLM analysis.
 type ConversationAnalyzer struct {
-	generator     TextGenerator
+	generator     llm.TextGenerator
 	store         *knowledge.Store
 	graphCallback GraphCallback
 	logger        *zap.SugaredLogger
@@ -48,7 +44,7 @@ type ConversationAnalyzer struct {
 
 // NewConversationAnalyzer creates a new conversation analyzer.
 func NewConversationAnalyzer(
-	generator TextGenerator,
+	generator llm.TextGenerator,
 	store *knowledge.Store,
 	logger *zap.SugaredLogger,
 ) *ConversationAnalyzer {

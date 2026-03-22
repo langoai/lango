@@ -7,6 +7,7 @@ import (
 
 	"go.uber.org/zap"
 
+	"github.com/langoai/lango/internal/llm"
 	"github.com/langoai/lango/internal/memory"
 )
 
@@ -57,12 +58,12 @@ Rules:
 
 // ObservationAnalyzer uses LLM to analyze observations and extract knowledge/gaps.
 type ObservationAnalyzer struct {
-	generator TextGenerator
+	generator llm.TextGenerator
 	logger    *zap.SugaredLogger
 }
 
 // NewObservationAnalyzer creates a new observation analyzer.
-func NewObservationAnalyzer(generator TextGenerator, logger *zap.SugaredLogger) *ObservationAnalyzer {
+func NewObservationAnalyzer(generator llm.TextGenerator, logger *zap.SugaredLogger) *ObservationAnalyzer {
 	return &ObservationAnalyzer{
 		generator: generator,
 		logger:    logger,
