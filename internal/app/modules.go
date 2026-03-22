@@ -27,7 +27,9 @@ import (
 	"github.com/langoai/lango/internal/memory"
 	"github.com/langoai/lango/internal/p2p/gitbundle"
 	"github.com/langoai/lango/internal/p2p/team"
+	toolcrypto "github.com/langoai/lango/internal/tools/crypto"
 	toolpayment "github.com/langoai/lango/internal/tools/payment"
+	toolsecrets "github.com/langoai/lango/internal/tools/secrets"
 	"github.com/langoai/lango/internal/security"
 	"github.com/langoai/lango/internal/session"
 	"github.com/langoai/lango/internal/supervisor"
@@ -159,13 +161,13 @@ func (m *foundationModule) Init(ctx context.Context, r appinit.Resolver) (*appin
 	// Crypto tools.
 	var cryptoTools []*agent.Tool
 	if crypto != nil && keys != nil {
-		cryptoTools = buildCryptoTools(crypto, keys, refs, scanner)
+		cryptoTools = toolcrypto.BuildTools(crypto, keys, refs, scanner)
 	}
 
 	// Secrets tools.
 	var secretsTools []*agent.Tool
 	if secrets != nil {
-		secretsTools = buildSecretsTools(secrets, refs, scanner)
+		secretsTools = toolsecrets.BuildTools(secrets, refs, scanner)
 	}
 
 	allTools := append(baseTools, cryptoTools...)

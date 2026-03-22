@@ -138,7 +138,7 @@ func New(boot *bootstrap.Result) (*App, error) {
 	cleanups.push("output-store", func() {
 		_ = outputStore.Stop(context.Background())
 	})
-	outputTools := buildOutputTools(outputStore)
+	outputTools := tooloutput.BuildTools(outputStore)
 	tools = append(tools, outputTools...)
 	catalog.RegisterCategory(toolcatalog.Category{Name: "output", Description: "Tool output retrieval", Enabled: true})
 	catalog.Register("output", outputTools)

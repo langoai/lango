@@ -21,16 +21,19 @@ import (
 func buildTools(sv *supervisor.Supervisor, fsCfg filesystem.Config, browserSM *browser.SessionManager, automationAvailable map[string]bool, guard *execpkg.CommandGuard) []*agent.Tool {
 	var tools []*agent.Tool
 
-	// Exec tools (delegated to Supervisor for security isolation)
-	tools = append(tools, buildExecTools(sv, automationAvailable, guard)...)
+	// Exec tools (delegated to Supervisor for security isolation).
+	// Guard functions stay in app — they depend on app-level knowledge.
+	langoGuard := func(cmd string) string { return blockLangoExec(cmd, automationAvailable) }
+	pathGuard := func(cmd string) string { return blockProtectedPaths(cmd, guard) }
+	tools = append(tools, execpkg.BuildTools(sv, langoGuard, pathGuard)...)
 
 	// Filesystem tools
 	fsTool := filesystem.New(fsCfg)
-	tools = append(tools, buildFilesystemTools(fsTool)...)
+	tools = append(tools, filesystem.BuildTools(fsTool)...)
 
 	// Browser tools (opt-in), wrapped with panic recovery
 	if browserSM != nil {
-		for _, bt := range buildBrowserTools(browserSM) {
+		for _, bt := range browser.BuildTools(browserSM) {
 			tools = append(tools, wrapBrowserHandler(bt, browserSM))
 		}
 	}

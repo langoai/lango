@@ -1,4 +1,4 @@
-package app
+package browser
 
 import (
 	"context"
@@ -6,7 +6,6 @@ import (
 	"time"
 
 	"github.com/langoai/lango/internal/agent"
-	"github.com/langoai/lango/internal/tools/browser"
 	"github.com/langoai/lango/internal/toolparam"
 )
 
@@ -20,7 +19,8 @@ const (
 	actionWait    = "wait"
 )
 
-func buildBrowserTools(sm *browser.SessionManager) []*agent.Tool {
+// BuildTools creates browser agent tools backed by the given SessionManager.
+func BuildTools(sm *SessionManager) []*agent.Tool {
 	return []*agent.Tool{
 		{
 			Name:        "browser_navigate",

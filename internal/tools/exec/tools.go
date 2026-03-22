@@ -1,12 +1,10 @@
-package app
+package exec
 
 import (
 	"context"
 	"fmt"
 
 	"github.com/langoai/lango/internal/agent"
-	"github.com/langoai/lango/internal/supervisor"
-	execpkg "github.com/langoai/lango/internal/tools/exec"
 )
 
 // BlockedResult is the structured response returned when a command is blocked
@@ -16,7 +14,32 @@ type BlockedResult struct {
 	Message string `json:"message"`
 }
 
-func buildExecTools(sv *supervisor.Supervisor, automationAvailable map[string]bool, guard *execpkg.CommandGuard) []*agent.Tool {
+// GuardFunc is a function that checks a command and returns a non-empty
+// guidance message if the command should be blocked.
+type GuardFunc func(cmd string) string
+
+// Executor abstracts the supervisor methods used by exec tools.
+// *supervisor.Supervisor satisfies this interface.
+type Executor interface {
+	ExecuteTool(ctx context.Context, cmd string) (string, error)
+	StartBackground(cmd string) (string, error)
+	GetBackgroundStatus(id string) (map[string]interface{}, error)
+	StopBackground(id string) error
+}
+
+// BuildTools creates exec agent tools backed by the given Executor.
+// guardFns are command guard functions invoked before execution; if any
+// returns a non-empty string the command is blocked.
+func BuildTools(ex Executor, guardFns ...GuardFunc) []*agent.Tool {
+	checkGuards := func(cmd string) *BlockedResult {
+		for _, fn := range guardFns {
+			if msg := fn(cmd); msg != "" {
+				return &BlockedResult{Blocked: true, Message: msg}
+			}
+		}
+		return nil
+	}
+
 	return []*agent.Tool{
 		{
 			Name:        "exec",
@@ -31,13 +54,10 @@ func buildExecTools(sv *supervisor.Supervisor, automationAvailable map[string]bo
 				if !ok {
 					return nil, fmt.Errorf("missing command parameter")
 				}
-				if msg := blockLangoExec(cmd, automationAvailable); msg != "" {
-					return &BlockedResult{Blocked: true, Message: msg}, nil
+				if br := checkGuards(cmd); br != nil {
+					return br, nil
 				}
-				if msg := blockProtectedPaths(cmd, guard); msg != "" {
-					return &BlockedResult{Blocked: true, Message: msg}, nil
-				}
-				return sv.ExecuteTool(ctx, cmd)
+				return ex.ExecuteTool(ctx, cmd)
 			},
 		},
 		{
@@ -53,13 +73,10 @@ func buildExecTools(sv *supervisor.Supervisor, automationAvailable map[string]bo
 				if !ok {
 					return nil, fmt.Errorf("missing command parameter")
 				}
-				if msg := blockLangoExec(cmd, automationAvailable); msg != "" {
-					return &BlockedResult{Blocked: true, Message: msg}, nil
+				if br := checkGuards(cmd); br != nil {
+					return br, nil
 				}
-				if msg := blockProtectedPaths(cmd, guard); msg != "" {
-					return &BlockedResult{Blocked: true, Message: msg}, nil
-				}
-				return sv.StartBackground(cmd)
+				return ex.StartBackground(cmd)
 			},
 		},
 		{
@@ -75,7 +92,7 @@ func buildExecTools(sv *supervisor.Supervisor, automationAvailable map[string]bo
 				if !ok {
 					return nil, fmt.Errorf("missing id parameter")
 				}
-				return sv.GetBackgroundStatus(id)
+				return ex.GetBackgroundStatus(id)
 			},
 		},
 		{
@@ -91,7 +108,7 @@ func buildExecTools(sv *supervisor.Supervisor, automationAvailable map[string]bo
 				if !ok {
 					return nil, fmt.Errorf("missing id parameter")
 				}
-				return nil, sv.StopBackground(id)
+				return nil, ex.StopBackground(id)
 			},
 		},
 	}

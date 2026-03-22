@@ -1,14 +1,14 @@
-package app
+package filesystem
 
 import (
 	"context"
 
 	"github.com/langoai/lango/internal/agent"
 	"github.com/langoai/lango/internal/toolparam"
-	"github.com/langoai/lango/internal/tools/filesystem"
 )
 
-func buildFilesystemTools(fsTool *filesystem.Tool) []*agent.Tool {
+// BuildTools creates filesystem agent tools backed by the given Tool.
+func BuildTools(fsTool *Tool) []*agent.Tool {
 	return []*agent.Tool{
 		{
 			Name:        "fs_read",

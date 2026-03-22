@@ -1,16 +1,15 @@
-package app
+package tooloutput
 
 import (
 	"context"
 	"fmt"
 
 	"github.com/langoai/lango/internal/agent"
-	"github.com/langoai/lango/internal/tooloutput"
 	"github.com/langoai/lango/internal/toolparam"
 )
 
-// buildOutputTools creates tools for retrieving stored tool output.
-func buildOutputTools(store *tooloutput.OutputStore) []*agent.Tool {
+// BuildTools creates tools for retrieving stored tool output.
+func BuildTools(store *OutputStore) []*agent.Tool {
 	return []*agent.Tool{
 		{
 			Name:        "tool_output_get",
