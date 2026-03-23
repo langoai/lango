@@ -13,9 +13,11 @@ var logger = logging.SubsystemSugar("lifecycle")
 
 // Registry manages component lifecycle with ordered startup and reverse shutdown.
 type Registry struct {
-	mu      sync.Mutex
-	entries []ComponentEntry
-	started []Component
+	mu             sync.Mutex
+	entries        []ComponentEntry
+	started        []Component
+	maxPriority    Priority
+	hasMaxPriority bool
 }
 
 // NewRegistry creates an empty component registry.
@@ -28,6 +30,15 @@ func (r *Registry) Register(c Component, p Priority) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	r.entries = append(r.entries, ComponentEntry{Component: c, Priority: p})
+}
+
+// SetMaxPriority sets an upper bound on component priority. Components with
+// priority above this threshold are skipped during StartAll and StopAll.
+func (r *Registry) SetMaxPriority(p Priority) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.maxPriority = p
+	r.hasMaxPriority = true
 }
 
 // StartAll starts all registered components in priority order (ascending).
@@ -46,6 +57,14 @@ func (r *Registry) StartAll(ctx context.Context, wg *sync.WaitGroup) error {
 	r.started = r.started[:0]
 
 	for _, entry := range sorted {
+		if r.hasMaxPriority && entry.Priority > r.maxPriority {
+			logger.Infow("skipping component (above max priority)",
+				"component", entry.Component.Name(),
+				"priority", entry.Priority,
+				"maxPriority", r.maxPriority,
+			)
+			continue
+		}
 		if err := entry.Component.Start(ctx, wg); err != nil {
 			for i := len(r.started) - 1; i >= 0; i-- {
 				_ = r.started[i].Stop(ctx)

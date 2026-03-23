@@ -135,6 +135,56 @@ func TestRegistry_Names_Empty(t *testing.T) {
 	assert.Empty(t, names)
 }
 
+func TestRegistry_SetMaxPriority_SkipsHighPriority(t *testing.T) {
+	t.Parallel()
+
+	tracker := &orderTracker{}
+	r := NewRegistry()
+
+	r.Register(&mockComponent{name: "infra", tracker: tracker}, PriorityInfra)
+	r.Register(&mockComponent{name: "core", tracker: tracker}, PriorityCore)
+	r.Register(&mockComponent{name: "buffer", tracker: tracker}, PriorityBuffer)
+	r.Register(&mockComponent{name: "network", tracker: tracker}, PriorityNetwork)
+	r.Register(&mockComponent{name: "automation", tracker: tracker}, PriorityAutomation)
+
+	r.SetMaxPriority(PriorityBuffer) // only start infra, core, buffer
+
+	var wg sync.WaitGroup
+	err := r.StartAll(context.Background(), &wg)
+	require.NoError(t, err)
+
+	assert.Equal(t, []string{"start:infra", "start:core", "start:buffer"}, tracker.order)
+
+	// StopAll should only stop the components that were started.
+	tracker.order = nil
+	err = r.StopAll(context.Background())
+	require.NoError(t, err)
+
+	assert.Equal(t, []string{"stop:buffer", "stop:core", "stop:infra"}, tracker.order)
+}
+
+func TestRegistry_SetMaxPriority_RollbackOnFailure(t *testing.T) {
+	t.Parallel()
+
+	tracker := &orderTracker{}
+	errBoom := errors.New("boom")
+	r := NewRegistry()
+
+	r.Register(&mockComponent{name: "infra", tracker: tracker}, PriorityInfra)
+	r.Register(&mockComponent{name: "buffer", tracker: tracker, startErr: errBoom}, PriorityBuffer)
+	r.Register(&mockComponent{name: "network", tracker: tracker}, PriorityNetwork)
+
+	r.SetMaxPriority(PriorityBuffer)
+
+	var wg sync.WaitGroup
+	err := r.StartAll(context.Background(), &wg)
+	require.Error(t, err)
+	assert.ErrorIs(t, err, errBoom)
+
+	// infra started, buffer failed → rollback infra. network was never attempted.
+	assert.Equal(t, []string{"start:infra", "stop:infra"}, tracker.order)
+}
+
 func TestRegistry_SamePriorityPreservesOrder(t *testing.T) {
 	t.Parallel()
 

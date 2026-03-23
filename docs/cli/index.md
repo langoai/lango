@@ -6,6 +6,7 @@ Lango provides a comprehensive command-line interface built with [Cobra](https:/
 
 | Command | Description |
 |---------|-------------|
+| `lango` | Interactive TUI chat (default entry point) |
 | `lango serve` | Start the gateway server |
 | `lango version` | Print version and build info |
 | `lango health` | Check gateway health |

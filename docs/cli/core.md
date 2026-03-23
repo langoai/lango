@@ -1,5 +1,22 @@
 # Core Commands
 
+## lango (Interactive TUI Chat)
+
+Run `lango` without arguments to start an interactive terminal chat. This is the default entry point and provides a Claude Code-like experience:
+
+- Streaming agent responses with markdown rendering
+- Inline tool approval (`a` allow / `s` allow session / `d` deny)
+- Slash commands (`/help`, `/clear`, `/model`, `/status`, `/exit`)
+- Key bindings: `Enter` send, `Alt+Enter` newline, `Ctrl+C` cancel/quit, `Ctrl+D` quit
+
+Only core components (session store, embedding, knowledge) are started. Network and automation components (gateway, channels, cron, MCP, P2P) are not active in TUI mode.
+
+```bash
+$ lango
+```
+
+---
+
 ## lango serve
 
 Start the gateway server. This boots the full application stack including all enabled channels, tools, embedding, graph, cron, and workflow engines.
