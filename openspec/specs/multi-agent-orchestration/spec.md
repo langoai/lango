@@ -46,6 +46,17 @@ The system SHALL support a multi-agent mode (`agent.multiAgent: true`) that crea
 - **THEN** every spec's Instruction SHALL contain `transfer_to_agent` and `lango-orchestrator`
 - **AND** every spec's Instruction SHALL contain `## Escalation Protocol`
 
+#### Scenario: Navigator fallback protocol
+- **WHEN** the navigator receives a live web query and `browser_search` is unavailable in the current runtime
+- **THEN** its instruction SHALL direct it to continue with `browser_navigate` to a search URL and `browser_extract` in `search_results` mode
+- **AND** if those higher-level tools are also unavailable, it SHALL continue with low-level `browser_action` or `eval` rather than stopping while browser browsing remains in scope
+
+#### Scenario: Navigator bounded search protocol
+- **WHEN** the navigator handles a topic-based live web request
+- **THEN** its instruction SHALL direct it to run `browser_search` once and then prefer current-page extraction over repeated search
+- **AND** it SHALL allow at most one search reformulation when the first results are empty or clearly unrelated
+- **AND** it SHALL stop once the requested count of credible results has been collected
+
 ### Requirement: Tool partitioning by prefix
 Tools SHALL be partitioned to sub-agents based on name prefixes with matching order Librarian → Chronicler → Navigator → Vault → Operator → Unmatched: `exec/fs_/skill_` → operator, `browser_` → navigator, `crypto_/secrets_/payment_` → vault, `search_/rag_/graph_/save_knowledge/save_learning/create_skill/list_skills` → librarian, `memory_/observe_/reflect_` → chronicler, unmatched → Unmatched bucket (not assigned to any agent).
 
@@ -494,19 +505,23 @@ All non-planner sub-agent instructions SHALL include an Output Handling section 
 ### Requirement: Session Isolation
 `SessionIsolation` SHALL be a runtime behavior contract, not metadata only.
 
-#### Scenario: Isolated sub-agent avoids parent history pollution
+#### Scenario: Isolated sub-agent uses same-run overlay
 - **WHEN** a sub-agent with `SessionIsolation=true` runs
-- **THEN** its raw events are written to child session history rather than directly into the parent session history
+- **THEN** its raw events are written to child session history
+- **AND** the active parent session's in-memory view SHALL also see those events for the current run
+- **AND** the parent persistent history SHALL not store those raw events
 
 #### Scenario: Successful isolated run summary-merges to parent
 - **WHEN** an isolated child run completes successfully
-- **THEN** the parent session receives only a summary message
-- **AND** the full child history is not appended to the parent
+- **THEN** any raw in-memory overlay for that child SHALL be removed from the parent view
+- **AND** the parent session receives only a summary message
+- **AND** the full child history is not appended to the parent persistent history
 
-#### Scenario: Failed isolated run discarded
+#### Scenario: Failed isolated run leaves compact failure note
 - **WHEN** an isolated child run fails or returns only a rejection/escalation path
 - **THEN** the child session is discarded
-- **AND** no child summary is merged into the parent
+- **AND** any raw in-memory overlay for that child SHALL be removed from the parent view
+- **AND** the parent session SHALL retain only a compact root-authored failure note
 
 #### Scenario: Non-isolated sub-agent unchanged
 - **WHEN** a sub-agent has `SessionIsolation=false`

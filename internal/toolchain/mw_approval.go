@@ -2,12 +2,14 @@ package toolchain
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"time"
 
 	"github.com/langoai/lango/internal/agent"
 	"github.com/langoai/lango/internal/approval"
 	"github.com/langoai/lango/internal/config"
+	"github.com/langoai/lango/internal/logging"
 	"github.com/langoai/lango/internal/session"
 	"github.com/langoai/lango/internal/wallet"
 )
@@ -30,9 +32,50 @@ func WithApproval(ic config.InterceptorConfig, ap approval.Provider, gs *approva
 				sessionKey = target
 			}
 
+			paramsHash := ""
+			turnState := approval.TurnApprovalStateFromContext(ctx)
+			var existingEntry approval.TurnApprovalEntry
+			var existingEntryOK bool
+			if _, hash, err := approval.TurnApprovalKey(tool.Name, params); err == nil {
+				paramsHash = hash
+			}
+
 			// Check persistent grant — auto-approve if previously "always allowed".
 			if gs != nil && gs.IsGranted(sessionKey, tool.Name) {
+				logApprovalEvent("approval bypassed by session grant", sessionKey, "", tool.Name, "", paramsHash, "bypass", "session", "grant_store")
 				return next(ctx, params)
+			}
+
+			if turnState != nil {
+				if entry, ok, err := turnState.Get(tool.Name, params); err == nil && ok {
+					existingEntry = entry
+					existingEntryOK = true
+					switch entry.Outcome {
+					case approval.TurnOutcomeApproved:
+						logApprovalEvent("approval bypassed by turn-local grant", sessionKey, entry.RequestID, tool.Name, entry.Summary, entry.ParamsHash, "bypass", "turn", entry.Provider)
+						return next(ctx, params)
+					case approval.TurnOutcomeDenied, approval.TurnOutcomeUnavailable:
+						logApprovalEvent("approval replay blocked", sessionKey, entry.RequestID, tool.Name, entry.Summary, entry.ParamsHash, "replay_blocked", "turn", entry.Provider)
+						return nil, approval.FormatToolExecutionError(tool.Name, turnOutcomeError(entry.Outcome))
+					case approval.TurnOutcomeTimeout:
+						if entry.Timeouts >= approval.MaxTurnApprovalTimeouts {
+							logApprovalEvent("approval replay blocked", sessionKey, entry.RequestID, tool.Name, entry.Summary, entry.ParamsHash, "replay_blocked", "turn", entry.Provider)
+							return nil, approval.FormatToolExecutionError(tool.Name, approval.ErrTimeout)
+						}
+						logging.SubsystemSugar("approval").Infow("approval timeout retry allowed",
+							"session", sessionKey,
+							"request_id", entry.RequestID,
+							"tool", tool.Name,
+							"summary", entry.Summary,
+							"params_hash", entry.ParamsHash,
+							"outcome", "retry_allowed",
+							"grant_scope", "turn",
+							"provider", entry.Provider,
+							"timeouts", entry.Timeouts,
+							"max_timeouts", approval.MaxTurnApprovalTimeouts,
+						)
+					}
+				}
 			}
 
 			// Auto-approve small payments via spending limiter threshold.
@@ -57,19 +100,70 @@ func WithApproval(ic config.InterceptorConfig, ap approval.Provider, gs *approva
 			}
 			resp, err := ap.RequestApproval(ctx, req)
 			if err != nil {
+				provider := approval.ProviderFromError(err)
+				outcome := approval.OutcomeFromError(err)
+				if outcome != "" && turnState != nil {
+					timeoutCount := 0
+					if existingEntryOK {
+						timeoutCount = existingEntry.Timeouts
+					}
+					if outcome == approval.TurnOutcomeTimeout {
+						timeoutCount++
+					}
+					_ = turnState.Put(tool.Name, params, approval.TurnApprovalEntry{
+						Outcome:    outcome,
+						Provider:   provider,
+						RequestID:  req.ID,
+						Summary:    req.Summary,
+						ParamsHash: paramsHash,
+						Timeouts:   timeoutCount,
+					})
+				}
+				logApprovalEvent("approval failed", sessionKey, req.ID, tool.Name, req.Summary, paramsHash, string(outcome), "none", provider)
+				if outcome != "" {
+					return nil, approval.FormatToolExecutionError(tool.Name, err)
+				}
 				return nil, fmt.Errorf("tool '%s' approval: %w", tool.Name, err)
 			}
 			if !resp.Approved {
-				sk := session.SessionKeyFromContext(ctx)
-				if sk == "" {
-					return nil, fmt.Errorf("tool '%s' execution denied: no approval channel available (session key missing)", tool.Name)
+				if turnState != nil {
+					timeoutCount := 0
+					if existingEntryOK {
+						timeoutCount = existingEntry.Timeouts
+					}
+					_ = turnState.Put(tool.Name, params, approval.TurnApprovalEntry{
+						Outcome:    approval.TurnOutcomeDenied,
+						Provider:   resp.Provider,
+						RequestID:  req.ID,
+						Summary:    req.Summary,
+						ParamsHash: paramsHash,
+						Timeouts:   timeoutCount,
+					})
 				}
-				return nil, fmt.Errorf("tool '%s' execution denied: user did not approve the action", tool.Name)
+				logApprovalEvent("approval denied", sessionKey, req.ID, tool.Name, req.Summary, paramsHash, "denied", "none", resp.Provider)
+				return nil, approval.FormatToolExecutionError(tool.Name, approval.ErrDenied)
 			}
+
+			if turnState != nil {
+				timeoutCount := 0
+				if existingEntryOK {
+					timeoutCount = existingEntry.Timeouts
+				}
+				_ = turnState.Put(tool.Name, params, approval.TurnApprovalEntry{
+					Outcome:    approval.TurnOutcomeApproved,
+					Provider:   resp.Provider,
+					RequestID:  req.ID,
+					Summary:    req.Summary,
+					ParamsHash: paramsHash,
+					Timeouts:   timeoutCount,
+				})
+			}
+			logApprovalEvent("approval granted", sessionKey, req.ID, tool.Name, req.Summary, paramsHash, "granted", "turn", resp.Provider)
 
 			// Record persistent grant for this session+tool.
 			if resp.AlwaysAllow && gs != nil {
 				gs.Grant(sessionKey, tool.Name)
+				logApprovalEvent("approval persisted", sessionKey, req.ID, tool.Name, req.Summary, paramsHash, "granted", "session", resp.Provider)
 			}
 
 			return next(ctx, params)
@@ -214,4 +308,30 @@ func Truncate(s string, maxLen int) string {
 		return s
 	}
 	return s[:maxLen] + "..."
+}
+
+func logApprovalEvent(message, sessionKey, requestID, toolName, summary, paramsHash, outcome, grantScope, provider string) {
+	logging.SubsystemSugar("approval").Infow(message,
+		"session", sessionKey,
+		"request_id", requestID,
+		"tool", toolName,
+		"summary", summary,
+		"params_hash", paramsHash,
+		"outcome", outcome,
+		"grant_scope", grantScope,
+		"provider", provider,
+	)
+}
+
+func turnOutcomeError(outcome approval.TurnOutcome) error {
+	switch outcome {
+	case approval.TurnOutcomeDenied:
+		return approval.ErrDenied
+	case approval.TurnOutcomeTimeout:
+		return approval.ErrTimeout
+	case approval.TurnOutcomeUnavailable:
+		return approval.ErrUnavailable
+	default:
+		return errors.New("unknown approval outcome")
+	}
 }

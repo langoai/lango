@@ -1,15 +1,20 @@
 ## ADDED Requirements
 
 ### Requirement: ChildSession type
-The `session` package SHALL define a `ChildSession` type with fields: ID, ParentID, AgentName, Config, CreatedAt, and Status. ChildSession SHALL support "read parent, write child" isolation.
+The `session` package SHALL define a `ChildSession` type with fields: ID, ParentID, AgentName, Config, CreatedAt, and Status. ChildSession SHALL support cross-turn isolation while allowing same-run causal visibility through the active parent session view.
 
 #### Scenario: Child session reads parent history
 - **WHEN** a ChildSession is created from a parent session
 - **THEN** it SHALL be able to read the parent's message history
 
-#### Scenario: Child session writes are isolated
-- **WHEN** a ChildSession appends events
-- **THEN** the events SHALL NOT appear in the parent session's history
+#### Scenario: Child session same-run overlay visibility
+- **WHEN** an isolated child session appends events during an active run
+- **THEN** those events SHALL be visible through the parent session's in-memory event stream for the remainder of that run
+- **AND** they SHALL NOT be persisted as raw messages in the parent store
+
+#### Scenario: Child session writes remain cross-turn isolated
+- **WHEN** the next turn reloads the parent session from persistent storage
+- **THEN** raw child events SHALL NOT appear in the parent session history
 
 ### Requirement: ChildSessionStore interface
 The package SHALL define a `ChildSessionStore` interface with methods: ForkChild, MergeChild, DiscardChild.
@@ -18,13 +23,15 @@ The package SHALL define a `ChildSessionStore` interface with methods: ForkChild
 - **WHEN** ForkChild is called with a parent session ID
 - **THEN** a new ChildSession SHALL be created with access to parent history
 
-#### Scenario: Merge brings results back
+#### Scenario: Merge brings back summary only
 - **WHEN** MergeChild is called on a completed child session
-- **THEN** the child's result (via summarizer) SHALL be appended to the parent session
+- **THEN** the parent persistent history SHALL receive only a summary outcome
+- **AND** raw child events SHALL remain absent from the persisted parent history
 
-#### Scenario: Discard removes child
-- **WHEN** DiscardChild is called
-- **THEN** the child session data SHALL be cleaned up without affecting the parent
+#### Scenario: Discard leaves compact failure note only
+- **WHEN** DiscardChild is called after a runtime failure with a discard reason
+- **THEN** the child session data SHALL be cleaned up without affecting the raw parent history
+- **AND** the parent persistent history MAY receive only a compact root-authored failure note
 
 ### Requirement: StructuredSummarizer
 The `adk` package SHALL provide a `StructuredSummarizer` that extracts the last assistant response from a child session as the merge result. This SHALL be the default summarizer (zero LLM cost).

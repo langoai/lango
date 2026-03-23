@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"strings"
 	"time"
+
+	"github.com/langoai/lango/internal/approval"
 )
 
 // ErrorCode identifies the category of an agent error.
@@ -18,6 +20,7 @@ const (
 	ErrTurnLimit   ErrorCode = "E004"
 	ErrInternal    ErrorCode = "E005"
 	ErrIdleTimeout ErrorCode = "E006"
+	ErrToolChurn   ErrorCode = "E007"
 )
 
 // AgentError is a structured error type that preserves partial results
@@ -49,11 +52,21 @@ func (e *AgentError) UserMessage() string {
 	case ErrModelError:
 		return fmt.Sprintf("[%s] The AI model returned an error. Please try again.", e.Code)
 	case ErrToolError:
+		switch {
+		case errors.Is(e.Cause, approval.ErrDenied):
+			return fmt.Sprintf("[%s] The action was denied by approval. Approve it again if you want to continue.", e.Code)
+		case errors.Is(e.Cause, approval.ErrTimeout):
+			return fmt.Sprintf("[%s] The approval request expired before confirmation. Try again and approve the action promptly.", e.Code)
+		case errors.Is(e.Cause, approval.ErrUnavailable):
+			return fmt.Sprintf("[%s] No approval channel was available for this action. Check your active channel or companion connection.", e.Code)
+		}
 		return fmt.Sprintf("[%s] A tool execution failed. Please try again or rephrase your request.", e.Code)
 	case ErrTurnLimit:
 		return fmt.Sprintf("[%s] The agent reached its maximum turn limit before producing a final answer. Try a simpler request or increase `agent.maxTurns`.", e.Code)
 	case ErrIdleTimeout:
 		return fmt.Sprintf("[%s] The request was cancelled due to %s of inactivity. The agent may be stuck — try rephrasing your question.", e.Code, e.Elapsed.Truncate(time.Second))
+	case ErrToolChurn:
+		return fmt.Sprintf("[%s] The agent got stuck calling the same tool repeatedly and was stopped. Please try rephrasing your request.", e.Code)
 	default:
 		return fmt.Sprintf("[%s] An internal error occurred. Please try again.", e.Code)
 	}
@@ -81,15 +94,26 @@ func classifyError(err error) ErrorCode {
 		return ErrTurnLimit
 	}
 
-	// Tool errors
-	if strings.Contains(msg, "tool") || strings.Contains(msg, "function call") {
+	// Tool churn (consecutive same-tool loop detected by Run())
+	if strings.Contains(msg, "consecutively, forcing stop") {
+		return ErrToolChurn
+	}
+
+	if errors.Is(err, approval.ErrDenied) || errors.Is(err, approval.ErrTimeout) || errors.Is(err, approval.ErrUnavailable) {
 		return ErrToolError
 	}
 
 	// thought_signature errors — Gemini API rejects replayed thought data.
-	// Classify as model error to skip learning-based retry (not a fixable tool error).
+	// Must be checked BEFORE "tool"/"function call" keywords because the
+	// Gemini error message contains both (e.g., "Function call is missing
+	// a thought_signature in functionCall parts").
 	if strings.Contains(msg, "thought_signature") || strings.Contains(msg, "thoughtSignature") {
 		return ErrModelError
+	}
+
+	// Tool errors
+	if strings.Contains(msg, "tool") || strings.Contains(msg, "function call") {
+		return ErrToolError
 	}
 
 	// Model errors

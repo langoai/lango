@@ -24,6 +24,7 @@ import (
 	"github.com/langoai/lango/internal/runledger"
 	"github.com/langoai/lango/internal/security"
 	"github.com/langoai/lango/internal/session"
+	"github.com/langoai/lango/internal/tools/browser"
 )
 
 func logger() *zap.SugaredLogger { return logging.Gateway() }
@@ -300,6 +301,8 @@ func (s *Server) handleChatMessage(client *Client, params json.RawMessage) (inte
 	stopProgress := func() { progressOnce.Do(func() { close(progressDone) }) }
 
 	ctx = session.WithSessionKey(ctx, sessionKey)
+	ctx = approval.WithTurnApprovalState(ctx, approval.NewTurnApprovalState())
+	ctx = browser.WithRequestState(ctx, browser.NewRequestState())
 	response, err := s.agent.RunStreaming(ctx, sessionKey, req.Message, func(chunk string) {
 		if s.sanitizer != nil && s.sanitizer.Enabled() {
 			chunk = s.sanitizer.Sanitize(chunk)

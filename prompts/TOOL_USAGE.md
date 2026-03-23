@@ -23,10 +23,18 @@
 
 ### Browser Tool
 - Sessions are created automatically on the first browser action — you do not need to manage session lifecycle.
-- Prefer `browser_search` for open-ended live web queries instead of manually driving a search engine page.
+- Use `browser_search` for open-ended live web queries instead of manually driving a search engine page.
+- Call `browser_search` ONCE. If it returns results (`resultCount > 0`), do NOT call `browser_search` again — present the results or use `browser_navigate` on a result URL for details.
+- You may reformulate and call `browser_search` EXACTLY once more, only when the first search returns zero results or results clearly unrelated to the request. This is your last search.
+- NEVER call `browser_search` more than twice per request.
+- If the user gives a URL directly, navigate to it once and then use `browser_extract` on the current page. Do not re-navigate to the same URL unless the previous navigation clearly failed.
+- If `browser_search` is unavailable in the current runtime, do NOT stop. Fall back to `browser_navigate` with a search URL, then use `browser_extract` with mode `search_results`.
+- If `browser_extract` is also unavailable, continue with `browser_action` and `eval` to inspect result links and page content manually. Missing a higher-level browser tool is not a reason to abandon an otherwise valid browser task.
 - Prefer `browser_observe` and `browser_extract` to inspect the current page before falling back to low-level `browser_action`.
 - `browser_navigate` returns a structured page snapshot with headings, links, and actionable elements. Use it as the first step when opening a page.
 - Use `browser_extract` with mode `search_results` to pull result cards from a search page, or `article` to pull the main readable content.
+- If the user asks for a fixed number of items such as "3 news articles", stop searching once you have that many credible candidates. Do not expand beyond the requested count.
+- If a browser action is denied by approval or the approval request expires, do not immediately retry the exact same browser action. Explain the approval issue or choose a materially different lower-risk browser step instead.
 - Use `browser_action` with action `wait` (selector, timeout) before clicking or typing on dynamically loaded elements.
 - Capture screenshots with `browser_screenshot` to verify visual state when interactions produce visual changes.
 - Use `browser_action` with action `eval` (JavaScript) for operations that CSS selectors cannot express, such as scrolling, reading computed styles, or interacting with shadow DOM.

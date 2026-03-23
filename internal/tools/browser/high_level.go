@@ -5,6 +5,9 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/url"
+
+	"github.com/langoai/lango/internal/ctxkeys"
+	"github.com/langoai/lango/internal/session"
 )
 
 const (
@@ -37,12 +40,16 @@ type ActionCandidate struct {
 
 // PageSnapshot is a structured summary of the current page.
 type PageSnapshot struct {
-	Title    string            `json:"title"`
-	URL      string            `json:"url"`
-	Snippet  string            `json:"snippet"`
-	Headings []string          `json:"headings,omitempty"`
-	Links    []PageLink        `json:"links,omitempty"`
-	Actions  []ActionCandidate `json:"actions,omitempty"`
+	PageType      string            `json:"pageType"`
+	Title         string            `json:"title"`
+	URL           string            `json:"url"`
+	Snippet       string            `json:"snippet"`
+	ResultCount   int               `json:"resultCount"`
+	Empty         bool              `json:"empty"`
+	Headings      []string          `json:"headings,omitempty"`
+	Links         []PageLink        `json:"links,omitempty"`
+	Actions       []ActionCandidate `json:"actions,omitempty"`
+	SearchResults []SearchResult    `json:"searchResults,omitempty"`
 }
 
 // LinksResult contains extracted links from the current page.
@@ -54,10 +61,12 @@ type LinksResult struct {
 
 // ArticleResult contains structured article-like content from the current page.
 type ArticleResult struct {
+	PageType string   `json:"pageType"`
 	Title    string   `json:"title"`
 	URL      string   `json:"url"`
 	Headings []string `json:"headings,omitempty"`
 	Content  string   `json:"content"`
+	Empty    bool     `json:"empty"`
 }
 
 // SearchResult is a structured web search result item.
@@ -69,10 +78,16 @@ type SearchResult struct {
 
 // SearchResponse is a structured response for browser-based web search.
 type SearchResponse struct {
-	Query   string         `json:"query,omitempty"`
-	Title   string         `json:"title"`
-	URL     string         `json:"url"`
-	Results []SearchResult `json:"results,omitempty"`
+	PageType     string         `json:"pageType"`
+	Query        string         `json:"query,omitempty"`
+	Title        string         `json:"title"`
+	URL          string         `json:"url"`
+	ResultCount  int            `json:"resultCount"`
+	Empty        bool           `json:"empty"`
+	Results      []SearchResult `json:"results,omitempty"`
+	LimitReached bool           `json:"limitReached,omitempty"`
+	NextStep     string         `json:"nextStep,omitempty"`
+	Warning      string         `json:"warning,omitempty"`
 }
 
 // Snapshot returns a structured summary of the current page.
@@ -126,6 +141,32 @@ func (t *Tool) Search(ctx context.Context, sessionID, query string, limit int) (
 		return nil, fmt.Errorf("query is required")
 	}
 
+	// Pre-check search limit before executing the actual search.
+	if state := RequestStateFromContext(ctx); state != nil {
+		count, queries, shouldWarn, limitReached := state.RecordSearch(query, state.CurrentURL())
+		if limitReached {
+			logger.Warnw("browser search limit reached",
+				"session", session.SessionKeyFromContext(ctx),
+				"request_id", state.ID,
+				"agent", ctxkeys.AgentNameFromContext(ctx),
+				"search_count", count,
+				"queries", queries,
+				"current_url", state.CurrentURL(),
+			)
+			return nil, ErrSearchLimitReached
+		}
+		if shouldWarn {
+			logger.Warnw("browser search churn detected",
+				"session", session.SessionKeyFromContext(ctx),
+				"request_id", state.ID,
+				"agent", ctxkeys.AgentNameFromContext(ctx),
+				"search_count", count,
+				"queries", queries,
+				"current_url", state.CurrentURL(),
+			)
+		}
+	}
+
 	searchURL := buildSearchURL(query)
 	if err := t.Navigate(ctx, sessionID, searchURL); err != nil {
 		return nil, err
@@ -136,6 +177,21 @@ func (t *Tool) Search(ctx context.Context, sessionID, query string, limit int) (
 		return nil, err
 	}
 	out.Query = query
+
+	// Update current URL in request state after successful search.
+	if state := RequestStateFromContext(ctx); state != nil {
+		state.mu.Lock()
+		state.currentURL = out.URL
+		state.mu.Unlock()
+	}
+
+	// Set NextStep advisory based on results.
+	if out.ResultCount > 0 {
+		out.NextStep = "Results found. Present these to the user or call browser_navigate on a result URL for details. Do NOT search again."
+	} else {
+		out.NextStep = "No results found. You may reformulate your query once and retry, or inform the user."
+	}
+
 	return out, nil
 }
 
@@ -292,15 +348,80 @@ func snapshotScript(linkLimit, actionLimit int) string {
 			(item) => item.selector
 		).slice(0, %d);
 
+		const pickText = (root, selectors) => {
+			for (const selector of selectors) {
+				const el = root.querySelector(selector);
+				if (!el) {
+					continue;
+				}
+				const text = normalize(el.innerText || el.textContent);
+				if (text) {
+					return text;
+				}
+			}
+			return "";
+		};
+		let containers = [];
+		const resultSelectors = [
+			"article[data-testid='result']",
+			"[data-testid='result']",
+			".result",
+			".result__body",
+			"li.b_algo",
+			".g"
+		];
+		for (const selector of resultSelectors) {
+			containers = containers.concat(Array.from(document.querySelectorAll(selector)).filter(isVisible));
+		}
+		const uniqueContainers = [];
+		const seenContainers = new Set();
+		for (const el of containers) {
+			if (seenContainers.has(el)) {
+				continue;
+			}
+			seenContainers.add(el);
+			uniqueContainers.push(el);
+		}
+		const searchResults = uniqueBy(
+			uniqueContainers.map((root) => {
+				const anchor = root.querySelector("a[href]");
+				if (!anchor) {
+					return null;
+				}
+				const resultURL = absURL(anchor.getAttribute("href") || anchor.href);
+				const title = normalize(
+					anchor.innerText ||
+					pickText(root, ["h1", "h2", "h3"]) ||
+					anchor.getAttribute("aria-label") ||
+					anchor.getAttribute("title")
+				);
+				const snippet = pickText(root, [".result__snippet", ".snippet", ".b_caption p", "p"]);
+				if (!title || !/^https?:\/\//i.test(resultURL)) {
+					return null;
+				}
+				return {
+					title: title,
+					url: resultURL,
+					snippet: snippet
+				};
+			}).filter(Boolean),
+			(item) => item.url
+		).slice(0, %d);
+		const pageType = searchResults.length > 0 ? "search_results" : "generic";
+
 		return {
+			pageType: pageType,
 			title: document.title || "",
 			url: window.location.href,
 			snippet: bodyText.slice(0, 1000),
+			resultCount: searchResults.length,
+			empty: bodyText.length === 0 && searchResults.length === 0,
 			headings: headings,
 			links: links,
-			actions: actions
+			actions: actions,
+			searchResults: searchResults
 		};
-	}`, defaultHeadingLimit, linkLimit, actionLimit)
+	}`, defaultHeadingLimit, linkLimit, actionLimit, defaultSearchResultsLimit)
 }
 
 func articleScript() string {
@@ -327,10 +448,12 @@ func articleScript() string {
 		).slice(0, %d);
 
 		return {
+			pageType: "article",
 			title: document.title || "",
 			url: window.location.href,
 			headings: headings,
-			content: normalize(root ? root.innerText : "").slice(0, 5000)
+			content: normalize(root ? root.innerText : "").slice(0, 5000),
+			empty: normalize(root ? root.innerText : "") === ""
 		};
 	}`, defaultHeadingLimit)
 }
@@ -448,10 +571,14 @@ func searchResultsScript(limit int) string {
 			);
 		}
 
+		const trimmed = results.slice(0, %d);
 		return {
+			pageType: "search_results",
 			title: document.title || "",
 			url: window.location.href,
-			results: results.slice(0, %d)
+			resultCount: trimmed.length,
+			empty: trimmed.length === 0,
+			results: trimmed
 		};
-	}`, limit)
+		}`, limit)
 }

@@ -92,6 +92,11 @@ func TestAgentError_UserMessage(t *testing.T) {
 			err:     &AgentError{Code: ErrInternal},
 			wantSub: "internal error",
 		},
+		{
+			give:    "tool churn",
+			err:     &AgentError{Code: ErrToolChurn},
+			wantSub: "same tool repeatedly",
+		},
 	}
 
 	for _, tt := range tests {
@@ -155,6 +160,16 @@ func TestClassifyError(t *testing.T) {
 			give: "thoughtSignature camelCase error",
 			err:  fmt.Errorf("field thoughtSignature is not valid"),
 			want: ErrModelError,
+		},
+		{
+			give: "thought_signature in functionCall parts (Gemini API error)",
+			err:  fmt.Errorf("Error 400, Message: Function call is missing a thought_signature in functionCall parts"),
+			want: ErrModelError,
+		},
+		{
+			give: "tool churn",
+			err:  fmt.Errorf(`tool "browser_search" called 5 times consecutively, forcing stop`),
+			want: ErrToolChurn,
 		},
 		{
 			give: "generic error",

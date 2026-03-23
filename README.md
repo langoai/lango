@@ -38,6 +38,7 @@ This project includes experimental AI Agent features and is currently in an unst
 - 🔥 **Fast** - Single binary, <100ms startup, <250MB memory
 - 🤖 **Multi-Provider AI** - OpenAI, Anthropic, Gemini, Ollama with unified interface
 - 🔌 **Multi-Channel** - Telegram, Discord, Slack support
+- 🔐 **Approval Guardrails** - Channel-native tool approvals with turn-local replay dedupe, canonical browser-search matching, and bounded timeout retries
 - 🛠️ **Rich Tools** - Shell execution, file system operations, browser automation, crypto & secrets tools
 - 🧠 **Self-Learning** - Knowledge store, learning engine, file-based skill system with GitHub import (git clone + HTTP fallback), observational memory, proactive knowledge librarian
 - 📊 **Knowledge Graph & Graph RAG** - BoltDB triple store with hybrid vector + graph retrieval
@@ -975,7 +976,7 @@ When `agent.multiAgent` is enabled, Lango builds a hierarchical agent tree with 
 | Agent          | Role                                                                                                                | Tools                                                                                                                                                  |
 | -------------- | ------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | **operator**   | System operations: shell commands, file I/O, skill execution                                                        | exec_*, fs_*, skill_*                                                                                                                                  |
-| **navigator**  | Web browsing: search, page navigation, structured extraction, interaction, screenshots                               | browser_*                                                                                                                                              |
+| **navigator**  | Web browsing: bounded search, page navigation, structured extraction, interaction, screenshots                       | browser_*                                                                                                                                              |
 | **vault**      | Security: encryption, secret management, blockchain payments                                                        | crypto_*, secrets_*, payment_*                                                                                                                         |
 | **librarian**  | Knowledge: search, RAG, graph traversal, skill management, learning data management, proactive knowledge extraction | search_*, rag_*, graph_*, save_knowledge, save_learning, learning_*, create_skill, list_skills, librarian_pending_inquiries, librarian_dismiss_inquiry |
 | **automator**  | Automation: cron scheduling, background tasks, workflow pipelines                                                   | cron_*, bg_*, workflow_*                                                                                                                               |
@@ -999,7 +1000,7 @@ When `agentMemory.enabled` is `true`, each sub-agent maintains its own persisten
 
 Enable via `lango onboard` > Multi-Agent menu or set `agent.multiAgent: true` in import JSON. Use `lango agent status` and `lango agent list` to inspect.
 
-Built-in specialist agents honor isolated child-session routing at runtime. Their raw delegated turns stay in child session history, and only summary results merge back into the parent conversation.
+Built-in specialist agents honor cross-turn child-session isolation at runtime. Their raw delegated turns stay out of the persisted parent conversation, while the active run still sees tool/results through an in-memory overlay and the parent retains only summary or compact failure-note outcomes afterward.
 
 ## A2A Protocol (🧪 Experimental Features)
 

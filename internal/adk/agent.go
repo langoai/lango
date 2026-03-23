@@ -2,6 +2,7 @@ package adk
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"iter"
 	"regexp"
@@ -33,6 +34,11 @@ type ErrorFixProvider interface {
 
 // defaultMaxTurns is the default maximum number of tool-calling iterations per agent run.
 const defaultMaxTurns = 50
+
+// maxConsecutiveSameToolCalls is the safety limit for detecting tool churn loops.
+// When the same tool is called this many times in a row without any other tool
+// call or text generation, the agent run is force-stopped.
+const maxConsecutiveSameToolCalls = 5
 
 // AgentOption configures optional Agent behavior at construction time.
 type AgentOption func(*agentOptions)
@@ -265,6 +271,12 @@ func (a *Agent) Run(ctx context.Context, sessionID string, input string) iter.Se
 		wrapUpRemaining := 0
 		inWrapUp := false
 
+		// Tool churn detection: force-stop when the same tool is called
+		// consecutively without the model producing any other tool call or
+		// text response (indicates the model is stuck in a loop).
+		lastToolName := ""
+		consecutiveSameToolCalls := 0
+
 		for event, err := range inner {
 			if err != nil {
 				yield(nil, err)
@@ -299,10 +311,37 @@ func (a *Agent) Run(ctx context.Context, sessionID string, input string) iter.Se
 				}
 			}
 
+			// Reset tool churn counter when the model generates a text-only
+			// response (reasoning step, not a tool call), indicating it is
+			// not stuck in a single-tool loop.
+			if event.Content != nil && hasText(event) && !hasFunctionCalls(event) {
+				lastToolName = ""
+				consecutiveSameToolCalls = 0
+			}
+
 			// Count events containing function calls as agent turns.
 			// Delegation transfers (agent-to-agent routing) are not counted
 			// because they are routing overhead, not actual tool work.
 			if event.Content != nil && hasFunctionCalls(event) && !isDelegationEvent(event) {
+				// Tool churn detection: same tool called consecutively.
+				if toolName := extractPrimaryToolName(event); toolName != "" {
+					if toolName == lastToolName {
+						consecutiveSameToolCalls++
+					} else {
+						lastToolName = toolName
+						consecutiveSameToolCalls = 1
+					}
+					if consecutiveSameToolCalls >= maxConsecutiveSameToolCalls {
+						logger().Warnw("tool churn detected, forcing stop",
+							"session", sessionID,
+							"tool", toolName,
+							"consecutiveCalls", consecutiveSameToolCalls,
+							"maxAllowed", maxConsecutiveSameToolCalls)
+						yield(nil, fmt.Errorf("tool %q called %d times consecutively, forcing stop", toolName, consecutiveSameToolCalls))
+						return
+					}
+				}
+
 				turnCount++
 
 				// Log a warning at 80% of the turn limit for observability.
@@ -366,6 +405,20 @@ func isDelegationEvent(e *session.Event) bool {
 	return e.Actions.TransferToAgent != ""
 }
 
+// extractPrimaryToolName returns the name of the first FunctionCall in the event,
+// or empty string if the event contains no function calls.
+func extractPrimaryToolName(e *session.Event) string {
+	if e.Content == nil {
+		return ""
+	}
+	for _, p := range e.Content.Parts {
+		if p.FunctionCall != nil {
+			return p.FunctionCall.Name
+		}
+	}
+	return ""
+}
+
 // RunAndCollect executes the agent and returns the full text response.
 // If the agent encounters a "failed to find agent" error (hallucinated agent
 // name), it sends a correction message and retries once.
@@ -381,7 +434,7 @@ func (a *Agent) RunAndCollect(ctx context.Context, sessionID, input string, opts
 		// call transfer_to_agent and force re-routing through the orchestrator.
 		if resp != "" && containsRejectPattern(resp) && len(a.adkAgent.SubAgents()) > 0 {
 			if a.sessionService != nil {
-				_ = a.sessionService.DiscardActiveChild(sessionID)
+				_ = a.sessionService.DiscardActiveChildWithReason(sessionID, "escalated without producing a result")
 			}
 			logger().Warnw("sub-agent REJECT detected in text, forcing re-route",
 				"session", sessionID,
@@ -418,6 +471,41 @@ func (a *Agent) RunAndCollect(ctx context.Context, sessionID, input string, opts
 
 	badAgent := extractMissingAgent(err)
 	if badAgent == "" || len(a.adkAgent.SubAgents()) == 0 {
+		// Tool churn recovery: if a sub-agent was stopped due to repeated
+		// same-tool calls, discard the stuck child session and let the
+		// orchestrator respond using whatever information was gathered.
+		var agentErr *AgentError
+		if errors.As(err, &agentErr) && agentErr.Code == ErrToolChurn && len(a.adkAgent.SubAgents()) > 0 {
+			if a.sessionService != nil {
+				_ = a.sessionService.DiscardActiveChildWithReason(sessionID, "same tool loop detected")
+			}
+			recovery := "[System: The previous sub-agent was stopped because it called the same tool repeatedly without producing a response. " +
+				"Do NOT delegate to the same sub-agent again for this request. " +
+				"Respond to the user directly using whatever information has already been gathered in this conversation. " +
+				"If no useful information was found, apologize and tell the user you were unable to complete the search.]"
+			logger().Infow("tool churn recovery attempt",
+				"session", sessionID,
+				"elapsed", time.Since(start).String())
+			retryResp, retryErr := a.runAndCollectOnce(ctx, sessionID, recovery, &ro)
+			if retryErr == nil && retryResp != "" {
+				if a.sessionService != nil {
+					_ = a.sessionService.CloseActiveChild(sessionID)
+				}
+				logger().Infow("tool churn recovery succeeded",
+					"session", sessionID,
+					"elapsed", time.Since(start).String(),
+					"response_len", len(retryResp))
+				return retryResp, nil
+			}
+			logger().Warnw("tool churn recovery failed",
+				"session", sessionID,
+				"elapsed", time.Since(start).String(),
+				"error", retryErr)
+			if retryResp != "" && len(retryResp) > len(resp) {
+				resp = retryResp
+			}
+		}
+
 		// Try learning-based error correction before giving up.
 		if a.errorFixProvider != nil {
 			if fix, ok := a.errorFixProvider.GetFixForError(ctx, "", err); ok {
@@ -448,7 +536,7 @@ func (a *Agent) RunAndCollect(ctx context.Context, sessionID, input string, opts
 			"error", err)
 		// Return partial result from the best attempt if available.
 		if a.sessionService != nil {
-			_ = a.sessionService.DiscardActiveChild(sessionID)
+			_ = a.sessionService.DiscardActiveChildWithReason(sessionID, "agent error")
 		}
 		return resp, err
 	}
@@ -477,7 +565,7 @@ func (a *Agent) RunAndCollect(ctx context.Context, sessionID, input string, opts
 			resp = retryResp
 		}
 		if a.sessionService != nil {
-			_ = a.sessionService.DiscardActiveChild(sessionID)
+			_ = a.sessionService.DiscardActiveChildWithReason(sessionID, "agent error")
 		}
 		return resp, retryErr
 	}
@@ -509,7 +597,7 @@ func (a *Agent) runAndCollectOnce(ctx context.Context, sessionID, input string, 
 		if err != nil {
 			partial := b.String()
 			if a.sessionService != nil {
-				_ = a.sessionService.DiscardActiveChild(sessionID)
+				_ = a.sessionService.DiscardActiveChildWithReason(sessionID, discardReasonForError(err))
 			}
 			return partial, &AgentError{
 				Code:    classifyError(err),
@@ -546,9 +634,6 @@ func (a *Agent) runAndCollectOnce(ctx context.Context, sessionID, input string, 
 		}
 
 		if event.Partial {
-			if !a.shouldCollectUserText(event.Author) {
-				continue
-			}
 			// Streaming text chunk — collect incrementally.
 			sawVisiblePartial = true
 			for _, part := range event.Content.Parts {
@@ -557,9 +642,6 @@ func (a *Agent) runAndCollectOnce(ctx context.Context, sessionID, input string, 
 				}
 			}
 		} else if !sawVisiblePartial {
-			if !a.shouldCollectUserText(event.Author) {
-				continue
-			}
 			// Non-streaming mode: no partial events were seen,
 			// so collect from the final complete response.
 			for _, part := range event.Content.Parts {
@@ -577,6 +659,9 @@ func (a *Agent) runAndCollectOnce(ctx context.Context, sessionID, input string, 
 	// timeout that the iterator failed to propagate.
 	if err := ctx.Err(); err != nil {
 		partial := b.String()
+		if a.sessionService != nil {
+			_ = a.sessionService.DiscardActiveChildWithReason(sessionID, discardReasonForError(err))
+		}
 		return partial, &AgentError{
 			Code:    ErrTimeout,
 			Message: "agent error",
@@ -680,9 +765,6 @@ func (a *Agent) RunStreaming(ctx context.Context, sessionID, input string, onChu
 		}
 
 		if event.Partial {
-			if !a.shouldCollectUserText(event.Author) {
-				continue
-			}
 			sawVisiblePartial = true
 			for _, part := range event.Content.Parts {
 				if part.Text != "" {
@@ -693,9 +775,6 @@ func (a *Agent) RunStreaming(ctx context.Context, sessionID, input string, onChu
 				}
 			}
 		} else if !sawVisiblePartial {
-			if !a.shouldCollectUserText(event.Author) {
-				continue
-			}
 			// Non-streaming mode: collect from final response.
 			for _, part := range event.Content.Parts {
 				if part.Text != "" {
@@ -711,7 +790,7 @@ func (a *Agent) RunStreaming(ctx context.Context, sessionID, input string, onChu
 	if err := ctx.Err(); err != nil {
 		partial := b.String()
 		if a.sessionService != nil {
-			_ = a.sessionService.DiscardActiveChild(sessionID)
+			_ = a.sessionService.DiscardActiveChildWithReason(sessionID, discardReasonForError(err))
 		}
 		return partial, &AgentError{
 			Code:    ErrTimeout,
@@ -725,6 +804,15 @@ func (a *Agent) RunStreaming(ctx context.Context, sessionID, input string, onChu
 		_ = a.sessionService.CloseActiveChild(sessionID)
 	}
 	return b.String(), nil
+}
+
+func discardReasonForError(err error) string {
+	switch classifyError(err) {
+	case ErrToolChurn:
+		return "same tool loop detected"
+	default:
+		return "agent error"
+	}
 }
 
 // hasText reports whether the event contains any non-empty text part.

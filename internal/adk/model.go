@@ -250,14 +250,18 @@ func (m *ModelAdapter) GenerateContent(ctx context.Context, req *model.LLMReques
 						if id == "" {
 							id = "call_" + evt.ToolCall.Name
 						}
+						// Partial events are for UI notification only.
+						// Do NOT carry Thought/ThoughtSignature here — the
+						// signature may not have arrived yet in the stream,
+						// and storing Thought=true with nil signature corrupts
+						// session history. The final toolAccum.done() emits
+						// the correct values.
 						part := &genai.Part{
 							FunctionCall: &genai.FunctionCall{
 								ID:   id,
 								Name: evt.ToolCall.Name,
 								Args: args,
 							},
-							Thought:          evt.ToolCall.Thought,
-							ThoughtSignature: evt.ToolCall.ThoughtSignature,
 						}
 						resp := &model.LLMResponse{
 							Content: &genai.Content{
