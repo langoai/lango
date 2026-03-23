@@ -41,6 +41,8 @@ import (
 	"github.com/langoai/lango/internal/ent/session"
 	"github.com/langoai/lango/internal/ent/sessionprovenance"
 	"github.com/langoai/lango/internal/ent/tokenusage"
+	"github.com/langoai/lango/internal/ent/turntrace"
+	"github.com/langoai/lango/internal/ent/turntraceevent"
 	"github.com/langoai/lango/internal/ent/workflowrun"
 	"github.com/langoai/lango/internal/ent/workflowsteprun"
 )
@@ -100,6 +102,10 @@ type Client struct {
 	SessionProvenance *SessionProvenanceClient
 	// TokenUsage is the client for interacting with the TokenUsage builders.
 	TokenUsage *TokenUsageClient
+	// TurnTrace is the client for interacting with the TurnTrace builders.
+	TurnTrace *TurnTraceClient
+	// TurnTraceEvent is the client for interacting with the TurnTraceEvent builders.
+	TurnTraceEvent *TurnTraceEventClient
 	// WorkflowRun is the client for interacting with the WorkflowRun builders.
 	WorkflowRun *WorkflowRunClient
 	// WorkflowStepRun is the client for interacting with the WorkflowStepRun builders.
@@ -140,6 +146,8 @@ func (c *Client) init() {
 	c.Session = NewSessionClient(c.config)
 	c.SessionProvenance = NewSessionProvenanceClient(c.config)
 	c.TokenUsage = NewTokenUsageClient(c.config)
+	c.TurnTrace = NewTurnTraceClient(c.config)
+	c.TurnTraceEvent = NewTurnTraceEventClient(c.config)
 	c.WorkflowRun = NewWorkflowRunClient(c.config)
 	c.WorkflowStepRun = NewWorkflowStepRunClient(c.config)
 }
@@ -259,6 +267,8 @@ func (c *Client) Tx(ctx context.Context) (*Tx, error) {
 		Session:               NewSessionClient(cfg),
 		SessionProvenance:     NewSessionProvenanceClient(cfg),
 		TokenUsage:            NewTokenUsageClient(cfg),
+		TurnTrace:             NewTurnTraceClient(cfg),
+		TurnTraceEvent:        NewTurnTraceEventClient(cfg),
 		WorkflowRun:           NewWorkflowRunClient(cfg),
 		WorkflowStepRun:       NewWorkflowStepRunClient(cfg),
 	}, nil
@@ -305,6 +315,8 @@ func (c *Client) BeginTx(ctx context.Context, opts *sql.TxOptions) (*Tx, error) 
 		Session:               NewSessionClient(cfg),
 		SessionProvenance:     NewSessionProvenanceClient(cfg),
 		TokenUsage:            NewTokenUsageClient(cfg),
+		TurnTrace:             NewTurnTraceClient(cfg),
+		TurnTraceEvent:        NewTurnTraceEventClient(cfg),
 		WorkflowRun:           NewWorkflowRunClient(cfg),
 		WorkflowStepRun:       NewWorkflowStepRunClient(cfg),
 	}, nil
@@ -341,7 +353,7 @@ func (c *Client) Use(hooks ...Hook) {
 		c.Message, c.Observation, c.PaymentTx, c.PeerReputation,
 		c.ProvenanceAttribution, c.ProvenanceCheckpoint, c.Reflection, c.RunJournal,
 		c.RunSnapshot, c.RunStep, c.Secret, c.Session, c.SessionProvenance,
-		c.TokenUsage, c.WorkflowRun, c.WorkflowStepRun,
+		c.TokenUsage, c.TurnTrace, c.TurnTraceEvent, c.WorkflowRun, c.WorkflowStepRun,
 	} {
 		n.Use(hooks...)
 	}
@@ -356,7 +368,7 @@ func (c *Client) Intercept(interceptors ...Interceptor) {
 		c.Message, c.Observation, c.PaymentTx, c.PeerReputation,
 		c.ProvenanceAttribution, c.ProvenanceCheckpoint, c.Reflection, c.RunJournal,
 		c.RunSnapshot, c.RunStep, c.Secret, c.Session, c.SessionProvenance,
-		c.TokenUsage, c.WorkflowRun, c.WorkflowStepRun,
+		c.TokenUsage, c.TurnTrace, c.TurnTraceEvent, c.WorkflowRun, c.WorkflowStepRun,
 	} {
 		n.Intercept(interceptors...)
 	}
@@ -415,6 +427,10 @@ func (c *Client) Mutate(ctx context.Context, m Mutation) (Value, error) {
 		return c.SessionProvenance.mutate(ctx, m)
 	case *TokenUsageMutation:
 		return c.TokenUsage.mutate(ctx, m)
+	case *TurnTraceMutation:
+		return c.TurnTrace.mutate(ctx, m)
+	case *TurnTraceEventMutation:
+		return c.TurnTraceEvent.mutate(ctx, m)
 	case *WorkflowRunMutation:
 		return c.WorkflowRun.mutate(ctx, m)
 	case *WorkflowStepRunMutation:
@@ -3813,6 +3829,272 @@ func (c *TokenUsageClient) mutate(ctx context.Context, m *TokenUsageMutation) (V
 	}
 }
 
+// TurnTraceClient is a client for the TurnTrace schema.
+type TurnTraceClient struct {
+	config
+}
+
+// NewTurnTraceClient returns a client for the TurnTrace from the given config.
+func NewTurnTraceClient(c config) *TurnTraceClient {
+	return &TurnTraceClient{config: c}
+}
+
+// Use adds a list of mutation hooks to the hooks stack.
+// A call to `Use(f, g, h)` equals to `turntrace.Hooks(f(g(h())))`.
+func (c *TurnTraceClient) Use(hooks ...Hook) {
+	c.hooks.TurnTrace = append(c.hooks.TurnTrace, hooks...)
+}
+
+// Intercept adds a list of query interceptors to the interceptors stack.
+// A call to `Intercept(f, g, h)` equals to `turntrace.Intercept(f(g(h())))`.
+func (c *TurnTraceClient) Intercept(interceptors ...Interceptor) {
+	c.inters.TurnTrace = append(c.inters.TurnTrace, interceptors...)
+}
+
+// Create returns a builder for creating a TurnTrace entity.
+func (c *TurnTraceClient) Create() *TurnTraceCreate {
+	mutation := newTurnTraceMutation(c.config, OpCreate)
+	return &TurnTraceCreate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// CreateBulk returns a builder for creating a bulk of TurnTrace entities.
+func (c *TurnTraceClient) CreateBulk(builders ...*TurnTraceCreate) *TurnTraceCreateBulk {
+	return &TurnTraceCreateBulk{config: c.config, builders: builders}
+}
+
+// MapCreateBulk creates a bulk creation builder from the given slice. For each item in the slice, the function creates
+// a builder and applies setFunc on it.
+func (c *TurnTraceClient) MapCreateBulk(slice any, setFunc func(*TurnTraceCreate, int)) *TurnTraceCreateBulk {
+	rv := reflect.ValueOf(slice)
+	if rv.Kind() != reflect.Slice {
+		return &TurnTraceCreateBulk{err: fmt.Errorf("calling to TurnTraceClient.MapCreateBulk with wrong type %T, need slice", slice)}
+	}
+	builders := make([]*TurnTraceCreate, rv.Len())
+	for i := 0; i < rv.Len(); i++ {
+		builders[i] = c.Create()
+		setFunc(builders[i], i)
+	}
+	return &TurnTraceCreateBulk{config: c.config, builders: builders}
+}
+
+// Update returns an update builder for TurnTrace.
+func (c *TurnTraceClient) Update() *TurnTraceUpdate {
+	mutation := newTurnTraceMutation(c.config, OpUpdate)
+	return &TurnTraceUpdate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOne returns an update builder for the given entity.
+func (c *TurnTraceClient) UpdateOne(_m *TurnTrace) *TurnTraceUpdateOne {
+	mutation := newTurnTraceMutation(c.config, OpUpdateOne, withTurnTrace(_m))
+	return &TurnTraceUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOneID returns an update builder for the given id.
+func (c *TurnTraceClient) UpdateOneID(id uuid.UUID) *TurnTraceUpdateOne {
+	mutation := newTurnTraceMutation(c.config, OpUpdateOne, withTurnTraceID(id))
+	return &TurnTraceUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// Delete returns a delete builder for TurnTrace.
+func (c *TurnTraceClient) Delete() *TurnTraceDelete {
+	mutation := newTurnTraceMutation(c.config, OpDelete)
+	return &TurnTraceDelete{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// DeleteOne returns a builder for deleting the given entity.
+func (c *TurnTraceClient) DeleteOne(_m *TurnTrace) *TurnTraceDeleteOne {
+	return c.DeleteOneID(_m.ID)
+}
+
+// DeleteOneID returns a builder for deleting the given entity by its id.
+func (c *TurnTraceClient) DeleteOneID(id uuid.UUID) *TurnTraceDeleteOne {
+	builder := c.Delete().Where(turntrace.ID(id))
+	builder.mutation.id = &id
+	builder.mutation.op = OpDeleteOne
+	return &TurnTraceDeleteOne{builder}
+}
+
+// Query returns a query builder for TurnTrace.
+func (c *TurnTraceClient) Query() *TurnTraceQuery {
+	return &TurnTraceQuery{
+		config: c.config,
+		ctx:    &QueryContext{Type: TypeTurnTrace},
+		inters: c.Interceptors(),
+	}
+}
+
+// Get returns a TurnTrace entity by its id.
+func (c *TurnTraceClient) Get(ctx context.Context, id uuid.UUID) (*TurnTrace, error) {
+	return c.Query().Where(turntrace.ID(id)).Only(ctx)
+}
+
+// GetX is like Get, but panics if an error occurs.
+func (c *TurnTraceClient) GetX(ctx context.Context, id uuid.UUID) *TurnTrace {
+	obj, err := c.Get(ctx, id)
+	if err != nil {
+		panic(err)
+	}
+	return obj
+}
+
+// Hooks returns the client hooks.
+func (c *TurnTraceClient) Hooks() []Hook {
+	return c.hooks.TurnTrace
+}
+
+// Interceptors returns the client interceptors.
+func (c *TurnTraceClient) Interceptors() []Interceptor {
+	return c.inters.TurnTrace
+}
+
+func (c *TurnTraceClient) mutate(ctx context.Context, m *TurnTraceMutation) (Value, error) {
+	switch m.Op() {
+	case OpCreate:
+		return (&TurnTraceCreate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdate:
+		return (&TurnTraceUpdate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdateOne:
+		return (&TurnTraceUpdateOne{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpDelete, OpDeleteOne:
+		return (&TurnTraceDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
+	default:
+		return nil, fmt.Errorf("ent: unknown TurnTrace mutation op: %q", m.Op())
+	}
+}
+
+// TurnTraceEventClient is a client for the TurnTraceEvent schema.
+type TurnTraceEventClient struct {
+	config
+}
+
+// NewTurnTraceEventClient returns a client for the TurnTraceEvent from the given config.
+func NewTurnTraceEventClient(c config) *TurnTraceEventClient {
+	return &TurnTraceEventClient{config: c}
+}
+
+// Use adds a list of mutation hooks to the hooks stack.
+// A call to `Use(f, g, h)` equals to `turntraceevent.Hooks(f(g(h())))`.
+func (c *TurnTraceEventClient) Use(hooks ...Hook) {
+	c.hooks.TurnTraceEvent = append(c.hooks.TurnTraceEvent, hooks...)
+}
+
+// Intercept adds a list of query interceptors to the interceptors stack.
+// A call to `Intercept(f, g, h)` equals to `turntraceevent.Intercept(f(g(h())))`.
+func (c *TurnTraceEventClient) Intercept(interceptors ...Interceptor) {
+	c.inters.TurnTraceEvent = append(c.inters.TurnTraceEvent, interceptors...)
+}
+
+// Create returns a builder for creating a TurnTraceEvent entity.
+func (c *TurnTraceEventClient) Create() *TurnTraceEventCreate {
+	mutation := newTurnTraceEventMutation(c.config, OpCreate)
+	return &TurnTraceEventCreate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// CreateBulk returns a builder for creating a bulk of TurnTraceEvent entities.
+func (c *TurnTraceEventClient) CreateBulk(builders ...*TurnTraceEventCreate) *TurnTraceEventCreateBulk {
+	return &TurnTraceEventCreateBulk{config: c.config, builders: builders}
+}
+
+// MapCreateBulk creates a bulk creation builder from the given slice. For each item in the slice, the function creates
+// a builder and applies setFunc on it.
+func (c *TurnTraceEventClient) MapCreateBulk(slice any, setFunc func(*TurnTraceEventCreate, int)) *TurnTraceEventCreateBulk {
+	rv := reflect.ValueOf(slice)
+	if rv.Kind() != reflect.Slice {
+		return &TurnTraceEventCreateBulk{err: fmt.Errorf("calling to TurnTraceEventClient.MapCreateBulk with wrong type %T, need slice", slice)}
+	}
+	builders := make([]*TurnTraceEventCreate, rv.Len())
+	for i := 0; i < rv.Len(); i++ {
+		builders[i] = c.Create()
+		setFunc(builders[i], i)
+	}
+	return &TurnTraceEventCreateBulk{config: c.config, builders: builders}
+}
+
+// Update returns an update builder for TurnTraceEvent.
+func (c *TurnTraceEventClient) Update() *TurnTraceEventUpdate {
+	mutation := newTurnTraceEventMutation(c.config, OpUpdate)
+	return &TurnTraceEventUpdate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOne returns an update builder for the given entity.
+func (c *TurnTraceEventClient) UpdateOne(_m *TurnTraceEvent) *TurnTraceEventUpdateOne {
+	mutation := newTurnTraceEventMutation(c.config, OpUpdateOne, withTurnTraceEvent(_m))
+	return &TurnTraceEventUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOneID returns an update builder for the given id.
+func (c *TurnTraceEventClient) UpdateOneID(id uuid.UUID) *TurnTraceEventUpdateOne {
+	mutation := newTurnTraceEventMutation(c.config, OpUpdateOne, withTurnTraceEventID(id))
+	return &TurnTraceEventUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// Delete returns a delete builder for TurnTraceEvent.
+func (c *TurnTraceEventClient) Delete() *TurnTraceEventDelete {
+	mutation := newTurnTraceEventMutation(c.config, OpDelete)
+	return &TurnTraceEventDelete{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// DeleteOne returns a builder for deleting the given entity.
+func (c *TurnTraceEventClient) DeleteOne(_m *TurnTraceEvent) *TurnTraceEventDeleteOne {
+	return c.DeleteOneID(_m.ID)
+}
+
+// DeleteOneID returns a builder for deleting the given entity by its id.
+func (c *TurnTraceEventClient) DeleteOneID(id uuid.UUID) *TurnTraceEventDeleteOne {
+	builder := c.Delete().Where(turntraceevent.ID(id))
+	builder.mutation.id = &id
+	builder.mutation.op = OpDeleteOne
+	return &TurnTraceEventDeleteOne{builder}
+}
+
+// Query returns a query builder for TurnTraceEvent.
+func (c *TurnTraceEventClient) Query() *TurnTraceEventQuery {
+	return &TurnTraceEventQuery{
+		config: c.config,
+		ctx:    &QueryContext{Type: TypeTurnTraceEvent},
+		inters: c.Interceptors(),
+	}
+}
+
+// Get returns a TurnTraceEvent entity by its id.
+func (c *TurnTraceEventClient) Get(ctx context.Context, id uuid.UUID) (*TurnTraceEvent, error) {
+	return c.Query().Where(turntraceevent.ID(id)).Only(ctx)
+}
+
+// GetX is like Get, but panics if an error occurs.
+func (c *TurnTraceEventClient) GetX(ctx context.Context, id uuid.UUID) *TurnTraceEvent {
+	obj, err := c.Get(ctx, id)
+	if err != nil {
+		panic(err)
+	}
+	return obj
+}
+
+// Hooks returns the client hooks.
+func (c *TurnTraceEventClient) Hooks() []Hook {
+	return c.hooks.TurnTraceEvent
+}
+
+// Interceptors returns the client interceptors.
+func (c *TurnTraceEventClient) Interceptors() []Interceptor {
+	return c.inters.TurnTraceEvent
+}
+
+func (c *TurnTraceEventClient) mutate(ctx context.Context, m *TurnTraceEventMutation) (Value, error) {
+	switch m.Op() {
+	case OpCreate:
+		return (&TurnTraceEventCreate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdate:
+		return (&TurnTraceEventUpdate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdateOne:
+		return (&TurnTraceEventUpdateOne{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpDelete, OpDeleteOne:
+		return (&TurnTraceEventDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
+	default:
+		return nil, fmt.Errorf("ent: unknown TurnTraceEvent mutation op: %q", m.Op())
+	}
+}
+
 // WorkflowRunClient is a client for the WorkflowRun schema.
 type WorkflowRunClient struct {
 	config
@@ -4086,13 +4368,15 @@ type (
 		ExternalRef, Inquiry, Key, Knowledge, Learning, Message, Observation,
 		PaymentTx, PeerReputation, ProvenanceAttribution, ProvenanceCheckpoint,
 		Reflection, RunJournal, RunSnapshot, RunStep, Secret, Session,
-		SessionProvenance, TokenUsage, WorkflowRun, WorkflowStepRun []ent.Hook
+		SessionProvenance, TokenUsage, TurnTrace, TurnTraceEvent, WorkflowRun,
+		WorkflowStepRun []ent.Hook
 	}
 	inters struct {
 		AgentMemory, AuditLog, ConfigProfile, CronJob, CronJobHistory, EscrowDeal,
 		ExternalRef, Inquiry, Key, Knowledge, Learning, Message, Observation,
 		PaymentTx, PeerReputation, ProvenanceAttribution, ProvenanceCheckpoint,
 		Reflection, RunJournal, RunSnapshot, RunStep, Secret, Session,
-		SessionProvenance, TokenUsage, WorkflowRun, WorkflowStepRun []ent.Interceptor
+		SessionProvenance, TokenUsage, TurnTrace, TurnTraceEvent, WorkflowRun,
+		WorkflowStepRun []ent.Interceptor
 	}
 )

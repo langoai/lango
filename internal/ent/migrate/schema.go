@@ -905,6 +905,89 @@ var (
 			},
 		},
 	}
+	// TurnTracesColumns holds the columns for the "turn_traces" table.
+	TurnTracesColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeUUID},
+		{Name: "trace_id", Type: field.TypeString, Unique: true},
+		{Name: "session_key", Type: field.TypeString},
+		{Name: "entrypoint", Type: field.TypeString},
+		{Name: "outcome", Type: field.TypeString, Default: "running"},
+		{Name: "error_code", Type: field.TypeString, Nullable: true},
+		{Name: "cause_class", Type: field.TypeString, Nullable: true},
+		{Name: "cause_detail", Type: field.TypeString, Nullable: true, Size: 2147483647},
+		{Name: "summary", Type: field.TypeString, Nullable: true, Size: 2147483647},
+		{Name: "started_at", Type: field.TypeTime},
+		{Name: "ended_at", Type: field.TypeTime, Nullable: true},
+	}
+	// TurnTracesTable holds the schema information for the "turn_traces" table.
+	TurnTracesTable = &schema.Table{
+		Name:       "turn_traces",
+		Columns:    TurnTracesColumns,
+		PrimaryKey: []*schema.Column{TurnTracesColumns[0]},
+		Indexes: []*schema.Index{
+			{
+				Name:    "turntrace_session_key",
+				Unique:  false,
+				Columns: []*schema.Column{TurnTracesColumns[2]},
+			},
+			{
+				Name:    "turntrace_entrypoint",
+				Unique:  false,
+				Columns: []*schema.Column{TurnTracesColumns[3]},
+			},
+			{
+				Name:    "turntrace_outcome",
+				Unique:  false,
+				Columns: []*schema.Column{TurnTracesColumns[4]},
+			},
+			{
+				Name:    "turntrace_started_at",
+				Unique:  false,
+				Columns: []*schema.Column{TurnTracesColumns[9]},
+			},
+		},
+	}
+	// TurnTraceEventsColumns holds the columns for the "turn_trace_events" table.
+	TurnTraceEventsColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeUUID},
+		{Name: "trace_id", Type: field.TypeString},
+		{Name: "seq", Type: field.TypeInt64},
+		{Name: "event_type", Type: field.TypeString},
+		{Name: "agent_name", Type: field.TypeString, Nullable: true},
+		{Name: "tool_name", Type: field.TypeString, Nullable: true},
+		{Name: "call_signature", Type: field.TypeString, Nullable: true},
+		{Name: "payload_json", Type: field.TypeString, Nullable: true, Size: 2147483647},
+		{Name: "payload_truncated", Type: field.TypeBool, Default: false},
+		{Name: "created_at", Type: field.TypeTime},
+	}
+	// TurnTraceEventsTable holds the schema information for the "turn_trace_events" table.
+	TurnTraceEventsTable = &schema.Table{
+		Name:       "turn_trace_events",
+		Columns:    TurnTraceEventsColumns,
+		PrimaryKey: []*schema.Column{TurnTraceEventsColumns[0]},
+		Indexes: []*schema.Index{
+			{
+				Name:    "turntraceevent_trace_id_seq",
+				Unique:  true,
+				Columns: []*schema.Column{TurnTraceEventsColumns[1], TurnTraceEventsColumns[2]},
+			},
+			{
+				Name:    "turntraceevent_trace_id",
+				Unique:  false,
+				Columns: []*schema.Column{TurnTraceEventsColumns[1]},
+			},
+			{
+				Name:    "turntraceevent_event_type",
+				Unique:  false,
+				Columns: []*schema.Column{TurnTraceEventsColumns[3]},
+			},
+			{
+				Name:    "turntraceevent_created_at",
+				Unique:  false,
+				Columns: []*schema.Column{TurnTraceEventsColumns[9]},
+			},
+		},
+	}
 	// WorkflowRunsColumns holds the columns for the "workflow_runs" table.
 	WorkflowRunsColumns = []*schema.Column{
 		{Name: "id", Type: field.TypeUUID},
@@ -1003,6 +1086,8 @@ var (
 		SessionsTable,
 		SessionProvenancesTable,
 		TokenUsagesTable,
+		TurnTracesTable,
+		TurnTraceEventsTable,
 		WorkflowRunsTable,
 		WorkflowStepRunsTable,
 	}

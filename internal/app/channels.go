@@ -2,18 +2,16 @@ package app
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"time"
 
-	"github.com/langoai/lango/internal/adk"
 	"github.com/langoai/lango/internal/approval"
 	"github.com/langoai/lango/internal/channels/discord"
 	"github.com/langoai/lango/internal/channels/slack"
 	"github.com/langoai/lango/internal/channels/telegram"
 	"github.com/langoai/lango/internal/deadline"
-	"github.com/langoai/lango/internal/session"
-	"github.com/langoai/lango/internal/tools/browser"
+	"github.com/langoai/lango/internal/turnrunner"
+	"github.com/langoai/lango/internal/turntrace"
 	"github.com/langoai/lango/internal/types"
 )
 
@@ -117,14 +115,7 @@ func (a *App) handleSlackMessage(ctx context.Context, msg *slack.IncomingMessage
 	return &slack.OutgoingMessage{Text: response}, nil
 }
 
-// emptyResponseFallback is returned to the user when the agent succeeds
-// but produces no visible text (e.g. Gemini thought-only responses).
-const emptyResponseFallback = "I processed your message but couldn't formulate a visible response. Could you try rephrasing your question?"
-
 // runAgent executes the agent and aggregates the response.
-// It injects the session key into the context so that downstream components
-// (approval providers, learning engine, etc.) can route by channel.
-// After each agent turn, buffers (memory, analysis) are triggered for async processing.
 func (a *App) runAgent(ctx context.Context, sessionKey, input string) (string, error) {
 	idleTimeout, hardCeiling := a.resolveTimeouts()
 
@@ -135,100 +126,16 @@ func (a *App) runAgent(ctx context.Context, sessionKey, input string) (string, e
 		"hardCeiling", hardCeiling.String(),
 		"input_len", len(input))
 
-	var cancel context.CancelFunc
-	var extDeadline *deadline.ExtendableDeadline
-	var runOpts []adk.RunOption
-
-	if idleTimeout > 0 {
-		ctx, extDeadline = deadline.New(ctx, idleTimeout, hardCeiling)
-		cancel = extDeadline.Stop
-		runOpts = append(runOpts, adk.WithOnActivity(extDeadline.Extend))
-		logger().Debugw("idle timeout enabled",
-			"session", sessionKey,
-			"idleTimeout", idleTimeout.String(),
-			"hardCeiling", hardCeiling.String())
-	} else {
-		ctx, cancel = context.WithTimeout(ctx, hardCeiling)
+	if a.TurnRunner == nil {
+		return "", fmt.Errorf("turn runner is not initialized")
 	}
-	defer cancel()
-
-	// Warn when approaching timeout (80% of hard ceiling).
-	warnTimer := time.AfterFunc(time.Duration(float64(hardCeiling)*0.8), func() {
-		logger().Warnw("agent request approaching timeout",
-			"session", sessionKey,
-			"elapsed", time.Since(start).String(),
-			"hardCeiling", hardCeiling.String())
+	result, err := a.TurnRunner.Run(ctx, turnrunner.Request{
+		SessionKey: sessionKey,
+		Input:      input,
+		Entrypoint: "channel",
 	})
-	defer warnTimer.Stop()
-
-	ctx = session.WithSessionKey(ctx, sessionKey)
-	ctx = approval.WithTurnApprovalState(ctx, approval.NewTurnApprovalState())
-	ctx = browser.WithRequestState(ctx, browser.NewRequestState())
-	response, err := a.Agent.RunAndCollect(ctx, sessionKey, input, runOpts...)
-
-	// Trigger async buffers after agent turn regardless of error.
-	if a.MemoryBuffer != nil {
-		a.MemoryBuffer.Trigger(sessionKey)
-	}
-	if a.AnalysisBuffer != nil {
-		a.AnalysisBuffer.Trigger(sessionKey)
-	}
-
 	elapsed := time.Since(start)
 	if err != nil {
-		// Check if the error carries a partial result we can recover.
-		var agentErr *adk.AgentError
-		if errors.As(err, &agentErr) && agentErr.Partial != "" {
-			logger().Warnw("agent request failed with partial result",
-				"session", sessionKey,
-				"elapsed", elapsed.String(),
-				"code", string(agentErr.Code),
-				"partial_len", len(agentErr.Partial))
-			// Annotate session so next turn doesn't see incomplete history.
-			if a.Store != nil {
-				_ = a.Store.AnnotateTimeout(sessionKey, "")
-			}
-			return formatIncompleteResponse(agentErr), nil
-		}
-
-		// Tool churn fallback: return a user-friendly message instead of
-		// propagating the error when the agent got stuck in a tool loop.
-		if errors.As(err, &agentErr) && agentErr.Code == adk.ErrToolChurn {
-			logger().Warnw("tool churn fallback response",
-				"session", sessionKey,
-				"elapsed", elapsed.String())
-			return agentErr.UserMessage(), nil
-		}
-
-		if ctx.Err() != nil {
-			// Determine the specific timeout reason.
-			errCode := adk.ErrTimeout
-			errMsg := fmt.Sprintf("request timed out after %v", hardCeiling)
-			if extDeadline != nil {
-				switch extDeadline.Reason() {
-				case deadline.ReasonIdle:
-					errCode = adk.ErrIdleTimeout
-					errMsg = fmt.Sprintf("no activity for %v", idleTimeout)
-				case deadline.ReasonMaxTimeout:
-					errMsg = fmt.Sprintf("maximum time limit (%v) exceeded", hardCeiling)
-				}
-			}
-			logger().Errorw("agent request timed out",
-				"session", sessionKey,
-				"elapsed", elapsed.String(),
-				"reason", string(errCode))
-			// Annotate session to prevent error leak into next turn.
-			if a.Store != nil {
-				_ = a.Store.AnnotateTimeout(sessionKey, "")
-			}
-			return "", &adk.AgentError{
-				Code:    errCode,
-				Message: errMsg,
-				Cause:   ctx.Err(),
-				Elapsed: elapsed,
-			}
-		}
-
 		logger().Warnw("agent request failed",
 			"session", sessionKey,
 			"elapsed", elapsed.String(),
@@ -236,27 +143,29 @@ func (a *App) runAgent(ctx context.Context, sessionKey, input string) (string, e
 		return "", err
 	}
 
-	if response == "" {
-		logger().Warnw("empty agent response, using fallback",
+	if result.Outcome != turntrace.OutcomeSuccess {
+		logger().Warnw("agent request completed with failure",
 			"session", sessionKey,
-			"elapsed", elapsed.String())
-		response = emptyResponseFallback
-	}
-
-	// Apply response sanitization.
-	if a.Sanitizer != nil && a.Sanitizer.Enabled() {
-		response = a.Sanitizer.Sanitize(response)
+			"elapsed", elapsed.String(),
+			"response_len", len(result.ResponseText),
+			"outcome", string(result.Outcome),
+			"trace_id", result.TraceID,
+			"error_code", result.ErrorCode,
+			"cause_class", result.CauseClass,
+			"summary", result.Summary)
+		return result.ResponseText, nil
 	}
 
 	logger().Infow("agent request completed",
 		"session", sessionKey,
 		"elapsed", elapsed.String(),
-		"response_len", len(response))
-	return response, nil
+		"response_len", len(result.ResponseText),
+		"outcome", string(result.Outcome),
+		"trace_id", result.TraceID)
+	return result.ResponseText, nil
 }
 
 // resolveTimeouts determines the idle timeout and hard ceiling based on config.
-// Delegates to deadline.ResolveTimeouts for the actual logic.
 func (a *App) resolveTimeouts() (idleTimeout, hardCeiling time.Duration) {
 	cfg := a.Config.Agent
 	return deadline.ResolveTimeouts(deadline.TimeoutConfig{

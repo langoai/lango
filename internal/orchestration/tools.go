@@ -51,6 +51,30 @@ Tool results may include a _meta field with compression info. After each tool ca
 - If _meta.storedRef is null: full output unavailable, work with compressed content.
 - Never expose _meta fields to the user.`
 
+const responseRulesSection = `
+
+## Response Rules
+- After a successful tool call, ALWAYS produce at least one visible sentence summarizing the result before any transfer_to_agent call.
+- Never end the turn with tool-only output if the user still needs a natural-language answer.`
+
+const escalationProtocolSection = `
+
+## Escalation Protocol
+If a task does not match your capabilities:
+1. Do NOT attempt to answer or explain why you cannot help.
+2. Output ONE short sentence summarizing what you tried or why you are escalating.
+3. IMMEDIATELY call transfer_to_agent with agent_name "lango-orchestrator".
+4. Never claim that a tool or action completed unless you have direct evidence from this turn.`
+
+const plannerEscalationProtocolSection = `
+
+## Escalation Protocol
+If a task does not match your capabilities:
+1. Do NOT attempt to answer or explain why you cannot help.
+2. Output ONE short sentence explaining why you are escalating.
+3. IMMEDIATELY call transfer_to_agent with agent_name "lango-orchestrator".
+4. Never transfer silently.`
+
 // agentSpecs is the ordered registry of all sub-agent specifications.
 // BuildAgentTree iterates this slice to create agents data-driven.
 var agentSpecs = []AgentSpec{
@@ -71,14 +95,7 @@ Return the raw result of the operation: command stdout/stderr, file contents, or
 - Report errors accurately without retrying unless explicitly asked.
 - Never perform web browsing, cryptographic operations, or payment transactions.
 - Never search knowledge bases or manage memory.
-- If a task does not match your capabilities, do NOT attempt to answer it.` + outputHandlingSection + `
-
-## Escalation Protocol
-If a task does not match your capabilities:
-1. Do NOT attempt to answer or explain why you cannot help.
-2. Do NOT tell the user to ask another agent.
-3. IMMEDIATELY call transfer_to_agent with agent_name "lango-orchestrator".
-4. Do NOT output any text before the transfer_to_agent call.`,
+- If a task does not match your capabilities, do NOT attempt to answer it.` + outputHandlingSection + responseRulesSection + escalationProtocolSection,
 		Prefixes:         []string{"exec", "fs_", "skill_"},
 		Keywords:         []string{"run command", "execute command", "command", "shell", "terminal", "file read", "file write", "edit", "delete", "execute skill"},
 		Accepts:          "A specific action to perform (command, file operation, or skill invocation)",
@@ -104,14 +121,7 @@ Return page content, screenshot results, or interaction outcomes. Include the cu
 - Only perform web browsing operations. Do not execute shell commands or file operations.
 - Never perform cryptographic operations or payment transactions.
 - Never search knowledge bases or manage memory.
-- If a task does not match your capabilities, do NOT attempt to answer it.` + outputHandlingSection + `
-
-## Escalation Protocol
-If a task does not match your capabilities:
-1. Do NOT attempt to answer or explain why you cannot help.
-2. Do NOT tell the user to ask another agent.
-3. IMMEDIATELY call transfer_to_agent with agent_name "lango-orchestrator".
-4. Do NOT output any text before the transfer_to_agent call.`,
+- If a task does not match your capabilities, do NOT attempt to answer it.` + outputHandlingSection + responseRulesSection + escalationProtocolSection,
 		Prefixes:         []string{"browser_"},
 		Keywords:         []string{"browse", "open url", "visit website", "web page", "navigate to", "click", "screenshot", "website"},
 		Accepts:          "A URL to visit or web interaction to perform",
@@ -138,14 +148,7 @@ Return operation results: encrypted/decrypted data, confirmation of secret stora
 - Never execute shell commands, browse the web, or manage files.
 - Never search knowledge bases or manage memory.
 - Handle sensitive data carefully — never log secrets or private keys in plain text.
-- If a task does not match your capabilities, do NOT attempt to answer it.` + outputHandlingSection + `
-
-## Escalation Protocol
-If a task does not match your capabilities:
-1. Do NOT attempt to answer or explain why you cannot help.
-2. Do NOT tell the user to ask another agent.
-3. IMMEDIATELY call transfer_to_agent with agent_name "lango-orchestrator".
-4. Do NOT output any text before the transfer_to_agent call.`,
+- If a task does not match your capabilities, do NOT attempt to answer it.` + outputHandlingSection + responseRulesSection + escalationProtocolSection,
 		Prefixes:         []string{"crypto_", "secrets_", "payment_", "p2p_", "smart_account_", "session_key_", "session_execute", "policy_check", "module_", "spending_", "paymaster_", "economy_", "escrow_", "sentinel_", "contract_"},
 		Keywords:         []string{"encrypt", "decrypt", "crypto sign", "hash data", "store secret", "password", "payment", "wallet", "USDC", "peer", "p2p connect", "handshake", "firewall", "zkp", "smart account", "session key", "paymaster", "ERC-7579", "ERC-4337", "module", "policy", "deploy account", "economy", "budget", "escrow", "sentinel", "contract", "negotiate", "pricing", "risk"},
 		Accepts:          "A security operation (crypto, secret, or payment) with parameters",
@@ -176,14 +179,7 @@ Frame questions conversationally — not as a survey or checklist.
 - Only perform knowledge retrieval, persistence, learning data management, skill management, and inquiry operations.
 - Never execute shell commands, browse the web, or handle cryptographic operations.
 - Never manage conversational memory (observations, reflections).
-- If a task does not match your capabilities, do NOT attempt to answer it.` + outputHandlingSection + `
-
-## Escalation Protocol
-If a task does not match your capabilities:
-1. Do NOT attempt to answer or explain why you cannot help.
-2. Do NOT tell the user to ask another agent.
-3. IMMEDIATELY call transfer_to_agent with agent_name "lango-orchestrator".
-4. Do NOT output any text before the transfer_to_agent call.`,
+- If a task does not match your capabilities, do NOT attempt to answer it.` + outputHandlingSection + responseRulesSection + escalationProtocolSection,
 		Prefixes:         []string{"search_", "rag_", "graph_", "save_knowledge", "save_learning", "learning_", "create_skill", "list_skills", "import_skill", "librarian_"},
 		Keywords:         []string{"search knowledge", "find information", "lookup", "knowledge", "learning", "retrieve", "graph", "RAG", "inquiry", "question", "gap", "save knowledge"},
 		Accepts:          "A search query, knowledge to persist, learning data to review/clean, skill to create/list, or inquiry operation",
@@ -209,14 +205,7 @@ Return confirmation of created schedules, task IDs for background jobs, or workf
 - Only manage cron jobs, background tasks, and workflows.
 - Never execute shell commands directly, browse the web, or handle cryptographic operations.
 - Never search knowledge bases or manage memory.
-- If a task does not match your capabilities, do NOT attempt to answer it.` + outputHandlingSection + `
-
-## Escalation Protocol
-If a task does not match your capabilities:
-1. Do NOT attempt to answer or explain why you cannot help.
-2. Do NOT tell the user to ask another agent.
-3. IMMEDIATELY call transfer_to_agent with agent_name "lango-orchestrator".
-4. Do NOT output any text before the transfer_to_agent call.`,
+- If a task does not match your capabilities, do NOT attempt to answer it.` + outputHandlingSection + responseRulesSection + escalationProtocolSection,
 		Prefixes:         []string{"cron_", "bg_", "workflow_"},
 		Keywords:         []string{"schedule task", "cron job", "recurring task", "background task", "async", "later", "workflow", "pipeline", "automate", "timer"},
 		Accepts:          "A scheduling request, background task, or workflow to execute/monitor",
@@ -249,14 +238,7 @@ Include dependencies between steps and estimated complexity. Identify which sub-
 - Never attempt to execute actions — only plan them.
 - Consider dependencies between steps and order them correctly.
 - Identify the correct sub-agent for each step in the plan.
-- If a task does not match your capabilities, do NOT attempt to answer it.
-
-## Escalation Protocol
-If a task does not match your capabilities:
-1. Do NOT attempt to answer or explain why you cannot help.
-2. Do NOT tell the user to ask another agent.
-3. IMMEDIATELY call transfer_to_agent with agent_name "lango-orchestrator".
-4. Do NOT output any text before the transfer_to_agent call.`,
+- If a task does not match your capabilities, do NOT attempt to answer it.` + plannerEscalationProtocolSection,
 		Keywords:        []string{"make a plan", "decompose task", "list steps", "strategy", "how to", "break down"},
 		Accepts:         "A complex task or goal to decompose into actionable steps",
 		Returns:         "A structured plan with numbered steps, dependencies, and agent assignments",
@@ -281,14 +263,7 @@ Return confirmation of stored observations, generated reflections, or recalled m
 - Only manage conversational memory (observations, reflections, recall).
 - Never execute commands, browse the web, or handle knowledge base search.
 - Never perform cryptographic operations or payments.
-- If a task does not match your capabilities, do NOT attempt to answer it.` + outputHandlingSection + `
-
-## Escalation Protocol
-If a task does not match your capabilities:
-1. Do NOT attempt to answer or explain why you cannot help.
-2. Do NOT tell the user to ask another agent.
-3. IMMEDIATELY call transfer_to_agent with agent_name "lango-orchestrator".
-4. Do NOT output any text before the transfer_to_agent call.`,
+- If a task does not match your capabilities, do NOT attempt to answer it.` + outputHandlingSection + responseRulesSection + escalationProtocolSection,
 		Prefixes:        []string{"memory_", "observe_", "reflect_"},
 		Keywords:        []string{"remember this", "recall conversation", "observation", "reflection", "conversation memory", "history"},
 		Accepts:         "An observation to record, reflection topic, or memory query",

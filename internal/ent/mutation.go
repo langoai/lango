@@ -39,6 +39,8 @@ import (
 	"github.com/langoai/lango/internal/ent/session"
 	"github.com/langoai/lango/internal/ent/sessionprovenance"
 	"github.com/langoai/lango/internal/ent/tokenusage"
+	"github.com/langoai/lango/internal/ent/turntrace"
+	"github.com/langoai/lango/internal/ent/turntraceevent"
 	"github.com/langoai/lango/internal/ent/workflowrun"
 	"github.com/langoai/lango/internal/ent/workflowsteprun"
 )
@@ -77,6 +79,8 @@ const (
 	TypeSession               = "Session"
 	TypeSessionProvenance     = "SessionProvenance"
 	TypeTokenUsage            = "TokenUsage"
+	TypeTurnTrace             = "TurnTrace"
+	TypeTurnTraceEvent        = "TurnTraceEvent"
 	TypeWorkflowRun           = "WorkflowRun"
 	TypeWorkflowStepRun       = "WorkflowStepRun"
 )
@@ -21951,6 +21955,1801 @@ func (m *TokenUsageMutation) ClearEdge(name string) error {
 // It returns an error if the edge is not defined in the schema.
 func (m *TokenUsageMutation) ResetEdge(name string) error {
 	return fmt.Errorf("unknown TokenUsage edge %s", name)
+}
+
+// TurnTraceMutation represents an operation that mutates the TurnTrace nodes in the graph.
+type TurnTraceMutation struct {
+	config
+	op            Op
+	typ           string
+	id            *uuid.UUID
+	trace_id      *string
+	session_key   *string
+	entrypoint    *string
+	outcome       *string
+	error_code    *string
+	cause_class   *string
+	cause_detail  *string
+	summary       *string
+	started_at    *time.Time
+	ended_at      *time.Time
+	clearedFields map[string]struct{}
+	done          bool
+	oldValue      func(context.Context) (*TurnTrace, error)
+	predicates    []predicate.TurnTrace
+}
+
+var _ ent.Mutation = (*TurnTraceMutation)(nil)
+
+// turntraceOption allows management of the mutation configuration using functional options.
+type turntraceOption func(*TurnTraceMutation)
+
+// newTurnTraceMutation creates new mutation for the TurnTrace entity.
+func newTurnTraceMutation(c config, op Op, opts ...turntraceOption) *TurnTraceMutation {
+	m := &TurnTraceMutation{
+		config:        c,
+		op:            op,
+		typ:           TypeTurnTrace,
+		clearedFields: make(map[string]struct{}),
+	}
+	for _, opt := range opts {
+		opt(m)
+	}
+	return m
+}
+
+// withTurnTraceID sets the ID field of the mutation.
+func withTurnTraceID(id uuid.UUID) turntraceOption {
+	return func(m *TurnTraceMutation) {
+		var (
+			err   error
+			once  sync.Once
+			value *TurnTrace
+		)
+		m.oldValue = func(ctx context.Context) (*TurnTrace, error) {
+			once.Do(func() {
+				if m.done {
+					err = errors.New("querying old values post mutation is not allowed")
+				} else {
+					value, err = m.Client().TurnTrace.Get(ctx, id)
+				}
+			})
+			return value, err
+		}
+		m.id = &id
+	}
+}
+
+// withTurnTrace sets the old TurnTrace of the mutation.
+func withTurnTrace(node *TurnTrace) turntraceOption {
+	return func(m *TurnTraceMutation) {
+		m.oldValue = func(context.Context) (*TurnTrace, error) {
+			return node, nil
+		}
+		m.id = &node.ID
+	}
+}
+
+// Client returns a new `ent.Client` from the mutation. If the mutation was
+// executed in a transaction (ent.Tx), a transactional client is returned.
+func (m TurnTraceMutation) Client() *Client {
+	client := &Client{config: m.config}
+	client.init()
+	return client
+}
+
+// Tx returns an `ent.Tx` for mutations that were executed in transactions;
+// it returns an error otherwise.
+func (m TurnTraceMutation) Tx() (*Tx, error) {
+	if _, ok := m.driver.(*txDriver); !ok {
+		return nil, errors.New("ent: mutation is not running in a transaction")
+	}
+	tx := &Tx{config: m.config}
+	tx.init()
+	return tx, nil
+}
+
+// SetID sets the value of the id field. Note that this
+// operation is only accepted on creation of TurnTrace entities.
+func (m *TurnTraceMutation) SetID(id uuid.UUID) {
+	m.id = &id
+}
+
+// ID returns the ID value in the mutation. Note that the ID is only available
+// if it was provided to the builder or after it was returned from the database.
+func (m *TurnTraceMutation) ID() (id uuid.UUID, exists bool) {
+	if m.id == nil {
+		return
+	}
+	return *m.id, true
+}
+
+// IDs queries the database and returns the entity ids that match the mutation's predicate.
+// That means, if the mutation is applied within a transaction with an isolation level such
+// as sql.LevelSerializable, the returned ids match the ids of the rows that will be updated
+// or updated by the mutation.
+func (m *TurnTraceMutation) IDs(ctx context.Context) ([]uuid.UUID, error) {
+	switch {
+	case m.op.Is(OpUpdateOne | OpDeleteOne):
+		id, exists := m.ID()
+		if exists {
+			return []uuid.UUID{id}, nil
+		}
+		fallthrough
+	case m.op.Is(OpUpdate | OpDelete):
+		return m.Client().TurnTrace.Query().Where(m.predicates...).IDs(ctx)
+	default:
+		return nil, fmt.Errorf("IDs is not allowed on %s operations", m.op)
+	}
+}
+
+// SetTraceID sets the "trace_id" field.
+func (m *TurnTraceMutation) SetTraceID(s string) {
+	m.trace_id = &s
+}
+
+// TraceID returns the value of the "trace_id" field in the mutation.
+func (m *TurnTraceMutation) TraceID() (r string, exists bool) {
+	v := m.trace_id
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldTraceID returns the old "trace_id" field's value of the TurnTrace entity.
+// If the TurnTrace object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *TurnTraceMutation) OldTraceID(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldTraceID is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldTraceID requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldTraceID: %w", err)
+	}
+	return oldValue.TraceID, nil
+}
+
+// ResetTraceID resets all changes to the "trace_id" field.
+func (m *TurnTraceMutation) ResetTraceID() {
+	m.trace_id = nil
+}
+
+// SetSessionKey sets the "session_key" field.
+func (m *TurnTraceMutation) SetSessionKey(s string) {
+	m.session_key = &s
+}
+
+// SessionKey returns the value of the "session_key" field in the mutation.
+func (m *TurnTraceMutation) SessionKey() (r string, exists bool) {
+	v := m.session_key
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldSessionKey returns the old "session_key" field's value of the TurnTrace entity.
+// If the TurnTrace object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *TurnTraceMutation) OldSessionKey(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldSessionKey is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldSessionKey requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldSessionKey: %w", err)
+	}
+	return oldValue.SessionKey, nil
+}
+
+// ResetSessionKey resets all changes to the "session_key" field.
+func (m *TurnTraceMutation) ResetSessionKey() {
+	m.session_key = nil
+}
+
+// SetEntrypoint sets the "entrypoint" field.
+func (m *TurnTraceMutation) SetEntrypoint(s string) {
+	m.entrypoint = &s
+}
+
+// Entrypoint returns the value of the "entrypoint" field in the mutation.
+func (m *TurnTraceMutation) Entrypoint() (r string, exists bool) {
+	v := m.entrypoint
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldEntrypoint returns the old "entrypoint" field's value of the TurnTrace entity.
+// If the TurnTrace object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *TurnTraceMutation) OldEntrypoint(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldEntrypoint is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldEntrypoint requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldEntrypoint: %w", err)
+	}
+	return oldValue.Entrypoint, nil
+}
+
+// ResetEntrypoint resets all changes to the "entrypoint" field.
+func (m *TurnTraceMutation) ResetEntrypoint() {
+	m.entrypoint = nil
+}
+
+// SetOutcome sets the "outcome" field.
+func (m *TurnTraceMutation) SetOutcome(s string) {
+	m.outcome = &s
+}
+
+// Outcome returns the value of the "outcome" field in the mutation.
+func (m *TurnTraceMutation) Outcome() (r string, exists bool) {
+	v := m.outcome
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldOutcome returns the old "outcome" field's value of the TurnTrace entity.
+// If the TurnTrace object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *TurnTraceMutation) OldOutcome(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldOutcome is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldOutcome requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldOutcome: %w", err)
+	}
+	return oldValue.Outcome, nil
+}
+
+// ResetOutcome resets all changes to the "outcome" field.
+func (m *TurnTraceMutation) ResetOutcome() {
+	m.outcome = nil
+}
+
+// SetErrorCode sets the "error_code" field.
+func (m *TurnTraceMutation) SetErrorCode(s string) {
+	m.error_code = &s
+}
+
+// ErrorCode returns the value of the "error_code" field in the mutation.
+func (m *TurnTraceMutation) ErrorCode() (r string, exists bool) {
+	v := m.error_code
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldErrorCode returns the old "error_code" field's value of the TurnTrace entity.
+// If the TurnTrace object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *TurnTraceMutation) OldErrorCode(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldErrorCode is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldErrorCode requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldErrorCode: %w", err)
+	}
+	return oldValue.ErrorCode, nil
+}
+
+// ClearErrorCode clears the value of the "error_code" field.
+func (m *TurnTraceMutation) ClearErrorCode() {
+	m.error_code = nil
+	m.clearedFields[turntrace.FieldErrorCode] = struct{}{}
+}
+
+// ErrorCodeCleared returns if the "error_code" field was cleared in this mutation.
+func (m *TurnTraceMutation) ErrorCodeCleared() bool {
+	_, ok := m.clearedFields[turntrace.FieldErrorCode]
+	return ok
+}
+
+// ResetErrorCode resets all changes to the "error_code" field.
+func (m *TurnTraceMutation) ResetErrorCode() {
+	m.error_code = nil
+	delete(m.clearedFields, turntrace.FieldErrorCode)
+}
+
+// SetCauseClass sets the "cause_class" field.
+func (m *TurnTraceMutation) SetCauseClass(s string) {
+	m.cause_class = &s
+}
+
+// CauseClass returns the value of the "cause_class" field in the mutation.
+func (m *TurnTraceMutation) CauseClass() (r string, exists bool) {
+	v := m.cause_class
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldCauseClass returns the old "cause_class" field's value of the TurnTrace entity.
+// If the TurnTrace object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *TurnTraceMutation) OldCauseClass(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldCauseClass is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldCauseClass requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldCauseClass: %w", err)
+	}
+	return oldValue.CauseClass, nil
+}
+
+// ClearCauseClass clears the value of the "cause_class" field.
+func (m *TurnTraceMutation) ClearCauseClass() {
+	m.cause_class = nil
+	m.clearedFields[turntrace.FieldCauseClass] = struct{}{}
+}
+
+// CauseClassCleared returns if the "cause_class" field was cleared in this mutation.
+func (m *TurnTraceMutation) CauseClassCleared() bool {
+	_, ok := m.clearedFields[turntrace.FieldCauseClass]
+	return ok
+}
+
+// ResetCauseClass resets all changes to the "cause_class" field.
+func (m *TurnTraceMutation) ResetCauseClass() {
+	m.cause_class = nil
+	delete(m.clearedFields, turntrace.FieldCauseClass)
+}
+
+// SetCauseDetail sets the "cause_detail" field.
+func (m *TurnTraceMutation) SetCauseDetail(s string) {
+	m.cause_detail = &s
+}
+
+// CauseDetail returns the value of the "cause_detail" field in the mutation.
+func (m *TurnTraceMutation) CauseDetail() (r string, exists bool) {
+	v := m.cause_detail
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldCauseDetail returns the old "cause_detail" field's value of the TurnTrace entity.
+// If the TurnTrace object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *TurnTraceMutation) OldCauseDetail(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldCauseDetail is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldCauseDetail requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldCauseDetail: %w", err)
+	}
+	return oldValue.CauseDetail, nil
+}
+
+// ClearCauseDetail clears the value of the "cause_detail" field.
+func (m *TurnTraceMutation) ClearCauseDetail() {
+	m.cause_detail = nil
+	m.clearedFields[turntrace.FieldCauseDetail] = struct{}{}
+}
+
+// CauseDetailCleared returns if the "cause_detail" field was cleared in this mutation.
+func (m *TurnTraceMutation) CauseDetailCleared() bool {
+	_, ok := m.clearedFields[turntrace.FieldCauseDetail]
+	return ok
+}
+
+// ResetCauseDetail resets all changes to the "cause_detail" field.
+func (m *TurnTraceMutation) ResetCauseDetail() {
+	m.cause_detail = nil
+	delete(m.clearedFields, turntrace.FieldCauseDetail)
+}
+
+// SetSummary sets the "summary" field.
+func (m *TurnTraceMutation) SetSummary(s string) {
+	m.summary = &s
+}
+
+// Summary returns the value of the "summary" field in the mutation.
+func (m *TurnTraceMutation) Summary() (r string, exists bool) {
+	v := m.summary
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldSummary returns the old "summary" field's value of the TurnTrace entity.
+// If the TurnTrace object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *TurnTraceMutation) OldSummary(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldSummary is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldSummary requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldSummary: %w", err)
+	}
+	return oldValue.Summary, nil
+}
+
+// ClearSummary clears the value of the "summary" field.
+func (m *TurnTraceMutation) ClearSummary() {
+	m.summary = nil
+	m.clearedFields[turntrace.FieldSummary] = struct{}{}
+}
+
+// SummaryCleared returns if the "summary" field was cleared in this mutation.
+func (m *TurnTraceMutation) SummaryCleared() bool {
+	_, ok := m.clearedFields[turntrace.FieldSummary]
+	return ok
+}
+
+// ResetSummary resets all changes to the "summary" field.
+func (m *TurnTraceMutation) ResetSummary() {
+	m.summary = nil
+	delete(m.clearedFields, turntrace.FieldSummary)
+}
+
+// SetStartedAt sets the "started_at" field.
+func (m *TurnTraceMutation) SetStartedAt(t time.Time) {
+	m.started_at = &t
+}
+
+// StartedAt returns the value of the "started_at" field in the mutation.
+func (m *TurnTraceMutation) StartedAt() (r time.Time, exists bool) {
+	v := m.started_at
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldStartedAt returns the old "started_at" field's value of the TurnTrace entity.
+// If the TurnTrace object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *TurnTraceMutation) OldStartedAt(ctx context.Context) (v time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldStartedAt is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldStartedAt requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldStartedAt: %w", err)
+	}
+	return oldValue.StartedAt, nil
+}
+
+// ResetStartedAt resets all changes to the "started_at" field.
+func (m *TurnTraceMutation) ResetStartedAt() {
+	m.started_at = nil
+}
+
+// SetEndedAt sets the "ended_at" field.
+func (m *TurnTraceMutation) SetEndedAt(t time.Time) {
+	m.ended_at = &t
+}
+
+// EndedAt returns the value of the "ended_at" field in the mutation.
+func (m *TurnTraceMutation) EndedAt() (r time.Time, exists bool) {
+	v := m.ended_at
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldEndedAt returns the old "ended_at" field's value of the TurnTrace entity.
+// If the TurnTrace object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *TurnTraceMutation) OldEndedAt(ctx context.Context) (v *time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldEndedAt is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldEndedAt requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldEndedAt: %w", err)
+	}
+	return oldValue.EndedAt, nil
+}
+
+// ClearEndedAt clears the value of the "ended_at" field.
+func (m *TurnTraceMutation) ClearEndedAt() {
+	m.ended_at = nil
+	m.clearedFields[turntrace.FieldEndedAt] = struct{}{}
+}
+
+// EndedAtCleared returns if the "ended_at" field was cleared in this mutation.
+func (m *TurnTraceMutation) EndedAtCleared() bool {
+	_, ok := m.clearedFields[turntrace.FieldEndedAt]
+	return ok
+}
+
+// ResetEndedAt resets all changes to the "ended_at" field.
+func (m *TurnTraceMutation) ResetEndedAt() {
+	m.ended_at = nil
+	delete(m.clearedFields, turntrace.FieldEndedAt)
+}
+
+// Where appends a list predicates to the TurnTraceMutation builder.
+func (m *TurnTraceMutation) Where(ps ...predicate.TurnTrace) {
+	m.predicates = append(m.predicates, ps...)
+}
+
+// WhereP appends storage-level predicates to the TurnTraceMutation builder. Using this method,
+// users can use type-assertion to append predicates that do not depend on any generated package.
+func (m *TurnTraceMutation) WhereP(ps ...func(*sql.Selector)) {
+	p := make([]predicate.TurnTrace, len(ps))
+	for i := range ps {
+		p[i] = ps[i]
+	}
+	m.Where(p...)
+}
+
+// Op returns the operation name.
+func (m *TurnTraceMutation) Op() Op {
+	return m.op
+}
+
+// SetOp allows setting the mutation operation.
+func (m *TurnTraceMutation) SetOp(op Op) {
+	m.op = op
+}
+
+// Type returns the node type of this mutation (TurnTrace).
+func (m *TurnTraceMutation) Type() string {
+	return m.typ
+}
+
+// Fields returns all fields that were changed during this mutation. Note that in
+// order to get all numeric fields that were incremented/decremented, call
+// AddedFields().
+func (m *TurnTraceMutation) Fields() []string {
+	fields := make([]string, 0, 10)
+	if m.trace_id != nil {
+		fields = append(fields, turntrace.FieldTraceID)
+	}
+	if m.session_key != nil {
+		fields = append(fields, turntrace.FieldSessionKey)
+	}
+	if m.entrypoint != nil {
+		fields = append(fields, turntrace.FieldEntrypoint)
+	}
+	if m.outcome != nil {
+		fields = append(fields, turntrace.FieldOutcome)
+	}
+	if m.error_code != nil {
+		fields = append(fields, turntrace.FieldErrorCode)
+	}
+	if m.cause_class != nil {
+		fields = append(fields, turntrace.FieldCauseClass)
+	}
+	if m.cause_detail != nil {
+		fields = append(fields, turntrace.FieldCauseDetail)
+	}
+	if m.summary != nil {
+		fields = append(fields, turntrace.FieldSummary)
+	}
+	if m.started_at != nil {
+		fields = append(fields, turntrace.FieldStartedAt)
+	}
+	if m.ended_at != nil {
+		fields = append(fields, turntrace.FieldEndedAt)
+	}
+	return fields
+}
+
+// Field returns the value of a field with the given name. The second boolean
+// return value indicates that this field was not set, or was not defined in the
+// schema.
+func (m *TurnTraceMutation) Field(name string) (ent.Value, bool) {
+	switch name {
+	case turntrace.FieldTraceID:
+		return m.TraceID()
+	case turntrace.FieldSessionKey:
+		return m.SessionKey()
+	case turntrace.FieldEntrypoint:
+		return m.Entrypoint()
+	case turntrace.FieldOutcome:
+		return m.Outcome()
+	case turntrace.FieldErrorCode:
+		return m.ErrorCode()
+	case turntrace.FieldCauseClass:
+		return m.CauseClass()
+	case turntrace.FieldCauseDetail:
+		return m.CauseDetail()
+	case turntrace.FieldSummary:
+		return m.Summary()
+	case turntrace.FieldStartedAt:
+		return m.StartedAt()
+	case turntrace.FieldEndedAt:
+		return m.EndedAt()
+	}
+	return nil, false
+}
+
+// OldField returns the old value of the field from the database. An error is
+// returned if the mutation operation is not UpdateOne, or the query to the
+// database failed.
+func (m *TurnTraceMutation) OldField(ctx context.Context, name string) (ent.Value, error) {
+	switch name {
+	case turntrace.FieldTraceID:
+		return m.OldTraceID(ctx)
+	case turntrace.FieldSessionKey:
+		return m.OldSessionKey(ctx)
+	case turntrace.FieldEntrypoint:
+		return m.OldEntrypoint(ctx)
+	case turntrace.FieldOutcome:
+		return m.OldOutcome(ctx)
+	case turntrace.FieldErrorCode:
+		return m.OldErrorCode(ctx)
+	case turntrace.FieldCauseClass:
+		return m.OldCauseClass(ctx)
+	case turntrace.FieldCauseDetail:
+		return m.OldCauseDetail(ctx)
+	case turntrace.FieldSummary:
+		return m.OldSummary(ctx)
+	case turntrace.FieldStartedAt:
+		return m.OldStartedAt(ctx)
+	case turntrace.FieldEndedAt:
+		return m.OldEndedAt(ctx)
+	}
+	return nil, fmt.Errorf("unknown TurnTrace field %s", name)
+}
+
+// SetField sets the value of a field with the given name. It returns an error if
+// the field is not defined in the schema, or if the type mismatched the field
+// type.
+func (m *TurnTraceMutation) SetField(name string, value ent.Value) error {
+	switch name {
+	case turntrace.FieldTraceID:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetTraceID(v)
+		return nil
+	case turntrace.FieldSessionKey:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetSessionKey(v)
+		return nil
+	case turntrace.FieldEntrypoint:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetEntrypoint(v)
+		return nil
+	case turntrace.FieldOutcome:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetOutcome(v)
+		return nil
+	case turntrace.FieldErrorCode:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetErrorCode(v)
+		return nil
+	case turntrace.FieldCauseClass:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetCauseClass(v)
+		return nil
+	case turntrace.FieldCauseDetail:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetCauseDetail(v)
+		return nil
+	case turntrace.FieldSummary:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetSummary(v)
+		return nil
+	case turntrace.FieldStartedAt:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetStartedAt(v)
+		return nil
+	case turntrace.FieldEndedAt:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetEndedAt(v)
+		return nil
+	}
+	return fmt.Errorf("unknown TurnTrace field %s", name)
+}
+
+// AddedFields returns all numeric fields that were incremented/decremented during
+// this mutation.
+func (m *TurnTraceMutation) AddedFields() []string {
+	return nil
+}
+
+// AddedField returns the numeric value that was incremented/decremented on a field
+// with the given name. The second boolean return value indicates that this field
+// was not set, or was not defined in the schema.
+func (m *TurnTraceMutation) AddedField(name string) (ent.Value, bool) {
+	return nil, false
+}
+
+// AddField adds the value to the field with the given name. It returns an error if
+// the field is not defined in the schema, or if the type mismatched the field
+// type.
+func (m *TurnTraceMutation) AddField(name string, value ent.Value) error {
+	switch name {
+	}
+	return fmt.Errorf("unknown TurnTrace numeric field %s", name)
+}
+
+// ClearedFields returns all nullable fields that were cleared during this
+// mutation.
+func (m *TurnTraceMutation) ClearedFields() []string {
+	var fields []string
+	if m.FieldCleared(turntrace.FieldErrorCode) {
+		fields = append(fields, turntrace.FieldErrorCode)
+	}
+	if m.FieldCleared(turntrace.FieldCauseClass) {
+		fields = append(fields, turntrace.FieldCauseClass)
+	}
+	if m.FieldCleared(turntrace.FieldCauseDetail) {
+		fields = append(fields, turntrace.FieldCauseDetail)
+	}
+	if m.FieldCleared(turntrace.FieldSummary) {
+		fields = append(fields, turntrace.FieldSummary)
+	}
+	if m.FieldCleared(turntrace.FieldEndedAt) {
+		fields = append(fields, turntrace.FieldEndedAt)
+	}
+	return fields
+}
+
+// FieldCleared returns a boolean indicating if a field with the given name was
+// cleared in this mutation.
+func (m *TurnTraceMutation) FieldCleared(name string) bool {
+	_, ok := m.clearedFields[name]
+	return ok
+}
+
+// ClearField clears the value of the field with the given name. It returns an
+// error if the field is not defined in the schema.
+func (m *TurnTraceMutation) ClearField(name string) error {
+	switch name {
+	case turntrace.FieldErrorCode:
+		m.ClearErrorCode()
+		return nil
+	case turntrace.FieldCauseClass:
+		m.ClearCauseClass()
+		return nil
+	case turntrace.FieldCauseDetail:
+		m.ClearCauseDetail()
+		return nil
+	case turntrace.FieldSummary:
+		m.ClearSummary()
+		return nil
+	case turntrace.FieldEndedAt:
+		m.ClearEndedAt()
+		return nil
+	}
+	return fmt.Errorf("unknown TurnTrace nullable field %s", name)
+}
+
+// ResetField resets all changes in the mutation for the field with the given name.
+// It returns an error if the field is not defined in the schema.
+func (m *TurnTraceMutation) ResetField(name string) error {
+	switch name {
+	case turntrace.FieldTraceID:
+		m.ResetTraceID()
+		return nil
+	case turntrace.FieldSessionKey:
+		m.ResetSessionKey()
+		return nil
+	case turntrace.FieldEntrypoint:
+		m.ResetEntrypoint()
+		return nil
+	case turntrace.FieldOutcome:
+		m.ResetOutcome()
+		return nil
+	case turntrace.FieldErrorCode:
+		m.ResetErrorCode()
+		return nil
+	case turntrace.FieldCauseClass:
+		m.ResetCauseClass()
+		return nil
+	case turntrace.FieldCauseDetail:
+		m.ResetCauseDetail()
+		return nil
+	case turntrace.FieldSummary:
+		m.ResetSummary()
+		return nil
+	case turntrace.FieldStartedAt:
+		m.ResetStartedAt()
+		return nil
+	case turntrace.FieldEndedAt:
+		m.ResetEndedAt()
+		return nil
+	}
+	return fmt.Errorf("unknown TurnTrace field %s", name)
+}
+
+// AddedEdges returns all edge names that were set/added in this mutation.
+func (m *TurnTraceMutation) AddedEdges() []string {
+	edges := make([]string, 0, 0)
+	return edges
+}
+
+// AddedIDs returns all IDs (to other nodes) that were added for the given edge
+// name in this mutation.
+func (m *TurnTraceMutation) AddedIDs(name string) []ent.Value {
+	return nil
+}
+
+// RemovedEdges returns all edge names that were removed in this mutation.
+func (m *TurnTraceMutation) RemovedEdges() []string {
+	edges := make([]string, 0, 0)
+	return edges
+}
+
+// RemovedIDs returns all IDs (to other nodes) that were removed for the edge with
+// the given name in this mutation.
+func (m *TurnTraceMutation) RemovedIDs(name string) []ent.Value {
+	return nil
+}
+
+// ClearedEdges returns all edge names that were cleared in this mutation.
+func (m *TurnTraceMutation) ClearedEdges() []string {
+	edges := make([]string, 0, 0)
+	return edges
+}
+
+// EdgeCleared returns a boolean which indicates if the edge with the given name
+// was cleared in this mutation.
+func (m *TurnTraceMutation) EdgeCleared(name string) bool {
+	return false
+}
+
+// ClearEdge clears the value of the edge with the given name. It returns an error
+// if that edge is not defined in the schema.
+func (m *TurnTraceMutation) ClearEdge(name string) error {
+	return fmt.Errorf("unknown TurnTrace unique edge %s", name)
+}
+
+// ResetEdge resets all changes to the edge with the given name in this mutation.
+// It returns an error if the edge is not defined in the schema.
+func (m *TurnTraceMutation) ResetEdge(name string) error {
+	return fmt.Errorf("unknown TurnTrace edge %s", name)
+}
+
+// TurnTraceEventMutation represents an operation that mutates the TurnTraceEvent nodes in the graph.
+type TurnTraceEventMutation struct {
+	config
+	op                Op
+	typ               string
+	id                *uuid.UUID
+	trace_id          *string
+	seq               *int64
+	addseq            *int64
+	event_type        *string
+	agent_name        *string
+	tool_name         *string
+	call_signature    *string
+	payload_json      *string
+	payload_truncated *bool
+	created_at        *time.Time
+	clearedFields     map[string]struct{}
+	done              bool
+	oldValue          func(context.Context) (*TurnTraceEvent, error)
+	predicates        []predicate.TurnTraceEvent
+}
+
+var _ ent.Mutation = (*TurnTraceEventMutation)(nil)
+
+// turntraceeventOption allows management of the mutation configuration using functional options.
+type turntraceeventOption func(*TurnTraceEventMutation)
+
+// newTurnTraceEventMutation creates new mutation for the TurnTraceEvent entity.
+func newTurnTraceEventMutation(c config, op Op, opts ...turntraceeventOption) *TurnTraceEventMutation {
+	m := &TurnTraceEventMutation{
+		config:        c,
+		op:            op,
+		typ:           TypeTurnTraceEvent,
+		clearedFields: make(map[string]struct{}),
+	}
+	for _, opt := range opts {
+		opt(m)
+	}
+	return m
+}
+
+// withTurnTraceEventID sets the ID field of the mutation.
+func withTurnTraceEventID(id uuid.UUID) turntraceeventOption {
+	return func(m *TurnTraceEventMutation) {
+		var (
+			err   error
+			once  sync.Once
+			value *TurnTraceEvent
+		)
+		m.oldValue = func(ctx context.Context) (*TurnTraceEvent, error) {
+			once.Do(func() {
+				if m.done {
+					err = errors.New("querying old values post mutation is not allowed")
+				} else {
+					value, err = m.Client().TurnTraceEvent.Get(ctx, id)
+				}
+			})
+			return value, err
+		}
+		m.id = &id
+	}
+}
+
+// withTurnTraceEvent sets the old TurnTraceEvent of the mutation.
+func withTurnTraceEvent(node *TurnTraceEvent) turntraceeventOption {
+	return func(m *TurnTraceEventMutation) {
+		m.oldValue = func(context.Context) (*TurnTraceEvent, error) {
+			return node, nil
+		}
+		m.id = &node.ID
+	}
+}
+
+// Client returns a new `ent.Client` from the mutation. If the mutation was
+// executed in a transaction (ent.Tx), a transactional client is returned.
+func (m TurnTraceEventMutation) Client() *Client {
+	client := &Client{config: m.config}
+	client.init()
+	return client
+}
+
+// Tx returns an `ent.Tx` for mutations that were executed in transactions;
+// it returns an error otherwise.
+func (m TurnTraceEventMutation) Tx() (*Tx, error) {
+	if _, ok := m.driver.(*txDriver); !ok {
+		return nil, errors.New("ent: mutation is not running in a transaction")
+	}
+	tx := &Tx{config: m.config}
+	tx.init()
+	return tx, nil
+}
+
+// SetID sets the value of the id field. Note that this
+// operation is only accepted on creation of TurnTraceEvent entities.
+func (m *TurnTraceEventMutation) SetID(id uuid.UUID) {
+	m.id = &id
+}
+
+// ID returns the ID value in the mutation. Note that the ID is only available
+// if it was provided to the builder or after it was returned from the database.
+func (m *TurnTraceEventMutation) ID() (id uuid.UUID, exists bool) {
+	if m.id == nil {
+		return
+	}
+	return *m.id, true
+}
+
+// IDs queries the database and returns the entity ids that match the mutation's predicate.
+// That means, if the mutation is applied within a transaction with an isolation level such
+// as sql.LevelSerializable, the returned ids match the ids of the rows that will be updated
+// or updated by the mutation.
+func (m *TurnTraceEventMutation) IDs(ctx context.Context) ([]uuid.UUID, error) {
+	switch {
+	case m.op.Is(OpUpdateOne | OpDeleteOne):
+		id, exists := m.ID()
+		if exists {
+			return []uuid.UUID{id}, nil
+		}
+		fallthrough
+	case m.op.Is(OpUpdate | OpDelete):
+		return m.Client().TurnTraceEvent.Query().Where(m.predicates...).IDs(ctx)
+	default:
+		return nil, fmt.Errorf("IDs is not allowed on %s operations", m.op)
+	}
+}
+
+// SetTraceID sets the "trace_id" field.
+func (m *TurnTraceEventMutation) SetTraceID(s string) {
+	m.trace_id = &s
+}
+
+// TraceID returns the value of the "trace_id" field in the mutation.
+func (m *TurnTraceEventMutation) TraceID() (r string, exists bool) {
+	v := m.trace_id
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldTraceID returns the old "trace_id" field's value of the TurnTraceEvent entity.
+// If the TurnTraceEvent object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *TurnTraceEventMutation) OldTraceID(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldTraceID is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldTraceID requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldTraceID: %w", err)
+	}
+	return oldValue.TraceID, nil
+}
+
+// ResetTraceID resets all changes to the "trace_id" field.
+func (m *TurnTraceEventMutation) ResetTraceID() {
+	m.trace_id = nil
+}
+
+// SetSeq sets the "seq" field.
+func (m *TurnTraceEventMutation) SetSeq(i int64) {
+	m.seq = &i
+	m.addseq = nil
+}
+
+// Seq returns the value of the "seq" field in the mutation.
+func (m *TurnTraceEventMutation) Seq() (r int64, exists bool) {
+	v := m.seq
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldSeq returns the old "seq" field's value of the TurnTraceEvent entity.
+// If the TurnTraceEvent object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *TurnTraceEventMutation) OldSeq(ctx context.Context) (v int64, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldSeq is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldSeq requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldSeq: %w", err)
+	}
+	return oldValue.Seq, nil
+}
+
+// AddSeq adds i to the "seq" field.
+func (m *TurnTraceEventMutation) AddSeq(i int64) {
+	if m.addseq != nil {
+		*m.addseq += i
+	} else {
+		m.addseq = &i
+	}
+}
+
+// AddedSeq returns the value that was added to the "seq" field in this mutation.
+func (m *TurnTraceEventMutation) AddedSeq() (r int64, exists bool) {
+	v := m.addseq
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ResetSeq resets all changes to the "seq" field.
+func (m *TurnTraceEventMutation) ResetSeq() {
+	m.seq = nil
+	m.addseq = nil
+}
+
+// SetEventType sets the "event_type" field.
+func (m *TurnTraceEventMutation) SetEventType(s string) {
+	m.event_type = &s
+}
+
+// EventType returns the value of the "event_type" field in the mutation.
+func (m *TurnTraceEventMutation) EventType() (r string, exists bool) {
+	v := m.event_type
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldEventType returns the old "event_type" field's value of the TurnTraceEvent entity.
+// If the TurnTraceEvent object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *TurnTraceEventMutation) OldEventType(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldEventType is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldEventType requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldEventType: %w", err)
+	}
+	return oldValue.EventType, nil
+}
+
+// ResetEventType resets all changes to the "event_type" field.
+func (m *TurnTraceEventMutation) ResetEventType() {
+	m.event_type = nil
+}
+
+// SetAgentName sets the "agent_name" field.
+func (m *TurnTraceEventMutation) SetAgentName(s string) {
+	m.agent_name = &s
+}
+
+// AgentName returns the value of the "agent_name" field in the mutation.
+func (m *TurnTraceEventMutation) AgentName() (r string, exists bool) {
+	v := m.agent_name
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldAgentName returns the old "agent_name" field's value of the TurnTraceEvent entity.
+// If the TurnTraceEvent object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *TurnTraceEventMutation) OldAgentName(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldAgentName is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldAgentName requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldAgentName: %w", err)
+	}
+	return oldValue.AgentName, nil
+}
+
+// ClearAgentName clears the value of the "agent_name" field.
+func (m *TurnTraceEventMutation) ClearAgentName() {
+	m.agent_name = nil
+	m.clearedFields[turntraceevent.FieldAgentName] = struct{}{}
+}
+
+// AgentNameCleared returns if the "agent_name" field was cleared in this mutation.
+func (m *TurnTraceEventMutation) AgentNameCleared() bool {
+	_, ok := m.clearedFields[turntraceevent.FieldAgentName]
+	return ok
+}
+
+// ResetAgentName resets all changes to the "agent_name" field.
+func (m *TurnTraceEventMutation) ResetAgentName() {
+	m.agent_name = nil
+	delete(m.clearedFields, turntraceevent.FieldAgentName)
+}
+
+// SetToolName sets the "tool_name" field.
+func (m *TurnTraceEventMutation) SetToolName(s string) {
+	m.tool_name = &s
+}
+
+// ToolName returns the value of the "tool_name" field in the mutation.
+func (m *TurnTraceEventMutation) ToolName() (r string, exists bool) {
+	v := m.tool_name
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldToolName returns the old "tool_name" field's value of the TurnTraceEvent entity.
+// If the TurnTraceEvent object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *TurnTraceEventMutation) OldToolName(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldToolName is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldToolName requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldToolName: %w", err)
+	}
+	return oldValue.ToolName, nil
+}
+
+// ClearToolName clears the value of the "tool_name" field.
+func (m *TurnTraceEventMutation) ClearToolName() {
+	m.tool_name = nil
+	m.clearedFields[turntraceevent.FieldToolName] = struct{}{}
+}
+
+// ToolNameCleared returns if the "tool_name" field was cleared in this mutation.
+func (m *TurnTraceEventMutation) ToolNameCleared() bool {
+	_, ok := m.clearedFields[turntraceevent.FieldToolName]
+	return ok
+}
+
+// ResetToolName resets all changes to the "tool_name" field.
+func (m *TurnTraceEventMutation) ResetToolName() {
+	m.tool_name = nil
+	delete(m.clearedFields, turntraceevent.FieldToolName)
+}
+
+// SetCallSignature sets the "call_signature" field.
+func (m *TurnTraceEventMutation) SetCallSignature(s string) {
+	m.call_signature = &s
+}
+
+// CallSignature returns the value of the "call_signature" field in the mutation.
+func (m *TurnTraceEventMutation) CallSignature() (r string, exists bool) {
+	v := m.call_signature
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldCallSignature returns the old "call_signature" field's value of the TurnTraceEvent entity.
+// If the TurnTraceEvent object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *TurnTraceEventMutation) OldCallSignature(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldCallSignature is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldCallSignature requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldCallSignature: %w", err)
+	}
+	return oldValue.CallSignature, nil
+}
+
+// ClearCallSignature clears the value of the "call_signature" field.
+func (m *TurnTraceEventMutation) ClearCallSignature() {
+	m.call_signature = nil
+	m.clearedFields[turntraceevent.FieldCallSignature] = struct{}{}
+}
+
+// CallSignatureCleared returns if the "call_signature" field was cleared in this mutation.
+func (m *TurnTraceEventMutation) CallSignatureCleared() bool {
+	_, ok := m.clearedFields[turntraceevent.FieldCallSignature]
+	return ok
+}
+
+// ResetCallSignature resets all changes to the "call_signature" field.
+func (m *TurnTraceEventMutation) ResetCallSignature() {
+	m.call_signature = nil
+	delete(m.clearedFields, turntraceevent.FieldCallSignature)
+}
+
+// SetPayloadJSON sets the "payload_json" field.
+func (m *TurnTraceEventMutation) SetPayloadJSON(s string) {
+	m.payload_json = &s
+}
+
+// PayloadJSON returns the value of the "payload_json" field in the mutation.
+func (m *TurnTraceEventMutation) PayloadJSON() (r string, exists bool) {
+	v := m.payload_json
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldPayloadJSON returns the old "payload_json" field's value of the TurnTraceEvent entity.
+// If the TurnTraceEvent object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *TurnTraceEventMutation) OldPayloadJSON(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldPayloadJSON is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldPayloadJSON requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldPayloadJSON: %w", err)
+	}
+	return oldValue.PayloadJSON, nil
+}
+
+// ClearPayloadJSON clears the value of the "payload_json" field.
+func (m *TurnTraceEventMutation) ClearPayloadJSON() {
+	m.payload_json = nil
+	m.clearedFields[turntraceevent.FieldPayloadJSON] = struct{}{}
+}
+
+// PayloadJSONCleared returns if the "payload_json" field was cleared in this mutation.
+func (m *TurnTraceEventMutation) PayloadJSONCleared() bool {
+	_, ok := m.clearedFields[turntraceevent.FieldPayloadJSON]
+	return ok
+}
+
+// ResetPayloadJSON resets all changes to the "payload_json" field.
+func (m *TurnTraceEventMutation) ResetPayloadJSON() {
+	m.payload_json = nil
+	delete(m.clearedFields, turntraceevent.FieldPayloadJSON)
+}
+
+// SetPayloadTruncated sets the "payload_truncated" field.
+func (m *TurnTraceEventMutation) SetPayloadTruncated(b bool) {
+	m.payload_truncated = &b
+}
+
+// PayloadTruncated returns the value of the "payload_truncated" field in the mutation.
+func (m *TurnTraceEventMutation) PayloadTruncated() (r bool, exists bool) {
+	v := m.payload_truncated
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldPayloadTruncated returns the old "payload_truncated" field's value of the TurnTraceEvent entity.
+// If the TurnTraceEvent object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *TurnTraceEventMutation) OldPayloadTruncated(ctx context.Context) (v bool, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldPayloadTruncated is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldPayloadTruncated requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldPayloadTruncated: %w", err)
+	}
+	return oldValue.PayloadTruncated, nil
+}
+
+// ResetPayloadTruncated resets all changes to the "payload_truncated" field.
+func (m *TurnTraceEventMutation) ResetPayloadTruncated() {
+	m.payload_truncated = nil
+}
+
+// SetCreatedAt sets the "created_at" field.
+func (m *TurnTraceEventMutation) SetCreatedAt(t time.Time) {
+	m.created_at = &t
+}
+
+// CreatedAt returns the value of the "created_at" field in the mutation.
+func (m *TurnTraceEventMutation) CreatedAt() (r time.Time, exists bool) {
+	v := m.created_at
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldCreatedAt returns the old "created_at" field's value of the TurnTraceEvent entity.
+// If the TurnTraceEvent object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *TurnTraceEventMutation) OldCreatedAt(ctx context.Context) (v time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldCreatedAt is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldCreatedAt requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldCreatedAt: %w", err)
+	}
+	return oldValue.CreatedAt, nil
+}
+
+// ResetCreatedAt resets all changes to the "created_at" field.
+func (m *TurnTraceEventMutation) ResetCreatedAt() {
+	m.created_at = nil
+}
+
+// Where appends a list predicates to the TurnTraceEventMutation builder.
+func (m *TurnTraceEventMutation) Where(ps ...predicate.TurnTraceEvent) {
+	m.predicates = append(m.predicates, ps...)
+}
+
+// WhereP appends storage-level predicates to the TurnTraceEventMutation builder. Using this method,
+// users can use type-assertion to append predicates that do not depend on any generated package.
+func (m *TurnTraceEventMutation) WhereP(ps ...func(*sql.Selector)) {
+	p := make([]predicate.TurnTraceEvent, len(ps))
+	for i := range ps {
+		p[i] = ps[i]
+	}
+	m.Where(p...)
+}
+
+// Op returns the operation name.
+func (m *TurnTraceEventMutation) Op() Op {
+	return m.op
+}
+
+// SetOp allows setting the mutation operation.
+func (m *TurnTraceEventMutation) SetOp(op Op) {
+	m.op = op
+}
+
+// Type returns the node type of this mutation (TurnTraceEvent).
+func (m *TurnTraceEventMutation) Type() string {
+	return m.typ
+}
+
+// Fields returns all fields that were changed during this mutation. Note that in
+// order to get all numeric fields that were incremented/decremented, call
+// AddedFields().
+func (m *TurnTraceEventMutation) Fields() []string {
+	fields := make([]string, 0, 9)
+	if m.trace_id != nil {
+		fields = append(fields, turntraceevent.FieldTraceID)
+	}
+	if m.seq != nil {
+		fields = append(fields, turntraceevent.FieldSeq)
+	}
+	if m.event_type != nil {
+		fields = append(fields, turntraceevent.FieldEventType)
+	}
+	if m.agent_name != nil {
+		fields = append(fields, turntraceevent.FieldAgentName)
+	}
+	if m.tool_name != nil {
+		fields = append(fields, turntraceevent.FieldToolName)
+	}
+	if m.call_signature != nil {
+		fields = append(fields, turntraceevent.FieldCallSignature)
+	}
+	if m.payload_json != nil {
+		fields = append(fields, turntraceevent.FieldPayloadJSON)
+	}
+	if m.payload_truncated != nil {
+		fields = append(fields, turntraceevent.FieldPayloadTruncated)
+	}
+	if m.created_at != nil {
+		fields = append(fields, turntraceevent.FieldCreatedAt)
+	}
+	return fields
+}
+
+// Field returns the value of a field with the given name. The second boolean
+// return value indicates that this field was not set, or was not defined in the
+// schema.
+func (m *TurnTraceEventMutation) Field(name string) (ent.Value, bool) {
+	switch name {
+	case turntraceevent.FieldTraceID:
+		return m.TraceID()
+	case turntraceevent.FieldSeq:
+		return m.Seq()
+	case turntraceevent.FieldEventType:
+		return m.EventType()
+	case turntraceevent.FieldAgentName:
+		return m.AgentName()
+	case turntraceevent.FieldToolName:
+		return m.ToolName()
+	case turntraceevent.FieldCallSignature:
+		return m.CallSignature()
+	case turntraceevent.FieldPayloadJSON:
+		return m.PayloadJSON()
+	case turntraceevent.FieldPayloadTruncated:
+		return m.PayloadTruncated()
+	case turntraceevent.FieldCreatedAt:
+		return m.CreatedAt()
+	}
+	return nil, false
+}
+
+// OldField returns the old value of the field from the database. An error is
+// returned if the mutation operation is not UpdateOne, or the query to the
+// database failed.
+func (m *TurnTraceEventMutation) OldField(ctx context.Context, name string) (ent.Value, error) {
+	switch name {
+	case turntraceevent.FieldTraceID:
+		return m.OldTraceID(ctx)
+	case turntraceevent.FieldSeq:
+		return m.OldSeq(ctx)
+	case turntraceevent.FieldEventType:
+		return m.OldEventType(ctx)
+	case turntraceevent.FieldAgentName:
+		return m.OldAgentName(ctx)
+	case turntraceevent.FieldToolName:
+		return m.OldToolName(ctx)
+	case turntraceevent.FieldCallSignature:
+		return m.OldCallSignature(ctx)
+	case turntraceevent.FieldPayloadJSON:
+		return m.OldPayloadJSON(ctx)
+	case turntraceevent.FieldPayloadTruncated:
+		return m.OldPayloadTruncated(ctx)
+	case turntraceevent.FieldCreatedAt:
+		return m.OldCreatedAt(ctx)
+	}
+	return nil, fmt.Errorf("unknown TurnTraceEvent field %s", name)
+}
+
+// SetField sets the value of a field with the given name. It returns an error if
+// the field is not defined in the schema, or if the type mismatched the field
+// type.
+func (m *TurnTraceEventMutation) SetField(name string, value ent.Value) error {
+	switch name {
+	case turntraceevent.FieldTraceID:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetTraceID(v)
+		return nil
+	case turntraceevent.FieldSeq:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetSeq(v)
+		return nil
+	case turntraceevent.FieldEventType:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetEventType(v)
+		return nil
+	case turntraceevent.FieldAgentName:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetAgentName(v)
+		return nil
+	case turntraceevent.FieldToolName:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetToolName(v)
+		return nil
+	case turntraceevent.FieldCallSignature:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetCallSignature(v)
+		return nil
+	case turntraceevent.FieldPayloadJSON:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetPayloadJSON(v)
+		return nil
+	case turntraceevent.FieldPayloadTruncated:
+		v, ok := value.(bool)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetPayloadTruncated(v)
+		return nil
+	case turntraceevent.FieldCreatedAt:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetCreatedAt(v)
+		return nil
+	}
+	return fmt.Errorf("unknown TurnTraceEvent field %s", name)
+}
+
+// AddedFields returns all numeric fields that were incremented/decremented during
+// this mutation.
+func (m *TurnTraceEventMutation) AddedFields() []string {
+	var fields []string
+	if m.addseq != nil {
+		fields = append(fields, turntraceevent.FieldSeq)
+	}
+	return fields
+}
+
+// AddedField returns the numeric value that was incremented/decremented on a field
+// with the given name. The second boolean return value indicates that this field
+// was not set, or was not defined in the schema.
+func (m *TurnTraceEventMutation) AddedField(name string) (ent.Value, bool) {
+	switch name {
+	case turntraceevent.FieldSeq:
+		return m.AddedSeq()
+	}
+	return nil, false
+}
+
+// AddField adds the value to the field with the given name. It returns an error if
+// the field is not defined in the schema, or if the type mismatched the field
+// type.
+func (m *TurnTraceEventMutation) AddField(name string, value ent.Value) error {
+	switch name {
+	case turntraceevent.FieldSeq:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddSeq(v)
+		return nil
+	}
+	return fmt.Errorf("unknown TurnTraceEvent numeric field %s", name)
+}
+
+// ClearedFields returns all nullable fields that were cleared during this
+// mutation.
+func (m *TurnTraceEventMutation) ClearedFields() []string {
+	var fields []string
+	if m.FieldCleared(turntraceevent.FieldAgentName) {
+		fields = append(fields, turntraceevent.FieldAgentName)
+	}
+	if m.FieldCleared(turntraceevent.FieldToolName) {
+		fields = append(fields, turntraceevent.FieldToolName)
+	}
+	if m.FieldCleared(turntraceevent.FieldCallSignature) {
+		fields = append(fields, turntraceevent.FieldCallSignature)
+	}
+	if m.FieldCleared(turntraceevent.FieldPayloadJSON) {
+		fields = append(fields, turntraceevent.FieldPayloadJSON)
+	}
+	return fields
+}
+
+// FieldCleared returns a boolean indicating if a field with the given name was
+// cleared in this mutation.
+func (m *TurnTraceEventMutation) FieldCleared(name string) bool {
+	_, ok := m.clearedFields[name]
+	return ok
+}
+
+// ClearField clears the value of the field with the given name. It returns an
+// error if the field is not defined in the schema.
+func (m *TurnTraceEventMutation) ClearField(name string) error {
+	switch name {
+	case turntraceevent.FieldAgentName:
+		m.ClearAgentName()
+		return nil
+	case turntraceevent.FieldToolName:
+		m.ClearToolName()
+		return nil
+	case turntraceevent.FieldCallSignature:
+		m.ClearCallSignature()
+		return nil
+	case turntraceevent.FieldPayloadJSON:
+		m.ClearPayloadJSON()
+		return nil
+	}
+	return fmt.Errorf("unknown TurnTraceEvent nullable field %s", name)
+}
+
+// ResetField resets all changes in the mutation for the field with the given name.
+// It returns an error if the field is not defined in the schema.
+func (m *TurnTraceEventMutation) ResetField(name string) error {
+	switch name {
+	case turntraceevent.FieldTraceID:
+		m.ResetTraceID()
+		return nil
+	case turntraceevent.FieldSeq:
+		m.ResetSeq()
+		return nil
+	case turntraceevent.FieldEventType:
+		m.ResetEventType()
+		return nil
+	case turntraceevent.FieldAgentName:
+		m.ResetAgentName()
+		return nil
+	case turntraceevent.FieldToolName:
+		m.ResetToolName()
+		return nil
+	case turntraceevent.FieldCallSignature:
+		m.ResetCallSignature()
+		return nil
+	case turntraceevent.FieldPayloadJSON:
+		m.ResetPayloadJSON()
+		return nil
+	case turntraceevent.FieldPayloadTruncated:
+		m.ResetPayloadTruncated()
+		return nil
+	case turntraceevent.FieldCreatedAt:
+		m.ResetCreatedAt()
+		return nil
+	}
+	return fmt.Errorf("unknown TurnTraceEvent field %s", name)
+}
+
+// AddedEdges returns all edge names that were set/added in this mutation.
+func (m *TurnTraceEventMutation) AddedEdges() []string {
+	edges := make([]string, 0, 0)
+	return edges
+}
+
+// AddedIDs returns all IDs (to other nodes) that were added for the given edge
+// name in this mutation.
+func (m *TurnTraceEventMutation) AddedIDs(name string) []ent.Value {
+	return nil
+}
+
+// RemovedEdges returns all edge names that were removed in this mutation.
+func (m *TurnTraceEventMutation) RemovedEdges() []string {
+	edges := make([]string, 0, 0)
+	return edges
+}
+
+// RemovedIDs returns all IDs (to other nodes) that were removed for the edge with
+// the given name in this mutation.
+func (m *TurnTraceEventMutation) RemovedIDs(name string) []ent.Value {
+	return nil
+}
+
+// ClearedEdges returns all edge names that were cleared in this mutation.
+func (m *TurnTraceEventMutation) ClearedEdges() []string {
+	edges := make([]string, 0, 0)
+	return edges
+}
+
+// EdgeCleared returns a boolean which indicates if the edge with the given name
+// was cleared in this mutation.
+func (m *TurnTraceEventMutation) EdgeCleared(name string) bool {
+	return false
+}
+
+// ClearEdge clears the value of the edge with the given name. It returns an error
+// if that edge is not defined in the schema.
+func (m *TurnTraceEventMutation) ClearEdge(name string) error {
+	return fmt.Errorf("unknown TurnTraceEvent unique edge %s", name)
+}
+
+// ResetEdge resets all changes to the edge with the given name in this mutation.
+// It returns an error if the edge is not defined in the schema.
+func (m *TurnTraceEventMutation) ResetEdge(name string) error {
+	return fmt.Errorf("unknown TurnTraceEvent edge %s", name)
 }
 
 // WorkflowRunMutation represents an operation that mutates the WorkflowRun nodes in the graph.

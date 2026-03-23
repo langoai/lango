@@ -61,14 +61,22 @@ func (s *SessionServiceAdapter) WithRootSessionObserver(fn func(string)) *Sessio
 
 // WithChildLifecycleHook enables synthetic child-session lifecycle tracking.
 func (s *SessionServiceAdapter) WithChildLifecycleHook(h func(internal.SessionLifecycleEvent)) *SessionServiceAdapter {
-	if h != nil {
-		s.childStore = internal.NewInMemoryChildStore(s.store, internal.WithLifecycleHook(h))
+	if h == nil {
+		return s
 	}
+	if s.childStore == nil {
+		s.childStore = internal.NewInMemoryChildStore(s.store, internal.WithLifecycleHook(h))
+		return s
+	}
+	s.childStore.SetLifecycleHook(h)
 	return s
 }
 
 // WithIsolatedAgents marks the agent names that should write to child session history.
 func (s *SessionServiceAdapter) WithIsolatedAgents(names []string) *SessionServiceAdapter {
+	if s.childStore == nil {
+		s.childStore = internal.NewInMemoryChildStore(s.store)
+	}
 	s.isolatedAgents = make(map[string]bool, len(names))
 	for _, name := range names {
 		if strings.TrimSpace(name) != "" {
@@ -415,7 +423,7 @@ func (s *SessionServiceAdapter) childSummary(active *runtimeChild) (string, erro
 	if strings.TrimSpace(summary) != "" {
 		return summary, nil
 	}
-	return fmt.Sprintf("[Isolated sub-agent %s completed without a textual result. Raw child history remained isolated.]", active.agent), nil
+	return fmt.Sprintf("[Isolated sub-agent %s ended without a visible assistant result: empty_after_tool_use.]", active.agent), nil
 }
 
 func (s *SessionServiceAdapter) appendOutcomeToParent(active *runtimeChild, content string) error {

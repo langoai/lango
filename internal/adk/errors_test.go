@@ -115,73 +115,87 @@ func TestClassifyError(t *testing.T) {
 		give string
 		err  error
 		want ErrorCode
+		cause string
 	}{
 		{
 			give: "nil error",
 			err:  nil,
 			want: ErrInternal,
+			cause: CauseInternalRuntimeError,
 		},
 		{
 			give: "deadline exceeded",
 			err:  context.DeadlineExceeded,
 			want: ErrTimeout,
+			cause: CauseTimeoutHard,
 		},
 		{
 			give: "wrapped deadline",
 			err:  fmt.Errorf("agent: %w", context.DeadlineExceeded),
 			want: ErrTimeout,
+			cause: CauseTimeoutHard,
 		},
 		{
 			give: "context canceled",
 			err:  context.Canceled,
 			want: ErrTimeout,
+			cause: CauseTimeoutHard,
 		},
 		{
 			give: "turn limit",
 			err:  fmt.Errorf("agent exceeded maximum turn limit (25)"),
 			want: ErrTurnLimit,
+			cause: CauseTurnLimitExceeded,
 		},
 		{
 			give: "tool error",
 			err:  fmt.Errorf("tool execution failed"),
 			want: ErrToolError,
+			cause: CauseUnknownToolError,
 		},
 		{
 			give: "model error 429",
 			err:  fmt.Errorf("429 rate limit exceeded"),
 			want: ErrModelError,
+			cause: CauseProviderRateLimit,
 		},
 		{
 			give: "thought_signature error",
 			err:  fmt.Errorf("invalid thought_signature in request"),
 			want: ErrModelError,
+			cause: CauseThoughtSignatureMissing,
 		},
 		{
 			give: "thoughtSignature camelCase error",
 			err:  fmt.Errorf("field thoughtSignature is not valid"),
 			want: ErrModelError,
+			cause: CauseThoughtSignatureMissing,
 		},
 		{
 			give: "thought_signature in functionCall parts (Gemini API error)",
 			err:  fmt.Errorf("Error 400, Message: Function call is missing a thought_signature in functionCall parts"),
 			want: ErrModelError,
+			cause: CauseThoughtSignatureMissing,
 		},
 		{
 			give: "tool churn",
 			err:  fmt.Errorf(`tool "browser_search" called 5 times consecutively, forcing stop`),
 			want: ErrToolChurn,
+			cause: CauseRepeatedCallSignature,
 		},
 		{
 			give: "generic error",
 			err:  fmt.Errorf("something unknown"),
 			want: ErrInternal,
+			cause: CauseInternalRuntimeError,
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.give, func(t *testing.T) {
 			got := classifyError(tt.err)
-			assert.Equal(t, tt.want, got)
+			assert.Equal(t, tt.want, got.Code)
+			assert.Equal(t, tt.cause, got.CauseClass)
 		})
 	}
 }

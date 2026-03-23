@@ -37,6 +37,8 @@ import (
 	"github.com/langoai/lango/internal/ent/session"
 	"github.com/langoai/lango/internal/ent/sessionprovenance"
 	"github.com/langoai/lango/internal/ent/tokenusage"
+	"github.com/langoai/lango/internal/ent/turntrace"
+	"github.com/langoai/lango/internal/ent/turntraceevent"
 	"github.com/langoai/lango/internal/ent/workflowrun"
 	"github.com/langoai/lango/internal/ent/workflowsteprun"
 )
@@ -124,6 +126,8 @@ func checkColumn(t, c string) error {
 			session.Table:               session.ValidColumn,
 			sessionprovenance.Table:     sessionprovenance.ValidColumn,
 			tokenusage.Table:            tokenusage.ValidColumn,
+			turntrace.Table:             turntrace.ValidColumn,
+			turntraceevent.Table:        turntraceevent.ValidColumn,
 			workflowrun.Table:           workflowrun.ValidColumn,
 			workflowsteprun.Table:       workflowsteprun.ValidColumn,
 		})

@@ -44,6 +44,8 @@ import (
 	"github.com/langoai/lango/internal/toolcatalog"
 	"github.com/langoai/lango/internal/toolchain"
 	"github.com/langoai/lango/internal/tooloutput"
+	"github.com/langoai/lango/internal/turnrunner"
+	"github.com/langoai/lango/internal/turntrace"
 	"github.com/langoai/lango/internal/wallet"
 	"github.com/langoai/lango/internal/workflow"
 	x402pkg "github.com/langoai/lango/internal/x402"
@@ -127,6 +129,10 @@ type App struct {
 
 	// Gatekeeper (response sanitizer)
 	Sanitizer *gatekeeper.Sanitizer
+
+	// Turn Runtime (shared execution + durable traces)
+	TurnRunner    *turnrunner.Runner
+	TurnTraceStore turntrace.Store
 
 	// RunLedger Components (optional, Task OS durable execution)
 	RunLedgerStore runledger.RunLedgerStore

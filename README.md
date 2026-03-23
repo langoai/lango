@@ -42,7 +42,7 @@ This project includes experimental AI Agent features and is currently in an unst
 - 🛠️ **Rich Tools** - Shell execution, file system operations, browser automation, crypto & secrets tools
 - 🧠 **Self-Learning** - Knowledge store, learning engine, file-based skill system with GitHub import (git clone + HTTP fallback), observational memory, proactive knowledge librarian
 - 📊 **Knowledge Graph & Graph RAG** - BoltDB triple store with hybrid vector + graph retrieval
-- 🔀 **Multi-Agent Orchestration** - Hierarchical sub-agents (operator, navigator, vault, librarian, automator, planner, chronicler)
+- 🔀 **Multi-Agent Orchestration** - Hierarchical sub-agents (operator, navigator, vault, librarian, automator, planner, chronicler) with durable turn traces, evidence-only recovery, and enforced child-session isolation
 - 🌍 **A2A Protocol** - Agent-to-Agent protocol for remote agent discovery and integration
 - 🌐 **P2P Network** - Decentralized agent-to-agent connectivity via libp2p with DHT discovery, ZK-enhanced handshake, knowledge firewall, and peer payments
 - 💸 **Blockchain Payments** - USDC payments on Base L2, X402 V2 auto-pay protocol (Coinbase SDK), spending limits
@@ -308,6 +308,9 @@ lango doctor --fix
 # JSON output for scripting
 lango doctor --json
 ```
+
+In multi-agent mode, `lango doctor` also reports recent failed turn traces (`loop_detected`, `empty_after_tool_use`, `timeout`) and whether isolated specialist turns leaked into persisted parent history.
+The JSON form additionally exposes structured trace metadata (`traceFailures`, `isolationLeakCount`) for operator tooling.
 
 ## Architecture
 

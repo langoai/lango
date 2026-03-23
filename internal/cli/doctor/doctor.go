@@ -80,6 +80,9 @@ func run(ctx context.Context, opts *Options) error {
 	// Run checks
 	for _, check := range allChecks {
 		result := check.Run(ctx, cfg)
+		if bootAware, ok := check.(checks.BootstrapAwareCheck); ok {
+			result = bootAware.RunWithBootstrap(ctx, cfg, boot)
+		}
 
 		// Try to fix if --fix is enabled and issue is fixable
 		if opts.Fix && result.Fixable && result.Status == checks.StatusFail {

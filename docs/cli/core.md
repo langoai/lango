@@ -169,6 +169,8 @@ lango doctor [--fix] [--json]
 - Embedding / RAG provider and model setup
 - Graph store configuration
 - Multi-agent orchestration settings
+- Recent multi-agent turn traces (`loop_detected`, `empty_after_tool_use`, `timeout`)
+- Persisted isolated-turn leak detection
 - A2A protocol connectivity
 - RunLedger configuration invariants
 - Tool hooks configuration
@@ -192,8 +194,10 @@ $ lango doctor --fix
 $ lango doctor --json
 ```
 
+When multi-agent runtime failures exist, `--json` now includes structured trace metadata such as `traceFailures[].traceId`, `outcome`, `errorCode`, `causeClass`, and `summary`, plus `isolationLeakCount` when applicable.
+
 !!! tip
-    Run `lango doctor` after `lango onboard` to verify your setup is correct. If issues are found, the `--fix` flag can resolve common problems automatically.
+    Run `lango doctor` after `lango onboard` to verify your setup is correct. In multi-agent mode, `doctor` also reports recent failed turn traces and whether isolated specialist turns have leaked into persisted parent history.
 
 ---
 

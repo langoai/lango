@@ -25,7 +25,7 @@ graph TD
     style RA fill:#e67e22,color:#fff
 ```
 
-The **orchestrator** has no tools of its own. It receives user messages, classifies them, and transfers execution to the appropriate sub-agent via `transfer_to_agent`.
+The **orchestrator** has no tools of its own. It receives user messages, classifies them, and transfers execution to the appropriate sub-agent via `transfer_to_agent`. Runtime enforcement now prevents the tool-less orchestrator from treating specialist-only tool calls as valid recovery behavior.
 
 ## Sub-Agent Roles
 
@@ -123,11 +123,21 @@ Each sub-agent has a keyword list used for routing:
 
 ### Rejection Handling
 
-Sub-agents do not emit textual rejection markers. When a task is out of scope, they transfer control back to the orchestrator via `transfer_to_agent`, and the orchestrator re-evaluates the request.
+Sub-agents do not emit textual rejection markers. When a task is out of scope, they produce a short visible escalation sentence, transfer control back to the orchestrator via `transfer_to_agent`, and the orchestrator re-evaluates the request using only evidence gathered in the current turn.
+
+### Completion Contract
+
+Successful tool execution is not enough on its own. A specialist turn is only considered complete when it ends in one of the following:
+
+- A visible assistant response summarizing the result
+- A `transfer_to_agent` handoff
+- A structured runtime outcome such as `loop_detected`, `empty_after_tool_use`, or `timeout`
+
+This prevents "tool-only" specialist turns from being treated as silent success.
 
 ### Delegation Limits
 
-The orchestrator enforces a maximum number of delegation rounds per user turn (default: **10**). Simple conversational messages (greetings, opinions, general knowledge) are handled directly by the orchestrator without delegation.
+The orchestrator enforces a maximum number of delegation rounds per user turn (default: **10**). Simple conversational messages (greetings, opinions, general knowledge) are handled directly by the orchestrator without delegation. Delegation activity also extends the active request so specialist handoffs do not look idle to the timeout system.
 
 ## Remote A2A Agents
 
@@ -211,9 +221,13 @@ Sub-agents operate in isolated child sessions forked from the parent conversatio
 - **Result merging** — When a sub-agent completes, its results are summarized and merged back into the parent session
 - **Cleanup** — Discarded child sessions are cleaned up automatically
 
-The `ChildSessionServiceAdapter` manages the fork/merge lifecycle. A `Summarizer` extracts the key results from the child session before merging, and discarded child runs leave a compact root-authored failure note instead of raw child history.
+The `ChildSessionServiceAdapter` manages the fork/merge lifecycle. A `Summarizer` extracts the key results from the child session before merging, and discarded child runs leave a compact root-authored failure note instead of raw child history. Child-session routing is enabled by the isolation setting itself; it no longer depends on provenance wiring being present.
 
 Built-in specialist agents such as `operator`, `navigator`, `vault`, `librarian`, and `automator` use child-session routing by default. `planner` and `chronicler` remain on the parent-session path.
+
+## Turn Traces And Diagnostics
+
+Every multi-agent turn records a durable trace with delegation, tool-call, tool-result, and final outcome events. Recent failed traces and isolation leaks are surfaced through `lango doctor` so operators can inspect `loop_detected`, `empty_after_tool_use`, and similar runtime failures without reading raw logs first.
 
 ## Configuration
 

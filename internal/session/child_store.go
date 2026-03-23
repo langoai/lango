@@ -49,6 +49,16 @@ func NewInMemoryChildStore(parent Store, opts ...ChildStoreOption) *InMemoryChil
 	return s
 }
 
+// SetLifecycleHook replaces the lifecycle hook on an existing child store.
+func (s *InMemoryChildStore) SetLifecycleHook(h func(SessionLifecycleEvent)) {
+	if s == nil {
+		return
+	}
+	s.mu.Lock()
+	s.lifecycleHook = h
+	s.mu.Unlock()
+}
+
 // Compile-time interface check.
 var _ ChildSessionStore = (*InMemoryChildStore)(nil)
 
