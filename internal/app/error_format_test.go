@@ -30,7 +30,7 @@ func TestFormatUserError_PlainError(t *testing.T) {
 	assert.Contains(t, msg, "something went wrong")
 }
 
-func TestFormatPartialResponse(t *testing.T) {
+func TestFormatIncompleteResponse(t *testing.T) {
 	t.Parallel()
 
 	agentErr := &adk.AgentError{
@@ -40,8 +40,8 @@ func TestFormatPartialResponse(t *testing.T) {
 		Elapsed: 2 * time.Minute,
 	}
 
-	result := formatPartialResponse(agentErr.Partial, agentErr)
-	assert.Contains(t, result, "Here is a partial answer about...")
+	result := formatIncompleteResponse(agentErr)
+	assert.NotContains(t, result, "Here is a partial answer about...")
 	assert.Contains(t, result, "⚠️")
 	assert.Contains(t, result, "[E001]")
 }

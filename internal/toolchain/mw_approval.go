@@ -129,6 +129,17 @@ func BuildApprovalSummary(toolName string, params map[string]interface{}) string
 	case "browser_navigate":
 		url, _ := params["url"].(string)
 		return "Navigate to: " + Truncate(url, 200)
+	case "browser_search":
+		query, _ := params["query"].(string)
+		return "Search the web for: " + Truncate(query, 200)
+	case "browser_observe":
+		return "Observe the current browser page"
+	case "browser_extract":
+		mode, _ := params["mode"].(string)
+		if mode == "" {
+			mode = "summary"
+		}
+		return "Extract from current browser page: " + mode
 	case "browser_action":
 		action, _ := params["action"].(string)
 		selector, _ := params["selector"].(string)

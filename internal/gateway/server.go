@@ -337,7 +337,6 @@ func (s *Server) handleChatMessage(client *Client, params json.RawMessage) (inte
 		// Classify the error for UI display.
 		errType := "unknown"
 		errCode := ""
-		partial := ""
 		hint := ""
 		userMsg := err.Error()
 
@@ -345,7 +344,6 @@ func (s *Server) handleChatMessage(client *Client, params json.RawMessage) (inte
 		if errors.As(err, &agentErr) {
 			errType = string(agentErr.Code)
 			errCode = string(agentErr.Code)
-			partial = agentErr.Partial
 			userMsg = agentErr.UserMessage()
 		}
 
@@ -362,12 +360,8 @@ func (s *Server) handleChatMessage(client *Client, params json.RawMessage) (inte
 			}
 			// Annotate session to prevent error leak.
 			if s.store != nil {
-				_ = s.store.AnnotateTimeout(sessionKey, partial)
+				_ = s.store.AnnotateTimeout(sessionKey, "")
 			}
-		}
-
-		if partial != "" {
-			hint = "Partial result was recovered. Check the 'partial' field."
 		}
 
 		// Notify UI of the error so it can stop thinking indicators
@@ -377,7 +371,6 @@ func (s *Server) handleChatMessage(client *Client, params json.RawMessage) (inte
 			"error":      userMsg,
 			"type":       errType,
 			"code":       errCode,
-			"partial":    partial,
 			"hint":       hint,
 		})
 		return nil, err

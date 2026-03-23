@@ -30,11 +30,12 @@ The system SHALL classify errors into codes: `ErrTimeout` (E001), `ErrModelError
 - **THEN** `classifyError` SHALL return `ErrInternal`
 
 ### Requirement: User-facing error messages
-The `AgentError` SHALL provide a `UserMessage()` method that returns a human-readable message including the error code and actionable guidance.
+The `AgentError` SHALL provide a `UserMessage()` method that returns a human-readable message including the error code and actionable guidance. User-facing messages SHALL NOT instruct the user to read a raw partial draft above.
 
 #### Scenario: Timeout with partial result
 - **WHEN** an `AgentError` has Code `ErrTimeout` and a non-empty `Partial` field
-- **THEN** `UserMessage()` SHALL mention that a partial response was recovered
+- **THEN** `UserMessage()` SHALL report the timeout with actionable guidance
+- **AND** it SHALL NOT claim that the partial response was shown to the user
 
 #### Scenario: Timeout without partial result
 - **WHEN** an `AgentError` has Code `ErrTimeout` and an empty `Partial` field
@@ -52,11 +53,12 @@ When an agent run fails (timeout, turn limit, or other error), the system SHALL 
 - **THEN** the returned `AgentError` SHALL have `Partial` containing the accumulated chunks
 
 ### Requirement: Partial result recovery in runAgent
-When `runAgent()` receives an `AgentError` with a non-empty `Partial`, it SHALL return the partial text appended with an error note as a successful response rather than propagating the error.
+When `runAgent()` receives an `AgentError` with a non-empty `Partial`, it SHALL retain the partial internally for diagnostics but SHALL NOT return the raw partial text to the user.
 
-#### Scenario: Partial result returned as success
+#### Scenario: Partial result suppressed from user response
 - **WHEN** the agent returns an `AgentError` with `Partial` "Here is my analysis..."
-- **THEN** `runAgent()` SHALL return a string containing the partial text plus a warning note, and `nil` error
+- **THEN** `runAgent()` SHALL return only a user-facing warning/error note, and `nil` error
+- **AND** it SHALL NOT append the raw partial draft to that message
 
 #### Scenario: Error without partial propagated normally
 - **WHEN** the agent returns an `AgentError` with empty `Partial`
@@ -72,4 +74,3 @@ All channel `sendError()` functions SHALL use `formatChannelError()` which check
 #### Scenario: Plain error formatted with Error
 - **WHEN** a channel receives a plain error without `UserMessage()`
 - **THEN** the displayed error SHALL use `Error()` output prefixed with "Error:"
-

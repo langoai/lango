@@ -25,11 +25,12 @@ import (
 	"github.com/langoai/lango/internal/p2p/team"
 	"github.com/langoai/lango/internal/security"
 	"github.com/langoai/lango/internal/supervisor"
+	"github.com/langoai/lango/internal/tooloutput"
+	"github.com/langoai/lango/internal/tools/browser"
 	toolcrypto "github.com/langoai/lango/internal/tools/crypto"
 	execpkg "github.com/langoai/lango/internal/tools/exec"
 	"github.com/langoai/lango/internal/tools/filesystem"
 	toolsecrets "github.com/langoai/lango/internal/tools/secrets"
-	"github.com/langoai/lango/internal/tooloutput"
 )
 
 // newMinimalCoordinator creates a team.Coordinator with zero-value config
@@ -163,20 +164,26 @@ func TestBuildExecTools_Parity(t *testing.T) {
 // ─── Browser Tools ───
 
 func TestBuildBrowserTools_Parity(t *testing.T) {
-	// buildBrowserTools requires a non-nil SessionManager which needs a real browser.
-	// We verify the expected tool names by checking the function exists and
-	// verifying the constant names used in the file.
+	t.Parallel()
+
+	tool, err := browser.New(browser.Config{})
+	require.NoError(t, err)
+	sm := browser.NewSessionManager(tool)
+	tools := browser.BuildTools(sm)
 
 	wantNames := []string{
 		"browser_navigate",
+		"browser_search",
+		"browser_observe",
+		"browser_extract",
 		"browser_action",
 		"browser_screenshot",
 	}
 
-	// Verify by construction: we can't call buildBrowserTools(nil) because it
-	// would dereference nil. Instead, confirm the expected names against the
-	// guard-list in blockLangoExec which cross-references browser tools indirectly.
-	assert.Len(t, wantNames, 3, "expected 3 browser tools")
+	assert.Len(t, tools, len(wantNames))
+	assert.Equal(t, wantNames, toolNamesUnsorted(tools))
+	assertAllHandlersNonNil(t, tools)
+	assertNoDuplicateNames(t, tools)
 }
 
 // ─── Graph Tools ───
@@ -525,28 +532,28 @@ func TestToolBuilders_TotalCount(t *testing.T) {
 	t.Parallel()
 
 	counts := map[string]int{
-		"agent_memory":  3,
-		"output":        1,
-		"filesystem":    7,
-		"exec":          4,
-		"browser":       3,
-		"graph":         2,
-		"rag":           1,
-		"memory":        2,
-		"librarian":     2,
-		"crypto":        5,
-		"secrets":       4,
-		"meta":          9,
-		"sentinel":      4,
-		"cron":          6,
-		"background":    5,
+		"agent_memory":   3,
+		"output":         1,
+		"filesystem":     7,
+		"exec":           4,
+		"browser":        3,
+		"graph":          2,
+		"rag":            1,
+		"memory":         2,
+		"librarian":      2,
+		"crypto":         5,
+		"secrets":        4,
+		"meta":           9,
+		"sentinel":       4,
+		"cron":           6,
+		"background":     5,
 		"workflow":       5,
-		"team":          5,
-		"budget":        3,
-		"risk":          1,
-		"negotiation":   2,
-		"escrow_in":     5, // economy_escrow_* (internal escrow)
-		"pricing":       1,
+		"team":           5,
+		"budget":         3,
+		"risk":           1,
+		"negotiation":    2,
+		"escrow_in":      5, // economy_escrow_* (internal escrow)
+		"pricing":        1,
 		"escrow_onchain": 10,
 	}
 

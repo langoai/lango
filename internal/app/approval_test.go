@@ -145,6 +145,24 @@ func TestBuildApprovalSummary(t *testing.T) {
 			want:     "Navigate to: https://example.com",
 		},
 		{
+			give:     "browser_search",
+			toolName: "browser_search",
+			params:   map[string]interface{}{"query": "elon musk news"},
+			want:     "Search the web for: elon musk news",
+		},
+		{
+			give:     "browser_observe",
+			toolName: "browser_observe",
+			params:   map[string]interface{}{},
+			want:     "Observe the current browser page",
+		},
+		{
+			give:     "browser_extract",
+			toolName: "browser_extract",
+			params:   map[string]interface{}{"mode": "search_results"},
+			want:     "Extract from current browser page: search_results",
+		},
+		{
 			give:     "browser_action with selector",
 			toolName: "browser_action",
 			params:   map[string]interface{}{"action": "click", "selector": "#submit"},

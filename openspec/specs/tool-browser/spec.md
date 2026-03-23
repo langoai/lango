@@ -5,7 +5,7 @@ The system SHALL provide browser automation tools powered by go-rod for web page
 
 #### Scenario: Browser navigation
 - **WHEN** `browser_navigate` is called with a URL
-- **THEN** the system SHALL navigate to the URL, wait for page load, and return title, URL, and text snippet
+- **THEN** the system SHALL navigate to the URL, wait for page load, and return a structured page snapshot including title, URL, snippet, headings, links, and action candidates
 
 #### Scenario: Implicit session management
 - **WHEN** any browser tool is called without a prior session
@@ -32,6 +32,40 @@ The system SHALL provide browser automation tools powered by go-rod for web page
 - **WHEN** `Close()` is called and browser resources are cleaned up
 - **THEN** the `initDone` flag SHALL be reset to false under `initMu`
 - **AND** the next browser tool call SHALL re-initialize from scratch
+
+### Requirement: Browser-native web search
+The browser toolset SHALL provide a `browser_search` tool that accepts a search query and returns structured search results without requiring the agent to manually drive a search engine page step by step.
+
+#### Scenario: Search query returns structured results
+- **WHEN** `browser_search` is called with a query and optional result limit
+- **THEN** the system SHALL navigate to a browser-accessible search results page
+- **AND** it SHALL return a structured list of results containing title, URL, and snippet
+
+#### Scenario: Search results fallback to visible links
+- **WHEN** the page-specific search result selectors do not match any result cards
+- **THEN** the system SHALL fall back to extracting visible links with text and URLs
+
+### Requirement: Page observation
+The browser toolset SHALL provide a `browser_observe` tool that returns structured actionable elements from the current page.
+
+#### Scenario: Observe actionable elements
+- **WHEN** `browser_observe` is called on the current page
+- **THEN** the system SHALL return clickable and input-capable elements with stable selectors and descriptive metadata
+
+### Requirement: Structured page extraction
+The browser toolset SHALL provide a `browser_extract` tool for structured extraction from the current page.
+
+#### Scenario: Summary extraction
+- **WHEN** `browser_extract` is called with mode `summary`
+- **THEN** the system SHALL return page title, URL, snippet, headings, links, and action candidates
+
+#### Scenario: Search result extraction
+- **WHEN** `browser_extract` is called with mode `search_results`
+- **THEN** the system SHALL return structured search result items from the current page
+
+#### Scenario: Article extraction
+- **WHEN** `browser_extract` is called with mode `article`
+- **THEN** the system SHALL return the main textual content and headings from the current page
 
 ### Requirement: Page interaction via browser_action
 The system SHALL multiplex page interactions through a single `browser_action` tool.

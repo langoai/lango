@@ -23,7 +23,10 @@
 
 ### Browser Tool
 - Sessions are created automatically on the first browser action — you do not need to manage session lifecycle.
-- After navigation, use `browser_action` with action `get_text` or `get_element_info` to verify the page loaded correctly before interacting.
+- Prefer `browser_search` for open-ended live web queries instead of manually driving a search engine page.
+- Prefer `browser_observe` and `browser_extract` to inspect the current page before falling back to low-level `browser_action`.
+- `browser_navigate` returns a structured page snapshot with headings, links, and actionable elements. Use it as the first step when opening a page.
+- Use `browser_extract` with mode `search_results` to pull result cards from a search page, or `article` to pull the main readable content.
 - Use `browser_action` with action `wait` (selector, timeout) before clicking or typing on dynamically loaded elements.
 - Capture screenshots with `browser_screenshot` to verify visual state when interactions produce visual changes.
 - Use `browser_action` with action `eval` (JavaScript) for operations that CSS selectors cannot express, such as scrolling, reading computed styles, or interacting with shadow DOM.

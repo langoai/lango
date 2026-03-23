@@ -109,7 +109,7 @@ lango agent tools [--json]
 $ lango agent tools
 AGENT           TOOLS
 operator        exec_shell, exec_command, fs_read, fs_write, fs_delete, skill_run
-navigator       browser_navigate, browser_click, browser_type, browser_screenshot
+navigator       browser_navigate, browser_search, browser_observe, browser_extract, browser_action, browser_screenshot
 vault           crypto_encrypt, crypto_decrypt, secrets_set, payment_send
 librarian       search_knowledge, rag_query, graph_traverse, save_knowledge
 automator       cron_add, cron_list, bg_submit, workflow_run

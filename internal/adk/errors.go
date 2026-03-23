@@ -45,23 +45,14 @@ func (e *AgentError) Unwrap() error {
 func (e *AgentError) UserMessage() string {
 	switch e.Code {
 	case ErrTimeout:
-		if e.Partial != "" {
-			return fmt.Sprintf("[%s] The request timed out after %s. A partial response was recovered — see above.", e.Code, e.Elapsed.Truncate(time.Second))
-		}
 		return fmt.Sprintf("[%s] The request timed out after %s. Try breaking your question into smaller parts or increasing the timeout.", e.Code, e.Elapsed.Truncate(time.Second))
 	case ErrModelError:
 		return fmt.Sprintf("[%s] The AI model returned an error. Please try again.", e.Code)
 	case ErrToolError:
 		return fmt.Sprintf("[%s] A tool execution failed. Please try again or rephrase your request.", e.Code)
 	case ErrTurnLimit:
-		if e.Partial != "" {
-			return fmt.Sprintf("[%s] The agent reached its turn limit. A partial response was recovered — see above.", e.Code)
-		}
-		return fmt.Sprintf("[%s] The agent reached its maximum turn limit. Try a simpler request.", e.Code)
+		return fmt.Sprintf("[%s] The agent reached its maximum turn limit before producing a final answer. Try a simpler request or increase `agent.maxTurns`.", e.Code)
 	case ErrIdleTimeout:
-		if e.Partial != "" {
-			return fmt.Sprintf("[%s] The request was cancelled due to %s of inactivity. A partial response was recovered — see above.", e.Code, e.Elapsed.Truncate(time.Second))
-		}
 		return fmt.Sprintf("[%s] The request was cancelled due to %s of inactivity. The agent may be stuck — try rephrasing your question.", e.Code, e.Elapsed.Truncate(time.Second))
 	default:
 		return fmt.Sprintf("[%s] An internal error occurred. Please try again.", e.Code)

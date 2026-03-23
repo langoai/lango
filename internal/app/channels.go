@@ -183,9 +183,9 @@ func (a *App) runAgent(ctx context.Context, sessionKey, input string) (string, e
 				"partial_len", len(agentErr.Partial))
 			// Annotate session so next turn doesn't see incomplete history.
 			if a.Store != nil {
-				_ = a.Store.AnnotateTimeout(sessionKey, agentErr.Partial)
+				_ = a.Store.AnnotateTimeout(sessionKey, "")
 			}
-			return formatPartialResponse(agentErr.Partial, agentErr), nil
+			return formatIncompleteResponse(agentErr), nil
 		}
 
 		if ctx.Err() != nil {

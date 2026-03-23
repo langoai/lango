@@ -568,7 +568,7 @@ func buildAgentOptions(cfg *config.Config, kc *knowledgeComponents) []adk.AgentO
 	if cfg.Agent.MaxTurns > 0 {
 		opts = append(opts, adk.WithAgentMaxTurns(cfg.Agent.MaxTurns))
 	} else if cfg.Agent.MultiAgent {
-		opts = append(opts, adk.WithAgentMaxTurns(50))
+		opts = append(opts, adk.WithAgentMaxTurns(75))
 	}
 
 	// Error correction: enabled by default when knowledge system is available.

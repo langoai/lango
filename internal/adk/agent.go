@@ -32,7 +32,7 @@ type ErrorFixProvider interface {
 }
 
 // defaultMaxTurns is the default maximum number of tool-calling iterations per agent run.
-const defaultMaxTurns = 25
+const defaultMaxTurns = 50
 
 // AgentOption configures optional Agent behavior at construction time.
 type AgentOption func(*agentOptions)
@@ -93,6 +93,7 @@ type Agent struct {
 	maxTurns         int              // 0 = defaultMaxTurns
 	errorFixProvider ErrorFixProvider // optional: for self-correction on errors
 	sessionService   *SessionServiceAdapter
+	isolatedAgents   map[string]struct{}
 }
 
 // NewAgent creates a new Agent instance.
@@ -154,6 +155,7 @@ func NewAgent(ctx context.Context, tools []tool.Tool, mod model.LLM, systemPromp
 		maxTurns:         o.maxTurns,
 		errorFixProvider: o.errorFixProvider,
 		sessionService:   sessService,
+		isolatedAgents:   makeIsolatedAgentSet(o.isolatedAgents),
 	}, nil
 }
 
@@ -201,11 +203,12 @@ func NewAgentFromADK(adkAgent adk_agent.Agent, store internal.Store, opts ...Age
 		maxTurns:         o.maxTurns,
 		errorFixProvider: o.errorFixProvider,
 		sessionService:   sessService,
+		isolatedAgents:   makeIsolatedAgentSet(o.isolatedAgents),
 	}, nil
 }
 
 // WithMaxTurns sets the maximum number of tool-calling turns per run.
-// Zero or negative values use the default (25).
+// Zero or negative values use the default (50).
 func (a *Agent) WithMaxTurns(n int) *Agent {
 	a.maxTurns = n
 	return a
@@ -498,7 +501,7 @@ func (a *Agent) RunAndCollect(ctx context.Context, sessionID, input string, opts
 // final non-partial response.
 func (a *Agent) runAndCollectOnce(ctx context.Context, sessionID, input string, ro *runOptions) (string, error) {
 	var b strings.Builder
-	var sawPartial bool
+	var sawVisiblePartial bool
 
 	start := time.Now()
 
@@ -543,14 +546,20 @@ func (a *Agent) runAndCollectOnce(ctx context.Context, sessionID, input string, 
 		}
 
 		if event.Partial {
+			if !a.shouldCollectUserText(event.Author) {
+				continue
+			}
 			// Streaming text chunk — collect incrementally.
-			sawPartial = true
+			sawVisiblePartial = true
 			for _, part := range event.Content.Parts {
 				if part.Text != "" {
 					b.WriteString(part.Text)
 				}
 			}
-		} else if !sawPartial {
+		} else if !sawVisiblePartial {
+			if !a.shouldCollectUserText(event.Author) {
+				continue
+			}
 			// Non-streaming mode: no partial events were seen,
 			// so collect from the final complete response.
 			for _, part := range event.Content.Parts {
@@ -559,7 +568,7 @@ func (a *Agent) runAndCollectOnce(ctx context.Context, sessionID, input string, 
 				}
 			}
 		}
-		// If sawPartial && !event.Partial: this is the final done event
+		// If sawVisiblePartial && !event.Partial: this is the final done event
 		// in streaming mode. Its text duplicates partial chunks, so skip.
 	}
 
@@ -644,7 +653,7 @@ func (a *Agent) RunStreaming(ctx context.Context, sessionID, input string, onChu
 	}
 
 	var b strings.Builder
-	var sawPartial bool
+	var sawVisiblePartial bool
 	start := time.Now()
 
 	for event, err := range a.Run(ctx, sessionID, input) {
@@ -671,7 +680,10 @@ func (a *Agent) RunStreaming(ctx context.Context, sessionID, input string, onChu
 		}
 
 		if event.Partial {
-			sawPartial = true
+			if !a.shouldCollectUserText(event.Author) {
+				continue
+			}
+			sawVisiblePartial = true
 			for _, part := range event.Content.Parts {
 				if part.Text != "" {
 					b.WriteString(part.Text)
@@ -680,7 +692,10 @@ func (a *Agent) RunStreaming(ctx context.Context, sessionID, input string, onChu
 					}
 				}
 			}
-		} else if !sawPartial {
+		} else if !sawVisiblePartial {
+			if !a.shouldCollectUserText(event.Author) {
+				continue
+			}
 			// Non-streaming mode: collect from final response.
 			for _, part := range event.Content.Parts {
 				if part.Text != "" {
@@ -723,4 +738,28 @@ func hasText(e *session.Event) bool {
 		}
 	}
 	return false
+}
+
+func makeIsolatedAgentSet(names []string) map[string]struct{} {
+	if len(names) == 0 {
+		return nil
+	}
+
+	out := make(map[string]struct{}, len(names))
+	for _, name := range names {
+		name = strings.TrimSpace(name)
+		if name == "" {
+			continue
+		}
+		out[name] = struct{}{}
+	}
+	return out
+}
+
+func (a *Agent) shouldCollectUserText(author string) bool {
+	if len(a.isolatedAgents) == 0 || author == "" {
+		return true
+	}
+	_, isolated := a.isolatedAgents[author]
+	return !isolated
 }

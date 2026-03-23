@@ -24,7 +24,7 @@ func BuildTools(sm *SessionManager) []*agent.Tool {
 	return []*agent.Tool{
 		{
 			Name:        "browser_navigate",
-			Description: "Navigate the browser to a URL and return the page title, URL, and a text snippet",
+			Description: "Navigate the browser to a URL and return a structured page snapshot",
 			SafetyLevel: agent.SafetyLevelDangerous,
 			Parameters: agent.Schema().
 				Str("url", "The URL to navigate to").
@@ -45,7 +45,69 @@ func BuildTools(sm *SessionManager) []*agent.Tool {
 					return nil, err
 				}
 
-				return sm.Tool().GetSnapshot(sessionID)
+				return sm.Tool().Snapshot(sessionID, defaultLinkLimit, defaultActionLimit)
+			},
+		},
+		{
+			Name:        "browser_search",
+			Description: "Search the web in the browser and return structured search results",
+			SafetyLevel: agent.SafetyLevelDangerous,
+			Parameters: agent.Schema().
+				Str("query", "The search query to run").
+				Int("limit", "Maximum number of results to return (default: 5)").
+				Required("query").
+				Build(),
+			Handler: func(ctx context.Context, params map[string]interface{}) (interface{}, error) {
+				query, err := toolparam.RequireString(params, "query")
+				if err != nil {
+					return nil, err
+				}
+
+				sessionID, err := sm.EnsureSession()
+				if err != nil {
+					return nil, err
+				}
+
+				limit := toolparam.OptionalInt(params, "limit", defaultSearchResultsLimit)
+				return sm.Tool().Search(ctx, sessionID, query, limit)
+			},
+		},
+		{
+			Name:        "browser_observe",
+			Description: "Return actionable elements from the current browser page with stable selectors",
+			SafetyLevel: agent.SafetyLevelSafe,
+			Parameters: agent.Schema().
+				Int("limit", "Maximum number of actionable elements to return (default: 10)").
+				Build(),
+			Handler: func(ctx context.Context, params map[string]interface{}) (interface{}, error) {
+				_ = ctx
+				sessionID, err := sm.EnsureSession()
+				if err != nil {
+					return nil, err
+				}
+
+				limit := toolparam.OptionalInt(params, "limit", defaultObservationLimit)
+				return sm.Tool().Observe(sessionID, limit)
+			},
+		},
+		{
+			Name:        "browser_extract",
+			Description: "Extract structured data from the current page: summary, links, article, or search_results",
+			SafetyLevel: agent.SafetyLevelSafe,
+			Parameters: agent.Schema().
+				Enum("mode", "The extraction mode", "summary", "links", "article", "search_results").
+				Int("limit", "Maximum number of extracted items where applicable").
+				Build(),
+			Handler: func(ctx context.Context, params map[string]interface{}) (interface{}, error) {
+				_ = ctx
+				sessionID, err := sm.EnsureSession()
+				if err != nil {
+					return nil, err
+				}
+
+				mode := toolparam.OptionalString(params, "mode", "summary")
+				limit := toolparam.OptionalInt(params, "limit", defaultLinkLimit)
+				return sm.Tool().Extract(sessionID, mode, limit)
 			},
 		},
 		{

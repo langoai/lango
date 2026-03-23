@@ -45,7 +45,7 @@ The system SHALL sanitize model responses before delivering them to users. Sanit
 - **THEN** the response SHALL pass through unchanged
 
 ### Requirement: System prompt output principles
-The system SHALL include an "Output Principles" section in the system prompt at priority 350 (between Conversation Rules at 300 and Tool Usage at 400). The section SHALL instruct the model to never echo raw tool output, keep internal reasoning internal, summarize large results, avoid system markers, present structured data in natural language, and explain errors without full stack traces.
+The system SHALL include an "Output Principles" section in the system prompt at priority 350 (between Conversation Rules at 300 and Tool Usage at 400). The section SHALL instruct the model to never echo raw tool output, keep internal reasoning internal, summarize large results, avoid system markers, present structured data in natural language, explain errors without full stack traces, and never emit role-labeled prompt/tool dumps such as system prompt, user prompt, assistant response, or tool output blocks in final user-visible replies.
 
 #### Scenario: Output principles in system prompt
 - **WHEN** the system prompt is built using DefaultBuilder

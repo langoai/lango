@@ -409,9 +409,6 @@ func (s *EntStore) AppendMessage(key string, msg Message) error {
 // AnnotateTimeout appends a synthetic assistant message to mark a timed-out turn.
 func (s *EntStore) AnnotateTimeout(key string, partial string) error {
 	content := "[This response was interrupted due to a timeout]"
-	if partial != "" {
-		content = partial + "\n\n---\n" + content
-	}
 
 	return s.AppendMessage(key, Message{
 		Role:      "assistant",

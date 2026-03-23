@@ -18,10 +18,8 @@ func FormatUserError(err error) string {
 	return fmt.Sprintf("An error occurred: %s", err.Error())
 }
 
-// formatPartialResponse builds a response string that includes the partial
-// result recovered from a timed-out or failed agent run, along with a note
-// explaining the situation.
-func formatPartialResponse(partial string, agentErr *adk.AgentError) string {
-	note := fmt.Sprintf("\n\n---\n⚠️ %s", agentErr.UserMessage())
-	return partial + note
+// formatIncompleteResponse builds a user-visible warning for a run that
+// produced an internal partial draft but no safe final answer.
+func formatIncompleteResponse(agentErr *adk.AgentError) string {
+	return fmt.Sprintf("⚠️ %s", agentErr.UserMessage())
 }

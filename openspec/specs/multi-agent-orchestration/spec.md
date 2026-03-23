@@ -352,11 +352,11 @@ The `capabilityMap` SHALL include entries for `cron_`, `bg_`, and `workflow_` pr
 - **THEN** it SHALL return "cron job scheduling"
 
 ### Requirement: Multi-agent default turn limit
-When `agent.multiAgent` is true and no explicit `MaxTurns` is configured, the system SHALL default to 50 turns instead of the standard 25. This provides sufficient headroom for multi-agent workflows with delegation overhead.
+When `agent.multiAgent` is true and no explicit `MaxTurns` is configured, the system SHALL default to 75 turns instead of the standard 50. This provides sufficient headroom for multi-agent workflows with delegation overhead.
 
 #### Scenario: Multi-agent mode with no explicit MaxTurns
 - **WHEN** `agent.multiAgent` is true AND `agent.maxTurns` is zero or unset
-- **THEN** the system SHALL use 50 as the maximum turn limit
+- **THEN** the system SHALL use 75 as the maximum turn limit
 
 #### Scenario: Multi-agent mode with explicit MaxTurns
 - **WHEN** `agent.multiAgent` is true AND `agent.maxTurns` is set to a positive value
@@ -364,7 +364,7 @@ When `agent.multiAgent` is true and no explicit `MaxTurns` is configured, the sy
 
 #### Scenario: Single-agent mode unaffected
 - **WHEN** `agent.multiAgent` is false
-- **THEN** the system SHALL use the standard default of 25 turns (unchanged behavior)
+- **THEN** the system SHALL use the standard default of 50 turns
 
 ### Requirement: Dynamic specs support in Config
 The orchestration `Config` struct SHALL include a `Specs []AgentSpec` field. When non-nil, `BuildAgentTree` SHALL use these specs instead of the hardcoded built-in specs.

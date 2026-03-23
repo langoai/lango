@@ -32,7 +32,7 @@ The **orchestrator** has no tools of its own. It receives user messages, classif
 | Agent | Role | Tool Prefixes |
 |---|---|---|
 | **operator** | System operations: shell commands, file I/O, skill execution | `exec_*`, `fs_*`, `skill_*` |
-| **navigator** | Web browsing: page navigation, interaction, screenshots | `browser_*` |
+| **navigator** | Web browsing: search, page navigation, structured extraction, interaction, screenshots | `browser_*` |
 | **vault** | Security: encryption, secret management, blockchain payments | `crypto_*`, `secrets_*`, `payment_*` |
 | **librarian** | Knowledge: search, RAG, graph traversal, skill management, learning data, proactive knowledge extraction | `search_*`, `rag_*`, `graph_*`, `save_knowledge`, `save_learning`, `learning_*`, `create_skill`, `list_skills`, `import_skill`, `librarian_*` |
 | **automator** | Automation: cron scheduling, background tasks, workflow pipelines | `cron_*`, `bg_*`, `workflow_*` |
@@ -49,7 +49,7 @@ Executes system-level operations. Handles shell commands, file read/write, and s
 
 #### navigator
 
-Browses the web. Navigates to pages, interacts with elements (click, type, scroll), and takes screenshots. Returns page content with current URL and title.
+Browses the web. Runs browser-native searches, navigates to pages, observes actionable elements, extracts structured page content, and takes screenshots. Returns structured page/search data with current URL and title when relevant.
 
 **Cannot**: shell commands, file operations, cryptographic operations, payment transactions, knowledge search.
 
@@ -123,13 +123,7 @@ Each sub-agent has a keyword list used for routing:
 
 ### Rejection Handling
 
-Sub-agents can reject misrouted tasks by responding with:
-
-```
-[REJECT] This task requires <correct_agent>. I handle: <capability list>.
-```
-
-When a rejection occurs, the orchestrator re-evaluates and tries the next most relevant agent.
+Sub-agents do not emit textual rejection markers. When a task is out of scope, they transfer control back to the orchestrator via `transfer_to_agent`, and the orchestrator re-evaluates the request.
 
 ### Delegation Limits
 

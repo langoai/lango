@@ -54,7 +54,10 @@ func newStatusCmd(cfgLoader func() (*config.Config, error)) *cobra.Command {
 			// Compute effective defaults.
 			maxTurns := cfg.Agent.MaxTurns
 			if maxTurns <= 0 {
-				maxTurns = 25
+				maxTurns = 50
+				if cfg.Agent.MultiAgent {
+					maxTurns = 75
+				}
 			}
 			errorCorrection := true
 			if cfg.Agent.ErrorCorrectionEnabled != nil {

@@ -249,9 +249,9 @@ func TestBudgetExpansionMath(t *testing.T) {
 		initial    int
 		wantResult int
 	}{
-		{name: "default 25 → 37", initial: 25, wantResult: 37},
+		{name: "default 50 → 75", initial: 50, wantResult: 75},
 		{name: "10 → 15", initial: 10, wantResult: 15},
-		{name: "50 → 75", initial: 50, wantResult: 75},
+		{name: "75 → 112", initial: 75, wantResult: 112},
 	}
 
 	for _, tt := range tests {
@@ -261,6 +261,22 @@ func TestBudgetExpansionMath(t *testing.T) {
 			assert.Equal(t, tt.wantResult, expanded)
 		})
 	}
+}
+
+func TestShouldCollectUserText(t *testing.T) {
+	t.Parallel()
+
+	agent := &Agent{
+		isolatedAgents: map[string]struct{}{
+			"navigator": {},
+			"operator":  {},
+		},
+	}
+
+	assert.True(t, agent.shouldCollectUserText(""))
+	assert.True(t, agent.shouldCollectUserText("lango-orchestrator"))
+	assert.False(t, agent.shouldCollectUserText("navigator"))
+	assert.False(t, agent.shouldCollectUserText("operator"))
 }
 
 func TestWrapUpBudgetMechanics(t *testing.T) {

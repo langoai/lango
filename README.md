@@ -468,7 +468,7 @@ All settings are managed via `lango onboard` (guided wizard), `lango settings` (
 | `agent.promptsDir`                                     | string   | -                           | Directory of `.md` files to override default prompt sections (takes precedence over `systemPromptPath`)           |
 | `agent.requestTimeout`                                 | duration | `5m`                        | Max time for a single agent request (prevents indefinite hangs)                                                   |
 | `agent.toolTimeout`                                    | duration | `2m`                        | Max time for a single tool call execution                                                                         |
-| `agent.maxTurns`                                       | int      | `25`                        | Max tool-calling iterations per agent run                                                                         |
+| `agent.maxTurns`                                       | int      | `50`                        | Max tool-calling iterations per agent run (effective implicit default is `75` in multi-agent mode when unset)    |
 | `agent.errorCorrectionEnabled`                         | bool     | `true`                      | Enable learning-based error correction (requires knowledge system)                                                |
 | `agent.maxDelegationRounds`                            | int      | `10`                        | Max orchestrator→sub-agent delegation rounds per turn (multi-agent only)                                          |
 | `agent.agentsDir`                                      | string   |                             | Directory containing user-defined AGENT.md files                                                                  |
@@ -975,7 +975,7 @@ When `agent.multiAgent` is enabled, Lango builds a hierarchical agent tree with 
 | Agent          | Role                                                                                                                | Tools                                                                                                                                                  |
 | -------------- | ------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | **operator**   | System operations: shell commands, file I/O, skill execution                                                        | exec_*, fs_*, skill_*                                                                                                                                  |
-| **navigator**  | Web browsing: page navigation, interaction, screenshots                                                             | browser_*                                                                                                                                              |
+| **navigator**  | Web browsing: search, page navigation, structured extraction, interaction, screenshots                               | browser_*                                                                                                                                              |
 | **vault**      | Security: encryption, secret management, blockchain payments                                                        | crypto_*, secrets_*, payment_*                                                                                                                         |
 | **librarian**  | Knowledge: search, RAG, graph traversal, skill management, learning data management, proactive knowledge extraction | search_*, rag_*, graph_*, save_knowledge, save_learning, learning_*, create_skill, list_skills, librarian_pending_inquiries, librarian_dismiss_inquiry |
 | **automator**  | Automation: cron scheduling, background tasks, workflow pipelines                                                   | cron_*, bg_*, workflow_*                                                                                                                               |
@@ -983,7 +983,7 @@ When `agent.multiAgent` is enabled, Lango builds a hierarchical agent tree with 
 | **chronicler** | Conversational memory: observations, reflections, recall                                                            | memory_*, observe_*, reflect_*                                                                                                                         |
 
 
-The orchestrator uses a keyword-based routing table and 5-step decision protocol (CLASSIFY → MATCH → SELECT → VERIFY → DELEGATE) to route tasks. Each sub-agent can reject misrouted tasks with `[REJECT]`. Unmatched tools are tracked separately and reported to the orchestrator.
+The orchestrator uses a keyword-based routing table and 5-step decision protocol (CLASSIFY → MATCH → SELECT → VERIFY → DELEGATE) to route tasks. Misrouted sub-agents transfer control back to the orchestrator via `transfer_to_agent`. Unmatched tools are tracked separately and reported to the orchestrator.
 
 ### Custom Agents (AGENT.md)
 
