@@ -52,6 +52,19 @@ type Result struct {
 	Fixable bool `json:"fixable,omitempty"`
 	// FixAction is a description of the fix action.
 	FixAction string `json:"fixAction,omitempty"`
+	// TraceFailures carries structured recent trace metadata when relevant.
+	TraceFailures []TraceFailure `json:"traceFailures,omitempty"`
+	// IsolationLeakCount reports persisted raw isolated specialist turns.
+	IsolationLeakCount *int `json:"isolationLeakCount,omitempty"`
+}
+
+// TraceFailure is a structured recent failure record for doctor output.
+type TraceFailure struct {
+	TraceID    string `json:"traceId"`
+	Outcome    string `json:"outcome"`
+	ErrorCode  string `json:"errorCode"`
+	CauseClass string `json:"causeClass"`
+	Summary    string `json:"summary"`
 }
 
 // Check is the interface that all diagnostic checks must implement.

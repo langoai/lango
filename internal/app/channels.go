@@ -11,6 +11,7 @@ import (
 	"github.com/langoai/lango/internal/channels/telegram"
 	"github.com/langoai/lango/internal/deadline"
 	"github.com/langoai/lango/internal/turnrunner"
+	"github.com/langoai/lango/internal/turntrace"
 	"github.com/langoai/lango/internal/types"
 )
 
@@ -140,6 +141,19 @@ func (a *App) runAgent(ctx context.Context, sessionKey, input string) (string, e
 			"elapsed", elapsed.String(),
 			"error", err)
 		return "", err
+	}
+
+	if result.Outcome != turntrace.OutcomeSuccess {
+		logger().Warnw("agent request completed with failure",
+			"session", sessionKey,
+			"elapsed", elapsed.String(),
+			"response_len", len(result.ResponseText),
+			"outcome", string(result.Outcome),
+			"trace_id", result.TraceID,
+			"error_code", result.ErrorCode,
+			"cause_class", result.CauseClass,
+			"summary", result.Summary)
+		return result.ResponseText, nil
 	}
 
 	logger().Infow("agent request completed",

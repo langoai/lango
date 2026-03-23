@@ -423,7 +423,7 @@ func (s *SessionServiceAdapter) childSummary(active *runtimeChild) (string, erro
 	if strings.TrimSpace(summary) != "" {
 		return summary, nil
 	}
-	return fmt.Sprintf("[Isolated sub-agent %s completed without a visible assistant result. Raw child history remained isolated.]", active.agent), nil
+	return fmt.Sprintf("[Isolated sub-agent %s ended without a visible assistant result: empty_after_tool_use.]", active.agent), nil
 }
 
 func (s *SessionServiceAdapter) appendOutcomeToParent(active *runtimeChild, content string) error {

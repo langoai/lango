@@ -24,6 +24,10 @@ const (
 	FieldOutcome = "outcome"
 	// FieldErrorCode holds the string denoting the error_code field in the database.
 	FieldErrorCode = "error_code"
+	// FieldCauseClass holds the string denoting the cause_class field in the database.
+	FieldCauseClass = "cause_class"
+	// FieldCauseDetail holds the string denoting the cause_detail field in the database.
+	FieldCauseDetail = "cause_detail"
 	// FieldSummary holds the string denoting the summary field in the database.
 	FieldSummary = "summary"
 	// FieldStartedAt holds the string denoting the started_at field in the database.
@@ -42,6 +46,8 @@ var Columns = []string{
 	FieldEntrypoint,
 	FieldOutcome,
 	FieldErrorCode,
+	FieldCauseClass,
+	FieldCauseDetail,
 	FieldSummary,
 	FieldStartedAt,
 	FieldEndedAt,
@@ -103,6 +109,16 @@ func ByOutcome(opts ...sql.OrderTermOption) OrderOption {
 // ByErrorCode orders the results by the error_code field.
 func ByErrorCode(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldErrorCode, opts...).ToFunc()
+}
+
+// ByCauseClass orders the results by the cause_class field.
+func ByCauseClass(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldCauseClass, opts...).ToFunc()
+}
+
+// ByCauseDetail orders the results by the cause_detail field.
+func ByCauseDetail(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldCauseDetail, opts...).ToFunc()
 }
 
 // BySummary orders the results by the summary field.

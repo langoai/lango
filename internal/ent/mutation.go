@@ -21968,6 +21968,8 @@ type TurnTraceMutation struct {
 	entrypoint    *string
 	outcome       *string
 	error_code    *string
+	cause_class   *string
+	cause_detail  *string
 	summary       *string
 	started_at    *time.Time
 	ended_at      *time.Time
@@ -22274,6 +22276,104 @@ func (m *TurnTraceMutation) ResetErrorCode() {
 	delete(m.clearedFields, turntrace.FieldErrorCode)
 }
 
+// SetCauseClass sets the "cause_class" field.
+func (m *TurnTraceMutation) SetCauseClass(s string) {
+	m.cause_class = &s
+}
+
+// CauseClass returns the value of the "cause_class" field in the mutation.
+func (m *TurnTraceMutation) CauseClass() (r string, exists bool) {
+	v := m.cause_class
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldCauseClass returns the old "cause_class" field's value of the TurnTrace entity.
+// If the TurnTrace object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *TurnTraceMutation) OldCauseClass(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldCauseClass is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldCauseClass requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldCauseClass: %w", err)
+	}
+	return oldValue.CauseClass, nil
+}
+
+// ClearCauseClass clears the value of the "cause_class" field.
+func (m *TurnTraceMutation) ClearCauseClass() {
+	m.cause_class = nil
+	m.clearedFields[turntrace.FieldCauseClass] = struct{}{}
+}
+
+// CauseClassCleared returns if the "cause_class" field was cleared in this mutation.
+func (m *TurnTraceMutation) CauseClassCleared() bool {
+	_, ok := m.clearedFields[turntrace.FieldCauseClass]
+	return ok
+}
+
+// ResetCauseClass resets all changes to the "cause_class" field.
+func (m *TurnTraceMutation) ResetCauseClass() {
+	m.cause_class = nil
+	delete(m.clearedFields, turntrace.FieldCauseClass)
+}
+
+// SetCauseDetail sets the "cause_detail" field.
+func (m *TurnTraceMutation) SetCauseDetail(s string) {
+	m.cause_detail = &s
+}
+
+// CauseDetail returns the value of the "cause_detail" field in the mutation.
+func (m *TurnTraceMutation) CauseDetail() (r string, exists bool) {
+	v := m.cause_detail
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldCauseDetail returns the old "cause_detail" field's value of the TurnTrace entity.
+// If the TurnTrace object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *TurnTraceMutation) OldCauseDetail(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldCauseDetail is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldCauseDetail requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldCauseDetail: %w", err)
+	}
+	return oldValue.CauseDetail, nil
+}
+
+// ClearCauseDetail clears the value of the "cause_detail" field.
+func (m *TurnTraceMutation) ClearCauseDetail() {
+	m.cause_detail = nil
+	m.clearedFields[turntrace.FieldCauseDetail] = struct{}{}
+}
+
+// CauseDetailCleared returns if the "cause_detail" field was cleared in this mutation.
+func (m *TurnTraceMutation) CauseDetailCleared() bool {
+	_, ok := m.clearedFields[turntrace.FieldCauseDetail]
+	return ok
+}
+
+// ResetCauseDetail resets all changes to the "cause_detail" field.
+func (m *TurnTraceMutation) ResetCauseDetail() {
+	m.cause_detail = nil
+	delete(m.clearedFields, turntrace.FieldCauseDetail)
+}
+
 // SetSummary sets the "summary" field.
 func (m *TurnTraceMutation) SetSummary(s string) {
 	m.summary = &s
@@ -22442,7 +22542,7 @@ func (m *TurnTraceMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *TurnTraceMutation) Fields() []string {
-	fields := make([]string, 0, 8)
+	fields := make([]string, 0, 10)
 	if m.trace_id != nil {
 		fields = append(fields, turntrace.FieldTraceID)
 	}
@@ -22457,6 +22557,12 @@ func (m *TurnTraceMutation) Fields() []string {
 	}
 	if m.error_code != nil {
 		fields = append(fields, turntrace.FieldErrorCode)
+	}
+	if m.cause_class != nil {
+		fields = append(fields, turntrace.FieldCauseClass)
+	}
+	if m.cause_detail != nil {
+		fields = append(fields, turntrace.FieldCauseDetail)
 	}
 	if m.summary != nil {
 		fields = append(fields, turntrace.FieldSummary)
@@ -22485,6 +22591,10 @@ func (m *TurnTraceMutation) Field(name string) (ent.Value, bool) {
 		return m.Outcome()
 	case turntrace.FieldErrorCode:
 		return m.ErrorCode()
+	case turntrace.FieldCauseClass:
+		return m.CauseClass()
+	case turntrace.FieldCauseDetail:
+		return m.CauseDetail()
 	case turntrace.FieldSummary:
 		return m.Summary()
 	case turntrace.FieldStartedAt:
@@ -22510,6 +22620,10 @@ func (m *TurnTraceMutation) OldField(ctx context.Context, name string) (ent.Valu
 		return m.OldOutcome(ctx)
 	case turntrace.FieldErrorCode:
 		return m.OldErrorCode(ctx)
+	case turntrace.FieldCauseClass:
+		return m.OldCauseClass(ctx)
+	case turntrace.FieldCauseDetail:
+		return m.OldCauseDetail(ctx)
 	case turntrace.FieldSummary:
 		return m.OldSummary(ctx)
 	case turntrace.FieldStartedAt:
@@ -22559,6 +22673,20 @@ func (m *TurnTraceMutation) SetField(name string, value ent.Value) error {
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
 		m.SetErrorCode(v)
+		return nil
+	case turntrace.FieldCauseClass:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetCauseClass(v)
+		return nil
+	case turntrace.FieldCauseDetail:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetCauseDetail(v)
 		return nil
 	case turntrace.FieldSummary:
 		v, ok := value.(string)
@@ -22614,6 +22742,12 @@ func (m *TurnTraceMutation) ClearedFields() []string {
 	if m.FieldCleared(turntrace.FieldErrorCode) {
 		fields = append(fields, turntrace.FieldErrorCode)
 	}
+	if m.FieldCleared(turntrace.FieldCauseClass) {
+		fields = append(fields, turntrace.FieldCauseClass)
+	}
+	if m.FieldCleared(turntrace.FieldCauseDetail) {
+		fields = append(fields, turntrace.FieldCauseDetail)
+	}
 	if m.FieldCleared(turntrace.FieldSummary) {
 		fields = append(fields, turntrace.FieldSummary)
 	}
@@ -22636,6 +22770,12 @@ func (m *TurnTraceMutation) ClearField(name string) error {
 	switch name {
 	case turntrace.FieldErrorCode:
 		m.ClearErrorCode()
+		return nil
+	case turntrace.FieldCauseClass:
+		m.ClearCauseClass()
+		return nil
+	case turntrace.FieldCauseDetail:
+		m.ClearCauseDetail()
 		return nil
 	case turntrace.FieldSummary:
 		m.ClearSummary()
@@ -22665,6 +22805,12 @@ func (m *TurnTraceMutation) ResetField(name string) error {
 		return nil
 	case turntrace.FieldErrorCode:
 		m.ResetErrorCode()
+		return nil
+	case turntrace.FieldCauseClass:
+		m.ResetCauseClass()
+		return nil
+	case turntrace.FieldCauseDetail:
+		m.ResetCauseDetail()
 		return nil
 	case turntrace.FieldSummary:
 		m.ResetSummary()
@@ -22730,22 +22876,23 @@ func (m *TurnTraceMutation) ResetEdge(name string) error {
 // TurnTraceEventMutation represents an operation that mutates the TurnTraceEvent nodes in the graph.
 type TurnTraceEventMutation struct {
 	config
-	op             Op
-	typ            string
-	id             *uuid.UUID
-	trace_id       *string
-	seq            *int64
-	addseq         *int64
-	event_type     *string
-	agent_name     *string
-	tool_name      *string
-	call_signature *string
-	payload_json   *string
-	created_at     *time.Time
-	clearedFields  map[string]struct{}
-	done           bool
-	oldValue       func(context.Context) (*TurnTraceEvent, error)
-	predicates     []predicate.TurnTraceEvent
+	op                Op
+	typ               string
+	id                *uuid.UUID
+	trace_id          *string
+	seq               *int64
+	addseq            *int64
+	event_type        *string
+	agent_name        *string
+	tool_name         *string
+	call_signature    *string
+	payload_json      *string
+	payload_truncated *bool
+	created_at        *time.Time
+	clearedFields     map[string]struct{}
+	done              bool
+	oldValue          func(context.Context) (*TurnTraceEvent, error)
+	predicates        []predicate.TurnTraceEvent
 }
 
 var _ ent.Mutation = (*TurnTraceEventMutation)(nil)
@@ -23176,6 +23323,42 @@ func (m *TurnTraceEventMutation) ResetPayloadJSON() {
 	delete(m.clearedFields, turntraceevent.FieldPayloadJSON)
 }
 
+// SetPayloadTruncated sets the "payload_truncated" field.
+func (m *TurnTraceEventMutation) SetPayloadTruncated(b bool) {
+	m.payload_truncated = &b
+}
+
+// PayloadTruncated returns the value of the "payload_truncated" field in the mutation.
+func (m *TurnTraceEventMutation) PayloadTruncated() (r bool, exists bool) {
+	v := m.payload_truncated
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldPayloadTruncated returns the old "payload_truncated" field's value of the TurnTraceEvent entity.
+// If the TurnTraceEvent object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *TurnTraceEventMutation) OldPayloadTruncated(ctx context.Context) (v bool, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldPayloadTruncated is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldPayloadTruncated requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldPayloadTruncated: %w", err)
+	}
+	return oldValue.PayloadTruncated, nil
+}
+
+// ResetPayloadTruncated resets all changes to the "payload_truncated" field.
+func (m *TurnTraceEventMutation) ResetPayloadTruncated() {
+	m.payload_truncated = nil
+}
+
 // SetCreatedAt sets the "created_at" field.
 func (m *TurnTraceEventMutation) SetCreatedAt(t time.Time) {
 	m.created_at = &t
@@ -23246,7 +23429,7 @@ func (m *TurnTraceEventMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *TurnTraceEventMutation) Fields() []string {
-	fields := make([]string, 0, 8)
+	fields := make([]string, 0, 9)
 	if m.trace_id != nil {
 		fields = append(fields, turntraceevent.FieldTraceID)
 	}
@@ -23267,6 +23450,9 @@ func (m *TurnTraceEventMutation) Fields() []string {
 	}
 	if m.payload_json != nil {
 		fields = append(fields, turntraceevent.FieldPayloadJSON)
+	}
+	if m.payload_truncated != nil {
+		fields = append(fields, turntraceevent.FieldPayloadTruncated)
 	}
 	if m.created_at != nil {
 		fields = append(fields, turntraceevent.FieldCreatedAt)
@@ -23293,6 +23479,8 @@ func (m *TurnTraceEventMutation) Field(name string) (ent.Value, bool) {
 		return m.CallSignature()
 	case turntraceevent.FieldPayloadJSON:
 		return m.PayloadJSON()
+	case turntraceevent.FieldPayloadTruncated:
+		return m.PayloadTruncated()
 	case turntraceevent.FieldCreatedAt:
 		return m.CreatedAt()
 	}
@@ -23318,6 +23506,8 @@ func (m *TurnTraceEventMutation) OldField(ctx context.Context, name string) (ent
 		return m.OldCallSignature(ctx)
 	case turntraceevent.FieldPayloadJSON:
 		return m.OldPayloadJSON(ctx)
+	case turntraceevent.FieldPayloadTruncated:
+		return m.OldPayloadTruncated(ctx)
 	case turntraceevent.FieldCreatedAt:
 		return m.OldCreatedAt(ctx)
 	}
@@ -23377,6 +23567,13 @@ func (m *TurnTraceEventMutation) SetField(name string, value ent.Value) error {
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
 		m.SetPayloadJSON(v)
+		return nil
+	case turntraceevent.FieldPayloadTruncated:
+		v, ok := value.(bool)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetPayloadTruncated(v)
 		return nil
 	case turntraceevent.FieldCreatedAt:
 		v, ok := value.(time.Time)
@@ -23496,6 +23693,9 @@ func (m *TurnTraceEventMutation) ResetField(name string) error {
 		return nil
 	case turntraceevent.FieldPayloadJSON:
 		m.ResetPayloadJSON()
+		return nil
+	case turntraceevent.FieldPayloadTruncated:
+		m.ResetPayloadTruncated()
 		return nil
 	case turntraceevent.FieldCreatedAt:
 		m.ResetCreatedAt()

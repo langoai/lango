@@ -14,12 +14,14 @@ type JSONOutput struct {
 
 // JSONResult represents a single check result in JSON format.
 type JSONResult struct {
-	Name      string `json:"name"`
-	Status    string `json:"status"`
-	Message   string `json:"message"`
-	Details   string `json:"details,omitempty"`
-	Fixable   bool   `json:"fixable,omitempty"`
-	FixAction string `json:"fixAction,omitempty"`
+	Name               string                `json:"name"`
+	Status             string                `json:"status"`
+	Message            string                `json:"message"`
+	Details            string                `json:"details,omitempty"`
+	Fixable            bool                  `json:"fixable,omitempty"`
+	FixAction          string                `json:"fixAction,omitempty"`
+	TraceFailures      []checks.TraceFailure `json:"traceFailures,omitempty"`
+	IsolationLeakCount *int                  `json:"isolationLeakCount,omitempty"`
 }
 
 // JSONSummary represents the summary in JSON format.
@@ -47,12 +49,14 @@ func (r *JSONRenderer) Render(summary checks.Summary) (string, error) {
 
 	for i, result := range summary.Results {
 		output.Results[i] = JSONResult{
-			Name:      result.Name,
-			Status:    result.Status.String(),
-			Message:   result.Message,
-			Details:   result.Details,
-			Fixable:   result.Fixable,
-			FixAction: result.FixAction,
+			Name:               result.Name,
+			Status:             result.Status.String(),
+			Message:            result.Message,
+			Details:            result.Details,
+			Fixable:            result.Fixable,
+			FixAction:          result.FixAction,
+			TraceFailures:      result.TraceFailures,
+			IsolationLeakCount: result.IsolationLeakCount,
 		}
 	}
 

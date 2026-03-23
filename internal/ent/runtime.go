@@ -729,7 +729,7 @@ func init() {
 	// turntrace.DefaultOutcome holds the default value on creation for the outcome field.
 	turntrace.DefaultOutcome = turntraceDescOutcome.Default.(string)
 	// turntraceDescStartedAt is the schema descriptor for started_at field.
-	turntraceDescStartedAt := turntraceFields[7].Descriptor()
+	turntraceDescStartedAt := turntraceFields[9].Descriptor()
 	// turntrace.DefaultStartedAt holds the default value on creation for the started_at field.
 	turntrace.DefaultStartedAt = turntraceDescStartedAt.Default.(func() time.Time)
 	// turntraceDescID is the schema descriptor for id field.
@@ -746,8 +746,12 @@ func init() {
 	turntraceeventDescEventType := turntraceeventFields[3].Descriptor()
 	// turntraceevent.EventTypeValidator is a validator for the "event_type" field. It is called by the builders before save.
 	turntraceevent.EventTypeValidator = turntraceeventDescEventType.Validators[0].(func(string) error)
+	// turntraceeventDescPayloadTruncated is the schema descriptor for payload_truncated field.
+	turntraceeventDescPayloadTruncated := turntraceeventFields[8].Descriptor()
+	// turntraceevent.DefaultPayloadTruncated holds the default value on creation for the payload_truncated field.
+	turntraceevent.DefaultPayloadTruncated = turntraceeventDescPayloadTruncated.Default.(bool)
 	// turntraceeventDescCreatedAt is the schema descriptor for created_at field.
-	turntraceeventDescCreatedAt := turntraceeventFields[8].Descriptor()
+	turntraceeventDescCreatedAt := turntraceeventFields[9].Descriptor()
 	// turntraceevent.DefaultCreatedAt holds the default value on creation for the created_at field.
 	turntraceevent.DefaultCreatedAt = turntraceeventDescCreatedAt.Default.(func() time.Time)
 	// turntraceeventDescID is the schema descriptor for id field.

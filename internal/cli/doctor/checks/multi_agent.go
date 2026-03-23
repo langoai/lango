@@ -99,18 +99,29 @@ func (c *MultiAgentCheck) RunWithBootstrap(
 
 	base.Status = StatusWarn
 	var details []string
+	base.TraceFailures = make([]TraceFailure, 0, len(failures))
 	if len(failures) > 0 {
 		details = append(details, "Recent failed traces:")
 		for _, failure := range failures {
+			base.TraceFailures = append(base.TraceFailures, TraceFailure{
+				TraceID:    failure.TraceID,
+				Outcome:    string(failure.Outcome),
+				ErrorCode:  failure.ErrorCode,
+				CauseClass: failure.CauseClass,
+				Summary:    failure.Summary,
+			})
 			details = append(details, fmt.Sprintf(
-				"- %s [%s] %s",
+				"- %s [%s/%s/%s] %s",
 				failure.TraceID,
 				failure.Outcome,
+				failure.ErrorCode,
+				failure.CauseClass,
 				failure.Summary,
 			))
 		}
 	}
 	if leakCount > 0 {
+		base.IsolationLeakCount = &leakCount
 		details = append(details, fmt.Sprintf(
 			"Persisted raw isolated specialist turns detected: %d",
 			leakCount,

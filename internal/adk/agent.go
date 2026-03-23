@@ -651,12 +651,16 @@ func (a *Agent) runAndCollectOnce(ctx context.Context, sessionID, input string, 
 			if a.sessionService != nil {
 				_ = a.sessionService.DiscardActiveChildWithReason(sessionID, discardReasonForError(err))
 			}
+			fc := classifyError(err)
 			return partial, &AgentError{
-				Code:    classifyError(err),
-				Message: "agent error",
-				Cause:   err,
-				Partial: partial,
-				Elapsed: time.Since(start),
+				Code:            fc.Code,
+				Message:         "agent error",
+				Cause:           err,
+				Partial:         partial,
+				Elapsed:         time.Since(start),
+				CauseClass:      fc.CauseClass,
+				CauseDetail:     fc.CauseDetail,
+				OperatorSummary: fc.OperatorSummary,
 			}
 		}
 
@@ -720,13 +724,16 @@ func (a *Agent) runAndCollectOnce(ctx context.Context, sessionID, input string, 
 		if a.sessionService != nil {
 			_ = a.sessionService.DiscardActiveChildWithReason(sessionID, discardReasonForError(err))
 		}
-		return partial, &AgentError{
-			Code:    ErrTimeout,
-			Message: "agent error",
-			Cause:   err,
-			Partial: partial,
-			Elapsed: time.Since(start),
-		}
+			return partial, &AgentError{
+				Code:            ErrTimeout,
+				Message:         "agent error",
+				Cause:           err,
+				Partial:         partial,
+				Elapsed:         time.Since(start),
+				CauseClass:      CauseTimeoutHard,
+				CauseDetail:     err.Error(),
+				OperatorSummary: fmt.Sprintf("[%s] %s", ErrTimeout, CauseTimeoutHard),
+			}
 	}
 
 	return b.String(), nil
@@ -842,15 +849,19 @@ func (a *Agent) RunStreamingDetailed(ctx context.Context, sessionID, input strin
 	for event, err := range a.Run(ctx, sessionID, input) {
 		if err != nil {
 			partial := b.String()
+			fc := classifyError(err)
 			return RunReport{
 				Response:    partial,
 				Diagnostics: diagnostics,
 			}, &AgentError{
-				Code:    classifyError(err),
-				Message: "agent error",
-				Cause:   err,
-				Partial: partial,
-				Elapsed: time.Since(start),
+				Code:            fc.Code,
+				Message:         "agent error",
+				Cause:           err,
+				Partial:         partial,
+				Elapsed:         time.Since(start),
+				CauseClass:      fc.CauseClass,
+				CauseDetail:     fc.CauseDetail,
+				OperatorSummary: fc.OperatorSummary,
 			}
 		}
 
@@ -902,11 +913,14 @@ func (a *Agent) RunStreamingDetailed(ctx context.Context, sessionID, input strin
 			Response:    partial,
 			Diagnostics: diagnostics,
 		}, &AgentError{
-			Code:    ErrTimeout,
-			Message: "agent error",
-			Cause:   err,
-			Partial: partial,
-			Elapsed: time.Since(start),
+			Code:            ErrTimeout,
+			Message:         "agent error",
+			Cause:           err,
+			Partial:         partial,
+			Elapsed:         time.Since(start),
+			CauseClass:      CauseTimeoutHard,
+			CauseDetail:     err.Error(),
+			OperatorSummary: fmt.Sprintf("[%s] %s", ErrTimeout, CauseTimeoutHard),
 		}
 	}
 	if a.sessionService != nil {
@@ -919,7 +933,7 @@ func (a *Agent) RunStreamingDetailed(ctx context.Context, sessionID, input strin
 }
 
 func discardReasonForError(err error) string {
-	switch classifyError(err) {
+	switch classifyError(err).Code {
 	case ErrToolChurn:
 		return "loop_detected"
 	case ErrEmptyAfterToolUse:

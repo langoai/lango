@@ -24,14 +24,44 @@ const (
 	ErrEmptyAfterToolUse ErrorCode = "E008"
 )
 
+const (
+	CauseApprovalDenied           = "approval_denied"
+	CauseApprovalTimeout          = "approval_timeout"
+	CauseApprovalUnavailable      = "approval_unavailable"
+	CauseToolNotFound             = "tool_not_found"
+	CauseFunctionCallValidation   = "function_call_validation"
+	CauseOrchestratorDirectTool   = "orchestrator_direct_tool_call"
+	CauseUnknownToolError         = "unknown_tool_error"
+	CauseProviderRateLimit        = "provider_rate_limit"
+	CauseProviderTransient        = "provider_transient"
+	CauseThoughtSignatureMissing  = "thought_signature_missing"
+	CauseTimeoutIdle              = "timeout_idle"
+	CauseTimeoutHard              = "timeout_hard"
+	CauseRepeatedCallSignature    = "repeated_call_signature"
+	CauseTurnLimitExceeded        = "turn_limit_exceeded"
+	CauseEmptyAfterToolUse        = "empty_after_tool_use"
+	CauseInternalRuntimeError     = "internal_runtime_error"
+)
+
+// FailureClassification is the operator-facing classification for a terminal failure.
+type FailureClassification struct {
+	Code            ErrorCode
+	CauseClass      string
+	CauseDetail     string
+	OperatorSummary string
+}
+
 // AgentError is a structured error type that preserves partial results
 // accumulated before the failure, along with classification metadata.
 type AgentError struct {
-	Code    ErrorCode
-	Message string        // internal message
-	Cause   error         // underlying error
-	Partial string        // accumulated text before failure
-	Elapsed time.Duration // time spent before failure
+	Code            ErrorCode
+	Message         string        // internal message
+	Cause           error         // underlying error
+	Partial         string        // accumulated text before failure
+	Elapsed         time.Duration // time spent before failure
+	CauseClass      string
+	CauseDetail     string
+	OperatorSummary string
 }
 
 func (e *AgentError) Error() string {
@@ -43,6 +73,24 @@ func (e *AgentError) Error() string {
 
 func (e *AgentError) Unwrap() error {
 	return e.Cause
+}
+
+// DiagnosticSummary returns an operator-facing summary with cause class and detail.
+func (e *AgentError) DiagnosticSummary() string {
+	if strings.TrimSpace(e.OperatorSummary) != "" {
+		return e.OperatorSummary
+	}
+	parts := []string{fmt.Sprintf("[%s]", e.Code)}
+	if strings.TrimSpace(e.CauseClass) != "" {
+		parts = append(parts, e.CauseClass)
+	}
+	if strings.TrimSpace(e.CauseDetail) != "" {
+		parts = append(parts, e.CauseDetail)
+	}
+	if len(parts) == 1 && strings.TrimSpace(e.Message) != "" {
+		parts = append(parts, e.Message)
+	}
+	return strings.Join(parts, " ")
 }
 
 // UserMessage returns a user-facing formatted message with error code and hint.
@@ -75,55 +123,148 @@ func (e *AgentError) UserMessage() string {
 	}
 }
 
-// classifyError determines the ErrorCode for a given error.
-func classifyError(err error) ErrorCode {
+// classifyError determines the operator-facing failure classification for a given error.
+func classifyError(err error) FailureClassification {
 	if err == nil {
-		return ErrInternal
+		return FailureClassification{
+			Code:            ErrInternal,
+			CauseClass:      CauseInternalRuntimeError,
+			OperatorSummary: "[E005] internal_runtime_error",
+		}
 	}
 
 	// Context-based classification
 	if err == context.DeadlineExceeded || err == context.Canceled {
-		return ErrTimeout
+		return FailureClassification{
+			Code:            ErrTimeout,
+			CauseClass:      CauseTimeoutHard,
+			CauseDetail:     err.Error(),
+			OperatorSummary: fmt.Sprintf("[%s] %s", ErrTimeout, CauseTimeoutHard),
+		}
 	}
 	// Unwrap to check wrapped context errors
 	if errors.Is(err, context.DeadlineExceeded) || errors.Is(err, context.Canceled) {
-		return ErrTimeout
+		return FailureClassification{
+			Code:            ErrTimeout,
+			CauseClass:      CauseTimeoutHard,
+			CauseDetail:     err.Error(),
+			OperatorSummary: fmt.Sprintf("[%s] %s", ErrTimeout, CauseTimeoutHard),
+		}
+	}
+
+	if errors.Is(err, approval.ErrDenied) {
+		return FailureClassification{
+			Code:            ErrToolError,
+			CauseClass:      CauseApprovalDenied,
+			CauseDetail:     err.Error(),
+			OperatorSummary: fmt.Sprintf("[%s] %s", ErrToolError, CauseApprovalDenied),
+		}
+	}
+	if errors.Is(err, approval.ErrTimeout) {
+		return FailureClassification{
+			Code:            ErrToolError,
+			CauseClass:      CauseApprovalTimeout,
+			CauseDetail:     err.Error(),
+			OperatorSummary: fmt.Sprintf("[%s] %s", ErrToolError, CauseApprovalTimeout),
+		}
+	}
+	if errors.Is(err, approval.ErrUnavailable) {
+		return FailureClassification{
+			Code:            ErrToolError,
+			CauseClass:      CauseApprovalUnavailable,
+			CauseDetail:     err.Error(),
+			OperatorSummary: fmt.Sprintf("[%s] %s", ErrToolError, CauseApprovalUnavailable),
+		}
 	}
 
 	msg := err.Error()
 
 	// Turn limit
 	if strings.Contains(msg, "maximum turn limit") || strings.Contains(msg, "max turns exceeded") {
-		return ErrTurnLimit
+		return FailureClassification{
+			Code:            ErrTurnLimit,
+			CauseClass:      CauseTurnLimitExceeded,
+			CauseDetail:     msg,
+			OperatorSummary: fmt.Sprintf("[%s] %s", ErrTurnLimit, CauseTurnLimitExceeded),
+		}
 	}
 
 	// Tool churn (consecutive same-tool loop detected by Run())
 	if strings.Contains(msg, "consecutively, forcing stop") {
-		return ErrToolChurn
-	}
-
-	if errors.Is(err, approval.ErrDenied) || errors.Is(err, approval.ErrTimeout) || errors.Is(err, approval.ErrUnavailable) {
-		return ErrToolError
+		return FailureClassification{
+			Code:            ErrToolChurn,
+			CauseClass:      CauseRepeatedCallSignature,
+			CauseDetail:     msg,
+			OperatorSummary: fmt.Sprintf("[%s] %s", ErrToolChurn, CauseRepeatedCallSignature),
+		}
 	}
 
 	// thought_signature errors — Gemini API rejects replayed thought data.
-	// Must be checked BEFORE "tool"/"function call" keywords because the
-	// Gemini error message contains both (e.g., "Function call is missing
-	// a thought_signature in functionCall parts").
 	if strings.Contains(msg, "thought_signature") || strings.Contains(msg, "thoughtSignature") {
-		return ErrModelError
+		return FailureClassification{
+			Code:            ErrModelError,
+			CauseClass:      CauseThoughtSignatureMissing,
+			CauseDetail:     msg,
+			OperatorSummary: fmt.Sprintf("[%s] %s", ErrModelError, CauseThoughtSignatureMissing),
+		}
 	}
 
-	// Tool errors
-	if strings.Contains(msg, "tool") || strings.Contains(msg, "function call") {
-		return ErrToolError
+	if strings.Contains(msg, "tool not found") || strings.Contains(msg, "failed to find tool") {
+		return FailureClassification{
+			Code:            ErrToolError,
+			CauseClass:      CauseToolNotFound,
+			CauseDetail:     msg,
+			OperatorSummary: fmt.Sprintf("[%s] %s", ErrToolError, CauseToolNotFound),
+		}
 	}
 
-	// Model errors
-	if strings.Contains(msg, "model") || strings.Contains(msg, "429") || strings.Contains(msg, "rate limit") ||
-		strings.Contains(msg, "500") || strings.Contains(msg, "503") {
-		return ErrModelError
+	if strings.Contains(msg, "orchestrator emitted direct tool call") {
+		return FailureClassification{
+			Code:            ErrToolError,
+			CauseClass:      CauseOrchestratorDirectTool,
+			CauseDetail:     msg,
+			OperatorSummary: fmt.Sprintf("[%s] %s", ErrToolError, CauseOrchestratorDirectTool),
+		}
 	}
 
-	return ErrInternal
+	if strings.Contains(msg, "function call") || strings.Contains(msg, "failed to parse tool output") {
+		return FailureClassification{
+			Code:            ErrToolError,
+			CauseClass:      CauseFunctionCallValidation,
+			CauseDetail:     msg,
+			OperatorSummary: fmt.Sprintf("[%s] %s", ErrToolError, CauseFunctionCallValidation),
+		}
+	}
+
+	if strings.Contains(msg, "429") || strings.Contains(msg, "rate limit") {
+		return FailureClassification{
+			Code:            ErrModelError,
+			CauseClass:      CauseProviderRateLimit,
+			CauseDetail:     msg,
+			OperatorSummary: fmt.Sprintf("[%s] %s", ErrModelError, CauseProviderRateLimit),
+		}
+	}
+	if strings.Contains(msg, "500") || strings.Contains(msg, "503") || strings.Contains(msg, "transient") {
+		return FailureClassification{
+			Code:            ErrModelError,
+			CauseClass:      CauseProviderTransient,
+			CauseDetail:     msg,
+			OperatorSummary: fmt.Sprintf("[%s] %s", ErrModelError, CauseProviderTransient),
+		}
+	}
+	if strings.Contains(msg, "tool") {
+		return FailureClassification{
+			Code:            ErrToolError,
+			CauseClass:      CauseUnknownToolError,
+			CauseDetail:     msg,
+			OperatorSummary: fmt.Sprintf("[%s] %s", ErrToolError, CauseUnknownToolError),
+		}
+	}
+
+	return FailureClassification{
+		Code:            ErrInternal,
+		CauseClass:      CauseInternalRuntimeError,
+		CauseDetail:     msg,
+		OperatorSummary: fmt.Sprintf("[%s] %s", ErrInternal, CauseInternalRuntimeError),
+	}
 }

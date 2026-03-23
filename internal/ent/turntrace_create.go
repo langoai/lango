@@ -67,6 +67,34 @@ func (_c *TurnTraceCreate) SetNillableErrorCode(v *string) *TurnTraceCreate {
 	return _c
 }
 
+// SetCauseClass sets the "cause_class" field.
+func (_c *TurnTraceCreate) SetCauseClass(v string) *TurnTraceCreate {
+	_c.mutation.SetCauseClass(v)
+	return _c
+}
+
+// SetNillableCauseClass sets the "cause_class" field if the given value is not nil.
+func (_c *TurnTraceCreate) SetNillableCauseClass(v *string) *TurnTraceCreate {
+	if v != nil {
+		_c.SetCauseClass(*v)
+	}
+	return _c
+}
+
+// SetCauseDetail sets the "cause_detail" field.
+func (_c *TurnTraceCreate) SetCauseDetail(v string) *TurnTraceCreate {
+	_c.mutation.SetCauseDetail(v)
+	return _c
+}
+
+// SetNillableCauseDetail sets the "cause_detail" field if the given value is not nil.
+func (_c *TurnTraceCreate) SetNillableCauseDetail(v *string) *TurnTraceCreate {
+	if v != nil {
+		_c.SetCauseDetail(*v)
+	}
+	return _c
+}
+
 // SetSummary sets the "summary" field.
 func (_c *TurnTraceCreate) SetSummary(v string) *TurnTraceCreate {
 	_c.mutation.SetSummary(v)
@@ -258,6 +286,14 @@ func (_c *TurnTraceCreate) createSpec() (*TurnTrace, *sqlgraph.CreateSpec) {
 	if value, ok := _c.mutation.ErrorCode(); ok {
 		_spec.SetField(turntrace.FieldErrorCode, field.TypeString, value)
 		_node.ErrorCode = value
+	}
+	if value, ok := _c.mutation.CauseClass(); ok {
+		_spec.SetField(turntrace.FieldCauseClass, field.TypeString, value)
+		_node.CauseClass = value
+	}
+	if value, ok := _c.mutation.CauseDetail(); ok {
+		_spec.SetField(turntrace.FieldCauseDetail, field.TypeString, value)
+		_node.CauseDetail = value
 	}
 	if value, ok := _c.mutation.Summary(); ok {
 		_spec.SetField(turntrace.FieldSummary, field.TypeString, value)

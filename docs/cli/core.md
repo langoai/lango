@@ -194,6 +194,8 @@ $ lango doctor --fix
 $ lango doctor --json
 ```
 
+When multi-agent runtime failures exist, `--json` now includes structured trace metadata such as `traceFailures[].traceId`, `outcome`, `errorCode`, `causeClass`, and `summary`, plus `isolationLeakCount` when applicable.
+
 !!! tip
     Run `lango doctor` after `lango onboard` to verify your setup is correct. In multi-agent mode, `doctor` also reports recent failed turn traces and whether isolated specialist turns have leaked into persisted parent history.
 

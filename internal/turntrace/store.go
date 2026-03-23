@@ -32,6 +32,8 @@ type Trace struct {
 	Entrypoint string
 	Outcome    Outcome
 	ErrorCode  string
+	CauseClass string
+	CauseDetail string
 	Summary    string
 	StartedAt  time.Time
 	EndedAt    *time.Time
@@ -46,6 +48,7 @@ type Event struct {
 	ToolName      string
 	CallSignature string
 	PayloadJSON   string
+	PayloadTruncated bool
 	CreatedAt     time.Time
 }
 
@@ -59,6 +62,8 @@ type Store interface {
 		outcome Outcome,
 		summary string,
 		errorCode string,
+		causeClass string,
+		causeDetail string,
 		endedAt time.Time,
 	) error
 	RecentFailures(ctx context.Context, limit int) ([]Trace, error)
@@ -94,6 +99,12 @@ func (s *EntStore) CreateTrace(ctx context.Context, trace Trace) error {
 	if trace.ErrorCode != "" {
 		builder.SetErrorCode(trace.ErrorCode)
 	}
+	if trace.CauseClass != "" {
+		builder.SetCauseClass(trace.CauseClass)
+	}
+	if strings.TrimSpace(trace.CauseDetail) != "" {
+		builder.SetCauseDetail(trace.CauseDetail)
+	}
 	if strings.TrimSpace(trace.Summary) != "" {
 		builder.SetSummary(trace.Summary)
 	}
@@ -128,8 +139,11 @@ func (s *EntStore) AppendEvent(ctx context.Context, event Event) error {
 	if event.CallSignature != "" {
 		builder.SetCallSignature(event.CallSignature)
 	}
-	if event.PayloadJSON != "" {
-		builder.SetPayloadJSON(event.PayloadJSON)
+		if event.PayloadJSON != "" {
+			builder.SetPayloadJSON(event.PayloadJSON)
+		}
+	if event.PayloadTruncated {
+		builder.SetPayloadTruncated(true)
 	}
 
 	if _, err := builder.Save(ctx); err != nil {
@@ -145,6 +159,8 @@ func (s *EntStore) FinishTrace(
 	outcome Outcome,
 	summary string,
 	errorCode string,
+	causeClass string,
+	causeDetail string,
 	endedAt time.Time,
 ) error {
 	if s == nil || s.client == nil {
@@ -159,6 +175,12 @@ func (s *EntStore) FinishTrace(
 	}
 	if errorCode != "" {
 		builder.SetErrorCode(errorCode)
+	}
+	if causeClass != "" {
+		builder.SetCauseClass(causeClass)
+	}
+	if strings.TrimSpace(causeDetail) != "" {
+		builder.SetCauseDetail(causeDetail)
 	}
 
 	if _, err := builder.Save(ctx); err != nil {
@@ -216,6 +238,8 @@ func entToTrace(row *ent.TurnTrace) Trace {
 		Entrypoint: row.Entrypoint,
 		Outcome:    Outcome(row.Outcome),
 		ErrorCode:  row.ErrorCode,
+		CauseClass: row.CauseClass,
+		CauseDetail: row.CauseDetail,
 		Summary:    row.Summary,
 		StartedAt:  row.StartedAt,
 	}

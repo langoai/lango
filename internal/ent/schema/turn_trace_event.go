@@ -35,6 +35,8 @@ func (TurnTraceEvent) Fields() []ent.Field {
 			Optional(),
 		field.Text("payload_json").
 			Optional(),
+		field.Bool("payload_truncated").
+			Default(false),
 		field.Time("created_at").
 			Default(time.Now).
 			Immutable(),

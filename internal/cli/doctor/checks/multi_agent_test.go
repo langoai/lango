@@ -33,6 +33,8 @@ func TestMultiAgentCheck_RunWithBootstrap_ShowsFailuresAndLeaks(t *testing.T) {
 		turntrace.OutcomeLoopDetected,
 		"loop_detected on payment_balance",
 		"E007",
+		"repeated_call_signature",
+		"payment_balance {} repeated",
 		now.Add(time.Second),
 	))
 
@@ -64,5 +66,7 @@ func TestMultiAgentCheck_RunWithBootstrap_ShowsFailuresAndLeaks(t *testing.T) {
 	assert.Equal(t, StatusWarn, result.Status)
 	assert.Contains(t, result.Message, "recent failed trace")
 	assert.Contains(t, result.Details, "trace-1")
+	assert.Contains(t, result.Details, "E007")
+	assert.Contains(t, result.Details, "repeated_call_signature")
 	assert.Contains(t, result.Details, "Persisted raw isolated specialist turns detected: 1")
 }

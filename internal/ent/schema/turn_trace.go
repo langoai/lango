@@ -32,6 +32,10 @@ func (TurnTrace) Fields() []ent.Field {
 			Default("running"),
 		field.String("error_code").
 			Optional(),
+		field.String("cause_class").
+			Optional(),
+		field.Text("cause_detail").
+			Optional(),
 		field.Text("summary").
 			Optional(),
 		field.Time("started_at").

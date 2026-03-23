@@ -296,15 +296,31 @@ func (s *Server) handleChatMessage(client *Client, params json.RawMessage) (inte
 	}
 
 	if result.Outcome != turntrace.OutcomeSuccess {
+		logger().Warnw("gateway turn completed with failure",
+			"session", sessionKey,
+			"elapsed", result.Elapsed.String(),
+			"outcome", string(result.Outcome),
+			"trace_id", result.TraceID,
+			"error_code", result.ErrorCode,
+			"cause_class", result.CauseClass,
+			"summary", result.Summary)
 		s.BroadcastToSession(sessionKey, "agent.error", map[string]string{
 			"sessionKey": sessionKey,
 			"error":      result.UserMessage,
 			"type":       string(result.Outcome),
 			"code":       result.ErrorCode,
+			"causeClass": result.CauseClass,
+			"summary":    result.Summary,
 			"traceId":    result.TraceID,
 		})
 		return nil, errors.New(result.UserMessage)
 	}
+
+	logger().Infow("gateway turn completed",
+		"session", sessionKey,
+		"elapsed", result.Elapsed.String(),
+		"outcome", string(result.Outcome),
+		"trace_id", result.TraceID)
 
 	// Notify UI that agent completed successfully.
 	s.BroadcastToSession(sessionKey, "agent.done", map[string]string{

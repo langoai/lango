@@ -310,6 +310,7 @@ lango doctor --json
 ```
 
 In multi-agent mode, `lango doctor` also reports recent failed turn traces (`loop_detected`, `empty_after_tool_use`, `timeout`) and whether isolated specialist turns leaked into persisted parent history.
+The JSON form additionally exposes structured trace metadata (`traceFailures`, `isolationLeakCount`) for operator tooling.
 
 ## Architecture
 

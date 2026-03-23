@@ -28,6 +28,10 @@ type TurnTrace struct {
 	Outcome string `json:"outcome,omitempty"`
 	// ErrorCode holds the value of the "error_code" field.
 	ErrorCode string `json:"error_code,omitempty"`
+	// CauseClass holds the value of the "cause_class" field.
+	CauseClass string `json:"cause_class,omitempty"`
+	// CauseDetail holds the value of the "cause_detail" field.
+	CauseDetail string `json:"cause_detail,omitempty"`
 	// Summary holds the value of the "summary" field.
 	Summary string `json:"summary,omitempty"`
 	// StartedAt holds the value of the "started_at" field.
@@ -42,7 +46,7 @@ func (*TurnTrace) scanValues(columns []string) ([]any, error) {
 	values := make([]any, len(columns))
 	for i := range columns {
 		switch columns[i] {
-		case turntrace.FieldTraceID, turntrace.FieldSessionKey, turntrace.FieldEntrypoint, turntrace.FieldOutcome, turntrace.FieldErrorCode, turntrace.FieldSummary:
+		case turntrace.FieldTraceID, turntrace.FieldSessionKey, turntrace.FieldEntrypoint, turntrace.FieldOutcome, turntrace.FieldErrorCode, turntrace.FieldCauseClass, turntrace.FieldCauseDetail, turntrace.FieldSummary:
 			values[i] = new(sql.NullString)
 		case turntrace.FieldStartedAt, turntrace.FieldEndedAt:
 			values[i] = new(sql.NullTime)
@@ -98,6 +102,18 @@ func (_m *TurnTrace) assignValues(columns []string, values []any) error {
 				return fmt.Errorf("unexpected type %T for field error_code", values[i])
 			} else if value.Valid {
 				_m.ErrorCode = value.String
+			}
+		case turntrace.FieldCauseClass:
+			if value, ok := values[i].(*sql.NullString); !ok {
+				return fmt.Errorf("unexpected type %T for field cause_class", values[i])
+			} else if value.Valid {
+				_m.CauseClass = value.String
+			}
+		case turntrace.FieldCauseDetail:
+			if value, ok := values[i].(*sql.NullString); !ok {
+				return fmt.Errorf("unexpected type %T for field cause_detail", values[i])
+			} else if value.Valid {
+				_m.CauseDetail = value.String
 			}
 		case turntrace.FieldSummary:
 			if value, ok := values[i].(*sql.NullString); !ok {
@@ -168,6 +184,12 @@ func (_m *TurnTrace) String() string {
 	builder.WriteString(", ")
 	builder.WriteString("error_code=")
 	builder.WriteString(_m.ErrorCode)
+	builder.WriteString(", ")
+	builder.WriteString("cause_class=")
+	builder.WriteString(_m.CauseClass)
+	builder.WriteString(", ")
+	builder.WriteString("cause_detail=")
+	builder.WriteString(_m.CauseDetail)
 	builder.WriteString(", ")
 	builder.WriteString("summary=")
 	builder.WriteString(_m.Summary)

@@ -121,6 +121,20 @@ func (_u *TurnTraceEventUpdate) ClearPayloadJSON() *TurnTraceEventUpdate {
 	return _u
 }
 
+// SetPayloadTruncated sets the "payload_truncated" field.
+func (_u *TurnTraceEventUpdate) SetPayloadTruncated(v bool) *TurnTraceEventUpdate {
+	_u.mutation.SetPayloadTruncated(v)
+	return _u
+}
+
+// SetNillablePayloadTruncated sets the "payload_truncated" field if the given value is not nil.
+func (_u *TurnTraceEventUpdate) SetNillablePayloadTruncated(v *bool) *TurnTraceEventUpdate {
+	if v != nil {
+		_u.SetPayloadTruncated(*v)
+	}
+	return _u
+}
+
 // Mutation returns the TurnTraceEventMutation object of the builder.
 func (_u *TurnTraceEventUpdate) Mutation() *TurnTraceEventMutation {
 	return _u.mutation
@@ -201,6 +215,9 @@ func (_u *TurnTraceEventUpdate) sqlSave(ctx context.Context) (_node int, err err
 	}
 	if _u.mutation.PayloadJSONCleared() {
 		_spec.ClearField(turntraceevent.FieldPayloadJSON, field.TypeString)
+	}
+	if value, ok := _u.mutation.PayloadTruncated(); ok {
+		_spec.SetField(turntraceevent.FieldPayloadTruncated, field.TypeBool, value)
 	}
 	if _node, err = sqlgraph.UpdateNodes(ctx, _u.driver, _spec); err != nil {
 		if _, ok := err.(*sqlgraph.NotFoundError); ok {
@@ -316,6 +333,20 @@ func (_u *TurnTraceEventUpdateOne) ClearPayloadJSON() *TurnTraceEventUpdateOne {
 	return _u
 }
 
+// SetPayloadTruncated sets the "payload_truncated" field.
+func (_u *TurnTraceEventUpdateOne) SetPayloadTruncated(v bool) *TurnTraceEventUpdateOne {
+	_u.mutation.SetPayloadTruncated(v)
+	return _u
+}
+
+// SetNillablePayloadTruncated sets the "payload_truncated" field if the given value is not nil.
+func (_u *TurnTraceEventUpdateOne) SetNillablePayloadTruncated(v *bool) *TurnTraceEventUpdateOne {
+	if v != nil {
+		_u.SetPayloadTruncated(*v)
+	}
+	return _u
+}
+
 // Mutation returns the TurnTraceEventMutation object of the builder.
 func (_u *TurnTraceEventUpdateOne) Mutation() *TurnTraceEventMutation {
 	return _u.mutation
@@ -426,6 +457,9 @@ func (_u *TurnTraceEventUpdateOne) sqlSave(ctx context.Context) (_node *TurnTrac
 	}
 	if _u.mutation.PayloadJSONCleared() {
 		_spec.ClearField(turntraceevent.FieldPayloadJSON, field.TypeString)
+	}
+	if value, ok := _u.mutation.PayloadTruncated(); ok {
+		_spec.SetField(turntraceevent.FieldPayloadTruncated, field.TypeBool, value)
 	}
 	_node = &TurnTraceEvent{config: _u.config}
 	_spec.Assign = _node.assignValues

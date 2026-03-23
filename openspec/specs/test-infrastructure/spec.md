@@ -1,9 +1,7 @@
 ## Purpose
 
 Shared test utilities, mock implementations, assertion standards, and conventions for the Lango test suite. Provides a foundation of reusable test infrastructure to eliminate duplication, improve consistency, and enable parallel test execution across all packages.
-
 ## Requirements
-
 ### Requirement: Shared test helper package
 The system SHALL provide an `internal/testutil/` package with shared test utilities including `NopLogger()`, `TestEntClient(t)`, and `SkipShort(t)` helper functions.
 
@@ -112,3 +110,18 @@ Replay-driven integration tests SHALL assert both persistence invariants and use
 - **WHEN** the same replay fixture is executed through channel-style and gateway-style turn runners
 - **THEN** both paths SHALL report the same terminal classification (for example `loop_detected` or `empty_after_tool_use`)
 - **AND** both paths SHALL reference the same trace-backed root-cause summary semantics
+
+### Requirement: Replay coverage for pre-event failures
+The test suite SHALL include a replayable failure fixture for non-success turns that previously produced zero trace events.
+
+#### Scenario: Pre-event failure fixture
+- **WHEN** the replay fixture triggers a failure before the first normal runtime event
+- **THEN** the resulting trace SHALL still contain a `terminal_error` event
+
+### Requirement: Table-driven cause-class verification
+The test suite SHALL verify the initial failure-cause taxonomy via table-driven tests.
+
+#### Scenario: Cause-class table test
+- **WHEN** the classification tests run
+- **THEN** approval, tool lookup, tool validation, provider, timeout, turn limit, repeated-call, and empty-after-tool-use cases SHALL map to their expected `CauseClass` values
+

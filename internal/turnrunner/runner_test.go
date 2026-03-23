@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -81,12 +82,16 @@ func (s *memoryTraceStore) FinishTrace(
 	outcome turntrace.Outcome,
 	summary string,
 	errorCode string,
+	causeClass string,
+	causeDetail string,
 	endedAt time.Time,
 ) error {
 	trace := s.traces[traceID]
 	trace.Outcome = outcome
 	trace.Summary = summary
 	trace.ErrorCode = errorCode
+	trace.CauseClass = causeClass
+	trace.CauseDetail = causeDetail
 	trace.EndedAt = &endedAt
 	s.traces[traceID] = trace
 	return nil
@@ -197,9 +202,12 @@ func TestRunner_LoopDetectedFromFixture(t *testing.T) {
 			Diagnostics: adk.RunDiagnostics{ToolResultCount: 4},
 		},
 		err: &adk.AgentError{
-			Code:    adk.ErrToolChurn,
-			Message: "agent error",
-			Cause:   fmt.Errorf("call signature repeated"),
+			Code:            adk.ErrToolChurn,
+			Message:         "agent error",
+			Cause:           fmt.Errorf("call signature repeated"),
+			CauseClass:      adk.CauseRepeatedCallSignature,
+			CauseDetail:     "payment_balance {} repeated",
+			OperatorSummary: "[E007] repeated_call_signature",
 		},
 	}
 	runner := New(Config{
@@ -219,6 +227,14 @@ func TestRunner_LoopDetectedFromFixture(t *testing.T) {
 	assert.Contains(t, result.ResponseText, "same tool repeatedly")
 	assert.NotEmpty(t, traceStore.events[result.TraceID])
 	assert.Equal(t, turntrace.OutcomeLoopDetected, traceStore.traces[result.TraceID].Outcome)
+	foundTerminal := false
+	for _, event := range traceStore.events[result.TraceID] {
+		if event.EventType == "terminal_error" {
+			foundTerminal = true
+			assert.Contains(t, event.PayloadJSON, "repeated_call_signature")
+		}
+	}
+	assert.True(t, foundTerminal, "expected terminal_error event")
 }
 
 func TestRunner_EmptyAfterToolUse(t *testing.T) {
@@ -258,4 +274,52 @@ func TestRunner_EmptyAfterToolUse(t *testing.T) {
 	assert.Equal(t, turntrace.OutcomeEmptyAfterToolUse, result.Outcome)
 	assert.Equal(t, string(adk.ErrEmptyAfterToolUse), result.ErrorCode)
 	assert.Contains(t, result.ResponseText, "completed tool actions")
+	assert.Equal(t, adk.CauseEmptyAfterToolUse, result.CauseClass)
+}
+
+func TestRunner_TerminalErrorRecordedWhenNoEventsObserved(t *testing.T) {
+	t.Parallel()
+
+	traceStore := newMemoryTraceStore()
+	executor := &fixtureExecutor{
+		err: &adk.AgentError{
+			Code:            adk.ErrToolError,
+			Message:         "agent error",
+			Cause:           fmt.Errorf("tool 'payment_balance' not found"),
+			CauseClass:      adk.CauseToolNotFound,
+			CauseDetail:     "tool 'payment_balance' not found",
+			OperatorSummary: "[E003] tool_not_found",
+		},
+	}
+	runner := New(Config{
+		HardCeiling: 30 * time.Second,
+		TraceStore:  traceStore,
+	}, executor, &stubSessionStore{}, nil)
+
+	result, err := runner.Run(context.Background(), Request{
+		SessionKey: "telegram:test",
+		Input:      "payment_balance",
+		Entrypoint: "channel",
+	})
+	require.NoError(t, err)
+	assert.Equal(t, turntrace.OutcomeToolError, result.Outcome)
+	events := traceStore.events[result.TraceID]
+	require.Len(t, events, 1)
+	assert.Equal(t, "terminal_error", events[0].EventType)
+	assert.Contains(t, events[0].PayloadJSON, "tool_not_found")
+}
+
+func TestRunner_TruncatedPayloadFlag(t *testing.T) {
+	t.Parallel()
+
+	traceStore := newMemoryTraceStore()
+	recorder := newTraceRecorder(context.Background(), traceStore, "trace-1")
+	recorder.append(turntrace.Event{
+		TraceID:     "trace-1",
+		EventType:   "terminal_error",
+		PayloadJSON: strings.Repeat("x", 1500),
+	})
+
+	require.Len(t, traceStore.events["trace-1"], 1)
+	assert.True(t, traceStore.events["trace-1"][0].PayloadTruncated)
 }

@@ -913,6 +913,8 @@ var (
 		{Name: "entrypoint", Type: field.TypeString},
 		{Name: "outcome", Type: field.TypeString, Default: "running"},
 		{Name: "error_code", Type: field.TypeString, Nullable: true},
+		{Name: "cause_class", Type: field.TypeString, Nullable: true},
+		{Name: "cause_detail", Type: field.TypeString, Nullable: true, Size: 2147483647},
 		{Name: "summary", Type: field.TypeString, Nullable: true, Size: 2147483647},
 		{Name: "started_at", Type: field.TypeTime},
 		{Name: "ended_at", Type: field.TypeTime, Nullable: true},
@@ -941,7 +943,7 @@ var (
 			{
 				Name:    "turntrace_started_at",
 				Unique:  false,
-				Columns: []*schema.Column{TurnTracesColumns[7]},
+				Columns: []*schema.Column{TurnTracesColumns[9]},
 			},
 		},
 	}
@@ -955,6 +957,7 @@ var (
 		{Name: "tool_name", Type: field.TypeString, Nullable: true},
 		{Name: "call_signature", Type: field.TypeString, Nullable: true},
 		{Name: "payload_json", Type: field.TypeString, Nullable: true, Size: 2147483647},
+		{Name: "payload_truncated", Type: field.TypeBool, Default: false},
 		{Name: "created_at", Type: field.TypeTime},
 	}
 	// TurnTraceEventsTable holds the schema information for the "turn_trace_events" table.
@@ -981,7 +984,7 @@ var (
 			{
 				Name:    "turntraceevent_created_at",
 				Unique:  false,
-				Columns: []*schema.Column{TurnTraceEventsColumns[8]},
+				Columns: []*schema.Column{TurnTraceEventsColumns[9]},
 			},
 		},
 	}

@@ -28,6 +28,8 @@ const (
 	FieldCallSignature = "call_signature"
 	// FieldPayloadJSON holds the string denoting the payload_json field in the database.
 	FieldPayloadJSON = "payload_json"
+	// FieldPayloadTruncated holds the string denoting the payload_truncated field in the database.
+	FieldPayloadTruncated = "payload_truncated"
 	// FieldCreatedAt holds the string denoting the created_at field in the database.
 	FieldCreatedAt = "created_at"
 	// Table holds the table name of the turntraceevent in the database.
@@ -44,6 +46,7 @@ var Columns = []string{
 	FieldToolName,
 	FieldCallSignature,
 	FieldPayloadJSON,
+	FieldPayloadTruncated,
 	FieldCreatedAt,
 }
 
@@ -62,6 +65,8 @@ var (
 	TraceIDValidator func(string) error
 	// EventTypeValidator is a validator for the "event_type" field. It is called by the builders before save.
 	EventTypeValidator func(string) error
+	// DefaultPayloadTruncated holds the default value on creation for the "payload_truncated" field.
+	DefaultPayloadTruncated bool
 	// DefaultCreatedAt holds the default value on creation for the "created_at" field.
 	DefaultCreatedAt func() time.Time
 	// DefaultID holds the default value on creation for the "id" field.
@@ -109,6 +114,11 @@ func ByCallSignature(opts ...sql.OrderTermOption) OrderOption {
 // ByPayloadJSON orders the results by the payload_json field.
 func ByPayloadJSON(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldPayloadJSON, opts...).ToFunc()
+}
+
+// ByPayloadTruncated orders the results by the payload_truncated field.
+func ByPayloadTruncated(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldPayloadTruncated, opts...).ToFunc()
 }
 
 // ByCreatedAt orders the results by the created_at field.

@@ -90,6 +90,46 @@ func (_u *TurnTraceUpdate) ClearErrorCode() *TurnTraceUpdate {
 	return _u
 }
 
+// SetCauseClass sets the "cause_class" field.
+func (_u *TurnTraceUpdate) SetCauseClass(v string) *TurnTraceUpdate {
+	_u.mutation.SetCauseClass(v)
+	return _u
+}
+
+// SetNillableCauseClass sets the "cause_class" field if the given value is not nil.
+func (_u *TurnTraceUpdate) SetNillableCauseClass(v *string) *TurnTraceUpdate {
+	if v != nil {
+		_u.SetCauseClass(*v)
+	}
+	return _u
+}
+
+// ClearCauseClass clears the value of the "cause_class" field.
+func (_u *TurnTraceUpdate) ClearCauseClass() *TurnTraceUpdate {
+	_u.mutation.ClearCauseClass()
+	return _u
+}
+
+// SetCauseDetail sets the "cause_detail" field.
+func (_u *TurnTraceUpdate) SetCauseDetail(v string) *TurnTraceUpdate {
+	_u.mutation.SetCauseDetail(v)
+	return _u
+}
+
+// SetNillableCauseDetail sets the "cause_detail" field if the given value is not nil.
+func (_u *TurnTraceUpdate) SetNillableCauseDetail(v *string) *TurnTraceUpdate {
+	if v != nil {
+		_u.SetCauseDetail(*v)
+	}
+	return _u
+}
+
+// ClearCauseDetail clears the value of the "cause_detail" field.
+func (_u *TurnTraceUpdate) ClearCauseDetail() *TurnTraceUpdate {
+	_u.mutation.ClearCauseDetail()
+	return _u
+}
+
 // SetSummary sets the "summary" field.
 func (_u *TurnTraceUpdate) SetSummary(v string) *TurnTraceUpdate {
 	_u.mutation.SetSummary(v)
@@ -204,6 +244,18 @@ func (_u *TurnTraceUpdate) sqlSave(ctx context.Context) (_node int, err error) {
 	if _u.mutation.ErrorCodeCleared() {
 		_spec.ClearField(turntrace.FieldErrorCode, field.TypeString)
 	}
+	if value, ok := _u.mutation.CauseClass(); ok {
+		_spec.SetField(turntrace.FieldCauseClass, field.TypeString, value)
+	}
+	if _u.mutation.CauseClassCleared() {
+		_spec.ClearField(turntrace.FieldCauseClass, field.TypeString)
+	}
+	if value, ok := _u.mutation.CauseDetail(); ok {
+		_spec.SetField(turntrace.FieldCauseDetail, field.TypeString, value)
+	}
+	if _u.mutation.CauseDetailCleared() {
+		_spec.ClearField(turntrace.FieldCauseDetail, field.TypeString)
+	}
 	if value, ok := _u.mutation.Summary(); ok {
 		_spec.SetField(turntrace.FieldSummary, field.TypeString, value)
 	}
@@ -295,6 +347,46 @@ func (_u *TurnTraceUpdateOne) SetNillableErrorCode(v *string) *TurnTraceUpdateOn
 // ClearErrorCode clears the value of the "error_code" field.
 func (_u *TurnTraceUpdateOne) ClearErrorCode() *TurnTraceUpdateOne {
 	_u.mutation.ClearErrorCode()
+	return _u
+}
+
+// SetCauseClass sets the "cause_class" field.
+func (_u *TurnTraceUpdateOne) SetCauseClass(v string) *TurnTraceUpdateOne {
+	_u.mutation.SetCauseClass(v)
+	return _u
+}
+
+// SetNillableCauseClass sets the "cause_class" field if the given value is not nil.
+func (_u *TurnTraceUpdateOne) SetNillableCauseClass(v *string) *TurnTraceUpdateOne {
+	if v != nil {
+		_u.SetCauseClass(*v)
+	}
+	return _u
+}
+
+// ClearCauseClass clears the value of the "cause_class" field.
+func (_u *TurnTraceUpdateOne) ClearCauseClass() *TurnTraceUpdateOne {
+	_u.mutation.ClearCauseClass()
+	return _u
+}
+
+// SetCauseDetail sets the "cause_detail" field.
+func (_u *TurnTraceUpdateOne) SetCauseDetail(v string) *TurnTraceUpdateOne {
+	_u.mutation.SetCauseDetail(v)
+	return _u
+}
+
+// SetNillableCauseDetail sets the "cause_detail" field if the given value is not nil.
+func (_u *TurnTraceUpdateOne) SetNillableCauseDetail(v *string) *TurnTraceUpdateOne {
+	if v != nil {
+		_u.SetCauseDetail(*v)
+	}
+	return _u
+}
+
+// ClearCauseDetail clears the value of the "cause_detail" field.
+func (_u *TurnTraceUpdateOne) ClearCauseDetail() *TurnTraceUpdateOne {
+	_u.mutation.ClearCauseDetail()
 	return _u
 }
 
@@ -441,6 +533,18 @@ func (_u *TurnTraceUpdateOne) sqlSave(ctx context.Context) (_node *TurnTrace, er
 	}
 	if _u.mutation.ErrorCodeCleared() {
 		_spec.ClearField(turntrace.FieldErrorCode, field.TypeString)
+	}
+	if value, ok := _u.mutation.CauseClass(); ok {
+		_spec.SetField(turntrace.FieldCauseClass, field.TypeString, value)
+	}
+	if _u.mutation.CauseClassCleared() {
+		_spec.ClearField(turntrace.FieldCauseClass, field.TypeString)
+	}
+	if value, ok := _u.mutation.CauseDetail(); ok {
+		_spec.SetField(turntrace.FieldCauseDetail, field.TypeString, value)
+	}
+	if _u.mutation.CauseDetailCleared() {
+		_spec.ClearField(turntrace.FieldCauseDetail, field.TypeString)
 	}
 	if value, ok := _u.mutation.Summary(); ok {
 		_spec.SetField(turntrace.FieldSummary, field.TypeString, value)

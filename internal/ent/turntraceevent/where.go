@@ -90,6 +90,11 @@ func PayloadJSON(v string) predicate.TurnTraceEvent {
 	return predicate.TurnTraceEvent(sql.FieldEQ(FieldPayloadJSON, v))
 }
 
+// PayloadTruncated applies equality check predicate on the "payload_truncated" field. It's identical to PayloadTruncatedEQ.
+func PayloadTruncated(v bool) predicate.TurnTraceEvent {
+	return predicate.TurnTraceEvent(sql.FieldEQ(FieldPayloadTruncated, v))
+}
+
 // CreatedAt applies equality check predicate on the "created_at" field. It's identical to CreatedAtEQ.
 func CreatedAt(v time.Time) predicate.TurnTraceEvent {
 	return predicate.TurnTraceEvent(sql.FieldEQ(FieldCreatedAt, v))
@@ -563,6 +568,16 @@ func PayloadJSONEqualFold(v string) predicate.TurnTraceEvent {
 // PayloadJSONContainsFold applies the ContainsFold predicate on the "payload_json" field.
 func PayloadJSONContainsFold(v string) predicate.TurnTraceEvent {
 	return predicate.TurnTraceEvent(sql.FieldContainsFold(FieldPayloadJSON, v))
+}
+
+// PayloadTruncatedEQ applies the EQ predicate on the "payload_truncated" field.
+func PayloadTruncatedEQ(v bool) predicate.TurnTraceEvent {
+	return predicate.TurnTraceEvent(sql.FieldEQ(FieldPayloadTruncated, v))
+}
+
+// PayloadTruncatedNEQ applies the NEQ predicate on the "payload_truncated" field.
+func PayloadTruncatedNEQ(v bool) predicate.TurnTraceEvent {
+	return predicate.TurnTraceEvent(sql.FieldNEQ(FieldPayloadTruncated, v))
 }
 
 // CreatedAtEQ applies the EQ predicate on the "created_at" field.

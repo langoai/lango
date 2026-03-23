@@ -80,6 +80,16 @@ func ErrorCode(v string) predicate.TurnTrace {
 	return predicate.TurnTrace(sql.FieldEQ(FieldErrorCode, v))
 }
 
+// CauseClass applies equality check predicate on the "cause_class" field. It's identical to CauseClassEQ.
+func CauseClass(v string) predicate.TurnTrace {
+	return predicate.TurnTrace(sql.FieldEQ(FieldCauseClass, v))
+}
+
+// CauseDetail applies equality check predicate on the "cause_detail" field. It's identical to CauseDetailEQ.
+func CauseDetail(v string) predicate.TurnTrace {
+	return predicate.TurnTrace(sql.FieldEQ(FieldCauseDetail, v))
+}
+
 // Summary applies equality check predicate on the "summary" field. It's identical to SummaryEQ.
 func Summary(v string) predicate.TurnTrace {
 	return predicate.TurnTrace(sql.FieldEQ(FieldSummary, v))
@@ -428,6 +438,156 @@ func ErrorCodeEqualFold(v string) predicate.TurnTrace {
 // ErrorCodeContainsFold applies the ContainsFold predicate on the "error_code" field.
 func ErrorCodeContainsFold(v string) predicate.TurnTrace {
 	return predicate.TurnTrace(sql.FieldContainsFold(FieldErrorCode, v))
+}
+
+// CauseClassEQ applies the EQ predicate on the "cause_class" field.
+func CauseClassEQ(v string) predicate.TurnTrace {
+	return predicate.TurnTrace(sql.FieldEQ(FieldCauseClass, v))
+}
+
+// CauseClassNEQ applies the NEQ predicate on the "cause_class" field.
+func CauseClassNEQ(v string) predicate.TurnTrace {
+	return predicate.TurnTrace(sql.FieldNEQ(FieldCauseClass, v))
+}
+
+// CauseClassIn applies the In predicate on the "cause_class" field.
+func CauseClassIn(vs ...string) predicate.TurnTrace {
+	return predicate.TurnTrace(sql.FieldIn(FieldCauseClass, vs...))
+}
+
+// CauseClassNotIn applies the NotIn predicate on the "cause_class" field.
+func CauseClassNotIn(vs ...string) predicate.TurnTrace {
+	return predicate.TurnTrace(sql.FieldNotIn(FieldCauseClass, vs...))
+}
+
+// CauseClassGT applies the GT predicate on the "cause_class" field.
+func CauseClassGT(v string) predicate.TurnTrace {
+	return predicate.TurnTrace(sql.FieldGT(FieldCauseClass, v))
+}
+
+// CauseClassGTE applies the GTE predicate on the "cause_class" field.
+func CauseClassGTE(v string) predicate.TurnTrace {
+	return predicate.TurnTrace(sql.FieldGTE(FieldCauseClass, v))
+}
+
+// CauseClassLT applies the LT predicate on the "cause_class" field.
+func CauseClassLT(v string) predicate.TurnTrace {
+	return predicate.TurnTrace(sql.FieldLT(FieldCauseClass, v))
+}
+
+// CauseClassLTE applies the LTE predicate on the "cause_class" field.
+func CauseClassLTE(v string) predicate.TurnTrace {
+	return predicate.TurnTrace(sql.FieldLTE(FieldCauseClass, v))
+}
+
+// CauseClassContains applies the Contains predicate on the "cause_class" field.
+func CauseClassContains(v string) predicate.TurnTrace {
+	return predicate.TurnTrace(sql.FieldContains(FieldCauseClass, v))
+}
+
+// CauseClassHasPrefix applies the HasPrefix predicate on the "cause_class" field.
+func CauseClassHasPrefix(v string) predicate.TurnTrace {
+	return predicate.TurnTrace(sql.FieldHasPrefix(FieldCauseClass, v))
+}
+
+// CauseClassHasSuffix applies the HasSuffix predicate on the "cause_class" field.
+func CauseClassHasSuffix(v string) predicate.TurnTrace {
+	return predicate.TurnTrace(sql.FieldHasSuffix(FieldCauseClass, v))
+}
+
+// CauseClassIsNil applies the IsNil predicate on the "cause_class" field.
+func CauseClassIsNil() predicate.TurnTrace {
+	return predicate.TurnTrace(sql.FieldIsNull(FieldCauseClass))
+}
+
+// CauseClassNotNil applies the NotNil predicate on the "cause_class" field.
+func CauseClassNotNil() predicate.TurnTrace {
+	return predicate.TurnTrace(sql.FieldNotNull(FieldCauseClass))
+}
+
+// CauseClassEqualFold applies the EqualFold predicate on the "cause_class" field.
+func CauseClassEqualFold(v string) predicate.TurnTrace {
+	return predicate.TurnTrace(sql.FieldEqualFold(FieldCauseClass, v))
+}
+
+// CauseClassContainsFold applies the ContainsFold predicate on the "cause_class" field.
+func CauseClassContainsFold(v string) predicate.TurnTrace {
+	return predicate.TurnTrace(sql.FieldContainsFold(FieldCauseClass, v))
+}
+
+// CauseDetailEQ applies the EQ predicate on the "cause_detail" field.
+func CauseDetailEQ(v string) predicate.TurnTrace {
+	return predicate.TurnTrace(sql.FieldEQ(FieldCauseDetail, v))
+}
+
+// CauseDetailNEQ applies the NEQ predicate on the "cause_detail" field.
+func CauseDetailNEQ(v string) predicate.TurnTrace {
+	return predicate.TurnTrace(sql.FieldNEQ(FieldCauseDetail, v))
+}
+
+// CauseDetailIn applies the In predicate on the "cause_detail" field.
+func CauseDetailIn(vs ...string) predicate.TurnTrace {
+	return predicate.TurnTrace(sql.FieldIn(FieldCauseDetail, vs...))
+}
+
+// CauseDetailNotIn applies the NotIn predicate on the "cause_detail" field.
+func CauseDetailNotIn(vs ...string) predicate.TurnTrace {
+	return predicate.TurnTrace(sql.FieldNotIn(FieldCauseDetail, vs...))
+}
+
+// CauseDetailGT applies the GT predicate on the "cause_detail" field.
+func CauseDetailGT(v string) predicate.TurnTrace {
+	return predicate.TurnTrace(sql.FieldGT(FieldCauseDetail, v))
+}
+
+// CauseDetailGTE applies the GTE predicate on the "cause_detail" field.
+func CauseDetailGTE(v string) predicate.TurnTrace {
+	return predicate.TurnTrace(sql.FieldGTE(FieldCauseDetail, v))
+}
+
+// CauseDetailLT applies the LT predicate on the "cause_detail" field.
+func CauseDetailLT(v string) predicate.TurnTrace {
+	return predicate.TurnTrace(sql.FieldLT(FieldCauseDetail, v))
+}
+
+// CauseDetailLTE applies the LTE predicate on the "cause_detail" field.
+func CauseDetailLTE(v string) predicate.TurnTrace {
+	return predicate.TurnTrace(sql.FieldLTE(FieldCauseDetail, v))
+}
+
+// CauseDetailContains applies the Contains predicate on the "cause_detail" field.
+func CauseDetailContains(v string) predicate.TurnTrace {
+	return predicate.TurnTrace(sql.FieldContains(FieldCauseDetail, v))
+}
+
+// CauseDetailHasPrefix applies the HasPrefix predicate on the "cause_detail" field.
+func CauseDetailHasPrefix(v string) predicate.TurnTrace {
+	return predicate.TurnTrace(sql.FieldHasPrefix(FieldCauseDetail, v))
+}
+
+// CauseDetailHasSuffix applies the HasSuffix predicate on the "cause_detail" field.
+func CauseDetailHasSuffix(v string) predicate.TurnTrace {
+	return predicate.TurnTrace(sql.FieldHasSuffix(FieldCauseDetail, v))
+}
+
+// CauseDetailIsNil applies the IsNil predicate on the "cause_detail" field.
+func CauseDetailIsNil() predicate.TurnTrace {
+	return predicate.TurnTrace(sql.FieldIsNull(FieldCauseDetail))
+}
+
+// CauseDetailNotNil applies the NotNil predicate on the "cause_detail" field.
+func CauseDetailNotNil() predicate.TurnTrace {
+	return predicate.TurnTrace(sql.FieldNotNull(FieldCauseDetail))
+}
+
+// CauseDetailEqualFold applies the EqualFold predicate on the "cause_detail" field.
+func CauseDetailEqualFold(v string) predicate.TurnTrace {
+	return predicate.TurnTrace(sql.FieldEqualFold(FieldCauseDetail, v))
+}
+
+// CauseDetailContainsFold applies the ContainsFold predicate on the "cause_detail" field.
+func CauseDetailContainsFold(v string) predicate.TurnTrace {
+	return predicate.TurnTrace(sql.FieldContainsFold(FieldCauseDetail, v))
 }
 
 // SummaryEQ applies the EQ predicate on the "summary" field.

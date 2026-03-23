@@ -25,6 +25,8 @@ import (
 
 func logger() *zap.SugaredLogger { return logging.App().Named("turnrunner") }
 
+const traceWriteTimeout = 5 * time.Second
+
 // EmptyResponseFallback is used only for truly empty successful turns.
 const EmptyResponseFallback = "I processed your message but couldn't formulate a visible response. Could you try rephrasing your question?"
 
@@ -74,6 +76,9 @@ type Result struct {
 	UserMessage  string
 	Elapsed      time.Duration
 	ErrorCode    string
+	CauseClass   string
+	CauseDetail  string
+	OperatorSummary string
 	Summary      string
 }
 
@@ -138,7 +143,11 @@ func (r *Runner) Run(parent context.Context, req Request) (Result, error) {
 		entrypoint = "direct"
 	}
 
-	traceCtx := context.WithoutCancel(parent)
+	traceCtx, traceCancel := context.WithTimeout(
+		context.WithoutCancel(parent),
+		traceWriteTimeout,
+	)
+	defer traceCancel()
 	recorder := newTraceRecorder(traceCtx, r.traceStore, traceID)
 	recorder.start(req.SessionKey, entrypoint, start)
 
@@ -158,8 +167,6 @@ func (r *Runner) Run(parent context.Context, req Request) (Result, error) {
 	)
 
 	elapsed := time.Since(start)
-	r.fireCallbacks(req.SessionKey)
-
 	result := r.classifyResult(report, runErr, elapsed)
 	if result.TraceID == "" {
 		result.TraceID = traceID
@@ -181,7 +188,18 @@ func (r *Runner) Run(parent context.Context, req Request) (Result, error) {
 		_ = r.sessionStore.AnnotateTimeout(req.SessionKey, "")
 	}
 
-	recorder.finish(result.Outcome, result.Summary, result.ErrorCode, time.Now())
+	if result.Outcome != turntrace.OutcomeSuccess {
+		recorder.recordTerminalError(result)
+	}
+	recorder.finish(
+		result.Outcome,
+		result.Summary,
+		result.ErrorCode,
+		result.CauseClass,
+		result.CauseDetail,
+		time.Now(),
+	)
+	r.fireCallbacks(req.SessionKey)
 	return result, nil
 }
 
@@ -261,6 +279,9 @@ func (r *Runner) classifyResult(report adk.RunReport, runErr error, elapsed time
 			}
 			result.Outcome = turntrace.OutcomeEmptyAfterToolUse
 			result.ErrorCode = string(agentErr.Code)
+			result.CauseClass = adk.CauseEmptyAfterToolUse
+			result.CauseDetail = "tool results were present but no visible assistant completion was produced"
+			result.OperatorSummary = "specialist turn ended after tool output without visible completion"
 			result.UserMessage = agentErr.UserMessage()
 			result.ResponseText = agentErr.UserMessage()
 			result.Summary = fmt.Sprintf(
@@ -275,19 +296,25 @@ func (r *Runner) classifyResult(report adk.RunReport, runErr error, elapsed time
 		}
 	}
 
-	var agentErr *adk.AgentError
+		var agentErr *adk.AgentError
 	if errors.As(runErr, &agentErr) {
 		result.ErrorCode = string(agentErr.Code)
+		result.CauseClass = agentErr.CauseClass
+		result.CauseDetail = truncateText(agentErr.CauseDetail, 512)
+		result.OperatorSummary = agentErr.DiagnosticSummary()
 		result.UserMessage = agentErr.UserMessage()
 		result.ResponseText = agentErr.UserMessage()
 		result.Outcome = outcomeFromAgentError(agentErr)
-		result.Summary = agentErr.UserMessage()
+		result.Summary = agentErr.DiagnosticSummary()
 		return result
 	}
 
 	result.Outcome = turntrace.OutcomeInternalError
 	result.UserMessage = fmt.Sprintf("An error occurred: %s", runErr.Error())
 	result.ResponseText = result.UserMessage
+	result.CauseClass = adk.CauseInternalRuntimeError
+	result.CauseDetail = truncateText(runErr.Error(), 512)
+	result.OperatorSummary = fmt.Sprintf("[%s] %s", adk.ErrInternal, adk.CauseInternalRuntimeError)
 	result.Summary = truncateText(runErr.Error(), 240)
 	return result
 }
@@ -353,14 +380,42 @@ func (r *traceRecorder) finish(
 	outcome turntrace.Outcome,
 	summary string,
 	errorCode string,
+	causeClass string,
+	causeDetail string,
 	endedAt time.Time,
 ) {
 	if r.store == nil {
 		return
 	}
-	if err := r.store.FinishTrace(r.ctx, r.traceID, outcome, summary, errorCode, endedAt); err != nil {
+	if err := r.store.FinishTrace(
+		r.ctx,
+		r.traceID,
+		outcome,
+		summary,
+		errorCode,
+		causeClass,
+		causeDetail,
+		endedAt,
+	); err != nil {
 		logger().Warnw("finish turn trace", "trace_id", r.traceID, "error", err)
 	}
+}
+
+func (r *traceRecorder) recordTerminalError(result Result) {
+	if r.store == nil {
+		return
+	}
+	r.append(turntrace.Event{
+		TraceID:   r.traceID,
+		EventType: "terminal_error",
+		PayloadJSON: marshalTracePayload(map[string]any{
+			"error_code":       result.ErrorCode,
+			"cause_class":      result.CauseClass,
+			"cause_detail":     result.CauseDetail,
+			"operator_summary": result.OperatorSummary,
+			"elapsed_ms":       result.Elapsed.Milliseconds(),
+		}),
+	})
 }
 
 func (r *traceRecorder) recordEvent(event *adksession.Event) {
@@ -420,11 +475,15 @@ func (r *traceRecorder) append(event turntrace.Event) {
 	r.seq++
 	event.Seq = r.seq
 	event.CreatedAt = time.Now()
+	payload, truncated := truncatePayload(event.PayloadJSON, 1024)
+	event.PayloadJSON = payload
+	event.PayloadTruncated = truncated
 	if err := r.store.AppendEvent(r.ctx, event); err != nil {
 		logger().Warnw("append turn trace event",
 			"trace_id", r.traceID,
 			"seq", event.Seq,
 			"event_type", event.EventType,
+			"payload_truncated", event.PayloadTruncated,
 			"error", err)
 	}
 }
@@ -445,9 +504,19 @@ func callSignature(author string, fc *genai.FunctionCall) string {
 func marshalTracePayload(value any) string {
 	data, err := json.Marshal(value)
 	if err != nil {
-		return truncateText(fmt.Sprintf("%v", value), 1024)
+		return fmt.Sprintf("%v", value)
 	}
-	return truncateText(string(data), 1024)
+	return string(data)
+}
+
+func truncatePayload(s string, max int) (string, bool) {
+	if max <= 0 || len(s) <= max {
+		return s, false
+	}
+	if max <= 3 {
+		return s[:max], true
+	}
+	return s[:max-3] + "...", true
 }
 
 func truncateText(s string, max int) string {

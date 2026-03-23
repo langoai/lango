@@ -95,6 +95,20 @@ func (_c *TurnTraceEventCreate) SetNillablePayloadJSON(v *string) *TurnTraceEven
 	return _c
 }
 
+// SetPayloadTruncated sets the "payload_truncated" field.
+func (_c *TurnTraceEventCreate) SetPayloadTruncated(v bool) *TurnTraceEventCreate {
+	_c.mutation.SetPayloadTruncated(v)
+	return _c
+}
+
+// SetNillablePayloadTruncated sets the "payload_truncated" field if the given value is not nil.
+func (_c *TurnTraceEventCreate) SetNillablePayloadTruncated(v *bool) *TurnTraceEventCreate {
+	if v != nil {
+		_c.SetPayloadTruncated(*v)
+	}
+	return _c
+}
+
 // SetCreatedAt sets the "created_at" field.
 func (_c *TurnTraceEventCreate) SetCreatedAt(v time.Time) *TurnTraceEventCreate {
 	_c.mutation.SetCreatedAt(v)
@@ -158,6 +172,10 @@ func (_c *TurnTraceEventCreate) ExecX(ctx context.Context) {
 
 // defaults sets the default values of the builder before save.
 func (_c *TurnTraceEventCreate) defaults() {
+	if _, ok := _c.mutation.PayloadTruncated(); !ok {
+		v := turntraceevent.DefaultPayloadTruncated
+		_c.mutation.SetPayloadTruncated(v)
+	}
 	if _, ok := _c.mutation.CreatedAt(); !ok {
 		v := turntraceevent.DefaultCreatedAt()
 		_c.mutation.SetCreatedAt(v)
@@ -188,6 +206,9 @@ func (_c *TurnTraceEventCreate) check() error {
 		if err := turntraceevent.EventTypeValidator(v); err != nil {
 			return &ValidationError{Name: "event_type", err: fmt.Errorf(`ent: validator failed for field "TurnTraceEvent.event_type": %w`, err)}
 		}
+	}
+	if _, ok := _c.mutation.PayloadTruncated(); !ok {
+		return &ValidationError{Name: "payload_truncated", err: errors.New(`ent: missing required field "TurnTraceEvent.payload_truncated"`)}
 	}
 	if _, ok := _c.mutation.CreatedAt(); !ok {
 		return &ValidationError{Name: "created_at", err: errors.New(`ent: missing required field "TurnTraceEvent.created_at"`)}
@@ -254,6 +275,10 @@ func (_c *TurnTraceEventCreate) createSpec() (*TurnTraceEvent, *sqlgraph.CreateS
 	if value, ok := _c.mutation.PayloadJSON(); ok {
 		_spec.SetField(turntraceevent.FieldPayloadJSON, field.TypeString, value)
 		_node.PayloadJSON = value
+	}
+	if value, ok := _c.mutation.PayloadTruncated(); ok {
+		_spec.SetField(turntraceevent.FieldPayloadTruncated, field.TypeBool, value)
+		_node.PayloadTruncated = value
 	}
 	if value, ok := _c.mutation.CreatedAt(); ok {
 		_spec.SetField(turntraceevent.FieldCreatedAt, field.TypeTime, value)
