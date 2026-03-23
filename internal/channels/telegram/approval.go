@@ -70,6 +70,14 @@ func (p *ApprovalProvider) RequestApproval(ctx context.Context, req approval.App
 	if err != nil {
 		return approval.ApprovalResponse{}, fmt.Errorf("send approval message: %w", err)
 	}
+	logger().Infow("approval requested",
+		"provider", "telegram",
+		"session", req.SessionKey,
+		"request_id", req.ID,
+		"tool", req.ToolName,
+		"summary", req.Summary,
+		"outcome", "requested",
+	)
 
 	p.pending.Store(req.ID, &approvalPending{
 		ch:        respChan,
@@ -80,13 +88,37 @@ func (p *ApprovalProvider) RequestApproval(ctx context.Context, req approval.App
 
 	select {
 	case resp := <-respChan:
+		if resp.Provider == "" {
+			resp.Provider = "telegram"
+		}
 		return resp, nil
 	case <-ctx.Done():
+		logger().Warnw("approval expired",
+			"provider", "telegram",
+			"session", req.SessionKey,
+			"request_id", req.ID,
+			"tool", req.ToolName,
+			"summary", req.Summary,
+			"outcome", "cancelled",
+		)
 		p.editApprovalMessage(chatID, sentMsg.MessageID, "🔐 Tool approval — ⏱ Expired")
 		return approval.ApprovalResponse{}, ctx.Err()
 	case <-time.After(p.timeout):
+		logger().Warnw("approval expired",
+			"provider", "telegram",
+			"session", req.SessionKey,
+			"request_id", req.ID,
+			"tool", req.ToolName,
+			"summary", req.Summary,
+			"outcome", "expired",
+		)
 		p.editApprovalMessage(chatID, sentMsg.MessageID, "🔐 Tool approval — ⏱ Expired")
-		return approval.ApprovalResponse{}, fmt.Errorf("approval timeout")
+		return approval.ApprovalResponse{}, approval.WrapError(
+			approval.ErrTimeout,
+			"telegram",
+			req.ID,
+			"approval timeout",
+		)
 	}
 }
 
@@ -101,16 +133,21 @@ func (p *ApprovalProvider) HandleCallback(query *tgbotapi.CallbackQuery) {
 
 	if strings.HasPrefix(query.Data, "approve:") {
 		requestID = strings.TrimPrefix(query.Data, "approve:")
-		resp = approval.ApprovalResponse{Approved: true}
+		resp = approval.ApprovalResponse{Approved: true, Provider: "telegram"}
 	} else if strings.HasPrefix(query.Data, "deny:") {
 		requestID = strings.TrimPrefix(query.Data, "deny:")
-		resp = approval.ApprovalResponse{}
+		resp = approval.ApprovalResponse{Provider: "telegram"}
 	} else if strings.HasPrefix(query.Data, "always:") {
 		requestID = strings.TrimPrefix(query.Data, "always:")
-		resp = approval.ApprovalResponse{Approved: true, AlwaysAllow: true}
+		resp = approval.ApprovalResponse{Approved: true, AlwaysAllow: true, Provider: "telegram"}
 	} else {
 		return
 	}
+	logger().Infow("approval callback received",
+		"provider", "telegram",
+		"request_id", requestID,
+		"outcome", callbackOutcome(resp),
+	)
 
 	// LoadAndDelete first to prevent duplicate clicks (TOCTOU)
 	val, ok := p.pending.LoadAndDelete(requestID)
@@ -158,12 +195,21 @@ func (p *ApprovalProvider) HandleCallback(query *tgbotapi.CallbackQuery) {
 	default:
 		status = "❌ Denied"
 	}
+	logger().Infow("approval resolved",
+		"provider", "telegram",
+		"request_id", requestID,
+		"outcome", callbackOutcome(resp),
+	)
 	p.editApprovalMessage(pending.chatID, pending.messageID, fmt.Sprintf("🔐 Tool approval — %s", status))
 }
 
 // CanHandle returns true for session keys starting with "telegram:".
 func (p *ApprovalProvider) CanHandle(sessionKey string) bool {
 	return strings.HasPrefix(sessionKey, "telegram:")
+}
+
+func (p *ApprovalProvider) Name() string {
+	return "telegram"
 }
 
 // editApprovalMessage edits a message with new text and removes inline keyboard buttons.
@@ -194,4 +240,15 @@ func parseTelegramChatID(sessionKey string) (int64, error) {
 		return 0, fmt.Errorf("invalid telegram session key: %s", sessionKey)
 	}
 	return strconv.ParseInt(parts[1], 10, 64)
+}
+
+func callbackOutcome(resp approval.ApprovalResponse) string {
+	switch {
+	case resp.AlwaysAllow:
+		return "always_allow"
+	case resp.Approved:
+		return "approved"
+	default:
+		return "denied"
+	}
 }

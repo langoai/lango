@@ -27,10 +27,13 @@ type SessionServiceAdapter struct {
 }
 
 type runtimeChild struct {
-	key      string
-	agent    string
-	child    *internal.ChildSession
-	parentID string
+	key         string
+	agent       string
+	child       *internal.ChildSession
+	parentID    string
+	parent      *SessionAdapter
+	baseHistory int
+	overlayLen  int
 }
 
 func NewSessionServiceAdapter(store internal.Store, rootAgentName string) *SessionServiceAdapter {
@@ -182,7 +185,7 @@ func (s *SessionServiceAdapter) Delete(ctx context.Context, req *session.DeleteR
 }
 
 func (s *SessionServiceAdapter) AppendEvent(ctx context.Context, sess session.Session, evt *session.Event) error {
-	s.trackChildLifecycle(evt, sess.ID())
+	s.trackChildLifecycle(evt, sess)
 
 	// Map ADK event to internal message
 	msg, skip, err := eventToMessage(evt)
@@ -207,50 +210,63 @@ func (s *SessionServiceAdapter) AppendEvent(ctx context.Context, sess session.Se
 
 // CloseActiveChild merges any active synthetic child session for the parent session.
 func (s *SessionServiceAdapter) CloseActiveChild(sessionID string) error {
-	if s.childStore == nil {
-		return nil
-	}
-	s.childMu.Lock()
-	active := s.activeChild[sessionID]
+	active := s.takeActiveChild(sessionID)
 	if active == nil {
-		s.childMu.Unlock()
 		return nil
 	}
-	delete(s.activeChild, sessionID)
-	s.childMu.Unlock()
 
-	summary := ""
-	if s.summarizer != nil {
-		var err error
-		summary, err = s.summarizer.Summarize(active.child.History)
-		if err != nil {
-			return err
-		}
+	s.rollbackOverlay(active)
+
+	summary, err := s.childSummary(active)
+	if err != nil {
+		return err
 	}
-	return s.childStore.MergeChildAsAuthor(active.key, summary, s.rootAgentName)
+	if err := s.childStore.MergeChildAsAuthor(active.key, summary, s.rootAgentName); err != nil {
+		return err
+	}
+	s.appendOutcomeToParentMemory(active, summary)
+	return nil
 }
 
 // DiscardActiveChild discards the current synthetic child session for the parent session.
 func (s *SessionServiceAdapter) DiscardActiveChild(sessionID string) error {
+	return s.discardActiveChild(sessionID, "")
+}
+
+// DiscardActiveChildWithReason discards the current synthetic child session and
+// leaves a compact root-authored note in the parent history.
+func (s *SessionServiceAdapter) DiscardActiveChildWithReason(sessionID, reason string) error {
+	return s.discardActiveChild(sessionID, reason)
+}
+
+func (s *SessionServiceAdapter) discardActiveChild(sessionID, reason string) error {
 	if s.childStore == nil {
 		return nil
 	}
-	s.childMu.Lock()
-	active := s.activeChild[sessionID]
+	active := s.takeActiveChild(sessionID)
 	if active == nil {
-		s.childMu.Unlock()
 		return nil
 	}
-	delete(s.activeChild, sessionID)
-	s.childMu.Unlock()
-	return s.childStore.DiscardChild(active.key)
+
+	s.rollbackOverlay(active)
+	if err := s.childStore.DiscardChild(active.key); err != nil {
+		return err
+	}
+	if strings.TrimSpace(reason) != "" {
+		if err := s.appendOutcomeToParent(active, formatDiscardNote(active.agent, reason)); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
-func (s *SessionServiceAdapter) trackChildLifecycle(evt *session.Event, sessionID string) {
+func (s *SessionServiceAdapter) trackChildLifecycle(evt *session.Event, sess session.Session) {
 	if s.childStore == nil || evt == nil {
 		return
 	}
 
+	sessionID := sess.ID()
+	parentAdapter, _ := sess.(*SessionAdapter)
 	author := evt.Author
 	if author == "" || author == "user" || author == s.rootAgentName || !s.isolatedAgents[author] {
 		_ = s.CloseActiveChild(sessionID)
@@ -261,20 +277,23 @@ func (s *SessionServiceAdapter) trackChildLifecycle(evt *session.Event, sessionI
 	active := s.activeChild[sessionID]
 	s.childMu.Unlock()
 	if active != nil && active.agent == author {
+		if parentAdapter != nil {
+			s.bindParentOverlay(active, parentAdapter)
+		}
 		if evt.Actions.TransferToAgent == s.rootAgentName && !hasText(evt) && !hasFunctionCalls(evt) {
-			_ = s.DiscardActiveChild(sessionID)
+			_ = s.DiscardActiveChildWithReason(sessionID, "escalated without producing a result")
 		}
 		return
 	}
 
 	_ = s.CloseActiveChild(sessionID)
-	s.forkChildSession(evt, sessionID, author)
+	s.forkChildSession(evt, sessionID, author, parentAdapter)
 }
 
 // forkChildSession creates a new synthetic child session for the given author
 // and registers it as the active child. If the event immediately transfers back
 // to the root agent without content, the child is discarded.
-func (s *SessionServiceAdapter) forkChildSession(evt *session.Event, sessionID, author string) {
+func (s *SessionServiceAdapter) forkChildSession(evt *session.Event, sessionID, author string, parentAdapter *SessionAdapter) {
 	child, err := s.childStore.ForkChild(sessionID, author, internal.ChildSessionConfig{
 		SummarizeOnMerge: true,
 	})
@@ -284,11 +303,22 @@ func (s *SessionServiceAdapter) forkChildSession(evt *session.Event, sessionID, 
 	}
 
 	s.childMu.Lock()
-	s.activeChild[sessionID] = &runtimeChild{key: child.Key, agent: author, child: child, parentID: sessionID}
+	baseHistory := 0
+	if parentAdapter != nil {
+		baseHistory = len(parentAdapter.sess.History)
+	}
+	s.activeChild[sessionID] = &runtimeChild{
+		key:         child.Key,
+		agent:       author,
+		child:       child,
+		parentID:    sessionID,
+		parent:      parentAdapter,
+		baseHistory: baseHistory,
+	}
 	s.childMu.Unlock()
 
 	if evt.Actions.TransferToAgent == s.rootAgentName && !hasText(evt) && !hasFunctionCalls(evt) {
-		_ = s.DiscardActiveChild(sessionID)
+		_ = s.DiscardActiveChildWithReason(sessionID, "escalated without producing a result")
 	}
 }
 
@@ -301,12 +331,19 @@ func (s *SessionServiceAdapter) appendMessage(sess session.Session, msg internal
 
 	s.childMu.Lock()
 	active := s.activeChild[targetID]
-	s.childMu.Unlock()
-
 	if active != nil && s.isolatedAgents[msg.Author] {
+		if parentAdapter != nil {
+			s.bindParentOverlay(active, parentAdapter)
+		}
 		active.child.AppendMessage(msg)
+		if active.parent != nil {
+			active.parent.sess.History = append(active.parent.sess.History, msg)
+			active.overlayLen++
+		}
+		s.childMu.Unlock()
 		return nil
 	}
+	s.childMu.Unlock()
 
 	if err := s.store.AppendMessage(targetID, msg); err != nil {
 		return err
@@ -315,6 +352,109 @@ func (s *SessionServiceAdapter) appendMessage(sess session.Session, msg internal
 		parentAdapter.sess.History = append(parentAdapter.sess.History, msg)
 	}
 	return nil
+}
+
+func (s *SessionServiceAdapter) takeActiveChild(sessionID string) *runtimeChild {
+	if s.childStore == nil {
+		return nil
+	}
+	s.childMu.Lock()
+	active := s.activeChild[sessionID]
+	if active != nil {
+		delete(s.activeChild, sessionID)
+	}
+	s.childMu.Unlock()
+	return active
+}
+
+func (s *SessionServiceAdapter) bindParentOverlay(active *runtimeChild, parent *SessionAdapter) {
+	if active == nil || parent == nil {
+		return
+	}
+	if active.parent == nil || active.overlayLen == 0 {
+		active.parent = parent
+		active.baseHistory = len(parent.sess.History)
+		return
+	}
+	if active.parent != parent {
+		logger().Warnw("isolated child overlay parent changed unexpectedly",
+			"session", active.parentID,
+			"agent", active.agent)
+	}
+}
+
+func (s *SessionServiceAdapter) rollbackOverlay(active *runtimeChild) {
+	if active == nil || active.parent == nil {
+		return
+	}
+	history := active.parent.sess.History
+	if active.baseHistory < 0 || active.baseHistory > len(history) {
+		logger().Warnw("isolated child overlay base out of range",
+			"session", active.parentID,
+			"agent", active.agent,
+			"base_history", active.baseHistory,
+			"history_len", len(history))
+		return
+	}
+	active.parent.sess.History = history[:active.baseHistory]
+	active.overlayLen = 0
+}
+
+func (s *SessionServiceAdapter) childSummary(active *runtimeChild) (string, error) {
+	if active == nil {
+		return "", nil
+	}
+	summary := ""
+	if s.summarizer != nil {
+		var err error
+		summary, err = s.summarizer.Summarize(active.child.History)
+		if err != nil {
+			return "", err
+		}
+	}
+	if strings.TrimSpace(summary) != "" {
+		return summary, nil
+	}
+	return fmt.Sprintf("[Isolated sub-agent %s completed without a textual result. Raw child history remained isolated.]", active.agent), nil
+}
+
+func (s *SessionServiceAdapter) appendOutcomeToParent(active *runtimeChild, content string) error {
+	if active == nil || strings.TrimSpace(content) == "" {
+		return nil
+	}
+	msg := internal.Message{
+		Role:      types.RoleAssistant,
+		Content:   content,
+		Timestamp: time.Now(),
+		Author:    s.rootAgentName,
+	}
+	if err := s.store.AppendMessage(active.parentID, msg); err != nil {
+		return err
+	}
+	if active.parent != nil {
+		active.parent.sess.History = append(active.parent.sess.History, msg)
+	}
+	return nil
+}
+
+func (s *SessionServiceAdapter) appendOutcomeToParentMemory(active *runtimeChild, content string) {
+	if active == nil || active.parent == nil || strings.TrimSpace(content) == "" {
+		return
+	}
+	active.parent.sess.History = append(active.parent.sess.History, internal.Message{
+		Role:      types.RoleAssistant,
+		Content:   content,
+		Timestamp: time.Now(),
+		Author:    s.rootAgentName,
+	})
+}
+
+func formatDiscardNote(agent, reason string) string {
+	reason = strings.TrimSpace(reason)
+	if reason == "" {
+		reason = "discarded"
+	}
+	return fmt.Sprintf("[Isolated sub-agent %s discarded: %s. Raw child history discarded.]", agent, reason)
 }
 
 func eventToMessage(evt *session.Event) (internal.Message, bool, error) {

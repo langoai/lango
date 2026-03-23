@@ -247,7 +247,7 @@ func TestAppendEvent_EmitsChildLifecycle(t *testing.T) {
 	assert.Equal(t, "merge", events[1].Type)
 }
 
-func TestAppendEvent_IsolatedAgentWritesToChildHistory(t *testing.T) {
+func TestAppendEvent_IsolatedAgentWritesToChildHistoryAndParentOverlay(t *testing.T) {
 	t.Parallel()
 
 	store := newMockStore()
@@ -266,7 +266,9 @@ func TestAppendEvent_IsolatedAgentWritesToChildHistory(t *testing.T) {
 
 	require.NoError(t, svc.AppendEvent(context.Background(), adapter, newTestEvent("operator", "model", "isolated reply")))
 
-	assert.Empty(t, adapter.sess.History, "isolated agent should not write directly to parent history")
+	require.Len(t, adapter.sess.History, 1)
+	assert.Equal(t, "isolated reply", adapter.sess.History[0].Content)
+	assert.Empty(t, store.messages["test-session"], "isolated raw events must not be persisted to parent store")
 	require.NotNil(t, svc.activeChild["test-session"])
 	require.Len(t, svc.activeChild["test-session"].child.History, 1)
 	assert.Equal(t, "isolated reply", svc.activeChild["test-session"].child.History[0].Content)
@@ -296,9 +298,13 @@ func TestCloseActiveChild_MergesSummaryAsRootAuthor(t *testing.T) {
 	require.Len(t, dbMsgs, 1)
 	assert.Equal(t, "lango-orchestrator", dbMsgs[0].Author)
 	assert.Equal(t, "isolated reply", dbMsgs[0].Content)
+	require.Len(t, adapter.sess.History, 1)
+	assert.Equal(t, "lango-orchestrator", adapter.sess.History[0].Author)
+	assert.Equal(t, "isolated reply", adapter.sess.History[0].Content)
+	assert.Nil(t, svc.activeChild["test-session"])
 }
 
-func TestDiscardActiveChild_DoesNotMergeParentHistory(t *testing.T) {
+func TestDiscardActiveChildWithReason_ReplacesOverlayWithFailureNote(t *testing.T) {
 	t.Parallel()
 
 	store := newMockStore()
@@ -316,10 +322,83 @@ func TestDiscardActiveChild_DoesNotMergeParentHistory(t *testing.T) {
 		WithIsolatedAgents([]string{"operator"})
 
 	require.NoError(t, svc.AppendEvent(context.Background(), adapter, newTestEvent("operator", "model", "[REJECT] nope")))
-	require.NoError(t, svc.DiscardActiveChild("test-session"))
+	require.NoError(t, svc.DiscardActiveChildWithReason("test-session", "escalated without producing a result"))
 
-	assert.Empty(t, store.messages["test-session"])
+	dbMsgs := store.messages["test-session"]
+	require.Len(t, dbMsgs, 1)
+	assert.Equal(t, "lango-orchestrator", dbMsgs[0].Author)
+	assert.Equal(t, "[Isolated sub-agent operator discarded: escalated without producing a result. Raw child history discarded.]", dbMsgs[0].Content)
+	require.Len(t, adapter.sess.History, 1)
+	assert.Equal(t, dbMsgs[0].Content, adapter.sess.History[0].Content)
 	assert.Nil(t, svc.activeChild["test-session"])
+}
+
+func TestAppendEvent_IsolatedFunctionResponseVisibleInParentEvents(t *testing.T) {
+	t.Parallel()
+
+	store := newMockStore()
+	sess := &internal.Session{
+		Key:       "test-session",
+		Metadata:  make(map[string]string),
+		CreatedAt: time.Now(),
+		UpdatedAt: time.Now(),
+	}
+	store.Create(sess)
+
+	adapter := NewSessionAdapter(sess, store, "lango-orchestrator")
+	svc := NewSessionServiceAdapter(store, "lango-orchestrator").
+		WithChildLifecycleHook(func(ev internal.SessionLifecycleEvent) {}).
+		WithIsolatedAgents([]string{"operator"})
+
+	callEvt := &session.Event{
+		Timestamp: time.Now(),
+		Author:    "operator",
+		LLMResponse: model.LLMResponse{
+			Content: &genai.Content{
+				Role: "model",
+				Parts: []*genai.Part{{
+					FunctionCall: &genai.FunctionCall{
+						ID:   "call-search-1",
+						Name: "browser_search",
+						Args: map[string]any{"query": "lango"},
+					},
+				}},
+			},
+		},
+	}
+	respEvt := &session.Event{
+		Timestamp: time.Now(),
+		Author:    "operator",
+		LLMResponse: model.LLMResponse{
+			Content: &genai.Content{
+				Role: "user",
+				Parts: []*genai.Part{{
+					FunctionResponse: &genai.FunctionResponse{
+						ID:       "call-search-1",
+						Name:     "browser_search",
+						Response: map[string]any{"result": "ok"},
+					},
+				}},
+			},
+		},
+	}
+
+	require.NoError(t, svc.AppendEvent(context.Background(), adapter, callEvt))
+	require.NoError(t, svc.AppendEvent(context.Background(), adapter, respEvt))
+
+	require.Len(t, adapter.sess.History, 2)
+	assert.Empty(t, store.messages["test-session"])
+
+	var restored []*session.Event
+	for evt := range adapter.Events().All() {
+		restored = append(restored, evt)
+	}
+	require.Len(t, restored, 2)
+	require.NotNil(t, restored[1].Content)
+	require.Len(t, restored[1].Content.Parts, 1)
+	require.NotNil(t, restored[1].Content.Parts[0].FunctionResponse)
+	assert.Equal(t, "call-search-1", restored[1].Content.Parts[0].FunctionResponse.ID)
+	assert.Equal(t, "browser_search", restored[1].Content.Parts[0].FunctionResponse.Name)
 }
 
 func TestAppendEvent_NonIsolatedAgentUsesParentHistory(t *testing.T) {

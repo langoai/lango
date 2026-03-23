@@ -13,6 +13,7 @@ import (
 	"github.com/langoai/lango/internal/channels/telegram"
 	"github.com/langoai/lango/internal/deadline"
 	"github.com/langoai/lango/internal/session"
+	"github.com/langoai/lango/internal/tools/browser"
 	"github.com/langoai/lango/internal/types"
 )
 
@@ -161,6 +162,8 @@ func (a *App) runAgent(ctx context.Context, sessionKey, input string) (string, e
 	defer warnTimer.Stop()
 
 	ctx = session.WithSessionKey(ctx, sessionKey)
+	ctx = approval.WithTurnApprovalState(ctx, approval.NewTurnApprovalState())
+	ctx = browser.WithRequestState(ctx, browser.NewRequestState())
 	response, err := a.Agent.RunAndCollect(ctx, sessionKey, input, runOpts...)
 
 	// Trigger async buffers after agent turn regardless of error.
@@ -186,6 +189,15 @@ func (a *App) runAgent(ctx context.Context, sessionKey, input string) (string, e
 				_ = a.Store.AnnotateTimeout(sessionKey, "")
 			}
 			return formatIncompleteResponse(agentErr), nil
+		}
+
+		// Tool churn fallback: return a user-friendly message instead of
+		// propagating the error when the agent got stuck in a tool loop.
+		if errors.As(err, &agentErr) && agentErr.Code == adk.ErrToolChurn {
+			logger().Warnw("tool churn fallback response",
+				"session", sessionKey,
+				"elapsed", elapsed.String())
+			return agentErr.UserMessage(), nil
 		}
 
 		if ctx.Err() != nil {

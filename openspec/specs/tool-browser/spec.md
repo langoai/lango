@@ -5,7 +5,7 @@ The system SHALL provide browser automation tools powered by go-rod for web page
 
 #### Scenario: Browser navigation
 - **WHEN** `browser_navigate` is called with a URL
-- **THEN** the system SHALL navigate to the URL, wait for page load, and return a structured page snapshot including title, URL, snippet, headings, links, and action candidates
+- **THEN** the system SHALL navigate to the URL, wait for page load, and return a structured page snapshot including title, URL, snippet, headings, links, action candidates, page type, result count, and empty-state signal
 
 #### Scenario: Implicit session management
 - **WHEN** any browser tool is called without a prior session
@@ -40,10 +40,43 @@ The browser toolset SHALL provide a `browser_search` tool that accepts a search 
 - **WHEN** `browser_search` is called with a query and optional result limit
 - **THEN** the system SHALL navigate to a browser-accessible search results page
 - **AND** it SHALL return a structured list of results containing title, URL, and snippet
+- **AND** it SHALL include `resultCount`, `empty`, and page type fields
 
 #### Scenario: Search results fallback to visible links
 - **WHEN** the page-specific search result selectors do not match any result cards
 - **THEN** the system SHALL fall back to extracting visible links with text and URLs
+
+#### Scenario: Search churn diagnostics
+- **WHEN** a single request performs 3 or more `browser_search` calls
+- **THEN** the system SHALL emit a warning log including session, request ID, agent, search count, queries, and current URL
+- **AND** `RecordSearch()` SHALL return `(count int, queries []string, shouldWarn bool, limitReached bool)`
+- **AND** when `count > MaxSearchesPerRequest`, `limitReached` SHALL be true
+
+#### Scenario: RecordSearch preserves currentURL on empty input
+- **WHEN** `RecordSearch` is called with an empty `currentURL`
+- **THEN** the previously stored `currentURL` SHALL be preserved
+
+### Requirement: Browser search hard limit per request
+The browser `Search()` function SHALL enforce a maximum of `MaxSearchesPerRequest` (2) calls per agent request. When the limit is exceeded, the function SHALL return `ErrSearchLimitReached` (a sentinel error) instead of executing the search. Returning an error instead of a structured response ensures the model interprets the limit as a tool failure, providing a stronger convergence signal.
+
+#### Scenario: Third search attempt is blocked
+- **WHEN** the agent calls `browser_search` for the 3rd time in the same request
+- **THEN** `Search()` SHALL return `(nil, ErrSearchLimitReached)` — an error, not a SearchResponse
+
+#### Scenario: First two searches execute normally
+- **WHEN** the agent calls `browser_search` for the 1st or 2nd time in the same request
+- **THEN** `Search()` SHALL execute the search normally and return results
+
+### Requirement: SearchResponse convergence fields
+`SearchResponse` SHALL include `LimitReached bool`, `NextStep string`, and `Warning string` fields. Normal search results SHALL populate `NextStep` with guidance based on result state.
+
+#### Scenario: Search returns results
+- **WHEN** `browser_search` returns results with `resultCount > 0`
+- **THEN** `NextStep` SHALL contain guidance to present results or navigate to a result URL, explicitly stating not to search again
+
+#### Scenario: Search returns no results
+- **WHEN** `browser_search` returns results with `resultCount == 0`
+- **THEN** `NextStep` SHALL contain guidance to reformulate the query once or inform the user
 
 ### Requirement: Page observation
 The browser toolset SHALL provide a `browser_observe` tool that returns structured actionable elements from the current page.
@@ -57,15 +90,17 @@ The browser toolset SHALL provide a `browser_extract` tool for structured extrac
 
 #### Scenario: Summary extraction
 - **WHEN** `browser_extract` is called with mode `summary`
-- **THEN** the system SHALL return page title, URL, snippet, headings, links, and action candidates
+- **THEN** the system SHALL return page title, URL, snippet, headings, links, action candidates, page type, result count, and empty-state signal
 
 #### Scenario: Search result extraction
 - **WHEN** `browser_extract` is called with mode `search_results`
 - **THEN** the system SHALL return structured search result items from the current page
+- **AND** it SHALL include `resultCount`, `empty`, and page type fields
 
 #### Scenario: Article extraction
 - **WHEN** `browser_extract` is called with mode `article`
 - **THEN** the system SHALL return the main textual content and headings from the current page
+- **AND** it SHALL include current URL, page type, and empty-state signal
 
 ### Requirement: Page interaction via browser_action
 The system SHALL multiplex page interactions through a single `browser_action` tool.

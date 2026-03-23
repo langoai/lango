@@ -58,3 +58,11 @@ func TestDefaultBuilder_UsesEmbeddedContent(t *testing.T) {
 	assert.Contains(t, result, "Never expose secrets")
 	assert.Contains(t, result, "Exec Tool")
 }
+
+func TestDefaultBuilder_IncludesBrowserConvergenceGuidance(t *testing.T) {
+	t.Parallel()
+
+	result := DefaultBuilder().Build()
+	assert.Contains(t, result, "result cards from a search page")
+	assert.Contains(t, result, "do not immediately retry the exact same browser action")
+}

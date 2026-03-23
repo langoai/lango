@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"strings"
 	"sync"
+
+	"github.com/langoai/lango/internal/logging"
 )
 
 // CompositeProvider routes approval requests to the appropriate provider
@@ -16,6 +18,10 @@ type CompositeProvider struct {
 	providers   []Provider
 	ttyFallback Provider
 	p2pFallback Provider
+}
+
+type providerNamer interface {
+	Name() string
 }
 
 // NewCompositeProvider creates a new CompositeProvider.
@@ -60,7 +66,29 @@ func (c *CompositeProvider) RequestApproval(ctx context.Context, req ApprovalReq
 
 	for _, p := range providers {
 		if p.CanHandle(req.SessionKey) {
-			return p.RequestApproval(ctx, req)
+			provider := providerName(p)
+			hash := ""
+			if _, h, err := TurnApprovalKey(req.ToolName, req.Params); err == nil {
+				hash = h
+			}
+			logging.SubsystemSugar("approval").Debugw("approval requested",
+				"session", req.SessionKey,
+				"request_id", req.ID,
+				"tool", req.ToolName,
+				"summary", req.Summary,
+				"params_hash", hash,
+				"outcome", "requested",
+				"grant_scope", "none",
+				"provider", provider,
+			)
+			resp, err := p.RequestApproval(ctx, req)
+			if err != nil {
+				return ApprovalResponse{}, err
+			}
+			if resp.Provider == "" {
+				resp.Provider = provider
+			}
+			return resp, nil
 		}
 	}
 
@@ -69,9 +97,14 @@ func (c *CompositeProvider) RequestApproval(ctx context.Context, req ApprovalReq
 		if p2p != nil {
 			return p2p.RequestApproval(ctx, req)
 		}
-		return ApprovalResponse{}, fmt.Errorf(
-			"no approval provider for P2P session %q (headless auto-approve is not allowed for remote peers)",
-			req.SessionKey,
+		return ApprovalResponse{}, WrapError(
+			ErrUnavailable,
+			"p2p_fallback",
+			req.ID,
+			fmt.Sprintf(
+				"no approval provider for P2P session %q (headless auto-approve is not allowed for remote peers)",
+				req.SessionKey,
+			),
 		)
 	}
 
@@ -81,11 +114,23 @@ func (c *CompositeProvider) RequestApproval(ctx context.Context, req ApprovalReq
 	}
 
 	// Fail-closed: no provider available.
-	return ApprovalResponse{}, fmt.Errorf("no approval provider for session %q", req.SessionKey)
+	return ApprovalResponse{}, WrapError(
+		ErrUnavailable,
+		"composite",
+		req.ID,
+		fmt.Sprintf("no approval provider for session %q", req.SessionKey),
+	)
 }
 
 // CanHandle always returns true; CompositeProvider accepts all requests
 // and routes internally.
 func (c *CompositeProvider) CanHandle(_ string) bool {
 	return true
+}
+
+func providerName(p Provider) string {
+	if named, ok := p.(providerNamer); ok {
+		return named.Name()
+	}
+	return "unknown"
 }

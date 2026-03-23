@@ -15,7 +15,7 @@ The system SHALL provide an `AgentError` type with fields: `Code` (ErrorCode), `
 - **THEN** `errors.As(wrappedErr, &target)` SHALL succeed and populate the target with the original AgentError
 
 ### Requirement: Error classification
-The system SHALL classify errors into codes: `ErrTimeout` (E001), `ErrModelError` (E002), `ErrToolError` (E003), `ErrTurnLimit` (E004), `ErrInternal` (E005). Classification SHALL be based on error content and context state.
+The system SHALL classify errors into codes: `ErrTimeout` (E001), `ErrModelError` (E002), `ErrToolError` (E003), `ErrTurnLimit` (E004), `ErrInternal` (E005), `ErrIdleTimeout` (E006), `ErrToolChurn` (E007). Classification SHALL be based on error content and context state.
 
 #### Scenario: Context deadline classified as timeout
 - **WHEN** the error is or wraps `context.DeadlineExceeded`
@@ -24,6 +24,23 @@ The system SHALL classify errors into codes: `ErrTimeout` (E001), `ErrModelError
 #### Scenario: Turn limit error classified correctly
 - **WHEN** the error message contains "maximum turn limit"
 - **THEN** `classifyError` SHALL return `ErrTurnLimit`
+
+#### Scenario: Approval failure classified as tool error
+- **WHEN** the error wraps `approval.ErrDenied`, `approval.ErrTimeout`, or `approval.ErrUnavailable`
+- **THEN** `classifyError` SHALL return `ErrToolError`
+
+#### Scenario: thought_signature error classified as model error
+- **WHEN** the error message contains both `"function call"` and `"thought_signature"` (e.g., Gemini API error `"Function call is missing a thought_signature in functionCall parts"`)
+- **THEN** `classifyError` SHALL return `ErrModelError`, not `ErrToolError`
+- **AND** the `thought_signature` check SHALL be evaluated BEFORE the `"tool"`/`"function call"` keyword check
+
+#### Scenario: Pure tool error still classified correctly
+- **WHEN** the error message contains `"tool"` but not `"thought_signature"`
+- **THEN** `classifyError` SHALL return `ErrToolError`
+
+#### Scenario: Tool churn error classified correctly
+- **WHEN** the error message contains "consecutively, forcing stop"
+- **THEN** `classifyError` SHALL return `ErrToolChurn`
 
 #### Scenario: Unknown error classified as internal
 - **WHEN** the error does not match any known pattern
@@ -40,6 +57,29 @@ The `AgentError` SHALL provide a `UserMessage()` method that returns a human-rea
 #### Scenario: Timeout without partial result
 - **WHEN** an `AgentError` has Code `ErrTimeout` and an empty `Partial` field
 - **THEN** `UserMessage()` SHALL suggest breaking the question into smaller parts
+
+#### Scenario: Approval denied message
+- **WHEN** the underlying error wraps `approval.ErrDenied`
+- **THEN** `UserMessage()` SHALL explain that the action was denied by approval
+
+#### Scenario: Approval expired message
+- **WHEN** the underlying error wraps `approval.ErrTimeout`
+- **THEN** `UserMessage()` SHALL explain that the approval request expired
+
+#### Scenario: Approval unavailable message
+- **WHEN** the underlying error wraps `approval.ErrUnavailable`
+- **THEN** `UserMessage()` SHALL explain that no approval channel was available
+
+### Requirement: Streaming partial events omit thought metadata
+Partial tool-call `LLMResponse` events yielded during streaming SHALL NOT carry `Thought` or `ThoughtSignature` fields. Only the final accumulated response (via `toolAccum.done()`) SHALL include the correct `Thought` and `ThoughtSignature` values.
+
+#### Scenario: Partial tool-call event has no thought fields
+- **WHEN** `ModelAdapter.GenerateContent` yields a partial event for a tool call with `Name` set
+- **THEN** the `genai.Part` SHALL have `Thought=false` and `ThoughtSignature=nil`
+
+#### Scenario: Final accumulated event preserves thought fields
+- **WHEN** `ModelAdapter.GenerateContent` yields the final `TurnComplete=true` event
+- **THEN** the accumulated `genai.Part` from `toolAccum.done()` SHALL preserve the original `Thought` and `ThoughtSignature` values from the stream
 
 ### Requirement: Partial result preservation on agent error
 When an agent run fails (timeout, turn limit, or other error), the system SHALL return the accumulated text as the `Partial` field of the `AgentError` instead of discarding it.

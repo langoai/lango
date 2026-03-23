@@ -46,6 +46,21 @@ Prompts the terminal user via stdin/stderr. Supports three responses:
 
 TTY approval is unavailable when stdin is not a terminal (e.g., Docker containers, background processes).
 
+### One-shot Approve vs Always Allow
+
+Lango distinguishes between two approval scopes:
+
+| Action | Scope |
+|--------|-------|
+| `Approve` / `yes` | Current request only |
+| `Always Allow` / `always` | Session-wide persistent grant |
+
+A normal one-shot approval now also acts as a **turn-local replay grant** for the current request. If the agent retries the same canonical approval action later in the same turn, Lango reuses the approval result instead of opening a second identical prompt.
+
+Canonicalization can ignore approval-neutral params. For example, `browser_search` shares the same turn-local approval state across `limit`-only variants of the same query.
+
+Likewise, if the same canonical action was denied in the current request, Lango blocks the duplicate retry immediately. Timeouts are retryable only within a bounded per-turn budget; once that budget is exhausted, later identical retries are blocked until the next user turn.
+
 ### HeadlessProvider
 
 Auto-approves all requests with WARN-level audit logging. Intended for headless environments (Docker, CI) where no interactive approval is possible.
@@ -71,6 +86,8 @@ The `GrantStore` tracks per-session, per-tool "always allow" grants in memory. W
 | `Revoke(sessionKey, toolName)` | Remove a single grant |
 | `RevokeSession(sessionKey)` | Remove all grants for a session |
 | `CleanExpired()` | Remove expired grants (when TTL is set) |
+
+This store is separate from the request-scoped turn-local approval cache used to suppress duplicate prompts within a single agent turn.
 
 ## Approval Request
 

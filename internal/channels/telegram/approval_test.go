@@ -88,6 +88,7 @@ func TestApprovalProvider_Approve(t *testing.T) {
 	case <-done:
 		require.NoError(t, err)
 		assert.True(t, resp.Approved)
+		assert.Equal(t, "telegram", resp.Provider)
 	case <-time.After(2 * time.Second):
 		t.Fatal("timeout waiting for approval")
 	}
@@ -141,6 +142,7 @@ func TestApprovalProvider_Deny(t *testing.T) {
 	case <-done:
 		require.NoError(t, err)
 		assert.False(t, resp.Approved)
+		assert.Equal(t, "telegram", resp.Provider)
 	case <-time.After(2 * time.Second):
 		t.Fatal("timeout waiting for denial")
 	}
@@ -162,6 +164,7 @@ func TestApprovalProvider_Timeout(t *testing.T) {
 	resp, err := p.RequestApproval(context.Background(), req)
 	require.Error(t, err)
 	assert.False(t, resp.Approved)
+	assert.ErrorIs(t, err, approval.ErrTimeout)
 
 	// Verify expired message was edited
 	hasEdit := false
@@ -254,6 +257,7 @@ func TestApprovalProvider_AlwaysAllow(t *testing.T) {
 		require.NoError(t, err)
 		assert.True(t, resp.Approved)
 		assert.True(t, resp.AlwaysAllow)
+		assert.Equal(t, "telegram", resp.Provider)
 	case <-time.After(2 * time.Second):
 		t.Fatal("timeout waiting for always-allow")
 	}

@@ -3,6 +3,7 @@ package approval
 import (
 	"context"
 	"fmt"
+	"strings"
 )
 
 // GatewayApprover abstracts the gateway.Server methods needed for approval.
@@ -29,10 +30,26 @@ func (g *GatewayProvider) RequestApproval(ctx context.Context, req ApprovalReque
 	if req.Summary != "" {
 		msg += "\n  " + req.Summary
 	}
-	return g.gw.RequestApproval(ctx, msg)
+	resp, err := g.gw.RequestApproval(ctx, msg)
+	if err != nil {
+		switch {
+		case strings.Contains(err.Error(), "approval timeout"):
+			return ApprovalResponse{}, WrapError(ErrTimeout, "gateway", req.ID, err.Error())
+		case strings.Contains(err.Error(), "no companion connected"):
+			return ApprovalResponse{}, WrapError(ErrUnavailable, "gateway", req.ID, err.Error())
+		default:
+			return ApprovalResponse{}, err
+		}
+	}
+	resp.Provider = "gateway"
+	return resp, nil
 }
 
 // CanHandle returns true when at least one companion is connected.
 func (g *GatewayProvider) CanHandle(_ string) bool {
 	return g.gw.HasCompanions()
+}
+
+func (g *GatewayProvider) Name() string {
+	return "gateway"
 }

@@ -32,7 +32,7 @@ The **orchestrator** has no tools of its own. It receives user messages, classif
 | Agent | Role | Tool Prefixes |
 |---|---|---|
 | **operator** | System operations: shell commands, file I/O, skill execution | `exec_*`, `fs_*`, `skill_*` |
-| **navigator** | Web browsing: search, page navigation, structured extraction, interaction, screenshots | `browser_*` |
+| **navigator** | Web browsing: bounded search, page navigation, structured extraction, interaction, screenshots | `browser_*` |
 | **vault** | Security: encryption, secret management, blockchain payments | `crypto_*`, `secrets_*`, `payment_*` |
 | **librarian** | Knowledge: search, RAG, graph traversal, skill management, learning data, proactive knowledge extraction | `search_*`, `rag_*`, `graph_*`, `save_knowledge`, `save_learning`, `learning_*`, `create_skill`, `list_skills`, `import_skill`, `librarian_*` |
 | **automator** | Automation: cron scheduling, background tasks, workflow pipelines | `cron_*`, `bg_*`, `workflow_*` |
@@ -49,7 +49,7 @@ Executes system-level operations. Handles shell commands, file read/write, and s
 
 #### navigator
 
-Browses the web. Runs browser-native searches, navigates to pages, observes actionable elements, extracts structured page content, and takes screenshots. Returns structured page/search data with current URL and title when relevant.
+Browses the web. Runs browser-native searches, navigates to pages, observes actionable elements, extracts structured page content, and takes screenshots. For topic queries it searches once, works from the current results page, and only reformulates once when the first search is empty or clearly irrelevant. Returns structured page/search data with current URL and title when relevant.
 
 **Cannot**: shell commands, file operations, cryptographic operations, payment transactions, knowledge search.
 
@@ -206,13 +206,14 @@ Agent memory is backed by the same storage layer as the main session store and s
 
 Sub-agents operate in isolated child sessions forked from the parent conversation. This provides:
 
-- **Context isolation** — Each sub-agent sees only its relevant context, not the full conversation history
+- **Cross-turn isolation** — Raw sub-agent turns do not persist into the parent conversation history for later turns
+- **Same-run continuity** — During the active run, tool calls and tool results remain visible through the parent in-memory view so the sub-agent can continue the ADK loop correctly
 - **Result merging** — When a sub-agent completes, its results are summarized and merged back into the parent session
 - **Cleanup** — Discarded child sessions are cleaned up automatically
 
-The `ChildSessionServiceAdapter` manages the fork/merge lifecycle. A `Summarizer` extracts the key results from the child session before merging.
+The `ChildSessionServiceAdapter` manages the fork/merge lifecycle. A `Summarizer` extracts the key results from the child session before merging, and discarded child runs leave a compact root-authored failure note instead of raw child history.
 
-Built-in specialist agents such as `operator`, `navigator`, `vault`, `librarian`, `automator`, and `chronicler` use child-session routing by default. `planner` remains on the parent-session path.
+Built-in specialist agents such as `operator`, `navigator`, `vault`, `librarian`, and `automator` use child-session routing by default. `planner` and `chronicler` remain on the parent-session path.
 
 ## Configuration
 

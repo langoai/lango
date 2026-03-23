@@ -21,6 +21,7 @@ type ApprovalRequest struct {
 type ApprovalResponse struct {
 	Approved    bool
 	AlwaysAllow bool
+	Provider    string
 }
 
 // Provider defines the interface for approval request handling.
