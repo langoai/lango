@@ -274,6 +274,35 @@ func TestAppendEvent_IsolatedAgentWritesToChildHistoryAndParentOverlay(t *testin
 	assert.Equal(t, "isolated reply", svc.activeChild["test-session"].child.History[0].Content)
 }
 
+func TestAppendEvent_IsolatedAgentWithoutLifecycleHook_UsesChildStore(t *testing.T) {
+	t.Parallel()
+
+	store := newMockStore()
+	sess := &internal.Session{
+		Key:       "test-session",
+		Metadata:  make(map[string]string),
+		CreatedAt: time.Now(),
+		UpdatedAt: time.Now(),
+	}
+	store.Create(sess)
+
+	adapter := NewSessionAdapter(sess, store, "lango-orchestrator")
+	svc := NewSessionServiceAdapter(store, "lango-orchestrator").
+		WithIsolatedAgents([]string{"operator"})
+
+	require.NotNil(t, svc.childStore)
+	require.NoError(t, svc.AppendEvent(
+		context.Background(),
+		adapter,
+		newTestEvent("operator", "model", "isolated reply"),
+	))
+
+	assert.Empty(t, store.messages["test-session"], "raw isolated turns must not be persisted")
+	require.NotNil(t, svc.activeChild["test-session"])
+	require.Len(t, svc.activeChild["test-session"].child.History, 1)
+	assert.Equal(t, "isolated reply", svc.activeChild["test-session"].child.History[0].Content)
+}
+
 func TestCloseActiveChild_MergesSummaryAsRootAuthor(t *testing.T) {
 	t.Parallel()
 

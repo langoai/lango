@@ -62,6 +62,10 @@ type Tx struct {
 	SessionProvenance *SessionProvenanceClient
 	// TokenUsage is the client for interacting with the TokenUsage builders.
 	TokenUsage *TokenUsageClient
+	// TurnTrace is the client for interacting with the TurnTrace builders.
+	TurnTrace *TurnTraceClient
+	// TurnTraceEvent is the client for interacting with the TurnTraceEvent builders.
+	TurnTraceEvent *TurnTraceEventClient
 	// WorkflowRun is the client for interacting with the WorkflowRun builders.
 	WorkflowRun *WorkflowRunClient
 	// WorkflowStepRun is the client for interacting with the WorkflowStepRun builders.
@@ -222,6 +226,8 @@ func (tx *Tx) init() {
 	tx.Session = NewSessionClient(tx.config)
 	tx.SessionProvenance = NewSessionProvenanceClient(tx.config)
 	tx.TokenUsage = NewTokenUsageClient(tx.config)
+	tx.TurnTrace = NewTurnTraceClient(tx.config)
+	tx.TurnTraceEvent = NewTurnTraceEventClient(tx.config)
 	tx.WorkflowRun = NewWorkflowRunClient(tx.config)
 	tx.WorkflowStepRun = NewWorkflowStepRunClient(tx.config)
 }

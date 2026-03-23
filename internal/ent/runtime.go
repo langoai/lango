@@ -32,6 +32,8 @@ import (
 	"github.com/langoai/lango/internal/ent/session"
 	"github.com/langoai/lango/internal/ent/sessionprovenance"
 	"github.com/langoai/lango/internal/ent/tokenusage"
+	"github.com/langoai/lango/internal/ent/turntrace"
+	"github.com/langoai/lango/internal/ent/turntraceevent"
 	"github.com/langoai/lango/internal/ent/workflowrun"
 	"github.com/langoai/lango/internal/ent/workflowsteprun"
 )
@@ -708,6 +710,50 @@ func init() {
 	tokenusageDescID := tokenusageFields[0].Descriptor()
 	// tokenusage.DefaultID holds the default value on creation for the id field.
 	tokenusage.DefaultID = tokenusageDescID.Default.(func() uuid.UUID)
+	turntraceFields := schema.TurnTrace{}.Fields()
+	_ = turntraceFields
+	// turntraceDescTraceID is the schema descriptor for trace_id field.
+	turntraceDescTraceID := turntraceFields[1].Descriptor()
+	// turntrace.TraceIDValidator is a validator for the "trace_id" field. It is called by the builders before save.
+	turntrace.TraceIDValidator = turntraceDescTraceID.Validators[0].(func(string) error)
+	// turntraceDescSessionKey is the schema descriptor for session_key field.
+	turntraceDescSessionKey := turntraceFields[2].Descriptor()
+	// turntrace.SessionKeyValidator is a validator for the "session_key" field. It is called by the builders before save.
+	turntrace.SessionKeyValidator = turntraceDescSessionKey.Validators[0].(func(string) error)
+	// turntraceDescEntrypoint is the schema descriptor for entrypoint field.
+	turntraceDescEntrypoint := turntraceFields[3].Descriptor()
+	// turntrace.EntrypointValidator is a validator for the "entrypoint" field. It is called by the builders before save.
+	turntrace.EntrypointValidator = turntraceDescEntrypoint.Validators[0].(func(string) error)
+	// turntraceDescOutcome is the schema descriptor for outcome field.
+	turntraceDescOutcome := turntraceFields[4].Descriptor()
+	// turntrace.DefaultOutcome holds the default value on creation for the outcome field.
+	turntrace.DefaultOutcome = turntraceDescOutcome.Default.(string)
+	// turntraceDescStartedAt is the schema descriptor for started_at field.
+	turntraceDescStartedAt := turntraceFields[7].Descriptor()
+	// turntrace.DefaultStartedAt holds the default value on creation for the started_at field.
+	turntrace.DefaultStartedAt = turntraceDescStartedAt.Default.(func() time.Time)
+	// turntraceDescID is the schema descriptor for id field.
+	turntraceDescID := turntraceFields[0].Descriptor()
+	// turntrace.DefaultID holds the default value on creation for the id field.
+	turntrace.DefaultID = turntraceDescID.Default.(func() uuid.UUID)
+	turntraceeventFields := schema.TurnTraceEvent{}.Fields()
+	_ = turntraceeventFields
+	// turntraceeventDescTraceID is the schema descriptor for trace_id field.
+	turntraceeventDescTraceID := turntraceeventFields[1].Descriptor()
+	// turntraceevent.TraceIDValidator is a validator for the "trace_id" field. It is called by the builders before save.
+	turntraceevent.TraceIDValidator = turntraceeventDescTraceID.Validators[0].(func(string) error)
+	// turntraceeventDescEventType is the schema descriptor for event_type field.
+	turntraceeventDescEventType := turntraceeventFields[3].Descriptor()
+	// turntraceevent.EventTypeValidator is a validator for the "event_type" field. It is called by the builders before save.
+	turntraceevent.EventTypeValidator = turntraceeventDescEventType.Validators[0].(func(string) error)
+	// turntraceeventDescCreatedAt is the schema descriptor for created_at field.
+	turntraceeventDescCreatedAt := turntraceeventFields[8].Descriptor()
+	// turntraceevent.DefaultCreatedAt holds the default value on creation for the created_at field.
+	turntraceevent.DefaultCreatedAt = turntraceeventDescCreatedAt.Default.(func() time.Time)
+	// turntraceeventDescID is the schema descriptor for id field.
+	turntraceeventDescID := turntraceeventFields[0].Descriptor()
+	// turntraceevent.DefaultID holds the default value on creation for the id field.
+	turntraceevent.DefaultID = turntraceeventDescID.Default.(func() uuid.UUID)
 	workflowrunFields := schema.WorkflowRun{}.Fields()
 	_ = workflowrunFields
 	// workflowrunDescWorkflowName is the schema descriptor for workflow_name field.

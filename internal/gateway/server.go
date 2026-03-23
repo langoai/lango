@@ -18,20 +18,16 @@ import (
 	"github.com/langoai/lango/internal/adk"
 	"github.com/langoai/lango/internal/approval"
 	"github.com/langoai/lango/internal/config"
-	"github.com/langoai/lango/internal/deadline"
 	"github.com/langoai/lango/internal/gatekeeper"
 	"github.com/langoai/lango/internal/logging"
 	"github.com/langoai/lango/internal/runledger"
 	"github.com/langoai/lango/internal/security"
 	"github.com/langoai/lango/internal/session"
-	"github.com/langoai/lango/internal/tools/browser"
+	"github.com/langoai/lango/internal/turnrunner"
+	"github.com/langoai/lango/internal/turntrace"
 )
 
 func logger() *zap.SugaredLogger { return logging.Gateway() }
-
-// emptyResponseFallback is returned to the user when the agent succeeds
-// but produces no visible text (e.g. Gemini thought-only responses).
-const emptyResponseFallback = "I processed your message but couldn't formulate a visible response. Could you try rephrasing your question?"
 
 // TurnCallback is called after each agent turn completes (for buffer triggers, etc).
 type TurnCallback func(sessionKey string)
@@ -55,6 +51,7 @@ type Server struct {
 	pendingApprovalsMu sync.Mutex
 	turnCallbacks      []TurnCallback
 	sanitizer          *gatekeeper.Sanitizer
+	turnRunner         *turnrunner.Runner
 	shutdownCtx        context.Context
 	shutdownCancel     context.CancelFunc
 }
@@ -239,44 +236,6 @@ func (s *Server) handleChatMessage(client *Client, params json.RawMessage) (inte
 		"sessionKey": sessionKey,
 	})
 
-	var (
-		ctx         context.Context
-		cancel      context.CancelFunc
-		extDeadline *deadline.ExtendableDeadline
-		runOpts     []adk.RunOption
-	)
-
-	idleTimeout := s.config.IdleTimeout
-	hardCeiling := s.config.MaxTimeout
-	if hardCeiling <= 0 {
-		hardCeiling = s.config.RequestTimeout
-	}
-	if hardCeiling <= 0 {
-		hardCeiling = 5 * time.Minute
-	}
-
-	if idleTimeout > 0 {
-		ctx, extDeadline = deadline.New(s.shutdownCtx, idleTimeout, hardCeiling)
-		cancel = extDeadline.Stop
-		runOpts = append(runOpts, adk.WithOnActivity(extDeadline.Extend))
-	} else {
-		ctx, cancel = context.WithTimeout(s.shutdownCtx, hardCeiling)
-	}
-	defer cancel()
-
-	// Warn UI when approaching timeout (80%).
-	warnTimer := time.AfterFunc(time.Duration(float64(hardCeiling)*0.8), func() {
-		logger().Warnw("agent request approaching timeout",
-			"session", sessionKey,
-			"timeout", hardCeiling.String())
-		s.BroadcastToSession(sessionKey, "agent.warning", map[string]string{
-			"sessionKey": sessionKey,
-			"message":    "Request is taking longer than expected",
-			"type":       "approaching_timeout",
-		})
-	})
-	defer warnTimer.Stop()
-
 	// Start periodic progress broadcast every 15s.
 	progressStart := time.Now()
 	progressDone := make(chan struct{})
@@ -300,92 +259,61 @@ func (s *Server) handleChatMessage(client *Client, params json.RawMessage) (inte
 	}()
 	stopProgress := func() { progressOnce.Do(func() { close(progressDone) }) }
 
-	ctx = session.WithSessionKey(ctx, sessionKey)
-	ctx = approval.WithTurnApprovalState(ctx, approval.NewTurnApprovalState())
-	ctx = browser.WithRequestState(ctx, browser.NewRequestState())
-	response, err := s.agent.RunStreaming(ctx, sessionKey, req.Message, func(chunk string) {
-		if s.sanitizer != nil && s.sanitizer.Enabled() {
-			chunk = s.sanitizer.Sanitize(chunk)
-		}
-		if chunk == "" {
-			return
-		}
-		s.BroadcastToSession(sessionKey, "agent.chunk", map[string]string{
-			"sessionKey": sessionKey,
-			"chunk":      chunk,
-		})
-	}, runOpts...)
+	if s.turnRunner == nil {
+		stopProgress()
+		return nil, fmt.Errorf("turn runner is not initialized")
+	}
+	result, err := s.turnRunner.Run(s.shutdownCtx, turnrunner.Request{
+		SessionKey: sessionKey,
+		Input:      req.Message,
+		Entrypoint: "gateway",
+		OnChunk: func(chunk string) {
+			if chunk == "" {
+				return
+			}
+			s.BroadcastToSession(sessionKey, "agent.chunk", map[string]string{
+				"sessionKey": sessionKey,
+				"chunk":      chunk,
+			})
+		},
+		OnWarning: func(elapsed, hardCeiling time.Duration) {
+			logger().Warnw("agent request approaching timeout",
+				"session", sessionKey,
+				"timeout", hardCeiling.String())
+			s.BroadcastToSession(sessionKey, "agent.warning", map[string]string{
+				"sessionKey": sessionKey,
+				"message":    "Request is taking longer than expected",
+				"type":       "approaching_timeout",
+			})
+		},
+	})
 
 	// Stop progress updates now that the agent has finished.
 	stopProgress()
 
-	// Fire turn-complete callbacks (buffer triggers, etc.) regardless of error.
-	for _, cb := range s.turnCallbacks {
-		cb(sessionKey)
-	}
-
-	// Guard against empty responses (e.g. Gemini thought-only output).
-	if err == nil && response == "" {
-		response = emptyResponseFallback
-		logger().Warnw("empty agent response, using fallback",
-			"session", sessionKey)
-	}
-
-	// Apply response sanitization.
-	if err == nil && s.sanitizer != nil && s.sanitizer.Enabled() {
-		response = s.sanitizer.Sanitize(response)
-	}
-
 	if err != nil {
-		// Classify the error for UI display.
-		errType := "unknown"
-		errCode := ""
-		hint := ""
-		userMsg := err.Error()
+		return nil, err
+	}
 
-		var agentErr *adk.AgentError
-		if errors.As(err, &agentErr) {
-			errType = string(agentErr.Code)
-			errCode = string(agentErr.Code)
-			userMsg = agentErr.UserMessage()
-		}
-
-		if ctx.Err() != nil {
-			errType = string(deadline.ReasonMaxTimeout)
-			if extDeadline != nil {
-				switch extDeadline.Reason() {
-				case deadline.ReasonIdle:
-					errType = string(deadline.ReasonIdle)
-					errCode = string(adk.ErrIdleTimeout)
-				case deadline.ReasonMaxTimeout:
-					errType = string(deadline.ReasonMaxTimeout)
-				}
-			}
-			// Annotate session to prevent error leak.
-			if s.store != nil {
-				_ = s.store.AnnotateTimeout(sessionKey, "")
-			}
-		}
-
-		// Notify UI of the error so it can stop thinking indicators
-		// and display a user-visible error message.
+	if result.Outcome != turntrace.OutcomeSuccess {
 		s.BroadcastToSession(sessionKey, "agent.error", map[string]string{
 			"sessionKey": sessionKey,
-			"error":      userMsg,
-			"type":       errType,
-			"code":       errCode,
-			"hint":       hint,
+			"error":      result.UserMessage,
+			"type":       string(result.Outcome),
+			"code":       result.ErrorCode,
+			"traceId":    result.TraceID,
 		})
-		return nil, err
+		return nil, errors.New(result.UserMessage)
 	}
 
 	// Notify UI that agent completed successfully.
 	s.BroadcastToSession(sessionKey, "agent.done", map[string]string{
 		"sessionKey": sessionKey,
+		"traceId":    result.TraceID,
 	})
 
 	return map[string]string{
-		"response": response,
+		"response": result.ResponseText,
 	}, nil
 }
 
@@ -635,6 +563,11 @@ func (s *Server) SetSanitizer(san *gatekeeper.Sanitizer) {
 	s.sanitizer = san
 }
 
+// SetTurnRunner wires the shared turn runner into the gateway.
+func (s *Server) SetTurnRunner(runner *turnrunner.Runner) {
+	s.turnRunner = runner
+}
+
 // SetRunLedgerStore wires optional RunLedger access for resume and authoritative flows.
 func (s *Server) SetRunLedgerStore(store runledger.RunLedgerStore) {
 	s.runLedgerStore = store
@@ -642,6 +575,12 @@ func (s *Server) SetRunLedgerStore(store runledger.RunLedgerStore) {
 
 // OnTurnComplete registers a callback that fires after each agent turn.
 func (s *Server) OnTurnComplete(cb TurnCallback) {
+	if s.turnRunner != nil {
+		s.turnRunner.OnTurnComplete(func(sessionKey string) {
+			cb(sessionKey)
+		})
+		return
+	}
 	s.turnCallbacks = append(s.turnCallbacks, cb)
 }
 

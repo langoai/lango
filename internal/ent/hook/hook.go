@@ -309,6 +309,30 @@ func (f TokenUsageFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value, 
 	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.TokenUsageMutation", m)
 }
 
+// The TurnTraceFunc type is an adapter to allow the use of ordinary
+// function as TurnTrace mutator.
+type TurnTraceFunc func(context.Context, *ent.TurnTraceMutation) (ent.Value, error)
+
+// Mutate calls f(ctx, m).
+func (f TurnTraceFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value, error) {
+	if mv, ok := m.(*ent.TurnTraceMutation); ok {
+		return f(ctx, mv)
+	}
+	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.TurnTraceMutation", m)
+}
+
+// The TurnTraceEventFunc type is an adapter to allow the use of ordinary
+// function as TurnTraceEvent mutator.
+type TurnTraceEventFunc func(context.Context, *ent.TurnTraceEventMutation) (ent.Value, error)
+
+// Mutate calls f(ctx, m).
+func (f TurnTraceEventFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value, error) {
+	if mv, ok := m.(*ent.TurnTraceEventMutation); ok {
+		return f(ctx, mv)
+	}
+	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.TurnTraceEventMutation", m)
+}
+
 // The WorkflowRunFunc type is an adapter to allow the use of ordinary
 // function as WorkflowRun mutator.
 type WorkflowRunFunc func(context.Context, *ent.WorkflowRunMutation) (ent.Value, error)

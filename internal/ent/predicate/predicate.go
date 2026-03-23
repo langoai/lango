@@ -81,6 +81,12 @@ type SessionProvenance func(*sql.Selector)
 // TokenUsage is the predicate function for tokenusage builders.
 type TokenUsage func(*sql.Selector)
 
+// TurnTrace is the predicate function for turntrace builders.
+type TurnTrace func(*sql.Selector)
+
+// TurnTraceEvent is the predicate function for turntraceevent builders.
+type TurnTraceEvent func(*sql.Selector)
+
 // WorkflowRun is the predicate function for workflowrun builders.
 type WorkflowRun func(*sql.Selector)
 

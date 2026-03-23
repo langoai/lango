@@ -31,6 +31,8 @@ import (
 	"github.com/langoai/lango/internal/toolcatalog"
 	"github.com/langoai/lango/internal/toolchain"
 	"github.com/langoai/lango/internal/tooloutput"
+	"github.com/langoai/lango/internal/turnrunner"
+	"github.com/langoai/lango/internal/turntrace"
 	"github.com/langoai/lango/internal/wallet"
 	"github.com/langoai/lango/internal/workflow"
 )
@@ -227,6 +229,14 @@ func New(boot *bootstrap.Result) (*App, error) {
 	}
 	app.Agent = adkAgent
 	app.Gateway.SetAgent(adkAgent)
+	app.TurnTraceStore = initTurnTraceStore(app.Store)
+	idleTimeout, hardCeiling := app.resolveTimeouts()
+	app.TurnRunner = turnrunner.New(turnrunner.Config{
+		IdleTimeout: idleTimeout,
+		HardCeiling: hardCeiling,
+		TraceStore:  app.TurnTraceStore,
+	}, adkAgent, app.Store, app.Sanitizer)
+	app.Gateway.SetTurnRunner(app.TurnRunner)
 
 	// B7. Post-agent wiring.
 	wirePostAgent(app, resolver, tools, bus, composite, grantStore, boot, auth)
@@ -548,22 +558,30 @@ func wireMemoryAndTurnCallbacks(app *App, iv *intelligenceValues, fv *foundation
 
 	// Gateway turn callbacks for buffer triggers.
 	if app.MemoryBuffer != nil {
-		app.Gateway.OnTurnComplete(func(sessionKey string) {
+		app.TurnRunner.OnTurnComplete(func(sessionKey string) {
 			app.MemoryBuffer.Trigger(sessionKey)
 		})
 	}
 	if iv != nil && iv.AB != nil {
 		if ab, ok := iv.AB.(interface{ Trigger(string) }); ok {
-			app.Gateway.OnTurnComplete(func(sessionKey string) {
+			app.TurnRunner.OnTurnComplete(func(sessionKey string) {
 				ab.Trigger(sessionKey)
 			})
 		}
 	}
 	if app.LibrarianProactiveBuffer != nil {
-		app.Gateway.OnTurnComplete(func(sessionKey string) {
+		app.TurnRunner.OnTurnComplete(func(sessionKey string) {
 			app.LibrarianProactiveBuffer.Trigger(sessionKey)
 		})
 	}
+}
+
+func initTurnTraceStore(store session.Store) turntrace.Store {
+	entStore, ok := store.(*session.EntStore)
+	if !ok {
+		return nil
+	}
+	return turntrace.NewEntStore(entStore.Client())
 }
 
 // registerPostBuildLifecycle registers gateway and channel lifecycle components.

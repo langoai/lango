@@ -4,6 +4,7 @@ package checks
 import (
 	"context"
 
+	"github.com/langoai/lango/internal/bootstrap"
 	"github.com/langoai/lango/internal/config"
 )
 
@@ -62,6 +63,12 @@ type Check interface {
 	// Fix attempts to repair the issue if possible.
 	// Returns an updated result after the fix attempt.
 	Fix(ctx context.Context, cfg *config.Config) Result
+}
+
+// BootstrapAwareCheck can use the already-open bootstrap result when available.
+type BootstrapAwareCheck interface {
+	Check
+	RunWithBootstrap(ctx context.Context, cfg *config.Config, boot *bootstrap.Result) Result
 }
 
 // Summary aggregates multiple check results.

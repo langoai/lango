@@ -1,6 +1,8 @@
 package adk
 
 import (
+	"strings"
+
 	"github.com/langoai/lango/internal/session"
 	"github.com/langoai/lango/internal/types"
 )
@@ -18,7 +20,8 @@ type StructuredSummarizer struct{}
 // If no assistant message is found, returns an empty string.
 func (s *StructuredSummarizer) Summarize(messages []session.Message) (string, error) {
 	for i := len(messages) - 1; i >= 0; i-- {
-		if messages[i].Role == types.RoleAssistant {
+		if messages[i].Role == types.RoleAssistant &&
+			strings.TrimSpace(messages[i].Content) != "" {
 			return messages[i].Content, nil
 		}
 	}

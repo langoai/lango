@@ -14,13 +14,14 @@ import (
 type ErrorCode string
 
 const (
-	ErrTimeout     ErrorCode = "E001"
-	ErrModelError  ErrorCode = "E002"
-	ErrToolError   ErrorCode = "E003"
-	ErrTurnLimit   ErrorCode = "E004"
-	ErrInternal    ErrorCode = "E005"
-	ErrIdleTimeout ErrorCode = "E006"
-	ErrToolChurn   ErrorCode = "E007"
+	ErrTimeout           ErrorCode = "E001"
+	ErrModelError        ErrorCode = "E002"
+	ErrToolError         ErrorCode = "E003"
+	ErrTurnLimit         ErrorCode = "E004"
+	ErrInternal          ErrorCode = "E005"
+	ErrIdleTimeout       ErrorCode = "E006"
+	ErrToolChurn         ErrorCode = "E007"
+	ErrEmptyAfterToolUse ErrorCode = "E008"
 )
 
 // AgentError is a structured error type that preserves partial results
@@ -67,6 +68,8 @@ func (e *AgentError) UserMessage() string {
 		return fmt.Sprintf("[%s] The request was cancelled due to %s of inactivity. The agent may be stuck — try rephrasing your question.", e.Code, e.Elapsed.Truncate(time.Second))
 	case ErrToolChurn:
 		return fmt.Sprintf("[%s] The agent got stuck calling the same tool repeatedly and was stopped. Please try rephrasing your request.", e.Code)
+	case ErrEmptyAfterToolUse:
+		return fmt.Sprintf("[%s] The agent completed tool actions but failed to produce a visible final response. Please try again or ask a narrower follow-up question.", e.Code)
 	default:
 		return fmt.Sprintf("[%s] An internal error occurred. Please try again.", e.Code)
 	}

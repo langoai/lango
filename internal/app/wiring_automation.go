@@ -2,6 +2,8 @@ package app
 
 import (
 	"context"
+	"errors"
+	"fmt"
 	"time"
 
 	"github.com/langoai/lango/internal/background"
@@ -9,6 +11,8 @@ import (
 	cronpkg "github.com/langoai/lango/internal/cron"
 	"github.com/langoai/lango/internal/runledger"
 	"github.com/langoai/lango/internal/session"
+	"github.com/langoai/lango/internal/turnrunner"
+	"github.com/langoai/lango/internal/turntrace"
 	"github.com/langoai/lango/internal/workflow"
 )
 
@@ -18,7 +22,21 @@ type agentRunnerAdapter struct {
 }
 
 func (r *agentRunnerAdapter) Run(ctx context.Context, sessionKey, promptText string) (string, error) {
-	return r.app.runAgent(ctx, sessionKey, promptText)
+	if r.app.TurnRunner == nil {
+		return "", fmt.Errorf("turn runner is not initialized")
+	}
+	result, err := r.app.TurnRunner.Run(ctx, turnrunner.Request{
+		SessionKey: sessionKey,
+		Input:      promptText,
+		Entrypoint: "automation",
+	})
+	if err != nil {
+		return "", err
+	}
+	if result.Outcome != turntrace.OutcomeSuccess {
+		return result.ResponseText, errors.New(result.UserMessage)
+	}
+	return result.ResponseText, nil
 }
 
 // initCron creates the cron scheduling system if enabled.

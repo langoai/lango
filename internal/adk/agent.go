@@ -2,6 +2,7 @@ package adk
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"iter"
@@ -100,6 +101,22 @@ type Agent struct {
 	errorFixProvider ErrorFixProvider // optional: for self-correction on errors
 	sessionService   *SessionServiceAdapter
 	isolatedAgents   map[string]struct{}
+}
+
+// RunDiagnostics captures high-level runtime facts about a single agent turn.
+type RunDiagnostics struct {
+	VisibleTextCount        int
+	ToolCallCount           int
+	ToolResultCount         int
+	DelegationCount         int
+	DirectRootToolCallCount int
+}
+
+// RunReport is the structured result returned by detailed run helpers.
+type RunReport struct {
+	TraceID     string
+	Response    string
+	Diagnostics RunDiagnostics
 }
 
 // NewAgent creates a new Agent instance.
@@ -274,7 +291,7 @@ func (a *Agent) Run(ctx context.Context, sessionID string, input string) iter.Se
 		// Tool churn detection: force-stop when the same tool is called
 		// consecutively without the model producing any other tool call or
 		// text response (indicates the model is stuck in a loop).
-		lastToolName := ""
+		lastCallSignature := ""
 		consecutiveSameToolCalls := 0
 
 		for event, err := range inner {
@@ -311,11 +328,22 @@ func (a *Agent) Run(ctx context.Context, sessionID string, input string) iter.Se
 				}
 			}
 
+			if len(a.adkAgent.SubAgents()) > 0 &&
+				event.Author == a.adkAgent.Name() &&
+				hasFunctionCalls(event) &&
+				!isDelegationEvent(event) {
+				yield(nil, fmt.Errorf(
+					"orchestrator emitted direct tool call %q without tool access",
+					extractPrimaryToolName(event),
+				))
+				return
+			}
+
 			// Reset tool churn counter when the model generates a text-only
 			// response (reasoning step, not a tool call), indicating it is
 			// not stuck in a single-tool loop.
 			if event.Content != nil && hasText(event) && !hasFunctionCalls(event) {
-				lastToolName = ""
+				lastCallSignature = ""
 				consecutiveSameToolCalls = 0
 			}
 
@@ -323,21 +351,25 @@ func (a *Agent) Run(ctx context.Context, sessionID string, input string) iter.Se
 			// Delegation transfers (agent-to-agent routing) are not counted
 			// because they are routing overhead, not actual tool work.
 			if event.Content != nil && hasFunctionCalls(event) && !isDelegationEvent(event) {
-				// Tool churn detection: same tool called consecutively.
-				if toolName := extractPrimaryToolName(event); toolName != "" {
-					if toolName == lastToolName {
+				// Tool churn detection: same call signature called consecutively.
+				if signature := extractPrimaryToolSignature(event); signature != "" {
+					if signature == lastCallSignature {
 						consecutiveSameToolCalls++
 					} else {
-						lastToolName = toolName
+						lastCallSignature = signature
 						consecutiveSameToolCalls = 1
 					}
 					if consecutiveSameToolCalls >= maxConsecutiveSameToolCalls {
 						logger().Warnw("tool churn detected, forcing stop",
 							"session", sessionID,
-							"tool", toolName,
+							"signature", signature,
 							"consecutiveCalls", consecutiveSameToolCalls,
 							"maxAllowed", maxConsecutiveSameToolCalls)
-						yield(nil, fmt.Errorf("tool %q called %d times consecutively, forcing stop", toolName, consecutiveSameToolCalls))
+						yield(nil, fmt.Errorf(
+							"call signature %q repeated %d times consecutively, forcing stop",
+							signature,
+							consecutiveSameToolCalls,
+						))
 						return
 					}
 				}
@@ -415,6 +447,25 @@ func extractPrimaryToolName(e *session.Event) string {
 		if p.FunctionCall != nil {
 			return p.FunctionCall.Name
 		}
+	}
+	return ""
+}
+
+func extractPrimaryToolSignature(e *session.Event) string {
+	if e.Content == nil {
+		return ""
+	}
+	for _, p := range e.Content.Parts {
+		if p.FunctionCall == nil {
+			continue
+		}
+		args := "{}"
+		if len(p.FunctionCall.Args) > 0 {
+			if data, err := json.Marshal(p.FunctionCall.Args); err == nil {
+				args = string(data)
+			}
+		}
+		return fmt.Sprintf("%s|%s|%s", e.Author, p.FunctionCall.Name, args)
 	}
 	return ""
 }
@@ -592,6 +643,7 @@ func (a *Agent) runAndCollectOnce(ctx context.Context, sessionID, input string, 
 	var sawVisiblePartial bool
 
 	start := time.Now()
+	defer invokeFinishCallback(ro)
 
 	for event, err := range a.Run(ctx, sessionID, input) {
 		if err != nil {
@@ -623,12 +675,18 @@ func (a *Agent) runAndCollectOnce(ctx context.Context, sessionID, input string, 
 		}
 
 		if event.Content == nil {
+			if ro != nil && ro.onEvent != nil {
+				ro.onEvent(event)
+			}
 			continue
+		}
+		if ro != nil && ro.onEvent != nil {
+			ro.onEvent(event)
 		}
 
 		// Signal activity for deadline extension.
 		if ro != nil && ro.onActivity != nil {
-			if hasText(event) || hasFunctionCalls(event) {
+			if hasText(event) || hasFunctionCalls(event) || isDelegationEvent(event) {
 				ro.onActivity()
 			}
 		}
@@ -718,6 +776,15 @@ type RunOption func(*runOptions)
 
 type runOptions struct {
 	onActivity func()
+	onEvent    func(*session.Event)
+	onFinish   func()
+}
+
+// RunHooks is the exported view of parsed RunOptions for tests and adapters.
+type RunHooks struct {
+	OnActivity func()
+	OnEvent    func(*session.Event)
+	OnFinish   func()
 }
 
 // WithOnActivity sets a callback that is invoked whenever the agent produces
@@ -726,25 +793,59 @@ func WithOnActivity(fn func()) RunOption {
 	return func(o *runOptions) { o.onActivity = fn }
 }
 
+// WithOnEvent receives each event observed by the detailed collectors.
+func WithOnEvent(fn func(*session.Event)) RunOption {
+	return func(o *runOptions) { o.onEvent = fn }
+}
+
+// WithOnFinish registers a callback fired when collection completes.
+func WithOnFinish(fn func()) RunOption {
+	return func(o *runOptions) { o.onFinish = fn }
+}
+
+// ResolveRunHooks applies RunOptions and returns the resulting hooks.
+func ResolveRunHooks(opts ...RunOption) RunHooks {
+	var ro runOptions
+	for _, o := range opts {
+		o(&ro)
+	}
+	return RunHooks{
+		OnActivity: ro.onActivity,
+		OnEvent:    ro.onEvent,
+		OnFinish:   ro.onFinish,
+	}
+}
+
 // ChunkCallback is called for each streaming text chunk during agent execution.
 type ChunkCallback func(chunk string)
 
 // RunStreaming executes the agent and streams partial text chunks via the callback.
 // It returns the full accumulated response text for backward compatibility.
 func (a *Agent) RunStreaming(ctx context.Context, sessionID, input string, onChunk ChunkCallback, opts ...RunOption) (string, error) {
+	report, err := a.RunStreamingDetailed(ctx, sessionID, input, onChunk, opts...)
+	return report.Response, err
+}
+
+// RunStreamingDetailed executes the agent, streams chunks, and returns structured diagnostics.
+func (a *Agent) RunStreamingDetailed(ctx context.Context, sessionID, input string, onChunk ChunkCallback, opts ...RunOption) (RunReport, error) {
 	var ro runOptions
 	for _, o := range opts {
 		o(&ro)
 	}
+	defer invokeFinishCallback(&ro)
 
 	var b strings.Builder
 	var sawVisiblePartial bool
 	start := time.Now()
+	var diagnostics RunDiagnostics
 
 	for event, err := range a.Run(ctx, sessionID, input) {
 		if err != nil {
 			partial := b.String()
-			return partial, &AgentError{
+			return RunReport{
+				Response:    partial,
+				Diagnostics: diagnostics,
+			}, &AgentError{
 				Code:    classifyError(err),
 				Message: "agent error",
 				Cause:   err,
@@ -753,13 +854,18 @@ func (a *Agent) RunStreaming(ctx context.Context, sessionID, input string, onChu
 			}
 		}
 
+		recordDiagnostics(&diagnostics, a.adkAgent.Name(), len(a.adkAgent.SubAgents()) > 0, event)
+		if ro.onEvent != nil {
+			ro.onEvent(event)
+		}
+
 		if event.Content == nil {
 			continue
 		}
 
 		// Signal activity for deadline extension.
 		if ro.onActivity != nil {
-			if hasText(event) || hasFunctionCalls(event) {
+			if hasText(event) || hasFunctionCalls(event) || isDelegationEvent(event) {
 				ro.onActivity()
 			}
 		}
@@ -792,7 +898,10 @@ func (a *Agent) RunStreaming(ctx context.Context, sessionID, input string, onChu
 		if a.sessionService != nil {
 			_ = a.sessionService.DiscardActiveChildWithReason(sessionID, discardReasonForError(err))
 		}
-		return partial, &AgentError{
+		return RunReport{
+			Response:    partial,
+			Diagnostics: diagnostics,
+		}, &AgentError{
 			Code:    ErrTimeout,
 			Message: "agent error",
 			Cause:   err,
@@ -803,13 +912,18 @@ func (a *Agent) RunStreaming(ctx context.Context, sessionID, input string, onChu
 	if a.sessionService != nil {
 		_ = a.sessionService.CloseActiveChild(sessionID)
 	}
-	return b.String(), nil
+	return RunReport{
+		Response:    b.String(),
+		Diagnostics: diagnostics,
+	}, nil
 }
 
 func discardReasonForError(err error) string {
 	switch classifyError(err) {
 	case ErrToolChurn:
-		return "same tool loop detected"
+		return "loop_detected"
+	case ErrEmptyAfterToolUse:
+		return "empty_after_tool_use"
 	default:
 		return "agent error"
 	}
@@ -850,4 +964,74 @@ func (a *Agent) shouldCollectUserText(author string) bool {
 	}
 	_, isolated := a.isolatedAgents[author]
 	return !isolated
+}
+
+func recordDiagnostics(
+	diagnostics *RunDiagnostics,
+	rootAgentName string,
+	multiAgent bool,
+	event *session.Event,
+) {
+	if diagnostics == nil || event == nil {
+		return
+	}
+	if isDelegationEvent(event) {
+		diagnostics.DelegationCount++
+	}
+	if hasText(event) {
+		diagnostics.VisibleTextCount += countTextParts(event)
+	}
+	if hasFunctionCalls(event) {
+		diagnostics.ToolCallCount += countFunctionCalls(event)
+		if multiAgent && event.Author == rootAgentName && !isDelegationEvent(event) {
+			diagnostics.DirectRootToolCallCount += countFunctionCalls(event)
+		}
+	}
+	diagnostics.ToolResultCount += countFunctionResponses(event)
+}
+
+func countTextParts(e *session.Event) int {
+	if e.Content == nil {
+		return 0
+	}
+	count := 0
+	for _, p := range e.Content.Parts {
+		if p.Text != "" {
+			count++
+		}
+	}
+	return count
+}
+
+func countFunctionCalls(e *session.Event) int {
+	if e.Content == nil {
+		return 0
+	}
+	count := 0
+	for _, p := range e.Content.Parts {
+		if p.FunctionCall != nil {
+			count++
+		}
+	}
+	return count
+}
+
+func countFunctionResponses(e *session.Event) int {
+	if e.Content == nil {
+		return 0
+	}
+	count := 0
+	for _, p := range e.Content.Parts {
+		if p.FunctionResponse != nil {
+			count++
+		}
+	}
+	return count
+}
+
+func invokeFinishCallback(ro *runOptions) {
+	if ro == nil || ro.onFinish == nil {
+		return
+	}
+	ro.onFinish()
 }
