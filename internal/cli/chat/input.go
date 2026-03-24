@@ -44,7 +44,11 @@ func (m inputModel) View() string {
 }
 
 func (m *inputModel) SetWidth(width int) {
-	m.textarea.SetWidth(width)
+	w := width - 2 // account for border padding
+	if w < 10 {
+		w = 10
+	}
+	m.textarea.SetWidth(w)
 }
 
 func (m *inputModel) Value() string {

@@ -107,26 +107,46 @@ func (m *ChatModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case DoneMsg:
 		m.state = stateIdle
-		if msg.Result.Outcome == "success" || msg.Result.ResponseText != "" {
-			m.chatView.finalizeStream(m.width)
-		} else {
-			// Non-success: show the error/user message.
-			m.chatView.streamBuf.Reset()
+
+		// Rule 1: if streamBuf has content, finalize it regardless of outcome.
+		if m.chatView.streamBuf.Len() > 0 {
+			m.chatView.finalizeStream()
+		} else if strings.TrimSpace(msg.Result.ResponseText) != "" {
+			// Rule 2: non-streaming model — ResponseText without chunks.
+			m.chatView.appendAssistant(msg.Result.ResponseText)
+		}
+
+		// Rule 3: non-success outcome → add system status message.
+		if msg.Result.Outcome != "success" {
 			text := msg.Result.UserMessage
 			if text == "" {
 				text = msg.Result.ResponseText
 			}
 			if text != "" {
-				m.chatView.finalizeWithText(lipgloss.NewStyle().Foreground(tui.Error).Render(text))
+				// Deduplicate: skip if identical to last assistant rawContent.
+				isDup := false
+				if n := len(m.chatView.entries); n > 0 {
+					last := m.chatView.entries[n-1]
+					if last.role == "assistant" && strings.TrimSpace(last.rawContent) == strings.TrimSpace(text) {
+						isDup = true
+					}
+				}
+				if !isDup {
+					m.chatView.appendSystem(lipgloss.NewStyle().Foreground(tui.Error).Render(text))
+				}
 			}
 		}
+
 		cmds = append(cmds, m.input.Focus())
 		return m, tea.Batch(cmds...)
 
 	case ErrorMsg:
 		m.state = stateIdle
-		m.chatView.streamBuf.Reset()
-		m.chatView.finalizeWithText(lipgloss.NewStyle().Foreground(tui.Error).Render(fmt.Sprintf("Error: %v", msg.Err)))
+		// Preserve partial stream content first.
+		if m.chatView.streamBuf.Len() > 0 {
+			m.chatView.finalizeStream()
+		}
+		m.chatView.appendSystem(lipgloss.NewStyle().Foreground(tui.Error).Render(fmt.Sprintf("Error: %v", msg.Err)))
 		cmds = append(cmds, m.input.Focus())
 		return m, tea.Batch(cmds...)
 
@@ -142,6 +162,7 @@ func (m *ChatModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.state = stateApproving
 		m.pendingApproval = &msg
 		m.input.Blur()
+		m.recalcLayout()
 		return m, nil
 
 	case SystemMsg:
@@ -169,6 +190,8 @@ func (m *ChatModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 }
 
 // View implements tea.Model.
+// Uses a parts-based model: each fixed component is a block joined by "\n".
+// recalcLayout() measures the same blocks to size the viewport correctly.
 func (m *ChatModel) View() string {
 	if m.quitting {
 		return ""
@@ -180,32 +203,19 @@ func (m *ChatModel) View() string {
 		return "\n  Waiting for terminal size..."
 	}
 
-	var b strings.Builder
+	parts := []string{
+		renderStatusBar(m.cfg, truncateSessionKey(m.sessionKey), m.state, m.width),
+		m.chatView.View(),
+	}
 
-	// Status bar (top)
-	b.WriteString(renderStatusBar(m.cfg, truncateSessionKey(m.sessionKey), m.state, m.width))
-	b.WriteString("\n")
-
-	// Chat viewport (middle)
-	b.WriteString(m.chatView.View())
-	b.WriteString("\n")
-
-	// Approval banner (if approving)
 	if m.state == stateApproving && m.pendingApproval != nil {
-		b.WriteString(renderApprovalBanner(m.pendingApproval.Request, m.width))
-		b.WriteString("\n")
+		parts = append(parts, renderApprovalBanner(m.pendingApproval.Request, m.width))
+	} else {
+		parts = append(parts, m.input.View())
 	}
 
-	// Input area (bottom, hidden during approval)
-	if m.state != stateApproving {
-		b.WriteString(m.input.View())
-	}
-
-	// Help bar (bottom)
-	b.WriteString("\n")
-	b.WriteString(renderHelpBar(m.state, m.width))
-
-	return b.String()
+	parts = append(parts, renderHelpBar(m.state, m.width))
+	return strings.Join(parts, "\n")
 }
 
 // handleKey processes key events based on current state.
@@ -271,7 +281,11 @@ func (m *ChatModel) handleStreamingKey(msg tea.KeyMsg) tea.Cmd {
 			m.cancelFn()
 		}
 		m.state = stateIdle
-		m.chatView.finalizeWithText(lipgloss.NewStyle().Foreground(tui.Muted).Render("(cancelled)"))
+		// Preserve partial stream content if present.
+		if m.chatView.streamBuf.Len() > 0 {
+			m.chatView.finalizeStream()
+		}
+		m.chatView.appendSystem(lipgloss.NewStyle().Foreground(tui.Muted).Render("(cancelled)"))
 		return m.input.Focus()
 	}
 	return nil
@@ -341,19 +355,37 @@ func (m *ChatModel) submitCmd(input string) tea.Cmd {
 }
 
 // recalcLayout adjusts component sizes after a window resize.
+// It measures the same fixed parts that View() renders, so they always agree.
 func (m *ChatModel) recalcLayout() {
-	// Layout (lines): statusbar(1) + \n(1) + chatView(dynamic) + \n(1) + input(5) + \n(1) + helpbar(1)
-	// Total = chatHeight + 10, so chatHeight = height - 10
-	inputHeight := 5
-	if m.state == stateApproving {
-		inputHeight = 8 // extra room for approval banner
+	// Step 1: set widths first (rendered height depends on width).
+	m.input.SetWidth(m.width)
+
+	// Step 2: measure fixed-height parts (everything except chatView).
+	fixedParts := []string{
+		renderStatusBar(m.cfg, truncateSessionKey(m.sessionKey), m.state, m.width),
 	}
-	chatHeight := m.height - 1 - 1 - inputHeight - 1 - 1 // statusbar + sep + input + sep + helpbar
+	if m.state == stateApproving && m.pendingApproval != nil {
+		fixedParts = append(fixedParts, renderApprovalBanner(m.pendingApproval.Request, m.width))
+	} else {
+		fixedParts = append(fixedParts, m.input.View())
+	}
+	fixedParts = append(fixedParts, renderHelpBar(m.state, m.width))
+
+	fixedHeight := 0
+	for _, p := range fixedParts {
+		fixedHeight += lipgloss.Height(p)
+	}
+
+	// Separators: View() joins (fixedParts + chatView) with "\n".
+	// Total parts = len(fixedParts) + 1 (chatView), separators = total - 1 = len(fixedParts).
+	separators := len(fixedParts)
+
+	// Step 3: remaining height → viewport.
+	chatHeight := m.height - fixedHeight - separators
 	if chatHeight < 3 {
 		chatHeight = 3
 	}
 	m.chatView.setSize(m.width, chatHeight)
-	m.input.SetWidth(m.width)
 }
 
 func generateSessionKey() string {

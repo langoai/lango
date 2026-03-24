@@ -13,8 +13,9 @@ import (
 
 // chatEntry represents a single message in the chat history.
 type chatEntry struct {
-	role    string // "user", "assistant", "system"
-	content string
+	role       string // "user", "assistant", "system"
+	content    string // rendered content (display cache)
+	rawContent string // original markdown (assistant only, for resize reflow)
 }
 
 // chatViewModel manages the scrollable chat history viewport.
@@ -63,27 +64,36 @@ func (m *chatViewModel) appendChunk(chunk string) {
 	m.render()
 }
 
-// finalizeStream commits the streamed buffer as an assistant message, applying
-// markdown rendering, and clears the streaming buffer.
-func (m *chatViewModel) finalizeStream(width int) {
-	raw := m.streamBuf.String()
-	m.streamBuf.Reset()
+// appendAssistant adds an assistant message with raw markdown preserved for
+// resize reflow. All assistant messages must go through this helper.
+func (m *chatViewModel) appendAssistant(raw string) {
 	if strings.TrimSpace(raw) == "" {
 		return
 	}
-	rendered := renderMarkdown(raw, width)
-	m.entries = append(m.entries, chatEntry{role: "assistant", content: strings.TrimRight(rendered, "\n")})
+	rendered := renderMarkdown(raw, m.contentWidth())
+	m.entries = append(m.entries, chatEntry{
+		role:       "assistant",
+		content:    strings.TrimRight(rendered, "\n"),
+		rawContent: raw,
+	})
 	m.render()
 }
 
-// finalizeWithText adds an assistant message directly (for error/fallback).
-func (m *chatViewModel) finalizeWithText(text string) {
+// finalizeStream commits the streamed buffer as an assistant message and
+// clears the streaming buffer.
+func (m *chatViewModel) finalizeStream() {
+	raw := m.streamBuf.String()
 	m.streamBuf.Reset()
-	if strings.TrimSpace(text) == "" {
-		return
+	m.appendAssistant(raw)
+}
+
+// contentWidth returns the width available for assistant markdown rendering.
+func (m *chatViewModel) contentWidth() int {
+	w := m.width - 2 // left indent + safety margin
+	if w < 10 {
+		w = 10
 	}
-	m.entries = append(m.entries, chatEntry{role: "assistant", content: text})
-	m.render()
+	return w
 }
 
 // clear removes all entries and resets the viewport.
@@ -103,32 +113,33 @@ func (m *chatViewModel) setSize(width, height int) {
 }
 
 // render rebuilds the viewport content from all entries plus any in-flight stream.
+// Uses block-join to avoid accumulating leading blank lines.
 func (m *chatViewModel) render() {
-	var b strings.Builder
-
 	userLabel := lipgloss.NewStyle().Bold(true).Foreground(tui.Highlight).Render("You")
 	assistantLabel := lipgloss.NewStyle().Bold(true).Foreground(tui.Primary).Render("Lango")
 	systemLabel := lipgloss.NewStyle().Bold(true).Foreground(tui.Muted).Render("System")
 
+	var blocks []string
 	for _, entry := range m.entries {
 		switch entry.role {
 		case "user":
-			b.WriteString(fmt.Sprintf("\n %s\n", userLabel))
-			b.WriteString(fmt.Sprintf(" %s\n", entry.content))
+			blocks = append(blocks, fmt.Sprintf(" %s\n %s", userLabel, entry.content))
 		case "assistant":
-			b.WriteString(fmt.Sprintf("\n %s\n", assistantLabel))
-			b.WriteString(fmt.Sprintf(" %s\n", entry.content))
+			content := entry.content
+			if entry.rawContent != "" {
+				content = strings.TrimRight(renderMarkdown(entry.rawContent, m.contentWidth()), "\n")
+			}
+			blocks = append(blocks, fmt.Sprintf(" %s\n %s", assistantLabel, content))
 		case "system":
-			b.WriteString(fmt.Sprintf("\n %s  %s\n", systemLabel, entry.content))
+			blocks = append(blocks, fmt.Sprintf(" %s  %s", systemLabel, entry.content))
 		}
 	}
 
 	// Render in-flight streaming content.
 	if m.streamBuf.Len() > 0 {
-		b.WriteString(fmt.Sprintf("\n %s\n", assistantLabel))
-		b.WriteString(fmt.Sprintf(" %s", m.streamBuf.String()))
+		blocks = append(blocks, fmt.Sprintf(" %s\n %s", assistantLabel, m.streamBuf.String()))
 	}
 
-	m.viewport.SetContent(b.String())
+	m.viewport.SetContent(strings.Join(blocks, "\n\n"))
 	m.viewport.GotoBottom()
 }

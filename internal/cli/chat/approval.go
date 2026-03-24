@@ -49,10 +49,14 @@ func (t *TUIApprovalProvider) Name() string { return "tui" }
 
 // renderApprovalBanner renders the inline approval prompt.
 func renderApprovalBanner(req approval.ApprovalRequest, width int) string {
+	bannerWidth := width - 4
+	if bannerWidth < 10 {
+		bannerWidth = 10
+	}
 	border := lipgloss.NewStyle().
 		Border(lipgloss.RoundedBorder()).
 		BorderForeground(tui.Warning).
-		Width(width - 4).
+		Width(bannerWidth).
 		Padding(0, 1)
 
 	title := lipgloss.NewStyle().
