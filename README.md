@@ -105,7 +105,7 @@ lango serve
 lango config validate
 ```
 
-Running `lango` without arguments starts an interactive terminal coding-agent cockpit with a transcript-first layout, turn-state visibility, inline approval interrupts, streaming markdown responses, and slash commands.
+Running `lango` without arguments starts an interactive terminal coding-agent cockpit with a transcript-first layout, turn-state visibility, inline approval interrupts, stable markdown rendering, clearer user/assistant separation, and slash commands.
 
 `lango serve` starts the full gateway server with channels, automation, and network components. It performs graceful shutdown on the first `Ctrl+C`/`SIGTERM` with a 10-second deadline. If shutdown is already in progress, a second `Ctrl+C` forces immediate exit with code `130`.
 

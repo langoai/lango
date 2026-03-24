@@ -191,8 +191,17 @@ func renderTranscriptBlock(label, content string, color lipgloss.Color) string {
 		Bold(true).
 		Foreground(color).
 		Render(label)
-	body := lipgloss.NewStyle().PaddingLeft(1).Render(strings.TrimRight(content, "\n"))
-	return fmt.Sprintf(" %s\n%s", labelText, body)
+	separatorWidth := min(16, max(lipgloss.Width(label)+6, 8))
+	separator := lipgloss.NewStyle().
+		Foreground(color).
+		Render(strings.Repeat("─", separatorWidth))
+	body := lipgloss.NewStyle().
+		BorderStyle(lipgloss.NormalBorder()).
+		BorderLeft(true).
+		BorderForeground(color).
+		PaddingLeft(1).
+		Render(strings.TrimRight(content, "\n"))
+	return fmt.Sprintf(" %s  %s\n%s", labelText, separator, body)
 }
 
 func renderSystemBlock(content string) string {

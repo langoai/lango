@@ -246,6 +246,57 @@ func TestCPRFullSequenceDiscarded(t *testing.T) {
 	}
 }
 
+func TestOSC11BELSequenceDiscarded(t *testing.T) {
+	m := newTestModel()
+	keys := []tea.KeyMsg{
+		{Type: tea.KeyEscape},
+		{Type: tea.KeyRunes, Runes: []rune{']'}},
+		{Type: tea.KeyRunes, Runes: []rune{'1'}},
+		{Type: tea.KeyRunes, Runes: []rune{'1'}},
+		{Type: tea.KeyRunes, Runes: []rune{';'}},
+		{Type: tea.KeyRunes, Runes: []rune{'r'}},
+		{Type: tea.KeyRunes, Runes: []rune{'g'}},
+		{Type: tea.KeyRunes, Runes: []rune{'b'}},
+		{Type: tea.KeyRunes, Runes: []rune{':'}},
+		{Type: tea.KeyRunes, Runes: []rune{'1'}},
+		{Type: tea.KeyCtrlG},
+	}
+	for _, k := range keys {
+		m.Update(k)
+	}
+
+	if m.cprDetect != cprIdle {
+		t.Fatalf("want cprIdle after OSC BEL sequence, got %v", m.cprDetect)
+	}
+	if got := m.input.Value(); got != "" {
+		t.Fatalf("OSC sequence leaked into input: %q", got)
+	}
+}
+
+func TestOSCSTSequenceDiscarded(t *testing.T) {
+	m := newTestModel()
+	keys := []tea.KeyMsg{
+		{Type: tea.KeyEscape},
+		{Type: tea.KeyRunes, Runes: []rune{']'}},
+		{Type: tea.KeyRunes, Runes: []rune{'1'}},
+		{Type: tea.KeyRunes, Runes: []rune{'1'}},
+		{Type: tea.KeyRunes, Runes: []rune{';'}},
+		{Type: tea.KeyRunes, Runes: []rune{'?'}},
+		{Type: tea.KeyEscape},
+		{Type: tea.KeyRunes, Runes: []rune{'\\'}},
+	}
+	for _, k := range keys {
+		m.Update(k)
+	}
+
+	if m.cprDetect != cprIdle {
+		t.Fatalf("want cprIdle after OSC ST sequence, got %v", m.cprDetect)
+	}
+	if got := m.input.Value(); got != "" {
+		t.Fatalf("OSC ST sequence leaked into input: %q", got)
+	}
+}
+
 func TestCPRFilterIgnoredDuringApproval(t *testing.T) {
 	m := newTestModel()
 	m.state = stateApproving
@@ -254,6 +305,30 @@ func TestCPRFilterIgnoredDuringApproval(t *testing.T) {
 
 	if m.cprDetect != cprIdle {
 		t.Fatalf("CPR filter should remain idle outside composer, got %v", m.cprDetect)
+	}
+}
+
+func TestAltSequencePreserved(t *testing.T) {
+	m := newTestModel()
+	m.Update(tea.KeyMsg{Type: tea.KeyEscape})
+	m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'x'}, Alt: true})
+
+	if got := m.input.Value(); got == "" {
+		t.Fatal("non-OSC/non-CPR buffered sequence should replay into composer input")
+	}
+}
+
+func TestTranscriptBlocksUseVisualSeparators(t *testing.T) {
+	cv := newChatViewModel(80, 24)
+	cv.appendUser("hello")
+	cv.appendAssistant("world")
+
+	content := cv.viewport.View()
+	if !strings.Contains(content, "─") {
+		t.Fatal("transcript blocks should include visible separator lines")
+	}
+	if !strings.Contains(content, "│") {
+		t.Fatal("transcript blocks should include a left accent border")
 	}
 }
 

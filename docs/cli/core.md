@@ -5,6 +5,7 @@
 Run `lango` without arguments to start an interactive terminal coding-agent cockpit. This is the default entry point and provides a transcript-first TUI experience:
 
 - Transcript viewport with assistant markdown reflow on resize
+- Clear visual separation between user, assistant, status, and approval transcript blocks
 - Dedicated turn status strip for ready/streaming/approval/failure states
 - Inline tool approval interrupts (`a` allow / `s` allow session / `d` deny)
 - Slash commands (`/help`, `/clear`, `/model`, `/status`, `/exit`)

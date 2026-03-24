@@ -1,11 +1,13 @@
-### Requirement: Terminal response detection state machine
+## MODIFIED Requirements
+
+### Requirement: CPR sequence detection state machine
 The ChatModel SHALL implement a terminal-response input guard that detects ANSI terminal response sequences before they reach the idle composer input path. The guard SHALL continue to detect CPR sequences in the form `ESC[<digits>;<digits>R`.
 
 #### Scenario: Full CPR sequence discarded
 - **WHEN** the terminal emits a CPR response `ESC[43;84R` as individual `tea.KeyMsg` events while the composer is active
 - **THEN** the entire sequence SHALL be consumed by the guard and no characters SHALL reach the composer textarea
 
-#### Scenario: Terminal response guard scoped to idle input
+#### Scenario: Guard scoped to idle composer input
 - **WHEN** the TUI is in approval state or another non-composer interaction mode
 - **THEN** the terminal-response guard SHALL NOT intercept unrelated key handling for that state
 

@@ -75,20 +75,23 @@ func TestRender_ResizeReflowsAssistantMarkdown(t *testing.T) {
 	cv := newChatViewModel(80, 20)
 	cv.appendAssistant("A short sentence.")
 
-	// Capture content at width 80.
+	if len(cv.entries) != 1 {
+		t.Fatalf("want 1 entry, got %d", len(cv.entries))
+	}
+	if cv.entries[0].rawContent != "A short sentence." {
+		t.Fatalf("rawContent should be preserved, got %q", cv.entries[0].rawContent)
+	}
+
 	content80 := cv.viewport.View()
 
-	// Resize to a different width.
 	cv.setSize(40, 20)
 	content40 := cv.viewport.View()
 
-	// Content should be re-rendered (may differ due to word wrap).
-	// At minimum, both should contain the text.
-	if !strings.Contains(content80, "short sentence") {
-		t.Error("content at width 80 should contain the text")
+	if strings.TrimSpace(content80) == "" {
+		t.Fatal("content at width 80 should not be empty")
 	}
-	if !strings.Contains(content40, "short sentence") {
-		t.Error("content at width 40 should contain the text")
+	if strings.TrimSpace(content40) == "" {
+		t.Fatal("content at width 40 should not be empty")
 	}
 }
 

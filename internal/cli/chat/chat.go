@@ -35,6 +35,9 @@ const (
 	cprGotEsc
 	cprGotBracket
 	cprInParams
+	cprGotOSC
+	cprInOSC
+	cprOscEsc
 )
 
 // cprTimeoutMsg is sent when a CPR detection window expires.
@@ -423,7 +426,9 @@ func truncateSessionKey(key string) string {
 	return key
 }
 
-// filterCPR intercepts ANSI CPR responses before they reach the idle composer.
+// filterCPR intercepts terminal response sequences before they reach the idle
+// composer. It currently discards CPR (`ESC[row;colR`) and OSC responses
+// (`ESC]...BEL` / `ESC]...ESC\`) while replaying non-matching buffered keys.
 func (m *ChatModel) filterCPR(msg tea.KeyMsg) (bool, []tea.Cmd) {
 	switch m.cprDetect {
 	case cprIdle:
@@ -439,6 +444,11 @@ func (m *ChatModel) filterCPR(msg tea.KeyMsg) (bool, []tea.Cmd) {
 	case cprGotEsc:
 		if msg.Type == tea.KeyRunes && len(msg.Runes) == 1 && msg.Runes[0] == '[' {
 			m.cprDetect = cprGotBracket
+			m.cprBuf = append(m.cprBuf, msg)
+			return true, nil
+		}
+		if msg.Type == tea.KeyRunes && len(msg.Runes) == 1 && msg.Runes[0] == ']' {
+			m.cprDetect = cprGotOSC
 			m.cprBuf = append(m.cprBuf, msg)
 			return true, nil
 		}
@@ -461,6 +471,31 @@ func (m *ChatModel) filterCPR(msg tea.KeyMsg) (bool, []tea.Cmd) {
 		}
 		cmds := m.cprFlush()
 		return false, cmds
+
+	case cprGotOSC, cprInOSC:
+		if msg.Type == tea.KeyCtrlG || (msg.Type == tea.KeyRunes && len(msg.Runes) == 1 && msg.Runes[0] == '\a') {
+			m.cprDetect = cprIdle
+			m.cprBuf = m.cprBuf[:0]
+			return true, nil
+		}
+		if msg.Type == tea.KeyEscape {
+			m.cprDetect = cprOscEsc
+			m.cprBuf = append(m.cprBuf, msg)
+			return true, nil
+		}
+		m.cprDetect = cprInOSC
+		m.cprBuf = append(m.cprBuf, msg)
+		return true, nil
+
+	case cprOscEsc:
+		if msg.Type == tea.KeyRunes && len(msg.Runes) == 1 && msg.Runes[0] == '\\' {
+			m.cprDetect = cprIdle
+			m.cprBuf = m.cprBuf[:0]
+			return true, nil
+		}
+		m.cprDetect = cprInOSC
+		m.cprBuf = append(m.cprBuf, msg)
+		return true, nil
 	}
 
 	return false, nil
