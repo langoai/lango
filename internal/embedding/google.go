@@ -3,6 +3,7 @@ package embedding
 import (
 	"context"
 	"fmt"
+	"time"
 
 	"google.golang.org/genai"
 )
@@ -23,7 +24,10 @@ func NewGoogleProvider(apiKey string, model string, dimensions int) (*GoogleProv
 		dimensions = 768
 	}
 
-	client, err := genai.NewClient(context.Background(), &genai.ClientConfig{
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	client, err := genai.NewClient(ctx, &genai.ClientConfig{
 		APIKey:  apiKey,
 		Backend: genai.BackendGeminiAPI,
 	})

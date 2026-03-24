@@ -95,13 +95,19 @@ lango onboard
 ### Run
 
 ```bash
+# Interactive TUI chat (default entry point)
+lango
+
+# Or start the full gateway server with channels & automation
 lango serve
 
 # Validate configuration
 lango config validate
 ```
 
-`lango serve` performs graceful shutdown on the first `Ctrl+C`/`SIGTERM` with a 10-second deadline. If shutdown is already in progress, a second `Ctrl+C` forces immediate exit with code `130`.
+Running `lango` without arguments starts an interactive terminal coding-agent cockpit with a transcript-first layout, turn-state visibility, inline approval interrupts, stable markdown rendering, clearer user/assistant separation, and slash commands.
+
+`lango serve` starts the full gateway server with channels, automation, and network components. It performs graceful shutdown on the first `Ctrl+C`/`SIGTERM` with a 10-second deadline. If shutdown is already in progress, a second `Ctrl+C` forces immediate exit with code `130`.
 
 The onboard wizard guides you through 5 steps:
 
@@ -116,6 +122,7 @@ For the full configuration editor with all options, use `lango settings`.
 ### CLI Commands
 
 ```
+lango                            Interactive TUI chat (default)
 lango serve                      Start the gateway server
 lango version                    Print version and build info
 lango health [--port N]          Check gateway health (default port: 18789)

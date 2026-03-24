@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"syscall"
@@ -13,13 +14,17 @@ import (
 
 	"github.com/spf13/cobra"
 
+	tea "github.com/charmbracelet/bubbletea"
+
 	"github.com/langoai/lango/internal/app"
+	"github.com/langoai/lango/internal/approval"
 	"github.com/langoai/lango/internal/background"
 	"github.com/langoai/lango/internal/bootstrap"
 	clia2a "github.com/langoai/lango/internal/cli/a2a"
 	cliagent "github.com/langoai/lango/internal/cli/agent"
 	cliapproval "github.com/langoai/lango/internal/cli/approval"
 	clibg "github.com/langoai/lango/internal/cli/bg"
+	"github.com/langoai/lango/internal/cli/chat"
 	"github.com/langoai/lango/internal/cli/cliboot"
 	cliconfigcmd "github.com/langoai/lango/internal/cli/configcmd"
 	clicontract "github.com/langoai/lango/internal/cli/contract"
@@ -74,6 +79,9 @@ func main() {
 		Use:   "lango",
 		Short: "Lango - Fast AI Agent in Go",
 		Long:  `Lango is a high-performance AI agent built with Go, supporting multiple channels and tools.`,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return runChat()
+		},
 	}
 
 	rootCmd.AddGroup(
@@ -201,6 +209,74 @@ func main() {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
 	}
+}
+
+func runChat() error {
+	boot, err := cliboot.BootResult()
+	if err != nil {
+		return fmt.Errorf("bootstrap: %w", err)
+	}
+	defer boot.DBClient.Close()
+
+	cfg := boot.Config
+	// TUI mode: redirect logging to file (stderr output corrupts alt-screen TUI).
+	logPath := filepath.Join(cfg.DataRoot, "chat.log")
+	if err := logging.Init(logging.LogConfig{
+		Level:      cfg.Logging.Level,
+		Format:     cfg.Logging.Format,
+		OutputPath: logPath,
+	}); err != nil {
+		return fmt.Errorf("init logging: %w", err)
+	}
+	defer func() { _ = logging.Sync() }()
+
+	tui.SetProfile(boot.ProfileName)
+
+	fmt.Fprint(os.Stderr, tui.Banner())
+	fmt.Fprintf(os.Stderr, "\n  Logs: %s\n", logPath)
+	fmt.Fprintln(os.Stderr, "  Initializing...")
+
+	// Create app in local-chat mode (skip gateway/channels/automation lifecycle).
+	application, err := app.New(boot, app.WithLocalChat())
+	if err != nil {
+		return fmt.Errorf("create application: %w", err)
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	if err := application.Start(ctx); err != nil {
+		return fmt.Errorf("start application: %w", err)
+	}
+	defer func() {
+		shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer shutdownCancel()
+		_ = application.Stop(shutdownCtx)
+	}()
+
+	sessionKey := fmt.Sprintf("tui-%d", time.Now().UnixMilli())
+
+	model := chat.New(chat.Deps{
+		TurnRunner: application.TurnRunner,
+		Config:     cfg,
+		SessionKey: sessionKey,
+	})
+
+	p := tea.NewProgram(model, tea.WithAltScreen(), tea.WithMouseCellMotion())
+	model.SetProgram(p)
+
+	// Override TTY fallback with TUI approval provider.
+	if composite, ok := application.ApprovalProvider.(*approval.CompositeProvider); ok {
+		composite.SetTTYFallback(chat.NewTUIApprovalProvider(func(msg interface{}) {
+			p.Send(msg)
+		}))
+	}
+
+	if _, err := p.Run(); err != nil {
+		return fmt.Errorf("TUI: %w", err)
+	}
+
+	return nil
 }
 
 func serveCmd() *cobra.Command {

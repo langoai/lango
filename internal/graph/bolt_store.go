@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	bolt "go.etcd.io/bbolt"
 )
@@ -47,7 +48,7 @@ func NewBoltStore(path string) (*BoltStore, error) {
 		return nil, fmt.Errorf("create db directory: %w", err)
 	}
 
-	db, err := bolt.Open(path, 0o600, nil)
+	db, err := bolt.Open(path, 0o600, &bolt.Options{Timeout: 3 * time.Second})
 	if err != nil {
 		return nil, fmt.Errorf("open bolt db: %w", err)
 	}

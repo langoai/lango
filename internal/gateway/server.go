@@ -551,7 +551,6 @@ func (s *Server) setupRoutes() {
 
 		if s.config.HTTPEnabled {
 			r.Get("/status", s.handleStatus)
-			r.Get("/playground", s.servePlayground)
 		}
 		if s.config.WebSocketEnabled {
 			r.Get("/ws", s.handleWebSocket)

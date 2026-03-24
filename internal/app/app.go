@@ -73,7 +73,12 @@ func (s *cleanupStack) clear() {
 }
 
 // New creates a new application instance from a bootstrap result.
-func New(boot *bootstrap.Result) (*App, error) {
+func New(boot *bootstrap.Result, opts ...AppOption) (*App, error) {
+	var options appOptions
+	for _, o := range opts {
+		o(&options)
+	}
+
 	cfg := boot.Config
 	bus := eventbus.New()
 	ctx, cancel := context.WithCancel(context.Background())
@@ -83,6 +88,11 @@ func New(boot *bootstrap.Result) (*App, error) {
 		registry: lifecycle.NewRegistry(),
 		ctx:      ctx,
 		cancel:   cancel,
+	}
+
+	// LocalChat mode: skip Network and Automation lifecycle components.
+	if options.mode == AppModeLocalChat {
+		app.registry.SetMaxPriority(lifecycle.PriorityBuffer)
 	}
 
 	// ── Phase A: Module Build ──
@@ -109,6 +119,8 @@ func New(boot *bootstrap.Result) (*App, error) {
 	// On failure, cleanups run in reverse order (bootstrap pipeline pattern).
 	// On success, the stack is discarded — ownership transfers to the lifecycle registry.
 	var cleanups cleanupStack
+
+	logger().Info("Phase B: starting post-build wiring")
 
 	// B1. Populate app fields from resolver.
 	populateAppFields(app, resolver)
@@ -241,9 +253,11 @@ func New(boot *bootstrap.Result) (*App, error) {
 	// B7. Post-agent wiring.
 	wirePostAgent(app, resolver, tools, bus, composite, grantStore, boot, auth)
 
-	// B8. Channels.
-	if err := app.initChannels(); err != nil {
-		logger().Errorw("initialize channels", "error", err)
+	// B8. Channels (skip in local-chat mode).
+	if options.mode != AppModeLocalChat {
+		if err := app.initChannels(); err != nil {
+			logger().Errorw("initialize channels", "error", err)
+		}
 	}
 
 	// B9. Memory compaction + turn callbacks.
@@ -253,7 +267,9 @@ func New(boot *bootstrap.Result) (*App, error) {
 	for _, entry := range buildResult.Components {
 		app.registry.Register(entry.Component, entry.Priority)
 	}
-	registerPostBuildLifecycle(app)
+	if options.mode != AppModeLocalChat {
+		registerPostBuildLifecycle(app)
+	}
 
 	// Phase B succeeded — discard rollback cleanups; lifecycle registry owns everything now.
 	cleanups.clear()

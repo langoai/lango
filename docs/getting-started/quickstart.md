@@ -97,12 +97,12 @@ Start the agent server:
 
 Your agent is now running and connected to your configured channels. Send a message through Telegram, Discord, or Slack to start a conversation.
 
-!!! tip "Try the Playground"
+!!! tip "Interactive TUI Chat"
 
-    Open the built-in WebChat Playground to test your agent directly in the browser:
+    Run `lango` without arguments to start the interactive terminal coding-agent cockpit:
 
-    ```
-    http://localhost:18789/playground
+    ```bash
+    lango
     ```
 
 !!! info "Health Check"

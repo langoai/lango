@@ -189,3 +189,30 @@ type Channel interface {
 	Start(ctx context.Context) error
 	Stop(ctx context.Context) error
 }
+
+// AppMode determines the application operating mode.
+type AppMode int
+
+const (
+	// AppModeServer is the default mode — starts all components including
+	// gateway, channels, automation, and network.
+	AppModeServer AppMode = iota
+
+	// AppModeLocalChat starts only core components (Infra, Core, Buffer)
+	// and skips network/automation/gateway/channel lifecycle. Used for
+	// interactive TUI chat.
+	AppModeLocalChat
+)
+
+// AppOption configures optional behavior for App construction.
+type AppOption func(*appOptions)
+
+type appOptions struct {
+	mode AppMode
+}
+
+// WithLocalChat creates an App in local-chat mode. Network, automation,
+// gateway, and channel lifecycle components are not started.
+func WithLocalChat() AppOption {
+	return func(o *appOptions) { o.mode = AppModeLocalChat }
+}

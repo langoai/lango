@@ -1,0 +1,239 @@
+package chat
+
+import (
+	"fmt"
+	"strings"
+
+	"github.com/charmbracelet/bubbles/viewport"
+	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/lipgloss"
+
+	"github.com/langoai/lango/internal/cli/tui"
+)
+
+type transcriptItemKind string
+
+const (
+	itemUser      transcriptItemKind = "user"
+	itemAssistant transcriptItemKind = "assistant"
+	itemSystem    transcriptItemKind = "system"
+	itemStatus    transcriptItemKind = "status"
+	itemApproval  transcriptItemKind = "approval"
+)
+
+type transcriptItem struct {
+	kind       transcriptItemKind
+	content    string
+	rawContent string
+	meta       map[string]string
+}
+
+// chatViewModel manages the scrollable chat transcript viewport.
+type chatViewModel struct {
+	viewport  viewport.Model
+	entries   []transcriptItem
+	streamBuf strings.Builder
+	width     int
+}
+
+func newChatViewModel(width, height int) chatViewModel {
+	vp := viewport.New(width, height)
+	vp.SetContent("")
+	return chatViewModel{
+		viewport: vp,
+		width:    width,
+	}
+}
+
+func (m chatViewModel) Update(msg tea.Msg) (chatViewModel, tea.Cmd) {
+	var cmd tea.Cmd
+	m.viewport, cmd = m.viewport.Update(msg)
+	return m, cmd
+}
+
+func (m chatViewModel) View() string {
+	return m.viewport.View()
+}
+
+func (m *chatViewModel) appendUser(content string) {
+	if strings.TrimSpace(content) == "" {
+		return
+	}
+	m.entries = append(m.entries, transcriptItem{
+		kind:    itemUser,
+		content: strings.TrimSpace(content),
+	})
+	m.render()
+}
+
+func (m *chatViewModel) appendAssistant(raw string) {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return
+	}
+	m.entries = append(m.entries, transcriptItem{
+		kind:       itemAssistant,
+		content:    strings.TrimRight(renderMarkdown(raw, m.contentWidth()), "\n"),
+		rawContent: raw,
+	})
+	m.render()
+}
+
+func (m *chatViewModel) appendSystem(content string) {
+	if strings.TrimSpace(content) == "" {
+		return
+	}
+	m.entries = append(m.entries, transcriptItem{
+		kind:    itemSystem,
+		content: strings.TrimSpace(content),
+	})
+	m.render()
+}
+
+func (m *chatViewModel) appendStatus(content string, tone string) {
+	if strings.TrimSpace(content) == "" {
+		return
+	}
+	m.entries = append(m.entries, transcriptItem{
+		kind:    itemStatus,
+		content: strings.TrimSpace(content),
+		meta:    map[string]string{"tone": tone},
+	})
+	m.render()
+}
+
+func (m *chatViewModel) appendApprovalEvent(content string, outcome string) {
+	if strings.TrimSpace(content) == "" {
+		return
+	}
+	m.entries = append(m.entries, transcriptItem{
+		kind:    itemApproval,
+		content: strings.TrimSpace(content),
+		meta:    map[string]string{"outcome": outcome},
+	})
+	m.render()
+}
+
+func (m *chatViewModel) appendChunk(chunk string) {
+	m.streamBuf.WriteString(chunk)
+	m.render()
+}
+
+func (m *chatViewModel) finalizeStream() {
+	raw := m.streamBuf.String()
+	m.streamBuf.Reset()
+	m.appendAssistant(raw)
+}
+
+func (m *chatViewModel) lastAssistantRaw() string {
+	for i := len(m.entries) - 1; i >= 0; i-- {
+		if m.entries[i].kind == itemAssistant {
+			return strings.TrimSpace(m.entries[i].rawContent)
+		}
+	}
+	return ""
+}
+
+func (m *chatViewModel) clear() {
+	m.entries = nil
+	m.streamBuf.Reset()
+	m.viewport.SetContent("")
+	m.viewport.GotoTop()
+}
+
+func (m *chatViewModel) setSize(width, height int) {
+	m.width = width
+	m.viewport.Width = width
+	m.viewport.Height = height
+	m.render()
+}
+
+func (m *chatViewModel) contentWidth() int {
+	w := m.width - 2
+	if w < 10 {
+		w = 10
+	}
+	return w
+}
+
+func (m *chatViewModel) render() {
+	var blocks []string
+
+	for _, entry := range m.entries {
+		switch entry.kind {
+		case itemUser:
+			blocks = append(blocks, renderTranscriptBlock("You", entry.content, tui.Highlight))
+		case itemAssistant:
+			content := entry.content
+			if entry.rawContent != "" {
+				content = strings.TrimRight(renderMarkdown(entry.rawContent, m.contentWidth()), "\n")
+			}
+			blocks = append(blocks, renderTranscriptBlock("Lango", content, tui.Primary))
+		case itemSystem:
+			blocks = append(blocks, renderSystemBlock(entry.content))
+		case itemStatus:
+			blocks = append(blocks, renderStatusBlock(entry.content, entry.meta["tone"]))
+		case itemApproval:
+			blocks = append(blocks, renderApprovalEventBlock(entry.content, entry.meta["outcome"]))
+		}
+	}
+
+	if m.streamBuf.Len() > 0 {
+		blocks = append(blocks, renderTranscriptBlock("Lango", m.streamBuf.String(), tui.Primary))
+	}
+
+	m.viewport.SetContent(strings.Join(blocks, "\n\n"))
+	m.viewport.GotoBottom()
+}
+
+func renderTranscriptBlock(label, content string, color lipgloss.Color) string {
+	labelText := lipgloss.NewStyle().
+		Bold(true).
+		Foreground(color).
+		Render(label)
+	separatorWidth := min(16, max(lipgloss.Width(label)+6, 8))
+	separator := lipgloss.NewStyle().
+		Foreground(color).
+		Render(strings.Repeat("─", separatorWidth))
+	body := lipgloss.NewStyle().
+		BorderStyle(lipgloss.NormalBorder()).
+		BorderLeft(true).
+		BorderForeground(color).
+		PaddingLeft(1).
+		Render(strings.TrimRight(content, "\n"))
+	return fmt.Sprintf(" %s  %s\n%s", labelText, separator, body)
+}
+
+func renderSystemBlock(content string) string {
+	label := lipgloss.NewStyle().Bold(true).Foreground(tui.Muted).Render("System")
+	body := lipgloss.NewStyle().PaddingLeft(1).Render(strings.TrimRight(content, "\n"))
+	return fmt.Sprintf(" %s\n%s", label, body)
+}
+
+func renderStatusBlock(content, tone string) string {
+	color := tui.Muted
+	switch tone {
+	case "success":
+		color = tui.Success
+	case "warning":
+		color = tui.Warning
+	case "error":
+		color = tui.Error
+	}
+	label := lipgloss.NewStyle().Bold(true).Foreground(color).Render("Status")
+	body := lipgloss.NewStyle().Foreground(color).Render(content)
+	return fmt.Sprintf(" %s  %s", label, body)
+}
+
+func renderApprovalEventBlock(content, outcome string) string {
+	color := tui.Warning
+	switch outcome {
+	case "approved", "session":
+		color = tui.Success
+	case "denied":
+		color = tui.Error
+	}
+	label := lipgloss.NewStyle().Bold(true).Foreground(color).Render("Approval")
+	body := lipgloss.NewStyle().Foreground(color).Render(content)
+	return fmt.Sprintf(" %s  %s", label, body)
+}
