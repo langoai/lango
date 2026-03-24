@@ -27,6 +27,21 @@ type Deps struct {
 	SessionKey string
 }
 
+// cprState tracks the CPR (Cursor Position Report) filter state machine.
+// Some terminals emit ESC[row;colR sequences that leak into textarea input
+// when alt-screen/mouse mode is active.
+type cprState int
+
+const (
+	cprIdle     cprState = iota
+	cprGotEsc            // received ESC, waiting for '['
+	cprGotBracket        // received ESC[, waiting for digits/';'
+	cprInParams          // accumulating digits/';', waiting for 'R'
+)
+
+// cprTimeoutMsg is sent when a CPR detection window expires.
+type cprTimeoutMsg struct{}
+
 // ChatModel is the root bubbletea model for the interactive TUI chat.
 type ChatModel struct {
 	// Dependencies
@@ -56,6 +71,10 @@ type ChatModel struct {
 
 	// Track Ctrl+C double-tap for quit
 	lastCtrlC time.Time
+
+	// CPR filter state machine — blocks ESC[row;colR sequences from textarea.
+	cprDetect cprState
+	cprBuf    []tea.KeyMsg
 }
 
 // New creates a new ChatModel with the given dependencies.
@@ -95,7 +114,23 @@ func (m *ChatModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.recalcLayout()
 		return m, nil
 
+	case cprTimeoutMsg:
+		// CPR detection window expired — flush buffered keys as real input.
+		if m.cprDetect != cprIdle {
+			cmds = append(cmds, m.cprFlush()...)
+		}
+		return m, tea.Batch(cmds...)
+
 	case tea.KeyMsg:
+		// Run CPR filter before normal key handling.
+		filtered, filterCmds := m.filterCPR(msg)
+		if len(filterCmds) > 0 {
+			cmds = append(cmds, filterCmds...)
+		}
+		if filtered {
+			return m, tea.Batch(cmds...)
+		}
+
 		cmd := m.handleKey(msg)
 		if cmd != nil {
 			return m, cmd
@@ -397,4 +432,83 @@ func truncateSessionKey(key string) string {
 		return key[:20] + "..."
 	}
 	return key
+}
+
+// cprTimeout is how long we wait after ESC before deciding it's not a CPR sequence.
+const cprTimeout = 50 * time.Millisecond
+
+// filterCPR implements a state machine that intercepts ANSI CPR responses
+// (ESC[row;colR) that some terminals emit when alt-screen/mouse mode is active.
+// Returns (filtered bool, cmds). If filtered is true, the key was consumed by the
+// filter and should NOT be passed to handleKey/input.
+func (m *ChatModel) filterCPR(msg tea.KeyMsg) (bool, []tea.Cmd) {
+	switch m.cprDetect {
+	case cprIdle:
+		if msg.Type == tea.KeyEscape {
+			m.cprDetect = cprGotEsc
+			m.cprBuf = append(m.cprBuf[:0], msg)
+			// Start timeout — if no '[' follows quickly, flush as real Esc.
+			return true, []tea.Cmd{tea.Tick(cprTimeout, func(time.Time) tea.Msg {
+				return cprTimeoutMsg{}
+			})}
+		}
+		return false, nil
+
+	case cprGotEsc:
+		if msg.Type == tea.KeyRunes && len(msg.Runes) == 1 && msg.Runes[0] == '[' {
+			m.cprDetect = cprGotBracket
+			m.cprBuf = append(m.cprBuf, msg)
+			return true, nil
+		}
+		// Not a CPR — flush buffered Esc + pass current key through.
+		cmds := m.cprFlush()
+		return false, cmds
+
+	case cprGotBracket, cprInParams:
+		if msg.Type == tea.KeyRunes && len(msg.Runes) == 1 {
+			r := msg.Runes[0]
+			if (r >= '0' && r <= '9') || r == ';' {
+				m.cprDetect = cprInParams
+				m.cprBuf = append(m.cprBuf, msg)
+				return true, nil
+			}
+			if r == 'R' && m.cprDetect == cprInParams {
+				// Full CPR sequence consumed — discard entire buffer.
+				m.cprDetect = cprIdle
+				m.cprBuf = m.cprBuf[:0]
+				return true, nil
+			}
+		}
+		// Not a CPR — flush buffered keys + pass current key through.
+		cmds := m.cprFlush()
+		return false, cmds
+	}
+
+	return false, nil
+}
+
+// cprFlush replays all buffered CPR keys through the normal input path
+// and resets the CPR state machine.
+func (m *ChatModel) cprFlush() []tea.Cmd {
+	m.cprDetect = cprIdle
+	buf := make([]tea.KeyMsg, len(m.cprBuf))
+	copy(buf, m.cprBuf)
+	m.cprBuf = m.cprBuf[:0]
+
+	var cmds []tea.Cmd
+	for _, k := range buf {
+		cmd := m.handleKey(k)
+		if cmd != nil {
+			cmds = append(cmds, cmd)
+		}
+		// Also forward to input component if idle.
+		if m.state == stateIdle {
+			var inputCmd tea.Cmd
+			m.input, inputCmd = m.input.Update(k)
+			if inputCmd != nil {
+				cmds = append(cmds, inputCmd)
+			}
+		}
+	}
+	return cmds
 }

@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"syscall"
@@ -218,12 +219,12 @@ func runChat() error {
 	defer boot.DBClient.Close()
 
 	cfg := boot.Config
-	// TUI mode: redirect logging to stderr (bubbletea owns stdout)
+	// TUI mode: redirect logging to file (stderr output corrupts alt-screen TUI).
+	logPath := filepath.Join(cfg.DataRoot, "chat.log")
 	if err := logging.Init(logging.LogConfig{
 		Level:      cfg.Logging.Level,
 		Format:     cfg.Logging.Format,
-		OutputPath: cfg.Logging.OutputPath,
-		Writer:     os.Stderr,
+		OutputPath: logPath,
 	}); err != nil {
 		return fmt.Errorf("init logging: %w", err)
 	}
@@ -232,7 +233,8 @@ func runChat() error {
 	tui.SetProfile(boot.ProfileName)
 
 	fmt.Fprint(os.Stderr, tui.Banner())
-	fmt.Fprintln(os.Stderr, "\n  Initializing...")
+	fmt.Fprintf(os.Stderr, "\n  Logs: %s\n", logPath)
+	fmt.Fprintln(os.Stderr, "  Initializing...")
 
 	// Create app in local-chat mode (skip gateway/channels/automation lifecycle).
 	application, err := app.New(boot, app.WithLocalChat())
@@ -260,7 +262,7 @@ func runChat() error {
 		SessionKey: sessionKey,
 	})
 
-	p := tea.NewProgram(model, tea.WithAltScreen())
+	p := tea.NewProgram(model, tea.WithAltScreen(), tea.WithMouseCellMotion())
 	model.SetProgram(p)
 
 	// Override TTY fallback with TUI approval provider.

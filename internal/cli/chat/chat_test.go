@@ -5,6 +5,7 @@ import (
 	"strings"
 	"testing"
 
+	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 
 	"github.com/langoai/lango/internal/approval"
@@ -257,3 +258,124 @@ func TestRenderBars_MinimalWidth(t *testing.T) {
 
 // approval import needed for the test
 var _ = tui.Error // ensure tui import is used
+
+// --- CPR filter tests ---
+
+func TestCPR_FullSequenceDiscarded(t *testing.T) {
+	m := newTestModel()
+
+	// Simulate CPR response: ESC [ 4 3 ; 8 4 R
+	keys := []tea.KeyMsg{
+		{Type: tea.KeyEscape},
+		{Type: tea.KeyRunes, Runes: []rune{'['}},
+		{Type: tea.KeyRunes, Runes: []rune{'4'}},
+		{Type: tea.KeyRunes, Runes: []rune{'3'}},
+		{Type: tea.KeyRunes, Runes: []rune{';'}},
+		{Type: tea.KeyRunes, Runes: []rune{'8'}},
+		{Type: tea.KeyRunes, Runes: []rune{'4'}},
+		{Type: tea.KeyRunes, Runes: []rune{'R'}},
+	}
+
+	for _, k := range keys {
+		m.Update(k)
+	}
+
+	// CPR state should be back to idle.
+	if m.cprDetect != cprIdle {
+		t.Errorf("want cprIdle after full CPR, got %d", m.cprDetect)
+	}
+	// Buffer should be empty.
+	if len(m.cprBuf) != 0 {
+		t.Errorf("want empty cprBuf, got %d items", len(m.cprBuf))
+	}
+	// Input should be empty (CPR chars not inserted).
+	if v := m.input.Value(); v != "" {
+		t.Errorf("CPR leaked into input: %q", v)
+	}
+}
+
+func TestCPR_NonCPRSequenceFlushes(t *testing.T) {
+	m := newTestModel()
+
+	// ESC followed by a non-'[' char should flush both keys.
+	keys := []tea.KeyMsg{
+		{Type: tea.KeyEscape},
+		{Type: tea.KeyRunes, Runes: []rune{'a'}},
+	}
+
+	for _, k := range keys {
+		m.Update(k)
+	}
+
+	// State should be reset.
+	if m.cprDetect != cprIdle {
+		t.Errorf("want cprIdle after non-CPR, got %d", m.cprDetect)
+	}
+	if len(m.cprBuf) != 0 {
+		t.Errorf("want empty cprBuf after flush, got %d items", len(m.cprBuf))
+	}
+}
+
+func TestCPR_PartialSequenceFlushedOnNonDigit(t *testing.T) {
+	m := newTestModel()
+
+	// ESC [ 4 X — 'X' is not a digit, ';', or 'R', so the sequence should flush.
+	keys := []tea.KeyMsg{
+		{Type: tea.KeyEscape},
+		{Type: tea.KeyRunes, Runes: []rune{'['}},
+		{Type: tea.KeyRunes, Runes: []rune{'4'}},
+		{Type: tea.KeyRunes, Runes: []rune{'X'}},
+	}
+
+	for _, k := range keys {
+		m.Update(k)
+	}
+
+	if m.cprDetect != cprIdle {
+		t.Errorf("want cprIdle after partial flush, got %d", m.cprDetect)
+	}
+	if len(m.cprBuf) != 0 {
+		t.Errorf("want empty cprBuf, got %d items", len(m.cprBuf))
+	}
+}
+
+func TestCPR_TimeoutFlushes(t *testing.T) {
+	m := newTestModel()
+
+	// Send ESC — should transition to cprGotEsc.
+	m.Update(tea.KeyMsg{Type: tea.KeyEscape})
+	if m.cprDetect != cprGotEsc {
+		t.Fatalf("want cprGotEsc, got %d", m.cprDetect)
+	}
+
+	// Simulate timeout message.
+	m.Update(cprTimeoutMsg{})
+
+	// Should be flushed back to idle.
+	if m.cprDetect != cprIdle {
+		t.Errorf("want cprIdle after timeout, got %d", m.cprDetect)
+	}
+	if len(m.cprBuf) != 0 {
+		t.Errorf("want empty cprBuf after timeout, got %d items", len(m.cprBuf))
+	}
+}
+
+func TestCPR_RAtBracketStateIgnored(t *testing.T) {
+	// ESC [ R — 'R' at cprGotBracket (no digits yet) should NOT be treated as CPR.
+	m := newTestModel()
+
+	keys := []tea.KeyMsg{
+		{Type: tea.KeyEscape},
+		{Type: tea.KeyRunes, Runes: []rune{'['}},
+		{Type: tea.KeyRunes, Runes: []rune{'R'}},
+	}
+
+	for _, k := range keys {
+		m.Update(k)
+	}
+
+	// Should have flushed (R without params is not a CPR).
+	if m.cprDetect != cprIdle {
+		t.Errorf("want cprIdle, got %d", m.cprDetect)
+	}
+}

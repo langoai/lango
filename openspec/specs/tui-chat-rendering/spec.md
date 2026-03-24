@@ -108,3 +108,29 @@ The `contentWidth()` method SHALL return `max(width - 2, 10)` as the available w
 #### Scenario: Minimum clamp
 - **WHEN** viewport width is 5
 - **THEN** contentWidth() SHALL return 10
+
+### Requirement: Mouse wheel scrolling support
+The bubbletea program SHALL be created with `tea.WithMouseCellMotion()` to enable mouse event delivery. The viewport SHALL receive mouse wheel events for scrolling through chat history.
+
+#### Scenario: Mouse wheel scrolls viewport
+- **WHEN** the user scrolls the mouse wheel over the chat viewport
+- **THEN** the viewport content SHALL scroll accordingly (up for wheel-up, down for wheel-down)
+
+#### Scenario: No hover event noise
+- **WHEN** the user moves the mouse without clicking or scrolling
+- **THEN** no mouse motion events SHALL be delivered (WithMouseCellMotion, not WithMouseAllMotion)
+
+### Requirement: TUI log file redirect
+In TUI chat mode, logging SHALL be redirected to a file at `<DataRoot>/chat.log` instead of stderr. The log file path SHALL be displayed to the user during TUI initialization.
+
+#### Scenario: No log corruption on screen
+- **WHEN** async goroutines emit WARN or INFO logs during TUI operation
+- **THEN** the log output SHALL NOT appear on the alt-screen TUI display
+
+#### Scenario: Log file path displayed
+- **WHEN** the TUI starts and displays the initialization banner
+- **THEN** the log file path SHALL be printed to stderr before entering alt-screen mode
+
+#### Scenario: Logs written to file
+- **WHEN** any component writes log output during a TUI session
+- **THEN** the log entry SHALL be appended to `<DataRoot>/chat.log`
