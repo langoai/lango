@@ -14,8 +14,8 @@ func TestAppendAssistant_PreservesRawContent(t *testing.T) {
 		t.Fatalf("want 1 entry, got %d", len(cv.entries))
 	}
 	entry := cv.entries[0]
-	if entry.role != "assistant" {
-		t.Errorf("want role=assistant, got %q", entry.role)
+	if entry.kind != itemAssistant {
+		t.Errorf("want assistant kind, got %q", entry.kind)
 	}
 	if entry.rawContent != raw {
 		t.Errorf("want rawContent=%q, got %q", raw, entry.rawContent)
@@ -117,5 +117,21 @@ func TestRender_InFlightStreamingBlock(t *testing.T) {
 	content := cv.viewport.View()
 	if !strings.Contains(content, "partial response") {
 		t.Error("in-flight streaming content should be visible")
+	}
+}
+
+func TestAppendStatusAndApprovalEventKinds(t *testing.T) {
+	cv := newChatViewModel(80, 20)
+	cv.appendStatus("working", "info")
+	cv.appendApprovalEvent("approval requested", "requested")
+
+	if len(cv.entries) != 2 {
+		t.Fatalf("want 2 entries, got %d", len(cv.entries))
+	}
+	if cv.entries[0].kind != itemStatus {
+		t.Fatalf("first item should be status, got %q", cv.entries[0].kind)
+	}
+	if cv.entries[1].kind != itemApproval {
+		t.Fatalf("second item should be approval, got %q", cv.entries[1].kind)
 	}
 }

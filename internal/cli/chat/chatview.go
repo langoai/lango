@@ -11,18 +11,27 @@ import (
 	"github.com/langoai/lango/internal/cli/tui"
 )
 
-// chatEntry represents a single message in the chat history.
-type chatEntry struct {
-	role       string // "user", "assistant", "system"
-	content    string // rendered content (display cache)
-	rawContent string // original markdown (assistant only, for resize reflow)
+type transcriptItemKind string
+
+const (
+	itemUser      transcriptItemKind = "user"
+	itemAssistant transcriptItemKind = "assistant"
+	itemSystem    transcriptItemKind = "system"
+	itemStatus    transcriptItemKind = "status"
+	itemApproval  transcriptItemKind = "approval"
+)
+
+type transcriptItem struct {
+	kind       transcriptItemKind
+	content    string
+	rawContent string
+	meta       map[string]string
 }
 
-// chatViewModel manages the scrollable chat history viewport.
+// chatViewModel manages the scrollable chat transcript viewport.
 type chatViewModel struct {
-	viewport viewport.Model
-	entries  []chatEntry
-	// streamBuf accumulates text chunks during streaming.
+	viewport  viewport.Model
+	entries   []transcriptItem
 	streamBuf strings.Builder
 	width     int
 }
@@ -46,57 +55,85 @@ func (m chatViewModel) View() string {
 	return m.viewport.View()
 }
 
-// appendUser adds a user message and re-renders the viewport.
 func (m *chatViewModel) appendUser(content string) {
-	m.entries = append(m.entries, chatEntry{role: "user", content: content})
-	m.render()
-}
-
-// appendSystem adds a system/info message and re-renders the viewport.
-func (m *chatViewModel) appendSystem(content string) {
-	m.entries = append(m.entries, chatEntry{role: "system", content: content})
-	m.render()
-}
-
-// appendChunk appends a streaming text chunk to the buffer and re-renders.
-func (m *chatViewModel) appendChunk(chunk string) {
-	m.streamBuf.WriteString(chunk)
-	m.render()
-}
-
-// appendAssistant adds an assistant message with raw markdown preserved for
-// resize reflow. All assistant messages must go through this helper.
-func (m *chatViewModel) appendAssistant(raw string) {
-	if strings.TrimSpace(raw) == "" {
+	if strings.TrimSpace(content) == "" {
 		return
 	}
-	rendered := renderMarkdown(raw, m.contentWidth())
-	m.entries = append(m.entries, chatEntry{
-		role:       "assistant",
-		content:    strings.TrimRight(rendered, "\n"),
+	m.entries = append(m.entries, transcriptItem{
+		kind:    itemUser,
+		content: strings.TrimSpace(content),
+	})
+	m.render()
+}
+
+func (m *chatViewModel) appendAssistant(raw string) {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return
+	}
+	m.entries = append(m.entries, transcriptItem{
+		kind:       itemAssistant,
+		content:    strings.TrimRight(renderMarkdown(raw, m.contentWidth()), "\n"),
 		rawContent: raw,
 	})
 	m.render()
 }
 
-// finalizeStream commits the streamed buffer as an assistant message and
-// clears the streaming buffer.
+func (m *chatViewModel) appendSystem(content string) {
+	if strings.TrimSpace(content) == "" {
+		return
+	}
+	m.entries = append(m.entries, transcriptItem{
+		kind:    itemSystem,
+		content: strings.TrimSpace(content),
+	})
+	m.render()
+}
+
+func (m *chatViewModel) appendStatus(content string, tone string) {
+	if strings.TrimSpace(content) == "" {
+		return
+	}
+	m.entries = append(m.entries, transcriptItem{
+		kind:    itemStatus,
+		content: strings.TrimSpace(content),
+		meta:    map[string]string{"tone": tone},
+	})
+	m.render()
+}
+
+func (m *chatViewModel) appendApprovalEvent(content string, outcome string) {
+	if strings.TrimSpace(content) == "" {
+		return
+	}
+	m.entries = append(m.entries, transcriptItem{
+		kind:    itemApproval,
+		content: strings.TrimSpace(content),
+		meta:    map[string]string{"outcome": outcome},
+	})
+	m.render()
+}
+
+func (m *chatViewModel) appendChunk(chunk string) {
+	m.streamBuf.WriteString(chunk)
+	m.render()
+}
+
 func (m *chatViewModel) finalizeStream() {
 	raw := m.streamBuf.String()
 	m.streamBuf.Reset()
 	m.appendAssistant(raw)
 }
 
-// contentWidth returns the width available for assistant markdown rendering.
-func (m *chatViewModel) contentWidth() int {
-	w := m.width - 2 // left indent + safety margin
-	if w < 10 {
-		w = 10
+func (m *chatViewModel) lastAssistantRaw() string {
+	for i := len(m.entries) - 1; i >= 0; i-- {
+		if m.entries[i].kind == itemAssistant {
+			return strings.TrimSpace(m.entries[i].rawContent)
+		}
 	}
-	return w
+	return ""
 }
 
-// clear removes all entries and resets the viewport.
 func (m *chatViewModel) clear() {
 	m.entries = nil
 	m.streamBuf.Reset()
@@ -104,7 +141,6 @@ func (m *chatViewModel) clear() {
 	m.viewport.GotoTop()
 }
 
-// setSize updates viewport dimensions.
 func (m *chatViewModel) setSize(width, height int) {
 	m.width = width
 	m.viewport.Width = width
@@ -112,34 +148,83 @@ func (m *chatViewModel) setSize(width, height int) {
 	m.render()
 }
 
-// render rebuilds the viewport content from all entries plus any in-flight stream.
-// Uses block-join to avoid accumulating leading blank lines.
-func (m *chatViewModel) render() {
-	userLabel := lipgloss.NewStyle().Bold(true).Foreground(tui.Highlight).Render("You")
-	assistantLabel := lipgloss.NewStyle().Bold(true).Foreground(tui.Primary).Render("Lango")
-	systemLabel := lipgloss.NewStyle().Bold(true).Foreground(tui.Muted).Render("System")
+func (m *chatViewModel) contentWidth() int {
+	w := m.width - 2
+	if w < 10 {
+		w = 10
+	}
+	return w
+}
 
+func (m *chatViewModel) render() {
 	var blocks []string
+
 	for _, entry := range m.entries {
-		switch entry.role {
-		case "user":
-			blocks = append(blocks, fmt.Sprintf(" %s\n %s", userLabel, entry.content))
-		case "assistant":
+		switch entry.kind {
+		case itemUser:
+			blocks = append(blocks, renderTranscriptBlock("You", entry.content, tui.Highlight))
+		case itemAssistant:
 			content := entry.content
 			if entry.rawContent != "" {
 				content = strings.TrimRight(renderMarkdown(entry.rawContent, m.contentWidth()), "\n")
 			}
-			blocks = append(blocks, fmt.Sprintf(" %s\n %s", assistantLabel, content))
-		case "system":
-			blocks = append(blocks, fmt.Sprintf(" %s  %s", systemLabel, entry.content))
+			blocks = append(blocks, renderTranscriptBlock("Lango", content, tui.Primary))
+		case itemSystem:
+			blocks = append(blocks, renderSystemBlock(entry.content))
+		case itemStatus:
+			blocks = append(blocks, renderStatusBlock(entry.content, entry.meta["tone"]))
+		case itemApproval:
+			blocks = append(blocks, renderApprovalEventBlock(entry.content, entry.meta["outcome"]))
 		}
 	}
 
-	// Render in-flight streaming content.
 	if m.streamBuf.Len() > 0 {
-		blocks = append(blocks, fmt.Sprintf(" %s\n %s", assistantLabel, m.streamBuf.String()))
+		blocks = append(blocks, renderTranscriptBlock("Lango", m.streamBuf.String(), tui.Primary))
 	}
 
 	m.viewport.SetContent(strings.Join(blocks, "\n\n"))
 	m.viewport.GotoBottom()
+}
+
+func renderTranscriptBlock(label, content string, color lipgloss.Color) string {
+	labelText := lipgloss.NewStyle().
+		Bold(true).
+		Foreground(color).
+		Render(label)
+	body := lipgloss.NewStyle().PaddingLeft(1).Render(strings.TrimRight(content, "\n"))
+	return fmt.Sprintf(" %s\n%s", labelText, body)
+}
+
+func renderSystemBlock(content string) string {
+	label := lipgloss.NewStyle().Bold(true).Foreground(tui.Muted).Render("System")
+	body := lipgloss.NewStyle().PaddingLeft(1).Render(strings.TrimRight(content, "\n"))
+	return fmt.Sprintf(" %s\n%s", label, body)
+}
+
+func renderStatusBlock(content, tone string) string {
+	color := tui.Muted
+	switch tone {
+	case "success":
+		color = tui.Success
+	case "warning":
+		color = tui.Warning
+	case "error":
+		color = tui.Error
+	}
+	label := lipgloss.NewStyle().Bold(true).Foreground(color).Render("Status")
+	body := lipgloss.NewStyle().Foreground(color).Render(content)
+	return fmt.Sprintf(" %s  %s", label, body)
+}
+
+func renderApprovalEventBlock(content, outcome string) string {
+	color := tui.Warning
+	switch outcome {
+	case "approved", "session":
+		color = tui.Success
+	case "denied":
+		color = tui.Error
+	}
+	label := lipgloss.NewStyle().Bold(true).Foreground(color).Render("Approval")
+	body := lipgloss.NewStyle().Foreground(color).Render(content)
+	return fmt.Sprintf(" %s  %s", label, body)
 }

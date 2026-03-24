@@ -2,10 +2,11 @@
 
 ## lango (Interactive TUI Chat)
 
-Run `lango` without arguments to start an interactive terminal chat. This is the default entry point and provides a Claude Code-like experience:
+Run `lango` without arguments to start an interactive terminal coding-agent cockpit. This is the default entry point and provides a transcript-first TUI experience:
 
-- Streaming agent responses with markdown rendering
-- Inline tool approval (`a` allow / `s` allow session / `d` deny)
+- Transcript viewport with assistant markdown reflow on resize
+- Dedicated turn status strip for ready/streaming/approval/failure states
+- Inline tool approval interrupts (`a` allow / `s` allow session / `d` deny)
 - Slash commands (`/help`, `/clear`, `/model`, `/status`, `/exit`)
 - Key bindings: `Enter` send, `Alt+Enter` newline, `Ctrl+C` cancel/quit, `Ctrl+D` quit
 

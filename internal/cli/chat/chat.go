@@ -1,11 +1,12 @@
 // Package chat implements an interactive TUI chat interface using bubbletea.
-// It provides a Claude Code-like terminal experience for conversing with the
-// Lango agent, including streaming responses, inline tool approval, and
-// slash commands.
+// It provides a coding-agent cockpit for conversing with the Lango agent,
+// including streaming responses, inline tool approval, slash commands, and
+// turn-state visibility.
 package chat
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 	"time"
@@ -15,7 +16,6 @@ import (
 	"github.com/charmbracelet/lipgloss"
 
 	"github.com/langoai/lango/internal/approval"
-	"github.com/langoai/lango/internal/cli/tui"
 	"github.com/langoai/lango/internal/config"
 	"github.com/langoai/lango/internal/turnrunner"
 )
@@ -28,51 +28,44 @@ type Deps struct {
 }
 
 // cprState tracks the CPR (Cursor Position Report) filter state machine.
-// Some terminals emit ESC[row;colR sequences that leak into textarea input
-// when alt-screen/mouse mode is active.
 type cprState int
 
 const (
-	cprIdle     cprState = iota
-	cprGotEsc            // received ESC, waiting for '['
-	cprGotBracket        // received ESC[, waiting for digits/';'
-	cprInParams          // accumulating digits/';', waiting for 'R'
+	cprIdle cprState = iota
+	cprGotEsc
+	cprGotBracket
+	cprInParams
 )
 
 // cprTimeoutMsg is sent when a CPR detection window expires.
 type cprTimeoutMsg struct{}
 
+// cprTimeout is how long we wait after ESC before deciding it's not a CPR sequence.
+const cprTimeout = 50 * time.Millisecond
+
 // ChatModel is the root bubbletea model for the interactive TUI chat.
 type ChatModel struct {
-	// Dependencies
 	turnRunner *turnrunner.Runner
 	cfg        *config.Config
 	sessionKey string
 
-	// UI components
 	input    inputModel
 	chatView chatViewModel
 
-	// State
 	state    chatState
 	width    int
 	height   int
 	quitting bool
 
-	// Streaming context
-	runCtx    context.Context
-	cancelFn  context.CancelFunc
+	runCtx   context.Context
+	cancelFn context.CancelFunc
 
-	// Approval state
 	pendingApproval *ApprovalRequestMsg
 
-	// Program reference for sending messages from callbacks
 	program *tea.Program
 
-	// Track Ctrl+C double-tap for quit
 	lastCtrlC time.Time
 
-	// CPR filter state machine — blocks ESC[row;colR sequences from textarea.
 	cprDetect cprState
 	cprBuf    []tea.KeyMsg
 }
@@ -89,8 +82,7 @@ func New(deps Deps) *ChatModel {
 	}
 }
 
-// SetProgram stores a reference to the tea.Program for sending messages
-// from goroutines (e.g., streaming callbacks).
+// SetProgram stores a reference to the tea.Program for sending messages from callbacks.
 func (m *ChatModel) SetProgram(p *tea.Program) {
 	m.program = p
 }
@@ -99,7 +91,7 @@ func (m *ChatModel) SetProgram(p *tea.Program) {
 func (m *ChatModel) Init() tea.Cmd {
 	return tea.Batch(
 		tea.SetWindowTitle("Lango Chat"),
-		m.input.Focus(),
+		m.input.SetState(stateIdle),
 	)
 }
 
@@ -115,25 +107,32 @@ func (m *ChatModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case cprTimeoutMsg:
-		// CPR detection window expired — flush buffered keys as real input.
 		if m.cprDetect != cprIdle {
 			cmds = append(cmds, m.cprFlush()...)
 		}
 		return m, tea.Batch(cmds...)
 
 	case tea.KeyMsg:
-		// Run CPR filter before normal key handling.
-		filtered, filterCmds := m.filterCPR(msg)
-		if len(filterCmds) > 0 {
-			cmds = append(cmds, filterCmds...)
+		if m.state == stateFailed {
+			if cmd := m.transitionTo(stateIdle); cmd != nil {
+				cmds = append(cmds, cmd)
+			}
 		}
-		if filtered {
-			return m, tea.Batch(cmds...)
+
+		if m.inputAcceptsText() {
+			filtered, filterCmds := m.filterCPR(msg)
+			if len(filterCmds) > 0 {
+				cmds = append(cmds, filterCmds...)
+			}
+			if filtered {
+				return m, tea.Batch(cmds...)
+			}
 		}
 
 		cmd := m.handleKey(msg)
 		if cmd != nil {
-			return m, cmd
+			cmds = append(cmds, cmd)
+			return m, tea.Batch(cmds...)
 		}
 
 	case ChunkMsg:
@@ -141,72 +140,69 @@ func (m *ChatModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case DoneMsg:
-		m.state = stateIdle
-
-		// Rule 1: if streamBuf has content, finalize it regardless of outcome.
 		if m.chatView.streamBuf.Len() > 0 {
 			m.chatView.finalizeStream()
 		} else if strings.TrimSpace(msg.Result.ResponseText) != "" {
-			// Rule 2: non-streaming model — ResponseText without chunks.
 			m.chatView.appendAssistant(msg.Result.ResponseText)
 		}
 
-		// Rule 3: non-success outcome → add system status message.
+		nextState := stateIdle
 		if msg.Result.Outcome != "success" {
-			text := msg.Result.UserMessage
+			nextState = stateFailed
+			text := strings.TrimSpace(msg.Result.UserMessage)
 			if text == "" {
-				text = msg.Result.ResponseText
+				text = strings.TrimSpace(msg.Result.ResponseText)
 			}
-			if text != "" {
-				// Deduplicate: skip if identical to last assistant rawContent.
-				isDup := false
-				if n := len(m.chatView.entries); n > 0 {
-					last := m.chatView.entries[n-1]
-					if last.role == "assistant" && strings.TrimSpace(last.rawContent) == strings.TrimSpace(text) {
-						isDup = true
-					}
-				}
-				if !isDup {
-					m.chatView.appendSystem(lipgloss.NewStyle().Foreground(tui.Error).Render(text))
-				}
+			if text != "" && strings.TrimSpace(m.chatView.lastAssistantRaw()) != text {
+				m.chatView.appendStatus(text, "error")
 			}
 		}
 
-		cmds = append(cmds, m.input.Focus())
+		if cmd := m.transitionTo(nextState); cmd != nil {
+			cmds = append(cmds, cmd)
+		}
 		return m, tea.Batch(cmds...)
 
 	case ErrorMsg:
-		m.state = stateIdle
-		// Preserve partial stream content first.
 		if m.chatView.streamBuf.Len() > 0 {
 			m.chatView.finalizeStream()
 		}
-		m.chatView.appendSystem(lipgloss.NewStyle().Foreground(tui.Error).Render(fmt.Sprintf("Error: %v", msg.Err)))
-		cmds = append(cmds, m.input.Focus())
+
+		if errors.Is(msg.Err, context.Canceled) {
+			m.chatView.appendStatus("Generation cancelled.", "warning")
+			if cmd := m.transitionTo(stateIdle); cmd != nil {
+				cmds = append(cmds, cmd)
+			}
+			return m, tea.Batch(cmds...)
+		}
+
+		m.chatView.appendStatus(fmt.Sprintf("Error: %v", msg.Err), "error")
+		if cmd := m.transitionTo(stateFailed); cmd != nil {
+			cmds = append(cmds, cmd)
+		}
 		return m, tea.Batch(cmds...)
 
 	case WarningMsg:
-		m.chatView.appendSystem(
-			lipgloss.NewStyle().Foreground(tui.Warning).Render(
-				fmt.Sprintf("Approaching timeout (%s / %s)", msg.Elapsed.Round(time.Second), msg.HardCeiling.Round(time.Second)),
-			),
+		m.chatView.appendStatus(
+			fmt.Sprintf("Approaching timeout (%s / %s)", msg.Elapsed.Round(time.Second), msg.HardCeiling.Round(time.Second)),
+			"warning",
 		)
 		return m, nil
 
 	case ApprovalRequestMsg:
-		m.state = stateApproving
 		m.pendingApproval = &msg
-		m.input.Blur()
-		m.recalcLayout()
-		return m, nil
+		m.chatView.appendApprovalEvent(fmt.Sprintf("Approval requested for %s", msg.Request.ToolName), "requested")
+		if cmd := m.transitionTo(stateApproving); cmd != nil {
+			cmds = append(cmds, cmd)
+		}
+		return m, tea.Batch(cmds...)
 
 	case SystemMsg:
 		m.chatView.appendSystem(msg.Text)
 		return m, nil
 	}
 
-	// Delegate to input component when idle.
-	if m.state == stateIdle {
+	if m.inputAcceptsText() {
 		var cmd tea.Cmd
 		m.input, cmd = m.input.Update(msg)
 		if cmd != nil {
@@ -214,7 +210,6 @@ func (m *ChatModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 	}
 
-	// Delegate to viewport for scrolling.
 	var cmd tea.Cmd
 	m.chatView, cmd = m.chatView.Update(msg)
 	if cmd != nil {
@@ -225,37 +220,42 @@ func (m *ChatModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 }
 
 // View implements tea.Model.
-// Uses a parts-based model: each fixed component is a block joined by "\n".
-// recalcLayout() measures the same blocks to size the viewport correctly.
 func (m *ChatModel) View() string {
 	if m.quitting {
 		return ""
 	}
-
-	// Guard: wait for WindowSizeMsg before rendering layout components
-	// that depend on non-zero width/height.
 	if m.width == 0 || m.height == 0 {
 		return "\n  Waiting for terminal size..."
 	}
 
 	parts := []string{
-		renderStatusBar(m.cfg, truncateSessionKey(m.sessionKey), m.state, m.width),
+		renderHeader(m.cfg, truncateSessionKey(m.sessionKey), m.width),
+		renderTurnStrip(m.state, m.width),
 		m.chatView.View(),
 	}
 
 	if m.state == stateApproving && m.pendingApproval != nil {
 		parts = append(parts, renderApprovalBanner(m.pendingApproval.Request, m.width))
-	} else {
-		parts = append(parts, m.input.View())
 	}
 
-	parts = append(parts, renderHelpBar(m.state, m.width))
+	parts = append(parts, renderFooter(m.input, m.state, m.width))
 	return strings.Join(parts, "\n")
 }
 
-// handleKey processes key events based on current state.
+func (m *ChatModel) inputAcceptsText() bool {
+	return m.state == stateIdle || m.state == stateFailed
+}
+
+func (m *ChatModel) transitionTo(state chatState) tea.Cmd {
+	m.state = state
+	cmd := m.input.SetState(state)
+	if m.width > 0 && m.height > 0 {
+		m.recalcLayout()
+	}
+	return cmd
+}
+
 func (m *ChatModel) handleKey(msg tea.KeyMsg) tea.Cmd {
-	// Ctrl+D: immediate quit from any state.
 	if key.Matches(msg, key.NewBinding(key.WithKeys("ctrl+d"))) {
 		m.quitting = true
 		if m.cancelFn != nil {
@@ -265,12 +265,14 @@ func (m *ChatModel) handleKey(msg tea.KeyMsg) tea.Cmd {
 	}
 
 	switch m.state {
-	case stateIdle:
+	case stateIdle, stateFailed:
 		return m.handleIdleKey(msg)
 	case stateStreaming:
 		return m.handleStreamingKey(msg)
 	case stateApproving:
 		return m.handleApprovingKey(msg)
+	case stateCancelling:
+		return nil
 	}
 	return nil
 }
@@ -285,7 +287,7 @@ func (m *ChatModel) handleIdleKey(msg tea.KeyMsg) tea.Cmd {
 		}
 		m.lastCtrlC = now
 		return func() tea.Msg {
-			return SystemMsg{Text: lipgloss.NewStyle().Foreground(tui.Muted).Render("Press Ctrl+C again to quit, or Ctrl+D to quit immediately.")}
+			return SystemMsg{Text: "Press Ctrl+C again to quit, or Ctrl+D to quit immediately."}
 		}
 
 	case key.Matches(msg, key.NewBinding(key.WithKeys("enter"))):
@@ -295,16 +297,15 @@ func (m *ChatModel) handleIdleKey(msg tea.KeyMsg) tea.Cmd {
 		}
 		m.input.Reset()
 
-		// Check for slash commands.
 		if handled, cmd := dispatchSlash(m, input); handled {
 			return cmd
 		}
 
-		// Submit user message.
 		m.chatView.appendUser(input)
-		m.state = stateStreaming
-		m.input.Blur()
-		return m.submitCmd(input)
+		return tea.Batch(
+			m.transitionTo(stateStreaming),
+			m.submitCmd(input),
+		)
 	}
 
 	return nil
@@ -315,13 +316,7 @@ func (m *ChatModel) handleStreamingKey(msg tea.KeyMsg) tea.Cmd {
 		if m.cancelFn != nil {
 			m.cancelFn()
 		}
-		m.state = stateIdle
-		// Preserve partial stream content if present.
-		if m.chatView.streamBuf.Len() > 0 {
-			m.chatView.finalizeStream()
-		}
-		m.chatView.appendSystem(lipgloss.NewStyle().Foreground(tui.Muted).Render("(cancelled)"))
-		return m.input.Focus()
+		return m.transitionTo(stateCancelling)
 	}
 	return nil
 }
@@ -331,7 +326,8 @@ func (m *ChatModel) handleApprovingKey(msg tea.KeyMsg) tea.Cmd {
 		return nil
 	}
 
-	respond := func(approved, alwaysAllow bool) tea.Cmd {
+	req := m.pendingApproval.Request
+	respond := func(approved, alwaysAllow bool, outcome string, eventText string) tea.Cmd {
 		resp := approval.ApprovalResponse{
 			Approved:    approved,
 			AlwaysAllow: alwaysAllow,
@@ -339,20 +335,23 @@ func (m *ChatModel) handleApprovingKey(msg tea.KeyMsg) tea.Cmd {
 		}
 		ch := m.pendingApproval.Response
 		m.pendingApproval = nil
-		m.state = stateStreaming
-		return func() tea.Msg {
-			ch <- resp
-			return nil
-		}
+		m.chatView.appendApprovalEvent(eventText, outcome)
+		return tea.Batch(
+			m.transitionTo(stateStreaming),
+			func() tea.Msg {
+				ch <- resp
+				return nil
+			},
+		)
 	}
 
 	switch {
 	case key.Matches(msg, key.NewBinding(key.WithKeys("a"))):
-		return respond(true, false)
+		return respond(true, false, "approved", fmt.Sprintf("Approved %s", req.ToolName))
 	case key.Matches(msg, key.NewBinding(key.WithKeys("s"))):
-		return respond(true, true)
+		return respond(true, true, "session", fmt.Sprintf("Always allow enabled for %s", req.ToolName))
 	case key.Matches(msg, key.NewBinding(key.WithKeys("d", "esc"))):
-		return respond(false, false)
+		return respond(false, false, "denied", fmt.Sprintf("Denied %s", req.ToolName))
 	}
 
 	return nil
@@ -365,7 +364,6 @@ func (m *ChatModel) submitCmd(input string) tea.Cmd {
 	m.cancelFn = cancel
 
 	program := m.program
-
 	return func() tea.Msg {
 		result, err := m.turnRunner.Run(ctx, turnrunner.Request{
 			SessionKey: m.sessionKey,
@@ -389,33 +387,24 @@ func (m *ChatModel) submitCmd(input string) tea.Cmd {
 	}
 }
 
-// recalcLayout adjusts component sizes after a window resize.
-// It measures the same fixed parts that View() renders, so they always agree.
 func (m *ChatModel) recalcLayout() {
-	// Step 1: set widths first (rendered height depends on width).
 	m.input.SetWidth(m.width)
 
-	// Step 2: measure fixed-height parts (everything except chatView).
 	fixedParts := []string{
-		renderStatusBar(m.cfg, truncateSessionKey(m.sessionKey), m.state, m.width),
+		renderHeader(m.cfg, truncateSessionKey(m.sessionKey), m.width),
+		renderTurnStrip(m.state, m.width),
 	}
 	if m.state == stateApproving && m.pendingApproval != nil {
 		fixedParts = append(fixedParts, renderApprovalBanner(m.pendingApproval.Request, m.width))
-	} else {
-		fixedParts = append(fixedParts, m.input.View())
 	}
-	fixedParts = append(fixedParts, renderHelpBar(m.state, m.width))
+	fixedParts = append(fixedParts, renderFooter(m.input, m.state, m.width))
 
 	fixedHeight := 0
-	for _, p := range fixedParts {
-		fixedHeight += lipgloss.Height(p)
+	for _, part := range fixedParts {
+		fixedHeight += lipgloss.Height(part)
 	}
 
-	// Separators: View() joins (fixedParts + chatView) with "\n".
-	// Total parts = len(fixedParts) + 1 (chatView), separators = total - 1 = len(fixedParts).
 	separators := len(fixedParts)
-
-	// Step 3: remaining height → viewport.
 	chatHeight := m.height - fixedHeight - separators
 	if chatHeight < 3 {
 		chatHeight = 3
@@ -434,20 +423,13 @@ func truncateSessionKey(key string) string {
 	return key
 }
 
-// cprTimeout is how long we wait after ESC before deciding it's not a CPR sequence.
-const cprTimeout = 50 * time.Millisecond
-
-// filterCPR implements a state machine that intercepts ANSI CPR responses
-// (ESC[row;colR) that some terminals emit when alt-screen/mouse mode is active.
-// Returns (filtered bool, cmds). If filtered is true, the key was consumed by the
-// filter and should NOT be passed to handleKey/input.
+// filterCPR intercepts ANSI CPR responses before they reach the idle composer.
 func (m *ChatModel) filterCPR(msg tea.KeyMsg) (bool, []tea.Cmd) {
 	switch m.cprDetect {
 	case cprIdle:
 		if msg.Type == tea.KeyEscape {
 			m.cprDetect = cprGotEsc
 			m.cprBuf = append(m.cprBuf[:0], msg)
-			// Start timeout — if no '[' follows quickly, flush as real Esc.
 			return true, []tea.Cmd{tea.Tick(cprTimeout, func(time.Time) tea.Msg {
 				return cprTimeoutMsg{}
 			})}
@@ -460,7 +442,6 @@ func (m *ChatModel) filterCPR(msg tea.KeyMsg) (bool, []tea.Cmd) {
 			m.cprBuf = append(m.cprBuf, msg)
 			return true, nil
 		}
-		// Not a CPR — flush buffered Esc + pass current key through.
 		cmds := m.cprFlush()
 		return false, cmds
 
@@ -473,13 +454,11 @@ func (m *ChatModel) filterCPR(msg tea.KeyMsg) (bool, []tea.Cmd) {
 				return true, nil
 			}
 			if r == 'R' && m.cprDetect == cprInParams {
-				// Full CPR sequence consumed — discard entire buffer.
 				m.cprDetect = cprIdle
 				m.cprBuf = m.cprBuf[:0]
 				return true, nil
 			}
 		}
-		// Not a CPR — flush buffered keys + pass current key through.
 		cmds := m.cprFlush()
 		return false, cmds
 	}
@@ -487,8 +466,6 @@ func (m *ChatModel) filterCPR(msg tea.KeyMsg) (bool, []tea.Cmd) {
 	return false, nil
 }
 
-// cprFlush replays all buffered CPR keys through the normal input path
-// and resets the CPR state machine.
 func (m *ChatModel) cprFlush() []tea.Cmd {
 	m.cprDetect = cprIdle
 	buf := make([]tea.KeyMsg, len(m.cprBuf))
@@ -500,9 +477,9 @@ func (m *ChatModel) cprFlush() []tea.Cmd {
 		cmd := m.handleKey(k)
 		if cmd != nil {
 			cmds = append(cmds, cmd)
+			continue
 		}
-		// Also forward to input component if idle.
-		if m.state == stateIdle {
+		if m.inputAcceptsText() {
 			var inputCmd tea.Cmd
 			m.input, inputCmd = m.input.Update(k)
 			if inputCmd != nil {

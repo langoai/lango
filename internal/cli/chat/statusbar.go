@@ -10,56 +10,86 @@ import (
 	"github.com/langoai/lango/internal/config"
 )
 
-// chatState tracks what the chat model is currently doing.
+// chatState tracks the current operator-visible TUI turn state.
 type chatState int
 
 const (
-	stateIdle      chatState = iota
-	stateStreaming            // waiting for agent response
-	stateApproving            // waiting for approval input
+	stateIdle chatState = iota
+	stateStreaming
+	stateApproving
+	stateCancelling
+	stateFailed
 )
 
-// renderStatusBar returns a top status bar showing model, session, and state.
-func renderStatusBar(cfg *config.Config, sessionKey string, state chatState, width int) string {
-	bg := lipgloss.NewStyle().Background(lipgloss.Color("#1a1a2e")).Foreground(tui.Foreground)
+func renderHeader(cfg *config.Config, sessionKey string, width int) string {
+	headerWidth := max(width, 1)
 
-	model := cfg.Agent.Provider
-	if model == "" {
-		model = "default"
-	}
-	modelBadge := lipgloss.NewStyle().
+	productBadge := lipgloss.NewStyle().
 		Background(tui.Primary).
 		Foreground(tui.Foreground).
 		Bold(true).
 		Padding(0, 1).
-		Render(model)
+		Render("Lango")
 
-	var stateStr string
-	switch state {
-	case stateIdle:
-		stateStr = lipgloss.NewStyle().Foreground(tui.Success).Render("ready")
-	case stateStreaming:
-		stateStr = lipgloss.NewStyle().Foreground(tui.Warning).Render("thinking...")
-	case stateApproving:
-		stateStr = lipgloss.NewStyle().Foreground(tui.Warning).Render("approval needed")
+	provider := strings.TrimSpace(cfg.Agent.Provider)
+	if provider == "" {
+		provider = "default"
+	}
+	model := strings.TrimSpace(cfg.Agent.Model)
+	if model == "" {
+		model = "auto"
 	}
 
-	left := fmt.Sprintf(" %s  %s", modelBadge, stateStr)
-	right := lipgloss.NewStyle().Foreground(tui.Muted).Render(fmt.Sprintf("session: %s ", sessionKey))
+	modelText := lipgloss.NewStyle().
+		Bold(true).
+		Foreground(tui.Foreground).
+		Render(fmt.Sprintf("%s · %s", provider, model))
 
-	gap := width - lipgloss.Width(left) - lipgloss.Width(right)
-	if gap < 0 {
-		gap = 0
+	left := fmt.Sprintf(" %s  %s", productBadge, modelText)
+	right := lipgloss.NewStyle().
+		Foreground(tui.Muted).
+		Render(fmt.Sprintf("session: %s ", sessionKey))
+
+	gap := headerWidth - lipgloss.Width(left) - lipgloss.Width(right)
+	if gap < 1 {
+		gap = 1
 	}
 
-	return bg.Width(width).Render(left + strings.Repeat(" ", gap) + right)
+	return lipgloss.NewStyle().
+		Background(lipgloss.Color("#132238")).
+		Foreground(tui.Foreground).
+		Width(headerWidth).
+		Render(left + strings.Repeat(" ", gap) + right)
 }
 
-// renderHelpBar returns a bottom help bar with context-sensitive key bindings.
-func renderHelpBar(state chatState, width int) string {
+func renderTurnStrip(state chatState, width int) string {
+	stripWidth := max(width, 1)
+
+	label, hint, color := turnStateCopy(state)
+	left := lipgloss.NewStyle().
+		Bold(true).
+		Foreground(color).
+		Render(" " + label)
+	right := lipgloss.NewStyle().
+		Foreground(tui.Muted).
+		Render(hint + " ")
+
+	gap := stripWidth - lipgloss.Width(left) - lipgloss.Width(right)
+	if gap < 1 {
+		gap = 1
+	}
+
+	return lipgloss.NewStyle().
+		Background(lipgloss.Color("#0f1724")).
+		Foreground(tui.Foreground).
+		Width(stripWidth).
+		Render(left + strings.Repeat(" ", gap) + right)
+}
+
+func renderHelpBar(state chatState, _ int) string {
 	var entries []string
 	switch state {
-	case stateIdle:
+	case stateIdle, stateFailed:
 		entries = []string{
 			tui.HelpEntry("Enter", "send"),
 			tui.HelpEntry("Alt+Enter", "newline"),
@@ -69,6 +99,7 @@ func renderHelpBar(state chatState, width int) string {
 	case stateStreaming:
 		entries = []string{
 			tui.HelpEntry("Ctrl+C", "cancel"),
+			tui.HelpEntry("Ctrl+D", "quit"),
 		}
 	case stateApproving:
 		entries = []string{
@@ -76,6 +107,27 @@ func renderHelpBar(state chatState, width int) string {
 			tui.HelpEntry("s", "allow session"),
 			tui.HelpEntry("d/esc", "deny"),
 		}
+	case stateCancelling:
+		entries = []string{
+			tui.HelpEntry("Ctrl+D", "quit"),
+		}
 	}
 	return tui.HelpBar(entries...)
+}
+
+func turnStateCopy(state chatState) (label, hint string, color lipgloss.Color) {
+	switch state {
+	case stateIdle:
+		return "Ready", "Enter sends · /help shows commands", tui.Success
+	case stateStreaming:
+		return "Streaming", "Ctrl+C cancels the current turn", tui.Warning
+	case stateApproving:
+		return "Approval Required", "Review the tool action and choose a / s / d", tui.Warning
+	case stateCancelling:
+		return "Cancelling", "Waiting for the current turn to stop", tui.Muted
+	case stateFailed:
+		return "Last Turn Failed", "Type to retry or inspect /status", tui.Error
+	default:
+		return "Ready", "", tui.Success
+	}
 }

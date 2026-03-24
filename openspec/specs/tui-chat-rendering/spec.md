@@ -1,9 +1,9 @@
 ### Requirement: Parts-based layout agreement
-The `View()` method and `recalcLayout()` method SHALL use the same parts structure so that measured heights always match rendered output. The viewport height SHALL be computed by subtracting the measured heights of all fixed parts (status bar, input/approval banner, help bar) and separators from the terminal height.
+The `View()` method and `recalcLayout()` method SHALL use the same parts structure so that measured heights always match rendered output. The viewport height SHALL be computed by subtracting the measured heights of all fixed parts (header, turn status strip, composer or approval card, help footer) and separators from the terminal height.
 
 #### Scenario: Layout matches rendered output
 - **WHEN** the terminal is 80x24
-- **THEN** the sum of all rendered part heights plus separator newlines equals the terminal height
+- **THEN** the sum of all rendered fixed part heights, separator newlines, and viewport height SHALL fit within the terminal height
 
 #### Scenario: Minimum viewport height
 - **WHEN** the terminal height is very small (e.g., height=5)
@@ -11,7 +11,7 @@ The `View()` method and `recalcLayout()` method SHALL use the same parts structu
 
 #### Scenario: Approval state recalculates layout
 - **WHEN** an ApprovalRequestMsg is received
-- **THEN** recalcLayout() SHALL be called to reflect the approval banner height instead of input height
+- **THEN** recalcLayout() SHALL be called so the approval card height replaces the composer height in the layout calculation
 
 ### Requirement: Input width safety margin
 The input component SHALL set the textarea width to `max(terminalWidth - 2, 10)` to account for border padding and prevent border wrapping.
@@ -28,37 +28,59 @@ The input component SHALL set the textarea width to `max(terminalWidth - 2, 10)`
 - **WHEN** the input is rendered at any terminal width
 - **THEN** no input line SHALL exceed the terminal width
 
-### Requirement: Block-join chat rendering
-The chat viewport `render()` method SHALL collect message entries into discrete blocks and join them with `"\n\n"`. The rendered output SHALL NOT start with leading blank lines.
+### Requirement: Typed transcript rendering
+The transcript viewport SHALL render typed transcript items rather than plain role/content rows. The minimum item kinds SHALL be `user`, `assistant`, `system`, `status`, and `approval`.
+
+#### Scenario: User message rendered as transcript item
+- **WHEN** the user submits a prompt
+- **THEN** the transcript SHALL add a `user` item rendered with the user block style
+
+#### Scenario: Status message rendered compactly
+- **WHEN** the runtime emits a warning, cancel, or approval resolution message
+- **THEN** the transcript SHALL render it as a compact `status` item instead of a full assistant prose block
+
+### Requirement: Block-joined transcript spacing
+The transcript viewport SHALL render message blocks by joining blocks explicitly rather than prefixing each block with leading newlines.
 
 #### Scenario: No leading blank lines
-- **WHEN** the chat has one or more entries
-- **THEN** the viewport content SHALL NOT start with `"\n\n"`
+- **WHEN** the transcript contains one or more items
+- **THEN** the rendered viewport content SHALL NOT start with blank lines
 
-#### Scenario: Consistent inter-block spacing
-- **WHEN** multiple messages are rendered
-- **THEN** each pair of adjacent messages SHALL be separated by exactly one blank line (`"\n\n"` join)
+#### Scenario: Stable spacing between blocks
+- **WHEN** adjacent transcript items are rendered
+- **THEN** they SHALL be separated by a consistent explicit gap rather than accumulating extra blank lines
 
-### Requirement: Assistant rawContent preservation
-Every assistant entry SHALL store the original markdown in `rawContent` for resize reflow. The `appendAssistant(raw)` helper SHALL be the single entry point for all assistant message creation.
+### Requirement: Assistant append unification
+All assistant-visible response content SHALL be created through a single append helper that stores raw markdown and computes rendered content for the current transcript content width.
 
-#### Scenario: Stream finalization preserves raw
-- **WHEN** streaming completes and `finalizeStream()` is called
-- **THEN** the resulting entry SHALL have `rawContent` equal to the original stream buffer content
+#### Scenario: Stream finalization uses append helper
+- **WHEN** streaming completes and buffered chunks exist
+- **THEN** the transcript SHALL create one assistant item through the shared append helper
 
-#### Scenario: Non-streaming response preserves raw
-- **WHEN** a DoneMsg arrives with ResponseText but no stream chunks
-- **THEN** the resulting entry SHALL have `rawContent` equal to ResponseText
+#### Scenario: Non-streaming fallback uses append helper
+- **WHEN** a turn completes without buffered chunks but with non-empty ResponseText
+- **THEN** the transcript SHALL create one assistant item through the same append helper
 
-#### Scenario: Resize reflow
-- **WHEN** the terminal is resized to a different width
-- **THEN** assistant entries SHALL be re-rendered from `rawContent` using the new `contentWidth()`
+#### Scenario: Partial output preserved on cancel
+- **WHEN** generation is cancelled after some streamed chunks were already received
+- **THEN** the buffered content SHALL still be committed as an assistant item through the shared append helper
+
+### Requirement: Assistant raw markdown reflow
+Assistant transcript items SHALL preserve raw markdown for re-rendering when the viewport width changes.
+
+#### Scenario: Assistant raw markdown stored
+- **WHEN** an assistant item is appended
+- **THEN** the original markdown SHALL be stored in a raw content field in addition to the rendered display content
+
+#### Scenario: Resize reflows assistant content
+- **WHEN** the terminal width changes after assistant content has been rendered
+- **THEN** assistant items SHALL be re-rendered from raw markdown using the current transcript content width
 
 ### Requirement: DoneMsg three-rule processing
 DoneMsg SHALL be processed with three rules in order:
 1. If streamBuf is non-empty, finalize it as an assistant message.
 2. Else if ResponseText is non-empty, add it via appendAssistant.
-3. If outcome is not "success", add a system error message with deduplication.
+3. If outcome is not "success", add a compact status or error entry with deduplication.
 
 #### Scenario: Stream success
 - **WHEN** DoneMsg arrives with outcome="success" and streamBuf has content
@@ -70,22 +92,48 @@ DoneMsg SHALL be processed with three rules in order:
 
 #### Scenario: Failure preserves partial stream
 - **WHEN** DoneMsg arrives with outcome="timeout" and streamBuf has content
-- **THEN** the partial stream SHALL be finalized as an assistant entry AND a system error message SHALL be added
+- **THEN** the partial stream SHALL be finalized as an assistant entry AND a compact status/error entry SHALL be added
 
 #### Scenario: Duplicate error text suppression
 - **WHEN** DoneMsg arrives with non-success outcome and ResponseText matches the last assistant rawContent
-- **THEN** the system error message SHALL be skipped to avoid duplication
+- **THEN** the duplicate status/error entry SHALL be skipped
 
 ### Requirement: ErrorMsg partial-first preservation
-When an ErrorMsg is received, any in-flight stream content SHALL be finalized as an assistant message before the error is added as a system message.
+When an ErrorMsg is received, any in-flight stream content SHALL be finalized as an assistant message before a status or error entry is added.
 
 #### Scenario: Error with partial stream
 - **WHEN** ErrorMsg arrives while streamBuf has content
-- **THEN** the stream content SHALL be preserved as an assistant entry AND the error SHALL be added as a separate system entry
+- **THEN** the stream content SHALL be preserved as an assistant entry AND an error status entry SHALL be added
 
-#### Scenario: Error without stream
-- **WHEN** ErrorMsg arrives with empty streamBuf
-- **THEN** only the error system message SHALL be added
+#### Scenario: Cancel returns to idle
+- **WHEN** ErrorMsg arrives with `context.Canceled`
+- **THEN** the TUI SHALL preserve any partial stream content, append a cancellation status entry, and return to idle state
+
+### Requirement: Turn state strip
+The TUI SHALL render a dedicated turn status strip that reflects at least the states `idle`, `streaming`, `approving`, `cancelling`, and `failed`.
+
+#### Scenario: Streaming state visible
+- **WHEN** the agent begins generating a response
+- **THEN** the turn status strip SHALL show that generation is in progress and cancellation is available
+
+#### Scenario: Approval state visible
+- **WHEN** a tool approval request interrupts the current turn
+- **THEN** the turn status strip SHALL show that approval is required
+
+#### Scenario: Failed state visible
+- **WHEN** a turn ends in failure without producing a successful completion
+- **THEN** the turn status strip SHALL show a failed state until the next user interaction resets it
+
+### Requirement: Composer remains visible during streaming
+During streaming, the composer SHALL remain visible in a read-only or visually muted state instead of being removed from the layout.
+
+#### Scenario: Streaming keeps composer visible
+- **WHEN** the TUI enters streaming state
+- **THEN** the composer SHALL remain visible and indicate that input is temporarily unavailable
+
+#### Scenario: Approval hides composer
+- **WHEN** the TUI enters approval state
+- **THEN** the composer SHALL be replaced by the approval card for the duration of the approval interruption
 
 ### Requirement: Approval banner width clamp
 The `renderApprovalBanner()` function SHALL clamp the banner width to `max(width - 4, 10)` to prevent layout issues at narrow terminal widths.
@@ -99,36 +147,36 @@ The `renderApprovalBanner()` function SHALL clamp the banner width to `max(width
 - **THEN** banner content width SHALL be clamped to 10
 
 ### Requirement: Content width for markdown rendering
-The `contentWidth()` method SHALL return `max(width - 2, 10)` as the available width for assistant markdown rendering, accounting for left indent and safety margin.
+The transcript content width helper SHALL return `max(width - 2, 10)` as the available width for assistant markdown rendering, accounting for left indent and safety margin.
 
 #### Scenario: Standard width
 - **WHEN** viewport width is 80
-- **THEN** contentWidth() SHALL return 78
+- **THEN** the transcript content width SHALL be 78
 
 #### Scenario: Minimum clamp
 - **WHEN** viewport width is 5
-- **THEN** contentWidth() SHALL return 10
+- **THEN** the transcript content width SHALL be clamped to 10
 
 ### Requirement: Mouse wheel scrolling support
 The bubbletea program SHALL be created with `tea.WithMouseCellMotion()` to enable mouse event delivery. The viewport SHALL receive mouse wheel events for scrolling through chat history.
 
 #### Scenario: Mouse wheel scrolls viewport
 - **WHEN** the user scrolls the mouse wheel over the chat viewport
-- **THEN** the viewport content SHALL scroll accordingly (up for wheel-up, down for wheel-down)
+- **THEN** the viewport content SHALL scroll accordingly
 
 #### Scenario: No hover event noise
 - **WHEN** the user moves the mouse without clicking or scrolling
-- **THEN** no mouse motion events SHALL be delivered (WithMouseCellMotion, not WithMouseAllMotion)
+- **THEN** no mouse motion events SHALL be delivered
 
 ### Requirement: TUI log file redirect
 In TUI chat mode, logging SHALL be redirected to a file at `<DataRoot>/chat.log` instead of stderr. The log file path SHALL be displayed to the user during TUI initialization.
 
 #### Scenario: No log corruption on screen
-- **WHEN** async goroutines emit WARN or INFO logs during TUI operation
+- **WHEN** async goroutines emit logs during TUI operation
 - **THEN** the log output SHALL NOT appear on the alt-screen TUI display
 
 #### Scenario: Log file path displayed
-- **WHEN** the TUI starts and displays the initialization banner
+- **WHEN** the TUI starts
 - **THEN** the log file path SHALL be printed to stderr before entering alt-screen mode
 
 #### Scenario: Logs written to file

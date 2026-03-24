@@ -1,6 +1,8 @@
 package chat
 
 import (
+	"strings"
+
 	"github.com/charmbracelet/bubbles/textarea"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
@@ -8,14 +10,16 @@ import (
 	"github.com/langoai/lango/internal/cli/tui"
 )
 
-// inputModel wraps a textarea for the chat input area.
+const defaultComposerPlaceholder = "Ask Lango to inspect code, explain behavior, or run a task. /help for commands, Alt+Enter for newline."
+
+// inputModel wraps a textarea for the chat composer.
 type inputModel struct {
 	textarea textarea.Model
 }
 
 func newInputModel() inputModel {
 	ta := textarea.New()
-	ta.Placeholder = "Send a message... (Alt+Enter for newline)"
+	ta.Placeholder = defaultComposerPlaceholder
 	ta.CharLimit = 0
 	ta.ShowLineNumbers = false
 	ta.FocusedStyle.CursorLine = lipgloss.NewStyle()
@@ -44,11 +48,32 @@ func (m inputModel) View() string {
 }
 
 func (m *inputModel) SetWidth(width int) {
-	w := width - 2 // account for border padding
+	w := width - 2
 	if w < 10 {
 		w = 10
 	}
 	m.textarea.SetWidth(w)
+}
+
+func (m *inputModel) SetState(state chatState) tea.Cmd {
+	switch state {
+	case stateIdle:
+		m.textarea.Placeholder = defaultComposerPlaceholder
+		return m.textarea.Focus()
+	case stateStreaming:
+		m.textarea.Placeholder = "Lango is responding. Ctrl+C cancels the current turn."
+		m.textarea.Blur()
+	case stateApproving:
+		m.textarea.Placeholder = "Approval is required below before the turn can continue."
+		m.textarea.Blur()
+	case stateCancelling:
+		m.textarea.Placeholder = "Cancelling the current turn..."
+		m.textarea.Blur()
+	case stateFailed:
+		m.textarea.Placeholder = "The last turn failed. Type a retry, adjust the request, or use /help."
+		return m.textarea.Focus()
+	}
+	return nil
 }
 
 func (m *inputModel) Value() string {
@@ -65,4 +90,13 @@ func (m *inputModel) Focus() tea.Cmd {
 
 func (m *inputModel) Blur() {
 	m.textarea.Blur()
+}
+
+func renderFooter(input inputModel, state chatState, width int) string {
+	parts := make([]string, 0, 2)
+	if state != stateApproving {
+		parts = append(parts, input.View())
+	}
+	parts = append(parts, renderHelpBar(state, width))
+	return strings.Join(parts, "\n")
 }

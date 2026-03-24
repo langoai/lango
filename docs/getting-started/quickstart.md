@@ -99,7 +99,7 @@ Your agent is now running and connected to your configured channels. Send a mess
 
 !!! tip "Interactive TUI Chat"
 
-    Run `lango` without arguments to start an interactive terminal chat:
+    Run `lango` without arguments to start the interactive terminal coding-agent cockpit:
 
     ```bash
     lango
