@@ -174,6 +174,12 @@ func (m *ChatModel) View() string {
 		return ""
 	}
 
+	// Guard: wait for WindowSizeMsg before rendering layout components
+	// that depend on non-zero width/height.
+	if m.width == 0 || m.height == 0 {
+		return "\n  Waiting for terminal size..."
+	}
+
 	var b strings.Builder
 
 	// Status bar (top)
@@ -192,7 +198,7 @@ func (m *ChatModel) View() string {
 
 	// Input area (bottom, hidden during approval)
 	if m.state != stateApproving {
-		b.WriteString(m.input.View(m.width))
+		b.WriteString(m.input.View())
 	}
 
 	// Help bar (bottom)
@@ -336,16 +342,18 @@ func (m *ChatModel) submitCmd(input string) tea.Cmd {
 
 // recalcLayout adjusts component sizes after a window resize.
 func (m *ChatModel) recalcLayout() {
-	// Layout: statusbar(1) + chatView(dynamic) + input(5) + helpbar(1) + margins(2)
+	// Layout (lines): statusbar(1) + \n(1) + chatView(dynamic) + \n(1) + input(5) + \n(1) + helpbar(1)
+	// Total = chatHeight + 10, so chatHeight = height - 10
 	inputHeight := 5
 	if m.state == stateApproving {
 		inputHeight = 8 // extra room for approval banner
 	}
-	chatHeight := m.height - 1 - inputHeight - 1 - 2
+	chatHeight := m.height - 1 - 1 - inputHeight - 1 - 1 // statusbar + sep + input + sep + helpbar
 	if chatHeight < 3 {
 		chatHeight = 3
 	}
 	m.chatView.setSize(m.width, chatHeight)
+	m.input.SetWidth(m.width)
 }
 
 func generateSessionKey() string {

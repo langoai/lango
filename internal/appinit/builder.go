@@ -6,6 +6,7 @@ import (
 
 	"github.com/langoai/lango/internal/agent"
 	"github.com/langoai/lango/internal/lifecycle"
+	"github.com/langoai/lango/internal/logging"
 )
 
 // Builder collects modules and orchestrates their initialization.
@@ -45,11 +46,14 @@ func (b *Builder) Build(ctx context.Context) (*BuildResult, error) {
 	var components []lifecycle.ComponentEntry
 	var catalogEntries []CatalogEntry
 
+	log := logging.SubsystemSugar("appinit")
 	for _, m := range sorted {
+		log.Infow("initializing module", "module", m.Name())
 		result, err := m.Init(ctx, resolver)
 		if err != nil {
 			return nil, fmt.Errorf("init module %q: %w", m.Name(), err)
 		}
+		log.Infow("module initialized", "module", m.Name())
 		if result == nil {
 			continue
 		}

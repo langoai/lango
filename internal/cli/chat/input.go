@@ -39,9 +39,12 @@ func (m inputModel) Update(msg tea.Msg) (inputModel, tea.Cmd) {
 	return m, cmd
 }
 
-func (m inputModel) View(width int) string {
-	m.textarea.SetWidth(width - 2)
+func (m inputModel) View() string {
 	return m.textarea.View()
+}
+
+func (m *inputModel) SetWidth(width int) {
+	m.textarea.SetWidth(width)
 }
 
 func (m *inputModel) Value() string {

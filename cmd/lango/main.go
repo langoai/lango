@@ -218,16 +218,21 @@ func runChat() error {
 	defer boot.DBClient.Close()
 
 	cfg := boot.Config
+	// TUI mode: redirect logging to stderr (bubbletea owns stdout)
 	if err := logging.Init(logging.LogConfig{
 		Level:      cfg.Logging.Level,
 		Format:     cfg.Logging.Format,
 		OutputPath: cfg.Logging.OutputPath,
+		Writer:     os.Stderr,
 	}); err != nil {
 		return fmt.Errorf("init logging: %w", err)
 	}
 	defer func() { _ = logging.Sync() }()
 
 	tui.SetProfile(boot.ProfileName)
+
+	fmt.Fprint(os.Stderr, tui.Banner())
+	fmt.Fprintln(os.Stderr, "\n  Initializing...")
 
 	// Create app in local-chat mode (skip gateway/channels/automation lifecycle).
 	application, err := app.New(boot, app.WithLocalChat())

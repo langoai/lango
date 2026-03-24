@@ -120,6 +120,8 @@ func New(boot *bootstrap.Result, opts ...AppOption) (*App, error) {
 	// On success, the stack is discarded — ownership transfers to the lifecycle registry.
 	var cleanups cleanupStack
 
+	logger().Info("Phase B: starting post-build wiring")
+
 	// B1. Populate app fields from resolver.
 	populateAppFields(app, resolver)
 
