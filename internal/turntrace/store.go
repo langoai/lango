@@ -9,6 +9,7 @@ import (
 	"github.com/langoai/lango/internal/ent"
 	entmessage "github.com/langoai/lango/internal/ent/message"
 	entturntrace "github.com/langoai/lango/internal/ent/turntrace"
+	entturntraceevent "github.com/langoai/lango/internal/ent/turntraceevent"
 )
 
 // Outcome classifies the terminal state of a turn.
@@ -68,6 +69,19 @@ type Store interface {
 	) error
 	RecentFailures(ctx context.Context, limit int) ([]Trace, error)
 	IsolationLeakCount(ctx context.Context, isolatedAgents []string) (int, error)
+
+	// EventsForTrace returns all events for a trace, ordered by seq.
+	EventsForTrace(ctx context.Context, traceID string) ([]Event, error)
+	// TracesForSession returns all traces for a session key, ordered by started_at.
+	TracesForSession(ctx context.Context, sessionKey string) ([]Trace, error)
+	// PurgeTraces deletes traces and their associated events by trace IDs.
+	PurgeTraces(ctx context.Context, traceIDs []string) error
+	// TraceCount returns the total number of traces.
+	TraceCount(ctx context.Context) (int, error)
+	// OldTraces returns trace IDs older than the given cutoff.
+	OldTraces(ctx context.Context, cutoff time.Time, onlySuccess bool, limit int) ([]string, error)
+	// RecentByOutcome returns traces matching outcome within a time window.
+	RecentByOutcome(ctx context.Context, outcome Outcome, since time.Time, limit int) ([]Trace, error)
 }
 
 // EntStore implements Store using the shared ent client.
@@ -229,6 +243,138 @@ func (s *EntStore) IsolationLeakCount(ctx context.Context, isolatedAgents []stri
 		return 0, fmt.Errorf("count isolation leaks: %w", err)
 	}
 	return count, nil
+}
+
+// EventsForTrace returns all events for a trace, ordered by seq.
+func (s *EntStore) EventsForTrace(ctx context.Context, traceID string) ([]Event, error) {
+	if s == nil || s.client == nil {
+		return nil, nil
+	}
+	rows, err := s.client.TurnTraceEvent.Query().
+		Where(entturntraceevent.TraceID(traceID)).
+		Order(ent.Asc(entturntraceevent.FieldSeq)).
+		All(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("query events for trace %q: %w", traceID, err)
+	}
+	out := make([]Event, 0, len(rows))
+	for _, row := range rows {
+		out = append(out, entToEvent(row))
+	}
+	return out, nil
+}
+
+// TracesForSession returns all traces for a session key, ordered by started_at.
+func (s *EntStore) TracesForSession(ctx context.Context, sessionKey string) ([]Trace, error) {
+	if s == nil || s.client == nil {
+		return nil, nil
+	}
+	rows, err := s.client.TurnTrace.Query().
+		Where(entturntrace.SessionKey(sessionKey)).
+		Order(ent.Asc(entturntrace.FieldStartedAt)).
+		All(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("query traces for session %q: %w", sessionKey, err)
+	}
+	out := make([]Trace, 0, len(rows))
+	for _, row := range rows {
+		out = append(out, entToTrace(row))
+	}
+	return out, nil
+}
+
+// PurgeTraces deletes traces and their associated events by trace IDs.
+func (s *EntStore) PurgeTraces(ctx context.Context, traceIDs []string) error {
+	if s == nil || s.client == nil || len(traceIDs) == 0 {
+		return nil
+	}
+	// Delete events first (no FK cascade in ent).
+	if _, err := s.client.TurnTraceEvent.Delete().
+		Where(entturntraceevent.TraceIDIn(traceIDs...)).
+		Exec(ctx); err != nil {
+		return fmt.Errorf("purge trace events: %w", err)
+	}
+	if _, err := s.client.TurnTrace.Delete().
+		Where(entturntrace.TraceIDIn(traceIDs...)).
+		Exec(ctx); err != nil {
+		return fmt.Errorf("purge traces: %w", err)
+	}
+	return nil
+}
+
+// TraceCount returns the total number of traces.
+func (s *EntStore) TraceCount(ctx context.Context) (int, error) {
+	if s == nil || s.client == nil {
+		return 0, nil
+	}
+	return s.client.TurnTrace.Query().Count(ctx)
+}
+
+// OldTraces returns trace IDs older than the given cutoff.
+func (s *EntStore) OldTraces(ctx context.Context, cutoff time.Time, onlySuccess bool, limit int) ([]string, error) {
+	if s == nil || s.client == nil {
+		return nil, nil
+	}
+	if limit <= 0 {
+		limit = 100
+	}
+	q := s.client.TurnTrace.Query().
+		Where(entturntrace.StartedAtLT(cutoff))
+	if onlySuccess {
+		q = q.Where(entturntrace.Outcome(string(OutcomeSuccess)))
+	}
+	rows, err := q.
+		Order(ent.Asc(entturntrace.FieldStartedAt)).
+		Limit(limit).
+		All(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("query old traces: %w", err)
+	}
+	ids := make([]string, 0, len(rows))
+	for _, row := range rows {
+		ids = append(ids, row.TraceID)
+	}
+	return ids, nil
+}
+
+// RecentByOutcome returns traces matching outcome within a time window.
+func (s *EntStore) RecentByOutcome(ctx context.Context, outcome Outcome, since time.Time, limit int) ([]Trace, error) {
+	if s == nil || s.client == nil {
+		return nil, nil
+	}
+	if limit <= 0 {
+		limit = 100
+	}
+	rows, err := s.client.TurnTrace.Query().
+		Where(
+			entturntrace.Outcome(string(outcome)),
+			entturntrace.StartedAtGTE(since),
+		).
+		Order(ent.Desc(entturntrace.FieldStartedAt)).
+		Limit(limit).
+		All(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("query recent by outcome %q: %w", outcome, err)
+	}
+	out := make([]Trace, 0, len(rows))
+	for _, row := range rows {
+		out = append(out, entToTrace(row))
+	}
+	return out, nil
+}
+
+func entToEvent(row *ent.TurnTraceEvent) Event {
+	return Event{
+		TraceID:          row.TraceID,
+		Seq:              row.Seq,
+		EventType:        row.EventType,
+		AgentName:        row.AgentName,
+		ToolName:         row.ToolName,
+		CallSignature:    row.CallSignature,
+		PayloadJSON:      row.PayloadJSON,
+		PayloadTruncated: row.PayloadTruncated,
+		CreatedAt:        row.CreatedAt,
+	}
 }
 
 func entToTrace(row *ent.TurnTrace) Trace {

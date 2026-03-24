@@ -176,6 +176,11 @@ type AgentConfig struct {
 	// Defaults to 3x RequestTimeout (e.g. 15m if RequestTimeout is 5m).
 	MaxRequestTimeout time.Duration `mapstructure:"maxRequestTimeout" json:"maxRequestTimeout"`
 
+	// Orchestration configures the structured multi-agent control plane.
+	// When Mode is "structured", a CoordinatingExecutor wraps the agent executor
+	// to apply DelegationGuard, BudgetPolicy, and RecoveryPolicy.
+	Orchestration OrchestrationConfig `mapstructure:"orchestration" json:"orchestration"`
+
 	// IdleTimeout is the duration of inactivity (no streaming chunks, tool calls, or model responses)
 	// before a request is timed out. When set, RequestTimeout becomes the hard ceiling.
 	// Set to -1 to disable idle timeout and use fixed RequestTimeout instead.

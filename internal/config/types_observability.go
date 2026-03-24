@@ -18,6 +18,9 @@ type ObservabilityConfig struct {
 
 	// Metrics configures metrics export format.
 	Metrics MetricsExportConfig `mapstructure:"metrics" json:"metrics"`
+
+	// TraceStore configures turn trace retention and cleanup.
+	TraceStore TraceStoreConfig `mapstructure:"traceStore" json:"traceStore"`
 }
 
 // TokenTrackingConfig defines token usage tracking settings.

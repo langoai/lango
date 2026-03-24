@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/langoai/lango/internal/bootstrap"
 	"github.com/langoai/lango/internal/config"
@@ -89,7 +90,10 @@ func (c *MultiAgentCheck) RunWithBootstrap(
 		return base
 	}
 
-	if len(failures) == 0 && leakCount == 0 {
+	// Extended diagnostics: loop/timeout frequency, trace growth, avg duration.
+	extWarnings := runExtendedTraceChecks(ctx, traceStore, cfg)
+
+	if len(failures) == 0 && leakCount == 0 && len(extWarnings) == 0 {
 		base.Message = fmt.Sprintf(
 			"Multi-agent mode enabled (provider=%s, no recent failed traces, no isolation leaks)",
 			cfg.Agent.Provider,
@@ -99,6 +103,10 @@ func (c *MultiAgentCheck) RunWithBootstrap(
 
 	base.Status = StatusWarn
 	var details []string
+
+	for _, w := range extWarnings {
+		details = append(details, w)
+	}
 	base.TraceFailures = make([]TraceFailure, 0, len(failures))
 	if len(failures) > 0 {
 		details = append(details, "Recent failed traces:")
@@ -134,6 +142,67 @@ func (c *MultiAgentCheck) RunWithBootstrap(
 	)
 	base.Details = strings.Join(details, "\n")
 	return base
+}
+
+// runExtendedTraceChecks performs additional trace-based diagnostics.
+func runExtendedTraceChecks(ctx context.Context, store *turntrace.EntStore, cfg *config.Config) []string {
+	var warnings []string
+	since := time.Now().Add(-24 * time.Hour)
+
+	// Loop frequency: warn if >3 loop_detected in 24h.
+	loops, err := store.RecentByOutcome(ctx, turntrace.OutcomeLoopDetected, since, 100)
+	if err == nil && len(loops) > 3 {
+		warnings = append(warnings, fmt.Sprintf(
+			"High loop frequency: %d loop_detected traces in last 24h (threshold: 3)",
+			len(loops),
+		))
+	}
+
+	// Timeout frequency: warn if >5 timeout in 24h.
+	timeouts, err := store.RecentByOutcome(ctx, turntrace.OutcomeTimeout, since, 100)
+	if err == nil && len(timeouts) > 5 {
+		warnings = append(warnings, fmt.Sprintf(
+			"High timeout frequency: %d timeout traces in last 24h (threshold: 5)",
+			len(timeouts),
+		))
+	}
+
+	// Trace store growth: warn if >80% of maxTraces.
+	maxTraces := cfg.Observability.TraceStore.MaxTraces
+	if maxTraces <= 0 {
+		maxTraces = 10000
+	}
+	count, err := store.TraceCount(ctx)
+	if err == nil && count > maxTraces*80/100 {
+		warnings = append(warnings, fmt.Sprintf(
+			"Trace store at %d%% capacity (%d/%d)",
+			count*100/maxTraces, count, maxTraces,
+		))
+	}
+
+	// Average turn duration: warn if >2min.
+	successes, err := store.RecentByOutcome(ctx, turntrace.OutcomeSuccess, since, 100)
+	if err == nil && len(successes) > 0 {
+		var totalDur time.Duration
+		counted := 0
+		for _, t := range successes {
+			if t.EndedAt != nil {
+				totalDur += t.EndedAt.Sub(t.StartedAt)
+				counted++
+			}
+		}
+		if counted > 0 {
+			avg := totalDur / time.Duration(counted)
+			if avg > 2*time.Minute {
+				warnings = append(warnings, fmt.Sprintf(
+					"High average turn duration: %s (threshold: 2m, sample: %d)",
+					avg.Truncate(time.Second), counted,
+				))
+			}
+		}
+	}
+
+	return warnings
 }
 
 // Fix delegates to Run as automatic fixing is not supported.

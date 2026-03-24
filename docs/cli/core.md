@@ -220,6 +220,47 @@ When multi-agent runtime failures exist, `--json` now includes structured trace 
 
 ---
 
+## lango agent trace
+
+Inspect turn traces for diagnostics.
+
+```bash
+# List recent failed traces
+$ lango agent trace list
+
+# Filter by outcome
+$ lango agent trace list --outcome timeout --limit 10
+
+# Filter by session
+$ lango agent trace list --session tui-123456
+
+# View detailed event timeline for a trace
+$ lango agent trace abc-123-def
+
+# JSON output
+$ lango agent trace list --json
+```
+
+## lango agent graph
+
+Show the delegation graph for a session, displaying which agents were involved and handoff edges.
+
+```bash
+$ lango agent graph <session-key>
+$ lango agent graph tui-123456 --json
+```
+
+## lango agent trace metrics
+
+Display trace-derived per-agent performance metrics (success rate, turn count, duration percentiles). Distinct from `lango metrics agents` which shows token usage.
+
+```bash
+$ lango agent trace metrics
+$ lango agent trace metrics --agent operator --json
+```
+
+---
+
 ## lango config
 
 Configuration profile management. Manage multiple configuration profiles for different environments or setups.

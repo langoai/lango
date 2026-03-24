@@ -124,7 +124,7 @@ func main() {
 	memoryCmd.GroupID = "ai"
 	rootCmd.AddCommand(memoryCmd)
 
-	agentCmd := cliagent.NewAgentCmd(cliboot.Config)
+	agentCmd := cliagent.NewAgentCmd(cliboot.Config, cliboot.BootResult)
 	agentCmd.GroupID = "ai"
 	rootCmd.AddCommand(agentCmd)
 

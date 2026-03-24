@@ -105,6 +105,30 @@ func (s *memoryTraceStore) IsolationLeakCount(_ context.Context, _ []string) (in
 	return 0, nil
 }
 
+func (s *memoryTraceStore) EventsForTrace(_ context.Context, traceID string) ([]turntrace.Event, error) {
+	return s.events[traceID], nil
+}
+
+func (s *memoryTraceStore) TracesForSession(_ context.Context, _ string) ([]turntrace.Trace, error) {
+	return nil, nil
+}
+
+func (s *memoryTraceStore) PurgeTraces(_ context.Context, _ []string) error {
+	return nil
+}
+
+func (s *memoryTraceStore) TraceCount(_ context.Context) (int, error) {
+	return len(s.traces), nil
+}
+
+func (s *memoryTraceStore) OldTraces(_ context.Context, _ time.Time, _ bool, _ int) ([]string, error) {
+	return nil, nil
+}
+
+func (s *memoryTraceStore) RecentByOutcome(_ context.Context, _ turntrace.Outcome, _ time.Time, _ int) ([]turntrace.Trace, error) {
+	return nil, nil
+}
+
 type stubSessionStore struct {
 	annotated []string
 }
@@ -313,7 +337,7 @@ func TestRunner_TruncatedPayloadFlag(t *testing.T) {
 	t.Parallel()
 
 	traceStore := newMemoryTraceStore()
-	recorder := newTraceRecorder(context.Background(), traceStore, "trace-1")
+	recorder := newTraceRecorder(context.Background(), traceStore, "trace-1", 15)
 	recorder.append(turntrace.Event{
 		TraceID:     "trace-1",
 		EventType:   "terminal_error",
