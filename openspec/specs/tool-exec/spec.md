@@ -150,3 +150,20 @@ The exec and exec_bg handlers SHALL call `blockProtectedPaths` after `blockLango
 #### Scenario: Guard allows normal commands
 - **WHEN** agent executes `go build ./...` via exec tool
 - **THEN** command passes all guards and executes normally
+
+## OS-Level Sandbox
+
+### Requirement: Command execution with OS sandbox
+The exec tool SHALL execute shell commands via `sh -c` with configurable timeout, environment filtering, and optional OS-level sandbox isolation applied before process start.
+
+#### Scenario: Run with sandbox enabled
+- **WHEN** a command is executed via `Run()` with `Config.OSIsolator` set
+- **THEN** the child process SHALL run under OS-level kernel restrictions per `Config.SandboxPolicy`
+
+#### Scenario: Run with sandbox disabled
+- **WHEN** a command is executed via `Run()` with `Config.OSIsolator` nil
+- **THEN** the child process SHALL run without OS-level restrictions (existing behavior)
+
+#### Scenario: Background process with sandbox
+- **WHEN** a background command is started via `StartBackground()` with `Config.OSIsolator` set
+- **THEN** the child process SHALL run under OS-level kernel restrictions

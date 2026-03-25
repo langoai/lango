@@ -8,6 +8,7 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/langoai/lango/internal/agent"
+	sandboxos "github.com/langoai/lango/internal/sandbox/os"
 )
 
 // Registry manages skill lifecycle and converts file-based skills to executable tools.
@@ -28,6 +29,11 @@ func NewRegistry(store SkillStore, baseTools []*agent.Tool, logger *zap.SugaredL
 		baseTools: baseTools,
 		logger:    logger,
 	}
+}
+
+// SetOSIsolator configures the OS-level sandbox for the skill executor.
+func (r *Registry) SetOSIsolator(iso sandboxos.OSIsolator, workspacePath string) {
+	r.executor.SetOSIsolator(iso, workspacePath)
 }
 
 // LoadSkills loads active skills from the store and converts them to agent tools.

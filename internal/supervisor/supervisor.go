@@ -5,12 +5,15 @@ import (
 	"fmt"
 	"iter"
 
+	"os"
+
 	"github.com/langoai/lango/internal/config"
 	"github.com/langoai/lango/internal/logging"
 	"github.com/langoai/lango/internal/provider"
 	"github.com/langoai/lango/internal/provider/anthropic"
 	"github.com/langoai/lango/internal/provider/gemini"
 	"github.com/langoai/lango/internal/provider/openai"
+	sandboxos "github.com/langoai/lango/internal/sandbox/os"
 	"github.com/langoai/lango/internal/tools/exec"
 	"github.com/langoai/lango/internal/types"
 )
@@ -41,6 +44,27 @@ func New(cfg *config.Config) (*Supervisor, error) {
 			"SHELL", "TMPDIR", "SSH_AUTH_SOCK",
 		},
 	}
+
+	// Inject OS-level sandbox if enabled.
+	if cfg.Sandbox.Enabled {
+		iso := sandboxos.NewOSIsolator()
+		if iso.Available() {
+			workDir := cfg.Sandbox.WorkspacePath
+			if workDir == "" {
+				workDir, _ = os.Getwd()
+			}
+			execConfig.OSIsolator = iso
+			execConfig.SandboxPolicy = sandboxos.DefaultToolPolicy(workDir)
+			execConfig.FailClosed = cfg.Sandbox.FailClosed
+			logger.Infow("exec tool OS sandbox enabled", "isolator", iso.Name())
+		} else if cfg.Sandbox.FailClosed {
+			logger.Warnw("OS sandbox required but unavailable — exec tool will reject commands")
+			execConfig.FailClosed = true
+		} else {
+			logger.Warnw("OS sandbox enabled but unavailable — exec tool proceeding without isolation")
+		}
+	}
+
 	s.execTool = exec.New(execConfig)
 
 	if err := s.initializeProviders(); err != nil {

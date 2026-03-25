@@ -14,6 +14,7 @@ import (
 
 	"github.com/creack/pty"
 	"github.com/langoai/lango/internal/logging"
+	sandboxos "github.com/langoai/lango/internal/sandbox/os"
 	"github.com/langoai/lango/internal/security"
 )
 
@@ -27,6 +28,9 @@ type Config struct {
 	EnvFilter       []string           // environment variables to exclude
 	EnvWhitelist    []string           // if set, ONLY these vars are allowed
 	Refs            *security.RefStore // secret reference token resolver
+	OSIsolator      sandboxos.OSIsolator // OS-level sandbox (nil = disabled)
+	SandboxPolicy   sandboxos.Policy     // policy for sandboxed execution
+	FailClosed      bool                 // if true, reject execution when sandbox unavailable
 }
 
 // Tool provides shell command execution
@@ -85,6 +89,22 @@ func New(cfg Config) *Tool {
 	}
 }
 
+// applySandbox applies OS-level sandbox to the command if configured.
+// Returns a non-nil error only when fail-closed is set and the sandbox
+// cannot be applied. In fail-open mode it logs a warning and returns nil.
+func (t *Tool) applySandbox(ctx context.Context, cmd *exec.Cmd) error {
+	if t.config.OSIsolator == nil {
+		return nil
+	}
+	if err := t.config.OSIsolator.Apply(ctx, cmd, t.config.SandboxPolicy); err != nil {
+		if t.config.FailClosed {
+			return fmt.Errorf("%w: %w", sandboxos.ErrSandboxRequired, err)
+		}
+		logger.Warnw("OS sandbox unavailable, proceeding without isolation", "error", err)
+	}
+	return nil
+}
+
 // resolveRefs resolves any secret reference tokens in the command string.
 // Tokens like {{secret:name}} and {{decrypt:id}} are replaced with actual values
 // just before execution. The resolved command is never logged or returned to the agent.
@@ -115,9 +135,14 @@ func (t *Tool) Run(ctx context.Context, command string, timeout time.Duration) (
 	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr
 
+	if err := t.applySandbox(ctx, cmd); err != nil {
+		return nil, err
+	}
+
 	logger.Infow("executing command", "command", command, "timeout", timeout)
 
 	err := cmd.Run()
+	sandboxos.CleanupProfileFile(cmd)
 
 	result := &Result{
 		Stdout: stdout.String(),
@@ -155,12 +180,17 @@ func (t *Tool) RunWithPTY(ctx context.Context, command string, timeout time.Dura
 	cmd.Dir = t.config.WorkDir
 	cmd.Env = t.filterEnv(os.Environ())
 
+	if err := t.applySandbox(ctx, cmd); err != nil {
+		return nil, err
+	}
+
 	// Start with PTY
 	ptmx, err := pty.Start(cmd)
 	if err != nil {
 		return nil, fmt.Errorf("start PTY: %w", err)
 	}
 	defer ptmx.Close()
+	defer sandboxos.CleanupProfileFile(cmd)
 
 	// Read output
 	var output bytes.Buffer
@@ -216,6 +246,10 @@ func (t *Tool) StartBackground(command string) (string, error) {
 	output := &syncBuffer{}
 	cmd.Stdout = output
 	cmd.Stderr = output
+
+	if err := t.applySandbox(context.Background(), cmd); err != nil {
+		return "", err
+	}
 
 	if err := cmd.Start(); err != nil {
 		return "", fmt.Errorf("start background process: %w", err)

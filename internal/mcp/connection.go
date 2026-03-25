@@ -13,6 +13,7 @@ import (
 
 	"github.com/langoai/lango/internal/config"
 	"github.com/langoai/lango/internal/logging"
+	sandboxos "github.com/langoai/lango/internal/sandbox/os"
 )
 
 // ServerState represents the lifecycle state of an MCP server connection.
@@ -78,6 +79,8 @@ type ServerConnection struct {
 	prompts   []DiscoveredPrompt
 
 	stopCh chan struct{}
+
+	isolator sandboxos.OSIsolator // OS-level sandbox for stdio server processes (nil = disabled)
 }
 
 // NewServerConnection creates a new server connection manager.
@@ -93,6 +96,12 @@ func NewServerConnection(name string, cfg config.MCPServerConfig, global config.
 
 // Name returns the server name.
 func (sc *ServerConnection) Name() string { return sc.name }
+
+// SetOSIsolator configures an OS-level sandbox that will be applied to
+// stdio server processes before they start. Pass nil to disable.
+func (sc *ServerConnection) SetOSIsolator(iso sandboxos.OSIsolator) {
+	sc.isolator = iso
+}
 
 // State returns the current connection state.
 func (sc *ServerConnection) State() ServerState {
@@ -292,6 +301,13 @@ func (sc *ServerConnection) createTransport() (sdkmcp.Transport, error) {
 		cmd := exec.Command(sc.cfg.Command, sc.cfg.Args...)
 		if len(sc.cfg.Env) > 0 {
 			cmd.Env = BuildEnvSlice(sc.cfg.Env)
+		}
+		if sc.isolator != nil {
+			policy := sandboxos.MCPServerPolicy()
+			if err := sc.isolator.Apply(context.Background(), cmd, policy); err != nil {
+				log := logging.App()
+				log.Warnw("MCP server OS sandbox unavailable", "server", sc.name, "error", err)
+			}
 		}
 		return &sdkmcp.CommandTransport{Command: cmd}, nil
 

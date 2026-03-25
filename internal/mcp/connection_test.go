@@ -1,8 +1,11 @@
 package mcp
 
 import (
+	"context"
 	"fmt"
 	"net/http"
+	"os/exec"
+	"sync"
 	"testing"
 	"time"
 
@@ -10,6 +13,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/langoai/lango/internal/config"
+	sandboxos "github.com/langoai/lango/internal/sandbox/os"
 )
 
 func TestToolNameFormat(t *testing.T) {
@@ -318,4 +322,148 @@ func TestHeaderRoundTripper(t *testing.T) {
 
 	assert.Equal(t, "Bearer test-token", req.Header.Get("Authorization"))
 	assert.Equal(t, "custom-value", req.Header.Get("X-Custom"))
+}
+
+// --- OS Isolator integration tests ---
+
+// mockIsolator records Apply calls for testing.
+type mockIsolator struct {
+	mu      sync.Mutex
+	calls   []mockApplyCall
+	err     error // error to return from Apply
+}
+
+type mockApplyCall struct {
+	Cmd    *exec.Cmd
+	Policy sandboxos.Policy
+}
+
+func (m *mockIsolator) Apply(_ context.Context, cmd *exec.Cmd, policy sandboxos.Policy) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.calls = append(m.calls, mockApplyCall{Cmd: cmd, Policy: policy})
+	return m.err
+}
+
+func (m *mockIsolator) Available() bool { return true }
+func (m *mockIsolator) Name() string    { return "mock" }
+
+func (m *mockIsolator) applyCalls() []mockApplyCall {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	out := make([]mockApplyCall, len(m.calls))
+	copy(out, m.calls)
+	return out
+}
+
+func TestServerConnection_SetOSIsolator(t *testing.T) {
+	t.Parallel()
+
+	conn := NewServerConnection("test",
+		config.MCPServerConfig{Transport: "stdio", Command: "echo"},
+		config.MCPConfig{},
+	)
+	assert.Nil(t, conn.isolator)
+
+	iso := &mockIsolator{}
+	conn.SetOSIsolator(iso)
+	assert.Equal(t, iso, conn.isolator)
+
+	// Setting nil disables the isolator.
+	conn.SetOSIsolator(nil)
+	assert.Nil(t, conn.isolator)
+}
+
+func TestServerConnection_CreateTransport_StdioWithoutIsolator(t *testing.T) {
+	t.Parallel()
+
+	conn := NewServerConnection("test",
+		config.MCPServerConfig{Transport: "stdio", Command: "echo"},
+		config.MCPConfig{},
+	)
+	// No isolator set — transport should still work.
+	transport, err := conn.createTransport()
+	assert.NoError(t, err)
+	assert.NotNil(t, transport)
+}
+
+func TestServerConnection_CreateTransport_StdioWithIsolator(t *testing.T) {
+	t.Parallel()
+
+	iso := &mockIsolator{}
+	conn := NewServerConnection("test",
+		config.MCPServerConfig{Transport: "stdio", Command: "echo", Args: []string{"hello"}},
+		config.MCPConfig{},
+	)
+	conn.SetOSIsolator(iso)
+
+	transport, err := conn.createTransport()
+	assert.NoError(t, err)
+	assert.NotNil(t, transport)
+
+	// Verify isolator.Apply was called exactly once with the MCP server policy.
+	calls := iso.applyCalls()
+	require.Len(t, calls, 1)
+
+	// MCPServerPolicy returns network=allow and read-global filesystem.
+	assert.Equal(t, sandboxos.NetworkAllow, calls[0].Policy.Network)
+	assert.True(t, calls[0].Policy.Filesystem.ReadOnlyGlobal)
+	assert.Contains(t, calls[0].Cmd.Path, "echo") // exec.Command resolves full path
+}
+
+func TestServerConnection_CreateTransport_IsolatorErrorIsNonFatal(t *testing.T) {
+	t.Parallel()
+
+	iso := &mockIsolator{err: fmt.Errorf("sandbox not supported on this platform")}
+	conn := NewServerConnection("test",
+		config.MCPServerConfig{Transport: "stdio", Command: "echo"},
+		config.MCPConfig{},
+	)
+	conn.SetOSIsolator(iso)
+
+	// Even if the isolator returns an error, createTransport should succeed
+	// (sandbox failure is non-fatal — only a warning is logged).
+	transport, err := conn.createTransport()
+	assert.NoError(t, err)
+	assert.NotNil(t, transport)
+
+	// Verify Apply was still called.
+	calls := iso.applyCalls()
+	require.Len(t, calls, 1)
+}
+
+func TestServerConnection_CreateTransport_IsolatorNotCalledForHTTP(t *testing.T) {
+	t.Parallel()
+
+	iso := &mockIsolator{}
+	conn := NewServerConnection("test",
+		config.MCPServerConfig{Transport: "http", URL: "http://localhost:3000"},
+		config.MCPConfig{},
+	)
+	conn.SetOSIsolator(iso)
+
+	transport, err := conn.createTransport()
+	assert.NoError(t, err)
+	assert.NotNil(t, transport)
+
+	// Isolator should NOT be called for non-stdio transports.
+	assert.Empty(t, iso.applyCalls())
+}
+
+func TestServerConnection_CreateTransport_IsolatorNotCalledForSSE(t *testing.T) {
+	t.Parallel()
+
+	iso := &mockIsolator{}
+	conn := NewServerConnection("test",
+		config.MCPServerConfig{Transport: "sse", URL: "http://localhost:3000/sse"},
+		config.MCPConfig{},
+	)
+	conn.SetOSIsolator(iso)
+
+	transport, err := conn.createTransport()
+	assert.NoError(t, err)
+	assert.NotNil(t, transport)
+
+	// Isolator should NOT be called for SSE transport.
+	assert.Empty(t, iso.applyCalls())
 }

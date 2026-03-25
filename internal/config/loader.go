@@ -184,6 +184,16 @@ func DefaultConfig() *Config {
 			AutoReconnect:        true,
 			MaxReconnectAttempts: 5,
 		},
+		Sandbox: SandboxConfig{
+			Enabled:        false,
+			FailClosed:     false,
+			NetworkMode:    "deny",
+			TimeoutPerTool: 30 * time.Second,
+			AllowedWritePaths: []string{"/tmp"},
+			OS: OSSandboxConfig{
+				SeccompProfile: "moderate",
+			},
+		},
 		P2P: P2PConfig{
 			Enabled: false,
 			ListenAddrs: []string{

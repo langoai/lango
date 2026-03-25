@@ -10,6 +10,8 @@ import (
 	"text/template"
 
 	"go.uber.org/zap"
+
+	sandboxos "github.com/langoai/lango/internal/sandbox/os"
 )
 
 var _dangerousPatterns = []*regexp.Regexp{
@@ -23,12 +25,22 @@ var _dangerousPatterns = []*regexp.Regexp{
 
 // Executor safely executes skills.
 type Executor struct {
-	logger *zap.SugaredLogger
+	logger        *zap.SugaredLogger
+	isolator      sandboxos.OSIsolator // OS-level sandbox (nil = disabled)
+	workspacePath string               // Workspace root for sandbox write policy
 }
 
 // NewExecutor creates a new skill executor.
 func NewExecutor(logger *zap.SugaredLogger) *Executor {
 	return &Executor{logger: logger}
+}
+
+// SetOSIsolator configures the OS-level sandbox for script execution.
+// When set, skill scripts run under kernel-level isolation (Seatbelt on macOS,
+// Landlock+seccomp on Linux). The workspacePath defines the writable directory.
+func (e *Executor) SetOSIsolator(iso sandboxos.OSIsolator, workspacePath string) {
+	e.isolator = iso
+	e.workspacePath = workspacePath
 }
 
 // Execute runs a skill with the given parameters.
@@ -131,8 +143,21 @@ func (e *Executor) executeScript(ctx context.Context, skill SkillEntry) (interfa
 	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr
 
-	if err := cmd.Run(); err != nil {
-		return nil, fmt.Errorf("execute script skill %q: %w (stderr: %s)", skill.Name, err, stderr.String())
+	if e.isolator != nil {
+		policy := sandboxos.DefaultToolPolicy(e.workspacePath)
+		if applyErr := e.isolator.Apply(ctx, cmd, policy); applyErr != nil {
+			e.logger.Warnw("apply OS sandbox to skill script", "skill", skill.Name, "error", applyErr)
+		}
+	}
+
+	runErr := cmd.Run()
+
+	if e.isolator != nil {
+		sandboxos.CleanupProfileFile(cmd)
+	}
+
+	if runErr != nil {
+		return nil, fmt.Errorf("execute script skill %q: %w (stderr: %s)", skill.Name, runErr, stderr.String())
 	}
 
 	return stdout.String(), nil

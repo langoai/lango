@@ -100,6 +100,9 @@ type Config struct {
 	// Provenance configuration (session checkpoints, attribution, session tree)
 	Provenance ProvenanceConfig `mapstructure:"provenance" json:"provenance"`
 
+	// Sandbox configuration (OS-level tool execution isolation)
+	Sandbox SandboxConfig `mapstructure:"sandbox" json:"sandbox"`
+
 	// Providers configuration
 	Providers map[string]ProviderConfig `mapstructure:"providers" json:"providers"`
 }
