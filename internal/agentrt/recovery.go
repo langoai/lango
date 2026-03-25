@@ -51,7 +51,7 @@ func NewRecoveryPolicy(cfg config.RecoveryCfg, provider adk.ErrorFixProvider) *R
 }
 
 // Decide evaluates a failure and returns the recommended recovery action.
-func (p *RecoveryPolicy) Decide(ctx context.Context, failure RecoveryContext) RecoveryAction {
+func (p *RecoveryPolicy) Decide(ctx context.Context, failure *RecoveryContext) RecoveryAction {
 	if failure.RetryCount >= p.maxRetries {
 		if failure.PartialResult != "" {
 			return RecoveryDirectAnswer
@@ -62,7 +62,7 @@ func (p *RecoveryPolicy) Decide(ctx context.Context, failure RecoveryContext) Re
 	var agentErr *adk.AgentError
 	if !errors.As(failure.Error, &agentErr) {
 		// Non-agent error: try learning-based fix if available.
-		if p.tryLearningFix(ctx, "", failure.Error, &failure) {
+		if p.tryLearningFix(ctx, "", failure.Error, failure) {
 			return RecoveryRetry
 		}
 		return RecoveryEscalate
@@ -85,8 +85,12 @@ func (p *RecoveryPolicy) Decide(ctx context.Context, failure RecoveryContext) Re
 		if agentErr.CauseClass == "approval_denied" {
 			return RecoveryEscalate
 		}
+		if failure.AgentName != "" {
+			_ = p.tryLearningFix(ctx, "", failure.Error, failure)
+			return RecoveryRetryWithHint
+		}
 		// Try learning-based error correction before generic retry.
-		if p.tryLearningFix(ctx, "", failure.Error, &failure) {
+		if p.tryLearningFix(ctx, "", failure.Error, failure) {
 			return RecoveryRetry
 		}
 		return RecoveryRetry
@@ -126,11 +130,32 @@ func AddRerouteHint(input string, failure RecoveryContext) string {
 	if failure.LearningFix != "" {
 		fixClause = fmt.Sprintf(" Suggested fix: %s.", failure.LearningFix)
 	}
+	subject := "previous attempt"
+	if failure.AgentName != "" {
+		subject = fmt.Sprintf("previous sub-agent (%s)", failure.AgentName)
+	}
 	return fmt.Sprintf(
-		"[System: The previous sub-agent (%s) failed: %v.%s "+
+		"[System: The %s failed: %v.%s "+
 			"Do NOT delegate to the same agent again for this request. "+
 			"Re-evaluate and route to a different agent or answer directly. "+
 			"Original request: %s]",
-		failure.AgentName, failure.Error, fixClause, input,
+		subject, failure.Error, fixClause, input,
 	)
+}
+
+func (a RecoveryAction) String() string {
+	switch a {
+	case RecoveryNone:
+		return "none"
+	case RecoveryRetry:
+		return "retry"
+	case RecoveryRetryWithHint:
+		return "retry_with_hint"
+	case RecoveryDirectAnswer:
+		return "direct_answer"
+	case RecoveryEscalate:
+		return "escalate"
+	default:
+		return "unknown"
+	}
 }

@@ -81,16 +81,16 @@ type Request struct {
 
 // Result is the structured result of a completed turn.
 type Result struct {
-	ResponseText string
-	Outcome      TurnOutcome
-	TraceID      string
-	UserMessage  string
-	Elapsed      time.Duration
-	ErrorCode    string
-	CauseClass   string
-	CauseDetail  string
+	ResponseText    string
+	Outcome         TurnOutcome
+	TraceID         string
+	UserMessage     string
+	Elapsed         time.Duration
+	ErrorCode       string
+	CauseClass      string
+	CauseDetail     string
 	OperatorSummary string
-	Summary      string
+	Summary         string
 }
 
 // Runner owns timeout handling, durable tracing, and outcome classification.
@@ -161,12 +161,7 @@ func (r *Runner) Run(parent context.Context, req Request) (Result, error) {
 		entrypoint = "direct"
 	}
 
-	traceCtx, traceCancel := context.WithTimeout(
-		context.WithoutCancel(parent),
-		traceWriteTimeout,
-	)
-	defer traceCancel()
-	recorder := newTraceRecorder(traceCtx, r.traceStore, traceID, r.delegationBudgetMax)
+	recorder := newTraceRecorder(parent, r.traceStore, traceID, r.delegationBudgetMax)
 	recorder.onDelegation = req.OnDelegation
 	recorder.onBudgetWarning = req.OnBudgetWarning
 	recorder.start(req.SessionKey, entrypoint, start)
@@ -247,6 +242,9 @@ func (r *Runner) prepareContext(
 	runOpts = append(runOpts, adk.WithOnEvent(func(event *adksession.Event) {
 		recorder.recordEvent(event)
 	}))
+	runOpts = append(runOpts, adk.WithOnRecovery(func(info adk.RecoveryInfo) {
+		recorder.recordRecovery(info)
+	}))
 
 	if req.OnWarning != nil {
 		timer := time.AfterFunc(time.Duration(float64(r.hardCeiling)*0.8), func() {
@@ -316,7 +314,7 @@ func (r *Runner) classifyResult(report adk.RunReport, runErr error, elapsed time
 		}
 	}
 
-		var agentErr *adk.AgentError
+	var agentErr *adk.AgentError
 	if errors.As(runErr, &agentErr) {
 		result.ErrorCode = string(agentErr.Code)
 		result.CauseClass = agentErr.CauseClass
@@ -367,7 +365,7 @@ func (r *Runner) fireCallbacks(sessionKey string) {
 }
 
 type traceRecorder struct {
-	ctx             context.Context
+	parentCtx       context.Context
 	store           turntrace.Store
 	traceID         string
 	seq             int64
@@ -377,23 +375,32 @@ type traceRecorder struct {
 	delegationMax   int
 }
 
-func newTraceRecorder(ctx context.Context, store turntrace.Store, traceID string, delegationMax int) *traceRecorder {
+func newTraceRecorder(parentCtx context.Context, store turntrace.Store, traceID string, delegationMax int) *traceRecorder {
 	if delegationMax <= 0 {
 		delegationMax = 15
 	}
+	if parentCtx == nil {
+		parentCtx = context.Background()
+	}
 	return &traceRecorder{
-		ctx:           ctx,
+		parentCtx:     parentCtx,
 		store:         store,
 		traceID:       traceID,
 		delegationMax: delegationMax,
 	}
 }
 
+func (r *traceRecorder) writeContext() (context.Context, context.CancelFunc) {
+	return context.WithTimeout(context.WithoutCancel(r.parentCtx), traceWriteTimeout)
+}
+
 func (r *traceRecorder) start(sessionKey, entrypoint string, startedAt time.Time) {
 	if r.store == nil {
 		return
 	}
-	if err := r.store.CreateTrace(r.ctx, turntrace.Trace{
+	ctx, cancel := r.writeContext()
+	defer cancel()
+	if err := r.store.CreateTrace(ctx, turntrace.Trace{
 		TraceID:    r.traceID,
 		SessionKey: sessionKey,
 		Entrypoint: entrypoint,
@@ -415,8 +422,10 @@ func (r *traceRecorder) finish(
 	if r.store == nil {
 		return
 	}
+	ctx, cancel := r.writeContext()
+	defer cancel()
 	if err := r.store.FinishTrace(
-		r.ctx,
+		ctx,
 		r.traceID,
 		outcome,
 		summary,
@@ -517,6 +526,22 @@ func (r *traceRecorder) recordEvent(event *adksession.Event) {
 	}
 }
 
+func (r *traceRecorder) recordRecovery(info adk.RecoveryInfo) {
+	if r.store == nil {
+		return
+	}
+	r.append(turntrace.Event{
+		TraceID:   r.traceID,
+		EventType: turntrace.EventRecoveryAttempt,
+		AgentName: info.AgentName,
+		PayloadJSON: marshalTracePayload(map[string]any{
+			"action": info.Action,
+			"agent":  info.AgentName,
+			"error":  info.Error,
+		}),
+	})
+}
+
 func (r *traceRecorder) append(event turntrace.Event) {
 	r.seq++
 	event.Seq = r.seq
@@ -524,7 +549,9 @@ func (r *traceRecorder) append(event turntrace.Event) {
 	payload, truncated := truncatePayload(event.PayloadJSON, 1024)
 	event.PayloadJSON = payload
 	event.PayloadTruncated = truncated
-	if err := r.store.AppendEvent(r.ctx, event); err != nil {
+	ctx, cancel := r.writeContext()
+	defer cancel()
+	if err := r.store.AppendEvent(ctx, event); err != nil {
 		logger().Warnw("append turn trace event",
 			"trace_id", r.traceID,
 			"seq", event.Seq,

@@ -247,6 +247,36 @@ func (s *SessionServiceAdapter) DiscardActiveChildWithReason(sessionID, reason s
 	return s.discardActiveChild(sessionID, reason)
 }
 
+// CleanupFailedTurn discards any active isolated child state and closes
+// dangling parent-visible tool calls before the session is retried or reused.
+func (s *SessionServiceAdapter) CleanupFailedTurn(sessionID, reason string) error {
+	var active *runtimeChild
+	if s.childStore != nil {
+		active = s.takeActiveChild(sessionID)
+		if active != nil {
+			s.rollbackOverlay(active)
+			if err := s.childStore.DiscardChild(active.key); err != nil {
+				return err
+			}
+		}
+	}
+
+	var parent *SessionAdapter
+	if active != nil {
+		parent = active.parent
+	}
+	if err := s.closeDanglingParentToolCalls(sessionID, parent); err != nil {
+		return err
+	}
+
+	if active != nil && strings.TrimSpace(reason) != "" {
+		if err := s.appendOutcomeToParent(active, formatDiscardNote(active.agent, reason)); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 func (s *SessionServiceAdapter) discardActiveChild(sessionID, reason string) error {
 	if s.childStore == nil {
 		return nil
@@ -463,6 +493,103 @@ func formatDiscardNote(agent, reason string) string {
 		reason = "discarded"
 	}
 	return fmt.Sprintf("[Isolated sub-agent %s discarded: %s. Raw child history discarded.]", agent, reason)
+}
+
+const interruptedToolCallOutput = `{"error":"tool call was interrupted and did not complete"}`
+
+func (s *SessionServiceAdapter) closeDanglingParentToolCalls(sessionID string, parent *SessionAdapter) error {
+	if s.store == nil {
+		return nil
+	}
+
+	var history []internal.Message
+	var sess *internal.Session
+	if parent != nil {
+		history = append(history, parent.sess.History...)
+	} else {
+		var err error
+		sess, err = s.store.Get(sessionID)
+		if err != nil {
+			return err
+		}
+		if sess != nil {
+			history = append(history, sess.History...)
+		}
+	}
+
+	dangling := danglingToolCalls(history)
+	if len(dangling) == 0 {
+		return nil
+	}
+
+	now := time.Now()
+	for _, tc := range dangling {
+		msg := internal.Message{
+			Role:      types.RoleTool,
+			Content:   interruptedToolCallOutput,
+			Timestamp: now,
+			Author:    "tool",
+			ToolCalls: []internal.ToolCall{{
+				ID:     tc.ID,
+				Name:   tc.Name,
+				Output: interruptedToolCallOutput,
+			}},
+		}
+		if err := s.store.AppendMessage(sessionID, msg); err != nil {
+			return err
+		}
+		if sess != nil {
+			sess.History = append(sess.History, msg)
+		}
+		if parent != nil {
+			parent.sess.History = append(parent.sess.History, msg)
+		}
+	}
+	return nil
+}
+
+func danglingToolCalls(history []internal.Message) []internal.ToolCall {
+	pending := make(map[string]internal.ToolCall)
+	order := make([]string, 0)
+
+	for _, msg := range history {
+		switch msg.Role {
+		case types.RoleAssistant, types.RoleModel:
+			for _, tc := range msg.ToolCalls {
+				if tc.Input == "" {
+					continue
+				}
+				id := tc.ID
+				if strings.TrimSpace(id) == "" {
+					id = "call_" + tc.Name
+				}
+				tc.ID = id
+				if _, exists := pending[id]; !exists {
+					order = append(order, id)
+				}
+				pending[id] = tc
+			}
+		case types.RoleTool, types.RoleFunction:
+			for _, tc := range msg.ToolCalls {
+				if tc.Output == "" {
+					continue
+				}
+				id := tc.ID
+				if strings.TrimSpace(id) == "" {
+					id = "call_" + tc.Name
+				}
+				delete(pending, id)
+			}
+		}
+	}
+
+	out := make([]internal.ToolCall, 0, len(pending))
+	for _, id := range order {
+		if tc, ok := pending[id]; ok {
+			out = append(out, tc)
+		}
+	}
+	return out
 }
 
 func eventToMessage(evt *session.Event) (internal.Message, bool, error) {

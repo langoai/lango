@@ -223,11 +223,15 @@ Sub-agents operate in isolated child sessions forked from the parent conversatio
 
 The `ChildSessionServiceAdapter` manages the fork/merge lifecycle. A `Summarizer` extracts the key results from the child session before merging, and discarded child runs leave a compact root-authored failure note instead of raw child history. Child-session routing is enabled by the isolation setting itself; it no longer depends on provenance wiring being present.
 
+Streaming failure paths use the same discard contract as collection-based failures. If an isolated specialist fails mid-turn, the runtime removes the stale child overlay before retrying and closes any dangling parent-visible tool-call state so later retries do not inherit orphaned specialist calls.
+
 Built-in specialist agents such as `operator`, `navigator`, `vault`, `librarian`, and `automator` use child-session routing by default. `planner` and `chronicler` remain on the parent-session path.
 
 ## Turn Traces And Diagnostics
 
-Every multi-agent turn records a durable trace with delegation, tool-call, tool-result, and final outcome events. Recent failed traces and isolation leaks are surfaced through `lango doctor` so operators can inspect `loop_detected`, `empty_after_tool_use`, and similar runtime failures without reading raw logs first.
+Every multi-agent turn records a durable trace with delegation, tool-call, tool-result, recovery-attempt, and final outcome events. Recent failed traces and isolation leaks are surfaced through `lango doctor` so operators can inspect `loop_detected`, `empty_after_tool_use`, reroute attempts, and similar runtime failures without reading raw logs first.
+
+When structured orchestration is enabled, recovery distinguishes between failures that happen before specialist delegation and failures that happen after a specialist handoff. Post-handoff tool failures generate a reroute hint that names the failed specialist and tells the orchestrator to try a different specialist or answer directly instead of blindly replaying the same specialist path.
 
 ## Configuration
 

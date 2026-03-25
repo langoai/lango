@@ -95,6 +95,7 @@ func (c *CoordinatingExecutor) runWithRecovery(
 		c.observeEvent(event, sessionID, state, budget)
 	})
 	mergedOpts := append(append([]adk.RunOption{}, opts...), policyHook)
+	hooks := adk.ResolveRunHooks(mergedOpts...)
 
 	// Clear target before each attempt so retries that succeed without
 	// a fresh delegation don't misattribute to the previous target.
@@ -118,15 +119,25 @@ func (c *CoordinatingExecutor) runWithRecovery(
 
 	failure := RecoveryContext{
 		Error:         err,
+		AgentName:     state.target(),
 		PartialResult: report.Response,
 		RetryCount:    retryCount,
 		SessionID:     sessionID,
 	}
-	action := c.recovery.Decide(ctx, failure)
+	action := c.recovery.Decide(ctx, &failure)
+
+	if hooks.OnRecovery != nil {
+		hooks.OnRecovery(adk.RecoveryInfo{
+			Action:    action.String(),
+			AgentName: failure.AgentName,
+			Error:     err.Error(),
+		})
+	}
 
 	if c.bus != nil {
 		c.bus.Publish(RecoveryEvent{
 			Action:    action,
+			AgentName: failure.AgentName,
 			Error:     err.Error(),
 			SessionID: sessionID,
 		})

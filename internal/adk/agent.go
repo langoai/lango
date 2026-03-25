@@ -484,9 +484,7 @@ func (a *Agent) RunAndCollect(ctx context.Context, sessionID, input string, opts
 		// Safety net: detect [REJECT] text from sub-agents that failed to
 		// call transfer_to_agent and force re-routing through the orchestrator.
 		if resp != "" && containsRejectPattern(resp) && len(a.adkAgent.SubAgents()) > 0 {
-			if a.sessionService != nil {
-				_ = a.sessionService.DiscardActiveChildWithReason(sessionID, "escalated without producing a result")
-			}
+			a.cleanupFailedTurn(sessionID, "escalated without producing a result")
 			logger().Warnw("sub-agent REJECT detected in text, forcing re-route",
 				"session", sessionID,
 				"response_preview", truncate(resp, 100))
@@ -527,9 +525,7 @@ func (a *Agent) RunAndCollect(ctx context.Context, sessionID, input string, opts
 		// orchestrator respond using whatever information was gathered.
 		var agentErr *AgentError
 		if errors.As(err, &agentErr) && agentErr.Code == ErrToolChurn && len(a.adkAgent.SubAgents()) > 0 {
-			if a.sessionService != nil {
-				_ = a.sessionService.DiscardActiveChildWithReason(sessionID, "same tool loop detected")
-			}
+			a.cleanupFailedTurn(sessionID, "same tool loop detected")
 			recovery := "[System: The previous sub-agent was stopped because it called the same tool repeatedly without producing a response. " +
 				"Do NOT delegate to the same sub-agent again for this request. " +
 				"Respond to the user directly using whatever information has already been gathered in this conversation. " +
@@ -586,9 +582,7 @@ func (a *Agent) RunAndCollect(ctx context.Context, sessionID, input string, opts
 			"elapsed", time.Since(start).String(),
 			"error", err)
 		// Return partial result from the best attempt if available.
-		if a.sessionService != nil {
-			_ = a.sessionService.DiscardActiveChildWithReason(sessionID, "agent error")
-		}
+		a.cleanupFailedTurn(sessionID, "agent error")
 		return resp, err
 	}
 
@@ -615,9 +609,7 @@ func (a *Agent) RunAndCollect(ctx context.Context, sessionID, input string, opts
 		if retryResp != "" && len(retryResp) > len(resp) {
 			resp = retryResp
 		}
-		if a.sessionService != nil {
-			_ = a.sessionService.DiscardActiveChildWithReason(sessionID, "agent error")
-		}
+		a.cleanupFailedTurn(sessionID, "agent error")
 		return resp, retryErr
 	}
 	resp = retryResp
@@ -648,9 +640,7 @@ func (a *Agent) runAndCollectOnce(ctx context.Context, sessionID, input string, 
 	for event, err := range a.Run(ctx, sessionID, input) {
 		if err != nil {
 			partial := b.String()
-			if a.sessionService != nil {
-				_ = a.sessionService.DiscardActiveChildWithReason(sessionID, discardReasonForError(err))
-			}
+			a.cleanupFailedTurn(sessionID, discardReasonForError(err))
 			fc := classifyError(err)
 			return partial, &AgentError{
 				Code:            fc.Code,
@@ -721,19 +711,17 @@ func (a *Agent) runAndCollectOnce(ctx context.Context, sessionID, input string, 
 	// timeout that the iterator failed to propagate.
 	if err := ctx.Err(); err != nil {
 		partial := b.String()
-		if a.sessionService != nil {
-			_ = a.sessionService.DiscardActiveChildWithReason(sessionID, discardReasonForError(err))
+		a.cleanupFailedTurn(sessionID, discardReasonForError(err))
+		return partial, &AgentError{
+			Code:            ErrTimeout,
+			Message:         "agent error",
+			Cause:           err,
+			Partial:         partial,
+			Elapsed:         time.Since(start),
+			CauseClass:      CauseTimeoutHard,
+			CauseDetail:     err.Error(),
+			OperatorSummary: fmt.Sprintf("[%s] %s", ErrTimeout, CauseTimeoutHard),
 		}
-			return partial, &AgentError{
-				Code:            ErrTimeout,
-				Message:         "agent error",
-				Cause:           err,
-				Partial:         partial,
-				Elapsed:         time.Since(start),
-				CauseClass:      CauseTimeoutHard,
-				CauseDetail:     err.Error(),
-				OperatorSummary: fmt.Sprintf("[%s] %s", ErrTimeout, CauseTimeoutHard),
-			}
 	}
 
 	return b.String(), nil
@@ -784,6 +772,7 @@ type RunOption func(*runOptions)
 type runOptions struct {
 	onActivity func()
 	onEvent    func(*session.Event)
+	onRecovery func(RecoveryInfo)
 	onFinish   func()
 }
 
@@ -791,7 +780,15 @@ type runOptions struct {
 type RunHooks struct {
 	OnActivity func()
 	OnEvent    func(*session.Event)
+	OnRecovery func(RecoveryInfo)
 	OnFinish   func()
+}
+
+// RecoveryInfo captures a structured recovery action observed during a run.
+type RecoveryInfo struct {
+	Action    string
+	AgentName string
+	Error     string
 }
 
 // WithOnActivity sets a callback that is invoked whenever the agent produces
@@ -803,6 +800,11 @@ func WithOnActivity(fn func()) RunOption {
 // WithOnEvent receives each event observed by the detailed collectors.
 func WithOnEvent(fn func(*session.Event)) RunOption {
 	return func(o *runOptions) { o.onEvent = fn }
+}
+
+// WithOnRecovery receives each structured recovery action observed by runtime wrappers.
+func WithOnRecovery(fn func(RecoveryInfo)) RunOption {
+	return func(o *runOptions) { o.onRecovery = fn }
 }
 
 // ChainOnEvent appends an event handler after any existing one, instead of replacing.
@@ -833,6 +835,7 @@ func ResolveRunHooks(opts ...RunOption) RunHooks {
 	return RunHooks{
 		OnActivity: ro.onActivity,
 		OnEvent:    ro.onEvent,
+		OnRecovery: ro.onRecovery,
 		OnFinish:   ro.onFinish,
 	}
 }
@@ -863,20 +866,21 @@ func (a *Agent) RunStreamingDetailed(ctx context.Context, sessionID, input strin
 	for event, err := range a.Run(ctx, sessionID, input) {
 		if err != nil {
 			partial := b.String()
+			a.cleanupFailedTurn(sessionID, discardReasonForError(err))
 			fc := classifyError(err)
 			return RunReport{
-				Response:    partial,
-				Diagnostics: diagnostics,
-			}, &AgentError{
-				Code:            fc.Code,
-				Message:         "agent error",
-				Cause:           err,
-				Partial:         partial,
-				Elapsed:         time.Since(start),
-				CauseClass:      fc.CauseClass,
-				CauseDetail:     fc.CauseDetail,
-				OperatorSummary: fc.OperatorSummary,
-			}
+					Response:    partial,
+					Diagnostics: diagnostics,
+				}, &AgentError{
+					Code:            fc.Code,
+					Message:         "agent error",
+					Cause:           err,
+					Partial:         partial,
+					Elapsed:         time.Since(start),
+					CauseClass:      fc.CauseClass,
+					CauseDetail:     fc.CauseDetail,
+					OperatorSummary: fc.OperatorSummary,
+				}
 		}
 
 		recordDiagnostics(&diagnostics, a.adkAgent.Name(), len(a.adkAgent.SubAgents()) > 0, event)
@@ -920,22 +924,20 @@ func (a *Agent) RunStreamingDetailed(ctx context.Context, sessionID, input strin
 	// timeout that the iterator failed to propagate.
 	if err := ctx.Err(); err != nil {
 		partial := b.String()
-		if a.sessionService != nil {
-			_ = a.sessionService.DiscardActiveChildWithReason(sessionID, discardReasonForError(err))
-		}
+		a.cleanupFailedTurn(sessionID, discardReasonForError(err))
 		return RunReport{
-			Response:    partial,
-			Diagnostics: diagnostics,
-		}, &AgentError{
-			Code:            ErrTimeout,
-			Message:         "agent error",
-			Cause:           err,
-			Partial:         partial,
-			Elapsed:         time.Since(start),
-			CauseClass:      CauseTimeoutHard,
-			CauseDetail:     err.Error(),
-			OperatorSummary: fmt.Sprintf("[%s] %s", ErrTimeout, CauseTimeoutHard),
-		}
+				Response:    partial,
+				Diagnostics: diagnostics,
+			}, &AgentError{
+				Code:            ErrTimeout,
+				Message:         "agent error",
+				Cause:           err,
+				Partial:         partial,
+				Elapsed:         time.Since(start),
+				CauseClass:      CauseTimeoutHard,
+				CauseDetail:     err.Error(),
+				OperatorSummary: fmt.Sprintf("[%s] %s", ErrTimeout, CauseTimeoutHard),
+			}
 	}
 	if a.sessionService != nil {
 		_ = a.sessionService.CloseActiveChild(sessionID)
@@ -955,6 +957,13 @@ func discardReasonForError(err error) string {
 	default:
 		return "agent error"
 	}
+}
+
+func (a *Agent) cleanupFailedTurn(sessionID, reason string) {
+	if a.sessionService == nil {
+		return
+	}
+	_ = a.sessionService.CleanupFailedTurn(sessionID, reason)
 }
 
 // hasText reports whether the event contains any non-empty text part.

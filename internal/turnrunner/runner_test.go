@@ -22,10 +22,13 @@ import (
 )
 
 type fixtureExecutor struct {
-	events  []*adksession.Event
-	report  adk.RunReport
-	err     error
-	chunks  []string
+	events            []*adksession.Event
+	recoveries        []adk.RecoveryInfo
+	report            adk.RunReport
+	err               error
+	chunks            []string
+	sleepBeforeEvents time.Duration
+	sleepBeforeReturn time.Duration
 }
 
 func (e *fixtureExecutor) RunStreamingDetailed(
@@ -41,15 +44,26 @@ func (e *fixtureExecutor) RunStreamingDetailed(
 		}
 	}()
 
+	if e.sleepBeforeEvents > 0 {
+		time.Sleep(e.sleepBeforeEvents)
+	}
 	for _, event := range e.events {
 		if hooks.OnEvent != nil {
 			hooks.OnEvent(event)
+		}
+	}
+	for _, info := range e.recoveries {
+		if hooks.OnRecovery != nil {
+			hooks.OnRecovery(info)
 		}
 	}
 	for _, chunk := range e.chunks {
 		if onChunk != nil {
 			onChunk(chunk)
 		}
+	}
+	if e.sleepBeforeReturn > 0 {
+		time.Sleep(e.sleepBeforeReturn)
 	}
 	return e.report, e.err
 }
@@ -133,15 +147,18 @@ type stubSessionStore struct {
 	annotated []string
 }
 
-func (s *stubSessionStore) Create(*langosession.Session) error                        { return nil }
-func (s *stubSessionStore) Get(string) (*langosession.Session, error)                 { return nil, nil }
-func (s *stubSessionStore) Update(*langosession.Session) error                        { return nil }
-func (s *stubSessionStore) Delete(string) error                                       { return nil }
-func (s *stubSessionStore) AppendMessage(string, langosession.Message) error          { return nil }
-func (s *stubSessionStore) Close() error                                              { return nil }
-func (s *stubSessionStore) GetSalt(string) ([]byte, error)                            { return nil, nil }
-func (s *stubSessionStore) SetSalt(string, []byte) error                              { return nil }
-func (s *stubSessionStore) AnnotateTimeout(key, _ string) error { s.annotated = append(s.annotated, key); return nil }
+func (s *stubSessionStore) Create(*langosession.Session) error               { return nil }
+func (s *stubSessionStore) Get(string) (*langosession.Session, error)        { return nil, nil }
+func (s *stubSessionStore) Update(*langosession.Session) error               { return nil }
+func (s *stubSessionStore) Delete(string) error                              { return nil }
+func (s *stubSessionStore) AppendMessage(string, langosession.Message) error { return nil }
+func (s *stubSessionStore) Close() error                                     { return nil }
+func (s *stubSessionStore) GetSalt(string) ([]byte, error)                   { return nil, nil }
+func (s *stubSessionStore) SetSalt(string, []byte) error                     { return nil }
+func (s *stubSessionStore) AnnotateTimeout(key, _ string) error {
+	s.annotated = append(s.annotated, key)
+	return nil
+}
 
 type fixtureFile struct {
 	Events []fixtureEvent `json:"events"`
@@ -346,4 +363,132 @@ func TestRunner_TruncatedPayloadFlag(t *testing.T) {
 
 	require.Len(t, traceStore.events["trace-1"], 1)
 	assert.True(t, traceStore.events["trace-1"][0].PayloadTruncated)
+}
+
+type deadlineRecordingTraceStore struct {
+	createDeadline time.Time
+	appendDeadline time.Time
+	finishDeadline time.Time
+}
+
+func (s *deadlineRecordingTraceStore) CreateTrace(ctx context.Context, _ turntrace.Trace) error {
+	s.createDeadline, _ = ctx.Deadline()
+	return nil
+}
+
+func (s *deadlineRecordingTraceStore) AppendEvent(ctx context.Context, _ turntrace.Event) error {
+	s.appendDeadline, _ = ctx.Deadline()
+	return nil
+}
+
+func (s *deadlineRecordingTraceStore) FinishTrace(ctx context.Context, _ string, _ turntrace.Outcome, _ string, _ string, _ string, _ string, _ time.Time) error {
+	s.finishDeadline, _ = ctx.Deadline()
+	return nil
+}
+
+func (s *deadlineRecordingTraceStore) RecentFailures(context.Context, int) ([]turntrace.Trace, error) {
+	return nil, nil
+}
+
+func (s *deadlineRecordingTraceStore) IsolationLeakCount(context.Context, []string) (int, error) {
+	return 0, nil
+}
+
+func (s *deadlineRecordingTraceStore) EventsForTrace(context.Context, string) ([]turntrace.Event, error) {
+	return nil, nil
+}
+
+func (s *deadlineRecordingTraceStore) TracesForSession(context.Context, string) ([]turntrace.Trace, error) {
+	return nil, nil
+}
+
+func (s *deadlineRecordingTraceStore) PurgeTraces(context.Context, []string) error {
+	return nil
+}
+
+func (s *deadlineRecordingTraceStore) TraceCount(context.Context) (int, error) {
+	return 0, nil
+}
+
+func (s *deadlineRecordingTraceStore) OldTraces(context.Context, time.Time, bool, int) ([]string, error) {
+	return nil, nil
+}
+
+func (s *deadlineRecordingTraceStore) RecentByOutcome(context.Context, turntrace.Outcome, time.Time, int) ([]turntrace.Trace, error) {
+	return nil, nil
+}
+
+func TestRunner_TraceWritesUseFreshDeadlines(t *testing.T) {
+	t.Parallel()
+
+	traceStore := &deadlineRecordingTraceStore{}
+	executor := &fixtureExecutor{
+		events: []*adksession.Event{
+			{
+				Timestamp: time.Now(),
+				Author:    "lango-orchestrator",
+				LLMResponse: model.LLMResponse{
+					Content: &genai.Content{
+						Role:  "model",
+						Parts: []*genai.Part{{Text: "hello"}},
+					},
+				},
+			},
+		},
+		report:            adk.RunReport{Response: "done"},
+		sleepBeforeEvents: 1100 * time.Millisecond,
+		sleepBeforeReturn: 1100 * time.Millisecond,
+	}
+	runner := New(Config{
+		HardCeiling: 10 * time.Second,
+		TraceStore:  traceStore,
+	}, executor, &stubSessionStore{}, nil)
+
+	_, err := runner.Run(context.Background(), Request{
+		SessionKey: "telegram:test",
+		Input:      "hello",
+		Entrypoint: "channel",
+	})
+	require.NoError(t, err)
+	require.False(t, traceStore.createDeadline.IsZero())
+	require.False(t, traceStore.appendDeadline.IsZero())
+	require.False(t, traceStore.finishDeadline.IsZero())
+	assert.True(t, traceStore.appendDeadline.After(traceStore.createDeadline.Add(500*time.Millisecond)))
+	assert.True(t, traceStore.finishDeadline.After(traceStore.appendDeadline.Add(500*time.Millisecond)))
+}
+
+func TestRunner_RecoveryAttemptsRecorded(t *testing.T) {
+	t.Parallel()
+
+	traceStore := newMemoryTraceStore()
+	executor := &fixtureExecutor{
+		recoveries: []adk.RecoveryInfo{{
+			Action:    "retry_with_hint",
+			AgentName: "vault",
+			Error:     "tool failed",
+		}},
+		report: adk.RunReport{Response: "done"},
+	}
+	runner := New(Config{
+		HardCeiling: 10 * time.Second,
+		TraceStore:  traceStore,
+	}, executor, &stubSessionStore{}, nil)
+
+	result, err := runner.Run(context.Background(), Request{
+		SessionKey: "telegram:test",
+		Input:      "hello",
+		Entrypoint: "channel",
+	})
+	require.NoError(t, err)
+	events := traceStore.events[result.TraceID]
+	found := false
+	for _, event := range events {
+		if event.EventType != turntrace.EventRecoveryAttempt {
+			continue
+		}
+		found = true
+		assert.Equal(t, "vault", event.AgentName)
+		assert.Contains(t, event.PayloadJSON, "retry_with_hint")
+	}
+	assert.True(t, found, "expected recovery_attempt event in trace")
 }

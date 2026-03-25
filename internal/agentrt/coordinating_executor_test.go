@@ -166,6 +166,96 @@ func TestCoordinatingExecutor_EventBusPublish(t *testing.T) {
 	assert.Len(t, recoveryEvents, 2) // two recovery events published
 }
 
+func TestCoordinatingExecutor_ToolErrorAfterSpecialistUsesRerouteHint(t *testing.T) {
+	bus := eventbus.New()
+	var recoveryEvents []RecoveryEvent
+	eventbus.SubscribeTyped(bus, func(e RecoveryEvent) {
+		recoveryEvents = append(recoveryEvents, e)
+	})
+
+	var (
+		inputs     []string
+		recoveries []adk.RecoveryInfo
+		callCount  int
+	)
+	executor := mockCallExecutor(func(_ context.Context, _, input string, _ adk.ChunkCallback, opts ...adk.RunOption) (adk.RunReport, error) {
+		inputs = append(inputs, input)
+		hooks := adk.ResolveRunHooks(opts...)
+		if callCount == 0 {
+			callCount++
+			require.NotNil(t, hooks.OnEvent)
+			hooks.OnEvent(&adksession.Event{
+				Author: "lango-orchestrator",
+				Actions: adksession.EventActions{
+					TransferToAgent: "vault",
+				},
+			})
+			return adk.RunReport{}, &adk.AgentError{Code: adk.ErrToolError, CauseClass: "unknown_tool_error", Message: "tool failed"}
+		}
+		callCount++
+		return adk.RunReport{Response: "rerouted"}, nil
+	})
+
+	ce := NewCoordinatingExecutor(
+		executor,
+		NewDelegationGuard(config.CircuitBreakerCfg{FailureThreshold: 3}, nil),
+		NewBudgetPolicy(config.BudgetCfg{ToolCallLimit: 50, DelegationLimit: 15, AlertThreshold: 0.8}),
+		NewRecoveryPolicy(config.RecoveryCfg{MaxRetries: 2}, nil),
+		bus,
+	)
+
+	report, err := ce.RunStreamingDetailed(
+		context.Background(),
+		"sess-1",
+		"check wallet balance",
+		nil,
+		adk.WithOnRecovery(func(info adk.RecoveryInfo) {
+			recoveries = append(recoveries, info)
+		}),
+	)
+	require.NoError(t, err)
+	assert.Equal(t, "rerouted", report.Response)
+	require.Len(t, inputs, 2)
+	assert.NotEqual(t, inputs[0], inputs[1], "second attempt should use reroute hint input")
+	assert.Contains(t, inputs[1], "vault")
+	require.Len(t, recoveryEvents, 1)
+	assert.Equal(t, "vault", recoveryEvents[0].AgentName)
+	assert.Equal(t, RecoveryRetryWithHint, recoveryEvents[0].Action)
+	require.Len(t, recoveries, 1)
+	assert.Equal(t, "vault", recoveries[0].AgentName)
+	assert.Equal(t, "retry_with_hint", recoveries[0].Action)
+}
+
+func TestCoordinatingExecutor_ToolErrorBeforeSpecialistRetriesSameInput(t *testing.T) {
+	var (
+		inputs    []string
+		callCount int
+	)
+	executor := mockCallExecutor(func(_ context.Context, _, input string, _ adk.ChunkCallback, _ ...adk.RunOption) (adk.RunReport, error) {
+		inputs = append(inputs, input)
+		if callCount == 0 {
+			callCount++
+			return adk.RunReport{}, &adk.AgentError{Code: adk.ErrToolError, CauseClass: "unknown_tool_error", Message: "tool failed"}
+		}
+		callCount++
+		return adk.RunReport{Response: "retried"}, nil
+	})
+
+	ce := NewCoordinatingExecutor(
+		executor,
+		NewDelegationGuard(config.CircuitBreakerCfg{FailureThreshold: 3}, nil),
+		NewBudgetPolicy(config.BudgetCfg{ToolCallLimit: 50, DelegationLimit: 15, AlertThreshold: 0.8}),
+		NewRecoveryPolicy(config.RecoveryCfg{MaxRetries: 2}, nil),
+		nil,
+	)
+
+	report, err := ce.RunStreamingDetailed(context.Background(), "sess-1", "check wallet balance", nil)
+	require.NoError(t, err)
+	assert.Equal(t, "retried", report.Response)
+	require.Len(t, inputs, 2)
+	assert.Equal(t, inputs[0], inputs[1], "pre-specialist retries should keep same input")
+}
+
 func TestCoordinatingExecutor_PreservesExistingOnEventHook(t *testing.T) {
 	var existingHookCalls int32
 

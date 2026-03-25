@@ -11,6 +11,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	internal "github.com/langoai/lango/internal/session"
+	"github.com/langoai/lango/internal/types"
 	"google.golang.org/adk/model"
 	"google.golang.org/adk/session"
 	"google.golang.org/genai"
@@ -360,6 +361,72 @@ func TestDiscardActiveChildWithReason_ReplacesOverlayWithFailureNote(t *testing.
 	require.Len(t, adapter.sess.History, 1)
 	assert.Equal(t, dbMsgs[0].Content, adapter.sess.History[0].Content)
 	assert.Nil(t, svc.activeChild["test-session"])
+}
+
+func TestCleanupFailedTurn_DiscardsActiveChildAndPersistsCompactNote(t *testing.T) {
+	t.Parallel()
+
+	store := newMockStore()
+	sess := &internal.Session{
+		Key:       "test-session",
+		Metadata:  make(map[string]string),
+		CreatedAt: time.Now(),
+		UpdatedAt: time.Now(),
+	}
+	store.Create(sess)
+
+	adapter := NewSessionAdapter(sess, store, "lango-orchestrator")
+	svc := NewSessionServiceAdapter(store, "lango-orchestrator").
+		WithChildLifecycleHook(func(ev internal.SessionLifecycleEvent) {}).
+		WithIsolatedAgents([]string{"vault"})
+
+	require.NoError(t, svc.AppendEvent(context.Background(), adapter, newTestEvent("vault", "model", "isolated reply")))
+	require.NoError(t, svc.CleanupFailedTurn("test-session", "agent error"))
+
+	dbMsgs := store.messages["test-session"]
+	require.Len(t, dbMsgs, 1)
+	assert.Equal(t, "lango-orchestrator", dbMsgs[0].Author)
+	assert.Contains(t, dbMsgs[0].Content, "vault discarded: agent error")
+	require.Len(t, adapter.sess.History, 1)
+	assert.Equal(t, dbMsgs[0].Content, adapter.sess.History[0].Content)
+	assert.Nil(t, svc.activeChild["test-session"])
+}
+
+func TestCleanupFailedTurn_ClosesDanglingToolCalls(t *testing.T) {
+	t.Parallel()
+
+	store := newMockStore()
+	sess := &internal.Session{
+		Key:       "test-session",
+		Metadata:  make(map[string]string),
+		CreatedAt: time.Now(),
+		UpdatedAt: time.Now(),
+		History: []internal.Message{{
+			Role:      types.RoleAssistant,
+			Timestamp: time.Now(),
+			Author:    "lango-orchestrator",
+			ToolCalls: []internal.ToolCall{{
+				ID:    "call-balance",
+				Name:  "payment_balance",
+				Input: `{"wallet":"0xabc"}`,
+			}},
+		}},
+	}
+	store.Create(sess)
+
+	svc := NewSessionServiceAdapter(store, "lango-orchestrator")
+	require.NoError(t, svc.CleanupFailedTurn("test-session", ""))
+
+	dbMsgs := store.messages["test-session"]
+	require.Len(t, dbMsgs, 1)
+	assert.Equal(t, types.RoleTool, dbMsgs[0].Role)
+	assert.Equal(t, interruptedToolCallOutput, dbMsgs[0].Content)
+	require.Len(t, dbMsgs[0].ToolCalls, 1)
+	assert.Equal(t, "call-balance", dbMsgs[0].ToolCalls[0].ID)
+	assert.Equal(t, "payment_balance", dbMsgs[0].ToolCalls[0].Name)
+	assert.Equal(t, interruptedToolCallOutput, dbMsgs[0].ToolCalls[0].Output)
+	require.Len(t, sess.History, 2)
+	assert.Empty(t, danglingToolCalls(sess.History))
 }
 
 func TestAppendEvent_IsolatedFunctionResponseVisibleInParentEvents(t *testing.T) {

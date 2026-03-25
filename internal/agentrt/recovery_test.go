@@ -60,6 +60,14 @@ func TestRecoveryPolicy_Decide(t *testing.T) {
 			wantAction: RecoveryRetry,
 		},
 		{
+			give: "specialist tool error → retry with hint",
+			failure: RecoveryContext{
+				AgentName: "vault",
+				Error:     &adk.AgentError{Code: adk.ErrToolError, CauseClass: "unknown_tool_error"},
+			},
+			wantAction: RecoveryRetryWithHint,
+		},
+		{
 			give: "empty after tool use → retry with hint",
 			failure: RecoveryContext{
 				Error: &adk.AgentError{Code: adk.ErrEmptyAfterToolUse},
@@ -111,7 +119,8 @@ func TestRecoveryPolicy_Decide(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.give, func(t *testing.T) {
-			action := policy.Decide(context.Background(), tt.failure)
+			failure := tt.failure
+			action := policy.Decide(context.Background(), &failure)
 			assert.Equal(t, tt.wantAction, action)
 		})
 	}
