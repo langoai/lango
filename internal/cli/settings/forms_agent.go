@@ -3,6 +3,7 @@ package settings
 import (
 	"fmt"
 	"strconv"
+	"time"
 
 	"github.com/langoai/lango/internal/cli/tuicore"
 	"github.com/langoai/lango/internal/config"
@@ -12,11 +13,12 @@ import (
 func NewMultiAgentForm(cfg *config.Config) *tuicore.FormModel {
 	form := tuicore.NewFormModel("Multi-Agent Configuration")
 
-	form.AddField(&tuicore.Field{
+	multiAgentField := &tuicore.Field{
 		Key: "multi_agent", Label: "Enable Multi-Agent Orchestration", Type: tuicore.InputBool,
 		Checked:     cfg.Agent.MultiAgent,
-		Description: "Allow the agent to spawn and coordinate sub-agents for complex tasks",
-	})
+		Description: "Enable sub-agent tree — spawn specialist agents for complex tasks",
+	}
+	form.AddField(multiAgentField)
 
 	form.AddField(&tuicore.Field{
 		Key: "max_delegation_rounds", Label: "Max Delegation Rounds", Type: tuicore.InputInt,
@@ -55,6 +57,161 @@ func NewMultiAgentForm(cfg *config.Config) *tuicore.FormModel {
 		Value:       cfg.Agent.AgentsDir,
 		Placeholder: "~/.lango/agents",
 		Description: "Directory containing user-defined AGENT.md files (<dir>/<name>/AGENT.md)",
+	})
+
+	// --- Structured Orchestration fields ---
+
+	orc := cfg.Agent.Orchestration
+	defaults := config.OrchestrationDefaults()
+
+	orcMode := orc.Mode
+	if orcMode == "" {
+		orcMode = defaults.Mode
+	}
+
+	isMultiAgentOn := func() bool { return multiAgentField.Checked }
+
+	modeField := &tuicore.Field{
+		Key: "orchestration_mode", Label: "Orchestration Mode", Type: tuicore.InputSelect,
+		Value:       orcMode,
+		Options:     []string{"classic", "structured"},
+		Description: "Control-plane mode: classic (direct execution) vs structured (policy-wrapped with circuit breaker, budget, recovery)",
+		VisibleWhen: isMultiAgentOn,
+	}
+	form.AddField(modeField)
+
+	isStructured := func() bool {
+		return multiAgentField.Checked && modeField.Value == "structured"
+	}
+
+	cbThreshold := orc.CircuitBreaker.FailureThreshold
+	if cbThreshold == 0 {
+		cbThreshold = defaults.CircuitBreaker.FailureThreshold
+	}
+	form.AddField(&tuicore.Field{
+		Key: "orc_cb_failure_threshold", Label: "  CB Failure Threshold", Type: tuicore.InputInt,
+		Value:       strconv.Itoa(cbThreshold),
+		Placeholder: "3",
+		Description: "Consecutive failures before circuit opens (0 = use default: 3)",
+		VisibleWhen: isStructured,
+		Validate: func(s string) error {
+			if i, err := strconv.Atoi(s); err != nil || i < 0 {
+				return fmt.Errorf("must be a non-negative integer")
+			}
+			return nil
+		},
+	})
+
+	cbTimeout := orc.CircuitBreaker.ResetTimeout
+	if cbTimeout == 0 {
+		cbTimeout = defaults.CircuitBreaker.ResetTimeout
+	}
+	form.AddField(&tuicore.Field{
+		Key: "orc_cb_reset_timeout", Label: "  CB Reset Timeout", Type: tuicore.InputText,
+		Value:       cbTimeout.String(),
+		Placeholder: "30s",
+		Description: "Duration before half-open probe after circuit opens",
+		VisibleWhen: isStructured,
+		Validate: func(s string) error {
+			if _, err := time.ParseDuration(s); err != nil {
+				return fmt.Errorf("must be a valid duration (e.g. 30s, 1m)")
+			}
+			return nil
+		},
+	})
+
+	budgetToolLimit := orc.Budget.ToolCallLimit
+	if budgetToolLimit == 0 {
+		budgetToolLimit = defaults.Budget.ToolCallLimit
+	}
+	form.AddField(&tuicore.Field{
+		Key: "orc_budget_tool_call_limit", Label: "  Budget Tool Call Limit", Type: tuicore.InputInt,
+		Value:       strconv.Itoa(budgetToolLimit),
+		Placeholder: "50",
+		Description: "Tool call budget for alerting (0 = use default: 50)",
+		VisibleWhen: isStructured,
+		Validate: func(s string) error {
+			if i, err := strconv.Atoi(s); err != nil || i < 0 {
+				return fmt.Errorf("must be a non-negative integer")
+			}
+			return nil
+		},
+	})
+
+	budgetDelegLimit := orc.Budget.DelegationLimit
+	if budgetDelegLimit == 0 {
+		budgetDelegLimit = defaults.Budget.DelegationLimit
+	}
+	form.AddField(&tuicore.Field{
+		Key: "orc_budget_delegation_limit", Label: "  Budget Delegation Limit", Type: tuicore.InputInt,
+		Value:       strconv.Itoa(budgetDelegLimit),
+		Placeholder: "15",
+		Description: "Delegation budget for alerting (0 = use default: 15)",
+		VisibleWhen: isStructured,
+		Validate: func(s string) error {
+			if i, err := strconv.Atoi(s); err != nil || i < 0 {
+				return fmt.Errorf("must be a non-negative integer")
+			}
+			return nil
+		},
+	})
+
+	alertThreshold := orc.Budget.AlertThreshold
+	if alertThreshold == 0 {
+		alertThreshold = defaults.Budget.AlertThreshold
+	}
+	form.AddField(&tuicore.Field{
+		Key: "orc_budget_alert_threshold", Label: "  Budget Alert Threshold", Type: tuicore.InputText,
+		Value:       fmt.Sprintf("%.2f", alertThreshold),
+		Placeholder: "0.80",
+		Description: "Budget percentage that triggers alert, 0.0-1.0 (0 = use default: 0.80)",
+		VisibleWhen: isStructured,
+		Validate: func(s string) error {
+			fv, err := strconv.ParseFloat(s, 64)
+			if err != nil {
+				return fmt.Errorf("must be a decimal number")
+			}
+			if fv < 0 || fv > 1 {
+				return fmt.Errorf("must be between 0.0 and 1.0")
+			}
+			return nil
+		},
+	})
+
+	recoveryRetries := orc.Recovery.MaxRetries
+	if recoveryRetries == 0 {
+		recoveryRetries = defaults.Recovery.MaxRetries
+	}
+	form.AddField(&tuicore.Field{
+		Key: "orc_recovery_max_retries", Label: "  Recovery Max Retries", Type: tuicore.InputInt,
+		Value:       strconv.Itoa(recoveryRetries),
+		Placeholder: "2",
+		Description: "Max retry attempts on failure (0 = use default: 2)",
+		VisibleWhen: isStructured,
+		Validate: func(s string) error {
+			if i, err := strconv.Atoi(s); err != nil || i < 0 {
+				return fmt.Errorf("must be a non-negative integer")
+			}
+			return nil
+		},
+	})
+
+	recoveryCooldown := orc.Recovery.CircuitBreakerCooldown
+	if recoveryCooldown == 0 {
+		recoveryCooldown = defaults.Recovery.CircuitBreakerCooldown
+	}
+	form.AddField(&tuicore.Field{
+		Key: "orc_recovery_cooldown", Label: "  Recovery Cooldown", Type: tuicore.InputText,
+		Value:       recoveryCooldown.String(),
+		Placeholder: "5m",
+		Description: "Duration before re-enabling a tripped agent",
+		VisibleWhen: isStructured,
+		Validate: func(s string) error {
+			if _, err := time.ParseDuration(s); err != nil {
+				return fmt.Errorf("must be a valid duration (e.g. 5m, 10m)")
+			}
+			return nil
+		},
 	})
 
 	return &form
