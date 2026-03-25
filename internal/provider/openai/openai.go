@@ -296,6 +296,8 @@ func repairOrphanedToolCalls(msgs []provider.Message) []provider.Message {
 		// before the next non-tool message.
 		answered := make(map[string]bool, len(msg.ToolCalls))
 		hasFollowingUser := false
+		boundaryIdx := -1
+		boundaryRole := ""
 		for j := i + 1; j < len(msgs); j++ {
 			if msgs[j].Role == "tool" {
 				if id, ok := msgs[j].Metadata["tool_call_id"].(string); ok {
@@ -305,6 +307,8 @@ func repairOrphanedToolCalls(msgs []provider.Message) []provider.Message {
 			}
 			// Non-tool message (user, assistant, etc.) — orphan boundary
 			hasFollowingUser = true
+			boundaryIdx = j
+			boundaryRole = msgs[j].Role
 			break
 		}
 		// Pending calls at end of history are valid (response pending)
@@ -315,10 +319,15 @@ func repairOrphanedToolCalls(msgs []provider.Message) []provider.Message {
 		for _, tc := range msg.ToolCalls {
 			if tc.ID != "" && !answered[tc.ID] {
 				logger.Warnw("injecting synthetic tool response for orphaned tool call",
-					"call_id", tc.ID, "name", tc.Name)
+					"call_id", tc.ID,
+					"name", tc.Name,
+					"assistant_msg_index", i,
+					"boundary_index", boundaryIdx,
+					"boundary_role", boundaryRole,
+					"history_length", len(msgs))
 				result = append(result, provider.Message{
 					Role:    "tool",
-					Content: `{"error":"tool call was interrupted and did not complete"}`,
+					Content: `{"error":"This tool call was interrupted due to a previous turn interruption or failed cleanup. Do not retry this call. Proceed with available information or try a different approach."}`,
 					Metadata: map[string]interface{}{
 						"tool_call_id": tc.ID,
 					},

@@ -22,6 +22,14 @@ func fieldByKey(form *tuicore.FormModel, key string) *tuicore.Field {
 	return nil
 }
 
+func visibleKeys(form *tuicore.FormModel) map[string]bool {
+	keys := make(map[string]bool)
+	for _, f := range form.VisibleFields() {
+		keys[f.Key] = true
+	}
+	return keys
+}
+
 func TestNewAgentForm_AllFields(t *testing.T) {
 	cfg := defaultTestConfig()
 	form := NewAgentForm(cfg)
@@ -1240,5 +1248,250 @@ func TestValidatePort(t *testing.T) {
 				t.Errorf("validatePort(%q): wantErr=%v, got %v", tt.give, tt.wantErr, err)
 			}
 		})
+	}
+}
+
+// --- Orchestration Settings Tests ---
+
+func TestNewMultiAgentForm_OrchestrationFieldsExist(t *testing.T) {
+	cfg := defaultTestConfig()
+	form := NewMultiAgentForm(cfg)
+
+	wantKeys := []string{
+		"orchestration_mode",
+		"orc_cb_failure_threshold", "orc_cb_reset_timeout",
+		"orc_budget_tool_call_limit", "orc_budget_delegation_limit", "orc_budget_alert_threshold",
+		"orc_recovery_max_retries", "orc_recovery_cooldown",
+	}
+
+	for _, key := range wantKeys {
+		if f := fieldByKey(form, key); f == nil {
+			t.Errorf("missing orchestration field %q", key)
+		}
+	}
+}
+
+func TestNewMultiAgentForm_OrchestrationDefaults(t *testing.T) {
+	cfg := defaultTestConfig()
+	form := NewMultiAgentForm(cfg)
+
+	tests := []struct {
+		key  string
+		want string
+	}{
+		{"orchestration_mode", "classic"},
+		{"orc_cb_failure_threshold", "3"},
+		{"orc_cb_reset_timeout", "30s"},
+		{"orc_budget_tool_call_limit", "50"},
+		{"orc_budget_delegation_limit", "15"},
+		{"orc_budget_alert_threshold", "0.80"},
+		{"orc_recovery_max_retries", "2"},
+		{"orc_recovery_cooldown", "5m0s"},
+	}
+
+	for _, tt := range tests {
+		f := fieldByKey(form, tt.key)
+		if f == nil {
+			t.Errorf("field %q not found", tt.key)
+			continue
+		}
+		if f.Value != tt.want {
+			t.Errorf("field %q: want %q, got %q", tt.key, tt.want, f.Value)
+		}
+	}
+}
+
+func TestNewMultiAgentForm_VisibleWhen(t *testing.T) {
+	cfg := defaultTestConfig()
+	form := NewMultiAgentForm(cfg)
+
+	orcKeys := []string{
+		"orc_cb_failure_threshold", "orc_cb_reset_timeout",
+		"orc_budget_tool_call_limit", "orc_budget_delegation_limit", "orc_budget_alert_threshold",
+		"orc_recovery_max_retries", "orc_recovery_cooldown",
+	}
+
+	// multi_agent=false -> orchestration_mode and orc_* hidden
+	vis := visibleKeys(form)
+	if vis["orchestration_mode"] {
+		t.Error("orchestration_mode should be hidden when multi_agent=false")
+	}
+	for _, key := range orcKeys {
+		if vis[key] {
+			t.Errorf("%q should be hidden when multi_agent=false", key)
+		}
+	}
+
+	// multi_agent=true, mode=classic -> orchestration_mode visible, orc_* hidden
+	fieldByKey(form, "multi_agent").Checked = true
+	vis = visibleKeys(form)
+	if !vis["orchestration_mode"] {
+		t.Error("orchestration_mode should be visible when multi_agent=true")
+	}
+	for _, key := range orcKeys {
+		if vis[key] {
+			t.Errorf("%q should be hidden when mode=classic", key)
+		}
+	}
+
+	// multi_agent=true, mode=structured -> all orc_* visible
+	fieldByKey(form, "orchestration_mode").Value = "structured"
+	vis = visibleKeys(form)
+	for _, key := range orcKeys {
+		if !vis[key] {
+			t.Errorf("%q should be visible when mode=structured", key)
+		}
+	}
+
+	// multi_agent=false again -> everything hidden
+	fieldByKey(form, "multi_agent").Checked = false
+	vis = visibleKeys(form)
+	if vis["orchestration_mode"] {
+		t.Error("orchestration_mode should be hidden after disabling multi_agent")
+	}
+	for _, key := range orcKeys {
+		if vis[key] {
+			t.Errorf("%q should be hidden after disabling multi_agent", key)
+		}
+	}
+}
+
+// --- Trace Store Settings Tests ---
+
+func TestNewObservabilityForm_TraceStoreFieldsExist(t *testing.T) {
+	cfg := defaultTestConfig()
+	form := NewObservabilityForm(cfg)
+
+	wantKeys := []string{
+		"obs_trace_max_age", "obs_trace_max_traces",
+		"obs_trace_failed_multiplier", "obs_trace_cleanup_interval",
+	}
+
+	for _, key := range wantKeys {
+		if f := fieldByKey(form, key); f == nil {
+			t.Errorf("missing trace store field %q", key)
+		}
+	}
+}
+
+func TestNewObservabilityForm_TraceStoreVisibility(t *testing.T) {
+	cfg := defaultTestConfig()
+	form := NewObservabilityForm(cfg)
+
+	traceKeys := []string{
+		"obs_trace_max_age", "obs_trace_max_traces",
+		"obs_trace_failed_multiplier", "obs_trace_cleanup_interval",
+	}
+
+	// obs_enabled=false -> trace fields hidden
+	vis := visibleKeys(form)
+	for _, key := range traceKeys {
+		if vis[key] {
+			t.Errorf("%q should be hidden when obs_enabled=false", key)
+		}
+	}
+
+	// obs_enabled=true -> trace fields visible
+	fieldByKey(form, "obs_enabled").Checked = true
+	vis = visibleKeys(form)
+	for _, key := range traceKeys {
+		if !vis[key] {
+			t.Errorf("%q should be visible when obs_enabled=true", key)
+		}
+	}
+}
+
+// --- State Binding Tests ---
+
+func TestUpdateConfigFromForm_OrchestrationFields(t *testing.T) {
+	state := tuicore.NewConfigState()
+	form := tuicore.NewFormModel("test")
+
+	form.AddField(&tuicore.Field{Key: "orchestration_mode", Type: tuicore.InputText, Value: "structured"})
+	form.AddField(&tuicore.Field{Key: "orc_cb_failure_threshold", Type: tuicore.InputInt, Value: "5"})
+	form.AddField(&tuicore.Field{Key: "orc_cb_reset_timeout", Type: tuicore.InputText, Value: "1m"})
+	form.AddField(&tuicore.Field{Key: "orc_budget_tool_call_limit", Type: tuicore.InputInt, Value: "100"})
+	form.AddField(&tuicore.Field{Key: "orc_budget_delegation_limit", Type: tuicore.InputInt, Value: "20"})
+	form.AddField(&tuicore.Field{Key: "orc_budget_alert_threshold", Type: tuicore.InputText, Value: "0.75"})
+	form.AddField(&tuicore.Field{Key: "orc_recovery_max_retries", Type: tuicore.InputInt, Value: "3"})
+	form.AddField(&tuicore.Field{Key: "orc_recovery_cooldown", Type: tuicore.InputText, Value: "10m"})
+
+	state.UpdateConfigFromForm(&form)
+
+	orc := state.Current.Agent.Orchestration
+	if orc.Mode != "structured" {
+		t.Errorf("Mode: want %q, got %q", "structured", orc.Mode)
+	}
+	if orc.CircuitBreaker.FailureThreshold != 5 {
+		t.Errorf("FailureThreshold: want 5, got %d", orc.CircuitBreaker.FailureThreshold)
+	}
+	if orc.CircuitBreaker.ResetTimeout != time.Minute {
+		t.Errorf("ResetTimeout: want 1m, got %v", orc.CircuitBreaker.ResetTimeout)
+	}
+	if orc.Budget.ToolCallLimit != 100 {
+		t.Errorf("ToolCallLimit: want 100, got %d", orc.Budget.ToolCallLimit)
+	}
+	if orc.Budget.DelegationLimit != 20 {
+		t.Errorf("DelegationLimit: want 20, got %d", orc.Budget.DelegationLimit)
+	}
+	if orc.Budget.AlertThreshold != 0.75 {
+		t.Errorf("AlertThreshold: want 0.75, got %f", orc.Budget.AlertThreshold)
+	}
+	if orc.Recovery.MaxRetries != 3 {
+		t.Errorf("MaxRetries: want 3, got %d", orc.Recovery.MaxRetries)
+	}
+	if orc.Recovery.CircuitBreakerCooldown != 10*time.Minute {
+		t.Errorf("CircuitBreakerCooldown: want 10m, got %v", orc.Recovery.CircuitBreakerCooldown)
+	}
+}
+
+func TestUpdateConfigFromForm_TraceStoreFields(t *testing.T) {
+	state := tuicore.NewConfigState()
+	form := tuicore.NewFormModel("test")
+
+	form.AddField(&tuicore.Field{Key: "obs_trace_max_age", Type: tuicore.InputText, Value: "168h"})
+	form.AddField(&tuicore.Field{Key: "obs_trace_max_traces", Type: tuicore.InputInt, Value: "5000"})
+	form.AddField(&tuicore.Field{Key: "obs_trace_failed_multiplier", Type: tuicore.InputInt, Value: "3"})
+	form.AddField(&tuicore.Field{Key: "obs_trace_cleanup_interval", Type: tuicore.InputText, Value: "30m"})
+
+	state.UpdateConfigFromForm(&form)
+
+	ts := state.Current.Observability.TraceStore
+	if ts.MaxAge != 168*time.Hour {
+		t.Errorf("MaxAge: want 168h, got %v", ts.MaxAge)
+	}
+	if ts.MaxTraces != 5000 {
+		t.Errorf("MaxTraces: want 5000, got %d", ts.MaxTraces)
+	}
+	if ts.FailedTraceMultiplier != 3 {
+		t.Errorf("FailedTraceMultiplier: want 3, got %d", ts.FailedTraceMultiplier)
+	}
+	if ts.CleanupInterval != 30*time.Minute {
+		t.Errorf("CleanupInterval: want 30m, got %v", ts.CleanupInterval)
+	}
+}
+
+func TestUpdateConfigFromForm_InvalidValues(t *testing.T) {
+	state := tuicore.NewConfigState()
+	state.Current.Agent.Orchestration.CircuitBreaker.FailureThreshold = 3
+	state.Current.Agent.Orchestration.CircuitBreaker.ResetTimeout = 30 * time.Second
+	state.Current.Agent.Orchestration.Budget.AlertThreshold = 0.8
+
+	form := tuicore.NewFormModel("test")
+	form.AddField(&tuicore.Field{Key: "orc_cb_failure_threshold", Type: tuicore.InputInt, Value: "not-a-number"})
+	form.AddField(&tuicore.Field{Key: "orc_cb_reset_timeout", Type: tuicore.InputText, Value: "invalid-duration"})
+	form.AddField(&tuicore.Field{Key: "orc_budget_alert_threshold", Type: tuicore.InputText, Value: "not-a-float"})
+
+	state.UpdateConfigFromForm(&form)
+
+	orc := state.Current.Agent.Orchestration
+	if orc.CircuitBreaker.FailureThreshold != 3 {
+		t.Errorf("FailureThreshold should remain 3, got %d", orc.CircuitBreaker.FailureThreshold)
+	}
+	if orc.CircuitBreaker.ResetTimeout != 30*time.Second {
+		t.Errorf("ResetTimeout should remain 30s, got %v", orc.CircuitBreaker.ResetTimeout)
+	}
+	if orc.Budget.AlertThreshold != 0.8 {
+		t.Errorf("AlertThreshold should remain 0.8, got %f", orc.Budget.AlertThreshold)
 	}
 }

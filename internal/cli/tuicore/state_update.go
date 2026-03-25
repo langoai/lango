@@ -263,6 +263,38 @@ func (s *ConfigState) UpdateConfigFromForm(form *FormModel) {
 		case "agents_dir":
 			s.Current.Agent.AgentsDir = val
 
+		// Orchestration (structured control plane)
+		case "orchestration_mode":
+			s.Current.Agent.Orchestration.Mode = val
+		case "orc_cb_failure_threshold":
+			if i, err := strconv.Atoi(val); err == nil {
+				s.Current.Agent.Orchestration.CircuitBreaker.FailureThreshold = i
+			}
+		case "orc_cb_reset_timeout":
+			if d, err := time.ParseDuration(val); err == nil {
+				s.Current.Agent.Orchestration.CircuitBreaker.ResetTimeout = d
+			}
+		case "orc_budget_tool_call_limit":
+			if i, err := strconv.Atoi(val); err == nil {
+				s.Current.Agent.Orchestration.Budget.ToolCallLimit = i
+			}
+		case "orc_budget_delegation_limit":
+			if i, err := strconv.Atoi(val); err == nil {
+				s.Current.Agent.Orchestration.Budget.DelegationLimit = i
+			}
+		case "orc_budget_alert_threshold":
+			if fv, err := strconv.ParseFloat(val, 64); err == nil {
+				s.Current.Agent.Orchestration.Budget.AlertThreshold = fv
+			}
+		case "orc_recovery_max_retries":
+			if i, err := strconv.Atoi(val); err == nil {
+				s.Current.Agent.Orchestration.Recovery.MaxRetries = i
+			}
+		case "orc_recovery_cooldown":
+			if d, err := time.ParseDuration(val); err == nil {
+				s.Current.Agent.Orchestration.Recovery.CircuitBreakerCooldown = d
+			}
+
 		// A2A Protocol
 		case "a2a_enabled":
 			s.Current.A2A.Enabled = f.Checked
@@ -771,6 +803,24 @@ func (s *ConfigState) UpdateConfigFromForm(form *FormModel) {
 			s.Current.Observability.Metrics.Enabled = f.Checked
 		case "obs_metrics_format":
 			s.Current.Observability.Metrics.Format = val
+
+		// Trace Store
+		case "obs_trace_max_age":
+			if d, err := time.ParseDuration(val); err == nil {
+				s.Current.Observability.TraceStore.MaxAge = d
+			}
+		case "obs_trace_max_traces":
+			if i, err := strconv.Atoi(val); err == nil {
+				s.Current.Observability.TraceStore.MaxTraces = i
+			}
+		case "obs_trace_failed_multiplier":
+			if i, err := strconv.Atoi(val); err == nil {
+				s.Current.Observability.TraceStore.FailedTraceMultiplier = i
+			}
+		case "obs_trace_cleanup_interval":
+			if d, err := time.ParseDuration(val); err == nil {
+				s.Current.Observability.TraceStore.CleanupInterval = d
+			}
 
 		// Smart Account
 		case "sa_enabled":

@@ -57,6 +57,10 @@ type Config struct {
 	IdleTimeout time.Duration
 	HardCeiling time.Duration
 	TraceStore  turntrace.Store
+
+	// DelegationBudgetMax is the delegation count threshold for budget warnings.
+	// Zero means use default (15).
+	DelegationBudgetMax int
 }
 
 // Request is a single turn execution request.
@@ -66,30 +70,38 @@ type Request struct {
 	Entrypoint string
 	OnChunk    func(string)
 	OnWarning  func(elapsed, hardCeiling time.Duration)
+
+	// OnDelegation is called when a delegation event is observed in the trace.
+	// from/to are agent names, reason is optional context.
+	OnDelegation func(from, to, reason string)
+
+	// OnBudgetWarning is called when delegation count approaches the threshold.
+	OnBudgetWarning func(used, max int)
 }
 
 // Result is the structured result of a completed turn.
 type Result struct {
-	ResponseText string
-	Outcome      TurnOutcome
-	TraceID      string
-	UserMessage  string
-	Elapsed      time.Duration
-	ErrorCode    string
-	CauseClass   string
-	CauseDetail  string
+	ResponseText    string
+	Outcome         TurnOutcome
+	TraceID         string
+	UserMessage     string
+	Elapsed         time.Duration
+	ErrorCode       string
+	CauseClass      string
+	CauseDetail     string
 	OperatorSummary string
-	Summary      string
+	Summary         string
 }
 
 // Runner owns timeout handling, durable tracing, and outcome classification.
 type Runner struct {
-	executor    Executor
-	sessionStore langosession.Store
-	sanitizer   Sanitizer
-	traceStore  turntrace.Store
-	idleTimeout time.Duration
-	hardCeiling time.Duration
+	executor            Executor
+	sessionStore        langosession.Store
+	sanitizer           Sanitizer
+	traceStore          turntrace.Store
+	idleTimeout         time.Duration
+	hardCeiling         time.Duration
+	delegationBudgetMax int
 
 	mu        sync.RWMutex
 	callbacks []TurnCallback
@@ -107,13 +119,19 @@ func New(
 		hardCeiling = 5 * time.Minute
 	}
 
+	delegMax := cfg.DelegationBudgetMax
+	if delegMax <= 0 {
+		delegMax = 15
+	}
+
 	return &Runner{
-		executor:     executor,
-		sessionStore: sessionStore,
-		sanitizer:    sanitizer,
-		traceStore:   cfg.TraceStore,
-		idleTimeout:  cfg.IdleTimeout,
-		hardCeiling:  hardCeiling,
+		executor:            executor,
+		sessionStore:        sessionStore,
+		sanitizer:           sanitizer,
+		traceStore:          cfg.TraceStore,
+		idleTimeout:         cfg.IdleTimeout,
+		hardCeiling:         hardCeiling,
+		delegationBudgetMax: delegMax,
 	}
 }
 
@@ -143,12 +161,9 @@ func (r *Runner) Run(parent context.Context, req Request) (Result, error) {
 		entrypoint = "direct"
 	}
 
-	traceCtx, traceCancel := context.WithTimeout(
-		context.WithoutCancel(parent),
-		traceWriteTimeout,
-	)
-	defer traceCancel()
-	recorder := newTraceRecorder(traceCtx, r.traceStore, traceID)
+	recorder := newTraceRecorder(parent, r.traceStore, traceID, r.delegationBudgetMax)
+	recorder.onDelegation = req.OnDelegation
+	recorder.onBudgetWarning = req.OnBudgetWarning
 	recorder.start(req.SessionKey, entrypoint, start)
 
 	ctx, cancel, _, runOpts := r.prepareContext(parent, req, recorder, start)
@@ -227,6 +242,9 @@ func (r *Runner) prepareContext(
 	runOpts = append(runOpts, adk.WithOnEvent(func(event *adksession.Event) {
 		recorder.recordEvent(event)
 	}))
+	runOpts = append(runOpts, adk.WithOnRecovery(func(info adk.RecoveryInfo) {
+		recorder.recordRecovery(info)
+	}))
 
 	if req.OnWarning != nil {
 		timer := time.AfterFunc(time.Duration(float64(r.hardCeiling)*0.8), func() {
@@ -296,7 +314,7 @@ func (r *Runner) classifyResult(report adk.RunReport, runErr error, elapsed time
 		}
 	}
 
-		var agentErr *adk.AgentError
+	var agentErr *adk.AgentError
 	if errors.As(runErr, &agentErr) {
 		result.ErrorCode = string(agentErr.Code)
 		result.CauseClass = agentErr.CauseClass
@@ -347,25 +365,42 @@ func (r *Runner) fireCallbacks(sessionKey string) {
 }
 
 type traceRecorder struct {
-	ctx     context.Context
-	store   turntrace.Store
-	traceID string
-	seq     int64
+	parentCtx       context.Context
+	store           turntrace.Store
+	traceID         string
+	seq             int64
+	onDelegation    func(from, to, reason string)
+	onBudgetWarning func(used, max int)
+	delegationCount int
+	delegationMax   int
 }
 
-func newTraceRecorder(ctx context.Context, store turntrace.Store, traceID string) *traceRecorder {
-	return &traceRecorder{
-		ctx:     ctx,
-		store:   store,
-		traceID: traceID,
+func newTraceRecorder(parentCtx context.Context, store turntrace.Store, traceID string, delegationMax int) *traceRecorder {
+	if delegationMax <= 0 {
+		delegationMax = 15
 	}
+	if parentCtx == nil {
+		parentCtx = context.Background()
+	}
+	return &traceRecorder{
+		parentCtx:     parentCtx,
+		store:         store,
+		traceID:       traceID,
+		delegationMax: delegationMax,
+	}
+}
+
+func (r *traceRecorder) writeContext() (context.Context, context.CancelFunc) {
+	return context.WithTimeout(context.WithoutCancel(r.parentCtx), traceWriteTimeout)
 }
 
 func (r *traceRecorder) start(sessionKey, entrypoint string, startedAt time.Time) {
 	if r.store == nil {
 		return
 	}
-	if err := r.store.CreateTrace(r.ctx, turntrace.Trace{
+	ctx, cancel := r.writeContext()
+	defer cancel()
+	if err := r.store.CreateTrace(ctx, turntrace.Trace{
 		TraceID:    r.traceID,
 		SessionKey: sessionKey,
 		Entrypoint: entrypoint,
@@ -387,8 +422,10 @@ func (r *traceRecorder) finish(
 	if r.store == nil {
 		return
 	}
+	ctx, cancel := r.writeContext()
+	defer cancel()
 	if err := r.store.FinishTrace(
-		r.ctx,
+		ctx,
 		r.traceID,
 		outcome,
 		summary,
@@ -407,7 +444,7 @@ func (r *traceRecorder) recordTerminalError(result Result) {
 	}
 	r.append(turntrace.Event{
 		TraceID:   r.traceID,
-		EventType: "terminal_error",
+		EventType: turntrace.EventTerminalError,
 		PayloadJSON: marshalTracePayload(map[string]any{
 			"error_code":       result.ErrorCode,
 			"cause_class":      result.CauseClass,
@@ -423,12 +460,30 @@ func (r *traceRecorder) recordEvent(event *adksession.Event) {
 		return
 	}
 	if event.Actions.TransferToAgent != "" {
+		target := event.Actions.TransferToAgent
+		eventType := turntrace.EventDelegation
+		if target == "lango-orchestrator" {
+			eventType = turntrace.EventDelegationReturn
+		}
 		r.append(turntrace.Event{
 			TraceID:     r.traceID,
-			EventType:   "delegation",
+			EventType:   eventType,
 			AgentName:   event.Author,
-			PayloadJSON: marshalTracePayload(map[string]any{"to": event.Actions.TransferToAgent}),
+			PayloadJSON: marshalTracePayload(map[string]any{"to": target}),
 		})
+
+		// Fire delegation callback.
+		if r.onDelegation != nil {
+			r.onDelegation(event.Author, target, "")
+		}
+
+		// Track delegation count for budget warning.
+		if target != "lango-orchestrator" {
+			r.delegationCount++
+			if r.onBudgetWarning != nil && r.delegationCount == r.delegationMax*80/100 {
+				r.onBudgetWarning(r.delegationCount, r.delegationMax)
+			}
+		}
 	}
 	if event.Content == nil {
 		return
@@ -438,7 +493,7 @@ func (r *traceRecorder) recordEvent(event *adksession.Event) {
 		if part.Text != "" {
 			r.append(turntrace.Event{
 				TraceID:     r.traceID,
-				EventType:   "text",
+				EventType:   turntrace.EventText,
 				AgentName:   event.Author,
 				PayloadJSON: marshalTracePayload(map[string]any{"text": truncateText(part.Text, 512)}),
 			})
@@ -446,7 +501,7 @@ func (r *traceRecorder) recordEvent(event *adksession.Event) {
 		if part.FunctionCall != nil {
 			r.append(turntrace.Event{
 				TraceID:       r.traceID,
-				EventType:     "tool_call",
+				EventType:     turntrace.EventToolCall,
 				AgentName:     event.Author,
 				ToolName:      part.FunctionCall.Name,
 				CallSignature: callSignature(event.Author, part.FunctionCall),
@@ -459,7 +514,7 @@ func (r *traceRecorder) recordEvent(event *adksession.Event) {
 		if part.FunctionResponse != nil {
 			r.append(turntrace.Event{
 				TraceID:   r.traceID,
-				EventType: "tool_result",
+				EventType: turntrace.EventToolResult,
 				AgentName: event.Author,
 				ToolName:  part.FunctionResponse.Name,
 				PayloadJSON: marshalTracePayload(map[string]any{
@@ -471,6 +526,22 @@ func (r *traceRecorder) recordEvent(event *adksession.Event) {
 	}
 }
 
+func (r *traceRecorder) recordRecovery(info adk.RecoveryInfo) {
+	if r.store == nil {
+		return
+	}
+	r.append(turntrace.Event{
+		TraceID:   r.traceID,
+		EventType: turntrace.EventRecoveryAttempt,
+		AgentName: info.AgentName,
+		PayloadJSON: marshalTracePayload(map[string]any{
+			"action": info.Action,
+			"agent":  info.AgentName,
+			"error":  info.Error,
+		}),
+	})
+}
+
 func (r *traceRecorder) append(event turntrace.Event) {
 	r.seq++
 	event.Seq = r.seq
@@ -478,7 +549,9 @@ func (r *traceRecorder) append(event turntrace.Event) {
 	payload, truncated := truncatePayload(event.PayloadJSON, 1024)
 	event.PayloadJSON = payload
 	event.PayloadTruncated = truncated
-	if err := r.store.AppendEvent(r.ctx, event); err != nil {
+	ctx, cancel := r.writeContext()
+	defer cancel()
+	if err := r.store.AppendEvent(ctx, event); err != nil {
 		logger().Warnw("append turn trace event",
 			"trace_id", r.traceID,
 			"seq", event.Seq,

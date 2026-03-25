@@ -286,6 +286,21 @@ func (s *Server) handleChatMessage(client *Client, params json.RawMessage) (inte
 				"type":       "approaching_timeout",
 			})
 		},
+		OnDelegation: func(from, to, reason string) {
+			s.BroadcastToSession(sessionKey, "agent.delegation", map[string]string{
+				"sessionKey": sessionKey,
+				"from":       from,
+				"to":         to,
+				"reason":     reason,
+			})
+		},
+		OnBudgetWarning: func(used, max int) {
+			s.BroadcastToSession(sessionKey, "agent.budget_warning", map[string]string{
+				"sessionKey": sessionKey,
+				"used":       fmt.Sprintf("%d", used),
+				"max":        fmt.Sprintf("%d", max),
+			})
+		},
 	})
 
 	// Stop progress updates now that the agent has finished.

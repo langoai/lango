@@ -11,6 +11,7 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/langoai/lango/internal/a2a"
+	"github.com/langoai/lango/internal/adk"
 	"github.com/langoai/lango/internal/agent"
 	"github.com/langoai/lango/internal/appinit"
 	"github.com/langoai/lango/internal/approval"
@@ -243,11 +244,17 @@ func New(boot *bootstrap.Result, opts ...AppOption) (*App, error) {
 	app.Gateway.SetAgent(adkAgent)
 	app.TurnTraceStore = initTurnTraceStore(app.Store)
 	idleTimeout, hardCeiling := app.resolveTimeouts()
+	var errorFixProvider adk.ErrorFixProvider
+	if iv != nil && iv.KC != nil && iv.KC.engine != nil {
+		errorFixProvider = iv.KC.engine
+	}
+	executor := initAgentRuntime(cfg, adkAgent, bus, errorFixProvider)
 	app.TurnRunner = turnrunner.New(turnrunner.Config{
-		IdleTimeout: idleTimeout,
-		HardCeiling: hardCeiling,
-		TraceStore:  app.TurnTraceStore,
-	}, adkAgent, app.Store, app.Sanitizer)
+		IdleTimeout:         idleTimeout,
+		HardCeiling:         hardCeiling,
+		TraceStore:          app.TurnTraceStore,
+		DelegationBudgetMax: cfg.Agent.Orchestration.Budget.DelegationLimit,
+	}, executor, app.Store, app.Sanitizer)
 	app.Gateway.SetTurnRunner(app.TurnRunner)
 
 	// B7. Post-agent wiring.
@@ -269,6 +276,17 @@ func New(boot *bootstrap.Result, opts ...AppOption) (*App, error) {
 	}
 	if options.mode != AppModeLocalChat {
 		registerPostBuildLifecycle(app)
+	}
+
+	// B11. Trace retention cleaner (if configured).
+	if tsCfg := cfg.Observability.TraceStore; tsCfg.MaxAge > 0 || tsCfg.MaxTraces > 0 {
+		cleaner := turntrace.NewRetentionCleaner(app.TurnTraceStore, turntrace.RetentionConfig{
+			MaxAge:                tsCfg.MaxAge,
+			MaxTraces:             tsCfg.MaxTraces,
+			FailedTraceMultiplier: tsCfg.FailedTraceMultiplier,
+			CleanupInterval:       tsCfg.CleanupInterval,
+		})
+		app.registry.Register(cleaner, lifecycle.PriorityCore)
 	}
 
 	// Phase B succeeded — discard rollback cleanups; lifecycle registry owns everything now.

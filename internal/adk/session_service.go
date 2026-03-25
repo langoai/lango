@@ -247,6 +247,36 @@ func (s *SessionServiceAdapter) DiscardActiveChildWithReason(sessionID, reason s
 	return s.discardActiveChild(sessionID, reason)
 }
 
+// CleanupFailedTurn discards any active isolated child state and closes
+// dangling parent-visible tool calls before the session is retried or reused.
+func (s *SessionServiceAdapter) CleanupFailedTurn(sessionID, reason string) error {
+	var active *runtimeChild
+	if s.childStore != nil {
+		active = s.takeActiveChild(sessionID)
+		if active != nil {
+			s.rollbackOverlay(active)
+			if err := s.childStore.DiscardChild(active.key); err != nil {
+				return err
+			}
+		}
+	}
+
+	var parent *SessionAdapter
+	if active != nil {
+		parent = active.parent
+	}
+	if err := s.closeDanglingParentToolCalls(sessionID, parent); err != nil {
+		return err
+	}
+
+	if active != nil && strings.TrimSpace(reason) != "" {
+		if err := s.appendOutcomeToParent(active, formatDiscardNote(active.agent, reason)); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 func (s *SessionServiceAdapter) discardActiveChild(sessionID, reason string) error {
 	if s.childStore == nil {
 		return nil
@@ -463,6 +493,142 @@ func formatDiscardNote(agent, reason string) string {
 		reason = "discarded"
 	}
 	return fmt.Sprintf("[Isolated sub-agent %s discarded: %s. Raw child history discarded.]", agent, reason)
+}
+
+const interruptedToolCallOutput = `{"error":"tool call was interrupted and did not complete"}`
+
+func (s *SessionServiceAdapter) closeDanglingParentToolCalls(sessionID string, parent *SessionAdapter) error {
+	if s.store == nil {
+		return nil
+	}
+
+	var history []internal.Message
+	var sess *internal.Session
+	if parent != nil {
+		history = append(history, parent.sess.History...)
+	} else {
+		var err error
+		sess, err = s.store.Get(sessionID)
+		if err != nil {
+			return err
+		}
+		if sess != nil {
+			history = append(history, sess.History...)
+		}
+	}
+
+	dangling := danglingToolCalls(history)
+	if len(dangling) == 0 {
+		return nil
+	}
+
+	// Diagnostic: log metadata only (no payload) to aid root-cause analysis.
+	authors := make([]string, 0, len(dangling))
+	callIDs := make([]string, 0, len(dangling))
+	for _, dc := range dangling {
+		authors = append(authors, dc.OriginAuthor)
+		callIDs = append(callIDs, dc.ID)
+	}
+	logger().Infow("closing dangling tool calls",
+		"session", sessionID,
+		"count", len(dangling),
+		"origin_authors", authors,
+		"call_ids", callIDs,
+		"history_length", len(history))
+
+	now := time.Now()
+	for _, tc := range dangling {
+		author := tc.OriginAuthor
+		if author == "" {
+			// Fallback: use rootAgentName to avoid "unknown agent" in ADK routing.
+			author = s.rootAgentName
+			if author == "" {
+				author = "lango-agent"
+			}
+			logger().Warnw("dangling tool call has empty origin author, using fallback",
+				"session", sessionID,
+				"call_id", tc.ID,
+				"call_name", tc.Name,
+				"fallback_author", author)
+		}
+		msg := internal.Message{
+			Role:      types.RoleTool,
+			Content:   interruptedToolCallOutput,
+			Timestamp: now,
+			Author:    author,
+			ToolCalls: []internal.ToolCall{{
+				ID:     tc.ID,
+				Name:   tc.Name,
+				Output: interruptedToolCallOutput,
+			}},
+		}
+		if err := s.store.AppendMessage(sessionID, msg); err != nil {
+			return err
+		}
+		if sess != nil {
+			sess.History = append(sess.History, msg)
+		}
+		if parent != nil {
+			parent.sess.History = append(parent.sess.History, msg)
+		}
+	}
+	return nil
+}
+
+// danglingCall pairs an unanswered tool call with the Author of the
+// assistant message that emitted it, so synthetic closures can preserve
+// the originating agent identity.
+type danglingCall struct {
+	internal.ToolCall
+	OriginAuthor string
+}
+
+func danglingToolCalls(history []internal.Message) []danglingCall {
+	type pending struct {
+		tc     internal.ToolCall
+		author string
+	}
+	m := make(map[string]pending)
+	order := make([]string, 0)
+
+	for _, msg := range history {
+		switch msg.Role {
+		case types.RoleAssistant, types.RoleModel:
+			for _, tc := range msg.ToolCalls {
+				if tc.Input == "" {
+					continue
+				}
+				id := tc.ID
+				if strings.TrimSpace(id) == "" {
+					id = "call_" + tc.Name
+				}
+				tc.ID = id
+				if _, exists := m[id]; !exists {
+					order = append(order, id)
+				}
+				m[id] = pending{tc: tc, author: msg.Author}
+			}
+		case types.RoleTool, types.RoleFunction:
+			for _, tc := range msg.ToolCalls {
+				if tc.Output == "" {
+					continue
+				}
+				id := tc.ID
+				if strings.TrimSpace(id) == "" {
+					id = "call_" + tc.Name
+				}
+				delete(m, id)
+			}
+		}
+	}
+
+	out := make([]danglingCall, 0, len(m))
+	for _, id := range order {
+		if p, ok := m[id]; ok {
+			out = append(out, danglingCall{ToolCall: p.tc, OriginAuthor: p.author})
+		}
+	}
+	return out
 }
 
 func eventToMessage(evt *session.Event) (internal.Message, bool, error) {

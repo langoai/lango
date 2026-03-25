@@ -42,7 +42,7 @@ This project includes experimental AI Agent features and is currently in an unst
 - 🛠️ **Rich Tools** - Shell execution, file system operations, browser automation, crypto & secrets tools
 - 🧠 **Self-Learning** - Knowledge store, learning engine, file-based skill system with GitHub import (git clone + HTTP fallback), observational memory, proactive knowledge librarian
 - 📊 **Knowledge Graph & Graph RAG** - BoltDB triple store with hybrid vector + graph retrieval
-- 🔀 **Multi-Agent Orchestration** - Hierarchical sub-agents (operator, navigator, vault, librarian, automator, planner, chronicler) with durable turn traces, evidence-only recovery, and enforced child-session isolation
+- 🔀 **Multi-Agent Orchestration** - Hierarchical sub-agents (operator, navigator, vault, librarian, automator, planner, chronicler) with durable turn traces, failed-specialist-aware recovery, and enforced child-session isolation
 - 🌍 **A2A Protocol** - Agent-to-Agent protocol for remote agent discovery and integration
 - 🌐 **P2P Network** - Decentralized agent-to-agent connectivity via libp2p with DHT discovery, ZK-enhanced handshake, knowledge firewall, and peer payments
 - 💸 **Blockchain Payments** - USDC payments on Base L2, X402 V2 auto-pay protocol (Coinbase SDK), spending limits
@@ -567,6 +567,15 @@ All settings are managed via `lango onboard` (guided wizard), `lango settings` (
 | `graph.maxExpansionResults`                            | int      | `10`                        | Maximum graph-expanded results to return                                                                          |
 | **Multi-Agent**                                        |          |                             |                                                                                                                   |
 | `agent.multiAgent`                                     | bool     | `false`                     | Enable hierarchical multi-agent orchestration                                                                     |
+| `agent.orchestration.mode`                             | string   | `classic`                   | Orchestration mode: `classic` (default) or `structured` (adds policy/observation wrapper with reroute-aware recovery and trace hooks) |
+| `agent.orchestration.circuitBreaker.failureThreshold`  | int      | `3`                         | Consecutive failures before agent circuit opens                                                                   |
+| `agent.orchestration.circuitBreaker.resetTimeout`      | duration | `30s`                       | Time before circuit transitions to half-open                                                                      |
+| `agent.orchestration.budget.toolCallLimit`             | int      | `50`                        | Observational tool-call budget (mirrors inner executor)                                                           |
+| `agent.orchestration.budget.delegationLimit`           | int      | `15`                        | Delegation count before budget alert                                                                              |
+| `agent.orchestration.budget.alertThreshold`            | float    | `0.8`                       | Percentage at which budget alerts fire                                                                            |
+| `agent.orchestration.recovery.maxRetries`              | int      | `2`                         | Maximum retry attempts on failure                                                                                 |
+| `observability.traceStore.maxAge`                      | duration | `720h`                      | Trace retention period (30 days)                                                                                  |
+| `observability.traceStore.maxTraces`                   | int      | `10000`                     | Maximum traces to retain                                                                                          |
 | **A2A Protocol** (🧪 Experimental Features)            |          |                             |                                                                                                                   |
 | `a2a.enabled`                                          | bool     | `false`                     | Enable A2A protocol support                                                                                       |
 | `a2a.baseUrl`                                          | string   | -                           | External URL where this agent is reachable                                                                        |
@@ -1011,6 +1020,8 @@ When `agentMemory.enabled` is `true`, each sub-agent maintains its own persisten
 Enable via `lango onboard` > Multi-Agent menu or set `agent.multiAgent: true` in import JSON. Use `lango agent status` and `lango agent list` to inspect.
 
 Built-in specialist agents honor cross-turn child-session isolation at runtime. Their raw delegated turns stay out of the persisted parent conversation, while the active run still sees tool/results through an in-memory overlay and the parent retains only summary or compact failure-note outcomes afterward.
+
+In `structured` orchestration mode, retries are recovery-aware rather than blind. Failures before any specialist delegation may reuse the same input, while failures after a specialist handoff produce a reroute hint that tells the orchestrator to avoid the failed specialist path on the next attempt.
 
 ## A2A Protocol (🧪 Experimental Features)
 

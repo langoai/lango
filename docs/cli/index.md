@@ -15,6 +15,15 @@ Lango provides a comprehensive command-line interface built with [Cobra](https:/
 | `lango settings` | Full interactive configuration editor |
 | `lango doctor` | Diagnostics and health checks |
 
+### Agent Diagnostics
+
+| Command | Description |
+|---------|-------------|
+| `lango agent trace list` | List recent turn traces with outcomes |
+| `lango agent trace <id>` | Show detailed event timeline for a trace |
+| `lango agent graph <session>` | Show delegation graph for a session |
+| `lango agent trace metrics` | Per-agent trace-derived performance metrics |
+
 ### Config Management
 
 | Command | Description |
