@@ -2,6 +2,7 @@ package agentrt
 
 import (
 	"context"
+	"sync"
 
 	"go.uber.org/zap"
 	adksession "google.golang.org/adk/session"
@@ -46,6 +47,25 @@ func NewCoordinatingExecutor(
 	}
 }
 
+// runState holds per-invocation mutable state. Created fresh for each
+// RunStreamingDetailed call so concurrent turns never share state.
+type runState struct {
+	mu                   sync.Mutex
+	lastDelegationTarget string
+}
+
+func (s *runState) setTarget(target string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.lastDelegationTarget = target
+}
+
+func (s *runState) target() string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.lastDelegationTarget
+}
+
 // RunStreamingDetailed implements turnrunner.Executor.
 func (c *CoordinatingExecutor) RunStreamingDetailed(
 	ctx context.Context,
@@ -53,26 +73,41 @@ func (c *CoordinatingExecutor) RunStreamingDetailed(
 	onChunk adk.ChunkCallback,
 	opts ...adk.RunOption,
 ) (adk.RunReport, error) {
-	c.budget.Reset()
+	state := &runState{}       // per-run, not shared across concurrent turns
+	budget := c.budget.Clone() // per-run mirrored counters
 
-	return c.runWithRecovery(ctx, sessionID, input, onChunk, 0, opts...)
+	return c.runWithRecovery(ctx, sessionID, input, onChunk, state, budget, 0, opts...)
 }
 
 func (c *CoordinatingExecutor) runWithRecovery(
 	ctx context.Context,
 	sessionID, input string,
 	onChunk adk.ChunkCallback,
+	state *runState,
+	budget *BudgetPolicy,
 	retryCount int,
 	opts ...adk.RunOption,
 ) (adk.RunReport, error) {
-	// Compose a policy event hook into opts.
-	// Delegation events are observed via ADK event hook (not onChunk).
-	policyHook := adk.WithOnEvent(func(event *adksession.Event) {
-		c.observeEvent(event, sessionID)
+	// ChainOnEvent preserves any existing onEvent handler (e.g., TurnRunner's
+	// trace recorder) and appends our policy hook after it. WithOnEvent is a
+	// simple setter — last value wins — so ChainOnEvent is required here.
+	policyHook := adk.ChainOnEvent(func(event *adksession.Event) {
+		c.observeEvent(event, sessionID, state, budget)
 	})
 	mergedOpts := append(append([]adk.RunOption{}, opts...), policyHook)
 
+	// Clear target before each attempt so retries that succeed without
+	// a fresh delegation don't misattribute to the previous target.
+	state.setTarget("")
+
 	report, err := c.inner.RunStreamingDetailed(ctx, sessionID, input, onChunk, mergedOpts...)
+
+	// Record circuit breaker outcome for the delegation target observed
+	// during THIS attempt (not a stale value from a previous attempt).
+	if t := state.target(); t != "" {
+		c.guard.RecordOutcome(t, err == nil)
+	}
+
 	if err == nil {
 		return report, nil
 	}
@@ -102,14 +137,14 @@ func (c *CoordinatingExecutor) runWithRecovery(
 		logger().Infow("recovery: retry same input",
 			"session", sessionID,
 			"retry", retryCount+1)
-		return c.runWithRecovery(ctx, sessionID, input, onChunk, retryCount+1, opts...)
+		return c.runWithRecovery(ctx, sessionID, input, onChunk, state, budget, retryCount+1, opts...)
 
 	case RecoveryRetryWithHint:
 		hintedInput := AddRerouteHint(input, failure)
 		logger().Infow("recovery: retry with reroute hint",
 			"session", sessionID,
 			"retry", retryCount+1)
-		return c.runWithRecovery(ctx, sessionID, hintedInput, onChunk, retryCount+1, opts...)
+		return c.runWithRecovery(ctx, sessionID, hintedInput, onChunk, state, budget, retryCount+1, opts...)
 
 	case RecoveryDirectAnswer:
 		logger().Infow("recovery: using partial result",
@@ -123,7 +158,7 @@ func (c *CoordinatingExecutor) runWithRecovery(
 }
 
 // observeEvent is the policy hook called for each ADK event.
-func (c *CoordinatingExecutor) observeEvent(event *adksession.Event, sessionID string) {
+func (c *CoordinatingExecutor) observeEvent(event *adksession.Event, sessionID string, state *runState, budget *BudgetPolicy) {
 	if event == nil {
 		return
 	}
@@ -131,9 +166,12 @@ func (c *CoordinatingExecutor) observeEvent(event *adksession.Event, sessionID s
 	// Delegation tracking.
 	if event.Actions.TransferToAgent != "" {
 		target := event.Actions.TransferToAgent
+		if target != "" && target != "lango-orchestrator" {
+			state.setTarget(target)
+		}
 		isOpen := c.guard.IsOpen(target)
 
-		c.budget.RecordDelegation(target)
+		budget.RecordDelegation(target)
 
 		if c.bus != nil {
 			c.bus.Publish(DelegationObservedEvent{
@@ -156,7 +194,7 @@ func (c *CoordinatingExecutor) observeEvent(event *adksession.Event, sessionID s
 	// Turn counting: only function-call events that are not delegations
 	// (matches inner budget semantics from agent.go:350).
 	if event.Content != nil && hasFunctionCallParts(event) {
-		c.budget.RecordTurn()
+		budget.RecordTurn()
 	}
 }
 

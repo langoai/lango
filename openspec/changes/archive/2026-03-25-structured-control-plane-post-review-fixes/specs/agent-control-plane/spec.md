@@ -1,4 +1,4 @@
-## ADDED Requirements
+## MODIFIED Requirements
 
 ### Requirement: CoordinatingExecutor wraps turnrunner.Executor
 The system SHALL provide a `CoordinatingExecutor` type in `internal/agentrt/` that implements `turnrunner.Executor` interface (`RunStreamingDetailed`). It SHALL wrap an inner executor and apply DelegationGuard, BudgetPolicy, and RecoveryPolicy before/after delegating to the inner executor. Chunk streaming, trace hooks, and idle timeout extension SHALL be preserved through the wrapper. When the wrapper adds its own event observer, it SHALL preserve any previously installed `onEvent` hook instead of replacing it.
@@ -59,37 +59,3 @@ The system SHALL provide a `BudgetPolicy` that mirrors the inner executor's turn
 - **WHEN** two sessions execute concurrently through the same `CoordinatingExecutor`
 - **THEN** each session SHALL maintain its own mirrored turn and delegation counters
 - **AND** resetting one run's observational state SHALL NOT clear the other's counters
-
-### Requirement: RecoveryPolicy decides post-failure action
-The system SHALL provide a `RecoveryPolicy` that evaluates failures and returns a `RecoveryAction`: `RecoveryRetry`, `RecoveryRetryWithHint`, `RecoveryDirectAnswer`, or `RecoveryEscalate`. `RecoveryRetryWithHint` SHALL add a prompt hint requesting the root orchestrator to try a different specialist — it is NOT per-agent direct execution.
-
-#### Scenario: Retry on transient error
-- **WHEN** inner executor fails with a transient error (e.g., provider rate limit) and retry count < `recovery.maxRetries`
-- **THEN** RecoveryPolicy SHALL return `RecoveryRetry`
-
-#### Scenario: Hint retry on tool churn
-- **WHEN** inner executor fails with `ErrToolChurn` and retry count < `recovery.maxRetries`
-- **THEN** RecoveryPolicy SHALL return `RecoveryRetryWithHint` with failed agent in exclude list
-
-#### Scenario: Direct answer on partial result
-- **WHEN** inner executor fails but produced partial text and retry budget is exhausted
-- **THEN** RecoveryPolicy SHALL return `RecoveryDirectAnswer`
-
-#### Scenario: Escalate on unrecoverable error
-- **WHEN** inner executor fails with unrecoverable error or all retries exhausted with no partial result
-- **THEN** RecoveryPolicy SHALL return `RecoveryEscalate`
-
-### Requirement: Orchestration config schema
-The system SHALL support the following config keys under `agent.orchestration`:
-- `mode`: `"classic"` (default) or `"structured"`
-- `circuitBreaker.failureThreshold`: int (default: 3)
-- `circuitBreaker.resetTimeout`: duration (default: 30s)
-- `budget.toolCallLimit`: int (default: 50)
-- `budget.delegationLimit`: int (default: 15)
-- `budget.alertThreshold`: float64 (default: 0.8)
-- `recovery.maxRetries`: int (default: 2)
-- `recovery.circuitBreakerCooldown`: duration (default: 5m)
-
-#### Scenario: Default config preserves classic mode
-- **WHEN** no `agent.orchestration` section exists in config
-- **THEN** the system SHALL use classic mode with no CoordinatingExecutor wrapper

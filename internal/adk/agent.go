@@ -805,6 +805,20 @@ func WithOnEvent(fn func(*session.Event)) RunOption {
 	return func(o *runOptions) { o.onEvent = fn }
 }
 
+// ChainOnEvent appends an event handler after any existing one, instead of replacing.
+// Use this when wrapping an executor that may already have an OnEvent handler set.
+func ChainOnEvent(fn func(*session.Event)) RunOption {
+	return func(o *runOptions) {
+		prev := o.onEvent
+		o.onEvent = func(event *session.Event) {
+			if prev != nil {
+				prev(event)
+			}
+			fn(event)
+		}
+	}
+}
+
 // WithOnFinish registers a callback fired when collection completes.
 func WithOnFinish(fn func()) RunOption {
 	return func(o *runOptions) { o.onFinish = fn }

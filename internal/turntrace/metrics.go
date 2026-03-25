@@ -66,12 +66,13 @@ func ComputeAgentMetrics(traces []Trace, events []Event) map[string]*AgentMetric
 		}
 	}
 
-	// Attribute traces to agents via entrypoint or first delegation target.
+	// Attribute traces to agents via first delegation target.
+	// Non-delegated turns use the first attributable event author in the trace.
 	traceAgentMap := buildTraceAgentMap(events)
 	for _, trace := range traces {
 		agentName := traceAgentMap[trace.TraceID]
 		if agentName == "" {
-			agentName = trace.Entrypoint
+			continue
 		}
 		m := ensure(agentName)
 		if m == nil {
@@ -106,21 +107,36 @@ func ComputeAgentMetrics(traces []Trace, events []Event) map[string]*AgentMetric
 	return result
 }
 
-// buildTraceAgentMap maps trace IDs to the first delegation target agent.
+// buildTraceAgentMap maps trace IDs to the best available attributed agent.
+// Delegated turns prefer the first delegation target. Non-delegated turns use
+// the first non-empty agent author seen in trace events.
 func buildTraceAgentMap(events []Event) map[string]string {
-	m := make(map[string]string)
+	delegated := make(map[string]string)
+	firstAuthor := make(map[string]string)
 	for _, ev := range events {
-		if _, ok := m[ev.TraceID]; ok {
+		if ev.TraceID == "" {
 			continue
+		}
+		if _, ok := firstAuthor[ev.TraceID]; !ok && ev.AgentName != "" && ev.AgentName != "user" {
+			firstAuthor[ev.TraceID] = ev.AgentName
 		}
 		if ev.EventType == EventDelegation {
 			target := extractTarget(ev.PayloadJSON)
 			if target != "" {
-				m[ev.TraceID] = target
+				if _, ok := delegated[ev.TraceID]; !ok {
+					delegated[ev.TraceID] = target
+				}
 			}
 		}
 	}
-	return m
+	out := make(map[string]string, len(firstAuthor)+len(delegated))
+	for traceID, agent := range firstAuthor {
+		out[traceID] = agent
+	}
+	for traceID, agent := range delegated {
+		out[traceID] = agent
+	}
+	return out
 }
 
 func percentile(sorted []time.Duration, p float64) time.Duration {

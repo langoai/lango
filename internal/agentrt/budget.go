@@ -8,7 +8,7 @@ import (
 
 // BudgetAlert describes a budget threshold crossing.
 type BudgetAlert struct {
-	Resource   string  // "turns" or "delegations"
+	Resource   string // "turns" or "delegations"
 	Used       int
 	Limit      int
 	Percentage float64
@@ -62,6 +62,20 @@ func (b *BudgetPolicy) SetAlertHandler(fn func(BudgetAlert)) {
 	b.onAlert = fn
 }
 
+// Clone returns a new per-run tracker with the same immutable thresholds and alert handler.
+// Mutable counters are intentionally reset so concurrent turns never share observational state.
+func (b *BudgetPolicy) Clone() *BudgetPolicy {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return &BudgetPolicy{
+		baseTurns:       b.baseTurns,
+		delegationLimit: b.delegationLimit,
+		alertThreshold:  b.alertThreshold,
+		onAlert:         b.onAlert,
+		uniqueAgents:    make(map[string]struct{}),
+	}
+}
+
 // Reset clears all counters for a new turn.
 func (b *BudgetPolicy) Reset() {
 	b.mu.Lock()
@@ -88,7 +102,7 @@ func (b *BudgetPolicy) RecordDelegation(target string) {
 	b.mu.Lock()
 	defer b.mu.Unlock()
 	b.delegationCount++
-	if target != "" {
+	if target != "" && target != "lango-orchestrator" {
 		b.uniqueAgents[target] = struct{}{}
 	}
 	b.checkAlert("delegations", b.delegationCount, b.delegationLimit, &b.delegAlerted)

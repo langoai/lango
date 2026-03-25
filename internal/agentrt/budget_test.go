@@ -37,6 +37,20 @@ func TestBudgetPolicy_RecordDelegation(t *testing.T) {
 	assert.Equal(t, 2, bp.UniqueAgentCount())
 }
 
+func TestBudgetPolicy_RecordDelegation_RootExcludedFromUniqueAgents(t *testing.T) {
+	bp := NewBudgetPolicy(config.BudgetCfg{
+		ToolCallLimit:   50,
+		DelegationLimit: 15,
+		AlertThreshold:  0.8,
+	})
+
+	bp.RecordDelegation("operator")
+	bp.RecordDelegation("lango-orchestrator")
+
+	assert.Equal(t, 2, bp.DelegationCount())
+	assert.Equal(t, 1, bp.UniqueAgentCount())
+}
+
 func TestBudgetPolicy_AlertThreshold(t *testing.T) {
 	var alerts []BudgetAlert
 	bp := NewBudgetPolicy(config.BudgetCfg{
@@ -98,4 +112,25 @@ func TestBudgetPolicy_Reset(t *testing.T) {
 	assert.Equal(t, 0, bp.TurnCount())
 	assert.Equal(t, 0, bp.DelegationCount())
 	assert.Equal(t, 0, bp.UniqueAgentCount())
+}
+
+func TestBudgetPolicy_CloneIsolatesMutableState(t *testing.T) {
+	base := NewBudgetPolicy(config.BudgetCfg{
+		ToolCallLimit:   10,
+		DelegationLimit: 5,
+		AlertThreshold:  0.8,
+	})
+	base.RecordTurn()
+
+	cloneA := base.Clone()
+	cloneB := base.Clone()
+
+	cloneA.RecordTurn()
+	cloneA.RecordDelegation("operator")
+
+	assert.Equal(t, 1, cloneA.TurnCount())
+	assert.Equal(t, 1, cloneA.DelegationCount())
+	assert.Equal(t, 0, cloneB.TurnCount())
+	assert.Equal(t, 0, cloneB.DelegationCount())
+	assert.Equal(t, 1, base.TurnCount())
 }

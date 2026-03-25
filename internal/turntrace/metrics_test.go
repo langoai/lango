@@ -46,6 +46,35 @@ func TestComputeAgentMetrics(t *testing.T) {
 	assert.Equal(t, 0.0, nav.SuccessRate)
 }
 
+func TestComputeAgentMetrics_NonDelegatedAttributedToOrchestrator(t *testing.T) {
+	now := time.Now()
+	end := now.Add(3 * time.Second)
+
+	traces := []Trace{
+		{TraceID: "t1", Entrypoint: "tui", Outcome: OutcomeSuccess, StartedAt: now, EndedAt: &end},
+	}
+	// No delegation events — direct turn
+	events := []Event{
+		{TraceID: "t1", EventType: EventToolCall, AgentName: "lango-orchestrator"},
+	}
+
+	result := ComputeAgentMetrics(traces, events)
+	require.Contains(t, result, "lango-orchestrator")
+	assert.Equal(t, 1, result["lango-orchestrator"].TotalTurns)
+	assert.NotContains(t, result, "tui")
+
+	traces2 := []Trace{
+		{TraceID: "t2", Entrypoint: "gateway", Outcome: OutcomeSuccess, StartedAt: now, EndedAt: &end},
+	}
+	events2 := []Event{
+		{TraceID: "t2", EventType: EventText, AgentName: "lango-agent"},
+	}
+	result2 := ComputeAgentMetrics(traces2, events2)
+	require.Contains(t, result2, "lango-agent")
+	assert.Equal(t, 1, result2["lango-agent"].TotalTurns)
+	assert.NotContains(t, result2, "gateway")
+}
+
 func TestComputeAgentMetrics_Empty(t *testing.T) {
 	result := ComputeAgentMetrics(nil, nil)
 	assert.Empty(t, result)

@@ -3,7 +3,9 @@ package agentrt
 import (
 	"context"
 	"errors"
+	"sync/atomic"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -162,6 +164,82 @@ func TestCoordinatingExecutor_EventBusPublish(t *testing.T) {
 	assert.Equal(t, "ok", report.Response)
 	assert.Equal(t, 3, callCount)
 	assert.Len(t, recoveryEvents, 2) // two recovery events published
+}
+
+func TestCoordinatingExecutor_PreservesExistingOnEventHook(t *testing.T) {
+	var existingHookCalls int32
+
+	executor := mockCallExecutor(func(_ context.Context, _, _ string, _ adk.ChunkCallback, opts ...adk.RunOption) (adk.RunReport, error) {
+		hooks := adk.ResolveRunHooks(opts...)
+		require.NotNil(t, hooks.OnEvent)
+		hooks.OnEvent(&adksession.Event{
+			Author: "lango-orchestrator",
+			Actions: adksession.EventActions{
+				TransferToAgent: "operator",
+			},
+		})
+		return adk.RunReport{Response: "ok"}, nil
+	})
+
+	ce := NewCoordinatingExecutor(
+		executor,
+		NewDelegationGuard(config.CircuitBreakerCfg{FailureThreshold: 3}, nil),
+		NewBudgetPolicy(config.BudgetCfg{ToolCallLimit: 50, DelegationLimit: 15, AlertThreshold: 0.8}),
+		NewRecoveryPolicy(config.RecoveryCfg{MaxRetries: 2}, nil),
+		nil,
+	)
+
+	_, err := ce.RunStreamingDetailed(
+		context.Background(),
+		"sess-1",
+		"input",
+		nil,
+		adk.WithOnEvent(func(_ *adksession.Event) {
+			atomic.AddInt32(&existingHookCalls, 1)
+		}),
+	)
+	require.NoError(t, err)
+	assert.Equal(t, int32(1), atomic.LoadInt32(&existingHookCalls))
+}
+
+func TestCoordinatingExecutor_RecordOutcomeUsesSpecialistNotReturnTarget(t *testing.T) {
+	executor := mockCallExecutor(func(_ context.Context, _, _ string, _ adk.ChunkCallback, opts ...adk.RunOption) (adk.RunReport, error) {
+		hooks := adk.ResolveRunHooks(opts...)
+		require.NotNil(t, hooks.OnEvent)
+
+		hooks.OnEvent(&adksession.Event{
+			Author: "lango-orchestrator",
+			Actions: adksession.EventActions{
+				TransferToAgent: "operator",
+			},
+		})
+		hooks.OnEvent(&adksession.Event{
+			Author: "operator",
+			Actions: adksession.EventActions{
+				TransferToAgent: "lango-orchestrator",
+			},
+		})
+
+		return adk.RunReport{}, &adk.AgentError{Code: adk.ErrToolChurn, Message: "loop"}
+	})
+
+	guard := NewDelegationGuard(config.CircuitBreakerCfg{
+		FailureThreshold: 1,
+		ResetTimeout:     30 * time.Second,
+	}, nil)
+
+	ce := NewCoordinatingExecutor(
+		executor,
+		guard,
+		NewBudgetPolicy(config.BudgetCfg{ToolCallLimit: 50, DelegationLimit: 15, AlertThreshold: 0.8}),
+		nil,
+		nil,
+	)
+
+	_, err := ce.RunStreamingDetailed(context.Background(), "sess-1", "input", nil)
+	require.Error(t, err)
+	assert.Equal(t, CircuitOpen, guard.State("operator"))
+	assert.Equal(t, CircuitClosed, guard.State("lango-orchestrator"))
 }
 
 // mockCallExecutor is a function-based turnrunner.Executor for testing.
