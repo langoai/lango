@@ -53,6 +53,13 @@ func TestRecoveryPolicy_Decide(t *testing.T) {
 			wantAction: RecoveryEscalate,
 		},
 		{
+			give: "orchestrator direct tool call → escalate",
+			failure: RecoveryContext{
+				Error: &adk.AgentError{Code: adk.ErrToolError, CauseClass: adk.CauseOrchestratorDirectTool},
+			},
+			wantAction: RecoveryEscalate,
+		},
+		{
 			give: "tool error → retry",
 			failure: RecoveryContext{
 				Error: &adk.AgentError{Code: adk.ErrToolError, CauseClass: "unknown_tool_error"},

@@ -331,7 +331,8 @@ func (a *Agent) Run(ctx context.Context, sessionID string, input string) iter.Se
 			if len(a.adkAgent.SubAgents()) > 0 &&
 				event.Author == a.adkAgent.Name() &&
 				hasFunctionCalls(event) &&
-				!isDelegationEvent(event) {
+				!isDelegationEvent(event) &&
+				!isPureTransferToAgentCall(event) {
 				yield(nil, fmt.Errorf(
 					"orchestrator emitted direct tool call %q without tool access",
 					extractPrimaryToolName(event),
@@ -435,6 +436,30 @@ func hasFunctionCalls(e *session.Event) bool {
 // delegation transfer (routing overhead, not actual tool work).
 func isDelegationEvent(e *session.Event) bool {
 	return e.Actions.TransferToAgent != ""
+}
+
+// isPureTransferToAgentCall reports whether every FunctionCall in the event
+// is a transfer_to_agent call. ADK yields the model response event (with
+// the FunctionCall) before promoting it to Actions.TransferToAgent in a
+// subsequent event. This helper prevents the orchestrator direct-tool guard
+// from killing a legitimate delegation before the ADK promotes it.
+// Mixed events (transfer_to_agent + other tool calls) return false so the
+// guard still catches them.
+func isPureTransferToAgentCall(e *session.Event) bool {
+	if e.Content == nil {
+		return false
+	}
+	hasCalls := false
+	for _, p := range e.Content.Parts {
+		if p.FunctionCall == nil {
+			continue
+		}
+		if p.FunctionCall.Name != "transfer_to_agent" {
+			return false
+		}
+		hasCalls = true
+	}
+	return hasCalls
 }
 
 // extractPrimaryToolName returns the name of the first FunctionCall in the event,

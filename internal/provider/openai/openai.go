@@ -327,7 +327,7 @@ func repairOrphanedToolCalls(msgs []provider.Message) []provider.Message {
 					"history_length", len(msgs))
 				result = append(result, provider.Message{
 					Role:    "tool",
-					Content: `{"error":"tool call was interrupted and did not complete"}`,
+					Content: `{"error":"This tool call was interrupted due to a previous turn interruption or failed cleanup. Do not retry this call. Proceed with available information or try a different approach."}`,
 					Metadata: map[string]interface{}{
 						"tool_call_id": tc.ID,
 					},

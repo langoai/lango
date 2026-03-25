@@ -364,6 +364,27 @@ func convertMessages(contents []*genai.Content) ([]provider.Message, error) {
 			role = "tool"
 		}
 
+		// When EventsAdapter merges consecutive same-role events, a single
+		// Content may contain multiple FunctionResponse parts. Each provider
+		// API (OpenAI, Gemini) expects one tool_call_id per tool message, so
+		// we must split them into separate messages. Only trigger the split
+		// when the normalized role is "tool" and there are 2+ FunctionResponses
+		// to keep the change minimal and backward-compatible.
+		if role == "tool" {
+			var funcResps []*genai.Part
+			for _, p := range c.Parts {
+				if p.FunctionResponse != nil {
+					funcResps = append(funcResps, p)
+				}
+			}
+			if len(funcResps) >= 2 {
+				for _, p := range funcResps {
+					msgs = append(msgs, buildToolResponseMessage(role, p))
+				}
+				continue // split handled; skip default path
+			}
+		}
+
 		msg := provider.Message{Role: role}
 		for _, p := range c.Parts {
 			if p.Text != "" {
@@ -404,6 +425,23 @@ func convertMessages(contents []*genai.Content) ([]provider.Message, error) {
 		msgs = append(msgs, msg)
 	}
 	return msgs, nil
+}
+
+// buildToolResponseMessage creates a single provider.Message for one FunctionResponse part.
+func buildToolResponseMessage(role string, p *genai.Part) provider.Message {
+	b, _ := json.Marshal(p.FunctionResponse.Response)
+	id := p.FunctionResponse.ID
+	if id == "" {
+		id = p.FunctionResponse.Name
+	}
+	return provider.Message{
+		Role:    role,
+		Content: string(b),
+		Metadata: map[string]interface{}{
+			"tool_call_id":   id,
+			"tool_call_name": p.FunctionResponse.Name,
+		},
+	}
 }
 
 // extractSystemText concatenates all text parts from a genai.Content into a single string.

@@ -198,3 +198,45 @@ The `RecoveryPolicy` in `internal/agentrt/` SHALL capture the recovery patterns 
 - **WHEN** inner executor returns a retryable tool error before any specialist delegation has been observed
 - **THEN** RecoveryPolicy MAY return `RecoveryRetry`
 - **AND** the recovery context SHALL leave `AgentName` empty
+
+### Requirement: convertMessages splits merged FunctionResponse parts
+`convertMessages()` SHALL split a Content with 2+ FunctionResponse parts (caused by EventsAdapter same-role merge) into individual `provider.Message` entries, each with its own `tool_call_id`. This prevents provider API `400` errors when multiple tool responses are merged into one Content.
+
+#### Scenario: Merged 3 FunctionResponses produce 3 messages
+- **WHEN** a Content with role `"function"` contains 3 FunctionResponse parts (e.g., from vault parallel tool calls)
+- **THEN** `convertMessages()` SHALL produce 3 separate `provider.Message` entries
+- **AND** each SHALL have role `"tool"`, distinct `Metadata["tool_call_id"]`, and its own response content
+
+#### Scenario: Single FunctionResponse unchanged
+- **WHEN** a Content with role `"function"` contains exactly 1 FunctionResponse part
+- **THEN** `convertMessages()` SHALL produce 1 message using existing logic (backward compatible)
+
+### Requirement: Dangling tool call cleanup preserves origin author
+`closeDanglingParentToolCalls()` SHALL set `Author` on synthetic tool-response messages to the originating assistant's Author (tracked via `danglingCall.OriginAuthor`). Fallback order: `OriginAuthor` → `rootAgentName` → `"lango-agent"`. A warning SHALL be logged when OriginAuthor is empty.
+
+#### Scenario: Origin author preserved in synthetic closure
+- **WHEN** a dangling tool call from agent "vault" is closed during CleanupFailedTurn
+- **THEN** the synthetic tool response message SHALL have `Author == "vault"`
+
+#### Scenario: Multiple agents' dangling calls preserve respective authors
+- **WHEN** dangling tool calls exist from both "vault" and "operator"
+- **THEN** each synthetic closure SHALL use its respective originating author
+
+#### Scenario: Empty origin author falls back with warning
+- **WHEN** a dangling tool call has empty OriginAuthor
+- **THEN** the system SHALL use `rootAgentName` as fallback and log a warning
+
+### Requirement: Orphan repair message accuracy
+`repairOrphanedToolCalls()` synthetic error content SHALL describe the interruption cause as "previous turn interruption or failed cleanup" (not "timeout" specifically) and instruct the model not to retry the same call.
+
+#### Scenario: Orphan error message is accurate
+- **WHEN** an orphaned tool call is repaired in the provider layer
+- **THEN** the synthetic content SHALL contain "previous turn interruption or failed cleanup"
+- **AND** SHALL instruct "Do not retry this call"
+
+### Requirement: TUI stdlib logger redirect
+TUI mode SHALL redirect Go stdlib `log` package output to the chat log file via `log.SetOutput()`, preventing third-party library log messages (e.g., ADK runner's `log.Printf`) from corrupting the TUI display. The file handle SHALL be closed on runChat exit.
+
+#### Scenario: ADK runner log does not appear in TUI
+- **WHEN** the ADK runner calls `log.Printf("Event from an unknown agent: ...")`
+- **THEN** the output SHALL appear in `~/.lango/chat.log`, NOT in the TUI display

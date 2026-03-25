@@ -522,13 +522,40 @@ func (s *SessionServiceAdapter) closeDanglingParentToolCalls(sessionID string, p
 		return nil
 	}
 
+	// Diagnostic: log metadata only (no payload) to aid root-cause analysis.
+	authors := make([]string, 0, len(dangling))
+	callIDs := make([]string, 0, len(dangling))
+	for _, dc := range dangling {
+		authors = append(authors, dc.OriginAuthor)
+		callIDs = append(callIDs, dc.ID)
+	}
+	logger().Infow("closing dangling tool calls",
+		"session", sessionID,
+		"count", len(dangling),
+		"origin_authors", authors,
+		"call_ids", callIDs,
+		"history_length", len(history))
+
 	now := time.Now()
 	for _, tc := range dangling {
+		author := tc.OriginAuthor
+		if author == "" {
+			// Fallback: use rootAgentName to avoid "unknown agent" in ADK routing.
+			author = s.rootAgentName
+			if author == "" {
+				author = "lango-agent"
+			}
+			logger().Warnw("dangling tool call has empty origin author, using fallback",
+				"session", sessionID,
+				"call_id", tc.ID,
+				"call_name", tc.Name,
+				"fallback_author", author)
+		}
 		msg := internal.Message{
 			Role:      types.RoleTool,
 			Content:   interruptedToolCallOutput,
 			Timestamp: now,
-			Author:    "tool",
+			Author:    author,
 			ToolCalls: []internal.ToolCall{{
 				ID:     tc.ID,
 				Name:   tc.Name,
@@ -548,8 +575,20 @@ func (s *SessionServiceAdapter) closeDanglingParentToolCalls(sessionID string, p
 	return nil
 }
 
-func danglingToolCalls(history []internal.Message) []internal.ToolCall {
-	pending := make(map[string]internal.ToolCall)
+// danglingCall pairs an unanswered tool call with the Author of the
+// assistant message that emitted it, so synthetic closures can preserve
+// the originating agent identity.
+type danglingCall struct {
+	internal.ToolCall
+	OriginAuthor string
+}
+
+func danglingToolCalls(history []internal.Message) []danglingCall {
+	type pending struct {
+		tc     internal.ToolCall
+		author string
+	}
+	m := make(map[string]pending)
 	order := make([]string, 0)
 
 	for _, msg := range history {
@@ -564,10 +603,10 @@ func danglingToolCalls(history []internal.Message) []internal.ToolCall {
 					id = "call_" + tc.Name
 				}
 				tc.ID = id
-				if _, exists := pending[id]; !exists {
+				if _, exists := m[id]; !exists {
 					order = append(order, id)
 				}
-				pending[id] = tc
+				m[id] = pending{tc: tc, author: msg.Author}
 			}
 		case types.RoleTool, types.RoleFunction:
 			for _, tc := range msg.ToolCalls {
@@ -578,15 +617,15 @@ func danglingToolCalls(history []internal.Message) []internal.ToolCall {
 				if strings.TrimSpace(id) == "" {
 					id = "call_" + tc.Name
 				}
-				delete(pending, id)
+				delete(m, id)
 			}
 		}
 	}
 
-	out := make([]internal.ToolCall, 0, len(pending))
+	out := make([]danglingCall, 0, len(m))
 	for _, id := range order {
-		if tc, ok := pending[id]; ok {
-			out = append(out, tc)
+		if p, ok := m[id]; ok {
+			out = append(out, danglingCall{ToolCall: p.tc, OriginAuthor: p.author})
 		}
 	}
 	return out

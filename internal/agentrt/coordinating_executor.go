@@ -2,6 +2,7 @@ package agentrt
 
 import (
 	"context"
+	"errors"
 	"sync"
 
 	"go.uber.org/zap"
@@ -125,6 +126,25 @@ func (c *CoordinatingExecutor) runWithRecovery(
 		SessionID:     sessionID,
 	}
 	action := c.recovery.Decide(ctx, &failure)
+
+	// Diagnostic: log error classification for root-cause analysis.
+	var agentErr *adk.AgentError
+	if errors.As(err, &agentErr) {
+		logger().Warnw("recovery triggered",
+			"session", sessionID,
+			"agent", failure.AgentName,
+			"action", action.String(),
+			"error_code", agentErr.Code,
+			"cause_class", agentErr.CauseClass,
+			"retry", retryCount)
+	} else {
+		logger().Warnw("recovery triggered",
+			"session", sessionID,
+			"agent", failure.AgentName,
+			"action", action.String(),
+			"error", err.Error(),
+			"retry", retryCount)
+	}
 
 	if hooks.OnRecovery != nil {
 		hooks.OnRecovery(adk.RecoveryInfo{

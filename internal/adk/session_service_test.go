@@ -420,12 +420,59 @@ func TestCleanupFailedTurn_ClosesDanglingToolCalls(t *testing.T) {
 	dbMsgs := store.messages["test-session"]
 	require.Len(t, dbMsgs, 1)
 	assert.Equal(t, types.RoleTool, dbMsgs[0].Role)
+	assert.Equal(t, "lango-orchestrator", dbMsgs[0].Author, "synthetic tool response must preserve origin author")
 	assert.Equal(t, interruptedToolCallOutput, dbMsgs[0].Content)
 	require.Len(t, dbMsgs[0].ToolCalls, 1)
 	assert.Equal(t, "call-balance", dbMsgs[0].ToolCalls[0].ID)
 	assert.Equal(t, "payment_balance", dbMsgs[0].ToolCalls[0].Name)
 	assert.Equal(t, interruptedToolCallOutput, dbMsgs[0].ToolCalls[0].Output)
 	require.Len(t, sess.History, 2)
+	assert.Empty(t, danglingToolCalls(sess.History))
+}
+
+func TestCleanupFailedTurn_PreservesMultipleOriginAuthors(t *testing.T) {
+	t.Parallel()
+
+	store := newMockStore()
+	sess := &internal.Session{
+		Key:       "test-session",
+		Metadata:  make(map[string]string),
+		CreatedAt: time.Now(),
+		UpdatedAt: time.Now(),
+		History: []internal.Message{
+			{
+				Role:      types.RoleAssistant,
+				Timestamp: time.Now(),
+				Author:    "vault",
+				ToolCalls: []internal.ToolCall{{
+					ID:    "call-sign",
+					Name:  "crypto_sign",
+					Input: `{"data":"tx"}`,
+				}},
+			},
+			{
+				Role:      types.RoleAssistant,
+				Timestamp: time.Now(),
+				Author:    "operator",
+				ToolCalls: []internal.ToolCall{{
+					ID:    "call-exec",
+					Name:  "exec",
+					Input: `{"cmd":"ls"}`,
+				}},
+			},
+		},
+	}
+	store.Create(sess)
+
+	svc := NewSessionServiceAdapter(store, "lango-orchestrator")
+	require.NoError(t, svc.CleanupFailedTurn("test-session", ""))
+
+	dbMsgs := store.messages["test-session"]
+	require.Len(t, dbMsgs, 2, "one synthetic response per dangling call")
+	assert.Equal(t, "vault", dbMsgs[0].Author, "first closure must use vault's author")
+	assert.Equal(t, "call-sign", dbMsgs[0].ToolCalls[0].ID)
+	assert.Equal(t, "operator", dbMsgs[1].Author, "second closure must use operator's author")
+	assert.Equal(t, "call-exec", dbMsgs[1].ToolCalls[0].ID)
 	assert.Empty(t, danglingToolCalls(sess.History))
 }
 

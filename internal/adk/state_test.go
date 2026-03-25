@@ -1154,6 +1154,86 @@ func TestConvertMessages_Empty(t *testing.T) {
 	assert.Empty(t, msgs)
 }
 
+func TestConvertMessages_MultipleFunctionResponsesSplit(t *testing.T) {
+	t.Parallel()
+
+	// Simulate EventsAdapter merging 3 consecutive tool-role events into
+	// a single Content with 3 FunctionResponse parts.
+	merged := &genai.Content{
+		Role: "function",
+		Parts: []*genai.Part{
+			{FunctionResponse: &genai.FunctionResponse{
+				ID: "call_wallet", Name: "payment_wallet_info",
+				Response: map[string]any{"address": "0xabc"},
+			}},
+			{FunctionResponse: &genai.FunctionResponse{
+				ID: "call_balance", Name: "payment_balance",
+				Response: map[string]any{"balance": "100"},
+			}},
+			{FunctionResponse: &genai.FunctionResponse{
+				ID: "call_info", Name: "smart_account_info",
+				Response: map[string]any{"deployed": true},
+			}},
+		},
+	}
+
+	msgs, err := convertMessages([]*genai.Content{merged})
+	require.NoError(t, err)
+	require.Len(t, msgs, 3, "merged FunctionResponses must split into 3 separate messages")
+
+	ids := make(map[string]bool, 3)
+	for _, m := range msgs {
+		assert.Equal(t, "tool", m.Role)
+		id, ok := m.Metadata["tool_call_id"].(string)
+		require.True(t, ok, "each message must have a tool_call_id")
+		ids[id] = true
+		assert.NotEmpty(t, m.Content, "each message must have response content")
+	}
+	assert.True(t, ids["call_wallet"], "call_wallet must be present")
+	assert.True(t, ids["call_balance"], "call_balance must be present")
+	assert.True(t, ids["call_info"], "call_info must be present")
+}
+
+func TestConvertMessages_SingleFunctionResponseUnchanged(t *testing.T) {
+	t.Parallel()
+
+	// Single FunctionResponse should NOT be split — backward-compatible.
+	content := &genai.Content{
+		Role: "function",
+		Parts: []*genai.Part{
+			{FunctionResponse: &genai.FunctionResponse{
+				ID: "call_1", Name: "exec",
+				Response: map[string]any{"output": "ok"},
+			}},
+		},
+	}
+
+	msgs, err := convertMessages([]*genai.Content{content})
+	require.NoError(t, err)
+	require.Len(t, msgs, 1, "single response stays as one message")
+	assert.Equal(t, "tool", msgs[0].Role)
+	assert.Equal(t, "call_1", msgs[0].Metadata["tool_call_id"])
+}
+
+func TestConvertMessages_FunctionCallsStayMerged(t *testing.T) {
+	t.Parallel()
+
+	// FunctionCall parts in assistant message should remain merged (existing behavior).
+	content := &genai.Content{
+		Role: "model",
+		Parts: []*genai.Part{
+			{FunctionCall: &genai.FunctionCall{ID: "call_a", Name: "exec", Args: map[string]any{"cmd": "ls"}}},
+			{FunctionCall: &genai.FunctionCall{ID: "call_b", Name: "search", Args: map[string]any{"q": "test"}}},
+		},
+	}
+
+	msgs, err := convertMessages([]*genai.Content{content})
+	require.NoError(t, err)
+	require.Len(t, msgs, 1, "FunctionCall parts must stay merged in one assistant message")
+	assert.Equal(t, "assistant", msgs[0].Role)
+	assert.Len(t, msgs[0].ToolCalls, 2)
+}
+
 func TestConvertTools_NilConfig(t *testing.T) {
 	t.Parallel()
 

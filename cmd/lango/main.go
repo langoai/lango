@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"fmt"
+	"log"
 	"net/http"
 	"os"
 	"os/signal"
@@ -229,6 +230,13 @@ func runChat() error {
 		return fmt.Errorf("init logging: %w", err)
 	}
 	defer func() { _ = logging.Sync() }()
+
+	// Redirect Go stdlib logger to the same file so third-party libraries
+	// (e.g., ADK runner) that use log.Printf don't leak into the TUI.
+	if logFile, err := os.OpenFile(logPath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644); err == nil {
+		defer logFile.Close()
+		log.SetOutput(logFile)
+	}
 
 	tui.SetProfile(boot.ProfileName)
 

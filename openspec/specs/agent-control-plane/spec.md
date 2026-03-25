@@ -93,3 +93,29 @@ The system SHALL support the following config keys under `agent.orchestration`:
 #### Scenario: Default config preserves classic mode
 - **WHEN** no `agent.orchestration` section exists in config
 - **THEN** the system SHALL use classic mode with no CoordinatingExecutor wrapper
+
+### Requirement: Orchestrator direct-tool guard exempts transfer_to_agent
+The orchestrator direct-tool guard (`agent.go` Run loop) SHALL exempt pure `transfer_to_agent` FunctionCall events. "Pure" means ALL FunctionCalls in the event are `transfer_to_agent`; mixed events (transfer_to_agent + real tool) SHALL still be blocked. This is required because ADK yields the model-response event (with FunctionCall) before promoting it to `Actions.TransferToAgent` in a subsequent event.
+
+#### Scenario: Pure transfer_to_agent passes guard
+- **WHEN** the orchestrator emits an event with only `transfer_to_agent` FunctionCall(s)
+- **AND** `Actions.TransferToAgent` is not yet set (ADK 2-phase)
+- **THEN** the guard SHALL NOT terminate the run with "orchestrator emitted direct tool call"
+
+#### Scenario: Mixed transfer + tool blocked
+- **WHEN** the orchestrator emits an event with `transfer_to_agent` AND other FunctionCalls
+- **THEN** the guard SHALL terminate the run as before
+
+### Requirement: Recovery escalates on orchestrator guard violation
+RecoveryPolicy SHALL classify `CauseOrchestratorDirectTool` errors as `RecoveryEscalate` (not `RecoveryRetry`). Same-input retry cannot resolve a guard violation and would cause infinite retry loops.
+
+#### Scenario: Guard violation escalates immediately
+- **WHEN** inner executor fails with `ErrToolError` and `CauseClass == "orchestrator_direct_tool_call"`
+- **THEN** RecoveryPolicy SHALL return `RecoveryEscalate`
+
+### Requirement: Recovery diagnostic logging
+Recovery event logging SHALL include `error_code` and `cause_class` from `AgentError` when available, to support root-cause analysis. Logging SHALL NOT include tool input/output payloads.
+
+#### Scenario: AgentError recovery log includes classification
+- **WHEN** recovery is triggered by an `AgentError`
+- **THEN** the log entry SHALL include `error_code`, `cause_class`, `agent`, `action`, and `retry` fields

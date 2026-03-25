@@ -139,6 +139,80 @@ func TestIsDelegationEvent(t *testing.T) {
 	}
 }
 
+func TestIsPureTransferToAgentCall(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		give string
+		evt  *session.Event
+		want bool
+	}{
+		{
+			give: "nil content",
+			evt:  &session.Event{},
+			want: false,
+		},
+		{
+			give: "pure transfer_to_agent",
+			evt: &session.Event{
+				LLMResponse: model.LLMResponse{
+					Content: &genai.Content{
+						Parts: []*genai.Part{
+							{FunctionCall: &genai.FunctionCall{Name: "transfer_to_agent", Args: map[string]any{"agent_name": "vault"}}},
+						},
+					},
+				},
+			},
+			want: true,
+		},
+		{
+			give: "mixed transfer_to_agent and real tool",
+			evt: &session.Event{
+				LLMResponse: model.LLMResponse{
+					Content: &genai.Content{
+						Parts: []*genai.Part{
+							{FunctionCall: &genai.FunctionCall{Name: "transfer_to_agent", Args: map[string]any{"agent_name": "vault"}}},
+							{FunctionCall: &genai.FunctionCall{Name: "exec", Args: map[string]any{"cmd": "ls"}}},
+						},
+					},
+				},
+			},
+			want: false,
+		},
+		{
+			give: "regular tool call",
+			evt: &session.Event{
+				LLMResponse: model.LLMResponse{
+					Content: &genai.Content{
+						Parts: []*genai.Part{
+							{FunctionCall: &genai.FunctionCall{Name: "exec"}},
+						},
+					},
+				},
+			},
+			want: false,
+		},
+		{
+			give: "text only no calls",
+			evt: &session.Event{
+				LLMResponse: model.LLMResponse{
+					Content: &genai.Content{
+						Parts: []*genai.Part{{Text: "hello"}},
+					},
+				},
+			},
+			want: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.give, func(t *testing.T) {
+			t.Parallel()
+			assert.Equal(t, tt.want, isPureTransferToAgentCall(tt.evt))
+		})
+	}
+}
+
 // TestContextErrCheck_Canceled and TestContextErrCheck_DeadlineExceeded validate
 // the post-iteration ctx.Err() check pattern used in runAndCollectOnce (agent.go:391)
 // and RunStreaming (agent.go:455).

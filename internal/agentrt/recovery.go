@@ -85,6 +85,9 @@ func (p *RecoveryPolicy) Decide(ctx context.Context, failure *RecoveryContext) R
 		if agentErr.CauseClass == "approval_denied" {
 			return RecoveryEscalate
 		}
+		if agentErr.CauseClass == adk.CauseOrchestratorDirectTool {
+			return RecoveryEscalate // same-input retry cannot fix a guard violation
+		}
 		if failure.AgentName != "" {
 			_ = p.tryLearningFix(ctx, "", failure.Error, failure)
 			return RecoveryRetryWithHint
