@@ -133,7 +133,7 @@ func TestWriteTimeSync_Knowledge(t *testing.T) {
 	store, rawDB := newFTS5TestStore(t)
 	ctx := context.Background()
 
-	// Insert via SaveKnowledge → should appear in FTS5.
+	// Insert v1 via SaveKnowledge → should appear in FTS5.
 	require.NoError(t, store.SaveKnowledge(ctx, "s1", KnowledgeEntry{
 		Key: "sync-test", Category: entknowledge.CategoryFact, Content: "original content about deployment",
 	}))
@@ -143,7 +143,7 @@ func TestWriteTimeSync_Knowledge(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, 1, count)
 
-	// Update via SaveKnowledge → FTS5 should reflect new content.
+	// Append v2 via SaveKnowledge → FTS5 should reflect new content only.
 	require.NoError(t, store.SaveKnowledge(ctx, "s1", KnowledgeEntry{
 		Key: "sync-test", Category: entknowledge.CategoryFact, Content: "updated content about configuration",
 	}))
@@ -152,10 +152,15 @@ func TestWriteTimeSync_Knowledge(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, 1, count)
 
-	// Old content should not match.
+	// Old content should not match (FTS5 updated to latest version only).
 	err = rawDB.QueryRow(`SELECT count(*) FROM knowledge_fts WHERE knowledge_fts MATCH 'deployment'`).Scan(&count)
 	require.NoError(t, err)
 	assert.Equal(t, 0, count)
+
+	// Verify only 1 FTS5 row despite 2 DB rows.
+	err = rawDB.QueryRow(`SELECT count(*) FROM knowledge_fts`).Scan(&count)
+	require.NoError(t, err)
+	assert.Equal(t, 1, count, "FTS5 should have exactly 1 row per key (latest only)")
 
 	// Delete via DeleteKnowledge → should disappear from FTS5.
 	require.NoError(t, store.DeleteKnowledge(ctx, "sync-test"))
@@ -163,6 +168,38 @@ func TestWriteTimeSync_Knowledge(t *testing.T) {
 	err = rawDB.QueryRow(`SELECT count(*) FROM knowledge_fts WHERE knowledge_fts MATCH 'configuration'`).Scan(&count)
 	require.NoError(t, err)
 	assert.Equal(t, 0, count)
+}
+
+func TestFTS5_OnlyLatestVersion(t *testing.T) {
+	store, rawDB := newFTS5TestStore(t)
+	ctx := context.Background()
+
+	// Save 3 versions with distinct content.
+	for i, content := range []string{"alpha unique v1", "beta unique v2", "gamma unique v3"} {
+		require.NoError(t, store.SaveKnowledge(ctx, "s1", KnowledgeEntry{
+			Key: "fts5-latest", Category: entknowledge.CategoryFact, Content: content,
+		}), "save v%d", i+1)
+	}
+
+	// FTS5 should contain only v3 content.
+	var count int
+	err := rawDB.QueryRow(`SELECT count(*) FROM knowledge_fts WHERE knowledge_fts MATCH 'gamma'`).Scan(&count)
+	require.NoError(t, err)
+	assert.Equal(t, 1, count, "FTS5 should find v3 content 'gamma'")
+
+	// v1 and v2 content should NOT be in FTS5.
+	err = rawDB.QueryRow(`SELECT count(*) FROM knowledge_fts WHERE knowledge_fts MATCH 'alpha'`).Scan(&count)
+	require.NoError(t, err)
+	assert.Equal(t, 0, count, "FTS5 should NOT find v1 content 'alpha'")
+
+	err = rawDB.QueryRow(`SELECT count(*) FROM knowledge_fts WHERE knowledge_fts MATCH 'beta'`).Scan(&count)
+	require.NoError(t, err)
+	assert.Equal(t, 0, count, "FTS5 should NOT find v2 content 'beta'")
+
+	// Total FTS5 rows for this key should be 1.
+	err = rawDB.QueryRow(`SELECT count(*) FROM knowledge_fts WHERE source_id = 'fts5-latest'`).Scan(&count)
+	require.NoError(t, err)
+	assert.Equal(t, 1, count, "FTS5 should have exactly 1 row for this key")
 }
 
 func TestWriteTimeSync_Learning(t *testing.T) {

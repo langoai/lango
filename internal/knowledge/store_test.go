@@ -10,6 +10,7 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/langoai/lango/internal/ent/enttest"
+	entknowledge "github.com/langoai/lango/internal/ent/knowledge"
 	entlearning "github.com/langoai/lango/internal/ent/learning"
 	"github.com/langoai/lango/internal/eventbus"
 	_ "github.com/mattn/go-sqlite3"
@@ -51,19 +52,19 @@ func TestSaveAndGetKnowledge(t *testing.T) {
 		}
 	})
 
-	t.Run("upsert overwrites content", func(t *testing.T) {
+	t.Run("append creates new version", func(t *testing.T) {
 		entry := KnowledgeEntry{
 			Key:      "upsert-key",
 			Category: "fact",
 			Content:  "original content",
 		}
 		if err := store.SaveKnowledge(ctx, "session-1", entry); err != nil {
-			t.Fatalf("SaveKnowledge (create): %v", err)
+			t.Fatalf("SaveKnowledge (v1): %v", err)
 		}
 		entry.Content = "updated content"
 		entry.Category = "definition"
 		if err := store.SaveKnowledge(ctx, "session-1", entry); err != nil {
-			t.Fatalf("SaveKnowledge (upsert): %v", err)
+			t.Fatalf("SaveKnowledge (v2): %v", err)
 		}
 		got, err := store.GetKnowledge(ctx, "upsert-key")
 		if err != nil {
@@ -74,6 +75,23 @@ func TestSaveAndGetKnowledge(t *testing.T) {
 		}
 		if got.Category != "definition" {
 			t.Errorf("want category %q, got %q", "definition", got.Category)
+		}
+		if got.Version != 2 {
+			t.Errorf("want version 2, got %d", got.Version)
+		}
+		// Verify 2 DB rows exist.
+		all, err := store.client.Knowledge.Query().All(ctx)
+		if err != nil {
+			t.Fatalf("query all: %v", err)
+		}
+		upsertRows := 0
+		for _, k := range all {
+			if k.Key == "upsert-key" {
+				upsertRows++
+			}
+		}
+		if upsertRows != 2 {
+			t.Errorf("want 2 DB rows for upsert-key, got %d", upsertRows)
 		}
 	})
 
@@ -202,14 +220,18 @@ func TestDeleteKnowledge(t *testing.T) {
 	store := newTestStore(t)
 	ctx := context.Background()
 
-	t.Run("delete existing entry", func(t *testing.T) {
+	t.Run("delete all versions", func(t *testing.T) {
 		entry := KnowledgeEntry{
 			Key:      "to-delete",
 			Category: "fact",
-			Content:  "Temporary fact",
+			Content:  "v1 content",
 		}
 		if err := store.SaveKnowledge(ctx, "session-1", entry); err != nil {
-			t.Fatalf("SaveKnowledge: %v", err)
+			t.Fatalf("SaveKnowledge (v1): %v", err)
+		}
+		entry.Content = "v2 content"
+		if err := store.SaveKnowledge(ctx, "session-1", entry); err != nil {
+			t.Fatalf("SaveKnowledge (v2): %v", err)
 		}
 		if err := store.DeleteKnowledge(ctx, "to-delete"); err != nil {
 			t.Fatalf("DeleteKnowledge: %v", err)
@@ -220,6 +242,11 @@ func TestDeleteKnowledge(t *testing.T) {
 		}
 		if !strings.Contains(err.Error(), "knowledge not found") {
 			t.Errorf("want error containing %q, got %q", "knowledge not found", err.Error())
+		}
+		// Verify no rows remain for this key.
+		_, err = store.GetKnowledgeHistory(ctx, "to-delete")
+		if err == nil {
+			t.Fatal("expected history error after delete, got nil")
 		}
 	})
 
@@ -799,5 +826,182 @@ func TestContentSavedEvent_NeedsGraph(t *testing.T) {
 				t.Errorf("Collection: want %q, got %q", tt.collection, evt.Collection)
 			}
 		})
+	}
+}
+
+func TestSaveKnowledge_VersionHistory(t *testing.T) {
+	store := newTestStore(t)
+	ctx := context.Background()
+
+	for i := 1; i <= 3; i++ {
+		entry := KnowledgeEntry{
+			Key:      "versioned-key",
+			Category: "fact",
+			Content:  fmt.Sprintf("content v%d", i),
+		}
+		if err := store.SaveKnowledge(ctx, "s1", entry); err != nil {
+			t.Fatalf("SaveKnowledge v%d: %v", i, err)
+		}
+	}
+
+	got, err := store.GetKnowledge(ctx, "versioned-key")
+	if err != nil {
+		t.Fatalf("GetKnowledge: %v", err)
+	}
+	if got.Version != 3 {
+		t.Errorf("want version 3, got %d", got.Version)
+	}
+	if got.Content != "content v3" {
+		t.Errorf("want content %q, got %q", "content v3", got.Content)
+	}
+
+	// Verify 3 DB rows exist.
+	all, err := store.client.Knowledge.Query().
+		Where(entknowledge.Key("versioned-key")).
+		All(ctx)
+	if err != nil {
+		t.Fatalf("query all: %v", err)
+	}
+	if len(all) != 3 {
+		t.Errorf("want 3 rows, got %d", len(all))
+	}
+
+	// Exactly one is_latest=true.
+	latestCount := 0
+	for _, k := range all {
+		if k.IsLatest {
+			latestCount++
+		}
+	}
+	if latestCount != 1 {
+		t.Errorf("want exactly 1 is_latest=true, got %d", latestCount)
+	}
+}
+
+func TestGetKnowledgeHistory(t *testing.T) {
+	store := newTestStore(t)
+	ctx := context.Background()
+
+	for i := 1; i <= 3; i++ {
+		entry := KnowledgeEntry{
+			Key:      "hist-key",
+			Category: "fact",
+			Content:  fmt.Sprintf("content v%d", i),
+		}
+		if err := store.SaveKnowledge(ctx, "s1", entry); err != nil {
+			t.Fatalf("SaveKnowledge v%d: %v", i, err)
+		}
+	}
+
+	history, err := store.GetKnowledgeHistory(ctx, "hist-key")
+	if err != nil {
+		t.Fatalf("GetKnowledgeHistory: %v", err)
+	}
+	if len(history) != 3 {
+		t.Fatalf("want 3 versions, got %d", len(history))
+	}
+	// Descending order.
+	if history[0].Version != 3 || history[1].Version != 2 || history[2].Version != 1 {
+		t.Errorf("want versions [3,2,1], got [%d,%d,%d]", history[0].Version, history[1].Version, history[2].Version)
+	}
+	// CreatedAt populated.
+	for _, h := range history {
+		if h.CreatedAt.IsZero() {
+			t.Errorf("version %d: CreatedAt should not be zero", h.Version)
+		}
+	}
+}
+
+func TestGetKnowledgeHistory_NotFound(t *testing.T) {
+	store := newTestStore(t)
+	ctx := context.Background()
+
+	_, err := store.GetKnowledgeHistory(ctx, "nonexistent")
+	if err == nil {
+		t.Fatal("expected error, got nil")
+	}
+	if !strings.Contains(err.Error(), "knowledge not found") {
+		t.Errorf("want error containing %q, got %q", "knowledge not found", err.Error())
+	}
+}
+
+func TestSaveKnowledge_CarryForward(t *testing.T) {
+	store := newTestStore(t)
+	ctx := context.Background()
+
+	entry := KnowledgeEntry{
+		Key:      "carry-key",
+		Category: "fact",
+		Content:  "v1 content",
+	}
+	if err := store.SaveKnowledge(ctx, "s1", entry); err != nil {
+		t.Fatalf("SaveKnowledge v1: %v", err)
+	}
+
+	// Increment use count on v1.
+	if err := store.IncrementKnowledgeUseCount(ctx, "carry-key"); err != nil {
+		t.Fatalf("IncrementKnowledgeUseCount: %v", err)
+	}
+	if err := store.IncrementKnowledgeUseCount(ctx, "carry-key"); err != nil {
+		t.Fatalf("IncrementKnowledgeUseCount (2nd): %v", err)
+	}
+
+	// Save v2 — should carry forward use_count=2.
+	entry.Content = "v2 content"
+	if err := store.SaveKnowledge(ctx, "s1", entry); err != nil {
+		t.Fatalf("SaveKnowledge v2: %v", err)
+	}
+
+	// Read back v2 via direct DB query.
+	latest, err := store.client.Knowledge.Query().
+		Where(entknowledge.Key("carry-key"), entknowledge.IsLatest(true)).
+		Only(ctx)
+	if err != nil {
+		t.Fatalf("query latest: %v", err)
+	}
+	if latest.UseCount != 2 {
+		t.Errorf("want use_count 2 (carried forward), got %d", latest.UseCount)
+	}
+	if latest.Version != 2 {
+		t.Errorf("want version 2, got %d", latest.Version)
+	}
+}
+
+func TestSearchKnowledge_LatestOnly(t *testing.T) {
+	store := newTestStore(t)
+	ctx := context.Background()
+
+	// Save v1 with "old unicorn data".
+	entry := KnowledgeEntry{
+		Key:      "search-latest",
+		Category: "fact",
+		Content:  "old unicorn data",
+	}
+	if err := store.SaveKnowledge(ctx, "s1", entry); err != nil {
+		t.Fatalf("SaveKnowledge v1: %v", err)
+	}
+
+	// Save v2 with completely different content.
+	entry.Content = "new dragon data"
+	if err := store.SaveKnowledge(ctx, "s1", entry); err != nil {
+		t.Fatalf("SaveKnowledge v2: %v", err)
+	}
+
+	// Search for "unicorn" — should find nothing (v1 is not latest).
+	results, err := store.SearchKnowledge(ctx, "unicorn", "", 10)
+	if err != nil {
+		t.Fatalf("SearchKnowledge: %v", err)
+	}
+	if len(results) != 0 {
+		t.Errorf("want 0 results for 'unicorn' (old version), got %d", len(results))
+	}
+
+	// Search for "dragon" — should find latest version.
+	results, err = store.SearchKnowledge(ctx, "dragon", "", 10)
+	if err != nil {
+		t.Fatalf("SearchKnowledge: %v", err)
+	}
+	if len(results) != 1 {
+		t.Errorf("want 1 result for 'dragon' (latest version), got %d", len(results))
 	}
 }

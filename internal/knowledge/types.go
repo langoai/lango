@@ -2,6 +2,7 @@ package knowledge
 
 import (
 	"context"
+	"time"
 
 	entknowledge "github.com/langoai/lango/internal/ent/knowledge"
 	entlearning "github.com/langoai/lango/internal/ent/learning"
@@ -67,11 +68,13 @@ type RetrievalResult struct {
 
 // KnowledgeEntry is the domain type for knowledge CRUD operations.
 type KnowledgeEntry struct {
-	Key      string
-	Category entknowledge.Category
-	Content  string
-	Tags     []string
-	Source   string
+	Key       string
+	Category  entknowledge.Category
+	Content   string
+	Tags      []string
+	Source    string
+	Version   int       // 0 = unset (callers constructing entries don't set this)
+	CreatedAt time.Time // zero = unset
 }
 
 // LearningEntry is the domain type for learning CRUD operations.

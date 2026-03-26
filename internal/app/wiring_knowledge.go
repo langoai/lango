@@ -126,7 +126,7 @@ func bulkIndexKnowledge(ctx context.Context, db *sql.DB, idx *search.FTS5Index) 
 		return fmt.Errorf("clear knowledge FTS5: %w", err)
 	}
 
-	rows, err := db.QueryContext(ctx, `SELECT "key", content FROM knowledge`)
+	rows, err := db.QueryContext(ctx, `SELECT "key", content FROM knowledge WHERE is_latest = 1`)
 	if err != nil {
 		return fmt.Errorf("query knowledge for FTS5 index: %w", err)
 	}

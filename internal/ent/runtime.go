@@ -290,20 +290,28 @@ func init() {
 	knowledgeDescContent := knowledgeFields[3].Descriptor()
 	// knowledge.ContentValidator is a validator for the "content" field. It is called by the builders before save.
 	knowledge.ContentValidator = knowledgeDescContent.Validators[0].(func(string) error)
+	// knowledgeDescVersion is the schema descriptor for version field.
+	knowledgeDescVersion := knowledgeFields[6].Descriptor()
+	// knowledge.DefaultVersion holds the default value on creation for the version field.
+	knowledge.DefaultVersion = knowledgeDescVersion.Default.(int)
+	// knowledgeDescIsLatest is the schema descriptor for is_latest field.
+	knowledgeDescIsLatest := knowledgeFields[7].Descriptor()
+	// knowledge.DefaultIsLatest holds the default value on creation for the is_latest field.
+	knowledge.DefaultIsLatest = knowledgeDescIsLatest.Default.(bool)
 	// knowledgeDescUseCount is the schema descriptor for use_count field.
-	knowledgeDescUseCount := knowledgeFields[6].Descriptor()
+	knowledgeDescUseCount := knowledgeFields[8].Descriptor()
 	// knowledge.DefaultUseCount holds the default value on creation for the use_count field.
 	knowledge.DefaultUseCount = knowledgeDescUseCount.Default.(int)
 	// knowledgeDescRelevanceScore is the schema descriptor for relevance_score field.
-	knowledgeDescRelevanceScore := knowledgeFields[7].Descriptor()
+	knowledgeDescRelevanceScore := knowledgeFields[9].Descriptor()
 	// knowledge.DefaultRelevanceScore holds the default value on creation for the relevance_score field.
 	knowledge.DefaultRelevanceScore = knowledgeDescRelevanceScore.Default.(float64)
 	// knowledgeDescCreatedAt is the schema descriptor for created_at field.
-	knowledgeDescCreatedAt := knowledgeFields[8].Descriptor()
+	knowledgeDescCreatedAt := knowledgeFields[10].Descriptor()
 	// knowledge.DefaultCreatedAt holds the default value on creation for the created_at field.
 	knowledge.DefaultCreatedAt = knowledgeDescCreatedAt.Default.(func() time.Time)
 	// knowledgeDescUpdatedAt is the schema descriptor for updated_at field.
-	knowledgeDescUpdatedAt := knowledgeFields[9].Descriptor()
+	knowledgeDescUpdatedAt := knowledgeFields[11].Descriptor()
 	// knowledge.DefaultUpdatedAt holds the default value on creation for the updated_at field.
 	knowledge.DefaultUpdatedAt = knowledgeDescUpdatedAt.Default.(func() time.Time)
 	// knowledge.UpdateDefaultUpdatedAt holds the default value on update for the updated_at field.

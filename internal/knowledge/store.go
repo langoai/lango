@@ -57,7 +57,7 @@ func (s *Store) SetLearningFTS5Index(idx *search.FTS5Index) {
 // publishContentSaved publishes a ContentSavedEvent if the bus is configured.
 // needsGraph mirrors the original SetGraphCallback behavior: only new knowledge
 // creation triggers graph processing; updates and learning saves are embed-only.
-func (s *Store) publishContentSaved(id, collection, content string, metadata map[string]string, isNew, needsGraph bool) {
+func (s *Store) publishContentSaved(id, collection, content string, metadata map[string]string, isNew, needsGraph bool, version int) {
 	if s.bus == nil {
 		return
 	}
@@ -69,20 +69,36 @@ func (s *Store) publishContentSaved(id, collection, content string, metadata map
 		Source:     "knowledge",
 		IsNew:      isNew,
 		NeedsGraph: needsGraph,
+		Version:    version,
 	})
 }
 
-// SaveKnowledge creates or updates a knowledge entry by key.
+// SaveKnowledge appends a new version of a knowledge entry.
+// If the key does not exist, creates version 1. If it exists, creates version N+1
+// while marking the previous latest as not-latest (within a transaction).
+// Retries once on unique constraint violation from concurrent same-key writes.
 func (s *Store) SaveKnowledge(ctx context.Context, sessionKey string, entry KnowledgeEntry) error {
+	err := s.saveKnowledgeOnce(ctx, sessionKey, entry)
+	if err != nil && isUniqueConstraintError(err) {
+		s.logger.Warnw("knowledge version conflict, retrying", "key", entry.Key)
+		return s.saveKnowledgeOnce(ctx, sessionKey, entry)
+	}
+	return err
+}
+
+func (s *Store) saveKnowledgeOnce(ctx context.Context, _ string, entry KnowledgeEntry) error {
 	existing, err := s.client.Knowledge.Query().
-		Where(entknowledge.Key(entry.Key)).
+		Where(entknowledge.Key(entry.Key), entknowledge.IsLatest(true)).
 		Only(ctx)
 
 	if ent.IsNotFound(err) {
+		// First version: create with version=1, is_latest=true.
 		builder := s.client.Knowledge.Create().
 			SetKey(entry.Key).
 			SetCategory(entry.Category).
-			SetContent(entry.Content)
+			SetContent(entry.Content).
+			SetVersion(1).
+			SetIsLatest(true)
 
 		if len(entry.Tags) > 0 {
 			builder.SetTags(entry.Tags)
@@ -97,7 +113,7 @@ func (s *Store) SaveKnowledge(ctx context.Context, sessionKey string, entry Know
 		}
 
 		meta := map[string]string{"category": string(entry.Category)}
-		s.publishContentSaved(entry.Key, "knowledge", entry.Content, meta, true, true)
+		s.publishContentSaved(entry.Key, "knowledge", entry.Content, meta, true, true, 1)
 		s.syncKnowledgeFTS5(ctx, entry.Key, entry.Content, false)
 		return nil
 	}
@@ -105,33 +121,60 @@ func (s *Store) SaveKnowledge(ctx context.Context, sessionKey string, entry Know
 		return fmt.Errorf("query knowledge: %w", err)
 	}
 
-	updater := existing.Update().
+	// Append new version in transaction.
+	tx, err := s.client.Tx(ctx)
+	if err != nil {
+		return fmt.Errorf("begin tx: %w", err)
+	}
+
+	// Mark old version as not latest.
+	if err := tx.Knowledge.UpdateOne(existing).SetIsLatest(false).Exec(ctx); err != nil {
+		_ = tx.Rollback()
+		return fmt.Errorf("unset latest: %w", err)
+	}
+
+	newVersion := existing.Version + 1
+	builder := tx.Knowledge.Create().
+		SetKey(entry.Key).
 		SetCategory(entry.Category).
-		SetContent(entry.Content)
+		SetContent(entry.Content).
+		SetVersion(newVersion).
+		SetIsLatest(true).
+		SetUseCount(existing.UseCount).
+		SetRelevanceScore(existing.RelevanceScore)
 
 	if len(entry.Tags) > 0 {
-		updater.SetTags(entry.Tags)
+		builder.SetTags(entry.Tags)
 	}
 	if entry.Source != "" {
-		updater.SetSource(entry.Source)
+		builder.SetSource(entry.Source)
 	}
 
-	_, err = updater.Save(ctx)
+	_, err = builder.Save(ctx)
 	if err != nil {
-		return fmt.Errorf("update knowledge: %w", err)
+		_ = tx.Rollback()
+		return fmt.Errorf("create version: %w", err)
 	}
 
-	s.publishContentSaved(entry.Key, "knowledge", entry.Content, map[string]string{
-		"category": string(entry.Category),
-	}, false, false)
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("commit version: %w", err)
+	}
+
+	meta := map[string]string{"category": string(entry.Category)}
+	s.publishContentSaved(entry.Key, "knowledge", entry.Content, meta, false, false, newVersion)
 	s.syncKnowledgeFTS5(ctx, entry.Key, entry.Content, true)
 	return nil
 }
 
-// GetKnowledge retrieves a knowledge entry by key.
+// isUniqueConstraintError checks for SQLite unique constraint violation.
+func isUniqueConstraintError(err error) bool {
+	return err != nil && strings.Contains(err.Error(), "UNIQUE constraint failed")
+}
+
+// GetKnowledge retrieves the latest version of a knowledge entry by key.
 func (s *Store) GetKnowledge(ctx context.Context, key string) (*KnowledgeEntry, error) {
 	k, err := s.client.Knowledge.Query().
-		Where(entknowledge.Key(key)).
+		Where(entknowledge.Key(key), entknowledge.IsLatest(true)).
 		Only(ctx)
 
 	if ent.IsNotFound(err) {
@@ -142,12 +185,43 @@ func (s *Store) GetKnowledge(ctx context.Context, key string) (*KnowledgeEntry, 
 	}
 
 	return &KnowledgeEntry{
-		Key:      k.Key,
-		Category: k.Category,
-		Content:  k.Content,
-		Tags:     k.Tags,
-		Source:   k.Source,
+		Key:       k.Key,
+		Category:  k.Category,
+		Content:   k.Content,
+		Tags:      k.Tags,
+		Source:    k.Source,
+		Version:   k.Version,
+		CreatedAt: k.CreatedAt,
 	}, nil
+}
+
+// GetKnowledgeHistory returns all versions of a knowledge entry ordered by version descending.
+func (s *Store) GetKnowledgeHistory(ctx context.Context, key string) ([]KnowledgeEntry, error) {
+	entries, err := s.client.Knowledge.Query().
+		Where(entknowledge.Key(key)).
+		Order(entknowledge.ByVersion(sql.OrderDesc())).
+		All(ctx)
+
+	if err != nil {
+		return nil, fmt.Errorf("query knowledge history: %w", err)
+	}
+	if len(entries) == 0 {
+		return nil, fmt.Errorf("get knowledge history %q: %w", key, ErrKnowledgeNotFound)
+	}
+
+	result := make([]KnowledgeEntry, 0, len(entries))
+	for _, k := range entries {
+		result = append(result, KnowledgeEntry{
+			Key:       k.Key,
+			Category:  k.Category,
+			Content:   k.Content,
+			Tags:      k.Tags,
+			Source:    k.Source,
+			Version:   k.Version,
+			CreatedAt: k.CreatedAt,
+		})
+	}
+	return result, nil
 }
 
 // SearchKnowledge searches knowledge entries by content/key keyword matching.
@@ -174,8 +248,9 @@ func (s *Store) SearchKnowledge(ctx context.Context, query string, category stri
 }
 
 // searchKnowledgeLIKE is the original LIKE-based search path.
+// Only returns latest versions (is_latest=true).
 func (s *Store) searchKnowledgeLIKE(ctx context.Context, query string, category string, limit int) ([]KnowledgeEntry, error) {
-	var predicates []predicate.Knowledge
+	predicates := []predicate.Knowledge{entknowledge.IsLatest(true)}
 	if query != "" {
 		if kwPreds := knowledgeKeywordPredicates(query); len(kwPreds) > 0 {
 			predicates = append(predicates, entknowledge.Or(kwPreds...))
@@ -198,11 +273,13 @@ func (s *Store) searchKnowledgeLIKE(ctx context.Context, query string, category 
 	result := make([]KnowledgeEntry, 0, len(entries))
 	for _, k := range entries {
 		result = append(result, KnowledgeEntry{
-			Key:      k.Key,
-			Category: k.Category,
-			Content:  k.Content,
-			Tags:     k.Tags,
-			Source:   k.Source,
+			Key:       k.Key,
+			Category:  k.Category,
+			Content:   k.Content,
+			Tags:      k.Tags,
+			Source:    k.Source,
+			Version:   k.Version,
+			CreatedAt: k.CreatedAt,
 		})
 	}
 	return result, nil
@@ -216,7 +293,7 @@ func (s *Store) resolveKnowledgeByKeys(ctx context.Context, ftsResults []search.
 		keys = append(keys, r.RowID)
 	}
 
-	preds := []predicate.Knowledge{entknowledge.KeyIn(keys...)}
+	preds := []predicate.Knowledge{entknowledge.KeyIn(keys...), entknowledge.IsLatest(true)}
 	if category != "" {
 		preds = append(preds, entknowledge.CategoryEQ(entknowledge.Category(category)))
 	}
@@ -241,11 +318,13 @@ func (s *Store) resolveKnowledgeByKeys(ctx context.Context, ftsResults []search.
 			continue // Filtered out by category or missing.
 		}
 		result = append(result, KnowledgeEntry{
-			Key:      k.Key,
-			Category: k.Category,
-			Content:  k.Content,
-			Tags:     k.Tags,
-			Source:   k.Source,
+			Key:       k.Key,
+			Category:  k.Category,
+			Content:   k.Content,
+			Tags:      k.Tags,
+			Source:    k.Source,
+			Version:   k.Version,
+			CreatedAt: k.CreatedAt,
 		})
 	}
 	return result, nil
@@ -269,10 +348,10 @@ func knowledgeKeywordPredicates(query string) []predicate.Knowledge {
 	return preds
 }
 
-// IncrementKnowledgeUseCount increments the use count for a knowledge entry.
+// IncrementKnowledgeUseCount increments the use count for the latest version of a knowledge entry.
 func (s *Store) IncrementKnowledgeUseCount(ctx context.Context, key string) error {
 	n, err := s.client.Knowledge.Update().
-		Where(entknowledge.Key(key)).
+		Where(entknowledge.Key(key), entknowledge.IsLatest(true)).
 		AddUseCount(1).
 		Save(ctx)
 
@@ -331,7 +410,7 @@ func (s *Store) SaveLearning(ctx context.Context, sessionKey string, entry Learn
 	}
 	s.publishContentSaved(created.ID.String(), "learning", content, map[string]string{
 		"category": string(entry.Category),
-	}, true, false)
+	}, true, false, 0)
 	s.syncLearningFTS5(ctx, created.ID.String(), entry.Trigger, entry.ErrorPattern, entry.Fix)
 
 	return nil
