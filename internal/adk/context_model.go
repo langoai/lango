@@ -58,6 +58,7 @@ type ContextAwareModelAdapter struct {
 	maxReflections     int
 	maxObservations    int
 	memoryTokenBudget  int // max tokens for the memory section; 0 = default (4000)
+	budgetManager      *ContextBudgetManager
 	logger             *zap.SugaredLogger
 }
 
@@ -132,6 +133,13 @@ func (m *ContextAwareModelAdapter) WithMemoryTokenBudget(budget int) *ContextAwa
 	return m
 }
 
+// WithBudgetManager sets the context budget manager for per-section token allocation.
+// When set, GenerateContent computes per-section budgets and truncates content to fit.
+func (m *ContextAwareModelAdapter) WithBudgetManager(bm *ContextBudgetManager) *ContextAwareModelAdapter {
+	m.budgetManager = bm
+	return m
+}
+
 // Name delegates to the inner adapter.
 func (m *ContextAwareModelAdapter) Name() string {
 	return m.inner.Name()
@@ -150,6 +158,16 @@ func (m *ContextAwareModelAdapter) GenerateContent(ctx context.Context, req *mod
 	}
 
 	userQuery := extractLastUserMessage(req.Contents)
+
+	// Compute per-section budgets (0 = unlimited when no budget manager).
+	var budgets SectionBudgets
+	if m.budgetManager != nil {
+		budgets = m.budgetManager.SectionBudgets()
+		if budgets.Degraded {
+			m.logger.Warnw("context budget degraded to unlimited — model window too small for base prompt",
+				"modelWindow", m.budgetManager.ModelWindow())
+		}
+	}
 
 	var knowledgeSection, ragSection, memorySection, runSummarySection string
 
@@ -173,6 +191,7 @@ func (m *ContextAwareModelAdapter) GenerateContent(ctx context.Context, req *mod
 			if err != nil {
 				m.logger.Warnw("context retrieval error", "error", err)
 			} else if retrieved != nil && retrieved.TotalItems > 0 {
+				retrieved = knowledge.TruncateResult(retrieved, budgets.Knowledge)
 				knowledgeSection = m.retriever.AssemblePrompt("", retrieved)
 			}
 			return nil
@@ -183,12 +202,12 @@ func (m *ContextAwareModelAdapter) GenerateContent(ctx context.Context, req *mod
 	if userQuery != "" {
 		if m.graphRAG != nil {
 			g.Go(func() error {
-				ragSection = m.assembleGraphRAGSection(gCtx, userQuery, sessionKey)
+				ragSection = m.assembleGraphRAGSection(gCtx, userQuery, sessionKey, budgets.RAG)
 				return nil
 			})
 		} else if m.ragService != nil {
 			g.Go(func() error {
-				ragSection = m.assembleRAGSection(gCtx, userQuery, sessionKey)
+				ragSection = m.assembleRAGSection(gCtx, userQuery, sessionKey, budgets.RAG)
 				return nil
 			})
 		}
@@ -197,7 +216,7 @@ func (m *ContextAwareModelAdapter) GenerateContent(ctx context.Context, req *mod
 	// Memory retrieval
 	if m.memoryProvider != nil && sessionKey != "" {
 		g.Go(func() error {
-			memorySection = m.assembleMemorySection(gCtx, sessionKey)
+			memorySection = m.assembleMemorySection(gCtx, sessionKey, budgets.Memory)
 			return nil
 		})
 	}
@@ -205,7 +224,7 @@ func (m *ContextAwareModelAdapter) GenerateContent(ctx context.Context, req *mod
 	// Run summary retrieval
 	if m.runSummaryProvider != nil && sessionKey != "" {
 		g.Go(func() error {
-			runSummarySection = m.assembleRunSummarySection(gCtx, sessionKey)
+			runSummarySection = m.assembleRunSummarySection(gCtx, sessionKey, budgets.RunSummary)
 			return nil
 		})
 	}

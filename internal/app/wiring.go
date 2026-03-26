@@ -26,6 +26,7 @@ import (
 	"github.com/langoai/lango/internal/skill"
 	"github.com/langoai/lango/internal/supervisor"
 	"github.com/langoai/lango/internal/toolcatalog"
+	"github.com/langoai/lango/internal/types"
 	"google.golang.org/adk/model"
 	adk_tool "google.golang.org/adk/tool"
 )
@@ -361,6 +362,9 @@ func initAgent(ctx context.Context, deps *agentDeps) (*adk.Agent, error) {
 		if deps.rls != nil && cfg.RunLedger.Enabled && cfg.RunLedger.AuthoritativeRead {
 			ctxAdapter.WithRunSummaryProvider(&runSummaryProviderAdapter{store: deps.rls})
 		}
+
+		// Wire in context budget manager.
+		wireBudgetManager(cfg, builder, ctxAdapter)
 
 		// Wire in observational memory if available
 		if mc != nil {
@@ -734,4 +738,40 @@ func buildAutomationPromptSection(cfg *config.Config) *prompt.StaticSection {
 
 	content := strings.Join(parts, "\n")
 	return prompt.NewStaticSection(prompt.SectionAutomation, 450, "Automation", content)
+}
+
+// wireBudgetManager creates and injects a ContextBudgetManager into the context adapter.
+func wireBudgetManager(cfg *config.Config, builder *prompt.Builder, ctxAdapter *adk.ContextAwareModelAdapter) {
+	modelWindow := cfg.Context.ModelWindow
+	if modelWindow <= 0 {
+		modelWindow = adk.LookupModelWindow(cfg.Agent.Model)
+	}
+
+	responseReserve := cfg.Context.ResponseReserve
+	if responseReserve <= 0 {
+		responseReserve = cfg.Agent.MaxTokens
+	}
+
+	basePromptTokens := types.EstimateTokens(builder.Build())
+
+	alloc := adk.SectionAllocation{
+		Knowledge:  cfg.Context.Allocation.Knowledge,
+		RAG:        cfg.Context.Allocation.RAG,
+		Memory:     cfg.Context.Allocation.Memory,
+		RunSummary: cfg.Context.Allocation.RunSummary,
+		Headroom:   cfg.Context.Allocation.Headroom,
+	}
+
+	bm, err := adk.NewContextBudgetManager(modelWindow, responseReserve, basePromptTokens, alloc)
+	if err != nil {
+		logger().Warnw("context budget manager creation failed, continuing without budget", "error", err)
+		return
+	}
+
+	ctxAdapter.WithBudgetManager(bm)
+	logger().Infow("context budget manager initialized",
+		"modelWindow", modelWindow,
+		"responseReserve", responseReserve,
+		"basePromptTokens", basePromptTokens,
+	)
 }

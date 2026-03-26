@@ -27,7 +27,7 @@ func BenchmarkAssembleRunSummary_CacheHit(b *testing.B) {
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		_ = adapter.assembleRunSummarySection(ctx, "sess-bench")
+		_ = adapter.assembleRunSummarySection(ctx, "sess-bench", 0)
 	}
 }
 
@@ -48,7 +48,7 @@ func BenchmarkAssembleRunSummary_CacheMiss(b *testing.B) {
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		provider.maxSeq = int64(i + 1)
-		_ = adapter.assembleRunSummarySection(ctx, "sess-bench")
+		_ = adapter.assembleRunSummarySection(ctx, "sess-bench", 0)
 	}
 }
 

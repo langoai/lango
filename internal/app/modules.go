@@ -6,9 +6,11 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"time"
 
+	"github.com/langoai/lango/internal/adk"
 	"github.com/langoai/lango/internal/agent"
 	"github.com/langoai/lango/internal/agentmemory"
 	"github.com/langoai/lango/internal/appinit"
@@ -315,13 +317,21 @@ func (m *intelligenceModule) Init(ctx context.Context, r appinit.Resolver) (*app
 	// Librarian.
 	lc, lcStatus := initLibrarian(cfg, sv, store, kc, mc, gc, m.bus)
 
-	// Enrich knowledge status with FTS5 info.
+	// Enrich knowledge status with FTS5 and budget info.
 	if kcStatus != nil && kcStatus.Enabled && kcStatus.Healthy {
+		var details []string
 		if fts5Available {
-			kcStatus.Reason = "FTS5 search active"
+			details = append(details, "FTS5 search active")
 		} else {
-			kcStatus.Reason = "FTS5 unavailable, using LIKE fallback"
+			details = append(details, "FTS5 unavailable, using LIKE fallback")
 		}
+		// Budget info from config.
+		modelWindow := cfg.Context.ModelWindow
+		if modelWindow <= 0 {
+			modelWindow = adk.LookupModelWindow(cfg.Agent.Model)
+		}
+		details = append(details, fmt.Sprintf("budgeted (%dk)", modelWindow/1000))
+		kcStatus.Reason = strings.Join(details, ", ")
 	}
 
 	// Collect feature statuses for diagnostics.

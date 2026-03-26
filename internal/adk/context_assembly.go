@@ -2,19 +2,23 @@ package adk
 
 import (
 	"context"
+	"fmt"
 	"strings"
 	"sync"
 
 	"github.com/langoai/lango/internal/memory"
+	"github.com/langoai/lango/internal/types"
 )
 
 // defaultMemoryTokenBudget is the default token budget for the memory section.
 const defaultMemoryTokenBudget = 4000
 
+
 // assembleMemorySection builds the "Conversation Memory" section from observations and reflections.
 // It enforces a token budget: reflections are included first (higher information density),
 // then observations fill the remaining budget.
-func (m *ContextAwareModelAdapter) assembleMemorySection(ctx context.Context, sessionKey string) string {
+// dynamicBudget overrides the static memoryTokenBudget when > 0 (from ContextBudgetManager).
+func (m *ContextAwareModelAdapter) assembleMemorySection(ctx context.Context, sessionKey string, dynamicBudget int) string {
 	var reflections []memory.Reflection
 	var observations []memory.Observation
 	var err error
@@ -41,7 +45,10 @@ func (m *ContextAwareModelAdapter) assembleMemorySection(ctx context.Context, se
 		return ""
 	}
 
-	budget := m.memoryTokenBudget
+	budget := dynamicBudget
+	if budget <= 0 {
+		budget = m.memoryTokenBudget
+	}
 	if budget <= 0 {
 		budget = defaultMemoryTokenBudget
 	}
@@ -83,7 +90,9 @@ func (m *ContextAwareModelAdapter) assembleMemorySection(ctx context.Context, se
 	return b.String()
 }
 
-func (m *ContextAwareModelAdapter) assembleRunSummarySection(ctx context.Context, sessionKey string) string {
+// assembleRunSummarySection builds the "Active Runs" section from RunLedger summaries.
+// budgetTokens controls item-level truncation: 0 = unlimited.
+func (m *ContextAwareModelAdapter) assembleRunSummarySection(ctx context.Context, sessionKey string, budgetTokens int) string {
 	if m.runSummaryProvider == nil {
 		return ""
 	}
@@ -105,6 +114,21 @@ func (m *ContextAwareModelAdapter) assembleRunSummarySection(ctx context.Context
 	if len(summaries) == 0 {
 		m.storeCachedRunSummary(sessionKey, maxSeq, "")
 		return ""
+	}
+
+	// Item-level truncation: drop older summaries until within budget.
+	if budgetTokens > 0 {
+		headerTokens := types.EstimateTokens("## Active Runs\n")
+		remaining := budgetTokens - headerTokens
+		for i, summary := range summaries {
+			line := fmt.Sprintf("- %s: %s [status=%s]\n", summary.RunID, summary.Goal, summary.Status)
+			itemTokens := types.EstimateTokens(line)
+			if remaining-itemTokens < 0 {
+				summaries = summaries[:i]
+				break
+			}
+			remaining -= itemTokens
+		}
 	}
 
 	var b strings.Builder

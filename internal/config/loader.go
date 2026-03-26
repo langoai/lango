@@ -159,6 +159,17 @@ func DefaultConfig() *Config {
 				RetentionDays:      30,
 			},
 		},
+		Context: ContextConfig{
+			ModelWindow:     0, // auto-detect from model registry
+			ResponseReserve: 0, // use agent.maxTokens
+			Allocation: ContextAllocationConfig{
+				Knowledge:  0.30,
+				RAG:        0.25,
+				Memory:     0.25,
+				RunSummary: 0.10,
+				Headroom:   0.10,
+			},
+		},
 		ObservationalMemory: ObservationalMemoryConfig{
 			Enabled:                          false,
 			MessageTokenThreshold:            1000,

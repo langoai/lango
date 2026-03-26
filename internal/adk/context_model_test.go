@@ -270,8 +270,8 @@ func TestAssembleRunSummarySection_CacheHit(t *testing.T) {
 	adapter := newTestContextAdapter(t, nil)
 	adapter.WithRunSummaryProvider(provider)
 
-	got1 := adapter.assembleRunSummarySection(context.Background(), "sess-1")
-	got2 := adapter.assembleRunSummarySection(context.Background(), "sess-1")
+	got1 := adapter.assembleRunSummarySection(context.Background(), "sess-1", 0)
+	got2 := adapter.assembleRunSummarySection(context.Background(), "sess-1", 0)
 
 	assert.Equal(t, got1, got2)
 	assert.Equal(t, 1, provider.listCalls)
@@ -293,14 +293,14 @@ func TestAssembleRunSummarySection_CacheInvalidatesOnSeqChange(t *testing.T) {
 	adapter := newTestContextAdapter(t, nil)
 	adapter.WithRunSummaryProvider(provider)
 
-	got1 := adapter.assembleRunSummarySection(context.Background(), "sess-1")
+	got1 := adapter.assembleRunSummarySection(context.Background(), "sess-1", 0)
 	provider.maxSeq = 2
 	provider.summaries = []RunSummaryContext{{
 		RunID:  "run-2",
 		Goal:   "Second",
 		Status: "paused",
 	}}
-	got2 := adapter.assembleRunSummarySection(context.Background(), "sess-1")
+	got2 := adapter.assembleRunSummarySection(context.Background(), "sess-1", 0)
 
 	assert.NotEqual(t, got1, got2)
 	assert.Equal(t, 2, provider.listCalls)
