@@ -170,6 +170,9 @@ type App struct {
 	// Hook Registry (tool execution hooks)
 	HookRegistry *toolchain.HookRegistry
 
+	// FeatureStatuses holds aggregated init diagnostics for context subsystems.
+	FeatureStatuses *StatusCollector
+
 	// Channels
 	Channels []Channel
 

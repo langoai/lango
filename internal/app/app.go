@@ -340,6 +340,10 @@ func populateAppFields(app *App, r appinit.Resolver) {
 			app.SkillRegistry = sr
 		}
 		app.AgentMemoryStore = iv.AgentMemoryStore
+		app.FeatureStatuses = iv.FeatureStatuses
+		if app.Gateway != nil && iv.FeatureStatuses != nil {
+			app.Gateway.SetFeatureStatuses(iv.FeatureStatuses.All())
+		}
 	}
 
 	// Automation.

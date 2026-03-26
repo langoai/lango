@@ -103,6 +103,10 @@ type Config struct {
 	// Sandbox configuration (OS-level tool execution isolation)
 	Sandbox SandboxConfig `mapstructure:"sandbox" json:"sandbox"`
 
+	// ContextProfile selects a named preset that bundles context subsystem settings.
+	// Valid values: "off", "lite", "balanced", "full", or empty (no profile).
+	ContextProfile ContextProfileName `mapstructure:"contextProfile" json:"contextProfile,omitempty"`
+
 	// Providers configuration
 	Providers map[string]ProviderConfig `mapstructure:"providers" json:"providers"`
 }

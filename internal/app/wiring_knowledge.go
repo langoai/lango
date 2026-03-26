@@ -19,6 +19,7 @@ import (
 	"github.com/langoai/lango/internal/session"
 	"github.com/langoai/lango/internal/skill"
 	"github.com/langoai/lango/internal/supervisor"
+	"github.com/langoai/lango/internal/types"
 	"github.com/langoai/lango/skills"
 )
 
@@ -31,16 +32,22 @@ type knowledgeComponents struct {
 
 // initKnowledge creates the self-learning components if enabled.
 // When gc is provided, a GraphEngine is used as the observer instead of the base Engine.
-func initKnowledge(cfg *config.Config, store session.Store, gc *graphComponents, bus *eventbus.Bus) *knowledgeComponents {
+func initKnowledge(cfg *config.Config, store session.Store, gc *graphComponents, bus *eventbus.Bus) (*knowledgeComponents, *types.FeatureStatus) {
+	const featureName = "Knowledge"
+
 	if !cfg.Knowledge.Enabled {
 		logger().Info("knowledge system disabled")
-		return nil
+		return nil, &types.FeatureStatus{Name: featureName, Enabled: false, Healthy: true}
 	}
 
 	entStore, ok := store.(*session.EntStore)
 	if !ok {
 		logger().Warn("knowledge system requires EntStore, skipping")
-		return nil
+		return nil, &types.FeatureStatus{
+			Name: featureName, Enabled: false, Healthy: false,
+			Reason:     "requires EntStore backend",
+			Suggestion: "configure session.databasePath with an Ent-backed store",
+		}
 	}
 
 	client := entStore.Client()
@@ -65,7 +72,7 @@ func initKnowledge(cfg *config.Config, store session.Store, gc *graphComponents,
 		store:    kStore,
 		engine:   engine,
 		observer: observer,
-	}
+	}, &types.FeatureStatus{Name: featureName, Enabled: true, Healthy: true}
 }
 
 // initSkills creates the file-based skill registry.

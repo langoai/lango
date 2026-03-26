@@ -6,6 +6,7 @@ import (
 	"github.com/langoai/lango/internal/librarian"
 	"github.com/langoai/lango/internal/session"
 	"github.com/langoai/lango/internal/supervisor"
+	"github.com/langoai/lango/internal/types"
 )
 
 // librarianComponents holds optional proactive librarian components.
@@ -24,24 +25,38 @@ func initLibrarian(
 	mc *memoryComponents,
 	gc *graphComponents,
 	bus *eventbus.Bus,
-) *librarianComponents {
+) (*librarianComponents, *types.FeatureStatus) {
+	const featureName = "Librarian"
+
 	if !cfg.Librarian.Enabled {
 		logger().Info("proactive librarian disabled")
-		return nil
+		return nil, &types.FeatureStatus{Name: featureName, Enabled: false, Healthy: true}
 	}
 	if kc == nil {
 		logger().Warn("proactive librarian requires knowledge system, skipping")
-		return nil
+		return nil, &types.FeatureStatus{
+			Name: featureName, Enabled: false, Healthy: false,
+			Reason:     "requires knowledge system",
+			Suggestion: "enable knowledge.enabled to use the librarian",
+		}
 	}
 	if mc == nil {
 		logger().Warn("proactive librarian requires observational memory, skipping")
-		return nil
+		return nil, &types.FeatureStatus{
+			Name: featureName, Enabled: false, Healthy: false,
+			Reason:     "requires observational memory",
+			Suggestion: "enable observationalMemory.enabled to use the librarian",
+		}
 	}
 
 	entStore, ok := store.(*session.EntStore)
 	if !ok {
 		logger().Warn("proactive librarian requires EntStore, skipping")
-		return nil
+		return nil, &types.FeatureStatus{
+			Name: featureName, Enabled: false, Healthy: false,
+			Reason:     "requires EntStore backend",
+			Suggestion: "configure session.databasePath with an Ent-backed store",
+		}
 	}
 
 	client := entStore.Client()
@@ -107,5 +122,5 @@ func initLibrarian(
 	return &librarianComponents{
 		inquiryStore:    inquiryStore,
 		proactiveBuffer: buffer,
-	}
+	}, &types.FeatureStatus{Name: featureName, Enabled: true, Healthy: true}
 }

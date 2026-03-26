@@ -40,6 +40,9 @@ func renderDashboard(info StatusInfo) string {
 		providerInfo += " (" + info.Model + ")"
 	}
 	b.WriteString(infoLine("Provider", lipgloss.NewStyle().Foreground(tui.Muted).Render(providerInfo)))
+	if info.ContextProfile != "" {
+		b.WriteString(infoLine("Ctx Profile", lipgloss.NewStyle().Foreground(tui.Muted).Render(info.ContextProfile)))
+	}
 	b.WriteString("\n")
 
 	// Channels

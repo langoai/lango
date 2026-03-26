@@ -133,6 +133,8 @@ func AllChecks() []Check {
 		// Security Checks
 		&SecurityCheck{},
 		&CompanionConnectionCheck{},
+		// Context Engineering
+		&ContextHealthCheck{},
 		// Memory & Scanning Checks
 		&ObservationalMemoryCheck{},
 		&OutputScanningCheck{},

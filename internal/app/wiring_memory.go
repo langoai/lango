@@ -6,6 +6,7 @@ import (
 	"github.com/langoai/lango/internal/memory"
 	"github.com/langoai/lango/internal/session"
 	"github.com/langoai/lango/internal/supervisor"
+	"github.com/langoai/lango/internal/types"
 )
 
 // memoryComponents holds optional observational memory components.
@@ -17,16 +18,22 @@ type memoryComponents struct {
 }
 
 // initMemory creates the observational memory components if enabled.
-func initMemory(cfg *config.Config, store session.Store, sv *supervisor.Supervisor, bus *eventbus.Bus) *memoryComponents {
+func initMemory(cfg *config.Config, store session.Store, sv *supervisor.Supervisor, bus *eventbus.Bus) (*memoryComponents, *types.FeatureStatus) {
+	const featureName = "Obs. Memory"
+
 	if !cfg.ObservationalMemory.Enabled {
 		logger().Info("observational memory disabled")
-		return nil
+		return nil, &types.FeatureStatus{Name: featureName, Enabled: false, Healthy: true}
 	}
 
 	entStore, ok := store.(*session.EntStore)
 	if !ok {
 		logger().Warn("observational memory requires EntStore, skipping")
-		return nil
+		return nil, &types.FeatureStatus{
+			Name: featureName, Enabled: false, Healthy: false,
+			Reason:     "requires EntStore backend",
+			Suggestion: "configure session.databasePath with an Ent-backed store",
+		}
 	}
 
 	client := entStore.Client()
@@ -92,5 +99,5 @@ func initMemory(cfg *config.Config, store session.Store, sv *supervisor.Supervis
 		observer:  observer,
 		reflector: reflector,
 		buffer:    buffer,
-	}
+	}, &types.FeatureStatus{Name: featureName, Enabled: true, Healthy: true}
 }
