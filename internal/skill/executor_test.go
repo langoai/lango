@@ -2,6 +2,8 @@ package skill
 
 import (
 	"context"
+	"fmt"
+	"os/exec"
 	"strings"
 	"testing"
 
@@ -9,6 +11,8 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"go.uber.org/zap"
+
+	sandboxos "github.com/langoai/lango/internal/sandbox/os"
 )
 
 func newTestExecutor(t *testing.T) *Executor {
@@ -245,4 +249,133 @@ func TestExecute_UnknownType(t *testing.T) {
 	_, err := executor.Execute(ctx, sk, nil)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "unknown skill type")
+}
+
+// mockIsolator is a test double for sandboxos.OSIsolator.
+type mockIsolator struct {
+	available  bool
+	applyCalls int
+	applyErr   error
+}
+
+func (m *mockIsolator) Apply(_ context.Context, _ *exec.Cmd, _ sandboxos.Policy) error {
+	m.applyCalls++
+	return m.applyErr
+}
+
+func (m *mockIsolator) Available() bool { return m.available }
+func (m *mockIsolator) Name() string    { return "mock" }
+
+func TestSetOSIsolator(t *testing.T) {
+	t.Parallel()
+
+	executor := newTestExecutor(t)
+	iso := &mockIsolator{available: true}
+
+	executor.SetOSIsolator(iso, "/tmp/workspace")
+
+	assert.Equal(t, iso, executor.isolator)
+	assert.Equal(t, "/tmp/workspace", executor.workspacePath)
+}
+
+func TestExecute_Script_WithIsolator(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+
+	t.Run("isolator applied to script execution", func(t *testing.T) {
+		t.Parallel()
+
+		executor := newTestExecutor(t)
+		iso := &mockIsolator{available: true}
+		executor.SetOSIsolator(iso, "/tmp/workspace")
+
+		sk := SkillEntry{
+			Name: "sandbox-echo",
+			Type: "script",
+			Definition: map[string]interface{}{
+				"script": "echo sandboxed",
+			},
+		}
+
+		result, err := executor.Execute(ctx, sk, nil)
+		require.NoError(t, err)
+
+		got, ok := result.(string)
+		require.True(t, ok)
+		assert.Equal(t, "sandboxed", strings.TrimSpace(got))
+		assert.Equal(t, 1, iso.applyCalls, "isolator.Apply should be called once")
+	})
+
+	t.Run("isolator error logged but does not block execution", func(t *testing.T) {
+		t.Parallel()
+
+		executor := newTestExecutor(t)
+		iso := &mockIsolator{
+			available: true,
+			applyErr:  fmt.Errorf("sandbox apply: %w", sandboxos.ErrIsolatorUnavailable),
+		}
+		executor.SetOSIsolator(iso, "/tmp/workspace")
+
+		sk := SkillEntry{
+			Name: "fallback-echo",
+			Type: "script",
+			Definition: map[string]interface{}{
+				"script": "echo fallback",
+			},
+		}
+
+		result, err := executor.Execute(ctx, sk, nil)
+		require.NoError(t, err, "script should run even when sandbox apply fails")
+
+		got, ok := result.(string)
+		require.True(t, ok)
+		assert.Equal(t, "fallback", strings.TrimSpace(got))
+		assert.Equal(t, 1, iso.applyCalls)
+	})
+
+	t.Run("nil isolator does not interfere with script execution", func(t *testing.T) {
+		t.Parallel()
+
+		executor := newTestExecutor(t)
+
+		sk := SkillEntry{
+			Name: "no-sandbox",
+			Type: "script",
+			Definition: map[string]interface{}{
+				"script": "echo plain",
+			},
+		}
+
+		result, err := executor.Execute(ctx, sk, nil)
+		require.NoError(t, err)
+
+		got, ok := result.(string)
+		require.True(t, ok)
+		assert.Equal(t, "plain", strings.TrimSpace(got))
+	})
+
+	t.Run("non-script types unaffected by isolator", func(t *testing.T) {
+		t.Parallel()
+
+		executor := newTestExecutor(t)
+		iso := &mockIsolator{available: true}
+		executor.SetOSIsolator(iso, "/tmp/workspace")
+
+		sk := SkillEntry{
+			Name: "tmpl-with-sandbox",
+			Type: "template",
+			Definition: map[string]interface{}{
+				"template": "Hello {{.Name}}!",
+			},
+		}
+
+		result, err := executor.Execute(ctx, sk, map[string]interface{}{"Name": "Test"})
+		require.NoError(t, err)
+
+		got, ok := result.(string)
+		require.True(t, ok)
+		assert.Equal(t, "Hello Test!", got)
+		assert.Equal(t, 0, iso.applyCalls, "isolator should not be called for template skills")
+	})
 }

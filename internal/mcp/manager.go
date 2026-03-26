@@ -6,13 +6,20 @@ import (
 
 	"github.com/langoai/lango/internal/config"
 	"github.com/langoai/lango/internal/logging"
+	sandboxos "github.com/langoai/lango/internal/sandbox/os"
 )
 
 // ServerManager manages multiple MCP server connections.
 type ServerManager struct {
-	cfg     config.MCPConfig
-	mu      sync.RWMutex
-	servers map[string]*ServerConnection
+	cfg      config.MCPConfig
+	mu       sync.RWMutex
+	servers  map[string]*ServerConnection
+	isolator sandboxos.OSIsolator // OS-level sandbox for stdio server processes (nil = disabled)
+}
+
+// SetOSIsolator configures OS-level sandbox for all managed stdio server connections.
+func (m *ServerManager) SetOSIsolator(iso sandboxos.OSIsolator) {
+	m.isolator = iso
 }
 
 // NewServerManager creates a new manager for the given config.
@@ -37,6 +44,9 @@ func (m *ServerManager) ConnectAll(ctx context.Context) map[string]error {
 		}
 
 		conn := NewServerConnection(name, srvCfg, m.cfg)
+		if m.isolator != nil {
+			conn.SetOSIsolator(m.isolator)
+		}
 		m.mu.Lock()
 		m.servers[name] = conn
 		m.mu.Unlock()

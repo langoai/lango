@@ -41,6 +41,7 @@ import (
 	"github.com/langoai/lango/internal/cli/onboard"
 	clip2p "github.com/langoai/lango/internal/cli/p2p"
 	clipayment "github.com/langoai/lango/internal/cli/payment"
+	clisandbox "github.com/langoai/lango/internal/cli/sandbox"
 	cliprovenance "github.com/langoai/lango/internal/cli/provenance"
 	clirun "github.com/langoai/lango/internal/cli/run"
 	clisecurity "github.com/langoai/lango/internal/cli/security"
@@ -196,6 +197,10 @@ func main() {
 	mcpCmd := climcp.NewMCPCmd(cliboot.Config, cliboot.BootResult)
 	mcpCmd.GroupID = "net"
 	rootCmd.AddCommand(mcpCmd)
+
+	sandboxCmd := clisandbox.NewSandboxCmd(cliboot.Config)
+	sandboxCmd.GroupID = "sys"
+	rootCmd.AddCommand(sandboxCmd)
 
 	// --- Security & System (continued) ---
 	approvalCmd := cliapproval.NewApprovalCmd(cliboot.Config)

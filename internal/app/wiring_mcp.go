@@ -36,6 +36,11 @@ func initMCP(cfg *config.Config) *mcpComponents {
 
 	mgr := mcp.NewServerManager(mcpCfg)
 
+	// Inject OS-level sandbox if enabled.
+	if iso := initOSSandbox(cfg); iso != nil && iso.Available() {
+		mgr.SetOSIsolator(iso)
+	}
+
 	// Connect to all servers (best-effort, failures are logged)
 	errs := mgr.ConnectAll(context.Background())
 	for name, err := range errs {

@@ -1495,3 +1495,108 @@ func TestUpdateConfigFromForm_InvalidValues(t *testing.T) {
 		t.Errorf("AlertThreshold should remain 0.8, got %f", orc.Budget.AlertThreshold)
 	}
 }
+
+func TestNewOSSandboxForm_AllFields(t *testing.T) {
+	cfg := defaultTestConfig()
+	form := NewOSSandboxForm(cfg)
+
+	wantKeys := []string{
+		"os_sandbox_enabled", "os_sandbox_fail_closed",
+		"os_sandbox_workspace_path", "os_sandbox_network_mode",
+		"os_sandbox_allowed_ips", "os_sandbox_allowed_write_paths",
+		"os_sandbox_timeout", "os_sandbox_seccomp_profile",
+		"os_sandbox_seatbelt_profile",
+	}
+
+	if len(form.Fields) != len(wantKeys) {
+		t.Fatalf("expected %d fields, got %d", len(wantKeys), len(form.Fields))
+	}
+
+	for _, key := range wantKeys {
+		if f := fieldByKey(form, key); f == nil {
+			t.Errorf("missing field %q", key)
+		}
+	}
+
+	if f := fieldByKey(form, "os_sandbox_network_mode"); f.Type != tuicore.InputSelect {
+		t.Errorf("os_sandbox_network_mode: want InputSelect, got %d", f.Type)
+	}
+	if f := fieldByKey(form, "os_sandbox_seccomp_profile"); f.Type != tuicore.InputSelect {
+		t.Errorf("os_sandbox_seccomp_profile: want InputSelect, got %d", f.Type)
+	}
+}
+
+func TestNewMenuModel_HasOSSandboxCategory(t *testing.T) {
+	menu := NewMenuModel()
+
+	found := false
+	for _, cat := range menu.AllCategories() {
+		if cat.ID == "os_sandbox" {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Error("menu missing os_sandbox category")
+	}
+}
+
+func TestUpdateConfigFromForm_OSSandbox_IsolatesFromP2P(t *testing.T) {
+	state := tuicore.NewConfigState()
+
+	// Set P2P sandbox to a known state.
+	state.Current.P2P.ToolIsolation.Enabled = false
+	state.Current.P2P.ToolIsolation.TimeoutPerTool = 30 * time.Second
+
+	// Update only OS sandbox fields.
+	form := tuicore.NewFormModel("test")
+	form.AddField(&tuicore.Field{Key: "os_sandbox_enabled", Type: tuicore.InputBool, Checked: true})
+	form.AddField(&tuicore.Field{Key: "os_sandbox_fail_closed", Type: tuicore.InputBool, Checked: true})
+	form.AddField(&tuicore.Field{Key: "os_sandbox_workspace_path", Type: tuicore.InputText, Value: "/home/user/project"})
+	form.AddField(&tuicore.Field{Key: "os_sandbox_network_mode", Type: tuicore.InputText, Value: "deny"})
+	form.AddField(&tuicore.Field{Key: "os_sandbox_allowed_ips", Type: tuicore.InputText, Value: "192.168.1.1,10.0.0.1"})
+	form.AddField(&tuicore.Field{Key: "os_sandbox_allowed_write_paths", Type: tuicore.InputText, Value: "/tmp,/data"})
+	form.AddField(&tuicore.Field{Key: "os_sandbox_timeout", Type: tuicore.InputText, Value: "45s"})
+	form.AddField(&tuicore.Field{Key: "os_sandbox_seccomp_profile", Type: tuicore.InputText, Value: "strict"})
+	form.AddField(&tuicore.Field{Key: "os_sandbox_seatbelt_profile", Type: tuicore.InputText, Value: "/tmp/custom.sb"})
+
+	state.UpdateConfigFromForm(&form)
+
+	// Verify cfg.Sandbox was updated.
+	sb := state.Current.Sandbox
+	if !sb.Enabled {
+		t.Error("Sandbox.Enabled: want true")
+	}
+	if !sb.FailClosed {
+		t.Error("Sandbox.FailClosed: want true")
+	}
+	if sb.WorkspacePath != "/home/user/project" {
+		t.Errorf("WorkspacePath: want /home/user/project, got %q", sb.WorkspacePath)
+	}
+	if sb.NetworkMode != "deny" {
+		t.Errorf("NetworkMode: want deny, got %q", sb.NetworkMode)
+	}
+	if len(sb.AllowedNetworkIPs) != 2 || sb.AllowedNetworkIPs[0] != "192.168.1.1" {
+		t.Errorf("AllowedNetworkIPs: want [192.168.1.1 10.0.0.1], got %v", sb.AllowedNetworkIPs)
+	}
+	if len(sb.AllowedWritePaths) != 2 {
+		t.Errorf("AllowedWritePaths: want 2, got %d", len(sb.AllowedWritePaths))
+	}
+	if sb.TimeoutPerTool != 45*time.Second {
+		t.Errorf("TimeoutPerTool: want 45s, got %v", sb.TimeoutPerTool)
+	}
+	if sb.OS.SeccompProfile != "strict" {
+		t.Errorf("SeccompProfile: want strict, got %q", sb.OS.SeccompProfile)
+	}
+	if sb.OS.SeatbeltCustomProfile != "/tmp/custom.sb" {
+		t.Errorf("SeatbeltCustomProfile: want /tmp/custom.sb, got %q", sb.OS.SeatbeltCustomProfile)
+	}
+
+	// Verify P2P sandbox was NOT modified.
+	if state.Current.P2P.ToolIsolation.Enabled {
+		t.Error("P2P.ToolIsolation.Enabled should remain false — OS sandbox must not touch P2P config")
+	}
+	if state.Current.P2P.ToolIsolation.TimeoutPerTool != 30*time.Second {
+		t.Errorf("P2P.ToolIsolation.TimeoutPerTool should remain 30s, got %v", state.Current.P2P.ToolIsolation.TimeoutPerTool)
+	}
+}

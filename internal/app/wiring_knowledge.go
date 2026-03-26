@@ -98,6 +98,16 @@ func initSkills(cfg *config.Config, baseTools []*agent.Tool) *skill.Registry {
 	}
 
 	registry := skill.NewRegistry(store, baseTools, sLogger)
+
+	// Inject OS-level sandbox if enabled.
+	if iso := initOSSandbox(cfg); iso != nil && iso.Available() {
+		workDir := cfg.Sandbox.WorkspacePath
+		if workDir == "" {
+			workDir, _ = os.Getwd()
+		}
+		registry.SetOSIsolator(iso, workDir)
+	}
+
 	ctx := context.Background()
 	if err := registry.LoadSkills(ctx); err != nil {
 		sLogger.Warnw("load skills error", "error", err)

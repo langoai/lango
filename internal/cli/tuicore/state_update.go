@@ -547,6 +547,28 @@ func (s *ConfigState) UpdateConfigFromForm(form *FormModel) {
 				s.Current.P2P.ToolIsolation.Container.PoolIdleTimeout = d
 			}
 
+		// OS Sandbox (general-purpose, not P2P)
+		case "os_sandbox_enabled":
+			s.Current.Sandbox.Enabled = f.Checked
+		case "os_sandbox_fail_closed":
+			s.Current.Sandbox.FailClosed = f.Checked
+		case "os_sandbox_workspace_path":
+			s.Current.Sandbox.WorkspacePath = val
+		case "os_sandbox_network_mode":
+			s.Current.Sandbox.NetworkMode = val
+		case "os_sandbox_allowed_ips":
+			s.Current.Sandbox.AllowedNetworkIPs = splitCSV(val)
+		case "os_sandbox_allowed_write_paths":
+			s.Current.Sandbox.AllowedWritePaths = splitCSV(val)
+		case "os_sandbox_timeout":
+			if d, err := time.ParseDuration(val); err == nil {
+				s.Current.Sandbox.TimeoutPerTool = d
+			}
+		case "os_sandbox_seccomp_profile":
+			s.Current.Sandbox.OS.SeccompProfile = val
+		case "os_sandbox_seatbelt_profile":
+			s.Current.Sandbox.OS.SeatbeltCustomProfile = val
+
 		// Security DB Encryption
 		case "db_encryption_enabled":
 			s.Current.Security.DBEncryption.Enabled = f.Checked
