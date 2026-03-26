@@ -241,6 +241,7 @@ func NewMenuModel() MenuModel {
 					{"auth", "Auth", "OIDC provider configuration", TierAdvanced},
 					{"security_db", "Security DB Encryption", "SQLCipher database encryption", TierAdvanced},
 					{"security_kms", "Security KMS", "Cloud KMS / HSM backends", TierAdvanced},
+					{"os_sandbox", "OS Sandbox", "Seatbelt/Landlock tool execution isolation", TierAdvanced},
 				},
 			},
 			{

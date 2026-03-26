@@ -144,6 +144,8 @@ func categoryIsEnabled(cfg *config.Config, id string) bool {
 		return cfg.Observability.Enabled
 	case "security":
 		return cfg.Security.Interceptor.Enabled
+	case "os_sandbox":
+		return true // OS sandbox has no prerequisite — always configurable
 	case "gatekeeper":
 		return derefBoolCfg(cfg.Gatekeeper.Enabled, true)
 	case "output_manager":

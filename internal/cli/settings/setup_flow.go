@@ -318,6 +318,8 @@ func createFormForCategory(categoryID string, cfg *config.Config) *tuicore.FormM
 		return NewDBEncryptionForm(cfg)
 	case "security_kms":
 		return NewKMSForm(cfg)
+	case "os_sandbox":
+		return NewOSSandboxForm(cfg)
 	default:
 		return nil
 	}
