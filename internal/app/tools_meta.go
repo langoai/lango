@@ -23,7 +23,7 @@ func buildMetaTools(store *knowledge.Store, engine *learning.Engine, registry *s
 	return []*agent.Tool{
 		{
 			Name:        "save_knowledge",
-			Description: "Save knowledge (appends new version if key exists, preserving history). Categories: rule, definition, preference, fact, pattern, correction",
+			Description: "Save knowledge (appends new version if content changes, skips duplicates). Categories: rule, definition, preference, fact, pattern, correction. Temporal tags (evergreen/current_state) are auto-assigned by analyzers",
 			SafetyLevel: agent.SafetyLevelModerate,
 			Parameters: map[string]interface{}{
 				"type": "object",

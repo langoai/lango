@@ -1,17 +1,17 @@
-package learning
+package knowledge
 
 import (
 	"testing"
 
-	entknowledge "github.com/langoai/lango/internal/ent/knowledge"
-	entlearning "github.com/langoai/lango/internal/ent/learning"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	entknowledge "github.com/langoai/lango/internal/ent/knowledge"
+	entlearning "github.com/langoai/lango/internal/ent/learning"
 )
 
-func TestMapKnowledgeCategory(t *testing.T) {
+func TestMapKnowledgeCategory_Shared(t *testing.T) {
 	t.Parallel()
-
 	tests := []struct {
 		give    string
 		wantCat entknowledge.Category
@@ -26,12 +26,12 @@ func TestMapKnowledgeCategory(t *testing.T) {
 		{give: "unknown", wantErr: true},
 		{give: "", wantErr: true},
 		{give: "PREFERENCE", wantErr: true},
+		{give: "Fact", wantErr: true},
 	}
-
 	for _, tt := range tests {
 		t.Run(tt.give, func(t *testing.T) {
 			t.Parallel()
-			got, err := mapKnowledgeCategory(tt.give)
+			got, err := MapKnowledgeCategory(tt.give)
 			if tt.wantErr {
 				require.Error(t, err)
 				assert.Contains(t, err.Error(), "unrecognized knowledge type")
@@ -43,9 +43,8 @@ func TestMapKnowledgeCategory(t *testing.T) {
 	}
 }
 
-func TestMapLearningCategory(t *testing.T) {
+func TestMapLearningCategory_Shared(t *testing.T) {
 	t.Parallel()
-
 	tests := []struct {
 		give    string
 		wantCat entlearning.Category
@@ -59,12 +58,12 @@ func TestMapLearningCategory(t *testing.T) {
 		{give: "permission", wantCat: entlearning.CategoryPermission},
 		{give: "unknown", wantErr: true},
 		{give: "", wantErr: true},
+		{give: "CORRECTION", wantErr: true},
 	}
-
 	for _, tt := range tests {
 		t.Run(tt.give, func(t *testing.T) {
 			t.Parallel()
-			got, err := mapLearningCategory(tt.give)
+			got, err := MapLearningCategory(tt.give)
 			if tt.wantErr {
 				require.Error(t, err)
 				assert.Contains(t, err.Error(), "unrecognized learning type")

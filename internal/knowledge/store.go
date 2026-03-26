@@ -121,6 +121,12 @@ func (s *Store) saveKnowledgeOnce(ctx context.Context, _ string, entry Knowledge
 		return fmt.Errorf("query knowledge: %w", err)
 	}
 
+	// Content-dedup: skip if latest version has same (category, content).
+	// source/tags changes alone do not justify a new version.
+	if existing.Category == entry.Category && existing.Content == entry.Content {
+		return nil
+	}
+
 	// Append new version in transaction.
 	tx, err := s.client.Tx(ctx)
 	if err != nil {

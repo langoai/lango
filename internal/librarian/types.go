@@ -1,16 +1,16 @@
 package librarian
 
 import (
+	"context"
 	"time"
 
 	"github.com/google/uuid"
-
 	"github.com/langoai/lango/internal/types"
 )
 
 // ObservationKnowledge represents knowledge extracted from conversation observations.
 type ObservationKnowledge struct {
-	Type       string           `json:"type"`       // preference, fact, rule, definition
+	Type       string           `json:"type"`       // preference, fact, rule, definition, pattern, correction
 	Category   string           `json:"category"`   // domain-specific category
 	Content    string           `json:"content"`    // extracted knowledge content
 	Confidence types.Confidence `json:"confidence"` // high, medium, low
@@ -20,6 +20,8 @@ type ObservationKnowledge struct {
 	Subject   string `json:"subject,omitempty"`
 	Predicate string `json:"predicate,omitempty"`
 	Object    string `json:"object,omitempty"`
+
+	Temporal string `json:"temporal,omitempty"` // "evergreen" or "current_state"
 }
 
 // KnowledgeGap represents a detected gap in knowledge that requires user clarification.
@@ -51,6 +53,11 @@ type Inquiry struct {
 	SourceObservationID string
 	CreatedAt           time.Time
 	ResolvedAt          *time.Time
+}
+
+// TextGenerator abstracts LLM text generation for the librarian package.
+type TextGenerator interface {
+	GenerateText(ctx context.Context, systemPrompt, userPrompt string) (string, error)
 }
 
 // GraphCallback is an optional hook for saving graph triples.

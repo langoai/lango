@@ -1005,3 +1005,61 @@ func TestSearchKnowledge_LatestOnly(t *testing.T) {
 		t.Errorf("want 1 result for 'dragon' (latest version), got %d", len(results))
 	}
 }
+
+func TestSaveKnowledge_ContentDedup(t *testing.T) {
+	store := newTestStore(t)
+	ctx := context.Background()
+
+	entry := KnowledgeEntry{
+		Key:      "dedup-key",
+		Category: "fact",
+		Content:  "Go is a compiled language",
+	}
+
+	// First save — creates version 1.
+	if err := store.SaveKnowledge(ctx, "s1", entry); err != nil {
+		t.Fatalf("SaveKnowledge v1: %v", err)
+	}
+
+	// Second save with SAME category+content — should be no-op.
+	if err := store.SaveKnowledge(ctx, "s1", entry); err != nil {
+		t.Fatalf("SaveKnowledge dedup: %v", err)
+	}
+
+	// Verify only 1 version exists.
+	history, err := store.GetKnowledgeHistory(ctx, "dedup-key")
+	if err != nil {
+		t.Fatalf("GetKnowledgeHistory: %v", err)
+	}
+	if len(history) != 1 {
+		t.Errorf("want 1 version (dedup), got %d", len(history))
+	}
+
+	// Third save with DIFFERENT content — should create version 2.
+	entry.Content = "Go is a statically typed, compiled language"
+	if err := store.SaveKnowledge(ctx, "s1", entry); err != nil {
+		t.Fatalf("SaveKnowledge v2: %v", err)
+	}
+
+	history, err = store.GetKnowledgeHistory(ctx, "dedup-key")
+	if err != nil {
+		t.Fatalf("GetKnowledgeHistory: %v", err)
+	}
+	if len(history) != 2 {
+		t.Errorf("want 2 versions, got %d", len(history))
+	}
+
+	// Fourth save with same content but different category — should create version 3.
+	entry.Category = "definition"
+	if err := store.SaveKnowledge(ctx, "s1", entry); err != nil {
+		t.Fatalf("SaveKnowledge v3: %v", err)
+	}
+
+	history, err = store.GetKnowledgeHistory(ctx, "dedup-key")
+	if err != nil {
+		t.Fatalf("GetKnowledgeHistory: %v", err)
+	}
+	if len(history) != 3 {
+		t.Errorf("want 3 versions, got %d", len(history))
+	}
+}

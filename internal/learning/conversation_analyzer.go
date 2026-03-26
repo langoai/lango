@@ -7,7 +7,6 @@ import (
 
 	"go.uber.org/zap"
 
-	entlearning "github.com/langoai/lango/internal/ent/learning"
 	"github.com/langoai/lango/internal/eventbus"
 	"github.com/langoai/lango/internal/knowledge"
 	"github.com/langoai/lango/internal/llm"
@@ -17,10 +16,11 @@ import (
 const conversationAnalyzerPrompt = `You are a knowledge extraction assistant. Analyze the following conversation and extract structured knowledge.
 
 For each piece of knowledge found, output a JSON object with these fields:
-- "type": one of "fact", "pattern", "correction", "preference"
+- "type": one of "rule", "definition", "preference", "fact", "pattern", "correction"
 - "category": a brief category label (e.g., "go-style", "api-design", "user-preference")
 - "content": the extracted knowledge as a clear, reusable statement
 - "confidence": one of "low", "medium", "high"
+- "temporal": one of "evergreen" (always-true knowledge like "Go uses gofmt") or "current_state" (may change over time like "the team lead is Alice")
 - "subject": (optional) entity for graph triple
 - "predicate": (optional) relationship for graph triple
 - "object": (optional) target entity for graph triple
@@ -28,6 +28,8 @@ For each piece of knowledge found, output a JSON object with these fields:
 Output a JSON array of extracted items. If nothing useful is found, output an empty array [].
 
 Focus on:
+- Rules and constraints (invariants, coding standards, project rules)
+- Definitions and terminology (domain-specific terms, acronyms)
 - User preferences and requirements
 - Domain knowledge and facts
 - Repeated patterns or workflows
@@ -89,50 +91,11 @@ func (a *ConversationAnalyzer) Analyze(ctx context.Context, sessionKey string, m
 }
 
 func (a *ConversationAnalyzer) saveResult(ctx context.Context, sessionKey string, r analysisResult) {
-	switch r.Type {
-	case "fact", "preference":
-		cat, err := mapKnowledgeCategory(r.Type)
-		if err != nil {
-			a.logger.Debugw("skip knowledge: unknown type", "type", r.Type, "error", err)
-			break
-		}
-		key := fmt.Sprintf("conv:%s:%s", sessionKey, sanitizeForNode(r.Content[:min(len(r.Content), 32)]))
-		entry := knowledge.KnowledgeEntry{
-			Key:      key,
-			Category: cat,
-			Content:  r.Content,
-			Source:   "conversation_analysis",
-		}
-		if err := a.store.SaveKnowledge(ctx, sessionKey, entry); err != nil {
-			a.logger.Debugw("save knowledge from analysis", "error", err)
-		}
-
-	case "pattern", "correction":
-		entry := knowledge.LearningEntry{
-			Trigger:   fmt.Sprintf("conversation:%s", r.Category),
-			Diagnosis: r.Content,
-			Category:  mapLearningCategory(r.Type),
-		}
-		if r.Type == "correction" {
-			entry.Fix = r.Content
-			entry.Category = entlearning.CategoryUserCorrection
-		}
-		if err := a.store.SaveLearning(ctx, sessionKey, entry); err != nil {
-			a.logger.Debugw("save learning from analysis", "error", err)
-		}
-	}
-
-	// Emit graph triples if provided.
-	if a.bus != nil && r.Subject != "" && r.Predicate != "" && r.Object != "" {
-		a.bus.Publish(eventbus.TriplesExtractedEvent{
-			Triples: []eventbus.Triple{{
-				Subject:   r.Subject,
-				Predicate: r.Predicate,
-				Object:    r.Object,
-			}},
-			Source: "analysis",
-		})
-	}
+	saveAnalysisResult(ctx, a.store, a.bus, a.logger, sessionKey, r, saveResultParams{
+		KeyPrefix:     "conv",
+		TriggerPrefix: "conversation",
+		Source:        "conversation_analysis",
+	})
 }
 
 func formatMessagesForAnalysis(msgs []session.Message) string {
