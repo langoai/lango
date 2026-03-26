@@ -285,7 +285,11 @@ func (m *intelligenceModule) Init(ctx context.Context, r appinit.Resolver) (*app
 
 	// Knowledge.
 	kc, kcStatus := initKnowledge(cfg, store, gc, m.bus)
+	fts5Available := false
 	if kc != nil {
+		// FTS5 search index.
+		fts5Available = initFTS5(ctx, m.rawDB, kc.store)
+
 		metaTools := buildMetaTools(kc.store, kc.engine, skillReg, cfg.Skill)
 		tools = append(tools, metaTools...)
 		entries = append(entries, appinit.CatalogEntry{Category: "meta", Description: "Knowledge, learning, and skill management", ConfigKey: "knowledge.enabled", Enabled: true, Tools: metaTools})
@@ -310,6 +314,15 @@ func (m *intelligenceModule) Init(ctx context.Context, r appinit.Resolver) (*app
 
 	// Librarian.
 	lc, lcStatus := initLibrarian(cfg, sv, store, kc, mc, gc, m.bus)
+
+	// Enrich knowledge status with FTS5 info.
+	if kcStatus != nil && kcStatus.Enabled && kcStatus.Healthy {
+		if fts5Available {
+			kcStatus.Reason = "FTS5 search active"
+		} else {
+			kcStatus.Reason = "FTS5 unavailable, using LIKE fallback"
+		}
+	}
 
 	// Collect feature statuses for diagnostics.
 	sc := NewStatusCollector()

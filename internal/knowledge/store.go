@@ -17,13 +17,16 @@ import (
 	entlearning "github.com/langoai/lango/internal/ent/learning"
 	"github.com/langoai/lango/internal/ent/predicate"
 	"github.com/langoai/lango/internal/eventbus"
+	"github.com/langoai/lango/internal/search"
 )
 
 // Store provides CRUD operations for knowledge, learning, skill, audit, and external ref entities.
 type Store struct {
-	client *ent.Client
-	logger *zap.SugaredLogger
-	bus    *eventbus.Bus // Optional event bus for cross-domain notifications.
+	client          *ent.Client
+	logger          *zap.SugaredLogger
+	bus             *eventbus.Bus      // Optional event bus for cross-domain notifications.
+	fts5Index       *search.FTS5Index  // Optional FTS5 index for knowledge search.
+	learningFTS5Idx *search.FTS5Index  // Optional FTS5 index for learning search.
 }
 
 // NewStore creates a new knowledge store.
@@ -37,6 +40,18 @@ func NewStore(client *ent.Client, logger *zap.SugaredLogger) *Store {
 // SetEventBus sets the optional event bus for publishing content events.
 func (s *Store) SetEventBus(bus *eventbus.Bus) {
 	s.bus = bus
+}
+
+// SetFTS5Index sets the optional FTS5 index for knowledge search.
+// When set, SearchKnowledge uses FTS5 with BM25 ranking instead of LIKE.
+func (s *Store) SetFTS5Index(idx *search.FTS5Index) {
+	s.fts5Index = idx
+}
+
+// SetLearningFTS5Index sets the optional FTS5 index for learning search.
+// When set, SearchLearnings uses FTS5 with BM25 ranking instead of LIKE.
+func (s *Store) SetLearningFTS5Index(idx *search.FTS5Index) {
+	s.learningFTS5Idx = idx
 }
 
 // publishContentSaved publishes a ContentSavedEvent if the bus is configured.
@@ -83,6 +98,7 @@ func (s *Store) SaveKnowledge(ctx context.Context, sessionKey string, entry Know
 
 		meta := map[string]string{"category": string(entry.Category)}
 		s.publishContentSaved(entry.Key, "knowledge", entry.Content, meta, true, true)
+		s.syncKnowledgeFTS5(ctx, entry.Key, entry.Content, false)
 		return nil
 	}
 	if err != nil {
@@ -108,6 +124,7 @@ func (s *Store) SaveKnowledge(ctx context.Context, sessionKey string, entry Know
 	s.publishContentSaved(entry.Key, "knowledge", entry.Content, map[string]string{
 		"category": string(entry.Category),
 	}, false, false)
+	s.syncKnowledgeFTS5(ctx, entry.Key, entry.Content, true)
 	return nil
 }
 
@@ -134,13 +151,30 @@ func (s *Store) GetKnowledge(ctx context.Context, key string) (*KnowledgeEntry, 
 }
 
 // SearchKnowledge searches knowledge entries by content/key keyword matching.
-// The query is split into individual keywords and matched with per-keyword OR
-// predicates to avoid SQLite LIKE pattern complexity limits.
+// When an FTS5 index is available, it uses FTS5 MATCH with BM25 ranking.
+// Falls back to per-keyword OR LIKE predicates when FTS5 is unavailable or errors.
 func (s *Store) SearchKnowledge(ctx context.Context, query string, category string, limit int) ([]KnowledgeEntry, error) {
 	if limit <= 0 {
 		limit = 10
 	}
 
+	// FTS5 path: search index first, then resolve from Ent.
+	if s.fts5Index != nil && query != "" {
+		results, err := s.fts5Index.Search(ctx, query, limit)
+		if err != nil {
+			s.logger.Warnw("FTS5 knowledge search error, falling back to LIKE", "error", err)
+		} else if len(results) > 0 {
+			return s.resolveKnowledgeByKeys(ctx, results, category)
+		} else {
+			return nil, nil
+		}
+	}
+
+	return s.searchKnowledgeLIKE(ctx, query, category, limit)
+}
+
+// searchKnowledgeLIKE is the original LIKE-based search path.
+func (s *Store) searchKnowledgeLIKE(ctx context.Context, query string, category string, limit int) ([]KnowledgeEntry, error) {
 	var predicates []predicate.Knowledge
 	if query != "" {
 		if kwPreds := knowledgeKeywordPredicates(query); len(kwPreds) > 0 {
@@ -163,6 +197,49 @@ func (s *Store) SearchKnowledge(ctx context.Context, query string, category stri
 
 	result := make([]KnowledgeEntry, 0, len(entries))
 	for _, k := range entries {
+		result = append(result, KnowledgeEntry{
+			Key:      k.Key,
+			Category: k.Category,
+			Content:  k.Content,
+			Tags:     k.Tags,
+			Source:   k.Source,
+		})
+	}
+	return result, nil
+}
+
+// resolveKnowledgeByKeys loads knowledge entries from Ent by FTS5 result keys,
+// preserving FTS5 BM25 ordering. Category filter is applied via Ent.
+func (s *Store) resolveKnowledgeByKeys(ctx context.Context, ftsResults []search.SearchResult, category string) ([]KnowledgeEntry, error) {
+	keys := make([]string, 0, len(ftsResults))
+	for _, r := range ftsResults {
+		keys = append(keys, r.RowID)
+	}
+
+	preds := []predicate.Knowledge{entknowledge.KeyIn(keys...)}
+	if category != "" {
+		preds = append(preds, entknowledge.CategoryEQ(entknowledge.Category(category)))
+	}
+
+	entries, err := s.client.Knowledge.Query().
+		Where(preds...).
+		All(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("resolve knowledge by keys: %w", err)
+	}
+
+	// Build map for ordering by FTS5 rank.
+	byKey := make(map[string]*ent.Knowledge, len(entries))
+	for _, k := range entries {
+		byKey[k.Key] = k
+	}
+
+	result := make([]KnowledgeEntry, 0, len(ftsResults))
+	for _, r := range ftsResults {
+		k, ok := byKey[r.RowID]
+		if !ok {
+			continue // Filtered out by category or missing.
+		}
 		result = append(result, KnowledgeEntry{
 			Key:      k.Key,
 			Category: k.Category,
@@ -220,6 +297,7 @@ func (s *Store) DeleteKnowledge(ctx context.Context, key string) error {
 	if n == 0 {
 		return fmt.Errorf("delete knowledge %q: %w", key, ErrKnowledgeNotFound)
 	}
+	s.deleteKnowledgeFTS5(ctx, key)
 	return nil
 }
 
@@ -254,6 +332,7 @@ func (s *Store) SaveLearning(ctx context.Context, sessionKey string, entry Learn
 	s.publishContentSaved(created.ID.String(), "learning", content, map[string]string{
 		"category": string(entry.Category),
 	}, true, false)
+	s.syncLearningFTS5(ctx, created.ID.String(), entry.Trigger, entry.ErrorPattern, entry.Fix)
 
 	return nil
 }
@@ -278,13 +357,30 @@ func (s *Store) GetLearning(ctx context.Context, id uuid.UUID) (*LearningEntry, 
 }
 
 // SearchLearnings searches learnings by error pattern or trigger substring match.
-// The query is split into individual keywords and matched with per-keyword OR
-// predicates to avoid SQLite LIKE pattern complexity limits.
+// When an FTS5 index is available, it uses FTS5 MATCH with BM25 ranking.
+// Falls back to per-keyword OR LIKE predicates when FTS5 is unavailable or errors.
 func (s *Store) SearchLearnings(ctx context.Context, errorPattern string, category string, limit int) ([]LearningEntry, error) {
 	if limit <= 0 {
 		limit = 10
 	}
 
+	// FTS5 path.
+	if s.learningFTS5Idx != nil && errorPattern != "" {
+		results, err := s.learningFTS5Idx.Search(ctx, errorPattern, limit)
+		if err != nil {
+			s.logger.Warnw("FTS5 learning search error, falling back to LIKE", "error", err)
+		} else if len(results) > 0 {
+			return s.resolveLearningsByIDs(ctx, results, category)
+		} else {
+			return nil, nil
+		}
+	}
+
+	return s.searchLearningsLIKE(ctx, errorPattern, category, limit)
+}
+
+// searchLearningsLIKE is the original LIKE-based search path.
+func (s *Store) searchLearningsLIKE(ctx context.Context, errorPattern string, category string, limit int) ([]LearningEntry, error) {
 	var predicates []predicate.Learning
 	if errorPattern != "" {
 		if kwPreds := learningKeywordPredicates(errorPattern); len(kwPreds) > 0 {
@@ -307,6 +403,57 @@ func (s *Store) SearchLearnings(ctx context.Context, errorPattern string, catego
 
 	result := make([]LearningEntry, 0, len(entries))
 	for _, l := range entries {
+		result = append(result, LearningEntry{
+			Trigger:      l.Trigger,
+			ErrorPattern: l.ErrorPattern,
+			Diagnosis:    l.Diagnosis,
+			Fix:          l.Fix,
+			Category:     l.Category,
+			Tags:         l.Tags,
+		})
+	}
+	return result, nil
+}
+
+// resolveLearningsByIDs loads learning entries from Ent by FTS5 result IDs,
+// preserving FTS5 BM25 ordering.
+func (s *Store) resolveLearningsByIDs(ctx context.Context, ftsResults []search.SearchResult, category string) ([]LearningEntry, error) {
+	ids := make([]uuid.UUID, 0, len(ftsResults))
+	for _, r := range ftsResults {
+		id, err := uuid.Parse(r.RowID)
+		if err != nil {
+			continue
+		}
+		ids = append(ids, id)
+	}
+
+	preds := []predicate.Learning{entlearning.IDIn(ids...)}
+	if category != "" {
+		preds = append(preds, entlearning.CategoryEQ(entlearning.Category(category)))
+	}
+
+	entries, err := s.client.Learning.Query().
+		Where(preds...).
+		All(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("resolve learnings by IDs: %w", err)
+	}
+
+	byID := make(map[uuid.UUID]*ent.Learning, len(entries))
+	for _, l := range entries {
+		byID[l.ID] = l
+	}
+
+	result := make([]LearningEntry, 0, len(ftsResults))
+	for _, r := range ftsResults {
+		id, err := uuid.Parse(r.RowID)
+		if err != nil {
+			continue
+		}
+		l, ok := byID[id]
+		if !ok {
+			continue
+		}
 		result = append(result, LearningEntry{
 			Trigger:      l.Trigger,
 			ErrorPattern: l.ErrorPattern,
@@ -511,6 +658,53 @@ func externalRefKeywordPredicates(query string) []predicate.ExternalRef {
 	return preds
 }
 
+// syncKnowledgeFTS5 updates the FTS5 index after a knowledge write.
+// Logs warning on failure; never blocks the Ent write.
+func (s *Store) syncKnowledgeFTS5(ctx context.Context, key, content string, isUpdate bool) {
+	if s.fts5Index == nil {
+		return
+	}
+	var err error
+	if isUpdate {
+		err = s.fts5Index.Update(ctx, key, []string{key, content})
+	} else {
+		err = s.fts5Index.Insert(ctx, key, []string{key, content})
+	}
+	if err != nil {
+		s.logger.Warnw("FTS5 knowledge sync failed", "key", key, "error", err)
+	}
+}
+
+// deleteKnowledgeFTS5 removes a knowledge entry from the FTS5 index.
+func (s *Store) deleteKnowledgeFTS5(ctx context.Context, key string) {
+	if s.fts5Index == nil {
+		return
+	}
+	if err := s.fts5Index.Delete(ctx, key); err != nil {
+		s.logger.Warnw("FTS5 knowledge delete failed", "key", key, "error", err)
+	}
+}
+
+// syncLearningFTS5 inserts a learning entry into the FTS5 index.
+func (s *Store) syncLearningFTS5(ctx context.Context, id, trigger, errorPattern, fix string) {
+	if s.learningFTS5Idx == nil {
+		return
+	}
+	if err := s.learningFTS5Idx.Insert(ctx, id, []string{trigger, errorPattern, fix}); err != nil {
+		s.logger.Warnw("FTS5 learning sync failed", "id", id, "error", err)
+	}
+}
+
+// deleteLearningFTS5 removes a learning entry from the FTS5 index.
+func (s *Store) deleteLearningFTS5(ctx context.Context, id string) {
+	if s.learningFTS5Idx == nil {
+		return
+	}
+	if err := s.learningFTS5Idx.Delete(ctx, id); err != nil {
+		s.logger.Warnw("FTS5 learning delete failed", "id", id, "error", err)
+	}
+}
+
 // LearningStats holds aggregate statistics about learning entries.
 type LearningStats struct {
 	TotalCount       int                          `json:"total_count"`
@@ -597,6 +791,7 @@ func (s *Store) DeleteLearning(ctx context.Context, id uuid.UUID) error {
 		}
 		return fmt.Errorf("delete learning: %w", err)
 	}
+	s.deleteLearningFTS5(ctx, id.String())
 	return nil
 }
 

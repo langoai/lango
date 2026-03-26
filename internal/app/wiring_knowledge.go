@@ -2,6 +2,7 @@ package app
 
 import (
 	"context"
+	"database/sql"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -16,6 +17,7 @@ import (
 	"github.com/langoai/lango/internal/librarian"
 	"github.com/langoai/lango/internal/provider"
 	"github.com/langoai/lango/internal/runledger"
+	"github.com/langoai/lango/internal/search"
 	"github.com/langoai/lango/internal/session"
 	"github.com/langoai/lango/internal/skill"
 	"github.com/langoai/lango/internal/supervisor"
@@ -73,6 +75,115 @@ func initKnowledge(cfg *config.Config, store session.Store, gc *graphComponents,
 		engine:   engine,
 		observer: observer,
 	}, &types.FeatureStatus{Name: featureName, Enabled: true, Healthy: true}
+}
+
+// initFTS5 probes for FTS5 support, creates FTS5 indexes for knowledge and learning,
+// bulk-indexes existing entries, and injects indexes into the knowledge store.
+// Returns true if FTS5 is available and initialized.
+func initFTS5(ctx context.Context, rawDB *sql.DB, kStore *knowledge.Store) bool {
+	if rawDB == nil {
+		return false
+	}
+	if !search.ProbeFTS5(rawDB) {
+		logger().Info("FTS5 unavailable, using LIKE search fallback")
+		return false
+	}
+
+	// Create knowledge FTS5 index (columns: key, content).
+	knowledgeIdx := search.NewFTS5Index(rawDB, "knowledge_fts", []string{"key", "content"})
+	if err := knowledgeIdx.EnsureTable(); err != nil {
+		logger().Warnw("FTS5 knowledge table creation failed", "error", err)
+		return false
+	}
+
+	// Create learning FTS5 index (columns: trigger, error_pattern, fix).
+	learningIdx := search.NewFTS5Index(rawDB, "learning_fts", []string{"trigger", "error_pattern", "fix"})
+	if err := learningIdx.EnsureTable(); err != nil {
+		logger().Warnw("FTS5 learning table creation failed", "error", err)
+		return false
+	}
+
+	// Bulk-index existing entries.
+	if err := bulkIndexKnowledge(ctx, rawDB, knowledgeIdx); err != nil {
+		logger().Warnw("FTS5 knowledge bulk index failed", "error", err)
+	}
+	if err := bulkIndexLearnings(ctx, rawDB, learningIdx); err != nil {
+		logger().Warnw("FTS5 learning bulk index failed", "error", err)
+	}
+
+	// Inject into knowledge store.
+	kStore.SetFTS5Index(knowledgeIdx)
+	kStore.SetLearningFTS5Index(learningIdx)
+
+	logger().Info("FTS5 search initialized")
+	return true
+}
+
+// bulkIndexKnowledge clears and re-indexes all knowledge entries into FTS5.
+func bulkIndexKnowledge(ctx context.Context, db *sql.DB, idx *search.FTS5Index) error {
+	// Clear existing index data for idempotent re-index.
+	if _, err := db.ExecContext(ctx, `DELETE FROM knowledge_fts`); err != nil {
+		return fmt.Errorf("clear knowledge FTS5: %w", err)
+	}
+
+	rows, err := db.QueryContext(ctx, `SELECT "key", content FROM knowledge`)
+	if err != nil {
+		return fmt.Errorf("query knowledge for FTS5 index: %w", err)
+	}
+	defer rows.Close()
+
+	var records []search.Record
+	for rows.Next() {
+		var key, content string
+		if err := rows.Scan(&key, &content); err != nil {
+			return fmt.Errorf("scan knowledge row: %w", err)
+		}
+		records = append(records, search.Record{RowID: key, Values: []string{key, content}})
+	}
+	if err := rows.Err(); err != nil {
+		return fmt.Errorf("iterate knowledge rows: %w", err)
+	}
+
+	if len(records) > 0 {
+		if err := idx.BulkInsert(ctx, records); err != nil {
+			return fmt.Errorf("bulk insert knowledge FTS5: %w", err)
+		}
+		logger().Infow("FTS5 knowledge index populated", "count", len(records))
+	}
+	return nil
+}
+
+// bulkIndexLearnings clears and re-indexes all learning entries into FTS5.
+func bulkIndexLearnings(ctx context.Context, db *sql.DB, idx *search.FTS5Index) error {
+	if _, err := db.ExecContext(ctx, `DELETE FROM learning_fts`); err != nil {
+		return fmt.Errorf("clear learning FTS5: %w", err)
+	}
+
+	rows, err := db.QueryContext(ctx, `SELECT id, trigger, error_pattern, fix FROM learnings`)
+	if err != nil {
+		return fmt.Errorf("query learnings for FTS5 index: %w", err)
+	}
+	defer rows.Close()
+
+	var records []search.Record
+	for rows.Next() {
+		var id, trigger, errorPattern, fix string
+		if err := rows.Scan(&id, &trigger, &errorPattern, &fix); err != nil {
+			return fmt.Errorf("scan learning row: %w", err)
+		}
+		records = append(records, search.Record{RowID: id, Values: []string{trigger, errorPattern, fix}})
+	}
+	if err := rows.Err(); err != nil {
+		return fmt.Errorf("iterate learning rows: %w", err)
+	}
+
+	if len(records) > 0 {
+		if err := idx.BulkInsert(ctx, records); err != nil {
+			return fmt.Errorf("bulk insert learning FTS5: %w", err)
+		}
+		logger().Infow("FTS5 learning index populated", "count", len(records))
+	}
+	return nil
 }
 
 // initSkills creates the file-based skill registry.
