@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"iter"
+	"time"
 
 	"go.uber.org/zap"
 	"golang.org/x/sync/errgroup"
@@ -11,12 +12,14 @@ import (
 	"google.golang.org/genai"
 
 	"github.com/langoai/lango/internal/embedding"
+	"github.com/langoai/lango/internal/eventbus"
 	"github.com/langoai/lango/internal/graph"
 	"github.com/langoai/lango/internal/knowledge"
 	"github.com/langoai/lango/internal/memory"
 	"github.com/langoai/lango/internal/prompt"
 	"github.com/langoai/lango/internal/retrieval"
 	"github.com/langoai/lango/internal/session"
+	"github.com/langoai/lango/internal/types"
 )
 
 // MemoryProvider retrieves observations and reflections for a session.
@@ -61,6 +64,7 @@ type ContextAwareModelAdapter struct {
 	maxObservations    int
 	memoryTokenBudget  int // max tokens for the memory section; 0 = default (4000)
 	budgetManager      *ContextBudgetManager
+	bus                *eventbus.Bus
 	logger             *zap.SugaredLogger
 }
 
@@ -146,6 +150,13 @@ func (m *ContextAwareModelAdapter) WithMemoryTokenBudget(budget int) *ContextAwa
 // When set, GenerateContent computes per-section budgets and truncates content to fit.
 func (m *ContextAwareModelAdapter) WithBudgetManager(bm *ContextBudgetManager) *ContextAwareModelAdapter {
 	m.budgetManager = bm
+	return m
+}
+
+// WithEventBus sets the event bus for context injection observability.
+// When set, GenerateContent publishes a ContextInjectedEvent after context assembly.
+func (m *ContextAwareModelAdapter) WithEventBus(bus *eventbus.Bus) *ContextAwareModelAdapter {
+	m.bus = bus
 	return m
 }
 
@@ -272,6 +283,26 @@ func (m *ContextAwareModelAdapter) GenerateContent(ctx context.Context, req *mod
 		prompt = fmt.Sprintf("%s\n\n%s", prompt, runSummarySection)
 	}
 
+	// Publish context injection event for observability.
+	if m.bus != nil {
+		knowledgeTokens := types.EstimateTokens(knowledgeSection)
+		ragTokens := types.EstimateTokens(ragSection)
+		memoryTokens := types.EstimateTokens(memorySection)
+		runSummaryTokens := types.EstimateTokens(runSummarySection)
+		m.bus.Publish(eventbus.ContextInjectedEvent{
+			TurnID:           session.TurnIDFromContext(ctx),
+			SessionKey:       sessionKey,
+			Query:            userQuery,
+			Items:            buildContextInjectedItems(oldRetrieved),
+			KnowledgeTokens:  knowledgeTokens,
+			RAGTokens:        ragTokens,
+			MemoryTokens:     memoryTokens,
+			RunSummaryTokens: runSummaryTokens,
+			TotalTokens:      knowledgeTokens + ragTokens + memoryTokens + runSummaryTokens,
+			Timestamp:        time.Now(),
+		})
+	}
+
 	// Set the augmented system instruction
 	if prompt != m.basePrompt {
 		if req.Config == nil {
@@ -283,4 +314,26 @@ func (m *ContextAwareModelAdapter) GenerateContent(ctx context.Context, req *mod
 	}
 
 	return m.inner.GenerateContent(ctx, req, stream)
+}
+
+// buildContextInjectedItems converts knowledge RetrievalResult items into event items.
+// Only knowledge items are included — RAG/memory/runSummary are opaque sections.
+func buildContextInjectedItems(retrieved *knowledge.RetrievalResult) []eventbus.ContextInjectedItem {
+	if retrieved == nil {
+		return nil
+	}
+	var items []eventbus.ContextInjectedItem
+	for layer, ctxItems := range retrieved.Items {
+		for _, item := range ctxItems {
+			items = append(items, eventbus.ContextInjectedItem{
+				Layer:         layer.String(),
+				Key:           item.Key,
+				Score:         item.Score,
+				Source:        item.Source,
+				Category:      item.Category,
+				TokenEstimate: types.EstimateTokens(item.Content),
+			})
+		}
+	}
+	return items
 }

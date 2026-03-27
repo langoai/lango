@@ -65,4 +65,26 @@ When shadow=true, the coordinator SHALL run as a fire-and-forget goroutine after
 The v1 coordinator SHALL cover only 3 factual layers: UserKnowledge, AgentLearnings, ExternalKnowledge. ToolRegistry, RuntimeContext, SkillPatterns, PendingInquiries remain handled by the existing ContextRetriever.
 
 ### Requirement: Configuration
-`RetrievalConfig` SHALL have `Enabled` (bool, default false) and `Shadow` (bool, default true) fields. The coordinator SHALL only be created when `Enabled=true`.
+`RetrievalConfig` SHALL have `Enabled` (bool, default false), `Shadow` (bool, default true), and `Feedback` (bool, default false) fields. The coordinator SHALL only be created when `Enabled=true`.
+
+### Requirement: RetrievalConfig Feedback field
+The `RetrievalConfig` struct SHALL include a `Feedback bool` field that enables context injection observability. This field SHALL operate independently of `Enabled` and `Shadow` — feedback observability SHALL work regardless of whether the agentic retrieval coordinator is enabled.
+
+#### Scenario: Feedback enabled without coordinator
+- **WHEN** `retrieval.feedback` is `true` and `retrieval.enabled` is `false`
+- **THEN** the `FeedbackProcessor` SHALL be subscribed to the event bus
+
+#### Scenario: Feedback default
+- **WHEN** no `retrieval.feedback` value is configured
+- **THEN** feedback SHALL default to `false`
+
+### Requirement: Event bus wiring on ContextAwareModelAdapter
+The `ContextAwareModelAdapter` SHALL accept an event bus via `WithEventBus(*eventbus.Bus)`. The event bus SHALL be wired unconditionally when a `ContextAwareModelAdapter` exists, regardless of coordinator presence.
+
+#### Scenario: Bus wired in knowledge branch
+- **WHEN** knowledge system is enabled and ctxAdapter is created
+- **THEN** `WithEventBus(eventBus)` SHALL be called on the adapter
+
+#### Scenario: Bus wired in OM-only branch
+- **WHEN** only observational memory is enabled (no knowledge) and ctxAdapter is created
+- **THEN** `WithEventBus(eventBus)` SHALL be called on the adapter

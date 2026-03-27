@@ -421,3 +421,20 @@ func initRetrievalCoordinator(cfg *config.Config, kStore *knowledge.Store) *retr
 	logger().Infow("retrieval coordinator initialized", "shadow", cfg.Retrieval.Shadow, "agents", 1)
 	return coordinator
 }
+
+// initFeedbackProcessor creates and subscribes the context injection feedback
+// processor if enabled. This operates independently of the knowledge system
+// and retrieval coordinator — it observes all GenerateContent context injection.
+func initFeedbackProcessor(cfg *config.Config, bus *eventbus.Bus) {
+	if !cfg.Retrieval.Feedback {
+		return
+	}
+	if bus == nil {
+		return
+	}
+
+	fp := retrieval.NewFeedbackProcessor(logger())
+	fp.Subscribe(bus)
+
+	logger().Info("retrieval feedback processor initialized")
+}

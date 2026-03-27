@@ -157,8 +157,9 @@ func DefaultConfig() *Config {
 			AutoSaveConfidence:   types.ConfidenceHigh,
 		},
 		Retrieval: RetrievalConfig{
-			Enabled: false,
-			Shadow:  true,
+			Enabled:  false,
+			Shadow:   true,
+			Feedback: false,
 		},
 		MCP: MCPConfig{
 			Enabled:              false,

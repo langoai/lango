@@ -383,8 +383,9 @@ type AgentMemoryConfig struct {
 
 // RetrievalConfig controls the agentic retrieval coordinator.
 type RetrievalConfig struct {
-	Enabled bool `mapstructure:"enabled" json:"enabled"` // Enable agentic retrieval coordinator
-	Shadow  bool `mapstructure:"shadow" json:"shadow"`   // Shadow mode: run alongside old path, log comparison
+	Enabled  bool `mapstructure:"enabled" json:"enabled"`   // Enable agentic retrieval coordinator
+	Shadow   bool `mapstructure:"shadow" json:"shadow"`     // Shadow mode: run alongside old path, log comparison
+	Feedback bool `mapstructure:"feedback" json:"feedback"` // Context injection observability (independent of Enabled/Shadow)
 }
 
 // GatekeeperConfig defines response sanitization (output gatekeeper) settings.

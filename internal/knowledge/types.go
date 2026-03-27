@@ -2,6 +2,7 @@ package knowledge
 
 import (
 	"context"
+	"fmt"
 	"time"
 
 	entknowledge "github.com/langoai/lango/internal/ent/knowledge"
@@ -31,6 +32,32 @@ func (l ContextLayer) Valid() bool {
 		return true
 	}
 	return false
+}
+
+// String returns a human-readable name for the context layer.
+func (l ContextLayer) String() string {
+	switch l {
+	case LayerToolRegistry:
+		return "tool_registry"
+	case LayerUserKnowledge:
+		return "user_knowledge"
+	case LayerSkillPatterns:
+		return "skill_patterns"
+	case LayerExternalKnowledge:
+		return "external_knowledge"
+	case LayerAgentLearnings:
+		return "agent_learnings"
+	case LayerRuntimeContext:
+		return "runtime_context"
+	case LayerObservations:
+		return "observations"
+	case LayerReflections:
+		return "reflections"
+	case LayerPendingInquiries:
+		return "pending_inquiries"
+	default:
+		return fmt.Sprintf("layer_%d", int(l))
+	}
 }
 
 // Values returns all known context layers.

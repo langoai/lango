@@ -408,6 +408,11 @@ func initAgent(ctx context.Context, deps *agentDeps) (*adk.Agent, error) {
 			ctxAdapter.WithCoordinator(coordinator)
 		}
 
+		// Wire event bus for context injection observability.
+		if deps.eventBus != nil {
+			ctxAdapter.WithEventBus(deps.eventBus)
+		}
+
 		llm = ctxAdapter
 	} else if mc != nil {
 		// OM without knowledge system — create minimal context-aware adapter
@@ -449,8 +454,16 @@ func initAgent(ctx context.Context, deps *agentDeps) (*adk.Agent, error) {
 			}
 		}
 
+		// Wire event bus for context injection observability.
+		if deps.eventBus != nil {
+			ctxAdapter.WithEventBus(deps.eventBus)
+		}
+
 		llm = ctxAdapter
 	}
+
+	// Wire feedback processor for context injection observability (independent of knowledge/coordinator).
+	initFeedbackProcessor(cfg, deps.eventBus)
 
 	// If PII redaction is enabled, wrap with PII-redacting adapter
 	if cfg.Security.Interceptor.Enabled && cfg.Security.Interceptor.RedactPII {
