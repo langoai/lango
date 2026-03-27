@@ -11,6 +11,7 @@ import (
 	"github.com/langoai/lango/internal/adk"
 	"github.com/langoai/lango/internal/agent"
 	"github.com/langoai/lango/internal/config"
+	"github.com/langoai/lango/internal/embedding"
 	"github.com/langoai/lango/internal/eventbus"
 	"github.com/langoai/lango/internal/knowledge"
 	"github.com/langoai/lango/internal/learning"
@@ -406,19 +407,34 @@ func (a *runSummaryProviderAdapter) MaxJournalSeqForSession(
 }
 
 // initRetrievalCoordinator creates the agentic retrieval coordinator if enabled.
-func initRetrievalCoordinator(cfg *config.Config, kStore *knowledge.Store) *retrieval.RetrievalCoordinator {
+// When ragService is available, a ContextSearchAgent is registered alongside
+// FactSearchAgent to provide semantic/vector expansion for factual layers.
+func initRetrievalCoordinator(cfg *config.Config, kStore *knowledge.Store, ec *embeddingComponents) *retrieval.RetrievalCoordinator {
 	if !cfg.Retrieval.Enabled {
 		return nil
 	}
 
-	factAgent := retrieval.NewFactSearchAgent(kStore)
-	coordinator := retrieval.NewRetrievalCoordinator(
-		[]retrieval.RetrievalAgent{factAgent},
-		logger(),
-	)
+	agents := []retrieval.RetrievalAgent{
+		retrieval.NewFactSearchAgent(kStore),
+	}
+
+	// Register context search agent when embedding/RAG is available.
+	if ec != nil && ec.ragService != nil {
+		ragOpts := embedding.RetrieveOptions{
+			Limit:      cfg.Embedding.RAG.MaxResults,
+			MaxDistance: cfg.Embedding.RAG.MaxDistance,
+		}
+		if ragOpts.Limit <= 0 {
+			ragOpts.Limit = 5
+		}
+		contextAgent := retrieval.NewContextSearchAgent(ec.ragService, ragOpts, logger())
+		agents = append(agents, contextAgent)
+	}
+
+	coordinator := retrieval.NewRetrievalCoordinator(agents, logger())
 	coordinator.SetShadow(cfg.Retrieval.Shadow)
 
-	logger().Infow("retrieval coordinator initialized", "shadow", cfg.Retrieval.Shadow, "agents", 1)
+	logger().Infow("retrieval coordinator initialized", "shadow", cfg.Retrieval.Shadow, "agents", len(agents))
 	return coordinator
 }
 

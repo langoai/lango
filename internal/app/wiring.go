@@ -404,7 +404,7 @@ func initAgent(ctx context.Context, deps *agentDeps) (*adk.Agent, error) {
 		}
 
 		// Wire in agentic retrieval coordinator if enabled.
-		if coordinator := initRetrievalCoordinator(cfg, kc.store); coordinator != nil {
+		if coordinator := initRetrievalCoordinator(cfg, kc.store, ec); coordinator != nil {
 			ctxAdapter.WithCoordinator(coordinator)
 		}
 
