@@ -23,6 +23,11 @@ import (
 type Result struct {
 	// Config is the decrypted, active configuration.
 	Config *config.Config
+	// ExplicitKeys tracks which context-related config keys the user explicitly set.
+	// nil for legacy profiles or when explicit key tracking is unavailable.
+	ExplicitKeys map[string]bool
+	// AutoEnabled records which context subsystems were auto-enabled during config resolution.
+	AutoEnabled config.AutoEnabledSet
 	// DBClient is the shared ent.Client for the application database.
 	DBClient *ent.Client
 	// RawDB is the underlying *sql.DB for direct SQL operations (e.g., sqlite-vec).
@@ -245,7 +250,7 @@ func handleNoProfile(
 	store *configstore.Store,
 ) (*config.Config, string, error) {
 	cfg := config.DefaultConfig()
-	if err := store.Save(ctx, "default", cfg); err != nil {
+	if err := store.Save(ctx, "default", cfg, nil); err != nil {
 		return nil, "", fmt.Errorf("save default profile: %w", err)
 	}
 	if err := store.SetActive(ctx, "default"); err != nil {

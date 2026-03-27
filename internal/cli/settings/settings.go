@@ -94,7 +94,8 @@ func runSettings(profileName string) error {
 	}
 
 	cfg := editor.Config()
-	if err := boot.ConfigStore.Save(ctx, profileName, cfg); err != nil {
+	// TODO(step8): Track modified fields from editor as explicitKeys and merge.
+	if err := boot.ConfigStore.Save(ctx, profileName, cfg, nil); err != nil {
 		return fmt.Errorf("save profile %q: %w", profileName, err)
 	}
 
@@ -110,7 +111,7 @@ func runSettings(profileName string) error {
 }
 
 func loadOrDefault(ctx context.Context, store *configstore.Store, name string) (*config.Config, bool, error) {
-	cfg, err := store.Load(ctx, name)
+	cfg, _, err := store.Load(ctx, name)
 	if err == nil {
 		return cfg, false, nil
 	}

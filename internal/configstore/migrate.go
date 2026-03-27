@@ -17,7 +17,7 @@ func MigrateFromJSON(ctx context.Context, store *Store, jsonPath, profileName st
 		return fmt.Errorf("load config from %q: %w", jsonPath, err)
 	}
 
-	if err := store.Save(ctx, profileName, result.Config); err != nil {
+	if err := store.Save(ctx, profileName, result.Config, result.ExplicitKeys); err != nil {
 		return fmt.Errorf("save profile %q: %w", profileName, err)
 	}
 

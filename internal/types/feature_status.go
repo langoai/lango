@@ -9,6 +9,8 @@ type FeatureStatus struct {
 	Enabled bool `json:"enabled"`
 	// Healthy indicates whether the feature initialized without errors.
 	Healthy bool `json:"healthy"`
+	// AutoEnabled indicates the feature was auto-enabled (not explicitly configured).
+	AutoEnabled bool `json:"autoEnabled,omitempty"`
 	// Reason explains why the feature is disabled or unhealthy (empty when OK).
 	Reason string `json:"reason,omitempty"`
 	// Suggestion provides an actionable next step for the user (empty when OK).

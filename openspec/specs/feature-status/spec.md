@@ -66,3 +66,10 @@ The knowledge feature status SHALL include whether context budget management is 
 #### Scenario: Budget manager not active
 - **WHEN** knowledge is enabled but no budget manager is configured
 - **THEN** the knowledge FeatureStatus reason SHALL not include budget information
+
+### Requirement: FeatureStatus AutoEnabled field
+`FeatureStatus` SHALL include `AutoEnabled bool` field indicating the feature was auto-enabled rather than explicitly configured.
+
+#### Scenario: AutoEnabled in JSON
+- **WHEN** a FeatureStatus with `AutoEnabled: true` is serialized to JSON
+- **THEN** the output SHALL include `"autoEnabled": true`
