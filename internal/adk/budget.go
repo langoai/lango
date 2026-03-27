@@ -105,6 +105,70 @@ func (bm *ContextBudgetManager) ModelWindow() int {
 	return bm.modelWindow
 }
 
+// SectionTokens represents measured token counts per section before truncation.
+// Used as input to ReallocateBudgets for empty-section redistribution.
+type SectionTokens struct {
+	Knowledge  int
+	RAG        int
+	Memory     int
+	RunSummary int
+}
+
+// ReallocateBudgets computes per-section budgets with empty-section redistribution.
+// Sections with measured token count of 0 donate their entire budget proportionally
+// to sections that have content. Non-empty sections keep their full initial budget
+// plus a proportional share of the surplus. Headroom is never redistributed.
+//
+// No recursive redistribution: surplus is distributed once. Excess in non-empty
+// sections is simply unused.
+//
+// All sections empty: returns all-zero budgets with Degraded=false.
+func (bm *ContextBudgetManager) ReallocateBudgets(measured SectionTokens) SectionBudgets {
+	base := bm.SectionBudgets()
+	if base.Degraded {
+		return base
+	}
+
+	budgets := [4]int{base.Knowledge, base.RAG, base.Memory, base.RunSummary}
+	ratios := [4]float64{bm.allocation.Knowledge, bm.allocation.RAG, bm.allocation.Memory, bm.allocation.RunSummary}
+	tokens := [4]int{measured.Knowledge, measured.RAG, measured.Memory, measured.RunSummary}
+
+	var surplus int
+	var presentRatioSum float64
+	for i := 0; i < 4; i++ {
+		if tokens[i] == 0 {
+			surplus += budgets[i]
+			budgets[i] = 0
+		} else {
+			presentRatioSum += ratios[i]
+		}
+	}
+
+	// No empty sections → no reallocation.
+	if surplus == 0 {
+		return base
+	}
+
+	// All sections empty → all-zero budgets, no context for this turn.
+	if presentRatioSum == 0 {
+		return SectionBudgets{}
+	}
+
+	// Redistribute surplus proportionally to present sections.
+	for i := 0; i < 4; i++ {
+		if tokens[i] > 0 {
+			budgets[i] += int(float64(surplus) * ratios[i] / presentRatioSum)
+		}
+	}
+
+	return SectionBudgets{
+		Knowledge:  budgets[0],
+		RAG:        budgets[1],
+		Memory:     budgets[2],
+		RunSummary: budgets[3],
+	}
+}
+
 // modelWindowRegistry maps model name prefixes to context window sizes in tokens.
 var modelWindowRegistry = map[string]int{
 	// Google Gemini

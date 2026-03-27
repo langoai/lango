@@ -164,3 +164,109 @@ func TestDefaultAllocation(t *testing.T) {
 	assert.Equal(t, 0.10, alloc.Headroom)
 }
 
+func TestReallocateBudgets(t *testing.T) {
+	alloc := DefaultAllocation()
+	bm, err := NewContextBudgetManager(128000, 4096, 2000, alloc)
+	require.NoError(t, err)
+	base := bm.SectionBudgets()
+
+	tests := []struct {
+		give         string
+		measured     SectionTokens
+		wantChanged  bool
+		wantKnGt     int  // Knowledge budget > this value
+		wantRAG      int  // RAG budget exact
+		wantDegraded bool
+	}{
+		{
+			give:        "all sections present — no reallocation",
+			measured:    SectionTokens{Knowledge: 500, RAG: 300, Memory: 1000, RunSummary: 100},
+			wantChanged: false,
+		},
+		{
+			give:        "one section empty — surplus redistributed",
+			measured:    SectionTokens{Knowledge: 500, RAG: 0, Memory: 1000, RunSummary: 100},
+			wantChanged: true,
+			wantKnGt:    base.Knowledge, // Knowledge should be > initial
+			wantRAG:     0,              // RAG donated
+		},
+		{
+			give:        "two sections empty — both donate",
+			measured:    SectionTokens{Knowledge: 500, RAG: 0, Memory: 1000, RunSummary: 0},
+			wantChanged: true,
+			wantKnGt:    base.Knowledge,
+			wantRAG:     0,
+		},
+		{
+			give:        "all sections empty — all-zero budgets",
+			measured:    SectionTokens{Knowledge: 0, RAG: 0, Memory: 0, RunSummary: 0},
+			wantChanged: true,
+			wantRAG:     0,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.give, func(t *testing.T) {
+			result := bm.ReallocateBudgets(tt.measured)
+
+			if !tt.wantChanged {
+				assert.Equal(t, base.Knowledge, result.Knowledge)
+				assert.Equal(t, base.RAG, result.RAG)
+				assert.Equal(t, base.Memory, result.Memory)
+				assert.Equal(t, base.RunSummary, result.RunSummary)
+				return
+			}
+
+			assert.Equal(t, tt.wantRAG, result.RAG)
+			if tt.wantKnGt > 0 {
+				assert.Greater(t, result.Knowledge, tt.wantKnGt,
+					"knowledge should receive surplus")
+			}
+		})
+	}
+}
+
+func TestReallocateBudgets_Degraded(t *testing.T) {
+	alloc := DefaultAllocation()
+	bm, err := NewContextBudgetManager(4096, 0, 5000, alloc) // negative available
+	require.NoError(t, err)
+
+	result := bm.ReallocateBudgets(SectionTokens{Knowledge: 100})
+	assert.True(t, result.Degraded, "degraded should pass through")
+}
+
+func TestReallocateBudgets_ProportionalDistribution(t *testing.T) {
+	alloc := DefaultAllocation()
+	bm, err := NewContextBudgetManager(128000, 4096, 2000, alloc)
+	require.NoError(t, err)
+	base := bm.SectionBudgets()
+
+	// Only RAG empty → 25% surplus to K/M/RS
+	result := bm.ReallocateBudgets(SectionTokens{Knowledge: 500, RAG: 0, Memory: 1000, RunSummary: 100})
+
+	surplus := base.RAG
+	presentRatioSum := 0.30 + 0.25 + 0.10 // Knowledge + Memory + RunSummary
+
+	wantKnowledge := base.Knowledge + int(float64(surplus)*0.30/presentRatioSum)
+	wantMemory := base.Memory + int(float64(surplus)*0.25/presentRatioSum)
+	wantRunSummary := base.RunSummary + int(float64(surplus)*0.10/presentRatioSum)
+
+	assert.Equal(t, wantKnowledge, result.Knowledge, "knowledge share")
+	assert.Equal(t, wantMemory, result.Memory, "memory share")
+	assert.Equal(t, wantRunSummary, result.RunSummary, "runSummary share")
+	assert.Equal(t, 0, result.RAG, "RAG donated")
+}
+
+func TestReallocateBudgets_AllEmpty(t *testing.T) {
+	alloc := DefaultAllocation()
+	bm, err := NewContextBudgetManager(128000, 4096, 2000, alloc)
+	require.NoError(t, err)
+
+	result := bm.ReallocateBudgets(SectionTokens{})
+	assert.Equal(t, 0, result.Knowledge)
+	assert.Equal(t, 0, result.RAG)
+	assert.Equal(t, 0, result.Memory)
+	assert.Equal(t, 0, result.RunSummary)
+	assert.False(t, result.Degraded, "all-empty is not degradation")
+}
+

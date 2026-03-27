@@ -179,22 +179,18 @@ func (m *ContextAwareModelAdapter) GenerateContent(ctx context.Context, req *mod
 
 	userQuery := extractLastUserMessage(req.Contents)
 
-	// Compute per-section budgets (0 = unlimited when no budget manager).
-	var budgets SectionBudgets
-	if m.budgetManager != nil {
-		budgets = m.budgetManager.SectionBudgets()
-		if budgets.Degraded {
-			m.logger.Warnw("context budget degraded to unlimited — model window too small for base prompt",
-				"modelWindow", m.budgetManager.ModelWindow())
-		}
-	}
-
-	var knowledgeSection, ragSection, memorySection, runSummarySection string
-	var oldRetrieved *knowledge.RetrievalResult // captured for shadow comparison
+	// ──────────────────────────────────────────────────────────
+	// Phase 1: Retrieve all section data in parallel (no truncation).
+	// ──────────────────────────────────────────────────────────
+	var knowledgeResult *knowledge.RetrievalResult
+	var ragResults []embedding.RAGResult
+	var graphRAGResult *graph.GraphRAGResult
+	var reflections []memory.Reflection
+	var observations []memory.Observation
+	var runSummaries []RunSummaryContext
 
 	g, gCtx := errgroup.WithContext(ctx)
 
-	// Knowledge retrieval
 	if userQuery != "" && m.retriever != nil {
 		g.Go(func() error {
 			layers := []knowledge.ContextLayer{
@@ -212,46 +208,89 @@ func (m *ContextAwareModelAdapter) GenerateContent(ctx context.Context, req *mod
 			if err != nil {
 				m.logger.Warnw("context retrieval error", "error", err)
 			} else if retrieved != nil && retrieved.TotalItems > 0 {
-				retrieved = knowledge.TruncateResult(retrieved, budgets.Knowledge)
-				knowledgeSection = m.retriever.AssemblePrompt("", retrieved)
-				oldRetrieved = retrieved
+				knowledgeResult = retrieved
 			}
 			return nil
 		})
 	}
 
-	// RAG/GraphRAG retrieval
 	if userQuery != "" {
 		if m.graphRAG != nil {
 			g.Go(func() error {
-				ragSection = m.assembleGraphRAGSection(gCtx, userQuery, sessionKey, budgets.RAG)
+				graphRAGResult = m.retrieveGraphRAGData(gCtx, userQuery, sessionKey)
 				return nil
 			})
 		} else if m.ragService != nil {
 			g.Go(func() error {
-				ragSection = m.assembleRAGSection(gCtx, userQuery, sessionKey, budgets.RAG)
+				ragResults = m.retrieveRAGData(gCtx, userQuery, sessionKey)
 				return nil
 			})
 		}
 	}
 
-	// Memory retrieval
 	if m.memoryProvider != nil && sessionKey != "" {
 		g.Go(func() error {
-			memorySection = m.assembleMemorySection(gCtx, sessionKey, budgets.Memory)
+			reflections, observations = m.retrieveMemoryData(gCtx, sessionKey)
 			return nil
 		})
 	}
 
-	// Run summary retrieval
 	if m.runSummaryProvider != nil && sessionKey != "" {
 		g.Go(func() error {
-			runSummarySection = m.assembleRunSummarySection(gCtx, sessionKey, budgets.RunSummary)
+			runSummaries = m.retrieveRunSummaryData(gCtx, sessionKey)
 			return nil
 		})
 	}
 
 	_ = g.Wait()
+
+	// ──────────────────────────────────────────────────────────
+	// Phase 2: Measure actual content → Reallocate budgets.
+	// ──────────────────────────────────────────────────────────
+	measured := SectionTokens{
+		Knowledge:  estimateKnowledgeTokens(knowledgeResult),
+		RAG:        estimateRAGResultTokens(ragResults, graphRAGResult),
+		Memory:     estimateMemoryTokens(reflections, observations),
+		RunSummary: estimateRunSummaryTokens(runSummaries),
+	}
+
+	var budgets SectionBudgets
+	if m.budgetManager != nil {
+		budgets = m.budgetManager.ReallocateBudgets(measured)
+		if budgets.Degraded {
+			m.logger.Warnw("context budget degraded to unlimited — model window too small for base prompt",
+				"modelWindow", m.budgetManager.ModelWindow())
+		}
+	}
+
+	// ──────────────────────────────────────────────────────────
+	// Phase 3: Truncate + Format each section with reallocated budgets.
+	// ──────────────────────────────────────────────────────────
+	var knowledgeSection, ragSection, memorySection, runSummarySection string
+	var oldRetrieved *knowledge.RetrievalResult
+
+	if knowledgeResult != nil {
+		knowledgeResult = knowledge.TruncateResult(knowledgeResult, budgets.Knowledge)
+		knowledgeSection = m.retriever.AssemblePrompt("", knowledgeResult)
+		oldRetrieved = knowledgeResult
+	}
+
+	if graphRAGResult != nil {
+		ragSection = m.formatGraphRAGSection(graphRAGResult, budgets.RAG)
+	} else if len(ragResults) > 0 {
+		ragSection = formatRAGSection(ragResults, budgets.RAG)
+	}
+
+	if len(reflections) > 0 || len(observations) > 0 {
+		memorySection = m.formatMemorySection(reflections, observations, budgets.Memory)
+	}
+
+	if len(runSummaries) > 0 {
+		runSummarySection = formatRunSummarySection(runSummaries, budgets.RunSummary)
+	} else if m.runSummaryProvider != nil && sessionKey != "" {
+		// Fallback: use legacy wrapper for cached run summaries.
+		runSummarySection = m.assembleRunSummarySection(ctx, sessionKey, budgets.RunSummary)
+	}
 
 	// Shadow: coordinator comparison (fire-and-forget, does not block LLM).
 	if m.coordinator != nil && m.coordinator.Shadow() && userQuery != "" {
@@ -336,4 +375,59 @@ func buildContextInjectedItems(retrieved *knowledge.RetrievalResult) []eventbus.
 		}
 	}
 	return items
+}
+
+// ──────────────────────────────────────────────────────────
+// Token estimation helpers for pre-assembly measurement.
+// ──────────────────────────────────────────────────────────
+
+func estimateKnowledgeTokens(result *knowledge.RetrievalResult) int {
+	if result == nil {
+		return 0
+	}
+	total := 0
+	for _, items := range result.Items {
+		for _, item := range items {
+			total += types.EstimateTokens(item.Content) + 20 // header overhead per item
+		}
+	}
+	return total
+}
+
+func estimateRAGResultTokens(ragResults []embedding.RAGResult, graphResult *graph.GraphRAGResult) int {
+	total := 0
+	if len(ragResults) > 0 {
+		total += types.EstimateTokens("## Semantic Context (RAG)\n")
+		for _, r := range ragResults {
+			total += types.EstimateTokens(r.Content) + 30
+		}
+	}
+	if graphResult != nil {
+		for _, r := range graphResult.VectorResults {
+			total += types.EstimateTokens(r.Content) + 30
+		}
+		for range graphResult.GraphResults {
+			total += 40 // approximate per graph node
+		}
+	}
+	return total
+}
+
+func estimateMemoryTokens(reflections []memory.Reflection, observations []memory.Observation) int {
+	total := 0
+	for _, r := range reflections {
+		total += types.EstimateTokens(r.Content) + 5
+	}
+	for _, o := range observations {
+		total += types.EstimateTokens(o.Content) + 5
+	}
+	return total
+}
+
+func estimateRunSummaryTokens(summaries []RunSummaryContext) int {
+	total := 0
+	for _, s := range summaries {
+		total += types.EstimateTokens(s.Goal) + types.EstimateTokens(s.RunID) + 20
+	}
+	return total
 }

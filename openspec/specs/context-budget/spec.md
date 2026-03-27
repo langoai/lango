@@ -98,3 +98,6 @@ The system SHALL provide a `ContextConfig` struct in `internal/config/types.go` 
 #### Scenario: contextProfile independence
 - **WHEN** `contextProfile: balanced` is set alongside `context.allocation.*`
 - **THEN** both SHALL work independently (profile controls feature enables, context controls budgets)
+
+### Requirement: ContextBudgetManager orchestrator role
+`ContextBudgetManager` SHALL act as a budget orchestrator (not just a static allocator). In addition to computing initial per-section budgets via `SectionBudgets()`, it SHALL support dynamic redistribution via `ReallocateBudgets(measured SectionTokens)` where empty sections donate budget to non-empty sections. Headroom is never redistributed.
