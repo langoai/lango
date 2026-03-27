@@ -571,6 +571,53 @@ func (s *Store) IncrementKnowledgeUseCount(ctx context.Context, key string) erro
 	return nil
 }
 
+// BoostRelevanceScore increases the relevance_score for the latest version of a knowledge entry.
+// The score is capped at maxScore to prevent unbounded growth.
+func (s *Store) BoostRelevanceScore(ctx context.Context, key string, delta, maxScore float64) error {
+	_, err := s.client.Knowledge.Update().
+		Where(
+			entknowledge.Key(key),
+			entknowledge.IsLatest(true),
+			entknowledge.RelevanceScoreLT(maxScore),
+		).
+		AddRelevanceScore(delta).
+		Save(ctx)
+	if err != nil {
+		return fmt.Errorf("boost relevance score %q: %w", key, err)
+	}
+	return nil
+}
+
+// DecayAllRelevanceScores subtracts delta from all latest-version knowledge entries.
+// Only entries with score > minScore + delta are affected (prevents undershoot below floor).
+// Returns the number of entries updated.
+func (s *Store) DecayAllRelevanceScores(ctx context.Context, delta, minScore float64) (int, error) {
+	n, err := s.client.Knowledge.Update().
+		Where(
+			entknowledge.IsLatest(true),
+			entknowledge.RelevanceScoreGT(minScore+delta),
+		).
+		AddRelevanceScore(-delta).
+		Save(ctx)
+	if err != nil {
+		return 0, fmt.Errorf("decay relevance scores: %w", err)
+	}
+	return n, nil
+}
+
+// ResetAllRelevanceScores sets relevance_score to 1.0 for all latest-version knowledge entries.
+// Returns the number of entries reset. Used for hard rollback of auto-adjustment.
+func (s *Store) ResetAllRelevanceScores(ctx context.Context) (int, error) {
+	n, err := s.client.Knowledge.Update().
+		Where(entknowledge.IsLatest(true)).
+		SetRelevanceScore(1.0).
+		Save(ctx)
+	if err != nil {
+		return 0, fmt.Errorf("reset relevance scores: %w", err)
+	}
+	return n, nil
+}
+
 // DeleteKnowledge deletes a knowledge entry by key.
 func (s *Store) DeleteKnowledge(ctx context.Context, key string) error {
 	n, err := s.client.Knowledge.Delete().

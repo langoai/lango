@@ -455,3 +455,28 @@ func initFeedbackProcessor(cfg *config.Config, bus *eventbus.Bus) {
 
 	logger().Info("retrieval feedback processor initialized")
 }
+
+// initRelevanceAdjuster creates and subscribes the relevance score adjuster if enabled.
+func initRelevanceAdjuster(cfg *config.Config, kStore *knowledge.Store, bus *eventbus.Bus) {
+	if !cfg.Retrieval.AutoAdjust.Enabled {
+		return
+	}
+	if bus == nil || kStore == nil {
+		return
+	}
+
+	adjCfg := retrieval.RelevanceAdjusterConfig{
+		Mode:          cfg.Retrieval.AutoAdjust.Mode,
+		BoostDelta:    cfg.Retrieval.AutoAdjust.BoostDelta,
+		DecayDelta:    cfg.Retrieval.AutoAdjust.DecayDelta,
+		DecayInterval: cfg.Retrieval.AutoAdjust.DecayInterval,
+		MinScore:      cfg.Retrieval.AutoAdjust.MinScore,
+		MaxScore:      cfg.Retrieval.AutoAdjust.MaxScore,
+		WarmupTurns:   cfg.Retrieval.AutoAdjust.WarmupTurns,
+	}
+
+	adj := retrieval.NewRelevanceAdjuster(kStore, adjCfg, logger())
+	adj.Subscribe(bus)
+
+	logger().Infow("relevance adjuster initialized", "mode", adjCfg.Mode, "warmupTurns", adjCfg.WarmupTurns)
+}

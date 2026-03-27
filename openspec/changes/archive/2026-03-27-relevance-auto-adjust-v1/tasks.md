@@ -1,0 +1,13 @@
+- [x] Add BoostRelevanceScore to knowledge.Store (atomic Ent mutation, cap at maxScore)
+- [x] Add DecayAllRelevanceScores to knowledge.Store (floor at minScore + delta)
+- [x] Add ResetAllRelevanceScores to knowledge.Store (set all to 1.0)
+- [x] Add AutoAdjustConfig to config.RetrievalConfig
+- [x] Add config defaults (enabled=false, mode="shadow", boostDelta=0.05, decayDelta=0.01, etc.)
+- [x] Create RelevanceAdjuster with RelevanceStore narrow interface
+- [x] Implement handleContextInjected: warmup → shadow/active → decay-before-boost → turn-level dedup
+- [x] Create 9 test cases (shadow, warmup, active boost, dedup, skip non-knowledge, decay, rollback, decay-before-boost, reset)
+- [x] Wire initRelevanceAdjuster in wiring_knowledge.go
+- [x] Wire in wiring.go (after feedback processor, when kc != nil)
+- [x] Update FeedbackProcessor comment (remove "reserved for Step 13")
+- [x] Build passes: `go build -tags fts5 ./...`
+- [x] All tests pass: retrieval, knowledge, adk, app

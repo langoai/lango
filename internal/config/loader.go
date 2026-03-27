@@ -160,6 +160,16 @@ func DefaultConfig() *Config {
 			Enabled:  false,
 			Shadow:   true,
 			Feedback: false,
+			AutoAdjust: AutoAdjustConfig{
+				Enabled:       false,
+				Mode:          "shadow",
+				BoostDelta:    0.05,
+				DecayDelta:    0.01,
+				DecayInterval: 100,
+				MinScore:      0.1,
+				MaxScore:      5.0,
+				WarmupTurns:   50,
+			},
 		},
 		MCP: MCPConfig{
 			Enabled:              false,

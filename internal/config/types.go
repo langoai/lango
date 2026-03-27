@@ -383,9 +383,23 @@ type AgentMemoryConfig struct {
 
 // RetrievalConfig controls the agentic retrieval coordinator.
 type RetrievalConfig struct {
-	Enabled  bool `mapstructure:"enabled" json:"enabled"`   // Enable agentic retrieval coordinator
-	Shadow   bool `mapstructure:"shadow" json:"shadow"`     // Shadow mode: run alongside old path, log comparison
-	Feedback bool `mapstructure:"feedback" json:"feedback"` // Context injection observability (independent of Enabled/Shadow)
+	Enabled    bool             `mapstructure:"enabled" json:"enabled"`       // Enable agentic retrieval coordinator
+	Shadow     bool             `mapstructure:"shadow" json:"shadow"`         // Shadow mode: run alongside old path, log comparison
+	Feedback   bool             `mapstructure:"feedback" json:"feedback"`     // Context injection observability (independent of Enabled/Shadow)
+	AutoAdjust AutoAdjustConfig `mapstructure:"autoAdjust" json:"autoAdjust"` // Relevance score auto-adjustment
+}
+
+// AutoAdjustConfig controls relevance score auto-adjustment.
+// Primarily affects LIKE fallback search path and coordinator merge priority.
+type AutoAdjustConfig struct {
+	Enabled       bool    `mapstructure:"enabled" json:"enabled"`             // Master switch (default: false)
+	Mode          string  `mapstructure:"mode" json:"mode"`                   // "shadow" or "active" (default: "shadow")
+	BoostDelta    float64 `mapstructure:"boostDelta" json:"boostDelta"`       // Per-injection boost (default: 0.05)
+	DecayDelta    float64 `mapstructure:"decayDelta" json:"decayDelta"`       // Per-interval decay (default: 0.01)
+	DecayInterval int     `mapstructure:"decayInterval" json:"decayInterval"` // Turns between global decay (default: 100)
+	MinScore      float64 `mapstructure:"minScore" json:"minScore"`           // Floor (default: 0.1)
+	MaxScore      float64 `mapstructure:"maxScore" json:"maxScore"`           // Cap (default: 5.0)
+	WarmupTurns   int     `mapstructure:"warmupTurns" json:"warmupTurns"`     // Turns before activation (default: 50)
 }
 
 // GatekeeperConfig defines response sanitization (output gatekeeper) settings.

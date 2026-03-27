@@ -9,8 +9,8 @@ import (
 // FeedbackProcessor subscribes to ContextInjectedEvent and logs structured
 // observability data about which context items were injected into each turn.
 //
-// IMPORTANT: This processor is read-only. It MUST NOT modify relevance scores,
-// use counts, or any stored data. Score auto-adjustment is reserved for Step 13.
+// This processor is read-only — it does not modify relevance scores or stored data.
+// Score auto-adjustment is handled by RelevanceAdjuster (separate subscriber).
 type FeedbackProcessor struct {
 	logger *zap.SugaredLogger
 }

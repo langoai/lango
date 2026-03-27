@@ -465,6 +465,11 @@ func initAgent(ctx context.Context, deps *agentDeps) (*adk.Agent, error) {
 	// Wire feedback processor for context injection observability (independent of knowledge/coordinator).
 	initFeedbackProcessor(cfg, deps.eventBus)
 
+	// Wire relevance adjuster for score auto-adjustment.
+	if kc != nil {
+		initRelevanceAdjuster(cfg, kc.store, deps.eventBus)
+	}
+
 	// If PII redaction is enabled, wrap with PII-redacting adapter
 	if cfg.Security.Interceptor.Enabled && cfg.Security.Interceptor.RedactPII {
 		redactor := agent.NewPIIRedactor(agent.PIIConfig{
