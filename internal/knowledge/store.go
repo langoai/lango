@@ -198,6 +198,7 @@ func (s *Store) GetKnowledge(ctx context.Context, key string) (*KnowledgeEntry, 
 		Source:    k.Source,
 		Version:   k.Version,
 		CreatedAt: k.CreatedAt,
+		UpdatedAt: k.UpdatedAt,
 	}, nil
 }
 
@@ -225,6 +226,7 @@ func (s *Store) GetKnowledgeHistory(ctx context.Context, key string) ([]Knowledg
 			Source:    k.Source,
 			Version:   k.Version,
 			CreatedAt: k.CreatedAt,
+			UpdatedAt: k.UpdatedAt,
 		})
 	}
 	return result, nil
@@ -286,6 +288,7 @@ func (s *Store) searchKnowledgeLIKE(ctx context.Context, query string, category 
 			Source:    k.Source,
 			Version:   k.Version,
 			CreatedAt: k.CreatedAt,
+			UpdatedAt: k.UpdatedAt,
 		})
 	}
 	return result, nil
@@ -331,6 +334,7 @@ func (s *Store) resolveKnowledgeByKeys(ctx context.Context, ftsResults []search.
 			Source:    k.Source,
 			Version:   k.Version,
 			CreatedAt: k.CreatedAt,
+			UpdatedAt: k.UpdatedAt,
 		})
 	}
 	return result, nil
@@ -418,6 +422,7 @@ func (s *Store) resolveKnowledgeScoredByKeys(ctx context.Context, ftsResults []s
 				Source:    k.Source,
 				Version:   k.Version,
 				CreatedAt: k.CreatedAt,
+				UpdatedAt: k.UpdatedAt,
 			},
 			Score:        -r.Rank,
 			SearchSource: "fts5",
@@ -457,9 +462,51 @@ func (s *Store) searchKnowledgeScoredLIKE(ctx context.Context, query string, cat
 				Source:    k.Source,
 				Version:   k.Version,
 				CreatedAt: k.CreatedAt,
+				UpdatedAt: k.UpdatedAt,
 			},
 			Score:        k.RelevanceScore,
 			SearchSource: "like",
+		})
+	}
+	return result, nil
+}
+
+// SearchRecentKnowledge returns the most recently updated knowledge entries.
+// Only latest versions (is_latest=true) are returned, ordered by updated_at DESC.
+// When query is non-empty, results are filtered to entries whose key or content
+// contain at least one query keyword.
+func (s *Store) SearchRecentKnowledge(ctx context.Context, query string, limit int) ([]KnowledgeEntry, error) {
+	if limit <= 0 {
+		limit = 10
+	}
+
+	predicates := []predicate.Knowledge{entknowledge.IsLatest(true)}
+	if query != "" {
+		if kwPreds := knowledgeKeywordPredicates(query); len(kwPreds) > 0 {
+			predicates = append(predicates, entknowledge.Or(kwPreds...))
+		}
+	}
+
+	entries, err := s.client.Knowledge.Query().
+		Where(predicates...).
+		Order(entknowledge.ByUpdatedAt(sql.OrderDesc())).
+		Limit(limit).
+		All(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("search recent knowledge: %w", err)
+	}
+
+	result := make([]KnowledgeEntry, 0, len(entries))
+	for _, k := range entries {
+		result = append(result, KnowledgeEntry{
+			Key:       k.Key,
+			Category:  k.Category,
+			Content:   k.Content,
+			Tags:      k.Tags,
+			Source:    k.Source,
+			Version:   k.Version,
+			CreatedAt: k.CreatedAt,
+			UpdatedAt: k.UpdatedAt,
 		})
 	}
 	return result, nil

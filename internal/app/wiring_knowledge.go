@@ -416,6 +416,7 @@ func initRetrievalCoordinator(cfg *config.Config, kStore *knowledge.Store, ec *e
 
 	agents := []retrieval.RetrievalAgent{
 		retrieval.NewFactSearchAgent(kStore),
+		retrieval.NewTemporalSearchAgent(kStore),
 	}
 
 	// Register context search agent when embedding/RAG is available.

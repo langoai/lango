@@ -49,7 +49,7 @@ func buildMetaTools(store *knowledge.Store, engine *learning.Engine, registry *s
 				if err != nil {
 					return nil, err
 				}
-				source := toolparam.OptionalString(params, "source", "")
+				source := toolparam.OptionalString(params, "source", "knowledge")
 
 				cat := entknowledge.Category(category)
 				if err := entknowledge.CategoryValidator(cat); err != nil {

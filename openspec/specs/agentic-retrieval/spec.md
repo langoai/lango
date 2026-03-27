@@ -29,15 +29,15 @@ The `retrieval` package SHALL define a `RetrievalAgent` interface with methods: 
 - **THEN** Finding.Score SHALL be 0 and SearchSource SHALL be "like"
 
 ### Requirement: RetrievalCoordinator
-`RetrievalCoordinator` SHALL run all registered agents in parallel, merge findings, deduplicate by `(Layer, Key)` (keeping highest Score), and truncate to token budget.
+`RetrievalCoordinator` SHALL run all registered agents in parallel, merge findings using evidence-based priority (authority → version → recency → score), and truncate to token budget. The merge priority chain replaces score-only dedup: for same `(Layer, Key)`, the winner is selected by `sourceAuthority[Source]` first, then version (supersedes), then recency (UpdatedAt), then Score as final tiebreaker. When all provenance fields are empty, merge falls through to Score (backward compatible).
 
 #### Scenario: Parallel agent execution
 - **WHEN** Retrieve is called with 2+ registered agents
 - **THEN** all agents SHALL be invoked concurrently
 
-#### Scenario: Dedup by (Layer, Key)
-- **WHEN** two agents return findings with the same Layer and Key
-- **THEN** only the finding with the highest Score SHALL be kept
+#### Scenario: Dedup by (Layer, Key) with authority
+- **WHEN** two agents return findings with the same Layer and Key but different Source authority
+- **THEN** the finding with higher sourceAuthority SHALL be kept, regardless of Score
 
 #### Scenario: Different layers same key preserved
 - **WHEN** two findings have the same Key but different Layer values
@@ -96,13 +96,16 @@ The `ContextAwareModelAdapter` SHALL accept an event bus via `WithEventBus(*even
 - **WHEN** CompareShadowResults is called with findings from both FactSearchAgent and ContextSearchAgent
 - **THEN** logs SHALL include `factual_overlap`, `factual_old_only`, `factual_new_only` alongside overall metrics
 
+### Requirement: TemporalSearchAgent registration in coordinator
+`initRetrievalCoordinator` SHALL always register `TemporalSearchAgent` alongside `FactSearchAgent`. Unlike `ContextSearchAgent` (which requires RAGService), `TemporalSearchAgent` has no optional dependencies — it uses `kStore` which is always available.
+
 ### Requirement: ContextSearchAgent registration in coordinator
-`initRetrievalCoordinator` SHALL accept embedding components and register `ContextSearchAgent` when RAGService is available. The coordinator SHALL run both FactSearchAgent and ContextSearchAgent in parallel.
+`initRetrievalCoordinator` SHALL accept embedding components and register `ContextSearchAgent` when RAGService is available. The coordinator SHALL run FactSearchAgent, TemporalSearchAgent, and ContextSearchAgent in parallel.
 
 #### Scenario: RAG available
 - **WHEN** embedding components with ragService are provided
-- **THEN** coordinator SHALL have 2 agents registered (fact-search + context-search)
+- **THEN** coordinator SHALL have 3 agents registered (fact-search + temporal-search + context-search)
 
 #### Scenario: RAG not available
 - **WHEN** embedding components are nil
-- **THEN** coordinator SHALL have 1 agent registered (fact-search only)
+- **THEN** coordinator SHALL have 2 agents registered (fact-search + temporal-search)

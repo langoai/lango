@@ -102,6 +102,7 @@ type KnowledgeEntry struct {
 	Source    string
 	Version   int       // 0 = unset (callers constructing entries don't set this)
 	CreatedAt time.Time // zero = unset
+	UpdatedAt time.Time // zero = unset; populated from DB on read
 }
 
 // LearningEntry is the domain type for learning CRUD operations.

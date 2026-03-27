@@ -50,6 +50,10 @@ func (a *FactSearchAgent) Search(ctx context.Context, query string, limit int) (
 			SearchSource: k.SearchSource,
 			Agent:        a.Name(),
 			Layer:        knowledge.LayerUserKnowledge,
+			Source:       k.Entry.Source,
+			Tags:         k.Entry.Tags,
+			Version:      k.Entry.Version,
+			UpdatedAt:    k.Entry.UpdatedAt,
 		})
 	}
 

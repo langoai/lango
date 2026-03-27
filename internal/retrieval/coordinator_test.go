@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"testing"
+	"time"
 
 	"go.uber.org/zap"
 
@@ -119,6 +120,157 @@ func TestRetrievalCoordinator_Retrieve_Dedup(t *testing.T) {
 
 			if tt.wantScore > 0 && findings[0].Score != tt.wantScore {
 				t.Errorf("want score %f, got %f", tt.wantScore, findings[0].Score)
+			}
+		})
+	}
+}
+
+func TestMergeFindings_Authority(t *testing.T) {
+	tests := []struct {
+		give      string
+		findings  []Finding
+		wantCount int
+		wantAgent string
+	}{
+		{
+			give: "authority wins over score",
+			findings: []Finding{
+				{Key: "rule-x", Layer: knowledge.LayerUserKnowledge, Score: 0.3, Source: "knowledge", Agent: "fact-search"},
+				{Key: "rule-x", Layer: knowledge.LayerUserKnowledge, Score: 5.0, Source: "conversation_analysis", Agent: "fact-search-2"},
+			},
+			wantCount: 1,
+			wantAgent: "fact-search", // Source="knowledge" authority=4 > authority=1
+		},
+		{
+			give: "higher version wins at same authority",
+			findings: []Finding{
+				{Key: "pref-lang", Layer: knowledge.LayerUserKnowledge, Score: 0.5, Source: "proactive_librarian", Version: 5, Agent: "a1"},
+				{Key: "pref-lang", Layer: knowledge.LayerUserKnowledge, Score: 0.8, Source: "proactive_librarian", Version: 3, Agent: "a2"},
+			},
+			wantCount: 1,
+			wantAgent: "a1", // Version 5 > 3
+		},
+		{
+			give: "recency wins at same authority and version",
+			findings: []Finding{
+				{Key: "status-x", Layer: knowledge.LayerUserKnowledge, Score: 0.5, Source: "proactive_librarian", Version: 2, UpdatedAt: time.Date(2026, 3, 27, 12, 0, 0, 0, time.UTC), Agent: "temporal"},
+				{Key: "status-x", Layer: knowledge.LayerUserKnowledge, Score: 0.8, Source: "proactive_librarian", Version: 2, UpdatedAt: time.Date(2026, 3, 22, 12, 0, 0, 0, time.UTC), Agent: "fact"},
+			},
+			wantCount: 1,
+			wantAgent: "temporal", // UpdatedAt 3/27 > 3/22
+		},
+		{
+			give: "empty provenance falls through to score",
+			findings: []Finding{
+				{Key: "vec-item", Layer: knowledge.LayerUserKnowledge, Score: 0.5, Agent: "context-a"},
+				{Key: "vec-item", Layer: knowledge.LayerUserKnowledge, Score: 0.8, Agent: "context-b"},
+			},
+			wantCount: 1,
+			wantAgent: "context-b", // Both empty provenance, Score 0.8 > 0.5
+		},
+		{
+			give: "learning findings have empty provenance — falls back to score",
+			findings: []Finding{
+				{Key: "trigger-A", Layer: knowledge.LayerAgentLearnings, Score: 0.6, Agent: "fact-1"},
+				{Key: "trigger-A", Layer: knowledge.LayerAgentLearnings, Score: 0.9, Agent: "fact-2"},
+			},
+			wantCount: 1,
+			wantAgent: "fact-2", // Both empty Source, Score 0.9 > 0.6
+		},
+		{
+			give: "different layers same key keeps both",
+			findings: []Finding{
+				{Key: "same-key", Layer: knowledge.LayerUserKnowledge, Score: 0.5, Agent: "a1"},
+				{Key: "same-key", Layer: knowledge.LayerAgentLearnings, Score: 0.7, Agent: "a2"},
+			},
+			wantCount: 2,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.give, func(t *testing.T) {
+			result := mergeFindings(tt.findings)
+			if len(result) != tt.wantCount {
+				t.Fatalf("want %d findings, got %d", tt.wantCount, len(result))
+			}
+			if tt.wantAgent != "" && tt.wantCount == 1 {
+				if result[0].Agent != tt.wantAgent {
+					t.Errorf("want agent %q, got %q", tt.wantAgent, result[0].Agent)
+				}
+			}
+		})
+	}
+}
+
+func TestCompareFindingPriority(t *testing.T) {
+	now := time.Date(2026, 3, 27, 12, 0, 0, 0, time.UTC)
+	earlier := time.Date(2026, 3, 25, 12, 0, 0, 0, time.UTC)
+
+	tests := []struct {
+		give string
+		a, b Finding
+		want int // >0 means a preferred, <0 means b preferred, 0 means equal
+	}{
+		{
+			give: "higher authority wins",
+			a:    Finding{Source: "knowledge"},
+			b:    Finding{Source: "conversation_analysis"},
+			want: 1,
+		},
+		{
+			give: "lower authority loses",
+			a:    Finding{Source: "memory"},
+			b:    Finding{Source: "session_learning"},
+			want: -1,
+		},
+		{
+			give: "same authority — higher version wins",
+			a:    Finding{Source: "proactive_librarian", Version: 5},
+			b:    Finding{Source: "proactive_librarian", Version: 3},
+			want: 1,
+		},
+		{
+			give: "same authority and version — more recent wins",
+			a:    Finding{Source: "proactive_librarian", Version: 2, UpdatedAt: now},
+			b:    Finding{Source: "proactive_librarian", Version: 2, UpdatedAt: earlier},
+			want: 1,
+		},
+		{
+			give: "same provenance — higher score wins",
+			a:    Finding{Source: "proactive_librarian", Version: 2, UpdatedAt: now, Score: 5.0},
+			b:    Finding{Source: "proactive_librarian", Version: 2, UpdatedAt: now, Score: 3.0},
+			want: 1,
+		},
+		{
+			give: "completely equal",
+			a:    Finding{Score: 1.0},
+			b:    Finding{Score: 1.0},
+			want: 0,
+		},
+		{
+			give: "one has UpdatedAt other does not — non-zero wins",
+			a:    Finding{UpdatedAt: now},
+			b:    Finding{},
+			want: 1,
+		},
+		{
+			give: "unknown source treated as authority 0",
+			a:    Finding{Source: "unknown_value", Score: 0.5},
+			b:    Finding{Source: "", Score: 0.8},
+			want: -1, // Both authority 0, Score 0.8 > 0.5
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.give, func(t *testing.T) {
+			result := compareFindingPriority(tt.a, tt.b)
+			switch {
+			case tt.want > 0 && result <= 0:
+				t.Errorf("expected a preferred (>0), got %d", result)
+			case tt.want < 0 && result >= 0:
+				t.Errorf("expected b preferred (<0), got %d", result)
+			case tt.want == 0 && result != 0:
+				t.Errorf("expected equal (0), got %d", result)
 			}
 		})
 	}
