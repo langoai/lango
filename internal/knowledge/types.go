@@ -110,6 +110,20 @@ type InquiryProvider interface {
 	PendingInquiryItems(ctx context.Context, sessionKey string, limit int) ([]ContextItem, error)
 }
 
+// ScoredKnowledgeEntry wraps a KnowledgeEntry with its search relevance score.
+type ScoredKnowledgeEntry struct {
+	Entry        KnowledgeEntry
+	Score        float64 // normalized: higher = better
+	SearchSource string  // "fts5" or "like"
+}
+
+// ScoredLearningEntry wraps a LearningEntry with its search relevance score.
+type ScoredLearningEntry struct {
+	Entry        LearningEntry
+	Score        float64 // normalized: higher = better
+	SearchSource string  // "fts5" or "like"
+}
+
 // ToolDescriptor describes a single tool available to the agent.
 type ToolDescriptor struct {
 	Name        string

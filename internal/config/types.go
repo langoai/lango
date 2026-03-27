@@ -88,6 +88,9 @@ type Config struct {
 	// Smart Account configuration (ERC-7579 modular accounts)
 	SmartAccount SmartAccountConfig `mapstructure:"smartAccount" json:"smartAccount"`
 
+	// Retrieval coordinator configuration (agentic retrieval)
+	Retrieval RetrievalConfig `mapstructure:"retrieval" json:"retrieval"`
+
 	// Gatekeeper configuration (response sanitization)
 	Gatekeeper GatekeeperConfig `mapstructure:"gatekeeper" json:"gatekeeper"`
 
@@ -376,6 +379,12 @@ type FilesystemToolConfig struct {
 type AgentMemoryConfig struct {
 	// Enable agent memory system
 	Enabled bool `mapstructure:"enabled" json:"enabled"`
+}
+
+// RetrievalConfig controls the agentic retrieval coordinator.
+type RetrievalConfig struct {
+	Enabled bool `mapstructure:"enabled" json:"enabled"` // Enable agentic retrieval coordinator
+	Shadow  bool `mapstructure:"shadow" json:"shadow"`   // Shadow mode: run alongside old path, log comparison
 }
 
 // GatekeeperConfig defines response sanitization (output gatekeeper) settings.

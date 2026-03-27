@@ -15,6 +15,7 @@ import (
 	"github.com/langoai/lango/internal/knowledge"
 	"github.com/langoai/lango/internal/memory"
 	"github.com/langoai/lango/internal/prompt"
+	"github.com/langoai/lango/internal/retrieval"
 	"github.com/langoai/lango/internal/session"
 )
 
@@ -51,6 +52,7 @@ type ContextAwareModelAdapter struct {
 	ragService         *embedding.RAGService
 	ragOpts            embedding.RetrieveOptions
 	graphRAG           *graph.GraphRAGService
+	coordinator        *retrieval.RetrievalCoordinator
 	runtimeAdapter     *RuntimeContextAdapter
 	runSummaryProvider RunSummaryProvider
 	runSummaryCache    *runSummaryCache
@@ -116,6 +118,13 @@ func (m *ContextAwareModelAdapter) WithGraphRAG(svc *graph.GraphRAGService) *Con
 	return m
 }
 
+// WithCoordinator adds the agentic retrieval coordinator. When set in shadow mode,
+// the coordinator runs in parallel with the existing retrieval path and logs comparison metrics.
+func (m *ContextAwareModelAdapter) WithCoordinator(c *retrieval.RetrievalCoordinator) *ContextAwareModelAdapter {
+	m.coordinator = c
+	return m
+}
+
 // WithMemoryLimits sets the maximum number of reflections and observations
 // to include in the LLM context. Zero means unlimited (existing behavior).
 func (m *ContextAwareModelAdapter) WithMemoryLimits(maxReflections, maxObservations int) *ContextAwareModelAdapter {
@@ -170,6 +179,7 @@ func (m *ContextAwareModelAdapter) GenerateContent(ctx context.Context, req *mod
 	}
 
 	var knowledgeSection, ragSection, memorySection, runSummarySection string
+	var oldRetrieved *knowledge.RetrievalResult // captured for shadow comparison
 
 	g, gCtx := errgroup.WithContext(ctx)
 
@@ -193,6 +203,7 @@ func (m *ContextAwareModelAdapter) GenerateContent(ctx context.Context, req *mod
 			} else if retrieved != nil && retrieved.TotalItems > 0 {
 				retrieved = knowledge.TruncateResult(retrieved, budgets.Knowledge)
 				knowledgeSection = m.retriever.AssemblePrompt("", retrieved)
+				oldRetrieved = retrieved
 			}
 			return nil
 		})
@@ -230,6 +241,22 @@ func (m *ContextAwareModelAdapter) GenerateContent(ctx context.Context, req *mod
 	}
 
 	_ = g.Wait()
+
+	// Shadow: coordinator comparison (fire-and-forget, does not block LLM).
+	if m.coordinator != nil && m.coordinator.Shadow() && userQuery != "" {
+		shadowRetrieved := oldRetrieved
+		go func() {
+			shadowCtx := context.Background()
+			shadowFindings, err := m.coordinator.Retrieve(shadowCtx, userQuery, 0)
+			if err != nil {
+				m.logger.Warnw("shadow retrieval error", "error", err)
+				return
+			}
+			if shadowRetrieved != nil {
+				retrieval.CompareShadowResults(shadowRetrieved, shadowFindings, m.logger)
+			}
+		}()
+	}
 
 	// Combine sections
 	if knowledgeSection != "" {

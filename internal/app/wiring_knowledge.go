@@ -14,6 +14,7 @@ import (
 	"github.com/langoai/lango/internal/eventbus"
 	"github.com/langoai/lango/internal/knowledge"
 	"github.com/langoai/lango/internal/learning"
+	"github.com/langoai/lango/internal/retrieval"
 	"github.com/langoai/lango/internal/librarian"
 	"github.com/langoai/lango/internal/provider"
 	"github.com/langoai/lango/internal/runledger"
@@ -402,4 +403,21 @@ func (a *runSummaryProviderAdapter) MaxJournalSeqForSession(
 	sessionKey string,
 ) (int64, error) {
 	return a.store.MaxJournalSeqForSession(ctx, sessionKey)
+}
+
+// initRetrievalCoordinator creates the agentic retrieval coordinator if enabled.
+func initRetrievalCoordinator(cfg *config.Config, kStore *knowledge.Store) *retrieval.RetrievalCoordinator {
+	if !cfg.Retrieval.Enabled {
+		return nil
+	}
+
+	factAgent := retrieval.NewFactSearchAgent(kStore)
+	coordinator := retrieval.NewRetrievalCoordinator(
+		[]retrieval.RetrievalAgent{factAgent},
+		logger(),
+	)
+	coordinator.SetShadow(cfg.Retrieval.Shadow)
+
+	logger().Infow("retrieval coordinator initialized", "shadow", cfg.Retrieval.Shadow, "agents", 1)
+	return coordinator
 }

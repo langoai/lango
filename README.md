@@ -38,11 +38,10 @@ This project includes experimental AI Agent features and is currently in an unst
 - 🔥 **Fast** - Single binary, <100ms startup, <250MB memory
 - 🤖 **Multi-Provider AI** - OpenAI, Anthropic, Gemini, Ollama with unified interface
 - 🔌 **Multi-Channel** - Telegram, Discord, Slack support
-- 🔐 **Approval Guardrails** - Channel-native tool approvals with turn-local replay dedupe, canonical browser-search matching, and bounded timeout retries
 - 🛠️ **Rich Tools** - Shell execution, file system operations, browser automation, crypto & secrets tools
 - 🧠 **Self-Learning** - Knowledge store, learning engine, file-based skill system with GitHub import (git clone + HTTP fallback), observational memory, proactive knowledge librarian
 - 📊 **Knowledge Graph & Graph RAG** - BoltDB triple store with hybrid vector + graph retrieval
-- 🔀 **Multi-Agent Orchestration** - Hierarchical sub-agents (operator, navigator, vault, librarian, automator, planner, chronicler) with durable turn traces, failed-specialist-aware recovery, and enforced child-session isolation
+- 🔀 **Multi-Agent Orchestration** - Hierarchical sub-agents (operator, navigator, vault, librarian, automator, planner, chronicler)
 - 🌍 **A2A Protocol** - Agent-to-Agent protocol for remote agent discovery and integration
 - 🌐 **P2P Network** - Decentralized agent-to-agent connectivity via libp2p with DHT discovery, ZK-enhanced handshake, knowledge firewall, and peer payments
 - 💸 **Blockchain Payments** - USDC payments on Base L2, X402 V2 auto-pay protocol (Coinbase SDK), spending limits
@@ -55,9 +54,8 @@ This project includes experimental AI Agent features and is currently in an unst
 - 🌐 **Gateway** - WebSocket/HTTP server with real-time streaming
 - 🔑 **Auth** - OIDC authentication, OAuth login flow
 - 🏗️ **Agent Registry** - Custom agent definitions via AGENT.md files, dynamic routing with keyword + capability matching
-- 🧬 **Agent Memory** - Per-agent persistent memory (retained across restarts)
+- 🧬 **Agent Memory** - Per-agent persistent memory for cross-session context retention
 - 📡 **Event Bus** - Typed synchronous pub/sub for internal component communication
-- 📒 **RunLedger (Task OS)** - Durable execution engine with PEV (Propose-Evidence-Verify) protocol, typed validators, 7 policy actions, configuration-gated workspace isolation, and acceptance criteria verification (🧪 Experimental)
 - 🪝 **Tool Hooks** - Middleware chain for tool execution (security filter, access control, event publishing, knowledge save)
 - 🏊 **Agent Pool** - P2P agent pool with health checking and weighted selection
 - 💰 **P2P Settlement** - On-chain USDC settlement with EIP-3009, receipt tracking, and retry
@@ -95,19 +93,11 @@ lango onboard
 ### Run
 
 ```bash
-# Interactive TUI chat (default entry point)
-lango
-
-# Or start the full gateway server with channels & automation
 lango serve
 
 # Validate configuration
 lango config validate
 ```
-
-Running `lango` without arguments starts an interactive terminal coding-agent cockpit with a transcript-first layout, turn-state visibility, inline approval interrupts, stable markdown rendering, clearer user/assistant separation, and slash commands.
-
-`lango serve` starts the full gateway server with channels, automation, and network components. It performs graceful shutdown on the first `Ctrl+C`/`SIGTERM` with a 10-second deadline. If shutdown is already in progress, a second `Ctrl+C` forces immediate exit with code `130`.
 
 The onboard wizard guides you through 5 steps:
 
@@ -122,7 +112,6 @@ For the full configuration editor with all options, use `lango settings`.
 ### CLI Commands
 
 ```
-lango                            Interactive TUI chat (default)
 lango serve                      Start the gateway server
 lango version                    Print version and build info
 lango health [--port N]          Check gateway health (default port: 18789)
@@ -229,8 +218,6 @@ lango p2p session revoke-all     Revoke all active peer sessions
 lango p2p sandbox status         Show sandbox runtime status
 lango p2p sandbox test           Run sandbox smoke test
 lango p2p sandbox cleanup        Remove orphaned sandbox containers
-lango p2p provenance push <peer-did> <session-key>   Push signed provenance bundle via running server
-lango p2p provenance fetch <peer-did> <session-key>  Fetch and import signed provenance bundle via running server
 lango p2p team list              List active P2P teams
 lango p2p team status <id>       Show team details and member status
 lango p2p team disband <id>      Disband an active team
@@ -282,24 +269,7 @@ lango bg list                    List background tasks
 lango bg status <id>             Show background task status
 lango bg cancel <id>             Cancel a running background task
 lango bg result <id>             Show completed task result
-
-lango run list                   List recent RunLedger runs from persistent snapshots
-lango run status                 Show RunLedger configuration and status
-lango run journal <run-id>       View persistent run journal events
-
-lango provenance status          Show provenance configuration and state
-lango provenance checkpoint list List checkpoints (--run <id>, --session <key>)
-lango provenance checkpoint create <label>  Create a manual checkpoint (--run <id>)
-lango provenance checkpoint show <id>       Show checkpoint details
-lango provenance session tree <session-key>         Show persisted session lineage (--depth <n>)
-lango provenance session list [--limit] [--status]  List persisted session nodes
-lango provenance attribution show <session-key>     Show raw attribution rows + token rollup
-lango provenance attribution report <session-key>   Show aggregated attribution report
-lango provenance bundle export <session-key>        Export signed provenance bundle (--redaction, --out)
-lango provenance bundle import <file>               Verify and import provenance bundle
 ```
-
-Provenance configuration (`provenance.*`) can be edited from `lango settings` under the Automation section. Agent-level `session_isolation` remains an `AGENT.md` field rather than a global settings toggle.
 
 ### Diagnostics
 
@@ -315,9 +285,6 @@ lango doctor --fix
 # JSON output for scripting
 lango doctor --json
 ```
-
-In multi-agent mode, `lango doctor` also reports recent failed turn traces (`loop_detected`, `empty_after_tool_use`, `timeout`) and whether isolated specialist turns leaked into persisted parent history.
-The JSON form additionally exposes structured trace metadata (`traceFailures`, `isolationLeakCount`) for operator tooling.
 
 ## Architecture
 
@@ -360,8 +327,6 @@ lango/
 │   │   ├── contract/       #   lango contract read/call/abi
 │   │   ├── smartaccount/   #   lango account info/deploy/session/module/policy/paymaster
 │   │   ├── metrics/        #   lango metrics [sessions|tools|agents|history]
-│   │   ├── run/            #   lango run list/status/journal
-│   │   ├── provenance/     #   lango provenance status/checkpoint/session/attribution
 │   │   └── tui/            #   TUI components and views
 │   ├── config/             # Config loading, env var substitution, validation
 │   ├── configstore/        # Encrypted config profile storage (Ent-backed)
@@ -393,7 +358,6 @@ lango/
 │   │   ├── anthropic/      #   Claude models
 │   │   ├── gemini/         #   Google Gemini models
 │   │   └── openai/         #   OpenAI-compatible (GPT, Ollama, etc.)
-│   ├── runledger/          # RunLedger (Task OS): durable execution, PEV engine, typed validators, workspace isolation
 │   ├── sandbox/            # Tool execution isolation (subprocess/container)
 │   ├── security/           # Crypto providers, key registry, secrets store, companion discovery, KMS providers
 │   ├── session/            # Ent-based SQLite session store
@@ -479,7 +443,7 @@ All settings are managed via `lango onboard` (guided wizard), `lango settings` (
 | `agent.promptsDir`                                     | string   | -                           | Directory of `.md` files to override default prompt sections (takes precedence over `systemPromptPath`)           |
 | `agent.requestTimeout`                                 | duration | `5m`                        | Max time for a single agent request (prevents indefinite hangs)                                                   |
 | `agent.toolTimeout`                                    | duration | `2m`                        | Max time for a single tool call execution                                                                         |
-| `agent.maxTurns`                                       | int      | `50`                        | Max tool-calling iterations per agent run (effective implicit default is `75` in multi-agent mode when unset)    |
+| `agent.maxTurns`                                       | int      | `25`                        | Max tool-calling iterations per agent run                                                                         |
 | `agent.errorCorrectionEnabled`                         | bool     | `true`                      | Enable learning-based error correction (requires knowledge system)                                                |
 | `agent.maxDelegationRounds`                            | int      | `10`                        | Max orchestrator→sub-agent delegation rounds per turn (multi-agent only)                                          |
 | `agent.agentsDir`                                      | string   |                             | Directory containing user-defined AGENT.md files                                                                  |
@@ -528,14 +492,6 @@ All settings are managed via `lango onboard` (guided wizard), `lango settings` (
 | `tools.browser.enabled`                                | bool     | `false`                     | Enable browser automation tools (requires Chromium)                                                               |
 | `tools.browser.headless`                               | bool     | `true`                      | Run browser in headless mode                                                                                      |
 | `tools.browser.sessionTimeout`                         | duration | `5m`                        | Browser session timeout                                                                                           |
-| **Context Budget** (advanced)                          |          |                             |                                                                                                                   |
-| `context.modelWindow`                                  | int      | `0`                         | Override model context window (tokens). 0 = auto-detect from model registry                                       |
-| `context.responseReserve`                              | int      | `0`                         | Override response token reserve. 0 = use `agent.maxTokens`. Clamped to [1024, 25% of window]                      |
-| `context.allocation.knowledge`                         | float64  | `0.30`                      | Fraction of available budget for knowledge section                                                                |
-| `context.allocation.rag`                               | float64  | `0.25`                      | Fraction of available budget for RAG section                                                                      |
-| `context.allocation.memory`                            | float64  | `0.25`                      | Fraction of available budget for memory section                                                                   |
-| `context.allocation.runSummary`                        | float64  | `0.10`                      | Fraction of available budget for run summary section                                                              |
-| `context.allocation.headroom`                          | float64  | `0.10`                      | Fraction reserved as headroom (safety margin)                                                                     |
 | **Knowledge**                                          |          |                             |                                                                                                                   |
 | `knowledge.enabled`                                    | bool     | `false`                     | Enable self-learning knowledge system                                                                             |
 | `knowledge.maxContextPerLayer`                         | int      | `5`                         | Max context items per layer in retrieval                                                                          |
@@ -575,15 +531,6 @@ All settings are managed via `lango onboard` (guided wizard), `lango settings` (
 | `graph.maxExpansionResults`                            | int      | `10`                        | Maximum graph-expanded results to return                                                                          |
 | **Multi-Agent**                                        |          |                             |                                                                                                                   |
 | `agent.multiAgent`                                     | bool     | `false`                     | Enable hierarchical multi-agent orchestration                                                                     |
-| `agent.orchestration.mode`                             | string   | `classic`                   | Orchestration mode: `classic` (default) or `structured` (adds policy/observation wrapper with reroute-aware recovery and trace hooks) |
-| `agent.orchestration.circuitBreaker.failureThreshold`  | int      | `3`                         | Consecutive failures before agent circuit opens                                                                   |
-| `agent.orchestration.circuitBreaker.resetTimeout`      | duration | `30s`                       | Time before circuit transitions to half-open                                                                      |
-| `agent.orchestration.budget.toolCallLimit`             | int      | `50`                        | Observational tool-call budget (mirrors inner executor)                                                           |
-| `agent.orchestration.budget.delegationLimit`           | int      | `15`                        | Delegation count before budget alert                                                                              |
-| `agent.orchestration.budget.alertThreshold`            | float    | `0.8`                       | Percentage at which budget alerts fire                                                                            |
-| `agent.orchestration.recovery.maxRetries`              | int      | `2`                         | Maximum retry attempts on failure                                                                                 |
-| `observability.traceStore.maxAge`                      | duration | `720h`                      | Trace retention period (30 days)                                                                                  |
-| `observability.traceStore.maxTraces`                   | int      | `10000`                     | Maximum traces to retain                                                                                          |
 | **A2A Protocol** (🧪 Experimental Features)            |          |                             |                                                                                                                   |
 | `a2a.enabled`                                          | bool     | `false`                     | Enable A2A protocol support                                                                                       |
 | `a2a.baseUrl`                                          | string   | -                           | External URL where this agent is reachable                                                                        |
@@ -745,16 +692,6 @@ All settings are managed via `lango onboard` (guided wizard), `lango settings` (
 | `mcp.servers.<name>.enabled`                           | bool     | `true`                      | Whether this server is active                                                                                     |
 | `mcp.servers.<name>.timeout`                           | duration | -                           | Override default timeout for this server                                                                          |
 | `mcp.servers.<name>.safetyLevel`                       | string   | `"dangerous"`               | Tool safety level: `safe`, `moderate`, `dangerous`                                                                |
-| **RunLedger (Task OS)** (🧪 Experimental Features)    |          |                             |                                                                                                                   |
-| `runLedger.enabled`                                    | bool     | `false`                     | Enable RunLedger durable execution engine                                                                         |
-| `runLedger.shadow`                                     | bool     | `false`                     | Shadow mode: journal records only, existing systems unaffected                                                    |
-| `runLedger.writeThrough`                               | bool     | `false`                     | All creates/updates go through ledger first, then mirror                                                          |
-| `runLedger.authoritativeRead`                          | bool     | `false`                     | State reads come from ledger snapshots only                                                                       |
-| `runLedger.workspaceIsolation`                         | bool     | `false`                     | Enable runtime workspace isolation for coding-step validation                                                      |
-| `runLedger.staleTtl`                                   | duration | `1h`                        | How long a paused run remains resumable                                                                           |
-| `runLedger.maxRunHistory`                              | int      | `100`                       | Maximum number of runs to keep (0 = unlimited)                                                                    |
-| `runLedger.validatorTimeout`                           | duration | `2m`                        | Timeout for individual validator execution                                                                        |
-| `runLedger.plannerMaxRetries`                          | int      | `2`                         | Reserved for planner retry wiring; currently surfaced in status only                                              |
 
 
 ## On-Chain Economy (Base Sepolia Testnet)
@@ -1003,7 +940,7 @@ When `agent.multiAgent` is enabled, Lango builds a hierarchical agent tree with 
 | Agent          | Role                                                                                                                | Tools                                                                                                                                                  |
 | -------------- | ------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | **operator**   | System operations: shell commands, file I/O, skill execution                                                        | exec_*, fs_*, skill_*                                                                                                                                  |
-| **navigator**  | Web browsing: bounded search, page navigation, structured extraction, interaction, screenshots                       | browser_*                                                                                                                                              |
+| **navigator**  | Web browsing: page navigation, interaction, screenshots                                                             | browser_*                                                                                                                                              |
 | **vault**      | Security: encryption, secret management, blockchain payments                                                        | crypto_*, secrets_*, payment_*                                                                                                                         |
 | **librarian**  | Knowledge: search, RAG, graph traversal, skill management, learning data management, proactive knowledge extraction | search_*, rag_*, graph_*, save_knowledge, save_learning, learning_*, create_skill, list_skills, librarian_pending_inquiries, librarian_dismiss_inquiry |
 | **automator**  | Automation: cron scheduling, background tasks, workflow pipelines                                                   | cron_*, bg_*, workflow_*                                                                                                                               |
@@ -1011,7 +948,7 @@ When `agent.multiAgent` is enabled, Lango builds a hierarchical agent tree with 
 | **chronicler** | Conversational memory: observations, reflections, recall                                                            | memory_*, observe_*, reflect_*                                                                                                                         |
 
 
-The orchestrator uses a keyword-based routing table and 5-step decision protocol (CLASSIFY → MATCH → SELECT → VERIFY → DELEGATE) to route tasks. Misrouted sub-agents transfer control back to the orchestrator via `transfer_to_agent`. Unmatched tools are tracked separately and reported to the orchestrator.
+The orchestrator uses a keyword-based routing table and 5-step decision protocol (CLASSIFY → MATCH → SELECT → VERIFY → DELEGATE) to route tasks. Each sub-agent can reject misrouted tasks with `[REJECT]`. Unmatched tools are tracked separately and reported to the orchestrator.
 
 ### Custom Agents (AGENT.md)
 
@@ -1023,13 +960,9 @@ In addition to prefix-based tool partitioning, the orchestrator supports dynamic
 
 ### Agent Memory
 
-When `agentMemory.enabled` is `true`, each sub-agent maintains its own persistent memory store backed by the database. This allows agents to accumulate domain-specific knowledge across sessions, improving task performance over time.
+When `agentMemory.enabled` is `true`, each sub-agent maintains its own persistent memory store for cross-session context retention. This allows agents to accumulate domain-specific knowledge across conversations, improving task performance over time.
 
 Enable via `lango onboard` > Multi-Agent menu or set `agent.multiAgent: true` in import JSON. Use `lango agent status` and `lango agent list` to inspect.
-
-Built-in specialist agents honor cross-turn child-session isolation at runtime. Their raw delegated turns stay out of the persisted parent conversation, while the active run still sees tool/results through an in-memory overlay and the parent retains only summary or compact failure-note outcomes afterward.
-
-In `structured` orchestration mode, retries are recovery-aware rather than blind. Failures before any specialist delegation may reuse the same input, while failures after a specialist handoff produce a reroute hint that tells the orchestrator to avoid the failed specialist path on the next attempt.
 
 ## A2A Protocol (🧪 Experimental Features)
 
@@ -1340,6 +1273,7 @@ Steps specify which sub-agent to use: `operator`, `navigator`, `vault`, `librari
 Lango includes a self-learning knowledge system that improves agent performance over time.
 
 - **Knowledge Store** - Persistent versioned storage using a 6-category taxonomy (rule, definition, preference, fact, pattern, correction) with temporal classification (evergreen vs current_state). Each save appends a new version only when content changes (duplicate saves are no-op). Use `get_knowledge_history` to browse previous versions. All reads and searches return the latest version by default
+- **Retrieval Coordinator** - Agentic retrieval with `FactSearchAgent` for FTS5+LIKE scored search across knowledge, learnings, and external references. Runs in shadow mode by default (parallel with existing path, logs comparison metrics). Enable via `retrieval.enabled: true` in config
 - **Learning Engine** - Observes tool execution results, extracts error patterns, boosts successful strategies. Agent tools (`learning_stats`, `learning_cleanup`) let the agent brief users on learning data and clean up entries by age, confidence, or category
 - **Skill System** - File-based skills stored as `~/.lango/skills/<name>/SKILL.md` with YAML frontmatter. Supports four skill types: script (shell), template (Go template), composite (multi-step), and instruction (reference documents). Previously shipped ~30 built-in skills, but these were removed because Lango's passphrase-based security model makes it impractical for the agent to invoke CLI commands as skills. The skill infrastructure remains fully functional for user-defined skills. Import skills from GitHub repos or any URL via the `import_skill` tool — automatically uses `git clone` when available (fetches full directory with resource files) and falls back to the GitHub HTTP API when git is not installed. Each skill directory can include resource subdirectories (`scripts/`, `references/`, `assets/`). YAML frontmatter supports `allowed-tools` for pre-approved tool lists. Dangerous script patterns (fork bombs, `rm -rf /`, `curl|sh`) are blocked at creation and execution time.
 - **Context Retriever** - 8-layer context architecture that assembles relevant knowledge into prompts:

@@ -139,37 +139,6 @@ func DefaultConfig() *Config {
 			DefaultTimeout:     10 * time.Minute,
 			StateDir:           "~/.lango/workflows/",
 		},
-		RunLedger: RunLedgerConfig{
-			Enabled:            false,
-			Shadow:             false,
-			WriteThrough:       false,
-			AuthoritativeRead:  false,
-			WorkspaceIsolation: false,
-			StaleTTL:           time.Hour,
-			MaxRunHistory:      100,
-			ValidatorTimeout:   2 * time.Minute,
-			PlannerMaxRetries:  2,
-		},
-		Provenance: ProvenanceConfig{
-			Enabled: false,
-			Checkpoints: CheckpointConfig{
-				AutoOnStepComplete: true,
-				AutoOnPolicy:       true,
-				MaxPerSession:      100,
-				RetentionDays:      30,
-			},
-		},
-		Context: ContextConfig{
-			ModelWindow:     0, // auto-detect from model registry
-			ResponseReserve: 0, // use agent.maxTokens
-			Allocation: ContextAllocationConfig{
-				Knowledge:  0.30,
-				RAG:        0.25,
-				Memory:     0.25,
-				RunSummary: 0.10,
-				Headroom:   0.10,
-			},
-		},
 		ObservationalMemory: ObservationalMemoryConfig{
 			Enabled:                          false,
 			MessageTokenThreshold:            1000,
@@ -187,6 +156,10 @@ func DefaultConfig() *Config {
 			MaxPendingInquiries:  2,
 			AutoSaveConfidence:   types.ConfidenceHigh,
 		},
+		Retrieval: RetrievalConfig{
+			Enabled: false,
+			Shadow:  true,
+		},
 		MCP: MCPConfig{
 			Enabled:              false,
 			DefaultTimeout:       30 * time.Second,
@@ -194,16 +167,6 @@ func DefaultConfig() *Config {
 			HealthCheckInterval:  30 * time.Second,
 			AutoReconnect:        true,
 			MaxReconnectAttempts: 5,
-		},
-		Sandbox: SandboxConfig{
-			Enabled:        false,
-			FailClosed:     false,
-			NetworkMode:    "deny",
-			TimeoutPerTool: 30 * time.Second,
-			AllowedWritePaths: []string{"/tmp"},
-			OS: OSSandboxConfig{
-				SeccompProfile: "moderate",
-			},
 		},
 		P2P: P2PConfig{
 			Enabled: false,
@@ -303,28 +266,8 @@ func setDefaultsFromStruct(v *viper.Viper, prefix string, val reflect.Value) {
 	}
 }
 
-// LoadResult is the return type of Load(), containing the parsed Config and
-// a map of config keys that the user explicitly set in their config file.
-type LoadResult struct {
-	Config       *Config
-	ExplicitKeys map[string]bool
-}
-
-// contextRelatedKeys are the config keys tracked for explicit-set detection.
-// Used by ApplyContextProfile to avoid overwriting user-chosen values.
-var contextRelatedKeys = []string{
-	"knowledge.enabled",
-	"observationalMemory.enabled",
-	"embedding.provider",
-	"embedding.rag.enabled",
-	"graph.enabled",
-	"librarian.enabled",
-}
-
-// Load reads configuration from file and environment.
-// Returns a LoadResult containing both the Config and which context-related
-// keys the user explicitly set (for profile override protection).
-func Load(configPath string) (*LoadResult, error) {
+// Load reads configuration from file and environment
+func Load(configPath string) (*Config, error) {
 	v := viper.New()
 
 	// Set defaults from DefaultConfig — single source of truth.
@@ -351,48 +294,18 @@ func Load(configPath string) (*LoadResult, error) {
 		// Config file not found, use defaults
 	}
 
-	// Collect explicit keys using a raw viper (no defaults) on the same file.
-	explicitKeys := collectExplicitKeys(v.ConfigFileUsed(), contextRelatedKeys)
-
 	// Unmarshal into struct
 	cfg := &Config{}
 	if err := v.Unmarshal(cfg); err != nil {
 		return nil, fmt.Errorf("unmarshal config: %w", err)
 	}
 
-	// Apply context profile before validation (uses explicitKeys for override protection).
-	ApplyContextProfile(cfg, explicitKeys)
-
 	// Post-load: migrate, substitute env vars, normalize paths, validate.
 	if err := PostLoad(cfg); err != nil {
 		return nil, err
 	}
 
-	return &LoadResult{Config: cfg, ExplicitKeys: explicitKeys}, nil
-}
-
-// collectExplicitKeys reads the raw config file with a clean viper instance
-// (no defaults) to detect which keys the user explicitly set. This avoids the
-// viper.IsSet() problem where SetDefault() marks all defaulted keys as "set."
-func collectExplicitKeys(configFile string, keys []string) map[string]bool {
-	if configFile == "" {
-		return nil
-	}
-	raw := viper.New()
-	raw.SetConfigFile(configFile)
-	if err := raw.ReadInConfig(); err != nil {
-		return nil
-	}
-	m := make(map[string]bool, len(keys))
-	for _, k := range keys {
-		if raw.IsSet(k) {
-			m[k] = true
-		}
-	}
-	if len(m) == 0 {
-		return nil
-	}
-	return m
+	return cfg, nil
 }
 
 // PostLoad applies post-load processing: legacy migration, env substitution,
@@ -463,11 +376,6 @@ func ExpandEnvVars(s string) string {
 // Validate checks if the configuration is valid
 func Validate(cfg *Config) error {
 	var errs []string
-
-	// Validate context profile
-	if cfg.ContextProfile != "" && !ValidContextProfiles[cfg.ContextProfile] {
-		errs = append(errs, fmt.Sprintf("invalid contextProfile: %q (must be off, lite, balanced, or full)", cfg.ContextProfile))
-	}
 
 	// Validate server config
 	if cfg.Server.Port < 1 || cfg.Server.Port > 65535 {

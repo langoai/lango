@@ -354,6 +354,160 @@ func knowledgeKeywordPredicates(query string) []predicate.Knowledge {
 	return preds
 }
 
+// SearchKnowledgeScored searches knowledge entries and returns results with relevance scores.
+// FTS5 path: Score = -rank (BM25 rank is negative, negate for higher=better). LIKE path: Score = RelevanceScore.
+func (s *Store) SearchKnowledgeScored(ctx context.Context, query string, category string, limit int) ([]ScoredKnowledgeEntry, error) {
+	if limit <= 0 {
+		limit = 10
+	}
+
+	// FTS5 path: search index first, preserve BM25 rank.
+	if s.fts5Index != nil && query != "" {
+		results, err := s.fts5Index.Search(ctx, query, limit)
+		if err != nil {
+			s.logger.Warnw("FTS5 scored search error, falling back to LIKE", "error", err)
+		} else if len(results) > 0 {
+			return s.resolveKnowledgeScoredByKeys(ctx, results, category)
+		} else {
+			return nil, nil
+		}
+	}
+
+	return s.searchKnowledgeScoredLIKE(ctx, query, category, limit)
+}
+
+func (s *Store) resolveKnowledgeScoredByKeys(ctx context.Context, ftsResults []search.SearchResult, category string) ([]ScoredKnowledgeEntry, error) {
+	keys := make([]string, 0, len(ftsResults))
+	for _, r := range ftsResults {
+		keys = append(keys, r.RowID)
+	}
+
+	preds := []predicate.Knowledge{entknowledge.KeyIn(keys...), entknowledge.IsLatest(true)}
+	if category != "" {
+		preds = append(preds, entknowledge.CategoryEQ(entknowledge.Category(category)))
+	}
+
+	entries, err := s.client.Knowledge.Query().Where(preds...).All(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("resolve scored knowledge: %w", err)
+	}
+
+	byKey := make(map[string]*ent.Knowledge, len(entries))
+	for _, k := range entries {
+		byKey[k.Key] = k
+	}
+
+	// Build ranked map for FTS5 scores.
+	rankByKey := make(map[string]float64, len(ftsResults))
+	for _, r := range ftsResults {
+		rankByKey[r.RowID] = -r.Rank // negate: higher = better
+	}
+
+	result := make([]ScoredKnowledgeEntry, 0, len(ftsResults))
+	for _, r := range ftsResults {
+		k, ok := byKey[r.RowID]
+		if !ok {
+			continue
+		}
+		result = append(result, ScoredKnowledgeEntry{
+			Entry: KnowledgeEntry{
+				Key:       k.Key,
+				Category:  k.Category,
+				Content:   k.Content,
+				Tags:      k.Tags,
+				Source:    k.Source,
+				Version:   k.Version,
+				CreatedAt: k.CreatedAt,
+			},
+			Score:        -r.Rank,
+			SearchSource: "fts5",
+		})
+	}
+	return result, nil
+}
+
+func (s *Store) searchKnowledgeScoredLIKE(ctx context.Context, query string, category string, limit int) ([]ScoredKnowledgeEntry, error) {
+	predicates := []predicate.Knowledge{entknowledge.IsLatest(true)}
+	if query != "" {
+		if kwPreds := knowledgeKeywordPredicates(query); len(kwPreds) > 0 {
+			predicates = append(predicates, entknowledge.Or(kwPreds...))
+		}
+	}
+	if category != "" {
+		predicates = append(predicates, entknowledge.CategoryEQ(entknowledge.Category(category)))
+	}
+
+	entries, err := s.client.Knowledge.Query().
+		Where(predicates...).
+		Order(entknowledge.ByRelevanceScore(sql.OrderDesc())).
+		Limit(limit).
+		All(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("search knowledge scored: %w", err)
+	}
+
+	result := make([]ScoredKnowledgeEntry, 0, len(entries))
+	for _, k := range entries {
+		result = append(result, ScoredKnowledgeEntry{
+			Entry: KnowledgeEntry{
+				Key:       k.Key,
+				Category:  k.Category,
+				Content:   k.Content,
+				Tags:      k.Tags,
+				Source:    k.Source,
+				Version:   k.Version,
+				CreatedAt: k.CreatedAt,
+			},
+			Score:        k.RelevanceScore,
+			SearchSource: "like",
+		})
+	}
+	return result, nil
+}
+
+// SearchLearningsScored searches learning entries and returns results with relevance scores.
+func (s *Store) SearchLearningsScored(ctx context.Context, errorPattern string, category string, limit int) ([]ScoredLearningEntry, error) {
+	if limit <= 0 {
+		limit = 10
+	}
+
+	var predicates []predicate.Learning
+	if errorPattern != "" {
+		if kwPreds := learningKeywordPredicates(errorPattern); len(kwPreds) > 0 {
+			predicates = append(predicates, entlearning.Or(kwPreds...))
+		}
+	}
+	if category != "" {
+		predicates = append(predicates, entlearning.CategoryEQ(entlearning.Category(category)))
+	}
+
+	entries, err := s.client.Learning.Query().
+		Where(predicates...).
+		Order(entlearning.ByConfidence(sql.OrderDesc())).
+		Limit(limit).
+		All(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("search learnings scored: %w", err)
+	}
+
+	result := make([]ScoredLearningEntry, 0, len(entries))
+	for _, l := range entries {
+		result = append(result, ScoredLearningEntry{
+			Entry: LearningEntry{
+				Trigger:      l.Trigger,
+				ErrorPattern: l.ErrorPattern,
+				Diagnosis:    l.Diagnosis,
+				Fix:          l.Fix,
+				Category:     l.Category,
+				Tags:         l.Tags,
+			},
+			Score:        l.Confidence,
+			SearchSource: "like",
+		})
+	}
+	return result, nil
+}
+
 // IncrementKnowledgeUseCount increments the use count for the latest version of a knowledge entry.
 func (s *Store) IncrementKnowledgeUseCount(ctx context.Context, key string) error {
 	n, err := s.client.Knowledge.Update().

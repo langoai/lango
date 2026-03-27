@@ -403,6 +403,11 @@ func initAgent(ctx context.Context, deps *agentDeps) (*adk.Agent, error) {
 			}
 		}
 
+		// Wire in agentic retrieval coordinator if enabled.
+		if coordinator := initRetrievalCoordinator(cfg, kc.store); coordinator != nil {
+			ctxAdapter.WithCoordinator(coordinator)
+		}
+
 		llm = ctxAdapter
 	} else if mc != nil {
 		// OM without knowledge system — create minimal context-aware adapter
