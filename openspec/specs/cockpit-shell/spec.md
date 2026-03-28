@@ -11,21 +11,6 @@ The cockpit `Model` SHALL compose a sidebar panel and a child panel using `lipgl
 - **WHEN** cockpit model renders with `sidebarVisible=false`
 - **THEN** the output SHALL be `child.View()` only, with child receiving full terminal width
 
-### Requirement: Consume-or-forward message delegation
-The cockpit `Update()` SHALL consume only messages it handles and forward all others to the child. Consumed messages: `tea.WindowSizeMsg` (converted to reduced-width msg for child), `tea.KeyMsg` matching `Ctrl+B`. All other messages — including `ChunkMsg`, `DoneMsg`, `ErrorMsg`, `WarningMsg`, `ApprovalRequestMsg`, `SystemMsg`, remaining `KeyMsg`, `MouseMsg` — SHALL be forwarded to `child.Update(msg)`.
-
-#### Scenario: ChunkMsg forwarded to child
-- **WHEN** cockpit receives a `ChunkMsg`
-- **THEN** cockpit SHALL call `child.Update(ChunkMsg)` and return the child's command
-
-#### Scenario: Ctrl+B consumed by cockpit
-- **WHEN** cockpit receives `Ctrl+B` KeyMsg
-- **THEN** cockpit SHALL toggle `sidebarVisible` and NOT forward the KeyMsg to child
-
-#### Scenario: Enter key forwarded to child
-- **WHEN** cockpit receives `Enter` KeyMsg
-- **THEN** cockpit SHALL forward it to `child.Update(msg)` without consuming it
-
 ### Requirement: Sidebar toggle triggers synthetic resize
 When `Ctrl+B` toggles `sidebarVisible`, cockpit SHALL immediately send a synthetic `tea.WindowSizeMsg` to the child with the new effective width (`terminalWidth - sidebarWidth` or `terminalWidth`).
 
@@ -57,3 +42,29 @@ Cockpit `Deps` SHALL contain: `TurnRunner *turnrunner.Runner`, `Config *config.C
 #### Scenario: Deps fields match App struct
 - **WHEN** cockpit.New(deps) is called with fields from App struct
 - **THEN** all fields SHALL be directly assignable without type conversion
+
+## MODIFIED Requirements
+
+### Requirement: Consume-or-forward message delegation
+The cockpit `Update()` SHALL route messages based on `sidebarFocused` and `activePage`. When sidebar is focused, key events SHALL go to sidebar. When content is focused and activePage is PageChat, keys SHALL go to child via existing consume-or-forward. For non-chat pages, keys SHALL go to `pages[activePage].Update()`.
+
+Cockpit SHALL additionally consume: `Ctrl+1` through `Ctrl+4` (page switch), `Tab` (focus toggle), `PageSelectedMsg` (sidebar selection).
+
+#### Scenario: Ctrl+2 switches to settings
+- **WHEN** cockpit receives Ctrl+2
+- **THEN** activePage SHALL become PageSettings, sidebar active item SHALL update, and SettingsPage.Activate() SHALL be called
+
+#### Scenario: Tab toggles focus to sidebar
+- **WHEN** cockpit receives Tab with sidebarFocused=false
+- **THEN** sidebarFocused SHALL become true and sidebar.SetFocused(true) SHALL be called
+
+#### Scenario: PageSelectedMsg from sidebar
+- **WHEN** cockpit receives PageSelectedMsg{ID: "tools"}
+- **THEN** activePage SHALL switch to PageTools and sidebarFocused SHALL become false
+
+### Requirement: View dispatches to active page
+View() SHALL dispatch to the active page: `child.View()` for PageChat, `pages[activePage].View()` for others. Layout composition (sidebar + main) remains unchanged.
+
+#### Scenario: StatusPage active renders status view
+- **WHEN** activePage is PageStatus
+- **THEN** View() SHALL render sidebar + StatusPage.View()

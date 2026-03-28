@@ -28,6 +28,7 @@ import (
 	"github.com/langoai/lango/internal/cli/chat"
 	"github.com/langoai/lango/internal/cli/cliboot"
 	"github.com/langoai/lango/internal/cli/cockpit"
+	"github.com/langoai/lango/internal/cli/cockpit/pages"
 	cliconfigcmd "github.com/langoai/lango/internal/cli/configcmd"
 	clicontract "github.com/langoai/lango/internal/cli/contract"
 	clicron "github.com/langoai/lango/internal/cli/cron"
@@ -54,6 +55,7 @@ import (
 	"github.com/langoai/lango/internal/config"
 	"github.com/langoai/lango/internal/logging"
 	"github.com/langoai/lango/internal/sandbox"
+	"github.com/langoai/lango/internal/types"
 	"go.uber.org/zap"
 )
 
@@ -572,10 +574,33 @@ func runCockpit() error {
 	sessionKey := fmt.Sprintf("cockpit-%d", time.Now().UnixMilli())
 
 	model := cockpit.New(cockpit.Deps{
-		TurnRunner: application.TurnRunner,
-		Config:     cfg,
-		SessionKey: sessionKey,
+		TurnRunner:       application.TurnRunner,
+		Config:           cfg,
+		SessionKey:       sessionKey,
+		ToolCatalog:      application.ToolCatalog,
+		MetricsCollector: application.MetricsCollector,
+		FeatureStatuses:  application.FeatureStatuses,
+		ConfigStore:      boot.ConfigStore,
+		ProfileName:      boot.ProfileName,
 	})
+
+	// Register pages.
+	if application.ToolCatalog != nil {
+		model.RegisterPage(cockpit.PageTools,
+			pages.NewToolsPage(application.ToolCatalog))
+	}
+	if application.MetricsCollector != nil || application.FeatureStatuses != nil {
+		var statusProvider func() []types.FeatureStatus
+		if application.FeatureStatuses != nil {
+			statusProvider = application.FeatureStatuses.All
+		}
+		model.RegisterPage(cockpit.PageStatus,
+			pages.NewStatusPage(statusProvider, application.MetricsCollector, cfg))
+	}
+	if boot.ConfigStore != nil {
+		model.RegisterPage(cockpit.PageSettings,
+			pages.NewSettingsPage(cfg, boot.ConfigStore, boot.ProfileName))
+	}
 
 	p := tea.NewProgram(model, tea.WithAltScreen(), tea.WithMouseCellMotion())
 	model.SetProgram(p)

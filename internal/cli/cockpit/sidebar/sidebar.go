@@ -9,17 +9,25 @@ import (
 	"github.com/langoai/lango/internal/cli/cockpit/theme"
 )
 
+// PageSelectedMsg is sent when the user selects a sidebar item.
+type PageSelectedMsg struct {
+	ID string
+}
+
 // MenuItem represents a single navigation entry in the sidebar.
 type MenuItem struct {
-	ID    string
-	Icon  string
-	Label string
+	ID       string
+	Icon     string
+	Label    string
+	Disabled bool
 }
 
 // Model is the Bubble Tea model for the cockpit sidebar.
 type Model struct {
 	items   []MenuItem
 	active  string
+	cursor  int
+	focused bool
 	visible bool
 	height  int
 }
@@ -33,7 +41,7 @@ func New() Model {
 			{ID: "settings", Icon: theme.IconSettings, Label: "Settings"},
 			{ID: "tools", Icon: theme.IconTools, Label: "Tools"},
 			{ID: "status", Icon: theme.IconStatus, Label: "Status"},
-			{ID: "sessions", Icon: theme.IconSessions, Label: "Sessions"},
+			{ID: "sessions", Icon: theme.IconSessions, Label: "Sessions", Disabled: true},
 		},
 		active:  "chat",
 		visible: true,
@@ -45,15 +53,48 @@ func (m Model) Init() tea.Cmd {
 	return nil
 }
 
-// Update satisfies tea.Model. The sidebar is non-interactive in Change-1,
-// so it returns itself unchanged for every message.
-func (m Model) Update(_ tea.Msg) (tea.Model, tea.Cmd) {
+// Update satisfies tea.Model. Interactive when focused, pass-through when not.
+func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+	if !m.focused {
+		return m, nil
+	}
+	if msg, ok := msg.(tea.KeyMsg); ok {
+		switch msg.String() {
+		case "up", "k":
+			m.moveCursorUp()
+		case "down", "j":
+			m.moveCursorDown()
+		case "enter":
+			if m.cursor >= 0 && m.cursor < len(m.items) && !m.items[m.cursor].Disabled {
+				id := m.items[m.cursor].ID
+				return m, func() tea.Msg { return PageSelectedMsg{ID: id} }
+			}
+		}
+	}
 	return m, nil
+}
+
+func (m *Model) moveCursorUp() {
+	for i := m.cursor - 1; i >= 0; i-- {
+		if !m.items[i].Disabled {
+			m.cursor = i
+			return
+		}
+	}
+}
+
+func (m *Model) moveCursorDown() {
+	for i := m.cursor + 1; i < len(m.items); i++ {
+		if !m.items[i].Disabled {
+			m.cursor = i
+			return
+		}
+	}
 }
 
 // Sidebar styles — created once, reused across View() calls.
 var (
-	contentWidth = theme.SidebarFullWidth - 1 // reserve 1 col for right border
+	contentWidth = theme.SidebarFullWidth - 1
 
 	activeIconStyle = lipgloss.NewStyle().
 			Foreground(theme.Primary)
@@ -65,14 +106,20 @@ var (
 	inactiveStyle = lipgloss.NewStyle().
 			Foreground(theme.Muted)
 
+	disabledStyle = lipgloss.NewStyle().
+			Foreground(lipgloss.Color("#4B5563"))
+
 	accentBarStyle = lipgloss.NewStyle().
 			Foreground(theme.Accent)
+
+	cursorStyle = lipgloss.NewStyle().
+			Foreground(theme.Primary)
 
 	rowStyle = lipgloss.NewStyle().
 			Width(contentWidth).
 			Background(theme.Surface0)
 
-	borderStyle = lipgloss.NewStyle().
+	borderStyleSB = lipgloss.NewStyle().
 			BorderRight(true).
 			BorderStyle(lipgloss.NormalBorder()).
 			BorderRightForeground(theme.BorderDefault).
@@ -92,17 +139,27 @@ func (m Model) View() string {
 	}
 	rows := make([]string, 0, capacity)
 
-	for _, it := range m.items {
+	for i, it := range m.items {
 		var line string
-		if it.ID == m.active {
+		switch {
+		case it.Disabled:
+			line = " " + disabledStyle.Render(it.Icon+" "+it.Label)
+		case it.ID == m.active:
 			bar := accentBarStyle.Render("┃")
 			icon := activeIconStyle.Render(it.Icon)
 			label := activeLabelStyle.Render(it.Label)
-			line = bar + icon + " " + label
-		} else {
-			line = " " + inactiveStyle.Render(it.Icon+" "+it.Label)
+			if m.focused && i == m.cursor {
+				line = cursorStyle.Render("▸") + icon + " " + label
+			} else {
+				line = bar + icon + " " + label
+			}
+		default:
+			if m.focused && i == m.cursor {
+				line = cursorStyle.Render("▸") + inactiveStyle.Render(it.Icon+" "+it.Label)
+			} else {
+				line = " " + inactiveStyle.Render(it.Icon+" "+it.Label)
+			}
 		}
-		// Pad to contentWidth so the background fills evenly.
 		rows = append(rows, rowStyle.Render(line))
 	}
 
@@ -114,7 +171,7 @@ func (m Model) View() string {
 		}
 	}
 
-	return borderStyle.Render(strings.Join(rows, "\n"))
+	return borderStyleSB.Render(strings.Join(rows, "\n"))
 }
 
 // SetHeight stores the available height so View can fill to that size.
@@ -130,4 +187,9 @@ func (m *Model) SetVisible(v bool) {
 // SetActive changes the highlighted menu item by ID.
 func (m *Model) SetActive(id string) {
 	m.active = id
+}
+
+// SetFocused controls whether the sidebar accepts key input.
+func (m *Model) SetFocused(f bool) {
+	m.focused = f
 }
