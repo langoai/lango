@@ -27,6 +27,7 @@ import (
 	clibg "github.com/langoai/lango/internal/cli/bg"
 	"github.com/langoai/lango/internal/cli/chat"
 	"github.com/langoai/lango/internal/cli/cliboot"
+	"github.com/langoai/lango/internal/cli/cockpit"
 	cliconfigcmd "github.com/langoai/lango/internal/cli/configcmd"
 	clicontract "github.com/langoai/lango/internal/cli/contract"
 	clicron "github.com/langoai/lango/internal/cli/cron"
@@ -96,6 +97,7 @@ func main() {
 
 	// --- Getting Started ---
 	rootCmd.AddCommand(serveCmd())
+	rootCmd.AddCommand(cockpitCmd())
 
 	onboardCmd := onboard.NewCommand()
 	onboardCmd.GroupID = "start"
@@ -506,4 +508,87 @@ func mcpServerCount(cfg *config.Config) string {
 		return ""
 	}
 	return fmt.Sprintf("%d server(s)", n)
+}
+
+func cockpitCmd() *cobra.Command {
+	return &cobra.Command{
+		Use:     "cockpit",
+		Short:   "Launch experimental multi-panel TUI",
+		GroupID: "start",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return runCockpit()
+		},
+	}
+}
+
+func runCockpit() error {
+	boot, err := cliboot.BootResult()
+	if err != nil {
+		return fmt.Errorf("bootstrap: %w", err)
+	}
+	defer boot.DBClient.Close()
+
+	cfg := boot.Config
+	logPath := filepath.Join(cfg.DataRoot, "cockpit.log")
+	if err := logging.Init(logging.LogConfig{
+		Level:      cfg.Logging.Level,
+		Format:     cfg.Logging.Format,
+		OutputPath: logPath,
+	}); err != nil {
+		return fmt.Errorf("init logging: %w", err)
+	}
+	defer func() { _ = logging.Sync() }()
+
+	if logFile, err := os.OpenFile(logPath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644); err == nil {
+		defer logFile.Close()
+		log.SetOutput(logFile)
+	}
+
+	tui.SetProfile(boot.ProfileName)
+
+	fmt.Fprint(os.Stderr, tui.Banner())
+	fmt.Fprintf(os.Stderr, "\n  Logs: %s\n", logPath)
+	fmt.Fprintln(os.Stderr, "  Initializing cockpit...")
+
+	application, err := app.New(boot, app.WithLocalChat())
+	if err != nil {
+		return fmt.Errorf("create application: %w", err)
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	if err := application.Start(ctx); err != nil {
+		return fmt.Errorf("start application: %w", err)
+	}
+	defer func() {
+		shutdownCtx, shutdownCancel := context.WithTimeout(
+			context.Background(), 10*time.Second,
+		)
+		defer shutdownCancel()
+		_ = application.Stop(shutdownCtx)
+	}()
+
+	sessionKey := fmt.Sprintf("cockpit-%d", time.Now().UnixMilli())
+
+	model := cockpit.New(cockpit.Deps{
+		TurnRunner: application.TurnRunner,
+		Config:     cfg,
+		SessionKey: sessionKey,
+	})
+
+	p := tea.NewProgram(model, tea.WithAltScreen(), tea.WithMouseCellMotion())
+	model.SetProgram(p)
+
+	if composite, ok := application.ApprovalProvider.(*approval.CompositeProvider); ok {
+		composite.SetTTYFallback(chat.NewTUIApprovalProvider(func(msg interface{}) {
+			p.Send(msg)
+		}))
+	}
+
+	if _, err := p.Run(); err != nil {
+		return fmt.Errorf("TUI: %w", err)
+	}
+
+	return nil
 }
