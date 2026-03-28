@@ -94,8 +94,13 @@ func runSettings(profileName string) error {
 	}
 
 	cfg := editor.Config()
-	// TODO(step8): Track modified fields from editor as explicitKeys and merge.
-	if err := boot.ConfigStore.Save(ctx, profileName, cfg, nil); err != nil {
+	// Mark all context-related keys as explicitly set — the user has seen and
+	// accepted these values in the TUI, so auto-enable must not override them.
+	explicitKeys := make(map[string]bool, len(config.ContextRelatedKeys()))
+	for _, k := range config.ContextRelatedKeys() {
+		explicitKeys[k] = true
+	}
+	if err := boot.ConfigStore.Save(ctx, profileName, cfg, explicitKeys); err != nil {
 		return fmt.Errorf("save profile %q: %w", profileName, err)
 	}
 

@@ -19,6 +19,13 @@ var contextRelatedKeys = []string{
 	"embedding.provider",
 }
 
+// ContextRelatedKeys returns a copy of the config keys tracked for explicit override detection.
+func ContextRelatedKeys() []string {
+	out := make([]string, len(contextRelatedKeys))
+	copy(out, contextRelatedKeys)
+	return out
+}
+
 // AutoEnabledSet records which context subsystems were auto-enabled.
 type AutoEnabledSet struct {
 	Knowledge bool `json:"knowledge,omitempty"`

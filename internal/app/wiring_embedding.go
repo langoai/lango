@@ -98,7 +98,10 @@ func initEmbedding(cfg *config.Config, rawDB *sql.DB, kc *knowledgeComponents, m
 		ms = mc.store
 	}
 	resolver := embedding.NewStoreResolver(ks, ms)
-	ragService := embedding.NewRAGService(provider, vecStore, resolver, embLogger)
+	var ragService *embedding.RAGService
+	if emb.RAG.Enabled {
+		ragService = embedding.NewRAGService(provider, vecStore, resolver, embLogger)
+	}
 
 	// Subscribe to content.saved events to trigger async embedding.
 	if bus != nil {

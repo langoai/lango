@@ -419,8 +419,8 @@ func initRetrievalCoordinator(cfg *config.Config, kStore *knowledge.Store, ec *e
 		retrieval.NewTemporalSearchAgent(kStore),
 	}
 
-	// Register context search agent when embedding/RAG is available.
-	if ec != nil && ec.ragService != nil {
+	// Register context search agent when embedding/RAG is available and enabled.
+	if ec != nil && ec.ragService != nil && cfg.Embedding.RAG.Enabled {
 		ragOpts := embedding.RetrieveOptions{
 			Limit:      cfg.Embedding.RAG.MaxResults,
 			MaxDistance: cfg.Embedding.RAG.MaxDistance,

@@ -572,37 +572,66 @@ func (s *Store) IncrementKnowledgeUseCount(ctx context.Context, key string) erro
 }
 
 // BoostRelevanceScore increases the relevance_score for the latest version of a knowledge entry.
-// The score is capped at maxScore to prevent unbounded growth.
+// The score is capped at maxScore via two-step clamping to prevent exceeding the ceiling.
 func (s *Store) BoostRelevanceScore(ctx context.Context, key string, delta, maxScore float64) error {
+	// Step 1: Boost rows where score + delta won't exceed maxScore.
 	_, err := s.client.Knowledge.Update().
 		Where(
 			entknowledge.Key(key),
 			entknowledge.IsLatest(true),
-			entknowledge.RelevanceScoreLT(maxScore),
+			entknowledge.RelevanceScoreLTE(maxScore-delta),
 		).
 		AddRelevanceScore(delta).
 		Save(ctx)
 	if err != nil {
-		return fmt.Errorf("boost relevance score %q: %w", key, err)
+		return fmt.Errorf("boost relevance score %q (add): %w", key, err)
+	}
+
+	// Step 2: Cap rows that would exceed maxScore → set to maxScore.
+	_, err = s.client.Knowledge.Update().
+		Where(
+			entknowledge.Key(key),
+			entknowledge.IsLatest(true),
+			entknowledge.RelevanceScoreGT(maxScore-delta),
+			entknowledge.RelevanceScoreLT(maxScore),
+		).
+		SetRelevanceScore(maxScore).
+		Save(ctx)
+	if err != nil {
+		return fmt.Errorf("boost relevance score %q (cap): %w", key, err)
 	}
 	return nil
 }
 
 // DecayAllRelevanceScores subtracts delta from all latest-version knowledge entries.
-// Only entries with score > minScore + delta are affected (prevents undershoot below floor).
+// Two-step clamping ensures scores floor at minScore without leaving a gap.
 // Returns the number of entries updated.
 func (s *Store) DecayAllRelevanceScores(ctx context.Context, delta, minScore float64) (int, error) {
-	n, err := s.client.Knowledge.Update().
+	// Step 1: Decay rows where score - delta won't go below minScore.
+	n1, err := s.client.Knowledge.Update().
 		Where(
 			entknowledge.IsLatest(true),
-			entknowledge.RelevanceScoreGT(minScore+delta),
+			entknowledge.RelevanceScoreGTE(minScore+delta),
 		).
 		AddRelevanceScore(-delta).
 		Save(ctx)
 	if err != nil {
-		return 0, fmt.Errorf("decay relevance scores: %w", err)
+		return 0, fmt.Errorf("decay relevance scores (subtract): %w", err)
 	}
-	return n, nil
+
+	// Step 2: Floor rows that would undershoot → set to minScore.
+	n2, err := s.client.Knowledge.Update().
+		Where(
+			entknowledge.IsLatest(true),
+			entknowledge.RelevanceScoreGT(minScore),
+			entknowledge.RelevanceScoreLT(minScore+delta),
+		).
+		SetRelevanceScore(minScore).
+		Save(ctx)
+	if err != nil {
+		return n1, fmt.Errorf("decay relevance scores (floor): %w", err)
+	}
+	return n1 + n2, nil
 }
 
 // ResetAllRelevanceScores sets relevance_score to 1.0 for all latest-version knowledge entries.

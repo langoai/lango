@@ -139,6 +139,36 @@ func DefaultConfig() *Config {
 			DefaultTimeout:     10 * time.Minute,
 			StateDir:           "~/.lango/workflows/",
 		},
+		RunLedger: RunLedgerConfig{
+			Enabled:            false,
+			Shadow:             false,
+			WriteThrough:       false,
+			AuthoritativeRead:  false,
+			WorkspaceIsolation: false,
+			StaleTTL:           time.Hour,
+			MaxRunHistory:      100,
+			ValidatorTimeout:   2 * time.Minute,
+			PlannerMaxRetries:  2,
+		},
+		Provenance: ProvenanceConfig{
+			Enabled: false,
+			Checkpoints: CheckpointConfig{
+				AutoOnStepComplete: true,
+				AutoOnPolicy:       true,
+				MaxPerSession:      100,
+				RetentionDays:      30,
+			},
+		},
+		Sandbox: SandboxConfig{
+			Enabled:           false,
+			FailClosed:        false,
+			NetworkMode:       "deny",
+			TimeoutPerTool:    30 * time.Second,
+			AllowedWritePaths: []string{"/tmp"},
+			OS: OSSandboxConfig{
+				SeccompProfile: "moderate",
+			},
+		},
 		ObservationalMemory: ObservationalMemoryConfig{
 			Enabled:                          false,
 			MessageTokenThreshold:            1000,
