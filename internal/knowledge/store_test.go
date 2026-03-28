@@ -1063,3 +1063,162 @@ func TestSaveKnowledge_ContentDedup(t *testing.T) {
 		t.Errorf("want 3 versions, got %d", len(history))
 	}
 }
+
+func TestBoostRelevanceScore_Clamping(t *testing.T) {
+	store := newTestStore(t)
+	ctx := context.Background()
+
+	tests := []struct {
+		give      string
+		initial   float64
+		delta     float64
+		maxScore  float64
+		wantScore float64
+	}{
+		{
+			give:      "within range: 4.94 + 0.05 = 4.99",
+			initial:   4.94,
+			delta:     0.05,
+			maxScore:  5.0,
+			wantScore: 4.99,
+		},
+		{
+			give:      "exact boundary: 4.95 + 0.05 = 5.00",
+			initial:   4.95,
+			delta:     0.05,
+			maxScore:  5.0,
+			wantScore: 5.0,
+		},
+		{
+			give:      "overshoot capped: 4.96 + 0.05 -> 5.00",
+			initial:   4.96,
+			delta:     0.05,
+			maxScore:  5.0,
+			wantScore: 5.0,
+		},
+		{
+			give:      "already at max: 5.00 + 0.05 -> 5.00",
+			initial:   5.0,
+			delta:     0.05,
+			maxScore:  5.0,
+			wantScore: 5.0,
+		},
+		{
+			give:      "pre-existing over-cap normalized: 5.10 + 0.05 -> 5.00",
+			initial:   5.10,
+			delta:     0.05,
+			maxScore:  5.0,
+			wantScore: 5.0,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.give, func(t *testing.T) {
+			key := fmt.Sprintf("boost-%s", tt.give)
+			entry := KnowledgeEntry{
+				Key: key, Category: "fact", Content: "test",
+			}
+			if err := store.SaveKnowledge(ctx, "s1", entry); err != nil {
+				t.Fatalf("SaveKnowledge: %v", err)
+			}
+			// Set initial relevance score.
+			_, err := store.client.Knowledge.Update().
+				Where(entknowledge.Key(key), entknowledge.IsLatest(true)).
+				SetRelevanceScore(tt.initial).
+				Save(ctx)
+			if err != nil {
+				t.Fatalf("set initial score: %v", err)
+			}
+
+			if err := store.BoostRelevanceScore(ctx, key, tt.delta, tt.maxScore); err != nil {
+				t.Fatalf("BoostRelevanceScore: %v", err)
+			}
+
+			k, err := store.client.Knowledge.Query().
+				Where(entknowledge.Key(key), entknowledge.IsLatest(true)).
+				Only(ctx)
+			if err != nil {
+				t.Fatalf("query: %v", err)
+			}
+			if k.RelevanceScore != tt.wantScore {
+				t.Errorf("want score %.2f, got %.2f", tt.wantScore, k.RelevanceScore)
+			}
+		})
+	}
+}
+
+func TestDecayAllRelevanceScores_Clamping(t *testing.T) {
+	store := newTestStore(t)
+	ctx := context.Background()
+
+	tests := []struct {
+		give      string
+		initial   float64
+		delta     float64
+		minScore  float64
+		wantScore float64
+	}{
+		{
+			give:      "within range: 0.16 - 0.05 = 0.11",
+			initial:   0.16,
+			delta:     0.05,
+			minScore:  0.1,
+			wantScore: 0.11,
+		},
+		{
+			give:      "exact boundary: 0.15 - 0.05 = 0.10",
+			initial:   0.15,
+			delta:     0.05,
+			minScore:  0.1,
+			wantScore: 0.1,
+		},
+		{
+			give:      "undershoot floored: 0.14 - 0.05 -> 0.10",
+			initial:   0.14,
+			delta:     0.05,
+			minScore:  0.1,
+			wantScore: 0.1,
+		},
+		{
+			give:      "already at min: 0.10 - 0.05 -> 0.10",
+			initial:   0.1,
+			delta:     0.05,
+			minScore:  0.1,
+			wantScore: 0.1,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.give, func(t *testing.T) {
+			key := fmt.Sprintf("decay-%s", tt.give)
+			entry := KnowledgeEntry{
+				Key: key, Category: "fact", Content: "test",
+			}
+			if err := store.SaveKnowledge(ctx, "s1", entry); err != nil {
+				t.Fatalf("SaveKnowledge: %v", err)
+			}
+			_, err := store.client.Knowledge.Update().
+				Where(entknowledge.Key(key), entknowledge.IsLatest(true)).
+				SetRelevanceScore(tt.initial).
+				Save(ctx)
+			if err != nil {
+				t.Fatalf("set initial score: %v", err)
+			}
+
+			_, err = store.DecayAllRelevanceScores(ctx, tt.delta, tt.minScore)
+			if err != nil {
+				t.Fatalf("DecayAllRelevanceScores: %v", err)
+			}
+
+			k, err := store.client.Knowledge.Query().
+				Where(entknowledge.Key(key), entknowledge.IsLatest(true)).
+				Only(ctx)
+			if err != nil {
+				t.Fatalf("query: %v", err)
+			}
+			if k.RelevanceScore != tt.wantScore {
+				t.Errorf("want score %.2f, got %.2f", tt.wantScore, k.RelevanceScore)
+			}
+		})
+	}
+}

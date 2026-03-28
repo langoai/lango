@@ -572,10 +572,25 @@ func (s *Store) IncrementKnowledgeUseCount(ctx context.Context, key string) erro
 }
 
 // BoostRelevanceScore increases the relevance_score for the latest version of a knowledge entry.
-// The score is capped at maxScore via two-step clamping to prevent exceeding the ceiling.
+// Two-step clamping: cap first, then add. Order matters — cap runs on original scores
+// before add modifies them, preventing overlap where add results fall into cap range.
 func (s *Store) BoostRelevanceScore(ctx context.Context, key string, delta, maxScore float64) error {
-	// Step 1: Boost rows where score + delta won't exceed maxScore.
+	// Step 1: Cap rows where score + delta would exceed maxScore → set to maxScore.
+	// Also normalizes pre-existing over-cap values (score >= maxScore) from prior bugs.
 	_, err := s.client.Knowledge.Update().
+		Where(
+			entknowledge.Key(key),
+			entknowledge.IsLatest(true),
+			entknowledge.RelevanceScoreGT(maxScore-delta),
+		).
+		SetRelevanceScore(maxScore).
+		Save(ctx)
+	if err != nil {
+		return fmt.Errorf("boost relevance score %q (cap): %w", key, err)
+	}
+
+	// Step 2: Boost rows where score + delta won't exceed maxScore.
+	_, err = s.client.Knowledge.Update().
 		Where(
 			entknowledge.Key(key),
 			entknowledge.IsLatest(true),
@@ -586,41 +601,16 @@ func (s *Store) BoostRelevanceScore(ctx context.Context, key string, delta, maxS
 	if err != nil {
 		return fmt.Errorf("boost relevance score %q (add): %w", key, err)
 	}
-
-	// Step 2: Cap rows that would exceed maxScore → set to maxScore.
-	_, err = s.client.Knowledge.Update().
-		Where(
-			entknowledge.Key(key),
-			entknowledge.IsLatest(true),
-			entknowledge.RelevanceScoreGT(maxScore-delta),
-			entknowledge.RelevanceScoreLT(maxScore),
-		).
-		SetRelevanceScore(maxScore).
-		Save(ctx)
-	if err != nil {
-		return fmt.Errorf("boost relevance score %q (cap): %w", key, err)
-	}
 	return nil
 }
 
 // DecayAllRelevanceScores subtracts delta from all latest-version knowledge entries.
-// Two-step clamping ensures scores floor at minScore without leaving a gap.
+// Two-step clamping: floor first, then subtract. Order matters — floor runs on original
+// scores before subtract modifies them, preventing overlap where subtract results fall into floor range.
 // Returns the number of entries updated.
 func (s *Store) DecayAllRelevanceScores(ctx context.Context, delta, minScore float64) (int, error) {
-	// Step 1: Decay rows where score - delta won't go below minScore.
+	// Step 1: Floor rows where score - delta would go below minScore → set to minScore.
 	n1, err := s.client.Knowledge.Update().
-		Where(
-			entknowledge.IsLatest(true),
-			entknowledge.RelevanceScoreGTE(minScore+delta),
-		).
-		AddRelevanceScore(-delta).
-		Save(ctx)
-	if err != nil {
-		return 0, fmt.Errorf("decay relevance scores (subtract): %w", err)
-	}
-
-	// Step 2: Floor rows that would undershoot → set to minScore.
-	n2, err := s.client.Knowledge.Update().
 		Where(
 			entknowledge.IsLatest(true),
 			entknowledge.RelevanceScoreGT(minScore),
@@ -629,7 +619,19 @@ func (s *Store) DecayAllRelevanceScores(ctx context.Context, delta, minScore flo
 		SetRelevanceScore(minScore).
 		Save(ctx)
 	if err != nil {
-		return n1, fmt.Errorf("decay relevance scores (floor): %w", err)
+		return 0, fmt.Errorf("decay relevance scores (floor): %w", err)
+	}
+
+	// Step 2: Decay rows where score - delta won't go below minScore.
+	n2, err := s.client.Knowledge.Update().
+		Where(
+			entknowledge.IsLatest(true),
+			entknowledge.RelevanceScoreGTE(minScore+delta),
+		).
+		AddRelevanceScore(-delta).
+		Save(ctx)
+	if err != nil {
+		return n1, fmt.Errorf("decay relevance scores (subtract): %w", err)
 	}
 	return n1 + n2, nil
 }

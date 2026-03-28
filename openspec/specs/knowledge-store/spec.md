@@ -146,11 +146,15 @@ The system SHALL provide `SearchLearningsScored(ctx, errorPattern, category, lim
 - **THEN** results SHALL include `Score = Confidence` and `SearchSource = "like"`
 
 ### Requirement: Knowledge relevance score mutations
-The system SHALL provide `BoostRelevanceScore(ctx, key, delta, maxScore)` that atomically increases relevance_score for the latest version, clamped at maxScore via two-step update (add where safe, cap remainder). It SHALL provide `DecayAllRelevanceScores(ctx, delta, minScore)` that subtracts delta from all latest-version entries, floored at minScore via two-step update (subtract where safe, floor remainder). It SHALL provide `ResetAllRelevanceScores(ctx)` that sets all latest-version scores to 1.0.
+The system SHALL provide `BoostRelevanceScore(ctx, key, delta, maxScore)` that increases relevance_score for the latest version, clamped at maxScore via two-step update (cap first, then add). The cap step SHALL also normalize pre-existing over-cap values where score > maxScore. It SHALL provide `DecayAllRelevanceScores(ctx, delta, minScore)` that subtracts delta from all latest-version entries, floored at minScore via two-step update (subtract where safe, floor remainder). It SHALL provide `ResetAllRelevanceScores(ctx)` that sets all latest-version scores to 1.0.
 
 #### Scenario: Boost with cap (two-step clamping)
 - **WHEN** BoostRelevanceScore is called and current score + delta would exceed maxScore
 - **THEN** score SHALL be set to maxScore (not exceed it)
+
+#### Scenario: Pre-existing over-cap normalization
+- **WHEN** BoostRelevanceScore is called and a row has score > maxScore (from prior bug)
+- **THEN** score SHALL be set to maxScore
 
 #### Scenario: Boost within range
 - **WHEN** BoostRelevanceScore is called and current score + delta <= maxScore
