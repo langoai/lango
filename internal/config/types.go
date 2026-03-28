@@ -1,10 +1,22 @@
 package config
 
 import (
+	"encoding/json"
 	"time"
 
 	"github.com/langoai/lango/internal/types"
 )
+
+// Clone returns a deep copy of the Config via JSON roundtrip.
+func (c *Config) Clone() *Config {
+	if c == nil {
+		return nil
+	}
+	data, _ := json.Marshal(c)
+	var clone Config
+	_ = json.Unmarshal(data, &clone)
+	return &clone
+}
 
 // Config is the root configuration structure for lango
 type Config struct {

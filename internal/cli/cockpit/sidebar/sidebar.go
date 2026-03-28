@@ -198,9 +198,16 @@ func (m *Model) SetVisible(v bool) {
 	m.visible = v
 }
 
-// SetActive changes the highlighted menu item by ID.
+// SetActive changes the highlighted menu item by ID and synchronizes the
+// keyboard cursor so that Enter selects the same item that is visually active.
 func (m *Model) SetActive(id string) {
 	m.active = id
+	for i, it := range m.items {
+		if it.ID == id {
+			m.cursor = i
+			break
+		}
+	}
 }
 
 // SetFocused controls whether the sidebar accepts key input.

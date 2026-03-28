@@ -2,7 +2,6 @@ package settings
 
 import (
 	"fmt"
-	"maps"
 	"strings"
 
 	tea "github.com/charmbracelet/bubbletea"
@@ -96,7 +95,7 @@ func NewEditorWithConfig(cfg *config.Config) *Editor {
 // TUI (e.g. cockpit). It skips the welcome step and uses the provided callback
 // for save instead of calling tea.Quit.
 func NewEditorForEmbedding(cfg *config.Config, onSave OnSaveFunc) *Editor {
-	e := NewEditorWithConfig(cfg)
+	e := NewEditorWithConfig(cfg.Clone()) // deep copy to avoid mutating live config
 	e.OnSave = onSave
 	e.step = StepMenu // skip StepWelcome
 	return e
@@ -481,8 +480,11 @@ func (e *Editor) handleMenuSelection(id string) tea.Cmd {
 	case "save":
 		if e.OnSave != nil {
 			cfg := e.Config()
-			dirtyKeys := maps.Clone(e.state.Dirty)
-			if err := e.OnSave(cfg, dirtyKeys); err != nil {
+			explicitKeys := make(map[string]bool, len(config.ContextRelatedKeys()))
+			for _, k := range config.ContextRelatedKeys() {
+				explicitKeys[k] = true
+			}
+			if err := e.OnSave(cfg, explicitKeys); err != nil {
 				e.err = err
 				return nil
 			}

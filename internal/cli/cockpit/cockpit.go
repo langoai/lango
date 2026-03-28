@@ -230,6 +230,17 @@ func (m *Model) toggleContext() (*Model, tea.Cmd) {
 	var startCmd tea.Cmd
 	if m.contextVisible {
 		startCmd = m.contextPanel.Start()
+		// Send correct width to context panel — it may still hold width=0
+		// from when it was hidden during the initial WindowSizeMsg.
+		cpw := m.contextPanelWidth()
+		up, c := m.contextPanel.Update(tea.WindowSizeMsg{
+			Width:  cpw,
+			Height: m.height,
+		})
+		m.contextPanel = up.(*ContextPanel)
+		if c != nil {
+			startCmd = tea.Batch(startCmd, c)
+		}
 	} else {
 		m.contextPanel.Stop()
 	}

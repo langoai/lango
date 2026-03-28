@@ -4,7 +4,30 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
+
+func TestConfigClone_DeepCopy(t *testing.T) {
+	orig := DefaultConfig()
+	orig.Agent.Provider = "openai"
+	orig.Agent.Model = "gpt-4"
+
+	clone := orig.Clone()
+	require.NotNil(t, clone)
+
+	// Values are equal.
+	assert.Equal(t, "openai", clone.Agent.Provider)
+	assert.Equal(t, "gpt-4", clone.Agent.Model)
+
+	// Mutation of clone does not affect original.
+	clone.Agent.Provider = "anthropic"
+	assert.Equal(t, "openai", orig.Agent.Provider)
+}
+
+func TestConfigClone_NilSafe(t *testing.T) {
+	var c *Config
+	assert.Nil(t, c.Clone())
+}
 
 func TestResolveEmbeddingProvider_ByProviderMapKey(t *testing.T) {
 	t.Parallel()

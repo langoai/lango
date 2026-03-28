@@ -99,7 +99,7 @@ The cockpit SHALL support Ctrl+Y to copy the current active view content to the 
 - **THEN** child.View() content SHALL be written to the system clipboard
 
 ### Requirement: Context panel toggle with synthetic resize
-When Ctrl+P toggles the context panel, cockpit SHALL send synthetic WindowSizeMsg to all components with updated effective widths.
+When Ctrl+P toggles the context panel, cockpit SHALL send synthetic WindowSizeMsg to all components with updated effective widths. Additionally, the context panel itself SHALL receive its correct width on toggle-on, even if it previously received width=0 while hidden.
 
 #### Scenario: Toggle context panel on
 - **WHEN** user presses Ctrl+P to show context panel
@@ -108,3 +108,7 @@ When Ctrl+P toggles the context panel, cockpit SHALL send synthetic WindowSizeMs
 #### Scenario: Toggle context panel off
 - **WHEN** user presses Ctrl+P to hide context panel
 - **THEN** contextPanel.Stop() SHALL be called and all components SHALL receive increased width
+
+#### Scenario: First toggle after hidden initial state
+- **WHEN** context panel was hidden during initial WindowSizeMsg (received width=0) and user presses Ctrl+P
+- **THEN** the context panel SHALL receive WindowSizeMsg with Width=ContextPanelWidth before rendering

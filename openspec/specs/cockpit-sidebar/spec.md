@@ -65,3 +65,11 @@ The sidebar SHALL support interactive navigation when focused. When `focused=tru
 #### Scenario: Sessions item enabled
 - **WHEN** sidebar is created via New()
 - **THEN** the sessions item SHALL have Disabled=false
+
+#### Scenario: SetActive syncs cursor
+- **WHEN** SetActive(id) is called
+- **THEN** cursor SHALL move to the index of the matching item so that visual highlight and keyboard cursor are always aligned
+
+#### Scenario: Page switch then Tab+Enter navigates correctly
+- **WHEN** user switches page via Ctrl+N then Tab-focuses sidebar and presses Enter
+- **THEN** the Enter action SHALL navigate to the same page that is visually highlighted

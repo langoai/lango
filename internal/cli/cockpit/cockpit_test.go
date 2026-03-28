@@ -291,6 +291,25 @@ func TestCtrlP_SyntheticResize(t *testing.T) {
 		"child width should subtract both sidebar and context panel")
 }
 
+func TestCtrlP_FirstToggle_ContextPanelGetsCorrectWidth(t *testing.T) {
+	// Reproduce: initial WindowSizeMsg with context hidden (width=0),
+	// then first Ctrl+P toggle should send correct width to panel.
+	mock := &mockChild{}
+	m := newTestModelWithCollector(mock)
+
+	// Step 1: Initial resize with context hidden.
+	m.Update(tea.WindowSizeMsg{Width: 120, Height: 40})
+	// Context panel should have received Width=0 (since hidden).
+	assert.Equal(t, 0, m.contextPanel.width,
+		"context panel should have width=0 while hidden")
+
+	// Step 2: First Ctrl+P toggle.
+	m.Update(ctrlP())
+	assert.True(t, m.contextVisible)
+	assert.Equal(t, theme.ContextPanelWidth, m.contextPanel.width,
+		"context panel should receive ContextPanelWidth after first toggle")
+}
+
 func TestWindowSizeMsg_ThreePanelLayout(t *testing.T) {
 	mock := &mockChild{}
 	m := newTestModelWithCollector(mock)

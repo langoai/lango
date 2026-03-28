@@ -76,6 +76,27 @@ func TestSidebarNonInteractive(t *testing.T) {
 		"Update must not change sidebar state")
 }
 
+func TestSetActive_SyncsCursor(t *testing.T) {
+	m := New()
+
+	// Initially cursor=0 and active="chat".
+	assert.Equal(t, 0, m.cursor)
+	assert.Equal(t, "chat", m.active)
+
+	// SetActive to "tools" (index 2) should move cursor.
+	m.SetActive("tools")
+	assert.Equal(t, "tools", m.active)
+	assert.Equal(t, 2, m.cursor, "cursor should sync to 'tools' index")
+
+	// SetActive to "status" (index 3).
+	m.SetActive("status")
+	assert.Equal(t, 3, m.cursor, "cursor should sync to 'status' index")
+
+	// Unknown ID should not change cursor.
+	m.SetActive("nonexistent")
+	assert.Equal(t, 3, m.cursor, "cursor should not change for unknown ID")
+}
+
 // --- Mouse click tests ---
 
 func TestMouseClick_SelectsEnabledItem(t *testing.T) {
