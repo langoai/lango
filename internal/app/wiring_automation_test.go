@@ -1,6 +1,7 @@
 package app
 
 import (
+	"context"
 	"testing"
 
 	"github.com/langoai/lango/internal/background"
@@ -26,7 +27,8 @@ func (s *stubSessionStore) AppendMessage(_ string, _ session.Message) error { re
 func (s *stubSessionStore) AnnotateTimeout(_ string, _ string) error     { return nil }
 func (s *stubSessionStore) Close() error                                 { return nil }
 func (s *stubSessionStore) GetSalt(_ string) ([]byte, error)             { return nil, nil }
-func (s *stubSessionStore) SetSalt(_ string, _ []byte) error             { return nil }
+func (s *stubSessionStore) SetSalt(_ string, _ []byte) error                              { return nil }
+func (s *stubSessionStore) ListSessions(_ context.Context) ([]session.SessionSummary, error) { return nil, nil }
 
 // --- initCron ---
 

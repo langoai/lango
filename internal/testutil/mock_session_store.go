@@ -1,6 +1,7 @@
 package testutil
 
 import (
+	"context"
 	"fmt"
 	"sync"
 
@@ -161,6 +162,20 @@ func (m *MockSessionStore) SetSalt(name string, salt []byte) error {
 	}
 	m.salts[name] = salt
 	return nil
+}
+
+func (m *MockSessionStore) ListSessions(_ context.Context) ([]session.SessionSummary, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	summaries := make([]session.SessionSummary, 0, len(m.sessions))
+	for _, s := range m.sessions {
+		summaries = append(summaries, session.SessionSummary{
+			Key:       s.Key,
+			CreatedAt: s.CreatedAt,
+			UpdatedAt: s.UpdatedAt,
+		})
+	}
+	return summaries, nil
 }
 
 // Inspection methods

@@ -25,6 +25,10 @@ const (
 	StepComplete
 )
 
+// OnSaveFunc is the callback type for embedded-mode save.
+// It receives the current config and a map of dirty (modified) field keys.
+type OnSaveFunc func(cfg *config.Config, dirtyKeys map[string]bool) error
+
 // Editor is the main bubbletea model for the settings editor.
 type Editor struct {
 	step  EditorStep
@@ -48,6 +52,10 @@ type Editor struct {
 
 	// Guided setup flow
 	setupFlow *SetupFlow
+
+	// Embedded mode
+	OnSave      OnSaveFunc // if set, save calls this instead of tea.Quit
+	saveSuccess bool       // true after a successful embedded save
 
 	// UI State
 	width  int
@@ -80,6 +88,16 @@ func NewEditorWithConfig(cfg *config.Config) *Editor {
 		depIndex: NewDependencyIndex(),
 	}
 	e.wireMenuCheckers()
+	return e
+}
+
+// NewEditorForEmbedding creates a settings editor suitable for embedding in another
+// TUI (e.g. cockpit). It skips the welcome step and uses the provided callback
+// for save instead of calling tea.Quit.
+func NewEditorForEmbedding(cfg *config.Config, onSave OnSaveFunc) *Editor {
+	e := NewEditorWithConfig(cfg.Clone()) // deep copy to avoid mutating live config
+	e.OnSave = onSave
+	e.step = StepMenu // skip StepWelcome
 	return e
 }
 
@@ -144,8 +162,6 @@ func categoryIsEnabled(cfg *config.Config, id string) bool {
 		return cfg.Observability.Enabled
 	case "security":
 		return cfg.Security.Interceptor.Enabled
-	case "os_sandbox":
-		return true // OS sandbox has no prerequisite — always configurable
 	case "gatekeeper":
 		return derefBoolCfg(cfg.Gatekeeper.Enabled, true)
 	case "output_manager":
@@ -176,6 +192,10 @@ func (e *Editor) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	switch msg := msg.(type) {
 	case tea.KeyMsg:
+		// Clear inline save banner on next key press.
+		e.saveSuccess = false
+		e.err = nil
+
 		if msg.String() == "ctrl+c" {
 			e.Cancelled = true
 			return e, tea.Quit
@@ -458,6 +478,19 @@ func (e *Editor) handleMenuSelection(id string) tea.Cmd {
 		e.step = StepProvidersList
 		return nil
 	case "save":
+		if e.OnSave != nil {
+			cfg := e.Config()
+			explicitKeys := make(map[string]bool, len(config.ContextRelatedKeys()))
+			for _, k := range config.ContextRelatedKeys() {
+				explicitKeys[k] = true
+			}
+			if err := e.OnSave(cfg, explicitKeys); err != nil {
+				e.err = err
+				return nil
+			}
+			e.saveSuccess = true
+			return nil
+		}
 		e.Completed = true
 		return tea.Quit
 	case "cancel":
@@ -521,6 +554,11 @@ func (e *Editor) View() string {
 		b.WriteString(e.viewWelcome())
 
 	case StepMenu:
+		if e.err != nil {
+			b.WriteString(tui.FormatFail("Save failed: "+e.err.Error()) + "\n\n")
+		} else if e.saveSuccess {
+			b.WriteString(tui.FormatPass("Settings saved") + "\n\n")
+		}
 		b.WriteString(e.menu.View())
 
 	case StepForm:

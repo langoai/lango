@@ -154,7 +154,8 @@ func (s *stubSessionStore) Delete(string) error                              { r
 func (s *stubSessionStore) AppendMessage(string, langosession.Message) error { return nil }
 func (s *stubSessionStore) Close() error                                     { return nil }
 func (s *stubSessionStore) GetSalt(string) ([]byte, error)                   { return nil, nil }
-func (s *stubSessionStore) SetSalt(string, []byte) error                     { return nil }
+func (s *stubSessionStore) SetSalt(string, []byte) error                                    { return nil }
+func (s *stubSessionStore) ListSessions(context.Context) ([]langosession.SessionSummary, error) { return nil, nil }
 func (s *stubSessionStore) AnnotateTimeout(key, _ string) error {
 	s.annotated = append(s.annotated, key)
 	return nil
