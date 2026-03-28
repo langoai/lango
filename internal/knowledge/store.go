@@ -17,13 +17,16 @@ import (
 	entlearning "github.com/langoai/lango/internal/ent/learning"
 	"github.com/langoai/lango/internal/ent/predicate"
 	"github.com/langoai/lango/internal/eventbus"
+	"github.com/langoai/lango/internal/search"
 )
 
 // Store provides CRUD operations for knowledge, learning, skill, audit, and external ref entities.
 type Store struct {
-	client *ent.Client
-	logger *zap.SugaredLogger
-	bus    *eventbus.Bus // Optional event bus for cross-domain notifications.
+	client          *ent.Client
+	logger          *zap.SugaredLogger
+	bus             *eventbus.Bus      // Optional event bus for cross-domain notifications.
+	fts5Index       *search.FTS5Index  // Optional FTS5 index for knowledge search.
+	learningFTS5Idx *search.FTS5Index  // Optional FTS5 index for learning search.
 }
 
 // NewStore creates a new knowledge store.
@@ -39,10 +42,22 @@ func (s *Store) SetEventBus(bus *eventbus.Bus) {
 	s.bus = bus
 }
 
+// SetFTS5Index sets the optional FTS5 index for knowledge search.
+// When set, SearchKnowledge uses FTS5 with BM25 ranking instead of LIKE.
+func (s *Store) SetFTS5Index(idx *search.FTS5Index) {
+	s.fts5Index = idx
+}
+
+// SetLearningFTS5Index sets the optional FTS5 index for learning search.
+// When set, SearchLearnings uses FTS5 with BM25 ranking instead of LIKE.
+func (s *Store) SetLearningFTS5Index(idx *search.FTS5Index) {
+	s.learningFTS5Idx = idx
+}
+
 // publishContentSaved publishes a ContentSavedEvent if the bus is configured.
 // needsGraph mirrors the original SetGraphCallback behavior: only new knowledge
 // creation triggers graph processing; updates and learning saves are embed-only.
-func (s *Store) publishContentSaved(id, collection, content string, metadata map[string]string, isNew, needsGraph bool) {
+func (s *Store) publishContentSaved(id, collection, content string, metadata map[string]string, isNew, needsGraph bool, version int) {
 	if s.bus == nil {
 		return
 	}
@@ -54,20 +69,36 @@ func (s *Store) publishContentSaved(id, collection, content string, metadata map
 		Source:     "knowledge",
 		IsNew:      isNew,
 		NeedsGraph: needsGraph,
+		Version:    version,
 	})
 }
 
-// SaveKnowledge creates or updates a knowledge entry by key.
+// SaveKnowledge appends a new version of a knowledge entry.
+// If the key does not exist, creates version 1. If it exists, creates version N+1
+// while marking the previous latest as not-latest (within a transaction).
+// Retries once on unique constraint violation from concurrent same-key writes.
 func (s *Store) SaveKnowledge(ctx context.Context, sessionKey string, entry KnowledgeEntry) error {
+	err := s.saveKnowledgeOnce(ctx, sessionKey, entry)
+	if err != nil && isUniqueConstraintError(err) {
+		s.logger.Warnw("knowledge version conflict, retrying", "key", entry.Key)
+		return s.saveKnowledgeOnce(ctx, sessionKey, entry)
+	}
+	return err
+}
+
+func (s *Store) saveKnowledgeOnce(ctx context.Context, _ string, entry KnowledgeEntry) error {
 	existing, err := s.client.Knowledge.Query().
-		Where(entknowledge.Key(entry.Key)).
+		Where(entknowledge.Key(entry.Key), entknowledge.IsLatest(true)).
 		Only(ctx)
 
 	if ent.IsNotFound(err) {
+		// First version: create with version=1, is_latest=true.
 		builder := s.client.Knowledge.Create().
 			SetKey(entry.Key).
 			SetCategory(entry.Category).
-			SetContent(entry.Content)
+			SetContent(entry.Content).
+			SetVersion(1).
+			SetIsLatest(true)
 
 		if len(entry.Tags) > 0 {
 			builder.SetTags(entry.Tags)
@@ -82,39 +113,74 @@ func (s *Store) SaveKnowledge(ctx context.Context, sessionKey string, entry Know
 		}
 
 		meta := map[string]string{"category": string(entry.Category)}
-		s.publishContentSaved(entry.Key, "knowledge", entry.Content, meta, true, true)
+		s.publishContentSaved(entry.Key, "knowledge", entry.Content, meta, true, true, 1)
+		s.syncKnowledgeFTS5(ctx, entry.Key, entry.Content, false)
 		return nil
 	}
 	if err != nil {
 		return fmt.Errorf("query knowledge: %w", err)
 	}
 
-	updater := existing.Update().
+	// Content-dedup: skip if latest version has same (category, content).
+	// source/tags changes alone do not justify a new version.
+	if existing.Category == entry.Category && existing.Content == entry.Content {
+		return nil
+	}
+
+	// Append new version in transaction.
+	tx, err := s.client.Tx(ctx)
+	if err != nil {
+		return fmt.Errorf("begin tx: %w", err)
+	}
+
+	// Mark old version as not latest.
+	if err := tx.Knowledge.UpdateOne(existing).SetIsLatest(false).Exec(ctx); err != nil {
+		_ = tx.Rollback()
+		return fmt.Errorf("unset latest: %w", err)
+	}
+
+	newVersion := existing.Version + 1
+	builder := tx.Knowledge.Create().
+		SetKey(entry.Key).
 		SetCategory(entry.Category).
-		SetContent(entry.Content)
+		SetContent(entry.Content).
+		SetVersion(newVersion).
+		SetIsLatest(true).
+		SetUseCount(existing.UseCount).
+		SetRelevanceScore(existing.RelevanceScore)
 
 	if len(entry.Tags) > 0 {
-		updater.SetTags(entry.Tags)
+		builder.SetTags(entry.Tags)
 	}
 	if entry.Source != "" {
-		updater.SetSource(entry.Source)
+		builder.SetSource(entry.Source)
 	}
 
-	_, err = updater.Save(ctx)
+	_, err = builder.Save(ctx)
 	if err != nil {
-		return fmt.Errorf("update knowledge: %w", err)
+		_ = tx.Rollback()
+		return fmt.Errorf("create version: %w", err)
 	}
 
-	s.publishContentSaved(entry.Key, "knowledge", entry.Content, map[string]string{
-		"category": string(entry.Category),
-	}, false, false)
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("commit version: %w", err)
+	}
+
+	meta := map[string]string{"category": string(entry.Category)}
+	s.publishContentSaved(entry.Key, "knowledge", entry.Content, meta, false, false, newVersion)
+	s.syncKnowledgeFTS5(ctx, entry.Key, entry.Content, true)
 	return nil
 }
 
-// GetKnowledge retrieves a knowledge entry by key.
+// isUniqueConstraintError checks for SQLite unique constraint violation.
+func isUniqueConstraintError(err error) bool {
+	return err != nil && strings.Contains(err.Error(), "UNIQUE constraint failed")
+}
+
+// GetKnowledge retrieves the latest version of a knowledge entry by key.
 func (s *Store) GetKnowledge(ctx context.Context, key string) (*KnowledgeEntry, error) {
 	k, err := s.client.Knowledge.Query().
-		Where(entknowledge.Key(key)).
+		Where(entknowledge.Key(key), entknowledge.IsLatest(true)).
 		Only(ctx)
 
 	if ent.IsNotFound(err) {
@@ -125,23 +191,74 @@ func (s *Store) GetKnowledge(ctx context.Context, key string) (*KnowledgeEntry, 
 	}
 
 	return &KnowledgeEntry{
-		Key:      k.Key,
-		Category: k.Category,
-		Content:  k.Content,
-		Tags:     k.Tags,
-		Source:   k.Source,
+		Key:       k.Key,
+		Category:  k.Category,
+		Content:   k.Content,
+		Tags:      k.Tags,
+		Source:    k.Source,
+		Version:   k.Version,
+		CreatedAt: k.CreatedAt,
+		UpdatedAt: k.UpdatedAt,
 	}, nil
 }
 
+// GetKnowledgeHistory returns all versions of a knowledge entry ordered by version descending.
+func (s *Store) GetKnowledgeHistory(ctx context.Context, key string) ([]KnowledgeEntry, error) {
+	entries, err := s.client.Knowledge.Query().
+		Where(entknowledge.Key(key)).
+		Order(entknowledge.ByVersion(sql.OrderDesc())).
+		All(ctx)
+
+	if err != nil {
+		return nil, fmt.Errorf("query knowledge history: %w", err)
+	}
+	if len(entries) == 0 {
+		return nil, fmt.Errorf("get knowledge history %q: %w", key, ErrKnowledgeNotFound)
+	}
+
+	result := make([]KnowledgeEntry, 0, len(entries))
+	for _, k := range entries {
+		result = append(result, KnowledgeEntry{
+			Key:       k.Key,
+			Category:  k.Category,
+			Content:   k.Content,
+			Tags:      k.Tags,
+			Source:    k.Source,
+			Version:   k.Version,
+			CreatedAt: k.CreatedAt,
+			UpdatedAt: k.UpdatedAt,
+		})
+	}
+	return result, nil
+}
+
 // SearchKnowledge searches knowledge entries by content/key keyword matching.
-// The query is split into individual keywords and matched with per-keyword OR
-// predicates to avoid SQLite LIKE pattern complexity limits.
+// When an FTS5 index is available, it uses FTS5 MATCH with BM25 ranking.
+// Falls back to per-keyword OR LIKE predicates when FTS5 is unavailable or errors.
 func (s *Store) SearchKnowledge(ctx context.Context, query string, category string, limit int) ([]KnowledgeEntry, error) {
 	if limit <= 0 {
 		limit = 10
 	}
 
-	var predicates []predicate.Knowledge
+	// FTS5 path: search index first, then resolve from Ent.
+	if s.fts5Index != nil && query != "" {
+		results, err := s.fts5Index.Search(ctx, query, limit)
+		if err != nil {
+			s.logger.Warnw("FTS5 knowledge search error, falling back to LIKE", "error", err)
+		} else if len(results) > 0 {
+			return s.resolveKnowledgeByKeys(ctx, results, category)
+		} else {
+			return nil, nil
+		}
+	}
+
+	return s.searchKnowledgeLIKE(ctx, query, category, limit)
+}
+
+// searchKnowledgeLIKE is the original LIKE-based search path.
+// Only returns latest versions (is_latest=true).
+func (s *Store) searchKnowledgeLIKE(ctx context.Context, query string, category string, limit int) ([]KnowledgeEntry, error) {
+	predicates := []predicate.Knowledge{entknowledge.IsLatest(true)}
 	if query != "" {
 		if kwPreds := knowledgeKeywordPredicates(query); len(kwPreds) > 0 {
 			predicates = append(predicates, entknowledge.Or(kwPreds...))
@@ -164,11 +281,60 @@ func (s *Store) SearchKnowledge(ctx context.Context, query string, category stri
 	result := make([]KnowledgeEntry, 0, len(entries))
 	for _, k := range entries {
 		result = append(result, KnowledgeEntry{
-			Key:      k.Key,
-			Category: k.Category,
-			Content:  k.Content,
-			Tags:     k.Tags,
-			Source:   k.Source,
+			Key:       k.Key,
+			Category:  k.Category,
+			Content:   k.Content,
+			Tags:      k.Tags,
+			Source:    k.Source,
+			Version:   k.Version,
+			CreatedAt: k.CreatedAt,
+			UpdatedAt: k.UpdatedAt,
+		})
+	}
+	return result, nil
+}
+
+// resolveKnowledgeByKeys loads knowledge entries from Ent by FTS5 result keys,
+// preserving FTS5 BM25 ordering. Category filter is applied via Ent.
+func (s *Store) resolveKnowledgeByKeys(ctx context.Context, ftsResults []search.SearchResult, category string) ([]KnowledgeEntry, error) {
+	keys := make([]string, 0, len(ftsResults))
+	for _, r := range ftsResults {
+		keys = append(keys, r.RowID)
+	}
+
+	preds := []predicate.Knowledge{entknowledge.KeyIn(keys...), entknowledge.IsLatest(true)}
+	if category != "" {
+		preds = append(preds, entknowledge.CategoryEQ(entknowledge.Category(category)))
+	}
+
+	entries, err := s.client.Knowledge.Query().
+		Where(preds...).
+		All(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("resolve knowledge by keys: %w", err)
+	}
+
+	// Build map for ordering by FTS5 rank.
+	byKey := make(map[string]*ent.Knowledge, len(entries))
+	for _, k := range entries {
+		byKey[k.Key] = k
+	}
+
+	result := make([]KnowledgeEntry, 0, len(ftsResults))
+	for _, r := range ftsResults {
+		k, ok := byKey[r.RowID]
+		if !ok {
+			continue // Filtered out by category or missing.
+		}
+		result = append(result, KnowledgeEntry{
+			Key:       k.Key,
+			Category:  k.Category,
+			Content:   k.Content,
+			Tags:      k.Tags,
+			Source:    k.Source,
+			Version:   k.Version,
+			CreatedAt: k.CreatedAt,
+			UpdatedAt: k.UpdatedAt,
 		})
 	}
 	return result, nil
@@ -192,10 +358,207 @@ func knowledgeKeywordPredicates(query string) []predicate.Knowledge {
 	return preds
 }
 
-// IncrementKnowledgeUseCount increments the use count for a knowledge entry.
+// SearchKnowledgeScored searches knowledge entries and returns results with relevance scores.
+// FTS5 path: Score = -rank (BM25 rank is negative, negate for higher=better). LIKE path: Score = RelevanceScore.
+func (s *Store) SearchKnowledgeScored(ctx context.Context, query string, category string, limit int) ([]ScoredKnowledgeEntry, error) {
+	if limit <= 0 {
+		limit = 10
+	}
+
+	// FTS5 path: search index first, preserve BM25 rank.
+	if s.fts5Index != nil && query != "" {
+		results, err := s.fts5Index.Search(ctx, query, limit)
+		if err != nil {
+			s.logger.Warnw("FTS5 scored search error, falling back to LIKE", "error", err)
+		} else if len(results) > 0 {
+			return s.resolveKnowledgeScoredByKeys(ctx, results, category)
+		} else {
+			return nil, nil
+		}
+	}
+
+	return s.searchKnowledgeScoredLIKE(ctx, query, category, limit)
+}
+
+func (s *Store) resolveKnowledgeScoredByKeys(ctx context.Context, ftsResults []search.SearchResult, category string) ([]ScoredKnowledgeEntry, error) {
+	keys := make([]string, 0, len(ftsResults))
+	for _, r := range ftsResults {
+		keys = append(keys, r.RowID)
+	}
+
+	preds := []predicate.Knowledge{entknowledge.KeyIn(keys...), entknowledge.IsLatest(true)}
+	if category != "" {
+		preds = append(preds, entknowledge.CategoryEQ(entknowledge.Category(category)))
+	}
+
+	entries, err := s.client.Knowledge.Query().Where(preds...).All(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("resolve scored knowledge: %w", err)
+	}
+
+	byKey := make(map[string]*ent.Knowledge, len(entries))
+	for _, k := range entries {
+		byKey[k.Key] = k
+	}
+
+	// Build ranked map for FTS5 scores.
+	rankByKey := make(map[string]float64, len(ftsResults))
+	for _, r := range ftsResults {
+		rankByKey[r.RowID] = -r.Rank // negate: higher = better
+	}
+
+	result := make([]ScoredKnowledgeEntry, 0, len(ftsResults))
+	for _, r := range ftsResults {
+		k, ok := byKey[r.RowID]
+		if !ok {
+			continue
+		}
+		result = append(result, ScoredKnowledgeEntry{
+			Entry: KnowledgeEntry{
+				Key:       k.Key,
+				Category:  k.Category,
+				Content:   k.Content,
+				Tags:      k.Tags,
+				Source:    k.Source,
+				Version:   k.Version,
+				CreatedAt: k.CreatedAt,
+				UpdatedAt: k.UpdatedAt,
+			},
+			Score:        -r.Rank,
+			SearchSource: "fts5",
+		})
+	}
+	return result, nil
+}
+
+func (s *Store) searchKnowledgeScoredLIKE(ctx context.Context, query string, category string, limit int) ([]ScoredKnowledgeEntry, error) {
+	predicates := []predicate.Knowledge{entknowledge.IsLatest(true)}
+	if query != "" {
+		if kwPreds := knowledgeKeywordPredicates(query); len(kwPreds) > 0 {
+			predicates = append(predicates, entknowledge.Or(kwPreds...))
+		}
+	}
+	if category != "" {
+		predicates = append(predicates, entknowledge.CategoryEQ(entknowledge.Category(category)))
+	}
+
+	entries, err := s.client.Knowledge.Query().
+		Where(predicates...).
+		Order(entknowledge.ByRelevanceScore(sql.OrderDesc())).
+		Limit(limit).
+		All(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("search knowledge scored: %w", err)
+	}
+
+	result := make([]ScoredKnowledgeEntry, 0, len(entries))
+	for _, k := range entries {
+		result = append(result, ScoredKnowledgeEntry{
+			Entry: KnowledgeEntry{
+				Key:       k.Key,
+				Category:  k.Category,
+				Content:   k.Content,
+				Tags:      k.Tags,
+				Source:    k.Source,
+				Version:   k.Version,
+				CreatedAt: k.CreatedAt,
+				UpdatedAt: k.UpdatedAt,
+			},
+			Score:        k.RelevanceScore,
+			SearchSource: "like",
+		})
+	}
+	return result, nil
+}
+
+// SearchRecentKnowledge returns the most recently updated knowledge entries.
+// Only latest versions (is_latest=true) are returned, ordered by updated_at DESC.
+// When query is non-empty, results are filtered to entries whose key or content
+// contain at least one query keyword.
+func (s *Store) SearchRecentKnowledge(ctx context.Context, query string, limit int) ([]KnowledgeEntry, error) {
+	if limit <= 0 {
+		limit = 10
+	}
+
+	predicates := []predicate.Knowledge{entknowledge.IsLatest(true)}
+	if query != "" {
+		if kwPreds := knowledgeKeywordPredicates(query); len(kwPreds) > 0 {
+			predicates = append(predicates, entknowledge.Or(kwPreds...))
+		}
+	}
+
+	entries, err := s.client.Knowledge.Query().
+		Where(predicates...).
+		Order(entknowledge.ByUpdatedAt(sql.OrderDesc())).
+		Limit(limit).
+		All(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("search recent knowledge: %w", err)
+	}
+
+	result := make([]KnowledgeEntry, 0, len(entries))
+	for _, k := range entries {
+		result = append(result, KnowledgeEntry{
+			Key:       k.Key,
+			Category:  k.Category,
+			Content:   k.Content,
+			Tags:      k.Tags,
+			Source:    k.Source,
+			Version:   k.Version,
+			CreatedAt: k.CreatedAt,
+			UpdatedAt: k.UpdatedAt,
+		})
+	}
+	return result, nil
+}
+
+// SearchLearningsScored searches learning entries and returns results with relevance scores.
+func (s *Store) SearchLearningsScored(ctx context.Context, errorPattern string, category string, limit int) ([]ScoredLearningEntry, error) {
+	if limit <= 0 {
+		limit = 10
+	}
+
+	var predicates []predicate.Learning
+	if errorPattern != "" {
+		if kwPreds := learningKeywordPredicates(errorPattern); len(kwPreds) > 0 {
+			predicates = append(predicates, entlearning.Or(kwPreds...))
+		}
+	}
+	if category != "" {
+		predicates = append(predicates, entlearning.CategoryEQ(entlearning.Category(category)))
+	}
+
+	entries, err := s.client.Learning.Query().
+		Where(predicates...).
+		Order(entlearning.ByConfidence(sql.OrderDesc())).
+		Limit(limit).
+		All(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("search learnings scored: %w", err)
+	}
+
+	result := make([]ScoredLearningEntry, 0, len(entries))
+	for _, l := range entries {
+		result = append(result, ScoredLearningEntry{
+			Entry: LearningEntry{
+				Trigger:      l.Trigger,
+				ErrorPattern: l.ErrorPattern,
+				Diagnosis:    l.Diagnosis,
+				Fix:          l.Fix,
+				Category:     l.Category,
+				Tags:         l.Tags,
+			},
+			Score:        l.Confidence,
+			SearchSource: "like",
+		})
+	}
+	return result, nil
+}
+
+// IncrementKnowledgeUseCount increments the use count for the latest version of a knowledge entry.
 func (s *Store) IncrementKnowledgeUseCount(ctx context.Context, key string) error {
 	n, err := s.client.Knowledge.Update().
-		Where(entknowledge.Key(key)).
+		Where(entknowledge.Key(key), entknowledge.IsLatest(true)).
 		AddUseCount(1).
 		Save(ctx)
 
@@ -206,6 +569,84 @@ func (s *Store) IncrementKnowledgeUseCount(ctx context.Context, key string) erro
 		return fmt.Errorf("increment use count %q: %w", key, ErrKnowledgeNotFound)
 	}
 	return nil
+}
+
+// BoostRelevanceScore increases the relevance_score for the latest version of a knowledge entry.
+// Two-step clamping: cap first, then add. Order matters — cap runs on original scores
+// before add modifies them, preventing overlap where add results fall into cap range.
+func (s *Store) BoostRelevanceScore(ctx context.Context, key string, delta, maxScore float64) error {
+	// Step 1: Cap rows where score + delta would exceed maxScore → set to maxScore.
+	// Also normalizes pre-existing over-cap values (score >= maxScore) from prior bugs.
+	_, err := s.client.Knowledge.Update().
+		Where(
+			entknowledge.Key(key),
+			entknowledge.IsLatest(true),
+			entknowledge.RelevanceScoreGT(maxScore-delta),
+		).
+		SetRelevanceScore(maxScore).
+		Save(ctx)
+	if err != nil {
+		return fmt.Errorf("boost relevance score %q (cap): %w", key, err)
+	}
+
+	// Step 2: Boost rows where score + delta won't exceed maxScore.
+	_, err = s.client.Knowledge.Update().
+		Where(
+			entknowledge.Key(key),
+			entknowledge.IsLatest(true),
+			entknowledge.RelevanceScoreLTE(maxScore-delta),
+		).
+		AddRelevanceScore(delta).
+		Save(ctx)
+	if err != nil {
+		return fmt.Errorf("boost relevance score %q (add): %w", key, err)
+	}
+	return nil
+}
+
+// DecayAllRelevanceScores subtracts delta from all latest-version knowledge entries.
+// Two-step clamping: floor first, then subtract. Order matters — floor runs on original
+// scores before subtract modifies them, preventing overlap where subtract results fall into floor range.
+// Returns the number of entries updated.
+func (s *Store) DecayAllRelevanceScores(ctx context.Context, delta, minScore float64) (int, error) {
+	// Step 1: Floor rows where score - delta would go below minScore → set to minScore.
+	n1, err := s.client.Knowledge.Update().
+		Where(
+			entknowledge.IsLatest(true),
+			entknowledge.RelevanceScoreGT(minScore),
+			entknowledge.RelevanceScoreLT(minScore+delta),
+		).
+		SetRelevanceScore(minScore).
+		Save(ctx)
+	if err != nil {
+		return 0, fmt.Errorf("decay relevance scores (floor): %w", err)
+	}
+
+	// Step 2: Decay rows where score - delta won't go below minScore.
+	n2, err := s.client.Knowledge.Update().
+		Where(
+			entknowledge.IsLatest(true),
+			entknowledge.RelevanceScoreGTE(minScore+delta),
+		).
+		AddRelevanceScore(-delta).
+		Save(ctx)
+	if err != nil {
+		return n1, fmt.Errorf("decay relevance scores (subtract): %w", err)
+	}
+	return n1 + n2, nil
+}
+
+// ResetAllRelevanceScores sets relevance_score to 1.0 for all latest-version knowledge entries.
+// Returns the number of entries reset. Used for hard rollback of auto-adjustment.
+func (s *Store) ResetAllRelevanceScores(ctx context.Context) (int, error) {
+	n, err := s.client.Knowledge.Update().
+		Where(entknowledge.IsLatest(true)).
+		SetRelevanceScore(1.0).
+		Save(ctx)
+	if err != nil {
+		return 0, fmt.Errorf("reset relevance scores: %w", err)
+	}
+	return n, nil
 }
 
 // DeleteKnowledge deletes a knowledge entry by key.
@@ -220,6 +661,7 @@ func (s *Store) DeleteKnowledge(ctx context.Context, key string) error {
 	if n == 0 {
 		return fmt.Errorf("delete knowledge %q: %w", key, ErrKnowledgeNotFound)
 	}
+	s.deleteKnowledgeFTS5(ctx, key)
 	return nil
 }
 
@@ -253,7 +695,8 @@ func (s *Store) SaveLearning(ctx context.Context, sessionKey string, entry Learn
 	}
 	s.publishContentSaved(created.ID.String(), "learning", content, map[string]string{
 		"category": string(entry.Category),
-	}, true, false)
+	}, true, false, 0)
+	s.syncLearningFTS5(ctx, created.ID.String(), entry.Trigger, entry.ErrorPattern, entry.Fix)
 
 	return nil
 }
@@ -278,13 +721,30 @@ func (s *Store) GetLearning(ctx context.Context, id uuid.UUID) (*LearningEntry, 
 }
 
 // SearchLearnings searches learnings by error pattern or trigger substring match.
-// The query is split into individual keywords and matched with per-keyword OR
-// predicates to avoid SQLite LIKE pattern complexity limits.
+// When an FTS5 index is available, it uses FTS5 MATCH with BM25 ranking.
+// Falls back to per-keyword OR LIKE predicates when FTS5 is unavailable or errors.
 func (s *Store) SearchLearnings(ctx context.Context, errorPattern string, category string, limit int) ([]LearningEntry, error) {
 	if limit <= 0 {
 		limit = 10
 	}
 
+	// FTS5 path.
+	if s.learningFTS5Idx != nil && errorPattern != "" {
+		results, err := s.learningFTS5Idx.Search(ctx, errorPattern, limit)
+		if err != nil {
+			s.logger.Warnw("FTS5 learning search error, falling back to LIKE", "error", err)
+		} else if len(results) > 0 {
+			return s.resolveLearningsByIDs(ctx, results, category)
+		} else {
+			return nil, nil
+		}
+	}
+
+	return s.searchLearningsLIKE(ctx, errorPattern, category, limit)
+}
+
+// searchLearningsLIKE is the original LIKE-based search path.
+func (s *Store) searchLearningsLIKE(ctx context.Context, errorPattern string, category string, limit int) ([]LearningEntry, error) {
 	var predicates []predicate.Learning
 	if errorPattern != "" {
 		if kwPreds := learningKeywordPredicates(errorPattern); len(kwPreds) > 0 {
@@ -307,6 +767,57 @@ func (s *Store) SearchLearnings(ctx context.Context, errorPattern string, catego
 
 	result := make([]LearningEntry, 0, len(entries))
 	for _, l := range entries {
+		result = append(result, LearningEntry{
+			Trigger:      l.Trigger,
+			ErrorPattern: l.ErrorPattern,
+			Diagnosis:    l.Diagnosis,
+			Fix:          l.Fix,
+			Category:     l.Category,
+			Tags:         l.Tags,
+		})
+	}
+	return result, nil
+}
+
+// resolveLearningsByIDs loads learning entries from Ent by FTS5 result IDs,
+// preserving FTS5 BM25 ordering.
+func (s *Store) resolveLearningsByIDs(ctx context.Context, ftsResults []search.SearchResult, category string) ([]LearningEntry, error) {
+	ids := make([]uuid.UUID, 0, len(ftsResults))
+	for _, r := range ftsResults {
+		id, err := uuid.Parse(r.RowID)
+		if err != nil {
+			continue
+		}
+		ids = append(ids, id)
+	}
+
+	preds := []predicate.Learning{entlearning.IDIn(ids...)}
+	if category != "" {
+		preds = append(preds, entlearning.CategoryEQ(entlearning.Category(category)))
+	}
+
+	entries, err := s.client.Learning.Query().
+		Where(preds...).
+		All(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("resolve learnings by IDs: %w", err)
+	}
+
+	byID := make(map[uuid.UUID]*ent.Learning, len(entries))
+	for _, l := range entries {
+		byID[l.ID] = l
+	}
+
+	result := make([]LearningEntry, 0, len(ftsResults))
+	for _, r := range ftsResults {
+		id, err := uuid.Parse(r.RowID)
+		if err != nil {
+			continue
+		}
+		l, ok := byID[id]
+		if !ok {
+			continue
+		}
 		result = append(result, LearningEntry{
 			Trigger:      l.Trigger,
 			ErrorPattern: l.ErrorPattern,
@@ -511,6 +1022,53 @@ func externalRefKeywordPredicates(query string) []predicate.ExternalRef {
 	return preds
 }
 
+// syncKnowledgeFTS5 updates the FTS5 index after a knowledge write.
+// Logs warning on failure; never blocks the Ent write.
+func (s *Store) syncKnowledgeFTS5(ctx context.Context, key, content string, isUpdate bool) {
+	if s.fts5Index == nil {
+		return
+	}
+	var err error
+	if isUpdate {
+		err = s.fts5Index.Update(ctx, key, []string{key, content})
+	} else {
+		err = s.fts5Index.Insert(ctx, key, []string{key, content})
+	}
+	if err != nil {
+		s.logger.Warnw("FTS5 knowledge sync failed", "key", key, "error", err)
+	}
+}
+
+// deleteKnowledgeFTS5 removes a knowledge entry from the FTS5 index.
+func (s *Store) deleteKnowledgeFTS5(ctx context.Context, key string) {
+	if s.fts5Index == nil {
+		return
+	}
+	if err := s.fts5Index.Delete(ctx, key); err != nil {
+		s.logger.Warnw("FTS5 knowledge delete failed", "key", key, "error", err)
+	}
+}
+
+// syncLearningFTS5 inserts a learning entry into the FTS5 index.
+func (s *Store) syncLearningFTS5(ctx context.Context, id, trigger, errorPattern, fix string) {
+	if s.learningFTS5Idx == nil {
+		return
+	}
+	if err := s.learningFTS5Idx.Insert(ctx, id, []string{trigger, errorPattern, fix}); err != nil {
+		s.logger.Warnw("FTS5 learning sync failed", "id", id, "error", err)
+	}
+}
+
+// deleteLearningFTS5 removes a learning entry from the FTS5 index.
+func (s *Store) deleteLearningFTS5(ctx context.Context, id string) {
+	if s.learningFTS5Idx == nil {
+		return
+	}
+	if err := s.learningFTS5Idx.Delete(ctx, id); err != nil {
+		s.logger.Warnw("FTS5 learning delete failed", "id", id, "error", err)
+	}
+}
+
 // LearningStats holds aggregate statistics about learning entries.
 type LearningStats struct {
 	TotalCount       int                          `json:"total_count"`
@@ -597,6 +1155,7 @@ func (s *Store) DeleteLearning(ctx context.Context, id uuid.UUID) error {
 		}
 		return fmt.Errorf("delete learning: %w", err)
 	}
+	s.deleteLearningFTS5(ctx, id.String())
 	return nil
 }
 

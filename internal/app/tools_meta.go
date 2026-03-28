@@ -23,7 +23,7 @@ func buildMetaTools(store *knowledge.Store, engine *learning.Engine, registry *s
 	return []*agent.Tool{
 		{
 			Name:        "save_knowledge",
-			Description: "Save a piece of knowledge (user rule, definition, preference, fact, pattern, or correction) for future reference",
+			Description: "Save knowledge (appends new version if content changes, skips duplicates). Categories: rule, definition, preference, fact, pattern, correction. Temporal tags (evergreen/current_state) are auto-assigned by analyzers",
 			SafetyLevel: agent.SafetyLevelModerate,
 			Parameters: map[string]interface{}{
 				"type": "object",
@@ -49,7 +49,7 @@ func buildMetaTools(store *knowledge.Store, engine *learning.Engine, registry *s
 				if err != nil {
 					return nil, err
 				}
-				source := toolparam.OptionalString(params, "source", "")
+				source := toolparam.OptionalString(params, "source", "knowledge")
 
 				cat := entknowledge.Category(category)
 				if err := entknowledge.CategoryValidator(cat); err != nil {
@@ -78,10 +78,56 @@ func buildMetaTools(store *knowledge.Store, engine *learning.Engine, registry *s
 					logger().Warnw("audit log save failed", "action", "knowledge_save", "error", err)
 				}
 
+				// Read back to get the version number.
+				saved, _ := store.GetKnowledge(ctx, key)
+				version := 0
+				if saved != nil {
+					version = saved.Version
+				}
+
 				return map[string]interface{}{
 					"status":  "saved",
 					"key":     key,
-					"message": fmt.Sprintf("Knowledge '%s' saved successfully", key),
+					"version": version,
+					"message": fmt.Sprintf("Knowledge '%s' saved (version %d)", key, version),
+				}, nil
+			},
+		},
+		{
+			Name:        "get_knowledge_history",
+			Description: "Get version history for a knowledge entry. Returns all versions ordered newest first",
+			SafetyLevel: agent.SafetyLevelSafe,
+			Parameters: map[string]interface{}{
+				"type": "object",
+				"properties": map[string]interface{}{
+					"key": map[string]interface{}{"type": "string", "description": "Knowledge entry key"},
+				},
+				"required": []string{"key"},
+			},
+			Handler: func(ctx context.Context, params map[string]interface{}) (interface{}, error) {
+				key, err := toolparam.RequireString(params, "key")
+				if err != nil {
+					return nil, err
+				}
+
+				history, err := store.GetKnowledgeHistory(ctx, key)
+				if err != nil {
+					return nil, fmt.Errorf("get knowledge history: %w", err)
+				}
+
+				versions := make([]map[string]interface{}, 0, len(history))
+				for _, h := range history {
+					versions = append(versions, map[string]interface{}{
+						"version":    h.Version,
+						"category":   string(h.Category),
+						"content":    h.Content,
+						"created_at": h.CreatedAt.Format(time.RFC3339),
+					})
+				}
+
+				return map[string]interface{}{
+					"key":      key,
+					"versions": versions,
 				}, nil
 			},
 		},

@@ -315,6 +315,7 @@ func TestBuildMetaTools_Parity(t *testing.T) {
 
 	wantNames := []string{
 		"save_knowledge",
+		"get_knowledge_history",
 		"search_knowledge",
 		"save_learning",
 		"search_learnings",

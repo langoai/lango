@@ -2,19 +2,20 @@ package adk
 
 import (
 	"context"
+	"fmt"
 	"strings"
 	"sync"
 
 	"github.com/langoai/lango/internal/memory"
+	"github.com/langoai/lango/internal/types"
 )
 
 // defaultMemoryTokenBudget is the default token budget for the memory section.
 const defaultMemoryTokenBudget = 4000
 
-// assembleMemorySection builds the "Conversation Memory" section from observations and reflections.
-// It enforces a token budget: reflections are included first (higher information density),
-// then observations fill the remaining budget.
-func (m *ContextAwareModelAdapter) assembleMemorySection(ctx context.Context, sessionKey string) string {
+// retrieveMemoryData fetches reflections and observations for the session.
+// Item count limits (maxReflections, maxObservations) are enforced here.
+func (m *ContextAwareModelAdapter) retrieveMemoryData(ctx context.Context, sessionKey string) ([]memory.Reflection, []memory.Observation) {
 	var reflections []memory.Reflection
 	var observations []memory.Observation
 	var err error
@@ -37,11 +38,20 @@ func (m *ContextAwareModelAdapter) assembleMemorySection(ctx context.Context, se
 		m.logger.Warnw("memory observation retrieval error", "error", err)
 	}
 
+	return reflections, observations
+}
+
+// formatMemorySection builds the "Conversation Memory" section from pre-retrieved data.
+// Reflections are included first (higher information density), then observations fill
+// the remaining budget. budget=0 means use default (4000).
+func (m *ContextAwareModelAdapter) formatMemorySection(reflections []memory.Reflection, observations []memory.Observation, budget int) string {
 	if len(reflections) == 0 && len(observations) == 0 {
 		return ""
 	}
 
-	budget := m.memoryTokenBudget
+	if budget <= 0 {
+		budget = m.memoryTokenBudget
+	}
 	if budget <= 0 {
 		budget = defaultMemoryTokenBudget
 	}
@@ -51,7 +61,6 @@ func (m *ContextAwareModelAdapter) assembleMemorySection(ctx context.Context, se
 
 	b.WriteString("## Conversation Memory\n")
 
-	// Reflections first — higher information density from compressed summaries.
 	if len(reflections) > 0 {
 		b.WriteString("\n### Summary\n")
 		for _, ref := range reflections {
@@ -65,7 +74,6 @@ func (m *ContextAwareModelAdapter) assembleMemorySection(ctx context.Context, se
 		}
 	}
 
-	// Observations fill remaining budget.
 	if len(observations) > 0 && currentTokens < budget {
 		b.WriteString("\n### Recent Observations\n")
 		for _, obs := range observations {
@@ -83,15 +91,18 @@ func (m *ContextAwareModelAdapter) assembleMemorySection(ctx context.Context, se
 	return b.String()
 }
 
-func (m *ContextAwareModelAdapter) assembleRunSummarySection(ctx context.Context, sessionKey string) string {
+// retrieveRunSummaryData fetches run summaries for the session.
+// Returns nil if provider is absent, an error occurs, or no summaries exist.
+// Uses a cache keyed by (sessionKey, maxJournalSeq) to avoid repeated queries.
+func (m *ContextAwareModelAdapter) retrieveRunSummaryData(ctx context.Context, sessionKey string) []RunSummaryContext {
 	if m.runSummaryProvider == nil {
-		return ""
+		return nil
 	}
 
 	maxSeq, err := m.runSummaryProvider.MaxJournalSeqForSession(ctx, sessionKey)
 	if err != nil {
 		m.logger.Warnw("run summary max seq retrieval error", "error", err)
-		return ""
+		return nil
 	}
 	if cached, ok := m.getCachedRunSummary(sessionKey, maxSeq); ok {
 		return cached
@@ -100,10 +111,35 @@ func (m *ContextAwareModelAdapter) assembleRunSummarySection(ctx context.Context
 	summaries, err := m.runSummaryProvider.ListRunSummaries(ctx, sessionKey, 3)
 	if err != nil {
 		m.logger.Warnw("run summary retrieval error", "error", err)
+		return nil
+	}
+	m.storeCachedRunSummary(sessionKey, maxSeq, summaries)
+	return summaries
+}
+
+// formatRunSummarySection builds the "Active Runs" section from pre-retrieved summaries.
+// budgetTokens controls item-level truncation: 0 = unlimited.
+func formatRunSummarySection(summaries []RunSummaryContext, budgetTokens int) string {
+	if len(summaries) == 0 {
 		return ""
 	}
+
+	// Item-level truncation: drop older summaries until within budget.
+	if budgetTokens > 0 {
+		headerTokens := types.EstimateTokens("## Active Runs\n")
+		remaining := budgetTokens - headerTokens
+		for i, summary := range summaries {
+			line := fmt.Sprintf("- %s: %s [status=%s]\n", summary.RunID, summary.Goal, summary.Status)
+			itemTokens := types.EstimateTokens(line)
+			if remaining-itemTokens < 0 {
+				summaries = summaries[:i]
+				break
+			}
+			remaining -= itemTokens
+		}
+	}
+
 	if len(summaries) == 0 {
-		m.storeCachedRunSummary(sessionKey, maxSeq, "")
 		return ""
 	}
 
@@ -127,9 +163,7 @@ func (m *ContextAwareModelAdapter) assembleRunSummarySection(ctx context.Context
 		}
 		b.WriteString("\n")
 	}
-	assembled := b.String()
-	m.storeCachedRunSummary(sessionKey, maxSeq, assembled)
-	return assembled
+	return b.String()
 }
 
 type runSummaryCache struct {
@@ -138,28 +172,28 @@ type runSummaryCache struct {
 }
 
 type summaryCacheEntry struct {
-	summary string
-	maxSeq  int64
+	summaries []RunSummaryContext
+	maxSeq    int64
 }
 
-func (m *ContextAwareModelAdapter) getCachedRunSummary(sessionKey string, maxSeq int64) (string, bool) {
+func (m *ContextAwareModelAdapter) getCachedRunSummary(sessionKey string, maxSeq int64) ([]RunSummaryContext, bool) {
 	if m.runSummaryCache == nil {
-		return "", false
+		return nil, false
 	}
 	m.runSummaryCache.mu.RLock()
 	defer m.runSummaryCache.mu.RUnlock()
 
 	entry, ok := m.runSummaryCache.entries[sessionKey]
 	if !ok || entry.maxSeq != maxSeq {
-		return "", false
+		return nil, false
 	}
-	return entry.summary, true
+	return entry.summaries, true
 }
 
 func (m *ContextAwareModelAdapter) storeCachedRunSummary(
 	sessionKey string,
 	maxSeq int64,
-	summary string,
+	summaries []RunSummaryContext,
 ) {
 	if m.runSummaryCache == nil {
 		return
@@ -167,7 +201,7 @@ func (m *ContextAwareModelAdapter) storeCachedRunSummary(
 	m.runSummaryCache.mu.Lock()
 	defer m.runSummaryCache.mu.Unlock()
 	m.runSummaryCache.entries[sessionKey] = summaryCacheEntry{
-		summary: summary,
-		maxSeq:  maxSeq,
+		summaries: summaries,
+		maxSeq:    maxSeq,
 	}
 }

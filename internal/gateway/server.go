@@ -25,6 +25,7 @@ import (
 	"github.com/langoai/lango/internal/session"
 	"github.com/langoai/lango/internal/turnrunner"
 	"github.com/langoai/lango/internal/turntrace"
+	"github.com/langoai/lango/internal/types"
 )
 
 func logger() *zap.SugaredLogger { return logging.Gateway() }
@@ -54,6 +55,7 @@ type Server struct {
 	turnRunner         *turnrunner.Runner
 	shutdownCtx        context.Context
 	shutdownCancel     context.CancelFunc
+	featureStatuses    []types.FeatureStatus
 }
 
 // Config holds gateway server configuration
@@ -655,13 +657,22 @@ func (s *Server) Shutdown(ctx context.Context) error {
 	return s.httpServer.Shutdown(ctx)
 }
 
+// SetFeatureStatuses sets the context subsystem status for health reporting.
+func (s *Server) SetFeatureStatuses(statuses []types.FeatureStatus) {
+	s.featureStatuses = statuses
+}
+
 // handleHealth returns health status
 func (s *Server) handleHealth(w http.ResponseWriter, _ *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
-	_ = json.NewEncoder(w).Encode(map[string]string{
+	resp := map[string]interface{}{
 		"status": "ok",
 		"time":   time.Now().Format(time.RFC3339),
-	})
+	}
+	if len(s.featureStatuses) > 0 {
+		resp["features"] = s.featureStatuses
+	}
+	_ = json.NewEncoder(w).Encode(resp)
 }
 
 // handleStatus returns server status

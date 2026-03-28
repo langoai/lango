@@ -170,6 +170,7 @@ func (r *Runner) Run(parent context.Context, req Request) (Result, error) {
 	defer cancel()
 
 	ctx = langosession.WithSessionKey(ctx, req.SessionKey)
+	ctx = langosession.WithTurnID(ctx, traceID)
 	ctx = approval.WithTurnApprovalState(ctx, approval.NewTurnApprovalState())
 	ctx = browser.WithRequestState(ctx, browser.NewRequestState())
 

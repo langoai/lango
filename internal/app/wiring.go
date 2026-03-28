@@ -26,6 +26,7 @@ import (
 	"github.com/langoai/lango/internal/skill"
 	"github.com/langoai/lango/internal/supervisor"
 	"github.com/langoai/lango/internal/toolcatalog"
+	"github.com/langoai/lango/internal/types"
 	"google.golang.org/adk/model"
 	adk_tool "google.golang.org/adk/tool"
 )
@@ -362,6 +363,9 @@ func initAgent(ctx context.Context, deps *agentDeps) (*adk.Agent, error) {
 			ctxAdapter.WithRunSummaryProvider(&runSummaryProviderAdapter{store: deps.rls})
 		}
 
+		// Wire in context budget manager.
+		wireBudgetManager(cfg, builder, ctxAdapter)
+
 		// Wire in observational memory if available
 		if mc != nil {
 			ctxAdapter.WithMemory(mc.store)
@@ -397,6 +401,16 @@ func initAgent(ctx context.Context, deps *agentDeps) (*adk.Agent, error) {
 			if gc != nil && gc.ragService != nil {
 				ctxAdapter.WithGraphRAG(gc.ragService)
 			}
+		}
+
+		// Wire in agentic retrieval coordinator if enabled.
+		if coordinator := initRetrievalCoordinator(cfg, kc.store, ec); coordinator != nil {
+			ctxAdapter.WithCoordinator(coordinator)
+		}
+
+		// Wire event bus for context injection observability.
+		if deps.eventBus != nil {
+			ctxAdapter.WithEventBus(deps.eventBus)
 		}
 
 		llm = ctxAdapter
@@ -440,7 +454,20 @@ func initAgent(ctx context.Context, deps *agentDeps) (*adk.Agent, error) {
 			}
 		}
 
+		// Wire event bus for context injection observability.
+		if deps.eventBus != nil {
+			ctxAdapter.WithEventBus(deps.eventBus)
+		}
+
 		llm = ctxAdapter
+	}
+
+	// Wire feedback processor for context injection observability (independent of knowledge/coordinator).
+	initFeedbackProcessor(cfg, deps.eventBus)
+
+	// Wire relevance adjuster for score auto-adjustment.
+	if kc != nil {
+		initRelevanceAdjuster(cfg, kc.store, deps.eventBus)
 	}
 
 	// If PII redaction is enabled, wrap with PII-redacting adapter
@@ -734,4 +761,40 @@ func buildAutomationPromptSection(cfg *config.Config) *prompt.StaticSection {
 
 	content := strings.Join(parts, "\n")
 	return prompt.NewStaticSection(prompt.SectionAutomation, 450, "Automation", content)
+}
+
+// wireBudgetManager creates and injects a ContextBudgetManager into the context adapter.
+func wireBudgetManager(cfg *config.Config, builder *prompt.Builder, ctxAdapter *adk.ContextAwareModelAdapter) {
+	modelWindow := cfg.Context.ModelWindow
+	if modelWindow <= 0 {
+		modelWindow = adk.LookupModelWindow(cfg.Agent.Model)
+	}
+
+	responseReserve := cfg.Context.ResponseReserve
+	if responseReserve <= 0 {
+		responseReserve = cfg.Agent.MaxTokens
+	}
+
+	basePromptTokens := types.EstimateTokens(builder.Build())
+
+	alloc := adk.SectionAllocation{
+		Knowledge:  cfg.Context.Allocation.Knowledge,
+		RAG:        cfg.Context.Allocation.RAG,
+		Memory:     cfg.Context.Allocation.Memory,
+		RunSummary: cfg.Context.Allocation.RunSummary,
+		Headroom:   cfg.Context.Allocation.Headroom,
+	}
+
+	bm, err := adk.NewContextBudgetManager(modelWindow, responseReserve, basePromptTokens, alloc)
+	if err != nil {
+		logger().Warnw("context budget manager creation failed, continuing without budget", "error", err)
+		return
+	}
+
+	ctxAdapter.WithBudgetManager(bm)
+	logger().Infow("context budget manager initialized",
+		"modelWindow", modelWindow,
+		"responseReserve", responseReserve,
+		"basePromptTokens", basePromptTokens,
+	)
 }

@@ -67,10 +67,10 @@ func TestStore_SaveLoadRoundTrip(t *testing.T) {
 
 	original := testConfig()
 
-	err := store.Save(ctx, "default", original)
+	err := store.Save(ctx, "default", original, nil)
 	require.NoError(t, err)
 
-	loaded, err := store.Load(ctx, "default")
+	loaded, _, err := store.Load(ctx, "default")
 	require.NoError(t, err)
 
 	assert.Equal(t, original.Server.Host, loaded.Server.Host)
@@ -93,14 +93,14 @@ func TestStore_SaveUpdatesExisting(t *testing.T) {
 
 	cfg := testConfig()
 
-	err := store.Save(ctx, "default", cfg)
+	err := store.Save(ctx, "default", cfg, nil)
 	require.NoError(t, err)
 
 	cfg.Server.Port = 9090
-	err = store.Save(ctx, "default", cfg)
+	err = store.Save(ctx, "default", cfg, nil)
 	require.NoError(t, err)
 
-	loaded, err := store.Load(ctx, "default")
+	loaded, _, err := store.Load(ctx, "default")
 	require.NoError(t, err)
 	assert.Equal(t, 9090, loaded.Server.Port)
 
@@ -117,7 +117,7 @@ func TestStore_LoadNotFound(t *testing.T) {
 	store := NewStore(client, crypto)
 	ctx := context.Background()
 
-	_, err := store.Load(ctx, "nonexistent")
+	_, _, err := store.Load(ctx, "nonexistent")
 	assert.ErrorIs(t, err, ErrProfileNotFound)
 }
 
@@ -129,11 +129,11 @@ func TestStore_List(t *testing.T) {
 
 	cfg := testConfig()
 
-	err := store.Save(ctx, "alpha", cfg)
+	err := store.Save(ctx, "alpha", cfg, nil)
 	require.NoError(t, err)
-	err = store.Save(ctx, "beta", cfg)
+	err = store.Save(ctx, "beta", cfg, nil)
 	require.NoError(t, err)
-	err = store.Save(ctx, "gamma", cfg)
+	err = store.Save(ctx, "gamma", cfg, nil)
 	require.NoError(t, err)
 
 	profiles, err := store.List(ctx)
@@ -154,7 +154,7 @@ func TestStore_Delete(t *testing.T) {
 
 	cfg := testConfig()
 
-	err := store.Save(ctx, "to-delete", cfg)
+	err := store.Save(ctx, "to-delete", cfg, nil)
 	require.NoError(t, err)
 
 	exists, err := store.Exists(ctx, "to-delete")
@@ -186,7 +186,7 @@ func TestStore_DeleteActiveProfile(t *testing.T) {
 	ctx := context.Background()
 
 	cfg := testConfig()
-	err := store.Save(ctx, "active-profile", cfg)
+	err := store.Save(ctx, "active-profile", cfg, nil)
 	require.NoError(t, err)
 	err = store.SetActive(ctx, "active-profile")
 	require.NoError(t, err)
@@ -203,9 +203,9 @@ func TestStore_SetActive(t *testing.T) {
 
 	cfg := testConfig()
 
-	err := store.Save(ctx, "first", cfg)
+	err := store.Save(ctx, "first", cfg, nil)
 	require.NoError(t, err)
-	err = store.Save(ctx, "second", cfg)
+	err = store.Save(ctx, "second", cfg, nil)
 	require.NoError(t, err)
 
 	// Activate first.
@@ -254,12 +254,12 @@ func TestStore_LoadActive(t *testing.T) {
 	ctx := context.Background()
 
 	cfg := testConfig()
-	err := store.Save(ctx, "my-profile", cfg)
+	err := store.Save(ctx, "my-profile", cfg, nil)
 	require.NoError(t, err)
 	err = store.SetActive(ctx, "my-profile")
 	require.NoError(t, err)
 
-	name, loaded, err := store.LoadActive(ctx)
+	name, loaded, _, err := store.LoadActive(ctx)
 	require.NoError(t, err)
 	assert.Equal(t, "my-profile", name)
 	assert.Equal(t, cfg.Server.Port, loaded.Server.Port)
@@ -271,7 +271,7 @@ func TestStore_LoadActiveNoActive(t *testing.T) {
 	store := NewStore(client, crypto)
 	ctx := context.Background()
 
-	_, _, err := store.LoadActive(ctx)
+	_, _, _, err := store.LoadActive(ctx)
 	assert.ErrorIs(t, err, ErrNoActiveProfile)
 }
 
@@ -282,14 +282,14 @@ func TestStore_WrongPassphrase(t *testing.T) {
 	ctx := context.Background()
 
 	cfg := testConfig()
-	err := store1.Save(ctx, "encrypted", cfg)
+	err := store1.Save(ctx, "encrypted", cfg, nil)
 	require.NoError(t, err)
 
 	// Try to load with a different passphrase.
 	crypto2 := testCrypto(t, "wrong-passphrase-here")
 	store2 := NewStore(client, crypto2)
 
-	_, err = store2.Load(ctx, "encrypted")
+	_, _, err = store2.Load(ctx, "encrypted")
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "decrypt")
 }
@@ -305,7 +305,7 @@ func TestStore_Exists(t *testing.T) {
 	assert.False(t, exists)
 
 	cfg := testConfig()
-	err = store.Save(ctx, "yes", cfg)
+	err = store.Save(ctx, "yes", cfg, nil)
 	require.NoError(t, err)
 
 	exists, err = store.Exists(ctx, "yes")

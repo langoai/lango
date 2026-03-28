@@ -324,11 +324,13 @@ var (
 	// KnowledgesColumns holds the columns for the "knowledges" table.
 	KnowledgesColumns = []*schema.Column{
 		{Name: "id", Type: field.TypeUUID},
-		{Name: "key", Type: field.TypeString, Unique: true},
+		{Name: "key", Type: field.TypeString},
 		{Name: "category", Type: field.TypeEnum, Enums: []string{"rule", "definition", "preference", "fact", "pattern", "correction"}},
 		{Name: "content", Type: field.TypeString, Size: 2147483647},
 		{Name: "tags", Type: field.TypeJSON, Nullable: true},
 		{Name: "source", Type: field.TypeString, Nullable: true},
+		{Name: "version", Type: field.TypeInt, Default: 1},
+		{Name: "is_latest", Type: field.TypeBool, Default: true},
 		{Name: "use_count", Type: field.TypeInt, Default: 0},
 		{Name: "relevance_score", Type: field.TypeFloat64, Default: 1},
 		{Name: "created_at", Type: field.TypeTime},
@@ -340,6 +342,16 @@ var (
 		Columns:    KnowledgesColumns,
 		PrimaryKey: []*schema.Column{KnowledgesColumns[0]},
 		Indexes: []*schema.Index{
+			{
+				Name:    "knowledge_key_version",
+				Unique:  true,
+				Columns: []*schema.Column{KnowledgesColumns[1], KnowledgesColumns[6]},
+			},
+			{
+				Name:    "knowledge_key_is_latest",
+				Unique:  false,
+				Columns: []*schema.Column{KnowledgesColumns[1], KnowledgesColumns[7]},
+			},
 			{
 				Name:    "knowledge_category",
 				Unique:  false,

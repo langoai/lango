@@ -13,6 +13,7 @@ import (
 	"github.com/langoai/lango/internal/bootstrap"
 	"github.com/langoai/lango/internal/cli/tui"
 	"github.com/langoai/lango/internal/config"
+	"github.com/langoai/lango/internal/types"
 )
 
 const defaultAddr = "http://localhost:18789"
@@ -60,15 +61,16 @@ Examples:
 
 // StatusInfo holds all collected status data.
 type StatusInfo struct {
-	Version    string        `json:"version"`
-	Profile    string        `json:"profile"`
-	ServerUp   bool          `json:"serverUp"`
-	Gateway    string        `json:"gateway"`
-	Provider   string        `json:"provider"`
-	Model      string        `json:"model"`
-	Features   []FeatureInfo `json:"features"`
-	Channels   []string      `json:"channels"`
-	ServerInfo *LiveInfo     `json:"serverInfo,omitempty"`
+	Version        string        `json:"version"`
+	Profile        string        `json:"profile"`
+	ContextProfile string        `json:"contextProfile,omitempty"`
+	ServerUp       bool          `json:"serverUp"`
+	Gateway        string        `json:"gateway"`
+	Provider       string        `json:"provider"`
+	Model          string        `json:"model"`
+	Features       []FeatureInfo `json:"features"`
+	Channels       []string      `json:"channels"`
+	ServerInfo     *LiveInfo     `json:"serverInfo,omitempty"`
 }
 
 // FeatureInfo describes a feature's status.
@@ -80,16 +82,18 @@ type FeatureInfo struct {
 
 // LiveInfo holds data fetched from a running server.
 type LiveInfo struct {
-	Healthy bool   `json:"healthy"`
-	Uptime  string `json:"uptime,omitempty"`
+	Healthy  bool                   `json:"healthy"`
+	Uptime   string                 `json:"uptime,omitempty"`
+	Features []types.FeatureStatus  `json:"features,omitempty"`
 }
 
 func collectStatus(cfg *config.Config, profile, addr string) StatusInfo {
 	info := StatusInfo{
-		Profile:  profile,
-		Gateway:  fmt.Sprintf("http://%s:%d", cfg.Server.Host, cfg.Server.Port),
-		Provider: cfg.Agent.Provider,
-		Model:    cfg.Agent.Model,
+		Profile:        profile,
+		ContextProfile: string(cfg.ContextProfile),
+		Gateway:        fmt.Sprintf("http://%s:%d", cfg.Server.Host, cfg.Server.Port),
+		Provider:       cfg.Agent.Provider,
+		Model:          cfg.Agent.Model,
 	}
 
 	// Check server health.
@@ -109,16 +113,39 @@ func collectStatus(cfg *config.Config, profile, addr string) StatusInfo {
 	// Collect features.
 	info.Features = collectFeatures(cfg)
 
+	// Enrich feature details with live runtime statuses when available.
+	if info.ServerInfo != nil && len(info.ServerInfo.Features) > 0 {
+		liveByName := make(map[string]types.FeatureStatus, len(info.ServerInfo.Features))
+		for _, fs := range info.ServerInfo.Features {
+			liveByName[fs.Name] = fs
+		}
+		for i := range info.Features {
+			if live, ok := liveByName[info.Features[i].Name]; ok && info.Features[i].Detail == "" {
+				if live.Reason != "" {
+					info.Features[i].Detail = live.Reason
+				}
+			}
+		}
+	}
+
 	return info
 }
 
+func profileDetail(cfg *config.Config) string {
+	if cfg.ContextProfile != "" {
+		return "profile: " + string(cfg.ContextProfile)
+	}
+	return ""
+}
+
 func collectFeatures(cfg *config.Config) []FeatureInfo {
+	pd := profileDetail(cfg)
 	return []FeatureInfo{
-		{"Knowledge", cfg.Knowledge.Enabled, ""},
+		{"Knowledge", cfg.Knowledge.Enabled, pd},
 		{"Embedding & RAG", cfg.Embedding.Provider != "", cfg.Embedding.Provider},
-		{"Graph", cfg.Graph.Enabled, ""},
-		{"Obs. Memory", cfg.ObservationalMemory.Enabled, ""},
-		{"Librarian", cfg.Librarian.Enabled, ""},
+		{"Graph", cfg.Graph.Enabled, pd},
+		{"Obs. Memory", cfg.ObservationalMemory.Enabled, pd},
+		{"Librarian", cfg.Librarian.Enabled, pd},
 		{"Multi-Agent", cfg.Agent.MultiAgent, ""},
 		{"Cron", cfg.Cron.Enabled, ""},
 		{"Background", cfg.Background.Enabled, ""},
@@ -152,10 +179,20 @@ func probeServer(addr string) (bool, *LiveInfo) {
 	}
 	defer func() { _ = resp.Body.Close() }()
 
-	if resp.StatusCode == http.StatusOK {
-		return true, &LiveInfo{Healthy: true}
+	if resp.StatusCode != http.StatusOK {
+		return false, nil
 	}
-	return false, nil
+
+	live := &LiveInfo{Healthy: true}
+
+	// Try to parse feature statuses from health response.
+	var healthResp struct {
+		Features []types.FeatureStatus `json:"features"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&healthResp); err == nil {
+		live.Features = healthResp.Features
+	}
+	return true, live
 }
 
 func printJSON(v interface{}) error {

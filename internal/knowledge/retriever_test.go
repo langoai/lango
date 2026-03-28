@@ -437,3 +437,63 @@ func TestAssemblePrompt(t *testing.T) {
 		}
 	})
 }
+
+func TestTruncateResult(t *testing.T) {
+	t.Run("nil result", func(t *testing.T) {
+		got := TruncateResult(nil, 100)
+		if got != nil {
+			t.Error("expected nil for nil input")
+		}
+	})
+
+	t.Run("zero budget means unlimited", func(t *testing.T) {
+		result := &RetrievalResult{
+			Items:      map[ContextLayer][]ContextItem{LayerUserKnowledge: {{Content: "some content"}}},
+			TotalItems: 1,
+		}
+		got := TruncateResult(result, 0)
+		if got.TotalItems != 1 {
+			t.Errorf("want 1 item, got %d", got.TotalItems)
+		}
+	})
+
+	t.Run("result fits within budget", func(t *testing.T) {
+		result := &RetrievalResult{
+			Items:      map[ContextLayer][]ContextItem{LayerUserKnowledge: {{Content: "short"}}},
+			TotalItems: 1,
+		}
+		got := TruncateResult(result, 10000)
+		if got.TotalItems != 1 {
+			t.Errorf("want 1 item, got %d", got.TotalItems)
+		}
+	})
+
+	t.Run("result exceeds budget", func(t *testing.T) {
+		items := make([]ContextItem, 20)
+		for i := range items {
+			items[i] = ContextItem{Content: strings.Repeat("abcdefgh ", 100)} // ~200 tokens each
+		}
+		result := &RetrievalResult{
+			Items:      map[ContextLayer][]ContextItem{LayerUserKnowledge: items},
+			TotalItems: 20,
+		}
+		got := TruncateResult(result, 500) // should fit ~2-3 items
+		if got.TotalItems >= 20 {
+			t.Errorf("expected truncation, got %d items", got.TotalItems)
+		}
+		if got.TotalItems == 0 {
+			t.Error("expected at least some items")
+		}
+	})
+
+	t.Run("budget too small for any item", func(t *testing.T) {
+		result := &RetrievalResult{
+			Items:      map[ContextLayer][]ContextItem{LayerUserKnowledge: {{Content: strings.Repeat("x", 1000)}}},
+			TotalItems: 1,
+		}
+		got := TruncateResult(result, 1)
+		if got.TotalItems != 0 {
+			t.Errorf("expected 0 items, got %d", got.TotalItems)
+		}
+	})
+}

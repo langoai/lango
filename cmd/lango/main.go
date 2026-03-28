@@ -454,7 +454,7 @@ func configCmd() *cobra.Command {
 				return fmt.Errorf("internal error: bootstrap result not available")
 			}
 			return setBootResult.ConfigStore.Save(
-				context.Background(), setBootResult.ProfileName, cfg,
+				context.Background(), setBootResult.ProfileName, cfg, nil,
 			)
 		},
 	))

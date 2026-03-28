@@ -159,6 +159,16 @@ func DefaultConfig() *Config {
 				RetentionDays:      30,
 			},
 		},
+		Sandbox: SandboxConfig{
+			Enabled:           false,
+			FailClosed:        false,
+			NetworkMode:       "deny",
+			TimeoutPerTool:    30 * time.Second,
+			AllowedWritePaths: []string{"/tmp"},
+			OS: OSSandboxConfig{
+				SeccompProfile: "moderate",
+			},
+		},
 		ObservationalMemory: ObservationalMemoryConfig{
 			Enabled:                          false,
 			MessageTokenThreshold:            1000,
@@ -176,6 +186,20 @@ func DefaultConfig() *Config {
 			MaxPendingInquiries:  2,
 			AutoSaveConfidence:   types.ConfidenceHigh,
 		},
+		Retrieval: RetrievalConfig{
+			Enabled:  false,
+			Feedback: false,
+			AutoAdjust: AutoAdjustConfig{
+				Enabled:       false,
+				Mode:          "shadow",
+				BoostDelta:    0.05,
+				DecayDelta:    0.01,
+				DecayInterval: 100,
+				MinScore:      0.1,
+				MaxScore:      5.0,
+				WarmupTurns:   50,
+			},
+		},
 		MCP: MCPConfig{
 			Enabled:              false,
 			DefaultTimeout:       30 * time.Second,
@@ -183,16 +207,6 @@ func DefaultConfig() *Config {
 			HealthCheckInterval:  30 * time.Second,
 			AutoReconnect:        true,
 			MaxReconnectAttempts: 5,
-		},
-		Sandbox: SandboxConfig{
-			Enabled:        false,
-			FailClosed:     false,
-			NetworkMode:    "deny",
-			TimeoutPerTool: 30 * time.Second,
-			AllowedWritePaths: []string{"/tmp"},
-			OS: OSSandboxConfig{
-				SeccompProfile: "moderate",
-			},
 		},
 		P2P: P2PConfig{
 			Enabled: false,
@@ -292,8 +306,16 @@ func setDefaultsFromStruct(v *viper.Viper, prefix string, val reflect.Value) {
 	}
 }
 
-// Load reads configuration from file and environment
-func Load(configPath string) (*Config, error) {
+// LoadResult holds the configuration and metadata produced by Load().
+type LoadResult struct {
+	Config       *Config         `json:"config"`
+	ExplicitKeys map[string]bool `json:"explicitKeys,omitempty"`
+	AutoEnabled  AutoEnabledSet  `json:"autoEnabled,omitempty"`
+}
+
+// Load reads configuration from file and environment.
+// Returns LoadResult with the Config, explicitly-set keys, and auto-enable metadata.
+func Load(configPath string) (*LoadResult, error) {
 	v := viper.New()
 
 	// Set defaults from DefaultConfig — single source of truth.
@@ -326,12 +348,25 @@ func Load(configPath string) (*Config, error) {
 		return nil, fmt.Errorf("unmarshal config: %w", err)
 	}
 
+	// Detect which context-related keys the user explicitly set in their config file.
+	explicitKeys := collectExplicitKeys(configPath, contextRelatedKeys)
+
+	// Apply context profile (only modifies fields not explicitly set by user).
+	ApplyContextProfile(cfg, explicitKeys)
+
+	// Auto-enable context subsystems when dependencies are detectable.
+	autoEnabled := ResolveContextAutoEnable(cfg, explicitKeys)
+
 	// Post-load: migrate, substitute env vars, normalize paths, validate.
 	if err := PostLoad(cfg); err != nil {
 		return nil, err
 	}
 
-	return cfg, nil
+	return &LoadResult{
+		Config:       cfg,
+		ExplicitKeys: explicitKeys,
+		AutoEnabled:  autoEnabled,
+	}, nil
 }
 
 // PostLoad applies post-load processing: legacy migration, env substitution,
@@ -438,6 +473,11 @@ func Validate(cfg *Config) error {
 				errs = append(errs, fmt.Sprintf("agent.fallbackModel %q incompatible with fallbackProvider %q (type %s): %v", cfg.Agent.FallbackModel, cfg.Agent.FallbackProvider, pCfg.Type, err))
 			}
 		}
+	}
+
+	// Validate context profile name.
+	if cfg.ContextProfile != "" && !ValidContextProfiles[cfg.ContextProfile] {
+		errs = append(errs, fmt.Sprintf("invalid contextProfile: %s (must be off, lite, balanced, or full)", cfg.ContextProfile))
 	}
 
 	// Validate logging config

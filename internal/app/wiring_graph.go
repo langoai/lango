@@ -2,6 +2,7 @@ package app
 
 import (
 	"context"
+	"fmt"
 	"path/filepath"
 
 	"github.com/langoai/lango/internal/config"
@@ -10,6 +11,7 @@ import (
 	"github.com/langoai/lango/internal/graph"
 	"github.com/langoai/lango/internal/memory"
 	"github.com/langoai/lango/internal/supervisor"
+	"github.com/langoai/lango/internal/types"
 )
 
 // graphComponents holds optional graph store components.
@@ -20,10 +22,12 @@ type graphComponents struct {
 }
 
 // initGraphStore creates the graph store if enabled.
-func initGraphStore(cfg *config.Config) *graphComponents {
+func initGraphStore(cfg *config.Config) (*graphComponents, *types.FeatureStatus) {
+	const featureName = "Graph Store"
+
 	if !cfg.Graph.Enabled {
 		logger().Info("graph store disabled")
-		return nil
+		return nil, &types.FeatureStatus{Name: featureName, Enabled: false, Healthy: true}
 	}
 
 	dbPath := cfg.Graph.DatabasePath
@@ -39,7 +43,11 @@ func initGraphStore(cfg *config.Config) *graphComponents {
 	store, err := graph.NewBoltStore(dbPath)
 	if err != nil {
 		logger().Warnw("graph store init error, skipping", "error", err)
-		return nil
+		return nil, &types.FeatureStatus{
+			Name: featureName, Enabled: false, Healthy: false,
+			Reason:     fmt.Sprintf("bolt store init failed: %v", err),
+			Suggestion: "check graph.databasePath permissions and disk space",
+		}
 	}
 
 	buffer := graph.NewGraphBuffer(store, logger())
@@ -48,7 +56,7 @@ func initGraphStore(cfg *config.Config) *graphComponents {
 	return &graphComponents{
 		store:  store,
 		buffer: buffer,
-	}
+	}, &types.FeatureStatus{Name: featureName, Enabled: true, Healthy: true}
 }
 
 // wireGraphCallbacks subscribes to content.saved and triples.extracted events to feed the graph buffer.

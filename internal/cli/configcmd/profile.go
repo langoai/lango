@@ -132,7 +132,11 @@ Examples:
 				cfg = config.DefaultConfig()
 			}
 
-			if err := boot.ConfigStore.Save(ctx, name, cfg); err != nil {
+			var explicitKeys map[string]bool
+			if preset != "" {
+				explicitKeys = config.PresetExplicitKeys(preset)
+			}
+			if err := boot.ConfigStore.Save(ctx, name, cfg, explicitKeys); err != nil {
 				return fmt.Errorf("create profile: %w", err)
 			}
 
@@ -257,7 +261,7 @@ func newExportCmd(bootLoader func() (*bootstrap.Result, error)) *cobra.Command {
 			}
 			defer boot.DBClient.Close()
 
-			cfg, err := boot.ConfigStore.Load(context.Background(), name)
+			cfg, _, err := boot.ConfigStore.Load(context.Background(), name)
 			if err != nil {
 				return fmt.Errorf("load profile: %w", err)
 			}

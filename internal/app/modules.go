@@ -6,9 +6,11 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"time"
 
+	"github.com/langoai/lango/internal/adk"
 	"github.com/langoai/lango/internal/agent"
 	"github.com/langoai/lango/internal/agentmemory"
 	"github.com/langoai/lango/internal/appinit"
@@ -69,6 +71,7 @@ type intelligenceValues struct {
 	Observer         interface{} // learning.Observer — for WithLearning middleware
 	SkillRegistry    interface{}
 	AgentMemoryStore agentmemory.Store
+	FeatureStatuses  *StatusCollector
 }
 
 // automationValues holds the outputs of the automation module.
@@ -270,7 +273,7 @@ func (m *intelligenceModule) Init(ctx context.Context, r appinit.Resolver) (*app
 	var components []lifecycle.ComponentEntry
 
 	// Graph Store (before knowledge).
-	gc := initGraphStore(cfg)
+	gc, gcStatus := initGraphStore(cfg)
 
 	// Skills — resolve base tools from foundation for skill init.
 	var baseToolSlice []*agent.Tool
@@ -283,8 +286,12 @@ func (m *intelligenceModule) Init(ctx context.Context, r appinit.Resolver) (*app
 	}
 
 	// Knowledge.
-	kc := initKnowledge(cfg, store, gc, m.bus)
+	kc, kcStatus := initKnowledge(cfg, store, gc, m.bus)
+	fts5Available := false
 	if kc != nil {
+		// FTS5 search index.
+		fts5Available = initFTS5(ctx, m.rawDB, kc.store)
+
 		metaTools := buildMetaTools(kc.store, kc.engine, skillReg, cfg.Skill)
 		tools = append(tools, metaTools...)
 		entries = append(entries, appinit.CatalogEntry{Category: "meta", Description: "Knowledge, learning, and skill management", ConfigKey: "knowledge.enabled", Enabled: true, Tools: metaTools})
@@ -293,10 +300,10 @@ func (m *intelligenceModule) Init(ctx context.Context, r appinit.Resolver) (*app
 	}
 
 	// Observational Memory.
-	mc := initMemory(cfg, store, sv, m.bus)
+	mc, mcStatus := initMemory(cfg, store, sv, m.bus)
 
 	// Embedding / RAG.
-	ec := initEmbedding(cfg, m.rawDB, kc, mc, m.bus)
+	ec, ecStatus := initEmbedding(cfg, m.rawDB, kc, mc, m.bus)
 
 	// Graph callbacks.
 	if gc != nil {
@@ -308,7 +315,35 @@ func (m *intelligenceModule) Init(ctx context.Context, r appinit.Resolver) (*app
 	ab := initConversationAnalysis(cfg, sv, store, kc, gc, m.bus)
 
 	// Librarian.
-	lc := initLibrarian(cfg, sv, store, kc, mc, gc, m.bus)
+	lc, lcStatus := initLibrarian(cfg, sv, store, kc, mc, gc, m.bus)
+
+	// Enrich knowledge status with FTS5 and budget info.
+	if kcStatus != nil && kcStatus.Enabled && kcStatus.Healthy {
+		var details []string
+		if fts5Available {
+			details = append(details, "FTS5 search active")
+		} else {
+			details = append(details, "FTS5 unavailable, using LIKE fallback")
+		}
+		// Budget info from config.
+		modelWindow := cfg.Context.ModelWindow
+		if modelWindow <= 0 {
+			modelWindow = adk.LookupModelWindow(cfg.Agent.Model)
+		}
+		details = append(details, fmt.Sprintf("budgeted (%dk)", modelWindow/1000))
+		kcStatus.Reason = strings.Join(details, ", ")
+	}
+
+	// Collect feature statuses for diagnostics.
+	sc := NewStatusCollector()
+	sc.Add(gcStatus)
+	sc.Add(kcStatus)
+	sc.Add(mcStatus)
+	sc.Add(ecStatus)
+	sc.Add(lcStatus)
+	if n := sc.SilentDisabledCount(); n > 0 {
+		logger().Infow("some features disabled due to missing dependencies", "count", n)
+	}
 
 	// Graph tools.
 	if gc != nil {
@@ -406,6 +441,7 @@ func (m *intelligenceModule) Init(ctx context.Context, r appinit.Resolver) (*app
 				Observer:         observer,
 				SkillRegistry:    skillReg,
 				AgentMemoryStore: amStore,
+				FeatureStatuses:  sc,
 			},
 			appinit.ProvidesGraph:     gc,
 			appinit.ProvidesMemory:    mc,

@@ -88,6 +88,9 @@ type Config struct {
 	// Smart Account configuration (ERC-7579 modular accounts)
 	SmartAccount SmartAccountConfig `mapstructure:"smartAccount" json:"smartAccount"`
 
+	// Retrieval coordinator configuration (agentic retrieval)
+	Retrieval RetrievalConfig `mapstructure:"retrieval" json:"retrieval"`
+
 	// Gatekeeper configuration (response sanitization)
 	Gatekeeper GatekeeperConfig `mapstructure:"gatekeeper" json:"gatekeeper"`
 
@@ -103,8 +106,41 @@ type Config struct {
 	// Sandbox configuration (OS-level tool execution isolation)
 	Sandbox SandboxConfig `mapstructure:"sandbox" json:"sandbox"`
 
+	// ContextProfile selects a named preset that bundles context subsystem settings.
+	// Valid values: "off", "lite", "balanced", "full", or empty (no profile).
+	ContextProfile ContextProfileName `mapstructure:"contextProfile" json:"contextProfile,omitempty"`
+
+	// Context budget configuration (advanced). contextProfile stays top-level;
+	// these settings control token budget allocation across prompt sections.
+	Context ContextConfig `mapstructure:"context" json:"context"`
+
 	// Providers configuration
 	Providers map[string]ProviderConfig `mapstructure:"providers" json:"providers"`
+}
+
+// ContextConfig controls token budget allocation across prompt sections.
+// These are advanced settings; most users should use contextProfile instead.
+type ContextConfig struct {
+	// ModelWindow overrides the auto-detected model context window size (tokens).
+	// 0 = auto-detect from model registry.
+	ModelWindow int `mapstructure:"modelWindow" json:"modelWindow"`
+
+	// ResponseReserve overrides the response token reserve.
+	// 0 = use agent.maxTokens. Clamped to [1024, 25% of modelWindow].
+	ResponseReserve int `mapstructure:"responseReserve" json:"responseReserve"`
+
+	// Allocation controls the ratio of available tokens allocated to each section.
+	// All values must sum to 1.0.
+	Allocation ContextAllocationConfig `mapstructure:"allocation" json:"allocation"`
+}
+
+// ContextAllocationConfig defines per-section token allocation ratios.
+type ContextAllocationConfig struct {
+	Knowledge  float64 `mapstructure:"knowledge" json:"knowledge"`
+	RAG        float64 `mapstructure:"rag" json:"rag"`
+	Memory     float64 `mapstructure:"memory" json:"memory"`
+	RunSummary float64 `mapstructure:"runSummary" json:"runSummary"`
+	Headroom   float64 `mapstructure:"headroom" json:"headroom"`
 }
 
 // ServerConfig defines gateway server settings
@@ -343,6 +379,26 @@ type FilesystemToolConfig struct {
 type AgentMemoryConfig struct {
 	// Enable agent memory system
 	Enabled bool `mapstructure:"enabled" json:"enabled"`
+}
+
+// RetrievalConfig controls the agentic retrieval coordinator.
+type RetrievalConfig struct {
+	Enabled    bool             `mapstructure:"enabled" json:"enabled"`       // Enable agentic retrieval coordinator
+	Feedback   bool             `mapstructure:"feedback" json:"feedback"`     // Context injection observability
+	AutoAdjust AutoAdjustConfig `mapstructure:"autoAdjust" json:"autoAdjust"` // Relevance score auto-adjustment
+}
+
+// AutoAdjustConfig controls relevance score auto-adjustment.
+// Primarily affects LIKE fallback search path and coordinator merge priority.
+type AutoAdjustConfig struct {
+	Enabled       bool    `mapstructure:"enabled" json:"enabled"`             // Master switch (default: false)
+	Mode          string  `mapstructure:"mode" json:"mode"`                   // "shadow" or "active" (default: "shadow")
+	BoostDelta    float64 `mapstructure:"boostDelta" json:"boostDelta"`       // Per-injection boost (default: 0.05)
+	DecayDelta    float64 `mapstructure:"decayDelta" json:"decayDelta"`       // Per-interval decay (default: 0.01)
+	DecayInterval int     `mapstructure:"decayInterval" json:"decayInterval"` // Turns between global decay (default: 100)
+	MinScore      float64 `mapstructure:"minScore" json:"minScore"`           // Floor (default: 0.1)
+	MaxScore      float64 `mapstructure:"maxScore" json:"maxScore"`           // Cap (default: 5.0)
+	WarmupTurns   int     `mapstructure:"warmupTurns" json:"warmupTurns"`     // Turns before activation (default: 50)
 }
 
 // GatekeeperConfig defines response sanitization (output gatekeeper) settings.

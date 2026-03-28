@@ -12,6 +12,7 @@ type ContentSavedEvent struct {
 	Source     string // "knowledge" or "memory"
 	IsNew      bool   // true for first-time creation, false for updates
 	NeedsGraph bool   // true when graph triple extraction should also run
+	Version    int    // Knowledge version; 0 for non-versioned collections
 }
 
 // EventName implements Event.

@@ -9,6 +9,7 @@ import (
 
 	"github.com/langoai/lango/internal/asyncbuf"
 	entknowledge "github.com/langoai/lango/internal/ent/knowledge"
+	entlearning "github.com/langoai/lango/internal/ent/learning"
 	"github.com/langoai/lango/internal/eventbus"
 	"github.com/langoai/lango/internal/knowledge"
 	"github.com/langoai/lango/internal/memory"
@@ -162,11 +163,18 @@ func (b *ProactiveBuffer) process(sessionKey string) {
 				Content:  ext.Content,
 				Source:   "proactive_librarian",
 			}
+			if ext.Temporal != "" {
+				entry.Tags = append(entry.Tags, "temporal:"+ext.Temporal)
+			}
 			if err := b.knowledgeStore.SaveKnowledge(ctx, sessionKey, entry); err != nil {
 				b.logger.Warnw("auto-save knowledge", "key", ext.Key, "error", err)
 			} else {
 				b.logger.Infow("knowledge auto-saved", "key", ext.Key, "confidence", ext.Confidence)
 			}
+
+			// Dual-save: pattern/correction also go to learning store.
+			dualSaveToLearning(ctx, b.knowledgeStore, sessionKey,
+				ext.Type, ext.Key, ext.Content, "proactive:", b.logger)
 
 			// Publish graph triples via event bus.
 			if b.bus != nil && ext.Subject != "" && ext.Predicate != "" && ext.Object != "" {
@@ -175,9 +183,8 @@ func (b *ProactiveBuffer) process(sessionKey string) {
 						Subject:   ext.Subject,
 						Predicate: ext.Predicate,
 						Object:    ext.Object,
-						Metadata:  map[string]string{"source": "proactive_librarian", "key": ext.Key},
 					}},
-					Source: "librarian",
+					Source: "proactive_librarian",
 				})
 			}
 		}
@@ -257,5 +264,34 @@ func mapCategory(analysisType string) (entknowledge.Category, error) {
 		return entknowledge.CategoryCorrection, nil
 	default:
 		return "", fmt.Errorf("unrecognized knowledge type: %q", analysisType)
+	}
+}
+
+// dualSaveToLearning saves a pattern or correction knowledge entry to the learning store.
+// It is a no-op for other categories.
+func dualSaveToLearning(
+	ctx context.Context,
+	store *knowledge.Store,
+	sessionKey string,
+	category string,
+	key string,
+	content string,
+	triggerPrefix string,
+	logger *zap.SugaredLogger,
+) {
+	if category != "pattern" && category != "correction" {
+		return
+	}
+	lEntry := knowledge.LearningEntry{
+		Trigger:   triggerPrefix + key,
+		Diagnosis: content,
+		Category:  entlearning.CategoryGeneral,
+	}
+	if category == "correction" {
+		lEntry.Fix = content
+		lEntry.Category = entlearning.CategoryUserCorrection
+	}
+	if err := store.SaveLearning(ctx, sessionKey, lEntry); err != nil {
+		logger.Warnw("dual-save learning", "key", key, "error", err)
 	}
 }

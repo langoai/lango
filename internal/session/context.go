@@ -41,3 +41,19 @@ func RunContextFromContext(ctx context.Context) *RunContext {
 	}
 	return &v
 }
+
+// turnIDCtxKey is the context key type for turn IDs.
+type turnIDCtxKey struct{}
+
+// WithTurnID adds a turn ID to the context.
+func WithTurnID(ctx context.Context, turnID string) context.Context {
+	return context.WithValue(ctx, turnIDCtxKey{}, turnID)
+}
+
+// TurnIDFromContext extracts the turn ID from context.
+func TurnIDFromContext(ctx context.Context) string {
+	if v, ok := ctx.Value(turnIDCtxKey{}).(string); ok {
+		return v
+	}
+	return ""
+}

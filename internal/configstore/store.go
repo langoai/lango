@@ -25,6 +25,15 @@ type Store struct {
 	crypto security.CryptoProvider
 }
 
+// profilePayload wraps Config and ExplicitKeys for encrypted storage.
+// ExplicitKeys tracks which context-related keys the user explicitly set,
+// enabling auto-enable resolution on load. Legacy profiles without ExplicitKeys
+// are handled gracefully (nil = nothing explicit → auto-enable eligible).
+type profilePayload struct {
+	Config       *config.Config  `json:"config"`
+	ExplicitKeys map[string]bool `json:"explicitKeys,omitempty"`
+}
+
 // NewStore creates a new configuration store.
 func NewStore(client *ent.Client, crypto security.CryptoProvider) *Store {
 	return &Store{
@@ -37,12 +46,14 @@ func NewStore(client *ent.Client, crypto security.CryptoProvider) *Store {
 // If a profile with the given name already exists, it is updated.
 // PostLoad normalizes paths and validates the config in-place before persisting,
 // so the stored form is always canonical.
-func (s *Store) Save(ctx context.Context, name string, cfg *config.Config) error {
+// explicitKeys tracks which context-related keys the user explicitly set (may be nil).
+func (s *Store) Save(ctx context.Context, name string, cfg *config.Config, explicitKeys map[string]bool) error {
 	if err := config.PostLoad(cfg); err != nil {
 		return fmt.Errorf("validate config: %w", err)
 	}
 
-	plainJSON, err := json.Marshal(cfg)
+	payload := profilePayload{Config: cfg, ExplicitKeys: explicitKeys}
+	plainJSON, err := json.Marshal(payload)
 	if err != nil {
 		return fmt.Errorf("marshal config: %w", err)
 	}
@@ -86,56 +97,68 @@ func (s *Store) Save(ctx context.Context, name string, cfg *config.Config) error
 }
 
 // Load decrypts and deserializes a named profile's configuration.
-func (s *Store) Load(ctx context.Context, name string) (*config.Config, error) {
+// Returns the config and explicitKeys (nil for legacy profiles).
+func (s *Store) Load(ctx context.Context, name string) (*config.Config, map[string]bool, error) {
 	profile, err := s.client.ConfigProfile.
 		Query().
 		Where(configprofile.NameEQ(name)).
 		Only(ctx)
 	if err != nil {
 		if ent.IsNotFound(err) {
-			return nil, ErrProfileNotFound
+			return nil, nil, ErrProfileNotFound
 		}
-		return nil, fmt.Errorf("query profile %q: %w", name, err)
+		return nil, nil, fmt.Errorf("query profile %q: %w", name, err)
 	}
 
-	plainJSON, err := s.crypto.Decrypt(ctx, "local", profile.EncryptedData)
+	cfg, keys, err := s.decryptPayload(ctx, name, profile.EncryptedData)
 	if err != nil {
-		return nil, fmt.Errorf("decrypt profile %q: %w", name, err)
+		return nil, nil, err
+	}
+	return cfg, keys, nil
+}
+
+// decryptPayload decrypts and unmarshals a profile payload.
+// Handles both new (profilePayload) and legacy (bare Config) formats.
+func (s *Store) decryptPayload(ctx context.Context, name string, encrypted []byte) (*config.Config, map[string]bool, error) {
+	plainJSON, err := s.crypto.Decrypt(ctx, "local", encrypted)
+	if err != nil {
+		return nil, nil, fmt.Errorf("decrypt profile %q: %w", name, err)
 	}
 
+	// Try new profilePayload format first.
+	var payload profilePayload
+	if err := json.Unmarshal(plainJSON, &payload); err == nil && payload.Config != nil {
+		return payload.Config, payload.ExplicitKeys, nil
+	}
+
+	// Fall back to legacy bare Config format.
 	var cfg config.Config
 	if err := json.Unmarshal(plainJSON, &cfg); err != nil {
-		return nil, fmt.Errorf("unmarshal profile %q: %w", name, err)
+		return nil, nil, fmt.Errorf("unmarshal profile %q: %w", name, err)
 	}
-
-	return &cfg, nil
+	return &cfg, nil, nil
 }
 
 // LoadActive loads the currently active profile's configuration.
-// Returns the profile name, config, and any error.
-func (s *Store) LoadActive(ctx context.Context) (string, *config.Config, error) {
+// Returns the profile name, config, explicitKeys, and any error.
+// explicitKeys may be nil for legacy profiles saved before Step 8.
+func (s *Store) LoadActive(ctx context.Context) (string, *config.Config, map[string]bool, error) {
 	profile, err := s.client.ConfigProfile.
 		Query().
 		Where(configprofile.ActiveEQ(true)).
 		Only(ctx)
 	if err != nil {
 		if ent.IsNotFound(err) {
-			return "", nil, ErrNoActiveProfile
+			return "", nil, nil, ErrNoActiveProfile
 		}
-		return "", nil, fmt.Errorf("query active profile: %w", err)
+		return "", nil, nil, fmt.Errorf("query active profile: %w", err)
 	}
 
-	plainJSON, err := s.crypto.Decrypt(ctx, "local", profile.EncryptedData)
+	cfg, keys, err := s.decryptPayload(ctx, profile.Name, profile.EncryptedData)
 	if err != nil {
-		return "", nil, fmt.Errorf("decrypt active profile: %w", err)
+		return "", nil, nil, err
 	}
-
-	var cfg config.Config
-	if err := json.Unmarshal(plainJSON, &cfg); err != nil {
-		return "", nil, fmt.Errorf("unmarshal active profile: %w", err)
-	}
-
-	return profile.Name, &cfg, nil
+	return profile.Name, cfg, keys, nil
 }
 
 // SetActive deactivates all profiles and activates the named profile.

@@ -59,6 +59,34 @@ func (_c *KnowledgeCreate) SetNillableSource(v *string) *KnowledgeCreate {
 	return _c
 }
 
+// SetVersion sets the "version" field.
+func (_c *KnowledgeCreate) SetVersion(v int) *KnowledgeCreate {
+	_c.mutation.SetVersion(v)
+	return _c
+}
+
+// SetNillableVersion sets the "version" field if the given value is not nil.
+func (_c *KnowledgeCreate) SetNillableVersion(v *int) *KnowledgeCreate {
+	if v != nil {
+		_c.SetVersion(*v)
+	}
+	return _c
+}
+
+// SetIsLatest sets the "is_latest" field.
+func (_c *KnowledgeCreate) SetIsLatest(v bool) *KnowledgeCreate {
+	_c.mutation.SetIsLatest(v)
+	return _c
+}
+
+// SetNillableIsLatest sets the "is_latest" field if the given value is not nil.
+func (_c *KnowledgeCreate) SetNillableIsLatest(v *bool) *KnowledgeCreate {
+	if v != nil {
+		_c.SetIsLatest(*v)
+	}
+	return _c
+}
+
 // SetUseCount sets the "use_count" field.
 func (_c *KnowledgeCreate) SetUseCount(v int) *KnowledgeCreate {
 	_c.mutation.SetUseCount(v)
@@ -164,6 +192,14 @@ func (_c *KnowledgeCreate) ExecX(ctx context.Context) {
 
 // defaults sets the default values of the builder before save.
 func (_c *KnowledgeCreate) defaults() {
+	if _, ok := _c.mutation.Version(); !ok {
+		v := knowledge.DefaultVersion
+		_c.mutation.SetVersion(v)
+	}
+	if _, ok := _c.mutation.IsLatest(); !ok {
+		v := knowledge.DefaultIsLatest
+		_c.mutation.SetIsLatest(v)
+	}
 	if _, ok := _c.mutation.UseCount(); !ok {
 		v := knowledge.DefaultUseCount
 		_c.mutation.SetUseCount(v)
@@ -211,6 +247,12 @@ func (_c *KnowledgeCreate) check() error {
 		if err := knowledge.ContentValidator(v); err != nil {
 			return &ValidationError{Name: "content", err: fmt.Errorf(`ent: validator failed for field "Knowledge.content": %w`, err)}
 		}
+	}
+	if _, ok := _c.mutation.Version(); !ok {
+		return &ValidationError{Name: "version", err: errors.New(`ent: missing required field "Knowledge.version"`)}
+	}
+	if _, ok := _c.mutation.IsLatest(); !ok {
+		return &ValidationError{Name: "is_latest", err: errors.New(`ent: missing required field "Knowledge.is_latest"`)}
 	}
 	if _, ok := _c.mutation.UseCount(); !ok {
 		return &ValidationError{Name: "use_count", err: errors.New(`ent: missing required field "Knowledge.use_count"`)}
@@ -278,6 +320,14 @@ func (_c *KnowledgeCreate) createSpec() (*Knowledge, *sqlgraph.CreateSpec) {
 	if value, ok := _c.mutation.Source(); ok {
 		_spec.SetField(knowledge.FieldSource, field.TypeString, value)
 		_node.Source = value
+	}
+	if value, ok := _c.mutation.Version(); ok {
+		_spec.SetField(knowledge.FieldVersion, field.TypeInt, value)
+		_node.Version = value
+	}
+	if value, ok := _c.mutation.IsLatest(); ok {
+		_spec.SetField(knowledge.FieldIsLatest, field.TypeBool, value)
+		_node.IsLatest = value
 	}
 	if value, ok := _c.mutation.UseCount(); ok {
 		_spec.SetField(knowledge.FieldUseCount, field.TypeInt, value)

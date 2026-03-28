@@ -70,6 +70,16 @@ func Source(v string) predicate.Knowledge {
 	return predicate.Knowledge(sql.FieldEQ(FieldSource, v))
 }
 
+// Version applies equality check predicate on the "version" field. It's identical to VersionEQ.
+func Version(v int) predicate.Knowledge {
+	return predicate.Knowledge(sql.FieldEQ(FieldVersion, v))
+}
+
+// IsLatest applies equality check predicate on the "is_latest" field. It's identical to IsLatestEQ.
+func IsLatest(v bool) predicate.Knowledge {
+	return predicate.Knowledge(sql.FieldEQ(FieldIsLatest, v))
+}
+
 // UseCount applies equality check predicate on the "use_count" field. It's identical to UseCountEQ.
 func UseCount(v int) predicate.Knowledge {
 	return predicate.Knowledge(sql.FieldEQ(FieldUseCount, v))
@@ -323,6 +333,56 @@ func SourceEqualFold(v string) predicate.Knowledge {
 // SourceContainsFold applies the ContainsFold predicate on the "source" field.
 func SourceContainsFold(v string) predicate.Knowledge {
 	return predicate.Knowledge(sql.FieldContainsFold(FieldSource, v))
+}
+
+// VersionEQ applies the EQ predicate on the "version" field.
+func VersionEQ(v int) predicate.Knowledge {
+	return predicate.Knowledge(sql.FieldEQ(FieldVersion, v))
+}
+
+// VersionNEQ applies the NEQ predicate on the "version" field.
+func VersionNEQ(v int) predicate.Knowledge {
+	return predicate.Knowledge(sql.FieldNEQ(FieldVersion, v))
+}
+
+// VersionIn applies the In predicate on the "version" field.
+func VersionIn(vs ...int) predicate.Knowledge {
+	return predicate.Knowledge(sql.FieldIn(FieldVersion, vs...))
+}
+
+// VersionNotIn applies the NotIn predicate on the "version" field.
+func VersionNotIn(vs ...int) predicate.Knowledge {
+	return predicate.Knowledge(sql.FieldNotIn(FieldVersion, vs...))
+}
+
+// VersionGT applies the GT predicate on the "version" field.
+func VersionGT(v int) predicate.Knowledge {
+	return predicate.Knowledge(sql.FieldGT(FieldVersion, v))
+}
+
+// VersionGTE applies the GTE predicate on the "version" field.
+func VersionGTE(v int) predicate.Knowledge {
+	return predicate.Knowledge(sql.FieldGTE(FieldVersion, v))
+}
+
+// VersionLT applies the LT predicate on the "version" field.
+func VersionLT(v int) predicate.Knowledge {
+	return predicate.Knowledge(sql.FieldLT(FieldVersion, v))
+}
+
+// VersionLTE applies the LTE predicate on the "version" field.
+func VersionLTE(v int) predicate.Knowledge {
+	return predicate.Knowledge(sql.FieldLTE(FieldVersion, v))
+}
+
+// IsLatestEQ applies the EQ predicate on the "is_latest" field.
+func IsLatestEQ(v bool) predicate.Knowledge {
+	return predicate.Knowledge(sql.FieldEQ(FieldIsLatest, v))
+}
+
+// IsLatestNEQ applies the NEQ predicate on the "is_latest" field.
+func IsLatestNEQ(v bool) predicate.Knowledge {
+	return predicate.Knowledge(sql.FieldNEQ(FieldIsLatest, v))
 }
 
 // UseCountEQ applies the EQ predicate on the "use_count" field.

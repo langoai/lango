@@ -8100,6 +8100,9 @@ type KnowledgeMutation struct {
 	tags               *[]string
 	appendtags         []string
 	source             *string
+	version            *int
+	addversion         *int
+	is_latest          *bool
 	use_count          *int
 	adduse_count       *int
 	relevance_score    *float64
@@ -8438,6 +8441,98 @@ func (m *KnowledgeMutation) ResetSource() {
 	delete(m.clearedFields, knowledge.FieldSource)
 }
 
+// SetVersion sets the "version" field.
+func (m *KnowledgeMutation) SetVersion(i int) {
+	m.version = &i
+	m.addversion = nil
+}
+
+// Version returns the value of the "version" field in the mutation.
+func (m *KnowledgeMutation) Version() (r int, exists bool) {
+	v := m.version
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldVersion returns the old "version" field's value of the Knowledge entity.
+// If the Knowledge object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *KnowledgeMutation) OldVersion(ctx context.Context) (v int, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldVersion is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldVersion requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldVersion: %w", err)
+	}
+	return oldValue.Version, nil
+}
+
+// AddVersion adds i to the "version" field.
+func (m *KnowledgeMutation) AddVersion(i int) {
+	if m.addversion != nil {
+		*m.addversion += i
+	} else {
+		m.addversion = &i
+	}
+}
+
+// AddedVersion returns the value that was added to the "version" field in this mutation.
+func (m *KnowledgeMutation) AddedVersion() (r int, exists bool) {
+	v := m.addversion
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ResetVersion resets all changes to the "version" field.
+func (m *KnowledgeMutation) ResetVersion() {
+	m.version = nil
+	m.addversion = nil
+}
+
+// SetIsLatest sets the "is_latest" field.
+func (m *KnowledgeMutation) SetIsLatest(b bool) {
+	m.is_latest = &b
+}
+
+// IsLatest returns the value of the "is_latest" field in the mutation.
+func (m *KnowledgeMutation) IsLatest() (r bool, exists bool) {
+	v := m.is_latest
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldIsLatest returns the old "is_latest" field's value of the Knowledge entity.
+// If the Knowledge object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *KnowledgeMutation) OldIsLatest(ctx context.Context) (v bool, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldIsLatest is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldIsLatest requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldIsLatest: %w", err)
+	}
+	return oldValue.IsLatest, nil
+}
+
+// ResetIsLatest resets all changes to the "is_latest" field.
+func (m *KnowledgeMutation) ResetIsLatest() {
+	m.is_latest = nil
+}
+
 // SetUseCount sets the "use_count" field.
 func (m *KnowledgeMutation) SetUseCount(i int) {
 	m.use_count = &i
@@ -8656,7 +8751,7 @@ func (m *KnowledgeMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *KnowledgeMutation) Fields() []string {
-	fields := make([]string, 0, 9)
+	fields := make([]string, 0, 11)
 	if m.key != nil {
 		fields = append(fields, knowledge.FieldKey)
 	}
@@ -8671,6 +8766,12 @@ func (m *KnowledgeMutation) Fields() []string {
 	}
 	if m.source != nil {
 		fields = append(fields, knowledge.FieldSource)
+	}
+	if m.version != nil {
+		fields = append(fields, knowledge.FieldVersion)
+	}
+	if m.is_latest != nil {
+		fields = append(fields, knowledge.FieldIsLatest)
 	}
 	if m.use_count != nil {
 		fields = append(fields, knowledge.FieldUseCount)
@@ -8702,6 +8803,10 @@ func (m *KnowledgeMutation) Field(name string) (ent.Value, bool) {
 		return m.Tags()
 	case knowledge.FieldSource:
 		return m.Source()
+	case knowledge.FieldVersion:
+		return m.Version()
+	case knowledge.FieldIsLatest:
+		return m.IsLatest()
 	case knowledge.FieldUseCount:
 		return m.UseCount()
 	case knowledge.FieldRelevanceScore:
@@ -8729,6 +8834,10 @@ func (m *KnowledgeMutation) OldField(ctx context.Context, name string) (ent.Valu
 		return m.OldTags(ctx)
 	case knowledge.FieldSource:
 		return m.OldSource(ctx)
+	case knowledge.FieldVersion:
+		return m.OldVersion(ctx)
+	case knowledge.FieldIsLatest:
+		return m.OldIsLatest(ctx)
 	case knowledge.FieldUseCount:
 		return m.OldUseCount(ctx)
 	case knowledge.FieldRelevanceScore:
@@ -8781,6 +8890,20 @@ func (m *KnowledgeMutation) SetField(name string, value ent.Value) error {
 		}
 		m.SetSource(v)
 		return nil
+	case knowledge.FieldVersion:
+		v, ok := value.(int)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetVersion(v)
+		return nil
+	case knowledge.FieldIsLatest:
+		v, ok := value.(bool)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetIsLatest(v)
+		return nil
 	case knowledge.FieldUseCount:
 		v, ok := value.(int)
 		if !ok {
@@ -8817,6 +8940,9 @@ func (m *KnowledgeMutation) SetField(name string, value ent.Value) error {
 // this mutation.
 func (m *KnowledgeMutation) AddedFields() []string {
 	var fields []string
+	if m.addversion != nil {
+		fields = append(fields, knowledge.FieldVersion)
+	}
 	if m.adduse_count != nil {
 		fields = append(fields, knowledge.FieldUseCount)
 	}
@@ -8831,6 +8957,8 @@ func (m *KnowledgeMutation) AddedFields() []string {
 // was not set, or was not defined in the schema.
 func (m *KnowledgeMutation) AddedField(name string) (ent.Value, bool) {
 	switch name {
+	case knowledge.FieldVersion:
+		return m.AddedVersion()
 	case knowledge.FieldUseCount:
 		return m.AddedUseCount()
 	case knowledge.FieldRelevanceScore:
@@ -8844,6 +8972,13 @@ func (m *KnowledgeMutation) AddedField(name string) (ent.Value, bool) {
 // type.
 func (m *KnowledgeMutation) AddField(name string, value ent.Value) error {
 	switch name {
+	case knowledge.FieldVersion:
+		v, ok := value.(int)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddVersion(v)
+		return nil
 	case knowledge.FieldUseCount:
 		v, ok := value.(int)
 		if !ok {
@@ -8914,6 +9049,12 @@ func (m *KnowledgeMutation) ResetField(name string) error {
 		return nil
 	case knowledge.FieldSource:
 		m.ResetSource()
+		return nil
+	case knowledge.FieldVersion:
+		m.ResetVersion()
+		return nil
+	case knowledge.FieldIsLatest:
+		m.ResetIsLatest()
 		return nil
 	case knowledge.FieldUseCount:
 		m.ResetUseCount()

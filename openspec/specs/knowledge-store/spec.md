@@ -58,49 +58,119 @@ The `LearningStats.ByCategory` field SHALL use `map[entlearning.Category]int` in
 - **THEN** the `by_category` field SHALL produce identical JSON output as the previous `map[string]int` representation
 
 ### Requirement: Knowledge CRUD Operations
-The system SHALL provide persistent CRUD operations for knowledge entries identified by a unique key.
+The system SHALL provide persistent CRUD operations for knowledge entries identified by key. Knowledge entries SHALL be versioned: each save appends a new version instead of updating in place. All read operations SHALL default to the latest version (`is_latest=true`). When the latest version has the same `(category, content)` as the new entry, SaveKnowledge SHALL be a no-op (no new version created). Changes to `source`, `tags`, or temporal hints alone do NOT justify a new version.
 
 #### Scenario: Save new knowledge entry
 - **WHEN** `SaveKnowledge` is called with a key that does not exist
-- **THEN** the system SHALL create a new knowledge entry with the given key, category, content, tags, and source
+- **THEN** the system SHALL create a new knowledge entry with `version=1`, `is_latest=true`, and the given key, category, content, tags, and source
 
-#### Scenario: Update existing knowledge entry
-- **WHEN** `SaveKnowledge` is called with a key that already exists
-- **THEN** the system SHALL update the existing entry's category, content, tags, and source
+#### Scenario: Save existing knowledge entry (append version)
+- **WHEN** `SaveKnowledge` is called with a key that already exists (latest version N) and the content or category differs
+- **THEN** the system SHALL atomically set the existing latest row's `is_latest` to `false` and create a new entry with `version=N+1`, `is_latest=true`
+- **AND** the new version SHALL carry forward `use_count` and `relevance_score` from the previous version
+
+#### Scenario: Content-dedup no-op
+- **WHEN** `SaveKnowledge` is called with a key whose latest version has the same `(category, content)`
+- **THEN** the system SHALL return nil without creating a new version
 
 #### Scenario: Get knowledge by key
 - **WHEN** `GetKnowledge` is called with an existing key
-- **THEN** the system SHALL return the knowledge entry
-- **AND** if the key does not exist, SHALL return an error
+- **THEN** the system SHALL return the latest version (`is_latest=true`) of the knowledge entry with `Version` and `CreatedAt` populated
+- **AND** if no latest entry exists for the key, SHALL return an error
 
 #### Scenario: Delete knowledge by key
 - **WHEN** `DeleteKnowledge` is called with an existing key
-- **THEN** the system SHALL remove the entry from the store
+- **THEN** the system SHALL remove ALL versions of the entry from the store
 
 #### Scenario: Increment knowledge use count
 - **WHEN** `IncrementKnowledgeUseCount` is called with a valid key
-- **THEN** the system SHALL increment the use count by 1
+- **THEN** the system SHALL increment the use count by 1 on the latest version only (`is_latest=true`)
 
 ### Requirement: Knowledge Search
-The system SHALL support keyword-based search across knowledge entries. `SearchKnowledge` SHALL split the query into individual keywords and create separate `ContentContains`/`KeyContains` LIKE predicates for each keyword, combined with OR logic. The system SHALL NOT use a single concatenated query string as a LIKE pattern.
+The system SHALL support full-text search across knowledge entries. All search operations SHALL return only the latest version (`is_latest=true`) of each key. When an FTS5 index is available, `SearchKnowledge` SHALL use FTS5 MATCH with BM25 ranking as the primary search path. When FTS5 is unavailable, `SearchKnowledge` SHALL fall back to per-keyword `ContentContains`/`KeyContains` LIKE predicates combined with OR logic, ordered by `RelevanceScore` descending. The system SHALL NOT use a single concatenated query string as a LIKE pattern in either path.
 
-#### Scenario: Search by query
-- **WHEN** `SearchKnowledge` is called with a query string
-- **THEN** the system SHALL return entries where the content or key contains any of the individual keywords
+#### Scenario: FTS5 search path
+- **WHEN** `SearchKnowledge` is called with a query string and FTS5 index is available
+- **THEN** the system SHALL return latest-version entries matching the FTS5 query, ordered by BM25 relevance
+- **AND** results SHALL be limited to the specified limit (default 10)
+
+#### Scenario: LIKE fallback search path
+- **WHEN** `SearchKnowledge` is called with a query string and FTS5 index is NOT available
+- **THEN** the system SHALL return latest-version entries where the content or key contains any of the individual keywords
+- **AND** the LIKE path SHALL include `is_latest=true` as a predicate
 - **AND** results SHALL be ordered by relevance score descending
 - **AND** results SHALL be limited to the specified limit (default 10)
 
-#### Scenario: Multi-keyword search
-- **WHEN** `SearchKnowledge` is called with query "deploy server config"
-- **THEN** the SQL query uses per-keyword LIKE predicates: `(content LIKE '%deploy%' OR key LIKE '%deploy%') OR (content LIKE '%server%' OR key LIKE '%server%') OR (content LIKE '%config%' OR key LIKE '%config%')`
+#### Scenario: Multi-keyword FTS5 search
+- **WHEN** `SearchKnowledge` is called with query "deploy server config" and FTS5 is available
+- **THEN** the FTS5 MATCH query SHALL search for all keywords and rank by BM25
 
-#### Scenario: Single keyword search
-- **WHEN** `SearchKnowledge` is called with query "deploy"
-- **THEN** the SQL query uses `content LIKE '%deploy%' OR key LIKE '%deploy%'`
+#### Scenario: Multi-keyword LIKE fallback
+- **WHEN** `SearchKnowledge` is called with query "deploy server config" and FTS5 is NOT available
+- **THEN** the SQL query uses per-keyword LIKE predicates: `(content LIKE '%deploy%' OR key LIKE '%deploy%') OR (content LIKE '%server%' OR key LIKE '%server%') OR (content LIKE '%config%' OR key LIKE '%config%')`
+- **AND** an `is_latest = true` predicate SHALL be included
 
 #### Scenario: Search with category filter
 - **WHEN** `SearchKnowledge` is called with a query and a category
-- **THEN** the system SHALL return only entries matching both the query and the category
+- **THEN** the system SHALL return only latest-version entries matching both the query and the category (in both FTS5 and LIKE paths)
+
+#### Scenario: FTS5 error graceful degradation
+- **WHEN** `SearchKnowledge` via FTS5 encounters an error
+- **THEN** the system SHALL log a warning and fall back to the LIKE path for that query
+
+#### Scenario: Search returns only latest version
+- **WHEN** a key has version 1 with content "old data" and version 2 with content "new data"
+- **AND** `SearchKnowledge` is called with query "old"
+- **THEN** the search SHALL NOT return the key (version 1 is not latest)
+
+### Requirement: Knowledge Scored Search
+The system SHALL provide `SearchKnowledgeScored(ctx, query, category, limit)` returning `[]ScoredKnowledgeEntry` with normalized Score (higher=better) and SearchSource ("fts5"/"like"). FTS5 path SHALL negate BM25 rank for normalization. LIKE path SHALL use RelevanceScore. Existing `SearchKnowledge` SHALL remain unchanged.
+
+#### Scenario: FTS5 scored search
+- **WHEN** `SearchKnowledgeScored` is called and FTS5 index is available
+- **THEN** results SHALL include `Score = -rank` (BM25 negated) and `SearchSource = "fts5"`
+
+#### Scenario: LIKE scored search
+- **WHEN** `SearchKnowledgeScored` is called and FTS5 is unavailable
+- **THEN** results SHALL include `Score = RelevanceScore` and `SearchSource = "like"`
+
+#### Scenario: Scored search returns latest only
+- **WHEN** `SearchKnowledgeScored` is called
+- **THEN** only `is_latest=true` entries SHALL be returned
+
+### Requirement: Learning Scored Search
+The system SHALL provide `SearchLearningsScored(ctx, errorPattern, category, limit)` returning `[]ScoredLearningEntry` with Score and SearchSource.
+
+#### Scenario: Learning scored search
+- **WHEN** `SearchLearningsScored` is called
+- **THEN** results SHALL include `Score = Confidence` and `SearchSource = "like"`
+
+### Requirement: Knowledge relevance score mutations
+The system SHALL provide `BoostRelevanceScore(ctx, key, delta, maxScore)` that increases relevance_score for the latest version, clamped at maxScore via two-step update (cap first, then add). The cap step SHALL also normalize pre-existing over-cap values where score > maxScore. It SHALL provide `DecayAllRelevanceScores(ctx, delta, minScore)` that subtracts delta from all latest-version entries, floored at minScore via two-step update (subtract where safe, floor remainder). It SHALL provide `ResetAllRelevanceScores(ctx)` that sets all latest-version scores to 1.0.
+
+#### Scenario: Boost with cap (two-step clamping)
+- **WHEN** BoostRelevanceScore is called and current score + delta would exceed maxScore
+- **THEN** score SHALL be set to maxScore (not exceed it)
+
+#### Scenario: Pre-existing over-cap normalization
+- **WHEN** BoostRelevanceScore is called and a row has score > maxScore (from prior bug)
+- **THEN** score SHALL be set to maxScore
+
+#### Scenario: Boost within range
+- **WHEN** BoostRelevanceScore is called and current score + delta <= maxScore
+- **THEN** score SHALL increase by delta
+
+#### Scenario: Decay with floor (two-step clamping)
+- **WHEN** DecayAllRelevanceScores is called and current score - delta would go below minScore
+- **THEN** score SHALL be set to minScore (not go below it)
+
+#### Scenario: Decay within range
+- **WHEN** DecayAllRelevanceScores is called and current score - delta >= minScore
+- **THEN** score SHALL decrease by delta
+
+#### Scenario: Reset all
+- **WHEN** ResetAllRelevanceScores is called
+- **THEN** all latest-version entries SHALL have relevance_score set to 1.0
 
 ### Requirement: Learning CRUD Operations
 The system SHALL provide persistent CRUD operations for learning entries.
@@ -163,7 +233,10 @@ The system SHALL define Ent ORM schemas for the 5 knowledge entities.
 
 #### Scenario: Knowledge schema
 - **WHEN** the database is migrated
-- **THEN** a `Knowledge` table SHALL exist with fields: key (unique), category (enum: rule/definition/preference/fact/pattern/correction), content, tags (JSON), source, relevance_score, use_count, created_at, updated_at
+- **THEN** a `Knowledge` table SHALL exist with fields: key, version (int, default 1), is_latest (bool, default true), category (enum: rule/definition/preference/fact/pattern/correction), content, tags (JSON), source, relevance_score, use_count, created_at, updated_at
+- **AND** a composite unique index SHALL exist on `(key, version)`
+- **AND** a non-unique index SHALL exist on `(key, is_latest)`
+- **AND** the `key` field SHALL NOT have a single-column UNIQUE constraint
 
 #### Scenario: Learning schema
 - **WHEN** the database is migrated
@@ -199,3 +272,84 @@ The Onboard TUI SHALL provide a dedicated Knowledge configuration form accessibl
 #### Scenario: Knowledge config persistence
 - **WHEN** user modifies Knowledge form fields and saves
 - **THEN** values SHALL be written to the `knowledge` section of `lango.json`
+
+### Requirement: Knowledge retrieval result truncation
+The system SHALL provide a `TruncateResult(result *RetrievalResult, budgetTokens int) *RetrievalResult` function that reduces a `RetrievalResult` to fit within a token budget. Truncation SHALL operate at the item level — removing lower-priority items from each layer until the total estimated tokens fit within the budget. The function SHALL NOT modify assembled text; it operates on `RetrievalResult` before `AssemblePrompt()` is called.
+
+#### Scenario: Result fits within budget
+- **WHEN** `TruncateResult` is called with a result whose total tokens are within budget
+- **THEN** the result SHALL be returned unchanged
+
+#### Scenario: Result exceeds budget
+- **WHEN** `TruncateResult` is called with a result exceeding the budget
+- **THEN** items SHALL be removed from the end of each layer (lowest priority first) until the total fits
+- **AND** the layer structure and headings SHALL remain intact
+
+#### Scenario: Zero budget means unlimited
+- **WHEN** `TruncateResult` is called with `budgetTokens == 0`
+- **THEN** the result SHALL be returned unchanged (0 = unlimited, legacy mode)
+
+#### Scenario: Budget too small for any items
+- **WHEN** `TruncateResult` is called with a budget smaller than any single item
+- **THEN** the result SHALL be empty (zero items) but not nil
+
+### Requirement: ContextLayer String method
+The `ContextLayer` type SHALL implement the `String()` method returning human-readable snake_case names for all 9 known layers. Unknown layer values SHALL return `"layer_N"` where N is the integer value.
+
+#### Scenario: All known layers have string names
+- **WHEN** `String()` is called on each of the 9 known `ContextLayer` values
+- **THEN** each SHALL return a distinct non-empty snake_case string
+
+#### Scenario: Unknown layer fallback
+- **WHEN** `String()` is called on an unrecognized `ContextLayer` value
+- **THEN** it SHALL return `"layer_N"` format without panicking
+
+### Requirement: VectorStore build-tag isolation
+The `sqlite-vec` backend SHALL be compiled only when the `vec` build tag is present. The default build (no `vec` tag) SHALL produce a binary without sqlite-vec linked. The `NewVectorStore` factory function SHALL be the canonical entry point for VectorStore creation in wiring code.
+
+#### Scenario: Build with vec tag
+- **WHEN** the binary is built with `-tags vec`
+- **THEN** `NewVectorStore(db, dimensions)` SHALL return a `*SQLiteVecStore` implementing `VectorStore`
+
+#### Scenario: Build without vec tag
+- **WHEN** the binary is built without the `vec` tag
+- **THEN** `NewVectorStore(db, dimensions)` SHALL return `nil, ErrVecNotCompiled`
+
+#### Scenario: Wiring graceful degradation
+- **WHEN** `NewVectorStore` returns an error during embedding initialization
+- **THEN** the system SHALL log a warning and return nil `embeddingComponents` with a FeatureStatus suggesting "rebuild with -tags vec"
+- **AND** RAG, EmbeddingBuffer, and ContextSearchAgent SHALL NOT be registered
+
+### Requirement: Coordinator primary retrieval
+The `RetrievalCoordinator` SHALL run as the primary retrieval path for factual layers (UserKnowledge, AgentLearnings, ExternalKnowledge) in Phase 1 of `GenerateContent`. The old `ContextRetriever` SHALL handle non-factual layers only (RuntimeContext, ToolRegistry, SkillPatterns, PendingInquiries).
+
+#### Scenario: Phase 1 parallel retrieval
+- **WHEN** `GenerateContent` is called with a non-empty user query and both retriever and coordinator are configured
+- **THEN** both SHALL run as parallel goroutines in Phase 1
+- **AND** retriever SHALL request only non-factual layers
+- **AND** coordinator SHALL retrieve factual layers
+
+#### Scenario: Result merge
+- **WHEN** both retriever and coordinator return results
+- **THEN** `mergeRetrievalResults` SHALL combine Items maps from both sources
+- **AND** TotalItems SHALL equal the sum of both results' items
+
+#### Scenario: ContextInjectedEvent coverage
+- **WHEN** `ContextInjectedEvent` is published after context assembly
+- **THEN** `Items` SHALL contain items from the merged result (both factual and non-factual layers)
+
+### Requirement: RAG enabled flag enforcement
+The system SHALL NOT create `RAGService` or register `ContextSearchAgent` when `embedding.rag.enabled` is false. The embedding buffer and provider SHALL still be initialized for async knowledge embedding regardless of the RAG flag.
+
+#### Scenario: RAG disabled with embedding configured
+- **WHEN** `embedding.provider` is configured but `embedding.rag.enabled` is false
+- **THEN** `ragService` SHALL be nil in embeddingComponents
+- **AND** `ContextSearchAgent` SHALL NOT be registered in the coordinator
+
+### Requirement: Settings TUI explicit key preservation
+The system SHALL mark all context-related config keys as explicitly set when saving from the settings TUI. This prevents `ResolveContextAutoEnable` from overriding user intent on subsequent bootstrap.
+
+#### Scenario: Settings save preserves disabled flags
+- **WHEN** user sets `knowledge.enabled=false` in settings TUI and saves
+- **THEN** the saved explicitKeys SHALL include `knowledge.enabled`
+- **AND** subsequent bootstrap SHALL NOT auto-enable knowledge

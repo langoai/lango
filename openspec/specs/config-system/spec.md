@@ -14,7 +14,7 @@ The `config` package SHALL export a `PostLoad(*Config) error` function that appl
 - **THEN** the second call produces no additional changes and returns the same result
 
 ### Requirement: Configuration loading
-The system SHALL load configuration through the bootstrap process from an encrypted SQLite database profile instead of directly from a plaintext JSON file. The `config.Load()` function SHALL be retained for migration purposes only. `Load()` SHALL delegate all post-load processing to `PostLoad()` instead of calling individual steps separately.
+The system SHALL load configuration through the bootstrap process from an encrypted SQLite database profile instead of directly from a plaintext JSON file. The `config.Load()` function SHALL be retained for migration purposes only. `Load()` SHALL return `(*LoadResult, error)` containing `*Config`, `ExplicitKeys map[string]bool`, and `AutoEnabled AutoEnabledSet`. `Load()` SHALL execute: Unmarshal → collectExplicitKeys → ApplyContextProfile → ResolveContextAutoEnable → PostLoad. All existing callers of `config.Load()` MUST use `result.Config` for the config object.
 
 #### Scenario: Normal startup
 - **WHEN** the application starts via `lango serve`
@@ -26,7 +26,33 @@ The system SHALL load configuration through the bootstrap process from an encryp
 
 #### Scenario: Load delegates to PostLoad
 - **WHEN** `config.Load(path)` is called
-- **THEN** after unmarshalling, it calls `PostLoad(cfg)` once and returns the result
+- **THEN** after unmarshalling, it calls `ApplyContextProfile()` then `PostLoad(cfg)` once and returns the LoadResult
+
+#### Scenario: Existing callers compile after signature change
+- **WHEN** `config.Load()` is called from `internal/configstore/migrate.go` or other callers
+- **THEN** each caller accesses `result.Config` and the project builds without errors
+
+#### Scenario: ExplicitKeys collected from raw viper
+- **WHEN** config file sets `knowledge.enabled: true` and `librarian.enabled: false`
+- **THEN** `LoadResult.ExplicitKeys` contains both keys, and does NOT contain keys only present via `SetDefault()`
+
+### Requirement: ContextProfile field in Config
+`Config` SHALL have a `ContextProfile ContextProfileName` field with mapstructure tag `contextProfile`. The field SHALL accept values `off`, `lite`, `balanced`, `full`, or empty string (no profile).
+
+#### Scenario: ContextProfile unmarshaled from JSON config
+- **WHEN** config file contains `"contextProfile": "balanced"`
+- **THEN** `cfg.ContextProfile` equals `ContextProfileBalanced`
+
+#### Scenario: Empty profile means no profile applied
+- **WHEN** config file does not set `contextProfile`
+- **THEN** `cfg.ContextProfile` is empty string and `ApplyContextProfile` is a no-op
+
+### Requirement: ApplyContextProfile in load pipeline
+`ApplyContextProfile(cfg, explicitKeys)` SHALL be called inside `Load()` after `Unmarshal` and before `PostLoad`. `PostLoad`'s signature SHALL NOT change.
+
+#### Scenario: Profile applied before validation
+- **WHEN** `contextProfile: balanced` is set
+- **THEN** `Knowledge.Enabled` is `true` before `Validate()` runs, so downstream validation sees the profile-applied state
 
 ### Requirement: Configuration save
 The system SHALL save configuration through `configstore.Store.Save()` which encrypts and stores in the database. The legacy `config.Save()` function SHALL be removed.
@@ -109,6 +135,31 @@ DefaultConfig() SHALL be the single source of truth for all config default value
 #### Scenario: Parity between DefaultConfig and viper unmarshal
 - **WHEN** DefaultConfig() is compared with a Config produced by viper unmarshal using only walker-derived defaults
 - **THEN** all non-zero fields SHALL match
+
+### Requirement: Validate contextProfile
+`Validate()` SHALL reject unknown contextProfile names with an error containing "invalid contextProfile".
+
+#### Scenario: Invalid profile rejected
+- **WHEN** `contextProfile: "turbo"` is set
+- **THEN** `Validate()` SHALL return an error containing "invalid contextProfile"
+
+### Requirement: configstore profilePayload
+The configstore SHALL wrap Config and ExplicitKeys in a `profilePayload` struct stored inside the encrypted profile. `Save()` SHALL accept explicitKeys parameter. `Load()/LoadActive()` SHALL return explicitKeys alongside Config. Legacy profiles without ExplicitKeys SHALL return nil.
+
+#### Scenario: Save with explicitKeys
+- **WHEN** `Save(ctx, name, cfg, explicitKeys)` is called
+- **THEN** both Config and ExplicitKeys SHALL be encrypted and stored together
+
+#### Scenario: Load legacy profile
+- **WHEN** a profile saved before Step 8 is loaded
+- **THEN** Config SHALL be returned normally and ExplicitKeys SHALL be nil
+
+### Requirement: Bootstrap carries ExplicitKeys and AutoEnabled
+`bootstrap.Result` SHALL include `ExplicitKeys map[string]bool` and `AutoEnabled config.AutoEnabledSet`. `phaseLoadProfile` SHALL call `ApplyContextProfile` and `ResolveContextAutoEnable` after profile load.
+
+#### Scenario: Bootstrap resolves auto-enable
+- **WHEN** bootstrap loads a profile with DatabasePath configured
+- **THEN** `Result.AutoEnabled` SHALL reflect auto-enabled features
 
 ### Requirement: DataRoot enforces data path boundaries
 The Config SHALL include a `DataRoot` field (default: `~/.lango/`) that defines the root directory for all lango data files. All configurable data paths (session.databasePath, graph.databasePath, skill.skillsDir, workflow.stateDir, p2p.keyDir, p2p.zkp.proofCacheDir, p2p.workspace.dataDir) MUST reside under DataRoot. The `NormalizePaths()` function SHALL expand tildes and resolve relative paths under DataRoot. The `ValidateDataPaths()` function SHALL reject any path outside DataRoot with a clear error message.

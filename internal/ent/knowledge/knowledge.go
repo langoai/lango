@@ -25,6 +25,10 @@ const (
 	FieldTags = "tags"
 	// FieldSource holds the string denoting the source field in the database.
 	FieldSource = "source"
+	// FieldVersion holds the string denoting the version field in the database.
+	FieldVersion = "version"
+	// FieldIsLatest holds the string denoting the is_latest field in the database.
+	FieldIsLatest = "is_latest"
 	// FieldUseCount holds the string denoting the use_count field in the database.
 	FieldUseCount = "use_count"
 	// FieldRelevanceScore holds the string denoting the relevance_score field in the database.
@@ -45,6 +49,8 @@ var Columns = []string{
 	FieldContent,
 	FieldTags,
 	FieldSource,
+	FieldVersion,
+	FieldIsLatest,
 	FieldUseCount,
 	FieldRelevanceScore,
 	FieldCreatedAt,
@@ -66,6 +72,10 @@ var (
 	KeyValidator func(string) error
 	// ContentValidator is a validator for the "content" field. It is called by the builders before save.
 	ContentValidator func(string) error
+	// DefaultVersion holds the default value on creation for the "version" field.
+	DefaultVersion int
+	// DefaultIsLatest holds the default value on creation for the "is_latest" field.
+	DefaultIsLatest bool
 	// DefaultUseCount holds the default value on creation for the "use_count" field.
 	DefaultUseCount int
 	// DefaultRelevanceScore holds the default value on creation for the "relevance_score" field.
@@ -133,6 +143,16 @@ func ByContent(opts ...sql.OrderTermOption) OrderOption {
 // BySource orders the results by the source field.
 func BySource(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldSource, opts...).ToFunc()
+}
+
+// ByVersion orders the results by the version field.
+func ByVersion(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldVersion, opts...).ToFunc()
+}
+
+// ByIsLatest orders the results by the is_latest field.
+func ByIsLatest(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldIsLatest, opts...).ToFunc()
 }
 
 // ByUseCount orders the results by the use_count field.

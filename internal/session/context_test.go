@@ -29,3 +29,16 @@ func TestRunContext_Absent(t *testing.T) {
 
 	assert.Nil(t, RunContextFromContext(context.Background()))
 }
+
+func TestTurnID_RoundTrip(t *testing.T) {
+	t.Parallel()
+
+	ctx := WithTurnID(context.Background(), "turn-abc-123")
+	assert.Equal(t, "turn-abc-123", TurnIDFromContext(ctx))
+}
+
+func TestTurnID_Absent(t *testing.T) {
+	t.Parallel()
+
+	assert.Equal(t, "", TurnIDFromContext(context.Background()))
+}

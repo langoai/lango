@@ -235,15 +235,18 @@ func phaseLoadProfile() Phase {
 			s.Result.ConfigStore = store
 			profileName := s.Options.ForceProfile
 
+			var explicitKeys map[string]bool
+
 			if profileName != "" {
-				cfg, err := store.Load(ctx, profileName)
+				cfg, keys, err := store.Load(ctx, profileName)
 				if err != nil {
 					return fmt.Errorf("load profile %q: %w", profileName, err)
 				}
 				s.Result.Config = cfg
 				s.Result.ProfileName = profileName
+				explicitKeys = keys
 			} else {
-				name, cfg, err := store.LoadActive(ctx)
+				name, cfg, keys, err := store.LoadActive(ctx)
 				if err != nil && !errors.Is(err, configstore.ErrNoActiveProfile) {
 					return fmt.Errorf("load active profile: %w", err)
 				}
@@ -254,11 +257,19 @@ func phaseLoadProfile() Phase {
 					}
 					s.Result.Config = resultCfg
 					s.Result.ProfileName = resultName
+					// New profile: no explicit keys.
 				} else {
 					s.Result.Config = cfg
 					s.Result.ProfileName = name
+					explicitKeys = keys
 				}
 			}
+
+			// Apply context profile and auto-enable resolution.
+			config.ApplyContextProfile(s.Result.Config, explicitKeys)
+			autoEnabled := config.ResolveContextAutoEnable(s.Result.Config, explicitKeys)
+			s.Result.ExplicitKeys = explicitKeys
+			s.Result.AutoEnabled = autoEnabled
 
 			// Single post-load: normalize + validate for all branches.
 			if err := config.PostLoad(s.Result.Config); err != nil {
