@@ -875,6 +875,8 @@ If no `agents/<name>/` directory exists, the sub-agent uses its built-in instruc
 
 Lango supports embedding-based retrieval-augmented generation (RAG) to inject relevant context into agent prompts automatically.
 
+> **Build tag required:** The default build uses FTS5-only search. To enable semantic vector search (embedding/RAG), build with `-tags "fts5,vec"`. Without the `vec` tag, the embedding system gracefully degrades and vector operations are skipped.
+
 ### Supported Providers
 
 - **OpenAI** (`openai`): `text-embedding-3-small`, `text-embedding-3-large`, etc.
@@ -1272,8 +1274,7 @@ Steps specify which sub-agent to use: `operator`, `navigator`, `vault`, `librari
 
 Lango includes a self-learning knowledge system that improves agent performance over time.
 
-- **Knowledge Store** - Persistent versioned storage using a 6-category taxonomy (rule, definition, preference, fact, pattern, correction) with temporal classification (evergreen vs current_state). Each save appends a new version only when content changes (duplicate saves are no-op). Use `get_knowledge_history` to browse previous versions. All reads and searches return the latest version by default
-- **Retrieval Coordinator** - Agentic retrieval with `FactSearchAgent` for FTS5+LIKE scored search across knowledge, learnings, and external references. Runs in shadow mode by default (parallel with existing path, logs comparison metrics). Enable via `retrieval.enabled: true` in config
+- **Knowledge Store** - Persistent storage for facts, patterns, and external references
 - **Learning Engine** - Observes tool execution results, extracts error patterns, boosts successful strategies. Agent tools (`learning_stats`, `learning_cleanup`) let the agent brief users on learning data and clean up entries by age, confidence, or category
 - **Skill System** - File-based skills stored as `~/.lango/skills/<name>/SKILL.md` with YAML frontmatter. Supports four skill types: script (shell), template (Go template), composite (multi-step), and instruction (reference documents). Previously shipped ~30 built-in skills, but these were removed because Lango's passphrase-based security model makes it impractical for the agent to invoke CLI commands as skills. The skill infrastructure remains fully functional for user-defined skills. Import skills from GitHub repos or any URL via the `import_skill` tool — automatically uses `git clone` when available (fetches full directory with resource files) and falls back to the GitHub HTTP API when git is not installed. Each skill directory can include resource subdirectories (`scripts/`, `references/`, `assets/`). YAML frontmatter supports `allowed-tools` for pre-approved tool lists. Dangerous script patterns (fork bombs, `rm -rf /`, `curl|sh`) are blocked at creation and execution time.
 - **Context Retriever** - 8-layer context architecture that assembles relevant knowledge into prompts:

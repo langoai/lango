@@ -16,7 +16,6 @@ import (
 type RetrievalCoordinator struct {
 	agents []RetrievalAgent
 	logger *zap.SugaredLogger
-	shadow bool // when true, results are for comparison only
 }
 
 // NewRetrievalCoordinator creates a coordinator with the given agents.
@@ -24,18 +23,7 @@ func NewRetrievalCoordinator(agents []RetrievalAgent, logger *zap.SugaredLogger)
 	return &RetrievalCoordinator{
 		agents: agents,
 		logger: logger,
-		shadow: true, // default: shadow mode
 	}
-}
-
-// SetShadow toggles shadow mode where results are used for comparison logging only.
-func (c *RetrievalCoordinator) SetShadow(shadow bool) {
-	c.shadow = shadow
-}
-
-// Shadow reports whether the coordinator is in shadow mode.
-func (c *RetrievalCoordinator) Shadow() bool {
-	return c.shadow
 }
 
 // dedupKey is used to identify duplicate findings across agents.

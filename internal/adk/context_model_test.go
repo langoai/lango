@@ -254,10 +254,10 @@ func TestGenerateContent_RunSummariesInjectedIntoPrompt(t *testing.T) {
 	assert.Contains(t, systemMsg.Content, "Repair projection")
 }
 
-func TestAssembleRunSummarySection_CacheHit(t *testing.T) {
+func TestRetrieveRunSummaryData_CacheHit(t *testing.T) {
 	t.Parallel()
 
-	provider := &mockRunSummaryProvider{
+	prov := &mockRunSummaryProvider{
 		maxSeq: 1,
 		summaries: []RunSummaryContext{{
 			RunID:       "run-1",
@@ -268,20 +268,21 @@ func TestAssembleRunSummarySection_CacheHit(t *testing.T) {
 	}
 
 	adapter := newTestContextAdapter(t, nil)
-	adapter.WithRunSummaryProvider(provider)
+	adapter.WithRunSummaryProvider(prov)
 
-	got1 := adapter.assembleRunSummarySection(context.Background(), "sess-1", 0)
-	got2 := adapter.assembleRunSummarySection(context.Background(), "sess-1", 0)
+	got1 := adapter.retrieveRunSummaryData(context.Background(), "sess-1")
+	got2 := adapter.retrieveRunSummaryData(context.Background(), "sess-1")
 
-	assert.Equal(t, got1, got2)
-	assert.Equal(t, 1, provider.listCalls)
-	assert.Equal(t, 2, provider.seqCalls)
+	require.Len(t, got1, 1)
+	assert.Equal(t, got1[0].RunID, got2[0].RunID)
+	assert.Equal(t, 1, prov.listCalls, "list should be called once (cache hit on second)")
+	assert.Equal(t, 2, prov.seqCalls, "seq should be called every time")
 }
 
-func TestAssembleRunSummarySection_CacheInvalidatesOnSeqChange(t *testing.T) {
+func TestRetrieveRunSummaryData_CacheInvalidatesOnSeqChange(t *testing.T) {
 	t.Parallel()
 
-	provider := &mockRunSummaryProvider{
+	prov := &mockRunSummaryProvider{
 		maxSeq: 1,
 		summaries: []RunSummaryContext{{
 			RunID:  "run-1",
@@ -291,17 +292,19 @@ func TestAssembleRunSummarySection_CacheInvalidatesOnSeqChange(t *testing.T) {
 	}
 
 	adapter := newTestContextAdapter(t, nil)
-	adapter.WithRunSummaryProvider(provider)
+	adapter.WithRunSummaryProvider(prov)
 
-	got1 := adapter.assembleRunSummarySection(context.Background(), "sess-1", 0)
-	provider.maxSeq = 2
-	provider.summaries = []RunSummaryContext{{
+	got1 := adapter.retrieveRunSummaryData(context.Background(), "sess-1")
+	prov.maxSeq = 2
+	prov.summaries = []RunSummaryContext{{
 		RunID:  "run-2",
 		Goal:   "Second",
 		Status: "paused",
 	}}
-	got2 := adapter.assembleRunSummarySection(context.Background(), "sess-1", 0)
+	got2 := adapter.retrieveRunSummaryData(context.Background(), "sess-1")
 
-	assert.NotEqual(t, got1, got2)
-	assert.Equal(t, 2, provider.listCalls)
+	require.Len(t, got1, 1)
+	require.Len(t, got2, 1)
+	assert.NotEqual(t, got1[0].RunID, got2[0].RunID)
+	assert.Equal(t, 2, prov.listCalls, "list should be called twice (cache invalidated)")
 }

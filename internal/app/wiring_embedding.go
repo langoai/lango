@@ -73,13 +73,13 @@ func initEmbedding(cfg *config.Config, rawDB *sql.DB, kc *knowledgeComponents, m
 			Suggestion: "ensure database is initialized before embedding",
 		}
 	}
-	vecStore, err := embedding.NewSQLiteVecStore(rawDB, dimensions)
+	vecStore, err := embedding.NewVectorStore(rawDB, dimensions)
 	if err != nil {
-		logger().Warnw("sqlite-vec store init failed, skipping", "error", err)
+		logger().Warnw("vector store init failed, skipping", "error", err)
 		return nil, &types.FeatureStatus{
 			Name: featureName, Enabled: false, Healthy: false,
-			Reason:     fmt.Sprintf("sqlite-vec init failed: %v", err),
-			Suggestion: "check sqlite-vec extension availability",
+			Reason:     fmt.Sprintf("vector store init: %v", err),
+			Suggestion: "rebuild with -tags vec for semantic search",
 		}
 	}
 

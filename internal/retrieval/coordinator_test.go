@@ -403,17 +403,3 @@ func TestToRetrievalResult_Empty(t *testing.T) {
 		t.Errorf("Items: want empty, got %d layers", len(result.Items))
 	}
 }
-
-func TestRetrievalCoordinator_Shadow(t *testing.T) {
-	logger := zap.NewNop().Sugar()
-	coord := NewRetrievalCoordinator(nil, logger)
-
-	if !coord.Shadow() {
-		t.Error("expected default shadow=true")
-	}
-
-	coord.SetShadow(false)
-	if coord.Shadow() {
-		t.Error("expected shadow=false after SetShadow(false)")
-	}
-}

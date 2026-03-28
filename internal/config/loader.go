@@ -158,7 +158,6 @@ func DefaultConfig() *Config {
 		},
 		Retrieval: RetrievalConfig{
 			Enabled:  false,
-			Shadow:   true,
 			Feedback: false,
 			AutoAdjust: AutoAdjustConfig{
 				Enabled:       false,

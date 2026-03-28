@@ -10,8 +10,8 @@ import (
 	"github.com/langoai/lango/internal/provider"
 )
 
-func BenchmarkAssembleRunSummary_CacheHit(b *testing.B) {
-	provider := &mockRunSummaryProvider{
+func BenchmarkRetrieveRunSummaryData_CacheHit(b *testing.B) {
+	prov := &mockRunSummaryProvider{
 		maxSeq: 1,
 		summaries: []RunSummaryContext{{
 			RunID:          "run-1",
@@ -22,17 +22,20 @@ func BenchmarkAssembleRunSummary_CacheHit(b *testing.B) {
 		}},
 	}
 	adapter := newBenchmarkContextAdapter()
-	adapter.WithRunSummaryProvider(provider)
+	adapter.WithRunSummaryProvider(prov)
 	ctx := context.Background()
+
+	// Prime the cache.
+	_ = adapter.retrieveRunSummaryData(ctx, "sess-bench")
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		_ = adapter.assembleRunSummarySection(ctx, "sess-bench", 0)
+		_ = adapter.retrieveRunSummaryData(ctx, "sess-bench")
 	}
 }
 
-func BenchmarkAssembleRunSummary_CacheMiss(b *testing.B) {
-	provider := &mockRunSummaryProvider{
+func BenchmarkRetrieveRunSummaryData_CacheMiss(b *testing.B) {
+	prov := &mockRunSummaryProvider{
 		summaries: []RunSummaryContext{{
 			RunID:          "run-1",
 			Goal:           "Optimize cache",
@@ -42,13 +45,28 @@ func BenchmarkAssembleRunSummary_CacheMiss(b *testing.B) {
 		}},
 	}
 	adapter := newBenchmarkContextAdapter()
-	adapter.WithRunSummaryProvider(provider)
+	adapter.WithRunSummaryProvider(prov)
 	ctx := context.Background()
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		provider.maxSeq = int64(i + 1)
-		_ = adapter.assembleRunSummarySection(ctx, "sess-bench", 0)
+		prov.maxSeq = int64(i + 1)
+		_ = adapter.retrieveRunSummaryData(ctx, "sess-bench")
+	}
+}
+
+func BenchmarkFormatRunSummarySection(b *testing.B) {
+	summaries := []RunSummaryContext{{
+		RunID:          "run-1",
+		Goal:           "Optimize cache",
+		Status:         "running",
+		CurrentStep:    "Summarize",
+		CurrentBlocker: "none",
+	}}
+
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		_ = formatRunSummarySection(summaries, 0)
 	}
 }
 

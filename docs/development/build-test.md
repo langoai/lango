@@ -6,13 +6,30 @@ title: Build & Test
 
 ## Prerequisites
 
-Lango requires **CGO** for sqlite3 and sqlite-vec dependencies. Ensure CGO is enabled:
+Lango requires **CGO** for sqlite3 dependencies. Ensure CGO is enabled:
 
 ```bash
 export CGO_ENABLED=1
 ```
 
 You also need a C compiler (`gcc` or `clang`) installed on your system.
+
+### Build Tags
+
+| Tags | Features |
+|------|----------|
+| `fts5` | Full-text search (default) |
+| `fts5,vec` | Full-text search + semantic vector search (requires sqlite-vec) |
+
+The `fts5` tag is sufficient for most use cases. Add `vec` only when you need embedding-based semantic search (RAG). sqlite-vec is an **optional** dependency; without the `vec` tag the binary compiles and runs without it.
+
+```bash
+# FTS5-only build (default, no sqlite-vec required)
+CGO_ENABLED=1 go build -tags fts5 ./cmd/lango
+
+# Full build with semantic vector search
+CGO_ENABLED=1 go build -tags "fts5,vec" ./cmd/lango
+```
 
 ## Makefile Targets
 

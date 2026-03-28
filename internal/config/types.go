@@ -384,8 +384,7 @@ type AgentMemoryConfig struct {
 // RetrievalConfig controls the agentic retrieval coordinator.
 type RetrievalConfig struct {
 	Enabled    bool             `mapstructure:"enabled" json:"enabled"`       // Enable agentic retrieval coordinator
-	Shadow     bool             `mapstructure:"shadow" json:"shadow"`         // Shadow mode: run alongside old path, log comparison
-	Feedback   bool             `mapstructure:"feedback" json:"feedback"`     // Context injection observability (independent of Enabled/Shadow)
+	Feedback   bool             `mapstructure:"feedback" json:"feedback"`     // Context injection observability
 	AutoAdjust AutoAdjustConfig `mapstructure:"autoAdjust" json:"autoAdjust"` // Relevance score auto-adjustment
 }
 

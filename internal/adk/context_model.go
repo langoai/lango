@@ -122,8 +122,9 @@ func (m *ContextAwareModelAdapter) WithGraphRAG(svc *graph.GraphRAGService) *Con
 	return m
 }
 
-// WithCoordinator adds the agentic retrieval coordinator. When set in shadow mode,
-// the coordinator runs in parallel with the existing retrieval path and logs comparison metrics.
+// WithCoordinator adds the agentic retrieval coordinator for factual layer retrieval.
+// When set, the coordinator runs in Phase 1 alongside the retriever (non-factual layers)
+// and their results are merged before context assembly.
 func (m *ContextAwareModelAdapter) WithCoordinator(c *retrieval.RetrievalCoordinator) *ContextAwareModelAdapter {
 	m.coordinator = c
 	return m
@@ -181,8 +182,11 @@ func (m *ContextAwareModelAdapter) GenerateContent(ctx context.Context, req *mod
 
 	// ──────────────────────────────────────────────────────────
 	// Phase 1: Retrieve all section data in parallel (no truncation).
+	//   - Retriever: non-factual layers (RuntimeContext, ToolRegistry, SkillPatterns, PendingInquiries)
+	//   - Coordinator: factual layers (UserKnowledge, AgentLearnings, ExternalKnowledge)
 	// ──────────────────────────────────────────────────────────
 	var knowledgeResult *knowledge.RetrievalResult
+	var coordinatorResult *knowledge.RetrievalResult
 	var ragResults []embedding.RAGResult
 	var graphRAGResult *graph.GraphRAGResult
 	var reflections []memory.Reflection
@@ -196,10 +200,8 @@ func (m *ContextAwareModelAdapter) GenerateContent(ctx context.Context, req *mod
 			layers := []knowledge.ContextLayer{
 				knowledge.LayerRuntimeContext,
 				knowledge.LayerToolRegistry,
-				knowledge.LayerUserKnowledge,
 				knowledge.LayerSkillPatterns,
-				knowledge.LayerExternalKnowledge,
-				knowledge.LayerAgentLearnings,
+				knowledge.LayerPendingInquiries,
 			}
 			retrieved, err := m.retriever.Retrieve(gCtx, knowledge.RetrievalRequest{
 				Query:  userQuery,
@@ -210,6 +212,18 @@ func (m *ContextAwareModelAdapter) GenerateContent(ctx context.Context, req *mod
 			} else if retrieved != nil && retrieved.TotalItems > 0 {
 				knowledgeResult = retrieved
 			}
+			return nil
+		})
+	}
+
+	if userQuery != "" && m.coordinator != nil {
+		g.Go(func() error {
+			findings, err := m.coordinator.Retrieve(gCtx, userQuery, 0)
+			if err != nil {
+				m.logger.Warnw("coordinator retrieval error", "error", err)
+				return nil
+			}
+			coordinatorResult = retrieval.ToRetrievalResult(findings)
 			return nil
 		})
 	}
@@ -244,6 +258,9 @@ func (m *ContextAwareModelAdapter) GenerateContent(ctx context.Context, req *mod
 
 	_ = g.Wait()
 
+	// Merge retriever (non-factual) and coordinator (factual) results.
+	knowledgeResult = mergeRetrievalResults(knowledgeResult, coordinatorResult)
+
 	// ──────────────────────────────────────────────────────────
 	// Phase 2: Measure actual content → Reallocate budgets.
 	// ──────────────────────────────────────────────────────────
@@ -267,12 +284,10 @@ func (m *ContextAwareModelAdapter) GenerateContent(ctx context.Context, req *mod
 	// Phase 3: Truncate + Format each section with reallocated budgets.
 	// ──────────────────────────────────────────────────────────
 	var knowledgeSection, ragSection, memorySection, runSummarySection string
-	var oldRetrieved *knowledge.RetrievalResult
 
 	if knowledgeResult != nil {
 		knowledgeResult = knowledge.TruncateResult(knowledgeResult, budgets.Knowledge)
 		knowledgeSection = m.retriever.AssemblePrompt("", knowledgeResult)
-		oldRetrieved = knowledgeResult
 	}
 
 	if graphRAGResult != nil {
@@ -287,25 +302,6 @@ func (m *ContextAwareModelAdapter) GenerateContent(ctx context.Context, req *mod
 
 	if len(runSummaries) > 0 {
 		runSummarySection = formatRunSummarySection(runSummaries, budgets.RunSummary)
-	} else if m.runSummaryProvider != nil && sessionKey != "" {
-		// Fallback: use legacy wrapper for cached run summaries.
-		runSummarySection = m.assembleRunSummarySection(ctx, sessionKey, budgets.RunSummary)
-	}
-
-	// Shadow: coordinator comparison (fire-and-forget, does not block LLM).
-	if m.coordinator != nil && m.coordinator.Shadow() && userQuery != "" {
-		shadowRetrieved := oldRetrieved
-		go func() {
-			shadowCtx := context.Background()
-			shadowFindings, err := m.coordinator.Retrieve(shadowCtx, userQuery, 0)
-			if err != nil {
-				m.logger.Warnw("shadow retrieval error", "error", err)
-				return
-			}
-			if shadowRetrieved != nil {
-				retrieval.CompareShadowResults(shadowRetrieved, shadowFindings, m.logger)
-			}
-		}()
 	}
 
 	// Combine sections
@@ -332,7 +328,7 @@ func (m *ContextAwareModelAdapter) GenerateContent(ctx context.Context, req *mod
 			TurnID:           session.TurnIDFromContext(ctx),
 			SessionKey:       sessionKey,
 			Query:            userQuery,
-			Items:            buildContextInjectedItems(oldRetrieved),
+			Items:            buildContextInjectedItems(knowledgeResult),
 			KnowledgeTokens:  knowledgeTokens,
 			RAGTokens:        ragTokens,
 			MemoryTokens:     memoryTokens,
@@ -430,4 +426,30 @@ func estimateRunSummaryTokens(summaries []RunSummaryContext) int {
 		total += types.EstimateTokens(s.Goal) + types.EstimateTokens(s.RunID) + 20
 	}
 	return total
+}
+
+// mergeRetrievalResults combines two RetrievalResults by merging their Items maps.
+// The two results should cover disjoint layer sets (no key conflict expected).
+func mergeRetrievalResults(a, b *knowledge.RetrievalResult) *knowledge.RetrievalResult {
+	if a == nil && b == nil {
+		return nil
+	}
+	if a == nil {
+		return b
+	}
+	if b == nil {
+		return a
+	}
+	merged := &knowledge.RetrievalResult{
+		Items: make(map[knowledge.ContextLayer][]knowledge.ContextItem, len(a.Items)+len(b.Items)),
+	}
+	for layer, items := range a.Items {
+		merged.Items[layer] = items
+		merged.TotalItems += len(items)
+	}
+	for layer, items := range b.Items {
+		merged.Items[layer] = items
+		merged.TotalItems += len(items)
+	}
+	return merged
 }

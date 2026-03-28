@@ -1,3 +1,5 @@
+//go:build vec
+
 package embedding
 
 import (
@@ -20,6 +22,11 @@ type SQLiteVecStore struct {
 	mu         sync.Mutex
 	db         *sql.DB
 	dimensions int
+}
+
+// NewVectorStore creates the default VectorStore implementation (sqlite-vec).
+func NewVectorStore(db *sql.DB, dimensions int) (VectorStore, error) {
+	return NewSQLiteVecStore(db, dimensions)
 }
 
 // NewSQLiteVecStore creates a new sqlite-vec backed vector store.

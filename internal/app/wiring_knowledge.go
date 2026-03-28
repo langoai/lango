@@ -433,9 +433,8 @@ func initRetrievalCoordinator(cfg *config.Config, kStore *knowledge.Store, ec *e
 	}
 
 	coordinator := retrieval.NewRetrievalCoordinator(agents, logger())
-	coordinator.SetShadow(cfg.Retrieval.Shadow)
 
-	logger().Infow("retrieval coordinator initialized", "shadow", cfg.Retrieval.Shadow, "agents", len(agents))
+	logger().Infow("retrieval coordinator initialized", "agents", len(agents))
 	return coordinator
 }
 

@@ -13,7 +13,6 @@ import (
 // defaultMemoryTokenBudget is the default token budget for the memory section.
 const defaultMemoryTokenBudget = 4000
 
-
 // retrieveMemoryData fetches reflections and observations for the session.
 // Item count limits (maxReflections, maxObservations) are enforced here.
 func (m *ContextAwareModelAdapter) retrieveMemoryData(ctx context.Context, sessionKey string) ([]memory.Reflection, []memory.Observation) {
@@ -92,14 +91,9 @@ func (m *ContextAwareModelAdapter) formatMemorySection(reflections []memory.Refl
 	return b.String()
 }
 
-// assembleMemorySection is a convenience wrapper that retrieves + formats in one call.
-func (m *ContextAwareModelAdapter) assembleMemorySection(ctx context.Context, sessionKey string, dynamicBudget int) string {
-	reflections, observations := m.retrieveMemoryData(ctx, sessionKey)
-	return m.formatMemorySection(reflections, observations, dynamicBudget)
-}
-
 // retrieveRunSummaryData fetches run summaries for the session.
 // Returns nil if provider is absent, an error occurs, or no summaries exist.
+// Uses a cache keyed by (sessionKey, maxJournalSeq) to avoid repeated queries.
 func (m *ContextAwareModelAdapter) retrieveRunSummaryData(ctx context.Context, sessionKey string) []RunSummaryContext {
 	if m.runSummaryProvider == nil {
 		return nil
@@ -110,10 +104,8 @@ func (m *ContextAwareModelAdapter) retrieveRunSummaryData(ctx context.Context, s
 		m.logger.Warnw("run summary max seq retrieval error", "error", err)
 		return nil
 	}
-	if cached, ok := m.getCachedRunSummary(sessionKey, maxSeq); ok && cached != "" {
-		// Cache hit with non-empty content — return a sentinel so the caller
-		// knows there IS content. The formatted string is used directly.
-		return nil // Use assembleRunSummarySection for cached path.
+	if cached, ok := m.getCachedRunSummary(sessionKey, maxSeq); ok {
+		return cached
 	}
 
 	summaries, err := m.runSummaryProvider.ListRunSummaries(ctx, sessionKey, 3)
@@ -121,6 +113,7 @@ func (m *ContextAwareModelAdapter) retrieveRunSummaryData(ctx context.Context, s
 		m.logger.Warnw("run summary retrieval error", "error", err)
 		return nil
 	}
+	m.storeCachedRunSummary(sessionKey, maxSeq, summaries)
 	return summaries
 }
 
@@ -173,65 +166,34 @@ func formatRunSummarySection(summaries []RunSummaryContext, budgetTokens int) st
 	return b.String()
 }
 
-// assembleRunSummarySection is a convenience wrapper that retrieves + formats in one call.
-// budgetTokens controls item-level truncation: 0 = unlimited.
-func (m *ContextAwareModelAdapter) assembleRunSummarySection(ctx context.Context, sessionKey string, budgetTokens int) string {
-	if m.runSummaryProvider == nil {
-		return ""
-	}
-
-	maxSeq, err := m.runSummaryProvider.MaxJournalSeqForSession(ctx, sessionKey)
-	if err != nil {
-		m.logger.Warnw("run summary max seq retrieval error", "error", err)
-		return ""
-	}
-	if cached, ok := m.getCachedRunSummary(sessionKey, maxSeq); ok {
-		return cached
-	}
-
-	summaries, err := m.runSummaryProvider.ListRunSummaries(ctx, sessionKey, 3)
-	if err != nil {
-		m.logger.Warnw("run summary retrieval error", "error", err)
-		return ""
-	}
-	if len(summaries) == 0 {
-		m.storeCachedRunSummary(sessionKey, maxSeq, "")
-		return ""
-	}
-
-	assembled := formatRunSummarySection(summaries, budgetTokens)
-	m.storeCachedRunSummary(sessionKey, maxSeq, assembled)
-	return assembled
-}
-
 type runSummaryCache struct {
 	mu      sync.RWMutex
 	entries map[string]summaryCacheEntry
 }
 
 type summaryCacheEntry struct {
-	summary string
-	maxSeq  int64
+	summaries []RunSummaryContext
+	maxSeq    int64
 }
 
-func (m *ContextAwareModelAdapter) getCachedRunSummary(sessionKey string, maxSeq int64) (string, bool) {
+func (m *ContextAwareModelAdapter) getCachedRunSummary(sessionKey string, maxSeq int64) ([]RunSummaryContext, bool) {
 	if m.runSummaryCache == nil {
-		return "", false
+		return nil, false
 	}
 	m.runSummaryCache.mu.RLock()
 	defer m.runSummaryCache.mu.RUnlock()
 
 	entry, ok := m.runSummaryCache.entries[sessionKey]
 	if !ok || entry.maxSeq != maxSeq {
-		return "", false
+		return nil, false
 	}
-	return entry.summary, true
+	return entry.summaries, true
 }
 
 func (m *ContextAwareModelAdapter) storeCachedRunSummary(
 	sessionKey string,
 	maxSeq int64,
-	summary string,
+	summaries []RunSummaryContext,
 ) {
 	if m.runSummaryCache == nil {
 		return
@@ -239,7 +201,7 @@ func (m *ContextAwareModelAdapter) storeCachedRunSummary(
 	m.runSummaryCache.mu.Lock()
 	defer m.runSummaryCache.mu.Unlock()
 	m.runSummaryCache.entries[sessionKey] = summaryCacheEntry{
-		summary: summary,
-		maxSeq:  maxSeq,
+		summaries: summaries,
+		maxSeq:    maxSeq,
 	}
 }
