@@ -1,48 +1,3 @@
-## ADDED Requirements
-
-### Requirement: Cockpit root model orchestrates 2-panel layout
-The cockpit `Model` SHALL compose a sidebar panel and a child panel using `lipgloss.JoinHorizontal`. When the sidebar is visible, the child panel SHALL receive `terminalWidth - sidebarWidth` as its effective width. When the sidebar is hidden, the child panel SHALL receive the full terminal width.
-
-#### Scenario: Initial render with sidebar visible
-- **WHEN** cockpit model renders with `sidebarVisible=true` and terminal width 120
-- **THEN** the output SHALL be `JoinHorizontal(sidebar.View(), child.View())` with child receiving `WindowSizeMsg{Width: 100, Height: terminalHeight}`
-
-#### Scenario: Sidebar hidden
-- **WHEN** cockpit model renders with `sidebarVisible=false`
-- **THEN** the output SHALL be `child.View()` only, with child receiving full terminal width
-
-### Requirement: Sidebar toggle triggers synthetic resize
-When `Ctrl+B` toggles `sidebarVisible`, cockpit SHALL immediately send a synthetic `tea.WindowSizeMsg` to the child with the new effective width (`terminalWidth - sidebarWidth` or `terminalWidth`).
-
-#### Scenario: Toggle sidebar on
-- **WHEN** user presses `Ctrl+B` with sidebar hidden and terminal width 120
-- **THEN** child SHALL receive `WindowSizeMsg{Width: 100, Height: terminalHeight}`
-
-#### Scenario: Toggle sidebar off
-- **WHEN** user presses `Ctrl+B` with sidebar visible and terminal width 120
-- **THEN** child SHALL receive `WindowSizeMsg{Width: 120, Height: terminalHeight}`
-
-### Requirement: SetProgram delegation
-Cockpit SHALL expose `SetProgram(p *tea.Program)` which delegates to `child.SetProgram(p)`. Cockpit SHALL NOT expose the child model directly.
-
-#### Scenario: Program injection
-- **WHEN** caller invokes `cockpit.SetProgram(program)`
-- **THEN** child's `SetProgram(program)` SHALL be called
-
-### Requirement: childModel interface
-Cockpit SHALL define a `childModel` interface: `tea.Model` + `SetProgram(*tea.Program)`. The concrete `ChatModel` SHALL satisfy this interface (compile-time verified). Test mocks SHALL implement this interface.
-
-#### Scenario: ChatModel satisfies interface
-- **WHEN** `var _ childModel = (*chat.ChatModel)(nil)` is compiled
-- **THEN** compilation SHALL succeed
-
-### Requirement: Cockpit Deps struct
-Cockpit `Deps` SHALL contain: `TurnRunner *turnrunner.Runner`, `Config *config.Config`, `SessionKey string`. ApprovalProvider SHALL NOT be included in Deps.
-
-#### Scenario: Deps fields match App struct
-- **WHEN** cockpit.New(deps) is called with fields from App struct
-- **THEN** all fields SHALL be directly assignable without type conversion
-
 ## MODIFIED Requirements
 
 ### Requirement: Consume-or-forward message delegation
@@ -98,8 +53,12 @@ The cockpit SHALL support Ctrl+Y to copy the current active view content to the 
 - **WHEN** user presses Ctrl+Y with PageChat active
 - **THEN** child.View() content SHALL be written to the system clipboard
 
+#### Scenario: Copy other page view
+- **WHEN** user presses Ctrl+Y with a non-chat page active
+- **THEN** pages[activePage].View() content SHALL be written to the system clipboard
+
 ### Requirement: Context panel toggle with synthetic resize
-When Ctrl+P toggles the context panel, cockpit SHALL send synthetic WindowSizeMsg to all components with updated effective widths.
+When Ctrl+P toggles the context panel, cockpit SHALL send synthetic WindowSizeMsg to all components (child, all pages, contextPanel) with updated effective widths.
 
 #### Scenario: Toggle context panel on
 - **WHEN** user presses Ctrl+P to show context panel

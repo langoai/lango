@@ -46,6 +46,18 @@ type cprTimeoutMsg struct{}
 // cprTimeout is how long we wait after ESC before deciding it's not a CPR sequence.
 const cprTimeout = 50 * time.Millisecond
 
+// cursorBlinkInterval is the period between cursor blink toggles.
+const cursorBlinkInterval = 400 * time.Millisecond
+
+// ChatParts holds the discrete rendered sections of the chat view.
+type ChatParts struct {
+	Header    string
+	TurnStrip string
+	Main      string
+	Footer    string
+	Approval  string // empty when no approval pending
+}
+
 // ChatModel is the root bubbletea model for the interactive TUI chat.
 type ChatModel struct {
 	turnRunner *turnrunner.Runner
@@ -140,9 +152,28 @@ func (m *ChatModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case ChunkMsg:
 		m.chatView.appendChunk(msg.Chunk)
+		if !m.chatView.cursorTickActive {
+			m.chatView.cursorTickActive = true
+			m.chatView.showCursor = true
+			cmds = append(cmds, tea.Tick(cursorBlinkInterval, func(t time.Time) tea.Msg {
+				return CursorTickMsg(t)
+			}))
+		}
+		return m, tea.Batch(cmds...)
+
+	case CursorTickMsg:
+		if m.state == stateStreaming {
+			m.chatView.showCursor = !m.chatView.showCursor
+			m.chatView.render()
+			return m, tea.Tick(cursorBlinkInterval, func(t time.Time) tea.Msg {
+				return CursorTickMsg(t)
+			})
+		}
+		m.chatView.stopCursorBlink()
 		return m, nil
 
 	case DoneMsg:
+		m.chatView.stopCursorBlink()
 		if m.chatView.streamBuf.Len() > 0 {
 			m.chatView.finalizeStream()
 		} else if strings.TrimSpace(msg.Result.ResponseText) != "" {
@@ -167,6 +198,7 @@ func (m *ChatModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, tea.Batch(cmds...)
 
 	case ErrorMsg:
+		m.chatView.stopCursorBlink()
 		if m.chatView.streamBuf.Len() > 0 {
 			m.chatView.finalizeStream()
 		}
@@ -223,6 +255,23 @@ func (m *ChatModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 }
 
 // View implements tea.Model.
+// RenderParts returns the discrete rendered sections of the chat view.
+func (m *ChatModel) RenderParts() ChatParts {
+	parts := ChatParts{
+		Header:    renderHeader(m.cfg, truncateSessionKey(m.sessionKey), m.width),
+		TurnStrip: renderTurnStrip(m.state, m.width),
+		Main:      m.chatView.View(),
+		Footer:    renderFooter(m.input, m.state, m.width),
+	}
+
+	if m.state == stateApproving && m.pendingApproval != nil {
+		parts.Approval = renderApprovalBanner(m.pendingApproval.Request, m.width)
+	}
+
+	return parts
+}
+
+// View implements tea.Model.
 func (m *ChatModel) View() string {
 	if m.quitting {
 		return ""
@@ -231,18 +280,16 @@ func (m *ChatModel) View() string {
 		return "\n  Waiting for terminal size..."
 	}
 
-	parts := []string{
-		renderHeader(m.cfg, truncateSessionKey(m.sessionKey), m.width),
-		renderTurnStrip(m.state, m.width),
-		m.chatView.View(),
-	}
+	p := m.RenderParts()
 
-	if m.state == stateApproving && m.pendingApproval != nil {
-		parts = append(parts, renderApprovalBanner(m.pendingApproval.Request, m.width))
+	sections := make([]string, 0, 5)
+	sections = append(sections, p.Header, p.TurnStrip, p.Main)
+	if p.Approval != "" {
+		sections = append(sections, p.Approval)
 	}
+	sections = append(sections, p.Footer)
 
-	parts = append(parts, renderFooter(m.input, m.state, m.width))
-	return strings.Join(parts, "\n")
+	return strings.Join(sections, "\n")
 }
 
 func (m *ChatModel) inputAcceptsText() bool {

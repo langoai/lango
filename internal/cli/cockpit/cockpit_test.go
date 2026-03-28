@@ -11,6 +11,7 @@ import (
 	"github.com/langoai/lango/internal/cli/chat"
 	"github.com/langoai/lango/internal/cli/cockpit/sidebar"
 	"github.com/langoai/lango/internal/cli/cockpit/theme"
+	"github.com/langoai/lango/internal/observability"
 )
 
 // mockChild implements childModel for testing without real ChatModel.
@@ -51,6 +52,22 @@ func newTestModel(mock *mockChild) *Model {
 		pages:          make(map[PageID]Page),
 		activePage:     PageChat,
 		sidebar:        sidebar.New(),
+		contextPanel:   NewContextPanel(nil),
+		keymap:         defaultKeyMap(),
+		sidebarVisible: true,
+		width:          120,
+		height:         40,
+	}
+}
+
+func newTestModelWithCollector(mock *mockChild) *Model {
+	collector := observability.NewCollector()
+	return &Model{
+		child:          mock,
+		pages:          make(map[PageID]Page),
+		activePage:     PageChat,
+		sidebar:        sidebar.New(),
+		contextPanel:   NewContextPanel(collector),
 		keymap:         defaultKeyMap(),
 		sidebarVisible: true,
 		width:          120,
@@ -60,6 +77,14 @@ func newTestModel(mock *mockChild) *Model {
 
 func ctrlB() tea.KeyMsg {
 	return tea.KeyMsg{Type: tea.KeyCtrlB}
+}
+
+func ctrlP() tea.KeyMsg {
+	return tea.KeyMsg{Type: tea.KeyCtrlP}
+}
+
+func ctrlY() tea.KeyMsg {
+	return tea.KeyMsg{Type: tea.KeyCtrlY}
 }
 
 func TestConsumeOrForward_ChunkMsg(t *testing.T) {
@@ -232,4 +257,184 @@ func TestForwardToActivePage(t *testing.T) {
 	m.Update(tea.KeyMsg{Type: tea.KeyUp})
 	assert.Len(t, mock.updates, 0, "child should not receive keys when tools page is active")
 	assert.Len(t, toolsPage.updates, 1, "tools page should receive the key")
+}
+
+// --- Change-3 W2: context panel tests ---
+
+func TestCtrlP_TogglesContext(t *testing.T) {
+	mock := &mockChild{}
+	m := newTestModelWithCollector(mock)
+
+	assert.False(t, m.contextVisible)
+
+	m.Update(ctrlP())
+	assert.True(t, m.contextVisible)
+	assert.True(t, m.contextPanel.tickActive)
+
+	m.Update(ctrlP())
+	assert.False(t, m.contextVisible)
+	assert.False(t, m.contextPanel.tickActive)
+}
+
+func TestCtrlP_SyntheticResize(t *testing.T) {
+	mock := &mockChild{}
+	m := newTestModelWithCollector(mock)
+	m.width = 120
+	m.height = 40
+
+	// Toggle context on — child should get reduced width.
+	m.Update(ctrlP())
+	require.GreaterOrEqual(t, len(mock.updates), 1)
+	last := mock.updates[len(mock.updates)-1].(tea.WindowSizeMsg)
+	expectedWidth := 120 - theme.SidebarFullWidth - theme.ContextPanelWidth
+	assert.Equal(t, expectedWidth, last.Width,
+		"child width should subtract both sidebar and context panel")
+}
+
+func TestWindowSizeMsg_ThreePanelLayout(t *testing.T) {
+	mock := &mockChild{}
+	m := newTestModelWithCollector(mock)
+	m.contextVisible = true
+	m.contextPanel.SetVisible(true)
+
+	m.Update(tea.WindowSizeMsg{Width: 120, Height: 40})
+	require.GreaterOrEqual(t, len(mock.updates), 1)
+	wsm := mock.updates[0].(tea.WindowSizeMsg)
+	expectedWidth := 120 - theme.SidebarFullWidth - theme.ContextPanelWidth
+	assert.Equal(t, expectedWidth, wsm.Width)
+}
+
+func TestView_ThreePanelLayout(t *testing.T) {
+	mock := &mockChild{viewContent: "main-content"}
+	m := newTestModel(mock)
+	m.contextVisible = true
+	m.contextPanel.SetVisible(true)
+	m.contextPanel.SetHeight(10)
+
+	view := m.View()
+	assert.Contains(t, view, "main-content")
+}
+
+func TestView_SidebarHiddenContextVisible(t *testing.T) {
+	mock := &mockChild{viewContent: "main-content"}
+	m := newTestModel(mock)
+	m.sidebarVisible = false
+	m.contextVisible = true
+	m.contextPanel.SetVisible(true)
+	m.contextPanel.SetHeight(10)
+
+	view := m.View()
+	assert.Contains(t, view, "main-content")
+}
+
+func TestContextPanelWidth_Visible(t *testing.T) {
+	mock := &mockChild{}
+	m := newTestModel(mock)
+	m.contextVisible = true
+	assert.Equal(t, theme.ContextPanelWidth, m.contextPanelWidth())
+}
+
+func TestContextPanelWidth_Hidden(t *testing.T) {
+	mock := &mockChild{}
+	m := newTestModel(mock)
+	m.contextVisible = false
+	assert.Equal(t, 0, m.contextPanelWidth())
+}
+
+func TestMouseRouting_SidebarRegion(t *testing.T) {
+	mock := &mockChild{}
+	m := newTestModel(mock)
+	m.sidebarVisible = true
+
+	// Click within sidebar width (X < 20).
+	msg := tea.MouseMsg{
+		X:      5,
+		Y:      1,
+		Action: tea.MouseActionRelease,
+	}
+	m.Update(msg)
+	// Child should NOT have received the mouse event.
+	assert.Len(t, mock.updates, 0,
+		"mouse click in sidebar region should not reach child")
+}
+
+func TestMouseRouting_ContentRegion(t *testing.T) {
+	mock := &mockChild{}
+	m := newTestModel(mock)
+	m.sidebarVisible = true
+
+	// Click outside sidebar width (X >= 20).
+	msg := tea.MouseMsg{
+		X:      25,
+		Y:      5,
+		Action: tea.MouseActionRelease,
+	}
+	m.Update(msg)
+	require.Len(t, mock.updates, 1, "mouse click in content region should reach child")
+}
+
+func TestMouseRouting_ActivePage(t *testing.T) {
+	mock := &mockChild{}
+	m := newTestModel(mock)
+	toolsPage := &mockPage{title: "Tools"}
+	m.RegisterPage(PageTools, toolsPage)
+	m.switchPage(PageTools)
+
+	msg := tea.MouseMsg{
+		X:      25,
+		Y:      5,
+		Action: tea.MouseActionRelease,
+	}
+	m.Update(msg)
+	assert.Len(t, mock.updates, 0, "mouse should not reach child when tools page is active")
+	assert.Len(t, toolsPage.updates, 1, "mouse should reach active page")
+}
+
+func TestCtrlY_CopiesActiveView(t *testing.T) {
+	mock := &mockChild{viewContent: "test-clipboard-content"}
+	m := newTestModel(mock)
+
+	// This test verifies the code path doesn't panic.
+	// Actual clipboard write may fail in CI but should not error.
+	m.Update(ctrlY())
+}
+
+func TestCtrlY_CopiesPageView(t *testing.T) {
+	mock := &mockChild{}
+	m := newTestModel(mock)
+	toolsPage := &mockPage{title: "Tools", viewContent: "tools-clipboard"}
+	m.RegisterPage(PageTools, toolsPage)
+	m.switchPage(PageTools)
+
+	// Should not panic.
+	m.Update(ctrlY())
+}
+
+func TestWindowSizeMsg_PropagatesContextPanelSize(t *testing.T) {
+	mock := &mockChild{}
+	m := newTestModelWithCollector(mock)
+	m.contextVisible = true
+	m.contextPanel.SetVisible(true)
+
+	m.Update(tea.WindowSizeMsg{Width: 120, Height: 40})
+
+	assert.Equal(t, 40, m.contextPanel.height)
+}
+
+func TestCtrlP_ResizePropagatesAllPages(t *testing.T) {
+	mock := &mockChild{}
+	m := newTestModelWithCollector(mock)
+	toolsPage := &mockPage{title: "Tools"}
+	m.RegisterPage(PageTools, toolsPage)
+	m.width = 120
+	m.height = 40
+
+	m.Update(ctrlP())
+
+	// Tools page should have received a resize message.
+	require.GreaterOrEqual(t, len(toolsPage.updates), 1)
+	wsm, ok := toolsPage.updates[0].(tea.WindowSizeMsg)
+	require.True(t, ok, "page should receive WindowSizeMsg")
+	expectedWidth := 120 - theme.SidebarFullWidth - theme.ContextPanelWidth
+	assert.Equal(t, expectedWidth, wsm.Width)
 }

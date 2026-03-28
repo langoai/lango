@@ -41,3 +41,6 @@ const (
 	SidebarFullWidth      = 20
 	SidebarCollapsedWidth = 3
 )
+
+// Context panel width constant.
+const ContextPanelWidth = 28

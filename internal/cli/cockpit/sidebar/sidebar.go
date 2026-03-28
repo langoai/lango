@@ -41,7 +41,7 @@ func New() Model {
 			{ID: "settings", Icon: theme.IconSettings, Label: "Settings"},
 			{ID: "tools", Icon: theme.IconTools, Label: "Tools"},
 			{ID: "status", Icon: theme.IconStatus, Label: "Status"},
-			{ID: "sessions", Icon: theme.IconSessions, Label: "Sessions", Disabled: true},
+			{ID: "sessions", Icon: theme.IconSessions, Label: "Sessions"},
 		},
 		active:  "chat",
 		visible: true,
@@ -53,12 +53,26 @@ func (m Model) Init() tea.Cmd {
 	return nil
 }
 
-// Update satisfies tea.Model. Interactive when focused, pass-through when not.
+// Update satisfies tea.Model. Handles mouse events unconditionally;
+// keyboard events require focus.
 func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
-	if !m.focused {
+	switch msg := msg.(type) {
+	case tea.MouseMsg:
+		// Mouse clicks work regardless of focused state.
+		if msg.Action == tea.MouseActionRelease {
+			idx := msg.Y
+			if idx >= 0 && idx < len(m.items) && !m.items[idx].Disabled {
+				return m, func() tea.Msg {
+					return PageSelectedMsg{ID: m.items[idx].ID}
+				}
+			}
+		}
 		return m, nil
-	}
-	if msg, ok := msg.(tea.KeyMsg); ok {
+
+	case tea.KeyMsg:
+		if !m.focused {
+			return m, nil
+		}
 		switch msg.String() {
 		case "up", "k":
 			m.moveCursorUp()
@@ -112,8 +126,8 @@ var (
 	accentBarStyle = lipgloss.NewStyle().
 			Foreground(theme.Accent)
 
-	cursorStyle = lipgloss.NewStyle().
-			Foreground(theme.Primary)
+	sidebarCursorStyle = lipgloss.NewStyle().
+				Foreground(theme.Primary)
 
 	rowStyle = lipgloss.NewStyle().
 			Width(contentWidth).
@@ -149,13 +163,13 @@ func (m Model) View() string {
 			icon := activeIconStyle.Render(it.Icon)
 			label := activeLabelStyle.Render(it.Label)
 			if m.focused && i == m.cursor {
-				line = cursorStyle.Render("▸") + icon + " " + label
+				line = sidebarCursorStyle.Render("▸") + icon + " " + label
 			} else {
 				line = bar + icon + " " + label
 			}
 		default:
 			if m.focused && i == m.cursor {
-				line = cursorStyle.Render("▸") + inactiveStyle.Render(it.Icon+" "+it.Label)
+				line = sidebarCursorStyle.Render("▸") + inactiveStyle.Render(it.Icon+" "+it.Label)
 			} else {
 				line = " " + inactiveStyle.Render(it.Icon+" "+it.Label)
 			}

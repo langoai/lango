@@ -30,10 +30,12 @@ type transcriptItem struct {
 
 // chatViewModel manages the scrollable chat transcript viewport.
 type chatViewModel struct {
-	viewport  viewport.Model
-	entries   []transcriptItem
-	streamBuf strings.Builder
-	width     int
+	viewport         viewport.Model
+	entries          []transcriptItem
+	streamBuf        strings.Builder
+	width            int
+	showCursor       bool
+	cursorTickActive bool
 }
 
 func newChatViewModel(width, height int) chatViewModel {
@@ -134,9 +136,16 @@ func (m *chatViewModel) lastAssistantRaw() string {
 	return ""
 }
 
+// stopCursorBlink resets both cursor-blink fields in one call.
+func (m *chatViewModel) stopCursorBlink() {
+	m.showCursor = false
+	m.cursorTickActive = false
+}
+
 func (m *chatViewModel) clear() {
 	m.entries = nil
 	m.streamBuf.Reset()
+	m.stopCursorBlink()
 	m.viewport.SetContent("")
 	m.viewport.GotoTop()
 }
@@ -179,7 +188,11 @@ func (m *chatViewModel) render() {
 	}
 
 	if m.streamBuf.Len() > 0 {
-		blocks = append(blocks, renderTranscriptBlock("Lango", m.streamBuf.String(), tui.Primary))
+		streamContent := m.streamBuf.String()
+		if m.showCursor {
+			streamContent += "\u258c" // "▌" block cursor
+		}
+		blocks = append(blocks, renderTranscriptBlock("Lango", streamContent, tui.Primary))
 	}
 
 	m.viewport.SetContent(strings.Join(blocks, "\n\n"))

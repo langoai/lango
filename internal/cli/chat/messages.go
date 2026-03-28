@@ -38,3 +38,6 @@ type ApprovalRequestMsg struct {
 type SystemMsg struct {
 	Text string
 }
+
+// CursorTickMsg triggers cursor blink toggle during streaming.
+type CursorTickMsg time.Time

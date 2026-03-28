@@ -477,6 +477,29 @@ func (s *EntStore) CompactMessages(key string, upToIndex int, summary string) er
 	return nil
 }
 
+// ListSessions returns lightweight summaries of all sessions,
+// ordered by most recent update first.
+func (s *EntStore) ListSessions(ctx context.Context) ([]SessionSummary, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	rows, err := s.client.Session.Query().
+		Order(entsession.ByUpdatedAt(entsql.OrderDesc())).
+		All(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("list sessions: %w", err)
+	}
+	summaries := make([]SessionSummary, len(rows))
+	for i, r := range rows {
+		summaries[i] = SessionSummary{
+			Key:       r.Key,
+			CreatedAt: r.CreatedAt,
+			UpdatedAt: r.UpdatedAt,
+		}
+	}
+	return summaries, nil
+}
+
 // Close closes the ent client and underlying database connection.
 // When the client was provided externally via NewEntStoreWithClient, only the
 // ent client is closed; the raw DB connection is managed by the caller.

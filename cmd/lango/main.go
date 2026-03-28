@@ -55,6 +55,7 @@ import (
 	"github.com/langoai/lango/internal/config"
 	"github.com/langoai/lango/internal/logging"
 	"github.com/langoai/lango/internal/sandbox"
+	"github.com/langoai/lango/internal/session"
 	"github.com/langoai/lango/internal/types"
 	"go.uber.org/zap"
 )
@@ -85,7 +86,7 @@ func main() {
 		Short: "Lango - Fast AI Agent in Go",
 		Long:  `Lango is a high-performance AI agent built with Go, supporting multiple channels and tools.`,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return runChat()
+			return runCockpit()
 		},
 	}
 
@@ -100,6 +101,7 @@ func main() {
 	// --- Getting Started ---
 	rootCmd.AddCommand(serveCmd())
 	rootCmd.AddCommand(cockpitCmd())
+	rootCmd.AddCommand(chatCmd())
 
 	onboardCmd := onboard.NewCommand()
 	onboardCmd.GroupID = "start"
@@ -515,10 +517,21 @@ func mcpServerCount(cfg *config.Config) string {
 func cockpitCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:     "cockpit",
-		Short:   "Launch experimental multi-panel TUI",
+		Short:   "Launch multi-panel TUI (same as bare lango)",
 		GroupID: "start",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return runCockpit()
+		},
+	}
+}
+
+func chatCmd() *cobra.Command {
+	return &cobra.Command{
+		Use:     "chat",
+		Short:   "Launch plain chat TUI",
+		GroupID: "start",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return runChat()
 		},
 	}
 }
@@ -601,6 +614,10 @@ func runCockpit() error {
 		model.RegisterPage(cockpit.PageSettings,
 			pages.NewSettingsPage(cfg, boot.ConfigStore, boot.ProfileName))
 	}
+	model.RegisterPage(cockpit.PageSessions,
+		pages.NewSessionsPage(func(ctx context.Context) ([]session.SessionSummary, error) {
+			return application.Store.ListSessions(ctx)
+		}))
 
 	p := tea.NewProgram(model, tea.WithAltScreen(), tea.WithMouseCellMotion())
 	model.SetProgram(p)
