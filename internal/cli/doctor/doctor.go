@@ -29,24 +29,52 @@ func NewCommand() *cobra.Command {
 		Long: `The doctor command checks your Lango configuration and environment
 for common issues and can automatically fix some problems.
 
-Checks performed include:
-  - Configuration profile validity
-  - AI provider configuration and API keys
-  - API key security (env-var best practices)
-  - Channel token validation (Telegram, Discord, Slack)
-  - Session database accessibility
-  - Server port availability
-  - Security configuration (signer, interceptor, encryption)
-  - Companion connectivity (WebSocket gateway status)
-  - Observational memory configuration
-  - Output scanning and interceptor settings
-  - Embedding / RAG provider and model setup
-  - Graph store configuration
-  - Multi-agent orchestration settings
-  - A2A protocol connectivity
-  - RunLedger configuration invariants
-  - Retrieval coordinator and auto-adjust settings
-  - Context budget allocation ratio validation
+Checks performed (25 total):
+
+  Core Configuration:
+    - Configuration Profile   Profile validity and file accessibility
+    - AI Providers            Provider configuration and API keys
+    - API Key Security        Env-var best practices, secret exposure
+    - Channel Tokens          Telegram, Discord, Slack token validation
+    - Session Database        Database accessibility and integrity
+    - Server Port             Port availability and binding
+
+  Security:
+    - Security Configuration  Signer, interceptor, encryption settings
+    - Companion Connectivity  WebSocket gateway reachability
+
+  Context Engineering:
+    - Context Engineering     Context profile, budget allocation ratios
+    - Retrieval Coordinator   Retrieval coordinator and auto-adjust settings
+
+  Memory & Scanning:
+    - Observational Memory    Memory configuration and storage
+    - Output Scanning         Interceptor and scanning settings
+
+  Embedding / RAG:
+    - Embedding / RAG         Provider, model, and vector store setup
+
+  Graph / Multi-Agent / A2A:
+    - Graph Store             Triple store configuration
+    - Multi-Agent             Orchestration and sub-agent settings
+    - A2A Protocol            Agent-to-agent protocol connectivity
+
+  Tool Hooks & Agent Management:
+    - Tool Hooks              Middleware chain and hook configuration
+    - Agent Registry          Registered agents and routing
+    - Proactive Librarian     Librarian agent settings
+    - Approval System         Tool approval workflow configuration
+
+  Execution:
+    - RunLedger               Ledger configuration invariants
+
+  Economy / Contract / Observability:
+    - Economy Layer           Token economy and budget settings
+    - Smart Contracts         Contract validation and deployment
+    - Observability           Tracing, metrics, and logging
+
+  P2P Workspace:
+    - P2P Workspaces          Workspace isolation and connectivity
 
 Use --fix to attempt automatic repair of fixable issues.
 Use --json for machine-readable output.

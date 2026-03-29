@@ -16,12 +16,18 @@ You also need a C compiler (`gcc` or `clang`) installed on your system.
 
 ### Build Tags
 
-| Tags | Features |
-|------|----------|
-| `fts5` | Full-text search (default) |
-| `fts5,vec` | Full-text search + semantic vector search (requires sqlite-vec) |
+| Tag | Purpose | Required? |
+|-----|---------|-----------|
+| `fts5` | SQLite FTS5 full-text search | Yes (default) |
+| `vec` | sqlite-vec semantic vector search (RAG) | Optional |
+| `kms_aws` | AWS KMS signer provider | Optional |
+| `kms_gcp` | GCP Cloud KMS signer provider | Optional |
+| `kms_azure` | Azure Key Vault signer provider | Optional |
+| `kms_pkcs11` | PKCS#11 / HSM signer provider | Optional |
+| `kms_all` | All KMS providers above | Optional |
+| `integration` | Include integration tests | Optional |
 
-The `fts5` tag is sufficient for most use cases. Add `vec` only when you need embedding-based semantic search (RAG). sqlite-vec is an **optional** dependency; without the `vec` tag the binary compiles and runs without it.
+The `fts5` tag is sufficient for most use cases. Add `vec` only when you need embedding-based semantic search (RAG). sqlite-vec is an **optional** dependency; without the `vec` tag the binary compiles and runs without it. KMS tags pull in cloud-specific SDKs and are only needed when using HSM or cloud key management for P2P signing. Without any `kms_*` tag, stub providers are compiled in and KMS features are unavailable.
 
 ```bash
 # FTS5-only build (default, no sqlite-vec required)
@@ -29,37 +35,69 @@ CGO_ENABLED=1 go build -tags fts5 ./cmd/lango
 
 # Full build with semantic vector search
 CGO_ENABLED=1 go build -tags "fts5,vec" ./cmd/lango
+
+# Build with AWS KMS support
+CGO_ENABLED=1 go build -tags "fts5,kms_aws" ./cmd/lango
+
+# Build with all KMS providers + vector search
+CGO_ENABLED=1 go build -tags "fts5,vec,kms_all" ./cmd/lango
+
+# Run integration tests
+CGO_ENABLED=1 go test -tags "fts5,vec,integration" ./...
 ```
+
+The Makefile defaults to `-tags "fts5,vec"` for all `build` and `test` targets.
 
 ## Makefile Targets
 
 | Target | Description |
 |--------|-------------|
+| **Build & Install** | |
 | `build` | Build binary for current platform |
 | `build-linux` | Cross-compile for Linux amd64 |
 | `build-darwin` | Cross-compile for macOS arm64 |
 | `build-all` | Build for all platforms |
 | `install` | Install binary to `$GOPATH/bin` |
+| **Development** | |
 | `dev` | Build and run server locally |
 | `run` | Run server from existing binary |
+| **Testing** | |
 | `test` | Run tests with race detector and coverage |
 | `test-short` | Run short tests only |
+| `test-p2p` | Run P2P and wallet spending tests |
+| `test-security` | Run security, sandbox, and keyring tests |
+| `test-graph` | Run graph store and GraphRAG tests |
+| `test-mcp` | Run MCP plugin integration tests |
+| `test-economy` | Run economy layer tests (budget, escrow, pricing) |
 | `bench` | Run benchmarks |
 | `coverage` | Generate HTML coverage report |
+| **Code Quality** | |
 | `fmt` | Format code |
 | `fmt-check` | Check code formatting (CI) |
 | `vet` | Run `go vet` |
-| `lint` | Run `golangci-lint` |
+| `lint` | Run `golangci-lint` (auto-installs if missing) |
 | `generate` | Run `go generate` (Ent code) |
+| `check-abi` | Verify ABI bindings match Solidity sources |
 | `ci` | Full local CI pipeline (`fmt-check` -> `vet` -> `lint` -> `test`) |
+| **Dependencies** | |
 | `deps` | Download and tidy dependencies |
+| **Code Signing** | |
+| `codesign` | Sign macOS binary with Apple Developer ID (requires `APPLE_IDENTITY`) |
+| **Sandbox** | |
+| `sandbox-image` | Build sandbox Docker image for P2P tool isolation |
+| **Docker** | |
 | `docker-build` | Build Docker image |
-| `docker-push` | Push to registry |
+| `docker-push` | Push to registry (requires `REGISTRY`) |
 | `docker-up` | Start Docker Compose services |
 | `docker-down` | Stop Docker Compose services |
 | `docker-logs` | View Docker Compose logs |
+| **Release** | |
+| `release-dry` | Test GoReleaser build locally (current platform, snapshot) |
+| `release-check` | Validate `.goreleaser.yaml` configuration |
+| **Utility** | |
 | `health` | Check running server health |
-| `clean` | Remove build artifacts |
+| `clean` | Remove build artifacts and coverage reports |
+| `help` | Show available targets |
 
 ## Development Workflow
 
@@ -122,6 +160,16 @@ Run only short tests (skip integration tests):
 
 ```bash
 make test-short
+```
+
+Run domain-scoped tests to iterate on a specific subsystem:
+
+```bash
+make test-p2p        # P2P networking + wallet spending
+make test-security   # Security, sandbox, keyring
+make test-graph      # Graph store + GraphRAG
+make test-mcp        # MCP plugin integration
+make test-economy    # Economy layer (budget, escrow, pricing)
 ```
 
 Generate an HTML coverage report:

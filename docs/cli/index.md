@@ -6,7 +6,9 @@ Lango provides a comprehensive command-line interface built with [Cobra](https:/
 
 | Command | Description |
 |---------|-------------|
-| `lango` | Interactive TUI chat (default entry point) |
+| `lango` | Launch multi-panel TUI cockpit (default entry point) |
+| `lango cockpit` | Launch multi-panel TUI (same as bare `lango`) |
+| `lango chat` | Launch plain chat TUI |
 | `lango serve` | Start the gateway server |
 | `lango version` | Print version and build info |
 | `lango health` | Check gateway health |
@@ -216,6 +218,45 @@ Lango provides a comprehensive command-line interface built with [Cobra](https:/
 | `lango mcp test <name>` | Test server connectivity |
 | `lango mcp enable <name>` | Enable an MCP server |
 | `lango mcp disable <name>` | Disable an MCP server |
+
+### RunLedger (Task OS)
+
+!!! warning "Experimental"
+    The RunLedger is experimental. See [RunLedger](../features/run-ledger.md).
+
+| Command | Description |
+|---------|-------------|
+| `lango run list` | List recent runs |
+| `lango run status` | Show RunLedger configuration |
+| `lango run journal <run-id>` | View run journal events |
+
+### Session Provenance
+
+!!! warning "Experimental"
+    Session provenance is experimental. See [Session Provenance](../features/provenance.md).
+
+| Command | Description |
+|---------|-------------|
+| `lango provenance status` | Show provenance configuration and state |
+| `lango provenance checkpoint list` | List checkpoints |
+| `lango provenance checkpoint create` | Create a manual checkpoint |
+| `lango provenance checkpoint show <id>` | Show checkpoint details |
+| `lango provenance session tree` | Show session hierarchy tree |
+| `lango provenance session list` | List persisted session nodes |
+| `lango provenance attribution show <session>` | Show attribution data for a session |
+| `lango provenance attribution report` | Generate attribution report |
+| `lango provenance bundle export` | Export a signed provenance bundle |
+| `lango provenance bundle import` | Import a signed provenance bundle |
+
+### Sandbox (OS-level)
+
+!!! warning "Experimental"
+    The OS-level sandbox is experimental. This is distinct from `lango p2p sandbox` which manages P2P remote execution isolation.
+
+| Command | Description |
+|---------|-------------|
+| `lango sandbox status` | Show sandbox configuration and platform capabilities |
+| `lango sandbox test` | Run OS sandbox smoke tests |
 
 ## Global Behavior
 

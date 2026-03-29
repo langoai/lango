@@ -65,6 +65,12 @@ This project includes experimental AI Agent features and is currently in an unst
 - 🏦 **Smart Accounts** — ERC-7579 modular smart accounts (Safe-based), ERC-4337 account abstraction with session keys, gasless USDC transactions via paymaster (Circle/Pimlico/Alchemy), on-chain spending limits, and hierarchical session key management
 - 👥 **P2P Teams** — Task-scoped agent groups with role-based delegation, conflict resolution (trust_weighted, majority_vote, leader_decides, fail_on_conflict), assignment strategies, and payment coordination
 - 📊 **Observability** — Token usage tracking, health monitoring, audit logging, and metrics endpoints
+- 🎯 **Context Engineering** — Token-budget-aware context allocation, retrieval coordinator (FactSearch + TemporalSearch + ContextSearch), config profiles (off/lite/balanced/full), and relevance score auto-adjustment
+- 🖥️ **Cockpit TUI** — Multi-panel terminal dashboard with chat, tools, status, sessions, and settings pages
+- 📋 **RunLedger (Task OS)** — Durable execution engine with append-only journal, PEV verification, typed validators, and planner integration
+- 📜 **Session Provenance** — Persistent checkpoints, session lineage tree, git-aware attribution, and signed provenance bundle export/import
+- 🛡️ **OS-level Sandbox** — Process isolation via macOS Seatbelt and Linux seccomp, network deny, workspace-scoped write access
+- 🚧 **Response Gatekeeper** — Output sanitization stripping thought tags, internal markers, raw JSON, and custom patterns
 
 ## Quick Start
 
@@ -119,6 +125,8 @@ lango onboard                    Guided 5-step setup wizard for first-time confi
 lango settings                   Full interactive configuration editor (all options)
 lango status [--output json] [--addr] Show unified system status dashboard
 lango doctor [--fix] [--json]    Diagnostics and health checks
+lango cockpit                    Launch multi-panel TUI dashboard
+lango chat                       Launch plain chat TUI
 
 lango config list                List all configuration profiles
 lango config create <name>       Create a new profile with defaults
@@ -141,6 +149,9 @@ lango security db-decrypt        Decrypt database to plaintext (--force)
 lango security kms status        Show KMS provider status (--json)
 lango security kms test          Test KMS encrypt/decrypt roundtrip
 lango security kms keys          List KMS keys in registry (--json)
+
+lango sandbox status             Show sandbox configuration and platform capabilities
+lango sandbox test               Run OS sandbox smoke tests
 
 lango memory list [--json]       List observational memory entries
 lango memory status [--json]     Show memory system status
@@ -269,6 +280,20 @@ lango bg list                    List background tasks
 lango bg status <id>             Show background task status
 lango bg cancel <id>             Cancel a running background task
 lango bg result <id>             Show completed task result
+
+lango run list                   List recent RunLedger runs
+lango run status                 Show RunLedger configuration
+lango run journal <run-id>       View run journal events
+
+lango provenance status          Show provenance configuration
+lango provenance checkpoint list List session checkpoints
+lango provenance checkpoint create Create a manual checkpoint
+lango provenance session tree    Show session hierarchy tree
+lango provenance session list    List persisted session nodes
+lango provenance attribution show <session> View attribution data
+lango provenance attribution report Generate attribution report
+lango provenance bundle export   Export signed provenance bundle
+lango provenance bundle import   Import provenance bundle
 ```
 
 ### Diagnostics
@@ -306,28 +331,37 @@ lango/
 │   ├── cli/                # CLI commands
 │   │   ├── tuicore/        #   Shared TUI components (FormModel, Field types)
 │   │   ├── clitypes/       #   Shared CLI type definitions (provider loaders)
+│   │   ├── a2a/            #   lango a2a card/check
 │   │   ├── agent/          #   lango agent status/list/tools/hooks
 │   │   ├── approval/       #   lango approval status
+│   │   ├── bg/             #   lango bg list/status/cancel/result
+│   │   ├── chat/           #   lango chat (plain TUI chat)
+│   │   ├── cliboot/        #   Shared CLI bootstrap / lazy config loading
+│   │   ├── cockpit/        #   lango cockpit (multi-panel TUI dashboard)
+│   │   ├── configcmd/      #   lango config list/create/use/delete/import/export/validate/get/set/keys
+│   │   ├── contract/       #   lango contract read/call/abi
+│   │   ├── cron/           #   lango cron add/list/delete/pause/resume/history
 │   │   ├── doctor/         #   lango doctor (diagnostics)
+│   │   ├── economy/        #   lango economy budget/risk/pricing/negotiate/escrow status/list/show/sentinel
 │   │   ├── graph/          #   lango graph status/query/stats/clear
 │   │   ├── learning/       #   lango learning status/history
 │   │   ├── librarian/      #   lango librarian status/inquiries
-│   │   ├── memory/         #   lango memory list/status/clear
-│   │   ├── onboard/        #   lango onboard (5-step guided wizard)
-│   │   ├── settings/       #   lango settings (full configuration editor)
-│   │   ├── payment/        #   lango payment balance/history/limits/info/send
-│   │   ├── cron/           #   lango cron add/list/delete/pause/resume/history
-│   │   ├── bg/             #   lango bg list/status/cancel/result
-│   │   ├── workflow/       #   lango workflow run/list/status/cancel/history
 │   │   ├── mcp/            #   lango mcp list/add/remove/get/test/enable/disable
-│   │   ├── prompt/         #   interactive prompt utilities
-│   │   ├── security/       #   lango security status/secrets/migrate-passphrase/keyring/db-migrate/db-decrypt/kms
-│   │   ├── p2p/            #   lango p2p status/peers/connect/disconnect/firewall/discover/identity/reputation/pricing/session/sandbox/team/zkp
-│   │   ├── economy/        #   lango economy budget/risk/pricing/negotiate/escrow status/list/show/sentinel
-│   │   ├── contract/       #   lango contract read/call/abi
-│   │   ├── smartaccount/   #   lango account info/deploy/session/module/policy/paymaster
+│   │   ├── memory/         #   lango memory list/status/clear
 │   │   ├── metrics/        #   lango metrics [sessions|tools|agents|history]
-│   │   └── tui/            #   TUI components and views
+│   │   ├── onboard/        #   lango onboard (5-step guided wizard)
+│   │   ├── p2p/            #   lango p2p status/peers/connect/disconnect/firewall/discover/identity/reputation/pricing/session/sandbox/team/zkp
+│   │   ├── payment/        #   lango payment balance/history/limits/info/send
+│   │   ├── prompt/         #   interactive prompt utilities
+│   │   ├── provenance/     #   lango provenance status/checkpoint/session/attribution/bundle
+│   │   ├── run/            #   lango run list/status/journal
+│   │   ├── sandbox/        #   lango sandbox status/test
+│   │   ├── security/       #   lango security status/secrets/migrate-passphrase/keyring/db-migrate/db-decrypt/kms
+│   │   ├── settings/       #   lango settings (full configuration editor)
+│   │   ├── smartaccount/   #   lango account info/deploy/session/module/policy/paymaster
+│   │   ├── status/         #   lango status (unified dashboard)
+│   │   ├── tui/            #   TUI components and views
+│   │   └── workflow/       #   lango workflow run/list/status/cancel/history
 │   ├── config/             # Config loading, env var substitution, validation
 │   ├── configstore/        # Encrypted config profile storage (Ent-backed)
 │   ├── ctxkeys/            # Context key helpers for agent name propagation
@@ -340,32 +374,44 @@ lango/
 │   │   ├── negotiation/     #   P2P price negotiation protocol
 │   │   ├── pricing/         #   Dynamic pricing with trust/volume discounts
 │   │   └── risk/            #   Trust-based risk assessment
+│   ├── agentrt/            # Agent runtime control plane (coordinating executor, delegation guard, budget, recovery)
+│   ├── automation/         # Automation module helpers
+│   ├── deadline/           # Deadline extension and auto-extend logic
 │   ├── embedding/          # Embedding providers (OpenAI, Google, local) and RAG
 │   ├── ent/                # Ent ORM schemas and generated code
 │   ├── eventbus/           # Typed synchronous event pub/sub
+│   ├── gatekeeper/         # Response sanitization (thought tags, internal markers, raw JSON, custom patterns)
 │   ├── gateway/            # WebSocket/HTTP server, OIDC auth
 │   ├── graph/              # BoltDB triple store, Graph RAG, entity extractor
 │   ├── knowledge/          # Knowledge store, 8-layer context retriever
 │   ├── learning/           # Learning engine, error pattern analyzer, self-learning graph
 │   ├── lifecycle/          # Component lifecycle management (priority-ordered startup/shutdown)
+│   ├── llm/                # LLM abstraction layer
 │   ├── logging/            # Zap structured logger
 │   ├── memory/             # Observational memory (observer, reflector, token counter)
 │   ├── orchestration/      # Multi-agent orchestration (operator, navigator, vault, librarian, automator, planner, chronicler)
 │   ├── keyring/            # Hardware keyring integration (Touch ID / TPM 2.0)
 │   ├── mdparse/            # Markdown frontmatter parser (YAML extraction)
 │   ├── prompt/             # System prompt builder, section loader, defaults
+│   ├── provenance/         # Session provenance (checkpoints, session tree, attribution, bundles)
 │   ├── provider/           # AI provider interface and implementations
 │   │   ├── anthropic/      #   Claude models
 │   │   ├── gemini/         #   Google Gemini models
 │   │   └── openai/         #   OpenAI-compatible (GPT, Ollama, etc.)
-│   ├── sandbox/            # Tool execution isolation (subprocess/container)
+│   ├── retrieval/          # Retrieval coordinator (FactSearch, TemporalSearch, ContextSearch)
+│   ├── runledger/          # RunLedger / Task OS (durable execution, journal, validators, planner)
+│   ├── sandbox/            # Tool execution isolation (subprocess/container/OS-level)
+│   ├── search/             # FTS5 search substrate (domain-agnostic full-text CRUD)
 │   ├── security/           # Crypto providers, key registry, secrets store, companion discovery, KMS providers
 │   ├── session/            # Ent-based SQLite session store
 │   ├── skill/              # File-based skill system (SKILL.md parser, FileSkillStore, registry, executor, GitHub importer with git clone + HTTP fallback, resource directories)
+│   ├── storeutil/          # Database store utilities
 │   ├── contract/            # EVM smart contract interaction, ABI cache
 │   ├── cron/               # Cron scheduler (robfig/cron/v3), job store, executor, delivery
 │   ├── background/         # Background task manager, notifications, monitoring
 │   ├── workflow/            # DAG workflow engine, YAML parser, state persistence
+│   ├── turnrunner/         # Turn execution runner
+│   ├── turntrace/          # Turn trace recording and analysis
 │   ├── payment/            # Blockchain payment service (USDC on EVM chains, X402 audit trail)
 │   ├── observability/       # Metrics, token tracking, health checks, audit logging
 │   ├── p2p/                # P2P networking (libp2p node, identity, handshake, firewall, discovery, ZKP)
@@ -713,7 +759,45 @@ All settings are managed via `lango onboard` (guided wizard), `lango settings` (
 | `mcp.servers.<name>.enabled`                           | bool     | `true`                      | Whether this server is active                                                                                     |
 | `mcp.servers.<name>.timeout`                           | duration | -                           | Override default timeout for this server                                                                          |
 | `mcp.servers.<name>.safetyLevel`                       | string   | `"dangerous"`               | Tool safety level: `safe`, `moderate`, `dangerous`                                                                |
-
+| **RunLedger (Task OS)** (🧪 Experimental Features)     |          |                             |                                                                                                                   |
+| `runLedger.enabled`                                    | bool     | `false`                     | Activate the RunLedger system                                                                                     |
+| `runLedger.shadow`                                     | bool     | `true`                      | Shadow mode: journal records only, existing systems unaffected                                                    |
+| `runLedger.writeThrough`                               | bool     | `false`                     | All creates/updates go through ledger first, then mirror                                                          |
+| `runLedger.authoritativeRead`                          | bool     | `false`                     | State reads come from ledger snapshots only                                                                       |
+| `runLedger.workspaceIsolation`                         | bool     | `false`                     | Enable PEV workspace wiring for coding-step validation                                                            |
+| `runLedger.staleTtl`                                   | duration | `1h`                        | How long a paused run remains resumable                                                                           |
+| `runLedger.maxRunHistory`                              | int      | `0`                         | Max runs to keep (0 = unlimited)                                                                                  |
+| `runLedger.validatorTimeout`                           | duration | `2m`                        | Timeout for individual validator execution                                                                        |
+| `runLedger.plannerMaxRetries`                          | int      | `2`                         | Retries for malformed planner output                                                                              |
+| **Provenance** (🧪 Experimental Features)              |          |                             |                                                                                                                   |
+| `provenance.enabled`                                   | bool     | `false`                     | Activate the provenance system                                                                                    |
+| `provenance.checkpoints.autoOnStepComplete`            | bool     | `false`                     | Checkpoint when RunLedger step passes validation                                                                  |
+| `provenance.checkpoints.autoOnPolicy`                  | bool     | `false`                     | Checkpoint when a policy decision is applied                                                                      |
+| `provenance.checkpoints.maxPerSession`                 | int      | `0`                         | Max checkpoints per session (0 = unlimited)                                                                       |
+| `provenance.checkpoints.retentionDays`                 | int      | `0`                         | Days to keep checkpoints (0 = unlimited)                                                                          |
+| **Sandbox** (🧪 Experimental Features)                 |          |                             |                                                                                                                   |
+| `sandbox.enabled`                                      | bool     | `false`                     | Enable OS-level sandboxing for tool-spawned processes                                                             |
+| `sandbox.failClosed`                                   | bool     | `false`                     | Reject tool execution when sandbox unavailable (false = fail-open)                                                |
+| `sandbox.networkMode`                                  | string   | `deny`                      | Network access: `deny` or `allow`                                                                                 |
+| `sandbox.timeoutPerTool`                               | duration | `30s`                       | Max duration for sandboxed tool execution                                                                         |
+| `sandbox.os.seccompProfile`                            | string   | `moderate`                  | Linux seccomp profile: `strict`, `moderate`, `permissive`                                                         |
+| `sandbox.os.seatbeltCustomProfile`                     | string   | -                           | Custom macOS `.sb` profile path                                                                                   |
+| **Gatekeeper**                                         |          |                             |                                                                                                                   |
+| `gatekeeper.enabled`                                   | bool     | `true`                      | Enable response sanitization                                                                                      |
+| `gatekeeper.stripThoughtTags`                          | bool     | `true`                      | Strip `<thought>`/`<thinking>` tags                                                                               |
+| `gatekeeper.stripInternalMarkers`                      | bool     | `true`                      | Strip `[INTERNAL]`, `[DEBUG]`, `[SYSTEM]` lines                                                                   |
+| `gatekeeper.stripRawJSON`                              | bool     | `true`                      | Replace large raw JSON with placeholder                                                                           |
+| `gatekeeper.rawJsonThreshold`                          | int      | `500`                       | Character threshold for JSON replacement                                                                          |
+| `gatekeeper.customPatterns`                            | []string | `[]`                        | Additional regex patterns to strip                                                                                |
+| **Orchestration** (🧪 Experimental Features)           |          |                             |                                                                                                                   |
+| `agent.orchestration.mode`                             | string   | `classic`                   | Mode: `classic` or `structured`                                                                                   |
+| `agent.orchestration.circuitBreaker.failureThreshold`  | int      | `3`                         | Consecutive failures before circuit opens                                                                         |
+| `agent.orchestration.circuitBreaker.resetTimeout`      | duration | `30s`                       | Time before half-open probe                                                                                       |
+| `agent.orchestration.budget.toolCallLimit`             | int      | `50`                        | Max tool calls per agent run                                                                                      |
+| `agent.orchestration.budget.delegationLimit`           | int      | `15`                        | Max delegations before alerting                                                                                   |
+| `agent.orchestration.budget.alertThreshold`            | float64  | `0.8`                       | Budget usage percentage for alerts                                                                                |
+| `agent.orchestration.recovery.maxRetries`              | int      | `2`                         | Max retry attempts on failure                                                                                     |
+| `agent.orchestration.recovery.circuitBreakerCooldown`  | duration | `5m`                        | Time before re-enabling tripped agent                                                                             |
 
 ## On-Chain Economy (Base Sepolia Testnet)
 
