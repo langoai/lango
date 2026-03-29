@@ -13,69 +13,32 @@ import (
 func NewP2PForm(cfg *config.Config) *tuicore.FormModel {
 	form := tuicore.NewFormModel("P2P Network Configuration")
 
-	form.AddField(&tuicore.Field{
-		Key: "p2p_enabled", Label: "Enabled", Type: tuicore.InputBool,
-		Checked:     cfg.P2P.Enabled,
-		Description: "Enable libp2p-based peer-to-peer networking for agent discovery",
-	})
+	form.AddField(tuicore.BoolInput("p2p_enabled", "Enabled", cfg.P2P.Enabled,
+		"Enable libp2p-based peer-to-peer networking for agent discovery"))
 
-	form.AddField(&tuicore.Field{
-		Key: "p2p_listen_addrs", Label: "Listen Addresses", Type: tuicore.InputText,
-		Value:       strings.Join(cfg.P2P.ListenAddrs, ","),
-		Placeholder: "/ip4/0.0.0.0/tcp/9000 (comma-separated)",
-		Description: "Multiaddr listen addresses for incoming P2P connections",
-	})
+	form.AddField(tuicore.TextInputWithPlaceholder("p2p_listen_addrs", "Listen Addresses", strings.Join(cfg.P2P.ListenAddrs, ","), "/ip4/0.0.0.0/tcp/9000 (comma-separated)",
+		"Multiaddr listen addresses for incoming P2P connections"))
 
-	form.AddField(&tuicore.Field{
-		Key: "p2p_bootstrap_peers", Label: "Bootstrap Peers", Type: tuicore.InputText,
-		Value:       strings.Join(cfg.P2P.BootstrapPeers, ","),
-		Placeholder: "/ip4/host/tcp/port/p2p/peerID (comma-separated)",
-		Description: "Initial peers to connect to for network discovery",
-	})
+	form.AddField(tuicore.TextInputWithPlaceholder("p2p_bootstrap_peers", "Bootstrap Peers", strings.Join(cfg.P2P.BootstrapPeers, ","), "/ip4/host/tcp/port/p2p/peerID (comma-separated)",
+		"Initial peers to connect to for network discovery"))
 
-	form.AddField(&tuicore.Field{
-		Key: "p2p_enable_relay", Label: "Enable Relay", Type: tuicore.InputBool,
-		Checked:     cfg.P2P.EnableRelay,
-		Description: "Allow relaying connections for peers behind NAT",
-	})
+	form.AddField(tuicore.BoolInput("p2p_enable_relay", "Enable Relay", cfg.P2P.EnableRelay,
+		"Allow relaying connections for peers behind NAT"))
 
-	form.AddField(&tuicore.Field{
-		Key: "p2p_enable_mdns", Label: "Enable mDNS", Type: tuicore.InputBool,
-		Checked:     cfg.P2P.EnableMDNS,
-		Description: "Use multicast DNS for local network peer discovery",
-	})
+	form.AddField(tuicore.BoolInput("p2p_enable_mdns", "Enable mDNS", cfg.P2P.EnableMDNS,
+		"Use multicast DNS for local network peer discovery"))
 
-	form.AddField(&tuicore.Field{
-		Key: "p2p_max_peers", Label: "Max Peers", Type: tuicore.InputInt,
-		Value:       strconv.Itoa(cfg.P2P.MaxPeers),
-		Description: "Maximum number of simultaneous peer connections",
-		Validate: func(s string) error {
-			if i, err := strconv.Atoi(s); err != nil || i <= 0 {
-				return fmt.Errorf("must be a positive integer")
-			}
-			return nil
-		},
-	})
+	form.AddField(tuicore.IntInput("p2p_max_peers", "Max Peers", cfg.P2P.MaxPeers,
+		"Maximum number of simultaneous peer connections"))
 
-	form.AddField(&tuicore.Field{
-		Key: "p2p_handshake_timeout", Label: "Handshake Timeout", Type: tuicore.InputText,
-		Value:       cfg.P2P.HandshakeTimeout.String(),
-		Placeholder: "30s",
-		Description: "Maximum time to wait for peer handshake completion",
-	})
+	form.AddField(tuicore.TextInputWithPlaceholder("p2p_handshake_timeout", "Handshake Timeout", cfg.P2P.HandshakeTimeout.String(), "30s",
+		"Maximum time to wait for peer handshake completion"))
 
-	form.AddField(&tuicore.Field{
-		Key: "p2p_session_token_ttl", Label: "Session Token TTL", Type: tuicore.InputText,
-		Value:       cfg.P2P.SessionTokenTTL.String(),
-		Placeholder: "24h",
-		Description: "Lifetime of P2P session tokens before re-authentication is required",
-	})
+	form.AddField(tuicore.TextInputWithPlaceholder("p2p_session_token_ttl", "Session Token TTL", cfg.P2P.SessionTokenTTL.String(), "24h",
+		"Lifetime of P2P session tokens before re-authentication is required"))
 
-	form.AddField(&tuicore.Field{
-		Key: "p2p_auto_approve", Label: "Auto-Approve Known Peers", Type: tuicore.InputBool,
-		Checked:     cfg.P2P.AutoApproveKnownPeers,
-		Description: "Skip approval for previously authenticated and trusted peers",
-	})
+	form.AddField(tuicore.BoolInput("p2p_auto_approve", "Auto-Approve Known Peers", cfg.P2P.AutoApproveKnownPeers,
+		"Skip approval for previously authenticated and trusted peers"))
 
 	form.AddField(&tuicore.Field{
 		Key: "p2p_gossip_interval", Label: "Gossip Interval", Type: tuicore.InputText,
@@ -126,48 +89,28 @@ func NewP2PForm(cfg *config.Config) *tuicore.FormModel {
 func NewP2PZKPForm(cfg *config.Config) *tuicore.FormModel {
 	form := tuicore.NewFormModel("P2P ZKP Configuration")
 
-	form.AddField(&tuicore.Field{
-		Key: "zkp_proof_cache_dir", Label: "Proof Cache Directory", Type: tuicore.InputText,
-		Value:       cfg.P2P.ZKP.ProofCacheDir,
-		Placeholder: "~/.lango/p2p/zkp-cache",
-		Description: "Directory to cache generated zero-knowledge proofs",
-	})
+	form.AddField(tuicore.TextInputWithPlaceholder("zkp_proof_cache_dir", "Proof Cache Directory", cfg.P2P.ZKP.ProofCacheDir, "~/.lango/p2p/zkp-cache",
+		"Directory to cache generated zero-knowledge proofs"))
 
 	provingScheme := cfg.P2P.ZKP.ProvingScheme
 	if provingScheme == "" {
 		provingScheme = "plonk"
 	}
-	form.AddField(&tuicore.Field{
-		Key: "zkp_proving_scheme", Label: "Proving Scheme", Type: tuicore.InputSelect,
-		Value:       provingScheme,
-		Options:     []string{"plonk", "groth16"},
-		Description: "ZKP proving system: plonk=universal setup, groth16=faster but circuit-specific",
-	})
+	form.AddField(tuicore.SelectInput("zkp_proving_scheme", "Proving Scheme", provingScheme, []string{"plonk", "groth16"},
+		"ZKP proving system: plonk=universal setup, groth16=faster but circuit-specific"))
 
 	srsMode := cfg.P2P.ZKP.SRSMode
 	if srsMode == "" {
 		srsMode = "unsafe"
 	}
-	form.AddField(&tuicore.Field{
-		Key: "zkp_srs_mode", Label: "SRS Mode", Type: tuicore.InputSelect,
-		Value:       srsMode,
-		Options:     []string{"unsafe", "file"},
-		Description: "Structured Reference String mode: unsafe=dev-only random, file=from trusted setup",
-	})
+	form.AddField(tuicore.SelectInput("zkp_srs_mode", "SRS Mode", srsMode, []string{"unsafe", "file"},
+		"Structured Reference String mode: unsafe=dev-only random, file=from trusted setup"))
 
-	form.AddField(&tuicore.Field{
-		Key: "zkp_srs_path", Label: "SRS File Path", Type: tuicore.InputText,
-		Value:       cfg.P2P.ZKP.SRSPath,
-		Placeholder: "/path/to/srs.bin (when SRS mode = file)",
-		Description: "Path to the SRS file from a trusted ceremony (required when mode=file)",
-	})
+	form.AddField(tuicore.TextInputWithPlaceholder("zkp_srs_path", "SRS File Path", cfg.P2P.ZKP.SRSPath, "/path/to/srs.bin (when SRS mode = file)",
+		"Path to the SRS file from a trusted ceremony (required when mode=file)"))
 
-	form.AddField(&tuicore.Field{
-		Key: "zkp_max_credential_age", Label: "Max Credential Age", Type: tuicore.InputText,
-		Value:       cfg.P2P.ZKP.MaxCredentialAge,
-		Placeholder: "24h",
-		Description: "Maximum age of a ZKP credential before it must be refreshed",
-	})
+	form.AddField(tuicore.TextInputWithPlaceholder("zkp_max_credential_age", "Max Credential Age", cfg.P2P.ZKP.MaxCredentialAge, "24h",
+		"Maximum age of a ZKP credential before it must be refreshed"))
 
 	return &form
 }
@@ -176,25 +119,14 @@ func NewP2PZKPForm(cfg *config.Config) *tuicore.FormModel {
 func NewP2PPricingForm(cfg *config.Config) *tuicore.FormModel {
 	form := tuicore.NewFormModel("P2P Pricing Configuration")
 
-	form.AddField(&tuicore.Field{
-		Key: "pricing_enabled", Label: "Enabled", Type: tuicore.InputBool,
-		Checked:     cfg.P2P.Pricing.Enabled,
-		Description: "Enable paid tool invocations from P2P peers",
-	})
+	form.AddField(tuicore.BoolInput("pricing_enabled", "Enabled", cfg.P2P.Pricing.Enabled,
+		"Enable paid tool invocations from P2P peers"))
 
-	form.AddField(&tuicore.Field{
-		Key: "pricing_per_query", Label: "Price Per Query (USDC)", Type: tuicore.InputText,
-		Value:       cfg.P2P.Pricing.PerQuery,
-		Placeholder: "0.50",
-		Description: "USDC price charged per incoming P2P query",
-	})
+	form.AddField(tuicore.TextInputWithPlaceholder("pricing_per_query", "Price Per Query (USDC)", cfg.P2P.Pricing.PerQuery, "0.50",
+		"USDC price charged per incoming P2P query"))
 
-	form.AddField(&tuicore.Field{
-		Key: "pricing_tool_prices", Label: "Tool Prices", Type: tuicore.InputText,
-		Value:       formatKeyValueMap(cfg.P2P.Pricing.ToolPrices),
-		Placeholder: "exec:0.10,browser:0.50 (name:price, comma-sep)",
-		Description: "Per-tool USDC pricing overrides in tool_name:price format",
-	})
+	form.AddField(tuicore.TextInputWithPlaceholder("pricing_tool_prices", "Tool Prices", formatKeyValueMap(cfg.P2P.Pricing.ToolPrices), "exec:0.10,browser:0.50 (name:price, comma-sep)",
+		"Per-tool USDC pricing overrides in tool_name:price format"))
 
 	return &form
 }
@@ -203,12 +135,8 @@ func NewP2PPricingForm(cfg *config.Config) *tuicore.FormModel {
 func NewP2POwnerProtectionForm(cfg *config.Config) *tuicore.FormModel {
 	form := tuicore.NewFormModel("P2P Owner Protection")
 
-	form.AddField(&tuicore.Field{
-		Key: "owner_name", Label: "Owner Name", Type: tuicore.InputText,
-		Value:       cfg.P2P.OwnerProtection.OwnerName,
-		Placeholder: "Your name to block from P2P responses",
-		Description: "Owner's real name to prevent leaking via P2P responses",
-	})
+	form.AddField(tuicore.TextInputWithPlaceholder("owner_name", "Owner Name", cfg.P2P.OwnerProtection.OwnerName, "Your name to block from P2P responses",
+		"Owner's real name to prevent leaking via P2P responses"))
 
 	form.AddField(&tuicore.Field{
 		Key: "owner_email", Label: "Owner Email", Type: tuicore.InputText,
@@ -224,18 +152,11 @@ func NewP2POwnerProtectionForm(cfg *config.Config) *tuicore.FormModel {
 		Description: "Owner's phone number to redact from P2P responses",
 	})
 
-	form.AddField(&tuicore.Field{
-		Key: "owner_extra_terms", Label: "Extra Terms", Type: tuicore.InputText,
-		Value:       strings.Join(cfg.P2P.OwnerProtection.ExtraTerms, ","),
-		Placeholder: "company-name,project-name (comma-sep)",
-		Description: "Additional terms to block from P2P responses (company names, etc.)",
-	})
+	form.AddField(tuicore.TextInputWithPlaceholder("owner_extra_terms", "Extra Terms", strings.Join(cfg.P2P.OwnerProtection.ExtraTerms, ","), "company-name,project-name (comma-sep)",
+		"Additional terms to block from P2P responses (company names, etc.)"))
 
-	form.AddField(&tuicore.Field{
-		Key: "owner_block_conversations", Label: "Block Conversations", Type: tuicore.InputBool,
-		Checked:     derefBool(cfg.P2P.OwnerProtection.BlockConversations, true),
-		Description: "Block P2P peers from accessing owner's conversation history",
-	})
+	form.AddField(tuicore.BoolInput("owner_block_conversations", "Block Conversations", derefBool(cfg.P2P.OwnerProtection.BlockConversations, true),
+		"Block P2P peers from accessing owner's conversation history"))
 
 	return &form
 }
@@ -244,11 +165,8 @@ func NewP2POwnerProtectionForm(cfg *config.Config) *tuicore.FormModel {
 func NewP2PSandboxForm(cfg *config.Config) *tuicore.FormModel {
 	form := tuicore.NewFormModel("P2P Sandbox Configuration")
 
-	form.AddField(&tuicore.Field{
-		Key: "sandbox_enabled", Label: "Tool Isolation Enabled", Type: tuicore.InputBool,
-		Checked:     cfg.P2P.ToolIsolation.Enabled,
-		Description: "Isolate P2P tool executions in sandboxed environments",
-	})
+	form.AddField(tuicore.BoolInput("sandbox_enabled", "Tool Isolation Enabled", cfg.P2P.ToolIsolation.Enabled,
+		"Isolate P2P tool executions in sandboxed environments"))
 
 	form.AddField(&tuicore.Field{
 		Key: "sandbox_timeout", Label: "Timeout Per Tool", Type: tuicore.InputText,

@@ -5,6 +5,26 @@ import (
 	"time"
 )
 
+// Event name constants for economy domain events.
+const (
+	EventBudgetAlert           = "budget.alert"
+	EventBudgetExhausted       = "budget.exhausted"
+	EventNegotiationStarted    = "negotiation.started"
+	EventNegotiationCompleted  = "negotiation.completed"
+	EventNegotiationFailed     = "negotiation.failed"
+	EventEscrowCreated         = "escrow.created"
+	EventEscrowMilestone       = "escrow.milestone"
+	EventEscrowReleased        = "escrow.released"
+	EventEscrowOnChainDeposit  = "escrow.onchain.deposit"
+	EventEscrowOnChainWork     = "escrow.onchain.work"
+	EventEscrowOnChainRelease  = "escrow.onchain.release"
+	EventEscrowOnChainRefund   = "escrow.onchain.refund"
+	EventEscrowOnChainDispute  = "escrow.onchain.dispute"
+	EventEscrowOnChainResolved = "escrow.onchain.resolved"
+	EventEscrowReorgDetected   = "escrow.reorg.detected"
+	EventEscrowDangling        = "escrow.dangling"
+)
+
 // BudgetAlertEvent is published when a task budget crosses a configured threshold.
 type BudgetAlertEvent struct {
 	TaskID    string
@@ -12,7 +32,7 @@ type BudgetAlertEvent struct {
 }
 
 // EventName implements Event.
-func (e BudgetAlertEvent) EventName() string { return "budget.alert" }
+func (e BudgetAlertEvent) EventName() string { return EventBudgetAlert }
 
 // BudgetExhaustedEvent is published when a task budget is fully consumed.
 type BudgetExhaustedEvent struct {
@@ -21,7 +41,7 @@ type BudgetExhaustedEvent struct {
 }
 
 // EventName implements Event.
-func (e BudgetExhaustedEvent) EventName() string { return "budget.exhausted" }
+func (e BudgetExhaustedEvent) EventName() string { return EventBudgetExhausted }
 
 // NegotiationStartedEvent is published when a negotiation session begins.
 type NegotiationStartedEvent struct {
@@ -32,7 +52,7 @@ type NegotiationStartedEvent struct {
 }
 
 // EventName implements Event.
-func (e NegotiationStartedEvent) EventName() string { return "negotiation.started" }
+func (e NegotiationStartedEvent) EventName() string { return EventNegotiationStarted }
 
 // NegotiationCompletedEvent is published when negotiation terms are agreed.
 type NegotiationCompletedEvent struct {
@@ -43,7 +63,7 @@ type NegotiationCompletedEvent struct {
 }
 
 // EventName implements Event.
-func (e NegotiationCompletedEvent) EventName() string { return "negotiation.completed" }
+func (e NegotiationCompletedEvent) EventName() string { return EventNegotiationCompleted }
 
 // NegotiationFailedEvent is published when a negotiation fails or expires.
 type NegotiationFailedEvent struct {
@@ -52,7 +72,7 @@ type NegotiationFailedEvent struct {
 }
 
 // EventName implements Event.
-func (e NegotiationFailedEvent) EventName() string { return "negotiation.failed" }
+func (e NegotiationFailedEvent) EventName() string { return EventNegotiationFailed }
 
 // EscrowCreatedEvent is published when an escrow is locked.
 type EscrowCreatedEvent struct {
@@ -63,7 +83,7 @@ type EscrowCreatedEvent struct {
 }
 
 // EventName implements Event.
-func (e EscrowCreatedEvent) EventName() string { return "escrow.created" }
+func (e EscrowCreatedEvent) EventName() string { return EventEscrowCreated }
 
 // EscrowMilestoneEvent is published when an escrow milestone is completed.
 type EscrowMilestoneEvent struct {
@@ -73,7 +93,7 @@ type EscrowMilestoneEvent struct {
 }
 
 // EventName implements Event.
-func (e EscrowMilestoneEvent) EventName() string { return "escrow.milestone" }
+func (e EscrowMilestoneEvent) EventName() string { return EventEscrowMilestone }
 
 // EscrowReleasedEvent is published when escrow funds are released on-chain.
 type EscrowReleasedEvent struct {
@@ -82,7 +102,7 @@ type EscrowReleasedEvent struct {
 }
 
 // EventName implements Event.
-func (e EscrowReleasedEvent) EventName() string { return "escrow.released" }
+func (e EscrowReleasedEvent) EventName() string { return EventEscrowReleased }
 
 // --- On-chain escrow events ---
 
@@ -96,7 +116,7 @@ type EscrowOnChainDepositEvent struct {
 }
 
 // EventName implements Event.
-func (e EscrowOnChainDepositEvent) EventName() string { return "escrow.onchain.deposit" }
+func (e EscrowOnChainDepositEvent) EventName() string { return EventEscrowOnChainDeposit }
 
 // EscrowOnChainWorkEvent is published when work proof is submitted on-chain.
 type EscrowOnChainWorkEvent struct {
@@ -108,7 +128,7 @@ type EscrowOnChainWorkEvent struct {
 }
 
 // EventName implements Event.
-func (e EscrowOnChainWorkEvent) EventName() string { return "escrow.onchain.work" }
+func (e EscrowOnChainWorkEvent) EventName() string { return EventEscrowOnChainWork }
 
 // EscrowOnChainReleaseEvent is published when on-chain escrow funds are released.
 type EscrowOnChainReleaseEvent struct {
@@ -120,7 +140,7 @@ type EscrowOnChainReleaseEvent struct {
 }
 
 // EventName implements Event.
-func (e EscrowOnChainReleaseEvent) EventName() string { return "escrow.onchain.release" }
+func (e EscrowOnChainReleaseEvent) EventName() string { return EventEscrowOnChainRelease }
 
 // EscrowOnChainRefundEvent is published when on-chain escrow funds are refunded.
 type EscrowOnChainRefundEvent struct {
@@ -132,7 +152,7 @@ type EscrowOnChainRefundEvent struct {
 }
 
 // EventName implements Event.
-func (e EscrowOnChainRefundEvent) EventName() string { return "escrow.onchain.refund" }
+func (e EscrowOnChainRefundEvent) EventName() string { return EventEscrowOnChainRefund }
 
 // EscrowOnChainDisputeEvent is published when an on-chain dispute is raised.
 type EscrowOnChainDisputeEvent struct {
@@ -143,7 +163,7 @@ type EscrowOnChainDisputeEvent struct {
 }
 
 // EventName implements Event.
-func (e EscrowOnChainDisputeEvent) EventName() string { return "escrow.onchain.dispute" }
+func (e EscrowOnChainDisputeEvent) EventName() string { return EventEscrowOnChainDispute }
 
 // EscrowOnChainResolvedEvent is published when an on-chain dispute is resolved.
 type EscrowOnChainResolvedEvent struct {
@@ -155,7 +175,7 @@ type EscrowOnChainResolvedEvent struct {
 }
 
 // EventName implements Event.
-func (e EscrowOnChainResolvedEvent) EventName() string { return "escrow.onchain.resolved" }
+func (e EscrowOnChainResolvedEvent) EventName() string { return EventEscrowOnChainResolved }
 
 // EscrowReorgDetectedEvent is published when a chain reorganization is detected
 // by the event monitor (safeBlock < lastBlock).
@@ -167,7 +187,7 @@ type EscrowReorgDetectedEvent struct {
 }
 
 // EventName implements Event.
-func (e EscrowReorgDetectedEvent) EventName() string { return "escrow.reorg.detected" }
+func (e EscrowReorgDetectedEvent) EventName() string { return EventEscrowReorgDetected }
 
 // EscrowDanglingEvent is published when an escrow is stuck in Pending too long.
 type EscrowDanglingEvent struct {
@@ -180,4 +200,4 @@ type EscrowDanglingEvent struct {
 }
 
 // EventName implements Event.
-func (e EscrowDanglingEvent) EventName() string { return "escrow.dangling" }
+func (e EscrowDanglingEvent) EventName() string { return EventEscrowDangling }

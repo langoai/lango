@@ -38,9 +38,11 @@ type JournalEvent struct {
 
 // RunCreatedPayload is the payload for EventRunCreated.
 type RunCreatedPayload struct {
-	SessionKey      string `json:"session_key"`
-	OriginalRequest string `json:"original_request"`
-	Goal            string `json:"goal"`
+	SessionKey       string          `json:"session_key"`
+	OriginalRequest  string          `json:"original_request"`
+	Goal             string          `json:"goal"`
+	SourceKind       string          `json:"source_kind,omitempty"`       // "workflow" | "background" | ""
+	SourceDescriptor json.RawMessage `json:"source_descriptor,omitempty"` // original workflow/origin JSON
 }
 
 // PlanAttachedPayload is the payload for EventPlanAttached.

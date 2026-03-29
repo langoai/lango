@@ -151,9 +151,18 @@ func (m *chatViewModel) clear() {
 }
 
 func (m *chatViewModel) setSize(width, height int) {
+	prevWidth := m.width
 	m.width = width
 	m.viewport.Width = width
 	m.viewport.Height = height
+	if width != prevWidth {
+		for i := range m.entries {
+			if m.entries[i].kind == itemAssistant && m.entries[i].rawContent != "" {
+				m.entries[i].content = strings.TrimRight(
+					renderMarkdown(m.entries[i].rawContent, m.contentWidth()), "\n")
+			}
+		}
+	}
 	m.render()
 }
 
@@ -173,11 +182,7 @@ func (m *chatViewModel) render() {
 		case itemUser:
 			blocks = append(blocks, renderTranscriptBlock("You", entry.content, tui.Highlight))
 		case itemAssistant:
-			content := entry.content
-			if entry.rawContent != "" {
-				content = strings.TrimRight(renderMarkdown(entry.rawContent, m.contentWidth()), "\n")
-			}
-			blocks = append(blocks, renderTranscriptBlock("Lango", content, tui.Primary))
+			blocks = append(blocks, renderTranscriptBlock("Lango", entry.content, tui.Primary))
 		case itemSystem:
 			blocks = append(blocks, renderSystemBlock(entry.content))
 		case itemStatus:

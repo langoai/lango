@@ -11,6 +11,7 @@ import (
 
 	"github.com/langoai/lango/internal/agent"
 	"github.com/langoai/lango/internal/toolchain"
+	"github.com/langoai/lango/internal/toolparam"
 )
 
 // callerRole identifies who is invoking a tool for access control.
@@ -56,9 +57,9 @@ func buildRunCreate(store RunLedgerStore) *agent.Tool {
 				return nil, err
 			}
 
-			planJSON, _ := params["plan_json"].(string)
-			sessionKey, _ := params["session_key"].(string)
-			originalRequest, _ := params["original_request"].(string)
+			planJSON := toolparam.OptionalString(params, "plan_json", "")
+			sessionKey := toolparam.OptionalString(params, "session_key", "")
+			originalRequest := toolparam.OptionalString(params, "original_request", "")
 
 			// Parse planner output.
 			plan, err := ParsePlannerOutput(planJSON)
@@ -69,15 +70,7 @@ func buildRunCreate(store RunLedgerStore) *agent.Tool {
 				}, nil
 			}
 
-			// Extract valid agents.
-			var validAgents []string
-			if raw, ok := params["valid_agents"].([]interface{}); ok {
-				for _, v := range raw {
-					if s, ok := v.(string); ok {
-						validAgents = append(validAgents, s)
-					}
-				}
-			}
+			validAgents := toolparam.StringSlice(params, "valid_agents")
 
 			// Validate plan schema.
 			if err := ValidatePlanSchema(plan, validAgents); err != nil {
@@ -142,7 +135,7 @@ func buildRunRead(store RunLedgerStore) *agent.Tool {
 			Required("run_id").
 			Build(),
 		Handler: func(ctx context.Context, params map[string]interface{}) (interface{}, error) {
-			runID, _ := params["run_id"].(string)
+			runID := toolparam.OptionalString(params, "run_id", "")
 			snap, err := store.GetRunSnapshot(ctx, runID)
 			if err != nil {
 				return nil, fmt.Errorf("get run snapshot: %w", err)
@@ -162,7 +155,7 @@ func buildRunActive(store RunLedgerStore) *agent.Tool {
 			Required("run_id").
 			Build(),
 		Handler: func(ctx context.Context, params map[string]interface{}) (interface{}, error) {
-			runID, _ := params["run_id"].(string)
+			runID := toolparam.OptionalString(params, "run_id", "")
 			snap, err := store.GetRunSnapshot(ctx, runID)
 			if err != nil {
 				return nil, fmt.Errorf("get run snapshot: %w", err)
@@ -210,9 +203,10 @@ func buildRunNote(store RunLedgerStore) *agent.Tool {
 			Required("run_id", "key").
 			Build(),
 		Handler: func(ctx context.Context, params map[string]interface{}) (interface{}, error) {
-			runID, _ := params["run_id"].(string)
-			key, _ := params["key"].(string)
-			value, hasValue := params["value"].(string)
+			runID := toolparam.OptionalString(params, "run_id", "")
+			key := toolparam.OptionalString(params, "key", "")
+			value := toolparam.OptionalString(params, "value", "")
+			hasValue := value != ""
 
 			if hasValue && value != "" {
 				// Write note.
@@ -262,12 +256,12 @@ func buildRunProposeStepResult(store RunLedgerStore, pev *PEVEngine) *agent.Tool
 				return nil, err
 			}
 
-			runID, _ := params["run_id"].(string)
-			stepID, _ := params["step_id"].(string)
-			result, _ := params["result"].(string)
+			runID := toolparam.OptionalString(params, "run_id", "")
+			stepID := toolparam.OptionalString(params, "step_id", "")
+			result := toolparam.OptionalString(params, "result", "")
 
 			var evidence []Evidence
-			if ejson, ok := params["evidence_json"].(string); ok && ejson != "" {
+			if ejson := toolparam.OptionalString(params, "evidence_json", ""); ejson != "" {
 				if err := json.Unmarshal([]byte(ejson), &evidence); err != nil {
 					return nil, fmt.Errorf("parse evidence_json: %w", err)
 				}
@@ -374,25 +368,25 @@ func buildRunApplyPolicy(store RunLedgerStore) *agent.Tool {
 				return nil, err
 			}
 
-			runID, _ := params["run_id"].(string)
-			stepID, _ := params["step_id"].(string)
-			action, _ := params["action"].(string)
-			reason, _ := params["reason"].(string)
+			runID := toolparam.OptionalString(params, "run_id", "")
+			stepID := toolparam.OptionalString(params, "step_id", "")
+			action := toolparam.OptionalString(params, "action", "")
+			reason := toolparam.OptionalString(params, "reason", "")
 
 			decision := PolicyDecision{
 				Action: PolicyAction(action),
 				Reason: reason,
 			}
 
-			if agent, ok := params["new_agent"].(string); ok {
+			if agent := toolparam.OptionalString(params, "new_agent", ""); agent != "" {
 				decision.NewAgent = agent
 			}
-			if stepsJSON, ok := params["new_steps_json"].(string); ok && stepsJSON != "" {
+			if stepsJSON := toolparam.OptionalString(params, "new_steps_json", ""); stepsJSON != "" {
 				if err := json.Unmarshal([]byte(stepsJSON), &decision.NewSteps); err != nil {
 					return nil, fmt.Errorf("parse new_steps_json: %w", err)
 				}
 			}
-			if validatorJSON, ok := params["new_validator_json"].(string); ok && validatorJSON != "" {
+			if validatorJSON := toolparam.OptionalString(params, "new_validator_json", ""); validatorJSON != "" {
 				var vs ValidatorSpec
 				if err := json.Unmarshal([]byte(validatorJSON), &vs); err != nil {
 					return nil, fmt.Errorf("parse new_validator_json: %w", err)
@@ -444,9 +438,9 @@ func buildRunApproveStep(store RunLedgerStore, pev *PEVEngine) *agent.Tool {
 				return nil, err
 			}
 
-			runID, _ := params["run_id"].(string)
-			stepID, _ := params["step_id"].(string)
-			reason, _ := params["reason"].(string)
+			runID := toolparam.OptionalString(params, "run_id", "")
+			stepID := toolparam.OptionalString(params, "step_id", "")
+			reason := toolparam.OptionalString(params, "reason", "")
 			if reason == "" {
 				reason = "orchestrator approved"
 			}
@@ -514,7 +508,7 @@ func buildRunResume(store RunLedgerStore) *agent.Tool {
 				return nil, err
 			}
 
-			runID, _ := params["run_id"].(string)
+			runID := toolparam.OptionalString(params, "run_id", "")
 			agentName := toolchain.AgentNameFromContext(ctx)
 
 			rm := NewResumeManager(store, time.Hour)

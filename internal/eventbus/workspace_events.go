@@ -2,6 +2,17 @@ package eventbus
 
 import "time"
 
+// Event name constants for workspace domain events.
+const (
+	EventWorkspaceCreated         = "workspace.created"
+	EventWorkspaceMemberJoined    = "workspace.member.joined"
+	EventWorkspaceMemberLeft      = "workspace.member.left"
+	EventWorkspaceCommitReceived  = "workspace.commit.received"
+	EventWorkspaceMessagePosted   = "workspace.message.posted"
+	EventWorkspaceArchived        = "workspace.archived"
+	EventWorkspaceGitDivergence   = "workspace.git.divergence"
+)
+
 // WorkspaceCreatedEvent is published when a new workspace is created.
 type WorkspaceCreatedEvent struct {
 	WorkspaceID string
@@ -12,7 +23,7 @@ type WorkspaceCreatedEvent struct {
 }
 
 // EventName implements Event.
-func (e WorkspaceCreatedEvent) EventName() string { return "workspace.created" }
+func (e WorkspaceCreatedEvent) EventName() string { return EventWorkspaceCreated }
 
 // WorkspaceMemberJoinedEvent is published when a member joins a workspace.
 type WorkspaceMemberJoinedEvent struct {
@@ -22,7 +33,7 @@ type WorkspaceMemberJoinedEvent struct {
 }
 
 // EventName implements Event.
-func (e WorkspaceMemberJoinedEvent) EventName() string { return "workspace.member.joined" }
+func (e WorkspaceMemberJoinedEvent) EventName() string { return EventWorkspaceMemberJoined }
 
 // WorkspaceMemberLeftEvent is published when a member leaves a workspace.
 type WorkspaceMemberLeftEvent struct {
@@ -32,7 +43,7 @@ type WorkspaceMemberLeftEvent struct {
 }
 
 // EventName implements Event.
-func (e WorkspaceMemberLeftEvent) EventName() string { return "workspace.member.left" }
+func (e WorkspaceMemberLeftEvent) EventName() string { return EventWorkspaceMemberLeft }
 
 // WorkspaceCommitReceivedEvent is published when a git commit is received in a workspace.
 type WorkspaceCommitReceivedEvent struct {
@@ -44,7 +55,7 @@ type WorkspaceCommitReceivedEvent struct {
 }
 
 // EventName implements Event.
-func (e WorkspaceCommitReceivedEvent) EventName() string { return "workspace.commit.received" }
+func (e WorkspaceCommitReceivedEvent) EventName() string { return EventWorkspaceCommitReceived }
 
 // WorkspaceMessagePostedEvent is published when a message is posted to a workspace.
 type WorkspaceMessagePostedEvent struct {
@@ -56,7 +67,7 @@ type WorkspaceMessagePostedEvent struct {
 }
 
 // EventName implements Event.
-func (e WorkspaceMessagePostedEvent) EventName() string { return "workspace.message.posted" }
+func (e WorkspaceMessagePostedEvent) EventName() string { return EventWorkspaceMessagePosted }
 
 // WorkspaceArchivedEvent is published when a workspace is archived.
 type WorkspaceArchivedEvent struct {
@@ -65,7 +76,7 @@ type WorkspaceArchivedEvent struct {
 }
 
 // EventName implements Event.
-func (e WorkspaceArchivedEvent) EventName() string { return "workspace.archived" }
+func (e WorkspaceArchivedEvent) EventName() string { return EventWorkspaceArchived }
 
 // WorkspaceGitDivergenceEvent is published when team members have divergent git HEADs.
 type WorkspaceGitDivergenceEvent struct {
@@ -82,4 +93,4 @@ type GitDivergenceInfo struct {
 }
 
 // EventName implements Event.
-func (e WorkspaceGitDivergenceEvent) EventName() string { return "workspace.git.divergence" }
+func (e WorkspaceGitDivergenceEvent) EventName() string { return EventWorkspaceGitDivergence }

@@ -1,6 +1,7 @@
 package runledger
 
 import (
+	"encoding/json"
 	"testing"
 	"time"
 
@@ -297,4 +298,171 @@ func TestRunSnapshot_DeepCopy(t *testing.T) {
 	assert.True(t, snap.AcceptanceState[0].MetAt.Equal(now))
 	assert.Equal(t, "value", snap.Notes["note"])
 	assert.Len(t, snap.Steps, 1)
+}
+
+func TestDeepCopy_SourceDescriptor(t *testing.T) {
+	original := &RunSnapshot{
+		RunID:            "r1",
+		SourceKind:       "workflow",
+		SourceDescriptor: json.RawMessage(`{"name":"test-wf"}`),
+		Notes:            map[string]string{},
+	}
+	cp := original.DeepCopy()
+
+	// Verify values are equal
+	assert.Equal(t, original.SourceKind, cp.SourceKind)
+	assert.Equal(t, string(original.SourceDescriptor), string(cp.SourceDescriptor))
+
+	// Verify backing arrays are independent
+	cp.SourceDescriptor[0] = 'X'
+	assert.NotEqual(t, original.SourceDescriptor[0], cp.SourceDescriptor[0],
+		"modifying copy should not affect original")
+}
+
+func TestFindStep_AfterPlanAttached(t *testing.T) {
+	now := time.Now()
+	events := []JournalEvent{
+		{
+			RunID: "run-1", Seq: 1, Type: EventRunCreated, Timestamp: now,
+			Payload: marshalPayload(RunCreatedPayload{
+				SessionKey: "s1", OriginalRequest: "req", Goal: "goal",
+			}),
+		},
+		{
+			RunID: "run-1", Seq: 2, Type: EventPlanAttached, Timestamp: now.Add(time.Second),
+			Payload: marshalPayload(PlanAttachedPayload{
+				Steps: []Step{
+					{StepID: "alpha", Index: 0, Goal: "first step", Status: StepStatusPending},
+					{StepID: "beta", Index: 1, Goal: "second step", Status: StepStatusPending},
+					{StepID: "gamma", Index: 2, Goal: "third step", Status: StepStatusPending},
+				},
+			}),
+		},
+	}
+
+	snap, err := MaterializeFromJournal(events)
+	require.NoError(t, err)
+
+	tests := []struct {
+		give     string
+		wantGoal string
+		wantNil  bool
+	}{
+		{give: "alpha", wantGoal: "first step"},
+		{give: "beta", wantGoal: "second step"},
+		{give: "gamma", wantGoal: "third step"},
+		{give: "missing", wantNil: true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.give, func(t *testing.T) {
+			step := snap.FindStep(tt.give)
+			if tt.wantNil {
+				assert.Nil(t, step)
+			} else {
+				require.NotNil(t, step)
+				assert.Equal(t, tt.wantGoal, step.Goal)
+			}
+		})
+	}
+}
+
+func TestFindStep_AfterPolicyDecompose(t *testing.T) {
+	now := time.Now()
+	events := []JournalEvent{
+		{
+			RunID: "run-1", Seq: 1, Type: EventRunCreated, Timestamp: now,
+			Payload: marshalPayload(RunCreatedPayload{
+				SessionKey: "s1", OriginalRequest: "req", Goal: "goal",
+			}),
+		},
+		{
+			RunID: "run-1", Seq: 2, Type: EventPlanAttached, Timestamp: now.Add(time.Second),
+			Payload: marshalPayload(PlanAttachedPayload{
+				Steps: []Step{
+					{StepID: "s1", Index: 0, Goal: "original", Status: StepStatusPending},
+				},
+			}),
+		},
+	}
+
+	snap, err := MaterializeFromJournal(events)
+	require.NoError(t, err)
+
+	require.NotNil(t, snap.FindStep("s1"))
+
+	applyPolicyToSnapshot(snap, "s1", &PolicyDecision{
+		Action: PolicyDecompose,
+		NewSteps: []Step{
+			{StepID: "s1-sub-a", Goal: "decomposed A"},
+			{StepID: "s1-sub-b", Goal: "decomposed B"},
+		},
+	})
+
+	stepA := snap.FindStep("s1-sub-a")
+	require.NotNil(t, stepA)
+	assert.Equal(t, "decomposed A", stepA.Goal)
+
+	stepB := snap.FindStep("s1-sub-b")
+	require.NotNil(t, stepB)
+	assert.Equal(t, "decomposed B", stepB.Goal)
+
+	orig := snap.FindStep("s1")
+	require.NotNil(t, orig)
+	assert.Equal(t, StepStatusCompleted, orig.Status)
+}
+
+func TestFindStep_AfterDeepCopy(t *testing.T) {
+	snap := &RunSnapshot{
+		Steps: []Step{
+			{StepID: "x1", Goal: "goal-x1"},
+			{StepID: "x2", Goal: "goal-x2"},
+		},
+	}
+
+	require.NotNil(t, snap.FindStep("x1"))
+
+	cp := snap.DeepCopy()
+	snap.Steps[0].Goal = "mutated"
+
+	step := cp.FindStep("x1")
+	require.NotNil(t, step)
+	assert.Equal(t, "goal-x1", step.Goal, "copy must be independent of original mutations")
+
+	step2 := cp.FindStep("x2")
+	require.NotNil(t, step2)
+	assert.Equal(t, "goal-x2", step2.Goal)
+
+	assert.Nil(t, cp.FindStep("missing"))
+}
+
+func TestFindStep_AfterJSONRehydrate(t *testing.T) {
+	original := &RunSnapshot{
+		RunID:  "run-json",
+		Status: RunStatusRunning,
+		Steps: []Step{
+			{StepID: "j1", Goal: "json-step-1"},
+			{StepID: "j2", Goal: "json-step-2"},
+		},
+		Notes: map[string]string{"k": "v"},
+	}
+
+	require.NotNil(t, original.FindStep("j1"))
+
+	data, err := json.Marshal(original)
+	require.NoError(t, err)
+
+	var rehydrated RunSnapshot
+	require.NoError(t, json.Unmarshal(data, &rehydrated))
+
+	assert.Nil(t, rehydrated.stepIndex, "stepIndex should be nil after JSON unmarshal")
+
+	step := rehydrated.FindStep("j1")
+	require.NotNil(t, step)
+	assert.Equal(t, "json-step-1", step.Goal)
+
+	step2 := rehydrated.FindStep("j2")
+	require.NotNil(t, step2)
+	assert.Equal(t, "json-step-2", step2.Goal)
+
+	assert.Nil(t, rehydrated.FindStep("nonexistent"))
 }

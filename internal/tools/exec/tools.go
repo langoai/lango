@@ -2,9 +2,9 @@ package exec
 
 import (
 	"context"
-	"fmt"
 
 	"github.com/langoai/lango/internal/agent"
+	"github.com/langoai/lango/internal/toolparam"
 )
 
 // BlockedResult is the structured response returned when a command is blocked
@@ -50,9 +50,9 @@ func BuildTools(ex Executor, guardFns ...GuardFunc) []*agent.Tool {
 				Required("command").
 				Build(),
 			Handler: func(ctx context.Context, params map[string]interface{}) (interface{}, error) {
-				cmd, ok := params["command"].(string)
-				if !ok {
-					return nil, fmt.Errorf("missing command parameter")
+				cmd, err := toolparam.RequireString(params, "command")
+				if err != nil {
+					return nil, err
 				}
 				if br := checkGuards(cmd); br != nil {
 					return br, nil
@@ -69,9 +69,9 @@ func BuildTools(ex Executor, guardFns ...GuardFunc) []*agent.Tool {
 				Required("command").
 				Build(),
 			Handler: func(ctx context.Context, params map[string]interface{}) (interface{}, error) {
-				cmd, ok := params["command"].(string)
-				if !ok {
-					return nil, fmt.Errorf("missing command parameter")
+				cmd, err := toolparam.RequireString(params, "command")
+				if err != nil {
+					return nil, err
 				}
 				if br := checkGuards(cmd); br != nil {
 					return br, nil
@@ -88,9 +88,9 @@ func BuildTools(ex Executor, guardFns ...GuardFunc) []*agent.Tool {
 				Required("id").
 				Build(),
 			Handler: func(ctx context.Context, params map[string]interface{}) (interface{}, error) {
-				id, ok := params["id"].(string)
-				if !ok {
-					return nil, fmt.Errorf("missing id parameter")
+				id, err := toolparam.RequireString(params, "id")
+				if err != nil {
+					return nil, err
 				}
 				return ex.GetBackgroundStatus(id)
 			},
@@ -104,9 +104,9 @@ func BuildTools(ex Executor, guardFns ...GuardFunc) []*agent.Tool {
 				Required("id").
 				Build(),
 			Handler: func(ctx context.Context, params map[string]interface{}) (interface{}, error) {
-				id, ok := params["id"].(string)
-				if !ok {
-					return nil, fmt.Errorf("missing id parameter")
+				id, err := toolparam.RequireString(params, "id")
+				if err != nil {
+					return nil, err
 				}
 				return nil, ex.StopBackground(id)
 			},

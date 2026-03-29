@@ -9,18 +9,21 @@ import (
 // RunSnapshot is a materialized view derived entirely from the journal.
 // It is a read cache — never the source of truth.
 type RunSnapshot struct {
-	RunID           string                `json:"run_id"`
-	SessionKey      string                `json:"session_key"`
-	OriginalRequest string                `json:"original_request"`
-	Goal            string                `json:"goal"`
-	Status          RunStatus             `json:"status"`
-	CurrentStepID   string                `json:"current_step_id,omitempty"`
-	CurrentBlocker  string                `json:"current_blocker,omitempty"`
-	AcceptanceState []AcceptanceCriterion `json:"acceptance_state"`
-	Steps           []Step                `json:"steps"`
-	Notes           map[string]string     `json:"notes"`
-	LastJournalSeq  int64                 `json:"last_journal_seq"`
-	UpdatedAt       time.Time             `json:"updated_at"`
+	RunID            string                `json:"run_id"`
+	SessionKey       string                `json:"session_key"`
+	OriginalRequest  string                `json:"original_request"`
+	Goal             string                `json:"goal"`
+	Status           RunStatus             `json:"status"`
+	CurrentStepID    string                `json:"current_step_id,omitempty"`
+	CurrentBlocker   string                `json:"current_blocker,omitempty"`
+	AcceptanceState  []AcceptanceCriterion `json:"acceptance_state"`
+	Steps            []Step                `json:"steps"`
+	Notes            map[string]string     `json:"notes"`
+	SourceKind       string                `json:"source_kind,omitempty"`
+	SourceDescriptor json.RawMessage       `json:"source_descriptor,omitempty"`
+	LastJournalSeq   int64                 `json:"last_journal_seq"`
+	UpdatedAt        time.Time             `json:"updated_at"`
+	stepIndex        map[string]int        `json:"-"` // lazy-built, nil = needs rebuild
 }
 
 // DeepCopy returns a fully independent copy of the snapshot.
@@ -47,8 +50,29 @@ func (s *RunSnapshot) DeepCopy() *RunSnapshot {
 		}
 	}
 
+	if s.SourceDescriptor != nil {
+		cp.SourceDescriptor = make(json.RawMessage, len(s.SourceDescriptor))
+		copy(cp.SourceDescriptor, s.SourceDescriptor)
+	}
+
+	cp.stepIndex = nil // lazy rebuild on next FindStep
+
 	return &cp
 }
+
+// ensureStepIndex lazily builds the stepID-to-index map on first access.
+func (s *RunSnapshot) ensureStepIndex() {
+	if s.stepIndex != nil {
+		return
+	}
+	s.stepIndex = make(map[string]int, len(s.Steps))
+	for i := range s.Steps {
+		s.stepIndex[s.Steps[i].StepID] = i
+	}
+}
+
+// invalidateStepIndex forces a rebuild on the next FindStep call.
+func (s *RunSnapshot) invalidateStepIndex() { s.stepIndex = nil }
 
 // CompletedSteps counts how many steps have StepStatusCompleted.
 func (s *RunSnapshot) CompletedSteps() int {
@@ -63,10 +87,9 @@ func (s *RunSnapshot) CompletedSteps() int {
 
 // FindStep returns the step with the given ID, or nil.
 func (s *RunSnapshot) FindStep(stepID string) *Step {
-	for i := range s.Steps {
-		if s.Steps[i].StepID == stepID {
-			return &s.Steps[i]
-		}
+	s.ensureStepIndex()
+	if idx, ok := s.stepIndex[stepID]; ok && idx < len(s.Steps) {
+		return &s.Steps[idx]
 	}
 	return nil
 }
@@ -201,6 +224,8 @@ func applyEvent(snap *RunSnapshot, ev *JournalEvent) error {
 		snap.SessionKey = p.SessionKey
 		snap.OriginalRequest = p.OriginalRequest
 		snap.Goal = p.Goal
+		snap.SourceKind = p.SourceKind
+		snap.SourceDescriptor = p.SourceDescriptor
 		snap.Status = RunStatusPlanning
 
 	case EventPlanAttached:
@@ -209,6 +234,7 @@ func applyEvent(snap *RunSnapshot, ev *JournalEvent) error {
 			return fmt.Errorf("unmarshal plan_attached: %w", err)
 		}
 		snap.Steps = p.Steps
+		snap.invalidateStepIndex()
 		snap.AcceptanceState = p.AcceptanceCriteria
 		snap.Status = RunStatusRunning
 
@@ -318,6 +344,7 @@ func applyPolicyToSnapshot(snap *RunSnapshot, stepID string, decision *PolicyDec
 			ns.Index = len(snap.Steps) + i
 			snap.Steps = append(snap.Steps, ns)
 		}
+		snap.invalidateStepIndex()
 		snap.CurrentBlocker = ""
 
 	case PolicyChangeAgent:

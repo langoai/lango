@@ -1,7 +1,7 @@
 ## ADDED Requirements
 
 ### Requirement: Finding type
-The `retrieval` package SHALL provide a `Finding` struct with fields: Key (string), Content (string), Score (float64, higher=better), Category (string), SearchSource (string, "fts5"/"like"), Agent (string), Layer (knowledge.ContextLayer).
+The `retrieval` package SHALL provide a `Finding` struct with fields: Key (string), Content (string), Score (float64, higher=better), Category (string), SearchSource (string, "fts5"/"like"/"vector"/"temporal"), Agent (string), Layer (knowledge.ContextLayer). The `SearchSource` field documents the retrieval METHOD used. The `Source` field documents the AUTHORSHIP origin.
 
 #### Scenario: Finding from FTS5 search
 - **WHEN** FactSearchAgent returns a finding from FTS5 path
@@ -29,11 +29,13 @@ The `retrieval` package SHALL define a `RetrievalAgent` interface with methods: 
 - **THEN** Finding.Score SHALL be 0 and SearchSource SHALL be "like"
 
 ### Requirement: RetrievalCoordinator
-`RetrievalCoordinator` SHALL run all registered agents in parallel, merge findings using evidence-based priority (authority → version → recency → score), and truncate to token budget. The merge priority chain replaces score-only dedup: for same `(Layer, Key)`, the winner is selected by `sourceAuthority[Source]` first, then version (supersedes), then recency (UpdatedAt), then Score as final tiebreaker. When all provenance fields are empty, merge falls through to Score (backward compatible).
+`RetrievalCoordinator` SHALL run all registered agents in parallel, merge findings using evidence-based priority (authority → version → recency → score), and truncate to token budget. The merge SHALL use a pre-allocated `[][]Finding` slice indexed by agent position, with each goroutine writing to its own index. No mutex SHALL be required for the merge. The merge priority chain replaces score-only dedup: for same `(Layer, Key)`, the winner is selected by `sourceAuthority[Source]` first, then version (supersedes), then recency (UpdatedAt), then Score as final tiebreaker. When all provenance fields are empty, merge falls through to Score (backward compatible).
 
-#### Scenario: Parallel agent execution
+#### Scenario: Parallel retrieval with lock-free merge
 - **WHEN** Retrieve is called with 2+ registered agents
-- **THEN** all agents SHALL be invoked concurrently
+- **THEN** each agent SHALL search concurrently
+- **AND** results SHALL be merged without mutex contention
+- **AND** agent errors SHALL be logged but not propagated (non-fatal)
 
 #### Scenario: Dedup by (Layer, Key) with authority
 - **WHEN** two agents return findings with the same Layer and Key but different Source authority

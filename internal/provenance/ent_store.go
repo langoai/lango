@@ -2,7 +2,6 @@ package provenance
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 
 	"entgo.io/ent/dialect/sql"
@@ -10,6 +9,7 @@ import (
 
 	"github.com/langoai/lango/internal/ent"
 	entpc "github.com/langoai/lango/internal/ent/provenancecheckpoint"
+	"github.com/langoai/lango/internal/storeutil"
 )
 
 var _ CheckpointStore = (*EntCheckpointStore)(nil)
@@ -32,7 +32,7 @@ func (s *EntCheckpointStore) SaveCheckpoint(ctx context.Context, cp Checkpoint) 
 
 	var metadataStr string
 	if len(cp.Metadata) > 0 {
-		data, mErr := json.Marshal(cp.Metadata)
+		data, mErr := storeutil.MarshalField(cp.Metadata)
 		if mErr != nil {
 			return fmt.Errorf("marshal checkpoint metadata: %w", mErr)
 		}
@@ -150,8 +150,8 @@ func entRowToCheckpoint(row *ent.ProvenanceCheckpoint) (*Checkpoint, error) {
 
 	if row.Metadata != "" {
 		var meta map[string]string
-		if err := json.Unmarshal([]byte(row.Metadata), &meta); err != nil {
-			return nil, fmt.Errorf("unmarshal checkpoint metadata: %w", err)
+		if err := storeutil.UnmarshalField([]byte(row.Metadata), &meta, "checkpoint metadata"); err != nil {
+			return nil, err
 		}
 		cp.Metadata = meta
 	}
