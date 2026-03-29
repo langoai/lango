@@ -135,6 +135,7 @@ func AllChecks() []Check {
 		&CompanionConnectionCheck{},
 		// Context Engineering
 		&ContextHealthCheck{},
+		&RetrievalCheck{},
 		// Memory & Scanning Checks
 		&ObservationalMemoryCheck{},
 		&OutputScanningCheck{},

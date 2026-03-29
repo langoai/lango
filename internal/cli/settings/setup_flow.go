@@ -288,6 +288,14 @@ func createFormForCategory(categoryID string, cfg *config.Config) *tuicore.FormM
 		return NewAgentMemoryForm(cfg)
 	case "librarian":
 		return NewLibrarianForm(cfg)
+	case "context_profile":
+		return NewContextProfileForm(cfg)
+	case "retrieval":
+		return NewRetrievalForm(cfg)
+	case "auto_adjust":
+		return NewAutoAdjustForm(cfg)
+	case "context_budget":
+		return NewContextBudgetForm(cfg)
 	case "economy":
 		return NewEconomyForm(cfg)
 	case "economy_risk":

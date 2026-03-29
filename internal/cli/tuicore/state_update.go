@@ -899,6 +899,76 @@ func (s *ConfigState) UpdateConfigFromForm(form *FormModel) {
 			s.Current.SmartAccount.Modules.SpendingHookAddress = val
 		case "sa_modules_escrow_executor":
 			s.Current.SmartAccount.Modules.EscrowExecutorAddress = val
+
+		// Context Profile
+		case "ctx_profile":
+			s.Current.ContextProfile = config.ContextProfileName(val)
+
+		// Retrieval Coordinator
+		case "retrieval_enabled":
+			s.Current.Retrieval.Enabled = f.Checked
+		case "retrieval_feedback":
+			s.Current.Retrieval.Feedback = f.Checked
+
+		// Auto-Adjust
+		case "aa_enabled":
+			s.Current.Retrieval.AutoAdjust.Enabled = f.Checked
+		case "aa_mode":
+			s.Current.Retrieval.AutoAdjust.Mode = val
+		case "aa_boost_delta":
+			if v, err := strconv.ParseFloat(val, 64); err == nil {
+				s.Current.Retrieval.AutoAdjust.BoostDelta = v
+			}
+		case "aa_decay_delta":
+			if v, err := strconv.ParseFloat(val, 64); err == nil {
+				s.Current.Retrieval.AutoAdjust.DecayDelta = v
+			}
+		case "aa_decay_interval":
+			if i, err := strconv.Atoi(val); err == nil {
+				s.Current.Retrieval.AutoAdjust.DecayInterval = i
+			}
+		case "aa_min_score":
+			if v, err := strconv.ParseFloat(val, 64); err == nil {
+				s.Current.Retrieval.AutoAdjust.MinScore = v
+			}
+		case "aa_max_score":
+			if v, err := strconv.ParseFloat(val, 64); err == nil {
+				s.Current.Retrieval.AutoAdjust.MaxScore = v
+			}
+		case "aa_warmup_turns":
+			if i, err := strconv.Atoi(val); err == nil {
+				s.Current.Retrieval.AutoAdjust.WarmupTurns = i
+			}
+
+		// Context Budget
+		case "ctx_model_window":
+			if i, err := strconv.Atoi(val); err == nil {
+				s.Current.Context.ModelWindow = i
+			}
+		case "ctx_response_reserve":
+			if i, err := strconv.Atoi(val); err == nil {
+				s.Current.Context.ResponseReserve = i
+			}
+		case "ctx_alloc_knowledge":
+			if v, err := strconv.ParseFloat(val, 64); err == nil {
+				s.Current.Context.Allocation.Knowledge = v
+			}
+		case "ctx_alloc_rag":
+			if v, err := strconv.ParseFloat(val, 64); err == nil {
+				s.Current.Context.Allocation.RAG = v
+			}
+		case "ctx_alloc_memory":
+			if v, err := strconv.ParseFloat(val, 64); err == nil {
+				s.Current.Context.Allocation.Memory = v
+			}
+		case "ctx_alloc_run_summary":
+			if v, err := strconv.ParseFloat(val, 64); err == nil {
+				s.Current.Context.Allocation.RunSummary = v
+			}
+		case "ctx_alloc_headroom":
+			if v, err := strconv.ParseFloat(val, 64); err == nil {
+				s.Current.Context.Allocation.Headroom = v
+			}
 		}
 	}
 }

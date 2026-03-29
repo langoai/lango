@@ -74,6 +74,7 @@ func (m *MenuModel) allCategories() []Category {
 	return all
 }
 
+
 // AllCategories returns a flat list of all categories (public, for tests).
 func (m MenuModel) AllCategories() []Category {
 	return m.allCategories()
@@ -177,12 +178,16 @@ func NewMenuModel() MenuModel {
 			{
 				Title: "AI & Knowledge",
 				Categories: []Category{
+					{"context_profile", "Context Profile", "Preset for context subsystems", TierBasic},
 					{"knowledge", "Knowledge", "Learning, Context limits", TierBasic},
 					{"skill", "Skill", "File-based skill system", TierBasic},
 					{"observational_memory", "Observational Memory", "Observer, Reflector, Thresholds", TierBasic},
 					{"embedding", "Embedding & RAG", "Provider, Model, RAG settings", TierBasic},
 					{"graph", "Graph Store", "Knowledge graph, GraphRAG settings", TierAdvanced},
 					{"librarian", "Librarian", "Proactive knowledge extraction", TierAdvanced},
+					{"retrieval", "Retrieval", "Agentic retrieval coordinator", TierAdvanced},
+					{"auto_adjust", "Auto-Adjust", "Relevance score tuning", TierAdvanced},
+					{"context_budget", "Context Budget", "Token budget allocation", TierAdvanced},
 					{"agent_memory", "Agent Memory", "Per-agent persistent memory", TierAdvanced},
 					{"multi_agent", "Multi-Agent", "Orchestration mode", TierAdvanced},
 					{"a2a", "A2A Protocol", "Agent-to-Agent, remote agents", TierAdvanced},

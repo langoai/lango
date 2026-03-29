@@ -139,6 +139,15 @@ func DefaultConfig() *Config {
 			DefaultTimeout:     10 * time.Minute,
 			StateDir:           "~/.lango/workflows/",
 		},
+		Context: ContextConfig{
+			Allocation: ContextAllocationConfig{
+				Knowledge:  0.30,
+				RAG:        0.25,
+				Memory:     0.25,
+				RunSummary: 0.10,
+				Headroom:   0.10,
+			},
+		},
 		RunLedger: RunLedgerConfig{
 			Enabled:            false,
 			Shadow:             false,

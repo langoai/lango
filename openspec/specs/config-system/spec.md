@@ -54,6 +54,13 @@ The system SHALL load configuration through the bootstrap process from an encryp
 - **WHEN** `contextProfile: balanced` is set
 - **THEN** `Knowledge.Enabled` is `true` before `Validate()` runs, so downstream validation sees the profile-applied state
 
+### Requirement: Context allocation defaults
+`DefaultConfig()` SHALL include `Context.Allocation` with defaults: Knowledge=0.30, RAG=0.25, Memory=0.25, RunSummary=0.10, Headroom=0.10. These values match the context-budget spec and sum to 1.0 within the runtime tolerance of ±0.001.
+
+#### Scenario: Default allocation
+- **WHEN** no `context.*` config is set
+- **THEN** `DefaultConfig().Context.Allocation` SHALL have the 0.30/0.25/0.25/0.10/0.10 ratios
+
 ### Requirement: Configuration save
 The system SHALL save configuration through `configstore.Store.Save()` which encrypts and stores in the database. The legacy `config.Save()` function SHALL be removed.
 

@@ -3,6 +3,7 @@ package checks
 import (
 	"context"
 	"fmt"
+	"math"
 	"strings"
 
 	"github.com/langoai/lango/internal/config"
@@ -60,6 +61,17 @@ func (c *ContextHealthCheck) Run(_ context.Context, cfg *config.Config) Result {
 	if cfg.Librarian.Enabled && !cfg.Knowledge.Enabled {
 		warnings = append(warnings,
 			"librarian is enabled but knowledge is disabled — librarian cannot store results")
+	}
+	// Validate context allocation ratios sum to 1.0 (±0.001, matching budget.go tolerance).
+	alloc := cfg.Context.Allocation
+	allocSum := alloc.Knowledge + alloc.RAG + alloc.Memory + alloc.RunSummary + alloc.Headroom
+	if allocSum > 0 && math.Abs(allocSum-1.0) > 0.001 {
+		warnings = append(warnings,
+			fmt.Sprintf("context.allocation ratios sum to %.3f, should be 1.0 (±0.001)", allocSum))
+	}
+	if cfg.Embedding.RAG.Enabled && cfg.Embedding.Provider == "" {
+		warnings = append(warnings,
+			"embedding.rag.enabled=true but no embedding.provider configured")
 	}
 	if cfg.Graph.Enabled && !hasEmbedding {
 		warnings = append(warnings,

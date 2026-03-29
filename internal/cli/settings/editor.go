@@ -142,6 +142,14 @@ func categoryIsEnabled(cfg *config.Config, id string) bool {
 		return cfg.A2A.Enabled
 	case "hooks":
 		return cfg.Hooks.Enabled
+	case "context_profile":
+		return cfg.ContextProfile != "" && cfg.ContextProfile != "off"
+	case "retrieval":
+		return cfg.Retrieval.Enabled
+	case "auto_adjust":
+		return cfg.Retrieval.AutoAdjust.Enabled
+	case "context_budget":
+		return cfg.Context.ModelWindow > 0 || cfg.Context.Allocation.Knowledge > 0
 	case "cron":
 		return cfg.Cron.Enabled
 	case "background":

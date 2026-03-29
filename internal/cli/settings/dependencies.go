@@ -275,6 +275,22 @@ func defaultDependencies() map[string][]Dependency {
 			},
 		},
 
+		// Retrieval depends on Knowledge
+		"retrieval": {
+			{
+				CategoryID: "knowledge",
+				Label:      "Knowledge",
+				Required:   true,
+				FixHint:    "Enable Knowledge for retrieval coordinator",
+				Check: func(cfg *config.Config) DepStatus {
+					if !cfg.Knowledge.Enabled {
+						return DepNotEnabled
+					}
+					return DepMet
+				},
+			},
+		},
+
 		// Librarian depends on Knowledge + Observational Memory
 		"librarian": {
 			{

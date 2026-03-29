@@ -401,6 +401,25 @@ Tool execution hooks for security filtering, access control, and event publishin
 
 ---
 
+## Context Profile
+
+| Key | Type | Default | Description |
+|-----|------|---------|-------------|
+| `contextProfile` | `string` | - | Preset that auto-configures context subsystems: `off`, `lite`, `balanced`, `full` |
+
+Profiles control which subsystems are enabled:
+
+| Profile | Knowledge | Memory | Librarian | Graph |
+|---------|-----------|--------|-----------|-------|
+| `off` | - | - | - | - |
+| `lite` | ✓ | ✓ | - | - |
+| `balanced` | ✓ | ✓ | ✓ | - |
+| `full` | ✓ | ✓ | ✓ | ✓ |
+
+User-explicit overrides take precedence over profile defaults.
+
+---
+
 ## Knowledge
 
 | Key | Type | Default | Description |
@@ -516,6 +535,80 @@ Tool execution hooks for security filtering, access control, and event publishin
 | `graph.databasePath` | `string` | | Path to the graph database file |
 | `graph.maxTraversalDepth` | `int` | `2` | Max depth for graph traversal in Graph RAG |
 | `graph.maxExpansionResults` | `int` | `10` | Max results from graph expansion |
+
+---
+
+## Retrieval Coordinator
+
+> **Settings:** `lango settings` → Retrieval / Auto-Adjust
+
+The retrieval coordinator runs multiple search agents (FactSearch, TemporalSearch, ContextSearch) in parallel and merges results using evidence-based priority ranking.
+
+```json
+{
+  "retrieval": {
+    "enabled": true,
+    "feedback": true,
+    "autoAdjust": {
+      "enabled": true,
+      "mode": "shadow",
+      "boostDelta": 0.05,
+      "decayDelta": 0.01,
+      "decayInterval": 100,
+      "minScore": 0.1,
+      "maxScore": 5.0,
+      "warmupTurns": 50
+    }
+  }
+}
+```
+
+| Key | Type | Default | Description |
+|-----|------|---------|-------------|
+| `retrieval.enabled` | `bool` | `false` | Enable multi-agent retrieval coordinator |
+| `retrieval.feedback` | `bool` | `false` | Log context injection events for observability |
+| `retrieval.autoAdjust.enabled` | `bool` | `false` | Enable relevance score auto-adjustment |
+| `retrieval.autoAdjust.mode` | `string` | `shadow` | `shadow` (observe only) or `active` (apply changes) |
+| `retrieval.autoAdjust.boostDelta` | `float64` | `0.05` | Score boost per context injection |
+| `retrieval.autoAdjust.decayDelta` | `float64` | `0.01` | Score decay per interval |
+| `retrieval.autoAdjust.decayInterval` | `int` | `100` | Turns between global decay |
+| `retrieval.autoAdjust.minScore` | `float64` | `0.1` | Score floor |
+| `retrieval.autoAdjust.maxScore` | `float64` | `5.0` | Score ceiling |
+| `retrieval.autoAdjust.warmupTurns` | `int` | `50` | Turns before auto-adjust activates |
+
+---
+
+## Context Budget
+
+> **Settings:** `lango settings` → Context Budget
+
+Controls how the model's context window is allocated across prompt sections. Ratios must sum to 1.0 (tolerance: ±0.001).
+
+```json
+{
+  "context": {
+    "modelWindow": 0,
+    "responseReserve": 0,
+    "allocation": {
+      "knowledge": 0.30,
+      "rag": 0.25,
+      "memory": 0.25,
+      "runSummary": 0.10,
+      "headroom": 0.10
+    }
+  }
+}
+```
+
+| Key | Type | Default | Description |
+|-----|------|---------|-------------|
+| `context.modelWindow` | `int` | `0` | Model context window in tokens (0 = auto-detect) |
+| `context.responseReserve` | `int` | `0` | Tokens reserved for response (0 = use agent.maxTokens) |
+| `context.allocation.knowledge` | `float64` | `0.30` | Knowledge section budget ratio |
+| `context.allocation.rag` | `float64` | `0.25` | RAG section budget ratio |
+| `context.allocation.memory` | `float64` | `0.25` | Memory section budget ratio |
+| `context.allocation.runSummary` | `float64` | `0.10` | Run summary budget ratio |
+| `context.allocation.headroom` | `float64` | `0.10` | Unallocated headroom ratio |
 
 ---
 
