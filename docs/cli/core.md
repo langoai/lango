@@ -1,9 +1,22 @@
 # Core Commands
 
-## lango (Interactive TUI Chat)
+## lango
 
-Run `lango` without arguments to start an interactive terminal coding-agent cockpit. This is the default entry point and provides a transcript-first TUI experience:
+Run `lango` without arguments to launch the multi-panel TUI cockpit. This is the default entry point and is equivalent to `lango cockpit`.
 
+```bash
+$ lango
+```
+
+Only core components (session store, embedding, knowledge) are started. Network and automation components (gateway, channels, cron, MCP, P2P) are not active in TUI mode.
+
+---
+
+## lango cockpit
+
+Launch the multi-panel TUI dashboard explicitly. Same behavior as bare `lango`. The cockpit provides:
+
+- Multi-page layout with Chat, Tools, Status, Sessions, and Settings pages
 - Transcript viewport with assistant markdown reflow on resize
 - Clear visual separation between user, assistant, status, and approval transcript blocks
 - Dedicated turn status strip for ready/streaming/approval/failure states
@@ -11,10 +24,18 @@ Run `lango` without arguments to start an interactive terminal coding-agent cock
 - Slash commands (`/help`, `/clear`, `/model`, `/status`, `/exit`)
 - Key bindings: `Enter` send, `Alt+Enter` newline, `Ctrl+C` cancel/quit, `Ctrl+D` quit
 
-Only core components (session store, embedding, knowledge) are started. Network and automation components (gateway, channels, cron, MCP, P2P) are not active in TUI mode.
+```bash
+$ lango cockpit
+```
+
+---
+
+## lango chat
+
+Launch the plain chat TUI. A simpler, transcript-first experience without the multi-panel cockpit layout. Suitable for quick interactions that don't require the full dashboard.
 
 ```bash
-$ lango
+$ lango chat
 ```
 
 ---

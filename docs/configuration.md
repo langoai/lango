@@ -78,7 +78,7 @@ LLM agent settings including model selection, prompt configuration, and timeouts
 | `agent.multiAgent` | `bool` | `false` | Enable [multi-agent orchestration](features/multi-agent.md) |
 | `agent.agentsDir` | `string` | `""` | Directory containing user-defined [AGENT.md](features/multi-agent.md#custom-agent-definitions) agent definitions |
 | `agent.autoExtendTimeout` | `bool` | `false` | Auto-extend deadline when agent activity is detected |
-| `agent.maxRequestTimeout` | `duration` | | Absolute max when auto-extend enabled (default: 3× requestTimeout) |
+| `agent.maxRequestTimeout` | `duration` | | Absolute max when auto-extend enabled (default: 3x requestTimeout) |
 
 ---
 
@@ -582,7 +582,7 @@ The retrieval coordinator runs multiple search agents (FactSearch, TemporalSearc
 
 > **Settings:** `lango settings` → Context Budget
 
-Controls how the model's context window is allocated across prompt sections. Ratios must sum to 1.0 (tolerance: ±0.001).
+Controls how the model's context window is allocated across prompt sections. Ratios must sum to 1.0 (tolerance: +/-0.001).
 
 ```json
 {
@@ -1152,6 +1152,241 @@ See [Cron Scheduling](automation/cron.md) for usage details and [CLI reference](
 | `librarian.autoSaveConfidence` | `string` | `high` | Confidence level for auto-saving: `low`, `medium`, `high` |
 | `librarian.provider` | `string` | | AI provider for librarian (empty = agent default) |
 | `librarian.model` | `string` | | Model for librarian (empty = agent default) |
+
+---
+
+## RunLedger
+
+!!! warning "Experimental"
+    The RunLedger (Task OS) is experimental. It progresses through shadow, write-through, and authoritative-read adoption phases.
+
+> **Settings:** `lango settings` → RunLedger
+
+```json
+{
+  "runLedger": {
+    "enabled": false,
+    "shadow": true,
+    "writeThrough": false,
+    "authoritativeRead": false,
+    "workspaceIsolation": false,
+    "staleTtl": "1h",
+    "maxRunHistory": 0,
+    "validatorTimeout": "2m",
+    "plannerMaxRetries": 2
+  }
+}
+```
+
+| Key | Type | Default | Description |
+|-----|------|---------|-------------|
+| `runLedger.enabled` | `bool` | `false` | Activate the RunLedger system |
+| `runLedger.shadow` | `bool` | `true` | Shadow mode: journal records only, existing systems unaffected |
+| `runLedger.writeThrough` | `bool` | `false` | All creates/updates go through ledger first, then mirror to legacy stores |
+| `runLedger.authoritativeRead` | `bool` | `false` | State reads come from ledger snapshots only |
+| `runLedger.workspaceIsolation` | `bool` | `false` | Enable runtime PEV workspace wiring for coding-step validation |
+| `runLedger.staleTtl` | `duration` | `1h` | How long a paused run remains resumable |
+| `runLedger.maxRunHistory` | `int` | `0` | Maximum number of runs to keep (0 = unlimited) |
+| `runLedger.validatorTimeout` | `duration` | `2m` | Timeout for individual validator execution |
+| `runLedger.plannerMaxRetries` | `int` | `2` | How many times a malformed planner output is retried |
+
+---
+
+## Provenance
+
+!!! warning "Experimental"
+    The provenance system is experimental. It provides session-level checkpoint tracking for auditability and replay.
+
+> **Settings:** `lango settings` → Provenance
+
+```json
+{
+  "provenance": {
+    "enabled": false,
+    "checkpoints": {
+      "autoOnStepComplete": false,
+      "autoOnPolicy": false,
+      "maxPerSession": 0,
+      "retentionDays": 0
+    }
+  }
+}
+```
+
+| Key | Type | Default | Description |
+|-----|------|---------|-------------|
+| `provenance.enabled` | `bool` | `false` | Activate the provenance system |
+| `provenance.checkpoints.autoOnStepComplete` | `bool` | `false` | Create a checkpoint when a RunLedger step passes validation |
+| `provenance.checkpoints.autoOnPolicy` | `bool` | `false` | Create a checkpoint when a policy decision is applied |
+| `provenance.checkpoints.maxPerSession` | `int` | `0` | Maximum checkpoints per session (0 = unlimited) |
+| `provenance.checkpoints.retentionDays` | `int` | `0` | Days to keep checkpoints before pruning (0 = unlimited) |
+
+---
+
+## Sandbox
+
+!!! warning "Experimental"
+    The OS-level sandbox is experimental. It applies to child processes spawned by exec tools, MCP stdio servers, and skill scripts. Independent of `p2p.toolIsolation`.
+
+> **Settings:** `lango settings` → Sandbox
+
+```json
+{
+  "sandbox": {
+    "enabled": false,
+    "failClosed": false,
+    "workspacePath": "",
+    "networkMode": "deny",
+    "allowedNetworkIPs": [],
+    "allowedWritePaths": [],
+    "timeoutPerTool": "30s",
+    "os": {
+      "seccompProfile": "moderate",
+      "seatbeltCustomProfile": ""
+    }
+  }
+}
+```
+
+| Key | Type | Default | Description |
+|-----|------|---------|-------------|
+| `sandbox.enabled` | `bool` | `false` | Enable OS-level sandboxing for tool-spawned child processes |
+| `sandbox.failClosed` | `bool` | `false` | Reject tool execution when OS sandbox is unavailable (false = fail-open) |
+| `sandbox.workspacePath` | `string` | `""` | Root directory for workspace-relative write access (empty = CWD) |
+| `sandbox.networkMode` | `string` | `deny` | Network access from sandboxed processes: `deny` or `allow` |
+| `sandbox.allowedNetworkIPs` | `[]string` | `[]` | IP addresses permitted for outbound connections (macOS Seatbelt only; ignored on Linux) |
+| `sandbox.allowedWritePaths` | `[]string` | `[]` | Additional paths writable from the sandbox beyond `workspacePath` |
+| `sandbox.timeoutPerTool` | `duration` | `30s` | Maximum duration for a single sandboxed tool execution |
+| `sandbox.os.seccompProfile` | `string` | `moderate` | Seccomp filter profile on Linux: `strict`, `moderate`, or `permissive` |
+| `sandbox.os.seatbeltCustomProfile` | `string` | `""` | Path to a custom `.sb` profile on macOS (overrides generated profile) |
+
+---
+
+## Gatekeeper
+
+Response sanitization (output gatekeeper) settings. The gatekeeper strips internal markers, thought tags, and large raw JSON from agent responses before they reach the user.
+
+> **Settings:** `lango settings` → Gatekeeper
+
+```json
+{
+  "gatekeeper": {
+    "enabled": true,
+    "stripThoughtTags": true,
+    "stripInternalMarkers": true,
+    "stripRawJSON": true,
+    "rawJsonThreshold": 500,
+    "customPatterns": []
+  }
+}
+```
+
+| Key | Type | Default | Description |
+|-----|------|---------|-------------|
+| `gatekeeper.enabled` | `bool` | `true` | Enable response sanitization |
+| `gatekeeper.stripThoughtTags` | `bool` | `true` | Strip `<thought>`/`<thinking>` tags from responses |
+| `gatekeeper.stripInternalMarkers` | `bool` | `true` | Strip lines starting with `[INTERNAL]`, `[DEBUG]`, `[SYSTEM]`, `[OBSERVATION]` |
+| `gatekeeper.stripRawJSON` | `bool` | `true` | Replace large raw JSON code blocks with a placeholder |
+| `gatekeeper.rawJsonThreshold` | `int` | `500` | Character threshold for raw JSON replacement |
+| `gatekeeper.customPatterns` | `[]string` | `[]` | Additional regex patterns to strip from responses |
+
+---
+
+## MCP
+
+MCP (Model Context Protocol) server integration for connecting to external tool servers.
+
+> **Settings:** `lango settings` → MCP
+
+```json
+{
+  "mcp": {
+    "enabled": false,
+    "defaultTimeout": "30s",
+    "maxOutputTokens": 25000,
+    "healthCheckInterval": "30s",
+    "autoReconnect": true,
+    "maxReconnectAttempts": 5,
+    "servers": {
+      "my-server": {
+        "transport": "stdio",
+        "command": "npx",
+        "args": ["-y", "@modelcontextprotocol/server-filesystem"],
+        "env": {},
+        "enabled": true,
+        "timeout": "",
+        "safetyLevel": "dangerous"
+      }
+    }
+  }
+}
+```
+
+| Key | Type | Default | Description |
+|-----|------|---------|-------------|
+| `mcp.enabled` | `bool` | `false` | Enable MCP server integration |
+| `mcp.defaultTimeout` | `duration` | `30s` | Default timeout for MCP operations |
+| `mcp.maxOutputTokens` | `int` | `25000` | Maximum output size from MCP tool calls |
+| `mcp.healthCheckInterval` | `duration` | `30s` | Interval for periodic server health probes |
+| `mcp.autoReconnect` | `bool` | `true` | Automatically reconnect on connection loss |
+| `mcp.maxReconnectAttempts` | `int` | `5` | Maximum reconnection attempts before giving up |
+
+Each server entry (`mcp.servers.<name>`):
+
+| Key | Type | Default | Description |
+|-----|------|---------|-------------|
+| `mcp.servers.<name>.transport` | `string` | `stdio` | Transport type: `stdio`, `http`, `sse` |
+| `mcp.servers.<name>.command` | `string` | | Executable for stdio transport |
+| `mcp.servers.<name>.args` | `[]string` | `[]` | Command-line arguments for stdio transport |
+| `mcp.servers.<name>.env` | `map[string]string` | `{}` | Environment variables for stdio transport (supports `${VAR}` expansion) |
+| `mcp.servers.<name>.url` | `string` | | Endpoint URL for http/sse transport |
+| `mcp.servers.<name>.headers` | `map[string]string` | `{}` | HTTP headers for http/sse transport (supports `${VAR}` expansion) |
+| `mcp.servers.<name>.enabled` | `bool` | `true` | Whether this server is active |
+| `mcp.servers.<name>.timeout` | `duration` | | Override the global default timeout for this server |
+| `mcp.servers.<name>.safetyLevel` | `string` | `dangerous` | Tool safety level: `safe`, `moderate`, `dangerous` |
+
+---
+
+## Orchestration
+
+!!! warning "Experimental"
+    Structured orchestration is experimental. It wraps the agent executor with delegation guard, budget policy, and recovery policy.
+
+> **Settings:** `lango settings` → Orchestration
+
+```json
+{
+  "agent": {
+    "orchestration": {
+      "mode": "classic",
+      "circuitBreaker": {
+        "failureThreshold": 3,
+        "resetTimeout": "30s"
+      },
+      "budget": {
+        "toolCallLimit": 50,
+        "delegationLimit": 15,
+        "alertThreshold": 0.8
+      },
+      "recovery": {
+        "maxRetries": 2,
+        "circuitBreakerCooldown": "5m"
+      }
+    }
+  }
+}
+```
+
+| Key | Type | Default | Description |
+|-----|------|---------|-------------|
+| `agent.orchestration.mode` | `string` | `classic` | Orchestration mode: `classic` (default) or `structured` |
+| `agent.orchestration.circuitBreaker.failureThreshold` | `int` | `3` | Consecutive failures before circuit opens |
+| `agent.orchestration.circuitBreaker.resetTimeout` | `duration` | `30s` | Time before half-open probe |
+| `agent.orchestration.budget.toolCallLimit` | `int` | `50` | Maximum tool calls per agent run |
+| `agent.orchestration.budget.delegationLimit` | `int` | `15` | Maximum delegations before alerting |
+| `agent.orchestration.budget.alertThreshold` | `float64` | `0.8` | Budget usage percentage at which alerts fire |
+| `agent.orchestration.recovery.maxRetries` | `int` | `2` | Maximum retry attempts on failure |
+| `agent.orchestration.recovery.circuitBreakerCooldown` | `duration` | `5m` | Time before re-enabling a tripped agent |
 
 ---
 

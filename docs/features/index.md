@@ -160,6 +160,30 @@ Lango provides a comprehensive set of features for building intelligent AI agent
 
     [:octicons-arrow-right-24: Learn more](p2p-network.md#p2p-team-coordination)
 
+-   :shield: **[OS-level Sandbox](../configuration.md#sandbox)** :material-flask-outline:{ title="Experimental" }
+
+    ---
+
+    Process isolation via macOS Seatbelt and Linux seccomp for tool execution with network deny and workspace-scoped access.
+
+    [:octicons-arrow-right-24: Learn more](../configuration.md#sandbox)
+
+-   :construction: **[Response Gatekeeper](../configuration.md#gatekeeper)**
+
+    ---
+
+    Output sanitization that strips thought tags, internal markers, raw JSON, and custom patterns from agent responses.
+
+    [:octicons-arrow-right-24: Learn more](../configuration.md#gatekeeper)
+
+-   :dart: **[Context Engineering](../configuration.md#context-profile)**
+
+    ---
+
+    Token-budget-aware context allocation with retrieval coordinator, config profiles (off/lite/balanced/full), and relevance auto-adjustment.
+
+    [:octicons-arrow-right-24: Learn more](../configuration.md#context-profile)
+
 -   :package: **[Config Presets](config-presets.md)**
 
     ---
@@ -221,6 +245,9 @@ Lango provides a comprehensive set of features for building intelligent AI agent
 | MCP Integration | Stable | `mcp.enabled` |
 | RunLedger (Task OS) | Experimental | `runLedger.enabled` |
 | Session Provenance | Experimental | `provenance.enabled` |
+| OS-level Sandbox | Experimental | `sandbox.enabled` |
+| Response Gatekeeper | Stable | `gatekeeper.enabled` |
+| Context Engineering | Stable | `context.*`, `retrieval.*`, `contextProfile` |
 | Tool Hooks | Experimental | `hooks.enabled` |
 | Tool Catalog | Internal | — |
 | Event Bus | Internal | — |

@@ -124,6 +124,8 @@ nav:
     - Learning: features/learning.md
     - Agent Format: features/agent-format.md
     - MCP Integration: features/mcp-integration.md
+    - RunLedger (Task OS): features/run-ledger.md
+    - Session Provenance: features/provenance.md
   - Automation:
     - automation/index.md
     - Cron Scheduling: automation/cron.md
@@ -154,6 +156,9 @@ nav:
     - Status Dashboard: cli/status.md
     - MCP Commands: cli/mcp.md
     - Smart Account Commands: cli/smartaccount.md
+    - Provenance Commands: cli/provenance.md
+    - RunLedger Commands: cli/run.md
+    - Sandbox Commands: cli/sandbox.md
   - Gateway & API:
     - gateway/index.md
     - HTTP API: gateway/http-api.md
