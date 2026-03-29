@@ -144,7 +144,7 @@ lango settings [--profile <name>]
 The settings editor uses a TUI menu interface where you can navigate through categories and edit individual values. Categories are organized into sections:
 
 - **Core:** Providers, Agent, Channels, Tools, Server, Session, Logging, Gatekeeper, Output Manager
-- **AI & Knowledge:** Knowledge, Skill, Observational Memory, Embedding & RAG, Graph Store, Librarian, Agent Memory, Multi-Agent, A2A Protocol, Hooks
+- **AI & Knowledge:** Context Profile, Knowledge, Skill, Observational Memory, Embedding & RAG, Graph Store, Librarian, Retrieval, Auto-Adjust, Context Budget, Agent Memory, Multi-Agent, A2A Protocol, Hooks
 - **Automation:** Cron Scheduler, Background Tasks, Workflow Engine, RunLedger
 - **Payment & Account:** Payment, Smart Account, SA Session Keys, SA Paymaster, SA Modules
 - **P2P & Economy:** P2P Network, P2P Workspace, P2P ZKP, P2P Pricing, P2P Owner Protection, P2P Sandbox, Economy, Risk, Negotiation, Escrow, On-Chain Escrow, Pricing
@@ -195,6 +195,8 @@ lango doctor [--fix] [--json]
 - Tool hooks configuration
 - Agent registry health
 - Librarian status
+- Retrieval coordinator and auto-adjust settings
+- Context budget allocation ratio validation
 - Approval system status
 - Economy layer configuration
 - Contract configuration

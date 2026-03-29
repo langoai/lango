@@ -32,7 +32,8 @@ Press Tab to toggle between showing all categories and basic-only view.
 Press "/" to search, or use smart filters: @basic, @advanced, @enabled, @modified.
 
   Core:             Providers, Agent, Channels, Tools, Logging, Gatekeeper, Output Manager
-  AI & Knowledge:   Knowledge, Skill, Observational Memory, Embedding & RAG
+  AI & Knowledge:   Context Profile, Knowledge, Skill, Observational Memory, Embedding & RAG,
+                    Graph, Librarian, Retrieval, Auto-Adjust, Context Budget
   Automation:       Cron, Background, Workflow, RunLedger
   Payment & Account: Payment, Smart Account
   P2P & Economy:    P2P Network, Economy, Escrow

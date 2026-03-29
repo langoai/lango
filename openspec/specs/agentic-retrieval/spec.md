@@ -54,21 +54,14 @@ The `retrieval` package SHALL define a `RetrievalAgent` interface with methods: 
 - **WHEN** ToRetrievalResult converts findings
 - **THEN** each ContextItem.Score SHALL equal the corresponding Finding.Score
 
-### Requirement: Shadow mode comparison
-When shadow=true, the coordinator SHALL run as a fire-and-forget goroutine after the existing retrieval path completes. `CompareShadowResults()` SHALL log overlap %, old-only count, and new-only count between old RetrievalResult and new findings.
-
-#### Scenario: Shadow does not block LLM
-- **WHEN** shadow mode is active
-- **THEN** the coordinator goroutine SHALL NOT block the LLM call
-
-### Requirement: v1 layer coverage boundary
-The v1 coordinator SHALL cover only 3 factual layers: UserKnowledge, AgentLearnings, ExternalKnowledge. ToolRegistry, RuntimeContext, SkillPatterns, PendingInquiries remain handled by the existing ContextRetriever.
+### Requirement: Layer coverage boundary
+The coordinator SHALL cover 3 factual layers: UserKnowledge, AgentLearnings, ExternalKnowledge. ToolRegistry, RuntimeContext, SkillPatterns, PendingInquiries are handled by the ContextRetriever. The coordinator runs as primary in Phase 1 of GenerateContent (not shadow).
 
 ### Requirement: Configuration
-`RetrievalConfig` SHALL have `Enabled` (bool, default false), `Shadow` (bool, default true), and `Feedback` (bool, default false) fields. The coordinator SHALL only be created when `Enabled=true`.
+`RetrievalConfig` SHALL have `Enabled` (bool, default false) and `Feedback` (bool, default false) fields, plus nested `AutoAdjust AutoAdjustConfig`. The coordinator SHALL only be created when `Enabled=true`.
 
 ### Requirement: RetrievalConfig Feedback field
-The `RetrievalConfig` struct SHALL include a `Feedback bool` field that enables context injection observability. This field SHALL operate independently of `Enabled` and `Shadow` — feedback observability SHALL work regardless of whether the agentic retrieval coordinator is enabled.
+The `RetrievalConfig` struct SHALL include a `Feedback bool` field that enables context injection observability. This field SHALL operate independently of `Enabled` — feedback observability SHALL work regardless of whether the agentic retrieval coordinator is enabled.
 
 #### Scenario: Feedback enabled without coordinator
 - **WHEN** `retrieval.feedback` is `true` and `retrieval.enabled` is `false`
@@ -89,12 +82,8 @@ The `ContextAwareModelAdapter` SHALL accept an event bus via `WithEventBus(*even
 - **WHEN** only observational memory is enabled (no knowledge) and ctxAdapter is created
 - **THEN** `WithEventBus(eventBus)` SHALL be called on the adapter
 
-### Requirement: Shadow comparison factual-vs-new-context split
-`CompareShadowResults` SHALL log both overall metrics AND factual-layer-only metrics. Factual layers are UserKnowledge, AgentLearnings, ExternalKnowledge.
-
-#### Scenario: Factual split logged
-- **WHEN** CompareShadowResults is called with findings from both FactSearchAgent and ContextSearchAgent
-- **THEN** logs SHALL include `factual_overlap`, `factual_old_only`, `factual_new_only` alongside overall metrics
+### Requirement: RAG enabled flag enforcement
+`ContextSearchAgent` SHALL only be registered when BOTH `ec.ragService != nil` AND `cfg.Embedding.RAG.Enabled` are true. `RAGService` SHALL only be created when `embedding.rag.enabled` is true.
 
 ### Requirement: TemporalSearchAgent registration in coordinator
 `initRetrievalCoordinator` SHALL always register `TemporalSearchAgent` alongside `FactSearchAgent`. Unlike `ContextSearchAgent` (which requires RAGService), `TemporalSearchAgent` has no optional dependencies — it uses `kStore` which is always available.

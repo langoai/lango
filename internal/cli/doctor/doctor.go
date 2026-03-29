@@ -45,6 +45,8 @@ Checks performed include:
   - Multi-agent orchestration settings
   - A2A protocol connectivity
   - RunLedger configuration invariants
+  - Retrieval coordinator and auto-adjust settings
+  - Context budget allocation ratio validation
 
 Use --fix to attempt automatic repair of fixable issues.
 Use --json for machine-readable output.
