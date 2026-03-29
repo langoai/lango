@@ -22,14 +22,6 @@ func fieldByKey(form *tuicore.FormModel, key string) *tuicore.Field {
 	return nil
 }
 
-func visibleKeys(form *tuicore.FormModel) map[string]bool {
-	keys := make(map[string]bool)
-	for _, f := range form.VisibleFields() {
-		keys[f.Key] = true
-	}
-	return keys
-}
-
 func TestNewAgentForm_AllFields(t *testing.T) {
 	cfg := defaultTestConfig()
 	form := NewAgentForm(cfg)
@@ -257,132 +249,6 @@ func TestUpdateConfigFromForm_MaxHistoryTurns(t *testing.T) {
 	}
 }
 
-func TestNewRunLedgerForm_AllFields(t *testing.T) {
-	cfg := defaultTestConfig()
-	form := NewRunLedgerForm(cfg)
-
-	wantKeys := []string{
-		"runledger_enabled",
-		"runledger_shadow",
-		"runledger_write_through",
-		"runledger_authoritative_read",
-		"runledger_workspace_isolation",
-		"runledger_stale_ttl",
-		"runledger_max_history",
-		"runledger_validator_timeout",
-		"runledger_planner_retries",
-	}
-
-	if len(form.Fields) != len(wantKeys) {
-		t.Fatalf("expected %d fields, got %d", len(wantKeys), len(form.Fields))
-	}
-
-	for _, key := range wantKeys {
-		if f := fieldByKey(form, key); f == nil {
-			t.Errorf("missing field %q", key)
-		}
-	}
-
-	if f := fieldByKey(form, "runledger_stale_ttl"); f.Value != "1h0m0s" {
-		t.Errorf("runledger_stale_ttl: want %q, got %q", "1h0m0s", f.Value)
-	}
-	if f := fieldByKey(form, "runledger_validator_timeout"); f.Value != "2m0s" {
-		t.Errorf("runledger_validator_timeout: want %q, got %q", "2m0s", f.Value)
-	}
-}
-
-func TestUpdateConfigFromForm_RunLedgerFields(t *testing.T) {
-	state := tuicore.NewConfigState()
-	form := tuicore.NewFormModel("runledger")
-	form.AddField(&tuicore.Field{Key: "runledger_enabled", Type: tuicore.InputBool, Checked: true})
-	form.AddField(&tuicore.Field{Key: "runledger_shadow", Type: tuicore.InputBool, Checked: true})
-	form.AddField(&tuicore.Field{Key: "runledger_write_through", Type: tuicore.InputBool, Checked: true})
-	form.AddField(&tuicore.Field{Key: "runledger_authoritative_read", Type: tuicore.InputBool, Checked: true})
-	form.AddField(&tuicore.Field{Key: "runledger_workspace_isolation", Type: tuicore.InputBool, Checked: true})
-	form.AddField(&tuicore.Field{Key: "runledger_stale_ttl", Type: tuicore.InputText, Value: "90m"})
-	form.AddField(&tuicore.Field{Key: "runledger_max_history", Type: tuicore.InputInt, Value: "250"})
-	form.AddField(&tuicore.Field{Key: "runledger_validator_timeout", Type: tuicore.InputText, Value: "3m"})
-	form.AddField(&tuicore.Field{Key: "runledger_planner_retries", Type: tuicore.InputInt, Value: "5"})
-
-	state.UpdateConfigFromForm(&form)
-
-	rl := state.Current.RunLedger
-	if !rl.Enabled || !rl.Shadow || !rl.WriteThrough || !rl.AuthoritativeRead || !rl.WorkspaceIsolation {
-		t.Fatal("expected all runledger booleans to be true")
-	}
-	if rl.StaleTTL != 90*time.Minute {
-		t.Errorf("StaleTTL: want %v, got %v", 90*time.Minute, rl.StaleTTL)
-	}
-	if rl.MaxRunHistory != 250 {
-		t.Errorf("MaxRunHistory: want 250, got %d", rl.MaxRunHistory)
-	}
-	if rl.ValidatorTimeout != 3*time.Minute {
-		t.Errorf("ValidatorTimeout: want %v, got %v", 3*time.Minute, rl.ValidatorTimeout)
-	}
-	if rl.PlannerMaxRetries != 5 {
-		t.Errorf("PlannerMaxRetries: want 5, got %d", rl.PlannerMaxRetries)
-	}
-}
-
-func TestNewProvenanceForm_AllFields(t *testing.T) {
-	cfg := defaultTestConfig()
-	form := NewProvenanceForm(cfg)
-
-	wantKeys := []string{
-		"provenance_enabled",
-		"provenance_auto_on_step_complete",
-		"provenance_auto_on_policy",
-		"provenance_max_per_session",
-		"provenance_retention_days",
-	}
-
-	if len(form.Fields) != len(wantKeys) {
-		t.Fatalf("expected %d fields, got %d", len(wantKeys), len(form.Fields))
-	}
-
-	for _, key := range wantKeys {
-		if f := fieldByKey(form, key); f == nil {
-			t.Errorf("missing field %q", key)
-		}
-	}
-
-	if f := fieldByKey(form, "provenance_max_per_session"); f.Value != "100" {
-		t.Errorf("provenance_max_per_session: want %q, got %q", "100", f.Value)
-	}
-	if f := fieldByKey(form, "provenance_retention_days"); f.Value != "30" {
-		t.Errorf("provenance_retention_days: want %q, got %q", "30", f.Value)
-	}
-}
-
-func TestUpdateConfigFromForm_ProvenanceFields(t *testing.T) {
-	state := tuicore.NewConfigState()
-	form := tuicore.NewFormModel("provenance")
-	form.AddField(&tuicore.Field{Key: "provenance_enabled", Type: tuicore.InputBool, Checked: true})
-	form.AddField(&tuicore.Field{Key: "provenance_auto_on_step_complete", Type: tuicore.InputBool, Checked: false})
-	form.AddField(&tuicore.Field{Key: "provenance_auto_on_policy", Type: tuicore.InputBool, Checked: false})
-	form.AddField(&tuicore.Field{Key: "provenance_max_per_session", Type: tuicore.InputInt, Value: "250"})
-	form.AddField(&tuicore.Field{Key: "provenance_retention_days", Type: tuicore.InputInt, Value: "90"})
-
-	state.UpdateConfigFromForm(&form)
-
-	p := state.Current.Provenance
-	if !p.Enabled {
-		t.Fatal("expected provenance enabled to be true")
-	}
-	if p.Checkpoints.AutoOnStepComplete {
-		t.Fatal("expected auto_on_step_complete to be false")
-	}
-	if p.Checkpoints.AutoOnPolicy {
-		t.Fatal("expected auto_on_policy to be false")
-	}
-	if p.Checkpoints.MaxPerSession != 250 {
-		t.Errorf("MaxPerSession: want 250, got %d", p.Checkpoints.MaxPerSession)
-	}
-	if p.Checkpoints.RetentionDays != 90 {
-		t.Errorf("RetentionDays: want 90, got %d", p.Checkpoints.RetentionDays)
-	}
-}
-
 func TestUpdateConfigFromForm_KnowledgeFields(t *testing.T) {
 	state := tuicore.NewConfigState()
 	form := tuicore.NewFormModel("test")
@@ -396,6 +262,211 @@ func TestUpdateConfigFromForm_KnowledgeFields(t *testing.T) {
 	}
 	if k.MaxContextPerLayer != 8 {
 		t.Errorf("MaxContextPerLayer: want 8, got %d", k.MaxContextPerLayer)
+	}
+}
+
+func TestNewContextProfileForm_AllFields(t *testing.T) {
+	cfg := defaultTestConfig()
+	form := NewContextProfileForm(cfg)
+
+	wantKeys := []string{
+		"ctx_profile",
+	}
+
+	if len(form.Fields) != len(wantKeys) {
+		t.Fatalf("expected %d fields, got %d", len(wantKeys), len(form.Fields))
+	}
+
+	for _, key := range wantKeys {
+		if f := fieldByKey(form, key); f == nil {
+			t.Errorf("missing field %q", key)
+		}
+	}
+
+	if f := fieldByKey(form, "ctx_profile"); f.Type != tuicore.InputSelect {
+		t.Errorf("ctx_profile: want InputSelect, got %d", f.Type)
+	}
+}
+
+func TestUpdateConfigFromForm_ContextProfile(t *testing.T) {
+	state := tuicore.NewConfigState()
+	form := tuicore.NewFormModel("test")
+	form.AddField(&tuicore.Field{Key: "ctx_profile", Type: tuicore.InputSelect, Value: "balanced"})
+
+	state.UpdateConfigFromForm(&form)
+
+	if state.Current.ContextProfile != "balanced" {
+		t.Errorf("ContextProfile: want %q, got %q", "balanced", state.Current.ContextProfile)
+	}
+}
+
+func TestNewRetrievalForm_AllFields(t *testing.T) {
+	cfg := defaultTestConfig()
+	form := NewRetrievalForm(cfg)
+
+	wantKeys := []string{
+		"retrieval_enabled", "retrieval_feedback",
+	}
+
+	if len(form.Fields) != len(wantKeys) {
+		t.Fatalf("expected %d fields, got %d", len(wantKeys), len(form.Fields))
+	}
+
+	for _, key := range wantKeys {
+		if f := fieldByKey(form, key); f == nil {
+			t.Errorf("missing field %q", key)
+		}
+	}
+
+	if f := fieldByKey(form, "retrieval_enabled"); f.Checked {
+		t.Error("retrieval_enabled: want false by default")
+	}
+}
+
+func TestUpdateConfigFromForm_RetrievalFields(t *testing.T) {
+	state := tuicore.NewConfigState()
+	form := tuicore.NewFormModel("test")
+	form.AddField(&tuicore.Field{Key: "retrieval_enabled", Type: tuicore.InputBool, Checked: true})
+	form.AddField(&tuicore.Field{Key: "retrieval_feedback", Type: tuicore.InputBool, Checked: true})
+
+	state.UpdateConfigFromForm(&form)
+
+	if !state.Current.Retrieval.Enabled {
+		t.Error("Retrieval.Enabled: want true")
+	}
+	if !state.Current.Retrieval.Feedback {
+		t.Error("Retrieval.Feedback: want true")
+	}
+}
+
+func TestNewAutoAdjustForm_AllFields(t *testing.T) {
+	cfg := defaultTestConfig()
+	form := NewAutoAdjustForm(cfg)
+
+	wantKeys := []string{
+		"aa_enabled", "aa_mode", "aa_boost_delta", "aa_decay_delta",
+		"aa_decay_interval", "aa_min_score", "aa_max_score", "aa_warmup_turns",
+	}
+
+	if len(form.Fields) != len(wantKeys) {
+		t.Fatalf("expected %d fields, got %d", len(wantKeys), len(form.Fields))
+	}
+
+	for _, key := range wantKeys {
+		if f := fieldByKey(form, key); f == nil {
+			t.Errorf("missing field %q", key)
+		}
+	}
+
+	if f := fieldByKey(form, "aa_mode"); f.Type != tuicore.InputSelect {
+		t.Errorf("aa_mode: want InputSelect, got %d", f.Type)
+	}
+}
+
+func TestUpdateConfigFromForm_AutoAdjustFields(t *testing.T) {
+	state := tuicore.NewConfigState()
+	form := tuicore.NewFormModel("test")
+	form.AddField(&tuicore.Field{Key: "aa_enabled", Type: tuicore.InputBool, Checked: true})
+	form.AddField(&tuicore.Field{Key: "aa_mode", Type: tuicore.InputSelect, Value: "active"})
+	form.AddField(&tuicore.Field{Key: "aa_boost_delta", Type: tuicore.InputText, Value: "0.10"})
+	form.AddField(&tuicore.Field{Key: "aa_decay_delta", Type: tuicore.InputText, Value: "0.05"})
+	form.AddField(&tuicore.Field{Key: "aa_decay_interval", Type: tuicore.InputInt, Value: "5"})
+	form.AddField(&tuicore.Field{Key: "aa_min_score", Type: tuicore.InputText, Value: "0.1"})
+	form.AddField(&tuicore.Field{Key: "aa_max_score", Type: tuicore.InputText, Value: "0.9"})
+	form.AddField(&tuicore.Field{Key: "aa_warmup_turns", Type: tuicore.InputInt, Value: "3"})
+
+	state.UpdateConfigFromForm(&form)
+
+	aa := state.Current.Retrieval.AutoAdjust
+	if !aa.Enabled {
+		t.Error("AutoAdjust.Enabled: want true")
+	}
+	if aa.Mode != "active" {
+		t.Errorf("AutoAdjust.Mode: want %q, got %q", "active", aa.Mode)
+	}
+	if aa.BoostDelta != 0.10 {
+		t.Errorf("AutoAdjust.BoostDelta: want 0.10, got %.2f", aa.BoostDelta)
+	}
+	if aa.DecayDelta != 0.05 {
+		t.Errorf("AutoAdjust.DecayDelta: want 0.05, got %.2f", aa.DecayDelta)
+	}
+	if aa.DecayInterval != 5 {
+		t.Errorf("AutoAdjust.DecayInterval: want 5, got %d", aa.DecayInterval)
+	}
+	if aa.MinScore != 0.1 {
+		t.Errorf("AutoAdjust.MinScore: want 0.1, got %.1f", aa.MinScore)
+	}
+	if aa.MaxScore != 0.9 {
+		t.Errorf("AutoAdjust.MaxScore: want 0.9, got %.1f", aa.MaxScore)
+	}
+	if aa.WarmupTurns != 3 {
+		t.Errorf("AutoAdjust.WarmupTurns: want 3, got %d", aa.WarmupTurns)
+	}
+}
+
+func TestNewContextBudgetForm_AllFields(t *testing.T) {
+	cfg := defaultTestConfig()
+	form := NewContextBudgetForm(cfg)
+
+	wantKeys := []string{
+		"ctx_model_window", "ctx_response_reserve",
+		"ctx_alloc_knowledge", "ctx_alloc_rag", "ctx_alloc_memory",
+		"ctx_alloc_run_summary", "ctx_alloc_headroom",
+	}
+
+	if len(form.Fields) != len(wantKeys) {
+		t.Fatalf("expected %d fields, got %d", len(wantKeys), len(form.Fields))
+	}
+
+	for _, key := range wantKeys {
+		if f := fieldByKey(form, key); f == nil {
+			t.Errorf("missing field %q", key)
+		}
+	}
+
+	// Verify default allocation values from spec
+	if f := fieldByKey(form, "ctx_alloc_knowledge"); f.Value != "0.30" {
+		t.Errorf("ctx_alloc_knowledge: want %q, got %q", "0.30", f.Value)
+	}
+	if f := fieldByKey(form, "ctx_alloc_rag"); f.Value != "0.25" {
+		t.Errorf("ctx_alloc_rag: want %q, got %q", "0.25", f.Value)
+	}
+}
+
+func TestUpdateConfigFromForm_ContextBudgetFields(t *testing.T) {
+	state := tuicore.NewConfigState()
+	form := tuicore.NewFormModel("test")
+	form.AddField(&tuicore.Field{Key: "ctx_model_window", Type: tuicore.InputInt, Value: "128000"})
+	form.AddField(&tuicore.Field{Key: "ctx_response_reserve", Type: tuicore.InputInt, Value: "4096"})
+	form.AddField(&tuicore.Field{Key: "ctx_alloc_knowledge", Type: tuicore.InputText, Value: "0.35"})
+	form.AddField(&tuicore.Field{Key: "ctx_alloc_rag", Type: tuicore.InputText, Value: "0.20"})
+	form.AddField(&tuicore.Field{Key: "ctx_alloc_memory", Type: tuicore.InputText, Value: "0.25"})
+	form.AddField(&tuicore.Field{Key: "ctx_alloc_run_summary", Type: tuicore.InputText, Value: "0.10"})
+	form.AddField(&tuicore.Field{Key: "ctx_alloc_headroom", Type: tuicore.InputText, Value: "0.10"})
+
+	state.UpdateConfigFromForm(&form)
+
+	ctx := state.Current.Context
+	if ctx.ModelWindow != 128000 {
+		t.Errorf("Context.ModelWindow: want 128000, got %d", ctx.ModelWindow)
+	}
+	if ctx.ResponseReserve != 4096 {
+		t.Errorf("Context.ResponseReserve: want 4096, got %d", ctx.ResponseReserve)
+	}
+	if ctx.Allocation.Knowledge != 0.35 {
+		t.Errorf("Context.Allocation.Knowledge: want 0.35, got %.2f", ctx.Allocation.Knowledge)
+	}
+	if ctx.Allocation.RAG != 0.20 {
+		t.Errorf("Context.Allocation.RAG: want 0.20, got %.2f", ctx.Allocation.RAG)
+	}
+	if ctx.Allocation.Memory != 0.25 {
+		t.Errorf("Context.Allocation.Memory: want 0.25, got %.2f", ctx.Allocation.Memory)
+	}
+	if ctx.Allocation.RunSummary != 0.10 {
+		t.Errorf("Context.Allocation.RunSummary: want 0.10, got %.2f", ctx.Allocation.RunSummary)
+	}
+	if ctx.Allocation.Headroom != 0.10 {
+		t.Errorf("Context.Allocation.Headroom: want 0.10, got %.2f", ctx.Allocation.Headroom)
 	}
 }
 
@@ -1248,355 +1319,5 @@ func TestValidatePort(t *testing.T) {
 				t.Errorf("validatePort(%q): wantErr=%v, got %v", tt.give, tt.wantErr, err)
 			}
 		})
-	}
-}
-
-// --- Orchestration Settings Tests ---
-
-func TestNewMultiAgentForm_OrchestrationFieldsExist(t *testing.T) {
-	cfg := defaultTestConfig()
-	form := NewMultiAgentForm(cfg)
-
-	wantKeys := []string{
-		"orchestration_mode",
-		"orc_cb_failure_threshold", "orc_cb_reset_timeout",
-		"orc_budget_tool_call_limit", "orc_budget_delegation_limit", "orc_budget_alert_threshold",
-		"orc_recovery_max_retries", "orc_recovery_cooldown",
-	}
-
-	for _, key := range wantKeys {
-		if f := fieldByKey(form, key); f == nil {
-			t.Errorf("missing orchestration field %q", key)
-		}
-	}
-}
-
-func TestNewMultiAgentForm_OrchestrationDefaults(t *testing.T) {
-	cfg := defaultTestConfig()
-	form := NewMultiAgentForm(cfg)
-
-	tests := []struct {
-		key  string
-		want string
-	}{
-		{"orchestration_mode", "classic"},
-		{"orc_cb_failure_threshold", "3"},
-		{"orc_cb_reset_timeout", "30s"},
-		{"orc_budget_tool_call_limit", "50"},
-		{"orc_budget_delegation_limit", "15"},
-		{"orc_budget_alert_threshold", "0.80"},
-		{"orc_recovery_max_retries", "2"},
-		{"orc_recovery_cooldown", "5m0s"},
-	}
-
-	for _, tt := range tests {
-		f := fieldByKey(form, tt.key)
-		if f == nil {
-			t.Errorf("field %q not found", tt.key)
-			continue
-		}
-		if f.Value != tt.want {
-			t.Errorf("field %q: want %q, got %q", tt.key, tt.want, f.Value)
-		}
-	}
-}
-
-func TestNewMultiAgentForm_VisibleWhen(t *testing.T) {
-	cfg := defaultTestConfig()
-	form := NewMultiAgentForm(cfg)
-
-	orcKeys := []string{
-		"orc_cb_failure_threshold", "orc_cb_reset_timeout",
-		"orc_budget_tool_call_limit", "orc_budget_delegation_limit", "orc_budget_alert_threshold",
-		"orc_recovery_max_retries", "orc_recovery_cooldown",
-	}
-
-	// multi_agent=false -> orchestration_mode and orc_* hidden
-	vis := visibleKeys(form)
-	if vis["orchestration_mode"] {
-		t.Error("orchestration_mode should be hidden when multi_agent=false")
-	}
-	for _, key := range orcKeys {
-		if vis[key] {
-			t.Errorf("%q should be hidden when multi_agent=false", key)
-		}
-	}
-
-	// multi_agent=true, mode=classic -> orchestration_mode visible, orc_* hidden
-	fieldByKey(form, "multi_agent").Checked = true
-	vis = visibleKeys(form)
-	if !vis["orchestration_mode"] {
-		t.Error("orchestration_mode should be visible when multi_agent=true")
-	}
-	for _, key := range orcKeys {
-		if vis[key] {
-			t.Errorf("%q should be hidden when mode=classic", key)
-		}
-	}
-
-	// multi_agent=true, mode=structured -> all orc_* visible
-	fieldByKey(form, "orchestration_mode").Value = "structured"
-	vis = visibleKeys(form)
-	for _, key := range orcKeys {
-		if !vis[key] {
-			t.Errorf("%q should be visible when mode=structured", key)
-		}
-	}
-
-	// multi_agent=false again -> everything hidden
-	fieldByKey(form, "multi_agent").Checked = false
-	vis = visibleKeys(form)
-	if vis["orchestration_mode"] {
-		t.Error("orchestration_mode should be hidden after disabling multi_agent")
-	}
-	for _, key := range orcKeys {
-		if vis[key] {
-			t.Errorf("%q should be hidden after disabling multi_agent", key)
-		}
-	}
-}
-
-// --- Trace Store Settings Tests ---
-
-func TestNewObservabilityForm_TraceStoreFieldsExist(t *testing.T) {
-	cfg := defaultTestConfig()
-	form := NewObservabilityForm(cfg)
-
-	wantKeys := []string{
-		"obs_trace_max_age", "obs_trace_max_traces",
-		"obs_trace_failed_multiplier", "obs_trace_cleanup_interval",
-	}
-
-	for _, key := range wantKeys {
-		if f := fieldByKey(form, key); f == nil {
-			t.Errorf("missing trace store field %q", key)
-		}
-	}
-}
-
-func TestNewObservabilityForm_TraceStoreVisibility(t *testing.T) {
-	cfg := defaultTestConfig()
-	form := NewObservabilityForm(cfg)
-
-	traceKeys := []string{
-		"obs_trace_max_age", "obs_trace_max_traces",
-		"obs_trace_failed_multiplier", "obs_trace_cleanup_interval",
-	}
-
-	// obs_enabled=false -> trace fields hidden
-	vis := visibleKeys(form)
-	for _, key := range traceKeys {
-		if vis[key] {
-			t.Errorf("%q should be hidden when obs_enabled=false", key)
-		}
-	}
-
-	// obs_enabled=true -> trace fields visible
-	fieldByKey(form, "obs_enabled").Checked = true
-	vis = visibleKeys(form)
-	for _, key := range traceKeys {
-		if !vis[key] {
-			t.Errorf("%q should be visible when obs_enabled=true", key)
-		}
-	}
-}
-
-// --- State Binding Tests ---
-
-func TestUpdateConfigFromForm_OrchestrationFields(t *testing.T) {
-	state := tuicore.NewConfigState()
-	form := tuicore.NewFormModel("test")
-
-	form.AddField(&tuicore.Field{Key: "orchestration_mode", Type: tuicore.InputText, Value: "structured"})
-	form.AddField(&tuicore.Field{Key: "orc_cb_failure_threshold", Type: tuicore.InputInt, Value: "5"})
-	form.AddField(&tuicore.Field{Key: "orc_cb_reset_timeout", Type: tuicore.InputText, Value: "1m"})
-	form.AddField(&tuicore.Field{Key: "orc_budget_tool_call_limit", Type: tuicore.InputInt, Value: "100"})
-	form.AddField(&tuicore.Field{Key: "orc_budget_delegation_limit", Type: tuicore.InputInt, Value: "20"})
-	form.AddField(&tuicore.Field{Key: "orc_budget_alert_threshold", Type: tuicore.InputText, Value: "0.75"})
-	form.AddField(&tuicore.Field{Key: "orc_recovery_max_retries", Type: tuicore.InputInt, Value: "3"})
-	form.AddField(&tuicore.Field{Key: "orc_recovery_cooldown", Type: tuicore.InputText, Value: "10m"})
-
-	state.UpdateConfigFromForm(&form)
-
-	orc := state.Current.Agent.Orchestration
-	if orc.Mode != "structured" {
-		t.Errorf("Mode: want %q, got %q", "structured", orc.Mode)
-	}
-	if orc.CircuitBreaker.FailureThreshold != 5 {
-		t.Errorf("FailureThreshold: want 5, got %d", orc.CircuitBreaker.FailureThreshold)
-	}
-	if orc.CircuitBreaker.ResetTimeout != time.Minute {
-		t.Errorf("ResetTimeout: want 1m, got %v", orc.CircuitBreaker.ResetTimeout)
-	}
-	if orc.Budget.ToolCallLimit != 100 {
-		t.Errorf("ToolCallLimit: want 100, got %d", orc.Budget.ToolCallLimit)
-	}
-	if orc.Budget.DelegationLimit != 20 {
-		t.Errorf("DelegationLimit: want 20, got %d", orc.Budget.DelegationLimit)
-	}
-	if orc.Budget.AlertThreshold != 0.75 {
-		t.Errorf("AlertThreshold: want 0.75, got %f", orc.Budget.AlertThreshold)
-	}
-	if orc.Recovery.MaxRetries != 3 {
-		t.Errorf("MaxRetries: want 3, got %d", orc.Recovery.MaxRetries)
-	}
-	if orc.Recovery.CircuitBreakerCooldown != 10*time.Minute {
-		t.Errorf("CircuitBreakerCooldown: want 10m, got %v", orc.Recovery.CircuitBreakerCooldown)
-	}
-}
-
-func TestUpdateConfigFromForm_TraceStoreFields(t *testing.T) {
-	state := tuicore.NewConfigState()
-	form := tuicore.NewFormModel("test")
-
-	form.AddField(&tuicore.Field{Key: "obs_trace_max_age", Type: tuicore.InputText, Value: "168h"})
-	form.AddField(&tuicore.Field{Key: "obs_trace_max_traces", Type: tuicore.InputInt, Value: "5000"})
-	form.AddField(&tuicore.Field{Key: "obs_trace_failed_multiplier", Type: tuicore.InputInt, Value: "3"})
-	form.AddField(&tuicore.Field{Key: "obs_trace_cleanup_interval", Type: tuicore.InputText, Value: "30m"})
-
-	state.UpdateConfigFromForm(&form)
-
-	ts := state.Current.Observability.TraceStore
-	if ts.MaxAge != 168*time.Hour {
-		t.Errorf("MaxAge: want 168h, got %v", ts.MaxAge)
-	}
-	if ts.MaxTraces != 5000 {
-		t.Errorf("MaxTraces: want 5000, got %d", ts.MaxTraces)
-	}
-	if ts.FailedTraceMultiplier != 3 {
-		t.Errorf("FailedTraceMultiplier: want 3, got %d", ts.FailedTraceMultiplier)
-	}
-	if ts.CleanupInterval != 30*time.Minute {
-		t.Errorf("CleanupInterval: want 30m, got %v", ts.CleanupInterval)
-	}
-}
-
-func TestUpdateConfigFromForm_InvalidValues(t *testing.T) {
-	state := tuicore.NewConfigState()
-	state.Current.Agent.Orchestration.CircuitBreaker.FailureThreshold = 3
-	state.Current.Agent.Orchestration.CircuitBreaker.ResetTimeout = 30 * time.Second
-	state.Current.Agent.Orchestration.Budget.AlertThreshold = 0.8
-
-	form := tuicore.NewFormModel("test")
-	form.AddField(&tuicore.Field{Key: "orc_cb_failure_threshold", Type: tuicore.InputInt, Value: "not-a-number"})
-	form.AddField(&tuicore.Field{Key: "orc_cb_reset_timeout", Type: tuicore.InputText, Value: "invalid-duration"})
-	form.AddField(&tuicore.Field{Key: "orc_budget_alert_threshold", Type: tuicore.InputText, Value: "not-a-float"})
-
-	state.UpdateConfigFromForm(&form)
-
-	orc := state.Current.Agent.Orchestration
-	if orc.CircuitBreaker.FailureThreshold != 3 {
-		t.Errorf("FailureThreshold should remain 3, got %d", orc.CircuitBreaker.FailureThreshold)
-	}
-	if orc.CircuitBreaker.ResetTimeout != 30*time.Second {
-		t.Errorf("ResetTimeout should remain 30s, got %v", orc.CircuitBreaker.ResetTimeout)
-	}
-	if orc.Budget.AlertThreshold != 0.8 {
-		t.Errorf("AlertThreshold should remain 0.8, got %f", orc.Budget.AlertThreshold)
-	}
-}
-
-func TestNewOSSandboxForm_AllFields(t *testing.T) {
-	cfg := defaultTestConfig()
-	form := NewOSSandboxForm(cfg)
-
-	wantKeys := []string{
-		"os_sandbox_enabled", "os_sandbox_fail_closed",
-		"os_sandbox_workspace_path", "os_sandbox_network_mode",
-		"os_sandbox_allowed_ips", "os_sandbox_allowed_write_paths",
-		"os_sandbox_timeout", "os_sandbox_seccomp_profile",
-		"os_sandbox_seatbelt_profile",
-	}
-
-	if len(form.Fields) != len(wantKeys) {
-		t.Fatalf("expected %d fields, got %d", len(wantKeys), len(form.Fields))
-	}
-
-	for _, key := range wantKeys {
-		if f := fieldByKey(form, key); f == nil {
-			t.Errorf("missing field %q", key)
-		}
-	}
-
-	if f := fieldByKey(form, "os_sandbox_network_mode"); f.Type != tuicore.InputSelect {
-		t.Errorf("os_sandbox_network_mode: want InputSelect, got %d", f.Type)
-	}
-	if f := fieldByKey(form, "os_sandbox_seccomp_profile"); f.Type != tuicore.InputSelect {
-		t.Errorf("os_sandbox_seccomp_profile: want InputSelect, got %d", f.Type)
-	}
-}
-
-func TestNewMenuModel_HasOSSandboxCategory(t *testing.T) {
-	menu := NewMenuModel()
-
-	found := false
-	for _, cat := range menu.AllCategories() {
-		if cat.ID == "os_sandbox" {
-			found = true
-			break
-		}
-	}
-	if !found {
-		t.Error("menu missing os_sandbox category")
-	}
-}
-
-func TestUpdateConfigFromForm_OSSandbox_IsolatesFromP2P(t *testing.T) {
-	state := tuicore.NewConfigState()
-
-	// Set P2P sandbox to a known state.
-	state.Current.P2P.ToolIsolation.Enabled = false
-	state.Current.P2P.ToolIsolation.TimeoutPerTool = 30 * time.Second
-
-	// Update only OS sandbox fields.
-	form := tuicore.NewFormModel("test")
-	form.AddField(&tuicore.Field{Key: "os_sandbox_enabled", Type: tuicore.InputBool, Checked: true})
-	form.AddField(&tuicore.Field{Key: "os_sandbox_fail_closed", Type: tuicore.InputBool, Checked: true})
-	form.AddField(&tuicore.Field{Key: "os_sandbox_workspace_path", Type: tuicore.InputText, Value: "/home/user/project"})
-	form.AddField(&tuicore.Field{Key: "os_sandbox_network_mode", Type: tuicore.InputText, Value: "deny"})
-	form.AddField(&tuicore.Field{Key: "os_sandbox_allowed_ips", Type: tuicore.InputText, Value: "192.168.1.1,10.0.0.1"})
-	form.AddField(&tuicore.Field{Key: "os_sandbox_allowed_write_paths", Type: tuicore.InputText, Value: "/tmp,/data"})
-	form.AddField(&tuicore.Field{Key: "os_sandbox_timeout", Type: tuicore.InputText, Value: "45s"})
-	form.AddField(&tuicore.Field{Key: "os_sandbox_seccomp_profile", Type: tuicore.InputText, Value: "strict"})
-	form.AddField(&tuicore.Field{Key: "os_sandbox_seatbelt_profile", Type: tuicore.InputText, Value: "/tmp/custom.sb"})
-
-	state.UpdateConfigFromForm(&form)
-
-	// Verify cfg.Sandbox was updated.
-	sb := state.Current.Sandbox
-	if !sb.Enabled {
-		t.Error("Sandbox.Enabled: want true")
-	}
-	if !sb.FailClosed {
-		t.Error("Sandbox.FailClosed: want true")
-	}
-	if sb.WorkspacePath != "/home/user/project" {
-		t.Errorf("WorkspacePath: want /home/user/project, got %q", sb.WorkspacePath)
-	}
-	if sb.NetworkMode != "deny" {
-		t.Errorf("NetworkMode: want deny, got %q", sb.NetworkMode)
-	}
-	if len(sb.AllowedNetworkIPs) != 2 || sb.AllowedNetworkIPs[0] != "192.168.1.1" {
-		t.Errorf("AllowedNetworkIPs: want [192.168.1.1 10.0.0.1], got %v", sb.AllowedNetworkIPs)
-	}
-	if len(sb.AllowedWritePaths) != 2 {
-		t.Errorf("AllowedWritePaths: want 2, got %d", len(sb.AllowedWritePaths))
-	}
-	if sb.TimeoutPerTool != 45*time.Second {
-		t.Errorf("TimeoutPerTool: want 45s, got %v", sb.TimeoutPerTool)
-	}
-	if sb.OS.SeccompProfile != "strict" {
-		t.Errorf("SeccompProfile: want strict, got %q", sb.OS.SeccompProfile)
-	}
-	if sb.OS.SeatbeltCustomProfile != "/tmp/custom.sb" {
-		t.Errorf("SeatbeltCustomProfile: want /tmp/custom.sb, got %q", sb.OS.SeatbeltCustomProfile)
-	}
-
-	// Verify P2P sandbox was NOT modified.
-	if state.Current.P2P.ToolIsolation.Enabled {
-		t.Error("P2P.ToolIsolation.Enabled should remain false — OS sandbox must not touch P2P config")
-	}
-	if state.Current.P2P.ToolIsolation.TimeoutPerTool != 30*time.Second {
-		t.Errorf("P2P.ToolIsolation.TimeoutPerTool should remain 30s, got %v", state.Current.P2P.ToolIsolation.TimeoutPerTool)
 	}
 }

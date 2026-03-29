@@ -4,7 +4,6 @@ package checks
 import (
 	"context"
 
-	"github.com/langoai/lango/internal/bootstrap"
 	"github.com/langoai/lango/internal/config"
 )
 
@@ -52,19 +51,6 @@ type Result struct {
 	Fixable bool `json:"fixable,omitempty"`
 	// FixAction is a description of the fix action.
 	FixAction string `json:"fixAction,omitempty"`
-	// TraceFailures carries structured recent trace metadata when relevant.
-	TraceFailures []TraceFailure `json:"traceFailures,omitempty"`
-	// IsolationLeakCount reports persisted raw isolated specialist turns.
-	IsolationLeakCount *int `json:"isolationLeakCount,omitempty"`
-}
-
-// TraceFailure is a structured recent failure record for doctor output.
-type TraceFailure struct {
-	TraceID    string `json:"traceId"`
-	Outcome    string `json:"outcome"`
-	ErrorCode  string `json:"errorCode"`
-	CauseClass string `json:"causeClass"`
-	Summary    string `json:"summary"`
 }
 
 // Check is the interface that all diagnostic checks must implement.
@@ -76,12 +62,6 @@ type Check interface {
 	// Fix attempts to repair the issue if possible.
 	// Returns an updated result after the fix attempt.
 	Fix(ctx context.Context, cfg *config.Config) Result
-}
-
-// BootstrapAwareCheck can use the already-open bootstrap result when available.
-type BootstrapAwareCheck interface {
-	Check
-	RunWithBootstrap(ctx context.Context, cfg *config.Config, boot *bootstrap.Result) Result
 }
 
 // Summary aggregates multiple check results.
@@ -133,13 +113,13 @@ func AllChecks() []Check {
 		// Security Checks
 		&SecurityCheck{},
 		&CompanionConnectionCheck{},
-		// Context Engineering
-		&ContextHealthCheck{},
 		// Memory & Scanning Checks
 		&ObservationalMemoryCheck{},
 		&OutputScanningCheck{},
-		// Embedding / RAG
+		// Embedding / RAG / Context
 		&EmbeddingCheck{},
+		&ContextHealthCheck{},
+		&RetrievalCheck{},
 		// Graph / Multi-Agent / A2A
 		&GraphStoreCheck{},
 		&MultiAgentCheck{},
@@ -149,7 +129,6 @@ func AllChecks() []Check {
 		&AgentRegistryCheck{},
 		&LibrarianCheck{},
 		&ApprovalCheck{},
-		&RunLedgerCheck{},
 		// Economy / Contract / Observability
 		&EconomyCheck{},
 		&ContractCheck{},

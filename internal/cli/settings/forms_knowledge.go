@@ -365,6 +365,212 @@ func NewGraphForm(cfg *config.Config) *tuicore.FormModel {
 	return &form
 }
 
+// NewContextProfileForm creates the Context Profile configuration form.
+func NewContextProfileForm(cfg *config.Config) *tuicore.FormModel {
+	form := tuicore.NewFormModel("Context Profile")
+	form.AddField(&tuicore.Field{
+		Key:         "ctx_profile",
+		Label:       "Context Profile",
+		Type:        tuicore.InputSelect,
+		Value:       string(cfg.ContextProfile),
+		Options:     []string{"off", "lite", "balanced", "full"},
+		Description: "Preset that auto-configures knowledge, memory, librarian, and graph",
+	})
+	return &form
+}
+
+// NewRetrievalForm creates the Retrieval configuration form.
+func NewRetrievalForm(cfg *config.Config) *tuicore.FormModel {
+	form := tuicore.NewFormModel("Retrieval Configuration")
+
+	form.AddField(&tuicore.Field{
+		Key:         "retrieval_enabled",
+		Label:       "Enabled",
+		Type:        tuicore.InputBool,
+		Checked:     cfg.Retrieval.Enabled,
+		Description: "Enable multi-agent retrieval coordinator (FactSearch + TemporalSearch + ContextSearch)",
+	})
+
+	form.AddField(&tuicore.Field{
+		Key:         "retrieval_feedback",
+		Label:       "Feedback",
+		Type:        tuicore.InputBool,
+		Checked:     cfg.Retrieval.Feedback,
+		Description: "Log context injection events for observability",
+	})
+
+	return &form
+}
+
+// NewAutoAdjustForm creates the Auto-Adjust configuration form.
+func NewAutoAdjustForm(cfg *config.Config) *tuicore.FormModel {
+	form := tuicore.NewFormModel("Auto-Adjust Configuration")
+
+	enabledField := &tuicore.Field{
+		Key:         "aa_enabled",
+		Label:       "Enabled",
+		Type:        tuicore.InputBool,
+		Checked:     cfg.Retrieval.AutoAdjust.Enabled,
+		Description: "Enable relevance score auto-tuning",
+	}
+	form.AddField(enabledField)
+
+	isEnabled := func() bool { return enabledField.Checked }
+	validateRatio := func(s string) error {
+		v, err := strconv.ParseFloat(s, 64)
+		if err != nil || v < 0.0 || v > 1.0 {
+			return fmt.Errorf("must be a float between 0.0 and 1.0")
+		}
+		return nil
+	}
+
+	form.AddField(&tuicore.Field{
+		Key:         "aa_mode",
+		Label:       "Mode",
+		Type:        tuicore.InputSelect,
+		Value:       cfg.Retrieval.AutoAdjust.Mode,
+		Options:     []string{"shadow", "active"},
+		Description: "Strategy: shadow (observe only) or active (apply adjustments)",
+		VisibleWhen: isEnabled,
+	})
+
+	form.AddField(&tuicore.Field{
+		Key:         "aa_boost_delta",
+		Label:       "Boost Delta",
+		Type:        tuicore.InputText,
+		Value:       fmt.Sprintf("%.2f", cfg.Retrieval.AutoAdjust.BoostDelta),
+		Description: "Score boost on positive feedback (0.0-1.0)",
+		VisibleWhen: isEnabled,
+		Validate:    validateRatio,
+	})
+
+	form.AddField(&tuicore.Field{
+		Key:         "aa_decay_delta",
+		Label:       "Decay Delta",
+		Type:        tuicore.InputText,
+		Value:       fmt.Sprintf("%.2f", cfg.Retrieval.AutoAdjust.DecayDelta),
+		Description: "Score decay on negative feedback (0.0-1.0)",
+		VisibleWhen: isEnabled,
+		Validate:    validateRatio,
+	})
+
+	form.AddField(&tuicore.Field{
+		Key:         "aa_decay_interval",
+		Label:       "Decay Interval",
+		Type:        tuicore.InputInt,
+		Value:       strconv.Itoa(cfg.Retrieval.AutoAdjust.DecayInterval),
+		Description: "Turns between automatic score decay",
+		VisibleWhen: isEnabled,
+	})
+
+	form.AddField(&tuicore.Field{
+		Key:         "aa_min_score",
+		Label:       "Min Score",
+		Type:        tuicore.InputText,
+		Value:       fmt.Sprintf("%.1f", cfg.Retrieval.AutoAdjust.MinScore),
+		Description: "Minimum relevance score floor",
+		VisibleWhen: isEnabled,
+		Validate:    validateRatio,
+	})
+
+	form.AddField(&tuicore.Field{
+		Key:         "aa_max_score",
+		Label:       "Max Score",
+		Type:        tuicore.InputText,
+		Value:       fmt.Sprintf("%.1f", cfg.Retrieval.AutoAdjust.MaxScore),
+		Description: "Maximum relevance score ceiling",
+		VisibleWhen: isEnabled,
+		Validate:    validateRatio,
+	})
+
+	form.AddField(&tuicore.Field{
+		Key:         "aa_warmup_turns",
+		Label:       "Warmup Turns",
+		Type:        tuicore.InputInt,
+		Value:       strconv.Itoa(cfg.Retrieval.AutoAdjust.WarmupTurns),
+		Description: "Turns before auto-adjust activates",
+		VisibleWhen: isEnabled,
+	})
+
+	return &form
+}
+
+// NewContextBudgetForm creates the Context Budget configuration form.
+func NewContextBudgetForm(cfg *config.Config) *tuicore.FormModel {
+	form := tuicore.NewFormModel("Context Budget Configuration")
+
+	form.AddField(&tuicore.Field{
+		Key:         "ctx_model_window",
+		Label:       "Model Window",
+		Type:        tuicore.InputInt,
+		Value:       strconv.Itoa(cfg.Context.ModelWindow),
+		Description: "Model context window in tokens (0 = auto-detect)",
+	})
+
+	form.AddField(&tuicore.Field{
+		Key:         "ctx_response_reserve",
+		Label:       "Response Reserve",
+		Type:        tuicore.InputInt,
+		Value:       strconv.Itoa(cfg.Context.ResponseReserve),
+		Description: "Tokens reserved for response (0 = use agent.maxTokens)",
+	})
+
+	parseRatio := func(s string) error {
+		v, err := strconv.ParseFloat(s, 64)
+		if err != nil || v < 0.0 || v > 1.0 {
+			return fmt.Errorf("must be a float between 0.0 and 1.0")
+		}
+		return nil
+	}
+
+	form.AddField(&tuicore.Field{
+		Key:         "ctx_alloc_knowledge",
+		Label:       "Knowledge Ratio",
+		Type:        tuicore.InputText,
+		Value:       fmt.Sprintf("%.2f", cfg.Context.Allocation.Knowledge),
+		Description: "Budget ratio for knowledge section",
+		Validate:    parseRatio,
+	})
+
+	form.AddField(&tuicore.Field{
+		Key:         "ctx_alloc_rag",
+		Label:       "RAG Ratio",
+		Type:        tuicore.InputText,
+		Value:       fmt.Sprintf("%.2f", cfg.Context.Allocation.RAG),
+		Description: "Budget ratio for RAG section",
+		Validate:    parseRatio,
+	})
+
+	form.AddField(&tuicore.Field{
+		Key:         "ctx_alloc_memory",
+		Label:       "Memory Ratio",
+		Type:        tuicore.InputText,
+		Value:       fmt.Sprintf("%.2f", cfg.Context.Allocation.Memory),
+		Description: "Budget ratio for memory section",
+		Validate:    parseRatio,
+	})
+
+	form.AddField(&tuicore.Field{
+		Key:         "ctx_alloc_run_summary",
+		Label:       "Run Summary Ratio",
+		Type:        tuicore.InputText,
+		Value:       fmt.Sprintf("%.2f", cfg.Context.Allocation.RunSummary),
+		Description: "Budget ratio for run summaries",
+		Validate:    parseRatio,
+	})
+
+	form.AddField(&tuicore.Field{
+		Key:         "ctx_alloc_headroom",
+		Label:       "Headroom Ratio",
+		Type:        tuicore.InputText,
+		Value:       fmt.Sprintf("%.2f", cfg.Context.Allocation.Headroom),
+		Description: "Budget ratio reserved as buffer/headroom",
+		Validate:    parseRatio,
+	})
+
+	return &form
+}
+
 // NewLibrarianForm creates the Librarian configuration form.
 func NewLibrarianForm(cfg *config.Config) *tuicore.FormModel {
 	form := tuicore.NewFormModel("Librarian Configuration")

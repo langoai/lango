@@ -263,38 +263,6 @@ func (s *ConfigState) UpdateConfigFromForm(form *FormModel) {
 		case "agents_dir":
 			s.Current.Agent.AgentsDir = val
 
-		// Orchestration (structured control plane)
-		case "orchestration_mode":
-			s.Current.Agent.Orchestration.Mode = val
-		case "orc_cb_failure_threshold":
-			if i, err := strconv.Atoi(val); err == nil {
-				s.Current.Agent.Orchestration.CircuitBreaker.FailureThreshold = i
-			}
-		case "orc_cb_reset_timeout":
-			if d, err := time.ParseDuration(val); err == nil {
-				s.Current.Agent.Orchestration.CircuitBreaker.ResetTimeout = d
-			}
-		case "orc_budget_tool_call_limit":
-			if i, err := strconv.Atoi(val); err == nil {
-				s.Current.Agent.Orchestration.Budget.ToolCallLimit = i
-			}
-		case "orc_budget_delegation_limit":
-			if i, err := strconv.Atoi(val); err == nil {
-				s.Current.Agent.Orchestration.Budget.DelegationLimit = i
-			}
-		case "orc_budget_alert_threshold":
-			if fv, err := strconv.ParseFloat(val, 64); err == nil {
-				s.Current.Agent.Orchestration.Budget.AlertThreshold = fv
-			}
-		case "orc_recovery_max_retries":
-			if i, err := strconv.Atoi(val); err == nil {
-				s.Current.Agent.Orchestration.Recovery.MaxRetries = i
-			}
-		case "orc_recovery_cooldown":
-			if d, err := time.ParseDuration(val); err == nil {
-				s.Current.Agent.Orchestration.Recovery.CircuitBreakerCooldown = d
-			}
-
 		// A2A Protocol
 		case "a2a_enabled":
 			s.Current.A2A.Enabled = f.Checked
@@ -350,50 +318,6 @@ func (s *ConfigState) UpdateConfigFromForm(form *FormModel) {
 			s.Current.Workflow.StateDir = val
 		case "wf_default_deliver":
 			s.Current.Workflow.DefaultDeliverTo = splitCSV(val)
-
-		// RunLedger
-		case "runledger_enabled":
-			s.Current.RunLedger.Enabled = f.Checked
-		case "runledger_shadow":
-			s.Current.RunLedger.Shadow = f.Checked
-		case "runledger_write_through":
-			s.Current.RunLedger.WriteThrough = f.Checked
-		case "runledger_authoritative_read":
-			s.Current.RunLedger.AuthoritativeRead = f.Checked
-		case "runledger_workspace_isolation":
-			s.Current.RunLedger.WorkspaceIsolation = f.Checked
-		case "runledger_stale_ttl":
-			if d, err := time.ParseDuration(val); err == nil {
-				s.Current.RunLedger.StaleTTL = d
-			}
-		case "runledger_max_history":
-			if i, err := strconv.Atoi(val); err == nil {
-				s.Current.RunLedger.MaxRunHistory = i
-			}
-		case "runledger_validator_timeout":
-			if d, err := time.ParseDuration(val); err == nil {
-				s.Current.RunLedger.ValidatorTimeout = d
-			}
-		case "runledger_planner_retries":
-			if i, err := strconv.Atoi(val); err == nil {
-				s.Current.RunLedger.PlannerMaxRetries = i
-			}
-
-		// Provenance
-		case "provenance_enabled":
-			s.Current.Provenance.Enabled = f.Checked
-		case "provenance_auto_on_step_complete":
-			s.Current.Provenance.Checkpoints.AutoOnStepComplete = f.Checked
-		case "provenance_auto_on_policy":
-			s.Current.Provenance.Checkpoints.AutoOnPolicy = f.Checked
-		case "provenance_max_per_session":
-			if i, err := strconv.Atoi(val); err == nil {
-				s.Current.Provenance.Checkpoints.MaxPerSession = i
-			}
-		case "provenance_retention_days":
-			if i, err := strconv.Atoi(val); err == nil {
-				s.Current.Provenance.Checkpoints.RetentionDays = i
-			}
 
 		// MCP
 		case "mcp_enabled":
@@ -546,28 +470,6 @@ func (s *ConfigState) UpdateConfigFromForm(form *FormModel) {
 			if d, err := time.ParseDuration(val); err == nil {
 				s.Current.P2P.ToolIsolation.Container.PoolIdleTimeout = d
 			}
-
-		// OS Sandbox (general-purpose, not P2P)
-		case "os_sandbox_enabled":
-			s.Current.Sandbox.Enabled = f.Checked
-		case "os_sandbox_fail_closed":
-			s.Current.Sandbox.FailClosed = f.Checked
-		case "os_sandbox_workspace_path":
-			s.Current.Sandbox.WorkspacePath = val
-		case "os_sandbox_network_mode":
-			s.Current.Sandbox.NetworkMode = val
-		case "os_sandbox_allowed_ips":
-			s.Current.Sandbox.AllowedNetworkIPs = splitCSV(val)
-		case "os_sandbox_allowed_write_paths":
-			s.Current.Sandbox.AllowedWritePaths = splitCSV(val)
-		case "os_sandbox_timeout":
-			if d, err := time.ParseDuration(val); err == nil {
-				s.Current.Sandbox.TimeoutPerTool = d
-			}
-		case "os_sandbox_seccomp_profile":
-			s.Current.Sandbox.OS.SeccompProfile = val
-		case "os_sandbox_seatbelt_profile":
-			s.Current.Sandbox.OS.SeatbeltCustomProfile = val
 
 		// Security DB Encryption
 		case "db_encryption_enabled":
@@ -826,24 +728,6 @@ func (s *ConfigState) UpdateConfigFromForm(form *FormModel) {
 		case "obs_metrics_format":
 			s.Current.Observability.Metrics.Format = val
 
-		// Trace Store
-		case "obs_trace_max_age":
-			if d, err := time.ParseDuration(val); err == nil {
-				s.Current.Observability.TraceStore.MaxAge = d
-			}
-		case "obs_trace_max_traces":
-			if i, err := strconv.Atoi(val); err == nil {
-				s.Current.Observability.TraceStore.MaxTraces = i
-			}
-		case "obs_trace_failed_multiplier":
-			if i, err := strconv.Atoi(val); err == nil {
-				s.Current.Observability.TraceStore.FailedTraceMultiplier = i
-			}
-		case "obs_trace_cleanup_interval":
-			if d, err := time.ParseDuration(val); err == nil {
-				s.Current.Observability.TraceStore.CleanupInterval = d
-			}
-
 		// Smart Account
 		case "sa_enabled":
 			s.Current.SmartAccount.Enabled = f.Checked
@@ -899,6 +783,76 @@ func (s *ConfigState) UpdateConfigFromForm(form *FormModel) {
 			s.Current.SmartAccount.Modules.SpendingHookAddress = val
 		case "sa_modules_escrow_executor":
 			s.Current.SmartAccount.Modules.EscrowExecutorAddress = val
+
+		// Context Profile
+		case "ctx_profile":
+			s.Current.ContextProfile = config.ContextProfileName(val)
+
+		// Retrieval
+		case "retrieval_enabled":
+			s.Current.Retrieval.Enabled = f.Checked
+		case "retrieval_feedback":
+			s.Current.Retrieval.Feedback = f.Checked
+
+		// Auto-Adjust
+		case "aa_enabled":
+			s.Current.Retrieval.AutoAdjust.Enabled = f.Checked
+		case "aa_mode":
+			s.Current.Retrieval.AutoAdjust.Mode = val
+		case "aa_boost_delta":
+			if v, err := strconv.ParseFloat(val, 64); err == nil {
+				s.Current.Retrieval.AutoAdjust.BoostDelta = v
+			}
+		case "aa_decay_delta":
+			if v, err := strconv.ParseFloat(val, 64); err == nil {
+				s.Current.Retrieval.AutoAdjust.DecayDelta = v
+			}
+		case "aa_decay_interval":
+			if i, err := strconv.Atoi(val); err == nil {
+				s.Current.Retrieval.AutoAdjust.DecayInterval = i
+			}
+		case "aa_min_score":
+			if v, err := strconv.ParseFloat(val, 64); err == nil {
+				s.Current.Retrieval.AutoAdjust.MinScore = v
+			}
+		case "aa_max_score":
+			if v, err := strconv.ParseFloat(val, 64); err == nil {
+				s.Current.Retrieval.AutoAdjust.MaxScore = v
+			}
+		case "aa_warmup_turns":
+			if i, err := strconv.Atoi(val); err == nil {
+				s.Current.Retrieval.AutoAdjust.WarmupTurns = i
+			}
+
+		// Context Budget
+		case "ctx_model_window":
+			if i, err := strconv.Atoi(val); err == nil {
+				s.Current.Context.ModelWindow = i
+			}
+		case "ctx_response_reserve":
+			if i, err := strconv.Atoi(val); err == nil {
+				s.Current.Context.ResponseReserve = i
+			}
+		case "ctx_alloc_knowledge":
+			if v, err := strconv.ParseFloat(val, 64); err == nil {
+				s.Current.Context.Allocation.Knowledge = v
+			}
+		case "ctx_alloc_rag":
+			if v, err := strconv.ParseFloat(val, 64); err == nil {
+				s.Current.Context.Allocation.RAG = v
+			}
+		case "ctx_alloc_memory":
+			if v, err := strconv.ParseFloat(val, 64); err == nil {
+				s.Current.Context.Allocation.Memory = v
+			}
+		case "ctx_alloc_run_summary":
+			if v, err := strconv.ParseFloat(val, 64); err == nil {
+				s.Current.Context.Allocation.RunSummary = v
+			}
+		case "ctx_alloc_headroom":
+			if v, err := strconv.ParseFloat(val, 64); err == nil {
+				s.Current.Context.Allocation.Headroom = v
+			}
 		}
 	}
 }

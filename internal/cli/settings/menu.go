@@ -74,6 +74,7 @@ func (m *MenuModel) allCategories() []Category {
 	return all
 }
 
+
 // AllCategories returns a flat list of all categories (public, for tests).
 func (m MenuModel) AllCategories() []Category {
 	return m.allCategories()
@@ -177,12 +178,16 @@ func NewMenuModel() MenuModel {
 			{
 				Title: "AI & Knowledge",
 				Categories: []Category{
+					{"context_profile", "Context Profile", "Preset for context subsystems", TierBasic},
 					{"knowledge", "Knowledge", "Learning, Context limits", TierBasic},
 					{"skill", "Skill", "File-based skill system", TierBasic},
 					{"observational_memory", "Observational Memory", "Observer, Reflector, Thresholds", TierBasic},
 					{"embedding", "Embedding & RAG", "Provider, Model, RAG settings", TierBasic},
 					{"graph", "Graph Store", "Knowledge graph, GraphRAG settings", TierAdvanced},
 					{"librarian", "Librarian", "Proactive knowledge extraction", TierAdvanced},
+					{"retrieval", "Retrieval", "Agentic retrieval coordinator", TierAdvanced},
+					{"auto_adjust", "Auto-Adjust", "Relevance score tuning", TierAdvanced},
+					{"context_budget", "Context Budget", "Token budget allocation", TierAdvanced},
 					{"agent_memory", "Agent Memory", "Per-agent persistent memory", TierAdvanced},
 					{"multi_agent", "Multi-Agent", "Orchestration mode", TierAdvanced},
 					{"a2a", "A2A Protocol", "Agent-to-Agent, remote agents", TierAdvanced},
@@ -195,8 +200,6 @@ func NewMenuModel() MenuModel {
 					{"cron", "Cron Scheduler", "Scheduled jobs, timezone, history", TierBasic},
 					{"background", "Background Tasks", "Async tasks, concurrency limits", TierAdvanced},
 					{"workflow", "Workflow Engine", "DAG workflows, timeouts, state", TierAdvanced},
-					{"runledger", "RunLedger", "Task OS durable execution, rollout, and validation controls", TierAdvanced},
-					{"provenance", "Provenance", "Checkpoints, retention, and auto-capture controls", TierAdvanced},
 				},
 			},
 			{
@@ -241,7 +244,6 @@ func NewMenuModel() MenuModel {
 					{"auth", "Auth", "OIDC provider configuration", TierAdvanced},
 					{"security_db", "Security DB Encryption", "SQLCipher database encryption", TierAdvanced},
 					{"security_kms", "Security KMS", "Cloud KMS / HSM backends", TierAdvanced},
-					{"os_sandbox", "OS Sandbox", "Seatbelt/Landlock tool execution isolation", TierAdvanced},
 				},
 			},
 			{

@@ -246,6 +246,14 @@ func createFormForCategory(categoryID string, cfg *config.Config) *tuicore.FormM
 		return NewOutputManagerForm(cfg)
 	case "security":
 		return NewSecurityForm(cfg)
+	case "context_profile":
+		return NewContextProfileForm(cfg)
+	case "retrieval":
+		return NewRetrievalForm(cfg)
+	case "auto_adjust":
+		return NewAutoAdjustForm(cfg)
+	case "context_budget":
+		return NewContextBudgetForm(cfg)
 	case "knowledge":
 		return NewKnowledgeForm(cfg)
 	case "skill":
@@ -268,10 +276,6 @@ func createFormForCategory(categoryID string, cfg *config.Config) *tuicore.FormM
 		return NewBackgroundForm(cfg)
 	case "workflow":
 		return NewWorkflowForm(cfg)
-	case "runledger":
-		return NewRunLedgerForm(cfg)
-	case "provenance":
-		return NewProvenanceForm(cfg)
 	case "smartaccount":
 		return NewSmartAccountForm(cfg)
 	case "smartaccount_session":
@@ -318,8 +322,6 @@ func createFormForCategory(categoryID string, cfg *config.Config) *tuicore.FormM
 		return NewDBEncryptionForm(cfg)
 	case "security_kms":
 		return NewKMSForm(cfg)
-	case "os_sandbox":
-		return NewOSSandboxForm(cfg)
 	default:
 		return nil
 	}
