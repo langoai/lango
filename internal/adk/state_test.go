@@ -67,6 +67,9 @@ func (m *mockStore) AnnotateTimeout(_ string, _ string) error { return nil }
 func (m *mockStore) Close() error                             { return nil }
 func (m *mockStore) GetSalt(name string) ([]byte, error)      { return nil, nil }
 func (m *mockStore) SetSalt(name string, salt []byte) error   { return nil }
+func (m *mockStore) ListSessions(_ context.Context) ([]internal.SessionSummary, error) {
+	return nil, nil
+}
 
 // --- StateAdapter tests ---
 
@@ -986,6 +989,9 @@ func (m *uniqueMockStore) AnnotateTimeout(string, string) error         { return
 func (m *uniqueMockStore) Close() error                                 { return nil }
 func (m *uniqueMockStore) GetSalt(string) ([]byte, error)               { return nil, nil }
 func (m *uniqueMockStore) SetSalt(string, []byte) error                 { return nil }
+func (m *uniqueMockStore) ListSessions(context.Context) ([]internal.SessionSummary, error) {
+	return nil, nil
+}
 
 func TestSessionServiceAdapter_GetAutoCreate_Concurrent(t *testing.T) {
 	t.Parallel()

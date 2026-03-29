@@ -16,23 +16,11 @@ import (
 func NewKnowledgeForm(cfg *config.Config) *tuicore.FormModel {
 	form := tuicore.NewFormModel("Knowledge Configuration")
 
-	form.AddField(&tuicore.Field{
-		Key: "knowledge_enabled", Label: "Enabled", Type: tuicore.InputBool,
-		Checked:     cfg.Knowledge.Enabled,
-		Description: "Enable the knowledge layer for persistent learning across sessions",
-	})
+	form.AddField(tuicore.BoolInput("knowledge_enabled", "Enabled", cfg.Knowledge.Enabled,
+		"Enable the knowledge layer for persistent learning across sessions"))
 
-	form.AddField(&tuicore.Field{
-		Key: "knowledge_max_context", Label: "Max Context/Layer", Type: tuicore.InputInt,
-		Value:       strconv.Itoa(cfg.Knowledge.MaxContextPerLayer),
-		Description: "Maximum tokens of context injected per knowledge layer per turn",
-		Validate: func(s string) error {
-			if i, err := strconv.Atoi(s); err != nil || i <= 0 {
-				return fmt.Errorf("must be a positive integer")
-			}
-			return nil
-		},
-	})
+	form.AddField(tuicore.IntInput("knowledge_max_context", "Max Context/Layer", cfg.Knowledge.MaxContextPerLayer,
+		"Maximum tokens of context injected per knowledge layer per turn"))
 
 	return &form
 }
@@ -41,57 +29,23 @@ func NewKnowledgeForm(cfg *config.Config) *tuicore.FormModel {
 func NewSkillForm(cfg *config.Config) *tuicore.FormModel {
 	form := tuicore.NewFormModel("Skill Configuration")
 
-	form.AddField(&tuicore.Field{
-		Key: "skill_enabled", Label: "Enabled", Type: tuicore.InputBool,
-		Checked:     cfg.Skill.Enabled,
-		Description: "Enable file-based skill system for reusable agent capabilities",
-	})
+	form.AddField(tuicore.BoolInput("skill_enabled", "Enabled", cfg.Skill.Enabled,
+		"Enable file-based skill system for reusable agent capabilities"))
 
-	form.AddField(&tuicore.Field{
-		Key: "skill_dir", Label: "Skills Directory", Type: tuicore.InputText,
-		Value:       cfg.Skill.SkillsDir,
-		Placeholder: "~/.lango/skills",
-		Description: "Directory where skill YAML files are stored and loaded from",
-	})
+	form.AddField(tuicore.TextInputWithPlaceholder("skill_dir", "Skills Directory", cfg.Skill.SkillsDir, "~/.lango/skills",
+		"Directory where skill YAML files are stored and loaded from"))
 
-	form.AddField(&tuicore.Field{
-		Key: "skill_allow_import", Label: "Allow Import", Type: tuicore.InputBool,
-		Checked:     cfg.Skill.AllowImport,
-		Description: "Allow importing skills from external sources (URLs, P2P peers)",
-	})
+	form.AddField(tuicore.BoolInput("skill_allow_import", "Allow Import", cfg.Skill.AllowImport,
+		"Allow importing skills from external sources (URLs, P2P peers)"))
 
-	form.AddField(&tuicore.Field{
-		Key: "skill_max_bulk", Label: "Max Bulk Import", Type: tuicore.InputInt,
-		Value:       strconv.Itoa(cfg.Skill.MaxBulkImport),
-		Placeholder: "50",
-		Description: "Maximum number of skills to import in a single bulk operation",
-		Validate: func(s string) error {
-			if i, err := strconv.Atoi(s); err != nil || i <= 0 {
-				return fmt.Errorf("must be a positive integer")
-			}
-			return nil
-		},
-	})
+	form.AddField(tuicore.IntInput("skill_max_bulk", "Max Bulk Import", cfg.Skill.MaxBulkImport,
+		"Maximum number of skills to import in a single bulk operation"))
 
-	form.AddField(&tuicore.Field{
-		Key: "skill_import_concurrency", Label: "Import Concurrency", Type: tuicore.InputInt,
-		Value:       strconv.Itoa(cfg.Skill.ImportConcurrency),
-		Placeholder: "5",
-		Description: "Number of skills to import in parallel during bulk operations",
-		Validate: func(s string) error {
-			if i, err := strconv.Atoi(s); err != nil || i <= 0 {
-				return fmt.Errorf("must be a positive integer")
-			}
-			return nil
-		},
-	})
+	form.AddField(tuicore.IntInput("skill_import_concurrency", "Import Concurrency", cfg.Skill.ImportConcurrency,
+		"Number of skills to import in parallel during bulk operations"))
 
-	form.AddField(&tuicore.Field{
-		Key: "skill_import_timeout", Label: "Import Timeout", Type: tuicore.InputText,
-		Value:       cfg.Skill.ImportTimeout.String(),
-		Placeholder: "2m (e.g. 30s, 1m, 5m)",
-		Description: "Maximum time allowed for a single skill import operation",
-	})
+	form.AddField(tuicore.TextInputWithPlaceholder("skill_import_timeout", "Import Timeout", cfg.Skill.ImportTimeout.String(), "2m (e.g. 30s, 1m, 5m)",
+		"Maximum time allowed for a single skill import operation"))
 
 	return &form
 }
@@ -149,44 +103,14 @@ func NewObservationalMemoryForm(cfg *config.Config) *tuicore.FormModel {
 		return FetchModelOptionsCmd("om_model", fetchP, omCfgCopy, "")
 	}
 
-	form.AddField(&tuicore.Field{
-		Key: "om_msg_threshold", Label: "Message Token Threshold",
-		Type:        tuicore.InputInt,
-		Value:       strconv.Itoa(cfg.ObservationalMemory.MessageTokenThreshold),
-		Description: "Minimum tokens in a message before it triggers observation",
-		Validate: func(s string) error {
-			if i, err := strconv.Atoi(s); err != nil || i <= 0 {
-				return fmt.Errorf("must be a positive integer")
-			}
-			return nil
-		},
-	})
+	form.AddField(tuicore.IntInput("om_msg_threshold", "Message Token Threshold", cfg.ObservationalMemory.MessageTokenThreshold,
+		"Minimum tokens in a message before it triggers observation"))
 
-	form.AddField(&tuicore.Field{
-		Key: "om_obs_threshold", Label: "Observation Token Threshold",
-		Type:        tuicore.InputInt,
-		Value:       strconv.Itoa(cfg.ObservationalMemory.ObservationTokenThreshold),
-		Description: "Token threshold to trigger consolidation into reflections",
-		Validate: func(s string) error {
-			if i, err := strconv.Atoi(s); err != nil || i <= 0 {
-				return fmt.Errorf("must be a positive integer")
-			}
-			return nil
-		},
-	})
+	form.AddField(tuicore.IntInput("om_obs_threshold", "Observation Token Threshold", cfg.ObservationalMemory.ObservationTokenThreshold,
+		"Token threshold to trigger consolidation into reflections"))
 
-	form.AddField(&tuicore.Field{
-		Key: "om_max_budget", Label: "Max Message Token Budget",
-		Type:        tuicore.InputInt,
-		Value:       strconv.Itoa(cfg.ObservationalMemory.MaxMessageTokenBudget),
-		Description: "Maximum tokens allocated for memory context in each turn",
-		Validate: func(s string) error {
-			if i, err := strconv.Atoi(s); err != nil || i <= 0 {
-				return fmt.Errorf("must be a positive integer")
-			}
-			return nil
-		},
-	})
+	form.AddField(tuicore.IntInput("om_max_budget", "Max Message Token Budget", cfg.ObservationalMemory.MaxMessageTokenBudget,
+		"Maximum tokens allocated for memory context in each turn"))
 
 	form.AddField(&tuicore.Field{
 		Key: "om_max_reflections", Label: "Max Reflections in Context",

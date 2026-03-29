@@ -11,6 +11,7 @@ import (
 	"github.com/langoai/lango/internal/agent"
 	"github.com/langoai/lango/internal/economy/budget"
 	"github.com/langoai/lango/internal/economy/escrow"
+	"github.com/langoai/lango/internal/toolparam"
 )
 
 // BuildEscrowTools creates high-level workflow tools that combine team + escrow + budget.
@@ -46,18 +47,12 @@ func BuildEscrowTools(coord *Coordinator, escrowEngine *escrow.Engine, budgetEng
 			"required": []string{"name", "goal", "capability", "memberCount", "leaderDid", "budget"},
 		},
 		Handler: func(ctx context.Context, params map[string]interface{}) (interface{}, error) {
-			name, _ := params["name"].(string)
-			goal, _ := params["goal"].(string)
-			capability, _ := params["capability"].(string)
-			leaderDID, _ := params["leaderDid"].(string)
-			memberCount := 1
-			if mc, ok := params["memberCount"].(float64); ok {
-				memberCount = int(mc)
-			}
-			budgetAmount := 0.0
-			if b, ok := params["budget"].(float64); ok {
-				budgetAmount = b
-			}
+			name := toolparam.OptionalString(params, "name", "")
+			goal := toolparam.OptionalString(params, "goal", "")
+			capability := toolparam.OptionalString(params, "capability", "")
+			leaderDID := toolparam.OptionalString(params, "leaderDid", "")
+			memberCount := toolparam.OptionalInt(params, "memberCount", 1)
+			budgetAmount := toolparam.OptionalFloat64(params, "budget", 0.0)
 
 			if name == "" || capability == "" || leaderDID == "" || budgetAmount <= 0 {
 				return nil, fmt.Errorf("missing required parameters or invalid budget")
@@ -202,9 +197,9 @@ func BuildEscrowTools(coord *Coordinator, escrowEngine *escrow.Engine, budgetEng
 			"required": []string{"escrowId", "milestoneId"},
 		},
 		Handler: func(ctx context.Context, params map[string]interface{}) (interface{}, error) {
-			escrowID, _ := params["escrowId"].(string)
-			milestoneID, _ := params["milestoneId"].(string)
-			evidence, _ := params["evidence"].(string)
+			escrowID := toolparam.OptionalString(params, "escrowId", "")
+			milestoneID := toolparam.OptionalString(params, "milestoneId", "")
+			evidence := toolparam.OptionalString(params, "evidence", "")
 			if escrowID == "" || milestoneID == "" {
 				return nil, fmt.Errorf("missing escrowId or milestoneId")
 			}

@@ -13,6 +13,7 @@ import (
 	"github.com/langoai/lango/internal/payment"
 	"github.com/langoai/lango/internal/security"
 	"github.com/langoai/lango/internal/session"
+	"github.com/langoai/lango/internal/toolparam"
 	"github.com/langoai/lango/internal/wallet"
 	"github.com/langoai/lango/internal/x402"
 )
@@ -59,9 +60,9 @@ func buildSendTool(svc *payment.Service) *agent.Tool {
 			"required": []string{"to", "amount", "purpose"},
 		},
 		Handler: func(ctx context.Context, params map[string]interface{}) (interface{}, error) {
-			to, _ := params["to"].(string)
-			amount, _ := params["amount"].(string)
-			purpose, _ := params["purpose"].(string)
+			to := toolparam.OptionalString(params, "to", "")
+			amount := toolparam.OptionalString(params, "amount", "")
+			purpose := toolparam.OptionalString(params, "purpose", "")
 
 			if to == "" || amount == "" || purpose == "" {
 				return nil, fmt.Errorf("to, amount, and purpose are required")
@@ -142,10 +143,7 @@ func buildHistoryTool(svc *payment.Service) *agent.Tool {
 			},
 		},
 		Handler: func(ctx context.Context, params map[string]interface{}) (interface{}, error) {
-			limit := 20
-			if l, ok := params["limit"].(float64); ok && l > 0 {
-				limit = int(l)
-			}
+			limit := toolparam.OptionalInt(params, "limit", 20)
 
 			history, err := svc.History(ctx, limit)
 			if err != nil {
@@ -288,17 +286,17 @@ func buildX402FetchTool(interceptor *x402.Interceptor, svc *payment.Service) *ag
 			"required": []string{"url"},
 		},
 		Handler: func(ctx context.Context, params map[string]interface{}) (interface{}, error) {
-			url, _ := params["url"].(string)
+			url := toolparam.OptionalString(params, "url", "")
 			if url == "" {
 				return nil, fmt.Errorf("url is required")
 			}
 
-			method, _ := params["method"].(string)
+			method := toolparam.OptionalString(params, "method", "")
 			if method == "" {
 				method = "GET"
 			}
 
-			body, _ := params["body"].(string)
+			body := toolparam.OptionalString(params, "body", "")
 
 			httpClient, err := interceptor.HTTPClient(ctx)
 			if err != nil {

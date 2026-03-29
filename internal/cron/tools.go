@@ -64,7 +64,7 @@ func BuildTools(scheduler *Scheduler, defaultDeliverTo []string) []*agent.Tool {
 				}
 
 				var timeout time.Duration
-				if t, ok := params["timeout"].(string); ok && t != "" {
+				if t := toolparam.OptionalString(params, "timeout", ""); t != "" {
 					var parseErr error
 					timeout, parseErr = time.ParseDuration(t)
 					if parseErr != nil {

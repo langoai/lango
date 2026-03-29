@@ -1,5 +1,22 @@
 package eventbus
 
+// Event name constants for core domain events.
+const (
+	EventContentSaved      = "content.saved"
+	EventTriplesExtracted  = "triples.extracted"
+	EventTurnCompleted     = "turn.completed"
+	EventReputationChanged = "reputation.changed"
+	EventMemoryGraph       = "memory.graph"
+	EventToolExecutionPaid = "tool.execution.paid"
+	EventAgentDiscovered   = "agent.discovered"
+	EventTaskDelegated     = "task.delegated"
+	EventTaskCompleted     = "task.completed"
+	EventTaskFailed        = "task.failed"
+	EventPaymentNegotiated = "payment.negotiated"
+	EventPaymentSettled    = "payment.settled"
+	EventTrustUpdated      = "trust.updated"
+)
+
 // ContentSavedEvent is published when knowledge or memory content is saved.
 // Replaces: SetEmbedCallback on knowledge and memory stores.
 // Graph wiring subscribes only when NeedsGraph is true, preserving the original
@@ -16,7 +33,7 @@ type ContentSavedEvent struct {
 }
 
 // EventName implements Event.
-func (e ContentSavedEvent) EventName() string { return "content.saved" }
+func (e ContentSavedEvent) EventName() string { return EventContentSaved }
 
 // TriplesExtractedEvent is published when graph triples are extracted.
 // Replaces: SetGraphCallback on learning engines and analyzers.
@@ -26,7 +43,7 @@ type TriplesExtractedEvent struct {
 }
 
 // EventName implements Event.
-func (e TriplesExtractedEvent) EventName() string { return "triples.extracted" }
+func (e TriplesExtractedEvent) EventName() string { return EventTriplesExtracted }
 
 // Triple mirrors graph.Triple to avoid an import dependency on the graph
 // package, keeping the eventbus package dependency-free.
@@ -44,7 +61,7 @@ type TurnCompletedEvent struct {
 }
 
 // EventName implements Event.
-func (e TurnCompletedEvent) EventName() string { return "turn.completed" }
+func (e TurnCompletedEvent) EventName() string { return EventTurnCompleted }
 
 // ReputationChangedEvent is published when a peer's reputation changes.
 // Replaces: reputation.Store.SetOnChangeCallback.
@@ -54,7 +71,7 @@ type ReputationChangedEvent struct {
 }
 
 // EventName implements Event.
-func (e ReputationChangedEvent) EventName() string { return "reputation.changed" }
+func (e ReputationChangedEvent) EventName() string { return EventReputationChanged }
 
 // MemoryGraphEvent is published when memory graph hooks fire.
 // Replaces: memory.Store.SetGraphHooks.
@@ -65,7 +82,7 @@ type MemoryGraphEvent struct {
 }
 
 // EventName implements Event.
-func (e MemoryGraphEvent) EventName() string { return "memory.graph" }
+func (e MemoryGraphEvent) EventName() string { return EventMemoryGraph }
 
 // ToolExecutionPaidEvent is published after a paid tool execution succeeds.
 // The settlement service subscribes to this event to initiate on-chain settlement.
@@ -77,7 +94,7 @@ type ToolExecutionPaidEvent struct {
 }
 
 // EventName implements Event.
-func (e ToolExecutionPaidEvent) EventName() string { return "tool.execution.paid" }
+func (e ToolExecutionPaidEvent) EventName() string { return EventToolExecutionPaid }
 
 // --- P2P agent pool and discovery events ---
 
@@ -89,7 +106,7 @@ type AgentDiscoveredEvent struct {
 }
 
 // EventName implements Event.
-func (e AgentDiscoveredEvent) EventName() string { return "agent.discovered" }
+func (e AgentDiscoveredEvent) EventName() string { return EventAgentDiscovered }
 
 // TaskDelegatedEvent is published when a task is delegated to an agent.
 type TaskDelegatedEvent struct {
@@ -99,7 +116,7 @@ type TaskDelegatedEvent struct {
 }
 
 // EventName implements Event.
-func (e TaskDelegatedEvent) EventName() string { return "task.delegated" }
+func (e TaskDelegatedEvent) EventName() string { return EventTaskDelegated }
 
 // TaskCompletedEvent is published when a delegated task completes successfully.
 type TaskCompletedEvent struct {
@@ -111,7 +128,7 @@ type TaskCompletedEvent struct {
 }
 
 // EventName implements Event.
-func (e TaskCompletedEvent) EventName() string { return "task.completed" }
+func (e TaskCompletedEvent) EventName() string { return EventTaskCompleted }
 
 // TaskFailedEvent is published when a delegated task fails.
 type TaskFailedEvent struct {
@@ -122,7 +139,7 @@ type TaskFailedEvent struct {
 }
 
 // EventName implements Event.
-func (e TaskFailedEvent) EventName() string { return "task.failed" }
+func (e TaskFailedEvent) EventName() string { return EventTaskFailed }
 
 // PaymentNegotiatedEvent is published when payment terms are agreed.
 type PaymentNegotiatedEvent struct {
@@ -133,7 +150,7 @@ type PaymentNegotiatedEvent struct {
 }
 
 // EventName implements Event.
-func (e PaymentNegotiatedEvent) EventName() string { return "payment.negotiated" }
+func (e PaymentNegotiatedEvent) EventName() string { return EventPaymentNegotiated }
 
 // PaymentSettledEvent is published when a payment is settled on-chain.
 type PaymentSettledEvent struct {
@@ -144,7 +161,7 @@ type PaymentSettledEvent struct {
 }
 
 // EventName implements Event.
-func (e PaymentSettledEvent) EventName() string { return "payment.settled" }
+func (e PaymentSettledEvent) EventName() string { return EventPaymentSettled }
 
 // TrustUpdatedEvent is published when an agent's trust score changes.
 type TrustUpdatedEvent struct {
@@ -154,4 +171,4 @@ type TrustUpdatedEvent struct {
 }
 
 // EventName implements Event.
-func (e TrustUpdatedEvent) EventName() string { return "trust.updated" }
+func (e TrustUpdatedEvent) EventName() string { return EventTrustUpdated }

@@ -46,6 +46,24 @@ func OptionalBool(params map[string]interface{}, key string, fallback bool) bool
 	return fallback
 }
 
+// RequireFloat64 extracts a required float64 parameter.
+// Returns ErrMissingParam when the key is absent.
+func RequireFloat64(params map[string]interface{}, key string) (float64, error) {
+	v, ok := params[key].(float64)
+	if !ok {
+		return 0, &ErrMissingParam{Name: key}
+	}
+	return v, nil
+}
+
+// OptionalFloat64 extracts an optional float64 parameter with a fallback.
+func OptionalFloat64(params map[string]interface{}, key string, fallback float64) float64 {
+	if v, ok := params[key].(float64); ok {
+		return v
+	}
+	return fallback
+}
+
 // StringSlice extracts a string slice from a parameter that arrives as []interface{}.
 func StringSlice(params map[string]interface{}, key string) []string {
 	raw, ok := params[key].([]interface{})

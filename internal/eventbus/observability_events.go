@@ -1,5 +1,8 @@
 package eventbus
 
+// Event name constant for observability domain events.
+const EventTokenUsage = "token.usage"
+
 // TokenUsageEvent is published when an LLM provider returns token usage data.
 // The observability TokenTracker subscribes to this event.
 type TokenUsageEvent struct {
@@ -14,4 +17,4 @@ type TokenUsageEvent struct {
 }
 
 // EventName implements Event.
-func (e TokenUsageEvent) EventName() string { return "token.usage" }
+func (e TokenUsageEvent) EventName() string { return EventTokenUsage }

@@ -112,9 +112,11 @@ func (w *WorkflowWriteThrough) CreateRun(ctx context.Context, wf *workflow.Workf
 		RunID: runID,
 		Type:  EventRunCreated,
 		Payload: marshalPayload(RunCreatedPayload{
-			SessionKey:      "",
-			OriginalRequest: wf.Description,
-			Goal:            wf.Name,
+			SessionKey:       "",
+			OriginalRequest:  wf.Description,
+			Goal:             wf.Name,
+			SourceKind:       "workflow",
+			SourceDescriptor: marshalPayload(wf),
 		}),
 	}); err != nil {
 		return "", fmt.Errorf("append run_created: %w", err)
@@ -496,9 +498,11 @@ func (b *BackgroundWriteThrough) PrepareTask(
 		RunID: runID,
 		Type:  EventRunCreated,
 		Payload: marshalPayload(RunCreatedPayload{
-			SessionKey:      origin.Session,
-			OriginalRequest: prompt,
-			Goal:            prompt,
+			SessionKey:       origin.Session,
+			OriginalRequest:  prompt,
+			Goal:             prompt,
+			SourceKind:       "background",
+			SourceDescriptor: marshalPayload(origin),
 		}),
 	}); err != nil {
 		return "", fmt.Errorf("append background run_created: %w", err)

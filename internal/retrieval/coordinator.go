@@ -3,7 +3,6 @@ package retrieval
 import (
 	"context"
 	"sort"
-	"sync"
 
 	"go.uber.org/zap"
 	"golang.org/x/sync/errgroup"
@@ -37,26 +36,28 @@ const defaultAgentLimit = 10
 
 // Retrieve runs all agents in parallel, deduplicates, sorts, and optionally truncates findings.
 func (c *RetrievalCoordinator) Retrieve(ctx context.Context, query string, tokenBudget int) ([]Finding, error) {
-	var mu sync.Mutex
-	var allFindings []Finding
+	results := make([][]Finding, len(c.agents))
 
 	g, gctx := errgroup.WithContext(ctx)
-	for _, agent := range c.agents {
+	for i, agent := range c.agents {
 		g.Go(func() error {
 			findings, err := agent.Search(gctx, query, defaultAgentLimit)
 			if err != nil {
 				c.logger.Warnw("retrieval agent error", "agent", agent.Name(), "error", err)
 				return nil // non-fatal: continue with other agents
 			}
-			mu.Lock()
-			allFindings = append(allFindings, findings...)
-			mu.Unlock()
+			results[i] = findings // each goroutine owns its index
 			return nil
 		})
 	}
 
 	if err := g.Wait(); err != nil {
 		return nil, err
+	}
+
+	var allFindings []Finding
+	for _, r := range results {
+		allFindings = append(allFindings, r...)
 	}
 
 	merged := mergeFindings(allFindings)

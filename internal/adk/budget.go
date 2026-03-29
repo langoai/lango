@@ -129,6 +129,11 @@ func (bm *ContextBudgetManager) ReallocateBudgets(measured SectionTokens) Sectio
 		return base
 	}
 
+	// Fast path: all sections have content, no reallocation needed.
+	if measured.Knowledge > 0 && measured.RAG > 0 && measured.Memory > 0 && measured.RunSummary > 0 {
+		return base
+	}
+
 	budgets := [4]int{base.Knowledge, base.RAG, base.Memory, base.RunSummary}
 	ratios := [4]float64{bm.allocation.Knowledge, bm.allocation.RAG, bm.allocation.Memory, bm.allocation.RunSummary}
 	tokens := [4]int{measured.Knowledge, measured.RAG, measured.Memory, measured.RunSummary}

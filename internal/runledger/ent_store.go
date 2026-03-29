@@ -15,6 +15,7 @@ import (
 	entrunjournal "github.com/langoai/lango/internal/ent/runjournal"
 	entrunsnapshot "github.com/langoai/lango/internal/ent/runsnapshot"
 	entrunstep "github.com/langoai/lango/internal/ent/runstep"
+	"github.com/langoai/lango/internal/storeutil"
 )
 
 var _ RunLedgerStore = (*EntStore)(nil)
@@ -182,8 +183,8 @@ func (s *EntStore) GetCachedSnapshot(ctx context.Context, runID string) (*RunSna
 	}
 
 	var snap RunSnapshot
-	if err := json.Unmarshal([]byte(row.SnapshotData), &snap); err != nil {
-		return nil, 0, fmt.Errorf("unmarshal snapshot %q: %w", runID, err)
+	if err := storeutil.UnmarshalField([]byte(row.SnapshotData), &snap, "snapshot "+runID); err != nil {
+		return nil, 0, err
 	}
 	snap.LastJournalSeq = row.LastJournalSeq
 	if snap.RunID == "" {
@@ -197,7 +198,7 @@ func (s *EntStore) GetCachedSnapshot(ctx context.Context, runID string) (*RunSna
 }
 
 func (s *EntStore) UpdateCachedSnapshot(ctx context.Context, snapshot *RunSnapshot) error {
-	data, err := json.Marshal(snapshot)
+	data, err := storeutil.MarshalField(snapshot)
 	if err != nil {
 		return fmt.Errorf("marshal snapshot: %w", err)
 	}
@@ -251,12 +252,12 @@ func (s *EntStore) UpdateCachedSnapshot(ctx context.Context, snapshot *RunSnapsh
 	}
 
 	for _, step := range snapshot.Steps {
-		evidence, marshalErr := json.Marshal(step.Evidence)
+		evidence, marshalErr := storeutil.MarshalField(step.Evidence)
 		if marshalErr != nil {
 			err = fmt.Errorf("marshal step evidence: %w", marshalErr)
 			return err
 		}
-		validator, marshalErr := json.Marshal(step.Validator)
+		validator, marshalErr := storeutil.MarshalField(step.Validator)
 		if marshalErr != nil {
 			err = fmt.Errorf("marshal validator spec: %w", marshalErr)
 			return err
@@ -304,8 +305,8 @@ func (s *EntStore) ListRuns(ctx context.Context, limit int) ([]RunSummary, error
 	result := make([]RunSummary, 0, len(rows))
 	for _, row := range rows {
 		var snap RunSnapshot
-		if err := json.Unmarshal([]byte(row.SnapshotData), &snap); err != nil {
-			return nil, fmt.Errorf("unmarshal listed snapshot %q: %w", row.RunID, err)
+		if err := storeutil.UnmarshalField([]byte(row.SnapshotData), &snap, "listed snapshot "+row.RunID); err != nil {
+			return nil, err
 		}
 		snap.LastJournalSeq = row.LastJournalSeq
 		result = append(result, snap.ToSummary())
@@ -362,8 +363,8 @@ func (s *EntStore) ListRunSummariesBySession(ctx context.Context, sessionKey str
 	result := make([]RunSummary, 0, len(rows))
 	for _, row := range rows {
 		var snap RunSnapshot
-		if err := json.Unmarshal([]byte(row.SnapshotData), &snap); err != nil {
-			return nil, fmt.Errorf("unmarshal session snapshot %q: %w", row.RunID, err)
+		if err := storeutil.UnmarshalField([]byte(row.SnapshotData), &snap, "session snapshot "+row.RunID); err != nil {
+			return nil, err
 		}
 		snap.LastJournalSeq = row.LastJournalSeq
 		result = append(result, snap.ToSummary())

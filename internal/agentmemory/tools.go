@@ -6,6 +6,7 @@ import (
 
 	"github.com/langoai/lango/internal/agent"
 	"github.com/langoai/lango/internal/ctxkeys"
+	"github.com/langoai/lango/internal/toolparam"
 )
 
 // BuildTools creates tools that let agents save, recall, and forget
@@ -35,33 +36,29 @@ func buildSaveTool(store Store) *agent.Tool {
 			"required": []string{"key", "content"},
 		},
 		Handler: func(ctx context.Context, params map[string]interface{}) (interface{}, error) {
-			key, _ := params["key"].(string)
-			content, _ := params["content"].(string)
-			if key == "" || content == "" {
-				return nil, fmt.Errorf("key and content are required")
+			key, err := toolparam.RequireString(params, "key")
+			if err != nil {
+				return nil, err
+			}
+			content, err := toolparam.RequireString(params, "content")
+			if err != nil {
+				return nil, err
 			}
 
 			kind := KindFact
-			if k, ok := params["kind"].(string); ok && k != "" {
+			if k := toolparam.OptionalString(params, "kind", ""); k != "" {
 				kind = MemoryKind(k)
 				if !kind.Valid() {
 					return nil, fmt.Errorf("invalid memory kind %q: must be pattern, preference, fact, or skill", k)
 				}
 			}
 
-			confidence := 0.5
-			if c, ok := params["confidence"].(float64); ok && c >= 0 && c <= 1 {
-				confidence = c
+			confidence := toolparam.OptionalFloat64(params, "confidence", 0.5)
+			if confidence < 0 || confidence > 1 {
+				confidence = 0.5
 			}
 
-			var tags []string
-			if rawTags, ok := params["tags"].([]interface{}); ok {
-				for _, t := range rawTags {
-					if s, ok := t.(string); ok {
-						tags = append(tags, s)
-					}
-				}
-			}
+			tags := toolparam.StringSlice(params, "tags")
 
 			agentName := agentNameOrDefault(ctx)
 
@@ -104,20 +101,17 @@ func buildRecallTool(store Store) *agent.Tool {
 			"required": []string{"query"},
 		},
 		Handler: func(ctx context.Context, params map[string]interface{}) (interface{}, error) {
-			query, _ := params["query"].(string)
-			if query == "" {
-				return nil, fmt.Errorf("query is required")
+			query, err := toolparam.RequireString(params, "query")
+			if err != nil {
+				return nil, err
 			}
 
-			limit := 10
-			if l, ok := params["limit"].(float64); ok && l > 0 {
-				limit = int(l)
-			}
+			limit := toolparam.OptionalInt(params, "limit", 10)
 
 			agentName := agentNameOrDefault(ctx)
 
 			var kind MemoryKind
-			if k, ok := params["kind"].(string); ok && k != "" {
+			if k := toolparam.OptionalString(params, "kind", ""); k != "" {
 				kind = MemoryKind(k)
 				if !kind.Valid() {
 					return nil, fmt.Errorf("invalid memory kind %q: must be pattern, preference, fact, or skill", k)
@@ -160,9 +154,9 @@ func buildForgetTool(store Store) *agent.Tool {
 			"required": []string{"key"},
 		},
 		Handler: func(ctx context.Context, params map[string]interface{}) (interface{}, error) {
-			key, _ := params["key"].(string)
-			if key == "" {
-				return nil, fmt.Errorf("key is required")
+			key, err := toolparam.RequireString(params, "key")
+			if err != nil {
+				return nil, err
 			}
 
 			agentName := agentNameOrDefault(ctx)

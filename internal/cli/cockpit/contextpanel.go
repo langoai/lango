@@ -16,16 +16,24 @@ import (
 // contextTickMsg triggers a periodic refresh of the context panel.
 type contextTickMsg time.Time
 
+// toolEntry pairs a tool name with its invocation count for sorted display.
+type toolEntry struct {
+	name  string
+	count int64
+}
+
 // ContextPanel is a standalone tea.Model that displays live system metrics
 // in a right-side panel. It is NOT a Page — it uses Start()/Stop() lifecycle
 // managed by the cockpit toggle (Ctrl+P).
 type ContextPanel struct {
-	collector  *observability.MetricsCollector
-	snapshot   observability.SystemSnapshot
-	tickActive bool
-	visible    bool
-	width      int
-	height     int
+	collector       *observability.MetricsCollector
+	snapshot        observability.SystemSnapshot
+	tickActive      bool
+	visible         bool
+	width           int
+	height          int
+	sortedTools     []toolEntry // cached sorted tool stats
+	sortedToolsDirty bool       // true when snapshot updated, cleared after sort
 }
 
 // NewContextPanel creates a ContextPanel backed by the given collector.
@@ -186,21 +194,22 @@ func (p *ContextPanel) renderToolStats(width int, divider string) string {
 		return b.String()
 	}
 
-	// Sort by count descending, take top 5.
-	type toolEntry struct {
-		name  string
-		count int64
+	// Re-sort only when snapshot has been refreshed.
+	if p.sortedToolsDirty || p.sortedTools == nil {
+		entries := make([]toolEntry, 0, len(p.snapshot.ToolBreakdown))
+		for name, tm := range p.snapshot.ToolBreakdown {
+			entries = append(entries, toolEntry{name: name, count: tm.Count})
+		}
+		sort.Slice(entries, func(i, j int) bool {
+			return entries[i].count > entries[j].count
+		})
+		if len(entries) > 5 {
+			entries = entries[:5]
+		}
+		p.sortedTools = entries
+		p.sortedToolsDirty = false
 	}
-	entries := make([]toolEntry, 0, len(p.snapshot.ToolBreakdown))
-	for name, tm := range p.snapshot.ToolBreakdown {
-		entries = append(entries, toolEntry{name: name, count: tm.Count})
-	}
-	sort.Slice(entries, func(i, j int) bool {
-		return entries[i].count > entries[j].count
-	})
-	if len(entries) > 5 {
-		entries = entries[:5]
-	}
+	entries := p.sortedTools
 
 	nameW := width - 6 // space for count column
 	if nameW < 8 {
@@ -232,7 +241,11 @@ func (p *ContextPanel) renderSystem(_ int, divider string) string {
 
 func (p *ContextPanel) refreshSnapshot() {
 	if p.collector != nil {
+		prev := p.snapshot
 		p.snapshot = p.collector.Snapshot()
+		if len(p.snapshot.ToolBreakdown) != len(prev.ToolBreakdown) || toolCountSum(p.snapshot) != toolCountSum(prev) {
+			p.sortedToolsDirty = true
+		}
 	}
 }
 
@@ -283,6 +296,15 @@ func formatUptime(d time.Duration) string {
 	default:
 		return fmt.Sprintf("%dm %ds", m, s)
 	}
+}
+
+// toolCountSum returns the total invocation count across all tools in a snapshot.
+func toolCountSum(snap observability.SystemSnapshot) int64 {
+	var sum int64
+	for _, tm := range snap.ToolBreakdown {
+		sum += tm.Count
+	}
+	return sum
 }
 
 // truncateName shortens a tool name if it exceeds maxLen.
