@@ -61,9 +61,17 @@ func initGraphStore(cfg *config.Config) (*graphComponents, *types.FeatureStatus)
 
 // wireGraphCallbacks subscribes to content.saved and triples.extracted events to feed the graph buffer.
 // It also creates the Entity Extractor pipeline and Memory GraphHooks.
-func wireGraphCallbacks(gc *graphComponents, kc *knowledgeComponents, mc *memoryComponents, sv *supervisor.Supervisor, cfg *config.Config, bus *eventbus.Bus) {
+func wireGraphCallbacks(gc *graphComponents, kc *knowledgeComponents, mc *memoryComponents, sv *supervisor.Supervisor, cfg *config.Config, bus *eventbus.Bus, ontologyValidator graph.PredicateValidatorFunc) {
 	if gc == nil || gc.buffer == nil {
 		return
+	}
+
+	// Inject predicate validator into BoltStore (concrete type, not Store interface).
+	if ontologyValidator != nil {
+		if bs, ok := gc.store.(*graph.BoltStore); ok {
+			bs.SetPredicateValidator(ontologyValidator)
+			logger().Info("ontology predicate validator injected into graph store")
+		}
 	}
 
 	// Create Entity Extractor for async triple extraction from content.
@@ -73,7 +81,11 @@ func wireGraphCallbacks(gc *graphComponents, kc *knowledgeComponents, mc *memory
 		mdl := cfg.Agent.Model
 		proxy := supervisor.NewProviderProxy(sv, provider, mdl)
 		generator := &providerTextGenerator{proxy: proxy}
-		extractor = graph.NewExtractor(generator, logger())
+		var opts []graph.ExtractorOption
+		if ontologyValidator != nil {
+			opts = append(opts, graph.WithPredicateValidator(ontologyValidator))
+		}
+		extractor = graph.NewExtractor(generator, logger(), opts...)
 		logger().Info("graph entity extractor initialized")
 	}
 
@@ -90,10 +102,11 @@ func wireGraphCallbacks(gc *graphComponents, kc *knowledgeComponents, mc *memory
 			gc.buffer.Enqueue(graph.GraphRequest{
 				Triples: []graph.Triple{
 					{
-						Subject:   evt.Collection + ":" + evt.ID,
-						Predicate: graph.Contains,
-						Object:    "collection:" + evt.Collection,
-						Metadata:  evt.Metadata,
+						Subject:     evt.Collection + ":" + evt.ID,
+						SubjectType: evt.Collection,
+						Predicate:   graph.Contains,
+						Object:      "collection:" + evt.Collection,
+						Metadata:    evt.Metadata,
 					},
 				},
 			})
@@ -119,10 +132,12 @@ func wireGraphCallbacks(gc *graphComponents, kc *knowledgeComponents, mc *memory
 			graphTriples := make([]graph.Triple, len(evt.Triples))
 			for i, t := range evt.Triples {
 				graphTriples[i] = graph.Triple{
-					Subject:   t.Subject,
-					Predicate: t.Predicate,
-					Object:    t.Object,
-					Metadata:  t.Metadata,
+					Subject:     t.Subject,
+					Predicate:   t.Predicate,
+					Object:      t.Object,
+					SubjectType: t.SubjectType,
+					ObjectType:  t.ObjectType,
+					Metadata:    t.Metadata,
 				}
 			}
 			gc.buffer.Enqueue(graph.GraphRequest{Triples: graphTriples})

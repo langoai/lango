@@ -318,7 +318,11 @@ func (m *intelligenceModule) Init(ctx context.Context, r appinit.Resolver) (*app
 
 	// Graph callbacks.
 	if gc != nil {
-		wireGraphCallbacks(gc, kc, mc, sv, cfg, m.bus)
+		var ontologyValidator graph.PredicateValidatorFunc
+		if ontologySvc != nil {
+			ontologyValidator = ontologySvc.PredicateValidator()
+		}
+		wireGraphCallbacks(gc, kc, mc, sv, cfg, m.bus, ontologyValidator)
 		initGraphRAG(cfg, gc, ec)
 	}
 

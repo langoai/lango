@@ -28,7 +28,14 @@ var _ Store = (*BoltStore)(nil)
 
 // BoltStore is a BoltDB-backed triple store with SPO, POS, and OSP indexes.
 type BoltStore struct {
-	db *bolt.DB
+	db        *bolt.DB
+	validator PredicateValidatorFunc
+}
+
+// SetPredicateValidator sets an optional predicate validator.
+// When set, putTriple rejects triples with unrecognized predicates.
+func (s *BoltStore) SetPredicateValidator(v PredicateValidatorFunc) {
+	s.validator = v
 }
 
 // NewBoltStore opens (or creates) a BoltDB database at path and initialises
@@ -71,7 +78,7 @@ func NewBoltStore(path string) (*BoltStore, error) {
 // AddTriple adds a single triple to all three indexes.
 func (s *BoltStore) AddTriple(_ context.Context, t Triple) error {
 	return s.db.Update(func(tx *bolt.Tx) error {
-		return putTriple(tx, t)
+		return putTriple(tx, t, s.validator)
 	})
 }
 
@@ -79,7 +86,7 @@ func (s *BoltStore) AddTriple(_ context.Context, t Triple) error {
 func (s *BoltStore) AddTriples(_ context.Context, triples []Triple) error {
 	return s.db.Update(func(tx *bolt.Tx) error {
 		for _, t := range triples {
-			if err := putTriple(tx, t); err != nil {
+			if err := putTriple(tx, t, s.validator); err != nil {
 				return err
 			}
 		}
@@ -304,7 +311,24 @@ func makeKey(parts ...string) []byte {
 }
 
 // putTriple writes a triple into all three index buckets within an existing tx.
-func putTriple(tx *bolt.Tx, t Triple) error {
+func putTriple(tx *bolt.Tx, t Triple, validator PredicateValidatorFunc) error {
+	if validator != nil && !validator(t.Predicate) {
+		return fmt.Errorf("unknown predicate %q", t.Predicate)
+	}
+
+	// Inject type info into metadata for persistence.
+	if t.SubjectType != "" || t.ObjectType != "" {
+		if t.Metadata == nil {
+			t.Metadata = make(map[string]string)
+		}
+		if t.SubjectType != "" {
+			t.Metadata["_subject_type"] = t.SubjectType
+		}
+		if t.ObjectType != "" {
+			t.Metadata["_object_type"] = t.ObjectType
+		}
+	}
+
 	val, err := encodeMetadata(t.Metadata)
 	if err != nil {
 		return fmt.Errorf("encode metadata: %w", err)
@@ -362,7 +386,9 @@ func tripleFromSPOKey(key, val []byte) (Triple, error) {
 	if err != nil {
 		return Triple{}, err
 	}
-	return Triple{Subject: s, Predicate: p, Object: o, Metadata: meta}, nil
+	t := Triple{Subject: s, Predicate: p, Object: o, Metadata: meta}
+	restoreTypeFields(&t)
+	return t, nil
 }
 
 func tripleFromOSPKey(key, val []byte) (Triple, error) {
@@ -374,7 +400,22 @@ func tripleFromOSPKey(key, val []byte) (Triple, error) {
 	if err != nil {
 		return Triple{}, err
 	}
-	return Triple{Subject: s, Predicate: p, Object: o, Metadata: meta}, nil
+	t := Triple{Subject: s, Predicate: p, Object: o, Metadata: meta}
+	restoreTypeFields(&t)
+	return t, nil
+}
+
+// restoreTypeFields populates SubjectType/ObjectType from metadata keys.
+func restoreTypeFields(t *Triple) {
+	if t.Metadata == nil {
+		return
+	}
+	if v, ok := t.Metadata["_subject_type"]; ok {
+		t.SubjectType = v
+	}
+	if v, ok := t.Metadata["_object_type"]; ok {
+		t.ObjectType = v
+	}
 }
 
 type keyDecoder func(key, val []byte) (Triple, error)

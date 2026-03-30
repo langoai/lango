@@ -48,10 +48,12 @@ func (e TriplesExtractedEvent) EventName() string { return EventTriplesExtracted
 // Triple mirrors graph.Triple to avoid an import dependency on the graph
 // package, keeping the eventbus package dependency-free.
 type Triple struct {
-	Subject   string
-	Predicate string
-	Object    string
-	Metadata  map[string]string
+	Subject     string
+	Predicate   string
+	Object      string
+	SubjectType string
+	ObjectType  string
+	Metadata    map[string]string
 }
 
 // TurnCompletedEvent is published when a gateway turn completes.
