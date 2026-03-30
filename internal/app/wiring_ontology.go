@@ -24,5 +24,19 @@ func initOntology(ctx context.Context, client *ent.Client, cfg *config.Config, g
 		return nil, fmt.Errorf("seed ontology: %w", err)
 	}
 
+	// Truth Maintenance — requires graph store for triple CRUD.
+	if graphStore != nil {
+		conflictStore := ontology.NewConflictStore(client)
+		tm := ontology.NewTruthMaintainer(svc, graphStore, conflictStore)
+		svc.SetTruthMaintainer(tm)
+		logger().Info("truth maintenance initialized")
+
+		// Entity Resolution — requires truth maintainer for Merge retraction.
+		aliasStore := ontology.NewAliasStore(client)
+		resolver := ontology.NewEntityResolver(aliasStore, graphStore, tm)
+		svc.SetEntityResolver(resolver)
+		logger().Info("entity resolution initialized")
+	}
+
 	return svc, nil
 }

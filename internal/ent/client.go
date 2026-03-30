@@ -21,6 +21,7 @@ import (
 	"github.com/langoai/lango/internal/ent/configprofile"
 	"github.com/langoai/lango/internal/ent/cronjob"
 	"github.com/langoai/lango/internal/ent/cronjobhistory"
+	"github.com/langoai/lango/internal/ent/entityalias"
 	"github.com/langoai/lango/internal/ent/escrowdeal"
 	"github.com/langoai/lango/internal/ent/externalref"
 	"github.com/langoai/lango/internal/ent/inquiry"
@@ -29,6 +30,7 @@ import (
 	"github.com/langoai/lango/internal/ent/learning"
 	"github.com/langoai/lango/internal/ent/message"
 	"github.com/langoai/lango/internal/ent/observation"
+	"github.com/langoai/lango/internal/ent/ontologyconflict"
 	"github.com/langoai/lango/internal/ent/ontologypredicate"
 	"github.com/langoai/lango/internal/ent/ontologytype"
 	"github.com/langoai/lango/internal/ent/paymenttx"
@@ -64,6 +66,8 @@ type Client struct {
 	CronJob *CronJobClient
 	// CronJobHistory is the client for interacting with the CronJobHistory builders.
 	CronJobHistory *CronJobHistoryClient
+	// EntityAlias is the client for interacting with the EntityAlias builders.
+	EntityAlias *EntityAliasClient
 	// EscrowDeal is the client for interacting with the EscrowDeal builders.
 	EscrowDeal *EscrowDealClient
 	// ExternalRef is the client for interacting with the ExternalRef builders.
@@ -80,6 +84,8 @@ type Client struct {
 	Message *MessageClient
 	// Observation is the client for interacting with the Observation builders.
 	Observation *ObservationClient
+	// OntologyConflict is the client for interacting with the OntologyConflict builders.
+	OntologyConflict *OntologyConflictClient
 	// OntologyPredicate is the client for interacting with the OntologyPredicate builders.
 	OntologyPredicate *OntologyPredicateClient
 	// OntologyType is the client for interacting with the OntologyType builders.
@@ -132,6 +138,7 @@ func (c *Client) init() {
 	c.ConfigProfile = NewConfigProfileClient(c.config)
 	c.CronJob = NewCronJobClient(c.config)
 	c.CronJobHistory = NewCronJobHistoryClient(c.config)
+	c.EntityAlias = NewEntityAliasClient(c.config)
 	c.EscrowDeal = NewEscrowDealClient(c.config)
 	c.ExternalRef = NewExternalRefClient(c.config)
 	c.Inquiry = NewInquiryClient(c.config)
@@ -140,6 +147,7 @@ func (c *Client) init() {
 	c.Learning = NewLearningClient(c.config)
 	c.Message = NewMessageClient(c.config)
 	c.Observation = NewObservationClient(c.config)
+	c.OntologyConflict = NewOntologyConflictClient(c.config)
 	c.OntologyPredicate = NewOntologyPredicateClient(c.config)
 	c.OntologyType = NewOntologyTypeClient(c.config)
 	c.PaymentTx = NewPaymentTxClient(c.config)
@@ -255,6 +263,7 @@ func (c *Client) Tx(ctx context.Context) (*Tx, error) {
 		ConfigProfile:         NewConfigProfileClient(cfg),
 		CronJob:               NewCronJobClient(cfg),
 		CronJobHistory:        NewCronJobHistoryClient(cfg),
+		EntityAlias:           NewEntityAliasClient(cfg),
 		EscrowDeal:            NewEscrowDealClient(cfg),
 		ExternalRef:           NewExternalRefClient(cfg),
 		Inquiry:               NewInquiryClient(cfg),
@@ -263,6 +272,7 @@ func (c *Client) Tx(ctx context.Context) (*Tx, error) {
 		Learning:              NewLearningClient(cfg),
 		Message:               NewMessageClient(cfg),
 		Observation:           NewObservationClient(cfg),
+		OntologyConflict:      NewOntologyConflictClient(cfg),
 		OntologyPredicate:     NewOntologyPredicateClient(cfg),
 		OntologyType:          NewOntologyTypeClient(cfg),
 		PaymentTx:             NewPaymentTxClient(cfg),
@@ -305,6 +315,7 @@ func (c *Client) BeginTx(ctx context.Context, opts *sql.TxOptions) (*Tx, error) 
 		ConfigProfile:         NewConfigProfileClient(cfg),
 		CronJob:               NewCronJobClient(cfg),
 		CronJobHistory:        NewCronJobHistoryClient(cfg),
+		EntityAlias:           NewEntityAliasClient(cfg),
 		EscrowDeal:            NewEscrowDealClient(cfg),
 		ExternalRef:           NewExternalRefClient(cfg),
 		Inquiry:               NewInquiryClient(cfg),
@@ -313,6 +324,7 @@ func (c *Client) BeginTx(ctx context.Context, opts *sql.TxOptions) (*Tx, error) 
 		Learning:              NewLearningClient(cfg),
 		Message:               NewMessageClient(cfg),
 		Observation:           NewObservationClient(cfg),
+		OntologyConflict:      NewOntologyConflictClient(cfg),
 		OntologyPredicate:     NewOntologyPredicateClient(cfg),
 		OntologyType:          NewOntologyTypeClient(cfg),
 		PaymentTx:             NewPaymentTxClient(cfg),
@@ -361,12 +373,12 @@ func (c *Client) Close() error {
 func (c *Client) Use(hooks ...Hook) {
 	for _, n := range []interface{ Use(...Hook) }{
 		c.AgentMemory, c.AuditLog, c.ConfigProfile, c.CronJob, c.CronJobHistory,
-		c.EscrowDeal, c.ExternalRef, c.Inquiry, c.Key, c.Knowledge, c.Learning,
-		c.Message, c.Observation, c.OntologyPredicate, c.OntologyType, c.PaymentTx,
-		c.PeerReputation, c.ProvenanceAttribution, c.ProvenanceCheckpoint,
-		c.Reflection, c.RunJournal, c.RunSnapshot, c.RunStep, c.Secret, c.Session,
-		c.SessionProvenance, c.TokenUsage, c.TurnTrace, c.TurnTraceEvent,
-		c.WorkflowRun, c.WorkflowStepRun,
+		c.EntityAlias, c.EscrowDeal, c.ExternalRef, c.Inquiry, c.Key, c.Knowledge,
+		c.Learning, c.Message, c.Observation, c.OntologyConflict, c.OntologyPredicate,
+		c.OntologyType, c.PaymentTx, c.PeerReputation, c.ProvenanceAttribution,
+		c.ProvenanceCheckpoint, c.Reflection, c.RunJournal, c.RunSnapshot, c.RunStep,
+		c.Secret, c.Session, c.SessionProvenance, c.TokenUsage, c.TurnTrace,
+		c.TurnTraceEvent, c.WorkflowRun, c.WorkflowStepRun,
 	} {
 		n.Use(hooks...)
 	}
@@ -377,12 +389,12 @@ func (c *Client) Use(hooks ...Hook) {
 func (c *Client) Intercept(interceptors ...Interceptor) {
 	for _, n := range []interface{ Intercept(...Interceptor) }{
 		c.AgentMemory, c.AuditLog, c.ConfigProfile, c.CronJob, c.CronJobHistory,
-		c.EscrowDeal, c.ExternalRef, c.Inquiry, c.Key, c.Knowledge, c.Learning,
-		c.Message, c.Observation, c.OntologyPredicate, c.OntologyType, c.PaymentTx,
-		c.PeerReputation, c.ProvenanceAttribution, c.ProvenanceCheckpoint,
-		c.Reflection, c.RunJournal, c.RunSnapshot, c.RunStep, c.Secret, c.Session,
-		c.SessionProvenance, c.TokenUsage, c.TurnTrace, c.TurnTraceEvent,
-		c.WorkflowRun, c.WorkflowStepRun,
+		c.EntityAlias, c.EscrowDeal, c.ExternalRef, c.Inquiry, c.Key, c.Knowledge,
+		c.Learning, c.Message, c.Observation, c.OntologyConflict, c.OntologyPredicate,
+		c.OntologyType, c.PaymentTx, c.PeerReputation, c.ProvenanceAttribution,
+		c.ProvenanceCheckpoint, c.Reflection, c.RunJournal, c.RunSnapshot, c.RunStep,
+		c.Secret, c.Session, c.SessionProvenance, c.TokenUsage, c.TurnTrace,
+		c.TurnTraceEvent, c.WorkflowRun, c.WorkflowStepRun,
 	} {
 		n.Intercept(interceptors...)
 	}
@@ -401,6 +413,8 @@ func (c *Client) Mutate(ctx context.Context, m Mutation) (Value, error) {
 		return c.CronJob.mutate(ctx, m)
 	case *CronJobHistoryMutation:
 		return c.CronJobHistory.mutate(ctx, m)
+	case *EntityAliasMutation:
+		return c.EntityAlias.mutate(ctx, m)
 	case *EscrowDealMutation:
 		return c.EscrowDeal.mutate(ctx, m)
 	case *ExternalRefMutation:
@@ -417,6 +431,8 @@ func (c *Client) Mutate(ctx context.Context, m Mutation) (Value, error) {
 		return c.Message.mutate(ctx, m)
 	case *ObservationMutation:
 		return c.Observation.mutate(ctx, m)
+	case *OntologyConflictMutation:
+		return c.OntologyConflict.mutate(ctx, m)
 	case *OntologyPredicateMutation:
 		return c.OntologyPredicate.mutate(ctx, m)
 	case *OntologyTypeMutation:
@@ -1120,6 +1136,139 @@ func (c *CronJobHistoryClient) mutate(ctx context.Context, m *CronJobHistoryMuta
 		return (&CronJobHistoryDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
 	default:
 		return nil, fmt.Errorf("ent: unknown CronJobHistory mutation op: %q", m.Op())
+	}
+}
+
+// EntityAliasClient is a client for the EntityAlias schema.
+type EntityAliasClient struct {
+	config
+}
+
+// NewEntityAliasClient returns a client for the EntityAlias from the given config.
+func NewEntityAliasClient(c config) *EntityAliasClient {
+	return &EntityAliasClient{config: c}
+}
+
+// Use adds a list of mutation hooks to the hooks stack.
+// A call to `Use(f, g, h)` equals to `entityalias.Hooks(f(g(h())))`.
+func (c *EntityAliasClient) Use(hooks ...Hook) {
+	c.hooks.EntityAlias = append(c.hooks.EntityAlias, hooks...)
+}
+
+// Intercept adds a list of query interceptors to the interceptors stack.
+// A call to `Intercept(f, g, h)` equals to `entityalias.Intercept(f(g(h())))`.
+func (c *EntityAliasClient) Intercept(interceptors ...Interceptor) {
+	c.inters.EntityAlias = append(c.inters.EntityAlias, interceptors...)
+}
+
+// Create returns a builder for creating a EntityAlias entity.
+func (c *EntityAliasClient) Create() *EntityAliasCreate {
+	mutation := newEntityAliasMutation(c.config, OpCreate)
+	return &EntityAliasCreate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// CreateBulk returns a builder for creating a bulk of EntityAlias entities.
+func (c *EntityAliasClient) CreateBulk(builders ...*EntityAliasCreate) *EntityAliasCreateBulk {
+	return &EntityAliasCreateBulk{config: c.config, builders: builders}
+}
+
+// MapCreateBulk creates a bulk creation builder from the given slice. For each item in the slice, the function creates
+// a builder and applies setFunc on it.
+func (c *EntityAliasClient) MapCreateBulk(slice any, setFunc func(*EntityAliasCreate, int)) *EntityAliasCreateBulk {
+	rv := reflect.ValueOf(slice)
+	if rv.Kind() != reflect.Slice {
+		return &EntityAliasCreateBulk{err: fmt.Errorf("calling to EntityAliasClient.MapCreateBulk with wrong type %T, need slice", slice)}
+	}
+	builders := make([]*EntityAliasCreate, rv.Len())
+	for i := 0; i < rv.Len(); i++ {
+		builders[i] = c.Create()
+		setFunc(builders[i], i)
+	}
+	return &EntityAliasCreateBulk{config: c.config, builders: builders}
+}
+
+// Update returns an update builder for EntityAlias.
+func (c *EntityAliasClient) Update() *EntityAliasUpdate {
+	mutation := newEntityAliasMutation(c.config, OpUpdate)
+	return &EntityAliasUpdate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOne returns an update builder for the given entity.
+func (c *EntityAliasClient) UpdateOne(_m *EntityAlias) *EntityAliasUpdateOne {
+	mutation := newEntityAliasMutation(c.config, OpUpdateOne, withEntityAlias(_m))
+	return &EntityAliasUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOneID returns an update builder for the given id.
+func (c *EntityAliasClient) UpdateOneID(id uuid.UUID) *EntityAliasUpdateOne {
+	mutation := newEntityAliasMutation(c.config, OpUpdateOne, withEntityAliasID(id))
+	return &EntityAliasUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// Delete returns a delete builder for EntityAlias.
+func (c *EntityAliasClient) Delete() *EntityAliasDelete {
+	mutation := newEntityAliasMutation(c.config, OpDelete)
+	return &EntityAliasDelete{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// DeleteOne returns a builder for deleting the given entity.
+func (c *EntityAliasClient) DeleteOne(_m *EntityAlias) *EntityAliasDeleteOne {
+	return c.DeleteOneID(_m.ID)
+}
+
+// DeleteOneID returns a builder for deleting the given entity by its id.
+func (c *EntityAliasClient) DeleteOneID(id uuid.UUID) *EntityAliasDeleteOne {
+	builder := c.Delete().Where(entityalias.ID(id))
+	builder.mutation.id = &id
+	builder.mutation.op = OpDeleteOne
+	return &EntityAliasDeleteOne{builder}
+}
+
+// Query returns a query builder for EntityAlias.
+func (c *EntityAliasClient) Query() *EntityAliasQuery {
+	return &EntityAliasQuery{
+		config: c.config,
+		ctx:    &QueryContext{Type: TypeEntityAlias},
+		inters: c.Interceptors(),
+	}
+}
+
+// Get returns a EntityAlias entity by its id.
+func (c *EntityAliasClient) Get(ctx context.Context, id uuid.UUID) (*EntityAlias, error) {
+	return c.Query().Where(entityalias.ID(id)).Only(ctx)
+}
+
+// GetX is like Get, but panics if an error occurs.
+func (c *EntityAliasClient) GetX(ctx context.Context, id uuid.UUID) *EntityAlias {
+	obj, err := c.Get(ctx, id)
+	if err != nil {
+		panic(err)
+	}
+	return obj
+}
+
+// Hooks returns the client hooks.
+func (c *EntityAliasClient) Hooks() []Hook {
+	return c.hooks.EntityAlias
+}
+
+// Interceptors returns the client interceptors.
+func (c *EntityAliasClient) Interceptors() []Interceptor {
+	return c.inters.EntityAlias
+}
+
+func (c *EntityAliasClient) mutate(ctx context.Context, m *EntityAliasMutation) (Value, error) {
+	switch m.Op() {
+	case OpCreate:
+		return (&EntityAliasCreate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdate:
+		return (&EntityAliasUpdate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdateOne:
+		return (&EntityAliasUpdateOne{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpDelete, OpDeleteOne:
+		return (&EntityAliasDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
+	default:
+		return nil, fmt.Errorf("ent: unknown EntityAlias mutation op: %q", m.Op())
 	}
 }
 
@@ -2216,6 +2365,139 @@ func (c *ObservationClient) mutate(ctx context.Context, m *ObservationMutation) 
 		return (&ObservationDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
 	default:
 		return nil, fmt.Errorf("ent: unknown Observation mutation op: %q", m.Op())
+	}
+}
+
+// OntologyConflictClient is a client for the OntologyConflict schema.
+type OntologyConflictClient struct {
+	config
+}
+
+// NewOntologyConflictClient returns a client for the OntologyConflict from the given config.
+func NewOntologyConflictClient(c config) *OntologyConflictClient {
+	return &OntologyConflictClient{config: c}
+}
+
+// Use adds a list of mutation hooks to the hooks stack.
+// A call to `Use(f, g, h)` equals to `ontologyconflict.Hooks(f(g(h())))`.
+func (c *OntologyConflictClient) Use(hooks ...Hook) {
+	c.hooks.OntologyConflict = append(c.hooks.OntologyConflict, hooks...)
+}
+
+// Intercept adds a list of query interceptors to the interceptors stack.
+// A call to `Intercept(f, g, h)` equals to `ontologyconflict.Intercept(f(g(h())))`.
+func (c *OntologyConflictClient) Intercept(interceptors ...Interceptor) {
+	c.inters.OntologyConflict = append(c.inters.OntologyConflict, interceptors...)
+}
+
+// Create returns a builder for creating a OntologyConflict entity.
+func (c *OntologyConflictClient) Create() *OntologyConflictCreate {
+	mutation := newOntologyConflictMutation(c.config, OpCreate)
+	return &OntologyConflictCreate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// CreateBulk returns a builder for creating a bulk of OntologyConflict entities.
+func (c *OntologyConflictClient) CreateBulk(builders ...*OntologyConflictCreate) *OntologyConflictCreateBulk {
+	return &OntologyConflictCreateBulk{config: c.config, builders: builders}
+}
+
+// MapCreateBulk creates a bulk creation builder from the given slice. For each item in the slice, the function creates
+// a builder and applies setFunc on it.
+func (c *OntologyConflictClient) MapCreateBulk(slice any, setFunc func(*OntologyConflictCreate, int)) *OntologyConflictCreateBulk {
+	rv := reflect.ValueOf(slice)
+	if rv.Kind() != reflect.Slice {
+		return &OntologyConflictCreateBulk{err: fmt.Errorf("calling to OntologyConflictClient.MapCreateBulk with wrong type %T, need slice", slice)}
+	}
+	builders := make([]*OntologyConflictCreate, rv.Len())
+	for i := 0; i < rv.Len(); i++ {
+		builders[i] = c.Create()
+		setFunc(builders[i], i)
+	}
+	return &OntologyConflictCreateBulk{config: c.config, builders: builders}
+}
+
+// Update returns an update builder for OntologyConflict.
+func (c *OntologyConflictClient) Update() *OntologyConflictUpdate {
+	mutation := newOntologyConflictMutation(c.config, OpUpdate)
+	return &OntologyConflictUpdate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOne returns an update builder for the given entity.
+func (c *OntologyConflictClient) UpdateOne(_m *OntologyConflict) *OntologyConflictUpdateOne {
+	mutation := newOntologyConflictMutation(c.config, OpUpdateOne, withOntologyConflict(_m))
+	return &OntologyConflictUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOneID returns an update builder for the given id.
+func (c *OntologyConflictClient) UpdateOneID(id uuid.UUID) *OntologyConflictUpdateOne {
+	mutation := newOntologyConflictMutation(c.config, OpUpdateOne, withOntologyConflictID(id))
+	return &OntologyConflictUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// Delete returns a delete builder for OntologyConflict.
+func (c *OntologyConflictClient) Delete() *OntologyConflictDelete {
+	mutation := newOntologyConflictMutation(c.config, OpDelete)
+	return &OntologyConflictDelete{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// DeleteOne returns a builder for deleting the given entity.
+func (c *OntologyConflictClient) DeleteOne(_m *OntologyConflict) *OntologyConflictDeleteOne {
+	return c.DeleteOneID(_m.ID)
+}
+
+// DeleteOneID returns a builder for deleting the given entity by its id.
+func (c *OntologyConflictClient) DeleteOneID(id uuid.UUID) *OntologyConflictDeleteOne {
+	builder := c.Delete().Where(ontologyconflict.ID(id))
+	builder.mutation.id = &id
+	builder.mutation.op = OpDeleteOne
+	return &OntologyConflictDeleteOne{builder}
+}
+
+// Query returns a query builder for OntologyConflict.
+func (c *OntologyConflictClient) Query() *OntologyConflictQuery {
+	return &OntologyConflictQuery{
+		config: c.config,
+		ctx:    &QueryContext{Type: TypeOntologyConflict},
+		inters: c.Interceptors(),
+	}
+}
+
+// Get returns a OntologyConflict entity by its id.
+func (c *OntologyConflictClient) Get(ctx context.Context, id uuid.UUID) (*OntologyConflict, error) {
+	return c.Query().Where(ontologyconflict.ID(id)).Only(ctx)
+}
+
+// GetX is like Get, but panics if an error occurs.
+func (c *OntologyConflictClient) GetX(ctx context.Context, id uuid.UUID) *OntologyConflict {
+	obj, err := c.Get(ctx, id)
+	if err != nil {
+		panic(err)
+	}
+	return obj
+}
+
+// Hooks returns the client hooks.
+func (c *OntologyConflictClient) Hooks() []Hook {
+	return c.hooks.OntologyConflict
+}
+
+// Interceptors returns the client interceptors.
+func (c *OntologyConflictClient) Interceptors() []Interceptor {
+	return c.inters.OntologyConflict
+}
+
+func (c *OntologyConflictClient) mutate(ctx context.Context, m *OntologyConflictMutation) (Value, error) {
+	switch m.Op() {
+	case OpCreate:
+		return (&OntologyConflictCreate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdate:
+		return (&OntologyConflictUpdate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdateOne:
+		return (&OntologyConflictUpdateOne{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpDelete, OpDeleteOne:
+		return (&OntologyConflictDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
+	default:
+		return nil, fmt.Errorf("ent: unknown OntologyConflict mutation op: %q", m.Op())
 	}
 }
 
@@ -4648,19 +4930,20 @@ func (c *WorkflowStepRunClient) mutate(ctx context.Context, m *WorkflowStepRunMu
 // hooks and interceptors per client, for fast access.
 type (
 	hooks struct {
-		AgentMemory, AuditLog, ConfigProfile, CronJob, CronJobHistory, EscrowDeal,
-		ExternalRef, Inquiry, Key, Knowledge, Learning, Message, Observation,
-		OntologyPredicate, OntologyType, PaymentTx, PeerReputation,
-		ProvenanceAttribution, ProvenanceCheckpoint, Reflection, RunJournal,
-		RunSnapshot, RunStep, Secret, Session, SessionProvenance, TokenUsage,
-		TurnTrace, TurnTraceEvent, WorkflowRun, WorkflowStepRun []ent.Hook
+		AgentMemory, AuditLog, ConfigProfile, CronJob, CronJobHistory, EntityAlias,
+		EscrowDeal, ExternalRef, Inquiry, Key, Knowledge, Learning, Message,
+		Observation, OntologyConflict, OntologyPredicate, OntologyType, PaymentTx,
+		PeerReputation, ProvenanceAttribution, ProvenanceCheckpoint, Reflection,
+		RunJournal, RunSnapshot, RunStep, Secret, Session, SessionProvenance,
+		TokenUsage, TurnTrace, TurnTraceEvent, WorkflowRun, WorkflowStepRun []ent.Hook
 	}
 	inters struct {
-		AgentMemory, AuditLog, ConfigProfile, CronJob, CronJobHistory, EscrowDeal,
-		ExternalRef, Inquiry, Key, Knowledge, Learning, Message, Observation,
-		OntologyPredicate, OntologyType, PaymentTx, PeerReputation,
-		ProvenanceAttribution, ProvenanceCheckpoint, Reflection, RunJournal,
-		RunSnapshot, RunStep, Secret, Session, SessionProvenance, TokenUsage,
-		TurnTrace, TurnTraceEvent, WorkflowRun, WorkflowStepRun []ent.Interceptor
+		AgentMemory, AuditLog, ConfigProfile, CronJob, CronJobHistory, EntityAlias,
+		EscrowDeal, ExternalRef, Inquiry, Key, Knowledge, Learning, Message,
+		Observation, OntologyConflict, OntologyPredicate, OntologyType, PaymentTx,
+		PeerReputation, ProvenanceAttribution, ProvenanceCheckpoint, Reflection,
+		RunJournal, RunSnapshot, RunStep, Secret, Session, SessionProvenance,
+		TokenUsage, TurnTrace, TurnTraceEvent, WorkflowRun,
+		WorkflowStepRun []ent.Interceptor
 	}
 )

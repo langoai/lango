@@ -5,7 +5,9 @@ import (
 	"fmt"
 	"sync"
 	"sync/atomic"
+	"time"
 
+	"github.com/google/uuid"
 	"github.com/langoai/lango/internal/graph"
 )
 
@@ -31,23 +33,53 @@ type OntologyService interface {
 	// Schema version — increments on register/deprecate
 	SchemaVersion(ctx context.Context) (int, error)
 
-	// Triple storage facade — Resolve → Validate → store.AddTriple
-	// Change 1-1: delegates directly to graph.Store.AddTriple.
-	// Change 1-4: adds Resolve and Validate pipeline.
+	// Triple storage facade — Resolve → store.AddTriple.
+	// When EntityResolver is available, canonicalizes subject and object
+	// before storing. Predicate validation is NOT performed here — use
+	// AssertFact for validated storage with temporal metadata and conflict detection.
 	StoreTriple(ctx context.Context, t graph.Triple) error
 
 	// PredicateValidator returns a context-free closure for hot-path
 	// predicate validation. Uses a cached map, refreshed on schema changes.
 	PredicateValidator() func(name string) bool
+
+	// Truth Maintenance — Change 1-3
+	AssertFact(ctx context.Context, input AssertionInput) (*AssertionResult, error)
+	RetractFact(ctx context.Context, subject, predicate, object, reason string) error
+	ConflictSet(ctx context.Context, subject, predicate string) ([]Conflict, error)
+	ResolveConflict(ctx context.Context, conflictID uuid.UUID, winnerObject, reason string) error
+	FactsAt(ctx context.Context, subject string, validAt time.Time) ([]graph.Triple, error)
+	OpenConflicts(ctx context.Context) ([]Conflict, error)
+
+	// Entity Resolution — Change 1-4
+	Resolve(ctx context.Context, rawID string) (string, error)
+	DeclareSameAs(ctx context.Context, nodeA, nodeB, source string) error
+	MergeEntities(ctx context.Context, canonical, duplicate string) (*MergeResult, error)
+	SplitEntity(ctx context.Context, canonical, splitOut string) error
+	Aliases(ctx context.Context, canonicalID string) ([]string, error)
+	// QueryTriples resolves subject via alias before querying graph store.
+	QueryTriples(ctx context.Context, subject string) ([]graph.Triple, error)
 }
 
 // ServiceImpl implements OntologyService.
 type ServiceImpl struct {
 	registry         Registry
 	graphStore       graph.Store
+	truth            TruthMaintainer
+	resolver         EntityResolver
 	cacheMu          sync.RWMutex
 	activePredicates map[string]bool
 	version          atomic.Int64
+}
+
+// SetTruthMaintainer injects the TruthMaintainer after construction.
+func (s *ServiceImpl) SetTruthMaintainer(tm TruthMaintainer) {
+	s.truth = tm
+}
+
+// SetEntityResolver injects the EntityResolver after construction.
+func (s *ServiceImpl) SetEntityResolver(er EntityResolver) {
+	s.resolver = er
 }
 
 // NewService creates a new OntologyService backed by the given registry.
@@ -125,6 +157,15 @@ func (s *ServiceImpl) StoreTriple(ctx context.Context, t graph.Triple) error {
 	if s.graphStore == nil {
 		return fmt.Errorf("graph store not available")
 	}
+	// Entity Resolution: canonicalize subject and object if resolver is available.
+	if s.resolver != nil {
+		if canonical, err := s.resolver.Resolve(ctx, t.Subject); err == nil {
+			t.Subject = canonical
+		}
+		if canonical, err := s.resolver.Resolve(ctx, t.Object); err == nil {
+			t.Object = canonical
+		}
+	}
 	return s.graphStore.AddTriple(ctx, t)
 }
 
@@ -156,4 +197,98 @@ func (s *ServiceImpl) refreshPredicateCache() {
 	s.cacheMu.Lock()
 	s.activePredicates = cache
 	s.cacheMu.Unlock()
+}
+
+// --- Truth Maintenance delegation ---
+
+func (s *ServiceImpl) AssertFact(ctx context.Context, input AssertionInput) (*AssertionResult, error) {
+	if s.truth == nil {
+		return nil, fmt.Errorf("truth maintenance not initialized")
+	}
+	return s.truth.AssertFact(ctx, input)
+}
+
+func (s *ServiceImpl) RetractFact(ctx context.Context, subject, predicate, object, reason string) error {
+	if s.truth == nil {
+		return fmt.Errorf("truth maintenance not initialized")
+	}
+	return s.truth.RetractFact(ctx, subject, predicate, object, reason)
+}
+
+func (s *ServiceImpl) ConflictSet(ctx context.Context, subject, predicate string) ([]Conflict, error) {
+	if s.truth == nil {
+		return nil, fmt.Errorf("truth maintenance not initialized")
+	}
+	return s.truth.ConflictSet(ctx, subject, predicate)
+}
+
+func (s *ServiceImpl) ResolveConflict(ctx context.Context, conflictID uuid.UUID, winnerObject, reason string) error {
+	if s.truth == nil {
+		return fmt.Errorf("truth maintenance not initialized")
+	}
+	return s.truth.ResolveConflict(ctx, conflictID, winnerObject, reason)
+}
+
+func (s *ServiceImpl) FactsAt(ctx context.Context, subject string, validAt time.Time) ([]graph.Triple, error) {
+	if s.truth == nil {
+		return nil, fmt.Errorf("truth maintenance not initialized")
+	}
+	return s.truth.FactsAt(ctx, subject, validAt)
+}
+
+func (s *ServiceImpl) OpenConflicts(ctx context.Context) ([]Conflict, error) {
+	if s.truth == nil {
+		return nil, fmt.Errorf("truth maintenance not initialized")
+	}
+	return s.truth.OpenConflicts(ctx)
+}
+
+// --- Entity Resolution delegation ---
+
+func (s *ServiceImpl) Resolve(ctx context.Context, rawID string) (string, error) {
+	if s.resolver == nil {
+		return rawID, nil // no resolver = identity
+	}
+	return s.resolver.Resolve(ctx, rawID)
+}
+
+func (s *ServiceImpl) DeclareSameAs(ctx context.Context, nodeA, nodeB, source string) error {
+	if s.resolver == nil {
+		return fmt.Errorf("entity resolver not initialized")
+	}
+	return s.resolver.DeclareSameAs(ctx, nodeA, nodeB, source)
+}
+
+func (s *ServiceImpl) MergeEntities(ctx context.Context, canonical, duplicate string) (*MergeResult, error) {
+	if s.resolver == nil {
+		return nil, fmt.Errorf("entity resolver not initialized")
+	}
+	return s.resolver.Merge(ctx, canonical, duplicate)
+}
+
+func (s *ServiceImpl) SplitEntity(ctx context.Context, canonical, splitOut string) error {
+	if s.resolver == nil {
+		return fmt.Errorf("entity resolver not initialized")
+	}
+	return s.resolver.Split(ctx, canonical, splitOut)
+}
+
+func (s *ServiceImpl) Aliases(ctx context.Context, canonicalID string) ([]string, error) {
+	if s.resolver == nil {
+		return nil, nil
+	}
+	return s.resolver.Aliases(ctx, canonicalID)
+}
+
+// QueryTriples resolves subject via alias then queries graph store.
+func (s *ServiceImpl) QueryTriples(ctx context.Context, subject string) ([]graph.Triple, error) {
+	if s.graphStore == nil {
+		return nil, fmt.Errorf("graph store not available")
+	}
+	if s.resolver != nil {
+		if canonical, err := s.resolver.Resolve(ctx, subject); err == nil {
+			subject = canonical
+		}
+	}
+	return s.graphStore.QueryBySubject(ctx, subject)
 }

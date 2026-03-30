@@ -187,6 +187,27 @@ var (
 			},
 		},
 	}
+	// EntityAliasColumns holds the columns for the "entity_alias" table.
+	EntityAliasColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeUUID},
+		{Name: "raw_id", Type: field.TypeString, Unique: true},
+		{Name: "canonical_id", Type: field.TypeString},
+		{Name: "source", Type: field.TypeString, Default: "manual"},
+		{Name: "created_at", Type: field.TypeTime},
+	}
+	// EntityAliasTable holds the schema information for the "entity_alias" table.
+	EntityAliasTable = &schema.Table{
+		Name:       "entity_alias",
+		Columns:    EntityAliasColumns,
+		PrimaryKey: []*schema.Column{EntityAliasColumns[0]},
+		Indexes: []*schema.Index{
+			{
+				Name:    "entityalias_canonical_id",
+				Unique:  false,
+				Columns: []*schema.Column{EntityAliasColumns[2]},
+			},
+		},
+	}
 	// EscrowDealsColumns holds the columns for the "escrow_deals" table.
 	EscrowDealsColumns = []*schema.Column{
 		{Name: "id", Type: field.TypeInt, Increment: true},
@@ -441,6 +462,40 @@ var (
 				Name:    "observation_created_at",
 				Unique:  false,
 				Columns: []*schema.Column{ObservationsColumns[6]},
+			},
+		},
+	}
+	// OntologyConflictsColumns holds the columns for the "ontology_conflicts" table.
+	OntologyConflictsColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeUUID},
+		{Name: "subject", Type: field.TypeString},
+		{Name: "predicate", Type: field.TypeString},
+		{Name: "candidates", Type: field.TypeJSON, Nullable: true},
+		{Name: "status", Type: field.TypeEnum, Enums: []string{"open", "resolved", "auto_resolved"}, Default: "open"},
+		{Name: "resolution", Type: field.TypeString, Nullable: true},
+		{Name: "resolved_at", Type: field.TypeTime, Nullable: true},
+		{Name: "created_at", Type: field.TypeTime},
+	}
+	// OntologyConflictsTable holds the schema information for the "ontology_conflicts" table.
+	OntologyConflictsTable = &schema.Table{
+		Name:       "ontology_conflicts",
+		Columns:    OntologyConflictsColumns,
+		PrimaryKey: []*schema.Column{OntologyConflictsColumns[0]},
+		Indexes: []*schema.Index{
+			{
+				Name:    "ontologyconflict_subject_predicate",
+				Unique:  false,
+				Columns: []*schema.Column{OntologyConflictsColumns[1], OntologyConflictsColumns[2]},
+			},
+			{
+				Name:    "ontologyconflict_status",
+				Unique:  false,
+				Columns: []*schema.Column{OntologyConflictsColumns[4]},
+			},
+			{
+				Name:    "ontologyconflict_created_at",
+				Unique:  false,
+				Columns: []*schema.Column{OntologyConflictsColumns[7]},
 			},
 		},
 	}
@@ -1130,6 +1185,7 @@ var (
 		ConfigProfilesTable,
 		CronJobsTable,
 		CronJobHistoriesTable,
+		EntityAliasTable,
 		EscrowDealsTable,
 		ExternalRefsTable,
 		InquiriesTable,
@@ -1138,6 +1194,7 @@ var (
 		LearningsTable,
 		MessagesTable,
 		ObservationsTable,
+		OntologyConflictsTable,
 		OntologyPredicatesTable,
 		OntologyTypesTable,
 		PaymentTxesTable,

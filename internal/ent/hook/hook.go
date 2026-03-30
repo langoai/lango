@@ -69,6 +69,18 @@ func (f CronJobHistoryFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Val
 	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.CronJobHistoryMutation", m)
 }
 
+// The EntityAliasFunc type is an adapter to allow the use of ordinary
+// function as EntityAlias mutator.
+type EntityAliasFunc func(context.Context, *ent.EntityAliasMutation) (ent.Value, error)
+
+// Mutate calls f(ctx, m).
+func (f EntityAliasFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value, error) {
+	if mv, ok := m.(*ent.EntityAliasMutation); ok {
+		return f(ctx, mv)
+	}
+	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.EntityAliasMutation", m)
+}
+
 // The EscrowDealFunc type is an adapter to allow the use of ordinary
 // function as EscrowDeal mutator.
 type EscrowDealFunc func(context.Context, *ent.EscrowDealMutation) (ent.Value, error)
@@ -163,6 +175,18 @@ func (f ObservationFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value,
 		return f(ctx, mv)
 	}
 	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.ObservationMutation", m)
+}
+
+// The OntologyConflictFunc type is an adapter to allow the use of ordinary
+// function as OntologyConflict mutator.
+type OntologyConflictFunc func(context.Context, *ent.OntologyConflictMutation) (ent.Value, error)
+
+// Mutate calls f(ctx, m).
+func (f OntologyConflictFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value, error) {
+	if mv, ok := m.(*ent.OntologyConflictMutation); ok {
+		return f(ctx, mv)
+	}
+	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.OntologyConflictMutation", m)
 }
 
 // The OntologyPredicateFunc type is an adapter to allow the use of ordinary

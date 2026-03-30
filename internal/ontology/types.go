@@ -6,6 +6,28 @@ import (
 	"github.com/google/uuid"
 )
 
+// Reserved metadata keys for temporal and provenance fields.
+// These live in graph.Triple.Metadata (prefix "_" to avoid collision with user properties).
+const (
+	MetaValidFrom  = "_valid_from"   // RFC3339 — fact validity start (empty = epoch)
+	MetaValidTo    = "_valid_to"     // RFC3339 — fact validity end (empty = still valid)
+	MetaRecordedAt = "_recorded_at"  // RFC3339 — system time when triple was first recorded
+	MetaRecordedBy = "_recorded_by"  // who recorded (agent ID, "human", peer DID)
+	MetaSource     = "_source"       // origin category for source precedence
+	MetaConfidence = "_confidence"   // "0.0000" ~ "1.0000"
+)
+
+// SourcePrecedence defines priority ordering for source-of-truth auto-resolution.
+// Higher value = higher priority. Used by TruthMaintainer.canAutoResolve.
+var SourcePrecedence = map[string]int{
+	"manual":         10,
+	"knowledge":      8,
+	"correction":     7,
+	"llm_extraction": 4,
+	"graph_engine":   3,
+	"memory_hook":    2,
+}
+
 // SchemaStatus represents the lifecycle state of an ontology schema element.
 type SchemaStatus string
 

@@ -17,6 +17,7 @@ import (
 	"github.com/langoai/lango/internal/ent/configprofile"
 	"github.com/langoai/lango/internal/ent/cronjob"
 	"github.com/langoai/lango/internal/ent/cronjobhistory"
+	"github.com/langoai/lango/internal/ent/entityalias"
 	"github.com/langoai/lango/internal/ent/escrowdeal"
 	"github.com/langoai/lango/internal/ent/externalref"
 	"github.com/langoai/lango/internal/ent/inquiry"
@@ -25,6 +26,7 @@ import (
 	"github.com/langoai/lango/internal/ent/learning"
 	"github.com/langoai/lango/internal/ent/message"
 	"github.com/langoai/lango/internal/ent/observation"
+	"github.com/langoai/lango/internal/ent/ontologyconflict"
 	"github.com/langoai/lango/internal/ent/ontologypredicate"
 	"github.com/langoai/lango/internal/ent/ontologytype"
 	"github.com/langoai/lango/internal/ent/paymenttx"
@@ -61,6 +63,7 @@ const (
 	TypeConfigProfile         = "ConfigProfile"
 	TypeCronJob               = "CronJob"
 	TypeCronJobHistory        = "CronJobHistory"
+	TypeEntityAlias           = "EntityAlias"
 	TypeEscrowDeal            = "EscrowDeal"
 	TypeExternalRef           = "ExternalRef"
 	TypeInquiry               = "Inquiry"
@@ -69,6 +72,7 @@ const (
 	TypeLearning              = "Learning"
 	TypeMessage               = "Message"
 	TypeObservation           = "Observation"
+	TypeOntologyConflict      = "OntologyConflict"
 	TypeOntologyPredicate     = "OntologyPredicate"
 	TypeOntologyType          = "OntologyType"
 	TypePaymentTx             = "PaymentTx"
@@ -4286,6 +4290,500 @@ func (m *CronJobHistoryMutation) ClearEdge(name string) error {
 // It returns an error if the edge is not defined in the schema.
 func (m *CronJobHistoryMutation) ResetEdge(name string) error {
 	return fmt.Errorf("unknown CronJobHistory edge %s", name)
+}
+
+// EntityAliasMutation represents an operation that mutates the EntityAlias nodes in the graph.
+type EntityAliasMutation struct {
+	config
+	op            Op
+	typ           string
+	id            *uuid.UUID
+	raw_id        *string
+	canonical_id  *string
+	source        *string
+	created_at    *time.Time
+	clearedFields map[string]struct{}
+	done          bool
+	oldValue      func(context.Context) (*EntityAlias, error)
+	predicates    []predicate.EntityAlias
+}
+
+var _ ent.Mutation = (*EntityAliasMutation)(nil)
+
+// entityaliasOption allows management of the mutation configuration using functional options.
+type entityaliasOption func(*EntityAliasMutation)
+
+// newEntityAliasMutation creates new mutation for the EntityAlias entity.
+func newEntityAliasMutation(c config, op Op, opts ...entityaliasOption) *EntityAliasMutation {
+	m := &EntityAliasMutation{
+		config:        c,
+		op:            op,
+		typ:           TypeEntityAlias,
+		clearedFields: make(map[string]struct{}),
+	}
+	for _, opt := range opts {
+		opt(m)
+	}
+	return m
+}
+
+// withEntityAliasID sets the ID field of the mutation.
+func withEntityAliasID(id uuid.UUID) entityaliasOption {
+	return func(m *EntityAliasMutation) {
+		var (
+			err   error
+			once  sync.Once
+			value *EntityAlias
+		)
+		m.oldValue = func(ctx context.Context) (*EntityAlias, error) {
+			once.Do(func() {
+				if m.done {
+					err = errors.New("querying old values post mutation is not allowed")
+				} else {
+					value, err = m.Client().EntityAlias.Get(ctx, id)
+				}
+			})
+			return value, err
+		}
+		m.id = &id
+	}
+}
+
+// withEntityAlias sets the old EntityAlias of the mutation.
+func withEntityAlias(node *EntityAlias) entityaliasOption {
+	return func(m *EntityAliasMutation) {
+		m.oldValue = func(context.Context) (*EntityAlias, error) {
+			return node, nil
+		}
+		m.id = &node.ID
+	}
+}
+
+// Client returns a new `ent.Client` from the mutation. If the mutation was
+// executed in a transaction (ent.Tx), a transactional client is returned.
+func (m EntityAliasMutation) Client() *Client {
+	client := &Client{config: m.config}
+	client.init()
+	return client
+}
+
+// Tx returns an `ent.Tx` for mutations that were executed in transactions;
+// it returns an error otherwise.
+func (m EntityAliasMutation) Tx() (*Tx, error) {
+	if _, ok := m.driver.(*txDriver); !ok {
+		return nil, errors.New("ent: mutation is not running in a transaction")
+	}
+	tx := &Tx{config: m.config}
+	tx.init()
+	return tx, nil
+}
+
+// SetID sets the value of the id field. Note that this
+// operation is only accepted on creation of EntityAlias entities.
+func (m *EntityAliasMutation) SetID(id uuid.UUID) {
+	m.id = &id
+}
+
+// ID returns the ID value in the mutation. Note that the ID is only available
+// if it was provided to the builder or after it was returned from the database.
+func (m *EntityAliasMutation) ID() (id uuid.UUID, exists bool) {
+	if m.id == nil {
+		return
+	}
+	return *m.id, true
+}
+
+// IDs queries the database and returns the entity ids that match the mutation's predicate.
+// That means, if the mutation is applied within a transaction with an isolation level such
+// as sql.LevelSerializable, the returned ids match the ids of the rows that will be updated
+// or updated by the mutation.
+func (m *EntityAliasMutation) IDs(ctx context.Context) ([]uuid.UUID, error) {
+	switch {
+	case m.op.Is(OpUpdateOne | OpDeleteOne):
+		id, exists := m.ID()
+		if exists {
+			return []uuid.UUID{id}, nil
+		}
+		fallthrough
+	case m.op.Is(OpUpdate | OpDelete):
+		return m.Client().EntityAlias.Query().Where(m.predicates...).IDs(ctx)
+	default:
+		return nil, fmt.Errorf("IDs is not allowed on %s operations", m.op)
+	}
+}
+
+// SetRawID sets the "raw_id" field.
+func (m *EntityAliasMutation) SetRawID(s string) {
+	m.raw_id = &s
+}
+
+// RawID returns the value of the "raw_id" field in the mutation.
+func (m *EntityAliasMutation) RawID() (r string, exists bool) {
+	v := m.raw_id
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldRawID returns the old "raw_id" field's value of the EntityAlias entity.
+// If the EntityAlias object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *EntityAliasMutation) OldRawID(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldRawID is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldRawID requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldRawID: %w", err)
+	}
+	return oldValue.RawID, nil
+}
+
+// ResetRawID resets all changes to the "raw_id" field.
+func (m *EntityAliasMutation) ResetRawID() {
+	m.raw_id = nil
+}
+
+// SetCanonicalID sets the "canonical_id" field.
+func (m *EntityAliasMutation) SetCanonicalID(s string) {
+	m.canonical_id = &s
+}
+
+// CanonicalID returns the value of the "canonical_id" field in the mutation.
+func (m *EntityAliasMutation) CanonicalID() (r string, exists bool) {
+	v := m.canonical_id
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldCanonicalID returns the old "canonical_id" field's value of the EntityAlias entity.
+// If the EntityAlias object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *EntityAliasMutation) OldCanonicalID(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldCanonicalID is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldCanonicalID requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldCanonicalID: %w", err)
+	}
+	return oldValue.CanonicalID, nil
+}
+
+// ResetCanonicalID resets all changes to the "canonical_id" field.
+func (m *EntityAliasMutation) ResetCanonicalID() {
+	m.canonical_id = nil
+}
+
+// SetSource sets the "source" field.
+func (m *EntityAliasMutation) SetSource(s string) {
+	m.source = &s
+}
+
+// Source returns the value of the "source" field in the mutation.
+func (m *EntityAliasMutation) Source() (r string, exists bool) {
+	v := m.source
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldSource returns the old "source" field's value of the EntityAlias entity.
+// If the EntityAlias object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *EntityAliasMutation) OldSource(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldSource is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldSource requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldSource: %w", err)
+	}
+	return oldValue.Source, nil
+}
+
+// ResetSource resets all changes to the "source" field.
+func (m *EntityAliasMutation) ResetSource() {
+	m.source = nil
+}
+
+// SetCreatedAt sets the "created_at" field.
+func (m *EntityAliasMutation) SetCreatedAt(t time.Time) {
+	m.created_at = &t
+}
+
+// CreatedAt returns the value of the "created_at" field in the mutation.
+func (m *EntityAliasMutation) CreatedAt() (r time.Time, exists bool) {
+	v := m.created_at
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldCreatedAt returns the old "created_at" field's value of the EntityAlias entity.
+// If the EntityAlias object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *EntityAliasMutation) OldCreatedAt(ctx context.Context) (v time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldCreatedAt is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldCreatedAt requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldCreatedAt: %w", err)
+	}
+	return oldValue.CreatedAt, nil
+}
+
+// ResetCreatedAt resets all changes to the "created_at" field.
+func (m *EntityAliasMutation) ResetCreatedAt() {
+	m.created_at = nil
+}
+
+// Where appends a list predicates to the EntityAliasMutation builder.
+func (m *EntityAliasMutation) Where(ps ...predicate.EntityAlias) {
+	m.predicates = append(m.predicates, ps...)
+}
+
+// WhereP appends storage-level predicates to the EntityAliasMutation builder. Using this method,
+// users can use type-assertion to append predicates that do not depend on any generated package.
+func (m *EntityAliasMutation) WhereP(ps ...func(*sql.Selector)) {
+	p := make([]predicate.EntityAlias, len(ps))
+	for i := range ps {
+		p[i] = ps[i]
+	}
+	m.Where(p...)
+}
+
+// Op returns the operation name.
+func (m *EntityAliasMutation) Op() Op {
+	return m.op
+}
+
+// SetOp allows setting the mutation operation.
+func (m *EntityAliasMutation) SetOp(op Op) {
+	m.op = op
+}
+
+// Type returns the node type of this mutation (EntityAlias).
+func (m *EntityAliasMutation) Type() string {
+	return m.typ
+}
+
+// Fields returns all fields that were changed during this mutation. Note that in
+// order to get all numeric fields that were incremented/decremented, call
+// AddedFields().
+func (m *EntityAliasMutation) Fields() []string {
+	fields := make([]string, 0, 4)
+	if m.raw_id != nil {
+		fields = append(fields, entityalias.FieldRawID)
+	}
+	if m.canonical_id != nil {
+		fields = append(fields, entityalias.FieldCanonicalID)
+	}
+	if m.source != nil {
+		fields = append(fields, entityalias.FieldSource)
+	}
+	if m.created_at != nil {
+		fields = append(fields, entityalias.FieldCreatedAt)
+	}
+	return fields
+}
+
+// Field returns the value of a field with the given name. The second boolean
+// return value indicates that this field was not set, or was not defined in the
+// schema.
+func (m *EntityAliasMutation) Field(name string) (ent.Value, bool) {
+	switch name {
+	case entityalias.FieldRawID:
+		return m.RawID()
+	case entityalias.FieldCanonicalID:
+		return m.CanonicalID()
+	case entityalias.FieldSource:
+		return m.Source()
+	case entityalias.FieldCreatedAt:
+		return m.CreatedAt()
+	}
+	return nil, false
+}
+
+// OldField returns the old value of the field from the database. An error is
+// returned if the mutation operation is not UpdateOne, or the query to the
+// database failed.
+func (m *EntityAliasMutation) OldField(ctx context.Context, name string) (ent.Value, error) {
+	switch name {
+	case entityalias.FieldRawID:
+		return m.OldRawID(ctx)
+	case entityalias.FieldCanonicalID:
+		return m.OldCanonicalID(ctx)
+	case entityalias.FieldSource:
+		return m.OldSource(ctx)
+	case entityalias.FieldCreatedAt:
+		return m.OldCreatedAt(ctx)
+	}
+	return nil, fmt.Errorf("unknown EntityAlias field %s", name)
+}
+
+// SetField sets the value of a field with the given name. It returns an error if
+// the field is not defined in the schema, or if the type mismatched the field
+// type.
+func (m *EntityAliasMutation) SetField(name string, value ent.Value) error {
+	switch name {
+	case entityalias.FieldRawID:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetRawID(v)
+		return nil
+	case entityalias.FieldCanonicalID:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetCanonicalID(v)
+		return nil
+	case entityalias.FieldSource:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetSource(v)
+		return nil
+	case entityalias.FieldCreatedAt:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetCreatedAt(v)
+		return nil
+	}
+	return fmt.Errorf("unknown EntityAlias field %s", name)
+}
+
+// AddedFields returns all numeric fields that were incremented/decremented during
+// this mutation.
+func (m *EntityAliasMutation) AddedFields() []string {
+	return nil
+}
+
+// AddedField returns the numeric value that was incremented/decremented on a field
+// with the given name. The second boolean return value indicates that this field
+// was not set, or was not defined in the schema.
+func (m *EntityAliasMutation) AddedField(name string) (ent.Value, bool) {
+	return nil, false
+}
+
+// AddField adds the value to the field with the given name. It returns an error if
+// the field is not defined in the schema, or if the type mismatched the field
+// type.
+func (m *EntityAliasMutation) AddField(name string, value ent.Value) error {
+	switch name {
+	}
+	return fmt.Errorf("unknown EntityAlias numeric field %s", name)
+}
+
+// ClearedFields returns all nullable fields that were cleared during this
+// mutation.
+func (m *EntityAliasMutation) ClearedFields() []string {
+	return nil
+}
+
+// FieldCleared returns a boolean indicating if a field with the given name was
+// cleared in this mutation.
+func (m *EntityAliasMutation) FieldCleared(name string) bool {
+	_, ok := m.clearedFields[name]
+	return ok
+}
+
+// ClearField clears the value of the field with the given name. It returns an
+// error if the field is not defined in the schema.
+func (m *EntityAliasMutation) ClearField(name string) error {
+	return fmt.Errorf("unknown EntityAlias nullable field %s", name)
+}
+
+// ResetField resets all changes in the mutation for the field with the given name.
+// It returns an error if the field is not defined in the schema.
+func (m *EntityAliasMutation) ResetField(name string) error {
+	switch name {
+	case entityalias.FieldRawID:
+		m.ResetRawID()
+		return nil
+	case entityalias.FieldCanonicalID:
+		m.ResetCanonicalID()
+		return nil
+	case entityalias.FieldSource:
+		m.ResetSource()
+		return nil
+	case entityalias.FieldCreatedAt:
+		m.ResetCreatedAt()
+		return nil
+	}
+	return fmt.Errorf("unknown EntityAlias field %s", name)
+}
+
+// AddedEdges returns all edge names that were set/added in this mutation.
+func (m *EntityAliasMutation) AddedEdges() []string {
+	edges := make([]string, 0, 0)
+	return edges
+}
+
+// AddedIDs returns all IDs (to other nodes) that were added for the given edge
+// name in this mutation.
+func (m *EntityAliasMutation) AddedIDs(name string) []ent.Value {
+	return nil
+}
+
+// RemovedEdges returns all edge names that were removed in this mutation.
+func (m *EntityAliasMutation) RemovedEdges() []string {
+	edges := make([]string, 0, 0)
+	return edges
+}
+
+// RemovedIDs returns all IDs (to other nodes) that were removed for the edge with
+// the given name in this mutation.
+func (m *EntityAliasMutation) RemovedIDs(name string) []ent.Value {
+	return nil
+}
+
+// ClearedEdges returns all edge names that were cleared in this mutation.
+func (m *EntityAliasMutation) ClearedEdges() []string {
+	edges := make([]string, 0, 0)
+	return edges
+}
+
+// EdgeCleared returns a boolean which indicates if the edge with the given name
+// was cleared in this mutation.
+func (m *EntityAliasMutation) EdgeCleared(name string) bool {
+	return false
+}
+
+// ClearEdge clears the value of the edge with the given name. It returns an error
+// if that edge is not defined in the schema.
+func (m *EntityAliasMutation) ClearEdge(name string) error {
+	return fmt.Errorf("unknown EntityAlias unique edge %s", name)
+}
+
+// ResetEdge resets all changes to the edge with the given name in this mutation.
+// It returns an error if the edge is not defined in the schema.
+func (m *EntityAliasMutation) ResetEdge(name string) error {
+	return fmt.Errorf("unknown EntityAlias edge %s", name)
 }
 
 // EscrowDealMutation represents an operation that mutates the EscrowDeal nodes in the graph.
@@ -11563,6 +12061,739 @@ func (m *ObservationMutation) ClearEdge(name string) error {
 // It returns an error if the edge is not defined in the schema.
 func (m *ObservationMutation) ResetEdge(name string) error {
 	return fmt.Errorf("unknown Observation edge %s", name)
+}
+
+// OntologyConflictMutation represents an operation that mutates the OntologyConflict nodes in the graph.
+type OntologyConflictMutation struct {
+	config
+	op               Op
+	typ              string
+	id               *uuid.UUID
+	subject          *string
+	predicate        *string
+	candidates       *[]map[string]interface{}
+	appendcandidates []map[string]interface{}
+	status           *ontologyconflict.Status
+	resolution       *string
+	resolved_at      *time.Time
+	created_at       *time.Time
+	clearedFields    map[string]struct{}
+	done             bool
+	oldValue         func(context.Context) (*OntologyConflict, error)
+	predicates       []predicate.OntologyConflict
+}
+
+var _ ent.Mutation = (*OntologyConflictMutation)(nil)
+
+// ontologyconflictOption allows management of the mutation configuration using functional options.
+type ontologyconflictOption func(*OntologyConflictMutation)
+
+// newOntologyConflictMutation creates new mutation for the OntologyConflict entity.
+func newOntologyConflictMutation(c config, op Op, opts ...ontologyconflictOption) *OntologyConflictMutation {
+	m := &OntologyConflictMutation{
+		config:        c,
+		op:            op,
+		typ:           TypeOntologyConflict,
+		clearedFields: make(map[string]struct{}),
+	}
+	for _, opt := range opts {
+		opt(m)
+	}
+	return m
+}
+
+// withOntologyConflictID sets the ID field of the mutation.
+func withOntologyConflictID(id uuid.UUID) ontologyconflictOption {
+	return func(m *OntologyConflictMutation) {
+		var (
+			err   error
+			once  sync.Once
+			value *OntologyConflict
+		)
+		m.oldValue = func(ctx context.Context) (*OntologyConflict, error) {
+			once.Do(func() {
+				if m.done {
+					err = errors.New("querying old values post mutation is not allowed")
+				} else {
+					value, err = m.Client().OntologyConflict.Get(ctx, id)
+				}
+			})
+			return value, err
+		}
+		m.id = &id
+	}
+}
+
+// withOntologyConflict sets the old OntologyConflict of the mutation.
+func withOntologyConflict(node *OntologyConflict) ontologyconflictOption {
+	return func(m *OntologyConflictMutation) {
+		m.oldValue = func(context.Context) (*OntologyConflict, error) {
+			return node, nil
+		}
+		m.id = &node.ID
+	}
+}
+
+// Client returns a new `ent.Client` from the mutation. If the mutation was
+// executed in a transaction (ent.Tx), a transactional client is returned.
+func (m OntologyConflictMutation) Client() *Client {
+	client := &Client{config: m.config}
+	client.init()
+	return client
+}
+
+// Tx returns an `ent.Tx` for mutations that were executed in transactions;
+// it returns an error otherwise.
+func (m OntologyConflictMutation) Tx() (*Tx, error) {
+	if _, ok := m.driver.(*txDriver); !ok {
+		return nil, errors.New("ent: mutation is not running in a transaction")
+	}
+	tx := &Tx{config: m.config}
+	tx.init()
+	return tx, nil
+}
+
+// SetID sets the value of the id field. Note that this
+// operation is only accepted on creation of OntologyConflict entities.
+func (m *OntologyConflictMutation) SetID(id uuid.UUID) {
+	m.id = &id
+}
+
+// ID returns the ID value in the mutation. Note that the ID is only available
+// if it was provided to the builder or after it was returned from the database.
+func (m *OntologyConflictMutation) ID() (id uuid.UUID, exists bool) {
+	if m.id == nil {
+		return
+	}
+	return *m.id, true
+}
+
+// IDs queries the database and returns the entity ids that match the mutation's predicate.
+// That means, if the mutation is applied within a transaction with an isolation level such
+// as sql.LevelSerializable, the returned ids match the ids of the rows that will be updated
+// or updated by the mutation.
+func (m *OntologyConflictMutation) IDs(ctx context.Context) ([]uuid.UUID, error) {
+	switch {
+	case m.op.Is(OpUpdateOne | OpDeleteOne):
+		id, exists := m.ID()
+		if exists {
+			return []uuid.UUID{id}, nil
+		}
+		fallthrough
+	case m.op.Is(OpUpdate | OpDelete):
+		return m.Client().OntologyConflict.Query().Where(m.predicates...).IDs(ctx)
+	default:
+		return nil, fmt.Errorf("IDs is not allowed on %s operations", m.op)
+	}
+}
+
+// SetSubject sets the "subject" field.
+func (m *OntologyConflictMutation) SetSubject(s string) {
+	m.subject = &s
+}
+
+// Subject returns the value of the "subject" field in the mutation.
+func (m *OntologyConflictMutation) Subject() (r string, exists bool) {
+	v := m.subject
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldSubject returns the old "subject" field's value of the OntologyConflict entity.
+// If the OntologyConflict object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *OntologyConflictMutation) OldSubject(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldSubject is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldSubject requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldSubject: %w", err)
+	}
+	return oldValue.Subject, nil
+}
+
+// ResetSubject resets all changes to the "subject" field.
+func (m *OntologyConflictMutation) ResetSubject() {
+	m.subject = nil
+}
+
+// SetPredicate sets the "predicate" field.
+func (m *OntologyConflictMutation) SetPredicate(s string) {
+	m.predicate = &s
+}
+
+// Predicate returns the value of the "predicate" field in the mutation.
+func (m *OntologyConflictMutation) Predicate() (r string, exists bool) {
+	v := m.predicate
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldPredicate returns the old "predicate" field's value of the OntologyConflict entity.
+// If the OntologyConflict object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *OntologyConflictMutation) OldPredicate(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldPredicate is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldPredicate requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldPredicate: %w", err)
+	}
+	return oldValue.Predicate, nil
+}
+
+// ResetPredicate resets all changes to the "predicate" field.
+func (m *OntologyConflictMutation) ResetPredicate() {
+	m.predicate = nil
+}
+
+// SetCandidates sets the "candidates" field.
+func (m *OntologyConflictMutation) SetCandidates(value []map[string]interface{}) {
+	m.candidates = &value
+	m.appendcandidates = nil
+}
+
+// Candidates returns the value of the "candidates" field in the mutation.
+func (m *OntologyConflictMutation) Candidates() (r []map[string]interface{}, exists bool) {
+	v := m.candidates
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldCandidates returns the old "candidates" field's value of the OntologyConflict entity.
+// If the OntologyConflict object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *OntologyConflictMutation) OldCandidates(ctx context.Context) (v []map[string]interface{}, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldCandidates is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldCandidates requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldCandidates: %w", err)
+	}
+	return oldValue.Candidates, nil
+}
+
+// AppendCandidates adds value to the "candidates" field.
+func (m *OntologyConflictMutation) AppendCandidates(value []map[string]interface{}) {
+	m.appendcandidates = append(m.appendcandidates, value...)
+}
+
+// AppendedCandidates returns the list of values that were appended to the "candidates" field in this mutation.
+func (m *OntologyConflictMutation) AppendedCandidates() ([]map[string]interface{}, bool) {
+	if len(m.appendcandidates) == 0 {
+		return nil, false
+	}
+	return m.appendcandidates, true
+}
+
+// ClearCandidates clears the value of the "candidates" field.
+func (m *OntologyConflictMutation) ClearCandidates() {
+	m.candidates = nil
+	m.appendcandidates = nil
+	m.clearedFields[ontologyconflict.FieldCandidates] = struct{}{}
+}
+
+// CandidatesCleared returns if the "candidates" field was cleared in this mutation.
+func (m *OntologyConflictMutation) CandidatesCleared() bool {
+	_, ok := m.clearedFields[ontologyconflict.FieldCandidates]
+	return ok
+}
+
+// ResetCandidates resets all changes to the "candidates" field.
+func (m *OntologyConflictMutation) ResetCandidates() {
+	m.candidates = nil
+	m.appendcandidates = nil
+	delete(m.clearedFields, ontologyconflict.FieldCandidates)
+}
+
+// SetStatus sets the "status" field.
+func (m *OntologyConflictMutation) SetStatus(o ontologyconflict.Status) {
+	m.status = &o
+}
+
+// Status returns the value of the "status" field in the mutation.
+func (m *OntologyConflictMutation) Status() (r ontologyconflict.Status, exists bool) {
+	v := m.status
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldStatus returns the old "status" field's value of the OntologyConflict entity.
+// If the OntologyConflict object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *OntologyConflictMutation) OldStatus(ctx context.Context) (v ontologyconflict.Status, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldStatus is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldStatus requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldStatus: %w", err)
+	}
+	return oldValue.Status, nil
+}
+
+// ResetStatus resets all changes to the "status" field.
+func (m *OntologyConflictMutation) ResetStatus() {
+	m.status = nil
+}
+
+// SetResolution sets the "resolution" field.
+func (m *OntologyConflictMutation) SetResolution(s string) {
+	m.resolution = &s
+}
+
+// Resolution returns the value of the "resolution" field in the mutation.
+func (m *OntologyConflictMutation) Resolution() (r string, exists bool) {
+	v := m.resolution
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldResolution returns the old "resolution" field's value of the OntologyConflict entity.
+// If the OntologyConflict object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *OntologyConflictMutation) OldResolution(ctx context.Context) (v *string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldResolution is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldResolution requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldResolution: %w", err)
+	}
+	return oldValue.Resolution, nil
+}
+
+// ClearResolution clears the value of the "resolution" field.
+func (m *OntologyConflictMutation) ClearResolution() {
+	m.resolution = nil
+	m.clearedFields[ontologyconflict.FieldResolution] = struct{}{}
+}
+
+// ResolutionCleared returns if the "resolution" field was cleared in this mutation.
+func (m *OntologyConflictMutation) ResolutionCleared() bool {
+	_, ok := m.clearedFields[ontologyconflict.FieldResolution]
+	return ok
+}
+
+// ResetResolution resets all changes to the "resolution" field.
+func (m *OntologyConflictMutation) ResetResolution() {
+	m.resolution = nil
+	delete(m.clearedFields, ontologyconflict.FieldResolution)
+}
+
+// SetResolvedAt sets the "resolved_at" field.
+func (m *OntologyConflictMutation) SetResolvedAt(t time.Time) {
+	m.resolved_at = &t
+}
+
+// ResolvedAt returns the value of the "resolved_at" field in the mutation.
+func (m *OntologyConflictMutation) ResolvedAt() (r time.Time, exists bool) {
+	v := m.resolved_at
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldResolvedAt returns the old "resolved_at" field's value of the OntologyConflict entity.
+// If the OntologyConflict object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *OntologyConflictMutation) OldResolvedAt(ctx context.Context) (v *time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldResolvedAt is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldResolvedAt requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldResolvedAt: %w", err)
+	}
+	return oldValue.ResolvedAt, nil
+}
+
+// ClearResolvedAt clears the value of the "resolved_at" field.
+func (m *OntologyConflictMutation) ClearResolvedAt() {
+	m.resolved_at = nil
+	m.clearedFields[ontologyconflict.FieldResolvedAt] = struct{}{}
+}
+
+// ResolvedAtCleared returns if the "resolved_at" field was cleared in this mutation.
+func (m *OntologyConflictMutation) ResolvedAtCleared() bool {
+	_, ok := m.clearedFields[ontologyconflict.FieldResolvedAt]
+	return ok
+}
+
+// ResetResolvedAt resets all changes to the "resolved_at" field.
+func (m *OntologyConflictMutation) ResetResolvedAt() {
+	m.resolved_at = nil
+	delete(m.clearedFields, ontologyconflict.FieldResolvedAt)
+}
+
+// SetCreatedAt sets the "created_at" field.
+func (m *OntologyConflictMutation) SetCreatedAt(t time.Time) {
+	m.created_at = &t
+}
+
+// CreatedAt returns the value of the "created_at" field in the mutation.
+func (m *OntologyConflictMutation) CreatedAt() (r time.Time, exists bool) {
+	v := m.created_at
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldCreatedAt returns the old "created_at" field's value of the OntologyConflict entity.
+// If the OntologyConflict object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *OntologyConflictMutation) OldCreatedAt(ctx context.Context) (v time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldCreatedAt is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldCreatedAt requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldCreatedAt: %w", err)
+	}
+	return oldValue.CreatedAt, nil
+}
+
+// ResetCreatedAt resets all changes to the "created_at" field.
+func (m *OntologyConflictMutation) ResetCreatedAt() {
+	m.created_at = nil
+}
+
+// Where appends a list predicates to the OntologyConflictMutation builder.
+func (m *OntologyConflictMutation) Where(ps ...predicate.OntologyConflict) {
+	m.predicates = append(m.predicates, ps...)
+}
+
+// WhereP appends storage-level predicates to the OntologyConflictMutation builder. Using this method,
+// users can use type-assertion to append predicates that do not depend on any generated package.
+func (m *OntologyConflictMutation) WhereP(ps ...func(*sql.Selector)) {
+	p := make([]predicate.OntologyConflict, len(ps))
+	for i := range ps {
+		p[i] = ps[i]
+	}
+	m.Where(p...)
+}
+
+// Op returns the operation name.
+func (m *OntologyConflictMutation) Op() Op {
+	return m.op
+}
+
+// SetOp allows setting the mutation operation.
+func (m *OntologyConflictMutation) SetOp(op Op) {
+	m.op = op
+}
+
+// Type returns the node type of this mutation (OntologyConflict).
+func (m *OntologyConflictMutation) Type() string {
+	return m.typ
+}
+
+// Fields returns all fields that were changed during this mutation. Note that in
+// order to get all numeric fields that were incremented/decremented, call
+// AddedFields().
+func (m *OntologyConflictMutation) Fields() []string {
+	fields := make([]string, 0, 7)
+	if m.subject != nil {
+		fields = append(fields, ontologyconflict.FieldSubject)
+	}
+	if m.predicate != nil {
+		fields = append(fields, ontologyconflict.FieldPredicate)
+	}
+	if m.candidates != nil {
+		fields = append(fields, ontologyconflict.FieldCandidates)
+	}
+	if m.status != nil {
+		fields = append(fields, ontologyconflict.FieldStatus)
+	}
+	if m.resolution != nil {
+		fields = append(fields, ontologyconflict.FieldResolution)
+	}
+	if m.resolved_at != nil {
+		fields = append(fields, ontologyconflict.FieldResolvedAt)
+	}
+	if m.created_at != nil {
+		fields = append(fields, ontologyconflict.FieldCreatedAt)
+	}
+	return fields
+}
+
+// Field returns the value of a field with the given name. The second boolean
+// return value indicates that this field was not set, or was not defined in the
+// schema.
+func (m *OntologyConflictMutation) Field(name string) (ent.Value, bool) {
+	switch name {
+	case ontologyconflict.FieldSubject:
+		return m.Subject()
+	case ontologyconflict.FieldPredicate:
+		return m.Predicate()
+	case ontologyconflict.FieldCandidates:
+		return m.Candidates()
+	case ontologyconflict.FieldStatus:
+		return m.Status()
+	case ontologyconflict.FieldResolution:
+		return m.Resolution()
+	case ontologyconflict.FieldResolvedAt:
+		return m.ResolvedAt()
+	case ontologyconflict.FieldCreatedAt:
+		return m.CreatedAt()
+	}
+	return nil, false
+}
+
+// OldField returns the old value of the field from the database. An error is
+// returned if the mutation operation is not UpdateOne, or the query to the
+// database failed.
+func (m *OntologyConflictMutation) OldField(ctx context.Context, name string) (ent.Value, error) {
+	switch name {
+	case ontologyconflict.FieldSubject:
+		return m.OldSubject(ctx)
+	case ontologyconflict.FieldPredicate:
+		return m.OldPredicate(ctx)
+	case ontologyconflict.FieldCandidates:
+		return m.OldCandidates(ctx)
+	case ontologyconflict.FieldStatus:
+		return m.OldStatus(ctx)
+	case ontologyconflict.FieldResolution:
+		return m.OldResolution(ctx)
+	case ontologyconflict.FieldResolvedAt:
+		return m.OldResolvedAt(ctx)
+	case ontologyconflict.FieldCreatedAt:
+		return m.OldCreatedAt(ctx)
+	}
+	return nil, fmt.Errorf("unknown OntologyConflict field %s", name)
+}
+
+// SetField sets the value of a field with the given name. It returns an error if
+// the field is not defined in the schema, or if the type mismatched the field
+// type.
+func (m *OntologyConflictMutation) SetField(name string, value ent.Value) error {
+	switch name {
+	case ontologyconflict.FieldSubject:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetSubject(v)
+		return nil
+	case ontologyconflict.FieldPredicate:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetPredicate(v)
+		return nil
+	case ontologyconflict.FieldCandidates:
+		v, ok := value.([]map[string]interface{})
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetCandidates(v)
+		return nil
+	case ontologyconflict.FieldStatus:
+		v, ok := value.(ontologyconflict.Status)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetStatus(v)
+		return nil
+	case ontologyconflict.FieldResolution:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetResolution(v)
+		return nil
+	case ontologyconflict.FieldResolvedAt:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetResolvedAt(v)
+		return nil
+	case ontologyconflict.FieldCreatedAt:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetCreatedAt(v)
+		return nil
+	}
+	return fmt.Errorf("unknown OntologyConflict field %s", name)
+}
+
+// AddedFields returns all numeric fields that were incremented/decremented during
+// this mutation.
+func (m *OntologyConflictMutation) AddedFields() []string {
+	return nil
+}
+
+// AddedField returns the numeric value that was incremented/decremented on a field
+// with the given name. The second boolean return value indicates that this field
+// was not set, or was not defined in the schema.
+func (m *OntologyConflictMutation) AddedField(name string) (ent.Value, bool) {
+	return nil, false
+}
+
+// AddField adds the value to the field with the given name. It returns an error if
+// the field is not defined in the schema, or if the type mismatched the field
+// type.
+func (m *OntologyConflictMutation) AddField(name string, value ent.Value) error {
+	switch name {
+	}
+	return fmt.Errorf("unknown OntologyConflict numeric field %s", name)
+}
+
+// ClearedFields returns all nullable fields that were cleared during this
+// mutation.
+func (m *OntologyConflictMutation) ClearedFields() []string {
+	var fields []string
+	if m.FieldCleared(ontologyconflict.FieldCandidates) {
+		fields = append(fields, ontologyconflict.FieldCandidates)
+	}
+	if m.FieldCleared(ontologyconflict.FieldResolution) {
+		fields = append(fields, ontologyconflict.FieldResolution)
+	}
+	if m.FieldCleared(ontologyconflict.FieldResolvedAt) {
+		fields = append(fields, ontologyconflict.FieldResolvedAt)
+	}
+	return fields
+}
+
+// FieldCleared returns a boolean indicating if a field with the given name was
+// cleared in this mutation.
+func (m *OntologyConflictMutation) FieldCleared(name string) bool {
+	_, ok := m.clearedFields[name]
+	return ok
+}
+
+// ClearField clears the value of the field with the given name. It returns an
+// error if the field is not defined in the schema.
+func (m *OntologyConflictMutation) ClearField(name string) error {
+	switch name {
+	case ontologyconflict.FieldCandidates:
+		m.ClearCandidates()
+		return nil
+	case ontologyconflict.FieldResolution:
+		m.ClearResolution()
+		return nil
+	case ontologyconflict.FieldResolvedAt:
+		m.ClearResolvedAt()
+		return nil
+	}
+	return fmt.Errorf("unknown OntologyConflict nullable field %s", name)
+}
+
+// ResetField resets all changes in the mutation for the field with the given name.
+// It returns an error if the field is not defined in the schema.
+func (m *OntologyConflictMutation) ResetField(name string) error {
+	switch name {
+	case ontologyconflict.FieldSubject:
+		m.ResetSubject()
+		return nil
+	case ontologyconflict.FieldPredicate:
+		m.ResetPredicate()
+		return nil
+	case ontologyconflict.FieldCandidates:
+		m.ResetCandidates()
+		return nil
+	case ontologyconflict.FieldStatus:
+		m.ResetStatus()
+		return nil
+	case ontologyconflict.FieldResolution:
+		m.ResetResolution()
+		return nil
+	case ontologyconflict.FieldResolvedAt:
+		m.ResetResolvedAt()
+		return nil
+	case ontologyconflict.FieldCreatedAt:
+		m.ResetCreatedAt()
+		return nil
+	}
+	return fmt.Errorf("unknown OntologyConflict field %s", name)
+}
+
+// AddedEdges returns all edge names that were set/added in this mutation.
+func (m *OntologyConflictMutation) AddedEdges() []string {
+	edges := make([]string, 0, 0)
+	return edges
+}
+
+// AddedIDs returns all IDs (to other nodes) that were added for the given edge
+// name in this mutation.
+func (m *OntologyConflictMutation) AddedIDs(name string) []ent.Value {
+	return nil
+}
+
+// RemovedEdges returns all edge names that were removed in this mutation.
+func (m *OntologyConflictMutation) RemovedEdges() []string {
+	edges := make([]string, 0, 0)
+	return edges
+}
+
+// RemovedIDs returns all IDs (to other nodes) that were removed for the edge with
+// the given name in this mutation.
+func (m *OntologyConflictMutation) RemovedIDs(name string) []ent.Value {
+	return nil
+}
+
+// ClearedEdges returns all edge names that were cleared in this mutation.
+func (m *OntologyConflictMutation) ClearedEdges() []string {
+	edges := make([]string, 0, 0)
+	return edges
+}
+
+// EdgeCleared returns a boolean which indicates if the edge with the given name
+// was cleared in this mutation.
+func (m *OntologyConflictMutation) EdgeCleared(name string) bool {
+	return false
+}
+
+// ClearEdge clears the value of the edge with the given name. It returns an error
+// if that edge is not defined in the schema.
+func (m *OntologyConflictMutation) ClearEdge(name string) error {
+	return fmt.Errorf("unknown OntologyConflict unique edge %s", name)
+}
+
+// ResetEdge resets all changes to the edge with the given name in this mutation.
+// It returns an error if the edge is not defined in the schema.
+func (m *OntologyConflictMutation) ResetEdge(name string) error {
+	return fmt.Errorf("unknown OntologyConflict edge %s", name)
 }
 
 // OntologyPredicateMutation represents an operation that mutates the OntologyPredicate nodes in the graph.
