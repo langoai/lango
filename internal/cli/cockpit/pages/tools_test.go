@@ -1,6 +1,7 @@
 package pages
 
 import (
+	"strings"
 	"testing"
 
 	tea "github.com/charmbracelet/bubbletea"
@@ -182,6 +183,23 @@ func TestToolsPage_SafetyLevelColors(t *testing.T) {
 			assert.NotEmpty(t, result)
 		})
 	}
+}
+
+func TestToolsPage_SeparatorLineCount(t *testing.T) {
+	t.Parallel()
+
+	p := NewToolsPage(newTestCatalog())
+	updated, _ := p.Update(tea.WindowSizeMsg{Width: 100, Height: 30})
+	p = updated.(*ToolsPage)
+
+	view := p.View()
+	lines := strings.Split(view, "\n")
+
+	// The tools page View must produce exactly p.height lines so the cockpit
+	// JoinHorizontal does not overflow the terminal by 1 row (which hides
+	// the first sidebar item).
+	assert.Equal(t, p.height, len(lines),
+		"tools page View must produce exactly height lines; trailing newline in separator causes +1 overflow")
 }
 
 func TestTruncate(t *testing.T) {

@@ -118,7 +118,11 @@ func (p *ToolsPage) View() string {
 	left := p.renderCategories(leftWidth)
 	right := p.renderToolDetails(rightWidth)
 
-	sep := borderStyle.Render(strings.Repeat("│\n", max(p.height, 1)))
+	sepLines := make([]string, max(p.height, 1))
+	for i := range sepLines {
+		sepLines[i] = "│"
+	}
+	sep := borderStyle.Render(strings.Join(sepLines, "\n"))
 
 	return lipgloss.JoinHorizontal(lipgloss.Top, left, sep, right)
 }
