@@ -29,6 +29,8 @@ import (
 	"github.com/langoai/lango/internal/ent/learning"
 	"github.com/langoai/lango/internal/ent/message"
 	"github.com/langoai/lango/internal/ent/observation"
+	"github.com/langoai/lango/internal/ent/ontologypredicate"
+	"github.com/langoai/lango/internal/ent/ontologytype"
 	"github.com/langoai/lango/internal/ent/paymenttx"
 	"github.com/langoai/lango/internal/ent/peerreputation"
 	"github.com/langoai/lango/internal/ent/provenanceattribution"
@@ -78,6 +80,10 @@ type Client struct {
 	Message *MessageClient
 	// Observation is the client for interacting with the Observation builders.
 	Observation *ObservationClient
+	// OntologyPredicate is the client for interacting with the OntologyPredicate builders.
+	OntologyPredicate *OntologyPredicateClient
+	// OntologyType is the client for interacting with the OntologyType builders.
+	OntologyType *OntologyTypeClient
 	// PaymentTx is the client for interacting with the PaymentTx builders.
 	PaymentTx *PaymentTxClient
 	// PeerReputation is the client for interacting with the PeerReputation builders.
@@ -134,6 +140,8 @@ func (c *Client) init() {
 	c.Learning = NewLearningClient(c.config)
 	c.Message = NewMessageClient(c.config)
 	c.Observation = NewObservationClient(c.config)
+	c.OntologyPredicate = NewOntologyPredicateClient(c.config)
+	c.OntologyType = NewOntologyTypeClient(c.config)
 	c.PaymentTx = NewPaymentTxClient(c.config)
 	c.PeerReputation = NewPeerReputationClient(c.config)
 	c.ProvenanceAttribution = NewProvenanceAttributionClient(c.config)
@@ -255,6 +263,8 @@ func (c *Client) Tx(ctx context.Context) (*Tx, error) {
 		Learning:              NewLearningClient(cfg),
 		Message:               NewMessageClient(cfg),
 		Observation:           NewObservationClient(cfg),
+		OntologyPredicate:     NewOntologyPredicateClient(cfg),
+		OntologyType:          NewOntologyTypeClient(cfg),
 		PaymentTx:             NewPaymentTxClient(cfg),
 		PeerReputation:        NewPeerReputationClient(cfg),
 		ProvenanceAttribution: NewProvenanceAttributionClient(cfg),
@@ -303,6 +313,8 @@ func (c *Client) BeginTx(ctx context.Context, opts *sql.TxOptions) (*Tx, error) 
 		Learning:              NewLearningClient(cfg),
 		Message:               NewMessageClient(cfg),
 		Observation:           NewObservationClient(cfg),
+		OntologyPredicate:     NewOntologyPredicateClient(cfg),
+		OntologyType:          NewOntologyTypeClient(cfg),
 		PaymentTx:             NewPaymentTxClient(cfg),
 		PeerReputation:        NewPeerReputationClient(cfg),
 		ProvenanceAttribution: NewProvenanceAttributionClient(cfg),
@@ -350,10 +362,11 @@ func (c *Client) Use(hooks ...Hook) {
 	for _, n := range []interface{ Use(...Hook) }{
 		c.AgentMemory, c.AuditLog, c.ConfigProfile, c.CronJob, c.CronJobHistory,
 		c.EscrowDeal, c.ExternalRef, c.Inquiry, c.Key, c.Knowledge, c.Learning,
-		c.Message, c.Observation, c.PaymentTx, c.PeerReputation,
-		c.ProvenanceAttribution, c.ProvenanceCheckpoint, c.Reflection, c.RunJournal,
-		c.RunSnapshot, c.RunStep, c.Secret, c.Session, c.SessionProvenance,
-		c.TokenUsage, c.TurnTrace, c.TurnTraceEvent, c.WorkflowRun, c.WorkflowStepRun,
+		c.Message, c.Observation, c.OntologyPredicate, c.OntologyType, c.PaymentTx,
+		c.PeerReputation, c.ProvenanceAttribution, c.ProvenanceCheckpoint,
+		c.Reflection, c.RunJournal, c.RunSnapshot, c.RunStep, c.Secret, c.Session,
+		c.SessionProvenance, c.TokenUsage, c.TurnTrace, c.TurnTraceEvent,
+		c.WorkflowRun, c.WorkflowStepRun,
 	} {
 		n.Use(hooks...)
 	}
@@ -365,10 +378,11 @@ func (c *Client) Intercept(interceptors ...Interceptor) {
 	for _, n := range []interface{ Intercept(...Interceptor) }{
 		c.AgentMemory, c.AuditLog, c.ConfigProfile, c.CronJob, c.CronJobHistory,
 		c.EscrowDeal, c.ExternalRef, c.Inquiry, c.Key, c.Knowledge, c.Learning,
-		c.Message, c.Observation, c.PaymentTx, c.PeerReputation,
-		c.ProvenanceAttribution, c.ProvenanceCheckpoint, c.Reflection, c.RunJournal,
-		c.RunSnapshot, c.RunStep, c.Secret, c.Session, c.SessionProvenance,
-		c.TokenUsage, c.TurnTrace, c.TurnTraceEvent, c.WorkflowRun, c.WorkflowStepRun,
+		c.Message, c.Observation, c.OntologyPredicate, c.OntologyType, c.PaymentTx,
+		c.PeerReputation, c.ProvenanceAttribution, c.ProvenanceCheckpoint,
+		c.Reflection, c.RunJournal, c.RunSnapshot, c.RunStep, c.Secret, c.Session,
+		c.SessionProvenance, c.TokenUsage, c.TurnTrace, c.TurnTraceEvent,
+		c.WorkflowRun, c.WorkflowStepRun,
 	} {
 		n.Intercept(interceptors...)
 	}
@@ -403,6 +417,10 @@ func (c *Client) Mutate(ctx context.Context, m Mutation) (Value, error) {
 		return c.Message.mutate(ctx, m)
 	case *ObservationMutation:
 		return c.Observation.mutate(ctx, m)
+	case *OntologyPredicateMutation:
+		return c.OntologyPredicate.mutate(ctx, m)
+	case *OntologyTypeMutation:
+		return c.OntologyType.mutate(ctx, m)
 	case *PaymentTxMutation:
 		return c.PaymentTx.mutate(ctx, m)
 	case *PeerReputationMutation:
@@ -2198,6 +2216,272 @@ func (c *ObservationClient) mutate(ctx context.Context, m *ObservationMutation) 
 		return (&ObservationDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
 	default:
 		return nil, fmt.Errorf("ent: unknown Observation mutation op: %q", m.Op())
+	}
+}
+
+// OntologyPredicateClient is a client for the OntologyPredicate schema.
+type OntologyPredicateClient struct {
+	config
+}
+
+// NewOntologyPredicateClient returns a client for the OntologyPredicate from the given config.
+func NewOntologyPredicateClient(c config) *OntologyPredicateClient {
+	return &OntologyPredicateClient{config: c}
+}
+
+// Use adds a list of mutation hooks to the hooks stack.
+// A call to `Use(f, g, h)` equals to `ontologypredicate.Hooks(f(g(h())))`.
+func (c *OntologyPredicateClient) Use(hooks ...Hook) {
+	c.hooks.OntologyPredicate = append(c.hooks.OntologyPredicate, hooks...)
+}
+
+// Intercept adds a list of query interceptors to the interceptors stack.
+// A call to `Intercept(f, g, h)` equals to `ontologypredicate.Intercept(f(g(h())))`.
+func (c *OntologyPredicateClient) Intercept(interceptors ...Interceptor) {
+	c.inters.OntologyPredicate = append(c.inters.OntologyPredicate, interceptors...)
+}
+
+// Create returns a builder for creating a OntologyPredicate entity.
+func (c *OntologyPredicateClient) Create() *OntologyPredicateCreate {
+	mutation := newOntologyPredicateMutation(c.config, OpCreate)
+	return &OntologyPredicateCreate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// CreateBulk returns a builder for creating a bulk of OntologyPredicate entities.
+func (c *OntologyPredicateClient) CreateBulk(builders ...*OntologyPredicateCreate) *OntologyPredicateCreateBulk {
+	return &OntologyPredicateCreateBulk{config: c.config, builders: builders}
+}
+
+// MapCreateBulk creates a bulk creation builder from the given slice. For each item in the slice, the function creates
+// a builder and applies setFunc on it.
+func (c *OntologyPredicateClient) MapCreateBulk(slice any, setFunc func(*OntologyPredicateCreate, int)) *OntologyPredicateCreateBulk {
+	rv := reflect.ValueOf(slice)
+	if rv.Kind() != reflect.Slice {
+		return &OntologyPredicateCreateBulk{err: fmt.Errorf("calling to OntologyPredicateClient.MapCreateBulk with wrong type %T, need slice", slice)}
+	}
+	builders := make([]*OntologyPredicateCreate, rv.Len())
+	for i := 0; i < rv.Len(); i++ {
+		builders[i] = c.Create()
+		setFunc(builders[i], i)
+	}
+	return &OntologyPredicateCreateBulk{config: c.config, builders: builders}
+}
+
+// Update returns an update builder for OntologyPredicate.
+func (c *OntologyPredicateClient) Update() *OntologyPredicateUpdate {
+	mutation := newOntologyPredicateMutation(c.config, OpUpdate)
+	return &OntologyPredicateUpdate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOne returns an update builder for the given entity.
+func (c *OntologyPredicateClient) UpdateOne(_m *OntologyPredicate) *OntologyPredicateUpdateOne {
+	mutation := newOntologyPredicateMutation(c.config, OpUpdateOne, withOntologyPredicate(_m))
+	return &OntologyPredicateUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOneID returns an update builder for the given id.
+func (c *OntologyPredicateClient) UpdateOneID(id uuid.UUID) *OntologyPredicateUpdateOne {
+	mutation := newOntologyPredicateMutation(c.config, OpUpdateOne, withOntologyPredicateID(id))
+	return &OntologyPredicateUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// Delete returns a delete builder for OntologyPredicate.
+func (c *OntologyPredicateClient) Delete() *OntologyPredicateDelete {
+	mutation := newOntologyPredicateMutation(c.config, OpDelete)
+	return &OntologyPredicateDelete{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// DeleteOne returns a builder for deleting the given entity.
+func (c *OntologyPredicateClient) DeleteOne(_m *OntologyPredicate) *OntologyPredicateDeleteOne {
+	return c.DeleteOneID(_m.ID)
+}
+
+// DeleteOneID returns a builder for deleting the given entity by its id.
+func (c *OntologyPredicateClient) DeleteOneID(id uuid.UUID) *OntologyPredicateDeleteOne {
+	builder := c.Delete().Where(ontologypredicate.ID(id))
+	builder.mutation.id = &id
+	builder.mutation.op = OpDeleteOne
+	return &OntologyPredicateDeleteOne{builder}
+}
+
+// Query returns a query builder for OntologyPredicate.
+func (c *OntologyPredicateClient) Query() *OntologyPredicateQuery {
+	return &OntologyPredicateQuery{
+		config: c.config,
+		ctx:    &QueryContext{Type: TypeOntologyPredicate},
+		inters: c.Interceptors(),
+	}
+}
+
+// Get returns a OntologyPredicate entity by its id.
+func (c *OntologyPredicateClient) Get(ctx context.Context, id uuid.UUID) (*OntologyPredicate, error) {
+	return c.Query().Where(ontologypredicate.ID(id)).Only(ctx)
+}
+
+// GetX is like Get, but panics if an error occurs.
+func (c *OntologyPredicateClient) GetX(ctx context.Context, id uuid.UUID) *OntologyPredicate {
+	obj, err := c.Get(ctx, id)
+	if err != nil {
+		panic(err)
+	}
+	return obj
+}
+
+// Hooks returns the client hooks.
+func (c *OntologyPredicateClient) Hooks() []Hook {
+	return c.hooks.OntologyPredicate
+}
+
+// Interceptors returns the client interceptors.
+func (c *OntologyPredicateClient) Interceptors() []Interceptor {
+	return c.inters.OntologyPredicate
+}
+
+func (c *OntologyPredicateClient) mutate(ctx context.Context, m *OntologyPredicateMutation) (Value, error) {
+	switch m.Op() {
+	case OpCreate:
+		return (&OntologyPredicateCreate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdate:
+		return (&OntologyPredicateUpdate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdateOne:
+		return (&OntologyPredicateUpdateOne{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpDelete, OpDeleteOne:
+		return (&OntologyPredicateDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
+	default:
+		return nil, fmt.Errorf("ent: unknown OntologyPredicate mutation op: %q", m.Op())
+	}
+}
+
+// OntologyTypeClient is a client for the OntologyType schema.
+type OntologyTypeClient struct {
+	config
+}
+
+// NewOntologyTypeClient returns a client for the OntologyType from the given config.
+func NewOntologyTypeClient(c config) *OntologyTypeClient {
+	return &OntologyTypeClient{config: c}
+}
+
+// Use adds a list of mutation hooks to the hooks stack.
+// A call to `Use(f, g, h)` equals to `ontologytype.Hooks(f(g(h())))`.
+func (c *OntologyTypeClient) Use(hooks ...Hook) {
+	c.hooks.OntologyType = append(c.hooks.OntologyType, hooks...)
+}
+
+// Intercept adds a list of query interceptors to the interceptors stack.
+// A call to `Intercept(f, g, h)` equals to `ontologytype.Intercept(f(g(h())))`.
+func (c *OntologyTypeClient) Intercept(interceptors ...Interceptor) {
+	c.inters.OntologyType = append(c.inters.OntologyType, interceptors...)
+}
+
+// Create returns a builder for creating a OntologyType entity.
+func (c *OntologyTypeClient) Create() *OntologyTypeCreate {
+	mutation := newOntologyTypeMutation(c.config, OpCreate)
+	return &OntologyTypeCreate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// CreateBulk returns a builder for creating a bulk of OntologyType entities.
+func (c *OntologyTypeClient) CreateBulk(builders ...*OntologyTypeCreate) *OntologyTypeCreateBulk {
+	return &OntologyTypeCreateBulk{config: c.config, builders: builders}
+}
+
+// MapCreateBulk creates a bulk creation builder from the given slice. For each item in the slice, the function creates
+// a builder and applies setFunc on it.
+func (c *OntologyTypeClient) MapCreateBulk(slice any, setFunc func(*OntologyTypeCreate, int)) *OntologyTypeCreateBulk {
+	rv := reflect.ValueOf(slice)
+	if rv.Kind() != reflect.Slice {
+		return &OntologyTypeCreateBulk{err: fmt.Errorf("calling to OntologyTypeClient.MapCreateBulk with wrong type %T, need slice", slice)}
+	}
+	builders := make([]*OntologyTypeCreate, rv.Len())
+	for i := 0; i < rv.Len(); i++ {
+		builders[i] = c.Create()
+		setFunc(builders[i], i)
+	}
+	return &OntologyTypeCreateBulk{config: c.config, builders: builders}
+}
+
+// Update returns an update builder for OntologyType.
+func (c *OntologyTypeClient) Update() *OntologyTypeUpdate {
+	mutation := newOntologyTypeMutation(c.config, OpUpdate)
+	return &OntologyTypeUpdate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOne returns an update builder for the given entity.
+func (c *OntologyTypeClient) UpdateOne(_m *OntologyType) *OntologyTypeUpdateOne {
+	mutation := newOntologyTypeMutation(c.config, OpUpdateOne, withOntologyType(_m))
+	return &OntologyTypeUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOneID returns an update builder for the given id.
+func (c *OntologyTypeClient) UpdateOneID(id uuid.UUID) *OntologyTypeUpdateOne {
+	mutation := newOntologyTypeMutation(c.config, OpUpdateOne, withOntologyTypeID(id))
+	return &OntologyTypeUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// Delete returns a delete builder for OntologyType.
+func (c *OntologyTypeClient) Delete() *OntologyTypeDelete {
+	mutation := newOntologyTypeMutation(c.config, OpDelete)
+	return &OntologyTypeDelete{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// DeleteOne returns a builder for deleting the given entity.
+func (c *OntologyTypeClient) DeleteOne(_m *OntologyType) *OntologyTypeDeleteOne {
+	return c.DeleteOneID(_m.ID)
+}
+
+// DeleteOneID returns a builder for deleting the given entity by its id.
+func (c *OntologyTypeClient) DeleteOneID(id uuid.UUID) *OntologyTypeDeleteOne {
+	builder := c.Delete().Where(ontologytype.ID(id))
+	builder.mutation.id = &id
+	builder.mutation.op = OpDeleteOne
+	return &OntologyTypeDeleteOne{builder}
+}
+
+// Query returns a query builder for OntologyType.
+func (c *OntologyTypeClient) Query() *OntologyTypeQuery {
+	return &OntologyTypeQuery{
+		config: c.config,
+		ctx:    &QueryContext{Type: TypeOntologyType},
+		inters: c.Interceptors(),
+	}
+}
+
+// Get returns a OntologyType entity by its id.
+func (c *OntologyTypeClient) Get(ctx context.Context, id uuid.UUID) (*OntologyType, error) {
+	return c.Query().Where(ontologytype.ID(id)).Only(ctx)
+}
+
+// GetX is like Get, but panics if an error occurs.
+func (c *OntologyTypeClient) GetX(ctx context.Context, id uuid.UUID) *OntologyType {
+	obj, err := c.Get(ctx, id)
+	if err != nil {
+		panic(err)
+	}
+	return obj
+}
+
+// Hooks returns the client hooks.
+func (c *OntologyTypeClient) Hooks() []Hook {
+	return c.hooks.OntologyType
+}
+
+// Interceptors returns the client interceptors.
+func (c *OntologyTypeClient) Interceptors() []Interceptor {
+	return c.inters.OntologyType
+}
+
+func (c *OntologyTypeClient) mutate(ctx context.Context, m *OntologyTypeMutation) (Value, error) {
+	switch m.Op() {
+	case OpCreate:
+		return (&OntologyTypeCreate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdate:
+		return (&OntologyTypeUpdate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdateOne:
+		return (&OntologyTypeUpdateOne{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpDelete, OpDeleteOne:
+		return (&OntologyTypeDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
+	default:
+		return nil, fmt.Errorf("ent: unknown OntologyType mutation op: %q", m.Op())
 	}
 }
 
@@ -4366,17 +4650,17 @@ type (
 	hooks struct {
 		AgentMemory, AuditLog, ConfigProfile, CronJob, CronJobHistory, EscrowDeal,
 		ExternalRef, Inquiry, Key, Knowledge, Learning, Message, Observation,
-		PaymentTx, PeerReputation, ProvenanceAttribution, ProvenanceCheckpoint,
-		Reflection, RunJournal, RunSnapshot, RunStep, Secret, Session,
-		SessionProvenance, TokenUsage, TurnTrace, TurnTraceEvent, WorkflowRun,
-		WorkflowStepRun []ent.Hook
+		OntologyPredicate, OntologyType, PaymentTx, PeerReputation,
+		ProvenanceAttribution, ProvenanceCheckpoint, Reflection, RunJournal,
+		RunSnapshot, RunStep, Secret, Session, SessionProvenance, TokenUsage,
+		TurnTrace, TurnTraceEvent, WorkflowRun, WorkflowStepRun []ent.Hook
 	}
 	inters struct {
 		AgentMemory, AuditLog, ConfigProfile, CronJob, CronJobHistory, EscrowDeal,
 		ExternalRef, Inquiry, Key, Knowledge, Learning, Message, Observation,
-		PaymentTx, PeerReputation, ProvenanceAttribution, ProvenanceCheckpoint,
-		Reflection, RunJournal, RunSnapshot, RunStep, Secret, Session,
-		SessionProvenance, TokenUsage, TurnTrace, TurnTraceEvent, WorkflowRun,
-		WorkflowStepRun []ent.Interceptor
+		OntologyPredicate, OntologyType, PaymentTx, PeerReputation,
+		ProvenanceAttribution, ProvenanceCheckpoint, Reflection, RunJournal,
+		RunSnapshot, RunStep, Secret, Session, SessionProvenance, TokenUsage,
+		TurnTrace, TurnTraceEvent, WorkflowRun, WorkflowStepRun []ent.Interceptor
 	}
 )

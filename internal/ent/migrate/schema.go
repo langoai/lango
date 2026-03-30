@@ -444,6 +444,58 @@ var (
 			},
 		},
 	}
+	// OntologyPredicatesColumns holds the columns for the "ontology_predicates" table.
+	OntologyPredicatesColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeUUID},
+		{Name: "name", Type: field.TypeString, Unique: true},
+		{Name: "description", Type: field.TypeString, Default: ""},
+		{Name: "source_types", Type: field.TypeJSON, Nullable: true},
+		{Name: "target_types", Type: field.TypeJSON, Nullable: true},
+		{Name: "cardinality", Type: field.TypeEnum, Enums: []string{"one_to_one", "one_to_many", "many_to_one", "many_to_many"}, Default: "many_to_many"},
+		{Name: "inverse", Type: field.TypeString, Nullable: true},
+		{Name: "status", Type: field.TypeEnum, Enums: []string{"active", "deprecated"}, Default: "active"},
+		{Name: "version", Type: field.TypeInt, Default: 1},
+		{Name: "created_at", Type: field.TypeTime},
+		{Name: "updated_at", Type: field.TypeTime},
+	}
+	// OntologyPredicatesTable holds the schema information for the "ontology_predicates" table.
+	OntologyPredicatesTable = &schema.Table{
+		Name:       "ontology_predicates",
+		Columns:    OntologyPredicatesColumns,
+		PrimaryKey: []*schema.Column{OntologyPredicatesColumns[0]},
+		Indexes: []*schema.Index{
+			{
+				Name:    "ontologypredicate_status",
+				Unique:  false,
+				Columns: []*schema.Column{OntologyPredicatesColumns[7]},
+			},
+		},
+	}
+	// OntologyTypesColumns holds the columns for the "ontology_types" table.
+	OntologyTypesColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeUUID},
+		{Name: "name", Type: field.TypeString, Unique: true},
+		{Name: "description", Type: field.TypeString, Default: ""},
+		{Name: "properties", Type: field.TypeJSON, Nullable: true},
+		{Name: "extends", Type: field.TypeString, Nullable: true},
+		{Name: "status", Type: field.TypeEnum, Enums: []string{"active", "deprecated"}, Default: "active"},
+		{Name: "version", Type: field.TypeInt, Default: 1},
+		{Name: "created_at", Type: field.TypeTime},
+		{Name: "updated_at", Type: field.TypeTime},
+	}
+	// OntologyTypesTable holds the schema information for the "ontology_types" table.
+	OntologyTypesTable = &schema.Table{
+		Name:       "ontology_types",
+		Columns:    OntologyTypesColumns,
+		PrimaryKey: []*schema.Column{OntologyTypesColumns[0]},
+		Indexes: []*schema.Index{
+			{
+				Name:    "ontologytype_status",
+				Unique:  false,
+				Columns: []*schema.Column{OntologyTypesColumns[5]},
+			},
+		},
+	}
 	// PaymentTxesColumns holds the columns for the "payment_txes" table.
 	PaymentTxesColumns = []*schema.Column{
 		{Name: "id", Type: field.TypeUUID},
@@ -1086,6 +1138,8 @@ var (
 		LearningsTable,
 		MessagesTable,
 		ObservationsTable,
+		OntologyPredicatesTable,
+		OntologyTypesTable,
 		PaymentTxesTable,
 		PeerReputationsTable,
 		ProvenanceAttributionsTable,

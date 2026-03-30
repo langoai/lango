@@ -275,6 +275,17 @@ func (m *intelligenceModule) Init(ctx context.Context, r appinit.Resolver) (*app
 	// Graph Store (before knowledge).
 	gc, gcStatus := initGraphStore(cfg)
 
+	// Ontology Registry (after graph store).
+	var graphStoreForOntology graph.Store
+	if gc != nil {
+		graphStoreForOntology = gc.store
+	}
+	ontologySvc, err := initOntology(ctx, m.boot.DBClient, cfg, graphStoreForOntology)
+	if err != nil {
+		logger().Warnw("ontology init failed, continuing without ontology", "error", err)
+	}
+	_ = ontologySvc // will be used in Change 1-2
+
 	// Skills — resolve base tools from foundation for skill init.
 	var baseToolSlice []*agent.Tool
 	if bt := r.Resolve(appinit.ProvidesBaseTools); bt != nil {

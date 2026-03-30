@@ -38,6 +38,10 @@ type Tx struct {
 	Message *MessageClient
 	// Observation is the client for interacting with the Observation builders.
 	Observation *ObservationClient
+	// OntologyPredicate is the client for interacting with the OntologyPredicate builders.
+	OntologyPredicate *OntologyPredicateClient
+	// OntologyType is the client for interacting with the OntologyType builders.
+	OntologyType *OntologyTypeClient
 	// PaymentTx is the client for interacting with the PaymentTx builders.
 	PaymentTx *PaymentTxClient
 	// PeerReputation is the client for interacting with the PeerReputation builders.
@@ -214,6 +218,8 @@ func (tx *Tx) init() {
 	tx.Learning = NewLearningClient(tx.config)
 	tx.Message = NewMessageClient(tx.config)
 	tx.Observation = NewObservationClient(tx.config)
+	tx.OntologyPredicate = NewOntologyPredicateClient(tx.config)
+	tx.OntologyType = NewOntologyTypeClient(tx.config)
 	tx.PaymentTx = NewPaymentTxClient(tx.config)
 	tx.PeerReputation = NewPeerReputationClient(tx.config)
 	tx.ProvenanceAttribution = NewProvenanceAttributionClient(tx.config)

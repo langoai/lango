@@ -25,6 +25,8 @@ import (
 	"github.com/langoai/lango/internal/ent/learning"
 	"github.com/langoai/lango/internal/ent/message"
 	"github.com/langoai/lango/internal/ent/observation"
+	"github.com/langoai/lango/internal/ent/ontologypredicate"
+	"github.com/langoai/lango/internal/ent/ontologytype"
 	"github.com/langoai/lango/internal/ent/paymenttx"
 	"github.com/langoai/lango/internal/ent/peerreputation"
 	"github.com/langoai/lango/internal/ent/provenanceattribution"
@@ -114,6 +116,8 @@ func checkColumn(t, c string) error {
 			learning.Table:              learning.ValidColumn,
 			message.Table:               message.ValidColumn,
 			observation.Table:           observation.ValidColumn,
+			ontologypredicate.Table:     ontologypredicate.ValidColumn,
+			ontologytype.Table:          ontologytype.ValidColumn,
 			paymenttx.Table:             paymenttx.ValidColumn,
 			peerreputation.Table:        peerreputation.ValidColumn,
 			provenanceattribution.Table: provenanceattribution.ValidColumn,

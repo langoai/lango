@@ -45,6 +45,12 @@ type Message func(*sql.Selector)
 // Observation is the predicate function for observation builders.
 type Observation func(*sql.Selector)
 
+// OntologyPredicate is the predicate function for ontologypredicate builders.
+type OntologyPredicate func(*sql.Selector)
+
+// OntologyType is the predicate function for ontologytype builders.
+type OntologyType func(*sql.Selector)
+
 // PaymentTx is the predicate function for paymenttx builders.
 type PaymentTx func(*sql.Selector)
 

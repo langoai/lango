@@ -118,6 +118,9 @@ type Config struct {
 	// Sandbox configuration (OS-level tool execution isolation)
 	Sandbox SandboxConfig `mapstructure:"sandbox" json:"sandbox"`
 
+	// Ontology subsystem configuration (typed objects and predicates)
+	Ontology OntologyConfig `mapstructure:"ontology" json:"ontology,omitempty"`
+
 	// ContextProfile selects a named preset that bundles context subsystem settings.
 	// Valid values: "off", "lite", "balanced", "full", or empty (no profile).
 	ContextProfile ContextProfileName `mapstructure:"contextProfile" json:"contextProfile,omitempty"`
