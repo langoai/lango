@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/langoai/lango/internal/ctxkeys"
 	"github.com/langoai/lango/internal/graph"
 )
 
@@ -75,6 +76,7 @@ type ServiceImpl struct {
 	truth            TruthMaintainer
 	resolver         EntityResolver
 	propStore        *PropertyStore
+	acl              ACLPolicy
 	cacheMu          sync.RWMutex
 	activePredicates map[string]bool
 	version          atomic.Int64
@@ -95,6 +97,25 @@ func (s *ServiceImpl) SetPropertyStore(ps *PropertyStore) {
 	s.propStore = ps
 }
 
+// SetACLPolicy injects the ACL policy after construction.
+// When nil, all operations are permitted (backward compatible).
+func (s *ServiceImpl) SetACLPolicy(p ACLPolicy) {
+	s.acl = p
+}
+
+// checkPermission verifies the calling principal has the required permission.
+// Returns nil when acl is nil (allow-all default).
+func (s *ServiceImpl) checkPermission(ctx context.Context, perm Permission) error {
+	if s.acl == nil {
+		return nil
+	}
+	principal := ctxkeys.PrincipalFromContext(ctx)
+	if principal == "" {
+		principal = "system"
+	}
+	return s.acl.Check(principal, perm)
+}
+
 // NewService creates a new OntologyService backed by the given registry.
 // graphStore may be nil if not yet available (StoreTriple will return an error).
 func NewService(reg Registry, graphStore graph.Store) *ServiceImpl {
@@ -106,22 +127,37 @@ func NewService(reg Registry, graphStore graph.Store) *ServiceImpl {
 }
 
 func (s *ServiceImpl) GetType(ctx context.Context, name string) (*ObjectType, error) {
+	if err := s.checkPermission(ctx, PermRead); err != nil {
+		return nil, err
+	}
 	return s.registry.GetType(ctx, name)
 }
 
 func (s *ServiceImpl) ListTypes(ctx context.Context) ([]ObjectType, error) {
+	if err := s.checkPermission(ctx, PermRead); err != nil {
+		return nil, err
+	}
 	return s.registry.ListTypes(ctx)
 }
 
 func (s *ServiceImpl) GetPredicate(ctx context.Context, name string) (*PredicateDefinition, error) {
+	if err := s.checkPermission(ctx, PermRead); err != nil {
+		return nil, err
+	}
 	return s.registry.GetPredicate(ctx, name)
 }
 
 func (s *ServiceImpl) ListPredicates(ctx context.Context) ([]PredicateDefinition, error) {
+	if err := s.checkPermission(ctx, PermRead); err != nil {
+		return nil, err
+	}
 	return s.registry.ListPredicates(ctx)
 }
 
 func (s *ServiceImpl) RegisterType(ctx context.Context, t ObjectType) error {
+	if err := s.checkPermission(ctx, PermWrite); err != nil {
+		return err
+	}
 	if err := s.registry.RegisterType(ctx, t); err != nil {
 		return err
 	}
@@ -130,6 +166,9 @@ func (s *ServiceImpl) RegisterType(ctx context.Context, t ObjectType) error {
 }
 
 func (s *ServiceImpl) RegisterPredicate(ctx context.Context, p PredicateDefinition) error {
+	if err := s.checkPermission(ctx, PermWrite); err != nil {
+		return err
+	}
 	if err := s.registry.RegisterPredicate(ctx, p); err != nil {
 		return err
 	}
@@ -139,6 +178,9 @@ func (s *ServiceImpl) RegisterPredicate(ctx context.Context, p PredicateDefiniti
 }
 
 func (s *ServiceImpl) DeprecateType(ctx context.Context, name string) error {
+	if err := s.checkPermission(ctx, PermAdmin); err != nil {
+		return err
+	}
 	if err := s.registry.DeprecateType(ctx, name); err != nil {
 		return err
 	}
@@ -147,6 +189,9 @@ func (s *ServiceImpl) DeprecateType(ctx context.Context, name string) error {
 }
 
 func (s *ServiceImpl) DeprecatePredicate(ctx context.Context, name string) error {
+	if err := s.checkPermission(ctx, PermAdmin); err != nil {
+		return err
+	}
 	if err := s.registry.DeprecatePredicate(ctx, name); err != nil {
 		return err
 	}
@@ -155,18 +200,27 @@ func (s *ServiceImpl) DeprecatePredicate(ctx context.Context, name string) error
 	return nil
 }
 
-func (s *ServiceImpl) ValidateTriple(_ context.Context, t graph.Triple) error {
+func (s *ServiceImpl) ValidateTriple(ctx context.Context, t graph.Triple) error {
+	if err := s.checkPermission(ctx, PermRead); err != nil {
+		return err
+	}
 	if !s.predicateIsActive(t.Predicate) {
 		return fmt.Errorf("unknown or deprecated predicate %q", t.Predicate)
 	}
 	return nil
 }
 
-func (s *ServiceImpl) SchemaVersion(_ context.Context) (int, error) {
+func (s *ServiceImpl) SchemaVersion(ctx context.Context) (int, error) {
+	if err := s.checkPermission(ctx, PermRead); err != nil {
+		return 0, err
+	}
 	return int(s.version.Load()), nil
 }
 
 func (s *ServiceImpl) StoreTriple(ctx context.Context, t graph.Triple) error {
+	if err := s.checkPermission(ctx, PermWrite); err != nil {
+		return err
+	}
 	if s.graphStore == nil {
 		return fmt.Errorf("graph store not available")
 	}
@@ -215,6 +269,9 @@ func (s *ServiceImpl) refreshPredicateCache() {
 // --- Truth Maintenance delegation ---
 
 func (s *ServiceImpl) AssertFact(ctx context.Context, input AssertionInput) (*AssertionResult, error) {
+	if err := s.checkPermission(ctx, PermWrite); err != nil {
+		return nil, err
+	}
 	if s.truth == nil {
 		return nil, fmt.Errorf("truth maintenance not initialized")
 	}
@@ -222,6 +279,9 @@ func (s *ServiceImpl) AssertFact(ctx context.Context, input AssertionInput) (*As
 }
 
 func (s *ServiceImpl) RetractFact(ctx context.Context, subject, predicate, object, reason string) error {
+	if err := s.checkPermission(ctx, PermWrite); err != nil {
+		return err
+	}
 	if s.truth == nil {
 		return fmt.Errorf("truth maintenance not initialized")
 	}
@@ -229,6 +289,9 @@ func (s *ServiceImpl) RetractFact(ctx context.Context, subject, predicate, objec
 }
 
 func (s *ServiceImpl) ConflictSet(ctx context.Context, subject, predicate string) ([]Conflict, error) {
+	if err := s.checkPermission(ctx, PermRead); err != nil {
+		return nil, err
+	}
 	if s.truth == nil {
 		return nil, fmt.Errorf("truth maintenance not initialized")
 	}
@@ -236,6 +299,9 @@ func (s *ServiceImpl) ConflictSet(ctx context.Context, subject, predicate string
 }
 
 func (s *ServiceImpl) ResolveConflict(ctx context.Context, conflictID uuid.UUID, winnerObject, reason string) error {
+	if err := s.checkPermission(ctx, PermAdmin); err != nil {
+		return err
+	}
 	if s.truth == nil {
 		return fmt.Errorf("truth maintenance not initialized")
 	}
@@ -243,6 +309,9 @@ func (s *ServiceImpl) ResolveConflict(ctx context.Context, conflictID uuid.UUID,
 }
 
 func (s *ServiceImpl) FactsAt(ctx context.Context, subject string, validAt time.Time) ([]graph.Triple, error) {
+	if err := s.checkPermission(ctx, PermRead); err != nil {
+		return nil, err
+	}
 	if s.truth == nil {
 		return nil, fmt.Errorf("truth maintenance not initialized")
 	}
@@ -250,6 +319,9 @@ func (s *ServiceImpl) FactsAt(ctx context.Context, subject string, validAt time.
 }
 
 func (s *ServiceImpl) OpenConflicts(ctx context.Context) ([]Conflict, error) {
+	if err := s.checkPermission(ctx, PermRead); err != nil {
+		return nil, err
+	}
 	if s.truth == nil {
 		return nil, fmt.Errorf("truth maintenance not initialized")
 	}
@@ -259,6 +331,9 @@ func (s *ServiceImpl) OpenConflicts(ctx context.Context) ([]Conflict, error) {
 // --- Entity Resolution delegation ---
 
 func (s *ServiceImpl) Resolve(ctx context.Context, rawID string) (string, error) {
+	if err := s.checkPermission(ctx, PermRead); err != nil {
+		return "", err
+	}
 	if s.resolver == nil {
 		return rawID, nil // no resolver = identity
 	}
@@ -266,6 +341,9 @@ func (s *ServiceImpl) Resolve(ctx context.Context, rawID string) (string, error)
 }
 
 func (s *ServiceImpl) DeclareSameAs(ctx context.Context, nodeA, nodeB, source string) error {
+	if err := s.checkPermission(ctx, PermWrite); err != nil {
+		return err
+	}
 	if s.resolver == nil {
 		return fmt.Errorf("entity resolver not initialized")
 	}
@@ -273,6 +351,9 @@ func (s *ServiceImpl) DeclareSameAs(ctx context.Context, nodeA, nodeB, source st
 }
 
 func (s *ServiceImpl) MergeEntities(ctx context.Context, canonical, duplicate string) (*MergeResult, error) {
+	if err := s.checkPermission(ctx, PermAdmin); err != nil {
+		return nil, err
+	}
 	if s.resolver == nil {
 		return nil, fmt.Errorf("entity resolver not initialized")
 	}
@@ -280,6 +361,9 @@ func (s *ServiceImpl) MergeEntities(ctx context.Context, canonical, duplicate st
 }
 
 func (s *ServiceImpl) SplitEntity(ctx context.Context, canonical, splitOut string) error {
+	if err := s.checkPermission(ctx, PermAdmin); err != nil {
+		return err
+	}
 	if s.resolver == nil {
 		return fmt.Errorf("entity resolver not initialized")
 	}
@@ -287,6 +371,9 @@ func (s *ServiceImpl) SplitEntity(ctx context.Context, canonical, splitOut strin
 }
 
 func (s *ServiceImpl) Aliases(ctx context.Context, canonicalID string) ([]string, error) {
+	if err := s.checkPermission(ctx, PermRead); err != nil {
+		return nil, err
+	}
 	if s.resolver == nil {
 		return nil, nil
 	}
@@ -295,6 +382,9 @@ func (s *ServiceImpl) Aliases(ctx context.Context, canonicalID string) ([]string
 
 // QueryTriples resolves subject via alias then queries graph store.
 func (s *ServiceImpl) QueryTriples(ctx context.Context, subject string) ([]graph.Triple, error) {
+	if err := s.checkPermission(ctx, PermRead); err != nil {
+		return nil, err
+	}
 	if s.graphStore == nil {
 		return nil, fmt.Errorf("graph store not available")
 	}
@@ -309,6 +399,9 @@ func (s *ServiceImpl) QueryTriples(ctx context.Context, subject string) ([]graph
 // --- Property Store delegation ---
 
 func (s *ServiceImpl) SetEntityProperty(ctx context.Context, entityID, entityType, property, value string) error {
+	if err := s.checkPermission(ctx, PermWrite); err != nil {
+		return err
+	}
 	if s.propStore == nil {
 		return fmt.Errorf("property store not initialized")
 	}
@@ -342,6 +435,9 @@ func (s *ServiceImpl) SetEntityProperty(ctx context.Context, entityID, entityTyp
 }
 
 func (s *ServiceImpl) GetEntityProperties(ctx context.Context, entityID string) (map[string]string, error) {
+	if err := s.checkPermission(ctx, PermRead); err != nil {
+		return nil, err
+	}
 	if s.propStore == nil {
 		return nil, fmt.Errorf("property store not initialized")
 	}
@@ -355,6 +451,9 @@ func (s *ServiceImpl) GetEntityProperties(ctx context.Context, entityID string) 
 }
 
 func (s *ServiceImpl) QueryEntities(ctx context.Context, q PropertyQuery) ([]EntityResult, error) {
+	if err := s.checkPermission(ctx, PermRead); err != nil {
+		return nil, err
+	}
 	if s.propStore == nil {
 		return nil, fmt.Errorf("property store not initialized")
 	}
@@ -387,6 +486,9 @@ func (s *ServiceImpl) QueryEntities(ctx context.Context, q PropertyQuery) ([]Ent
 }
 
 func (s *ServiceImpl) GetEntity(ctx context.Context, entityID string) (*EntityResult, error) {
+	if err := s.checkPermission(ctx, PermRead); err != nil {
+		return nil, err
+	}
 	if s.propStore == nil {
 		return nil, fmt.Errorf("property store not initialized")
 	}
@@ -426,6 +528,9 @@ func (s *ServiceImpl) GetEntity(ctx context.Context, entityID string) (*EntityRe
 }
 
 func (s *ServiceImpl) DeleteEntityProperties(ctx context.Context, entityID string) error {
+	if err := s.checkPermission(ctx, PermAdmin); err != nil {
+		return err
+	}
 	if s.propStore == nil {
 		return fmt.Errorf("property store not initialized")
 	}

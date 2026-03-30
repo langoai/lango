@@ -19,7 +19,7 @@ When `ontology.enabled` is true and OntologyService is initialized, the system S
 `ontology_from_mcp` SHALL accept `tool_name`, `result_json` (JSON string), `entity_type`, and `predicate`. The handler SHALL decode the JSON, create entity properties, and assert a fact linking the entity to the tool via the specified predicate. Explicit mapping only — no automatic type inference.
 
 ### Requirement: Ontologist identity prompt
-The system SHALL provide a `prompts/agents/ontologist/IDENTITY.md` file defining the ontologist agent's role, capabilities, and tool usage guidelines.
+The system SHALL provide a `prompts/agents/ontologist/IDENTITY.md` file defining the ontologist agent's role, capabilities, and tool usage guidelines. The identity prompt SHALL include a note that ontology operations may be restricted by ACL permissions based on the calling agent's role.
 
 ### Requirement: Agent count documentation sync
 All documentation and spec files referencing "7 built-in agents" SHALL be updated to "8 built-in agents" with ontologist included in the agent list.

@@ -7,7 +7,10 @@ import "context"
 
 type contextKey string
 
-const agentNameKey contextKey = "lango.agent_name"
+const (
+	agentNameKey contextKey = "lango.agent_name"
+	principalKey contextKey = "lango.principal"
+)
 
 // WithAgentName returns a new context carrying the given agent name.
 func WithAgentName(ctx context.Context, name string) context.Context {
@@ -18,6 +21,20 @@ func WithAgentName(ctx context.Context, name string) context.Context {
 // It returns an empty string if no agent name is present.
 func AgentNameFromContext(ctx context.Context) string {
 	if v, ok := ctx.Value(agentNameKey).(string); ok {
+		return v
+	}
+	return ""
+}
+
+// WithPrincipal returns a new context carrying the given principal name.
+func WithPrincipal(ctx context.Context, principal string) context.Context {
+	return context.WithValue(ctx, principalKey, principal)
+}
+
+// PrincipalFromContext extracts the principal from ctx.
+// It returns an empty string if no principal is present.
+func PrincipalFromContext(ctx context.Context) string {
+	if v, ok := ctx.Value(principalKey).(string); ok {
 		return v
 	}
 	return ""

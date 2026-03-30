@@ -43,5 +43,15 @@ func initOntology(ctx context.Context, client *ent.Client, cfg *config.Config, g
 	svc.SetPropertyStore(propStore)
 	logger().Info("property store initialized")
 
+	// ACL — operation-level access control.
+	if cfg.Ontology.ACL.Enabled {
+		roles := make(map[string]ontology.Permission, len(cfg.Ontology.ACL.Roles))
+		for principal, level := range cfg.Ontology.ACL.Roles {
+			roles[principal] = ontology.ParsePermission(level)
+		}
+		svc.SetACLPolicy(ontology.NewRoleBasedPolicy(roles))
+		logger().Infow("ontology ACL enabled", "roles", len(roles))
+	}
+
 	return svc, nil
 }

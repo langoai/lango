@@ -1,10 +1,24 @@
 package ontology
 
 import (
+	"errors"
 	"time"
 
 	"github.com/google/uuid"
 )
+
+// Permission represents an ordered access level for ontology operations.
+// Higher values include all lower permissions: Admin > Write > Read.
+type Permission int
+
+const (
+	PermRead  Permission = iota + 1 // query, list, validate
+	PermWrite                        // register, assert, retract, set property
+	PermAdmin                        // deprecate, merge, split, resolve conflict, delete
+)
+
+// ErrPermissionDenied is returned when a principal lacks the required permission.
+var ErrPermissionDenied = errors.New("ontology: permission denied")
 
 // Reserved metadata keys for temporal and provenance fields.
 // These live in graph.Triple.Metadata (prefix "_" to avoid collision with user properties).

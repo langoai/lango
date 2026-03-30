@@ -168,6 +168,9 @@ func New(boot *bootstrap.Result, opts ...AppOption) (*App, error) {
 		"postHooks", len(hookRegistry.PostHooks()),
 	)
 
+	// B4c2. Principal injection — maps agent name to ontology principal.
+	tools = toolchain.ChainAll(tools, toolchain.WithPrincipal())
+
 	// B5. Auth + Gateway.
 	fv := resolver.Resolve(appinit.ProvidesSupervisor).(*foundationValues)
 	auth := initAuth(cfg, fv.Store)
