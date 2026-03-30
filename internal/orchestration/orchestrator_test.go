@@ -743,6 +743,42 @@ func TestBuildOrchestratorInstruction_HasAssessStep(t *testing.T) {
 	assert.Contains(t, got, "0. ASSESS")
 	assert.Contains(t, got, "simple conversational request")
 	assert.Contains(t, got, "respond directly")
+
+	// ASSESS direct-answer line must NOT list weather or general knowledge.
+	assessIdx := strings.Index(got, "0. ASSESS:")
+	require.Greater(t, assessIdx, 0)
+	// The direct-answer list is the parenthesized portion on the ASSESS line.
+	assessLine := got[assessIdx:]
+	parenOpen := strings.Index(assessLine, "(")
+	parenClose := strings.Index(assessLine, ")")
+	require.Greater(t, parenOpen, 0)
+	require.Greater(t, parenClose, parenOpen)
+	directAnswerList := assessLine[parenOpen : parenClose+1]
+	assert.NotContains(t, directAnswerList, "weather", "weather must not be in ASSESS direct-answer list")
+	assert.NotContains(t, directAnswerList, "general knowledge", "general knowledge must not be in ASSESS direct-answer list")
+
+	// ASSESS block must include the no-function-call guard.
+	phase1Idx := strings.Index(got[assessIdx:], "Phase 1")
+	assessBlock := got[assessIdx : assessIdx+phase1Idx]
+	assert.Contains(t, assessBlock, "MUST NOT emit any function calls")
+}
+
+func TestBuildOrchestratorInstruction_DelegationRulesNoWeather(t *testing.T) {
+	got := buildOrchestratorInstruction("base", nil, 5, nil)
+
+	// Delegation Rules section must NOT list weather or general knowledge.
+	rulesIdx := strings.Index(got, "## Delegation Rules")
+	require.Greater(t, rulesIdx, 0)
+	// Extract through the next section header.
+	nextSection := strings.Index(got[rulesIdx+1:], "\n## ")
+	var rulesBlock string
+	if nextSection > 0 {
+		rulesBlock = got[rulesIdx : rulesIdx+1+nextSection]
+	} else {
+		rulesBlock = got[rulesIdx:]
+	}
+	assert.NotContains(t, rulesBlock, "weather", "weather must not be in Delegation Rules direct-answer list")
+	assert.NotContains(t, rulesBlock, "general knowledge", "general knowledge must not be in Delegation Rules direct-answer list")
 }
 
 func TestBuildOrchestratorInstruction_HasAutomatedTaskHandling(t *testing.T) {

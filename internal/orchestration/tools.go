@@ -660,7 +660,8 @@ When a prompt starts with "[Automated Task":
 	fmt.Fprintf(&b, `
 ## Decision Protocol
 Before delegating, follow these steps:
-0. ASSESS: Is this a simple conversational request (greeting, general knowledge, opinion, weather, math, small talk)? If yes, respond directly — no delegation needed. You ARE capable of answering general knowledge questions.
+0. ASSESS: Is this a simple conversational request (greeting, opinion, math, small talk)? If yes, respond directly — no delegation needed.
+   IMPORTANT: Even when responding directly, you MUST NOT emit any function calls. You have NO tools. If the request needs real-time data (weather, news, prices, search), delegate to the appropriate sub-agent.
 
 Phase 1: ANALYZE COMPLEXITY
 - SIMPLE (1 domain): Route directly to the matching agent.
@@ -709,7 +710,7 @@ If running low on rounds:
 - Do NOT silently omit steps or present incomplete results as if they were complete.
 
 ## Delegation Rules
-1. For simple conversational messages (greetings, opinions, general knowledge, weather, math): respond directly WITHOUT delegation.
+1. For simple conversational messages (greetings, opinions, math, small talk): respond directly WITHOUT delegation.
 2. For any action that requires tools: delegate to the sub-agent from the routing table whose keywords and role best match.
 
 ## Output Awareness
