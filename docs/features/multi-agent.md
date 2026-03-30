@@ -18,6 +18,7 @@ graph TD
     O --> AUTO[automator]
     O --> PLAN[planner]
     O --> CHR[chronicler]
+    O --> ONT[ontologist]
     O --> RA[Remote A2A Agents]
 
     style O fill:#4a9eff,color:#fff
@@ -38,6 +39,7 @@ The **orchestrator** has no tools of its own. It receives user messages, classif
 | **automator** | Automation: cron scheduling, background tasks, workflow pipelines | `cron_*`, `bg_*`, `workflow_*` |
 | **planner** | Task decomposition and planning (LLM reasoning only, no tools) | _(none)_ |
 | **chronicler** | Conversational memory: observations, reflections, recall | `memory_*`, `observe_*`, `reflect_*` |
+| **ontologist** | Knowledge ontology management: types, entities, facts, conflicts, and data ingestion | `ontology_*` |
 
 ### Agent Details
 
@@ -83,6 +85,12 @@ Manages conversational memory. Records observations, creates reflections, and re
 
 **Cannot**: shell commands, web browsing, file operations, knowledge search, cryptographic operations.
 
+#### ontologist
+
+Manages the knowledge ontology. Defines and maintains types, entities, facts, and relationships. Detects and resolves conflicts. Handles data ingestion into the ontology layer.
+
+**Cannot**: shell commands, web browsing, file operations, cryptographic operations, memory management.
+
 ## Tool Partitioning
 
 Tools are assigned to sub-agents based on their name prefix. The matching order is:
@@ -92,8 +100,9 @@ Tools are assigned to sub-agents based on their name prefix. The matching order 
 3. **automator** -- `cron_*`, `bg_*`, `workflow_*`
 4. **navigator** -- `browser_*`
 5. **vault** -- `crypto_*`, `secrets_*`, `payment_*`
-6. **operator** -- `exec_*`, `fs_*`, `skill_*`
-7. **unmatched** -- tools matching no prefix are tracked separately and listed in the orchestrator prompt
+6. **ontologist** -- `ontology_*`
+7. **operator** -- `exec_*`, `fs_*`, `skill_*`
+8. **unmatched** -- tools matching no prefix are tracked separately and listed in the orchestrator prompt
 
 Sub-agents with no matching tools are skipped (not created), except for the **planner** which is always included.
 
@@ -120,6 +129,7 @@ Each sub-agent has a keyword list used for routing:
 | automator | schedule, cron, every, recurring, background, async, later, workflow, pipeline, automate, timer |
 | planner | plan, decompose, steps, strategy, how to, break down |
 | chronicler | remember, recall, observation, reflection, memory, history |
+| ontologist | ontology, type, entity, fact, conflict, ingest, schema, taxonomy |
 
 ### Rejection Handling
 
@@ -145,7 +155,7 @@ When [A2A protocol](a2a-protocol.md) is enabled, remote agents are appended to t
 
 ## Custom Agent Definitions
 
-In addition to the built-in agents (operator, navigator, vault, librarian, automator, planner, chronicler), you can define custom agents using `AGENT.md` files.
+In addition to the built-in agents (operator, navigator, vault, librarian, automator, planner, chronicler, ontologist), you can define custom agents using `AGENT.md` files.
 
 ### AGENT.md Format
 
@@ -225,7 +235,7 @@ The `ChildSessionServiceAdapter` manages the fork/merge lifecycle. A `Summarizer
 
 Streaming failure paths use the same discard contract as collection-based failures. If an isolated specialist fails mid-turn, the runtime removes the stale child overlay before retrying and closes any dangling parent-visible tool-call state so later retries do not inherit orphaned specialist calls.
 
-Built-in specialist agents such as `operator`, `navigator`, `vault`, `librarian`, and `automator` use child-session routing by default. `planner` and `chronicler` remain on the parent-session path.
+Built-in specialist agents such as `operator`, `navigator`, `vault`, `librarian`, `automator`, and `ontologist` use child-session routing by default. `planner` and `chronicler` remain on the parent-session path.
 
 ## Turn Traces And Diagnostics
 

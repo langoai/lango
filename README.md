@@ -41,7 +41,7 @@ This project includes experimental AI Agent features and is currently in an unst
 - 🛠️ **Rich Tools** - Shell execution, file system operations, browser automation, crypto & secrets tools
 - 🧠 **Self-Learning** - Knowledge store, learning engine, file-based skill system with GitHub import (git clone + HTTP fallback), observational memory, proactive knowledge librarian
 - 📊 **Knowledge Graph & Graph RAG** - BoltDB triple store with hybrid vector + graph retrieval
-- 🔀 **Multi-Agent Orchestration** - Hierarchical sub-agents (operator, navigator, vault, librarian, automator, planner, chronicler)
+- 🔀 **Multi-Agent Orchestration** - Hierarchical sub-agents (operator, navigator, vault, librarian, automator, planner, chronicler, ontologist)
 - 🌍 **A2A Protocol** - Agent-to-Agent protocol for remote agent discovery and integration
 - 🌐 **P2P Network** - Decentralized agent-to-agent connectivity via libp2p with DHT discovery, ZK-enhanced handshake, knowledge firewall, and peer payments
 - 💸 **Blockchain Payments** - USDC payments on Base L2, X402 V2 auto-pay protocol (Coinbase SDK), spending limits
@@ -389,7 +389,7 @@ lango/
 │   ├── llm/                # LLM abstraction layer
 │   ├── logging/            # Zap structured logger
 │   ├── memory/             # Observational memory (observer, reflector, token counter)
-│   ├── orchestration/      # Multi-agent orchestration (operator, navigator, vault, librarian, automator, planner, chronicler)
+│   ├── orchestration/      # Multi-agent orchestration (operator, navigator, vault, librarian, automator, planner, chronicler, ontologist)
 │   ├── keyring/            # Hardware keyring integration (Touch ID / TPM 2.0)
 │   ├── mdparse/            # Markdown frontmatter parser (YAML extraction)
 │   ├── prompt/             # System prompt builder, section loader, defaults
@@ -945,7 +945,7 @@ Unknown `.md` files in the directory are added as custom sections with priority 
 
 ### Per-Agent Prompt Customization
 
-In multi-agent mode (`agent.multiAgent: true`), all sub-agents (operator, navigator, vault, librarian, automator, planner, chronicler) automatically inherit shared prompt sections (Safety, Conversation Rules) from the prompts directory.
+In multi-agent mode (`agent.multiAgent: true`), all sub-agents (operator, navigator, vault, librarian, automator, planner, chronicler, ontologist) automatically inherit shared prompt sections (Safety, Conversation Rules) from the prompts directory.
 
 You can override or extend prompts per agent by creating an `agents/<name>/` subdirectory:
 
@@ -1053,6 +1053,7 @@ When `agent.multiAgent` is enabled, Lango builds a hierarchical agent tree with 
 | **automator**  | Automation: cron scheduling, background tasks, workflow pipelines                                                   | cron_*, bg_*, workflow_*                                                                                                                               |
 | **planner**    | Task decomposition and planning                                                                                     | (LLM reasoning only, no tools)                                                                                                                         |
 | **chronicler** | Conversational memory: observations, reflections, recall                                                            | memory_*, observe_*, reflect_*                                                                                                                         |
+| **ontologist** | Knowledge ontology management: types, entities, facts, conflicts, and data ingestion                                | ontology_*                                                                                                                                             |
 
 
 The orchestrator uses a keyword-based routing table and 5-step decision protocol (CLASSIFY → MATCH → SELECT → VERIFY → DELEGATE) to route tasks. Each sub-agent can reject misrouted tasks with `[REJECT]`. Unmatched tools are tracked separately and reported to the orchestrator.
@@ -1373,7 +1374,7 @@ lango workflow history
 
 ### Supported Agents
 
-Steps specify which sub-agent to use: `operator`, `navigator`, `vault`, `librarian`, `automator`, `planner`, or `chronicler`. These map to the multi-agent orchestration system when `agent.multiAgent` is enabled.
+Steps specify which sub-agent to use: `operator`, `navigator`, `vault`, `librarian`, `automator`, `planner`, `chronicler`, or `ontologist`. These map to the multi-agent orchestration system when `agent.multiAgent` is enabled.
 
 ## Self-Learning System
 

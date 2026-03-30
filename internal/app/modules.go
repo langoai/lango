@@ -27,6 +27,7 @@ import (
 	"github.com/langoai/lango/internal/librarian"
 	"github.com/langoai/lango/internal/lifecycle"
 	"github.com/langoai/lango/internal/memory"
+	"github.com/langoai/lango/internal/ontology"
 	"github.com/langoai/lango/internal/p2p/gitbundle"
 	"github.com/langoai/lango/internal/p2p/team"
 	toolcrypto "github.com/langoai/lango/internal/tools/crypto"
@@ -284,7 +285,15 @@ func (m *intelligenceModule) Init(ctx context.Context, r appinit.Resolver) (*app
 	if err != nil {
 		logger().Warnw("ontology init failed, continuing without ontology", "error", err)
 	}
-	_ = ontologySvc // will be used in Change 1-2
+	// Ontology tools.
+	if ontologySvc != nil {
+		ontologyTools := ontology.BuildTools(ontologySvc)
+		tools = append(tools, ontologyTools...)
+		entries = append(entries, appinit.CatalogEntry{
+			Category: "ontology", Description: "Ontology management (types, entities, facts, conflicts)",
+			ConfigKey: "ontology.enabled", Enabled: true, Tools: ontologyTools,
+		})
+	}
 
 	// Skills — resolve base tools from foundation for skill init.
 	var baseToolSlice []*agent.Tool
