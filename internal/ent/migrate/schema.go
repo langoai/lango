@@ -208,6 +208,40 @@ var (
 			},
 		},
 	}
+	// EntityPropertiesColumns holds the columns for the "entity_properties" table.
+	EntityPropertiesColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeUUID},
+		{Name: "entity_id", Type: field.TypeString},
+		{Name: "entity_type", Type: field.TypeString},
+		{Name: "property", Type: field.TypeString},
+		{Name: "value", Type: field.TypeString, Size: 2147483647},
+		{Name: "value_type", Type: field.TypeString, Default: "string"},
+		{Name: "created_at", Type: field.TypeTime},
+		{Name: "updated_at", Type: field.TypeTime},
+	}
+	// EntityPropertiesTable holds the schema information for the "entity_properties" table.
+	EntityPropertiesTable = &schema.Table{
+		Name:       "entity_properties",
+		Columns:    EntityPropertiesColumns,
+		PrimaryKey: []*schema.Column{EntityPropertiesColumns[0]},
+		Indexes: []*schema.Index{
+			{
+				Name:    "entityproperty_entity_id_property",
+				Unique:  true,
+				Columns: []*schema.Column{EntityPropertiesColumns[1], EntityPropertiesColumns[3]},
+			},
+			{
+				Name:    "entityproperty_entity_type_property_value",
+				Unique:  false,
+				Columns: []*schema.Column{EntityPropertiesColumns[2], EntityPropertiesColumns[3], EntityPropertiesColumns[4]},
+			},
+			{
+				Name:    "entityproperty_entity_type",
+				Unique:  false,
+				Columns: []*schema.Column{EntityPropertiesColumns[2]},
+			},
+		},
+	}
 	// EscrowDealsColumns holds the columns for the "escrow_deals" table.
 	EscrowDealsColumns = []*schema.Column{
 		{Name: "id", Type: field.TypeInt, Increment: true},
@@ -1186,6 +1220,7 @@ var (
 		CronJobsTable,
 		CronJobHistoriesTable,
 		EntityAliasTable,
+		EntityPropertiesTable,
 		EscrowDealsTable,
 		ExternalRefsTable,
 		InquiriesTable,

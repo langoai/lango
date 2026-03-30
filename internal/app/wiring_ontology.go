@@ -38,5 +38,10 @@ func initOntology(ctx context.Context, client *ent.Client, cfg *config.Config, g
 		logger().Info("entity resolution initialized")
 	}
 
+	// Property Store — EAV for per-entity property values.
+	propStore := ontology.NewPropertyStore(client)
+	svc.SetPropertyStore(propStore)
+	logger().Info("property store initialized")
+
 	return svc, nil
 }

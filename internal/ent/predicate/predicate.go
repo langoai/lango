@@ -24,6 +24,9 @@ type CronJobHistory func(*sql.Selector)
 // EntityAlias is the predicate function for entityalias builders.
 type EntityAlias func(*sql.Selector)
 
+// EntityProperty is the predicate function for entityproperty builders.
+type EntityProperty func(*sql.Selector)
+
 // EscrowDeal is the predicate function for escrowdeal builders.
 type EscrowDeal func(*sql.Selector)
 

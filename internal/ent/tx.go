@@ -24,6 +24,8 @@ type Tx struct {
 	CronJobHistory *CronJobHistoryClient
 	// EntityAlias is the client for interacting with the EntityAlias builders.
 	EntityAlias *EntityAliasClient
+	// EntityProperty is the client for interacting with the EntityProperty builders.
+	EntityProperty *EntityPropertyClient
 	// EscrowDeal is the client for interacting with the EscrowDeal builders.
 	EscrowDeal *EscrowDealClient
 	// ExternalRef is the client for interacting with the ExternalRef builders.
@@ -215,6 +217,7 @@ func (tx *Tx) init() {
 	tx.CronJob = NewCronJobClient(tx.config)
 	tx.CronJobHistory = NewCronJobHistoryClient(tx.config)
 	tx.EntityAlias = NewEntityAliasClient(tx.config)
+	tx.EntityProperty = NewEntityPropertyClient(tx.config)
 	tx.EscrowDeal = NewEscrowDealClient(tx.config)
 	tx.ExternalRef = NewExternalRefClient(tx.config)
 	tx.Inquiry = NewInquiryClient(tx.config)

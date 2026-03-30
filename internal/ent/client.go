@@ -22,6 +22,7 @@ import (
 	"github.com/langoai/lango/internal/ent/cronjob"
 	"github.com/langoai/lango/internal/ent/cronjobhistory"
 	"github.com/langoai/lango/internal/ent/entityalias"
+	"github.com/langoai/lango/internal/ent/entityproperty"
 	"github.com/langoai/lango/internal/ent/escrowdeal"
 	"github.com/langoai/lango/internal/ent/externalref"
 	"github.com/langoai/lango/internal/ent/inquiry"
@@ -68,6 +69,8 @@ type Client struct {
 	CronJobHistory *CronJobHistoryClient
 	// EntityAlias is the client for interacting with the EntityAlias builders.
 	EntityAlias *EntityAliasClient
+	// EntityProperty is the client for interacting with the EntityProperty builders.
+	EntityProperty *EntityPropertyClient
 	// EscrowDeal is the client for interacting with the EscrowDeal builders.
 	EscrowDeal *EscrowDealClient
 	// ExternalRef is the client for interacting with the ExternalRef builders.
@@ -139,6 +142,7 @@ func (c *Client) init() {
 	c.CronJob = NewCronJobClient(c.config)
 	c.CronJobHistory = NewCronJobHistoryClient(c.config)
 	c.EntityAlias = NewEntityAliasClient(c.config)
+	c.EntityProperty = NewEntityPropertyClient(c.config)
 	c.EscrowDeal = NewEscrowDealClient(c.config)
 	c.ExternalRef = NewExternalRefClient(c.config)
 	c.Inquiry = NewInquiryClient(c.config)
@@ -264,6 +268,7 @@ func (c *Client) Tx(ctx context.Context) (*Tx, error) {
 		CronJob:               NewCronJobClient(cfg),
 		CronJobHistory:        NewCronJobHistoryClient(cfg),
 		EntityAlias:           NewEntityAliasClient(cfg),
+		EntityProperty:        NewEntityPropertyClient(cfg),
 		EscrowDeal:            NewEscrowDealClient(cfg),
 		ExternalRef:           NewExternalRefClient(cfg),
 		Inquiry:               NewInquiryClient(cfg),
@@ -316,6 +321,7 @@ func (c *Client) BeginTx(ctx context.Context, opts *sql.TxOptions) (*Tx, error) 
 		CronJob:               NewCronJobClient(cfg),
 		CronJobHistory:        NewCronJobHistoryClient(cfg),
 		EntityAlias:           NewEntityAliasClient(cfg),
+		EntityProperty:        NewEntityPropertyClient(cfg),
 		EscrowDeal:            NewEscrowDealClient(cfg),
 		ExternalRef:           NewExternalRefClient(cfg),
 		Inquiry:               NewInquiryClient(cfg),
@@ -373,12 +379,12 @@ func (c *Client) Close() error {
 func (c *Client) Use(hooks ...Hook) {
 	for _, n := range []interface{ Use(...Hook) }{
 		c.AgentMemory, c.AuditLog, c.ConfigProfile, c.CronJob, c.CronJobHistory,
-		c.EntityAlias, c.EscrowDeal, c.ExternalRef, c.Inquiry, c.Key, c.Knowledge,
-		c.Learning, c.Message, c.Observation, c.OntologyConflict, c.OntologyPredicate,
-		c.OntologyType, c.PaymentTx, c.PeerReputation, c.ProvenanceAttribution,
-		c.ProvenanceCheckpoint, c.Reflection, c.RunJournal, c.RunSnapshot, c.RunStep,
-		c.Secret, c.Session, c.SessionProvenance, c.TokenUsage, c.TurnTrace,
-		c.TurnTraceEvent, c.WorkflowRun, c.WorkflowStepRun,
+		c.EntityAlias, c.EntityProperty, c.EscrowDeal, c.ExternalRef, c.Inquiry, c.Key,
+		c.Knowledge, c.Learning, c.Message, c.Observation, c.OntologyConflict,
+		c.OntologyPredicate, c.OntologyType, c.PaymentTx, c.PeerReputation,
+		c.ProvenanceAttribution, c.ProvenanceCheckpoint, c.Reflection, c.RunJournal,
+		c.RunSnapshot, c.RunStep, c.Secret, c.Session, c.SessionProvenance,
+		c.TokenUsage, c.TurnTrace, c.TurnTraceEvent, c.WorkflowRun, c.WorkflowStepRun,
 	} {
 		n.Use(hooks...)
 	}
@@ -389,12 +395,12 @@ func (c *Client) Use(hooks ...Hook) {
 func (c *Client) Intercept(interceptors ...Interceptor) {
 	for _, n := range []interface{ Intercept(...Interceptor) }{
 		c.AgentMemory, c.AuditLog, c.ConfigProfile, c.CronJob, c.CronJobHistory,
-		c.EntityAlias, c.EscrowDeal, c.ExternalRef, c.Inquiry, c.Key, c.Knowledge,
-		c.Learning, c.Message, c.Observation, c.OntologyConflict, c.OntologyPredicate,
-		c.OntologyType, c.PaymentTx, c.PeerReputation, c.ProvenanceAttribution,
-		c.ProvenanceCheckpoint, c.Reflection, c.RunJournal, c.RunSnapshot, c.RunStep,
-		c.Secret, c.Session, c.SessionProvenance, c.TokenUsage, c.TurnTrace,
-		c.TurnTraceEvent, c.WorkflowRun, c.WorkflowStepRun,
+		c.EntityAlias, c.EntityProperty, c.EscrowDeal, c.ExternalRef, c.Inquiry, c.Key,
+		c.Knowledge, c.Learning, c.Message, c.Observation, c.OntologyConflict,
+		c.OntologyPredicate, c.OntologyType, c.PaymentTx, c.PeerReputation,
+		c.ProvenanceAttribution, c.ProvenanceCheckpoint, c.Reflection, c.RunJournal,
+		c.RunSnapshot, c.RunStep, c.Secret, c.Session, c.SessionProvenance,
+		c.TokenUsage, c.TurnTrace, c.TurnTraceEvent, c.WorkflowRun, c.WorkflowStepRun,
 	} {
 		n.Intercept(interceptors...)
 	}
@@ -415,6 +421,8 @@ func (c *Client) Mutate(ctx context.Context, m Mutation) (Value, error) {
 		return c.CronJobHistory.mutate(ctx, m)
 	case *EntityAliasMutation:
 		return c.EntityAlias.mutate(ctx, m)
+	case *EntityPropertyMutation:
+		return c.EntityProperty.mutate(ctx, m)
 	case *EscrowDealMutation:
 		return c.EscrowDeal.mutate(ctx, m)
 	case *ExternalRefMutation:
@@ -1269,6 +1277,139 @@ func (c *EntityAliasClient) mutate(ctx context.Context, m *EntityAliasMutation) 
 		return (&EntityAliasDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
 	default:
 		return nil, fmt.Errorf("ent: unknown EntityAlias mutation op: %q", m.Op())
+	}
+}
+
+// EntityPropertyClient is a client for the EntityProperty schema.
+type EntityPropertyClient struct {
+	config
+}
+
+// NewEntityPropertyClient returns a client for the EntityProperty from the given config.
+func NewEntityPropertyClient(c config) *EntityPropertyClient {
+	return &EntityPropertyClient{config: c}
+}
+
+// Use adds a list of mutation hooks to the hooks stack.
+// A call to `Use(f, g, h)` equals to `entityproperty.Hooks(f(g(h())))`.
+func (c *EntityPropertyClient) Use(hooks ...Hook) {
+	c.hooks.EntityProperty = append(c.hooks.EntityProperty, hooks...)
+}
+
+// Intercept adds a list of query interceptors to the interceptors stack.
+// A call to `Intercept(f, g, h)` equals to `entityproperty.Intercept(f(g(h())))`.
+func (c *EntityPropertyClient) Intercept(interceptors ...Interceptor) {
+	c.inters.EntityProperty = append(c.inters.EntityProperty, interceptors...)
+}
+
+// Create returns a builder for creating a EntityProperty entity.
+func (c *EntityPropertyClient) Create() *EntityPropertyCreate {
+	mutation := newEntityPropertyMutation(c.config, OpCreate)
+	return &EntityPropertyCreate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// CreateBulk returns a builder for creating a bulk of EntityProperty entities.
+func (c *EntityPropertyClient) CreateBulk(builders ...*EntityPropertyCreate) *EntityPropertyCreateBulk {
+	return &EntityPropertyCreateBulk{config: c.config, builders: builders}
+}
+
+// MapCreateBulk creates a bulk creation builder from the given slice. For each item in the slice, the function creates
+// a builder and applies setFunc on it.
+func (c *EntityPropertyClient) MapCreateBulk(slice any, setFunc func(*EntityPropertyCreate, int)) *EntityPropertyCreateBulk {
+	rv := reflect.ValueOf(slice)
+	if rv.Kind() != reflect.Slice {
+		return &EntityPropertyCreateBulk{err: fmt.Errorf("calling to EntityPropertyClient.MapCreateBulk with wrong type %T, need slice", slice)}
+	}
+	builders := make([]*EntityPropertyCreate, rv.Len())
+	for i := 0; i < rv.Len(); i++ {
+		builders[i] = c.Create()
+		setFunc(builders[i], i)
+	}
+	return &EntityPropertyCreateBulk{config: c.config, builders: builders}
+}
+
+// Update returns an update builder for EntityProperty.
+func (c *EntityPropertyClient) Update() *EntityPropertyUpdate {
+	mutation := newEntityPropertyMutation(c.config, OpUpdate)
+	return &EntityPropertyUpdate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOne returns an update builder for the given entity.
+func (c *EntityPropertyClient) UpdateOne(_m *EntityProperty) *EntityPropertyUpdateOne {
+	mutation := newEntityPropertyMutation(c.config, OpUpdateOne, withEntityProperty(_m))
+	return &EntityPropertyUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOneID returns an update builder for the given id.
+func (c *EntityPropertyClient) UpdateOneID(id uuid.UUID) *EntityPropertyUpdateOne {
+	mutation := newEntityPropertyMutation(c.config, OpUpdateOne, withEntityPropertyID(id))
+	return &EntityPropertyUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// Delete returns a delete builder for EntityProperty.
+func (c *EntityPropertyClient) Delete() *EntityPropertyDelete {
+	mutation := newEntityPropertyMutation(c.config, OpDelete)
+	return &EntityPropertyDelete{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// DeleteOne returns a builder for deleting the given entity.
+func (c *EntityPropertyClient) DeleteOne(_m *EntityProperty) *EntityPropertyDeleteOne {
+	return c.DeleteOneID(_m.ID)
+}
+
+// DeleteOneID returns a builder for deleting the given entity by its id.
+func (c *EntityPropertyClient) DeleteOneID(id uuid.UUID) *EntityPropertyDeleteOne {
+	builder := c.Delete().Where(entityproperty.ID(id))
+	builder.mutation.id = &id
+	builder.mutation.op = OpDeleteOne
+	return &EntityPropertyDeleteOne{builder}
+}
+
+// Query returns a query builder for EntityProperty.
+func (c *EntityPropertyClient) Query() *EntityPropertyQuery {
+	return &EntityPropertyQuery{
+		config: c.config,
+		ctx:    &QueryContext{Type: TypeEntityProperty},
+		inters: c.Interceptors(),
+	}
+}
+
+// Get returns a EntityProperty entity by its id.
+func (c *EntityPropertyClient) Get(ctx context.Context, id uuid.UUID) (*EntityProperty, error) {
+	return c.Query().Where(entityproperty.ID(id)).Only(ctx)
+}
+
+// GetX is like Get, but panics if an error occurs.
+func (c *EntityPropertyClient) GetX(ctx context.Context, id uuid.UUID) *EntityProperty {
+	obj, err := c.Get(ctx, id)
+	if err != nil {
+		panic(err)
+	}
+	return obj
+}
+
+// Hooks returns the client hooks.
+func (c *EntityPropertyClient) Hooks() []Hook {
+	return c.hooks.EntityProperty
+}
+
+// Interceptors returns the client interceptors.
+func (c *EntityPropertyClient) Interceptors() []Interceptor {
+	return c.inters.EntityProperty
+}
+
+func (c *EntityPropertyClient) mutate(ctx context.Context, m *EntityPropertyMutation) (Value, error) {
+	switch m.Op() {
+	case OpCreate:
+		return (&EntityPropertyCreate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdate:
+		return (&EntityPropertyUpdate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdateOne:
+		return (&EntityPropertyUpdateOne{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpDelete, OpDeleteOne:
+		return (&EntityPropertyDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
+	default:
+		return nil, fmt.Errorf("ent: unknown EntityProperty mutation op: %q", m.Op())
 	}
 }
 
@@ -4931,19 +5072,20 @@ func (c *WorkflowStepRunClient) mutate(ctx context.Context, m *WorkflowStepRunMu
 type (
 	hooks struct {
 		AgentMemory, AuditLog, ConfigProfile, CronJob, CronJobHistory, EntityAlias,
-		EscrowDeal, ExternalRef, Inquiry, Key, Knowledge, Learning, Message,
-		Observation, OntologyConflict, OntologyPredicate, OntologyType, PaymentTx,
-		PeerReputation, ProvenanceAttribution, ProvenanceCheckpoint, Reflection,
-		RunJournal, RunSnapshot, RunStep, Secret, Session, SessionProvenance,
-		TokenUsage, TurnTrace, TurnTraceEvent, WorkflowRun, WorkflowStepRun []ent.Hook
+		EntityProperty, EscrowDeal, ExternalRef, Inquiry, Key, Knowledge, Learning,
+		Message, Observation, OntologyConflict, OntologyPredicate, OntologyType,
+		PaymentTx, PeerReputation, ProvenanceAttribution, ProvenanceCheckpoint,
+		Reflection, RunJournal, RunSnapshot, RunStep, Secret, Session,
+		SessionProvenance, TokenUsage, TurnTrace, TurnTraceEvent, WorkflowRun,
+		WorkflowStepRun []ent.Hook
 	}
 	inters struct {
 		AgentMemory, AuditLog, ConfigProfile, CronJob, CronJobHistory, EntityAlias,
-		EscrowDeal, ExternalRef, Inquiry, Key, Knowledge, Learning, Message,
-		Observation, OntologyConflict, OntologyPredicate, OntologyType, PaymentTx,
-		PeerReputation, ProvenanceAttribution, ProvenanceCheckpoint, Reflection,
-		RunJournal, RunSnapshot, RunStep, Secret, Session, SessionProvenance,
-		TokenUsage, TurnTrace, TurnTraceEvent, WorkflowRun,
+		EntityProperty, EscrowDeal, ExternalRef, Inquiry, Key, Knowledge, Learning,
+		Message, Observation, OntologyConflict, OntologyPredicate, OntologyType,
+		PaymentTx, PeerReputation, ProvenanceAttribution, ProvenanceCheckpoint,
+		Reflection, RunJournal, RunSnapshot, RunStep, Secret, Session,
+		SessionProvenance, TokenUsage, TurnTrace, TurnTraceEvent, WorkflowRun,
 		WorkflowStepRun []ent.Interceptor
 	}
 )

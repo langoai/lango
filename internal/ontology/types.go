@@ -96,6 +96,49 @@ type ObjectType struct {
 	UpdatedAt   time.Time     `json:"updatedAt"`
 }
 
+// FilterOp defines comparison operators for property queries.
+type FilterOp string
+
+const (
+	FilterEq       FilterOp = "eq"       // exact match
+	FilterNeq      FilterOp = "neq"      // not equal
+	FilterContains FilterOp = "contains" // substring match
+)
+
+// PropertyFilter is a single condition in a PropertyQuery.
+type PropertyFilter struct {
+	Property string   `json:"property"`
+	Op       FilterOp `json:"op"`
+	Value    string   `json:"value"`
+}
+
+// PropertyQuery selects entities by type and property filters (AND semantics).
+type PropertyQuery struct {
+	EntityType string           `json:"entityType"` // required
+	Filters    []PropertyFilter `json:"filters"`    // AND
+	Limit      int              `json:"limit"`      // default 100
+	Offset     int              `json:"offset"`
+}
+
+// EntityResult combines an entity's properties with its graph relationships.
+type EntityResult struct {
+	EntityID   string            `json:"entityId"`
+	EntityType string            `json:"entityType"`
+	Properties map[string]string `json:"properties"`
+	Outgoing   []ResultTriple    `json:"outgoing,omitempty"` // subject=entityID
+	Incoming   []ResultTriple    `json:"incoming,omitempty"` // object=entityID
+}
+
+// ResultTriple is a serializable triple for EntityResult.
+// Avoids importing graph in types.go; populated by the service layer from graph.Triple.
+type ResultTriple struct {
+	Subject     string `json:"subject"`
+	Predicate   string `json:"predicate"`
+	Object      string `json:"object"`
+	SubjectType string `json:"subjectType,omitempty"`
+	ObjectType  string `json:"objectType,omitempty"`
+}
+
 // PredicateDefinition represents a formal relationship type in the ontology.
 type PredicateDefinition struct {
 	ID          uuid.UUID    `json:"id"`

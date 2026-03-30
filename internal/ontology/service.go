@@ -59,6 +59,13 @@ type OntologyService interface {
 	Aliases(ctx context.Context, canonicalID string) ([]string, error)
 	// QueryTriples resolves subject via alias before querying graph store.
 	QueryTriples(ctx context.Context, subject string) ([]graph.Triple, error)
+
+	// Property Store — Change 1.5-1
+	SetEntityProperty(ctx context.Context, entityID, entityType, property, value string) error
+	GetEntityProperties(ctx context.Context, entityID string) (map[string]string, error)
+	QueryEntities(ctx context.Context, q PropertyQuery) ([]EntityResult, error)
+	GetEntity(ctx context.Context, entityID string) (*EntityResult, error)
+	DeleteEntityProperties(ctx context.Context, entityID string) error
 }
 
 // ServiceImpl implements OntologyService.
@@ -67,6 +74,7 @@ type ServiceImpl struct {
 	graphStore       graph.Store
 	truth            TruthMaintainer
 	resolver         EntityResolver
+	propStore        *PropertyStore
 	cacheMu          sync.RWMutex
 	activePredicates map[string]bool
 	version          atomic.Int64
@@ -80,6 +88,11 @@ func (s *ServiceImpl) SetTruthMaintainer(tm TruthMaintainer) {
 // SetEntityResolver injects the EntityResolver after construction.
 func (s *ServiceImpl) SetEntityResolver(er EntityResolver) {
 	s.resolver = er
+}
+
+// SetPropertyStore injects the PropertyStore after construction.
+func (s *ServiceImpl) SetPropertyStore(ps *PropertyStore) {
+	s.propStore = ps
 }
 
 // NewService creates a new OntologyService backed by the given registry.
@@ -291,4 +304,153 @@ func (s *ServiceImpl) QueryTriples(ctx context.Context, subject string) ([]graph
 		}
 	}
 	return s.graphStore.QueryBySubject(ctx, subject)
+}
+
+// --- Property Store delegation ---
+
+func (s *ServiceImpl) SetEntityProperty(ctx context.Context, entityID, entityType, property, value string) error {
+	if s.propStore == nil {
+		return fmt.Errorf("property store not initialized")
+	}
+
+	// Validate entityType exists in registry.
+	objType, err := s.registry.GetType(ctx, entityType)
+	if err != nil {
+		return fmt.Errorf("set entity property: unknown type %q: %w", entityType, err)
+	}
+
+	// Validate property name exists in ObjectType.Properties.
+	var propDef *PropertyDef
+	for i := range objType.Properties {
+		if objType.Properties[i].Name == property {
+			propDef = &objType.Properties[i]
+			break
+		}
+	}
+	if propDef == nil {
+		return fmt.Errorf("set entity property: property %q not defined in type %q", property, entityType)
+	}
+
+	// Canonicalize entity_id.
+	if s.resolver != nil {
+		if canonical, err := s.resolver.Resolve(ctx, entityID); err == nil {
+			entityID = canonical
+		}
+	}
+
+	return s.propStore.SetProperty(ctx, entityID, entityType, property, value, string(propDef.Type))
+}
+
+func (s *ServiceImpl) GetEntityProperties(ctx context.Context, entityID string) (map[string]string, error) {
+	if s.propStore == nil {
+		return nil, fmt.Errorf("property store not initialized")
+	}
+	// Canonicalize entity_id.
+	if s.resolver != nil {
+		if canonical, err := s.resolver.Resolve(ctx, entityID); err == nil {
+			entityID = canonical
+		}
+	}
+	return s.propStore.GetProperties(ctx, entityID)
+}
+
+func (s *ServiceImpl) QueryEntities(ctx context.Context, q PropertyQuery) ([]EntityResult, error) {
+	if s.propStore == nil {
+		return nil, fmt.Errorf("property store not initialized")
+	}
+
+	entityIDs, err := s.propStore.Query(ctx, q)
+	if err != nil {
+		return nil, err
+	}
+
+	results := make([]EntityResult, 0, len(entityIDs))
+	for _, id := range entityIDs {
+		props, err := s.propStore.GetProperties(ctx, id)
+		if err != nil {
+			return nil, err
+		}
+		er := EntityResult{
+			EntityID:   id,
+			EntityType: q.EntityType,
+			Properties: props,
+		}
+		// QueryEntities: outgoing triples only (incoming is too expensive for list queries).
+		if s.graphStore != nil {
+			if outgoing, qErr := s.graphStore.QueryBySubject(ctx, id); qErr == nil {
+				er.Outgoing = toResultTriples(outgoing)
+			}
+		}
+		results = append(results, er)
+	}
+	return results, nil
+}
+
+func (s *ServiceImpl) GetEntity(ctx context.Context, entityID string) (*EntityResult, error) {
+	if s.propStore == nil {
+		return nil, fmt.Errorf("property store not initialized")
+	}
+
+	// Canonicalize entity_id.
+	if s.resolver != nil {
+		if canonical, err := s.resolver.Resolve(ctx, entityID); err == nil {
+			entityID = canonical
+		}
+	}
+
+	props, err := s.propStore.GetProperties(ctx, entityID)
+	if err != nil {
+		return nil, err
+	}
+
+	// Determine entity type from property store.
+	entityType, _ := s.propStore.GetEntityType(ctx, entityID)
+
+	result := &EntityResult{
+		EntityID:   entityID,
+		EntityType: entityType,
+		Properties: props,
+	}
+
+	// Fetch outgoing + incoming triples from graph store.
+	if s.graphStore != nil {
+		if outgoing, err := s.graphStore.QueryBySubject(ctx, entityID); err == nil {
+			result.Outgoing = toResultTriples(outgoing)
+		}
+		if incoming, err := s.graphStore.QueryByObject(ctx, entityID); err == nil {
+			result.Incoming = toResultTriples(incoming)
+		}
+	}
+
+	return result, nil
+}
+
+func (s *ServiceImpl) DeleteEntityProperties(ctx context.Context, entityID string) error {
+	if s.propStore == nil {
+		return fmt.Errorf("property store not initialized")
+	}
+	if s.resolver != nil {
+		if canonical, err := s.resolver.Resolve(ctx, entityID); err == nil {
+			entityID = canonical
+		}
+	}
+	return s.propStore.DeleteProperties(ctx, entityID)
+}
+
+// toResultTriples converts graph.Triple slice to ResultTriple slice.
+func toResultTriples(triples []graph.Triple) []ResultTriple {
+	if len(triples) == 0 {
+		return nil
+	}
+	result := make([]ResultTriple, len(triples))
+	for i, t := range triples {
+		result[i] = ResultTriple{
+			Subject:     t.Subject,
+			Predicate:   t.Predicate,
+			Object:      t.Object,
+			SubjectType: t.SubjectType,
+			ObjectType:  t.ObjectType,
+		}
+	}
+	return result
 }

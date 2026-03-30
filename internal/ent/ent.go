@@ -18,6 +18,7 @@ import (
 	"github.com/langoai/lango/internal/ent/cronjob"
 	"github.com/langoai/lango/internal/ent/cronjobhistory"
 	"github.com/langoai/lango/internal/ent/entityalias"
+	"github.com/langoai/lango/internal/ent/entityproperty"
 	"github.com/langoai/lango/internal/ent/escrowdeal"
 	"github.com/langoai/lango/internal/ent/externalref"
 	"github.com/langoai/lango/internal/ent/inquiry"
@@ -111,6 +112,7 @@ func checkColumn(t, c string) error {
 			cronjob.Table:               cronjob.ValidColumn,
 			cronjobhistory.Table:        cronjobhistory.ValidColumn,
 			entityalias.Table:           entityalias.ValidColumn,
+			entityproperty.Table:        entityproperty.ValidColumn,
 			escrowdeal.Table:            escrowdeal.ValidColumn,
 			externalref.Table:           externalref.ValidColumn,
 			inquiry.Table:               inquiry.ValidColumn,

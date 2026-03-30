@@ -12,6 +12,7 @@ import (
 	"github.com/langoai/lango/internal/ent/cronjob"
 	"github.com/langoai/lango/internal/ent/cronjobhistory"
 	"github.com/langoai/lango/internal/ent/entityalias"
+	"github.com/langoai/lango/internal/ent/entityproperty"
 	"github.com/langoai/lango/internal/ent/escrowdeal"
 	"github.com/langoai/lango/internal/ent/externalref"
 	"github.com/langoai/lango/internal/ent/inquiry"
@@ -204,6 +205,38 @@ func init() {
 	entityaliasDescID := entityaliasFields[0].Descriptor()
 	// entityalias.DefaultID holds the default value on creation for the id field.
 	entityalias.DefaultID = entityaliasDescID.Default.(func() uuid.UUID)
+	entitypropertyFields := schema.EntityProperty{}.Fields()
+	_ = entitypropertyFields
+	// entitypropertyDescEntityID is the schema descriptor for entity_id field.
+	entitypropertyDescEntityID := entitypropertyFields[1].Descriptor()
+	// entityproperty.EntityIDValidator is a validator for the "entity_id" field. It is called by the builders before save.
+	entityproperty.EntityIDValidator = entitypropertyDescEntityID.Validators[0].(func(string) error)
+	// entitypropertyDescEntityType is the schema descriptor for entity_type field.
+	entitypropertyDescEntityType := entitypropertyFields[2].Descriptor()
+	// entityproperty.EntityTypeValidator is a validator for the "entity_type" field. It is called by the builders before save.
+	entityproperty.EntityTypeValidator = entitypropertyDescEntityType.Validators[0].(func(string) error)
+	// entitypropertyDescProperty is the schema descriptor for property field.
+	entitypropertyDescProperty := entitypropertyFields[3].Descriptor()
+	// entityproperty.PropertyValidator is a validator for the "property" field. It is called by the builders before save.
+	entityproperty.PropertyValidator = entitypropertyDescProperty.Validators[0].(func(string) error)
+	// entitypropertyDescValueType is the schema descriptor for value_type field.
+	entitypropertyDescValueType := entitypropertyFields[5].Descriptor()
+	// entityproperty.DefaultValueType holds the default value on creation for the value_type field.
+	entityproperty.DefaultValueType = entitypropertyDescValueType.Default.(string)
+	// entitypropertyDescCreatedAt is the schema descriptor for created_at field.
+	entitypropertyDescCreatedAt := entitypropertyFields[6].Descriptor()
+	// entityproperty.DefaultCreatedAt holds the default value on creation for the created_at field.
+	entityproperty.DefaultCreatedAt = entitypropertyDescCreatedAt.Default.(func() time.Time)
+	// entitypropertyDescUpdatedAt is the schema descriptor for updated_at field.
+	entitypropertyDescUpdatedAt := entitypropertyFields[7].Descriptor()
+	// entityproperty.DefaultUpdatedAt holds the default value on creation for the updated_at field.
+	entityproperty.DefaultUpdatedAt = entitypropertyDescUpdatedAt.Default.(func() time.Time)
+	// entityproperty.UpdateDefaultUpdatedAt holds the default value on update for the updated_at field.
+	entityproperty.UpdateDefaultUpdatedAt = entitypropertyDescUpdatedAt.UpdateDefault.(func() time.Time)
+	// entitypropertyDescID is the schema descriptor for id field.
+	entitypropertyDescID := entitypropertyFields[0].Descriptor()
+	// entityproperty.DefaultID holds the default value on creation for the id field.
+	entityproperty.DefaultID = entitypropertyDescID.Default.(func() uuid.UUID)
 	escrowdealFields := schema.EscrowDeal{}.Fields()
 	_ = escrowdealFields
 	// escrowdealDescEscrowID is the schema descriptor for escrow_id field.

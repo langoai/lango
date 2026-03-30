@@ -81,6 +81,18 @@ func (f EntityAliasFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value,
 	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.EntityAliasMutation", m)
 }
 
+// The EntityPropertyFunc type is an adapter to allow the use of ordinary
+// function as EntityProperty mutator.
+type EntityPropertyFunc func(context.Context, *ent.EntityPropertyMutation) (ent.Value, error)
+
+// Mutate calls f(ctx, m).
+func (f EntityPropertyFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value, error) {
+	if mv, ok := m.(*ent.EntityPropertyMutation); ok {
+		return f(ctx, mv)
+	}
+	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.EntityPropertyMutation", m)
+}
+
 // The EscrowDealFunc type is an adapter to allow the use of ordinary
 // function as EscrowDeal mutator.
 type EscrowDealFunc func(context.Context, *ent.EscrowDealMutation) (ent.Value, error)
