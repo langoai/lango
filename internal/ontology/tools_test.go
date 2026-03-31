@@ -21,7 +21,7 @@ func newToolsTestEnv(t *testing.T) ontology.OntologyService {
 func TestBuildTools_Count(t *testing.T) {
 	svc := newToolsTestEnv(t)
 	tools := ontology.BuildTools(svc, nil)
-	assert.Len(t, tools, 13, "should have 13 ontology tools")
+	assert.Len(t, tools, 17, "should have 17 ontology tools (13 static + 4 governance)")
 }
 
 func TestBuildTools_Names(t *testing.T) {

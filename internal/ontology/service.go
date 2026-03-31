@@ -73,6 +73,12 @@ type OntologyService interface {
 	ListActions(ctx context.Context) ([]ActionSummary, error)
 	GetActionLog(ctx context.Context, logID uuid.UUID) (*ActionLogEntry, error)
 	ListActionLogs(ctx context.Context, actionName string, limit int) ([]ActionLogEntry, error)
+
+	// Governance — Change 2-3
+	PromoteType(ctx context.Context, typeName string, targetStatus SchemaStatus, reason string) error
+	PromotePredicate(ctx context.Context, predName string, targetStatus SchemaStatus, reason string) error
+	SchemaHealth(ctx context.Context) (*SchemaHealthReport, error)
+	TypeUsage(ctx context.Context, typeName string) (*TypeUsageInfo, error)
 }
 
 // ServiceImpl implements OntologyService.
@@ -84,6 +90,7 @@ type ServiceImpl struct {
 	propStore        *PropertyStore
 	acl              ACLPolicy
 	executor         *ActionExecutor
+	governance       *GovernanceEngine
 	cacheMu          sync.RWMutex
 	activePredicates map[string]bool
 	version          atomic.Int64
@@ -113,6 +120,12 @@ func (s *ServiceImpl) SetACLPolicy(p ACLPolicy) {
 // SetActionExecutor injects the ActionExecutor after construction.
 func (s *ServiceImpl) SetActionExecutor(e *ActionExecutor) {
 	s.executor = e
+}
+
+// SetGovernanceEngine injects the GovernanceEngine after construction.
+// Must be called AFTER SeedDefaults to ensure seed types bypass governance.
+func (s *ServiceImpl) SetGovernanceEngine(g *GovernanceEngine) {
+	s.governance = g
 }
 
 // checkPermission verifies the calling principal has the required permission.
@@ -170,6 +183,12 @@ func (s *ServiceImpl) RegisterType(ctx context.Context, t ObjectType) error {
 	if err := s.checkPermission(ctx, PermWrite); err != nil {
 		return err
 	}
+	if s.governance != nil {
+		if err := s.governance.CheckRateLimit(ctx); err != nil {
+			return err
+		}
+		t.Status = SchemaProposed
+	}
 	if err := s.registry.RegisterType(ctx, t); err != nil {
 		return err
 	}
@@ -180,6 +199,12 @@ func (s *ServiceImpl) RegisterType(ctx context.Context, t ObjectType) error {
 func (s *ServiceImpl) RegisterPredicate(ctx context.Context, p PredicateDefinition) error {
 	if err := s.checkPermission(ctx, PermWrite); err != nil {
 		return err
+	}
+	if s.governance != nil {
+		if err := s.governance.CheckRateLimit(ctx); err != nil {
+			return err
+		}
+		p.Status = SchemaProposed
 	}
 	if err := s.registry.RegisterPredicate(ctx, p); err != nil {
 		return err
@@ -269,7 +294,7 @@ func (s *ServiceImpl) refreshPredicateCache() {
 	}
 	cache := make(map[string]bool, len(preds))
 	for _, p := range preds {
-		if p.Status == SchemaActive {
+		if p.Status == SchemaActive || p.Status == SchemaShadow {
 			cache[p.Name] = true
 		}
 	}
@@ -552,6 +577,90 @@ func (s *ServiceImpl) DeleteEntityProperties(ctx context.Context, entityID strin
 		}
 	}
 	return s.propStore.DeleteProperties(ctx, entityID)
+}
+
+// --- Governance delegation ---
+
+func (s *ServiceImpl) PromoteType(ctx context.Context, typeName string, targetStatus SchemaStatus, _ string) error {
+	if err := s.checkPermission(ctx, PermAdmin); err != nil {
+		return err
+	}
+	if s.governance == nil {
+		return fmt.Errorf("governance not enabled")
+	}
+	t, err := s.registry.GetType(ctx, typeName)
+	if err != nil {
+		return fmt.Errorf("get type %q: %w", typeName, err)
+	}
+	if err := s.governance.ValidateTransition(t.Status, targetStatus); err != nil {
+		return err
+	}
+	t.Status = targetStatus
+	return s.registry.RegisterType(ctx, *t)
+}
+
+func (s *ServiceImpl) PromotePredicate(ctx context.Context, predName string, targetStatus SchemaStatus, _ string) error {
+	if err := s.checkPermission(ctx, PermAdmin); err != nil {
+		return err
+	}
+	if s.governance == nil {
+		return fmt.Errorf("governance not enabled")
+	}
+	p, err := s.registry.GetPredicate(ctx, predName)
+	if err != nil {
+		return fmt.Errorf("get predicate %q: %w", predName, err)
+	}
+	if err := s.governance.ValidateTransition(p.Status, targetStatus); err != nil {
+		return err
+	}
+	p.Status = targetStatus
+	if err := s.registry.RegisterPredicate(ctx, *p); err != nil {
+		return err
+	}
+	s.refreshPredicateCache()
+	return nil
+}
+
+func (s *ServiceImpl) SchemaHealth(ctx context.Context) (*SchemaHealthReport, error) {
+	if err := s.checkPermission(ctx, PermRead); err != nil {
+		return nil, err
+	}
+	if s.governance == nil {
+		// Return basic counts even without governance
+		types, _ := s.registry.ListTypes(ctx)
+		preds, _ := s.registry.ListPredicates(ctx)
+		report := &SchemaHealthReport{
+			Types:      make(map[SchemaStatus]int),
+			Predicates: make(map[SchemaStatus]int),
+		}
+		for _, t := range types {
+			report.Types[t.Status]++
+		}
+		for _, p := range preds {
+			report.Predicates[p.Status]++
+		}
+		return report, nil
+	}
+	return s.governance.SchemaHealth(ctx, s.registry)
+}
+
+func (s *ServiceImpl) TypeUsage(ctx context.Context, typeName string) (*TypeUsageInfo, error) {
+	if err := s.checkPermission(ctx, PermRead); err != nil {
+		return nil, err
+	}
+	if s.governance != nil {
+		return s.governance.TypeUsage(ctx, s.registry, typeName)
+	}
+	t, err := s.registry.GetType(ctx, typeName)
+	if err != nil {
+		return nil, err
+	}
+	return &TypeUsageInfo{
+		TypeName:  t.Name,
+		Status:    t.Status,
+		Version:   t.Version,
+		CreatedAt: t.CreatedAt,
+	}, nil
 }
 
 // --- Action Types delegation ---

@@ -36,7 +36,7 @@ func (OntologyPredicate) Fields() []ent.Field {
 			Optional().
 			Nillable(),
 		field.Enum("status").
-			Values("active", "deprecated").
+			Values("proposed", "quarantined", "shadow", "active", "deprecated").
 			Default("active"),
 		field.Int("version").
 			Default(1),

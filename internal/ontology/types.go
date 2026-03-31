@@ -46,9 +46,35 @@ var SourcePrecedence = map[string]int{
 type SchemaStatus string
 
 const (
-	SchemaActive     SchemaStatus = "active"
-	SchemaDeprecated SchemaStatus = "deprecated"
+	SchemaProposed    SchemaStatus = "proposed"
+	SchemaQuarantined SchemaStatus = "quarantined"
+	SchemaShadow      SchemaStatus = "shadow"
+	SchemaActive      SchemaStatus = "active"
+	SchemaDeprecated  SchemaStatus = "deprecated"
 )
+
+// GovernancePolicy configures schema lifecycle governance.
+type GovernancePolicy struct {
+	MaxNewPerDay          int // combined daily limit for type + predicate proposals
+	QuarantinePeriodHrs   int
+	ShadowModeDurationHrs int
+	MinUsageForPromotion  int
+	SchemaExplosionBudget int // per month, type + predicate combined
+}
+
+// SchemaHealthReport provides status counts for types and predicates.
+type SchemaHealthReport struct {
+	Types      map[SchemaStatus]int `json:"types"`
+	Predicates map[SchemaStatus]int `json:"predicates"`
+}
+
+// TypeUsageInfo provides basic information about a type's status and age.
+type TypeUsageInfo struct {
+	TypeName  string       `json:"typeName"`
+	Status    SchemaStatus `json:"status"`
+	Version   int          `json:"version"`
+	CreatedAt time.Time    `json:"createdAt"`
+}
 
 // Cardinality defines the relationship multiplicity between subject and object types.
 type Cardinality string

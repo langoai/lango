@@ -74,5 +74,20 @@ func initOntology(ctx context.Context, client *ent.Client, cfg *config.Config, g
 	svc.SetActionExecutor(executor)
 	logger().Infow("action executor initialized", "actions", len(actionReg.List()))
 
+	// Governance — schema lifecycle FSM. Must be set AFTER SeedDefaults
+	// so seed types/predicates register with active status.
+	if cfg.Ontology.Governance.Enabled {
+		gov := ontology.NewGovernanceEngine(ontology.GovernancePolicy{
+			MaxNewPerDay:          cfg.Ontology.Governance.MaxNewPerDay,
+			QuarantinePeriodHrs:   cfg.Ontology.Governance.QuarantinePeriodHrs,
+			ShadowModeDurationHrs: cfg.Ontology.Governance.ShadowModeDurationHrs,
+			MinUsageForPromotion:  cfg.Ontology.Governance.MinUsageForPromotion,
+			SchemaExplosionBudget: cfg.Ontology.Governance.SchemaExplosionBudget,
+		})
+		svc.SetGovernanceEngine(gov)
+		logger().Infow("ontology governance enabled",
+			"maxNewPerDay", cfg.Ontology.Governance.MaxNewPerDay)
+	}
+
 	return &initOntologyResult{Service: svc, Registry: actionReg}, nil
 }

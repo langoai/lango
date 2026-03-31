@@ -117,8 +117,11 @@ const DefaultStatus = StatusActive
 
 // Status values.
 const (
-	StatusActive     Status = "active"
-	StatusDeprecated Status = "deprecated"
+	StatusProposed    Status = "proposed"
+	StatusQuarantined Status = "quarantined"
+	StatusShadow      Status = "shadow"
+	StatusActive      Status = "active"
+	StatusDeprecated  Status = "deprecated"
 )
 
 func (s Status) String() string {
@@ -128,7 +131,7 @@ func (s Status) String() string {
 // StatusValidator is a validator for the "status" field enum values. It is called by the builders before save.
 func StatusValidator(s Status) error {
 	switch s {
-	case StatusActive, StatusDeprecated:
+	case StatusProposed, StatusQuarantined, StatusShadow, StatusActive, StatusDeprecated:
 		return nil
 	default:
 		return fmt.Errorf("ontologypredicate: invalid enum value for status field: %q", s)

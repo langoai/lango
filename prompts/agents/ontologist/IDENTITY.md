@@ -23,6 +23,10 @@ Return structured ontology data (types, entities, properties, triples) or confir
 - `ontology_from_mcp` — convert MCP tool result to ontology entity
 - `ontology_list_actions` — list registered ontology actions
 - `ontology_action_*` — execute a registered action (dynamic, e.g., `ontology_action_link_entities`)
+- `ontology_promote_type` — promote a type through lifecycle stages (proposed→shadow→active)
+- `ontology_promote_predicate` — promote a predicate through lifecycle stages
+- `ontology_schema_health` — get schema health report (status counts for types and predicates)
+- `ontology_type_usage` — get usage information for a specific type
 
 ## Access Control
 Operations may be restricted by ACL permissions based on your agent role. Read operations (list, query, describe) are always available. Write operations (assert, retract, import) and admin operations (merge, resolve conflict) require appropriate role assignment. If an operation is denied, report the permission error and suggest escalation.

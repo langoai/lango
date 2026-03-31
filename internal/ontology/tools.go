@@ -32,6 +32,13 @@ func BuildTools(svc OntologyService, reg *ActionRegistry) []*agent.Tool {
 		buildImportCSV(svc),
 		buildFromMCP(svc),
 	}
+	// Governance tools (always available — SchemaHealth works without governance enabled)
+	tools = append(tools,
+		buildPromoteType(svc),
+		buildPromotePredicate(svc),
+		buildSchemaHealth(svc),
+		buildTypeUsage(svc),
+	)
 	if reg != nil {
 		tools = append(tools, buildListActions(svc))
 		for _, action := range reg.List() {
@@ -100,6 +107,104 @@ func buildActionTool(svc OntologyService, action *ActionType) *agent.Tool {
 		},
 	}
 }
+
+// --- Governance tools ---
+
+func buildPromoteType(svc OntologyService) *agent.Tool {
+	return &agent.Tool{
+		Name:        "ontology_promote_type",
+		Description: "Promote an ObjectType to a new lifecycle status (e.g., proposed→shadow→active).",
+		SafetyLevel: agent.SafetyLevelModerate,
+		Parameters: map[string]interface{}{
+			"type": "object",
+			"properties": map[string]interface{}{
+				"type_name":     map[string]interface{}{"type": "string", "description": "Name of the type to promote"},
+				"target_status": map[string]interface{}{"type": "string", "description": "Target status: shadow, active, quarantined, deprecated"},
+				"reason":        map[string]interface{}{"type": "string", "description": "Reason for promotion"},
+			},
+			"required": []string{"type_name", "target_status", "reason"},
+		},
+		Handler: func(ctx context.Context, params map[string]interface{}) (interface{}, error) {
+			typeName := fmt.Sprintf("%v", params["type_name"])
+			target := SchemaStatus(fmt.Sprintf("%v", params["target_status"]))
+			reason := fmt.Sprintf("%v", params["reason"])
+			if err := svc.PromoteType(ctx, typeName, target, reason); err != nil {
+				return nil, err
+			}
+			return map[string]interface{}{"status": "promoted", "type": typeName, "newStatus": string(target)}, nil
+		},
+	}
+}
+
+func buildPromotePredicate(svc OntologyService) *agent.Tool {
+	return &agent.Tool{
+		Name:        "ontology_promote_predicate",
+		Description: "Promote a PredicateDefinition to a new lifecycle status.",
+		SafetyLevel: agent.SafetyLevelModerate,
+		Parameters: map[string]interface{}{
+			"type": "object",
+			"properties": map[string]interface{}{
+				"predicate_name": map[string]interface{}{"type": "string", "description": "Name of the predicate to promote"},
+				"target_status":  map[string]interface{}{"type": "string", "description": "Target status: shadow, active, quarantined, deprecated"},
+				"reason":         map[string]interface{}{"type": "string", "description": "Reason for promotion"},
+			},
+			"required": []string{"predicate_name", "target_status", "reason"},
+		},
+		Handler: func(ctx context.Context, params map[string]interface{}) (interface{}, error) {
+			predName := fmt.Sprintf("%v", params["predicate_name"])
+			target := SchemaStatus(fmt.Sprintf("%v", params["target_status"]))
+			reason := fmt.Sprintf("%v", params["reason"])
+			if err := svc.PromotePredicate(ctx, predName, target, reason); err != nil {
+				return nil, err
+			}
+			return map[string]interface{}{"status": "promoted", "predicate": predName, "newStatus": string(target)}, nil
+		},
+	}
+}
+
+func buildSchemaHealth(svc OntologyService) *agent.Tool {
+	return &agent.Tool{
+		Name:        "ontology_schema_health",
+		Description: "Get schema health report: status counts for types and predicates.",
+		SafetyLevel: agent.SafetyLevelSafe,
+		Parameters: map[string]interface{}{
+			"type":       "object",
+			"properties": map[string]interface{}{},
+		},
+		Handler: func(ctx context.Context, _ map[string]interface{}) (interface{}, error) {
+			report, err := svc.SchemaHealth(ctx)
+			if err != nil {
+				return nil, err
+			}
+			return report, nil
+		},
+	}
+}
+
+func buildTypeUsage(svc OntologyService) *agent.Tool {
+	return &agent.Tool{
+		Name:        "ontology_type_usage",
+		Description: "Get usage information for a specific ObjectType.",
+		SafetyLevel: agent.SafetyLevelSafe,
+		Parameters: map[string]interface{}{
+			"type": "object",
+			"properties": map[string]interface{}{
+				"type_name": map[string]interface{}{"type": "string", "description": "Name of the type to inspect"},
+			},
+			"required": []string{"type_name"},
+		},
+		Handler: func(ctx context.Context, params map[string]interface{}) (interface{}, error) {
+			typeName := fmt.Sprintf("%v", params["type_name"])
+			info, err := svc.TypeUsage(ctx, typeName)
+			if err != nil {
+				return nil, err
+			}
+			return info, nil
+		},
+	}
+}
+
+// --- Static ontology tools ---
 
 func buildListTypes(svc OntologyService) *agent.Tool {
 	return &agent.Tool{
