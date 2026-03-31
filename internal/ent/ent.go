@@ -12,11 +12,14 @@ import (
 	"entgo.io/ent"
 	"entgo.io/ent/dialect/sql"
 	"entgo.io/ent/dialect/sql/sqlgraph"
+	"github.com/langoai/lango/internal/ent/actionlog"
 	"github.com/langoai/lango/internal/ent/agentmemory"
 	"github.com/langoai/lango/internal/ent/auditlog"
 	"github.com/langoai/lango/internal/ent/configprofile"
 	"github.com/langoai/lango/internal/ent/cronjob"
 	"github.com/langoai/lango/internal/ent/cronjobhistory"
+	"github.com/langoai/lango/internal/ent/entityalias"
+	"github.com/langoai/lango/internal/ent/entityproperty"
 	"github.com/langoai/lango/internal/ent/escrowdeal"
 	"github.com/langoai/lango/internal/ent/externalref"
 	"github.com/langoai/lango/internal/ent/inquiry"
@@ -25,6 +28,9 @@ import (
 	"github.com/langoai/lango/internal/ent/learning"
 	"github.com/langoai/lango/internal/ent/message"
 	"github.com/langoai/lango/internal/ent/observation"
+	"github.com/langoai/lango/internal/ent/ontologyconflict"
+	"github.com/langoai/lango/internal/ent/ontologypredicate"
+	"github.com/langoai/lango/internal/ent/ontologytype"
 	"github.com/langoai/lango/internal/ent/paymenttx"
 	"github.com/langoai/lango/internal/ent/peerreputation"
 	"github.com/langoai/lango/internal/ent/provenanceattribution"
@@ -101,11 +107,14 @@ var (
 func checkColumn(t, c string) error {
 	initCheck.Do(func() {
 		columnCheck = sql.NewColumnCheck(map[string]func(string) bool{
+			actionlog.Table:             actionlog.ValidColumn,
 			agentmemory.Table:           agentmemory.ValidColumn,
 			auditlog.Table:              auditlog.ValidColumn,
 			configprofile.Table:         configprofile.ValidColumn,
 			cronjob.Table:               cronjob.ValidColumn,
 			cronjobhistory.Table:        cronjobhistory.ValidColumn,
+			entityalias.Table:           entityalias.ValidColumn,
+			entityproperty.Table:        entityproperty.ValidColumn,
 			escrowdeal.Table:            escrowdeal.ValidColumn,
 			externalref.Table:           externalref.ValidColumn,
 			inquiry.Table:               inquiry.ValidColumn,
@@ -114,6 +123,9 @@ func checkColumn(t, c string) error {
 			learning.Table:              learning.ValidColumn,
 			message.Table:               message.ValidColumn,
 			observation.Table:           observation.ValidColumn,
+			ontologyconflict.Table:      ontologyconflict.ValidColumn,
+			ontologypredicate.Table:     ontologypredicate.ValidColumn,
+			ontologytype.Table:          ontologytype.ValidColumn,
 			paymenttx.Table:             paymenttx.ValidColumn,
 			peerreputation.Table:        peerreputation.ValidColumn,
 			provenanceattribution.Table: provenanceattribution.ValidColumn,

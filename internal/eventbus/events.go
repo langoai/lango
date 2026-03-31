@@ -15,6 +15,7 @@ const (
 	EventPaymentNegotiated = "payment.negotiated"
 	EventPaymentSettled    = "payment.settled"
 	EventTrustUpdated      = "trust.updated"
+	EventSchemaExchanged   = "schema.exchanged"
 )
 
 // ContentSavedEvent is published when knowledge or memory content is saved.
@@ -48,10 +49,12 @@ func (e TriplesExtractedEvent) EventName() string { return EventTriplesExtracted
 // Triple mirrors graph.Triple to avoid an import dependency on the graph
 // package, keeping the eventbus package dependency-free.
 type Triple struct {
-	Subject   string
-	Predicate string
-	Object    string
-	Metadata  map[string]string
+	Subject     string
+	Predicate   string
+	Object      string
+	SubjectType string
+	ObjectType  string
+	Metadata    map[string]string
 }
 
 // TurnCompletedEvent is published when a gateway turn completes.
@@ -172,3 +175,15 @@ type TrustUpdatedEvent struct {
 
 // EventName implements Event.
 func (e TrustUpdatedEvent) EventName() string { return EventTrustUpdated }
+
+// SchemaExchangeEvent is published after a P2P ontology schema exchange.
+type SchemaExchangeEvent struct {
+	PeerDID    string // remote peer DID
+	Direction  string // "export" or "import"
+	TypeCount  int    // number of types exchanged
+	PredCount  int    // number of predicates exchanged
+	ImportMode string // import mode used (empty for export)
+}
+
+// EventName implements Event.
+func (e SchemaExchangeEvent) EventName() string { return EventSchemaExchanged }

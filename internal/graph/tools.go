@@ -18,9 +18,10 @@ func BuildTools(gs Store) []*agent.Tool {
 			Parameters: map[string]interface{}{
 				"type": "object",
 				"properties": map[string]interface{}{
-					"start_node": map[string]interface{}{"type": "string", "description": "The node ID to start traversal from"},
-					"max_depth":  map[string]interface{}{"type": "integer", "description": "Maximum traversal depth (default: 2)"},
-					"predicates": map[string]interface{}{"type": "array", "items": map[string]interface{}{"type": "string"}, "description": "Filter by predicate types (empty = all)"},
+					"start_node":       map[string]interface{}{"type": "string", "description": "The node ID to start traversal from"},
+					"max_depth":        map[string]interface{}{"type": "integer", "description": "Maximum traversal depth (default: 2)"},
+					"predicates":       map[string]interface{}{"type": "array", "items": map[string]interface{}{"type": "string"}, "description": "Filter by predicate types (empty = all)"},
+					"node_type_filter": map[string]interface{}{"type": "string", "description": "Filter results to triples where subject matches this ObjectType (optional)"},
 				},
 				"required": []string{"start_node"},
 			},
@@ -31,9 +32,13 @@ func BuildTools(gs Store) []*agent.Tool {
 				}
 				maxDepth := toolparam.OptionalInt(params, "max_depth", 2)
 				predicates := toolparam.StringSlice(params, "predicates")
+				nodeTypeFilter := toolparam.OptionalString(params, "node_type_filter", "")
 				triples, err := gs.Traverse(ctx, startNode, maxDepth, predicates)
 				if err != nil {
 					return nil, fmt.Errorf("graph traverse: %w", err)
+				}
+				if nodeTypeFilter != "" {
+					triples = filterBySubjectType(triples, nodeTypeFilter)
 				}
 				return map[string]interface{}{"triples": triples, "count": len(triples)}, nil
 			},
@@ -45,9 +50,11 @@ func BuildTools(gs Store) []*agent.Tool {
 			Parameters: map[string]interface{}{
 				"type": "object",
 				"properties": map[string]interface{}{
-					"subject":   map[string]interface{}{"type": "string", "description": "Subject node to query by"},
-					"object":    map[string]interface{}{"type": "string", "description": "Object node to query by"},
-					"predicate": map[string]interface{}{"type": "string", "description": "Optional predicate filter (used with subject)"},
+					"subject":      map[string]interface{}{"type": "string", "description": "Subject node to query by"},
+					"object":       map[string]interface{}{"type": "string", "description": "Object node to query by"},
+					"predicate":    map[string]interface{}{"type": "string", "description": "Optional predicate filter (used with subject)"},
+					"subject_type": map[string]interface{}{"type": "string", "description": "Filter results by SubjectType (optional)"},
+					"object_type":  map[string]interface{}{"type": "string", "description": "Filter results by ObjectType (optional)"},
 				},
 			},
 			Handler: func(ctx context.Context, params map[string]interface{}) (interface{}, error) {
@@ -71,8 +78,34 @@ func BuildTools(gs Store) []*agent.Tool {
 				if err != nil {
 					return nil, fmt.Errorf("graph query: %w", err)
 				}
+				if st := toolparam.OptionalString(params, "subject_type", ""); st != "" {
+					triples = filterBySubjectType(triples, st)
+				}
+				if ot := toolparam.OptionalString(params, "object_type", ""); ot != "" {
+					triples = filterByObjectType(triples, ot)
+				}
 				return map[string]interface{}{"triples": triples, "count": len(triples)}, nil
 			},
 		},
 	}
+}
+
+func filterBySubjectType(triples []Triple, subjectType string) []Triple {
+	var result []Triple
+	for _, t := range triples {
+		if t.SubjectType == subjectType {
+			result = append(result, t)
+		}
+	}
+	return result
+}
+
+func filterByObjectType(triples []Triple, objectType string) []Triple {
+	var result []Triple
+	for _, t := range triples {
+		if t.ObjectType == objectType {
+			result = append(result, t)
+		}
+	}
+	return result
 }

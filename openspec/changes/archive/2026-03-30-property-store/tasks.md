@@ -1,0 +1,22 @@
+## Tasks
+
+- [x] Add PropertyQuery, PropertyFilter, FilterOp, EntityResult types to types.go
+- [x] Create EntityProperty Ent schema (entity_property.go)
+- [x] Run Ent codegen
+- [x] Implement PropertyStore — SetProperty (upsert)
+- [x] Implement PropertyStore — GetProperties (by entity_id)
+- [x] Implement PropertyStore — DeleteProperties (by entity_id)
+- [x] Implement PropertyStore — Query (type + filters, eq/neq/contains)
+- [x] Add SetEntityProperty to OntologyService with property schema validation
+- [x] Add GetEntityProperties to OntologyService with alias-aware read
+- [x] Add QueryEntities to OntologyService (PropertyStore query → graph.Store join, outgoing only)
+- [x] Add GetEntity to OntologyService (properties + outgoing + incoming, alias-aware)
+- [x] Add SetPropertyStore setter on ServiceImpl
+- [x] Wire PropertyStore in wiring_ontology.go
+- [x] Write tests: PropertyStore CRUD (set/get/delete/upsert)
+- [x] Write tests: PropertyStore Query (eq, neq, contains, multiple filters)
+- [x] Write tests: SetEntityProperty validation (unknown property, unknown type)
+- [x] Write tests: Alias-aware read/write (SetEntityProperty + GetEntity via alias)
+- [x] Write tests: QueryEntities with graph.Store join
+- [x] Write tests: GetEntity outgoing + incoming
+- [x] Verify build and full regression

@@ -26,11 +26,11 @@ The orchestration `Config` struct SHALL include a `UniversalTools` field. In mul
 - **AND** `builtin_*` tools SHALL not appear in any RoleToolSet field
 
 ### Requirement: Hierarchical agent tree with sub-agents
-The system SHALL support a multi-agent mode (`agent.multiAgent: true`) that creates an orchestrator root agent with specialized sub-agents: operator, navigator, vault, librarian, automator, planner, and chronicler. The orchestrator SHALL have NO direct tools (`Tools: nil`) and MUST delegate all tool-requiring tasks to sub-agents. Each sub-agent SHALL include an Escalation Protocol section in its instruction that directs it to call `transfer_to_agent` with agent_name `lango-orchestrator` when it receives an out-of-scope request. Sub-agents SHALL NOT emit `[REJECT]` text or tell users to ask another agent.
+The system SHALL support a multi-agent mode (`agent.multiAgent: true`) that creates an orchestrator root agent with specialized sub-agents: operator, navigator, vault, librarian, automator, planner, chronicler, and ontologist. The orchestrator SHALL have NO direct tools (`Tools: nil`) and MUST delegate all tool-requiring tasks to sub-agents. Each sub-agent SHALL include an Escalation Protocol section in its instruction that directs it to call `transfer_to_agent` with agent_name `lango-orchestrator` when it receives an out-of-scope request. Sub-agents SHALL NOT emit `[REJECT]` text or tell users to ask another agent.
 
 #### Scenario: Multi-agent mode enabled
 - **WHEN** `agent.multiAgent` is true
-- **THEN** BuildAgentTree SHALL create an orchestrator that has NO direct tools AND has sub-agents (operator, navigator, vault, librarian, automator, planner, chronicler)
+- **THEN** BuildAgentTree SHALL create an orchestrator that has NO direct tools AND has sub-agents (operator, navigator, vault, librarian, automator, planner, chronicler, ontologist)
 
 #### Scenario: Orchestrator has no direct tools
 - **WHEN** the orchestrator is created
@@ -48,7 +48,7 @@ The system SHALL support a multi-agent mode (`agent.multiAgent: true`) that crea
 - **AND** the sub-agent instruction SHALL contain `## Escalation Protocol` section
 
 #### Scenario: All sub-agents have escalation protocol
-- **WHEN** agentSpecs are defined for all 7 sub-agents
+- **WHEN** agentSpecs are defined for all 8 sub-agents
 - **THEN** every spec's Instruction SHALL contain `transfer_to_agent` and `lango-orchestrator`
 - **AND** every spec's Instruction SHALL contain `## Escalation Protocol`
 
@@ -64,7 +64,7 @@ The system SHALL support a multi-agent mode (`agent.multiAgent: true`) that crea
 - **AND** it SHALL stop once the requested count of credible results has been collected
 
 ### Requirement: Tool partitioning by prefix
-Tools SHALL be partitioned to sub-agents based on name prefixes with matching order Librarian → Chronicler → Navigator → Vault → Operator → Unmatched: `exec/fs_/skill_` → operator, `browser_` → navigator, `crypto_/secrets_/payment_` → vault, `search_/rag_/graph_/save_knowledge/save_learning/create_skill/list_skills` → librarian, `memory_/observe_/reflect_` → chronicler, unmatched → Unmatched bucket (not assigned to any agent).
+Tools SHALL be partitioned to sub-agents based on name prefixes with matching order Librarian → Chronicler → Ontologist → Navigator → Vault → Operator → Unmatched: `exec/fs_/skill_` → operator, `browser_` → navigator, `crypto_/secrets_/payment_` → vault, `search_/rag_/graph_/save_knowledge/save_learning/create_skill/list_skills` → librarian, `memory_/observe_/reflect_` → chronicler, `ontology_` → ontologist, unmatched → Unmatched bucket (not assigned to any agent).
 
 #### Scenario: Operator gets shell, file, and skill tools
 - **WHEN** tools named `exec_shell`, `fs_read`, `skill_deploy` are registered
@@ -203,7 +203,7 @@ The `BuildAgentTree` function SHALL create sub-agents data-driven from the agent
 
 #### Scenario: All tool categories have tools
 - **WHEN** tools exist for operator, navigator, vault, librarian, automator, and chronicler roles
-- **THEN** all seven sub-agents (operator, navigator, vault, librarian, automator, planner, chronicler) SHALL be created
+- **THEN** all eight sub-agents (operator, navigator, vault, librarian, automator, planner, chronicler, ontologist) SHALL be created
 
 #### Scenario: Partial tools — only operator and librarian
 - **WHEN** only operator and librarian tools are provided
@@ -383,12 +383,12 @@ Each sub-agent instruction SHALL include guidance to report results clearly afte
 - **WHEN** the chronicler sub-agent completes memory operations
 - **THEN** its instruction SHALL guide it to report what was stored or retrieved
 
-### Requirement: RoleToolSet has seven roles plus Unmatched
-The RoleToolSet struct SHALL have fields: Operator, Navigator, Vault, Librarian, Planner, Chronicler, Automator, and Unmatched. Each field is a slice of `*agent.Tool`.
+### Requirement: RoleToolSet has eight roles plus Unmatched
+The RoleToolSet struct SHALL have fields: Operator, Navigator, Vault, Librarian, Planner, Chronicler, Automator, Ontologist, and Unmatched. Each field is a slice of `*agent.Tool`.
 
 #### Scenario: RoleToolSet structure
 - **WHEN** PartitionTools is called
-- **THEN** it SHALL return a RoleToolSet with eight fields (seven roles + Unmatched)
+- **THEN** it SHALL return a RoleToolSet with nine fields (eight roles + Unmatched)
 
 #### Scenario: Planner tools always empty
 - **WHEN** PartitionTools is called with any input
@@ -563,7 +563,7 @@ The orchestrator instruction SHALL include output awareness guidance for compres
 All non-planner sub-agent instructions SHALL include an Output Handling section teaching agents to use `tool_output_get` for compressed results.
 
 #### Scenario: Non-planner agents have output handling
-- **WHEN** a sub-agent instruction is generated for operator, navigator, vault, librarian, automator, or chronicler
+- **WHEN** a sub-agent instruction is generated for operator, navigator, vault, librarian, automator, chronicler, or ontologist
 - **THEN** the instruction SHALL contain "## Output Handling" with `tool_output_get` guidance
 
 #### Scenario: Planner excluded from output handling

@@ -34,12 +34,18 @@ func (p Predicate) Values() []Predicate {
 	return []Predicate{RelatedTo, CausedBy, ResolvedBy, Follows, SimilarTo, Contains, InSession, ReflectsOn, LearnedFrom}
 }
 
+// PredicateValidatorFunc validates whether a predicate name is recognized.
+// Used by BoltStore for optional registry-backed validation.
+type PredicateValidatorFunc func(name string) bool
+
 // Triple represents a Subject-Predicate-Object relationship in the graph.
 type Triple struct {
-	Subject   string
-	Predicate string
-	Object    string
-	Metadata  map[string]string
+	Subject     string
+	Predicate   string
+	Object      string
+	SubjectType string // ObjectType name for subject (empty = untyped)
+	ObjectType  string // ObjectType name for object (empty = untyped)
+	Metadata    map[string]string
 }
 
 // Store provides graph CRUD and traversal operations.

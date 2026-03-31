@@ -55,6 +55,7 @@ func TestPartitionTools(t *testing.T) {
 		wantLibrarian  []string
 		wantPlanner    []string
 		wantChronicler []string
+		wantOntologist []string
 		wantUnmatched  []string
 	}{
 		{
@@ -114,6 +115,15 @@ func TestPartitionTools(t *testing.T) {
 			wantChronicler: []string{"memory_store", "observe_event", "reflect_summary"},
 		},
 		{
+			name: "ontologist prefixes",
+			give: []*agent.Tool{
+				newTestTool("ontology_list_types"),
+				newTestTool("ontology_assert_fact"),
+				newTestTool("ontology_import_json"),
+			},
+			wantOntologist: []string{"ontology_list_types", "ontology_assert_fact", "ontology_import_json"},
+		},
+		{
 			name: "unmatched tools tracked separately",
 			give: []*agent.Tool{
 				newTestTool("custom_action"),
@@ -154,6 +164,7 @@ func TestPartitionTools(t *testing.T) {
 			assert.Equal(t, tt.wantLibrarian, toolNames(got.Librarian), "librarian tools")
 			assert.Equal(t, tt.wantPlanner, toolNames(got.Planner), "planner tools")
 			assert.Equal(t, tt.wantChronicler, toolNames(got.Chronicler), "chronicler tools")
+			assert.Equal(t, tt.wantOntologist, toolNames(got.Ontologist), "ontologist tools")
 			assert.Equal(t, tt.wantUnmatched, toolNames(got.Unmatched), "unmatched tools")
 		})
 	}
@@ -190,12 +201,13 @@ func TestBuildAgentTree_NilAdaptTool(t *testing.T) {
 
 func TestBuildAgentTree_Success(t *testing.T) {
 	tools := []*agent.Tool{
-		newTestTool("exec_shell"),     // operator
-		newTestTool("browser_open"),   // navigator
-		newTestTool("crypto_sign"),    // vault
-		newTestTool("search_web"),     // librarian
-		newTestTool("memory_store"),   // chronicler
-		newTestTool("custom_unknown"), // unmatched
+		newTestTool("exec_shell"),          // operator
+		newTestTool("browser_open"),        // navigator
+		newTestTool("crypto_sign"),         // vault
+		newTestTool("search_web"),          // librarian
+		newTestTool("memory_store"),        // chronicler
+		newTestTool("ontology_list_types"), // ontologist
+		newTestTool("custom_unknown"),      // unmatched
 	}
 
 	root, err := BuildAgentTree(Config{
@@ -208,8 +220,8 @@ func TestBuildAgentTree_Success(t *testing.T) {
 	require.NotNil(t, root)
 
 	assert.Equal(t, "lango-orchestrator", root.Name())
-	// operator, navigator, vault, librarian, planner (always), chronicler = 6
-	assert.Len(t, root.SubAgents(), 6, "orchestrator should have 6 sub-agents")
+	// operator, navigator, vault, librarian, planner (always), chronicler, ontologist = 7
+	assert.Len(t, root.SubAgents(), 7, "orchestrator should have 7 sub-agents")
 
 	subNames := make([]string, len(root.SubAgents()))
 	for i, sa := range root.SubAgents() {
@@ -221,6 +233,7 @@ func TestBuildAgentTree_Success(t *testing.T) {
 	assert.Contains(t, subNames, "librarian")
 	assert.Contains(t, subNames, "planner")
 	assert.Contains(t, subNames, "chronicler")
+	assert.Contains(t, subNames, "ontologist")
 }
 
 func TestBuildAgentTree_NoTools(t *testing.T) {

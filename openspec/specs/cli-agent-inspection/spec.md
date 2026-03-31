@@ -36,7 +36,7 @@ The `lango agent list` command SHALL load agents from the dynamic agent registry
 
 #### Scenario: List shows embedded agents
 - **WHEN** `lango agent list` is run with no user-defined agents
-- **THEN** it SHALL display the 7 default agents with source "embedded"
+- **THEN** it SHALL display the 8 default agents with source "embedded"
 
 #### Scenario: List shows user-defined agents
 - **WHEN** user-defined agents exist in the configured agents directory

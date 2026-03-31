@@ -391,3 +391,97 @@ func TestBoltStore_QueryEmptyStore(t *testing.T) {
 	require.NoError(t, err)
 	assert.Empty(t, got)
 }
+
+func TestBoltStore_TypedTripleRoundTrip(t *testing.T) {
+	store := newTestStore(t)
+	ctx := context.Background()
+
+	err := store.AddTriple(ctx, Triple{
+		Subject:     "error:timeout",
+		SubjectType: "ErrorPattern",
+		Predicate:   CausedBy,
+		Object:      "tool:api_call",
+		ObjectType:  "Tool",
+	})
+	require.NoError(t, err)
+
+	triples, err := store.QueryBySubject(ctx, "error:timeout")
+	require.NoError(t, err)
+	require.Len(t, triples, 1)
+	assert.Equal(t, "ErrorPattern", triples[0].SubjectType)
+	assert.Equal(t, "Tool", triples[0].ObjectType)
+	assert.Equal(t, "ErrorPattern", triples[0].Metadata["_subject_type"])
+	assert.Equal(t, "Tool", triples[0].Metadata["_object_type"])
+}
+
+func TestBoltStore_UntypedTripleBackwardCompat(t *testing.T) {
+	store := newTestStore(t)
+	ctx := context.Background()
+
+	// Store without type fields (legacy behavior)
+	err := store.AddTriple(ctx, Triple{
+		Subject:   "a",
+		Predicate: RelatedTo,
+		Object:    "b",
+	})
+	require.NoError(t, err)
+
+	triples, err := store.QueryBySubject(ctx, "a")
+	require.NoError(t, err)
+	require.Len(t, triples, 1)
+	assert.Equal(t, "", triples[0].SubjectType)
+	assert.Equal(t, "", triples[0].ObjectType)
+}
+
+func TestBoltStore_PredicateValidator(t *testing.T) {
+	store := newTestStore(t)
+	ctx := context.Background()
+
+	validator := func(name string) bool {
+		return name == CausedBy || name == RelatedTo
+	}
+	store.SetPredicateValidator(validator)
+
+	// Valid predicate accepted
+	err := store.AddTriple(ctx, Triple{Subject: "a", Predicate: CausedBy, Object: "b"})
+	require.NoError(t, err)
+
+	// Invalid predicate rejected
+	err = store.AddTriple(ctx, Triple{Subject: "a", Predicate: "fake_pred", Object: "b"})
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "unknown predicate")
+}
+
+func TestBoltStore_NoValidatorAcceptsAll(t *testing.T) {
+	store := newTestStore(t)
+	ctx := context.Background()
+
+	// No validator set — any predicate accepted
+	err := store.AddTriple(ctx, Triple{Subject: "a", Predicate: "any_pred", Object: "b"})
+	require.NoError(t, err)
+
+	triples, err := store.QueryBySubject(ctx, "a")
+	require.NoError(t, err)
+	assert.Len(t, triples, 1)
+}
+
+func TestBoltStore_TypedTripleOSPQuery(t *testing.T) {
+	store := newTestStore(t)
+	ctx := context.Background()
+
+	err := store.AddTriple(ctx, Triple{
+		Subject:     "obs:1",
+		SubjectType: "Observation",
+		Predicate:   InSession,
+		Object:      "session:abc",
+		ObjectType:  "Session",
+	})
+	require.NoError(t, err)
+
+	// Query by object — should restore type fields
+	triples, err := store.QueryByObject(ctx, "session:abc")
+	require.NoError(t, err)
+	require.Len(t, triples, 1)
+	assert.Equal(t, "Observation", triples[0].SubjectType)
+	assert.Equal(t, "Session", triples[0].ObjectType)
+}

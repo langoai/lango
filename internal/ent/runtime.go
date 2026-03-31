@@ -6,11 +6,14 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/langoai/lango/internal/ent/actionlog"
 	"github.com/langoai/lango/internal/ent/agentmemory"
 	"github.com/langoai/lango/internal/ent/auditlog"
 	"github.com/langoai/lango/internal/ent/configprofile"
 	"github.com/langoai/lango/internal/ent/cronjob"
 	"github.com/langoai/lango/internal/ent/cronjobhistory"
+	"github.com/langoai/lango/internal/ent/entityalias"
+	"github.com/langoai/lango/internal/ent/entityproperty"
 	"github.com/langoai/lango/internal/ent/escrowdeal"
 	"github.com/langoai/lango/internal/ent/externalref"
 	"github.com/langoai/lango/internal/ent/inquiry"
@@ -19,6 +22,9 @@ import (
 	"github.com/langoai/lango/internal/ent/learning"
 	"github.com/langoai/lango/internal/ent/message"
 	"github.com/langoai/lango/internal/ent/observation"
+	"github.com/langoai/lango/internal/ent/ontologyconflict"
+	"github.com/langoai/lango/internal/ent/ontologypredicate"
+	"github.com/langoai/lango/internal/ent/ontologytype"
 	"github.com/langoai/lango/internal/ent/paymenttx"
 	"github.com/langoai/lango/internal/ent/peerreputation"
 	"github.com/langoai/lango/internal/ent/provenanceattribution"
@@ -42,6 +48,24 @@ import (
 // (default values, validators, hooks and policies) and stitches it
 // to their package variables.
 func init() {
+	actionlogFields := schema.ActionLog{}.Fields()
+	_ = actionlogFields
+	// actionlogDescActionName is the schema descriptor for action_name field.
+	actionlogDescActionName := actionlogFields[1].Descriptor()
+	// actionlog.ActionNameValidator is a validator for the "action_name" field. It is called by the builders before save.
+	actionlog.ActionNameValidator = actionlogDescActionName.Validators[0].(func(string) error)
+	// actionlogDescPrincipal is the schema descriptor for principal field.
+	actionlogDescPrincipal := actionlogFields[2].Descriptor()
+	// actionlog.PrincipalValidator is a validator for the "principal" field. It is called by the builders before save.
+	actionlog.PrincipalValidator = actionlogDescPrincipal.Validators[0].(func(string) error)
+	// actionlogDescStartedAt is the schema descriptor for started_at field.
+	actionlogDescStartedAt := actionlogFields[7].Descriptor()
+	// actionlog.DefaultStartedAt holds the default value on creation for the started_at field.
+	actionlog.DefaultStartedAt = actionlogDescStartedAt.Default.(func() time.Time)
+	// actionlogDescID is the schema descriptor for id field.
+	actionlogDescID := actionlogFields[0].Descriptor()
+	// actionlog.DefaultID holds the default value on creation for the id field.
+	actionlog.DefaultID = actionlogDescID.Default.(func() uuid.UUID)
 	agentmemoryFields := schema.AgentMemory{}.Fields()
 	_ = agentmemoryFields
 	// agentmemoryDescAgentName is the schema descriptor for agent_name field.
@@ -178,6 +202,60 @@ func init() {
 	cronjobhistoryDescID := cronjobhistoryFields[0].Descriptor()
 	// cronjobhistory.DefaultID holds the default value on creation for the id field.
 	cronjobhistory.DefaultID = cronjobhistoryDescID.Default.(func() uuid.UUID)
+	entityaliasFields := schema.EntityAlias{}.Fields()
+	_ = entityaliasFields
+	// entityaliasDescRawID is the schema descriptor for raw_id field.
+	entityaliasDescRawID := entityaliasFields[1].Descriptor()
+	// entityalias.RawIDValidator is a validator for the "raw_id" field. It is called by the builders before save.
+	entityalias.RawIDValidator = entityaliasDescRawID.Validators[0].(func(string) error)
+	// entityaliasDescCanonicalID is the schema descriptor for canonical_id field.
+	entityaliasDescCanonicalID := entityaliasFields[2].Descriptor()
+	// entityalias.CanonicalIDValidator is a validator for the "canonical_id" field. It is called by the builders before save.
+	entityalias.CanonicalIDValidator = entityaliasDescCanonicalID.Validators[0].(func(string) error)
+	// entityaliasDescSource is the schema descriptor for source field.
+	entityaliasDescSource := entityaliasFields[3].Descriptor()
+	// entityalias.DefaultSource holds the default value on creation for the source field.
+	entityalias.DefaultSource = entityaliasDescSource.Default.(string)
+	// entityaliasDescCreatedAt is the schema descriptor for created_at field.
+	entityaliasDescCreatedAt := entityaliasFields[4].Descriptor()
+	// entityalias.DefaultCreatedAt holds the default value on creation for the created_at field.
+	entityalias.DefaultCreatedAt = entityaliasDescCreatedAt.Default.(func() time.Time)
+	// entityaliasDescID is the schema descriptor for id field.
+	entityaliasDescID := entityaliasFields[0].Descriptor()
+	// entityalias.DefaultID holds the default value on creation for the id field.
+	entityalias.DefaultID = entityaliasDescID.Default.(func() uuid.UUID)
+	entitypropertyFields := schema.EntityProperty{}.Fields()
+	_ = entitypropertyFields
+	// entitypropertyDescEntityID is the schema descriptor for entity_id field.
+	entitypropertyDescEntityID := entitypropertyFields[1].Descriptor()
+	// entityproperty.EntityIDValidator is a validator for the "entity_id" field. It is called by the builders before save.
+	entityproperty.EntityIDValidator = entitypropertyDescEntityID.Validators[0].(func(string) error)
+	// entitypropertyDescEntityType is the schema descriptor for entity_type field.
+	entitypropertyDescEntityType := entitypropertyFields[2].Descriptor()
+	// entityproperty.EntityTypeValidator is a validator for the "entity_type" field. It is called by the builders before save.
+	entityproperty.EntityTypeValidator = entitypropertyDescEntityType.Validators[0].(func(string) error)
+	// entitypropertyDescProperty is the schema descriptor for property field.
+	entitypropertyDescProperty := entitypropertyFields[3].Descriptor()
+	// entityproperty.PropertyValidator is a validator for the "property" field. It is called by the builders before save.
+	entityproperty.PropertyValidator = entitypropertyDescProperty.Validators[0].(func(string) error)
+	// entitypropertyDescValueType is the schema descriptor for value_type field.
+	entitypropertyDescValueType := entitypropertyFields[5].Descriptor()
+	// entityproperty.DefaultValueType holds the default value on creation for the value_type field.
+	entityproperty.DefaultValueType = entitypropertyDescValueType.Default.(string)
+	// entitypropertyDescCreatedAt is the schema descriptor for created_at field.
+	entitypropertyDescCreatedAt := entitypropertyFields[6].Descriptor()
+	// entityproperty.DefaultCreatedAt holds the default value on creation for the created_at field.
+	entityproperty.DefaultCreatedAt = entitypropertyDescCreatedAt.Default.(func() time.Time)
+	// entitypropertyDescUpdatedAt is the schema descriptor for updated_at field.
+	entitypropertyDescUpdatedAt := entitypropertyFields[7].Descriptor()
+	// entityproperty.DefaultUpdatedAt holds the default value on creation for the updated_at field.
+	entityproperty.DefaultUpdatedAt = entitypropertyDescUpdatedAt.Default.(func() time.Time)
+	// entityproperty.UpdateDefaultUpdatedAt holds the default value on update for the updated_at field.
+	entityproperty.UpdateDefaultUpdatedAt = entitypropertyDescUpdatedAt.UpdateDefault.(func() time.Time)
+	// entitypropertyDescID is the schema descriptor for id field.
+	entitypropertyDescID := entitypropertyFields[0].Descriptor()
+	// entityproperty.DefaultID holds the default value on creation for the id field.
+	entityproperty.DefaultID = entitypropertyDescID.Default.(func() uuid.UUID)
 	escrowdealFields := schema.EscrowDeal{}.Fields()
 	_ = escrowdealFields
 	// escrowdealDescEscrowID is the schema descriptor for escrow_id field.
@@ -396,6 +474,80 @@ func init() {
 	observationDescID := observationFields[0].Descriptor()
 	// observation.DefaultID holds the default value on creation for the id field.
 	observation.DefaultID = observationDescID.Default.(func() uuid.UUID)
+	ontologyconflictFields := schema.OntologyConflict{}.Fields()
+	_ = ontologyconflictFields
+	// ontologyconflictDescSubject is the schema descriptor for subject field.
+	ontologyconflictDescSubject := ontologyconflictFields[1].Descriptor()
+	// ontologyconflict.SubjectValidator is a validator for the "subject" field. It is called by the builders before save.
+	ontologyconflict.SubjectValidator = ontologyconflictDescSubject.Validators[0].(func(string) error)
+	// ontologyconflictDescPredicate is the schema descriptor for predicate field.
+	ontologyconflictDescPredicate := ontologyconflictFields[2].Descriptor()
+	// ontologyconflict.PredicateValidator is a validator for the "predicate" field. It is called by the builders before save.
+	ontologyconflict.PredicateValidator = ontologyconflictDescPredicate.Validators[0].(func(string) error)
+	// ontologyconflictDescCreatedAt is the schema descriptor for created_at field.
+	ontologyconflictDescCreatedAt := ontologyconflictFields[7].Descriptor()
+	// ontologyconflict.DefaultCreatedAt holds the default value on creation for the created_at field.
+	ontologyconflict.DefaultCreatedAt = ontologyconflictDescCreatedAt.Default.(func() time.Time)
+	// ontologyconflictDescID is the schema descriptor for id field.
+	ontologyconflictDescID := ontologyconflictFields[0].Descriptor()
+	// ontologyconflict.DefaultID holds the default value on creation for the id field.
+	ontologyconflict.DefaultID = ontologyconflictDescID.Default.(func() uuid.UUID)
+	ontologypredicateFields := schema.OntologyPredicate{}.Fields()
+	_ = ontologypredicateFields
+	// ontologypredicateDescName is the schema descriptor for name field.
+	ontologypredicateDescName := ontologypredicateFields[1].Descriptor()
+	// ontologypredicate.NameValidator is a validator for the "name" field. It is called by the builders before save.
+	ontologypredicate.NameValidator = ontologypredicateDescName.Validators[0].(func(string) error)
+	// ontologypredicateDescDescription is the schema descriptor for description field.
+	ontologypredicateDescDescription := ontologypredicateFields[2].Descriptor()
+	// ontologypredicate.DefaultDescription holds the default value on creation for the description field.
+	ontologypredicate.DefaultDescription = ontologypredicateDescDescription.Default.(string)
+	// ontologypredicateDescVersion is the schema descriptor for version field.
+	ontologypredicateDescVersion := ontologypredicateFields[8].Descriptor()
+	// ontologypredicate.DefaultVersion holds the default value on creation for the version field.
+	ontologypredicate.DefaultVersion = ontologypredicateDescVersion.Default.(int)
+	// ontologypredicateDescCreatedAt is the schema descriptor for created_at field.
+	ontologypredicateDescCreatedAt := ontologypredicateFields[9].Descriptor()
+	// ontologypredicate.DefaultCreatedAt holds the default value on creation for the created_at field.
+	ontologypredicate.DefaultCreatedAt = ontologypredicateDescCreatedAt.Default.(func() time.Time)
+	// ontologypredicateDescUpdatedAt is the schema descriptor for updated_at field.
+	ontologypredicateDescUpdatedAt := ontologypredicateFields[10].Descriptor()
+	// ontologypredicate.DefaultUpdatedAt holds the default value on creation for the updated_at field.
+	ontologypredicate.DefaultUpdatedAt = ontologypredicateDescUpdatedAt.Default.(func() time.Time)
+	// ontologypredicate.UpdateDefaultUpdatedAt holds the default value on update for the updated_at field.
+	ontologypredicate.UpdateDefaultUpdatedAt = ontologypredicateDescUpdatedAt.UpdateDefault.(func() time.Time)
+	// ontologypredicateDescID is the schema descriptor for id field.
+	ontologypredicateDescID := ontologypredicateFields[0].Descriptor()
+	// ontologypredicate.DefaultID holds the default value on creation for the id field.
+	ontologypredicate.DefaultID = ontologypredicateDescID.Default.(func() uuid.UUID)
+	ontologytypeFields := schema.OntologyType{}.Fields()
+	_ = ontologytypeFields
+	// ontologytypeDescName is the schema descriptor for name field.
+	ontologytypeDescName := ontologytypeFields[1].Descriptor()
+	// ontologytype.NameValidator is a validator for the "name" field. It is called by the builders before save.
+	ontologytype.NameValidator = ontologytypeDescName.Validators[0].(func(string) error)
+	// ontologytypeDescDescription is the schema descriptor for description field.
+	ontologytypeDescDescription := ontologytypeFields[2].Descriptor()
+	// ontologytype.DefaultDescription holds the default value on creation for the description field.
+	ontologytype.DefaultDescription = ontologytypeDescDescription.Default.(string)
+	// ontologytypeDescVersion is the schema descriptor for version field.
+	ontologytypeDescVersion := ontologytypeFields[6].Descriptor()
+	// ontologytype.DefaultVersion holds the default value on creation for the version field.
+	ontologytype.DefaultVersion = ontologytypeDescVersion.Default.(int)
+	// ontologytypeDescCreatedAt is the schema descriptor for created_at field.
+	ontologytypeDescCreatedAt := ontologytypeFields[7].Descriptor()
+	// ontologytype.DefaultCreatedAt holds the default value on creation for the created_at field.
+	ontologytype.DefaultCreatedAt = ontologytypeDescCreatedAt.Default.(func() time.Time)
+	// ontologytypeDescUpdatedAt is the schema descriptor for updated_at field.
+	ontologytypeDescUpdatedAt := ontologytypeFields[8].Descriptor()
+	// ontologytype.DefaultUpdatedAt holds the default value on creation for the updated_at field.
+	ontologytype.DefaultUpdatedAt = ontologytypeDescUpdatedAt.Default.(func() time.Time)
+	// ontologytype.UpdateDefaultUpdatedAt holds the default value on update for the updated_at field.
+	ontologytype.UpdateDefaultUpdatedAt = ontologytypeDescUpdatedAt.UpdateDefault.(func() time.Time)
+	// ontologytypeDescID is the schema descriptor for id field.
+	ontologytypeDescID := ontologytypeFields[0].Descriptor()
+	// ontologytype.DefaultID holds the default value on creation for the id field.
+	ontologytype.DefaultID = ontologytypeDescID.Default.(func() uuid.UUID)
 	paymenttxFields := schema.PaymentTx{}.Fields()
 	_ = paymenttxFields
 	// paymenttxDescFromAddress is the schema descriptor for from_address field.

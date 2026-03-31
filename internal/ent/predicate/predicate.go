@@ -6,6 +6,9 @@ import (
 	"entgo.io/ent/dialect/sql"
 )
 
+// ActionLog is the predicate function for actionlog builders.
+type ActionLog func(*sql.Selector)
+
 // AgentMemory is the predicate function for agentmemory builders.
 type AgentMemory func(*sql.Selector)
 
@@ -20,6 +23,12 @@ type CronJob func(*sql.Selector)
 
 // CronJobHistory is the predicate function for cronjobhistory builders.
 type CronJobHistory func(*sql.Selector)
+
+// EntityAlias is the predicate function for entityalias builders.
+type EntityAlias func(*sql.Selector)
+
+// EntityProperty is the predicate function for entityproperty builders.
+type EntityProperty func(*sql.Selector)
 
 // EscrowDeal is the predicate function for escrowdeal builders.
 type EscrowDeal func(*sql.Selector)
@@ -44,6 +53,15 @@ type Message func(*sql.Selector)
 
 // Observation is the predicate function for observation builders.
 type Observation func(*sql.Selector)
+
+// OntologyConflict is the predicate function for ontologyconflict builders.
+type OntologyConflict func(*sql.Selector)
+
+// OntologyPredicate is the predicate function for ontologypredicate builders.
+type OntologyPredicate func(*sql.Selector)
+
+// OntologyType is the predicate function for ontologytype builders.
+type OntologyType func(*sql.Selector)
 
 // PaymentTx is the predicate function for paymenttx builders.
 type PaymentTx func(*sql.Selector)

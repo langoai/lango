@@ -74,10 +74,11 @@ type Handler struct {
 	approvalFn     ToolApprovalFunc
 	securityEvents SecurityEventTracker
 	eventBus       *eventbus.Bus
-	negotiator     NegotiateHandler
-	teamHandler    TeamHandler
-	localDID       string
-	logger         *zap.SugaredLogger
+	negotiator      NegotiateHandler
+	teamHandler     TeamHandler
+	ontologyHandler OntologyHandler
+	localDID        string
+	logger          *zap.SugaredLogger
 }
 
 // HandlerConfig configures the protocol handler.
@@ -145,6 +146,11 @@ func (h *Handler) SetTeamHandler(fn TeamHandler) {
 	h.teamHandler = fn
 }
 
+// SetOntologyHandler sets the handler for ontology schema exchange messages.
+func (h *Handler) SetOntologyHandler(oh OntologyHandler) {
+	h.ontologyHandler = oh
+}
+
 // StreamHandler returns a libp2p stream handler for incoming A2A messages.
 func (h *Handler) StreamHandler() network.StreamHandler {
 	return func(s network.Stream) {
@@ -193,6 +199,10 @@ func (h *Handler) handleRequest(ctx context.Context, s network.Stream, req *Requ
 		return h.handleNegotiate(ctx, req, peerDID)
 	case RequestTeamInvite, RequestTeamAccept, RequestTeamTask, RequestTeamResult, RequestTeamDisband:
 		return h.handleTeamMessage(ctx, req, peerDID)
+	case RequestSchemaQuery:
+		return h.handleSchemaQuery(ctx, req, peerDID)
+	case RequestSchemaPropose:
+		return h.handleSchemaPropose(ctx, req, peerDID)
 	default:
 		return &Response{
 			RequestID: req.RequestID,
@@ -684,4 +694,110 @@ func SendRequest(ctx context.Context, s network.Stream, reqType RequestType, tok
 	}
 
 	return &resp, nil
+}
+
+// handleSchemaQuery processes a schema_query request.
+func (h *Handler) handleSchemaQuery(ctx context.Context, req *Request, peerDID string) *Response {
+	if h.ontologyHandler == nil {
+		return &Response{
+			RequestID: req.RequestID,
+			Status:    ResponseStatusError,
+			Error:     "ontology handler not configured",
+			Timestamp: time.Now(),
+		}
+	}
+
+	raw, err := json.Marshal(req.Payload)
+	if err != nil {
+		return &Response{
+			RequestID: req.RequestID,
+			Status:    ResponseStatusError,
+			Error:     fmt.Sprintf("marshal schema query payload: %v", err),
+			Timestamp: time.Now(),
+		}
+	}
+
+	var sqReq SchemaQueryRequest
+	if err := json.Unmarshal(raw, &sqReq); err != nil {
+		return &Response{
+			RequestID: req.RequestID,
+			Status:    ResponseStatusError,
+			Error:     fmt.Sprintf("decode schema query: %v", err),
+			Timestamp: time.Now(),
+		}
+	}
+
+	sqResp, err := h.ontologyHandler.HandleSchemaQuery(ctx, peerDID, sqReq)
+	if err != nil {
+		return &Response{
+			RequestID: req.RequestID,
+			Status:    ResponseStatusError,
+			Error:     err.Error(),
+			Timestamp: time.Now(),
+		}
+	}
+
+	result := map[string]interface{}{}
+	respBytes, _ := json.Marshal(sqResp)
+	_ = json.Unmarshal(respBytes, &result)
+
+	return &Response{
+		RequestID: req.RequestID,
+		Status:    ResponseStatusOK,
+		Result:    result,
+		Timestamp: time.Now(),
+	}
+}
+
+// handleSchemaPropose processes a schema_propose request.
+func (h *Handler) handleSchemaPropose(ctx context.Context, req *Request, peerDID string) *Response {
+	if h.ontologyHandler == nil {
+		return &Response{
+			RequestID: req.RequestID,
+			Status:    ResponseStatusError,
+			Error:     "ontology handler not configured",
+			Timestamp: time.Now(),
+		}
+	}
+
+	raw, err := json.Marshal(req.Payload)
+	if err != nil {
+		return &Response{
+			RequestID: req.RequestID,
+			Status:    ResponseStatusError,
+			Error:     fmt.Sprintf("marshal schema propose payload: %v", err),
+			Timestamp: time.Now(),
+		}
+	}
+
+	var spReq SchemaProposeRequest
+	if err := json.Unmarshal(raw, &spReq); err != nil {
+		return &Response{
+			RequestID: req.RequestID,
+			Status:    ResponseStatusError,
+			Error:     fmt.Sprintf("decode schema propose: %v", err),
+			Timestamp: time.Now(),
+		}
+	}
+
+	spResp, err := h.ontologyHandler.HandleSchemaPropose(ctx, peerDID, spReq)
+	if err != nil {
+		return &Response{
+			RequestID: req.RequestID,
+			Status:    ResponseStatusError,
+			Error:     err.Error(),
+			Timestamp: time.Now(),
+		}
+	}
+
+	result := map[string]interface{}{}
+	respBytes, _ := json.Marshal(spResp)
+	_ = json.Unmarshal(respBytes, &result)
+
+	return &Response{
+		RequestID: req.RequestID,
+		Status:    ResponseStatusOK,
+		Result:    result,
+		Timestamp: time.Now(),
+	}
 }

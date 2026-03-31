@@ -8,6 +8,46 @@ import (
 )
 
 var (
+	// ActionLogsColumns holds the columns for the "action_logs" table.
+	ActionLogsColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeUUID},
+		{Name: "action_name", Type: field.TypeString},
+		{Name: "principal", Type: field.TypeString},
+		{Name: "params", Type: field.TypeJSON, Nullable: true},
+		{Name: "status", Type: field.TypeEnum, Enums: []string{"started", "completed", "failed", "compensated"}, Default: "started"},
+		{Name: "effects", Type: field.TypeJSON, Nullable: true},
+		{Name: "error_message", Type: field.TypeString, Nullable: true},
+		{Name: "started_at", Type: field.TypeTime},
+		{Name: "completed_at", Type: field.TypeTime, Nullable: true},
+	}
+	// ActionLogsTable holds the schema information for the "action_logs" table.
+	ActionLogsTable = &schema.Table{
+		Name:       "action_logs",
+		Columns:    ActionLogsColumns,
+		PrimaryKey: []*schema.Column{ActionLogsColumns[0]},
+		Indexes: []*schema.Index{
+			{
+				Name:    "actionlog_action_name",
+				Unique:  false,
+				Columns: []*schema.Column{ActionLogsColumns[1]},
+			},
+			{
+				Name:    "actionlog_principal",
+				Unique:  false,
+				Columns: []*schema.Column{ActionLogsColumns[2]},
+			},
+			{
+				Name:    "actionlog_status",
+				Unique:  false,
+				Columns: []*schema.Column{ActionLogsColumns[4]},
+			},
+			{
+				Name:    "actionlog_started_at",
+				Unique:  false,
+				Columns: []*schema.Column{ActionLogsColumns[7]},
+			},
+		},
+	}
 	// AgentMemoriesColumns holds the columns for the "agent_memories" table.
 	AgentMemoriesColumns = []*schema.Column{
 		{Name: "id", Type: field.TypeUUID},
@@ -184,6 +224,61 @@ var (
 				Name:    "cronjobhistory_started_at",
 				Unique:  false,
 				Columns: []*schema.Column{CronJobHistoriesColumns[8]},
+			},
+		},
+	}
+	// EntityAliasColumns holds the columns for the "entity_alias" table.
+	EntityAliasColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeUUID},
+		{Name: "raw_id", Type: field.TypeString, Unique: true},
+		{Name: "canonical_id", Type: field.TypeString},
+		{Name: "source", Type: field.TypeString, Default: "manual"},
+		{Name: "created_at", Type: field.TypeTime},
+	}
+	// EntityAliasTable holds the schema information for the "entity_alias" table.
+	EntityAliasTable = &schema.Table{
+		Name:       "entity_alias",
+		Columns:    EntityAliasColumns,
+		PrimaryKey: []*schema.Column{EntityAliasColumns[0]},
+		Indexes: []*schema.Index{
+			{
+				Name:    "entityalias_canonical_id",
+				Unique:  false,
+				Columns: []*schema.Column{EntityAliasColumns[2]},
+			},
+		},
+	}
+	// EntityPropertiesColumns holds the columns for the "entity_properties" table.
+	EntityPropertiesColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeUUID},
+		{Name: "entity_id", Type: field.TypeString},
+		{Name: "entity_type", Type: field.TypeString},
+		{Name: "property", Type: field.TypeString},
+		{Name: "value", Type: field.TypeString, Size: 2147483647},
+		{Name: "value_type", Type: field.TypeString, Default: "string"},
+		{Name: "created_at", Type: field.TypeTime},
+		{Name: "updated_at", Type: field.TypeTime},
+	}
+	// EntityPropertiesTable holds the schema information for the "entity_properties" table.
+	EntityPropertiesTable = &schema.Table{
+		Name:       "entity_properties",
+		Columns:    EntityPropertiesColumns,
+		PrimaryKey: []*schema.Column{EntityPropertiesColumns[0]},
+		Indexes: []*schema.Index{
+			{
+				Name:    "entityproperty_entity_id_property",
+				Unique:  true,
+				Columns: []*schema.Column{EntityPropertiesColumns[1], EntityPropertiesColumns[3]},
+			},
+			{
+				Name:    "entityproperty_entity_type_property_value",
+				Unique:  false,
+				Columns: []*schema.Column{EntityPropertiesColumns[2], EntityPropertiesColumns[3], EntityPropertiesColumns[4]},
+			},
+			{
+				Name:    "entityproperty_entity_type",
+				Unique:  false,
+				Columns: []*schema.Column{EntityPropertiesColumns[2]},
 			},
 		},
 	}
@@ -441,6 +536,92 @@ var (
 				Name:    "observation_created_at",
 				Unique:  false,
 				Columns: []*schema.Column{ObservationsColumns[6]},
+			},
+		},
+	}
+	// OntologyConflictsColumns holds the columns for the "ontology_conflicts" table.
+	OntologyConflictsColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeUUID},
+		{Name: "subject", Type: field.TypeString},
+		{Name: "predicate", Type: field.TypeString},
+		{Name: "candidates", Type: field.TypeJSON, Nullable: true},
+		{Name: "status", Type: field.TypeEnum, Enums: []string{"open", "resolved", "auto_resolved"}, Default: "open"},
+		{Name: "resolution", Type: field.TypeString, Nullable: true},
+		{Name: "resolved_at", Type: field.TypeTime, Nullable: true},
+		{Name: "created_at", Type: field.TypeTime},
+	}
+	// OntologyConflictsTable holds the schema information for the "ontology_conflicts" table.
+	OntologyConflictsTable = &schema.Table{
+		Name:       "ontology_conflicts",
+		Columns:    OntologyConflictsColumns,
+		PrimaryKey: []*schema.Column{OntologyConflictsColumns[0]},
+		Indexes: []*schema.Index{
+			{
+				Name:    "ontologyconflict_subject_predicate",
+				Unique:  false,
+				Columns: []*schema.Column{OntologyConflictsColumns[1], OntologyConflictsColumns[2]},
+			},
+			{
+				Name:    "ontologyconflict_status",
+				Unique:  false,
+				Columns: []*schema.Column{OntologyConflictsColumns[4]},
+			},
+			{
+				Name:    "ontologyconflict_created_at",
+				Unique:  false,
+				Columns: []*schema.Column{OntologyConflictsColumns[7]},
+			},
+		},
+	}
+	// OntologyPredicatesColumns holds the columns for the "ontology_predicates" table.
+	OntologyPredicatesColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeUUID},
+		{Name: "name", Type: field.TypeString, Unique: true},
+		{Name: "description", Type: field.TypeString, Default: ""},
+		{Name: "source_types", Type: field.TypeJSON, Nullable: true},
+		{Name: "target_types", Type: field.TypeJSON, Nullable: true},
+		{Name: "cardinality", Type: field.TypeEnum, Enums: []string{"one_to_one", "one_to_many", "many_to_one", "many_to_many"}, Default: "many_to_many"},
+		{Name: "inverse", Type: field.TypeString, Nullable: true},
+		{Name: "status", Type: field.TypeEnum, Enums: []string{"proposed", "quarantined", "shadow", "active", "deprecated"}, Default: "active"},
+		{Name: "version", Type: field.TypeInt, Default: 1},
+		{Name: "created_at", Type: field.TypeTime},
+		{Name: "updated_at", Type: field.TypeTime},
+	}
+	// OntologyPredicatesTable holds the schema information for the "ontology_predicates" table.
+	OntologyPredicatesTable = &schema.Table{
+		Name:       "ontology_predicates",
+		Columns:    OntologyPredicatesColumns,
+		PrimaryKey: []*schema.Column{OntologyPredicatesColumns[0]},
+		Indexes: []*schema.Index{
+			{
+				Name:    "ontologypredicate_status",
+				Unique:  false,
+				Columns: []*schema.Column{OntologyPredicatesColumns[7]},
+			},
+		},
+	}
+	// OntologyTypesColumns holds the columns for the "ontology_types" table.
+	OntologyTypesColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeUUID},
+		{Name: "name", Type: field.TypeString, Unique: true},
+		{Name: "description", Type: field.TypeString, Default: ""},
+		{Name: "properties", Type: field.TypeJSON, Nullable: true},
+		{Name: "extends", Type: field.TypeString, Nullable: true},
+		{Name: "status", Type: field.TypeEnum, Enums: []string{"proposed", "quarantined", "shadow", "active", "deprecated"}, Default: "active"},
+		{Name: "version", Type: field.TypeInt, Default: 1},
+		{Name: "created_at", Type: field.TypeTime},
+		{Name: "updated_at", Type: field.TypeTime},
+	}
+	// OntologyTypesTable holds the schema information for the "ontology_types" table.
+	OntologyTypesTable = &schema.Table{
+		Name:       "ontology_types",
+		Columns:    OntologyTypesColumns,
+		PrimaryKey: []*schema.Column{OntologyTypesColumns[0]},
+		Indexes: []*schema.Index{
+			{
+				Name:    "ontologytype_status",
+				Unique:  false,
+				Columns: []*schema.Column{OntologyTypesColumns[5]},
 			},
 		},
 	}
@@ -1073,11 +1254,14 @@ var (
 	}
 	// Tables holds all the tables in the schema.
 	Tables = []*schema.Table{
+		ActionLogsTable,
 		AgentMemoriesTable,
 		AuditLogsTable,
 		ConfigProfilesTable,
 		CronJobsTable,
 		CronJobHistoriesTable,
+		EntityAliasTable,
+		EntityPropertiesTable,
 		EscrowDealsTable,
 		ExternalRefsTable,
 		InquiriesTable,
@@ -1086,6 +1270,9 @@ var (
 		LearningsTable,
 		MessagesTable,
 		ObservationsTable,
+		OntologyConflictsTable,
+		OntologyPredicatesTable,
+		OntologyTypesTable,
 		PaymentTxesTable,
 		PeerReputationsTable,
 		ProvenanceAttributionsTable,

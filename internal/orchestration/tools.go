@@ -272,6 +272,35 @@ Return confirmation of stored observations, generated reflections, or recalled m
 		ExampleRequests: []string{"Remember that the user prefers dark mode", "Recall what we discussed about the API", "Create a reflection on today's debugging session"},
 		Disambiguation:  "Not for factual knowledge (→ librarian), not for 'save knowledge' (→ librarian), only for conversational/session memory",
 	},
+	{
+		Name:        "ontologist",
+		Description: "Knowledge ontology management: types, entities, facts, conflicts, and data ingestion",
+		Instruction: `## What You Do
+You manage the knowledge ontology: query and describe types, search and retrieve entities,
+assert and retract facts with temporal metadata, detect and resolve conflicts, merge entities,
+and import data from JSON, CSV, or MCP tool results.
+
+## Input Format
+A natural language query about ontology structure, entities, facts, or a request to import data.
+
+## Output Format
+Return structured ontology data (types, entities, properties, triples) or confirmation of mutations
+(fact asserted, conflict resolved, entities merged, data imported).
+
+## Constraints
+- Only manage ontology operations (types, entities, facts, conflicts, imports).
+- Never execute commands, browse the web, or handle file operations.
+- Never perform cryptographic operations or payments.
+- If a task does not match your capabilities, do NOT attempt to answer it.` + outputHandlingSection + responseRulesSection + escalationProtocolSection,
+		Prefixes:        []string{"ontology_"},
+		Keywords:        []string{"ontology", "type", "predicate", "entity", "fact", "conflict", "merge", "schema", "import entities"},
+		Capabilities:    []string{"schema management", "entity resolution", "truth maintenance", "structured query", "data ingestion"},
+		Accepts:         "Natural language query about ontology structure, entities, or facts",
+		Returns:         "Structured ontology data or confirmation of mutations",
+		CannotDo:        []string{"file operations", "code execution", "web browsing", "cryptographic operations"},
+		ExampleRequests: []string{"List all entity types", "Query ErrorPattern entities with tool_name=http", "Assert that error:timeout is caused_by tool:http", "Merge error:api_timeout into error:timeout"},
+		Disambiguation:  "Not for knowledge base search (→ librarian), not for graph traversal queries (→ librarian), only for typed ontology operations",
+	},
 }
 
 // DefaultAgentSpecs returns a shallow copy of the built-in agent specs.
@@ -290,6 +319,7 @@ type RoleToolSet struct {
 	Automator  []*agent.Tool
 	Planner    []*agent.Tool // Always empty — LLM-only reasoning.
 	Chronicler []*agent.Tool
+	Ontologist []*agent.Tool
 	Unmatched  []*agent.Tool // Tools matching no prefix — tracked separately.
 }
 
@@ -328,6 +358,8 @@ func PartitionTools(tools []*agent.Tool) RoleToolSet {
 			rs.Navigator = append(rs.Navigator, t)
 		case matchesPrefix(t.Name, specPrefixes("vault")):
 			rs.Vault = append(rs.Vault, t)
+		case matchesPrefix(t.Name, specPrefixes("ontologist")):
+			rs.Ontologist = append(rs.Ontologist, t)
 		case matchesPrefix(t.Name, specPrefixes("operator")):
 			rs.Operator = append(rs.Operator, t)
 		default:
@@ -355,6 +387,9 @@ func PartitionTools(tools []*agent.Tool) RoleToolSet {
 		}
 		if len(rs.Chronicler) > 0 {
 			rs.Chronicler = append(rs.Chronicler, ut)
+		}
+		if len(rs.Ontologist) > 0 {
+			rs.Ontologist = append(rs.Ontologist, ut)
 		}
 	}
 
@@ -388,6 +423,8 @@ func toolsForSpec(spec AgentSpec, rs RoleToolSet) []*agent.Tool {
 		return rs.Planner
 	case "chronicler":
 		return rs.Chronicler
+	case "ontologist":
+		return rs.Ontologist
 	default:
 		return nil
 	}
@@ -439,6 +476,7 @@ var capabilityMap = map[string]string{
 	"escrow_":         "on-chain escrow management",
 	"sentinel_":       "security sentinel anomaly detection",
 	"contract_":       "smart contract interaction",
+	"ontology_":       "ontology management (types, entities, facts, conflicts)",
 }
 
 // toolCapability returns a human-readable capability for a tool name based

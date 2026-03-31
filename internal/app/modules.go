@@ -27,7 +27,9 @@ import (
 	"github.com/langoai/lango/internal/librarian"
 	"github.com/langoai/lango/internal/lifecycle"
 	"github.com/langoai/lango/internal/memory"
+	"github.com/langoai/lango/internal/ontology"
 	"github.com/langoai/lango/internal/p2p/gitbundle"
+	"github.com/langoai/lango/internal/p2p/ontologybridge"
 	"github.com/langoai/lango/internal/p2p/team"
 	toolcrypto "github.com/langoai/lango/internal/tools/crypto"
 	toolpayment "github.com/langoai/lango/internal/tools/payment"
@@ -72,6 +74,7 @@ type intelligenceValues struct {
 	SkillRegistry    interface{}
 	AgentMemoryStore agentmemory.Store
 	FeatureStatuses  *StatusCollector
+	OntologyBridge   *ontologybridge.Bridge // P2P schema exchange bridge
 }
 
 // automationValues holds the outputs of the automation module.
@@ -275,6 +278,25 @@ func (m *intelligenceModule) Init(ctx context.Context, r appinit.Resolver) (*app
 	// Graph Store (before knowledge).
 	gc, gcStatus := initGraphStore(cfg)
 
+	// Ontology Registry (after graph store).
+	var graphStoreForOntology graph.Store
+	if gc != nil {
+		graphStoreForOntology = gc.store
+	}
+	ontologyResult, err := initOntology(ctx, m.boot.DBClient, cfg, graphStoreForOntology)
+	if err != nil {
+		logger().Warnw("ontology init failed, continuing without ontology", "error", err)
+	}
+	// Ontology tools.
+	if ontologyResult != nil && ontologyResult.Service != nil {
+		ontologyTools := ontology.BuildTools(ontologyResult.Service, ontologyResult.Registry)
+		tools = append(tools, ontologyTools...)
+		entries = append(entries, appinit.CatalogEntry{
+			Category: "ontology", Description: "Ontology management (types, entities, facts, conflicts)",
+			ConfigKey: "ontology.enabled", Enabled: true, Tools: ontologyTools,
+		})
+	}
+
 	// Skills — resolve base tools from foundation for skill init.
 	var baseToolSlice []*agent.Tool
 	if bt := r.Resolve(appinit.ProvidesBaseTools); bt != nil {
@@ -307,7 +329,11 @@ func (m *intelligenceModule) Init(ctx context.Context, r appinit.Resolver) (*app
 
 	// Graph callbacks.
 	if gc != nil {
-		wireGraphCallbacks(gc, kc, mc, sv, cfg, m.bus)
+		var ontologyValidator graph.PredicateValidatorFunc
+		if ontologyResult != nil && ontologyResult.Service != nil {
+			ontologyValidator = ontologyResult.Service.PredicateValidator()
+		}
+		wireGraphCallbacks(gc, kc, mc, sv, cfg, m.bus, ontologyValidator)
 		initGraphRAG(cfg, gc, ec)
 	}
 
@@ -431,6 +457,12 @@ func (m *intelligenceModule) Init(ctx context.Context, r appinit.Resolver) (*app
 		observer = kc.observer
 	}
 
+	// Ontology exchange bridge — extracted for post-build P2P wiring.
+	var ontologyBridge *ontologybridge.Bridge
+	if ontologyResult != nil {
+		ontologyBridge = ontologyResult.Bridge
+	}
+
 	return &appinit.ModuleResult{
 		Tools:          tools,
 		Components:     components,
@@ -442,6 +474,7 @@ func (m *intelligenceModule) Init(ctx context.Context, r appinit.Resolver) (*app
 				SkillRegistry:    skillReg,
 				AgentMemoryStore: amStore,
 				FeatureStatuses:  sc,
+				OntologyBridge:   ontologyBridge,
 			},
 			appinit.ProvidesGraph:     gc,
 			appinit.ProvidesMemory:    mc,
