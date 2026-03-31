@@ -67,6 +67,12 @@ type OntologyService interface {
 	QueryEntities(ctx context.Context, q PropertyQuery) ([]EntityResult, error)
 	GetEntity(ctx context.Context, entityID string) (*EntityResult, error)
 	DeleteEntityProperties(ctx context.Context, entityID string) error
+
+	// Action Types — Change 2-2
+	ExecuteAction(ctx context.Context, actionName string, params map[string]string) (*ActionResult, error)
+	ListActions(ctx context.Context) ([]ActionSummary, error)
+	GetActionLog(ctx context.Context, logID uuid.UUID) (*ActionLogEntry, error)
+	ListActionLogs(ctx context.Context, actionName string, limit int) ([]ActionLogEntry, error)
 }
 
 // ServiceImpl implements OntologyService.
@@ -77,6 +83,7 @@ type ServiceImpl struct {
 	resolver         EntityResolver
 	propStore        *PropertyStore
 	acl              ACLPolicy
+	executor         *ActionExecutor
 	cacheMu          sync.RWMutex
 	activePredicates map[string]bool
 	version          atomic.Int64
@@ -101,6 +108,11 @@ func (s *ServiceImpl) SetPropertyStore(ps *PropertyStore) {
 // When nil, all operations are permitted (backward compatible).
 func (s *ServiceImpl) SetACLPolicy(p ACLPolicy) {
 	s.acl = p
+}
+
+// SetActionExecutor injects the ActionExecutor after construction.
+func (s *ServiceImpl) SetActionExecutor(e *ActionExecutor) {
+	s.executor = e
 }
 
 // checkPermission verifies the calling principal has the required permission.
@@ -540,6 +552,46 @@ func (s *ServiceImpl) DeleteEntityProperties(ctx context.Context, entityID strin
 		}
 	}
 	return s.propStore.DeleteProperties(ctx, entityID)
+}
+
+// --- Action Types delegation ---
+
+func (s *ServiceImpl) ExecuteAction(ctx context.Context, actionName string, params map[string]string) (*ActionResult, error) {
+	if s.executor == nil {
+		return nil, fmt.Errorf("action executor not initialized")
+	}
+	return s.executor.Execute(ctx, actionName, params)
+}
+
+func (s *ServiceImpl) ListActions(_ context.Context) ([]ActionSummary, error) {
+	if s.executor == nil {
+		return nil, nil
+	}
+	actions := s.executor.registry.List()
+	summaries := make([]ActionSummary, len(actions))
+	for i, a := range actions {
+		summaries[i] = ActionSummary{
+			Name:         a.Name,
+			Description:  a.Description,
+			RequiredPerm: a.RequiredPerm,
+			ParamSchema:  a.ParamSchema,
+		}
+	}
+	return summaries, nil
+}
+
+func (s *ServiceImpl) GetActionLog(ctx context.Context, logID uuid.UUID) (*ActionLogEntry, error) {
+	if s.executor == nil {
+		return nil, fmt.Errorf("action executor not initialized")
+	}
+	return s.executor.logStore.Get(ctx, logID)
+}
+
+func (s *ServiceImpl) ListActionLogs(ctx context.Context, actionName string, limit int) ([]ActionLogEntry, error) {
+	if s.executor == nil {
+		return nil, nil
+	}
+	return s.executor.logStore.List(ctx, actionName, limit)
 }
 
 // toResultTriples converts graph.Triple slice to ResultTriple slice.

@@ -20,13 +20,13 @@ func newToolsTestEnv(t *testing.T) ontology.OntologyService {
 
 func TestBuildTools_Count(t *testing.T) {
 	svc := newToolsTestEnv(t)
-	tools := ontology.BuildTools(svc)
+	tools := ontology.BuildTools(svc, nil)
 	assert.Len(t, tools, 13, "should have 13 ontology tools")
 }
 
 func TestBuildTools_Names(t *testing.T) {
 	svc := newToolsTestEnv(t)
-	tools := ontology.BuildTools(svc)
+	tools := ontology.BuildTools(svc, nil)
 
 	names := make(map[string]bool, len(tools))
 	for _, t := range tools {
@@ -48,7 +48,7 @@ func TestBuildTools_Names(t *testing.T) {
 
 func TestOntologyListTypes(t *testing.T) {
 	svc := newToolsTestEnv(t)
-	tools := ontology.BuildTools(svc)
+	tools := ontology.BuildTools(svc, nil)
 	ctx := context.Background()
 
 	handler := findHandler(tools, "ontology_list_types")
@@ -64,7 +64,7 @@ func TestOntologyListTypes(t *testing.T) {
 
 func TestOntologyDescribeType(t *testing.T) {
 	svc := newToolsTestEnv(t)
-	tools := ontology.BuildTools(svc)
+	tools := ontology.BuildTools(svc, nil)
 	ctx := context.Background()
 
 	handler := findHandler(tools, "ontology_describe_type")
@@ -79,7 +79,7 @@ func TestOntologyDescribeType(t *testing.T) {
 
 func TestOntologyAssertFact(t *testing.T) {
 	svc := newToolsTestEnv(t)
-	tools := ontology.BuildTools(svc)
+	tools := ontology.BuildTools(svc, nil)
 	ctx := context.Background()
 
 	handler := findHandler(tools, "ontology_assert_fact")
@@ -97,7 +97,7 @@ func TestOntologyAssertFact(t *testing.T) {
 
 func TestOntologyRetractFact(t *testing.T) {
 	svc := newToolsTestEnv(t)
-	tools := ontology.BuildTools(svc)
+	tools := ontology.BuildTools(svc, nil)
 	ctx := context.Background()
 
 	// First assert a fact.
@@ -118,7 +118,7 @@ func TestOntologyRetractFact(t *testing.T) {
 
 func TestOntologyListConflicts(t *testing.T) {
 	svc := newToolsTestEnv(t)
-	tools := ontology.BuildTools(svc)
+	tools := ontology.BuildTools(svc, nil)
 	ctx := context.Background()
 
 	handler := findHandler(tools, "ontology_list_conflicts")
@@ -131,7 +131,7 @@ func TestOntologyListConflicts(t *testing.T) {
 
 func TestOntologyMergeEntities(t *testing.T) {
 	svc := newToolsTestEnv(t)
-	tools := ontology.BuildTools(svc)
+	tools := ontology.BuildTools(svc, nil)
 	ctx := context.Background()
 
 	handler := findHandler(tools, "ontology_merge_entities")
@@ -146,7 +146,7 @@ func TestOntologyMergeEntities(t *testing.T) {
 
 func TestOntologyFactsAt(t *testing.T) {
 	svc := newToolsTestEnv(t)
-	tools := ontology.BuildTools(svc)
+	tools := ontology.BuildTools(svc, nil)
 	ctx := context.Background()
 
 	// Assert a fact first.
@@ -169,7 +169,7 @@ func TestOntologyFactsAt(t *testing.T) {
 
 func TestOntologyGetEntity(t *testing.T) {
 	svc := newToolsTestEnv(t)
-	tools := ontology.BuildTools(svc)
+	tools := ontology.BuildTools(svc, nil)
 	ctx := context.Background()
 
 	// Set a property first.
@@ -186,7 +186,7 @@ func TestOntologyGetEntity(t *testing.T) {
 
 func TestOntologyQueryEntities(t *testing.T) {
 	svc := newToolsTestEnv(t)
-	tools := ontology.BuildTools(svc)
+	tools := ontology.BuildTools(svc, nil)
 	ctx := context.Background()
 
 	require.NoError(t, svc.SetEntityProperty(ctx, "err:qe1", "ErrorPattern", "tool_name", "http"))
@@ -209,7 +209,7 @@ func TestOntologyQueryEntities(t *testing.T) {
 
 func TestOntologyImportJSON(t *testing.T) {
 	svc := newToolsTestEnv(t)
-	tools := ontology.BuildTools(svc)
+	tools := ontology.BuildTools(svc, nil)
 	ctx := context.Background()
 
 	data := `{
@@ -241,7 +241,7 @@ func TestOntologyImportJSON(t *testing.T) {
 
 func TestOntologyImportJSON_InvalidType(t *testing.T) {
 	svc := newToolsTestEnv(t)
-	tools := ontology.BuildTools(svc)
+	tools := ontology.BuildTools(svc, nil)
 	ctx := context.Background()
 
 	data := `{"entities": [{"id": "x", "type": "UnknownType", "properties": {"p": "v"}}]}`
@@ -257,7 +257,7 @@ func TestOntologyImportJSON_InvalidType(t *testing.T) {
 
 func TestOntologyImportCSV(t *testing.T) {
 	svc := newToolsTestEnv(t)
-	tools := ontology.BuildTools(svc)
+	tools := ontology.BuildTools(svc, nil)
 	ctx := context.Background()
 
 	csvData := "entity_id,tool_name,pattern\nerr:csv1,http,timeout\nerr:csv2,grpc,deadline"
@@ -278,7 +278,7 @@ func TestOntologyImportCSV(t *testing.T) {
 
 func TestOntologyFromMCP(t *testing.T) {
 	svc := newToolsTestEnv(t)
-	tools := ontology.BuildTools(svc)
+	tools := ontology.BuildTools(svc, nil)
 	ctx := context.Background()
 
 	handler := findHandler(tools, "ontology_from_mcp")

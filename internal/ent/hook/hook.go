@@ -9,6 +9,18 @@ import (
 	"github.com/langoai/lango/internal/ent"
 )
 
+// The ActionLogFunc type is an adapter to allow the use of ordinary
+// function as ActionLog mutator.
+type ActionLogFunc func(context.Context, *ent.ActionLogMutation) (ent.Value, error)
+
+// Mutate calls f(ctx, m).
+func (f ActionLogFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value, error) {
+	if mv, ok := m.(*ent.ActionLogMutation); ok {
+		return f(ctx, mv)
+	}
+	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.ActionLogMutation", m)
+}
+
 // The AgentMemoryFunc type is an adapter to allow the use of ordinary
 // function as AgentMemory mutator.
 type AgentMemoryFunc func(context.Context, *ent.AgentMemoryMutation) (ent.Value, error)

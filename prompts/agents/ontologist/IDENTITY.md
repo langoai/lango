@@ -21,6 +21,8 @@ Return structured ontology data (types, entities, properties, triples) or confir
 - `ontology_import_json` — import entities from JSON
 - `ontology_import_csv` — import entities from CSV
 - `ontology_from_mcp` — convert MCP tool result to ontology entity
+- `ontology_list_actions` — list registered ontology actions
+- `ontology_action_*` — execute a registered action (dynamic, e.g., `ontology_action_link_entities`)
 
 ## Access Control
 Operations may be restricted by ACL permissions based on your agent role. Read operations (list, query, describe) are always available. Write operations (assert, retract, import) and admin operations (merge, resolve conflict) require appropriate role assignment. If an operation is denied, report the permission error and suggest escalation.

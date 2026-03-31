@@ -12,6 +12,7 @@ import (
 	"entgo.io/ent"
 	"entgo.io/ent/dialect/sql"
 	"github.com/google/uuid"
+	"github.com/langoai/lango/internal/ent/actionlog"
 	"github.com/langoai/lango/internal/ent/agentmemory"
 	"github.com/langoai/lango/internal/ent/auditlog"
 	"github.com/langoai/lango/internal/ent/configprofile"
@@ -59,6 +60,7 @@ const (
 	OpUpdateOne = ent.OpUpdateOne
 
 	// Node types.
+	TypeActionLog             = "ActionLog"
 	TypeAgentMemory           = "AgentMemory"
 	TypeAuditLog              = "AuditLog"
 	TypeConfigProfile         = "ConfigProfile"
@@ -94,6 +96,795 @@ const (
 	TypeWorkflowRun           = "WorkflowRun"
 	TypeWorkflowStepRun       = "WorkflowStepRun"
 )
+
+// ActionLogMutation represents an operation that mutates the ActionLog nodes in the graph.
+type ActionLogMutation struct {
+	config
+	op            Op
+	typ           string
+	id            *uuid.UUID
+	action_name   *string
+	principal     *string
+	params        *map[string]string
+	status        *actionlog.Status
+	effects       *map[string]interface{}
+	error_message *string
+	started_at    *time.Time
+	completed_at  *time.Time
+	clearedFields map[string]struct{}
+	done          bool
+	oldValue      func(context.Context) (*ActionLog, error)
+	predicates    []predicate.ActionLog
+}
+
+var _ ent.Mutation = (*ActionLogMutation)(nil)
+
+// actionlogOption allows management of the mutation configuration using functional options.
+type actionlogOption func(*ActionLogMutation)
+
+// newActionLogMutation creates new mutation for the ActionLog entity.
+func newActionLogMutation(c config, op Op, opts ...actionlogOption) *ActionLogMutation {
+	m := &ActionLogMutation{
+		config:        c,
+		op:            op,
+		typ:           TypeActionLog,
+		clearedFields: make(map[string]struct{}),
+	}
+	for _, opt := range opts {
+		opt(m)
+	}
+	return m
+}
+
+// withActionLogID sets the ID field of the mutation.
+func withActionLogID(id uuid.UUID) actionlogOption {
+	return func(m *ActionLogMutation) {
+		var (
+			err   error
+			once  sync.Once
+			value *ActionLog
+		)
+		m.oldValue = func(ctx context.Context) (*ActionLog, error) {
+			once.Do(func() {
+				if m.done {
+					err = errors.New("querying old values post mutation is not allowed")
+				} else {
+					value, err = m.Client().ActionLog.Get(ctx, id)
+				}
+			})
+			return value, err
+		}
+		m.id = &id
+	}
+}
+
+// withActionLog sets the old ActionLog of the mutation.
+func withActionLog(node *ActionLog) actionlogOption {
+	return func(m *ActionLogMutation) {
+		m.oldValue = func(context.Context) (*ActionLog, error) {
+			return node, nil
+		}
+		m.id = &node.ID
+	}
+}
+
+// Client returns a new `ent.Client` from the mutation. If the mutation was
+// executed in a transaction (ent.Tx), a transactional client is returned.
+func (m ActionLogMutation) Client() *Client {
+	client := &Client{config: m.config}
+	client.init()
+	return client
+}
+
+// Tx returns an `ent.Tx` for mutations that were executed in transactions;
+// it returns an error otherwise.
+func (m ActionLogMutation) Tx() (*Tx, error) {
+	if _, ok := m.driver.(*txDriver); !ok {
+		return nil, errors.New("ent: mutation is not running in a transaction")
+	}
+	tx := &Tx{config: m.config}
+	tx.init()
+	return tx, nil
+}
+
+// SetID sets the value of the id field. Note that this
+// operation is only accepted on creation of ActionLog entities.
+func (m *ActionLogMutation) SetID(id uuid.UUID) {
+	m.id = &id
+}
+
+// ID returns the ID value in the mutation. Note that the ID is only available
+// if it was provided to the builder or after it was returned from the database.
+func (m *ActionLogMutation) ID() (id uuid.UUID, exists bool) {
+	if m.id == nil {
+		return
+	}
+	return *m.id, true
+}
+
+// IDs queries the database and returns the entity ids that match the mutation's predicate.
+// That means, if the mutation is applied within a transaction with an isolation level such
+// as sql.LevelSerializable, the returned ids match the ids of the rows that will be updated
+// or updated by the mutation.
+func (m *ActionLogMutation) IDs(ctx context.Context) ([]uuid.UUID, error) {
+	switch {
+	case m.op.Is(OpUpdateOne | OpDeleteOne):
+		id, exists := m.ID()
+		if exists {
+			return []uuid.UUID{id}, nil
+		}
+		fallthrough
+	case m.op.Is(OpUpdate | OpDelete):
+		return m.Client().ActionLog.Query().Where(m.predicates...).IDs(ctx)
+	default:
+		return nil, fmt.Errorf("IDs is not allowed on %s operations", m.op)
+	}
+}
+
+// SetActionName sets the "action_name" field.
+func (m *ActionLogMutation) SetActionName(s string) {
+	m.action_name = &s
+}
+
+// ActionName returns the value of the "action_name" field in the mutation.
+func (m *ActionLogMutation) ActionName() (r string, exists bool) {
+	v := m.action_name
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldActionName returns the old "action_name" field's value of the ActionLog entity.
+// If the ActionLog object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *ActionLogMutation) OldActionName(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldActionName is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldActionName requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldActionName: %w", err)
+	}
+	return oldValue.ActionName, nil
+}
+
+// ResetActionName resets all changes to the "action_name" field.
+func (m *ActionLogMutation) ResetActionName() {
+	m.action_name = nil
+}
+
+// SetPrincipal sets the "principal" field.
+func (m *ActionLogMutation) SetPrincipal(s string) {
+	m.principal = &s
+}
+
+// Principal returns the value of the "principal" field in the mutation.
+func (m *ActionLogMutation) Principal() (r string, exists bool) {
+	v := m.principal
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldPrincipal returns the old "principal" field's value of the ActionLog entity.
+// If the ActionLog object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *ActionLogMutation) OldPrincipal(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldPrincipal is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldPrincipal requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldPrincipal: %w", err)
+	}
+	return oldValue.Principal, nil
+}
+
+// ResetPrincipal resets all changes to the "principal" field.
+func (m *ActionLogMutation) ResetPrincipal() {
+	m.principal = nil
+}
+
+// SetParams sets the "params" field.
+func (m *ActionLogMutation) SetParams(value map[string]string) {
+	m.params = &value
+}
+
+// Params returns the value of the "params" field in the mutation.
+func (m *ActionLogMutation) Params() (r map[string]string, exists bool) {
+	v := m.params
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldParams returns the old "params" field's value of the ActionLog entity.
+// If the ActionLog object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *ActionLogMutation) OldParams(ctx context.Context) (v map[string]string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldParams is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldParams requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldParams: %w", err)
+	}
+	return oldValue.Params, nil
+}
+
+// ClearParams clears the value of the "params" field.
+func (m *ActionLogMutation) ClearParams() {
+	m.params = nil
+	m.clearedFields[actionlog.FieldParams] = struct{}{}
+}
+
+// ParamsCleared returns if the "params" field was cleared in this mutation.
+func (m *ActionLogMutation) ParamsCleared() bool {
+	_, ok := m.clearedFields[actionlog.FieldParams]
+	return ok
+}
+
+// ResetParams resets all changes to the "params" field.
+func (m *ActionLogMutation) ResetParams() {
+	m.params = nil
+	delete(m.clearedFields, actionlog.FieldParams)
+}
+
+// SetStatus sets the "status" field.
+func (m *ActionLogMutation) SetStatus(a actionlog.Status) {
+	m.status = &a
+}
+
+// Status returns the value of the "status" field in the mutation.
+func (m *ActionLogMutation) Status() (r actionlog.Status, exists bool) {
+	v := m.status
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldStatus returns the old "status" field's value of the ActionLog entity.
+// If the ActionLog object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *ActionLogMutation) OldStatus(ctx context.Context) (v actionlog.Status, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldStatus is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldStatus requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldStatus: %w", err)
+	}
+	return oldValue.Status, nil
+}
+
+// ResetStatus resets all changes to the "status" field.
+func (m *ActionLogMutation) ResetStatus() {
+	m.status = nil
+}
+
+// SetEffects sets the "effects" field.
+func (m *ActionLogMutation) SetEffects(value map[string]interface{}) {
+	m.effects = &value
+}
+
+// Effects returns the value of the "effects" field in the mutation.
+func (m *ActionLogMutation) Effects() (r map[string]interface{}, exists bool) {
+	v := m.effects
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldEffects returns the old "effects" field's value of the ActionLog entity.
+// If the ActionLog object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *ActionLogMutation) OldEffects(ctx context.Context) (v map[string]interface{}, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldEffects is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldEffects requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldEffects: %w", err)
+	}
+	return oldValue.Effects, nil
+}
+
+// ClearEffects clears the value of the "effects" field.
+func (m *ActionLogMutation) ClearEffects() {
+	m.effects = nil
+	m.clearedFields[actionlog.FieldEffects] = struct{}{}
+}
+
+// EffectsCleared returns if the "effects" field was cleared in this mutation.
+func (m *ActionLogMutation) EffectsCleared() bool {
+	_, ok := m.clearedFields[actionlog.FieldEffects]
+	return ok
+}
+
+// ResetEffects resets all changes to the "effects" field.
+func (m *ActionLogMutation) ResetEffects() {
+	m.effects = nil
+	delete(m.clearedFields, actionlog.FieldEffects)
+}
+
+// SetErrorMessage sets the "error_message" field.
+func (m *ActionLogMutation) SetErrorMessage(s string) {
+	m.error_message = &s
+}
+
+// ErrorMessage returns the value of the "error_message" field in the mutation.
+func (m *ActionLogMutation) ErrorMessage() (r string, exists bool) {
+	v := m.error_message
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldErrorMessage returns the old "error_message" field's value of the ActionLog entity.
+// If the ActionLog object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *ActionLogMutation) OldErrorMessage(ctx context.Context) (v *string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldErrorMessage is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldErrorMessage requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldErrorMessage: %w", err)
+	}
+	return oldValue.ErrorMessage, nil
+}
+
+// ClearErrorMessage clears the value of the "error_message" field.
+func (m *ActionLogMutation) ClearErrorMessage() {
+	m.error_message = nil
+	m.clearedFields[actionlog.FieldErrorMessage] = struct{}{}
+}
+
+// ErrorMessageCleared returns if the "error_message" field was cleared in this mutation.
+func (m *ActionLogMutation) ErrorMessageCleared() bool {
+	_, ok := m.clearedFields[actionlog.FieldErrorMessage]
+	return ok
+}
+
+// ResetErrorMessage resets all changes to the "error_message" field.
+func (m *ActionLogMutation) ResetErrorMessage() {
+	m.error_message = nil
+	delete(m.clearedFields, actionlog.FieldErrorMessage)
+}
+
+// SetStartedAt sets the "started_at" field.
+func (m *ActionLogMutation) SetStartedAt(t time.Time) {
+	m.started_at = &t
+}
+
+// StartedAt returns the value of the "started_at" field in the mutation.
+func (m *ActionLogMutation) StartedAt() (r time.Time, exists bool) {
+	v := m.started_at
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldStartedAt returns the old "started_at" field's value of the ActionLog entity.
+// If the ActionLog object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *ActionLogMutation) OldStartedAt(ctx context.Context) (v time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldStartedAt is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldStartedAt requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldStartedAt: %w", err)
+	}
+	return oldValue.StartedAt, nil
+}
+
+// ResetStartedAt resets all changes to the "started_at" field.
+func (m *ActionLogMutation) ResetStartedAt() {
+	m.started_at = nil
+}
+
+// SetCompletedAt sets the "completed_at" field.
+func (m *ActionLogMutation) SetCompletedAt(t time.Time) {
+	m.completed_at = &t
+}
+
+// CompletedAt returns the value of the "completed_at" field in the mutation.
+func (m *ActionLogMutation) CompletedAt() (r time.Time, exists bool) {
+	v := m.completed_at
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldCompletedAt returns the old "completed_at" field's value of the ActionLog entity.
+// If the ActionLog object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *ActionLogMutation) OldCompletedAt(ctx context.Context) (v *time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldCompletedAt is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldCompletedAt requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldCompletedAt: %w", err)
+	}
+	return oldValue.CompletedAt, nil
+}
+
+// ClearCompletedAt clears the value of the "completed_at" field.
+func (m *ActionLogMutation) ClearCompletedAt() {
+	m.completed_at = nil
+	m.clearedFields[actionlog.FieldCompletedAt] = struct{}{}
+}
+
+// CompletedAtCleared returns if the "completed_at" field was cleared in this mutation.
+func (m *ActionLogMutation) CompletedAtCleared() bool {
+	_, ok := m.clearedFields[actionlog.FieldCompletedAt]
+	return ok
+}
+
+// ResetCompletedAt resets all changes to the "completed_at" field.
+func (m *ActionLogMutation) ResetCompletedAt() {
+	m.completed_at = nil
+	delete(m.clearedFields, actionlog.FieldCompletedAt)
+}
+
+// Where appends a list predicates to the ActionLogMutation builder.
+func (m *ActionLogMutation) Where(ps ...predicate.ActionLog) {
+	m.predicates = append(m.predicates, ps...)
+}
+
+// WhereP appends storage-level predicates to the ActionLogMutation builder. Using this method,
+// users can use type-assertion to append predicates that do not depend on any generated package.
+func (m *ActionLogMutation) WhereP(ps ...func(*sql.Selector)) {
+	p := make([]predicate.ActionLog, len(ps))
+	for i := range ps {
+		p[i] = ps[i]
+	}
+	m.Where(p...)
+}
+
+// Op returns the operation name.
+func (m *ActionLogMutation) Op() Op {
+	return m.op
+}
+
+// SetOp allows setting the mutation operation.
+func (m *ActionLogMutation) SetOp(op Op) {
+	m.op = op
+}
+
+// Type returns the node type of this mutation (ActionLog).
+func (m *ActionLogMutation) Type() string {
+	return m.typ
+}
+
+// Fields returns all fields that were changed during this mutation. Note that in
+// order to get all numeric fields that were incremented/decremented, call
+// AddedFields().
+func (m *ActionLogMutation) Fields() []string {
+	fields := make([]string, 0, 8)
+	if m.action_name != nil {
+		fields = append(fields, actionlog.FieldActionName)
+	}
+	if m.principal != nil {
+		fields = append(fields, actionlog.FieldPrincipal)
+	}
+	if m.params != nil {
+		fields = append(fields, actionlog.FieldParams)
+	}
+	if m.status != nil {
+		fields = append(fields, actionlog.FieldStatus)
+	}
+	if m.effects != nil {
+		fields = append(fields, actionlog.FieldEffects)
+	}
+	if m.error_message != nil {
+		fields = append(fields, actionlog.FieldErrorMessage)
+	}
+	if m.started_at != nil {
+		fields = append(fields, actionlog.FieldStartedAt)
+	}
+	if m.completed_at != nil {
+		fields = append(fields, actionlog.FieldCompletedAt)
+	}
+	return fields
+}
+
+// Field returns the value of a field with the given name. The second boolean
+// return value indicates that this field was not set, or was not defined in the
+// schema.
+func (m *ActionLogMutation) Field(name string) (ent.Value, bool) {
+	switch name {
+	case actionlog.FieldActionName:
+		return m.ActionName()
+	case actionlog.FieldPrincipal:
+		return m.Principal()
+	case actionlog.FieldParams:
+		return m.Params()
+	case actionlog.FieldStatus:
+		return m.Status()
+	case actionlog.FieldEffects:
+		return m.Effects()
+	case actionlog.FieldErrorMessage:
+		return m.ErrorMessage()
+	case actionlog.FieldStartedAt:
+		return m.StartedAt()
+	case actionlog.FieldCompletedAt:
+		return m.CompletedAt()
+	}
+	return nil, false
+}
+
+// OldField returns the old value of the field from the database. An error is
+// returned if the mutation operation is not UpdateOne, or the query to the
+// database failed.
+func (m *ActionLogMutation) OldField(ctx context.Context, name string) (ent.Value, error) {
+	switch name {
+	case actionlog.FieldActionName:
+		return m.OldActionName(ctx)
+	case actionlog.FieldPrincipal:
+		return m.OldPrincipal(ctx)
+	case actionlog.FieldParams:
+		return m.OldParams(ctx)
+	case actionlog.FieldStatus:
+		return m.OldStatus(ctx)
+	case actionlog.FieldEffects:
+		return m.OldEffects(ctx)
+	case actionlog.FieldErrorMessage:
+		return m.OldErrorMessage(ctx)
+	case actionlog.FieldStartedAt:
+		return m.OldStartedAt(ctx)
+	case actionlog.FieldCompletedAt:
+		return m.OldCompletedAt(ctx)
+	}
+	return nil, fmt.Errorf("unknown ActionLog field %s", name)
+}
+
+// SetField sets the value of a field with the given name. It returns an error if
+// the field is not defined in the schema, or if the type mismatched the field
+// type.
+func (m *ActionLogMutation) SetField(name string, value ent.Value) error {
+	switch name {
+	case actionlog.FieldActionName:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetActionName(v)
+		return nil
+	case actionlog.FieldPrincipal:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetPrincipal(v)
+		return nil
+	case actionlog.FieldParams:
+		v, ok := value.(map[string]string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetParams(v)
+		return nil
+	case actionlog.FieldStatus:
+		v, ok := value.(actionlog.Status)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetStatus(v)
+		return nil
+	case actionlog.FieldEffects:
+		v, ok := value.(map[string]interface{})
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetEffects(v)
+		return nil
+	case actionlog.FieldErrorMessage:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetErrorMessage(v)
+		return nil
+	case actionlog.FieldStartedAt:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetStartedAt(v)
+		return nil
+	case actionlog.FieldCompletedAt:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetCompletedAt(v)
+		return nil
+	}
+	return fmt.Errorf("unknown ActionLog field %s", name)
+}
+
+// AddedFields returns all numeric fields that were incremented/decremented during
+// this mutation.
+func (m *ActionLogMutation) AddedFields() []string {
+	return nil
+}
+
+// AddedField returns the numeric value that was incremented/decremented on a field
+// with the given name. The second boolean return value indicates that this field
+// was not set, or was not defined in the schema.
+func (m *ActionLogMutation) AddedField(name string) (ent.Value, bool) {
+	return nil, false
+}
+
+// AddField adds the value to the field with the given name. It returns an error if
+// the field is not defined in the schema, or if the type mismatched the field
+// type.
+func (m *ActionLogMutation) AddField(name string, value ent.Value) error {
+	switch name {
+	}
+	return fmt.Errorf("unknown ActionLog numeric field %s", name)
+}
+
+// ClearedFields returns all nullable fields that were cleared during this
+// mutation.
+func (m *ActionLogMutation) ClearedFields() []string {
+	var fields []string
+	if m.FieldCleared(actionlog.FieldParams) {
+		fields = append(fields, actionlog.FieldParams)
+	}
+	if m.FieldCleared(actionlog.FieldEffects) {
+		fields = append(fields, actionlog.FieldEffects)
+	}
+	if m.FieldCleared(actionlog.FieldErrorMessage) {
+		fields = append(fields, actionlog.FieldErrorMessage)
+	}
+	if m.FieldCleared(actionlog.FieldCompletedAt) {
+		fields = append(fields, actionlog.FieldCompletedAt)
+	}
+	return fields
+}
+
+// FieldCleared returns a boolean indicating if a field with the given name was
+// cleared in this mutation.
+func (m *ActionLogMutation) FieldCleared(name string) bool {
+	_, ok := m.clearedFields[name]
+	return ok
+}
+
+// ClearField clears the value of the field with the given name. It returns an
+// error if the field is not defined in the schema.
+func (m *ActionLogMutation) ClearField(name string) error {
+	switch name {
+	case actionlog.FieldParams:
+		m.ClearParams()
+		return nil
+	case actionlog.FieldEffects:
+		m.ClearEffects()
+		return nil
+	case actionlog.FieldErrorMessage:
+		m.ClearErrorMessage()
+		return nil
+	case actionlog.FieldCompletedAt:
+		m.ClearCompletedAt()
+		return nil
+	}
+	return fmt.Errorf("unknown ActionLog nullable field %s", name)
+}
+
+// ResetField resets all changes in the mutation for the field with the given name.
+// It returns an error if the field is not defined in the schema.
+func (m *ActionLogMutation) ResetField(name string) error {
+	switch name {
+	case actionlog.FieldActionName:
+		m.ResetActionName()
+		return nil
+	case actionlog.FieldPrincipal:
+		m.ResetPrincipal()
+		return nil
+	case actionlog.FieldParams:
+		m.ResetParams()
+		return nil
+	case actionlog.FieldStatus:
+		m.ResetStatus()
+		return nil
+	case actionlog.FieldEffects:
+		m.ResetEffects()
+		return nil
+	case actionlog.FieldErrorMessage:
+		m.ResetErrorMessage()
+		return nil
+	case actionlog.FieldStartedAt:
+		m.ResetStartedAt()
+		return nil
+	case actionlog.FieldCompletedAt:
+		m.ResetCompletedAt()
+		return nil
+	}
+	return fmt.Errorf("unknown ActionLog field %s", name)
+}
+
+// AddedEdges returns all edge names that were set/added in this mutation.
+func (m *ActionLogMutation) AddedEdges() []string {
+	edges := make([]string, 0, 0)
+	return edges
+}
+
+// AddedIDs returns all IDs (to other nodes) that were added for the given edge
+// name in this mutation.
+func (m *ActionLogMutation) AddedIDs(name string) []ent.Value {
+	return nil
+}
+
+// RemovedEdges returns all edge names that were removed in this mutation.
+func (m *ActionLogMutation) RemovedEdges() []string {
+	edges := make([]string, 0, 0)
+	return edges
+}
+
+// RemovedIDs returns all IDs (to other nodes) that were removed for the edge with
+// the given name in this mutation.
+func (m *ActionLogMutation) RemovedIDs(name string) []ent.Value {
+	return nil
+}
+
+// ClearedEdges returns all edge names that were cleared in this mutation.
+func (m *ActionLogMutation) ClearedEdges() []string {
+	edges := make([]string, 0, 0)
+	return edges
+}
+
+// EdgeCleared returns a boolean which indicates if the edge with the given name
+// was cleared in this mutation.
+func (m *ActionLogMutation) EdgeCleared(name string) bool {
+	return false
+}
+
+// ClearEdge clears the value of the edge with the given name. It returns an error
+// if that edge is not defined in the schema.
+func (m *ActionLogMutation) ClearEdge(name string) error {
+	return fmt.Errorf("unknown ActionLog unique edge %s", name)
+}
+
+// ResetEdge resets all changes to the edge with the given name in this mutation.
+// It returns an error if the edge is not defined in the schema.
+func (m *ActionLogMutation) ResetEdge(name string) error {
+	return fmt.Errorf("unknown ActionLog edge %s", name)
+}
 
 // AgentMemoryMutation represents an operation that mutates the AgentMemory nodes in the graph.
 type AgentMemoryMutation struct {

@@ -281,13 +281,13 @@ func (m *intelligenceModule) Init(ctx context.Context, r appinit.Resolver) (*app
 	if gc != nil {
 		graphStoreForOntology = gc.store
 	}
-	ontologySvc, err := initOntology(ctx, m.boot.DBClient, cfg, graphStoreForOntology)
+	ontologyResult, err := initOntology(ctx, m.boot.DBClient, cfg, graphStoreForOntology)
 	if err != nil {
 		logger().Warnw("ontology init failed, continuing without ontology", "error", err)
 	}
 	// Ontology tools.
-	if ontologySvc != nil {
-		ontologyTools := ontology.BuildTools(ontologySvc)
+	if ontologyResult != nil && ontologyResult.Service != nil {
+		ontologyTools := ontology.BuildTools(ontologyResult.Service, ontologyResult.Registry)
 		tools = append(tools, ontologyTools...)
 		entries = append(entries, appinit.CatalogEntry{
 			Category: "ontology", Description: "Ontology management (types, entities, facts, conflicts)",
@@ -328,8 +328,8 @@ func (m *intelligenceModule) Init(ctx context.Context, r appinit.Resolver) (*app
 	// Graph callbacks.
 	if gc != nil {
 		var ontologyValidator graph.PredicateValidatorFunc
-		if ontologySvc != nil {
-			ontologyValidator = ontologySvc.PredicateValidator()
+		if ontologyResult != nil && ontologyResult.Service != nil {
+			ontologyValidator = ontologyResult.Service.PredicateValidator()
 		}
 		wireGraphCallbacks(gc, kc, mc, sv, cfg, m.bus, ontologyValidator)
 		initGraphRAG(cfg, gc, ec)

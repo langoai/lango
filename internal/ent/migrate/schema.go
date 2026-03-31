@@ -8,6 +8,46 @@ import (
 )
 
 var (
+	// ActionLogsColumns holds the columns for the "action_logs" table.
+	ActionLogsColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeUUID},
+		{Name: "action_name", Type: field.TypeString},
+		{Name: "principal", Type: field.TypeString},
+		{Name: "params", Type: field.TypeJSON, Nullable: true},
+		{Name: "status", Type: field.TypeEnum, Enums: []string{"started", "completed", "failed", "compensated"}, Default: "started"},
+		{Name: "effects", Type: field.TypeJSON, Nullable: true},
+		{Name: "error_message", Type: field.TypeString, Nullable: true},
+		{Name: "started_at", Type: field.TypeTime},
+		{Name: "completed_at", Type: field.TypeTime, Nullable: true},
+	}
+	// ActionLogsTable holds the schema information for the "action_logs" table.
+	ActionLogsTable = &schema.Table{
+		Name:       "action_logs",
+		Columns:    ActionLogsColumns,
+		PrimaryKey: []*schema.Column{ActionLogsColumns[0]},
+		Indexes: []*schema.Index{
+			{
+				Name:    "actionlog_action_name",
+				Unique:  false,
+				Columns: []*schema.Column{ActionLogsColumns[1]},
+			},
+			{
+				Name:    "actionlog_principal",
+				Unique:  false,
+				Columns: []*schema.Column{ActionLogsColumns[2]},
+			},
+			{
+				Name:    "actionlog_status",
+				Unique:  false,
+				Columns: []*schema.Column{ActionLogsColumns[4]},
+			},
+			{
+				Name:    "actionlog_started_at",
+				Unique:  false,
+				Columns: []*schema.Column{ActionLogsColumns[7]},
+			},
+		},
+	}
 	// AgentMemoriesColumns holds the columns for the "agent_memories" table.
 	AgentMemoriesColumns = []*schema.Column{
 		{Name: "id", Type: field.TypeUUID},
@@ -1214,6 +1254,7 @@ var (
 	}
 	// Tables holds all the tables in the schema.
 	Tables = []*schema.Table{
+		ActionLogsTable,
 		AgentMemoriesTable,
 		AuditLogsTable,
 		ConfigProfilesTable,

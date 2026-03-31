@@ -12,6 +12,8 @@ import (
 // Tx is a transactional client that is created by calling Client.Tx().
 type Tx struct {
 	config
+	// ActionLog is the client for interacting with the ActionLog builders.
+	ActionLog *ActionLogClient
 	// AgentMemory is the client for interacting with the AgentMemory builders.
 	AgentMemory *AgentMemoryClient
 	// AuditLog is the client for interacting with the AuditLog builders.
@@ -211,6 +213,7 @@ func (tx *Tx) Client() *Client {
 }
 
 func (tx *Tx) init() {
+	tx.ActionLog = NewActionLogClient(tx.config)
 	tx.AgentMemory = NewAgentMemoryClient(tx.config)
 	tx.AuditLog = NewAuditLogClient(tx.config)
 	tx.ConfigProfile = NewConfigProfileClient(tx.config)
@@ -254,7 +257,7 @@ func (tx *Tx) init() {
 // of them in order to commit or rollback the transaction.
 //
 // If a closed transaction is embedded in one of the generated entities, and the entity
-// applies a query, for example: AgentMemory.QueryXXX(), the query will be executed
+// applies a query, for example: ActionLog.QueryXXX(), the query will be executed
 // through the driver which created this transaction.
 //
 // Note that txDriver is not goroutine safe.

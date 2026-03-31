@@ -12,9 +12,15 @@ import (
 
 // initOntology creates the ontology service and seeds default types/predicates.
 // Returns nil service if ontology is disabled. Errors are non-fatal (logged, graph continues).
-func initOntology(ctx context.Context, client *ent.Client, cfg *config.Config, graphStore graph.Store) (*ontology.ServiceImpl, error) {
+// initOntologyResult holds the ontology service and action registry for tool generation.
+type initOntologyResult struct {
+	Service  *ontology.ServiceImpl
+	Registry *ontology.ActionRegistry
+}
+
+func initOntology(ctx context.Context, client *ent.Client, cfg *config.Config, graphStore graph.Store) (*initOntologyResult, error) {
 	if !cfg.Ontology.Enabled {
-		return nil, nil
+		return &initOntologyResult{}, nil
 	}
 
 	reg := ontology.NewEntRegistry(client)
@@ -44,14 +50,29 @@ func initOntology(ctx context.Context, client *ent.Client, cfg *config.Config, g
 	logger().Info("property store initialized")
 
 	// ACL — operation-level access control.
+	var acl ontology.ACLPolicy
 	if cfg.Ontology.ACL.Enabled {
 		roles := make(map[string]ontology.Permission, len(cfg.Ontology.ACL.Roles))
 		for principal, level := range cfg.Ontology.ACL.Roles {
 			roles[principal] = ontology.ParsePermission(level)
 		}
-		svc.SetACLPolicy(ontology.NewRoleBasedPolicy(roles))
+		acl = ontology.NewRoleBasedPolicy(roles)
+		svc.SetACLPolicy(acl)
 		logger().Infow("ontology ACL enabled", "roles", len(roles))
 	}
 
-	return svc, nil
+	// Action Types — registry, built-in actions, executor.
+	actionReg := ontology.NewActionRegistry()
+	if err := actionReg.Register(ontology.BuiltinLinkEntities()); err != nil {
+		return nil, fmt.Errorf("register link_entities: %w", err)
+	}
+	if err := actionReg.Register(ontology.BuiltinSetEntityStatus()); err != nil {
+		return nil, fmt.Errorf("register set_entity_status: %w", err)
+	}
+	logStore := ontology.NewActionLogStore(client)
+	executor := ontology.NewActionExecutor(svc, actionReg, acl, logStore)
+	svc.SetActionExecutor(executor)
+	logger().Infow("action executor initialized", "actions", len(actionReg.List()))
+
+	return &initOntologyResult{Service: svc, Registry: actionReg}, nil
 }

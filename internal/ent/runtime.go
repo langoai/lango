@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/langoai/lango/internal/ent/actionlog"
 	"github.com/langoai/lango/internal/ent/agentmemory"
 	"github.com/langoai/lango/internal/ent/auditlog"
 	"github.com/langoai/lango/internal/ent/configprofile"
@@ -47,6 +48,24 @@ import (
 // (default values, validators, hooks and policies) and stitches it
 // to their package variables.
 func init() {
+	actionlogFields := schema.ActionLog{}.Fields()
+	_ = actionlogFields
+	// actionlogDescActionName is the schema descriptor for action_name field.
+	actionlogDescActionName := actionlogFields[1].Descriptor()
+	// actionlog.ActionNameValidator is a validator for the "action_name" field. It is called by the builders before save.
+	actionlog.ActionNameValidator = actionlogDescActionName.Validators[0].(func(string) error)
+	// actionlogDescPrincipal is the schema descriptor for principal field.
+	actionlogDescPrincipal := actionlogFields[2].Descriptor()
+	// actionlog.PrincipalValidator is a validator for the "principal" field. It is called by the builders before save.
+	actionlog.PrincipalValidator = actionlogDescPrincipal.Validators[0].(func(string) error)
+	// actionlogDescStartedAt is the schema descriptor for started_at field.
+	actionlogDescStartedAt := actionlogFields[7].Descriptor()
+	// actionlog.DefaultStartedAt holds the default value on creation for the started_at field.
+	actionlog.DefaultStartedAt = actionlogDescStartedAt.Default.(func() time.Time)
+	// actionlogDescID is the schema descriptor for id field.
+	actionlogDescID := actionlogFields[0].Descriptor()
+	// actionlog.DefaultID holds the default value on creation for the id field.
+	actionlog.DefaultID = actionlogDescID.Default.(func() uuid.UUID)
 	agentmemoryFields := schema.AgentMemory{}.Fields()
 	_ = agentmemoryFields
 	// agentmemoryDescAgentName is the schema descriptor for agent_name field.

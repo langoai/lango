@@ -15,8 +15,9 @@ import (
 )
 
 // BuildTools creates agent-facing tools for ontology management and data ingestion.
-func BuildTools(svc OntologyService) []*agent.Tool {
-	return []*agent.Tool{
+// When reg is non-nil, dynamic tools are generated for each registered action.
+func BuildTools(svc OntologyService, reg *ActionRegistry) []*agent.Tool {
+	tools := []*agent.Tool{
 		buildListTypes(svc),
 		buildDescribeType(svc),
 		buildQueryEntities(svc),
@@ -30,6 +31,73 @@ func BuildTools(svc OntologyService) []*agent.Tool {
 		buildImportJSON(svc),
 		buildImportCSV(svc),
 		buildFromMCP(svc),
+	}
+	if reg != nil {
+		tools = append(tools, buildListActions(svc))
+		for _, action := range reg.List() {
+			tools = append(tools, buildActionTool(svc, action))
+		}
+	}
+	return tools
+}
+
+func buildListActions(svc OntologyService) *agent.Tool {
+	return &agent.Tool{
+		Name:        "ontology_list_actions",
+		Description: "List all registered ontology actions with their parameters and required permissions.",
+		SafetyLevel: agent.SafetyLevelSafe,
+		Parameters: map[string]interface{}{
+			"type":       "object",
+			"properties": map[string]interface{}{},
+		},
+		Handler: func(ctx context.Context, _ map[string]interface{}) (interface{}, error) {
+			actions, err := svc.ListActions(ctx)
+			if err != nil {
+				return nil, err
+			}
+			return map[string]interface{}{
+				"actions": actions,
+				"count":   len(actions),
+			}, nil
+		},
+	}
+}
+
+func buildActionTool(svc OntologyService, action *ActionType) *agent.Tool {
+	properties := make(map[string]interface{}, len(action.ParamSchema))
+	required := make([]string, 0, len(action.ParamSchema))
+	for name, desc := range action.ParamSchema {
+		properties[name] = map[string]interface{}{
+			"type":        "string",
+			"description": desc,
+		}
+		required = append(required, name)
+	}
+	return &agent.Tool{
+		Name:        "ontology_action_" + action.Name,
+		Description: action.Description,
+		SafetyLevel: agent.SafetyLevelModerate,
+		Parameters: map[string]interface{}{
+			"type":       "object",
+			"properties": properties,
+			"required":   required,
+		},
+		Handler: func(ctx context.Context, rawParams map[string]interface{}) (interface{}, error) {
+			strParams := make(map[string]string, len(rawParams))
+			for k, v := range rawParams {
+				strParams[k] = fmt.Sprintf("%v", v)
+			}
+			result, err := svc.ExecuteAction(ctx, action.Name, strParams)
+			if err != nil {
+				return nil, err
+			}
+			return map[string]interface{}{
+				"logID":   result.LogID.String(),
+				"status":  string(result.Status),
+				"effects": result.Effects,
+				"error":   result.Error,
+			}, nil
+		},
 	}
 }
 

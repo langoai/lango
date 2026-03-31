@@ -6,6 +6,9 @@ import (
 	"entgo.io/ent/dialect/sql"
 )
 
+// ActionLog is the predicate function for actionlog builders.
+type ActionLog func(*sql.Selector)
+
 // AgentMemory is the predicate function for agentmemory builders.
 type AgentMemory func(*sql.Selector)
 

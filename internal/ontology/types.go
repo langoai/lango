@@ -153,6 +153,75 @@ type ResultTriple struct {
 	ObjectType  string `json:"objectType,omitempty"`
 }
 
+// ActionStatus represents the execution state of an action.
+type ActionStatus string
+
+const (
+	ActionStarted     ActionStatus = "started"
+	ActionCompleted   ActionStatus = "completed"
+	ActionFailed      ActionStatus = "failed"
+	ActionCompensated ActionStatus = "compensated"
+)
+
+// FactEffect records a fact that was asserted by an action.
+type FactEffect struct {
+	Subject   string `json:"subject"`
+	Predicate string `json:"predicate"`
+	Object    string `json:"object"`
+}
+
+// FactRetraction records a fact that was retracted by an action.
+type FactRetraction struct {
+	Subject   string `json:"subject"`
+	Predicate string `json:"predicate"`
+	Object    string `json:"object"`
+	Reason    string `json:"reason"`
+}
+
+// PropertyEffect records a property change made by an action.
+type PropertyEffect struct {
+	EntityID string `json:"entityID"`
+	Property string `json:"property"`
+	OldValue string `json:"oldValue,omitempty"`
+	NewValue string `json:"newValue"`
+}
+
+// ActionEffects captures the side effects produced by an action's Execute phase.
+type ActionEffects struct {
+	FactsAsserted  []FactEffect     `json:"factsAsserted,omitempty"`
+	FactsRetracted []FactRetraction `json:"factsRetracted,omitempty"`
+	PropertiesSet  []PropertyEffect `json:"propertiesSet,omitempty"`
+}
+
+// ActionResult is the outcome of executing an action.
+type ActionResult struct {
+	LogID   uuid.UUID    `json:"logID"`
+	Status  ActionStatus `json:"status"`
+	Effects *ActionEffects `json:"effects,omitempty"`
+	Error   string       `json:"error,omitempty"`
+}
+
+// ActionSummary provides metadata about a registered action (for listing).
+type ActionSummary struct {
+	Name         string            `json:"name"`
+	Description  string            `json:"description"`
+	RequiredPerm Permission        `json:"requiredPerm"`
+	ParamSchema  map[string]string `json:"paramSchema"`
+}
+
+// ActionLogEntry represents a persisted action execution record.
+type ActionLogEntry struct {
+	ID         uuid.UUID         `json:"id"`
+	ActionName string            `json:"actionName"`
+	Principal  string            `json:"principal"`
+	Params     map[string]string `json:"params"`
+	Status     ActionStatus      `json:"status"`
+	Effects    *ActionEffects    `json:"effects,omitempty"`
+	Error      string            `json:"error,omitempty"`
+	StartedAt  time.Time         `json:"startedAt"`
+	CompletedAt *time.Time       `json:"completedAt,omitempty"`
+}
+
 // PredicateDefinition represents a formal relationship type in the ontology.
 type PredicateDefinition struct {
 	ID          uuid.UUID    `json:"id"`
