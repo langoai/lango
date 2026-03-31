@@ -162,7 +162,7 @@ func initSecurity(cfg *config.Config, store session.Store, boot *bootstrap.Resul
 
 	case "aws-kms", "gcp-kms", "azure-kv", "pkcs11":
 		kmsProvider, err := security.NewKMSProvider(security.KMSProviderName(cfg.Security.Signer.Provider), cfg.Security.KMS) //nolint:staticcheck // stubs always error; real impls use build tags
-		if err != nil {
+		if err != nil {                                                                                                      //nolint:staticcheck // SA4023: always true on stub platforms, real KMS impls may succeed
 			return nil, nil, nil, fmt.Errorf("KMS provider %q: %w", cfg.Security.Signer.Provider, err)
 		}
 

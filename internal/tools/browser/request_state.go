@@ -10,8 +10,8 @@ import (
 // ErrSearchLimitReached is returned when browser_search exceeds MaxSearchesPerRequest.
 // The error message instructs the model to stop searching and use existing results.
 var ErrSearchLimitReached = errors.New(
-	"browser_search is no longer available: search limit (2) reached. " +
-		"Present your existing results to the user. Do NOT call browser_search again.",
+	"browser_search is no longer available: search limit (2) reached — " +
+		"present your existing results to the user, do NOT call browser_search again",
 )
 
 type requestStateCtxKey struct{}

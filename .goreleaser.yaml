@@ -17,6 +17,7 @@ builds:
       - arm64
     tags:
       - fts5
+      - vec
     ldflags:
       - -s -w
       - -X main.Version={{.Version}}
@@ -35,6 +36,7 @@ builds:
       - arm64
     tags:
       - fts5
+      - vec
       - kms_all
     ldflags:
       - -s -w

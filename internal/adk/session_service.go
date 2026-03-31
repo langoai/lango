@@ -637,8 +637,8 @@ func eventToMessage(evt *session.Event) (internal.Message, bool, error) {
 	}
 
 	content := evt.Content
-	if content == nil && evt.LLMResponse.Content != nil {
-		content = evt.LLMResponse.Content
+	if content == nil && evt.Content != nil {
+		content = evt.Content
 	}
 
 	if content != nil {

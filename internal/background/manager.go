@@ -93,6 +93,7 @@ func (m *Manager) Submit(ctx context.Context, prompt string, origin Origin) (str
 	if m.projection != nil {
 		preparedID, err := m.projection.PrepareTask(detached, prompt, origin)
 		if err != nil {
+			cancelFn()
 			m.mu.Unlock()
 			return "", fmt.Errorf("submit task: prepare projection: %w", err)
 		}

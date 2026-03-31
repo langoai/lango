@@ -7,9 +7,7 @@ import (
 	"os/exec"
 )
 
-type landlockIsolator struct {
-	abiVersion int
-}
+type landlockIsolator struct{}
 
 // NewLandlockIsolator returns a stub on non-Linux.
 func NewLandlockIsolator() OSIsolator { return &landlockIsolator{} }

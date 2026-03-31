@@ -22,6 +22,6 @@ func TestEventTypeConstants_AreUnique(t *testing.T) {
 
 func TestEventType_IsStringAlias(t *testing.T) {
 	// EventType is a type alias (not a new type), so it must be assignable to string.
-	var s string = EventToolCall
+	var s = EventToolCall
 	assert.Equal(t, "tool_call", s)
 }

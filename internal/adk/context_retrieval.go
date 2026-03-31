@@ -76,12 +76,6 @@ func (m *ContextAwareModelAdapter) formatGraphRAGSection(result *graph.GraphRAGR
 	return m.graphRAG.AssembleSection(result)
 }
 
-// assembleGraphRAGSection is a convenience wrapper that retrieves + formats in one call.
-func (m *ContextAwareModelAdapter) assembleGraphRAGSection(ctx context.Context, query, sessionKey string, budgetTokens int) string {
-	result := m.retrieveGraphRAGData(ctx, query, sessionKey)
-	return m.formatGraphRAGSection(result, budgetTokens)
-}
-
 // retrieveRAGData fetches RAG vector search results.
 func (m *ContextAwareModelAdapter) retrieveRAGData(ctx context.Context, query, sessionKey string) []embedding.RAGResult {
 	opts := m.ragOpts
@@ -134,8 +128,3 @@ func formatRAGSection(results []embedding.RAGResult, budgetTokens int) string {
 	return b.String()
 }
 
-// assembleRAGSection is a convenience wrapper that retrieves + formats in one call.
-func (m *ContextAwareModelAdapter) assembleRAGSection(ctx context.Context, query, sessionKey string, budgetTokens int) string {
-	results := m.retrieveRAGData(ctx, query, sessionKey)
-	return formatRAGSection(results, budgetTokens)
-}

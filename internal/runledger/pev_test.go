@@ -2,7 +2,6 @@ package runledger
 
 import (
 	"context"
-	"fmt"
 	"testing"
 	"time"
 
@@ -131,15 +130,6 @@ func TestPEVEngine_OrchestratorApprovalNeverAutoPass(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, req, "orchestrator_approval must never auto-pass")
 	assert.Equal(t, "awaiting orchestrator approval", req.Failure.Reason)
-}
-
-// mockWorkspaceManager simulates a workspace manager that always fails dirty tree check.
-type mockFailingWorkspaceManager struct {
-	WorkspaceManager
-}
-
-func (m *mockFailingWorkspaceManager) CheckDirtyTree() error {
-	return fmt.Errorf("working tree has uncommitted changes — stash or commit before proceeding")
 }
 
 func TestPEVEngine_WorkspaceIsolationFailure(t *testing.T) {

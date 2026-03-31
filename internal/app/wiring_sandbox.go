@@ -1,8 +1,6 @@
 package app
 
 import (
-	"os"
-
 	"github.com/langoai/lango/internal/config"
 	sandboxos "github.com/langoai/lango/internal/sandbox/os"
 )
@@ -35,38 +33,3 @@ func initOSSandbox(cfg *config.Config) sandboxos.OSIsolator {
 	return iso
 }
 
-// sandboxPolicy builds a sandbox Policy from config.
-func sandboxPolicy(cfg *config.Config) sandboxos.Policy {
-	workDir := cfg.Sandbox.WorkspacePath
-	if workDir == "" {
-		workDir, _ = os.Getwd()
-	}
-
-	policy := sandboxos.DefaultToolPolicy(workDir)
-
-	switch cfg.Sandbox.NetworkMode {
-	case "allow":
-		policy.Network = sandboxos.NetworkAllow
-	case "unix-only":
-		policy.Network = sandboxos.NetworkUnixOnly
-	default:
-		policy.Network = sandboxos.NetworkDeny
-	}
-
-	policy.AllowedNetworkIPs = cfg.Sandbox.AllowedNetworkIPs
-
-	for _, p := range cfg.Sandbox.AllowedWritePaths {
-		found := false
-		for _, existing := range policy.Filesystem.WritePaths {
-			if existing == p {
-				found = true
-				break
-			}
-		}
-		if !found {
-			policy.Filesystem.WritePaths = append(policy.Filesystem.WritePaths, p)
-		}
-	}
-
-	return policy
-}

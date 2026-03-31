@@ -26,6 +26,7 @@ import (
 	cliapproval "github.com/langoai/lango/internal/cli/approval"
 	clibg "github.com/langoai/lango/internal/cli/bg"
 	"github.com/langoai/lango/internal/cli/chat"
+	"github.com/langoai/lango/internal/cli/prompt"
 	"github.com/langoai/lango/internal/cli/cliboot"
 	"github.com/langoai/lango/internal/cli/cockpit"
 	"github.com/langoai/lango/internal/cli/cockpit/pages"
@@ -86,6 +87,9 @@ func main() {
 		Short: "Lango - Fast AI Agent in Go",
 		Long:  `Lango is a high-performance AI agent built with Go, supporting multiple channels and tools.`,
 		RunE: func(cmd *cobra.Command, args []string) error {
+			if !prompt.IsInteractive() {
+				return cmd.Help()
+			}
 			return runCockpit()
 		},
 	}
@@ -520,6 +524,9 @@ func cockpitCmd() *cobra.Command {
 		Short:   "Launch multi-panel TUI (same as bare lango)",
 		GroupID: "start",
 		RunE: func(cmd *cobra.Command, args []string) error {
+			if !prompt.IsInteractive() {
+				return fmt.Errorf("cockpit requires an interactive terminal")
+			}
 			return runCockpit()
 		},
 	}
@@ -531,6 +538,9 @@ func chatCmd() *cobra.Command {
 		Short:   "Launch plain chat TUI",
 		GroupID: "start",
 		RunE: func(cmd *cobra.Command, args []string) error {
+			if !prompt.IsInteractive() {
+				return fmt.Errorf("chat requires an interactive terminal")
+			}
 			return runChat()
 		},
 	}

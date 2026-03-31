@@ -14,18 +14,29 @@ The system SHALL provide a `.goreleaser.yaml` configuration file using GoRelease
 - **THEN** the configuration SHALL use `version: 2` schema
 
 ### Requirement: Standard build variant
-The system SHALL define a build named `lango` that compiles `./cmd/lango` with `CGO_ENABLED=1` for linux and darwin on amd64 and arm64 architectures, with ldflags injecting version and build time.
+The system SHALL define a build named `lango` that compiles `./cmd/lango` with `CGO_ENABLED=1` for linux and darwin on amd64 and arm64 architectures, with build tags `fts5` and `vec`, and ldflags injecting version and build time.
 
 #### Scenario: Standard build targets
 - **WHEN** GoReleaser executes the `lango` build
 - **THEN** it SHALL produce binaries for linux/amd64, linux/arm64, darwin/amd64, darwin/arm64 with `-X main.Version` and `-X main.BuildTime` ldflags
 
+#### Scenario: Standard build includes vec tag
+- **WHEN** GoReleaser builds the `lango` binary
+- **THEN** the build tags MUST include both `fts5` and `vec`
+
 ### Requirement: Extended build variant
-The system SHALL define a build named `lango-extended` that compiles `./cmd/lango` with `CGO_ENABLED=1` and build tag `kms_all` for the same platform matrix as the standard build.
+The system SHALL define a build named `lango-extended` that compiles `./cmd/lango` with `CGO_ENABLED=1` and build tags `fts5`, `vec`, and `kms_all` for the same platform matrix as the standard build.
 
 #### Scenario: Extended build includes KMS tags
 - **WHEN** GoReleaser executes the `lango-extended` build
-- **THEN** it SHALL compile with `-tags kms_all` producing binaries with AWS/GCP/Azure/PKCS11 KMS support
+- **THEN** it SHALL compile with `-tags fts5,vec,kms_all` producing binaries with full FTS5, sqlite-vec, and KMS support
+
+### Requirement: Build tag parity
+All Goreleaser build configurations SHALL include the same feature build tags as the Makefile and Dockerfile. Both `lango` and `lango-extended` builds MUST include the `fts5` and `vec` tags so that release binaries have full FTS5 and sqlite-vec support.
+
+#### Scenario: Release binary supports vector operations
+- **WHEN** a user installs a Goreleaser-built binary and enables embedding/RAG
+- **THEN** `embedding.NewVectorStore()` SHALL return a functional `SQLiteVecStore` (not `ErrVecNotCompiled`)
 
 ### Requirement: Archive naming convention
 The system SHALL produce tar.gz archives with naming pattern `lango_{{.Version}}_{{.Os}}_{{.Arch}}` for standard and `lango-extended_{{.Version}}_{{.Os}}_{{.Arch}}` for extended builds.

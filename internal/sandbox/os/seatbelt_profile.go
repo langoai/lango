@@ -139,7 +139,7 @@ func sanitizePath(p string) (string, error) {
 func validateIP(ip string) error {
 	// Allow only alphanumeric, dots, colons (IPv6), and star for port wildcard.
 	for _, c := range ip {
-		if !((c >= '0' && c <= '9') || (c >= 'a' && c <= 'f') || (c >= 'A' && c <= 'F') || c == '.' || c == ':') {
+		if (c < '0' || c > '9') && (c < 'a' || c > 'f') && (c < 'A' || c > 'F') && c != '.' && c != ':' {
 			return fmt.Errorf("%w: IP contains invalid character %q", ErrInvalidPolicy, string(c))
 		}
 	}

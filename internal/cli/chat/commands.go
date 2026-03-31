@@ -8,7 +8,6 @@ import (
 	"github.com/charmbracelet/lipgloss"
 
 	"github.com/langoai/lango/internal/cli/tui"
-	"github.com/langoai/lango/internal/config"
 )
 
 // slashCommand defines a chat slash command.
@@ -98,7 +97,7 @@ func cmdHelp(m *ChatModel, _ string) tea.Cmd {
 			continue // skip aliases in listing
 		}
 		name := lipgloss.NewStyle().Bold(true).Foreground(tui.Highlight).Render(sc.name)
-		b.WriteString(fmt.Sprintf("  %s  %s\n", name, sc.desc))
+		fmt.Fprintf(&b, "  %s  %s\n", name, sc.desc)
 	}
 
 	b.WriteString("\n")
@@ -113,7 +112,7 @@ func cmdHelp(m *ChatModel, _ string) tea.Cmd {
 	}
 	for _, kb := range bindings {
 		k := lipgloss.NewStyle().Bold(true).Foreground(tui.Highlight).Render(kb.key)
-		b.WriteString(fmt.Sprintf("  %s  %s\n", k, kb.desc))
+		fmt.Fprintf(&b, "  %s  %s\n", k, kb.desc)
 	}
 
 	return func() tea.Msg {
@@ -172,12 +171,12 @@ func cmdStatus(m *ChatModel, _ string) tea.Cmd {
 
 	for _, f := range activeFeatures {
 		if f.cfgOn {
-			b.WriteString(fmt.Sprintf("  %s %s\n", tui.FormatPass(f.name), lipgloss.NewStyle().Foreground(tui.Muted).Render(f.runtime)))
+			fmt.Fprintf(&b, "  %s %s\n", tui.FormatPass(f.name), lipgloss.NewStyle().Foreground(tui.Muted).Render(f.runtime))
 		}
 	}
 	for _, f := range tuiInactive {
 		if f.cfgOn {
-			b.WriteString(fmt.Sprintf("  %s %s\n", tui.FormatWarn(f.name), lipgloss.NewStyle().Foreground(tui.Muted).Render(f.runtime)))
+			fmt.Fprintf(&b, "  %s %s\n", tui.FormatWarn(f.name), lipgloss.NewStyle().Foreground(tui.Muted).Render(f.runtime))
 		}
 	}
 
@@ -188,10 +187,4 @@ func cmdStatus(m *ChatModel, _ string) tea.Cmd {
 
 func cmdExit(_ *ChatModel, _ string) tea.Cmd {
 	return tea.Quit
-}
-
-// runtimeFeatures returns feature status for the given config.
-func runtimeFeatures(_ *config.Config) []tui.FeatureLine {
-	// Placeholder for future expansion.
-	return nil
 }

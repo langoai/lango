@@ -239,10 +239,10 @@ func (s *Service) DiffNumStat(ctx context.Context, workspaceID, from, to string)
 		added := 0
 		removed := 0
 		if parts[0] != "-" {
-			fmt.Sscanf(parts[0], "%d", &added)
+			_, _ = fmt.Sscanf(parts[0], "%d", &added)
 		}
 		if parts[1] != "-" {
-			fmt.Sscanf(parts[1], "%d", &removed)
+			_, _ = fmt.Sscanf(parts[1], "%d", &removed)
 		}
 		stats = append(stats, FileStat{
 			FilePath:     parts[2],

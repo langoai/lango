@@ -104,9 +104,7 @@ func (c *MultiAgentCheck) RunWithBootstrap(
 	base.Status = StatusWarn
 	var details []string
 
-	for _, w := range extWarnings {
-		details = append(details, w)
-	}
+	details = append(details, extWarnings...)
 	base.TraceFailures = make([]TraceFailure, 0, len(failures))
 	if len(failures) > 0 {
 		details = append(details, "Recent failed traces:")

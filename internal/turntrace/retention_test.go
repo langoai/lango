@@ -1,6 +1,7 @@
 package turntrace
 
 import (
+	"context"
 	"testing"
 	"time"
 
@@ -36,8 +37,8 @@ func TestRetentionCleaner_Name(t *testing.T) {
 
 func TestRetentionCleaner_StartStop(t *testing.T) {
 	c := NewRetentionCleaner(nil, RetentionConfig{CleanupInterval: time.Hour})
-	err := c.Start(nil, nil)
+	err := c.Start(context.TODO(), nil)
 	assert.NoError(t, err)
-	err = c.Stop(nil)
+	err = c.Stop(context.TODO())
 	assert.NoError(t, err)
 }

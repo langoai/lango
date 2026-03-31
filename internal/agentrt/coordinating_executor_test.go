@@ -75,7 +75,6 @@ func TestCoordinatingExecutor_RecoveryRetryOnTransient(t *testing.T) {
 
 	// Use a custom mock that changes behavior on second call.
 	type multiCallExecutor struct {
-		calls   int
 		reports []adk.RunReport
 		errs    []error
 	}

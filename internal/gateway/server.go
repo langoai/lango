@@ -169,7 +169,7 @@ func (s *Server) handleChatMessage(client *Client, params json.RawMessage) (inte
 		return nil, fmt.Errorf("invalid params: %w", err)
 	}
 
-	if req.Message == "" && !(req.ConfirmResume && req.ResumeRunID != "") {
+	if req.Message == "" && (!req.ConfirmResume || req.ResumeRunID == "") {
 		return nil, fmt.Errorf("message is required")
 	}
 

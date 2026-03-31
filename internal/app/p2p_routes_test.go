@@ -202,7 +202,7 @@ func setupProvenanceRouteRuntime(t *testing.T) (*App, *p2pComponents, host.Host,
 
 	cfg := config.DefaultConfig()
 	cfg.P2P.Enabled = true
-	cfg.P2P.KeyDir = t.TempDir()
+	cfg.P2P.KeyDir = t.TempDir() //nolint:staticcheck // testing deprecated field for backward compat
 	cfg.P2P.ListenAddrs = []string{"/ip4/127.0.0.1/tcp/0"}
 	cfg.P2P.MaxPeers = 8
 
