@@ -40,6 +40,7 @@ var SourcePrecedence = map[string]int{
 	"llm_extraction": 4,
 	"graph_engine":   3,
 	"memory_hook":    2,
+	"p2p_exchange":   1,
 }
 
 // SchemaStatus represents the lifecycle state of an ontology schema element.
@@ -74,6 +75,70 @@ type TypeUsageInfo struct {
 	Status    SchemaStatus `json:"status"`
 	Version   int          `json:"version"`
 	CreatedAt time.Time    `json:"createdAt"`
+}
+
+// --- Slim Wire Types (P2P-portable, no UUID/timestamps/status/version) ---
+
+// SchemaPropertySlim is a wire-format representation of PropertyDef.
+type SchemaPropertySlim struct {
+	Name     string `json:"name"`
+	Type     string `json:"type"`
+	Required bool   `json:"required"`
+}
+
+// SchemaTypeSlim is a wire-format representation of ObjectType.
+type SchemaTypeSlim struct {
+	Name        string               `json:"name"`
+	Description string               `json:"description,omitempty"`
+	Properties  []SchemaPropertySlim `json:"properties,omitempty"`
+	Extends     string               `json:"extends,omitempty"`
+}
+
+// SchemaPredicateSlim is a wire-format representation of PredicateDefinition.
+type SchemaPredicateSlim struct {
+	Name        string   `json:"name"`
+	Description string   `json:"description,omitempty"`
+	SourceTypes []string `json:"sourceTypes,omitempty"`
+	TargetTypes []string `json:"targetTypes,omitempty"`
+	Cardinality string   `json:"cardinality"`
+	Inverse     string   `json:"inverse,omitempty"`
+}
+
+// SchemaBundle is the P2P-serializable representation of an ontology schema.
+// Uses slim wire types only — no UUID, timestamps, status, or version.
+type SchemaBundle struct {
+	Version       int                   `json:"version"`       // bundle format version (1)
+	SchemaVersion int                   `json:"schemaVersion"` // ontology version at export time
+	ExportedAt    time.Time             `json:"exportedAt"`
+	ExportedBy    string                `json:"exportedBy"`    // DID or "local"
+	Types         []SchemaTypeSlim      `json:"types"`
+	Predicates    []SchemaPredicateSlim `json:"predicates"`
+	Digest        string                `json:"digest"`        // SHA256(canonical JSON of Types+Predicates)
+}
+
+// ImportMode determines how imported schema elements are treated.
+type ImportMode string
+
+const (
+	ImportShadow   ImportMode = "shadow"   // default: import as shadow status
+	ImportGoverned ImportMode = "governed" // governance FSM: import as proposed
+	ImportDryRun   ImportMode = "dry_run"  // report diff only, no mutations
+)
+
+// ImportOptions controls import behavior.
+type ImportOptions struct {
+	Mode      ImportMode `json:"mode"`
+	SourceDID string     `json:"sourceDID,omitempty"` // DID of the exporting peer
+}
+
+// ImportResult reports what happened during schema import.
+type ImportResult struct {
+	TypesAdded       int      `json:"typesAdded"`
+	TypesSkipped     int      `json:"typesSkipped"`
+	TypesConflicting []string `json:"typesConflicting,omitempty"`
+	PredsAdded       int      `json:"predsAdded"`
+	PredsSkipped     int      `json:"predsSkipped"`
+	PredsConflicting []string `json:"predsConflicting,omitempty"`
 }
 
 // Cardinality defines the relationship multiplicity between subject and object types.
@@ -172,11 +237,12 @@ type EntityResult struct {
 // ResultTriple is a serializable triple for EntityResult.
 // Avoids importing graph in types.go; populated by the service layer from graph.Triple.
 type ResultTriple struct {
-	Subject     string `json:"subject"`
-	Predicate   string `json:"predicate"`
-	Object      string `json:"object"`
-	SubjectType string `json:"subjectType,omitempty"`
-	ObjectType  string `json:"objectType,omitempty"`
+	Subject     string            `json:"subject"`
+	Predicate   string            `json:"predicate"`
+	Object      string            `json:"object"`
+	SubjectType string            `json:"subjectType,omitempty"`
+	ObjectType  string            `json:"objectType,omitempty"`
+	Metadata    map[string]string `json:"metadata,omitempty"`
 }
 
 // ActionStatus represents the execution state of an action.

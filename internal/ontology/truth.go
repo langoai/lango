@@ -105,7 +105,10 @@ func (tm *truthMaintainer) AssertFact(ctx context.Context, input AssertionInput)
 	now := time.Now()
 	input.Triple.Metadata[MetaValidFrom] = input.ValidFrom.Format(time.RFC3339)
 	input.Triple.Metadata[MetaRecordedAt] = now.Format(time.RFC3339)
-	input.Triple.Metadata[MetaRecordedBy] = input.Source
+	// Preserve pre-set MetaRecordedBy (e.g., PeerDID for P2P facts).
+	if input.Triple.Metadata[MetaRecordedBy] == "" {
+		input.Triple.Metadata[MetaRecordedBy] = input.Source
+	}
 	input.Triple.Metadata[MetaSource] = input.Source
 	input.Triple.Metadata[MetaConfidence] = fmt.Sprintf("%.4f", input.Confidence)
 

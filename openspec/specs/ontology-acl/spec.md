@@ -27,7 +27,7 @@ The system SHALL define an `ACLPolicy` interface with a `Check(principal string,
 - **THEN** it SHALL return `ErrPermissionDenied`
 
 ### Requirement: System principal default
-Empty string or `"system"` principal SHALL always receive `PermAdmin` access. Unknown principals (not in roles map) SHALL receive `PermRead` access.
+Empty string or `"system"` principal SHALL always receive `PermAdmin` access. Unknown principals (not in roles map) SHALL receive `PermRead` access. Principals with `peer:` prefix SHALL receive the permission level configured in `P2PPermission` (default `PermWrite`).
 
 #### Scenario: Empty principal gets full access
 - **WHEN** `RoleBasedPolicy.Check` is called with principal `""` and required `PermAdmin`

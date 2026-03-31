@@ -8,6 +8,8 @@ type OntologyConfig struct {
 	ACL OntologyACLConfig `mapstructure:"acl" json:"acl,omitempty"`
 	// Governance configures schema lifecycle management.
 	Governance OntologyGovernanceConfig `mapstructure:"governance" json:"governance,omitempty"`
+	// Exchange configures P2P ontology exchange.
+	Exchange OntologyExchangeConfig `mapstructure:"exchange" json:"exchange,omitempty"`
 }
 
 // OntologyGovernanceConfig configures schema lifecycle governance.
@@ -32,4 +34,20 @@ type OntologyACLConfig struct {
 	Enabled bool `mapstructure:"enabled" json:"enabled,omitempty"`
 	// Roles maps principal names to permission levels ("read", "write", "admin").
 	Roles map[string]string `mapstructure:"roles" json:"roles,omitempty"`
+	// P2PPermission is the default permission for peer: prefix principals (default "write").
+	P2PPermission string `mapstructure:"p2pPermission" json:"p2pPermission,omitempty"`
+}
+
+// OntologyExchangeConfig configures P2P ontology exchange behavior.
+type OntologyExchangeConfig struct {
+	// Enabled activates P2P ontology exchange (requires both P2P and Ontology enabled).
+	Enabled bool `mapstructure:"enabled" json:"enabled,omitempty"`
+	// MinTrustForSchema is the minimum peer trust score for schema exchange (default 0.5).
+	MinTrustForSchema float64 `mapstructure:"minTrustForSchema" json:"minTrustForSchema,omitempty"`
+	// MinTrustForFacts is the minimum peer trust score for fact exchange (default 0.7).
+	MinTrustForFacts float64 `mapstructure:"minTrustForFacts" json:"minTrustForFacts,omitempty"`
+	// AutoImportMode determines how proposed schemas are imported: "shadow" (default), "governed", "disabled".
+	AutoImportMode string `mapstructure:"autoImportMode" json:"autoImportMode,omitempty"`
+	// MaxTypesPerImport limits types imported from a single peer exchange (default 10).
+	MaxTypesPerImport int `mapstructure:"maxTypesPerImport" json:"maxTypesPerImport,omitempty"`
 }

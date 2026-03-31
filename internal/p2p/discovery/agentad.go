@@ -19,11 +19,12 @@ type AgentAd struct {
 	Tags          []string          `json:"tags"`
 	Capabilities  []string          `json:"capabilities,omitempty"`
 	Pricing       *PricingInfo      `json:"pricing,omitempty"`
-	ZKCredentials []ZKCredential    `json:"zkCredentials,omitempty"`
-	Multiaddrs    []string          `json:"multiaddrs,omitempty"`
-	PeerID        string            `json:"peerId"`
-	Timestamp     time.Time         `json:"timestamp"`
-	Metadata      map[string]string `json:"metadata,omitempty"`
+	ZKCredentials  []ZKCredential    `json:"zkCredentials,omitempty"`
+	OntologyDigest *OntologyDigest   `json:"ontologyDigest,omitempty"`
+	Multiaddrs     []string          `json:"multiaddrs,omitempty"`
+	PeerID         string            `json:"peerId"`
+	Timestamp      time.Time         `json:"timestamp"`
+	Metadata       map[string]string `json:"metadata,omitempty"`
 }
 
 // AdService manages agent advertisement and discovery via DHT provider records.

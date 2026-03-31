@@ -79,6 +79,14 @@ type OntologyService interface {
 	PromotePredicate(ctx context.Context, predName string, targetStatus SchemaStatus, reason string) error
 	SchemaHealth(ctx context.Context) (*SchemaHealthReport, error)
 	TypeUsage(ctx context.Context, typeName string) (*TypeUsageInfo, error)
+
+	// Schema Exchange — Change 3-1
+	ExportSchema(ctx context.Context) (*SchemaBundle, error)
+	ImportSchema(ctx context.Context, bundle *SchemaBundle, opts ImportOptions) (*ImportResult, error)
+
+	// P2P Fact Exchange — Change 3-4
+	AssertP2PFact(ctx context.Context, input P2PFactInput) (*AssertionResult, error)
+	VerifyP2PFact(ctx context.Context, subject, predicate, object string) error
 }
 
 // ServiceImpl implements OntologyService.
@@ -663,6 +671,59 @@ func (s *ServiceImpl) TypeUsage(ctx context.Context, typeName string) (*TypeUsag
 	}, nil
 }
 
+// --- Schema Exchange delegation ---
+
+func (s *ServiceImpl) ExportSchema(ctx context.Context) (*SchemaBundle, error) {
+	if err := s.checkPermission(ctx, PermRead); err != nil {
+		return nil, err
+	}
+	ver := int(s.version.Load())
+	return exportSchema(ctx, s.registry, ver, "local")
+}
+
+func (s *ServiceImpl) ImportSchema(ctx context.Context, bundle *SchemaBundle, opts ImportOptions) (*ImportResult, error) {
+	if err := s.checkPermission(ctx, PermWrite); err != nil {
+		return nil, err
+	}
+	govEnabled := s.governance != nil
+	return importSchema(ctx, s.registry, bundle, opts, govEnabled)
+}
+
+// --- P2P Fact Exchange delegation ---
+
+func (s *ServiceImpl) AssertP2PFact(ctx context.Context, input P2PFactInput) (*AssertionResult, error) {
+	if err := s.checkPermission(ctx, PermWrite); err != nil {
+		return nil, err
+	}
+	if s.truth == nil {
+		return nil, fmt.Errorf("truth maintenance not initialized")
+	}
+	return assertP2PFact(ctx, s.truth, input)
+}
+
+func (s *ServiceImpl) VerifyP2PFact(ctx context.Context, subject, predicate, object string) error {
+	if err := s.checkPermission(ctx, PermAdmin); err != nil {
+		return err
+	}
+	if s.graphStore == nil {
+		return fmt.Errorf("graph store not available")
+	}
+	triples, err := s.graphStore.QueryBySubject(ctx, subject)
+	if err != nil {
+		return fmt.Errorf("query triples: %w", err)
+	}
+	for _, t := range triples {
+		if t.Predicate == predicate && t.Object == object {
+			if t.Metadata != nil && t.Metadata["_p2p_verified"] == "false" {
+				t.Metadata["_p2p_verified"] = "true"
+				return s.graphStore.AddTriple(ctx, t)
+			}
+			return nil // already verified or not a P2P fact
+		}
+	}
+	return fmt.Errorf("triple not found: %s %s %s", subject, predicate, object)
+}
+
 // --- Action Types delegation ---
 
 func (s *ServiceImpl) ExecuteAction(ctx context.Context, actionName string, params map[string]string) (*ActionResult, error) {
@@ -716,6 +777,7 @@ func toResultTriples(triples []graph.Triple) []ResultTriple {
 			Object:      t.Object,
 			SubjectType: t.SubjectType,
 			ObjectType:  t.ObjectType,
+			Metadata:    t.Metadata,
 		}
 	}
 	return result

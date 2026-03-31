@@ -298,7 +298,8 @@ func buildQueryEntities(svc OntologyService) *agent.Tool {
 						},
 					},
 				},
-				"limit": map[string]interface{}{"type": "integer", "description": "Max results (default 100)"},
+				"limit":              map[string]interface{}{"type": "integer", "description": "Max results (default 100)"},
+				"exclude_unverified": map[string]interface{}{"type": "boolean", "description": "Exclude unverified P2P facts from triples (default: true)"},
 			},
 			"required": []string{"type"},
 		},
@@ -308,6 +309,7 @@ func buildQueryEntities(svc OntologyService) *agent.Tool {
 				return nil, err
 			}
 			limit := toolparam.OptionalInt(params, "limit", 100)
+			excludeUnverified := toolparam.OptionalBool(params, "exclude_unverified", true)
 			filters := parseFilters(params)
 			results, err := svc.QueryEntities(ctx, PropertyQuery{
 				EntityType: typeName,
@@ -316,6 +318,11 @@ func buildQueryEntities(svc OntologyService) *agent.Tool {
 			})
 			if err != nil {
 				return nil, fmt.Errorf("query entities: %w", err)
+			}
+			if excludeUnverified {
+				for i := range results {
+					results[i].Outgoing = filterVerifiedResultTriples(results[i].Outgoing)
+				}
 			}
 			return map[string]interface{}{"entities": results, "count": len(results)}, nil
 		},
@@ -330,7 +337,8 @@ func buildGetEntity(svc OntologyService) *agent.Tool {
 		Parameters: map[string]interface{}{
 			"type": "object",
 			"properties": map[string]interface{}{
-				"entity_id": map[string]interface{}{"type": "string", "description": "Entity ID to retrieve"},
+				"entity_id":          map[string]interface{}{"type": "string", "description": "Entity ID to retrieve"},
+				"exclude_unverified": map[string]interface{}{"type": "boolean", "description": "Exclude unverified P2P facts from triples (default: true)"},
 			},
 			"required": []string{"entity_id"},
 		},
@@ -342,6 +350,10 @@ func buildGetEntity(svc OntologyService) *agent.Tool {
 			entity, err := svc.GetEntity(ctx, id)
 			if err != nil {
 				return nil, fmt.Errorf("get entity: %w", err)
+			}
+			if toolparam.OptionalBool(params, "exclude_unverified", true) {
+				entity.Outgoing = filterVerifiedResultTriples(entity.Outgoing)
+				entity.Incoming = filterVerifiedResultTriples(entity.Incoming)
 			}
 			return entity, nil
 		},
@@ -544,8 +556,9 @@ func buildFactsAt(svc OntologyService) *agent.Tool {
 		Parameters: map[string]interface{}{
 			"type": "object",
 			"properties": map[string]interface{}{
-				"subject":  map[string]interface{}{"type": "string", "description": "Subject entity ID"},
-				"valid_at": map[string]interface{}{"type": "string", "description": "RFC3339 timestamp (e.g., 2026-03-30T12:00:00Z)"},
+				"subject":            map[string]interface{}{"type": "string", "description": "Subject entity ID"},
+				"valid_at":           map[string]interface{}{"type": "string", "description": "RFC3339 timestamp (e.g., 2026-03-30T12:00:00Z)"},
+				"exclude_unverified": map[string]interface{}{"type": "boolean", "description": "Exclude unverified P2P facts (default: true)"},
 			},
 			"required": []string{"subject", "valid_at"},
 		},
@@ -565,6 +578,9 @@ func buildFactsAt(svc OntologyService) *agent.Tool {
 			facts, err := svc.FactsAt(ctx, subject, validAt)
 			if err != nil {
 				return nil, fmt.Errorf("facts at: %w", err)
+			}
+			if toolparam.OptionalBool(params, "exclude_unverified", true) {
+				facts = filterVerifiedTriples(facts)
 			}
 			return map[string]interface{}{"facts": facts, "count": len(facts)}, nil
 		},

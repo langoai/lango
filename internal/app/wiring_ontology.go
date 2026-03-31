@@ -8,6 +8,7 @@ import (
 	"github.com/langoai/lango/internal/ent"
 	"github.com/langoai/lango/internal/graph"
 	"github.com/langoai/lango/internal/ontology"
+	"github.com/langoai/lango/internal/p2p/ontologybridge"
 )
 
 // initOntology creates the ontology service and seeds default types/predicates.
@@ -16,6 +17,7 @@ import (
 type initOntologyResult struct {
 	Service  *ontology.ServiceImpl
 	Registry *ontology.ActionRegistry
+	Bridge   *ontologybridge.Bridge // non-nil when exchange is enabled
 }
 
 func initOntology(ctx context.Context, client *ent.Client, cfg *config.Config, graphStore graph.Store) (*initOntologyResult, error) {
@@ -56,7 +58,11 @@ func initOntology(ctx context.Context, client *ent.Client, cfg *config.Config, g
 		for principal, level := range cfg.Ontology.ACL.Roles {
 			roles[principal] = ontology.ParsePermission(level)
 		}
-		acl = ontology.NewRoleBasedPolicy(roles)
+		rbp := ontology.NewRoleBasedPolicy(roles)
+		if cfg.Ontology.ACL.P2PPermission != "" {
+			rbp.SetP2PPermission(ontology.ParsePermission(cfg.Ontology.ACL.P2PPermission))
+		}
+		acl = rbp
 		svc.SetACLPolicy(acl)
 		logger().Infow("ontology ACL enabled", "roles", len(roles))
 	}
@@ -89,5 +95,34 @@ func initOntology(ctx context.Context, client *ent.Client, cfg *config.Config, g
 			"maxNewPerDay", cfg.Ontology.Governance.MaxNewPerDay)
 	}
 
-	return &initOntologyResult{Service: svc, Registry: actionReg}, nil
+	// Ontology Exchange Bridge — P2P schema exchange.
+	// Bridge is created here but handler injection happens in modules.go
+	// where the P2P protocol handler is accessible.
+	var bridge *ontologybridge.Bridge
+	if cfg.Ontology.Exchange.Enabled {
+		bridgeCfg := ontologybridge.Config{
+			MinTrustForSchema: cfg.Ontology.Exchange.MinTrustForSchema,
+			MinTrustForFacts:  cfg.Ontology.Exchange.MinTrustForFacts,
+			AutoImportMode:    cfg.Ontology.Exchange.AutoImportMode,
+			MaxTypesPerImport: cfg.Ontology.Exchange.MaxTypesPerImport,
+		}
+		if bridgeCfg.MinTrustForSchema == 0 {
+			bridgeCfg.MinTrustForSchema = 0.5
+		}
+		if bridgeCfg.MinTrustForFacts == 0 {
+			bridgeCfg.MinTrustForFacts = 0.7
+		}
+		if bridgeCfg.AutoImportMode == "" {
+			bridgeCfg.AutoImportMode = "shadow"
+		}
+		if bridgeCfg.MaxTypesPerImport == 0 {
+			bridgeCfg.MaxTypesPerImport = 10
+		}
+		bridge = ontologybridge.New(svc, nil, bridgeCfg) // reputation store injected later
+		logger().Infow("ontology exchange bridge created",
+			"autoImportMode", bridgeCfg.AutoImportMode,
+			"minTrustForSchema", bridgeCfg.MinTrustForSchema)
+	}
+
+	return &initOntologyResult{Service: svc, Registry: actionReg, Bridge: bridge}, nil
 }

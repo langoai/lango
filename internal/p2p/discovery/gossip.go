@@ -25,9 +25,10 @@ type GossipCard struct {
 	Multiaddrs    []string       `json:"multiaddrs,omitempty"`
 	Capabilities  []string       `json:"capabilities,omitempty"`
 	Pricing       *PricingInfo   `json:"pricing,omitempty"`
-	ZKCredentials []ZKCredential `json:"zkCredentials,omitempty"`
-	PeerID        string         `json:"peerId"`
-	Timestamp     time.Time      `json:"timestamp"`
+	ZKCredentials  []ZKCredential  `json:"zkCredentials,omitempty"`
+	OntologyDigest *OntologyDigest `json:"ontologyDigest,omitempty"`
+	PeerID         string          `json:"peerId"`
+	Timestamp      time.Time       `json:"timestamp"`
 }
 
 // PricingInfo describes the pricing for an agent's services.
@@ -36,6 +37,17 @@ type PricingInfo struct {
 	PerQuery   string            `json:"perQuery"`   // per-query price
 	PerMinute  string            `json:"perMinute"`  // per-minute price
 	ToolPrices map[string]string `json:"toolPrices"` // per-tool pricing
+}
+
+// OntologyDigest is a lightweight summary of an agent's ontology schema,
+// enabling peers to discover ontology-capable agents and assess schema
+// compatibility before initiating heavier exchange protocols.
+type OntologyDigest struct {
+	SchemaVersion  int      `json:"schemaVersion"`
+	Digest         string   `json:"digest"`
+	TypeCount      int      `json:"typeCount"`
+	PredicateCount int      `json:"predicateCount"`
+	TypeNames      []string `json:"typeNames,omitempty"`
 }
 
 // ZKCredential is a zero-knowledge proof of agent capability.
