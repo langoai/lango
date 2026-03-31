@@ -157,6 +157,34 @@ func (r *EntRegistry) DeprecatePredicate(ctx context.Context, name string) error
 	return nil
 }
 
+func (r *EntRegistry) UpdateTypeStatus(ctx context.Context, name string, status SchemaStatus) error {
+	n, err := r.client.OntologyType.Update().
+		Where(ontologytype.Name(name)).
+		SetStatus(ontologytype.Status(status)).
+		Save(ctx)
+	if err != nil {
+		return fmt.Errorf("update type status: %w", err)
+	}
+	if n == 0 {
+		return fmt.Errorf("type %q not found", name)
+	}
+	return nil
+}
+
+func (r *EntRegistry) UpdatePredicateStatus(ctx context.Context, name string, status SchemaStatus) error {
+	n, err := r.client.OntologyPredicate.Update().
+		Where(ontologypredicate.Name(name)).
+		SetStatus(ontologypredicate.Status(status)).
+		Save(ctx)
+	if err != nil {
+		return fmt.Errorf("update predicate status: %w", err)
+	}
+	if n == 0 {
+		return fmt.Errorf("predicate %q not found", name)
+	}
+	return nil
+}
+
 // --- conversion helpers ---
 
 func entToObjectType(e *ent.OntologyType) *ObjectType {

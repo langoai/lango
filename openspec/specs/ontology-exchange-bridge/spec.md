@@ -1,7 +1,7 @@
 ## ADDED Requirements
 
 ### Requirement: OntologyBridge implementation
-The system SHALL provide an `OntologyBridge` struct in `internal/p2p/ontologybridge/` that implements `protocol.OntologyHandler`. It SHALL bridge `HandleSchemaQuery` to `OntologyService.ExportSchema` and `HandleSchemaPropose` to `OntologyService.ImportSchema`.
+The system SHALL provide an `OntologyBridge` struct in `internal/p2p/ontologybridge/` that implements `protocol.OntologyHandler`. The bridge SHALL use a `TrustScorer` interface (not concrete `*reputation.Store`) for trust checks. The bridge SHALL provide `SetReputation(TrustScorer)` and `SetEventBus(*eventbus.Bus)` setters. The bridge SHALL publish `SchemaExchangeEvent` after successful operations with PeerDID, TypeCount, PredCount, and ImportMode fields populated.
 
 #### Scenario: Schema query returns exported bundle
 - **WHEN** `HandleSchemaQuery` is called with a peer DID that has trust >= MinTrustForSchema

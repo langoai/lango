@@ -29,6 +29,7 @@ import (
 	"github.com/langoai/lango/internal/memory"
 	"github.com/langoai/lango/internal/ontology"
 	"github.com/langoai/lango/internal/p2p/gitbundle"
+	"github.com/langoai/lango/internal/p2p/ontologybridge"
 	"github.com/langoai/lango/internal/p2p/team"
 	toolcrypto "github.com/langoai/lango/internal/tools/crypto"
 	toolpayment "github.com/langoai/lango/internal/tools/payment"
@@ -73,6 +74,7 @@ type intelligenceValues struct {
 	SkillRegistry    interface{}
 	AgentMemoryStore agentmemory.Store
 	FeatureStatuses  *StatusCollector
+	OntologyBridge   *ontologybridge.Bridge // P2P schema exchange bridge
 }
 
 // automationValues holds the outputs of the automation module.
@@ -455,6 +457,12 @@ func (m *intelligenceModule) Init(ctx context.Context, r appinit.Resolver) (*app
 		observer = kc.observer
 	}
 
+	// Ontology exchange bridge — extracted for post-build P2P wiring.
+	var ontologyBridge *ontologybridge.Bridge
+	if ontologyResult != nil {
+		ontologyBridge = ontologyResult.Bridge
+	}
+
 	return &appinit.ModuleResult{
 		Tools:          tools,
 		Components:     components,
@@ -466,6 +474,7 @@ func (m *intelligenceModule) Init(ctx context.Context, r appinit.Resolver) (*app
 				SkillRegistry:    skillReg,
 				AgentMemoryStore: amStore,
 				FeatureStatuses:  sc,
+				OntologyBridge:   ontologyBridge,
 			},
 			appinit.ProvidesGraph:     gc,
 			appinit.ProvidesMemory:    mc,

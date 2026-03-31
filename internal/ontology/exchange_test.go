@@ -225,3 +225,102 @@ func TestRoundtrip_PreservesSemantics(t *testing.T) {
 	assert.Equal(t, ontology.SchemaShadow, restored.Status)
 	assert.Equal(t, 1, restored.Version)
 }
+
+// --- Regression Tests (Stage 3 Review) ---
+
+func TestImportSchema_PredicateImmediatelyUsable(t *testing.T) {
+	// Regression: Finding 3 — imported predicate must pass validator immediately
+	svc := newExchangeTestEnv(t)
+	ctx := context.Background()
+
+	bundle := &ontology.SchemaBundle{
+		Version: 1,
+		Predicates: []ontology.SchemaPredicateSlim{
+			{Name: "imported_test_pred", Cardinality: "many_to_many"},
+		},
+	}
+
+	result, err := svc.ImportSchema(ctx, bundle, ontology.ImportOptions{Mode: ontology.ImportShadow})
+	require.NoError(t, err)
+	assert.Equal(t, 1, result.PredsAdded)
+
+	// Predicate should be immediately usable in validator (shadow is included in cache)
+	validator := svc.PredicateValidator()
+	assert.True(t, validator("imported_test_pred"), "imported shadow predicate should pass validation immediately")
+}
+
+func TestImportSchema_VersionBumped(t *testing.T) {
+	// Regression: Finding 3 — schema version must increment after import
+	svc := newExchangeTestEnv(t)
+	ctx := context.Background()
+
+	vBefore, _ := svc.SchemaVersion(ctx)
+
+	bundle := &ontology.SchemaBundle{
+		Version: 1,
+		Types: []ontology.SchemaTypeSlim{
+			{Name: "VersionTestType"},
+		},
+		Predicates: []ontology.SchemaPredicateSlim{
+			{Name: "version_test_pred", Cardinality: "many_to_many"},
+		},
+	}
+
+	result, err := svc.ImportSchema(ctx, bundle, ontology.ImportOptions{Mode: ontology.ImportShadow})
+	require.NoError(t, err)
+
+	vAfter, _ := svc.SchemaVersion(ctx)
+	assert.Equal(t, vBefore+result.TypesAdded+result.PredsAdded, vAfter, "version should bump by number of imported items")
+}
+
+func TestPromoteType_Success(t *testing.T) {
+	// Regression: Finding 2 — promote must succeed for existing types
+	svc := newExchangeTestEnv(t)
+	ctx := context.Background()
+
+	// Enable governance to register new types as proposed
+	svc.SetGovernanceEngine(ontology.NewGovernanceEngine(ontology.GovernancePolicy{MaxNewPerDay: 100}))
+
+	// Register a new type — governance forces proposed status
+	err := svc.RegisterType(ctx, ontology.ObjectType{
+		Name:        "PromotableType",
+		Description: "for promote test",
+	})
+	require.NoError(t, err)
+
+	reg, _ := svc.GetType(ctx, "PromotableType")
+	assert.Equal(t, ontology.SchemaProposed, reg.Status)
+
+	// Promote: proposed → shadow
+	err = svc.PromoteType(ctx, "PromotableType", ontology.SchemaShadow, "approved for testing")
+	require.NoError(t, err, "PromoteType should succeed, not return 'already exists'")
+
+	promoted, _ := svc.GetType(ctx, "PromotableType")
+	assert.Equal(t, ontology.SchemaShadow, promoted.Status)
+}
+
+func TestPromotePredicate_Success(t *testing.T) {
+	// Regression: Finding 2 — promote predicate must succeed + refresh cache
+	svc := newExchangeTestEnv(t)
+	ctx := context.Background()
+
+	svc.SetGovernanceEngine(ontology.NewGovernanceEngine(ontology.GovernancePolicy{MaxNewPerDay: 100}))
+
+	err := svc.RegisterPredicate(ctx, ontology.PredicateDefinition{
+		Name:        "promotable_pred",
+		Cardinality: ontology.ManyToMany,
+	})
+	require.NoError(t, err)
+
+	// proposed predicate should NOT pass validation
+	validator := svc.PredicateValidator()
+	assert.False(t, validator("promotable_pred"), "proposed predicate should not pass validation")
+
+	// Promote: proposed → shadow
+	err = svc.PromotePredicate(ctx, "promotable_pred", ontology.SchemaShadow, "approved")
+	require.NoError(t, err)
+
+	// After promotion to shadow, predicate should pass validation
+	validator = svc.PredicateValidator()
+	assert.True(t, validator("promotable_pred"), "shadow predicate should pass validation after promote")
+}

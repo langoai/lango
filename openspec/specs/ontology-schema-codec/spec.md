@@ -26,7 +26,7 @@ The system SHALL define `SchemaBundle` with fields: Version (int), SchemaVersion
 - **THEN** both SchemaBundle.Digest values SHALL be identical
 
 ### Requirement: ImportSchema method
-`OntologyService.ImportSchema(ctx, bundle, opts)` SHALL import slim types into the local ontology. It SHALL require `PermWrite`. Import SHALL convert slim types to full ObjectType/PredicateDefinition with generated UUID, current timestamps, and status determined by ImportMode.
+`OntologyService.ImportSchema(ctx, bundle, opts)` SHALL import slim types into the local ontology. It SHALL require `PermWrite`. Import SHALL convert slim types to full ObjectType/PredicateDefinition with generated UUID, current timestamps, and status determined by ImportMode. After successful import, it SHALL call `refreshPredicateCache()` if predicates were added and `version.Add(n)` where n is the total number of added types and predicates.
 
 #### Scenario: Import shadow mode
 - **WHEN** ImportSchema is called with mode `ImportShadow`

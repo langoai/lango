@@ -3,6 +3,7 @@ package ontologybridge
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -117,4 +118,50 @@ func TestBridge_HandleSchemaPropose_Disabled(t *testing.T) {
 	resp, err := b.HandleSchemaPropose(context.Background(), "did:lango:peer1", protocol.SchemaProposeRequest{Bundle: bundleJSON})
 	require.NoError(t, err)
 	assert.Equal(t, "rejected", resp.Action)
+}
+
+// --- Regression Tests (Stage 3 Review) ---
+
+// mockTrustScorer implements TrustScorer for testing.
+type mockTrustScorer struct {
+	scores map[string]float64
+}
+
+func (m *mockTrustScorer) GetScore(_ context.Context, peerDID string) (float64, error) {
+	score, ok := m.scores[peerDID]
+	if !ok {
+		return 0, fmt.Errorf("unknown peer")
+	}
+	return score, nil
+}
+
+func TestBridge_HandleSchemaQuery_TrustRejected(t *testing.T) {
+	// Regression: Finding 4 — low-trust peer must be rejected
+	bundle := &ontology.SchemaBundle{Version: 1, Types: []ontology.SchemaTypeSlim{{Name: "T"}}}
+	svc := &mockOntologyService{exportResult: bundle}
+	cfg := DefaultConfig()
+	cfg.MinTrustForSchema = 0.5
+
+	var rep TrustScorer = &mockTrustScorer{scores: map[string]float64{"did:lango:untrusted": 0.2}}
+	b := New(svc, nil, cfg)
+	b.SetReputation(rep)
+
+	_, err := b.HandleSchemaQuery(context.Background(), "did:lango:untrusted", protocol.SchemaQueryRequest{})
+	assert.Error(t, err, "low-trust peer should be rejected")
+	assert.Contains(t, err.Error(), "trust")
+}
+
+func TestBridge_HandleSchemaQuery_TrustAccepted(t *testing.T) {
+	bundle := &ontology.SchemaBundle{Version: 1, Types: []ontology.SchemaTypeSlim{{Name: "T"}}}
+	svc := &mockOntologyService{exportResult: bundle}
+	cfg := DefaultConfig()
+	cfg.MinTrustForSchema = 0.5
+
+	var rep TrustScorer = &mockTrustScorer{scores: map[string]float64{"did:lango:trusted": 0.8}}
+	b := New(svc, nil, cfg)
+	b.SetReputation(rep)
+
+	resp, err := b.HandleSchemaQuery(context.Background(), "did:lango:trusted", protocol.SchemaQueryRequest{})
+	require.NoError(t, err)
+	assert.NotNil(t, resp.Bundle)
 }

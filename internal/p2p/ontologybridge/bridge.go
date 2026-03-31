@@ -9,9 +9,9 @@ import (
 	"fmt"
 
 	"github.com/langoai/lango/internal/ctxkeys"
+	"github.com/langoai/lango/internal/eventbus"
 	"github.com/langoai/lango/internal/ontology"
 	"github.com/langoai/lango/internal/p2p/protocol"
-	"github.com/langoai/lango/internal/p2p/reputation"
 )
 
 // Config holds exchange behavior settings.
@@ -32,10 +32,16 @@ func DefaultConfig() Config {
 	}
 }
 
+// TrustScorer retrieves a peer's trust score. Implemented by reputation.Store.
+type TrustScorer interface {
+	GetScore(ctx context.Context, peerDID string) (float64, error)
+}
+
 // Bridge implements protocol.OntologyHandler by delegating to OntologyService.
 type Bridge struct {
 	svc        ontology.OntologyService
-	reputation *reputation.Store
+	reputation TrustScorer
+	bus        *eventbus.Bus
 	cfg        Config
 }
 
@@ -43,8 +49,18 @@ type Bridge struct {
 var _ protocol.OntologyHandler = (*Bridge)(nil)
 
 // New creates an OntologyBridge.
-func New(svc ontology.OntologyService, rep *reputation.Store, cfg Config) *Bridge {
+func New(svc ontology.OntologyService, rep TrustScorer, cfg Config) *Bridge {
 	return &Bridge{svc: svc, reputation: rep, cfg: cfg}
+}
+
+// SetReputation sets the reputation store for trust checks.
+func (b *Bridge) SetReputation(store TrustScorer) {
+	b.reputation = store
+}
+
+// SetEventBus sets the event bus for publishing schema exchange events.
+func (b *Bridge) SetEventBus(bus *eventbus.Bus) {
+	b.bus = bus
 }
 
 // HandleSchemaQuery serves a peer's request for the local schema bundle.
@@ -70,6 +86,15 @@ func (b *Bridge) HandleSchemaQuery(ctx context.Context, peerDID string, req prot
 	data, err := json.Marshal(bundle)
 	if err != nil {
 		return nil, fmt.Errorf("marshal bundle: %w", err)
+	}
+
+	if b.bus != nil {
+		b.bus.Publish(eventbus.SchemaExchangeEvent{
+			PeerDID:   peerDID,
+			Direction: "export",
+			TypeCount: len(bundle.Types),
+			PredCount: len(bundle.Predicates),
+		})
 	}
 
 	return &protocol.SchemaQueryResponse{Bundle: data}, nil
@@ -127,6 +152,16 @@ func (b *Bridge) HandleSchemaPropose(ctx context.Context, peerDID string, req pr
 		if len(result.TypesConflicting) > 0 || len(result.PredsConflicting) > 0 {
 			action = "rejected"
 		}
+	}
+
+	if b.bus != nil && (result.TypesAdded > 0 || result.PredsAdded > 0) {
+		b.bus.Publish(eventbus.SchemaExchangeEvent{
+			PeerDID:    peerDID,
+			Direction:  "import",
+			TypeCount:  result.TypesAdded,
+			PredCount:  result.PredsAdded,
+			ImportMode: string(mode),
+		})
 	}
 
 	return &protocol.SchemaProposeResponse{

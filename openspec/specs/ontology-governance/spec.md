@@ -71,7 +71,7 @@ The system SHALL provide a `SchemaHealth` method returning status counts for bot
 - **THEN** the report SHALL include counts for each status (proposed, quarantined, shadow, active, deprecated) for both types and predicates
 
 ### Requirement: OntologyService governance methods
-OntologyService interface SHALL be extended with 4 methods: `PromoteType(ctx, typeName, targetStatus, reason)`, `PromotePredicate(ctx, predName, targetStatus, reason)`, `SchemaHealth(ctx)`, `TypeUsage(ctx, typeName)`.
+OntologyService interface SHALL be extended with 4 methods: `PromoteType(ctx, typeName, targetStatus, reason)`, `PromotePredicate(ctx, predName, targetStatus, reason)`, `SchemaHealth(ctx)`, `TypeUsage(ctx, typeName)`. `PromoteType` and `PromotePredicate` SHALL use `Registry.UpdateTypeStatus`/`UpdatePredicateStatus` (not `RegisterType`/`RegisterPredicate`) to update existing schema element status. `PromotePredicate` SHALL call `refreshPredicateCache()` after status change.
 
 #### Scenario: PromoteType validates FSM
 - **WHEN** `PromoteType` is called with an invalid transition

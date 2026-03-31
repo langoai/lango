@@ -16,4 +16,9 @@ type Registry interface {
 	GetPredicate(ctx context.Context, name string) (*PredicateDefinition, error)
 	ListPredicates(ctx context.Context) ([]PredicateDefinition, error)
 	DeprecatePredicate(ctx context.Context, name string) error
+
+	// UpdateTypeStatus sets the status of an existing type by name.
+	UpdateTypeStatus(ctx context.Context, name string, status SchemaStatus) error
+	// UpdatePredicateStatus sets the status of an existing predicate by name.
+	UpdatePredicateStatus(ctx context.Context, name string, status SchemaStatus) error
 }

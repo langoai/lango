@@ -603,8 +603,11 @@ func (s *ServiceImpl) PromoteType(ctx context.Context, typeName string, targetSt
 	if err := s.governance.ValidateTransition(t.Status, targetStatus); err != nil {
 		return err
 	}
-	t.Status = targetStatus
-	return s.registry.RegisterType(ctx, *t)
+	if err := s.registry.UpdateTypeStatus(ctx, typeName, targetStatus); err != nil {
+		return err
+	}
+	s.version.Add(1)
+	return nil
 }
 
 func (s *ServiceImpl) PromotePredicate(ctx context.Context, predName string, targetStatus SchemaStatus, _ string) error {
@@ -621,11 +624,11 @@ func (s *ServiceImpl) PromotePredicate(ctx context.Context, predName string, tar
 	if err := s.governance.ValidateTransition(p.Status, targetStatus); err != nil {
 		return err
 	}
-	p.Status = targetStatus
-	if err := s.registry.RegisterPredicate(ctx, *p); err != nil {
+	if err := s.registry.UpdatePredicateStatus(ctx, predName, targetStatus); err != nil {
 		return err
 	}
 	s.refreshPredicateCache()
+	s.version.Add(1)
 	return nil
 }
 
@@ -686,7 +689,17 @@ func (s *ServiceImpl) ImportSchema(ctx context.Context, bundle *SchemaBundle, op
 		return nil, err
 	}
 	govEnabled := s.governance != nil
-	return importSchema(ctx, s.registry, bundle, opts, govEnabled)
+	result, err := importSchema(ctx, s.registry, bundle, opts, govEnabled)
+	if err != nil {
+		return nil, err
+	}
+	if result.PredsAdded > 0 {
+		s.refreshPredicateCache()
+	}
+	if n := int64(result.TypesAdded + result.PredsAdded); n > 0 {
+		s.version.Add(n)
+	}
+	return result, nil
 }
 
 // --- P2P Fact Exchange delegation ---

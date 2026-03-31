@@ -570,6 +570,19 @@ func wirePostAgent(app *App, r appinit.Resolver, tools []*agent.Tool, bus *event
 		}
 		registerP2PRoutes(app.Gateway.Router(), app, p2pc, auth)
 		logger().Info("P2P REST API routes registered")
+
+		// Connect ontology bridge to P2P handler.
+		if p2pc.handler != nil {
+			intv, _ := r.Resolve(appinit.ProvidesKnowledge).(*intelligenceValues)
+			if intv != nil && intv.OntologyBridge != nil {
+				if p2pc.reputation != nil {
+					intv.OntologyBridge.SetReputation(p2pc.reputation)
+				}
+				intv.OntologyBridge.SetEventBus(bus)
+				p2pc.handler.SetOntologyHandler(intv.OntologyBridge)
+				logger().Info("ontology bridge wired to P2P handler")
+			}
+		}
 	}
 
 	// Observability API routes.
