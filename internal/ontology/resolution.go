@@ -3,6 +3,7 @@ package ontology
 import (
 	"context"
 	"fmt"
+	"log/slog"
 
 	"github.com/langoai/lango/internal/graph"
 )
@@ -109,11 +110,32 @@ func (r *entityResolver) Merge(ctx context.Context, canonical, duplicate string)
 	}
 
 	// 3. Retract: invalidate original triples.
+	var retractErrs int
+	var firstErrTriple graph.Triple
+	reason := fmt.Sprintf("merge: %s→%s", duplicate, canonical)
 	for _, t := range outgoing {
-		_ = r.truth.RetractFact(ctx, t.Subject, t.Predicate, t.Object, fmt.Sprintf("merge: %s→%s", duplicate, canonical))
+		if err := r.truth.RetractFact(ctx, t.Subject, t.Predicate, t.Object, reason); err != nil {
+			retractErrs++
+			if retractErrs == 1 {
+				firstErrTriple = t
+			}
+		}
 	}
 	for _, t := range incoming {
-		_ = r.truth.RetractFact(ctx, t.Subject, t.Predicate, t.Object, fmt.Sprintf("merge: %s→%s", duplicate, canonical))
+		if err := r.truth.RetractFact(ctx, t.Subject, t.Predicate, t.Object, reason); err != nil {
+			retractErrs++
+			if retractErrs == 1 {
+				firstErrTriple = t
+			}
+		}
+	}
+	if retractErrs > 0 {
+		slog.Warn("merge retraction partial failure",
+			"canonical", canonical, "duplicate", duplicate,
+			"failedCount", retractErrs,
+			"firstSubject", firstErrTriple.Subject,
+			"firstPredicate", firstErrTriple.Predicate,
+		)
 	}
 
 	// 4. Alias: register LAST to avoid mid-merge canonicalization interference.

@@ -122,7 +122,7 @@ func ComputeDigest(types []SchemaTypeSlim, predicates []SchemaPredicateSlim) str
 		return 0
 	})
 
-	data, _ := json.Marshal(sorted)
+	data := mustMarshal(sorted)
 	h := sha256.Sum256(data)
 	return fmt.Sprintf("%x", h)
 }
@@ -140,13 +140,13 @@ func exportSchema(ctx context.Context, registry Registry, schemaVersion int, exp
 		return nil, fmt.Errorf("list predicates: %w", err)
 	}
 
-	var slimTypes []SchemaTypeSlim
+	slimTypes := make([]SchemaTypeSlim, 0, len(types))
 	for _, t := range types {
 		if t.Status == SchemaActive || t.Status == SchemaShadow {
 			slimTypes = append(slimTypes, TypeToSlim(t))
 		}
 	}
-	var slimPreds []SchemaPredicateSlim
+	slimPreds := make([]SchemaPredicateSlim, 0, len(preds))
 	for _, p := range preds {
 		if p.Status == SchemaActive || p.Status == SchemaShadow {
 			slimPreds = append(slimPreds, PredicateToSlim(p))
@@ -252,4 +252,14 @@ func slimPredsEqual(a, b SchemaPredicateSlim) bool {
 		return false
 	}
 	return true
+}
+
+// mustMarshal marshals v to JSON and panics on failure.
+// Used for in-memory structs where marshal failure is a programming error.
+func mustMarshal(v any) []byte {
+	data, err := json.Marshal(v)
+	if err != nil {
+		panic(fmt.Sprintf("ontology: marshal invariant violation: %v", err))
+	}
+	return data
 }

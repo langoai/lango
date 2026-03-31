@@ -108,7 +108,7 @@ func (b *Bridge) HandleSchemaPropose(ctx context.Context, peerDID string, req pr
 	}
 
 	if b.cfg.AutoImportMode == "disabled" {
-		return &protocol.SchemaProposeResponse{Action: "rejected", Rejected: []string{"exchange disabled"}}, nil
+		return &protocol.SchemaProposeResponse{Action: protocol.OntologyActionRejected, Rejected: []string{"exchange disabled"}}, nil
 	}
 
 	// Decode bundle
@@ -120,7 +120,7 @@ func (b *Bridge) HandleSchemaPropose(ctx context.Context, peerDID string, req pr
 	// Enforce max types limit
 	if b.cfg.MaxTypesPerImport > 0 && len(bundle.Types) > b.cfg.MaxTypesPerImport {
 		return &protocol.SchemaProposeResponse{
-			Action:   "rejected",
+			Action:   protocol.OntologyActionRejected,
 			Rejected: []string{fmt.Sprintf("too many types: %d > %d", len(bundle.Types), b.cfg.MaxTypesPerImport)},
 		}, nil
 	}
@@ -144,13 +144,13 @@ func (b *Bridge) HandleSchemaPropose(ctx context.Context, peerDID string, req pr
 
 	// Build response
 	resultData, _ := json.Marshal(result)
-	action := "accepted"
+	action := protocol.OntologyActionAccepted
 	if len(result.TypesConflicting) > 0 || len(result.PredsConflicting) > 0 {
-		action = "partial"
+		action = protocol.OntologyActionPartial
 	}
 	if result.TypesAdded == 0 && result.PredsAdded == 0 {
 		if len(result.TypesConflicting) > 0 || len(result.PredsConflicting) > 0 {
-			action = "rejected"
+			action = protocol.OntologyActionRejected
 		}
 	}
 

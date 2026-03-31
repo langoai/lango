@@ -14,6 +14,13 @@ import (
 	"github.com/langoai/lango/internal/types"
 )
 
+// predicateValidatable is an optional capability for graph stores that support
+// runtime predicate validation. Used to inject ontology validators without
+// coupling wiring code to concrete store types.
+type predicateValidatable interface {
+	SetPredicateValidator(graph.PredicateValidatorFunc)
+}
+
 // graphComponents holds optional graph store components.
 type graphComponents struct {
 	store      graph.Store
@@ -66,10 +73,10 @@ func wireGraphCallbacks(gc *graphComponents, kc *knowledgeComponents, mc *memory
 		return
 	}
 
-	// Inject predicate validator into BoltStore (concrete type, not Store interface).
+	// Inject predicate validator if the store implementation supports it.
 	if ontologyValidator != nil {
-		if bs, ok := gc.store.(*graph.BoltStore); ok {
-			bs.SetPredicateValidator(ontologyValidator)
+		if pv, ok := gc.store.(predicateValidatable); ok {
+			pv.SetPredicateValidator(ontologyValidator)
 			logger().Info("ontology predicate validator injected into graph store")
 		}
 	}

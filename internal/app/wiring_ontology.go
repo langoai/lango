@@ -113,7 +113,7 @@ func initOntology(ctx context.Context, client *ent.Client, cfg *config.Config, g
 			bridgeCfg.MinTrustForFacts = 0.7
 		}
 		if bridgeCfg.AutoImportMode == "" {
-			bridgeCfg.AutoImportMode = "shadow"
+			bridgeCfg.AutoImportMode = string(ontology.ImportShadow)
 		}
 		if bridgeCfg.MaxTypesPerImport == 0 {
 			bridgeCfg.MaxTypesPerImport = 10

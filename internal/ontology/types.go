@@ -33,6 +33,7 @@ const (
 
 // SourcePrecedence defines priority ordering for source-of-truth auto-resolution.
 // Higher value = higher priority. Used by TruthMaintainer.canAutoResolve.
+// immutable after init — do not modify at runtime.
 var SourcePrecedence = map[string]int{
 	"manual":         10,
 	"knowledge":      8,

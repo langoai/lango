@@ -87,6 +87,30 @@ func (s *PropertyStore) GetEntityType(ctx context.Context, entityID string) (str
 	return entry.EntityType, nil
 }
 
+// GetPropertiesBatch returns properties for multiple entities in a single query.
+// Result maps entityID → (property → value).
+func (s *PropertyStore) GetPropertiesBatch(ctx context.Context, entityIDs []string) (map[string]map[string]string, error) {
+	if len(entityIDs) == 0 {
+		return nil, nil
+	}
+	entries, err := s.client.EntityProperty.Query().
+		Where(entityproperty.EntityIDIn(entityIDs...)).
+		All(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("property get batch: %w", err)
+	}
+	result := make(map[string]map[string]string, len(entityIDs))
+	for _, e := range entries {
+		m, ok := result[e.EntityID]
+		if !ok {
+			m = make(map[string]string)
+			result[e.EntityID] = m
+		}
+		m[e.Property] = e.Value
+	}
+	return result, nil
+}
+
 // DeleteProperties removes all properties for an entity.
 func (s *PropertyStore) DeleteProperties(ctx context.Context, entityID string) error {
 	_, err := s.client.EntityProperty.Delete().
@@ -120,6 +144,7 @@ func (s *PropertyStore) Query(ctx context.Context, q PropertyQuery) ([]string, e
 	}
 
 	// For each filter, find matching entity IDs, then intersect.
+	// After the first filter, narrow subsequent queries with IN clause.
 	var resultSet map[string]bool
 	for i, f := range q.Filters {
 		query := s.client.EntityProperty.Query().
@@ -127,6 +152,15 @@ func (s *PropertyStore) Query(ctx context.Context, q PropertyQuery) ([]string, e
 				entityproperty.EntityTypeEQ(q.EntityType),
 				entityproperty.PropertyEQ(f.Property),
 			)
+
+		// Narrow scan: inject previous result as IN clause.
+		if i > 0 && len(resultSet) > 0 {
+			prevIDs := make([]string, 0, len(resultSet))
+			for id := range resultSet {
+				prevIDs = append(prevIDs, id)
+			}
+			query = query.Where(entityproperty.EntityIDIn(prevIDs...))
+		}
 
 		switch f.Op {
 		case FilterEq:
@@ -183,7 +217,7 @@ func (s *PropertyStore) Query(ctx context.Context, q PropertyQuery) ([]string, e
 
 func uniqueEntityIDs(entries []*ent.EntityProperty, limit, offset int) []string {
 	seen := make(map[string]bool, len(entries))
-	var result []string
+	result := make([]string, 0, len(entries))
 	for _, e := range entries {
 		if !seen[e.EntityID] {
 			seen[e.EntityID] = true

@@ -87,7 +87,7 @@ func TestBridge_HandleSchemaPropose_Shadow(t *testing.T) {
 		Bundle: bundleJSON,
 	})
 	require.NoError(t, err)
-	assert.Equal(t, "accepted", resp.Action)
+	assert.Equal(t, protocol.OntologyActionAccepted, resp.Action)
 }
 
 func TestBridge_HandleSchemaPropose_TooManyTypes(t *testing.T) {
@@ -105,7 +105,7 @@ func TestBridge_HandleSchemaPropose_TooManyTypes(t *testing.T) {
 
 	resp, err := b.HandleSchemaPropose(context.Background(), "did:lango:peer1", protocol.SchemaProposeRequest{Bundle: bundleJSON})
 	require.NoError(t, err)
-	assert.Equal(t, "rejected", resp.Action)
+	assert.Equal(t, protocol.OntologyActionRejected, resp.Action)
 }
 
 func TestBridge_HandleSchemaPropose_Disabled(t *testing.T) {
@@ -117,7 +117,7 @@ func TestBridge_HandleSchemaPropose_Disabled(t *testing.T) {
 	bundleJSON, _ := json.Marshal(ontology.SchemaBundle{Version: 1})
 	resp, err := b.HandleSchemaPropose(context.Background(), "did:lango:peer1", protocol.SchemaProposeRequest{Bundle: bundleJSON})
 	require.NoError(t, err)
-	assert.Equal(t, "rejected", resp.Action)
+	assert.Equal(t, protocol.OntologyActionRejected, resp.Action)
 }
 
 // --- Regression Tests (Stage 3 Review) ---

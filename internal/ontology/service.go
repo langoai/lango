@@ -152,11 +152,14 @@ func (s *ServiceImpl) checkPermission(ctx context.Context, perm Permission) erro
 // NewService creates a new OntologyService backed by the given registry.
 // graphStore may be nil if not yet available (StoreTriple will return an error).
 func NewService(reg Registry, graphStore graph.Store) *ServiceImpl {
-	return &ServiceImpl{
+	svc := &ServiceImpl{
 		registry:         reg,
 		graphStore:       graphStore,
 		activePredicates: make(map[string]bool),
 	}
+	// Seed cache at construction; mutations refresh via their own ctx.
+	svc.refreshPredicateCache(context.Background())
+	return svc
 }
 
 func (s *ServiceImpl) GetType(ctx context.Context, name string) (*ObjectType, error) {
@@ -217,7 +220,7 @@ func (s *ServiceImpl) RegisterPredicate(ctx context.Context, p PredicateDefiniti
 	if err := s.registry.RegisterPredicate(ctx, p); err != nil {
 		return err
 	}
-	s.refreshPredicateCache()
+	s.refreshPredicateCache(ctx)
 	s.version.Add(1)
 	return nil
 }
@@ -240,7 +243,7 @@ func (s *ServiceImpl) DeprecatePredicate(ctx context.Context, name string) error
 	if err := s.registry.DeprecatePredicate(ctx, name); err != nil {
 		return err
 	}
-	s.refreshPredicateCache()
+	s.refreshPredicateCache(ctx)
 	s.version.Add(1)
 	return nil
 }
@@ -283,8 +286,9 @@ func (s *ServiceImpl) StoreTriple(ctx context.Context, t graph.Triple) error {
 
 // PredicateValidator returns a context-free closure for hot-path use.
 // The closure checks the cached active predicate set without DB queries.
+// Cache is refreshed by mutation methods (Register/Deprecate/Promote/Import),
+// NOT by this getter — safe to call on every request.
 func (s *ServiceImpl) PredicateValidator() func(name string) bool {
-	s.refreshPredicateCache()
 	return s.predicateIsActive
 }
 
@@ -295,8 +299,8 @@ func (s *ServiceImpl) predicateIsActive(name string) bool {
 }
 
 // refreshPredicateCache reloads the active predicate set from registry.
-func (s *ServiceImpl) refreshPredicateCache() {
-	preds, err := s.registry.ListPredicates(context.Background())
+func (s *ServiceImpl) refreshPredicateCache(ctx context.Context) {
+	preds, err := s.registry.ListPredicates(ctx)
 	if err != nil {
 		return
 	}
@@ -508,16 +512,18 @@ func (s *ServiceImpl) QueryEntities(ctx context.Context, q PropertyQuery) ([]Ent
 		return nil, err
 	}
 
+	// Batch load properties: 1 query instead of N.
+	propsBatch, err := s.propStore.GetPropertiesBatch(ctx, entityIDs)
+	if err != nil {
+		return nil, err
+	}
+
 	results := make([]EntityResult, 0, len(entityIDs))
 	for _, id := range entityIDs {
-		props, err := s.propStore.GetProperties(ctx, id)
-		if err != nil {
-			return nil, err
-		}
 		er := EntityResult{
 			EntityID:   id,
 			EntityType: q.EntityType,
-			Properties: props,
+			Properties: propsBatch[id],
 		}
 		// QueryEntities: outgoing triples only (incoming is too expensive for list queries).
 		if s.graphStore != nil {
@@ -627,7 +633,7 @@ func (s *ServiceImpl) PromotePredicate(ctx context.Context, predName string, tar
 	if err := s.registry.UpdatePredicateStatus(ctx, predName, targetStatus); err != nil {
 		return err
 	}
-	s.refreshPredicateCache()
+	s.refreshPredicateCache(ctx)
 	s.version.Add(1)
 	return nil
 }
@@ -694,7 +700,7 @@ func (s *ServiceImpl) ImportSchema(ctx context.Context, bundle *SchemaBundle, op
 		return nil, err
 	}
 	if result.PredsAdded > 0 {
-		s.refreshPredicateCache()
+		s.refreshPredicateCache(ctx)
 	}
 	if n := int64(result.TypesAdded + result.PredsAdded); n > 0 {
 		s.version.Add(n)

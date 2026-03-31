@@ -9,6 +9,7 @@ import (
 
 // validTransitions defines the allowed FSM transitions.
 // Key: from status, Value: set of allowed target statuses.
+// immutable after init — do not modify at runtime.
 var validTransitions = map[SchemaStatus]map[SchemaStatus]bool{
 	SchemaProposed:    {SchemaShadow: true, SchemaQuarantined: true},
 	SchemaQuarantined: {SchemaProposed: true},

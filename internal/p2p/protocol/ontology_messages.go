@@ -32,9 +32,16 @@ type SchemaProposeRequest struct {
 	Reason string `json:"reason,omitempty"`
 }
 
+// Ontology proposal action outcomes.
+const (
+	OntologyActionAccepted = "accepted"
+	OntologyActionPartial  = "partial"
+	OntologyActionRejected = "rejected"
+)
+
 // SchemaProposeResponse reports the result of a schema proposal.
 type SchemaProposeResponse struct {
-	// Action is the outcome: "accepted", "partial", or "rejected".
+	// Action is the outcome: OntologyActionAccepted, OntologyActionPartial, or OntologyActionRejected.
 	Action string `json:"action"`
 
 	// Accepted lists the names of schema elements that were accepted.

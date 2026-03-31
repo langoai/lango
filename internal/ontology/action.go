@@ -3,6 +3,7 @@ package ontology
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"sync"
 
 	"github.com/langoai/lango/internal/ctxkeys"
@@ -129,13 +130,19 @@ func (e *ActionExecutor) Execute(ctx context.Context, actionName string, params 
 		if action.Compensate != nil && effects != nil {
 			if compErr := action.Compensate(ctx, e.svc, effects); compErr == nil {
 				status = ActionCompensated
-				_ = e.logStore.Compensated(ctx, logID)
+				if err := e.logStore.Compensated(ctx, logID); err != nil {
+					slog.Warn("action log write", "op", "compensated", "logID", logID, "error", err)
+				}
 			} else {
-				_ = e.logStore.Fail(ctx, logID, fmt.Sprintf("execute: %v; compensate: %v", execErr, compErr))
+				if err := e.logStore.Fail(ctx, logID, fmt.Sprintf("execute: %v; compensate: %v", execErr, compErr)); err != nil {
+					slog.Warn("action log write", "op", "fail", "logID", logID, "error", err)
+				}
 			}
 		}
 		if status == ActionFailed {
-			_ = e.logStore.Fail(ctx, logID, execErr.Error())
+			if err := e.logStore.Fail(ctx, logID, execErr.Error()); err != nil {
+				slog.Warn("action log write", "op", "fail", "logID", logID, "error", err)
+			}
 		}
 		return &ActionResult{
 			LogID:  logID,
@@ -145,7 +152,9 @@ func (e *ActionExecutor) Execute(ctx context.Context, actionName string, params 
 	}
 
 	// 6. Success
-	_ = e.logStore.Complete(ctx, logID, effects)
+	if err := e.logStore.Complete(ctx, logID, effects); err != nil {
+		slog.Warn("action log write", "op", "complete", "logID", logID, "error", err)
+	}
 	return &ActionResult{
 		LogID:   logID,
 		Status:  ActionCompleted,
