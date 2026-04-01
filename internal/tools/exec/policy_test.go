@@ -14,7 +14,18 @@ func newTestEvaluator(t *testing.T) *PolicyEvaluator {
 	classifier := func(cmd string) (string, ReasonCode) {
 		return testClassifyLangoExec(cmd)
 	}
-	return NewPolicyEvaluator(guard, classifier, nil)
+	return NewPolicyEvaluator(guard, classifier, nil,
+		WithCatastrophicPatterns([]string{
+			"rm -rf /",
+			"mkfs.",
+			"dd if=/dev/zero",
+			":(){ :|:& };:",
+			"> /dev/sda",
+			"chmod -R 777 /",
+			"dd if=/dev/random",
+			"mv / ",
+			"> /dev/null 2>&1 &",
+		}))
 }
 
 // testClassifyLangoExec mirrors the real classifyLangoExec logic for testing.
@@ -70,8 +81,13 @@ func TestPolicyEvaluator_Evaluate(t *testing.T) {
 		// Observe: opaque command substitution
 		{give: "ls $(cat /etc/passwd)", wantVerdict: VerdictObserve, wantReason: ReasonCmdSubstitution},
 		{give: "echo `whoami`", wantVerdict: VerdictObserve, wantReason: ReasonCmdSubstitution},
-		// Observe: eval verb
-		{give: `eval "rm -rf /"`, wantVerdict: VerdictObserve, wantReason: ReasonEvalVerb},
+		// Block: catastrophic pattern (step 4, before opaque detection)
+		{give: `rm -rf /`, wantVerdict: VerdictBlock, wantReason: ReasonCatastrophicPattern},
+		{give: `eval "rm -rf /"`, wantVerdict: VerdictBlock, wantReason: ReasonCatastrophicPattern},
+		{give: `echo $(mkfs.ext4 /dev/sda)`, wantVerdict: VerdictBlock, wantReason: ReasonCatastrophicPattern},
+		{give: `dd if=/dev/zero of=/dev/sda`, wantVerdict: VerdictBlock, wantReason: ReasonCatastrophicPattern},
+		// Observe: eval verb (non-catastrophic)
+		{give: `eval "echo hello"`, wantVerdict: VerdictObserve, wantReason: ReasonEvalVerb},
 		// Observe: unsafe variable expansion
 		{give: "echo $SECRET_TOKEN", wantVerdict: VerdictObserve, wantReason: ReasonUnsafeVarExpand},
 		// Allow: clean commands
@@ -81,6 +97,9 @@ func TestPolicyEvaluator_Evaluate(t *testing.T) {
 		// Allow: clean command through shell wrapper
 		{give: `sh -c "go build ./..."`, wantVerdict: VerdictAllow, wantReason: ReasonNone},
 		{give: `bash -c "echo hello"`, wantVerdict: VerdictAllow, wantReason: ReasonNone},
+		// P1 fix: positional args bypass
+		{give: `bash -c "kill 1234" ignored`, wantVerdict: VerdictBlock, wantReason: ReasonKillVerb},
+		{give: `sh -c "lango cron" myname`, wantVerdict: VerdictBlock, wantReason: ReasonLangoCLI},
 	}
 
 	for _, tt := range tests {
@@ -107,6 +126,42 @@ func TestPolicyEvaluator_Evaluate_UnwrappedField(t *testing.T) {
 	d = pe.Evaluate("go build ./...")
 	assert.Equal(t, "", d.Unwrapped)
 	assert.Equal(t, "go build ./...", d.Command)
+}
+
+func TestPolicyEvaluator_UserConfiguredBlockedPattern(t *testing.T) {
+	t.Parallel()
+
+	guard := NewCommandGuard([]string{"~/.lango"})
+	classifier := func(cmd string) (string, ReasonCode) { return "", ReasonNone }
+	pe := NewPolicyEvaluator(guard, classifier, nil,
+		WithCatastrophicPatterns([]string{"drop table", "truncate table"}))
+
+	// User-configured pattern blocks.
+	d := pe.Evaluate(`exec "drop table users"`)
+	assert.Equal(t, VerdictBlock, d.Verdict)
+	assert.Equal(t, ReasonCatastrophicPattern, d.Reason)
+
+	d = pe.Evaluate("truncate table sessions")
+	assert.Equal(t, VerdictBlock, d.Verdict)
+	assert.Equal(t, ReasonCatastrophicPattern, d.Reason)
+
+	// Non-matching command passes through.
+	d = pe.Evaluate("select * from users")
+	assert.Equal(t, VerdictAllow, d.Verdict)
+}
+
+func TestPolicyEvaluator_NoCatastrophicPatternsPassesAll(t *testing.T) {
+	t.Parallel()
+
+	guard := NewCommandGuard([]string{"~/.lango"})
+	classifier := func(cmd string) (string, ReasonCode) { return "", ReasonNone }
+	// No WithCatastrophicPatterns option → empty slice → step 4 passes everything.
+	pe := NewPolicyEvaluator(guard, classifier, nil)
+
+	// Without catastrophic patterns, rm -rf / is allowed (not blocked by step 4).
+	d := pe.Evaluate("rm -rf /")
+	assert.Equal(t, VerdictAllow, d.Verdict)
+	assert.Equal(t, ReasonNone, d.Reason)
 }
 
 func TestNewPolicyEvaluator_SafeVarsInitialized(t *testing.T) {

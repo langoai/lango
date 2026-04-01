@@ -22,8 +22,8 @@ func TestUnwrapShellWrapper(t *testing.T) {
 		{give: `/bin/sh -c "cat ~/.lango/keyfile"`, wantInner: "cat ~/.lango/keyfile", wantUnwrapped: true},
 		// Supported: long path prefix
 		{give: `/usr/bin/bash -c "echo hello"`, wantInner: "echo hello", wantUnwrapped: true},
-		// Supported: no quotes around inner command
-		{give: `sh -c echo hello`, wantInner: "echo hello", wantUnwrapped: true},
+		// Unquoted: first token only (POSIX semantics)
+		{give: `sh -c echo hello`, wantInner: "echo", wantUnwrapped: true},
 		// Supported: zsh
 		{give: `zsh -c "ls -la"`, wantInner: "ls -la", wantUnwrapped: true},
 		// Supported: dash
@@ -48,6 +48,14 @@ func TestUnwrapShellWrapper(t *testing.T) {
 		{give: "ls -la", wantInner: "ls -la", wantUnwrapped: false},
 		// Supported: tab between sh and -c
 		{give: "sh\t-c \"kill 1\"", wantInner: "kill 1", wantUnwrapped: true},
+		// P1 fix: positional args after quoted command are ignored
+		{give: `bash -c "kill 1234" ignored`, wantInner: "kill 1234", wantUnwrapped: true},
+		{give: `sh -c 'lango cron' myname`, wantInner: "lango cron", wantUnwrapped: true},
+		{give: `bash -c "echo hello" arg1 arg2`, wantInner: "echo hello", wantUnwrapped: true},
+		// P1 fix: unquoted extracts first token only
+		{give: `bash -c echo foo bar`, wantInner: "echo", wantUnwrapped: true},
+		// P1 fix: unmatched quote → allow-without-unwrap
+		{give: `sh -c "kill 1234`, wantInner: `sh -c "kill 1234`, wantUnwrapped: false},
 	}
 
 	for _, tt := range tests {

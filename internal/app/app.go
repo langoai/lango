@@ -222,7 +222,11 @@ func New(boot *bootstrap.Result, opts ...AppOption) (*App, error) {
 		if (cfg.Hooks.Enabled || cfg.Agent.MultiAgent) && cfg.Hooks.EventPublishing && bus != nil {
 			policyBus = &policyBusAdapter{bus: bus}
 		}
-		pe := execpkg.NewPolicyEvaluator(fv.CmdGuard, classifier, policyBus)
+		// Merge catastrophic patterns: defaults + user-configured (same set as SecurityFilterHook).
+		mergedPatterns := toolchain.DefaultBlockedPatterns()
+		mergedPatterns = append(mergedPatterns, cfg.Hooks.BlockedCommands...)
+		pe := execpkg.NewPolicyEvaluator(fv.CmdGuard, classifier, policyBus,
+			execpkg.WithCatastrophicPatterns(mergedPatterns))
 		tools = toolchain.ChainAll(tools, execpkg.WithPolicy(pe))
 		logger().Info("exec policy middleware enabled")
 	}

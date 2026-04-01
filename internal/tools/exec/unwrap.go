@@ -53,9 +53,11 @@ func unwrapShellWrapper(cmd string) (inner string, unwrapped bool) {
 		return cmd, false
 	}
 
-	// Extract the inner command: everything after "<shell> -c ".
-	// Find the position of "-c" after the first word to avoid matching
-	// "-c" inside the shell binary path (e.g., /opt/bash-cfg/sh).
+	// Extract only the command_string (first argument after -c).
+	// POSIX: sh -c command_string [command_name [argument...]]
+	// Only command_string is executed; remaining args are positional parameters.
+
+	// Find the position of "-c" after the first word.
 	shellEnd := strings.IndexFunc(trimmed, func(r rune) bool { return r == ' ' || r == '\t' })
 	if shellEnd < 0 {
 		return cmd, false
@@ -65,17 +67,35 @@ func unwrapShellWrapper(cmd string) (inner string, unwrapped bool) {
 		return cmd, false
 	}
 	flagIdx += shellEnd // adjust to absolute position
-	afterFlag := trimmed[flagIdx+2:]
-	inner = strings.TrimSpace(afterFlag)
-	if inner == "" {
+	afterFlag := strings.TrimSpace(trimmed[flagIdx+2:])
+	if afterFlag == "" {
 		return cmd, false
 	}
 
-	inner = stripQuotes(inner)
+	// If the command_string is quoted, extract just the quoted portion.
+	if afterFlag[0] == '"' || afterFlag[0] == '\'' {
+		quote := afterFlag[0]
+		end := strings.IndexByte(afterFlag[1:], quote)
+		if end < 0 {
+			// Unmatched quote — cannot determine command boundary.
+			return cmd, false
+		}
+		inner = afterFlag[1 : end+1] // content inside quotes
+		if inner == "" {
+			return cmd, false
+		}
+		return inner, true
+	}
+
+	// Unquoted: first whitespace-delimited token is the command_string.
+	if spaceIdx := strings.IndexFunc(afterFlag, func(r rune) bool { return r == ' ' || r == '\t' }); spaceIdx >= 0 {
+		inner = afterFlag[:spaceIdx]
+	} else {
+		inner = afterFlag
+	}
 	if inner == "" {
 		return cmd, false
 	}
-
 	return inner, true
 }
 

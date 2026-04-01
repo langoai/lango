@@ -49,7 +49,8 @@ const (
 	ReasonCmdSubstitution ReasonCode = "cmd_substitution"
 	ReasonUnsafeVarExpand ReasonCode = "unsafe_var_expansion"
 	ReasonEvalVerb        ReasonCode = "eval_verb"
-	ReasonEncodedPipe     ReasonCode = "encoded_pipe"
+	ReasonEncodedPipe          ReasonCode = "encoded_pipe"
+	ReasonCatastrophicPattern  ReasonCode = "catastrophic_pattern"
 )
 
 // PolicyDecision is the structured result of evaluating a command.
@@ -76,10 +77,33 @@ type EventPublisher interface {
 // PolicyEvaluator performs structured command policy evaluation with
 // shell wrapper unwrapping and opaque pattern detection.
 type PolicyEvaluator struct {
-	guard           *CommandGuard
-	langoClassifier func(cmd string) (message string, reason ReasonCode)
-	bus             EventPublisher // nil = no event publishing
-	safeVars        map[string]struct{}
+	guard               *CommandGuard
+	langoClassifier     func(cmd string) (message string, reason ReasonCode)
+	bus                 EventPublisher // nil = no event publishing
+	safeVars            map[string]struct{}
+	catastrophicPatterns []string // pre-lowercased, deduped
+}
+
+// Option configures optional PolicyEvaluator behavior.
+type Option func(*PolicyEvaluator)
+
+// WithCatastrophicPatterns sets patterns that block commands before approval.
+// Patterns are pre-lowercased and deduped, matching NewSecurityFilterHook semantics.
+// Should be the same merged set used by SecurityFilterHook
+// (DefaultBlockedPatterns + cfg.Hooks.BlockedCommands).
+func WithCatastrophicPatterns(patterns []string) Option {
+	return func(pe *PolicyEvaluator) {
+		seen := make(map[string]bool, len(patterns))
+		var lower []string
+		for _, p := range patterns {
+			lp := strings.ToLower(p)
+			if !seen[lp] {
+				seen[lp] = true
+				lower = append(lower, lp)
+			}
+		}
+		pe.catastrophicPatterns = lower
+	}
 }
 
 // NewPolicyEvaluator creates a PolicyEvaluator.
@@ -89,8 +113,9 @@ func NewPolicyEvaluator(
 	guard *CommandGuard,
 	classifier func(cmd string) (string, ReasonCode),
 	bus EventPublisher,
+	opts ...Option,
 ) *PolicyEvaluator {
-	return &PolicyEvaluator{
+	pe := &PolicyEvaluator{
 		guard:           guard,
 		langoClassifier: classifier,
 		bus:             bus,
@@ -100,6 +125,10 @@ func NewPolicyEvaluator(
 			"LC_CTYPE": {}, "TMPDIR": {},
 		},
 	}
+	for _, opt := range opts {
+		opt(pe)
+	}
+	return pe
 }
 
 // Evaluate performs the full policy check on a command string.
@@ -143,7 +172,18 @@ func (pe *PolicyEvaluator) Evaluate(cmd string) PolicyDecision {
 		}
 	}
 
-	// Step 4: Opaque pattern detection.
+	// Step 4: Catastrophic pattern check — runs for ALL commands, not just opaque.
+	if pe.matchesCatastrophicPattern(effectiveCmd) {
+		return PolicyDecision{
+			Verdict:   VerdictBlock,
+			Reason:    ReasonCatastrophicPattern,
+			Message:   "command matches catastrophic safety pattern — blocked before approval",
+			Command:   original,
+			Unwrapped: unwrapped,
+		}
+	}
+
+	// Step 5: Opaque pattern detection.
 	if opaqueReason := detectOpaquePattern(effectiveCmd, pe.safeVars); opaqueReason != ReasonNone {
 		return PolicyDecision{
 			Verdict:   VerdictObserve,
@@ -154,13 +194,28 @@ func (pe *PolicyEvaluator) Evaluate(cmd string) PolicyDecision {
 		}
 	}
 
-	// Step 5: Allow.
+	// Step 6: Allow.
 	return PolicyDecision{
 		Verdict:   VerdictAllow,
 		Reason:    ReasonNone,
 		Command:   original,
 		Unwrapped: unwrapped,
 	}
+}
+
+// matchesCatastrophicPattern checks if the command contains any catastrophic
+// pattern from the pre-lowercased pattern set.
+func (pe *PolicyEvaluator) matchesCatastrophicPattern(cmd string) bool {
+	if len(pe.catastrophicPatterns) == 0 {
+		return false
+	}
+	cmdLower := strings.ToLower(cmd)
+	for _, pattern := range pe.catastrophicPatterns {
+		if strings.Contains(cmdLower, pattern) {
+			return true
+		}
+	}
+	return false
 }
 
 // publishAndLog logs the policy decision and publishes an event if the bus is non-nil.
