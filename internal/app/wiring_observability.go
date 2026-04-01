@@ -64,7 +64,13 @@ func initObservability(cfg *config.Config, dbClient *ent.Client, bus *eventbus.B
 		logger().Info("observability: token tracker subscribed to event bus")
 	}
 
-	// 5. Subscribe to ToolExecutedEvent for tool metrics + error logging
+	// 5. Subscribe to PolicyDecisionEvent for policy metrics
+	eventbus.SubscribeTyped[eventbus.PolicyDecisionEvent](bus, func(evt eventbus.PolicyDecisionEvent) {
+		oc.collector.RecordPolicyDecision(evt.Verdict, evt.Reason)
+	})
+	logger().Info("observability: policy decision metrics wired")
+
+	// 6. Subscribe to ToolExecutedEvent for tool metrics + error logging
 	eventbus.SubscribeTyped[toolchain.ToolExecutedEvent](bus, func(evt toolchain.ToolExecutedEvent) {
 		oc.collector.RecordToolExecution(evt.ToolName, evt.AgentName, evt.Duration, evt.Success)
 		if !evt.Success && evt.Error != "" {

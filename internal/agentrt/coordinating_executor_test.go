@@ -331,6 +331,90 @@ func TestCoordinatingExecutor_RecordOutcomeUsesSpecialistNotReturnTarget(t *test
 	assert.Equal(t, CircuitClosed, guard.State("lango-orchestrator"))
 }
 
+func TestCoordinatingExecutor_ContextCancelInterruptsBackoffSleep(t *testing.T) {
+	// First call returns a transient error (triggers RecoveryRetry with backoff).
+	// We cancel the context during the backoff sleep and expect a fast return.
+	callCount := 0
+	executor := mockCallExecutor(func(_ context.Context, _, _ string, _ adk.ChunkCallback, _ ...adk.RunOption) (adk.RunReport, error) {
+		callCount++
+		return adk.RunReport{}, &adk.AgentError{
+			Code:       adk.ErrModelError,
+			CauseClass: adk.CauseProviderTransient,
+			Message:    "503 service unavailable",
+		}
+	})
+
+	ce := NewCoordinatingExecutor(
+		executor,
+		NewDelegationGuard(config.CircuitBreakerCfg{FailureThreshold: 3}, nil),
+		NewBudgetPolicy(config.BudgetCfg{ToolCallLimit: 50, DelegationLimit: 15, AlertThreshold: 0.8}),
+		NewRecoveryPolicy(config.RecoveryCfg{MaxRetries: 3}, nil),
+		nil,
+	)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	// Cancel after a short delay — well before the 1s backoff completes.
+	go func() {
+		time.Sleep(50 * time.Millisecond)
+		cancel()
+	}()
+
+	start := time.Now()
+	_, err := ce.RunStreamingDetailed(ctx, "sess-cancel", "input", nil)
+	elapsed := time.Since(start)
+
+	require.Error(t, err)
+	assert.ErrorIs(t, err, context.Canceled)
+	// The first call returns immediately, then backoff (1s) is interrupted by cancel (50ms).
+	// Total should be well under the 1s backoff. Allow up to 500ms for CI slack.
+	assert.Less(t, elapsed, 500*time.Millisecond, "context cancel should interrupt backoff sleep promptly")
+	assert.Equal(t, 1, callCount, "only one call should have been made before backoff was interrupted")
+}
+
+func TestCoordinatingExecutor_RecoveryDecisionEventPublished(t *testing.T) {
+	bus := eventbus.New()
+
+	var decisionEvents []RecoveryDecisionEvent
+	eventbus.SubscribeTyped(bus, func(e RecoveryDecisionEvent) {
+		decisionEvents = append(decisionEvents, e)
+	})
+
+	callCount := 0
+	executor := mockCallExecutor(func(_ context.Context, _, _ string, _ adk.ChunkCallback, _ ...adk.RunOption) (adk.RunReport, error) {
+		callCount++
+		if callCount <= 1 {
+			return adk.RunReport{}, &adk.AgentError{
+				Code:       adk.ErrModelError,
+				CauseClass: adk.CauseProviderTransient,
+				Message:    "503 transient",
+			}
+		}
+		return adk.RunReport{Response: "ok"}, nil
+	})
+
+	ce := NewCoordinatingExecutor(
+		executor,
+		NewDelegationGuard(config.CircuitBreakerCfg{FailureThreshold: 3}, nil),
+		NewBudgetPolicy(config.BudgetCfg{ToolCallLimit: 50, DelegationLimit: 15, AlertThreshold: 0.8}),
+		NewRecoveryPolicy(config.RecoveryCfg{MaxRetries: 3}, nil),
+		bus,
+	)
+
+	report, err := ce.RunStreamingDetailed(context.Background(), "sess-decision", "input", nil)
+	require.NoError(t, err)
+	assert.Equal(t, "ok", report.Response)
+	assert.Equal(t, 2, callCount)
+
+	// Verify RecoveryDecisionEvent was published with correct fields.
+	require.Len(t, decisionEvents, 1, "exactly one RecoveryDecisionEvent should be published")
+	evt := decisionEvents[0]
+	assert.Equal(t, string(CauseTransient), evt.CauseClass)
+	assert.Equal(t, "retry", evt.Action)
+	assert.Equal(t, 0, evt.Attempt, "first recovery attempt should be attempt 0")
+	assert.Equal(t, ComputeBackoff(0), evt.Backoff)
+	assert.Equal(t, "sess-decision", evt.SessionKey)
+}
+
 // mockCallExecutor is a function-based turnrunner.Executor for testing.
 type mockCallExecutor func(ctx context.Context, sessionID, input string, onChunk adk.ChunkCallback, opts ...adk.RunOption) (adk.RunReport, error)
 

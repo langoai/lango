@@ -17,15 +17,20 @@ type MetricsCollector struct {
 
 	toolExecs int64
 	tools     map[string]*ToolMetric
+
+	policyBlocks   int64
+	policyObserves int64
+	policyByReason map[string]int64
 }
 
 // NewCollector creates a new MetricsCollector.
 func NewCollector() *MetricsCollector {
 	return &MetricsCollector{
-		startedAt: time.Now(),
-		sessions:  make(map[string]*SessionMetric),
-		agents:    make(map[string]*AgentMetric),
-		tools:     make(map[string]*ToolMetric),
+		startedAt:      time.Now(),
+		sessions:       make(map[string]*SessionMetric),
+		agents:         make(map[string]*AgentMetric),
+		tools:          make(map[string]*ToolMetric),
+		policyByReason: make(map[string]int64),
 	}
 }
 
@@ -91,10 +96,31 @@ func (c *MetricsCollector) RecordToolExecution(name, agentName string, duration 
 	}
 }
 
+// RecordPolicyDecision records a policy decision event.
+func (c *MetricsCollector) RecordPolicyDecision(verdict, reason string) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	switch verdict {
+	case "block":
+		c.policyBlocks++
+	case "observe":
+		c.policyObserves++
+	}
+	if reason != "" {
+		c.policyByReason[reason]++
+	}
+}
+
 // Snapshot returns a point-in-time copy of all metrics.
 func (c *MetricsCollector) Snapshot() SystemSnapshot {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
+
+	byReason := make(map[string]int64, len(c.policyByReason))
+	for k, v := range c.policyByReason {
+		byReason[k] = v
+	}
 
 	snap := SystemSnapshot{
 		StartedAt:        c.startedAt,
@@ -104,6 +130,11 @@ func (c *MetricsCollector) Snapshot() SystemSnapshot {
 		ToolBreakdown:    make(map[string]ToolMetric, len(c.tools)),
 		AgentBreakdown:   make(map[string]AgentMetric, len(c.agents)),
 		SessionBreakdown: make(map[string]SessionMetric, len(c.sessions)),
+		Policy: PolicyMetrics{
+			Blocks:   c.policyBlocks,
+			Observes: c.policyObserves,
+			ByReason: byReason,
+		},
 	}
 
 	for k, v := range c.tools {
@@ -161,4 +192,7 @@ func (c *MetricsCollector) Reset() {
 	c.agents = make(map[string]*AgentMetric)
 	c.tools = make(map[string]*ToolMetric)
 	c.toolExecs = 0
+	c.policyBlocks = 0
+	c.policyObserves = 0
+	c.policyByReason = make(map[string]int64)
 }

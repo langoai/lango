@@ -257,6 +257,7 @@ func New(boot *bootstrap.Result, opts ...AppOption) (*App, error) {
 			pv, _ := resolver.Resolve(appinit.ProvidesProvenance).(*provenanceValues)
 			return pv
 		}(),
+		hookRegistry: hookRegistry,
 	})
 	if err != nil {
 		cleanups.rollback()
@@ -270,13 +271,17 @@ func New(boot *bootstrap.Result, opts ...AppOption) (*App, error) {
 	if iv != nil && iv.KC != nil && iv.KC.engine != nil {
 		errorFixProvider = iv.KC.engine
 	}
-	executor := initAgentRuntime(cfg, adkAgent, bus, errorFixProvider)
+	executor, budget := initAgentRuntime(cfg, adkAgent, bus, errorFixProvider)
+	if budget != nil {
+		executor = wrapWithBudgetRestore(executor, budget, fv.Store)
+	}
 	app.TurnRunner = turnrunner.New(turnrunner.Config{
 		IdleTimeout:         idleTimeout,
 		HardCeiling:         hardCeiling,
 		TraceStore:          app.TurnTraceStore,
 		DelegationBudgetMax: cfg.Agent.Orchestration.Budget.DelegationLimit,
 	}, executor, app.Store, app.Sanitizer)
+	wireSessionUsage(app.TurnRunner, budget, fv.Store, app.MetricsCollector)
 	app.Gateway.SetTurnRunner(app.TurnRunner)
 
 	// B7. Post-agent wiring.

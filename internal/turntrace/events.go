@@ -13,4 +13,5 @@ const (
 	EventTerminalError    EventType = "terminal_error"
 	EventBudgetWarning    EventType = "budget_warning"
 	EventRecoveryAttempt  EventType = "recovery_attempt"
+	EventPolicyDecision  EventType = "policy_decision"
 )

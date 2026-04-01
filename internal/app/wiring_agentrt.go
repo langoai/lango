@@ -9,16 +9,16 @@ import (
 )
 
 // initAgentRuntime wraps the executor with CoordinatingExecutor in structured mode.
-// In classic mode (default), the executor is returned unchanged.
+// In classic mode (default), the executor is returned unchanged with a nil budget.
 // errorFixProvider may be nil if learning system is not available.
 func initAgentRuntime(
 	cfg *config.Config,
 	innerExecutor turnrunner.Executor,
 	bus *eventbus.Bus,
 	errorFixProvider adk.ErrorFixProvider,
-) turnrunner.Executor {
+) (turnrunner.Executor, *agentrt.BudgetPolicy) {
 	if cfg.Agent.Orchestration.Mode != "structured" {
-		return innerExecutor
+		return innerExecutor, nil
 	}
 
 	orchCfg := cfg.Agent.Orchestration
@@ -46,5 +46,5 @@ func initAgentRuntime(
 		"recovery.maxRetries", orchCfg.Recovery.MaxRetries,
 	)
 
-	return agentrt.NewCoordinatingExecutor(innerExecutor, guard, budget, recovery, bus)
+	return agentrt.NewCoordinatingExecutor(innerExecutor, guard, budget, recovery, bus), budget
 }

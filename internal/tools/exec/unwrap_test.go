@@ -1,9 +1,11 @@
 package exec
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+	"mvdan.cc/sh/v3/syntax"
 )
 
 func TestUnwrapShellWrapper(t *testing.T) {
@@ -32,12 +34,12 @@ func TestUnwrapShellWrapper(t *testing.T) {
 		{give: `python3 -c "print('hi')"`, wantInner: `python3 -c "print('hi')"`, wantUnwrapped: false},
 		// Not a shell wrapper: sh without -c
 		{give: `sh script.sh`, wantInner: `sh script.sh`, wantUnwrapped: false},
-		// Not supported: login shell flag -lc
-		{give: `sh -lc "cmd"`, wantInner: `sh -lc "cmd"`, wantUnwrapped: false},
-		// Not supported: env wrapper
-		{give: `/usr/bin/env sh -c "cmd"`, wantInner: `/usr/bin/env sh -c "cmd"`, wantUnwrapped: false},
-		// Not supported: env prefix
-		{give: `env bash -c "cmd"`, wantInner: `env bash -c "cmd"`, wantUnwrapped: false},
+		// Supported (P2): login shell flag -lc
+		{give: `sh -lc "cmd"`, wantInner: "cmd", wantUnwrapped: true},
+		// Supported (P2): env wrapper
+		{give: `/usr/bin/env sh -c "cmd"`, wantInner: "cmd", wantUnwrapped: true},
+		// Supported (P2): env prefix
+		{give: `env bash -c "cmd"`, wantInner: "cmd", wantUnwrapped: true},
 		// Edge: empty string
 		{give: "", wantInner: "", wantUnwrapped: false},
 		// Edge: sh -c with no argument
@@ -56,6 +58,22 @@ func TestUnwrapShellWrapper(t *testing.T) {
 		{give: `bash -c echo foo bar`, wantInner: "echo", wantUnwrapped: true},
 		// P1 fix: unmatched quote → allow-without-unwrap
 		{give: `sh -c "kill 1234`, wantInner: `sh -c "kill 1234`, wantUnwrapped: false},
+		// P2: login shell with -lc flag and dangerous command
+		{give: `sh -lc "kill 1234"`, wantInner: "kill 1234", wantUnwrapped: true},
+		// P2: interactive shell with -ic flag
+		{give: `bash -ic "echo hello"`, wantInner: "echo hello", wantUnwrapped: true},
+		// P2: env wrapper with full path
+		{give: `/usr/bin/env sh -c "echo hello"`, wantInner: "echo hello", wantUnwrapped: true},
+		// P2: env wrapper with bare env
+		{give: `env zsh -c "ls -la"`, wantInner: "ls -la", wantUnwrapped: true},
+		// P2: env wrapper with login flag
+		{give: `env sh -lc "kill 9999"`, wantInner: "kill 9999", wantUnwrapped: true},
+		// P2: nested shell wrapper (recursive unwrap)
+		{give: `sh -c "bash -c \"inner cmd\""`, wantInner: "inner cmd", wantUnwrapped: true},
+		// P2: double nested
+		{give: `sh -c "bash -c \"zsh -c \\\"deep\\\"\""`, wantInner: "deep", wantUnwrapped: true},
+		// P2: single quotes inside nested wrapper
+		{give: `bash -c 'sh -c "hello world"'`, wantInner: "hello world", wantUnwrapped: true},
 	}
 
 	for _, tt := range tests {
@@ -90,6 +108,83 @@ func TestIsShellWrapper(t *testing.T) {
 			assert.Equal(t, tt.want, isShellWrapper(tt.give))
 		})
 	}
+}
+
+func TestUnwrapShellWrapper_DepthLimitPublic(t *testing.T) {
+	t.Parallel()
+
+	// Build a deeply nested shell wrapper with 6+ levels:
+	// sh -c "sh -c \"sh -c \\\"sh -c \\\\\\\"sh -c \\\\\\\\\\\\\\\"sh -c \\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\"echo hello\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\"\\\\\\\\\\\\\\\"\\\\\\\"\\\"\""
+	// Instead of constructing escaped strings, we test that after maxUnwrapDepth
+	// (5) levels of recursive unwrap, the function stops.
+	//
+	// We construct a command that nests 6 levels deep.
+	// At depth 5, unwrapShellWrapperAST returns false, so unwrapShellWrapper
+	// should return the 5th-level wrapper (not fully unwrapped) or the result
+	// at the depth limit.
+	//
+	// Simple approach: build nesting programmatically.
+	// Level 0: "echo hello"
+	// Level 1: sh -c "echo hello"
+	// Level 2: sh -c 'sh -c "echo hello"'
+	// ...
+	// For levels > maxUnwrapDepth, unwrap should stop before reaching the innermost.
+
+	// Build from inside out. At each level we wrap with sh -c '...'
+	inner := "echo hello"
+	for i := 0; i < 6; i++ {
+		// Alternate single and double quotes to avoid needing escapes.
+		if i%2 == 0 {
+			inner = `sh -c "` + inner + `"`
+		} else {
+			inner = `sh -c '` + inner + `'`
+		}
+	}
+
+	result, unwrapped := unwrapShellWrapper(inner)
+
+	// The function should unwrap but NOT reach "echo hello" because depth limit
+	// is 5 and we have 6 wrapper levels. The result should differ from "echo hello".
+	// If depth limiting works, the deepest reachable unwrap stops before "echo hello".
+	if unwrapped {
+		assert.NotEqual(t, "echo hello", result,
+			"6 levels of nesting should hit depth limit before reaching innermost command")
+	}
+	// Either way, it should not panic or error out.
+}
+
+func TestUnwrapShellWrapperAST_DepthLimit(t *testing.T) {
+	t.Parallel()
+
+	// Parse a simple shell wrapper command.
+	parser := syntax.NewParser()
+	f, err := parser.Parse(strings.NewReader(`sh -c "echo hello"`), "")
+	assert.NoError(t, err)
+
+	// At depth 4 (under limit of 5), unwrap succeeds.
+	inner, ok := unwrapShellWrapperAST(f, 4)
+	assert.True(t, ok, "depth 4 should unwrap")
+	assert.Equal(t, "echo hello", inner)
+
+	// At depth 5 (at limit), unwrap fails.
+	_, ok = unwrapShellWrapperAST(f, 5)
+	assert.False(t, ok, "depth 5 should hit limit")
+
+	// At depth 6 (over limit), unwrap fails.
+	_, ok = unwrapShellWrapperAST(f, 6)
+	assert.False(t, ok, "depth 6 should hit limit")
+}
+
+func TestUnwrapShellWrapper_ASTFallback(t *testing.T) {
+	t.Parallel()
+
+	// Commands with unmatched quotes fail AST parsing.
+	// The string-based fallback should still handle simple patterns.
+	// Note: `sh -c "kill 1234` has unmatched quote — AST parse fails,
+	// and string fallback also returns false (correct behavior).
+	inner, ok := unwrapShellWrapper(`sh -c "kill 1234`)
+	assert.False(t, ok, "unmatched quote should not unwrap")
+	assert.Equal(t, `sh -c "kill 1234`, inner)
 }
 
 func TestStripQuotes(t *testing.T) {

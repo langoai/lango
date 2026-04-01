@@ -246,6 +246,72 @@ func TestTopSessions(t *testing.T) {
 	assert.Len(t, all2, 3)
 }
 
+func TestRecordPolicyDecision(t *testing.T) {
+	tests := []struct {
+		give         []struct{ verdict, reason string }
+		wantBlocks   int64
+		wantObserves int64
+		wantByReason map[string]int64
+	}{
+		{
+			give: []struct{ verdict, reason string }{
+				{"block", "lango_cli"},
+				{"block", "lango_cli"},
+				{"observe", "opaque_pattern"},
+			},
+			wantBlocks:   2,
+			wantObserves: 1,
+			wantByReason: map[string]int64{
+				"lango_cli":      2,
+				"opaque_pattern": 1,
+			},
+		},
+		{
+			give: []struct{ verdict, reason string }{
+				{"observe", "cmd_substitution"},
+				{"observe", "cmd_substitution"},
+				{"observe", "eval_usage"},
+			},
+			wantBlocks:   0,
+			wantObserves: 3,
+			wantByReason: map[string]int64{
+				"cmd_substitution": 2,
+				"eval_usage":       1,
+			},
+		},
+		{
+			give:         nil,
+			wantBlocks:   0,
+			wantObserves: 0,
+			wantByReason: map[string]int64{},
+		},
+	}
+
+	for _, tt := range tests {
+		c := NewCollector()
+		for _, d := range tt.give {
+			c.RecordPolicyDecision(d.verdict, d.reason)
+		}
+
+		snap := c.Snapshot()
+		assert.Equal(t, tt.wantBlocks, snap.Policy.Blocks)
+		assert.Equal(t, tt.wantObserves, snap.Policy.Observes)
+		assert.Equal(t, tt.wantByReason, snap.Policy.ByReason)
+	}
+}
+
+func TestRecordPolicyDecision_SnapshotIsolation(t *testing.T) {
+	c := NewCollector()
+	c.RecordPolicyDecision("block", "lango_cli")
+
+	snap := c.Snapshot()
+	snap.Policy.ByReason["injected"] = 999
+
+	snap2 := c.Snapshot()
+	_, exists := snap2.Policy.ByReason["injected"]
+	assert.False(t, exists)
+}
+
 func TestReset(t *testing.T) {
 	c := NewCollector()
 	c.RecordTokenUsage(TokenUsage{
@@ -256,6 +322,8 @@ func TestReset(t *testing.T) {
 		TotalTokens:  150,
 	})
 	c.RecordToolExecution("tool1", "a1", time.Millisecond, true)
+	c.RecordPolicyDecision("block", "lango_cli")
+	c.RecordPolicyDecision("observe", "opaque_pattern")
 
 	c.Reset()
 
@@ -267,6 +335,9 @@ func TestReset(t *testing.T) {
 	assert.Empty(t, snap.ToolBreakdown)
 	assert.Empty(t, snap.AgentBreakdown)
 	assert.Empty(t, snap.SessionBreakdown)
+	assert.Equal(t, int64(0), snap.Policy.Blocks)
+	assert.Equal(t, int64(0), snap.Policy.Observes)
+	assert.Empty(t, snap.Policy.ByReason)
 }
 
 func TestConcurrency(t *testing.T) {
@@ -288,6 +359,19 @@ func TestConcurrency(t *testing.T) {
 		}(i)
 	}
 
+	// Parallel policy writers
+	for i := range 100 {
+		wg.Add(1)
+		go func(idx int) {
+			defer wg.Done()
+			if idx%2 == 0 {
+				c.RecordPolicyDecision("block", "lango_cli")
+			} else {
+				c.RecordPolicyDecision("observe", "opaque_pattern")
+			}
+		}(i)
+	}
+
 	// Parallel readers
 	for range 50 {
 		wg.Add(1)
@@ -304,4 +388,6 @@ func TestConcurrency(t *testing.T) {
 	snap := c.Snapshot()
 	assert.Equal(t, int64(1000), snap.TokenUsageTotal.InputTokens)
 	assert.Equal(t, int64(100), snap.ToolExecutions)
+	assert.Equal(t, int64(50), snap.Policy.Blocks)
+	assert.Equal(t, int64(50), snap.Policy.Observes)
 }

@@ -41,3 +41,15 @@ type CircuitBreakerTrippedEvent struct {
 }
 
 func (e CircuitBreakerTrippedEvent) EventName() string { return "agent.circuit_breaker.tripped" }
+
+// RecoveryDecisionEvent is published when a recovery decision is made,
+// carrying detailed metadata for observability.
+type RecoveryDecisionEvent struct {
+	CauseClass string
+	Action     string
+	Attempt    int
+	Backoff    time.Duration
+	SessionKey string
+}
+
+func (e RecoveryDecisionEvent) EventName() string { return "agent.recovery.decision" }

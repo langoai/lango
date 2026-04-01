@@ -2,6 +2,10 @@ package app
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/json"
+	"fmt"
+	"sort"
 
 	"github.com/langoai/lango/internal/appinit"
 	"github.com/langoai/lango/internal/bootstrap"
@@ -9,6 +13,7 @@ import (
 	"github.com/langoai/lango/internal/observability/token"
 	"github.com/langoai/lango/internal/provenance"
 	"github.com/langoai/lango/internal/runledger"
+	"github.com/langoai/lango/internal/toolchain"
 )
 
 // provenanceValues holds the outputs of the provenance module.
@@ -20,6 +25,10 @@ type provenanceValues struct {
 	attributionStore  provenance.AttributionStore
 	attribution       *provenance.AttributionService
 	bundle            *provenance.BundleService
+
+	// configMetadata is the cached metadata for session config checkpoints.
+	// Contains "config_fingerprint" and "hook_registry" keys.
+	configMetadata map[string]string
 }
 
 // provenanceModule initializes the session provenance subsystem.
@@ -79,6 +88,9 @@ func (m *provenanceModule) Init(_ context.Context, r appinit.Resolver) (*appinit
 		bundle:            bundle,
 	}
 
+	// Compute and cache config fingerprint + hook snapshot for session checkpoints.
+	vals.configMetadata = computeConfigMetadata(m.boot, nil)
+
 	return &appinit.ModuleResult{
 		Values: map[appinit.Provides]interface{}{
 			appinit.ProvidesProvenance: vals,
@@ -92,4 +104,73 @@ func (m *provenanceModule) Init(_ context.Context, r appinit.Resolver) (*appinit
 			},
 		},
 	}, nil
+}
+
+// hookEntry describes a registered hook for snapshot serialization.
+type hookEntry struct {
+	Name     string `json:"name"`
+	Priority int    `json:"priority"`
+}
+
+// computeConfigFingerprint computes a SHA-256 hex digest of the config state
+// relevant to session reproducibility: ExplicitKeys, AutoEnabled, and HooksConfig.
+func computeConfigFingerprint(boot *bootstrap.Result) string {
+	h := sha256.New()
+
+	// Sort explicit keys for deterministic ordering.
+	if boot.ExplicitKeys != nil {
+		keys := make([]string, 0, len(boot.ExplicitKeys))
+		for k := range boot.ExplicitKeys {
+			keys = append(keys, k)
+		}
+		sort.Strings(keys)
+		sorted := make(map[string]bool, len(boot.ExplicitKeys))
+		for _, k := range keys {
+			sorted[k] = boot.ExplicitKeys[k]
+		}
+		data, _ := json.Marshal(sorted)
+		h.Write(data)
+	}
+
+	autoData, _ := json.Marshal(boot.AutoEnabled)
+	h.Write(autoData)
+
+	hooksData, _ := json.Marshal(boot.Config.Hooks)
+	h.Write(hooksData)
+
+	return fmt.Sprintf("%x", h.Sum(nil))
+}
+
+// buildHookRegistrySnapshot serializes the current hook registry state as a
+// JSON array of {name, priority} objects.
+func buildHookRegistrySnapshot(registry *toolchain.HookRegistry) string {
+	if registry == nil {
+		return "[]"
+	}
+
+	var entries []hookEntry
+	for _, h := range registry.PreHooks() {
+		entries = append(entries, hookEntry{Name: h.Name(), Priority: h.Priority()})
+	}
+	for _, h := range registry.PostHooks() {
+		entries = append(entries, hookEntry{Name: h.Name(), Priority: h.Priority()})
+	}
+	if entries == nil {
+		return "[]"
+	}
+
+	data, _ := json.Marshal(entries)
+	return string(data)
+}
+
+// computeConfigMetadata builds the metadata map for session config checkpoints.
+// hookRegistry may be nil during module init (hooks are registered later in Phase B).
+func computeConfigMetadata(boot *bootstrap.Result, registry *toolchain.HookRegistry) map[string]string {
+	if boot == nil {
+		return nil
+	}
+	return map[string]string{
+		"config_fingerprint": computeConfigFingerprint(boot),
+		"hook_registry":      buildHookRegistrySnapshot(registry),
+	}
 }

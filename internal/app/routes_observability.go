@@ -70,6 +70,15 @@ func registerObservabilityRoutes(r chi.Router, collector *observability.MetricsC
 		writeObsJSON(w, map[string]interface{}{"tools": tools})
 	})
 
+	r.Get("/metrics/policy", func(w http.ResponseWriter, _ *http.Request) {
+		snap := collector.Snapshot()
+		writeObsJSON(w, map[string]interface{}{
+			"blocks":   snap.Policy.Blocks,
+			"observes": snap.Policy.Observes,
+			"byReason": snap.Policy.ByReason,
+		})
+	})
+
 	r.Get("/metrics/agents", func(w http.ResponseWriter, _ *http.Request) {
 		snap := collector.Snapshot()
 		agents := make([]map[string]interface{}, 0, len(snap.AgentBreakdown))

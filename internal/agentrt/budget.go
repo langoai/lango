@@ -1,6 +1,7 @@
 package agentrt
 
 import (
+	"strconv"
 	"sync"
 
 	"github.com/langoai/lango/internal/config"
@@ -127,6 +128,30 @@ func (b *BudgetPolicy) UniqueAgentCount() int {
 	b.mu.Lock()
 	defer b.mu.Unlock()
 	return len(b.uniqueAgents)
+}
+
+// Serialize returns the budget counters as a string map suitable for
+// persisting into Session.Metadata.
+func (b *BudgetPolicy) Serialize() map[string]string {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return map[string]string{
+		"usage:budget_turns":       strconv.Itoa(b.turnCount),
+		"usage:budget_delegations": strconv.Itoa(b.delegationCount),
+	}
+}
+
+// Restore sets the budget counters from a previously serialized state map.
+// Missing or malformed keys are silently ignored.
+func (b *BudgetPolicy) Restore(state map[string]string) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	if v, err := strconv.Atoi(state["usage:budget_turns"]); err == nil {
+		b.turnCount = v
+	}
+	if v, err := strconv.Atoi(state["usage:budget_delegations"]); err == nil {
+		b.delegationCount = v
+	}
 }
 
 func (b *BudgetPolicy) checkAlert(resource string, used, limit int, alerted *bool) {

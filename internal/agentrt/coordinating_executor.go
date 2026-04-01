@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"sync"
+	"time"
 
 	"go.uber.org/zap"
 	adksession "google.golang.org/adk/session"
@@ -74,10 +75,11 @@ func (c *CoordinatingExecutor) RunStreamingDetailed(
 	onChunk adk.ChunkCallback,
 	opts ...adk.RunOption,
 ) (adk.RunReport, error) {
-	state := &runState{}       // per-run, not shared across concurrent turns
-	budget := c.budget.Clone() // per-run mirrored counters
+	state := &runState{}                            // per-run, not shared across concurrent turns
+	budget := c.budget.Clone()                      // per-run mirrored counters
+	classRetryCounts := make(map[CauseClass]int, 4) // per-class retry counts for this run
 
-	return c.runWithRecovery(ctx, sessionID, input, onChunk, state, budget, 0, opts...)
+	return c.runWithRecovery(ctx, sessionID, input, onChunk, state, budget, 0, classRetryCounts, opts...)
 }
 
 func (c *CoordinatingExecutor) runWithRecovery(
@@ -87,6 +89,7 @@ func (c *CoordinatingExecutor) runWithRecovery(
 	state *runState,
 	budget *BudgetPolicy,
 	retryCount int,
+	classRetryCounts map[CauseClass]int,
 	opts ...adk.RunOption,
 ) (adk.RunReport, error) {
 	// ChainOnEvent preserves any existing onEvent handler (e.g., TurnRunner's
@@ -119,11 +122,12 @@ func (c *CoordinatingExecutor) runWithRecovery(
 	}
 
 	failure := RecoveryContext{
-		Error:         err,
-		AgentName:     state.target(),
-		PartialResult: report.Response,
-		RetryCount:    retryCount,
-		SessionID:     sessionID,
+		Error:            err,
+		AgentName:        state.target(),
+		PartialResult:    report.Response,
+		RetryCount:       retryCount,
+		SessionID:        sessionID,
+		ClassRetryCounts: classRetryCounts,
 	}
 	action := c.recovery.Decide(ctx, &failure)
 
@@ -163,19 +167,55 @@ func (c *CoordinatingExecutor) runWithRecovery(
 		})
 	}
 
+	// Compute backoff and cause class for decision event.
+	var backoffDur time.Duration
+	var causeClassStr string
+	if action == RecoveryRetry || action == RecoveryRetryWithHint {
+		backoffDur = ComputeBackoff(retryCount)
+	}
+	var agentErrForClass *adk.AgentError
+	if errors.As(err, &agentErrForClass) {
+		causeClassStr = string(classifyForRetry(agentErrForClass))
+	}
+
+	// Publish detailed recovery decision event.
+	if c.bus != nil {
+		c.bus.Publish(RecoveryDecisionEvent{
+			CauseClass: causeClassStr,
+			Action:     action.String(),
+			Attempt:    retryCount,
+			Backoff:    backoffDur,
+			SessionKey: sessionID,
+		})
+	}
+
 	switch action {
 	case RecoveryRetry:
 		logger().Infow("recovery: retry same input",
 			"session", sessionID,
-			"retry", retryCount+1)
-		return c.runWithRecovery(ctx, sessionID, input, onChunk, state, budget, retryCount+1, opts...)
+			"retry", retryCount+1,
+			"backoff", backoffDur)
+		// Context-aware backoff sleep before retry.
+		select {
+		case <-ctx.Done():
+			return report, ctx.Err()
+		case <-time.After(backoffDur):
+		}
+		return c.runWithRecovery(ctx, sessionID, input, onChunk, state, budget, retryCount+1, classRetryCounts, opts...)
 
 	case RecoveryRetryWithHint:
 		hintedInput := AddRerouteHint(input, failure)
 		logger().Infow("recovery: retry with reroute hint",
 			"session", sessionID,
-			"retry", retryCount+1)
-		return c.runWithRecovery(ctx, sessionID, hintedInput, onChunk, state, budget, retryCount+1, opts...)
+			"retry", retryCount+1,
+			"backoff", backoffDur)
+		// Context-aware backoff sleep before retry.
+		select {
+		case <-ctx.Done():
+			return report, ctx.Err()
+		case <-time.After(backoffDur):
+		}
+		return c.runWithRecovery(ctx, sessionID, hintedInput, onChunk, state, budget, retryCount+1, classRetryCounts, opts...)
 
 	case RecoveryDirectAnswer:
 		logger().Infow("recovery: using partial result",

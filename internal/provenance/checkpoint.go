@@ -35,7 +35,19 @@ func (s *CheckpointService) CreateManual(ctx context.Context, sessionKey, runID,
 	if runID == "" {
 		return nil, ErrInvalidRunID
 	}
-	return s.create(ctx, sessionKey, runID, label, TriggerManual)
+	return s.create(ctx, sessionKey, runID, label, TriggerManual, nil)
+}
+
+// CreateManualWithMetadata creates a manually-triggered checkpoint with metadata.
+// Unlike CreateManual, runID is optional — session-init checkpoints may not have a run.
+func (s *CheckpointService) CreateManualWithMetadata(
+	ctx context.Context, sessionKey, runID, label string,
+	metadata map[string]string,
+) (*Checkpoint, error) {
+	if label == "" {
+		return nil, ErrInvalidLabel
+	}
+	return s.create(ctx, sessionKey, runID, label, TriggerManual, metadata)
 }
 
 // OnJournalEvent is the append hook callback for automatic checkpoint creation.
@@ -49,18 +61,18 @@ func (s *CheckpointService) OnJournalEvent(event runledger.JournalEvent) {
 			return
 		}
 		label := fmt.Sprintf("step_validated_%d", event.Seq)
-		_, _ = s.create(ctx, "", event.RunID, label, TriggerStepComplete)
+		_, _ = s.create(ctx, "", event.RunID, label, TriggerStepComplete, nil)
 
 	case runledger.EventPolicyDecisionApplied:
 		if !s.cfg.AutoOnPolicy {
 			return
 		}
 		label := fmt.Sprintf("policy_applied_%d", event.Seq)
-		_, _ = s.create(ctx, "", event.RunID, label, TriggerPolicy)
+		_, _ = s.create(ctx, "", event.RunID, label, TriggerPolicy, nil)
 	}
 }
 
-func (s *CheckpointService) create(ctx context.Context, sessionKey, runID, label string, trigger CheckpointTrigger) (*Checkpoint, error) {
+func (s *CheckpointService) create(ctx context.Context, sessionKey, runID, label string, trigger CheckpointTrigger, metadata map[string]string) (*Checkpoint, error) {
 	// Resolve session key from run snapshot if not provided.
 	if sessionKey == "" && s.ledger != nil {
 		snap, err := s.ledger.GetRunSnapshot(ctx, runID)
@@ -96,6 +108,7 @@ func (s *CheckpointService) create(ctx context.Context, sessionKey, runID, label
 		Label:      label,
 		Trigger:    trigger,
 		JournalSeq: journalSeq,
+		Metadata:   metadata,
 		CreatedAt:  time.Now(),
 	}
 

@@ -100,6 +100,21 @@ func TestPolicyEvaluator_Evaluate(t *testing.T) {
 		// P1 fix: positional args bypass
 		{give: `bash -c "kill 1234" ignored`, wantVerdict: VerdictBlock, wantReason: ReasonKillVerb},
 		{give: `sh -c "lango cron" myname`, wantVerdict: VerdictBlock, wantReason: ReasonLangoCLI},
+		// P2: login shell flag -lc blocks kill verb
+		{give: `sh -lc "kill 1234"`, wantVerdict: VerdictBlock, wantReason: ReasonKillVerb},
+		{give: `bash -lc "lango security check"`, wantVerdict: VerdictBlock, wantReason: ReasonLangoCLI},
+		// P2: env wrapper blocks kill verb
+		{give: `/usr/bin/env sh -c "kill 1234"`, wantVerdict: VerdictBlock, wantReason: ReasonKillVerb},
+		{give: `env bash -c "lango cron list"`, wantVerdict: VerdictBlock, wantReason: ReasonLangoCLI},
+		// P2: env wrapper allows clean command
+		{give: `env sh -c "echo hello"`, wantVerdict: VerdictAllow, wantReason: ReasonNone},
+		// P2: nested wrapper blocks inner dangerous command
+		{give: `sh -c "bash -c \"kill 9999\""`, wantVerdict: VerdictBlock, wantReason: ReasonKillVerb},
+		{give: `bash -c 'sh -c "lango security check"'`, wantVerdict: VerdictBlock, wantReason: ReasonLangoCLI},
+		// P2: nested wrapper allows clean inner command
+		{give: `sh -c "bash -c \"echo safe\""`, wantVerdict: VerdictAllow, wantReason: ReasonNone},
+		// P2: env + login shell combination
+		{give: `env sh -lc "kill 1234"`, wantVerdict: VerdictBlock, wantReason: ReasonKillVerb},
 	}
 
 	for _, tt := range tests {

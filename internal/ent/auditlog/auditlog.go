@@ -76,6 +76,7 @@ const (
 	ActionKnowledgeSearch  Action = "knowledge_search"
 	ActionApprovalRequest  Action = "approval_request"
 	ActionApprovalResponse Action = "approval_response"
+	ActionPolicyDecision   Action = "policy_decision"
 )
 
 func (a Action) String() string {
@@ -85,7 +86,7 @@ func (a Action) String() string {
 // ActionValidator is a validator for the "action" field enum values. It is called by the builders before save.
 func ActionValidator(a Action) error {
 	switch a {
-	case ActionToolCall, ActionKnowledgeSave, ActionLearningSave, ActionSkillCreate, ActionSkillExecute, ActionSkillImport, ActionSkillImportBulk, ActionKnowledgeSearch, ActionApprovalRequest, ActionApprovalResponse:
+	case ActionToolCall, ActionKnowledgeSave, ActionLearningSave, ActionSkillCreate, ActionSkillExecute, ActionSkillImport, ActionSkillImportBulk, ActionKnowledgeSearch, ActionApprovalRequest, ActionApprovalResponse, ActionPolicyDecision:
 		return nil
 	default:
 		return fmt.Errorf("auditlog: invalid enum value for action field: %q", a)

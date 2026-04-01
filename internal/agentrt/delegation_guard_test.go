@@ -101,3 +101,65 @@ func TestDelegationGuard_UnknownAgent(t *testing.T) {
 	assert.False(t, guard.IsOpen("unknown"))
 	assert.Equal(t, CircuitClosed, guard.State("unknown"))
 }
+
+func TestDelegationGuard_ProviderFailureTracking(t *testing.T) {
+	t.Run("provider circuit opens after threshold failures", func(t *testing.T) {
+		guard := NewDelegationGuard(config.CircuitBreakerCfg{
+			FailureThreshold: 3,
+			ResetTimeout:     1 * time.Hour,
+		}, nil)
+
+		guard.RecordProviderFailure("openai", false)
+		guard.RecordProviderFailure("openai", false)
+		assert.False(t, guard.IsProviderOpen("openai"))
+
+		guard.RecordProviderFailure("openai", false)
+		assert.True(t, guard.IsProviderOpen("openai"))
+	})
+
+	t.Run("provider circuit independent of agent circuit", func(t *testing.T) {
+		guard := NewDelegationGuard(config.CircuitBreakerCfg{
+			FailureThreshold: 2,
+			ResetTimeout:     1 * time.Hour,
+		}, nil)
+
+		// Open the provider circuit.
+		guard.RecordProviderFailure("openai", false)
+		guard.RecordProviderFailure("openai", false)
+		assert.True(t, guard.IsProviderOpen("openai"))
+
+		// Agent "operator" should not be affected.
+		assert.False(t, guard.IsOpen("operator"))
+		assert.Equal(t, CircuitClosed, guard.State("operator"))
+	})
+
+	t.Run("provider success resets provider circuit", func(t *testing.T) {
+		guard := NewDelegationGuard(config.CircuitBreakerCfg{
+			FailureThreshold: 2,
+			ResetTimeout:     1 * time.Hour,
+		}, nil)
+
+		guard.RecordProviderFailure("anthropic", false)
+		guard.RecordProviderFailure("anthropic", false)
+		assert.True(t, guard.IsProviderOpen("anthropic"))
+
+		// Half-open probe success closes it.
+		guard.RecordProviderFailure("anthropic", true)
+		assert.False(t, guard.IsProviderOpen("anthropic"))
+	})
+
+	t.Run("agent name does not collide with provider name", func(t *testing.T) {
+		guard := NewDelegationGuard(config.CircuitBreakerCfg{
+			FailureThreshold: 2,
+			ResetTimeout:     1 * time.Hour,
+		}, nil)
+
+		// Record failures for agent named "openai".
+		guard.RecordOutcome("openai", false)
+		guard.RecordOutcome("openai", false)
+		assert.True(t, guard.IsOpen("openai"))
+
+		// Provider "openai" should not be open — uses different key.
+		assert.False(t, guard.IsProviderOpen("openai"))
+	})
+}

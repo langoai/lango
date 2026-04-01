@@ -3,6 +3,7 @@ package appinit
 import (
 	"context"
 	"fmt"
+	"time"
 
 	"github.com/langoai/lango/internal/agent"
 	"github.com/langoai/lango/internal/lifecycle"
@@ -25,12 +26,19 @@ func (b *Builder) AddModule(m Module) *Builder {
 	return b
 }
 
+// ModuleTimingEntry records the duration of a module initialization.
+type ModuleTimingEntry struct {
+	Module   string        `json:"module"`
+	Duration time.Duration `json:"duration"`
+}
+
 // BuildResult holds the aggregated output from all initialized modules.
 type BuildResult struct {
 	Tools          []*agent.Tool
 	Components     []lifecycle.ComponentEntry
 	CatalogEntries []CatalogEntry
 	Resolver       Resolver
+	ModuleTiming   []ModuleTimingEntry `json:"moduleTiming,omitempty"`
 }
 
 // Build sorts modules by dependency order, initializes each in sequence,
@@ -45,15 +53,19 @@ func (b *Builder) Build(ctx context.Context) (*BuildResult, error) {
 	var tools []*agent.Tool
 	var components []lifecycle.ComponentEntry
 	var catalogEntries []CatalogEntry
+	var moduleTiming []ModuleTimingEntry
 
 	log := logging.SubsystemSugar("appinit")
 	for _, m := range sorted {
 		log.Infow("initializing module", "module", m.Name())
+		start := time.Now()
 		result, err := m.Init(ctx, resolver)
+		elapsed := time.Since(start)
+		moduleTiming = append(moduleTiming, ModuleTimingEntry{Module: m.Name(), Duration: elapsed})
 		if err != nil {
 			return nil, fmt.Errorf("init module %q: %w", m.Name(), err)
 		}
-		log.Infow("module initialized", "module", m.Name())
+		log.Infow("module initialized", "module", m.Name(), "duration_ms", elapsed.Milliseconds())
 		if result == nil {
 			continue
 		}
@@ -72,5 +84,6 @@ func (b *Builder) Build(ctx context.Context) (*BuildResult, error) {
 		Components:     components,
 		CatalogEntries: catalogEntries,
 		Resolver:       resolver,
+		ModuleTiming:   moduleTiming,
 	}, nil
 }

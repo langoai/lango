@@ -35,6 +35,7 @@ func (AuditLog) Fields() []ent.Field {
 				"knowledge_search",
 				"approval_request",
 				"approval_response",
+				"policy_decision",
 			),
 		field.String("actor").
 			NotEmpty(),
