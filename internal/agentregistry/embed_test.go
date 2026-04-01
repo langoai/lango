@@ -11,7 +11,7 @@ func TestEmbeddedStore_Load(t *testing.T) {
 	store := NewEmbeddedStore()
 	defs, err := store.Load()
 	require.NoError(t, err)
-	require.Len(t, defs, 7)
+	require.Len(t, defs, 8)
 
 	// Verify all expected agents are present.
 	wantNames := map[string]bool{
@@ -22,6 +22,7 @@ func TestEmbeddedStore_Load(t *testing.T) {
 		"automator":  false,
 		"planner":    false,
 		"chronicler": false,
+		"ontologist": false,
 	}
 
 	for _, def := range defs {
@@ -45,13 +46,13 @@ func TestEmbeddedStore_LoadAndRegister(t *testing.T) {
 	err := r.LoadFromStore(NewEmbeddedStore())
 	require.NoError(t, err)
 
-	// All 7 agents are active.
+	// All 8 agents are active.
 	active := r.Active()
-	assert.Len(t, active, 7)
+	assert.Len(t, active, 8)
 
 	// Specs conversion works for all.
 	specs := r.Specs()
-	assert.Len(t, specs, 7)
+	assert.Len(t, specs, 8)
 
 	// Planner should have AlwaysInclude set.
 	planner, ok := r.Get("planner")

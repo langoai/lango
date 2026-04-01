@@ -1223,6 +1223,89 @@ See [Cron Scheduling](automation/cron.md) for usage details and [CLI reference](
 
 ---
 
+## Ontology
+
+!!! warning "Experimental"
+    The knowledge ontology subsystem is experimental. Schema lifecycle governance, P2P exchange, and ACL enforcement may change in future releases.
+
+Typed knowledge ontology for structured entity management with schema governance, access control, and P2P exchange.
+
+> **Settings:** `lango settings` → Ontology
+
+```json
+{
+  "ontology": {
+    "enabled": false,
+    "acl": {
+      "enabled": false,
+      "roles": {},
+      "p2pPermission": "write"
+    },
+    "governance": {
+      "enabled": false,
+      "maxNewPerDay": 20,
+      "quarantinePeriodHrs": 24,
+      "shadowModeDurationHrs": 168,
+      "minUsageForPromotion": 5,
+      "schemaExplosionBudget": 100
+    },
+    "exchange": {
+      "enabled": false,
+      "minTrustForSchema": 0.5,
+      "minTrustForFacts": 0.7,
+      "autoImportMode": "shadow",
+      "maxTypesPerImport": 10
+    }
+  }
+}
+```
+
+| Key | Type | Default | Description |
+|-----|------|---------|-------------|
+| `ontology.enabled` | `bool` | `false` | Enable the ontology registry and seed migration |
+| `ontology.acl.enabled` | `bool` | `false` | Activate ACL policy enforcement for ontology operations |
+| `ontology.acl.roles` | `map[string]string` | `{}` | Map principal names to permission levels: `read`, `write`, or `admin` |
+| `ontology.acl.p2pPermission` | `string` | `write` | Default permission for `peer:` prefix principals |
+| `ontology.governance.enabled` | `bool` | `false` | Activate governance FSM enforcement on `RegisterType`/`RegisterPredicate` |
+| `ontology.governance.maxNewPerDay` | `int` | `20` | Combined daily limit for type + predicate proposals |
+| `ontology.governance.quarantinePeriodHrs` | `int` | `24` | Quarantine duration in hours before a proposal can advance |
+| `ontology.governance.shadowModeDurationHrs` | `int` | `168` | Shadow mode duration in hours (default: 7 days) |
+| `ontology.governance.minUsageForPromotion` | `int` | `5` | Minimum usage count required for auto-promotion from shadow to active |
+| `ontology.governance.schemaExplosionBudget` | `int` | `100` | Monthly limit for new proposals to prevent schema explosion |
+| `ontology.exchange.enabled` | `bool` | `false` | Enable P2P ontology exchange (requires both `p2p.enabled` and `ontology.enabled`) |
+| `ontology.exchange.minTrustForSchema` | `float` | `0.5` | Minimum peer trust score for schema exchange |
+| `ontology.exchange.minTrustForFacts` | `float` | `0.7` | Minimum peer trust score for fact exchange |
+| `ontology.exchange.autoImportMode` | `string` | `shadow` | How proposed schemas are imported: `shadow`, `governed`, or `disabled` |
+| `ontology.exchange.maxTypesPerImport` | `int` | `10` | Maximum types imported from a single peer exchange |
+
+---
+
+## Alerting
+
+Operational alerting with threshold-based monitoring for policy decisions, recovery events, and circuit breaker trips.
+
+> **Settings:** `lango settings` → Alerting
+
+```json
+{
+  "alerting": {
+    "enabled": false,
+    "policyBlockRateThreshold": 10,
+    "recoveryRetryThreshold": 5
+  }
+}
+```
+
+| Key | Type | Default | Description |
+|-----|------|---------|-------------|
+| `alerting.enabled` | `bool` | `false` | Enable operational alerting |
+| `alerting.policyBlockRateThreshold` | `int` | `10` | Policy block events per 5-minute window before triggering an alert |
+| `alerting.recoveryRetryThreshold` | `int` | `5` | Recovery retry events per session before triggering an alert |
+
+Alerts flow through: EventBus (real-time) → Audit log (persistent) → CLI (`lango alerts list`). See [Operational Alerting](features/alerting.md) for architecture details.
+
+---
+
 ## Sandbox
 
 !!! warning "Experimental"

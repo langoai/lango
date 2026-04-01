@@ -56,6 +56,14 @@ Lango provides a comprehensive set of features for building intelligent AI agent
 
     [:octicons-arrow-right-24: Learn more](knowledge-graph.md)
 
+-   :dna: **[Knowledge Ontology](ontology.md)** :material-flask-outline:{ title="Experimental" }
+
+    ---
+
+    Typed knowledge ontology with schema lifecycle governance, temporal truth maintenance, entity resolution, ACL, and P2P exchange.
+
+    [:octicons-arrow-right-24: Learn more](ontology.md)
+
 -   :busts_in_silhouette: **[Multi-Agent Orchestration](multi-agent.md)** :material-flask-outline:{ title="Experimental" }
 
     ---
@@ -160,6 +168,30 @@ Lango provides a comprehensive set of features for building intelligent AI agent
 
     [:octicons-arrow-right-24: Learn more](p2p-network.md#p2p-team-coordination)
 
+-   :bell: **[Operational Alerting](alerting.md)** :material-flask-outline:{ title="Experimental" }
+
+    ---
+
+    Threshold-based operational alerting with policy block rate, recovery retry, and circuit breaker monitors.
+
+    [:octicons-arrow-right-24: Learn more](alerting.md)
+
+-   :lock: **[Exec Safety](exec-safety.md)**
+
+    ---
+
+    Policy-based command safety evaluation with shell wrapper unwrapping, opaque pattern detection, and catastrophic pattern blocking.
+
+    [:octicons-arrow-right-24: Learn more](exec-safety.md)
+
+-   :desktop_computer: **[Cockpit TUI](cockpit.md)**
+
+    ---
+
+    Multi-panel terminal dashboard with sidebar navigation, live metrics, and page-based UI for chat, settings, tools, and status.
+
+    [:octicons-arrow-right-24: Learn more](cockpit.md)
+
 -   :shield: **[OS-level Sandbox](../configuration.md#sandbox)** :material-flask-outline:{ title="Experimental" }
 
     ---
@@ -228,6 +260,7 @@ Lango provides a comprehensive set of features for building intelligent AI agent
 | Observational Memory | Stable | `observationalMemory.enabled` |
 | Embedding & RAG | Stable | `embedding.*` |
 | Knowledge Graph | Experimental | `graph.enabled` |
+| Knowledge Ontology | Experimental | `ontology.enabled` |
 | Multi-Agent Orchestration | Experimental | `agent.multiAgent` |
 | A2A Protocol | Experimental | `a2a.enabled` |
 | P2P Network | Experimental | `p2p.enabled` |
@@ -245,6 +278,9 @@ Lango provides a comprehensive set of features for building intelligent AI agent
 | MCP Integration | Stable | `mcp.enabled` |
 | RunLedger (Task OS) | Experimental | `runLedger.enabled` |
 | Session Provenance | Experimental | `provenance.enabled` |
+| Operational Alerting | Experimental | `alerting.enabled` |
+| Exec Safety | Stable | `hooks.blockedCommands` |
+| Cockpit TUI | Stable | — |
 | OS-level Sandbox | Experimental | `sandbox.enabled` |
 | Response Gatekeeper | Stable | `gatekeeper.enabled` |
 | Context Engineering | Stable | `context.*`, `retrieval.*`, `contextProfile` |

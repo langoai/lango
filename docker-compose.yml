@@ -19,7 +19,8 @@ services:
       #   agent.multiAgent, p2p.enabled, agentMemory.enabled, hooks.enabled,
       #   smartAccount.enabled, graph.enabled, a2a.enabled, mcp.enabled,
       #   cron.enabled, background.enabled, workflow.enabled, economy.enabled,
-      #   observability.enabled
+      #   observability.enabled, ontology.enabled, alerting.enabled,
+      #   provenance.enabled, sandbox.enabled, runLedger.enabled
 
   presidio-analyzer:
     image: mcr.microsoft.com/presidio-analyzer:latest

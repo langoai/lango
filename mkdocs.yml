@@ -109,6 +109,7 @@ nav:
     - Observational Memory: features/observational-memory.md
     - Embedding & RAG: features/embedding-rag.md
     - Knowledge Graph: features/knowledge-graph.md
+    - Knowledge Ontology: features/ontology.md
     - Multi-Agent Orchestration: features/multi-agent.md
     - A2A Protocol: features/a2a-protocol.md
     - P2P Network: features/p2p-network.md
@@ -126,6 +127,9 @@ nav:
     - MCP Integration: features/mcp-integration.md
     - RunLedger (Task OS): features/run-ledger.md
     - Session Provenance: features/provenance.md
+    - Operational Alerting: features/alerting.md
+    - Exec Safety: features/exec-safety.md
+    - Cockpit TUI: features/cockpit.md
   - Automation:
     - automation/index.md
     - Cron Scheduling: automation/cron.md
@@ -159,6 +163,8 @@ nav:
     - Provenance Commands: cli/provenance.md
     - RunLedger Commands: cli/run.md
     - Sandbox Commands: cli/sandbox.md
+    - Alerts Commands: cli/alerts.md
+    - Learning Commands: cli/learning.md
   - Gateway & API:
     - gateway/index.md
     - HTTP API: gateway/http-api.md
