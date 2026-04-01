@@ -32,6 +32,7 @@ import (
 	"github.com/langoai/lango/internal/toolcatalog"
 	"github.com/langoai/lango/internal/toolchain"
 	"github.com/langoai/lango/internal/tooloutput"
+	execpkg "github.com/langoai/lango/internal/tools/exec"
 	"github.com/langoai/lango/internal/turnrunner"
 	"github.com/langoai/lango/internal/turntrace"
 	"github.com/langoai/lango/internal/wallet"
@@ -210,6 +211,20 @@ func New(boot *bootstrap.Result, opts ...AppOption) (*App, error) {
 
 	if app.RunLedgerStore != nil && cfg.RunLedger.WorkspaceIsolation {
 		tools = toolchain.ChainAll(tools, runledger.ToolProfileGuard(app.RunLedgerStore))
+	}
+
+	// B4e. Exec policy middleware — outermost, runs before approval.
+	{
+		classifier := func(cmd string) (string, execpkg.ReasonCode) {
+			return classifyLangoExec(cmd, fv.AutoAvail)
+		}
+		var policyBus execpkg.EventPublisher
+		if (cfg.Hooks.Enabled || cfg.Agent.MultiAgent) && cfg.Hooks.EventPublishing && bus != nil {
+			policyBus = &policyBusAdapter{bus: bus}
+		}
+		pe := execpkg.NewPolicyEvaluator(fv.CmdGuard, classifier, policyBus)
+		tools = toolchain.ChainAll(tools, execpkg.WithPolicy(pe))
+		logger().Info("exec policy middleware enabled")
 	}
 
 	// Log tool registration summary for diagnostics.
@@ -425,6 +440,28 @@ func buildCatalogFromEntries(entries []appinit.CatalogEntry) *toolcatalog.Catalo
 		}
 	}
 	return catalog
+}
+
+// policyBusAdapter bridges exec.EventPublisher and eventbus.Bus.
+// Converts exec.PolicyDecisionData into eventbus.PolicyDecisionEvent
+// so that subscribers using eventbus.SubscribeTyped work correctly.
+type policyBusAdapter struct{ bus *eventbus.Bus }
+
+func (a *policyBusAdapter) Publish(e execpkg.PolicyEvent) {
+	if pd, ok := e.(execpkg.PolicyDecisionData); ok {
+		a.bus.Publish(eventbus.PolicyDecisionEvent{
+			Command:    pd.Command,
+			Unwrapped:  pd.Unwrapped,
+			Verdict:    pd.Verdict,
+			Reason:     pd.Reason,
+			Message:    pd.Message,
+			SessionKey: pd.SessionKey,
+			AgentName:  pd.AgentName,
+		})
+		return
+	}
+	// Fallback: forward as-is (interface method sets match).
+	a.bus.Publish(e)
 }
 
 // buildHookRegistry constructs the tool execution hook registry.

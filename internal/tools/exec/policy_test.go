@@ -1,0 +1,123 @@
+package exec
+
+import (
+	"strings"
+	"testing"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+)
+
+func newTestEvaluator(t *testing.T) *PolicyEvaluator {
+	t.Helper()
+	guard := NewCommandGuard([]string{"~/.lango"})
+	classifier := func(cmd string) (string, ReasonCode) {
+		return testClassifyLangoExec(cmd)
+	}
+	return NewPolicyEvaluator(guard, classifier, nil)
+}
+
+// testClassifyLangoExec mirrors the real classifyLangoExec logic for testing.
+func testClassifyLangoExec(cmd string) (string, ReasonCode) {
+	lower := strings.ToLower(strings.TrimSpace(cmd))
+
+	// Lango CLI commands.
+	if strings.HasPrefix(lower, "lango ") || lower == "lango" {
+		return "blocked: lango CLI requires passphrase", ReasonLangoCLI
+	}
+
+	// Skill import redirects.
+	if strings.HasPrefix(lower, "git clone") && strings.Contains(lower, "skill") {
+		return "use import_skill tool instead", ReasonSkillImport
+	}
+	if (strings.HasPrefix(lower, "curl ") || strings.HasPrefix(lower, "wget ")) &&
+		strings.Contains(lower, "skill") {
+		return "use import_skill tool instead", ReasonSkillImport
+	}
+
+	return "", ReasonNone
+}
+
+func TestPolicyEvaluator_Evaluate(t *testing.T) {
+	t.Parallel()
+
+	pe := newTestEvaluator(t)
+
+	tests := []struct {
+		give       string
+		wantVerdict Verdict
+		wantReason  ReasonCode
+	}{
+		// Block: shell wrapper bypass for kill verb
+		{give: `sh -c "kill 1234"`, wantVerdict: VerdictBlock, wantReason: ReasonKillVerb},
+		{give: `bash -c "pkill lango"`, wantVerdict: VerdictBlock, wantReason: ReasonKillVerb},
+		{give: `/bin/sh -c "killall node"`, wantVerdict: VerdictBlock, wantReason: ReasonKillVerb},
+		// Block: shell wrapper bypass for lango CLI
+		{give: `bash -c "lango security check"`, wantVerdict: VerdictBlock, wantReason: ReasonLangoCLI},
+		{give: `sh -c "lango cron list"`, wantVerdict: VerdictBlock, wantReason: ReasonLangoCLI},
+		// Block: shell wrapper bypass for skill import
+		{give: `bash -c "git clone https://github.com/org/repo skill-name"`, wantVerdict: VerdictBlock, wantReason: ReasonSkillImport},
+		// Block: direct kill verb (existing behavior preserved)
+		{give: "kill 1234", wantVerdict: VerdictBlock, wantReason: ReasonKillVerb},
+		{give: "pkill lango", wantVerdict: VerdictBlock, wantReason: ReasonKillVerb},
+		{give: "killall node", wantVerdict: VerdictBlock, wantReason: ReasonKillVerb},
+		// Block: direct lango CLI (existing behavior preserved)
+		{give: "lango cron list", wantVerdict: VerdictBlock, wantReason: ReasonLangoCLI},
+		{give: "lango security check", wantVerdict: VerdictBlock, wantReason: ReasonLangoCLI},
+		// Block: direct protected path (existing behavior preserved)
+		{give: "sqlite3 ~/.lango/lango.db", wantVerdict: VerdictBlock, wantReason: ReasonProtectedPath},
+		{give: "cat $HOME/.lango/keyfile", wantVerdict: VerdictBlock, wantReason: ReasonProtectedPath},
+		// Observe: opaque command substitution
+		{give: "ls $(cat /etc/passwd)", wantVerdict: VerdictObserve, wantReason: ReasonCmdSubstitution},
+		{give: "echo `whoami`", wantVerdict: VerdictObserve, wantReason: ReasonCmdSubstitution},
+		// Observe: eval verb
+		{give: `eval "rm -rf /"`, wantVerdict: VerdictObserve, wantReason: ReasonEvalVerb},
+		// Observe: unsafe variable expansion
+		{give: "echo $SECRET_TOKEN", wantVerdict: VerdictObserve, wantReason: ReasonUnsafeVarExpand},
+		// Allow: clean commands
+		{give: "go build ./...", wantVerdict: VerdictAllow, wantReason: ReasonNone},
+		{give: "ls -la", wantVerdict: VerdictAllow, wantReason: ReasonNone},
+		{give: "grep kill log.txt", wantVerdict: VerdictAllow, wantReason: ReasonNone},
+		// Allow: clean command through shell wrapper
+		{give: `sh -c "go build ./..."`, wantVerdict: VerdictAllow, wantReason: ReasonNone},
+		{give: `bash -c "echo hello"`, wantVerdict: VerdictAllow, wantReason: ReasonNone},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.give, func(t *testing.T) {
+			t.Parallel()
+			d := pe.Evaluate(tt.give)
+			assert.Equal(t, tt.wantVerdict, d.Verdict, "verdict for %q", tt.give)
+			assert.Equal(t, tt.wantReason, d.Reason, "reason for %q", tt.give)
+		})
+	}
+}
+
+func TestPolicyEvaluator_Evaluate_UnwrappedField(t *testing.T) {
+	t.Parallel()
+
+	pe := newTestEvaluator(t)
+
+	// When a shell wrapper is detected, Unwrapped should contain the inner command.
+	d := pe.Evaluate(`sh -c "go build ./..."`)
+	assert.Equal(t, "go build ./...", d.Unwrapped)
+	assert.Equal(t, `sh -c "go build ./..."`, d.Command)
+
+	// When no wrapper, Unwrapped should be empty.
+	d = pe.Evaluate("go build ./...")
+	assert.Equal(t, "", d.Unwrapped)
+	assert.Equal(t, "go build ./...", d.Command)
+}
+
+func TestNewPolicyEvaluator_SafeVarsInitialized(t *testing.T) {
+	t.Parallel()
+
+	pe := newTestEvaluator(t)
+	require.Len(t, pe.safeVars, 10)
+
+	expectedVars := []string{"HOME", "PATH", "USER", "PWD", "SHELL", "TERM", "LANG", "LC_ALL", "LC_CTYPE", "TMPDIR"}
+	for _, v := range expectedVars {
+		_, ok := pe.safeVars[v]
+		assert.True(t, ok, "safe var %q should be present", v)
+	}
+}

@@ -16,6 +16,7 @@ const (
 	EventPaymentSettled    = "payment.settled"
 	EventTrustUpdated      = "trust.updated"
 	EventSchemaExchanged   = "schema.exchanged"
+	EventPolicyDecision    = "policy.decision"
 )
 
 // ContentSavedEvent is published when knowledge or memory content is saved.
@@ -187,3 +188,18 @@ type SchemaExchangeEvent struct {
 
 // EventName implements Event.
 func (e SchemaExchangeEvent) EventName() string { return EventSchemaExchanged }
+
+// PolicyDecisionEvent is published when the exec policy evaluator makes
+// an observe or block decision. Allow verdicts are not published.
+type PolicyDecisionEvent struct {
+	Command    string
+	Unwrapped  string
+	Verdict    string // "allow", "observe", "block"
+	Reason     string // machine-readable reason code
+	Message    string
+	SessionKey string
+	AgentName  string
+}
+
+// EventName implements Event.
+func (e PolicyDecisionEvent) EventName() string { return EventPolicyDecision }

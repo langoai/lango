@@ -151,6 +151,35 @@ The exec and exec_bg handlers SHALL call `blockProtectedPaths` after `blockLango
 - **WHEN** agent executes `go build ./...` via exec tool
 - **THEN** command passes all guards and executes normally
 
+### Requirement: WithPolicy middleware enforces policy before approval
+The `WithPolicy` middleware SHALL be the outermost middleware in the tool chain, applied after `WithApproval` in `app.go`. The execution order SHALL be: `WithPolicy → WithApproval → WithPrincipal → WithHooks → ... → Handler`. It evaluates only `exec` and `exec_bg` tools.
+
+#### Scenario: Policy blocks before approval
+- **WHEN** `WithPolicy` evaluates a command that results in a block verdict
+- **THEN** it returns `BlockedResult{Blocked: true}` without invoking the approval middleware
+
+#### Scenario: Non-exec tools pass through
+- **WHEN** `WithPolicy` receives `exec_status` or `exec_stop`
+- **THEN** it calls the next handler without policy evaluation
+
+### Requirement: Handler guards serve as defense-in-depth
+The existing handler guards in `BuildTools` (`langoGuard`, `pathGuard`) SHALL be preserved as deterministic-only fallback. They check a strict subset of what the middleware checks. New rules are added only to `PolicyEvaluator`.
+
+#### Scenario: Handler guards remain active
+- **WHEN** a command passes `WithPolicy` middleware
+- **THEN** handler guards still run inside `checkGuards`
+
+### Requirement: PolicyDecisionEvent published for policy decisions
+A `PolicyDecisionEvent` SHALL be published to the event bus for observe and block verdicts. Allow verdicts are not published. Publishing respects `cfg.Hooks.EventPublishing` gate.
+
+#### Scenario: Event published for block verdict
+- **WHEN** PolicyEvaluator blocks a command and event publishing is enabled
+- **THEN** a `PolicyDecisionEvent` with verdict="block" is published
+
+#### Scenario: No event when publishing disabled
+- **WHEN** PolicyEvaluator makes a decision and `cfg.Hooks.EventPublishing` is false
+- **THEN** no event is published
+
 ## OS-Level Sandbox
 
 ### Requirement: Command execution with OS sandbox
