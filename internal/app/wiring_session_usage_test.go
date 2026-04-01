@@ -81,7 +81,7 @@ func (s *sessionUsageStore) put(sess *session.Session) {
 
 // --- budgetRestoringExecutor tests ---
 
-func TestBudgetRestoringExecutor_RestoresOnFirstCall(t *testing.T) {
+func TestBudgetRestoringExecutor_RestoresBaselineAndAccumulates(t *testing.T) {
 	store := newSessionUsageStore()
 	store.put(&session.Session{
 		Key: "sess-1",
@@ -91,25 +91,34 @@ func TestBudgetRestoringExecutor_RestoresOnFirstCall(t *testing.T) {
 		},
 	})
 
+	// Create a CoordinatingExecutor that wraps a fake.
+	inner := &fakeExecutor{}
 	budget := agentrt.NewBudgetPolicy(config.BudgetCfg{
 		ToolCallLimit:   50,
 		DelegationLimit: 15,
 		AlertThreshold:  0.8,
 	})
-	inner := &fakeExecutor{}
-	wrapped := wrapWithBudgetRestore(inner, budget, store)
+	coordExec := agentrt.NewCoordinatingExecutor(inner, nil, budget, nil, nil)
+	wrapped := wrapWithBudgetRestore(coordExec, store)
 
 	report, err := wrapped.RunStreamingDetailed(
 		context.Background(), "sess-1", "hello", nil,
 	)
 	require.NoError(t, err)
 	assert.Equal(t, "ok", report.Response)
-	assert.Equal(t, 7, budget.TurnCount())
-	assert.Equal(t, 3, budget.DelegationCount())
-	assert.Equal(t, 1, inner.calls)
+
+	// After the run, session state should have restored baseline (7/3) + run delta (0/0).
+	bre := wrapped.(*budgetRestoringExecutor)
+	stateVal, ok := bre.sessionState.Load("sess-1")
+	require.True(t, ok)
+	state := stateVal.(*sessionBudgetState)
+	state.mu.Lock()
+	assert.Equal(t, int64(7), state.cumulativeTurns)
+	assert.Equal(t, int64(3), state.cumulativeDeleg)
+	state.mu.Unlock()
 }
 
-func TestBudgetRestoringExecutor_SkipsSubsequentCalls(t *testing.T) {
+func TestBudgetRestoringExecutor_SkipsSubsequentRestores(t *testing.T) {
 	store := newSessionUsageStore()
 	store.put(&session.Session{
 		Key: "sess-2",
@@ -119,25 +128,31 @@ func TestBudgetRestoringExecutor_SkipsSubsequentCalls(t *testing.T) {
 		},
 	})
 
+	inner := &fakeExecutor{}
 	budget := agentrt.NewBudgetPolicy(config.BudgetCfg{
 		ToolCallLimit:   50,
 		DelegationLimit: 15,
 		AlertThreshold:  0.8,
 	})
-	inner := &fakeExecutor{}
-	wrapped := wrapWithBudgetRestore(inner, budget, store)
+	coordExec := agentrt.NewCoordinatingExecutor(inner, nil, budget, nil, nil)
+	wrapped := wrapWithBudgetRestore(coordExec, store)
 
-	// First call — restores.
+	// First call — restores baseline.
 	_, _ = wrapped.RunStreamingDetailed(context.Background(), "sess-2", "a", nil)
-	assert.Equal(t, 5, budget.TurnCount())
 
-	// Record additional turns.
-	budget.RecordTurn()
-	assert.Equal(t, 6, budget.TurnCount())
+	bre := wrapped.(*budgetRestoringExecutor)
+	stateVal, _ := bre.sessionState.Load("sess-2")
+	state := stateVal.(*sessionBudgetState)
+	state.mu.Lock()
+	assert.Equal(t, int64(5), state.cumulativeTurns)
+	state.mu.Unlock()
 
-	// Second call — should NOT re-restore (would reset to 5).
+	// Second call — should NOT re-restore (baseline stays, only adds run delta).
 	_, _ = wrapped.RunStreamingDetailed(context.Background(), "sess-2", "b", nil)
-	assert.Equal(t, 6, budget.TurnCount())
+	state.mu.Lock()
+	// Still 5 + 0 (run delta) + 0 (second run delta) = 5
+	assert.Equal(t, int64(5), state.cumulativeTurns)
+	state.mu.Unlock()
 	assert.Equal(t, 2, inner.calls)
 }
 
@@ -145,34 +160,100 @@ func TestBudgetRestoringExecutor_NoSessionMetadata(t *testing.T) {
 	store := newSessionUsageStore()
 	// No session in store — Get returns nil.
 
+	inner := &fakeExecutor{}
 	budget := agentrt.NewBudgetPolicy(config.BudgetCfg{
 		ToolCallLimit:   50,
 		DelegationLimit: 15,
 		AlertThreshold:  0.8,
 	})
-	inner := &fakeExecutor{}
-	wrapped := wrapWithBudgetRestore(inner, budget, store)
+	coordExec := agentrt.NewCoordinatingExecutor(inner, nil, budget, nil, nil)
+	wrapped := wrapWithBudgetRestore(coordExec, store)
 
 	_, err := wrapped.RunStreamingDetailed(context.Background(), "missing", "x", nil)
 	require.NoError(t, err)
-	assert.Equal(t, 0, budget.TurnCount())
-	assert.Equal(t, 0, budget.DelegationCount())
+
+	// Session state should exist but be zero.
+	bre := wrapped.(*budgetRestoringExecutor)
+	stateVal, ok := bre.sessionState.Load("missing")
+	require.True(t, ok)
+	state := stateVal.(*sessionBudgetState)
+	state.mu.Lock()
+	assert.Equal(t, int64(0), state.cumulativeTurns)
+	assert.Equal(t, int64(0), state.cumulativeDeleg)
+	state.mu.Unlock()
+}
+
+func TestBudgetRestoringExecutor_ClassicModeGracefulSkip(t *testing.T) {
+	store := newSessionUsageStore()
+	store.put(&session.Session{
+		Key:      "sess-classic",
+		Metadata: map[string]string{},
+	})
+
+	// Classic mode: inner is NOT a CoordinatingExecutor.
+	inner := &fakeExecutor{}
+	wrapped := wrapWithBudgetRestore(inner, store)
+
+	_, err := wrapped.RunStreamingDetailed(context.Background(), "sess-classic", "x", nil)
+	require.NoError(t, err)
+
+	// No session state should be created (no CoordinatingExecutor to read stats from).
+	bre := wrapped.(*budgetRestoringExecutor)
+	_, ok := bre.sessionState.Load("sess-classic")
+	assert.False(t, ok, "classic mode should not create session budget state")
+}
+
+func TestBudgetRestoringExecutor_NoSessionCrossContamination(t *testing.T) {
+	store := newSessionUsageStore()
+	store.put(&session.Session{
+		Key: "sess-a",
+		Metadata: map[string]string{
+			"usage:budget_turns":       "10",
+			"usage:budget_delegations": "4",
+		},
+	})
+	store.put(&session.Session{
+		Key: "sess-b",
+		Metadata: map[string]string{
+			"usage:budget_turns":       "20",
+			"usage:budget_delegations": "8",
+		},
+	})
+
+	inner := &fakeExecutor{}
+	budget := agentrt.NewBudgetPolicy(config.BudgetCfg{
+		ToolCallLimit:   50,
+		DelegationLimit: 15,
+		AlertThreshold:  0.8,
+	})
+	coordExec := agentrt.NewCoordinatingExecutor(inner, nil, budget, nil, nil)
+	wrapped := wrapWithBudgetRestore(coordExec, store)
+
+	_, _ = wrapped.RunStreamingDetailed(context.Background(), "sess-a", "a", nil)
+	_, _ = wrapped.RunStreamingDetailed(context.Background(), "sess-b", "b", nil)
+
+	bre := wrapped.(*budgetRestoringExecutor)
+
+	stateA, _ := bre.sessionState.Load("sess-a")
+	sA := stateA.(*sessionBudgetState)
+	sA.mu.Lock()
+	assert.Equal(t, int64(10), sA.cumulativeTurns)
+	assert.Equal(t, int64(4), sA.cumulativeDeleg)
+	sA.mu.Unlock()
+
+	stateB, _ := bre.sessionState.Load("sess-b")
+	sB := stateB.(*sessionBudgetState)
+	sB.mu.Lock()
+	assert.Equal(t, int64(20), sB.cumulativeTurns)
+	assert.Equal(t, int64(8), sB.cumulativeDeleg)
+	sB.mu.Unlock()
 }
 
 // --- wireSessionUsage tests ---
 
-func TestWireSessionUsage_PersistsBudgetAndTokens(t *testing.T) {
+func TestWireSessionUsage_PersistsSessionLocalBudgetAndTokens(t *testing.T) {
 	store := newSessionUsageStore()
 	store.put(&session.Session{Key: "sess-3"})
-
-	budget := agentrt.NewBudgetPolicy(config.BudgetCfg{
-		ToolCallLimit:   50,
-		DelegationLimit: 15,
-		AlertThreshold:  0.8,
-	})
-	budget.RecordTurn()
-	budget.RecordTurn()
-	budget.RecordDelegation("agent-a")
 
 	collector := observability.NewCollector()
 	collector.RecordTokenUsage(observability.TokenUsage{
@@ -181,17 +262,21 @@ func TestWireSessionUsage_PersistsBudgetAndTokens(t *testing.T) {
 		OutputTokens: 500,
 	})
 
+	// Create a budgetRestoringExecutor with pre-seeded session state.
 	inner := &fakeExecutor{}
-	runner := turnrunner.New(turnrunner.Config{}, inner, store, nil)
-	wireSessionUsage(runner, budget, store, collector)
+	bre := &budgetRestoringExecutor{
+		inner: inner,
+		store: store,
+	}
+	// Seed session state to simulate a run that accumulated counters.
+	bre.sessionState.Store("sess-3", &sessionBudgetState{
+		cumulativeTurns: 2,
+		cumulativeDeleg: 1,
+	})
 
-	// Simulate turn complete by invoking the callback indirectly.
-	// We fire the runner's callbacks via a real Run call — but that requires
-	// a full executor roundtrip. Instead, we test the callback logic by
-	// manually triggering OnTurnComplete's registered callbacks.
-	// The runner stores callbacks; we can exercise them via a turn.
-	// For simplicity, call the callback approach directly:
-	// wireSessionUsage registered a callback. We'll simulate by calling Run.
+	runner := turnrunner.New(turnrunner.Config{}, inner, store, nil)
+	wireSessionUsage(runner, bre, store, collector)
+
 	_, _ = runner.Run(context.Background(), turnrunner.Request{
 		SessionKey: "sess-3",
 		Input:      "test",
@@ -206,11 +291,25 @@ func TestWireSessionUsage_PersistsBudgetAndTokens(t *testing.T) {
 	assert.Equal(t, "500", sess.Metadata["usage:cumulative_output_tokens"])
 }
 
-func TestWireSessionUsage_NilBudgetNoOp(t *testing.T) {
+func TestWireSessionUsage_NilBudgetExecNoOp(t *testing.T) {
 	store := newSessionUsageStore()
+	store.put(&session.Session{Key: "sess-nil"})
 	inner := &fakeExecutor{}
 	runner := turnrunner.New(turnrunner.Config{}, inner, store, nil)
 
-	// Should not panic with nil budget.
+	// Should not panic with nil budgetExec.
 	wireSessionUsage(runner, nil, store, nil)
+
+	_, _ = runner.Run(context.Background(), turnrunner.Request{
+		SessionKey: "sess-nil",
+		Input:      "test",
+	})
+
+	// Session should exist but have no budget keys.
+	sess, err := store.Get("sess-nil")
+	require.NoError(t, err)
+	if sess != nil && sess.Metadata != nil {
+		_, hasTurns := sess.Metadata["usage:budget_turns"]
+		assert.False(t, hasTurns, "no budget keys should be written with nil budgetExec")
+	}
 }

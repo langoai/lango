@@ -74,6 +74,26 @@ func TestUnwrapShellWrapper(t *testing.T) {
 		{give: `sh -c "bash -c \"zsh -c \\\"deep\\\"\""`, wantInner: "deep", wantUnwrapped: true},
 		// P2: single quotes inside nested wrapper
 		{give: `bash -c 'sh -c "hello world"'`, wantInner: "hello world", wantUnwrapped: true},
+		// Fix B: env with variable assignment before shell verb
+		{give: `env FOO=1 sh -c "kill 1234"`, wantInner: "kill 1234", wantUnwrapped: true},
+		// Fix B: env -i flag before shell verb
+		{give: `env -i bash -c "lango cron"`, wantInner: "lango cron", wantUnwrapped: true},
+		// Fix B: env -u flag with argument before shell verb
+		{give: `env -u SECRET sh -c "echo hi"`, wantInner: "echo hi", wantUnwrapped: true},
+		// Fix B: env -C flag with argument before shell verb
+		{give: `env -C /tmp bash -c "ls"`, wantInner: "ls", wantUnwrapped: true},
+		// Fix B: env -S flag (split-string) with argument before shell verb
+		{give: `env -S "FOO=1 BAR=2" sh -c "echo test"`, wantInner: "echo test", wantUnwrapped: true},
+		// Fix B: env -- terminator before shell verb
+		{give: `env -- sh -c "kill 1"`, wantInner: "kill 1", wantUnwrapped: true},
+		// Fix B: env with path-like assignment is not a valid env assignment
+		{give: `env ./foo=bar`, wantInner: `env ./foo=bar`, wantUnwrapped: false},
+		// Fix B: env -u VAR — VAR must be skipped, not treated as command
+		{give: `env -u VAR sh -c "kill 1"`, wantInner: "kill 1", wantUnwrapped: true},
+		// Fix B: env with multiple variable assignments
+		{give: `env FOO=1 BAR=2 sh -c "echo test"`, wantInner: "echo test", wantUnwrapped: true},
+		// Fix B: env with mixed flags and assignments
+		{give: `env -i FOO=1 -u SECRET bash -c "echo ok"`, wantInner: "echo ok", wantUnwrapped: true},
 	}
 
 	for _, tt := range tests {
@@ -185,6 +205,34 @@ func TestUnwrapShellWrapper_ASTFallback(t *testing.T) {
 	inner, ok := unwrapShellWrapper(`sh -c "kill 1234`)
 	assert.False(t, ok, "unmatched quote should not unwrap")
 	assert.Equal(t, `sh -c "kill 1234`, inner)
+}
+
+func TestLooksLikeEnvAssignment(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		give string
+		want bool
+	}{
+		{"FOO=1", true},
+		{"BAR=hello", true},
+		{"_VAR=value", true},
+		{"MY_VAR_2=test", true},
+		{"A=", true},         // empty value is valid
+		{"./foo=bar", false},  // starts with dot-slash
+		{"--flag=val", false}, // starts with dash
+		{"=value", false},     // no name before =
+		{"noequalssign", false},
+		{"", false},
+		{"123=bad", false}, // starts with digit
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.give, func(t *testing.T) {
+			t.Parallel()
+			assert.Equal(t, tt.want, looksLikeEnvAssignment(tt.give))
+		})
+	}
 }
 
 func TestStripQuotes(t *testing.T) {

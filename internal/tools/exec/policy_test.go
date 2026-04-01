@@ -115,6 +115,12 @@ func TestPolicyEvaluator_Evaluate(t *testing.T) {
 		{give: `sh -c "bash -c \"echo safe\""`, wantVerdict: VerdictAllow, wantReason: ReasonNone},
 		// P2: env + login shell combination
 		{give: `env sh -lc "kill 1234"`, wantVerdict: VerdictBlock, wantReason: ReasonKillVerb},
+		// Fix B: env with variable assignment — kill verb blocked
+		{give: `env FOO=1 sh -c "kill 1234"`, wantVerdict: VerdictBlock, wantReason: ReasonKillVerb},
+		// Fix B: env -i flag — lango CLI blocked
+		{give: `env -i bash -c "lango security"`, wantVerdict: VerdictBlock, wantReason: ReasonLangoCLI},
+		// Fix B: env -u flag — clean command allowed
+		{give: `env -u SECRET sh -c "echo hi"`, wantVerdict: VerdictAllow, wantReason: ReasonNone},
 	}
 
 	for _, tt := range tests {

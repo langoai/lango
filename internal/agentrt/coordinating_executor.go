@@ -20,6 +20,12 @@ func logger() *zap.SugaredLogger { return logging.SubsystemSugar("agentrt") }
 // Compile-time interface check.
 var _ turnrunner.Executor = (*CoordinatingExecutor)(nil)
 
+// RunStats holds the final budget counters from a single RunStreamingDetailed call.
+type RunStats struct {
+	Turns       int
+	Delegations int
+}
+
 // CoordinatingExecutor wraps a turnrunner.Executor to apply
 // DelegationGuard, BudgetPolicy, and RecoveryPolicy.
 // It is a policy/observation wrapper, not a new execution engine.
@@ -30,6 +36,8 @@ type CoordinatingExecutor struct {
 	budget   *BudgetPolicy
 	recovery *RecoveryPolicy
 	bus      *eventbus.Bus
+
+	runStatsMap sync.Map // sessionID → RunStats
 }
 
 // NewCoordinatingExecutor creates a coordinating executor wrapping the inner executor.
@@ -68,6 +76,18 @@ func (s *runState) target() string {
 	return s.lastDelegationTarget
 }
 
+// LastRunStatsForSession returns the budget counters from the most recent
+// RunStreamingDetailed call for the given session, then removes the entry.
+// This is session-safe: concurrent runs for different sessions do not
+// overwrite each other's stats.
+func (c *CoordinatingExecutor) LastRunStatsForSession(sessionID string) (RunStats, bool) {
+	v, ok := c.runStatsMap.LoadAndDelete(sessionID)
+	if !ok {
+		return RunStats{}, false
+	}
+	return v.(RunStats), true
+}
+
 // RunStreamingDetailed implements turnrunner.Executor.
 func (c *CoordinatingExecutor) RunStreamingDetailed(
 	ctx context.Context,
@@ -79,7 +99,16 @@ func (c *CoordinatingExecutor) RunStreamingDetailed(
 	budget := c.budget.Clone()                      // per-run mirrored counters
 	classRetryCounts := make(map[CauseClass]int, 4) // per-class retry counts for this run
 
-	return c.runWithRecovery(ctx, sessionID, input, onChunk, state, budget, 0, classRetryCounts, opts...)
+	report, err := c.runWithRecovery(ctx, sessionID, input, onChunk, state, budget, 0, classRetryCounts, opts...)
+
+	// Capture the clone's final counters keyed by session so concurrent
+	// turns for different sessions don't overwrite each other's stats.
+	c.runStatsMap.Store(sessionID, RunStats{
+		Turns:       budget.TurnCount(),
+		Delegations: budget.DelegationCount(),
+	})
+
+	return report, err
 }
 
 func (c *CoordinatingExecutor) runWithRecovery(

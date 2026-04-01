@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"path/filepath"
 	"strings"
+	"unicode"
 
 	"mvdan.cc/sh/v3/syntax"
 )
@@ -78,10 +79,12 @@ func unwrapShellWrapperAST(f *syntax.File, depth int) (string, bool) {
 
 	args := call.Args
 
-	// Check for env wrapper: strip "env" or "/usr/bin/env" prefix.
+	// Check for env wrapper: strip "env" or "/usr/bin/env" prefix and skip
+	// env-specific flags (-i, -0, -u NAME, -C DIR), variable assignments
+	// (NAME=value), and the -- terminator to find the actual command verb.
 	verb := wordLitLower(args[0])
 	if isEnvVerb(verb) {
-		args = args[1:]
+		args = skipEnvArgs(args)
 		if len(args) < 1 {
 			return "", false
 		}
@@ -245,6 +248,61 @@ func wordLitLower(w *syntax.Word) string {
 // shell invocations like /usr/bin/env sh -c "cmd").
 func isEnvVerb(verb string) bool {
 	return verb == "env"
+}
+
+// skipEnvArgs skips env-specific arguments (flags, flag arguments, variable
+// assignments, and the -- terminator) and returns the remaining args starting
+// from the actual command verb.
+//
+// env command syntax (POSIX + GNU coreutils):
+//
+//	env [-i] [-0] [-u name] [-C dir] [-S string] [--] [name=value]... [command [args...]]
+func skipEnvArgs(args []*syntax.Word) []*syntax.Word {
+	i := 1 // skip 'env' itself
+loop:
+	for i < len(args) {
+		lit := args[i].Lit()
+		switch {
+		case lit == "--":
+			i++
+			break loop // next is command
+		case lit == "-i" || lit == "-0":
+			i++ // standalone flag
+		case lit == "-u" || lit == "-C" || lit == "-S":
+			i += 2 // flag + its argument (-u NAME, -C DIR, -S STRING)
+		case strings.HasPrefix(lit, "-") && len(lit) > 1:
+			i++ // other unknown flags
+		case looksLikeEnvAssignment(lit):
+			i++ // NAME=value
+		default:
+			break loop // found command verb
+		}
+	}
+	if i >= len(args) {
+		return nil
+	}
+	return args[i:]
+}
+
+// looksLikeEnvAssignment returns true if s matches the pattern NAME=value where
+// NAME is a valid shell variable name (first char letter/_, rest alnum/_).
+// This prevents paths like ./foo=bar or flags like --flag=val from being
+// misidentified as env variable assignments.
+func looksLikeEnvAssignment(s string) bool {
+	idx := strings.IndexByte(s, '=')
+	if idx <= 0 {
+		return false
+	}
+	name := s[:idx]
+	for i, r := range name {
+		if i == 0 && !(unicode.IsLetter(r) || r == '_') {
+			return false
+		}
+		if i > 0 && !(unicode.IsLetter(r) || unicode.IsDigit(r) || r == '_') {
+			return false
+		}
+	}
+	return true
 }
 
 // unwrapShellWrapperString is the original string-based unwrap implementation.

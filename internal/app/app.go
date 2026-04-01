@@ -13,6 +13,7 @@ import (
 	"github.com/langoai/lango/internal/a2a"
 	"github.com/langoai/lango/internal/adk"
 	"github.com/langoai/lango/internal/agent"
+	"github.com/langoai/lango/internal/agentrt"
 	"github.com/langoai/lango/internal/appinit"
 	"github.com/langoai/lango/internal/approval"
 	"github.com/langoai/lango/internal/background"
@@ -219,7 +220,7 @@ func New(boot *bootstrap.Result, opts ...AppOption) (*App, error) {
 			return classifyLangoExec(cmd, fv.AutoAvail)
 		}
 		var policyBus execpkg.EventPublisher
-		if (cfg.Hooks.Enabled || cfg.Agent.MultiAgent) && cfg.Hooks.EventPublishing && bus != nil {
+		if bus != nil {
 			policyBus = &policyBusAdapter{bus: bus}
 		}
 		// Merge catastrophic patterns: defaults + user-configured (same set as SecurityFilterHook).
@@ -271,9 +272,12 @@ func New(boot *bootstrap.Result, opts ...AppOption) (*App, error) {
 	if iv != nil && iv.KC != nil && iv.KC.engine != nil {
 		errorFixProvider = iv.KC.engine
 	}
-	executor, budget := initAgentRuntime(cfg, adkAgent, bus, errorFixProvider)
-	if budget != nil {
-		executor = wrapWithBudgetRestore(executor, budget, fv.Store)
+	executor := initAgentRuntime(cfg, adkAgent, bus, errorFixProvider)
+	var budgetExec *budgetRestoringExecutor
+	if _, isCoord := executor.(*agentrt.CoordinatingExecutor); isCoord {
+		wrapped := wrapWithBudgetRestore(executor, fv.Store)
+		budgetExec = wrapped.(*budgetRestoringExecutor)
+		executor = wrapped
 	}
 	app.TurnRunner = turnrunner.New(turnrunner.Config{
 		IdleTimeout:         idleTimeout,
@@ -281,7 +285,7 @@ func New(boot *bootstrap.Result, opts ...AppOption) (*App, error) {
 		TraceStore:          app.TurnTraceStore,
 		DelegationBudgetMax: cfg.Agent.Orchestration.Budget.DelegationLimit,
 	}, executor, app.Store, app.Sanitizer)
-	wireSessionUsage(app.TurnRunner, budget, fv.Store, app.MetricsCollector)
+	wireSessionUsage(app.TurnRunner, budgetExec, fv.Store, app.MetricsCollector)
 	app.Gateway.SetTurnRunner(app.TurnRunner)
 
 	// B7. Post-agent wiring.

@@ -9,7 +9,9 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"google.golang.org/adk/model"
 	adksession "google.golang.org/adk/session"
+	"google.golang.org/genai"
 
 	"github.com/langoai/lango/internal/adk"
 	"github.com/langoai/lango/internal/config"
@@ -413,6 +415,73 @@ func TestCoordinatingExecutor_RecoveryDecisionEventPublished(t *testing.T) {
 	assert.Equal(t, 0, evt.Attempt, "first recovery attempt should be attempt 0")
 	assert.Equal(t, ComputeBackoff(0), evt.Backoff)
 	assert.Equal(t, "sess-decision", evt.SessionKey)
+}
+
+func TestCoordinatingExecutor_LastRunStatsCaptures(t *testing.T) {
+	// The inner executor fires events that cause the per-run clone to
+	// record 2 turns and 1 delegation.
+	executor := mockCallExecutor(func(_ context.Context, _, _ string, _ adk.ChunkCallback, opts ...adk.RunOption) (adk.RunReport, error) {
+		hooks := adk.ResolveRunHooks(opts...)
+		require.NotNil(t, hooks.OnEvent)
+
+		// Simulate two function-call events (turns).
+		hooks.OnEvent(&adksession.Event{
+			Author: "lango-orchestrator",
+			LLMResponse: model.LLMResponse{
+				Content: &genai.Content{
+					Parts: []*genai.Part{
+						{FunctionCall: &genai.FunctionCall{Name: "tool1"}},
+					},
+				},
+			},
+		})
+		hooks.OnEvent(&adksession.Event{
+			Author: "lango-orchestrator",
+			LLMResponse: model.LLMResponse{
+				Content: &genai.Content{
+					Parts: []*genai.Part{
+						{FunctionCall: &genai.FunctionCall{Name: "tool2"}},
+					},
+				},
+			},
+		})
+
+		// Simulate one delegation event.
+		hooks.OnEvent(&adksession.Event{
+			Author: "lango-orchestrator",
+			Actions: adksession.EventActions{
+				TransferToAgent: "operator",
+			},
+		})
+
+		return adk.RunReport{Response: "ok"}, nil
+	})
+
+	ce := NewCoordinatingExecutor(
+		executor,
+		NewDelegationGuard(config.CircuitBreakerCfg{FailureThreshold: 3}, nil),
+		NewBudgetPolicy(config.BudgetCfg{ToolCallLimit: 50, DelegationLimit: 15, AlertThreshold: 0.8}),
+		nil,
+		nil,
+	)
+
+	// Before any run, stats should be absent.
+	_, found := ce.LastRunStatsForSession("sess-stats")
+	assert.False(t, found)
+
+	// Run and check.
+	report, err := ce.RunStreamingDetailed(context.Background(), "sess-stats", "input", nil)
+	require.NoError(t, err)
+	assert.Equal(t, "ok", report.Response)
+
+	stats, found := ce.LastRunStatsForSession("sess-stats")
+	assert.True(t, found)
+	assert.Equal(t, 2, stats.Turns)
+	assert.Equal(t, 1, stats.Delegations)
+
+	// After consuming, stats should be absent (consumed once).
+	_, found = ce.LastRunStatsForSession("sess-stats")
+	assert.False(t, found)
 }
 
 // mockCallExecutor is a function-based turnrunner.Executor for testing.
