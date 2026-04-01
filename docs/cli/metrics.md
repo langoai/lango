@@ -111,6 +111,45 @@ planner     18000   6000    48
 
 ---
 
+## lango metrics policy
+
+Show policy decision statistics including block and observe counts with per-reason breakdowns. Fetches data from the `/metrics/policy` gateway endpoint.
+
+```
+lango metrics policy [--output table|json] [--addr <url>]
+```
+
+**Example:**
+
+```bash
+$ lango metrics policy
+=== Policy Decisions ===
+
+Blocks:    3
+Observes:  12
+
+--- By Reason ---
+REASON                  COUNT
+catastrophic_pattern    2
+destructive_command     1
+network_exfiltration    5
+suspicious_pipe         7
+
+$ lango metrics policy --output json
+{
+  "blocks": 3,
+  "observes": 12,
+  "byReason": {
+    "catastrophic_pattern": 2,
+    "destructive_command": 1,
+    "network_exfiltration": 5,
+    "suspicious_pipe": 7
+  }
+}
+```
+
+---
+
 ## lango metrics history
 
 Show historical token usage from the database for the specified number of days.

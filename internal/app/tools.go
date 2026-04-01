@@ -41,11 +41,10 @@ func buildTools(sv *supervisor.Supervisor, fsCfg filesystem.Config, browserSM *b
 	return tools
 }
 
-// blockLangoExec checks if the command attempts to invoke the lango CLI.
-// ALL lango CLI commands require passphrase authentication via bootstrap and
-// will fail when spawned as a subprocess (non-interactive stdin). Returns a
-// guidance message if blocked, or empty string if allowed.
-func blockLangoExec(cmd string, automationAvailable map[string]bool) string {
+// classifyLangoExec checks if the command attempts to invoke the lango CLI
+// or redirects skill-related commands. Returns a guidance message and a
+// structured ReasonCode for the PolicyEvaluator.
+func classifyLangoExec(cmd string, automationAvailable map[string]bool) (string, execpkg.ReasonCode) {
 	lower := strings.ToLower(strings.TrimSpace(cmd))
 
 	// --- Phase 1: Subcommands with in-process tool equivalents ---
@@ -75,12 +74,12 @@ func blockLangoExec(cmd string, automationAvailable map[string]bool) string {
 				return fmt.Sprintf(
 					"Do not use exec to run '%s' — use the built-in tools instead (%s). "+
 						"Spawning a new lango process requires passphrase authentication and will fail in non-interactive mode.",
-					g.prefix, g.tools)
+					g.prefix, g.tools), execpkg.ReasonLangoCLI
 			}
 			return fmt.Sprintf(
 				"Cannot run '%s' via exec — spawning a new lango process requires passphrase authentication. "+
 					"Enable the %s feature in Settings to use the built-in tools (%s).",
-				g.prefix, g.feature, g.tools)
+				g.prefix, g.feature, g.tools), execpkg.ReasonLangoCLI
 		}
 	}
 
@@ -89,14 +88,16 @@ func blockLangoExec(cmd string, automationAvailable map[string]bool) string {
 		return "Do not use exec to run the lango CLI — every lango command requires passphrase authentication " +
 			"via bootstrap and will fail when spawned as a subprocess. " +
 			"Use the built-in tools (try builtin_list to discover available tools), " +
-			"or ask the user to run this command directly in their terminal."
+			"or ask the user to run this command directly in their terminal.", execpkg.ReasonLangoCLI
 	}
+
+	// --- Phase 3: Skill import redirects ---
 
 	// Redirect skill-related git clone to import_skill tool.
 	if strings.HasPrefix(lower, "git clone") && strings.Contains(lower, "skill") {
 		return "Use the built-in import_skill tool instead of manual git clone — " +
 			"it automatically uses git clone internally when available and stores skills in the correct location (~/.lango/skills/). " +
-			"Example: import_skill(url: \"<github-repo-url>\")"
+			"Example: import_skill(url: \"<github-repo-url>\")", execpkg.ReasonSkillImport
 	}
 
 	// Redirect skill-related curl/wget to import_skill tool.
@@ -104,10 +105,18 @@ func blockLangoExec(cmd string, automationAvailable map[string]bool) string {
 		strings.Contains(lower, "skill") {
 		return "Use the built-in import_skill tool instead of manual curl/wget — " +
 			"it handles downloads internally and stores skills correctly. " +
-			"Example: import_skill(url: \"<url>\")"
+			"Example: import_skill(url: \"<url>\")", execpkg.ReasonSkillImport
 	}
 
-	return ""
+	return "", execpkg.ReasonNone
+}
+
+// blockLangoExec is the GuardFunc-compatible wrapper for handler-level
+// defense-in-depth. Delegates to classifyLangoExec and returns only the
+// message string.
+func blockLangoExec(cmd string, automationAvailable map[string]bool) string {
+	msg, _ := classifyLangoExec(cmd, automationAvailable)
+	return msg
 }
 
 // blockProtectedPaths checks if the command attempts to access protected data

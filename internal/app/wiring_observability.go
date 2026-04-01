@@ -2,6 +2,7 @@ package app
 
 import (
 	"github.com/langoai/lango/internal/adk"
+	"github.com/langoai/lango/internal/alerting"
 	"github.com/langoai/lango/internal/config"
 	"github.com/langoai/lango/internal/ent"
 	"github.com/langoai/lango/internal/eventbus"
@@ -64,7 +65,13 @@ func initObservability(cfg *config.Config, dbClient *ent.Client, bus *eventbus.B
 		logger().Info("observability: token tracker subscribed to event bus")
 	}
 
-	// 5. Subscribe to ToolExecutedEvent for tool metrics + error logging
+	// 5. Subscribe to PolicyDecisionEvent for policy metrics
+	eventbus.SubscribeTyped[eventbus.PolicyDecisionEvent](bus, func(evt eventbus.PolicyDecisionEvent) {
+		oc.collector.RecordPolicyDecision(evt.Verdict, evt.Reason)
+	})
+	logger().Info("observability: policy decision metrics wired")
+
+	// 6. Subscribe to ToolExecutedEvent for tool metrics + error logging
 	eventbus.SubscribeTyped[toolchain.ToolExecutedEvent](bus, func(evt toolchain.ToolExecutedEvent) {
 		oc.collector.RecordToolExecution(evt.ToolName, evt.AgentName, evt.Duration, evt.Success)
 		if !evt.Success && evt.Error != "" {
@@ -78,6 +85,18 @@ func initObservability(cfg *config.Config, dbClient *ent.Client, bus *eventbus.B
 		}
 	})
 	logger().Info("observability: tool execution metrics wired")
+
+	// 7. Alerting dispatcher — threshold-based operational alerts
+	if cfg.Alerting.Enabled {
+		if !cfg.Observability.Audit.Enabled {
+			logger().Warnw("alerting enabled but audit logging is disabled; alerts will not be persisted — enable observability.audit for alert history")
+		}
+		dispatcher := alerting.NewDispatcher(bus, cfg.Alerting.PolicyBlockRate, cfg.Alerting.RecoveryRetries)
+		dispatcher.Subscribe(bus)
+		logger().Info("observability: alerting dispatcher wired",
+			"policyBlockRate", cfg.Alerting.PolicyBlockRate,
+			"recoveryRetries", cfg.Alerting.RecoveryRetries)
+	}
 
 	return oc
 }

@@ -46,6 +46,74 @@ func TestCheckpointService_CreateManual(t *testing.T) {
 	assert.Equal(t, int64(1), cp.JournalSeq)
 }
 
+func TestCheckpointService_CreateManualWithMetadata(t *testing.T) {
+	tests := []struct {
+		give       string
+		sessionKey string
+		runID      string
+		label      string
+		metadata   map[string]string
+		wantErr    error
+	}{
+		{
+			give:       "success with metadata and no runID",
+			sessionKey: "sess-1",
+			runID:      "",
+			label:      "session_config_snapshot",
+			metadata:   map[string]string{"config_fingerprint": "abc123", "hook_registry": "[]"},
+		},
+		{
+			give:       "success with metadata and runID",
+			sessionKey: "sess-1",
+			runID:      "run-1",
+			label:      "config_snapshot",
+			metadata:   map[string]string{"config_fingerprint": "def456"},
+		},
+		{
+			give:       "success with nil metadata",
+			sessionKey: "sess-1",
+			runID:      "",
+			label:      "plain_checkpoint",
+			metadata:   nil,
+		},
+		{
+			give:    "empty label rejected",
+			label:   "",
+			wantErr: ErrInvalidLabel,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.give, func(t *testing.T) {
+			store := NewMemoryStore()
+			cfg := config.CheckpointConfig{MaxPerSession: 100}
+			svc := NewCheckpointService(store, nil, cfg)
+
+			cp, err := svc.CreateManualWithMetadata(
+				context.Background(), tt.sessionKey, tt.runID, tt.label, tt.metadata,
+			)
+			if tt.wantErr != nil {
+				assert.ErrorIs(t, err, tt.wantErr)
+				assert.Nil(t, cp)
+				return
+			}
+
+			require.NoError(t, err)
+			require.NotNil(t, cp)
+			assert.NotEmpty(t, cp.ID)
+			assert.Equal(t, tt.sessionKey, cp.SessionKey)
+			assert.Equal(t, tt.runID, cp.RunID)
+			assert.Equal(t, tt.label, cp.Label)
+			assert.Equal(t, TriggerManual, cp.Trigger)
+			if tt.metadata != nil {
+				assert.Equal(t, tt.metadata, cp.Metadata)
+			} else {
+				assert.Nil(t, cp.Metadata)
+			}
+		})
+	}
+}
+
 func TestCheckpointService_CreateManual_EmptyLabel(t *testing.T) {
 	store := NewMemoryStore()
 	cfg := config.CheckpointConfig{}

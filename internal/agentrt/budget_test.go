@@ -114,6 +114,92 @@ func TestBudgetPolicy_Reset(t *testing.T) {
 	assert.Equal(t, 0, bp.UniqueAgentCount())
 }
 
+func TestBudgetPolicy_Serialize(t *testing.T) {
+	bp := NewBudgetPolicy(config.BudgetCfg{
+		ToolCallLimit:   50,
+		DelegationLimit: 15,
+		AlertThreshold:  0.8,
+	})
+
+	for i := 0; i < 5; i++ {
+		bp.RecordTurn()
+	}
+	for i := 0; i < 3; i++ {
+		bp.RecordDelegation("agent")
+	}
+
+	state := bp.Serialize()
+	assert.Equal(t, "5", state["usage:budget_turns"])
+	assert.Equal(t, "3", state["usage:budget_delegations"])
+	assert.Len(t, state, 2)
+}
+
+func TestBudgetPolicy_Restore(t *testing.T) {
+	tests := []struct {
+		give     map[string]string
+		wantTurn int
+		wantDel  int
+	}{
+		{
+			give:     map[string]string{"usage:budget_turns": "10", "usage:budget_delegations": "4"},
+			wantTurn: 10,
+			wantDel:  4,
+		},
+		{
+			give:     map[string]string{},
+			wantTurn: 0,
+			wantDel:  0,
+		},
+		{
+			give:     map[string]string{"usage:budget_turns": "abc"},
+			wantTurn: 0,
+			wantDel:  0,
+		},
+		{
+			give:     map[string]string{"usage:budget_turns": "7"},
+			wantTurn: 7,
+			wantDel:  0,
+		},
+	}
+
+	for _, tt := range tests {
+		bp := NewBudgetPolicy(config.BudgetCfg{
+			ToolCallLimit:   50,
+			DelegationLimit: 15,
+			AlertThreshold:  0.8,
+		})
+		bp.Restore(tt.give)
+		assert.Equal(t, tt.wantTurn, bp.TurnCount())
+		assert.Equal(t, tt.wantDel, bp.DelegationCount())
+	}
+}
+
+func TestBudgetPolicy_SerializeRestoreRoundTrip(t *testing.T) {
+	bp := NewBudgetPolicy(config.BudgetCfg{
+		ToolCallLimit:   50,
+		DelegationLimit: 15,
+		AlertThreshold:  0.8,
+	})
+	for i := 0; i < 12; i++ {
+		bp.RecordTurn()
+	}
+	for i := 0; i < 6; i++ {
+		bp.RecordDelegation("agent")
+	}
+
+	state := bp.Serialize()
+
+	bp2 := NewBudgetPolicy(config.BudgetCfg{
+		ToolCallLimit:   50,
+		DelegationLimit: 15,
+		AlertThreshold:  0.8,
+	})
+	bp2.Restore(state)
+
+	assert.Equal(t, 12, bp2.TurnCount())
+	assert.Equal(t, 6, bp2.DelegationCount())
+}
+
 func TestBudgetPolicy_CloneIsolatesMutableState(t *testing.T) {
 	base := NewBudgetPolicy(config.BudgetCfg{
 		ToolCallLimit:   10,

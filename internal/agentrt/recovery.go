@@ -4,10 +4,76 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"time"
 
 	"github.com/langoai/lango/internal/adk"
 	"github.com/langoai/lango/internal/config"
 )
+
+// CauseClass categorizes errors for per-class retry limit decisions.
+type CauseClass string
+
+const (
+	CauseRateLimit         CauseClass = "rate_limit"
+	CauseTransient         CauseClass = "transient"
+	CauseMalformedToolCall CauseClass = "malformed_tool_call"
+	CauseTimeout           CauseClass = "timeout"
+	CauseUnknown           CauseClass = "unknown"
+)
+
+
+const (
+	backoffBaseDelay = 1 * time.Second
+	backoffMaxDelay  = 30 * time.Second
+)
+
+// ComputeBackoff returns an exponential backoff duration for the given attempt.
+// The formula is min(baseDelay * 2^attempt, maxBackoff).
+func ComputeBackoff(attempt int) time.Duration {
+	backoff := time.Duration(1<<uint(attempt)) * backoffBaseDelay
+	if backoff > backoffMaxDelay {
+		backoff = backoffMaxDelay
+	}
+	return backoff
+}
+
+// classifyForRetry maps an AgentError's CauseClass to a recovery CauseClass
+// for per-class retry limit lookups.
+func classifyForRetry(agentErr *adk.AgentError) CauseClass {
+	if agentErr == nil {
+		return CauseUnknown
+	}
+	switch {
+	case agentErr.CauseClass == adk.CauseProviderRateLimit:
+		return CauseRateLimit
+	case agentErr.CauseClass == adk.CauseProviderTransient:
+		return CauseTransient
+	case agentErr.CauseClass == adk.CauseFunctionCallValidation:
+		return CauseMalformedToolCall
+	case agentErr.Code == adk.ErrTimeout || agentErr.Code == adk.ErrIdleTimeout:
+		return CauseTimeout
+	default:
+		return CauseUnknown
+	}
+}
+
+// retryLimitForClass returns the effective retry limit for a cause class.
+// If the class has a specific limit, that limit is used. Otherwise the
+// global maxRetries is returned.
+func retryLimitForClass(class CauseClass, globalMax int) int {
+	switch class {
+	case CauseRateLimit:
+		return 5
+	case CauseTransient:
+		return 3
+	case CauseMalformedToolCall:
+		return 1
+	case CauseTimeout:
+		return 3
+	default:
+		return globalMax
+	}
+}
 
 // RecoveryAction describes the decision made by the recovery policy.
 type RecoveryAction int
@@ -22,12 +88,13 @@ const (
 
 // RecoveryContext provides information about a failed execution.
 type RecoveryContext struct {
-	Error         error
-	AgentName     string
-	PartialResult string
-	RetryCount    int
-	SessionID     string
-	LearningFix   string // populated by tryLearningFix if ErrorFixProvider returns a fix
+	Error            error
+	AgentName        string
+	PartialResult    string
+	RetryCount       int
+	SessionID        string
+	LearningFix      string // populated by tryLearningFix if ErrorFixProvider returns a fix
+	ClassRetryCounts map[CauseClass]int // per-class retry counts across attempts
 }
 
 // RecoveryPolicy decides how to handle agent execution failures.
@@ -51,15 +118,31 @@ func NewRecoveryPolicy(cfg config.RecoveryCfg, provider adk.ErrorFixProvider) *R
 }
 
 // Decide evaluates a failure and returns the recommended recovery action.
+// It checks per-error-class retry limits in addition to the global maxRetries.
 func (p *RecoveryPolicy) Decide(ctx context.Context, failure *RecoveryContext) RecoveryAction {
-	if failure.RetryCount >= p.maxRetries {
+	// Initialize class retry counts if needed.
+	if failure.ClassRetryCounts == nil {
+		failure.ClassRetryCounts = make(map[CauseClass]int)
+	}
+
+	// Compute effective retry limit: class-specific limit may exceed global max.
+	effectiveMax := p.maxRetries
+	var agentErr *adk.AgentError
+	if errors.As(failure.Error, &agentErr) {
+		class := classifyForRetry(agentErr)
+		if classLimit := retryLimitForClass(class, p.maxRetries); classLimit > effectiveMax {
+			effectiveMax = classLimit
+		}
+	}
+
+	// Check global/effective retry limit.
+	if failure.RetryCount >= effectiveMax {
 		if failure.PartialResult != "" {
 			return RecoveryDirectAnswer
 		}
 		return RecoveryEscalate
 	}
 
-	var agentErr *adk.AgentError
 	if !errors.As(failure.Error, &agentErr) {
 		// Non-agent error: try learning-based fix if available.
 		if p.tryLearningFix(ctx, "", failure.Error, failure) {
@@ -68,12 +151,26 @@ func (p *RecoveryPolicy) Decide(ctx context.Context, failure *RecoveryContext) R
 		return RecoveryEscalate
 	}
 
+	// Check per-class retry limit.
+	class := classifyForRetry(agentErr)
+	classCount := failure.ClassRetryCounts[class]
+	classLimit := retryLimitForClass(class, p.maxRetries)
+	if classCount >= classLimit {
+		if failure.PartialResult != "" {
+			return RecoveryDirectAnswer
+		}
+		return RecoveryEscalate
+	}
+
+	// Increment per-class counter.
+	failure.ClassRetryCounts[class]++
+
 	switch agentErr.Code {
 	case adk.ErrToolChurn:
 		return RecoveryRetryWithHint
 
 	case adk.ErrModelError:
-		if agentErr.CauseClass == "provider_rate_limit" || agentErr.CauseClass == "provider_transient" {
+		if agentErr.CauseClass == adk.CauseProviderRateLimit || agentErr.CauseClass == adk.CauseProviderTransient {
 			return RecoveryRetry
 		}
 		return RecoveryEscalate
@@ -82,11 +179,14 @@ func (p *RecoveryPolicy) Decide(ctx context.Context, failure *RecoveryContext) R
 		return RecoveryEscalate
 
 	case adk.ErrToolError:
-		if agentErr.CauseClass == "approval_denied" {
+		if agentErr.CauseClass == adk.CauseApprovalDenied {
 			return RecoveryEscalate
 		}
 		if agentErr.CauseClass == adk.CauseOrchestratorDirectTool {
 			return RecoveryEscalate // same-input retry cannot fix a guard violation
+		}
+		if agentErr.CauseClass == adk.CauseFunctionCallValidation {
+			return RecoveryRetry // malformed tool call — class limit will stop after 1 retry
 		}
 		if failure.AgentName != "" {
 			_ = p.tryLearningFix(ctx, "", failure.Error, failure)

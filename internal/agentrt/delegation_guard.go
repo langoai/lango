@@ -115,6 +115,24 @@ func (g *DelegationGuard) State(agentName string) CircuitState {
 	return cb.state
 }
 
+// providerKey returns a namespaced key for provider-level circuit breakers
+// to avoid collision with agent names.
+func providerKey(provider string) string {
+	return "provider:" + provider
+}
+
+// RecordProviderFailure records the result of a provider-level operation
+// to update circuit breaker state. Provider keys are prefixed with "provider:"
+// to avoid collision with agent names.
+func (g *DelegationGuard) RecordProviderFailure(provider string, success bool) {
+	g.RecordOutcome(providerKey(provider), success)
+}
+
+// IsProviderOpen returns true if the provider's circuit is open.
+func (g *DelegationGuard) IsProviderOpen(provider string) bool {
+	return g.IsOpen(providerKey(provider))
+}
+
 func (g *DelegationGuard) ensureBreaker(name string) *circuitBreaker {
 	cb, ok := g.breakers[name]
 	if !ok {

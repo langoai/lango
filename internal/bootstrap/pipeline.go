@@ -4,9 +4,11 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"time"
 
 	"github.com/langoai/lango/internal/ent"
 	"github.com/langoai/lango/internal/keyring"
+	"github.com/langoai/lango/internal/logging"
 	"github.com/langoai/lango/internal/security"
 	"github.com/langoai/lango/internal/security/passphrase"
 )
@@ -66,11 +68,14 @@ func NewPipeline(phases ...Phase) *Pipeline {
 
 // Execute runs all phases. On failure, cleans up in reverse order.
 func (p *Pipeline) Execute(ctx context.Context, opts Options) (*Result, error) {
+	log := logging.SubsystemSugar("bootstrap")
 	state := &State{Options: opts}
 
 	var completed []int // indices of completed phases
+	var timing []PhaseTimingEntry
 
 	for i, phase := range p.phases {
+		start := time.Now()
 		if err := phase.Run(ctx, state); err != nil {
 			// Cleanup in reverse order.
 			for j := len(completed) - 1; j >= 0; j-- {
@@ -81,8 +86,12 @@ func (p *Pipeline) Execute(ctx context.Context, opts Options) (*Result, error) {
 			}
 			return nil, fmt.Errorf("%s: %w", phase.Name, err)
 		}
+		elapsed := time.Since(start)
+		timing = append(timing, PhaseTimingEntry{Phase: phase.Name, Duration: elapsed})
+		log.Infow("bootstrap phase complete", "phase", phase.Name, "duration_ms", elapsed.Milliseconds())
 		completed = append(completed, i)
 	}
 
+	state.Result.PhaseTiming = timing
 	return &state.Result, nil
 }

@@ -41,6 +41,13 @@ type SessionMetric struct {
 	RequestCount int64
 }
 
+// PolicyMetrics aggregates policy decision counts.
+type PolicyMetrics struct {
+	Blocks   int64            `json:"blocks"`
+	Observes int64            `json:"observes"`
+	ByReason map[string]int64 `json:"byReason"`
+}
+
 // SystemSnapshot is a point-in-time summary of system metrics.
 type SystemSnapshot struct {
 	StartedAt        time.Time
@@ -50,6 +57,7 @@ type SystemSnapshot struct {
 	ToolBreakdown    map[string]ToolMetric
 	AgentBreakdown   map[string]AgentMetric
 	SessionBreakdown map[string]SessionMetric
+	Policy           PolicyMetrics
 }
 
 // TokenUsageSummary aggregates token counts across all providers/models.

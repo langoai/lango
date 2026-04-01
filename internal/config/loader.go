@@ -217,6 +217,11 @@ func DefaultConfig() *Config {
 			AutoReconnect:        true,
 			MaxReconnectAttempts: 5,
 		},
+		Alerting: AlertingConfig{
+			Enabled:         false,
+			PolicyBlockRate: 10,
+			RecoveryRetries: 5,
+		},
 		P2P: P2PConfig{
 			Enabled: false,
 			ListenAddrs: []string{

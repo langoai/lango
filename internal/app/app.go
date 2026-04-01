@@ -13,6 +13,7 @@ import (
 	"github.com/langoai/lango/internal/a2a"
 	"github.com/langoai/lango/internal/adk"
 	"github.com/langoai/lango/internal/agent"
+	"github.com/langoai/lango/internal/agentrt"
 	"github.com/langoai/lango/internal/appinit"
 	"github.com/langoai/lango/internal/approval"
 	"github.com/langoai/lango/internal/background"
@@ -32,6 +33,7 @@ import (
 	"github.com/langoai/lango/internal/toolcatalog"
 	"github.com/langoai/lango/internal/toolchain"
 	"github.com/langoai/lango/internal/tooloutput"
+	execpkg "github.com/langoai/lango/internal/tools/exec"
 	"github.com/langoai/lango/internal/turnrunner"
 	"github.com/langoai/lango/internal/turntrace"
 	"github.com/langoai/lango/internal/wallet"
@@ -212,6 +214,24 @@ func New(boot *bootstrap.Result, opts ...AppOption) (*App, error) {
 		tools = toolchain.ChainAll(tools, runledger.ToolProfileGuard(app.RunLedgerStore))
 	}
 
+	// B4e. Exec policy middleware — outermost, runs before approval.
+	{
+		classifier := func(cmd string) (string, execpkg.ReasonCode) {
+			return classifyLangoExec(cmd, fv.AutoAvail)
+		}
+		var policyBus execpkg.EventPublisher
+		if bus != nil {
+			policyBus = &policyBusAdapter{bus: bus}
+		}
+		// Merge catastrophic patterns: defaults + user-configured (same set as SecurityFilterHook).
+		mergedPatterns := toolchain.DefaultBlockedPatterns()
+		mergedPatterns = append(mergedPatterns, cfg.Hooks.BlockedCommands...)
+		pe := execpkg.NewPolicyEvaluator(fv.CmdGuard, classifier, policyBus,
+			execpkg.WithCatastrophicPatterns(mergedPatterns))
+		tools = toolchain.ChainAll(tools, execpkg.WithPolicy(pe))
+		logger().Info("exec policy middleware enabled")
+	}
+
 	// Log tool registration summary for diagnostics.
 	logToolRegistrationSummary(catalog)
 
@@ -238,6 +258,7 @@ func New(boot *bootstrap.Result, opts ...AppOption) (*App, error) {
 			pv, _ := resolver.Resolve(appinit.ProvidesProvenance).(*provenanceValues)
 			return pv
 		}(),
+		hookRegistry: hookRegistry,
 	})
 	if err != nil {
 		cleanups.rollback()
@@ -252,12 +273,19 @@ func New(boot *bootstrap.Result, opts ...AppOption) (*App, error) {
 		errorFixProvider = iv.KC.engine
 	}
 	executor := initAgentRuntime(cfg, adkAgent, bus, errorFixProvider)
+	var budgetExec *budgetRestoringExecutor
+	if _, isCoord := executor.(*agentrt.CoordinatingExecutor); isCoord {
+		wrapped := wrapWithBudgetRestore(executor, fv.Store)
+		budgetExec = wrapped.(*budgetRestoringExecutor)
+		executor = wrapped
+	}
 	app.TurnRunner = turnrunner.New(turnrunner.Config{
 		IdleTimeout:         idleTimeout,
 		HardCeiling:         hardCeiling,
 		TraceStore:          app.TurnTraceStore,
 		DelegationBudgetMax: cfg.Agent.Orchestration.Budget.DelegationLimit,
 	}, executor, app.Store, app.Sanitizer)
+	wireSessionUsage(app.TurnRunner, budgetExec, fv.Store, app.MetricsCollector)
 	app.Gateway.SetTurnRunner(app.TurnRunner)
 
 	// B7. Post-agent wiring.
@@ -427,6 +455,28 @@ func buildCatalogFromEntries(entries []appinit.CatalogEntry) *toolcatalog.Catalo
 	return catalog
 }
 
+// policyBusAdapter bridges exec.EventPublisher and eventbus.Bus.
+// Converts exec.PolicyDecisionData into eventbus.PolicyDecisionEvent
+// so that subscribers using eventbus.SubscribeTyped work correctly.
+type policyBusAdapter struct{ bus *eventbus.Bus }
+
+func (a *policyBusAdapter) Publish(e execpkg.PolicyEvent) {
+	if pd, ok := e.(execpkg.PolicyDecisionData); ok {
+		a.bus.Publish(eventbus.PolicyDecisionEvent{
+			Command:    pd.Command,
+			Unwrapped:  pd.Unwrapped,
+			Verdict:    pd.Verdict,
+			Reason:     pd.Reason,
+			Message:    pd.Message,
+			SessionKey: pd.SessionKey,
+			AgentName:  pd.AgentName,
+		})
+		return
+	}
+	// Fallback: forward as-is (interface method sets match).
+	a.bus.Publish(e)
+}
+
 // buildHookRegistry constructs the tool execution hook registry.
 func buildHookRegistry(cfg *config.Config, bus *eventbus.Bus) *toolchain.HookRegistry {
 	hookRegistry := toolchain.NewHookRegistry()
@@ -588,7 +638,7 @@ func wirePostAgent(app *App, r appinit.Resolver, tools []*agent.Tool, bus *event
 	// Observability API routes.
 	obsc, _ := r.Resolve(appinit.ProvidesObservability).(*observabilityComponents)
 	if obsc != nil {
-		registerObservabilityRoutes(app.Gateway.Router(), obsc.collector, obsc.healthRegistry, obsc.tokenStore)
+		registerObservabilityRoutes(app.Gateway.Router(), obsc.collector, obsc.healthRegistry, obsc.tokenStore, boot.DBClient)
 		logger().Info("observability API routes registered")
 	}
 

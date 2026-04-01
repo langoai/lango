@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"sync"
+	"time"
 
 	"go.uber.org/zap"
 	adksession "google.golang.org/adk/session"
@@ -19,6 +20,12 @@ func logger() *zap.SugaredLogger { return logging.SubsystemSugar("agentrt") }
 // Compile-time interface check.
 var _ turnrunner.Executor = (*CoordinatingExecutor)(nil)
 
+// RunStats holds the final budget counters from a single RunStreamingDetailed call.
+type RunStats struct {
+	Turns       int
+	Delegations int
+}
+
 // CoordinatingExecutor wraps a turnrunner.Executor to apply
 // DelegationGuard, BudgetPolicy, and RecoveryPolicy.
 // It is a policy/observation wrapper, not a new execution engine.
@@ -29,6 +36,8 @@ type CoordinatingExecutor struct {
 	budget   *BudgetPolicy
 	recovery *RecoveryPolicy
 	bus      *eventbus.Bus
+
+	runStatsMap sync.Map // sessionID → RunStats
 }
 
 // NewCoordinatingExecutor creates a coordinating executor wrapping the inner executor.
@@ -67,6 +76,18 @@ func (s *runState) target() string {
 	return s.lastDelegationTarget
 }
 
+// LastRunStatsForSession returns the budget counters from the most recent
+// RunStreamingDetailed call for the given session, then removes the entry.
+// This is session-safe: concurrent runs for different sessions do not
+// overwrite each other's stats.
+func (c *CoordinatingExecutor) LastRunStatsForSession(sessionID string) (RunStats, bool) {
+	v, ok := c.runStatsMap.LoadAndDelete(sessionID)
+	if !ok {
+		return RunStats{}, false
+	}
+	return v.(RunStats), true
+}
+
 // RunStreamingDetailed implements turnrunner.Executor.
 func (c *CoordinatingExecutor) RunStreamingDetailed(
 	ctx context.Context,
@@ -74,10 +95,20 @@ func (c *CoordinatingExecutor) RunStreamingDetailed(
 	onChunk adk.ChunkCallback,
 	opts ...adk.RunOption,
 ) (adk.RunReport, error) {
-	state := &runState{}       // per-run, not shared across concurrent turns
-	budget := c.budget.Clone() // per-run mirrored counters
+	state := &runState{}
+	budget := c.budget.Clone()
+	classRetryCounts := make(map[CauseClass]int, 4)
 
-	return c.runWithRecovery(ctx, sessionID, input, onChunk, state, budget, 0, opts...)
+	report, err := c.runWithRecovery(ctx, sessionID, input, onChunk, state, budget, 0, classRetryCounts, opts...)
+
+	// Capture the clone's final counters keyed by session so concurrent
+	// turns for different sessions don't overwrite each other's stats.
+	c.runStatsMap.Store(sessionID, RunStats{
+		Turns:       budget.TurnCount(),
+		Delegations: budget.DelegationCount(),
+	})
+
+	return report, err
 }
 
 func (c *CoordinatingExecutor) runWithRecovery(
@@ -87,6 +118,7 @@ func (c *CoordinatingExecutor) runWithRecovery(
 	state *runState,
 	budget *BudgetPolicy,
 	retryCount int,
+	classRetryCounts map[CauseClass]int,
 	opts ...adk.RunOption,
 ) (adk.RunReport, error) {
 	// ChainOnEvent preserves any existing onEvent handler (e.g., TurnRunner's
@@ -119,11 +151,12 @@ func (c *CoordinatingExecutor) runWithRecovery(
 	}
 
 	failure := RecoveryContext{
-		Error:         err,
-		AgentName:     state.target(),
-		PartialResult: report.Response,
-		RetryCount:    retryCount,
-		SessionID:     sessionID,
+		Error:            err,
+		AgentName:        state.target(),
+		PartialResult:    report.Response,
+		RetryCount:       retryCount,
+		SessionID:        sessionID,
+		ClassRetryCounts: classRetryCounts,
 	}
 	action := c.recovery.Decide(ctx, &failure)
 
@@ -163,19 +196,49 @@ func (c *CoordinatingExecutor) runWithRecovery(
 		})
 	}
 
+	// Compute backoff and cause class for decision event.
+	var backoffDur time.Duration
+	var causeClassStr string
+	if action == RecoveryRetry || action == RecoveryRetryWithHint {
+		backoffDur = ComputeBackoff(retryCount)
+	}
+	var agentErrForClass *adk.AgentError
+	if errors.As(err, &agentErrForClass) {
+		causeClassStr = string(classifyForRetry(agentErrForClass))
+	}
+
+	// Publish detailed recovery decision event.
+	if c.bus != nil {
+		c.bus.Publish(RecoveryDecisionEvent{
+			CauseClass: causeClassStr,
+			Action:     action.String(),
+			Attempt:    retryCount,
+			Backoff:    backoffDur,
+			SessionKey: sessionID,
+		})
+	}
+
 	switch action {
 	case RecoveryRetry:
 		logger().Infow("recovery: retry same input",
 			"session", sessionID,
-			"retry", retryCount+1)
-		return c.runWithRecovery(ctx, sessionID, input, onChunk, state, budget, retryCount+1, opts...)
+			"retry", retryCount+1,
+			"backoff", backoffDur)
+		if err := sleepWithContext(ctx, backoffDur); err != nil {
+			return report, err
+		}
+		return c.runWithRecovery(ctx, sessionID, input, onChunk, state, budget, retryCount+1, classRetryCounts, opts...)
 
 	case RecoveryRetryWithHint:
 		hintedInput := AddRerouteHint(input, failure)
 		logger().Infow("recovery: retry with reroute hint",
 			"session", sessionID,
-			"retry", retryCount+1)
-		return c.runWithRecovery(ctx, sessionID, hintedInput, onChunk, state, budget, retryCount+1, opts...)
+			"retry", retryCount+1,
+			"backoff", backoffDur)
+		if err := sleepWithContext(ctx, backoffDur); err != nil {
+			return report, err
+		}
+		return c.runWithRecovery(ctx, sessionID, hintedInput, onChunk, state, budget, retryCount+1, classRetryCounts, opts...)
 
 	case RecoveryDirectAnswer:
 		logger().Infow("recovery: using partial result",
@@ -185,6 +248,20 @@ func (c *CoordinatingExecutor) runWithRecovery(
 
 	default: // RecoveryEscalate, RecoveryNone
 		return report, err
+	}
+}
+
+// sleepWithContext waits for the given duration or until the context is
+// cancelled, whichever comes first. It uses time.NewTimer to ensure the timer
+// is stopped immediately on context cancellation, avoiding timer leaks.
+func sleepWithContext(ctx context.Context, d time.Duration) error {
+	timer := time.NewTimer(d)
+	defer timer.Stop()
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case <-timer.C:
+		return nil
 	}
 }
 

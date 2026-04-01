@@ -10,6 +10,7 @@ func TestEventTypeConstants_AreUnique(t *testing.T) {
 	constants := []EventType{
 		EventToolCall, EventToolResult, EventDelegation, EventDelegationReturn,
 		EventText, EventTerminalError, EventBudgetWarning, EventRecoveryAttempt,
+		EventPolicyDecision,
 	}
 	seen := make(map[EventType]struct{}, len(constants))
 	for _, c := range constants {

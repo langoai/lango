@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"path/filepath"
 	"strings"
+	"sync"
 
 	"github.com/langoai/lango/internal/a2a"
 	"github.com/langoai/lango/internal/adk"
@@ -26,6 +27,7 @@ import (
 	"github.com/langoai/lango/internal/skill"
 	"github.com/langoai/lango/internal/supervisor"
 	"github.com/langoai/lango/internal/toolcatalog"
+	"github.com/langoai/lango/internal/toolchain"
 	"github.com/langoai/lango/internal/types"
 	"google.golang.org/adk/model"
 	adk_tool "google.golang.org/adk/tool"
@@ -247,22 +249,23 @@ func initAuth(cfg *config.Config, store session.Store) *gateway.AuthManager {
 
 // agentDeps groups the dependencies needed by initAgent to reduce parameter sprawl.
 type agentDeps struct {
-	sv       *supervisor.Supervisor
-	cfg      *config.Config
-	store    session.Store
-	tools    []*agent.Tool
-	kc       *knowledgeComponents
-	mc       *memoryComponents
-	ec       *embeddingComponents
-	gc       *graphComponents
-	scanner  *agent.SecretScanner
-	sr       *skill.Registry
-	lc       *librarianComponents
-	catalog  *toolcatalog.Catalog
-	p2pc     *p2pComponents
-	eventBus *eventbus.Bus
-	rls      runledger.RunLedgerStore
-	prov     *provenanceValues
+	sv           *supervisor.Supervisor
+	cfg          *config.Config
+	store        session.Store
+	tools        []*agent.Tool
+	kc           *knowledgeComponents
+	mc           *memoryComponents
+	ec           *embeddingComponents
+	gc           *graphComponents
+	scanner      *agent.SecretScanner
+	sr           *skill.Registry
+	lc           *librarianComponents
+	catalog      *toolcatalog.Catalog
+	p2pc         *p2pComponents
+	eventBus     *eventbus.Bus
+	rls          runledger.RunLedgerStore
+	prov         *provenanceValues
+	hookRegistry *toolchain.HookRegistry
 }
 
 // initAgent creates the ADK agent with the given tools and provider proxy.
@@ -550,7 +553,7 @@ func initAgent(ctx context.Context, deps *agentDeps) (*adk.Agent, error) {
 
 		// Build agent options for multi-agent mode.
 		agentOpts := buildAgentOptions(cfg, kc)
-		agentOpts = append(agentOpts, buildProvenanceAgentOptions(deps.prov)...)
+		agentOpts = append(agentOpts, buildProvenanceAgentOptions(deps.prov, deps.hookRegistry)...)
 		agentOpts = append(agentOpts, adk.WithAgentIsolatedAgents(isolatedAgentNames(orchCfg.Specs)))
 		adkAgent, err := adk.NewAgentFromADK(agentTree, store, agentOpts...)
 		if err != nil {
@@ -562,7 +565,7 @@ func initAgent(ctx context.Context, deps *agentDeps) (*adk.Agent, error) {
 	// Single-agent mode (default).
 	logger().Info("initializing agent runtime (ADK)...")
 	agentOpts := buildAgentOptions(cfg, kc)
-	agentOpts = append(agentOpts, buildProvenanceAgentOptions(deps.prov)...)
+	agentOpts = append(agentOpts, buildProvenanceAgentOptions(deps.prov, deps.hookRegistry)...)
 	adkAgent, err := adk.NewAgent(ctx, adkTools, llm, systemPrompt, store, agentOpts...)
 	if err != nil {
 		return nil, fmt.Errorf("adk agent: %w", err)
@@ -610,19 +613,48 @@ func buildAgentOptions(cfg *config.Config, kc *knowledgeComponents) []adk.AgentO
 	return opts
 }
 
-func buildProvenanceAgentOptions(pv *provenanceValues) []adk.AgentOption {
+func buildProvenanceAgentOptions(pv *provenanceValues, hookRegistry *toolchain.HookRegistry) []adk.AgentOption {
 	if pv == nil || pv.sessionTree == nil {
 		return nil
+	}
+
+	// Update hook registry snapshot in cached metadata now that hooks are registered.
+	if pv.configMetadata != nil && hookRegistry != nil {
+		pv.configMetadata["hook_registry"] = buildHookRegistrySnapshot(hookRegistry)
+	}
+
+	// sync.Map for idempotent config checkpoint creation per session per app instance.
+	var configCPCreated sync.Map
+
+	cpService := pv.checkpointService
+
+	// Copy metadata map before closure capture to prevent data race: the
+	// original pv.configMetadata may be mutated later (e.g., hook_registry
+	// key update) while the closure reads concurrently.
+	var cachedMetadata map[string]string
+	if pv.configMetadata != nil {
+		cachedMetadata = make(map[string]string, len(pv.configMetadata))
+		for k, v := range pv.configMetadata {
+			cachedMetadata[k] = v
+		}
 	}
 
 	rootObserver := func(sessionKey string) {
 		ctx := context.Background()
 		// Idempotent: skip if already registered (supports backfill from Get).
 		if _, err := pv.sessionTree.GetNode(ctx, sessionKey); err == nil {
-			return
+			// Session tree node exists; still attempt config checkpoint below.
+		} else {
+			if _, err := pv.sessionTree.RegisterSession(ctx, sessionKey, "", "root", ""); err != nil && err != provenance.ErrInvalidSessionKey {
+				logger().Debugw("register provenance root session", "session", sessionKey, "error", err)
+			}
 		}
-		if _, err := pv.sessionTree.RegisterSession(ctx, sessionKey, "", "root", ""); err != nil && err != provenance.ErrInvalidSessionKey {
-			logger().Debugw("register provenance root session", "session", sessionKey, "error", err)
+
+		// Create session config checkpoint (idempotent — once per session per app instance).
+		if cpService != nil && cachedMetadata != nil {
+			if _, loaded := configCPCreated.LoadOrStore(sessionKey, true); !loaded {
+				_, _ = cpService.CreateManualWithMetadata(ctx, sessionKey, "", "session_config_snapshot", cachedMetadata)
+			}
 		}
 	}
 

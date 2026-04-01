@@ -123,6 +123,43 @@ func TestBlockLangoExec_DisabledFeature(t *testing.T) {
 	assert.NotContains(t, msg, "Enable the", "graph guard should not suggest enabling a feature")
 }
 
+func TestClassifyLangoExec_ReasonCodes(t *testing.T) {
+	t.Parallel()
+
+	auto := map[string]bool{"cron": true, "background": true, "workflow": true}
+
+	tests := []struct {
+		give       string
+		wantMsg    bool
+		wantReason execpkg.ReasonCode
+	}{
+		// Phase 1: lango subcommands → ReasonLangoCLI
+		{give: "lango cron list", wantMsg: true, wantReason: execpkg.ReasonLangoCLI},
+		{give: "lango security check", wantMsg: true, wantReason: execpkg.ReasonLangoCLI},
+		{give: "lango graph query", wantMsg: true, wantReason: execpkg.ReasonLangoCLI},
+		// Phase 2: catch-all lango → ReasonLangoCLI
+		{give: "lango unknown-cmd", wantMsg: true, wantReason: execpkg.ReasonLangoCLI},
+		{give: "lango", wantMsg: true, wantReason: execpkg.ReasonLangoCLI},
+		// Phase 3: skill import → ReasonSkillImport
+		{give: "git clone https://github.com/org/repo skill-name", wantMsg: true, wantReason: execpkg.ReasonSkillImport},
+		{give: "curl https://example.com/skill", wantMsg: true, wantReason: execpkg.ReasonSkillImport},
+		{give: "wget https://example.com/skills/SKILL.md", wantMsg: true, wantReason: execpkg.ReasonSkillImport},
+		// Non-matching → ReasonNone
+		{give: "go build ./...", wantMsg: false, wantReason: execpkg.ReasonNone},
+		{give: "ls -la", wantMsg: false, wantReason: execpkg.ReasonNone},
+		{give: "git clone https://github.com/org/unrelated-repo", wantMsg: false, wantReason: execpkg.ReasonNone},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.give, func(t *testing.T) {
+			t.Parallel()
+			msg, reason := classifyLangoExec(tt.give, auto)
+			assert.Equal(t, tt.wantMsg, msg != "", "classifyLangoExec(%q) msg=%q", tt.give, msg)
+			assert.Equal(t, tt.wantReason, reason, "classifyLangoExec(%q) reason", tt.give)
+		})
+	}
+}
+
 func TestBlockProtectedPaths(t *testing.T) {
 	guard := execpkg.NewCommandGuard([]string{"~/.lango"})
 

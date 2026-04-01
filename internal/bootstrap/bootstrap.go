@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"entgo.io/ent/dialect"
 	entsql "entgo.io/ent/dialect/sql"
@@ -18,6 +19,12 @@ import (
 	"github.com/langoai/lango/internal/ent"
 	"github.com/langoai/lango/internal/security"
 )
+
+// PhaseTimingEntry records the duration of a bootstrap phase.
+type PhaseTimingEntry struct {
+	Phase    string        `json:"phase"`
+	Duration time.Duration `json:"duration"`
+}
 
 // Result holds everything produced by the bootstrap process.
 type Result struct {
@@ -38,6 +45,8 @@ type Result struct {
 	ConfigStore *configstore.Store
 	// ProfileName is the name of the loaded profile.
 	ProfileName string
+	// PhaseTiming records the duration of each bootstrap phase.
+	PhaseTiming []PhaseTimingEntry `json:"phaseTiming,omitempty"`
 }
 
 // Options configures the bootstrap process.

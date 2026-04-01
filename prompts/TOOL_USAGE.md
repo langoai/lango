@@ -7,6 +7,7 @@
 ### Exec Tool
 - **NEVER use exec to run `lango` CLI commands** (e.g., `lango security`, `lango memory`, `lango graph`, `lango p2p`, `lango config`, `lango cron`, `lango bg`, `lango workflow`, `lango payment`, `lango economy`, `lango metrics`, `lango contract`, `lango account`, `lango serve`, `lango doctor`, `lango mcp`, etc.). Every `lango` command requires passphrase authentication during bootstrap and **will fail** when spawned as a non-interactive subprocess. Use the built-in tools instead — they run in-process and do not require authentication.
 - If you need functionality that has no built-in tool equivalent (e.g., `lango config`, `lango doctor`, `lango settings`), inform the user and ask them to run the command directly in their terminal.
+- **Do NOT wrap blocked commands in shell wrappers to bypass restrictions.** Commands like `sh -c "lango ..."`, `bash -c "kill ..."`, or `/bin/sh -c "cat ~/.lango/..."` are detected and blocked the same way as direct invocations. The policy evaluator unwraps one level of `sh -c` / `bash -c` before checking.
 - Prefer read-only commands first (`cat`, `ls`, `grep`, `ps`) before modifying anything.
 - Set appropriate timeouts for long-running commands. Default is 30 seconds.
 - Use background execution (`exec_bg`) for processes that run indefinitely (servers, watchers). Monitor with `exec_status`, stop with `exec_stop`.

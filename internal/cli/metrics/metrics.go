@@ -29,7 +29,8 @@ Examples:
   lango metrics sessions               # Per-session token breakdown
   lango metrics tools                  # Tool execution statistics
   lango metrics agents                 # Per-agent token usage
-  lango metrics history --days=7       # Historical token usage`,
+  lango metrics history --days=7       # Historical token usage
+  lango metrics policy                 # Policy decision statistics`,
 		RunE: summaryRunE,
 	}
 
@@ -40,6 +41,7 @@ Examples:
 	cmd.AddCommand(newToolsCmd())
 	cmd.AddCommand(newAgentsCmd())
 	cmd.AddCommand(newHistoryCmd())
+	cmd.AddCommand(newPolicyCmd())
 
 	return cmd
 }

@@ -23,6 +23,7 @@ import (
 	"github.com/langoai/lango/internal/bootstrap"
 	clia2a "github.com/langoai/lango/internal/cli/a2a"
 	cliagent "github.com/langoai/lango/internal/cli/agent"
+	clialerts "github.com/langoai/lango/internal/cli/alerts"
 	cliapproval "github.com/langoai/lango/internal/cli/approval"
 	clibg "github.com/langoai/lango/internal/cli/bg"
 	"github.com/langoai/lango/internal/cli/chat"
@@ -211,6 +212,10 @@ func main() {
 	sandboxCmd := clisandbox.NewSandboxCmd(cliboot.Config)
 	sandboxCmd.GroupID = "sys"
 	rootCmd.AddCommand(sandboxCmd)
+
+	alertsCmd := clialerts.NewAlertsCmd()
+	alertsCmd.GroupID = "sys"
+	rootCmd.AddCommand(alertsCmd)
 
 	// --- Security & System (continued) ---
 	approvalCmd := cliapproval.NewApprovalCmd(cliboot.Config)
