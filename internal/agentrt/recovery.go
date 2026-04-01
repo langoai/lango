@@ -21,14 +21,6 @@ const (
 	CauseUnknown           CauseClass = "unknown"
 )
 
-// defaultRetryLimits defines the maximum retry count per error class.
-// Classes not listed here fall through to the global maxRetries.
-var defaultRetryLimits = map[CauseClass]int{
-	CauseRateLimit:         5,
-	CauseTransient:         3,
-	CauseMalformedToolCall: 1,
-	CauseTimeout:           3,
-}
 
 const (
 	backoffBaseDelay = 1 * time.Second
@@ -69,10 +61,18 @@ func classifyForRetry(agentErr *adk.AgentError) CauseClass {
 // If the class has a specific limit, that limit is used. Otherwise the
 // global maxRetries is returned.
 func retryLimitForClass(class CauseClass, globalMax int) int {
-	if limit, ok := defaultRetryLimits[class]; ok {
-		return limit
+	switch class {
+	case CauseRateLimit:
+		return 5
+	case CauseTransient:
+		return 3
+	case CauseMalformedToolCall:
+		return 1
+	case CauseTimeout:
+		return 3
+	default:
+		return globalMax
 	}
-	return globalMax
 }
 
 // RecoveryAction describes the decision made by the recovery policy.
@@ -125,26 +125,24 @@ func (p *RecoveryPolicy) Decide(ctx context.Context, failure *RecoveryContext) R
 		failure.ClassRetryCounts = make(map[CauseClass]int)
 	}
 
-	// Check global retry limit first.
-	if failure.RetryCount >= p.maxRetries {
-		// Before escalating, check if the error class allows more retries.
-		var agentErr *adk.AgentError
-		if errors.As(failure.Error, &agentErr) {
-			class := classifyForRetry(agentErr)
-			classLimit := retryLimitForClass(class, p.maxRetries)
-			if classLimit > p.maxRetries && failure.RetryCount < classLimit {
-				// Class-specific limit allows more retries — proceed to normal logic.
-				goto classCheck
-			}
+	// Compute effective retry limit: class-specific limit may exceed global max.
+	effectiveMax := p.maxRetries
+	var agentErr *adk.AgentError
+	if errors.As(failure.Error, &agentErr) {
+		class := classifyForRetry(agentErr)
+		if classLimit := retryLimitForClass(class, p.maxRetries); classLimit > effectiveMax {
+			effectiveMax = classLimit
 		}
+	}
+
+	// Check global/effective retry limit.
+	if failure.RetryCount >= effectiveMax {
 		if failure.PartialResult != "" {
 			return RecoveryDirectAnswer
 		}
 		return RecoveryEscalate
 	}
 
-classCheck:
-	var agentErr *adk.AgentError
 	if !errors.As(failure.Error, &agentErr) {
 		// Non-agent error: try learning-based fix if available.
 		if p.tryLearningFix(ctx, "", failure.Error, failure) {

@@ -71,3 +71,52 @@ func TestDetectOpaquePattern(t *testing.T) {
 		})
 	}
 }
+
+func TestDetectShellConstruct(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		give string
+		want ReasonCode
+	}{
+		// Heredoc: << operator
+		{give: "cat << 'EOF'\nhello\nEOF", want: ReasonHeredoc},
+		{give: "sh << 'EOF'\necho hello\nEOF", want: ReasonHeredoc},
+		// Heredoc: <<- (dash heredoc, strips leading tabs)
+		{give: "cat <<- EOF\n\thello\n\tEOF", want: ReasonHeredoc},
+		// Here-string: <<<
+		{give: `cat <<< "hello world"`, want: ReasonHeredoc},
+		// Process substitution: <(cmd)
+		{give: "diff <(ls dir1) <(ls dir2)", want: ReasonProcessSubst},
+		{give: "cat <(echo hello)", want: ReasonProcessSubst},
+		// Process substitution: >(cmd)
+		{give: "tee >(grep error > errors.log)", want: ReasonProcessSubst},
+		// Grouped subshell: (cmd; cmd)
+		{give: "(echo hello; echo world)", want: ReasonGroupedSubshell},
+		{give: "(cd /tmp; ls)", want: ReasonGroupedSubshell},
+		// Brace group: { cmd; }
+		{give: "{ echo hello; echo world; }", want: ReasonGroupedSubshell},
+		// Shell function definition
+		{give: "f() { echo hello; }; f", want: ReasonShellFunction},
+		{give: "myfunc() { rm -rf /; }; myfunc", want: ReasonShellFunction},
+		// Clean commands: no shell constructs
+		{give: "echo hello", want: ReasonNone},
+		{give: "ls -la", want: ReasonNone},
+		{give: "go build ./...", want: ReasonNone},
+		{give: "grep -r pattern src/", want: ReasonNone},
+		// Edge: empty string
+		{give: "", want: ReasonNone},
+		// Edge: single command with pipe (not a grouped subshell)
+		{give: "ls | grep test", want: ReasonNone},
+		// Edge: find without -exec (not a construct)
+		{give: "find . -name '*.go'", want: ReasonNone},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.give, func(t *testing.T) {
+			t.Parallel()
+			got := detectShellConstruct(tt.give)
+			assert.Equal(t, tt.want, got, "detectShellConstruct(%q)", tt.give)
+		})
+	}
+}

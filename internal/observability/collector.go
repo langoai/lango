@@ -106,6 +106,8 @@ func (c *MetricsCollector) RecordPolicyDecision(verdict, reason string) {
 		c.policyBlocks++
 	case "observe":
 		c.policyObserves++
+	case "allow":
+		// no-op, exhaustive
 	}
 	if reason != "" {
 		c.policyByReason[reason]++

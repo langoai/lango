@@ -95,9 +95,9 @@ func (c *CoordinatingExecutor) RunStreamingDetailed(
 	onChunk adk.ChunkCallback,
 	opts ...adk.RunOption,
 ) (adk.RunReport, error) {
-	state := &runState{}                            // per-run, not shared across concurrent turns
-	budget := c.budget.Clone()                      // per-run mirrored counters
-	classRetryCounts := make(map[CauseClass]int, 4) // per-class retry counts for this run
+	state := &runState{}
+	budget := c.budget.Clone()
+	classRetryCounts := make(map[CauseClass]int, 4)
 
 	report, err := c.runWithRecovery(ctx, sessionID, input, onChunk, state, budget, 0, classRetryCounts, opts...)
 
@@ -224,11 +224,8 @@ func (c *CoordinatingExecutor) runWithRecovery(
 			"session", sessionID,
 			"retry", retryCount+1,
 			"backoff", backoffDur)
-		// Context-aware backoff sleep before retry.
-		select {
-		case <-ctx.Done():
-			return report, ctx.Err()
-		case <-time.After(backoffDur):
+		if err := sleepWithContext(ctx, backoffDur); err != nil {
+			return report, err
 		}
 		return c.runWithRecovery(ctx, sessionID, input, onChunk, state, budget, retryCount+1, classRetryCounts, opts...)
 
@@ -238,11 +235,8 @@ func (c *CoordinatingExecutor) runWithRecovery(
 			"session", sessionID,
 			"retry", retryCount+1,
 			"backoff", backoffDur)
-		// Context-aware backoff sleep before retry.
-		select {
-		case <-ctx.Done():
-			return report, ctx.Err()
-		case <-time.After(backoffDur):
+		if err := sleepWithContext(ctx, backoffDur); err != nil {
+			return report, err
 		}
 		return c.runWithRecovery(ctx, sessionID, hintedInput, onChunk, state, budget, retryCount+1, classRetryCounts, opts...)
 
@@ -254,6 +248,20 @@ func (c *CoordinatingExecutor) runWithRecovery(
 
 	default: // RecoveryEscalate, RecoveryNone
 		return report, err
+	}
+}
+
+// sleepWithContext waits for the given duration or until the context is
+// cancelled, whichever comes first. It uses time.NewTimer to ensure the timer
+// is stopped immediately on context cancellation, avoiding timer leaks.
+func sleepWithContext(ctx context.Context, d time.Duration) error {
+	timer := time.NewTimer(d)
+	defer timer.Stop()
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case <-timer.C:
+		return nil
 	}
 }
 

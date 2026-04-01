@@ -2,6 +2,7 @@ package app
 
 import (
 	"github.com/langoai/lango/internal/adk"
+	"github.com/langoai/lango/internal/alerting"
 	"github.com/langoai/lango/internal/config"
 	"github.com/langoai/lango/internal/ent"
 	"github.com/langoai/lango/internal/eventbus"
@@ -84,6 +85,15 @@ func initObservability(cfg *config.Config, dbClient *ent.Client, bus *eventbus.B
 		}
 	})
 	logger().Info("observability: tool execution metrics wired")
+
+	// 7. Alerting dispatcher — threshold-based operational alerts
+	if cfg.Alerting.Enabled {
+		dispatcher := alerting.NewDispatcher(bus, cfg.Alerting.PolicyBlockRate, cfg.Alerting.RecoveryRetries)
+		dispatcher.Subscribe(bus)
+		logger().Info("observability: alerting dispatcher wired",
+			"policyBlockRate", cfg.Alerting.PolicyBlockRate,
+			"recoveryRetries", cfg.Alerting.RecoveryRetries)
+	}
 
 	return oc
 }

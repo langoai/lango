@@ -627,7 +627,17 @@ func buildProvenanceAgentOptions(pv *provenanceValues, hookRegistry *toolchain.H
 	var configCPCreated sync.Map
 
 	cpService := pv.checkpointService
-	cachedMetadata := pv.configMetadata
+
+	// Copy metadata map before closure capture to prevent data race: the
+	// original pv.configMetadata may be mutated later (e.g., hook_registry
+	// key update) while the closure reads concurrently.
+	var cachedMetadata map[string]string
+	if pv.configMetadata != nil {
+		cachedMetadata = make(map[string]string, len(pv.configMetadata))
+		for k, v := range pv.configMetadata {
+			cachedMetadata[k] = v
+		}
+	}
 
 	rootObserver := func(sessionKey string) {
 		ctx := context.Background()

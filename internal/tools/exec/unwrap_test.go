@@ -235,6 +235,123 @@ func TestLooksLikeEnvAssignment(t *testing.T) {
 	}
 }
 
+func TestExtractXargsVerb(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		give     string
+		wantVerb string
+		wantOK   bool
+	}{
+		// Simple xargs with command
+		{give: "xargs kill", wantVerb: "kill", wantOK: true},
+		{give: "xargs rm", wantVerb: "rm", wantOK: true},
+		// xargs with flags before command
+		{give: "xargs -r kill", wantVerb: "kill", wantOK: true},
+		{give: "xargs -0 rm", wantVerb: "rm", wantOK: true},
+		// xargs with flag-argument pairs
+		{give: "xargs -n 1 kill", wantVerb: "kill", wantOK: true},
+		{give: "xargs -I {} cp {} /tmp", wantVerb: "cp", wantOK: true},
+		{give: "xargs -P 4 make", wantVerb: "make", wantOK: true},
+		// xargs with -- terminator
+		{give: "xargs -- rm -rf", wantVerb: "rm", wantOK: true},
+		// xargs with path-prefixed command
+		{give: "xargs /usr/bin/kill", wantVerb: "kill", wantOK: true},
+		// xargs with multiple flags
+		{give: "xargs -r -n 1 -P 4 kill", wantVerb: "kill", wantOK: true},
+		// xargs alone (no inner command)
+		{give: "xargs", wantVerb: "", wantOK: false},
+		// xargs with only flags (no command)
+		{give: "xargs -r -0", wantVerb: "", wantOK: false},
+		// Not xargs
+		{give: "grep pattern", wantVerb: "", wantOK: false},
+		// Empty
+		{give: "", wantVerb: "", wantOK: false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.give, func(t *testing.T) {
+			t.Parallel()
+			verb, ok := extractXargsVerb(tt.give)
+			assert.Equal(t, tt.wantOK, ok, "extracted")
+			assert.Equal(t, tt.wantVerb, verb, "verb")
+		})
+	}
+}
+
+func TestExtractFindExecVerb(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		give     string
+		wantVerb string
+		wantOK   bool
+	}{
+		// Simple find -exec
+		{give: `find . -exec rm {} \;`, wantVerb: "rm", wantOK: true},
+		{give: `find /tmp -name "*.log" -exec rm {} +`, wantVerb: "rm", wantOK: true},
+		// find -exec with path-prefixed command
+		{give: `find . -exec /usr/bin/kill {} \;`, wantVerb: "kill", wantOK: true},
+		// find -execdir
+		{give: `find . -execdir rm {} \;`, wantVerb: "rm", wantOK: true},
+		// find with multiple predicates before -exec
+		{give: `find /var -type f -name "*.tmp" -mtime +7 -exec rm {} \;`, wantVerb: "rm", wantOK: true},
+		// find without -exec
+		{give: `find . -name "*.go"`, wantVerb: "", wantOK: false},
+		// find -exec with no command after it
+		{give: `find . -exec`, wantVerb: "", wantOK: false},
+		// Not find
+		{give: "ls -la", wantVerb: "", wantOK: false},
+		// Empty
+		{give: "", wantVerb: "", wantOK: false},
+		// Too short
+		{give: "find", wantVerb: "", wantOK: false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.give, func(t *testing.T) {
+			t.Parallel()
+			verb, ok := extractFindExecVerb(tt.give)
+			assert.Equal(t, tt.wantOK, ok, "extracted")
+			assert.Equal(t, tt.wantVerb, verb, "verb")
+		})
+	}
+}
+
+func TestUnwrapEnvPrefix(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		give       string
+		wantCmd    string
+		wantStrip  bool
+	}{
+		// Simple env prefix
+		{give: "FOO=bar echo hello", wantCmd: "echo hello", wantStrip: true},
+		// Multiple env prefixes
+		{give: "FOO=1 BAR=2 kill 1234", wantCmd: "kill 1234", wantStrip: true},
+		// Env prefix with path
+		{give: "PATH=/usr/bin ls -la", wantCmd: "ls -la", wantStrip: true},
+		// No env prefix — plain command
+		{give: "echo hello", wantCmd: "echo hello", wantStrip: false},
+		// Assignment only (no command) — not an env prefix
+		{give: "FOO=bar", wantCmd: "FOO=bar", wantStrip: false},
+		// Empty
+		{give: "", wantCmd: "", wantStrip: false},
+		// Complex command after env prefix
+		{give: "LANG=C sort file.txt", wantCmd: "sort file.txt", wantStrip: true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.give, func(t *testing.T) {
+			t.Parallel()
+			cmd, stripped := unwrapEnvPrefix(tt.give)
+			assert.Equal(t, tt.wantStrip, stripped, "stripped")
+			assert.Equal(t, tt.wantCmd, cmd, "cmd")
+		})
+	}
+}
+
 func TestStripQuotes(t *testing.T) {
 	t.Parallel()
 

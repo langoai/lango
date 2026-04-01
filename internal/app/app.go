@@ -638,7 +638,7 @@ func wirePostAgent(app *App, r appinit.Resolver, tools []*agent.Tool, bus *event
 	// Observability API routes.
 	obsc, _ := r.Resolve(appinit.ProvidesObservability).(*observabilityComponents)
 	if obsc != nil {
-		registerObservabilityRoutes(app.Gateway.Router(), obsc.collector, obsc.healthRegistry, obsc.tokenStore)
+		registerObservabilityRoutes(app.Gateway.Router(), obsc.collector, obsc.healthRegistry, obsc.tokenStore, boot.DBClient)
 		logger().Info("observability API routes registered")
 	}
 

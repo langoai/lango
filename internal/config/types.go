@@ -109,6 +109,9 @@ type Config struct {
 	// Observability configuration (token tracking, health, audit, metrics)
 	Observability ObservabilityConfig `mapstructure:"observability" json:"observability"`
 
+	// Alerting configuration (operational alert thresholds and delivery)
+	Alerting AlertingConfig `mapstructure:"alerting" json:"alerting"`
+
 	// RunLedger configuration (Task OS — durable execution engine)
 	RunLedger RunLedgerConfig `mapstructure:"runLedger" json:"runLedger"`
 
@@ -465,4 +468,19 @@ type BrowserToolConfig struct {
 
 	// Session timeout
 	SessionTimeout time.Duration `mapstructure:"sessionTimeout" json:"sessionTimeout"`
+}
+
+// AlertingConfig defines operational alerting thresholds and delivery settings.
+type AlertingConfig struct {
+	// Master switch (default: false)
+	Enabled bool `mapstructure:"enabled" json:"enabled"`
+
+	// AdminChannel routes alerts to a configured channel (e.g., "slack", "discord")
+	AdminChannel string `mapstructure:"adminChannel" json:"adminChannel"`
+
+	// PolicyBlockRate is the threshold for policy block events per 5min window (default: 10)
+	PolicyBlockRate int `mapstructure:"policyBlockRateThreshold" json:"policyBlockRateThreshold"`
+
+	// RecoveryRetries is the threshold for recovery retry events per session (default: 5)
+	RecoveryRetries int `mapstructure:"recoveryRetryThreshold" json:"recoveryRetryThreshold"`
 }

@@ -377,6 +377,127 @@ func unwrapShellWrapperString(cmd string) (inner string, unwrapped bool) {
 	return inner, true
 }
 
+// extractXargsVerb extracts the inner command verb from an xargs invocation.
+// Pattern: xargs [-flags] [-I repl] [-n num] [--] cmd [args...]
+// Returns the extracted verb and true if found, or ("", false) if extraction fails.
+func extractXargsVerb(cmd string) (string, bool) {
+	fields := strings.Fields(strings.TrimSpace(cmd))
+	if len(fields) == 0 {
+		return "", false
+	}
+
+	// First field must be "xargs".
+	if strings.ToLower(filepath.Base(fields[0])) != "xargs" {
+		return "", false
+	}
+
+	// Skip xargs flags to find the inner command verb.
+	// xargs flags that take an argument: -I, -L, -n, -P, -s, -E, -R
+	flagsWithArg := map[string]struct{}{
+		"-I": {}, "-L": {}, "-n": {}, "-P": {}, "-s": {}, "-E": {}, "-R": {},
+		"--max-args": {}, "--max-procs": {}, "--replace": {},
+	}
+
+	i := 1 // skip "xargs"
+	for i < len(fields) {
+		f := fields[i]
+		if f == "--" {
+			i++
+			break
+		}
+		if !strings.HasPrefix(f, "-") {
+			break // found the command verb
+		}
+		// Check if this flag takes an argument.
+		if _, hasArg := flagsWithArg[f]; hasArg {
+			i += 2 // skip flag + its argument
+		} else {
+			i++ // standalone flag (e.g., -r, -0, -t, -p, --no-run-if-empty)
+		}
+	}
+
+	if i >= len(fields) {
+		return "", false
+	}
+
+	verb := filepath.Base(fields[i])
+	return strings.ToLower(verb), true
+}
+
+// extractFindExecVerb extracts the inner command verb from a find -exec invocation.
+// Pattern: find [path...] -exec cmd {} \; or find [path...] -exec cmd {} +
+// Also supports -execdir variant.
+// Returns the extracted verb and true if found, or ("", false) if extraction fails.
+func extractFindExecVerb(cmd string) (string, bool) {
+	fields := strings.Fields(strings.TrimSpace(cmd))
+	if len(fields) < 3 {
+		return "", false
+	}
+
+	// First field must be "find".
+	if strings.ToLower(filepath.Base(fields[0])) != "find" {
+		return "", false
+	}
+
+	// Scan for -exec or -execdir flag.
+	for i := 1; i < len(fields); i++ {
+		if fields[i] == "-exec" || fields[i] == "-execdir" {
+			// The next field is the command verb.
+			if i+1 < len(fields) {
+				verb := filepath.Base(fields[i+1])
+				return strings.ToLower(verb), true
+			}
+			return "", false
+		}
+	}
+	return "", false
+}
+
+// unwrapEnvPrefix strips leading VAR=val assignments from a command string
+// (bare env prefix without explicit "env" command) and returns the remaining
+// command. Uses AST parsing to detect CallExpr.Assigns.
+//
+// Pattern: VAR=val [VAR2=val2 ...] cmd [args...]
+// Returns the command after stripping assignments, and true if assignments were found.
+func unwrapEnvPrefix(cmd string) (string, bool) {
+	trimmed := strings.TrimSpace(cmd)
+	if trimmed == "" {
+		return cmd, false
+	}
+
+	parser := syntax.NewParser()
+	f, err := parser.Parse(strings.NewReader(trimmed), "")
+	if err != nil {
+		return cmd, false
+	}
+
+	if len(f.Stmts) != 1 {
+		return cmd, false
+	}
+
+	call, ok := f.Stmts[0].Cmd.(*syntax.CallExpr)
+	if !ok {
+		return cmd, false
+	}
+
+	// If there are assignments and args, the assignments are env prefixes.
+	if len(call.Assigns) > 0 && len(call.Args) > 0 {
+		// Reconstruct the command from Args only (without assignments).
+		var parts []string
+		printer := syntax.NewPrinter()
+		for _, arg := range call.Args {
+			var buf bytes.Buffer
+			if err := printer.Print(&buf, arg); err != nil {
+				return cmd, false
+			}
+			parts = append(parts, buf.String())
+		}
+		return strings.Join(parts, " "), true
+	}
+
+	return cmd, false
+}
+
 // stripQuotes removes matching outer single or double quotes from a string.
 // Only strips if the first and last characters are the same quote character.
 func stripQuotes(s string) string {

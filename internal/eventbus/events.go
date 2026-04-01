@@ -1,5 +1,7 @@
 package eventbus
 
+import "time"
+
 // Event name constants for core domain events.
 const (
 	EventContentSaved      = "content.saved"
@@ -17,6 +19,7 @@ const (
 	EventTrustUpdated      = "trust.updated"
 	EventSchemaExchanged   = "schema.exchanged"
 	EventPolicyDecision    = "policy.decision"
+	EventAlertTriggered    = "alert.triggered"
 )
 
 // ContentSavedEvent is published when knowledge or memory content is saved.
@@ -203,3 +206,16 @@ type PolicyDecisionEvent struct {
 
 // EventName implements Event.
 func (e PolicyDecisionEvent) EventName() string { return EventPolicyDecision }
+
+// AlertEvent is published when an operational alert condition is detected.
+type AlertEvent struct {
+	Type       string                 // "policy_block_rate", "recovery_retries", "circuit_breaker", "config_drift"
+	Severity   string                 // "warning", "critical"
+	Message    string
+	Details    map[string]interface{}
+	SessionKey string
+	Timestamp  time.Time
+}
+
+// EventName implements Event.
+func (e AlertEvent) EventName() string { return EventAlertTriggered }

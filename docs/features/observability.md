@@ -48,13 +48,108 @@ The health check system uses a registry-based architecture where components regi
 
 **Gateway endpoint:** `GET /health/detailed`
 
+## Policy Metrics
+
+The metrics collector tracks exec policy decisions (block and observe verdicts) published via the event bus as `PolicyDecisionEvent`. Allow verdicts are not tracked.
+
+Collected counters:
+
+- **Blocks** -- Total commands blocked by exec policy
+- **Observes** -- Total commands flagged for observation
+- **By Reason** -- Per-reason breakdown (e.g., `catastrophic_pattern`, `destructive_command`)
+
+The collector's `RecordPolicyDecision(verdict, reason)` method aggregates these counters in memory. They are included in the `SystemSnapshot` used by the gateway endpoint and CLI command.
+
+**Gateway endpoint:** `GET /metrics/policy`
+
+**Response format:**
+
+```json
+{
+  "blocks": 3,
+  "observes": 12,
+  "byReason": {
+    "catastrophic_pattern": 2,
+    "destructive_command": 1,
+    "network_exfiltration": 5,
+    "suspicious_pipe": 7
+  }
+}
+```
+
+**CLI command:** `lango metrics policy` (see [CLI Reference](../cli/metrics.md#lango-metrics-policy))
+
 ## Audit Logging
 
 The audit recorder subscribes to event bus events and writes audit log entries to the database:
 
 - **Tool execution events** -- Records tool name, duration, success/failure, and error details via `ToolExecutedEvent`
 - **Token usage events** -- Records provider, model, and token counts via `TokenUsageEvent`
+- **Policy decision events** -- Records exec policy block/observe verdicts via `PolicyDecisionEvent`
 - Default retention: 90 days
+
+### Policy Decision Audit Logging
+
+When the exec policy evaluator blocks or flags a command, it publishes a `PolicyDecisionEvent` on the event bus. The audit recorder subscribes to these events and writes a database entry with:
+
+| Field | Source | Description |
+|-------|--------|-------------|
+| `action` | `policy_decision` | Audit log action type |
+| `actor` | `PolicyDecisionEvent.AgentName` | Agent that attempted the command (or `"system"`) |
+| `target` | `PolicyDecisionEvent.Command` | The original command string |
+| `details.verdict` | `PolicyDecisionEvent.Verdict` | `"block"` or `"observe"` |
+| `details.reason` | `PolicyDecisionEvent.Reason` | Machine-readable reason code |
+| `details.unwrapped` | `PolicyDecisionEvent.Unwrapped` | Command after shell wrapper unwrap |
+| `details.message` | `PolicyDecisionEvent.Message` | Human-readable explanation (if present) |
+
+This enables operators to query the audit log for all policy decisions in a session and correlate them with tool execution events.
+
+## Recovery Decision Events
+
+When the coordinating executor handles an agent execution failure, it publishes a `RecoveryDecisionEvent` on the event bus with structured metadata for observability. This event is published for every recovery decision (retry, retry with hint, direct answer, escalate).
+
+**Event fields:**
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `CauseClass` | string | Error classification: `rate_limit`, `transient`, `malformed_tool_call`, `timeout`, or empty for non-agent errors |
+| `Action` | string | Recovery decision: `retry`, `retry_with_hint`, `direct_answer`, `escalate`, or `none` |
+| `Attempt` | int | Current retry attempt number (0-based) |
+| `Backoff` | duration | Computed backoff duration before the next retry (zero for non-retry actions) |
+| `SessionKey` | string | Session identifier |
+
+**Event name:** `agent.recovery.decision`
+
+### Exponential Backoff
+
+Retry actions use exponential backoff before the next attempt. The formula is:
+
+```
+backoff = min(baseDelay * 2^attempt, maxBackoff)
+```
+
+| Parameter | Value |
+|-----------|-------|
+| Base delay | 1 second |
+| Max backoff | 30 seconds |
+
+Example progression: 1s, 2s, 4s, 8s, 16s, 30s, 30s, ...
+
+Backoff sleeps are context-aware and will abort immediately if the context is cancelled.
+
+### Per-Error-Class Retry Limits
+
+In addition to the global `maxRetries` setting (default: 2), each error class has its own maximum retry count. When the per-class limit is reached for a specific error type, the recovery policy escalates even if the global limit has not been reached.
+
+| Cause Class | Default Max Retries | Description |
+|-------------|---------------------|-------------|
+| `rate_limit` | 5 | Provider rate-limiting (429 responses) |
+| `transient` | 3 | Transient provider errors |
+| `malformed_tool_call` | 1 | Invalid function call schema |
+| `timeout` | 3 | Execution or idle timeout |
+| _(other)_ | Global `maxRetries` | Falls through to the global setting |
+
+Per-class retry counts are tracked independently within a single run. The global `maxRetries` is configured via `recovery.maxRetries` in the config.
 
 ## Gateway Endpoints
 
@@ -66,6 +161,7 @@ All observability endpoints are available when the gateway is running (`lango se
 | `GET /metrics/sessions` | Per-session token usage |
 | `GET /metrics/tools` | Per-tool metrics |
 | `GET /metrics/agents` | Per-agent metrics |
+| `GET /metrics/policy` | Policy decision statistics (blocks, observes, by-reason) |
 | `GET /metrics/history` | Historical metrics (`?days=N` parameter) |
 | `GET /health/detailed` | Detailed health check results per component |
 

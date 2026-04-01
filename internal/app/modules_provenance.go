@@ -5,7 +5,6 @@ import (
 	"crypto/sha256"
 	"encoding/json"
 	"fmt"
-	"sort"
 
 	"github.com/langoai/lango/internal/appinit"
 	"github.com/langoai/lango/internal/bootstrap"
@@ -117,18 +116,9 @@ type hookEntry struct {
 func computeConfigFingerprint(boot *bootstrap.Result) string {
 	h := sha256.New()
 
-	// Sort explicit keys for deterministic ordering.
+	// json.Marshal sorts map keys deterministically (Go 1.12+).
 	if boot.ExplicitKeys != nil {
-		keys := make([]string, 0, len(boot.ExplicitKeys))
-		for k := range boot.ExplicitKeys {
-			keys = append(keys, k)
-		}
-		sort.Strings(keys)
-		sorted := make(map[string]bool, len(boot.ExplicitKeys))
-		for _, k := range keys {
-			sorted[k] = boot.ExplicitKeys[k]
-		}
-		data, _ := json.Marshal(sorted)
+		data, _ := json.Marshal(boot.ExplicitKeys)
 		h.Write(data)
 	}
 

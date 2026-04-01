@@ -21,14 +21,14 @@ type sessionBudgetState struct {
 
 // budgetRestoringExecutor wraps an executor and tracks session-local budget
 // state. On the first call per session key, it restores cumulative counters
-// from Session.Metadata. After each run, it reads LastRunStats() from the
-// inner CoordinatingExecutor (if present) and adds the delta to the
+// from Session.Metadata. After each run, it reads LastRunStatsForSession()
+// from the inner CoordinatingExecutor (if present) and adds the delta to the
 // session-local cumulative counters.
 //
-// This avoids the stale-shared-budget bug: CoordinatingExecutor.Clone()
-// creates a fresh per-run BudgetPolicy that starts at 0 and only increments
-// the clone. The shared instance is never touched, so serializing it would
-// always produce stale zeros.
+// Scope: budget state (turns, delegations) is restored to runtime.
+// Token totals (cumulative_input_tokens, cumulative_output_tokens) are
+// persisted to metadata for display but NOT restored to the metrics
+// collector at resume time. Token continuity is deferred to phase 2.
 type budgetRestoringExecutor struct {
 	inner        turnrunner.Executor
 	store        session.Store
@@ -146,8 +146,7 @@ func wireSessionUsage(
 
 		// Persist cumulative token usage from metrics collector.
 		if collector != nil {
-			snap := collector.Snapshot()
-			if sm, ok := snap.SessionBreakdown[sessionKey]; ok {
+			if sm := collector.SessionMetrics(sessionKey); sm != nil {
 				sess.Metadata["usage:cumulative_input_tokens"] = strconv.FormatInt(sm.InputTokens, 10)
 				sess.Metadata["usage:cumulative_output_tokens"] = strconv.FormatInt(sm.OutputTokens, 10)
 			}

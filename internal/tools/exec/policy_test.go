@@ -121,6 +121,34 @@ func TestPolicyEvaluator_Evaluate(t *testing.T) {
 		{give: `env -i bash -c "lango security"`, wantVerdict: VerdictBlock, wantReason: ReasonLangoCLI},
 		// Fix B: env -u flag — clean command allowed
 		{give: `env -u SECRET sh -c "echo hi"`, wantVerdict: VerdictAllow, wantReason: ReasonNone},
+		// P3: Heredoc — observe
+		{give: "cat << 'EOF'\nhello\nEOF", wantVerdict: VerdictObserve, wantReason: ReasonHeredoc},
+		{give: "sh << 'EOF'\necho hello\nEOF", wantVerdict: VerdictObserve, wantReason: ReasonHeredoc},
+		// P3: Process substitution — observe
+		{give: "diff <(ls dir1) <(ls dir2)", wantVerdict: VerdictObserve, wantReason: ReasonProcessSubst},
+		// P3: Grouped subshell — observe
+		{give: "(echo hello; echo world)", wantVerdict: VerdictObserve, wantReason: ReasonGroupedSubshell},
+		{give: "{ echo hello; echo world; }", wantVerdict: VerdictObserve, wantReason: ReasonGroupedSubshell},
+		// P3: Shell function — observe
+		{give: "f() { echo hello; }; f", wantVerdict: VerdictObserve, wantReason: ReasonShellFunction},
+		// P3: xargs with safe verb — observe (construct is opaque)
+		{give: "xargs echo", wantVerdict: VerdictObserve, wantReason: ReasonXargsInner},
+		// P3: xargs with dangerous verb — block (inner verb is kill)
+		{give: "xargs kill", wantVerdict: VerdictBlock, wantReason: ReasonKillVerb},
+		{give: "xargs -n 1 kill", wantVerdict: VerdictBlock, wantReason: ReasonKillVerb},
+		// P3: find -exec with safe verb — observe
+		{give: `find . -exec echo {} \;`, wantVerdict: VerdictObserve, wantReason: ReasonFindExecInner},
+		// P3: find -exec with dangerous verb — block
+		{give: `find . -exec rm {} \;`, wantVerdict: VerdictObserve, wantReason: ReasonFindExecInner},
+		{give: `find . -exec kill {} \;`, wantVerdict: VerdictBlock, wantReason: ReasonKillVerb},
+		// P3: find without -exec — allow (normal find usage)
+		{give: `find . -name "*.go"`, wantVerdict: VerdictAllow, wantReason: ReasonNone},
+		// P3: Env prefix (bare VAR=val cmd) — evaluate inner cmd
+		{give: "FOO=bar echo hello", wantVerdict: VerdictAllow, wantReason: ReasonNone},
+		{give: "FOO=bar kill 1234", wantVerdict: VerdictBlock, wantReason: ReasonKillVerb},
+		{give: "LANG=C FOO=bar lango security", wantVerdict: VerdictBlock, wantReason: ReasonLangoCLI},
+		// P3: xargs with catastrophic inner verb
+		{give: "xargs -n 1 rm -rf /", wantVerdict: VerdictBlock, wantReason: ReasonCatastrophicPattern},
 	}
 
 	for _, tt := range tests {

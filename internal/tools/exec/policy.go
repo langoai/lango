@@ -51,6 +51,12 @@ const (
 	ReasonEvalVerb        ReasonCode = "eval_verb"
 	ReasonEncodedPipe          ReasonCode = "encoded_pipe"
 	ReasonCatastrophicPattern  ReasonCode = "catastrophic_pattern"
+	ReasonHeredoc              ReasonCode = "heredoc"
+	ReasonProcessSubst         ReasonCode = "process_substitution"
+	ReasonGroupedSubshell      ReasonCode = "grouped_subshell"
+	ReasonShellFunction        ReasonCode = "shell_function"
+	ReasonXargsInner           ReasonCode = "xargs_inner"
+	ReasonFindExecInner        ReasonCode = "find_exec_inner"
 )
 
 // PolicyDecision is the structured result of evaluating a command.
@@ -133,7 +139,7 @@ func NewPolicyEvaluator(
 
 // Evaluate performs the full policy check on a command string.
 // It unwraps one level of shell wrapper, applies all existing checks
-// to the inner command, and detects opaque patterns.
+// to the inner command, and detects opaque patterns and shell constructs.
 func (pe *PolicyEvaluator) Evaluate(cmd string) PolicyDecision {
 	original := cmd
 
@@ -144,6 +150,16 @@ func (pe *PolicyEvaluator) Evaluate(cmd string) PolicyDecision {
 	if didUnwrap {
 		effectiveCmd = inner
 		unwrapped = inner
+	}
+
+	// Step 1.5: Env prefix stripping (VAR=val cmd without explicit "env").
+	// Only if no shell wrapper was detected — shell wrapper AST already
+	// separates Assigns from Args.
+	if !didUnwrap {
+		if stripped, didStrip := unwrapEnvPrefix(effectiveCmd); didStrip {
+			effectiveCmd = stripped
+			unwrapped = stripped
+		}
 	}
 
 	// Step 2: Lango CLI / skill-import classification.
@@ -172,6 +188,15 @@ func (pe *PolicyEvaluator) Evaluate(cmd string) PolicyDecision {
 		}
 	}
 
+	// Step 3.5: xargs / find-exec inner verb extraction.
+	// Extract the inner verb and evaluate it through guard checks.
+	// If extraction succeeds and inner verb is blocked → block.
+	// If extraction succeeds and inner verb is safe → observe (construct is still opaque).
+	// If extraction fails → observe.
+	if decision, handled := pe.evaluateInnerVerbConstruct(effectiveCmd, original, unwrapped); handled {
+		return decision
+	}
+
 	// Step 4: Catastrophic pattern check — runs for ALL commands, not just opaque.
 	if pe.matchesCatastrophicPattern(effectiveCmd) {
 		return PolicyDecision{
@@ -194,6 +219,18 @@ func (pe *PolicyEvaluator) Evaluate(cmd string) PolicyDecision {
 		}
 	}
 
+	// Step 5.5: Shell construct detection (heredoc, process substitution,
+	// grouped subshell, shell function).
+	if constructReason := detectShellConstruct(effectiveCmd); constructReason != ReasonNone {
+		return PolicyDecision{
+			Verdict:   VerdictObserve,
+			Reason:    constructReason,
+			Message:   "command contains shell construct (" + string(constructReason) + ") — proceeding with monitoring",
+			Command:   original,
+			Unwrapped: unwrapped,
+		}
+	}
+
 	// Step 6: Allow.
 	return PolicyDecision{
 		Verdict:   VerdictAllow,
@@ -201,6 +238,81 @@ func (pe *PolicyEvaluator) Evaluate(cmd string) PolicyDecision {
 		Command:   original,
 		Unwrapped: unwrapped,
 	}
+}
+
+// evaluateInnerVerbConstruct checks if the effective command is an xargs or
+// find-exec construct. If so, it extracts the inner verb and evaluates it.
+//
+// Returns (decision, true) if the construct was detected and a decision made.
+// Returns (PolicyDecision{}, false) if the command is not an xargs/find-exec construct.
+func (pe *PolicyEvaluator) evaluateInnerVerbConstruct(effectiveCmd, original, unwrapped string) (PolicyDecision, bool) {
+	verb := extractVerb(effectiveCmd)
+
+	var innerVerb string
+	var extracted bool
+	var reasonCode ReasonCode
+
+	switch verb {
+	case "xargs":
+		innerVerb, extracted = extractXargsVerb(effectiveCmd)
+		reasonCode = ReasonXargsInner
+	case "find":
+		// Only handle find if it has -exec or -execdir.
+		innerVerb, extracted = extractFindExecVerb(effectiveCmd)
+		if !extracted {
+			return PolicyDecision{}, false // find without -exec is normal
+		}
+		reasonCode = ReasonFindExecInner
+	default:
+		return PolicyDecision{}, false
+	}
+
+	if !extracted {
+		// Extraction failed → observe.
+		return PolicyDecision{
+			Verdict:   VerdictObserve,
+			Reason:    reasonCode,
+			Message:   "command uses " + verb + " but inner verb could not be extracted — proceeding with monitoring",
+			Command:   original,
+			Unwrapped: unwrapped,
+		}, true
+	}
+
+	// Inner verb extracted — check against guard.
+	if blocked, reason := pe.guard.CheckCommand(innerVerb); blocked {
+		rc := ReasonProtectedPath
+		if strings.Contains(reason, "process management") {
+			rc = ReasonKillVerb
+		}
+		return PolicyDecision{
+			Verdict:   VerdictBlock,
+			Reason:    rc,
+			Message:   reason + " (extracted from " + verb + ")",
+			Command:   original,
+			Unwrapped: unwrapped,
+		}, true
+	}
+
+	// Inner verb extracted and safe — check catastrophic patterns on the full
+	// effective command (substring match catches "rm -rf /" inside "xargs rm -rf /").
+	if pe.matchesCatastrophicPattern(effectiveCmd) {
+		return PolicyDecision{
+			Verdict:   VerdictBlock,
+			Reason:    ReasonCatastrophicPattern,
+			Message:   "command containing " + verb + " matches catastrophic safety pattern — blocked before approval",
+			Command:   original,
+			Unwrapped: unwrapped,
+		}, true
+	}
+
+	// Inner verb is safe, but the construct itself is still partially opaque → observe.
+	return PolicyDecision{
+		Verdict:   VerdictObserve,
+		Reason:    reasonCode,
+		Message:   "command uses " + verb + " with inner verb '" + innerVerb + "' — proceeding with monitoring",
+		Command:   original,
+		Unwrapped: unwrapped,
+	}, true
 }
 
 // matchesCatastrophicPattern checks if the command contains any catastrophic

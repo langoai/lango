@@ -3,6 +3,8 @@ package exec
 import (
 	"strings"
 	"unicode"
+
+	"mvdan.cc/sh/v3/syntax"
 )
 
 // detectOpaquePattern checks if the command contains patterns that prevent
@@ -126,4 +128,92 @@ func detectEncodedPipe(cmd string) bool {
 		}
 	}
 	return false
+}
+
+// detectShellConstruct checks if the command contains shell constructs that
+// prevent full static analysis. Uses AST-based detection with string-based
+// fallback. Returns the matching ReasonCode, or ReasonNone if transparent.
+//
+// Detected constructs:
+//   - Heredoc (<<, <<<): arbitrary code possible, content not analyzable
+//   - Process substitution (<(cmd), >(cmd)): opaque subshell execution
+//   - Grouped subshell ((cmd; cmd), { cmd; }): multiple commands, partial analysis
+//   - Shell function definition (f() { ... }): function body can contain anything
+func detectShellConstruct(cmd string) ReasonCode {
+	trimmed := strings.TrimSpace(cmd)
+	if trimmed == "" {
+		return ReasonNone
+	}
+
+	// Try AST-based detection first.
+	parser := syntax.NewParser()
+	f, err := parser.Parse(strings.NewReader(trimmed), "")
+	if err == nil {
+		if reason := detectShellConstructAST(f); reason != ReasonNone {
+			return reason
+		}
+		return ReasonNone
+	}
+
+	// Fallback: string-based detection for when AST parsing fails.
+	return detectShellConstructString(trimmed)
+}
+
+// detectShellConstructAST walks the parsed AST to find opaque shell constructs.
+func detectShellConstructAST(f *syntax.File) ReasonCode {
+	var reason ReasonCode
+	syntax.Walk(f, func(node syntax.Node) bool {
+		if reason != ReasonNone {
+			return false // already found a match, stop walking
+		}
+		switch n := node.(type) {
+		case *syntax.Redirect:
+			// Heredoc: << or <<< operators.
+			if n.Op == syntax.Hdoc || n.Op == syntax.DashHdoc || n.Op == syntax.WordHdoc {
+				reason = ReasonHeredoc
+				return false
+			}
+		case *syntax.ProcSubst:
+			// Process substitution: <(cmd) or >(cmd).
+			reason = ReasonProcessSubst
+			return false
+		case *syntax.Subshell:
+			// Grouped subshell: (cmd; cmd).
+			reason = ReasonGroupedSubshell
+			return false
+		case *syntax.Block:
+			// Brace group: { cmd; }.
+			// Only flag if the file contains more than a simple command —
+			// standalone brace groups are suspicious.
+			reason = ReasonGroupedSubshell
+			return false
+		case *syntax.FuncDecl:
+			// Shell function definition: f() { ... }.
+			reason = ReasonShellFunction
+			return false
+		}
+		return true
+	})
+	return reason
+}
+
+// detectShellConstructString is the string-based fallback for detecting shell
+// constructs when AST parsing fails.
+func detectShellConstructString(cmd string) ReasonCode {
+	// Heredoc: << pattern (not <<< which is here-string, also opaque).
+	if strings.Contains(cmd, "<<") {
+		return ReasonHeredoc
+	}
+
+	// Process substitution: <( or >( patterns.
+	if strings.Contains(cmd, "<(") || strings.Contains(cmd, ">(") {
+		return ReasonProcessSubst
+	}
+
+	// Shell function definition: pattern like "name()" or "name ()" followed by {.
+	if strings.Contains(cmd, "() {") || strings.Contains(cmd, "(){") {
+		return ReasonShellFunction
+	}
+
+	return ReasonNone
 }
