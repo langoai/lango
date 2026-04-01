@@ -475,9 +475,6 @@ type AlertingConfig struct {
 	// Master switch (default: false)
 	Enabled bool `mapstructure:"enabled" json:"enabled"`
 
-	// AdminChannel routes alerts to a configured channel (e.g., "slack", "discord")
-	AdminChannel string `mapstructure:"adminChannel" json:"adminChannel"`
-
 	// PolicyBlockRate is the threshold for policy block events per 5min window (default: 10)
 	PolicyBlockRate int `mapstructure:"policyBlockRateThreshold" json:"policyBlockRateThreshold"`
 

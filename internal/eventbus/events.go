@@ -209,7 +209,7 @@ func (e PolicyDecisionEvent) EventName() string { return EventPolicyDecision }
 
 // AlertEvent is published when an operational alert condition is detected.
 type AlertEvent struct {
-	Type       string                 // "policy_block_rate", "recovery_retries", "circuit_breaker", "config_drift"
+	Type       string                 // "policy_block_rate", "recovery_retries", "circuit_breaker"; "config_drift" is planned
 	Severity   string                 // "warning", "critical"
 	Message    string
 	Details    map[string]interface{}

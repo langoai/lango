@@ -72,6 +72,105 @@ func TestDetectOpaquePattern(t *testing.T) {
 	}
 }
 
+func TestExtractSingleCommandFromConstruct(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		give           string
+		wantInner      string
+		wantReason     ReasonCode
+		wantExtractable bool
+	}{
+		// Subshell with single command → extractable.
+		{
+			give:            "(kill 1)",
+			wantInner:       "kill 1",
+			wantReason:      ReasonGroupedSubshell,
+			wantExtractable: true,
+		},
+		{
+			give:            "(echo hello)",
+			wantInner:       "echo hello",
+			wantReason:      ReasonGroupedSubshell,
+			wantExtractable: true,
+		},
+		// Block with single command → extractable.
+		{
+			give:            "{ lango security; }",
+			wantInner:       "lango security",
+			wantReason:      ReasonGroupedSubshell,
+			wantExtractable: true,
+		},
+		{
+			give:            "{ echo hello; }",
+			wantInner:       "echo hello",
+			wantReason:      ReasonGroupedSubshell,
+			wantExtractable: true,
+		},
+		// Block with rm -rf / → extractable.
+		{
+			give:            "{ rm -rf /; }",
+			wantInner:       "rm -rf /",
+			wantReason:      ReasonGroupedSubshell,
+			wantExtractable: true,
+		},
+		// Multi-statement subshell → not extractable.
+		{
+			give:            "(kill 1; echo done)",
+			wantInner:       "",
+			wantReason:      ReasonGroupedSubshell,
+			wantExtractable: false,
+		},
+		// Multi-statement block → not extractable.
+		{
+			give:            "{ echo hello; echo world; }",
+			wantInner:       "",
+			wantReason:      ReasonGroupedSubshell,
+			wantExtractable: false,
+		},
+		// FuncDecl with single command body (standalone decl, no invocation) → extractable.
+		{
+			give:            "f() { kill 1; }",
+			wantInner:       "kill 1",
+			wantReason:      ReasonShellFunction,
+			wantExtractable: true,
+		},
+		// FuncDecl + invocation = 2 top-level stmts → not extractable.
+		{
+			give:            "f() { kill 1; }; f",
+			wantInner:       "",
+			wantReason:      ReasonNone,
+			wantExtractable: false,
+		},
+		// Plain command → not a construct, not extractable.
+		{
+			give:            "echo hello",
+			wantInner:       "",
+			wantReason:      ReasonNone,
+			wantExtractable: false,
+		},
+		// Empty → not extractable.
+		{
+			give:            "",
+			wantInner:       "",
+			wantReason:      ReasonNone,
+			wantExtractable: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.give, func(t *testing.T) {
+			t.Parallel()
+			inner, reason, extractable := extractSingleCommandFromConstruct(tt.give)
+			assert.Equal(t, tt.wantExtractable, extractable, "extractable for %q", tt.give)
+			assert.Equal(t, tt.wantReason, reason, "reason for %q", tt.give)
+			if extractable {
+				assert.Equal(t, tt.wantInner, inner, "inner for %q", tt.give)
+			}
+		})
+	}
+}
+
 func TestDetectShellConstruct(t *testing.T) {
 	t.Parallel()
 

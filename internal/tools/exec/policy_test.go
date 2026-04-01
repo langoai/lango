@@ -126,11 +126,22 @@ func TestPolicyEvaluator_Evaluate(t *testing.T) {
 		{give: "sh << 'EOF'\necho hello\nEOF", wantVerdict: VerdictObserve, wantReason: ReasonHeredoc},
 		// P3: Process substitution — observe
 		{give: "diff <(ls dir1) <(ls dir2)", wantVerdict: VerdictObserve, wantReason: ReasonProcessSubst},
-		// P3: Grouped subshell — observe
+		// P3: Grouped subshell — multi-statement → observe
 		{give: "(echo hello; echo world)", wantVerdict: VerdictObserve, wantReason: ReasonGroupedSubshell},
 		{give: "{ echo hello; echo world; }", wantVerdict: VerdictObserve, wantReason: ReasonGroupedSubshell},
-		// P3: Shell function — observe
+		// P3: Shell function — func decl + invocation = 2 stmts → observe
 		{give: "f() { echo hello; }; f", wantVerdict: VerdictObserve, wantReason: ReasonShellFunction},
+		// P4 fix: single-command subshell/block extraction — dangerous inner → block
+		{give: "(kill 1)", wantVerdict: VerdictBlock, wantReason: ReasonKillVerb},
+		{give: "{ lango security; }", wantVerdict: VerdictBlock, wantReason: ReasonLangoCLI},
+		{give: "{ rm -rf /; }", wantVerdict: VerdictBlock, wantReason: ReasonCatastrophicPattern},
+		// P4 fix: single-command subshell — safe inner → allow
+		{give: "(echo hello)", wantVerdict: VerdictAllow, wantReason: ReasonNone},
+		{give: "{ echo hello; }", wantVerdict: VerdictAllow, wantReason: ReasonNone},
+		// P4 fix: multi-command subshell — can't extract single → observe
+		{give: "(kill 1; echo done)", wantVerdict: VerdictObserve, wantReason: ReasonGroupedSubshell},
+		// P4 fix: func decl + invocation = 2 stmts → observe (can't extract)
+		{give: "f() { kill 1; }; f", wantVerdict: VerdictObserve, wantReason: ReasonShellFunction},
 		// P3: xargs with safe verb — observe (construct is opaque)
 		{give: "xargs echo", wantVerdict: VerdictObserve, wantReason: ReasonXargsInner},
 		// P3: xargs with dangerous verb — block (inner verb is kill)

@@ -50,12 +50,12 @@ lango alerts summary
 
 ## Alert Types
 
-| Type | Trigger |
-|------|---------|
-| `policy_block_rate` | Policy block count exceeds threshold in a 5-minute window |
-| `recovery_retries` | Recovery retry count exceeds threshold per session |
-| `circuit_breaker` | Circuit breaker tripped |
-| `config_drift` | Configuration or provenance drift detected |
+| Type | Trigger | Status |
+|------|---------|--------|
+| `policy_block_rate` | Policy block count exceeds threshold in a 5-minute window | Active |
+| `recovery_retries` | Recovery retry count exceeds threshold per session (sliding 5min window) | Active |
+| `circuit_breaker` | Circuit breaker tripped for an agent | Active |
+| `config_drift` | Configuration or provenance drift detected | Planned |
 
 ## Configuration
 
@@ -66,5 +66,6 @@ alerting:
   enabled: true
   policyBlockRateThreshold: 10
   recoveryRetryThreshold: 5
-  adminChannel: ""  # optional: route to a configured channel
 ```
+
+> **Note:** Alert channel routing (e.g., to Slack or Discord) is planned for a future release.

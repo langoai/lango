@@ -88,6 +88,9 @@ func initObservability(cfg *config.Config, dbClient *ent.Client, bus *eventbus.B
 
 	// 7. Alerting dispatcher — threshold-based operational alerts
 	if cfg.Alerting.Enabled {
+		if !cfg.Observability.Audit.Enabled {
+			logger().Warnw("alerting enabled but audit logging is disabled; alerts will not be persisted — enable observability.audit for alert history")
+		}
 		dispatcher := alerting.NewDispatcher(bus, cfg.Alerting.PolicyBlockRate, cfg.Alerting.RecoveryRetries)
 		dispatcher.Subscribe(bus)
 		logger().Info("observability: alerting dispatcher wired",

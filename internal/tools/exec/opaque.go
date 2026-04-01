@@ -197,6 +197,87 @@ func detectShellConstructAST(f *syntax.File) ReasonCode {
 	return reason
 }
 
+// extractSingleCommandFromConstruct attempts to extract the inner command string
+// from a shell construct that contains exactly one simple statement.
+//
+// Supported single-command extraction:
+//   - Subshell with 1 stmt: (kill 1) → "kill 1"
+//   - Block with 1 stmt: { kill 1; } → "kill 1"
+//   - FuncDecl with 1 stmt in body: f() { kill 1; }; f → "kill 1"
+//
+// Multiple statements → extraction fails (returns "", ReasonNone, false).
+// The returned ReasonCode is the construct type (for reporting), and extractable
+// indicates whether extraction succeeded.
+func extractSingleCommandFromConstruct(cmd string) (inner string, reason ReasonCode, extractable bool) {
+	trimmed := strings.TrimSpace(cmd)
+	if trimmed == "" {
+		return "", ReasonNone, false
+	}
+
+	parser := syntax.NewParser()
+	f, err := parser.Parse(strings.NewReader(trimmed), "")
+	if err != nil {
+		return "", ReasonNone, false
+	}
+
+	// For FuncDecl: must have exactly 1 stmt (the func decl itself) at top level
+	// to be extractable. A func decl + invocation = 2 stmts → not extractable.
+	if len(f.Stmts) == 1 {
+		stmt := f.Stmts[0]
+		switch node := stmt.Cmd.(type) {
+		case *syntax.Subshell:
+			if extracted, ok := extractSingleCallFromStmts(node.Stmts); ok {
+				return extracted, ReasonGroupedSubshell, true
+			}
+			return "", ReasonGroupedSubshell, false
+
+		case *syntax.Block:
+			if extracted, ok := extractSingleCallFromStmts(node.Stmts); ok {
+				return extracted, ReasonGroupedSubshell, true
+			}
+			return "", ReasonGroupedSubshell, false
+
+		case *syntax.FuncDecl:
+			if node.Body != nil {
+				// FuncDecl.Body is *Stmt whose Cmd is typically a *Block.
+				if block, ok := node.Body.Cmd.(*syntax.Block); ok {
+					if extracted, ok := extractSingleCallFromStmts(block.Stmts); ok {
+						return extracted, ReasonShellFunction, true
+					}
+				}
+			}
+			return "", ReasonShellFunction, false
+		}
+	}
+
+	return "", ReasonNone, false
+}
+
+// extractSingleCallFromStmts checks if stmts contains exactly 1 statement
+// that is a simple CallExpr, and if so reconstructs the command string.
+func extractSingleCallFromStmts(stmts []*syntax.Stmt) (string, bool) {
+	if len(stmts) != 1 {
+		return "", false
+	}
+
+	call, ok := stmts[0].Cmd.(*syntax.CallExpr)
+	if !ok || len(call.Args) == 0 {
+		return "", false
+	}
+
+	// Reconstruct the command from args.
+	printer := syntax.NewPrinter()
+	var parts []string
+	for _, arg := range call.Args {
+		var buf strings.Builder
+		if err := printer.Print(&buf, arg); err != nil {
+			return "", false
+		}
+		parts = append(parts, buf.String())
+	}
+	return strings.Join(parts, " "), true
+}
+
 // detectShellConstructString is the string-based fallback for detecting shell
 // constructs when AST parsing fails.
 func detectShellConstructString(cmd string) ReasonCode {

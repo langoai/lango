@@ -19,7 +19,7 @@ The alerting dispatcher SHALL deduplicate alerts by type within each 5-minute wi
 - **THEN** no additional AlertEvent is published for that type until the window advances
 
 ### Requirement: Alert configuration
-The system SHALL provide an AlertingConfig struct with fields: Enabled (bool), AdminChannel (string), PolicyBlockRate (int), and RecoveryRetries (int). Default values SHALL be Enabled=false, PolicyBlockRate=10, RecoveryRetries=5.
+The system SHALL provide an AlertingConfig struct with fields: Enabled (bool), PolicyBlockRate (int), and RecoveryRetries (int). Default values SHALL be Enabled=false, PolicyBlockRate=10, RecoveryRetries=5. Admin channel routing is planned for a future release.
 
 #### Scenario: Alerting disabled by default
 - **WHEN** the system starts with default configuration

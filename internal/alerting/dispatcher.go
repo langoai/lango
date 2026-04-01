@@ -6,6 +6,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/langoai/lango/internal/agentrt"
 	"github.com/langoai/lango/internal/eventbus"
 )
 
@@ -18,9 +19,10 @@ type Dispatcher struct {
 	policyThreshold int
 	recoveryThresh  int
 
-	mu             sync.Mutex
-	policyBlocks   []time.Time
-	lastAlertTimes map[string]time.Time
+	mu              sync.Mutex
+	policyBlocks    []time.Time
+	recoveryRetries map[string][]time.Time // per-session recovery retry tracking
+	lastAlertTimes  map[string]time.Time
 }
 
 // NewDispatcher creates a Dispatcher that publishes alerts to bus
@@ -30,6 +32,7 @@ func NewDispatcher(bus *eventbus.Bus, policyBlockRate, recoveryRetries int) *Dis
 		bus:             bus,
 		policyThreshold: policyBlockRate,
 		recoveryThresh:  recoveryRetries,
+		recoveryRetries: make(map[string][]time.Time),
 		lastAlertTimes:  make(map[string]time.Time),
 	}
 }
@@ -37,6 +40,8 @@ func NewDispatcher(bus *eventbus.Bus, policyBlockRate, recoveryRetries int) *Dis
 // Subscribe registers the dispatcher to receive events from the bus.
 func (d *Dispatcher) Subscribe(bus *eventbus.Bus) {
 	eventbus.SubscribeTyped[eventbus.PolicyDecisionEvent](bus, d.handlePolicyDecision)
+	eventbus.SubscribeTyped[agentrt.RecoveryDecisionEvent](bus, d.handleRecoveryDecision)
+	eventbus.SubscribeTyped[agentrt.CircuitBreakerTrippedEvent](bus, d.handleCircuitBreakerTripped)
 }
 
 func (d *Dispatcher) handlePolicyDecision(evt eventbus.PolicyDecisionEvent) {
@@ -81,6 +86,48 @@ func (d *Dispatcher) maybePublish(alertType, severity, message string, details m
 		SessionKey: sessionKey,
 		Timestamp:  now,
 	})
+}
+
+func (d *Dispatcher) handleRecoveryDecision(evt agentrt.RecoveryDecisionEvent) {
+	now := time.Now()
+	d.mu.Lock()
+	defer d.mu.Unlock()
+
+	key := evt.SessionKey
+	d.recoveryRetries[key] = append(d.recoveryRetries[key], now)
+	d.recoveryRetries[key] = pruneWindow(d.recoveryRetries[key], now)
+
+	if len(d.recoveryRetries[key]) > d.recoveryThresh {
+		d.maybePublish("recovery_retries", "warning",
+			"recovery retry count exceeded threshold",
+			map[string]interface{}{
+				"count":      len(d.recoveryRetries[key]),
+				"threshold":  d.recoveryThresh,
+				"window":     windowDuration.String(),
+				"causeClass": evt.CauseClass,
+				"action":     evt.Action,
+			},
+			key,
+			now,
+		)
+	}
+}
+
+func (d *Dispatcher) handleCircuitBreakerTripped(evt agentrt.CircuitBreakerTrippedEvent) {
+	now := time.Now()
+	d.mu.Lock()
+	defer d.mu.Unlock()
+
+	d.maybePublish("circuit_breaker", "critical",
+		"circuit breaker tripped",
+		map[string]interface{}{
+			"agentName":    evt.AgentName,
+			"failureCount": evt.FailureCount,
+			"resetAt":      evt.ResetAt.Format(time.RFC3339),
+		},
+		"", // circuit breaker events don't carry a session key
+		now,
+	)
 }
 
 // pruneWindow removes entries older than windowDuration from a sorted time slice.

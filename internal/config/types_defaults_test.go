@@ -173,7 +173,6 @@ func TestDefaultConfig_Alerting(t *testing.T) {
 	cfg := DefaultConfig()
 
 	assert.False(t, cfg.Alerting.Enabled)
-	assert.Empty(t, cfg.Alerting.AdminChannel)
 	assert.Equal(t, 10, cfg.Alerting.PolicyBlockRate)
 	assert.Equal(t, 5, cfg.Alerting.RecoveryRetries)
 }

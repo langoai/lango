@@ -221,7 +221,60 @@ func (pe *PolicyEvaluator) Evaluate(cmd string) PolicyDecision {
 
 	// Step 5.5: Shell construct detection (heredoc, process substitution,
 	// grouped subshell, shell function).
+	// For single-command constructs, extract the inner command and evaluate it
+	// through the guard chain. Dangerous inner commands → block.
 	if constructReason := detectShellConstruct(effectiveCmd); constructReason != ReasonNone {
+		// Attempt to extract a single inner command for deeper evaluation.
+		if innerCmd, _, extractable := extractSingleCommandFromConstruct(effectiveCmd); extractable {
+			// Run the inner command through the same guard chain.
+			// Lango CLI / skill-import classification.
+			if msg, reason := pe.langoClassifier(innerCmd); msg != "" {
+				return PolicyDecision{
+					Verdict:   VerdictBlock,
+					Reason:    reason,
+					Message:   msg + " (extracted from shell construct)",
+					Command:   original,
+					Unwrapped: unwrapped,
+				}
+			}
+
+			// CommandGuard checks (kill verbs, protected paths).
+			if blocked, reason := pe.guard.CheckCommand(innerCmd); blocked {
+				rc := ReasonProtectedPath
+				if strings.Contains(reason, "process management") {
+					rc = ReasonKillVerb
+				}
+				return PolicyDecision{
+					Verdict:   VerdictBlock,
+					Reason:    rc,
+					Message:   reason + " (extracted from shell construct)",
+					Command:   original,
+					Unwrapped: unwrapped,
+				}
+			}
+
+			// Catastrophic pattern check on the inner command.
+			if pe.matchesCatastrophicPattern(innerCmd) {
+				return PolicyDecision{
+					Verdict:   VerdictBlock,
+					Reason:    ReasonCatastrophicPattern,
+					Message:   "command matches catastrophic safety pattern — blocked before approval (extracted from shell construct)",
+					Command:   original,
+					Unwrapped: unwrapped,
+				}
+			}
+
+			// Inner command is safe — allow. The single-command construct
+			// does not add meaningful opacity for a safe command.
+			return PolicyDecision{
+				Verdict:   VerdictAllow,
+				Reason:    ReasonNone,
+				Command:   original,
+				Unwrapped: unwrapped,
+			}
+		}
+
+		// Extraction not possible (multi-statement or complex construct) → observe.
 		return PolicyDecision{
 			Verdict:   VerdictObserve,
 			Reason:    constructReason,
