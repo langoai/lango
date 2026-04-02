@@ -53,6 +53,18 @@ func BuildTools(sm *SessionManager) []*agent.Tool {
 					return nil, err
 				}
 
+				// Re-validate final URL after potential redirects in P2P context.
+				if ctxkeys.IsP2PRequest(ctx) {
+					finalURL, err := sm.Tool().CurrentURL(sessionID)
+					if err == nil && finalURL != rawURL {
+						if err := ValidateURLForP2P(finalURL); err != nil {
+							// Navigate away from blocked destination.
+							_ = sm.Tool().Navigate(ctx, sessionID, "about:blank")
+							return nil, fmt.Errorf("redirect to blocked URL: %w", err)
+						}
+					}
+				}
+
 				return sm.Tool().Snapshot(sessionID, defaultLinkLimit, defaultActionLimit)
 			},
 		},

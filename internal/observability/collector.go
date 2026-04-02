@@ -126,11 +126,11 @@ func (c *MetricsCollector) RecordPolicyDecision(verdict, reason string) {
 // evictOldestSession removes the least-recently-updated session when
 // the session map reaches MaxSessions capacity. Must be called with mu held.
 func (c *MetricsCollector) evictOldestSession() {
-	max := c.MaxSessions
-	if max <= 0 {
-		max = DefaultMaxSessions
+	// MaxSessions <= 0 means unlimited (no eviction).
+	if c.MaxSessions <= 0 {
+		return
 	}
-	if len(c.sessions) < max {
+	if len(c.sessions) < c.MaxSessions {
 		return
 	}
 	var oldestKey string

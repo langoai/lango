@@ -248,7 +248,8 @@ func DefaultConfig() *Config {
 				SRSMode:          "unsafe",
 				MaxCredentialAge: "24h",
 			},
-			ToolIsolation: ToolIsolationConfig{
+			MaxSafetyLevel: "moderate",
+			ToolIsolation:  ToolIsolationConfig{
 				Enabled:        false,
 				TimeoutPerTool: 30 * time.Second,
 				MaxMemoryMB:    256,

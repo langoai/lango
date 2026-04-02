@@ -479,7 +479,18 @@ func (h *Handler) handleToolInvokePaid(ctx context.Context, req *Request, peerDI
 		}
 	}
 
-	// 2. Payment gate check.
+	// 2. Safety-level gate: block tools that exceed the configured max level.
+	// Must run before payment gate to avoid charging for tools that will be denied.
+	if !h.checkSafetyGate(toolName) {
+		return &Response{
+			RequestID: req.RequestID,
+			Status:    ResponseStatusDenied,
+			Error:     ErrToolSafetyBlocked.Error(),
+			Timestamp: time.Now(),
+		}
+	}
+
+	// 3. Payment gate check.
 	var verifiedAuth interface{}
 	var settlementID string
 	if h.payGate != nil {
@@ -519,17 +530,7 @@ func (h *Handler) handleToolInvokePaid(ctx context.Context, req *Request, peerDI
 		}
 	}
 
-	// 2b. Safety-level gate: block tools that exceed the configured max level.
-	if !h.checkSafetyGate(toolName) {
-		return &Response{
-			RequestID: req.RequestID,
-			Status:    ResponseStatusDenied,
-			Error:     ErrToolSafetyBlocked.Error(),
-			Timestamp: time.Now(),
-		}
-	}
-
-	// 3. Owner approval check (default-deny when no approval handler is configured).
+	// 4. Owner approval check (default-deny when no approval handler is configured).
 	params, _ := req.Payload["params"].(map[string]interface{})
 	if params == nil {
 		params = map[string]interface{}{}

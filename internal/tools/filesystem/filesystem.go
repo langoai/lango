@@ -9,24 +9,11 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/langoai/lango/internal/ctxkeys"
 	"github.com/langoai/lango/internal/logging"
 )
 
 var logger = logging.SubsystemSugar("tool.filesystem")
-
-// ctxKeyP2P is the context key for P2P origin detection.
-type ctxKeyP2P struct{}
-
-// WithP2PContext returns a context marked as originating from a P2P peer.
-func WithP2PContext(ctx context.Context) context.Context {
-	return context.WithValue(ctx, ctxKeyP2P{}, true)
-}
-
-// IsP2PContext reports whether ctx carries the P2P origin marker.
-func IsP2PContext(ctx context.Context) bool {
-	v, _ := ctx.Value(ctxKeyP2P{}).(bool)
-	return v
-}
 
 // Config holds filesystem tool configuration
 type Config struct {
@@ -238,7 +225,7 @@ func (t *Tool) Delete(ctx context.Context, path string) error {
 		return err
 	}
 
-	if IsP2PContext(ctx) {
+	if ctxkeys.IsP2PRequest(ctx) {
 		if err := os.Remove(absPath); err != nil {
 			return fmt.Errorf("delete (p2p restricted): %w", err)
 		}

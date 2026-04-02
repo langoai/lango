@@ -61,15 +61,34 @@ func ValidateURLForP2P(rawURL string) error {
 	// Parse as IP and check against private ranges.
 	ip := net.ParseIP(hostname)
 	if ip != nil {
-		if ip.IsLoopback() {
-			return fmt.Errorf("%w: loopback address is not allowed", ErrBlockedURL)
+		if err := checkIPPrivate(ip, hostname); err != nil {
+			return err
 		}
-		for _, cidr := range privateNetworks {
-			if cidr.Contains(ip) {
-				return fmt.Errorf("%w: %s is in a private network range", ErrBlockedURL, hostname)
+	} else {
+		// Hostname is not an IP literal — resolve via DNS and check all results.
+		ips, err := net.LookupIP(hostname)
+		if err == nil {
+			for _, resolved := range ips {
+				if err := checkIPPrivate(resolved, hostname); err != nil {
+					return err
+				}
 			}
 		}
+		// If DNS lookup fails, allow the request — the browser will fail on its own.
 	}
 
+	return nil
+}
+
+// checkIPPrivate returns an error if ip falls within a private/loopback range.
+func checkIPPrivate(ip net.IP, label string) error {
+	if ip.IsLoopback() {
+		return fmt.Errorf("%w: loopback address is not allowed", ErrBlockedURL)
+	}
+	for _, cidr := range privateNetworks {
+		if cidr.Contains(ip) {
+			return fmt.Errorf("%w: %s resolves to a private network address", ErrBlockedURL, label)
+		}
+	}
 	return nil
 }

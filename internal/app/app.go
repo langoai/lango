@@ -563,8 +563,13 @@ func wirePostAgent(app *App, r appinit.Resolver, tools []*agent.Tool, bus *event
 				if cfg.P2P.ToolIsolation.Container.Enabled {
 					containerExec, err := sandbox.NewContainerExecutor(sbxCfg, cfg.P2P.ToolIsolation.Container)
 					if err != nil {
-						logger().Warnf("Container sandbox unavailable, falling back to subprocess: %v", err)
-						sbxExec = sandbox.NewSubprocessExecutor(sbxCfg)
+						if cfg.P2P.ToolIsolation.Container.RequireContainer {
+							logger().Errorf("Container sandbox required but unavailable: %v", err)
+							// sbxExec stays nil — handler will reject P2P tool calls.
+						} else {
+							logger().Warnf("Container sandbox unavailable, falling back to subprocess: %v", err)
+							sbxExec = sandbox.NewSubprocessExecutor(sbxCfg)
+						}
 					} else {
 						sbxExec = containerExec
 						logger().Infof("P2P tool isolation enabled (container mode: %s)", containerExec.RuntimeName())
@@ -573,9 +578,11 @@ func wirePostAgent(app *App, r appinit.Resolver, tools []*agent.Tool, bus *event
 					sbxExec = sandbox.NewSubprocessExecutor(sbxCfg)
 					logger().Info("P2P tool isolation enabled (subprocess mode)")
 				}
-				p2pc.handler.SetSandboxExecutor(func(ctx context.Context, toolName string, params map[string]interface{}) (map[string]interface{}, error) {
-					return sbxExec.Execute(ctx, toolName, params)
-				})
+				if sbxExec != nil {
+					p2pc.handler.SetSandboxExecutor(func(ctx context.Context, toolName string, params map[string]interface{}) (map[string]interface{}, error) {
+						return sbxExec.Execute(ctx, toolName, params)
+					})
+				}
 			}
 
 			// Owner approval callback for inbound remote tool invocations.
@@ -616,6 +623,22 @@ func wirePostAgent(app *App, r appinit.Resolver, tools []*agent.Tool, bus *event
 					}
 					return resp.Approved, nil
 				})
+			}
+
+			// Wire safety-level gate for P2P tool invocations.
+			if app.ToolCatalog != nil {
+				maxLevel, ok := agent.ParseSafetyLevel(cfg.P2P.MaxSafetyLevel)
+				if !ok {
+					maxLevel = agent.SafetyLevelModerate
+				}
+				p2pc.handler.SetSafetyGate(
+					func(toolName string) (int, bool) {
+						level, found := app.ToolCatalog.GetToolSafetyLevel(toolName)
+						return int(level), found
+					},
+					int(maxLevel),
+					cfg.P2P.AllowedTools,
+				)
 			}
 		}
 		registerP2PRoutes(app.Gateway.Router(), app, p2pc, auth)

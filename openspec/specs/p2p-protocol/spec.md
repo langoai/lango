@@ -161,7 +161,7 @@ The `Handler` MUST call `ctxkeys.WithP2PRequest(ctx)` at the start of both `hand
 - **THEN** `ctxkeys.IsP2PRequest(ctx)` returns true in all downstream tool handlers
 
 ### Requirement: SafetyLevel gate for P2P tool invocations
-The `Handler` MUST check each tool's safety level against a configurable maximum before execution. Tools above the threshold MUST be rejected with `ErrToolSafetyBlocked`.
+The `Handler` MUST check each tool's safety level against a configurable maximum before execution. Tools above the threshold MUST be rejected with `ErrToolSafetyBlocked`. The application MUST wire `SetSafetyGate()` during initialization when a tool catalog is available, using `ToolCatalog.GetToolSafetyLevel()` as the checker. If `ParseSafetyLevel` returns false for the configured value, the system MUST default to `SafetyLevelModerate`. In paid tool flows, the safety gate MUST execute before the payment gate to avoid charging for tools that will be denied.
 
 #### Scenario: Dangerous tool blocked at moderate threshold
 - **WHEN** `maxSafetyLevel` is "moderate" and a Dangerous-level tool is invoked
@@ -174,6 +174,19 @@ The `Handler` MUST check each tool's safety level against a configurable maximum
 #### Scenario: No checker configured (backward compatible)
 - **WHEN** no `SafetyLevelChecker` is set on the handler
 - **THEN** all tools pass the safety gate
+
+#### Scenario: Safety gate wired at startup
+- **WHEN** the application initializes with P2P enabled and a tool catalog available
+- **THEN** `SetSafetyGate` SHALL be called on the P2P handler with the catalog-based checker
+
+#### Scenario: Invalid MaxSafetyLevel defaults to moderate
+- **WHEN** `p2p.maxSafetyLevel` is empty or an invalid string
+- **THEN** the safety gate SHALL use `SafetyLevelModerate` as the threshold
+
+#### Scenario: Blocked paid tool not charged
+- **WHEN** a P2P peer invokes a paid tool that exceeds `maxSafetyLevel`
+- **THEN** the handler SHALL return `ResponseStatusDenied` with `ErrToolSafetyBlocked`
+- **AND** the payment gate SHALL NOT be consulted
 
 ### Requirement: P2P safety configuration
 `P2PConfig` MUST include `maxSafetyLevel` (string, default "moderate") and `allowedTools` (string slice, default empty) fields.

@@ -122,7 +122,7 @@ The system SHALL validate file paths using `filepath.EvalSymlinks()` after `file
 - **THEN** validation continues with the cleaned absolute path (no error)
 
 ### Requirement: Directory operations
-The `Delete` method SHALL accept `context.Context` as its first parameter. In P2P context (`IsP2PContext(ctx)`), deletion MUST use `os.Remove` (single file or empty directory only) instead of `os.RemoveAll` (recursive).
+The `Delete` method SHALL accept `context.Context` as its first parameter. In P2P context (`ctxkeys.IsP2PRequest(ctx)`), deletion MUST use `os.Remove` (single file or empty directory only) instead of `os.RemoveAll` (recursive). The filesystem package MUST NOT define its own P2P context key.
 
 #### Scenario: P2P delete single file
 - **WHEN** deletion is requested from a P2P context for a regular file
@@ -137,7 +137,8 @@ The `Delete` method SHALL accept `context.Context` as its first parameter. In P2
 - **WHEN** deletion is requested from a local (non-P2P) context
 - **THEN** `os.RemoveAll` is used as before (backward compatible)
 
-## ADDED Requirements
+## REMOVED Requirements
 
 ### Requirement: P2P context detection
-The `filesystem` package MUST provide `WithP2PContext(ctx)` and `IsP2PContext(ctx)` functions for P2P origin marking at the package level.
+**Reason**: Replaced by canonical `ctxkeys.WithP2PRequest`/`ctxkeys.IsP2PRequest` from the `ctxkeys` package.
+**Migration**: Use `ctxkeys.IsP2PRequest(ctx)` instead of `filesystem.IsP2PContext(ctx)`.

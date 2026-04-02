@@ -264,7 +264,7 @@ The application layer SHALL wrap all browser tool handlers with panic recovery a
 ## ADDED Requirements
 
 ### Requirement: Private network URL blocking for P2P
-The `browser_navigate` handler MUST validate URLs against a private network blocklist when the context carries a P2P origin marker. Blocked addresses: `localhost`, `127.0.0.0/8`, `10.0.0.0/8`, `172.16.0.0/12`, `192.168.0.0/16`, `169.254.0.0/16`, `[::1]`, and `file://` scheme.
+The `browser_navigate` handler MUST validate URLs against a private network blocklist when the context carries a P2P origin marker. Blocked addresses: `localhost`, `127.0.0.0/8`, `10.0.0.0/8`, `172.16.0.0/12`, `192.168.0.0/16`, `169.254.0.0/16`, `[::1]`, and `file://` scheme. `ValidateURLForP2P` MUST resolve non-IP hostnames via `net.LookupIP` and check all resolved IPs against private ranges. After navigation completes, the handler MUST retrieve the final page URL and re-validate it to prevent redirect-based SSRF.
 
 #### Scenario: Internal URL blocked in P2P context
 - **WHEN** a P2P peer navigates to `http://127.0.0.1:8080/admin`
@@ -285,6 +285,15 @@ The `browser_navigate` handler MUST validate URLs against a private network bloc
 #### Scenario: URL validation skipped for local context
 - **WHEN** a local (non-P2P) user navigates to `http://localhost:3000`
 - **THEN** navigation proceeds normally (no restriction)
+
+#### Scenario: Hostname resolving to private IP blocked
+- **WHEN** a P2P peer navigates to `http://metadata.internal` which resolves to `169.254.169.254`
+- **THEN** `ValidateURLForP2P` returns `ErrBlockedURL`
+
+#### Scenario: Redirect to internal address blocked
+- **WHEN** a P2P peer navigates to `https://external.com` which redirects to `http://127.0.0.1:8080`
+- **THEN** the handler navigates to `about:blank`
+- **AND** returns an error wrapping `ErrBlockedURL`
 
 ### Requirement: Eval action blocking for P2P
 The `browser_action` handler MUST reject `eval` actions when the context carries a P2P origin marker, returning `ErrEvalBlockedP2P` before creating a browser session.
