@@ -3,7 +3,7 @@ package configstore
 import (
 	"context"
 	"fmt"
-	"log"
+	"github.com/langoai/lango/internal/logging"
 	"os"
 
 	"github.com/langoai/lango/internal/config"
@@ -27,7 +27,7 @@ func MigrateFromJSON(ctx context.Context, store *Store, jsonPath, profileName st
 
 	// Delete the source JSON file after successful import for security.
 	if err := os.Remove(jsonPath); err != nil {
-		log.Printf("WARNING: imported successfully but could not delete source file %q: %v", jsonPath, err)
+		logging.SubsystemSugar("configstore").Warnw("imported but could not delete source", "path", jsonPath, "error", err)
 	}
 
 	return nil

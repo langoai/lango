@@ -4,7 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"log"
+	"github.com/langoai/lango/internal/logging"
 	"math/big"
 	"sync"
 	"time"
@@ -163,7 +163,7 @@ func (c *Caller) Write(ctx context.Context, req ContractCallRequest) (*ContractC
 	}
 	baseFee := header.BaseFee
 	if baseFee == nil {
-		log.Printf("WARNING: block header missing baseFee, using fallback %d wei", payment.DefaultBaseFeeWei)
+		logging.SubsystemSugar("contract").Warnw("block header missing baseFee", "fallback", payment.DefaultBaseFeeWei)
 		baseFee = big.NewInt(payment.DefaultBaseFeeWei)
 	}
 	maxPriorityFee := big.NewInt(payment.DefaultMaxPriorityFeeWei)
