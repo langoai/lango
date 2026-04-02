@@ -8,17 +8,15 @@ import (
 	"time"
 
 	"github.com/langoai/lango/internal/config"
+	"github.com/langoai/lango/internal/types"
 	"github.com/langoai/lango/internal/wallet"
 )
-
-// ReputationQuerier queries peer trust scores. Defined locally to avoid import cycles.
-type ReputationQuerier func(ctx context.Context, peerDID string) (float64, error)
 
 // Engine implements Assessor using a 3-variable risk matrix:
 // trust score x transaction value x output verifiability.
 type Engine struct {
 	cfg             config.RiskConfig
-	reputation      ReputationQuerier
+	reputation      types.ReputationQuerier
 	escrowThreshold *big.Int
 	highTrust       float64
 	medTrust        float64
@@ -27,7 +25,7 @@ type Engine struct {
 var _ Assessor = (*Engine)(nil)
 
 // New creates a risk assessment engine.
-func New(cfg config.RiskConfig, reputation ReputationQuerier) (*Engine, error) {
+func New(cfg config.RiskConfig, reputation types.ReputationQuerier) (*Engine, error) {
 	highTrust := cfg.HighTrustScore
 	if highTrust == 0 {
 		highTrust = 0.8

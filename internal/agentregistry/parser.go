@@ -1,7 +1,6 @@
 package agentregistry
 
 import (
-	"bytes"
 	"fmt"
 	"strings"
 
@@ -44,21 +43,16 @@ func RenderAgentMD(def *AgentDefinition) ([]byte, error) {
 	m := *def
 	m.Status = status
 
-	fmBytes, err := yaml.Marshal(&m)
+	body := def.Instruction
+	if body != "" && !strings.HasSuffix(body, "\n") {
+		body += "\n"
+	}
+
+	result, err := mdparse.RenderFrontmatter(&m, body)
 	if err != nil {
 		return nil, fmt.Errorf("marshal frontmatter: %w", err)
 	}
-
-	var buf bytes.Buffer
-	buf.WriteString("---\n")
-	buf.Write(fmBytes)
-	buf.WriteString("---\n\n")
-	buf.WriteString(def.Instruction)
-	if def.Instruction != "" && !strings.HasSuffix(def.Instruction, "\n") {
-		buf.WriteString("\n")
-	}
-
-	return buf.Bytes(), nil
+	return result, nil
 }
 
 // splitFrontmatter delegates to mdparse.SplitFrontmatter.

@@ -8,6 +8,7 @@ import (
 
 	"github.com/langoai/lango/internal/ent"
 	"github.com/langoai/lango/internal/ent/paymenttx"
+	"github.com/langoai/lango/internal/finance"
 )
 
 // SpendingLimiter enforces per-transaction and daily spending limits.
@@ -31,38 +32,19 @@ type SpendingLimiter interface {
 }
 
 // USDCDecimals is the number of decimal places for USDC (6).
-const USDCDecimals = 6
+// Deprecated: Use finance.USDCDecimals instead.
+const USDCDecimals = finance.USDCDecimals
 
 // ParseUSDC converts a decimal string (e.g. "1.50") to the smallest USDC unit.
+// Deprecated: Use finance.ParseUSDC instead.
 func ParseUSDC(amount string) (*big.Int, error) {
-	// Parse as a rational number to handle decimals.
-	rat := new(big.Rat)
-	if _, ok := rat.SetString(amount); !ok {
-		return nil, fmt.Errorf("invalid USDC amount: %q", amount)
-	}
-
-	// Multiply by 10^6 to get smallest unit.
-	multiplier := new(big.Rat).SetInt(new(big.Int).Exp(big.NewInt(10), big.NewInt(USDCDecimals), nil))
-	rat.Mul(rat, multiplier)
-
-	if !rat.IsInt() {
-		return nil, fmt.Errorf("USDC amount %q has too many decimal places", amount)
-	}
-
-	return rat.Num(), nil
+	return finance.ParseUSDC(amount)
 }
 
 // FormatUSDC converts smallest USDC units back to a decimal string.
+// Deprecated: Use finance.FormatUSDC instead.
 func FormatUSDC(amount *big.Int) string {
-	divisor := new(big.Int).Exp(big.NewInt(10), big.NewInt(USDCDecimals), nil)
-	whole := new(big.Int).Div(amount, divisor)
-	remainder := new(big.Int).Mod(amount, divisor)
-
-	if remainder.Sign() == 0 {
-		return whole.String() + ".00"
-	}
-
-	return fmt.Sprintf("%s.%06s", whole.String(), remainder.String())
+	return finance.FormatUSDC(amount)
 }
 
 // EntSpendingLimiter uses Ent PaymentTx records to enforce spending limits.

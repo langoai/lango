@@ -14,12 +14,8 @@ import (
 	"github.com/libp2p/go-libp2p/core/peer"
 	"go.uber.org/zap"
 
+	"github.com/langoai/lango/internal/types"
 	"github.com/langoai/lango/internal/wallet"
-)
-
-const (
-	// DIDPrefix is the method-specific prefix for Lango DIDs.
-	DIDPrefix = "did:lango:"
 )
 
 // DID represents a decentralized identifier derived from a wallet public key.
@@ -104,11 +100,11 @@ func (p *WalletDIDProvider) VerifyDID(did *DID, peerID peer.ID) error {
 
 // ParseDID parses a "did:lango:<hexkey>" string into a DID.
 func ParseDID(didStr string) (*DID, error) {
-	if !strings.HasPrefix(didStr, DIDPrefix) {
-		return nil, fmt.Errorf("invalid DID scheme: expected prefix %q, got %q", DIDPrefix, didStr)
+	if !strings.HasPrefix(didStr, types.DIDPrefix) {
+		return nil, fmt.Errorf("invalid DID scheme: expected prefix %q, got %q", types.DIDPrefix, didStr)
 	}
 
-	hexKey := strings.TrimPrefix(didStr, DIDPrefix)
+	hexKey := strings.TrimPrefix(didStr, types.DIDPrefix)
 	if hexKey == "" {
 		return nil, fmt.Errorf("empty public key in DID %q", didStr)
 	}
@@ -142,7 +138,7 @@ func DIDFromPublicKey(pubkey []byte) (*DID, error) {
 	}
 
 	return &DID{
-		ID:        DIDPrefix + hex.EncodeToString(pubkey),
+		ID:        types.DIDPrefix + hex.EncodeToString(pubkey),
 		PublicKey: pubkey,
 		PeerID:    peerID,
 	}, nil

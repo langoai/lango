@@ -63,6 +63,7 @@ require (
 )
 
 require (
+	github.com/shopspring/decimal v1.4.0 // indirect
 	go.opentelemetry.io/otel/exporters/stdout/stdouttrace v1.40.0 // indirect
 	go.opentelemetry.io/otel/sdk v1.40.0 // indirect
 )

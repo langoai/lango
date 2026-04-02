@@ -5,6 +5,8 @@ package wallet
 import (
 	"context"
 	"math/big"
+
+	"github.com/langoai/lango/internal/finance"
 )
 
 // WalletProvider abstracts blockchain wallet operations.
@@ -39,7 +41,8 @@ const (
 
 // CurrencyUSDC is the ticker symbol for the USDC stablecoin used across the
 // payment system.
-const CurrencyUSDC = "USDC"
+// Deprecated: Use finance.CurrencyUSDC instead.
+const CurrencyUSDC = finance.CurrencyUSDC
 
 // WalletInfo holds public wallet metadata.
 type WalletInfo struct {

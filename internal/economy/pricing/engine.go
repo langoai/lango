@@ -8,21 +8,17 @@ import (
 	"time"
 
 	"github.com/langoai/lango/internal/config"
+	"github.com/langoai/lango/internal/finance"
+	"github.com/langoai/lango/internal/types"
 	"github.com/langoai/lango/internal/wallet"
 )
-
-// ReputationQuerier queries peer trust scores. Defined locally to avoid import cycles.
-type ReputationQuerier func(ctx context.Context, peerDID string) (float64, error)
-
-// DefaultQuoteExpiry is how long a price quote remains valid.
-const DefaultQuoteExpiry = 5 * time.Minute
 
 // Engine computes dynamic prices using rule-based evaluation.
 type Engine struct {
 	mu         sync.RWMutex
 	ruleSet    *RuleSet
 	cfg        config.DynamicPricingConfig
-	reputation ReputationQuerier
+	reputation types.ReputationQuerier
 	basePrices map[string]*big.Int // toolName -> base price in smallest USDC units
 	minPrice   *big.Int
 }
@@ -57,7 +53,7 @@ func New(cfg config.DynamicPricingConfig) (*Engine, error) {
 }
 
 // SetReputation sets the reputation querier for trust-based discounts.
-func (e *Engine) SetReputation(fn ReputationQuerier) {
+func (e *Engine) SetReputation(fn types.ReputationQuerier) {
 	e.mu.Lock()
 	defer e.mu.Unlock()
 	e.reputation = fn
@@ -119,7 +115,7 @@ func (e *Engine) Quote(ctx context.Context, toolName, peerDID string) (*Quote, e
 			FinalPrice: new(big.Int),
 			Currency:   "USDC",
 			IsFree:     true,
-			ValidUntil: time.Now().Add(DefaultQuoteExpiry),
+			ValidUntil: time.Now().Add(finance.DefaultQuoteExpiry),
 			PeerDID:    peerDID,
 		}, nil
 	}
@@ -158,13 +154,13 @@ func (e *Engine) Quote(ctx context.Context, toolName, peerDID string) (*Quote, e
 		Currency:   "USDC",
 		Modifiers:  modifiers,
 		IsFree:     finalPrice.Sign() == 0,
-		ValidUntil: time.Now().Add(DefaultQuoteExpiry),
+		ValidUntil: time.Now().Add(finance.DefaultQuoteExpiry),
 		PeerDID:    peerDID,
 	}, nil
 }
 
 // getTrustScore retrieves the trust score, returning 0 if no reputation querier is set.
-func (e *Engine) getTrustScore(ctx context.Context, repFn ReputationQuerier, peerDID string) (float64, error) {
+func (e *Engine) getTrustScore(ctx context.Context, repFn types.ReputationQuerier, peerDID string) (float64, error) {
 	if repFn == nil || peerDID == "" {
 		return 0, nil
 	}

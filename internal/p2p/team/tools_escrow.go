@@ -11,6 +11,7 @@ import (
 	"github.com/langoai/lango/internal/agent"
 	"github.com/langoai/lango/internal/economy/budget"
 	"github.com/langoai/lango/internal/economy/escrow"
+	"github.com/langoai/lango/internal/finance"
 	"github.com/langoai/lango/internal/toolparam"
 )
 
@@ -84,7 +85,7 @@ func BuildEscrowTools(coord *Coordinator, escrowEngine *escrow.Engine, budgetEng
 			}
 
 			// Step 2: Create escrow.
-			totalAmount := big.NewInt(int64(budgetAmount * 1_000_000)) // USDC 6 decimals
+			totalAmount := finance.FloatToMicroUSDC(budgetAmount)
 
 			// Build milestones.
 			var milestones []escrow.MilestoneRequest
@@ -97,7 +98,7 @@ func BuildEscrowTools(coord *Coordinator, escrowEngine *escrow.Engine, budgetEng
 					if a, ok := ms["amount"].(float64); ok {
 						amt = a
 					}
-					msAmount := big.NewInt(int64(amt * 1_000_000))
+					msAmount := finance.FloatToMicroUSDC(amt)
 					milestoneTotal.Add(milestoneTotal, msAmount)
 					milestones = append(milestones, escrow.MilestoneRequest{
 						Description: desc,
