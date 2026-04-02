@@ -56,7 +56,8 @@ func TestMiddlewareChain_ProductionOrder(t *testing.T) {
 	tools = ChainAll(tools, labelMiddleware("hooks"))          // B4c
 	tools = ChainAll(tools, labelMiddleware("principal"))      // B4c2
 	tools = ChainAll(tools, labelMiddleware("approval"))       // B4d
-	tools = ChainAll(tools, labelMiddleware("exec_policy"))    // B4e — outermost
+	tools = ChainAll(tools, labelMiddleware("exec_policy"))    // B4e
+	tools = ChainAll(tools, labelMiddleware("tracing"))        // B4f — outermost
 
 	wrapped := tools[0]
 	_, err := wrapped.Handler(context.Background(), nil)
@@ -64,6 +65,7 @@ func TestMiddlewareChain_ProductionOrder(t *testing.T) {
 
 	// Expected invocation order: outermost enters first, innermost exits first.
 	wantOrder := []string{
+		"tracing:enter",
 		"exec_policy:enter",
 		"approval:enter",
 		"principal:enter",
@@ -77,6 +79,7 @@ func TestMiddlewareChain_ProductionOrder(t *testing.T) {
 		"principal:exit",
 		"approval:exit",
 		"exec_policy:exit",
+		"tracing:exit",
 	}
 	assert.Equal(t, wantOrder, order, "middleware chain invocation order must match production order")
 }

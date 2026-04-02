@@ -21,6 +21,18 @@ type ObservabilityConfig struct {
 
 	// TraceStore configures turn trace retention and cleanup.
 	TraceStore TraceStoreConfig `mapstructure:"traceStore" json:"traceStore"`
+
+	// Tracing configures OpenTelemetry distributed tracing.
+	Tracing TracingConfig `mapstructure:"tracing" json:"tracing"`
+}
+
+// TracingConfig defines OpenTelemetry tracing settings.
+type TracingConfig struct {
+	// Enabled activates distributed tracing.
+	Enabled bool `mapstructure:"enabled" json:"enabled"`
+
+	// Exporter selects the trace exporter: "stdout" (default) or "none".
+	Exporter string `mapstructure:"exporter" json:"exporter"`
 }
 
 // TokenTrackingConfig defines token usage tracking settings.

@@ -628,6 +628,31 @@ func (s *ConfigState) UpdateConfigFromForm(form *FormModel) {
 			if i, err := strconv.Atoi(val); err == nil {
 				s.Current.Alerting.RecoveryRetries = i
 			}
+		case "alerting_webhook_url":
+			if val != "" {
+				// Update or append the first webhook entry, preserving other channels.
+				found := false
+				for i, d := range s.Current.Alerting.Delivery {
+					if d.Type == "webhook" {
+						s.Current.Alerting.Delivery[i].WebhookURL = val
+						found = true
+						break
+					}
+				}
+				if !found {
+					s.Current.Alerting.Delivery = append(s.Current.Alerting.Delivery,
+						config.AlertDeliveryConfig{Type: "webhook", WebhookURL: val, MinSeverity: "warning"})
+				}
+			} else {
+				// Remove webhook entries only, preserve other channel types.
+				filtered := s.Current.Alerting.Delivery[:0]
+				for _, d := range s.Current.Alerting.Delivery {
+					if d.Type != "webhook" {
+						filtered = append(filtered, d)
+					}
+				}
+				s.Current.Alerting.Delivery = filtered
+			}
 
 		// Security DB Encryption
 		case "db_encryption_enabled":

@@ -16,7 +16,7 @@ import (
 )
 
 // registerObservabilityRoutes adds observability HTTP endpoints to the router.
-func registerObservabilityRoutes(r chi.Router, collector *observability.MetricsCollector, hr *health.Registry, store *token.EntTokenStore, dbClient *ent.Client) {
+func registerObservabilityRoutes(r chi.Router, collector *observability.MetricsCollector, hr *health.Registry, store *token.EntTokenStore, dbClient *ent.Client, promExporter *observability.PrometheusExporter) {
 	if collector == nil {
 		return
 	}
@@ -139,6 +139,11 @@ func registerObservabilityRoutes(r chi.Router, collector *observability.MetricsC
 				},
 			})
 		})
+	}
+
+	// Prometheus exposition endpoint
+	if promExporter != nil {
+		r.Handle("/metrics/prometheus", promExporter.Handler())
 	}
 
 	// Detailed health endpoint

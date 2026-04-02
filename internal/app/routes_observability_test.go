@@ -42,7 +42,7 @@ func TestHealthDetailed_AllHealthy(t *testing.T) {
 	hr.Register(&stubChecker{name: "memory", status: health.StatusHealthy, msg: "ok"})
 	hr.Register(&stubChecker{name: "db", status: health.StatusHealthy, msg: "connected"})
 
-	registerObservabilityRoutes(r, collector, hr, nil, nil)
+	registerObservabilityRoutes(r, collector, hr, nil, nil, nil)
 
 	ts := httptest.NewServer(r)
 	defer ts.Close()
@@ -69,7 +69,7 @@ func TestHealthDetailed_DegradedComponent(t *testing.T) {
 	hr.Register(&stubChecker{name: "memory", status: health.StatusHealthy})
 	hr.Register(&stubChecker{name: "provider", status: health.StatusDegraded, msg: "timeout"})
 
-	registerObservabilityRoutes(r, collector, hr, nil, nil)
+	registerObservabilityRoutes(r, collector, hr, nil, nil, nil)
 
 	ts := httptest.NewServer(r)
 	defer ts.Close()
@@ -91,7 +91,7 @@ func TestHealthDetailed_NilRegistry_NoRoute(t *testing.T) {
 	collector := observability.NewCollector()
 
 	// hr = nil → /health/detailed should not be registered.
-	registerObservabilityRoutes(r, collector, nil, nil, nil)
+	registerObservabilityRoutes(r, collector, nil, nil, nil, nil)
 
 	ts := httptest.NewServer(r)
 	defer ts.Close()
@@ -109,7 +109,7 @@ func TestMetrics_ReturnsSnapshot(t *testing.T) {
 	r := chi.NewRouter()
 	collector := observability.NewCollector()
 
-	registerObservabilityRoutes(r, collector, nil, nil, nil)
+	registerObservabilityRoutes(r, collector, nil, nil, nil, nil)
 
 	ts := httptest.NewServer(r)
 	defer ts.Close()

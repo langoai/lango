@@ -151,6 +151,7 @@ type App struct {
 	MetricsCollector *observability.MetricsCollector
 	HealthRegistry   *health.Registry
 	TokenStore       *token.EntTokenStore
+	TracerShutdown   func(context.Context) error
 
 	// Tool Catalog (built-in tool discovery + dynamic dispatch)
 	ToolCatalog *toolcatalog.Catalog

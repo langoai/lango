@@ -480,4 +480,17 @@ type AlertingConfig struct {
 
 	// RecoveryRetries is the threshold for recovery retry events per session (default: 5)
 	RecoveryRetries int `mapstructure:"recoveryRetryThreshold" json:"recoveryRetryThreshold"`
+
+	// Delivery configures external alert delivery channels (webhook, etc.).
+	Delivery []AlertDeliveryConfig `mapstructure:"delivery" json:"delivery,omitempty"`
+}
+
+// AlertDeliveryConfig configures a single alert delivery channel.
+type AlertDeliveryConfig struct {
+	// Type is the delivery channel type ("webhook").
+	Type string `mapstructure:"type" json:"type"`
+	// WebhookURL is the target URL for webhook delivery.
+	WebhookURL string `mapstructure:"webhookURL" json:"webhookURL,omitempty"`
+	// MinSeverity filters alerts below this level ("warning", "critical").
+	MinSeverity string `mapstructure:"minSeverity" json:"minSeverity,omitempty"`
 }

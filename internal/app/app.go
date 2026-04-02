@@ -25,6 +25,7 @@ import (
 	"github.com/langoai/lango/internal/learning"
 	"github.com/langoai/lango/internal/lifecycle"
 	"github.com/langoai/lango/internal/logging"
+	"github.com/langoai/lango/internal/observability"
 	"github.com/langoai/lango/internal/observability/audit"
 	"github.com/langoai/lango/internal/runledger"
 	"github.com/langoai/lango/internal/sandbox"
@@ -232,6 +233,12 @@ func New(boot *bootstrap.Result, opts ...AppOption) (*App, error) {
 		logger().Info("exec policy middleware enabled")
 	}
 
+	// B4f. Tracing middleware — outermost, so blocked calls are also traced.
+	if cfg.Observability.Tracing.Enabled {
+		tools = toolchain.ChainAll(tools, toolchain.WithTracing(observability.Tracer()))
+		logger().Info("tracing middleware enabled (outermost)")
+	}
+
 	// Log tool registration summary for diagnostics.
 	logToolRegistrationSummary(catalog)
 
@@ -421,6 +428,7 @@ func populateAppFields(app *App, r appinit.Resolver) {
 		app.MetricsCollector = obsc.collector
 		app.HealthRegistry = obsc.healthRegistry
 		app.TokenStore = obsc.tokenStore
+		app.TracerShutdown = obsc.tracerShutdown
 	}
 
 	// RunLedger.
@@ -661,7 +669,7 @@ func wirePostAgent(app *App, r appinit.Resolver, tools []*agent.Tool, bus *event
 	// Observability API routes.
 	obsc, _ := r.Resolve(appinit.ProvidesObservability).(*observabilityComponents)
 	if obsc != nil {
-		registerObservabilityRoutes(app.Gateway.Router(), obsc.collector, obsc.healthRegistry, obsc.tokenStore, boot.DBClient)
+		registerObservabilityRoutes(app.Gateway.Router(), obsc.collector, obsc.healthRegistry, obsc.tokenStore, boot.DBClient, obsc.promExporter)
 		logger().Info("observability API routes registered")
 	}
 
@@ -838,6 +846,12 @@ func (a *App) Stop(ctx context.Context) error {
 	if a.Store != nil {
 		if err := a.Store.Close(); err != nil {
 			logger().Warnw("session store close error", "error", err)
+		}
+	}
+
+	if a.TracerShutdown != nil {
+		if err := a.TracerShutdown(ctx); err != nil {
+			logger().Warnw("tracer shutdown error", "error", err)
 		}
 	}
 
