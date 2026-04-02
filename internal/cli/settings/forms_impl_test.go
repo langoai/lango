@@ -1321,3 +1321,101 @@ func TestValidatePort(t *testing.T) {
 		})
 	}
 }
+
+func TestCreateFormForCategory_OntologyAndAlerting(t *testing.T) {
+	cfg := defaultTestConfig()
+
+	t.Run("ontology form is non-nil", func(t *testing.T) {
+		form := createFormForCategory("ontology", cfg)
+		if form == nil {
+			t.Fatal("createFormForCategory(\"ontology\") returned nil")
+		}
+		if form.Title != "Ontology Configuration" {
+			t.Errorf("title: want %q, got %q", "Ontology Configuration", form.Title)
+		}
+	})
+
+	t.Run("alerting form is non-nil", func(t *testing.T) {
+		form := createFormForCategory("alerting", cfg)
+		if form == nil {
+			t.Fatal("createFormForCategory(\"alerting\") returned nil")
+		}
+		if form.Title != "Alerting Configuration" {
+			t.Errorf("title: want %q, got %q", "Alerting Configuration", form.Title)
+		}
+	})
+}
+
+func TestUpdateConfigFromForm_OntologyFields(t *testing.T) {
+	state := tuicore.NewConfigState()
+	form := tuicore.NewFormModel("test")
+	form.AddField(&tuicore.Field{Key: "ontology_enabled", Type: tuicore.InputBool, Checked: true})
+	form.AddField(&tuicore.Field{Key: "ontology_acl_enabled", Type: tuicore.InputBool, Checked: true})
+	form.AddField(&tuicore.Field{Key: "ontology_acl_roles", Type: tuicore.InputText, Value: "operator=write,librarian=read"})
+	form.AddField(&tuicore.Field{Key: "ontology_acl_p2p_permission", Type: tuicore.InputSelect, Value: "admin"})
+	form.AddField(&tuicore.Field{Key: "ontology_gov_enabled", Type: tuicore.InputBool, Checked: true})
+	form.AddField(&tuicore.Field{Key: "ontology_gov_max_new_per_day", Type: tuicore.InputText, Value: "30"})
+	form.AddField(&tuicore.Field{Key: "ontology_gov_quarantine_hrs", Type: tuicore.InputText, Value: "48"})
+	form.AddField(&tuicore.Field{Key: "ontology_gov_shadow_hrs", Type: tuicore.InputText, Value: "336"})
+	form.AddField(&tuicore.Field{Key: "ontology_gov_min_usage", Type: tuicore.InputText, Value: "10"})
+	form.AddField(&tuicore.Field{Key: "ontology_gov_explosion_budget", Type: tuicore.InputText, Value: "200"})
+	form.AddField(&tuicore.Field{Key: "ontology_ex_enabled", Type: tuicore.InputBool, Checked: true})
+	form.AddField(&tuicore.Field{Key: "ontology_ex_min_trust_schema", Type: tuicore.InputText, Value: "0.60"})
+	form.AddField(&tuicore.Field{Key: "ontology_ex_min_trust_facts", Type: tuicore.InputText, Value: "0.80"})
+	form.AddField(&tuicore.Field{Key: "ontology_ex_auto_import_mode", Type: tuicore.InputSelect, Value: "governed"})
+	form.AddField(&tuicore.Field{Key: "ontology_ex_max_types", Type: tuicore.InputText, Value: "20"})
+
+	state.UpdateConfigFromForm(&form)
+
+	o := state.Current.Ontology
+	if !o.Enabled {
+		t.Error("Ontology.Enabled: want true")
+	}
+	if !o.ACL.Enabled {
+		t.Error("Ontology.ACL.Enabled: want true")
+	}
+	if o.ACL.Roles["operator"] != "write" || o.ACL.Roles["librarian"] != "read" {
+		t.Errorf("Ontology.ACL.Roles: want operator=write,librarian=read, got %v", o.ACL.Roles)
+	}
+	if o.ACL.P2PPermission != "admin" {
+		t.Errorf("Ontology.ACL.P2PPermission: want admin, got %q", o.ACL.P2PPermission)
+	}
+	if !o.Governance.Enabled {
+		t.Error("Ontology.Governance.Enabled: want true")
+	}
+	if o.Governance.MaxNewPerDay != 30 {
+		t.Errorf("MaxNewPerDay: want 30, got %d", o.Governance.MaxNewPerDay)
+	}
+	if !o.Exchange.Enabled {
+		t.Error("Ontology.Exchange.Enabled: want true")
+	}
+	if o.Exchange.MinTrustForSchema != 0.60 {
+		t.Errorf("MinTrustForSchema: want 0.60, got %f", o.Exchange.MinTrustForSchema)
+	}
+	if o.Exchange.AutoImportMode != "governed" {
+		t.Errorf("AutoImportMode: want governed, got %q", o.Exchange.AutoImportMode)
+	}
+	if o.Exchange.MaxTypesPerImport != 20 {
+		t.Errorf("MaxTypesPerImport: want 20, got %d", o.Exchange.MaxTypesPerImport)
+	}
+}
+
+func TestUpdateConfigFromForm_AlertingFields(t *testing.T) {
+	state := tuicore.NewConfigState()
+	form := tuicore.NewFormModel("test")
+	form.AddField(&tuicore.Field{Key: "alerting_enabled", Type: tuicore.InputBool, Checked: true})
+	form.AddField(&tuicore.Field{Key: "alerting_policy_block_rate", Type: tuicore.InputText, Value: "15"})
+	form.AddField(&tuicore.Field{Key: "alerting_recovery_retries", Type: tuicore.InputText, Value: "8"})
+
+	state.UpdateConfigFromForm(&form)
+
+	if !state.Current.Alerting.Enabled {
+		t.Error("Alerting.Enabled: want true")
+	}
+	if state.Current.Alerting.PolicyBlockRate != 15 {
+		t.Errorf("PolicyBlockRate: want 15, got %d", state.Current.Alerting.PolicyBlockRate)
+	}
+	if state.Current.Alerting.RecoveryRetries != 8 {
+		t.Errorf("RecoveryRetries: want 8, got %d", state.Current.Alerting.RecoveryRetries)
+	}
+}

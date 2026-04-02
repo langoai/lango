@@ -192,6 +192,7 @@ func NewMenuModel() MenuModel {
 					{"multi_agent", "Multi-Agent", "Orchestration mode", TierAdvanced},
 					{"a2a", "A2A Protocol", "Agent-to-Agent, remote agents", TierAdvanced},
 					{"hooks", "Hooks", "Tool execution hooks, security filter", TierAdvanced},
+					{"ontology", "Ontology", "Types, entities, governance, P2P exchange", TierAdvanced},
 				},
 			},
 			{
@@ -237,6 +238,7 @@ func NewMenuModel() MenuModel {
 					{"mcp", "MCP Settings", "Global MCP server settings", TierBasic},
 					{"mcp_servers", "MCP Server List", "Add, edit, remove MCP servers", TierAdvanced},
 					{"observability", "Observability", "Token tracking, health, metrics", TierAdvanced},
+					{"alerting", "Alerting", "Operational alert thresholds", TierAdvanced},
 				},
 			},
 			{

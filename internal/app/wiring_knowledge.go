@@ -128,7 +128,7 @@ func bulkIndexKnowledge(ctx context.Context, db *sql.DB, idx *search.FTS5Index) 
 		return fmt.Errorf("clear knowledge FTS5: %w", err)
 	}
 
-	rows, err := db.QueryContext(ctx, `SELECT "key", content FROM knowledge WHERE is_latest = 1`)
+	rows, err := db.QueryContext(ctx, `SELECT "key", content FROM knowledges WHERE is_latest = 1`)
 	if err != nil {
 		return fmt.Errorf("query knowledge for FTS5 index: %w", err)
 	}
@@ -161,7 +161,7 @@ func bulkIndexLearnings(ctx context.Context, db *sql.DB, idx *search.FTS5Index) 
 		return fmt.Errorf("clear learning FTS5: %w", err)
 	}
 
-	rows, err := db.QueryContext(ctx, `SELECT id, trigger, error_pattern, fix FROM learnings`)
+	rows, err := db.QueryContext(ctx, `SELECT id, trigger, COALESCE(error_pattern, ''), COALESCE(fix, '') FROM learnings`)
 	if err != nil {
 		return fmt.Errorf("query learnings for FTS5 index: %w", err)
 	}

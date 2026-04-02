@@ -235,6 +235,21 @@ func TestSanitizeFTS5Query(t *testing.T) {
 		{give: "dep*", want: "dep*"},
 		{give: `hello "exact phrase" world`, want: `hello OR "exact phrase" OR world`},
 		{give: "special:chars", want: "specialchars"},
+		// Punctuation-only queries should produce empty result.
+		{give: "?", want: ""},
+		{give: ".", want: ""},
+		{give: "!", want: ""},
+		{give: "???", want: ""},
+		// Mixed punctuation and text.
+		{give: "hello? world.", want: "hello OR world"},
+		// Prefix token with only punctuation.
+		{give: "?*", want: ""},
+		// Unclosed quote with only punctuation.
+		{give: `"?`, want: ""},
+		{give: `"!@#`, want: ""},
+		// Korean text should pass through.
+		{give: "안녕하세요", want: "안녕하세요"},
+		{give: "한국어 테스트", want: "한국어 OR 테스트"},
 	}
 
 	for _, tt := range tests {

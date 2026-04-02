@@ -69,7 +69,7 @@ func (idx *FTS5Index) DropTable() error {
 // values must match the column order from NewFTS5Index.
 func (idx *FTS5Index) Insert(ctx context.Context, rowid string, values []string) error {
 	placeholders := make([]string, 0, len(idx.columns)+1)
-	args := make([]interface{}, 0, len(idx.columns)+1)
+	args := make([]any, 0, len(idx.columns)+1)
 
 	placeholders = append(placeholders, "?")
 	args = append(args, rowid)
@@ -144,7 +144,7 @@ func (idx *FTS5Index) BulkInsert(ctx context.Context, records []Record) error {
 	defer stmt.Close()
 
 	for _, r := range records {
-		args := make([]interface{}, 0, len(r.Values)+1)
+		args := make([]any, 0, len(r.Values)+1)
 		args = append(args, r.RowID)
 		for _, v := range r.Values {
 			args = append(args, v)
@@ -225,7 +225,10 @@ func sanitizeFTS5Query(query string) string {
 				// Unclosed quote — treat rest as plain text.
 				word := strings.TrimSpace(query[i+1:])
 				if word != "" {
-					terms = append(terms, escapeFTS5Token(word))
+					escaped := escapeFTS5Token(word)
+					if escaped != "" {
+						terms = append(terms, escaped)
+					}
 				}
 				break
 			}
@@ -247,10 +250,16 @@ func sanitizeFTS5Query(query string) string {
 				continue
 			}
 			// Preserve prefix queries (trailing *).
-			if strings.HasSuffix(token, "*") {
-				terms = append(terms, escapeFTS5Token(strings.TrimSuffix(token, "*"))+"*")
+			if base, ok := strings.CutSuffix(token, "*"); ok {
+				escaped := escapeFTS5Token(base)
+				if escaped != "" {
+					terms = append(terms, escaped+"*")
+				}
 			} else {
-				terms = append(terms, escapeFTS5Token(token))
+				escaped := escapeFTS5Token(token)
+				if escaped != "" {
+					terms = append(terms, escaped)
+				}
 			}
 		}
 	}
@@ -261,14 +270,19 @@ func sanitizeFTS5Query(query string) string {
 	return strings.Join(terms, " OR ")
 }
 
-// escapeFTS5Token removes characters that are special in FTS5 queries.
+// escapeFTS5Token removes characters that are special or problematic in FTS5 queries.
 func escapeFTS5Token(s string) string {
-	// Remove FTS5 special chars: ^, -, +, (, ), {, }, :
 	replacer := strings.NewReplacer(
 		"^", "", "-", "", "+", "",
 		"(", "", ")", "",
 		"{", "", "}", "",
-		":", "",
+		":", "", ".", "", "?", "",
+		"!", "", "@", "", "#", "",
+		"$", "", "%", "", "&", "",
+		"=", "", "|", "", "~", "",
+		"<", "", ">", "", ";", "",
+		",", "", "[", "", "]", "",
+		"\\", "", "/", "", "'", "",
 	)
 	return replacer.Replace(s)
 }

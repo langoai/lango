@@ -170,6 +170,10 @@ func categoryIsEnabled(cfg *config.Config, id string) bool {
 		return cfg.Observability.Enabled
 	case "security":
 		return cfg.Security.Interceptor.Enabled
+	case "ontology":
+		return cfg.Ontology.Enabled
+	case "alerting":
+		return cfg.Observability.Enabled && cfg.Alerting.Enabled
 	case "gatekeeper":
 		return derefBoolCfg(cfg.Gatekeeper.Enabled, true)
 	case "output_manager":

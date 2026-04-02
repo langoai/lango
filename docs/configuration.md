@@ -1311,7 +1311,7 @@ Alerts flow through: EventBus (real-time) → Audit log (persistent) → CLI (`l
 !!! warning "Experimental"
     The OS-level sandbox is experimental. It applies to child processes spawned by exec tools, MCP stdio servers, and skill scripts. Independent of `p2p.toolIsolation`.
 
-> **Settings:** `lango settings` → Sandbox
+> **Settings:** `lango settings` → OS Sandbox
 
 ```json
 {

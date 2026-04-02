@@ -328,6 +328,10 @@ func createFormForCategory(categoryID string, cfg *config.Config) *tuicore.FormM
 		return NewKMSForm(cfg)
 	case "os_sandbox":
 		return NewOSSandboxForm(cfg)
+	case "ontology":
+		return NewOntologyForm(cfg)
+	case "alerting":
+		return NewAlertingForm(cfg)
 	default:
 		return nil
 	}

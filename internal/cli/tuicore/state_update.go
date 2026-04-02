@@ -569,6 +569,66 @@ func (s *ConfigState) UpdateConfigFromForm(form *FormModel) {
 		case "os_sandbox_seatbelt_profile":
 			s.Current.Sandbox.OS.SeatbeltCustomProfile = val
 
+		// Ontology
+		case "ontology_enabled":
+			s.Current.Ontology.Enabled = f.Checked
+		case "ontology_acl_enabled":
+			s.Current.Ontology.ACL.Enabled = f.Checked
+		case "ontology_acl_roles":
+			s.Current.Ontology.ACL.Roles = parseKeyValuePairs(val)
+		case "ontology_acl_p2p_permission":
+			s.Current.Ontology.ACL.P2PPermission = val
+		case "ontology_gov_enabled":
+			s.Current.Ontology.Governance.Enabled = f.Checked
+		case "ontology_gov_max_new_per_day":
+			if i, err := strconv.Atoi(val); err == nil {
+				s.Current.Ontology.Governance.MaxNewPerDay = i
+			}
+		case "ontology_gov_quarantine_hrs":
+			if i, err := strconv.Atoi(val); err == nil {
+				s.Current.Ontology.Governance.QuarantinePeriodHrs = i
+			}
+		case "ontology_gov_shadow_hrs":
+			if i, err := strconv.Atoi(val); err == nil {
+				s.Current.Ontology.Governance.ShadowModeDurationHrs = i
+			}
+		case "ontology_gov_min_usage":
+			if i, err := strconv.Atoi(val); err == nil {
+				s.Current.Ontology.Governance.MinUsageForPromotion = i
+			}
+		case "ontology_gov_explosion_budget":
+			if i, err := strconv.Atoi(val); err == nil {
+				s.Current.Ontology.Governance.SchemaExplosionBudget = i
+			}
+		case "ontology_ex_enabled":
+			s.Current.Ontology.Exchange.Enabled = f.Checked
+		case "ontology_ex_min_trust_schema":
+			if v, err := strconv.ParseFloat(val, 64); err == nil {
+				s.Current.Ontology.Exchange.MinTrustForSchema = v
+			}
+		case "ontology_ex_min_trust_facts":
+			if v, err := strconv.ParseFloat(val, 64); err == nil {
+				s.Current.Ontology.Exchange.MinTrustForFacts = v
+			}
+		case "ontology_ex_auto_import_mode":
+			s.Current.Ontology.Exchange.AutoImportMode = val
+		case "ontology_ex_max_types":
+			if i, err := strconv.Atoi(val); err == nil {
+				s.Current.Ontology.Exchange.MaxTypesPerImport = i
+			}
+
+		// Alerting
+		case "alerting_enabled":
+			s.Current.Alerting.Enabled = f.Checked
+		case "alerting_policy_block_rate":
+			if i, err := strconv.Atoi(val); err == nil {
+				s.Current.Alerting.PolicyBlockRate = i
+			}
+		case "alerting_recovery_retries":
+			if i, err := strconv.Atoi(val); err == nil {
+				s.Current.Alerting.RecoveryRetries = i
+			}
+
 		// Security DB Encryption
 		case "db_encryption_enabled":
 			s.Current.Security.DBEncryption.Enabled = f.Checked
