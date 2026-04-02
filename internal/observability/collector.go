@@ -20,15 +20,25 @@ type MetricsCollector struct {
 
 	toolExecs int64
 	tools     map[string]*ToolMetric
+
+	// Policy decision counters.
+	policyBlocks   int64
+	policyObserves int64
+	policyByReason map[string]int64
+
+	// MaxSessions caps the session map size; 0 means DefaultMaxSessions.
+	MaxSessions int
 }
 
 // NewCollector creates a new MetricsCollector.
 func NewCollector() *MetricsCollector {
 	return &MetricsCollector{
-		startedAt: time.Now(),
-		sessions:  make(map[string]*SessionMetric),
-		agents:    make(map[string]*AgentMetric),
-		tools:     make(map[string]*ToolMetric),
+		startedAt:      time.Now(),
+		sessions:       make(map[string]*SessionMetric),
+		agents:         make(map[string]*AgentMetric),
+		tools:          make(map[string]*ToolMetric),
+		policyByReason: make(map[string]int64),
+		MaxSessions:    DefaultMaxSessions,
 	}
 }
 
@@ -93,6 +103,46 @@ func (c *MetricsCollector) RecordToolExecution(name, agentName string, duration 
 			c.agents[agentName] = am
 		}
 		am.ToolCalls++
+	}
+}
+
+// RecordPolicyDecision records a policy block or observe event.
+// verdict is a string such as "block" or "observe".
+func (c *MetricsCollector) RecordPolicyDecision(verdict, reason string) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	switch verdict {
+	case "block":
+		c.policyBlocks++
+	case "observe":
+		c.policyObserves++
+	}
+	if reason != "" {
+		c.policyByReason[reason]++
+	}
+}
+
+// evictOldestSession removes the least-recently-updated session when
+// the session map reaches MaxSessions capacity. Must be called with mu held.
+func (c *MetricsCollector) evictOldestSession() {
+	max := c.MaxSessions
+	if max <= 0 {
+		max = DefaultMaxSessions
+	}
+	if len(c.sessions) < max {
+		return
+	}
+	var oldestKey string
+	var oldestTime time.Time
+	for k, sm := range c.sessions {
+		if oldestKey == "" || sm.LastUpdated.Before(oldestTime) {
+			oldestKey = k
+			oldestTime = sm.LastUpdated
+		}
+	}
+	if oldestKey != "" {
+		delete(c.sessions, oldestKey)
 	}
 }
 

@@ -34,7 +34,7 @@ type OntologyACLConfig struct {
 	Enabled bool `mapstructure:"enabled" json:"enabled,omitempty"`
 	// Roles maps principal names to permission levels ("read", "write", "admin").
 	Roles map[string]string `mapstructure:"roles" json:"roles,omitempty"`
-	// P2PPermission is the default permission for peer: prefix principals (default "write").
+	// P2PPermission is the default permission for peer: prefix principals (default "read").
 	P2PPermission string `mapstructure:"p2pPermission" json:"p2pPermission,omitempty"`
 }
 

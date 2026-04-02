@@ -217,6 +217,11 @@ func DefaultConfig() *Config {
 			AutoReconnect:        true,
 			MaxReconnectAttempts: 5,
 		},
+		Ontology: OntologyConfig{
+			ACL: OntologyACLConfig{
+				P2PPermission: "read",
+			},
+		},
 		Alerting: AlertingConfig{
 			Enabled:         false,
 			PolicyBlockRate: 10,
