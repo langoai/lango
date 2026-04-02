@@ -1,6 +1,7 @@
 package observability
 
 import (
+	"strconv"
 	"sync"
 	"testing"
 	"time"
@@ -338,6 +339,80 @@ func TestReset(t *testing.T) {
 	assert.Equal(t, int64(0), snap.Policy.Blocks)
 	assert.Equal(t, int64(0), snap.Policy.Observes)
 	assert.Empty(t, snap.Policy.ByReason)
+}
+
+func TestMaxSessions_EvictsOldest(t *testing.T) {
+	c := NewCollector()
+	c.MaxSessions = 3
+
+	// Insert 3 sessions; all should fit.
+	c.RecordTokenUsage(TokenUsage{SessionKey: "s1", TotalTokens: 100})
+	c.RecordTokenUsage(TokenUsage{SessionKey: "s2", TotalTokens: 200})
+	c.RecordTokenUsage(TokenUsage{SessionKey: "s3", TotalTokens: 300})
+	assert.Len(t, c.Snapshot().SessionBreakdown, 3)
+
+	// Touch s1 so it becomes the most recently updated.
+	c.RecordTokenUsage(TokenUsage{SessionKey: "s1", TotalTokens: 10})
+
+	// Insert a 4th session — s2 should be evicted (oldest LastUpdated).
+	c.RecordTokenUsage(TokenUsage{SessionKey: "s4", TotalTokens: 400})
+
+	snap := c.Snapshot()
+	assert.Len(t, snap.SessionBreakdown, 3)
+	_, hasS1 := snap.SessionBreakdown["s1"]
+	_, hasS2 := snap.SessionBreakdown["s2"]
+	_, hasS3 := snap.SessionBreakdown["s3"]
+	_, hasS4 := snap.SessionBreakdown["s4"]
+	assert.True(t, hasS1, "s1 should survive (recently updated)")
+	assert.False(t, hasS2, "s2 should be evicted (oldest)")
+	assert.True(t, hasS3, "s3 should survive")
+	assert.True(t, hasS4, "s4 should be added")
+}
+
+func TestMaxSessions_ZeroDisablesCap(t *testing.T) {
+	c := NewCollector()
+	c.MaxSessions = 0
+
+	for i := range 100 {
+		c.RecordTokenUsage(TokenUsage{
+			SessionKey:  "s" + strconv.Itoa(i),
+			TotalTokens: int64(i),
+		})
+	}
+	assert.Len(t, c.Snapshot().SessionBreakdown, 100)
+}
+
+func TestMaxSessions_ExistingSessionDoesNotEvict(t *testing.T) {
+	c := NewCollector()
+	c.MaxSessions = 2
+
+	c.RecordTokenUsage(TokenUsage{SessionKey: "s1", TotalTokens: 100})
+	c.RecordTokenUsage(TokenUsage{SessionKey: "s2", TotalTokens: 200})
+
+	// Update existing session — should NOT trigger eviction.
+	c.RecordTokenUsage(TokenUsage{SessionKey: "s1", TotalTokens: 50})
+
+	snap := c.Snapshot()
+	assert.Len(t, snap.SessionBreakdown, 2)
+	assert.Equal(t, int64(150), snap.SessionBreakdown["s1"].TotalTokens)
+}
+
+func TestSessionMetric_LastUpdated(t *testing.T) {
+	c := NewCollector()
+
+	before := time.Now()
+	c.RecordTokenUsage(TokenUsage{SessionKey: "s1", TotalTokens: 100})
+	after := time.Now()
+
+	sm := c.SessionMetrics("s1")
+	require.NotNil(t, sm)
+	assert.False(t, sm.LastUpdated.Before(before), "LastUpdated should be >= before")
+	assert.False(t, sm.LastUpdated.After(after), "LastUpdated should be <= after")
+}
+
+func TestDefaultMaxSessions(t *testing.T) {
+	c := NewCollector()
+	assert.Equal(t, DefaultMaxSessions, c.MaxSessions)
 }
 
 func TestConcurrency(t *testing.T) {

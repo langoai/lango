@@ -38,7 +38,9 @@ func (r *HookRegistry) PostHooks() []PostToolHook { return r.postHooks }
 // RunPre runs all pre-hooks in priority order.
 // Returns the first Block result immediately.
 // If multiple hooks return Modify, the last one's params win.
-// Returns Continue with nil params if no hook blocks or modifies.
+// Observe results are carried forward but do not stop execution —
+// a subsequent Block still takes precedence.
+// Returns Continue with nil params if no hook blocks, modifies, or observes.
 func (r *HookRegistry) RunPre(ctx HookContext) (PreHookResult, error) {
 	result := PreHookResult{Action: Continue}
 	for _, hook := range r.preHooks {
@@ -53,6 +55,12 @@ func (r *HookRegistry) RunPre(ctx HookContext) (PreHookResult, error) {
 			result = hr
 			// Update params for subsequent hooks to see the modification.
 			ctx.Params = hr.ModifiedParams
+		case Observe:
+			// Observe is "continue with warning" — preserve the first observe
+			// reason unless a higher-priority action (Block/Modify) overrides.
+			if result.Action == Continue {
+				result = hr
+			}
 		}
 	}
 	return result, nil

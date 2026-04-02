@@ -6,6 +6,9 @@ import (
 	"time"
 )
 
+// DefaultMaxSessions is the default session map capacity before LRU eviction.
+const DefaultMaxSessions = 10000
+
 // MetricsCollector performs thread-safe in-memory metrics aggregation.
 type MetricsCollector struct {
 	mu        sync.RWMutex
@@ -17,20 +20,15 @@ type MetricsCollector struct {
 
 	toolExecs int64
 	tools     map[string]*ToolMetric
-
-	policyBlocks   int64
-	policyObserves int64
-	policyByReason map[string]int64
 }
 
 // NewCollector creates a new MetricsCollector.
 func NewCollector() *MetricsCollector {
 	return &MetricsCollector{
-		startedAt:      time.Now(),
-		sessions:       make(map[string]*SessionMetric),
-		agents:         make(map[string]*AgentMetric),
-		tools:          make(map[string]*ToolMetric),
-		policyByReason: make(map[string]int64),
+		startedAt: time.Now(),
+		sessions:  make(map[string]*SessionMetric),
+		agents:    make(map[string]*AgentMetric),
+		tools:     make(map[string]*ToolMetric),
 	}
 }
 
@@ -47,6 +45,7 @@ func (c *MetricsCollector) RecordTokenUsage(usage TokenUsage) {
 	if usage.SessionKey != "" {
 		sm, ok := c.sessions[usage.SessionKey]
 		if !ok {
+			c.evictOldestSession()
 			sm = &SessionMetric{SessionKey: usage.SessionKey}
 			c.sessions[usage.SessionKey] = sm
 		}
@@ -54,6 +53,7 @@ func (c *MetricsCollector) RecordTokenUsage(usage TokenUsage) {
 		sm.OutputTokens += usage.OutputTokens
 		sm.TotalTokens += usage.TotalTokens
 		sm.RequestCount++
+		sm.LastUpdated = time.Now()
 	}
 
 	if usage.AgentName != "" {
@@ -93,24 +93,6 @@ func (c *MetricsCollector) RecordToolExecution(name, agentName string, duration 
 			c.agents[agentName] = am
 		}
 		am.ToolCalls++
-	}
-}
-
-// RecordPolicyDecision records a policy decision event.
-func (c *MetricsCollector) RecordPolicyDecision(verdict, reason string) {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-
-	switch verdict {
-	case "block":
-		c.policyBlocks++
-	case "observe":
-		c.policyObserves++
-	case "allow":
-		// no-op, exhaustive
-	}
-	if reason != "" {
-		c.policyByReason[reason]++
 	}
 }
 

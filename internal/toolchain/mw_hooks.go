@@ -33,6 +33,9 @@ func WithHooks(registry *HookRegistry) Middleware {
 				return nil, fmt.Errorf("tool '%s' blocked by hook: %s", tool.Name, preResult.BlockReason)
 			case Modify:
 				params = preResult.ModifiedParams
+			case Observe:
+				logging.App().Warnw("observe-level command detected",
+					"tool", tool.Name, "reason", preResult.ObserveReason)
 			}
 
 			// Execute the tool.

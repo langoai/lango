@@ -51,6 +51,21 @@ func (s SafetyLevel) IsDangerous() bool {
 	return s == SafetyLevelDangerous || s == 0
 }
 
+// ParseSafetyLevel converts a string to a SafetyLevel.
+// Returns SafetyLevelDangerous and false for unknown strings (fail-safe).
+func ParseSafetyLevel(s string) (SafetyLevel, bool) {
+	switch s {
+	case "safe":
+		return SafetyLevelSafe, true
+	case "moderate":
+		return SafetyLevelModerate, true
+	case "dangerous":
+		return SafetyLevelDangerous, true
+	default:
+		return SafetyLevelDangerous, false
+	}
+}
+
 // Tool represents a tool that can be invoked by the LLM
 type Tool struct {
 	Name        string

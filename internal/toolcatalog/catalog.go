@@ -109,6 +109,18 @@ func (c *Catalog) ListTools(category string) []ToolSchema {
 	return schemas
 }
 
+// GetToolSafetyLevel returns the SafetyLevel for the named tool.
+// Returns (level, true) if found, or (SafetyLevelDangerous, false) if not found (fail-safe).
+func (c *Catalog) GetToolSafetyLevel(name string) (agent.SafetyLevel, bool) {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	e, ok := c.tools[name]
+	if !ok {
+		return agent.SafetyLevelDangerous, false
+	}
+	return e.Tool.SafetyLevel, true
+}
+
 // ToolCount returns the total number of registered tools.
 func (c *Catalog) ToolCount() int {
 	c.mu.RLock()

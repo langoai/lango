@@ -2,6 +2,7 @@ package filesystem
 
 import (
 	"bufio"
+	"context"
 	"fmt"
 	"io"
 	"os"
@@ -12,6 +13,20 @@ import (
 )
 
 var logger = logging.SubsystemSugar("tool.filesystem")
+
+// ctxKeyP2P is the context key for P2P origin detection.
+type ctxKeyP2P struct{}
+
+// WithP2PContext returns a context marked as originating from a P2P peer.
+func WithP2PContext(ctx context.Context) context.Context {
+	return context.WithValue(ctx, ctxKeyP2P{}, true)
+}
+
+// IsP2PContext reports whether ctx carries the P2P origin marker.
+func IsP2PContext(ctx context.Context) bool {
+	v, _ := ctx.Value(ctxKeyP2P{}).(bool)
+	return v
+}
 
 // Config holds filesystem tool configuration
 type Config struct {
@@ -215,15 +230,22 @@ func (t *Tool) ListDir(path string) ([]FileInfo, error) {
 	return result, nil
 }
 
-// Delete removes a file or directory
-func (t *Tool) Delete(path string) error {
+// Delete removes a file or directory. In P2P context, only single files or
+// empty directories are allowed (no recursive deletion by remote peers).
+func (t *Tool) Delete(ctx context.Context, path string) error {
 	absPath, err := t.validatePath(path)
 	if err != nil {
 		return err
 	}
 
-	if err := os.RemoveAll(absPath); err != nil {
-		return fmt.Errorf("delete: %w", err)
+	if IsP2PContext(ctx) {
+		if err := os.Remove(absPath); err != nil {
+			return fmt.Errorf("delete (p2p restricted): %w", err)
+		}
+	} else {
+		if err := os.RemoveAll(absPath); err != nil {
+			return fmt.Errorf("delete: %w", err)
+		}
 	}
 
 	logger.Infow("file deleted", "path", absPath)
@@ -443,6 +465,14 @@ func (t *Tool) validatePath(path string) (string, error) {
 	// Clean the path to prevent traversal
 	absPath = filepath.Clean(absPath)
 
+	// Resolve symlinks to prevent escaping allowed directories via symlink targets.
+	resolved, err := filepath.EvalSymlinks(absPath)
+	if err == nil {
+		absPath = resolved
+	}
+	// If EvalSymlinks fails (broken symlink, non-existent), continue with the
+	// cleaned absolute path — the blocked/allowed checks still apply.
+
 	// Check against blocked paths
 	for _, blocked := range t.config.BlockedPaths {
 		absBlocked, err := filepath.Abs(blocked)
@@ -450,6 +480,9 @@ func (t *Tool) validatePath(path string) (string, error) {
 			continue
 		}
 		absBlocked = filepath.Clean(absBlocked)
+		if resolved, err := filepath.EvalSymlinks(absBlocked); err == nil {
+			absBlocked = resolved
+		}
 		if strings.HasPrefix(absPath, absBlocked) {
 			return "", fmt.Errorf("access denied: protected path")
 		}
@@ -460,6 +493,9 @@ func (t *Tool) validatePath(path string) (string, error) {
 		allowed := false
 		for _, base := range t.config.AllowedPaths {
 			absBase, _ := filepath.Abs(base)
+			if resolved, err := filepath.EvalSymlinks(absBase); err == nil {
+				absBase = resolved
+			}
 			if strings.HasPrefix(absPath, absBase) {
 				allowed = true
 				break

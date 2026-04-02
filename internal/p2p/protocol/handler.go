@@ -11,6 +11,7 @@ import (
 	"github.com/libp2p/go-libp2p/core/network"
 	"go.uber.org/zap"
 
+	"github.com/langoai/lango/internal/ctxkeys"
 	"github.com/langoai/lango/internal/eventbus"
 	"github.com/langoai/lango/internal/p2p/firewall"
 	"github.com/langoai/lango/internal/p2p/handshake"
@@ -31,6 +32,10 @@ type SecurityEventTracker interface {
 	RecordToolFailure(peerDID string)
 	RecordToolSuccess(peerDID string)
 }
+
+// SafetyLevelChecker looks up a tool's safety level by name.
+// Returns the numeric level and true if found, or (dangerous, false) for unknown tools.
+type SafetyLevelChecker func(toolName string) (int, bool)
 
 // CardProvider returns the local agent card as a map.
 type CardProvider func() map[string]interface{}
@@ -79,6 +84,11 @@ type Handler struct {
 	ontologyHandler OntologyHandler
 	localDID        string
 	logger          *zap.SugaredLogger
+
+	// Safety-level gate for P2P tool invocations.
+	safetyChecker  SafetyLevelChecker
+	maxSafetyLevel int      // numeric threshold (1=safe, 2=moderate, 3=dangerous)
+	allowedTools   []string // explicit whitelist that bypasses the safety gate
 }
 
 // HandlerConfig configures the protocol handler.
@@ -144,6 +154,15 @@ func (h *Handler) SetNegotiator(fn NegotiateHandler) {
 // SetTeamHandler sets the handler for team protocol messages.
 func (h *Handler) SetTeamHandler(fn TeamHandler) {
 	h.teamHandler = fn
+}
+
+// SetSafetyGate configures the safety-level gate for P2P tool invocations.
+// maxLevel is the numeric safety threshold (1=safe, 2=moderate, 3=dangerous).
+// checker looks up a tool's safety level; allowedTools bypasses the gate.
+func (h *Handler) SetSafetyGate(checker SafetyLevelChecker, maxLevel int, allowedTools []string) {
+	h.safetyChecker = checker
+	h.maxSafetyLevel = maxLevel
+	h.allowedTools = allowedTools
 }
 
 // SetOntologyHandler sets the handler for ontology schema exchange messages.
@@ -255,6 +274,8 @@ func (h *Handler) handleCapabilityQuery(req *Request, peerDID string) *Response 
 
 // handleToolInvoke executes a tool and returns the result.
 func (h *Handler) handleToolInvoke(ctx context.Context, req *Request, peerDID string) *Response {
+	ctx = ctxkeys.WithP2PRequest(ctx)
+
 	toolName, _ := req.Payload["toolName"].(string)
 	if toolName == "" {
 		return &Response{
@@ -274,6 +295,16 @@ func (h *Handler) handleToolInvoke(ctx context.Context, req *Request, peerDID st
 				Error:     err.Error(),
 				Timestamp: time.Now(),
 			}
+		}
+	}
+
+	// Safety-level gate: block tools that exceed the configured max level.
+	if !h.checkSafetyGate(toolName) {
+		return &Response{
+			RequestID: req.RequestID,
+			Status:    ResponseStatusDenied,
+			Error:     ErrToolSafetyBlocked.Error(),
+			Timestamp: time.Now(),
 		}
 	}
 
@@ -309,12 +340,17 @@ func (h *Handler) handleToolInvoke(ctx context.Context, req *Request, peerDID st
 		}
 	}
 
-	// Execute tool (prefer sandbox executor for process isolation).
-	exec := h.executor
-	if h.sandboxExec != nil {
-		exec = h.sandboxExec
+	// Execute tool through sandbox executor only — refuse in-process fallback
+	// for remote peer requests to prevent host process memory access.
+	if h.sandboxExec == nil {
+		return &Response{
+			RequestID: req.RequestID,
+			Status:    ResponseStatusDenied,
+			Error:     ErrNoSandboxExecutor.Error(),
+			Timestamp: time.Now(),
+		}
 	}
-	result, err := exec(ctx, toolName, params)
+	result, err := h.sandboxExec(ctx, toolName, params)
 	if err != nil {
 		if h.securityEvents != nil {
 			h.securityEvents.RecordToolFailure(peerDID)
@@ -419,6 +455,8 @@ func (h *Handler) handlePriceQuery(ctx context.Context, req *Request, peerDID st
 
 // handleToolInvokePaid executes a paid tool invocation with payment verification.
 func (h *Handler) handleToolInvokePaid(ctx context.Context, req *Request, peerDID string) *Response {
+	ctx = ctxkeys.WithP2PRequest(ctx)
+
 	toolName, _ := req.Payload["toolName"].(string)
 	if toolName == "" {
 		return &Response{
@@ -481,6 +519,16 @@ func (h *Handler) handleToolInvokePaid(ctx context.Context, req *Request, peerDI
 		}
 	}
 
+	// 2b. Safety-level gate: block tools that exceed the configured max level.
+	if !h.checkSafetyGate(toolName) {
+		return &Response{
+			RequestID: req.RequestID,
+			Status:    ResponseStatusDenied,
+			Error:     ErrToolSafetyBlocked.Error(),
+			Timestamp: time.Now(),
+		}
+	}
+
 	// 3. Owner approval check (default-deny when no approval handler is configured).
 	params, _ := req.Payload["params"].(map[string]interface{})
 	if params == nil {
@@ -513,21 +561,18 @@ func (h *Handler) handleToolInvokePaid(ctx context.Context, req *Request, peerDI
 		}
 	}
 
-	// 4. Execute tool (prefer sandbox executor for process isolation).
-	paidExec := h.executor
-	if h.sandboxExec != nil {
-		paidExec = h.sandboxExec
-	}
-	if paidExec == nil {
+	// 4. Execute tool through sandbox executor only — refuse in-process fallback
+	// for remote peer requests to prevent host process memory access.
+	if h.sandboxExec == nil {
 		return &Response{
 			RequestID: req.RequestID,
-			Status:    ResponseStatusError,
-			Error:     ErrExecutorNotConfigured.Error(),
+			Status:    ResponseStatusDenied,
+			Error:     ErrNoSandboxExecutor.Error(),
 			Timestamp: time.Now(),
 		}
 	}
 
-	result, err := paidExec(ctx, toolName, params)
+	result, err := h.sandboxExec(ctx, toolName, params)
 	if err != nil {
 		if h.securityEvents != nil {
 			h.securityEvents.RecordToolFailure(peerDID)
@@ -599,6 +644,24 @@ func (h *Handler) resolvePeerDID(s network.Stream, token string) string {
 	}
 
 	return ""
+}
+
+// checkSafetyGate returns true if the tool is allowed under the safety-level
+// policy. When no checker is configured, all tools pass (backward compatible).
+func (h *Handler) checkSafetyGate(toolName string) bool {
+	if h.safetyChecker == nil {
+		return true
+	}
+
+	// Explicit whitelist bypasses the level check.
+	for _, name := range h.allowedTools {
+		if name == toolName {
+			return true
+		}
+	}
+
+	level, _ := h.safetyChecker(toolName)
+	return level <= h.maxSafetyLevel
 }
 
 // sendError sends a quick error response on a stream.

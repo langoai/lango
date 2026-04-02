@@ -144,6 +144,55 @@ func TestHookRegistry_RunPre_PriorityOrdering(t *testing.T) {
 	assert.Equal(t, []string{"first", "second", "third"}, order)
 }
 
+func TestHookRegistry_RunPre_ObserveContinues(t *testing.T) {
+	t.Parallel()
+
+	observer := &stubPreHook{
+		name:     "observer",
+		priority: 1,
+		result:   PreHookResult{Action: Observe, ObserveReason: "scripting detected"},
+	}
+	after := &stubPreHook{
+		name:     "after",
+		priority: 2,
+		result:   PreHookResult{Action: Continue},
+	}
+
+	reg := NewHookRegistry()
+	reg.RegisterPre(observer)
+	reg.RegisterPre(after)
+
+	result, err := reg.RunPre(HookContext{Ctx: context.Background()})
+	require.NoError(t, err)
+	assert.Equal(t, Observe, result.Action, "observe should propagate to result")
+	assert.Equal(t, "scripting detected", result.ObserveReason)
+	assert.True(t, after.called, "hooks after observer should still be called")
+}
+
+func TestHookRegistry_RunPre_BlockOverridesObserve(t *testing.T) {
+	t.Parallel()
+
+	observer := &stubPreHook{
+		name:     "observer",
+		priority: 1,
+		result:   PreHookResult{Action: Observe, ObserveReason: "scripting detected"},
+	}
+	blocker := &stubPreHook{
+		name:     "blocker",
+		priority: 2,
+		result:   PreHookResult{Action: Block, BlockReason: "forbidden"},
+	}
+
+	reg := NewHookRegistry()
+	reg.RegisterPre(observer)
+	reg.RegisterPre(blocker)
+
+	result, err := reg.RunPre(HookContext{Ctx: context.Background()})
+	require.NoError(t, err)
+	assert.Equal(t, Block, result.Action, "block should override observe")
+	assert.Equal(t, "forbidden", result.BlockReason)
+}
+
 func TestHookRegistry_RunPre_BlockStopsEarly(t *testing.T) {
 	t.Parallel()
 

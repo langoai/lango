@@ -39,6 +39,7 @@ type SessionMetric struct {
 	OutputTokens int64
 	TotalTokens  int64
 	RequestCount int64
+	LastUpdated  time.Time
 }
 
 // PolicyMetrics aggregates policy decision counts.
