@@ -248,7 +248,7 @@ func renderMarkdown(n *html.Node, buf *strings.Builder) {
 			href := attrVal(n, "href")
 			text := strings.TrimSpace(textContent(n))
 			if href != "" && text != "" {
-				buf.WriteString(fmt.Sprintf("[%s](%s)", text, href))
+				fmt.Fprintf(buf, "[%s](%s)", text, href)
 			} else if text != "" {
 				buf.WriteString(text)
 			}
