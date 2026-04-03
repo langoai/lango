@@ -124,6 +124,12 @@ var (
 				Background(Warning).
 				Bold(true).
 				Padding(0, 1)
+
+	// BadgeExperimentalStyle for the EXP badge on experimental categories
+	BadgeExperimentalStyle = lipgloss.NewStyle().
+				Foreground(Warning).
+				Bold(true).
+				Padding(0, 1)
 )
 
 // Check result indicators

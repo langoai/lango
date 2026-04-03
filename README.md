@@ -11,27 +11,26 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Go Report Card](https://goreportcard.com/badge/github.com/langoai/lango)](https://goreportcard.com/report/github.com/langoai/lango)
 
-**A sovereign AI agent runtime with built-in commerce.** Lango is a high-performance agent in Go that lets AI agents discover each other, negotiate, transact, and collaborate — without intermediaries.
+> **Early-stage project.** Some features are experimental and may change between releases.
+> See the [feature status table](docs/features/index.md) for stability details.
+
+**A trustworthy multi-agent runtime in Go.** Lango is a high-performance agent runtime that lets AI agents collaborate, learn, and operate autonomously — with built-in observability, security hardening, and an optional peer-to-peer economy layer.
 
 ### Why Lango?
 
-Most agent frameworks stop at tool-calling. Lango goes further — it gives agents a full **sovereign economic stack**:
+Most agent frameworks stop at tool-calling. Lango builds a **trustworthy operational foundation** — then optionally extends into a peer-to-peer economy:
 
-- **Peer-to-Peer Agent Economy** — Agents discover, authenticate, negotiate prices, and trade capabilities over libp2p with budget management, trust-based risk assessment, and dynamic pricing. No central hub. No vendor lock-in.
-- **On-Chain Settlement** — USDC payments on Base L2 with EIP-3009 authorization, milestone-based escrow (Hub/Vault dual-mode), Foundry smart contracts, and a Security Sentinel that detects anomalies in real time.
-- **Smart Accounts** — ERC-7579 modular smart accounts (Safe-based) with ERC-4337 account abstraction, hierarchical session keys, gasless USDC transactions via paymaster, and on-chain spending limits.
-- **Trust & Reputation** — Every interaction builds a verifiable reputation score. Trusted peers get post-pay terms and price discounts; new peers prepay or use escrow.
+- **Multi-Agent Orchestration** — Hierarchical sub-agent teams with role-based delegation, P2P team coordination with conflict resolution strategies, and DAG-based workflow pipelines.
+- **Production Observability** — Token usage tracking, Prometheus metrics, OpenTelemetry tracing, health monitoring, alerting with webhook delivery, and audit logging.
 - **Zero-Knowledge Security** — ZK proofs (Plonk/Groth16) for handshake authentication and response attestation. Agents prove identity and output integrity without revealing internals. Hardware keyring and Cloud KMS support.
 - **Knowledge as Currency** — Self-learning knowledge graph, observational memory, and hybrid vector + graph RAG retrieval — agents that get smarter with every interaction can charge for their expertise.
-- **Multi-Agent Orchestration** — Hierarchical sub-agent teams with role-based delegation, P2P team coordination with conflict resolution strategies, and DAG-based workflow pipelines.
 - **Open Interoperability** — A2A protocol for remote agent discovery, MCP integration for external tool servers, and multi-provider AI support (OpenAI, Anthropic, Gemini, Ollama).
-- **Production Observability** — Token usage tracking, health monitoring, audit logging, and metrics endpoints for operational visibility.
+- **Peer-to-Peer Agent Economy** — Agents discover, authenticate, negotiate prices, and trade capabilities over libp2p with budget management, trust-based risk assessment, and dynamic pricing. No central hub. No vendor lock-in.
+- **On-Chain Settlement** — USDC payments on Base Sepolia testnet (chainId 84532) with EIP-3009 authorization, milestone-based escrow (Hub/Vault dual-mode), Foundry smart contracts, and a Security Sentinel that detects anomalies in real time.
+- **Smart Accounts** — ERC-7579 modular smart accounts (Safe-based) with ERC-4337 account abstraction, hierarchical session keys, gasless USDC transactions via paymaster, and on-chain spending limits.
+- **Trust & Reputation** — Every interaction builds a verifiable reputation score. Trusted peers get post-pay terms and price discounts; new peers prepay or use escrow.
 
 Single binary. <100ms startup. <250MB memory. Just Go.
-
-## ⚠️ **Note**
-
-This project includes experimental AI Agent features and is currently in an unstable state. Please use with caution, as significant breaking changes may occur in future updates.
 
 ## Features
 
@@ -117,183 +116,17 @@ For the full configuration editor with all options, use `lango settings`.
 
 ### CLI Commands
 
+See the full [CLI Reference](docs/cli/index.md) for all 80+ commands.
+
 ```
-lango serve                      Start the gateway server
-lango version                    Print version and build info
-lango health [--port N]          Check gateway health (default port: 18789)
-lango onboard                    Guided 5-step setup wizard for first-time configuration
-lango settings                   Full interactive configuration editor (all options)
-lango status [--output json] [--addr] Show unified system status dashboard
-lango doctor [--fix] [--json]    Diagnostics and health checks
+lango                            Launch cockpit TUI (interactive terminal)
 lango cockpit                    Launch multi-panel TUI dashboard
+lango serve                      Start the gateway server
 lango chat                       Launch plain chat TUI
-
-lango config list                List all configuration profiles
-lango config create <name>       Create a new profile with defaults
-lango config use <name>          Switch to a different profile
-lango config delete <name>       Delete a profile (--force to skip prompt)
-lango config import <file>       Import and encrypt a JSON config (--profile <name>, source file is deleted after import)
-lango config export <name>       Export active profile as JSON (requires passphrase)
-lango config validate            Validate the active profile
-
-lango security status [--json]   Show security configuration status
-lango security migrate-passphrase Rotate encryption passphrase
-lango security secrets list      List stored secrets (values hidden)
-lango security secrets set <n>   Store an encrypted secret (--value-hex for non-interactive)
-lango security secrets delete <n> Delete a stored secret (--force)
-lango security keyring store     Store passphrase in hardware keyring (Touch ID / TPM)
-lango security keyring clear     Remove passphrase from keyring (--force)
-lango security keyring status    Show hardware keyring status (--json)
-lango security db-migrate        Encrypt database with SQLCipher (--force)
-lango security db-decrypt        Decrypt database to plaintext (--force)
-lango security kms status        Show KMS provider status (--json)
-lango security kms test          Test KMS encrypt/decrypt roundtrip
-lango security kms keys          List KMS keys in registry (--json)
-
-lango sandbox status             Show sandbox configuration and platform capabilities
-lango sandbox test               Run OS sandbox smoke tests
-
-lango memory list [--json]       List observational memory entries
-lango memory status [--json]     Show memory system status
-lango memory clear [--force]     Clear all memory entries
-lango memory agents [--json]     List agents with persistent memory
-lango memory agent <name>        Show memory entries for a specific agent
-
-lango graph status [--json]      Show graph store status
-lango graph query [flags] [--json] Query graph triples (--subject, --predicate, --object, --limit)
-lango graph stats [--json]       Show graph statistics
-lango graph clear [--force]      Clear all graph data
-lango graph add [flags]          Add a triple (--subject, --predicate, --object)
-lango graph export <file>        Export graph data to a file
-lango graph import <file>        Import graph data from a file
-
-lango agent status [--json]      Show agent mode and configuration
-lango agent list [--json] [--check] List local and remote agents
-lango agent tools [--json]       Show tool-to-agent assignments
-lango agent hooks [--json]       Show registered tool hooks
-
-lango a2a card [--json]          Show local A2A agent card configuration
-lango a2a check <url> [--json]   Fetch and display a remote agent card
-
-lango learning status [--json]   Show learning system configuration
-lango learning history           Show recent learning entries
-
-lango librarian status [--json]  Show librarian configuration and inquiry stats
-lango librarian inquiries        List pending knowledge inquiries
-
-lango approval status [--json]   Show approval system configuration
-
-lango payment balance [--json]   Show USDC wallet balance
-lango payment history [--json] [--limit N] Show payment transaction history
-lango payment limits [--json]    Show spending limits and daily usage
-lango payment info [--json]      Show wallet and payment system info
-lango payment send [flags]       Send USDC payment (--to, --amount, --purpose required; --force, --json)
-lango payment x402 [--json]      Show X402 auto-pay configuration
-
-lango cron add [flags]           Add a cron job (--name, --schedule/--every/--at, --prompt, --deliver, --timezone)
-lango cron list                  List all cron jobs
-lango cron delete <id-or-name>   Delete a cron job
-lango cron pause <id-or-name>    Pause a cron job
-lango cron resume <id-or-name>   Resume a paused job
-lango cron history [id-or-name]  Show cron execution history
-
-lango workflow run <file.yaml>   Execute a workflow YAML file
-lango workflow list              List workflow runs
-lango workflow status <run-id>   Show workflow run status with step details
-lango workflow cancel <run-id>   Cancel a running workflow
-lango workflow history           Show workflow execution history
-lango workflow validate <file>   Validate a workflow YAML file
-
-lango mcp list                   List all configured MCP servers
-lango mcp add <name> [flags]     Add a new MCP server (--type, --command, --url, --env, --header, --scope, --safety)
-lango mcp remove <name>          Remove an MCP server configuration (--scope)
-lango mcp get <name>             Show server details and discovered tools
-lango mcp test <name>            Test server connectivity (handshake + ping + tool count)
-lango mcp enable <name>          Enable an MCP server (--scope)
-lango mcp disable <name>         Disable an MCP server (--scope)
-
-lango p2p status                 Show P2P node status
-lango p2p peers                  List connected peers
-lango p2p connect <multiaddr>    Connect to a peer by multiaddr
-lango p2p disconnect <peer-id>   Disconnect from a peer
-lango p2p firewall list          List firewall ACL rules
-lango p2p firewall add           Add a firewall ACL rule
-lango p2p firewall remove        Remove firewall rules for a peer
-lango p2p discover               Discover agents by capability
-lango p2p identity               Show local DID and peer identity
-lango p2p reputation             Query peer trust score
-lango p2p pricing                Show tool pricing
-lango p2p session list           List active peer sessions (--json)
-lango p2p session revoke         Revoke a peer session (--peer-did)
-lango p2p session revoke-all     Revoke all active peer sessions
-lango p2p sandbox status         Show sandbox runtime status
-lango p2p sandbox test           Run sandbox smoke test
-lango p2p sandbox cleanup        Remove orphaned sandbox containers
-lango p2p team list              List active P2P teams
-lango p2p team status <id>       Show team details and member status
-lango p2p team disband <id>      Disband an active team
-lango p2p workspace create <name> Create a collaborative workspace (--goal, --json)
-lango p2p workspace list          List workspaces (--json)
-lango p2p workspace status <id>   Show workspace details (--json)
-lango p2p workspace join <id>     Join an existing workspace
-lango p2p workspace leave <id>    Leave a workspace
-lango p2p git init <workspace-id> Initialize git repo for a workspace
-lango p2p git log <workspace-id>  Show commit log (--limit, --json)
-lango p2p git diff <id> <from> <to> Show diff between commits
-lango p2p git push <workspace-id> Push git bundle to peers
-lango p2p git fetch <workspace-id> Fetch git bundle from peers
-lango p2p zkp status             Show ZKP configuration
-lango p2p zkp circuits           List compiled ZKP circuits
-
-lango economy budget status     Show budget allocation status
-lango economy risk status       Show risk assessment configuration
-lango economy pricing status    Show dynamic pricing configuration
-lango economy negotiate status  Show negotiation protocol status
-lango economy escrow status     Show escrow service configuration
-lango economy escrow list       Show escrow summary (on-chain mode, addresses)
-lango economy escrow show       Show detailed on-chain escrow configuration (--id)
-lango economy escrow sentinel status  Show Security Sentinel engine status
-
-lango contract read [flags]     Read a smart contract method (--address, --method, --abi, --args)
-lango contract call [flags]     Execute a state-changing contract method (--address, --method, --value)
-lango contract abi load [flags] Load and cache a contract ABI (--address, --file)
-
-lango account info               Show smart account configuration and status
-lango account deploy             Deploy a new Safe smart account with ERC-7579 adapter
-lango account session list       List active session keys
-lango account session create     Create a new session key
-lango account session revoke     Revoke a session key (or --all)
-lango account module list        List registered ERC-7579 modules
-lango account module install     Install an ERC-7579 module
-lango account policy show        Show current harness policy configuration
-lango account policy set         Set harness policy limits
-lango account paymaster status   Show paymaster configuration and approval status
-lango account paymaster approve  Approve USDC spending for the paymaster
-
-lango metrics                   Show system metrics snapshot
-lango metrics sessions          Show per-session token usage
-lango metrics tools             Show per-tool metrics
-lango metrics agents            Show per-agent metrics
-lango metrics history [--days]  Show historical metrics
-
-lango bg list                    List background tasks
-lango bg status <id>             Show background task status
-lango bg cancel <id>             Cancel a running background task
-lango bg result <id>             Show completed task result
-
-lango run list                   List recent RunLedger runs
-lango run status                 Show RunLedger configuration
-lango run journal <run-id>       View run journal events
-
-lango provenance status          Show provenance configuration
-lango provenance checkpoint list List session checkpoints
-lango provenance checkpoint create Create a manual checkpoint
-lango provenance session tree    Show session hierarchy tree
-lango provenance session list    List persisted session nodes
-lango provenance attribution show <session> View attribution data
-lango provenance attribution report Generate attribution report
-lango provenance bundle export   Export signed provenance bundle
-lango provenance bundle import   Import provenance bundle
+lango onboard                    Guided 5-step setup wizard
+lango settings                   Full interactive configuration editor
+lango doctor [--fix]             Diagnostics and health checks
+lango status [--output json]     Unified system status dashboard
 ```
 
 ### Diagnostics
