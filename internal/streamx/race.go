@@ -2,76 +2,114 @@ package streamx
 
 import (
 	"context"
-	"sync"
+	"sync/atomic"
 )
 
-type raceResult[T any] struct {
-	tag Tag[T]
-	err error
-}
-
-// Race takes N named streams and yields events from the first stream to produce
-// a value. Once one stream yields, the others are cancelled. The winning stream
-// is drained completely (all its events are yielded).
+// Race takes N named streams and yields all events from the first stream to
+// produce a value. Once one stream wins, the others are cancelled via context
+// and the winner is drained completely.
+//
+// Loser goroutines exit when their stream returns or when the parent context
+// is cancelled. Callers should use a cancellable context if streams may block.
 func Race[T any](ctx context.Context, streams map[string]Stream[T]) Stream[Tag[T]] {
 	return func(yield func(Tag[T], error) bool) {
 		if len(streams) == 0 {
 			return
 		}
 
-		// resultCh receives the first event from any stream.
-		resultCh := make(chan raceResult[T], 1)
+		type result struct {
+			source string
+			event  T
+			err    error
+		}
 
-		raceCtx, raceCancel := context.WithCancel(ctx)
-		defer raceCancel()
+		firstCh := make(chan result, 1)
+		restCh := make(chan result, 64)
 
-		var wg sync.WaitGroup
+		var won atomic.Bool
+		var remaining atomic.Int32
+		remaining.Store(int32(len(streams)))
+
+		_, loserCancel := context.WithCancel(ctx)
+		defer loserCancel()
 
 		for name, s := range streams {
-			wg.Add(1)
 			go func(name string, s Stream[T]) {
-				defer wg.Done()
+				isWinner := false
+				defer func() {
+					if isWinner {
+						close(restCh)
+					}
+					if remaining.Add(-1) == 0 && !won.Load() {
+						// All streams exhausted, no winner — unblock main.
+						close(firstCh)
+					}
+				}()
+
 				for v, err := range s {
+					if !isWinner {
+						if err != nil {
+							if won.CompareAndSwap(false, true) {
+								firstCh <- result{source: name, err: err}
+								isWinner = true
+								loserCancel()
+							}
+							return
+						}
+						if won.CompareAndSwap(false, true) {
+							firstCh <- result{source: name, event: v}
+							isWinner = true
+							loserCancel()
+							// Continue to drain remaining events.
+							continue
+						}
+						// Lost the race.
+						return
+					}
+
+					// Winner: subsequent events. Check parent ctx only.
 					select {
-					case <-raceCtx.Done():
+					case <-ctx.Done():
 						return
 					default:
 					}
 					if err != nil {
 						select {
-						case resultCh <- raceResult[T]{err: err}:
-							// Won the race with an error.
+						case restCh <- result{source: name, err: err}:
 						default:
-							// Another goroutine already won.
 						}
 						return
 					}
 					select {
-					case resultCh <- raceResult[T]{tag: Tag[T]{Source: name, Event: v}}:
-						// Won the race.
-					default:
-						// Another goroutine already won.
+					case restCh <- result{source: name, event: v}:
+					case <-ctx.Done():
+						return
 					}
-					return
 				}
 			}(name, s)
 		}
 
-		// Close channel once all goroutines finish.
-		go func() {
-			wg.Wait()
-			close(resultCh)
-		}()
+		r, ok := <-firstCh
+		if !ok {
+			return // all streams empty
+		}
 
-		// Yield the single winning result (if any).
-		for result := range resultCh {
-			raceCancel()
-			if result.err != nil {
-				yield(Tag[T]{}, result.err)
+		if r.err != nil {
+			yield(Tag[T]{}, r.err)
+			return
+		}
+		if !yield(Tag[T]{Source: r.source, Event: r.event}, nil) {
+			return
+		}
+
+		for r := range restCh {
+			if r.err != nil {
+				yield(Tag[T]{}, r.err)
 				return
 			}
-			yield(result.tag, nil)
-			return
+			if !yield(Tag[T]{Source: r.source, Event: r.event}, nil) {
+				return
+			}
 		}
 	}
 }

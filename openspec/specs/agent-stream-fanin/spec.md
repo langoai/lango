@@ -1,3 +1,9 @@
+## Purpose
+
+AgentStreamFanIn provides a higher-level abstraction for merging multiple child agent output streams into a single tagged stream. It delegates to the stream-combinators Merge primitive and emits progress lifecycle events via ProgressBus, enabling supervisors to monitor child agent output in real time.
+
+## Requirements
+
 ### Requirement: AgentStreamFanIn Type
 
 The package SHALL provide an `AgentStreamFanIn` struct that holds a parent identifier, a map of child IDs to `Stream[string]`, and an optional `*ProgressBus`.

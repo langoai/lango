@@ -51,7 +51,8 @@ type FetchResult struct {
 // Fetch downloads a web page and extracts content in the specified mode.
 // Supported modes: "text" (default), "html" (raw HTML), "markdown" (simplified).
 // maxLength controls the maximum character length of the returned content.
-func Fetch(ctx context.Context, rawURL string, mode string, maxLength int) (*FetchResult, error) {
+// When p2pSafe is true, each redirect target is validated before following.
+func Fetch(ctx context.Context, rawURL string, mode string, maxLength int, p2pSafe bool) (*FetchResult, error) {
 	if rawURL == "" {
 		return nil, errors.New("empty URL")
 	}
@@ -87,6 +88,12 @@ func Fetch(ctx context.Context, rawURL string, mode string, maxLength int) (*Fet
 		CheckRedirect: func(req *http.Request, via []*http.Request) error {
 			if len(via) >= maxRedirects {
 				return fmt.Errorf("stopped after %d redirects", maxRedirects)
+			}
+			// Validate each redirect target before following in P2P context.
+			if p2pSafe {
+				if err := ValidateURLForP2P(req.URL.String()); err != nil {
+					return fmt.Errorf("redirect blocked: %w", err)
+				}
 			}
 			return nil
 		},

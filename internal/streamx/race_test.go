@@ -35,11 +35,11 @@ func TestRace(t *testing.T) {
 			tags = append(tags, v)
 		}
 
-		if len(tags) != 1 {
-			t.Fatalf("want 1 event, got %d", len(tags))
+		if len(tags) == 0 {
+			t.Fatal("want at least 1 event, got 0")
 		}
 		if tags[0].Event != 42 {
-			t.Errorf("want event 42, got %d", tags[0].Event)
+			t.Errorf("want first event 42, got %d", tags[0].Event)
 		}
 		if tags[0].Source != "fast" {
 			t.Errorf("want source 'fast', got %q", tags[0].Source)
@@ -146,6 +146,44 @@ func TestRace(t *testing.T) {
 		// Either "a" or "b" could win; just check the event is valid.
 		if tags[0].Event != 1 && tags[0].Event != 2 {
 			t.Errorf("want event 1 or 2, got %d", tags[0].Event)
+		}
+	})
+
+	t.Run("multi-event winner drains fully", func(t *testing.T) {
+		t.Parallel()
+		ctx, cancel := context.WithCancel(context.Background())
+		defer cancel()
+
+		// "fast" yields 3 events immediately; "slow" blocks until cancelled.
+		fast := testStream([]int{10, 20, 30}, nil)
+		slow := Stream[int](func(yield func(int, error) bool) {
+			<-ctx.Done()
+		})
+
+		streams := map[string]Stream[int]{
+			"fast": fast,
+			"slow": slow,
+		}
+
+		raced := Race(ctx, streams)
+		var tags []Tag[int]
+		for v, err := range raced {
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			tags = append(tags, v)
+		}
+
+		if len(tags) != 3 {
+			t.Fatalf("want 3 events from winner, got %d", len(tags))
+		}
+		for i, want := range []int{10, 20, 30} {
+			if tags[i].Event != want {
+				t.Errorf("event[%d]: want %d, got %d", i, want, tags[i].Event)
+			}
+			if tags[i].Source != "fast" {
+				t.Errorf("event[%d]: want source 'fast', got %q", i, tags[i].Source)
+			}
 		}
 	})
 }

@@ -161,3 +161,26 @@ The `Notification` struct SHALL accept a `TypingIndicator` in addition to `Chann
 - **WHEN** `Notification.StartTyping` is called with an empty channel
 - **THEN** the method SHALL return a no-op stop function
 
+### Requirement: Projection interface for AgentRun state synchronization
+The `Projection` interface SHALL support AgentRun state synchronization via `PrepareTask(ctx, prompt, origin) (string, error)` and `SyncTask(ctx, TaskSnapshot) error`. `PrepareTask` SHALL return a pre-assigned AgentRun ID from a pending pool so that background task IDs and AgentRun IDs are unified. `SyncTask` SHALL map background task status transitions to the corresponding AgentRun state.
+
+#### Scenario: PrepareTask returns pending AgentRun ID
+- **WHEN** `PrepareTask` is called and a pending AgentRun ID has been registered
+- **THEN** it SHALL return the pre-assigned ID and remove it from the pending pool
+
+#### Scenario: PrepareTask with no pending ID
+- **WHEN** `PrepareTask` is called and no pending AgentRun ID is registered
+- **THEN** it SHALL return an error indicating no pending run is available
+
+#### Scenario: PrepareTask consumes ID once
+- **WHEN** `PrepareTask` returns a pending ID and is called again without a new registration
+- **THEN** the second call SHALL return an error (the ID was consumed)
+
+#### Scenario: SyncTask maps status transitions
+- **WHEN** `SyncTask` is called with a `TaskSnapshot` containing a background task status
+- **THEN** the projection SHALL map the status to the corresponding AgentRun state (e.g., Pending/Running/Done/Failed/Cancelled)
+
+#### Scenario: SyncTask with unknown run
+- **WHEN** `SyncTask` is called with a snapshot whose ID does not exist in the store
+- **THEN** the store error SHALL be propagated
+

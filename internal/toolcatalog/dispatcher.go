@@ -225,7 +225,8 @@ func buildSearchTool(index *SearchIndex) *agent.Tool {
 				limit = int(v)
 			}
 
-			results := index.Search(query, limit)
+			// Search without limit first, then filter, then apply limit.
+			results := index.Search(query, 0)
 
 			// Apply optional category filter.
 			if cat, _ := params["category"].(string); cat != "" {
@@ -249,6 +250,11 @@ func buildSearchTool(index *SearchIndex) *agent.Tool {
 					}
 				}
 				results = filtered
+			}
+
+			// Apply limit after filtering.
+			if len(results) > limit {
+				results = results[:limit]
 			}
 
 			resultMaps := make([]map[string]interface{}, 0, len(results))

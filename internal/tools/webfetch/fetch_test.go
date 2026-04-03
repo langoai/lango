@@ -44,7 +44,7 @@ func TestFetch_TextMode(t *testing.T) {
 	srv := newTestServer(http.StatusOK, sampleHTML)
 	defer srv.Close()
 
-	result, err := Fetch(context.Background(), srv.URL, ModeText, defaultMaxLength)
+	result, err := Fetch(context.Background(), srv.URL, ModeText, defaultMaxLength, false)
 	require.NoError(t, err)
 
 	assert.Equal(t, srv.URL, result.URL)
@@ -64,7 +64,7 @@ func TestFetch_HTMLMode(t *testing.T) {
 	srv := newTestServer(http.StatusOK, sampleHTML)
 	defer srv.Close()
 
-	result, err := Fetch(context.Background(), srv.URL, ModeHTML, defaultMaxLength)
+	result, err := Fetch(context.Background(), srv.URL, ModeHTML, defaultMaxLength, false)
 	require.NoError(t, err)
 
 	assert.Equal(t, "Test Page", result.Title)
@@ -77,7 +77,7 @@ func TestFetch_MarkdownMode(t *testing.T) {
 	srv := newTestServer(http.StatusOK, sampleHTML)
 	defer srv.Close()
 
-	result, err := Fetch(context.Background(), srv.URL, ModeMarkdown, defaultMaxLength)
+	result, err := Fetch(context.Background(), srv.URL, ModeMarkdown, defaultMaxLength, false)
 	require.NoError(t, err)
 
 	assert.Equal(t, "Test Page", result.Title)
@@ -96,7 +96,7 @@ func TestFetch_MaxLengthTruncation(t *testing.T) {
 	srv := newTestServer(http.StatusOK, sampleHTML)
 	defer srv.Close()
 
-	result, err := Fetch(context.Background(), srv.URL, ModeText, 20)
+	result, err := Fetch(context.Background(), srv.URL, ModeText, 20, false)
 	require.NoError(t, err)
 
 	assert.True(t, result.Truncated)
@@ -108,7 +108,7 @@ func TestFetch_Non200Error(t *testing.T) {
 	srv := newTestServer(http.StatusNotFound, "not found")
 	defer srv.Close()
 
-	_, err := Fetch(context.Background(), srv.URL, ModeText, defaultMaxLength)
+	_, err := Fetch(context.Background(), srv.URL, ModeText, defaultMaxLength, false)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "HTTP 404")
 }
@@ -117,7 +117,7 @@ func TestFetch_ServerError(t *testing.T) {
 	srv := newTestServer(http.StatusInternalServerError, "internal error")
 	defer srv.Close()
 
-	_, err := Fetch(context.Background(), srv.URL, ModeText, defaultMaxLength)
+	_, err := Fetch(context.Background(), srv.URL, ModeText, defaultMaxLength, false)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "HTTP 500")
 }
@@ -126,13 +126,13 @@ func TestFetch_InvalidMode(t *testing.T) {
 	srv := newTestServer(http.StatusOK, sampleHTML)
 	defer srv.Close()
 
-	_, err := Fetch(context.Background(), srv.URL, "xml", defaultMaxLength)
+	_, err := Fetch(context.Background(), srv.URL, "xml", defaultMaxLength, false)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "unsupported mode")
 }
 
 func TestFetch_EmptyURL(t *testing.T) {
-	_, err := Fetch(context.Background(), "", ModeText, defaultMaxLength)
+	_, err := Fetch(context.Background(), "", ModeText, defaultMaxLength, false)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "empty URL")
 }
@@ -142,7 +142,7 @@ func TestFetch_DefaultMode(t *testing.T) {
 	defer srv.Close()
 
 	// Empty mode defaults to text.
-	result, err := Fetch(context.Background(), srv.URL, "", defaultMaxLength)
+	result, err := Fetch(context.Background(), srv.URL, "", defaultMaxLength, false)
 	require.NoError(t, err)
 	assert.Contains(t, result.Content, "Hello World")
 }
@@ -152,7 +152,7 @@ func TestFetch_DefaultMaxLength(t *testing.T) {
 	defer srv.Close()
 
 	// Zero maxLength defaults to defaultMaxLength.
-	result, err := Fetch(context.Background(), srv.URL, ModeText, 0)
+	result, err := Fetch(context.Background(), srv.URL, ModeText, 0, false)
 	require.NoError(t, err)
 	assert.NotEmpty(t, result.Content)
 }
@@ -164,7 +164,7 @@ func TestFetch_URLWithoutScheme(t *testing.T) {
 	// The test server URL has http:// prefix. Strip it and pass without scheme.
 	// Fetch prepends https:// which won't match the http test server, causing a TLS error.
 	noScheme := strings.TrimPrefix(srv.URL, "http://")
-	_, err := Fetch(context.Background(), noScheme, ModeText, defaultMaxLength)
+	_, err := Fetch(context.Background(), noScheme, ModeText, defaultMaxLength, false)
 	// Should get an error because https:// is prepended but server speaks plain http.
 	require.Error(t, err)
 	assert.NotContains(t, err.Error(), "parse URL")
@@ -179,7 +179,7 @@ func TestFetch_Redirect(t *testing.T) {
 	}))
 	defer redirect.Close()
 
-	result, err := Fetch(context.Background(), redirect.URL, ModeText, defaultMaxLength)
+	result, err := Fetch(context.Background(), redirect.URL, ModeText, defaultMaxLength, false)
 	require.NoError(t, err)
 	assert.Equal(t, final.URL, result.URL)
 	assert.Contains(t, result.Content, "Hello World")

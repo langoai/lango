@@ -2,6 +2,7 @@ package webfetch
 
 import (
 	"context"
+	"strings"
 
 	"github.com/langoai/lango/internal/agent"
 	"github.com/langoai/lango/internal/ctxkeys"
@@ -33,9 +34,17 @@ func BuildTools() []*agent.Tool {
 					return nil, err
 				}
 
+				p2p := ctxkeys.IsP2PRequest(ctx)
+
+				// Normalize URL before validation (P3 fix: scheme-less hosts).
+				normalizedURL := rawURL
+				if !strings.Contains(normalizedURL, "://") {
+					normalizedURL = "https://" + normalizedURL
+				}
+
 				// Block internal/private network URLs in P2P context.
-				if ctxkeys.IsP2PRequest(ctx) {
-					if err := ValidateURLForP2P(rawURL); err != nil {
+				if p2p {
+					if err := ValidateURLForP2P(normalizedURL); err != nil {
 						return nil, err
 					}
 				}
@@ -43,13 +52,16 @@ func BuildTools() []*agent.Tool {
 				mode := toolparam.OptionalString(params, "mode", ModeText)
 				maxLength := toolparam.OptionalInt(params, "max_length", defaultMaxLength)
 
-				result, err := Fetch(ctx, rawURL, mode, maxLength)
+				// Pass p2pSafe so Fetch validates each redirect before following.
+				result, err := Fetch(ctx, rawURL, mode, maxLength, p2p)
 				if err != nil {
 					return nil, err
 				}
 
-				// Re-validate final URL after redirects in P2P context.
-				if ctxkeys.IsP2PRequest(ctx) {
+				// Re-validate final URL after fetch to catch DNS rebinding attacks
+				// where the hostname resolves to a public IP during validation
+				// but re-resolves to a private IP during the actual request.
+				if p2p {
 					if err := ValidateURLForP2P(result.URL); err != nil {
 						return nil, err
 					}

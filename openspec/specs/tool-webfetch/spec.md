@@ -1,7 +1,7 @@
 # tool-webfetch Specification
 
 ## Purpose
-TBD - created by archiving change add-webfetch-tool. Update Purpose after archive.
+HTTP-based web page fetch and readability extraction tool supporting text, HTML, and markdown output modes.
 ## Requirements
 ### Requirement: Fetch web page content via HTTP
 The system SHALL provide a `web_fetch` agent tool that fetches a web page via HTTP GET and returns extracted content. The tool SHALL use a 30-second timeout and follow up to 5 redirects. The tool SHALL set a `Lango/1.0` User-Agent header.
