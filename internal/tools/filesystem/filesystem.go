@@ -220,22 +220,62 @@ func (t *Tool) ListDir(path string) ([]FileInfo, error) {
 // Delete removes a file or directory. In P2P context, only single files or
 // empty directories are allowed (no recursive deletion by remote peers).
 func (t *Tool) Delete(ctx context.Context, path string) error {
-	absPath, err := t.validatePath(path)
+	// Delete uses a different validation flow than other operations because
+	// removing a symlink (os.Remove on the link) does not affect the target.
+	// We must check the LINK LOCATION against blocked/allowed, not the target.
+
+	absPath, err := filepath.Abs(path)
+	if err != nil {
+		return fmt.Errorf("invalid path: %w", err)
+	}
+	absPath = filepath.Clean(absPath)
+
+	// Check if the path is a symlink BEFORE resolving.
+	info, lstatErr := os.Lstat(absPath)
+	isSymlink := lstatErr == nil && info.Mode()&os.ModeSymlink != 0
+
+	if isSymlink {
+		// For symlinks: validate the link's location (not the target).
+		// Resolve the parent directory to canonicalize OS aliases
+		// (e.g., macOS /var → /private/var) while keeping the final
+		// symlink component unresolved.
+		dir := filepath.Dir(absPath)
+		resolvedDir, err := filepath.EvalSymlinks(dir)
+		if err != nil {
+			return fmt.Errorf("resolve parent directory: %w", err)
+		}
+		canonicalLink := filepath.Join(resolvedDir, filepath.Base(absPath))
+
+		if err := t.checkPathAccess(canonicalLink, path); err != nil {
+			return err
+		}
+
+		// Delete the symlink itself, not the target.
+		if err := os.Remove(absPath); err != nil {
+			return fmt.Errorf("delete symlink: %w", err)
+		}
+		logger.Infow("symlink deleted", "path", absPath)
+		return nil
+	}
+
+	// For non-symlinks: use the standard validatePath flow which resolves
+	// the path and checks the resolved target against blocked/allowed.
+	resolvedPath, err := t.validatePath(path)
 	if err != nil {
 		return err
 	}
 
 	if ctxkeys.IsP2PRequest(ctx) {
-		if err := os.Remove(absPath); err != nil {
+		if err := os.Remove(resolvedPath); err != nil {
 			return fmt.Errorf("delete (p2p restricted): %w", err)
 		}
 	} else {
-		if err := os.RemoveAll(absPath); err != nil {
+		if err := os.RemoveAll(resolvedPath); err != nil {
 			return fmt.Errorf("delete: %w", err)
 		}
 	}
 
-	logger.Infow("file deleted", "path", absPath)
+	logger.Infow("file deleted", "path", resolvedPath)
 	return nil
 }
 
@@ -460,37 +500,8 @@ func (t *Tool) validatePath(path string) (string, error) {
 	// If EvalSymlinks fails (broken symlink, non-existent), continue with the
 	// cleaned absolute path — the blocked/allowed checks still apply.
 
-	// Check against blocked paths
-	for _, blocked := range t.config.BlockedPaths {
-		absBlocked, err := filepath.Abs(blocked)
-		if err != nil {
-			continue
-		}
-		absBlocked = filepath.Clean(absBlocked)
-		if resolved, err := filepath.EvalSymlinks(absBlocked); err == nil {
-			absBlocked = resolved
-		}
-		if strings.HasPrefix(absPath, absBlocked) {
-			return "", fmt.Errorf("access denied: protected path")
-		}
-	}
-
-	// Check against allowed paths
-	if len(t.config.AllowedPaths) > 0 {
-		allowed := false
-		for _, base := range t.config.AllowedPaths {
-			absBase, _ := filepath.Abs(base)
-			if resolved, err := filepath.EvalSymlinks(absBase); err == nil {
-				absBase = resolved
-			}
-			if strings.HasPrefix(absPath, absBase) {
-				allowed = true
-				break
-			}
-		}
-		if !allowed {
-			return "", fmt.Errorf("path not allowed: %s", path)
-		}
+	if err := t.checkPathAccess(absPath, path); err != nil {
+		return "", err
 	}
 
 	// Check for path traversal attempts
@@ -503,4 +514,54 @@ func (t *Tool) validatePath(path string) (string, error) {
 	}
 
 	return absPath, nil
+}
+
+// checkPathAccess verifies that absPath is not under a blocked directory
+// and is within an allowed directory (if AllowedPaths is configured).
+// origPath is used only for error messages.
+func (t *Tool) checkPathAccess(absPath, origPath string) error {
+	for _, blocked := range t.config.BlockedPaths {
+		absBlocked, err := filepath.Abs(blocked)
+		if err != nil {
+			continue
+		}
+		absBlocked = filepath.Clean(absBlocked)
+
+		// Match against the unresolved config path first (covers cases
+		// where the config entry itself is a symlink).
+		if strings.HasPrefix(absPath, absBlocked) {
+			return fmt.Errorf("access denied: protected path")
+		}
+		// Also match against the resolved config path.
+		if resolved, err := filepath.EvalSymlinks(absBlocked); err == nil && resolved != absBlocked {
+			if strings.HasPrefix(absPath, resolved) {
+				return fmt.Errorf("access denied: protected path")
+			}
+		}
+	}
+
+	if len(t.config.AllowedPaths) > 0 {
+		allowed := false
+		for _, base := range t.config.AllowedPaths {
+			absBase, _ := filepath.Abs(base)
+			absBase = filepath.Clean(absBase)
+
+			// Match against unresolved config path.
+			if strings.HasPrefix(absPath, absBase) {
+				allowed = true
+				break
+			}
+			// Also match against resolved config path.
+			if resolved, err := filepath.EvalSymlinks(absBase); err == nil && resolved != absBase {
+				if strings.HasPrefix(absPath, resolved) {
+					allowed = true
+					break
+				}
+			}
+		}
+		if !allowed {
+			return fmt.Errorf("path not allowed: %s", origPath)
+		}
+	}
+	return nil
 }

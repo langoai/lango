@@ -561,6 +561,9 @@ func wirePostAgent(app *App, r appinit.Resolver, tools []*agent.Tool, bus *event
 			})
 
 			// Sandbox executor for P2P tool isolation.
+			// When toolIsolation.enabled=false (default), no executor is
+			// attached and the handler rejects inbound tool_invoke with
+			// ErrNoSandboxExecutor — this is the intended safe posture.
 			if cfg.P2P.ToolIsolation.Enabled {
 				sbxCfg := sandbox.Config{
 					Enabled:        true,
@@ -591,6 +594,8 @@ func wirePostAgent(app *App, r appinit.Resolver, tools []*agent.Tool, bus *event
 						return sbxExec.Execute(ctx, toolName, params)
 					})
 				}
+			} else {
+				logger().Warnw("P2P enabled but toolIsolation disabled — inbound tool_invoke requests will be rejected; set p2p.toolIsolation.enabled=true to allow remote tool execution")
 			}
 
 			// Owner approval callback for inbound remote tool invocations.

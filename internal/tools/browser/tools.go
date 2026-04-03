@@ -53,10 +53,13 @@ func BuildTools(sm *SessionManager) []*agent.Tool {
 					return nil, err
 				}
 
-				// Re-validate final URL after potential redirects in P2P context.
+				// Re-validate final URL after navigation in P2P context.
+				// Always re-validate regardless of URL string equality to
+				// prevent DNS rebinding attacks where the same hostname
+				// resolves to a different (private) IP at navigation time.
 				if ctxkeys.IsP2PRequest(ctx) {
 					finalURL, err := sm.Tool().CurrentURL(sessionID)
-					if err == nil && finalURL != rawURL {
+					if err == nil {
 						if err := ValidateURLForP2P(finalURL); err != nil {
 							// Navigate away from blocked destination.
 							_ = sm.Tool().Navigate(ctx, sessionID, "about:blank")

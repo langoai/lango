@@ -61,7 +61,16 @@ The system MUST provide a `GVisorRuntime` stub that always reports `IsAvailable(
 `ExecutionRequest` MUST include an optional `version` field (default 0) for forward compatibility.
 
 ### Requirement: App wiring
-When `p2p.toolIsolation.container.enabled` is true, the app MUST attempt to create a `ContainerExecutor`. On failure, it MUST check `requireContainer`: if true, it MUST NOT fall back to `SubprocessExecutor` and MUST leave the sandbox executor nil (causing the handler to reject P2P tool calls). If `requireContainer` is false, it MUST fall back to `SubprocessExecutor` with a warning log.
+The P2P sandbox executor SHALL only be wired when `cfg.P2P.ToolIsolation.Enabled` is true. When P2P is enabled but `toolIsolation.enabled` is false, the system SHALL log a startup warning explaining that inbound `tool_invoke` requests will be rejected, and the handler SHALL reject such requests with `ErrNoSandboxExecutor`. When `toolIsolation.enabled` is true and `container.enabled` is true, the app MUST attempt to create a `ContainerExecutor`. On failure, it MUST check `requireContainer`: if true, it MUST NOT fall back to `SubprocessExecutor` and MUST leave the sandbox executor nil. If `requireContainer` is false, it MUST fall back to `SubprocessExecutor` with a warning log.
+
+#### Scenario: P2P enabled, toolIsolation disabled (default)
+- **WHEN** `p2p.enabled=true` and `p2p.toolIsolation.enabled=false`
+- **THEN** no sandbox executor SHALL be attached
+- **AND** a startup warning SHALL be logged
+
+#### Scenario: P2P enabled, toolIsolation enabled
+- **WHEN** `p2p.enabled=true` and `p2p.toolIsolation.enabled=true`
+- **THEN** a sandbox executor SHALL be attached (container or subprocess based on config)
 
 #### Scenario: Container required but unavailable
 - **WHEN** `requireContainer` is true and `NewContainerExecutor` fails
