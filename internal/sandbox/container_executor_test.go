@@ -157,3 +157,48 @@ func TestContainerExecutor_Runtime(t *testing.T) {
 	exec := &ContainerExecutor{runtime: mock}
 	assert.Equal(t, mock, exec.Runtime())
 }
+
+func TestContainerExecutor_RequireContainer_FailClosed(t *testing.T) {
+	tests := []struct {
+		give             string
+		requireContainer bool
+		wantErr          bool
+	}{
+		{
+			give:             "require container with no runtime available returns error",
+			requireContainer: true,
+			wantErr:          true,
+		},
+		{
+			give:             "no requirement falls back to native",
+			requireContainer: false,
+			wantErr:          false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.give, func(t *testing.T) {
+			cfg := Config{
+				Enabled:        true,
+				TimeoutPerTool: 5 * time.Second,
+			}
+			// "native" skips Docker/gVisor probes and goes directly to the
+			// fallback path where requireContainer is checked.
+			containerCfg := config.ContainerSandboxConfig{
+				Runtime:          "native",
+				Image:            "test:latest",
+				RequireContainer: tt.requireContainer,
+			}
+
+			exec, err := NewContainerExecutor(cfg, containerCfg)
+			if tt.wantErr {
+				require.Error(t, err)
+				assert.ErrorIs(t, err, ErrRuntimeUnavailable)
+				assert.Nil(t, exec)
+			} else {
+				require.NoError(t, err)
+				assert.Equal(t, "native", exec.RuntimeName())
+			}
+		})
+	}
+}

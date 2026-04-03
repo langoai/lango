@@ -9,6 +9,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/langoai/lango/internal/config"
+	"github.com/langoai/lango/internal/finance"
 )
 
 func TestAdaptToPricingFunc_FreeTool(t *testing.T) {
@@ -69,7 +70,7 @@ func TestFormatUSDC(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.want, func(t *testing.T) {
 			t.Parallel()
-			assert.Equal(t, tt.want, formatUSDC(tt.give))
+			assert.Equal(t, tt.want, finance.FormatUSDC(tt.give))
 		})
 	}
 }

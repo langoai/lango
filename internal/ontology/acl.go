@@ -28,7 +28,7 @@ type RoleBasedPolicy struct {
 func NewRoleBasedPolicy(roles map[string]Permission) *RoleBasedPolicy {
 	m := make(map[string]Permission, len(roles))
 	maps.Copy(m, roles)
-	return &RoleBasedPolicy{roles: m, p2pPermission: PermWrite}
+	return &RoleBasedPolicy{roles: m, p2pPermission: PermRead}
 }
 
 // SetP2PPermission sets the default permission for peer: prefix principals.

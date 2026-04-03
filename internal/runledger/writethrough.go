@@ -3,7 +3,7 @@ package runledger
 import (
 	"context"
 	"fmt"
-	"log"
+	"github.com/langoai/lango/internal/logging"
 	"strings"
 
 	"github.com/google/uuid"
@@ -16,7 +16,7 @@ func logProjectionSyncWarning(runID string, err error) {
 	if err == nil {
 		return
 	}
-	log.Printf("WARN projection sync %s: %v", runID, err)
+	logging.SubsystemSugar("runledger").Warnw("projection sync", "runID", runID, "error", err)
 }
 
 // RolloutStage controls how deeply the RunLedger is integrated.

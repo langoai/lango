@@ -35,5 +35,18 @@ func NewAlertingForm(cfg *config.Config) *tuicore.FormModel {
 		VisibleWhen: isEnabled,
 	})
 
+	// Delivery webhook URL (first channel).
+	webhookURL := ""
+	if len(cfg.Alerting.Delivery) > 0 {
+		webhookURL = cfg.Alerting.Delivery[0].WebhookURL
+	}
+	form.AddField(&tuicore.Field{
+		Key: "alerting_webhook_url", Label: "  Webhook URL", Type: tuicore.InputText,
+		Value:       webhookURL,
+		Placeholder: "https://hooks.slack.com/services/...",
+		Description: "Webhook URL for external alert delivery (leave empty to disable)",
+		VisibleWhen: isEnabled,
+	})
+
 	return &form
 }

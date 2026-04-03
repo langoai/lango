@@ -61,7 +61,25 @@ The system MUST provide a `GVisorRuntime` stub that always reports `IsAvailable(
 `ExecutionRequest` MUST include an optional `version` field (default 0) for forward compatibility.
 
 ### Requirement: App wiring
-When `p2p.toolIsolation.container.enabled` is true, the app MUST attempt to create a `ContainerExecutor`. On failure, it MUST fall back to `SubprocessExecutor` with a warning log.
+The P2P sandbox executor SHALL only be wired when `cfg.P2P.ToolIsolation.Enabled` is true. When P2P is enabled but `toolIsolation.enabled` is false, the system SHALL log a startup warning explaining that inbound `tool_invoke` requests will be rejected, and the handler SHALL reject such requests with `ErrNoSandboxExecutor`. When `toolIsolation.enabled` is true and `container.enabled` is true, the app MUST attempt to create a `ContainerExecutor`. On failure, it MUST check `requireContainer`: if true, it MUST NOT fall back to `SubprocessExecutor` and MUST leave the sandbox executor nil. If `requireContainer` is false, it MUST fall back to `SubprocessExecutor` with a warning log.
+
+#### Scenario: P2P enabled, toolIsolation disabled (default)
+- **WHEN** `p2p.enabled=true` and `p2p.toolIsolation.enabled=false`
+- **THEN** no sandbox executor SHALL be attached
+- **AND** a startup warning SHALL be logged
+
+#### Scenario: P2P enabled, toolIsolation enabled
+- **WHEN** `p2p.enabled=true` and `p2p.toolIsolation.enabled=true`
+- **THEN** a sandbox executor SHALL be attached (container or subprocess based on config)
+
+#### Scenario: Container required but unavailable
+- **WHEN** `requireContainer` is true and `NewContainerExecutor` fails
+- **THEN** the sandbox executor SHALL remain nil
+- **AND** the handler SHALL reject all P2P tool invocations with `ErrNoSandboxExecutor`
+
+#### Scenario: Container optional and unavailable
+- **WHEN** `requireContainer` is false and `NewContainerExecutor` fails
+- **THEN** the system SHALL fall back to `SubprocessExecutor` with a warning log
 
 ### Requirement: Container pool
 When `poolSize > 0`, the system MUST maintain a pool of pre-warmed containers with `Acquire`/`Release` lifecycle and idle timeout cleanup.
@@ -83,3 +101,30 @@ The system MUST provide `lango p2p sandbox status`, `lango p2p sandbox test`, an
 
 ### Requirement: Sandbox Docker image
 A `build/sandbox/Dockerfile` MUST define a minimal Debian-based image with the lango binary, running as non-root `sandbox` user with `--sandbox-worker` entrypoint.
+
+
+## ADDED Requirements
+
+### Requirement: Fail-closed container enforcement
+The `ContainerExecutor` MUST support a `requireContainer` mode. When enabled and the runtime resolves to `NativeRuntime` in auto mode, the executor MUST return an error wrapping `ErrRuntimeUnavailable` instead of silently falling back.
+
+#### Scenario: RequireContainer with Docker available
+- **WHEN** `requireContainer` is true and Docker is available
+- **THEN** Docker runtime is selected normally
+
+#### Scenario: RequireContainer without Docker
+- **WHEN** `requireContainer` is true and no container runtime is available
+- **THEN** `NewContainerExecutor` returns an error wrapping `ErrRuntimeUnavailable`
+- **AND** `NativeRuntime` is NOT used as fallback
+
+#### Scenario: RequireContainer disabled (backward compatible)
+- **WHEN** `requireContainer` is false
+- **THEN** fallback to `NativeRuntime` proceeds as before
+
+## MODIFIED Requirements
+
+### Requirement: ContainerExecutor runtime probe
+`NewContainerExecutor` MUST check the `requireContainer` config field after the probe chain. If true and only `NativeRuntime` is available, it MUST return an error instead of proceeding.
+
+### Requirement: Container sandbox configuration
+The `p2p.toolIsolation.container` configuration block MUST include a `requireContainer` boolean field (default: `true` for new installations).

@@ -83,6 +83,45 @@ func TestRoleBasedPolicy_UnknownReadOnly(t *testing.T) {
 	assert.Error(t, p.Check("unknown_agent", PermAdmin))
 }
 
+func TestRoleBasedPolicy_P2PPeerDefaultRead(t *testing.T) {
+	p := NewRoleBasedPolicy(map[string]Permission{
+		"ontologist": PermAdmin,
+	})
+
+	tests := []struct {
+		give     string
+		givePerm Permission
+		wantErr  bool
+	}{
+		// P2P peers default to PermRead
+		{"peer:abc123", PermRead, false},
+		{"peer:abc123", PermWrite, true},
+		{"peer:abc123", PermAdmin, true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.give+"_"+permName(tt.givePerm), func(t *testing.T) {
+			err := p.Check(tt.give, tt.givePerm)
+			if tt.wantErr {
+				require.Error(t, err)
+				assert.True(t, errors.Is(err, ErrPermissionDenied))
+			} else {
+				assert.NoError(t, err)
+			}
+		})
+	}
+}
+
+func TestRoleBasedPolicy_P2PPeerOverride(t *testing.T) {
+	p := NewRoleBasedPolicy(map[string]Permission{
+		"ontologist": PermAdmin,
+	})
+	p.SetP2PPermission(PermWrite)
+
+	assert.NoError(t, p.Check("peer:abc123", PermRead))
+	assert.NoError(t, p.Check("peer:abc123", PermWrite))
+	assert.Error(t, p.Check("peer:abc123", PermAdmin))
+}
+
 func TestParsePermission(t *testing.T) {
 	tests := []struct {
 		give string

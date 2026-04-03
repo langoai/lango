@@ -12,6 +12,63 @@ import (
 	"github.com/langoai/lango/internal/mdparse"
 )
 
+// buildSkillBody renders the body portion of a SKILL.md (below the frontmatter).
+func buildSkillBody(entry *SkillEntry) (string, error) {
+	var buf bytes.Buffer
+
+	switch entry.Type {
+	case "script":
+		script, _ := entry.Definition["script"].(string)
+		buf.WriteString("```sh\n")
+		buf.WriteString(script)
+		if !strings.HasSuffix(script, "\n") {
+			buf.WriteString("\n")
+		}
+		buf.WriteString("```\n")
+
+	case "template":
+		tmpl, _ := entry.Definition["template"].(string)
+		buf.WriteString("```template\n")
+		buf.WriteString(tmpl)
+		if !strings.HasSuffix(tmpl, "\n") {
+			buf.WriteString("\n")
+		}
+		buf.WriteString("```\n")
+
+	case "composite":
+		steps, _ := entry.Definition["steps"].([]interface{})
+		for i, step := range steps {
+			stepJSON, err := json.MarshalIndent(step, "", "  ")
+			if err != nil {
+				return "", fmt.Errorf("marshal step %d: %w", i, err)
+			}
+			fmt.Fprintf(&buf, "### Step %d\n\n", i+1)
+			buf.WriteString("```json\n")
+			buf.Write(stepJSON)
+			buf.WriteString("\n```\n\n")
+		}
+
+	case "instruction":
+		content, _ := entry.Definition["content"].(string)
+		buf.WriteString(content)
+		if content != "" && !strings.HasSuffix(content, "\n") {
+			buf.WriteString("\n")
+		}
+	}
+
+	if len(entry.Parameters) > 0 {
+		paramJSON, err := json.MarshalIndent(entry.Parameters, "", "  ")
+		if err != nil {
+			return "", fmt.Errorf("marshal parameters: %w", err)
+		}
+		buf.WriteString("\n## Parameters\n\n```json\n")
+		buf.Write(paramJSON)
+		buf.WriteString("\n```\n")
+	}
+
+	return buf.String(), nil
+}
+
 // frontmatter is the YAML frontmatter structure of a SKILL.md file.
 type frontmatter struct {
 	Name             string `yaml:"name"`
@@ -98,67 +155,16 @@ func RenderSkillMD(entry *SkillEntry) ([]byte, error) {
 		AllowedTools:     allowedToolsStr,
 	}
 
-	fmBytes, err := yaml.Marshal(meta)
+	body, err := buildSkillBody(entry)
+	if err != nil {
+		return nil, err
+	}
+
+	result, err := mdparse.RenderFrontmatter(meta, body)
 	if err != nil {
 		return nil, fmt.Errorf("marshal frontmatter: %w", err)
 	}
-
-	var buf bytes.Buffer
-	buf.WriteString("---\n")
-	buf.Write(fmBytes)
-	buf.WriteString("---\n\n")
-
-	switch entry.Type {
-	case "script":
-		script, _ := entry.Definition["script"].(string)
-		buf.WriteString("```sh\n")
-		buf.WriteString(script)
-		if !strings.HasSuffix(script, "\n") {
-			buf.WriteString("\n")
-		}
-		buf.WriteString("```\n")
-
-	case "template":
-		tmpl, _ := entry.Definition["template"].(string)
-		buf.WriteString("```template\n")
-		buf.WriteString(tmpl)
-		if !strings.HasSuffix(tmpl, "\n") {
-			buf.WriteString("\n")
-		}
-		buf.WriteString("```\n")
-
-	case "composite":
-		steps, _ := entry.Definition["steps"].([]interface{})
-		for i, step := range steps {
-			stepJSON, err := json.MarshalIndent(step, "", "  ")
-			if err != nil {
-				return nil, fmt.Errorf("marshal step %d: %w", i, err)
-			}
-			fmt.Fprintf(&buf, "### Step %d\n\n", i+1)
-			buf.WriteString("```json\n")
-			buf.Write(stepJSON)
-			buf.WriteString("\n```\n\n")
-		}
-
-	case "instruction":
-		content, _ := entry.Definition["content"].(string)
-		buf.WriteString(content)
-		if content != "" && !strings.HasSuffix(content, "\n") {
-			buf.WriteString("\n")
-		}
-	}
-
-	if len(entry.Parameters) > 0 {
-		paramJSON, err := json.MarshalIndent(entry.Parameters, "", "  ")
-		if err != nil {
-			return nil, fmt.Errorf("marshal parameters: %w", err)
-		}
-		buf.WriteString("\n## Parameters\n\n```json\n")
-		buf.Write(paramJSON)
-		buf.WriteString("\n```\n")
-	}
-
-	return buf.Bytes(), nil
+	return result, nil
 }
 
 // splitFrontmatter delegates to mdparse.SplitFrontmatter.

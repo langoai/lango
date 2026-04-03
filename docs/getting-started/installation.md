@@ -13,6 +13,34 @@ title: Installation
 | **C compiler** | `gcc` or `clang` (needed by CGO) |
 | **Git** | For cloning the repository |
 
+### Platform-Specific C Compiler Setup
+
+=== "macOS"
+
+    Xcode Command Line Tools are typically pre-installed. If not:
+
+    ```bash
+    xcode-select --install
+    ```
+
+=== "Ubuntu / Debian"
+
+    ```bash
+    sudo apt-get update && sudo apt-get install -y gcc libsqlite3-dev
+    ```
+
+=== "Fedora / RHEL"
+
+    ```bash
+    sudo dnf install gcc sqlite-devel
+    ```
+
+=== "Alpine Linux"
+
+    ```bash
+    apk add gcc musl-dev sqlite-dev
+    ```
+
 !!! info "Why CGO?"
 
     Lango uses SQLite for encrypted configuration storage and `sqlite-vec` for vector similarity search. Both require CGO-enabled builds. The Makefile sets `CGO_ENABLED=1` automatically.
@@ -36,8 +64,12 @@ make install
 You can also install directly with `go install`:
 
 ```bash
-CGO_ENABLED=1 go install github.com/langoai/lango/cmd/lango@latest
+CGO_ENABLED=1 go install -tags "fts5,vec" github.com/langoai/lango/cmd/lango@latest
 ```
+
+!!! note "`make build` vs `go install`"
+
+    `make build` sets CGO, build tags (`fts5`, `vec`), and version/build-time LDFLAGS automatically. With `go install` you must pass these flags yourself. If you omit `-tags "fts5,vec"`, full-text search and vector similarity will not be available.
 
 ## Verify Installation
 

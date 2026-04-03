@@ -117,7 +117,7 @@ func BuildTools(fsTool *Tool) []*agent.Tool {
 				if err != nil {
 					return nil, err
 				}
-				return nil, fsTool.Delete(path)
+				return nil, fsTool.Delete(ctx, path)
 			},
 		},
 		{

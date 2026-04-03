@@ -79,6 +79,8 @@ var (
 	ErrExecutorNotConfigured = errors.New("tool executor not configured")
 	ErrInvalidSession        = errors.New("invalid or expired session token")
 	ErrInvalidPaymentAuth    = errors.New("invalid payment authorization")
+	ErrNoSandboxExecutor     = errors.New("tool execution refused: no sandbox executor configured for remote peer requests")
+	ErrToolSafetyBlocked     = errors.New("tool blocked by P2P safety level policy")
 )
 
 // Request is a P2P A2A request message.

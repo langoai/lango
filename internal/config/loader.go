@@ -217,6 +217,11 @@ func DefaultConfig() *Config {
 			AutoReconnect:        true,
 			MaxReconnectAttempts: 5,
 		},
+		Ontology: OntologyConfig{
+			ACL: OntologyACLConfig{
+				P2PPermission: "read",
+			},
+		},
 		Alerting: AlertingConfig{
 			Enabled:         false,
 			PolicyBlockRate: 10,
@@ -243,18 +248,20 @@ func DefaultConfig() *Config {
 				SRSMode:          "unsafe",
 				MaxCredentialAge: "24h",
 			},
-			ToolIsolation: ToolIsolationConfig{
+			MaxSafetyLevel: "moderate",
+			ToolIsolation:  ToolIsolationConfig{
 				Enabled:        false,
 				TimeoutPerTool: 30 * time.Second,
 				MaxMemoryMB:    256,
 				Container: ContainerSandboxConfig{
-					Enabled:         false,
-					Runtime:         "auto",
-					Image:           "lango-sandbox:latest",
-					NetworkMode:     "none",
-					ReadOnlyRootfs:  boolPtr(true),
-					PoolSize:        0,
-					PoolIdleTimeout: 5 * time.Minute,
+					Enabled:          false,
+					RequireContainer: true,
+					Runtime:          "auto",
+					Image:            "lango-sandbox:latest",
+					NetworkMode:      "none",
+					ReadOnlyRootfs:   boolPtr(true),
+					PoolSize:         0,
+					PoolIdleTimeout:  5 * time.Minute,
 				},
 			},
 		},

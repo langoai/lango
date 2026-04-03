@@ -2,7 +2,7 @@ package runledger
 
 import (
 	"encoding/json"
-	"log"
+	"github.com/langoai/lango/internal/logging"
 	"time"
 )
 
@@ -143,7 +143,7 @@ const DefaultMaxRetries = 2
 func marshalPayload(v interface{}) json.RawMessage {
 	data, err := json.Marshal(v)
 	if err != nil {
-		log.Printf("WARN marshalPayload: %v", err)
+		logging.SubsystemSugar("runledger").Warnw("marshalPayload", "error", err)
 		return json.RawMessage(`{}`)
 	}
 	return data

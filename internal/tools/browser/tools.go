@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/langoai/lango/internal/agent"
+	"github.com/langoai/lango/internal/ctxkeys"
 	"github.com/langoai/lango/internal/toolparam"
 )
 
@@ -31,9 +32,16 @@ func BuildTools(sm *SessionManager) []*agent.Tool {
 				Required("url").
 				Build(),
 			Handler: func(ctx context.Context, params map[string]interface{}) (interface{}, error) {
-				url, err := toolparam.RequireString(params, "url")
+				rawURL, err := toolparam.RequireString(params, "url")
 				if err != nil {
 					return nil, err
+				}
+
+				// Block internal/private network URLs in P2P context.
+				if ctxkeys.IsP2PRequest(ctx) {
+					if err := ValidateURLForP2P(rawURL); err != nil {
+						return nil, err
+					}
 				}
 
 				sessionID, err := sm.EnsureSession()
@@ -41,8 +49,23 @@ func BuildTools(sm *SessionManager) []*agent.Tool {
 					return nil, err
 				}
 
-				if err := sm.Tool().Navigate(ctx, sessionID, url); err != nil {
+				if err := sm.Tool().Navigate(ctx, sessionID, rawURL); err != nil {
 					return nil, err
+				}
+
+				// Re-validate final URL after navigation in P2P context.
+				// Always re-validate regardless of URL string equality to
+				// prevent DNS rebinding attacks where the same hostname
+				// resolves to a different (private) IP at navigation time.
+				if ctxkeys.IsP2PRequest(ctx) {
+					finalURL, err := sm.Tool().CurrentURL(sessionID)
+					if err == nil {
+						if err := ValidateURLForP2P(finalURL); err != nil {
+							// Navigate away from blocked destination.
+							_ = sm.Tool().Navigate(ctx, sessionID, "about:blank")
+							return nil, fmt.Errorf("redirect to blocked URL: %w", err)
+						}
+					}
 				}
 
 				return sm.Tool().Snapshot(sessionID, defaultLinkLimit, defaultActionLimit)
@@ -125,6 +148,11 @@ func BuildTools(sm *SessionManager) []*agent.Tool {
 				action, err := toolparam.RequireString(params, "action")
 				if err != nil {
 					return nil, err
+				}
+
+				// Block eval action for P2P requests before session creation.
+				if action == actionEval && ctxkeys.IsP2PRequest(ctx) {
+					return nil, ErrEvalBlockedP2P
 				}
 
 				sessionID, err := sm.EnsureSession()

@@ -13,6 +13,8 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/zap"
+
+	"github.com/langoai/lango/internal/types"
 )
 
 func testLogger() *zap.SugaredLogger {
@@ -30,7 +32,7 @@ func generateTestPubkey(t *testing.T) []byte {
 func TestDIDPrefix_Constant(t *testing.T) {
 	t.Parallel()
 
-	assert.Equal(t, "did:lango:", DIDPrefix)
+	assert.Equal(t, "did:lango:", types.DIDPrefix)
 }
 
 func TestDIDFromPublicKey_Valid(t *testing.T) {
@@ -42,12 +44,12 @@ func TestDIDFromPublicKey_Valid(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, did)
 
-	assert.True(t, strings.HasPrefix(did.ID, DIDPrefix))
+	assert.True(t, strings.HasPrefix(did.ID, types.DIDPrefix))
 	assert.Equal(t, pubkey, did.PublicKey)
 	assert.NotEmpty(t, did.PeerID)
 
 	// Verify the hex encoding in the DID string.
-	hexPart := strings.TrimPrefix(did.ID, DIDPrefix)
+	hexPart := strings.TrimPrefix(did.ID, types.DIDPrefix)
 	decoded, err := hex.DecodeString(hexPart)
 	require.NoError(t, err)
 	assert.Equal(t, pubkey, decoded)

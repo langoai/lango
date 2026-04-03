@@ -18,6 +18,41 @@ const (
 	TierAdvanced = 1
 )
 
+// ExperimentalCategories lists settings category IDs for features with
+// Experimental stability status. Used by the menu badge renderer and
+// the @experimental search filter. Source of truth for TUI display;
+// feature-level maturity is documented in docs/features/index.md.
+var ExperimentalCategories = map[string]bool{
+	"economy":                true,
+	"economy_risk":           true,
+	"economy_negotiation":    true,
+	"economy_pricing":        true,
+	"economy_escrow":         true,
+	"economy_escrow_onchain": true,
+	"smartaccount":           true,
+	"smartaccount_session":   true,
+	"smartaccount_paymaster": true,
+	"smartaccount_modules":   true,
+	"p2p":                    true,
+	"p2p_workspace":          true,
+	"p2p_zkp":                true,
+	"p2p_pricing":            true,
+	"p2p_owner":              true,
+	"p2p_sandbox":            true,
+	"ontology":               true,
+	"a2a":                    true,
+	"multi_agent":            true,
+	"runledger":              true,
+	"provenance":             true,
+	"graph":                  true,
+	"os_sandbox":             true,
+	"observability":          true,
+	"alerting":               true,
+	"hooks":                  true,
+	"agent_memory":           true,
+	"librarian":              true,
+}
+
 // Category represents a configuration category in the menu.
 type Category struct {
 	ID    string
@@ -446,6 +481,16 @@ func (m *MenuModel) applyFilter() {
 			m.Cursor = 0
 			return
 		}
+	case "@experimental":
+		var results []Category
+		for _, cat := range all {
+			if ExperimentalCategories[cat.ID] {
+				results = append(results, cat)
+			}
+		}
+		m.filtered = results
+		m.Cursor = 0
+		return
 	}
 
 	var results []Category
@@ -475,7 +520,7 @@ func (m MenuModel) View() string {
 				Italic(true).
 				PaddingLeft(1)
 			b.WriteString("\n")
-			b.WriteString(filterHint.Render("@basic  @advanced  @enabled  @modified  @ready"))
+			b.WriteString(filterHint.Render("@basic  @advanced  @enabled  @modified  @ready  @experimental"))
 		}
 	} else {
 		hint := lipgloss.NewStyle().
@@ -623,6 +668,12 @@ func (m MenuModel) renderItem(b *strings.Builder, cat Category, idx int) {
 		badge = " " + tui.BadgeAdvancedStyle.Render("ADV")
 	}
 
+	// Experimental badge
+	expBadge := ""
+	if ExperimentalCategories[cat.ID] {
+		expBadge = " " + tui.BadgeExperimentalStyle.Render("EXP")
+	}
+
 	// Dependency warning badge
 	depBadge := ""
 	if m.DependencyChecker != nil {
@@ -643,6 +694,7 @@ func (m MenuModel) renderItem(b *strings.Builder, cat Category, idx int) {
 			b.WriteString(highlightedDesc)
 		}
 		b.WriteString(badge)
+		b.WriteString(expBadge)
 		b.WriteString(depBadge)
 	} else {
 		b.WriteString(cursor)
@@ -651,6 +703,7 @@ func (m MenuModel) renderItem(b *strings.Builder, cat Category, idx int) {
 			b.WriteString(descStyle.Render(desc))
 		}
 		b.WriteString(badge)
+		b.WriteString(expBadge)
 		b.WriteString(depBadge)
 	}
 	b.WriteString("\n")

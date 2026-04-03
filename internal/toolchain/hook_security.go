@@ -11,6 +11,16 @@ type SecurityFilterHook struct {
 	// blockedPatternsLower contains pre-lowercased patterns for matching.
 	blockedPatternsLower []string
 
+	// ObservePatterns contains patterns that trigger observe-level logging.
+	// These commands are allowed but flagged as common obfuscation vectors.
+	ObservePatterns []string
+
+	// observePatternsLower contains pre-lowercased observe patterns for matching.
+	observePatternsLower []string
+
+	// compoundPatterns contains multi-part patterns pre-computed at construction.
+	compoundPatterns []compoundPattern
+
 	// BlockedTools contains tool names that are unconditionally blocked.
 	BlockedTools []string
 }
@@ -20,15 +30,69 @@ type SecurityFilterHook struct {
 // should never be executed by an AI agent.
 func DefaultBlockedPatterns() []string {
 	return []string{
+		// Original patterns — filesystem destruction and device writes.
 		"rm -rf /",
 		"mkfs.",
 		"dd if=/dev/zero",
 		":(){ :|:& };:",
 		"> /dev/sda",
-		"chmod -R 777 /",
+		"chmod -r 777 /",
 		"dd if=/dev/random",
 		"mv / ",
 		"> /dev/null 2>&1 &",
+
+		// Privilege escalation.
+		"sudo ",
+		"su -",
+		"chmod +s",
+		"chown root",
+
+		// Reverse shell tools.
+		"nc -l",
+		"ncat ",
+		"socat ",
+
+		// Block device writes.
+		"dd of=/dev/",
+		"tee /dev/sda",
+
+		// Mass deletion / data destruction.
+		"shred /",
+
+		// Crontab removal.
+		"crontab -r",
+	}
+}
+
+// compoundPattern requires ALL parts to be present in the command for a match.
+// This handles cases where a single substring is insufficient (e.g., "curl" alone
+// is fine, "| sh" alone is fine, but together they indicate piped-to-shell RCE).
+type compoundPattern struct {
+	parts   []string // all parts must be present (lowercased)
+	display string   // human-readable description for error messages
+}
+
+// defaultCompoundPatterns returns compound patterns that block piped-download
+// remote code execution. Each entry requires ALL parts to match.
+func defaultCompoundPatterns() []compoundPattern {
+	return []compoundPattern{
+		{parts: []string{"curl", "| sh"}, display: "curl ... | sh"},
+		{parts: []string{"curl", "| bash"}, display: "curl ... | bash"},
+		{parts: []string{"wget", "| sh"}, display: "wget ... | sh"},
+		{parts: []string{"wget", "| bash"}, display: "wget ... | bash"},
+	}
+}
+
+// DefaultObservePatterns returns patterns that are legitimate but common
+// obfuscation vectors. Commands matching these are allowed to execute but are
+// flagged with an Observe action so callers can log or audit them.
+func DefaultObservePatterns() []string {
+	return []string{
+		"python -c",
+		"python3 -c",
+		"perl -e",
+		"node -e",
+		"ruby -e",
 	}
 }
 
@@ -51,7 +115,21 @@ func NewSecurityFilterHook(blockedPatterns []string) *SecurityFilterHook {
 	for i, p := range merged {
 		lower[i] = strings.ToLower(p)
 	}
-	return &SecurityFilterHook{BlockedPatterns: merged, blockedPatternsLower: lower}
+
+	// Observe patterns — defaults only (no user extension for now).
+	observe := DefaultObservePatterns()
+	observeLower := make([]string, len(observe))
+	for i, p := range observe {
+		observeLower[i] = strings.ToLower(p)
+	}
+
+	return &SecurityFilterHook{
+		BlockedPatterns:      merged,
+		blockedPatternsLower: lower,
+		ObservePatterns:      observe,
+		observePatternsLower: observeLower,
+		compoundPatterns:     defaultCompoundPatterns(),
+	}
 }
 
 // Compile-time interface check.
@@ -62,6 +140,25 @@ func (h *SecurityFilterHook) Name() string { return "security_filter" }
 
 // Priority returns 10 (high priority — runs early).
 func (h *SecurityFilterHook) Priority() int { return 10 }
+
+// matchPattern checks cmdLower against a paired set of original/lowercased patterns.
+// Returns the index of the first match, or -1 if none match.
+func matchPattern(cmdLower string, originals, lowered []string) int {
+	if len(lowered) == len(originals) && len(lowered) > 0 {
+		for i, patternLower := range lowered {
+			if strings.Contains(cmdLower, patternLower) {
+				return i
+			}
+		}
+	} else {
+		for i, pattern := range originals {
+			if strings.Contains(cmdLower, strings.ToLower(pattern)) {
+				return i
+			}
+		}
+	}
+	return -1
+}
 
 // Pre checks whether the tool invocation should be blocked based on
 // tool name blocklist and dangerous command patterns.
@@ -84,25 +181,37 @@ func (h *SecurityFilterHook) Pre(ctx HookContext) (PreHookResult, error) {
 
 	cmdLower := strings.ToLower(cmd)
 
-	// Use pre-lowercased patterns when available (via constructor).
-	if len(h.blockedPatternsLower) == len(h.BlockedPatterns) && len(h.blockedPatternsLower) > 0 {
-		for i, patternLower := range h.blockedPatternsLower {
-			if strings.Contains(cmdLower, patternLower) {
-				return PreHookResult{
-					Action:      Block,
-					BlockReason: "command matches blocked pattern: " + h.BlockedPatterns[i],
-				}, nil
+	// Check simple blocked patterns.
+	if idx := matchPattern(cmdLower, h.BlockedPatterns, h.blockedPatternsLower); idx >= 0 {
+		return PreHookResult{
+			Action:      Block,
+			BlockReason: "command matches blocked pattern: " + h.BlockedPatterns[idx],
+		}, nil
+	}
+
+	// Check compound patterns (e.g., curl + | sh together).
+	for _, cp := range h.compoundPatterns {
+		allMatch := true
+		for _, part := range cp.parts {
+			if !strings.Contains(cmdLower, part) {
+				allMatch = false
+				break
 			}
 		}
-	} else {
-		for _, pattern := range h.BlockedPatterns {
-			if strings.Contains(cmdLower, strings.ToLower(pattern)) {
-				return PreHookResult{
-					Action:      Block,
-					BlockReason: "command matches blocked pattern: " + pattern,
-				}, nil
-			}
+		if allMatch {
+			return PreHookResult{
+				Action:      Block,
+				BlockReason: "command matches blocked pattern: " + cp.display,
+			}, nil
 		}
+	}
+
+	// Check observe-level patterns (allowed but flagged).
+	if idx := matchPattern(cmdLower, h.ObservePatterns, h.observePatternsLower); idx >= 0 {
+		return PreHookResult{
+			Action:        Observe,
+			ObserveReason: "command matches observe pattern: " + h.ObservePatterns[idx],
+		}, nil
 	}
 
 	return PreHookResult{Action: Continue}, nil

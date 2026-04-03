@@ -8,8 +8,9 @@ import "context"
 type contextKey string
 
 const (
-	agentNameKey contextKey = "lango.agent_name"
-	principalKey contextKey = "lango.principal"
+	agentNameKey  contextKey = "lango.agent_name"
+	principalKey  contextKey = "lango.principal"
+	p2pRequestKey contextKey = "lango.p2p_request"
 )
 
 // WithAgentName returns a new context carrying the given agent name.
@@ -38,4 +39,15 @@ func PrincipalFromContext(ctx context.Context) string {
 		return v
 	}
 	return ""
+}
+
+// WithP2PRequest returns a new context marked as originating from a P2P peer request.
+func WithP2PRequest(ctx context.Context) context.Context {
+	return context.WithValue(ctx, p2pRequestKey, true)
+}
+
+// IsP2PRequest reports whether the context originates from a remote P2P peer request.
+func IsP2PRequest(ctx context.Context) bool {
+	v, _ := ctx.Value(p2pRequestKey).(bool)
+	return v
 }

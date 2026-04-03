@@ -72,6 +72,16 @@ type P2PConfig struct {
 
 	// Team configures team health monitoring and membership policies.
 	Team TeamConfig `mapstructure:"team" json:"team"`
+
+	// MaxSafetyLevel is the highest SafetyLevel a P2P peer may invoke.
+	// Tools above this level are rejected. Valid values: "safe", "moderate", "dangerous".
+	// Default: "moderate" — blocks Dangerous tools from remote peers.
+	MaxSafetyLevel string `mapstructure:"maxSafetyLevel" json:"maxSafetyLevel"`
+
+	// AllowedTools is an explicit whitelist of tool names that bypass the
+	// SafetyLevel gate for P2P peers. An empty list means the SafetyLevel
+	// gate alone decides (together with firewall ACL).
+	AllowedTools []string `mapstructure:"allowedTools" json:"allowedTools,omitempty"`
 }
 
 // GetKeyDir returns the legacy directory for persisting node keys.
@@ -111,6 +121,11 @@ type ToolIsolationConfig struct {
 type ContainerSandboxConfig struct {
 	// Enabled activates container-based sandbox instead of subprocess isolation.
 	Enabled bool `mapstructure:"enabled" json:"enabled"`
+
+	// RequireContainer enforces fail-closed behavior: when true and no container
+	// runtime (Docker/gVisor) is available, tool execution is refused instead of
+	// silently falling back to NativeRuntime. Defaults to true for security.
+	RequireContainer bool `mapstructure:"requireContainer" json:"requireContainer"`
 
 	// Runtime selects the container runtime: "auto", "docker", "gvisor", or "native" (default: "auto").
 	Runtime string `mapstructure:"runtime" json:"runtime"`

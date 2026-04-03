@@ -1,6 +1,8 @@
 package app
 
 import (
+	"context"
+
 	"github.com/langoai/lango/internal/adk"
 	"github.com/langoai/lango/internal/alerting"
 	"github.com/langoai/lango/internal/config"
@@ -18,6 +20,8 @@ type observabilityComponents struct {
 	healthRegistry *health.Registry
 	tracker        *token.Tracker
 	tokenStore     *token.EntTokenStore
+	promExporter   *observability.PrometheusExporter
+	tracerShutdown func(context.Context) error
 }
 
 // initObservability creates observability components if enabled.
@@ -86,6 +90,25 @@ func initObservability(cfg *config.Config, dbClient *ent.Client, bus *eventbus.B
 	})
 	logger().Info("observability: tool execution metrics wired")
 
+	// 6b. OpenTelemetry tracing
+	if cfg.Observability.Tracing.Enabled {
+		_, shutdown, err := observability.InitTracer(cfg.Observability.Tracing)
+		if err != nil {
+			logger().Warnw("tracing initialization failed", "error", err)
+		} else {
+			oc.tracerShutdown = shutdown
+			logger().Infow("observability: tracing initialized", "exporter", cfg.Observability.Tracing.Exporter)
+		}
+	}
+
+	// 6c. Prometheus exporter — event-driven metric registration
+	if cfg.Observability.Metrics.Format == "prometheus" {
+		oc.promExporter = observability.NewPrometheusExporter()
+		oc.promExporter.SetCollector(oc.collector)
+		oc.promExporter.Subscribe(bus)
+		logger().Info("observability: Prometheus exporter wired")
+	}
+
 	// 7. Alerting dispatcher — threshold-based operational alerts
 	if cfg.Alerting.Enabled {
 		if !cfg.Observability.Audit.Enabled {
@@ -96,6 +119,12 @@ func initObservability(cfg *config.Config, dbClient *ent.Client, bus *eventbus.B
 		logger().Info("observability: alerting dispatcher wired",
 			"policyBlockRate", cfg.Alerting.PolicyBlockRate,
 			"recoveryRetries", cfg.Alerting.RecoveryRetries)
+
+		// 7b. External alert delivery channels (webhook, etc.)
+		if len(cfg.Alerting.Delivery) > 0 {
+			alerting.NewDeliveryRouter(bus, cfg.Alerting.Delivery)
+			logger().Infow("observability: alert delivery router wired", "channels", len(cfg.Alerting.Delivery))
+		}
 	}
 
 	return oc

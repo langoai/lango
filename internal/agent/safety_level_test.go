@@ -46,3 +46,26 @@ func TestSafetyLevel_IsDangerous(t *testing.T) {
 		})
 	}
 }
+
+func TestParseSafetyLevel(t *testing.T) {
+	tests := []struct {
+		give     string
+		wantLvl  SafetyLevel
+		wantOK   bool
+	}{
+		{give: "safe", wantLvl: SafetyLevelSafe, wantOK: true},
+		{give: "moderate", wantLvl: SafetyLevelModerate, wantOK: true},
+		{give: "dangerous", wantLvl: SafetyLevelDangerous, wantOK: true},
+		{give: "", wantLvl: SafetyLevelDangerous, wantOK: false},
+		{give: "unknown", wantLvl: SafetyLevelDangerous, wantOK: false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.give, func(t *testing.T) {
+			lvl, ok := ParseSafetyLevel(tt.give)
+			if lvl != tt.wantLvl || ok != tt.wantOK {
+				t.Errorf("ParseSafetyLevel(%q) = (%d, %v), want (%d, %v)", tt.give, lvl, ok, tt.wantLvl, tt.wantOK)
+			}
+		})
+	}
+}

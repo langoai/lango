@@ -16,6 +16,7 @@ import (
 	"github.com/langoai/lango/internal/economy/pricing"
 	"github.com/langoai/lango/internal/economy/risk"
 	"github.com/langoai/lango/internal/eventbus"
+	"github.com/langoai/lango/internal/types"
 	p2pproto "github.com/langoai/lango/internal/p2p/protocol"
 	"github.com/langoai/lango/internal/payment"
 )
@@ -52,7 +53,7 @@ func initEconomy(cfg *config.Config, p2pc *p2pComponents, pc *paymentComponents,
 	}
 
 	// 2. Risk Engine — wire reputation querier from P2P if available.
-	var reputationFn risk.ReputationQuerier
+	var reputationFn types.ReputationQuerier
 	if p2pc != nil && p2pc.reputation != nil {
 		rep := p2pc.reputation
 		reputationFn = func(ctx context.Context, peerDID string) (float64, error) {
@@ -104,11 +105,7 @@ func initEconomy(cfg *config.Config, p2pc *p2pComponents, pc *paymentComponents,
 			logger().Warnw("pricing engine init", "error", err)
 		} else {
 			// Wire reputation into pricing for trust discounts.
-			// pricing.ReputationQuerier has the same signature as risk.ReputationQuerier
-			// but is a separate type; wrap to satisfy the pricing package's type.
-			pricingEngine.SetReputation(func(ctx context.Context, peerDID string) (float64, error) {
-				return reputationFn(ctx, peerDID)
-			})
+			pricingEngine.SetReputation(reputationFn)
 			ec.pricingEngine = pricingEngine
 
 			// If P2P is active, adapt pricing engine into paygate PricingFunc.

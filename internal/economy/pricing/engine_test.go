@@ -11,6 +11,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/langoai/lango/internal/config"
+	"github.com/langoai/lango/internal/types"
 )
 
 func usdc(n int64) *big.Int {
@@ -26,13 +27,13 @@ func newTestEngine(t *testing.T, cfg config.DynamicPricingConfig) *Engine {
 	return e
 }
 
-func mockReputation(scores map[string]float64) ReputationQuerier {
+func mockReputation(scores map[string]float64) types.ReputationQuerier {
 	return func(_ context.Context, peerDID string) (float64, error) {
 		return scores[peerDID], nil
 	}
 }
 
-func mockReputationErr(e error) ReputationQuerier {
+func mockReputationErr(e error) types.ReputationQuerier {
 	return func(_ context.Context, _ string) (float64, error) {
 		return 0, e
 	}
@@ -86,7 +87,7 @@ func TestEngine_Quote(t *testing.T) {
 		givePrices   map[string]*big.Int
 		giveTool     string
 		givePeerDID  string
-		giveRepFn    ReputationQuerier
+		giveRepFn    types.ReputationQuerier
 		giveRules    []PricingRule
 		giveCfg      config.DynamicPricingConfig
 		wantFree     bool

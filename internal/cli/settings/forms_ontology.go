@@ -40,7 +40,7 @@ func NewOntologyForm(cfg *config.Config) *tuicore.FormModel {
 
 	p2pPerm := cfg.Ontology.ACL.P2PPermission
 	if p2pPerm == "" {
-		p2pPerm = "write"
+		p2pPerm = "read"
 	}
 	form.AddField(&tuicore.Field{
 		Key: "ontology_acl_p2p_permission", Label: "    P2P Default Permission", Type: tuicore.InputSelect,

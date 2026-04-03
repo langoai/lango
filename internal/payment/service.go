@@ -3,7 +3,7 @@ package payment
 import (
 	"context"
 	"fmt"
-	"log"
+	"github.com/langoai/lango/internal/logging"
 	"math/big"
 	"sync"
 	"time"
@@ -284,7 +284,7 @@ func (s *Service) submitWithRetry(ctx context.Context, tx *types.Transaction) (s
 			lastErr = err
 		}
 
-		log.Printf("payment tx submission retry attempt=%d error=%v", attempt+1, lastErr)
+		logging.SubsystemSugar("payment").Warnw("tx submission retry", "attempt", attempt+1, "error", lastErr)
 
 		backoff := time.Duration(1<<uint(attempt)) * time.Second
 		select {

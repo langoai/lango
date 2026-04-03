@@ -9,7 +9,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/langoai/lango/internal/p2p/identity"
+	"github.com/langoai/lango/internal/types"
 )
 
 func TestResolveAddress(t *testing.T) {
@@ -21,7 +21,7 @@ func TestResolveAddress(t *testing.T) {
 
 	compressed := crypto.CompressPubkey(&privKey.PublicKey)
 	wantAddr := crypto.PubkeyToAddress(privKey.PublicKey)
-	validDID := identity.DIDPrefix + hex.EncodeToString(compressed)
+	validDID := types.DIDPrefix + hex.EncodeToString(compressed)
 
 	tests := []struct {
 		give    string
@@ -43,17 +43,17 @@ func TestResolveAddress(t *testing.T) {
 			wantDID: ErrInvalidDID,
 		},
 		{
-			give:    identity.DIDPrefix,
+			give:    types.DIDPrefix,
 			wantErr: true,
 			wantDID: ErrInvalidDID,
 		},
 		{
-			give:    identity.DIDPrefix + "zzzz-not-hex",
+			give:    types.DIDPrefix + "zzzz-not-hex",
 			wantErr: true,
 			wantDID: ErrInvalidDID,
 		},
 		{
-			give:    identity.DIDPrefix + "deadbeef",
+			give:    types.DIDPrefix + "deadbeef",
 			wantErr: true,
 			wantDID: ErrInvalidDID,
 		},

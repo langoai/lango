@@ -77,6 +77,7 @@ func TestSentinelErrors(t *testing.T) {
 		{give: ErrExecutorNotConfigured, want: "tool executor not configured"},
 		{give: ErrInvalidSession, want: "invalid or expired session token"},
 		{give: ErrInvalidPaymentAuth, want: "invalid payment authorization"},
+		{give: ErrNoSandboxExecutor, want: "tool execution refused: no sandbox executor configured for remote peer requests"},
 	}
 
 	for _, tt := range tests {

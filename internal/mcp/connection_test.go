@@ -300,6 +300,16 @@ func TestServerManager_AllPrompts_Empty(t *testing.T) {
 	assert.Empty(t, mgr.AllPrompts())
 }
 
+// capturingRoundTripper records the request it receives and returns a canned response.
+type capturingRoundTripper struct {
+	captured *http.Request
+}
+
+func (c *capturingRoundTripper) RoundTrip(req *http.Request) (*http.Response, error) {
+	c.captured = req
+	return &http.Response{StatusCode: http.StatusOK, Body: http.NoBody}, nil
+}
+
 func TestHeaderRoundTripper(t *testing.T) {
 	t.Parallel()
 
@@ -307,21 +317,22 @@ func TestHeaderRoundTripper(t *testing.T) {
 		"Authorization": "Bearer test-token",
 		"X-Custom":      "custom-value",
 	}
+	base := &capturingRoundTripper{}
 	rt := &headerRoundTripper{
-		base:    http.DefaultTransport,
+		base:    base,
 		headers: headers,
 	}
 
-	// Build a request that goes to a non-routable address so it fails,
-	// but we can still verify headers were set before the transport call.
-	req, err := http.NewRequest("GET", "http://192.0.2.1:1/test", nil)
+	req, err := http.NewRequest("GET", "http://example.com/test", nil)
 	require.NoError(t, err)
 
-	// The RoundTrip will fail (connection refused), but headers should be set.
-	_, _ = rt.RoundTrip(req)
+	resp, err := rt.RoundTrip(req)
+	require.NoError(t, err)
+	assert.Equal(t, http.StatusOK, resp.StatusCode)
 
-	assert.Equal(t, "Bearer test-token", req.Header.Get("Authorization"))
-	assert.Equal(t, "custom-value", req.Header.Get("X-Custom"))
+	// Verify headers were injected before the base transport was called.
+	assert.Equal(t, "Bearer test-token", base.captured.Header.Get("Authorization"))
+	assert.Equal(t, "custom-value", base.captured.Header.Get("X-Custom"))
 }
 
 // --- OS Isolator integration tests ---

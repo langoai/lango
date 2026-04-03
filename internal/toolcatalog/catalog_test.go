@@ -152,6 +152,61 @@ func TestCatalog_ToolCount(t *testing.T) {
 	assert.Equal(t, 2, c.ToolCount())
 }
 
+func TestCatalog_GetToolSafetyLevel(t *testing.T) {
+	t.Parallel()
+
+	c := New()
+	c.RegisterCategory(Category{Name: "exec", Description: "exec tools"})
+
+	safeTool := &agent.Tool{
+		Name:        "read_file",
+		Description: "read a file",
+		SafetyLevel: agent.SafetyLevelSafe,
+	}
+	dangerousTool := &agent.Tool{
+		Name:        "exec_shell",
+		Description: "execute shell command",
+		SafetyLevel: agent.SafetyLevelDangerous,
+	}
+	c.Register("exec", []*agent.Tool{safeTool, dangerousTool})
+
+	tests := []struct {
+		name      string
+		give      string
+		wantLevel agent.SafetyLevel
+		wantOK    bool
+	}{
+		{
+			name:      "safe tool found",
+			give:      "read_file",
+			wantLevel: agent.SafetyLevelSafe,
+			wantOK:    true,
+		},
+		{
+			name:      "dangerous tool found",
+			give:      "exec_shell",
+			wantLevel: agent.SafetyLevelDangerous,
+			wantOK:    true,
+		},
+		{
+			name:      "unknown tool returns dangerous",
+			give:      "nonexistent",
+			wantLevel: agent.SafetyLevelDangerous,
+			wantOK:    false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			level, ok := c.GetToolSafetyLevel(tt.give)
+			assert.Equal(t, tt.wantLevel, level)
+			assert.Equal(t, tt.wantOK, ok)
+		})
+	}
+}
+
 func TestCatalog_InsertionOrder(t *testing.T) {
 	t.Parallel()
 

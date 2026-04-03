@@ -25,6 +25,7 @@ import (
 	"github.com/langoai/lango/internal/learning"
 	"github.com/langoai/lango/internal/lifecycle"
 	"github.com/langoai/lango/internal/logging"
+	"github.com/langoai/lango/internal/observability"
 	"github.com/langoai/lango/internal/observability/audit"
 	"github.com/langoai/lango/internal/runledger"
 	"github.com/langoai/lango/internal/sandbox"
@@ -232,6 +233,12 @@ func New(boot *bootstrap.Result, opts ...AppOption) (*App, error) {
 		logger().Info("exec policy middleware enabled")
 	}
 
+	// B4f. Tracing middleware — outermost, so blocked calls are also traced.
+	if cfg.Observability.Tracing.Enabled {
+		tools = toolchain.ChainAll(tools, toolchain.WithTracing(observability.Tracer()))
+		logger().Info("tracing middleware enabled (outermost)")
+	}
+
 	// Log tool registration summary for diagnostics.
 	logToolRegistrationSummary(catalog)
 
@@ -421,6 +428,7 @@ func populateAppFields(app *App, r appinit.Resolver) {
 		app.MetricsCollector = obsc.collector
 		app.HealthRegistry = obsc.healthRegistry
 		app.TokenStore = obsc.tokenStore
+		app.TracerShutdown = obsc.tracerShutdown
 	}
 
 	// RunLedger.
@@ -553,6 +561,9 @@ func wirePostAgent(app *App, r appinit.Resolver, tools []*agent.Tool, bus *event
 			})
 
 			// Sandbox executor for P2P tool isolation.
+			// When toolIsolation.enabled=false (default), no executor is
+			// attached and the handler rejects inbound tool_invoke with
+			// ErrNoSandboxExecutor — this is the intended safe posture.
 			if cfg.P2P.ToolIsolation.Enabled {
 				sbxCfg := sandbox.Config{
 					Enabled:        true,
@@ -563,8 +574,13 @@ func wirePostAgent(app *App, r appinit.Resolver, tools []*agent.Tool, bus *event
 				if cfg.P2P.ToolIsolation.Container.Enabled {
 					containerExec, err := sandbox.NewContainerExecutor(sbxCfg, cfg.P2P.ToolIsolation.Container)
 					if err != nil {
-						logger().Warnf("Container sandbox unavailable, falling back to subprocess: %v", err)
-						sbxExec = sandbox.NewSubprocessExecutor(sbxCfg)
+						if cfg.P2P.ToolIsolation.Container.RequireContainer {
+							logger().Errorf("Container sandbox required but unavailable: %v", err)
+							// sbxExec stays nil — handler will reject P2P tool calls.
+						} else {
+							logger().Warnf("Container sandbox unavailable, falling back to subprocess: %v", err)
+							sbxExec = sandbox.NewSubprocessExecutor(sbxCfg)
+						}
 					} else {
 						sbxExec = containerExec
 						logger().Infof("P2P tool isolation enabled (container mode: %s)", containerExec.RuntimeName())
@@ -573,9 +589,13 @@ func wirePostAgent(app *App, r appinit.Resolver, tools []*agent.Tool, bus *event
 					sbxExec = sandbox.NewSubprocessExecutor(sbxCfg)
 					logger().Info("P2P tool isolation enabled (subprocess mode)")
 				}
-				p2pc.handler.SetSandboxExecutor(func(ctx context.Context, toolName string, params map[string]interface{}) (map[string]interface{}, error) {
-					return sbxExec.Execute(ctx, toolName, params)
-				})
+				if sbxExec != nil {
+					p2pc.handler.SetSandboxExecutor(func(ctx context.Context, toolName string, params map[string]interface{}) (map[string]interface{}, error) {
+						return sbxExec.Execute(ctx, toolName, params)
+					})
+				}
+			} else {
+				logger().Warnw("P2P enabled but toolIsolation disabled — inbound tool_invoke requests will be rejected; set p2p.toolIsolation.enabled=true to allow remote tool execution")
 			}
 
 			// Owner approval callback for inbound remote tool invocations.
@@ -617,6 +637,22 @@ func wirePostAgent(app *App, r appinit.Resolver, tools []*agent.Tool, bus *event
 					return resp.Approved, nil
 				})
 			}
+
+			// Wire safety-level gate for P2P tool invocations.
+			if app.ToolCatalog != nil {
+				maxLevel, ok := agent.ParseSafetyLevel(cfg.P2P.MaxSafetyLevel)
+				if !ok {
+					maxLevel = agent.SafetyLevelModerate
+				}
+				p2pc.handler.SetSafetyGate(
+					func(toolName string) (int, bool) {
+						level, found := app.ToolCatalog.GetToolSafetyLevel(toolName)
+						return int(level), found
+					},
+					int(maxLevel),
+					cfg.P2P.AllowedTools,
+				)
+			}
 		}
 		registerP2PRoutes(app.Gateway.Router(), app, p2pc, auth)
 		logger().Info("P2P REST API routes registered")
@@ -638,7 +674,7 @@ func wirePostAgent(app *App, r appinit.Resolver, tools []*agent.Tool, bus *event
 	// Observability API routes.
 	obsc, _ := r.Resolve(appinit.ProvidesObservability).(*observabilityComponents)
 	if obsc != nil {
-		registerObservabilityRoutes(app.Gateway.Router(), obsc.collector, obsc.healthRegistry, obsc.tokenStore, boot.DBClient)
+		registerObservabilityRoutes(app.Gateway.Router(), obsc.collector, obsc.healthRegistry, obsc.tokenStore, boot.DBClient, obsc.promExporter)
 		logger().Info("observability API routes registered")
 	}
 
@@ -815,6 +851,12 @@ func (a *App) Stop(ctx context.Context) error {
 	if a.Store != nil {
 		if err := a.Store.Close(); err != nil {
 			logger().Warnw("session store close error", "error", err)
+		}
+	}
+
+	if a.TracerShutdown != nil {
+		if err := a.TracerShutdown(ctx); err != nil {
+			logger().Warnw("tracer shutdown error", "error", err)
 		}
 	}
 
