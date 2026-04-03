@@ -1273,21 +1273,46 @@ func TestBuildOrchestratorInstruction_NoPartialAnswerGuidance(t *testing.T) {
 func TestBuildOrchestratorInstruction_ToolCountInsteadOfNames(t *testing.T) {
 	entries := []routingEntry{
 		{
-			Name:      "operator",
-			Keywords:  []string{"run"},
-			ToolNames: []string{"exec_shell", "fs_read", "fs_write"},
-			Accepts:   "command",
+			Name:              "operator",
+			Keywords:          []string{"run"},
+			ToolCount:         3,
+			CapabilitySummary: "command execution, file operations",
+			Accepts:           "command",
+			Returns:           "output",
+		},
+	}
+
+	got := buildOrchestratorInstruction("base", entries, 5, nil)
+
+	// Should contain capability summary with tool count.
+	assert.Contains(t, got, "Capabilities (3 tools)")
+	assert.Contains(t, got, "command execution, file operations")
+	// Should NOT list individual tool names in routing table.
+	assert.NotContains(t, got, "**Tools**: exec_shell")
+}
+
+func TestBuildOrchestratorInstruction_ToolCountWithoutSummary(t *testing.T) {
+	entries := []routingEntry{
+		{
+			Name:      "custom",
+			Keywords:  []string{"custom"},
+			ToolCount: 2,
+			Accepts:   "input",
 			Returns:   "output",
 		},
 	}
 
 	got := buildOrchestratorInstruction("base", entries, 5, nil)
 
-	// Should contain tool count, not individual tool names.
-	assert.Contains(t, got, "Tool count")
-	assert.Contains(t, got, "3")
-	// Should NOT list individual tool names in routing table.
-	assert.NotContains(t, got, "**Tools**: exec_shell")
+	// Without CapabilitySummary, should fall back to plain tool count.
+	assert.Contains(t, got, "**Tool count**: 2")
+}
+
+func TestBuildOrchestratorInstruction_BuiltinSearchInstruction(t *testing.T) {
+	got := buildOrchestratorInstruction("base", nil, 5, nil)
+
+	assert.Contains(t, got, "Tool Discovery")
+	assert.Contains(t, got, "Use builtin_search to find specific tools by name or capability.")
 }
 
 // --- Output Handling in sub-agent instructions ---

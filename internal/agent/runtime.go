@@ -73,6 +73,7 @@ type Tool struct {
 	Parameters  map[string]interface{}
 	Handler     ToolHandler
 	SafetyLevel SafetyLevel
+	Capability  ToolCapability // Zero value = backward compatible defaults
 }
 
 // ParameterDef defines a tool parameter

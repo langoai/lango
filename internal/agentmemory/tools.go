@@ -24,6 +24,10 @@ func buildSaveTool(store Store) *agent.Tool {
 		Name:        "memory_agent_save",
 		Description: "Save a memory entry for this agent (pattern, preference, fact, or skill). Memories persist across sessions.",
 		SafetyLevel: agent.SafetyLevelModerate,
+		Capability: agent.ToolCapability{
+			Category: "memory",
+			Activity: agent.ActivityWrite,
+		},
 		Parameters: map[string]interface{}{
 			"type": "object",
 			"properties": map[string]interface{}{
@@ -91,6 +95,12 @@ func buildRecallTool(store Store) *agent.Tool {
 		Name:        "memory_agent_recall",
 		Description: "Recall memories for this agent. Searches across instance and global scopes.",
 		SafetyLevel: agent.SafetyLevelSafe,
+		Capability: agent.ToolCapability{
+			Category:        "memory",
+			Activity:        agent.ActivityQuery,
+			ReadOnly:        true,
+			ConcurrencySafe: true,
+		},
 		Parameters: map[string]interface{}{
 			"type": "object",
 			"properties": map[string]interface{}{
@@ -146,6 +156,10 @@ func buildForgetTool(store Store) *agent.Tool {
 		Name:        "memory_agent_forget",
 		Description: "Forget (delete) a specific memory entry for this agent.",
 		SafetyLevel: agent.SafetyLevelModerate,
+		Capability: agent.ToolCapability{
+			Category: "memory",
+			Activity: agent.ActivityManage,
+		},
 		Parameters: map[string]interface{}{
 			"type": "object",
 			"properties": map[string]interface{}{

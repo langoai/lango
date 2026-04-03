@@ -125,6 +125,159 @@ func TestDeriveChannelType(t *testing.T) {
 	}
 }
 
+func TestToolRegistryAdapter_SearchTools_Aliases(t *testing.T) {
+	t.Parallel()
+
+	adapter := NewToolRegistryAdapter([]*agent.Tool{
+		{
+			Name:        "fs_list",
+			Description: "List directory contents",
+			Capability: agent.ToolCapability{
+				Aliases: []string{"ls", "dir"},
+			},
+		},
+		{
+			Name:        "fs_read",
+			Description: "Read file contents",
+			Capability: agent.ToolCapability{
+				Aliases: []string{"cat"},
+			},
+		},
+	})
+
+	tests := []struct {
+		give      string
+		wantCount int
+		wantFirst string
+	}{
+		{give: "ls", wantCount: 1, wantFirst: "fs_list"},
+		{give: "dir", wantCount: 1, wantFirst: "fs_list"},
+		{give: "cat", wantCount: 1, wantFirst: "fs_read"},
+		{give: "LS", wantCount: 1, wantFirst: "fs_list"},  // case insensitive
+		{give: "nope", wantCount: 0},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.give, func(t *testing.T) {
+			t.Parallel()
+			got := adapter.SearchTools(tt.give, 10)
+			require.Len(t, got, tt.wantCount)
+			if tt.wantCount > 0 {
+				assert.Equal(t, tt.wantFirst, got[0].Name)
+			}
+		})
+	}
+}
+
+func TestToolRegistryAdapter_SearchTools_CategoryAndHints(t *testing.T) {
+	t.Parallel()
+
+	adapter := NewToolRegistryAdapter([]*agent.Tool{
+		{
+			Name:        "encrypt_data",
+			Description: "Encrypt data using AES",
+			Capability: agent.ToolCapability{
+				Category:    "crypto",
+				SearchHints: []string{"security", "aes256"},
+			},
+		},
+		{
+			Name:        "hash_file",
+			Description: "Compute file hash",
+			Capability: agent.ToolCapability{
+				Category:    "crypto",
+				SearchHints: []string{"sha256", "checksum"},
+			},
+		},
+		{
+			Name:        "web_search",
+			Description: "Search the web",
+			Capability: agent.ToolCapability{
+				Category:    "network",
+				SearchHints: []string{"google", "query"},
+			},
+		},
+	})
+
+	tests := []struct {
+		give      string
+		wantCount int
+		wantFirst string
+	}{
+		{give: "crypto", wantCount: 2, wantFirst: "encrypt_data"}, // category match
+		{give: "security", wantCount: 1, wantFirst: "encrypt_data"}, // hint match
+		{give: "checksum", wantCount: 1, wantFirst: "hash_file"},    // hint match
+		{give: "network", wantCount: 1, wantFirst: "web_search"},    // category match
+		{give: "CRYPTO", wantCount: 2, wantFirst: "encrypt_data"},   // case insensitive
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.give, func(t *testing.T) {
+			t.Parallel()
+			got := adapter.SearchTools(tt.give, 10)
+			require.Len(t, got, tt.wantCount)
+			if tt.wantCount > 0 {
+				assert.Equal(t, tt.wantFirst, got[0].Name)
+			}
+		})
+	}
+}
+
+func TestToolRegistryAdapter_SearchTools_EmptyCapability(t *testing.T) {
+	t.Parallel()
+
+	// Tools with zero-value Capability — backward compatibility
+	adapter := NewToolRegistryAdapter([]*agent.Tool{
+		{Name: "exec", Description: "Execute commands"},
+		{Name: "read", Description: "Read files"},
+	})
+
+	tests := []struct {
+		give      string
+		wantCount int
+		wantFirst string
+	}{
+		{give: "exec", wantCount: 1, wantFirst: "exec"},
+		{give: "Read", wantCount: 1, wantFirst: "read"},
+		{give: "missing", wantCount: 0},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.give, func(t *testing.T) {
+			t.Parallel()
+			got := adapter.SearchTools(tt.give, 10)
+			require.Len(t, got, tt.wantCount)
+			if tt.wantCount > 0 {
+				assert.Equal(t, tt.wantFirst, got[0].Name)
+			}
+		})
+	}
+}
+
+func TestToolRegistryAdapter_NewPopulatesFields(t *testing.T) {
+	t.Parallel()
+
+	tools := []*agent.Tool{
+		{
+			Name:        "fs_list",
+			Description: "List files",
+			Capability: agent.ToolCapability{
+				Aliases:     []string{"ls", "dir"},
+				Category:    "filesystem",
+				SearchHints: []string{"directory", "listing"},
+			},
+		},
+	}
+	adapter := NewToolRegistryAdapter(tools)
+
+	got := adapter.ListTools()
+	require.Len(t, got, 1)
+	assert.Equal(t, "fs_list", got[0].Name)
+	assert.Equal(t, []string{"ls", "dir"}, got[0].Aliases)
+	assert.Equal(t, "filesystem", got[0].Category)
+	assert.Equal(t, []string{"directory", "listing"}, got[0].SearchHints)
+}
+
 // Verify interface compliance at compile time.
 var _ knowledge.ToolRegistryProvider = (*ToolRegistryAdapter)(nil)
 var _ knowledge.RuntimeContextProvider = (*RuntimeContextAdapter)(nil)

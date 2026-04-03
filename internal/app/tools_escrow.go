@@ -35,6 +35,12 @@ func escrowCreateTool(ee *escrow.Engine) *agent.Tool {
 		Name:        "escrow_create",
 		Description: "Create a new escrow deal between buyer and seller with milestones",
 		SafetyLevel: agent.SafetyLevelDangerous,
+		Capability: agent.ToolCapability{
+			Category:             "escrow",
+			Exposure:             agent.ExposureDeferred,
+			Activity:             agent.ActivityExecute,
+			RequiredCapabilities: []string{"payment"},
+		},
 		Parameters: map[string]interface{}{
 			"type": "object",
 			"properties": map[string]interface{}{
@@ -119,6 +125,12 @@ func escrowFundTool(ee *escrow.Engine, settler escrow.SettlementExecutor) *agent
 		Name:        "escrow_fund",
 		Description: "Fund an escrow with USDC. In on-chain mode, also deposits to the contract.",
 		SafetyLevel: agent.SafetyLevelDangerous,
+		Capability: agent.ToolCapability{
+			Category:             "escrow",
+			Exposure:             agent.ExposureDeferred,
+			Activity:             agent.ActivityExecute,
+			RequiredCapabilities: []string{"payment"},
+		},
 		Parameters: map[string]interface{}{
 			"type": "object",
 			"properties": map[string]interface{}{
@@ -178,6 +190,12 @@ func escrowActivateTool(ee *escrow.Engine) *agent.Tool {
 		Name:        "escrow_activate",
 		Description: "Activate a funded escrow so work can begin",
 		SafetyLevel: agent.SafetyLevelDangerous,
+		Capability: agent.ToolCapability{
+			Category:             "escrow",
+			Exposure:             agent.ExposureDeferred,
+			Activity:             agent.ActivityExecute,
+			RequiredCapabilities: []string{"payment"},
+		},
 		Parameters: map[string]interface{}{
 			"type": "object",
 			"properties": map[string]interface{}{
@@ -208,6 +226,12 @@ func escrowSubmitWorkTool(ee *escrow.Engine, settler escrow.SettlementExecutor) 
 		Name:        "escrow_submit_work",
 		Description: "Submit a work hash as proof of completion",
 		SafetyLevel: agent.SafetyLevelDangerous,
+		Capability: agent.ToolCapability{
+			Category:             "escrow",
+			Exposure:             agent.ExposureDeferred,
+			Activity:             agent.ActivityExecute,
+			RequiredCapabilities: []string{"payment"},
+		},
 		Parameters: map[string]interface{}{
 			"type": "object",
 			"properties": map[string]interface{}{
@@ -275,6 +299,12 @@ func escrowReleaseTool(ee *escrow.Engine, settler escrow.SettlementExecutor) *ag
 		Name:        "escrow_release",
 		Description: "Release escrow funds to the seller",
 		SafetyLevel: agent.SafetyLevelDangerous,
+		Capability: agent.ToolCapability{
+			Category:             "escrow",
+			Exposure:             agent.ExposureDeferred,
+			Activity:             agent.ActivityExecute,
+			RequiredCapabilities: []string{"payment"},
+		},
 		Parameters: map[string]interface{}{
 			"type": "object",
 			"properties": map[string]interface{}{
@@ -333,6 +363,12 @@ func escrowRefundTool(ee *escrow.Engine, settler escrow.SettlementExecutor) *age
 		Name:        "escrow_refund",
 		Description: "Refund escrow funds to the buyer",
 		SafetyLevel: agent.SafetyLevelDangerous,
+		Capability: agent.ToolCapability{
+			Category:             "escrow",
+			Exposure:             agent.ExposureDeferred,
+			Activity:             agent.ActivityExecute,
+			RequiredCapabilities: []string{"payment"},
+		},
 		Parameters: map[string]interface{}{
 			"type": "object",
 			"properties": map[string]interface{}{
@@ -391,6 +427,12 @@ func escrowDisputeTool(ee *escrow.Engine, settler escrow.SettlementExecutor) *ag
 		Name:        "escrow_dispute",
 		Description: "Raise a dispute on an escrow",
 		SafetyLevel: agent.SafetyLevelDangerous,
+		Capability: agent.ToolCapability{
+			Category:             "escrow",
+			Exposure:             agent.ExposureDeferred,
+			Activity:             agent.ActivityExecute,
+			RequiredCapabilities: []string{"payment"},
+		},
 		Parameters: map[string]interface{}{
 			"type": "object",
 			"properties": map[string]interface{}{
@@ -454,6 +496,12 @@ func escrowResolveTool(ee *escrow.Engine, settler escrow.SettlementExecutor) *ag
 		Name:        "escrow_resolve",
 		Description: "Resolve a disputed escrow as arbitrator. Specify favor and seller percentage.",
 		SafetyLevel: agent.SafetyLevelDangerous,
+		Capability: agent.ToolCapability{
+			Category:             "escrow",
+			Exposure:             agent.ExposureDeferred,
+			Activity:             agent.ActivityExecute,
+			RequiredCapabilities: []string{"payment"},
+		},
 		Parameters: map[string]interface{}{
 			"type": "object",
 			"properties": map[string]interface{}{
@@ -530,6 +578,13 @@ func escrowStatusTool(ee *escrow.Engine, settler escrow.SettlementExecutor) *age
 		Name:        "escrow_status",
 		Description: "Get detailed escrow status including on-chain state if available",
 		SafetyLevel: agent.SafetyLevelSafe,
+		Capability: agent.ToolCapability{
+			Category:             "escrow",
+			Exposure:             agent.ExposureDeferred,
+			Activity:             agent.ActivityQuery,
+			ReadOnly:             true,
+			RequiredCapabilities: []string{"payment"},
+		},
 		Parameters: map[string]interface{}{
 			"type": "object",
 			"properties": map[string]interface{}{
@@ -610,6 +665,13 @@ func escrowListTool(ee *escrow.Engine) *agent.Tool {
 		Name:        "escrow_list",
 		Description: "List all escrows with optional filter by status or peer",
 		SafetyLevel: agent.SafetyLevelSafe,
+		Capability: agent.ToolCapability{
+			Category:             "escrow",
+			Exposure:             agent.ExposureDeferred,
+			Activity:             agent.ActivityQuery,
+			ReadOnly:             true,
+			RequiredCapabilities: []string{"payment"},
+		},
 		Parameters: map[string]interface{}{
 			"type": "object",
 			"properties": map[string]interface{}{

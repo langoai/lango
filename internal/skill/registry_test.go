@@ -2,6 +2,7 @@ package skill
 
 import (
 	"context"
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -38,7 +39,7 @@ func TestRegistry_CreateSkill_Validation(t *testing.T) {
 		{
 			give:    "invalid type",
 			entry:   SkillEntry{Name: "foo", Type: "unknown", Definition: map[string]interface{}{"steps": []interface{}{}}},
-			wantErr: "skill type must be composite, script, template, or instruction",
+			wantErr: "skill type must be composite, script, template, instruction, or fork",
 		},
 		{
 			give:    "empty definition",
@@ -286,6 +287,311 @@ func TestRegistry_InstructionTool_Description(t *testing.T) {
 		tool, _ := registry.GetSkillTool("no-desc")
 		assert.Equal(t, "Reference guide for no-desc", tool.Description)
 	})
+}
+
+func TestRegistry_ForkSkillAsTool(t *testing.T) {
+	t.Parallel()
+
+	registry := newTestRegistry(t)
+	ctx := context.Background()
+
+	t.Run("fork skill creates tool with delegation handler", func(t *testing.T) {
+		t.Parallel()
+
+		require.NoError(t, registry.CreateSkill(ctx, SkillEntry{
+			Name:        "deploy-fork",
+			Description: "Delegates deployment to deployer agent",
+			Type:        SkillTypeFork,
+			Agent:       "deployer",
+			Definition: map[string]interface{}{
+				"instruction": "Deploy to production",
+			},
+			AllowedTools: []string{"bash"},
+		}))
+
+		require.NoError(t, registry.ActivateSkill(ctx, "deploy-fork"))
+
+		tool, found := registry.GetSkillTool("deploy-fork")
+		require.True(t, found)
+		assert.Equal(t, "skill_deploy-fork", tool.Name)
+		assert.Equal(t, "Delegates deployment to deployer agent", tool.Description)
+
+		// Call the handler and verify delegation text.
+		result, err := tool.Handler(ctx, map[string]interface{}{})
+		require.NoError(t, err)
+
+		got, ok := result.(string)
+		require.True(t, ok, "result is %T, want string", result)
+		assert.Contains(t, got, "deployer")
+		assert.Contains(t, got, "Deploy to production")
+	})
+
+	t.Run("fork skill default description mentions agent", func(t *testing.T) {
+		t.Parallel()
+
+		require.NoError(t, registry.CreateSkill(ctx, SkillEntry{
+			Name: "auto-desc-fork",
+			Type: SkillTypeFork,
+			Definition: map[string]interface{}{
+				"instruction": "Do something",
+			},
+		}))
+
+		require.NoError(t, registry.ActivateSkill(ctx, "auto-desc-fork"))
+
+		tool, found := registry.GetSkillTool("auto-desc-fork")
+		require.True(t, found)
+		assert.Contains(t, tool.Description, "operator")
+	})
+}
+
+func TestRegistry_CreateSkill_ForkValidation(t *testing.T) {
+	t.Parallel()
+
+	registry := newTestRegistry(t)
+	ctx := context.Background()
+
+	t.Run("fork type accepted", func(t *testing.T) {
+		t.Parallel()
+
+		err := registry.CreateSkill(ctx, SkillEntry{
+			Name: "valid-fork",
+			Type: SkillTypeFork,
+			Definition: map[string]interface{}{
+				"instruction": "Do the thing",
+			},
+		})
+		assert.NoError(t, err)
+	})
+
+	t.Run("fork with empty definition rejected", func(t *testing.T) {
+		t.Parallel()
+
+		err := registry.CreateSkill(ctx, SkillEntry{
+			Name:       "empty-def-fork",
+			Type:       SkillTypeFork,
+			Definition: map[string]interface{}{},
+		})
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "skill definition is required")
+	})
+}
+
+func TestRegistry_LoadProjectSkills(t *testing.T) {
+	t.Parallel()
+
+	t.Run("loads project-local skills", func(t *testing.T) {
+		t.Parallel()
+
+		registry := newTestRegistry(t)
+		ctx := context.Background()
+
+		// Set up a project directory with a skill.
+		projectRoot := t.TempDir()
+		skillDir := filepath.Join(projectRoot, ".lango", "skills", "proj-tool")
+		require.NoError(t, os.MkdirAll(skillDir, 0o700))
+		skillMD := []byte("---\nname: proj-tool\ndescription: Project tool\ntype: instruction\nstatus: active\n---\n\nProject tool reference.\n")
+		require.NoError(t, os.WriteFile(filepath.Join(skillDir, "SKILL.md"), skillMD, 0o644))
+
+		require.NoError(t, registry.LoadProjectSkills(ctx, projectRoot))
+
+		// Verify project skill is available.
+		tool, found := registry.GetSkillTool("proj-tool")
+		require.True(t, found)
+		assert.Equal(t, "skill_proj-tool", tool.Name)
+
+		// AllTools should include base + project skill.
+		all := registry.AllTools()
+		require.Len(t, all, 2) // 1 base + 1 project
+	})
+
+	t.Run("global skill wins on name conflict", func(t *testing.T) {
+		t.Parallel()
+
+		registry := newTestRegistry(t)
+		ctx := context.Background()
+
+		// Create and activate a global skill.
+		require.NoError(t, registry.CreateSkill(ctx, SkillEntry{
+			Name:        "conflict-skill",
+			Description: "Global version",
+			Type:        "template",
+			Definition:  map[string]interface{}{"template": "global"},
+		}))
+		require.NoError(t, registry.ActivateSkill(ctx, "conflict-skill"))
+
+		// Set up a project skill with the same name.
+		projectRoot := t.TempDir()
+		skillDir := filepath.Join(projectRoot, ".lango", "skills", "conflict-skill")
+		require.NoError(t, os.MkdirAll(skillDir, 0o700))
+		skillMD := []byte("---\nname: conflict-skill\ndescription: Project version\ntype: instruction\nstatus: active\n---\n\nProject version content.\n")
+		require.NoError(t, os.WriteFile(filepath.Join(skillDir, "SKILL.md"), skillMD, 0o644))
+
+		require.NoError(t, registry.LoadProjectSkills(ctx, projectRoot))
+
+		// Should still only have the global version — project-local was skipped.
+		tool, found := registry.GetSkillTool("conflict-skill")
+		require.True(t, found)
+		assert.Equal(t, "Global version", tool.Description)
+
+		// Total loaded skills should be 1 (only the global one).
+		loaded := registry.LoadedSkills()
+		require.Len(t, loaded, 1)
+	})
+
+	t.Run("missing project directory is not an error", func(t *testing.T) {
+		t.Parallel()
+
+		registry := newTestRegistry(t)
+		ctx := context.Background()
+
+		projectRoot := filepath.Join(t.TempDir(), "nonexistent")
+		err := registry.LoadProjectSkills(ctx, projectRoot)
+		require.NoError(t, err)
+
+		// No skills should have been added.
+		loaded := registry.LoadedSkills()
+		require.Empty(t, loaded)
+	})
+
+	t.Run("empty project skills directory", func(t *testing.T) {
+		t.Parallel()
+
+		registry := newTestRegistry(t)
+		ctx := context.Background()
+
+		projectRoot := t.TempDir()
+		skillsDir := filepath.Join(projectRoot, ".lango", "skills")
+		require.NoError(t, os.MkdirAll(skillsDir, 0o700))
+
+		err := registry.LoadProjectSkills(ctx, projectRoot)
+		require.NoError(t, err)
+
+		loaded := registry.LoadedSkills()
+		require.Empty(t, loaded)
+	})
+}
+
+func TestSkillToTool_Capability_InstructionSkill(t *testing.T) {
+	t.Parallel()
+
+	registry := newTestRegistry(t)
+	ctx := context.Background()
+
+	require.NoError(t, registry.CreateSkill(ctx, SkillEntry{
+		Name:        "cap-instruction",
+		Description: "Instruction ref",
+		Type:        "instruction",
+		Definition:  map[string]interface{}{"content": "Reference content"},
+	}))
+	require.NoError(t, registry.ActivateSkill(ctx, "cap-instruction"))
+
+	tool, found := registry.GetSkillTool("cap-instruction")
+	require.True(t, found)
+
+	assert.Equal(t, "skill", tool.Capability.Category)
+	assert.Equal(t, agent.ActivityRead, tool.Capability.Activity)
+	assert.True(t, tool.Capability.ReadOnly)
+	assert.Contains(t, tool.Capability.SearchHints, "cap-instruction")
+}
+
+func TestSkillToTool_Capability_ExecuteSkills(t *testing.T) {
+	t.Parallel()
+
+	registry := newTestRegistry(t)
+	ctx := context.Background()
+
+	tests := []struct {
+		give  string
+		entry SkillEntry
+	}{
+		{
+			give: "composite skill",
+			entry: SkillEntry{
+				Name:        "cap-composite",
+				Description: "Composite",
+				Type:        "composite",
+				Definition: map[string]interface{}{
+					"steps": []interface{}{
+						map[string]interface{}{"tool": "read", "params": map[string]interface{}{"path": "/tmp"}},
+					},
+				},
+			},
+		},
+		{
+			give: "template skill",
+			entry: SkillEntry{
+				Name:        "cap-template",
+				Description: "Template",
+				Type:        "template",
+				Definition:  map[string]interface{}{"template": "Hello"},
+			},
+		},
+		{
+			give: "script skill",
+			entry: SkillEntry{
+				Name:        "cap-script",
+				Description: "Script",
+				Type:        "script",
+				Definition:  map[string]interface{}{"script": "echo hi"},
+			},
+		},
+		{
+			give: "fork skill",
+			entry: SkillEntry{
+				Name:        "cap-fork",
+				Description: "Fork",
+				Type:        SkillTypeFork,
+				Agent:       "deployer",
+				Definition: map[string]interface{}{
+					"instruction": "Deploy",
+				},
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.give, func(t *testing.T) {
+			t.Parallel()
+
+			require.NoError(t, registry.CreateSkill(ctx, tt.entry))
+			require.NoError(t, registry.ActivateSkill(ctx, tt.entry.Name))
+
+			tool, found := registry.GetSkillTool(tt.entry.Name)
+			require.True(t, found)
+
+			assert.Equal(t, "skill", tool.Capability.Category)
+			assert.Equal(t, agent.ActivityExecute, tool.Capability.Activity)
+			assert.False(t, tool.Capability.ReadOnly)
+			assert.Contains(t, tool.Capability.SearchHints, tt.entry.Name)
+		})
+	}
+}
+
+func TestSkillToTool_Capability_SearchHints_IncludesAllowedTools(t *testing.T) {
+	t.Parallel()
+
+	registry := newTestRegistry(t)
+	ctx := context.Background()
+
+	require.NoError(t, registry.CreateSkill(ctx, SkillEntry{
+		Name:        "hints-skill",
+		Description: "Skill with allowed tools",
+		Type:        SkillTypeFork,
+		Agent:       "ops",
+		Definition: map[string]interface{}{
+			"instruction": "Do something",
+		},
+		AllowedTools: []string{"bash", "read_file"},
+	}))
+	require.NoError(t, registry.ActivateSkill(ctx, "hints-skill"))
+
+	tool, found := registry.GetSkillTool("hints-skill")
+	require.True(t, found)
+
+	assert.Contains(t, tool.Capability.SearchHints, "hints-skill")
+	assert.Contains(t, tool.Capability.SearchHints, "bash")
+	assert.Contains(t, tool.Capability.SearchHints, "read_file")
 }
 
 func TestRegistry_ListActiveSkills(t *testing.T) {

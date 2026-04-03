@@ -13,6 +13,8 @@ import (
 	"github.com/langoai/lango/internal/tools/browser"
 	execpkg "github.com/langoai/lango/internal/tools/exec"
 	"github.com/langoai/lango/internal/tools/filesystem"
+	"github.com/langoai/lango/internal/tools/webfetch"
+	"github.com/langoai/lango/internal/tools/websearch"
 )
 
 // buildTools creates the set of tools available to the agent.
@@ -37,6 +39,10 @@ func buildTools(sv *supervisor.Supervisor, fsCfg filesystem.Config, browserSM *b
 			tools = append(tools, wrapBrowserHandler(bt, browserSM))
 		}
 	}
+
+	// Web search and fetch tools (HTTP-only, no browser required)
+	tools = append(tools, websearch.BuildTools()...)
+	tools = append(tools, webfetch.BuildTools()...)
 
 	return tools
 }

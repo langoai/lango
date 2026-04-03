@@ -15,6 +15,12 @@ func BuildTools(gs Store) []*agent.Tool {
 			Name:        "graph_traverse",
 			Description: "Traverse the knowledge graph from a start node using BFS. Returns related triples up to the specified depth.",
 			SafetyLevel: agent.SafetyLevelSafe,
+			Capability: agent.ToolCapability{
+				Category:        "graph",
+				Activity:        agent.ActivityQuery,
+				ReadOnly:        true,
+				ConcurrencySafe: true,
+			},
 			Parameters: map[string]interface{}{
 				"type": "object",
 				"properties": map[string]interface{}{
@@ -47,6 +53,12 @@ func BuildTools(gs Store) []*agent.Tool {
 			Name:        "graph_query",
 			Description: "Query the knowledge graph by subject or object node. Returns matching triples.",
 			SafetyLevel: agent.SafetyLevelSafe,
+			Capability: agent.ToolCapability{
+				Category:        "graph",
+				Activity:        agent.ActivityQuery,
+				ReadOnly:        true,
+				ConcurrencySafe: true,
+			},
 			Parameters: map[string]interface{}{
 				"type": "object",
 				"properties": map[string]interface{}{

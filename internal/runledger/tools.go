@@ -45,6 +45,11 @@ func buildRunCreate(store RunLedgerStore) *agent.Tool {
 		Name:        "run_create",
 		Description: "Create a new Run from a planner's JSON plan. Only the orchestrator may call this.",
 		SafetyLevel: agent.SafetyLevelModerate,
+		Capability: agent.ToolCapability{
+			Category: "system",
+			Exposure: agent.ExposureDeferred,
+			Activity: agent.ActivityManage,
+		},
 		Parameters: agent.Schema().
 			Str("plan_json", "The planner's JSON output (goal, steps, acceptance_criteria)").
 			Str("session_key", "Session key for this run").
@@ -130,6 +135,11 @@ func buildRunRead(store RunLedgerStore) *agent.Tool {
 		Name:        "run_read",
 		Description: "Read the current Run snapshot. Available to orchestrator and execution agents.",
 		SafetyLevel: agent.SafetyLevelSafe,
+		Capability: agent.ToolCapability{
+			Category: "system",
+			Exposure: agent.ExposureDeferred,
+			Activity: agent.ActivityManage,
+		},
 		Parameters: agent.Schema().
 			Str("run_id", "The run ID to read").
 			Required("run_id").
@@ -150,6 +160,11 @@ func buildRunActive(store RunLedgerStore) *agent.Tool {
 		Name:        "run_active",
 		Description: "Get the currently active step for a run. Available to orchestrator and execution agents.",
 		SafetyLevel: agent.SafetyLevelSafe,
+		Capability: agent.ToolCapability{
+			Category: "system",
+			Exposure: agent.ExposureDeferred,
+			Activity: agent.ActivityManage,
+		},
 		Parameters: agent.Schema().
 			Str("run_id", "The run ID to query").
 			Required("run_id").
@@ -196,6 +211,11 @@ func buildRunNote(store RunLedgerStore) *agent.Tool {
 		Name:        "run_note",
 		Description: "Read or write a scratchpad note on a run. Available to orchestrator and execution agents.",
 		SafetyLevel: agent.SafetyLevelSafe,
+		Capability: agent.ToolCapability{
+			Category: "system",
+			Exposure: agent.ExposureDeferred,
+			Activity: agent.ActivityManage,
+		},
 		Parameters: agent.Schema().
 			Str("run_id", "The run ID").
 			Str("key", "Note key").
@@ -244,6 +264,11 @@ func buildRunProposeStepResult(store RunLedgerStore, pev *PEVEngine) *agent.Tool
 		Name:        "run_propose_step_result",
 		Description: "Propose a step result with evidence. The execution agent cannot mark steps as complete — only propose results for PEV verification.",
 		SafetyLevel: agent.SafetyLevelModerate,
+		Capability: agent.ToolCapability{
+			Category: "system",
+			Exposure: agent.ExposureDeferred,
+			Activity: agent.ActivityManage,
+		},
 		Parameters: agent.Schema().
 			Str("run_id", "The run ID").
 			Str("step_id", "The step ID").
@@ -353,6 +378,11 @@ func buildRunApplyPolicy(store RunLedgerStore) *agent.Tool {
 		Name:        "run_apply_policy",
 		Description: "Apply a policy decision to a failed step. Only the orchestrator may call this.",
 		SafetyLevel: agent.SafetyLevelModerate,
+		Capability: agent.ToolCapability{
+			Category: "system",
+			Exposure: agent.ExposureDeferred,
+			Activity: agent.ActivityManage,
+		},
 		Parameters: agent.Schema().
 			Str("run_id", "The run ID").
 			Str("step_id", "The step ID").
@@ -427,6 +457,11 @@ func buildRunApproveStep(store RunLedgerStore, pev *PEVEngine) *agent.Tool {
 		Name:        "run_approve_step",
 		Description: "Explicitly approve a step that requires orchestrator_approval. Only the orchestrator may call this.",
 		SafetyLevel: agent.SafetyLevelModerate,
+		Capability: agent.ToolCapability{
+			Category: "system",
+			Exposure: agent.ExposureDeferred,
+			Activity: agent.ActivityManage,
+		},
 		Parameters: agent.Schema().
 			Str("run_id", "The run ID").
 			Str("step_id", "The step ID to approve").
@@ -499,6 +534,11 @@ func buildRunResume(store RunLedgerStore) *agent.Tool {
 		Name:        "run_resume",
 		Description: "Resume a paused run. Only the orchestrator may call this.",
 		SafetyLevel: agent.SafetyLevelModerate,
+		Capability: agent.ToolCapability{
+			Category: "system",
+			Exposure: agent.ExposureDeferred,
+			Activity: agent.ActivityManage,
+		},
 		Parameters: agent.Schema().
 			Str("run_id", "The run ID to resume").
 			Required("run_id").

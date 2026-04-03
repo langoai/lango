@@ -13,6 +13,12 @@ func BuildTools(cp security.CryptoProvider, keys *security.KeyRegistry, refs *se
 			Name:        "crypto_encrypt",
 			Description: "Encrypt data using a registered key",
 			SafetyLevel: agent.SafetyLevelDangerous,
+			Capability: agent.ToolCapability{
+				Category:        "crypto",
+				Activity:        agent.ActivityExecute,
+				ConcurrencySafe: true,
+				SearchHints:     []string{"encryption", "aes"},
+			},
 			Parameters: agent.Schema().
 				Str("data", "The data to encrypt").
 				Str("keyId", "Key ID to use (default: default key)").
@@ -24,6 +30,12 @@ func BuildTools(cp security.CryptoProvider, keys *security.KeyRegistry, refs *se
 			Name:        "crypto_decrypt",
 			Description: "Decrypt data using a registered key. Returns an opaque {{decrypt:id}} reference token. The decrypted value never enters the agent context.",
 			SafetyLevel: agent.SafetyLevelDangerous,
+			Capability: agent.ToolCapability{
+				Category:        "crypto",
+				Activity:        agent.ActivityExecute,
+				ConcurrencySafe: true,
+				SearchHints:     []string{"encryption", "aes"},
+			},
 			Parameters: agent.Schema().
 				Str("ciphertext", "Base64-encoded ciphertext to decrypt").
 				Str("keyId", "Key ID to use (default: default key)").
@@ -35,6 +47,12 @@ func BuildTools(cp security.CryptoProvider, keys *security.KeyRegistry, refs *se
 			Name:        "crypto_sign",
 			Description: "Generate a digital signature for data",
 			SafetyLevel: agent.SafetyLevelDangerous,
+			Capability: agent.ToolCapability{
+				Category:        "crypto",
+				Activity:        agent.ActivityExecute,
+				ConcurrencySafe: true,
+				SearchHints:     []string{"signature", "verify"},
+			},
 			Parameters: agent.Schema().
 				Str("data", "The data to sign").
 				Str("keyId", "Key ID to use").
@@ -46,6 +64,13 @@ func BuildTools(cp security.CryptoProvider, keys *security.KeyRegistry, refs *se
 			Name:        "crypto_hash",
 			Description: "Compute a cryptographic hash of data",
 			SafetyLevel: agent.SafetyLevelSafe,
+			Capability: agent.ToolCapability{
+				Category:        "crypto",
+				Activity:        agent.ActivityQuery,
+				ReadOnly:        true,
+				ConcurrencySafe: true,
+				SearchHints:     []string{"hash", "sha256"},
+			},
 			Parameters: agent.Schema().
 				Str("data", "The data to hash").
 				Enum("algorithm", "Hash algorithm: sha256 or sha512", "sha256", "sha512").
@@ -57,6 +82,13 @@ func BuildTools(cp security.CryptoProvider, keys *security.KeyRegistry, refs *se
 			Name:        "crypto_keys",
 			Description: "List all registered cryptographic keys",
 			SafetyLevel: agent.SafetyLevelSafe,
+			Capability: agent.ToolCapability{
+				Category:        "crypto",
+				Activity:        agent.ActivityQuery,
+				ReadOnly:        true,
+				ConcurrencySafe: true,
+				SearchHints:     []string{"keys", "list"},
+			},
 			Parameters: agent.Schema().Build(),
 			Handler:     ct.Keys,
 		},

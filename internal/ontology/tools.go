@@ -53,6 +53,13 @@ func buildListActions(svc OntologyService) *agent.Tool {
 		Name:        "ontology_list_actions",
 		Description: "List all registered ontology actions with their parameters and required permissions.",
 		SafetyLevel: agent.SafetyLevelSafe,
+		Capability: agent.ToolCapability{
+			Category:        "ontology",
+			Exposure:        agent.ExposureDeferred,
+			Activity:        agent.ActivityQuery,
+			ReadOnly:        true,
+			ConcurrencySafe: true,
+		},
 		Parameters: map[string]interface{}{
 			"type":       "object",
 			"properties": map[string]interface{}{},
@@ -84,6 +91,11 @@ func buildActionTool(svc OntologyService, action *ActionType) *agent.Tool {
 		Name:        "ontology_action_" + action.Name,
 		Description: action.Description,
 		SafetyLevel: agent.SafetyLevelModerate,
+		Capability: agent.ToolCapability{
+			Category: "ontology",
+			Exposure: agent.ExposureDeferred,
+			Activity: agent.ActivityExecute,
+		},
 		Parameters: map[string]interface{}{
 			"type":       "object",
 			"properties": properties,
@@ -115,6 +127,11 @@ func buildPromoteType(svc OntologyService) *agent.Tool {
 		Name:        "ontology_promote_type",
 		Description: "Promote an ObjectType to a new lifecycle status (e.g., proposed→shadow→active).",
 		SafetyLevel: agent.SafetyLevelModerate,
+		Capability: agent.ToolCapability{
+			Category: "ontology",
+			Exposure: agent.ExposureDeferred,
+			Activity: agent.ActivityManage,
+		},
 		Parameters: map[string]interface{}{
 			"type": "object",
 			"properties": map[string]interface{}{
@@ -141,6 +158,11 @@ func buildPromotePredicate(svc OntologyService) *agent.Tool {
 		Name:        "ontology_promote_predicate",
 		Description: "Promote a PredicateDefinition to a new lifecycle status.",
 		SafetyLevel: agent.SafetyLevelModerate,
+		Capability: agent.ToolCapability{
+			Category: "ontology",
+			Exposure: agent.ExposureDeferred,
+			Activity: agent.ActivityManage,
+		},
 		Parameters: map[string]interface{}{
 			"type": "object",
 			"properties": map[string]interface{}{
@@ -167,6 +189,13 @@ func buildSchemaHealth(svc OntologyService) *agent.Tool {
 		Name:        "ontology_schema_health",
 		Description: "Get schema health report: status counts for types and predicates.",
 		SafetyLevel: agent.SafetyLevelSafe,
+		Capability: agent.ToolCapability{
+			Category:        "ontology",
+			Exposure:        agent.ExposureDeferred,
+			Activity:        agent.ActivityQuery,
+			ReadOnly:        true,
+			ConcurrencySafe: true,
+		},
 		Parameters: map[string]interface{}{
 			"type":       "object",
 			"properties": map[string]interface{}{},
@@ -186,6 +215,13 @@ func buildTypeUsage(svc OntologyService) *agent.Tool {
 		Name:        "ontology_type_usage",
 		Description: "Get usage information for a specific ObjectType.",
 		SafetyLevel: agent.SafetyLevelSafe,
+		Capability: agent.ToolCapability{
+			Category:        "ontology",
+			Exposure:        agent.ExposureDeferred,
+			Activity:        agent.ActivityQuery,
+			ReadOnly:        true,
+			ConcurrencySafe: true,
+		},
 		Parameters: map[string]interface{}{
 			"type": "object",
 			"properties": map[string]interface{}{
@@ -211,6 +247,13 @@ func buildListTypes(svc OntologyService) *agent.Tool {
 		Name:        "ontology_list_types",
 		Description: "List all registered ObjectTypes in the ontology.",
 		SafetyLevel: agent.SafetyLevelSafe,
+		Capability: agent.ToolCapability{
+			Category:        "ontology",
+			Exposure:        agent.ExposureDeferred,
+			Activity:        agent.ActivityQuery,
+			ReadOnly:        true,
+			ConcurrencySafe: true,
+		},
 		Parameters: map[string]interface{}{
 			"type":       "object",
 			"properties": map[string]interface{}{},
@@ -239,6 +282,13 @@ func buildDescribeType(svc OntologyService) *agent.Tool {
 		Name:        "ontology_describe_type",
 		Description: "Describe an ObjectType with its properties and relevant predicates.",
 		SafetyLevel: agent.SafetyLevelSafe,
+		Capability: agent.ToolCapability{
+			Category:        "ontology",
+			Exposure:        agent.ExposureDeferred,
+			Activity:        agent.ActivityQuery,
+			ReadOnly:        true,
+			ConcurrencySafe: true,
+		},
 		Parameters: map[string]interface{}{
 			"type": "object",
 			"properties": map[string]interface{}{
@@ -282,6 +332,13 @@ func buildQueryEntities(svc OntologyService) *agent.Tool {
 		Name:        "ontology_query_entities",
 		Description: "Query entities by type and property filters. Returns matching entities with properties and outgoing triples.",
 		SafetyLevel: agent.SafetyLevelSafe,
+		Capability: agent.ToolCapability{
+			Category:        "ontology",
+			Exposure:        agent.ExposureDeferred,
+			Activity:        agent.ActivityQuery,
+			ReadOnly:        true,
+			ConcurrencySafe: true,
+		},
 		Parameters: map[string]interface{}{
 			"type": "object",
 			"properties": map[string]interface{}{
@@ -334,6 +391,13 @@ func buildGetEntity(svc OntologyService) *agent.Tool {
 		Name:        "ontology_get_entity",
 		Description: "Get a single entity with its properties, outgoing and incoming triples.",
 		SafetyLevel: agent.SafetyLevelSafe,
+		Capability: agent.ToolCapability{
+			Category:        "ontology",
+			Exposure:        agent.ExposureDeferred,
+			Activity:        agent.ActivityRead,
+			ReadOnly:        true,
+			ConcurrencySafe: true,
+		},
 		Parameters: map[string]interface{}{
 			"type": "object",
 			"properties": map[string]interface{}{
@@ -365,6 +429,11 @@ func buildAssertFact(svc OntologyService) *agent.Tool {
 		Name:        "ontology_assert_fact",
 		Description: "Assert a fact (triple) with temporal metadata and conflict detection.",
 		SafetyLevel: agent.SafetyLevelModerate,
+		Capability: agent.ToolCapability{
+			Category: "ontology",
+			Exposure: agent.ExposureDeferred,
+			Activity: agent.ActivityWrite,
+		},
 		Parameters: map[string]interface{}{
 			"type": "object",
 			"properties": map[string]interface{}{
@@ -420,6 +489,11 @@ func buildRetractFact(svc OntologyService) *agent.Tool {
 		Name:        "ontology_retract_fact",
 		Description: "Retract a fact (soft delete by setting ValidTo).",
 		SafetyLevel: agent.SafetyLevelModerate,
+		Capability: agent.ToolCapability{
+			Category: "ontology",
+			Exposure: agent.ExposureDeferred,
+			Activity: agent.ActivityWrite,
+		},
 		Parameters: map[string]interface{}{
 			"type": "object",
 			"properties": map[string]interface{}{
@@ -460,6 +534,13 @@ func buildListConflicts(svc OntologyService) *agent.Tool {
 		Name:        "ontology_list_conflicts",
 		Description: "List all open ontology conflicts awaiting resolution.",
 		SafetyLevel: agent.SafetyLevelSafe,
+		Capability: agent.ToolCapability{
+			Category:        "ontology",
+			Exposure:        agent.ExposureDeferred,
+			Activity:        agent.ActivityQuery,
+			ReadOnly:        true,
+			ConcurrencySafe: true,
+		},
 		Parameters: map[string]interface{}{
 			"type":       "object",
 			"properties": map[string]interface{}{},
@@ -479,6 +560,11 @@ func buildResolveConflict(svc OntologyService) *agent.Tool {
 		Name:        "ontology_resolve_conflict",
 		Description: "Resolve an ontology conflict by choosing a winner.",
 		SafetyLevel: agent.SafetyLevelModerate,
+		Capability: agent.ToolCapability{
+			Category: "ontology",
+			Exposure: agent.ExposureDeferred,
+			Activity: agent.ActivityWrite,
+		},
 		Parameters: map[string]interface{}{
 			"type": "object",
 			"properties": map[string]interface{}{
@@ -518,6 +604,11 @@ func buildMergeEntities(svc OntologyService) *agent.Tool {
 		Name:        "ontology_merge_entities",
 		Description: "Merge a duplicate entity into a canonical entity. Moves relationships and registers alias.",
 		SafetyLevel: agent.SafetyLevelModerate,
+		Capability: agent.ToolCapability{
+			Category: "ontology",
+			Exposure: agent.ExposureDeferred,
+			Activity: agent.ActivityWrite,
+		},
 		Parameters: map[string]interface{}{
 			"type": "object",
 			"properties": map[string]interface{}{
@@ -553,6 +644,13 @@ func buildFactsAt(svc OntologyService) *agent.Tool {
 		Name:        "ontology_facts_at",
 		Description: "Query facts valid at a specific point in time (time-travel query).",
 		SafetyLevel: agent.SafetyLevelSafe,
+		Capability: agent.ToolCapability{
+			Category:        "ontology",
+			Exposure:        agent.ExposureDeferred,
+			Activity:        agent.ActivityQuery,
+			ReadOnly:        true,
+			ConcurrencySafe: true,
+		},
 		Parameters: map[string]interface{}{
 			"type": "object",
 			"properties": map[string]interface{}{
@@ -612,6 +710,11 @@ func buildImportJSON(svc OntologyService) *agent.Tool {
 		Name:        "ontology_import_json",
 		Description: "Import entities from JSON data. Creates properties and relations.",
 		SafetyLevel: agent.SafetyLevelModerate,
+		Capability: agent.ToolCapability{
+			Category: "ontology",
+			Exposure: agent.ExposureDeferred,
+			Activity: agent.ActivityWrite,
+		},
 		Parameters: map[string]interface{}{
 			"type": "object",
 			"properties": map[string]interface{}{
@@ -673,6 +776,11 @@ func buildImportCSV(svc OntologyService) *agent.Tool {
 		Name:        "ontology_import_csv",
 		Description: "Import entities from CSV data. First row is header (property names), each subsequent row is an entity.",
 		SafetyLevel: agent.SafetyLevelModerate,
+		Capability: agent.ToolCapability{
+			Category: "ontology",
+			Exposure: agent.ExposureDeferred,
+			Activity: agent.ActivityWrite,
+		},
 		Parameters: map[string]interface{}{
 			"type": "object",
 			"properties": map[string]interface{}{
@@ -735,6 +843,11 @@ func buildFromMCP(svc OntologyService) *agent.Tool {
 		Name:        "ontology_from_mcp",
 		Description: "Convert an MCP tool result into ontology entities and facts. Explicit mapping only.",
 		SafetyLevel: agent.SafetyLevelModerate,
+		Capability: agent.ToolCapability{
+			Category: "ontology",
+			Exposure: agent.ExposureDeferred,
+			Activity: agent.ActivityWrite,
+		},
 		Parameters: map[string]interface{}{
 			"type": "object",
 			"properties": map[string]interface{}{

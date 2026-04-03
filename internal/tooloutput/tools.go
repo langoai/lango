@@ -15,6 +15,12 @@ func BuildTools(store *OutputStore) []*agent.Tool {
 			Name:        "tool_output_get",
 			Description: "Retrieve full or partial stored tool output by reference. Use when a tool result was compressed and you need more detail.",
 			SafetyLevel: agent.SafetyLevelSafe,
+			Capability: agent.ToolCapability{
+				Category:        "system",
+				Activity:        agent.ActivityRead,
+				ReadOnly:        true,
+				ConcurrencySafe: true,
+			},
 			Parameters: agent.Schema().
 				Str("ref", "The stored output reference (UUID from _meta.storedRef)").
 				Enum("mode", "Retrieval mode: full (default), range, or grep", "full", "range", "grep").

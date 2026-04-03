@@ -74,6 +74,10 @@ func buildMCPManagementTools(mgr *mcp.ServerManager) []*agent.Tool {
 			Description: "Show connection status of all MCP servers.",
 			Parameters:  nil,
 			SafetyLevel: agent.SafetyLevelSafe,
+			Capability: agent.ToolCapability{
+				Category: "mcp",
+				Activity: agent.ActivityManage,
+			},
 			Handler: func(ctx context.Context, params map[string]interface{}) (interface{}, error) {
 				status := mgr.ServerStatus()
 				var lines []string
@@ -96,6 +100,10 @@ func buildMCPManagementTools(mgr *mcp.ServerManager) []*agent.Tool {
 				},
 			},
 			SafetyLevel: agent.SafetyLevelSafe,
+			Capability: agent.ToolCapability{
+				Category: "mcp",
+				Activity: agent.ActivityManage,
+			},
 			Handler: func(ctx context.Context, params map[string]interface{}) (interface{}, error) {
 				allTools := mgr.AllTools()
 				serverFilter, _ := params["server"].(string)

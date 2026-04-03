@@ -180,38 +180,38 @@ Frame questions conversationally — not as a survey or checklist.
 - Never execute shell commands, browse the web, or handle cryptographic operations.
 - Never manage conversational memory (observations, reflections).
 - If a task does not match your capabilities, do NOT attempt to answer it.` + outputHandlingSection + responseRulesSection + escalationProtocolSection,
-		Prefixes:         []string{"search_", "rag_", "graph_", "save_knowledge", "save_learning", "learning_", "create_skill", "list_skills", "import_skill", "librarian_"},
-		Keywords:         []string{"search knowledge", "find information", "lookup", "knowledge", "learning", "retrieve", "graph", "RAG", "inquiry", "question", "gap", "save knowledge"},
+		Prefixes:         []string{"search_", "rag_", "graph_", "save_knowledge", "save_learning", "learning_", "create_skill", "list_skills", "import_skill", "librarian_", "web_"},
+		Keywords:         []string{"search knowledge", "find information", "lookup", "knowledge", "learning", "retrieve", "graph", "RAG", "inquiry", "question", "gap", "save knowledge", "web search", "fetch url", "get page"},
 		Accepts:          "A search query, knowledge to persist, learning data to review/clean, skill to create/list, or inquiry operation",
 		Returns:          "Search results with scores, knowledge save confirmation, learning stats/cleanup results, skill listings, or inquiry details",
 		CannotDo:         []string{"shell commands", "web browsing", "cryptographic operations", "memory management (observations/reflections)"},
 		ExampleRequests:  []string{"Search for information about Go concurrency patterns", "Save this knowledge: API rate limit is 100/min", "List all available skills", "Find what we know about the deployment process"},
-		Disambiguation:   "Not for 'find file' (→ operator), not for 'search URL' (→ navigator), not for 'skill execute/run' (→ operator)",
+		Disambiguation:   "not for 'find file' (→ operator), not for 'browse website' (→ navigator), not for 'skill execute/run' (→ operator), 'web_search' and 'web_fetch' route here",
 		SessionIsolation: true,
 	},
 	{
 		Name:        "automator",
-		Description: "Automation: cron scheduling, background tasks, workflow orchestration",
+		Description: "Automation: cron scheduling, background tasks, workflow orchestration, agent lifecycle, and task tracking",
 		Instruction: `## What You Do
-You manage automation systems: schedule recurring cron jobs, submit background tasks for async execution, and run multi-step workflow pipelines.
+You manage automation systems: schedule recurring cron jobs, submit background tasks for async execution, run multi-step workflow pipelines, manage agent lifecycle (spawn, wait, stop), and track structured tasks.
 
 ## Input Format
-A scheduling request (cron job to create/manage), a background task to submit, or a workflow to execute/monitor.
+A scheduling request (cron job to create/manage), a background task to submit, a workflow to execute/monitor, an agent lifecycle operation, or a task management request.
 
 ## Output Format
-Return confirmation of created schedules, task IDs for background jobs, or workflow execution status and results.
+Return confirmation of created schedules, task IDs for background jobs, workflow execution status, agent run IDs and status, or task tracking results.
 
 ## Constraints
-- Only manage cron jobs, background tasks, and workflows.
+- Only manage cron jobs, background tasks, workflows, agent lifecycle, and task tracking.
 - Never execute shell commands directly, browse the web, or handle cryptographic operations.
 - Never search knowledge bases or manage memory.
 - If a task does not match your capabilities, do NOT attempt to answer it.` + outputHandlingSection + responseRulesSection + escalationProtocolSection,
-		Prefixes:         []string{"cron_", "bg_", "workflow_"},
-		Keywords:         []string{"schedule task", "cron job", "recurring task", "background task", "async", "later", "workflow", "pipeline", "automate", "timer"},
-		Accepts:          "A scheduling request, background task, or workflow to execute/monitor",
-		Returns:          "Schedule confirmation, task IDs, or workflow execution status",
+		Prefixes:         []string{"cron_", "bg_", "workflow_", "agent_", "task_"},
+		Keywords:         []string{"schedule task", "cron job", "recurring task", "background task", "async", "later", "workflow", "pipeline", "automate", "timer", "spawn agent", "wait for agent", "create task", "track task"},
+		Accepts:          "A scheduling request, background task, workflow, agent lifecycle operation, or task management request",
+		Returns:          "Schedule confirmation, task IDs, workflow execution status, agent run status, or task details",
 		CannotDo:         []string{"shell commands", "file operations", "web browsing", "cryptographic operations", "knowledge search"},
-		ExampleRequests:  []string{"Schedule a daily backup at 3am", "Run this task in the background", "Execute the data-pipeline workflow"},
+		ExampleRequests:  []string{"Schedule a daily backup at 3am", "Run this task in the background", "Execute the data-pipeline workflow", "Spawn an agent to analyze data", "Create a task to track progress"},
 		Disambiguation:   "Not for 'run command now' (→ operator), not for one-time immediate execution (→ operator)",
 		SessionIsolation: true,
 	},
@@ -477,6 +477,11 @@ var capabilityMap = map[string]string{
 	"sentinel_":       "security sentinel anomaly detection",
 	"contract_":       "smart contract interaction",
 	"ontology_":       "ontology management (types, entities, facts, conflicts)",
+	"agent_":          "agent lifecycle management",
+	"task_":           "structured task management",
+	"web_search":      "web search",
+	"web_fetch":       "web page fetching",
+	"web_":            "web access",
 }
 
 // toolCapability returns a human-readable capability for a tool name based
@@ -569,16 +574,17 @@ func BuiltinSpecs() []AgentSpec {
 
 // routingEntry holds pre-formatted routing metadata for a single sub-agent.
 type routingEntry struct {
-	Name            string
-	Description     string
-	Keywords        []string
-	Capabilities    []string
-	ToolNames       []string
-	Accepts         string
-	Returns         string
-	CannotDo        []string
-	ExampleRequests []string
-	Disambiguation  string
+	Name              string
+	Description       string
+	Keywords          []string
+	Capabilities      []string
+	ToolCount         int
+	CapabilitySummary string
+	Accepts           string
+	Returns           string
+	CannotDo          []string
+	ExampleRequests   []string
+	Disambiguation    string
 }
 
 // buildRoutingEntry creates a routing entry from an AgentSpec, its resolved capabilities,
@@ -605,23 +611,18 @@ func buildRoutingEntry(spec AgentSpec, caps string, tools []*agent.Tool) routing
 	// Deduplicate capabilities.
 	mergedCaps = dedup(mergedCaps)
 
-	// Collect tool names for routing visibility.
-	toolNames := make([]string, 0, len(tools))
-	for _, t := range tools {
-		toolNames = append(toolNames, t.Name)
-	}
-
 	return routingEntry{
-		Name:            spec.Name,
-		Description:     desc,
-		Keywords:        spec.Keywords,
-		Capabilities:    mergedCaps,
-		ToolNames:       toolNames,
-		Accepts:         spec.Accepts,
-		Returns:         spec.Returns,
-		CannotDo:        spec.CannotDo,
-		ExampleRequests: spec.ExampleRequests,
-		Disambiguation:  spec.Disambiguation,
+		Name:              spec.Name,
+		Description:       desc,
+		Keywords:          spec.Keywords,
+		Capabilities:      mergedCaps,
+		ToolCount:         len(tools),
+		CapabilitySummary: caps,
+		Accepts:           spec.Accepts,
+		Returns:           spec.Returns,
+		CannotDo:          spec.CannotDo,
+		ExampleRequests:   spec.ExampleRequests,
+		Disambiguation:    spec.Disambiguation,
 	}
 }
 
@@ -667,8 +668,12 @@ func buildOrchestratorInstruction(basePrompt string, entries []routingEntry, max
 		if e.Disambiguation != "" {
 			fmt.Fprintf(&b, "- **When NOT this agent**: %s\n", e.Disambiguation)
 		}
-		if len(e.ToolNames) > 0 {
-			fmt.Fprintf(&b, "- **Tool count**: %d\n", len(e.ToolNames))
+		if e.ToolCount > 0 {
+			if e.CapabilitySummary != "" {
+				fmt.Fprintf(&b, "- **Capabilities (%d tools)**: %s\n", e.ToolCount, e.CapabilitySummary)
+			} else {
+				fmt.Fprintf(&b, "- **Tool count**: %d\n", e.ToolCount)
+			}
 		}
 		fmt.Fprintf(&b, "- **Accepts**: %s\n", e.Accepts)
 		fmt.Fprintf(&b, "- **Returns**: %s\n", e.Returns)
@@ -685,6 +690,9 @@ func buildOrchestratorInstruction(basePrompt string, entries []routingEntry, max
 		}
 		fmt.Fprintf(&b, "These tools are not assigned to a specific agent: %s. Route to the agent whose role best matches the request context. If no agent matches, inform the user that the capability is not available.\n", strings.Join(names, ", "))
 	}
+
+	b.WriteString("\n## Tool Discovery\n")
+	b.WriteString("Use builtin_search to find specific tools by name or capability.\n")
 
 	b.WriteString(`
 ## Automated Task Handling

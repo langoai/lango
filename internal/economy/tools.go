@@ -51,6 +51,10 @@ func buildBudgetTools(be *budget.Engine) []*agent.Tool {
 			Name:        "economy_budget_allocate",
 			Description: "Allocate a spending budget for a task (amount in USDC, e.g. '5.00')",
 			SafetyLevel: agent.SafetyLevelDangerous,
+			Capability: agent.ToolCapability{
+				Category: "economy",
+				Activity: agent.ActivityExecute,
+			},
 			Parameters: map[string]interface{}{
 				"type": "object",
 				"properties": map[string]interface{}{
@@ -87,6 +91,11 @@ func buildBudgetTools(be *budget.Engine) []*agent.Tool {
 			Name:        "economy_budget_status",
 			Description: "Check budget status for a task",
 			SafetyLevel: agent.SafetyLevelSafe,
+			Capability: agent.ToolCapability{
+				Category: "economy",
+				Activity: agent.ActivityQuery,
+				ReadOnly: true,
+			},
 			Parameters: map[string]interface{}{
 				"type": "object",
 				"properties": map[string]interface{}{
@@ -113,6 +122,10 @@ func buildBudgetTools(be *budget.Engine) []*agent.Tool {
 			Name:        "economy_budget_close",
 			Description: "Close a task budget and get final report",
 			SafetyLevel: agent.SafetyLevelDangerous,
+			Capability: agent.ToolCapability{
+				Category: "economy",
+				Activity: agent.ActivityExecute,
+			},
 			Parameters: map[string]interface{}{
 				"type": "object",
 				"properties": map[string]interface{}{
@@ -146,6 +159,11 @@ func buildRiskTools(re *risk.Engine) []*agent.Tool {
 			Name:        "economy_risk_assess",
 			Description: "Assess risk for a transaction with a peer",
 			SafetyLevel: agent.SafetyLevelSafe,
+			Capability: agent.ToolCapability{
+				Category: "economy",
+				Activity: agent.ActivityQuery,
+				ReadOnly: true,
+			},
 			Parameters: map[string]interface{}{
 				"type": "object",
 				"properties": map[string]interface{}{
@@ -194,6 +212,10 @@ func buildNegotiationTools(ne *negotiation.Engine) []*agent.Tool {
 			Name:        "economy_negotiate",
 			Description: "Start a price negotiation with a peer",
 			SafetyLevel: agent.SafetyLevelDangerous,
+			Capability: agent.ToolCapability{
+				Category: "economy",
+				Activity: agent.ActivityExecute,
+			},
 			Parameters: map[string]interface{}{
 				"type": "object",
 				"properties": map[string]interface{}{
@@ -240,6 +262,11 @@ func buildNegotiationTools(ne *negotiation.Engine) []*agent.Tool {
 			Name:        "economy_negotiate_status",
 			Description: "Check the status of a negotiation session",
 			SafetyLevel: agent.SafetyLevelSafe,
+			Capability: agent.ToolCapability{
+				Category: "economy",
+				Activity: agent.ActivityQuery,
+				ReadOnly: true,
+			},
 			Parameters: map[string]interface{}{
 				"type": "object",
 				"properties": map[string]interface{}{
@@ -280,6 +307,10 @@ func buildEscrowTools(ee *escrow.Engine) []*agent.Tool {
 			Name:        "economy_escrow_create",
 			Description: "Create a milestone-based escrow between buyer and seller",
 			SafetyLevel: agent.SafetyLevelDangerous,
+			Capability: agent.ToolCapability{
+				Category: "economy",
+				Activity: agent.ActivityExecute,
+			},
 			Parameters: map[string]interface{}{
 				"type": "object",
 				"properties": map[string]interface{}{
@@ -352,6 +383,10 @@ func buildEscrowTools(ee *escrow.Engine) []*agent.Tool {
 			Name:        "economy_escrow_milestone",
 			Description: "Complete a milestone in an escrow",
 			SafetyLevel: agent.SafetyLevelDangerous,
+			Capability: agent.ToolCapability{
+				Category: "economy",
+				Activity: agent.ActivityExecute,
+			},
 			Parameters: map[string]interface{}{
 				"type": "object",
 				"properties": map[string]interface{}{
@@ -381,6 +416,11 @@ func buildEscrowTools(ee *escrow.Engine) []*agent.Tool {
 			Name:        "economy_escrow_status",
 			Description: "Check escrow status",
 			SafetyLevel: agent.SafetyLevelSafe,
+			Capability: agent.ToolCapability{
+				Category: "economy",
+				Activity: agent.ActivityQuery,
+				ReadOnly: true,
+			},
 			Parameters: map[string]interface{}{
 				"type": "object",
 				"properties": map[string]interface{}{
@@ -417,6 +457,10 @@ func buildEscrowTools(ee *escrow.Engine) []*agent.Tool {
 			Name:        "economy_escrow_release",
 			Description: "Release escrow funds to seller",
 			SafetyLevel: agent.SafetyLevelDangerous,
+			Capability: agent.ToolCapability{
+				Category: "economy",
+				Activity: agent.ActivityExecute,
+			},
 			Parameters: map[string]interface{}{
 				"type": "object",
 				"properties": map[string]interface{}{
@@ -440,6 +484,10 @@ func buildEscrowTools(ee *escrow.Engine) []*agent.Tool {
 			Name:        "economy_escrow_dispute",
 			Description: "Raise a dispute on an escrow",
 			SafetyLevel: agent.SafetyLevelDangerous,
+			Capability: agent.ToolCapability{
+				Category: "economy",
+				Activity: agent.ActivityExecute,
+			},
 			Parameters: map[string]interface{}{
 				"type": "object",
 				"properties": map[string]interface{}{
@@ -470,6 +518,11 @@ func buildPricingTools(pe *pricing.Engine) []*agent.Tool {
 			Name:        "economy_price_quote",
 			Description: "Get a price quote for a tool, optionally with peer-specific discounts",
 			SafetyLevel: agent.SafetyLevelSafe,
+			Capability: agent.ToolCapability{
+				Category: "economy",
+				Activity: agent.ActivityQuery,
+				ReadOnly: true,
+			},
 			Parameters: map[string]interface{}{
 				"type": "object",
 				"properties": map[string]interface{}{

@@ -17,6 +17,10 @@ func BuildTools(mgr *Manager, defaultDeliverTo []string) []*agent.Tool {
 			Name:        "bg_submit",
 			Description: "Submit a prompt for asynchronous background execution",
 			SafetyLevel: agent.SafetyLevelModerate,
+			Capability: agent.ToolCapability{
+				Category: "automation",
+				Activity: agent.ActivityExecute,
+			},
 			Parameters: map[string]interface{}{
 				"type": "object",
 				"properties": map[string]interface{}{
@@ -61,6 +65,12 @@ func BuildTools(mgr *Manager, defaultDeliverTo []string) []*agent.Tool {
 			Name:        "bg_status",
 			Description: "Check the status of a background task",
 			SafetyLevel: agent.SafetyLevelSafe,
+			Capability: agent.ToolCapability{
+				Category:        "automation",
+				Activity:        agent.ActivityQuery,
+				ReadOnly:        true,
+				ConcurrencySafe: true,
+			},
 			Parameters: map[string]interface{}{
 				"type": "object",
 				"properties": map[string]interface{}{
@@ -84,6 +94,12 @@ func BuildTools(mgr *Manager, defaultDeliverTo []string) []*agent.Tool {
 			Name:        "bg_list",
 			Description: "List all background tasks and their current status",
 			SafetyLevel: agent.SafetyLevelSafe,
+			Capability: agent.ToolCapability{
+				Category:        "automation",
+				Activity:        agent.ActivityQuery,
+				ReadOnly:        true,
+				ConcurrencySafe: true,
+			},
 			Parameters: map[string]interface{}{
 				"type":       "object",
 				"properties": map[string]interface{}{},
@@ -97,6 +113,12 @@ func BuildTools(mgr *Manager, defaultDeliverTo []string) []*agent.Tool {
 			Name:        "bg_result",
 			Description: "Retrieve the result of a completed background task",
 			SafetyLevel: agent.SafetyLevelSafe,
+			Capability: agent.ToolCapability{
+				Category:        "automation",
+				Activity:        agent.ActivityQuery,
+				ReadOnly:        true,
+				ConcurrencySafe: true,
+			},
 			Parameters: map[string]interface{}{
 				"type": "object",
 				"properties": map[string]interface{}{
@@ -120,6 +142,10 @@ func BuildTools(mgr *Manager, defaultDeliverTo []string) []*agent.Tool {
 			Name:        "bg_cancel",
 			Description: "Cancel a pending or running background task",
 			SafetyLevel: agent.SafetyLevelModerate,
+			Capability: agent.ToolCapability{
+				Category: "automation",
+				Activity: agent.ActivityManage,
+			},
 			Parameters: map[string]interface{}{
 				"type": "object",
 				"properties": map[string]interface{}{

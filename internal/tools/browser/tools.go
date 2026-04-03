@@ -27,6 +27,12 @@ func BuildTools(sm *SessionManager) []*agent.Tool {
 			Name:        "browser_navigate",
 			Description: "Navigate the browser to a URL and return a structured page snapshot",
 			SafetyLevel: agent.SafetyLevelDangerous,
+			Capability: agent.ToolCapability{
+				Category:    "browser",
+				Activity:    agent.ActivityExecute,
+				Aliases:     []string{"goto", "open_url"},
+				SearchHints: []string{"url", "navigate", "page"},
+			},
 			Parameters: agent.Schema().
 				Str("url", "The URL to navigate to").
 				Required("url").
@@ -73,8 +79,14 @@ func BuildTools(sm *SessionManager) []*agent.Tool {
 		},
 		{
 			Name:        "browser_search",
-			Description: "Search the web in the browser and return structured search results",
+			Description: "[Deprecated: prefer web_search] Search the web using the browser and return structured search results.",
 			SafetyLevel: agent.SafetyLevelDangerous,
+			Capability: agent.ToolCapability{
+				Category:    "browser",
+				Activity:    agent.ActivityQuery,
+				Aliases:     []string{"search", "web_search_browser"},
+				SearchHints: []string{"search", "web", "query"},
+			},
 			Parameters: agent.Schema().
 				Str("query", "The search query to run").
 				Int("limit", "Maximum number of results to return (default: 5)").
@@ -99,6 +111,13 @@ func BuildTools(sm *SessionManager) []*agent.Tool {
 			Name:        "browser_observe",
 			Description: "Return actionable elements from the current browser page with stable selectors",
 			SafetyLevel: agent.SafetyLevelSafe,
+			Capability: agent.ToolCapability{
+				Category:    "browser",
+				Activity:    agent.ActivityRead,
+				ReadOnly:    true,
+				Aliases:     []string{"observe_page", "inspect"},
+				SearchHints: []string{"elements", "selectors", "page"},
+			},
 			Parameters: agent.Schema().
 				Int("limit", "Maximum number of actionable elements to return (default: 10)").
 				Build(),
@@ -117,6 +136,14 @@ func BuildTools(sm *SessionManager) []*agent.Tool {
 			Name:        "browser_extract",
 			Description: "Extract structured data from the current page: summary, links, article, or search_results",
 			SafetyLevel: agent.SafetyLevelSafe,
+			Capability: agent.ToolCapability{
+				Category:        "browser",
+				Activity:        agent.ActivityRead,
+				ReadOnly:        true,
+				ConcurrencySafe: true,
+				Aliases:         []string{"extract_content", "scrape"},
+				SearchHints:     []string{"content", "article", "links"},
+			},
 			Parameters: agent.Schema().
 				Enum("mode", "The extraction mode", "summary", "links", "article", "search_results").
 				Int("limit", "Maximum number of extracted items where applicable").
@@ -137,6 +164,12 @@ func BuildTools(sm *SessionManager) []*agent.Tool {
 			Name:        "browser_action",
 			Description: "Perform an action on the current browser page: click, type, eval, get_text, get_element_info, or wait",
 			SafetyLevel: agent.SafetyLevelDangerous,
+			Capability: agent.ToolCapability{
+				Category:    "browser",
+				Activity:    agent.ActivityExecute,
+				Aliases:     []string{"click", "type", "interact"},
+				SearchHints: []string{"click", "type", "scroll"},
+			},
 			Parameters: agent.Schema().
 				Enum("action", "The action to perform", actionClick, actionType, actionEval, actionGetText, actionGetInfo, actionWait).
 				Str("selector", "CSS selector for the target element (required for click, type, get_text, get_element_info, wait)").
@@ -213,6 +246,13 @@ func BuildTools(sm *SessionManager) []*agent.Tool {
 			Name:        "browser_screenshot",
 			Description: "Capture a screenshot of the current browser page as base64 PNG",
 			SafetyLevel: agent.SafetyLevelSafe,
+			Capability: agent.ToolCapability{
+				Category:    "browser",
+				Activity:    agent.ActivityRead,
+				ReadOnly:    true,
+				Aliases:     []string{"screenshot", "capture"},
+				SearchHints: []string{"screenshot", "image", "capture"},
+			},
 			Parameters: agent.Schema().
 				Bool("fullPage", "Capture the full scrollable page (default: false)").
 				Build(),

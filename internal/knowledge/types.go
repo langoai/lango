@@ -156,6 +156,9 @@ type ScoredLearningEntry struct {
 type ToolDescriptor struct {
 	Name        string
 	Description string
+	Aliases     []string // alternate names for search (e.g. "ls" for "fs_list")
+	Category    string   // semantic category from Capability (e.g. "filesystem")
+	SearchHints []string // additional keywords for search ranking
 }
 
 // RuntimeContext holds the current session and system state.

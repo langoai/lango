@@ -144,6 +144,44 @@ func (s *FileSkillStore) SaveResource(_ context.Context, skillName, relPath stri
 	return os.WriteFile(path, data, 0o644)
 }
 
+// DiscoverProjectSkills scans projectRoot/.lango/skills/ for SKILL.md files.
+// Returns discovered skills without modifying the store.
+func (s *FileSkillStore) DiscoverProjectSkills(_ context.Context, projectRoot string) ([]SkillEntry, error) {
+	skillsDir := filepath.Join(projectRoot, ".lango", "skills")
+
+	entries, err := os.ReadDir(skillsDir)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil, nil
+		}
+		return nil, fmt.Errorf("read project skills dir: %w", err)
+	}
+
+	var result []SkillEntry
+	for _, e := range entries {
+		if !e.IsDir() || strings.HasPrefix(e.Name(), ".") {
+			continue
+		}
+
+		path := filepath.Join(skillsDir, e.Name(), "SKILL.md")
+		data, err := os.ReadFile(path)
+		if err != nil {
+			s.logger.Debugw("skip project skill dir (no SKILL.md)", "dir", e.Name())
+			continue
+		}
+
+		entry, err := ParseSkillMD(data)
+		if err != nil {
+			s.logger.Warnw("skip invalid project skill", "dir", e.Name(), "error", err)
+			continue
+		}
+
+		result = append(result, *entry)
+	}
+
+	return result, nil
+}
+
 // EnsureDefaults deploys embedded default skills that don't already exist.
 func (s *FileSkillStore) EnsureDefaults(defaultFS fs.FS) error {
 	if err := os.MkdirAll(s.dir, 0o700); err != nil {

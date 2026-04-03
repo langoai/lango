@@ -18,6 +18,12 @@ func BuildTools(is *InquiryStore) []*agent.Tool {
 			Name:        "librarian_pending_inquiries",
 			Description: "List pending knowledge inquiries for the current session",
 			SafetyLevel: agent.SafetyLevelSafe,
+			Capability: agent.ToolCapability{
+				Category:        "librarian",
+				Activity:        agent.ActivityQuery,
+				ReadOnly:        true,
+				ConcurrencySafe: true,
+			},
 			Parameters: map[string]interface{}{
 				"type": "object",
 				"properties": map[string]interface{}{
@@ -39,6 +45,10 @@ func BuildTools(is *InquiryStore) []*agent.Tool {
 			Name:        "librarian_dismiss_inquiry",
 			Description: "Dismiss a pending knowledge inquiry that the user does not want to answer",
 			SafetyLevel: agent.SafetyLevelModerate,
+			Capability: agent.ToolCapability{
+				Category: "librarian",
+				Activity: agent.ActivityManage,
+			},
 			Parameters: map[string]interface{}{
 				"type": "object",
 				"properties": map[string]interface{}{

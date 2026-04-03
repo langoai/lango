@@ -283,3 +283,173 @@ func TestRenderSkillMD_Roundtrip(t *testing.T) {
 	script, _ := parsed.Definition["script"].(string)
 	assert.Equal(t, "echo hello", script)
 }
+
+func TestSkillTypeFork_Valid(t *testing.T) {
+	t.Parallel()
+
+	assert.True(t, SkillTypeFork.Valid())
+	assert.Contains(t, SkillTypeFork.Values(), SkillTypeFork)
+}
+
+func TestParseSkillMD_V2Fields(t *testing.T) {
+	t.Parallel()
+
+	content := `---
+name: refactor-skill
+description: Refactoring assistant
+type: fork
+status: active
+when_to_use: When the user asks for a multi-file refactor
+paths: "src/**/*.go internal/**/*.go"
+context: Always check tests after changes
+model: claude-opus-4
+effort: high
+agent: core-developer
+hooks:
+  pre: go vet ./...
+  post: go test ./...
+---
+
+# Refactor Guide
+
+Follow the refactoring plan carefully.`
+
+	entry, err := ParseSkillMD([]byte(content))
+	require.NoError(t, err)
+
+	assert.Equal(t, "refactor-skill", entry.Name)
+	assert.Equal(t, SkillTypeFork, entry.Type)
+	assert.Equal(t, "When the user asks for a multi-file refactor", entry.WhenToUse)
+	assert.Equal(t, []string{"src/**/*.go", "internal/**/*.go"}, entry.Paths)
+	assert.Equal(t, "Always check tests after changes", entry.Context)
+	assert.Equal(t, "claude-opus-4", entry.Model)
+	assert.Equal(t, "high", entry.Effort)
+	assert.Equal(t, "core-developer", entry.Agent)
+	require.Len(t, entry.Hooks, 2)
+	assert.Equal(t, "go vet ./...", entry.Hooks["pre"])
+	assert.Equal(t, "go test ./...", entry.Hooks["post"])
+}
+
+func TestRenderSkillMD_V2Fields_Roundtrip(t *testing.T) {
+	t.Parallel()
+
+	original := &SkillEntry{
+		Name:        "refactor-skill",
+		Description: "Refactoring assistant",
+		Type:        SkillTypeFork,
+		Status:      SkillStatusActive,
+		Definition:  map[string]interface{}{"content": "# Refactor Guide"},
+		WhenToUse:   "When user asks for refactoring",
+		Paths:       []string{"src/**/*.go", "internal/**/*.go"},
+		Context:     "Check tests after changes",
+		Model:       "claude-opus-4",
+		Effort:      "high",
+		Agent:       "core-developer",
+		Hooks:       map[string]string{"pre": "go vet ./...", "post": "go test ./..."},
+	}
+
+	rendered, err := RenderSkillMD(original)
+	require.NoError(t, err)
+
+	parsed, err := ParseSkillMD(rendered)
+	require.NoError(t, err)
+
+	assert.Equal(t, original.Name, parsed.Name)
+	assert.Equal(t, original.Type, parsed.Type)
+	assert.Equal(t, original.WhenToUse, parsed.WhenToUse)
+	assert.Equal(t, original.Paths, parsed.Paths)
+	assert.Equal(t, original.Context, parsed.Context)
+	assert.Equal(t, original.Model, parsed.Model)
+	assert.Equal(t, original.Effort, parsed.Effort)
+	assert.Equal(t, original.Agent, parsed.Agent)
+	assert.Equal(t, original.Hooks, parsed.Hooks)
+}
+
+func TestParseSkillMD_V2Fields_Empty(t *testing.T) {
+	t.Parallel()
+
+	// Existing SKILL.md without new fields must parse correctly (backward compat).
+	content := `---
+name: legacy-skill
+description: Old skill
+type: script
+status: active
+---
+
+` + "```sh\necho legacy\n```\n"
+
+	entry, err := ParseSkillMD([]byte(content))
+	require.NoError(t, err)
+
+	assert.Equal(t, "legacy-skill", entry.Name)
+	assert.Empty(t, entry.WhenToUse)
+	assert.Empty(t, entry.Paths)
+	assert.Empty(t, entry.Context)
+	assert.Empty(t, entry.Model)
+	assert.Empty(t, entry.Effort)
+	assert.Empty(t, entry.Agent)
+	assert.Empty(t, entry.Hooks)
+}
+
+func TestRenderSkillMD_V2Fields_OmitEmpty(t *testing.T) {
+	t.Parallel()
+
+	// When v2 fields are empty, they should not appear in rendered output.
+	original := &SkillEntry{
+		Name:        "minimal-skill",
+		Description: "Minimal",
+		Type:        SkillTypeScript,
+		Status:      SkillStatusActive,
+		Definition:  map[string]interface{}{"script": "echo hi"},
+	}
+
+	rendered, err := RenderSkillMD(original)
+	require.NoError(t, err)
+
+	renderedStr := string(rendered)
+	assert.NotContains(t, renderedStr, "when_to_use")
+	assert.NotContains(t, renderedStr, "paths")
+	assert.NotContains(t, renderedStr, "context")
+	assert.NotContains(t, renderedStr, "model")
+	assert.NotContains(t, renderedStr, "effort")
+	assert.NotContains(t, renderedStr, "agent")
+	assert.NotContains(t, renderedStr, "hooks")
+
+	// Also verify it still parses correctly.
+	parsed, err := ParseSkillMD(rendered)
+	require.NoError(t, err)
+	assert.Equal(t, "minimal-skill", parsed.Name)
+}
+
+func TestRenderSkillMD_V2Fields_PartialFill(t *testing.T) {
+	t.Parallel()
+
+	// Only some v2 fields set — others should be omitted.
+	original := &SkillEntry{
+		Name:        "partial-skill",
+		Description: "Partial v2 fields",
+		Type:        SkillTypeInstruction,
+		Status:      SkillStatusActive,
+		Definition:  map[string]interface{}{"content": "Some content"},
+		WhenToUse:   "When doing partial work",
+		Effort:      "medium",
+	}
+
+	rendered, err := RenderSkillMD(original)
+	require.NoError(t, err)
+
+	renderedStr := string(rendered)
+	assert.Contains(t, renderedStr, "when_to_use")
+	assert.Contains(t, renderedStr, "effort")
+	assert.NotContains(t, renderedStr, "paths")
+	assert.NotContains(t, renderedStr, "model")
+	assert.NotContains(t, renderedStr, "agent")
+	assert.NotContains(t, renderedStr, "hooks")
+
+	parsed, err := ParseSkillMD(rendered)
+	require.NoError(t, err)
+	assert.Equal(t, "When doing partial work", parsed.WhenToUse)
+	assert.Equal(t, "medium", parsed.Effort)
+	assert.Empty(t, parsed.Paths)
+	assert.Empty(t, parsed.Hooks)
+}

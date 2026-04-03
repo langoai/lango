@@ -101,12 +101,13 @@ The system SHALL inject a `SectionToolCatalog` prompt section (priority 410) int
 - **WHEN** the system prompt is built with disabled category "smartaccount" (configKey: "smartAccount.enabled")
 - **THEN** the prompt SHALL contain text mentioning "smartaccount" and "smartAccount.enabled" under disabled categories
 
-### Requirement: Orchestrator routing entry tool names
-The orchestrator routing table SHALL include tool name lists per sub-agent, rendering up to 10 tool names per agent in the instruction.
+### Requirement: Orchestrator routing entry capability summary
+The orchestrator routing table SHALL show a capability summary and tool count per sub-agent, rather than listing individual tool names. This aligns with the multi-agent-orchestration spec requirement that tool names SHALL NOT be listed individually.
 
-#### Scenario: Routing entry includes tool names
+#### Scenario: Routing entry includes capability summary
 - **WHEN** the orchestrator instruction is built with an automator agent assigned cron_add, cron_list, cron_remove
-- **THEN** the routing table entry for "automator" SHALL contain a "Tools" line listing those tool names
+- **THEN** the routing table entry for "automator" SHALL contain a "Capabilities" line with capability descriptions and a "Tool count: 3" indicator
+- **AND** the routing table SHALL NOT list individual tool names
 ## Requirements
 ### Requirement: Comprehensive disabled category registration
 Every tool subsystem SHALL register a disabled category with the tool catalog when it is not active, so that builtin_health diagnostics can report the full system state. The disabled category SHALL include the relevant configKey.

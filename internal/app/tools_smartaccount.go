@@ -41,6 +41,12 @@ func smartAccountDeployTool(sac *smartAccountComponents) *agent.Tool {
 		Name:        "smart_account_deploy",
 		Description: "Deploy a new Safe smart account with ERC-7579 modules",
 		SafetyLevel: agent.SafetyLevelDangerous,
+		Capability: agent.ToolCapability{
+			Category:             "smartaccount",
+			Exposure:             agent.ExposureDeferred,
+			Activity:             agent.ActivityManage,
+			RequiredCapabilities: []string{"payment"},
+		},
 		Parameters: map[string]interface{}{
 			"type":       "object",
 			"properties": map[string]interface{}{},
@@ -75,6 +81,12 @@ func smartAccountInfoTool(sac *smartAccountComponents) *agent.Tool {
 		Name:        "smart_account_info",
 		Description: "Get smart account information without deploying",
 		SafetyLevel: agent.SafetyLevelSafe,
+		Capability: agent.ToolCapability{
+			Category:             "smartaccount",
+			Exposure:             agent.ExposureDeferred,
+			Activity:             agent.ActivityManage,
+			RequiredCapabilities: []string{"payment"},
+		},
 		Parameters: map[string]interface{}{
 			"type":       "object",
 			"properties": map[string]interface{}{},
@@ -109,6 +121,12 @@ func sessionKeyCreateTool(sac *smartAccountComponents) *agent.Tool {
 		Name:        "session_key_create",
 		Description: "Create a new session key with scoped permissions (targets, functions, spend limit, duration)",
 		SafetyLevel: agent.SafetyLevelDangerous,
+		Capability: agent.ToolCapability{
+			Category:             "smartaccount",
+			Exposure:             agent.ExposureDeferred,
+			Activity:             agent.ActivityManage,
+			RequiredCapabilities: []string{"payment"},
+		},
 		Parameters: map[string]interface{}{
 			"type": "object",
 			"properties": map[string]interface{}{
@@ -210,6 +228,12 @@ func sessionKeyListTool(sac *smartAccountComponents) *agent.Tool {
 		Name:        "session_key_list",
 		Description: "List all session keys and their status",
 		SafetyLevel: agent.SafetyLevelSafe,
+		Capability: agent.ToolCapability{
+			Category:             "smartaccount",
+			Exposure:             agent.ExposureDeferred,
+			Activity:             agent.ActivityManage,
+			RequiredCapabilities: []string{"payment"},
+		},
 		Parameters: map[string]interface{}{
 			"type":       "object",
 			"properties": map[string]interface{}{},
@@ -249,6 +273,12 @@ func sessionKeyRevokeTool(sac *smartAccountComponents) *agent.Tool {
 		Name:        "session_key_revoke",
 		Description: "Revoke a session key and all its child sessions",
 		SafetyLevel: agent.SafetyLevelDangerous,
+		Capability: agent.ToolCapability{
+			Category:             "smartaccount",
+			Exposure:             agent.ExposureDeferred,
+			Activity:             agent.ActivityManage,
+			RequiredCapabilities: []string{"payment"},
+		},
 		Parameters: map[string]interface{}{
 			"type": "object",
 			"properties": map[string]interface{}{
@@ -280,6 +310,12 @@ func sessionExecuteTool(sac *smartAccountComponents) *agent.Tool {
 		Name:        "session_execute",
 		Description: "Execute a contract call using a session key (signs with session key, submits via bundler)",
 		SafetyLevel: agent.SafetyLevelDangerous,
+		Capability: agent.ToolCapability{
+			Category:             "smartaccount",
+			Exposure:             agent.ExposureDeferred,
+			Activity:             agent.ActivityManage,
+			RequiredCapabilities: []string{"payment"},
+		},
 		Parameters: map[string]interface{}{
 			"type": "object",
 			"properties": map[string]interface{}{
@@ -399,6 +435,12 @@ func policyCheckTool(sac *smartAccountComponents) *agent.Tool {
 		Name:        "policy_check",
 		Description: "Check if a contract call would pass the policy engine without executing it",
 		SafetyLevel: agent.SafetyLevelSafe,
+		Capability: agent.ToolCapability{
+			Category:             "smartaccount",
+			Exposure:             agent.ExposureDeferred,
+			Activity:             agent.ActivityManage,
+			RequiredCapabilities: []string{"payment"},
+		},
 		Parameters: map[string]interface{}{
 			"type": "object",
 			"properties": map[string]interface{}{
@@ -459,6 +501,12 @@ func moduleInstallTool(sac *smartAccountComponents) *agent.Tool {
 		Name:        "module_install",
 		Description: "Install an ERC-7579 module on the smart account (validator, executor, hook, or fallback)",
 		SafetyLevel: agent.SafetyLevelDangerous,
+		Capability: agent.ToolCapability{
+			Category:             "smartaccount",
+			Exposure:             agent.ExposureDeferred,
+			Activity:             agent.ActivityManage,
+			RequiredCapabilities: []string{"payment"},
+		},
 		Parameters: map[string]interface{}{
 			"type": "object",
 			"properties": map[string]interface{}{
@@ -527,6 +575,12 @@ func moduleUninstallTool(sac *smartAccountComponents) *agent.Tool {
 		Name:        "module_uninstall",
 		Description: "Uninstall an ERC-7579 module from the smart account",
 		SafetyLevel: agent.SafetyLevelDangerous,
+		Capability: agent.ToolCapability{
+			Category:             "smartaccount",
+			Exposure:             agent.ExposureDeferred,
+			Activity:             agent.ActivityManage,
+			RequiredCapabilities: []string{"payment"},
+		},
 		Parameters: map[string]interface{}{
 			"type": "object",
 			"properties": map[string]interface{}{
@@ -580,6 +634,12 @@ func spendingStatusTool(sac *smartAccountComponents) *agent.Tool {
 		Name:        "spending_status",
 		Description: "View on-chain spending status and registered module information",
 		SafetyLevel: agent.SafetyLevelSafe,
+		Capability: agent.ToolCapability{
+			Category:             "smartaccount",
+			Exposure:             agent.ExposureDeferred,
+			Activity:             agent.ActivityManage,
+			RequiredCapabilities: []string{"payment"},
+		},
 		Parameters: map[string]interface{}{
 			"type": "object",
 			"properties": map[string]interface{}{
@@ -622,6 +682,12 @@ func paymasterStatusTool(sac *smartAccountComponents) *agent.Tool {
 		Name:        "paymaster_status",
 		Description: "Check paymaster configuration and USDC approval status for gasless transactions",
 		SafetyLevel: agent.SafetyLevelSafe,
+		Capability: agent.ToolCapability{
+			Category:             "smartaccount",
+			Exposure:             agent.ExposureDeferred,
+			Activity:             agent.ActivityManage,
+			RequiredCapabilities: []string{"payment"},
+		},
 		Parameters: map[string]interface{}{
 			"type":       "object",
 			"properties": map[string]interface{}{},
@@ -647,6 +713,12 @@ func paymasterApproveTool(sac *smartAccountComponents) *agent.Tool {
 		Name:        "paymaster_approve",
 		Description: "Approve USDC spending for the paymaster to enable gasless transactions",
 		SafetyLevel: agent.SafetyLevelDangerous,
+		Capability: agent.ToolCapability{
+			Category:             "smartaccount",
+			Exposure:             agent.ExposureDeferred,
+			Activity:             agent.ActivityManage,
+			RequiredCapabilities: []string{"payment"},
+		},
 		Parameters: map[string]interface{}{
 			"type": "object",
 			"properties": map[string]interface{}{

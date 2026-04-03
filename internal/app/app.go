@@ -136,7 +136,8 @@ func New(boot *bootstrap.Result, opts ...AppOption) (*App, error) {
 	catalog := buildCatalogFromEntries(buildResult.CatalogEntries)
 
 	// B3. Dispatcher tools — dynamic access to all registered built-in tools.
-	dispatcherTools := toolcatalog.BuildDispatcher(catalog)
+	searchIndex := toolcatalog.NewSearchIndex(catalog)
+	dispatcherTools := toolcatalog.BuildDispatcher(catalog, searchIndex)
 	tools = append(tools, dispatcherTools...)
 	app.ToolCatalog = catalog
 

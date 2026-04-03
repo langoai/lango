@@ -649,3 +649,19 @@ When structured orchestration handles a specialist failure, the recovery layer S
 - **WHEN** structured recovery handles a retryable failure before any specialist delegation is observed
 - **THEN** the recovery layer MAY retry the same input
 - **AND** it SHALL not fabricate a failed specialist identity
+
+### Requirement: Automator agent routing includes agent and task prefixes
+The automator agent spec SHALL include `"agent_"` and `"task_"` in its Prefixes list alongside `"cron_"`, `"bg_"`, and `"workflow_"`. The `capabilityMap` SHALL include entries mapping `"agent_"` to "agent lifecycle management" and `"task_"` to "structured task management". Tools with these prefixes SHALL be routed to the automator sub-agent.
+
+#### Scenario: Agent lifecycle tools routed to automator
+- **WHEN** tools with `agent_` prefix (e.g., `agent_spawn`, `agent_status`) are registered
+- **THEN** they SHALL be partitioned to the Automator role in `PartitionTools`
+
+#### Scenario: Task management tools routed to automator
+- **WHEN** tools with `task_` prefix (e.g., `task_create`, `task_list`) are registered
+- **THEN** they SHALL be partitioned to the Automator role in `PartitionTools`
+
+#### Scenario: Capability descriptions for agent and task tools
+- **WHEN** `toolCapability` is called for an `agent_` prefixed tool
+- **THEN** it SHALL return "agent lifecycle management"
+- **AND** `toolCapability` for a `task_` prefixed tool SHALL return "structured task management"

@@ -23,6 +23,7 @@ func Chain(tool *agent.Tool, middlewares ...Middleware) *agent.Tool {
 		Description: tool.Description,
 		Parameters:  tool.Parameters,
 		SafetyLevel: tool.SafetyLevel,
+		Capability:  tool.Capability,
 		Handler:     handler,
 	}
 }
