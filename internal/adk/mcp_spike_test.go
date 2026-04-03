@@ -3,11 +3,11 @@ package adk
 // ============================================================================
 // Unit 6 — MCPToolset Parity Spike
 //
-// Evaluates ADK mcptoolset.New() (v0.6.0) against internal/mcp/adapter.go
+// Evaluates ADK mcptoolset.New() (v1.0.0) against internal/mcp/adapter.go
 // for tool exposure parity. Test-only evaluation — no production code changes.
 //
 // Source files analyzed:
-//   ADK:     google.golang.org/adk@v0.6.0/tool/mcptoolset/{set.go,tool.go,client.go}
+//   ADK:     google.golang.org/adk@v1.0.0/tool/mcptoolset/{set.go,tool.go,client.go}
 //   Current: internal/mcp/adapter.go, internal/mcp/connection.go
 //
 // Adoption rule: ALL 5 conditions must PASS.
@@ -16,6 +16,7 @@ package adk
 import (
 	"testing"
 
+	"google.golang.org/adk/tool"
 	"google.golang.org/adk/tool/mcptoolset"
 
 	"github.com/langoai/lango/internal/agent"
@@ -107,7 +108,7 @@ func TestMCPToolsetParitySummary(t *testing.T) {
 		t.Parallel()
 
 		// Verify ConfirmationProvider type compatibility.
-		var provider mcptoolset.ConfirmationProvider = func(name string, input any) bool {
+		var provider tool.ConfirmationProvider = func(name string, input any) bool {
 			// Example: always allow safe tools, require confirmation for dangerous ones.
 			_ = name
 			_ = input
@@ -302,7 +303,7 @@ func TestMCPToolsetTypeCompat(t *testing.T) {
 		t.Parallel()
 
 		// Verify the ConfirmationProvider signature matches expectations.
-		var _ mcptoolset.ConfirmationProvider = func(toolName string, input any) bool {
+		var _ tool.ConfirmationProvider = func(toolName string, input any) bool {
 			return false
 		}
 	})
