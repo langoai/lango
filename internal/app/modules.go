@@ -13,6 +13,7 @@ import (
 	"github.com/langoai/lango/internal/adk"
 	"github.com/langoai/lango/internal/agent"
 	"github.com/langoai/lango/internal/agentmemory"
+	"github.com/langoai/lango/internal/agentrt"
 	"github.com/langoai/lango/internal/appinit"
 	"github.com/langoai/lango/internal/background"
 	"github.com/langoai/lango/internal/bootstrap"
@@ -211,13 +212,15 @@ func buildFoundationCatalogEntries(cfg *config.Config, base, crypto, secrets []*
 	var entries []appinit.CatalogEntry
 
 	// Split base tools by prefix.
-	var execTools, fsTools, browserTools []*agent.Tool
+	var execTools, fsTools, browserTools, webTools []*agent.Tool
 	for _, t := range base {
 		switch {
 		case len(t.Name) >= 4 && t.Name[:4] == "exec":
 			execTools = append(execTools, t)
 		case len(t.Name) >= 3 && t.Name[:3] == "fs_":
 			fsTools = append(fsTools, t)
+		case len(t.Name) >= 4 && t.Name[:4] == "web_":
+			webTools = append(webTools, t)
 		case len(t.Name) >= 8 && t.Name[:8] == "browser_":
 			browserTools = append(browserTools, t)
 		}
@@ -230,6 +233,10 @@ func buildFoundationCatalogEntries(cfg *config.Config, base, crypto, secrets []*
 		entries = append(entries, appinit.CatalogEntry{Category: "browser", Description: "Web browsing", ConfigKey: "tools.browser.enabled", Enabled: true, Tools: browserTools})
 	} else {
 		entries = append(entries, appinit.CatalogEntry{Category: "browser", Description: "Web browsing (disabled)", ConfigKey: "tools.browser.enabled", Enabled: false})
+	}
+
+	if len(webTools) > 0 {
+		entries = append(entries, appinit.CatalogEntry{Category: "web", Description: "Web search and page fetching", Enabled: true, Tools: webTools})
 	}
 
 	if len(crypto) > 0 {
@@ -560,6 +567,37 @@ func (m *automationModule) Init(ctx context.Context, r appinit.Resolver) (*appin
 		})
 		logger().Info("workflow tools registered")
 	}
+
+	// Agent lifecycle tools (always available when automation module is active).
+	agentRunStore := agentrt.NewInMemoryAgentRunStore()
+	agentRunProjection := agentrt.NewAgentRunProjection(agentRunStore)
+	controlPlane := &agentrt.AgentControlPlane{
+		RunStore:   agentRunStore,
+		Projection: agentRunProjection,
+	}
+	controlTools := agentrt.BuildControlTools(controlPlane)
+	tools = append(tools, controlTools...)
+	entries = append(entries, appinit.CatalogEntry{
+		Category:    "agent_control",
+		Description: "Agent lifecycle management (spawn, wait, stop)",
+		ConfigKey:   "agent.orchestration.mode",
+		Enabled:     true,
+		Tools:       controlTools,
+	})
+	logger().Info("agent control tools registered")
+
+	// Task tracking tools (always available when automation module is active).
+	taskStore := agentrt.NewInMemoryTaskStore()
+	taskTools := agentrt.BuildTaskTools(taskStore)
+	tools = append(tools, taskTools...)
+	entries = append(entries, appinit.CatalogEntry{
+		Category:    "task_tracking",
+		Description: "Structured task management (create, get, list, update)",
+		ConfigKey:   "agent.orchestration.mode",
+		Enabled:     true,
+		Tools:       taskTools,
+	})
+	logger().Info("task tools registered")
 
 	// Disabled category entries.
 	if !cfg.Cron.Enabled {

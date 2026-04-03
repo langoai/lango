@@ -19,6 +19,12 @@ func buildContractTools(caller *contract.Caller) []*agent.Tool {
 			Name:        "contract_read",
 			Description: "Read data from a smart contract (view/pure call, no gas cost)",
 			SafetyLevel: agent.SafetyLevelSafe,
+			Capability: agent.ToolCapability{
+				Category:             "contract",
+				Activity:             agent.ActivityQuery,
+				ReadOnly:             true,
+				RequiredCapabilities: []string{"payment"},
+			},
 			Parameters: map[string]interface{}{
 				"type": "object",
 				"properties": map[string]interface{}{
@@ -52,6 +58,11 @@ func buildContractTools(caller *contract.Caller) []*agent.Tool {
 			Name:        "contract_call",
 			Description: "Send a state-changing transaction to a smart contract (costs gas, may transfer ETH)",
 			SafetyLevel: agent.SafetyLevelDangerous,
+			Capability: agent.ToolCapability{
+				Category:             "contract",
+				Activity:             agent.ActivityExecute,
+				RequiredCapabilities: []string{"payment"},
+			},
 			Parameters: map[string]interface{}{
 				"type": "object",
 				"properties": map[string]interface{}{
@@ -98,6 +109,11 @@ func buildContractTools(caller *contract.Caller) []*agent.Tool {
 			Name:        "contract_abi_load",
 			Description: "Pre-load and cache a contract ABI for faster subsequent calls",
 			SafetyLevel: agent.SafetyLevelSafe,
+			Capability: agent.ToolCapability{
+				Category:             "contract",
+				Activity:             agent.ActivityExecute,
+				RequiredCapabilities: []string{"payment"},
+			},
 			Parameters: map[string]interface{}{
 				"type": "object",
 				"properties": map[string]interface{}{

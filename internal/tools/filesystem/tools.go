@@ -14,6 +14,14 @@ func BuildTools(fsTool *Tool) []*agent.Tool {
 			Name:        "fs_read",
 			Description: "Read a file. Supports optional offset/limit for partial reads.",
 			SafetyLevel: agent.SafetyLevelSafe,
+			Capability: agent.ToolCapability{
+				Category:        "filesystem",
+				Activity:        agent.ActivityRead,
+				ReadOnly:        true,
+				ConcurrencySafe: true,
+				Aliases:         []string{"read_file", "cat"},
+				SearchHints:     []string{"file", "contents", "open"},
+			},
 			Parameters: agent.Schema().
 				Str("path", "The file path to read").
 				Int("offset", "Start reading from this line number (1-indexed, default: read from beginning)").
@@ -39,6 +47,14 @@ func BuildTools(fsTool *Tool) []*agent.Tool {
 			Name:        "fs_list",
 			Description: "List contents of a directory",
 			SafetyLevel: agent.SafetyLevelSafe,
+			Capability: agent.ToolCapability{
+				Category:        "filesystem",
+				Activity:        agent.ActivityRead,
+				ReadOnly:        true,
+				ConcurrencySafe: true,
+				Aliases:         []string{"ls", "list_dir", "dir"},
+				SearchHints:     []string{"directory", "list", "files"},
+			},
 			Parameters: agent.Schema().
 				Str("path", "The directory path to list").
 				Required("path").
@@ -52,6 +68,12 @@ func BuildTools(fsTool *Tool) []*agent.Tool {
 			Name:        "fs_write",
 			Description: "Write content to a file",
 			SafetyLevel: agent.SafetyLevelDangerous,
+			Capability: agent.ToolCapability{
+				Category:    "filesystem",
+				Activity:    agent.ActivityWrite,
+				Aliases:     []string{"write_file", "save"},
+				SearchHints: []string{"file", "create", "write"},
+			},
 			Parameters: agent.Schema().
 				Str("path", "The file path to write to").
 				Str("content", "The content to write").
@@ -70,6 +92,12 @@ func BuildTools(fsTool *Tool) []*agent.Tool {
 			Name:        "fs_edit",
 			Description: "Edit a file by replacing a line range",
 			SafetyLevel: agent.SafetyLevelDangerous,
+			Capability: agent.ToolCapability{
+				Category:    "filesystem",
+				Activity:    agent.ActivityWrite,
+				Aliases:     []string{"edit_file", "modify"},
+				SearchHints: []string{"edit", "change", "line"},
+			},
 			Parameters: agent.Schema().
 				Str("path", "The file path to edit").
 				Int("startLine", "The starting line number (1-indexed)").
@@ -92,6 +120,12 @@ func BuildTools(fsTool *Tool) []*agent.Tool {
 			Name:        "fs_mkdir",
 			Description: "Create a directory",
 			SafetyLevel: agent.SafetyLevelModerate,
+			Capability: agent.ToolCapability{
+				Category:    "filesystem",
+				Activity:    agent.ActivityWrite,
+				Aliases:     []string{"mkdir", "make_dir"},
+				SearchHints: []string{"directory", "create", "folder"},
+			},
 			Parameters: agent.Schema().
 				Str("path", "The directory path to create").
 				Required("path").
@@ -108,6 +142,12 @@ func BuildTools(fsTool *Tool) []*agent.Tool {
 			Name:        "fs_delete",
 			Description: "Delete a file or directory",
 			SafetyLevel: agent.SafetyLevelDangerous,
+			Capability: agent.ToolCapability{
+				Category:    "filesystem",
+				Activity:    agent.ActivityManage,
+				Aliases:     []string{"rm", "remove", "delete_file"},
+				SearchHints: []string{"delete", "remove", "file"},
+			},
 			Parameters: agent.Schema().
 				Str("path", "The path to delete").
 				Required("path").
@@ -124,6 +164,14 @@ func BuildTools(fsTool *Tool) []*agent.Tool {
 			Name:        "fs_stat",
 			Description: "Get file metadata (size, line count, modification time) without reading content",
 			SafetyLevel: agent.SafetyLevelSafe,
+			Capability: agent.ToolCapability{
+				Category:        "filesystem",
+				Activity:        agent.ActivityQuery,
+				ReadOnly:        true,
+				ConcurrencySafe: true,
+				Aliases:         []string{"stat", "file_info"},
+				SearchHints:     []string{"metadata", "size", "info"},
+			},
 			Parameters: agent.Schema().
 				Str("path", "The file path to inspect").
 				Required("path").

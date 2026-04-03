@@ -22,6 +22,12 @@ func statusTool(se *Engine) *agent.Tool {
 		Name:        "sentinel_status",
 		Description: "Get the Security Sentinel engine status including running state and alert counts",
 		SafetyLevel: agent.SafetyLevelSafe,
+		Capability: agent.ToolCapability{
+			Category:        "security",
+			Activity:        agent.ActivityQuery,
+			ReadOnly:        true,
+			ConcurrencySafe: true,
+		},
 		Parameters: map[string]interface{}{
 			"type":       "object",
 			"properties": map[string]interface{}{},
@@ -37,6 +43,12 @@ func alertsTool(se *Engine) *agent.Tool {
 		Name:        "sentinel_alerts",
 		Description: "List security alerts from the Sentinel engine with optional severity filter",
 		SafetyLevel: agent.SafetyLevelSafe,
+		Capability: agent.ToolCapability{
+			Category:        "security",
+			Activity:        agent.ActivityQuery,
+			ReadOnly:        true,
+			ConcurrencySafe: true,
+		},
 		Parameters: map[string]interface{}{
 			"type": "object",
 			"properties": map[string]interface{}{
@@ -97,6 +109,12 @@ func configTool(se *Engine) *agent.Tool {
 		Name:        "sentinel_config",
 		Description: "Show current Security Sentinel detection thresholds and configuration",
 		SafetyLevel: agent.SafetyLevelSafe,
+		Capability: agent.ToolCapability{
+			Category:        "security",
+			Activity:        agent.ActivityQuery,
+			ReadOnly:        true,
+			ConcurrencySafe: true,
+		},
 		Parameters: map[string]interface{}{
 			"type":       "object",
 			"properties": map[string]interface{}{},
@@ -120,6 +138,12 @@ func acknowledgeTool(se *Engine) *agent.Tool {
 		Name:        "sentinel_acknowledge",
 		Description: "Acknowledge and dismiss a security alert by ID",
 		SafetyLevel: agent.SafetyLevelDangerous,
+		Capability: agent.ToolCapability{
+			Category:        "security",
+			Activity:        agent.ActivityQuery,
+			ReadOnly:        true,
+			ConcurrencySafe: true,
+		},
 		Parameters: map[string]interface{}{
 			"type": "object",
 			"properties": map[string]interface{}{

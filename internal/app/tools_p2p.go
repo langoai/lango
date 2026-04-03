@@ -32,6 +32,12 @@ func buildP2PTools(pc *p2pComponents) []*agent.Tool {
 			Name:        "p2p_status",
 			Description: "Show P2P node status: peer ID, listen addresses, connected peers",
 			SafetyLevel: agent.SafetyLevelSafe,
+			Capability: agent.ToolCapability{
+				Category:        "p2p",
+				Activity:        agent.ActivityQuery,
+				ReadOnly:        true,
+				ConcurrencySafe: true,
+			},
 			Parameters: map[string]interface{}{
 				"type":       "object",
 				"properties": map[string]interface{}{},
@@ -71,6 +77,10 @@ func buildP2PTools(pc *p2pComponents) []*agent.Tool {
 			Name:        "p2p_connect",
 			Description: "Initiate a handshake with a remote peer by multiaddr",
 			SafetyLevel: agent.SafetyLevelDangerous,
+			Capability: agent.ToolCapability{
+				Category: "p2p",
+				Activity: agent.ActivityExecute,
+			},
 			Parameters: map[string]interface{}{
 				"type": "object",
 				"properties": map[string]interface{}{
@@ -133,6 +143,10 @@ func buildP2PTools(pc *p2pComponents) []*agent.Tool {
 			Name:        "p2p_disconnect",
 			Description: "Disconnect from a peer",
 			SafetyLevel: agent.SafetyLevelModerate,
+			Capability: agent.ToolCapability{
+				Category: "p2p",
+				Activity: agent.ActivityManage,
+			},
 			Parameters: map[string]interface{}{
 				"type": "object",
 				"properties": map[string]interface{}{
@@ -156,6 +170,12 @@ func buildP2PTools(pc *p2pComponents) []*agent.Tool {
 			Name:        "p2p_peers",
 			Description: "List connected peers with session info",
 			SafetyLevel: agent.SafetyLevelSafe,
+			Capability: agent.ToolCapability{
+				Category:        "p2p",
+				Activity:        agent.ActivityQuery,
+				ReadOnly:        true,
+				ConcurrencySafe: true,
+			},
 			Parameters: map[string]interface{}{
 				"type":       "object",
 				"properties": map[string]interface{}{},
@@ -178,6 +198,10 @@ func buildP2PTools(pc *p2pComponents) []*agent.Tool {
 			Name:        "p2p_query",
 			Description: "Send an inference-only query to a connected peer",
 			SafetyLevel: agent.SafetyLevelModerate,
+			Capability: agent.ToolCapability{
+				Category: "p2p",
+				Activity: agent.ActivityExecute,
+			},
 			Parameters: map[string]interface{}{
 				"type": "object",
 				"properties": map[string]interface{}{
@@ -240,6 +264,12 @@ func buildP2PTools(pc *p2pComponents) []*agent.Tool {
 			Name:        "p2p_firewall_rules",
 			Description: "List current firewall ACL rules",
 			SafetyLevel: agent.SafetyLevelSafe,
+			Capability: agent.ToolCapability{
+				Category:        "p2p",
+				Activity:        agent.ActivityQuery,
+				ReadOnly:        true,
+				ConcurrencySafe: true,
+			},
 			Parameters: map[string]interface{}{
 				"type":       "object",
 				"properties": map[string]interface{}{},
@@ -262,6 +292,10 @@ func buildP2PTools(pc *p2pComponents) []*agent.Tool {
 			Name:        "p2p_firewall_add",
 			Description: "Add a firewall ACL rule",
 			SafetyLevel: agent.SafetyLevelDangerous,
+			Capability: agent.ToolCapability{
+				Category: "p2p",
+				Activity: agent.ActivityManage,
+			},
 			Parameters: map[string]interface{}{
 				"type": "object",
 				"properties": map[string]interface{}{
@@ -306,6 +340,10 @@ func buildP2PTools(pc *p2pComponents) []*agent.Tool {
 			Name:        "p2p_firewall_remove",
 			Description: "Remove all firewall rules for a peer DID",
 			SafetyLevel: agent.SafetyLevelDangerous,
+			Capability: agent.ToolCapability{
+				Category: "p2p",
+				Activity: agent.ActivityManage,
+			},
 			Parameters: map[string]interface{}{
 				"type": "object",
 				"properties": map[string]interface{}{
@@ -330,6 +368,12 @@ func buildP2PTools(pc *p2pComponents) []*agent.Tool {
 			Name:        "p2p_price_query",
 			Description: "Query pricing for a specific tool on a remote peer before invoking it",
 			SafetyLevel: agent.SafetyLevelSafe,
+			Capability: agent.ToolCapability{
+				Category:        "p2p",
+				Activity:        agent.ActivityQuery,
+				ReadOnly:        true,
+				ConcurrencySafe: true,
+			},
 			Parameters: map[string]interface{}{
 				"type": "object",
 				"properties": map[string]interface{}{
@@ -388,6 +432,12 @@ func buildP2PTools(pc *p2pComponents) []*agent.Tool {
 			Name:        "p2p_reputation",
 			Description: "Check a peer's trust score and exchange history",
 			SafetyLevel: agent.SafetyLevelSafe,
+			Capability: agent.ToolCapability{
+				Category:        "p2p",
+				Activity:        agent.ActivityQuery,
+				ReadOnly:        true,
+				ConcurrencySafe: true,
+			},
 			Parameters: map[string]interface{}{
 				"type": "object",
 				"properties": map[string]interface{}{
@@ -435,6 +485,12 @@ func buildP2PTools(pc *p2pComponents) []*agent.Tool {
 			Name:        "p2p_discover",
 			Description: "Discover peers by capability or tags",
 			SafetyLevel: agent.SafetyLevelSafe,
+			Capability: agent.ToolCapability{
+				Category:        "p2p",
+				Activity:        agent.ActivityQuery,
+				ReadOnly:        true,
+				ConcurrencySafe: true,
+			},
 			Parameters: map[string]interface{}{
 				"type": "object",
 				"properties": map[string]interface{}{
@@ -483,6 +539,10 @@ func buildP2PPaymentTool(p2pc *p2pComponents, pc *paymentComponents) []*agent.To
 			Name:        "p2p_pay",
 			Description: "Send USDC payment to a connected peer for their services",
 			SafetyLevel: agent.SafetyLevelDangerous,
+			Capability: agent.ToolCapability{
+				Category: "p2p",
+				Activity: agent.ActivityExecute,
+			},
 			Parameters: map[string]interface{}{
 				"type": "object",
 				"properties": map[string]interface{}{
@@ -588,6 +648,10 @@ func buildP2PPaidInvokeTool(p2pc *p2pComponents, pc *paymentComponents) []*agent
 			Name:        "p2p_invoke_paid",
 			Description: "Invoke a tool on a remote peer with automatic payment: queries price, checks spending limits, signs EIP-3009 authorization, and executes the paid call",
 			SafetyLevel: agent.SafetyLevelDangerous,
+			Capability: agent.ToolCapability{
+				Category: "p2p",
+				Activity: agent.ActivityExecute,
+			},
 			Parameters: map[string]interface{}{
 				"type": "object",
 				"properties": map[string]interface{}{

@@ -45,6 +45,12 @@ func BuildTools(ex Executor, guardFns ...GuardFunc) []*agent.Tool {
 			Name:        "exec",
 			Description: "Execute shell commands",
 			SafetyLevel: agent.SafetyLevelDangerous,
+			Capability: agent.ToolCapability{
+				Category:    "execution",
+				Activity:    agent.ActivityExecute,
+				Aliases:     []string{"run", "shell", "bash", "command"},
+				SearchHints: []string{"terminal", "command line", "sh"},
+			},
 			Parameters: agent.Schema().
 				Str("command", "The shell command to execute").
 				Required("command").
@@ -64,6 +70,12 @@ func BuildTools(ex Executor, guardFns ...GuardFunc) []*agent.Tool {
 			Name:        "exec_bg",
 			Description: "Execute a shell command in the background",
 			SafetyLevel: agent.SafetyLevelDangerous,
+			Capability: agent.ToolCapability{
+				Category:    "execution",
+				Activity:    agent.ActivityExecute,
+				Aliases:     []string{"background_exec", "run_bg"},
+				SearchHints: []string{"background", "async"},
+			},
 			Parameters: agent.Schema().
 				Str("command", "The shell command to execute").
 				Required("command").
@@ -83,6 +95,14 @@ func BuildTools(ex Executor, guardFns ...GuardFunc) []*agent.Tool {
 			Name:        "exec_status",
 			Description: "Check the status of a background process",
 			SafetyLevel: agent.SafetyLevelSafe,
+			Capability: agent.ToolCapability{
+				Category:        "execution",
+				Activity:        agent.ActivityQuery,
+				ReadOnly:        true,
+				ConcurrencySafe: true,
+				Aliases:         []string{"job_status"},
+				SearchHints:     []string{"background", "status"},
+			},
 			Parameters: agent.Schema().
 				Str("id", "The background process ID returned by exec_bg").
 				Required("id").
@@ -99,6 +119,12 @@ func BuildTools(ex Executor, guardFns ...GuardFunc) []*agent.Tool {
 			Name:        "exec_stop",
 			Description: "Stop a background process",
 			SafetyLevel: agent.SafetyLevelDangerous,
+			Capability: agent.ToolCapability{
+				Category:    "execution",
+				Activity:    agent.ActivityManage,
+				Aliases:     []string{"stop_job", "kill"},
+				SearchHints: []string{"cancel", "stop"},
+			},
 			Parameters: agent.Schema().
 				Str("id", "The background process ID returned by exec_bg").
 				Required("id").

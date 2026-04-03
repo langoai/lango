@@ -19,6 +19,10 @@ func buildWorkspaceTools(wc *wsComponents) []*agent.Tool {
 		Name:        "p2p_workspace_create",
 		Description: "Create a new P2P collaborative workspace for agents to share code and messages",
 		SafetyLevel: agent.SafetyLevelDangerous,
+		Capability: agent.ToolCapability{
+			Category: "workspace",
+			Activity: agent.ActivityWrite,
+		},
 		Parameters: map[string]interface{}{
 			"type": "object",
 			"properties": map[string]interface{}{
@@ -61,6 +65,10 @@ func buildWorkspaceTools(wc *wsComponents) []*agent.Tool {
 		Name:        "p2p_workspace_join",
 		Description: "Join an existing P2P workspace",
 		SafetyLevel: agent.SafetyLevelDangerous,
+		Capability: agent.ToolCapability{
+			Category: "workspace",
+			Activity: agent.ActivityWrite,
+		},
 		Parameters: map[string]interface{}{
 			"type": "object",
 			"properties": map[string]interface{}{
@@ -90,6 +98,10 @@ func buildWorkspaceTools(wc *wsComponents) []*agent.Tool {
 		Name:        "p2p_workspace_leave",
 		Description: "Leave a P2P workspace",
 		SafetyLevel: agent.SafetyLevelDangerous,
+		Capability: agent.ToolCapability{
+			Category: "workspace",
+			Activity: agent.ActivityWrite,
+		},
 		Parameters: map[string]interface{}{
 			"type": "object",
 			"properties": map[string]interface{}{
@@ -119,6 +131,10 @@ func buildWorkspaceTools(wc *wsComponents) []*agent.Tool {
 		Name:        "p2p_workspace_list",
 		Description: "List all P2P workspaces",
 		SafetyLevel: agent.SafetyLevelSafe,
+		Capability: agent.ToolCapability{
+			Category: "workspace",
+			ReadOnly: true,
+		},
 		Parameters: map[string]interface{}{
 			"type":       "object",
 			"properties": map[string]interface{}{},
@@ -147,6 +163,10 @@ func buildWorkspaceTools(wc *wsComponents) []*agent.Tool {
 		Name:        "p2p_workspace_status",
 		Description: "Show detailed status of a P2P workspace",
 		SafetyLevel: agent.SafetyLevelSafe,
+		Capability: agent.ToolCapability{
+			Category: "workspace",
+			ReadOnly: true,
+		},
 		Parameters: map[string]interface{}{
 			"type": "object",
 			"properties": map[string]interface{}{
@@ -210,6 +230,10 @@ func buildWorkspaceTools(wc *wsComponents) []*agent.Tool {
 		Name:        "p2p_workspace_post",
 		Description: "Post a message to a P2P workspace (broadcast to all members via GossipSub)",
 		SafetyLevel: agent.SafetyLevelDangerous,
+		Capability: agent.ToolCapability{
+			Category: "workspace",
+			Activity: agent.ActivityWrite,
+		},
 		Parameters: map[string]interface{}{
 			"type": "object",
 			"properties": map[string]interface{}{
@@ -262,6 +286,10 @@ func buildWorkspaceTools(wc *wsComponents) []*agent.Tool {
 		Name:        "p2p_workspace_read",
 		Description: "Read messages from a P2P workspace",
 		SafetyLevel: agent.SafetyLevelSafe,
+		Capability: agent.ToolCapability{
+			Category: "workspace",
+			ReadOnly: true,
+		},
 		Parameters: map[string]interface{}{
 			"type": "object",
 			"properties": map[string]interface{}{
@@ -319,6 +347,10 @@ func buildGitTools(wc *wsComponents) []*agent.Tool {
 			Name:        "p2p_git_init",
 			Description: "Initialize a git repository for a P2P workspace",
 			SafetyLevel: agent.SafetyLevelDangerous,
+			Capability: agent.ToolCapability{
+				Category: "git",
+				Activity: agent.ActivityExecute,
+			},
 			Parameters: map[string]interface{}{
 				"type": "object",
 				"properties": map[string]interface{}{
@@ -341,6 +373,10 @@ func buildGitTools(wc *wsComponents) []*agent.Tool {
 			Name:        "p2p_git_push",
 			Description: "Create a git bundle from workspace repo and broadcast to peers",
 			SafetyLevel: agent.SafetyLevelDangerous,
+			Capability: agent.ToolCapability{
+				Category: "git",
+				Activity: agent.ActivityExecute,
+			},
 			Parameters: map[string]interface{}{
 				"type": "object",
 				"properties": map[string]interface{}{
@@ -393,6 +429,11 @@ func buildGitTools(wc *wsComponents) []*agent.Tool {
 			Name:        "p2p_git_log",
 			Description: "Show commit log for a workspace's git repository",
 			SafetyLevel: agent.SafetyLevelSafe,
+			Capability: agent.ToolCapability{
+				Category:        "git",
+				ReadOnly:        true,
+				ConcurrencySafe: true,
+			},
 			Parameters: map[string]interface{}{
 				"type": "object",
 				"properties": map[string]interface{}{
@@ -427,6 +468,11 @@ func buildGitTools(wc *wsComponents) []*agent.Tool {
 			Name:        "p2p_git_diff",
 			Description: "Show diff between two commits in a workspace repository",
 			SafetyLevel: agent.SafetyLevelSafe,
+			Capability: agent.ToolCapability{
+				Category:        "git",
+				ReadOnly:        true,
+				ConcurrencySafe: true,
+			},
 			Parameters: map[string]interface{}{
 				"type": "object",
 				"properties": map[string]interface{}{
@@ -460,6 +506,11 @@ func buildGitTools(wc *wsComponents) []*agent.Tool {
 			Name:        "p2p_git_leaves",
 			Description: "Find DAG leaf commits (commits with no children) in a workspace repository",
 			SafetyLevel: agent.SafetyLevelSafe,
+			Capability: agent.ToolCapability{
+				Category:        "git",
+				ReadOnly:        true,
+				ConcurrencySafe: true,
+			},
 			Parameters: map[string]interface{}{
 				"type": "object",
 				"properties": map[string]interface{}{

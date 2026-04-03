@@ -3,18 +3,20 @@ package toolcatalog
 import (
 	"context"
 	"fmt"
+	"strings"
 
 	"github.com/langoai/lango/internal/agent"
 )
 
 // BuildDispatcher returns meta-tools that provide dynamic access to
 // the catalog: builtin_list (discovery), builtin_invoke (proxy execution),
-// and builtin_health (diagnostics).
-func BuildDispatcher(catalog *Catalog) []*agent.Tool {
+// builtin_health (diagnostics), and builtin_search (keyword search).
+func BuildDispatcher(catalog *Catalog, index *SearchIndex) []*agent.Tool {
 	return []*agent.Tool{
 		buildListTool(catalog),
 		buildInvokeTool(catalog),
 		buildHealthTool(catalog),
+		buildSearchTool(index),
 	}
 }
 
@@ -48,7 +50,7 @@ func buildListTool(catalog *Catalog) *agent.Tool {
 				})
 			}
 
-			tools := catalog.ListTools(category)
+			tools := catalog.ListVisibleTools(category)
 			toolSummaries := make([]map[string]interface{}, 0, len(tools))
 			for _, t := range tools {
 				toolSummaries = append(toolSummaries, map[string]interface{}{
@@ -59,11 +61,18 @@ func buildListTool(catalog *Catalog) *agent.Tool {
 				})
 			}
 
-			return map[string]interface{}{
-				"categories": catSummaries,
-				"tools":      toolSummaries,
-				"total":      catalog.ToolCount(),
-			}, nil
+			result := map[string]interface{}{
+				"categories":     catSummaries,
+				"tools":          toolSummaries,
+				"total":          catalog.ToolCount(),
+				"deferred_count": catalog.DeferredToolCount(),
+			}
+
+			if catalog.DeferredToolCount() > 0 {
+				result["hint"] = "Use builtin_search to discover additional tools not shown here."
+			}
+
+			return result, nil
 		},
 	}
 }
@@ -171,6 +180,92 @@ func buildHealthTool(catalog *Catalog) *agent.Tool {
 				"enabled_categories":  enabled,
 				"disabled_categories": disabled,
 				"total_tools":         catalog.ToolCount(),
+			}, nil
+		},
+	}
+}
+
+// buildSearchTool creates the builtin_search tool for keyword-based tool discovery.
+func buildSearchTool(index *SearchIndex) *agent.Tool {
+	return &agent.Tool{
+		Name: "builtin_search",
+		Description: "Search for tools by keyword, capability, or description. " +
+			"Returns ranked results with relevance scores.",
+		SafetyLevel: agent.SafetyLevelSafe,
+		Parameters: map[string]interface{}{
+			"type": "object",
+			"properties": map[string]interface{}{
+				"query": map[string]interface{}{
+					"type":        "string",
+					"description": "Search query: keywords, tool names, or capability descriptions.",
+				},
+				"limit": map[string]interface{}{
+					"type":        "integer",
+					"description": "Maximum number of results to return. Defaults to 10.",
+				},
+				"category": map[string]interface{}{
+					"type":        "string",
+					"description": "Optional category filter to narrow search results.",
+				},
+				"activity": map[string]interface{}{
+					"type":        "string",
+					"description": "Optional activity kind filter (e.g. read, write, execute).",
+				},
+			},
+			"required": []string{"query"},
+		},
+		Handler: func(ctx context.Context, params map[string]interface{}) (interface{}, error) {
+			query, _ := params["query"].(string)
+			if query == "" {
+				return nil, fmt.Errorf("query is required")
+			}
+
+			limit := 10
+			if v, ok := params["limit"].(float64); ok && v > 0 {
+				limit = int(v)
+			}
+
+			results := index.Search(query, limit)
+
+			// Apply optional category filter.
+			if cat, _ := params["category"].(string); cat != "" {
+				catLower := strings.ToLower(cat)
+				filtered := results[:0]
+				for _, r := range results {
+					if strings.ToLower(r.Category) == catLower {
+						filtered = append(filtered, r)
+					}
+				}
+				results = filtered
+			}
+
+			// Apply optional activity filter.
+			if act, _ := params["activity"].(string); act != "" {
+				actLower := strings.ToLower(act)
+				filtered := results[:0]
+				for _, r := range results {
+					if strings.ToLower(r.Activity) == actLower {
+						filtered = append(filtered, r)
+					}
+				}
+				results = filtered
+			}
+
+			resultMaps := make([]map[string]interface{}, 0, len(results))
+			for _, r := range results {
+				resultMaps = append(resultMaps, map[string]interface{}{
+					"name":        r.Name,
+					"description": r.Description,
+					"category":    r.Category,
+					"score":       r.Score,
+					"match_field": r.MatchField,
+				})
+			}
+
+			return map[string]interface{}{
+				"query":   query,
+				"results": resultMaps,
+				"count":   len(resultMaps),
 			}, nil
 		},
 	}

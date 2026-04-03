@@ -40,21 +40,29 @@ func setupCatalog() *Catalog {
 	return c
 }
 
-func TestBuildDispatcher_ReturnsThree(t *testing.T) {
+// setupCatalogAndIndex builds both a test catalog and its search index.
+func setupCatalogAndIndex() (*Catalog, *SearchIndex) {
+	c := setupCatalog()
+	return c, NewSearchIndex(c)
+}
+
+func TestBuildDispatcher_ReturnsFour(t *testing.T) {
 	t.Parallel()
 
-	tools := BuildDispatcher(setupCatalog())
-	require.Len(t, tools, 3)
+	catalog, index := setupCatalogAndIndex()
+	tools := BuildDispatcher(catalog, index)
+	require.Len(t, tools, 4)
 	assert.Equal(t, "builtin_list", tools[0].Name)
 	assert.Equal(t, "builtin_invoke", tools[1].Name)
 	assert.Equal(t, "builtin_health", tools[2].Name)
+	assert.Equal(t, "builtin_search", tools[3].Name)
 }
 
 func TestBuiltinList_AllTools(t *testing.T) {
 	t.Parallel()
 
-	catalog := setupCatalog()
-	tools := BuildDispatcher(catalog)
+	catalog, index := setupCatalogAndIndex()
+	tools := BuildDispatcher(catalog, index)
 	listTool := tools[0]
 
 	result, err := listTool.Handler(context.Background(), map[string]interface{}{})
@@ -72,8 +80,8 @@ func TestBuiltinList_AllTools(t *testing.T) {
 func TestBuiltinList_FilterByCategory(t *testing.T) {
 	t.Parallel()
 
-	catalog := setupCatalog()
-	tools := BuildDispatcher(catalog)
+	catalog, index := setupCatalogAndIndex()
+	tools := BuildDispatcher(catalog, index)
 	listTool := tools[0]
 
 	result, err := listTool.Handler(context.Background(), map[string]interface{}{
@@ -93,8 +101,8 @@ func TestBuiltinList_FilterByCategory(t *testing.T) {
 func TestBuiltinInvoke_Success(t *testing.T) {
 	t.Parallel()
 
-	catalog := setupCatalog()
-	tools := BuildDispatcher(catalog)
+	catalog, index := setupCatalogAndIndex()
+	tools := BuildDispatcher(catalog, index)
 	invokeTool := tools[1]
 
 	// Use a safe tool (browser_navigate) — dangerous tools are blocked.
@@ -116,8 +124,8 @@ func TestBuiltinInvoke_Success(t *testing.T) {
 func TestBuiltinInvoke_BlocksDangerousTools(t *testing.T) {
 	t.Parallel()
 
-	catalog := setupCatalog()
-	tools := BuildDispatcher(catalog)
+	catalog, index := setupCatalogAndIndex()
+	tools := BuildDispatcher(catalog, index)
 	invokeTool := tools[1]
 
 	_, err := invokeTool.Handler(context.Background(), map[string]interface{}{
@@ -132,8 +140,8 @@ func TestBuiltinInvoke_BlocksDangerousTools(t *testing.T) {
 func TestBuiltinInvoke_NotFound(t *testing.T) {
 	t.Parallel()
 
-	catalog := setupCatalog()
-	tools := BuildDispatcher(catalog)
+	catalog, index := setupCatalogAndIndex()
+	tools := BuildDispatcher(catalog, index)
 	invokeTool := tools[1]
 
 	_, err := invokeTool.Handler(context.Background(), map[string]interface{}{
@@ -146,8 +154,8 @@ func TestBuiltinInvoke_NotFound(t *testing.T) {
 func TestBuiltinInvoke_EmptyToolName(t *testing.T) {
 	t.Parallel()
 
-	catalog := setupCatalog()
-	tools := BuildDispatcher(catalog)
+	catalog, index := setupCatalogAndIndex()
+	tools := BuildDispatcher(catalog, index)
 	invokeTool := tools[1]
 
 	_, err := invokeTool.Handler(context.Background(), map[string]interface{}{})
@@ -158,8 +166,8 @@ func TestBuiltinInvoke_EmptyToolName(t *testing.T) {
 func TestBuiltinInvoke_NilParams(t *testing.T) {
 	t.Parallel()
 
-	catalog := setupCatalog()
-	tools := BuildDispatcher(catalog)
+	catalog, index := setupCatalogAndIndex()
+	tools := BuildDispatcher(catalog, index)
 	invokeTool := tools[1]
 
 	// Invoke without params — handler should receive empty map.
@@ -176,10 +184,12 @@ func TestBuiltinInvoke_NilParams(t *testing.T) {
 func TestDispatcher_SafetyLevels(t *testing.T) {
 	t.Parallel()
 
-	tools := BuildDispatcher(setupCatalog())
+	catalog, index := setupCatalogAndIndex()
+	tools := BuildDispatcher(catalog, index)
 	assert.Equal(t, agent.SafetyLevelSafe, tools[0].SafetyLevel, "builtin_list should be safe")
 	assert.Equal(t, agent.SafetyLevelDangerous, tools[1].SafetyLevel, "builtin_invoke should be dangerous")
 	assert.Equal(t, agent.SafetyLevelSafe, tools[2].SafetyLevel, "builtin_health should be safe")
+	assert.Equal(t, agent.SafetyLevelSafe, tools[3].SafetyLevel, "builtin_search should be safe")
 }
 
 func TestBuiltinHealth_ShowsDisabledCategories(t *testing.T) {
@@ -199,7 +209,8 @@ func TestBuiltinHealth_ShowsDisabledCategories(t *testing.T) {
 		},
 	})
 
-	tools := BuildDispatcher(c)
+	idx := NewSearchIndex(c)
+	tools := BuildDispatcher(c, idx)
 	healthTool := tools[2]
 
 	result, err := healthTool.Handler(context.Background(), map[string]interface{}{})
@@ -239,7 +250,8 @@ func TestBuiltinHealth_ToolNamesPerCategory(t *testing.T) {
 			Handler: func(ctx context.Context, params map[string]interface{}) (interface{}, error) { return nil, nil }},
 	})
 
-	tools := BuildDispatcher(c)
+	idx := NewSearchIndex(c)
+	tools := BuildDispatcher(c, idx)
 	healthTool := tools[2]
 
 	result, err := healthTool.Handler(context.Background(), map[string]interface{}{})

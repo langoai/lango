@@ -7,6 +7,7 @@ import (
 	"os"
 	"os/exec"
 	"regexp"
+	"strings"
 	"text/template"
 
 	"go.uber.org/zap"
@@ -59,6 +60,8 @@ func (e *Executor) Execute(ctx context.Context, skill SkillEntry, params map[str
 			"type":    "instruction",
 			"content": content,
 		}, nil
+	case "fork":
+		return e.executeFork(skill, params)
 	default:
 		return nil, fmt.Errorf("unknown skill type: %s", skill.Type)
 	}
@@ -161,6 +164,49 @@ func (e *Executor) executeScript(ctx context.Context, skill SkillEntry) (interfa
 	}
 
 	return stdout.String(), nil
+}
+
+func (e *Executor) executeFork(skill SkillEntry, params map[string]interface{}) (interface{}, error) {
+	instruction, _ := skill.Definition["instruction"].(string)
+	if instruction == "" {
+		return nil, fmt.Errorf("fork skill %q missing 'instruction' in definition", skill.Name)
+	}
+
+	agentName := skill.Agent
+	if agentName == "" {
+		agentName = "operator"
+	}
+
+	advisoryTools := "none"
+	if len(skill.AllowedTools) > 0 {
+		advisoryTools = strings.Join(skill.AllowedTools, ", ")
+	}
+
+	var paramSection string
+	if len(params) > 0 {
+		parts := make([]string, 0, len(params))
+		for k, v := range params {
+			parts = append(parts, fmt.Sprintf("  %s: %v", k, v))
+		}
+		paramSection = strings.Join(parts, "\n")
+	} else {
+		paramSection = "  (none)"
+	}
+
+	result := fmt.Sprintf(`[Fork Skill Result]
+This task should be delegated to the '%s' specialist agent.
+
+Instruction: %s
+
+Parameters:
+%s
+
+Advisory tool restrictions: %s
+(Note: tool restrictions are enforced only when using agent_spawn)
+
+Please use transfer_to_agent('%s') to delegate this task.`, agentName, instruction, paramSection, advisoryTools, agentName)
+
+	return result, nil
 }
 
 func (e *Executor) executeTemplate(skill SkillEntry, params map[string]interface{}) (interface{}, error) {

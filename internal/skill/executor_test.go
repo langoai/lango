@@ -234,6 +234,118 @@ func TestExecute_Script(t *testing.T) {
 	})
 }
 
+func TestExecute_Fork(t *testing.T) {
+	t.Parallel()
+
+	executor := newTestExecutor(t)
+	ctx := context.Background()
+
+	t.Run("normal delegation text", func(t *testing.T) {
+		t.Parallel()
+
+		sk := SkillEntry{
+			Name:  "deploy-task",
+			Type:  "fork",
+			Agent: "deployer",
+			Definition: map[string]interface{}{
+				"instruction": "Deploy the application to staging",
+			},
+			AllowedTools: []string{"bash", "read_file"},
+		}
+
+		result, err := executor.Execute(ctx, sk, map[string]interface{}{
+			"target": "staging",
+		})
+		require.NoError(t, err)
+
+		got, ok := result.(string)
+		require.True(t, ok, "result is %T, want string", result)
+
+		assert.Contains(t, got, "[Fork Skill Result]")
+		assert.Contains(t, got, "'deployer' specialist agent")
+		assert.Contains(t, got, "Instruction: Deploy the application to staging")
+		assert.Contains(t, got, "target: staging")
+		assert.Contains(t, got, "Advisory tool restrictions: bash, read_file")
+		assert.Contains(t, got, "transfer_to_agent('deployer')")
+	})
+
+	t.Run("empty agent defaults to operator", func(t *testing.T) {
+		t.Parallel()
+
+		sk := SkillEntry{
+			Name: "default-agent",
+			Type: "fork",
+			Definition: map[string]interface{}{
+				"instruction": "Do the thing",
+			},
+		}
+
+		result, err := executor.Execute(ctx, sk, nil)
+		require.NoError(t, err)
+
+		got, ok := result.(string)
+		require.True(t, ok, "result is %T, want string", result)
+
+		assert.Contains(t, got, "'operator' specialist agent")
+		assert.Contains(t, got, "transfer_to_agent('operator')")
+	})
+
+	t.Run("missing instruction returns error", func(t *testing.T) {
+		t.Parallel()
+
+		sk := SkillEntry{
+			Name:       "no-instruction",
+			Type:       "fork",
+			Agent:      "helper",
+			Definition: map[string]interface{}{},
+		}
+
+		_, err := executor.Execute(ctx, sk, nil)
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "missing 'instruction'")
+	})
+
+	t.Run("no allowed tools shows none", func(t *testing.T) {
+		t.Parallel()
+
+		sk := SkillEntry{
+			Name: "no-tools",
+			Type: "fork",
+			Definition: map[string]interface{}{
+				"instruction": "Simple task",
+			},
+		}
+
+		result, err := executor.Execute(ctx, sk, nil)
+		require.NoError(t, err)
+
+		got, ok := result.(string)
+		require.True(t, ok)
+
+		assert.Contains(t, got, "Advisory tool restrictions: none")
+	})
+
+	t.Run("no params shows none marker", func(t *testing.T) {
+		t.Parallel()
+
+		sk := SkillEntry{
+			Name: "no-params",
+			Type: "fork",
+			Definition: map[string]interface{}{
+				"instruction": "Paramless task",
+			},
+		}
+
+		result, err := executor.Execute(ctx, sk, nil)
+		require.NoError(t, err)
+
+		got, ok := result.(string)
+		require.True(t, ok)
+
+		assert.Contains(t, got, "(none)")
+	})
+}
+
 func TestExecute_UnknownType(t *testing.T) {
 	t.Parallel()
 

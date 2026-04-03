@@ -24,6 +24,10 @@ func BuildEscrowTools(coord *Coordinator, escrowEngine *escrow.Engine, budgetEng
 		Name:        "team_form_with_budget",
 		Description: "Form a team with automatic escrow and budget allocation in a single step",
 		SafetyLevel: agent.SafetyLevelDangerous,
+		Capability: agent.ToolCapability{
+			Category: "p2p",
+			Activity: agent.ActivityExecute,
+		},
 		Parameters: map[string]interface{}{
 			"type": "object",
 			"properties": map[string]interface{}{
@@ -188,6 +192,10 @@ func BuildEscrowTools(coord *Coordinator, escrowEngine *escrow.Engine, budgetEng
 		Name:        "team_complete_milestone",
 		Description: "Mark a team escrow milestone as complete, auto-releases funds when all milestones are done",
 		SafetyLevel: agent.SafetyLevelDangerous,
+		Capability: agent.ToolCapability{
+			Category: "p2p",
+			Activity: agent.ActivityExecute,
+		},
 		Parameters: map[string]interface{}{
 			"type": "object",
 			"properties": map[string]interface{}{

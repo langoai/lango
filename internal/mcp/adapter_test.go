@@ -7,6 +7,7 @@ import (
 	"github.com/stretchr/testify/assert"
 
 	"github.com/langoai/lango/internal/agent"
+	"github.com/langoai/lango/internal/config"
 )
 
 func TestBuildParams(t *testing.T) {
@@ -241,6 +242,28 @@ func TestBuildParams_NonMapProperty(t *testing.T) {
 	assert.Len(t, params, 1)
 	weirdDef := params["weird"].(map[string]interface{})
 	assert.Equal(t, "string", weirdDef["type"])
+}
+
+func TestAdaptTool_Capability(t *testing.T) {
+	t.Parallel()
+
+	dt := DiscoveredTool{
+		ServerName: "testserver",
+		Tool: &sdkmcp.Tool{
+			Name:        "my_tool",
+			Description: "A test MCP tool",
+		},
+	}
+
+	conn := NewServerConnection("testserver", config.MCPServerConfig{
+		SafetyLevel: "moderate",
+	}, config.MCPConfig{})
+
+	tool := AdaptTool(dt, conn, 25000)
+
+	assert.Equal(t, "mcp", tool.Capability.Category)
+	assert.Equal(t, agent.ExposureDeferred, tool.Capability.Exposure)
+	assert.Equal(t, agent.ActivityExecute, tool.Capability.Activity)
 }
 
 func TestBuildParams_JSONRoundTrip(t *testing.T) {

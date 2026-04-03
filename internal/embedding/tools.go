@@ -16,6 +16,12 @@ func BuildRAGTools(ragSvc *RAGService) []*agent.Tool {
 			Name:        "rag_retrieve",
 			Description: "Retrieve semantically similar content from the knowledge base using vector search.",
 			SafetyLevel: agent.SafetyLevelSafe,
+			Capability: agent.ToolCapability{
+				Category:        "rag",
+				Activity:        agent.ActivityQuery,
+				ReadOnly:        true,
+				ConcurrencySafe: true,
+			},
 			Parameters: map[string]interface{}{
 				"type": "object",
 				"properties": map[string]interface{}{

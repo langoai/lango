@@ -25,6 +25,10 @@ func buildMetaTools(store *knowledge.Store, engine *learning.Engine, registry *s
 			Name:        "save_knowledge",
 			Description: "Save knowledge (appends new version if content changes, skips duplicates). Categories: rule, definition, preference, fact, pattern, correction. Temporal tags (evergreen/current_state) are auto-assigned by analyzers",
 			SafetyLevel: agent.SafetyLevelModerate,
+			Capability: agent.ToolCapability{
+				Category: "knowledge",
+				Activity: agent.ActivityWrite,
+			},
 			Parameters: map[string]interface{}{
 				"type": "object",
 				"properties": map[string]interface{}{
@@ -97,6 +101,12 @@ func buildMetaTools(store *knowledge.Store, engine *learning.Engine, registry *s
 			Name:        "get_knowledge_history",
 			Description: "Get version history for a knowledge entry. Returns all versions ordered newest first",
 			SafetyLevel: agent.SafetyLevelSafe,
+			Capability: agent.ToolCapability{
+				Category:        "knowledge",
+				Activity:        agent.ActivityQuery,
+				ReadOnly:        true,
+				ConcurrencySafe: true,
+			},
 			Parameters: map[string]interface{}{
 				"type": "object",
 				"properties": map[string]interface{}{
@@ -135,6 +145,12 @@ func buildMetaTools(store *knowledge.Store, engine *learning.Engine, registry *s
 			Name:        "search_knowledge",
 			Description: "Search stored knowledge entries by query and optional category",
 			SafetyLevel: agent.SafetyLevelSafe,
+			Capability: agent.ToolCapability{
+				Category:        "knowledge",
+				Activity:        agent.ActivityQuery,
+				ReadOnly:        true,
+				ConcurrencySafe: true,
+			},
 			Parameters: map[string]interface{}{
 				"type": "object",
 				"properties": map[string]interface{}{
@@ -162,6 +178,10 @@ func buildMetaTools(store *knowledge.Store, engine *learning.Engine, registry *s
 			Name:        "save_learning",
 			Description: "Save a diagnosed error pattern and its fix for future reference",
 			SafetyLevel: agent.SafetyLevelModerate,
+			Capability: agent.ToolCapability{
+				Category: "knowledge",
+				Activity: agent.ActivityWrite,
+			},
 			Parameters: map[string]interface{}{
 				"type": "object",
 				"properties": map[string]interface{}{
@@ -216,6 +236,12 @@ func buildMetaTools(store *knowledge.Store, engine *learning.Engine, registry *s
 			Name:        "search_learnings",
 			Description: "Search stored learnings by error pattern or trigger",
 			SafetyLevel: agent.SafetyLevelSafe,
+			Capability: agent.ToolCapability{
+				Category:        "knowledge",
+				Activity:        agent.ActivityQuery,
+				ReadOnly:        true,
+				ConcurrencySafe: true,
+			},
 			Parameters: map[string]interface{}{
 				"type": "object",
 				"properties": map[string]interface{}{
@@ -243,6 +269,10 @@ func buildMetaTools(store *knowledge.Store, engine *learning.Engine, registry *s
 			Name:        "create_skill",
 			Description: "Create a new reusable skill from a multi-step workflow, script, or template",
 			SafetyLevel: agent.SafetyLevelModerate,
+			Capability: agent.ToolCapability{
+				Category: "skill",
+				Activity: agent.ActivityManage,
+			},
 			Parameters: map[string]interface{}{
 				"type": "object",
 				"properties": map[string]interface{}{
@@ -330,6 +360,12 @@ func buildMetaTools(store *knowledge.Store, engine *learning.Engine, registry *s
 			Name:        "list_skills",
 			Description: "List all active skills",
 			SafetyLevel: agent.SafetyLevelSafe,
+			Capability: agent.ToolCapability{
+				Category:        "skill",
+				Activity:        agent.ActivityQuery,
+				ReadOnly:        true,
+				ConcurrencySafe: true,
+			},
 			Parameters: map[string]interface{}{
 				"type":       "object",
 				"properties": map[string]interface{}{},
@@ -355,6 +391,10 @@ func buildMetaTools(store *knowledge.Store, engine *learning.Engine, registry *s
 			Description: "Import skills from a GitHub repository or URL. " +
 				"Supports bulk import (all skills from a repo) or single skill import.",
 			SafetyLevel: agent.SafetyLevelModerate,
+			Capability: agent.ToolCapability{
+				Category: "skill",
+				Activity: agent.ActivityManage,
+			},
 			Parameters: map[string]interface{}{
 				"type": "object",
 				"properties": map[string]interface{}{
@@ -501,6 +541,12 @@ func buildMetaTools(store *knowledge.Store, engine *learning.Engine, registry *s
 			Name:        "learning_stats",
 			Description: "Get statistics and briefing about stored learning data including total count, category distribution, average confidence, and date range",
 			SafetyLevel: agent.SafetyLevelSafe,
+			Capability: agent.ToolCapability{
+				Category:        "knowledge",
+				Activity:        agent.ActivityQuery,
+				ReadOnly:        true,
+				ConcurrencySafe: true,
+			},
 			Parameters: map[string]interface{}{
 				"type":       "object",
 				"properties": map[string]interface{}{},
@@ -517,6 +563,10 @@ func buildMetaTools(store *knowledge.Store, engine *learning.Engine, registry *s
 			Name:        "learning_cleanup",
 			Description: "Delete learning entries by criteria (age, confidence, category). Use dry_run=true (default) to preview, dry_run=false to actually delete.",
 			SafetyLevel: agent.SafetyLevelModerate,
+			Capability: agent.ToolCapability{
+				Category: "knowledge",
+				Activity: agent.ActivityManage,
+			},
 			Parameters: map[string]interface{}{
 				"type": "object",
 				"properties": map[string]interface{}{

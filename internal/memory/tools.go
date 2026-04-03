@@ -16,6 +16,12 @@ func BuildObservationTools(ms *Store) []*agent.Tool {
 			Name:        "memory_list_observations",
 			Description: "List observations for a session. Returns compressed notes from conversation history.",
 			SafetyLevel: agent.SafetyLevelSafe,
+			Capability: agent.ToolCapability{
+				Category:        "memory",
+				Activity:        agent.ActivityQuery,
+				ReadOnly:        true,
+				ConcurrencySafe: true,
+			},
 			Parameters: map[string]interface{}{
 				"type": "object",
 				"properties": map[string]interface{}{
@@ -35,6 +41,12 @@ func BuildObservationTools(ms *Store) []*agent.Tool {
 			Name:        "memory_list_reflections",
 			Description: "List reflections for a session. Reflections are condensed observations across time.",
 			SafetyLevel: agent.SafetyLevelSafe,
+			Capability: agent.ToolCapability{
+				Category:        "memory",
+				Activity:        agent.ActivityQuery,
+				ReadOnly:        true,
+				ConcurrencySafe: true,
+			},
 			Parameters: map[string]interface{}{
 				"type": "object",
 				"properties": map[string]interface{}{

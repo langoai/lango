@@ -8,9 +8,12 @@ import "context"
 type contextKey string
 
 const (
-	agentNameKey  contextKey = "lango.agent_name"
-	principalKey  contextKey = "lango.principal"
-	p2pRequestKey contextKey = "lango.p2p_request"
+	agentNameKey         contextKey = "lango.agent_name"
+	principalKey         contextKey = "lango.principal"
+	p2pRequestKey        contextKey = "lango.p2p_request"
+	dynamicAllowedTools  contextKey = "lango.dynamic_allowed_tools"
+	spawnDepthKey        contextKey = "lango.spawn_depth"
+	spawnChainKey        contextKey = "lango.spawn_chain"
 )
 
 // WithAgentName returns a new context carrying the given agent name.
@@ -50,4 +53,48 @@ func WithP2PRequest(ctx context.Context) context.Context {
 func IsP2PRequest(ctx context.Context) bool {
 	v, _ := ctx.Value(p2pRequestKey).(bool)
 	return v
+}
+
+// WithDynamicAllowedTools returns a new context carrying a runtime tool allowlist.
+// When non-empty, only listed tools (plus runtime essentials) may execute.
+func WithDynamicAllowedTools(ctx context.Context, tools []string) context.Context {
+	return context.WithValue(ctx, dynamicAllowedTools, tools)
+}
+
+// DynamicAllowedToolsFromContext extracts the runtime tool allowlist from ctx.
+// Returns nil if no allowlist is present.
+func DynamicAllowedToolsFromContext(ctx context.Context) []string {
+	if v, ok := ctx.Value(dynamicAllowedTools).([]string); ok {
+		return v
+	}
+	return nil
+}
+
+// WithSpawnDepth returns a new context carrying the current agent spawn depth.
+func WithSpawnDepth(ctx context.Context, depth int) context.Context {
+	return context.WithValue(ctx, spawnDepthKey, depth)
+}
+
+// SpawnDepthFromContext extracts the spawn depth from ctx.
+// Returns 0 if no spawn depth is present.
+func SpawnDepthFromContext(ctx context.Context) int {
+	if v, ok := ctx.Value(spawnDepthKey).(int); ok {
+		return v
+	}
+	return 0
+}
+
+// WithSpawnChain returns a new context carrying the agent spawn chain.
+// The chain tracks the lineage of spawned agents for cycle detection.
+func WithSpawnChain(ctx context.Context, chain []string) context.Context {
+	return context.WithValue(ctx, spawnChainKey, chain)
+}
+
+// SpawnChainFromContext extracts the spawn chain from ctx.
+// Returns nil if no spawn chain is present.
+func SpawnChainFromContext(ctx context.Context) []string {
+	if v, ok := ctx.Value(spawnChainKey).([]string); ok {
+		return v
+	}
+	return nil
 }

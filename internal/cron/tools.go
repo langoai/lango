@@ -17,6 +17,10 @@ func BuildTools(scheduler *Scheduler, defaultDeliverTo []string) []*agent.Tool {
 			Name:        "cron_add",
 			Description: "Create a new scheduled cron job that runs an agent prompt on a recurring schedule",
 			SafetyLevel: agent.SafetyLevelModerate,
+			Capability: agent.ToolCapability{
+				Category: "automation",
+				Activity: agent.ActivityManage,
+			},
 			Parameters: map[string]interface{}{
 				"type": "object",
 				"properties": map[string]interface{}{
@@ -106,6 +110,12 @@ func BuildTools(scheduler *Scheduler, defaultDeliverTo []string) []*agent.Tool {
 			Name:        "cron_list",
 			Description: "List all registered cron jobs with their schedules and status",
 			SafetyLevel: agent.SafetyLevelSafe,
+			Capability: agent.ToolCapability{
+				Category:        "automation",
+				Activity:        agent.ActivityManage,
+				ReadOnly:        true,
+				ConcurrencySafe: true,
+			},
 			Parameters: map[string]interface{}{
 				"type":       "object",
 				"properties": map[string]interface{}{},
@@ -122,6 +132,10 @@ func BuildTools(scheduler *Scheduler, defaultDeliverTo []string) []*agent.Tool {
 			Name:        "cron_pause",
 			Description: "Pause a cron job so it no longer fires on schedule",
 			SafetyLevel: agent.SafetyLevelModerate,
+			Capability: agent.ToolCapability{
+				Category: "automation",
+				Activity: agent.ActivityManage,
+			},
 			Parameters: map[string]interface{}{
 				"type": "object",
 				"properties": map[string]interface{}{
@@ -148,6 +162,10 @@ func BuildTools(scheduler *Scheduler, defaultDeliverTo []string) []*agent.Tool {
 			Name:        "cron_resume",
 			Description: "Resume a paused cron job",
 			SafetyLevel: agent.SafetyLevelModerate,
+			Capability: agent.ToolCapability{
+				Category: "automation",
+				Activity: agent.ActivityManage,
+			},
 			Parameters: map[string]interface{}{
 				"type": "object",
 				"properties": map[string]interface{}{
@@ -174,6 +192,10 @@ func BuildTools(scheduler *Scheduler, defaultDeliverTo []string) []*agent.Tool {
 			Name:        "cron_remove",
 			Description: "Permanently remove a cron job",
 			SafetyLevel: agent.SafetyLevelDangerous,
+			Capability: agent.ToolCapability{
+				Category: "automation",
+				Activity: agent.ActivityManage,
+			},
 			Parameters: map[string]interface{}{
 				"type": "object",
 				"properties": map[string]interface{}{
@@ -200,6 +222,12 @@ func BuildTools(scheduler *Scheduler, defaultDeliverTo []string) []*agent.Tool {
 			Name:        "cron_history",
 			Description: "View execution history for cron jobs",
 			SafetyLevel: agent.SafetyLevelSafe,
+			Capability: agent.ToolCapability{
+				Category:        "automation",
+				Activity:        agent.ActivityManage,
+				ReadOnly:        true,
+				ConcurrencySafe: true,
+			},
 			Parameters: map[string]interface{}{
 				"type": "object",
 				"properties": map[string]interface{}{

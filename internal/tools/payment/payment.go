@@ -41,6 +41,11 @@ func buildSendTool(svc *payment.Service) *agent.Tool {
 		Name:        "payment_send",
 		Description: "Send USDC payment on Base blockchain. Requires approval. Amount is in USDC (e.g. \"0.50\" for 50 cents).",
 		SafetyLevel: agent.SafetyLevelDangerous,
+		Capability: agent.ToolCapability{
+			Category:             "payment",
+			Activity:             agent.ActivityExecute,
+			RequiredCapabilities: []string{"payment"},
+		},
 		Parameters: map[string]interface{}{
 			"type": "object",
 			"properties": map[string]interface{}{
@@ -105,6 +110,13 @@ func buildBalanceTool(svc *payment.Service) *agent.Tool {
 		Name:        "payment_balance",
 		Description: "Check USDC balance of the agent wallet.",
 		SafetyLevel: agent.SafetyLevelSafe,
+		Capability: agent.ToolCapability{
+			Category:             "payment",
+			Activity:             agent.ActivityQuery,
+			ReadOnly:             true,
+			ConcurrencySafe:      true,
+			RequiredCapabilities: []string{"payment"},
+		},
 		Parameters: map[string]interface{}{
 			"type":       "object",
 			"properties": map[string]interface{}{},
@@ -133,6 +145,13 @@ func buildHistoryTool(svc *payment.Service) *agent.Tool {
 		Name:        "payment_history",
 		Description: "View recent payment transaction history.",
 		SafetyLevel: agent.SafetyLevelSafe,
+		Capability: agent.ToolCapability{
+			Category:             "payment",
+			Activity:             agent.ActivityQuery,
+			ReadOnly:             true,
+			ConcurrencySafe:      true,
+			RequiredCapabilities: []string{"payment"},
+		},
 		Parameters: map[string]interface{}{
 			"type": "object",
 			"properties": map[string]interface{}{
@@ -163,6 +182,13 @@ func buildLimitsTool(limiter wallet.SpendingLimiter) *agent.Tool {
 		Name:        "payment_limits",
 		Description: "View current spending limits and daily usage.",
 		SafetyLevel: agent.SafetyLevelSafe,
+		Capability: agent.ToolCapability{
+			Category:             "payment",
+			Activity:             agent.ActivityQuery,
+			ReadOnly:             true,
+			ConcurrencySafe:      true,
+			RequiredCapabilities: []string{"payment"},
+		},
 		Parameters: map[string]interface{}{
 			"type":       "object",
 			"properties": map[string]interface{}{},
@@ -203,6 +229,13 @@ func buildWalletInfoTool(svc *payment.Service) *agent.Tool {
 		Name:        "payment_wallet_info",
 		Description: "Show wallet address and network information.",
 		SafetyLevel: agent.SafetyLevelSafe,
+		Capability: agent.ToolCapability{
+			Category:             "payment",
+			Activity:             agent.ActivityQuery,
+			ReadOnly:             true,
+			ConcurrencySafe:      true,
+			RequiredCapabilities: []string{"payment"},
+		},
 		Parameters: map[string]interface{}{
 			"type":       "object",
 			"properties": map[string]interface{}{},
@@ -227,6 +260,11 @@ func buildCreateWalletTool(secrets *security.SecretsStore, chainID int64) *agent
 		Name:        "payment_create_wallet",
 		Description: "Create a new blockchain wallet. Generates a private key stored securely — only the public address is returned. Requires approval.",
 		SafetyLevel: agent.SafetyLevelDangerous,
+		Capability: agent.ToolCapability{
+			Category:             "payment",
+			Activity:             agent.ActivityExecute,
+			RequiredCapabilities: []string{"payment"},
+		},
 		Parameters: map[string]interface{}{
 			"type":       "object",
 			"properties": map[string]interface{}{},
@@ -262,6 +300,11 @@ func buildX402FetchTool(interceptor *x402.Interceptor, svc *payment.Service) *ag
 		Name:        "payment_x402_fetch",
 		Description: "Make an HTTP request with automatic X402 payment. If the server responds with HTTP 402, the agent wallet automatically signs an EIP-3009 authorization and retries. Requires approval.",
 		SafetyLevel: agent.SafetyLevelDangerous,
+		Capability: agent.ToolCapability{
+			Category:             "payment",
+			Activity:             agent.ActivityExecute,
+			RequiredCapabilities: []string{"payment"},
+		},
 		Parameters: map[string]interface{}{
 			"type": "object",
 			"properties": map[string]interface{}{

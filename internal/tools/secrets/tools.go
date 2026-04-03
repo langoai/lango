@@ -13,6 +13,11 @@ func BuildTools(secretsStore *security.SecretsStore, refs *security.RefStore, sc
 			Name:        "secrets_store",
 			Description: "Encrypt and store a secret value",
 			SafetyLevel: agent.SafetyLevelDangerous,
+			Capability: agent.ToolCapability{
+				Category:    "secrets",
+				Activity:    agent.ActivityWrite,
+				SearchHints: []string{"store", "save", "password"},
+			},
 			Parameters: agent.Schema().
 				Str("name", "Unique name for the secret").
 				Str("value", "The secret value to store").
@@ -24,6 +29,12 @@ func BuildTools(secretsStore *security.SecretsStore, refs *security.RefStore, sc
 			Name:        "secrets_get",
 			Description: "Retrieve a stored secret as a reference token. Returns an opaque {{secret:name}} token that is resolved at execution time by exec tools. The actual secret value never enters the agent context.",
 			SafetyLevel: agent.SafetyLevelDangerous,
+			Capability: agent.ToolCapability{
+				Category:    "secrets",
+				Activity:    agent.ActivityRead,
+				ReadOnly:    true,
+				SearchHints: []string{"retrieve", "password"},
+			},
 			Parameters: agent.Schema().
 				Str("name", "Name of the secret to retrieve").
 				Required("name").
@@ -34,6 +45,12 @@ func BuildTools(secretsStore *security.SecretsStore, refs *security.RefStore, sc
 			Name:        "secrets_list",
 			Description: "List all stored secrets (metadata only, no values)",
 			SafetyLevel: agent.SafetyLevelSafe,
+			Capability: agent.ToolCapability{
+				Category:        "secrets",
+				Activity:        agent.ActivityQuery,
+				ReadOnly:        true,
+				ConcurrencySafe: true,
+			},
 			Parameters: agent.Schema().Build(),
 			Handler:     st.List,
 		},
@@ -41,6 +58,11 @@ func BuildTools(secretsStore *security.SecretsStore, refs *security.RefStore, sc
 			Name:        "secrets_delete",
 			Description: "Delete a stored secret",
 			SafetyLevel: agent.SafetyLevelDangerous,
+			Capability: agent.ToolCapability{
+				Category:    "secrets",
+				Activity:    agent.ActivityManage,
+				SearchHints: []string{"remove", "delete"},
+			},
 			Parameters: agent.Schema().
 				Str("name", "Name of the secret to delete").
 				Required("name").

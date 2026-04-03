@@ -54,6 +54,13 @@ func buildSkillBody(entry *SkillEntry) (string, error) {
 		if content != "" && !strings.HasSuffix(content, "\n") {
 			buf.WriteString("\n")
 		}
+
+	case "fork":
+		instruction, _ := entry.Definition["instruction"].(string)
+		buf.WriteString(instruction)
+		if instruction != "" && !strings.HasSuffix(instruction, "\n") {
+			buf.WriteString("\n")
+		}
 	}
 
 	if len(entry.Parameters) > 0 {
@@ -71,14 +78,21 @@ func buildSkillBody(entry *SkillEntry) (string, error) {
 
 // frontmatter is the YAML frontmatter structure of a SKILL.md file.
 type frontmatter struct {
-	Name             string `yaml:"name"`
-	Description      string `yaml:"description"`
-	Type             string `yaml:"type"`
-	Status           string `yaml:"status"`
-	CreatedBy        string `yaml:"created_by"`
-	RequiresApproval bool   `yaml:"requires_approval"`
-	Source           string `yaml:"source,omitempty"`
-	AllowedTools     string `yaml:"allowed-tools,omitempty"`
+	Name             string            `yaml:"name"`
+	Description      string            `yaml:"description"`
+	Type             string            `yaml:"type"`
+	Status           string            `yaml:"status"`
+	CreatedBy        string            `yaml:"created_by"`
+	RequiresApproval bool              `yaml:"requires_approval"`
+	Source           string            `yaml:"source,omitempty"`
+	AllowedTools     string            `yaml:"allowed-tools,omitempty"`
+	WhenToUse        string            `yaml:"when_to_use,omitempty"`
+	Paths            string            `yaml:"paths,omitempty"`
+	Context          string            `yaml:"context,omitempty"`
+	Model            string            `yaml:"model,omitempty"`
+	Effort           string            `yaml:"effort,omitempty"`
+	Agent            string            `yaml:"agent,omitempty"`
+	Hooks            map[string]string `yaml:"hooks,omitempty"`
 }
 
 var _codeBlockRe = regexp.MustCompile("(?s)```(\\w+)?\\s*\n(.*?)```")
@@ -111,6 +125,11 @@ func ParseSkillMD(content []byte) (*SkillEntry, error) {
 		allowedTools = strings.Fields(meta.AllowedTools)
 	}
 
+	var paths []string
+	if meta.Paths != "" {
+		paths = strings.Fields(meta.Paths)
+	}
+
 	entry := &SkillEntry{
 		Name:             meta.Name,
 		Description:      meta.Description,
@@ -120,6 +139,13 @@ func ParseSkillMD(content []byte) (*SkillEntry, error) {
 		RequiresApproval: meta.RequiresApproval,
 		Source:           meta.Source,
 		AllowedTools:     allowedTools,
+		WhenToUse:        meta.WhenToUse,
+		Paths:            paths,
+		Context:          meta.Context,
+		Model:            meta.Model,
+		Effort:           meta.Effort,
+		Agent:            meta.Agent,
+		Hooks:            meta.Hooks,
 	}
 
 	definition, params, err := parseBody(meta.Type, body)
@@ -144,6 +170,11 @@ func RenderSkillMD(entry *SkillEntry) ([]byte, error) {
 		allowedToolsStr = strings.Join(entry.AllowedTools, " ")
 	}
 
+	var pathsStr string
+	if len(entry.Paths) > 0 {
+		pathsStr = strings.Join(entry.Paths, " ")
+	}
+
 	meta := frontmatter{
 		Name:             entry.Name,
 		Description:      entry.Description,
@@ -153,6 +184,13 @@ func RenderSkillMD(entry *SkillEntry) ([]byte, error) {
 		RequiresApproval: entry.RequiresApproval,
 		Source:           entry.Source,
 		AllowedTools:     allowedToolsStr,
+		WhenToUse:        entry.WhenToUse,
+		Paths:            pathsStr,
+		Context:          entry.Context,
+		Model:            entry.Model,
+		Effort:           entry.Effort,
+		Agent:            entry.Agent,
+		Hooks:            entry.Hooks,
 	}
 
 	body, err := buildSkillBody(entry)
@@ -219,6 +257,15 @@ func parseBody(skillType, body string) (definition map[string]interface{}, param
 			content = strings.TrimSpace(content[:idx])
 		}
 		definition["content"] = content
+
+	case "fork":
+		// Store the entire body as the delegation instruction.
+		// Strip the ## Parameters section if present — it is parsed separately below.
+		instruction := body
+		if idx := strings.Index(instruction, "## Parameters"); idx >= 0 {
+			instruction = strings.TrimSpace(instruction[:idx])
+		}
+		definition["instruction"] = instruction
 	}
 
 	// Extract parameters section (last json block after ## Parameters header)

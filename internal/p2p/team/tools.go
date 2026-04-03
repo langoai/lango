@@ -19,6 +19,10 @@ func BuildTools(coord *Coordinator) []*agent.Tool {
 		Name:        "team_form",
 		Description: "Form a new P2P agent team by selecting agents with a specific capability",
 		SafetyLevel: agent.SafetyLevelDangerous,
+		Capability: agent.ToolCapability{
+			Category: "p2p",
+			Activity: agent.ActivityManage,
+		},
 		Parameters: map[string]interface{}{
 			"type": "object",
 			"properties": map[string]interface{}{
@@ -85,6 +89,10 @@ func BuildTools(coord *Coordinator) []*agent.Tool {
 		Name:        "team_delegate",
 		Description: "Delegate a tool invocation to all workers in a team and resolve conflicts",
 		SafetyLevel: agent.SafetyLevelDangerous,
+		Capability: agent.ToolCapability{
+			Category: "p2p",
+			Activity: agent.ActivityManage,
+		},
 		Parameters: map[string]interface{}{
 			"type": "object",
 			"properties": map[string]interface{}{
@@ -151,6 +159,10 @@ func BuildTools(coord *Coordinator) []*agent.Tool {
 		Name:        "team_status",
 		Description: "Show detailed status of a team including members and budget",
 		SafetyLevel: agent.SafetyLevelSafe,
+		Capability: agent.ToolCapability{
+			Category: "p2p",
+			Activity: agent.ActivityManage,
+		},
 		Parameters: map[string]interface{}{
 			"type": "object",
 			"properties": map[string]interface{}{
@@ -202,6 +214,10 @@ func BuildTools(coord *Coordinator) []*agent.Tool {
 		Name:        "team_list",
 		Description: "List all active P2P agent teams",
 		SafetyLevel: agent.SafetyLevelSafe,
+		Capability: agent.ToolCapability{
+			Category: "p2p",
+			Activity: agent.ActivityManage,
+		},
 		Parameters: map[string]interface{}{
 			"type":       "object",
 			"properties": map[string]interface{}{},
@@ -227,6 +243,10 @@ func BuildTools(coord *Coordinator) []*agent.Tool {
 		Name:        "team_disband",
 		Description: "Disband an existing P2P agent team",
 		SafetyLevel: agent.SafetyLevelDangerous,
+		Capability: agent.ToolCapability{
+			Category: "p2p",
+			Activity: agent.ActivityManage,
+		},
 		Parameters: map[string]interface{}{
 			"type": "object",
 			"properties": map[string]interface{}{

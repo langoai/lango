@@ -31,12 +31,13 @@ const (
 	SkillTypeComposite   SkillType = "composite"
 	SkillTypeScript      SkillType = "script"
 	SkillTypeTemplate    SkillType = "template"
+	SkillTypeFork        SkillType = "fork"
 )
 
 // Valid reports whether t is a known skill type.
 func (t SkillType) Valid() bool {
 	switch t {
-	case SkillTypeInstruction, SkillTypeComposite, SkillTypeScript, SkillTypeTemplate:
+	case SkillTypeInstruction, SkillTypeComposite, SkillTypeScript, SkillTypeTemplate, SkillTypeFork:
 		return true
 	}
 	return false
@@ -44,7 +45,7 @@ func (t SkillType) Valid() bool {
 
 // Values returns all known skill types.
 func (t SkillType) Values() []SkillType {
-	return []SkillType{SkillTypeInstruction, SkillTypeComposite, SkillTypeScript, SkillTypeTemplate}
+	return []SkillType{SkillTypeInstruction, SkillTypeComposite, SkillTypeScript, SkillTypeTemplate, SkillTypeFork}
 }
 
 // SkillEntry is the domain type for skill CRUD operations.
@@ -60,4 +61,11 @@ type SkillEntry struct {
 	RequiresApproval bool
 	Source           string   // import source URL (empty for locally created)
 	AllowedTools     []string // pre-approved tools (from "allowed-tools" frontmatter)
+	WhenToUse        string            // human-readable trigger description
+	Paths            []string          // file path glob patterns for auto-activation
+	Context          string            // additional context for the LLM
+	Model            string            // preferred model override (empty = default)
+	Effort           string            // "low", "medium", "high" — reasoning effort
+	Agent            string            // target agent name (empty = operator)
+	Hooks            map[string]string // lifecycle hooks: "pre", "post"
 }

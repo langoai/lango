@@ -18,6 +18,10 @@ func BuildTools(engine *Engine, stateDir string, defaultDeliverTo []string) []*a
 			Name:        "workflow_run",
 			Description: "Execute a workflow from a YAML file path or inline YAML content",
 			SafetyLevel: agent.SafetyLevelModerate,
+			Capability: agent.ToolCapability{
+				Category: "automation",
+				Activity: agent.ActivityExecute,
+			},
 			Parameters: map[string]interface{}{
 				"type": "object",
 				"properties": map[string]interface{}{
@@ -72,6 +76,10 @@ func BuildTools(engine *Engine, stateDir string, defaultDeliverTo []string) []*a
 			Name:        "workflow_status",
 			Description: "Check the current status and progress of a workflow execution",
 			SafetyLevel: agent.SafetyLevelSafe,
+			Capability: agent.ToolCapability{
+				Category: "automation",
+				Activity: agent.ActivityExecute,
+			},
 			Parameters: map[string]interface{}{
 				"type": "object",
 				"properties": map[string]interface{}{
@@ -95,6 +103,10 @@ func BuildTools(engine *Engine, stateDir string, defaultDeliverTo []string) []*a
 			Name:        "workflow_list",
 			Description: "List recent workflow executions",
 			SafetyLevel: agent.SafetyLevelSafe,
+			Capability: agent.ToolCapability{
+				Category: "automation",
+				Activity: agent.ActivityExecute,
+			},
 			Parameters: map[string]interface{}{
 				"type": "object",
 				"properties": map[string]interface{}{
@@ -114,6 +126,10 @@ func BuildTools(engine *Engine, stateDir string, defaultDeliverTo []string) []*a
 			Name:        "workflow_cancel",
 			Description: "Cancel a running workflow execution",
 			SafetyLevel: agent.SafetyLevelModerate,
+			Capability: agent.ToolCapability{
+				Category: "automation",
+				Activity: agent.ActivityExecute,
+			},
 			Parameters: map[string]interface{}{
 				"type": "object",
 				"properties": map[string]interface{}{
@@ -136,6 +152,10 @@ func BuildTools(engine *Engine, stateDir string, defaultDeliverTo []string) []*a
 			Name:        "workflow_save",
 			Description: "Save a workflow YAML definition to the workflows directory for future use",
 			SafetyLevel: agent.SafetyLevelModerate,
+			Capability: agent.ToolCapability{
+				Category: "automation",
+				Activity: agent.ActivityExecute,
+			},
 			Parameters: map[string]interface{}{
 				"type": "object",
 				"properties": map[string]interface{}{

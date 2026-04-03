@@ -1,5 +1,16 @@
 package toolchain
 
+import "github.com/langoai/lango/internal/ctxkeys"
+
+// runtimeEssentials are system tools always allowed regardless of DynamicAllowedTools.
+// builtin_invoke is deliberately excluded: it can proxy-execute other tools, bypassing the allowlist.
+var runtimeEssentials = map[string]bool{
+	"tool_output_get": true,
+	"builtin_list":    true,
+	"builtin_search":  true,
+	"builtin_health":  true,
+}
+
 // AgentAccessControlHook enforces per-agent tool ACL.
 // Priority: 20 (runs after security filter but before execution).
 type AgentAccessControlHook struct {
@@ -51,6 +62,23 @@ func (h *AgentAccessControlHook) Pre(ctx HookContext) (PreHookResult, error) {
 			return PreHookResult{
 				Action:      Block,
 				BlockReason: "agent '" + agentName + "' does not have access to tool '" + ctx.ToolName + "'",
+			}, nil
+		}
+	}
+
+	// Check context-level dynamic tool restrictions.
+	if dynAllowed := ctxkeys.DynamicAllowedToolsFromContext(ctx.Ctx); len(dynAllowed) > 0 {
+		if runtimeEssentials[ctx.ToolName] {
+			return PreHookResult{Action: Continue}, nil
+		}
+		allowSet := make(map[string]bool, len(dynAllowed))
+		for _, t := range dynAllowed {
+			allowSet[t] = true
+		}
+		if !allowSet[ctx.ToolName] {
+			return PreHookResult{
+				Action:      Block,
+				BlockReason: "tool restricted by DynamicAllowedTools",
 			}, nil
 		}
 	}
