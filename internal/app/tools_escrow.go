@@ -37,6 +37,7 @@ func escrowCreateTool(ee *escrow.Engine) *agent.Tool {
 		SafetyLevel: agent.SafetyLevelDangerous,
 		Capability: agent.ToolCapability{
 			Category:             "escrow",
+			Exposure:             agent.ExposureDeferred,
 			Activity:             agent.ActivityExecute,
 			RequiredCapabilities: []string{"payment"},
 		},
@@ -126,6 +127,7 @@ func escrowFundTool(ee *escrow.Engine, settler escrow.SettlementExecutor) *agent
 		SafetyLevel: agent.SafetyLevelDangerous,
 		Capability: agent.ToolCapability{
 			Category:             "escrow",
+			Exposure:             agent.ExposureDeferred,
 			Activity:             agent.ActivityExecute,
 			RequiredCapabilities: []string{"payment"},
 		},
@@ -190,6 +192,7 @@ func escrowActivateTool(ee *escrow.Engine) *agent.Tool {
 		SafetyLevel: agent.SafetyLevelDangerous,
 		Capability: agent.ToolCapability{
 			Category:             "escrow",
+			Exposure:             agent.ExposureDeferred,
 			Activity:             agent.ActivityExecute,
 			RequiredCapabilities: []string{"payment"},
 		},
@@ -225,6 +228,7 @@ func escrowSubmitWorkTool(ee *escrow.Engine, settler escrow.SettlementExecutor) 
 		SafetyLevel: agent.SafetyLevelDangerous,
 		Capability: agent.ToolCapability{
 			Category:             "escrow",
+			Exposure:             agent.ExposureDeferred,
 			Activity:             agent.ActivityExecute,
 			RequiredCapabilities: []string{"payment"},
 		},
@@ -297,6 +301,7 @@ func escrowReleaseTool(ee *escrow.Engine, settler escrow.SettlementExecutor) *ag
 		SafetyLevel: agent.SafetyLevelDangerous,
 		Capability: agent.ToolCapability{
 			Category:             "escrow",
+			Exposure:             agent.ExposureDeferred,
 			Activity:             agent.ActivityExecute,
 			RequiredCapabilities: []string{"payment"},
 		},
@@ -360,6 +365,7 @@ func escrowRefundTool(ee *escrow.Engine, settler escrow.SettlementExecutor) *age
 		SafetyLevel: agent.SafetyLevelDangerous,
 		Capability: agent.ToolCapability{
 			Category:             "escrow",
+			Exposure:             agent.ExposureDeferred,
 			Activity:             agent.ActivityExecute,
 			RequiredCapabilities: []string{"payment"},
 		},
@@ -423,6 +429,7 @@ func escrowDisputeTool(ee *escrow.Engine, settler escrow.SettlementExecutor) *ag
 		SafetyLevel: agent.SafetyLevelDangerous,
 		Capability: agent.ToolCapability{
 			Category:             "escrow",
+			Exposure:             agent.ExposureDeferred,
 			Activity:             agent.ActivityExecute,
 			RequiredCapabilities: []string{"payment"},
 		},
@@ -491,6 +498,7 @@ func escrowResolveTool(ee *escrow.Engine, settler escrow.SettlementExecutor) *ag
 		SafetyLevel: agent.SafetyLevelDangerous,
 		Capability: agent.ToolCapability{
 			Category:             "escrow",
+			Exposure:             agent.ExposureDeferred,
 			Activity:             agent.ActivityExecute,
 			RequiredCapabilities: []string{"payment"},
 		},
@@ -572,6 +580,7 @@ func escrowStatusTool(ee *escrow.Engine, settler escrow.SettlementExecutor) *age
 		SafetyLevel: agent.SafetyLevelSafe,
 		Capability: agent.ToolCapability{
 			Category:             "escrow",
+			Exposure:             agent.ExposureDeferred,
 			Activity:             agent.ActivityQuery,
 			ReadOnly:             true,
 			RequiredCapabilities: []string{"payment"},
@@ -658,6 +667,7 @@ func escrowListTool(ee *escrow.Engine) *agent.Tool {
 		SafetyLevel: agent.SafetyLevelSafe,
 		Capability: agent.ToolCapability{
 			Category:             "escrow",
+			Exposure:             agent.ExposureDeferred,
 			Activity:             agent.ActivityQuery,
 			ReadOnly:             true,
 			RequiredCapabilities: []string{"payment"},

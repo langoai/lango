@@ -47,6 +47,7 @@ func buildRunCreate(store RunLedgerStore) *agent.Tool {
 		SafetyLevel: agent.SafetyLevelModerate,
 		Capability: agent.ToolCapability{
 			Category: "system",
+			Exposure: agent.ExposureDeferred,
 			Activity: agent.ActivityManage,
 		},
 		Parameters: agent.Schema().
@@ -136,6 +137,7 @@ func buildRunRead(store RunLedgerStore) *agent.Tool {
 		SafetyLevel: agent.SafetyLevelSafe,
 		Capability: agent.ToolCapability{
 			Category: "system",
+			Exposure: agent.ExposureDeferred,
 			Activity: agent.ActivityManage,
 		},
 		Parameters: agent.Schema().
@@ -160,6 +162,7 @@ func buildRunActive(store RunLedgerStore) *agent.Tool {
 		SafetyLevel: agent.SafetyLevelSafe,
 		Capability: agent.ToolCapability{
 			Category: "system",
+			Exposure: agent.ExposureDeferred,
 			Activity: agent.ActivityManage,
 		},
 		Parameters: agent.Schema().
@@ -210,6 +213,7 @@ func buildRunNote(store RunLedgerStore) *agent.Tool {
 		SafetyLevel: agent.SafetyLevelSafe,
 		Capability: agent.ToolCapability{
 			Category: "system",
+			Exposure: agent.ExposureDeferred,
 			Activity: agent.ActivityManage,
 		},
 		Parameters: agent.Schema().
@@ -262,6 +266,7 @@ func buildRunProposeStepResult(store RunLedgerStore, pev *PEVEngine) *agent.Tool
 		SafetyLevel: agent.SafetyLevelModerate,
 		Capability: agent.ToolCapability{
 			Category: "system",
+			Exposure: agent.ExposureDeferred,
 			Activity: agent.ActivityManage,
 		},
 		Parameters: agent.Schema().
@@ -375,6 +380,7 @@ func buildRunApplyPolicy(store RunLedgerStore) *agent.Tool {
 		SafetyLevel: agent.SafetyLevelModerate,
 		Capability: agent.ToolCapability{
 			Category: "system",
+			Exposure: agent.ExposureDeferred,
 			Activity: agent.ActivityManage,
 		},
 		Parameters: agent.Schema().
@@ -453,6 +459,7 @@ func buildRunApproveStep(store RunLedgerStore, pev *PEVEngine) *agent.Tool {
 		SafetyLevel: agent.SafetyLevelModerate,
 		Capability: agent.ToolCapability{
 			Category: "system",
+			Exposure: agent.ExposureDeferred,
 			Activity: agent.ActivityManage,
 		},
 		Parameters: agent.Schema().
@@ -529,6 +536,7 @@ func buildRunResume(store RunLedgerStore) *agent.Tool {
 		SafetyLevel: agent.SafetyLevelModerate,
 		Capability: agent.ToolCapability{
 			Category: "system",
+			Exposure: agent.ExposureDeferred,
 			Activity: agent.ActivityManage,
 		},
 		Parameters: agent.Schema().

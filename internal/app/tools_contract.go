@@ -21,6 +21,7 @@ func buildContractTools(caller *contract.Caller) []*agent.Tool {
 			SafetyLevel: agent.SafetyLevelSafe,
 			Capability: agent.ToolCapability{
 				Category:             "contract",
+				Exposure:             agent.ExposureDeferred,
 				Activity:             agent.ActivityQuery,
 				ReadOnly:             true,
 				RequiredCapabilities: []string{"payment"},
@@ -60,6 +61,7 @@ func buildContractTools(caller *contract.Caller) []*agent.Tool {
 			SafetyLevel: agent.SafetyLevelDangerous,
 			Capability: agent.ToolCapability{
 				Category:             "contract",
+				Exposure:             agent.ExposureDeferred,
 				Activity:             agent.ActivityExecute,
 				RequiredCapabilities: []string{"payment"},
 			},
@@ -111,6 +113,7 @@ func buildContractTools(caller *contract.Caller) []*agent.Tool {
 			SafetyLevel: agent.SafetyLevelSafe,
 			Capability: agent.ToolCapability{
 				Category:             "contract",
+				Exposure:             agent.ExposureDeferred,
 				Activity:             agent.ActivityExecute,
 				RequiredCapabilities: []string{"payment"},
 			},

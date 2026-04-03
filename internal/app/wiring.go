@@ -704,12 +704,21 @@ func initGateway(cfg *config.Config, adkAgent *adk.Agent, store session.Store, a
 	}, adkAgent, nil, store, auth)
 }
 
-// buildToolCatalogSection creates a dynamic prompt section listing active tool
+// buildToolCatalogSection creates a dynamic prompt section listing visible tool
 // categories with their tool names, so the LLM can discover available tools.
+// Tools marked as ExposureDeferred are excluded from the listing; a summary note
+// tells the LLM how many additional tools are available via builtin_search.
 func buildToolCatalogSection(catalog *toolcatalog.Catalog) *prompt.StaticSection {
-	summary := catalog.EnabledCategorySummary()
-	if len(summary) == 0 {
+	// Only include tools that are visible (Default or AlwaysVisible exposure).
+	visible := catalog.ListVisibleTools("")
+	if len(visible) == 0 {
 		return prompt.NewStaticSection(prompt.SectionToolCatalog, 410, "", "")
+	}
+
+	// Group visible tools by category.
+	catTools := make(map[string][]string)
+	for _, ts := range visible {
+		catTools[ts.Category] = append(catTools[ts.Category], ts.Name)
 	}
 
 	var b strings.Builder
@@ -717,7 +726,7 @@ func buildToolCatalogSection(catalog *toolcatalog.Catalog) *prompt.StaticSection
 
 	categories := catalog.ListCategories()
 	for _, cat := range categories {
-		names, ok := summary[cat.Name]
+		names, ok := catTools[cat.Name]
 		if !ok {
 			continue
 		}
@@ -745,6 +754,11 @@ func buildToolCatalogSection(catalog *toolcatalog.Catalog) *prompt.StaticSection
 	}
 
 	b.WriteString("\nUse builtin_health to diagnose tool registration, or builtin_list to discover all tools.")
+
+	// Inform the LLM about deferred tools available via search.
+	if deferred := catalog.DeferredToolCount(); deferred > 0 {
+		fmt.Fprintf(&b, "\nAdditional %d specialized tools available via builtin_search.", deferred)
+	}
 
 	return prompt.NewStaticSection(prompt.SectionToolCatalog, 410, "Available Tool Categories", b.String())
 }

@@ -43,6 +43,7 @@ func smartAccountDeployTool(sac *smartAccountComponents) *agent.Tool {
 		SafetyLevel: agent.SafetyLevelDangerous,
 		Capability: agent.ToolCapability{
 			Category:             "smartaccount",
+			Exposure:             agent.ExposureDeferred,
 			Activity:             agent.ActivityManage,
 			RequiredCapabilities: []string{"payment"},
 		},
@@ -82,6 +83,7 @@ func smartAccountInfoTool(sac *smartAccountComponents) *agent.Tool {
 		SafetyLevel: agent.SafetyLevelSafe,
 		Capability: agent.ToolCapability{
 			Category:             "smartaccount",
+			Exposure:             agent.ExposureDeferred,
 			Activity:             agent.ActivityManage,
 			RequiredCapabilities: []string{"payment"},
 		},
@@ -121,6 +123,7 @@ func sessionKeyCreateTool(sac *smartAccountComponents) *agent.Tool {
 		SafetyLevel: agent.SafetyLevelDangerous,
 		Capability: agent.ToolCapability{
 			Category:             "smartaccount",
+			Exposure:             agent.ExposureDeferred,
 			Activity:             agent.ActivityManage,
 			RequiredCapabilities: []string{"payment"},
 		},
@@ -227,6 +230,7 @@ func sessionKeyListTool(sac *smartAccountComponents) *agent.Tool {
 		SafetyLevel: agent.SafetyLevelSafe,
 		Capability: agent.ToolCapability{
 			Category:             "smartaccount",
+			Exposure:             agent.ExposureDeferred,
 			Activity:             agent.ActivityManage,
 			RequiredCapabilities: []string{"payment"},
 		},
@@ -271,6 +275,7 @@ func sessionKeyRevokeTool(sac *smartAccountComponents) *agent.Tool {
 		SafetyLevel: agent.SafetyLevelDangerous,
 		Capability: agent.ToolCapability{
 			Category:             "smartaccount",
+			Exposure:             agent.ExposureDeferred,
 			Activity:             agent.ActivityManage,
 			RequiredCapabilities: []string{"payment"},
 		},
@@ -307,6 +312,7 @@ func sessionExecuteTool(sac *smartAccountComponents) *agent.Tool {
 		SafetyLevel: agent.SafetyLevelDangerous,
 		Capability: agent.ToolCapability{
 			Category:             "smartaccount",
+			Exposure:             agent.ExposureDeferred,
 			Activity:             agent.ActivityManage,
 			RequiredCapabilities: []string{"payment"},
 		},
@@ -431,6 +437,7 @@ func policyCheckTool(sac *smartAccountComponents) *agent.Tool {
 		SafetyLevel: agent.SafetyLevelSafe,
 		Capability: agent.ToolCapability{
 			Category:             "smartaccount",
+			Exposure:             agent.ExposureDeferred,
 			Activity:             agent.ActivityManage,
 			RequiredCapabilities: []string{"payment"},
 		},
@@ -496,6 +503,7 @@ func moduleInstallTool(sac *smartAccountComponents) *agent.Tool {
 		SafetyLevel: agent.SafetyLevelDangerous,
 		Capability: agent.ToolCapability{
 			Category:             "smartaccount",
+			Exposure:             agent.ExposureDeferred,
 			Activity:             agent.ActivityManage,
 			RequiredCapabilities: []string{"payment"},
 		},
@@ -569,6 +577,7 @@ func moduleUninstallTool(sac *smartAccountComponents) *agent.Tool {
 		SafetyLevel: agent.SafetyLevelDangerous,
 		Capability: agent.ToolCapability{
 			Category:             "smartaccount",
+			Exposure:             agent.ExposureDeferred,
 			Activity:             agent.ActivityManage,
 			RequiredCapabilities: []string{"payment"},
 		},
@@ -627,6 +636,7 @@ func spendingStatusTool(sac *smartAccountComponents) *agent.Tool {
 		SafetyLevel: agent.SafetyLevelSafe,
 		Capability: agent.ToolCapability{
 			Category:             "smartaccount",
+			Exposure:             agent.ExposureDeferred,
 			Activity:             agent.ActivityManage,
 			RequiredCapabilities: []string{"payment"},
 		},
@@ -674,6 +684,7 @@ func paymasterStatusTool(sac *smartAccountComponents) *agent.Tool {
 		SafetyLevel: agent.SafetyLevelSafe,
 		Capability: agent.ToolCapability{
 			Category:             "smartaccount",
+			Exposure:             agent.ExposureDeferred,
 			Activity:             agent.ActivityManage,
 			RequiredCapabilities: []string{"payment"},
 		},
@@ -704,6 +715,7 @@ func paymasterApproveTool(sac *smartAccountComponents) *agent.Tool {
 		SafetyLevel: agent.SafetyLevelDangerous,
 		Capability: agent.ToolCapability{
 			Category:             "smartaccount",
+			Exposure:             agent.ExposureDeferred,
 			Activity:             agent.ActivityManage,
 			RequiredCapabilities: []string{"payment"},
 		},

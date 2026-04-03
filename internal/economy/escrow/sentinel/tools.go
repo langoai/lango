@@ -24,6 +24,7 @@ func statusTool(se *Engine) *agent.Tool {
 		SafetyLevel: agent.SafetyLevelSafe,
 		Capability: agent.ToolCapability{
 			Category:        "security",
+			Exposure:        agent.ExposureDeferred,
 			Activity:        agent.ActivityQuery,
 			ReadOnly:        true,
 			ConcurrencySafe: true,
@@ -45,6 +46,7 @@ func alertsTool(se *Engine) *agent.Tool {
 		SafetyLevel: agent.SafetyLevelSafe,
 		Capability: agent.ToolCapability{
 			Category:        "security",
+			Exposure:        agent.ExposureDeferred,
 			Activity:        agent.ActivityQuery,
 			ReadOnly:        true,
 			ConcurrencySafe: true,
@@ -111,6 +113,7 @@ func configTool(se *Engine) *agent.Tool {
 		SafetyLevel: agent.SafetyLevelSafe,
 		Capability: agent.ToolCapability{
 			Category:        "security",
+			Exposure:        agent.ExposureDeferred,
 			Activity:        agent.ActivityQuery,
 			ReadOnly:        true,
 			ConcurrencySafe: true,
@@ -140,6 +143,7 @@ func acknowledgeTool(se *Engine) *agent.Tool {
 		SafetyLevel: agent.SafetyLevelDangerous,
 		Capability: agent.ToolCapability{
 			Category:        "security",
+			Exposure:        agent.ExposureDeferred,
 			Activity:        agent.ActivityQuery,
 			ReadOnly:        true,
 			ConcurrencySafe: true,
