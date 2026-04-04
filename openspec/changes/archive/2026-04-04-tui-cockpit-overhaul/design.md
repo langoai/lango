@@ -38,9 +38,9 @@ Adding `OnToolCall`, `OnToolResult`, and `OnThinking` as separate typed callback
 
 ### D3. Thinking detection via genai.Part.Thought in recordEvent()
 
-The `recordEvent()` function (runner.go:493-527) iterates `event.Content.Parts`. Currently it checks `part.Text`, `part.FunctionCall`, `part.FunctionResponse`. We add a `part.Thought` check: if `part.Thought == true && part.Text != ""`, fire `OnThinking(agentName, true, part.Text)`. When the next non-thought part arrives, fire `OnThinking(agentName, false, "")`.
+The `recordEvent()` function iterates `event.Content.Parts`. We add a `part.Thought` check: on the first `part.Thought == true` boundary, fire `OnThinking(agentName, true, part.Text)` and start accumulating thought text in a `strings.Builder`. Subsequent thought chunks accumulate without re-firing start. When the next non-thought part arrives, fire `OnThinking(agentName, false, accumulatedSummary)` with the full accumulated text and reset. The bridge tracks `thinkingStart` to compute duration for `ThinkingFinishedMsg`.
 
-A `PendingIndicatorTickMsg` covers the submit-to-first-event gap for responses that don't start with thinking or tool calls.
+A `PendingIndicatorTickMsg` covers the submit-to-first-event gap for responses that don't start with thinking or tool calls. The pending indicator is dismissed (with layout recalculation) on the first chunk, tool, thinking, approval, done, or error event.
 
 ### D4. Renderer stub pattern for approval surfaces
 

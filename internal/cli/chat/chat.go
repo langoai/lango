@@ -16,6 +16,7 @@ import (
 	"github.com/charmbracelet/lipgloss"
 
 	"github.com/langoai/lango/internal/approval"
+	"github.com/langoai/lango/internal/background"
 	"github.com/langoai/lango/internal/config"
 	"github.com/langoai/lango/internal/turnrunner"
 )
@@ -25,20 +26,7 @@ type Deps struct {
 	TurnRunner        *turnrunner.Runner
 	Config            *config.Config
 	SessionKey        string
-	BackgroundManager BackgroundManagerI // optional, nil when background tasks unavailable
-}
-
-// BackgroundManagerI is the subset of background.Manager needed by the chat model.
-type BackgroundManagerI interface {
-	List() []BackgroundTaskInfo
-}
-
-// BackgroundTaskInfo holds summary info about a background task for display.
-type BackgroundTaskInfo struct {
-	ID      string
-	Prompt  string
-	Status  string
-	Elapsed time.Duration
+	BackgroundManager *background.Manager // optional, nil when background tasks unavailable
 }
 
 // cprState tracks the CPR (Cursor Position Report) filter state machine.
@@ -68,6 +56,7 @@ type ChatParts struct {
 	Header    string
 	TurnStrip string
 	Main      string
+	Pending   string // empty when not in pending state
 	TaskStrip string // empty when no background tasks
 	Footer    string
 	Approval  string // empty when no approval pending
@@ -94,7 +83,7 @@ type ChatModel struct {
 
 	program *tea.Program
 
-	bgManager      BackgroundManagerI
+	bgManager      *background.Manager
 	taskStrip      taskStripModel
 	pendingStart   time.Time // submit timestamp for pending indicator
 	pendingActive  bool      // true between submit and first content event
@@ -232,6 +221,7 @@ func (m *ChatModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case DoneMsg:
+		m.dismissPending()
 		m.chatView.stopCursorBlink()
 		if m.chatView.streamBuf.Len() > 0 {
 			m.chatView.finalizeStream()
@@ -257,6 +247,7 @@ func (m *ChatModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, tea.Batch(cmds...)
 
 	case ErrorMsg:
+		m.dismissPending()
 		m.chatView.stopCursorBlink()
 		if m.chatView.streamBuf.Len() > 0 {
 			m.chatView.finalizeStream()
@@ -284,6 +275,9 @@ func (m *ChatModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case ApprovalRequestMsg:
+		m.dismissPending()
+		dialogScrollOffset = 0
+		dialogSplitMode = false
 		m.pendingApproval = &msg
 		m.chatView.appendApprovalEvent(fmt.Sprintf("Approval requested for %s", msg.Request.ToolName), "requested")
 		if cmd := m.transitionTo(stateApproving); cmd != nil {
@@ -324,6 +318,11 @@ func (m *ChatModel) RenderParts() ChatParts {
 		Footer:    renderFooter(m.input, m.state, m.width),
 	}
 
+	if m.pendingActive {
+		elapsed := time.Since(m.pendingStart).Round(time.Second).String()
+		parts.Pending = renderPendingIndicator(elapsed)
+	}
+
 	if m.state == stateApproving && m.pendingApproval != nil {
 		parts.Approval = renderApproval(m.pendingApproval, m.width, m.height)
 	}
@@ -342,8 +341,11 @@ func (m *ChatModel) View() string {
 
 	p := m.RenderParts()
 
-	sections := make([]string, 0, 6)
+	sections := make([]string, 0, 7)
 	sections = append(sections, p.Header, p.TurnStrip, p.Main)
+	if p.Pending != "" {
+		sections = append(sections, p.Pending)
+	}
 	if p.TaskStrip != "" {
 		sections = append(sections, p.TaskStrip)
 	}
@@ -357,7 +359,13 @@ func (m *ChatModel) View() string {
 
 // dismissPending clears the pending indicator when the first content event arrives.
 func (m *ChatModel) dismissPending() {
+	if !m.pendingActive {
+		return
+	}
 	m.pendingActive = false
+	if m.width > 0 && m.height > 0 {
+		m.recalcLayout()
+	}
 }
 
 // refreshView re-renders the chat view (used after task strip refresh).
@@ -435,9 +443,15 @@ func (m *ChatModel) handleIdleKey(msg tea.KeyMsg) tea.Cmd {
 		}
 
 		m.chatView.appendUser(input)
+		// Set pending state before transition so recalcLayout accounts for the strip.
+		m.pendingActive = true
+		m.pendingStart = time.Now()
 		return tea.Batch(
 			m.transitionTo(stateStreaming),
 			m.submitCmd(input),
+			tea.Tick(500*time.Millisecond, func(t time.Time) tea.Msg {
+				return PendingIndicatorTickMsg(t)
+			}),
 		)
 	}
 
@@ -503,9 +517,6 @@ func (m *ChatModel) submitCmd(input string) tea.Cmd {
 	m.runCtx = ctx
 	m.cancelFn = cancel
 
-	m.pendingActive = true
-	m.pendingStart = time.Now()
-
 	program := m.program
 	return func() tea.Msg {
 		req := turnrunner.Request{
@@ -539,6 +550,10 @@ func (m *ChatModel) recalcLayout() {
 	fixedParts := []string{
 		renderHeader(m.cfg, truncateSessionKey(m.sessionKey), m.width),
 		renderTurnStrip(m.state, m.width),
+	}
+	if m.pendingActive {
+		elapsed := time.Since(m.pendingStart).Round(time.Second).String()
+		fixedParts = append(fixedParts, renderPendingIndicator(elapsed))
 	}
 	if ts := m.taskStrip.View(m.width); ts != "" {
 		fixedParts = append(fixedParts, ts)

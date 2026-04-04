@@ -392,8 +392,10 @@ type traceRecorder struct {
 	onThinking      func(agentName string, started bool, summary string)
 	delegationCount int
 	delegationMax   int
-	toolStartedAt   map[string]time.Time // callID → start time for duration calculation
-	inThinking      bool                 // tracks thinking state for boundary detection
+	toolStartedAt   map[string]time.Time    // callID → start time for duration calculation
+	inThinking      bool                    // tracks thinking state for boundary detection
+	thinkingStart   time.Time               // when thinking phase started
+	thinkingText    strings.Builder         // accumulates thought text across chunks
 }
 
 func newTraceRecorder(parentCtx context.Context, store turntrace.Store, traceID string, delegationMax int) *traceRecorder {
@@ -511,19 +513,26 @@ func (r *traceRecorder) recordEvent(event *adksession.Event) {
 	}
 
 	for _, part := range event.Content.Parts {
-		// Thinking detection: fire OnThinking on thought boundary transitions.
+		// Thinking detection: fire OnThinking only on boundary transitions.
 		if part.Thought && part.Text != "" {
 			if !r.inThinking {
 				r.inThinking = true
+				r.thinkingStart = time.Now()
+				r.thinkingText.Reset()
+				if r.onThinking != nil {
+					r.onThinking(event.Author, true, part.Text)
+				}
 			}
-			if r.onThinking != nil {
-				r.onThinking(event.Author, true, part.Text)
-			}
+			r.thinkingText.WriteString(part.Text)
 		} else if r.inThinking && !part.Thought {
+			summary := r.thinkingText.String()
+			duration := time.Since(r.thinkingStart)
 			r.inThinking = false
+			r.thinkingText.Reset()
 			if r.onThinking != nil {
-				r.onThinking(event.Author, false, "")
+				r.onThinking(event.Author, false, summary)
 			}
+			_ = duration // available for future use
 		}
 
 		if part.Text != "" && !part.Thought {

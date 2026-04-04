@@ -8,6 +8,7 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"sort"
 	"strconv"
 	"strings"
 	"syscall"
@@ -634,7 +635,12 @@ func runCockpit() error {
 		pages.NewSessionsPage(func(ctx context.Context) ([]session.SessionSummary, error) {
 			return application.Store.ListSessions(ctx)
 		}))
-	model.RegisterPage(cockpit.PageTasks, pages.NewTasksPage(nil))
+	if application.BackgroundManager != nil {
+		model.RegisterPage(cockpit.PageTasks,
+			pages.NewTasksPage(&bgTaskLister{mgr: application.BackgroundManager}))
+	} else {
+		model.RegisterPage(cockpit.PageTasks, pages.NewTasksPage(nil))
+	}
 
 	p := tea.NewProgram(model, tea.WithAltScreen(), tea.WithMouseCellMotion())
 	model.SetProgram(p)
@@ -650,4 +656,40 @@ func runCockpit() error {
 	}
 
 	return nil
+}
+
+// bgTaskLister adapts background.Manager to pages.TaskLister.
+type bgTaskLister struct {
+	mgr *background.Manager
+}
+
+func (b *bgTaskLister) ListTasks() []pages.TaskInfo {
+	snapshots := b.mgr.List()
+
+	// Sort by StartedAt descending for stable ordering.
+	sort.Slice(snapshots, func(i, j int) bool {
+		return snapshots[i].StartedAt.After(snapshots[j].StartedAt)
+	})
+
+	tasks := make([]pages.TaskInfo, len(snapshots))
+	for i, s := range snapshots {
+		tasks[i] = pages.TaskInfo{
+			ID:      s.ID,
+			Prompt:  s.Prompt,
+			Status:  s.StatusText,
+			Elapsed: taskElapsed(s),
+		}
+	}
+	return tasks
+}
+
+// taskElapsed computes the correct elapsed duration for a task snapshot.
+func taskElapsed(s background.TaskSnapshot) time.Duration {
+	if s.StartedAt.IsZero() {
+		return 0 // pending, not yet started
+	}
+	if !s.CompletedAt.IsZero() {
+		return s.CompletedAt.Sub(s.StartedAt) // terminal: freeze at actual runtime
+	}
+	return time.Since(s.StartedAt) // running: wall-clock
 }

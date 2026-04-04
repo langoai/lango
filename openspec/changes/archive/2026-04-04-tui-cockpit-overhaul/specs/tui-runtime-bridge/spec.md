@@ -51,6 +51,10 @@ The `turnrunner.Request` struct SHALL include an `OnToolResult func(callID, tool
 ### Requirement: turnrunner.Request OnThinking callback
 The `turnrunner.Request` struct SHALL include an `OnThinking func(agentName string, started bool, summary string)` field called when thinking is detected via `genai.Part.Thought`.
 
-#### Scenario: OnThinking fired on thought part
-- **WHEN** `recordEvent()` encounters `part.Thought == true` with non-empty `part.Text`
-- **THEN** `req.OnThinking` is invoked with `started: true` and the thought text
+#### Scenario: OnThinking fired on thought boundary
+- **WHEN** `recordEvent()` encounters the first `part.Thought == true` transition (not already in thinking state)
+- **THEN** `req.OnThinking` is invoked with `started: true` and the thought text; subsequent thought chunks accumulate without re-firing start
+
+#### Scenario: OnThinking finished with accumulated summary
+- **WHEN** a non-thought part arrives after one or more thought chunks
+- **THEN** `req.OnThinking` is invoked with `started: false` and the full accumulated thought text as summary

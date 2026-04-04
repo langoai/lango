@@ -1,5 +1,10 @@
 package approval
 
+import (
+	"fmt"
+	"strings"
+)
+
 // DisplayTier determines how an approval request is rendered in the TUI.
 type DisplayTier int
 
@@ -70,9 +75,70 @@ func ComputeRisk(safetyLevel, category string) RiskIndicator {
 
 // NewViewModel creates an ApprovalViewModel from a request.
 func NewViewModel(req ApprovalRequest) ApprovalViewModel {
-	return ApprovalViewModel{
+	vm := ApprovalViewModel{
 		Request: req,
 		Tier:    ClassifyTier(req.SafetyLevel, req.Category, req.Activity),
 		Risk:    ComputeRisk(req.SafetyLevel, req.Category),
 	}
+	if vm.Tier == TierFullscreen {
+		vm.DiffContent = buildDiffPreview(req.ToolName, req.Params)
+	}
+	return vm
+}
+
+// buildDiffPreview generates a simple preview of the proposed file change.
+func buildDiffPreview(toolName string, params map[string]interface{}) string {
+	path, _ := params["path"].(string)
+	if path == "" {
+		return ""
+	}
+	content, hasContent := params["content"].(string)
+
+	switch toolName {
+	case "fs_write":
+		if !hasContent {
+			return fmt.Sprintf("--- /dev/null\n+++ %s\n@@ new file @@", path)
+		}
+		if content == "" {
+			return fmt.Sprintf("--- %s\n+++ %s\n@@ truncate to empty @@", path, path)
+		}
+		lines := splitLines(content)
+		if len(lines) > maxDiffLines {
+			lines = append(lines[:maxDiffLines], "... (truncated)")
+		}
+		// Use path for both sides — fs_write creates or overwrites.
+		header := fmt.Sprintf("--- %s (current or new)\n+++ %s (proposed)\n@@ write %d lines @@", path, path, len(lines))
+		for i, l := range lines {
+			lines[i] = "+" + l
+		}
+		return header + "\n" + joinLines(lines)
+
+	case "fs_edit":
+		if content == "" {
+			return fmt.Sprintf("--- %s\n+++ %s (edited)\n@@ delete line range @@", path, path)
+		}
+		lines := splitLines(content)
+		if len(lines) > maxDiffLines {
+			lines = append(lines[:maxDiffLines], "... (truncated)")
+		}
+		header := fmt.Sprintf("--- %s\n+++ %s (edited)\n@@ replacement content @@", path, path)
+		for i, l := range lines {
+			lines[i] = "+" + l
+		}
+		return header + "\n" + joinLines(lines)
+	}
+	return ""
+}
+
+const maxDiffLines = 500
+
+func splitLines(s string) []string {
+	if s == "" {
+		return nil
+	}
+	return strings.Split(s, "\n")
+}
+
+func joinLines(lines []string) string {
+	return strings.Join(lines, "\n")
 }

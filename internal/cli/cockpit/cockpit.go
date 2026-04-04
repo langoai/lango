@@ -39,9 +39,10 @@ type Model struct {
 // New creates a cockpit Model wrapping a ChatModel.
 func New(deps Deps) *Model {
 	chatModel := chat.New(chat.Deps{
-		TurnRunner: deps.TurnRunner,
-		Config:     deps.Config,
-		SessionKey: deps.SessionKey,
+		TurnRunner:        deps.TurnRunner,
+		Config:            deps.Config,
+		SessionKey:        deps.SessionKey,
+		BackgroundManager: deps.BackgroundManager,
 	})
 
 	return &Model{

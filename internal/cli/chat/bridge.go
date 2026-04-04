@@ -33,8 +33,10 @@ func enrichRequest(program *tea.Program, req *turnrunner.Request) {
 		})
 	}
 
+	var thinkingStart time.Time
 	req.OnThinking = func(agentName string, started bool, summary string) {
 		if started {
+			thinkingStart = time.Now()
 			program.Send(ThinkingStartedMsg{
 				AgentName: agentName,
 				Summary:   summary,
@@ -42,6 +44,8 @@ func enrichRequest(program *tea.Program, req *turnrunner.Request) {
 		} else {
 			program.Send(ThinkingFinishedMsg{
 				AgentName: agentName,
+				Duration:  time.Since(thinkingStart),
+				Summary:   summary,
 			})
 		}
 	}

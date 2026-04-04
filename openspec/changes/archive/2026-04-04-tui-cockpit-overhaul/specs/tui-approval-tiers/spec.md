@@ -52,6 +52,14 @@ Tier 2 approvals SHALL render as a fullscreen overlay with risk badge, parameter
 - **WHEN** the target file exceeds 500 lines
 - **THEN** the diff is truncated with a `... (truncated)` marker
 
+#### Scenario: Diff scroll and mode reset on new request
+- **WHEN** a new ApprovalRequestMsg arrives
+- **THEN** dialogScrollOffset resets to 0 and dialogSplitMode resets to false
+
+#### Scenario: fs_write diff shows overwrite-aware header
+- **WHEN** a Tier 2 approval for `fs_write` is displayed
+- **THEN** the diff header shows `--- path (current or new)` / `+++ path (proposed)` to indicate possible overwrite
+
 ### Requirement: Risk indicator computation
 `ComputeRisk()` SHALL return a `RiskIndicator` with level and label based on safety level and category.
 
