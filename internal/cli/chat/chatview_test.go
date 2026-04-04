@@ -3,6 +3,10 @@ package chat
 import (
 	"strings"
 	"testing"
+	"time"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestAppendAssistant_PreservesRawContent(t *testing.T) {
@@ -137,4 +141,165 @@ func TestAppendStatusAndApprovalEventKinds(t *testing.T) {
 	if cv.entries[1].kind != itemApproval {
 		t.Fatalf("second item should be approval, got %q", cv.entries[1].kind)
 	}
+}
+
+// ---------------------------------------------------------------------------
+// Tool lifecycle tests
+// ---------------------------------------------------------------------------
+
+func TestAppendToolStart(t *testing.T) {
+	cv := newChatViewModel(80, 24)
+	cv.appendToolStart("call1", "fs_read", nil)
+
+	require.Len(t, cv.entries, 1)
+	e := cv.entries[0]
+	assert.Equal(t, itemTool, e.kind)
+	assert.Equal(t, "fs_read", e.content)
+	assert.Equal(t, "call1", e.meta["callID"])
+	assert.Equal(t, string(toolStateRunning), e.meta["state"])
+}
+
+func TestAppendToolStart_Multiple(t *testing.T) {
+	cv := newChatViewModel(80, 24)
+	cv.appendToolStart("call1", "fs_read", nil)
+	cv.appendToolStart("call2", "web_search", nil)
+
+	require.Len(t, cv.entries, 2)
+	assert.Equal(t, "fs_read", cv.entries[0].content)
+	assert.Equal(t, "call1", cv.entries[0].meta["callID"])
+	assert.Equal(t, "web_search", cv.entries[1].content)
+	assert.Equal(t, "call2", cv.entries[1].meta["callID"])
+}
+
+func TestFinalizeToolResult_Success(t *testing.T) {
+	cv := newChatViewModel(80, 24)
+	cv.appendToolStart("call1", "fs_read", nil)
+	cv.finalizeToolResult("call1", true, 500*time.Millisecond, "")
+
+	require.Len(t, cv.entries, 1)
+	e := cv.entries[0]
+	assert.Equal(t, string(toolStateSuccess), e.meta["state"])
+	assert.NotEmpty(t, e.meta["duration"])
+}
+
+func TestFinalizeToolResult_Error(t *testing.T) {
+	cv := newChatViewModel(80, 24)
+	cv.appendToolStart("call1", "fs_read", nil)
+	cv.finalizeToolResult("call1", false, 1*time.Second, "")
+
+	require.Len(t, cv.entries, 1)
+	e := cv.entries[0]
+	assert.Equal(t, string(toolStateError), e.meta["state"])
+}
+
+func TestFinalizeToolResult_WithOutput(t *testing.T) {
+	cv := newChatViewModel(80, 24)
+	cv.appendToolStart("call1", "fs_read", nil)
+	cv.finalizeToolResult("call1", true, 200*time.Millisecond, "file contents here")
+
+	require.Len(t, cv.entries, 1)
+	e := cv.entries[0]
+	assert.Equal(t, "file contents here", e.meta["output"])
+	assert.Equal(t, string(toolStateSuccess), e.meta["state"])
+}
+
+func TestFinalizeToolResult_NoMatch(t *testing.T) {
+	cv := newChatViewModel(80, 24)
+	cv.appendToolStart("call1", "fs_read", nil)
+	cv.finalizeToolResult("nonexistent", true, 100*time.Millisecond, "output")
+
+	require.Len(t, cv.entries, 1)
+	e := cv.entries[0]
+	// Original entry should remain unchanged — still running, no output.
+	assert.Equal(t, string(toolStateRunning), e.meta["state"])
+	assert.Empty(t, e.meta["output"])
+	assert.Empty(t, e.meta["duration"])
+}
+
+// ---------------------------------------------------------------------------
+// Thinking lifecycle tests
+// ---------------------------------------------------------------------------
+
+func TestAppendThinking(t *testing.T) {
+	cv := newChatViewModel(80, 24)
+	cv.appendThinking("analyzing request")
+
+	require.Len(t, cv.entries, 1)
+	e := cv.entries[0]
+	assert.Equal(t, itemThinking, e.kind)
+	assert.Equal(t, "analyzing request", e.content)
+	assert.Equal(t, "active", e.meta["state"])
+}
+
+func TestFinalizeThinking_Done(t *testing.T) {
+	cv := newChatViewModel(80, 24)
+	cv.appendThinking("analyzing request")
+	cv.finalizeThinking("done analyzing", 2*time.Second)
+
+	require.Len(t, cv.entries, 1)
+	e := cv.entries[0]
+	assert.Equal(t, "done", e.meta["state"])
+	assert.NotEmpty(t, e.meta["duration"])
+	assert.Equal(t, "done analyzing", e.content)
+}
+
+func TestFinalizeThinking_Summary(t *testing.T) {
+	cv := newChatViewModel(80, 24)
+	cv.appendThinking("initial summary")
+	cv.finalizeThinking("replaced summary", 3*time.Second)
+
+	require.Len(t, cv.entries, 1)
+	assert.Equal(t, "replaced summary", cv.entries[0].content)
+}
+
+func TestFinalizeThinking_NoActive(t *testing.T) {
+	cv := newChatViewModel(80, 24)
+	// No prior appendThinking — should not panic or add entries.
+	cv.finalizeThinking("orphan summary", 1*time.Second)
+	assert.Empty(t, cv.entries)
+}
+
+// ---------------------------------------------------------------------------
+// Other transcript tests
+// ---------------------------------------------------------------------------
+
+func TestClear(t *testing.T) {
+	cv := newChatViewModel(80, 24)
+	cv.appendUser("hello")
+	cv.appendSystem("system note")
+	cv.appendToolStart("c1", "tool", nil)
+	require.Len(t, cv.entries, 3)
+
+	cv.clear()
+	assert.Empty(t, cv.entries)
+	assert.Equal(t, 0, cv.streamBuf.Len())
+}
+
+func TestAppendSystem(t *testing.T) {
+	cv := newChatViewModel(80, 24)
+	cv.appendSystem("system message")
+
+	require.Len(t, cv.entries, 1)
+	e := cv.entries[0]
+	assert.Equal(t, itemSystem, e.kind)
+	assert.Equal(t, "system message", e.content)
+}
+
+func TestAppendSystem_Empty(t *testing.T) {
+	cv := newChatViewModel(80, 24)
+	cv.appendSystem("")
+	cv.appendSystem("   ")
+	assert.Empty(t, cv.entries)
+}
+
+func TestRender_ToolAndThinking(t *testing.T) {
+	cv := newChatViewModel(80, 24)
+	cv.appendToolStart("c1", "fs_read", nil)
+	cv.finalizeToolResult("c1", true, 100*time.Millisecond, "output")
+	cv.appendThinking("thinking hard")
+	cv.finalizeThinking("thought complete", 1*time.Second)
+
+	// The key assertion: render produces a non-empty viewport without panicking.
+	content := cv.viewport.View()
+	assert.NotEmpty(t, content)
 }

@@ -2,8 +2,10 @@ package chat
 
 import (
 	"fmt"
+	"strings"
 
 	"github.com/charmbracelet/lipgloss"
+	"github.com/charmbracelet/x/ansi"
 
 	"github.com/langoai/lango/internal/cli/tui"
 )
@@ -45,12 +47,13 @@ func renderToolBlock(toolName string, state ToolItemState, duration, output stri
 	line := fmt.Sprintf(" %s  %s", label, detail)
 
 	if output != "" && (state == toolStateSuccess || state == toolStateError) {
+		output = strings.ReplaceAll(output, "\n", " ")
 		maxOutput := width - 4
 		if maxOutput < 20 {
 			maxOutput = 20
 		}
-		if len(output) > maxOutput {
-			output = output[:maxOutput-3] + "..."
+		if lipgloss.Width(output) > maxOutput {
+			output = ansi.Truncate(output, maxOutput, "…")
 		}
 		outputLine := lipgloss.NewStyle().
 			Foreground(tui.Muted).

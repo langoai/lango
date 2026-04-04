@@ -8,15 +8,20 @@ import (
 	"github.com/langoai/lango/internal/turnrunner"
 )
 
+// msgSender abstracts tea.Program.Send for testability.
+type msgSender interface {
+	Send(msg tea.Msg)
+}
+
 // enrichRequest wires turnrunner callbacks to Bubble Tea messages
 // without overwriting existing OnChunk/OnWarning callbacks.
-func enrichRequest(program *tea.Program, req *turnrunner.Request) {
-	if program == nil {
+func enrichRequest(sender msgSender, req *turnrunner.Request) {
+	if sender == nil {
 		return
 	}
 
 	req.OnToolCall = func(callID, toolName string, params map[string]any) {
-		program.Send(ToolStartedMsg{
+		sender.Send(ToolStartedMsg{
 			CallID:   callID,
 			ToolName: toolName,
 			Params:   params,
@@ -24,7 +29,7 @@ func enrichRequest(program *tea.Program, req *turnrunner.Request) {
 	}
 
 	req.OnToolResult = func(callID, toolName string, success bool, duration time.Duration, preview string) {
-		program.Send(ToolFinishedMsg{
+		sender.Send(ToolFinishedMsg{
 			CallID:   callID,
 			ToolName: toolName,
 			Success:  success,
@@ -37,12 +42,12 @@ func enrichRequest(program *tea.Program, req *turnrunner.Request) {
 	req.OnThinking = func(agentName string, started bool, summary string) {
 		if started {
 			thinkingStart = time.Now()
-			program.Send(ThinkingStartedMsg{
+			sender.Send(ThinkingStartedMsg{
 				AgentName: agentName,
 				Summary:   summary,
 			})
 		} else {
-			program.Send(ThinkingFinishedMsg{
+			sender.Send(ThinkingFinishedMsg{
 				AgentName: agentName,
 				Duration:  time.Since(thinkingStart),
 				Summary:   summary,

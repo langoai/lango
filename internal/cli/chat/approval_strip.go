@@ -4,6 +4,7 @@ import (
 	"fmt"
 
 	"github.com/charmbracelet/lipgloss"
+	"github.com/charmbracelet/x/ansi"
 
 	"github.com/langoai/lango/internal/approval"
 	"github.com/langoai/lango/internal/cli/tui"
@@ -23,28 +24,34 @@ func renderApprovalStrip(vm approval.ApprovalViewModel, width int) string {
 		summary = fmt.Sprintf("Execute tool: %s", vm.Request.ToolName)
 	}
 
-	// Truncate summary to fit on one line with keys.
-	maxSummary := stripWidth - lipgloss.Width(toolBadge) - 45
-	if maxSummary < 10 {
-		maxSummary = 10
-	}
-	if len(summary) > maxSummary {
-		summary = summary[:maxSummary-3] + "..."
+	keys := lipgloss.NewStyle().
+		Foreground(tui.Muted).
+		Render("[a]llow  [s]ession  [d]eny")
+
+	// Compute available space for summary by subtracting fixed elements.
+	// The content layout is " %s  %s  %s" which adds 6 characters of spacing.
+	usedWidth := lipgloss.Width(toolBadge) + lipgloss.Width(keys) + 6
+	maxSummary := max(stripWidth-usedWidth, 0)
+
+	if maxSummary == 0 {
+		summary = ""
+	} else {
+		summary = ansi.Truncate(summary, maxSummary, "…")
 	}
 
 	summaryText := lipgloss.NewStyle().
 		Foreground(tui.Foreground).
 		Render(summary)
 
-	keys := lipgloss.NewStyle().
-		Foreground(tui.Muted).
-		Render("[a]llow  [s]ession  [d]eny")
-
 	content := fmt.Sprintf(" %s  %s  %s", toolBadge, summaryText, keys)
+
+	// Truncate the assembled content to guarantee single-line output on very narrow terminals.
+	content = ansi.Truncate(content, stripWidth, "")
 
 	return lipgloss.NewStyle().
 		Background(lipgloss.Color("#1a1a2e")).
 		Foreground(tui.Foreground).
 		Width(stripWidth).
+		MaxHeight(1).
 		Render(content)
 }

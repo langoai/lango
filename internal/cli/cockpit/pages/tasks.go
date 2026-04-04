@@ -8,8 +8,19 @@ import (
 	"github.com/charmbracelet/bubbles/key"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
+	"github.com/charmbracelet/x/ansi"
 
 	"github.com/langoai/lango/internal/cli/cockpit/theme"
+)
+
+// Column layout constants for the tasks table.
+const (
+	taskGutterW = 6  // "  " or "> " prefix (2) + PaddingLeft(4)
+	taskColIDW  = 10 // ID column width
+	taskColStatW = 10 // Status column width
+	taskColElW  = 12 // Elapsed column width
+	taskColGapW = 1  // space between columns (from format string)
+	taskNarrowThreshold = 50 // width below which elapsed column is hidden
 )
 
 // taskTickMsg triggers periodic task list refresh.
@@ -120,12 +131,33 @@ func (m *TasksPage) View() string {
 		PaddingLeft(2).
 		Render("Background Tasks")
 
+	// Compute dynamic prompt column width based on available space.
+	wide := m.width >= taskNarrowThreshold
+	var promptW int
+	if wide {
+		// Wide: ID | Prompt | Status | Elapsed
+		fixedW := taskGutterW + taskColIDW + taskColStatW + taskColElW + taskColGapW*3
+		promptW = max(m.width-fixedW, 8)
+	} else {
+		// Narrow: ID | Prompt | Status (no elapsed)
+		fixedW := taskGutterW + taskColIDW + taskColStatW + taskColGapW*2
+		promptW = max(m.width-fixedW, 8)
+	}
+
 	// Table header.
+	var headerText string
+	if wide {
+		fmtStr := fmt.Sprintf("%%-%ds %%-%ds %%-%ds %%s", taskColIDW, promptW, taskColStatW)
+		headerText = fmt.Sprintf(fmtStr, "ID", "Prompt", "Status", "Elapsed")
+	} else {
+		fmtStr := fmt.Sprintf("%%-%ds %%-%ds %%-%ds", taskColIDW, promptW, taskColStatW)
+		headerText = fmt.Sprintf(fmtStr, "ID", "Prompt", "Status")
+	}
 	header := lipgloss.NewStyle().
 		Foreground(theme.TextTertiary).
 		Bold(true).
 		PaddingLeft(4).
-		Render(fmt.Sprintf("%-10s %-30s %-10s %s", "ID", "Prompt", "Status", "Elapsed"))
+		Render(headerText)
 
 	separator := lipgloss.NewStyle().
 		Foreground(theme.BorderSubtle).
@@ -135,17 +167,19 @@ func (m *TasksPage) View() string {
 	// Table rows.
 	var rows []string
 	for i, task := range m.tasks {
-		id := task.ID
-		if len(id) > 8 {
-			id = id[:8]
-		}
-		prompt := task.Prompt
-		if len(prompt) > 28 {
-			prompt = prompt[:25] + "..."
-		}
-		elapsed := task.Elapsed.Round(time.Second).String()
+		id := truncate(task.ID, taskColIDW-2) // leave padding room
+		promptStr := ansi.Truncate(task.Prompt, promptW, "…")
+		status := truncate(task.Status, taskColStatW)
 
-		row := fmt.Sprintf("%-10s %-30s %-10s %s", id, prompt, task.Status, elapsed)
+		var row string
+		if wide {
+			elapsed := task.Elapsed.Round(time.Second).String()
+			fmtStr := fmt.Sprintf("%%-%ds %%-%ds %%-%ds %%s", taskColIDW, promptW, taskColStatW)
+			row = fmt.Sprintf(fmtStr, id, promptStr, status, elapsed)
+		} else {
+			fmtStr := fmt.Sprintf("%%-%ds %%-%ds %%-%ds", taskColIDW, promptW, taskColStatW)
+			row = fmt.Sprintf(fmtStr, id, promptStr, status)
+		}
 
 		style := lipgloss.NewStyle().PaddingLeft(4)
 		if i == m.cursor {
