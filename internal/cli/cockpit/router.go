@@ -14,6 +14,7 @@ const (
 	PageTools
 	PageStatus
 	PageSessions
+	PageTasks
 )
 
 // String returns the page name for sidebar matching.
@@ -29,6 +30,8 @@ func (p PageID) String() string {
 		return "status"
 	case PageSessions:
 		return "sessions"
+	case PageTasks:
+		return "tasks"
 	default:
 		return "unknown"
 	}
@@ -68,6 +71,8 @@ func PageIDFromString(id string) PageID {
 		return PageStatus
 	case "sessions":
 		return PageSessions
+	case "tasks":
+		return PageTasks
 	default:
 		return PageChat
 	}

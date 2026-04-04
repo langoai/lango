@@ -100,19 +100,31 @@ The system SHALL provide a `GatewayProvider` that delegates approval to connecte
 - **THEN** the provider SHALL return `ApprovalResponse{Approved: true, AlwaysAllow: false}`
 
 ### Requirement: Approval request context
-Each approval request SHALL carry an ID, tool name, session key, parameters, a human-readable Summary string, and creation timestamp.
+The approval request SHALL carry ID, ToolName, SessionKey, Params, Summary, CreatedAt, and additionally SafetyLevel, Category, and Activity as optional string fields for tier classification.
 
 #### Scenario: Request fields
 - **WHEN** an approval request is created
-- **THEN** it SHALL contain a unique ID, the tool name, the originating session key, tool parameters, a Summary string, and a timestamp
+- **THEN** it contains ID, ToolName, SessionKey, Params, Summary, CreatedAt
 
 #### Scenario: Summary populated
-- **WHEN** a tool approval request is created via wrapWithApproval
-- **THEN** the Summary field SHALL be populated by buildApprovalSummary with a human-readable description of the operation
+- **WHEN** the interceptor builds a request for tool "exec" with command "rm -rf /"
+- **THEN** Summary is a human-readable string like `Execute command: rm -rf /`
 
 #### Scenario: Empty summary backward compatibility
-- **WHEN** an approval request has an empty Summary
-- **THEN** providers SHALL display the existing tool-name-only message
+- **WHEN** a provider receives a request with empty Summary
+- **THEN** the provider falls back to displaying ToolName only
+
+#### Scenario: SafetyLevel populated
+- **WHEN** the approval middleware creates a request for a dangerous tool
+- **THEN** `SafetyLevel` is set to `"dangerous"`
+
+#### Scenario: Category and Activity populated
+- **WHEN** the approval middleware creates a request for a filesystem write tool
+- **THEN** `Category` is set to `"filesystem"` and `Activity` is set to `"write"`
+
+#### Scenario: Fields omitted for legacy providers
+- **WHEN** a channel provider (Slack/Telegram/Discord) receives a request with SafetyLevel/Category/Activity
+- **THEN** the provider ignores these fields gracefully (they are optional, omitempty)
 
 ### Requirement: Turn-local approval replay protection
 Each request SHALL maintain turn-local approval state keyed by `tool name + canonical params JSON`. The approval middleware SHALL consult this state before issuing a new approval request. Canonical params MAY normalize or omit fields that do not change approval risk for a tool.

@@ -46,21 +46,23 @@ Cockpit `Deps` SHALL contain: `TurnRunner *turnrunner.Runner`, `Config *config.C
 ## MODIFIED Requirements
 
 ### Requirement: Consume-or-forward message delegation
-The cockpit `Update()` SHALL route messages based on `sidebarFocused` and `activePage`. When sidebar is focused, key events SHALL go to sidebar. When content is focused and activePage is PageChat, keys SHALL go to child via existing consume-or-forward. For non-chat pages, keys SHALL go to `pages[activePage].Update()`.
-
-Cockpit SHALL additionally consume: `Ctrl+1` through `Ctrl+4` (page switch), `Tab` (focus toggle), `PageSelectedMsg` (sidebar selection), `Ctrl+P` (context panel toggle), `Ctrl+Y` (clipboard copy).
+The cockpit model's Update function SHALL consume global keys (Ctrl+1-5, Tab, Ctrl+B, Ctrl+P, Ctrl+Y) and forward all other messages to the active page or child model. Ctrl+5 is consumed to switch to the Tasks page.
 
 #### Scenario: Ctrl+2 switches to settings
-- **WHEN** cockpit receives Ctrl+2
-- **THEN** activePage SHALL become PageSettings, sidebar active item SHALL update, and SettingsPage.Activate() SHALL be called
+- **WHEN** user presses Ctrl+2
+- **THEN** the cockpit activates the Settings page
+
+#### Scenario: Ctrl+5 switches to tasks
+- **WHEN** user presses Ctrl+5
+- **THEN** the cockpit activates the Tasks page
 
 #### Scenario: Tab toggles focus to sidebar
-- **WHEN** cockpit receives Tab with sidebarFocused=false
-- **THEN** sidebarFocused SHALL become true and sidebar.SetFocused(true) SHALL be called
+- **WHEN** user presses Tab
+- **THEN** focus toggles between sidebar and content area
 
 #### Scenario: PageSelectedMsg from sidebar
-- **WHEN** cockpit receives PageSelectedMsg{ID: "tools"}
-- **THEN** activePage SHALL switch to PageTools and sidebarFocused SHALL become false
+- **WHEN** sidebar emits `PageSelectedMsg{PageTasks}`
+- **THEN** cockpit calls `switchPage(PageTasks)`
 
 ### Requirement: View dispatches to active page
 View() SHALL dispatch to the active page: `child.View()` for PageChat, `pages[activePage].View()` for others. Layout composition (sidebar + main) remains unchanged.
@@ -131,3 +133,25 @@ The root command, `cockpit` subcommand, and `chat` subcommand SHALL detect wheth
 #### Scenario: Normal interactive execution
 - **WHEN** `lango` is invoked in an interactive terminal
 - **THEN** the cockpit TUI SHALL launch normally (no behavior change)
+
+### Requirement: Tasks page registration
+The cockpit SHALL register a Tasks page at `PageTasks` (ID 5) accessible via Ctrl+5 keyboard shortcut.
+
+#### Scenario: Ctrl+5 switches to Tasks page
+- **WHEN** user presses Ctrl+5
+- **THEN** the cockpit deactivates the current page and activates the Tasks page
+
+#### Scenario: Tasks page in sidebar
+- **WHEN** the sidebar is rendered
+- **THEN** a "Tasks" menu entry is visible at position 5
+
+### Requirement: BackgroundManager in cockpit Deps
+The cockpit `Deps` struct SHALL include a `BackgroundManager *background.Manager` field for passing to the Tasks page and ChatModel.
+
+#### Scenario: Deps with BackgroundManager
+- **WHEN** cockpit is constructed with `Deps.BackgroundManager` set
+- **THEN** the Tasks page receives the manager reference
+
+#### Scenario: Deps without BackgroundManager
+- **WHEN** cockpit is constructed with `Deps.BackgroundManager` as nil
+- **THEN** the Tasks page renders a fallback message

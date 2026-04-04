@@ -91,12 +91,15 @@ func WithApproval(ic config.InterceptorConfig, ap approval.Provider, gs *approva
 			}
 
 			req := approval.ApprovalRequest{
-				ID:         fmt.Sprintf("req-%d", time.Now().UnixNano()),
-				ToolName:   tool.Name,
-				SessionKey: sessionKey,
-				Params:     params,
-				Summary:    BuildApprovalSummary(tool.Name, params),
-				CreatedAt:  time.Now(),
+				ID:          fmt.Sprintf("req-%d", time.Now().UnixNano()),
+				ToolName:    tool.Name,
+				SessionKey:  sessionKey,
+				Params:      params,
+				Summary:     BuildApprovalSummary(tool.Name, params),
+				CreatedAt:   time.Now(),
+				SafetyLevel: tool.SafetyLevel.String(),
+				Category:    tool.Capability.Category,
+				Activity:    string(tool.Capability.Activity),
 			}
 			resp, err := ap.RequestApproval(ctx, req)
 			if err != nil {

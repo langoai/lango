@@ -132,6 +132,49 @@ var (
 				Padding(0, 1)
 )
 
+// Semantic color aliases for state-driven rendering.
+var (
+	Danger    = Error     // destructive/high-risk operations
+	Info      = Highlight // informational highlights
+	Selection = Accent    // user selection/focus indicator
+)
+
+// Spacing-based styles (prefer over borders for visual hierarchy).
+var (
+	// BadgeBaseStyle renders a compact pill-shaped label with padding and no border.
+	BadgeBaseStyle = lipgloss.NewStyle().
+			Padding(0, 1).
+			Bold(true)
+
+	// DividerStyle renders a subtle horizontal separator using dim foreground.
+	DividerStyle = lipgloss.NewStyle().
+			Foreground(Separator)
+
+	// PillStyle renders a rounded-corner pill for status labels.
+	PillStyle = lipgloss.NewStyle().
+			Padding(0, 1)
+
+	// SpacedBlockStyle provides consistent vertical spacing without borders.
+	SpacedBlockStyle = lipgloss.NewStyle().
+				PaddingLeft(2).
+				MarginBottom(1)
+)
+
+// BadgeStyle returns a pill-shaped badge in the given color.
+func BadgeStyle(color lipgloss.Color) lipgloss.Style {
+	return BadgeBaseStyle.
+		Foreground(Foreground).
+		Background(color)
+}
+
+// Divider returns a horizontal line of the given width.
+func Divider(width int) string {
+	if width <= 0 {
+		return ""
+	}
+	return DividerStyle.Render(strings.Repeat("─", width))
+}
+
 // Check result indicators
 const (
 	CheckPass = "✓"

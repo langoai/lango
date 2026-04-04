@@ -206,6 +206,8 @@ func (m *Model) handleKey(msg tea.KeyMsg) (*Model, tea.Cmd) {
 		return m, m.switchPage(PageTools)
 	case key.Matches(msg, m.keymap.Page4):
 		return m, m.switchPage(PageStatus)
+	case key.Matches(msg, m.keymap.Page5):
+		return m, m.switchPage(PageTasks)
 	}
 
 	// Focus-dependent routing.

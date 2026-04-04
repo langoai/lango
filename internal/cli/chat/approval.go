@@ -28,7 +28,8 @@ func NewTUIApprovalProvider(sender func(msg interface{})) *TUIApprovalProvider {
 // the user responds or the context is cancelled.
 func (t *TUIApprovalProvider) RequestApproval(ctx context.Context, req approval.ApprovalRequest) (approval.ApprovalResponse, error) {
 	respCh := make(chan approval.ApprovalResponse, 1)
-	t.sender(ApprovalRequestMsg{Request: req, Response: respCh})
+	vm := approval.NewViewModel(req)
+	t.sender(ApprovalRequestMsg{Request: req, ViewModel: vm, Response: respCh})
 
 	select {
 	case resp := <-respCh:
@@ -46,6 +47,18 @@ func (t *TUIApprovalProvider) CanHandle(_ string) bool { return false }
 
 // Name returns the provider name for logging.
 func (t *TUIApprovalProvider) Name() string { return "tui" }
+
+// renderApproval dispatches to the appropriate approval renderer based on tier.
+func renderApproval(msg *ApprovalRequestMsg, width, height int) string {
+	switch msg.ViewModel.Tier {
+	case approval.TierFullscreen:
+		return renderApprovalDialog(msg.ViewModel, width, height)
+	case approval.TierInline:
+		return renderApprovalStrip(msg.ViewModel, width)
+	default:
+		return renderApprovalBanner(msg.Request, width)
+	}
+}
 
 // renderApprovalBanner renders the inline approval prompt.
 func renderApprovalBanner(req approval.ApprovalRequest, width int) string {

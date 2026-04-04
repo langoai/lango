@@ -3,6 +3,7 @@ package chat
 import (
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/charmbracelet/bubbles/viewport"
 	tea "github.com/charmbracelet/bubbletea"
@@ -19,6 +20,8 @@ const (
 	itemSystem    transcriptItemKind = "system"
 	itemStatus    transcriptItemKind = "status"
 	itemApproval  transcriptItemKind = "approval"
+	itemTool      transcriptItemKind = "tool"
+	itemThinking  transcriptItemKind = "thinking"
 )
 
 type transcriptItem struct {
@@ -116,6 +119,61 @@ func (m *chatViewModel) appendApprovalEvent(content string, outcome string) {
 	m.render()
 }
 
+func (m *chatViewModel) appendToolStart(callID, toolName string, params map[string]any) {
+	m.entries = append(m.entries, transcriptItem{
+		kind:    itemTool,
+		content: toolName,
+		meta: map[string]string{
+			"callID": callID,
+			"state":  string(toolStateRunning),
+		},
+	})
+	m.render()
+}
+
+func (m *chatViewModel) finalizeToolResult(callID string, success bool, duration time.Duration, output string) {
+	for i := len(m.entries) - 1; i >= 0; i-- {
+		e := &m.entries[i]
+		if e.kind == itemTool && e.meta["callID"] == callID {
+			if success {
+				e.meta["state"] = string(toolStateSuccess)
+			} else {
+				e.meta["state"] = string(toolStateError)
+			}
+			e.meta["duration"] = duration.Round(time.Millisecond * 100).String()
+			if output != "" {
+				e.meta["output"] = output
+			}
+			break
+		}
+	}
+	m.render()
+}
+
+func (m *chatViewModel) appendThinking(summary string) {
+	m.entries = append(m.entries, transcriptItem{
+		kind:    itemThinking,
+		content: summary,
+		meta:    map[string]string{"state": "active"},
+	})
+	m.render()
+}
+
+func (m *chatViewModel) finalizeThinking(summary string, duration time.Duration) {
+	for i := len(m.entries) - 1; i >= 0; i-- {
+		e := &m.entries[i]
+		if e.kind == itemThinking && e.meta["state"] == "active" {
+			e.meta["state"] = "done"
+			e.meta["duration"] = duration.Round(time.Millisecond * 100).String()
+			if summary != "" {
+				e.content = summary
+			}
+			break
+		}
+	}
+	m.render()
+}
+
 func (m *chatViewModel) appendChunk(chunk string) {
 	m.streamBuf.WriteString(chunk)
 	m.render()
@@ -189,6 +247,21 @@ func (m *chatViewModel) render() {
 			blocks = append(blocks, renderStatusBlock(entry.content, entry.meta["tone"]))
 		case itemApproval:
 			blocks = append(blocks, renderApprovalEventBlock(entry.content, entry.meta["outcome"]))
+		case itemTool:
+			blocks = append(blocks, renderToolBlock(
+				entry.content,
+				ToolItemState(entry.meta["state"]),
+				entry.meta["duration"],
+				entry.meta["output"],
+				m.contentWidth(),
+			))
+		case itemThinking:
+			blocks = append(blocks, renderThinkingBlock(
+				entry.content,
+				entry.meta["state"],
+				entry.meta["duration"],
+				m.contentWidth(),
+			))
 		}
 	}
 

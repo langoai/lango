@@ -602,14 +602,15 @@ func runCockpit() error {
 	sessionKey := fmt.Sprintf("cockpit-%d", time.Now().UnixMilli())
 
 	model := cockpit.New(cockpit.Deps{
-		TurnRunner:       application.TurnRunner,
-		Config:           cfg,
-		SessionKey:       sessionKey,
-		ToolCatalog:      application.ToolCatalog,
-		MetricsCollector: application.MetricsCollector,
-		FeatureStatuses:  application.FeatureStatuses,
-		ConfigStore:      boot.ConfigStore,
-		ProfileName:      boot.ProfileName,
+		TurnRunner:        application.TurnRunner,
+		Config:            cfg,
+		SessionKey:        sessionKey,
+		ToolCatalog:       application.ToolCatalog,
+		MetricsCollector:  application.MetricsCollector,
+		FeatureStatuses:   application.FeatureStatuses,
+		ConfigStore:       boot.ConfigStore,
+		ProfileName:       boot.ProfileName,
+		BackgroundManager: application.BackgroundManager,
 	})
 
 	// Register pages.
@@ -633,6 +634,7 @@ func runCockpit() error {
 		pages.NewSessionsPage(func(ctx context.Context) ([]session.SessionSummary, error) {
 			return application.Store.ListSessions(ctx)
 		}))
+	model.RegisterPage(cockpit.PageTasks, pages.NewTasksPage(nil))
 
 	p := tea.NewProgram(model, tea.WithAltScreen(), tea.WithMouseCellMotion())
 	model.SetProgram(p)

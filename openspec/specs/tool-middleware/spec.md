@@ -33,15 +33,23 @@ The WithLearning middleware SHALL call the learning observer after each tool exe
 - **THEN** observer.OnToolResult SHALL be called with session key, tool name, params, result, and error
 
 ### Requirement: WithApproval middleware
-The WithApproval middleware SHALL gate tool execution behind an approval flow based on configured policy.
+The approval middleware SHALL gate tool execution behind the approval flow. It SHALL populate `ApprovalRequest.SafetyLevel`, `ApprovalRequest.Category`, and `ApprovalRequest.Activity` from the tool's metadata before sending the request.
 
 #### Scenario: Dangerous tool requires approval
-- **WHEN** a tool with dangerous safety level is executed under "dangerous" policy
-- **THEN** the approval provider SHALL be consulted before execution
+- **WHEN** a tool with `SafetyLevel: Dangerous` is invoked and approval policy requires it
+- **THEN** the middleware sends an `ApprovalRequest` and blocks until response
 
 #### Scenario: Exempt tool bypasses approval
-- **WHEN** a tool listed in ExemptTools is executed
-- **THEN** execution SHALL proceed without approval
+- **WHEN** a tool is listed in `ExemptTools`
+- **THEN** the middleware skips approval and executes directly
+
+#### Scenario: SafetyLevel populated from tool metadata
+- **WHEN** the middleware creates an `ApprovalRequest`
+- **THEN** `req.SafetyLevel` is set to `tool.SafetyLevel.String()`
+
+#### Scenario: Category and Activity populated from tool capability
+- **WHEN** the middleware creates an `ApprovalRequest` for a tool with `Capability.Category: "filesystem"` and `Capability.Activity: "write"`
+- **THEN** `req.Category` is `"filesystem"` and `req.Activity` is `"write"`
 
 ### Requirement: WithBrowserRecovery middleware
 The WithBrowserRecovery middleware SHALL recover from panics in browser tool handlers and retry once on ErrBrowserPanic.

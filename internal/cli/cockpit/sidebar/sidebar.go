@@ -42,6 +42,7 @@ func New() Model {
 			{ID: "tools", Icon: theme.IconTools, Label: "Tools"},
 			{ID: "status", Icon: theme.IconStatus, Label: "Status"},
 			{ID: "sessions", Icon: theme.IconSessions, Label: "Sessions"},
+			{ID: "tasks", Icon: theme.IconStatus, Label: "Tasks"},
 		},
 		active:  "chat",
 		visible: true,

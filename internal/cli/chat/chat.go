@@ -22,9 +22,23 @@ import (
 
 // Deps holds the dependencies injected into the chat model.
 type Deps struct {
-	TurnRunner *turnrunner.Runner
-	Config     *config.Config
-	SessionKey string
+	TurnRunner        *turnrunner.Runner
+	Config            *config.Config
+	SessionKey        string
+	BackgroundManager BackgroundManagerI // optional, nil when background tasks unavailable
+}
+
+// BackgroundManagerI is the subset of background.Manager needed by the chat model.
+type BackgroundManagerI interface {
+	List() []BackgroundTaskInfo
+}
+
+// BackgroundTaskInfo holds summary info about a background task for display.
+type BackgroundTaskInfo struct {
+	ID      string
+	Prompt  string
+	Status  string
+	Elapsed time.Duration
 }
 
 // cprState tracks the CPR (Cursor Position Report) filter state machine.
@@ -54,6 +68,7 @@ type ChatParts struct {
 	Header    string
 	TurnStrip string
 	Main      string
+	TaskStrip string // empty when no background tasks
 	Footer    string
 	Approval  string // empty when no approval pending
 }
@@ -79,6 +94,11 @@ type ChatModel struct {
 
 	program *tea.Program
 
+	bgManager      BackgroundManagerI
+	taskStrip      taskStripModel
+	pendingStart   time.Time // submit timestamp for pending indicator
+	pendingActive  bool      // true between submit and first content event
+
 	lastCtrlC time.Time
 
 	cprDetect cprState
@@ -91,6 +111,8 @@ func New(deps Deps) *ChatModel {
 		turnRunner: deps.TurnRunner,
 		cfg:        deps.Config,
 		sessionKey: deps.SessionKey,
+		bgManager:  deps.BackgroundManager,
+		taskStrip:  newTaskStripModel(deps.BackgroundManager),
 		input:      newInputModel(),
 		chatView:   newChatViewModel(80, 20),
 		state:      stateIdle,
@@ -104,10 +126,14 @@ func (m *ChatModel) SetProgram(p *tea.Program) {
 
 // Init implements tea.Model.
 func (m *ChatModel) Init() tea.Cmd {
-	return tea.Batch(
+	cmds := []tea.Cmd{
 		tea.SetWindowTitle("Lango Chat"),
 		m.input.SetState(stateIdle),
-	)
+	}
+	if tick := m.taskStripTick(); tick != nil {
+		cmds = append(cmds, tick)
+	}
+	return tea.Batch(cmds...)
 }
 
 // Update implements tea.Model.
@@ -150,7 +176,40 @@ func (m *ChatModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, tea.Batch(cmds...)
 		}
 
+	case ToolStartedMsg:
+		m.dismissPending()
+		m.chatView.appendToolStart(msg.CallID, msg.ToolName, msg.Params)
+		return m, nil
+
+	case ToolFinishedMsg:
+		m.chatView.finalizeToolResult(msg.CallID, msg.Success, msg.Duration, msg.Output)
+		return m, nil
+
+	case ThinkingStartedMsg:
+		m.dismissPending()
+		m.chatView.appendThinking(msg.Summary)
+		return m, nil
+
+	case ThinkingFinishedMsg:
+		m.chatView.finalizeThinking(msg.Summary, msg.Duration)
+		return m, nil
+
+	case TaskStripTickMsg:
+		m.taskStrip.refresh()
+		m.refreshView()
+		return m, m.taskStripTick()
+
+	case PendingIndicatorTickMsg:
+		if m.pendingActive {
+			m.refreshView()
+			return m, tea.Tick(500*time.Millisecond, func(t time.Time) tea.Msg {
+				return PendingIndicatorTickMsg(t)
+			})
+		}
+		return m, nil
+
 	case ChunkMsg:
+		m.dismissPending()
 		m.chatView.appendChunk(msg.Chunk)
 		if !m.chatView.cursorTickActive {
 			m.chatView.cursorTickActive = true
@@ -261,11 +320,12 @@ func (m *ChatModel) RenderParts() ChatParts {
 		Header:    renderHeader(m.cfg, truncateSessionKey(m.sessionKey), m.width),
 		TurnStrip: renderTurnStrip(m.state, m.width),
 		Main:      m.chatView.View(),
+		TaskStrip: m.taskStrip.View(m.width),
 		Footer:    renderFooter(m.input, m.state, m.width),
 	}
 
 	if m.state == stateApproving && m.pendingApproval != nil {
-		parts.Approval = renderApprovalBanner(m.pendingApproval.Request, m.width)
+		parts.Approval = renderApproval(m.pendingApproval, m.width, m.height)
 	}
 
 	return parts
@@ -282,14 +342,37 @@ func (m *ChatModel) View() string {
 
 	p := m.RenderParts()
 
-	sections := make([]string, 0, 5)
+	sections := make([]string, 0, 6)
 	sections = append(sections, p.Header, p.TurnStrip, p.Main)
+	if p.TaskStrip != "" {
+		sections = append(sections, p.TaskStrip)
+	}
 	if p.Approval != "" {
 		sections = append(sections, p.Approval)
 	}
 	sections = append(sections, p.Footer)
 
 	return strings.Join(sections, "\n")
+}
+
+// dismissPending clears the pending indicator when the first content event arrives.
+func (m *ChatModel) dismissPending() {
+	m.pendingActive = false
+}
+
+// refreshView re-renders the chat view (used after task strip refresh).
+func (m *ChatModel) refreshView() {
+	m.chatView.render()
+}
+
+// taskStripTick returns a tick command for periodic task strip refresh.
+func (m *ChatModel) taskStripTick() tea.Cmd {
+	if m.bgManager == nil {
+		return nil
+	}
+	return tea.Tick(2*time.Second, func(t time.Time) tea.Msg {
+		return TaskStripTickMsg(t)
+	})
 }
 
 func (m *ChatModel) inputAcceptsText() bool {
@@ -395,6 +478,13 @@ func (m *ChatModel) handleApprovingKey(msg tea.KeyMsg) tea.Cmd {
 		)
 	}
 
+	// Tier 2 dialog key dispatch (scroll, diff toggle).
+	if m.pendingApproval.ViewModel.Tier == approval.TierFullscreen {
+		if cmd := handleApprovalDialogKey(msg); cmd != nil {
+			return cmd
+		}
+	}
+
 	switch {
 	case key.Matches(msg, key.NewBinding(key.WithKeys("a"))):
 		return respond(true, false, "approved", fmt.Sprintf("Approved %s", req.ToolName))
@@ -413,9 +503,12 @@ func (m *ChatModel) submitCmd(input string) tea.Cmd {
 	m.runCtx = ctx
 	m.cancelFn = cancel
 
+	m.pendingActive = true
+	m.pendingStart = time.Now()
+
 	program := m.program
 	return func() tea.Msg {
-		result, err := m.turnRunner.Run(ctx, turnrunner.Request{
+		req := turnrunner.Request{
 			SessionKey: m.sessionKey,
 			Input:      input,
 			Entrypoint: "tui",
@@ -429,7 +522,10 @@ func (m *ChatModel) submitCmd(input string) tea.Cmd {
 					program.Send(WarningMsg{Elapsed: elapsed, HardCeiling: hardCeiling})
 				}
 			},
-		})
+		}
+		enrichRequest(program, &req)
+
+		result, err := m.turnRunner.Run(ctx, req)
 		if err != nil {
 			return ErrorMsg{Err: err}
 		}
@@ -444,8 +540,11 @@ func (m *ChatModel) recalcLayout() {
 		renderHeader(m.cfg, truncateSessionKey(m.sessionKey), m.width),
 		renderTurnStrip(m.state, m.width),
 	}
+	if ts := m.taskStrip.View(m.width); ts != "" {
+		fixedParts = append(fixedParts, ts)
+	}
 	if m.state == stateApproving && m.pendingApproval != nil {
-		fixedParts = append(fixedParts, renderApprovalBanner(m.pendingApproval.Request, m.width))
+		fixedParts = append(fixedParts, renderApproval(m.pendingApproval, m.width, m.height))
 	}
 	fixedParts = append(fixedParts, renderFooter(m.input, m.state, m.width))
 

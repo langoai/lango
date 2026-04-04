@@ -30,8 +30,9 @@ type WarningMsg struct {
 
 // ApprovalRequestMsg delivers an approval request from the agent runtime.
 type ApprovalRequestMsg struct {
-	Request  approval.ApprovalRequest
-	Response chan<- approval.ApprovalResponse
+	Request   approval.ApprovalRequest
+	ViewModel approval.ApprovalViewModel
+	Response  chan<- approval.ApprovalResponse
 }
 
 // SystemMsg is a locally generated informational message.
@@ -41,3 +42,38 @@ type SystemMsg struct {
 
 // CursorTickMsg triggers cursor blink toggle during streaming.
 type CursorTickMsg time.Time
+
+// ToolStartedMsg signals that a tool invocation has begun.
+type ToolStartedMsg struct {
+	CallID   string
+	ToolName string
+	Params   map[string]any
+}
+
+// ToolFinishedMsg signals that a tool invocation has completed.
+type ToolFinishedMsg struct {
+	CallID   string
+	ToolName string
+	Success  bool
+	Duration time.Duration
+	Output   string
+}
+
+// ThinkingStartedMsg signals that the agent has started thinking/reasoning.
+type ThinkingStartedMsg struct {
+	AgentName string
+	Summary   string
+}
+
+// ThinkingFinishedMsg signals that the agent has finished thinking/reasoning.
+type ThinkingFinishedMsg struct {
+	AgentName string
+	Duration  time.Duration
+	Summary   string
+}
+
+// TaskStripTickMsg triggers periodic task strip refresh.
+type TaskStripTickMsg time.Time
+
+// PendingIndicatorTickMsg triggers pending indicator update (submit → first event).
+type PendingIndicatorTickMsg time.Time

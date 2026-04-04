@@ -65,7 +65,7 @@ Single binary. <100ms startup. <250MB memory. Just Go.
 - 👥 **P2P Teams** — Task-scoped agent groups with role-based delegation, conflict resolution (trust_weighted, majority_vote, leader_decides, fail_on_conflict), assignment strategies, and payment coordination
 - 📊 **Observability** — Token usage tracking, health monitoring, audit logging, and metrics endpoints
 - 🎯 **Context Engineering** — Token-budget-aware context allocation, retrieval coordinator (FactSearch + TemporalSearch + ContextSearch), config profiles (off/lite/balanced/full), and relevance score auto-adjustment
-- 🖥️ **Cockpit TUI** — Multi-panel terminal dashboard with chat, tools, status, sessions, and settings pages
+- 🖥️ **Cockpit TUI** — Multi-panel terminal dashboard with chat, tools, status, sessions, tasks, and settings pages. Tool lifecycle visibility (running/success/error), thinking indicators, 2-tier approval (inline strip for safe ops, fullscreen dialog with diff preview for dangerous ops), background task strip, and operational footer HUD
 - 📋 **RunLedger (Task OS)** — Durable execution engine with append-only journal, PEV verification, typed validators, and planner integration
 - 📜 **Session Provenance** — Persistent checkpoints, session lineage tree, git-aware attribution, and signed provenance bundle export/import
 - 🛡️ **OS-level Sandbox** — Process isolation via macOS Seatbelt and Linux seccomp, network deny, workspace-scoped write access

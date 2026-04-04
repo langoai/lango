@@ -43,6 +43,7 @@ The cockpit requires an interactive terminal with TTY support.
 | **Tools** | Tool inventory with agent assignments and invocation counts |
 | **Status** | System status dashboard (health, features, agent state) |
 | **Sessions** | Session history and management |
+| **Tasks** | Background task status and management |
 
 The chat page is always the default active page on startup.
 
@@ -58,6 +59,7 @@ The chat page is always the default active page on startup.
 | `Ctrl+2` | Switch to Settings page |
 | `Ctrl+3` | Switch to Tools page |
 | `Ctrl+4` | Switch to Status page |
+| `Ctrl+5` | Switch to Tasks page |
 
 ## Context Panel
 
@@ -75,7 +77,34 @@ The panel refreshes periodically via tick messages. When the observability colle
 | Feature | Cockpit (`lango`) | Chat (`lango chat`) |
 |---------|-------------------|---------------------|
 | Sidebar navigation | Yes | No |
-| Multiple pages | Yes (5 pages) | No (chat only) |
+| Multiple pages | Yes (6 pages) | No (chat only) |
 | Context panel | Yes | No |
 | Keyboard shortcuts | Full set | Chat-only |
 | Terminal width | Recommended 120+ cols | Any width |
+
+## Tool Lifecycle Visibility
+
+During streaming, each tool invocation appears as a distinct transcript item with lifecycle state:
+
+- **Running** (⚙) — tool is executing
+- **Success** (✓) — tool completed with duration
+- **Error** (✗) — tool failed with error preview
+- **Canceled** (⊘) — tool was canceled
+- **Awaiting Approval** (🔒) — tool requires user approval
+
+## Thinking Indicators
+
+When the model uses extended thinking (via `genai.Part.Thought`), thinking phases appear as collapsible transcript items showing duration. A pending indicator (`⏳ Working...`) covers the submit-to-first-event gap.
+
+## Two-Tier Approval
+
+Approval requests are classified into two tiers based on tool safety level and capability:
+
+- **Tier 1 (Inline Strip)** — compact single-line prompt for safe/moderate tools (e.g., browser_search, browser_observe)
+- **Tier 2 (Fullscreen Dialog)** — overlay with risk badge, parameters, diff preview, and scroll for dangerous filesystem/exec tools (e.g., exec, fs_write, fs_edit)
+
+Both tiers support the same actions: `a` (allow), `s` (allow session), `d`/`Esc` (deny).
+
+## Background Task Strip
+
+When a BackgroundManager is available, a compact task strip appears above the footer showing active task count and the most recent task's status. The full Tasks page (Ctrl+5) provides a detailed table view.
