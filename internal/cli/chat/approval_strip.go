@@ -24,6 +24,10 @@ func renderApprovalStrip(vm approval.ApprovalViewModel, width int) string {
 		summary = fmt.Sprintf("Execute tool: %s", vm.Request.ToolName)
 	}
 
+	if badge := formatChannelBadge(vm.Request.SessionKey); badge != "" {
+		summary = badge + " " + summary
+	}
+
 	keys := lipgloss.NewStyle().
 		Foreground(tui.Muted).
 		Render("[a]llow  [s]ession  [d]eny")

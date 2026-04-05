@@ -45,6 +45,15 @@ func renderApprovalDialog(vm approval.ApprovalViewModel, width, height int) stri
 
 	header := fmt.Sprintf(" %s  %s  %s", riskBadge, toolName, vm.Risk.Label)
 
+	// Channel origin (if from a channel session).
+	var originLine string
+	if origin := formatChannelOrigin(vm.Request.SessionKey); origin != "" {
+		originLine = lipgloss.NewStyle().
+			Foreground(tui.Info).
+			PaddingLeft(2).
+			Render("← " + origin)
+	}
+
 	// Summary.
 	summary := vm.Request.Summary
 	if summary == "" {
@@ -137,7 +146,11 @@ func renderApprovalDialog(vm approval.ApprovalViewModel, width, height int) stri
 	}
 
 	// Assemble content.
-	sections := []string{header, "", summaryBlock}
+	sections := []string{header}
+	if originLine != "" {
+		sections = append(sections, originLine)
+	}
+	sections = append(sections, "", summaryBlock)
 	if paramsBlock != "" {
 		sections = append(sections, paramsBlock)
 	}

@@ -18,8 +18,10 @@ const (
 	EventPaymentSettled    = "payment.settled"
 	EventTrustUpdated      = "trust.updated"
 	EventSchemaExchanged   = "schema.exchanged"
-	EventPolicyDecision    = "policy.decision"
-	EventAlertTriggered    = "alert.triggered"
+	EventPolicyDecision          = "policy.decision"
+	EventAlertTriggered          = "alert.triggered"
+	EventChannelMessageReceived  = "channel.message.received"
+	EventChannelMessageSent      = "channel.message.sent"
 )
 
 // ContentSavedEvent is published when knowledge or memory content is saved.
@@ -219,3 +221,32 @@ type AlertEvent struct {
 
 // EventName implements Event.
 func (e AlertEvent) EventName() string { return EventAlertTriggered }
+
+// --- Channel message events (Phase 2: Channel-Aware Cockpit) ---
+
+// ChannelMessageReceivedEvent is published when an inbound message arrives
+// from a channel platform (Telegram, Discord, Slack, etc.).
+type ChannelMessageReceivedEvent struct {
+	Channel    string            // "telegram", "discord", "slack"
+	SessionKey string            // e.g., "telegram:123:456"
+	SenderName string            // username or display name
+	SenderID   string            // platform user ID
+	Text       string            // message content
+	Timestamp  time.Time
+	Metadata   map[string]string // platform-specific extras (ThreadTS, GuildID, etc.)
+}
+
+// EventName implements Event.
+func (e ChannelMessageReceivedEvent) EventName() string { return EventChannelMessageReceived }
+
+// ChannelMessageSentEvent is published when an outbound response is sent
+// to a channel platform.
+type ChannelMessageSentEvent struct {
+	Channel      string // "telegram", "discord", "slack"
+	SessionKey   string
+	ResponseText string
+	Timestamp    time.Time
+}
+
+// EventName implements Event.
+func (e ChannelMessageSentEvent) EventName() string { return EventChannelMessageSent }

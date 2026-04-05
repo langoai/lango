@@ -285,6 +285,10 @@ func (m *ChatModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		return m, tea.Batch(cmds...)
 
+	case ChannelMessageMsg:
+		m.chatView.appendChannel(msg.Channel, msg.SenderName, msg.Text, msg.SessionKey, msg.Metadata)
+		return m, nil
+
 	case SystemMsg:
 		m.chatView.appendSystem(msg.Text)
 		return m, nil

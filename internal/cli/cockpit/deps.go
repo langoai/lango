@@ -5,6 +5,7 @@ import (
 	"github.com/langoai/lango/internal/background"
 	"github.com/langoai/lango/internal/config"
 	"github.com/langoai/lango/internal/configstore"
+	"github.com/langoai/lango/internal/eventbus"
 	"github.com/langoai/lango/internal/observability"
 	"github.com/langoai/lango/internal/toolcatalog"
 	"github.com/langoai/lango/internal/turnrunner"
@@ -23,4 +24,5 @@ type Deps struct {
 	ConfigStore       *configstore.Store
 	ProfileName       string
 	BackgroundManager *background.Manager // optional, nil when unavailable
+	EventBus          *eventbus.Bus       // optional, enables channel event subscription
 }

@@ -190,6 +190,7 @@ type App struct {
 
 // Channel represents a communication channel (Telegram, Discord, Slack)
 type Channel interface {
+	Name() string
 	Start(ctx context.Context) error
 	Stop(ctx context.Context) error
 }
@@ -206,6 +207,11 @@ const (
 	// and skips network/automation/gateway/channel lifecycle. Used for
 	// interactive TUI chat.
 	AppModeLocalChat
+
+	// AppModeCockpit starts core + buffer components and optionally initializes
+	// channels (if configured), but skips the HTTP gateway and automation lifecycle.
+	// Channel Start/Stop is managed externally by the caller (e.g., runCockpit).
+	AppModeCockpit
 )
 
 // AppOption configures optional behavior for App construction.
@@ -219,4 +225,10 @@ type appOptions struct {
 // gateway, and channel lifecycle components are not started.
 func WithLocalChat() AppOption {
 	return func(o *appOptions) { o.mode = AppModeLocalChat }
+}
+
+// WithCockpit creates an App in cockpit mode. Core components start normally,
+// channels are initialized if configured, but gateway and automation are skipped.
+func WithCockpit() AppOption {
+	return func(o *appOptions) { o.mode = AppModeCockpit }
 }

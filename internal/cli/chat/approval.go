@@ -60,6 +60,49 @@ func renderApproval(msg *ApprovalRequestMsg, width, height int) string {
 	}
 }
 
+// formatChannelOrigin extracts channel origin info from a session key.
+// Returns a human-readable string like "[Telegram] 123456" or "" for non-channel keys.
+func formatChannelOrigin(sessionKey string) string {
+	parts := strings.SplitN(sessionKey, ":", 3)
+	if len(parts) < 3 {
+		return ""
+	}
+
+	var channelName string
+	switch parts[0] {
+	case "telegram":
+		channelName = "Telegram"
+	case "discord":
+		channelName = "Discord"
+	case "slack":
+		channelName = "Slack"
+	default:
+		return ""
+	}
+
+	return fmt.Sprintf("[%s] %s", channelName, parts[1])
+}
+
+// formatChannelBadge returns a short channel badge for compact displays.
+// Returns "" for non-channel session keys.
+func formatChannelBadge(sessionKey string) string {
+	parts := strings.SplitN(sessionKey, ":", 3)
+	if len(parts) < 3 {
+		return ""
+	}
+
+	switch parts[0] {
+	case "telegram":
+		return "[TG]"
+	case "discord":
+		return "[DC]"
+	case "slack":
+		return "[SL]"
+	default:
+		return ""
+	}
+}
+
 // renderApprovalBanner renders the inline approval prompt.
 func renderApprovalBanner(req approval.ApprovalRequest, width int) string {
 	bannerWidth := width - 4
@@ -96,6 +139,11 @@ func renderApprovalBanner(req approval.ApprovalRequest, width int) string {
 		params = "\n" + lipgloss.NewStyle().Foreground(tui.Muted).Render(strings.Join(parts, "\n"))
 	}
 
+	var originLine string
+	if origin := formatChannelOrigin(req.SessionKey); origin != "" {
+		originLine = "\n" + lipgloss.NewStyle().Foreground(tui.Info).Render("  ← "+origin)
+	}
+
 	keys := tui.HelpBar(
 		tui.HelpEntry("a", "allow"),
 		tui.HelpEntry("s", "allow session"),
@@ -103,6 +151,6 @@ func renderApprovalBanner(req approval.ApprovalRequest, width int) string {
 		tui.HelpEntry("esc", "deny"),
 	)
 
-	content := fmt.Sprintf("%s\n%s  %s%s\n\n%s", title, tool, summary, params, keys)
+	content := fmt.Sprintf("%s\n%s  %s%s%s\n\n%s", title, tool, summary, originLine, params, keys)
 	return border.Render(content)
 }

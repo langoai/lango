@@ -22,6 +22,7 @@ const (
 	itemApproval  transcriptItemKind = "approval"
 	itemTool      transcriptItemKind = "tool"
 	itemThinking  transcriptItemKind = "thinking"
+	itemChannel   transcriptItemKind = "channel"
 )
 
 type transcriptItem struct {
@@ -174,6 +175,24 @@ func (m *chatViewModel) finalizeThinking(summary string, duration time.Duration)
 	m.render()
 }
 
+func (m *chatViewModel) appendChannel(channel, senderName, text, sessionKey string, metadata map[string]string) {
+	meta := map[string]string{
+		"channel":    channel,
+		"sender":     senderName,
+		"sessionKey": sessionKey,
+	}
+	// Preserve all metadata for future use (thread grouping, origin jump, etc.)
+	for k, val := range metadata {
+		meta[k] = val
+	}
+	m.entries = append(m.entries, transcriptItem{
+		kind:       itemChannel,
+		rawContent: text,
+		meta:       meta,
+	})
+	m.render()
+}
+
 func (m *chatViewModel) appendChunk(chunk string) {
 	m.streamBuf.WriteString(chunk)
 	m.render()
@@ -260,6 +279,13 @@ func (m *chatViewModel) render() {
 				entry.content,
 				entry.meta["state"],
 				entry.meta["duration"],
+				m.contentWidth(),
+			))
+		case itemChannel:
+			blocks = append(blocks, renderChannelBlock(
+				entry.rawContent,
+				entry.meta["channel"],
+				entry.meta["sender"],
 				m.contentWidth(),
 			))
 		}

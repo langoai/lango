@@ -22,6 +22,14 @@ type toolEntry struct {
 	count int64
 }
 
+// channelStatus represents the state of a single communication channel.
+type channelStatus struct {
+	Name         string
+	Connected    bool
+	MessageCount int
+	LastActivity time.Time
+}
+
 // ContextPanel is a standalone tea.Model that displays live system metrics
 // in a right-side panel. It is NOT a Page — it uses Start()/Stop() lifecycle
 // managed by the cockpit toggle (Ctrl+P).
@@ -32,8 +40,9 @@ type ContextPanel struct {
 	visible         bool
 	width           int
 	height          int
-	sortedTools     []toolEntry // cached sorted tool stats
-	sortedToolsDirty bool       // true when snapshot updated, cleared after sort
+	sortedTools      []toolEntry     // cached sorted tool stats
+	sortedToolsDirty bool            // true when snapshot updated, cleared after sort
+	channelStatuses  []channelStatus // live channel status for display
 }
 
 // NewContextPanel creates a ContextPanel backed by the given collector.
@@ -106,8 +115,11 @@ func (p *ContextPanel) View() string {
 	sections := []string{
 		p.renderTokenUsage(contentWidth, divider),
 		p.renderToolStats(contentWidth, divider),
-		p.renderSystem(contentWidth, divider),
 	}
+	if channelSection := p.renderChannelStatus(contentWidth, divider); channelSection != "" {
+		sections = append(sections, channelSection)
+	}
+	sections = append(sections, p.renderSystem(contentWidth, divider))
 
 	content := strings.Join(sections, "\n")
 
@@ -149,6 +161,12 @@ func (p *ContextPanel) SetHeight(h int) {
 // SetVisible controls whether the panel renders content.
 func (p *ContextPanel) SetVisible(v bool) {
 	p.visible = v
+}
+
+// SetChannelStatuses updates the channel status display data.
+func (p *ContextPanel) SetChannelStatuses(statuses []channelStatus) {
+	p.channelStatuses = make([]channelStatus, len(statuses))
+	copy(p.channelStatuses, statuses)
 }
 
 // --- rendering helpers ---
@@ -236,6 +254,35 @@ func (p *ContextPanel) renderSystem(_ int, divider string) string {
 	b.WriteString(cpValueStyle.Render(uptime))
 	b.WriteByte('\n')
 
+	return b.String()
+}
+
+func (p *ContextPanel) renderChannelStatus(_ int, divider string) string {
+	if len(p.channelStatuses) == 0 {
+		return "" // graceful degradation — no section when no channels
+	}
+
+	var b strings.Builder
+	b.WriteString(cpTitleStyle.Render("Channels"))
+	b.WriteByte('\n')
+	b.WriteString(divider)
+	b.WriteByte('\n')
+
+	for _, ch := range p.channelStatuses {
+		status := "●"
+		statusColor := theme.Success
+		if !ch.Connected {
+			status = "○"
+			statusColor = theme.Error
+		}
+
+		statusIcon := lipgloss.NewStyle().Foreground(statusColor).Render(status)
+		name := lipgloss.NewStyle().Foreground(theme.TextPrimary).Render(ch.Name)
+		count := lipgloss.NewStyle().Foreground(theme.TextTertiary).Render(fmt.Sprintf("%d msgs", ch.MessageCount))
+
+		b.WriteString(fmt.Sprintf("  %s %s  %s", statusIcon, name, count))
+		b.WriteByte('\n')
+	}
 	return b.String()
 }
 

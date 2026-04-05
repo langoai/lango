@@ -117,6 +117,7 @@ func TestRegisterPostBuildLifecycle_Names(t *testing.T) {
 // noopChannel satisfies the Channel interface for testing.
 type noopChannel struct{}
 
+func (n *noopChannel) Name() string                  { return "noop" }
 func (n *noopChannel) Start(_ context.Context) error { return nil }
 func (n *noopChannel) Stop(_ context.Context) error  { return nil }
 

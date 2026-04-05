@@ -94,8 +94,8 @@ func New(boot *bootstrap.Result, opts ...AppOption) (*App, error) {
 		cancel:   cancel,
 	}
 
-	// LocalChat mode: skip Network and Automation lifecycle components.
-	if options.mode == AppModeLocalChat {
+	// LocalChat/Cockpit mode: skip Network and Automation lifecycle components.
+	if options.mode == AppModeLocalChat || options.mode == AppModeCockpit {
 		app.registry.SetMaxPriority(lifecycle.PriorityBuffer)
 	}
 
@@ -299,8 +299,8 @@ func New(boot *bootstrap.Result, opts ...AppOption) (*App, error) {
 	// B7. Post-agent wiring.
 	wirePostAgent(app, resolver, tools, bus, composite, grantStore, boot, auth)
 
-	// B8. Channels (skip in local-chat mode).
-	if options.mode != AppModeLocalChat {
+	// B8. Channels (Server + Cockpit modes initialize channel objects).
+	if options.mode == AppModeServer || options.mode == AppModeCockpit {
 		if err := app.initChannels(); err != nil {
 			logger().Errorw("initialize channels", "error", err)
 		}
@@ -313,7 +313,7 @@ func New(boot *bootstrap.Result, opts ...AppOption) (*App, error) {
 	for _, entry := range buildResult.Components {
 		app.registry.Register(entry.Component, entry.Priority)
 	}
-	if options.mode != AppModeLocalChat {
+	if options.mode == AppModeServer {
 		registerPostBuildLifecycle(app)
 	}
 

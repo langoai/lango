@@ -144,6 +144,9 @@ func (c *Channel) GetApprovalProvider() *ApprovalProvider {
 	return c.approval
 }
 
+// Name returns the channel identifier.
+func (c *Channel) Name() string { return "slack" }
+
 // Start starts the Slack bot
 func (c *Channel) Start(ctx context.Context) error {
 	if c.handler == nil {

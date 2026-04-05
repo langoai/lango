@@ -524,8 +524,13 @@ func mcpServerCount(cfg *config.Config) string {
 	return fmt.Sprintf("%d server(s)", n)
 }
 
+// withChannels controls whether cockpit starts live channel adapters.
+// Default false to avoid conflicts with a running `lango serve`.
+// Set via --with-channels flag on `lango cockpit`.
+var withChannels bool
+
 func cockpitCmd() *cobra.Command {
-	return &cobra.Command{
+	cmd := &cobra.Command{
 		Use:     "cockpit",
 		Short:   "Launch multi-panel TUI (same as bare lango)",
 		GroupID: "start",
@@ -536,6 +541,10 @@ func cockpitCmd() *cobra.Command {
 			return runCockpit()
 		},
 	}
+	cmd.Flags().BoolVar(&withChannels, "with-channels", false,
+		"Start live channel adapters (Telegram/Discord/Slack). "+
+			"Only use when no lango serve is running with the same credentials.")
+	return cmd
 }
 
 func chatCmd() *cobra.Command {
@@ -581,7 +590,13 @@ func runCockpit() error {
 	fmt.Fprintf(os.Stderr, "\n  Logs: %s\n", logPath)
 	fmt.Fprintln(os.Stderr, "  Initializing cockpit...")
 
-	application, err := app.New(boot, app.WithLocalChat())
+	// Use Cockpit mode (channels enabled) only when explicitly requested
+	// via --with-channels to avoid conflict with a running `lango serve`.
+	appMode := app.WithLocalChat()
+	if withChannels {
+		appMode = app.WithCockpit()
+	}
+	application, err := app.New(boot, appMode)
 	if err != nil {
 		return fmt.Errorf("create application: %w", err)
 	}
@@ -600,6 +615,26 @@ func runCockpit() error {
 		_ = application.Stop(shutdownCtx)
 	}()
 
+	// Create channel tracker for cockpit status display.
+	tracker := cockpit.NewChannelTracker(application.EventBus)
+
+	// Seed tracker with known channel names (Start status updated later).
+	for _, ch := range application.Channels {
+		tracker.SeedChannel(ch.Name(), false)
+	}
+
+	// Channel shutdown: cancel ctx first so in-flight requests unblock,
+	// then stop channels. Using a single defer to guarantee ordering
+	// (cancel before stop) and avoid LIFO defer reversal.
+	defer func() {
+		cancel() // unblock any in-flight channel workers waiting on ctx
+		for _, ch := range application.Channels {
+			stopCtx, stopCancel := context.WithTimeout(context.Background(), 5*time.Second)
+			_ = ch.Stop(stopCtx)
+			stopCancel()
+		}
+	}()
+
 	sessionKey := fmt.Sprintf("cockpit-%d", time.Now().UnixMilli())
 
 	model := cockpit.New(cockpit.Deps{
@@ -612,6 +647,7 @@ func runCockpit() error {
 		ConfigStore:       boot.ConfigStore,
 		ProfileName:       boot.ProfileName,
 		BackgroundManager: application.BackgroundManager,
+		EventBus:          application.EventBus,
 	})
 
 	// Register pages.
@@ -644,6 +680,23 @@ func runCockpit() error {
 
 	p := tea.NewProgram(model, tea.WithAltScreen(), tea.WithMouseCellMotion())
 	model.SetProgram(p)
+	model.SetChannelTracker(tracker)
+
+	// Wire channel events from EventBus to TUI — BEFORE starting channels
+	// so no early inbound messages are dropped (EventBus drops unhandled events).
+	cockpit.SubscribeChannelEvents(application.EventBus, p)
+
+	// Start channel polling/socket loops AFTER subscribe is wired.
+	for _, ch := range application.Channels {
+		ch := ch
+		go func() {
+			err := ch.Start(ctx)
+			tracker.SeedChannel(ch.Name(), err == nil)
+			if err != nil {
+				fmt.Fprintf(os.Stderr, "channel start (%s): %v\n", ch.Name(), err)
+			}
+		}()
+	}
 
 	if composite, ok := application.ApprovalProvider.(*approval.CompositeProvider); ok {
 		composite.SetTTYFallback(chat.NewTUIApprovalProvider(func(msg interface{}) {
@@ -693,3 +746,4 @@ func taskElapsed(s background.TaskSnapshot) time.Duration {
 	}
 	return time.Since(s.StartedAt) // running: wall-clock
 }
+

@@ -28,6 +28,7 @@ type Model struct {
 	activePage     PageID
 	sidebar        sidebar.Model
 	contextPanel   *ContextPanel
+	channelTracker *ChannelTracker
 	keymap         keyMap
 	sidebarVisible bool
 	sidebarFocused bool
@@ -66,6 +67,12 @@ func (m *Model) SetProgram(p *tea.Program) {
 	m.child.SetProgram(p)
 }
 
+// SetChannelTracker sets the channel tracker for live channel status updates.
+// The tracker's snapshots are pushed to the context panel on each tick.
+func (m *Model) SetChannelTracker(tracker *ChannelTracker) {
+	m.channelTracker = tracker
+}
+
 // Init implements tea.Model.
 func (m *Model) Init() tea.Cmd {
 	return m.child.Init()
@@ -91,8 +98,20 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	// Forward context panel tick messages.
 	if _, ok := msg.(contextTickMsg); ok {
+		if m.channelTracker != nil {
+			m.contextPanel.SetChannelStatuses(m.channelTracker.Snapshot())
+		}
 		up, cmd := m.contextPanel.Update(msg)
 		m.contextPanel = up.(*ContextPanel)
+		return m, cmd
+	}
+
+	// Channel messages must always reach the chat model, even when
+	// another page (Settings, Status, etc.) is active. Otherwise
+	// traffic arriving while the user browses non-chat pages is lost.
+	if _, ok := msg.(chat.ChannelMessageMsg); ok {
+		up, cmd := m.child.Update(msg)
+		m.child = up.(childModel)
 		return m, cmd
 	}
 

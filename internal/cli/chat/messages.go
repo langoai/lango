@@ -77,3 +77,13 @@ type TaskStripTickMsg time.Time
 
 // PendingIndicatorTickMsg triggers pending indicator update (submit → first event).
 type PendingIndicatorTickMsg time.Time
+
+// ChannelMessageMsg is sent when a channel message is received via EventBus.
+type ChannelMessageMsg struct {
+	Channel    string
+	SessionKey string
+	SenderName string
+	Text       string
+	Timestamp  time.Time
+	Metadata   map[string]string
+}
