@@ -23,18 +23,19 @@ var _ childModel = (*chat.ChatModel)(nil)
 
 // Model is the root cockpit tea.Model.
 type Model struct {
-	child          childModel
-	pages          map[PageID]Page
-	activePage     PageID
-	sidebar        sidebar.Model
-	contextPanel   *ContextPanel
-	channelTracker *ChannelTracker
-	keymap         keyMap
-	sidebarVisible bool
-	sidebarFocused bool
-	contextVisible bool
-	width          int
-	height         int
+	child           childModel
+	pages           map[PageID]Page
+	activePage      PageID
+	sidebar         sidebar.Model
+	contextPanel    *ContextPanel
+	channelTracker  *ChannelTracker
+	runtimeTracker  *RuntimeTracker
+	keymap          keyMap
+	sidebarVisible  bool
+	sidebarFocused  bool
+	contextVisible  bool
+	width           int
+	height          int
 }
 
 // New creates a cockpit Model wrapping a ChatModel.
@@ -73,6 +74,12 @@ func (m *Model) SetChannelTracker(tracker *ChannelTracker) {
 	m.channelTracker = tracker
 }
 
+// SetRuntimeTracker sets the runtime tracker for live metrics.
+// The tracker aggregates token usage, delegation counts, and recovery events.
+func (m *Model) SetRuntimeTracker(tracker *RuntimeTracker) {
+	m.runtimeTracker = tracker
+}
+
 // Init implements tea.Model.
 func (m *Model) Init() tea.Cmd {
 	return m.child.Init()
@@ -101,6 +108,9 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if m.channelTracker != nil {
 			m.contextPanel.SetChannelStatuses(m.channelTracker.Snapshot())
 		}
+		if m.runtimeTracker != nil {
+			m.contextPanel.SetRuntimeStatus(m.runtimeTracker.Snapshot())
+		}
 		up, cmd := m.contextPanel.Update(msg)
 		m.contextPanel = up.(*ContextPanel)
 		return m, cmd
@@ -113,6 +123,83 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		up, cmd := m.child.Update(msg)
 		m.child = up.(childModel)
 		return m, cmd
+	}
+
+	// Runtime events that signal a turn has started — mark turnActive so
+	// the RuntimeTracker accumulates tokens and the context panel shows
+	// the Runtime section even for single-agent (no-delegation) turns.
+	switch msg.(type) {
+	case chat.ToolStartedMsg, chat.ThinkingStartedMsg, chat.ChunkMsg:
+		if m.runtimeTracker != nil {
+			m.runtimeTracker.StartTurn()
+		}
+	}
+
+	// DelegationMsg — must reach chat child + update runtime tracker.
+	// Outward hops increment the delegation counter; orchestrator return
+	// hops only update the active-agent label (no counter bump), so the
+	// context panel shows the correct agent during the final phase.
+	if delegMsg, ok := msg.(chat.DelegationMsg); ok {
+		if m.runtimeTracker != nil {
+			if delegMsg.To == "lango-orchestrator" {
+				m.runtimeTracker.SetActiveAgent(delegMsg.To)
+			} else {
+				m.runtimeTracker.RecordDelegation(delegMsg.To)
+			}
+			if m.contextPanel != nil {
+				m.contextPanel.SetRuntimeStatus(m.runtimeTracker.Snapshot())
+			}
+		}
+		up, cmd := m.child.Update(msg)
+		m.child = up.(childModel)
+		return m, cmd
+	}
+
+	// BudgetWarningMsg — must reach chat child from any page.
+	if _, ok := msg.(chat.BudgetWarningMsg); ok {
+		up, cmd := m.child.Update(msg)
+		m.child = up.(childModel)
+		return m, cmd
+	}
+
+	// RecoveryMsg — must reach chat child from any page.
+	if _, ok := msg.(chat.RecoveryMsg); ok {
+		up, cmd := m.child.Update(msg)
+		m.child = up.(childModel)
+		return m, cmd
+	}
+
+	// DoneMsg — forward FIRST so the assistant response is appended,
+	// then flush tokens so the summary appears AFTER the response.
+	if doneMsg, ok := msg.(chat.DoneMsg); ok {
+		var cmds []tea.Cmd
+		// 1. Forward DoneMsg to chat child first (appends assistant response).
+		up, cmd := m.child.Update(doneMsg)
+		m.child = up.(childModel)
+		if cmd != nil {
+			cmds = append(cmds, cmd)
+		}
+		// 2. Flush tokens and append summary AFTER the response.
+		if m.runtimeTracker != nil {
+			snap := m.runtimeTracker.FlushTurnTokens()
+			if snap.TotalTokens > 0 {
+				up2, cmd2 := m.child.Update(chat.TurnTokenUsageMsg{
+					InputTokens:  snap.InputTokens,
+					OutputTokens: snap.OutputTokens,
+					TotalTokens:  snap.TotalTokens,
+					CacheTokens:  snap.CacheTokens,
+				})
+				m.child = up2.(childModel)
+				if cmd2 != nil {
+					cmds = append(cmds, cmd2)
+				}
+			}
+			m.runtimeTracker.ResetTurn()
+			if m.contextPanel != nil {
+				m.contextPanel.SetRuntimeStatus(runtimeStatus{IsRunning: false})
+			}
+		}
+		return m, tea.Batch(cmds...)
 	}
 
 	// consume-or-forward to active page.

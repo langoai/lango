@@ -2,6 +2,7 @@ package chat
 
 import (
 	"fmt"
+	"strconv"
 	"strings"
 	"time"
 
@@ -22,7 +23,9 @@ const (
 	itemApproval  transcriptItemKind = "approval"
 	itemTool      transcriptItemKind = "tool"
 	itemThinking  transcriptItemKind = "thinking"
-	itemChannel   transcriptItemKind = "channel"
+	itemChannel    transcriptItemKind = "channel"
+	itemDelegation transcriptItemKind = "delegation"
+	itemRecovery   transcriptItemKind = "recovery"
 )
 
 type transcriptItem struct {
@@ -193,6 +196,48 @@ func (m *chatViewModel) appendChannel(channel, senderName, text, sessionKey stri
 	m.render()
 }
 
+func (m *chatViewModel) appendDelegation(from, to, reason string) {
+	m.entries = append(m.entries, transcriptItem{
+		kind: itemDelegation,
+		meta: map[string]string{
+			"from":   from,
+			"to":     to,
+			"reason": reason,
+		},
+	})
+	m.render()
+}
+
+func (m *chatViewModel) appendRecovery(action, causeClass string, attempt int, backoff time.Duration) {
+	m.entries = append(m.entries, transcriptItem{
+		kind: itemRecovery,
+		meta: map[string]string{
+			"action":     action,
+			"causeClass": causeClass,
+			"attempt":    strconv.Itoa(attempt),
+			"backoff":    backoff.String(),
+		},
+	})
+	m.render()
+}
+
+func (m *chatViewModel) appendTokenSummary(input, output, total, cache int64) {
+	summary := fmt.Sprintf("\U0001F4CA Token usage: %s input, %s output, %s total",
+		formatTokenCount(input), formatTokenCount(output), formatTokenCount(total))
+	if cache > 0 {
+		summary += fmt.Sprintf(" (%s cached)", formatTokenCount(cache))
+	}
+	m.appendStatus(summary, "")
+}
+
+// formatTokenCount formats a token count for display (e.g. 1500 → "1.5k").
+func formatTokenCount(n int64) string {
+	if n >= 1000 {
+		return fmt.Sprintf("%.1fk", float64(n)/1000)
+	}
+	return strconv.FormatInt(n, 10)
+}
+
 func (m *chatViewModel) appendChunk(chunk string) {
 	m.streamBuf.WriteString(chunk)
 	m.render()
@@ -286,6 +331,25 @@ func (m *chatViewModel) render() {
 				entry.rawContent,
 				entry.meta["channel"],
 				entry.meta["sender"],
+				m.contentWidth(),
+			))
+
+		case itemDelegation:
+			blocks = append(blocks, renderDelegationBlock(
+				entry.meta["from"],
+				entry.meta["to"],
+				entry.meta["reason"],
+				m.contentWidth(),
+			))
+
+		case itemRecovery:
+			attempt, _ := strconv.Atoi(entry.meta["attempt"])
+			backoff, _ := time.ParseDuration(entry.meta["backoff"])
+			blocks = append(blocks, renderRecoveryBlock(
+				entry.meta["action"],
+				entry.meta["causeClass"],
+				attempt,
+				backoff,
 				m.contentWidth(),
 			))
 		}

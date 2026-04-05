@@ -261,6 +261,136 @@ func TestForwardToActivePage(t *testing.T) {
 
 // --- Change-3 W2: context panel tests ---
 
+// --- Phase 3: Runtime message routing tests ---
+
+func TestRuntimeMsg_DelegationReachesChatFromNonChatPage(t *testing.T) {
+	mock := &mockChild{}
+	m := newTestModel(mock)
+	toolsPage := &mockPage{title: "Tools"}
+	m.RegisterPage(PageTools, toolsPage)
+	m.switchPage(PageTools)
+
+	msg := chat.DelegationMsg{From: "operator", To: "librarian", Reason: "search"}
+	m.Update(msg)
+
+	require.Len(t, mock.updates, 1, "DelegationMsg must reach chat child even when Tools page is active")
+	assert.Equal(t, msg, mock.updates[0])
+	assert.Empty(t, toolsPage.updates, "DelegationMsg should not go to tools page")
+}
+
+func TestRuntimeMsg_BudgetWarningReachesChatFromNonChatPage(t *testing.T) {
+	mock := &mockChild{}
+	m := newTestModel(mock)
+	toolsPage := &mockPage{title: "Tools"}
+	m.RegisterPage(PageTools, toolsPage)
+	m.switchPage(PageTools)
+
+	msg := chat.BudgetWarningMsg{Used: 12, Max: 15}
+	m.Update(msg)
+
+	require.Len(t, mock.updates, 1, "BudgetWarningMsg must reach chat child from non-chat page")
+	assert.Equal(t, msg, mock.updates[0])
+}
+
+func TestRuntimeMsg_RecoveryReachesChatFromNonChatPage(t *testing.T) {
+	mock := &mockChild{}
+	m := newTestModel(mock)
+	toolsPage := &mockPage{title: "Tools"}
+	m.RegisterPage(PageTools, toolsPage)
+	m.switchPage(PageTools)
+
+	msg := chat.RecoveryMsg{CauseClass: "rate_limit", Action: "retry", Attempt: 1}
+	m.Update(msg)
+
+	require.Len(t, mock.updates, 1, "RecoveryMsg must reach chat child from non-chat page")
+}
+
+func TestRuntimeMsg_DoneMsgFlushesTokensThenForwards(t *testing.T) {
+	mock := &mockChild{}
+	m := newTestModel(mock)
+
+	// Set up a RuntimeTracker with some accumulated tokens.
+	tracker := NewRuntimeTracker(nil, nil, "sess-1")
+	tracker.StartTurn()
+	// Manually set token values (no bus, so inject directly).
+	tracker.mu.Lock()
+	tracker.turnTokens = tokenSnapshot{InputTokens: 10, OutputTokens: 20, TotalTokens: 30, CacheTokens: 5}
+	tracker.mu.Unlock()
+	m.SetRuntimeTracker(tracker)
+
+	doneMsg := chat.DoneMsg{}
+	m.Update(doneMsg)
+
+	// Child should receive DoneMsg FIRST, then TurnTokenUsageMsg.
+	require.Len(t, mock.updates, 2, "child should receive DoneMsg and TurnTokenUsageMsg")
+	assert.IsType(t, chat.DoneMsg{}, mock.updates[0], "first message should be DoneMsg")
+	tokenMsg, ok := mock.updates[1].(chat.TurnTokenUsageMsg)
+	require.True(t, ok, "second message should be TurnTokenUsageMsg")
+	assert.Equal(t, int64(30), tokenMsg.TotalTokens)
+
+	// Tracker should be reset.
+	snap := tracker.Snapshot()
+	assert.False(t, snap.IsRunning, "turn should no longer be running after DoneMsg")
+	assert.Equal(t, 0, snap.DelegationCount)
+}
+
+func TestRuntimeMsg_DoneMsgNoTokensSkipsSummary(t *testing.T) {
+	mock := &mockChild{}
+	m := newTestModel(mock)
+	tracker := NewRuntimeTracker(nil, nil, "sess-1")
+	tracker.StartTurn()
+	m.SetRuntimeTracker(tracker)
+
+	m.Update(chat.DoneMsg{})
+
+	// Only DoneMsg, no TurnTokenUsageMsg (zero tokens).
+	require.Len(t, mock.updates, 1, "child should only receive DoneMsg when tokens are zero")
+	assert.IsType(t, chat.DoneMsg{}, mock.updates[0])
+}
+
+func TestRuntimeMsg_DelegationTracksOrchReturn(t *testing.T) {
+	mock := &mockChild{}
+	m := newTestModel(mock)
+	tracker := NewRuntimeTracker(nil, nil, "sess-1")
+	tracker.StartTurn()
+	m.SetRuntimeTracker(tracker)
+
+	// Outward delegation.
+	m.Update(chat.DelegationMsg{From: "orchestrator", To: "operator"})
+	assert.Equal(t, 1, tracker.Snapshot().DelegationCount)
+	assert.Equal(t, "operator", tracker.Snapshot().ActiveAgent)
+
+	// Return hop — counter should NOT increment, but active agent updates.
+	m.Update(chat.DelegationMsg{From: "operator", To: "lango-orchestrator"})
+	assert.Equal(t, 1, tracker.Snapshot().DelegationCount, "return hop should not increment counter")
+	assert.Equal(t, "lango-orchestrator", tracker.Snapshot().ActiveAgent, "active agent should update to orchestrator")
+}
+
+func TestRuntimeMsg_StartTurnOnFirstContentEvent(t *testing.T) {
+	tests := []struct {
+		give string
+		msg  tea.Msg
+	}{
+		{"ToolStartedMsg", chat.ToolStartedMsg{CallID: "c1", ToolName: "test"}},
+		{"ThinkingStartedMsg", chat.ThinkingStartedMsg{AgentName: "agent"}},
+		{"ChunkMsg", chat.ChunkMsg{Chunk: "hello"}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.give, func(t *testing.T) {
+			mock := &mockChild{}
+			m := newTestModel(mock)
+			tracker := NewRuntimeTracker(nil, nil, "sess-1")
+			m.SetRuntimeTracker(tracker)
+
+			assert.False(t, tracker.Snapshot().IsRunning, "should not be running before content event")
+
+			m.Update(tt.msg)
+
+			assert.True(t, tracker.Snapshot().IsRunning, "should be running after content event")
+		})
+	}
+}
+
 func TestCtrlP_TogglesContext(t *testing.T) {
 	mock := &mockChild{}
 	m := newTestModelWithCollector(mock)

@@ -292,6 +292,81 @@ func TestAppendSystem_Empty(t *testing.T) {
 	assert.Empty(t, cv.entries)
 }
 
+// ---------------------------------------------------------------------------
+// Delegation / Recovery / Token Summary tests
+// ---------------------------------------------------------------------------
+
+func TestAppendDelegation(t *testing.T) {
+	cv := newChatViewModel(80, 24)
+	cv.appendDelegation("operator", "librarian", "search needed")
+
+	require.Len(t, cv.entries, 1)
+	e := cv.entries[0]
+	assert.Equal(t, itemDelegation, e.kind)
+	assert.Equal(t, "operator", e.meta["from"])
+	assert.Equal(t, "librarian", e.meta["to"])
+	assert.Equal(t, "search needed", e.meta["reason"])
+}
+
+func TestAppendDelegation_EmptyReason(t *testing.T) {
+	cv := newChatViewModel(80, 24)
+	cv.appendDelegation("operator", "librarian", "")
+
+	require.Len(t, cv.entries, 1)
+	assert.Equal(t, "", cv.entries[0].meta["reason"])
+}
+
+func TestAppendRecovery(t *testing.T) {
+	cv := newChatViewModel(80, 24)
+	cv.appendRecovery("retry", "rate_limit", 2, 3*time.Second)
+
+	require.Len(t, cv.entries, 1)
+	e := cv.entries[0]
+	assert.Equal(t, itemRecovery, e.kind)
+	assert.Equal(t, "retry", e.meta["action"])
+	assert.Equal(t, "rate_limit", e.meta["causeClass"])
+	assert.Equal(t, "2", e.meta["attempt"])
+	assert.Equal(t, "3s", e.meta["backoff"])
+}
+
+func TestAppendTokenSummary(t *testing.T) {
+	cv := newChatViewModel(80, 24)
+	cv.appendTokenSummary(100, 200, 300, 50)
+
+	require.Len(t, cv.entries, 1)
+	e := cv.entries[0]
+	assert.Equal(t, itemStatus, e.kind) // reuses appendStatus
+	assert.Contains(t, e.content, "100")
+	assert.Contains(t, e.content, "200")
+	assert.Contains(t, e.content, "300")
+	assert.Contains(t, e.content, "50 cached")
+}
+
+func TestAppendTokenSummary_NoCache(t *testing.T) {
+	cv := newChatViewModel(80, 24)
+	cv.appendTokenSummary(1500, 2000, 3500, 0)
+
+	require.Len(t, cv.entries, 1)
+	assert.Contains(t, cv.entries[0].content, "1.5k")
+	assert.NotContains(t, cv.entries[0].content, "cached")
+}
+
+func TestFormatTokenCount(t *testing.T) {
+	tests := []struct {
+		give int64
+		want string
+	}{
+		{0, "0"},
+		{999, "999"},
+		{1000, "1.0k"},
+		{1500, "1.5k"},
+		{12345, "12.3k"},
+	}
+	for _, tt := range tests {
+		assert.Equal(t, tt.want, formatTokenCount(tt.give))
+	}
+}
+
 func TestRender_ToolAndThinking(t *testing.T) {
 	cv := newChatViewModel(80, 24)
 	cv.appendToolStart("c1", "fs_read", nil)

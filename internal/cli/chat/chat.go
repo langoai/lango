@@ -285,6 +285,27 @@ func (m *ChatModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		return m, tea.Batch(cmds...)
 
+	case DelegationMsg:
+		m.dismissPending()
+		m.chatView.appendDelegation(msg.From, msg.To, msg.Reason)
+		return m, nil
+
+	case BudgetWarningMsg:
+		m.chatView.appendStatus(
+			fmt.Sprintf("\u26A0 Delegation budget: %d/%d (%.0f%%)",
+				msg.Used, msg.Max, float64(msg.Used)/float64(msg.Max)*100),
+			"warning",
+		)
+		return m, nil
+
+	case RecoveryMsg:
+		m.chatView.appendRecovery(msg.Action, msg.CauseClass, msg.Attempt, msg.Backoff)
+		return m, nil
+
+	case TurnTokenUsageMsg:
+		m.chatView.appendTokenSummary(msg.InputTokens, msg.OutputTokens, msg.TotalTokens, msg.CacheTokens)
+		return m, nil
+
 	case ChannelMessageMsg:
 		m.chatView.appendChannel(msg.Channel, msg.SenderName, msg.Text, msg.SessionKey, msg.Metadata)
 		return m, nil

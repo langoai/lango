@@ -43,6 +43,7 @@ type ContextPanel struct {
 	sortedTools      []toolEntry     // cached sorted tool stats
 	sortedToolsDirty bool            // true when snapshot updated, cleared after sort
 	channelStatuses  []channelStatus // live channel status for display
+	runtimeStat      runtimeStatus   // live runtime status for display
 }
 
 // NewContextPanel creates a ContextPanel backed by the given collector.
@@ -116,6 +117,10 @@ func (p *ContextPanel) View() string {
 		p.renderTokenUsage(contentWidth, divider),
 		p.renderToolStats(contentWidth, divider),
 	}
+	// Runtime section — only shown when a turn is active
+	if runtimeSection := p.renderRuntimeStatus(contentWidth, divider); runtimeSection != "" {
+		sections = append(sections, runtimeSection)
+	}
 	if channelSection := p.renderChannelStatus(contentWidth, divider); channelSection != "" {
 		sections = append(sections, channelSection)
 	}
@@ -167,6 +172,13 @@ func (p *ContextPanel) SetVisible(v bool) {
 func (p *ContextPanel) SetChannelStatuses(statuses []channelStatus) {
 	p.channelStatuses = make([]channelStatus, len(statuses))
 	copy(p.channelStatuses, statuses)
+}
+
+// SetRuntimeStatus updates the runtime status display data.
+// Rendering is handled by Unit 3A; this setter allows the cockpit
+// to push snapshots from RuntimeTracker.
+func (p *ContextPanel) SetRuntimeStatus(status runtimeStatus) {
+	p.runtimeStat = status
 }
 
 // --- rendering helpers ---
@@ -253,6 +265,43 @@ func (p *ContextPanel) renderSystem(_ int, divider string) string {
 	b.WriteString(cpLabelStyle.Render("Uptime:  "))
 	b.WriteString(cpValueStyle.Render(uptime))
 	b.WriteByte('\n')
+
+	return b.String()
+}
+
+func (p *ContextPanel) renderRuntimeStatus(_ int, divider string) string {
+	if !p.runtimeStat.IsRunning {
+		return "" // graceful degradation — no section when idle
+	}
+
+	var b strings.Builder
+	b.WriteString(cpTitleStyle.Render("Runtime"))
+	b.WriteByte('\n')
+	b.WriteString(divider)
+	b.WriteByte('\n')
+
+	// Active agent indicator
+	statusIcon := lipgloss.NewStyle().Foreground(theme.Success).Render("●")
+	label := "Running"
+	if p.runtimeStat.ActiveAgent != "" {
+		label += "  " + lipgloss.NewStyle().Foreground(theme.TextPrimary).Render(p.runtimeStat.ActiveAgent)
+	}
+	b.WriteString(fmt.Sprintf("  %s %s", statusIcon, cpLabelStyle.Render(label)))
+	b.WriteByte('\n')
+
+	// Delegation count (only show if > 0)
+	if p.runtimeStat.DelegationCount > 0 {
+		b.WriteString(fmt.Sprintf("  🔀 %s",
+			cpValueStyle.Render(fmt.Sprintf("%d delegations", p.runtimeStat.DelegationCount))))
+		b.WriteByte('\n')
+	}
+
+	// Token usage (only show if > 0)
+	if p.runtimeStat.TurnTokens > 0 {
+		b.WriteString(fmt.Sprintf("  📊 %s",
+			cpValueStyle.Render(fmt.Sprintf("%s tokens", formatCompact(p.runtimeStat.TurnTokens)))))
+		b.WriteByte('\n')
+	}
 
 	return b.String()
 }

@@ -9,27 +9,53 @@ import (
 
 func TestRenderThinkingBlock_Active(t *testing.T) {
 	tests := []struct {
-		give        string
-		giveContent string
-		wantContain []string
+		give           string
+		giveContent    string
+		giveWidth      int
+		wantContain    []string
+		wantNotContain []string
 	}{
 		{
-			give:        "active with content",
-			giveContent: "analyzing the problem",
+			give:        "active with content shows preview",
+			giveContent: "analyzing data",
+			giveWidth:   80,
+			wantContain: []string{"💭", "Thinking...", "analyzing data"},
+		},
+		{
+			give:           "active empty content no extra space",
+			giveContent:    "",
+			giveWidth:      80,
+			wantContain:    []string{"💭", "Thinking..."},
+			wantNotContain: []string{"Thinking...  "},
+		},
+		{
+			give:        "active long content truncated",
+			giveContent: "very long summary text that exceeds width and should be truncated properly",
+			giveWidth:   40,
+			wantContain: []string{"💭", "Thinking...", "…"},
+		},
+		{
+			give:        "active narrow width still works",
+			giveContent: "some content here",
+			giveWidth:   20,
 			wantContain: []string{"💭", "Thinking..."},
 		},
 		{
 			give:        "active with different content",
 			giveContent: "reasoning about approach",
-			wantContain: []string{"💭", "Thinking..."},
+			giveWidth:   80,
+			wantContain: []string{"💭", "Thinking...", "reasoning about approach"},
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.give, func(t *testing.T) {
-			got := renderThinkingBlock(tt.giveContent, "active", "", 80)
+			got := renderThinkingBlock(tt.giveContent, "active", "", tt.giveWidth)
 			for _, want := range tt.wantContain {
 				assert.Contains(t, got, want)
+			}
+			for _, notWant := range tt.wantNotContain {
+				assert.NotContains(t, got, notWant)
 			}
 		})
 	}
@@ -43,12 +69,12 @@ func TestRenderThinkingBlock_Done(t *testing.T) {
 }
 
 func TestRenderThinkingBlock_DoneWithContent(t *testing.T) {
+	// Done state shows duration but ignores content (unchanged behavior).
 	got := renderThinkingBlock("summary of reasoning", "done", "5s", 80)
 	assert.Contains(t, got, "💭")
 	assert.Contains(t, got, "5s")
 	assert.Contains(t, got, "Thinking")
-	// In done state, the duration is shown but content is not rendered inline
-	// (the implementation uses duration label only).
+	assert.NotContains(t, got, "summary of reasoning")
 }
 
 func TestRenderThinkingBlock_EmptyContent(t *testing.T) {

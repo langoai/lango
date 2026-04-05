@@ -55,3 +55,26 @@ The context panel SHALL display a "Channels" section showing each channel's conn
 #### Scenario: Channel statuses updated on tick
 - **WHEN** the context panel tick fires and a ChannelTracker is available
 - **THEN** the cockpit calls `tracker.Snapshot()` and pushes results to `SetChannelStatuses`
+
+### Requirement: Runtime status section in context panel
+The context panel SHALL display a "Runtime" section showing the active agent, delegation count, and per-turn token usage when a turn is active. The section SHALL appear between Tool Stats and Channels.
+
+#### Scenario: Runtime section when turn is active
+- **WHEN** `SetRuntimeStatus` is called with `IsRunning=true`, `ActiveAgent="operator"`, `DelegationCount=3`, `TurnTokens=1234`
+- **THEN** the context panel SHALL display a "Runtime" section with a green running indicator, agent name, delegation count, and formatted token count
+
+#### Scenario: Runtime section hidden when idle
+- **WHEN** `SetRuntimeStatus` is called with `IsRunning=false`
+- **THEN** the "Runtime" section SHALL NOT be rendered (graceful degradation)
+
+#### Scenario: Runtime status refreshed on tick
+- **WHEN** a contextTickMsg fires and a RuntimeTracker is available
+- **THEN** the cockpit SHALL push `runtimeTracker.Snapshot()` to the context panel alongside channel statuses
+
+#### Scenario: Zero delegations not displayed
+- **WHEN** `DelegationCount=0` in the runtime status
+- **THEN** the delegation line SHALL NOT be rendered
+
+#### Scenario: Zero tokens not displayed
+- **WHEN** `TurnTokens=0` in the runtime status
+- **THEN** the token line SHALL NOT be rendered

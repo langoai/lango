@@ -27,6 +27,8 @@ func TestEnrichRequest_NilSender(t *testing.T) {
 	assert.Nil(t, req.OnToolCall, "OnToolCall should remain nil when sender is nil")
 	assert.Nil(t, req.OnToolResult, "OnToolResult should remain nil when sender is nil")
 	assert.Nil(t, req.OnThinking, "OnThinking should remain nil when sender is nil")
+	assert.Nil(t, req.OnDelegation, "OnDelegation should remain nil when sender is nil")
+	assert.Nil(t, req.OnBudgetWarning, "OnBudgetWarning should remain nil when sender is nil")
 }
 
 func TestEnrichRequest_SetsCallbacks(t *testing.T) {
@@ -38,6 +40,8 @@ func TestEnrichRequest_SetsCallbacks(t *testing.T) {
 	assert.NotNil(t, req.OnToolCall, "OnToolCall should be set")
 	assert.NotNil(t, req.OnToolResult, "OnToolResult should be set")
 	assert.NotNil(t, req.OnThinking, "OnThinking should be set")
+	assert.NotNil(t, req.OnDelegation, "OnDelegation should be set")
+	assert.NotNil(t, req.OnBudgetWarning, "OnBudgetWarning should be set")
 }
 
 func TestEnrichRequest_PreservesExistingOnChunk(t *testing.T) {
@@ -101,4 +105,95 @@ func TestEnrichRequest_OnThinkingBoundary(t *testing.T) {
 	assert.Equal(t, "agent", finishMsg.AgentName)
 	assert.Equal(t, "summary", finishMsg.Summary)
 	assert.Greater(t, finishMsg.Duration, time.Duration(0), "Duration should be non-zero")
+}
+
+func TestEnrichRequest_OnDelegationSendsMsg(t *testing.T) {
+	tests := []struct {
+		give       string
+		giveFrom   string
+		giveTo     string
+		giveReason string
+		wantFrom   string
+		wantTo     string
+		wantReason string
+	}{
+		{
+			give:       "delegation with reason",
+			giveFrom:   "orchestrator",
+			giveTo:     "specialist",
+			giveReason: "needs code review",
+			wantFrom:   "orchestrator",
+			wantTo:     "specialist",
+			wantReason: "needs code review",
+		},
+		{
+			give:       "delegation without reason",
+			giveFrom:   "planner",
+			giveTo:     "coder",
+			giveReason: "",
+			wantFrom:   "planner",
+			wantTo:     "coder",
+			wantReason: "",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.give, func(t *testing.T) {
+			sender := &mockSender{}
+			req := &turnrunner.Request{}
+
+			enrichRequest(sender, req)
+			req.OnDelegation(tt.giveFrom, tt.giveTo, tt.giveReason)
+
+			require.Len(t, sender.msgs, 1, "expected exactly one message")
+
+			msg, ok := sender.msgs[0].(DelegationMsg)
+			require.True(t, ok, "expected DelegationMsg, got %T", sender.msgs[0])
+			assert.Equal(t, tt.wantFrom, msg.From)
+			assert.Equal(t, tt.wantTo, msg.To)
+			assert.Equal(t, tt.wantReason, msg.Reason)
+		})
+	}
+}
+
+func TestEnrichRequest_OnBudgetWarningSendsMsg(t *testing.T) {
+	tests := []struct {
+		give    string
+		giveUsd int
+		giveMax int
+		wantUsd int
+		wantMax int
+	}{
+		{
+			give:    "80 percent threshold",
+			giveUsd: 12,
+			giveMax: 15,
+			wantUsd: 12,
+			wantMax: 15,
+		},
+		{
+			give:    "custom budget max",
+			giveUsd: 24,
+			giveMax: 30,
+			wantUsd: 24,
+			wantMax: 30,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.give, func(t *testing.T) {
+			sender := &mockSender{}
+			req := &turnrunner.Request{}
+
+			enrichRequest(sender, req)
+			req.OnBudgetWarning(tt.giveUsd, tt.giveMax)
+
+			require.Len(t, sender.msgs, 1, "expected exactly one message")
+
+			msg, ok := sender.msgs[0].(BudgetWarningMsg)
+			require.True(t, ok, "expected BudgetWarningMsg, got %T", sender.msgs[0])
+			assert.Equal(t, tt.wantUsd, msg.Used)
+			assert.Equal(t, tt.wantMax, msg.Max)
+		})
+	}
 }

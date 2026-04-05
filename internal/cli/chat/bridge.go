@@ -38,6 +38,14 @@ func enrichRequest(sender msgSender, req *turnrunner.Request) {
 		})
 	}
 
+	req.OnDelegation = func(from, to, reason string) {
+		sender.Send(DelegationMsg{From: from, To: to, Reason: reason})
+	}
+
+	req.OnBudgetWarning = func(used, max int) {
+		sender.Send(BudgetWarningMsg{Used: used, Max: max})
+	}
+
 	var thinkingStart time.Time
 	req.OnThinking = func(agentName string, started bool, summary string) {
 		if started {

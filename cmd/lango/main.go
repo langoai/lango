@@ -682,6 +682,10 @@ func runCockpit() error {
 	model.SetProgram(p)
 	model.SetChannelTracker(tracker)
 
+	// Wire runtime tracker for live token/delegation/recovery metrics.
+	runtimeTracker := cockpit.NewRuntimeTracker(application.EventBus, p, sessionKey)
+	model.SetRuntimeTracker(runtimeTracker)
+
 	// Wire channel events from EventBus to TUI — BEFORE starting channels
 	// so no early inbound messages are dropped (EventBus drops unhandled events).
 	cockpit.SubscribeChannelEvents(application.EventBus, p)

@@ -231,6 +231,78 @@ func TestContextPanel_SetChannelStatuses(t *testing.T) {
 	assert.Equal(t, "slack", panel.channelStatuses[0].Name)
 }
 
+func TestContextPanel_RuntimeSectionWhenRunning(t *testing.T) {
+	panel := NewContextPanel(nil)
+	panel.visible = true
+	panel.height = 30
+	panel.runtimeStat = runtimeStatus{
+		IsRunning:       true,
+		ActiveAgent:     "operator",
+		DelegationCount: 3,
+		TurnTokens:      1234,
+	}
+
+	view := panel.View()
+	assert.Contains(t, view, "Runtime")
+	assert.Contains(t, view, "operator")
+	assert.Contains(t, view, "3 delegations")
+	assert.Contains(t, view, "1,234 tokens")
+}
+
+func TestContextPanel_RuntimeSectionWhenIdle(t *testing.T) {
+	panel := NewContextPanel(nil)
+	panel.visible = true
+	panel.height = 30
+	panel.runtimeStat = runtimeStatus{IsRunning: false}
+
+	view := panel.View()
+	assert.NotContains(t, view, "Runtime")
+}
+
+func TestContextPanel_RuntimeSectionZeroDelegations(t *testing.T) {
+	panel := NewContextPanel(nil)
+	panel.visible = true
+	panel.height = 30
+	panel.runtimeStat = runtimeStatus{
+		IsRunning:       true,
+		ActiveAgent:     "operator",
+		DelegationCount: 0,
+	}
+
+	view := panel.View()
+	assert.Contains(t, view, "Runtime")
+	assert.NotContains(t, view, "delegations")
+}
+
+func TestContextPanel_RuntimeSectionZeroTokens(t *testing.T) {
+	panel := NewContextPanel(nil)
+	panel.visible = true
+	panel.height = 30
+	panel.runtimeStat = runtimeStatus{
+		IsRunning:       true,
+		DelegationCount: 2,
+		TurnTokens:      0,
+	}
+
+	view := panel.View()
+	assert.Contains(t, view, "Runtime")
+	assert.Contains(t, view, "2 delegations")
+	assert.NotContains(t, view, "tokens")
+}
+
+func TestContextPanel_RuntimeSectionNoAgentName(t *testing.T) {
+	panel := NewContextPanel(nil)
+	panel.visible = true
+	panel.height = 30
+	panel.runtimeStat = runtimeStatus{IsRunning: true}
+
+	view := panel.View()
+	assert.Contains(t, view, "Runtime")
+	assert.Contains(t, view, "Running")
+	// Should not contain any agent name reference beyond "Running"
+	assert.NotContains(t, view, "operator")
+}
+
 func TestFormatCompact(t *testing.T) {
 	tests := []struct {
 		give int64

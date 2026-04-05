@@ -4,6 +4,7 @@ import (
 	"fmt"
 
 	"github.com/charmbracelet/lipgloss"
+	"github.com/charmbracelet/x/ansi"
 
 	"github.com/langoai/lango/internal/cli/tui"
 )
@@ -17,6 +18,14 @@ func renderThinkingBlock(content, state, duration string, width int) string {
 			Bold(true).
 			Foreground(tui.Muted).
 			Render("\U0001F4AD Thinking...")
+		if content != "" {
+			maxPreview := max(width-lipgloss.Width(label)-4, 10)
+			preview := ansi.Truncate(content, maxPreview, "…")
+			label += "  " + lipgloss.NewStyle().
+				Foreground(tui.Muted).
+				Italic(true).
+				Render(preview)
+		}
 		return fmt.Sprintf(" %s", label)
 
 	case "done":

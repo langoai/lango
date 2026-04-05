@@ -78,6 +78,19 @@ type TaskStripTickMsg time.Time
 // PendingIndicatorTickMsg triggers pending indicator update (submit → first event).
 type PendingIndicatorTickMsg time.Time
 
+// DelegationMsg signals an agent-to-agent delegation event.
+type DelegationMsg struct {
+	From   string
+	To     string
+	Reason string
+}
+
+// BudgetWarningMsg signals that delegation budget is approaching its limit.
+type BudgetWarningMsg struct {
+	Used int
+	Max  int
+}
+
 // ChannelMessageMsg is sent when a channel message is received via EventBus.
 type ChannelMessageMsg struct {
 	Channel    string
@@ -86,4 +99,20 @@ type ChannelMessageMsg struct {
 	Text       string
 	Timestamp  time.Time
 	Metadata   map[string]string
+}
+
+// RecoveryMsg signals a recovery decision during structured orchestration.
+type RecoveryMsg struct {
+	CauseClass string
+	Action     string
+	Attempt    int
+	Backoff    time.Duration
+}
+
+// TurnTokenUsageMsg delivers per-turn token usage summary.
+type TurnTokenUsageMsg struct {
+	InputTokens  int64
+	OutputTokens int64
+	TotalTokens  int64
+	CacheTokens  int64
 }
