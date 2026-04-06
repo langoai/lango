@@ -3,7 +3,6 @@ package pages
 import (
 	"fmt"
 	"sort"
-	"strconv"
 	"strings"
 	"time"
 
@@ -12,6 +11,7 @@ import (
 	"github.com/charmbracelet/lipgloss"
 
 	"github.com/langoai/lango/internal/cli/cockpit/theme"
+	"github.com/langoai/lango/internal/cli/tui"
 	"github.com/langoai/lango/internal/config"
 	"github.com/langoai/lango/internal/observability"
 	"github.com/langoai/lango/internal/types"
@@ -169,7 +169,7 @@ func (m *StatusPage) renderTokenUsage(
 	}
 	for _, r := range rows {
 		b.WriteString(labelStyle.Render(r.label))
-		b.WriteString(valueStyle.Render(formatNumber(r.value)))
+		b.WriteString(valueStyle.Render(tui.FormatNumber(r.value)))
 		b.WriteByte('\n')
 	}
 	return b.String()
@@ -188,7 +188,7 @@ func (m *StatusPage) renderToolExecution(
 	valueStyle := lipgloss.NewStyle().Foreground(theme.TextPrimary)
 
 	b.WriteString(labelStyle.Render("Total executions:  "))
-	b.WriteString(valueStyle.Render(formatNumber(m.snapshot.ToolExecutions)))
+	b.WriteString(valueStyle.Render(tui.FormatNumber(m.snapshot.ToolExecutions)))
 	b.WriteByte('\n')
 
 	// Sort tools by call count descending for stable output.
@@ -204,7 +204,7 @@ func (m *StatusPage) renderToolExecution(
 	detailStyle := lipgloss.NewStyle().Foreground(theme.TextSecondary)
 
 	for _, tm := range tools {
-		avg := formatDuration(tm.AvgDuration)
+		avg := tui.FormatDuration(tm.AvgDuration)
 		detail := fmt.Sprintf("%d calls  avg %s  %d errors",
 			tm.Count, avg, tm.Errors)
 		b.WriteString(nameStyle.Render(tm.Name))
@@ -239,7 +239,7 @@ func (m *StatusPage) renderSystemInfo(
 	}{
 		{"Provider:", provider},
 		{"Model:", model},
-		{"Uptime:", formatDuration(m.snapshot.Uptime)},
+		{"Uptime:", tui.FormatDuration(m.snapshot.Uptime)},
 	}
 	for _, r := range rows {
 		b.WriteString(labelStyle.Render(r.label))
@@ -264,47 +264,4 @@ func tickCmd() tea.Cmd {
 	return tea.Tick(5*time.Second, func(t time.Time) tea.Msg {
 		return tickMsg(t)
 	})
-}
-
-// formatDuration renders a duration as a human-friendly string
-// (e.g., "2h 15m", "3m 42s", "150ms").
-func formatDuration(d time.Duration) string {
-	if d < time.Second {
-		return fmt.Sprintf("%dms", d.Milliseconds())
-	}
-	totalSec := int(d.Seconds())
-	h := totalSec / 3600
-	m := (totalSec % 3600) / 60
-	s := totalSec % 60
-
-	switch {
-	case h > 0:
-		return fmt.Sprintf("%dh %dm", h, m)
-	default:
-		return fmt.Sprintf("%dm %ds", m, s)
-	}
-}
-
-// formatNumber renders an integer with comma-separated thousands
-// (e.g., 12345 → "12,345").
-func formatNumber(n int64) string {
-	if n < 0 {
-		return "-" + formatNumber(-n)
-	}
-	s := strconv.FormatInt(n, 10)
-	if len(s) <= 3 {
-		return s
-	}
-	var buf strings.Builder
-	remainder := len(s) % 3
-	if remainder > 0 {
-		buf.WriteString(s[:remainder])
-	}
-	for i := remainder; i < len(s); i += 3 {
-		if buf.Len() > 0 {
-			buf.WriteByte(',')
-		}
-		buf.WriteString(s[i : i+3])
-	}
-	return buf.String()
 }

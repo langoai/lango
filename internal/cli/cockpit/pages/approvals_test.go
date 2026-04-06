@@ -10,6 +10,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/langoai/lango/internal/approval"
+	"github.com/langoai/lango/internal/cli/tui"
 )
 
 // newTestApprovalsPage creates an ApprovalsPage with fixed time and sets dimensions via Update.
@@ -377,7 +378,7 @@ func TestRelativeTime(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.give, func(t *testing.T) {
 			t.Parallel()
-			got := relativeTime(now, tt.t)
+			got := tui.RelativeTime(now, tt.t)
 			assert.Equal(t, tt.want, got)
 		})
 	}

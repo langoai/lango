@@ -29,25 +29,6 @@ type Deps struct {
 	BackgroundManager *background.Manager // optional, nil when background tasks unavailable
 }
 
-// cprState tracks the CPR (Cursor Position Report) filter state machine.
-type cprState int
-
-const (
-	cprIdle cprState = iota
-	cprGotEsc
-	cprGotBracket
-	cprInParams
-	cprGotOSC
-	cprInOSC
-	cprOscEsc
-)
-
-// cprTimeoutMsg is sent when a CPR detection window expires.
-type cprTimeoutMsg struct{}
-
-// cprTimeout is how long we wait after ESC before deciding it's not a CPR sequence.
-const cprTimeout = 50 * time.Millisecond
-
 // cursorBlinkInterval is the period between cursor blink toggles.
 const cursorBlinkInterval = 400 * time.Millisecond
 
@@ -79,23 +60,17 @@ type ChatModel struct {
 	runCtx   context.Context
 	cancelFn context.CancelFunc
 
-	pendingApproval *ApprovalRequestMsg
+	approval approvalState
 
 	program *tea.Program
 
-	bgManager      *background.Manager
-	taskStrip      taskStripModel
-	pendingStart   time.Time // submit timestamp for pending indicator
-	pendingActive  bool      // true between submit and first content event
-
-	approvalConfirmPending bool      // true when first press on critical tool
-	approvalConfirmAction  string    // "a" or "s" — which action is awaiting confirmation
-	approvalConfirmTime    time.Time // when confirmPending was set
+	bgManager *background.Manager
+	taskStrip taskStripModel
+	pending   pendingIndicator
 
 	lastCtrlC time.Time
 
-	cprDetect cprState
-	cprBuf    []tea.KeyMsg
+	cpr cprFilter
 }
 
 // New creates a new ChatModel with the given dependencies.
@@ -141,8 +116,8 @@ func (m *ChatModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case cprTimeoutMsg:
-		if m.cprDetect != cprIdle {
-			cmds = append(cmds, m.cprFlush()...)
+		if keys := m.cpr.HandleTimeout(); len(keys) > 0 {
+			cmds = append(cmds, m.replayKeys(keys)...)
 		}
 		return m, tea.Batch(cmds...)
 
@@ -154,9 +129,12 @@ func (m *ChatModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 
 		if m.inputAcceptsText() {
-			filtered, filterCmds := m.filterCPR(msg)
+			filtered, filterCmds := m.cpr.Filter(msg)
 			if len(filterCmds) > 0 {
 				cmds = append(cmds, filterCmds...)
+			}
+			if !filtered && len(m.cpr.buf) > 0 {
+				cmds = append(cmds, m.cprFlush()...)
 			}
 			if filtered {
 				return m, tea.Batch(cmds...)
@@ -193,11 +171,9 @@ func (m *ChatModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, m.taskStripTick()
 
 	case PendingIndicatorTickMsg:
-		if m.pendingActive {
+		if m.pending.IsActive() {
 			m.refreshView()
-			return m, tea.Tick(500*time.Millisecond, func(t time.Time) tea.Msg {
-				return PendingIndicatorTickMsg(t)
-			})
+			return m, m.pending.TickCmd()
 		}
 		return m, nil
 
@@ -280,11 +256,7 @@ func (m *ChatModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case ApprovalRequestMsg:
 		m.dismissPending()
-		dialogScrollOffset = 0
-		dialogSplitMode = false
-		m.approvalConfirmPending = false
-		m.approvalConfirmAction = ""
-		m.pendingApproval = &msg
+		m.approval.Reset(&msg)
 		m.chatView.appendApprovalEvent(fmt.Sprintf("Approval requested for %s", msg.Request.ToolName), "requested")
 		if cmd := m.transitionTo(stateApproving); cmd != nil {
 			cmds = append(cmds, cmd)
@@ -349,13 +321,12 @@ func (m *ChatModel) RenderParts() ChatParts {
 		Footer:    renderFooter(m.input, m.state, m.width),
 	}
 
-	if m.pendingActive {
-		elapsed := time.Since(m.pendingStart).Round(time.Second).String()
-		parts.Pending = renderPendingIndicator(elapsed)
+	if m.pending.IsActive() {
+		parts.Pending = renderPendingIndicator(m.pending.Elapsed())
 	}
 
-	if m.state == stateApproving && m.pendingApproval != nil {
-		parts.Approval = renderApproval(m.pendingApproval, m.width, m.height, m.approvalConfirmPending)
+	if m.state == stateApproving && m.approval.HasPending() {
+		parts.Approval = renderApproval(m.approval.pending, m.width, m.height, m.approval.scrollOffset, m.approval.splitMode, m.approval.confirmPending)
 	}
 
 	return parts
@@ -390,10 +361,10 @@ func (m *ChatModel) View() string {
 
 // dismissPending clears the pending indicator when the first content event arrives.
 func (m *ChatModel) dismissPending() {
-	if !m.pendingActive {
+	if !m.pending.IsActive() {
 		return
 	}
-	m.pendingActive = false
+	m.pending.Dismiss()
 	if m.width > 0 && m.height > 0 {
 		m.recalcLayout()
 	}
@@ -475,14 +446,11 @@ func (m *ChatModel) handleIdleKey(msg tea.KeyMsg) tea.Cmd {
 
 		m.chatView.appendUser(input)
 		// Set pending state before transition so recalcLayout accounts for the strip.
-		m.pendingActive = true
-		m.pendingStart = time.Now()
+		m.pending.Activate()
 		return tea.Batch(
 			m.transitionTo(stateStreaming),
 			m.submitCmd(input),
-			tea.Tick(500*time.Millisecond, func(t time.Time) tea.Msg {
-				return PendingIndicatorTickMsg(t)
-			}),
+			m.pending.TickCmd(),
 		)
 	}
 
@@ -500,27 +468,24 @@ func (m *ChatModel) handleStreamingKey(msg tea.KeyMsg) tea.Cmd {
 }
 
 func (m *ChatModel) handleApprovingKey(msg tea.KeyMsg) tea.Cmd {
-	if m.pendingApproval == nil {
+	if !m.approval.HasPending() {
 		return nil
 	}
 
 	// Expire confirm-pending state after 3 seconds.
-	if m.approvalConfirmPending && time.Since(m.approvalConfirmTime) > 3*time.Second {
-		m.approvalConfirmPending = false
-		m.approvalConfirmAction = ""
+	if m.approval.IsConfirmExpired() {
+		m.approval.CancelConfirm()
 	}
 
-	req := m.pendingApproval.Request
+	req := m.approval.pending.Request
 	respond := func(approved, alwaysAllow bool, outcome string, eventText string) tea.Cmd {
 		resp := approval.ApprovalResponse{
 			Approved:    approved,
 			AlwaysAllow: alwaysAllow,
 			Provider:    "tui",
 		}
-		ch := m.pendingApproval.Response
-		m.pendingApproval = nil
-		m.approvalConfirmPending = false
-		m.approvalConfirmAction = ""
+		ch := m.approval.pending.Response
+		m.approval.Clear()
 		m.chatView.appendApprovalEvent(eventText, outcome)
 		return tea.Batch(
 			m.transitionTo(stateStreaming),
@@ -532,15 +497,15 @@ func (m *ChatModel) handleApprovingKey(msg tea.KeyMsg) tea.Cmd {
 	}
 
 	// Tier 2 dialog key dispatch (scroll, diff toggle).
-	if m.pendingApproval.ViewModel.Tier == approval.TierFullscreen {
-		if cmd := handleApprovalDialogKey(msg); cmd != nil {
+	if m.approval.pending.ViewModel.Tier == approval.TierFullscreen {
+		if cmd := handleApprovalDialogKey(msg, &m.approval); cmd != nil {
 			return cmd
 		}
 	}
 
 	// If a confirm is already pending, the second press of the SAME key
 	// completes the action. Any OTHER key resets the pending state.
-	if m.approvalConfirmPending {
+	if m.approval.confirmPending {
 		pressedKey := ""
 		switch {
 		case key.Matches(msg, key.NewBinding(key.WithKeys("a"))):
@@ -548,36 +513,30 @@ func (m *ChatModel) handleApprovingKey(msg tea.KeyMsg) tea.Cmd {
 		case key.Matches(msg, key.NewBinding(key.WithKeys("s"))):
 			pressedKey = "s"
 		}
-		if pressedKey == m.approvalConfirmAction {
+		if pressedKey == m.approval.confirmAction {
 			// Second press matches — execute the confirmed action.
-			m.approvalConfirmPending = false
-			m.approvalConfirmAction = ""
+			m.approval.CancelConfirm()
 			if pressedKey == "s" {
 				return respond(true, true, "session", fmt.Sprintf("Always allow enabled for %s", req.ToolName))
 			}
 			return respond(true, false, "approved", fmt.Sprintf("Approved %s", req.ToolName))
 		}
 		// Different key — reset pending state and fall through.
-		m.approvalConfirmPending = false
-		m.approvalConfirmAction = ""
+		m.approval.CancelConfirm()
 	}
 
 	switch {
 	case key.Matches(msg, key.NewBinding(key.WithKeys("a"))):
 		// Double-press guardrail for critical-risk tools.
-		if m.pendingApproval.ViewModel.Risk.Level == "critical" {
-			m.approvalConfirmPending = true
-			m.approvalConfirmAction = "a"
-			m.approvalConfirmTime = time.Now()
+		if m.approval.pending.ViewModel.Risk.Level == "critical" {
+			m.approval.StartConfirm("a")
 			return nil
 		}
 		return respond(true, false, "approved", fmt.Sprintf("Approved %s", req.ToolName))
 	case key.Matches(msg, key.NewBinding(key.WithKeys("s"))):
 		// Double-press guardrail for critical-risk session grants.
-		if m.pendingApproval.ViewModel.Risk.Level == "critical" {
-			m.approvalConfirmPending = true
-			m.approvalConfirmAction = "s"
-			m.approvalConfirmTime = time.Now()
+		if m.approval.pending.ViewModel.Risk.Level == "critical" {
+			m.approval.StartConfirm("s")
 			return nil
 		}
 		return respond(true, true, "session", fmt.Sprintf("Always allow enabled for %s", req.ToolName))
@@ -628,15 +587,14 @@ func (m *ChatModel) recalcLayout() {
 		renderHeader(m.cfg, truncateSessionKey(m.sessionKey), m.width),
 		renderTurnStrip(m.state, m.width),
 	}
-	if m.pendingActive {
-		elapsed := time.Since(m.pendingStart).Round(time.Second).String()
-		fixedParts = append(fixedParts, renderPendingIndicator(elapsed))
+	if m.pending.IsActive() {
+		fixedParts = append(fixedParts, renderPendingIndicator(m.pending.Elapsed()))
 	}
 	if ts := m.taskStrip.View(m.width); ts != "" {
 		fixedParts = append(fixedParts, ts)
 	}
-	if m.state == stateApproving && m.pendingApproval != nil {
-		fixedParts = append(fixedParts, renderApproval(m.pendingApproval, m.width, m.height, m.approvalConfirmPending))
+	if m.state == stateApproving && m.approval.HasPending() {
+		fixedParts = append(fixedParts, renderApproval(m.approval.pending, m.width, m.height, m.approval.scrollOffset, m.approval.splitMode, m.approval.confirmPending))
 	}
 	fixedParts = append(fixedParts, renderFooter(m.input, m.state, m.width))
 
@@ -664,89 +622,15 @@ func truncateSessionKey(key string) string {
 	return key
 }
 
-// filterCPR intercepts terminal response sequences before they reach the idle
-// composer. It currently discards CPR (`ESC[row;colR`) and OSC responses
-// (`ESC]...BEL` / `ESC]...ESC\`) while replaying non-matching buffered keys.
-func (m *ChatModel) filterCPR(msg tea.KeyMsg) (bool, []tea.Cmd) {
-	switch m.cprDetect {
-	case cprIdle:
-		if msg.Type == tea.KeyEscape {
-			m.cprDetect = cprGotEsc
-			m.cprBuf = append(m.cprBuf[:0], msg)
-			return true, []tea.Cmd{tea.Tick(cprTimeout, func(time.Time) tea.Msg {
-				return cprTimeoutMsg{}
-			})}
-		}
-		return false, nil
-
-	case cprGotEsc:
-		if msg.Type == tea.KeyRunes && len(msg.Runes) == 1 && msg.Runes[0] == '[' {
-			m.cprDetect = cprGotBracket
-			m.cprBuf = append(m.cprBuf, msg)
-			return true, nil
-		}
-		if msg.Type == tea.KeyRunes && len(msg.Runes) == 1 && msg.Runes[0] == ']' {
-			m.cprDetect = cprGotOSC
-			m.cprBuf = append(m.cprBuf, msg)
-			return true, nil
-		}
-		cmds := m.cprFlush()
-		return false, cmds
-
-	case cprGotBracket, cprInParams:
-		if msg.Type == tea.KeyRunes && len(msg.Runes) == 1 {
-			r := msg.Runes[0]
-			if (r >= '0' && r <= '9') || r == ';' {
-				m.cprDetect = cprInParams
-				m.cprBuf = append(m.cprBuf, msg)
-				return true, nil
-			}
-			if r == 'R' && m.cprDetect == cprInParams {
-				m.cprDetect = cprIdle
-				m.cprBuf = m.cprBuf[:0]
-				return true, nil
-			}
-		}
-		cmds := m.cprFlush()
-		return false, cmds
-
-	case cprGotOSC, cprInOSC:
-		if msg.Type == tea.KeyCtrlG || (msg.Type == tea.KeyRunes && len(msg.Runes) == 1 && msg.Runes[0] == '\a') {
-			m.cprDetect = cprIdle
-			m.cprBuf = m.cprBuf[:0]
-			return true, nil
-		}
-		if msg.Type == tea.KeyEscape {
-			m.cprDetect = cprOscEsc
-			m.cprBuf = append(m.cprBuf, msg)
-			return true, nil
-		}
-		m.cprDetect = cprInOSC
-		m.cprBuf = append(m.cprBuf, msg)
-		return true, nil
-
-	case cprOscEsc:
-		if msg.Type == tea.KeyRunes && len(msg.Runes) == 1 && msg.Runes[0] == '\\' {
-			m.cprDetect = cprIdle
-			m.cprBuf = m.cprBuf[:0]
-			return true, nil
-		}
-		m.cprDetect = cprInOSC
-		m.cprBuf = append(m.cprBuf, msg)
-		return true, nil
-	}
-
-	return false, nil
+// cprFlush retrieves buffered keys from the CPR filter and replays them.
+func (m *ChatModel) cprFlush() []tea.Cmd {
+	return m.replayKeys(m.cpr.Flush())
 }
 
-func (m *ChatModel) cprFlush() []tea.Cmd {
-	m.cprDetect = cprIdle
-	buf := make([]tea.KeyMsg, len(m.cprBuf))
-	copy(buf, m.cprBuf)
-	m.cprBuf = m.cprBuf[:0]
-
+// replayKeys feeds buffered key messages through handleKey / input.Update.
+func (m *ChatModel) replayKeys(keys []tea.KeyMsg) []tea.Cmd {
 	var cmds []tea.Cmd
-	for _, k := range buf {
+	for _, k := range keys {
 		cmd := m.handleKey(k)
 		if cmd != nil {
 			cmds = append(cmds, cmd)

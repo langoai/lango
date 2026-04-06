@@ -25,13 +25,8 @@ func testVM() approval.ApprovalViewModel {
 // --- renderApprovalDialog tests ---
 
 func TestRenderApprovalDialog_NormalSize(t *testing.T) {
-	t.Cleanup(func() {
-		dialogScrollOffset = 0
-		dialogSplitMode = false
-	})
-
 	vm := testVM()
-	output := renderApprovalDialog(vm, 80, 40)
+	output := renderApprovalDialog(vm, 80, 40, 0, false)
 
 	assert.Contains(t, output, "HIGH", "should contain risk badge text")
 	assert.Contains(t, output, "fs_edit", "should contain tool name")
@@ -39,57 +34,37 @@ func TestRenderApprovalDialog_NormalSize(t *testing.T) {
 }
 
 func TestRenderApprovalDialog_NarrowWidth(t *testing.T) {
-	t.Cleanup(func() {
-		dialogScrollOffset = 0
-		dialogSplitMode = false
-	})
-
 	vm := testVM()
 
 	require.NotPanics(t, func() {
-		output := renderApprovalDialog(vm, 30, 40)
+		output := renderApprovalDialog(vm, 30, 40, 0, false)
 		assert.NotEmpty(t, output, "output should be non-empty for narrow width")
 	})
 }
 
 func TestRenderApprovalDialog_ShortHeight(t *testing.T) {
-	t.Cleanup(func() {
-		dialogScrollOffset = 0
-		dialogSplitMode = false
-	})
-
 	vm := testVM()
 
 	require.NotPanics(t, func() {
-		output := renderApprovalDialog(vm, 80, 10)
+		output := renderApprovalDialog(vm, 80, 10, 0, false)
 		assert.NotEmpty(t, output, "output should be non-empty for short height")
 	})
 }
 
 func TestRenderApprovalDialog_MinimalSize(t *testing.T) {
-	t.Cleanup(func() {
-		dialogScrollOffset = 0
-		dialogSplitMode = false
-	})
-
 	vm := testVM()
 
 	require.NotPanics(t, func() {
-		output := renderApprovalDialog(vm, 10, 5)
+		output := renderApprovalDialog(vm, 10, 5, 0, false)
 		assert.NotEmpty(t, output, "output should be non-empty for minimal size")
 	})
 }
 
 func TestRenderApprovalDialog_WithDiff(t *testing.T) {
-	t.Cleanup(func() {
-		dialogScrollOffset = 0
-		dialogSplitMode = false
-	})
-
 	vm := testVM()
 	vm.DiffContent = "+added line\n-removed line\n@@hunk header@@\nnormal line"
 
-	output := renderApprovalDialog(vm, 80, 40)
+	output := renderApprovalDialog(vm, 80, 40, 0, false)
 
 	assert.Contains(t, output, "+added line", "should contain added diff line")
 	assert.Contains(t, output, "-removed line", "should contain removed diff line")
@@ -97,11 +72,6 @@ func TestRenderApprovalDialog_WithDiff(t *testing.T) {
 }
 
 func TestRenderApprovalDialog_DiffScroll(t *testing.T) {
-	t.Cleanup(func() {
-		dialogScrollOffset = 0
-		dialogSplitMode = false
-	})
-
 	// Build a diff with many lines so scrolling changes visible content.
 	var lines []string
 	for i := 0; i < 50; i++ {
@@ -110,70 +80,47 @@ func TestRenderApprovalDialog_DiffScroll(t *testing.T) {
 	vm := testVM()
 	vm.DiffContent = strings.Join(lines, "\n")
 
-	outputNoScroll := renderApprovalDialog(vm, 80, 40)
-
-	dialogScrollOffset = 5
-	outputScrolled := renderApprovalDialog(vm, 80, 40)
+	outputNoScroll := renderApprovalDialog(vm, 80, 40, 0, false)
+	outputScrolled := renderApprovalDialog(vm, 80, 40, 5, false)
 
 	assert.NotEqual(t, outputNoScroll, outputScrolled,
 		"scrolled output should differ from non-scrolled output")
 }
 
 func TestRenderApprovalDialog_SplitMode(t *testing.T) {
-	t.Cleanup(func() {
-		dialogScrollOffset = 0
-		dialogSplitMode = false
-	})
-
 	vm := testVM()
 	vm.DiffContent = "+some change\n-old line"
 
-	dialogSplitMode = true
-	output := renderApprovalDialog(vm, 80, 40)
+	output := renderApprovalDialog(vm, 80, 40, 0, true)
 
 	assert.Contains(t, output, "split", "should contain split mode indicator in diff header")
 }
 
 func TestRenderApprovalDialog_EmptySummary(t *testing.T) {
-	t.Cleanup(func() {
-		dialogScrollOffset = 0
-		dialogSplitMode = false
-	})
-
 	vm := testVM()
 	vm.Request.Summary = ""
 
-	output := renderApprovalDialog(vm, 80, 40)
+	output := renderApprovalDialog(vm, 80, 40, 0, false)
 
 	assert.Contains(t, output, "Execute tool:", "should contain fallback summary text")
 }
 
 func TestRenderApprovalDialog_WithParams(t *testing.T) {
-	t.Cleanup(func() {
-		dialogScrollOffset = 0
-		dialogSplitMode = false
-	})
-
 	longValue := strings.Repeat("a", 200)
 	vm := testVM()
 	vm.Request.Params = map[string]interface{}{"content": longValue}
 
-	output := renderApprovalDialog(vm, 80, 40)
+	output := renderApprovalDialog(vm, 80, 40, 0, false)
 
 	assert.Contains(t, output, "...", "long param values should be truncated with ellipsis")
 	assert.NotContains(t, output, longValue, "full long value should not appear untruncated")
 }
 
 func TestRenderApprovalDialog_EmptyParams(t *testing.T) {
-	t.Cleanup(func() {
-		dialogScrollOffset = 0
-		dialogSplitMode = false
-	})
-
 	vm := testVM()
 	vm.Request.Params = nil
 
-	output := renderApprovalDialog(vm, 80, 40)
+	output := renderApprovalDialog(vm, 80, 40, 0, false)
 
 	// With no params, the params section (key: value lines) should be absent.
 	// Verify we still get the essentials without a params block.
@@ -184,129 +131,88 @@ func TestRenderApprovalDialog_EmptyParams(t *testing.T) {
 }
 
 func TestRenderApprovalDialog_ShowsRuleExplanation(t *testing.T) {
-	t.Cleanup(func() {
-		dialogScrollOffset = 0
-		dialogSplitMode = false
-	})
-
 	vm := testVM()
 	vm.RuleExplanation = "This tool modifies the filesystem and is classified as dangerous."
 
-	output := renderApprovalDialog(vm, 80, 40)
+	output := renderApprovalDialog(vm, 80, 40, 0, false)
 
 	assert.Contains(t, output, "Why:", "should contain explanation prefix")
 	assert.Contains(t, output, "filesystem", "should contain explanation text")
 }
 
 func TestRenderApprovalDialog_EmptyExplanationSkipped(t *testing.T) {
-	t.Cleanup(func() {
-		dialogScrollOffset = 0
-		dialogSplitMode = false
-	})
-
 	vm := testVM()
 	vm.RuleExplanation = ""
 
-	output := renderApprovalDialog(vm, 80, 40)
+	output := renderApprovalDialog(vm, 80, 40, 0, false)
 
 	assert.NotContains(t, output, "Why:", "should not contain explanation prefix when empty")
 }
 
 func TestRenderApprovalDialog_ConfirmPendingMessage(t *testing.T) {
-	t.Cleanup(func() {
-		dialogScrollOffset = 0
-		dialogSplitMode = false
-	})
-
 	vm := testVM()
 
 	// Normal render without confirmPending.
-	normalOutput := renderApprovalDialog(vm, 80, 40)
+	normalOutput := renderApprovalDialog(vm, 80, 40, 0, false)
 	assert.Contains(t, normalOutput, "allow", "normal should show allow action")
 	assert.NotContains(t, normalOutput, "Press 'a' again", "normal should not show confirm prompt")
 
 	// Render with confirmPending.
-	confirmOutput := renderApprovalDialog(vm, 80, 40, true)
+	confirmOutput := renderApprovalDialog(vm, 80, 40, 0, false, true)
 	assert.Contains(t, confirmOutput, "Press 'a' again", "confirm pending should show re-press prompt")
 }
 
 // --- handleApprovalDialogKey tests ---
 
 func TestHandleDialogKey_ScrollUp(t *testing.T) {
-	t.Cleanup(func() {
-		dialogScrollOffset = 0
-		dialogSplitMode = false
-	})
-
-	dialogScrollOffset = 10
+	state := &approvalState{scrollOffset: 10}
 	upKey := tea.KeyMsg{Type: tea.KeyUp}
-	cmd := handleApprovalDialogKey(upKey)
+	cmd := handleApprovalDialogKey(upKey, state)
 
 	assert.Nil(t, cmd, "scroll up should return nil cmd")
-	assert.Equal(t, 7, dialogScrollOffset, "scroll up should decrease offset by 3")
+	assert.Equal(t, 7, state.scrollOffset, "scroll up should decrease offset by 3")
 }
 
 func TestHandleDialogKey_ScrollDown(t *testing.T) {
-	t.Cleanup(func() {
-		dialogScrollOffset = 0
-		dialogSplitMode = false
-	})
-
-	dialogScrollOffset = 0
+	state := &approvalState{scrollOffset: 0}
 	downKey := tea.KeyMsg{Type: tea.KeyDown}
-	cmd := handleApprovalDialogKey(downKey)
+	cmd := handleApprovalDialogKey(downKey, state)
 
 	assert.Nil(t, cmd, "scroll down should return nil cmd")
-	assert.Equal(t, 3, dialogScrollOffset, "scroll down should increase offset by 3")
+	assert.Equal(t, 3, state.scrollOffset, "scroll down should increase offset by 3")
 }
 
 func TestHandleDialogKey_ToggleSplit(t *testing.T) {
-	t.Cleanup(func() {
-		dialogScrollOffset = 0
-		dialogSplitMode = false
-	})
-
-	dialogSplitMode = false
+	state := &approvalState{splitMode: false}
 	tKey := tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'t'}}
 
-	cmd := handleApprovalDialogKey(tKey)
+	cmd := handleApprovalDialogKey(tKey, state)
 	assert.Nil(t, cmd, "toggle split should return nil cmd")
-	assert.True(t, dialogSplitMode, "split mode should be true after toggle")
+	assert.True(t, state.splitMode, "split mode should be true after toggle")
 
-	cmd = handleApprovalDialogKey(tKey)
+	cmd = handleApprovalDialogKey(tKey, state)
 	assert.Nil(t, cmd, "toggle split should return nil cmd")
-	assert.False(t, dialogSplitMode, "split mode should be false after second toggle")
+	assert.False(t, state.splitMode, "split mode should be false after second toggle")
 }
 
 func TestHandleDialogKey_Unhandled(t *testing.T) {
-	t.Cleanup(func() {
-		dialogScrollOffset = 0
-		dialogSplitMode = false
-	})
-
-	dialogScrollOffset = 5
-	dialogSplitMode = true
+	state := &approvalState{scrollOffset: 5, splitMode: true}
 
 	xKey := tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'x'}}
-	cmd := handleApprovalDialogKey(xKey)
+	cmd := handleApprovalDialogKey(xKey, state)
 
 	assert.Nil(t, cmd, "unhandled key should return nil cmd")
-	assert.Equal(t, 5, dialogScrollOffset, "scroll offset should not change for unhandled key")
-	assert.True(t, dialogSplitMode, "split mode should not change for unhandled key")
+	assert.Equal(t, 5, state.scrollOffset, "scroll offset should not change for unhandled key")
+	assert.True(t, state.splitMode, "split mode should not change for unhandled key")
 }
 
-// --- scrollApprovalDialog tests ---
+// --- approvalState.ScrollDiff tests ---
 
-func TestScrollDialog_NegativeClamp(t *testing.T) {
-	t.Cleanup(func() {
-		dialogScrollOffset = 0
-		dialogSplitMode = false
-	})
+func TestScrollDiff_NegativeClamp(t *testing.T) {
+	state := &approvalState{scrollOffset: 0}
+	state.ScrollDiff(-5)
 
-	dialogScrollOffset = 0
-	scrollApprovalDialog(-5)
-
-	assert.Equal(t, 0, dialogScrollOffset, "scroll offset should clamp to 0 when scrolling negative from 0")
+	assert.Equal(t, 0, state.scrollOffset, "scroll offset should clamp to 0 when scrolling negative from 0")
 }
 
 // --- riskLevelColor tests ---

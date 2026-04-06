@@ -12,6 +12,7 @@ import (
 	"github.com/charmbracelet/x/ansi"
 
 	"github.com/langoai/lango/internal/cli/cockpit/theme"
+	"github.com/langoai/lango/internal/cli/tui"
 )
 
 // Column layout constants for the tasks table.
@@ -293,9 +294,9 @@ func (m *TasksPage) View() string {
 	// Table rows.
 	var rows []string
 	for i, task := range m.tasks {
-		id := truncate(task.ID, taskColIDW-2) // leave padding room
+		id := tui.Truncate(task.ID, taskColIDW-2) // leave padding room
 		promptStr := ansi.Truncate(task.Prompt, promptW, "…")
-		status := truncate(task.Status, taskColStatW)
+		status := tui.Truncate(task.Status, taskColStatW)
 
 		var row string
 		if wide {
@@ -362,14 +363,14 @@ func (m *TasksPage) renderDetail(task TaskInfo) string {
 	}
 	originLine := fmt.Sprintf("  Origin:  %s", ansi.Truncate(originVal, valW, "…"))
 
-	tokensLine := fmt.Sprintf("  Tokens:  %s", formatTokens(task.TokensUsed))
+	tokensLine := fmt.Sprintf("  Tokens:  %s", tui.FormatTokens(task.TokensUsed))
 
-	promptWrapped := wordWrap(task.Prompt, valW)
+	promptWrapped := tui.WordWrap(task.Prompt, valW)
 	if promptWrapped == "" {
 		promptWrapped = "(none)"
 	}
 
-	resultWrapped := wordWrap(task.Result, valW)
+	resultWrapped := tui.WordWrap(task.Result, valW)
 	if resultWrapped == "" {
 		resultWrapped = "(none)"
 	}
@@ -378,7 +379,7 @@ func (m *TasksPage) renderDetail(task TaskInfo) string {
 	if errorVal == "" {
 		errorVal = "(none)"
 	}
-	errorWrapped := wordWrap(errorVal, valW)
+	errorWrapped := tui.WordWrap(errorVal, valW)
 
 	// Build the full detail content as lines.
 	var lines []string
@@ -432,58 +433,6 @@ func (m *TasksPage) detailHeight() int {
 		return max(m.height-tableMinHeight, detailMinHeight)
 	}
 	return m.height * 60 / 100
-}
-
-// formatTokens returns a human-readable token count with comma separators.
-func formatTokens(n int) string {
-	s := fmt.Sprintf("%d", n)
-	if len(s) <= 3 {
-		return s
-	}
-	var b strings.Builder
-	offset := len(s) % 3
-	if offset > 0 {
-		b.WriteString(s[:offset])
-	}
-	for i := offset; i < len(s); i += 3 {
-		if b.Len() > 0 {
-			b.WriteByte(',')
-		}
-		b.WriteString(s[i : i+3])
-	}
-	return b.String()
-}
-
-// wordWrap wraps text to the given width, breaking on spaces.
-func wordWrap(text string, width int) string {
-	if width <= 0 || text == "" {
-		return text
-	}
-	var lines []string
-	for _, paragraph := range strings.Split(text, "\n") {
-		words := strings.Fields(paragraph)
-		if len(words) == 0 {
-			lines = append(lines, "")
-			continue
-		}
-		var cur strings.Builder
-		for _, w := range words {
-			if cur.Len() == 0 {
-				cur.WriteString(w)
-			} else if cur.Len()+1+len(w) > width {
-				lines = append(lines, cur.String())
-				cur.Reset()
-				cur.WriteString(w)
-			} else {
-				cur.WriteByte(' ')
-				cur.WriteString(w)
-			}
-		}
-		if cur.Len() > 0 {
-			lines = append(lines, cur.String())
-		}
-	}
-	return strings.Join(lines, "\n")
 }
 
 func (m *TasksPage) refreshData() {

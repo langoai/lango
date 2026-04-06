@@ -10,6 +10,7 @@ import (
 	"github.com/charmbracelet/lipgloss"
 
 	"github.com/langoai/lango/internal/cli/cockpit/theme"
+	"github.com/langoai/lango/internal/cli/tui"
 	"github.com/langoai/lango/internal/toolcatalog"
 )
 
@@ -245,26 +246,15 @@ func (p *ToolsPage) renderToolDetails(width int) string {
 	lines = append(lines, tableHeader, divider)
 
 	for _, t := range p.tools {
-		name := truncate(t.Name, nameCol)
-		desc := truncate(t.Description, descCol)
-		safety := safetyStyle(t.SafetyLevel).Render(truncate(t.SafetyLevel, safetyCol))
+		name := tui.Truncate(t.Name, nameCol)
+		desc := tui.Truncate(t.Description, descCol)
+		safety := safetyStyle(t.SafetyLevel).Render(tui.Truncate(t.SafetyLevel, safetyCol))
 
 		line := fmt.Sprintf("  %-*s %-*s %s", nameCol, name, descCol, desc, safety)
 		lines = append(lines, line)
 	}
 
 	return strings.Join(lines, "\n")
-}
-
-// truncate shortens s to maxLen, appending "..." if needed.
-func truncate(s string, maxLen int) string {
-	if len(s) <= maxLen {
-		return s
-	}
-	if maxLen <= 3 {
-		return s[:maxLen]
-	}
-	return s[:maxLen-3] + "..."
 }
 
 // Pre-allocated safety level styles.

@@ -10,6 +10,7 @@ import (
 	"github.com/charmbracelet/lipgloss"
 
 	"github.com/langoai/lango/internal/cli/cockpit/theme"
+	"github.com/langoai/lango/internal/cli/tui"
 	"github.com/langoai/lango/internal/observability"
 )
 
@@ -204,7 +205,7 @@ func (p *ContextPanel) renderTokenUsage(width int, divider string) string {
 	labelW := 8
 	for _, r := range rows {
 		label := cpLabelStyle.Width(labelW).Render(r.label)
-		val := cpValueStyle.Render(formatCompact(r.value))
+		val := cpValueStyle.Render(tui.FormatNumber(r.value))
 		b.WriteString(label + val)
 		b.WriteByte('\n')
 	}
@@ -246,7 +247,7 @@ func (p *ContextPanel) renderToolStats(width int, divider string) string {
 		nameW = 8
 	}
 	for _, e := range entries {
-		name := truncateName(e.name, nameW)
+		name := tui.Truncate(e.name, nameW)
 		line := fmt.Sprintf("%-*s %4d", nameW, name, e.count)
 		b.WriteString(cpLabelStyle.Render(line))
 		b.WriteByte('\n')
@@ -261,7 +262,7 @@ func (p *ContextPanel) renderSystem(_ int, divider string) string {
 	b.WriteString(divider)
 	b.WriteByte('\n')
 
-	uptime := formatUptime(p.snapshot.Uptime)
+	uptime := tui.FormatDuration(p.snapshot.Uptime)
 	b.WriteString(cpLabelStyle.Render("Uptime:  "))
 	b.WriteString(cpValueStyle.Render(uptime))
 	b.WriteByte('\n')
@@ -299,7 +300,7 @@ func (p *ContextPanel) renderRuntimeStatus(_ int, divider string) string {
 	// Token usage (only show if > 0)
 	if p.runtimeStat.TurnTokens > 0 {
 		b.WriteString(fmt.Sprintf("  📊 %s",
-			cpValueStyle.Render(fmt.Sprintf("%s tokens", formatCompact(p.runtimeStat.TurnTokens)))))
+			cpValueStyle.Render(fmt.Sprintf("%s tokens", tui.FormatNumber(p.runtimeStat.TurnTokens)))))
 		b.WriteByte('\n')
 	}
 
@@ -353,47 +354,6 @@ func contextTickCmd() tea.Cmd {
 	})
 }
 
-// formatCompact renders a number in compact form (e.g. 12345 -> "12,345").
-func formatCompact(n int64) string {
-	if n < 0 {
-		return "-" + formatCompact(-n)
-	}
-	s := fmt.Sprintf("%d", n)
-	if len(s) <= 3 {
-		return s
-	}
-	var buf strings.Builder
-	remainder := len(s) % 3
-	if remainder > 0 {
-		buf.WriteString(s[:remainder])
-	}
-	for i := remainder; i < len(s); i += 3 {
-		if buf.Len() > 0 {
-			buf.WriteByte(',')
-		}
-		buf.WriteString(s[i : i+3])
-	}
-	return buf.String()
-}
-
-// formatUptime renders a duration as a human-friendly string.
-func formatUptime(d time.Duration) string {
-	if d < time.Second {
-		return fmt.Sprintf("%dms", d.Milliseconds())
-	}
-	totalSec := int(d.Seconds())
-	h := totalSec / 3600
-	m := (totalSec % 3600) / 60
-	s := totalSec % 60
-
-	switch {
-	case h > 0:
-		return fmt.Sprintf("%dh %dm", h, m)
-	default:
-		return fmt.Sprintf("%dm %ds", m, s)
-	}
-}
-
 // toolCountSum returns the total invocation count across all tools in a snapshot.
 func toolCountSum(snap observability.SystemSnapshot) int64 {
 	var sum int64
@@ -401,15 +361,4 @@ func toolCountSum(snap observability.SystemSnapshot) int64 {
 		sum += tm.Count
 	}
 	return sum
-}
-
-// truncateName shortens a tool name if it exceeds maxLen.
-func truncateName(s string, maxLen int) string {
-	if len(s) <= maxLen {
-		return s
-	}
-	if maxLen <= 3 {
-		return s[:maxLen]
-	}
-	return s[:maxLen-3] + "..."
 }

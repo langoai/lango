@@ -12,14 +12,8 @@ import (
 	"github.com/langoai/lango/internal/cli/tui"
 )
 
-// dialogScrollOffset tracks the diff viewport scroll position (package-level for simplicity).
-var dialogScrollOffset int
-
-// dialogSplitMode toggles between unified (false) and split (true) diff display.
-var dialogSplitMode bool
-
 // renderApprovalDialog renders a Tier 2 fullscreen approval dialog overlay.
-func renderApprovalDialog(vm approval.ApprovalViewModel, width, height int, confirmPending ...bool) string {
+func renderApprovalDialog(vm approval.ApprovalViewModel, width, height, scrollOffset int, splitMode bool, confirmPending ...bool) string {
 	isConfirmPending := len(confirmPending) > 0 && confirmPending[0]
 	dialogWidth := width - 4
 	if dialogWidth < 30 {
@@ -97,7 +91,7 @@ func renderApprovalDialog(vm approval.ApprovalViewModel, width, height int, conf
 		lines := strings.Split(vm.DiffContent, "\n")
 
 		// Apply scroll offset.
-		start := dialogScrollOffset
+		start := scrollOffset
 		if start >= len(lines) {
 			start = max(len(lines)-1, 0)
 		}
@@ -131,7 +125,7 @@ func renderApprovalDialog(vm approval.ApprovalViewModel, width, height int, conf
 		}
 
 		diffMode := "unified"
-		if dialogSplitMode {
+		if splitMode {
 			diffMode = "split"
 		}
 		diffHeader := lipgloss.NewStyle().Bold(true).Foreground(tui.Muted).
@@ -191,27 +185,19 @@ func renderApprovalDialog(vm approval.ApprovalViewModel, width, height int, conf
 }
 
 // handleApprovalDialogKey handles key events for the Tier 2 approval dialog.
-func handleApprovalDialogKey(msg tea.KeyMsg) tea.Cmd {
+func handleApprovalDialogKey(msg tea.KeyMsg, state *approvalState) tea.Cmd {
 	switch {
 	case key.Matches(msg, key.NewBinding(key.WithKeys("up", "k"))):
-		scrollApprovalDialog(-3)
+		state.ScrollDiff(-3)
 		return nil
 	case key.Matches(msg, key.NewBinding(key.WithKeys("down", "j"))):
-		scrollApprovalDialog(3)
+		state.ScrollDiff(3)
 		return nil
 	case key.Matches(msg, key.NewBinding(key.WithKeys("t"))):
-		dialogSplitMode = !dialogSplitMode
+		state.ToggleSplit()
 		return nil
 	}
 	return nil
-}
-
-// scrollApprovalDialog adjusts the diff viewport scroll position.
-func scrollApprovalDialog(delta int) {
-	dialogScrollOffset += delta
-	if dialogScrollOffset < 0 {
-		dialogScrollOffset = 0
-	}
 }
 
 func riskLevelColor(level string) lipgloss.Color {

@@ -9,6 +9,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/langoai/lango/internal/agent"
+	"github.com/langoai/lango/internal/cli/tui"
 	"github.com/langoai/lango/internal/toolcatalog"
 )
 
@@ -220,7 +221,7 @@ func TestTruncate(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.give, func(t *testing.T) {
 			t.Parallel()
-			got := truncate(tt.give, tt.giveMax)
+			got := tui.Truncate(tt.give, tt.giveMax)
 			assert.Equal(t, tt.want, got)
 		})
 	}

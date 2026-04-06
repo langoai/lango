@@ -121,11 +121,6 @@ func TestRenderApprovalStrip_NoChannelBadge(t *testing.T) {
 }
 
 func TestRenderApprovalDialog_WithChannelOrigin(t *testing.T) {
-	t.Cleanup(func() {
-		dialogScrollOffset = 0
-		dialogSplitMode = false
-	})
-
 	vm := approval.ApprovalViewModel{
 		Request: approval.ApprovalRequest{
 			ToolName:   "fs_edit",
@@ -135,7 +130,7 @@ func TestRenderApprovalDialog_WithChannelOrigin(t *testing.T) {
 		},
 		Risk: approval.RiskIndicator{Level: "high", Label: "Modifies filesystem"},
 	}
-	output := renderApprovalDialog(vm, 80, 40)
+	output := renderApprovalDialog(vm, 80, 40, 0, false)
 
 	assert.Contains(t, output, "[Slack]", "dialog should show channel origin for slack session key")
 	assert.Contains(t, output, "C123", "dialog should show chat ID from session key")
@@ -143,11 +138,6 @@ func TestRenderApprovalDialog_WithChannelOrigin(t *testing.T) {
 }
 
 func TestRenderApprovalDialog_NoChannelOrigin(t *testing.T) {
-	t.Cleanup(func() {
-		dialogScrollOffset = 0
-		dialogSplitMode = false
-	})
-
 	vm := approval.ApprovalViewModel{
 		Request: approval.ApprovalRequest{
 			ToolName:   "fs_edit",
@@ -157,7 +147,7 @@ func TestRenderApprovalDialog_NoChannelOrigin(t *testing.T) {
 		},
 		Risk: approval.RiskIndicator{Level: "high", Label: "Modifies filesystem"},
 	}
-	output := renderApprovalDialog(vm, 80, 40)
+	output := renderApprovalDialog(vm, 80, 40, 0, false)
 
 	assert.NotContains(t, output, "[Telegram]", "dialog should not show Telegram for non-channel key")
 	assert.NotContains(t, output, "[Discord]", "dialog should not show Discord for non-channel key")

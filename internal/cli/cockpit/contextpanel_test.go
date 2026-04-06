@@ -8,6 +8,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/langoai/lango/internal/cli/tui"
 	"github.com/langoai/lango/internal/observability"
 )
 
@@ -316,8 +317,8 @@ func TestFormatCompact(t *testing.T) {
 		{give: -42, want: "-42"},
 	}
 	for _, tt := range tests {
-		got := formatCompact(tt.give)
-		assert.Equal(t, tt.want, got, "formatCompact(%d)", tt.give)
+		got := tui.FormatNumber(tt.give)
+		assert.Equal(t, tt.want, got, "FormatNumber(%d)", tt.give)
 	}
 }
 
@@ -331,7 +332,7 @@ func TestFormatUptime(t *testing.T) {
 		{give: 2*time.Hour + 15*time.Minute, want: "2h 15m"},
 	}
 	for _, tt := range tests {
-		got := formatUptime(tt.give)
-		assert.Equal(t, tt.want, got, "formatUptime(%v)", tt.give)
+		got := tui.FormatDuration(tt.give)
+		assert.Equal(t, tt.want, got, "FormatDuration(%v)", tt.give)
 	}
 }

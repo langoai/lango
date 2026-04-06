@@ -10,6 +10,8 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/langoai/lango/internal/cli/tui"
 )
 
 // mockTaskLister implements TaskLister for testing.
@@ -682,7 +684,7 @@ func TestFormatTokens(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.want, func(t *testing.T) {
 			t.Parallel()
-			assert.Equal(t, tt.want, formatTokens(tt.give))
+			assert.Equal(t, tt.want, tui.FormatTokens(tt.give))
 		})
 	}
 }
@@ -704,7 +706,7 @@ func TestWordWrap(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.give, func(t *testing.T) {
 			t.Parallel()
-			assert.Equal(t, tt.want, wordWrap(tt.give, tt.giveWidth))
+			assert.Equal(t, tt.want, tui.WordWrap(tt.give, tt.giveWidth))
 		})
 	}
 }

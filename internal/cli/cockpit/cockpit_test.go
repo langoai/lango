@@ -52,7 +52,7 @@ func newTestModel(mock *mockChild) *Model {
 		child:          mock,
 		pages:          make(map[PageID]Page),
 		activePage:     PageChat,
-		sidebar:        sidebar.New(),
+		sidebar:        sidebar.New(AllPageMetas()),
 		contextPanel:   NewContextPanel(nil),
 		keymap:         defaultKeyMap(),
 		sidebarVisible: true,
@@ -67,7 +67,7 @@ func newTestModelWithCollector(mock *mockChild) *Model {
 		child:          mock,
 		pages:          make(map[PageID]Page),
 		activePage:     PageChat,
-		sidebar:        sidebar.New(),
+		sidebar:        sidebar.New(AllPageMetas()),
 		contextPanel:   NewContextPanel(collector),
 		keymap:         defaultKeyMap(),
 		sidebarVisible: true,
@@ -625,4 +625,21 @@ func TestCtrlP_ResizePropagatesAllPages(t *testing.T) {
 	require.True(t, ok, "page should receive WindowSizeMsg")
 	expectedWidth := 120 - theme.SidebarFullWidth - theme.ContextPanelWidth
 	assert.Equal(t, expectedWidth, wsm.Width)
+}
+
+func TestSidebarClick_UnregisteredPage_NoOp(t *testing.T) {
+	mock := &mockChild{}
+	m := newTestModel(mock)
+	// Do NOT register PageTools — it remains unregistered.
+
+	// Simulate sidebar click selecting "tools".
+	m.Update(sidebar.PageSelectedMsg{ID: "tools"})
+
+	// activePage should change (switchPage sets it), but no crash.
+	assert.Equal(t, PageTools, m.activePage,
+		"activePage should update even for unregistered page")
+
+	// Child should NOT have received any messages (no Activate forwarded).
+	assert.Empty(t, mock.updates,
+		"no messages should reach child for an unregistered page switch")
 }

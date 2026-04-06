@@ -7,10 +7,25 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/langoai/lango/internal/cli/cockpit/theme"
 )
 
+// testItems returns the same items that the old New() used to hardcode.
+func testItems() []MenuItem {
+	return []MenuItem{
+		{ID: "chat", Icon: theme.IconChat, Label: "Chat"},
+		{ID: "settings", Icon: theme.IconSettings, Label: "Settings"},
+		{ID: "tools", Icon: theme.IconTools, Label: "Tools"},
+		{ID: "status", Icon: theme.IconStatus, Label: "Status"},
+		{ID: "sessions", Icon: theme.IconSessions, Label: "Sessions"},
+		{ID: "tasks", Icon: theme.IconStatus, Label: "Tasks"},
+		{ID: "approvals", Icon: theme.IconApprovals, Label: "Approvals"},
+	}
+}
+
 func TestSidebarView_Visible(t *testing.T) {
-	m := New()
+	m := New(testItems())
 	m.SetHeight(10)
 
 	got := m.View()
@@ -24,7 +39,7 @@ func TestSidebarView_Visible(t *testing.T) {
 }
 
 func TestSidebarView_Hidden(t *testing.T) {
-	m := New()
+	m := New(testItems())
 	m.SetVisible(false)
 
 	got := m.View()
@@ -51,7 +66,7 @@ func TestSidebarHeight(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.wantDesc, func(t *testing.T) {
-			m := New()
+			m := New(testItems())
 			m.SetHeight(tt.give)
 			out := m.View()
 			lines := strings.Split(out, "\n")
@@ -62,7 +77,7 @@ func TestSidebarHeight(t *testing.T) {
 }
 
 func TestSidebarNonInteractive(t *testing.T) {
-	m := New()
+	m := New(testItems())
 	m.SetHeight(10)
 
 	beforeView := m.View()
@@ -77,7 +92,7 @@ func TestSidebarNonInteractive(t *testing.T) {
 }
 
 func TestSetActive_SyncsCursor(t *testing.T) {
-	m := New()
+	m := New(testItems())
 
 	// Initially cursor=0 and active="chat".
 	assert.Equal(t, 0, m.cursor)
@@ -100,7 +115,7 @@ func TestSetActive_SyncsCursor(t *testing.T) {
 // --- Mouse click tests ---
 
 func TestMouseClick_SelectsEnabledItem(t *testing.T) {
-	m := New()
+	m := New(testItems())
 	m.SetHeight(10)
 
 	// Click on item index 1 ("settings") — Y=1 is the second row.
@@ -119,7 +134,7 @@ func TestMouseClick_SelectsEnabledItem(t *testing.T) {
 }
 
 func TestMouseClick_IgnoresDisabledItem(t *testing.T) {
-	m := New()
+	m := New(testItems())
 	m.SetHeight(10)
 	// Manually disable an item for the test.
 	m.items[4].Disabled = true
@@ -134,7 +149,7 @@ func TestMouseClick_IgnoresDisabledItem(t *testing.T) {
 }
 
 func TestMouseClick_IgnoresOutOfBounds(t *testing.T) {
-	m := New()
+	m := New(testItems())
 	m.SetHeight(10)
 
 	// Y=99 is beyond the item list.
@@ -148,7 +163,7 @@ func TestMouseClick_IgnoresOutOfBounds(t *testing.T) {
 }
 
 func TestMouseClick_WorksWhenUnfocused(t *testing.T) {
-	m := New()
+	m := New(testItems())
 	m.SetHeight(10)
 	m.SetFocused(false) // explicitly unfocused
 
@@ -167,7 +182,7 @@ func TestMouseClick_WorksWhenUnfocused(t *testing.T) {
 }
 
 func TestMouseClick_IgnoresNonRelease(t *testing.T) {
-	m := New()
+	m := New(testItems())
 	m.SetHeight(10)
 
 	msg := tea.MouseMsg{

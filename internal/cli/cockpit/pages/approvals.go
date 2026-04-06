@@ -12,6 +12,7 @@ import (
 
 	"github.com/langoai/lango/internal/approval"
 	"github.com/langoai/lango/internal/cli/cockpit/theme"
+	"github.com/langoai/lango/internal/cli/tui"
 )
 
 // Column layout constants for the approvals table.
@@ -221,12 +222,12 @@ func (m *ApprovalsPage) viewHistory() []string {
 
 	now := m.nowFn()
 	for i, entry := range m.histEntries {
-		timeStr := relativeTime(now, entry.Timestamp)
-		timeStr = truncate(timeStr, apprColTimeW-2)
-		toolStr := truncate(entry.ToolName, apprColToolW-2)
+		timeStr := tui.RelativeTime(now, entry.Timestamp)
+		timeStr = tui.Truncate(timeStr, apprColTimeW-2)
+		toolStr := tui.Truncate(entry.ToolName, apprColToolW-2)
 		summaryStr := ansi.Truncate(entry.Summary, summaryW, "…")
-		outcomeStr := truncate(entry.Outcome, apprColOutcomeW-2)
-		provStr := truncate(entry.Provider, apprColProvW)
+		outcomeStr := tui.Truncate(entry.Outcome, apprColOutcomeW-2)
+		provStr := tui.Truncate(entry.Provider, apprColProvW)
 
 		row := fmt.Sprintf(fmtStr, timeStr, toolStr, summaryStr, outcomeStr, provStr)
 
@@ -276,9 +277,9 @@ func (m *ApprovalsPage) viewGrants() []string {
 
 	now := m.nowFn()
 	for i, grant := range m.grantList {
-		sessionStr := truncate(grant.SessionKey, grantColSessionW-2)
-		toolStr := truncate(grant.ToolName, grantColToolW-2)
-		timeStr := relativeTime(now, grant.GrantedAt)
+		sessionStr := tui.Truncate(grant.SessionKey, grantColSessionW-2)
+		toolStr := tui.Truncate(grant.ToolName, grantColToolW-2)
+		timeStr := tui.RelativeTime(now, grant.GrantedAt)
 
 		row := fmt.Sprintf(fmtStr, sessionStr, toolStr, timeStr)
 
@@ -324,23 +325,5 @@ func (m *ApprovalsPage) refreshData() {
 	}
 	if m.grantCursor >= len(m.grantList) {
 		m.grantCursor = max(len(m.grantList)-1, 0)
-	}
-}
-
-// relativeTime formats a timestamp as a human-readable relative duration.
-func relativeTime(now, t time.Time) string {
-	d := now.Sub(t)
-	if d < 0 {
-		d = 0
-	}
-	switch {
-	case d < time.Minute:
-		return fmt.Sprintf("%ds ago", int(d.Seconds()))
-	case d < time.Hour:
-		return fmt.Sprintf("%dm ago", int(d.Minutes()))
-	case d < 24*time.Hour:
-		return fmt.Sprintf("%dh ago", int(d.Hours()))
-	default:
-		return fmt.Sprintf("%dd ago", int(d.Hours()/24))
 	}
 }

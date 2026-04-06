@@ -10,6 +10,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/langoai/lango/internal/cli/tui"
 	"github.com/langoai/lango/internal/session"
 )
 
@@ -180,7 +181,7 @@ func TestSessionsRelativeTime(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.want, func(t *testing.T) {
-			assert.Equal(t, tt.want, sessionsRelativeTime(tt.give))
+			assert.Equal(t, tt.want, tui.RelativeTimeHuman(time.Now(), tt.give))
 		})
 	}
 }

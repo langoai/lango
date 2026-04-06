@@ -3,6 +3,9 @@ package cockpit
 import (
 	"github.com/charmbracelet/bubbles/key"
 	tea "github.com/charmbracelet/bubbletea"
+
+	"github.com/langoai/lango/internal/cli/cockpit/sidebar"
+	"github.com/langoai/lango/internal/cli/cockpit/theme"
 )
 
 // PageID identifies a cockpit page.
@@ -58,6 +61,20 @@ type Page interface {
 	// Deactivate is called when the page loses focus.
 	// Used to stop timers or release resources.
 	Deactivate()
+}
+
+// AllPageMetas returns the sidebar menu items for all known pages.
+// The order matches the sidebar display order.
+func AllPageMetas() []sidebar.MenuItem {
+	return []sidebar.MenuItem{
+		{ID: PageChat.String(), Icon: theme.IconChat, Label: "Chat"},
+		{ID: PageSettings.String(), Icon: theme.IconSettings, Label: "Settings"},
+		{ID: PageTools.String(), Icon: theme.IconTools, Label: "Tools"},
+		{ID: PageStatus.String(), Icon: theme.IconStatus, Label: "Status"},
+		{ID: PageSessions.String(), Icon: theme.IconSessions, Label: "Sessions"},
+		{ID: PageTasks.String(), Icon: theme.IconStatus, Label: "Tasks"},
+		{ID: PageApprovals.String(), Icon: theme.IconApprovals, Label: "Approvals"},
+	}
 }
 
 // PageIDFromString converts a sidebar item ID to a PageID.
