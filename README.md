@@ -65,7 +65,7 @@ Single binary. <100ms startup. <250MB memory. Just Go.
 - 👥 **P2P Teams** — Task-scoped agent groups with role-based delegation, conflict resolution (trust_weighted, majority_vote, leader_decides, fail_on_conflict), assignment strategies, and payment coordination
 - 📊 **Observability** — Token usage tracking, health monitoring, audit logging, and metrics endpoints
 - 🎯 **Context Engineering** — Token-budget-aware context allocation, retrieval coordinator (FactSearch + TemporalSearch + ContextSearch), config profiles (off/lite/balanced/full), and relevance score auto-adjustment
-- 🖥️ **Cockpit TUI** — Multi-panel terminal dashboard with chat, tools, status, sessions, tasks, and settings pages. Tool lifecycle visibility (running/success/error), thinking indicators, 2-tier approval (inline strip for safe ops, fullscreen dialog with diff preview for dangerous ops), background task strip, and operational footer HUD
+- 🖥️ **Cockpit TUI** — Multi-panel terminal dashboard with 7 pages (Chat, Settings, Tools, Status, Sessions, Tasks, Approvals). Context panel with live token usage, tool stats, runtime, channels, and system metrics. Two-tier approval with inline strip and fullscreen dialog. Background task management with detail view, cancel, and retry. Runtime visibility with delegation tracking, budget warnings, and recovery events
 - 📋 **RunLedger (Task OS)** — Durable execution engine with append-only journal, PEV verification, typed validators, and planner integration
 - 📜 **Session Provenance** — Persistent checkpoints, session lineage tree, git-aware attribution, and signed provenance bundle export/import
 - 🛡️ **OS-level Sandbox** — Process isolation via macOS Seatbelt and Linux seccomp, network deny, workspace-scoped write access
@@ -143,6 +143,32 @@ lango doctor --fix
 # JSON output for scripting
 lango doctor --json
 ```
+
+## Cockpit TUI
+
+The cockpit is a multi-panel terminal dashboard launched via `lango` or `lango cockpit`. It provides real-time visibility into agent operations with a sidebar, context panel, and 7 switchable pages:
+
+| Shortcut | Page | Description |
+|----------|------|-------------|
+| Ctrl+1 | Chat | Interactive agent conversation with streaming, tool lifecycle indicators, and two-tier approval |
+| Ctrl+2 | Settings | Runtime configuration editor |
+| Ctrl+3 | Tools | Registered tools with categories and safety levels |
+| Ctrl+4 | Status | System health and component status |
+| — | Sessions | Session history browser (accessible via sidebar) |
+| Ctrl+5 | Tasks | Background task management with detail view, cancel, and retry |
+| Ctrl+6 | Approvals | Approval history and active grant management with revoke controls |
+
+**Context Panel** (Ctrl+P) — Right-side panel with 5 live sections: token usage, tool stats, runtime status, channel status, and system uptime.
+
+**Two-Tier Approval** — Inline strip for safe operations and fullscreen dialog with diff preview for dangerous tools, integrated into the Chat page.
+
+**Runtime Visibility** — Context panel shows delegation tracking, per-turn token summary, and active agent indicator during multi-agent turns. Recovery events surface as in-chat notifications.
+
+**Background Tasks** — Tasks page with table view, detail expansion (Enter), cancel (c), and retry (r) for failed/cancelled tasks.
+
+Additional shortcuts: Ctrl+B (toggle sidebar), Tab (switch focus), Ctrl+Y (copy to clipboard).
+
+See [Cockpit Reference](docs/features/cockpit.md), [Approval Guide](docs/features/cockpit-approval-guide.md), [Task Management Guide](docs/features/cockpit-tasks-guide.md), [Channel Integration Guide](docs/features/cockpit-channels-guide.md), and [Troubleshooting](docs/features/cockpit-troubleshooting.md) for full documentation.
 
 ## Architecture
 
