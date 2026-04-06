@@ -37,8 +37,8 @@ func NewExecutor(logger *zap.SugaredLogger) *Executor {
 }
 
 // SetOSIsolator configures the OS-level sandbox for script execution.
-// When set, skill scripts run under kernel-level isolation (Seatbelt on macOS,
-// Landlock+seccomp on Linux). The workspacePath defines the writable directory.
+// When set, skill scripts run under kernel-level isolation (Seatbelt on macOS;
+// Linux isolation planned). The workspacePath defines the writable directory.
 func (e *Executor) SetOSIsolator(iso sandboxos.OSIsolator, workspacePath string) {
 	e.isolator = iso
 	e.workspacePath = workspacePath

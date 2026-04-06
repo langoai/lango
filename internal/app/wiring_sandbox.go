@@ -13,15 +13,19 @@ func initOSSandbox(cfg *config.Config) sandboxos.OSIsolator {
 	}
 
 	iso := sandboxos.NewOSIsolator()
+	status := sandboxos.NewSandboxStatus(cfg.Sandbox.Enabled, cfg.Sandbox.FailClosed, iso)
+
 	if !iso.Available() {
-		info := sandboxos.Probe()
 		if cfg.Sandbox.FailClosed {
 			logger().Warnw("OS sandbox required but unavailable — tool execution will be blocked",
-				"platform", info.Platform,
-				"capabilities", info.Summary())
+				"platform", status.Capabilities.Platform,
+				"reason", iso.Reason(),
+				"capabilities", status.Capabilities.Summary())
 		} else {
-			logger().Warnw("OS sandbox enabled but unavailable on this platform — proceeding without isolation",
-				"platform", info.Platform)
+			logger().Warnw("OS sandbox enabled but unavailable — proceeding without isolation",
+				"platform", status.Capabilities.Platform,
+				"reason", iso.Reason(),
+				"capabilities", status.Capabilities.Summary())
 		}
 	} else {
 		logger().Infow("OS sandbox initialized",

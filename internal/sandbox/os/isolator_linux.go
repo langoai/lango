@@ -5,39 +5,33 @@ package os
 import "os/exec"
 
 func newPlatformIsolator() OSIsolator {
-	ll := NewLandlockIsolator()
-	sc := NewSeccompIsolator()
-
-	var active []OSIsolator
-	if ll.Available() {
-		active = append(active, ll)
-	}
-	if sc.Available() {
-		active = append(active, sc)
-	}
-
-	switch len(active) {
-	case 0:
-		return &noopIsolator{}
-	case 1:
-		return active[0]
-	default:
-		return &compositeIsolator{isolators: active}
-	}
+	return &noopIsolator{reason: "Linux isolation backend not yet implemented"}
 }
 
 func probePlatform(caps *PlatformCapabilities) {
-	ll := NewLandlockIsolator()
-	caps.HasLandlock = ll.Available()
-	if li, ok := ll.(*landlockIsolator); ok {
-		caps.LandlockABI = li.abiVersion
-	}
+	caps.HasLandlock, caps.LandlockABI = probeLandlockKernel()
+	caps.LandlockReason = "probe not yet implemented"
+	caps.HasSeccomp = probeSeccompKernel()
+	caps.SeccompReason = "probe not yet implemented"
+	caps.KernelVersion = linuxKernelVersion()
+}
 
-	sc := NewSeccompIsolator()
-	caps.HasSeccomp = sc.Available()
+// probeLandlockKernel probes the kernel for Landlock LSM support.
+// TODO: implement actual syscall probe via x/sys/unix.
+func probeLandlockKernel() (available bool, abiVersion int) {
+	return false, 0
+}
 
+// probeSeccompKernel probes the kernel for seccomp-bpf support.
+// TODO: implement actual syscall probe via x/sys/unix.
+func probeSeccompKernel() bool {
+	return false
+}
+
+func linuxKernelVersion() string {
 	out, err := exec.Command("uname", "-r").Output()
-	if err == nil && len(out) > 0 {
-		caps.KernelVersion = string(out[:len(out)-1])
+	if err != nil || len(out) == 0 {
+		return "unknown"
 	}
+	return string(out[:len(out)-1]) // trim trailing newline
 }

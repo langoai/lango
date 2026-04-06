@@ -26,6 +26,7 @@ func (m *mockIsolator) Apply(_ context.Context, _ *exec.Cmd, _ sandboxos.Policy)
 
 func (m *mockIsolator) Available() bool { return m.available }
 func (m *mockIsolator) Name() string    { return "mock" }
+func (m *mockIsolator) Reason() string  { return "" }
 
 func TestRun(t *testing.T) {
 	t.Parallel()

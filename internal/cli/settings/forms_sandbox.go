@@ -16,7 +16,7 @@ func NewOSSandboxForm(cfg *config.Config) *tuicore.FormModel {
 	enabled := &tuicore.Field{
 		Key: "os_sandbox_enabled", Label: "Enabled", Type: tuicore.InputBool,
 		Checked:     cfg.Sandbox.Enabled,
-		Description: "Apply OS-level kernel sandbox (Seatbelt/Landlock) to tool child processes",
+		Description: "Apply OS-level kernel sandbox (Seatbelt on macOS; Linux: planned, not yet enforced)",
 	}
 	form.AddField(enabled)
 	isEnabled := func() bool { return enabled.Checked }
@@ -44,7 +44,7 @@ func NewOSSandboxForm(cfg *config.Config) *tuicore.FormModel {
 		Key: "os_sandbox_network_mode", Label: "  Network Mode", Type: tuicore.InputSelect,
 		Value:       networkMode,
 		Options:     []string{"deny", "allow"},
-		Description: "Network access for sandboxed processes (Linux: deny only)",
+		Description: "Network access for sandboxed processes (Linux: not yet enforced)",
 		VisibleWhen: isEnabled,
 	})
 
@@ -80,7 +80,7 @@ func NewOSSandboxForm(cfg *config.Config) *tuicore.FormModel {
 		Key: "os_sandbox_seccomp_profile", Label: "  seccomp Profile", Type: tuicore.InputSelect,
 		Value:       seccompProfile,
 		Options:     []string{"strict", "moderate", "permissive"},
-		Description: "Linux only — syscall filtering strictness level",
+		Description: "Linux only — not yet enforced",
 		VisibleWhen: isEnabled,
 	})
 

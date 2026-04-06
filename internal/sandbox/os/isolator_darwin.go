@@ -9,13 +9,15 @@ func newPlatformIsolator() OSIsolator {
 	if iso.Available() {
 		return iso
 	}
-	return &noopIsolator{}
+	return &noopIsolator{reason: iso.Reason()}
 }
 
 func probePlatform(caps *PlatformCapabilities) {
-	// Check if sandbox-exec exists.
 	if _, err := exec.LookPath("sandbox-exec"); err == nil {
 		caps.HasSeatbelt = true
+		caps.SeatbeltReason = "sandbox-exec found"
+	} else {
+		caps.SeatbeltReason = "sandbox-exec not found in PATH"
 	}
 	caps.KernelVersion = darwinKernelVersion()
 }

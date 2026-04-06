@@ -196,7 +196,7 @@ Lango provides a comprehensive set of features for building intelligent AI agent
 
     ---
 
-    Process isolation via macOS Seatbelt and Linux seccomp for tool execution with network deny and workspace-scoped access.
+    Process isolation via macOS Seatbelt (Linux: planned, not yet enforced) for tool execution with network deny and workspace-scoped access.
 
     [:octicons-arrow-right-24: Learn more](../configuration.md#sandbox)
 

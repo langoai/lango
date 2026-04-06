@@ -17,11 +17,11 @@ type SandboxConfig struct {
 	WorkspacePath string `mapstructure:"workspacePath" json:"workspacePath,omitempty"`
 
 	// NetworkMode controls network access from sandboxed processes: "deny" or "allow" (default: "deny").
-	// On Linux, only "deny" provides enforcement (seccomp blocks connect syscall).
+	// On Linux, this setting is not yet enforced (isolation backend planned).
 	NetworkMode string `mapstructure:"networkMode" json:"networkMode"`
 
 	// AllowedNetworkIPs are IP addresses permitted for outbound connections (macOS Seatbelt only).
-	// On Linux, this field is ignored — seccomp cannot filter by IP address.
+	// On Linux, this field is ignored — Linux isolation is not yet enforced.
 	AllowedNetworkIPs []string `mapstructure:"allowedNetworkIPs" json:"allowedNetworkIPs,omitempty"`
 
 	// AllowedWritePaths are additional paths writable from the sandbox (beyond WorkspacePath).

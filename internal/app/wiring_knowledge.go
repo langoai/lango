@@ -220,12 +220,17 @@ func initSkills(cfg *config.Config, baseTools []*agent.Tool) *skill.Registry {
 	registry := skill.NewRegistry(store, baseTools, sLogger)
 
 	// Inject OS-level sandbox if enabled.
-	if iso := initOSSandbox(cfg); iso != nil && iso.Available() {
-		workDir := cfg.Sandbox.WorkspacePath
-		if workDir == "" {
-			workDir, _ = os.Getwd()
+	if iso := initOSSandbox(cfg); iso != nil {
+		if iso.Available() {
+			workDir := cfg.Sandbox.WorkspacePath
+			if workDir == "" {
+				workDir, _ = os.Getwd()
+			}
+			registry.SetOSIsolator(iso, workDir)
+		} else if cfg.Sandbox.FailClosed {
+			logger().Warnw("OS sandbox required but unavailable — skill scripts will run unsandboxed",
+				"reason", iso.Reason())
 		}
-		registry.SetOSIsolator(iso, workDir)
 	}
 
 	ctx := context.Background()

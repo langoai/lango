@@ -94,6 +94,9 @@ func New(cfg Config) *Tool {
 // cannot be applied. In fail-open mode it logs a warning and returns nil.
 func (t *Tool) applySandbox(ctx context.Context, cmd *exec.Cmd) error {
 	if t.config.OSIsolator == nil {
+		if t.config.FailClosed {
+			return fmt.Errorf("%w: no OS isolator configured", sandboxos.ErrSandboxRequired)
+		}
 		return nil
 	}
 	if err := t.config.OSIsolator.Apply(ctx, cmd, t.config.SandboxPolicy); err != nil {

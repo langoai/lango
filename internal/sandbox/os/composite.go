@@ -39,3 +39,13 @@ func (c *compositeIsolator) Name() string {
 	}
 	return strings.Join(names, "+")
 }
+
+func (c *compositeIsolator) Reason() string {
+	var reasons []string
+	for _, iso := range c.isolators {
+		if r := iso.Reason(); r != "" {
+			reasons = append(reasons, iso.Name()+": "+r)
+		}
+	}
+	return strings.Join(reasons, "; ")
+}

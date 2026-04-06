@@ -49,32 +49,49 @@ func newStatusCmd(cfgLoader func() (*config.Config, error)) *cobra.Command {
 				workspacePath, _ = os.Getwd()
 			}
 
+			var isolator sandboxos.OSIsolator
+			if cfg.Sandbox.Enabled {
+				isolator = sandboxos.NewOSIsolator()
+			}
+			status := sandboxos.NewSandboxStatus(cfg.Sandbox.Enabled, cfg.Sandbox.FailClosed, isolator)
+
 			fmt.Fprintln(w, "Sandbox Configuration:")
-			fmt.Fprintf(w, "  Enabled:        %v\n", cfg.Sandbox.Enabled)
-			fmt.Fprintf(w, "  Fail-Closed:    %v\n", cfg.Sandbox.FailClosed)
+			fmt.Fprintf(w, "  Enabled:        %v\n", status.Enabled)
+			if status.Enabled {
+				failMode := "fail-open (warning + unsandboxed execution)"
+				if status.FailClosed {
+					failMode = "fail-closed (execution rejected)"
+				}
+				fmt.Fprintf(w, "  Fail-Closed:    %s\n", failMode)
+			}
 			fmt.Fprintf(w, "  Network Mode:   %s\n", cfg.Sandbox.NetworkMode)
 			fmt.Fprintf(w, "  Workspace:      %s\n", workspacePath)
 
-			// Platform capabilities.
-			caps := sandboxos.Probe()
+			// Active isolation.
+			fmt.Fprintln(w)
+			fmt.Fprintln(w, "Active Isolation:")
+			fmt.Fprintf(w, "  Isolator:       %s\n", status.Isolator.Name())
+			if !status.Isolator.Available() {
+				fmt.Fprintf(w, "  Available:      false\n")
+				fmt.Fprintf(w, "  Reason:         %s\n", status.Isolator.Reason())
+			} else {
+				fmt.Fprintf(w, "  Available:      true\n")
+			}
 
+			// Platform capabilities.
+			caps := status.Capabilities
 			fmt.Fprintln(w)
 			fmt.Fprintln(w, "Platform Capabilities:")
 			fmt.Fprintf(w, "  Platform:       %s\n", caps.Platform)
 			fmt.Fprintf(w, "  Kernel:         %s\n", caps.KernelVersion)
-			fmt.Fprintf(w, "  Seatbelt:       %s\n", capabilityStatus(caps.HasSeatbelt, caps.Platform, "darwin"))
-			fmt.Fprintf(w, "  Landlock:       %s\n", capabilityStatus(caps.HasLandlock, caps.Platform, "linux"))
-			fmt.Fprintf(w, "  seccomp:        %s\n", capabilityStatus(caps.HasSeccomp, caps.Platform, "linux"))
-
-			// Active isolator.
-			isolator := sandboxos.NewOSIsolator()
-			fmt.Fprintln(w)
-			fmt.Fprintf(w, "Active Isolator:  %s\n", isolator.Name())
+			fmt.Fprintf(w, "  Seatbelt:       %s\n", capabilityReasonStatus(caps.HasSeatbelt, caps.SeatbeltReason, caps.Platform, "darwin"))
+			fmt.Fprintf(w, "  Landlock:       %s\n", capabilityReasonStatus(caps.HasLandlock, caps.LandlockReason, caps.Platform, "linux"))
+			fmt.Fprintf(w, "  seccomp:        %s\n", capabilityReasonStatus(caps.HasSeccomp, caps.SeccompReason, caps.Platform, "linux"))
 
 			// Platform-specific warnings.
 			if runtime.GOOS == "linux" && len(cfg.Sandbox.AllowedNetworkIPs) > 0 {
 				fmt.Fprintln(w)
-				fmt.Fprintln(w, "WARNING: allowedNetworkIPs is macOS-only, ignored on Linux")
+				fmt.Fprintln(w, "WARNING: allowedNetworkIPs is macOS-only; Linux isolation is not yet enforced")
 			}
 
 			return nil
@@ -172,13 +189,24 @@ func readTestPath() string {
 	return "/etc/hostname"
 }
 
-// capabilityStatus formats a capability's availability for display.
-func capabilityStatus(available bool, currentPlatform, requiredPlatform string) string {
+// capabilityReasonStatus formats a capability's status with a reason string.
+// "probe not yet implemented" reasons are shown as "unknown"; definitive negative
+// results (e.g., "sandbox-exec not found in PATH") are shown as "unavailable".
+func capabilityReasonStatus(available bool, reason, currentPlatform, requiredPlatform string) string {
 	if available {
+		if reason != "" {
+			return fmt.Sprintf("available (%s)", reason)
+		}
 		return "available"
 	}
 	if !strings.EqualFold(currentPlatform, requiredPlatform) {
-		return fmt.Sprintf("unavailable (%s)", currentPlatform)
+		return fmt.Sprintf("n/a (not on %s)", requiredPlatform)
+	}
+	if strings.Contains(reason, "not yet implemented") {
+		return fmt.Sprintf("unknown (%s)", reason)
+	}
+	if reason != "" {
+		return fmt.Sprintf("unavailable (%s)", reason)
 	}
 	return "unavailable"
 }

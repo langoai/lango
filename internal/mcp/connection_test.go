@@ -358,6 +358,7 @@ func (m *mockIsolator) Apply(_ context.Context, cmd *exec.Cmd, policy sandboxos.
 
 func (m *mockIsolator) Available() bool { return true }
 func (m *mockIsolator) Name() string    { return "mock" }
+func (m *mockIsolator) Reason() string  { return "" }
 
 func (m *mockIsolator) applyCalls() []mockApplyCall {
 	m.mu.Lock()

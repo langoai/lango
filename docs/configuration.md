@@ -1337,10 +1337,10 @@ Alerts flow through: EventBus (real-time) → Audit log (persistent) → CLI (`l
 | `sandbox.failClosed` | `bool` | `false` | Reject tool execution when OS sandbox is unavailable (false = fail-open) |
 | `sandbox.workspacePath` | `string` | `""` | Root directory for workspace-relative write access (empty = CWD) |
 | `sandbox.networkMode` | `string` | `deny` | Network access from sandboxed processes: `deny` or `allow` |
-| `sandbox.allowedNetworkIPs` | `[]string` | `[]` | IP addresses permitted for outbound connections (macOS Seatbelt only; ignored on Linux) |
+| `sandbox.allowedNetworkIPs` | `[]string` | `[]` | IP addresses permitted for outbound connections (macOS Seatbelt only; Linux isolation not yet enforced) |
 | `sandbox.allowedWritePaths` | `[]string` | `[]` | Additional paths writable from the sandbox beyond `workspacePath` |
 | `sandbox.timeoutPerTool` | `duration` | `30s` | Maximum duration for a single sandboxed tool execution |
-| `sandbox.os.seccompProfile` | `string` | `moderate` | Seccomp filter profile on Linux: `strict`, `moderate`, or `permissive` |
+| `sandbox.os.seccompProfile` | `string` | `moderate` | Seccomp filter profile on Linux: `strict`, `moderate`, or `permissive` (not yet enforced) |
 | `sandbox.os.seatbeltCustomProfile` | `string` | `""` | Path to a custom `.sb` profile on macOS (overrides generated profile) |
 
 ---
