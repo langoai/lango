@@ -332,6 +332,151 @@ func TestTranscriptBlocksUseVisualSeparators(t *testing.T) {
 	}
 }
 
+func TestDoublePress_CriticalFirstPress(t *testing.T) {
+	m := newTestModel()
+	m.state = stateApproving
+	m.pendingApproval = &ApprovalRequestMsg{
+		Request: approval.ApprovalRequest{
+			ToolName:    "exec",
+			SafetyLevel: "dangerous",
+			Category:    "automation",
+		},
+		ViewModel: approval.ApprovalViewModel{
+			Risk: approval.RiskIndicator{Level: "critical", Label: "Executes arbitrary code"},
+		},
+		Response: make(chan approval.ApprovalResponse, 1),
+	}
+
+	aKey := tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'a'}}
+	m.Update(aKey)
+
+	if !m.approvalConfirmPending {
+		t.Fatal("first 'a' on critical tool should set approvalConfirmPending=true")
+	}
+	if m.pendingApproval == nil {
+		t.Fatal("first 'a' on critical tool should not consume the approval")
+	}
+}
+
+func TestDoublePress_CriticalSecondPress(t *testing.T) {
+	m := newTestModel()
+	m.state = stateApproving
+	respCh := make(chan approval.ApprovalResponse, 1)
+	m.pendingApproval = &ApprovalRequestMsg{
+		Request: approval.ApprovalRequest{
+			ToolName:    "exec",
+			SafetyLevel: "dangerous",
+			Category:    "automation",
+		},
+		ViewModel: approval.ApprovalViewModel{
+			Risk: approval.RiskIndicator{Level: "critical", Label: "Executes arbitrary code"},
+		},
+		Response: respCh,
+	}
+
+	aKey := tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'a'}}
+	m.Update(aKey) // first press
+	m.Update(aKey) // second press
+
+	if m.pendingApproval != nil {
+		t.Fatal("second 'a' should consume the approval")
+	}
+	if m.approvalConfirmPending {
+		t.Fatal("confirm pending should be cleared after approval")
+	}
+}
+
+func TestDoublePress_NonCriticalImmediateApproval(t *testing.T) {
+	m := newTestModel()
+	m.state = stateApproving
+	respCh := make(chan approval.ApprovalResponse, 1)
+	m.pendingApproval = &ApprovalRequestMsg{
+		Request: approval.ApprovalRequest{
+			ToolName:    "browser_search",
+			SafetyLevel: "moderate",
+			Category:    "browser",
+		},
+		ViewModel: approval.ApprovalViewModel{
+			Risk: approval.RiskIndicator{Level: "moderate", Label: "Reads data"},
+		},
+		Response: respCh,
+	}
+
+	aKey := tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'a'}}
+	m.Update(aKey)
+
+	if m.pendingApproval != nil {
+		t.Fatal("non-critical tool should be approved immediately on first 'a'")
+	}
+	if m.approvalConfirmPending {
+		t.Fatal("confirm pending should not be set for non-critical tool")
+	}
+}
+
+func TestDoublePress_OtherKeyResetsConfirm(t *testing.T) {
+	m := newTestModel()
+	m.state = stateApproving
+	m.pendingApproval = &ApprovalRequestMsg{
+		Request: approval.ApprovalRequest{
+			ToolName:    "exec",
+			SafetyLevel: "dangerous",
+			Category:    "automation",
+		},
+		ViewModel: approval.ApprovalViewModel{
+			Risk: approval.RiskIndicator{Level: "critical", Label: "Executes arbitrary code"},
+		},
+		Response: make(chan approval.ApprovalResponse, 1),
+	}
+
+	aKey := tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'a'}}
+	m.Update(aKey) // first press — sets confirmPending
+
+	if !m.approvalConfirmPending {
+		t.Fatal("expected confirmPending=true after first 'a'")
+	}
+
+	// Press an unrelated key — should reset.
+	xKey := tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'x'}}
+	m.Update(xKey)
+
+	if m.approvalConfirmPending {
+		t.Fatal("unrelated key should reset approvalConfirmPending")
+	}
+	if m.pendingApproval == nil {
+		t.Fatal("unrelated key should not consume the approval")
+	}
+}
+
+func TestDoublePress_DenyResetsConfirm(t *testing.T) {
+	m := newTestModel()
+	m.state = stateApproving
+	respCh := make(chan approval.ApprovalResponse, 1)
+	m.pendingApproval = &ApprovalRequestMsg{
+		Request: approval.ApprovalRequest{
+			ToolName:    "exec",
+			SafetyLevel: "dangerous",
+			Category:    "automation",
+		},
+		ViewModel: approval.ApprovalViewModel{
+			Risk: approval.RiskIndicator{Level: "critical", Label: "Executes arbitrary code"},
+		},
+		Response: respCh,
+	}
+
+	aKey := tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'a'}}
+	m.Update(aKey) // first press — sets confirmPending
+
+	dKey := tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'d'}}
+	m.Update(dKey) // deny
+
+	if m.approvalConfirmPending {
+		t.Fatal("deny should reset approvalConfirmPending")
+	}
+	if m.pendingApproval != nil {
+		t.Fatal("deny should consume the approval")
+	}
+}
+
 func TestCPRTimeoutFlushesEsc(t *testing.T) {
 	m := newTestModel()
 	m.Update(tea.KeyMsg{Type: tea.KeyEscape})

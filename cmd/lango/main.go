@@ -648,6 +648,8 @@ func runCockpit() error {
 		ProfileName:       boot.ProfileName,
 		BackgroundManager: application.BackgroundManager,
 		EventBus:          application.EventBus,
+		ApprovalHistory:   application.ApprovalHistory,
+		GrantStore:        application.GrantStore,
 	})
 
 	// Register pages.
@@ -672,11 +674,14 @@ func runCockpit() error {
 			return application.Store.ListSessions(ctx)
 		}))
 	if application.BackgroundManager != nil {
+		var actioner pages.TaskActioner = &bgTaskActioner{mgr: application.BackgroundManager}
 		model.RegisterPage(cockpit.PageTasks,
-			pages.NewTasksPage(&bgTaskLister{mgr: application.BackgroundManager}))
+			pages.NewTasksPage(&bgTaskLister{mgr: application.BackgroundManager}, actioner))
 	} else {
-		model.RegisterPage(cockpit.PageTasks, pages.NewTasksPage(nil))
+		model.RegisterPage(cockpit.PageTasks, pages.NewTasksPage(nil, nil))
 	}
+	model.RegisterPage(cockpit.PageApprovals,
+		pages.NewApprovalsPage(application.ApprovalHistory, application.GrantStore))
 
 	p := tea.NewProgram(model, tea.WithAltScreen(), tea.WithMouseCellMotion())
 	model.SetProgram(p)
@@ -731,13 +736,41 @@ func (b *bgTaskLister) ListTasks() []pages.TaskInfo {
 	tasks := make([]pages.TaskInfo, len(snapshots))
 	for i, s := range snapshots {
 		tasks[i] = pages.TaskInfo{
-			ID:      s.ID,
-			Prompt:  s.Prompt,
-			Status:  s.StatusText,
-			Elapsed: taskElapsed(s),
+			ID:            s.ID,
+			Prompt:        s.Prompt,
+			Status:        s.StatusText,
+			Elapsed:       taskElapsed(s),
+			Result:        s.Result,
+			Error:         s.Error,
+			OriginChannel: s.OriginChannel,
+			TokensUsed:    s.TokensUsed,
 		}
 	}
 	return tasks
+}
+
+// bgTaskActioner adapts background.Manager to pages.TaskActioner.
+type bgTaskActioner struct {
+	mgr *background.Manager
+}
+
+func (b *bgTaskActioner) CancelTask(id string) error {
+	return b.mgr.Cancel(id)
+}
+
+func (b *bgTaskActioner) RetryTask(ctx context.Context, id string) error {
+	snap, err := b.mgr.Status(id)
+	if err != nil {
+		return fmt.Errorf("retry task %s: %w", id, err)
+	}
+	_, err = b.mgr.Submit(ctx, snap.Prompt, background.Origin{
+		Channel: snap.OriginChannel,
+		Session: snap.OriginSession,
+	})
+	if err != nil {
+		return fmt.Errorf("retry task %s: %w", id, err)
+	}
+	return nil
 }
 
 // taskElapsed computes the correct elapsed duration for a task snapshot.

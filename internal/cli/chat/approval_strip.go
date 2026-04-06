@@ -11,13 +11,21 @@ import (
 )
 
 // renderApprovalStrip renders a Tier 1 compact single-line approval strip.
-func renderApprovalStrip(vm approval.ApprovalViewModel, width int) string {
+func renderApprovalStrip(vm approval.ApprovalViewModel, width int, confirmPending ...bool) string {
+	isConfirmPending := len(confirmPending) > 0 && confirmPending[0]
 	stripWidth := max(width, 1)
 
 	toolBadge := lipgloss.NewStyle().
 		Bold(true).
 		Foreground(tui.Warning).
 		Render(vm.Request.ToolName)
+
+	if vm.Risk.Level == "critical" {
+		toolBadge += " " + lipgloss.NewStyle().
+			Foreground(tui.Error).
+			Bold(true).
+			Render("(destructive)")
+	}
 
 	summary := vm.Request.Summary
 	if summary == "" {
@@ -28,9 +36,17 @@ func renderApprovalStrip(vm approval.ApprovalViewModel, width int) string {
 		summary = badge + " " + summary
 	}
 
-	keys := lipgloss.NewStyle().
-		Foreground(tui.Muted).
-		Render("[a]llow  [s]ession  [d]eny")
+	var keys string
+	if isConfirmPending {
+		keys = lipgloss.NewStyle().
+			Foreground(tui.Warning).
+			Bold(true).
+			Render("Press 'a' again to confirm")
+	} else {
+		keys = lipgloss.NewStyle().
+			Foreground(tui.Muted).
+			Render("[a]llow  [s]ession  [d]eny")
+	}
 
 	// Compute available space for summary by subtracting fixed elements.
 	// The content layout is " %s  %s  %s" which adds 6 characters of spacing.

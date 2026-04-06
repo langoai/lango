@@ -19,7 +19,8 @@ var dialogScrollOffset int
 var dialogSplitMode bool
 
 // renderApprovalDialog renders a Tier 2 fullscreen approval dialog overlay.
-func renderApprovalDialog(vm approval.ApprovalViewModel, width, height int) string {
+func renderApprovalDialog(vm approval.ApprovalViewModel, width, height int, confirmPending ...bool) string {
+	isConfirmPending := len(confirmPending) > 0 && confirmPending[0]
 	dialogWidth := width - 4
 	if dialogWidth < 30 {
 		dialogWidth = 30
@@ -63,6 +64,16 @@ func renderApprovalDialog(vm approval.ApprovalViewModel, width, height int) stri
 		PaddingLeft(2).
 		Foreground(tui.Foreground).
 		Render(summary)
+
+	// Rule explanation.
+	var explanationBlock string
+	if vm.RuleExplanation != "" {
+		explanationBlock = lipgloss.NewStyle().
+			Foreground(tui.Muted).
+			Italic(true).
+			PaddingLeft(2).
+			Render("Why: " + vm.RuleExplanation)
+	}
 
 	// Parameters.
 	var paramsBlock string
@@ -131,17 +142,24 @@ func renderApprovalDialog(vm approval.ApprovalViewModel, width, height int) stri
 	}
 
 	// Action bar.
-	actionBar := tui.HelpBar(
-		tui.HelpEntry("a", "allow"),
-		tui.HelpEntry("s", "allow session"),
-		tui.HelpEntry("d/esc", "deny"),
-	)
-	if vm.DiffContent != "" {
+	var actionBar string
+	if isConfirmPending {
+		actionBar = lipgloss.NewStyle().
+			Bold(true).
+			Foreground(tui.Warning).
+			Render("  Press 'a' again to confirm (destructive operation)")
+	} else if vm.DiffContent != "" {
 		actionBar = tui.HelpBar(
 			tui.HelpEntry("a", "allow"),
 			tui.HelpEntry("s", "session"),
 			tui.HelpEntry("d/esc", "deny"),
 			tui.HelpEntry("\u2191\u2193", "scroll"),
+		)
+	} else {
+		actionBar = tui.HelpBar(
+			tui.HelpEntry("a", "allow"),
+			tui.HelpEntry("s", "allow session"),
+			tui.HelpEntry("d/esc", "deny"),
 		)
 	}
 
@@ -151,6 +169,9 @@ func renderApprovalDialog(vm approval.ApprovalViewModel, width, height int) stri
 		sections = append(sections, originLine)
 	}
 	sections = append(sections, "", summaryBlock)
+	if explanationBlock != "" {
+		sections = append(sections, explanationBlock)
+	}
 	if paramsBlock != "" {
 		sections = append(sections, paramsBlock)
 	}

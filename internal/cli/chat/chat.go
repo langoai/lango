@@ -88,6 +88,10 @@ type ChatModel struct {
 	pendingStart   time.Time // submit timestamp for pending indicator
 	pendingActive  bool      // true between submit and first content event
 
+	approvalConfirmPending bool      // true when first press on critical tool
+	approvalConfirmAction  string    // "a" or "s" — which action is awaiting confirmation
+	approvalConfirmTime    time.Time // when confirmPending was set
+
 	lastCtrlC time.Time
 
 	cprDetect cprState
@@ -278,6 +282,8 @@ func (m *ChatModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.dismissPending()
 		dialogScrollOffset = 0
 		dialogSplitMode = false
+		m.approvalConfirmPending = false
+		m.approvalConfirmAction = ""
 		m.pendingApproval = &msg
 		m.chatView.appendApprovalEvent(fmt.Sprintf("Approval requested for %s", msg.Request.ToolName), "requested")
 		if cmd := m.transitionTo(stateApproving); cmd != nil {
@@ -349,7 +355,7 @@ func (m *ChatModel) RenderParts() ChatParts {
 	}
 
 	if m.state == stateApproving && m.pendingApproval != nil {
-		parts.Approval = renderApproval(m.pendingApproval, m.width, m.height)
+		parts.Approval = renderApproval(m.pendingApproval, m.width, m.height, m.approvalConfirmPending)
 	}
 
 	return parts
@@ -498,6 +504,12 @@ func (m *ChatModel) handleApprovingKey(msg tea.KeyMsg) tea.Cmd {
 		return nil
 	}
 
+	// Expire confirm-pending state after 3 seconds.
+	if m.approvalConfirmPending && time.Since(m.approvalConfirmTime) > 3*time.Second {
+		m.approvalConfirmPending = false
+		m.approvalConfirmAction = ""
+	}
+
 	req := m.pendingApproval.Request
 	respond := func(approved, alwaysAllow bool, outcome string, eventText string) tea.Cmd {
 		resp := approval.ApprovalResponse{
@@ -507,6 +519,8 @@ func (m *ChatModel) handleApprovingKey(msg tea.KeyMsg) tea.Cmd {
 		}
 		ch := m.pendingApproval.Response
 		m.pendingApproval = nil
+		m.approvalConfirmPending = false
+		m.approvalConfirmAction = ""
 		m.chatView.appendApprovalEvent(eventText, outcome)
 		return tea.Batch(
 			m.transitionTo(stateStreaming),
@@ -524,10 +538,48 @@ func (m *ChatModel) handleApprovingKey(msg tea.KeyMsg) tea.Cmd {
 		}
 	}
 
+	// If a confirm is already pending, the second press of the SAME key
+	// completes the action. Any OTHER key resets the pending state.
+	if m.approvalConfirmPending {
+		pressedKey := ""
+		switch {
+		case key.Matches(msg, key.NewBinding(key.WithKeys("a"))):
+			pressedKey = "a"
+		case key.Matches(msg, key.NewBinding(key.WithKeys("s"))):
+			pressedKey = "s"
+		}
+		if pressedKey == m.approvalConfirmAction {
+			// Second press matches — execute the confirmed action.
+			m.approvalConfirmPending = false
+			m.approvalConfirmAction = ""
+			if pressedKey == "s" {
+				return respond(true, true, "session", fmt.Sprintf("Always allow enabled for %s", req.ToolName))
+			}
+			return respond(true, false, "approved", fmt.Sprintf("Approved %s", req.ToolName))
+		}
+		// Different key — reset pending state and fall through.
+		m.approvalConfirmPending = false
+		m.approvalConfirmAction = ""
+	}
+
 	switch {
 	case key.Matches(msg, key.NewBinding(key.WithKeys("a"))):
+		// Double-press guardrail for critical-risk tools.
+		if m.pendingApproval.ViewModel.Risk.Level == "critical" {
+			m.approvalConfirmPending = true
+			m.approvalConfirmAction = "a"
+			m.approvalConfirmTime = time.Now()
+			return nil
+		}
 		return respond(true, false, "approved", fmt.Sprintf("Approved %s", req.ToolName))
 	case key.Matches(msg, key.NewBinding(key.WithKeys("s"))):
+		// Double-press guardrail for critical-risk session grants.
+		if m.pendingApproval.ViewModel.Risk.Level == "critical" {
+			m.approvalConfirmPending = true
+			m.approvalConfirmAction = "s"
+			m.approvalConfirmTime = time.Now()
+			return nil
+		}
 		return respond(true, true, "session", fmt.Sprintf("Always allow enabled for %s", req.ToolName))
 	case key.Matches(msg, key.NewBinding(key.WithKeys("d", "esc"))):
 		return respond(false, false, "denied", fmt.Sprintf("Denied %s", req.ToolName))
@@ -584,7 +636,7 @@ func (m *ChatModel) recalcLayout() {
 		fixedParts = append(fixedParts, ts)
 	}
 	if m.state == stateApproving && m.pendingApproval != nil {
-		fixedParts = append(fixedParts, renderApproval(m.pendingApproval, m.width, m.height))
+		fixedParts = append(fixedParts, renderApproval(m.pendingApproval, m.width, m.height, m.approvalConfirmPending))
 	}
 	fixedParts = append(fixedParts, renderFooter(m.input, m.state, m.width))
 

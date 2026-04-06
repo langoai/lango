@@ -77,6 +77,37 @@ func TestRenderApprovalStrip_KoreanSummary(t *testing.T) {
 	assert.LessOrEqual(t, lipgloss.Width(output), 60)
 }
 
+func TestRenderApprovalStrip_CriticalShowsDestructive(t *testing.T) {
+	vm := makeApprovalVM("exec", "Run dangerous command")
+	vm.Risk = approval.RiskIndicator{Level: "critical", Label: "Executes arbitrary code"}
+
+	output := renderApprovalStrip(vm, 120)
+
+	assert.Contains(t, output, "destructive", "critical risk should show destructive label")
+}
+
+func TestRenderApprovalStrip_NonCriticalNoDestructive(t *testing.T) {
+	vm := makeApprovalVM("fs_read", "Read config file")
+	vm.Risk = approval.RiskIndicator{Level: "moderate", Label: "Reads file"}
+
+	output := renderApprovalStrip(vm, 120)
+
+	assert.NotContains(t, output, "destructive", "non-critical risk should not show destructive label")
+}
+
+func TestRenderApprovalStrip_ConfirmPendingMessage(t *testing.T) {
+	vm := makeApprovalVM("exec", "Run command")
+
+	// Normal render.
+	normalOutput := renderApprovalStrip(vm, 120)
+	assert.Contains(t, normalOutput, "[a]llow", "normal should show allow key")
+	assert.NotContains(t, normalOutput, "Press 'a' again", "normal should not show confirm prompt")
+
+	// Confirm pending.
+	confirmOutput := renderApprovalStrip(vm, 120, true)
+	assert.Contains(t, confirmOutput, "Press 'a' again", "confirm pending should show re-press prompt")
+}
+
 func TestRenderApprovalStrip_SingleLineOutput(t *testing.T) {
 	tests := []struct {
 		give  string

@@ -1,10 +1,18 @@
 package approval
 
 import (
+	"sort"
 	"strings"
 	"sync"
 	"time"
 )
+
+// GrantInfo represents a single active grant for display purposes.
+type GrantInfo struct {
+	SessionKey string
+	ToolName   string
+	GrantedAt  time.Time
+}
 
 // grantEntry tracks when a grant was created for TTL expiration.
 type grantEntry struct {
@@ -99,4 +107,34 @@ func (s *GrantStore) CleanExpired() int {
 		}
 	}
 	return removed
+}
+
+// List returns all active (non-expired) grants sorted by session key then tool name.
+func (s *GrantStore) List() []GrantInfo {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	now := s.nowFn()
+	result := make([]GrantInfo, 0, len(s.grants))
+	for key, entry := range s.grants {
+		if s.ttl > 0 && now.Sub(entry.grantedAt) > s.ttl {
+			continue
+		}
+		parts := strings.SplitN(key, "\x00", 2)
+		if len(parts) != 2 {
+			continue
+		}
+		result = append(result, GrantInfo{
+			SessionKey: parts[0],
+			ToolName:   parts[1],
+			GrantedAt:  entry.grantedAt,
+		})
+	}
+	sort.Slice(result, func(i, j int) bool {
+		if result[i].SessionKey != result[j].SessionKey {
+			return result[i].SessionKey < result[j].SessionKey
+		}
+		return result[i].ToolName < result[j].ToolName
+	})
+	return result
 }

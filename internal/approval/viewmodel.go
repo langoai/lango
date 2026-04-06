@@ -23,10 +23,11 @@ type RiskIndicator struct {
 
 // ApprovalViewModel bridges ApprovalRequest data to TUI rendering.
 type ApprovalViewModel struct {
-	Request     ApprovalRequest
-	Tier        DisplayTier
-	Risk        RiskIndicator
-	DiffContent string // unified diff for fs_edit/fs_write, empty otherwise
+	Request         ApprovalRequest
+	Tier            DisplayTier
+	Risk            RiskIndicator
+	DiffContent     string // unified diff for fs_edit/fs_write, empty otherwise
+	RuleExplanation string // human-readable explanation of why approval is needed
 }
 
 // fullscreenCategories are tool categories that trigger fullscreen approval.
@@ -76,14 +77,29 @@ func ComputeRisk(safetyLevel, category string) RiskIndicator {
 // NewViewModel creates an ApprovalViewModel from a request.
 func NewViewModel(req ApprovalRequest) ApprovalViewModel {
 	vm := ApprovalViewModel{
-		Request: req,
-		Tier:    ClassifyTier(req.SafetyLevel, req.Category, req.Activity),
-		Risk:    ComputeRisk(req.SafetyLevel, req.Category),
+		Request:         req,
+		Tier:            ClassifyTier(req.SafetyLevel, req.Category, req.Activity),
+		Risk:            ComputeRisk(req.SafetyLevel, req.Category),
+		RuleExplanation: buildRuleExplanation(req),
 	}
 	if vm.Tier == TierFullscreen {
 		vm.DiffContent = buildDiffPreview(req.ToolName, req.Params)
 	}
 	return vm
+}
+
+// buildRuleExplanation returns a human-readable explanation for why approval is required.
+func buildRuleExplanation(req ApprovalRequest) string {
+	switch {
+	case req.SafetyLevel == "dangerous" && req.Category == "filesystem":
+		return "This tool modifies the filesystem and is classified as dangerous."
+	case req.SafetyLevel == "dangerous" && req.Category == "automation":
+		return "This tool executes arbitrary code and is classified as dangerous."
+	case req.SafetyLevel == "moderate":
+		return "This tool creates or modifies resources (moderate risk)."
+	default:
+		return "This tool requires approval under the current approval policy."
+	}
 }
 
 // buildDiffPreview generates a simple preview of the proposed file change.

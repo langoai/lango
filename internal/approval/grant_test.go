@@ -4,6 +4,9 @@ import (
 	"sync"
 	"testing"
 	"time"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestGrantStore_GrantAndIsGranted(t *testing.T) {
@@ -184,5 +187,94 @@ func TestGrantStore_CleanExpiredNoOpWhenTTLZero(t *testing.T) {
 	}
 	if !gs.IsGranted("session-1", "echo") {
 		t.Error("grant should remain when TTL=0")
+	}
+}
+
+func TestGrantStore_List(t *testing.T) {
+	now := time.Date(2026, 4, 5, 12, 0, 0, 0, time.UTC)
+
+	tests := []struct {
+		give     string
+		setup    func(gs *GrantStore)
+		wantLen  int
+		wantList []GrantInfo
+	}{
+		{
+			give:     "empty store returns empty slice",
+			setup:    func(gs *GrantStore) {},
+			wantLen:  0,
+			wantList: nil,
+		},
+		{
+			give: "returns all active grants sorted",
+			setup: func(gs *GrantStore) {
+				gs.Grant("session-2", "exec")
+				gs.Grant("session-1", "fs_write")
+				gs.Grant("session-1", "echo")
+			},
+			wantLen: 3,
+			wantList: []GrantInfo{
+				{SessionKey: "session-1", ToolName: "echo", GrantedAt: now},
+				{SessionKey: "session-1", ToolName: "fs_write", GrantedAt: now},
+				{SessionKey: "session-2", ToolName: "exec", GrantedAt: now},
+			},
+		},
+		{
+			give: "excludes expired grants",
+			setup: func(gs *GrantStore) {
+				gs.SetTTL(10 * time.Minute)
+				// Grant at now (will be 15 min old when listed).
+				gs.Grant("session-1", "old_tool")
+				// Advance clock and grant a fresh one.
+				gs.nowFn = func() time.Time { return now.Add(15 * time.Minute) }
+				gs.Grant("session-1", "new_tool")
+			},
+			wantLen: 1,
+			wantList: []GrantInfo{
+				{SessionKey: "session-1", ToolName: "new_tool", GrantedAt: now.Add(15 * time.Minute)},
+			},
+		},
+		{
+			give: "excludes revoked grants",
+			setup: func(gs *GrantStore) {
+				gs.Grant("session-1", "echo")
+				gs.Grant("session-1", "exec")
+				gs.Revoke("session-1", "echo")
+			},
+			wantLen: 1,
+			wantList: []GrantInfo{
+				{SessionKey: "session-1", ToolName: "exec", GrantedAt: now},
+			},
+		},
+		{
+			give: "sort order: session key then tool name",
+			setup: func(gs *GrantStore) {
+				gs.Grant("z-session", "alpha")
+				gs.Grant("a-session", "zulu")
+				gs.Grant("a-session", "alpha")
+				gs.Grant("z-session", "zulu")
+			},
+			wantLen: 4,
+			wantList: []GrantInfo{
+				{SessionKey: "a-session", ToolName: "alpha", GrantedAt: now},
+				{SessionKey: "a-session", ToolName: "zulu", GrantedAt: now},
+				{SessionKey: "z-session", ToolName: "alpha", GrantedAt: now},
+				{SessionKey: "z-session", ToolName: "zulu", GrantedAt: now},
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.give, func(t *testing.T) {
+			gs := NewGrantStore()
+			gs.nowFn = func() time.Time { return now }
+			tt.setup(gs)
+
+			got := gs.List()
+			require.Len(t, got, tt.wantLen)
+			if tt.wantList != nil {
+				assert.Equal(t, tt.wantList, got)
+			}
+		})
 	}
 }

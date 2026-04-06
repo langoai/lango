@@ -8,6 +8,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/langoai/lango/internal/approval"
 	"github.com/langoai/lango/internal/cli/chat"
 	"github.com/langoai/lango/internal/cli/cockpit/sidebar"
 	"github.com/langoai/lango/internal/cli/cockpit/theme"
@@ -303,6 +304,44 @@ func TestRuntimeMsg_RecoveryReachesChatFromNonChatPage(t *testing.T) {
 	m.Update(msg)
 
 	require.Len(t, mock.updates, 1, "RecoveryMsg must reach chat child from non-chat page")
+}
+
+func TestApprovalRequestMsg_SwitchesToChatAndForwards(t *testing.T) {
+	mock := &mockChild{}
+	m := newTestModel(mock)
+	toolsPage := &mockPage{title: "Tools"}
+	m.RegisterPage(PageTools, toolsPage)
+	m.switchPage(PageTools)
+
+	assert.Equal(t, PageTools, m.activePage)
+
+	msg := chat.ApprovalRequestMsg{
+		Request: approval.ApprovalRequest{ToolName: "exec"},
+	}
+	m.Update(msg)
+
+	// Must switch to Chat page.
+	assert.Equal(t, PageChat, m.activePage, "ApprovalRequestMsg should switch to Chat page")
+	// Must reach chat child.
+	require.Len(t, mock.updates, 1, "ApprovalRequestMsg must reach chat child")
+	// Tools page should NOT receive the message.
+	assert.Empty(t, toolsPage.updates)
+}
+
+func TestApprovalRequestMsg_AlreadyOnChat(t *testing.T) {
+	mock := &mockChild{}
+	m := newTestModel(mock)
+
+	assert.Equal(t, PageChat, m.activePage)
+
+	msg := chat.ApprovalRequestMsg{
+		Request: approval.ApprovalRequest{ToolName: "fs_write"},
+	}
+	m.Update(msg)
+
+	// Should still be on Chat and forwarded.
+	assert.Equal(t, PageChat, m.activePage)
+	require.Len(t, mock.updates, 1)
 }
 
 func TestRuntimeMsg_DoneMsgFlushesTokensThenForwards(t *testing.T) {

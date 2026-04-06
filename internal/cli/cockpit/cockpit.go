@@ -125,6 +125,17 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, cmd
 	}
 
+	// Approval requests must always reach the chat model AND switch to
+	// the chat page so the user can see and respond to the prompt.
+	// Without the page switch, approvals raised by background tasks
+	// retried from the Tasks page would remain invisible and time out.
+	if _, ok := msg.(chat.ApprovalRequestMsg); ok {
+		switchCmd := m.switchPage(PageChat)
+		up, childCmd := m.child.Update(msg)
+		m.child = up.(childModel)
+		return m, tea.Batch(switchCmd, childCmd)
+	}
+
 	// Runtime events that signal a turn has started — mark turnActive so
 	// the RuntimeTracker accumulates tokens and the context panel shows
 	// the Runtime section even for single-agent (no-delegation) turns.
@@ -315,6 +326,8 @@ func (m *Model) handleKey(msg tea.KeyMsg) (*Model, tea.Cmd) {
 		return m, m.switchPage(PageStatus)
 	case key.Matches(msg, m.keymap.Page5):
 		return m, m.switchPage(PageTasks)
+	case key.Matches(msg, m.keymap.Page6):
+		return m, m.switchPage(PageApprovals)
 	}
 
 	// Focus-dependent routing.

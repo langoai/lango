@@ -194,6 +194,9 @@ func New(boot *bootstrap.Result, opts ...AppOption) (*App, error) {
 	app.ApprovalProvider = composite
 	app.GrantStore = grantStore
 
+	historyStore := approval.NewHistoryStore(500)
+	app.ApprovalHistory = historyStore
+
 	policy := cfg.Security.Interceptor.ApprovalPolicy
 	if policy == "" {
 		policy = config.ApprovalPolicyDangerous
@@ -208,7 +211,7 @@ func New(boot *bootstrap.Result, opts ...AppOption) (*App, error) {
 			limiter = nv.limiter
 		}
 		tools = toolchain.ChainAll(tools,
-			toolchain.WithApproval(cfg.Security.Interceptor, composite, grantStore, limiter))
+			toolchain.WithApproval(cfg.Security.Interceptor, composite, grantStore, limiter, historyStore))
 		logger().Infow("tool approval enabled", "policy", string(policy))
 	}
 

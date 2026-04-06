@@ -183,6 +183,53 @@ func TestRenderApprovalDialog_EmptyParams(t *testing.T) {
 	assert.NotContains(t, output, "path:", "should not contain param key when params is empty")
 }
 
+func TestRenderApprovalDialog_ShowsRuleExplanation(t *testing.T) {
+	t.Cleanup(func() {
+		dialogScrollOffset = 0
+		dialogSplitMode = false
+	})
+
+	vm := testVM()
+	vm.RuleExplanation = "This tool modifies the filesystem and is classified as dangerous."
+
+	output := renderApprovalDialog(vm, 80, 40)
+
+	assert.Contains(t, output, "Why:", "should contain explanation prefix")
+	assert.Contains(t, output, "filesystem", "should contain explanation text")
+}
+
+func TestRenderApprovalDialog_EmptyExplanationSkipped(t *testing.T) {
+	t.Cleanup(func() {
+		dialogScrollOffset = 0
+		dialogSplitMode = false
+	})
+
+	vm := testVM()
+	vm.RuleExplanation = ""
+
+	output := renderApprovalDialog(vm, 80, 40)
+
+	assert.NotContains(t, output, "Why:", "should not contain explanation prefix when empty")
+}
+
+func TestRenderApprovalDialog_ConfirmPendingMessage(t *testing.T) {
+	t.Cleanup(func() {
+		dialogScrollOffset = 0
+		dialogSplitMode = false
+	})
+
+	vm := testVM()
+
+	// Normal render without confirmPending.
+	normalOutput := renderApprovalDialog(vm, 80, 40)
+	assert.Contains(t, normalOutput, "allow", "normal should show allow action")
+	assert.NotContains(t, normalOutput, "Press 'a' again", "normal should not show confirm prompt")
+
+	// Render with confirmPending.
+	confirmOutput := renderApprovalDialog(vm, 80, 40, true)
+	assert.Contains(t, confirmOutput, "Press 'a' again", "confirm pending should show re-press prompt")
+}
+
 // --- handleApprovalDialogKey tests ---
 
 func TestHandleDialogKey_ScrollUp(t *testing.T) {

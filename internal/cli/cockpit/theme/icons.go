@@ -6,7 +6,8 @@ const (
 	IconSettings = "⚙"
 	IconTools    = "⚡"
 	IconStatus   = "◍"
-	IconSessions = "◈"
+	IconSessions  = "◈"
+	IconApprovals = "◎"
 )
 
 // Status indicators.

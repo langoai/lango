@@ -2,6 +2,7 @@ package cockpit
 
 import (
 	"github.com/langoai/lango/internal/app"
+	"github.com/langoai/lango/internal/approval"
 	"github.com/langoai/lango/internal/background"
 	"github.com/langoai/lango/internal/config"
 	"github.com/langoai/lango/internal/configstore"
@@ -23,6 +24,8 @@ type Deps struct {
 	FeatureStatuses   *app.StatusCollector
 	ConfigStore       *configstore.Store
 	ProfileName       string
-	BackgroundManager *background.Manager // optional, nil when unavailable
-	EventBus          *eventbus.Bus       // optional, enables channel event subscription
+	BackgroundManager *background.Manager    // optional, nil when unavailable
+	EventBus          *eventbus.Bus          // optional, enables channel event subscription
+	ApprovalHistory   *approval.HistoryStore // optional, approval decision history
+	GrantStore        *approval.GrantStore   // optional, persistent session grants
 }

@@ -159,7 +159,7 @@ func (p *SessionsPage) renderList() string {
 	lines := make([]string, 0, len(p.sessions))
 	for i, s := range p.sessions {
 		keyText := truncate(s.Key, keyWidth)
-		relTime := relativeTime(s.UpdatedAt)
+		relTime := sessionsRelativeTime(s.UpdatedAt)
 
 		var line string
 		if i == p.cursor {
@@ -190,8 +190,8 @@ func (p *SessionsPage) loadSessions() tea.Cmd {
 	}
 }
 
-// relativeTime renders a human-friendly relative time string.
-func relativeTime(t time.Time) string {
+// sessionsRelativeTime renders a human-friendly relative time string for the sessions page.
+func sessionsRelativeTime(t time.Time) string {
 	d := time.Since(t)
 	switch {
 	case d < time.Minute:

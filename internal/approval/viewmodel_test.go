@@ -172,3 +172,70 @@ func TestNewViewModel_InlineTier(t *testing.T) {
 	assert.Equal(t, TierInline, vm.Tier)
 	assert.Equal(t, "moderate", vm.Risk.Level)
 }
+
+func TestBuildRuleExplanation(t *testing.T) {
+	tests := []struct {
+		give        string
+		safetyLevel string
+		category    string
+		wantContain string
+	}{
+		{
+			give:        "dangerous filesystem → filesystem explanation",
+			safetyLevel: "dangerous",
+			category:    "filesystem",
+			wantContain: "filesystem",
+		},
+		{
+			give:        "dangerous automation → arbitrary code explanation",
+			safetyLevel: "dangerous",
+			category:    "automation",
+			wantContain: "arbitrary code",
+		},
+		{
+			give:        "moderate → moderate risk explanation",
+			safetyLevel: "moderate",
+			category:    "browser",
+			wantContain: "moderate",
+		},
+		{
+			give:        "safe → default approval policy explanation",
+			safetyLevel: "safe",
+			category:    "",
+			wantContain: "approval policy",
+		},
+		{
+			give:        "empty → default approval policy explanation",
+			safetyLevel: "",
+			category:    "",
+			wantContain: "approval policy",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.give, func(t *testing.T) {
+			req := ApprovalRequest{
+				SafetyLevel: tt.safetyLevel,
+				Category:    tt.category,
+			}
+			got := buildRuleExplanation(req)
+			assert.Contains(t, got, tt.wantContain)
+			assert.NotEmpty(t, got)
+		})
+	}
+}
+
+func TestNewViewModel_PopulatesRuleExplanation(t *testing.T) {
+	req := ApprovalRequest{
+		ID:          "req-789",
+		ToolName:    "fs_write",
+		SafetyLevel: "dangerous",
+		Category:    "filesystem",
+		Activity:    "write",
+	}
+
+	vm := NewViewModel(req)
+
+	assert.NotEmpty(t, vm.RuleExplanation)
+	assert.Contains(t, vm.RuleExplanation, "filesystem")
+}
