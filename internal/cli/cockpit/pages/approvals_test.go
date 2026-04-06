@@ -301,8 +301,7 @@ func TestApprovalsPage_Deactivate(t *testing.T) {
 	assert.False(t, p.tickActive, "tickActive should be false after Deactivate")
 
 	// A tick message after deactivation should not re-enable the tick.
-	updated, cmd := p.Update(approvalTickMsg(time.Now()))
-	p = updated.(*ApprovalsPage)
+	_, cmd := p.Update(approvalTickMsg(time.Now()))
 	assert.Nil(t, cmd, "tick command should not be returned when deactivated")
 }
 

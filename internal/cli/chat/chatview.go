@@ -307,7 +307,7 @@ func (m *chatViewModel) appendEntry(entry transcriptItem) {
 		prevTrimmed := 0
 		hasTombstone := m.entries[0].kind == itemSystem && strings.HasPrefix(m.entries[0].content, "---")
 		if hasTombstone {
-			fmt.Sscanf(m.entries[0].content, "--- %d older messages trimmed ---", &prevTrimmed)
+			_, _ = fmt.Sscanf(m.entries[0].content, "--- %d older messages trimmed ---", &prevTrimmed)
 		}
 		// Determine base trim boundary.
 		boundary := trimCount

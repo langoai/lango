@@ -307,20 +307,20 @@ func (p *ContextPanel) renderRuntimeStatus(_ int, divider string) string {
 	if p.runtimeStat.ActiveAgent != "" {
 		label += "  " + cpActiveAgentStyle.Render(p.runtimeStat.ActiveAgent)
 	}
-	b.WriteString(fmt.Sprintf("  %s %s", statusIcon, cpLabelStyle.Render(label)))
+	fmt.Fprintf(&b, "  %s %s", statusIcon, cpLabelStyle.Render(label))
 	b.WriteByte('\n')
 
 	// Delegation count (only show if > 0)
 	if p.runtimeStat.DelegationCount > 0 {
-		b.WriteString(fmt.Sprintf("  🔀 %s",
-			cpValueStyle.Render(fmt.Sprintf("%d delegations", p.runtimeStat.DelegationCount))))
+		fmt.Fprintf(&b, "  🔀 %s",
+			cpValueStyle.Render(fmt.Sprintf("%d delegations", p.runtimeStat.DelegationCount)))
 		b.WriteByte('\n')
 	}
 
 	// Token usage (only show if > 0)
 	if p.runtimeStat.TurnTokens > 0 {
-		b.WriteString(fmt.Sprintf("  📊 %s",
-			cpValueStyle.Render(fmt.Sprintf("%s tokens", tui.FormatNumber(p.runtimeStat.TurnTokens)))))
+		fmt.Fprintf(&b, "  📊 %s",
+			cpValueStyle.Render(fmt.Sprintf("%s tokens", tui.FormatNumber(p.runtimeStat.TurnTokens))))
 		b.WriteByte('\n')
 	}
 
@@ -349,7 +349,7 @@ func (p *ContextPanel) renderChannelStatus(_ int, divider string) string {
 		name := cpChannelNameStyle.Render(ch.Name)
 		count := cpChannelCountStyle.Render(fmt.Sprintf("%d msgs", ch.MessageCount))
 
-		b.WriteString(fmt.Sprintf("  %s %s  %s", statusIcon, name, count))
+		fmt.Fprintf(&b, "  %s %s  %s", statusIcon, name, count)
 		b.WriteByte('\n')
 	}
 	return b.String()
