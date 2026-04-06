@@ -10,6 +10,7 @@ import (
 	"github.com/charmbracelet/lipgloss"
 
 	"github.com/langoai/lango/internal/cli/cockpit/theme"
+	"github.com/langoai/lango/internal/cli/tui"
 	"github.com/langoai/lango/internal/observability"
 )
 
@@ -22,6 +23,14 @@ type toolEntry struct {
 	count int64
 }
 
+// channelStatus represents the state of a single communication channel.
+type channelStatus struct {
+	Name         string
+	Connected    bool
+	MessageCount int
+	LastActivity time.Time
+}
+
 // ContextPanel is a standalone tea.Model that displays live system metrics
 // in a right-side panel. It is NOT a Page — it uses Start()/Stop() lifecycle
 // managed by the cockpit toggle (Ctrl+P).
@@ -32,8 +41,11 @@ type ContextPanel struct {
 	visible         bool
 	width           int
 	height          int
-	sortedTools     []toolEntry // cached sorted tool stats
-	sortedToolsDirty bool       // true when snapshot updated, cleared after sort
+	sortedTools        []toolEntry     // cached sorted tool stats
+	sortedToolsDirty   bool            // true when snapshot updated, cleared after sort
+	cachedToolCountSum int64           // cached sum of all tool invocation counts
+	channelStatuses    []channelStatus // live channel status for display
+	runtimeStat        runtimeStatus   // live runtime status for display
 }
 
 // NewContextPanel creates a ContextPanel backed by the given collector.
@@ -89,6 +101,20 @@ var (
 
 	cpDividerStyle = lipgloss.NewStyle().
 			Foreground(theme.BorderDefault)
+
+	// Pre-allocated styles for View content area.
+	cpContentBaseStyle = lipgloss.NewStyle().
+				Padding(0, 1).
+				Background(theme.Surface0)
+
+	// Pre-allocated styles for renderRuntimeStatus.
+	cpSuccessIconStyle     = lipgloss.NewStyle().Foreground(theme.Success)
+	cpActiveAgentStyle     = lipgloss.NewStyle().Foreground(theme.TextPrimary)
+
+	// Pre-allocated styles for renderChannelStatus.
+	cpChannelNameStyle  = lipgloss.NewStyle().Foreground(theme.TextPrimary)
+	cpChannelCountStyle = lipgloss.NewStyle().Foreground(theme.TextTertiary)
+	cpErrorIconStyle    = lipgloss.NewStyle().Foreground(theme.Error)
 )
 
 // View implements tea.Model.
@@ -106,8 +132,15 @@ func (p *ContextPanel) View() string {
 	sections := []string{
 		p.renderTokenUsage(contentWidth, divider),
 		p.renderToolStats(contentWidth, divider),
-		p.renderSystem(contentWidth, divider),
 	}
+	// Runtime section — only shown when a turn is active
+	if runtimeSection := p.renderRuntimeStatus(contentWidth, divider); runtimeSection != "" {
+		sections = append(sections, runtimeSection)
+	}
+	if channelSection := p.renderChannelStatus(contentWidth, divider); channelSection != "" {
+		sections = append(sections, channelSection)
+	}
+	sections = append(sections, p.renderSystem(contentWidth, divider))
 
 	content := strings.Join(sections, "\n")
 
@@ -120,10 +153,8 @@ func (p *ContextPanel) View() string {
 		lines = lines[:p.height]
 	}
 
-	rendered := lipgloss.NewStyle().
-		Padding(0, 1).
+	rendered := cpContentBaseStyle.
 		Width(p.width).
-		Background(theme.Surface0).
 		Render(strings.Join(lines, "\n"))
 
 	return cpBorderStyle.Render(rendered)
@@ -151,6 +182,23 @@ func (p *ContextPanel) SetVisible(v bool) {
 	p.visible = v
 }
 
+// SetChannelStatuses updates the channel status display data.
+func (p *ContextPanel) SetChannelStatuses(statuses []channelStatus) {
+	if cap(p.channelStatuses) >= len(statuses) {
+		p.channelStatuses = p.channelStatuses[:len(statuses)]
+	} else {
+		p.channelStatuses = make([]channelStatus, len(statuses))
+	}
+	copy(p.channelStatuses, statuses)
+}
+
+// SetRuntimeStatus updates the runtime status display data.
+// Rendering is handled by Unit 3A; this setter allows the cockpit
+// to push snapshots from RuntimeTracker.
+func (p *ContextPanel) SetRuntimeStatus(status runtimeStatus) {
+	p.runtimeStat = status
+}
+
 // --- rendering helpers ---
 
 func (p *ContextPanel) renderTokenUsage(width int, divider string) string {
@@ -174,7 +222,7 @@ func (p *ContextPanel) renderTokenUsage(width int, divider string) string {
 	labelW := 8
 	for _, r := range rows {
 		label := cpLabelStyle.Width(labelW).Render(r.label)
-		val := cpValueStyle.Render(formatCompact(r.value))
+		val := cpValueStyle.Render(tui.FormatNumber(r.value))
 		b.WriteString(label + val)
 		b.WriteByte('\n')
 	}
@@ -197,9 +245,12 @@ func (p *ContextPanel) renderToolStats(width int, divider string) string {
 	// Re-sort only when snapshot has been refreshed.
 	if p.sortedToolsDirty || p.sortedTools == nil {
 		entries := make([]toolEntry, 0, len(p.snapshot.ToolBreakdown))
+		var sum int64
 		for name, tm := range p.snapshot.ToolBreakdown {
 			entries = append(entries, toolEntry{name: name, count: tm.Count})
+			sum += tm.Count
 		}
+		p.cachedToolCountSum = sum
 		sort.Slice(entries, func(i, j int) bool {
 			return entries[i].count > entries[j].count
 		})
@@ -216,7 +267,7 @@ func (p *ContextPanel) renderToolStats(width int, divider string) string {
 		nameW = 8
 	}
 	for _, e := range entries {
-		name := truncateName(e.name, nameW)
+		name := tui.Truncate(e.name, nameW)
 		line := fmt.Sprintf("%-*s %4d", nameW, name, e.count)
 		b.WriteString(cpLabelStyle.Render(line))
 		b.WriteByte('\n')
@@ -231,7 +282,7 @@ func (p *ContextPanel) renderSystem(_ int, divider string) string {
 	b.WriteString(divider)
 	b.WriteByte('\n')
 
-	uptime := formatUptime(p.snapshot.Uptime)
+	uptime := tui.FormatDuration(p.snapshot.Uptime)
 	b.WriteString(cpLabelStyle.Render("Uptime:  "))
 	b.WriteString(cpValueStyle.Render(uptime))
 	b.WriteByte('\n')
@@ -239,11 +290,78 @@ func (p *ContextPanel) renderSystem(_ int, divider string) string {
 	return b.String()
 }
 
+func (p *ContextPanel) renderRuntimeStatus(_ int, divider string) string {
+	if !p.runtimeStat.IsRunning {
+		return "" // graceful degradation — no section when idle
+	}
+
+	var b strings.Builder
+	b.WriteString(cpTitleStyle.Render("Runtime"))
+	b.WriteByte('\n')
+	b.WriteString(divider)
+	b.WriteByte('\n')
+
+	// Active agent indicator
+	statusIcon := cpSuccessIconStyle.Render("●")
+	label := "Running"
+	if p.runtimeStat.ActiveAgent != "" {
+		label += "  " + cpActiveAgentStyle.Render(p.runtimeStat.ActiveAgent)
+	}
+	b.WriteString(fmt.Sprintf("  %s %s", statusIcon, cpLabelStyle.Render(label)))
+	b.WriteByte('\n')
+
+	// Delegation count (only show if > 0)
+	if p.runtimeStat.DelegationCount > 0 {
+		b.WriteString(fmt.Sprintf("  🔀 %s",
+			cpValueStyle.Render(fmt.Sprintf("%d delegations", p.runtimeStat.DelegationCount))))
+		b.WriteByte('\n')
+	}
+
+	// Token usage (only show if > 0)
+	if p.runtimeStat.TurnTokens > 0 {
+		b.WriteString(fmt.Sprintf("  📊 %s",
+			cpValueStyle.Render(fmt.Sprintf("%s tokens", tui.FormatNumber(p.runtimeStat.TurnTokens)))))
+		b.WriteByte('\n')
+	}
+
+	return b.String()
+}
+
+func (p *ContextPanel) renderChannelStatus(_ int, divider string) string {
+	if len(p.channelStatuses) == 0 {
+		return "" // graceful degradation — no section when no channels
+	}
+
+	var b strings.Builder
+	b.WriteString(cpTitleStyle.Render("Channels"))
+	b.WriteByte('\n')
+	b.WriteString(divider)
+	b.WriteByte('\n')
+
+	for _, ch := range p.channelStatuses {
+		var statusIcon string
+		if ch.Connected {
+			statusIcon = cpSuccessIconStyle.Render("●")
+		} else {
+			statusIcon = cpErrorIconStyle.Render("○")
+		}
+
+		name := cpChannelNameStyle.Render(ch.Name)
+		count := cpChannelCountStyle.Render(fmt.Sprintf("%d msgs", ch.MessageCount))
+
+		b.WriteString(fmt.Sprintf("  %s %s  %s", statusIcon, name, count))
+		b.WriteByte('\n')
+	}
+	return b.String()
+}
+
 func (p *ContextPanel) refreshSnapshot() {
 	if p.collector != nil {
-		prev := p.snapshot
+		prevLen := len(p.snapshot.ToolBreakdown)
+		prevSum := p.cachedToolCountSum
 		p.snapshot = p.collector.Snapshot()
-		if len(p.snapshot.ToolBreakdown) != len(prev.ToolBreakdown) || toolCountSum(p.snapshot) != toolCountSum(prev) {
+		newSum := toolCountSum(p.snapshot)
+		if len(p.snapshot.ToolBreakdown) != prevLen || newSum != prevSum {
 			p.sortedToolsDirty = true
 		}
 	}
@@ -257,47 +375,6 @@ func contextTickCmd() tea.Cmd {
 	})
 }
 
-// formatCompact renders a number in compact form (e.g. 12345 -> "12,345").
-func formatCompact(n int64) string {
-	if n < 0 {
-		return "-" + formatCompact(-n)
-	}
-	s := fmt.Sprintf("%d", n)
-	if len(s) <= 3 {
-		return s
-	}
-	var buf strings.Builder
-	remainder := len(s) % 3
-	if remainder > 0 {
-		buf.WriteString(s[:remainder])
-	}
-	for i := remainder; i < len(s); i += 3 {
-		if buf.Len() > 0 {
-			buf.WriteByte(',')
-		}
-		buf.WriteString(s[i : i+3])
-	}
-	return buf.String()
-}
-
-// formatUptime renders a duration as a human-friendly string.
-func formatUptime(d time.Duration) string {
-	if d < time.Second {
-		return fmt.Sprintf("%dms", d.Milliseconds())
-	}
-	totalSec := int(d.Seconds())
-	h := totalSec / 3600
-	m := (totalSec % 3600) / 60
-	s := totalSec % 60
-
-	switch {
-	case h > 0:
-		return fmt.Sprintf("%dh %dm", h, m)
-	default:
-		return fmt.Sprintf("%dm %ds", m, s)
-	}
-}
-
 // toolCountSum returns the total invocation count across all tools in a snapshot.
 func toolCountSum(snap observability.SystemSnapshot) int64 {
 	var sum int64
@@ -305,15 +382,4 @@ func toolCountSum(snap observability.SystemSnapshot) int64 {
 		sum += tm.Count
 	}
 	return sum
-}
-
-// truncateName shortens a tool name if it exceeds maxLen.
-func truncateName(s string, maxLen int) string {
-	if len(s) <= maxLen {
-		return s
-	}
-	if maxLen <= 3 {
-		return s[:maxLen]
-	}
-	return s[:maxLen-3] + "..."
 }

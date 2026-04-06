@@ -8,6 +8,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/langoai/lango/internal/cli/tui"
 	"github.com/langoai/lango/internal/observability"
 )
 
@@ -159,6 +160,150 @@ func TestContextPanel_TopFiveTools(t *testing.T) {
 	assert.NotContains(t, view, "a_tool")
 }
 
+func TestContextPanel_NoChannels(t *testing.T) {
+	panel := NewContextPanel(nil)
+	panel.visible = true
+	panel.height = 30
+
+	view := panel.View()
+	assert.NotContains(t, view, "Channels")
+}
+
+func TestContextPanel_WithChannels(t *testing.T) {
+	panel := NewContextPanel(nil)
+	panel.visible = true
+	panel.height = 30
+	panel.SetChannelStatuses([]channelStatus{
+		{Name: "slack", Connected: true, MessageCount: 10, LastActivity: time.Now()},
+		{Name: "discord", Connected: true, MessageCount: 3, LastActivity: time.Now()},
+	})
+
+	view := panel.View()
+	assert.Contains(t, view, "Channels")
+	assert.Contains(t, view, "slack")
+	assert.Contains(t, view, "discord")
+	assert.Contains(t, view, "●")
+}
+
+func TestContextPanel_DisconnectedChannel(t *testing.T) {
+	panel := NewContextPanel(nil)
+	panel.visible = true
+	panel.height = 30
+	panel.SetChannelStatuses([]channelStatus{
+		{Name: "email", Connected: false, MessageCount: 0, LastActivity: time.Time{}},
+	})
+
+	view := panel.View()
+	assert.Contains(t, view, "Channels")
+	assert.Contains(t, view, "email")
+	assert.Contains(t, view, "○")
+}
+
+func TestContextPanel_MessageCount(t *testing.T) {
+	panel := NewContextPanel(nil)
+	panel.visible = true
+	panel.height = 30
+	panel.SetChannelStatuses([]channelStatus{
+		{Name: "webhook", Connected: true, MessageCount: 5, LastActivity: time.Now()},
+	})
+
+	view := panel.View()
+	assert.Contains(t, view, "5 msgs")
+}
+
+func TestContextPanel_SetChannelStatuses(t *testing.T) {
+	panel := NewContextPanel(nil)
+
+	statuses := []channelStatus{
+		{Name: "slack", Connected: true, MessageCount: 42, LastActivity: time.Now()},
+		{Name: "email", Connected: false, MessageCount: 0, LastActivity: time.Time{}},
+	}
+	panel.SetChannelStatuses(statuses)
+
+	require.Len(t, panel.channelStatuses, 2)
+	assert.Equal(t, "slack", panel.channelStatuses[0].Name)
+	assert.True(t, panel.channelStatuses[0].Connected)
+	assert.Equal(t, 42, panel.channelStatuses[0].MessageCount)
+	assert.Equal(t, "email", panel.channelStatuses[1].Name)
+	assert.False(t, panel.channelStatuses[1].Connected)
+
+	// Verify defensive copy — mutating the original should not affect panel.
+	statuses[0].Name = "mutated"
+	assert.Equal(t, "slack", panel.channelStatuses[0].Name)
+}
+
+func TestContextPanel_RuntimeSectionWhenRunning(t *testing.T) {
+	panel := NewContextPanel(nil)
+	panel.visible = true
+	panel.height = 30
+	panel.runtimeStat = runtimeStatus{
+		IsRunning:       true,
+		ActiveAgent:     "operator",
+		DelegationCount: 3,
+		TurnTokens:      1234,
+	}
+
+	view := panel.View()
+	assert.Contains(t, view, "Runtime")
+	assert.Contains(t, view, "operator")
+	assert.Contains(t, view, "3 delegations")
+	assert.Contains(t, view, "1,234 tokens")
+}
+
+func TestContextPanel_RuntimeSectionWhenIdle(t *testing.T) {
+	panel := NewContextPanel(nil)
+	panel.visible = true
+	panel.height = 30
+	panel.runtimeStat = runtimeStatus{IsRunning: false}
+
+	view := panel.View()
+	assert.NotContains(t, view, "Runtime")
+}
+
+func TestContextPanel_RuntimeSectionZeroDelegations(t *testing.T) {
+	panel := NewContextPanel(nil)
+	panel.visible = true
+	panel.height = 30
+	panel.runtimeStat = runtimeStatus{
+		IsRunning:       true,
+		ActiveAgent:     "operator",
+		DelegationCount: 0,
+	}
+
+	view := panel.View()
+	assert.Contains(t, view, "Runtime")
+	assert.NotContains(t, view, "delegations")
+}
+
+func TestContextPanel_RuntimeSectionZeroTokens(t *testing.T) {
+	panel := NewContextPanel(nil)
+	panel.visible = true
+	panel.height = 30
+	panel.runtimeStat = runtimeStatus{
+		IsRunning:       true,
+		DelegationCount: 2,
+		TurnTokens:      0,
+	}
+
+	view := panel.View()
+	assert.Contains(t, view, "Runtime")
+	assert.Contains(t, view, "2 delegations")
+	assert.NotContains(t, view, "tokens")
+}
+
+func TestContextPanel_RuntimeSectionNoAgentName(t *testing.T) {
+	panel := NewContextPanel(nil)
+	panel.visible = true
+	panel.height = 30
+	panel.runtimeStat = runtimeStatus{IsRunning: true}
+
+	view := panel.View()
+	assert.Contains(t, view, "Runtime")
+	assert.Contains(t, view, "Running")
+	// Should not contain any agent name reference beyond "Running"
+	assert.NotContains(t, view, "operator")
+}
+
 func TestFormatCompact(t *testing.T) {
 	tests := []struct {
 		give int64
@@ -172,8 +317,8 @@ func TestFormatCompact(t *testing.T) {
 		{give: -42, want: "-42"},
 	}
 	for _, tt := range tests {
-		got := formatCompact(tt.give)
-		assert.Equal(t, tt.want, got, "formatCompact(%d)", tt.give)
+		got := tui.FormatNumber(tt.give)
+		assert.Equal(t, tt.want, got, "FormatNumber(%d)", tt.give)
 	}
 }
 
@@ -187,7 +332,7 @@ func TestFormatUptime(t *testing.T) {
 		{give: 2*time.Hour + 15*time.Minute, want: "2h 15m"},
 	}
 	for _, tt := range tests {
-		got := formatUptime(tt.give)
-		assert.Equal(t, tt.want, got, "formatUptime(%v)", tt.give)
+		got := tui.FormatDuration(tt.give)
+		assert.Equal(t, tt.want, got, "FormatDuration(%v)", tt.give)
 	}
 }

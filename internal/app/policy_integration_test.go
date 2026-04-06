@@ -59,7 +59,7 @@ func buildTestChain(t *testing.T, ap approval.Provider) (*agent.Tool, *atomic.In
 	// Apply in production order: approval first (inner), then policy (outer).
 	ic := config.InterceptorConfig{ApprovalPolicy: config.ApprovalPolicyDangerous}
 	gs := approval.NewGrantStore()
-	tool = toolchain.Chain(tool, toolchain.WithApproval(ic, ap, gs, nil))
+	tool = toolchain.Chain(tool, toolchain.WithApproval(ic, ap, gs, nil, nil))
 	tool = toolchain.Chain(tool, execpkg.WithPolicy(pe))
 
 	return tool, &executorCalled

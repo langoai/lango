@@ -235,11 +235,11 @@ func TestCPRFullSequenceDiscarded(t *testing.T) {
 		m.Update(k)
 	}
 
-	if m.cprDetect != cprIdle {
-		t.Fatalf("want cprIdle after full CPR, got %v", m.cprDetect)
+	if m.cpr.state != cprIdle {
+		t.Fatalf("want cprIdle after full CPR, got %v", m.cpr.state)
 	}
-	if len(m.cprBuf) != 0 {
-		t.Fatalf("want empty cprBuf, got %d", len(m.cprBuf))
+	if len(m.cpr.buf) != 0 {
+		t.Fatalf("want empty cprBuf, got %d", len(m.cpr.buf))
 	}
 	if got := m.input.Value(); got != "" {
 		t.Fatalf("CPR leaked into input: %q", got)
@@ -265,8 +265,8 @@ func TestOSC11BELSequenceDiscarded(t *testing.T) {
 		m.Update(k)
 	}
 
-	if m.cprDetect != cprIdle {
-		t.Fatalf("want cprIdle after OSC BEL sequence, got %v", m.cprDetect)
+	if m.cpr.state != cprIdle {
+		t.Fatalf("want cprIdle after OSC BEL sequence, got %v", m.cpr.state)
 	}
 	if got := m.input.Value(); got != "" {
 		t.Fatalf("OSC sequence leaked into input: %q", got)
@@ -289,8 +289,8 @@ func TestOSCSTSequenceDiscarded(t *testing.T) {
 		m.Update(k)
 	}
 
-	if m.cprDetect != cprIdle {
-		t.Fatalf("want cprIdle after OSC ST sequence, got %v", m.cprDetect)
+	if m.cpr.state != cprIdle {
+		t.Fatalf("want cprIdle after OSC ST sequence, got %v", m.cpr.state)
 	}
 	if got := m.input.Value(); got != "" {
 		t.Fatalf("OSC ST sequence leaked into input: %q", got)
@@ -303,8 +303,8 @@ func TestCPRFilterIgnoredDuringApproval(t *testing.T) {
 
 	m.Update(tea.KeyMsg{Type: tea.KeyEscape})
 
-	if m.cprDetect != cprIdle {
-		t.Fatalf("CPR filter should remain idle outside composer, got %v", m.cprDetect)
+	if m.cpr.state != cprIdle {
+		t.Fatalf("CPR filter should remain idle outside composer, got %v", m.cpr.state)
 	}
 }
 
@@ -332,14 +332,159 @@ func TestTranscriptBlocksUseVisualSeparators(t *testing.T) {
 	}
 }
 
+func TestDoublePress_CriticalFirstPress(t *testing.T) {
+	m := newTestModel()
+	m.state = stateApproving
+	m.approval.pending = &ApprovalRequestMsg{
+		Request: approval.ApprovalRequest{
+			ToolName:    "exec",
+			SafetyLevel: "dangerous",
+			Category:    "automation",
+		},
+		ViewModel: approval.ApprovalViewModel{
+			Risk: approval.RiskIndicator{Level: "critical", Label: "Executes arbitrary code"},
+		},
+		Response: make(chan approval.ApprovalResponse, 1),
+	}
+
+	aKey := tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'a'}}
+	m.Update(aKey)
+
+	if !m.approval.confirmPending {
+		t.Fatal("first 'a' on critical tool should set approvalConfirmPending=true")
+	}
+	if m.approval.pending == nil {
+		t.Fatal("first 'a' on critical tool should not consume the approval")
+	}
+}
+
+func TestDoublePress_CriticalSecondPress(t *testing.T) {
+	m := newTestModel()
+	m.state = stateApproving
+	respCh := make(chan approval.ApprovalResponse, 1)
+	m.approval.pending = &ApprovalRequestMsg{
+		Request: approval.ApprovalRequest{
+			ToolName:    "exec",
+			SafetyLevel: "dangerous",
+			Category:    "automation",
+		},
+		ViewModel: approval.ApprovalViewModel{
+			Risk: approval.RiskIndicator{Level: "critical", Label: "Executes arbitrary code"},
+		},
+		Response: respCh,
+	}
+
+	aKey := tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'a'}}
+	m.Update(aKey) // first press
+	m.Update(aKey) // second press
+
+	if m.approval.pending != nil {
+		t.Fatal("second 'a' should consume the approval")
+	}
+	if m.approval.confirmPending {
+		t.Fatal("confirm pending should be cleared after approval")
+	}
+}
+
+func TestDoublePress_NonCriticalImmediateApproval(t *testing.T) {
+	m := newTestModel()
+	m.state = stateApproving
+	respCh := make(chan approval.ApprovalResponse, 1)
+	m.approval.pending = &ApprovalRequestMsg{
+		Request: approval.ApprovalRequest{
+			ToolName:    "browser_search",
+			SafetyLevel: "moderate",
+			Category:    "browser",
+		},
+		ViewModel: approval.ApprovalViewModel{
+			Risk: approval.RiskIndicator{Level: "moderate", Label: "Reads data"},
+		},
+		Response: respCh,
+	}
+
+	aKey := tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'a'}}
+	m.Update(aKey)
+
+	if m.approval.pending != nil {
+		t.Fatal("non-critical tool should be approved immediately on first 'a'")
+	}
+	if m.approval.confirmPending {
+		t.Fatal("confirm pending should not be set for non-critical tool")
+	}
+}
+
+func TestDoublePress_OtherKeyResetsConfirm(t *testing.T) {
+	m := newTestModel()
+	m.state = stateApproving
+	m.approval.pending = &ApprovalRequestMsg{
+		Request: approval.ApprovalRequest{
+			ToolName:    "exec",
+			SafetyLevel: "dangerous",
+			Category:    "automation",
+		},
+		ViewModel: approval.ApprovalViewModel{
+			Risk: approval.RiskIndicator{Level: "critical", Label: "Executes arbitrary code"},
+		},
+		Response: make(chan approval.ApprovalResponse, 1),
+	}
+
+	aKey := tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'a'}}
+	m.Update(aKey) // first press — sets confirmPending
+
+	if !m.approval.confirmPending {
+		t.Fatal("expected confirmPending=true after first 'a'")
+	}
+
+	// Press an unrelated key — should reset.
+	xKey := tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'x'}}
+	m.Update(xKey)
+
+	if m.approval.confirmPending {
+		t.Fatal("unrelated key should reset approvalConfirmPending")
+	}
+	if m.approval.pending == nil {
+		t.Fatal("unrelated key should not consume the approval")
+	}
+}
+
+func TestDoublePress_DenyResetsConfirm(t *testing.T) {
+	m := newTestModel()
+	m.state = stateApproving
+	respCh := make(chan approval.ApprovalResponse, 1)
+	m.approval.pending = &ApprovalRequestMsg{
+		Request: approval.ApprovalRequest{
+			ToolName:    "exec",
+			SafetyLevel: "dangerous",
+			Category:    "automation",
+		},
+		ViewModel: approval.ApprovalViewModel{
+			Risk: approval.RiskIndicator{Level: "critical", Label: "Executes arbitrary code"},
+		},
+		Response: respCh,
+	}
+
+	aKey := tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'a'}}
+	m.Update(aKey) // first press — sets confirmPending
+
+	dKey := tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'d'}}
+	m.Update(dKey) // deny
+
+	if m.approval.confirmPending {
+		t.Fatal("deny should reset approvalConfirmPending")
+	}
+	if m.approval.pending != nil {
+		t.Fatal("deny should consume the approval")
+	}
+}
+
 func TestCPRTimeoutFlushesEsc(t *testing.T) {
 	m := newTestModel()
 	m.Update(tea.KeyMsg{Type: tea.KeyEscape})
-	if m.cprDetect != cprGotEsc {
-		t.Fatalf("want cprGotEsc, got %v", m.cprDetect)
+	if m.cpr.state != cprGotEsc {
+		t.Fatalf("want cprGotEsc, got %v", m.cpr.state)
 	}
 	m.Update(cprTimeoutMsg{})
-	if m.cprDetect != cprIdle {
-		t.Fatalf("want cprIdle after timeout, got %v", m.cprDetect)
+	if m.cpr.state != cprIdle {
+		t.Fatalf("want cprIdle after timeout, got %v", m.cpr.state)
 	}
 }

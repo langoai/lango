@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	"github.com/charmbracelet/lipgloss"
+	"github.com/charmbracelet/x/ansi"
 
 	"github.com/langoai/lango/internal/cli/tui"
 	"github.com/langoai/lango/internal/config"
@@ -86,7 +87,8 @@ func renderTurnStrip(state chatState, width int) string {
 		Render(left + strings.Repeat(" ", gap) + right)
 }
 
-func renderHelpBar(state chatState, _ int) string {
+func renderHelpBar(state chatState, width int) string {
+	w := max(width, 1)
 	var entries []string
 	switch state {
 	case stateIdle, stateFailed:
@@ -112,7 +114,8 @@ func renderHelpBar(state chatState, _ int) string {
 			tui.HelpEntry("Ctrl+D", "quit"),
 		}
 	}
-	return tui.HelpBar(entries...)
+	bar := tui.HelpBar(entries...)
+	return ansi.Truncate(bar, w, "")
 }
 
 func turnStateCopy(state chatState) (label, hint string, color lipgloss.Color) {

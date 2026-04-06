@@ -11,6 +11,8 @@ type keyMap struct {
 	Page2         key.Binding
 	Page3         key.Binding
 	Page4         key.Binding
+	Page5         key.Binding
+	Page6         key.Binding
 }
 
 func defaultKeyMap() keyMap {
@@ -46,6 +48,14 @@ func defaultKeyMap() keyMap {
 		Page4: key.NewBinding(
 			key.WithKeys("ctrl+4"),
 			key.WithHelp("ctrl+4", "status"),
+		),
+		Page5: key.NewBinding(
+			key.WithKeys("ctrl+5"),
+			key.WithHelp("ctrl+5", "tasks"),
+		),
+		Page6: key.NewBinding(
+			key.WithKeys("ctrl+6"),
+			key.WithHelp("ctrl+6", "approvals"),
 		),
 	}
 }

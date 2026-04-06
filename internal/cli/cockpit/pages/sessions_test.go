@@ -10,6 +10,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/langoai/lango/internal/cli/tui"
 	"github.com/langoai/lango/internal/session"
 )
 
@@ -168,7 +169,7 @@ func TestSessionsPage_ViewWithError(t *testing.T) {
 	assert.Contains(t, view, "connection refused")
 }
 
-func TestRelativeTime(t *testing.T) {
+func TestSessionsRelativeTime(t *testing.T) {
 	tests := []struct {
 		give time.Time
 		want string
@@ -180,7 +181,7 @@ func TestRelativeTime(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.want, func(t *testing.T) {
-			assert.Equal(t, tt.want, relativeTime(tt.give))
+			assert.Equal(t, tt.want, tui.RelativeTimeHuman(time.Now(), tt.give))
 		})
 	}
 }

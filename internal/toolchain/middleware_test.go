@@ -400,7 +400,7 @@ func TestWithApproval_DeniedExecution(t *testing.T) {
 		},
 	}
 
-	mw := WithApproval(ic, ap, nil, nil)
+	mw := WithApproval(ic, ap, nil, nil, nil)
 	wrapped := Chain(tool, mw)
 	_, err := wrapped.Handler(context.Background(), nil)
 
@@ -424,7 +424,7 @@ func TestWithApproval_ApprovedExecution(t *testing.T) {
 		},
 	}
 
-	mw := WithApproval(ic, ap, nil, nil)
+	mw := WithApproval(ic, ap, nil, nil, nil)
 	wrapped := Chain(tool, mw)
 	result, err := wrapped.Handler(context.Background(), nil)
 
@@ -451,7 +451,7 @@ func TestWithApproval_GrantStoreAutoApproves(t *testing.T) {
 		},
 	}
 
-	mw := WithApproval(ic, ap, gs, nil)
+	mw := WithApproval(ic, ap, gs, nil, nil)
 	wrapped := Chain(tool, mw)
 	_, err := wrapped.Handler(context.Background(), nil)
 
@@ -475,7 +475,7 @@ func TestWithApproval_AlwaysAllowRecordsGrant(t *testing.T) {
 		},
 	}
 
-	mw := WithApproval(ic, ap, gs, nil)
+	mw := WithApproval(ic, ap, gs, nil, nil)
 	wrapped := Chain(tool, mw)
 	_, _ = wrapped.Handler(context.Background(), nil)
 
@@ -501,7 +501,7 @@ func TestWithApproval_TurnLocalGrantReusesApprove(t *testing.T) {
 	ctx := approval.WithTurnApprovalState(context.Background(), approval.NewTurnApprovalState())
 	params := map[string]interface{}{"url": "https://example.com"}
 
-	mw := WithApproval(ic, ap, nil, nil)
+	mw := WithApproval(ic, ap, nil, nil, nil)
 	wrapped := Chain(tool, mw)
 
 	_, err := wrapped.Handler(ctx, params)
@@ -531,7 +531,7 @@ func TestWithApproval_TurnLocalDeniedReplayBlocked(t *testing.T) {
 	ctx := approval.WithTurnApprovalState(context.Background(), approval.NewTurnApprovalState())
 	params := map[string]interface{}{"url": "https://example.com"}
 
-	mw := WithApproval(ic, ap, nil, nil)
+	mw := WithApproval(ic, ap, nil, nil, nil)
 	wrapped := Chain(tool, mw)
 
 	_, err := wrapped.Handler(ctx, params)
@@ -569,7 +569,7 @@ func TestWithApproval_TurnLocalTimeoutReplayBlockedAfterBudget(t *testing.T) {
 	ctx := approval.WithTurnApprovalState(context.Background(), approval.NewTurnApprovalState())
 	params := map[string]interface{}{"url": "https://example.com"}
 
-	mw := WithApproval(ic, ap, nil, nil)
+	mw := WithApproval(ic, ap, nil, nil, nil)
 	wrapped := Chain(tool, mw)
 
 	_, err := wrapped.Handler(ctx, params)
@@ -617,7 +617,7 @@ func TestWithApproval_BrowserSearchTimeoutRecoveryUsesCanonicalKey(t *testing.T)
 	}
 
 	ctx := approval.WithTurnApprovalState(context.Background(), approval.NewTurnApprovalState())
-	mw := WithApproval(ic, ap, nil, nil)
+	mw := WithApproval(ic, ap, nil, nil, nil)
 	wrapped := Chain(tool, mw)
 
 	_, err := wrapped.Handler(ctx, map[string]interface{}{"query": "Trump latest news"})
@@ -651,7 +651,7 @@ func TestWithApproval_DifferentParamsRequireNewApproval(t *testing.T) {
 	}
 
 	ctx := approval.WithTurnApprovalState(context.Background(), approval.NewTurnApprovalState())
-	mw := WithApproval(ic, ap, nil, nil)
+	mw := WithApproval(ic, ap, nil, nil, nil)
 	wrapped := Chain(tool, mw)
 
 	_, err := wrapped.Handler(ctx, map[string]interface{}{"url": "https://example.com/1"})
@@ -681,7 +681,7 @@ func TestWithApproval_ExemptToolSkipsApproval(t *testing.T) {
 		},
 	}
 
-	mw := WithApproval(ic, ap, nil, nil)
+	mw := WithApproval(ic, ap, nil, nil, nil)
 	wrapped := Chain(tool, mw)
 	_, err := wrapped.Handler(context.Background(), nil)
 

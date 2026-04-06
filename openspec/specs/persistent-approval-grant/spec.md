@@ -79,3 +79,18 @@ When the P2P approval function approves a tool invocation, the system SHALL reco
 #### Scenario: Approved P2P tool records grant
 - **WHEN** the P2P approval function approves tool "echo" for peer "did:key:abc"
 - **THEN** a grant SHALL be recorded with session key `"p2p:did:key:abc"` and tool name `"echo"`
+
+### Requirement: Grant store enumeration
+The GrantStore SHALL provide a List() method returning all active (non-expired) grants as []GrantInfo sorted by session key then tool name. Expired grants SHALL be excluded.
+
+#### Scenario: List active grants
+- **WHEN** 3 grants exist and none are expired
+- **THEN** List() returns 3 GrantInfo sorted by session then tool
+
+#### Scenario: Expired grants excluded
+- **WHEN** a grant has expired based on the TTL
+- **THEN** List() excludes it from the result
+
+#### Scenario: Revoked grants excluded
+- **WHEN** a grant has been revoked
+- **THEN** List() excludes it from the result

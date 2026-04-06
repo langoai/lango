@@ -93,7 +93,7 @@ func (m *inputModel) Blur() {
 }
 
 func renderFooter(input inputModel, state chatState, width int) string {
-	parts := make([]string, 0, 2)
+	parts := make([]string, 0, 3)
 	if state != stateApproving {
 		parts = append(parts, input.View())
 	}

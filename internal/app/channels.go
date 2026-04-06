@@ -10,6 +10,7 @@ import (
 	"github.com/langoai/lango/internal/channels/slack"
 	"github.com/langoai/lango/internal/channels/telegram"
 	"github.com/langoai/lango/internal/deadline"
+	"github.com/langoai/lango/internal/eventbus"
 	"github.com/langoai/lango/internal/turnrunner"
 	"github.com/langoai/lango/internal/turntrace"
 	"github.com/langoai/lango/internal/types"
@@ -90,28 +91,112 @@ func (a *App) initChannels() error {
 
 func (a *App) handleTelegramMessage(ctx context.Context, msg *telegram.IncomingMessage) (*telegram.OutgoingMessage, error) {
 	sessionKey := fmt.Sprintf("%s:%d:%d", types.ChannelTelegram, msg.ChatID, msg.UserID)
+
+	if a.EventBus != nil {
+		a.EventBus.Publish(eventbus.ChannelMessageReceivedEvent{
+			Channel:    string(types.ChannelTelegram),
+			SessionKey: sessionKey,
+			SenderName: msg.Username,
+			SenderID:   fmt.Sprint(msg.UserID),
+			Text:       msg.Text,
+			Timestamp:  time.Now(),
+			Metadata:   map[string]string{"chatID": fmt.Sprint(msg.ChatID)},
+		})
+	}
+
 	response, err := a.runAgent(ctx, sessionKey, msg.Text)
 	if err != nil {
 		return nil, err
 	}
-	return &telegram.OutgoingMessage{Text: response}, nil
+
+	out := &telegram.OutgoingMessage{Text: response}
+	// Publish after constructing the outgoing message but before return.
+	// Note: actual platform delivery happens in the adapter after this
+	// handler returns, so this event reflects "response ready" rather
+	// than "delivery confirmed". Adapter-level send failures are not
+	// captured here.
+	if a.EventBus != nil {
+		a.EventBus.Publish(eventbus.ChannelMessageSentEvent{
+			Channel:      string(types.ChannelTelegram),
+			SessionKey:   sessionKey,
+			ResponseText: response,
+			Timestamp:    time.Now(),
+		})
+	}
+
+	return out, nil
 }
 
 func (a *App) handleDiscordMessage(ctx context.Context, msg *discord.IncomingMessage) (*discord.OutgoingMessage, error) {
 	sessionKey := fmt.Sprintf("%s:%s:%s", types.ChannelDiscord, msg.ChannelID, msg.AuthorID)
+
+	if a.EventBus != nil {
+		meta := map[string]string{"channelID": msg.ChannelID}
+		if msg.GuildID != "" {
+			meta["guildID"] = msg.GuildID
+		}
+		a.EventBus.Publish(eventbus.ChannelMessageReceivedEvent{
+			Channel:    string(types.ChannelDiscord),
+			SessionKey: sessionKey,
+			SenderName: msg.AuthorName,
+			SenderID:   msg.AuthorID,
+			Text:       msg.Content,
+			Timestamp:  time.Now(),
+			Metadata:   meta,
+		})
+	}
+
 	response, err := a.runAgent(ctx, sessionKey, msg.Content)
 	if err != nil {
 		return nil, err
 	}
-	return &discord.OutgoingMessage{Content: response}, nil
+
+	out := &discord.OutgoingMessage{Content: response}
+	if a.EventBus != nil {
+		a.EventBus.Publish(eventbus.ChannelMessageSentEvent{
+			Channel:      string(types.ChannelDiscord),
+			SessionKey:   sessionKey,
+			ResponseText: response,
+			Timestamp:    time.Now(),
+		})
+	}
+
+	return out, nil
 }
 
 func (a *App) handleSlackMessage(ctx context.Context, msg *slack.IncomingMessage) (*slack.OutgoingMessage, error) {
 	sessionKey := fmt.Sprintf("%s:%s:%s", types.ChannelSlack, msg.ChannelID, msg.UserID)
+
+	if a.EventBus != nil {
+		meta := map[string]string{"channelID": msg.ChannelID}
+		if msg.ThreadTS != "" {
+			meta["threadTS"] = msg.ThreadTS
+		}
+		a.EventBus.Publish(eventbus.ChannelMessageReceivedEvent{
+			Channel:    string(types.ChannelSlack),
+			SessionKey: sessionKey,
+			SenderName: msg.UserID,
+			SenderID:   msg.UserID,
+			Text:       msg.Text,
+			Timestamp:  time.Now(),
+			Metadata:   meta,
+		})
+	}
+
 	response, err := a.runAgent(ctx, sessionKey, msg.Text)
 	if err != nil {
 		return nil, err
 	}
+
+	if a.EventBus != nil {
+		a.EventBus.Publish(eventbus.ChannelMessageSentEvent{
+			Channel:      string(types.ChannelSlack),
+			SessionKey:   sessionKey,
+			ResponseText: response,
+			Timestamp:    time.Now(),
+		})
+	}
+
 	return &slack.OutgoingMessage{Text: response}, nil
 }
 

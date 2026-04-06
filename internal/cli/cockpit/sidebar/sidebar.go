@@ -32,17 +32,11 @@ type Model struct {
 	height  int
 }
 
-// New creates a sidebar with the default menu items.
+// New creates a sidebar with the given menu items.
 // Chat is active by default; the sidebar is visible by default.
-func New() Model {
+func New(items []MenuItem) Model {
 	return Model{
-		items: []MenuItem{
-			{ID: "chat", Icon: theme.IconChat, Label: "Chat"},
-			{ID: "settings", Icon: theme.IconSettings, Label: "Settings"},
-			{ID: "tools", Icon: theme.IconTools, Label: "Tools"},
-			{ID: "status", Icon: theme.IconStatus, Label: "Status"},
-			{ID: "sessions", Icon: theme.IconSessions, Label: "Sessions"},
-		},
+		items:   items,
 		active:  "chat",
 		visible: true,
 	}

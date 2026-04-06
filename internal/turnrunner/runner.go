@@ -77,6 +77,17 @@ type Request struct {
 
 	// OnBudgetWarning is called when delegation count approaches the threshold.
 	OnBudgetWarning func(used, max int)
+
+	// OnToolCall is called when a tool invocation begins.
+	OnToolCall func(callID, toolName string, params map[string]any)
+
+	// OnToolResult is called when a tool invocation completes.
+	OnToolResult func(callID, toolName string, success bool, duration time.Duration, preview string)
+
+	// OnThinking is called when thinking/reasoning is detected via genai.Part.Thought.
+	// started=true means thinking began (summary is the thought text);
+	// started=false means thinking ended.
+	OnThinking func(agentName string, started bool, summary string)
 }
 
 // Result is the structured result of a completed turn.
@@ -164,6 +175,10 @@ func (r *Runner) Run(parent context.Context, req Request) (Result, error) {
 	recorder := newTraceRecorder(parent, r.traceStore, traceID, r.delegationBudgetMax)
 	recorder.onDelegation = req.OnDelegation
 	recorder.onBudgetWarning = req.OnBudgetWarning
+	recorder.onToolCall = req.OnToolCall
+	recorder.onToolResult = req.OnToolResult
+	recorder.onThinking = req.OnThinking
+	recorder.toolStartedAt = make(map[string]time.Time)
 	recorder.start(req.SessionKey, entrypoint, start)
 
 	ctx, cancel, _, runOpts := r.prepareContext(parent, req, recorder, start)
@@ -372,8 +387,15 @@ type traceRecorder struct {
 	seq             int64
 	onDelegation    func(from, to, reason string)
 	onBudgetWarning func(used, max int)
+	onToolCall      func(callID, toolName string, params map[string]any)
+	onToolResult    func(callID, toolName string, success bool, duration time.Duration, preview string)
+	onThinking      func(agentName string, started bool, summary string)
 	delegationCount int
 	delegationMax   int
+	toolStartedAt   map[string]time.Time    // callID → start time for duration calculation
+	inThinking      bool                    // tracks thinking state for boundary detection
+	thinkingStart   time.Time               // when thinking phase started
+	thinkingText    strings.Builder         // accumulates thought text across chunks
 }
 
 func newTraceRecorder(parentCtx context.Context, store turntrace.Store, traceID string, delegationMax int) *traceRecorder {
@@ -491,7 +513,29 @@ func (r *traceRecorder) recordEvent(event *adksession.Event) {
 	}
 
 	for _, part := range event.Content.Parts {
-		if part.Text != "" {
+		// Thinking detection: fire OnThinking only on boundary transitions.
+		if part.Thought && part.Text != "" {
+			if !r.inThinking {
+				r.inThinking = true
+				r.thinkingStart = time.Now()
+				r.thinkingText.Reset()
+				if r.onThinking != nil {
+					r.onThinking(event.Author, true, part.Text)
+				}
+			}
+			r.thinkingText.WriteString(part.Text)
+		} else if r.inThinking && !part.Thought {
+			summary := r.thinkingText.String()
+			duration := time.Since(r.thinkingStart)
+			r.inThinking = false
+			r.thinkingText.Reset()
+			if r.onThinking != nil {
+				r.onThinking(event.Author, false, summary)
+			}
+			_ = duration // available for future use
+		}
+
+		if part.Text != "" && !part.Thought {
 			r.append(turntrace.Event{
 				TraceID:     r.traceID,
 				EventType:   turntrace.EventText,
@@ -500,29 +544,53 @@ func (r *traceRecorder) recordEvent(event *adksession.Event) {
 			})
 		}
 		if part.FunctionCall != nil {
+			callID := part.FunctionCall.ID
+			toolName := part.FunctionCall.Name
 			r.append(turntrace.Event{
 				TraceID:       r.traceID,
 				EventType:     turntrace.EventToolCall,
 				AgentName:     event.Author,
-				ToolName:      part.FunctionCall.Name,
+				ToolName:      toolName,
 				CallSignature: callSignature(event.Author, part.FunctionCall),
 				PayloadJSON: marshalTracePayload(map[string]any{
-					"id":   part.FunctionCall.ID,
+					"id":   callID,
 					"args": part.FunctionCall.Args,
 				}),
 			})
+
+			// Fire OnToolCall callback and record start time.
+			if r.toolStartedAt != nil {
+				r.toolStartedAt[callID] = time.Now()
+			}
+			if r.onToolCall != nil {
+				r.onToolCall(callID, toolName, part.FunctionCall.Args)
+			}
 		}
 		if part.FunctionResponse != nil {
+			callID := part.FunctionResponse.ID
+			toolName := part.FunctionResponse.Name
 			r.append(turntrace.Event{
 				TraceID:   r.traceID,
 				EventType: turntrace.EventToolResult,
 				AgentName: event.Author,
-				ToolName:  part.FunctionResponse.Name,
+				ToolName:  toolName,
 				PayloadJSON: marshalTracePayload(map[string]any{
-					"id":       part.FunctionResponse.ID,
+					"id":       callID,
 					"response": part.FunctionResponse.Response,
 				}),
 			})
+
+			// Fire OnToolResult callback with computed duration.
+			if r.onToolResult != nil {
+				var dur time.Duration
+				if started, ok := r.toolStartedAt[callID]; ok {
+					dur = time.Since(started)
+					delete(r.toolStartedAt, callID)
+				}
+				success := !isErrorResponse(part.FunctionResponse.Response)
+				preview := truncateText(responsePreview(part.FunctionResponse.Response), 200)
+				r.onToolResult(callID, toolName, success, dur, preview)
+			}
 		}
 	}
 }
@@ -591,6 +659,41 @@ func truncatePayload(s string, max int) (string, bool) {
 		return s[:max], true
 	}
 	return s[:max-3] + "...", true
+}
+
+// isErrorResponse checks if a tool response indicates an error.
+func isErrorResponse(resp any) bool {
+	if resp == nil {
+		return false
+	}
+	switch v := resp.(type) {
+	case map[string]any:
+		if _, ok := v["error"]; ok {
+			return true
+		}
+	case string:
+		return strings.HasPrefix(v, "Error:") || strings.HasPrefix(v, "error:")
+	}
+	return false
+}
+
+// responsePreview returns a short text preview of a tool response.
+func responsePreview(resp any) string {
+	if resp == nil {
+		return ""
+	}
+	switch v := resp.(type) {
+	case string:
+		return v
+	case map[string]any:
+		b, err := json.Marshal(v)
+		if err != nil {
+			return fmt.Sprintf("%v", v)
+		}
+		return string(b)
+	default:
+		return fmt.Sprintf("%v", v)
+	}
 }
 
 func truncateText(s string, max int) string {

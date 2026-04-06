@@ -20,7 +20,7 @@ import (
 // The GrantStore tracks "always allow" grants to auto-approve repeat invocations within a session.
 // When limiter is non-nil, payment tools with an amount below the auto-approve threshold
 // are executed without explicit user confirmation.
-func WithApproval(ic config.InterceptorConfig, ap approval.Provider, gs *approval.GrantStore, limiter wallet.SpendingLimiter) Middleware {
+func WithApproval(ic config.InterceptorConfig, ap approval.Provider, gs *approval.GrantStore, limiter wallet.SpendingLimiter, history *approval.HistoryStore) Middleware {
 	return func(tool *agent.Tool, next agent.ToolHandler) agent.ToolHandler {
 		if !NeedsApproval(tool, ic) {
 			return next
@@ -43,6 +43,15 @@ func WithApproval(ic config.InterceptorConfig, ap approval.Provider, gs *approva
 			// Check persistent grant — auto-approve if previously "always allowed".
 			if gs != nil && gs.IsGranted(sessionKey, tool.Name) {
 				logApprovalEvent("approval bypassed by session grant", sessionKey, "", tool.Name, "", paramsHash, "bypass", "session", "grant_store")
+				if history != nil {
+					history.Append(approval.HistoryEntry{
+						Timestamp:   time.Now(),
+						ToolName:    tool.Name,
+						SessionKey:  sessionKey,
+						Outcome:     "bypass",
+						Provider:    "grant_store",
+					})
+				}
 				return next(ctx, params)
 			}
 
@@ -53,13 +62,46 @@ func WithApproval(ic config.InterceptorConfig, ap approval.Provider, gs *approva
 					switch entry.Outcome {
 					case approval.TurnOutcomeApproved:
 						logApprovalEvent("approval bypassed by turn-local grant", sessionKey, entry.RequestID, tool.Name, entry.Summary, entry.ParamsHash, "bypass", "turn", entry.Provider)
+						if history != nil {
+							history.Append(approval.HistoryEntry{
+								Timestamp:   time.Now(),
+								RequestID:   entry.RequestID,
+								ToolName:    tool.Name,
+								SessionKey:  sessionKey,
+								Summary:     entry.Summary,
+								Outcome:     "bypass",
+								Provider:    entry.Provider,
+							})
+						}
 						return next(ctx, params)
 					case approval.TurnOutcomeDenied, approval.TurnOutcomeUnavailable:
 						logApprovalEvent("approval replay blocked", sessionKey, entry.RequestID, tool.Name, entry.Summary, entry.ParamsHash, "replay_blocked", "turn", entry.Provider)
+						if history != nil {
+							history.Append(approval.HistoryEntry{
+								Timestamp:   time.Now(),
+								RequestID:   entry.RequestID,
+								ToolName:    tool.Name,
+								SessionKey:  sessionKey,
+								Summary:     entry.Summary,
+								Outcome:     "replay_blocked",
+								Provider:    entry.Provider,
+							})
+						}
 						return nil, approval.FormatToolExecutionError(tool.Name, turnOutcomeError(entry.Outcome))
 					case approval.TurnOutcomeTimeout:
 						if entry.Timeouts >= approval.MaxTurnApprovalTimeouts {
 							logApprovalEvent("approval replay blocked", sessionKey, entry.RequestID, tool.Name, entry.Summary, entry.ParamsHash, "replay_blocked", "turn", entry.Provider)
+							if history != nil {
+								history.Append(approval.HistoryEntry{
+									Timestamp:   time.Now(),
+									RequestID:   entry.RequestID,
+									ToolName:    tool.Name,
+									SessionKey:  sessionKey,
+									Summary:     entry.Summary,
+									Outcome:     "replay_blocked",
+									Provider:    entry.Provider,
+								})
+							}
 							return nil, approval.FormatToolExecutionError(tool.Name, approval.ErrTimeout)
 						}
 						logging.SubsystemSugar("approval").Infow("approval timeout retry allowed",
@@ -84,6 +126,17 @@ func WithApproval(ic config.InterceptorConfig, ap approval.Provider, gs *approva
 					amt, err := wallet.ParseUSDC(amountStr)
 					if err == nil {
 						if autoOK, checkErr := limiter.IsAutoApprovable(ctx, amt); checkErr == nil && autoOK {
+							logApprovalEvent("approval bypassed by spending limiter", sessionKey, "", tool.Name, "", paramsHash, "bypass", "auto", "spending_limiter")
+							if history != nil {
+								history.Append(approval.HistoryEntry{
+									Timestamp:  time.Now(),
+									ToolName:   tool.Name,
+									SessionKey: sessionKey,
+									Summary:    fmt.Sprintf("%s %s USDC", tool.Name, amountStr),
+									Outcome:    "bypass",
+									Provider:   "spending_limiter",
+								})
+							}
 							return next(ctx, params)
 						}
 					}
@@ -91,12 +144,15 @@ func WithApproval(ic config.InterceptorConfig, ap approval.Provider, gs *approva
 			}
 
 			req := approval.ApprovalRequest{
-				ID:         fmt.Sprintf("req-%d", time.Now().UnixNano()),
-				ToolName:   tool.Name,
-				SessionKey: sessionKey,
-				Params:     params,
-				Summary:    BuildApprovalSummary(tool.Name, params),
-				CreatedAt:  time.Now(),
+				ID:          fmt.Sprintf("req-%d", time.Now().UnixNano()),
+				ToolName:    tool.Name,
+				SessionKey:  sessionKey,
+				Params:      params,
+				Summary:     BuildApprovalSummary(tool.Name, params),
+				CreatedAt:   time.Now(),
+				SafetyLevel: tool.SafetyLevel.String(),
+				Category:    tool.Capability.Category,
+				Activity:    string(tool.Capability.Activity),
 			}
 			resp, err := ap.RequestApproval(ctx, req)
 			if err != nil {
@@ -120,6 +176,18 @@ func WithApproval(ic config.InterceptorConfig, ap approval.Provider, gs *approva
 					})
 				}
 				logApprovalEvent("approval failed", sessionKey, req.ID, tool.Name, req.Summary, paramsHash, string(outcome), "none", provider)
+				if history != nil {
+					history.Append(approval.HistoryEntry{
+						Timestamp:   time.Now(),
+						RequestID:   req.ID,
+						ToolName:    tool.Name,
+						SessionKey:  sessionKey,
+						Summary:     req.Summary,
+						SafetyLevel: req.SafetyLevel,
+						Outcome:     string(outcome),
+						Provider:    provider,
+					})
+				}
 				if outcome != "" {
 					return nil, approval.FormatToolExecutionError(tool.Name, err)
 				}
@@ -141,6 +209,18 @@ func WithApproval(ic config.InterceptorConfig, ap approval.Provider, gs *approva
 					})
 				}
 				logApprovalEvent("approval denied", sessionKey, req.ID, tool.Name, req.Summary, paramsHash, "denied", "none", resp.Provider)
+				if history != nil {
+					history.Append(approval.HistoryEntry{
+						Timestamp:   time.Now(),
+						RequestID:   req.ID,
+						ToolName:    tool.Name,
+						SessionKey:  sessionKey,
+						Summary:     req.Summary,
+						SafetyLevel: req.SafetyLevel,
+						Outcome:     "denied",
+						Provider:    resp.Provider,
+					})
+				}
 				return nil, approval.FormatToolExecutionError(tool.Name, approval.ErrDenied)
 			}
 
@@ -159,6 +239,18 @@ func WithApproval(ic config.InterceptorConfig, ap approval.Provider, gs *approva
 				})
 			}
 			logApprovalEvent("approval granted", sessionKey, req.ID, tool.Name, req.Summary, paramsHash, "granted", "turn", resp.Provider)
+			if history != nil {
+				history.Append(approval.HistoryEntry{
+					Timestamp:   time.Now(),
+					RequestID:   req.ID,
+					ToolName:    tool.Name,
+					SessionKey:  sessionKey,
+					Summary:     req.Summary,
+					SafetyLevel: req.SafetyLevel,
+					Outcome:     "granted",
+					Provider:    resp.Provider,
+				})
+			}
 
 			// Record persistent grant for this session+tool.
 			if resp.AlwaysAllow && gs != nil {

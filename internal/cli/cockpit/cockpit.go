@@ -23,32 +23,35 @@ var _ childModel = (*chat.ChatModel)(nil)
 
 // Model is the root cockpit tea.Model.
 type Model struct {
-	child          childModel
-	pages          map[PageID]Page
-	activePage     PageID
-	sidebar        sidebar.Model
-	contextPanel   *ContextPanel
-	keymap         keyMap
-	sidebarVisible bool
-	sidebarFocused bool
-	contextVisible bool
-	width          int
-	height         int
+	child           childModel
+	pages           map[PageID]Page
+	activePage      PageID
+	sidebar         sidebar.Model
+	contextPanel    *ContextPanel
+	channelTracker  *ChannelTracker
+	runtimeTracker  *RuntimeTracker
+	keymap          keyMap
+	sidebarVisible  bool
+	sidebarFocused  bool
+	contextVisible  bool
+	width           int
+	height          int
 }
 
 // New creates a cockpit Model wrapping a ChatModel.
 func New(deps Deps) *Model {
 	chatModel := chat.New(chat.Deps{
-		TurnRunner: deps.TurnRunner,
-		Config:     deps.Config,
-		SessionKey: deps.SessionKey,
+		TurnRunner:        deps.TurnRunner,
+		Config:            deps.Config,
+		SessionKey:        deps.SessionKey,
+		BackgroundManager: deps.BackgroundManager,
 	})
 
 	return &Model{
 		child:          chatModel,
 		pages:          make(map[PageID]Page),
 		activePage:     PageChat,
-		sidebar:        sidebar.New(),
+		sidebar:        sidebar.New(AllPageMetas()),
 		contextPanel:   NewContextPanel(deps.MetricsCollector),
 		keymap:         defaultKeyMap(),
 		sidebarVisible: true,
@@ -65,6 +68,18 @@ func (m *Model) SetProgram(p *tea.Program) {
 	m.child.SetProgram(p)
 }
 
+// SetChannelTracker sets the channel tracker for live channel status updates.
+// The tracker's snapshots are pushed to the context panel on each tick.
+func (m *Model) SetChannelTracker(tracker *ChannelTracker) {
+	m.channelTracker = tracker
+}
+
+// SetRuntimeTracker sets the runtime tracker for live metrics.
+// The tracker aggregates token usage, delegation counts, and recovery events.
+func (m *Model) SetRuntimeTracker(tracker *RuntimeTracker) {
+	m.runtimeTracker = tracker
+}
+
 // Init implements tea.Model.
 func (m *Model) Init() tea.Cmd {
 	return m.child.Init()
@@ -75,28 +90,150 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
 		return m.handleWindowSize(msg)
-
 	case sidebar.PageSelectedMsg:
 		target := PageIDFromString(msg.ID)
 		cmd := m.switchPage(target)
 		return m, cmd
-
 	case tea.MouseMsg:
 		return m.handleMouse(msg)
-
 	case tea.KeyMsg:
 		return m.handleKey(msg)
+	case contextTickMsg:
+		return m.handleContextTick(msg)
+	case chat.ChannelMessageMsg:
+		return m.handleChannelMessage(msg)
+	case chat.ApprovalRequestMsg:
+		return m.handleApprovalRequest(msg)
+	case chat.DelegationMsg:
+		return m.handleDelegation(msg)
+	case chat.BudgetWarningMsg:
+		return m.handleBudgetWarning(msg)
+	case chat.RecoveryMsg:
+		return m.handleRecovery(msg)
+	case chat.DoneMsg:
+		return m.handleDone(msg)
 	}
 
-	// Forward context panel tick messages.
-	if _, ok := msg.(contextTickMsg); ok {
-		up, cmd := m.contextPanel.Update(msg)
-		m.contextPanel = up.(*ContextPanel)
-		return m, cmd
+	// Mark turn started on first content event.
+	switch msg.(type) {
+	case chat.ToolStartedMsg, chat.ThinkingStartedMsg, chat.ChunkMsg:
+		m.markTurnStarted()
 	}
 
-	// consume-or-forward to active page.
 	return m.forwardToActive(msg)
+}
+
+// handleContextTick refreshes channel/runtime tracker snapshots on the context panel.
+func (m *Model) handleContextTick(msg contextTickMsg) (*Model, tea.Cmd) {
+	if m.channelTracker != nil {
+		m.contextPanel.SetChannelStatuses(m.channelTracker.Snapshot())
+	}
+	if m.runtimeTracker != nil {
+		m.contextPanel.SetRuntimeStatus(m.runtimeTracker.Snapshot())
+	}
+	up, cmd := m.contextPanel.Update(msg)
+	m.contextPanel = up.(*ContextPanel)
+	return m, cmd
+}
+
+// handleChannelMessage always forwards to the chat child regardless of active page.
+// Channel messages must always reach the chat model, even when another page
+// (Settings, Status, etc.) is active. Otherwise traffic arriving while the
+// user browses non-chat pages is lost.
+func (m *Model) handleChannelMessage(msg chat.ChannelMessageMsg) (*Model, tea.Cmd) {
+	up, cmd := m.child.Update(msg)
+	m.child = up.(childModel)
+	return m, cmd
+}
+
+// handleApprovalRequest switches to the chat page and forwards to the chat child.
+// Approval requests must always reach the chat model AND switch to the chat
+// page so the user can see and respond to the prompt. Without the page switch,
+// approvals raised by background tasks retried from the Tasks page would
+// remain invisible and time out.
+func (m *Model) handleApprovalRequest(msg chat.ApprovalRequestMsg) (*Model, tea.Cmd) {
+	switchCmd := m.switchPage(PageChat)
+	up, childCmd := m.child.Update(msg)
+	m.child = up.(childModel)
+	return m, tea.Batch(switchCmd, childCmd)
+}
+
+// markTurnStarted calls runtimeTracker.StartTurn() on the first content event
+// (ToolStartedMsg, ThinkingStartedMsg, ChunkMsg) so that the RuntimeTracker
+// accumulates tokens and the context panel shows the Runtime section even for
+// single-agent (no-delegation) turns.
+func (m *Model) markTurnStarted() {
+	if m.runtimeTracker != nil {
+		m.runtimeTracker.StartTurn()
+	}
+}
+
+// handleDelegation updates the runtime tracker and forwards to the chat child.
+// Outward hops increment the delegation counter; orchestrator return hops only
+// update the active-agent label (no counter bump), so the context panel shows
+// the correct agent during the final phase.
+func (m *Model) handleDelegation(msg chat.DelegationMsg) (*Model, tea.Cmd) {
+	if m.runtimeTracker != nil {
+		if msg.To == "lango-orchestrator" {
+			m.runtimeTracker.SetActiveAgent(msg.To)
+		} else {
+			m.runtimeTracker.RecordDelegation(msg.To)
+		}
+		if m.contextPanel != nil {
+			m.contextPanel.SetRuntimeStatus(m.runtimeTracker.Snapshot())
+		}
+	}
+	up, cmd := m.child.Update(msg)
+	m.child = up.(childModel)
+	return m, cmd
+}
+
+// handleBudgetWarning always forwards to the chat child from any page.
+func (m *Model) handleBudgetWarning(msg chat.BudgetWarningMsg) (*Model, tea.Cmd) {
+	up, cmd := m.child.Update(msg)
+	m.child = up.(childModel)
+	return m, cmd
+}
+
+// handleRecovery always forwards to the chat child from any page.
+func (m *Model) handleRecovery(msg chat.RecoveryMsg) (*Model, tea.Cmd) {
+	up, cmd := m.child.Update(msg)
+	m.child = up.(childModel)
+	return m, cmd
+}
+
+// handleDone forwards DoneMsg to the chat child FIRST so the assistant response
+// is appended, then flushes tokens so the summary appears AFTER the response,
+// and finally resets the turn.
+func (m *Model) handleDone(msg chat.DoneMsg) (*Model, tea.Cmd) {
+	var cmds []tea.Cmd
+	// 1. Forward DoneMsg to chat child first (appends assistant response).
+	up, cmd := m.child.Update(msg)
+	m.child = up.(childModel)
+	if cmd != nil {
+		cmds = append(cmds, cmd)
+	}
+	// 2. Flush tokens and append summary AFTER the response.
+	if m.runtimeTracker != nil {
+		snap := m.runtimeTracker.FlushTurnTokens()
+		if snap.TotalTokens > 0 {
+			up2, cmd2 := m.child.Update(chat.TurnTokenUsageMsg{
+				InputTokens:  snap.InputTokens,
+				OutputTokens: snap.OutputTokens,
+				TotalTokens:  snap.TotalTokens,
+				CacheTokens:  snap.CacheTokens,
+			})
+			m.child = up2.(childModel)
+			if cmd2 != nil {
+				cmds = append(cmds, cmd2)
+			}
+		}
+		m.runtimeTracker.ResetTurn()
+		if m.contextPanel != nil {
+			m.contextPanel.SetRuntimeStatus(runtimeStatus{IsRunning: false})
+		}
+	}
+	return m, tea.Batch(cmds...)
 }
 
 // View implements tea.Model.
@@ -206,6 +343,10 @@ func (m *Model) handleKey(msg tea.KeyMsg) (*Model, tea.Cmd) {
 		return m, m.switchPage(PageTools)
 	case key.Matches(msg, m.keymap.Page4):
 		return m, m.switchPage(PageStatus)
+	case key.Matches(msg, m.keymap.Page5):
+		return m, m.switchPage(PageTasks)
+	case key.Matches(msg, m.keymap.Page6):
+		return m, m.switchPage(PageApprovals)
 	}
 
 	// Focus-dependent routing.

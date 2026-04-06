@@ -36,6 +36,13 @@ var (
 	Muted   = lipgloss.Color("#6B7280")
 )
 
+// Semantic color aliases for state-driven rendering.
+var (
+	Danger    = Error     // destructive/high-risk operations
+	Info      = lipgloss.Color("#3B82F6") // informational highlights
+	Selection = Accent    // user selection/focus indicator
+)
+
 // Sidebar width constants.
 const (
 	SidebarFullWidth      = 20

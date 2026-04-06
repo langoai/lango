@@ -46,21 +46,23 @@ Cockpit `Deps` SHALL contain: `TurnRunner *turnrunner.Runner`, `Config *config.C
 ## MODIFIED Requirements
 
 ### Requirement: Consume-or-forward message delegation
-The cockpit `Update()` SHALL route messages based on `sidebarFocused` and `activePage`. When sidebar is focused, key events SHALL go to sidebar. When content is focused and activePage is PageChat, keys SHALL go to child via existing consume-or-forward. For non-chat pages, keys SHALL go to `pages[activePage].Update()`.
-
-Cockpit SHALL additionally consume: `Ctrl+1` through `Ctrl+4` (page switch), `Tab` (focus toggle), `PageSelectedMsg` (sidebar selection), `Ctrl+P` (context panel toggle), `Ctrl+Y` (clipboard copy).
+The cockpit model's Update function SHALL consume global keys (Ctrl+1-5, Tab, Ctrl+B, Ctrl+P, Ctrl+Y) and forward all other messages to the active page or child model. Ctrl+5 is consumed to switch to the Tasks page.
 
 #### Scenario: Ctrl+2 switches to settings
-- **WHEN** cockpit receives Ctrl+2
-- **THEN** activePage SHALL become PageSettings, sidebar active item SHALL update, and SettingsPage.Activate() SHALL be called
+- **WHEN** user presses Ctrl+2
+- **THEN** the cockpit activates the Settings page
+
+#### Scenario: Ctrl+5 switches to tasks
+- **WHEN** user presses Ctrl+5
+- **THEN** the cockpit activates the Tasks page
 
 #### Scenario: Tab toggles focus to sidebar
-- **WHEN** cockpit receives Tab with sidebarFocused=false
-- **THEN** sidebarFocused SHALL become true and sidebar.SetFocused(true) SHALL be called
+- **WHEN** user presses Tab
+- **THEN** focus toggles between sidebar and content area
 
 #### Scenario: PageSelectedMsg from sidebar
-- **WHEN** cockpit receives PageSelectedMsg{ID: "tools"}
-- **THEN** activePage SHALL switch to PageTools and sidebarFocused SHALL become false
+- **WHEN** sidebar emits `PageSelectedMsg{PageTasks}`
+- **THEN** cockpit calls `switchPage(PageTasks)`
 
 ### Requirement: View dispatches to active page
 View() SHALL dispatch to the active page: `child.View()` for PageChat, `pages[activePage].View()` for others. Layout composition (sidebar + main) remains unchanged.
@@ -131,3 +133,55 @@ The root command, `cockpit` subcommand, and `chat` subcommand SHALL detect wheth
 #### Scenario: Normal interactive execution
 - **WHEN** `lango` is invoked in an interactive terminal
 - **THEN** the cockpit TUI SHALL launch normally (no behavior change)
+
+### Requirement: Tasks page registration
+The cockpit SHALL register a Tasks page at `PageTasks` (ID 5) accessible via Ctrl+5 keyboard shortcut.
+
+#### Scenario: Ctrl+5 switches to Tasks page
+- **WHEN** user presses Ctrl+5
+- **THEN** the cockpit deactivates the current page and activates the Tasks page
+
+#### Scenario: Tasks page in sidebar
+- **WHEN** the sidebar is rendered
+- **THEN** a "Tasks" menu entry is visible at position 5
+
+### Requirement: BackgroundManager in cockpit Deps
+The cockpit `Deps` struct SHALL include a `BackgroundManager *background.Manager` field for passing to the Tasks page and ChatModel.
+
+#### Scenario: Deps with BackgroundManager
+- **WHEN** cockpit is constructed with `Deps.BackgroundManager` set
+- **THEN** the Tasks page receives the manager reference
+
+#### Scenario: Deps without BackgroundManager
+- **WHEN** cockpit is constructed with `Deps.BackgroundManager` as nil
+- **THEN** the Tasks page renders a fallback message
+
+### Requirement: Message routing to chat child
+The cockpit shell SHALL forward `ChannelMessageMsg` to the chat child model regardless of which page is currently active, ensuring channel traffic is never lost when the operator browses non-chat pages.
+
+#### Scenario: Channel message arrives on Settings page
+- **WHEN** the active page is PageSettings and a `ChannelMessageMsg` arrives
+- **THEN** the message is forwarded to the chat child (not the active page)
+
+#### Scenario: Channel message arrives on Chat page
+- **WHEN** the active page is PageChat and a `ChannelMessageMsg` arrives
+- **THEN** the message is forwarded to the chat child via normal `forwardToActive`
+
+### Requirement: Cockpit Update dispatches via named handler methods
+The cockpit `Update()` SHALL dispatch messages to named handler methods instead of inline intercept blocks. Each message type SHALL have a dedicated method: `handleContextTick`, `handleChannelMessage`, `handleApprovalRequest`, `handleDelegation`, `handleBudgetWarning`, `handleRecovery`, `handleDone`, and `markTurnStarted`.
+
+#### Scenario: Channel message routed via handleChannelMessage
+- **WHEN** a `ChannelMessageMsg` arrives while a non-chat page is active
+- **THEN** `handleChannelMessage` SHALL forward the message to the chat child model
+
+#### Scenario: Done message routed via handleDone
+- **WHEN** a `DoneMsg` arrives
+- **THEN** `handleDone` SHALL forward to chat child first, flush turn tokens, send TurnTokenUsageMsg, and reset the runtime tracker
+
+#### Scenario: Turn started marked via markTurnStarted
+- **WHEN** a `ToolStartedMsg`, `ThinkingStartedMsg`, or `ChunkMsg` arrives
+- **THEN** `markTurnStarted()` SHALL call `runtimeTracker.StartTurn()` if the tracker is available
+
+#### Scenario: Unregistered page click is no-op
+- **WHEN** a sidebar PageSelectedMsg selects a PageID that has no registered page
+- **THEN** `activePage` SHALL change but no page.Activate() SHALL be called and forwardToActive SHALL silently no-op

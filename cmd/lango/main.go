@@ -8,6 +8,7 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"sort"
 	"strconv"
 	"strings"
 	"syscall"
@@ -523,8 +524,13 @@ func mcpServerCount(cfg *config.Config) string {
 	return fmt.Sprintf("%d server(s)", n)
 }
 
+// withChannels controls whether cockpit starts live channel adapters.
+// Default false to avoid conflicts with a running `lango serve`.
+// Set via --with-channels flag on `lango cockpit`.
+var withChannels bool
+
 func cockpitCmd() *cobra.Command {
-	return &cobra.Command{
+	cmd := &cobra.Command{
 		Use:     "cockpit",
 		Short:   "Launch multi-panel TUI (same as bare lango)",
 		GroupID: "start",
@@ -535,6 +541,10 @@ func cockpitCmd() *cobra.Command {
 			return runCockpit()
 		},
 	}
+	cmd.Flags().BoolVar(&withChannels, "with-channels", false,
+		"Start live channel adapters (Telegram/Discord/Slack). "+
+			"Only use when no lango serve is running with the same credentials.")
+	return cmd
 }
 
 func chatCmd() *cobra.Command {
@@ -580,7 +590,13 @@ func runCockpit() error {
 	fmt.Fprintf(os.Stderr, "\n  Logs: %s\n", logPath)
 	fmt.Fprintln(os.Stderr, "  Initializing cockpit...")
 
-	application, err := app.New(boot, app.WithLocalChat())
+	// Use Cockpit mode (channels enabled) only when explicitly requested
+	// via --with-channels to avoid conflict with a running `lango serve`.
+	appMode := app.WithLocalChat()
+	if withChannels {
+		appMode = app.WithCockpit()
+	}
+	application, err := app.New(boot, appMode)
 	if err != nil {
 		return fmt.Errorf("create application: %w", err)
 	}
@@ -599,17 +615,41 @@ func runCockpit() error {
 		_ = application.Stop(shutdownCtx)
 	}()
 
+	// Create channel tracker for cockpit status display.
+	tracker := cockpit.NewChannelTracker(application.EventBus)
+
+	// Seed tracker with known channel names (Start status updated later).
+	for _, ch := range application.Channels {
+		tracker.SeedChannel(ch.Name(), false)
+	}
+
+	// Channel shutdown: cancel ctx first so in-flight requests unblock,
+	// then stop channels. Using a single defer to guarantee ordering
+	// (cancel before stop) and avoid LIFO defer reversal.
+	defer func() {
+		cancel() // unblock any in-flight channel workers waiting on ctx
+		for _, ch := range application.Channels {
+			stopCtx, stopCancel := context.WithTimeout(context.Background(), 5*time.Second)
+			_ = ch.Stop(stopCtx)
+			stopCancel()
+		}
+	}()
+
 	sessionKey := fmt.Sprintf("cockpit-%d", time.Now().UnixMilli())
 
 	model := cockpit.New(cockpit.Deps{
-		TurnRunner:       application.TurnRunner,
-		Config:           cfg,
-		SessionKey:       sessionKey,
-		ToolCatalog:      application.ToolCatalog,
-		MetricsCollector: application.MetricsCollector,
-		FeatureStatuses:  application.FeatureStatuses,
-		ConfigStore:      boot.ConfigStore,
-		ProfileName:      boot.ProfileName,
+		TurnRunner:        application.TurnRunner,
+		Config:            cfg,
+		SessionKey:        sessionKey,
+		ToolCatalog:       application.ToolCatalog,
+		MetricsCollector:  application.MetricsCollector,
+		FeatureStatuses:   application.FeatureStatuses,
+		ConfigStore:       boot.ConfigStore,
+		ProfileName:       boot.ProfileName,
+		BackgroundManager: application.BackgroundManager,
+		EventBus:          application.EventBus,
+		ApprovalHistory:   application.ApprovalHistory,
+		GrantStore:        application.GrantStore,
 	})
 
 	// Register pages.
@@ -633,9 +673,39 @@ func runCockpit() error {
 		pages.NewSessionsPage(func(ctx context.Context) ([]session.SessionSummary, error) {
 			return application.Store.ListSessions(ctx)
 		}))
+	if application.BackgroundManager != nil {
+		var actioner pages.TaskActioner = &bgTaskActioner{mgr: application.BackgroundManager}
+		model.RegisterPage(cockpit.PageTasks,
+			pages.NewTasksPage(&bgTaskLister{mgr: application.BackgroundManager}, actioner))
+	} else {
+		model.RegisterPage(cockpit.PageTasks, pages.NewTasksPage(nil, nil))
+	}
+	model.RegisterPage(cockpit.PageApprovals,
+		pages.NewApprovalsPage(application.ApprovalHistory, application.GrantStore))
 
 	p := tea.NewProgram(model, tea.WithAltScreen(), tea.WithMouseCellMotion())
 	model.SetProgram(p)
+	model.SetChannelTracker(tracker)
+
+	// Wire runtime tracker for live token/delegation/recovery metrics.
+	runtimeTracker := cockpit.NewRuntimeTracker(application.EventBus, p, sessionKey)
+	model.SetRuntimeTracker(runtimeTracker)
+
+	// Wire channel events from EventBus to TUI — BEFORE starting channels
+	// so no early inbound messages are dropped (EventBus drops unhandled events).
+	cockpit.SubscribeChannelEvents(application.EventBus, p)
+
+	// Start channel polling/socket loops AFTER subscribe is wired.
+	for _, ch := range application.Channels {
+		ch := ch
+		go func() {
+			err := ch.Start(ctx)
+			tracker.SeedChannel(ch.Name(), err == nil)
+			if err != nil {
+				fmt.Fprintf(os.Stderr, "channel start (%s): %v\n", ch.Name(), err)
+			}
+		}()
+	}
 
 	if composite, ok := application.ApprovalProvider.(*approval.CompositeProvider); ok {
 		composite.SetTTYFallback(chat.NewTUIApprovalProvider(func(msg interface{}) {
@@ -649,3 +719,68 @@ func runCockpit() error {
 
 	return nil
 }
+
+// bgTaskLister adapts background.Manager to pages.TaskLister.
+type bgTaskLister struct {
+	mgr *background.Manager
+}
+
+func (b *bgTaskLister) ListTasks() []pages.TaskInfo {
+	snapshots := b.mgr.List()
+
+	// Sort by StartedAt descending for stable ordering.
+	sort.Slice(snapshots, func(i, j int) bool {
+		return snapshots[i].StartedAt.After(snapshots[j].StartedAt)
+	})
+
+	tasks := make([]pages.TaskInfo, len(snapshots))
+	for i, s := range snapshots {
+		tasks[i] = pages.TaskInfo{
+			ID:            s.ID,
+			Prompt:        s.Prompt,
+			Status:        s.StatusText,
+			Elapsed:       taskElapsed(s),
+			Result:        s.Result,
+			Error:         s.Error,
+			OriginChannel: s.OriginChannel,
+			TokensUsed:    s.TokensUsed,
+		}
+	}
+	return tasks
+}
+
+// bgTaskActioner adapts background.Manager to pages.TaskActioner.
+type bgTaskActioner struct {
+	mgr *background.Manager
+}
+
+func (b *bgTaskActioner) CancelTask(id string) error {
+	return b.mgr.Cancel(id)
+}
+
+func (b *bgTaskActioner) RetryTask(ctx context.Context, id string) error {
+	snap, err := b.mgr.Status(id)
+	if err != nil {
+		return fmt.Errorf("retry task %s: %w", id, err)
+	}
+	_, err = b.mgr.Submit(ctx, snap.Prompt, background.Origin{
+		Channel: snap.OriginChannel,
+		Session: snap.OriginSession,
+	})
+	if err != nil {
+		return fmt.Errorf("retry task %s: %w", id, err)
+	}
+	return nil
+}
+
+// taskElapsed computes the correct elapsed duration for a task snapshot.
+func taskElapsed(s background.TaskSnapshot) time.Duration {
+	if s.StartedAt.IsZero() {
+		return 0 // pending, not yet started
+	}
+	if !s.CompletedAt.IsZero() {
+		return s.CompletedAt.Sub(s.StartedAt) // terminal: freeze at actual runtime
+	}
+	return time.Since(s.StartedAt) // running: wall-clock
+}
+

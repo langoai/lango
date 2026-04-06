@@ -8,6 +8,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/langoai/lango/internal/cli/tui"
 	"github.com/langoai/lango/internal/config"
 	"github.com/langoai/lango/internal/observability"
 	"github.com/langoai/lango/internal/types"
@@ -141,7 +142,7 @@ func TestFormatDuration(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.want, func(t *testing.T) {
-			assert.Equal(t, tt.want, formatDuration(tt.give))
+			assert.Equal(t, tt.want, tui.FormatDuration(tt.give))
 		})
 	}
 }
@@ -161,7 +162,7 @@ func TestFormatNumber(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.want, func(t *testing.T) {
-			assert.Equal(t, tt.want, formatNumber(tt.give))
+			assert.Equal(t, tt.want, tui.FormatNumber(tt.give))
 		})
 	}
 }

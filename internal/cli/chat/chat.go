@@ -16,35 +16,18 @@ import (
 	"github.com/charmbracelet/lipgloss"
 
 	"github.com/langoai/lango/internal/approval"
+	"github.com/langoai/lango/internal/background"
 	"github.com/langoai/lango/internal/config"
 	"github.com/langoai/lango/internal/turnrunner"
 )
 
 // Deps holds the dependencies injected into the chat model.
 type Deps struct {
-	TurnRunner *turnrunner.Runner
-	Config     *config.Config
-	SessionKey string
+	TurnRunner        *turnrunner.Runner
+	Config            *config.Config
+	SessionKey        string
+	BackgroundManager *background.Manager // optional, nil when background tasks unavailable
 }
-
-// cprState tracks the CPR (Cursor Position Report) filter state machine.
-type cprState int
-
-const (
-	cprIdle cprState = iota
-	cprGotEsc
-	cprGotBracket
-	cprInParams
-	cprGotOSC
-	cprInOSC
-	cprOscEsc
-)
-
-// cprTimeoutMsg is sent when a CPR detection window expires.
-type cprTimeoutMsg struct{}
-
-// cprTimeout is how long we wait after ESC before deciding it's not a CPR sequence.
-const cprTimeout = 50 * time.Millisecond
 
 // cursorBlinkInterval is the period between cursor blink toggles.
 const cursorBlinkInterval = 400 * time.Millisecond
@@ -54,6 +37,8 @@ type ChatParts struct {
 	Header    string
 	TurnStrip string
 	Main      string
+	Pending   string // empty when not in pending state
+	TaskStrip string // empty when no background tasks
 	Footer    string
 	Approval  string // empty when no approval pending
 }
@@ -75,14 +60,17 @@ type ChatModel struct {
 	runCtx   context.Context
 	cancelFn context.CancelFunc
 
-	pendingApproval *ApprovalRequestMsg
+	approval approvalState
 
 	program *tea.Program
 
+	bgManager *background.Manager
+	taskStrip taskStripModel
+	pending   pendingIndicator
+
 	lastCtrlC time.Time
 
-	cprDetect cprState
-	cprBuf    []tea.KeyMsg
+	cpr cprFilter
 }
 
 // New creates a new ChatModel with the given dependencies.
@@ -91,6 +79,8 @@ func New(deps Deps) *ChatModel {
 		turnRunner: deps.TurnRunner,
 		cfg:        deps.Config,
 		sessionKey: deps.SessionKey,
+		bgManager:  deps.BackgroundManager,
+		taskStrip:  newTaskStripModel(deps.BackgroundManager),
 		input:      newInputModel(),
 		chatView:   newChatViewModel(80, 20),
 		state:      stateIdle,
@@ -104,10 +94,14 @@ func (m *ChatModel) SetProgram(p *tea.Program) {
 
 // Init implements tea.Model.
 func (m *ChatModel) Init() tea.Cmd {
-	return tea.Batch(
+	cmds := []tea.Cmd{
 		tea.SetWindowTitle("Lango Chat"),
 		m.input.SetState(stateIdle),
-	)
+	}
+	if tick := m.taskStripTick(); tick != nil {
+		cmds = append(cmds, tick)
+	}
+	return tea.Batch(cmds...)
 }
 
 // Update implements tea.Model.
@@ -122,8 +116,8 @@ func (m *ChatModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case cprTimeoutMsg:
-		if m.cprDetect != cprIdle {
-			cmds = append(cmds, m.cprFlush()...)
+		if keys := m.cpr.HandleTimeout(); len(keys) > 0 {
+			cmds = append(cmds, m.replayKeys(keys)...)
 		}
 		return m, tea.Batch(cmds...)
 
@@ -135,9 +129,12 @@ func (m *ChatModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 
 		if m.inputAcceptsText() {
-			filtered, filterCmds := m.filterCPR(msg)
+			filtered, filterCmds := m.cpr.Filter(msg)
 			if len(filterCmds) > 0 {
 				cmds = append(cmds, filterCmds...)
+			}
+			if !filtered && len(m.cpr.buf) > 0 {
+				cmds = append(cmds, m.cprFlush()...)
 			}
 			if filtered {
 				return m, tea.Batch(cmds...)
@@ -150,7 +147,38 @@ func (m *ChatModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, tea.Batch(cmds...)
 		}
 
+	case ToolStartedMsg:
+		m.dismissPending()
+		m.chatView.appendToolStart(msg.CallID, msg.ToolName, msg.Params)
+		return m, nil
+
+	case ToolFinishedMsg:
+		m.chatView.finalizeToolResult(msg.CallID, msg.Success, msg.Duration, msg.Output)
+		return m, nil
+
+	case ThinkingStartedMsg:
+		m.dismissPending()
+		m.chatView.appendThinking(msg.Summary)
+		return m, nil
+
+	case ThinkingFinishedMsg:
+		m.chatView.finalizeThinking(msg.Summary, msg.Duration)
+		return m, nil
+
+	case TaskStripTickMsg:
+		m.taskStrip.refresh()
+		m.refreshView()
+		return m, m.taskStripTick()
+
+	case PendingIndicatorTickMsg:
+		if m.pending.IsActive() {
+			m.refreshView()
+			return m, m.pending.TickCmd()
+		}
+		return m, nil
+
 	case ChunkMsg:
+		m.dismissPending()
 		m.chatView.appendChunk(msg.Chunk)
 		if !m.chatView.cursorTickActive {
 			m.chatView.cursorTickActive = true
@@ -173,6 +201,7 @@ func (m *ChatModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case DoneMsg:
+		m.dismissPending()
 		m.chatView.stopCursorBlink()
 		if m.chatView.streamBuf.Len() > 0 {
 			m.chatView.finalizeStream()
@@ -198,6 +227,7 @@ func (m *ChatModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, tea.Batch(cmds...)
 
 	case ErrorMsg:
+		m.dismissPending()
 		m.chatView.stopCursorBlink()
 		if m.chatView.streamBuf.Len() > 0 {
 			m.chatView.finalizeStream()
@@ -225,12 +255,38 @@ func (m *ChatModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case ApprovalRequestMsg:
-		m.pendingApproval = &msg
+		m.dismissPending()
+		m.approval.Reset(&msg)
 		m.chatView.appendApprovalEvent(fmt.Sprintf("Approval requested for %s", msg.Request.ToolName), "requested")
 		if cmd := m.transitionTo(stateApproving); cmd != nil {
 			cmds = append(cmds, cmd)
 		}
 		return m, tea.Batch(cmds...)
+
+	case DelegationMsg:
+		m.dismissPending()
+		m.chatView.appendDelegation(msg.From, msg.To, msg.Reason)
+		return m, nil
+
+	case BudgetWarningMsg:
+		m.chatView.appendStatus(
+			fmt.Sprintf("\u26A0 Delegation budget: %d/%d (%.0f%%)",
+				msg.Used, msg.Max, float64(msg.Used)/float64(msg.Max)*100),
+			"warning",
+		)
+		return m, nil
+
+	case RecoveryMsg:
+		m.chatView.appendRecovery(msg.Action, msg.CauseClass, msg.Attempt, msg.Backoff)
+		return m, nil
+
+	case TurnTokenUsageMsg:
+		m.chatView.appendTokenSummary(msg.InputTokens, msg.OutputTokens, msg.TotalTokens, msg.CacheTokens)
+		return m, nil
+
+	case ChannelMessageMsg:
+		m.chatView.appendChannel(msg.Channel, msg.SenderName, msg.Text, msg.SessionKey, msg.Metadata)
+		return m, nil
 
 	case SystemMsg:
 		m.chatView.appendSystem(msg.Text)
@@ -261,11 +317,16 @@ func (m *ChatModel) RenderParts() ChatParts {
 		Header:    renderHeader(m.cfg, truncateSessionKey(m.sessionKey), m.width),
 		TurnStrip: renderTurnStrip(m.state, m.width),
 		Main:      m.chatView.View(),
+		TaskStrip: m.taskStrip.View(m.width),
 		Footer:    renderFooter(m.input, m.state, m.width),
 	}
 
-	if m.state == stateApproving && m.pendingApproval != nil {
-		parts.Approval = renderApprovalBanner(m.pendingApproval.Request, m.width)
+	if m.pending.IsActive() {
+		parts.Pending = renderPendingIndicator(m.pending.Elapsed())
+	}
+
+	if m.state == stateApproving && m.approval.HasPending() {
+		parts.Approval = renderApproval(m.approval.pending, &m.approval, m.width, m.height)
 	}
 
 	return parts
@@ -282,14 +343,46 @@ func (m *ChatModel) View() string {
 
 	p := m.RenderParts()
 
-	sections := make([]string, 0, 5)
+	sections := make([]string, 0, 7)
 	sections = append(sections, p.Header, p.TurnStrip, p.Main)
+	if p.Pending != "" {
+		sections = append(sections, p.Pending)
+	}
+	if p.TaskStrip != "" {
+		sections = append(sections, p.TaskStrip)
+	}
 	if p.Approval != "" {
 		sections = append(sections, p.Approval)
 	}
 	sections = append(sections, p.Footer)
 
 	return strings.Join(sections, "\n")
+}
+
+// dismissPending clears the pending indicator when the first content event arrives.
+func (m *ChatModel) dismissPending() {
+	if !m.pending.IsActive() {
+		return
+	}
+	m.pending.Dismiss()
+	if m.width > 0 && m.height > 0 {
+		m.recalcLayout()
+	}
+}
+
+// refreshView re-renders the chat view (used after task strip refresh).
+func (m *ChatModel) refreshView() {
+	m.chatView.render()
+}
+
+// taskStripTick returns a tick command for periodic task strip refresh.
+func (m *ChatModel) taskStripTick() tea.Cmd {
+	if m.bgManager == nil {
+		return nil
+	}
+	return tea.Tick(2*time.Second, func(t time.Time) tea.Msg {
+		return TaskStripTickMsg(t)
+	})
 }
 
 func (m *ChatModel) inputAcceptsText() bool {
@@ -352,9 +445,12 @@ func (m *ChatModel) handleIdleKey(msg tea.KeyMsg) tea.Cmd {
 		}
 
 		m.chatView.appendUser(input)
+		// Set pending state before transition so recalcLayout accounts for the strip.
+		m.pending.Activate()
 		return tea.Batch(
 			m.transitionTo(stateStreaming),
 			m.submitCmd(input),
+			m.pending.TickCmd(),
 		)
 	}
 
@@ -372,19 +468,24 @@ func (m *ChatModel) handleStreamingKey(msg tea.KeyMsg) tea.Cmd {
 }
 
 func (m *ChatModel) handleApprovingKey(msg tea.KeyMsg) tea.Cmd {
-	if m.pendingApproval == nil {
+	if !m.approval.HasPending() {
 		return nil
 	}
 
-	req := m.pendingApproval.Request
+	// Expire confirm-pending state after 3 seconds.
+	if m.approval.IsConfirmExpired() {
+		m.approval.CancelConfirm()
+	}
+
+	req := m.approval.pending.Request
 	respond := func(approved, alwaysAllow bool, outcome string, eventText string) tea.Cmd {
 		resp := approval.ApprovalResponse{
 			Approved:    approved,
 			AlwaysAllow: alwaysAllow,
 			Provider:    "tui",
 		}
-		ch := m.pendingApproval.Response
-		m.pendingApproval = nil
+		ch := m.approval.pending.Response
+		m.approval.Clear()
 		m.chatView.appendApprovalEvent(eventText, outcome)
 		return tea.Batch(
 			m.transitionTo(stateStreaming),
@@ -395,10 +496,49 @@ func (m *ChatModel) handleApprovingKey(msg tea.KeyMsg) tea.Cmd {
 		)
 	}
 
+	// Tier 2 dialog key dispatch (scroll, diff toggle).
+	if m.approval.pending.ViewModel.Tier == approval.TierFullscreen {
+		if cmd := handleApprovalDialogKey(msg, &m.approval); cmd != nil {
+			return cmd
+		}
+	}
+
+	// If a confirm is already pending, the second press of the SAME key
+	// completes the action. Any OTHER key resets the pending state.
+	if m.approval.confirmPending {
+		pressedKey := ""
+		switch {
+		case key.Matches(msg, key.NewBinding(key.WithKeys("a"))):
+			pressedKey = "a"
+		case key.Matches(msg, key.NewBinding(key.WithKeys("s"))):
+			pressedKey = "s"
+		}
+		if pressedKey == m.approval.confirmAction {
+			// Second press matches — execute the confirmed action.
+			m.approval.CancelConfirm()
+			if pressedKey == "s" {
+				return respond(true, true, "session", fmt.Sprintf("Always allow enabled for %s", req.ToolName))
+			}
+			return respond(true, false, "approved", fmt.Sprintf("Approved %s", req.ToolName))
+		}
+		// Different key — reset pending state and fall through.
+		m.approval.CancelConfirm()
+	}
+
 	switch {
 	case key.Matches(msg, key.NewBinding(key.WithKeys("a"))):
+		// Double-press guardrail for critical-risk tools.
+		if m.approval.pending.ViewModel.Risk.Level == "critical" {
+			m.approval.StartConfirm("a")
+			return nil
+		}
 		return respond(true, false, "approved", fmt.Sprintf("Approved %s", req.ToolName))
 	case key.Matches(msg, key.NewBinding(key.WithKeys("s"))):
+		// Double-press guardrail for critical-risk session grants.
+		if m.approval.pending.ViewModel.Risk.Level == "critical" {
+			m.approval.StartConfirm("s")
+			return nil
+		}
 		return respond(true, true, "session", fmt.Sprintf("Always allow enabled for %s", req.ToolName))
 	case key.Matches(msg, key.NewBinding(key.WithKeys("d", "esc"))):
 		return respond(false, false, "denied", fmt.Sprintf("Denied %s", req.ToolName))
@@ -415,7 +555,7 @@ func (m *ChatModel) submitCmd(input string) tea.Cmd {
 
 	program := m.program
 	return func() tea.Msg {
-		result, err := m.turnRunner.Run(ctx, turnrunner.Request{
+		req := turnrunner.Request{
 			SessionKey: m.sessionKey,
 			Input:      input,
 			Entrypoint: "tui",
@@ -429,7 +569,10 @@ func (m *ChatModel) submitCmd(input string) tea.Cmd {
 					program.Send(WarningMsg{Elapsed: elapsed, HardCeiling: hardCeiling})
 				}
 			},
-		})
+		}
+		enrichRequest(program, &req)
+
+		result, err := m.turnRunner.Run(ctx, req)
 		if err != nil {
 			return ErrorMsg{Err: err}
 		}
@@ -444,8 +587,14 @@ func (m *ChatModel) recalcLayout() {
 		renderHeader(m.cfg, truncateSessionKey(m.sessionKey), m.width),
 		renderTurnStrip(m.state, m.width),
 	}
-	if m.state == stateApproving && m.pendingApproval != nil {
-		fixedParts = append(fixedParts, renderApprovalBanner(m.pendingApproval.Request, m.width))
+	if m.pending.IsActive() {
+		fixedParts = append(fixedParts, renderPendingIndicator(m.pending.Elapsed()))
+	}
+	if ts := m.taskStrip.View(m.width); ts != "" {
+		fixedParts = append(fixedParts, ts)
+	}
+	if m.state == stateApproving && m.approval.HasPending() {
+		fixedParts = append(fixedParts, renderApproval(m.approval.pending, &m.approval, m.width, m.height))
 	}
 	fixedParts = append(fixedParts, renderFooter(m.input, m.state, m.width))
 
@@ -473,89 +622,15 @@ func truncateSessionKey(key string) string {
 	return key
 }
 
-// filterCPR intercepts terminal response sequences before they reach the idle
-// composer. It currently discards CPR (`ESC[row;colR`) and OSC responses
-// (`ESC]...BEL` / `ESC]...ESC\`) while replaying non-matching buffered keys.
-func (m *ChatModel) filterCPR(msg tea.KeyMsg) (bool, []tea.Cmd) {
-	switch m.cprDetect {
-	case cprIdle:
-		if msg.Type == tea.KeyEscape {
-			m.cprDetect = cprGotEsc
-			m.cprBuf = append(m.cprBuf[:0], msg)
-			return true, []tea.Cmd{tea.Tick(cprTimeout, func(time.Time) tea.Msg {
-				return cprTimeoutMsg{}
-			})}
-		}
-		return false, nil
-
-	case cprGotEsc:
-		if msg.Type == tea.KeyRunes && len(msg.Runes) == 1 && msg.Runes[0] == '[' {
-			m.cprDetect = cprGotBracket
-			m.cprBuf = append(m.cprBuf, msg)
-			return true, nil
-		}
-		if msg.Type == tea.KeyRunes && len(msg.Runes) == 1 && msg.Runes[0] == ']' {
-			m.cprDetect = cprGotOSC
-			m.cprBuf = append(m.cprBuf, msg)
-			return true, nil
-		}
-		cmds := m.cprFlush()
-		return false, cmds
-
-	case cprGotBracket, cprInParams:
-		if msg.Type == tea.KeyRunes && len(msg.Runes) == 1 {
-			r := msg.Runes[0]
-			if (r >= '0' && r <= '9') || r == ';' {
-				m.cprDetect = cprInParams
-				m.cprBuf = append(m.cprBuf, msg)
-				return true, nil
-			}
-			if r == 'R' && m.cprDetect == cprInParams {
-				m.cprDetect = cprIdle
-				m.cprBuf = m.cprBuf[:0]
-				return true, nil
-			}
-		}
-		cmds := m.cprFlush()
-		return false, cmds
-
-	case cprGotOSC, cprInOSC:
-		if msg.Type == tea.KeyCtrlG || (msg.Type == tea.KeyRunes && len(msg.Runes) == 1 && msg.Runes[0] == '\a') {
-			m.cprDetect = cprIdle
-			m.cprBuf = m.cprBuf[:0]
-			return true, nil
-		}
-		if msg.Type == tea.KeyEscape {
-			m.cprDetect = cprOscEsc
-			m.cprBuf = append(m.cprBuf, msg)
-			return true, nil
-		}
-		m.cprDetect = cprInOSC
-		m.cprBuf = append(m.cprBuf, msg)
-		return true, nil
-
-	case cprOscEsc:
-		if msg.Type == tea.KeyRunes && len(msg.Runes) == 1 && msg.Runes[0] == '\\' {
-			m.cprDetect = cprIdle
-			m.cprBuf = m.cprBuf[:0]
-			return true, nil
-		}
-		m.cprDetect = cprInOSC
-		m.cprBuf = append(m.cprBuf, msg)
-		return true, nil
-	}
-
-	return false, nil
+// cprFlush retrieves buffered keys from the CPR filter and replays them.
+func (m *ChatModel) cprFlush() []tea.Cmd {
+	return m.replayKeys(m.cpr.Flush())
 }
 
-func (m *ChatModel) cprFlush() []tea.Cmd {
-	m.cprDetect = cprIdle
-	buf := make([]tea.KeyMsg, len(m.cprBuf))
-	copy(buf, m.cprBuf)
-	m.cprBuf = m.cprBuf[:0]
-
+// replayKeys feeds buffered key messages through handleKey / input.Update.
+func (m *ChatModel) replayKeys(keys []tea.KeyMsg) []tea.Cmd {
 	var cmds []tea.Cmd
-	for _, k := range buf {
+	for _, k := range keys {
 		cmd := m.handleKey(k)
 		if cmd != nil {
 			cmds = append(cmds, cmd)

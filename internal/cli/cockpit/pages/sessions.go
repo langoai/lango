@@ -11,6 +11,7 @@ import (
 	"github.com/charmbracelet/lipgloss"
 
 	"github.com/langoai/lango/internal/cli/cockpit/theme"
+	"github.com/langoai/lango/internal/cli/tui"
 	"github.com/langoai/lango/internal/session"
 )
 
@@ -158,8 +159,8 @@ func (p *SessionsPage) renderList() string {
 
 	lines := make([]string, 0, len(p.sessions))
 	for i, s := range p.sessions {
-		keyText := truncate(s.Key, keyWidth)
-		relTime := relativeTime(s.UpdatedAt)
+		keyText := tui.Truncate(s.Key, keyWidth)
+		relTime := tui.RelativeTimeHuman(time.Now(), s.UpdatedAt)
 
 		var line string
 		if i == p.cursor {
@@ -187,23 +188,5 @@ func (p *SessionsPage) loadSessions() tea.Cmd {
 		}
 		sessions, err := listFn(context.Background())
 		return sessionsLoadedMsg{sessions: sessions, err: err}
-	}
-}
-
-// relativeTime renders a human-friendly relative time string.
-func relativeTime(t time.Time) string {
-	d := time.Since(t)
-	switch {
-	case d < time.Minute:
-		return "just now"
-	case d < time.Hour:
-		m := int(d.Minutes())
-		return fmt.Sprintf("%dm ago", m)
-	case d < 24*time.Hour:
-		h := int(d.Hours())
-		return fmt.Sprintf("%dh ago", h)
-	default:
-		days := int(d.Hours()) / 24
-		return fmt.Sprintf("%dd ago", days)
 	}
 }
