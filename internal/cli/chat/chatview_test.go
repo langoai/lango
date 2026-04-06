@@ -1,6 +1,7 @@
 package chat
 
 import (
+	"fmt"
 	"strings"
 	"testing"
 	"time"
@@ -377,4 +378,180 @@ func TestRender_ToolAndThinking(t *testing.T) {
 	// The key assertion: render produces a non-empty viewport without panicking.
 	content := cv.viewport.View()
 	assert.NotEmpty(t, content)
+}
+
+// ---------------------------------------------------------------------------
+// Block memoization tests
+// ---------------------------------------------------------------------------
+
+func TestRender_MemoizationCachesBlocks(t *testing.T) {
+	cv := newChatViewModel(80, 24)
+	cv.appendUser("hello")
+	cv.appendSystem("note")
+
+	// After render, cachedBlock should be populated.
+	for i, e := range cv.entries {
+		assert.NotEmpty(t, e.cachedBlock, "entry %d should have cachedBlock", i)
+	}
+}
+
+func TestRender_MemoizationInvalidatedOnResize(t *testing.T) {
+	cv := newChatViewModel(80, 24)
+	cv.appendUser("hello")
+	cv.appendAssistant("world")
+
+	// Verify cache is populated.
+	for _, e := range cv.entries {
+		assert.NotEmpty(t, e.cachedBlock)
+	}
+
+	// Resize clears all caches.
+	cv.setSize(60, 24)
+	// After setSize triggers render(), caches are re-populated at new width.
+	for i, e := range cv.entries {
+		assert.NotEmpty(t, e.cachedBlock, "entry %d should be re-cached after resize", i)
+	}
+}
+
+func TestRender_FinalizeToolInvalidatesCache(t *testing.T) {
+	cv := newChatViewModel(80, 24)
+	cv.appendToolStart("c1", "fs_read", nil)
+
+	cached1 := cv.entries[0].cachedBlock
+	assert.NotEmpty(t, cached1)
+
+	cv.finalizeToolResult("c1", true, 500*time.Millisecond, "output")
+
+	// Cache should be re-populated with updated content.
+	cached2 := cv.entries[0].cachedBlock
+	assert.NotEmpty(t, cached2)
+	assert.NotEqual(t, cached1, cached2, "cache should change after finalization")
+}
+
+func TestRender_FinalizeThinkingInvalidatesCache(t *testing.T) {
+	cv := newChatViewModel(80, 24)
+	cv.appendThinking("analyzing")
+
+	cached1 := cv.entries[0].cachedBlock
+	assert.NotEmpty(t, cached1)
+
+	cv.finalizeThinking("done analyzing", 2*time.Second)
+
+	cached2 := cv.entries[0].cachedBlock
+	assert.NotEmpty(t, cached2)
+	assert.NotEqual(t, cached1, cached2, "cache should change after finalization")
+}
+
+// ---------------------------------------------------------------------------
+// Transcript trimming tests
+// ---------------------------------------------------------------------------
+
+func TestTranscriptTrimming(t *testing.T) {
+	cv := newChatViewModel(80, 24)
+
+	// Add 2500 entries to trigger trimming (cap is 2000).
+	for i := 0; i < 2500; i++ {
+		cv.appendUser(fmt.Sprintf("message %d", i))
+	}
+
+	// After trimming 500, should have ~2001 entries (2500 - 500 + tombstone replaces [0]).
+	// Actually: append triggers trim when len > 2000. At 2001, trim 500 -> 1501 entries.
+	// Then further appends grow back. Let's just check it's capped.
+	assert.LessOrEqual(t, len(cv.entries), maxTranscriptEntries+1,
+		"entries should not exceed max + 1 (trim fires after append)")
+
+	// First entry should be the tombstone.
+	assert.Equal(t, itemSystem, cv.entries[0].kind)
+	assert.Contains(t, cv.entries[0].content, "older messages trimmed")
+}
+
+func TestTranscriptTrimming_AccumulatedTombstone(t *testing.T) {
+	cv := newChatViewModel(80, 24)
+
+	// Fill to trigger first trim.
+	for i := 0; i < maxTranscriptEntries+1; i++ {
+		cv.appendUser(fmt.Sprintf("msg %d", i))
+	}
+
+	// Verify first tombstone.
+	require.Equal(t, itemSystem, cv.entries[0].kind)
+	assert.Contains(t, cv.entries[0].content, "500 older messages trimmed")
+
+	// Fill to trigger second trim.
+	remaining := maxTranscriptEntries - len(cv.entries) + 2
+	for i := 0; i < remaining; i++ {
+		cv.appendUser(fmt.Sprintf("more %d", i))
+	}
+
+	// Second tombstone should accumulate both trim counts.
+	require.Equal(t, itemSystem, cv.entries[0].kind)
+	assert.Contains(t, cv.entries[0].content, "1000 older messages trimmed",
+		"tombstone should accumulate across repeated trims")
+}
+
+func TestTranscriptTrimming_PreservesRecentEntries(t *testing.T) {
+	cv := newChatViewModel(80, 24)
+
+	// Add exactly enough to trigger one trim.
+	for i := 0; i < maxTranscriptEntries+1; i++ {
+		cv.appendUser(fmt.Sprintf("msg-%04d", i))
+	}
+
+	// The last entry should be the most recent message.
+	last := cv.entries[len(cv.entries)-1]
+	assert.Equal(t, itemUser, last.kind)
+	assert.Equal(t, fmt.Sprintf("msg-%04d", maxTranscriptEntries), last.content)
+}
+
+// ---------------------------------------------------------------------------
+// Benchmarks
+// ---------------------------------------------------------------------------
+
+func BenchmarkRender_100Entries(b *testing.B) {
+	cv := newChatViewModel(80, 40)
+	for i := 0; i < 100; i++ {
+		cv.appendUser(fmt.Sprintf("message %d", i))
+	}
+	// Clear caches to benchmark cold render.
+	for i := range cv.entries {
+		cv.entries[i].cachedBlock = ""
+	}
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		// Clear caches each iteration to measure full render cost.
+		for j := range cv.entries {
+			cv.entries[j].cachedBlock = ""
+		}
+		cv.render()
+	}
+}
+
+func BenchmarkRender_1000Entries(b *testing.B) {
+	cv := newChatViewModel(80, 40)
+	for i := 0; i < 1000; i++ {
+		cv.appendUser(fmt.Sprintf("message %d", i))
+	}
+	b.ResetTimer()
+
+	// First render: cold (no cache).
+	for i := range cv.entries {
+		cv.entries[i].cachedBlock = ""
+	}
+	cv.render()
+
+	// Subsequent renders: hot (all cached). This should be significantly faster.
+	b.Run("cached", func(b *testing.B) {
+		for i := 0; i < b.N; i++ {
+			cv.render()
+		}
+	})
+
+	b.Run("uncached", func(b *testing.B) {
+		for i := 0; i < b.N; i++ {
+			for j := range cv.entries {
+				cv.entries[j].cachedBlock = ""
+			}
+			cv.render()
+		}
+	})
 }

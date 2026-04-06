@@ -2,6 +2,16 @@ package chat
 
 import "time"
 
+// diffLineCache holds pre-styled diff lines to avoid re-styling on every render.
+// Cache key: content + width + splitMode. scrollOffset is NOT part of the key
+// because scrolling is just windowing over the same styled lines.
+type diffLineCache struct {
+	content   string   // diff content (cache key)
+	width     int      // render width (cache key)
+	splitMode bool     // split/unified mode (cache key)
+	lines     []string // pre-styled line slice
+}
+
 // approvalState encapsulates all approval-related state that was previously
 // scattered across ChatModel fields and package-level globals.
 type approvalState struct {
@@ -11,6 +21,7 @@ type approvalState struct {
 	confirmTime    time.Time
 	scrollOffset   int  // was dialogScrollOffset (package global)
 	splitMode      bool // was dialogSplitMode (package global)
+	diffCache      diffLineCache
 }
 
 // Reset prepares the approval state for a new approval request.
@@ -20,6 +31,7 @@ func (a *approvalState) Reset(msg *ApprovalRequestMsg) {
 	a.confirmAction = ""
 	a.scrollOffset = 0
 	a.splitMode = false
+	a.diffCache = diffLineCache{}
 }
 
 // Clear removes the pending approval and resets confirmation state.
@@ -27,6 +39,7 @@ func (a *approvalState) Clear() {
 	a.pending = nil
 	a.confirmPending = false
 	a.confirmAction = ""
+	a.diffCache = diffLineCache{}
 }
 
 // HasPending reports whether an approval request is currently pending.
@@ -63,4 +76,5 @@ func (a *approvalState) ScrollDiff(delta int) {
 // ToggleSplit toggles between unified and split diff display modes.
 func (a *approvalState) ToggleSplit() {
 	a.splitMode = !a.splitMode
+	a.diffCache = diffLineCache{}
 }

@@ -130,7 +130,8 @@ func TestRenderApprovalDialog_WithChannelOrigin(t *testing.T) {
 		},
 		Risk: approval.RiskIndicator{Level: "high", Label: "Modifies filesystem"},
 	}
-	output := renderApprovalDialog(vm, 80, 40, 0, false)
+	state := &approvalState{}
+	output := renderApprovalDialog(vm, state, 80, 40)
 
 	assert.Contains(t, output, "[Slack]", "dialog should show channel origin for slack session key")
 	assert.Contains(t, output, "C123", "dialog should show chat ID from session key")
@@ -147,7 +148,8 @@ func TestRenderApprovalDialog_NoChannelOrigin(t *testing.T) {
 		},
 		Risk: approval.RiskIndicator{Level: "high", Label: "Modifies filesystem"},
 	}
-	output := renderApprovalDialog(vm, 80, 40, 0, false)
+	state := &approvalState{}
+	output := renderApprovalDialog(vm, state, 80, 40)
 
 	assert.NotContains(t, output, "[Telegram]", "dialog should not show Telegram for non-channel key")
 	assert.NotContains(t, output, "[Discord]", "dialog should not show Discord for non-channel key")

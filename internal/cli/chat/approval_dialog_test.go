@@ -1,6 +1,7 @@
 package chat
 
 import (
+	"fmt"
 	"strings"
 	"testing"
 
@@ -26,7 +27,8 @@ func testVM() approval.ApprovalViewModel {
 
 func TestRenderApprovalDialog_NormalSize(t *testing.T) {
 	vm := testVM()
-	output := renderApprovalDialog(vm, 80, 40, 0, false)
+	state := &approvalState{}
+	output := renderApprovalDialog(vm, state, 80, 40)
 
 	assert.Contains(t, output, "HIGH", "should contain risk badge text")
 	assert.Contains(t, output, "fs_edit", "should contain tool name")
@@ -35,27 +37,30 @@ func TestRenderApprovalDialog_NormalSize(t *testing.T) {
 
 func TestRenderApprovalDialog_NarrowWidth(t *testing.T) {
 	vm := testVM()
+	state := &approvalState{}
 
 	require.NotPanics(t, func() {
-		output := renderApprovalDialog(vm, 30, 40, 0, false)
+		output := renderApprovalDialog(vm, state, 30, 40)
 		assert.NotEmpty(t, output, "output should be non-empty for narrow width")
 	})
 }
 
 func TestRenderApprovalDialog_ShortHeight(t *testing.T) {
 	vm := testVM()
+	state := &approvalState{}
 
 	require.NotPanics(t, func() {
-		output := renderApprovalDialog(vm, 80, 10, 0, false)
+		output := renderApprovalDialog(vm, state, 80, 10)
 		assert.NotEmpty(t, output, "output should be non-empty for short height")
 	})
 }
 
 func TestRenderApprovalDialog_MinimalSize(t *testing.T) {
 	vm := testVM()
+	state := &approvalState{}
 
 	require.NotPanics(t, func() {
-		output := renderApprovalDialog(vm, 10, 5, 0, false)
+		output := renderApprovalDialog(vm, state, 10, 5)
 		assert.NotEmpty(t, output, "output should be non-empty for minimal size")
 	})
 }
@@ -63,8 +68,9 @@ func TestRenderApprovalDialog_MinimalSize(t *testing.T) {
 func TestRenderApprovalDialog_WithDiff(t *testing.T) {
 	vm := testVM()
 	vm.DiffContent = "+added line\n-removed line\n@@hunk header@@\nnormal line"
+	state := &approvalState{}
 
-	output := renderApprovalDialog(vm, 80, 40, 0, false)
+	output := renderApprovalDialog(vm, state, 80, 40)
 
 	assert.Contains(t, output, "+added line", "should contain added diff line")
 	assert.Contains(t, output, "-removed line", "should contain removed diff line")
@@ -80,8 +86,11 @@ func TestRenderApprovalDialog_DiffScroll(t *testing.T) {
 	vm := testVM()
 	vm.DiffContent = strings.Join(lines, "\n")
 
-	outputNoScroll := renderApprovalDialog(vm, 80, 40, 0, false)
-	outputScrolled := renderApprovalDialog(vm, 80, 40, 5, false)
+	stateNoScroll := &approvalState{}
+	outputNoScroll := renderApprovalDialog(vm, stateNoScroll, 80, 40)
+
+	stateScrolled := &approvalState{scrollOffset: 5}
+	outputScrolled := renderApprovalDialog(vm, stateScrolled, 80, 40)
 
 	assert.NotEqual(t, outputNoScroll, outputScrolled,
 		"scrolled output should differ from non-scrolled output")
@@ -90,8 +99,9 @@ func TestRenderApprovalDialog_DiffScroll(t *testing.T) {
 func TestRenderApprovalDialog_SplitMode(t *testing.T) {
 	vm := testVM()
 	vm.DiffContent = "+some change\n-old line"
+	state := &approvalState{splitMode: true}
 
-	output := renderApprovalDialog(vm, 80, 40, 0, true)
+	output := renderApprovalDialog(vm, state, 80, 40)
 
 	assert.Contains(t, output, "split", "should contain split mode indicator in diff header")
 }
@@ -99,8 +109,9 @@ func TestRenderApprovalDialog_SplitMode(t *testing.T) {
 func TestRenderApprovalDialog_EmptySummary(t *testing.T) {
 	vm := testVM()
 	vm.Request.Summary = ""
+	state := &approvalState{}
 
-	output := renderApprovalDialog(vm, 80, 40, 0, false)
+	output := renderApprovalDialog(vm, state, 80, 40)
 
 	assert.Contains(t, output, "Execute tool:", "should contain fallback summary text")
 }
@@ -109,8 +120,9 @@ func TestRenderApprovalDialog_WithParams(t *testing.T) {
 	longValue := strings.Repeat("a", 200)
 	vm := testVM()
 	vm.Request.Params = map[string]interface{}{"content": longValue}
+	state := &approvalState{}
 
-	output := renderApprovalDialog(vm, 80, 40, 0, false)
+	output := renderApprovalDialog(vm, state, 80, 40)
 
 	assert.Contains(t, output, "...", "long param values should be truncated with ellipsis")
 	assert.NotContains(t, output, longValue, "full long value should not appear untruncated")
@@ -119,8 +131,9 @@ func TestRenderApprovalDialog_WithParams(t *testing.T) {
 func TestRenderApprovalDialog_EmptyParams(t *testing.T) {
 	vm := testVM()
 	vm.Request.Params = nil
+	state := &approvalState{}
 
-	output := renderApprovalDialog(vm, 80, 40, 0, false)
+	output := renderApprovalDialog(vm, state, 80, 40)
 
 	// With no params, the params section (key: value lines) should be absent.
 	// Verify we still get the essentials without a params block.
@@ -133,8 +146,9 @@ func TestRenderApprovalDialog_EmptyParams(t *testing.T) {
 func TestRenderApprovalDialog_ShowsRuleExplanation(t *testing.T) {
 	vm := testVM()
 	vm.RuleExplanation = "This tool modifies the filesystem and is classified as dangerous."
+	state := &approvalState{}
 
-	output := renderApprovalDialog(vm, 80, 40, 0, false)
+	output := renderApprovalDialog(vm, state, 80, 40)
 
 	assert.Contains(t, output, "Why:", "should contain explanation prefix")
 	assert.Contains(t, output, "filesystem", "should contain explanation text")
@@ -143,8 +157,9 @@ func TestRenderApprovalDialog_ShowsRuleExplanation(t *testing.T) {
 func TestRenderApprovalDialog_EmptyExplanationSkipped(t *testing.T) {
 	vm := testVM()
 	vm.RuleExplanation = ""
+	state := &approvalState{}
 
-	output := renderApprovalDialog(vm, 80, 40, 0, false)
+	output := renderApprovalDialog(vm, state, 80, 40)
 
 	assert.NotContains(t, output, "Why:", "should not contain explanation prefix when empty")
 }
@@ -153,12 +168,14 @@ func TestRenderApprovalDialog_ConfirmPendingMessage(t *testing.T) {
 	vm := testVM()
 
 	// Normal render without confirmPending.
-	normalOutput := renderApprovalDialog(vm, 80, 40, 0, false)
+	stateNormal := &approvalState{}
+	normalOutput := renderApprovalDialog(vm, stateNormal, 80, 40)
 	assert.Contains(t, normalOutput, "allow", "normal should show allow action")
 	assert.NotContains(t, normalOutput, "Press 'a' again", "normal should not show confirm prompt")
 
 	// Render with confirmPending.
-	confirmOutput := renderApprovalDialog(vm, 80, 40, 0, false, true)
+	stateConfirm := &approvalState{}
+	confirmOutput := renderApprovalDialog(vm, stateConfirm, 80, 40, true)
 	assert.Contains(t, confirmOutput, "Press 'a' again", "confirm pending should show re-press prompt")
 }
 
@@ -204,6 +221,57 @@ func TestHandleDialogKey_Unhandled(t *testing.T) {
 	assert.Nil(t, cmd, "unhandled key should return nil cmd")
 	assert.Equal(t, 5, state.scrollOffset, "scroll offset should not change for unhandled key")
 	assert.True(t, state.splitMode, "split mode should not change for unhandled key")
+}
+
+// --- diffLineCache tests ---
+
+func TestDiffLineCache_HitOnSameContent(t *testing.T) {
+	vm := testVM()
+	vm.DiffContent = "+added\n-removed\nnormal"
+	state := &approvalState{}
+
+	// First render builds the cache.
+	_ = renderApprovalDialog(vm, state, 80, 40)
+	assert.NotNil(t, state.diffCache.lines, "cache should be populated after first render")
+	assert.Equal(t, vm.DiffContent, state.diffCache.content, "cache content key should match")
+	assert.Equal(t, 80, state.diffCache.width, "cache width key should match")
+
+	cachedPtr := state.diffCache.lines
+
+	// Second render with same params should reuse the cache.
+	_ = renderApprovalDialog(vm, state, 80, 40)
+	assert.Equal(t, cachedPtr, state.diffCache.lines, "cache should be reused on identical params")
+}
+
+func TestDiffLineCache_MissOnWidthChange(t *testing.T) {
+	vm := testVM()
+	vm.DiffContent = "+added\n-removed"
+	state := &approvalState{}
+
+	_ = renderApprovalDialog(vm, state, 80, 40)
+	oldLines := state.diffCache.lines
+
+	_ = renderApprovalDialog(vm, state, 100, 40)
+	assert.Equal(t, 100, state.diffCache.width, "cache width should update on width change")
+	assert.NotEqual(t, fmt.Sprintf("%p", oldLines), fmt.Sprintf("%p", state.diffCache.lines),
+		"cache slice should be rebuilt on width change")
+}
+
+func TestDiffLineCache_InvalidatedByReset(t *testing.T) {
+	state := &approvalState{}
+	state.diffCache = diffLineCache{content: "x", width: 80, lines: []string{"cached"}}
+
+	state.Reset(&ApprovalRequestMsg{})
+	assert.Nil(t, state.diffCache.lines, "Reset should clear cache lines")
+	assert.Equal(t, "", state.diffCache.content, "Reset should clear cache content")
+}
+
+func TestDiffLineCache_InvalidatedByToggleSplit(t *testing.T) {
+	state := &approvalState{}
+	state.diffCache = diffLineCache{content: "x", width: 80, lines: []string{"cached"}}
+
+	state.ToggleSplit()
+	assert.Nil(t, state.diffCache.lines, "ToggleSplit should clear cache lines")
 }
 
 // --- approvalState.ScrollDiff tests ---

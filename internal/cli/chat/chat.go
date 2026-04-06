@@ -326,7 +326,7 @@ func (m *ChatModel) RenderParts() ChatParts {
 	}
 
 	if m.state == stateApproving && m.approval.HasPending() {
-		parts.Approval = renderApproval(m.approval.pending, m.width, m.height, m.approval.scrollOffset, m.approval.splitMode, m.approval.confirmPending)
+		parts.Approval = renderApproval(m.approval.pending, &m.approval, m.width, m.height)
 	}
 
 	return parts
@@ -594,7 +594,7 @@ func (m *ChatModel) recalcLayout() {
 		fixedParts = append(fixedParts, ts)
 	}
 	if m.state == stateApproving && m.approval.HasPending() {
-		fixedParts = append(fixedParts, renderApproval(m.approval.pending, m.width, m.height, m.approval.scrollOffset, m.approval.splitMode, m.approval.confirmPending))
+		fixedParts = append(fixedParts, renderApproval(m.approval.pending, &m.approval, m.width, m.height))
 	}
 	fixedParts = append(fixedParts, renderFooter(m.input, m.state, m.width))
 

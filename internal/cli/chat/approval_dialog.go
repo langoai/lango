@@ -13,8 +13,11 @@ import (
 )
 
 // renderApprovalDialog renders a Tier 2 fullscreen approval dialog overlay.
-func renderApprovalDialog(vm approval.ApprovalViewModel, width, height, scrollOffset int, splitMode bool, confirmPending ...bool) string {
+func renderApprovalDialog(vm approval.ApprovalViewModel, state *approvalState, width, height int, confirmPending ...bool) string {
 	isConfirmPending := len(confirmPending) > 0 && confirmPending[0]
+	scrollOffset := state.scrollOffset
+	splitMode := state.splitMode
+
 	dialogWidth := width - 4
 	if dialogWidth < 30 {
 		dialogWidth = 30
@@ -88,12 +91,39 @@ func renderApprovalDialog(vm approval.ApprovalViewModel, width, height, scrollOf
 	// Diff preview (if available).
 	var diffBlock string
 	if vm.DiffContent != "" {
-		lines := strings.Split(vm.DiffContent, "\n")
+		allLines := strings.Split(vm.DiffContent, "\n")
 
-		// Apply scroll offset.
+		// Use cached styled lines if cache key matches; otherwise build and cache.
+		cachedLines := state.diffCache.lines
+		if cachedLines == nil ||
+			state.diffCache.content != vm.DiffContent ||
+			state.diffCache.width != width ||
+			state.diffCache.splitMode != splitMode {
+			cachedLines = make([]string, 0, len(allLines))
+			for _, line := range allLines {
+				switch {
+				case strings.HasPrefix(line, "+"):
+					cachedLines = append(cachedLines, lipgloss.NewStyle().Foreground(tui.Success).Render(line))
+				case strings.HasPrefix(line, "-"):
+					cachedLines = append(cachedLines, lipgloss.NewStyle().Foreground(tui.Error).Render(line))
+				case strings.HasPrefix(line, "@@"):
+					cachedLines = append(cachedLines, lipgloss.NewStyle().Foreground(tui.Info).Render(line))
+				default:
+					cachedLines = append(cachedLines, line)
+				}
+			}
+			state.diffCache = diffLineCache{
+				content:   vm.DiffContent,
+				width:     width,
+				splitMode: splitMode,
+				lines:     cachedLines,
+			}
+		}
+
+		// Apply scroll offset over the cached styled lines.
 		start := scrollOffset
-		if start >= len(lines) {
-			start = max(len(lines)-1, 0)
+		if start >= len(cachedLines) {
+			start = max(len(cachedLines)-1, 0)
 		}
 		if start < 0 {
 			start = 0
@@ -105,33 +135,20 @@ func renderApprovalDialog(vm approval.ApprovalViewModel, width, height, scrollOf
 			visible = 3
 		}
 		end := start + visible
-		if end > len(lines) {
-			end = len(lines)
+		if end > len(cachedLines) {
+			end = len(cachedLines)
 		}
 
-		visibleLines := lines[start:end]
-		var styledLines []string
-		for _, line := range visibleLines {
-			switch {
-			case strings.HasPrefix(line, "+"):
-				styledLines = append(styledLines, lipgloss.NewStyle().Foreground(tui.Success).Render(line))
-			case strings.HasPrefix(line, "-"):
-				styledLines = append(styledLines, lipgloss.NewStyle().Foreground(tui.Error).Render(line))
-			case strings.HasPrefix(line, "@@"):
-				styledLines = append(styledLines, lipgloss.NewStyle().Foreground(tui.Info).Render(line))
-			default:
-				styledLines = append(styledLines, line)
-			}
-		}
+		visibleLines := cachedLines[start:end]
 
 		diffMode := "unified"
 		if splitMode {
 			diffMode = "split"
 		}
 		diffHeader := lipgloss.NewStyle().Bold(true).Foreground(tui.Muted).
-			Render(fmt.Sprintf("  Diff [%s] (%d/%d lines)", diffMode, end, len(lines)))
+			Render(fmt.Sprintf("  Diff [%s] (%d/%d lines)", diffMode, end, len(allLines)))
 		diffBody := lipgloss.NewStyle().PaddingLeft(2).
-			Render(strings.Join(styledLines, "\n"))
+			Render(strings.Join(visibleLines, "\n"))
 		diffBlock = diffHeader + "\n" + diffBody
 	}
 

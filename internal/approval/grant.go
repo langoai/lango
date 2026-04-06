@@ -88,12 +88,10 @@ func (s *GrantStore) RevokeSession(sessionKey string) {
 	}
 }
 
-// CleanExpired removes all grants that have exceeded the TTL.
+// cleanExpiredLocked removes all grants that have exceeded the TTL.
 // Returns the number of entries removed. No-op when TTL is zero.
-func (s *GrantStore) CleanExpired() int {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
+// Caller must hold s.mu (write lock).
+func (s *GrantStore) cleanExpiredLocked() int {
 	if s.ttl == 0 {
 		return 0
 	}
@@ -109,17 +107,24 @@ func (s *GrantStore) CleanExpired() int {
 	return removed
 }
 
-// List returns all active (non-expired) grants sorted by session key then tool name.
-func (s *GrantStore) List() []GrantInfo {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
+// CleanExpired removes all grants that have exceeded the TTL.
+// Returns the number of entries removed. No-op when TTL is zero.
+func (s *GrantStore) CleanExpired() int {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.cleanExpiredLocked()
+}
 
-	now := s.nowFn()
+// List returns all active (non-expired) grants sorted by session key then tool name.
+// Expired grants are lazily cleaned before listing.
+func (s *GrantStore) List() []GrantInfo {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	s.cleanExpiredLocked()
+
 	result := make([]GrantInfo, 0, len(s.grants))
 	for key, entry := range s.grants {
-		if s.ttl > 0 && now.Sub(entry.grantedAt) > s.ttl {
-			continue
-		}
 		parts := strings.SplitN(key, "\x00", 2)
 		if len(parts) != 2 {
 			continue

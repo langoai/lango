@@ -29,11 +29,16 @@ const (
 )
 
 type transcriptItem struct {
-	kind       transcriptItemKind
-	content    string
-	rawContent string
-	meta       map[string]string
+	kind        transcriptItemKind
+	content     string
+	rawContent  string
+	meta        map[string]string
+	cachedBlock string // memoized rendered block, "" = needs re-render
 }
+
+// maxTranscriptEntries caps the number of transcript entries to prevent
+// unbounded memory growth during long sessions.
+const maxTranscriptEntries = 2000
 
 // chatViewModel manages the scrollable chat transcript viewport.
 type chatViewModel struct {
@@ -68,11 +73,10 @@ func (m *chatViewModel) appendUser(content string) {
 	if strings.TrimSpace(content) == "" {
 		return
 	}
-	m.entries = append(m.entries, transcriptItem{
+	m.appendEntry(transcriptItem{
 		kind:    itemUser,
 		content: strings.TrimSpace(content),
 	})
-	m.render()
 }
 
 func (m *chatViewModel) appendAssistant(raw string) {
@@ -80,51 +84,47 @@ func (m *chatViewModel) appendAssistant(raw string) {
 	if raw == "" {
 		return
 	}
-	m.entries = append(m.entries, transcriptItem{
+	m.appendEntry(transcriptItem{
 		kind:       itemAssistant,
 		content:    strings.TrimRight(renderMarkdown(raw, m.contentWidth()), "\n"),
 		rawContent: raw,
 	})
-	m.render()
 }
 
 func (m *chatViewModel) appendSystem(content string) {
 	if strings.TrimSpace(content) == "" {
 		return
 	}
-	m.entries = append(m.entries, transcriptItem{
+	m.appendEntry(transcriptItem{
 		kind:    itemSystem,
 		content: strings.TrimSpace(content),
 	})
-	m.render()
 }
 
 func (m *chatViewModel) appendStatus(content string, tone string) {
 	if strings.TrimSpace(content) == "" {
 		return
 	}
-	m.entries = append(m.entries, transcriptItem{
+	m.appendEntry(transcriptItem{
 		kind:    itemStatus,
 		content: strings.TrimSpace(content),
 		meta:    map[string]string{"tone": tone},
 	})
-	m.render()
 }
 
 func (m *chatViewModel) appendApprovalEvent(content string, outcome string) {
 	if strings.TrimSpace(content) == "" {
 		return
 	}
-	m.entries = append(m.entries, transcriptItem{
+	m.appendEntry(transcriptItem{
 		kind:    itemApproval,
 		content: strings.TrimSpace(content),
 		meta:    map[string]string{"outcome": outcome},
 	})
-	m.render()
 }
 
 func (m *chatViewModel) appendToolStart(callID, toolName string, params map[string]any) {
-	m.entries = append(m.entries, transcriptItem{
+	m.appendEntry(transcriptItem{
 		kind:    itemTool,
 		content: toolName,
 		meta: map[string]string{
@@ -132,7 +132,6 @@ func (m *chatViewModel) appendToolStart(callID, toolName string, params map[stri
 			"state":  string(toolStateRunning),
 		},
 	})
-	m.render()
 }
 
 func (m *chatViewModel) finalizeToolResult(callID string, success bool, duration time.Duration, output string) {
@@ -148,6 +147,7 @@ func (m *chatViewModel) finalizeToolResult(callID string, success bool, duration
 			if output != "" {
 				e.meta["output"] = output
 			}
+			e.cachedBlock = "" // invalidate cache — state changed
 			break
 		}
 	}
@@ -155,12 +155,11 @@ func (m *chatViewModel) finalizeToolResult(callID string, success bool, duration
 }
 
 func (m *chatViewModel) appendThinking(summary string) {
-	m.entries = append(m.entries, transcriptItem{
+	m.appendEntry(transcriptItem{
 		kind:    itemThinking,
 		content: summary,
 		meta:    map[string]string{"state": "active"},
 	})
-	m.render()
 }
 
 func (m *chatViewModel) finalizeThinking(summary string, duration time.Duration) {
@@ -172,6 +171,7 @@ func (m *chatViewModel) finalizeThinking(summary string, duration time.Duration)
 			if summary != "" {
 				e.content = summary
 			}
+			e.cachedBlock = "" // invalidate cache — state changed
 			break
 		}
 	}
@@ -188,16 +188,15 @@ func (m *chatViewModel) appendChannel(channel, senderName, text, sessionKey stri
 	for k, val := range metadata {
 		meta[k] = val
 	}
-	m.entries = append(m.entries, transcriptItem{
+	m.appendEntry(transcriptItem{
 		kind:       itemChannel,
 		rawContent: text,
 		meta:       meta,
 	})
-	m.render()
 }
 
 func (m *chatViewModel) appendDelegation(from, to, reason string) {
-	m.entries = append(m.entries, transcriptItem{
+	m.appendEntry(transcriptItem{
 		kind: itemDelegation,
 		meta: map[string]string{
 			"from":   from,
@@ -205,11 +204,10 @@ func (m *chatViewModel) appendDelegation(from, to, reason string) {
 			"reason": reason,
 		},
 	})
-	m.render()
 }
 
 func (m *chatViewModel) appendRecovery(action, causeClass string, attempt int, backoff time.Duration) {
-	m.entries = append(m.entries, transcriptItem{
+	m.appendEntry(transcriptItem{
 		kind: itemRecovery,
 		meta: map[string]string{
 			"action":     action,
@@ -218,7 +216,6 @@ func (m *chatViewModel) appendRecovery(action, causeClass string, attempt int, b
 			"backoff":    backoff.String(),
 		},
 	})
-	m.render()
 }
 
 func (m *chatViewModel) appendTokenSummary(input, output, total, cache int64) {
@@ -279,10 +276,13 @@ func (m *chatViewModel) setSize(width, height int) {
 	m.viewport.Height = height
 	if width != prevWidth {
 		for i := range m.entries {
+			// Re-render markdown for assistant entries at the new width.
 			if m.entries[i].kind == itemAssistant && m.entries[i].rawContent != "" {
 				m.entries[i].content = strings.TrimRight(
 					renderMarkdown(m.entries[i].rawContent, m.contentWidth()), "\n")
 			}
+			// Invalidate all cached blocks — width affects rendering.
+			m.entries[i].cachedBlock = ""
 		}
 	}
 	m.render()
@@ -296,65 +296,118 @@ func (m *chatViewModel) contentWidth() int {
 	return w
 }
 
-func (m *chatViewModel) render() {
-	var blocks []string
-
-	for _, entry := range m.entries {
-		switch entry.kind {
-		case itemUser:
-			blocks = append(blocks, renderTranscriptBlock("You", entry.content, tui.Highlight))
-		case itemAssistant:
-			blocks = append(blocks, renderTranscriptBlock("Lango", entry.content, tui.Primary))
-		case itemSystem:
-			blocks = append(blocks, renderSystemBlock(entry.content))
-		case itemStatus:
-			blocks = append(blocks, renderStatusBlock(entry.content, entry.meta["tone"]))
-		case itemApproval:
-			blocks = append(blocks, renderApprovalEventBlock(entry.content, entry.meta["outcome"]))
-		case itemTool:
-			blocks = append(blocks, renderToolBlock(
-				entry.content,
-				ToolItemState(entry.meta["state"]),
-				entry.meta["duration"],
-				entry.meta["output"],
-				m.contentWidth(),
-			))
-		case itemThinking:
-			blocks = append(blocks, renderThinkingBlock(
-				entry.content,
-				entry.meta["state"],
-				entry.meta["duration"],
-				m.contentWidth(),
-			))
-		case itemChannel:
-			blocks = append(blocks, renderChannelBlock(
-				entry.rawContent,
-				entry.meta["channel"],
-				entry.meta["sender"],
-				m.contentWidth(),
-			))
-
-		case itemDelegation:
-			blocks = append(blocks, renderDelegationBlock(
-				entry.meta["from"],
-				entry.meta["to"],
-				entry.meta["reason"],
-				m.contentWidth(),
-			))
-
-		case itemRecovery:
-			attempt, _ := strconv.Atoi(entry.meta["attempt"])
-			backoff, _ := time.ParseDuration(entry.meta["backoff"])
-			blocks = append(blocks, renderRecoveryBlock(
-				entry.meta["action"],
-				entry.meta["causeClass"],
-				attempt,
-				backoff,
-				m.contentWidth(),
-			))
+// appendEntry is the single entry point for adding transcript items.
+// It appends the entry, enforces the max cap with tombstone trimming,
+// and triggers a re-render.
+func (m *chatViewModel) appendEntry(entry transcriptItem) {
+	m.entries = append(m.entries, entry)
+	if len(m.entries) > maxTranscriptEntries {
+		trimCount := maxTranscriptEntries / 4 // trim 500 at a time
+		// Accumulate tombstone count across repeated trims.
+		prevTrimmed := 0
+		hasTombstone := m.entries[0].kind == itemSystem && strings.HasPrefix(m.entries[0].content, "---")
+		if hasTombstone {
+			fmt.Sscanf(m.entries[0].content, "--- %d older messages trimmed ---", &prevTrimmed)
 		}
+		// Determine base trim boundary.
+		boundary := trimCount
+		if !hasTombstone {
+			boundary = trimCount - 1 // reserve one slot for new tombstone
+		}
+		// Collect in-flight tool/thinking entries from the trim range so they survive.
+		var preserved []transcriptItem
+		for _, e := range m.entries[:boundary] {
+			if (e.kind == itemTool && e.meta["state"] == "running") ||
+				(e.kind == itemThinking && e.meta["state"] == "active") {
+				preserved = append(preserved, e)
+			}
+		}
+		// Build a new slice: tombstone + preserved active entries + kept entries.
+		// Using a new backing array ensures the old one is eligible for GC.
+		kept := m.entries[boundary:]
+		newEntries := make([]transcriptItem, 0, 1+len(preserved)+len(kept))
+		newEntries = append(newEntries, transcriptItem{
+			kind:    itemSystem,
+			content: fmt.Sprintf("--- %d older messages trimmed ---", prevTrimmed+trimCount),
+		})
+		newEntries = append(newEntries, preserved...)
+		newEntries = append(newEntries, kept...)
+		m.entries = newEntries
+	}
+	m.render()
+}
+
+// renderEntry renders a single transcript entry into a display block string.
+func (m *chatViewModel) renderEntry(entry transcriptItem) string {
+	switch entry.kind {
+	case itemUser:
+		return renderTranscriptBlock("You", entry.content, tui.Highlight)
+	case itemAssistant:
+		return renderTranscriptBlock("Lango", entry.content, tui.Primary)
+	case itemSystem:
+		return renderSystemBlock(entry.content)
+	case itemStatus:
+		return renderStatusBlock(entry.content, entry.meta["tone"])
+	case itemApproval:
+		return renderApprovalEventBlock(entry.content, entry.meta["outcome"])
+	case itemTool:
+		return renderToolBlock(
+			entry.content,
+			ToolItemState(entry.meta["state"]),
+			entry.meta["duration"],
+			entry.meta["output"],
+			m.contentWidth(),
+		)
+	case itemThinking:
+		return renderThinkingBlock(
+			entry.content,
+			entry.meta["state"],
+			entry.meta["duration"],
+			m.contentWidth(),
+		)
+	case itemChannel:
+		return renderChannelBlock(
+			entry.rawContent,
+			entry.meta["channel"],
+			entry.meta["sender"],
+			m.contentWidth(),
+		)
+	case itemDelegation:
+		return renderDelegationBlock(
+			entry.meta["from"],
+			entry.meta["to"],
+			entry.meta["reason"],
+			m.contentWidth(),
+		)
+	case itemRecovery:
+		attempt, _ := strconv.Atoi(entry.meta["attempt"])
+		backoff, _ := time.ParseDuration(entry.meta["backoff"])
+		return renderRecoveryBlock(
+			entry.meta["action"],
+			entry.meta["causeClass"],
+			attempt,
+			backoff,
+			m.contentWidth(),
+		)
+	default:
+		return ""
+	}
+}
+
+func (m *chatViewModel) render() {
+	blocks := make([]string, 0, len(m.entries)+1)
+
+	for i, entry := range m.entries {
+		if entry.cachedBlock != "" {
+			blocks = append(blocks, entry.cachedBlock)
+			continue
+		}
+		block := m.renderEntry(entry)
+		m.entries[i].cachedBlock = block
+		blocks = append(blocks, block)
 	}
 
+	// Streaming entry is always re-rendered (no cache).
 	if m.streamBuf.Len() > 0 {
 		streamContent := m.streamBuf.String()
 		if m.showCursor {
@@ -367,27 +420,33 @@ func (m *chatViewModel) render() {
 	m.viewport.GotoBottom()
 }
 
+// Pre-allocated styles for transcript rendering.
+// lipgloss.Style is an immutable value type — per-call .Foreground(color)
+// returns a stack copy with only the color set, avoiding heap allocation.
+var (
+	transcriptLabelStyle = lipgloss.NewStyle().Bold(true)
+	transcriptSepStyle   = lipgloss.NewStyle()
+	transcriptBodyStyle  = lipgloss.NewStyle().
+				BorderStyle(lipgloss.NormalBorder()).
+				BorderLeft(true).
+				PaddingLeft(1)
+	systemLabelStyle = lipgloss.NewStyle().Bold(true).Foreground(tui.Muted)
+	systemBodyStyle  = lipgloss.NewStyle().PaddingLeft(1)
+	statusLabelStyle = lipgloss.NewStyle().Bold(true)
+	statusBodyStyle  = lipgloss.NewStyle()
+)
+
 func renderTranscriptBlock(label, content string, color lipgloss.Color) string {
-	labelText := lipgloss.NewStyle().
-		Bold(true).
-		Foreground(color).
-		Render(label)
+	labelText := transcriptLabelStyle.Foreground(color).Render(label)
 	separatorWidth := min(16, max(lipgloss.Width(label)+6, 8))
-	separator := lipgloss.NewStyle().
-		Foreground(color).
-		Render(strings.Repeat("─", separatorWidth))
-	body := lipgloss.NewStyle().
-		BorderStyle(lipgloss.NormalBorder()).
-		BorderLeft(true).
-		BorderForeground(color).
-		PaddingLeft(1).
-		Render(strings.TrimRight(content, "\n"))
+	separator := transcriptSepStyle.Foreground(color).Render(strings.Repeat("─", separatorWidth))
+	body := transcriptBodyStyle.BorderForeground(color).Render(strings.TrimRight(content, "\n"))
 	return fmt.Sprintf(" %s  %s\n%s", labelText, separator, body)
 }
 
 func renderSystemBlock(content string) string {
-	label := lipgloss.NewStyle().Bold(true).Foreground(tui.Muted).Render("System")
-	body := lipgloss.NewStyle().PaddingLeft(1).Render(strings.TrimRight(content, "\n"))
+	label := systemLabelStyle.Render("System")
+	body := systemBodyStyle.Render(strings.TrimRight(content, "\n"))
 	return fmt.Sprintf(" %s\n%s", label, body)
 }
 
@@ -401,8 +460,8 @@ func renderStatusBlock(content, tone string) string {
 	case "error":
 		color = tui.Error
 	}
-	label := lipgloss.NewStyle().Bold(true).Foreground(color).Render("Status")
-	body := lipgloss.NewStyle().Foreground(color).Render(content)
+	label := statusLabelStyle.Foreground(color).Render("Status")
+	body := statusBodyStyle.Foreground(color).Render(content)
 	return fmt.Sprintf(" %s  %s", label, body)
 }
 
@@ -414,7 +473,7 @@ func renderApprovalEventBlock(content, outcome string) string {
 	case "denied":
 		color = tui.Error
 	}
-	label := lipgloss.NewStyle().Bold(true).Foreground(color).Render("Approval")
-	body := lipgloss.NewStyle().Foreground(color).Render(content)
+	label := statusLabelStyle.Foreground(color).Render("Approval")
+	body := statusBodyStyle.Foreground(color).Render(content)
 	return fmt.Sprintf(" %s  %s", label, body)
 }

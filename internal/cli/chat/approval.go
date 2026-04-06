@@ -49,13 +49,12 @@ func (t *TUIApprovalProvider) CanHandle(_ string) bool { return false }
 func (t *TUIApprovalProvider) Name() string { return "tui" }
 
 // renderApproval dispatches to the appropriate approval renderer based on tier.
-func renderApproval(msg *ApprovalRequestMsg, width, height, scrollOffset int, splitMode bool, confirmPending ...bool) string {
-	cp := len(confirmPending) > 0 && confirmPending[0]
+func renderApproval(msg *ApprovalRequestMsg, state *approvalState, width, height int) string {
 	switch msg.ViewModel.Tier {
 	case approval.TierFullscreen:
-		return renderApprovalDialog(msg.ViewModel, width, height, scrollOffset, splitMode, cp)
+		return renderApprovalDialog(msg.ViewModel, state, width, height, state.confirmPending)
 	case approval.TierInline:
-		return renderApprovalStrip(msg.ViewModel, width, cp)
+		return renderApprovalStrip(msg.ViewModel, width, state.confirmPending)
 	default:
 		return renderApprovalBanner(msg.Request, width)
 	}

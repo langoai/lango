@@ -41,10 +41,11 @@ type ContextPanel struct {
 	visible         bool
 	width           int
 	height          int
-	sortedTools      []toolEntry     // cached sorted tool stats
-	sortedToolsDirty bool            // true when snapshot updated, cleared after sort
-	channelStatuses  []channelStatus // live channel status for display
-	runtimeStat      runtimeStatus   // live runtime status for display
+	sortedTools        []toolEntry     // cached sorted tool stats
+	sortedToolsDirty   bool            // true when snapshot updated, cleared after sort
+	cachedToolCountSum int64           // cached sum of all tool invocation counts
+	channelStatuses    []channelStatus // live channel status for display
+	runtimeStat        runtimeStatus   // live runtime status for display
 }
 
 // NewContextPanel creates a ContextPanel backed by the given collector.
@@ -100,6 +101,20 @@ var (
 
 	cpDividerStyle = lipgloss.NewStyle().
 			Foreground(theme.BorderDefault)
+
+	// Pre-allocated styles for View content area.
+	cpContentBaseStyle = lipgloss.NewStyle().
+				Padding(0, 1).
+				Background(theme.Surface0)
+
+	// Pre-allocated styles for renderRuntimeStatus.
+	cpSuccessIconStyle     = lipgloss.NewStyle().Foreground(theme.Success)
+	cpActiveAgentStyle     = lipgloss.NewStyle().Foreground(theme.TextPrimary)
+
+	// Pre-allocated styles for renderChannelStatus.
+	cpChannelNameStyle  = lipgloss.NewStyle().Foreground(theme.TextPrimary)
+	cpChannelCountStyle = lipgloss.NewStyle().Foreground(theme.TextTertiary)
+	cpErrorIconStyle    = lipgloss.NewStyle().Foreground(theme.Error)
 )
 
 // View implements tea.Model.
@@ -138,10 +153,8 @@ func (p *ContextPanel) View() string {
 		lines = lines[:p.height]
 	}
 
-	rendered := lipgloss.NewStyle().
-		Padding(0, 1).
+	rendered := cpContentBaseStyle.
 		Width(p.width).
-		Background(theme.Surface0).
 		Render(strings.Join(lines, "\n"))
 
 	return cpBorderStyle.Render(rendered)
@@ -171,7 +184,11 @@ func (p *ContextPanel) SetVisible(v bool) {
 
 // SetChannelStatuses updates the channel status display data.
 func (p *ContextPanel) SetChannelStatuses(statuses []channelStatus) {
-	p.channelStatuses = make([]channelStatus, len(statuses))
+	if cap(p.channelStatuses) >= len(statuses) {
+		p.channelStatuses = p.channelStatuses[:len(statuses)]
+	} else {
+		p.channelStatuses = make([]channelStatus, len(statuses))
+	}
 	copy(p.channelStatuses, statuses)
 }
 
@@ -228,9 +245,12 @@ func (p *ContextPanel) renderToolStats(width int, divider string) string {
 	// Re-sort only when snapshot has been refreshed.
 	if p.sortedToolsDirty || p.sortedTools == nil {
 		entries := make([]toolEntry, 0, len(p.snapshot.ToolBreakdown))
+		var sum int64
 		for name, tm := range p.snapshot.ToolBreakdown {
 			entries = append(entries, toolEntry{name: name, count: tm.Count})
+			sum += tm.Count
 		}
+		p.cachedToolCountSum = sum
 		sort.Slice(entries, func(i, j int) bool {
 			return entries[i].count > entries[j].count
 		})
@@ -282,10 +302,10 @@ func (p *ContextPanel) renderRuntimeStatus(_ int, divider string) string {
 	b.WriteByte('\n')
 
 	// Active agent indicator
-	statusIcon := lipgloss.NewStyle().Foreground(theme.Success).Render("●")
+	statusIcon := cpSuccessIconStyle.Render("●")
 	label := "Running"
 	if p.runtimeStat.ActiveAgent != "" {
-		label += "  " + lipgloss.NewStyle().Foreground(theme.TextPrimary).Render(p.runtimeStat.ActiveAgent)
+		label += "  " + cpActiveAgentStyle.Render(p.runtimeStat.ActiveAgent)
 	}
 	b.WriteString(fmt.Sprintf("  %s %s", statusIcon, cpLabelStyle.Render(label)))
 	b.WriteByte('\n')
@@ -319,16 +339,15 @@ func (p *ContextPanel) renderChannelStatus(_ int, divider string) string {
 	b.WriteByte('\n')
 
 	for _, ch := range p.channelStatuses {
-		status := "●"
-		statusColor := theme.Success
-		if !ch.Connected {
-			status = "○"
-			statusColor = theme.Error
+		var statusIcon string
+		if ch.Connected {
+			statusIcon = cpSuccessIconStyle.Render("●")
+		} else {
+			statusIcon = cpErrorIconStyle.Render("○")
 		}
 
-		statusIcon := lipgloss.NewStyle().Foreground(statusColor).Render(status)
-		name := lipgloss.NewStyle().Foreground(theme.TextPrimary).Render(ch.Name)
-		count := lipgloss.NewStyle().Foreground(theme.TextTertiary).Render(fmt.Sprintf("%d msgs", ch.MessageCount))
+		name := cpChannelNameStyle.Render(ch.Name)
+		count := cpChannelCountStyle.Render(fmt.Sprintf("%d msgs", ch.MessageCount))
 
 		b.WriteString(fmt.Sprintf("  %s %s  %s", statusIcon, name, count))
 		b.WriteByte('\n')
@@ -338,9 +357,11 @@ func (p *ContextPanel) renderChannelStatus(_ int, divider string) string {
 
 func (p *ContextPanel) refreshSnapshot() {
 	if p.collector != nil {
-		prev := p.snapshot
+		prevLen := len(p.snapshot.ToolBreakdown)
+		prevSum := p.cachedToolCountSum
 		p.snapshot = p.collector.Snapshot()
-		if len(p.snapshot.ToolBreakdown) != len(prev.ToolBreakdown) || toolCountSum(p.snapshot) != toolCountSum(prev) {
+		newSum := toolCountSum(p.snapshot)
+		if len(p.snapshot.ToolBreakdown) != prevLen || newSum != prevSum {
 			p.sortedToolsDirty = true
 		}
 	}

@@ -24,23 +24,22 @@ func channelColor(channel string) lipgloss.Color {
 	}
 }
 
+// Pre-allocated styles for channel block rendering.
+var (
+	channelBadgeStyle  = lipgloss.NewStyle().Bold(true).Foreground(tui.Foreground).Padding(0, 1)
+	channelSenderStyle = lipgloss.NewStyle().Foreground(tui.Highlight).Bold(true)
+	channelTextStyle   = lipgloss.NewStyle().Foreground(tui.Foreground)
+)
+
 // renderChannelBlock renders a channel message in the transcript.
 func renderChannelBlock(text, channel, senderName string, width int) string {
 	w := max(width, 1)
 
-	badge := lipgloss.NewStyle().
-		Bold(true).
-		Foreground(tui.Foreground).
-		Background(channelColor(channel)).
-		Padding(0, 1).
-		Render(channel)
+	badge := channelBadgeStyle.Background(channelColor(channel)).Render(channel)
 
 	sender := ""
 	if senderName != "" {
-		sender = lipgloss.NewStyle().
-			Foreground(tui.Highlight).
-			Bold(true).
-			Render("@" + senderName)
+		sender = channelSenderStyle.Render("@" + senderName)
 	}
 
 	// Sanitize external channel input: strip ANSI/OSC escape sequences
@@ -58,7 +57,7 @@ func renderChannelBlock(text, channel, senderName string, width int) string {
 	if sender != "" {
 		content += fmt.Sprintf("  %s:", sender)
 	}
-	content += fmt.Sprintf(" %s", lipgloss.NewStyle().Foreground(tui.Foreground).Render(displayText))
+	content += fmt.Sprintf(" %s", channelTextStyle.Render(displayText))
 
 	return content
 }

@@ -230,6 +230,100 @@ func TestManager_Cancel_PreservesStatus(t *testing.T) {
 	assert.Equal(t, Cancelled, snap.Status)
 }
 
+func TestTerminalTaskEviction(t *testing.T) {
+	t.Parallel()
+
+	mgr := NewManager(nil, nil, 1000, time.Minute, testLogger())
+
+	totalTasks := maxTerminalTasks + 100 // 600 total
+
+	// Directly populate terminal tasks to avoid goroutine overhead.
+	baseTime := time.Now()
+	for i := 0; i < totalTasks; i++ {
+		id := fmt.Sprintf("task-%04d", i)
+		task := &Task{
+			ID:          id,
+			Status:      Done,
+			Prompt:      "prompt",
+			Result:      "result",
+			StartedAt:   baseTime.Add(time.Duration(i) * time.Second),
+			CompletedAt: baseTime.Add(time.Duration(i)*time.Second + time.Millisecond),
+		}
+		mgr.tasks[id] = task
+	}
+
+	// Trigger eviction.
+	mgr.mu.Lock()
+	mgr.evictTerminalTasksLocked()
+	mgr.mu.Unlock()
+
+	// Should have exactly maxTerminalTasks remaining.
+	assert.Equal(t, maxTerminalTasks, len(mgr.tasks))
+
+	// The oldest 100 tasks (task-0000 through task-0099) should be evicted.
+	for i := 0; i < 100; i++ {
+		id := fmt.Sprintf("task-%04d", i)
+		_, ok := mgr.tasks[id]
+		assert.False(t, ok, "oldest task %s should have been evicted", id)
+	}
+
+	// The newest 500 tasks (task-0100 through task-0599) should remain.
+	for i := 100; i < totalTasks; i++ {
+		id := fmt.Sprintf("task-%04d", i)
+		_, ok := mgr.tasks[id]
+		assert.True(t, ok, "recent task %s should still be present", id)
+	}
+}
+
+func TestTerminalTaskEviction_PreservesActiveTasks(t *testing.T) {
+	t.Parallel()
+
+	mgr := NewManager(nil, nil, 1000, time.Minute, testLogger())
+
+	baseTime := time.Now()
+
+	// Add maxTerminalTasks + 50 terminal tasks.
+	for i := 0; i < maxTerminalTasks+50; i++ {
+		id := fmt.Sprintf("done-%04d", i)
+		mgr.tasks[id] = &Task{
+			ID:          id,
+			Status:      Done,
+			CompletedAt: baseTime.Add(time.Duration(i) * time.Second),
+		}
+	}
+
+	// Add some active (non-terminal) tasks.
+	for i := 0; i < 5; i++ {
+		id := fmt.Sprintf("active-%d", i)
+		mgr.tasks[id] = &Task{
+			ID:        id,
+			Status:    Running,
+			StartedAt: baseTime,
+		}
+	}
+
+	mgr.mu.Lock()
+	mgr.evictTerminalTasksLocked()
+	mgr.mu.Unlock()
+
+	// All 5 active tasks should remain.
+	for i := 0; i < 5; i++ {
+		id := fmt.Sprintf("active-%d", i)
+		_, ok := mgr.tasks[id]
+		assert.True(t, ok, "active task %s should not be evicted", id)
+	}
+
+	// Terminal tasks should be capped at maxTerminalTasks.
+	terminalCount := 0
+	for _, task := range mgr.tasks {
+		snap := task.Snapshot()
+		if snap.Status == Done || snap.Status == Failed || snap.Status == Cancelled {
+			terminalCount++
+		}
+	}
+	assert.Equal(t, maxTerminalTasks, terminalCount)
+}
+
 func TestManagerShutdownHonorsContextDeadline(t *testing.T) {
 	t.Parallel()
 

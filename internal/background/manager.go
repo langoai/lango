@@ -3,6 +3,7 @@ package background
 import (
 	"context"
 	"fmt"
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -17,6 +18,10 @@ import (
 // automationPrefix is prepended to prompts sent to the agent runner so that
 // the orchestrator recognises them as automated tasks requiring tool execution.
 const automationPrefix = "[Automated Task — Execute the following task using tools. Do NOT answer from general knowledge alone.]\n\n"
+
+// maxTerminalTasks is the maximum number of completed/failed/cancelled tasks
+// retained in memory. When exceeded, the oldest terminal task is evicted.
+const maxTerminalTasks = 500
 
 // AgentRunner executes agent prompts.
 type AgentRunner interface {
@@ -195,6 +200,9 @@ func (m *Manager) execute(ctx context.Context, task *Task) {
 	case m.sem <- struct{}{}:
 	case <-ctx.Done():
 		task.Fail("context cancelled waiting for semaphore")
+		m.mu.Lock()
+		m.evictTerminalTasksLocked()
+		m.mu.Unlock()
 		return
 	}
 	defer func() { <-m.sem }()
@@ -235,6 +243,9 @@ func (m *Manager) execute(ctx context.Context, task *Task) {
 	// If the context was cancelled (user cancellation or timeout),
 	// don't overwrite the Cancelled status set by Cancel().
 	if ctx.Err() != nil {
+		m.mu.Lock()
+		m.evictTerminalTasksLocked()
+		m.mu.Unlock()
 		return
 	}
 
@@ -247,6 +258,11 @@ func (m *Manager) execute(ctx context.Context, task *Task) {
 		m.syncProjection(types.DetachContext(ctx), task)
 		m.logger.Infow("task completed", "taskID", task.ID)
 	}
+
+	// Evict oldest terminal tasks if the cap is exceeded.
+	m.mu.Lock()
+	m.evictTerminalTasksLocked()
+	m.mu.Unlock()
 
 	// Send completion notification (best-effort, detach from task context).
 	if m.notify != nil {
@@ -302,5 +318,40 @@ func (m *Manager) syncProjection(ctx context.Context, task *Task) {
 	}
 	if err := m.projection.SyncTask(ctx, task.Snapshot()); err != nil {
 		m.logger.Warnw("background projection sync failed", "taskID", task.ID, "error", err)
+	}
+}
+
+// evictTerminalTasksLocked removes the oldest terminal tasks when the count
+// exceeds maxTerminalTasks. Caller must hold m.mu (write lock).
+func (m *Manager) evictTerminalTasksLocked() {
+	type terminalEntry struct {
+		id          string
+		completedAt time.Time
+	}
+
+	var terminals []terminalEntry
+	for id, task := range m.tasks {
+		snap := task.Snapshot()
+		switch snap.Status {
+		case Done, Failed, Cancelled:
+			ts := snap.CompletedAt
+			if ts.IsZero() {
+				ts = snap.StartedAt
+			}
+			terminals = append(terminals, terminalEntry{id: id, completedAt: ts})
+		}
+	}
+
+	if len(terminals) <= maxTerminalTasks {
+		return
+	}
+
+	sort.Slice(terminals, func(i, j int) bool {
+		return terminals[i].completedAt.Before(terminals[j].completedAt)
+	})
+
+	evictCount := len(terminals) - maxTerminalTasks
+	for i := 0; i < evictCount; i++ {
+		delete(m.tasks, terminals[i].id)
 	}
 }
