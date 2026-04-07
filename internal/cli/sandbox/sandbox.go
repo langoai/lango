@@ -227,8 +227,10 @@ func readTestPath() string {
 }
 
 // capabilityReasonStatus formats a capability's status with a reason string.
-// "probe not yet implemented" reasons are shown as "unknown"; definitive negative
-// results (e.g., "sandbox-exec not found in PATH") are shown as "unavailable".
+// Reasons containing "not yet implemented" are shown as "unknown" (defensive
+// against future stub probes); definitive results (e.g., "Landlock ABI 3",
+// "Landlock not supported by this kernel") are shown as "available" or
+// "unavailable" with the qualified reason inline.
 func capabilityReasonStatus(available bool, reason, currentPlatform, requiredPlatform string) string {
 	if available {
 		if reason != "" {
