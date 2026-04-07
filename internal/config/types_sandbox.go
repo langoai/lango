@@ -14,7 +14,9 @@ type SandboxConfig struct {
 
 	// Backend selects the OS sandbox isolation backend: "auto" (default), "seatbelt", "bwrap", "native", "none".
 	// "auto" probes available backends and selects the best one.
-	// "seatbelt" is macOS only. "bwrap" and "native" are Linux only (not yet implemented).
+	// "seatbelt" is macOS only.
+	// "bwrap" requires the bubblewrap binary on Linux.
+	// "native" (Landlock+seccomp) is not yet implemented.
 	// "none" disables OS isolation even when sandbox.enabled is true.
 	// Invalid values are rejected at startup.
 	Backend string `mapstructure:"backend" json:"backend"`
@@ -24,11 +26,14 @@ type SandboxConfig struct {
 	WorkspacePath string `mapstructure:"workspacePath" json:"workspacePath,omitempty"`
 
 	// NetworkMode controls network access from sandboxed processes: "deny" or "allow" (default: "deny").
-	// On Linux, this setting is not yet enforced (isolation backend planned).
+	// On Linux, enforced via bwrap when backend=bwrap or backend=auto:
+	//   "deny"  → bwrap --unshare-net (new network namespace, lo down)
+	//   "allow" → host network (no namespace unshare)
 	NetworkMode string `mapstructure:"networkMode" json:"networkMode"`
 
 	// AllowedNetworkIPs are IP addresses permitted for outbound connections (macOS Seatbelt only).
-	// On Linux, this field is ignored — Linux isolation is not yet enforced.
+	// On Linux/bwrap this field is ignored — bwrap has no AF_INET filter, only
+	// the all-or-nothing --unshare-net flag.
 	AllowedNetworkIPs []string `mapstructure:"allowedNetworkIPs" json:"allowedNetworkIPs,omitempty"`
 
 	// AllowedWritePaths are additional paths writable from the sandbox (beyond WorkspacePath).
@@ -44,7 +49,8 @@ type SandboxConfig struct {
 // OSSandboxConfig holds platform-specific sandbox settings.
 type OSSandboxConfig struct {
 	// SeccompProfile selects the seccomp filter profile on Linux: "strict", "moderate", or "permissive".
-	// Default: "moderate".
+	// Default: "moderate". NOT YET ENFORCED — the native (Landlock+seccomp)
+	// backend is planned. The bwrap backend does not consume this field.
 	SeccompProfile string `mapstructure:"seccompProfile" json:"seccompProfile,omitempty"`
 
 	// SeatbeltCustomProfile is a path to a custom .sb profile on macOS (overrides generated profile).

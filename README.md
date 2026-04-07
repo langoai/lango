@@ -68,7 +68,7 @@ Single binary. <100ms startup. <250MB memory. Just Go.
 - 🖥️ **Cockpit TUI** — Multi-panel terminal dashboard with 7 pages (Chat, Settings, Tools, Status, Sessions, Tasks, Approvals). Context panel with live token usage, tool stats, runtime, channels, and system metrics. Two-tier approval with inline strip and fullscreen dialog. Background task management with detail view, cancel, and retry. Runtime visibility with delegation tracking, budget warnings, and recovery events
 - 📋 **RunLedger (Task OS)** — Durable execution engine with append-only journal, PEV verification, typed validators, and planner integration
 - 📜 **Session Provenance** — Persistent checkpoints, session lineage tree, git-aware attribution, and signed provenance bundle export/import
-- 🛡️ **OS-level Sandbox** — Process isolation via macOS Seatbelt (Linux: planned, not yet enforced), network deny, workspace-scoped write access
+- 🛡️ **OS-level Sandbox** — Process isolation via macOS Seatbelt and Linux bubblewrap (when `bwrap` is installed), network deny, workspace-scoped write access
 - 🚧 **Response Gatekeeper** — Output sanitization stripping thought tags, internal markers, raw JSON, and custom patterns
 
 ## Quick Start
@@ -637,10 +637,10 @@ All settings are managed via `lango onboard` (guided wizard), `lango settings` (
 | **Sandbox** (🧪 Experimental Features)                 |          |                             |                                                                                                                   |
 | `sandbox.enabled`                                      | bool     | `false`                     | Enable OS-level sandboxing for tool-spawned processes                                                             |
 | `sandbox.failClosed`                                   | bool     | `false`                     | Reject tool execution when sandbox unavailable (false = fail-open)                                                |
-| `sandbox.backend`                                      | string   | `auto`                      | Isolation backend: `auto`, `seatbelt`, `bwrap` (planned), `native` (planned), `none`                             |
+| `sandbox.backend`                                      | string   | `auto`                      | Isolation backend: `auto`, `seatbelt` (macOS), `bwrap` (Linux, requires bubblewrap), `native` (planned), `none`  |
 | `sandbox.networkMode`                                  | string   | `deny`                      | Network access: `deny` or `allow`                                                                                 |
 | `sandbox.timeoutPerTool`                               | duration | `30s`                       | Max duration for sandboxed tool execution                                                                         |
-| `sandbox.os.seccompProfile`                            | string   | `moderate`                  | Linux seccomp profile: `strict`, `moderate`, `permissive` (not yet enforced)                                      |
+| `sandbox.os.seccompProfile`                            | string   | `moderate`                  | Linux seccomp profile: `strict`, `moderate`, `permissive` (consumed by planned native backend; bwrap ignores it)  |
 | `sandbox.os.seatbeltCustomProfile`                     | string   | -                           | Custom macOS `.sb` profile path                                                                                   |
 | **Gatekeeper**                                         |          |                             |                                                                                                                   |
 | `gatekeeper.enabled`                                   | bool     | `true`                      | Enable response sanitization                                                                                      |

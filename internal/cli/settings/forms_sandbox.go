@@ -16,7 +16,7 @@ func NewOSSandboxForm(cfg *config.Config) *tuicore.FormModel {
 	enabled := &tuicore.Field{
 		Key: "os_sandbox_enabled", Label: "Enabled", Type: tuicore.InputBool,
 		Checked:     cfg.Sandbox.Enabled,
-		Description: "Apply OS-level kernel sandbox (Seatbelt on macOS; Linux: planned, not yet enforced)",
+		Description: "Apply OS-level kernel sandbox (Seatbelt on macOS; bwrap on Linux when bubblewrap installed)",
 	}
 	form.AddField(enabled)
 	isEnabled := func() bool { return enabled.Checked }
@@ -36,7 +36,7 @@ func NewOSSandboxForm(cfg *config.Config) *tuicore.FormModel {
 		Key: "os_sandbox_backend", Label: "  Backend", Type: tuicore.InputSelect,
 		Value:       backend,
 		Options:     []string{"auto", "seatbelt", "bwrap", "native", "none"},
-		Description: "Isolation backend: auto selects best available; bwrap/native planned, not yet implemented",
+		Description: "auto recommended; bwrap requires bubblewrap on Linux; native (Landlock+seccomp) planned",
 		VisibleWhen: isEnabled,
 	})
 
@@ -56,7 +56,7 @@ func NewOSSandboxForm(cfg *config.Config) *tuicore.FormModel {
 		Key: "os_sandbox_network_mode", Label: "  Network Mode", Type: tuicore.InputSelect,
 		Value:       networkMode,
 		Options:     []string{"deny", "allow"},
-		Description: "Network access for sandboxed processes (Linux: not yet enforced)",
+		Description: "Network access for sandboxed processes (Linux bwrap: deny → --unshare-net; allow → host network)",
 		VisibleWhen: isEnabled,
 	})
 
@@ -92,7 +92,7 @@ func NewOSSandboxForm(cfg *config.Config) *tuicore.FormModel {
 		Key: "os_sandbox_seccomp_profile", Label: "  seccomp Profile", Type: tuicore.InputSelect,
 		Value:       seccompProfile,
 		Options:     []string{"strict", "moderate", "permissive"},
-		Description: "Linux only — not yet enforced",
+		Description: "Linux only — consumed by the planned native (Landlock+seccomp) backend; bwrap ignores it",
 		VisibleWhen: isEnabled,
 	})
 

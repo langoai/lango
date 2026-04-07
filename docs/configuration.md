@@ -1335,13 +1335,13 @@ Alerts flow through: EventBus (real-time) → Audit log (persistent) → CLI (`l
 |-----|------|---------|-------------|
 | `sandbox.enabled` | `bool` | `false` | Enable OS-level sandboxing for tool-spawned child processes |
 | `sandbox.failClosed` | `bool` | `false` | Reject tool execution when OS sandbox is unavailable (false = fail-open) |
-| `sandbox.backend` | `string` | `auto` | Isolation backend: `auto`, `seatbelt`, `bwrap` (planned), `native` (planned), `none`. Invalid values rejected at startup |
+| `sandbox.backend` | `string` | `auto` | Isolation backend: `auto`, `seatbelt` (macOS), `bwrap` (Linux, requires bubblewrap binary), `native` (Landlock+seccomp, planned), `none`. Invalid values rejected at startup |
 | `sandbox.workspacePath` | `string` | `""` | Root directory for workspace-relative write access (empty = CWD) |
-| `sandbox.networkMode` | `string` | `deny` | Network access from sandboxed processes: `deny` or `allow` |
-| `sandbox.allowedNetworkIPs` | `[]string` | `[]` | IP addresses permitted for outbound connections (macOS Seatbelt only; Linux isolation not yet enforced) |
+| `sandbox.networkMode` | `string` | `deny` | Network access from sandboxed processes: `deny` or `allow`. On Linux/bwrap: `deny` → `--unshare-net`; `allow` → host network |
+| `sandbox.allowedNetworkIPs` | `[]string` | `[]` | IP addresses permitted for outbound connections (macOS Seatbelt only; ignored on Linux/bwrap which has no AF_INET filter) |
 | `sandbox.allowedWritePaths` | `[]string` | `[]` | Additional paths writable from the sandbox beyond `workspacePath` |
 | `sandbox.timeoutPerTool` | `duration` | `30s` | Maximum duration for a single sandboxed tool execution |
-| `sandbox.os.seccompProfile` | `string` | `moderate` | Seccomp filter profile on Linux: `strict`, `moderate`, or `permissive` (not yet enforced) |
+| `sandbox.os.seccompProfile` | `string` | `moderate` | Seccomp filter profile on Linux: `strict`, `moderate`, or `permissive`. Consumed by the planned native (Landlock+seccomp) backend; bwrap ignores this field |
 | `sandbox.os.seatbeltCustomProfile` | `string` | `""` | Path to a custom `.sb` profile on macOS (overrides generated profile) |
 
 ---

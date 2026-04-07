@@ -8,7 +8,10 @@ import (
 // OSIsolator applies OS-level security restrictions to a subprocess command.
 // It modifies exec.Cmd in place before the caller runs it.
 // On macOS: wraps with sandbox-exec and a generated Seatbelt profile.
-// On Linux: not yet implemented (planned).
+// On Linux: wraps with bubblewrap (bwrap) when the binary is installed
+// (BwrapIsolator). The native Landlock+seccomp backend is not yet
+// implemented; selecting backend=native or relying on the default noop
+// path leaves the command unsandboxed.
 type OSIsolator interface {
 	// Apply configures the given exec.Cmd to run under OS-level isolation.
 	// The command may be wrapped (e.g., sandbox-exec on macOS).
@@ -56,9 +59,19 @@ func (d *disabledIsolator) Available() bool { return false }
 func (d *disabledIsolator) Name() string    { return "disabled" }
 func (d *disabledIsolator) Reason() string  { return "sandbox disabled by configuration" }
 
-// NewOSIsolator returns the best available OS isolator for the current platform.
-// On macOS: SeatbeltIsolator. On Linux: noopIsolator (isolation planned).
-// On unsupported platforms: noopIsolator (Available() returns false).
+// NewOSIsolator returns the legacy "default" isolator for the current
+// platform. It is kept for backwards compatibility with callers that have
+// not yet migrated to the backend registry.
+//
+// On macOS: SeatbeltIsolator.
+// On Linux: noopIsolator pointing to backend=bwrap (the native Landlock+
+// seccomp backend is not yet implemented; bwrap is wired via the registry,
+// not via this function).
+// On unsupported platforms: noopIsolator.
+//
+// New code should use ParseBackendMode + SelectBackend(mode,
+// PlatformBackendCandidates()) instead so that backend selection (auto,
+// seatbelt, bwrap, native, none) is honored.
 func NewOSIsolator() OSIsolator {
 	return newPlatformIsolator()
 }
