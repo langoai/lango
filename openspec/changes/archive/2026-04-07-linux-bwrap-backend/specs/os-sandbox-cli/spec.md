@@ -1,46 +1,4 @@
-## ADDED Requirements
-
-### Requirement: sandbox status command output
-`lango sandbox status` SHALL display: Sandbox Configuration (enabled, fail-mode explanation when enabled and not opted out, backend label, network mode, workspace), Active Isolation (isolator name, available, reason if unavailable), Platform Capabilities (platform, kernel, primitives), and **Backend Availability** (one row per platform candidate with available/unavailable status and reason). The capability formatter SHALL distinguish between `"unknown (probe not yet implemented)"` and `"unavailable (reason)"`.
-
-When `sandbox.enabled=true` and `sandbox.backend=none`, status SHALL display `"Backend: none (explicit opt-out — fail-closed not applied)"` and SHALL NOT print the `Fail-Closed` line, accurately reflecting that the runtime skips fail-closed for this configuration.
-
-#### Scenario: Backend Availability section present
-- **WHEN** `lango sandbox status` runs
-- **THEN** output contains a `Backend Availability:` header followed by one row per platform candidate using `ListBackends(PlatformBackendCandidates())`
-
-#### Scenario: Auto resolved label
-- **WHEN** `sandbox.backend=auto` and seatbelt is selected
-- **THEN** status shows `"Backend: auto (resolved: seatbelt)"`
-
-#### Scenario: backend=none opt-out display
-- **WHEN** `sandbox.enabled=true` and `sandbox.backend=none`
-- **THEN** status shows `"Backend: none (explicit opt-out — fail-closed not applied)"` and omits the Fail-Closed line
-
-#### Scenario: Linux status with noop isolator
-- **WHEN** `lango sandbox status` runs on Linux with no isolation backend
-- **THEN** output shows `Isolator: noop` and the noop's `Reason()` field aggregates each candidate's reason
-
-#### Scenario: macOS status with seatbelt
-- **WHEN** `lango sandbox status` runs on macOS with sandbox-exec available
-- **THEN** output shows `Isolator: seatbelt`, `Available: true`, and `Seatbelt: available (sandbox-exec found)`
-
-#### Scenario: Fail-mode display
-- **WHEN** sandbox is enabled with `failClosed=false` and not opted out
-- **THEN** status shows `Fail-Closed: fail-open (warning + unsandboxed execution)`
-
-#### Scenario: Status shows allowedNetworkIPs warning on Linux
-- **WHEN** `lango sandbox status` is run on Linux with `allowedNetworkIPs` configured
-- **THEN** output SHALL include a warning that `allowedNetworkIPs` is macOS-only
-
-### Requirement: TUI settings descriptions
-The OS Sandbox settings form and menu descriptions SHALL accurately reflect Linux enforcement status. Descriptions SHALL NOT claim Linux Landlock/seccomp enforcement when it is not implemented.
-
-#### Scenario: Form description accuracy
-- **WHEN** user views OS Sandbox settings form
-- **THEN** enabled field description says "Seatbelt on macOS; Linux: planned, not yet enforced"
-- **AND** seccomp profile field description says "Linux only — not yet enforced"
-- **AND** menu description says "OS-level tool isolation (macOS enforced, Linux planned)"
+## MODIFIED Requirements
 
 ### Requirement: sandbox test command honors configured backend
 `lango sandbox test` SHALL accept a `cfgLoader` callback and use `ParseBackendMode(cfg.Sandbox.Backend) + SelectBackend(mode, PlatformBackendCandidates())` instead of `NewOSIsolator()`. When the configured backend is `none`, test SHALL print a message indicating no isolation to test and exit successfully without running smoke tests. When the configured backend is unavailable, test SHALL print the backend name and reason and exit successfully.
@@ -72,6 +30,8 @@ The four smoke test helpers SHALL silence child stdout/stderr via Go-side `io.Di
 #### Scenario: Version string displayed when available
 - **WHEN** the active isolator implements `interface { Version() string }` and returns a non-empty value
 - **THEN** the test command output SHALL contain a `Version: <value>` line
+
+## ADDED Requirements
 
 ### Requirement: sandbox workspace write smoke test
 `lango sandbox test` SHALL include a `runWorkspaceWriteTest` case that creates an `os.MkdirTemp` directory, resolves it through `filepath.EvalSymlinks` (so macOS Seatbelt's realpath matching works), adds the resolved path to a policy's `WritePaths`, and executes `/usr/bin/touch <dir>/probe.txt` under the sandbox. The case SHALL PASS only when the touched file exists after the command completes.
@@ -106,10 +66,3 @@ The network deny test SHALL NOT depend on any external tools (`nc`, `curl`, `bas
 #### Scenario: Network deny test uses no external tools
 - **WHEN** `runNetworkDenyTest` runs in a minimal container without `nc`, `curl`, `bash`, or `/dev/tcp` support
 - **THEN** the test SHALL still execute correctly because it depends only on the lango binary itself
-
-### Requirement: TUI settings backend selection
-The OS Sandbox settings form SHALL include an `os_sandbox_backend` field of type `InputSelect` with options `["auto", "seatbelt", "bwrap", "native", "none"]`. The TUI state-update layer SHALL map this field to `cfg.Sandbox.Backend`.
-
-#### Scenario: Backend select field present
-- **WHEN** the OS Sandbox form is rendered
-- **THEN** it contains a select field keyed `os_sandbox_backend` with the five backend options
