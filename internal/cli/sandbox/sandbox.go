@@ -5,10 +5,14 @@ package sandbox
 import (
 	"context"
 	"fmt"
+	"io"
+	"net"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"runtime"
 	"strings"
+	"time"
 
 	"github.com/spf13/cobra"
 
@@ -26,8 +30,17 @@ func NewSandboxCmd(cfgLoader func() (*config.Config, error)) *cobra.Command {
 
 	cmd.AddCommand(newStatusCmd(cfgLoader))
 	cmd.AddCommand(newTestCmd(cfgLoader))
+	cmd.AddCommand(newProbeNetCmd())
 
 	return cmd
+}
+
+// versioner is an optional interface implemented by isolators that can report
+// a version string (e.g. BwrapIsolator captures `bwrap --version`). The test
+// command type-asserts against this interface so backends without a meaningful
+// version (Seatbelt, noop) simply omit the line.
+type versioner interface {
+	Version() string
 }
 
 // newStatusCmd creates `lango sandbox status`.
@@ -131,7 +144,8 @@ func newTestCmd(cfgLoader func() (*config.Config, error)) *cobra.Command {
 	return &cobra.Command{
 		Use:   "test",
 		Short: "Run OS sandbox smoke tests",
-		Long:  "Verify that the OS-level sandbox can restrict filesystem writes and allow reads.",
+		Long: "Verify that the OS-level sandbox can restrict filesystem writes, allow reads, " +
+			"permit workspace writes, and deny network connections.",
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			w := cmd.OutOrStdout()
 
@@ -151,33 +165,90 @@ func newTestCmd(cfgLoader func() (*config.Config, error)) *cobra.Command {
 				return nil
 			}
 
-			fmt.Fprintf(w, "Using isolator: %s (backend: %s)\n\n", isolator.Name(), info.Mode.String())
+			fmt.Fprintf(w, "Using isolator: %s (backend: %s)\n", isolator.Name(), info.Mode.String())
+			if v, ok := isolator.(versioner); ok && v.Version() != "" {
+				fmt.Fprintf(w, "Version: %s\n", v.Version())
+			}
+			fmt.Fprintln(w)
 
-			// Test 1: verify sandbox blocks writes to a restricted path.
-			fmt.Fprint(w, "Write restriction test ... ")
-			writeOK := runWriteTest(isolator)
-			if writeOK {
-				fmt.Fprintln(w, "PASS (write correctly denied)")
-			} else {
-				fmt.Fprintln(w, "FAIL (write was not denied)")
+			tests := []struct {
+				label  string
+				passOK string
+				failOK string
+				run    func(sandboxos.OSIsolator) bool
+			}{
+				{
+					label:  "Write restriction (deny /etc)",
+					passOK: "PASS (write correctly denied)",
+					failOK: "FAIL (write was not denied)",
+					run:    runWriteTest,
+				},
+				{
+					label:  "Read permission (allow system file)",
+					passOK: "PASS (read succeeded)",
+					failOK: "FAIL (read was denied)",
+					run:    runReadTest,
+				},
+				{
+					label:  "Workspace write (allow tmp dir)",
+					passOK: "PASS (workspace write succeeded)",
+					failOK: "FAIL (workspace write blocked)",
+					run:    runWorkspaceWriteTest,
+				},
+				{
+					label:  "Network deny (loopback unreachable)",
+					passOK: "PASS (connect correctly denied)",
+					failOK: "FAIL (sandboxed child reached host listener)",
+					run:    runNetworkDenyTest,
+				},
 			}
 
-			// Test 2: verify sandbox allows reading system files.
-			fmt.Fprint(w, "Read permission test   ... ")
-			readOK := runReadTest(isolator)
-			if readOK {
-				fmt.Fprintln(w, "PASS (read succeeded)")
-			} else {
-				fmt.Fprintln(w, "FAIL (read was denied)")
+			allOK := true
+			for _, tt := range tests {
+				fmt.Fprintf(w, "%-40s ... ", tt.label)
+				ok := tt.run(isolator)
+				if ok {
+					fmt.Fprintln(w, tt.passOK)
+				} else {
+					fmt.Fprintln(w, tt.failOK)
+					allOK = false
+				}
 			}
 
 			fmt.Fprintln(w)
-			if writeOK && readOK {
+			if allOK {
 				fmt.Fprintln(w, "All tests passed.")
 			} else {
 				fmt.Fprintln(w, "Some tests failed.")
 			}
 
+			return nil
+		},
+	}
+}
+
+// newProbeNetCmd creates the hidden `lango sandbox _probe-net <addr>` helper.
+//
+// It is used by runNetworkDenyTest to perform a sandboxed TCP connect attempt
+// without depending on external tools (nc/curl/bash). The parent test opens an
+// ephemeral loopback listener and re-invokes the lango binary as a sandboxed
+// child to dial that address; if the sandbox blocks the connection (Seatbelt
+// (deny network*) on macOS, --unshare-net on Linux bwrap) the child exits
+// non-zero, which the parent reads as PASS.
+func newProbeNetCmd() *cobra.Command {
+	return &cobra.Command{
+		Use:    "_probe-net <addr>",
+		Hidden: true,
+		Short:  "internal: attempt a TCP connection (used by sandbox test)",
+		Args:   cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			cmd.SilenceUsage = true
+			cmd.SilenceErrors = true
+			conn, err := net.DialTimeout("tcp", args[0], 2*time.Second)
+			if err != nil {
+				return err
+			}
+			_ = conn.Close()
 			return nil
 		},
 	}
@@ -196,10 +267,22 @@ func readOnlyPolicy() sandboxos.Policy {
 	}
 }
 
+// discardOutput silences a command's stdout and stderr without using shell
+// redirection to /dev/null. The parent-side io.Discard avoids opening
+// /dev/null inside the sandbox (which Seatbelt's default-deny would block,
+// causing false negatives in the smoke tests). The child inherits the pipe
+// FDs that exec.Cmd creates for non-*os.File writers, and those FDs are
+// already open before the sandbox takes effect.
+func discardOutput(c *exec.Cmd) {
+	c.Stdout = io.Discard
+	c.Stderr = io.Discard
+}
+
 // runWriteTest attempts to write to a restricted path under sandbox and
 // returns true if the write was correctly blocked.
 func runWriteTest(isolator sandboxos.OSIsolator) bool {
-	c := exec.Command("/bin/sh", "-c", "touch /etc/lango-sandbox-test 2>/dev/null")
+	c := exec.Command("/usr/bin/touch", "/etc/lango-sandbox-test")
+	discardOutput(c)
 	if err := isolator.Apply(context.Background(), c, readOnlyPolicy()); err != nil {
 		return false
 	}
@@ -211,11 +294,95 @@ func runWriteTest(isolator sandboxos.OSIsolator) bool {
 // returns true if the read succeeded.
 func runReadTest(isolator sandboxos.OSIsolator) bool {
 	target := readTestPath()
-	c := exec.Command("/bin/sh", "-c", "cat "+target+" >/dev/null 2>&1")
+	c := exec.Command("/bin/cat", target)
+	discardOutput(c)
 	if err := isolator.Apply(context.Background(), c, readOnlyPolicy()); err != nil {
 		return false
 	}
 	return c.Run() == nil
+}
+
+// runWorkspaceWriteTest attempts to write a file inside a temporary workspace
+// directory that the sandbox policy explicitly allows. Returns true when the
+// write succeeds (allowed paths must remain writable).
+//
+// macOS quirk: os.MkdirTemp returns paths under /var/folders/... but the real
+// path is /private/var/folders/... and Seatbelt resolves subpaths against the
+// real path. We resolve via filepath.EvalSymlinks before passing to the policy.
+func runWorkspaceWriteTest(isolator sandboxos.OSIsolator) bool {
+	work, err := os.MkdirTemp("", "lango-sandbox-ws-*")
+	if err != nil {
+		return false
+	}
+	defer os.RemoveAll(work)
+
+	resolved, err := filepath.EvalSymlinks(work)
+	if err != nil {
+		resolved = work
+	}
+
+	target := filepath.Join(resolved, "probe.txt")
+	c := exec.Command("/usr/bin/touch", target)
+	discardOutput(c)
+	policy := sandboxos.Policy{
+		Filesystem: sandboxos.FilesystemPolicy{
+			ReadOnlyGlobal: true,
+			WritePaths:     []string{resolved, "/tmp"},
+		},
+		Network: sandboxos.NetworkDeny,
+		Process: sandboxos.ProcessPolicy{AllowFork: true},
+	}
+	if err := isolator.Apply(context.Background(), c, policy); err != nil {
+		return false
+	}
+	if err := c.Run(); err != nil {
+		return false
+	}
+	_, err = os.Stat(target)
+	return err == nil
+}
+
+// runNetworkDenyTest verifies that the sandbox blocks outbound TCP connects
+// even to a known-reachable loopback endpoint. The test:
+//  1. opens an ephemeral TCP listener on 127.0.0.1 in the parent process
+//     (so we have a target the host could otherwise reach with certainty);
+//  2. re-invokes the lango binary as a sandboxed child via the hidden
+//     `_probe-net <addr>` subcommand, which calls net.DialTimeout;
+//  3. returns true (PASS) only if the child failed to connect.
+//
+// External tools (nc/curl/bash) are intentionally not used so the test runs
+// in minimal Docker images. The deterministic loopback target ensures any
+// failure is attributable to the sandbox, not to host network conditions.
+func runNetworkDenyTest(isolator sandboxos.OSIsolator) bool {
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		return false
+	}
+	defer ln.Close()
+
+	go func() {
+		for {
+			conn, err := ln.Accept()
+			if err != nil {
+				return
+			}
+			_ = conn.Close()
+		}
+	}()
+
+	target := ln.Addr().String()
+	self, err := os.Executable()
+	if err != nil {
+		return false
+	}
+
+	c := exec.Command(self, "sandbox", "_probe-net", target)
+	discardOutput(c)
+	if err := isolator.Apply(context.Background(), c, readOnlyPolicy()); err != nil {
+		return false
+	}
+	// PASS if the child failed to connect (sandbox blocked it).
+	return c.Run() != nil
 }
 
 // readTestPath returns a readable file path suitable for the current platform.
