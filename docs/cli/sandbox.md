@@ -12,7 +12,7 @@ Inspect sandbox configuration, platform capabilities, and run isolation smoke te
 
 ## lango sandbox status
 
-Show sandbox configuration, active isolation backend, platform capabilities, and backend availability.
+Show sandbox configuration, active isolation backend, platform capabilities, backend availability, and recent sandbox decisions from the audit log.
 
 The output includes:
 
@@ -20,6 +20,7 @@ The output includes:
 - **Active Isolation**: which isolator is running and why (if unavailable)
 - **Platform Capabilities**: kernel-level primitives (Seatbelt, Landlock, seccomp)
 - **Backend Availability**: status of each isolation backend (seatbelt, bwrap, native)
+- **Recent Sandbox Decisions**: the last 10 apply / skip / reject / exclude events from the audit log (graceful — omitted if the audit DB is unavailable)
 
 ```
 lango sandbox status [flags]
@@ -27,7 +28,36 @@ lango sandbox status [flags]
 
 | Flag | Type | Description |
 |------|------|-------------|
+| `--session` | `string` | Filter Recent Sandbox Decisions by session key prefix (default: show global last 10) |
 | `--json` | `bool` | Output results as JSON |
+
+### Recent Sandbox Decisions
+
+Each row shows the timestamp, an 8-character session-key prefix in brackets, the decision verdict, the backend that produced it (or `-` for non-applied verdicts), and the command target. When a `reason` or `pattern` is recorded, it appears in parentheses at the end.
+
+```
+Recent Sandbox Decisions (global, last 10):
+  2026-04-07 15:23:01  [a3f1abcd] applied   bwrap     git status
+  2026-04-07 15:22:55  [a3f1abcd] excluded  -         docker run -it ubuntu (pattern: docker)
+  2026-04-07 15:22:30  [b8c2efgh] skipped   -         go build (no isolator configured)
+  2026-04-07 15:22:00  [--------] applied   seatbelt  knowledge-search-server
+```
+
+The session key column shows `--------` when the audit row has no session key (this happens for MCP server startup events, which are process-level rather than session-bound).
+
+### Excluded commands and the bypass audit
+
+`sandbox.excludedCommands` lets you list command basenames that bypass the sandbox entirely (`git`, `docker`, etc.). Matching is performed against the basename of the user command's first whitespace-separated token, so chained commands like `cd /tmp && git status` do NOT trigger a bypass — only direct invocations like `git status` or `/usr/bin/git push`. Every excluded execution is recorded in the audit log with `decision=excluded` and the matched pattern, and is visible in this Recent Sandbox Decisions section.
+
+### Fail-open warning
+
+When `sandbox.failClosed=false` (default) and the sandbox cannot be applied at runtime, lango proceeds without isolation but prints a one-shot stderr warning the first time a fallback occurs in the process:
+
+```
+lango: WARNING — sandbox fallback active (reason: ...); commands run unsandboxed
+```
+
+The warning fires at most once per process to avoid noise during long-running sessions; the full per-command audit trail is in this `lango sandbox status` section instead.
 
 ## lango sandbox test
 

@@ -1,4 +1,4 @@
-## ADDED Requirements
+## MODIFIED Requirements
 
 ### Requirement: Exec tool sandbox integration
 The exec tool SHALL apply `OSIsolator` to all 3 `exec.Command` call sites (`Run`, `RunWithPTY`, `StartBackground`) after command creation and before process start.
@@ -70,29 +70,6 @@ The skill `Executor` SHALL apply `OSIsolator` to script execution `exec.Command`
 - **WHEN** `executeScript()` is called with a context carrying a session key (via `session.WithSessionKey(ctx, "test")`)
 - **THEN** the published `SandboxDecisionEvent.SessionKey` SHALL equal `"test"`
 
-### Requirement: initOSSandbox uses backend registry
-`initOSSandbox(cfg *config.Config)` SHALL parse `cfg.Sandbox.Backend`, build candidates via `PlatformBackendCandidates()`, and call `SelectBackend(mode, candidates)` instead of `NewOSIsolator()` directly. When `cfg.Sandbox.Enabled=false` OR `mode == BackendNone`, the function SHALL return nil to signal "no sandbox wiring required". Backend validity is enforced by `config.Validate()`; the parse error in this function is therefore unreachable and discarded. When the isolator is unavailable, log messages SHALL include the `Reason()` string, the backend label, and `PlatformCapabilities.Summary()`.
-
-#### Scenario: Sandbox disabled
-- **WHEN** `sandbox.enabled` is false
-- **THEN** `initOSSandbox()` SHALL return nil and no isolator is injected
-
-#### Scenario: backend=none returns nil
-- **WHEN** `cfg.Sandbox.Enabled=true` and `cfg.Sandbox.Backend="none"`
-- **THEN** `initOSSandbox()` returns nil and logs `"OS sandbox disabled via backend=none (explicit opt-out)"`
-
-#### Scenario: Auto selection logged with backend label
-- **WHEN** `initOSSandbox()` selects an available backend via auto mode
-- **THEN** the info log includes both `isolator` (e.g., "seatbelt") and `backend` (e.g., "auto") fields
-
-#### Scenario: Fail-open logging with reason
-- **WHEN** sandbox is enabled but isolator is unavailable with `failClosed=false`
-- **THEN** log includes `reason` field with the isolator's `Reason()` value and `capabilities` field with `Summary()`
-
-#### Scenario: Fail-closed logging with reason
-- **WHEN** sandbox is enabled but isolator is unavailable with `failClosed=true`
-- **THEN** log includes `reason` field with the isolator's `Reason()` value
-
 ### Requirement: supervisor consumes backend registry
 `supervisor.New()` SHALL use `ParseBackendMode + SelectBackend(mode, PlatformBackendCandidates())` to build the exec tool's `OSIsolator` and `FailClosed`. When `mode == BackendNone`, supervisor SHALL skip sandbox wiring entirely (no `OSIsolator`, no `FailClosed=true`) so that exec commands run unsandboxed without rejection.
 
@@ -101,14 +78,6 @@ When wiring the exec tool's policy, supervisor SHALL call `DefaultToolPolicy(wor
 `supervisor.New()` SHALL also set `execConfig.ExcludedCommands` from `cfg.Sandbox.ExcludedCommands` (defensively copied).
 
 `Supervisor` SHALL provide a `SetEventBus(*eventbus.Bus)` method that forwards to the exec tool. `app.go` post-build wiring (B1a) SHALL resolve the supervisor from the resolver and call `SetEventBus(bus)` so SandboxDecisionEvent records flow into audit.
-
-#### Scenario: backend=none skips exec tool sandbox wiring
-- **WHEN** `cfg.Sandbox.Enabled=true`, `cfg.Sandbox.Backend="none"`, `cfg.Sandbox.FailClosed=true`
-- **THEN** `supervisor.New()` does NOT set `execConfig.OSIsolator` or `execConfig.FailClosed`, and exec commands run without rejection
-
-#### Scenario: backend selection drives exec isolator
-- **WHEN** `cfg.Sandbox.Backend="seatbelt"` and Seatbelt is available
-- **THEN** `execConfig.OSIsolator` is the SeatbeltIsolator returned by `SelectBackend`
 
 #### Scenario: AllowedWritePaths appended to exec policy
 - **WHEN** `cfg.Sandbox.AllowedWritePaths = ["/tmp/scratch", "/var/cache/app"]` and the supervisor builds the exec tool
@@ -144,25 +113,3 @@ The skill/MCP wiring SHALL also propagate `cfg.DataRoot` so the underlying execu
 #### Scenario: Event bus propagated to MCP manager
 - **WHEN** `initMCP` is called with a non-nil bus
 - **THEN** `mgr.SetEventBus(bus)` SHALL be called and every newly-connected `ServerConnection` SHALL receive that bus
-
-### Requirement: Config validates sandbox.backend at startup
-`config.Validate()` SHALL call `sandboxos.ParseBackendMode(cfg.Sandbox.Backend)` and append a validation error when the value is not one of `auto`, `seatbelt`, `bwrap`, `native`, or `none`. The error message SHALL list the valid values.
-
-#### Scenario: Typo rejected at startup
-- **WHEN** config sets `sandbox.backend: "seatbeltt"`
-- **THEN** `config.Validate()` returns an error containing `"sandbox.backend"` and `"must be auto, seatbelt, bwrap, native, or none"`
-
-#### Scenario: Empty string accepted (defaults to auto)
-- **WHEN** `sandbox.backend` is empty
-- **THEN** `config.Validate()` does not return an error and the runtime treats it as `auto`
-
-### Requirement: Documentation accuracy
-All code comments, doc comments, README, docs pages, and configuration references SHALL NOT claim Linux seccomp/Landlock enforcement when it is not implemented. Unimplemented features SHALL be marked as "planned" or "not yet enforced".
-
-#### Scenario: Package doc comment
-- **WHEN** reading the `sandbox/os` package documentation
-- **THEN** it states Linux isolation is planned, not that it uses Landlock+seccomp
-
-#### Scenario: Config field comments
-- **WHEN** reading `SandboxConfig` field comments for Linux-specific behavior
-- **THEN** they note Linux isolation is not yet enforced
