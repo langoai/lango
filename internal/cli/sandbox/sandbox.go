@@ -14,21 +14,33 @@ import (
 	"strings"
 	"time"
 
+	"entgo.io/ent/dialect/sql"
 	"github.com/spf13/cobra"
 
+	"github.com/langoai/lango/internal/bootstrap"
 	"github.com/langoai/lango/internal/config"
+	"github.com/langoai/lango/internal/ent/auditlog"
 	sandboxos "github.com/langoai/lango/internal/sandbox/os"
 )
 
+// BootLoader is the optional dependency that opens the encrypted application
+// database so `lango sandbox status` can query the recent SandboxDecision
+// audit trail. It is optional: if nil or if it returns an error (database
+// locked, signed-out, missing), status renders without the Recent Decisions
+// section so the command remains usable as a pure sandbox-layer diagnostic.
+type BootLoader func() (*bootstrap.Result, error)
+
 // NewSandboxCmd creates the top-level `lango sandbox` command.
-func NewSandboxCmd(cfgLoader func() (*config.Config, error)) *cobra.Command {
+// bootLoader is optional and may be nil — when present it enables the
+// "Recent Sandbox Decisions" section in `sandbox status`.
+func NewSandboxCmd(cfgLoader func() (*config.Config, error), bootLoader BootLoader) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "sandbox",
 		Short: "Manage OS-level process sandbox",
 		Long:  "Inspect sandbox configuration, platform capabilities, and run isolation smoke tests.",
 	}
 
-	cmd.AddCommand(newStatusCmd(cfgLoader))
+	cmd.AddCommand(newStatusCmd(cfgLoader, bootLoader))
 	cmd.AddCommand(newTestCmd(cfgLoader))
 	cmd.AddCommand(newProbeNetCmd())
 
@@ -44,8 +56,9 @@ type versioner interface {
 }
 
 // newStatusCmd creates `lango sandbox status`.
-func newStatusCmd(cfgLoader func() (*config.Config, error)) *cobra.Command {
-	return &cobra.Command{
+func newStatusCmd(cfgLoader func() (*config.Config, error), bootLoader BootLoader) *cobra.Command {
+	var sessionPrefix string
+	cmd := &cobra.Command{
 		Use:   "status",
 		Short: "Show sandbox configuration and platform capabilities",
 		RunE: func(cmd *cobra.Command, _ []string) error {
@@ -134,9 +147,89 @@ func newStatusCmd(cfgLoader func() (*config.Config, error)) *cobra.Command {
 				fmt.Fprintln(w, "WARNING: allowedNetworkIPs is macOS-only; Linux isolation is not yet enforced")
 			}
 
+			// Recent Sandbox Decisions (graceful — skip if audit DB unavailable).
+			if bootLoader != nil {
+				renderRecentDecisions(cmd.Context(), w, bootLoader, sessionPrefix)
+			}
+
 			return nil
 		},
 	}
+	cmd.Flags().StringVar(&sessionPrefix, "session", "",
+		"Filter Recent Sandbox Decisions by session key prefix (default: show global)")
+	return cmd
+}
+
+// renderRecentDecisions queries the audit log for the most recent
+// SandboxDecisionEvent records and prints them to w. It is best-effort:
+// any failure (DB locked, signed-out, missing, schema unavailable) is
+// silently ignored so the diagnostic remains usable as a sandbox-layer
+// inspection tool that does not depend on audit availability.
+func renderRecentDecisions(ctx context.Context, w io.Writer, bootLoader BootLoader, sessionPrefix string) {
+	if bootLoader == nil {
+		return
+	}
+	boot, err := bootLoader()
+	if err != nil || boot == nil || boot.DBClient == nil {
+		return
+	}
+	// Do NOT close the DB client here — it is owned by the bootstrap result
+	// and the caller (cobra root) is responsible for the process lifecycle.
+	// Closing here would break subsequent commands that share the same boot.
+
+	q := boot.DBClient.AuditLog.Query().
+		Where(auditlog.ActionEQ(auditlog.ActionSandboxDecision)).
+		Order(auditlog.ByTimestamp(sql.OrderDesc())).
+		Limit(10)
+	if sessionPrefix != "" {
+		q = q.Where(auditlog.SessionKeyHasPrefix(sessionPrefix))
+	}
+	decisions, err := q.All(ctx)
+	if err != nil || len(decisions) == 0 {
+		return
+	}
+
+	title := "Recent Sandbox Decisions (global, last 10):"
+	if sessionPrefix != "" {
+		title = fmt.Sprintf("Recent Sandbox Decisions (session=%s, last 10):", sessionPrefix)
+	}
+	fmt.Fprintln(w)
+	fmt.Fprintln(w, title)
+	for _, d := range decisions {
+		var decision, backend, reason string
+		if v, ok := d.Details["decision"].(string); ok {
+			decision = v
+		}
+		if v, ok := d.Details["backend"].(string); ok {
+			backend = v
+		}
+		if backend == "" {
+			backend = "-"
+		}
+		if v, ok := d.Details["reason"].(string); ok {
+			reason = v
+		}
+		sessShort := truncateSessionKey(d.SessionKey, 8)
+		fmt.Fprintf(w, "  %s  [%s] %-9s %-9s %s",
+			d.Timestamp.Format("2006-01-02 15:04:05"),
+			sessShort, decision, backend, d.Target)
+		if reason != "" {
+			fmt.Fprintf(w, " (%s)", reason)
+		}
+		fmt.Fprintln(w)
+	}
+}
+
+// truncateSessionKey shortens long session keys for display, padding empty
+// keys to a fixed width so columns align.
+func truncateSessionKey(key string, width int) string {
+	if key == "" {
+		return strings.Repeat("-", width)
+	}
+	if len(key) <= width {
+		return key + strings.Repeat(" ", width-len(key))
+	}
+	return key[:width]
 }
 
 // newTestCmd creates `lango sandbox test`.

@@ -562,6 +562,8 @@ func (s *ConfigState) UpdateConfigFromForm(form *FormModel) {
 			s.Current.Sandbox.AllowedNetworkIPs = splitCSV(val)
 		case "os_sandbox_allowed_write_paths":
 			s.Current.Sandbox.AllowedWritePaths = splitCSV(val)
+		case "os_sandbox_excluded_commands":
+			s.Current.Sandbox.ExcludedCommands = splitCSV(val)
 		case "os_sandbox_timeout":
 			if d, err := time.ParseDuration(val); err == nil {
 				s.Current.Sandbox.TimeoutPerTool = d

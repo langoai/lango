@@ -77,6 +77,14 @@ func NewOSSandboxForm(cfg *config.Config) *tuicore.FormModel {
 	})
 
 	form.AddField(&tuicore.Field{
+		Key: "os_sandbox_excluded_commands", Label: "  Excluded Commands", Type: tuicore.InputText,
+		Value:       strings.Join(cfg.Sandbox.ExcludedCommands, ","),
+		Placeholder: "git,docker (comma-separated basenames)",
+		Description: "Command basenames that bypass the sandbox. Excluded commands run UNSANDBOXED and are recorded in audit; use sparingly.",
+		VisibleWhen: isEnabled,
+	})
+
+	form.AddField(&tuicore.Field{
 		Key: "os_sandbox_timeout", Label: "  Timeout Per Tool", Type: tuicore.InputText,
 		Value:       cfg.Sandbox.TimeoutPerTool.String(),
 		Placeholder: "30s",
