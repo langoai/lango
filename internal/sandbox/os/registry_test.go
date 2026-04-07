@@ -227,13 +227,15 @@ func TestSelectBackend_AutoNoCandidatesReason(t *testing.T) {
 }
 
 func TestSelectBackend_AutoAggregatesCandidateReasons(t *testing.T) {
+	// Use fakeIsolator so the test is not coupled to whether bwrap is installed
+	// on the host (which determines what NewBwrapIsolator() reports on Linux).
 	candidates := []BackendCandidate{
-		{Mode: BackendBwrap, Isolator: NewBwrapStub()},
-		{Mode: BackendNative, Isolator: NewNativeStub()},
+		{Mode: BackendBwrap, Isolator: &fakeIsolator{name: "bwrap", reason: "bwrap binary not found"}},
+		{Mode: BackendNative, Isolator: &fakeIsolator{name: "native", reason: "native backend not yet implemented"}},
 	}
 	iso, _ := SelectBackend(BackendAuto, candidates)
 	reason := iso.Reason()
-	assert.Contains(t, reason, "bwrap: bwrap backend not yet implemented")
+	assert.Contains(t, reason, "bwrap: bwrap binary not found")
 	assert.Contains(t, reason, "native: native backend not yet implemented")
 }
 
@@ -246,7 +248,7 @@ func TestSelectBackend_ExplicitNotFoundReason(t *testing.T) {
 func TestSelectBackend_ExplicitPreservesIdentity(t *testing.T) {
 	// When an explicit mode is requested and the candidate exists (even if unavailable),
 	// the returned isolator must be the candidate's isolator, not a noop.
-	stub := NewBwrapStub()
+	stub := &fakeIsolator{name: "bwrap", reason: "stub"}
 	candidates := []BackendCandidate{
 		{Mode: BackendBwrap, Isolator: stub},
 	}
@@ -288,14 +290,21 @@ func TestListBackends_Empty(t *testing.T) {
 	assert.Empty(t, infos)
 }
 
-func TestBwrapStub(t *testing.T) {
-	stub := NewBwrapStub()
-	assert.False(t, stub.Available())
-	assert.Equal(t, "bwrap", stub.Name())
-	assert.Equal(t, "bwrap backend not yet implemented", stub.Reason())
+func TestNewBwrapIsolator_NameAndInterface(t *testing.T) {
+	// Cross-platform contract: NewBwrapIsolator always returns an OSIsolator
+	// whose Name() is "bwrap". On non-Linux it must be unavailable. On Linux
+	// availability depends on whether bubblewrap is installed (covered by
+	// the build-tagged bwrap_linux_test.go).
+	iso := NewBwrapIsolator()
+	assert.Equal(t, "bwrap", iso.Name())
 
-	err := stub.Apply(context.Background(), &exec.Cmd{}, Policy{})
-	assert.ErrorIs(t, err, ErrIsolatorUnavailable)
+	if runtime.GOOS != "linux" {
+		assert.False(t, iso.Available(), "bwrap is Linux-only")
+		assert.Equal(t, "bwrap is Linux-only", iso.Reason())
+
+		err := iso.Apply(context.Background(), &exec.Cmd{}, Policy{})
+		assert.ErrorIs(t, err, ErrIsolatorUnavailable)
+	}
 }
 
 func TestNativeStub(t *testing.T) {

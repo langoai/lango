@@ -146,20 +146,20 @@ func infoFrom(iso OSIsolator, mode BackendMode) BackendInfo {
 }
 
 // PlatformBackendCandidates returns the candidate list for the current platform.
-// macOS: seatbelt, bwrap (stub), native (stub).
-// Linux: bwrap (stub), native (stub).
+// macOS: seatbelt, bwrap (Linux-only stub on darwin), native (stub).
+// Linux: bwrap (real isolator if bubblewrap installed, otherwise unavailable), native (stub).
 // Other: empty (will fallback to noop via SelectBackend).
 func PlatformBackendCandidates() []BackendCandidate {
 	switch runtime.GOOS {
 	case "darwin":
 		return []BackendCandidate{
 			{Mode: BackendSeatbelt, Isolator: NewSeatbeltIsolator()},
-			{Mode: BackendBwrap, Isolator: NewBwrapStub()},
+			{Mode: BackendBwrap, Isolator: NewBwrapIsolator()},
 			{Mode: BackendNative, Isolator: NewNativeStub()},
 		}
 	case "linux":
 		return []BackendCandidate{
-			{Mode: BackendBwrap, Isolator: NewBwrapStub()},
+			{Mode: BackendBwrap, Isolator: NewBwrapIsolator()},
 			{Mode: BackendNative, Isolator: NewNativeStub()},
 		}
 	default:
@@ -168,23 +168,6 @@ func PlatformBackendCandidates() []BackendCandidate {
 }
 
 // --- Stub isolators for planned backends ---
-
-// bwrapStub is a placeholder isolator for the bubblewrap (bwrap) backend.
-type bwrapStub struct{}
-
-// Compile-time interface compliance checks.
-var _ OSIsolator = (*bwrapStub)(nil)
-
-// NewBwrapStub returns a stub isolator for the bwrap backend.
-func NewBwrapStub() OSIsolator { return &bwrapStub{} }
-
-func (b *bwrapStub) Apply(_ context.Context, _ *exec.Cmd, _ Policy) error {
-	return ErrIsolatorUnavailable
-}
-
-func (b *bwrapStub) Available() bool { return false }
-func (b *bwrapStub) Name() string    { return "bwrap" }
-func (b *bwrapStub) Reason() string  { return "bwrap backend not yet implemented" }
 
 // nativeStub is a placeholder isolator for the native kernel sandbox backend.
 type nativeStub struct{}
