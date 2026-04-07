@@ -60,7 +60,11 @@ func New(cfg *config.Config) (*Supervisor, error) {
 			if workDir == "" {
 				workDir, _ = os.Getwd()
 			}
-			execConfig.SandboxPolicy = sandboxos.DefaultToolPolicy(workDir)
+			policy := sandboxos.DefaultToolPolicy(workDir, cfg.DataRoot)
+			if len(cfg.Sandbox.AllowedWritePaths) > 0 {
+				policy.Filesystem.WritePaths = append(policy.Filesystem.WritePaths, cfg.Sandbox.AllowedWritePaths...)
+			}
+			execConfig.SandboxPolicy = policy
 			execConfig.FailClosed = cfg.Sandbox.FailClosed
 
 			if iso.Available() {

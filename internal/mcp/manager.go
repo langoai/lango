@@ -16,6 +16,7 @@ type ServerManager struct {
 	servers    map[string]*ServerConnection
 	isolator   sandboxos.OSIsolator
 	failClosed bool
+	dataRoot   string // Lango control-plane root, forwarded to each connection
 }
 
 // NewServerManager creates a new manager for the given config.
@@ -27,13 +28,15 @@ func NewServerManager(cfg config.MCPConfig) *ServerManager {
 }
 
 // SetOSIsolator sets the OS-level sandbox isolator for all current
-// and future connections.
-func (m *ServerManager) SetOSIsolator(iso sandboxos.OSIsolator) {
+// and future connections. dataRoot is forwarded so each connection's policy
+// denies the lango control-plane to the spawned MCP child.
+func (m *ServerManager) SetOSIsolator(iso sandboxos.OSIsolator, dataRoot string) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.isolator = iso
+	m.dataRoot = dataRoot
 	for _, s := range m.servers {
-		s.SetOSIsolator(iso)
+		s.SetOSIsolator(iso, dataRoot)
 	}
 }
 
@@ -64,7 +67,7 @@ func (m *ServerManager) ConnectAll(ctx context.Context) map[string]error {
 
 		conn := NewServerConnection(name, srvCfg, m.cfg)
 		if m.isolator != nil {
-			conn.SetOSIsolator(m.isolator)
+			conn.SetOSIsolator(m.isolator, m.dataRoot)
 		}
 		conn.SetFailClosed(m.failClosed)
 		m.mu.Lock()

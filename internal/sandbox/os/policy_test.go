@@ -8,31 +8,55 @@ import (
 )
 
 func TestDefaultToolPolicy(t *testing.T) {
-	policy := DefaultToolPolicy("/home/user/project")
+	policy := DefaultToolPolicy("/home/user/project", "/home/user/.lango")
 
 	assert.True(t, policy.Filesystem.ReadOnlyGlobal)
 	assert.Contains(t, policy.Filesystem.WritePaths, "/home/user/project")
 	assert.Contains(t, policy.Filesystem.WritePaths, "/tmp")
-	assert.Empty(t, policy.Filesystem.DenyPaths)
+	// .git is denied as a baseline (was strict-only before).
+	assert.Contains(t, policy.Filesystem.DenyPaths, "/home/user/project/.git")
+	// Control-plane masking: dataRoot is denied so sandboxed children cannot
+	// read or write the agent's own state.
+	assert.Contains(t, policy.Filesystem.DenyPaths, "/home/user/.lango")
 	assert.Equal(t, NetworkDeny, policy.Network)
 	assert.True(t, policy.Process.AllowFork)
 	assert.False(t, policy.Process.AllowSignals)
 }
 
-func TestStrictToolPolicy(t *testing.T) {
-	policy := StrictToolPolicy("/home/user/project")
+func TestDefaultToolPolicy_EmptyDataRoot(t *testing.T) {
+	// Empty dataRoot is allowed (used by isolated unit tests). The .git
+	// baseline deny is still present.
+	policy := DefaultToolPolicy("/home/user/project", "")
 
-	assert.True(t, policy.Filesystem.ReadOnlyGlobal)
-	assert.Contains(t, policy.Filesystem.WritePaths, "/home/user/project")
 	assert.Contains(t, policy.Filesystem.DenyPaths, "/home/user/project/.git")
-	assert.Equal(t, NetworkDeny, policy.Network)
+	assert.NotContains(t, policy.Filesystem.DenyPaths, "/home/user/.lango")
+	assert.Len(t, policy.Filesystem.DenyPaths, 1)
+}
+
+func TestStrictToolPolicy(t *testing.T) {
+	// StrictToolPolicy is currently identical to DefaultToolPolicy — kept as a
+	// separate symbol so future strict-only options can branch without another
+	// signature migration.
+	policy := StrictToolPolicy("/home/user/project", "/home/user/.lango")
+	defaultPolicy := DefaultToolPolicy("/home/user/project", "/home/user/.lango")
+	assert.Equal(t, defaultPolicy, policy)
 }
 
 func TestMCPServerPolicy(t *testing.T) {
-	policy := MCPServerPolicy()
+	policy := MCPServerPolicy("/home/user/.lango")
 
 	assert.True(t, policy.Filesystem.ReadOnlyGlobal)
 	assert.Contains(t, policy.Filesystem.WritePaths, "/tmp")
+	// MCP server children are also blocked from reading the lango control-plane.
+	assert.Contains(t, policy.Filesystem.DenyPaths, "/home/user/.lango")
+	assert.Equal(t, NetworkAllow, policy.Network)
+}
+
+func TestMCPServerPolicy_EmptyDataRoot(t *testing.T) {
+	policy := MCPServerPolicy("")
+
+	assert.True(t, policy.Filesystem.ReadOnlyGlobal)
+	assert.Empty(t, policy.Filesystem.DenyPaths)
 	assert.Equal(t, NetworkAllow, policy.Network)
 }
 
@@ -46,7 +70,7 @@ func TestGenerateSeatbeltProfile(t *testing.T) {
 	}{
 		{
 			give:       "default policy allows global read and denies network",
-			givePolicy: DefaultToolPolicy("/tmp/work"),
+			givePolicy: DefaultToolPolicy("/tmp/work", ""),
 			wantContains: []string{
 				"(allow file-read*)",
 				`(allow file-write* (subpath "/tmp/work"))`,
@@ -56,10 +80,17 @@ func TestGenerateSeatbeltProfile(t *testing.T) {
 			},
 		},
 		{
-			give:       "strict policy denies .git writes",
-			givePolicy: StrictToolPolicy("/tmp/work"),
+			give:       "default policy denies .git writes",
+			givePolicy: DefaultToolPolicy("/tmp/work", ""),
 			wantContains: []string{
 				`(deny file-write* (subpath "/tmp/work/.git"))`,
+			},
+		},
+		{
+			give:       "default policy denies dataRoot when provided",
+			givePolicy: DefaultToolPolicy("/tmp/work", "/home/user/.lango"),
+			wantContains: []string{
+				`(deny file-write* (subpath "/home/user/.lango"))`,
 			},
 		},
 		{

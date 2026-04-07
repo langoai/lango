@@ -369,7 +369,7 @@ func TestServerConnection_FailClosed_ApplyError_Stdio(t *testing.T) {
 		config.MCPConfig{},
 	)
 	conn.SetFailClosed(true)
-	conn.SetOSIsolator(&mockIsolator{err: errors.New("landlock unsupported")})
+	conn.SetOSIsolator(&mockIsolator{err: errors.New("landlock unsupported")}, "")
 
 	_, err := conn.createTransport()
 	require.Error(t, err)
@@ -385,7 +385,7 @@ func TestServerConnection_FailOpen_ApplyError(t *testing.T) {
 		config.MCPServerConfig{Transport: "stdio", Command: "echo"},
 		config.MCPConfig{},
 	)
-	conn.SetOSIsolator(&mockIsolator{err: errors.New("not supported")})
+	conn.SetOSIsolator(&mockIsolator{err: errors.New("not supported")}, "")
 
 	transport, err := conn.createTransport()
 	assert.NoError(t, err)

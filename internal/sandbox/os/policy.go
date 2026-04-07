@@ -58,13 +58,27 @@ type Policy struct {
 }
 
 // DefaultToolPolicy returns the standard sandbox policy for local tool execution.
-// Read-global, write-workspace+/tmp, no network. Matches Claude Code's approach.
-func DefaultToolPolicy(workDir string) Policy {
+// Read-global, write-workspace+/tmp, no network. .git inside the workspace and
+// the entire lango control-plane (dataRoot, e.g. ~/.lango) are denied so that
+// sandboxed children cannot read or write the agent's own state, secrets,
+// session database, skills directory, or other internal data.
+//
+// Pass an empty dataRoot to skip the control-plane mask (used in unit tests
+// that probe the policy in isolation).
+func DefaultToolPolicy(workDir, dataRoot string) Policy {
 	workDir, _ = filepath.Abs(workDir)
+	denyPaths := []string{filepath.Join(workDir, ".git")}
+	if dataRoot != "" {
+		abs, err := filepath.Abs(dataRoot)
+		if err == nil {
+			denyPaths = append(denyPaths, abs)
+		}
+	}
 	return Policy{
 		Filesystem: FilesystemPolicy{
 			ReadOnlyGlobal: true,
 			WritePaths:     []string{workDir, "/tmp"},
+			DenyPaths:      denyPaths,
 		},
 		Network: NetworkDeny,
 		Process: ProcessPolicy{
@@ -74,31 +88,34 @@ func DefaultToolPolicy(workDir string) Policy {
 	}
 }
 
-// StrictToolPolicy returns a maximally restrictive policy.
-// .git read-only, no network. Matches Codex CLI approach.
-func StrictToolPolicy(workDir string) Policy {
-	workDir, _ = filepath.Abs(workDir)
-	return Policy{
-		Filesystem: FilesystemPolicy{
-			ReadOnlyGlobal: true,
-			WritePaths:     []string{workDir, "/tmp"},
-			DenyPaths:      []string{filepath.Join(workDir, ".git")},
-		},
-		Network: NetworkDeny,
-		Process: ProcessPolicy{
-			AllowFork:    true,
-			AllowSignals: false,
-		},
-	}
+// StrictToolPolicy returns a maximally restrictive policy. Currently identical
+// to DefaultToolPolicy because .git denial and control-plane masking are now
+// part of the baseline. The function is preserved as a separate symbol so
+// callers (and future strict-only options) can branch later without another
+// signature migration.
+func StrictToolPolicy(workDir, dataRoot string) Policy {
+	return DefaultToolPolicy(workDir, dataRoot)
 }
 
 // MCPServerPolicy returns a policy for MCP stdio server processes.
 // Read-global, write-/tmp only, network allowed (MCP servers need network).
-func MCPServerPolicy() Policy {
+// The lango control-plane (dataRoot) is denied so that misbehaving MCP server
+// child processes cannot read or write lango's internal state.
+//
+// Pass an empty dataRoot to skip the control-plane mask (used in unit tests).
+func MCPServerPolicy(dataRoot string) Policy {
+	var denyPaths []string
+	if dataRoot != "" {
+		abs, err := filepath.Abs(dataRoot)
+		if err == nil {
+			denyPaths = []string{abs}
+		}
+	}
 	return Policy{
 		Filesystem: FilesystemPolicy{
 			ReadOnlyGlobal: true,
 			WritePaths:     []string{"/tmp"},
+			DenyPaths:      denyPaths,
 		},
 		Network: NetworkAllow,
 		Process: ProcessPolicy{

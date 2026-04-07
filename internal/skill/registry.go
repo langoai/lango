@@ -32,8 +32,9 @@ func NewRegistry(store SkillStore, baseTools []*agent.Tool, logger *zap.SugaredL
 }
 
 // SetOSIsolator configures the OS-level sandbox for the skill executor.
-func (r *Registry) SetOSIsolator(iso sandboxos.OSIsolator, workspacePath string) {
-	r.executor.SetOSIsolator(iso, workspacePath)
+// dataRoot is forwarded so the executor's policy denies the lango control-plane.
+func (r *Registry) SetOSIsolator(iso sandboxos.OSIsolator, workspacePath, dataRoot string) {
+	r.executor.SetOSIsolator(iso, workspacePath, dataRoot)
 }
 
 // SetFailClosed controls whether skill script execution is blocked when

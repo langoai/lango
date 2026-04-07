@@ -39,7 +39,7 @@ func initMCP(cfg *config.Config) *mcpComponents {
 	// Inject OS-level sandbox if enabled.
 	if iso := initOSSandbox(cfg); iso != nil {
 		if iso.Available() {
-			mgr.SetOSIsolator(iso)
+			mgr.SetOSIsolator(iso, cfg.DataRoot)
 		}
 		mgr.SetFailClosed(cfg.Sandbox.FailClosed)
 	}

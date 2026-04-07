@@ -226,7 +226,7 @@ func initSkills(cfg *config.Config, baseTools []*agent.Tool) *skill.Registry {
 			if workDir == "" {
 				workDir, _ = os.Getwd()
 			}
-			registry.SetOSIsolator(iso, workDir)
+			registry.SetOSIsolator(iso, workDir, cfg.DataRoot)
 		}
 		registry.SetFailClosed(cfg.Sandbox.FailClosed)
 	}

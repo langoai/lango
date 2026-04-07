@@ -80,6 +80,7 @@ type ServerConnection struct {
 
 	isolator   sandboxos.OSIsolator
 	failClosed bool
+	dataRoot   string // Lango control-plane root, masked from sandboxed MCP child
 
 	stopCh chan struct{}
 }
@@ -99,10 +100,13 @@ func NewServerConnection(name string, cfg config.MCPServerConfig, global config.
 func (sc *ServerConnection) Name() string { return sc.name }
 
 // SetOSIsolator sets the OS-level sandbox isolator for this connection.
-func (sc *ServerConnection) SetOSIsolator(iso sandboxos.OSIsolator) {
+// dataRoot is recorded so the policy applied at transport creation time can
+// deny the lango control-plane to the spawned MCP server child process.
+func (sc *ServerConnection) SetOSIsolator(iso sandboxos.OSIsolator, dataRoot string) {
 	sc.mu.Lock()
 	defer sc.mu.Unlock()
 	sc.isolator = iso
+	sc.dataRoot = dataRoot
 }
 
 // SetFailClosed sets whether this connection blocks stdio transport
@@ -317,7 +321,7 @@ func (sc *ServerConnection) createTransport() (sdkmcp.Transport, error) {
 			return nil, fmt.Errorf("%w: no OS isolator configured for MCP server %q", sandboxos.ErrSandboxRequired, sc.name)
 		}
 		if sc.isolator != nil {
-			policy := sandboxos.MCPServerPolicy()
+			policy := sandboxos.MCPServerPolicy(sc.dataRoot)
 			if err := sc.isolator.Apply(context.Background(), cmd, policy); err != nil {
 				if sc.failClosed {
 					return nil, fmt.Errorf("%w: MCP server %q: %v", sandboxos.ErrSandboxRequired, sc.name, err)

@@ -29,6 +29,7 @@ type Executor struct {
 	logger        *zap.SugaredLogger
 	isolator      sandboxos.OSIsolator // OS-level sandbox (nil = disabled)
 	workspacePath string               // Workspace root for sandbox write policy
+	dataRoot      string               // Lango control-plane root, masked from sandboxed children
 	failClosed    bool                 // reject execution when sandbox unavailable
 }
 
@@ -39,10 +40,13 @@ func NewExecutor(logger *zap.SugaredLogger) *Executor {
 
 // SetOSIsolator configures the OS-level sandbox for script execution.
 // When set, skill scripts run under kernel-level isolation (Seatbelt on macOS;
-// Linux isolation planned). The workspacePath defines the writable directory.
-func (e *Executor) SetOSIsolator(iso sandboxos.OSIsolator, workspacePath string) {
+// bwrap on Linux when bubblewrap is installed). The workspacePath defines the
+// writable directory; dataRoot is added to the policy's DenyPaths so script
+// children cannot read or write the lango control-plane.
+func (e *Executor) SetOSIsolator(iso sandboxos.OSIsolator, workspacePath, dataRoot string) {
 	e.isolator = iso
 	e.workspacePath = workspacePath
+	e.dataRoot = dataRoot
 }
 
 // SetFailClosed controls whether the executor blocks script execution when
@@ -158,7 +162,7 @@ func (e *Executor) executeScript(ctx context.Context, skill SkillEntry) (interfa
 	cmd.Stderr = &stderr
 
 	if e.isolator != nil {
-		policy := sandboxos.DefaultToolPolicy(e.workspacePath)
+		policy := sandboxos.DefaultToolPolicy(e.workspacePath, e.dataRoot)
 		if applyErr := e.isolator.Apply(ctx, cmd, policy); applyErr != nil {
 			if e.failClosed {
 				return nil, fmt.Errorf("%w: %w", sandboxos.ErrSandboxRequired, applyErr)

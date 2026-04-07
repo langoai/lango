@@ -386,7 +386,7 @@ func TestSetOSIsolator(t *testing.T) {
 	executor := newTestExecutor(t)
 	iso := &mockIsolator{available: true}
 
-	executor.SetOSIsolator(iso, "/tmp/workspace")
+	executor.SetOSIsolator(iso, "/tmp/workspace", "")
 
 	assert.Equal(t, iso, executor.isolator)
 	assert.Equal(t, "/tmp/workspace", executor.workspacePath)
@@ -402,7 +402,7 @@ func TestExecute_Script_WithIsolator(t *testing.T) {
 
 		executor := newTestExecutor(t)
 		iso := &mockIsolator{available: true}
-		executor.SetOSIsolator(iso, "/tmp/workspace")
+		executor.SetOSIsolator(iso, "/tmp/workspace", "")
 
 		sk := SkillEntry{
 			Name: "sandbox-echo",
@@ -429,7 +429,7 @@ func TestExecute_Script_WithIsolator(t *testing.T) {
 			available: true,
 			applyErr:  fmt.Errorf("sandbox apply: %w", sandboxos.ErrIsolatorUnavailable),
 		}
-		executor.SetOSIsolator(iso, "/tmp/workspace")
+		executor.SetOSIsolator(iso, "/tmp/workspace", "")
 
 		sk := SkillEntry{
 			Name: "fallback-echo",
@@ -474,7 +474,7 @@ func TestExecute_Script_WithIsolator(t *testing.T) {
 
 		executor := newTestExecutor(t)
 		iso := &mockIsolator{available: true}
-		executor.SetOSIsolator(iso, "/tmp/workspace")
+		executor.SetOSIsolator(iso, "/tmp/workspace", "")
 
 		sk := SkillEntry{
 			Name: "tmpl-with-sandbox",
@@ -519,7 +519,7 @@ func TestExecuteScript_FailClosed_ApplyError(t *testing.T) {
 
 	executor := newTestExecutor(t)
 	executor.SetFailClosed(true)
-	executor.SetOSIsolator(&mockIsolator{applyErr: errors.New("landlock unavailable")}, t.TempDir())
+	executor.SetOSIsolator(&mockIsolator{applyErr: errors.New("landlock unavailable")}, t.TempDir(), "")
 
 	sk := SkillEntry{
 		Name: "echo-test",

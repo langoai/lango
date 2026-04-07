@@ -4,6 +4,7 @@ package os
 
 import (
 	"context"
+	"os"
 	"os/exec"
 	"path/filepath"
 	"testing"
@@ -39,10 +40,14 @@ func TestBwrapIsolator_ApplyWrapsCommand(t *testing.T) {
 	require.True(t, iso.Available(), "bwrap was found via LookPath but isolator reports unavailable")
 
 	work := t.TempDir()
+	// DefaultToolPolicy denies <work>/.git as a baseline; compileBwrapArgs
+	// requires deny paths to exist as directories.
+	require.NoError(t, os.Mkdir(filepath.Join(work, ".git"), 0o755))
+
 	cmd := exec.Command("/bin/echo", "hello")
 	originalArgs := append([]string{}, cmd.Args...)
 
-	err := iso.Apply(context.Background(), cmd, DefaultToolPolicy(work))
+	err := iso.Apply(context.Background(), cmd, DefaultToolPolicy(work, ""))
 	require.NoError(t, err)
 
 	bwrap := iso.(*BwrapIsolator)
