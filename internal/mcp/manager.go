@@ -11,15 +11,11 @@ import (
 
 // ServerManager manages multiple MCP server connections.
 type ServerManager struct {
-	cfg      config.MCPConfig
-	mu       sync.RWMutex
-	servers  map[string]*ServerConnection
-	isolator sandboxos.OSIsolator // OS-level sandbox for stdio server processes (nil = disabled)
-}
-
-// SetOSIsolator configures OS-level sandbox for all managed stdio server connections.
-func (m *ServerManager) SetOSIsolator(iso sandboxos.OSIsolator) {
-	m.isolator = iso
+	cfg        config.MCPConfig
+	mu         sync.RWMutex
+	servers    map[string]*ServerConnection
+	isolator   sandboxos.OSIsolator
+	failClosed bool
 }
 
 // NewServerManager creates a new manager for the given config.
@@ -27,6 +23,29 @@ func NewServerManager(cfg config.MCPConfig) *ServerManager {
 	return &ServerManager{
 		cfg:     cfg,
 		servers: make(map[string]*ServerConnection),
+	}
+}
+
+// SetOSIsolator sets the OS-level sandbox isolator for all current
+// and future connections.
+func (m *ServerManager) SetOSIsolator(iso sandboxos.OSIsolator) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.isolator = iso
+	for _, s := range m.servers {
+		s.SetOSIsolator(iso)
+	}
+}
+
+// SetFailClosed enables or disables fail-closed semantics for all current
+// and future connections. When true, stdio MCP transport creation is blocked
+// if no OS sandbox can be applied.
+func (m *ServerManager) SetFailClosed(fc bool) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.failClosed = fc
+	for _, s := range m.servers {
+		s.SetFailClosed(fc)
 	}
 }
 
@@ -47,6 +66,7 @@ func (m *ServerManager) ConnectAll(ctx context.Context) map[string]error {
 		if m.isolator != nil {
 			conn.SetOSIsolator(m.isolator)
 		}
+		conn.SetFailClosed(m.failClosed)
 		m.mu.Lock()
 		m.servers[name] = conn
 		m.mu.Unlock()

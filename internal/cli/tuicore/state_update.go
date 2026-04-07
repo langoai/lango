@@ -552,6 +552,8 @@ func (s *ConfigState) UpdateConfigFromForm(form *FormModel) {
 			s.Current.Sandbox.Enabled = f.Checked
 		case "os_sandbox_fail_closed":
 			s.Current.Sandbox.FailClosed = f.Checked
+		case "os_sandbox_backend":
+			s.Current.Sandbox.Backend = val
 		case "os_sandbox_workspace_path":
 			s.Current.Sandbox.WorkspacePath = val
 		case "os_sandbox_network_mode":

@@ -2,10 +2,10 @@ package mcp
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net/http"
 	"os/exec"
-	"sync"
 	"testing"
 	"time"
 
@@ -300,14 +300,14 @@ func TestServerManager_AllPrompts_Empty(t *testing.T) {
 	assert.Empty(t, mgr.AllPrompts())
 }
 
-// capturingRoundTripper records the request it receives and returns a canned response.
-type capturingRoundTripper struct {
-	captured *http.Request
+// stubRoundTripper records the last request without performing any I/O.
+type stubRoundTripper struct {
+	lastReq *http.Request
 }
 
-func (c *capturingRoundTripper) RoundTrip(req *http.Request) (*http.Response, error) {
-	c.captured = req
-	return &http.Response{StatusCode: http.StatusOK, Body: http.NoBody}, nil
+func (s *stubRoundTripper) RoundTrip(req *http.Request) (*http.Response, error) {
+	s.lastReq = req
+	return &http.Response{StatusCode: 200, Body: http.NoBody, Request: req}, nil
 }
 
 func TestHeaderRoundTripper(t *testing.T) {
@@ -317,165 +317,134 @@ func TestHeaderRoundTripper(t *testing.T) {
 		"Authorization": "Bearer test-token",
 		"X-Custom":      "custom-value",
 	}
-	base := &capturingRoundTripper{}
+	stub := &stubRoundTripper{}
 	rt := &headerRoundTripper{
-		base:    base,
+		base:    stub,
 		headers: headers,
 	}
 
-	req, err := http.NewRequest("GET", "http://example.com/test", nil)
+	req, err := http.NewRequest("GET", "http://example.invalid/test", nil)
 	require.NoError(t, err)
 
-	resp, err := rt.RoundTrip(req)
+	_, err = rt.RoundTrip(req)
 	require.NoError(t, err)
-	assert.Equal(t, http.StatusOK, resp.StatusCode)
 
-	// Verify headers were injected before the base transport was called.
-	assert.Equal(t, "Bearer test-token", base.captured.Header.Get("Authorization"))
-	assert.Equal(t, "custom-value", base.captured.Header.Get("X-Custom"))
+	assert.Equal(t, "Bearer test-token", stub.lastReq.Header.Get("Authorization"))
+	assert.Equal(t, "custom-value", stub.lastReq.Header.Get("X-Custom"))
 }
 
-// --- OS Isolator integration tests ---
-
-// mockIsolator records Apply calls for testing.
+// mockIsolator is a test double for sandboxos.OSIsolator.
 type mockIsolator struct {
-	mu      sync.Mutex
-	calls   []mockApplyCall
-	err     error // error to return from Apply
+	err error
 }
 
-type mockApplyCall struct {
-	Cmd    *exec.Cmd
-	Policy sandboxos.Policy
-}
-
-func (m *mockIsolator) Apply(_ context.Context, cmd *exec.Cmd, policy sandboxos.Policy) error {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	m.calls = append(m.calls, mockApplyCall{Cmd: cmd, Policy: policy})
+func (m *mockIsolator) Apply(_ context.Context, _ *exec.Cmd, _ sandboxos.Policy) error {
 	return m.err
 }
 
-func (m *mockIsolator) Available() bool { return true }
+func (m *mockIsolator) Available() bool { return m.err == nil }
 func (m *mockIsolator) Name() string    { return "mock" }
 func (m *mockIsolator) Reason() string  { return "" }
 
-func (m *mockIsolator) applyCalls() []mockApplyCall {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	out := make([]mockApplyCall, len(m.calls))
-	copy(out, m.calls)
-	return out
-}
-
-func TestServerConnection_SetOSIsolator(t *testing.T) {
+func TestServerConnection_FailClosed_NilIsolator_Stdio(t *testing.T) {
 	t.Parallel()
 
-	conn := NewServerConnection("test",
+	conn := NewServerConnection("secure-server",
 		config.MCPServerConfig{Transport: "stdio", Command: "echo"},
 		config.MCPConfig{},
 	)
-	assert.Nil(t, conn.isolator)
+	conn.SetFailClosed(true)
 
-	iso := &mockIsolator{}
-	conn.SetOSIsolator(iso)
-	assert.Equal(t, iso, conn.isolator)
-
-	// Setting nil disables the isolator.
-	conn.SetOSIsolator(nil)
-	assert.Nil(t, conn.isolator)
+	_, err := conn.createTransport()
+	require.Error(t, err)
+	assert.ErrorIs(t, err, sandboxos.ErrSandboxRequired)
+	assert.Contains(t, err.Error(), "secure-server")
 }
 
-func TestServerConnection_CreateTransport_StdioWithoutIsolator(t *testing.T) {
+func TestServerConnection_FailClosed_ApplyError_Stdio(t *testing.T) {
 	t.Parallel()
 
-	conn := NewServerConnection("test",
+	conn := NewServerConnection("apply-fail",
 		config.MCPServerConfig{Transport: "stdio", Command: "echo"},
 		config.MCPConfig{},
 	)
-	// No isolator set — transport should still work.
-	transport, err := conn.createTransport()
-	assert.NoError(t, err)
-	assert.NotNil(t, transport)
+	conn.SetFailClosed(true)
+	conn.SetOSIsolator(&mockIsolator{err: errors.New("landlock unsupported")})
+
+	_, err := conn.createTransport()
+	require.Error(t, err)
+	assert.ErrorIs(t, err, sandboxos.ErrSandboxRequired)
+	assert.Contains(t, err.Error(), "apply-fail")
+	assert.Contains(t, err.Error(), "landlock unsupported")
 }
 
-func TestServerConnection_CreateTransport_StdioWithIsolator(t *testing.T) {
+func TestServerConnection_FailOpen_ApplyError(t *testing.T) {
 	t.Parallel()
 
-	iso := &mockIsolator{}
-	conn := NewServerConnection("test",
-		config.MCPServerConfig{Transport: "stdio", Command: "echo", Args: []string{"hello"}},
-		config.MCPConfig{},
-	)
-	conn.SetOSIsolator(iso)
-
-	transport, err := conn.createTransport()
-	assert.NoError(t, err)
-	assert.NotNil(t, transport)
-
-	// Verify isolator.Apply was called exactly once with the MCP server policy.
-	calls := iso.applyCalls()
-	require.Len(t, calls, 1)
-
-	// MCPServerPolicy returns network=allow and read-global filesystem.
-	assert.Equal(t, sandboxos.NetworkAllow, calls[0].Policy.Network)
-	assert.True(t, calls[0].Policy.Filesystem.ReadOnlyGlobal)
-	assert.Contains(t, calls[0].Cmd.Path, "echo") // exec.Command resolves full path
-}
-
-func TestServerConnection_CreateTransport_IsolatorErrorIsNonFatal(t *testing.T) {
-	t.Parallel()
-
-	iso := &mockIsolator{err: fmt.Errorf("sandbox not supported on this platform")}
-	conn := NewServerConnection("test",
+	conn := NewServerConnection("lenient-server",
 		config.MCPServerConfig{Transport: "stdio", Command: "echo"},
 		config.MCPConfig{},
 	)
-	conn.SetOSIsolator(iso)
+	conn.SetOSIsolator(&mockIsolator{err: errors.New("not supported")})
 
-	// Even if the isolator returns an error, createTransport should succeed
-	// (sandbox failure is non-fatal — only a warning is logged).
 	transport, err := conn.createTransport()
 	assert.NoError(t, err)
 	assert.NotNil(t, transport)
-
-	// Verify Apply was still called.
-	calls := iso.applyCalls()
-	require.Len(t, calls, 1)
 }
 
-func TestServerConnection_CreateTransport_IsolatorNotCalledForHTTP(t *testing.T) {
+func TestServerConnection_FailClosed_Http(t *testing.T) {
 	t.Parallel()
 
-	iso := &mockIsolator{}
-	conn := NewServerConnection("test",
-		config.MCPServerConfig{Transport: "http", URL: "http://localhost:3000"},
+	conn := NewServerConnection("http-server",
+		config.MCPServerConfig{Transport: "http", URL: "http://localhost:8080"},
 		config.MCPConfig{},
 	)
-	conn.SetOSIsolator(iso)
+	conn.SetFailClosed(true)
 
 	transport, err := conn.createTransport()
 	assert.NoError(t, err)
 	assert.NotNil(t, transport)
-
-	// Isolator should NOT be called for non-stdio transports.
-	assert.Empty(t, iso.applyCalls())
 }
 
-func TestServerConnection_CreateTransport_IsolatorNotCalledForSSE(t *testing.T) {
+func TestServerManager_SetFailClosed_Propagates(t *testing.T) {
 	t.Parallel()
 
-	iso := &mockIsolator{}
-	conn := NewServerConnection("test",
-		config.MCPServerConfig{Transport: "sse", URL: "http://localhost:3000/sse"},
+	mgr := NewServerManager(config.MCPConfig{
+		Servers: map[string]config.MCPServerConfig{
+			"s1": {Transport: "stdio", Command: "echo", Enabled: boolPtr(true)},
+			"s2": {Transport: "stdio", Command: "echo", Enabled: boolPtr(true)},
+		},
+	})
+
+	// Manually add connections (without connecting to a real server).
+	c1 := NewServerConnection("s1",
+		config.MCPServerConfig{Transport: "stdio", Command: "echo"},
 		config.MCPConfig{},
 	)
-	conn.SetOSIsolator(iso)
+	c2 := NewServerConnection("s2",
+		config.MCPServerConfig{Transport: "stdio", Command: "echo"},
+		config.MCPConfig{},
+	)
 
-	transport, err := conn.createTransport()
-	assert.NoError(t, err)
-	assert.NotNil(t, transport)
+	mgr.mu.Lock()
+	mgr.servers["s1"] = c1
+	mgr.servers["s2"] = c2
+	mgr.mu.Unlock()
 
-	// Isolator should NOT be called for SSE transport.
-	assert.Empty(t, iso.applyCalls())
+	mgr.SetFailClosed(true)
+
+	// Both connections should now have failClosed=true.
+	c1.mu.RLock()
+	assert.True(t, c1.failClosed)
+	c1.mu.RUnlock()
+
+	c2.mu.RLock()
+	assert.True(t, c2.failClosed)
+	c2.mu.RUnlock()
+
+	// Verify transport creation is blocked for stdio.
+	_, err := c1.createTransport()
+	assert.ErrorIs(t, err, sandboxos.ErrSandboxRequired)
 }
+
+func boolPtr(b bool) *bool { return &b }

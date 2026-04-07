@@ -78,9 +78,10 @@ type ServerConnection struct {
 	resources []DiscoveredResource
 	prompts   []DiscoveredPrompt
 
-	stopCh chan struct{}
+	isolator   sandboxos.OSIsolator
+	failClosed bool
 
-	isolator sandboxos.OSIsolator // OS-level sandbox for stdio server processes (nil = disabled)
+	stopCh chan struct{}
 }
 
 // NewServerConnection creates a new server connection manager.
@@ -97,10 +98,19 @@ func NewServerConnection(name string, cfg config.MCPServerConfig, global config.
 // Name returns the server name.
 func (sc *ServerConnection) Name() string { return sc.name }
 
-// SetOSIsolator configures an OS-level sandbox that will be applied to
-// stdio server processes before they start. Pass nil to disable.
+// SetOSIsolator sets the OS-level sandbox isolator for this connection.
 func (sc *ServerConnection) SetOSIsolator(iso sandboxos.OSIsolator) {
+	sc.mu.Lock()
+	defer sc.mu.Unlock()
 	sc.isolator = iso
+}
+
+// SetFailClosed sets whether this connection blocks stdio transport
+// creation when no sandbox is available.
+func (sc *ServerConnection) SetFailClosed(fc bool) {
+	sc.mu.Lock()
+	defer sc.mu.Unlock()
+	sc.failClosed = fc
 }
 
 // State returns the current connection state.
@@ -302,13 +312,21 @@ func (sc *ServerConnection) createTransport() (sdkmcp.Transport, error) {
 		if len(sc.cfg.Env) > 0 {
 			cmd.Env = BuildEnvSlice(sc.cfg.Env)
 		}
+
+		if sc.isolator == nil && sc.failClosed {
+			return nil, fmt.Errorf("%w: no OS isolator configured for MCP server %q", sandboxos.ErrSandboxRequired, sc.name)
+		}
 		if sc.isolator != nil {
 			policy := sandboxos.MCPServerPolicy()
 			if err := sc.isolator.Apply(context.Background(), cmd, policy); err != nil {
+				if sc.failClosed {
+					return nil, fmt.Errorf("%w: MCP server %q: %v", sandboxos.ErrSandboxRequired, sc.name, err)
+				}
 				log := logging.App()
 				log.Warnw("MCP server OS sandbox unavailable", "server", sc.name, "error", err)
 			}
 		}
+
 		return &sdkmcp.CommandTransport{Command: cmd}, nil
 
 	case "http":

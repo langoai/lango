@@ -47,21 +47,36 @@ func New(cfg *config.Config) (*Supervisor, error) {
 
 	// Inject OS-level sandbox if enabled.
 	if cfg.Sandbox.Enabled {
-		iso := sandboxos.NewOSIsolator()
-		if iso.Available() {
+		// Backend validity is enforced by config.Validate; error here is unreachable.
+		mode, _ := sandboxos.ParseBackendMode(cfg.Sandbox.Backend)
+
+		// backend=none is an explicit opt-out. Skip sandbox wiring entirely so
+		// fail-closed does not reject commands.
+		if mode == sandboxos.BackendNone {
+			logger.Infow("exec tool OS sandbox disabled via backend=none (explicit opt-out)")
+		} else {
+			iso, info := sandboxos.SelectBackend(mode, sandboxos.PlatformBackendCandidates())
 			workDir := cfg.Sandbox.WorkspacePath
 			if workDir == "" {
 				workDir, _ = os.Getwd()
 			}
-			execConfig.OSIsolator = iso
 			execConfig.SandboxPolicy = sandboxos.DefaultToolPolicy(workDir)
 			execConfig.FailClosed = cfg.Sandbox.FailClosed
-			logger.Infow("exec tool OS sandbox enabled", "isolator", iso.Name())
-		} else if cfg.Sandbox.FailClosed {
-			logger.Warnw("OS sandbox required but unavailable — exec tool will reject commands")
-			execConfig.FailClosed = true
-		} else {
-			logger.Warnw("OS sandbox enabled but unavailable — exec tool proceeding without isolation")
+
+			if iso.Available() {
+				execConfig.OSIsolator = iso
+				logger.Infow("exec tool OS sandbox enabled",
+					"isolator", iso.Name(),
+					"backend", info.Mode.String())
+			} else if cfg.Sandbox.FailClosed {
+				logger.Warnw("OS sandbox required but unavailable — exec tool will reject commands",
+					"backend", info.Mode.String(),
+					"reason", iso.Reason())
+			} else {
+				logger.Warnw("OS sandbox enabled but unavailable — exec tool proceeding without isolation",
+					"backend", info.Mode.String(),
+					"reason", iso.Reason())
+			}
 		}
 	}
 

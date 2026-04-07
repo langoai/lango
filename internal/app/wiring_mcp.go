@@ -40,10 +40,8 @@ func initMCP(cfg *config.Config) *mcpComponents {
 	if iso := initOSSandbox(cfg); iso != nil {
 		if iso.Available() {
 			mgr.SetOSIsolator(iso)
-		} else if cfg.Sandbox.FailClosed {
-			logger().Warnw("OS sandbox required but unavailable — MCP servers will run unsandboxed",
-				"reason", iso.Reason())
 		}
+		mgr.SetFailClosed(cfg.Sandbox.FailClosed)
 	}
 
 	// Connect to all servers (best-effort, failures are logged)

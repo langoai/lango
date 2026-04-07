@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/langoai/lango/internal/provider"
+	sandboxos "github.com/langoai/lango/internal/sandbox/os"
 	"github.com/langoai/lango/internal/types"
 	"github.com/spf13/viper"
 )
@@ -171,6 +172,7 @@ func DefaultConfig() *Config {
 		Sandbox: SandboxConfig{
 			Enabled:           false,
 			FailClosed:        false,
+			Backend:           "auto",
 			NetworkMode:       "deny",
 			TimeoutPerTool:    30 * time.Second,
 			AllowedWritePaths: []string{"/tmp"},
@@ -541,6 +543,11 @@ func Validate(cfg *Config) error {
 	// Validate graph config
 	if cfg.Graph.Enabled && cfg.Graph.Backend != "bolt" {
 		errs = append(errs, fmt.Sprintf("graph.backend %q is not supported (must be \"bolt\")", cfg.Graph.Backend))
+	}
+
+	// Validate sandbox backend.
+	if _, err := sandboxos.ParseBackendMode(cfg.Sandbox.Backend); err != nil {
+		errs = append(errs, fmt.Sprintf("sandbox.backend %q is invalid (must be auto, seatbelt, bwrap, native, or none)", cfg.Sandbox.Backend))
 	}
 
 	// Validate A2A config

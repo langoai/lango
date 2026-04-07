@@ -1335,6 +1335,7 @@ Alerts flow through: EventBus (real-time) → Audit log (persistent) → CLI (`l
 |-----|------|---------|-------------|
 | `sandbox.enabled` | `bool` | `false` | Enable OS-level sandboxing for tool-spawned child processes |
 | `sandbox.failClosed` | `bool` | `false` | Reject tool execution when OS sandbox is unavailable (false = fail-open) |
+| `sandbox.backend` | `string` | `auto` | Isolation backend: `auto`, `seatbelt`, `bwrap` (planned), `native` (planned), `none`. Invalid values rejected at startup |
 | `sandbox.workspacePath` | `string` | `""` | Root directory for workspace-relative write access (empty = CWD) |
 | `sandbox.networkMode` | `string` | `deny` | Network access from sandboxed processes: `deny` or `allow` |
 | `sandbox.allowedNetworkIPs` | `[]string` | `[]` | IP addresses permitted for outbound connections (macOS Seatbelt only; Linux isolation not yet enforced) |

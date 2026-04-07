@@ -227,10 +227,8 @@ func initSkills(cfg *config.Config, baseTools []*agent.Tool) *skill.Registry {
 				workDir, _ = os.Getwd()
 			}
 			registry.SetOSIsolator(iso, workDir)
-		} else if cfg.Sandbox.FailClosed {
-			logger().Warnw("OS sandbox required but unavailable — skill scripts will run unsandboxed",
-				"reason", iso.Reason())
 		}
+		registry.SetFailClosed(cfg.Sandbox.FailClosed)
 	}
 
 	ctx := context.Background()

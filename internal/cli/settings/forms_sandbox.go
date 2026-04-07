@@ -28,6 +28,18 @@ func NewOSSandboxForm(cfg *config.Config) *tuicore.FormModel {
 		VisibleWhen: isEnabled,
 	})
 
+	backend := cfg.Sandbox.Backend
+	if backend == "" {
+		backend = "auto"
+	}
+	form.AddField(&tuicore.Field{
+		Key: "os_sandbox_backend", Label: "  Backend", Type: tuicore.InputSelect,
+		Value:       backend,
+		Options:     []string{"auto", "seatbelt", "bwrap", "native", "none"},
+		Description: "Isolation backend: auto selects best available; bwrap/native planned, not yet implemented",
+		VisibleWhen: isEnabled,
+	})
+
 	form.AddField(&tuicore.Field{
 		Key: "os_sandbox_workspace_path", Label: "  Workspace Path", Type: tuicore.InputText,
 		Value:       cfg.Sandbox.WorkspacePath,

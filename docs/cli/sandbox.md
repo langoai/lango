@@ -10,7 +10,14 @@ Inspect sandbox configuration, platform capabilities, and run isolation smoke te
 
 ## lango sandbox status
 
-Show sandbox configuration and platform capabilities.
+Show sandbox configuration, active isolation backend, platform capabilities, and backend availability.
+
+The output includes:
+
+- **Sandbox Configuration**: enabled, fail-closed mode, selected backend, network mode
+- **Active Isolation**: which isolator is running and why (if unavailable)
+- **Platform Capabilities**: kernel-level primitives (Seatbelt, Landlock, seccomp)
+- **Backend Availability**: status of each isolation backend (seatbelt, bwrap, native)
 
 ```
 lango sandbox status [flags]

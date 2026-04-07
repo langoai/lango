@@ -12,6 +12,13 @@ type SandboxConfig struct {
 	// FailClosed rejects tool execution when OS sandbox is unavailable (default: false = fail-open).
 	FailClosed bool `mapstructure:"failClosed" json:"failClosed"`
 
+	// Backend selects the OS sandbox isolation backend: "auto" (default), "seatbelt", "bwrap", "native", "none".
+	// "auto" probes available backends and selects the best one.
+	// "seatbelt" is macOS only. "bwrap" and "native" are Linux only (not yet implemented).
+	// "none" disables OS isolation even when sandbox.enabled is true.
+	// Invalid values are rejected at startup.
+	Backend string `mapstructure:"backend" json:"backend"`
+
 	// WorkspacePath is the root directory for workspace-relative write access.
 	// Defaults to CWD when empty.
 	WorkspacePath string `mapstructure:"workspacePath" json:"workspacePath,omitempty"`

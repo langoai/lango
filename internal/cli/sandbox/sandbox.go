@@ -25,7 +25,7 @@ func NewSandboxCmd(cfgLoader func() (*config.Config, error)) *cobra.Command {
 	}
 
 	cmd.AddCommand(newStatusCmd(cfgLoader))
-	cmd.AddCommand(newTestCmd())
+	cmd.AddCommand(newTestCmd(cfgLoader))
 
 	return cmd
 }
@@ -49,20 +49,36 @@ func newStatusCmd(cfgLoader func() (*config.Config, error)) *cobra.Command {
 				workspacePath, _ = os.Getwd()
 			}
 
+			// Resolve backend.
+			mode, _ := sandboxos.ParseBackendMode(cfg.Sandbox.Backend)
+			candidates := sandboxos.PlatformBackendCandidates()
 			var isolator sandboxos.OSIsolator
-			if cfg.Sandbox.Enabled {
-				isolator = sandboxos.NewOSIsolator()
+			var info sandboxos.BackendInfo
+			// backend=none is an explicit opt-out: runtime skips fail-closed,
+			// so status reflects "no isolation" instead of building an isolator.
+			optedOut := cfg.Sandbox.Enabled && mode == sandboxos.BackendNone
+			if cfg.Sandbox.Enabled && !optedOut {
+				isolator, info = sandboxos.SelectBackend(mode, candidates)
 			}
 			status := sandboxos.NewSandboxStatus(cfg.Sandbox.Enabled, cfg.Sandbox.FailClosed, isolator)
 
 			fmt.Fprintln(w, "Sandbox Configuration:")
 			fmt.Fprintf(w, "  Enabled:        %v\n", status.Enabled)
 			if status.Enabled {
-				failMode := "fail-open (warning + unsandboxed execution)"
-				if status.FailClosed {
-					failMode = "fail-closed (execution rejected)"
+				if optedOut {
+					fmt.Fprintf(w, "  Backend:        none (explicit opt-out — fail-closed not applied)\n")
+				} else {
+					failMode := "fail-open (warning + unsandboxed execution)"
+					if status.FailClosed {
+						failMode = "fail-closed (execution rejected)"
+					}
+					fmt.Fprintf(w, "  Fail-Closed:    %s\n", failMode)
+					backendLabel := mode.String()
+					if mode == sandboxos.BackendAuto && info.Name != "" {
+						backendLabel = fmt.Sprintf("auto (resolved: %s)", info.Name)
+					}
+					fmt.Fprintf(w, "  Backend:        %s\n", backendLabel)
 				}
-				fmt.Fprintf(w, "  Fail-Closed:    %s\n", failMode)
 			}
 			fmt.Fprintf(w, "  Network Mode:   %s\n", cfg.Sandbox.NetworkMode)
 			fmt.Fprintf(w, "  Workspace:      %s\n", workspacePath)
@@ -88,6 +104,17 @@ func newStatusCmd(cfgLoader func() (*config.Config, error)) *cobra.Command {
 			fmt.Fprintf(w, "  Landlock:       %s\n", capabilityReasonStatus(caps.HasLandlock, caps.LandlockReason, caps.Platform, "linux"))
 			fmt.Fprintf(w, "  seccomp:        %s\n", capabilityReasonStatus(caps.HasSeccomp, caps.SeccompReason, caps.Platform, "linux"))
 
+			// Backend availability.
+			fmt.Fprintln(w)
+			fmt.Fprintln(w, "Backend Availability:")
+			for _, bi := range sandboxos.ListBackends(candidates) {
+				state := "available"
+				if !bi.Available {
+					state = fmt.Sprintf("unavailable (%s)", bi.Reason)
+				}
+				fmt.Fprintf(w, "  %-14s  %s\n", bi.Name+":", state)
+			}
+
 			// Platform-specific warnings.
 			if runtime.GOOS == "linux" && len(cfg.Sandbox.AllowedNetworkIPs) > 0 {
 				fmt.Fprintln(w)
@@ -100,7 +127,7 @@ func newStatusCmd(cfgLoader func() (*config.Config, error)) *cobra.Command {
 }
 
 // newTestCmd creates `lango sandbox test`.
-func newTestCmd() *cobra.Command {
+func newTestCmd(cfgLoader func() (*config.Config, error)) *cobra.Command {
 	return &cobra.Command{
 		Use:   "test",
 		Short: "Run OS sandbox smoke tests",
@@ -108,13 +135,23 @@ func newTestCmd() *cobra.Command {
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			w := cmd.OutOrStdout()
 
-			isolator := sandboxos.NewOSIsolator()
+			cfg, err := cfgLoader()
+			if err != nil {
+				return err
+			}
+
+			mode, _ := sandboxos.ParseBackendMode(cfg.Sandbox.Backend)
+			if mode == sandboxos.BackendNone {
+				fmt.Fprintln(w, "Sandbox backend explicitly set to none — no isolation to test")
+				return nil
+			}
+			isolator, info := sandboxos.SelectBackend(mode, sandboxos.PlatformBackendCandidates())
 			if !isolator.Available() {
-				fmt.Fprintln(w, "OS sandbox not available on this platform")
+				fmt.Fprintf(w, "Sandbox backend %s not available: %s\n", info.Mode.String(), isolator.Reason())
 				return nil
 			}
 
-			fmt.Fprintf(w, "Using isolator: %s\n\n", isolator.Name())
+			fmt.Fprintf(w, "Using isolator: %s (backend: %s)\n\n", isolator.Name(), info.Mode.String())
 
 			// Test 1: verify sandbox blocks writes to a restricted path.
 			fmt.Fprint(w, "Write restriction test ... ")

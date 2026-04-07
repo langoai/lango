@@ -36,6 +36,12 @@ func (r *Registry) SetOSIsolator(iso sandboxos.OSIsolator, workspacePath string)
 	r.executor.SetOSIsolator(iso, workspacePath)
 }
 
+// SetFailClosed controls whether skill script execution is blocked when
+// no sandbox is available.
+func (r *Registry) SetFailClosed(fc bool) {
+	r.executor.SetFailClosed(fc)
+}
+
 // LoadSkills loads active skills from the store and converts them to agent tools.
 func (r *Registry) LoadSkills(ctx context.Context) error {
 	skills, err := r.store.ListActive(ctx)

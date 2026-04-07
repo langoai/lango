@@ -29,6 +29,7 @@ type Executor struct {
 	logger        *zap.SugaredLogger
 	isolator      sandboxos.OSIsolator // OS-level sandbox (nil = disabled)
 	workspacePath string               // Workspace root for sandbox write policy
+	failClosed    bool                 // reject execution when sandbox unavailable
 }
 
 // NewExecutor creates a new skill executor.
@@ -42,6 +43,12 @@ func NewExecutor(logger *zap.SugaredLogger) *Executor {
 func (e *Executor) SetOSIsolator(iso sandboxos.OSIsolator, workspacePath string) {
 	e.isolator = iso
 	e.workspacePath = workspacePath
+}
+
+// SetFailClosed controls whether the executor blocks script execution when
+// no sandbox is available.
+func (e *Executor) SetFailClosed(fc bool) {
+	e.failClosed = fc
 }
 
 // Execute runs a skill with the given parameters.
@@ -127,6 +134,10 @@ func (e *Executor) executeScript(ctx context.Context, skill SkillEntry) (interfa
 		return nil, fmt.Errorf("script skill %q: %w", skill.Name, err)
 	}
 
+	if e.isolator == nil && e.failClosed {
+		return nil, fmt.Errorf("%w: no OS isolator configured for skill script", sandboxos.ErrSandboxRequired)
+	}
+
 	f, err := os.CreateTemp("", fmt.Sprintf("lango-skill-%s-*.sh", skill.Name))
 	if err != nil {
 		return nil, fmt.Errorf("create temp script: %w", err)
@@ -149,6 +160,9 @@ func (e *Executor) executeScript(ctx context.Context, skill SkillEntry) (interfa
 	if e.isolator != nil {
 		policy := sandboxos.DefaultToolPolicy(e.workspacePath)
 		if applyErr := e.isolator.Apply(ctx, cmd, policy); applyErr != nil {
+			if e.failClosed {
+				return nil, fmt.Errorf("%w: %w", sandboxos.ErrSandboxRequired, applyErr)
+			}
 			e.logger.Warnw("apply OS sandbox to skill script", "skill", skill.Name, "error", applyErr)
 		}
 	}

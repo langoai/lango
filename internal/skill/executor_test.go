@@ -2,6 +2,7 @@ package skill
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os/exec"
 	"strings"
@@ -491,4 +492,44 @@ func TestExecute_Script_WithIsolator(t *testing.T) {
 		assert.Equal(t, "Hello Test!", got)
 		assert.Equal(t, 0, iso.applyCalls, "isolator should not be called for template skills")
 	})
+}
+
+func TestExecuteScript_FailClosed_NilIsolator(t *testing.T) {
+	t.Parallel()
+
+	executor := newTestExecutor(t)
+	executor.SetFailClosed(true)
+
+	sk := SkillEntry{
+		Name: "echo-test",
+		Type: "script",
+		Definition: map[string]interface{}{
+			"script": "echo hello",
+		},
+	}
+
+	_, err := executor.Execute(context.Background(), sk, nil)
+	require.Error(t, err)
+	assert.True(t, errors.Is(err, sandboxos.ErrSandboxRequired))
+	assert.Contains(t, err.Error(), "no OS isolator configured")
+}
+
+func TestExecuteScript_FailClosed_ApplyError(t *testing.T) {
+	t.Parallel()
+
+	executor := newTestExecutor(t)
+	executor.SetFailClosed(true)
+	executor.SetOSIsolator(&mockIsolator{applyErr: errors.New("landlock unavailable")}, t.TempDir())
+
+	sk := SkillEntry{
+		Name: "echo-test",
+		Type: "script",
+		Definition: map[string]interface{}{
+			"script": "echo hello",
+		},
+	}
+
+	_, err := executor.Execute(context.Background(), sk, nil)
+	require.Error(t, err)
+	assert.True(t, errors.Is(err, sandboxos.ErrSandboxRequired))
 }
