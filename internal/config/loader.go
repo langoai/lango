@@ -639,6 +639,13 @@ func NormalizePaths(cfg *Config) {
 	normalizePath(&cfg.P2P.KeyDir, cfg.DataRoot, home)
 	normalizePath(&cfg.P2P.ZKP.ProofCacheDir, cfg.DataRoot, home)
 	normalizePath(&cfg.P2P.Workspace.DataDir, cfg.DataRoot, home)
+
+	// Normalize sandbox paths so downstream code (supervisor wiring, bwrap arg
+	// compiler, Seatbelt profile generator) receives absolute paths instead of
+	// raw user input containing tilde or relative segments.
+	normalizePath(&cfg.Sandbox.WorkspacePath, cfg.DataRoot, home)
+	normalizePath(&cfg.Sandbox.OS.SeatbeltCustomProfile, cfg.DataRoot, home)
+	cfg.Sandbox.AllowedWritePaths = normalizePathSlice(cfg.Sandbox.AllowedWritePaths, cfg.DataRoot, home)
 }
 
 // normalizePath expands ~ and resolves relative paths under dataRoot.
@@ -653,6 +660,22 @@ func normalizePath(p *string, dataRoot, home string) {
 		*p = filepath.Join(dataRoot, *p)
 	}
 	*p = filepath.Clean(*p)
+}
+
+// normalizePathSlice applies normalizePath to each entry of a slice, returning
+// a new slice. Empty entries are preserved as-is so the caller can distinguish
+// "explicitly empty" from absent. Used for slice-typed config fields like
+// SandboxConfig.AllowedWritePaths.
+func normalizePathSlice(in []string, dataRoot, home string) []string {
+	if len(in) == 0 {
+		return in
+	}
+	out := make([]string, len(in))
+	for i, p := range in {
+		out[i] = p
+		normalizePath(&out[i], dataRoot, home)
+	}
+	return out
 }
 
 // ValidateDataPaths checks that all configurable data paths reside under DataRoot.

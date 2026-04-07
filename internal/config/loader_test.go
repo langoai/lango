@@ -89,6 +89,111 @@ func TestPostLoad(t *testing.T) {
 	})
 }
 
+func TestNormalizePaths_Sandbox(t *testing.T) {
+	t.Parallel()
+
+	home, err := os.UserHomeDir()
+	require.NoError(t, err)
+
+	t.Run("WorkspacePath tilde expanded", func(t *testing.T) {
+		t.Parallel()
+
+		cfg := DefaultConfig()
+		cfg.Sandbox.WorkspacePath = "~/work"
+		NormalizePaths(cfg)
+
+		assert.Equal(t, filepath.Join(home, "work"), cfg.Sandbox.WorkspacePath)
+	})
+
+	t.Run("WorkspacePath relative resolved under DataRoot", func(t *testing.T) {
+		t.Parallel()
+
+		cfg := DefaultConfig()
+		cfg.Sandbox.WorkspacePath = "workspace"
+		NormalizePaths(cfg)
+
+		assert.Equal(t, filepath.Join(cfg.DataRoot, "workspace"), cfg.Sandbox.WorkspacePath)
+	})
+
+	t.Run("WorkspacePath empty stays empty", func(t *testing.T) {
+		t.Parallel()
+
+		cfg := DefaultConfig()
+		cfg.Sandbox.WorkspacePath = ""
+		NormalizePaths(cfg)
+
+		assert.Empty(t, cfg.Sandbox.WorkspacePath)
+	})
+
+	t.Run("WorkspacePath absolute unchanged", func(t *testing.T) {
+		t.Parallel()
+
+		cfg := DefaultConfig()
+		cfg.Sandbox.WorkspacePath = "/abs/work"
+		NormalizePaths(cfg)
+
+		assert.Equal(t, "/abs/work", cfg.Sandbox.WorkspacePath)
+	})
+
+	t.Run("AllowedWritePaths slice normalized in place", func(t *testing.T) {
+		t.Parallel()
+
+		cfg := DefaultConfig()
+		cfg.Sandbox.AllowedWritePaths = []string{"~/a", "/b", "rel"}
+		NormalizePaths(cfg)
+
+		require.Len(t, cfg.Sandbox.AllowedWritePaths, 3)
+		assert.Equal(t, filepath.Join(home, "a"), cfg.Sandbox.AllowedWritePaths[0])
+		assert.Equal(t, "/b", cfg.Sandbox.AllowedWritePaths[1])
+		assert.Equal(t, filepath.Join(cfg.DataRoot, "rel"), cfg.Sandbox.AllowedWritePaths[2])
+	})
+
+	t.Run("AllowedWritePaths empty slice unchanged", func(t *testing.T) {
+		t.Parallel()
+
+		cfg := DefaultConfig()
+		cfg.Sandbox.AllowedWritePaths = nil
+		NormalizePaths(cfg)
+
+		assert.Nil(t, cfg.Sandbox.AllowedWritePaths)
+	})
+
+	t.Run("SeatbeltCustomProfile tilde expanded", func(t *testing.T) {
+		t.Parallel()
+
+		cfg := DefaultConfig()
+		cfg.Sandbox.OS.SeatbeltCustomProfile = "~/profile.sb"
+		NormalizePaths(cfg)
+
+		assert.Equal(t, filepath.Join(home, "profile.sb"), cfg.Sandbox.OS.SeatbeltCustomProfile)
+	})
+
+	t.Run("idempotent on sandbox paths", func(t *testing.T) {
+		t.Parallel()
+
+		cfg := DefaultConfig()
+		cfg.Sandbox.WorkspacePath = "~/work"
+		cfg.Sandbox.AllowedWritePaths = []string{"~/a", "rel"}
+		cfg.Sandbox.OS.SeatbeltCustomProfile = "~/profile.sb"
+
+		NormalizePaths(cfg)
+		first := struct {
+			ws       string
+			allowed  []string
+			seatbelt string
+		}{
+			cfg.Sandbox.WorkspacePath,
+			append([]string(nil), cfg.Sandbox.AllowedWritePaths...),
+			cfg.Sandbox.OS.SeatbeltCustomProfile,
+		}
+
+		NormalizePaths(cfg)
+		assert.Equal(t, first.ws, cfg.Sandbox.WorkspacePath)
+		assert.Equal(t, first.allowed, cfg.Sandbox.AllowedWritePaths)
+		assert.Equal(t, first.seatbelt, cfg.Sandbox.OS.SeatbeltCustomProfile)
+	})
+}
+
 func TestValidate(t *testing.T) {
 	t.Parallel()
 

@@ -22,7 +22,8 @@ type SandboxConfig struct {
 	Backend string `mapstructure:"backend" json:"backend"`
 
 	// WorkspacePath is the root directory for workspace-relative write access.
-	// Defaults to CWD when empty.
+	// Defaults to CWD when empty. Tilde and relative paths are normalized in
+	// PostLoad (relative paths resolve under DataRoot, ~ expands to $HOME).
 	WorkspacePath string `mapstructure:"workspacePath" json:"workspacePath,omitempty"`
 
 	// NetworkMode controls network access from sandboxed processes: "deny" or "allow" (default: "deny").
@@ -37,6 +38,7 @@ type SandboxConfig struct {
 	AllowedNetworkIPs []string `mapstructure:"allowedNetworkIPs" json:"allowedNetworkIPs,omitempty"`
 
 	// AllowedWritePaths are additional paths writable from the sandbox (beyond WorkspacePath).
+	// Each entry is normalized in PostLoad (tilde and relative paths resolved).
 	AllowedWritePaths []string `mapstructure:"allowedWritePaths" json:"allowedWritePaths,omitempty"`
 
 	// TimeoutPerTool is the maximum duration for a single sandboxed tool execution (default: 30s).
@@ -54,5 +56,6 @@ type OSSandboxConfig struct {
 	SeccompProfile string `mapstructure:"seccompProfile" json:"seccompProfile,omitempty"`
 
 	// SeatbeltCustomProfile is a path to a custom .sb profile on macOS (overrides generated profile).
+	// Tilde and relative paths are normalized in PostLoad.
 	SeatbeltCustomProfile string `mapstructure:"seatbeltCustomProfile" json:"seatbeltCustomProfile,omitempty"`
 }
