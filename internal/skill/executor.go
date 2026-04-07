@@ -12,7 +12,9 @@ import (
 
 	"go.uber.org/zap"
 
+	"github.com/langoai/lango/internal/eventbus"
 	sandboxos "github.com/langoai/lango/internal/sandbox/os"
+	"github.com/langoai/lango/internal/session"
 )
 
 var _dangerousPatterns = []*regexp.Regexp{
@@ -31,11 +33,35 @@ type Executor struct {
 	workspacePath string               // Workspace root for sandbox write policy
 	dataRoot      string               // Lango control-plane root, masked from sandboxed children
 	failClosed    bool                 // reject execution when sandbox unavailable
+	bus           *eventbus.Bus        // event bus for SandboxDecisionEvent (optional)
 }
 
 // NewExecutor creates a new skill executor.
 func NewExecutor(logger *zap.SugaredLogger) *Executor {
 	return &Executor{logger: logger}
+}
+
+// SetEventBus attaches an event bus for SandboxDecisionEvent publishing.
+// Passing nil disables publishing.
+func (e *Executor) SetEventBus(bus *eventbus.Bus) {
+	e.bus = bus
+}
+
+// publishSandboxDecision builds and publishes a SandboxDecisionEvent for a
+// skill script execution. SessionKey is derived from ctx.
+func (e *Executor) publishSandboxDecision(ctx context.Context, skillName, decision, reason string) {
+	backend := ""
+	if e.isolator != nil {
+		backend = e.isolator.Name()
+	}
+	eventbus.PublishSandboxDecision(e.bus, eventbus.SandboxDecisionEvent{
+		SessionKey: session.SessionKeyFromContext(ctx),
+		Source:     "skill",
+		Command:    skillName,
+		Decision:   decision,
+		Backend:    backend,
+		Reason:     reason,
+	})
 }
 
 // SetOSIsolator configures the OS-level sandbox for script execution.
@@ -165,10 +191,20 @@ func (e *Executor) executeScript(ctx context.Context, skill SkillEntry) (interfa
 		policy := sandboxos.DefaultToolPolicy(e.workspacePath, e.dataRoot)
 		if applyErr := e.isolator.Apply(ctx, cmd, policy); applyErr != nil {
 			if e.failClosed {
+				e.publishSandboxDecision(ctx, skill.Name, "rejected", applyErr.Error())
 				return nil, fmt.Errorf("%w: %w", sandboxos.ErrSandboxRequired, applyErr)
 			}
 			e.logger.Warnw("apply OS sandbox to skill script", "skill", skill.Name, "error", applyErr)
+			e.publishSandboxDecision(ctx, skill.Name, "skipped", applyErr.Error())
+		} else {
+			e.publishSandboxDecision(ctx, skill.Name, "applied", "")
 		}
+	} else if e.failClosed {
+		// Sandbox required but no isolator configured at all.
+		e.publishSandboxDecision(ctx, skill.Name, "rejected", "no isolator configured")
+		return nil, fmt.Errorf("%w: no OS isolator configured", sandboxos.ErrSandboxRequired)
+	} else {
+		e.publishSandboxDecision(ctx, skill.Name, "skipped", "no isolator configured")
 	}
 
 	runErr := cmd.Run()

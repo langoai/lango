@@ -189,7 +189,7 @@ func bulkIndexLearnings(ctx context.Context, db *sql.DB, idx *search.FTS5Index) 
 }
 
 // initSkills creates the file-based skill registry.
-func initSkills(cfg *config.Config, baseTools []*agent.Tool) *skill.Registry {
+func initSkills(cfg *config.Config, baseTools []*agent.Tool, bus *eventbus.Bus) *skill.Registry {
 	if !cfg.Skill.Enabled {
 		logger().Info("skill system disabled")
 		return nil
@@ -229,6 +229,9 @@ func initSkills(cfg *config.Config, baseTools []*agent.Tool) *skill.Registry {
 			registry.SetOSIsolator(iso, workDir, cfg.DataRoot)
 		}
 		registry.SetFailClosed(cfg.Sandbox.FailClosed)
+	}
+	if bus != nil {
+		registry.SetEventBus(bus)
 	}
 
 	ctx := context.Background()

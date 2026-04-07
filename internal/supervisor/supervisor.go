@@ -8,6 +8,7 @@ import (
 	"os"
 
 	"github.com/langoai/lango/internal/config"
+	"github.com/langoai/lango/internal/eventbus"
 	"github.com/langoai/lango/internal/logging"
 	"github.com/langoai/lango/internal/provider"
 	"github.com/langoai/lango/internal/provider/anthropic"
@@ -43,6 +44,7 @@ func New(cfg *config.Config) (*Supervisor, error) {
 			"PATH", "HOME", "USER", "LANG", "LC_ALL", "LC_CTYPE", "TERM",
 			"SHELL", "TMPDIR", "SSH_AUTH_SOCK",
 		},
+		ExcludedCommands: append([]string(nil), cfg.Sandbox.ExcludedCommands...),
 	}
 
 	// Inject OS-level sandbox if enabled.
@@ -91,6 +93,15 @@ func New(cfg *config.Config) (*Supervisor, error) {
 	}
 
 	return s, nil
+}
+
+// SetEventBus attaches an event bus to the supervised exec tool so that
+// SandboxDecisionEvent records flow into audit. Wiring should call this
+// once after the bus is constructed (post-build).
+func (s *Supervisor) SetEventBus(bus *eventbus.Bus) {
+	if s.execTool != nil {
+		s.execTool.SetEventBus(bus)
+	}
 }
 
 // initializeProviders sets up the AI providers with secrets from config.

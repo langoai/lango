@@ -12,6 +12,7 @@ import (
 	sdkmcp "github.com/modelcontextprotocol/go-sdk/mcp"
 
 	"github.com/langoai/lango/internal/config"
+	"github.com/langoai/lango/internal/eventbus"
 	"github.com/langoai/lango/internal/logging"
 	sandboxos "github.com/langoai/lango/internal/sandbox/os"
 )
@@ -80,7 +81,8 @@ type ServerConnection struct {
 
 	isolator   sandboxos.OSIsolator
 	failClosed bool
-	dataRoot   string // Lango control-plane root, masked from sandboxed MCP child
+	dataRoot   string        // Lango control-plane root, masked from sandboxed MCP child
+	bus        *eventbus.Bus // event bus for SandboxDecisionEvent (optional)
 
 	stopCh chan struct{}
 }
@@ -115,6 +117,30 @@ func (sc *ServerConnection) SetFailClosed(fc bool) {
 	sc.mu.Lock()
 	defer sc.mu.Unlock()
 	sc.failClosed = fc
+}
+
+// SetEventBus attaches an event bus for SandboxDecisionEvent publishing.
+func (sc *ServerConnection) SetEventBus(bus *eventbus.Bus) {
+	sc.mu.Lock()
+	defer sc.mu.Unlock()
+	sc.bus = bus
+}
+
+// publishSandboxDecision publishes a SandboxDecisionEvent for this MCP server's
+// transport-creation moment. SessionKey is intentionally empty: MCP server
+// lifecycle is process-level, not session-bound.
+func (sc *ServerConnection) publishSandboxDecision(decision, reason string) {
+	backend := ""
+	if sc.isolator != nil {
+		backend = sc.isolator.Name()
+	}
+	eventbus.PublishSandboxDecision(sc.bus, eventbus.SandboxDecisionEvent{
+		Source:   "mcp",
+		Command:  sc.name,
+		Decision: decision,
+		Backend:  backend,
+		Reason:   reason,
+	})
 }
 
 // State returns the current connection state.
@@ -318,17 +344,26 @@ func (sc *ServerConnection) createTransport() (sdkmcp.Transport, error) {
 		}
 
 		if sc.isolator == nil && sc.failClosed {
+			sc.publishSandboxDecision("rejected", "no isolator configured")
 			return nil, fmt.Errorf("%w: no OS isolator configured for MCP server %q", sandboxos.ErrSandboxRequired, sc.name)
 		}
 		if sc.isolator != nil {
 			policy := sandboxos.MCPServerPolicy(sc.dataRoot)
 			if err := sc.isolator.Apply(context.Background(), cmd, policy); err != nil {
 				if sc.failClosed {
+					sc.publishSandboxDecision("rejected", err.Error())
 					return nil, fmt.Errorf("%w: MCP server %q: %v", sandboxos.ErrSandboxRequired, sc.name, err)
 				}
 				log := logging.App()
 				log.Warnw("MCP server OS sandbox unavailable", "server", sc.name, "error", err)
+				sc.publishSandboxDecision("skipped", err.Error())
+			} else {
+				sc.publishSandboxDecision("applied", "")
 			}
+		} else {
+			// No isolator configured and fail-open: still record so the
+			// audit trail shows MCP servers that ran unsandboxed.
+			sc.publishSandboxDecision("skipped", "no isolator configured")
 		}
 
 		return &sdkmcp.CommandTransport{Command: cmd}, nil

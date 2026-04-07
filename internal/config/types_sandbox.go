@@ -41,6 +41,15 @@ type SandboxConfig struct {
 	// Each entry is normalized in PostLoad (tilde and relative paths resolved).
 	AllowedWritePaths []string `mapstructure:"allowedWritePaths" json:"allowedWritePaths,omitempty"`
 
+	// ExcludedCommands lists command basenames (e.g. "git", "docker") that
+	// SHALL run unsandboxed. Matching is performed against the basename of the
+	// user command's first whitespace-separated token (NOT against cmd.Args[0],
+	// which is always "sh" because exec.Tool wraps commands in `sh -c`).
+	// Each excluded execution is recorded in audit as a SandboxDecisionEvent
+	// with Decision="excluded" and the matched pattern. Use sparingly —
+	// excluded commands fully bypass isolation.
+	ExcludedCommands []string `mapstructure:"excludedCommands" json:"excludedCommands,omitempty"`
+
 	// TimeoutPerTool is the maximum duration for a single sandboxed tool execution (default: 30s).
 	TimeoutPerTool time.Duration `mapstructure:"timeoutPerTool" json:"timeoutPerTool,omitempty"`
 

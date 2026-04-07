@@ -26,6 +26,7 @@ func (r *Recorder) Subscribe(bus *eventbus.Bus) {
 	eventbus.SubscribeTyped[eventbus.TokenUsageEvent](bus, r.handleTokenUsage)
 	eventbus.SubscribeTyped[eventbus.PolicyDecisionEvent](bus, r.handlePolicyDecision)
 	eventbus.SubscribeTyped[eventbus.AlertEvent](bus, r.handleAlert)
+	eventbus.SubscribeTyped[eventbus.SandboxDecisionEvent](bus, r.handleSandboxDecision)
 }
 
 func (r *Recorder) handleToolExecuted(evt toolchain.ToolExecutedEvent) {
@@ -94,6 +95,30 @@ func (r *Recorder) handleTokenUsage(evt eventbus.TokenUsageEvent) {
 		SetTarget(evt.Model).
 		SetDetails(details).
 		Save(context.Background())
+}
+
+func (r *Recorder) handleSandboxDecision(evt eventbus.SandboxDecisionEvent) {
+	details := map[string]interface{}{
+		"decision": evt.Decision,
+		"source":   evt.Source,
+		"backend":  evt.Backend,
+	}
+	if evt.Reason != "" {
+		details["reason"] = evt.Reason
+	}
+	if evt.Pattern != "" {
+		details["pattern"] = evt.Pattern
+	}
+
+	create := r.client.AuditLog.Create().
+		SetAction(auditlog.ActionSandboxDecision).
+		SetActor(evt.Source).
+		SetTarget(evt.Command).
+		SetDetails(details)
+	if evt.SessionKey != "" {
+		create = create.SetSessionKey(evt.SessionKey)
+	}
+	_, _ = create.Save(context.Background())
 }
 
 func (r *Recorder) handleAlert(evt eventbus.AlertEvent) {

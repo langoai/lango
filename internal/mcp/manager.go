@@ -5,6 +5,7 @@ import (
 	"sync"
 
 	"github.com/langoai/lango/internal/config"
+	"github.com/langoai/lango/internal/eventbus"
 	"github.com/langoai/lango/internal/logging"
 	sandboxos "github.com/langoai/lango/internal/sandbox/os"
 )
@@ -16,7 +17,8 @@ type ServerManager struct {
 	servers    map[string]*ServerConnection
 	isolator   sandboxos.OSIsolator
 	failClosed bool
-	dataRoot   string // Lango control-plane root, forwarded to each connection
+	dataRoot   string        // Lango control-plane root, forwarded to each connection
+	bus        *eventbus.Bus // event bus, forwarded to each connection
 }
 
 // NewServerManager creates a new manager for the given config.
@@ -52,6 +54,17 @@ func (m *ServerManager) SetFailClosed(fc bool) {
 	}
 }
 
+// SetEventBus attaches an event bus for SandboxDecisionEvent publishing on
+// all current and future connections.
+func (m *ServerManager) SetEventBus(bus *eventbus.Bus) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.bus = bus
+	for _, s := range m.servers {
+		s.SetEventBus(bus)
+	}
+}
+
 // ConnectAll connects to all configured and enabled servers.
 // Returns a map of server names to errors for any that failed.
 func (m *ServerManager) ConnectAll(ctx context.Context) map[string]error {
@@ -68,6 +81,9 @@ func (m *ServerManager) ConnectAll(ctx context.Context) map[string]error {
 		conn := NewServerConnection(name, srvCfg, m.cfg)
 		if m.isolator != nil {
 			conn.SetOSIsolator(m.isolator, m.dataRoot)
+		}
+		if m.bus != nil {
+			conn.SetEventBus(m.bus)
 		}
 		conn.SetFailClosed(m.failClosed)
 		m.mu.Lock()
