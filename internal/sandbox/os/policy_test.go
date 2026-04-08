@@ -177,7 +177,8 @@ func TestStrictToolPolicy(t *testing.T) {
 func TestMCPServerPolicy(t *testing.T) {
 	dataRoot := t.TempDir()
 
-	policy := MCPServerPolicy(dataRoot)
+	// Empty workspacePath — this test checks the dataRoot deny shape only.
+	policy := MCPServerPolicy("", dataRoot)
 
 	assert.True(t, policy.Filesystem.ReadOnlyGlobal)
 	assert.Contains(t, policy.Filesystem.WritePaths, "/tmp")
@@ -187,7 +188,7 @@ func TestMCPServerPolicy(t *testing.T) {
 }
 
 func TestMCPServerPolicy_EmptyDataRoot(t *testing.T) {
-	policy := MCPServerPolicy("")
+	policy := MCPServerPolicy("", "")
 
 	assert.True(t, policy.Filesystem.ReadOnlyGlobal)
 	assert.Empty(t, policy.Filesystem.DenyPaths)
@@ -198,10 +199,40 @@ func TestMCPServerPolicy_MissingDataRoot(t *testing.T) {
 	// Non-empty but missing dataRoot: silently skipped by the isDir guard.
 	missing := filepath.Join(t.TempDir(), "does-not-exist")
 
-	policy := MCPServerPolicy(missing)
+	policy := MCPServerPolicy("", missing)
 
 	assert.Empty(t, policy.Filesystem.DenyPaths)
 	assert.Equal(t, NetworkAllow, policy.Network)
+}
+
+func TestMCPServerPolicy_DenyWorkspaceGit(t *testing.T) {
+	// Regression guard: MCPServerPolicy must now apply the same .git walk-up
+	// deny as DefaultToolPolicy so MCP children cannot read git metadata.
+	root := t.TempDir()
+	gitDir := filepath.Join(root, ".git")
+	require.NoError(t, os.Mkdir(gitDir, 0o755))
+	nested := filepath.Join(root, "cmd", "lango")
+	require.NoError(t, os.MkdirAll(nested, 0o755))
+
+	policy := MCPServerPolicy(nested, "")
+
+	assert.Contains(t, policy.Filesystem.DenyPaths, gitDir,
+		"MCPServerPolicy must walk up to find ancestor .git")
+	assert.Equal(t, NetworkAllow, policy.Network)
+}
+
+func TestMCPServerPolicy_WorkspaceGitPlusDataRoot(t *testing.T) {
+	// Both baseline denies present simultaneously: walk-up .git AND dataRoot.
+	root := t.TempDir()
+	gitDir := filepath.Join(root, ".git")
+	require.NoError(t, os.Mkdir(gitDir, 0o755))
+	dataRoot := t.TempDir()
+
+	policy := MCPServerPolicy(root, dataRoot)
+
+	assert.Contains(t, policy.Filesystem.DenyPaths, gitDir)
+	assert.Contains(t, policy.Filesystem.DenyPaths, dataRoot)
+	assert.Len(t, policy.Filesystem.DenyPaths, 2)
 }
 
 func TestGenerateSeatbeltProfile(t *testing.T) {

@@ -3,6 +3,7 @@ package app
 import (
 	"context"
 	"fmt"
+	"os"
 	"strings"
 
 	"github.com/langoai/lango/internal/agent"
@@ -40,7 +41,15 @@ func initMCP(cfg *config.Config, bus *eventbus.Bus) *mcpComponents {
 	// Inject OS-level sandbox if enabled.
 	if iso := initOSSandbox(cfg); iso != nil {
 		if iso.Available() {
-			mgr.SetOSIsolator(iso, cfg.DataRoot)
+			// Resolve workspacePath the same way supervisor and skill
+			// registry do — explicit config value or cwd fallback — so
+			// MCPServerPolicy's .git walk-up has a meaningful anchor
+			// and cmd.Dir lands inside the user's workspace.
+			workDir := cfg.Sandbox.WorkspacePath
+			if workDir == "" {
+				workDir, _ = os.Getwd()
+			}
+			mgr.SetOSIsolator(iso, workDir, cfg.DataRoot)
 		}
 		mgr.SetFailClosed(cfg.Sandbox.FailClosed)
 	}

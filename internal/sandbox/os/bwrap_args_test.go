@@ -58,7 +58,9 @@ func TestCompileBwrapArgs_StrictToolPolicy(t *testing.T) {
 
 func TestCompileBwrapArgs_MCPServerPolicy(t *testing.T) {
 	dataRoot := t.TempDir()
-	policy := MCPServerPolicy(dataRoot)
+	// Empty workspacePath — this test focuses on the dataRoot deny shape.
+	// A dedicated test (TestMCPServerPolicy_DenyWorkspaceGit) covers walk-up.
+	policy := MCPServerPolicy("", dataRoot)
 
 	args, err := compileBwrapArgs(policy)
 	require.NoError(t, err)

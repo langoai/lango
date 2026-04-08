@@ -12,13 +12,14 @@ import (
 
 // ServerManager manages multiple MCP server connections.
 type ServerManager struct {
-	cfg        config.MCPConfig
-	mu         sync.RWMutex
-	servers    map[string]*ServerConnection
-	isolator   sandboxos.OSIsolator
-	failClosed bool
-	dataRoot   string        // Lango control-plane root, forwarded to each connection
-	bus        *eventbus.Bus // event bus, forwarded to each connection
+	cfg           config.MCPConfig
+	mu            sync.RWMutex
+	servers       map[string]*ServerConnection
+	isolator      sandboxos.OSIsolator
+	failClosed    bool
+	workspacePath string        // User workspace root, forwarded to each connection for MCPServerPolicy walk-up
+	dataRoot      string        // Lango control-plane root, forwarded to each connection
+	bus           *eventbus.Bus // event bus, forwarded to each connection
 }
 
 // NewServerManager creates a new manager for the given config.
@@ -30,15 +31,19 @@ func NewServerManager(cfg config.MCPConfig) *ServerManager {
 }
 
 // SetOSIsolator sets the OS-level sandbox isolator for all current
-// and future connections. dataRoot is forwarded so each connection's policy
-// denies the lango control-plane to the spawned MCP child.
-func (m *ServerManager) SetOSIsolator(iso sandboxos.OSIsolator, dataRoot string) {
+// and future connections. workspacePath is forwarded so each connection's
+// MCPServerPolicy can walk up to the repo `.git` and apply the same
+// baseline deny as DefaultToolPolicy. dataRoot is forwarded so each
+// connection's policy denies the lango control-plane to the spawned MCP
+// child.
+func (m *ServerManager) SetOSIsolator(iso sandboxos.OSIsolator, workspacePath, dataRoot string) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.isolator = iso
+	m.workspacePath = workspacePath
 	m.dataRoot = dataRoot
 	for _, s := range m.servers {
-		s.SetOSIsolator(iso, dataRoot)
+		s.SetOSIsolator(iso, workspacePath, dataRoot)
 	}
 }
 
@@ -80,7 +85,7 @@ func (m *ServerManager) ConnectAll(ctx context.Context) map[string]error {
 
 		conn := NewServerConnection(name, srvCfg, m.cfg)
 		if m.isolator != nil {
-			conn.SetOSIsolator(m.isolator, m.dataRoot)
+			conn.SetOSIsolator(m.isolator, m.workspacePath, m.dataRoot)
 		}
 		if m.bus != nil {
 			conn.SetEventBus(m.bus)

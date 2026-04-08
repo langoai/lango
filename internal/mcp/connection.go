@@ -79,10 +79,11 @@ type ServerConnection struct {
 	resources []DiscoveredResource
 	prompts   []DiscoveredPrompt
 
-	isolator   sandboxos.OSIsolator
-	failClosed bool
-	dataRoot   string        // Lango control-plane root, masked from sandboxed MCP child
-	bus        *eventbus.Bus // event bus for SandboxDecisionEvent (optional)
+	isolator      sandboxos.OSIsolator
+	failClosed    bool
+	workspacePath string        // User workspace root, used by MCPServerPolicy to walk up to .git
+	dataRoot      string        // Lango control-plane root, masked from sandboxed MCP child
+	bus           *eventbus.Bus // event bus for SandboxDecisionEvent (optional)
 
 	stopCh chan struct{}
 }
@@ -102,12 +103,17 @@ func NewServerConnection(name string, cfg config.MCPServerConfig, global config.
 func (sc *ServerConnection) Name() string { return sc.name }
 
 // SetOSIsolator sets the OS-level sandbox isolator for this connection.
+// workspacePath is recorded so MCPServerPolicy can walk up to find the
+// repository `.git` and apply the same baseline deny as DefaultToolPolicy.
 // dataRoot is recorded so the policy applied at transport creation time can
 // deny the lango control-plane to the spawned MCP server child process.
-func (sc *ServerConnection) SetOSIsolator(iso sandboxos.OSIsolator, dataRoot string) {
+// workspacePath also becomes the MCP child's cmd.Dir so policy discovery
+// and execution share the same git context.
+func (sc *ServerConnection) SetOSIsolator(iso sandboxos.OSIsolator, workspacePath, dataRoot string) {
 	sc.mu.Lock()
 	defer sc.mu.Unlock()
 	sc.isolator = iso
+	sc.workspacePath = workspacePath
 	sc.dataRoot = dataRoot
 }
 
@@ -342,13 +348,21 @@ func (sc *ServerConnection) createTransport() (sdkmcp.Transport, error) {
 		if len(sc.cfg.Env) > 0 {
 			cmd.Env = BuildEnvSlice(sc.cfg.Env)
 		}
+		// Set cmd.Dir explicitly so the MCP child runs inside the user's
+		// workspace (and so the sandbox policy's git walk-up has a
+		// meaningful starting point). An empty workspacePath falls back
+		// to the supervisor's cwd — preserves legacy behavior for callers
+		// that have not yet migrated to the workspace-aware setter.
+		if sc.workspacePath != "" {
+			cmd.Dir = sc.workspacePath
+		}
 
 		if sc.isolator == nil && sc.failClosed {
 			sc.publishSandboxDecision("rejected", "no isolator configured")
 			return nil, fmt.Errorf("%w: no OS isolator configured for MCP server %q", sandboxos.ErrSandboxRequired, sc.name)
 		}
 		if sc.isolator != nil {
-			policy := sandboxos.MCPServerPolicy(sc.dataRoot)
+			policy := sandboxos.MCPServerPolicy(sc.workspacePath, sc.dataRoot)
 			if err := sc.isolator.Apply(context.Background(), cmd, policy); err != nil {
 				if sc.failClosed {
 					sc.publishSandboxDecision("rejected", err.Error())

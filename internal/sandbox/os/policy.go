@@ -159,18 +159,27 @@ func StrictToolPolicy(workDir, dataRoot string) Policy {
 
 // MCPServerPolicy returns a policy for MCP stdio server processes.
 // Read-global, write-/tmp only, network allowed (MCP servers need network).
-// The lango control-plane (dataRoot) is denied so that misbehaving MCP server
-// child processes cannot read or write lango's internal state.
+// The first ancestor `.git` directory discovered via walk-up from workDir
+// and the lango control-plane (dataRoot) are denied so that misbehaving MCP
+// server child processes cannot read or write git metadata or lango's
+// internal state. This mirrors DefaultToolPolicy's baseline deny — both
+// sandboxed-children surfaces share the same protection.
 //
-// The dataRoot deny is added only when dataRoot exists as a directory. A
-// missing or non-directory dataRoot is silently skipped so that isolated
-// unit tests and minimal environments can still build the policy. Pass an
-// empty dataRoot to intentionally drop the mask.
-func MCPServerPolicy(dataRoot string) Policy {
+// Baseline deny paths are added only when they exist as directories. An
+// empty workDir or a workDir with no ancestor `.git` directory is silently
+// skipped. A missing or non-directory dataRoot is also skipped so that
+// isolated unit tests and minimal environments can still build the policy.
+// Pass empty strings to intentionally drop the masks.
+func MCPServerPolicy(workDir, dataRoot string) Policy {
 	var denyPaths []string
+	if workDir != "" {
+		if gitDir := findGitRoot(workDir); gitDir != "" {
+			denyPaths = append(denyPaths, gitDir)
+		}
+	}
 	if dataRoot != "" {
 		if abs, err := filepath.Abs(dataRoot); err == nil && isDir(abs) {
-			denyPaths = []string{abs}
+			denyPaths = append(denyPaths, abs)
 		}
 	}
 	return Policy{
