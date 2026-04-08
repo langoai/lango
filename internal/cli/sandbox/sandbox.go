@@ -33,16 +33,18 @@ type BootLoader func() (*bootstrap.Result, error)
 // NewSandboxCmd creates the top-level `lango sandbox` command.
 //
 // cfgLoader runs lightweight bootstrap and returns only the config (closing
-// the DB) — used by `sandbox test` which does not need the audit DB.
-// bootLoader runs the full bootstrap and returns the result with an open
-// DBClient — used by `sandbox status` both to read the config and to query
-// the sandbox decision audit trail. Before PR 4-fix, `sandbox status` used
-// both loaders, triggering two independent `bootstrap.Run` calls (and two
-// passphrase prompts) per invocation. It now uses bootLoader only.
+// the DB on the way out) — used by `sandbox test` which does not need the
+// audit DB, and as the graceful-degradation fallback for `sandbox status`
+// when `bootLoader` is unavailable. bootLoader runs the full bootstrap and
+// returns the result with an open DBClient — used by `sandbox status` to
+// query the sandbox decision audit trail.
 //
-// bootLoader may be nil; in that case `sandbox status` has no way to reach
-// the audit DB and the command cannot render any output, so the bootLoader
-// must be wired at the call site for status to work.
+// `sandbox status` prefers bootLoader so that one bootstrap pass serves both
+// the config rendering and the audit query (no double passphrase prompt).
+// When bootLoader is nil or returns an error (signed-out, locked DB,
+// non-interactive environments), status falls back to cfgLoader so the
+// config / capabilities / backend availability sections still render —
+// only the Recent Sandbox Decisions section is silently skipped.
 func NewSandboxCmd(cfgLoader func() (*config.Config, error), bootLoader BootLoader) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "sandbox",
@@ -50,7 +52,7 @@ func NewSandboxCmd(cfgLoader func() (*config.Config, error), bootLoader BootLoad
 		Long:  "Inspect sandbox configuration, platform capabilities, and run isolation smoke tests.",
 	}
 
-	cmd.AddCommand(newStatusCmd(bootLoader))
+	cmd.AddCommand(newStatusCmd(cfgLoader, bootLoader))
 	cmd.AddCommand(newTestCmd(cfgLoader))
 	cmd.AddCommand(newProbeNetCmd())
 
@@ -66,7 +68,7 @@ type versioner interface {
 }
 
 // newStatusCmd creates `lango sandbox status`.
-func newStatusCmd(bootLoader BootLoader) *cobra.Command {
+func newStatusCmd(cfgLoader func() (*config.Config, error), bootLoader BootLoader) *cobra.Command {
 	var sessionPrefix string
 	cmd := &cobra.Command{
 		Use:   "status",
@@ -74,26 +76,37 @@ func newStatusCmd(bootLoader BootLoader) *cobra.Command {
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			w := cmd.OutOrStdout()
 
-			// Single bootstrap pass: both the config rendering and the
-			// Recent Decisions audit query share one DB open + one
-			// passphrase prompt. Previously status called cfgLoader
-			// (bootstrap #1) and bootLoader (bootstrap #2), prompting
-			// twice per invocation.
-			if bootLoader == nil {
-				return fmt.Errorf("sandbox status requires a BootLoader")
-			}
-			boot, err := bootLoader()
-			if err != nil {
-				return fmt.Errorf("bootstrap: %w", err)
-			}
-			defer func() {
-				if boot != nil && boot.DBClient != nil {
-					_ = boot.DBClient.Close()
+			// Try bootLoader first so a single bootstrap pass serves both
+			// the config rendering AND the Recent Decisions audit query
+			// (no double passphrase prompt — that was the v1 regression).
+			// On nil bootLoader or any failure, fall back to cfgLoader so
+			// the config / capabilities / backend sections still render
+			// in degraded modes (signed-out, locked DB, non-interactive).
+			// Only the Recent Decisions section is silently skipped.
+			var (
+				cfg  *config.Config
+				boot *bootstrap.Result
+			)
+			if bootLoader != nil {
+				if b, err := bootLoader(); err == nil && b != nil && b.Config != nil {
+					boot = b
+					cfg = b.Config
+					defer func() {
+						if boot.DBClient != nil {
+							_ = boot.DBClient.Close()
+						}
+					}()
 				}
-			}()
-			cfg := boot.Config
+			}
 			if cfg == nil {
-				return fmt.Errorf("bootstrap returned nil config")
+				if cfgLoader == nil {
+					return fmt.Errorf("sandbox status requires a config loader or bootstrap loader")
+				}
+				c, err := cfgLoader()
+				if err != nil {
+					return fmt.Errorf("load config: %w", err)
+				}
+				cfg = c
 			}
 
 			// Sandbox configuration.
@@ -226,21 +239,34 @@ func renderRecentDecisions(ctx context.Context, w io.Writer, boot *bootstrap.Res
 		if v, ok := d.Details["backend"].(string); ok {
 			backend = v
 		}
-		if backend == "" {
-			backend = "-"
-		}
 		if v, ok := d.Details["reason"].(string); ok {
 			reason = v
 		}
 		sessShort := truncateSessionKey(d.SessionKey, 8)
-		fmt.Fprintf(w, "  %s  [%s] %-9s %-9s %s",
-			d.Timestamp.Format("2006-01-02 15:04:05"),
-			sessShort, decision, backend, d.Target)
-		if reason != "" {
-			fmt.Fprintf(w, " (%s)", reason)
-		}
-		fmt.Fprintln(w)
+		fmt.Fprintln(w, formatDecisionLine(d.Timestamp, sessShort, decision, backend, d.Target, reason))
 	}
+}
+
+// formatDecisionLine renders one Recent Sandbox Decisions row. Extracted as
+// a pure function so the backend-column rule can be unit-tested directly
+// without spinning up an ent.Client + audit fixture.
+//
+// The backend column SHALL show "-" for any non-"applied" decision because
+// excluded / skipped / rejected verdicts mean the command did NOT actually
+// run inside a sandbox backend. Echoing the published Backend value (which
+// every publish site stamps from the wired isolator regardless of decision)
+// would falsely suggest the command was sandboxed.
+func formatDecisionLine(ts time.Time, sessShort, decision, backend, target, reason string) string {
+	if decision != "applied" || backend == "" {
+		backend = "-"
+	}
+	line := fmt.Sprintf("  %s  [%s] %-9s %-9s %s",
+		ts.Format("2006-01-02 15:04:05"),
+		sessShort, decision, backend, target)
+	if reason != "" {
+		line += fmt.Sprintf(" (%s)", reason)
+	}
+	return line
 }
 
 // truncateSessionKey shortens long session keys for display, padding empty
@@ -394,10 +420,35 @@ func discardOutput(c *exec.Cmd) {
 	c.Stderr = io.Discard
 }
 
+// findTouch locates the touch binary across common Linux/macOS layouts:
+// PATH lookup first, then explicit fallbacks for non-merged-/usr images
+// (BusyBox/Alpine ship touch under /bin, not /usr/bin). Returns the
+// absolute path or an empty string when no touch is available — callers
+// must treat empty as "test inconclusive" rather than as a sandbox failure
+// (otherwise an ENOENT from a missing binary can produce a false PASS).
+func findTouch() string {
+	if p, err := exec.LookPath("touch"); err == nil {
+		return p
+	}
+	for _, candidate := range []string{"/usr/bin/touch", "/bin/touch"} {
+		if fi, err := os.Stat(candidate); err == nil && !fi.IsDir() {
+			return candidate
+		}
+	}
+	return ""
+}
+
 // runWriteTest attempts to write to a restricted path under sandbox and
 // returns true if the write was correctly blocked.
 func runWriteTest(isolator sandboxos.OSIsolator) bool {
-	c := exec.Command("/usr/bin/touch", "/etc/lango-sandbox-test")
+	touch := findTouch()
+	if touch == "" {
+		// Without touch we cannot distinguish "sandbox blocked the write"
+		// from "binary missing from PATH". Refuse to declare PASS in that
+		// case so the smoke test does not produce a false positive.
+		return false
+	}
+	c := exec.Command(touch, "/etc/lango-sandbox-test")
 	discardOutput(c)
 	if err := isolator.Apply(context.Background(), c, readOnlyPolicy()); err != nil {
 		return false
@@ -437,8 +488,16 @@ func runWorkspaceWriteTest(isolator sandboxos.OSIsolator) bool {
 		resolved = work
 	}
 
+	touch := findTouch()
+	if touch == "" {
+		// Cannot exercise the workspace-write path without a touch binary.
+		// Treat as inconclusive; the test runner reports FAIL but the
+		// reason is environmental, not a sandbox regression.
+		return false
+	}
+
 	target := filepath.Join(resolved, "probe.txt")
-	c := exec.Command("/usr/bin/touch", target)
+	c := exec.Command(touch, target)
 	discardOutput(c)
 	policy := sandboxos.Policy{
 		Filesystem: sandboxos.FilesystemPolicy{
