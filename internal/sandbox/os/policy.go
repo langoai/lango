@@ -16,6 +16,44 @@ func isDir(p string) bool {
 	return err == nil && fi.IsDir()
 }
 
+// findGitRoot walks upward from workDir looking for the first ancestor that
+// contains a `.git` directory. Returns the absolute path to that `.git`
+// directory (e.g. "/home/user/repo/.git"), or "" if no git root is found
+// before reaching the filesystem root. Called from the policy builders so
+// that a workDir which happens to be a subdirectory of a git repo (e.g.
+// supervisor cwd = /repo/cmd/lango while .git lives at /repo/.git) still
+// gets the baseline .git deny applied.
+//
+// Worktree pointers (.git as a regular file) are skipped — walk-up keeps
+// climbing past them because compileBwrapArgs cannot mount --tmpfs on a
+// file. File-level deny semantics will arrive with PR 5c, which closes
+// the worktree gap.
+//
+// The walk terminates when filepath.Dir(cur)==cur (reached filesystem
+// root). An empty or unresolvable workDir also returns "" — callers
+// simply drop the .git baseline and continue, which matches the
+// "non-repo workspace" trade-off.
+func findGitRoot(workDir string) string {
+	if workDir == "" {
+		return ""
+	}
+	abs, err := filepath.Abs(workDir)
+	if err != nil {
+		return ""
+	}
+	cur := abs
+	for {
+		if candidate := filepath.Join(cur, ".git"); isDir(candidate) {
+			return candidate
+		}
+		parent := filepath.Dir(cur)
+		if parent == cur {
+			return ""
+		}
+		cur = parent
+	}
+}
+
 // NetworkPolicy controls network access from the sandbox.
 type NetworkPolicy string
 
@@ -72,20 +110,24 @@ type Policy struct {
 }
 
 // DefaultToolPolicy returns the standard sandbox policy for local tool execution.
-// Read-global, write-workspace+/tmp, no network. .git inside the workspace and
-// the entire lango control-plane (dataRoot, e.g. ~/.lango) are denied so that
-// sandboxed children cannot read or write the agent's own state, secrets,
-// session database, skills directory, or other internal data.
+// Read-global, write-workspace+/tmp, no network. The first ancestor `.git`
+// directory discovered via upward walk from workDir and the entire lango
+// control-plane (dataRoot, e.g. ~/.lango) are denied so that sandboxed
+// children cannot read or write the agent's own state, secrets, session
+// database, skills directory, or other internal data.
 //
-// Baseline deny paths are added only when they exist as directories. A missing
-// workDir/.git (non-repo workspace) or a .git file (linked worktree) is
-// silently skipped so the policy remains buildable. A missing dataRoot is
-// also skipped — pass an empty dataRoot to intentionally drop the mask.
+// Baseline deny paths are added only when they exist as directories. When
+// workDir is a subdirectory of a git repo, findGitRoot walks up to locate
+// the repo root `.git`, so callers that pass cwd (not the repo root) still
+// get correct protection. A fully non-repo workspace or a worktree pointer
+// (`.git` as a regular file) is silently skipped — file-level deny arrives
+// in PR 5c. A missing dataRoot is also skipped; pass an empty dataRoot to
+// intentionally drop the mask.
 func DefaultToolPolicy(workDir, dataRoot string) Policy {
 	workDir, _ = filepath.Abs(workDir)
 	var denyPaths []string
-	if gitPath := filepath.Join(workDir, ".git"); isDir(gitPath) {
-		denyPaths = append(denyPaths, gitPath)
+	if gitDir := findGitRoot(workDir); gitDir != "" {
+		denyPaths = append(denyPaths, gitDir)
 	}
 	if dataRoot != "" {
 		if abs, err := filepath.Abs(dataRoot); err == nil && isDir(abs) {

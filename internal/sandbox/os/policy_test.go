@@ -71,6 +71,84 @@ func TestDefaultToolPolicy_GitFileNotDenied(t *testing.T) {
 	assert.Empty(t, policy.Filesystem.DenyPaths)
 }
 
+func TestFindGitRoot(t *testing.T) {
+	t.Run("direct parent with .git directory", func(t *testing.T) {
+		workDir := t.TempDir()
+		gitDir := filepath.Join(workDir, ".git")
+		require.NoError(t, os.Mkdir(gitDir, 0o755))
+
+		assert.Equal(t, gitDir, findGitRoot(workDir))
+	})
+
+	t.Run("nested subdirectory walks up to ancestor .git", func(t *testing.T) {
+		// Simulate supervisor cwd = /repo/cmd/lango while .git lives at /repo/.git.
+		root := t.TempDir()
+		gitDir := filepath.Join(root, ".git")
+		require.NoError(t, os.Mkdir(gitDir, 0o755))
+		nested := filepath.Join(root, "cmd", "lango")
+		require.NoError(t, os.MkdirAll(nested, 0o755))
+
+		assert.Equal(t, gitDir, findGitRoot(nested),
+			"walk-up from a subdirectory must return the ancestor .git path")
+	})
+
+	t.Run("deeply nested subdirectory walks up multiple levels", func(t *testing.T) {
+		root := t.TempDir()
+		gitDir := filepath.Join(root, ".git")
+		require.NoError(t, os.Mkdir(gitDir, 0o755))
+		deep := filepath.Join(root, "a", "b", "c", "d", "e")
+		require.NoError(t, os.MkdirAll(deep, 0o755))
+
+		assert.Equal(t, gitDir, findGitRoot(deep))
+	})
+
+	t.Run("worktree pointer file is skipped by walk-up", func(t *testing.T) {
+		// .git as a regular file (linked worktree pointer) must not stop the
+		// walk. The walk continues past it. Since t.TempDir() chains typically
+		// have no ancestor .git, the result is expected to be "" — but the
+		// critical assertion is that the file path itself is NEVER returned.
+		root := t.TempDir()
+		gitFile := filepath.Join(root, ".git")
+		require.NoError(t, os.WriteFile(gitFile, []byte("gitdir: /nowhere\n"), 0o600))
+
+		got := findGitRoot(root)
+		assert.NotEqual(t, gitFile, got,
+			"worktree .git file must never be returned as the git root")
+	})
+
+	t.Run("empty workDir returns empty", func(t *testing.T) {
+		assert.Empty(t, findGitRoot(""))
+	})
+
+	t.Run("filesystem root terminates without panic", func(t *testing.T) {
+		// The walk MUST terminate when filepath.Dir(cur)==cur. A regression
+		// in that check would cause an infinite loop; the test would hang
+		// rather than fail, but assert.NotPanics documents the expectation.
+		assert.NotPanics(t, func() {
+			_ = findGitRoot("/")
+		})
+	})
+}
+
+func TestDefaultToolPolicy_WalksUpToGitRoot(t *testing.T) {
+	// Regression guard: supervisor/skill executor may pass a subdirectory as
+	// workDir while .git lives at the repository root. DefaultToolPolicy must
+	// deny the ancestor .git, not silently skip because `workDir/.git` does
+	// not exist.
+	root := t.TempDir()
+	gitDir := filepath.Join(root, ".git")
+	require.NoError(t, os.Mkdir(gitDir, 0o755))
+	nested := filepath.Join(root, "cmd", "lango")
+	require.NoError(t, os.MkdirAll(nested, 0o755))
+
+	policy := DefaultToolPolicy(nested, "")
+
+	assert.Contains(t, policy.Filesystem.DenyPaths, gitDir,
+		"walk-up must discover the ancestor .git and add it to DenyPaths")
+	assert.NotContains(t, policy.Filesystem.DenyPaths, filepath.Join(nested, ".git"),
+		"DenyPaths must not contain a fictional nested .git path")
+}
+
 func TestDefaultToolPolicy_MissingDataRootNotDenied(t *testing.T) {
 	// Missing dataRoot is silently skipped even when non-empty, so that
 	// minimal environments (e.g. during initial setup) can still build a
