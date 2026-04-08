@@ -67,6 +67,17 @@ type versioner interface {
 	Version() string
 }
 
+// networkIsolator is an optional interface implemented by isolators that
+// separately track network isolation capability (e.g. BwrapIsolator's
+// two-phase smoke probe, where the base namespace probe can succeed while
+// the --unshare-net probe fails). Status rendering uses this to surface
+// partial degradation that would otherwise be invisible — users seeing
+// "MCP works but exec/skill is rejected" would have no way to diagnose it.
+type networkIsolator interface {
+	NetworkIsolationAvailable() bool
+	NetworkIsolationReason() string
+}
+
 // newStatusCmd creates `lango sandbox status`.
 func newStatusCmd(cfgLoader func() (*config.Config, error), bootLoader BootLoader) *cobra.Command {
 	var sessionPrefix string
@@ -158,6 +169,12 @@ func newStatusCmd(cfgLoader func() (*config.Config, error), bootLoader BootLoade
 				fmt.Fprintf(w, "  Reason:         %s\n", status.Isolator.Reason())
 			} else {
 				fmt.Fprintf(w, "  Available:      true\n")
+				// Surface partial degradation (e.g. bwrap network isolation
+				// probe failed). Only shown when actually degraded — a fully
+				// functional isolator omits this line to keep output clean.
+				if ni, ok := status.Isolator.(networkIsolator); ok && !ni.NetworkIsolationAvailable() {
+					fmt.Fprintf(w, "  Network Iso:    unavailable (%s)\n", ni.NetworkIsolationReason())
+				}
 			}
 
 			// Platform capabilities.
