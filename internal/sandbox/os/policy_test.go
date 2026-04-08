@@ -94,6 +94,38 @@ func TestGenerateSeatbeltProfile(t *testing.T) {
 			},
 		},
 		{
+			give: "DenyPaths entries deny both read and write",
+			givePolicy: Policy{
+				Filesystem: FilesystemPolicy{
+					ReadOnlyGlobal: true,
+					DenyPaths:      []string{"/home/user/.lango"},
+				},
+				Network: NetworkDeny,
+				Process: ProcessPolicy{AllowFork: true},
+			},
+			wantContains: []string{
+				`(deny file-read* (subpath "/home/user/.lango"))`,
+				`(deny file-write* (subpath "/home/user/.lango"))`,
+			},
+		},
+		{
+			give: "multiple DenyPaths each get both read and write deny",
+			givePolicy: Policy{
+				Filesystem: FilesystemPolicy{
+					ReadOnlyGlobal: true,
+					DenyPaths:      []string{"/home/user/.lango", "/tmp/work/.git"},
+				},
+				Network: NetworkDeny,
+				Process: ProcessPolicy{AllowFork: true},
+			},
+			wantContains: []string{
+				`(deny file-read* (subpath "/home/user/.lango"))`,
+				`(deny file-write* (subpath "/home/user/.lango"))`,
+				`(deny file-read* (subpath "/tmp/work/.git"))`,
+				`(deny file-write* (subpath "/tmp/work/.git"))`,
+			},
+		},
+		{
 			give: "allow network mode",
 			givePolicy: Policy{
 				Filesystem: FilesystemPolicy{ReadOnlyGlobal: true},

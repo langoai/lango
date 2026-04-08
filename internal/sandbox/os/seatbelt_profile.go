@@ -31,8 +31,12 @@ const seatbeltTemplate = `(version 1)
 (allow file-write* (subpath "{{.}}"))
 {{- end}}
 
-;; Deny write access to specific paths (overrides allow)
+;; Deny read and write access to specific paths (overrides allow).
+;; Read deny is required — ReadOnlyGlobal permits file-read* for the entire
+;; filesystem, so write-only deny would still leak sensitive files such as
+;; ~/.lango/lango.db (session DB + audit log) or .git/config.
 {{- range .DenyPaths}}
+(deny file-read* (subpath "{{.}}"))
 (deny file-write* (subpath "{{.}}"))
 {{- end}}
 
