@@ -43,8 +43,13 @@ import (
 //   - --unshare-uts           hostname namespace isolation
 //   - --unshare-cgroup-try    cgroup namespace, best-effort (kernel >= 4.6)
 //
-// Standard mounts (always present):
-//   - --proc /proc, --dev /dev, --tmpfs /run
+// Mount order is load-bearing: bubblewrap processes options left-to-right,
+// and the later `--ro-bind / /` would shadow any earlier `/proc`, `/dev`,
+// or `/run` mounts (the root bind replaces whatever is at the target,
+// undoing the specialised mounts). Follow the standard bwrap wrapper
+// pattern — root bind first, then `--proc /proc`, `--dev /dev`,
+// `--tmpfs /run` layered on top — so the sandboxed child sees a fresh
+// procfs (new PID namespace), a filtered /dev, and an empty /run.
 func compileBwrapArgs(policy Policy) ([]string, error) {
 	args := []string{
 		"--die-with-parent",
@@ -52,9 +57,6 @@ func compileBwrapArgs(policy Policy) ([]string, error) {
 		"--unshare-ipc",
 		"--unshare-uts",
 		"--unshare-cgroup-try",
-		"--proc", "/proc",
-		"--dev", "/dev",
-		"--tmpfs", "/run",
 	}
 
 	if policy.Filesystem.ReadOnlyGlobal {
@@ -68,6 +70,14 @@ func compileBwrapArgs(policy Policy) ([]string, error) {
 			args = append(args, "--ro-bind", clean, clean)
 		}
 	}
+
+	// Overlay standard special mounts AFTER the root/read bind so they are
+	// not shadowed by the later root mount.
+	args = append(args,
+		"--proc", "/proc",
+		"--dev", "/dev",
+		"--tmpfs", "/run",
+	)
 
 	for _, p := range policy.Filesystem.WritePaths {
 		clean, err := sanitizePath(p)

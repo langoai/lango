@@ -104,6 +104,56 @@ func TestCompileBwrapArgs_DefaultToolPolicy_GitFile(t *testing.T) {
 	assertContainsPair(t, args, "--bind", workDir, workDir)
 }
 
+// TestCompileBwrapArgs_RootBindBeforeSpecialMounts verifies the load-bearing
+// mount ordering: `--ro-bind / /` must appear BEFORE `--proc /proc`,
+// `--dev /dev`, and `--tmpfs /run`. bubblewrap processes options
+// left-to-right, so a later root bind would shadow the earlier specialised
+// mounts and leak the host's /proc + /dev into the sandboxed child,
+// weakening PID and device isolation. This test regression-guards the fix
+// for the mount order bug Codex flagged after the first round of PR 4
+// follow-up fixes.
+func TestCompileBwrapArgs_RootBindBeforeSpecialMounts(t *testing.T) {
+	policy := Policy{
+		Filesystem: FilesystemPolicy{ReadOnlyGlobal: true},
+		Network:    NetworkDeny,
+		Process:    ProcessPolicy{AllowFork: true},
+	}
+
+	args, err := compileBwrapArgs(policy)
+	require.NoError(t, err)
+
+	rootBindIdx := -1
+	procIdx := -1
+	devIdx := -1
+	runIdx := -1
+	for i := 0; i < len(args)-2; i++ {
+		if args[i] == "--ro-bind" && args[i+1] == "/" && args[i+2] == "/" {
+			rootBindIdx = i
+		}
+		if args[i] == "--proc" && args[i+1] == "/proc" {
+			procIdx = i
+		}
+		if args[i] == "--dev" && args[i+1] == "/dev" {
+			devIdx = i
+		}
+		if args[i] == "--tmpfs" && args[i+1] == "/run" {
+			runIdx = i
+		}
+	}
+
+	require.NotEqual(t, -1, rootBindIdx, "missing --ro-bind / / in args: %v", args)
+	require.NotEqual(t, -1, procIdx, "missing --proc /proc in args: %v", args)
+	require.NotEqual(t, -1, devIdx, "missing --dev /dev in args: %v", args)
+	require.NotEqual(t, -1, runIdx, "missing --tmpfs /run in args: %v", args)
+
+	assert.Less(t, rootBindIdx, procIdx,
+		"--ro-bind / / must come before --proc /proc so the root bind does not shadow procfs")
+	assert.Less(t, rootBindIdx, devIdx,
+		"--ro-bind / / must come before --dev /dev so the root bind does not shadow devfs")
+	assert.Less(t, rootBindIdx, runIdx,
+		"--ro-bind / / must come before --tmpfs /run so the root bind does not shadow /run")
+}
+
 // TestCompileBwrapArgs_DenyOverlapsWritePath verifies that when a deny path
 // overlaps with a write path, the deny mount is emitted AFTER the write mount
 // in the bwrap argv. bwrap applies mounts in order so the later --tmpfs wins.

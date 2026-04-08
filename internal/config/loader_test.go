@@ -230,4 +230,91 @@ func TestValidate(t *testing.T) {
 		cfg.Logging.Level = "invalid"
 		assert.Error(t, Validate(cfg))
 	})
+
+	// Validate rejects sandbox.workspacePath nested under cfg.DataRoot.
+	// This is the defense against the regression where a relative workspace
+	// path is normalized under DataRoot and then collides with the
+	// DefaultToolPolicy control-plane deny, making the workspace unreachable.
+	t.Run("sandbox workspacePath under DataRoot rejected", func(t *testing.T) {
+		t.Parallel()
+
+		cfg := DefaultConfig()
+		cfg.DataRoot = "/tmp/lango-test-dataroot"
+		cfg.Sandbox.WorkspacePath = "/tmp/lango-test-dataroot/repo"
+		err := Validate(cfg)
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "sandbox.workspacePath")
+		assert.Contains(t, err.Error(), "inside cfg.DataRoot")
+	})
+
+	t.Run("sandbox workspacePath equal to DataRoot rejected", func(t *testing.T) {
+		t.Parallel()
+
+		cfg := DefaultConfig()
+		cfg.DataRoot = "/tmp/lango-test-dataroot"
+		cfg.Sandbox.WorkspacePath = "/tmp/lango-test-dataroot"
+		err := Validate(cfg)
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "sandbox.workspacePath")
+	})
+
+	t.Run("sandbox workspacePath outside DataRoot accepted", func(t *testing.T) {
+		t.Parallel()
+
+		cfg := DefaultConfig()
+		cfg.DataRoot = "/tmp/lango-test-dataroot"
+		cfg.Sandbox.WorkspacePath = "/tmp/some-other-dir"
+		assert.NoError(t, Validate(cfg))
+	})
+
+	t.Run("sandbox allowedWritePaths entry under DataRoot rejected", func(t *testing.T) {
+		t.Parallel()
+
+		cfg := DefaultConfig()
+		cfg.DataRoot = "/tmp/lango-test-dataroot"
+		cfg.Sandbox.AllowedWritePaths = []string{"/tmp/outside", "/tmp/lango-test-dataroot/scratch"}
+		err := Validate(cfg)
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "sandbox.allowedWritePaths")
+		assert.Contains(t, err.Error(), "scratch")
+	})
+
+	t.Run("sandbox workspacePath empty accepted", func(t *testing.T) {
+		t.Parallel()
+
+		// Empty WorkspacePath is valid — supervisor falls back to os.Getwd().
+		cfg := DefaultConfig()
+		cfg.DataRoot = "/tmp/lango-test-dataroot"
+		cfg.Sandbox.WorkspacePath = ""
+		assert.NoError(t, Validate(cfg))
+	})
+}
+
+func TestPathIsUnder(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		give       string
+		giveChild  string
+		giveParent string
+		want       bool
+	}{
+		{give: "nested", giveChild: "/a/b/c", giveParent: "/a/b", want: true},
+		{give: "same path", giveChild: "/a/b", giveParent: "/a/b", want: true},
+		{give: "outside", giveChild: "/a/c", giveParent: "/a/b", want: false},
+		{give: "parent is child", giveChild: "/a", giveParent: "/a/b", want: false},
+		{give: "sibling", giveChild: "/other", giveParent: "/a/b", want: false},
+		{give: "empty child", giveChild: "", giveParent: "/a", want: false},
+		{give: "empty parent", giveChild: "/a", giveParent: "", want: false},
+		{give: "nested with trailing separator on child", giveChild: "/a/b/c/", giveParent: "/a/b", want: true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.give, func(t *testing.T) {
+			t.Parallel()
+
+			got := pathIsUnder(tt.giveChild, tt.giveParent)
+			assert.Equal(t, tt.want, got)
+		})
+	}
 }

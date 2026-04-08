@@ -550,6 +550,31 @@ func Validate(cfg *Config) error {
 		errs = append(errs, fmt.Sprintf("sandbox.backend %q is invalid (must be auto, seatbelt, bwrap, native, or none)", cfg.Sandbox.Backend))
 	}
 
+	// Validate sandbox workspace paths do not collide with the control-plane
+	// deny. DefaultToolPolicy adds cfg.DataRoot to DenyPaths, and bwrap applies
+	// deny mounts AFTER write mounts so a workspace nested under DataRoot ends
+	// up covered by the later --tmpfs and becomes unreachable. Reject early
+	// with a clear error instead of silently breaking writes at runtime.
+	//
+	// Paths here are already normalised (NormalizePaths ran before Validate),
+	// so relative inputs have been expanded. This check catches both the
+	// "relative path that ended up under DataRoot via NormalizePaths" and the
+	// "user explicitly wrote an absolute path under ~/.lango" cases.
+	if cfg.DataRoot != "" {
+		if cfg.Sandbox.WorkspacePath != "" && pathIsUnder(cfg.Sandbox.WorkspacePath, cfg.DataRoot) {
+			errs = append(errs, fmt.Sprintf(
+				"sandbox.workspacePath %q is inside cfg.DataRoot %q — the control-plane deny would make the workspace unreachable; use an absolute path outside %s",
+				cfg.Sandbox.WorkspacePath, cfg.DataRoot, cfg.DataRoot))
+		}
+		for _, p := range cfg.Sandbox.AllowedWritePaths {
+			if p != "" && pathIsUnder(p, cfg.DataRoot) {
+				errs = append(errs, fmt.Sprintf(
+					"sandbox.allowedWritePaths entry %q is inside cfg.DataRoot %q — the control-plane deny would cover the path; use an absolute path outside %s",
+					p, cfg.DataRoot, cfg.DataRoot))
+			}
+		}
+	}
+
 	// Validate A2A config
 	if cfg.A2A.Enabled {
 		if cfg.A2A.BaseURL == "" {
@@ -611,6 +636,29 @@ func Validate(cfg *Config) error {
 	}
 
 	return nil
+}
+
+// pathIsUnder reports whether child is the same path as parent or is nested
+// inside it. Both arguments are expected to be absolute, already-cleaned
+// paths (NormalizePaths guarantees this at call sites that use this helper).
+// Returns false when filepath.Rel fails (different volumes on Windows, etc.)
+// so the caller does not trigger a spurious validation error.
+func pathIsUnder(child, parent string) bool {
+	if child == "" || parent == "" {
+		return false
+	}
+	rel, err := filepath.Rel(parent, child)
+	if err != nil {
+		return false
+	}
+	// Clean Rel output: same path → ".", nested → "sub[/..]", outside → "..[/..]"
+	if rel == "." {
+		return true
+	}
+	if rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+		return false
+	}
+	return true
 }
 
 // expandTilde replaces a leading ~ with the given home directory.
