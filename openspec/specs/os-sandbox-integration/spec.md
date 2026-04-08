@@ -1,5 +1,7 @@
-## ADDED Requirements
+## Purpose
 
+Integration layer that wires the `OSIsolator` and its `Policy` helpers into the exec tool, skill executor, MCP transport, supervisor, CLI status, and config validator. This capability covers how sandbox is applied, how failures are reported (fail-open vs fail-closed), and how audit events surface through the event bus for every Apply() call site.
+## Requirements
 ### Requirement: Exec tool sandbox integration
 The exec tool SHALL apply `OSIsolator` to all 3 `exec.Command` call sites (`Run`, `RunWithPTY`, `StartBackground`) after command creation and before process start.
 
@@ -35,18 +37,24 @@ The `SessionKey` field on every published event SHALL be derived from the runtim
 - **THEN** the sandbox SHALL be applied normally (the matcher consumes the user command, not `cmd.Args[0]`)
 
 ### Requirement: MCP transport sandbox integration
-The MCP `ServerConnection` SHALL apply `OSIsolator` to stdio transport `exec.Command` at transport creation time, with `MCPServerPolicy(dataRoot)` (network=allow, read-global, write-/tmp, dataRoot denied).
+The MCP `ServerConnection` SHALL apply `OSIsolator` to stdio transport `exec.Command` at transport creation time, with `MCPServerPolicy(workspacePath, dataRoot)` (network=allow, read-global, write-/tmp, ancestor `.git` and dataRoot denied).
 
-`ServerConnection` SHALL carry a `dataRoot string` field set via `SetOSIsolator(iso, dataRoot)` and an optional `bus *eventbus.Bus` field set via `SetEventBus(bus)`. `createTransport()` SHALL pass `sc.dataRoot` to `MCPServerPolicy`.
+`ServerConnection` SHALL carry a `workspacePath string` field AND a `dataRoot string` field, both set via `SetOSIsolator(iso, workspacePath, dataRoot)`, and an optional `bus *eventbus.Bus` field set via `SetEventBus(bus)`. `createTransport()` SHALL pass both `sc.workspacePath` and `sc.dataRoot` to `MCPServerPolicy`. When `sc.workspacePath` is non-empty, `createTransport()` SHALL ALSO set `cmd.Dir = sc.workspacePath` so the spawned MCP child runs with cwd inside the user's workspace — policy discovery (walk-up to `.git`) and execution share the same git context. An empty `workspacePath` SHALL leave `cmd.Dir` unset, preserving legacy behavior (supervisor cwd inherited).
 
 `createTransport()` SHALL publish a `SandboxDecisionEvent` with `Source="mcp"` and `Command=sc.name` for every decision: `applied`, `skipped`, `rejected`, AND for the `failClosed && isolator==nil` rejection path. The `SessionKey` field SHALL be empty because MCP server lifecycle is process-level, not session-bound.
 
-`mcp.ServerManager` SHALL gain `SetEventBus(*eventbus.Bus)` and `dataRoot` propagation so the wiring layer can inject both into every existing and future connection. `ConnectAll` SHALL pass the manager's bus and dataRoot to each newly-created connection.
+`mcp.ServerManager` SHALL gain a `workspacePath string` field alongside the existing `dataRoot` field, set via `SetOSIsolator(iso, workspacePath, dataRoot)`. `ConnectAll` SHALL pass the manager's `workspacePath`, `dataRoot`, and `bus` to each newly-created connection.
 
-#### Scenario: Stdio transport sandboxed with dataRoot
-- **WHEN** `createTransport()` is called for stdio transport with isolator and dataRoot set
-- **THEN** `OSIsolator.Apply()` SHALL be called with `MCPServerPolicy(sc.dataRoot)` before returning the transport
+#### Scenario: Stdio transport sandboxed with workspacePath and dataRoot
+- **WHEN** `createTransport()` is called for stdio transport with isolator, workspacePath, and dataRoot all set
+- **THEN** `OSIsolator.Apply()` SHALL be called with `MCPServerPolicy(sc.workspacePath, sc.dataRoot)` before returning the transport
+- **AND** `cmd.Dir` SHALL equal `sc.workspacePath`
 - **AND** a `SandboxDecisionEvent{Source:"mcp", Decision:"applied"}` SHALL be published with empty SessionKey
+
+#### Scenario: Empty workspacePath leaves cmd.Dir unset
+- **WHEN** `createTransport()` is called for stdio transport AND `sc.workspacePath` is empty
+- **THEN** `cmd.Dir` SHALL NOT be set by `createTransport()` (preserves legacy behavior — Go's exec.Cmd inherits supervisor cwd)
+- **AND** `MCPServerPolicy("", sc.dataRoot)` SHALL be called (policy silently skips the walk-up deny)
 
 #### Scenario: Non-stdio transports not affected
 - **WHEN** `createTransport()` is called for http or sse transport
@@ -166,3 +174,4 @@ All code comments, doc comments, README, docs pages, and configuration reference
 #### Scenario: Config field comments
 - **WHEN** reading `SandboxConfig` field comments for Linux-specific behavior
 - **THEN** they note Linux isolation is not yet enforced
+

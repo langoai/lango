@@ -8,7 +8,7 @@ Inspect sandbox configuration, platform capabilities, and run isolation smoke te
 !!! note "OS-level Sandbox vs P2P Sandbox"
     `lango sandbox` manages **OS-level process isolation** (macOS Seatbelt; Linux bubblewrap when the `bwrap` binary is installed) for local tool execution. This is distinct from `lango p2p sandbox` which manages **container-based isolation** for remote P2P tool execution.
 
-    **Linux requirement:** install the `bubblewrap` package (`apt install bubblewrap`, `dnf install bubblewrap`, or equivalent). The native Landlock+seccomp backend is planned but not yet implemented; selecting `backend=native` returns an unavailable isolator with a clear reason.
+    **Linux requirement:** install the `bubblewrap` package (`apt install bubblewrap`, `dnf install bubblewrap`, or equivalent). On startup, lango runs a two-phase namespace smoke probe (base + network) that actually invokes `bwrap` against `/bin/true`, so hosts where `bwrap --version` succeeds but kernel namespace creation is blocked (e.g. `kernel.unprivileged_userns_clone=0`, AppArmor lockdown) are reported unavailable with an actionable reason instead of failing at first command execution. When only the network isolation probe fails, base sandboxing still works and MCP stdio servers (which allow host network) continue to run; only policies requiring `--unshare-net` are rejected. The native Landlock+seccomp backend is planned but not yet implemented; selecting `backend=native` returns an unavailable isolator with a clear reason.
 
 ## lango sandbox status
 
@@ -17,7 +17,7 @@ Show sandbox configuration, active isolation backend, platform capabilities, bac
 The output includes:
 
 - **Sandbox Configuration**: enabled, fail-closed mode, selected backend, network mode
-- **Active Isolation**: which isolator is running and why (if unavailable)
+- **Active Isolation**: which isolator is running and why (if unavailable). When the bwrap network isolation probe fails but base sandboxing works, an additional `Network Iso: unavailable (reason)` line surfaces the partial degradation — NetworkAllow policies (e.g. MCP) continue to work while NetworkDeny policies are rejected at Apply time.
 - **Platform Capabilities**: kernel-level primitives (Seatbelt, Landlock, seccomp)
 - **Backend Availability**: status of each isolation backend (seatbelt, bwrap, native)
 - **Recent Sandbox Decisions**: the last 10 apply / skip / reject / exclude events from the audit log (graceful — omitted if the audit DB is unavailable)

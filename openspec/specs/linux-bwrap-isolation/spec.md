@@ -1,12 +1,18 @@
+## Purpose
+
+Linux-specific sandbox isolator that wraps `exec.Cmd` with bubblewrap (`bwrap`) to provide process-level isolation: filesystem bind mounts (read-only root + writable workspace), network unshare, and PID/IPC/UTS/cgroup namespaces. Availability is validated by a two-phase kernel namespace smoke probe, and the isolator's `Apply()` method is the single integration point that exec/skill/MCP consumers call at runtime.
+## Requirements
 ### Requirement: BwrapIsolator wraps exec.Cmd via bubblewrap on Linux
 The system SHALL provide a `BwrapIsolator` type in `internal/sandbox/os/bwrap_linux.go` (`//go:build linux`) that implements `OSIsolator` and wraps an `exec.Cmd` so the child process runs inside a bubblewrap container.
+
+Availability SHALL be determined by a **two-phase namespace smoke probe** in addition to the existing `bwrap --version` check. See `Requirement: BwrapIsolator validates namespace creation via two-phase smoke probe` for the probe contract. When `Available()` returns `true`, `Reason()` SHALL still return `""` — partial degradation (network isolation unavailable) is surfaced through the dedicated `NetworkIsolationAvailable()`/`NetworkIsolationReason()` methods rather than through `Reason()`, so the existing contract is preserved for consumers that only care about base availability.
 
 #### Scenario: Linux build returns real isolator
 - **WHEN** the package is built with `GOOS=linux`
 - **THEN** `NewBwrapIsolator()` SHALL return a `*BwrapIsolator` value (not a stub)
 
-#### Scenario: Available when bwrap binary is installed
-- **WHEN** `bwrap` is on `PATH`
+#### Scenario: Available when bwrap is installed and base smoke probe succeeds
+- **WHEN** `bwrap` is on `PATH` AND `bwrap --version` succeeds AND the base namespace smoke probe (NetworkAllow policy shape) succeeds
 - **THEN** `NewBwrapIsolator().Available()` SHALL return `true` and `Reason()` SHALL return `""`
 
 #### Scenario: Unavailable when bwrap binary is missing
@@ -95,3 +101,38 @@ The `compileBwrapArgs` function SHALL stat each `DenyPath` and return a clear er
 #### Scenario: Missing deny path is rejected
 - **WHEN** `policy.Filesystem.DenyPaths` contains a path that does not exist
 - **THEN** `compileBwrapArgs` SHALL return an error referencing the missing path
+
+### Requirement: BwrapIsolator validates namespace creation via two-phase smoke probe
+`NewBwrapIsolator()` SHALL, after the `bwrap --version` integrity check, execute two smoke probes in sequence. Each probe SHALL generate its argv by calling `compileBwrapArgs(probePolicy)` and appending `"--", "/bin/true"` — argv generation MUST NOT be hand-maintained in the probe, so probe argv and runtime argv cannot drift as `compileBwrapArgs` evolves.
+
+1. **Base probe** uses `Policy{Filesystem:{ReadOnlyGlobal:true}, Network:NetworkAllow, Process:{AllowFork:true}}` — the minimum every lango consumer needs, matching `MCPServerPolicy`'s network model exactly. Failure (non-zero exit or timeout) SHALL make `Available()` return `false` and `Reason()` SHALL contain an actionable diagnostic referencing the probe failure and common root causes (`kernel.unprivileged_userns_clone=0`, AppArmor lockdown, or missing setuid-root).
+2. **Network probe** uses `Policy{Filesystem:{ReadOnlyGlobal:true}, Network:NetworkDeny, Process:{AllowFork:true}}` — additionally validates that `--unshare-net` is permitted. Failure SHALL NOT change `Available()`; instead, the isolator SHALL expose `NetworkIsolationAvailable() bool` (returning `false`) and `NetworkIsolationReason() string` (non-empty, containing the probe error). `Apply()` SHALL return an `ErrIsolatorUnavailable`-wrapped error for policies whose `Network` is `NetworkDeny` or `NetworkUnixOnly`.
+
+Each probe SHALL be bounded by a 2-second timeout via `context.WithTimeout`. Base probe failure SHALL short-circuit — the network probe SHALL NOT run if the base probe failed.
+
+The Apply-time network gate SHALL reject policies BEFORE mutating `cmd.Path` or `cmd.Args`, so a rejected command can be retried or fallen back to an alternative isolator without leaving the caller in an inconsistent state.
+
+#### Scenario: Both probes use compileBwrapArgs for argv generation
+- **WHEN** either smoke probe runs
+- **THEN** its argv SHALL be exactly `append(compileBwrapArgs(probePolicy), "--", "/bin/true")` so probe and runtime share the same flag generator
+
+#### Scenario: Base probe failure marks isolator unavailable
+- **WHEN** the base probe (NetworkAllow) exits non-zero or times out (2-second timeout)
+- **THEN** `Available()` SHALL return `false` AND `Reason()` SHALL contain the probe error AND the network probe SHALL NOT run
+
+#### Scenario: Network probe failure downgrades to base-only
+- **WHEN** the base probe succeeds AND the network probe (NetworkDeny) exits non-zero or times out (2-second timeout)
+- **THEN** `Available()` SHALL return `true` AND `Reason()` SHALL return `""` AND `NetworkIsolationAvailable()` SHALL return `false` AND `NetworkIsolationReason()` SHALL be non-empty
+
+#### Scenario: Apply rejects NetworkDeny when network isolation unavailable
+- **WHEN** `NetworkIsolationAvailable()==false` AND `Apply()` is called with a policy whose `Network` is `NetworkDeny` or `NetworkUnixOnly`
+- **THEN** `Apply()` SHALL return an error wrapping `ErrIsolatorUnavailable` and referencing the network isolation diagnostic, without mutating `cmd.Path` or `cmd.Args`
+
+#### Scenario: Apply permits NetworkAllow when network isolation unavailable
+- **WHEN** `NetworkIsolationAvailable()==false` AND `Apply()` is called with a policy whose `Network` is `NetworkAllow` (e.g. `MCPServerPolicy`)
+- **THEN** `Apply()` SHALL succeed and rewrite `cmd` normally — partial degradation does not affect `NetworkAllow` consumers
+
+#### Scenario: NetworkIsolationReason empty when network isolation available
+- **WHEN** both the base probe and the network probe succeed
+- **THEN** `NetworkIsolationAvailable()` SHALL return `true` AND `NetworkIsolationReason()` SHALL return `""`
+
