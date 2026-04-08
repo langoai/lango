@@ -1,6 +1,20 @@
 package os
 
-import "path/filepath"
+import (
+	"os"
+	"path/filepath"
+)
+
+// isDir reports whether p exists and is a directory. Used by the policy
+// builders to guard baseline deny paths (.git, dataRoot) against missing or
+// non-directory entries, which would otherwise cause compileBwrapArgs on
+// Linux to reject the entire policy (bwrap --tmpfs requires an existing
+// directory). Missing entries are silently skipped; the caller treats the
+// absent deny as a trade-off (see design note: worktree .git is a file).
+func isDir(p string) bool {
+	fi, err := os.Stat(p)
+	return err == nil && fi.IsDir()
+}
 
 // NetworkPolicy controls network access from the sandbox.
 type NetworkPolicy string
@@ -63,14 +77,18 @@ type Policy struct {
 // sandboxed children cannot read or write the agent's own state, secrets,
 // session database, skills directory, or other internal data.
 //
-// Pass an empty dataRoot to skip the control-plane mask (used in unit tests
-// that probe the policy in isolation).
+// Baseline deny paths are added only when they exist as directories. A missing
+// workDir/.git (non-repo workspace) or a .git file (linked worktree) is
+// silently skipped so the policy remains buildable. A missing dataRoot is
+// also skipped — pass an empty dataRoot to intentionally drop the mask.
 func DefaultToolPolicy(workDir, dataRoot string) Policy {
 	workDir, _ = filepath.Abs(workDir)
-	denyPaths := []string{filepath.Join(workDir, ".git")}
+	var denyPaths []string
+	if gitPath := filepath.Join(workDir, ".git"); isDir(gitPath) {
+		denyPaths = append(denyPaths, gitPath)
+	}
 	if dataRoot != "" {
-		abs, err := filepath.Abs(dataRoot)
-		if err == nil {
+		if abs, err := filepath.Abs(dataRoot); err == nil && isDir(abs) {
 			denyPaths = append(denyPaths, abs)
 		}
 	}
@@ -102,12 +120,14 @@ func StrictToolPolicy(workDir, dataRoot string) Policy {
 // The lango control-plane (dataRoot) is denied so that misbehaving MCP server
 // child processes cannot read or write lango's internal state.
 //
-// Pass an empty dataRoot to skip the control-plane mask (used in unit tests).
+// The dataRoot deny is added only when dataRoot exists as a directory. A
+// missing or non-directory dataRoot is silently skipped so that isolated
+// unit tests and minimal environments can still build the policy. Pass an
+// empty dataRoot to intentionally drop the mask.
 func MCPServerPolicy(dataRoot string) Policy {
 	var denyPaths []string
 	if dataRoot != "" {
-		abs, err := filepath.Abs(dataRoot)
-		if err == nil {
+		if abs, err := filepath.Abs(dataRoot); err == nil && isDir(abs) {
 			denyPaths = []string{abs}
 		}
 	}

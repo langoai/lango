@@ -1,6 +1,8 @@
 package os
 
 import (
+	"os"
+	"path/filepath"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -8,47 +10,101 @@ import (
 )
 
 func TestDefaultToolPolicy(t *testing.T) {
-	policy := DefaultToolPolicy("/home/user/project", "/home/user/.lango")
+	workDir := t.TempDir()
+	dataRoot := t.TempDir()
+	// .git baseline deny requires the directory to exist; otherwise the
+	// isDir guard silently skips it.
+	gitDir := filepath.Join(workDir, ".git")
+	require.NoError(t, os.Mkdir(gitDir, 0o755))
+
+	policy := DefaultToolPolicy(workDir, dataRoot)
 
 	assert.True(t, policy.Filesystem.ReadOnlyGlobal)
-	assert.Contains(t, policy.Filesystem.WritePaths, "/home/user/project")
+	assert.Contains(t, policy.Filesystem.WritePaths, workDir)
 	assert.Contains(t, policy.Filesystem.WritePaths, "/tmp")
 	// .git is denied as a baseline (was strict-only before).
-	assert.Contains(t, policy.Filesystem.DenyPaths, "/home/user/project/.git")
+	assert.Contains(t, policy.Filesystem.DenyPaths, gitDir)
 	// Control-plane masking: dataRoot is denied so sandboxed children cannot
 	// read or write the agent's own state.
-	assert.Contains(t, policy.Filesystem.DenyPaths, "/home/user/.lango")
+	assert.Contains(t, policy.Filesystem.DenyPaths, dataRoot)
 	assert.Equal(t, NetworkDeny, policy.Network)
 	assert.True(t, policy.Process.AllowFork)
 	assert.False(t, policy.Process.AllowSignals)
 }
 
 func TestDefaultToolPolicy_EmptyDataRoot(t *testing.T) {
-	// Empty dataRoot is allowed (used by isolated unit tests). The .git
-	// baseline deny is still present.
-	policy := DefaultToolPolicy("/home/user/project", "")
+	workDir := t.TempDir()
+	gitDir := filepath.Join(workDir, ".git")
+	require.NoError(t, os.Mkdir(gitDir, 0o755))
 
-	assert.Contains(t, policy.Filesystem.DenyPaths, "/home/user/project/.git")
-	assert.NotContains(t, policy.Filesystem.DenyPaths, "/home/user/.lango")
+	// Empty dataRoot is allowed (used by isolated unit tests). The .git
+	// baseline deny is still present because the directory exists.
+	policy := DefaultToolPolicy(workDir, "")
+
+	assert.Contains(t, policy.Filesystem.DenyPaths, gitDir)
 	assert.Len(t, policy.Filesystem.DenyPaths, 1)
+}
+
+func TestDefaultToolPolicy_MissingGitNotDenied(t *testing.T) {
+	// Non-repo workspace: workDir exists but has no .git. The isDir guard
+	// must skip .git so that compileBwrapArgs does not fail on a missing
+	// deny path.
+	workDir := t.TempDir()
+
+	policy := DefaultToolPolicy(workDir, "")
+
+	assert.Empty(t, policy.Filesystem.DenyPaths,
+		"non-repo workspace must produce an empty DenyPaths list")
+}
+
+func TestDefaultToolPolicy_GitFileNotDenied(t *testing.T) {
+	// Linked worktree: .git is a regular file containing "gitdir: <path>".
+	// The isDir guard must skip it since bwrap --tmpfs requires a directory.
+	workDir := t.TempDir()
+	gitFile := filepath.Join(workDir, ".git")
+	require.NoError(t, os.WriteFile(gitFile, []byte("gitdir: /tmp/nowhere\n"), 0o600))
+
+	policy := DefaultToolPolicy(workDir, "")
+
+	assert.NotContains(t, policy.Filesystem.DenyPaths, gitFile,
+		".git file (worktree) must not be added to DenyPaths")
+	assert.Empty(t, policy.Filesystem.DenyPaths)
+}
+
+func TestDefaultToolPolicy_MissingDataRootNotDenied(t *testing.T) {
+	// Missing dataRoot is silently skipped even when non-empty, so that
+	// minimal environments (e.g. during initial setup) can still build a
+	// policy without the control-plane mask rather than failing outright.
+	workDir := t.TempDir()
+	missingDataRoot := filepath.Join(t.TempDir(), "does-not-exist")
+
+	policy := DefaultToolPolicy(workDir, missingDataRoot)
+
+	assert.NotContains(t, policy.Filesystem.DenyPaths, missingDataRoot)
 }
 
 func TestStrictToolPolicy(t *testing.T) {
 	// StrictToolPolicy is currently identical to DefaultToolPolicy — kept as a
 	// separate symbol so future strict-only options can branch without another
 	// signature migration.
-	policy := StrictToolPolicy("/home/user/project", "/home/user/.lango")
-	defaultPolicy := DefaultToolPolicy("/home/user/project", "/home/user/.lango")
+	workDir := t.TempDir()
+	dataRoot := t.TempDir()
+	require.NoError(t, os.Mkdir(filepath.Join(workDir, ".git"), 0o755))
+
+	policy := StrictToolPolicy(workDir, dataRoot)
+	defaultPolicy := DefaultToolPolicy(workDir, dataRoot)
 	assert.Equal(t, defaultPolicy, policy)
 }
 
 func TestMCPServerPolicy(t *testing.T) {
-	policy := MCPServerPolicy("/home/user/.lango")
+	dataRoot := t.TempDir()
+
+	policy := MCPServerPolicy(dataRoot)
 
 	assert.True(t, policy.Filesystem.ReadOnlyGlobal)
 	assert.Contains(t, policy.Filesystem.WritePaths, "/tmp")
 	// MCP server children are also blocked from reading the lango control-plane.
-	assert.Contains(t, policy.Filesystem.DenyPaths, "/home/user/.lango")
+	assert.Contains(t, policy.Filesystem.DenyPaths, dataRoot)
 	assert.Equal(t, NetworkAllow, policy.Network)
 }
 
@@ -56,6 +112,16 @@ func TestMCPServerPolicy_EmptyDataRoot(t *testing.T) {
 	policy := MCPServerPolicy("")
 
 	assert.True(t, policy.Filesystem.ReadOnlyGlobal)
+	assert.Empty(t, policy.Filesystem.DenyPaths)
+	assert.Equal(t, NetworkAllow, policy.Network)
+}
+
+func TestMCPServerPolicy_MissingDataRoot(t *testing.T) {
+	// Non-empty but missing dataRoot: silently skipped by the isDir guard.
+	missing := filepath.Join(t.TempDir(), "does-not-exist")
+
+	policy := MCPServerPolicy(missing)
+
 	assert.Empty(t, policy.Filesystem.DenyPaths)
 	assert.Equal(t, NetworkAllow, policy.Network)
 }
@@ -69,8 +135,15 @@ func TestGenerateSeatbeltProfile(t *testing.T) {
 		wantErr         bool
 	}{
 		{
-			give:       "default policy allows global read and denies network",
-			givePolicy: DefaultToolPolicy("/tmp/work", ""),
+			give: "default-shape policy allows global read and denies network",
+			givePolicy: Policy{
+				Filesystem: FilesystemPolicy{
+					ReadOnlyGlobal: true,
+					WritePaths:     []string{"/tmp/work", "/tmp"},
+				},
+				Network: NetworkDeny,
+				Process: ProcessPolicy{AllowFork: true},
+			},
 			wantContains: []string{
 				"(allow file-read*)",
 				`(allow file-write* (subpath "/tmp/work"))`,
@@ -80,15 +153,31 @@ func TestGenerateSeatbeltProfile(t *testing.T) {
 			},
 		},
 		{
-			give:       "default policy denies .git writes",
-			givePolicy: DefaultToolPolicy("/tmp/work", ""),
+			give: "default-shape policy denies .git writes",
+			givePolicy: Policy{
+				Filesystem: FilesystemPolicy{
+					ReadOnlyGlobal: true,
+					WritePaths:     []string{"/tmp/work", "/tmp"},
+					DenyPaths:      []string{"/tmp/work/.git"},
+				},
+				Network: NetworkDeny,
+				Process: ProcessPolicy{AllowFork: true},
+			},
 			wantContains: []string{
 				`(deny file-write* (subpath "/tmp/work/.git"))`,
 			},
 		},
 		{
-			give:       "default policy denies dataRoot when provided",
-			givePolicy: DefaultToolPolicy("/tmp/work", "/home/user/.lango"),
+			give: "default-shape policy denies dataRoot when provided",
+			givePolicy: Policy{
+				Filesystem: FilesystemPolicy{
+					ReadOnlyGlobal: true,
+					WritePaths:     []string{"/tmp/work", "/tmp"},
+					DenyPaths:      []string{"/tmp/work/.git", "/home/user/.lango"},
+				},
+				Network: NetworkDeny,
+				Process: ProcessPolicy{AllowFork: true},
+			},
 			wantContains: []string{
 				`(deny file-write* (subpath "/home/user/.lango"))`,
 			},

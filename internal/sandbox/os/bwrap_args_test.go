@@ -69,6 +69,41 @@ func TestCompileBwrapArgs_MCPServerPolicy(t *testing.T) {
 	assertContainsSingle(t, args, "--tmpfs", dataRoot)
 }
 
+// TestCompileBwrapArgs_DefaultToolPolicy_NoGitDir verifies that a non-repo
+// workspace (no .git directory) does not cause compileBwrapArgs to fail.
+// Regression: PR 4 added .git unconditionally to DenyPaths, which combined
+// with bwrap's strict stat+IsDir check rejected every non-repo workspace.
+func TestCompileBwrapArgs_DefaultToolPolicy_NoGitDir(t *testing.T) {
+	workDir := t.TempDir() // no .git
+	policy := DefaultToolPolicy(workDir, "")
+
+	// isDir guard skips missing .git; DenyPaths should be empty.
+	assert.Empty(t, policy.Filesystem.DenyPaths)
+
+	args, err := compileBwrapArgs(policy)
+	require.NoError(t, err, "compileBwrapArgs must succeed for non-repo workspace")
+	assertContainsPair(t, args, "--bind", workDir, workDir)
+}
+
+// TestCompileBwrapArgs_DefaultToolPolicy_GitFile verifies that a linked
+// worktree (where .git is a file containing "gitdir: ...") does not cause
+// compileBwrapArgs to fail. The isDir guard skips .git since bwrap --tmpfs
+// requires a directory.
+func TestCompileBwrapArgs_DefaultToolPolicy_GitFile(t *testing.T) {
+	workDir := t.TempDir()
+	gitFile := filepath.Join(workDir, ".git")
+	require.NoError(t, os.WriteFile(gitFile, []byte("gitdir: /tmp/nowhere\n"), 0o600))
+
+	policy := DefaultToolPolicy(workDir, "")
+
+	// .git is a file, so isDir guard skips it.
+	assert.NotContains(t, policy.Filesystem.DenyPaths, gitFile)
+
+	args, err := compileBwrapArgs(policy)
+	require.NoError(t, err, "compileBwrapArgs must succeed when .git is a file (worktree)")
+	assertContainsPair(t, args, "--bind", workDir, workDir)
+}
+
 // TestCompileBwrapArgs_DenyOverlapsWritePath verifies that when a deny path
 // overlaps with a write path, the deny mount is emitted AFTER the write mount
 // in the bwrap argv. bwrap applies mounts in order so the later --tmpfs wins.
