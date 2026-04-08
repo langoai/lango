@@ -164,8 +164,17 @@ func (e *Executor) executeScript(ctx context.Context, skill SkillEntry) (interfa
 		return nil, fmt.Errorf("script skill %q: %w", skill.Name, err)
 	}
 
-	if e.isolator == nil && e.failClosed {
-		return nil, fmt.Errorf("%w: no OS isolator configured for skill script", sandboxos.ErrSandboxRequired)
+	// Decide the nil-isolator branch BEFORE creating any temp files. Moving
+	// this check up consolidates the previous two nil-isolator branches (an
+	// early return that skipped publish + a later else-if that was
+	// unreachable) into a single publish path so the audit trail always
+	// records the decision before the function returns.
+	if e.isolator == nil {
+		if e.failClosed {
+			e.publishSandboxDecision(ctx, skill.Name, "rejected", "no isolator configured")
+			return nil, fmt.Errorf("%w: no OS isolator configured for skill script", sandboxos.ErrSandboxRequired)
+		}
+		e.publishSandboxDecision(ctx, skill.Name, "skipped", "no isolator configured")
 	}
 
 	f, err := os.CreateTemp("", fmt.Sprintf("lango-skill-%s-*.sh", skill.Name))
@@ -187,6 +196,8 @@ func (e *Executor) executeScript(ctx context.Context, skill SkillEntry) (interfa
 	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr
 
+	// The nil-isolator branch was already decided and published above.
+	// Here we only need to apply the sandbox when an isolator is present.
 	if e.isolator != nil {
 		policy := sandboxos.DefaultToolPolicy(e.workspacePath, e.dataRoot)
 		if applyErr := e.isolator.Apply(ctx, cmd, policy); applyErr != nil {
@@ -199,12 +210,6 @@ func (e *Executor) executeScript(ctx context.Context, skill SkillEntry) (interfa
 		} else {
 			e.publishSandboxDecision(ctx, skill.Name, "applied", "")
 		}
-	} else if e.failClosed {
-		// Sandbox required but no isolator configured at all.
-		e.publishSandboxDecision(ctx, skill.Name, "rejected", "no isolator configured")
-		return nil, fmt.Errorf("%w: no OS isolator configured", sandboxos.ErrSandboxRequired)
-	} else {
-		e.publishSandboxDecision(ctx, skill.Name, "skipped", "no isolator configured")
 	}
 
 	runErr := cmd.Run()
