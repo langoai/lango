@@ -3,7 +3,6 @@ package sandbox
 import (
 	"bytes"
 	"context"
-	"errors"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -36,43 +35,27 @@ func TestTruncateSessionKey(t *testing.T) {
 	}
 }
 
-// TestRenderRecentDecisions_NilBootLoaderSilent verifies that the diagnostic
-// remains a pure sandbox-layer inspection tool when no bootstrap is wired:
-// passing a nil BootLoader must produce no output (no panic, no header).
-func TestRenderRecentDecisions_NilBootLoaderSilent(t *testing.T) {
+// TestRenderRecentDecisions_NilBootSilent verifies that the helper is safe
+// to call with a nil bootstrap.Result. This matters because the outer
+// status command delegates the nil check to the helper for clarity.
+func TestRenderRecentDecisions_NilBootSilent(t *testing.T) {
 	t.Parallel()
 
 	var buf bytes.Buffer
 	renderRecentDecisions(context.Background(), &buf, nil, "")
 	assert.Empty(t, buf.String(),
-		"nil BootLoader must produce no output so `sandbox status` works without bootstrap")
-}
-
-// TestRenderRecentDecisions_BootLoaderErrorSilent verifies that a bootstrap
-// failure (DB locked, signed-out, missing) is swallowed silently — Recent
-// Decisions is best-effort and must not break the rest of the status command.
-func TestRenderRecentDecisions_BootLoaderErrorSilent(t *testing.T) {
-	t.Parallel()
-
-	var buf bytes.Buffer
-	loader := func() (*bootstrap.Result, error) {
-		return nil, errors.New("database locked")
-	}
-	renderRecentDecisions(context.Background(), &buf, loader, "")
-	assert.Empty(t, buf.String(),
-		"BootLoader error must be swallowed silently — graceful degradation")
+		"nil *bootstrap.Result must produce no output")
 }
 
 // TestRenderRecentDecisions_NilDBClientSilent verifies that a bootstrap
 // result with no DB client (e.g. opened in degraded mode) is also silent.
+// Recent Decisions is best-effort and must not break the rest of the status
+// command when the audit DB is unavailable.
 func TestRenderRecentDecisions_NilDBClientSilent(t *testing.T) {
 	t.Parallel()
 
 	var buf bytes.Buffer
-	loader := func() (*bootstrap.Result, error) {
-		return &bootstrap.Result{}, nil
-	}
-	renderRecentDecisions(context.Background(), &buf, loader, "")
+	renderRecentDecisions(context.Background(), &buf, &bootstrap.Result{}, "")
 	assert.Empty(t, buf.String(),
-		"nil DBClient must be swallowed silently")
+		"nil DBClient must be swallowed silently — graceful degradation")
 }

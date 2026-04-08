@@ -31,8 +31,18 @@ import (
 type BootLoader func() (*bootstrap.Result, error)
 
 // NewSandboxCmd creates the top-level `lango sandbox` command.
-// bootLoader is optional and may be nil — when present it enables the
-// "Recent Sandbox Decisions" section in `sandbox status`.
+//
+// cfgLoader runs lightweight bootstrap and returns only the config (closing
+// the DB) — used by `sandbox test` which does not need the audit DB.
+// bootLoader runs the full bootstrap and returns the result with an open
+// DBClient — used by `sandbox status` both to read the config and to query
+// the sandbox decision audit trail. Before PR 4-fix, `sandbox status` used
+// both loaders, triggering two independent `bootstrap.Run` calls (and two
+// passphrase prompts) per invocation. It now uses bootLoader only.
+//
+// bootLoader may be nil; in that case `sandbox status` has no way to reach
+// the audit DB and the command cannot render any output, so the bootLoader
+// must be wired at the call site for status to work.
 func NewSandboxCmd(cfgLoader func() (*config.Config, error), bootLoader BootLoader) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "sandbox",
@@ -40,7 +50,7 @@ func NewSandboxCmd(cfgLoader func() (*config.Config, error), bootLoader BootLoad
 		Long:  "Inspect sandbox configuration, platform capabilities, and run isolation smoke tests.",
 	}
 
-	cmd.AddCommand(newStatusCmd(cfgLoader, bootLoader))
+	cmd.AddCommand(newStatusCmd(bootLoader))
 	cmd.AddCommand(newTestCmd(cfgLoader))
 	cmd.AddCommand(newProbeNetCmd())
 
@@ -56,7 +66,7 @@ type versioner interface {
 }
 
 // newStatusCmd creates `lango sandbox status`.
-func newStatusCmd(cfgLoader func() (*config.Config, error), bootLoader BootLoader) *cobra.Command {
+func newStatusCmd(bootLoader BootLoader) *cobra.Command {
 	var sessionPrefix string
 	cmd := &cobra.Command{
 		Use:   "status",
@@ -64,9 +74,26 @@ func newStatusCmd(cfgLoader func() (*config.Config, error), bootLoader BootLoade
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			w := cmd.OutOrStdout()
 
-			cfg, err := cfgLoader()
+			// Single bootstrap pass: both the config rendering and the
+			// Recent Decisions audit query share one DB open + one
+			// passphrase prompt. Previously status called cfgLoader
+			// (bootstrap #1) and bootLoader (bootstrap #2), prompting
+			// twice per invocation.
+			if bootLoader == nil {
+				return fmt.Errorf("sandbox status requires a BootLoader")
+			}
+			boot, err := bootLoader()
 			if err != nil {
-				return err
+				return fmt.Errorf("bootstrap: %w", err)
+			}
+			defer func() {
+				if boot != nil && boot.DBClient != nil {
+					_ = boot.DBClient.Close()
+				}
+			}()
+			cfg := boot.Config
+			if cfg == nil {
+				return fmt.Errorf("bootstrap returned nil config")
 			}
 
 			// Sandbox configuration.
@@ -148,9 +175,9 @@ func newStatusCmd(cfgLoader func() (*config.Config, error), bootLoader BootLoade
 			}
 
 			// Recent Sandbox Decisions (graceful — skip if audit DB unavailable).
-			if bootLoader != nil {
-				renderRecentDecisions(cmd.Context(), w, bootLoader, sessionPrefix)
-			}
+			// boot.DBClient may still be nil in degraded bootstrap modes; the
+			// helper handles that case silently.
+			renderRecentDecisions(cmd.Context(), w, boot, sessionPrefix)
 
 			return nil
 		},
@@ -162,20 +189,16 @@ func newStatusCmd(cfgLoader func() (*config.Config, error), bootLoader BootLoade
 
 // renderRecentDecisions queries the audit log for the most recent
 // SandboxDecisionEvent records and prints them to w. It is best-effort:
-// any failure (DB locked, signed-out, missing, schema unavailable) is
+// any failure (missing DB client, schema unavailable, query error) is
 // silently ignored so the diagnostic remains usable as a sandbox-layer
 // inspection tool that does not depend on audit availability.
-func renderRecentDecisions(ctx context.Context, w io.Writer, bootLoader BootLoader, sessionPrefix string) {
-	if bootLoader == nil {
+//
+// The caller owns the *bootstrap.Result and its DBClient lifecycle; this
+// helper does not close the client.
+func renderRecentDecisions(ctx context.Context, w io.Writer, boot *bootstrap.Result, sessionPrefix string) {
+	if boot == nil || boot.DBClient == nil {
 		return
 	}
-	boot, err := bootLoader()
-	if err != nil || boot == nil || boot.DBClient == nil {
-		return
-	}
-	// Do NOT close the DB client here — it is owned by the bootstrap result
-	// and the caller (cobra root) is responsible for the process lifecycle.
-	// Closing here would break subsequent commands that share the same boot.
 
 	q := boot.DBClient.AuditLog.Query().
 		Where(auditlog.ActionEQ(auditlog.ActionSandboxDecision)).
