@@ -1,3 +1,9 @@
+## Purpose
+
+Capability spec for docs-config-format. See requirements below for scope and behavior contracts.
+
+## Requirements
+
 ### Requirement: Documentation config blocks use JSON format
 All configuration examples in documentation SHALL use JSON fenced code blocks instead of YAML, matching the system's actual `lango config import/export` format.
 

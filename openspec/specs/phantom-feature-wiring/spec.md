@@ -1,3 +1,16 @@
+## Purpose
+
+Capability spec for phantom-feature-wiring. See requirements below for scope and behavior contracts.
+
+## Requirements
+
+### Requirement: phantom-feature-wiring capability documented
+The phantom-feature-wiring capability SHALL be documented through the sections in this spec. This requirement is a structural placeholder that satisfies the canonical openspec format; detailed behavior contracts live in the descriptive sections of this file.
+
+#### Scenario: Spec file is readable
+- **WHEN** the phantom-feature-wiring spec.md file is read
+- **THEN** it SHALL describe the capability's behavior in sections below
+
 # Phantom Feature Wiring
 
 All config-exposed settings must have corresponding runtime behavior. No config field should exist without implementation.

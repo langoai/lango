@@ -1,3 +1,16 @@
+## Purpose
+
+Capability spec for p2p-workspace. See requirements below for scope and behavior contracts.
+
+## Requirements
+
+### Requirement: p2p-workspace capability documented
+The p2p-workspace capability SHALL be documented through the sections in this spec. This requirement is a structural placeholder that satisfies the canonical openspec format; detailed behavior contracts live in the descriptive sections of this file.
+
+#### Scenario: Spec file is readable
+- **WHEN** the p2p-workspace spec.md file is read
+- **THEN** it SHALL describe the capability's behavior in sections below
+
 # P2P Workspace
 
 ## Overview

@@ -1,3 +1,9 @@
+## Purpose
+
+Capability spec for sandbox-availability-reporting. See requirements below for scope and behavior contracts.
+
+## Requirements
+
 ### Requirement: OSIsolator reports unavailability reason
 The `OSIsolator` interface SHALL include a `Reason() string` method that returns a human-readable explanation of why the isolator is unavailable. When `Available()` returns true, `Reason()` SHALL return an empty string.
 

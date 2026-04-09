@@ -1,3 +1,9 @@
+## Purpose
+
+Capability spec for trust-payment-tiers. See requirements below for scope and behavior contracts.
+
+## Requirements
+
 ### Requirement: Post-pay for high-trust peers
 The payment gate SHALL grant post-pay status to peers whose reputation score is strictly greater than the configured `PostPayMinScore` threshold (default: 0.8). Post-pay means the tool executes first and settlement occurs asynchronously afterward.
 

@@ -1,3 +1,9 @@
+## Purpose
+
+Capability spec for sandbox-fail-closed-enforcement. See requirements below for scope and behavior contracts.
+
+## Requirements
+
 ### Requirement: Skill executor rejects unsandboxed execution under fail-closed
 `skill.Executor` SHALL provide a `SetFailClosed(bool)` method. When `failClosed=true` and either (a) no isolator is configured or (b) `isolator.Apply()` returns an error, `executeScript()` SHALL return `ErrSandboxRequired` instead of running the script unsandboxed.
 

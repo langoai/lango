@@ -1,3 +1,9 @@
+## Purpose
+
+Capability spec for sandbox-exception-policy. See requirements below for scope and behavior contracts.
+
+## Requirements
+
 ### Requirement: ExcludedCommands bypass via first-token basename match
 The system SHALL support a `Sandbox.ExcludedCommands []string` config field. When the basename of the user command's first whitespace-separated token matches an entry, the exec tool SHALL skip applying the OS isolator and run the command unsandboxed. Matching SHALL operate on the user command string passed to `exec.Tool.Run` / `RunWithPTY` / `StartBackground` BEFORE secret token resolution and BEFORE the `sh -c` wrapping that those methods apply internally.
 

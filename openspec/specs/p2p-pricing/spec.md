@@ -1,3 +1,9 @@
+## Purpose
+
+Capability spec for p2p-pricing. See requirements below for scope and behavior contracts.
+
+## Requirements
+
 ### Requirement: TrustThresholds config field
 `P2PPricingConfig` SHALL include a `TrustThresholds` field with `PostPayMinScore` (float64, default 0.8).
 

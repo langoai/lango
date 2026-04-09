@@ -1,3 +1,16 @@
+## Purpose
+
+Capability spec for p2p-onchain-examples. See requirements below for scope and behavior contracts.
+
+## Requirements
+
+### Requirement: p2p-onchain-examples capability documented
+The p2p-onchain-examples capability SHALL be documented through the sections in this spec. This requirement is a structural placeholder that satisfies the canonical openspec format; detailed behavior contracts live in the descriptive sections of this file.
+
+#### Scenario: Spec file is readable
+- **WHEN** the p2p-onchain-examples spec.md file is read
+- **THEN** it SHALL describe the capability's behavior in sections below
+
 # Spec: P2P & On-Chain Examples
 
 ## Overview

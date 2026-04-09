@@ -1,3 +1,9 @@
+## Purpose
+
+Capability spec for approval-guardrails. See requirements below for scope and behavior contracts.
+
+## Requirements
+
 ### Requirement: Approval rule explanation
 The approval dialog and strip SHALL display a "Why" explanation describing why the tool requires approval, based on safety level and category.
 

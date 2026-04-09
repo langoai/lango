@@ -1,3 +1,9 @@
+## Purpose
+
+Capability spec for shared-mdparse. See requirements below for scope and behavior contracts.
+
+## Requirements
+
 ### Requirement: Shared frontmatter parser
 The `mdparse` package SHALL provide a `SplitFrontmatter(content []byte) ([]byte, string, error)` function that extracts YAML frontmatter and body from markdown content with `---` delimiters.
 

@@ -1,3 +1,9 @@
+## Purpose
+
+Capability spec for sandbox-backend-registry. See requirements below for scope and behavior contracts.
+
+## Requirements
+
 ### Requirement: BackendMode enum identifies isolation backends
 The system SHALL provide a `BackendMode` enum type with values `BackendAuto`, `BackendSeatbelt`, `BackendBwrap`, `BackendNative`, `BackendNone`. Each value SHALL have a `String()` method returning its config-string form (`"auto"`, `"seatbelt"`, etc.).
 

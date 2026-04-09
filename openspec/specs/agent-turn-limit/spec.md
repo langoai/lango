@@ -1,3 +1,9 @@
+## Purpose
+
+Capability spec for agent-turn-limit. See requirements below for scope and behavior contracts.
+
+## Requirements
+
 ### Requirement: Maximum turn limit per agent run
 The system SHALL enforce a configurable maximum number of tool-calling turns per `Agent.Run()` invocation. The default limit SHALL be 50 turns. When the limit is reached, the system SHALL grant one wrap-up turn before yielding an error. Delegation events (TransferToAgent) SHALL NOT be counted as tool-calling turns.
 

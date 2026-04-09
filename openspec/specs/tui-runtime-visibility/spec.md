@@ -1,3 +1,9 @@
+## Purpose
+
+Capability spec for tui-runtime-visibility. See requirements below for scope and behavior contracts.
+
+## Requirements
+
 ### Requirement: Delegation events displayed in transcript
 The system SHALL display agent-to-agent delegation events as `itemDelegation` transcript items showing the source agent, target agent, and optional reason.
 
