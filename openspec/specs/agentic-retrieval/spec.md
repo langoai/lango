@@ -1,4 +1,8 @@
-## ADDED Requirements
+## Purpose
+
+Capability spec for agentic-retrieval. See requirements below for scope and behavior contracts.
+
+## Requirements
 
 ### Requirement: Finding type
 The `retrieval` package SHALL provide a `Finding` struct with fields: Key (string), Content (string), Score (float64, higher=better), Category (string), SearchSource (string, "fts5"/"like"/"vector"/"temporal"), Agent (string), Layer (knowledge.ContextLayer). The `SearchSource` field documents the retrieval METHOD used. The `Source` field documents the AUTHORSHIP origin.

@@ -1,4 +1,8 @@
-## ADDED Requirements
+## Purpose
+
+Capability spec for agent-self-correction. See requirements below for scope and behavior contracts.
+
+## Requirements
 
 ### Requirement: Learning-based error correction on agent failure
 The system SHALL support an optional `ErrorFixProvider` that returns known fixes for tool errors. When set and the initial agent run fails, the agent SHALL attempt one retry with the suggested fix.

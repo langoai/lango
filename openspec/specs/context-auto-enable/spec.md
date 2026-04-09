@@ -1,4 +1,8 @@
-## ADDED Requirements
+## Purpose
+
+Capability spec for context-auto-enable. See requirements below for scope and behavior contracts.
+
+## Requirements
 
 ### Requirement: collectExplicitKeys
 The system SHALL provide `collectExplicitKeys(configPath string, keys []string) map[string]bool` that reads the raw config file (JSON) and returns which of the given dotted keys are present. SHALL return nil if the file cannot be read.

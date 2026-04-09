@@ -1,4 +1,8 @@
-## MODIFIED Requirements
+## Purpose
+
+Capability spec for app-module-build. See requirements below for scope and behavior contracts.
+
+## Requirements
 
 ### Requirement: Build returns BuildResult with module timing
 The `Builder.Build()` method SHALL record the wall-clock duration of each module's `Init()` call and populate `BuildResult.ModuleTiming` with one `ModuleTimingEntry` per initialized module. Each entry SHALL contain the module name and elapsed duration. A structured log line with `duration_ms` SHALL be emitted after each module completes initialization.

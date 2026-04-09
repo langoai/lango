@@ -1,4 +1,8 @@
-## ADDED Requirements
+## Purpose
+
+Capability spec for policy-observability. See requirements below for scope and behavior contracts.
+
+## Requirements
 
 ### Requirement: Audit recorder subscribes to PolicyDecisionEvent
 The audit recorder SHALL subscribe to `PolicyDecisionEvent` via `SubscribeTyped` and persist each event as an AuditLog entry with action `policy_decision`, actor set to AgentName, target set to Command, and details containing verdict, reason, and unwrapped command.

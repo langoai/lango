@@ -1,4 +1,8 @@
-## ADDED Requirements
+## Purpose
+
+Capability spec for tool-exec. See requirements below for scope and behavior contracts.
+
+## Requirements
 
 ### Requirement: Shell command execution
 The system SHALL execute shell commands in a controlled environment with configurable timeouts.

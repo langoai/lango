@@ -1,4 +1,8 @@
-## ADDED Requirements
+## Purpose
+
+Capability spec for ontology-governance. See requirements below for scope and behavior contracts.
+
+## Requirements
 
 ### Requirement: Schema lifecycle FSM
 The system SHALL define 5 SchemaStatus values: `proposed`, `quarantined`, `shadow`, `active`, `deprecated`. Valid transitions SHALL be: proposed→shadow, proposed→quarantined, shadow→active, shadow→quarantined, quarantined→proposed, active→deprecated.

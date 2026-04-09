@@ -1,4 +1,8 @@
-## ADDED Requirements
+## Purpose
+
+Capability spec for ontology-exchange-bridge. See requirements below for scope and behavior contracts.
+
+## Requirements
 
 ### Requirement: OntologyBridge implementation
 The system SHALL provide an `OntologyBridge` struct in `internal/p2p/ontologybridge/` that implements `protocol.OntologyHandler`. The bridge SHALL use a `TrustScorer` interface (not concrete `*reputation.Store`) for trust checks. The bridge SHALL provide `SetReputation(TrustScorer)` and `SetEventBus(*eventbus.Bus)` setters. The bridge SHALL publish `SchemaExchangeEvent` after successful operations with PeerDID, TypeCount, PredCount, and ImportMode fields populated.

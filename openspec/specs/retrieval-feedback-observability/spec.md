@@ -1,4 +1,8 @@
-## ADDED Requirements
+## Purpose
+
+Capability spec for retrieval-feedback-observability. See requirements below for scope and behavior contracts.
+
+## Requirements
 
 ### Requirement: TurnID context propagation
 The system SHALL propagate TurnID through `context.Context` using `session.WithTurnID(ctx, turnID)` and `session.TurnIDFromContext(ctx)`. TurnRunner SHALL set TurnID in context before calling the executor. When TurnID is absent (e.g., direct calls without TurnRunner), `TurnIDFromContext` SHALL return an empty string.

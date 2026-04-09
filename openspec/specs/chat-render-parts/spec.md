@@ -1,4 +1,8 @@
-## ADDED Requirements
+## Purpose
+
+Capability spec for chat-render-parts. See requirements below for scope and behavior contracts.
+
+## Requirements
 
 ### Requirement: ChatParts struct for composable rendering
 ChatModel SHALL expose a public RenderParts() method returning a ChatParts struct with Header, TurnStrip, Main, Footer, and Approval string fields.

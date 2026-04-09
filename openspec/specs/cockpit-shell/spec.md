@@ -1,4 +1,8 @@
-## ADDED Requirements
+## Purpose
+
+Capability spec for cockpit-shell. See requirements below for scope and behavior contracts.
+
+## Requirements
 
 ### Requirement: Cockpit root model orchestrates 2-panel layout
 The cockpit `Model` SHALL compose a sidebar panel and a child panel using `lipgloss.JoinHorizontal`. When the sidebar is visible, the child panel SHALL receive `terminalWidth - sidebarWidth` as its effective width. When the sidebar is hidden, the child panel SHALL receive the full terminal width.
@@ -43,7 +47,6 @@ Cockpit `Deps` SHALL contain: `TurnRunner *turnrunner.Runner`, `Config *config.C
 - **WHEN** cockpit.New(deps) is called with fields from App struct
 - **THEN** all fields SHALL be directly assignable without type conversion
 
-## MODIFIED Requirements
 
 ### Requirement: Consume-or-forward message delegation
 The cockpit model's Update function SHALL consume global keys (Ctrl+1-5, Tab, Ctrl+B, Ctrl+P, Ctrl+Y) and forward all other messages to the active page or child model. Ctrl+5 is consumed to switch to the Tasks page.

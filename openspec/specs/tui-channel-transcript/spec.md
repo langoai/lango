@@ -1,4 +1,8 @@
-## ADDED Requirements
+## Purpose
+
+Capability spec for tui-channel-transcript. See requirements below for scope and behavior contracts.
+
+## Requirements
 
 ### Requirement: Channel message transcript item
 The chat transcript SHALL display channel-origin messages as `itemChannel` entries with per-channel colored badge, sender name, and sanitized message text.

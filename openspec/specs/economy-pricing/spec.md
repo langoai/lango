@@ -1,4 +1,8 @@
-## ADDED Requirements
+## Purpose
+
+Capability spec for economy-pricing. See requirements below for scope and behavior contracts.
+
+## Requirements
 
 ### Requirement: Rule-based dynamic pricing engine
 The system SHALL provide a dynamic pricing engine in `internal/economy/pricing/` that computes `Quote` prices by applying an ordered `RuleSet` of `PricingRule` entries to a base price.

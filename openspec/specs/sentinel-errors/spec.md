@@ -1,4 +1,8 @@
-## ADDED Requirements
+## Purpose
+
+Capability spec for sentinel-errors. See requirements below for scope and behavior contracts.
+
+## Requirements
 
 ### Requirement: Session sentinel errors
 The system SHALL define `ErrSessionNotFound` and `ErrDuplicateSession` in `session/errors.go`.

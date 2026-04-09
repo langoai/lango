@@ -1,4 +1,8 @@
-## ADDED Requirements
+## Purpose
+
+Capability spec for settings-ontology-alerting. See requirements below for scope and behavior contracts.
+
+## Requirements
 
 ### Requirement: Ontology settings form with full config coverage
 The settings TUI SHALL provide an "Ontology" category under the "AI & Knowledge" section with fields covering `OntologyConfig`, `OntologyACLConfig`, `OntologyGovernanceConfig`, and `OntologyExchangeConfig`. Sub-section fields SHALL be conditionally visible based on their parent enabled toggle.

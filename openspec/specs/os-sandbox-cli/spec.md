@@ -1,4 +1,8 @@
-## ADDED Requirements
+## Purpose
+
+Capability spec for os-sandbox-cli. See requirements below for scope and behavior contracts.
+
+## Requirements
 
 ### Requirement: sandbox status command output
 `lango sandbox status` SHALL display: Sandbox Configuration (enabled, fail-mode explanation when enabled and not opted out, backend label, network mode, workspace), Active Isolation (isolator name, available, reason if unavailable), Platform Capabilities (platform, kernel, primitives), and **Backend Availability** (one row per platform candidate with available/unavailable status and reason). The capability formatter SHALL distinguish between `"unknown (probe not yet implemented)"` and `"unavailable (reason)"`.

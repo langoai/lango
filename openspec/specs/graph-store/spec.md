@@ -1,4 +1,8 @@
-## ADDED Requirements
+## Purpose
+
+Capability spec for graph-store. See requirements below for scope and behavior contracts.
+
+## Requirements
 
 ### Requirement: BoltDB Store Initialization
 `NewBoltStore(path)` SHALL expand tilde prefixes and ensure parent directories exist before opening the BoltDB database.
@@ -89,7 +93,6 @@ The Store interface SHALL provide a `ClearAll(ctx) error` method that removes al
 - **WHEN** ClearAll is called on a populated store
 - **THEN** Count returns 0 and all queries return empty results
 
-## MODIFIED Requirements
 
 ### Requirement: Triple represents a Subject-Predicate-Object relationship
 The Triple struct SHALL include Subject, Predicate, Object, SubjectType, ObjectType, and Metadata fields. SubjectType and ObjectType SHALL default to empty string when not provided.

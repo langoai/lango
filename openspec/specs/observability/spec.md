@@ -1,4 +1,8 @@
-## ADDED Requirements
+## Purpose
+
+Capability spec for observability. See requirements below for scope and behavior contracts.
+
+## Requirements
 
 ### Requirement: Audit recorder handles AlertEvent
 The audit recorder SHALL subscribe to AlertEvent via SubscribeTyped and persist each alert to the audit log with action="alert", actor="system", target=alert type, and details containing severity, message, and alert-specific metadata.
@@ -15,7 +19,6 @@ The `/alerts` HTTP route SHALL be registered alongside existing observability ro
 - **THEN** the GET `/alerts` endpoint is registered on the chi router
 
 
-## ADDED Requirements
 
 ### Requirement: Session map capacity limit
 The `MetricsCollector` MUST support a `MaxSessions` field (default: 10,000) that caps the number of tracked sessions. When the cap is reached and a new session is inserted, the least-recently-updated session MUST be evicted.

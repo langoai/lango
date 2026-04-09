@@ -1,4 +1,8 @@
-## ADDED Requirements
+## Purpose
+
+Capability spec for cli-test-harness. See requirements below for scope and behavior contracts.
+
+## Requirements
 
 ### Requirement: Shared CLI test harness
 `internal/testutil/cli_harness.go` SHALL provide reusable test infrastructure: fake config loader, in-memory store factory, stdout/stderr capture, and cobra command execution helper. The harness MUST work without real DB or network connections.

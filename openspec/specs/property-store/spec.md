@@ -1,4 +1,8 @@
-## ADDED Requirements
+## Purpose
+
+Capability spec for property-store. See requirements below for scope and behavior contracts.
+
+## Requirements
 
 ### Requirement: Per-entity property storage
 The system SHALL provide `SetEntityProperty(ctx, entityID, entityType, property, value)` to store property values per entity instance. Properties SHALL be persisted in an EAV table (entity_id, property, value). The entity_id SHALL be canonicalized via EntityResolver before storage.

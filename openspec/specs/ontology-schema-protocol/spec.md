@@ -1,4 +1,8 @@
-## ADDED Requirements
+## Purpose
+
+Capability spec for ontology-schema-protocol. See requirements below for scope and behavior contracts.
+
+## Requirements
 
 ### Requirement: Schema query request type
 The protocol package SHALL define a `RequestSchemaQuery` constant of type `RequestType` with value `"schema_query"`.

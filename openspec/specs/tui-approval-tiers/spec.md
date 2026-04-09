@@ -1,4 +1,8 @@
-## ADDED Requirements
+## Purpose
+
+Capability spec for tui-approval-tiers. See requirements below for scope and behavior contracts.
+
+## Requirements
 
 ### Requirement: Two-tier approval classification
 The system SHALL classify each approval request into one of two display tiers based on `SafetyLevel`, `Category`, and `Activity` fields on `ApprovalRequest`.

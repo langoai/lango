@@ -1,4 +1,8 @@
-## ADDED Requirements
+## Purpose
+
+Capability spec for learning-engine. See requirements below for scope and behavior contracts.
+
+## Requirements
 
 ### Requirement: Tool Result Observation
 The system SHALL observe every tool execution result to detect error patterns and track successes.

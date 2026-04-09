@@ -1,4 +1,8 @@
-## ADDED Requirements
+## Purpose
+
+Capability spec for zkp-core. See requirements below for scope and behavior contracts.
+
+## Requirements
 
 ### Requirement: ProverService Lifecycle and Scheme Selection
 

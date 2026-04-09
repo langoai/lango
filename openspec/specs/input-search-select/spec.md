@@ -1,4 +1,8 @@
-## ADDED Requirements
+## Purpose
+
+Capability spec for input-search-select. See requirements below for scope and behavior contracts.
+
+## Requirements
 
 ### Requirement: Searchable dropdown select field type
 The TUI form system MUST support an `InputSearchSelect` field type that combines text input with a filterable dropdown list.

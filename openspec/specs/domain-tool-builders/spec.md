@@ -1,4 +1,8 @@
-## ADDED Requirements
+## Purpose
+
+Capability spec for domain-tool-builders. See requirements below for scope and behavior contracts.
+
+## Requirements
 
 ### Requirement: Domain packages own their tool builder functions
 Domain packages SHALL export a `BuildTools()` function that creates agent tools from domain-owned exported types. The function MUST NOT import `internal/app/`.

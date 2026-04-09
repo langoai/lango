@@ -1,4 +1,8 @@
-## ADDED Requirements
+## Purpose
+
+Capability spec for context-agent-v1. See requirements below for scope and behavior contracts.
+
+## Requirements
 
 ### Requirement: ContextSearchAgent
 The system SHALL provide a `ContextSearchAgent` implementing `RetrievalAgent` that wraps `ContextSearchSource` for vector/semantic search. It SHALL cover `LayerUserKnowledge` and `LayerAgentLearnings` only in v1.

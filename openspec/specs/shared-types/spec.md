@@ -1,4 +1,8 @@
-## ADDED Requirements
+## Purpose
+
+Capability spec for shared-types. See requirements below for scope and behavior contracts.
+
+## Requirements
 
 ### Requirement: Enum interface
 The system SHALL provide a generic `Enum[T any]` interface in `internal/types/enum.go` with methods `Valid() bool` and `Values() []T`.

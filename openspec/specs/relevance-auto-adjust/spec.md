@@ -1,4 +1,8 @@
-## ADDED Requirements
+## Purpose
+
+Capability spec for relevance-auto-adjust. See requirements below for scope and behavior contracts.
+
+## Requirements
 
 ### Requirement: RelevanceAdjuster service
 The system SHALL provide a `RelevanceAdjuster` that subscribes to `ContextInjectedEvent` and adjusts knowledge `relevance_score` based on injection history. It SHALL support shadow mode (log only) and active mode (write to DB). It SHALL have a configurable warmup period before adjustments begin (process-local counter).

@@ -1,4 +1,8 @@
-## ADDED Requirements
+## Purpose
+
+Capability spec for cockpit-sidebar. See requirements below for scope and behavior contracts.
+
+## Requirements
 
 ### Requirement: Sidebar displays menu items with active highlight
 The sidebar SHALL render a vertical list of menu items sourced from an `AllPageMetas()` centralized metadata table in `router.go`. The `New(items []MenuItem)` constructor SHALL accept items as a parameter instead of hardcoding them. The currently active item SHALL be visually distinguished with accent color and a left border indicator.
@@ -38,7 +42,6 @@ The sidebar SHALL have a fixed width of 20 characters when fully displayed.
 - **WHEN** sidebar is visible
 - **THEN** the rendered width SHALL be exactly 20 characters
 
-## MODIFIED Requirements
 
 ### Requirement: Sidebar interactive navigation
 The sidebar SHALL support interactive navigation when focused. When `focused=true`, up/down SHALL move the cursor and Enter SHALL emit `PageSelectedMsg`. When `focused=false`, the sidebar SHALL be display-only for keyboard events. Mouse clicks SHALL work regardless of focus state.

@@ -1,4 +1,8 @@
-## ADDED Requirements
+## Purpose
+
+Capability spec for ontology-actions. See requirements below for scope and behavior contracts.
+
+## Requirements
 
 ### Requirement: ActionType definition
 The system SHALL define an `ActionType` struct with `Name`, `Description`, `RequiredPerm` (Permission), `ParamSchema` (map of param name to description), and three closure fields: `Precondition`, `Execute`, `Compensate` (may be nil).

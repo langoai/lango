@@ -1,4 +1,8 @@
-## ADDED Requirements
+## Purpose
+
+Capability spec for phase-b-rollback. See requirements below for scope and behavior contracts.
+
+## Requirements
 
 ### Requirement: Phase B cleanup stack accumulates rollback functions
 `app.New()` Phase B SHALL maintain a `cleanupStack` that accumulates named cleanup functions as components are registered. Each Phase B step that creates a stoppable resource MUST push a cleanup entry.

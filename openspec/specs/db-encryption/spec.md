@@ -1,4 +1,8 @@
-## ADDED Requirements
+## Purpose
+
+Capability spec for db-encryption. See requirements below for scope and behavior contracts.
+
+## Requirements
 
 ### Requirement: DB encryption configuration
 The system MUST support a `security.dbEncryption` configuration with `enabled` (bool) and `cipherPageSize` (int, default 4096) fields.

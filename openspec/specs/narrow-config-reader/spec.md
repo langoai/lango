@@ -1,4 +1,8 @@
-## ADDED Requirements
+## Purpose
+
+Capability spec for narrow-config-reader. See requirements below for scope and behavior contracts.
+
+## Requirements
 
 ### Requirement: P2P package uses ConfigReader interface instead of config.P2PConfig
 `internal/p2p/node.go` SHALL accept a `ConfigReader` interface instead of `config.P2PConfig` directly. The `internal/p2p/` root package MUST NOT import `internal/config/`.

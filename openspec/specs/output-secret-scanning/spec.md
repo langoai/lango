@@ -1,4 +1,8 @@
-## ADDED Requirements
+## Purpose
+
+Capability spec for output-secret-scanning. See requirements below for scope and behavior contracts.
+
+## Requirements
 
 ### Requirement: Secret value registration
 The system SHALL provide a SecretScanner that registers known secret values for detection.

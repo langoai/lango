@@ -1,4 +1,8 @@
-## MODIFIED Requirements
+## Purpose
+
+Capability spec for bootstrap-pipeline. See requirements below for scope and behavior contracts.
+
+## Requirements
 
 ### Requirement: Pipeline Execute returns Result with phase timing
 The `Pipeline.Execute()` method SHALL record the wall-clock duration of each phase and populate `Result.PhaseTiming` with one `PhaseTimingEntry` per completed phase. Each entry SHALL contain the phase name and elapsed duration. A structured log line with `duration_ms` SHALL be emitted after each phase completes.

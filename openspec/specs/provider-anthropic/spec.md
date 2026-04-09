@@ -1,4 +1,8 @@
-## ADDED Requirements
+## Purpose
+
+Capability spec for provider-anthropic. See requirements below for scope and behavior contracts.
+
+## Requirements
 
 ### Requirement: Anthropic Messages API
 The system SHALL implement a provider using the Anthropic Messages API.

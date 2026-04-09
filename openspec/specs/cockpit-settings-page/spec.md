@@ -1,4 +1,8 @@
-## ADDED Requirements
+## Purpose
+
+Capability spec for cockpit-settings-page. See requirements below for scope and behavior contracts.
+
+## Requirements
 
 ### Requirement: Inline save result banner
 Editor SHALL display save success or failure inline at menu top. The banner SHALL clear on next key input.
@@ -18,7 +22,6 @@ Editor SHALL display save success or failure inline at menu top. The banner SHAL
 - **WHEN** NewEditorForEmbedding(cfg, onSave) is called
 - **THEN** the Editor step SHALL be StepMenu, not StepWelcome
 
-## MODIFIED Requirements
 
 ### Requirement: Embedded settings with OnSave callback
 SettingsPage SHALL embed `settings.Editor` via `NewEditorForEmbedding(cfg, onSave)`. The Editor SHALL work on a deep copy of the config, not the live runtime config. The save action SHALL pass context-related dotted path keys as explicitKeys, not category IDs.

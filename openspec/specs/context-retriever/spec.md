@@ -1,4 +1,8 @@
-## ADDED Requirements
+## Purpose
+
+Capability spec for context-retriever. See requirements below for scope and behavior contracts.
+
+## Requirements
 
 ### Requirement: Context Layer Architecture
 The system SHALL organize context into distinct layers for retrieval-augmented generation, including a Pending Inquiries layer for the proactive librarian.

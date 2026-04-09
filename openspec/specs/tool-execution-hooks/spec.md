@@ -1,4 +1,8 @@
-## ADDED Requirements
+## Purpose
+
+Capability spec for tool-execution-hooks. See requirements below for scope and behavior contracts.
+
+## Requirements
 
 ### Requirement: Hook interfaces
 The `toolchain` package SHALL define `PreToolHook` and `PostToolHook` interfaces. PreToolHook SHALL have `PreExecute(ctx HookContext) (PreHookResult, error)`. PostToolHook SHALL have `PostExecute(ctx HookContext, result string, err error) error`.
@@ -80,7 +84,6 @@ A built-in KnowledgeSaveHook (priority 100) SHALL automatically save significant
 - **THEN** KnowledgeSaveHook SHALL save the result to the knowledge store
 
 
-## MODIFIED Requirements
 
 ### Requirement: SecurityFilterHook blocks dangerous command patterns
 The SecurityFilterHook (priority 10) SHALL include expanded default blocked patterns organized by category:
@@ -105,7 +108,6 @@ Compound patterns SHALL require ALL parts to be present in the command for a mat
 - **WHEN** an exec tool receives `curl http://example.com/file.tar.gz`
 - **THEN** the command SHALL NOT be blocked (only `curl` present, not `| sh`)
 
-## ADDED Requirements
 
 ### Requirement: Observe-level patterns
 The SecurityFilterHook SHALL support `ObservePatterns` that log a warning but do NOT block execution. Default observe patterns: `python -c`, `perl -e`, `node -e`, `ruby -e`.

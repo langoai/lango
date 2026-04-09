@@ -1,4 +1,8 @@
-## ADDED Requirements
+## Purpose
+
+Capability spec for tui-runtime-bridge. See requirements below for scope and behavior contracts.
+
+## Requirements
 
 ### Requirement: Runtime bridge forwards tool, thinking, delegation, and budget events
 The `enrichRequest` function SHALL wire `OnToolCall`, `OnToolResult`, `OnThinking`, `OnDelegation`, and `OnBudgetWarning` callbacks from `turnrunner.Request` to corresponding Bubble Tea messages via the `msgSender` interface, without overwriting existing callbacks.

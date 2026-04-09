@@ -1,4 +1,8 @@
-## ADDED Requirements
+## Purpose
+
+Capability spec for graph-abi-typed-triple. See requirements below for scope and behavior contracts.
+
+## Requirements
 
 ### Requirement: Triple struct carries type information
 The `graph.Triple` struct SHALL include `SubjectType string` and `ObjectType string` fields. Empty string SHALL mean "untyped" and existing code creating triples without these fields SHALL continue to compile and function normally.

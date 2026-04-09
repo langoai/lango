@@ -1,4 +1,8 @@
-## ADDED Requirements
+## Purpose
+
+Capability spec for token-counter. See requirements below for scope and behavior contracts.
+
+## Requirements
 
 ### Requirement: Token Count Estimation
 The system SHALL provide approximate token counting for text content.

@@ -1,4 +1,8 @@
-## ADDED Requirements
+## Purpose
+
+Capability spec for architecture-boundary-enforcement. See requirements below for scope and behavior contracts.
+
+## Requirements
 
 ### Requirement: archtest enforces economy/p2p boundary
 The `internal/archtest` package SHALL contain a test that fails when any `internal/economy/**` package imports any `internal/p2p/**` package.

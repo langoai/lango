@@ -1,4 +1,8 @@
-## ADDED Requirements
+## Purpose
+
+Capability spec for thought-call-filtering. See requirements below for scope and behavior contracts.
+
+## Requirements
 
 ### Requirement: OpenAI provider filters Gemini thought tool calls
 The OpenAI provider's `convertParams()` SHALL identify tool calls with `Thought=true` and exclude them from the converted message sequence. Both the FunctionCall entry and its corresponding tool response message (matched by tool_call_id) SHALL be removed.

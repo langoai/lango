@@ -1,4 +1,8 @@
-## ADDED Requirements
+## Purpose
+
+Capability spec for container-sandbox. See requirements below for scope and behavior contracts.
+
+## Requirements
 
 ### Requirement: Container sandbox configuration
 The system MUST support a `p2p.toolIsolation.container` configuration block with `enabled`, `runtime`, `image`, `networkMode`, `readOnlyRootfs`, `cpuQuotaUs`, `poolSize`, and `poolIdleTimeout` fields.
@@ -103,7 +107,6 @@ The system MUST provide `lango p2p sandbox status`, `lango p2p sandbox test`, an
 A `build/sandbox/Dockerfile` MUST define a minimal Debian-based image with the lango binary, running as non-root `sandbox` user with `--sandbox-worker` entrypoint.
 
 
-## ADDED Requirements
 
 ### Requirement: Fail-closed container enforcement
 The `ContainerExecutor` MUST support a `requireContainer` mode. When enabled and the runtime resolves to `NativeRuntime` in auto mode, the executor MUST return an error wrapping `ErrRuntimeUnavailable` instead of silently falling back.
@@ -121,7 +124,6 @@ The `ContainerExecutor` MUST support a `requireContainer` mode. When enabled and
 - **WHEN** `requireContainer` is false
 - **THEN** fallback to `NativeRuntime` proceeds as before
 
-## MODIFIED Requirements
 
 ### Requirement: ContainerExecutor runtime probe
 `NewContainerExecutor` MUST check the `requireContainer` config field after the probe chain. If true and only `NativeRuntime` is available, it MUST return an error instead of proceeding.

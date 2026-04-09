@@ -1,4 +1,8 @@
-## ADDED Requirements
+## Purpose
+
+Capability spec for tui-task-surface. See requirements below for scope and behavior contracts.
+
+## Requirements
 
 ### Requirement: Task strip in chat view
 The chat view SHALL include a 1-2 line task strip above the footer displaying a summary of active background tasks when a BackgroundManager is available.

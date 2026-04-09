@@ -1,4 +1,8 @@
-## ADDED Requirements
+## Purpose
+
+Capability spec for cockpit-status-page. See requirements below for scope and behavior contracts.
+
+## Requirements
 
 ### Requirement: Feature status and metrics dashboard
 StatusPage SHALL display feature flags from `FeatureStatuses.All()`, token usage and tool execution stats from `MetricsCollector.Snapshot()`, and provider/model info from Config.

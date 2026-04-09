@@ -1,4 +1,8 @@
-## ADDED Requirements
+## Purpose
+
+Capability spec for cockpit-channel-status. See requirements below for scope and behavior contracts.
+
+## Requirements
 
 ### Requirement: ChannelTracker aggregates channel status
 A `ChannelTracker` SHALL subscribe to EventBus channel events and maintain per-channel connection status, message counts, and last activity timestamps.

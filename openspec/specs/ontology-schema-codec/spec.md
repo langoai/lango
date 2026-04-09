@@ -1,4 +1,8 @@
-## ADDED Requirements
+## Purpose
+
+Capability spec for ontology-schema-codec. See requirements below for scope and behavior contracts.
+
+## Requirements
 
 ### Requirement: Slim wire types
 The system SHALL define `SchemaTypeSlim` (Name, Description, Properties as `[]SchemaPropertySlim`, Extends) and `SchemaPredicateSlim` (Name, Description, SourceTypes, TargetTypes, Cardinality, Inverse) and `SchemaPropertySlim` (Name, Type, Required) in the ontology package. These types SHALL NOT contain UUID, timestamps, status, or version fields.

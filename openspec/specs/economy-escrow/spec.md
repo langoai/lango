@@ -1,4 +1,8 @@
-## ADDED Requirements
+## Purpose
+
+Capability spec for economy-escrow. See requirements below for scope and behavior contracts.
+
+## Requirements
 
 ### Requirement: Escrow state machine
 The system SHALL manage escrow lifecycle in `internal/economy/escrow/` through the following state machine:

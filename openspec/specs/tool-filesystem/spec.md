@@ -1,4 +1,8 @@
-## ADDED Requirements
+## Purpose
+
+Capability spec for tool-filesystem. See requirements below for scope and behavior contracts.
+
+## Requirements
 
 ### Requirement: File reading
 The system SHALL read file contents with encoding detection and size limits.
@@ -101,7 +105,6 @@ The system SHALL support optional `offset` (1-indexed line number) and `limit` (
 - **THEN** the full file content SHALL be returned as a plain string (same as before)
 
 
-## MODIFIED Requirements
 
 ### Requirement: Path safety
 The system SHALL validate file paths using `filepath.EvalSymlinks()` after `filepath.Abs()` to resolve symlinks before checking against allowed and blocked path lists. Both the target path and the config paths (allowed/blocked) MUST be resolved through `EvalSymlinks` to handle OS-specific symlink directories (e.g., macOS `/var` → `/private/var`).
@@ -163,7 +166,6 @@ The `checkPathAccess` function SHALL compare the input path against both the unr
 - **WHEN** `BlockedPaths` contains a path that is itself a symlink
 - **THEN** the block check SHALL match against both the symlink path and its resolved target
 
-## REMOVED Requirements
 
 ### Requirement: P2P context detection
 **Reason**: Replaced by canonical `ctxkeys.WithP2PRequest`/`ctxkeys.IsP2PRequest` from the `ctxkeys` package.

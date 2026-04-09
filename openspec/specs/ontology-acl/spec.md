@@ -1,4 +1,8 @@
-## ADDED Requirements
+## Purpose
+
+Capability spec for ontology-acl. See requirements below for scope and behavior contracts.
+
+## Requirements
 
 ### Requirement: Permission model
 The system SHALL define three ordered permission levels: `PermRead` (1), `PermWrite` (2), `PermAdmin` (3). A principal with permission level N SHALL be allowed to perform any operation requiring level <= N.

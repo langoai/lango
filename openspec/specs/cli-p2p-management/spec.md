@@ -1,4 +1,8 @@
-## ADDED Requirements
+## Purpose
+
+Capability spec for cli-p2p-management. See requirements below for scope and behavior contracts.
+
+## Requirements
 
 ### Requirement: P2P CLI command group
 The system SHALL provide a `lango p2p` command group with subcommands for P2P network management, wired into `cmd/lango/main.go` using the bootstrap Result loader pattern.

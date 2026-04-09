@@ -1,4 +1,8 @@
-## ADDED Requirements
+## Purpose
+
+Capability spec for tui-perf-transcript-memo. See requirements below for scope and behavior contracts.
+
+## Requirements
 
 ### Requirement: Transcript block memoization
 The chatViewModel SHALL cache rendered block output per transcriptItem in a `cachedBlock` field. The `render()` method SHALL skip re-rendering entries with a non-empty cachedBlock and reuse the cached string.

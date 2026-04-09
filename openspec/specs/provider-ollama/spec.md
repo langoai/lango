@@ -1,4 +1,8 @@
-## ADDED Requirements
+## Purpose
+
+Capability spec for provider-ollama. See requirements below for scope and behavior contracts.
+
+## Requirements
 
 ### Requirement: Configuration
 The system SHALL support "ollama" as a distinct provider type in configuration.

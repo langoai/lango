@@ -1,4 +1,8 @@
-## ADDED Requirements
+## Purpose
+
+Capability spec for ontology-registry. See requirements below for scope and behavior contracts.
+
+## Requirements
 
 ### Requirement: ObjectType registration and retrieval
 The system SHALL provide an `OntologyService` interface with methods to register, retrieve, list, and deprecate ObjectType definitions. Each ObjectType SHALL have a unique name, description, list of PropertyDef, optional parent type (Extends), SchemaStatus (active/deprecated), and version number. ObjectType data SHALL be persisted in SQLite via Ent ORM.

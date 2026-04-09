@@ -1,4 +1,8 @@
-## ADDED Requirements
+## Purpose
+
+Capability spec for alerting. See requirements below for scope and behavior contracts.
+
+## Requirements
 
 ### Requirement: Alert dispatcher monitors policy block rate
 The alerting dispatcher SHALL subscribe to PolicyDecisionEvent on the EventBus and track block verdicts within a sliding 5-minute window. When the number of blocks exceeds the configured `PolicyBlockRate` threshold, the dispatcher SHALL publish an AlertEvent with type "policy_block_rate" and severity "warning".

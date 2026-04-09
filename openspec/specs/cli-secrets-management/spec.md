@@ -1,4 +1,8 @@
-## ADDED Requirements
+## Purpose
+
+Capability spec for cli-secrets-management. See requirements below for scope and behavior contracts.
+
+## Requirements
 
 ### Requirement: Secrets list command
 The system SHALL provide a `lango security secrets list` command that displays metadata for all stored secrets. Secret values SHALL never be displayed. Table output SHALL show NAME, KEY, CREATED, UPDATED, and ACCESS_COUNT columns. The command SHALL support `--json` for JSON output.

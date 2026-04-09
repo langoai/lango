@@ -1,6 +1,10 @@
 # Paymaster Permit Specification
 
-## ADDED Requirements
+## Purpose
+
+Capability spec for paymaster-permit. See requirements below for scope and behavior contracts.
+
+## Requirements
 
 ### Requirement: EIP-2612 permit signing for USDC
 The system SHALL provide an EIP-2612 permit signing builder that computes domain separators, struct hashes, and typed data hashes for USDC v2 permit operations.

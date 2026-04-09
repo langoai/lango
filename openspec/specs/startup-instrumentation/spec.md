@@ -1,4 +1,8 @@
-## ADDED Requirements
+## Purpose
+
+Capability spec for startup-instrumentation. See requirements below for scope and behavior contracts.
+
+## Requirements
 
 ### Requirement: PhaseTimingEntry type records bootstrap phase duration
 The `bootstrap` package SHALL export a `PhaseTimingEntry` struct with `Phase` (string) and `Duration` (time.Duration) fields, both JSON-tagged.

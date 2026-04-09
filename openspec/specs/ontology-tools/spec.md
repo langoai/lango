@@ -1,4 +1,8 @@
-## ADDED Requirements
+## Purpose
+
+Capability spec for ontology-tools. See requirements below for scope and behavior contracts.
+
+## Requirements
 
 ### Requirement: Ontology surface tools
 The system SHALL provide 13 static agent-facing tools with `ontology_` prefix, plus dynamic `ontology_action_{name}` tools generated from the ActionRegistry, an `ontology_list_actions` tool, and 4 governance tools: `ontology_promote_type`, `ontology_promote_predicate`, `ontology_schema_health`, `ontology_type_usage`. `BuildTools` SHALL accept `(svc OntologyService, reg *ActionRegistry)`. Read-only tools SHALL use SafetyLevelSafe; mutation tools SHALL use SafetyLevelModerate.

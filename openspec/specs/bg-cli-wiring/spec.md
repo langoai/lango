@@ -1,4 +1,8 @@
-## ADDED Requirements
+## Purpose
+
+Capability spec for bg-cli-wiring. See requirements below for scope and behavior contracts.
+
+## Requirements
 
 ### Requirement: bg command is registered in main.go
 The `lango bg` command SHALL be registered in `cmd/lango/main.go` with GroupID "infra", using a stub manager provider that returns an error when invoked outside a running server.

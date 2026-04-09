@@ -1,4 +1,8 @@
-## ADDED Requirements
+## Purpose
+
+Capability spec for p2p-handshake. See requirements below for scope and behavior contracts.
+
+## Requirements
 
 ### Requirement: Challenge-Response Mutual Authentication
 
