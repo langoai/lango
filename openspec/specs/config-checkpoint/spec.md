@@ -1,4 +1,8 @@
-## ADDED Requirements
+## Purpose
+
+Capability spec for config-checkpoint. See requirements below for scope and behavior contracts.
+
+## Requirements
 
 ### Requirement: Config Fingerprint Computation
 The system SHALL compute a SHA-256 fingerprint at app initialization from the JSON serialization of ExplicitKeys, AutoEnabled, and HooksConfig. The fingerprint SHALL be cached for the app's lifetime as a hex string.

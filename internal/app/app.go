@@ -129,6 +129,12 @@ func New(boot *bootstrap.Result, opts ...AppOption) (*App, error) {
 	// B1. Populate app fields from resolver.
 	populateAppFields(app, resolver)
 
+	// B1a. Wire the event bus into the supervisor's exec tool so that
+	// SandboxDecisionEvent records flow into the audit recorder.
+	if fv, ok := resolver.Resolve(appinit.ProvidesSupervisor).(*foundationValues); ok && fv.Supervisor != nil {
+		fv.Supervisor.SetEventBus(bus)
+	}
+
 	// B1b. Provenance runtime capture + transport wiring.
 	wireProvenanceRuntime(app, resolver)
 

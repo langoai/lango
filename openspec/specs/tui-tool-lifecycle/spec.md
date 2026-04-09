@@ -1,4 +1,8 @@
-## ADDED Requirements
+## Purpose
+
+Capability spec for tui-tool-lifecycle. See requirements below for scope and behavior contracts.
+
+## Requirements
 
 ### Requirement: Tool transcript item kind
 The chat transcript SHALL support an `itemTool` kind that represents a single tool invocation with lifecycle state.

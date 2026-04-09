@@ -1,4 +1,8 @@
-## ADDED Requirements
+## Purpose
+
+Capability spec for truth-maintenance. See requirements below for scope and behavior contracts.
+
+## Requirements
 
 ### Requirement: Bi-temporal metadata on asserted triples
 The system SHALL set `_valid_from`, `_valid_to`, `_recorded_at`, `_recorded_by`, `_source`, and `_confidence` metadata fields on all triples stored via `AssertFact`. Existing triples without these fields SHALL be treated as always-valid (backward compatible).

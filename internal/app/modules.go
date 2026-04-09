@@ -309,7 +309,7 @@ func (m *intelligenceModule) Init(ctx context.Context, r appinit.Resolver) (*app
 	if bt := r.Resolve(appinit.ProvidesBaseTools); bt != nil {
 		baseToolSlice, _ = bt.([]*agent.Tool)
 	}
-	skillReg := initSkills(cfg, baseToolSlice)
+	skillReg := initSkills(cfg, baseToolSlice, m.bus)
 	if skillReg != nil {
 		tools = append(tools, skillReg.LoadedSkills()...)
 	}
@@ -924,7 +924,7 @@ func (m *extensionModule) Init(ctx context.Context, r appinit.Resolver) (*appini
 	var components []lifecycle.ComponentEntry
 
 	// MCP.
-	mcpc := initMCP(cfg)
+	mcpc := initMCP(cfg, m.bus)
 	if mcpc != nil {
 		tools = append(tools, mcpc.tools...)
 		entries = append(entries, appinit.CatalogEntry{Category: "mcp", Description: "MCP plugin tools (external servers)", ConfigKey: "mcp.enabled", Enabled: true, Tools: mcpc.tools})

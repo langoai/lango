@@ -1,4 +1,8 @@
-## ADDED Requirements
+## Purpose
+
+Capability spec for structured-findings-taxonomy. See requirements below for scope and behavior contracts.
+
+## Requirements
 
 ### Requirement: Shared category mappers
 The `knowledge` package SHALL provide exported `MapKnowledgeCategory(string) (entknowledge.Category, error)` and `MapLearningCategory(string) (entlearning.Category, error)` functions as the single source of truth for category mapping. Both SHALL return error for unrecognized types (case-sensitive, no fallback).

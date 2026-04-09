@@ -1,4 +1,8 @@
-## ADDED Requirements
+## Purpose
+
+Capability spec for secret-reference-tokens. See requirements below for scope and behavior contracts.
+
+## Requirements
 
 ### Requirement: Reference token storage
 The system SHALL provide a RefStore that maps opaque reference tokens to secret plaintext values in memory.

@@ -211,7 +211,7 @@ See the [Installation Guide](getting-started/installation.md) for detailed instr
 
     ---
 
-    Process isolation via macOS Seatbelt and Linux seccomp for tool execution with network deny and workspace-scoped access.
+    Process isolation via macOS Seatbelt (Linux: planned, not yet enforced) for tool execution with network deny and workspace-scoped access.
 
 -   :construction: **Response Gatekeeper**
 

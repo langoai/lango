@@ -7,37 +7,43 @@ import (
 	"io"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 	"sync"
 	"syscall"
 	"time"
 
 	"github.com/creack/pty"
+	"github.com/langoai/lango/internal/eventbus"
 	"github.com/langoai/lango/internal/logging"
 	sandboxos "github.com/langoai/lango/internal/sandbox/os"
 	"github.com/langoai/lango/internal/security"
+	"github.com/langoai/lango/internal/session"
 )
 
 var logger = logging.SubsystemSugar("tool.exec")
 
 // Config holds exec tool configuration
 type Config struct {
-	DefaultTimeout  time.Duration
-	AllowBackground bool
-	WorkDir         string
-	EnvFilter       []string           // environment variables to exclude
-	EnvWhitelist    []string           // if set, ONLY these vars are allowed
-	Refs            *security.RefStore // secret reference token resolver
-	OSIsolator      sandboxos.OSIsolator // OS-level sandbox (nil = disabled)
-	SandboxPolicy   sandboxos.Policy     // policy for sandboxed execution
-	FailClosed      bool                 // if true, reject execution when sandbox unavailable
+	DefaultTimeout   time.Duration
+	AllowBackground  bool
+	WorkDir          string
+	EnvFilter        []string             // environment variables to exclude
+	EnvWhitelist     []string             // if set, ONLY these vars are allowed
+	Refs             *security.RefStore   // secret reference token resolver
+	OSIsolator       sandboxos.OSIsolator // OS-level sandbox (nil = disabled)
+	SandboxPolicy    sandboxos.Policy     // policy for sandboxed execution
+	FailClosed       bool                 // if true, reject execution when sandbox unavailable
+	ExcludedCommands []string             // command basenames that bypass the sandbox
+	Bus              *eventbus.Bus        // event bus for SandboxDecisionEvent (optional)
 }
 
 // Tool provides shell command execution
 type Tool struct {
-	config      Config
-	bgProcesses map[string]*BackgroundProcess
-	bgMu        sync.RWMutex
+	config       Config
+	bgProcesses  map[string]*BackgroundProcess
+	bgMu         sync.RWMutex
+	fallbackOnce sync.Once // emit the fail-open warning to stderr at most once per process
 }
 
 // syncBuffer is a thread-safe wrapper around bytes.Buffer.
@@ -89,20 +95,105 @@ func New(cfg Config) *Tool {
 	}
 }
 
+// SetEventBus attaches an event bus for SandboxDecisionEvent publishing.
+// Wiring may call this after Tool construction once the bus is available.
+// Passing nil disables publishing (PublishSandboxDecision is a no-op on nil).
+func (t *Tool) SetEventBus(bus *eventbus.Bus) {
+	t.config.Bus = bus
+}
+
 // applySandbox applies OS-level sandbox to the command if configured.
 // Returns a non-nil error only when fail-closed is set and the sandbox
-// cannot be applied. In fail-open mode it logs a warning and returns nil.
-func (t *Tool) applySandbox(ctx context.Context, cmd *exec.Cmd) error {
+// cannot be applied. In fail-open mode it logs a warning, emits a one-time
+// stderr message, and returns nil.
+//
+// userCommand is the raw user command string (before sh -c wrapping and
+// before secret token resolution). It is used both for ExcludedCommands
+// matching and as the audit Command field.
+func (t *Tool) applySandbox(ctx context.Context, cmd *exec.Cmd, userCommand string) error {
+	if matched, pattern := excludedMatch(userCommand, t.config.ExcludedCommands); pattern != "" {
+		t.publishDecision(ctx, userCommand, "excluded", "", pattern)
+		logger.Warnw("sandbox bypassed: excluded command",
+			"command", matched, "pattern", pattern)
+		return nil
+	}
+
 	if t.config.OSIsolator == nil {
+		if t.config.FailClosed {
+			t.publishDecision(ctx, userCommand, "rejected", "no isolator configured", "")
+			return fmt.Errorf("%w: no OS isolator configured", sandboxos.ErrSandboxRequired)
+		}
+		t.publishDecision(ctx, userCommand, "skipped", "no isolator configured", "")
+		t.warnFallbackOnce("no isolator configured")
 		return nil
 	}
 	if err := t.config.OSIsolator.Apply(ctx, cmd, t.config.SandboxPolicy); err != nil {
 		if t.config.FailClosed {
+			t.publishDecision(ctx, userCommand, "rejected", err.Error(), "")
 			return fmt.Errorf("%w: %w", sandboxos.ErrSandboxRequired, err)
 		}
 		logger.Warnw("OS sandbox unavailable, proceeding without isolation", "error", err)
+		t.publishDecision(ctx, userCommand, "skipped", err.Error(), "")
+		t.warnFallbackOnce(err.Error())
+		return nil
 	}
+	t.publishDecision(ctx, userCommand, "applied", "", "")
 	return nil
+}
+
+// publishDecision builds and publishes a SandboxDecisionEvent. SessionKey is
+// derived from ctx so that re-entry under different sessions produces correct
+// audit attribution. The bus may be nil (publish is a no-op).
+func (t *Tool) publishDecision(ctx context.Context, userCommand, decision, reason, pattern string) {
+	backend := ""
+	if t.config.OSIsolator != nil {
+		backend = t.config.OSIsolator.Name()
+	}
+	eventbus.PublishSandboxDecision(t.config.Bus, eventbus.SandboxDecisionEvent{
+		SessionKey: session.SessionKeyFromContext(ctx),
+		Source:     "exec",
+		Command:    userCommand,
+		Decision:   decision,
+		Backend:    backend,
+		Reason:     reason,
+		Pattern:    pattern,
+	})
+}
+
+// warnFallbackOnce prints a one-shot stderr warning so the user notices that
+// the sandbox is not active for this process. Subsequent calls are no-ops to
+// keep agent output clean during long-running sessions.
+func (t *Tool) warnFallbackOnce(reason string) {
+	t.fallbackOnce.Do(func() {
+		fmt.Fprintf(os.Stderr,
+			"lango: WARNING — sandbox fallback active (reason: %s); commands run unsandboxed\n",
+			reason)
+	})
+}
+
+// excludedMatch returns the matched basename and pattern, or "", "" when no
+// match. Matches against the basename of the first whitespace-separated token
+// of the user command. cmd.Args[0] is "sh" because exec.Tool wraps commands
+// in `sh -c`, so the user command must be parsed before sh wrapping.
+//
+// Conservative semantics: shell chains like "cd /tmp && git status" yield
+// first token "cd" — they do NOT match excluded=["git"]. Bypass works only
+// for direct invocations such as "git status" or "/usr/bin/git push".
+func excludedMatch(userCommand string, patterns []string) (matched, pattern string) {
+	if len(patterns) == 0 {
+		return "", ""
+	}
+	fields := strings.Fields(userCommand)
+	if len(fields) == 0 {
+		return "", ""
+	}
+	base := filepath.Base(fields[0])
+	for _, p := range patterns {
+		if base == p {
+			return base, p
+		}
+	}
+	return "", ""
 }
 
 // resolveRefs resolves any secret reference tokens in the command string.
@@ -135,7 +226,7 @@ func (t *Tool) Run(ctx context.Context, command string, timeout time.Duration) (
 	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr
 
-	if err := t.applySandbox(ctx, cmd); err != nil {
+	if err := t.applySandbox(ctx, cmd, command); err != nil {
 		return nil, err
 	}
 
@@ -180,7 +271,7 @@ func (t *Tool) RunWithPTY(ctx context.Context, command string, timeout time.Dura
 	cmd.Dir = t.config.WorkDir
 	cmd.Env = t.filterEnv(os.Environ())
 
-	if err := t.applySandbox(ctx, cmd); err != nil {
+	if err := t.applySandbox(ctx, cmd, command); err != nil {
 		return nil, err
 	}
 
@@ -247,7 +338,7 @@ func (t *Tool) StartBackground(command string) (string, error) {
 	cmd.Stdout = output
 	cmd.Stderr = output
 
-	if err := t.applySandbox(context.Background(), cmd); err != nil {
+	if err := t.applySandbox(context.Background(), cmd, command); err != nil {
 		return "", err
 	}
 

@@ -552,6 +552,8 @@ func (s *ConfigState) UpdateConfigFromForm(form *FormModel) {
 			s.Current.Sandbox.Enabled = f.Checked
 		case "os_sandbox_fail_closed":
 			s.Current.Sandbox.FailClosed = f.Checked
+		case "os_sandbox_backend":
+			s.Current.Sandbox.Backend = val
 		case "os_sandbox_workspace_path":
 			s.Current.Sandbox.WorkspacePath = val
 		case "os_sandbox_network_mode":
@@ -560,6 +562,8 @@ func (s *ConfigState) UpdateConfigFromForm(form *FormModel) {
 			s.Current.Sandbox.AllowedNetworkIPs = splitCSV(val)
 		case "os_sandbox_allowed_write_paths":
 			s.Current.Sandbox.AllowedWritePaths = splitCSV(val)
+		case "os_sandbox_excluded_commands":
+			s.Current.Sandbox.ExcludedCommands = splitCSV(val)
 		case "os_sandbox_timeout":
 			if d, err := time.ParseDuration(val); err == nil {
 				s.Current.Sandbox.TimeoutPerTool = d

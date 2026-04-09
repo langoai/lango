@@ -1,4 +1,8 @@
-## ADDED Requirements
+## Purpose
+
+Capability spec for agent-runtime. See requirements below for scope and behavior contracts.
+
+## Requirements
 
 ### Requirement: Executor wrapper injection point
 The application wiring SHALL support injecting a `turnrunner.Executor` wrapper between agent creation and TurnRunner construction. In structured mode, `initAgentRuntime()` SHALL wrap the inner executor with `CoordinatingExecutor`. In classic mode, the inner executor SHALL be used directly.

@@ -1,4 +1,8 @@
-## ADDED Requirements
+## Purpose
+
+Capability spec for gemini-content-sanitization. See requirements below for scope and behavior contracts.
+
+## Requirements
 
 ### Requirement: Gemini content turn-order sanitization pipeline
 The Gemini provider SHALL sanitize the content sequence before every API call to satisfy Gemini's strict turn-ordering rules. The sanitization pipeline SHALL execute 5 steps in order: (1) drop leading orphaned FunctionResponses, (2) merge consecutive same-role contents, (3) prepend synthetic user turn if sequence starts with model, (4) ensure FunctionCall/FunctionResponse pairing, (5) final merge pass.

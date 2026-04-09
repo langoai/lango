@@ -1,4 +1,8 @@
-## ADDED Requirements
+## Purpose
+
+Capability spec for production-readiness. See requirements below for scope and behavior contracts.
+
+## Requirements
 
 ### Requirement: Unsupported security provider produces actionable error
 The system SHALL reject unsupported security provider names at config-time with an error message listing all valid provider options (local, rpc, aws-kms, gcp-kms, azure-kv, pkcs11).

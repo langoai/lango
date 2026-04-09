@@ -18,3 +18,4 @@ func (l *landlockIsolator) Apply(_ context.Context, _ *exec.Cmd, _ Policy) error
 
 func (l *landlockIsolator) Available() bool { return false }
 func (l *landlockIsolator) Name() string    { return "landlock" }
+func (l *landlockIsolator) Reason() string  { return "not on Linux" }

@@ -1,4 +1,8 @@
-## ADDED Requirements
+## Purpose
+
+Capability spec for knowledge-fts5-integration. See requirements below for scope and behavior contracts.
+
+## Requirements
 
 ### Requirement: Knowledge store FTS5 injection
 The `knowledge.Store` SHALL provide a `SetFTS5Index(idx *search.FTS5Index)` method to inject the FTS5 index for knowledge search. A separate `SetLearningFTS5Index(idx *search.FTS5Index)` SHALL be provided for learning search. When no index is injected, search methods SHALL use the existing LIKE fallback.

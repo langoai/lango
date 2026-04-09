@@ -1,3 +1,7 @@
+## Purpose
+
+Capability spec for supervisor-architecture. See requirements below for scope and behavior contracts.
+
 ## Requirements
 
 ### Requirement: Secret Isolation

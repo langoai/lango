@@ -1,4 +1,8 @@
-## ADDED Requirements
+## Purpose
+
+Capability spec for cockpit-tools-page. See requirements below for scope and behavior contracts.
+
+## Requirements
 
 ### Requirement: Tool catalog browser with categories
 ToolsPage SHALL display categories from `ToolCatalog.ListCategories()` with cursor navigation. Selecting a category SHALL show tools from `ListTools(category)`.

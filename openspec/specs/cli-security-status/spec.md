@@ -1,3 +1,7 @@
+## Purpose
+
+Capability spec for cli-security-status. See requirements below for scope and behavior contracts.
+
 ## Requirements
 
 ### Requirement: Security status command

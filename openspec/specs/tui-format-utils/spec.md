@@ -1,4 +1,8 @@
-## ADDED Requirements
+## Purpose
+
+Capability spec for tui-format-utils. See requirements below for scope and behavior contracts.
+
+## Requirements
 
 ### Requirement: Shared string truncation
 The `tui` package SHALL export a `Truncate(s string, maxLen int) string` function that shortens strings exceeding `maxLen` by appending "..." and trimming to fit.

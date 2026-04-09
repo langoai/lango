@@ -1,4 +1,8 @@
-## ADDED Requirements
+## Purpose
+
+Capability spec for p2p-skills. See requirements below for scope and behavior contracts.
+
+## Requirements
 
 ### Requirement: P2P embedded skills
 The system SHALL provide 8 embedded skills for P2P operations, each using `type: script` with `status: active` and mapping to a `lango p2p` CLI command.

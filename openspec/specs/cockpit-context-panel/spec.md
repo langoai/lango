@@ -1,4 +1,8 @@
-## ADDED Requirements
+## Purpose
+
+Capability spec for cockpit-context-panel. See requirements below for scope and behavior contracts.
+
+## Requirements
 
 ### Requirement: Toggleable right context panel
 The cockpit SHALL support a right-side context panel (Ctrl+P toggle) displaying live token usage, tool execution stats, and uptime from MetricsCollector.Snapshot(). The panel SHALL NOT be a Page — it uses Start()/Stop() lifecycle managed by the cockpit toggle.

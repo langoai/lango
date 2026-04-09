@@ -1,4 +1,8 @@
-## ADDED Requirements
+## Purpose
+
+Capability spec for tool-browser. See requirements below for scope and behavior contracts.
+
+## Requirements
 
 ### Requirement: Browser automation via go-rod
 The system SHALL provide browser automation tools powered by go-rod for web page interaction, with local browser launch support.
@@ -261,7 +265,6 @@ The application layer SHALL wrap all browser tool handlers with panic recovery a
 - **AND** the error SHALL be returned as-is
 
 
-## ADDED Requirements
 
 ### Requirement: Private network URL blocking for P2P
 The `browser_navigate` handler MUST validate URLs against a private network blocklist when the context carries a P2P origin marker. Blocked addresses: `localhost`, `127.0.0.0/8`, `10.0.0.0/8`, `172.16.0.0/12`, `192.168.0.0/16`, `169.254.0.0/16`, `[::1]`, and `file://` scheme. `ValidateURLForP2P` MUST resolve non-IP hostnames via `net.LookupIP` and check all resolved IPs against private ranges. After navigation completes, the handler MUST always retrieve the final page URL and re-validate it via `ValidateURLForP2P`, regardless of whether the final URL string matches the original request URL. This prevents both redirect-based SSRF and DNS rebinding attacks where the same hostname resolves to a different IP at navigation time.

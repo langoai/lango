@@ -1,3 +1,9 @@
+## Purpose
+
+Capability spec for tui-form-field-builder. See requirements below for scope and behavior contracts.
+
+## Requirements
+
 ### Requirement: Form field factory functions
 The `tuicore` package SHALL provide factory functions that create `*Field` values with common configurations, reducing boilerplate in settings form files.
 

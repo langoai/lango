@@ -1,5 +1,9 @@
 # Conversation Analysis Specification
 
+## Purpose
+
+Capability spec for conversation-analysis. See requirements below for scope and behavior contracts.
+
 ## Requirements
 
 ### Requirement: Conversation knowledge extraction

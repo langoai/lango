@@ -5,42 +5,119 @@ package sandbox
 import (
 	"context"
 	"fmt"
+	"io"
+	"net"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"runtime"
 	"strings"
+	"time"
 
+	"entgo.io/ent/dialect/sql"
 	"github.com/spf13/cobra"
 
+	"github.com/langoai/lango/internal/bootstrap"
 	"github.com/langoai/lango/internal/config"
+	"github.com/langoai/lango/internal/ent/auditlog"
 	sandboxos "github.com/langoai/lango/internal/sandbox/os"
 )
 
+// BootLoader is the optional dependency that opens the encrypted application
+// database so `lango sandbox status` can query the recent SandboxDecision
+// audit trail. It is optional: if nil or if it returns an error (database
+// locked, signed-out, missing), status renders without the Recent Decisions
+// section so the command remains usable as a pure sandbox-layer diagnostic.
+type BootLoader func() (*bootstrap.Result, error)
+
 // NewSandboxCmd creates the top-level `lango sandbox` command.
-func NewSandboxCmd(cfgLoader func() (*config.Config, error)) *cobra.Command {
+//
+// cfgLoader runs lightweight bootstrap and returns only the config (closing
+// the DB on the way out) — used by `sandbox test` which does not need the
+// audit DB, and as the graceful-degradation fallback for `sandbox status`
+// when `bootLoader` is unavailable. bootLoader runs the full bootstrap and
+// returns the result with an open DBClient — used by `sandbox status` to
+// query the sandbox decision audit trail.
+//
+// `sandbox status` prefers bootLoader so that one bootstrap pass serves both
+// the config rendering and the audit query (no double passphrase prompt).
+// When bootLoader is nil or returns an error (signed-out, locked DB,
+// non-interactive environments), status falls back to cfgLoader so the
+// config / capabilities / backend availability sections still render —
+// only the Recent Sandbox Decisions section is silently skipped.
+func NewSandboxCmd(cfgLoader func() (*config.Config, error), bootLoader BootLoader) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "sandbox",
 		Short: "Manage OS-level process sandbox",
 		Long:  "Inspect sandbox configuration, platform capabilities, and run isolation smoke tests.",
 	}
 
-	cmd.AddCommand(newStatusCmd(cfgLoader))
-	cmd.AddCommand(newTestCmd())
+	cmd.AddCommand(newStatusCmd(cfgLoader, bootLoader))
+	cmd.AddCommand(newTestCmd(cfgLoader))
+	cmd.AddCommand(newProbeNetCmd())
 
 	return cmd
 }
 
+// versioner is an optional interface implemented by isolators that can report
+// a version string (e.g. BwrapIsolator captures `bwrap --version`). The test
+// command type-asserts against this interface so backends without a meaningful
+// version (Seatbelt, noop) simply omit the line.
+type versioner interface {
+	Version() string
+}
+
+// networkIsolator is an optional interface implemented by isolators that
+// separately track network isolation capability (e.g. BwrapIsolator's
+// two-phase smoke probe, where the base namespace probe can succeed while
+// the --unshare-net probe fails). Status rendering uses this to surface
+// partial degradation that would otherwise be invisible — users seeing
+// "MCP works but exec/skill is rejected" would have no way to diagnose it.
+type networkIsolator interface {
+	NetworkIsolationAvailable() bool
+	NetworkIsolationReason() string
+}
+
 // newStatusCmd creates `lango sandbox status`.
-func newStatusCmd(cfgLoader func() (*config.Config, error)) *cobra.Command {
-	return &cobra.Command{
+func newStatusCmd(cfgLoader func() (*config.Config, error), bootLoader BootLoader) *cobra.Command {
+	var sessionPrefix string
+	cmd := &cobra.Command{
 		Use:   "status",
 		Short: "Show sandbox configuration and platform capabilities",
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			w := cmd.OutOrStdout()
 
-			cfg, err := cfgLoader()
-			if err != nil {
-				return err
+			// Try bootLoader first so a single bootstrap pass serves both
+			// the config rendering AND the Recent Decisions audit query
+			// (no double passphrase prompt — that was the v1 regression).
+			// On nil bootLoader or any failure, fall back to cfgLoader so
+			// the config / capabilities / backend sections still render
+			// in degraded modes (signed-out, locked DB, non-interactive).
+			// Only the Recent Decisions section is silently skipped.
+			var (
+				cfg  *config.Config
+				boot *bootstrap.Result
+			)
+			if bootLoader != nil {
+				if b, err := bootLoader(); err == nil && b != nil && b.Config != nil {
+					boot = b
+					cfg = b.Config
+					defer func() {
+						if boot.DBClient != nil {
+							_ = boot.DBClient.Close()
+						}
+					}()
+				}
+			}
+			if cfg == nil {
+				if cfgLoader == nil {
+					return fmt.Errorf("sandbox status requires a config loader or bootstrap loader")
+				}
+				c, err := cfgLoader()
+				if err != nil {
+					return fmt.Errorf("load config: %w", err)
+				}
+				cfg = c
 			}
 
 			// Sandbox configuration.
@@ -49,32 +126,259 @@ func newStatusCmd(cfgLoader func() (*config.Config, error)) *cobra.Command {
 				workspacePath, _ = os.Getwd()
 			}
 
+			// Resolve backend.
+			mode, _ := sandboxos.ParseBackendMode(cfg.Sandbox.Backend)
+			candidates := sandboxos.PlatformBackendCandidates()
+			var isolator sandboxos.OSIsolator
+			var info sandboxos.BackendInfo
+			// backend=none is an explicit opt-out: runtime skips fail-closed,
+			// so status reflects "no isolation" instead of building an isolator.
+			optedOut := cfg.Sandbox.Enabled && mode == sandboxos.BackendNone
+			if cfg.Sandbox.Enabled && !optedOut {
+				isolator, info = sandboxos.SelectBackend(mode, candidates)
+			}
+			status := sandboxos.NewSandboxStatus(cfg.Sandbox.Enabled, cfg.Sandbox.FailClosed, isolator)
+
 			fmt.Fprintln(w, "Sandbox Configuration:")
-			fmt.Fprintf(w, "  Enabled:        %v\n", cfg.Sandbox.Enabled)
-			fmt.Fprintf(w, "  Fail-Closed:    %v\n", cfg.Sandbox.FailClosed)
+			fmt.Fprintf(w, "  Enabled:        %v\n", status.Enabled)
+			if status.Enabled {
+				if optedOut {
+					fmt.Fprintf(w, "  Backend:        none (explicit opt-out — fail-closed not applied)\n")
+				} else {
+					failMode := "fail-open (warning + unsandboxed execution)"
+					if status.FailClosed {
+						failMode = "fail-closed (execution rejected)"
+					}
+					fmt.Fprintf(w, "  Fail-Closed:    %s\n", failMode)
+					backendLabel := mode.String()
+					if mode == sandboxos.BackendAuto && info.Name != "" {
+						backendLabel = fmt.Sprintf("auto (resolved: %s)", info.Name)
+					}
+					fmt.Fprintf(w, "  Backend:        %s\n", backendLabel)
+				}
+			}
 			fmt.Fprintf(w, "  Network Mode:   %s\n", cfg.Sandbox.NetworkMode)
 			fmt.Fprintf(w, "  Workspace:      %s\n", workspacePath)
 
-			// Platform capabilities.
-			caps := sandboxos.Probe()
+			// Active isolation.
+			fmt.Fprintln(w)
+			fmt.Fprintln(w, "Active Isolation:")
+			fmt.Fprintf(w, "  Isolator:       %s\n", status.Isolator.Name())
+			if !status.Isolator.Available() {
+				fmt.Fprintf(w, "  Available:      false\n")
+				fmt.Fprintf(w, "  Reason:         %s\n", status.Isolator.Reason())
+			} else {
+				fmt.Fprintf(w, "  Available:      true\n")
+				// Surface partial degradation (e.g. bwrap network isolation
+				// probe failed). Only shown when actually degraded — a fully
+				// functional isolator omits this line to keep output clean.
+				if ni, ok := status.Isolator.(networkIsolator); ok && !ni.NetworkIsolationAvailable() {
+					fmt.Fprintf(w, "  Network Iso:    unavailable (%s)\n", ni.NetworkIsolationReason())
+				}
+			}
 
+			// Platform capabilities.
+			caps := status.Capabilities
 			fmt.Fprintln(w)
 			fmt.Fprintln(w, "Platform Capabilities:")
 			fmt.Fprintf(w, "  Platform:       %s\n", caps.Platform)
 			fmt.Fprintf(w, "  Kernel:         %s\n", caps.KernelVersion)
-			fmt.Fprintf(w, "  Seatbelt:       %s\n", capabilityStatus(caps.HasSeatbelt, caps.Platform, "darwin"))
-			fmt.Fprintf(w, "  Landlock:       %s\n", capabilityStatus(caps.HasLandlock, caps.Platform, "linux"))
-			fmt.Fprintf(w, "  seccomp:        %s\n", capabilityStatus(caps.HasSeccomp, caps.Platform, "linux"))
+			fmt.Fprintf(w, "  Seatbelt:       %s\n", capabilityReasonStatus(caps.HasSeatbelt, caps.SeatbeltReason, caps.Platform, "darwin"))
+			fmt.Fprintf(w, "  Landlock:       %s\n", capabilityReasonStatus(caps.HasLandlock, caps.LandlockReason, caps.Platform, "linux"))
+			fmt.Fprintf(w, "  seccomp:        %s\n", capabilityReasonStatus(caps.HasSeccomp, caps.SeccompReason, caps.Platform, "linux"))
 
-			// Active isolator.
-			isolator := sandboxos.NewOSIsolator()
+			// Backend availability.
 			fmt.Fprintln(w)
-			fmt.Fprintf(w, "Active Isolator:  %s\n", isolator.Name())
+			fmt.Fprintln(w, "Backend Availability:")
+			for _, bi := range sandboxos.ListBackends(candidates) {
+				state := "available"
+				if !bi.Available {
+					state = fmt.Sprintf("unavailable (%s)", bi.Reason)
+				}
+				fmt.Fprintf(w, "  %-14s  %s\n", bi.Name+":", state)
+			}
 
 			// Platform-specific warnings.
 			if runtime.GOOS == "linux" && len(cfg.Sandbox.AllowedNetworkIPs) > 0 {
 				fmt.Fprintln(w)
-				fmt.Fprintln(w, "WARNING: allowedNetworkIPs is macOS-only, ignored on Linux")
+				fmt.Fprintln(w, "WARNING: allowedNetworkIPs is macOS-only; Linux isolation is not yet enforced")
+			}
+
+			// Recent Sandbox Decisions (graceful — skip if audit DB unavailable).
+			// boot.DBClient may still be nil in degraded bootstrap modes; the
+			// helper handles that case silently.
+			renderRecentDecisions(cmd.Context(), w, boot, sessionPrefix)
+
+			return nil
+		},
+	}
+	cmd.Flags().StringVar(&sessionPrefix, "session", "",
+		"Filter Recent Sandbox Decisions by session key prefix (default: show global)")
+	return cmd
+}
+
+// renderRecentDecisions queries the audit log for the most recent
+// SandboxDecisionEvent records and prints them to w. It is best-effort:
+// any failure (missing DB client, schema unavailable, query error) is
+// silently ignored so the diagnostic remains usable as a sandbox-layer
+// inspection tool that does not depend on audit availability.
+//
+// The caller owns the *bootstrap.Result and its DBClient lifecycle; this
+// helper does not close the client.
+func renderRecentDecisions(ctx context.Context, w io.Writer, boot *bootstrap.Result, sessionPrefix string) {
+	if boot == nil || boot.DBClient == nil {
+		return
+	}
+
+	q := boot.DBClient.AuditLog.Query().
+		Where(auditlog.ActionEQ(auditlog.ActionSandboxDecision)).
+		Order(auditlog.ByTimestamp(sql.OrderDesc())).
+		Limit(10)
+	if sessionPrefix != "" {
+		q = q.Where(auditlog.SessionKeyHasPrefix(sessionPrefix))
+	}
+	decisions, err := q.All(ctx)
+	if err != nil || len(decisions) == 0 {
+		return
+	}
+
+	title := "Recent Sandbox Decisions (global, last 10):"
+	if sessionPrefix != "" {
+		title = fmt.Sprintf("Recent Sandbox Decisions (session=%s, last 10):", sessionPrefix)
+	}
+	fmt.Fprintln(w)
+	fmt.Fprintln(w, title)
+	for _, d := range decisions {
+		var decision, backend, reason string
+		if v, ok := d.Details["decision"].(string); ok {
+			decision = v
+		}
+		if v, ok := d.Details["backend"].(string); ok {
+			backend = v
+		}
+		if v, ok := d.Details["reason"].(string); ok {
+			reason = v
+		}
+		sessShort := truncateSessionKey(d.SessionKey, 8)
+		fmt.Fprintln(w, formatDecisionLine(d.Timestamp, sessShort, decision, backend, d.Target, reason))
+	}
+}
+
+// formatDecisionLine renders one Recent Sandbox Decisions row. Extracted as
+// a pure function so the backend-column rule can be unit-tested directly
+// without spinning up an ent.Client + audit fixture.
+//
+// The backend column SHALL show "-" for any non-"applied" decision because
+// excluded / skipped / rejected verdicts mean the command did NOT actually
+// run inside a sandbox backend. Echoing the published Backend value (which
+// every publish site stamps from the wired isolator regardless of decision)
+// would falsely suggest the command was sandboxed.
+func formatDecisionLine(ts time.Time, sessShort, decision, backend, target, reason string) string {
+	if decision != "applied" || backend == "" {
+		backend = "-"
+	}
+	line := fmt.Sprintf("  %s  [%s] %-9s %-9s %s",
+		ts.Format("2006-01-02 15:04:05"),
+		sessShort, decision, backend, target)
+	if reason != "" {
+		line += fmt.Sprintf(" (%s)", reason)
+	}
+	return line
+}
+
+// truncateSessionKey shortens long session keys for display, padding empty
+// keys to a fixed width so columns align.
+func truncateSessionKey(key string, width int) string {
+	if key == "" {
+		return strings.Repeat("-", width)
+	}
+	if len(key) <= width {
+		return key + strings.Repeat(" ", width-len(key))
+	}
+	return key[:width]
+}
+
+// newTestCmd creates `lango sandbox test`.
+func newTestCmd(cfgLoader func() (*config.Config, error)) *cobra.Command {
+	return &cobra.Command{
+		Use:   "test",
+		Short: "Run OS sandbox smoke tests",
+		Long: "Verify that the OS-level sandbox can restrict filesystem writes, allow reads, " +
+			"permit workspace writes, and deny network connections.",
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			w := cmd.OutOrStdout()
+
+			cfg, err := cfgLoader()
+			if err != nil {
+				return err
+			}
+
+			mode, _ := sandboxos.ParseBackendMode(cfg.Sandbox.Backend)
+			if mode == sandboxos.BackendNone {
+				fmt.Fprintln(w, "Sandbox backend explicitly set to none — no isolation to test")
+				return nil
+			}
+			isolator, info := sandboxos.SelectBackend(mode, sandboxos.PlatformBackendCandidates())
+			if !isolator.Available() {
+				fmt.Fprintf(w, "Sandbox backend %s not available: %s\n", info.Mode.String(), isolator.Reason())
+				return nil
+			}
+
+			fmt.Fprintf(w, "Using isolator: %s (backend: %s)\n", isolator.Name(), info.Mode.String())
+			if v, ok := isolator.(versioner); ok && v.Version() != "" {
+				fmt.Fprintf(w, "Version: %s\n", v.Version())
+			}
+			fmt.Fprintln(w)
+
+			tests := []struct {
+				label  string
+				passOK string
+				failOK string
+				run    func(sandboxos.OSIsolator) bool
+			}{
+				{
+					label:  "Write restriction (deny /etc)",
+					passOK: "PASS (write correctly denied)",
+					failOK: "FAIL (write was not denied)",
+					run:    runWriteTest,
+				},
+				{
+					label:  "Read permission (allow system file)",
+					passOK: "PASS (read succeeded)",
+					failOK: "FAIL (read was denied)",
+					run:    runReadTest,
+				},
+				{
+					label:  "Workspace write (allow tmp dir)",
+					passOK: "PASS (workspace write succeeded)",
+					failOK: "FAIL (workspace write blocked)",
+					run:    runWorkspaceWriteTest,
+				},
+				{
+					label:  "Network deny (loopback unreachable)",
+					passOK: "PASS (connect correctly denied)",
+					failOK: "FAIL (sandboxed child reached host listener)",
+					run:    runNetworkDenyTest,
+				},
+			}
+
+			allOK := true
+			for _, tt := range tests {
+				fmt.Fprintf(w, "%-40s ... ", tt.label)
+				ok := tt.run(isolator)
+				if ok {
+					fmt.Fprintln(w, tt.passOK)
+				} else {
+					fmt.Fprintln(w, tt.failOK)
+					allOK = false
+				}
+			}
+
+			fmt.Fprintln(w)
+			if allOK {
+				fmt.Fprintln(w, "All tests passed.")
+			} else {
+				fmt.Fprintln(w, "Some tests failed.")
 			}
 
 			return nil
@@ -82,48 +386,28 @@ func newStatusCmd(cfgLoader func() (*config.Config, error)) *cobra.Command {
 	}
 }
 
-// newTestCmd creates `lango sandbox test`.
-func newTestCmd() *cobra.Command {
+// newProbeNetCmd creates the hidden `lango sandbox _probe-net <addr>` helper.
+//
+// It is used by runNetworkDenyTest to perform a sandboxed TCP connect attempt
+// without depending on external tools (nc/curl/bash). The parent test opens an
+// ephemeral loopback listener and re-invokes the lango binary as a sandboxed
+// child to dial that address; if the sandbox blocks the connection (Seatbelt
+// (deny network*) on macOS, --unshare-net on Linux bwrap) the child exits
+// non-zero, which the parent reads as PASS.
+func newProbeNetCmd() *cobra.Command {
 	return &cobra.Command{
-		Use:   "test",
-		Short: "Run OS sandbox smoke tests",
-		Long:  "Verify that the OS-level sandbox can restrict filesystem writes and allow reads.",
-		RunE: func(cmd *cobra.Command, _ []string) error {
-			w := cmd.OutOrStdout()
-
-			isolator := sandboxos.NewOSIsolator()
-			if !isolator.Available() {
-				fmt.Fprintln(w, "OS sandbox not available on this platform")
-				return nil
+		Use:    "_probe-net <addr>",
+		Hidden: true,
+		Short:  "internal: attempt a TCP connection (used by sandbox test)",
+		Args:   cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			cmd.SilenceUsage = true
+			cmd.SilenceErrors = true
+			conn, err := net.DialTimeout("tcp", args[0], 2*time.Second)
+			if err != nil {
+				return err
 			}
-
-			fmt.Fprintf(w, "Using isolator: %s\n\n", isolator.Name())
-
-			// Test 1: verify sandbox blocks writes to a restricted path.
-			fmt.Fprint(w, "Write restriction test ... ")
-			writeOK := runWriteTest(isolator)
-			if writeOK {
-				fmt.Fprintln(w, "PASS (write correctly denied)")
-			} else {
-				fmt.Fprintln(w, "FAIL (write was not denied)")
-			}
-
-			// Test 2: verify sandbox allows reading system files.
-			fmt.Fprint(w, "Read permission test   ... ")
-			readOK := runReadTest(isolator)
-			if readOK {
-				fmt.Fprintln(w, "PASS (read succeeded)")
-			} else {
-				fmt.Fprintln(w, "FAIL (read was denied)")
-			}
-
-			fmt.Fprintln(w)
-			if writeOK && readOK {
-				fmt.Fprintln(w, "All tests passed.")
-			} else {
-				fmt.Fprintln(w, "Some tests failed.")
-			}
-
+			_ = conn.Close()
 			return nil
 		},
 	}
@@ -142,10 +426,47 @@ func readOnlyPolicy() sandboxos.Policy {
 	}
 }
 
+// discardOutput silences a command's stdout and stderr without using shell
+// redirection to /dev/null. The parent-side io.Discard avoids opening
+// /dev/null inside the sandbox (which Seatbelt's default-deny would block,
+// causing false negatives in the smoke tests). The child inherits the pipe
+// FDs that exec.Cmd creates for non-*os.File writers, and those FDs are
+// already open before the sandbox takes effect.
+func discardOutput(c *exec.Cmd) {
+	c.Stdout = io.Discard
+	c.Stderr = io.Discard
+}
+
+// findTouch locates the touch binary across common Linux/macOS layouts:
+// PATH lookup first, then explicit fallbacks for non-merged-/usr images
+// (BusyBox/Alpine ship touch under /bin, not /usr/bin). Returns the
+// absolute path or an empty string when no touch is available — callers
+// must treat empty as "test inconclusive" rather than as a sandbox failure
+// (otherwise an ENOENT from a missing binary can produce a false PASS).
+func findTouch() string {
+	if p, err := exec.LookPath("touch"); err == nil {
+		return p
+	}
+	for _, candidate := range []string{"/usr/bin/touch", "/bin/touch"} {
+		if fi, err := os.Stat(candidate); err == nil && !fi.IsDir() {
+			return candidate
+		}
+	}
+	return ""
+}
+
 // runWriteTest attempts to write to a restricted path under sandbox and
 // returns true if the write was correctly blocked.
 func runWriteTest(isolator sandboxos.OSIsolator) bool {
-	c := exec.Command("/bin/sh", "-c", "touch /etc/lango-sandbox-test 2>/dev/null")
+	touch := findTouch()
+	if touch == "" {
+		// Without touch we cannot distinguish "sandbox blocked the write"
+		// from "binary missing from PATH". Refuse to declare PASS in that
+		// case so the smoke test does not produce a false positive.
+		return false
+	}
+	c := exec.Command(touch, "/etc/lango-sandbox-test")
+	discardOutput(c)
 	if err := isolator.Apply(context.Background(), c, readOnlyPolicy()); err != nil {
 		return false
 	}
@@ -157,11 +478,103 @@ func runWriteTest(isolator sandboxos.OSIsolator) bool {
 // returns true if the read succeeded.
 func runReadTest(isolator sandboxos.OSIsolator) bool {
 	target := readTestPath()
-	c := exec.Command("/bin/sh", "-c", "cat "+target+" >/dev/null 2>&1")
+	c := exec.Command("/bin/cat", target)
+	discardOutput(c)
 	if err := isolator.Apply(context.Background(), c, readOnlyPolicy()); err != nil {
 		return false
 	}
 	return c.Run() == nil
+}
+
+// runWorkspaceWriteTest attempts to write a file inside a temporary workspace
+// directory that the sandbox policy explicitly allows. Returns true when the
+// write succeeds (allowed paths must remain writable).
+//
+// macOS quirk: os.MkdirTemp returns paths under /var/folders/... but the real
+// path is /private/var/folders/... and Seatbelt resolves subpaths against the
+// real path. We resolve via filepath.EvalSymlinks before passing to the policy.
+func runWorkspaceWriteTest(isolator sandboxos.OSIsolator) bool {
+	work, err := os.MkdirTemp("", "lango-sandbox-ws-*")
+	if err != nil {
+		return false
+	}
+	defer os.RemoveAll(work)
+
+	resolved, err := filepath.EvalSymlinks(work)
+	if err != nil {
+		resolved = work
+	}
+
+	touch := findTouch()
+	if touch == "" {
+		// Cannot exercise the workspace-write path without a touch binary.
+		// Treat as inconclusive; the test runner reports FAIL but the
+		// reason is environmental, not a sandbox regression.
+		return false
+	}
+
+	target := filepath.Join(resolved, "probe.txt")
+	c := exec.Command(touch, target)
+	discardOutput(c)
+	policy := sandboxos.Policy{
+		Filesystem: sandboxos.FilesystemPolicy{
+			ReadOnlyGlobal: true,
+			WritePaths:     []string{resolved, "/tmp"},
+		},
+		Network: sandboxos.NetworkDeny,
+		Process: sandboxos.ProcessPolicy{AllowFork: true},
+	}
+	if err := isolator.Apply(context.Background(), c, policy); err != nil {
+		return false
+	}
+	if err := c.Run(); err != nil {
+		return false
+	}
+	_, err = os.Stat(target)
+	return err == nil
+}
+
+// runNetworkDenyTest verifies that the sandbox blocks outbound TCP connects
+// even to a known-reachable loopback endpoint. The test:
+//  1. opens an ephemeral TCP listener on 127.0.0.1 in the parent process
+//     (so we have a target the host could otherwise reach with certainty);
+//  2. re-invokes the lango binary as a sandboxed child via the hidden
+//     `_probe-net <addr>` subcommand, which calls net.DialTimeout;
+//  3. returns true (PASS) only if the child failed to connect.
+//
+// External tools (nc/curl/bash) are intentionally not used so the test runs
+// in minimal Docker images. The deterministic loopback target ensures any
+// failure is attributable to the sandbox, not to host network conditions.
+func runNetworkDenyTest(isolator sandboxos.OSIsolator) bool {
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		return false
+	}
+	defer ln.Close()
+
+	go func() {
+		for {
+			conn, err := ln.Accept()
+			if err != nil {
+				return
+			}
+			_ = conn.Close()
+		}
+	}()
+
+	target := ln.Addr().String()
+	self, err := os.Executable()
+	if err != nil {
+		return false
+	}
+
+	c := exec.Command(self, "sandbox", "_probe-net", target)
+	discardOutput(c)
+	if err := isolator.Apply(context.Background(), c, readOnlyPolicy()); err != nil {
+		return false
+	}
+	// PASS if the child failed to connect (sandbox blocked it).
+	return c.Run() != nil
 }
 
 // readTestPath returns a readable file path suitable for the current platform.
@@ -172,13 +585,26 @@ func readTestPath() string {
 	return "/etc/hostname"
 }
 
-// capabilityStatus formats a capability's availability for display.
-func capabilityStatus(available bool, currentPlatform, requiredPlatform string) string {
+// capabilityReasonStatus formats a capability's status with a reason string.
+// Reasons containing "not yet implemented" are shown as "unknown" (defensive
+// against future stub probes); definitive results (e.g., "Landlock ABI 3",
+// "Landlock not supported by this kernel") are shown as "available" or
+// "unavailable" with the qualified reason inline.
+func capabilityReasonStatus(available bool, reason, currentPlatform, requiredPlatform string) string {
 	if available {
+		if reason != "" {
+			return fmt.Sprintf("available (%s)", reason)
+		}
 		return "available"
 	}
 	if !strings.EqualFold(currentPlatform, requiredPlatform) {
-		return fmt.Sprintf("unavailable (%s)", currentPlatform)
+		return fmt.Sprintf("n/a (not on %s)", requiredPlatform)
+	}
+	if strings.Contains(reason, "not yet implemented") {
+		return fmt.Sprintf("unknown (%s)", reason)
+	}
+	if reason != "" {
+		return fmt.Sprintf("unavailable (%s)", reason)
 	}
 	return "unavailable"
 }

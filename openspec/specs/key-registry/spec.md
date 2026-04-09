@@ -1,4 +1,8 @@
-## ADDED Requirements
+## Purpose
+
+Capability spec for key-registry. See requirements below for scope and behavior contracts.
+
+## Requirements
 
 ### Requirement: Key Entity Schema
 The system SHALL store key metadata using entgo.io Key entity.

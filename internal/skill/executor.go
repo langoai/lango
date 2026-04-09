@@ -12,7 +12,9 @@ import (
 
 	"go.uber.org/zap"
 
+	"github.com/langoai/lango/internal/eventbus"
 	sandboxos "github.com/langoai/lango/internal/sandbox/os"
+	"github.com/langoai/lango/internal/session"
 )
 
 var _dangerousPatterns = []*regexp.Regexp{
@@ -29,6 +31,9 @@ type Executor struct {
 	logger        *zap.SugaredLogger
 	isolator      sandboxos.OSIsolator // OS-level sandbox (nil = disabled)
 	workspacePath string               // Workspace root for sandbox write policy
+	dataRoot      string               // Lango control-plane root, masked from sandboxed children
+	failClosed    bool                 // reject execution when sandbox unavailable
+	bus           *eventbus.Bus        // event bus for SandboxDecisionEvent (optional)
 }
 
 // NewExecutor creates a new skill executor.
@@ -36,12 +41,44 @@ func NewExecutor(logger *zap.SugaredLogger) *Executor {
 	return &Executor{logger: logger}
 }
 
+// SetEventBus attaches an event bus for SandboxDecisionEvent publishing.
+// Passing nil disables publishing.
+func (e *Executor) SetEventBus(bus *eventbus.Bus) {
+	e.bus = bus
+}
+
+// publishSandboxDecision builds and publishes a SandboxDecisionEvent for a
+// skill script execution. SessionKey is derived from ctx.
+func (e *Executor) publishSandboxDecision(ctx context.Context, skillName, decision, reason string) {
+	backend := ""
+	if e.isolator != nil {
+		backend = e.isolator.Name()
+	}
+	eventbus.PublishSandboxDecision(e.bus, eventbus.SandboxDecisionEvent{
+		SessionKey: session.SessionKeyFromContext(ctx),
+		Source:     "skill",
+		Command:    skillName,
+		Decision:   decision,
+		Backend:    backend,
+		Reason:     reason,
+	})
+}
+
 // SetOSIsolator configures the OS-level sandbox for script execution.
-// When set, skill scripts run under kernel-level isolation (Seatbelt on macOS,
-// Landlock+seccomp on Linux). The workspacePath defines the writable directory.
-func (e *Executor) SetOSIsolator(iso sandboxos.OSIsolator, workspacePath string) {
+// When set, skill scripts run under kernel-level isolation (Seatbelt on macOS;
+// bwrap on Linux when bubblewrap is installed). The workspacePath defines the
+// writable directory; dataRoot is added to the policy's DenyPaths so script
+// children cannot read or write the lango control-plane.
+func (e *Executor) SetOSIsolator(iso sandboxos.OSIsolator, workspacePath, dataRoot string) {
 	e.isolator = iso
 	e.workspacePath = workspacePath
+	e.dataRoot = dataRoot
+}
+
+// SetFailClosed controls whether the executor blocks script execution when
+// no sandbox is available.
+func (e *Executor) SetFailClosed(fc bool) {
+	e.failClosed = fc
 }
 
 // Execute runs a skill with the given parameters.
@@ -127,6 +164,19 @@ func (e *Executor) executeScript(ctx context.Context, skill SkillEntry) (interfa
 		return nil, fmt.Errorf("script skill %q: %w", skill.Name, err)
 	}
 
+	// Decide the nil-isolator branch BEFORE creating any temp files. Moving
+	// this check up consolidates the previous two nil-isolator branches (an
+	// early return that skipped publish + a later else-if that was
+	// unreachable) into a single publish path so the audit trail always
+	// records the decision before the function returns.
+	if e.isolator == nil {
+		if e.failClosed {
+			e.publishSandboxDecision(ctx, skill.Name, "rejected", "no isolator configured")
+			return nil, fmt.Errorf("%w: no OS isolator configured for skill script", sandboxos.ErrSandboxRequired)
+		}
+		e.publishSandboxDecision(ctx, skill.Name, "skipped", "no isolator configured")
+	}
+
 	f, err := os.CreateTemp("", fmt.Sprintf("lango-skill-%s-*.sh", skill.Name))
 	if err != nil {
 		return nil, fmt.Errorf("create temp script: %w", err)
@@ -146,10 +196,19 @@ func (e *Executor) executeScript(ctx context.Context, skill SkillEntry) (interfa
 	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr
 
+	// The nil-isolator branch was already decided and published above.
+	// Here we only need to apply the sandbox when an isolator is present.
 	if e.isolator != nil {
-		policy := sandboxos.DefaultToolPolicy(e.workspacePath)
+		policy := sandboxos.DefaultToolPolicy(e.workspacePath, e.dataRoot)
 		if applyErr := e.isolator.Apply(ctx, cmd, policy); applyErr != nil {
+			if e.failClosed {
+				e.publishSandboxDecision(ctx, skill.Name, "rejected", applyErr.Error())
+				return nil, fmt.Errorf("%w: %w", sandboxos.ErrSandboxRequired, applyErr)
+			}
 			e.logger.Warnw("apply OS sandbox to skill script", "skill", skill.Name, "error", applyErr)
+			e.publishSandboxDecision(ctx, skill.Name, "skipped", applyErr.Error())
+		} else {
+			e.publishSandboxDecision(ctx, skill.Name, "applied", "")
 		}
 	}
 

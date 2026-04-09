@@ -594,7 +594,6 @@ All non-planner sub-agent instructions SHALL include an Output Handling section 
 #### Scenario: Non-isolated sub-agent unchanged
 - **WHEN** a sub-agent has `SessionIsolation=false`
 - **THEN** it continues to use the existing parent-session execution path
-## ADDED Requirements
 
 ### Requirement: DelegationGuard monitors orchestrator delegations
 The `DelegationGuard` SHALL observe delegation events emitted by the root orchestrator and maintain per-agent circuit breaker state. When a circuit-open agent is targeted, the guard SHALL log a warning and publish a `CircuitBreakerTrippedEvent`. The guard SHALL NOT block or redirect delegations — routing authority remains with the root orchestrator LLM.

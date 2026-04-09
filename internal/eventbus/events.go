@@ -22,6 +22,7 @@ const (
 	EventAlertTriggered          = "alert.triggered"
 	EventChannelMessageReceived  = "channel.message.received"
 	EventChannelMessageSent      = "channel.message.sent"
+	EventSandboxDecision         = "sandbox.decision"
 )
 
 // ContentSavedEvent is published when knowledge or memory content is saved.
@@ -250,3 +251,36 @@ type ChannelMessageSentEvent struct {
 
 // EventName implements Event.
 func (e ChannelMessageSentEvent) EventName() string { return EventChannelMessageSent }
+
+// --- OS sandbox decision events ---
+
+// SandboxDecisionEvent is published every time a sandbox apply/skip/reject/exclude
+// decision is made by exec.Tool, skill.Executor, or mcp.ServerConnection.
+// SessionKey is derived from the runtime ctx (session.SessionKeyFromContext)
+// and may be empty for process-level events such as MCP server startup.
+type SandboxDecisionEvent struct {
+	SessionKey string
+	Source     string // "exec" | "skill" | "mcp"
+	Command    string // user-facing command, skill name, or MCP server name
+	Decision   string // "applied" | "skipped" | "rejected" | "excluded"
+	Backend    string // "bwrap" | "seatbelt" | "noop" | ""
+	Reason     string // empty for "applied", populated otherwise
+	Pattern    string // populated for "excluded" only
+	Timestamp  time.Time
+}
+
+// EventName implements Event.
+func (e SandboxDecisionEvent) EventName() string { return EventSandboxDecision }
+
+// PublishSandboxDecision publishes a SandboxDecisionEvent on bus, filling
+// Timestamp if zero. A nil bus is a no-op so callers in standalone tests can
+// skip wiring an event bus without crashing.
+func PublishSandboxDecision(bus *Bus, evt SandboxDecisionEvent) {
+	if bus == nil {
+		return
+	}
+	if evt.Timestamp.IsZero() {
+		evt.Timestamp = time.Now()
+	}
+	bus.Publish(evt)
+}

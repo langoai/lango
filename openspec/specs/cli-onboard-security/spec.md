@@ -3,6 +3,10 @@
 ## Goal
 The `lango onboard` TUI MUST support configuration of advanced Security features (Interceptor, Signer, Passphrase) and management of multiple AI Providers.
 
+## Purpose
+
+Capability spec for cli-onboard-security. See requirements below for scope and behavior contracts.
+
 ## Requirements
 
 ### Security Configuration

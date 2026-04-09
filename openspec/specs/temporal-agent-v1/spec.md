@@ -1,4 +1,8 @@
-## ADDED Requirements
+## Purpose
+
+Capability spec for temporal-agent-v1. See requirements below for scope and behavior contracts.
+
+## Requirements
 
 ### Requirement: TemporalSearchAgent type
 The `retrieval` package SHALL provide a `TemporalSearchAgent` struct that implements the `RetrievalAgent` interface. Its `Name()` SHALL return `"temporal-search"`. Its `Layers()` SHALL return `[LayerUserKnowledge]`.

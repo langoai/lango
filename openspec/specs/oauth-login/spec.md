@@ -1,3 +1,7 @@
+## Purpose
+
+Capability spec for oauth-login. See requirements below for scope and behavior contracts.
+
 ## REMOVED
 
 **Status**: Removed (2026-02-14)
@@ -7,7 +11,7 @@
 
 ---
 
-## Previous Requirements (Archived)
+## Requirements
 
 ### Requirement: OAuth Login Command
 The system previously provided a CLI command `lango login [provider]` to initiate OAuth authentication with Google and GitHub.

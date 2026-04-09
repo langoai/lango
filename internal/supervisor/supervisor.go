@@ -8,6 +8,7 @@ import (
 	"os"
 
 	"github.com/langoai/lango/internal/config"
+	"github.com/langoai/lango/internal/eventbus"
 	"github.com/langoai/lango/internal/logging"
 	"github.com/langoai/lango/internal/provider"
 	"github.com/langoai/lango/internal/provider/anthropic"
@@ -43,25 +44,45 @@ func New(cfg *config.Config) (*Supervisor, error) {
 			"PATH", "HOME", "USER", "LANG", "LC_ALL", "LC_CTYPE", "TERM",
 			"SHELL", "TMPDIR", "SSH_AUTH_SOCK",
 		},
+		ExcludedCommands: append([]string(nil), cfg.Sandbox.ExcludedCommands...),
 	}
 
 	// Inject OS-level sandbox if enabled.
 	if cfg.Sandbox.Enabled {
-		iso := sandboxos.NewOSIsolator()
-		if iso.Available() {
+		// Backend validity is enforced by config.Validate; error here is unreachable.
+		mode, _ := sandboxos.ParseBackendMode(cfg.Sandbox.Backend)
+
+		// backend=none is an explicit opt-out. Skip sandbox wiring entirely so
+		// fail-closed does not reject commands.
+		if mode == sandboxos.BackendNone {
+			logger.Infow("exec tool OS sandbox disabled via backend=none (explicit opt-out)")
+		} else {
+			iso, info := sandboxos.SelectBackend(mode, sandboxos.PlatformBackendCandidates())
 			workDir := cfg.Sandbox.WorkspacePath
 			if workDir == "" {
 				workDir, _ = os.Getwd()
 			}
-			execConfig.OSIsolator = iso
-			execConfig.SandboxPolicy = sandboxos.DefaultToolPolicy(workDir)
+			policy := sandboxos.DefaultToolPolicy(workDir, cfg.DataRoot)
+			if len(cfg.Sandbox.AllowedWritePaths) > 0 {
+				policy.Filesystem.WritePaths = append(policy.Filesystem.WritePaths, cfg.Sandbox.AllowedWritePaths...)
+			}
+			execConfig.SandboxPolicy = policy
 			execConfig.FailClosed = cfg.Sandbox.FailClosed
-			logger.Infow("exec tool OS sandbox enabled", "isolator", iso.Name())
-		} else if cfg.Sandbox.FailClosed {
-			logger.Warnw("OS sandbox required but unavailable — exec tool will reject commands")
-			execConfig.FailClosed = true
-		} else {
-			logger.Warnw("OS sandbox enabled but unavailable — exec tool proceeding without isolation")
+
+			if iso.Available() {
+				execConfig.OSIsolator = iso
+				logger.Infow("exec tool OS sandbox enabled",
+					"isolator", iso.Name(),
+					"backend", info.Mode.String())
+			} else if cfg.Sandbox.FailClosed {
+				logger.Warnw("OS sandbox required but unavailable — exec tool will reject commands",
+					"backend", info.Mode.String(),
+					"reason", iso.Reason())
+			} else {
+				logger.Warnw("OS sandbox enabled but unavailable — exec tool proceeding without isolation",
+					"backend", info.Mode.String(),
+					"reason", iso.Reason())
+			}
 		}
 	}
 
@@ -72,6 +93,15 @@ func New(cfg *config.Config) (*Supervisor, error) {
 	}
 
 	return s, nil
+}
+
+// SetEventBus attaches an event bus to the supervised exec tool so that
+// SandboxDecisionEvent records flow into audit. Wiring should call this
+// once after the bus is constructed (post-build).
+func (s *Supervisor) SetEventBus(bus *eventbus.Bus) {
+	if s.execTool != nil {
+		s.execTool.SetEventBus(bus)
+	}
 }
 
 // initializeProviders sets up the AI providers with secrets from config.

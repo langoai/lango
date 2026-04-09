@@ -1313,6 +1313,16 @@ Alerts flow through: EventBus (real-time) → Audit log (persistent) → CLI (`l
 
 > **Settings:** `lango settings` → OS Sandbox
 
+**Control-plane protection (baseline).** Whenever the sandbox is enabled, every sandboxed child process — exec-tool commands, skill scripts, and MCP stdio servers — is blocked from reading or writing the lango control-plane (`~/.lango`, including the session/audit database, secret tokens, skills directory, workflow state). The workspace's `.git` directory is also denied as a baseline so agent commands cannot mutate git metadata. These protections do not require any extra configuration.
+
+**Path semantics (file-level deny, symlinks, globs).** All sandbox policy paths (`allowedWritePaths`, deny entries, internal baselines) flow through a shared normalization pipeline: sanitize → absolute → glob expand → symlink resolve. This means:
+
+- **File-level deny.** A deny entry pointing to a regular file (e.g. `~/.lango/lango.db`) is now denied via a `/dev/null` bind mount — previous versions rejected non-directory deny paths. Linked git worktrees (`.git` as a file) are denied at the pointer AND their resolved gitdir target.
+- **Symlink resolution.** Every path is resolved through `filepath.EvalSymlinks` before backend emission, so a symlinked `.git` directory or deny target is masked at its real filesystem location — symlink escape closed.
+- **Glob patterns.** Entries containing `*`, `?`, or `[` are expanded via `filepath.Glob`. An entry like `~/.lango/*.db` matches every `.db` file under `~/.lango`. Unmatched patterns are silently skipped (shell nullglob semantics); invalid patterns (unclosed bracket, etc.) cause the policy to fail loudly at startup.
+
+**Fail-open visibility.** When `failClosed=false` (default) and the sandbox cannot be applied at runtime, lango proceeds without isolation but prints a one-shot stderr warning so the user notices that subsequent commands are running unsandboxed. Each apply/skip/reject/exclude decision is also recorded in the audit log and visible via `lango sandbox status`.
+
 ```json
 {
   "sandbox": {
@@ -1322,6 +1332,7 @@ Alerts flow through: EventBus (real-time) → Audit log (persistent) → CLI (`l
     "networkMode": "deny",
     "allowedNetworkIPs": [],
     "allowedWritePaths": [],
+    "excludedCommands": [],
     "timeoutPerTool": "30s",
     "os": {
       "seccompProfile": "moderate",
@@ -1334,14 +1345,16 @@ Alerts flow through: EventBus (real-time) → Audit log (persistent) → CLI (`l
 | Key | Type | Default | Description |
 |-----|------|---------|-------------|
 | `sandbox.enabled` | `bool` | `false` | Enable OS-level sandboxing for tool-spawned child processes |
-| `sandbox.failClosed` | `bool` | `false` | Reject tool execution when OS sandbox is unavailable (false = fail-open) |
-| `sandbox.workspacePath` | `string` | `""` | Root directory for workspace-relative write access (empty = CWD) |
-| `sandbox.networkMode` | `string` | `deny` | Network access from sandboxed processes: `deny` or `allow` |
-| `sandbox.allowedNetworkIPs` | `[]string` | `[]` | IP addresses permitted for outbound connections (macOS Seatbelt only; ignored on Linux) |
-| `sandbox.allowedWritePaths` | `[]string` | `[]` | Additional paths writable from the sandbox beyond `workspacePath` |
+| `sandbox.failClosed` | `bool` | `false` | Reject tool execution when OS sandbox is unavailable (false = fail-open + one-shot stderr warning) |
+| `sandbox.backend` | `string` | `auto` | Isolation backend: `auto`, `seatbelt` (macOS), `bwrap` (Linux, requires bubblewrap binary), `native` (Landlock+seccomp, planned), `none`. Invalid values rejected at startup |
+| `sandbox.workspacePath` | `string` | `""` | Root directory for workspace-relative write access (empty = CWD). Tilde and relative paths are normalized at load time |
+| `sandbox.networkMode` | `string` | `deny` | Network access from sandboxed processes: `deny` or `allow`. On Linux/bwrap: `deny` → `--unshare-net`; `allow` → host network |
+| `sandbox.allowedNetworkIPs` | `[]string` | `[]` | IP addresses permitted for outbound connections (macOS Seatbelt only; ignored on Linux/bwrap which has no AF_INET filter) |
+| `sandbox.allowedWritePaths` | `[]string` | `[]` | Additional paths writable from the sandbox beyond `workspacePath`. Each entry is normalized at load time AND passes through the shared sandbox pipeline (glob expansion via `filepath.Glob`, symlink resolution via `filepath.EvalSymlinks`). Entries that fall under `dataRoot` are still denied — the control-plane mask wins |
+| `sandbox.excludedCommands` | `[]string` | `[]` | Command basenames (e.g. `git`, `docker`) that bypass the sandbox. Matched against the basename of the user command's first whitespace-separated token; chained commands like `cd /tmp && git status` do NOT match. Excluded commands run UNSANDBOXED and every match is recorded in audit. Use sparingly |
 | `sandbox.timeoutPerTool` | `duration` | `30s` | Maximum duration for a single sandboxed tool execution |
-| `sandbox.os.seccompProfile` | `string` | `moderate` | Seccomp filter profile on Linux: `strict`, `moderate`, or `permissive` |
-| `sandbox.os.seatbeltCustomProfile` | `string` | `""` | Path to a custom `.sb` profile on macOS (overrides generated profile) |
+| `sandbox.os.seccompProfile` | `string` | `moderate` | Seccomp filter profile on Linux: `strict`, `moderate`, or `permissive`. Consumed by the planned native (Landlock+seccomp) backend; bwrap ignores this field |
+| `sandbox.os.seatbeltCustomProfile` | `string` | `""` | Path to a custom `.sb` profile on macOS (overrides generated profile). Tilde and relative paths normalized at load time |
 
 ---
 

@@ -1,3 +1,9 @@
+## Purpose
+
+Capability spec for agent-context-propagation. See requirements below for scope and behavior contracts.
+
+## Requirements
+
 ### Requirement: Agent name context keys
 The `ctxkeys` package SHALL provide `WithAgentName(ctx, name)` and `AgentNameFromContext(ctx)` functions for propagating agent identity through Go context. The `toolchain` package SHALL delegate its `WithAgentName` and `AgentNameFromContext` functions to the `ctxkeys` canonical implementations, ensuring a single context key is used across the entire codebase.
 

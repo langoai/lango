@@ -1,5 +1,5 @@
 // Package os provides OS-level kernel sandbox primitives for tool execution.
-// On macOS, it uses Seatbelt (sandbox-exec). On Linux, it uses Landlock + seccomp.
+// On macOS, it uses Seatbelt (sandbox-exec). Linux isolation is planned but not yet enforced.
 package os
 
 import "errors"

@@ -1,3 +1,9 @@
+## Purpose
+
+Capability spec for session-auto-create. See requirements below for scope and behavior contracts.
+
+## Requirements
+
 ### Requirement: Auto-create session on first access
 The `SessionServiceAdapter.Get()` SHALL automatically create a new session when the requested session ID does not exist in the store, instead of returning an error.
 

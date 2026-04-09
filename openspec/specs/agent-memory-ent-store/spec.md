@@ -1,4 +1,8 @@
-## ADDED Requirements
+## Purpose
+
+Capability spec for agent-memory-ent-store. See requirements below for scope and behavior contracts.
+
+## Requirements
 
 ### Requirement: Ent-backed persistent storage for agent memory
 The system SHALL provide an Ent-backed implementation of `agentmemory.Store` that persists agent memory entries to SQLite via the existing Ent framework.

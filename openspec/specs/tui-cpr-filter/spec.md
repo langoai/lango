@@ -1,3 +1,9 @@
+## Purpose
+
+Capability spec for tui-cpr-filter. See requirements below for scope and behavior contracts.
+
+## Requirements
+
 ### Requirement: Terminal response detection state machine
 The chat package SHALL implement a terminal-response input guard as a standalone `cprFilter` struct with `Filter`, `Flush`, and `HandleTimeout` methods. The guard SHALL detect CPR sequences in the form `ESC[<digits>;<digits>R` and OSC responses. ChatModel SHALL delegate to `cprFilter` and handle key replay independently.
 

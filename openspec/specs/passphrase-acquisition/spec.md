@@ -1,3 +1,7 @@
+## Purpose
+
+Capability spec for passphrase-acquisition. See requirements below for scope and behavior contracts.
+
 ## Requirements
 
 ### Requirement: Passphrase acquisition priority chain

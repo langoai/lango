@@ -1,4 +1,8 @@
-## ADDED Requirements
+## Purpose
+
+Capability spec for tui-perf-style-prealloc. See requirements below for scope and behavior contracts.
+
+## Requirements
 
 ### Requirement: Module-level style pre-allocation for render functions
 All render helper functions in the chat package SHALL use module-level pre-allocated lipgloss.Style variables for fixed style properties (Bold, Border, PaddingLeft, etc.). Per-call style chains SHALL only set variable properties (Foreground color).

@@ -1,4 +1,8 @@
-## ADDED Requirements
+## Purpose
+
+Capability spec for shared-finance-types. See requirements below for scope and behavior contracts.
+
+## Requirements
 
 ### Requirement: finance package provides USDC parsing with shopspring/decimal
 The `internal/finance` package SHALL provide `ParseUSDC(amount string) (*big.Int, error)` that converts a decimal string to the smallest USDC unit (6 decimals) using `shopspring/decimal` for exact arithmetic.

@@ -1,4 +1,8 @@
-## ADDED Requirements
+## Purpose
+
+Capability spec for meta-tools. See requirements below for scope and behavior contracts.
+
+## Requirements
 
 ### Requirement: Knowledge Management Tools
 The system SHALL provide agent-facing tools for managing the knowledge base.

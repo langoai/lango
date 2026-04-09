@@ -1,4 +1,8 @@
-## ADDED Requirements
+## Purpose
+
+Capability spec for interactive-tui-chat. See requirements below for scope and behavior contracts.
+
+## Requirements
 
 ### Requirement: Interactive TUI chat on bare invocation
 Running `lango` without arguments SHALL start an interactive terminal chat session using bubbletea. `lango serve` SHALL continue to work as the full gateway + channels mode.

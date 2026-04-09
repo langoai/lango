@@ -1,4 +1,8 @@
-## ADDED Requirements
+## Purpose
+
+Capability spec for p2p-firewall. See requirements below for scope and behavior contracts.
+
+## Requirements
 
 ### Requirement: Default Deny-All ACL Policy
 

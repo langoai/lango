@@ -1,4 +1,8 @@
-## ADDED Requirements
+## Purpose
+
+Capability spec for graph-rag. See requirements below for scope and behavior contracts.
+
+## Requirements
 
 ### Requirement: Two-phase hybrid retrieval
 The GraphRAGService SHALL perform 2-phase retrieval: Phase 1 vector search (sqlite-vec cosine similarity), Phase 2 graph expansion (BFS traversal from Phase 1 results).
@@ -40,7 +44,6 @@ VectorRetrieveOptions SHALL include a MaxDistance field that is passed through t
 - **WHEN** Graph RAG retrieval is invoked with MaxDistance set
 - **THEN** the MaxDistance value SHALL be forwarded to the VectorRetriever's RetrieveOptions
 
-## MODIFIED Requirements
 
 ### Requirement: GraphNode carries entity type information
 GraphNode SHALL include a `NodeType string` field populated from the discovered triple's SubjectType metadata. AssembleSection SHALL format typed nodes as `**NodeType:ID**` when NodeType is non-empty.

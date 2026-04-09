@@ -1,4 +1,8 @@
-## ADDED Requirements
+## Purpose
+
+Capability spec for observational-memory. See requirements below for scope and behavior contracts.
+
+## Requirements
 
 ### Requirement: Observer Agent
 The system SHALL provide an Observer agent that generates compressed observation notes from conversation history.

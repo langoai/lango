@@ -26,8 +26,6 @@ Approval requests SHALL be rendered as interrupt cards within the single-column 
 - **WHEN** an approval request is approved or denied
 - **THEN** the transcript SHALL retain a compact approval event entry describing the outcome
 
-## MODIFIED Requirements
-
 ### Requirement: Default entry point
 Running `lango` (no subcommand) SHALL launch the multi-panel cockpit TUI instead of the single-column chat TUI. The single-column TUI SHALL remain accessible via `lango chat`.
 

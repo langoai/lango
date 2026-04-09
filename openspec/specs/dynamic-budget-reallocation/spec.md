@@ -1,4 +1,8 @@
-## ADDED Requirements
+## Purpose
+
+Capability spec for dynamic-budget-reallocation. See requirements below for scope and behavior contracts.
+
+## Requirements
 
 ### Requirement: SectionTokens type
 The `adk` package SHALL provide a `SectionTokens` struct with fields `Knowledge`, `RAG`, `Memory`, `RunSummary` (all `int`), representing measured token counts per section before truncation.

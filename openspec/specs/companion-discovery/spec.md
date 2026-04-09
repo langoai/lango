@@ -1,4 +1,8 @@
-## ADDED Requirements
+## Purpose
+
+Capability spec for companion-discovery. See requirements below for scope and behavior contracts.
+
+## Requirements
 
 ### Requirement: Bonjour Service Discovery
 The system SHALL discover companion apps on local network using mDNS/Bonjour.

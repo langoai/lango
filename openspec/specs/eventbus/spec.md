@@ -1,4 +1,8 @@
-## ADDED Requirements
+## Purpose
+
+Capability spec for eventbus. See requirements below for scope and behavior contracts.
+
+## Requirements
 
 ### Requirement: AlertEvent type
 The eventbus package SHALL define an AlertEvent struct with fields: Type (string), Severity (string), Message (string), Details (map[string]interface{}), SessionKey (string), and Timestamp (time.Time). The EventName() method SHALL return "alert.triggered".

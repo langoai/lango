@@ -175,8 +175,6 @@ Turn-limit failures SHALL be classified distinctly from repeated-call failures.
 - **THEN** the failure SHALL use `ErrTurnLimit`
 - **AND** its `CauseClass` SHALL be `turn_limit_exceeded`
 
-## ADDED Requirements
-
 ### Requirement: RecoveryPolicy captures inline recovery patterns
 The `RecoveryPolicy` in `internal/agentrt/` SHALL capture the recovery patterns currently inline in `adk/agent.go:473-593` as a code policy. It SHALL support REJECT detection, tool churn recovery, learning-based error correction, missing agent correction, and specialist-aware reroute recovery — applied as a wrapper around the inner executor without modifying `agent.go`.
 

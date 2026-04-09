@@ -1,4 +1,8 @@
-## ADDED Requirements
+## Purpose
+
+Capability spec for model-aware-token-budget. See requirements below for scope and behavior contracts.
+
+## Requirements
 
 ### Requirement: Model-family-aware token budgeting
 The system SHALL provide a `ModelTokenBudget(modelName)` function that returns an appropriate history token budget based on the model family's context window size.

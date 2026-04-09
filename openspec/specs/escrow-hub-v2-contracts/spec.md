@@ -1,3 +1,7 @@
+## Purpose
+
+Capability spec for escrow-hub-v2-contracts. See requirements below for scope and behavior contracts.
+
 ## Requirements
 
 ### Requirement: UUPS-upgradeable V2 escrow hub contract

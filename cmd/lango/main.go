@@ -210,7 +210,7 @@ func main() {
 	mcpCmd.GroupID = "net"
 	rootCmd.AddCommand(mcpCmd)
 
-	sandboxCmd := clisandbox.NewSandboxCmd(cliboot.Config)
+	sandboxCmd := clisandbox.NewSandboxCmd(cliboot.Config, cliboot.BootResult)
 	sandboxCmd.GroupID = "sys"
 	rootCmd.AddCommand(sandboxCmd)
 

@@ -3,9 +3,11 @@
 package os
 
 func newPlatformIsolator() OSIsolator {
-	return &noopIsolator{}
+	return &noopIsolator{reason: "unsupported platform"}
 }
 
 func probePlatform(caps *PlatformCapabilities) {
-	// No OS-level sandbox available on this platform.
+	caps.SeatbeltReason = "not on darwin"
+	caps.LandlockReason = "not on Linux"
+	caps.SeccompReason = "not on Linux"
 }

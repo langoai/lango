@@ -2,7 +2,36 @@
 
 The tool catalog provides a centralized registry for built-in tools grouped by named categories, with dispatcher tools (`builtin_list`, `builtin_invoke`, `builtin_health`) for dynamic discovery, invocation, and diagnostics at runtime.
 
-## ADDED Requirements
+## Requirements
+### Requirement: Comprehensive disabled category registration
+Every tool subsystem SHALL register a disabled category with the tool catalog when it is not active, so that builtin_health diagnostics can report the full system state. The disabled category SHALL include the relevant configKey.
+
+#### Scenario: Disabled subsystems appear in catalog
+- **WHEN** a subsystem (browser, crypto, secrets, meta, graph, rag, memory, agent_memory, payment, p2p, librarian, economy, mcp, observability, contract, workspace) is disabled
+- **THEN** a disabled category is registered with Name, Description containing "(disabled)", ConfigKey, and Enabled=false
+
+#### Scenario: builtin_health reports disabled subsystems
+- **WHEN** builtin_health runs diagnostics
+- **THEN** all disabled subsystems appear in the disabled list of the tool registration summary
+
+#### Scenario: P2P disabled with payment dependency
+- **WHEN** p2p.enabled is true but payment is disabled
+- **THEN** p2p disabled category description includes "(disabled — payment required)"
+
+### Requirement: Economy tools registered via domain package
+Economy tools SHALL be registered via `economy.BuildTools()` called from the network module's `Init()` method. Sentinel tools SHALL be registered via `sentinel.BuildTools()` from the sentinel package. The `app/tools_economy.go` and `app/tools_sentinel.go` files SHALL NOT exist. Cycle-bound builders such as on-chain escrow and team-escrow MAY remain in `internal/app/`.
+
+#### Scenario: Economy tools appear in catalog
+- **WHEN** economy is enabled and engines are initialized
+- **THEN** economy tools (budget, risk, negotiation, escrow, pricing) are registered in the "economy" catalog category via `economy.BuildTools()`
+
+#### Scenario: Sentinel tools appear in catalog
+- **WHEN** the sentinel engine is initialized
+- **THEN** sentinel tools are registered in the "sentinel" catalog category via `sentinel.BuildTools()`
+
+#### Scenario: Cycle-bound builders remain in app
+- **WHEN** economy and team integrations are enabled
+- **THEN** `buildOnChainEscrowTools` and `buildTeamEscrowTools` MAY remain in `internal/app/`
 
 ### Requirement: Tool Catalog registry
 The system SHALL provide a thread-safe `Catalog` type in `internal/toolcatalog/` that registers built-in tools grouped by named categories.
@@ -108,33 +137,3 @@ The orchestrator routing table SHALL show a capability summary and tool count pe
 - **WHEN** the orchestrator instruction is built with an automator agent assigned cron_add, cron_list, cron_remove
 - **THEN** the routing table entry for "automator" SHALL contain a "Capabilities" line with capability descriptions and a "Tool count: 3" indicator
 - **AND** the routing table SHALL NOT list individual tool names
-## Requirements
-### Requirement: Comprehensive disabled category registration
-Every tool subsystem SHALL register a disabled category with the tool catalog when it is not active, so that builtin_health diagnostics can report the full system state. The disabled category SHALL include the relevant configKey.
-
-#### Scenario: Disabled subsystems appear in catalog
-- **WHEN** a subsystem (browser, crypto, secrets, meta, graph, rag, memory, agent_memory, payment, p2p, librarian, economy, mcp, observability, contract, workspace) is disabled
-- **THEN** a disabled category is registered with Name, Description containing "(disabled)", ConfigKey, and Enabled=false
-
-#### Scenario: builtin_health reports disabled subsystems
-- **WHEN** builtin_health runs diagnostics
-- **THEN** all disabled subsystems appear in the disabled list of the tool registration summary
-
-#### Scenario: P2P disabled with payment dependency
-- **WHEN** p2p.enabled is true but payment is disabled
-- **THEN** p2p disabled category description includes "(disabled — payment required)"
-
-### Requirement: Economy tools registered via domain package
-Economy tools SHALL be registered via `economy.BuildTools()` called from the network module's `Init()` method. Sentinel tools SHALL be registered via `sentinel.BuildTools()` from the sentinel package. The `app/tools_economy.go` and `app/tools_sentinel.go` files SHALL NOT exist. Cycle-bound builders such as on-chain escrow and team-escrow MAY remain in `internal/app/`.
-
-#### Scenario: Economy tools appear in catalog
-- **WHEN** economy is enabled and engines are initialized
-- **THEN** economy tools (budget, risk, negotiation, escrow, pricing) are registered in the "economy" catalog category via `economy.BuildTools()`
-
-#### Scenario: Sentinel tools appear in catalog
-- **WHEN** the sentinel engine is initialized
-- **THEN** sentinel tools are registered in the "sentinel" catalog category via `sentinel.BuildTools()`
-
-#### Scenario: Cycle-bound builders remain in app
-- **WHEN** economy and team integrations are enabled
-- **THEN** `buildOnChainEscrowTools` and `buildTeamEscrowTools` MAY remain in `internal/app/`

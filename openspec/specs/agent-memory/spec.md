@@ -1,4 +1,8 @@
-## ADDED Requirements
+## Purpose
+
+Capability spec for agent-memory. See requirements below for scope and behavior contracts.
+
+## Requirements
 
 ### Requirement: Entry type
 The `agentmemory` package SHALL define an `Entry` struct with fields: ID, AgentName, Scope, Kind, Key, Content, Confidence, UseCount, Tags, CreatedAt, UpdatedAt.

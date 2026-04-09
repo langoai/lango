@@ -1,4 +1,8 @@
-## ADDED Requirements
+## Purpose
+
+Capability spec for context-budget. See requirements below for scope and behavior contracts.
+
+## Requirements
 
 ### Requirement: Model window registry
 The system SHALL provide a `LookupModelWindow(modelName string) int` function that returns the context window size in tokens for known models. The lookup SHALL match model name prefixes (e.g., "gemini-2.0" matches "gemini-2.0-flash-001"). If no match is found, the system SHALL return a configurable default (128k tokens).

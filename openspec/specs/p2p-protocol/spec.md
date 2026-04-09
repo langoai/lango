@@ -1,4 +1,8 @@
-## ADDED Requirements
+## Purpose
+
+Capability spec for p2p-protocol. See requirements below for scope and behavior contracts.
+
+## Requirements
 
 ### Requirement: A2A-over-P2P Message Protocol
 
@@ -139,7 +143,6 @@ Handler SHALL expose a `SetApprovalFunc(fn ToolApprovalFunc)` method to set the 
 - **THEN** subsequent tool invocations SHALL use the provided function for approval checks
 
 
-## ADDED Requirements
 
 ### Requirement: Sandbox executor nil-safety for P2P tool execution
 The `Handler` MUST refuse tool execution when `sandboxExec` is nil. Both `handleToolInvoke` and `handleToolInvokePaid` MUST return `ResponseStatusDenied` with `ErrNoSandboxExecutor` instead of falling back to the in-process executor.

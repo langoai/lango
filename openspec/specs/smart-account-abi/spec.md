@@ -1,5 +1,9 @@
 # Spec: Smart Account ABI Correctness
 
+## Purpose
+
+Capability spec for smart-account-abi. See requirements below for scope and behavior contracts.
+
 ## Requirements
 
 ### REQ-1: SessionValidator ABI must include allowedPaymasters

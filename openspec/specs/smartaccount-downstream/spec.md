@@ -1,5 +1,9 @@
 # Spec: Smart Account Downstream Artifact Sync
 
+## Purpose
+
+Capability spec for smartaccount-downstream. See requirements below for scope and behavior contracts.
+
 ## Requirements
 
 ### REQ-1: TUI Smart Account Settings

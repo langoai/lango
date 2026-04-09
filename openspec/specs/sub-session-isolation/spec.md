@@ -10,8 +10,6 @@ When an isolated child session ends without a visible assistant summary, the par
 - **THEN** the parent-visible note SHALL mention `empty_after_tool_use`
 - **AND** it SHALL NOT promote raw tool output to a success summary
 
-## ADDED Requirements
-
 ### Requirement: ChildSession type
 The `session` package SHALL define a `ChildSession` type with fields: ID, ParentID, AgentName, Config, CreatedAt, and Status. ChildSession SHALL support cross-turn isolation while allowing same-run causal visibility through the active parent session view.
 

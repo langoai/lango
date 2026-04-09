@@ -1,4 +1,10 @@
-## Requirement: System prompt construction
+## Purpose
+
+Capability spec for agent-prompting. See requirements below for scope and behavior contracts.
+
+## Requirements
+
+### Requirement: System prompt construction
 The system SHALL construct the system prompt using a structured `prompt.Builder` instead of a single string. The `ContextAwareModelAdapter` constructor SHALL accept a `*prompt.Builder` and call `Build()` to produce the base prompt string. Dynamic context injection (knowledge, memory, RAG) SHALL continue to append to the built prompt at runtime.
 
 #### Scenario: Prepend system prompt to new session

@@ -1,3 +1,9 @@
+## Purpose
+
+Capability spec for store-util-helpers. See requirements below for scope and behavior contracts.
+
+## Requirements
+
 ### Requirement: MarshalField helper
 The `storeutil` package SHALL provide a `MarshalField(v interface{}) (json.RawMessage, error)` function that marshals a value to JSON. It SHALL return an error on marshal failure rather than swallowing it, ensuring store persistence callers can abort writes.
 

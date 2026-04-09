@@ -1,4 +1,8 @@
-## ADDED Requirements
+## Purpose
+
+Capability spec for retrieval-aggregation-v2. See requirements below for scope and behavior contracts.
+
+## Requirements
 
 ### Requirement: Finding provenance metadata
 The `Finding` struct SHALL include `Source` (string), `Tags` ([]string), `Version` (int), and `UpdatedAt` (time.Time) fields. These fields are optional — zero values mean no provenance available.

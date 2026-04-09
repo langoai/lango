@@ -1,4 +1,8 @@
-## ADDED Requirements
+## Purpose
+
+Capability spec for knowledge-store. See requirements below for scope and behavior contracts.
+
+## Requirements
 
 ### Requirement: Knowledge entry structure
 The `knowledge.KnowledgeEntry` struct SHALL use `entknowledge.Category` (Ent-generated type) for its `Category` field. The `knowledge.LearningEntry` struct SHALL use `entlearning.Category` (Ent-generated type) for its `Category` field. No duplicate domain enum types SHALL exist — the Ent-generated types are the single source of truth. The `string()` cast SHALL only occur at system boundaries: metadata maps and tool parameter parsing.

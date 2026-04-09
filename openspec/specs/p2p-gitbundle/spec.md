@@ -1,4 +1,36 @@
+## Purpose
+
+Capability spec for p2p-gitbundle. See requirements below for scope and behavior contracts.
+
+## Requirements
+
+### Requirement: p2p-gitbundle capability documented
+The p2p-gitbundle capability SHALL be documented through the sections in this spec. This requirement is a structural placeholder that satisfies the canonical openspec format; detailed behavior contracts live in the descriptive sections of this file.
+
+#### Scenario: Spec file is readable
+- **WHEN** the p2p-gitbundle spec.md file is read
+- **THEN** it SHALL describe the capability's behavior in sections below
+
 # P2P Git Bundle
+
+### Requirement: Incremental bundle protocol messages
+The git bundle protocol SHALL support four new request types: push_incremental_bundle, fetch_incremental, verify_bundle, and has_commit.
+
+#### Scenario: Push incremental bundle
+- **WHEN** a push_incremental_bundle request is received with a valid bundle
+- **THEN** the handler calls SafeApplyBundle and returns PushBundleResponse with Applied=true
+
+#### Scenario: Fetch incremental bundle
+- **WHEN** a fetch_incremental request is received with a base commit hash
+- **THEN** the handler calls CreateIncrementalBundle and returns FetchIncrementalResponse with the bundle and HEAD hash
+
+#### Scenario: Verify bundle
+- **WHEN** a verify_bundle request is received
+- **THEN** the handler calls VerifyBundle and returns VerifyBundleResponse with Valid=true or Valid=false with message
+
+#### Scenario: Has commit check
+- **WHEN** a has_commit request is received
+- **THEN** the handler calls HasCommit and returns HasCommitResponse with Exists boolean
 
 ## Overview
 
@@ -49,22 +81,3 @@ libp2p stream handler for `/lango/p2p-git/1.0.0`.
 - Base64 JSON transport consistent with A2A protocol
 
 ## Incremental Bundle Protocol
-
-### Requirement: Incremental bundle protocol messages
-The git bundle protocol SHALL support four new request types: push_incremental_bundle, fetch_incremental, verify_bundle, and has_commit.
-
-#### Scenario: Push incremental bundle
-- **WHEN** a push_incremental_bundle request is received with a valid bundle
-- **THEN** the handler calls SafeApplyBundle and returns PushBundleResponse with Applied=true
-
-#### Scenario: Fetch incremental bundle
-- **WHEN** a fetch_incremental request is received with a base commit hash
-- **THEN** the handler calls CreateIncrementalBundle and returns FetchIncrementalResponse with the bundle and HEAD hash
-
-#### Scenario: Verify bundle
-- **WHEN** a verify_bundle request is received
-- **THEN** the handler calls VerifyBundle and returns VerifyBundleResponse with Valid=true or Valid=false with message
-
-#### Scenario: Has commit check
-- **WHEN** a has_commit request is received
-- **THEN** the handler calls HasCommit and returns HasCommitResponse with Exists boolean

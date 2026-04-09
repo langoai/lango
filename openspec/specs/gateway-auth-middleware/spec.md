@@ -1,3 +1,7 @@
+## Purpose
+
+Capability spec for gateway-auth-middleware. See requirements below for scope and behavior contracts.
+
 ## Requirements
 
 ### Requirement: Authentication Middleware

@@ -1,4 +1,8 @@
-## ADDED Requirements
+## Purpose
+
+Capability spec for p2p-team-payment. See requirements below for scope and behavior contracts.
+
+## Requirements
 
 ### Requirement: Payment negotiation
 The `p2p/team` package SHALL provide `NegotiatePayment` functionality that negotiates payment terms with remote agents before task delegation.

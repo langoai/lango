@@ -18,3 +18,4 @@ func (s *seccompIsolator) Apply(_ context.Context, _ *exec.Cmd, _ Policy) error 
 
 func (s *seccompIsolator) Available() bool { return false }
 func (s *seccompIsolator) Name() string    { return "seccomp" }
+func (s *seccompIsolator) Reason() string  { return "not on Linux" }

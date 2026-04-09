@@ -1,4 +1,8 @@
-## ADDED Requirements
+## Purpose
+
+Capability spec for a2a-protocol. See requirements below for scope and behavior contracts.
+
+## Requirements
 
 ### Requirement: Agent Card endpoint
 The system SHALL serve an Agent Card at `GET /.well-known/agent.json` when A2A is enabled, containing the agent's name, description, URL, and skills.

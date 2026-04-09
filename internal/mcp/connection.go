@@ -12,6 +12,7 @@ import (
 	sdkmcp "github.com/modelcontextprotocol/go-sdk/mcp"
 
 	"github.com/langoai/lango/internal/config"
+	"github.com/langoai/lango/internal/eventbus"
 	"github.com/langoai/lango/internal/logging"
 	sandboxos "github.com/langoai/lango/internal/sandbox/os"
 )
@@ -78,9 +79,13 @@ type ServerConnection struct {
 	resources []DiscoveredResource
 	prompts   []DiscoveredPrompt
 
-	stopCh chan struct{}
+	isolator      sandboxos.OSIsolator
+	failClosed    bool
+	workspacePath string        // User workspace root, used by MCPServerPolicy to walk up to .git
+	dataRoot      string        // Lango control-plane root, masked from sandboxed MCP child
+	bus           *eventbus.Bus // event bus for SandboxDecisionEvent (optional)
 
-	isolator sandboxos.OSIsolator // OS-level sandbox for stdio server processes (nil = disabled)
+	stopCh chan struct{}
 }
 
 // NewServerConnection creates a new server connection manager.
@@ -97,10 +102,51 @@ func NewServerConnection(name string, cfg config.MCPServerConfig, global config.
 // Name returns the server name.
 func (sc *ServerConnection) Name() string { return sc.name }
 
-// SetOSIsolator configures an OS-level sandbox that will be applied to
-// stdio server processes before they start. Pass nil to disable.
-func (sc *ServerConnection) SetOSIsolator(iso sandboxos.OSIsolator) {
+// SetOSIsolator sets the OS-level sandbox isolator for this connection.
+// workspacePath is recorded so MCPServerPolicy can walk up to find the
+// repository `.git` and apply the same baseline deny as DefaultToolPolicy.
+// dataRoot is recorded so the policy applied at transport creation time can
+// deny the lango control-plane to the spawned MCP server child process.
+// workspacePath also becomes the MCP child's cmd.Dir so policy discovery
+// and execution share the same git context.
+func (sc *ServerConnection) SetOSIsolator(iso sandboxos.OSIsolator, workspacePath, dataRoot string) {
+	sc.mu.Lock()
+	defer sc.mu.Unlock()
 	sc.isolator = iso
+	sc.workspacePath = workspacePath
+	sc.dataRoot = dataRoot
+}
+
+// SetFailClosed sets whether this connection blocks stdio transport
+// creation when no sandbox is available.
+func (sc *ServerConnection) SetFailClosed(fc bool) {
+	sc.mu.Lock()
+	defer sc.mu.Unlock()
+	sc.failClosed = fc
+}
+
+// SetEventBus attaches an event bus for SandboxDecisionEvent publishing.
+func (sc *ServerConnection) SetEventBus(bus *eventbus.Bus) {
+	sc.mu.Lock()
+	defer sc.mu.Unlock()
+	sc.bus = bus
+}
+
+// publishSandboxDecision publishes a SandboxDecisionEvent for this MCP server's
+// transport-creation moment. SessionKey is intentionally empty: MCP server
+// lifecycle is process-level, not session-bound.
+func (sc *ServerConnection) publishSandboxDecision(decision, reason string) {
+	backend := ""
+	if sc.isolator != nil {
+		backend = sc.isolator.Name()
+	}
+	eventbus.PublishSandboxDecision(sc.bus, eventbus.SandboxDecisionEvent{
+		Source:   "mcp",
+		Command:  sc.name,
+		Decision: decision,
+		Backend:  backend,
+		Reason:   reason,
+	})
 }
 
 // State returns the current connection state.
@@ -302,13 +348,38 @@ func (sc *ServerConnection) createTransport() (sdkmcp.Transport, error) {
 		if len(sc.cfg.Env) > 0 {
 			cmd.Env = BuildEnvSlice(sc.cfg.Env)
 		}
+		// Set cmd.Dir explicitly so the MCP child runs inside the user's
+		// workspace (and so the sandbox policy's git walk-up has a
+		// meaningful starting point). An empty workspacePath falls back
+		// to the supervisor's cwd — preserves legacy behavior for callers
+		// that have not yet migrated to the workspace-aware setter.
+		if sc.workspacePath != "" {
+			cmd.Dir = sc.workspacePath
+		}
+
+		if sc.isolator == nil && sc.failClosed {
+			sc.publishSandboxDecision("rejected", "no isolator configured")
+			return nil, fmt.Errorf("%w: no OS isolator configured for MCP server %q", sandboxos.ErrSandboxRequired, sc.name)
+		}
 		if sc.isolator != nil {
-			policy := sandboxos.MCPServerPolicy()
+			policy := sandboxos.MCPServerPolicy(sc.workspacePath, sc.dataRoot)
 			if err := sc.isolator.Apply(context.Background(), cmd, policy); err != nil {
+				if sc.failClosed {
+					sc.publishSandboxDecision("rejected", err.Error())
+					return nil, fmt.Errorf("%w: MCP server %q: %v", sandboxos.ErrSandboxRequired, sc.name, err)
+				}
 				log := logging.App()
 				log.Warnw("MCP server OS sandbox unavailable", "server", sc.name, "error", err)
+				sc.publishSandboxDecision("skipped", err.Error())
+			} else {
+				sc.publishSandboxDecision("applied", "")
 			}
+		} else {
+			// No isolator configured and fail-open: still record so the
+			// audit trail shows MCP servers that ran unsandboxed.
+			sc.publishSandboxDecision("skipped", "no isolator configured")
 		}
+
 		return &sdkmcp.CommandTransport{Command: cmd}, nil
 
 	case "http":

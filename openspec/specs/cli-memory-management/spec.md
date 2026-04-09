@@ -1,4 +1,8 @@
-## ADDED Requirements
+## Purpose
+
+Capability spec for cli-memory-management. See requirements below for scope and behavior contracts.
+
+## Requirements
 
 ### Requirement: Memory list command
 The system SHALL provide a `lango memory list --session <key>` command that lists observations and reflections for a given session. The command SHALL support `--type observations|reflections` to filter by entry type. The command SHALL support `--json` for JSON output. The `--session` flag SHALL be required. Table output SHALL display ID (truncated to 8 chars), TYPE, TOKENS, CREATED timestamp, and CONTENT (truncated to 60 characters).

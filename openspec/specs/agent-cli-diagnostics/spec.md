@@ -1,4 +1,8 @@
-## ADDED Requirements
+## Purpose
+
+Capability spec for agent-cli-diagnostics. See requirements below for scope and behavior contracts.
+
+## Requirements
 
 ### Requirement: Trace list command
 The system SHALL provide `lango agent trace list` that lists recent traces with outcomes. It SHALL support `--session`, `--limit`, `--outcome`, and `--json` flags. It SHALL use bootstrap-aware pattern for DB access.

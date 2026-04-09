@@ -1,5 +1,9 @@
 # Spec: Trust-Weighted P2P Fact Source
 
+## Purpose
+
+Capability spec for ontology-p2p-fact-source. See requirements below for scope and behavior contracts.
+
 ## Requirements
 
 ### REQ-1: Source Precedence

@@ -1,4 +1,8 @@
-## ADDED Requirements
+## Purpose
+
+Capability spec for config-clone. See requirements below for scope and behavior contracts.
+
+## Requirements
 
 ### Requirement: Config deep copy
 Config SHALL expose a Clone() method that returns a deep copy via JSON roundtrip. Clone() SHALL be nil-safe.

@@ -5,21 +5,21 @@ import (
 	"sync"
 
 	"github.com/langoai/lango/internal/config"
+	"github.com/langoai/lango/internal/eventbus"
 	"github.com/langoai/lango/internal/logging"
 	sandboxos "github.com/langoai/lango/internal/sandbox/os"
 )
 
 // ServerManager manages multiple MCP server connections.
 type ServerManager struct {
-	cfg      config.MCPConfig
-	mu       sync.RWMutex
-	servers  map[string]*ServerConnection
-	isolator sandboxos.OSIsolator // OS-level sandbox for stdio server processes (nil = disabled)
-}
-
-// SetOSIsolator configures OS-level sandbox for all managed stdio server connections.
-func (m *ServerManager) SetOSIsolator(iso sandboxos.OSIsolator) {
-	m.isolator = iso
+	cfg           config.MCPConfig
+	mu            sync.RWMutex
+	servers       map[string]*ServerConnection
+	isolator      sandboxos.OSIsolator
+	failClosed    bool
+	workspacePath string        // User workspace root, forwarded to each connection for MCPServerPolicy walk-up
+	dataRoot      string        // Lango control-plane root, forwarded to each connection
+	bus           *eventbus.Bus // event bus, forwarded to each connection
 }
 
 // NewServerManager creates a new manager for the given config.
@@ -27,6 +27,46 @@ func NewServerManager(cfg config.MCPConfig) *ServerManager {
 	return &ServerManager{
 		cfg:     cfg,
 		servers: make(map[string]*ServerConnection),
+	}
+}
+
+// SetOSIsolator sets the OS-level sandbox isolator for all current
+// and future connections. workspacePath is forwarded so each connection's
+// MCPServerPolicy can walk up to the repo `.git` and apply the same
+// baseline deny as DefaultToolPolicy. dataRoot is forwarded so each
+// connection's policy denies the lango control-plane to the spawned MCP
+// child.
+func (m *ServerManager) SetOSIsolator(iso sandboxos.OSIsolator, workspacePath, dataRoot string) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.isolator = iso
+	m.workspacePath = workspacePath
+	m.dataRoot = dataRoot
+	for _, s := range m.servers {
+		s.SetOSIsolator(iso, workspacePath, dataRoot)
+	}
+}
+
+// SetFailClosed enables or disables fail-closed semantics for all current
+// and future connections. When true, stdio MCP transport creation is blocked
+// if no OS sandbox can be applied.
+func (m *ServerManager) SetFailClosed(fc bool) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.failClosed = fc
+	for _, s := range m.servers {
+		s.SetFailClosed(fc)
+	}
+}
+
+// SetEventBus attaches an event bus for SandboxDecisionEvent publishing on
+// all current and future connections.
+func (m *ServerManager) SetEventBus(bus *eventbus.Bus) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.bus = bus
+	for _, s := range m.servers {
+		s.SetEventBus(bus)
 	}
 }
 
@@ -45,8 +85,12 @@ func (m *ServerManager) ConnectAll(ctx context.Context) map[string]error {
 
 		conn := NewServerConnection(name, srvCfg, m.cfg)
 		if m.isolator != nil {
-			conn.SetOSIsolator(m.isolator)
+			conn.SetOSIsolator(m.isolator, m.workspacePath, m.dataRoot)
 		}
+		if m.bus != nil {
+			conn.SetEventBus(m.bus)
+		}
+		conn.SetFailClosed(m.failClosed)
 		m.mu.Lock()
 		m.servers[name] = conn
 		m.mu.Unlock()

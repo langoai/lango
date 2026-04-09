@@ -1,4 +1,8 @@
-## ADDED Requirements
+## Purpose
+
+Capability spec for skill-system. See requirements below for scope and behavior contracts.
+
+## Requirements
 
 ### Requirement: File-Based Skill Storage
 The system SHALL store skills as `<dir>/<name>/SKILL.md` files with YAML frontmatter containing name, description, type, status, and optional parameters. `ListActive()` SHALL skip hidden directories (names starting with `.`) when scanning.

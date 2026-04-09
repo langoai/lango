@@ -1,4 +1,8 @@
-## ADDED Requirements
+## Purpose
+
+Capability spec for provider-openai-compatible. See requirements below for scope and behavior contracts.
+
+## Requirements
 
 ### Requirement: OpenAI API Compatibility
 The system SHALL implement a provider that uses the OpenAI Chat Completions API format.

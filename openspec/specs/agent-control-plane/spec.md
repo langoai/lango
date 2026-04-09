@@ -1,4 +1,8 @@
-## ADDED Requirements
+## Purpose
+
+Capability spec for agent-control-plane. See requirements below for scope and behavior contracts.
+
+## Requirements
 
 ### Requirement: Exponential backoff on recovery retry
 The system SHALL compute an exponential backoff delay before each recovery retry using the formula `min(baseDelay * 2^attempt, maxBackoff)` where `baseDelay` is 1 second and `maxBackoff` is 30 seconds. The backoff delay SHALL respect context cancellation — if the context is cancelled during the backoff wait, the retry SHALL be abandoned immediately.

@@ -1,4 +1,8 @@
-## ADDED Requirements
+## Purpose
+
+Capability spec for fts5-query-safety. See requirements below for scope and behavior contracts.
+
+## Requirements
 
 ### Requirement: FTS5 token sanitization strips all punctuation
 The `escapeFTS5Token` function SHALL remove all ASCII punctuation characters that can cause FTS5 syntax errors, including but not limited to: `.`, `?`, `!`, `@`, `#`, `$`, `%`, `&`, `=`, `|`, `~`, `<`, `>`, `;`, `,`, `[`, `]`, `\`, `/`, `'`.

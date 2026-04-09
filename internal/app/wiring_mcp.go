@@ -3,10 +3,12 @@ package app
 import (
 	"context"
 	"fmt"
+	"os"
 	"strings"
 
 	"github.com/langoai/lango/internal/agent"
 	"github.com/langoai/lango/internal/config"
+	"github.com/langoai/lango/internal/eventbus"
 	"github.com/langoai/lango/internal/mcp"
 )
 
@@ -17,7 +19,7 @@ type mcpComponents struct {
 }
 
 // initMCP creates the MCP server manager and connects to configured servers.
-func initMCP(cfg *config.Config) *mcpComponents {
+func initMCP(cfg *config.Config, bus *eventbus.Bus) *mcpComponents {
 	if !cfg.MCP.Enabled {
 		logger().Info("MCP integration disabled")
 		return nil
@@ -37,8 +39,22 @@ func initMCP(cfg *config.Config) *mcpComponents {
 	mgr := mcp.NewServerManager(mcpCfg)
 
 	// Inject OS-level sandbox if enabled.
-	if iso := initOSSandbox(cfg); iso != nil && iso.Available() {
-		mgr.SetOSIsolator(iso)
+	if iso := initOSSandbox(cfg); iso != nil {
+		if iso.Available() {
+			// Resolve workspacePath the same way supervisor and skill
+			// registry do — explicit config value or cwd fallback — so
+			// MCPServerPolicy's .git walk-up has a meaningful anchor
+			// and cmd.Dir lands inside the user's workspace.
+			workDir := cfg.Sandbox.WorkspacePath
+			if workDir == "" {
+				workDir, _ = os.Getwd()
+			}
+			mgr.SetOSIsolator(iso, workDir, cfg.DataRoot)
+		}
+		mgr.SetFailClosed(cfg.Sandbox.FailClosed)
+	}
+	if bus != nil {
+		mgr.SetEventBus(bus)
 	}
 
 	// Connect to all servers (best-effort, failures are logged)

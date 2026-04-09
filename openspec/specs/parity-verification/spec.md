@@ -1,3 +1,9 @@
+## Purpose
+
+Capability spec for parity-verification. See requirements below for scope and behavior contracts.
+
+## Requirements
+
 ### Requirement: Registry Names accessor
 The `lifecycle.Registry` SHALL expose a `Names()` method that returns the names of all registered components in registration order.
 

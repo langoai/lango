@@ -1,4 +1,8 @@
-## ADDED Requirements
+## Purpose
+
+Capability spec for fts5-search-index. See requirements below for scope and behavior contracts.
+
+## Requirements
 
 ### Requirement: FTS5 runtime probe
 The system SHALL provide a `ProbeFTS5(db)` function that tests whether the current SQLite connection supports FTS5. The probe SHALL execute a temporary FTS5 table creation and immediately drop it. The function SHALL return a boolean and SHALL NOT panic or log errors on unsupported builds.

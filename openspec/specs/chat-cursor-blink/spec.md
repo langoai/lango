@@ -1,4 +1,8 @@
-## ADDED Requirements
+## Purpose
+
+Capability spec for chat-cursor-blink. See requirements below for scope and behavior contracts.
+
+## Requirements
 
 ### Requirement: Streaming cursor blink animation
 During agent streaming (stateStreaming), the chat view SHALL display a blinking block cursor ("▌") appended to the stream content. The cursor SHALL toggle visibility every 400ms via tea.Tick.

@@ -1,4 +1,8 @@
-## ADDED Requirements
+## Purpose
+
+Capability spec for session-provenance. See requirements below for scope and behavior contracts.
+
+## Requirements
 
 ### Requirement: Config fingerprint in provenance checkpoint
 The provenance subsystem SHALL compute a SHA-256 fingerprint of session-relevant configuration state (explicit keys, auto-enabled flags, hooks config) and store it as `config_fingerprint` metadata in session provenance checkpoints.

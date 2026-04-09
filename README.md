@@ -68,7 +68,7 @@ Single binary. <100ms startup. <250MB memory. Just Go.
 - 🖥️ **Cockpit TUI** — Multi-panel terminal dashboard with 7 pages (Chat, Settings, Tools, Status, Sessions, Tasks, Approvals). Context panel with live token usage, tool stats, runtime, channels, and system metrics. Two-tier approval with inline strip and fullscreen dialog. Background task management with detail view, cancel, and retry. Runtime visibility with delegation tracking, budget warnings, and recovery events
 - 📋 **RunLedger (Task OS)** — Durable execution engine with append-only journal, PEV verification, typed validators, and planner integration
 - 📜 **Session Provenance** — Persistent checkpoints, session lineage tree, git-aware attribution, and signed provenance bundle export/import
-- 🛡️ **OS-level Sandbox** — Process isolation via macOS Seatbelt and Linux seccomp, network deny, workspace-scoped write access
+- 🛡️ **OS-level Sandbox** — Process isolation via macOS Seatbelt and Linux bubblewrap (when `bwrap` is installed), network deny, workspace-scoped write access, automatic control-plane (`~/.lango`) and `.git` masking (walks up to the repo root and follows linked-worktree pointers), file-level deny via `/dev/null` bind, symlink resolution, glob patterns in deny/write lists, audit trail of every apply/skip/exclude decision
 - 🚧 **Response Gatekeeper** — Output sanitization stripping thought tags, internal markers, raw JSON, and custom patterns
 
 ## Quick Start
@@ -636,11 +636,15 @@ All settings are managed via `lango onboard` (guided wizard), `lango settings` (
 | `provenance.checkpoints.retentionDays`                 | int      | `0`                         | Days to keep checkpoints (0 = unlimited)                                                                          |
 | **Sandbox** (🧪 Experimental Features)                 |          |                             |                                                                                                                   |
 | `sandbox.enabled`                                      | bool     | `false`                     | Enable OS-level sandboxing for tool-spawned processes                                                             |
-| `sandbox.failClosed`                                   | bool     | `false`                     | Reject tool execution when sandbox unavailable (false = fail-open)                                                |
+| `sandbox.failClosed`                                   | bool     | `false`                     | Reject tool execution when sandbox unavailable (false = fail-open; also prints a one-shot stderr warning)         |
+| `sandbox.backend`                                      | string   | `auto`                      | Isolation backend: `auto`, `seatbelt` (macOS), `bwrap` (Linux, requires bubblewrap), `native` (planned), `none`  |
 | `sandbox.networkMode`                                  | string   | `deny`                      | Network access: `deny` or `allow`                                                                                 |
+| `sandbox.workspacePath`                                | string   | -                           | Workspace root for write access (tilde and relative paths are normalized at load time; defaults to CWD)           |
+| `sandbox.allowedWritePaths`                            | strings  | -                           | Additional writable paths beyond workspace (each entry normalized at load time)                                   |
+| `sandbox.excludedCommands`                             | strings  | -                           | Command basenames that bypass the sandbox (e.g. `git`, `docker`). Run UNSANDBOXED and recorded in audit; sparing use only |
 | `sandbox.timeoutPerTool`                               | duration | `30s`                       | Max duration for sandboxed tool execution                                                                         |
-| `sandbox.os.seccompProfile`                            | string   | `moderate`                  | Linux seccomp profile: `strict`, `moderate`, `permissive`                                                         |
-| `sandbox.os.seatbeltCustomProfile`                     | string   | -                           | Custom macOS `.sb` profile path                                                                                   |
+| `sandbox.os.seccompProfile`                            | string   | `moderate`                  | Linux seccomp profile: `strict`, `moderate`, `permissive` (consumed by planned native backend; bwrap ignores it)  |
+| `sandbox.os.seatbeltCustomProfile`                     | string   | -                           | Custom macOS `.sb` profile path (tilde and relative paths normalized at load time)                                |
 | **Gatekeeper**                                         |          |                             |                                                                                                                   |
 | `gatekeeper.enabled`                                   | bool     | `true`                      | Enable response sanitization                                                                                      |
 | `gatekeeper.stripThoughtTags`                          | bool     | `true`                      | Strip `<thought>`/`<thinking>` tags                                                                               |

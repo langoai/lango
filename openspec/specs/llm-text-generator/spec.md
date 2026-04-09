@@ -1,4 +1,8 @@
-## ADDED Requirements
+## Purpose
+
+Capability spec for llm-text-generator. See requirements below for scope and behavior contracts.
+
+## Requirements
 
 ### Requirement: Single TextGenerator interface in internal/llm
 The `TextGenerator` interface SHALL be defined exactly once in `internal/llm/text_generator.go`. All consumers (learning, memory, graph, librarian) MUST import from `internal/llm/`.

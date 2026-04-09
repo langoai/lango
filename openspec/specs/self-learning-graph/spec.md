@@ -1,4 +1,8 @@
-## ADDED Requirements
+## Purpose
+
+Capability spec for self-learning-graph. See requirements below for scope and behavior contracts.
+
+## Requirements
 
 ### Requirement: ToolResultObserver interface
 The learning package SHALL define a `ToolResultObserver` interface with `OnToolResult(ctx, sessionKey, toolName, params, result, err)` method, implemented by both Engine and GraphEngine.

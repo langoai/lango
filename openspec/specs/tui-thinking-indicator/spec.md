@@ -1,4 +1,8 @@
-## ADDED Requirements
+## Purpose
+
+Capability spec for tui-thinking-indicator. See requirements below for scope and behavior contracts.
+
+## Requirements
 
 ### Requirement: Thinking transcript item kind
 The chat transcript SHALL support an `itemThinking` kind that represents an agent's reasoning/thinking phase, detected via `genai.Part.Thought == true`.

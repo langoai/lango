@@ -1,3 +1,9 @@
+## Purpose
+
+Capability spec for approval-history-view. See requirements below for scope and behavior contracts.
+
+## Requirements
+
 ### Requirement: In-memory approval history store
 The system SHALL maintain an in-memory ring buffer (default 500 entries) recording every approval decision with timestamp, request ID, tool name, session key, summary, safety level, outcome (open set), and provider.
 

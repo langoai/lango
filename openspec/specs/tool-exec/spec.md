@@ -1,4 +1,8 @@
-## ADDED Requirements
+## Purpose
+
+Capability spec for tool-exec. See requirements below for scope and behavior contracts.
+
+## Requirements
 
 ### Requirement: Shell command execution
 The system SHALL execute shell commands in a controlled environment with configurable timeouts.
@@ -180,8 +184,6 @@ A `PolicyDecisionEvent` SHALL be published to the event bus for observe and bloc
 - **WHEN** PolicyEvaluator makes a decision and `cfg.Hooks.EventPublishing` is false
 - **THEN** no event is published
 
-## OS-Level Sandbox
-
 ### Requirement: Command execution with OS sandbox
 The exec tool SHALL execute shell commands via `sh -c` with configurable timeout, environment filtering, and optional OS-level sandbox isolation applied before process start.
 
@@ -196,3 +198,5 @@ The exec tool SHALL execute shell commands via `sh -c` with configurable timeout
 #### Scenario: Background process with sandbox
 - **WHEN** a background command is started via `StartBackground()` with `Config.OSIsolator` set
 - **THEN** the child process SHALL run under OS-level kernel restrictions
+
+## OS-Level Sandbox

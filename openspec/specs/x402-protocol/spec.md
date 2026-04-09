@@ -1,4 +1,8 @@
-## ADDED Requirements
+## Purpose
+
+Capability spec for x402-protocol. See requirements below for scope and behavior contracts.
+
+## Requirements
 
 ### Requirement: X402 challenge parsing
 The system SHALL parse HTTP 402 responses by extracting payment parameters from headers: `X-Payment-Amount`, `X-Payment-Token`, `X-Payment-Recipient`, `X-Payment-Network`, `X-Payment-ChainId`.

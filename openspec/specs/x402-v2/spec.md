@@ -3,6 +3,15 @@
 ## Purpose
 Define the X402 V2 payment protocol integration in Lango, using the Coinbase X402 Go SDK for automatic HTTP 402 payment handling with EIP-3009 off-chain signatures.
 
+## Requirements
+
+### Requirement: X402 V2 protocol integration documented
+The X402 V2 payment protocol integration SHALL be documented through the Protocol Flow, Components, and Network Configuration sections below. This requirement exists to satisfy the canonical spec structure; detailed behavior contracts are in the descriptive sections that follow.
+
+#### Scenario: Spec contains protocol documentation
+- **WHEN** the X402 V2 spec.md is read
+- **THEN** it SHALL include the protocol flow, components, and network configuration sections that describe the integration
+
 ## Protocol Flow
 1. Agent makes HTTP request via `payment_x402_fetch` tool
 2. Server returns 402 with `PAYMENT-REQUIRED` header (Base64 JSON)

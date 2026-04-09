@@ -1,4 +1,8 @@
-## ADDED Requirements
+## Purpose
+
+Capability spec for progress-bus. See requirements below for scope and behavior contracts.
+
+## Requirements
 
 ### Requirement: Progress event types and structure
 The system SHALL define a `ProgressEvent` struct with `Source` (string), `Type` (ProgressType), `Message` (string), `Progress` (float64), and `Metadata` (map[string]any). `ProgressType` SHALL be a string type with constants `started`, `update`, `completed`, and `failed`.

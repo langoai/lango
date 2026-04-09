@@ -1,4 +1,8 @@
-## ADDED Requirements
+## Purpose
+
+Capability spec for turntrace-diagnostics. See requirements below for scope and behavior contracts.
+
+## Requirements
 
 ### Requirement: Typed event constants
 The system SHALL define `type EventType = string` (alias for backward compatibility) and typed constants for all trace event types: `EventToolCall`, `EventToolResult`, `EventDelegation`, `EventDelegationReturn`, `EventText`, `EventTerminalError`, `EventBudgetWarning`, `EventRecoveryAttempt`.

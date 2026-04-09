@@ -1,4 +1,8 @@
-## ADDED Requirements
+## Purpose
+
+Capability spec for cockpit-sessions-page. See requirements below for scope and behavior contracts.
+
+## Requirements
 
 ### Requirement: Sessions page with session list
 SessionsPage SHALL display sessions from Store.ListSessions() with cursor navigation. Each entry SHALL show the session key and relative time since last update.

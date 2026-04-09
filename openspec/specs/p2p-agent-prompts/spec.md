@@ -1,4 +1,8 @@
-## ADDED Requirements
+## Purpose
+
+Capability spec for p2p-agent-prompts. See requirements below for scope and behavior contracts.
+
+## Requirements
 
 ### Requirement: P2P tool category in agent identity
 The AGENTS.md prompt SHALL include P2P Network as part of thirteen tool categories. The identity section SHALL reference "thirteen tool categories" and include Economy, Contract, and Observability bullets alongside the existing P2P Network bullet.

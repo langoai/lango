@@ -1,3 +1,9 @@
+## Purpose
+
+Capability spec for task-detail-actions. See requirements below for scope and behavior contracts.
+
+## Requirements
+
 ### Requirement: Task detail inline expansion
 The Tasks page SHALL display a detail panel below the table when the user presses Enter on a selected task. The panel SHALL show full prompt, result, error, origin channel, tokens used, and timing.
 

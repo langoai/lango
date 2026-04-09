@@ -1,4 +1,8 @@
-## ADDED Requirements
+## Purpose
+
+Capability spec for entity-resolution. See requirements below for scope and behavior contracts.
+
+## Requirements
 
 ### Requirement: Entity alias resolution
 The system SHALL provide a `Resolve(rawID)` method that returns the canonical ID for a given raw ID. If no alias exists, the raw ID itself SHALL be returned unchanged.

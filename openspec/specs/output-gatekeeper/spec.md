@@ -1,3 +1,9 @@
+## Purpose
+
+Capability spec for output-gatekeeper. See requirements below for scope and behavior contracts.
+
+## Requirements
+
 ### Requirement: Tool output size management
 The system SHALL manage tool output size using token-based tiered compression via `WithOutputManager` middleware instead of character-based truncation. The middleware SHALL classify outputs into Small/Medium/Large tiers and apply content-aware compression.
 

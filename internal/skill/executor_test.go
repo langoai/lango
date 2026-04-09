@@ -2,9 +2,11 @@ package skill
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os/exec"
 	"strings"
+	"sync"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -12,6 +14,7 @@ import (
 
 	"go.uber.org/zap"
 
+	"github.com/langoai/lango/internal/eventbus"
 	sandboxos "github.com/langoai/lango/internal/sandbox/os"
 )
 
@@ -377,6 +380,7 @@ func (m *mockIsolator) Apply(_ context.Context, _ *exec.Cmd, _ sandboxos.Policy)
 
 func (m *mockIsolator) Available() bool { return m.available }
 func (m *mockIsolator) Name() string    { return "mock" }
+func (m *mockIsolator) Reason() string  { return "" }
 
 func TestSetOSIsolator(t *testing.T) {
 	t.Parallel()
@@ -384,7 +388,7 @@ func TestSetOSIsolator(t *testing.T) {
 	executor := newTestExecutor(t)
 	iso := &mockIsolator{available: true}
 
-	executor.SetOSIsolator(iso, "/tmp/workspace")
+	executor.SetOSIsolator(iso, "/tmp/workspace", "")
 
 	assert.Equal(t, iso, executor.isolator)
 	assert.Equal(t, "/tmp/workspace", executor.workspacePath)
@@ -400,7 +404,7 @@ func TestExecute_Script_WithIsolator(t *testing.T) {
 
 		executor := newTestExecutor(t)
 		iso := &mockIsolator{available: true}
-		executor.SetOSIsolator(iso, "/tmp/workspace")
+		executor.SetOSIsolator(iso, "/tmp/workspace", "")
 
 		sk := SkillEntry{
 			Name: "sandbox-echo",
@@ -427,7 +431,7 @@ func TestExecute_Script_WithIsolator(t *testing.T) {
 			available: true,
 			applyErr:  fmt.Errorf("sandbox apply: %w", sandboxos.ErrIsolatorUnavailable),
 		}
-		executor.SetOSIsolator(iso, "/tmp/workspace")
+		executor.SetOSIsolator(iso, "/tmp/workspace", "")
 
 		sk := SkillEntry{
 			Name: "fallback-echo",
@@ -472,7 +476,7 @@ func TestExecute_Script_WithIsolator(t *testing.T) {
 
 		executor := newTestExecutor(t)
 		iso := &mockIsolator{available: true}
-		executor.SetOSIsolator(iso, "/tmp/workspace")
+		executor.SetOSIsolator(iso, "/tmp/workspace", "")
 
 		sk := SkillEntry{
 			Name: "tmpl-with-sandbox",
@@ -490,4 +494,134 @@ func TestExecute_Script_WithIsolator(t *testing.T) {
 		assert.Equal(t, "Hello Test!", got)
 		assert.Equal(t, 0, iso.applyCalls, "isolator should not be called for template skills")
 	})
+}
+
+func TestExecuteScript_FailClosed_NilIsolator(t *testing.T) {
+	t.Parallel()
+
+	executor := newTestExecutor(t)
+	executor.SetFailClosed(true)
+
+	sk := SkillEntry{
+		Name: "echo-test",
+		Type: "script",
+		Definition: map[string]interface{}{
+			"script": "echo hello",
+		},
+	}
+
+	_, err := executor.Execute(context.Background(), sk, nil)
+	require.Error(t, err)
+	assert.True(t, errors.Is(err, sandboxos.ErrSandboxRequired))
+	assert.Contains(t, err.Error(), "no OS isolator configured")
+}
+
+// TestExecuteScript_FailClosedWithoutIsolatorPublishesRejection verifies that
+// a skill script run with failClosed=true and no isolator publishes a
+// SandboxDecisionEvent{Decision:"rejected"} before returning the error. This
+// is a regression guard for the early-return bug where the fail-closed path
+// short-circuited before reaching the publish call.
+func TestExecuteScript_FailClosedWithoutIsolatorPublishesRejection(t *testing.T) {
+	t.Parallel()
+
+	bus := eventbus.New()
+	var (
+		mu       sync.Mutex
+		received []eventbus.SandboxDecisionEvent
+	)
+	eventbus.SubscribeTyped(bus, func(evt eventbus.SandboxDecisionEvent) {
+		mu.Lock()
+		defer mu.Unlock()
+		received = append(received, evt)
+	})
+
+	executor := newTestExecutor(t)
+	executor.SetFailClosed(true)
+	executor.SetEventBus(bus)
+
+	sk := SkillEntry{
+		Name: "rejected-script",
+		Type: "script",
+		Definition: map[string]interface{}{
+			"script": "echo hello",
+		},
+	}
+
+	_, err := executor.Execute(context.Background(), sk, nil)
+	require.Error(t, err)
+	assert.True(t, errors.Is(err, sandboxos.ErrSandboxRequired))
+
+	mu.Lock()
+	defer mu.Unlock()
+	require.Len(t, received, 1, "expected exactly one rejection event")
+	evt := received[0]
+	assert.Equal(t, "skill", evt.Source)
+	assert.Equal(t, "rejected-script", evt.Command)
+	assert.Equal(t, "rejected", evt.Decision)
+	assert.Equal(t, "no isolator configured", evt.Reason)
+}
+
+// TestExecuteScript_FailOpenWithoutIsolatorPublishesSkipped verifies that
+// when failClosed=false and no isolator is configured, the executor
+// publishes a "skipped" event and still runs the script unsandboxed.
+func TestExecuteScript_FailOpenWithoutIsolatorPublishesSkipped(t *testing.T) {
+	t.Parallel()
+
+	bus := eventbus.New()
+	var (
+		mu       sync.Mutex
+		received []eventbus.SandboxDecisionEvent
+	)
+	eventbus.SubscribeTyped(bus, func(evt eventbus.SandboxDecisionEvent) {
+		mu.Lock()
+		defer mu.Unlock()
+		received = append(received, evt)
+	})
+
+	executor := newTestExecutor(t)
+	// failClosed left at default (false)
+	executor.SetEventBus(bus)
+
+	sk := SkillEntry{
+		Name: "skipped-script",
+		Type: "script",
+		Definition: map[string]interface{}{
+			"script": "echo fallback",
+		},
+	}
+
+	result, err := executor.Execute(context.Background(), sk, nil)
+	require.NoError(t, err, "script should run unsandboxed when fail-open and no isolator")
+	got, ok := result.(string)
+	require.True(t, ok)
+	assert.Equal(t, "fallback", strings.TrimSpace(got))
+
+	mu.Lock()
+	defer mu.Unlock()
+	require.Len(t, received, 1)
+	evt := received[0]
+	assert.Equal(t, "skill", evt.Source)
+	assert.Equal(t, "skipped-script", evt.Command)
+	assert.Equal(t, "skipped", evt.Decision)
+	assert.Equal(t, "no isolator configured", evt.Reason)
+}
+
+func TestExecuteScript_FailClosed_ApplyError(t *testing.T) {
+	t.Parallel()
+
+	executor := newTestExecutor(t)
+	executor.SetFailClosed(true)
+	executor.SetOSIsolator(&mockIsolator{applyErr: errors.New("landlock unavailable")}, t.TempDir(), "")
+
+	sk := SkillEntry{
+		Name: "echo-test",
+		Type: "script",
+		Definition: map[string]interface{}{
+			"script": "echo hello",
+		},
+	}
+
+	_, err := executor.Execute(context.Background(), sk, nil)
+	require.Error(t, err)
+	assert.True(t, errors.Is(err, sandboxos.ErrSandboxRequired))
 }

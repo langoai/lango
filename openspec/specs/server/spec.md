@@ -3,6 +3,10 @@
 ## Goal
 Define requirements for the `lango serve` command and server capabilities.
 
+## Purpose
+
+Capability spec for server. See requirements below for scope and behavior contracts.
+
 ## Requirements
 
 ### Requirement: Encryption Support

@@ -1,4 +1,8 @@
-## ADDED Requirements
+## Purpose
+
+Capability spec for economy-budget. See requirements below for scope and behavior contracts.
+
+## Requirements
 
 ### Requirement: Budget Guard interface for task-level spending control
 The system SHALL provide a `Guard` interface in `internal/economy/budget/` with methods `Check`, `Record`, and `Reserve` to enforce per-task spending constraints.

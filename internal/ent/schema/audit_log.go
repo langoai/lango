@@ -37,6 +37,7 @@ func (AuditLog) Fields() []ent.Field {
 				"approval_response",
 				"policy_decision",
 				"alert",
+				"sandbox_decision",
 			),
 		field.String("actor").
 			NotEmpty(),

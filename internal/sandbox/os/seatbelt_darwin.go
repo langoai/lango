@@ -64,6 +64,13 @@ func (s *SeatbeltIsolator) Apply(_ context.Context, cmd *exec.Cmd, policy Policy
 func (s *SeatbeltIsolator) Available() bool { return s.available }
 func (s *SeatbeltIsolator) Name() string    { return "seatbelt" }
 
+func (s *SeatbeltIsolator) Reason() string {
+	if s.available {
+		return ""
+	}
+	return "sandbox-exec not found in PATH"
+}
+
 // CleanupProfileFile removes a Seatbelt profile temp file if it exists.
 // Call this after the sandboxed process exits.
 func CleanupProfileFile(cmd *exec.Cmd) {

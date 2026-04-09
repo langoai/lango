@@ -1,4 +1,8 @@
-## ADDED Requirements
+## Purpose
+
+Capability spec for project-docs. See requirements below for scope and behavior contracts.
+
+## Requirements
 
 ### Requirement: New packages documented in architecture
 The README.md Architecture section and docs/architecture/project-structure.md SHALL include dbmigrate, lifecycle, keyring, and sandbox packages.

@@ -1,4 +1,8 @@
-## ADDED Requirements
+## Purpose
+
+Capability spec for escrow-test-coverage. See requirements below for scope and behavior contracts.
+
+## Requirements
 
 ### Requirement: Solidity forge tests for LangoEscrowHub
 The system SHALL have Solidity forge tests covering all LangoEscrowHub contract functions including createDeal, deposit, submitWork, release, refund, dispute, resolveDispute, and getDeal with both success and revert scenarios.

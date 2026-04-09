@@ -99,8 +99,6 @@ The durable trace summary row SHALL store the classified cause alongside the bro
 - **THEN** the trace row SHALL persist `error_code`, `cause_class`, and `cause_detail`
 - **AND** the trace summary SHALL use the operator-facing diagnostic summary rather than the broad user-facing message
 
-## MODIFIED Requirements
-
 ### Requirement: Turn trace Store interface
 The turn trace Store interface SHALL include the following additional methods beyond the existing `CreateTrace`, `AppendEvent`, `FinishTrace`, `RecentFailures`, and `IsolationLeakCount`:
 

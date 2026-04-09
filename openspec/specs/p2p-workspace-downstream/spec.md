@@ -1,5 +1,9 @@
 # Spec: P2P Workspace Downstream Artifacts
 
+## Purpose
+
+Capability spec for p2p-workspace-downstream. See requirements below for scope and behavior contracts.
+
 ## Requirements
 
 ### REQ-1: TUI Settings Form

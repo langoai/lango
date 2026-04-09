@@ -1,3 +1,9 @@
+## Purpose
+
+Capability spec for automation-prompt-routing. See requirements below for scope and behavior contracts.
+
+## Requirements
+
 ### Requirement: Automation prompt prefix
 All prompts originating from cron executor, background task manager, or workflow engine SHALL be prepended with an `[Automated Task]` prefix before being passed to the agent runner.
 

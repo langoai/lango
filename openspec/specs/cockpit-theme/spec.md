@@ -1,4 +1,8 @@
-## ADDED Requirements
+## Purpose
+
+Capability spec for cockpit-theme. See requirements below for scope and behavior contracts.
+
+## Requirements
 
 ### Requirement: Extended color palette with surface tokens
 The theme SHALL define surface color tokens: `Surface0` (deepest background), `Surface1` (card background), `Surface2` (elevated surface), `Surface3` (highest surface). These SHALL complement the existing palette in `internal/cli/tui/styles.go`.

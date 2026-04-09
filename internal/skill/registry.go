@@ -8,6 +8,7 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/langoai/lango/internal/agent"
+	"github.com/langoai/lango/internal/eventbus"
 	sandboxos "github.com/langoai/lango/internal/sandbox/os"
 )
 
@@ -32,8 +33,22 @@ func NewRegistry(store SkillStore, baseTools []*agent.Tool, logger *zap.SugaredL
 }
 
 // SetOSIsolator configures the OS-level sandbox for the skill executor.
-func (r *Registry) SetOSIsolator(iso sandboxos.OSIsolator, workspacePath string) {
-	r.executor.SetOSIsolator(iso, workspacePath)
+// dataRoot is forwarded so the executor's policy denies the lango control-plane.
+func (r *Registry) SetOSIsolator(iso sandboxos.OSIsolator, workspacePath, dataRoot string) {
+	r.executor.SetOSIsolator(iso, workspacePath, dataRoot)
+}
+
+// SetFailClosed controls whether skill script execution is blocked when
+// no sandbox is available.
+func (r *Registry) SetFailClosed(fc bool) {
+	r.executor.SetFailClosed(fc)
+}
+
+// SetEventBus attaches an event bus to the underlying executor for
+// SandboxDecisionEvent publishing. Wiring should call this once after the
+// bus is constructed.
+func (r *Registry) SetEventBus(bus *eventbus.Bus) {
+	r.executor.SetEventBus(bus)
 }
 
 // LoadSkills loads active skills from the store and converts them to agent tools.
