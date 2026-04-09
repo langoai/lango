@@ -10,6 +10,8 @@ Inspect sandbox configuration, platform capabilities, and run isolation smoke te
 
     **Linux requirement:** install the `bubblewrap` package (`apt install bubblewrap`, `dnf install bubblewrap`, or equivalent). On startup, lango runs a two-phase namespace smoke probe (base + network) that actually invokes `bwrap` against `/bin/true`, so hosts where `bwrap --version` succeeds but kernel namespace creation is blocked (e.g. `kernel.unprivileged_userns_clone=0`, AppArmor lockdown) are reported unavailable with an actionable reason instead of failing at first command execution. When only the network isolation probe fails, base sandboxing still works and MCP stdio servers (which allow host network) continue to run; only policies requiring `--unshare-net` are rejected. The native Landlock+seccomp backend is planned but not yet implemented; selecting `backend=native` returns an unavailable isolator with a clear reason.
 
+    **Path semantics.** Sandbox policy paths (deny baselines, `allowedWritePaths`) pass through a shared normalization pipeline across all backends: sanitize → absolute → glob expand → symlink resolve. File-level deny is supported via `--ro-bind /dev/null <file>` so individual secret files and linked-worktree `.git` pointers can be denied. Symlinked targets are resolved to their real path before emission (symlink escape closed). Glob patterns like `~/.lango/*.db` expand at policy construction time; unmatched patterns silently skip and invalid patterns fail loudly at startup.
+
 ## lango sandbox status
 
 Show sandbox configuration, active isolation backend, platform capabilities, backend availability, and recent sandbox decisions from the audit log.
