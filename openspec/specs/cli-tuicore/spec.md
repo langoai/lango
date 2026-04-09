@@ -3,6 +3,10 @@
 ## Goal
 The `tuicore` package provides shared TUI form components used by both the onboard wizard and the settings editor.
 
+## Purpose
+
+Capability spec for cli-tuicore. See requirements below for scope and behavior contracts.
+
 ## Requirements
 
 ### Field Types

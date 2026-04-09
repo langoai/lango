@@ -1,5 +1,9 @@
 # Embedding & RAG Specification
 
+## Purpose
+
+Capability spec for embedding-rag. See requirements below for scope and behavior contracts.
+
 ## Requirements
 
 ### REQ-EMB-001: Embedding Provider Interface

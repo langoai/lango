@@ -1,3 +1,7 @@
+## Purpose
+
+Capability spec for config-types. See requirements below for scope and behavior contracts.
+
 ## Requirements
 
 ### Requirement: ProviderConfig type strengthening

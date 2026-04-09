@@ -1,3 +1,7 @@
+## Purpose
+
+Capability spec for team-health-monitoring. See requirements below for scope and behavior contracts.
+
 ## Requirements
 
 ### Requirement: Health Monitor component

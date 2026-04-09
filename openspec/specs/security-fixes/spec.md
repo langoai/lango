@@ -1,5 +1,9 @@
 # Spec: Security Fixes
 
+## Purpose
+
+Capability spec for security-fixes. See requirements below for scope and behavior contracts.
+
 ## Requirements
 
 ### REQ-1: SQL Injection prevention in dbmigrate

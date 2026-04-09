@@ -1,3 +1,7 @@
+## Purpose
+
+Capability spec for keyfile-shred. See requirements below for scope and behavior contracts.
+
 ## Requirements
 
 ### Requirement: Secure keyfile shredding

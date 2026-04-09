@@ -5,6 +5,10 @@
 ## Overview
 This capability defines the architectural requirements for enabling testability of external channel integration components within the system.
 
+## Purpose
+
+Capability spec for testability-interfaces. See requirements below for scope and behavior contracts.
+
 ## Requirements
 
 ### Requirement: Testability Interfaces

@@ -3,6 +3,10 @@
 ## Overview
 Improve CLI discoverability by organizing `lango --help` output into logical groups and adding cross-references between related configuration commands.
 
+## Purpose
+
+Capability spec for cli-command-groups. See requirements below for scope and behavior contracts.
+
 ## Requirements
 
 ### R1: Command Grouping

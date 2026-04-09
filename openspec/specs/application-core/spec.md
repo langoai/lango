@@ -1,3 +1,7 @@
+## Purpose
+
+Capability spec for application-core. See requirements below for scope and behavior contracts.
+
 ## Requirements
 
 ### Requirement: Application Bootstrap

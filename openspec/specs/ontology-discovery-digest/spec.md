@@ -2,6 +2,10 @@
 
 ## Status: ADDED
 
+## Purpose
+
+Capability spec for ontology-discovery-digest. See requirements below for scope and behavior contracts.
+
 ## Requirements
 
 ### REQ-ODD-1: OntologyDigest Type

@@ -1,3 +1,7 @@
+## Purpose
+
+Capability spec for agent-provider-config. See requirements below for scope and behavior contracts.
+
 ## Requirements
 
 ### Requirement: Provider Configuration

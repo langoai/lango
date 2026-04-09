@@ -1,5 +1,9 @@
 # Spec: Callback Wiring Completion
 
+## Purpose
+
+Capability spec for callback-wiring. See requirements below for scope and behavior contracts.
+
 ## Requirements
 
 ### REQ-1: Session on-chain registration/revocation callbacks

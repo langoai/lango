@@ -4,6 +4,10 @@
 
 The gateway SHALL serve an embedded HTML page at `GET /playground` that provides a browser-based chat interface for interacting with the agent via the existing WebSocket JSON-RPC protocol.
 
+## Purpose
+
+Capability spec for webchat-playground. See requirements below for scope and behavior contracts.
+
 ## Requirements
 
 ### Serving
