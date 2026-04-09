@@ -13,6 +13,13 @@ The tool-sandbox capability SHALL be documented through the sections in this spe
 
 # Tool Execution Process Isolation
 
+### Requirement: OS-level sandbox config
+The system SHALL provide a `SandboxConfig` at `config.Sandbox` with `Enabled`, `FailClosed`, `WorkspacePath`, `NetworkMode`, `AllowedNetworkIPs`, `AllowedWritePaths`, `TimeoutPerTool`, and `OS` (SeccompProfile, SeatbeltCustomProfile) fields, independent of `p2p.toolIsolation`.
+
+#### Scenario: Default config values
+- **WHEN** no sandbox config is provided
+- **THEN** defaults SHALL be: enabled=false, failClosed=false, networkMode="deny", timeoutPerTool=30s, seccompProfile="moderate", allowedWritePaths=["/tmp"]
+
 ## Overview
 
 Subprocess-based isolation for remote P2P tool invocations. Prevents remote peers from accessing process memory containing passphrases, private keys, and session tokens.
@@ -66,10 +73,3 @@ p2p:
 Phase 2 will add rlimit/cgroup/container-based resource limits on top of this subprocess foundation.
 
 ## OS-Level Sandbox Config
-
-### Requirement: OS-level sandbox config
-The system SHALL provide a `SandboxConfig` at `config.Sandbox` with `Enabled`, `FailClosed`, `WorkspacePath`, `NetworkMode`, `AllowedNetworkIPs`, `AllowedWritePaths`, `TimeoutPerTool`, and `OS` (SeccompProfile, SeatbeltCustomProfile) fields, independent of `p2p.toolIsolation`.
-
-#### Scenario: Default config values
-- **WHEN** no sandbox config is provided
-- **THEN** defaults SHALL be: enabled=false, failClosed=false, networkMode="deny", timeoutPerTool=30s, seccompProfile="moderate", allowedWritePaths=["/tmp"]
