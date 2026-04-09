@@ -83,27 +83,29 @@ func GenerateSeatbeltProfile(policy Policy) (string, error) {
 		AllowFork:      policy.Process.AllowFork,
 	}
 
-	// Resolve and validate paths.
+	// Resolve and validate paths through the canonical normalizePath pipeline
+	// so bwrap and Seatbelt see entries in identical shape (sanitize → Abs →
+	// Glob → EvalSymlinks). See policy.go:normalizePath for the contract.
 	for _, p := range policy.Filesystem.ReadPaths {
-		clean, err := sanitizePath(p)
+		normalized, err := normalizePath(p)
 		if err != nil {
 			return "", fmt.Errorf("read path %q: %w", p, err)
 		}
-		data.ReadPaths = append(data.ReadPaths, clean)
+		data.ReadPaths = append(data.ReadPaths, normalized...)
 	}
 	for _, p := range policy.Filesystem.WritePaths {
-		clean, err := sanitizePath(p)
+		normalized, err := normalizePath(p)
 		if err != nil {
 			return "", fmt.Errorf("write path %q: %w", p, err)
 		}
-		data.WritePaths = append(data.WritePaths, clean)
+		data.WritePaths = append(data.WritePaths, normalized...)
 	}
 	for _, p := range policy.Filesystem.DenyPaths {
-		clean, err := sanitizePath(p)
+		normalized, err := normalizePath(p)
 		if err != nil {
 			return "", fmt.Errorf("deny path %q: %w", p, err)
 		}
-		data.DenyPaths = append(data.DenyPaths, clean)
+		data.DenyPaths = append(data.DenyPaths, normalized...)
 	}
 	for _, ip := range policy.AllowedNetworkIPs {
 		if err := validateIP(ip); err != nil {

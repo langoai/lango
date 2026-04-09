@@ -64,11 +64,13 @@ func compileBwrapArgs(policy Policy) ([]string, error) {
 		args = append(args, "--ro-bind", "/", "/")
 	} else {
 		for _, p := range policy.Filesystem.ReadPaths {
-			clean, err := sanitizePath(p)
+			normalized, err := normalizePath(p)
 			if err != nil {
 				return nil, fmt.Errorf("read path %q: %w", p, err)
 			}
-			args = append(args, "--ro-bind", clean, clean)
+			for _, clean := range normalized {
+				args = append(args, "--ro-bind", clean, clean)
+			}
 		}
 	}
 
@@ -81,36 +83,40 @@ func compileBwrapArgs(policy Policy) ([]string, error) {
 	)
 
 	for _, p := range policy.Filesystem.WritePaths {
-		clean, err := sanitizePath(p)
+		normalized, err := normalizePath(p)
 		if err != nil {
 			return nil, fmt.Errorf("write path %q: %w", p, err)
 		}
-		args = append(args, "--bind", clean, clean)
+		for _, clean := range normalized {
+			args = append(args, "--bind", clean, clean)
+		}
 	}
 
 	for _, p := range policy.Filesystem.DenyPaths {
-		clean, err := sanitizePath(p)
+		normalized, err := normalizePath(p)
 		if err != nil {
 			return nil, fmt.Errorf("deny path %q: %w", p, err)
 		}
-		fi, err := os.Stat(clean)
-		if err != nil {
-			return nil, fmt.Errorf("bwrap deny path %q: %w", p, err)
-		}
-		mode := fi.Mode()
-		switch {
-		case mode.IsDir():
-			// Mount an empty tmpfs over the directory so read/write both
-			// yield empty + EACCES for the sandboxed child.
-			args = append(args, "--tmpfs", clean)
-		case mode.IsRegular():
-			// Bind /dev/null read-only over the file so reads yield EOF
-			// and writes fail with EACCES while preserving the parent
-			// directory structure. This closes the file-level deny gap
-			// that PR 3/4 left open.
-			args = append(args, "--ro-bind", "/dev/null", clean)
-		default:
-			return nil, fmt.Errorf("bwrap deny path %q: unsupported file mode %s (not a regular file or directory)", p, mode)
+		for _, clean := range normalized {
+			fi, err := os.Stat(clean)
+			if err != nil {
+				return nil, fmt.Errorf("bwrap deny path %q: %w", p, err)
+			}
+			mode := fi.Mode()
+			switch {
+			case mode.IsDir():
+				// Mount an empty tmpfs over the directory so read/write both
+				// yield empty + EACCES for the sandboxed child.
+				args = append(args, "--tmpfs", clean)
+			case mode.IsRegular():
+				// Bind /dev/null read-only over the file so reads yield EOF
+				// and writes fail with EACCES while preserving the parent
+				// directory structure. This closes the file-level deny gap
+				// that PR 3/4 left open.
+				args = append(args, "--ro-bind", "/dev/null", clean)
+			default:
+				return nil, fmt.Errorf("bwrap deny path %q: unsupported file mode %s (not a regular file or directory)", p, mode)
+			}
 		}
 	}
 
