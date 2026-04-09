@@ -1,4 +1,8 @@
-## ADDED Requirements
+## Purpose
+
+Capability spec for adk-mcp-spike. See requirements below for scope and behavior contracts.
+
+## Requirements
 
 ### Requirement: MCPToolset parity evaluation against current MCP adapter
 The spike SHALL evaluate ADK `mcptoolset.New()` (`tool/mcptoolset/set.go:27`) against current `internal/mcp/` adapter for tool exposure parity.

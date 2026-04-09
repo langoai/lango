@@ -1,4 +1,8 @@
-## ADDED Requirements
+## Purpose
+
+Capability spec for adk-tool-dispatch-analysis. See requirements below for scope and behavior contracts.
+
+## Requirements
 
 ### Requirement: Spike report documents complete tool execution flow
 The spike report SHALL document the full path from model response through ADK runner to tool handler execution, identifying each layer and its ownership.

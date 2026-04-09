@@ -1,4 +1,8 @@
-## ADDED Requirements
+## Purpose
+
+Capability spec for agent-registry. See requirements below for scope and behavior contracts.
+
+## Requirements
 
 ### Requirement: AgentDefinition type
 The `agentregistry` package SHALL define an `AgentDefinition` struct with fields: Name, Description, Status, Capabilities, Prefixes, Keywords, AlwaysInclude, Instruction, Source, and metadata (Version, Author, Tags).

@@ -1,5 +1,9 @@
 
-## ADDED Requirements
+## Purpose
+
+Capability spec for adk-architecture. See requirements below for scope and behavior contracts.
+
+## Requirements
 
 ### Requirement: ADK Agent Abstraction
 The system SHALL wrap the Google ADK Agent (v1.0.0) to integrate with the application.
