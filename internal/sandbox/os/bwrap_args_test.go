@@ -267,7 +267,12 @@ func TestCompileBwrapArgs_RejectsInjectionInPaths(t *testing.T) {
 	}
 }
 
-func TestCompileBwrapArgs_DenyPathMustBeDirectory(t *testing.T) {
+// TestCompileBwrapArgs_DenyPathFileGetsRoBindDevNull verifies that a regular
+// file in DenyPaths is translated to `--ro-bind /dev/null <file>` so the
+// sandboxed child sees EOF on read and EACCES on write. This closes the
+// file-level deny gap: PR 3/4 rejected files with "must be a directory";
+// PR 5c supports them via the /dev/null bind trick.
+func TestCompileBwrapArgs_DenyPathFileGetsRoBindDevNull(t *testing.T) {
 	work := t.TempDir()
 	filePath := filepath.Join(work, "regular-file")
 	require.NoError(t, os.WriteFile(filePath, []byte("hello"), 0o600))
@@ -280,9 +285,62 @@ func TestCompileBwrapArgs_DenyPathMustBeDirectory(t *testing.T) {
 		Network: NetworkDeny,
 	}
 
-	_, err := compileBwrapArgs(policy)
-	require.Error(t, err)
-	assert.Contains(t, err.Error(), "must be a directory")
+	args, err := compileBwrapArgs(policy)
+	require.NoError(t, err, "regular file should no longer error; expected --ro-bind /dev/null")
+	assertContainsPair(t, args, "--ro-bind", "/dev/null", filePath)
+	// Must NOT be emitted as --tmpfs (that's the directory path).
+	for i := 0; i < len(args)-1; i++ {
+		if args[i] == "--tmpfs" && args[i+1] == filePath {
+			t.Fatalf("regular file deny should not use --tmpfs: %v", args)
+		}
+	}
+}
+
+// TestCompileBwrapArgs_DenyPathDirectoryStillGetsTmpfs verifies directories
+// still use --tmpfs (the pre-5c behavior). Regression guard against an
+// accidental flip to ro-bind for directories.
+func TestCompileBwrapArgs_DenyPathDirectoryStillGetsTmpfs(t *testing.T) {
+	work := t.TempDir()
+	dirPath := filepath.Join(work, "denied-dir")
+	require.NoError(t, os.Mkdir(dirPath, 0o755))
+
+	policy := Policy{
+		Filesystem: FilesystemPolicy{
+			ReadOnlyGlobal: true,
+			DenyPaths:      []string{dirPath},
+		},
+		Network: NetworkDeny,
+	}
+
+	args, err := compileBwrapArgs(policy)
+	require.NoError(t, err)
+	assertContainsSingle(t, args, "--tmpfs", dirPath)
+}
+
+// TestCompileBwrapArgs_DenyPathUnsupportedMode verifies that non-regular,
+// non-directory deny paths (device, socket, fifo) are rejected with a clear
+// error. /dev/null is a character device on all POSIX systems and is a
+// portable test target — the exact test works on both Linux and macOS.
+func TestCompileBwrapArgs_DenyPathUnsupportedMode(t *testing.T) {
+	// /dev/null exists on Linux and macOS as a character device; it's the
+	// most portable non-regular, non-directory file on supported platforms.
+	const devNode = "/dev/null"
+	fi, err := os.Stat(devNode)
+	if err != nil || fi.Mode().IsDir() || fi.Mode().IsRegular() {
+		t.Skipf("%s is not a special file on this platform (mode=%v)", devNode, fi.Mode())
+	}
+
+	policy := Policy{
+		Filesystem: FilesystemPolicy{
+			ReadOnlyGlobal: true,
+			DenyPaths:      []string{devNode},
+		},
+		Network: NetworkDeny,
+	}
+
+	_, compileErr := compileBwrapArgs(policy)
+	require.Error(t, compileErr)
+	assert.Contains(t, compileErr.Error(), "unsupported file mode")
 }
 
 func TestCompileBwrapArgs_DenyPathMissing(t *testing.T) {

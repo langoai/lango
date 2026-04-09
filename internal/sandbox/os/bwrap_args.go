@@ -20,12 +20,13 @@ import (
 //   - ReadOnlyGlobal=true → --ro-bind / /
 //   - ReadPaths           → --ro-bind <p> <p>          (only when ReadOnlyGlobal=false)
 //   - WritePaths          → --bind <p> <p>             (overlaid on the read-only root)
-//   - DenyPaths           → --tmpfs <p>                (directory only — see note below)
+//   - DenyPaths (dir)     → --tmpfs <p>                (empty tmpfs over the tree)
+//   - DenyPaths (file)    → --ro-bind /dev/null <p>    (read yields EOF, write EACCES)
 //
-// PR 3 supports directory-level deny only because bwrap's --tmpfs cannot be
-// mounted on top of a regular file. File-level deny (e.g. --ro-bind /dev/null
-// <file>) is planned for PR 4. compileBwrapArgs returns an error if a deny
-// path is missing or refers to a non-directory.
+// PR 5c added file-level deny via --ro-bind /dev/null <file>, closing the
+// directory-only limitation of PR 3/4. compileBwrapArgs still returns an error
+// if a deny path is missing or refers to a non-regular, non-directory file
+// (device nodes, sockets, fifos — uncommon, likely user config mistake).
 //
 // Network mapping:
 //   - NetworkDeny / NetworkUnixOnly → --unshare-net
@@ -96,10 +97,21 @@ func compileBwrapArgs(policy Policy) ([]string, error) {
 		if err != nil {
 			return nil, fmt.Errorf("bwrap deny path %q: %w", p, err)
 		}
-		if !fi.IsDir() {
-			return nil, fmt.Errorf("bwrap deny path %q must be a directory; file-level deny not yet supported", p)
+		mode := fi.Mode()
+		switch {
+		case mode.IsDir():
+			// Mount an empty tmpfs over the directory so read/write both
+			// yield empty + EACCES for the sandboxed child.
+			args = append(args, "--tmpfs", clean)
+		case mode.IsRegular():
+			// Bind /dev/null read-only over the file so reads yield EOF
+			// and writes fail with EACCES while preserving the parent
+			// directory structure. This closes the file-level deny gap
+			// that PR 3/4 left open.
+			args = append(args, "--ro-bind", "/dev/null", clean)
+		default:
+			return nil, fmt.Errorf("bwrap deny path %q: unsupported file mode %s (not a regular file or directory)", p, mode)
 		}
-		args = append(args, "--tmpfs", clean)
 	}
 
 	switch policy.Network {
