@@ -4,13 +4,18 @@ Capability spec for p2p-identity. See requirements below for scope and behavior 
 
 ## Requirements
 
-### Requirement: DID Derivation from Wallet Public Key
+### Requirement: DID Derivation from Public Key
 
-The `WalletDIDProvider` SHALL derive a decentralized identifier (DID) deterministically from the compressed secp256k1 public key returned by `WalletProvider.PublicKey()`. The DID format SHALL be `did:lango:<hex-encoded-compressed-pubkey>`. The derived DID SHALL be cached after the first derivation; subsequent calls to `DID()` SHALL return the cached value without calling the wallet again.
+The `WalletDIDProvider` SHALL accept a `KeyProvider` interface (single method `PublicKey(ctx) ([]byte, error)`) instead of `wallet.WalletProvider`. The `internal/p2p/identity` package SHALL NOT import `internal/wallet`. The `wallet.WalletProvider` implicitly satisfies `KeyProvider` via Go structural typing. The DID format SHALL be `did:lango:<hex-encoded-compressed-pubkey>`. The derived DID SHALL be cached after the first derivation.
+
+#### Scenario: KeyProvider interface replaces wallet dependency
+- **WHEN** `NewProvider` is called with any type satisfying `KeyProvider`
+- **THEN** the provider SHALL use only `PublicKey(ctx)` to derive the DID
+- **AND** `internal/p2p/identity` SHALL NOT have an import path to `internal/wallet`
 
 #### Scenario: DID derived on first call
 - **WHEN** `WalletDIDProvider.DID(ctx)` is called for the first time
-- **THEN** the provider SHALL call `wallet.PublicKey(ctx)`, construct a DID with prefix `did:lango:`, encode the public key as lowercase hex, and cache the result
+- **THEN** the provider SHALL call `keys.PublicKey(ctx)`, construct a DID with prefix `did:lango:`, encode the public key as lowercase hex, and cache the result
 
 #### Scenario: DID returned from cache on subsequent calls
 - **WHEN** `WalletDIDProvider.DID(ctx)` is called after a successful first call
@@ -58,6 +63,24 @@ The `WalletDIDProvider.VerifyDID` method SHALL re-derive the `peer.ID` from the 
 
 ---
 
+### Requirement: ParseDIDPublicKey helper
+
+The system SHALL provide a `ParseDIDPublicKey` function that extracts raw public key bytes from a `did:lango:<hex>` string without deriving a peer ID. This is a read-only helper for signature verification where the caller knows the key type independently.
+
+#### Scenario: ParseDIDPublicKey extracts bytes
+- **WHEN** `ParseDIDPublicKey("did:lango:<valid-hex>")` is called
+- **THEN** it SHALL return the hex-decoded byte slice without calling `peerIDFromPublicKey`
+
+#### Scenario: ParseDIDPublicKey rejects invalid prefix
+- **WHEN** `ParseDIDPublicKey` is called with a non-`did:lango:` prefix
+- **THEN** it SHALL return an error
+
+#### Scenario: ParseDIDPublicKey rejects empty key
+- **WHEN** `ParseDIDPublicKey("did:lango:")` is called
+- **THEN** it SHALL return an error containing "empty public key"
+
+---
+
 ### Requirement: DID Parsing from String
 
 `ParseDID` SHALL parse a DID string in `did:lango:<hexkey>` format. It MUST validate the `did:lango:` prefix, decode the hex-encoded public key, and derive the peer ID. Any malformed input SHALL result in an error.
@@ -94,3 +117,13 @@ The `lango p2p identity` command SHALL display `keyStorage` information (either 
 #### Scenario: JSON output reflects key storage
 - **WHEN** the user runs `lango p2p identity --json`
 - **THEN** the JSON SHALL contain `"keyStorage": "secrets-store"` or `"keyStorage": "file"` instead of `"keyDir"`
+
+---
+
+### Requirement: Signature verification uses bytes.Equal
+
+The `VerifyMessageSignature` function SHALL compare recovered public key bytes with DID public key bytes using `bytes.Equal`, not `string()` conversion.
+
+#### Scenario: Byte comparison for signature verification
+- **WHEN** `VerifyMessageSignature` compares the recovered public key with the DID's public key
+- **THEN** it SHALL use `bytes.Equal(recovered, did.PublicKey)` for the comparison

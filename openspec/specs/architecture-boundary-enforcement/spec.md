@@ -16,11 +16,27 @@ The `internal/archtest` package SHALL contain a test that fails when any `intern
 - **THEN** `go test ./internal/archtest/...` fails with an error identifying the violation
 
 ### Requirement: archtest enforces p2p-infra boundary
-The `internal/archtest` package SHALL enforce that P2P infrastructure packages (`discovery`, `handshake`, `firewall`, `protocol`, `agentpool`) do NOT import `internal/economy/**`, `internal/payment/**`, or `internal/wallet/**`.
+The `internal/archtest` package SHALL enforce that P2P infrastructure packages (`discovery`, `handshake`, `identity`, `firewall`, `protocol`, `agentpool`) do NOT import `internal/economy/**`, `internal/payment/**`, or `internal/wallet/**`. The matching logic SHALL correctly match both exact package paths and sub-packages.
 
 #### Scenario: p2p infrastructure packages have no commerce imports
 - **WHEN** the import graph is scanned
 - **THEN** no p2p infrastructure package imports economy, payment, or wallet packages
+
+#### Scenario: p2p/identity included in networking boundary
+- **WHEN** the import graph is scanned
+- **THEN** `internal/p2p/identity` SHALL be subject to the same economy/payment/wallet import restrictions
+
+#### Scenario: Exact package path matching
+- **WHEN** `internal/p2p/handshake` imports `internal/wallet` (no sub-package)
+- **THEN** archtest SHALL detect and report the violation
+
+### Requirement: archtest enforces provenance boundary
+
+The archtest SHALL enforce that `internal/provenance` packages do NOT import `internal/p2p/identity` packages. Verification implementations are injected at the app/cli wiring layer.
+
+#### Scenario: provenance importing p2p/identity is a violation
+- **WHEN** `internal/provenance` imports `internal/p2p/identity`
+- **THEN** archtest SHALL report a boundary violation
 
 ### Requirement: archtest uses go list without external dependencies
 The archtest implementation SHALL use `go list -json` via `os/exec` to parse the import graph. It MUST NOT add `golang.org/x/tools/go/packages` or any other external dependency to `go.mod`.
@@ -43,9 +59,14 @@ The `.golangci.yml` SHALL include depguard rules that block `economy→p2p` and 
 - **WHEN** `golangci-lint run` is executed on code where `internal/economy/` imports `internal/p2p/`
 - **THEN** depguard reports a violation
 
-### Requirement: p2p/handshake is exempt from depguard wallet restriction
-The depguard configuration SHALL NOT include `p2p/handshake` in the restricted package list, because it legitimately uses `wallet.WalletProvider` for cryptographic signing.
+### Requirement: p2p/handshake and p2p/identity are included in depguard wallet restriction
 
-#### Scenario: handshake wallet import does not trigger lint error
-- **WHEN** `golangci-lint run ./internal/p2p/handshake/...` is executed
-- **THEN** no depguard violations are reported for the wallet import
+Since `p2p/handshake` uses a consumer-local `Signer` interface and `p2p/identity` uses a consumer-local `KeyProvider` interface (neither imports `internal/wallet`), both SHALL be included in the `p2p-infra-no-economy` depguard rule file list.
+
+#### Scenario: handshake wallet import triggers depguard violation
+- **WHEN** `golangci-lint run ./internal/p2p/handshake/...` is executed and handshake imports `internal/wallet`
+- **THEN** depguard SHALL report a violation
+
+#### Scenario: identity wallet import triggers depguard violation
+- **WHEN** `golangci-lint run ./internal/p2p/identity/...` is executed and identity imports `internal/wallet`
+- **THEN** depguard SHALL report a violation

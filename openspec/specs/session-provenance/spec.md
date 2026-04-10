@@ -17,3 +17,38 @@ The provenance subsystem SHALL capture a JSON snapshot of the current hook regis
 #### Scenario: Hook snapshot recorded in checkpoint metadata
 - **WHEN** a session provenance checkpoint is created
 - **THEN** the checkpoint metadata SHALL include a `hook_registry` field containing a JSON array of hook entries, each with `name` and `priority` fields
+
+### Requirement: Bundle signing uses BundleSigner interface
+
+The `BundleService.Export` method SHALL accept a `BundleSigner` interface (methods `Sign(ctx, payload) ([]byte, error)` and `Algorithm() string`) instead of `BundleSignFunc`. The signature algorithm in the exported bundle SHALL be set from `signer.Algorithm()`, not from a hardcoded constant.
+
+#### Scenario: BundleSigner provides algorithm
+- **WHEN** `Export` is called with a `BundleSigner` whose `Algorithm()` returns `"secp256k1-keccak256"`
+- **THEN** the bundle's `SignatureAlgorithm` field SHALL be `"secp256k1-keccak256"`
+- **AND** the signature SHALL be produced by calling `signer.Sign(ctx, payload)`
+
+### Requirement: Signature verification uses injected verifiers
+
+The `BundleService` SHALL receive a `map[string]SignatureVerifyFunc` at construction time. `Verify` SHALL look up the bundle's `SignatureAlgorithm` in this map and call the corresponding verifier. The `internal/provenance` package SHALL NOT import `internal/p2p/identity`. Verification implementation is owned by the `app/cli` integration layer.
+
+#### Scenario: Verifier dispatched by algorithm
+- **WHEN** `Verify` is called on a bundle with `SignatureAlgorithm = "secp256k1-keccak256"`
+- **THEN** the verifier registered for that algorithm key SHALL be called
+
+#### Scenario: Unknown algorithm rejected
+- **WHEN** `Verify` is called on a bundle with an unregistered `SignatureAlgorithm`
+- **THEN** `Verify` SHALL return an error containing "unsupported signature algorithm"
+
+#### Scenario: No default verifier in provenance package
+- **WHEN** `NewBundleService` is called with an empty verifiers map
+- **THEN** all `Verify` calls SHALL return "unsupported signature algorithm" errors
+- **AND** the provenance package SHALL NOT contain any hardcoded verifier implementation
+
+#### Scenario: Ed25519 provenance bundle verifiable
+- **WHEN** a bundle is exported with `SignatureAlgorithm = "ed25519"` and verified
+- **THEN** the verifier map SHALL dispatch to the Ed25519 verifier closure
+- **AND** verification SHALL succeed if the signature is valid
+
+### Requirement: Algorithm constant canonical source
+
+The algorithm constant `AlgorithmSecp256k1Keccak256` SHALL be defined in `internal/security` as the canonical source. The `internal/provenance` package SHALL re-export it for backward compatibility.

@@ -6,7 +6,17 @@ Capability spec for p2p-handshake. See requirements below for scope and behavior
 
 ### Requirement: Challenge-Response Mutual Authentication
 
-The `Handshaker` SHALL implement a three-message challenge-response protocol over libp2p streams using protocol ID `/lango/handshake/1.0.0`. The initiator SHALL send a `Challenge` containing a 32-byte cryptographically random nonce, a Unix timestamp, and the sender's DID. The responder SHALL reply with a `ChallengeResponse` containing the echoed nonce, the responder's DID, the responder's compressed public key, and either a ZK proof or an ECDSA signature. The initiator SHALL send a `SessionAck` containing the session token and expiry on successful verification.
+The `Handshaker` SHALL accept a `Signer` interface (methods `SignMessage(ctx, message) ([]byte, error)`, `PublicKey(ctx) ([]byte, error)`, and `Algorithm() string`) instead of `wallet.WalletProvider`. The `internal/p2p/handshake` package SHALL NOT import `internal/wallet`. The `Challenge` and `ChallengeResponse` structs SHALL include a `SignatureAlgorithm` field (omitempty for backward compatibility). The `Handshaker` SHALL dispatch signature verification based on the `SignatureAlgorithm` field, defaulting to `"secp256k1-keccak256"` when empty. The responder SHALL derive its DID using `identity.DIDFromPublicKey(pubkey)` instead of inline string construction.
+
+#### Scenario: Signer interface replaces wallet dependency
+- **WHEN** `NewHandshaker` is called with a `Config` containing a `Signer`
+- **THEN** the handshaker SHALL use only `SignMessage` and `PublicKey` from the signer
+- **AND** `internal/p2p/handshake` SHALL NOT have an import path to `internal/wallet`
+
+#### Scenario: Responder DID derived via identity.DIDFromPublicKey
+- **WHEN** `HandleIncoming` constructs the responder's DID for the `ChallengeResponse`
+- **THEN** it SHALL call `identity.DIDFromPublicKey(pubkey)` and use `did.ID`
+- **AND** it SHALL NOT construct the DID string inline
 
 #### Scenario: Successful handshake with ECDSA signature
 - **WHEN** `Handshaker.Initiate` is called with `ZKEnabled=false` and the remote peer completes the challenge-response
@@ -92,6 +102,52 @@ The handshake verifier SHALL use `hmac.Equal()` for nonce comparison to prevent 
 #### Scenario: Nonce mismatch detected securely
 - **WHEN** the response nonce does not match the challenge nonce
 - **THEN** the verifier SHALL reject the response with "nonce mismatch" error using constant-time comparison
+
+---
+
+### Requirement: Injectable response verifier
+
+The `Handshaker` SHALL support an injectable `SignatureVerifyFunc` for signature verification. When `Config.Verifiers` is nil, the default verifier map SHALL contain only `"secp256k1-keccak256"` → `VerifySecp256k1Signature`. The default verifier SHALL be extracted into a named exported function.
+
+#### Scenario: Default verifier preserves existing behavior
+- **WHEN** `NewHandshaker` is called with `Config.Verifiers = nil`
+- **THEN** the handshaker SHALL use `VerifySecp256k1Signature` as the default response verifier
+
+#### Scenario: Custom verifier injected
+- **WHEN** `NewHandshaker` is called with a non-nil `Config.Verifiers` map
+- **THEN** the handshaker SHALL use the provided map for response signature verification
+
+#### Scenario: Signer declares algorithm
+- **WHEN** `Initiate` constructs a Challenge
+- **THEN** `challenge.SignatureAlgorithm` SHALL be set to `h.signer.Algorithm()`
+
+#### Scenario: Responder declares algorithm
+- **WHEN** `HandleIncoming` constructs a ChallengeResponse
+- **THEN** `resp.SignatureAlgorithm` SHALL be set to `h.signer.Algorithm()`
+
+#### Scenario: Backward compatible empty algorithm
+- **WHEN** a Challenge or ChallengeResponse has an empty `SignatureAlgorithm`
+- **THEN** the verifier SHALL default to `"secp256k1-keccak256"`
+
+#### Scenario: Unsupported algorithm rejected
+- **WHEN** the `SignatureAlgorithm` is not registered in the handshaker's verifier map
+- **THEN** verification SHALL return an error containing "unsupported"
+
+---
+
+### Requirement: SignatureVerifyFunc type
+
+The `SignatureVerifyFunc` type SHALL be used for both challenge and response signature verification, replacing the previous `ResponseVerifyFunc` name.
+
+---
+
+### Requirement: Challenge canonical payload
+
+The `challengeCanonicalPayload` function SHALL return raw canonical bytes (nonce || bigEndian(timestamp) || senderDID) WITHOUT Keccak256 hashing. The signing and verification sides SHALL each hash the canonical payload once via their respective algorithm implementations, ensuring consistent hash depth.
+
+#### Scenario: Challenge signature roundtrip succeeds
+- **WHEN** a challenge is signed via `signer.SignMessage(challengeCanonicalPayload(...))` and verified via `verifyChallengeSignature`
+- **THEN** verification SHALL succeed (single hash on each side)
 
 ---
 
