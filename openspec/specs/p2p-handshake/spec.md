@@ -6,17 +6,29 @@ Capability spec for p2p-handshake. See requirements below for scope and behavior
 
 ### Requirement: Challenge-Response Mutual Authentication
 
-The `Handshaker` SHALL accept a `Signer` interface (methods `SignMessage(ctx, message) ([]byte, error)`, `PublicKey(ctx) ([]byte, error)`, and `Algorithm() string`) instead of `wallet.WalletProvider`. The `internal/p2p/handshake` package SHALL NOT import `internal/wallet`. The `Challenge` and `ChallengeResponse` structs SHALL include a `SignatureAlgorithm` field (omitempty for backward compatibility). The `Handshaker` SHALL dispatch signature verification based on the `SignatureAlgorithm` field, defaulting to `"secp256k1-keccak256"` when empty. The responder SHALL derive its DID using `identity.DIDFromPublicKey(pubkey)` instead of inline string construction.
+The `Handshaker` SHALL accept a `Signer` interface (methods `SignMessage(ctx, message) ([]byte, error)`, `PublicKey(ctx) ([]byte, error)`, `Algorithm() string`, and `DID(ctx) (string, error)`) instead of `wallet.WalletProvider`. The `internal/p2p/handshake` package SHALL NOT import `internal/wallet`. The `Challenge` and `ChallengeResponse` structs SHALL include a `SignatureAlgorithm` field (omitempty for backward compatibility). The `Config` SHALL include `LegacySigner Signer` for v1 fallback. The `Handshaker` SHALL select signer based on peer's algorithm via `selectSigner(peerAlgo)` and dispatch signature verification based on the `SignatureAlgorithm` field, defaulting to `"secp256k1-keccak256"` when empty. The responder SHALL use `signer.DID(ctx)` to populate the ChallengeResponse DID field.
 
 #### Scenario: Signer interface replaces wallet dependency
 - **WHEN** `NewHandshaker` is called with a `Config` containing a `Signer`
 - **THEN** the handshaker SHALL use only `SignMessage` and `PublicKey` from the signer
 - **AND** `internal/p2p/handshake` SHALL NOT have an import path to `internal/wallet`
 
-#### Scenario: Responder DID derived via identity.DIDFromPublicKey
-- **WHEN** `HandleIncoming` constructs the responder's DID for the `ChallengeResponse`
-- **THEN** it SHALL call `identity.DIDFromPublicKey(pubkey)` and use `did.ID`
-- **AND** it SHALL NOT construct the DID string inline
+#### Scenario: Signer provides DID directly
+- **WHEN** `HandleIncoming` constructs a ChallengeResponse
+- **THEN** it SHALL call `signer.DID(ctx)` to get the DID string
+- **AND** it SHALL NOT call `identity.DIDFromPublicKey` directly
+
+#### Scenario: LegacySigner used for unknown peers
+- **WHEN** `Initiate` is called to connect to an unknown peer
+- **THEN** the handshaker SHALL use `LegacySigner` (secp256k1) for signing
+
+#### Scenario: Responder matches initiator algorithm
+- **WHEN** `HandleIncoming` receives a challenge with `SignatureAlgorithm = "ed25519"`
+- **THEN** the responder SHALL use the primary `Signer` (Ed25519)
+
+#### Scenario: Responder falls back for v1 initiator
+- **WHEN** `HandleIncoming` receives a challenge with empty `SignatureAlgorithm`
+- **THEN** the responder SHALL use `LegacySigner` (secp256k1)
 
 #### Scenario: Successful handshake with ECDSA signature
 - **WHEN** `Handshaker.Initiate` is called with `ZKEnabled=false` and the remote peer completes the challenge-response
@@ -105,6 +117,24 @@ The handshake verifier SHALL use `hmac.Equal()` for nonce comparison to prevent 
 
 ---
 
+### Requirement: Bundle transport in handshake
+
+The `Challenge` and `ChallengeResponse` structs SHALL include an optional `Bundle *IdentityBundle` field (omitempty). V2 signers SHALL include their IdentityBundle in handshake messages. Received bundles SHALL be cached in the BundleResolver.
+
+#### Scenario: v2 responder includes bundle
+- **WHEN** a v2 responder sends a ChallengeResponse
+- **THEN** `resp.Bundle` SHALL contain the responder's IdentityBundle
+
+#### Scenario: v1 peer ignores bundle field
+- **WHEN** a v1 peer receives a message with a Bundle field
+- **THEN** the unknown field SHALL be ignored (JSON flexibility)
+
+#### Scenario: Received bundle cached
+- **WHEN** a handshake message with a Bundle is received
+- **THEN** the bundle SHALL be stored in the BundleResolver cache
+
+---
+
 ### Requirement: Injectable response verifier
 
 The `Handshaker` SHALL support an injectable `SignatureVerifyFunc` for signature verification. When `Config.Verifiers` is nil, the default verifier map SHALL contain only `"secp256k1-keccak256"` → `VerifySecp256k1Signature`. The default verifier SHALL be extracted into a named exported function.
@@ -116,6 +146,10 @@ The `Handshaker` SHALL support an injectable `SignatureVerifyFunc` for signature
 #### Scenario: Custom verifier injected
 - **WHEN** `NewHandshaker` is called with a non-nil `Config.Verifiers` map
 - **THEN** the handshaker SHALL use the provided map for response signature verification
+
+#### Scenario: Ed25519 in default verifier map
+- **WHEN** `NewHandshaker` is called with nil `Verifiers`
+- **THEN** the default map SHALL include both `"secp256k1-keccak256"` and `"ed25519"` verifiers
 
 #### Scenario: Signer declares algorithm
 - **WHEN** `Initiate` constructs a Challenge

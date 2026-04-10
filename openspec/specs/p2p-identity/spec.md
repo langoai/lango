@@ -27,9 +27,9 @@ The `WalletDIDProvider` SHALL accept a `KeyProvider` interface (single method `P
 
 ---
 
-### Requirement: Peer ID Derivation from secp256k1 Public Key
+### Requirement: Peer ID Derivation from Public Key
 
-The system SHALL derive a libp2p `peer.ID` from a compressed secp256k1 public key by unmarshaling it via `crypto.UnmarshalSecp256k1PublicKey` and calling `peer.IDFromPublicKey`. The derived `peer.ID` SHALL be embedded in the `DID` struct. This mapping SHALL be deterministic: the same public key always produces the same peer ID.
+The system SHALL derive a libp2p `peer.ID` from a public key by detecting the key type from its size: 33-byte compressed secp256k1 via `crypto.UnmarshalSecp256k1PublicKey`, 32-byte Ed25519 via `crypto.UnmarshalEd25519PublicKey`. The derived `peer.ID` SHALL be embedded in the `DID` struct. This mapping SHALL be deterministic: the same public key always produces the same peer ID.
 
 #### Scenario: Valid compressed public key produces peer ID
 - **WHEN** `DIDFromPublicKey` is called with a valid 33-byte compressed secp256k1 public key
@@ -42,6 +42,10 @@ The system SHALL derive a libp2p `peer.ID` from a compressed secp256k1 public ke
 #### Scenario: Invalid public key bytes rejected
 - **WHEN** `DIDFromPublicKey` is called with malformed bytes that are not a valid secp256k1 point
 - **THEN** the function SHALL return an error from `crypto.UnmarshalSecp256k1PublicKey`
+
+#### Scenario: Ed25519 public key produces peer ID
+- **WHEN** `peerIDFromPublicKey` is called with a 32-byte Ed25519 public key
+- **THEN** it SHALL derive a peer ID via `crypto.UnmarshalEd25519PublicKey`
 
 ---
 
@@ -83,7 +87,7 @@ The system SHALL provide a `ParseDIDPublicKey` function that extracts raw public
 
 ### Requirement: DID Parsing from String
 
-`ParseDID` SHALL parse a DID string in `did:lango:<hexkey>` format. It MUST validate the `did:lango:` prefix, decode the hex-encoded public key, and derive the peer ID. Any malformed input SHALL result in an error.
+`ParseDID` SHALL dispatch by prefix: `did:lango:v2:` to v2 parser, `did:lango:` to v1 parser. V1 parser validates the prefix, decodes the hex-encoded public key, and derives the peer ID. V2 parser returns DID{Version:2, ID:didStr} with empty PublicKey and PeerID (requires BundleResolver for full resolution). Any malformed input SHALL result in an error.
 
 #### Scenario: Valid DID string parsed
 - **WHEN** `ParseDID("did:lango:<valid-hex-pubkey>")` is called
@@ -100,6 +104,10 @@ The system SHALL provide a `ParseDIDPublicKey` function that extracts raw public
 #### Scenario: Non-hex key portion rejected
 - **WHEN** `ParseDID("did:lango:gg00ff")` is called with invalid hex characters
 - **THEN** the function SHALL return an error from hex decoding
+
+#### Scenario: v2 DID parsed with hollow fields
+- **WHEN** `ParseDID("did:lango:v2:<hash>")` is called
+- **THEN** the returned DID SHALL have Version=2, PublicKey=nil, PeerID=""
 
 ---
 
@@ -127,3 +135,64 @@ The `VerifyMessageSignature` function SHALL compare recovered public key bytes w
 #### Scenario: Byte comparison for signature verification
 - **WHEN** `VerifyMessageSignature` compares the recovered public key with the DID's public key
 - **THEN** it SHALL use `bytes.Equal(recovered, did.PublicKey)` for the comparison
+
+---
+
+### Requirement: DID v2 format
+
+The system SHALL support a content-addressed DID format `did:lango:v2:<40-hex-chars>` where the identifier is SHA-256(canonical bundle bytes)[:20] hex-encoded. Canonical bundle bytes SHALL include Version, SigningKey, SettlementKey, and LegacyDID fields only (CreatedAt and Proofs excluded for determinism).
+
+#### Scenario: DID v2 computed from bundle
+- **WHEN** `ComputeDIDv2(bundle)` is called with an IdentityBundle
+- **THEN** the result SHALL be `"did:lango:v2:" + hex(SHA256(canonical)[:20])`
+- **AND** the same bundle always produces the same DID v2
+
+---
+
+### Requirement: IdentityBundle type
+
+The system SHALL provide an `IdentityBundle` struct containing Version (int), SigningKey (PublicKeyEntry with Algorithm + PublicKey), SettlementKey (PublicKeyEntry), LegacyDID (string), Proofs (BundleProofs with Legacy + Ed25519 signatures), and CreatedAt. The bundle is public information (no secret key material).
+
+#### Scenario: Bundle created with Ed25519 signing key + secp256k1 settlement key
+- **WHEN** a new IdentityBundle is created
+- **THEN** SigningKey.Algorithm SHALL be "ed25519" and SettlementKey.Algorithm SHALL be "secp256k1-keccak256"
+
+---
+
+### Requirement: BundleResolver interface
+
+The system SHALL provide a `BundleResolver` interface with `ResolveBundle(did string) (*IdentityBundle, error)` for looking up remote peer IdentityBundles by DID v2 string. A `MemoryBundleCache` implementation SHALL be populated during handshakes and gossip.
+
+#### Scenario: Bundle resolved from cache
+- **WHEN** `ResolveBundle` is called with a cached DID v2
+- **THEN** it SHALL return the cached IdentityBundle
+
+#### Scenario: Unknown DID v2 returns error
+- **WHEN** `ResolveBundle` is called with an uncached DID v2
+- **THEN** it SHALL return an error
+
+---
+
+### Requirement: DIDAlias for session/reputation continuity
+
+The system SHALL provide a `DIDAlias` type that maps v2 DID <-> v1 DID using the IdentityBundle's LegacyDID field. `CanonicalDID(did)` SHALL return the v1 DID as the canonical key for session, reputation, and firewall lookups.
+
+#### Scenario: v2 DID resolves to v1 canonical
+- **WHEN** `CanonicalDID("did:lango:v2:...")` is called and the bundle has a LegacyDID
+- **THEN** it SHALL return the LegacyDID string
+
+---
+
+### Requirement: Identity key derivation from Master Key
+
+The system SHALL derive the Ed25519 identity key from the Master Key using `HKDF(SHA256, MK, nil, "lango-identity-ed25519[:generation]")` where generation defaults to 0. The derivation SHALL be deterministic. The generation counter SHALL be stored in `identity-bundle.json`.
+
+#### Scenario: Same MK produces same identity key
+- **WHEN** `DeriveIdentityKey(mk, 0)` is called twice with the same MK
+- **THEN** both calls SHALL return identical Ed25519 private keys
+
+---
+
+### Requirement: Bundle file persistence
+
+The system SHALL persist the local IdentityBundle to `~/.lango/identity-bundle.json` (0600 permissions) using atomic write (temp file + rename). Remote peer bundles SHALL be persisted to `~/.lango/known-bundles/` directory.
