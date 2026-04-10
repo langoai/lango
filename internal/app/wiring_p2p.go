@@ -106,6 +106,10 @@ func (s *bundleHandshakeSigner) DID(ctx context.Context) (string, error) {
 	return s.bp.DIDString(ctx)
 }
 
+func (s *bundleHandshakeSigner) Bundle() *identity.IdentityBundle {
+	return s.bp.Bundle()
+}
+
 func (s *walletHandshakeSigner) DID(ctx context.Context) (string, error) {
 	pub, err := s.wp.PublicKey(ctx)
 	if err != nil {
@@ -245,6 +249,7 @@ func initP2P(cfg *config.Config, wp wallet.WalletProvider, pc *paymentComponents
 		primarySigner = &bundleHandshakeSigner{bp: bp}
 	}
 
+	didAlias := identity.NewDIDAlias()
 	hsCfg := handshake.Config{
 		Signer:                 primarySigner,
 		LegacySigner:           legacySigner,
@@ -256,6 +261,7 @@ func initP2P(cfg *config.Config, wp wallet.WalletProvider, pc *paymentComponents
 		NonceCache:             nonceCache,
 		RequireSignedChallenge: cfg.P2P.RequireSignedChallenge,
 		BundleCache:            bundleCache,
+		DIDAlias:               didAlias,
 		Logger:                 pLogger,
 	}
 

@@ -102,6 +102,7 @@ type Handshaker struct {
 	requireSignedChallenge bool
 	verifiers              map[string]SignatureVerifyFunc
 	bundleCache            identity.BundleResolver // optional: cache received bundles
+	didAlias               *identity.DIDAlias      // optional: v1/v2 DID alias for session continuity
 	logger                 *zap.SugaredLogger
 }
 
@@ -120,6 +121,7 @@ type Config struct {
 	RequireSignedChallenge bool
 	Verifiers              map[string]SignatureVerifyFunc // nil → default with secp256k1 + ed25519
 	BundleCache            identity.BundleResolver       // optional: for caching received bundles
+	DIDAlias               *identity.DIDAlias            // optional: v1/v2 DID alias for session continuity
 	Logger                 *zap.SugaredLogger
 }
 
@@ -146,7 +148,37 @@ func NewHandshaker(cfg Config) *Handshaker {
 		requireSignedChallenge: cfg.RequireSignedChallenge,
 		verifiers:              verifiers,
 		bundleCache:            cfg.BundleCache,
+		didAlias:               cfg.DIDAlias,
 		logger:                 cfg.Logger,
+	}
+}
+
+// BundleAttacher is an optional interface that Signers can implement to provide
+// their IdentityBundle for inclusion in handshake messages.
+type BundleAttacher interface {
+	Bundle() *identity.IdentityBundle
+}
+
+// signerBundle extracts the IdentityBundle from a signer, if available.
+func signerBundle(s Signer) *identity.IdentityBundle {
+	if ba, ok := s.(BundleAttacher); ok {
+		return ba.Bundle()
+	}
+	return nil
+}
+
+// canonicalDID resolves a DID through the alias registry for session/reputation continuity.
+func (h *Handshaker) canonicalDID(did string) string {
+	if h.didAlias != nil {
+		return h.didAlias.CanonicalDID(did)
+	}
+	return did
+}
+
+// registerAlias registers a v2↔v1 DID alias from a received bundle.
+func (h *Handshaker) registerAlias(bundle *identity.IdentityBundle, didV2 string) {
+	if h.didAlias != nil && bundle != nil {
+		h.didAlias.RegisterFromBundle(bundle, didV2)
 	}
 }
 
@@ -172,21 +204,25 @@ func (h *Handshaker) Initiate(ctx context.Context, s network.Stream, localDID st
 		return nil, fmt.Errorf("generate nonce: %w", err)
 	}
 
+	// Select signer for initiation. Use legacy for unknown peers (safe default).
+	initSigner := h.selectSigner("")
+
 	challenge := Challenge{
 		Nonce:     nonce,
 		Timestamp: time.Now().Unix(),
 		SenderDID: localDID,
+		Bundle:    signerBundle(initSigner),
 	}
 
 	// Sign the challenge (v1.1 protocol).
-	pubkey, err := h.signer.PublicKey(ctx)
+	pubkey, err := initSigner.PublicKey(ctx)
 	if err != nil {
 		h.logger.Warnw("challenge signing skipped: get public key", "error", err)
 	} else {
 		challenge.PublicKey = pubkey
-		challenge.SignatureAlgorithm = h.signer.Algorithm()
+		challenge.SignatureAlgorithm = initSigner.Algorithm()
 		payload := challengeCanonicalPayload(nonce, challenge.Timestamp, localDID)
-		sig, err := h.signer.SignMessage(ctx, payload)
+		sig, err := initSigner.SignMessage(ctx, payload)
 		if err != nil {
 			h.logger.Warnw("challenge signing skipped: sign", "error", err)
 		} else {
@@ -207,6 +243,14 @@ func (h *Handshaker) Initiate(ctx context.Context, s network.Stream, localDID st
 		return nil, fmt.Errorf("receive challenge response: %w", err)
 	}
 
+	// Cache received bundle from response (v2 peers include their bundle).
+	if resp.Bundle != nil {
+		if cache, ok := h.bundleCache.(*identity.MemoryBundleCache); ok {
+			cache.Store(resp.DID, resp.Bundle)
+		}
+		h.registerAlias(resp.Bundle, resp.DID)
+	}
+
 	// Verify response.
 	if err := h.verifyResponse(ctx, &resp, nonce); err != nil {
 		return nil, fmt.Errorf("verify response: %w", err)
@@ -216,7 +260,7 @@ func (h *Handshaker) Initiate(ctx context.Context, s network.Stream, localDID st
 	zkVerified := len(resp.ZKProof) > 0
 
 	// Create session.
-	sess, err := h.sessions.Create(resp.DID, zkVerified)
+	sess, err := h.sessions.Create(h.canonicalDID(resp.DID), zkVerified)
 	if err != nil {
 		return nil, fmt.Errorf("create session: %w", err)
 	}
@@ -248,6 +292,14 @@ func (h *Handshaker) HandleIncoming(ctx context.Context, s network.Stream) (*Ses
 	dec := json.NewDecoder(s)
 	if err := dec.Decode(&challenge); err != nil {
 		return nil, fmt.Errorf("receive challenge: %w", err)
+	}
+
+	// Cache received bundle from challenge (v2 initiators include their bundle).
+	if challenge.Bundle != nil {
+		if cache, ok := h.bundleCache.(*identity.MemoryBundleCache); ok {
+			cache.Store(challenge.SenderDID, challenge.Bundle)
+		}
+		h.registerAlias(challenge.Bundle, challenge.SenderDID)
 	}
 
 	// Validate challenge timestamp (reject stale or far-future challenges).
@@ -317,6 +369,7 @@ func (h *Handshaker) HandleIncoming(ctx context.Context, s network.Stream) (*Ses
 		PublicKey:          pubkey,
 		DID:                didStr,
 		SignatureAlgorithm: signer.Algorithm(),
+		Bundle:             signerBundle(signer),
 	}
 
 	// Sign or generate ZK proof.
@@ -353,8 +406,9 @@ func (h *Handshaker) HandleIncoming(ctx context.Context, s network.Stream) (*Ses
 	}
 
 	zkVerified := len(resp.ZKProof) > 0
+	canonicalPeer := h.canonicalDID(challenge.SenderDID)
 	sess := &Session{
-		PeerDID:    challenge.SenderDID,
+		PeerDID:    canonicalPeer,
 		Token:      ack.Token,
 		CreatedAt:  time.Now(),
 		ExpiresAt:  time.Unix(ack.ExpiresAt, 0),
@@ -363,7 +417,7 @@ func (h *Handshaker) HandleIncoming(ctx context.Context, s network.Stream) (*Ses
 
 	// Store the session locally as well.
 	h.sessions.mu.Lock()
-	h.sessions.sessions[challenge.SenderDID] = sess
+	h.sessions.sessions[canonicalPeer] = sess
 	h.sessions.mu.Unlock()
 
 	h.logger.Infow("handshake accepted",

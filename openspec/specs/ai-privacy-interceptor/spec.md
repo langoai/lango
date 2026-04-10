@@ -20,11 +20,11 @@ The system SHALL automatically redact personally identifiable information (email
 PIIRedactor SHALL use a PIIDetector interface with 13 builtin regex patterns across contact, identity, financial, and network categories. PIIConfig SHALL support legacy fields (RedactEmail, RedactPhone, CustomRegex) and new fields (DisabledBuiltins, CustomPatterns, PresidioEnabled, PresidioURL, PresidioThreshold, PresidioLanguage). A helper function SHALL list all currently enabled builtin pattern names for diagnostics.
 
 #### Scenario: Korean mobile number redaction
-- **WHEN** a user prompt contains "전화번호: 010-1234-5678"
+- **WHEN** a user prompt contains "phone: 010-1234-5678"
 - **THEN** the phone number SHALL be replaced with [REDACTED]
 
 #### Scenario: Korean RRN redaction
-- **WHEN** a user prompt contains "주민번호: 900101-1234567"
+- **WHEN** a user prompt contains "rrn: 900101-1234567"
 - **THEN** the RRN SHALL be replaced with [REDACTED]
 
 #### Scenario: Disabled builtins
