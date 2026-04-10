@@ -5,14 +5,20 @@ import (
 	"encoding/json"
 	"fmt"
 	"maps"
-
-	"github.com/langoai/lango/internal/p2p/identity"
 )
 
-const signatureAlgorithmSecp256k1Keccak256 = "secp256k1-keccak256"
+// AlgorithmSecp256k1Keccak256 is the default signature algorithm for provenance bundles.
+const AlgorithmSecp256k1Keccak256 = "secp256k1-keccak256"
 
-// BundleSignFunc signs a canonical provenance payload.
-type BundleSignFunc func(ctx context.Context, payload []byte) ([]byte, error)
+// BundleSigner signs a canonical provenance payload and declares its algorithm.
+type BundleSigner interface {
+	Sign(ctx context.Context, payload []byte) ([]byte, error)
+	Algorithm() string
+}
+
+// SignatureVerifyFunc verifies a signature against a signer DID.
+// Implementations are injected at the app/cli wiring layer.
+type SignatureVerifyFunc func(signerDID string, payload, signature []byte) error
 
 // BundleService exports, verifies, and imports provenance bundles.
 type BundleService struct {
@@ -20,20 +26,25 @@ type BundleService struct {
 	treeStore    SessionTreeStore
 	attributions AttributionStore
 	attrService  *AttributionService
+	verifiers    map[string]SignatureVerifyFunc
 }
 
 // NewBundleService creates a new provenance bundle service.
+// verifiers maps algorithm names to verification functions; the provenance
+// package does not contain any built-in verifier implementation.
 func NewBundleService(
 	checkpoints CheckpointStore,
 	treeStore SessionTreeStore,
 	attributions AttributionStore,
 	attrService *AttributionService,
+	verifiers map[string]SignatureVerifyFunc,
 ) *BundleService {
 	return &BundleService{
 		checkpoints:  checkpoints,
 		treeStore:    treeStore,
 		attributions: attributions,
 		attrService:  attrService,
+		verifiers:    verifiers,
 	}
 }
 
@@ -43,7 +54,7 @@ func (s *BundleService) Export(
 	sessionKey string,
 	level RedactionLevel,
 	signerDID string,
-	signFn BundleSignFunc,
+	signer BundleSigner,
 ) (*ProvenanceBundle, []byte, error) {
 	if sessionKey == "" {
 		return nil, nil, ErrInvalidSessionKey
@@ -54,7 +65,7 @@ func (s *BundleService) Export(
 	if signerDID == "" {
 		return nil, nil, fmt.Errorf("signer DID is required")
 	}
-	if signFn == nil {
+	if signer == nil {
 		return nil, nil, fmt.Errorf("bundle signer is required")
 	}
 
@@ -63,13 +74,13 @@ func (s *BundleService) Export(
 		return nil, nil, err
 	}
 	bundle.SignerDID = signerDID
-	bundle.SignatureAlgorithm = signatureAlgorithmSecp256k1Keccak256
+	bundle.SignatureAlgorithm = signer.Algorithm()
 
 	payload, err := canonicalBundlePayload(bundle)
 	if err != nil {
 		return nil, nil, err
 	}
-	sig, err := signFn(ctx, payload)
+	sig, err := signer.Sign(ctx, payload)
 	if err != nil {
 		return nil, nil, fmt.Errorf("sign bundle: %w", err)
 	}
@@ -83,6 +94,7 @@ func (s *BundleService) Export(
 }
 
 // Verify validates the signer DID and signature of a bundle.
+// The verifier is looked up from the map injected at construction time.
 func (s *BundleService) Verify(bundle *ProvenanceBundle) error {
 	if bundle == nil {
 		return fmt.Errorf("nil provenance bundle")
@@ -93,7 +105,8 @@ func (s *BundleService) Verify(bundle *ProvenanceBundle) error {
 	if bundle.SignerDID == "" {
 		return fmt.Errorf("bundle signer DID is required")
 	}
-	if bundle.SignatureAlgorithm != signatureAlgorithmSecp256k1Keccak256 {
+	verifier, ok := s.verifiers[bundle.SignatureAlgorithm]
+	if !ok {
 		return fmt.Errorf("unsupported signature algorithm %q", bundle.SignatureAlgorithm)
 	}
 	if len(bundle.Signature) == 0 {
@@ -103,7 +116,7 @@ func (s *BundleService) Verify(bundle *ProvenanceBundle) error {
 	if err != nil {
 		return err
 	}
-	if err := identity.VerifyMessageSignature(bundle.SignerDID, payload, bundle.Signature); err != nil {
+	if err := verifier(bundle.SignerDID, payload, bundle.Signature); err != nil {
 		return fmt.Errorf("verify bundle signature: %w", err)
 	}
 	return nil

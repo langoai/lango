@@ -15,7 +15,6 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/langoai/lango/internal/types"
-	"github.com/langoai/lango/internal/wallet"
 )
 
 // DID represents a decentralized identifier derived from a wallet public key.
@@ -25,17 +24,23 @@ type DID struct {
 	PeerID    peer.ID `json:"peerId"`    // libp2p peer ID derived from pubkey
 }
 
+// KeyProvider is the minimal interface for public key retrieval.
+// wallet.WalletProvider satisfies this via Go structural typing.
+type KeyProvider interface {
+	PublicKey(ctx context.Context) ([]byte, error)
+}
+
 // Provider creates and verifies DIDs.
 type Provider interface {
-	// DID returns the DID for the current wallet.
+	// DID returns the DID for the current identity key.
 	DID(ctx context.Context) (*DID, error)
 	// VerifyDID checks that a DID matches the claimed peer ID.
 	VerifyDID(did *DID, peerID peer.ID) error
 }
 
-// WalletDIDProvider derives DIDs from a wallet's public key.
+// WalletDIDProvider derives DIDs from a public key provider.
 type WalletDIDProvider struct {
-	wallet wallet.WalletProvider
+	keys   KeyProvider
 	logger *zap.SugaredLogger
 	mu     sync.RWMutex
 	cached *DID
@@ -45,9 +50,9 @@ type WalletDIDProvider struct {
 var _ Provider = (*WalletDIDProvider)(nil)
 
 // NewProvider creates a new WalletDIDProvider.
-func NewProvider(w wallet.WalletProvider, logger *zap.SugaredLogger) *WalletDIDProvider {
+func NewProvider(keys KeyProvider, logger *zap.SugaredLogger) *WalletDIDProvider {
 	return &WalletDIDProvider{
-		wallet: w,
+		keys:   keys,
 		logger: logger,
 	}
 }
@@ -62,7 +67,7 @@ func (p *WalletDIDProvider) DID(ctx context.Context) (*DID, error) {
 	}
 	p.mu.RUnlock()
 
-	pubkey, err := p.wallet.PublicKey(ctx)
+	pubkey, err := p.keys.PublicKey(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("get wallet public key: %w", err)
 	}

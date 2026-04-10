@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/hex"
 	"fmt"
-	"math/big"
 	"strings"
 	"testing"
 
@@ -119,7 +118,7 @@ func TestVerifyDID_Matching(t *testing.T) {
 	did, err := DIDFromPublicKey(pubkey)
 	require.NoError(t, err)
 
-	provider := NewProvider(&mockWalletProvider{pubkey: pubkey}, testLogger())
+	provider := NewProvider(&mockKeyProvider{pubkey: pubkey}, testLogger())
 	err = provider.VerifyDID(did, did.PeerID)
 	assert.NoError(t, err)
 }
@@ -136,7 +135,7 @@ func TestVerifyDID_Mismatched(t *testing.T) {
 	otherDID, err := DIDFromPublicKey(otherPubkey)
 	require.NoError(t, err)
 
-	provider := NewProvider(&mockWalletProvider{pubkey: pubkey}, testLogger())
+	provider := NewProvider(&mockKeyProvider{pubkey: pubkey}, testLogger())
 	err = provider.VerifyDID(did, otherDID.PeerID)
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "peer ID mismatch")
@@ -145,7 +144,7 @@ func TestVerifyDID_Mismatched(t *testing.T) {
 func TestVerifyDID_NilDID(t *testing.T) {
 	t.Parallel()
 
-	provider := NewProvider(&mockWalletProvider{}, testLogger())
+	provider := NewProvider(&mockKeyProvider{}, testLogger())
 	err := provider.VerifyDID(nil, peer.ID("somepeerid"))
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "nil DID")
@@ -155,7 +154,7 @@ func TestWalletDIDProvider_DID_Caching(t *testing.T) {
 	t.Parallel()
 
 	pubkey := generateTestPubkey(t)
-	mock := &mockWalletProvider{pubkey: pubkey}
+	mock := &mockKeyProvider{pubkey: pubkey}
 	provider := NewProvider(mock, testLogger())
 
 	did1, err := provider.DID(context.Background())
@@ -171,7 +170,7 @@ func TestWalletDIDProvider_DID_Caching(t *testing.T) {
 func TestWalletDIDProvider_DID_WalletError(t *testing.T) {
 	t.Parallel()
 
-	mock := &mockWalletProvider{err: fmt.Errorf("wallet locked")}
+	mock := &mockKeyProvider{err: fmt.Errorf("wallet locked")}
 	provider := NewProvider(mock, testLogger())
 
 	did, err := provider.DID(context.Background())
@@ -180,30 +179,14 @@ func TestWalletDIDProvider_DID_WalletError(t *testing.T) {
 	assert.Contains(t, err.Error(), "wallet locked")
 }
 
-// mockWalletProvider implements wallet.WalletProvider for testing.
-type mockWalletProvider struct {
+// mockKeyProvider implements KeyProvider for testing.
+type mockKeyProvider struct {
 	pubkey []byte
 	err    error
 	calls  int
 }
 
-func (m *mockWalletProvider) PublicKey(_ context.Context) ([]byte, error) {
+func (m *mockKeyProvider) PublicKey(_ context.Context) ([]byte, error) {
 	m.calls++
 	return m.pubkey, m.err
-}
-
-func (m *mockWalletProvider) SignMessage(_ context.Context, _ []byte) ([]byte, error) {
-	return nil, fmt.Errorf("not implemented")
-}
-
-func (m *mockWalletProvider) SignTransaction(_ context.Context, _ []byte) ([]byte, error) {
-	return nil, fmt.Errorf("not implemented")
-}
-
-func (m *mockWalletProvider) Address(_ context.Context) (string, error) {
-	return "", fmt.Errorf("not implemented")
-}
-
-func (m *mockWalletProvider) Balance(_ context.Context) (*big.Int, error) {
-	return nil, fmt.Errorf("not implemented")
 }

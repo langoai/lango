@@ -219,7 +219,10 @@ func setupProvenanceRouteRuntime(t *testing.T) (*App, *p2pComponents, host.Host,
 	treeStore := provenancepkg.NewMemoryTreeStore()
 	attrStore := provenancepkg.NewMemoryAttributionStore()
 	attrSvc := provenancepkg.NewAttributionService(attrStore, cpStore, nil)
-	bundleSvc := provenancepkg.NewBundleService(cpStore, treeStore, attrStore, attrSvc)
+	verifiers := map[string]provenancepkg.SignatureVerifyFunc{
+		provenancepkg.AlgorithmSecp256k1Keccak256: identity.VerifyMessageSignature,
+	}
+	bundleSvc := provenancepkg.NewBundleService(cpStore, treeStore, attrStore, attrSvc, verifiers)
 	require.NoError(t, cpStore.SaveCheckpoint(context.Background(), provenancepkg.Checkpoint{
 		ID:         "cp-1",
 		SessionKey: "sess-1",
@@ -327,7 +330,10 @@ func TestP2PProvenancePushAndFetchHandlers(t *testing.T) {
 	remoteTree := provenancepkg.NewMemoryTreeStore()
 	remoteAttrs := provenancepkg.NewMemoryAttributionStore()
 	remoteAttrSvc := provenancepkg.NewAttributionService(remoteAttrs, remoteCP, nil)
-	remoteBundleSvc := provenancepkg.NewBundleService(remoteCP, remoteTree, remoteAttrs, remoteAttrSvc)
+	remoteVerifiers := map[string]provenancepkg.SignatureVerifyFunc{
+		provenancepkg.AlgorithmSecp256k1Keccak256: identity.VerifyMessageSignature,
+	}
+	remoteBundleSvc := provenancepkg.NewBundleService(remoteCP, remoteTree, remoteAttrs, remoteAttrSvc, remoteVerifiers)
 	require.NoError(t, remoteCP.SaveCheckpoint(context.Background(), provenancepkg.Checkpoint{
 		ID:         "remote-cp",
 		SessionKey: "sess-remote",
@@ -348,9 +354,8 @@ func TestP2PProvenancePushAndFetchHandlers(t *testing.T) {
 		},
 		Exporter: func(ctx context.Context, peerDID, sessionKey, redaction string) ([]byte, error) {
 			assert.Equal(t, serverPeerDID, peerDID)
-			_, data, err := remoteBundleSvc.Export(ctx, sessionKey, provenancepkg.RedactionLevel(redaction), remoteSignerDID, func(ctx context.Context, payload []byte) ([]byte, error) {
-				return remoteWallet.SignMessage(ctx, payload)
-			})
+			remoteSigner := &walletBundleSigner{wp: remoteWallet}
+			_, data, err := remoteBundleSvc.Export(ctx, sessionKey, provenancepkg.RedactionLevel(redaction), remoteSignerDID, remoteSigner)
 			return data, err
 		},
 	})

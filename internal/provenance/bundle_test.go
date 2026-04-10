@@ -2,6 +2,7 @@ package provenance
 
 import (
 	"context"
+	"crypto/ecdsa"
 	"encoding/json"
 	"testing"
 	"time"
@@ -13,14 +14,32 @@ import (
 	"github.com/langoai/lango/internal/p2p/identity"
 )
 
-func testSigner(t *testing.T) (string, BundleSignFunc) {
+// testBundleSigner implements BundleSigner for testing.
+type testBundleSigner struct {
+	key *ecdsa.PrivateKey
+}
+
+func (s *testBundleSigner) Sign(_ context.Context, payload []byte) ([]byte, error) {
+	return ethcrypto.Sign(ethcrypto.Keccak256(payload), s.key)
+}
+
+func (s *testBundleSigner) Algorithm() string {
+	return AlgorithmSecp256k1Keccak256
+}
+
+func testSignerAndDID(t *testing.T) (string, *testBundleSigner) {
 	t.Helper()
 	key, err := ethcrypto.GenerateKey()
 	require.NoError(t, err)
 	did, err := identity.DIDFromPublicKey(ethcrypto.CompressPubkey(&key.PublicKey))
 	require.NoError(t, err)
-	return did.ID, func(_ context.Context, payload []byte) ([]byte, error) {
-		return ethcrypto.Sign(ethcrypto.Keccak256(payload), key)
+	return did.ID, &testBundleSigner{key: key}
+}
+
+// testVerifiers returns the default verifier map for tests.
+func testVerifiers() map[string]SignatureVerifyFunc {
+	return map[string]SignatureVerifyFunc{
+		AlgorithmSecp256k1Keccak256: identity.VerifyMessageSignature,
 	}
 }
 
@@ -29,7 +48,7 @@ func TestBundleService_ExportImportVerify(t *testing.T) {
 	treeStore := NewMemoryTreeStore()
 	attrStore := NewMemoryAttributionStore()
 	attrSvc := NewAttributionService(attrStore, cpStore, &stubTokenReader{})
-	bundleSvc := NewBundleService(cpStore, treeStore, attrStore, attrSvc)
+	bundleSvc := NewBundleService(cpStore, treeStore, attrStore, attrSvc, testVerifiers())
 
 	ctx := context.Background()
 	nowTime := time.Now()
@@ -54,8 +73,8 @@ func TestBundleService_ExportImportVerify(t *testing.T) {
 		{FilePath: "main.go", LinesAdded: 3, LinesRemoved: 1},
 	}))
 
-	did, signFn := testSigner(t)
-	bundle, data, err := bundleSvc.Export(ctx, "sess-1", RedactionContent, did, signFn)
+	did, signer := testSignerAndDID(t)
+	bundle, data, err := bundleSvc.Export(ctx, "sess-1", RedactionContent, did, signer)
 	require.NoError(t, err)
 	assert.Equal(t, did, bundle.SignerDID)
 	require.NoError(t, bundleSvc.Verify(bundle))
@@ -78,11 +97,11 @@ func TestBundleService_Export_InvalidRedaction(t *testing.T) {
 	treeStore := NewMemoryTreeStore()
 	attrStore := NewMemoryAttributionStore()
 	attrSvc := NewAttributionService(attrStore, cpStore, &stubTokenReader{})
-	bundleSvc := NewBundleService(cpStore, treeStore, attrStore, attrSvc)
+	bundleSvc := NewBundleService(cpStore, treeStore, attrStore, attrSvc, testVerifiers())
 
-	did, signFn := testSigner(t)
+	did, signer := testSignerAndDID(t)
 
-	_, _, err := bundleSvc.Export(context.Background(), "sess-1", RedactionLevel("invalid"), did, signFn)
+	_, _, err := bundleSvc.Export(context.Background(), "sess-1", RedactionLevel("invalid"), did, signer)
 	require.ErrorIs(t, err, ErrInvalidRedaction)
 }
 
@@ -91,9 +110,9 @@ func TestBundleService_Export_ValidRedactionLevels(t *testing.T) {
 	treeStore := NewMemoryTreeStore()
 	attrStore := NewMemoryAttributionStore()
 	attrSvc := NewAttributionService(attrStore, cpStore, &stubTokenReader{})
-	bundleSvc := NewBundleService(cpStore, treeStore, attrStore, attrSvc)
+	bundleSvc := NewBundleService(cpStore, treeStore, attrStore, attrSvc, testVerifiers())
 
-	did, signFn := testSigner(t)
+	did, signer := testSignerAndDID(t)
 	ctx := context.Background()
 
 	tests := []struct {
@@ -105,7 +124,7 @@ func TestBundleService_Export_ValidRedactionLevels(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(string(tt.give), func(t *testing.T) {
-			bundle, _, err := bundleSvc.Export(ctx, "sess-1", tt.give, did, signFn)
+			bundle, _, err := bundleSvc.Export(ctx, "sess-1", tt.give, did, signer)
 			require.NoError(t, err)
 			assert.Equal(t, tt.give, bundle.RedactionLevel)
 		})
@@ -117,7 +136,7 @@ func TestBundleService_Verify_InvalidRedaction(t *testing.T) {
 	treeStore := NewMemoryTreeStore()
 	attrStore := NewMemoryAttributionStore()
 	attrSvc := NewAttributionService(attrStore, cpStore, &stubTokenReader{})
-	bundleSvc := NewBundleService(cpStore, treeStore, attrStore, attrSvc)
+	bundleSvc := NewBundleService(cpStore, treeStore, attrStore, attrSvc, testVerifiers())
 
 	bundle := &ProvenanceBundle{
 		Version:        "1",

@@ -291,7 +291,6 @@ flowchart TB
 
     %% --- Provenance ---
     provenance --> observability
-    provenance --> p2p
     provenance --> runledger
     provenance --> storeutil
 ```

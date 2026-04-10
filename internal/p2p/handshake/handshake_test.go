@@ -2,7 +2,6 @@ package handshake
 
 import (
 	"context"
-	"math/big"
 	"testing"
 	"time"
 
@@ -12,12 +11,12 @@ import (
 	"go.uber.org/zap"
 )
 
-// mockWallet implements wallet.WalletProvider for testing.
-type mockWallet struct {
+// mockSigner implements the Signer interface for testing.
+type mockSigner struct {
 	privKeyBytes []byte
 }
 
-func (m *mockWallet) SignMessage(_ context.Context, message []byte) ([]byte, error) {
+func (m *mockSigner) SignMessage(_ context.Context, message []byte) ([]byte, error) {
 	key, err := ethcrypto.ToECDSA(m.privKeyBytes)
 	if err != nil {
 		return nil, err
@@ -26,7 +25,7 @@ func (m *mockWallet) SignMessage(_ context.Context, message []byte) ([]byte, err
 	return ethcrypto.Sign(hash, key)
 }
 
-func (m *mockWallet) PublicKey(_ context.Context) ([]byte, error) {
+func (m *mockSigner) PublicKey(_ context.Context) ([]byte, error) {
 	key, err := ethcrypto.ToECDSA(m.privKeyBytes)
 	if err != nil {
 		return nil, err
@@ -34,17 +33,13 @@ func (m *mockWallet) PublicKey(_ context.Context) ([]byte, error) {
 	return ethcrypto.CompressPubkey(&key.PublicKey), nil
 }
 
-func (m *mockWallet) Address(_ context.Context) (string, error)                   { return "", nil }
-func (m *mockWallet) Balance(_ context.Context) (*big.Int, error)                 { return nil, nil }
-func (m *mockWallet) SignTransaction(_ context.Context, _ []byte) ([]byte, error) { return nil, nil }
-
-func newTestHandshaker(t *testing.T, w *mockWallet) *Handshaker {
+func newTestHandshaker(t *testing.T, s *mockSigner) *Handshaker {
 	t.Helper()
 	sessions, err := NewSessionStore(24 * time.Hour)
 	require.NoError(t, err)
 
 	return NewHandshaker(Config{
-		Wallet:   w,
+		Signer:   s,
 		Sessions: sessions,
 		Timeout:  30 * time.Second,
 		Logger:   zap.NewNop().Sugar(),
@@ -58,7 +53,7 @@ func TestVerifyResponse_ValidSignature(t *testing.T) {
 	require.NoError(t, err)
 	privBytes := ethcrypto.FromECDSA(privKey)
 
-	w := &mockWallet{privKeyBytes: privBytes}
+	w := &mockSigner{privKeyBytes: privBytes}
 	h := newTestHandshaker(t, w)
 
 	nonce := []byte("test-challenge-nonce-32bytes!!!!!")
@@ -86,7 +81,7 @@ func TestVerifyResponse_InvalidSignature(t *testing.T) {
 	require.NoError(t, err)
 	privBytes := ethcrypto.FromECDSA(privKey)
 
-	w := &mockWallet{privKeyBytes: privBytes}
+	w := &mockSigner{privKeyBytes: privBytes}
 	h := newTestHandshaker(t, w)
 
 	nonce := []byte("test-challenge-nonce-32bytes!!!!!")
@@ -118,7 +113,7 @@ func TestVerifyResponse_WrongSignatureLength(t *testing.T) {
 	require.NoError(t, err)
 	privBytes := ethcrypto.FromECDSA(privKey)
 
-	w := &mockWallet{privKeyBytes: privBytes}
+	w := &mockSigner{privKeyBytes: privBytes}
 	h := newTestHandshaker(t, w)
 
 	nonce := []byte("test-challenge-nonce-32bytes!!!!!")
@@ -144,7 +139,7 @@ func TestVerifyResponse_NonceMismatch(t *testing.T) {
 	require.NoError(t, err)
 	privBytes := ethcrypto.FromECDSA(privKey)
 
-	w := &mockWallet{privKeyBytes: privBytes}
+	w := &mockSigner{privKeyBytes: privBytes}
 	h := newTestHandshaker(t, w)
 
 	nonce := []byte("test-challenge-nonce-32bytes!!!!!")
@@ -174,7 +169,7 @@ func TestVerifyResponse_NoProofOrSignature(t *testing.T) {
 	require.NoError(t, err)
 	privBytes := ethcrypto.FromECDSA(privKey)
 
-	w := &mockWallet{privKeyBytes: privBytes}
+	w := &mockSigner{privKeyBytes: privBytes}
 	h := newTestHandshaker(t, w)
 
 	nonce := []byte("test-challenge-nonce-32bytes!!!!!")
@@ -199,7 +194,7 @@ func TestVerifyResponse_CorruptedSignature(t *testing.T) {
 	require.NoError(t, err)
 	privBytes := ethcrypto.FromECDSA(privKey)
 
-	w := &mockWallet{privKeyBytes: privBytes}
+	w := &mockSigner{privKeyBytes: privBytes}
 	h := newTestHandshaker(t, w)
 
 	nonce := []byte("test-challenge-nonce-32bytes!!!!!")

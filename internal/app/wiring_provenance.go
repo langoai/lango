@@ -10,7 +10,21 @@ import (
 	"github.com/langoai/lango/internal/provenance"
 	"github.com/langoai/lango/internal/session"
 	"github.com/langoai/lango/internal/toolchain"
+	"github.com/langoai/lango/internal/wallet"
 )
+
+// walletBundleSigner wraps a WalletProvider to satisfy provenance.BundleSigner.
+type walletBundleSigner struct {
+	wp wallet.WalletProvider
+}
+
+func (s *walletBundleSigner) Sign(ctx context.Context, payload []byte) ([]byte, error) {
+	return s.wp.SignMessage(ctx, payload)
+}
+
+func (s *walletBundleSigner) Algorithm() string {
+	return provenance.AlgorithmSecp256k1Keccak256
+}
 
 func wireProvenanceRuntime(app *App, r appinit.Resolver) {
 	pv, _ := r.Resolve(appinit.ProvidesProvenance).(*provenanceValues)
@@ -99,9 +113,8 @@ func wireProvenanceRuntime(app *App, r appinit.Resolver) {
 			if err != nil {
 				return nil, err
 			}
-			_, data, err := pv.bundle.Export(ctx, sessionKey, provenance.RedactionLevel(redaction), did.ID, func(ctx context.Context, payload []byte) ([]byte, error) {
-				return app.WalletProvider.SignMessage(ctx, payload)
-			})
+			signer := &walletBundleSigner{wp: app.WalletProvider}
+			_, data, err := pv.bundle.Export(ctx, sessionKey, provenance.RedactionLevel(redaction), did.ID, signer)
 			if err != nil {
 				return nil, err
 			}

@@ -42,11 +42,11 @@ func newBundleExportCmd(bootLoader func() (*bootstrap.Result, error)) *cobra.Com
 			}
 
 			svcs := loadServices(boot)
-			did, signFn, err := loadSigner(context.Background(), boot)
+			did, signer, err := loadSigner(context.Background(), boot)
 			if err != nil {
 				return err
 			}
-			bundle, data, err := svcs.bundle.Export(cmd.Context(), args[0], provenancepkg.RedactionLevel(redaction), did, signFn)
+			bundle, data, err := svcs.bundle.Export(cmd.Context(), args[0], provenancepkg.RedactionLevel(redaction), did, signer)
 			if err != nil {
 				return fmt.Errorf("export provenance bundle: %w", err)
 			}

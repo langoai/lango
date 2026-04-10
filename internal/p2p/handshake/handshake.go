@@ -1,22 +1,19 @@
 package handshake
 
 import (
-	"bytes"
 	"context"
 	"crypto/hmac"
 	"crypto/rand"
-	"encoding/binary"
 	"encoding/json"
 	"fmt"
 	"math"
 	"time"
 
-	ethcrypto "github.com/ethereum/go-ethereum/crypto"
 	"github.com/libp2p/go-libp2p/core/network"
 	"github.com/libp2p/go-libp2p/core/peer"
 	"go.uber.org/zap"
 
-	"github.com/langoai/lango/internal/wallet"
+	"github.com/langoai/lango/internal/p2p/identity"
 )
 
 // Protocol version constants for handshake negotiation.
@@ -76,9 +73,16 @@ type SessionAck struct {
 	ExpiresAt int64  `json:"expiresAt"`
 }
 
+// Signer is the minimal interface for identity signing operations.
+// wallet.WalletProvider satisfies this via Go structural typing.
+type Signer interface {
+	SignMessage(ctx context.Context, message []byte) ([]byte, error)
+	PublicKey(ctx context.Context) ([]byte, error)
+}
+
 // Handshaker manages peer authentication using wallet signatures or ZK proofs.
 type Handshaker struct {
-	wallet                 wallet.WalletProvider
+	signer                 Signer
 	sessions               *SessionStore
 	approvalFn             ApprovalFunc
 	zkProver               ZKProverFunc
@@ -88,12 +92,13 @@ type Handshaker struct {
 	autoApproveKnown       bool
 	nonceCache             *NonceCache
 	requireSignedChallenge bool
+	responseVerifier       ResponseVerifyFunc
 	logger                 *zap.SugaredLogger
 }
 
 // Config configures the Handshaker.
 type Config struct {
-	Wallet                 wallet.WalletProvider
+	Signer                 Signer
 	Sessions               *SessionStore
 	ApprovalFn             ApprovalFunc
 	ZKProver               ZKProverFunc
@@ -103,13 +108,18 @@ type Config struct {
 	AutoApproveKnown       bool
 	NonceCache             *NonceCache
 	RequireSignedChallenge bool
+	ResponseVerifier       ResponseVerifyFunc // nil → default VerifySecp256k1Signature
 	Logger                 *zap.SugaredLogger
 }
 
 // NewHandshaker creates a new peer authenticator.
 func NewHandshaker(cfg Config) *Handshaker {
+	rv := cfg.ResponseVerifier
+	if rv == nil {
+		rv = VerifySecp256k1Signature
+	}
 	return &Handshaker{
-		wallet:                 cfg.Wallet,
+		signer:                 cfg.Signer,
 		sessions:               cfg.Sessions,
 		approvalFn:             cfg.ApprovalFn,
 		zkProver:               cfg.ZKProver,
@@ -119,6 +129,7 @@ func NewHandshaker(cfg Config) *Handshaker {
 		autoApproveKnown:       cfg.AutoApproveKnown,
 		nonceCache:             cfg.NonceCache,
 		requireSignedChallenge: cfg.RequireSignedChallenge,
+		responseVerifier:       rv,
 		logger:                 cfg.Logger,
 	}
 }
@@ -141,13 +152,13 @@ func (h *Handshaker) Initiate(ctx context.Context, s network.Stream, localDID st
 	}
 
 	// Sign the challenge (v1.1 protocol).
-	pubkey, err := h.wallet.PublicKey(ctx)
+	pubkey, err := h.signer.PublicKey(ctx)
 	if err != nil {
 		h.logger.Warnw("challenge signing skipped: get public key", "error", err)
 	} else {
 		challenge.PublicKey = pubkey
 		payload := challengeSignPayload(nonce, challenge.Timestamp, localDID)
-		sig, err := h.wallet.SignMessage(ctx, payload)
+		sig, err := h.signer.SignMessage(ctx, payload)
 		if err != nil {
 			h.logger.Warnw("challenge signing skipped: sign", "error", err)
 		} else {
@@ -258,7 +269,7 @@ func (h *Handshaker) HandleIncoming(ctx context.Context, s network.Stream) (*Ses
 	}
 
 	// Get local public key.
-	pubkey, err := h.wallet.PublicKey(ctx)
+	pubkey, err := h.signer.PublicKey(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("get public key: %w", err)
 	}
@@ -269,8 +280,12 @@ func (h *Handshaker) HandleIncoming(ctx context.Context, s network.Stream) (*Ses
 		PublicKey: pubkey,
 	}
 
-	// Generate DID from pubkey.
-	resp.DID = "did:lango:" + fmt.Sprintf("%x", pubkey)
+	// Generate DID from pubkey via identity package.
+	did, err := identity.DIDFromPublicKey(pubkey)
+	if err != nil {
+		return nil, fmt.Errorf("derive DID from public key: %w", err)
+	}
+	resp.DID = did.ID
 
 	// Sign or generate ZK proof.
 	if h.zkEnabled && h.zkProver != nil {
@@ -278,7 +293,7 @@ func (h *Handshaker) HandleIncoming(ctx context.Context, s network.Stream) (*Ses
 		if err != nil {
 			h.logger.Warnw("ZK proof generation failed, falling back to signature", "error", err)
 			// Fall back to signature mode.
-			sig, err := h.wallet.SignMessage(ctx, challenge.Nonce)
+			sig, err := h.signer.SignMessage(ctx, challenge.Nonce)
 			if err != nil {
 				return nil, fmt.Errorf("sign challenge: %w", err)
 			}
@@ -287,7 +302,7 @@ func (h *Handshaker) HandleIncoming(ctx context.Context, s network.Stream) (*Ses
 			resp.ZKProof = proof
 		}
 	} else {
-		sig, err := h.wallet.SignMessage(ctx, challenge.Nonce)
+		sig, err := h.signer.SignMessage(ctx, challenge.Nonce)
 		if err != nil {
 			return nil, fmt.Errorf("sign challenge: %w", err)
 		}
@@ -347,30 +362,9 @@ func (h *Handshaker) verifyResponse(ctx context.Context, resp *ChallengeResponse
 		return nil
 	}
 
-	// Verify ECDSA signature by recovering the public key and comparing with the
-	// claimed key (secp256k1 recovery, matching wallet.SignMessage pattern).
+	// Verify signature using the injectable verifier (default: secp256k1+keccak256).
 	if len(resp.Signature) > 0 {
-		// Signature must be exactly 65 bytes: R(32) + S(32) + V(1).
-		if len(resp.Signature) != 65 {
-			return fmt.Errorf("invalid signature length: %d (expected 65)", len(resp.Signature))
-		}
-
-		// Hash the nonce using Keccak256 (consistent with wallet.SignMessage).
-		hash := ethcrypto.Keccak256(nonce)
-
-		// Recover the public key from the signature.
-		recoveredPub, err := ethcrypto.SigToPub(hash, resp.Signature)
-		if err != nil {
-			return fmt.Errorf("recover public key from signature: %w", err)
-		}
-
-		// Compare the recovered compressed public key with the claimed key.
-		recoveredCompressed := ethcrypto.CompressPubkey(recoveredPub)
-		if !bytes.Equal(recoveredCompressed, resp.PublicKey) {
-			return fmt.Errorf("signature public key mismatch")
-		}
-
-		return nil
+		return h.responseVerifier(resp.PublicKey, nonce, resp.Signature)
 	}
 
 	return fmt.Errorf("no proof or signature in response")
@@ -390,37 +384,6 @@ func (h *Handshaker) StreamHandlerV11() network.StreamHandler {
 	}
 }
 
-// challengeSignPayload constructs the canonical bytes for challenge signing:
-// nonce || bigEndian(timestamp, 8) || utf8(senderDID)
-func challengeSignPayload(nonce []byte, timestamp int64, senderDID string) []byte {
-	buf := make([]byte, 0, len(nonce)+8+len(senderDID))
-	buf = append(buf, nonce...)
-	ts := make([]byte, 8)
-	binary.BigEndian.PutUint64(ts, uint64(timestamp))
-	buf = append(buf, ts...)
-	buf = append(buf, []byte(senderDID)...)
-	return ethcrypto.Keccak256(buf)
-}
-
-// verifyChallengeSignature verifies the ECDSA signature on a v1.1 challenge.
-func verifyChallengeSignature(c *Challenge) error {
-	if len(c.Signature) != 65 {
-		return fmt.Errorf("invalid signature length: %d (expected 65)", len(c.Signature))
-	}
-
-	payload := challengeSignPayload(c.Nonce, c.Timestamp, c.SenderDID)
-	recovered, err := ethcrypto.SigToPub(payload, c.Signature)
-	if err != nil {
-		return fmt.Errorf("recover public key: %w", err)
-	}
-
-	recoveredCompressed := ethcrypto.CompressPubkey(recovered)
-	if !bytes.Equal(recoveredCompressed, c.PublicKey) {
-		return fmt.Errorf("public key mismatch")
-	}
-
-	return nil
-}
 
 // validateChallengeTimestamp ensures the challenge timestamp is within the
 // acceptable window: not older than challengeTimestampWindow and not more

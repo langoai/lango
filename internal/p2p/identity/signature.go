@@ -1,6 +1,7 @@
 package identity
 
 import (
+	"bytes"
 	"fmt"
 
 	ethcrypto "github.com/ethereum/go-ethereum/crypto"
@@ -22,7 +23,7 @@ func VerifyMessageSignature(didStr string, message, signature []byte) error {
 		return fmt.Errorf("recover signature public key: %w", err)
 	}
 	recovered := ethcrypto.CompressPubkey(pub)
-	if string(recovered) != string(did.PublicKey) {
+	if !bytes.Equal(recovered, did.PublicKey) {
 		return fmt.Errorf("signature public key does not match signer DID")
 	}
 	return nil

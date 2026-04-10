@@ -128,7 +128,7 @@ func initP2P(cfg *config.Config, wp wallet.WalletProvider, pc *paymentComponents
 	}
 
 	hsCfg := handshake.Config{
-		Wallet:                 wp,
+		Signer:                 wp,
 		Sessions:               sessions,
 		ApprovalFn:             approvalFn,
 		ZKEnabled:              cfg.P2P.ZKHandshake,
