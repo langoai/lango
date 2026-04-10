@@ -21,7 +21,7 @@ import (
 // encrypted secrets, database files, and keyfiles).
 const dataDirPerm = 0700
 
-// DefaultPhases returns the standard bootstrap phase sequence (10 phases).
+// DefaultPhases returns the standard bootstrap phase sequence (11 phases).
 //
 // Envelope-aware order: envelope loads BEFORE DB open so recovery credentials
 // (mnemonic) and MK-derived DB keys are available when we actually open
@@ -38,6 +38,7 @@ func DefaultPhases() []Phase {
 		phaseMigrateEnvelope(),
 		phaseLoadSecurityState(),
 		phaseInitCrypto(),
+		phaseDeriveIdentityKey(),
 		phaseLoadProfile(),
 	}
 }
@@ -418,6 +419,23 @@ func phaseInitCrypto() Phase {
 
 			s.Crypto = provider
 			s.Result.Crypto = provider
+			return nil
+		},
+	}
+}
+
+// phaseDeriveIdentityKey derives the Ed25519 identity key from the Master Key
+// via HKDF. This key is used by BundleProvider for DID v2 identity.
+// No-op when MK is unavailable (legacy mode).
+func phaseDeriveIdentityKey() Phase {
+	return Phase{
+		Name: "derive identity key",
+		Run: func(_ context.Context, s *State) error {
+			if s.MasterKey == nil {
+				return nil // No MK = no identity key (legacy mode)
+			}
+			s.IdentityKey = security.DeriveIdentityKey(s.MasterKey, 0)
+			s.Result.IdentityKey = s.IdentityKey
 			return nil
 		},
 	}

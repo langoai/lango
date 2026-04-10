@@ -52,22 +52,24 @@ type PendingHandshake struct {
 
 // Challenge is sent by the initiator to start the handshake.
 type Challenge struct {
-	Nonce              []byte `json:"nonce"`
-	Timestamp          int64  `json:"timestamp"`
-	SenderDID          string `json:"senderDid"`
-	PublicKey          []byte `json:"publicKey,omitempty"`          // v1.1: initiator's public key
-	Signature          []byte `json:"signature,omitempty"`          // v1.1: ECDSA signature over canonical payload
-	SignatureAlgorithm string `json:"signatureAlgorithm,omitempty"` // algorithm used for signing (empty = secp256k1-keccak256)
+	Nonce              []byte              `json:"nonce"`
+	Timestamp          int64               `json:"timestamp"`
+	SenderDID          string              `json:"senderDid"`
+	PublicKey          []byte              `json:"publicKey,omitempty"`          // v1.1: initiator's public key
+	Signature          []byte              `json:"signature,omitempty"`          // v1.1: signature over canonical payload
+	SignatureAlgorithm string              `json:"signatureAlgorithm,omitempty"` // algorithm (empty = secp256k1-keccak256)
+	Bundle             *identity.IdentityBundle `json:"bundle,omitempty"`             // v2: initiator's identity bundle
 }
 
 // ChallengeResponse is the target's reply with proof of identity.
 type ChallengeResponse struct {
-	Nonce              []byte `json:"nonce"`
-	Signature          []byte `json:"signature,omitempty"`
-	ZKProof            []byte `json:"zkProof,omitempty"`
-	DID                string `json:"did"`
-	PublicKey          []byte `json:"publicKey"`
-	SignatureAlgorithm string `json:"signatureAlgorithm,omitempty"` // algorithm used for signing (empty = secp256k1-keccak256)
+	Nonce              []byte              `json:"nonce"`
+	Signature          []byte              `json:"signature,omitempty"`
+	ZKProof            []byte              `json:"zkProof,omitempty"`
+	DID                string              `json:"did"`
+	PublicKey          []byte              `json:"publicKey"`
+	SignatureAlgorithm string              `json:"signatureAlgorithm,omitempty"` // algorithm (empty = secp256k1-keccak256)
+	Bundle             *identity.IdentityBundle `json:"bundle,omitempty"`             // v2: responder's identity bundle
 }
 
 // SessionAck is sent by the initiator after verifying the response.
@@ -77,16 +79,18 @@ type SessionAck struct {
 }
 
 // Signer is the minimal interface for identity signing operations.
-// Implementations must declare their algorithm via Algorithm().
+// Implementations must declare their algorithm and DID via Algorithm() and DID().
 type Signer interface {
 	SignMessage(ctx context.Context, message []byte) ([]byte, error)
 	PublicKey(ctx context.Context) ([]byte, error)
 	Algorithm() string
+	DID(ctx context.Context) (string, error)
 }
 
 // Handshaker manages peer authentication using wallet signatures or ZK proofs.
 type Handshaker struct {
 	signer                 Signer
+	legacySigner           Signer // v1 fallback for unknown/v1 peers
 	sessions               *SessionStore
 	approvalFn             ApprovalFunc
 	zkProver               ZKProverFunc
@@ -97,12 +101,14 @@ type Handshaker struct {
 	nonceCache             *NonceCache
 	requireSignedChallenge bool
 	verifiers              map[string]SignatureVerifyFunc
+	bundleCache            identity.BundleResolver // optional: cache received bundles
 	logger                 *zap.SugaredLogger
 }
 
 // Config configures the Handshaker.
 type Config struct {
 	Signer                 Signer
+	LegacySigner           Signer                        // v1 secp256k1 fallback (optional)
 	Sessions               *SessionStore
 	ApprovalFn             ApprovalFunc
 	ZKProver               ZKProverFunc
@@ -112,7 +118,8 @@ type Config struct {
 	AutoApproveKnown       bool
 	NonceCache             *NonceCache
 	RequireSignedChallenge bool
-	Verifiers              map[string]SignatureVerifyFunc // nil → default {secp256k1: VerifySecp256k1Signature}
+	Verifiers              map[string]SignatureVerifyFunc // nil → default with secp256k1 + ed25519
+	BundleCache            identity.BundleResolver       // optional: for caching received bundles
 	Logger                 *zap.SugaredLogger
 }
 
@@ -122,10 +129,12 @@ func NewHandshaker(cfg Config) *Handshaker {
 	if verifiers == nil {
 		verifiers = map[string]SignatureVerifyFunc{
 			security.AlgorithmSecp256k1Keccak256: VerifySecp256k1Signature,
+			security.AlgorithmEd25519:            security.VerifyEd25519,
 		}
 	}
 	return &Handshaker{
 		signer:                 cfg.Signer,
+		legacySigner:           cfg.LegacySigner,
 		sessions:               cfg.Sessions,
 		approvalFn:             cfg.ApprovalFn,
 		zkProver:               cfg.ZKProver,
@@ -136,8 +145,20 @@ func NewHandshaker(cfg Config) *Handshaker {
 		nonceCache:             cfg.NonceCache,
 		requireSignedChallenge: cfg.RequireSignedChallenge,
 		verifiers:              verifiers,
+		bundleCache:            cfg.BundleCache,
 		logger:                 cfg.Logger,
 	}
+}
+
+// selectSigner picks the appropriate signer based on the peer's algorithm.
+// Unknown or v1 peers get the legacy signer (secp256k1). v2 peers get the primary signer.
+func (h *Handshaker) selectSigner(peerAlgo string) Signer {
+	if peerAlgo == "" || peerAlgo == security.AlgorithmSecp256k1Keccak256 {
+		if h.legacySigner != nil {
+			return h.legacySigner
+		}
+	}
+	return h.signer
 }
 
 // Initiate starts a handshake with a remote peer over the given stream.
@@ -275,33 +296,35 @@ func (h *Handshaker) HandleIncoming(ctx context.Context, s network.Stream) (*Ses
 		}
 	}
 
+	// Select signer based on peer's algorithm (v1/v2 downgrade).
+	signer := h.selectSigner(challenge.SignatureAlgorithm)
+
 	// Get local public key.
-	pubkey, err := h.signer.PublicKey(ctx)
+	pubkey, err := signer.PublicKey(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("get public key: %w", err)
+	}
+
+	// Get DID from signer (v1: DIDFromPublicKey, v2: BundleProvider.DID).
+	didStr, err := signer.DID(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("get signer DID: %w", err)
 	}
 
 	// Build response.
 	resp := ChallengeResponse{
 		Nonce:              challenge.Nonce,
 		PublicKey:          pubkey,
-		SignatureAlgorithm: h.signer.Algorithm(),
+		DID:                didStr,
+		SignatureAlgorithm: signer.Algorithm(),
 	}
-
-	// Generate DID from pubkey via identity package.
-	did, err := identity.DIDFromPublicKey(pubkey)
-	if err != nil {
-		return nil, fmt.Errorf("derive DID from public key: %w", err)
-	}
-	resp.DID = did.ID
 
 	// Sign or generate ZK proof.
 	if h.zkEnabled && h.zkProver != nil {
 		proof, err := h.zkProver(ctx, challenge.Nonce)
 		if err != nil {
 			h.logger.Warnw("ZK proof generation failed, falling back to signature", "error", err)
-			// Fall back to signature mode.
-			sig, err := h.signer.SignMessage(ctx, challenge.Nonce)
+			sig, err := signer.SignMessage(ctx, challenge.Nonce)
 			if err != nil {
 				return nil, fmt.Errorf("sign challenge: %w", err)
 			}
@@ -310,7 +333,7 @@ func (h *Handshaker) HandleIncoming(ctx context.Context, s network.Stream) (*Ses
 			resp.ZKProof = proof
 		}
 	} else {
-		sig, err := h.signer.SignMessage(ctx, challenge.Nonce)
+		sig, err := signer.SignMessage(ctx, challenge.Nonce)
 		if err != nil {
 			return nil, fmt.Errorf("sign challenge: %w", err)
 		}

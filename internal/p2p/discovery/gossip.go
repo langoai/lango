@@ -29,6 +29,7 @@ type GossipCard struct {
 	OntologyDigest *OntologyDigest `json:"ontologyDigest,omitempty"`
 	PeerID         string          `json:"peerId"`
 	Timestamp      time.Time       `json:"timestamp"`
+	Bundle         json.RawMessage `json:"bundle,omitempty"` // v2: serialized IdentityBundle for DID resolution
 }
 
 // PricingInfo describes the pricing for an agent's services.

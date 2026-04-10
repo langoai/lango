@@ -13,6 +13,7 @@ import (
 
 	"github.com/langoai/lango/internal/bootstrap"
 	"github.com/langoai/lango/internal/config"
+	"github.com/langoai/lango/internal/p2p/identity"
 	sec "github.com/langoai/lango/internal/security"
 	"github.com/langoai/lango/internal/security/passphrase"
 )
@@ -39,19 +40,48 @@ type dbStatusResult struct {
 }
 
 // statusOutput is the full status payload (envelope + DB + config fields).
+// identityBundleSection captures DID v2 identity bundle state.
+type identityBundleSection struct {
+	Present          bool   `json:"present"`
+	DIDv2            string `json:"did_v2,omitempty"`
+	SigningAlgorithm string `json:"signing_algorithm,omitempty"`
+	HasSettlement    bool   `json:"has_settlement"`
+	LegacyDID        string `json:"legacy_did,omitempty"`
+}
+
 type statusOutput struct {
-	SignerProvider string          `json:"signer_provider"`
-	EncryptionKeys int             `json:"encryption_keys"`
-	StoredSecrets  int             `json:"stored_secrets"`
-	Interceptor    string          `json:"interceptor"`
-	PIIRedaction   string          `json:"pii_redaction"`
-	ApprovalPolicy string          `json:"approval_policy"`
-	DBEncryption   string          `json:"db_encryption"`
-	Envelope       envelopeSection `json:"envelope"`
-	DBAvailable    bool            `json:"db_available"`
-	KMSProvider    string          `json:"kms_provider,omitempty"`
-	KMSKeyID       string          `json:"kms_key_id,omitempty"`
-	KMSFallback    string          `json:"kms_fallback,omitempty"`
+	SignerProvider string                `json:"signer_provider"`
+	EncryptionKeys int                   `json:"encryption_keys"`
+	StoredSecrets  int                   `json:"stored_secrets"`
+	Interceptor    string                `json:"interceptor"`
+	PIIRedaction   string                `json:"pii_redaction"`
+	ApprovalPolicy string                `json:"approval_policy"`
+	DBEncryption   string                `json:"db_encryption"`
+	Envelope       envelopeSection       `json:"envelope"`
+	IdentityBundle identityBundleSection `json:"identity_bundle"`
+	DBAvailable    bool                  `json:"db_available"`
+	KMSProvider    string                `json:"kms_provider,omitempty"`
+	KMSKeyID       string                `json:"kms_key_id,omitempty"`
+	KMSFallback    string                `json:"kms_fallback,omitempty"`
+}
+
+// readIdentityBundleStatus reads the identity bundle file from langoDir.
+func readIdentityBundleStatus(langoDir string) identityBundleSection {
+	if langoDir == "" {
+		return identityBundleSection{}
+	}
+	bundle, err := identity.LoadBundleFile(langoDir)
+	if err != nil || bundle == nil {
+		return identityBundleSection{}
+	}
+	didV2, _ := identity.ComputeDIDv2(bundle)
+	return identityBundleSection{
+		Present:          true,
+		DIDv2:            didV2,
+		SigningAlgorithm: bundle.SigningKey.Algorithm,
+		HasSettlement:    len(bundle.SettlementKey.PublicKey) > 0,
+		LegacyDID:        bundle.LegacyDID,
+	}
 }
 
 // readEnvelopeStatus loads the envelope file from langoDir without requiring
@@ -259,6 +289,7 @@ func runStatusNonInteractive(jsonOutput bool) error {
 		ApprovalPolicy: policy,
 		DBEncryption:   dbEncStatus,
 		Envelope:       envelope,
+		IdentityBundle: readIdentityBundleStatus(langoDir),
 		DBAvailable:    dbStatus.available,
 	}
 	return renderStatus(s, jsonOutput)
@@ -300,6 +331,7 @@ func runStatusFullBootstrap(bootLoader func() (*bootstrap.Result, error), jsonOu
 		ApprovalPolicy: policy,
 		DBEncryption:   dbEncStatus,
 		Envelope:       readEnvelopeStatus(langoDir),
+		IdentityBundle: readIdentityBundleStatus(langoDir),
 		DBAvailable:    true,
 	}
 
@@ -357,6 +389,16 @@ func renderStatus(s statusOutput, jsonOutput bool) error {
 		}
 	} else {
 		fmt.Println("    absent (legacy format)")
+	}
+	// Identity bundle section.
+	fmt.Println("  Identity Bundle:")
+	if s.IdentityBundle.Present {
+		fmt.Printf("    DID v2:           %s\n", s.IdentityBundle.DIDv2)
+		fmt.Printf("    Signing Key:      %s\n", s.IdentityBundle.SigningAlgorithm)
+		fmt.Printf("    Settlement Key:   %s\n", boolToStatus(s.IdentityBundle.HasSettlement))
+		fmt.Printf("    Legacy DID:       %s\n", s.IdentityBundle.LegacyDID)
+	} else {
+		fmt.Println("    absent (v1 identity only)")
 	}
 	if s.KMSProvider != "" {
 		fmt.Printf("  KMS Provider:       %s\n", s.KMSProvider)

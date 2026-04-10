@@ -3,12 +3,19 @@ package identity
 import (
 	"bytes"
 	"fmt"
+	"strings"
 
 	ethcrypto "github.com/ethereum/go-ethereum/crypto"
+
+	"github.com/langoai/lango/internal/types"
 )
 
-// VerifyMessageSignature verifies a secp256k1-keccak256 signature against a DID.
+// VerifyMessageSignature verifies a secp256k1-keccak256 signature against a v1 DID.
+// For v2 DIDs, use the verifier map pattern (BundleResolver → pubkey → verify).
 func VerifyMessageSignature(didStr string, message, signature []byte) error {
+	if strings.HasPrefix(didStr, types.DIDv2Prefix) {
+		return fmt.Errorf("VerifyMessageSignature does not support DID v2; use BundleResolver + verifier map")
+	}
 	did, err := ParseDID(didStr)
 	if err != nil {
 		return fmt.Errorf("parse signer DID: %w", err)

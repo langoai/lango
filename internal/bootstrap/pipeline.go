@@ -2,6 +2,7 @@ package bootstrap
 
 import (
 	"context"
+	"crypto/ed25519"
 	"database/sql"
 	"fmt"
 	"time"
@@ -52,6 +53,9 @@ type State struct {
 	MasterKey    []byte // unwrapped MK (zeroed on cleanup)
 	LegacyMode   bool   // no envelope, not first run — needs legacy→envelope migration
 	RecoveryMode bool   // mnemonic was used instead of passphrase
+
+	// Identity key derived from MK via HKDF (Phase 3).
+	IdentityKey ed25519.PrivateKey
 }
 
 // Phase represents a single step in the bootstrap pipeline.

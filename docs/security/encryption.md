@@ -57,6 +57,11 @@ Passphrase → PBKDF2 → KEK → wraps Master Key (AES-256-GCM)
 | Data encryption | Key | Master Key (256 bits, random) |
 | Data encryption | Cipher | AES-256-GCM, 96-bit nonce |
 | DB key | Derivation | HKDF-SHA256(MK, "lango-db-encryption") |
+| Identity key | Derivation | HKDF-SHA256(MK, "lango-identity-ed25519") → Ed25519 |
+
+**Identity Bundle:**
+
+When the Master Key is available, Lango derives an Ed25519 identity key and creates an **Identity Bundle** (`~/.lango/identity-bundle.json`). The bundle contains the Ed25519 signing key, secp256k1 settlement key (from wallet), and dual proofs. A content-addressed DID v2 (`did:lango:v2:<hash>`) is computed from the bundle. The legacy v1 DID (`did:lango:<secp256k1-hex>`) is preserved for backward compatibility.
 
 **Envelope File:**
 

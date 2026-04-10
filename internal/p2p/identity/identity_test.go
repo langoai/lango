@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"strings"
 	"testing"
+	"time"
 
 	ethcrypto "github.com/ethereum/go-ethereum/crypto"
 	"github.com/libp2p/go-libp2p/core/peer"
@@ -121,6 +122,106 @@ func TestParseDIDPublicKey_Valid(t *testing.T) {
 	extracted, err := ParseDIDPublicKey(did.ID)
 	require.NoError(t, err)
 	assert.Equal(t, pubkey, extracted)
+}
+
+func TestParseDIDPublicKey_RejectsV2(t *testing.T) {
+	t.Parallel()
+	_, err := ParseDIDPublicKey("did:lango:v2:abcdef1234567890abcdef1234567890abcdef12")
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "DID v2 does not embed")
+}
+
+func TestParseDID_V2_Valid(t *testing.T) {
+	t.Parallel()
+	hashHex := "abcdef1234567890abcdef1234567890abcdef12" // 40 hex chars
+	did, err := ParseDID("did:lango:v2:" + hashHex)
+	require.NoError(t, err)
+	assert.Equal(t, 2, did.Version)
+	assert.Equal(t, "did:lango:v2:"+hashHex, did.ID)
+	assert.Nil(t, did.PublicKey, "v2 DID should have nil PublicKey")
+	assert.Empty(t, did.PeerID, "v2 DID should have empty PeerID")
+}
+
+func TestParseDID_V2_EmptyHash(t *testing.T) {
+	t.Parallel()
+	_, err := ParseDID("did:lango:v2:")
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "empty hash")
+}
+
+func TestParseDID_V2_WrongHashLength(t *testing.T) {
+	t.Parallel()
+	_, err := ParseDID("did:lango:v2:abc123") // too short
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "invalid DID v2 hash length")
+}
+
+func TestParseDID_V2_InvalidHex(t *testing.T) {
+	t.Parallel()
+	_, err := ParseDID("did:lango:v2:ZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZ")
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "invalid DID v2 hash hex")
+}
+
+func TestParseDID_V1_HasVersion1(t *testing.T) {
+	t.Parallel()
+	pubkey := generateTestPubkey(t)
+	did, err := DIDFromPublicKey(pubkey)
+	require.NoError(t, err)
+	assert.Equal(t, 1, did.Version)
+}
+
+func TestComputeDIDv2_Deterministic(t *testing.T) {
+	t.Parallel()
+	bundle := &IdentityBundle{
+		Version: 1,
+		SigningKey: PublicKeyEntry{
+			Algorithm: "ed25519",
+			PublicKey: make([]byte, 32),
+		},
+		SettlementKey: PublicKeyEntry{
+			Algorithm: "secp256k1-keccak256",
+			PublicKey: make([]byte, 33),
+		},
+		LegacyDID: "did:lango:abc123",
+	}
+	did1, err := ComputeDIDv2(bundle)
+	require.NoError(t, err)
+	did2, err := ComputeDIDv2(bundle)
+	require.NoError(t, err)
+	assert.Equal(t, did1, did2)
+	assert.True(t, strings.HasPrefix(did1, "did:lango:v2:"))
+	assert.Len(t, strings.TrimPrefix(did1, "did:lango:v2:"), 40)
+}
+
+func TestComputeDIDv2_CreatedAtDoesNotAffect(t *testing.T) {
+	t.Parallel()
+	bundle1 := &IdentityBundle{
+		Version:       1,
+		SigningKey:    PublicKeyEntry{Algorithm: "ed25519", PublicKey: make([]byte, 32)},
+		SettlementKey: PublicKeyEntry{Algorithm: "secp256k1-keccak256", PublicKey: make([]byte, 33)},
+		CreatedAt:     time.Now(),
+	}
+	bundle2 := &IdentityBundle{
+		Version:       1,
+		SigningKey:    PublicKeyEntry{Algorithm: "ed25519", PublicKey: make([]byte, 32)},
+		SettlementKey: PublicKeyEntry{Algorithm: "secp256k1-keccak256", PublicKey: make([]byte, 33)},
+		CreatedAt:     time.Now().Add(time.Hour),
+	}
+	did1, _ := ComputeDIDv2(bundle1)
+	did2, _ := ComputeDIDv2(bundle2)
+	assert.Equal(t, did1, did2, "CreatedAt should not affect DID v2")
+}
+
+func TestDIDAlias_CanonicalDID(t *testing.T) {
+	t.Parallel()
+	alias := NewDIDAlias()
+	bundle := &IdentityBundle{LegacyDID: "did:lango:abc"}
+	alias.RegisterFromBundle(bundle, "did:lango:v2:1234567890123456789012345678901234567890")
+
+	assert.Equal(t, "did:lango:abc", alias.CanonicalDID("did:lango:v2:1234567890123456789012345678901234567890"))
+	assert.Equal(t, "did:lango:abc", alias.CanonicalDID("did:lango:abc"))
+	assert.Equal(t, "did:lango:other", alias.CanonicalDID("did:lango:other"))
 }
 
 func TestParseDIDPublicKey_InvalidPrefix(t *testing.T) {

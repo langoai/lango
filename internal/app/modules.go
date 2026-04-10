@@ -671,7 +671,7 @@ func (m *networkModule) Init(ctx context.Context, r appinit.Resolver) (*appinit.
 		entries = append(entries, appinit.CatalogEntry{Category: "payment", Description: "Blockchain payments (USDC on Base)", ConfigKey: "payment.enabled", Enabled: true, Tools: pt})
 
 		// P2P.
-		p2pc = initP2P(cfg, pc.wallet, pc, m.boot.DBClient, fv.Secrets, m.bus)
+		p2pc = initP2P(cfg, pc.wallet, pc, m.boot.DBClient, fv.Secrets, m.bus, m.boot.IdentityKey, m.boot.LangoDir)
 		if p2pc != nil {
 			// P2P Node lifecycle.
 			if p2pc.node != nil {

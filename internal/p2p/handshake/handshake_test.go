@@ -4,6 +4,8 @@ import (
 	"context"
 	"crypto/ed25519"
 	"crypto/rand"
+	"encoding/hex"
+	"fmt"
 	"testing"
 	"time"
 
@@ -30,6 +32,10 @@ func (m *mockEd25519Signer) PublicKey(_ context.Context) ([]byte, error) {
 }
 
 func (m *mockEd25519Signer) Algorithm() string { return security.AlgorithmEd25519 }
+
+func (m *mockEd25519Signer) DID(_ context.Context) (string, error) {
+	return "did:lango:v2:" + hex.EncodeToString(m.pub[:20]), nil
+}
 
 func ed25519GenerateKey() (ed25519.PublicKey, ed25519.PrivateKey, error) {
 	return ed25519.GenerateKey(rand.Reader)
@@ -62,6 +68,14 @@ func (m *mockSigner) PublicKey(_ context.Context) ([]byte, error) {
 }
 
 func (m *mockSigner) Algorithm() string { return security.AlgorithmSecp256k1Keccak256 }
+
+func (m *mockSigner) DID(_ context.Context) (string, error) {
+	pub, err := m.PublicKey(context.Background())
+	if err != nil {
+		return "", err
+	}
+	return "did:lango:" + fmt.Sprintf("%x", pub), nil
+}
 
 func newTestHandshaker(t *testing.T, s *mockSigner) *Handshaker {
 	t.Helper()

@@ -2,6 +2,7 @@ package bootstrap
 
 import (
 	"context"
+	"crypto/ed25519"
 	"database/sql"
 	"fmt"
 	"os"
@@ -49,6 +50,9 @@ type Result struct {
 	// Downstream components (CLI, status, change-passphrase) use this to locate
 	// the envelope file without reaching into bootstrap internals.
 	LangoDir string
+	// IdentityKey is the Ed25519 identity key derived from the Master Key (Phase 3).
+	// nil when MK is unavailable (legacy mode).
+	IdentityKey ed25519.PrivateKey
 	// PhaseTiming records the duration of each bootstrap phase.
 	PhaseTiming []PhaseTimingEntry `json:"phaseTiming,omitempty"`
 }
