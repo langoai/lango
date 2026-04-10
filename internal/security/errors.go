@@ -10,6 +10,13 @@ var (
 	ErrNoEncryptionKeys = errors.New("no encryption keys available")
 	ErrDecryptionFailed = errors.New("decryption failed")
 
+	// Envelope errors
+	ErrInvalidSlot     = errors.New("invalid KEK slot")
+	ErrLastSlot        = errors.New("cannot remove last KEK slot")
+	ErrUnwrapFailed    = errors.New("master key unwrap failed")
+	ErrEnvelopeCorrupt = errors.New("master key envelope corrupted")
+	ErrNoEnvelopeFile  = errors.New("envelope file not found")
+
 	// KMS errors
 	ErrKMSUnavailable  = errors.New("KMS service unavailable")
 	ErrKMSAccessDenied = errors.New("KMS access denied")

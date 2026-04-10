@@ -23,7 +23,7 @@ func CreateWallet(ctx context.Context, secrets *security.SecretsStore) (string, 
 	// Check if wallet already exists
 	existing, err := secrets.Get(ctx, WalletKeyName)
 	if err == nil {
-		defer zeroBytes(existing)
+		defer security.ZeroBytes(existing)
 
 		key, parseErr := crypto.ToECDSA(existing)
 		if parseErr != nil {
@@ -40,7 +40,7 @@ func CreateWallet(ctx context.Context, secrets *security.SecretsStore) (string, 
 	}
 
 	keyBytes := crypto.FromECDSA(privateKey)
-	defer zeroBytes(keyBytes)
+	defer security.ZeroBytes(keyBytes)
 
 	// Store encrypted in SecretsStore
 	if err := secrets.Store(ctx, WalletKeyName, keyBytes); err != nil {

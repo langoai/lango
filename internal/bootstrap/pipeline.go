@@ -38,7 +38,7 @@ type State struct {
 	Client *ent.Client
 	RawDB  *sql.DB
 
-	// Security state from DB.
+	// Security state from DB (legacy path).
 	Salt     []byte
 	Checksum []byte
 	FirstRun bool
@@ -46,6 +46,12 @@ type State struct {
 	// Crypto.
 	DBKey  string
 	Crypto security.CryptoProvider
+
+	// Envelope-based crypto state.
+	Envelope     *security.MasterKeyEnvelope
+	MasterKey    []byte // unwrapped MK (zeroed on cleanup)
+	LegacyMode   bool   // no envelope, not first run — needs legacy→envelope migration
+	RecoveryMode bool   // mnemonic was used instead of passphrase
 }
 
 // Phase represents a single step in the bootstrap pipeline.

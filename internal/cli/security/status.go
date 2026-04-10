@@ -3,6 +3,7 @@ package security
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -11,109 +12,358 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/langoai/lango/internal/bootstrap"
+	"github.com/langoai/lango/internal/config"
 	sec "github.com/langoai/lango/internal/security"
+	"github.com/langoai/lango/internal/security/passphrase"
 )
+
+// envelopeSection captures passphrase-free envelope state for status output.
+// Populated by reading envelope.json directly; never requires a passphrase.
+type envelopeSection struct {
+	Present          bool     `json:"present"`
+	Version          int      `json:"version,omitempty"`
+	SlotCount        int      `json:"slot_count,omitempty"`
+	SlotTypes        []string `json:"slot_types,omitempty"`
+	RecoverySetup    bool     `json:"recovery_setup"`
+	PendingMigration bool     `json:"pending_migration,omitempty"`
+	PendingRekey     bool     `json:"pending_rekey,omitempty"`
+}
+
+// dbStatusResult holds the DB-dependent fields populated by the non-interactive
+// mini-bootstrap. Zero values indicate "unavailable" — the caller should not
+// treat missing data as an error.
+type dbStatusResult struct {
+	available      bool
+	encryptionKeys int
+	storedSecrets  int
+}
+
+// statusOutput is the full status payload (envelope + DB + config fields).
+type statusOutput struct {
+	SignerProvider string          `json:"signer_provider"`
+	EncryptionKeys int             `json:"encryption_keys"`
+	StoredSecrets  int             `json:"stored_secrets"`
+	Interceptor    string          `json:"interceptor"`
+	PIIRedaction   string          `json:"pii_redaction"`
+	ApprovalPolicy string          `json:"approval_policy"`
+	DBEncryption   string          `json:"db_encryption"`
+	Envelope       envelopeSection `json:"envelope"`
+	DBAvailable    bool            `json:"db_available"`
+	KMSProvider    string          `json:"kms_provider,omitempty"`
+	KMSKeyID       string          `json:"kms_key_id,omitempty"`
+	KMSFallback    string          `json:"kms_fallback,omitempty"`
+}
+
+// readEnvelopeStatus loads the envelope file from langoDir without requiring
+// a passphrase. Returns a zero envelopeSection if the file is missing or corrupt —
+// status output must never fail because of envelope state.
+func readEnvelopeStatus(langoDir string) envelopeSection {
+	if langoDir == "" {
+		return envelopeSection{}
+	}
+	env, err := sec.LoadEnvelopeFile(langoDir)
+	if err != nil || env == nil {
+		return envelopeSection{}
+	}
+	types := make([]string, 0, env.SlotCount())
+	seen := make(map[sec.KEKSlotType]bool)
+	for _, slot := range env.Slots {
+		if !seen[slot.Type] {
+			types = append(types, string(slot.Type))
+			seen[slot.Type] = true
+		}
+	}
+	return envelopeSection{
+		Present:          true,
+		Version:          env.Version,
+		SlotCount:        env.SlotCount(),
+		SlotTypes:        types,
+		RecoverySetup:    env.HasSlotType(sec.KEKSlotMnemonic),
+		PendingMigration: env.PendingMigration,
+		PendingRekey:     env.PendingRekey,
+	}
+}
+
+// defaultLangoDir returns the default data directory (~/.lango) for the current user.
+func defaultLangoDir() string {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return ""
+	}
+	return filepath.Join(home, ".lango")
+}
+
+// expandPath expands a leading "~/" to the user's home directory.
+func expandPath(p string) string {
+	if strings.HasPrefix(p, "~/") {
+		if h, err := os.UserHomeDir(); err == nil {
+			return filepath.Join(h, p[2:])
+		}
+	}
+	return p
+}
+
+// readDBStatusNonInteractive runs a minimal bootstrap-free DB read.
+//
+// Steps:
+//  1. Acquire passphrase non-interactively (keyring → keyfile). If neither is
+//     available, return a zero result — the caller renders "unavailable".
+//  2. If an envelope is present, unwrap the MK and derive the raw DB key via
+//     HKDF. Otherwise, fall back to the passphrase as the DB key (legacy path).
+//  3. Open the DB via bootstrap.OpenDatabaseReadOnly — no schema migration,
+//     no writes.
+//  4. Read encryption key count and stored secret count.
+//  5. Close the DB.
+//
+// This helper NEVER triggers an interactive prompt. Any failure (wrong
+// passphrase, corrupt DB, schema drift) results in a zero result instead of
+// an error, matching the spec's "graceful degrade" requirement.
+func readDBStatusNonInteractive(
+	langoDir, dbPath string,
+	envelope *sec.MasterKeyEnvelope,
+	needsKey bool,
+) dbStatusResult {
+	result := dbStatusResult{}
+	if _, err := os.Stat(dbPath); err != nil {
+		return result
+	}
+
+	var (
+		dbKey  string
+		rawKey bool
+	)
+	if needsKey {
+		pass, _, err := passphrase.AcquireNonInteractive(passphrase.Options{
+			KeyfilePath: filepath.Join(langoDir, "keyfile"),
+		})
+		if err != nil {
+			if !errors.Is(err, passphrase.ErrNoNonInteractiveSource) {
+				fmt.Fprintf(os.Stderr, "warning: status non-interactive passphrase: %v\n", err)
+			}
+			return result
+		}
+		if envelope != nil && !envelope.PendingMigration && !envelope.PendingRekey {
+			mk, _, uerr := envelope.UnwrapFromPassphrase(pass)
+			if uerr != nil {
+				return result
+			}
+			defer sec.ZeroBytes(mk)
+			dbKey = sec.DeriveDBKeyHex(mk)
+			rawKey = true
+		} else {
+			// Legacy mode OR migration in progress — use passphrase as DB key.
+			dbKey = pass
+			rawKey = false
+		}
+	}
+
+	client, rawDB, err := bootstrap.OpenDatabaseReadOnly(dbPath, dbKey, rawKey, 0)
+	if err != nil {
+		return result
+	}
+	defer client.Close()
+	defer rawDB.Close()
+
+	ctx := context.Background()
+	registry := sec.NewKeyRegistry(client)
+	if keys, err := registry.ListKeys(ctx); err == nil {
+		result.encryptionKeys = len(keys)
+	}
+	if n, err := client.Secret.Query().Count(ctx); err == nil {
+		result.storedSecrets = n
+	}
+	result.available = true
+	return result
+}
+
+// resolveStatusConfig loads the config without opening the encrypted DB.
+// Returns a default config if loading fails, so the status command can still
+// render configuration-derived fields (signer provider, interceptor, approval).
+func resolveStatusConfig() *config.Config {
+	// Config currently lives inside the encrypted profile store, which does
+	// require bootstrap to read. For the status default path we keep things
+	// simple: return DefaultConfig so the command never depends on decrypting.
+	// Future work: surface a plaintext config snapshot, if one is useful.
+	return config.DefaultConfig()
+}
 
 func newStatusCmd(bootLoader func() (*bootstrap.Result, error)) *cobra.Command {
 	var jsonOutput bool
+	var fullBootstrap bool
 
 	cmd := &cobra.Command{
 		Use:   "status",
 		Short: "Show security configuration status",
+		Long: `Show security configuration status.
+
+By default, the command runs in passphrase-free mode: it reads envelope.json
+directly, attempts a non-interactive DB read via keyring/keyfile, and
+gracefully degrades DB-dependent fields when no credential is available.
+
+Use --full to force a full bootstrap (which may prompt for a passphrase in
+interactive terminals).`,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			boot, err := bootLoader()
-			if err != nil {
-				return fmt.Errorf("load config: %w", err)
+			if fullBootstrap {
+				return runStatusFullBootstrap(bootLoader, jsonOutput)
 			}
-			defer boot.DBClient.Close()
-
-			cfg := boot.Config
-
-			type statusOutput struct {
-				SignerProvider string `json:"signer_provider"`
-				EncryptionKeys int    `json:"encryption_keys"`
-				StoredSecrets  int    `json:"stored_secrets"`
-				Interceptor    string `json:"interceptor"`
-				PIIRedaction   string `json:"pii_redaction"`
-				ApprovalPolicy string `json:"approval_policy"`
-				DBEncryption   string `json:"db_encryption"`
-				KMSProvider    string `json:"kms_provider,omitempty"`
-				KMSKeyID       string `json:"kms_key_id,omitempty"`
-				KMSFallback    string `json:"kms_fallback,omitempty"`
-			}
-
-			policy := string(cfg.Security.Interceptor.ApprovalPolicy)
-			if policy == "" {
-				policy = "dangerous"
-			}
-
-			// Determine DB encryption status.
-			dbEncStatus := "disabled (plaintext)"
-			dbPath := cfg.Session.DatabasePath
-			if strings.HasPrefix(dbPath, "~/") {
-				if h, err := os.UserHomeDir(); err == nil {
-					dbPath = filepath.Join(h, dbPath[2:])
-				}
-			}
-			if bootstrap.IsDBEncrypted(dbPath) {
-				dbEncStatus = "encrypted (active)"
-			} else if cfg.Security.DBEncryption.Enabled {
-				dbEncStatus = "enabled (pending migration)"
-			}
-
-			s := statusOutput{
-				SignerProvider: cfg.Security.Signer.Provider,
-				Interceptor:    boolToStatus(cfg.Security.Interceptor.Enabled),
-				PIIRedaction:   boolToStatus(cfg.Security.Interceptor.RedactPII),
-				ApprovalPolicy: policy,
-				DBEncryption:   dbEncStatus,
-			}
-
-			// Populate KMS fields when a KMS provider is configured.
-			if isKMSProvider(cfg.Security.Signer.Provider) {
-				s.KMSProvider = cfg.Security.Signer.Provider
-				s.KMSKeyID = cfg.Security.KMS.KeyID
-				s.KMSFallback = boolToStatus(cfg.Security.KMS.FallbackToLocal)
-			}
-
-			ctx := context.Background()
-			registry := sec.NewKeyRegistry(boot.DBClient)
-			keys, err := registry.ListKeys(ctx)
-			if err == nil {
-				s.EncryptionKeys = len(keys)
-			}
-
-			secrets, err := boot.DBClient.Secret.Query().Count(ctx)
-			if err == nil {
-				s.StoredSecrets = secrets
-			}
-
-			if jsonOutput {
-				enc := json.NewEncoder(os.Stdout)
-				enc.SetIndent("", "  ")
-				return enc.Encode(s)
-			}
-
-			fmt.Println("Security Status")
-			fmt.Printf("  Signer Provider:    %s\n", s.SignerProvider)
-			fmt.Printf("  Encryption Keys:    %d\n", s.EncryptionKeys)
-			fmt.Printf("  Stored Secrets:     %d\n", s.StoredSecrets)
-			fmt.Printf("  Interceptor:        %s\n", s.Interceptor)
-			fmt.Printf("  PII Redaction:      %s\n", s.PIIRedaction)
-			fmt.Printf("  Approval Policy:    %s\n", s.ApprovalPolicy)
-			fmt.Printf("  DB Encryption:      %s\n", s.DBEncryption)
-			if s.KMSProvider != "" {
-				fmt.Printf("  KMS Provider:       %s\n", s.KMSProvider)
-				fmt.Printf("  KMS Key ID:         %s\n", s.KMSKeyID)
-				fmt.Printf("  KMS Fallback:       %s\n", s.KMSFallback)
-			}
-
-			return nil
+			return runStatusNonInteractive(jsonOutput)
 		},
 	}
 
 	cmd.Flags().BoolVar(&jsonOutput, "json", false, "Output as JSON")
+	cmd.Flags().BoolVar(&fullBootstrap, "full", false, "Run full bootstrap (may prompt for passphrase)")
 	return cmd
+}
+
+// runStatusNonInteractive is the default status path.
+// It NEVER triggers an interactive passphrase prompt.
+func runStatusNonInteractive(jsonOutput bool) error {
+	langoDir := defaultLangoDir()
+	dbPath := filepath.Join(langoDir, "lango.db")
+
+	envelope := readEnvelopeStatus(langoDir)
+
+	var envPtr *sec.MasterKeyEnvelope
+	if envelope.Present {
+		envPtr, _ = sec.LoadEnvelopeFile(langoDir)
+	}
+
+	needsKey := bootstrap.IsDBEncrypted(dbPath)
+	dbStatus := readDBStatusNonInteractive(langoDir, dbPath, envPtr, needsKey)
+
+	cfg := resolveStatusConfig()
+
+	dbEncStatus := "disabled (plaintext)"
+	if bootstrap.IsDBEncrypted(dbPath) {
+		dbEncStatus = "encrypted (active)"
+	} else if cfg.Security.DBEncryption.Enabled {
+		dbEncStatus = "enabled (pending migration)"
+	}
+
+	policy := string(cfg.Security.Interceptor.ApprovalPolicy)
+	if policy == "" {
+		policy = "dangerous"
+	}
+
+	signer := cfg.Security.Signer.Provider
+	if !dbStatus.available {
+		signer = "unavailable"
+	}
+
+	s := statusOutput{
+		SignerProvider: signer,
+		EncryptionKeys: dbStatus.encryptionKeys,
+		StoredSecrets:  dbStatus.storedSecrets,
+		Interceptor:    boolToStatus(cfg.Security.Interceptor.Enabled),
+		PIIRedaction:   boolToStatus(cfg.Security.Interceptor.RedactPII),
+		ApprovalPolicy: policy,
+		DBEncryption:   dbEncStatus,
+		Envelope:       envelope,
+		DBAvailable:    dbStatus.available,
+	}
+	return renderStatus(s, jsonOutput)
+}
+
+// runStatusFullBootstrap is the --full path. It runs a full bootstrap (may
+// prompt), reads decrypted config values, and surfaces KMS provider details.
+func runStatusFullBootstrap(bootLoader func() (*bootstrap.Result, error), jsonOutput bool) error {
+	boot, err := bootLoader()
+	if err != nil {
+		return fmt.Errorf("load config: %w", err)
+	}
+	defer boot.DBClient.Close()
+
+	cfg := boot.Config
+
+	policy := string(cfg.Security.Interceptor.ApprovalPolicy)
+	if policy == "" {
+		policy = "dangerous"
+	}
+
+	dbEncStatus := "disabled (plaintext)"
+	dbPath := expandPath(cfg.Session.DatabasePath)
+	if bootstrap.IsDBEncrypted(dbPath) {
+		dbEncStatus = "encrypted (active)"
+	} else if cfg.Security.DBEncryption.Enabled {
+		dbEncStatus = "enabled (pending migration)"
+	}
+
+	langoDir := boot.LangoDir
+	if langoDir == "" {
+		langoDir = defaultLangoDir()
+	}
+
+	s := statusOutput{
+		SignerProvider: cfg.Security.Signer.Provider,
+		Interceptor:    boolToStatus(cfg.Security.Interceptor.Enabled),
+		PIIRedaction:   boolToStatus(cfg.Security.Interceptor.RedactPII),
+		ApprovalPolicy: policy,
+		DBEncryption:   dbEncStatus,
+		Envelope:       readEnvelopeStatus(langoDir),
+		DBAvailable:    true,
+	}
+
+	if isKMSProvider(cfg.Security.Signer.Provider) {
+		s.KMSProvider = cfg.Security.Signer.Provider
+		s.KMSKeyID = cfg.Security.KMS.KeyID
+		s.KMSFallback = boolToStatus(cfg.Security.KMS.FallbackToLocal)
+	}
+
+	ctx := context.Background()
+	registry := sec.NewKeyRegistry(boot.DBClient)
+	if keys, err := registry.ListKeys(ctx); err == nil {
+		s.EncryptionKeys = len(keys)
+	}
+	if secrets, err := boot.DBClient.Secret.Query().Count(ctx); err == nil {
+		s.StoredSecrets = secrets
+	}
+
+	return renderStatus(s, jsonOutput)
+}
+
+func renderStatus(s statusOutput, jsonOutput bool) error {
+	if jsonOutput {
+		enc := json.NewEncoder(os.Stdout)
+		enc.SetIndent("", "  ")
+		return enc.Encode(s)
+	}
+
+	signer := s.SignerProvider
+	if signer == "" {
+		signer = "unavailable"
+	}
+
+	fmt.Println("Security Status")
+	fmt.Printf("  Signer Provider:    %s\n", signer)
+	fmt.Printf("  Encryption Keys:    %d\n", s.EncryptionKeys)
+	fmt.Printf("  Stored Secrets:     %d\n", s.StoredSecrets)
+	fmt.Printf("  Interceptor:        %s\n", s.Interceptor)
+	fmt.Printf("  PII Redaction:      %s\n", s.PIIRedaction)
+	fmt.Printf("  Approval Policy:    %s\n", s.ApprovalPolicy)
+	fmt.Printf("  DB Encryption:      %s\n", s.DBEncryption)
+	if !s.DBAvailable {
+		fmt.Println("  DB Access:          unavailable (no non-interactive credential)")
+	}
+	fmt.Println("  Master Key Envelope:")
+	if s.Envelope.Present {
+		fmt.Printf("    Version:          %d\n", s.Envelope.Version)
+		fmt.Printf("    KEK Slots:        %d (%s)\n", s.Envelope.SlotCount, strings.Join(s.Envelope.SlotTypes, ", "))
+		fmt.Printf("    Recovery Setup:   %s\n", boolToStatus(s.Envelope.RecoverySetup))
+		if s.Envelope.PendingMigration {
+			fmt.Println("    PendingMigration: TRUE (migration incomplete)")
+		}
+		if s.Envelope.PendingRekey {
+			fmt.Println("    PendingRekey:     TRUE (PRAGMA rekey incomplete)")
+		}
+	} else {
+		fmt.Println("    absent (legacy format)")
+	}
+	if s.KMSProvider != "" {
+		fmt.Printf("  KMS Provider:       %s\n", s.KMSProvider)
+		fmt.Printf("  KMS Key ID:         %s\n", s.KMSKeyID)
+		fmt.Printf("  KMS Fallback:       %s\n", s.KMSFallback)
+	}
+	return nil
 }
 
 func boolToStatus(b bool) string {

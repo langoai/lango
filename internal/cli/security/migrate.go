@@ -21,6 +21,8 @@ func NewSecurityCmd(bootLoader func() (*bootstrap.Result, error)) *cobra.Command
 		Short: "Manage security settings",
 	}
 
+	cmd.AddCommand(newChangePassphraseCmd(bootLoader))
+	cmd.AddCommand(newRecoveryCmd(bootLoader))
 	cmd.AddCommand(newMigratePassphraseCmd(bootLoader))
 	cmd.AddCommand(newSecretsCmd(bootLoader))
 	cmd.AddCommand(newStatusCmd(bootLoader))
@@ -34,9 +36,11 @@ func NewSecurityCmd(bootLoader func() (*bootstrap.Result, error)) *cobra.Command
 
 func newMigratePassphraseCmd(bootLoader func() (*bootstrap.Result, error)) *cobra.Command {
 	return &cobra.Command{
-		Use:   "migrate-passphrase",
-		Short: "Migrate encrypted data to a new passphrase",
+		Use:        "migrate-passphrase",
+		Short:      "[DEPRECATED] Migrate encrypted data to a new passphrase. Use `change-passphrase` instead.",
+		Deprecated: "use `lango security change-passphrase` instead (re-wraps Master Key without re-encrypting data)",
 		RunE: func(cmd *cobra.Command, args []string) error {
+			fmt.Fprintln(cmd.ErrOrStderr(), "WARN: migrate-passphrase is deprecated. Use `lango security change-passphrase` instead.")
 			boot, err := bootLoader()
 			if err != nil {
 				return fmt.Errorf("load config: %w", err)

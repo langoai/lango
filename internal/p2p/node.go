@@ -235,7 +235,7 @@ func loadOrGenerateKey(keyDir string, secrets *security.SecretsStore, log *zap.S
 		ctx := context.Background()
 		data, err := secrets.Get(ctx, nodeKeySecret)
 		if err == nil {
-			defer zeroBytes(data)
+			defer security.ZeroBytes(data)
 			key, parseErr := crypto.UnmarshalPrivateKey(data)
 			if parseErr != nil {
 				return nil, fmt.Errorf("unmarshal node key from secrets store: %w", parseErr)
@@ -249,7 +249,7 @@ func loadOrGenerateKey(keyDir string, secrets *security.SecretsStore, log *zap.S
 	keyPath := filepath.Join(keyDir, nodeKeyFile)
 	data, err := os.ReadFile(keyPath)
 	if err == nil {
-		defer zeroBytes(data)
+		defer security.ZeroBytes(data)
 		key, parseErr := crypto.UnmarshalPrivateKey(data)
 		if parseErr != nil {
 			return nil, fmt.Errorf("unmarshal node key: %w", parseErr)
@@ -278,7 +278,7 @@ func loadOrGenerateKey(keyDir string, secrets *security.SecretsStore, log *zap.S
 	if err != nil {
 		return nil, fmt.Errorf("marshal node key: %w", err)
 	}
-	defer zeroBytes(raw)
+	defer security.ZeroBytes(raw)
 
 	// Store in SecretsStore if available, otherwise fall back to file.
 	if secrets != nil {
@@ -316,12 +316,6 @@ func migrateKeyToSecrets(secrets *security.SecretsStore, keyData []byte, keyPath
 	return nil
 }
 
-// zeroBytes overwrites a byte slice with zeros for immediate memory cleanup.
-func zeroBytes(b []byte) {
-	for i := range b {
-		b[i] = 0
-	}
-}
 
 // expandHome replaces a leading ~ with the user's home directory.
 func expandHome(path string) string {

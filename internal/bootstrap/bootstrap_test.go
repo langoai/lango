@@ -20,6 +20,7 @@ func TestRun_ShredsKeyfileAfterCryptoInit(t *testing.T) {
 	require.NoError(t, passphrase.WriteKeyfile(keyfilePath, pass))
 
 	result, err := Run(Options{
+		LangoDir:            dir,
 		DBPath:              dbPath,
 		KeyfilePath:         keyfilePath,
 		SkipSecureDetection: true,
@@ -42,6 +43,7 @@ func TestRun_KeepsKeyfileWhenOptedOut(t *testing.T) {
 	require.NoError(t, passphrase.WriteKeyfile(keyfilePath, pass))
 
 	result, err := Run(Options{
+		LangoDir:            dir,
 		DBPath:              dbPath,
 		KeyfilePath:         keyfilePath,
 		KeepKeyfile:         true,
