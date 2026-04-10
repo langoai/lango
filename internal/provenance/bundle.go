@@ -5,10 +5,12 @@ import (
 	"encoding/json"
 	"fmt"
 	"maps"
+
+	"github.com/langoai/lango/internal/security"
 )
 
-// AlgorithmSecp256k1Keccak256 is the default signature algorithm for provenance bundles.
-const AlgorithmSecp256k1Keccak256 = "secp256k1-keccak256"
+// AlgorithmSecp256k1Keccak256 re-exports the canonical algorithm constant for backward compatibility.
+const AlgorithmSecp256k1Keccak256 = security.AlgorithmSecp256k1Keccak256
 
 // BundleSigner signs a canonical provenance payload and declares its algorithm.
 type BundleSigner interface {

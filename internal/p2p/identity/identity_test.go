@@ -111,6 +111,38 @@ func TestParseDID_InvalidHex(t *testing.T) {
 	assert.Contains(t, err.Error(), "decode hex")
 }
 
+func TestParseDIDPublicKey_Valid(t *testing.T) {
+	t.Parallel()
+
+	pubkey := generateTestPubkey(t)
+	did, err := DIDFromPublicKey(pubkey)
+	require.NoError(t, err)
+
+	extracted, err := ParseDIDPublicKey(did.ID)
+	require.NoError(t, err)
+	assert.Equal(t, pubkey, extracted)
+}
+
+func TestParseDIDPublicKey_InvalidPrefix(t *testing.T) {
+	t.Parallel()
+	_, err := ParseDIDPublicKey("did:other:abc123")
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "invalid DID scheme")
+}
+
+func TestParseDIDPublicKey_EmptyKey(t *testing.T) {
+	t.Parallel()
+	_, err := ParseDIDPublicKey("did:lango:")
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "empty public key")
+}
+
+func TestParseDIDPublicKey_InvalidHex(t *testing.T) {
+	t.Parallel()
+	_, err := ParseDIDPublicKey("did:lango:ZZZZ_not_hex")
+	assert.Error(t, err)
+}
+
 func TestVerifyDID_Matching(t *testing.T) {
 	t.Parallel()
 

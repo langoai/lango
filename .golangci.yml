@@ -18,6 +18,8 @@ linters:
           list-mode: lax
           files:
             - "**/internal/p2p/discovery/**/*.go"
+            - "**/internal/p2p/handshake/**/*.go"
+            - "**/internal/p2p/identity/**/*.go"
             - "**/internal/p2p/firewall/**/*.go"
             - "**/internal/p2p/protocol/**/*.go"
             - "**/internal/p2p/agentpool/**/*.go"
@@ -26,9 +28,6 @@ linters:
               desc: "p2p infrastructure packages must not import economy packages (layer boundary violation)"
             - pkg: "github.com/langoai/lango/internal/wallet"
               desc: "p2p infrastructure packages must not import wallet packages (layer boundary violation)"
-        # NOTE: p2p/handshake uses wallet.WalletProvider for cryptographic signing
-        # during handshake. This is a known coupling that requires extracting a
-        # Signer interface from wallet before it can be enforced. Tracked for future phase.
   exclusions:
     generated: strict
     presets:

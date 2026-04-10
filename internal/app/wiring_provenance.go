@@ -8,6 +8,7 @@ import (
 	"github.com/langoai/lango/internal/p2p/gitbundle"
 	"github.com/langoai/lango/internal/p2p/provenanceproto"
 	"github.com/langoai/lango/internal/provenance"
+	"github.com/langoai/lango/internal/security"
 	"github.com/langoai/lango/internal/session"
 	"github.com/langoai/lango/internal/toolchain"
 	"github.com/langoai/lango/internal/wallet"
@@ -23,7 +24,7 @@ func (s *walletBundleSigner) Sign(ctx context.Context, payload []byte) ([]byte, 
 }
 
 func (s *walletBundleSigner) Algorithm() string {
-	return provenance.AlgorithmSecp256k1Keccak256
+	return security.AlgorithmSecp256k1Keccak256
 }
 
 func wireProvenanceRuntime(app *App, r appinit.Resolver) {

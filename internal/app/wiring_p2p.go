@@ -36,6 +36,24 @@ import (
 	libp2pproto "github.com/libp2p/go-libp2p/core/protocol"
 )
 
+// walletHandshakeSigner wraps a WalletProvider to satisfy handshake.Signer
+// by adding an Algorithm() method. The wallet always uses secp256k1-keccak256.
+type walletHandshakeSigner struct {
+	wp wallet.WalletProvider
+}
+
+func (s *walletHandshakeSigner) SignMessage(ctx context.Context, message []byte) ([]byte, error) {
+	return s.wp.SignMessage(ctx, message)
+}
+
+func (s *walletHandshakeSigner) PublicKey(ctx context.Context) ([]byte, error) {
+	return s.wp.PublicKey(ctx)
+}
+
+func (s *walletHandshakeSigner) Algorithm() string {
+	return security.AlgorithmSecp256k1Keccak256
+}
+
 // p2pComponents holds optional P2P networking components.
 type p2pComponents struct {
 	node           *p2p.Node
@@ -128,7 +146,7 @@ func initP2P(cfg *config.Config, wp wallet.WalletProvider, pc *paymentComponents
 	}
 
 	hsCfg := handshake.Config{
-		Signer:                 wp,
+		Signer:                 &walletHandshakeSigner{wp: wp},
 		Sessions:               sessions,
 		ApprovalFn:             approvalFn,
 		ZKEnabled:              cfg.P2P.ZKHandshake,

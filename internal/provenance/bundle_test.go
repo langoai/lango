@@ -3,6 +3,9 @@ package provenance
 import (
 	"context"
 	"crypto/ecdsa"
+	"crypto/ed25519"
+	"crypto/rand"
+	"encoding/hex"
 	"encoding/json"
 	"testing"
 	"time"
@@ -12,6 +15,8 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/langoai/lango/internal/p2p/identity"
+	"github.com/langoai/lango/internal/security"
+	"github.com/langoai/lango/internal/types"
 )
 
 // testBundleSigner implements BundleSigner for testing.
@@ -145,4 +150,62 @@ func TestBundleService_Verify_InvalidRedaction(t *testing.T) {
 	}
 	err := bundleSvc.Verify(bundle)
 	require.ErrorIs(t, err, ErrInvalidRedaction)
+}
+
+// ed25519BundleSigner implements BundleSigner for Ed25519 (framework testing only).
+type ed25519BundleSigner struct {
+	priv ed25519.PrivateKey
+}
+
+func (s *ed25519BundleSigner) Sign(_ context.Context, payload []byte) ([]byte, error) {
+	return ed25519.Sign(s.priv, payload), nil
+}
+
+func (s *ed25519BundleSigner) Algorithm() string { return security.AlgorithmEd25519 }
+
+func TestBundleService_ExportVerify_Ed25519(t *testing.T) {
+	cpStore := NewMemoryStore()
+	treeStore := NewMemoryTreeStore()
+	attrStore := NewMemoryAttributionStore()
+	attrSvc := NewAttributionService(attrStore, cpStore, &stubTokenReader{})
+
+	// Ed25519 verifier: same wiring closure pattern as production.
+	ed25519Verifier := func(didStr string, payload, signature []byte) error {
+		pubkey, err := identity.ParseDIDPublicKey(didStr)
+		if err != nil {
+			return err
+		}
+		return security.VerifyEd25519(pubkey, payload, signature)
+	}
+	verifiers := map[string]SignatureVerifyFunc{
+		AlgorithmSecp256k1Keccak256:    identity.VerifyMessageSignature,
+		security.AlgorithmEd25519: ed25519Verifier,
+	}
+	bundleSvc := NewBundleService(cpStore, treeStore, attrStore, attrSvc, verifiers)
+
+	ctx := context.Background()
+	require.NoError(t, cpStore.SaveCheckpoint(ctx, Checkpoint{
+		ID:         "cp-ed25519",
+		SessionKey: "sess-ed25519",
+		Label:      "ed25519-test",
+		Trigger:    TriggerManual,
+		CreatedAt:  time.Now(),
+	}))
+
+	// Generate Ed25519 key pair and construct a test DID.
+	// NOTE: test-only did:lango:<ed25519-pubkey-hex> does NOT represent
+	// production capability. Phase 3 DID v2 is required for Ed25519 DIDs.
+	pub, priv, err := ed25519.GenerateKey(rand.Reader)
+	require.NoError(t, err)
+	testDID := types.DIDPrefix + hex.EncodeToString(pub)
+
+	signer := &ed25519BundleSigner{priv: priv}
+	bundle, _, err := bundleSvc.Export(ctx, "sess-ed25519", RedactionNone, testDID, signer)
+	require.NoError(t, err)
+	assert.Equal(t, security.AlgorithmEd25519, bundle.SignatureAlgorithm)
+	assert.Equal(t, testDID, bundle.SignerDID)
+
+	// Verify using the Ed25519 verifier.
+	err = bundleSvc.Verify(bundle)
+	assert.NoError(t, err)
 }

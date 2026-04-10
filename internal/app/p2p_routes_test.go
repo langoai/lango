@@ -20,6 +20,7 @@ import (
 	"github.com/langoai/lango/internal/p2p/identity"
 	"github.com/langoai/lango/internal/p2p/provenanceproto"
 	provenancepkg "github.com/langoai/lango/internal/provenance"
+	"github.com/langoai/lango/internal/security"
 	"github.com/libp2p/go-libp2p"
 	libp2pcrypto "github.com/libp2p/go-libp2p/core/crypto"
 	"github.com/libp2p/go-libp2p/core/host"
@@ -220,7 +221,7 @@ func setupProvenanceRouteRuntime(t *testing.T) (*App, *p2pComponents, host.Host,
 	attrStore := provenancepkg.NewMemoryAttributionStore()
 	attrSvc := provenancepkg.NewAttributionService(attrStore, cpStore, nil)
 	verifiers := map[string]provenancepkg.SignatureVerifyFunc{
-		provenancepkg.AlgorithmSecp256k1Keccak256: identity.VerifyMessageSignature,
+		security.AlgorithmSecp256k1Keccak256: identity.VerifyMessageSignature,
 	}
 	bundleSvc := provenancepkg.NewBundleService(cpStore, treeStore, attrStore, attrSvc, verifiers)
 	require.NoError(t, cpStore.SaveCheckpoint(context.Background(), provenancepkg.Checkpoint{
@@ -331,7 +332,7 @@ func TestP2PProvenancePushAndFetchHandlers(t *testing.T) {
 	remoteAttrs := provenancepkg.NewMemoryAttributionStore()
 	remoteAttrSvc := provenancepkg.NewAttributionService(remoteAttrs, remoteCP, nil)
 	remoteVerifiers := map[string]provenancepkg.SignatureVerifyFunc{
-		provenancepkg.AlgorithmSecp256k1Keccak256: identity.VerifyMessageSignature,
+		security.AlgorithmSecp256k1Keccak256: identity.VerifyMessageSignature,
 	}
 	remoteBundleSvc := provenancepkg.NewBundleService(remoteCP, remoteTree, remoteAttrs, remoteAttrSvc, remoteVerifiers)
 	require.NoError(t, remoteCP.SaveCheckpoint(context.Background(), provenancepkg.Checkpoint{

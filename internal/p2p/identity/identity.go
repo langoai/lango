@@ -103,6 +103,20 @@ func (p *WalletDIDProvider) VerifyDID(did *DID, peerID peer.ID) error {
 	return nil
 }
 
+// ParseDIDPublicKey extracts the raw public key bytes from a DID string
+// without deriving a peer ID. Useful for signature verification where
+// the caller knows the key type independently (e.g., via an algorithm field).
+func ParseDIDPublicKey(didStr string) ([]byte, error) {
+	if !strings.HasPrefix(didStr, types.DIDPrefix) {
+		return nil, fmt.Errorf("invalid DID scheme: expected prefix %q, got %q", types.DIDPrefix, didStr)
+	}
+	hexKey := strings.TrimPrefix(didStr, types.DIDPrefix)
+	if hexKey == "" {
+		return nil, fmt.Errorf("empty public key in DID %q", didStr)
+	}
+	return hex.DecodeString(hexKey)
+}
+
 // ParseDID parses a "did:lango:<hexkey>" string into a DID.
 func ParseDID(didStr string) (*DID, error) {
 	if !strings.HasPrefix(didStr, types.DIDPrefix) {

@@ -14,6 +14,7 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/langoai/lango/internal/p2p/identity"
+	"github.com/langoai/lango/internal/security"
 )
 
 // Protocol version constants for handshake negotiation.
@@ -51,20 +52,22 @@ type PendingHandshake struct {
 
 // Challenge is sent by the initiator to start the handshake.
 type Challenge struct {
-	Nonce     []byte `json:"nonce"`
-	Timestamp int64  `json:"timestamp"`
-	SenderDID string `json:"senderDid"`
-	PublicKey []byte `json:"publicKey,omitempty"` // v1.1: initiator's public key
-	Signature []byte `json:"signature,omitempty"` // v1.1: ECDSA signature over canonical payload
+	Nonce              []byte `json:"nonce"`
+	Timestamp          int64  `json:"timestamp"`
+	SenderDID          string `json:"senderDid"`
+	PublicKey          []byte `json:"publicKey,omitempty"`          // v1.1: initiator's public key
+	Signature          []byte `json:"signature,omitempty"`          // v1.1: ECDSA signature over canonical payload
+	SignatureAlgorithm string `json:"signatureAlgorithm,omitempty"` // algorithm used for signing (empty = secp256k1-keccak256)
 }
 
 // ChallengeResponse is the target's reply with proof of identity.
 type ChallengeResponse struct {
-	Nonce     []byte `json:"nonce"`
-	Signature []byte `json:"signature,omitempty"`
-	ZKProof   []byte `json:"zkProof,omitempty"`
-	DID       string `json:"did"`
-	PublicKey []byte `json:"publicKey"`
+	Nonce              []byte `json:"nonce"`
+	Signature          []byte `json:"signature,omitempty"`
+	ZKProof            []byte `json:"zkProof,omitempty"`
+	DID                string `json:"did"`
+	PublicKey          []byte `json:"publicKey"`
+	SignatureAlgorithm string `json:"signatureAlgorithm,omitempty"` // algorithm used for signing (empty = secp256k1-keccak256)
 }
 
 // SessionAck is sent by the initiator after verifying the response.
@@ -74,10 +77,11 @@ type SessionAck struct {
 }
 
 // Signer is the minimal interface for identity signing operations.
-// wallet.WalletProvider satisfies this via Go structural typing.
+// Implementations must declare their algorithm via Algorithm().
 type Signer interface {
 	SignMessage(ctx context.Context, message []byte) ([]byte, error)
 	PublicKey(ctx context.Context) ([]byte, error)
+	Algorithm() string
 }
 
 // Handshaker manages peer authentication using wallet signatures or ZK proofs.
@@ -92,7 +96,7 @@ type Handshaker struct {
 	autoApproveKnown       bool
 	nonceCache             *NonceCache
 	requireSignedChallenge bool
-	responseVerifier       ResponseVerifyFunc
+	verifiers              map[string]SignatureVerifyFunc
 	logger                 *zap.SugaredLogger
 }
 
@@ -108,15 +112,17 @@ type Config struct {
 	AutoApproveKnown       bool
 	NonceCache             *NonceCache
 	RequireSignedChallenge bool
-	ResponseVerifier       ResponseVerifyFunc // nil → default VerifySecp256k1Signature
+	Verifiers              map[string]SignatureVerifyFunc // nil → default {secp256k1: VerifySecp256k1Signature}
 	Logger                 *zap.SugaredLogger
 }
 
 // NewHandshaker creates a new peer authenticator.
 func NewHandshaker(cfg Config) *Handshaker {
-	rv := cfg.ResponseVerifier
-	if rv == nil {
-		rv = VerifySecp256k1Signature
+	verifiers := cfg.Verifiers
+	if verifiers == nil {
+		verifiers = map[string]SignatureVerifyFunc{
+			security.AlgorithmSecp256k1Keccak256: VerifySecp256k1Signature,
+		}
 	}
 	return &Handshaker{
 		signer:                 cfg.Signer,
@@ -129,7 +135,7 @@ func NewHandshaker(cfg Config) *Handshaker {
 		autoApproveKnown:       cfg.AutoApproveKnown,
 		nonceCache:             cfg.NonceCache,
 		requireSignedChallenge: cfg.RequireSignedChallenge,
-		responseVerifier:       rv,
+		verifiers:              verifiers,
 		logger:                 cfg.Logger,
 	}
 }
@@ -157,7 +163,8 @@ func (h *Handshaker) Initiate(ctx context.Context, s network.Stream, localDID st
 		h.logger.Warnw("challenge signing skipped: get public key", "error", err)
 	} else {
 		challenge.PublicKey = pubkey
-		payload := challengeSignPayload(nonce, challenge.Timestamp, localDID)
+		challenge.SignatureAlgorithm = h.signer.Algorithm()
+		payload := challengeCanonicalPayload(nonce, challenge.Timestamp, localDID)
 		sig, err := h.signer.SignMessage(ctx, payload)
 		if err != nil {
 			h.logger.Warnw("challenge signing skipped: sign", "error", err)
@@ -236,7 +243,7 @@ func (h *Handshaker) HandleIncoming(ctx context.Context, s network.Stream) (*Ses
 
 	// Verify challenge signature (v1.1 protocol).
 	if len(challenge.Signature) > 0 && len(challenge.PublicKey) > 0 {
-		if err := verifyChallengeSignature(&challenge); err != nil {
+		if err := h.verifyChallengeSignature(&challenge); err != nil {
 			return nil, fmt.Errorf("challenge signature: %w", err)
 		}
 		h.logger.Debugw("challenge signature verified", "senderDID", challenge.SenderDID)
@@ -276,8 +283,9 @@ func (h *Handshaker) HandleIncoming(ctx context.Context, s network.Stream) (*Ses
 
 	// Build response.
 	resp := ChallengeResponse{
-		Nonce:     challenge.Nonce,
-		PublicKey: pubkey,
+		Nonce:              challenge.Nonce,
+		PublicKey:          pubkey,
+		SignatureAlgorithm: h.signer.Algorithm(),
 	}
 
 	// Generate DID from pubkey via identity package.
@@ -362,9 +370,17 @@ func (h *Handshaker) verifyResponse(ctx context.Context, resp *ChallengeResponse
 		return nil
 	}
 
-	// Verify signature using the injectable verifier (default: secp256k1+keccak256).
+	// Verify signature using algorithm-dispatched verifier.
 	if len(resp.Signature) > 0 {
-		return h.responseVerifier(resp.PublicKey, nonce, resp.Signature)
+		algo := resp.SignatureAlgorithm
+		if algo == "" {
+			algo = security.AlgorithmSecp256k1Keccak256 // backward compat
+		}
+		verifier, ok := h.verifiers[algo]
+		if !ok {
+			return fmt.Errorf("unsupported signature algorithm %q", algo)
+		}
+		return verifier(resp.PublicKey, nonce, resp.Signature)
 	}
 
 	return fmt.Errorf("no proof or signature in response")

@@ -49,8 +49,16 @@ func loadServices(boot *bootstrap.Result) *services {
 
 	tree := provenancepkg.NewSessionTree(treeStore)
 	attribution := provenancepkg.NewAttributionService(attrs, checkpoints, tokenStore)
+	ed25519Verifier := func(didStr string, payload, signature []byte) error {
+		pubkey, err := identity.ParseDIDPublicKey(didStr)
+		if err != nil {
+			return err
+		}
+		return security.VerifyEd25519(pubkey, payload, signature)
+	}
 	verifiers := map[string]provenancepkg.SignatureVerifyFunc{
-		provenancepkg.AlgorithmSecp256k1Keccak256: identity.VerifyMessageSignature,
+		security.AlgorithmSecp256k1Keccak256: identity.VerifyMessageSignature,
+		security.AlgorithmEd25519:            ed25519Verifier,
 	}
 	bundle := provenancepkg.NewBundleService(checkpoints, treeStore, attrs, attribution, verifiers)
 

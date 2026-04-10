@@ -12,6 +12,7 @@ import (
 	"github.com/langoai/lango/internal/observability/token"
 	"github.com/langoai/lango/internal/p2p/identity"
 	"github.com/langoai/lango/internal/provenance"
+	"github.com/langoai/lango/internal/security"
 	"github.com/langoai/lango/internal/runledger"
 	"github.com/langoai/lango/internal/toolchain"
 )
@@ -69,8 +70,16 @@ func (m *provenanceModule) Init(_ context.Context, r appinit.Resolver) (*appinit
 	cpService := provenance.NewCheckpointService(cpStore, ledgerStore, m.cfg.Provenance.Checkpoints)
 	sessionTree := provenance.NewSessionTree(treeStore)
 	attribution := provenance.NewAttributionService(attrStore, cpStore, tokenStore)
+	ed25519Verifier := func(didStr string, payload, signature []byte) error {
+		pubkey, err := identity.ParseDIDPublicKey(didStr)
+		if err != nil {
+			return err
+		}
+		return security.VerifyEd25519(pubkey, payload, signature)
+	}
 	verifiers := map[string]provenance.SignatureVerifyFunc{
-		provenance.AlgorithmSecp256k1Keccak256: identity.VerifyMessageSignature,
+		security.AlgorithmSecp256k1Keccak256: identity.VerifyMessageSignature,
+		security.AlgorithmEd25519:            ed25519Verifier,
 	}
 	bundle := provenance.NewBundleService(cpStore, treeStore, attrStore, attribution, verifiers)
 
