@@ -1,74 +1,74 @@
 ## Context
 
-멀티 에이전트 제어가 3곳에 분산 (orchestration prompt, agent.go budget, agent.go recovery). TUI가 기본 진입점이 된 이후(`847dcea`), TurnRunner 변경은 TUI/Gateway/Channel 전체에 영향. 현재 app에는 root `*adk.Agent` 하나만 존재하고, TurnRunner에 단일 executor로 주입됨.
+Multi-agent control is scattered across 3 locations (orchestration prompt, agent.go budget, agent.go recovery). Since TUI became the default entry point (`847dcea`), TurnRunner changes affect TUI/Gateway/Channel entirely. Currently the app has only a single root `*adk.Agent`, injected as a single executor into TurnRunner.
 
-기반 커밋: `847dcea` (dev), `app.New(boot, ...AppOption)` 패턴, `AppModeLocalChat`, `lifecycle.SetMaxPriority()` 도입됨.
+Base commit: `847dcea` (dev), `app.New(boot, ...AppOption)` pattern, `AppModeLocalChat`, `lifecycle.SetMaxPriority()` introduced.
 
 ## Goals / Non-Goals
 
 **Goals:**
-- 정책/관측 래퍼(`CoordinatingExecutor`)를 `turnrunner.Executor` 위에 올려 delegation 감시, 예산 미러링, 복구 결정을 코드로 분리
-- turntrace 진단 인프라 확장 (typed events, delegation graph, metrics, retention)
-- CLI 진단 표면 제공 (`lango agent trace/graph/trace metrics`)
-- doctor health check 강화 (loop/timeout 빈도, trace 성장률)
-- gateway WebSocket events (agent.delegation, agent.budget_warning)
-- config로 정책 파라미터 외부화
+- Place a policy/observation wrapper (`CoordinatingExecutor`) on top of `turnrunner.Executor` to separate delegation monitoring, budget mirroring, and recovery decisions into code
+- Extend turntrace diagnostic infrastructure (typed events, delegation graph, metrics, retention)
+- Provide CLI diagnostic surface (`lango agent trace/graph/trace metrics`)
+- Strengthen doctor health checks (loop/timeout frequency, trace growth rate)
+- Gateway WebSocket events (agent.delegation, agent.budget_warning)
+- Externalize policy parameters via config
 
 **Non-Goals:**
-- agent.go 리팩토링 (budget/recovery authoritative 승격은 v2)
-- per-agent direct execution (root orchestrator만 경유)
-- TaskQueue, Mailbox, Swarm, Pipeline 패턴
-- EventBus async/priority 도입
-- TUI statusbar에 delegation/budget 실시간 표시 (callback 인프라만 제공)
-- prompt routing 축소 (v1에서는 root orchestrator LLM이 라우팅 소유 유지)
+- agent.go refactoring (budget/recovery authoritative promotion is v2)
+- Per-agent direct execution (only via root orchestrator)
+- TaskQueue, Mailbox, Swarm, Pipeline patterns
+- EventBus async/priority introduction
+- Real-time delegation/budget display in TUI statusbar (only callback infrastructure provided)
+- Prompt routing reduction (in v1 root orchestrator LLM retains routing ownership)
 
 ## Decisions
 
-### D1: CoordinatingExecutor는 turnrunner.Executor를 구현
+### D1: CoordinatingExecutor implements turnrunner.Executor
 
-**선택:** `CoordinatingExecutor`가 `turnrunner.Executor` interface (`RunStreamingDetailed`)를 구현하는 래퍼.
-**대안:** 자체 `Coordinate(sessionID, input) (string, error)` interface → TurnRunner가 chunk streaming, onEvent trace hook, idle timeout을 잃음.
-**근거:** TurnRunner가 유일한 턴 경계. 기존 streaming/tracing 파이프라인을 깨지 않으려면 동일 interface를 구현해야 함.
+**Choice:** `CoordinatingExecutor` is a wrapper implementing the `turnrunner.Executor` interface (`RunStreamingDetailed`).
+**Alternative:** Custom `Coordinate(sessionID, input) (string, error)` interface → TurnRunner loses chunk streaming, onEvent trace hook, idle timeout.
+**Rationale:** TurnRunner is the sole turn boundary. To avoid breaking the existing streaming/tracing pipeline, it must implement the same interface.
 
-### D2: DelegationGuard는 사후 관측기 (라우팅 소유 아님)
+### D2: DelegationGuard is a post-hoc observer (does not own routing)
 
-**선택:** `DelegationGuard`는 ADK event hook으로 delegation을 관측하고 circuit breaker 상태를 관리. 라우팅 결정 자체는 root orchestrator LLM이 소유.
-**대안:** `StructuredRouter`가 사전에 agent를 선택 → per-agent direct execution 필요 (앱에 root agent 하나만 존재하므로 불가).
-**근거:** v1에서 실현 가능한 범위. 정직한 이름(`DelegationGuard`)으로 역할 한정.
+**Choice:** `DelegationGuard` observes delegation via ADK event hooks and manages circuit breaker state. Routing decisions remain owned by the root orchestrator LLM.
+**Alternative:** `StructuredRouter` selects agents proactively → requires per-agent direct execution (impossible since the app has only one root agent).
+**Rationale:** Achievable scope in v1. Honest naming (`DelegationGuard`) constrains the role.
 
-### D3: BudgetPolicy는 observational (authoritative 아님)
+### D3: BudgetPolicy is observational (not authoritative)
 
-**선택:** inner executor(agent.go)의 hardcoded budget이 authoritative. BudgetPolicy는 event hook에서 turn/delegation을 미러링하고 threshold 알림만 발행.
-**대안:** agent.go를 수정하여 budget 로직을 외부 정책에 위임 → v1 scope 초과, regression 위험.
-**근거:** v1은 관측 계층. agent.go 수정은 v2.
-**미러링 규칙:** inner budget과 동일 기준 — `hasFunctionCall(event)` && `!isDelegation(event)`만 turn으로 셈 (agent.go:350 참조). `RecordDelegation(target string)`으로 uniqueAgents 추적.
+**Choice:** The inner executor's (agent.go) hardcoded budget is authoritative. BudgetPolicy mirrors turn/delegation from event hooks and only issues threshold notifications.
+**Alternative:** Modify agent.go to delegate budget logic to external policy → exceeds v1 scope, regression risk.
+**Rationale:** v1 is the observation layer. agent.go modification is v2.
+**Mirroring rule:** Same criteria as inner budget — only `hasFunctionCall(event)` && `!isDelegation(event)` counts as a turn (ref agent.go:350). `RecordDelegation(target string)` tracks uniqueAgents.
 
-### D4: RecoveryPolicy는 실질적 제어권 보유
+### D4: RecoveryPolicy has substantive control
 
-**선택:** inner executor 실패 시 `RecoveryPolicy.Decide()`가 재시도/힌트재시도/직접응답/에스컬레이션 결정. inner executor 재호출 여부를 외부에서 결정하므로 v1에서도 실질적 제어권.
-**Actions:** `RecoveryRetry` (동일 입력 재시도), `RecoveryRetryWithHint` (root에 "다른 specialist 시도" 힌트 추가), `RecoveryDirectAnswer` (partial result 활용), `RecoveryEscalate` (에러 반환).
-**`RecoveryRetryWithHint`는 reroute가 아님:** root orchestrator에 힌트를 추가한 입력으로 재시도하여 다른 선택을 유도.
+**Choice:** On inner executor failure, `RecoveryPolicy.Decide()` determines retry/hint-retry/direct-answer/escalation. Since it decides whether to re-invoke the inner executor from outside, it has substantive control even in v1.
+**Actions:** `RecoveryRetry` (retry with same input), `RecoveryRetryWithHint` (retry with "try a different specialist" hint added to root), `RecoveryDirectAnswer` (use partial result), `RecoveryEscalate` (return error).
+**`RecoveryRetryWithHint` is not a reroute:** It retries with hint-augmented input to the root orchestrator to encourage a different selection.
 
-### D5: turntrace Store 확장은 doctor 요구사항 포함
+### D5: turntrace Store extension includes doctor requirements
 
-**선택:** `RecentByOutcome(ctx, outcome, since, limit)` 추가하여 doctor의 time-window + outcome-filter 조회 지원.
-**대안:** doctor가 Ent client를 직접 사용 → Store interface 추상화 파괴.
-**근거:** Store interface를 통한 일관된 접근.
+**Choice:** Add `RecentByOutcome(ctx, outcome, since, limit)` to support doctor's time-window + outcome-filter queries.
+**Alternative:** Doctor uses Ent client directly → breaks Store interface abstraction.
+**Rationale:** Consistent access through Store interface.
 
-### D6: Event hook 합성은 opts, onChunk 래핑 아님
+### D6: Event hook composition via opts, not onChunk wrapping
 
-**선택:** `adk.WithOnEvent()`로 policy hook을 opts에 합성. delegation event는 ADK event hook으로만 보임 (onChunk에서는 안 보임).
-**근거:** TurnRunner의 traceRecorder도 `adk.WithOnEvent()`로 동작 (runner.go:227 참조). 동일 패턴 사용.
+**Choice:** Compose policy hooks into opts using `adk.WithOnEvent()`. Delegation events are only visible in ADK event hooks (not in onChunk).
+**Rationale:** TurnRunner's traceRecorder also works via `adk.WithOnEvent()` (ref runner.go:227). Same pattern.
 
-### D7: CoordinatingExecutor는 lifecycle component가 아님
+### D7: CoordinatingExecutor is not a lifecycle component
 
-**선택:** executor 래핑으로 주입 (`initAgentRuntime`이 반환한 executor를 TurnRunner에 전달). lifecycle.Registry에 등록하지 않음.
-**근거:** lifecycle priority 제한(LocalChat의 `SetMaxPriority(PriorityBuffer)`)과 무관해야 함. RetentionCleaner만 lifecycle component로 등록.
+**Choice:** Injected via executor wrapping (`initAgentRuntime` returns the executor, which is passed to TurnRunner). Not registered in lifecycle.Registry.
+**Rationale:** Must be independent of lifecycle priority limits (LocalChat's `SetMaxPriority(PriorityBuffer)`). Only RetentionCleaner is registered as a lifecycle component.
 
 ## Risks / Trade-offs
 
-- **[Risk] BudgetPolicy 미러링 오차** — event hook 타이밍과 inner budget 카운팅이 정확히 동기화되지 않을 수 있음 → **Mitigation:** inner budget과 동일 기준(hasFunctionCall && !isDelegation) 적용. 알림은 advisory, enforcement는 inner에 맡김.
-- **[Risk] RecoveryRetryWithHint가 무한루프** — root orchestrator가 같은 specialist을 계속 선택 → **Mitigation:** maxRetries (default 2) 제한. 실패한 agent를 excludeAgents 힌트에 포함.
-- **[Risk] runner.go를 Unit 1(event 상수)과 Unit 5(callback)가 동시 수정** → **Mitigation:** Phase 분리 (Unit 1 Phase 1, Unit 5 Phase 4). 수정 위치가 다름 (상수 교체 vs callback 추가).
-- **[Risk] TUI에서 OnDelegation/OnBudgetWarning이 설정되지 않으면 누락** → **Mitigation:** callback은 optional (nil이면 no-op). TUI 표시는 후속 작업으로 명시.
-- **[Trade-off] v1에서 budget enforcement 없음** — 관측만 제공, 실제 제어는 inner executor → v2에서 agent.go 리팩토링으로 해결.
+- **[Risk] BudgetPolicy mirroring error** — Event hook timing and inner budget counting may not be precisely synchronized → **Mitigation:** Apply same criteria as inner budget (hasFunctionCall && !isDelegation). Notifications are advisory; enforcement is left to inner.
+- **[Risk] RecoveryRetryWithHint infinite loop** — Root orchestrator keeps selecting the same specialist → **Mitigation:** maxRetries (default 2) limit. Include failed agent in excludeAgents hint.
+- **[Risk] runner.go modified concurrently by Unit 1 (event constants) and Unit 5 (callback)** → **Mitigation:** Phase separation (Unit 1 Phase 1, Unit 5 Phase 4). Modification locations differ (constant replacement vs callback addition).
+- **[Risk] OnDelegation/OnBudgetWarning not set in TUI results in missed events** → **Mitigation:** Callbacks are optional (nil means no-op). TUI display is explicitly stated as follow-up work.
+- **[Trade-off] No budget enforcement in v1** — Only observation provided, actual control is in inner executor → Resolved in v2 with agent.go refactoring.

@@ -1,6 +1,6 @@
 ## Why
 
-Docker slim + `chromedp/headless-shell` sidecar environment에서 브라우저 도구 사용 시, `go-rod/rod` 라이브러리가 Chrome과의 CDP/WebSocket 연결 끊김에 대해 error 대신 panic을 발생시켜 프로세스 전체가 크래시된다. Tool 실행 경로와 WebSocket goroutine에 panic recovery가 없어 단일 브라우저 장애가 전체 서비스 중단으로 이어진다.
+In Docker slim + `chromedp/headless-shell` sidecar environments, the `go-rod/rod` library panics instead of returning errors on Chrome CDP/WebSocket disconnection, crashing the entire process. Without panic recovery in the tool execution path and WebSocket goroutines, a single browser failure leads to complete service outage.
 
 ## What Changes
 

@@ -1,19 +1,19 @@
 ## Why
 
-Multi-agent structured orchestration mode에서 vault 핸드오프가 3가지 별개의 버그로 실패.
-(1) ADK 2-phase delegation과 Lango 가드 타이밍 충돌, (2) 병렬 tool response의 ID 소실,
-(3) 보조 이슈(TUI 로그 누수, dangling cleanup author 손실, recovery 무한 루프).
-DB/turntrace 증거로 각 원인이 확정됨.
+Vault handoff fails in multi-agent structured orchestration mode due to 3 distinct bugs.
+(1) Timing conflict between ADK 2-phase delegation and Lango guard, (2) ID loss in parallel tool responses,
+(3) Auxiliary issues (TUI log leak, dangling cleanup author loss, recovery infinite loop).
+Each root cause was confirmed through DB/turntrace evidence.
 
 ## What Changes
 
-- `transfer_to_agent` FunctionCall이 orchestrator direct-tool guard를 통과하도록 예외 추가 (ADK 2-phase 호환)
-- `convertMessages`에서 EventsAdapter가 merge한 다수 FunctionResponse를 개별 provider.Message로 분리
-- `closeDanglingParentToolCalls`의 합성 tool response에 originating agent Author 보존
-- `CauseOrchestratorDirectTool` recovery를 Escalate로 변경 (same-input retry 무한 루프 방지)
-- TUI에서 Go stdlib logger를 로그 파일로 리다이렉트 (ADK의 log.Printf 누수 차단)
-- `repairOrphanedToolCalls` 에러 메시지를 더 정확하고 actionable하게 개선
-- CoordinatingExecutor recovery에 error classification 진단 로깅 추가
+- Add exception for `transfer_to_agent` FunctionCall to pass through orchestrator direct-tool guard (ADK 2-phase compatibility)
+- Split multiple FunctionResponses merged by EventsAdapter in `convertMessages` into individual provider.Messages
+- Preserve originating agent Author in `closeDanglingParentToolCalls` synthetic tool response
+- Change `CauseOrchestratorDirectTool` recovery to Escalate (prevent same-input retry infinite loop)
+- Redirect Go stdlib logger to log file in TUI (block ADK's log.Printf leak)
+- Improve `repairOrphanedToolCalls` error messages to be more accurate and actionable
+- Add error classification diagnostic logging to CoordinatingExecutor recovery
 
 ## Capabilities
 
@@ -23,8 +23,8 @@ _None._
 
 ### Modified Capabilities
 
-- `agent-control-plane`: orchestrator direct-tool guard에 transfer_to_agent 예외 추가, recovery에 CauseOrchestratorDirectTool escalation 추가
-- `agent-error-handling`: repairOrphanedToolCalls 메시지 개선, dangling cleanup author 보존, convertMessages FunctionResponse split
+- `agent-control-plane`: Added transfer_to_agent exception to orchestrator direct-tool guard, added CauseOrchestratorDirectTool escalation to recovery
+- `agent-error-handling`: Improved repairOrphanedToolCalls message, preserved dangling cleanup author, added convertMessages FunctionResponse split
 
 ## Impact
 

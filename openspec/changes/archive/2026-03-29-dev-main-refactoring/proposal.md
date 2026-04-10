@@ -1,6 +1,6 @@
 ## Why
 
-dev→main merge (1,073 files, +110K lines) 이후 코드 분석에서 TUI hot-path 성능 문제, RunLedger O(N) 탐색, store 패턴 중복, 타입 단언 불일치, 이벤트명 stringly-typed 등 12건의 개선점을 발견. UX 즉각 개선(P0)부터 코드 품질(P2), 최적화(P3)까지 4-phase 리팩토링으로 해결.
+After the dev→main merge (1,073 files, +110K lines), code analysis identified 12 improvements including TUI hot-path performance issues, RunLedger O(N) lookup, store pattern duplication, type assertion mismatches, and stringly-typed event names. These are resolved through a 4-phase refactoring spanning immediate UX improvements (P0) through code quality (P2) and optimization (P3).
 
 ## What Changes
 

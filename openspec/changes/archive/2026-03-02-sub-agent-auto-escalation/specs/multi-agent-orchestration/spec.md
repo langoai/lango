@@ -33,7 +33,7 @@ The system SHALL support a multi-agent mode (`agent.multiAgent: true`) that crea
 The orchestrator's Decision Protocol SHALL include a Step 0 (ASSESS) that evaluates whether a request is a simple conversational message (greeting, general knowledge, opinion, weather, math, small talk). If yes, the orchestrator SHALL respond directly without delegation.
 
 #### Scenario: Simple greeting handled directly
-- **WHEN** the user sends a greeting like "안녕하세요"
+- **WHEN** the user sends a greeting like "Hello"
 - **THEN** the orchestrator SHALL respond directly without delegating to any sub-agent
 
 #### Scenario: General knowledge handled directly
@@ -41,7 +41,7 @@ The orchestrator's Decision Protocol SHALL include a Step 0 (ASSESS) that evalua
 - **THEN** the orchestrator SHALL respond directly without delegation
 
 #### Scenario: Tool-requiring request delegated normally
-- **WHEN** the user requests an action requiring tools (e.g., "지갑 만들어줘")
+- **WHEN** the user requests an action requiring tools (e.g., "create a wallet")
 - **THEN** the orchestrator SHALL delegate to the appropriate sub-agent per the routing table
 
 ### Requirement: Orchestrator re-routing protocol

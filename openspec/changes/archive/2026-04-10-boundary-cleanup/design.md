@@ -1,64 +1,64 @@
 ## Context
 
-Phase 1 (master-key-envelope)에서 저장 암호화 계층을 MK/KEK로 분리 완료. 다음 단계인 Phase 2 (Algorithm Agility)와 Phase 3 (Hybrid DID v2)를 진행하려면, wallet secp256k1 키가 settlement 외 영역에 직접 침투한 결합도를 먼저 해소해야 한다.
+In Phase 1 (master-key-envelope), the storage encryption layer was separated into MK/KEK. To proceed with Phase 2 (Algorithm Agility) and Phase 3 (Hybrid DID v2), the coupling where the wallet secp256k1 key directly penetrates areas beyond settlement must first be resolved.
 
-현재 결합 구조:
+Current coupling structure:
 - `p2p/handshake` → `wallet` (imports WalletProvider for signing)
 - `p2p/identity` → `wallet` (imports WalletProvider for public key)
 - `provenance` → `p2p/identity` (imports VerifyMessageSignature)
-- `archtest`의 boundary rule이 trailing slash 버그로 wallet import를 놓치고 있음
+- `archtest`'s boundary rule misses wallet imports due to a trailing slash bug
 
 ## Goals / Non-Goals
 
 **Goals:**
-- `internal/p2p/handshake/`에서 `internal/wallet` import 제거
-- `internal/p2p/identity/`에서 `internal/wallet` import 제거
-- `internal/provenance/`에서 `internal/p2p/identity` import 제거 (의존 역전)
-- handshake response verification을 injectable function으로 추출
-- archtest boundary enforcement 강화
+- Remove `internal/wallet` import from `internal/p2p/handshake/`
+- Remove `internal/wallet` import from `internal/p2p/identity/`
+- Remove `internal/p2p/identity` import from `internal/provenance/` (dependency inversion)
+- Extract handshake response verification into an injectable function
+- Strengthen archtest boundary enforcement
 
 **Non-Goals:**
-- `wallet.WalletProvider` 인터페이스 변경
-- P2P 프로토콜 포맷 변경 (Challenge/ChallengeResponse)
-- DID 포맷 변경 (did:lango:v2는 Phase 3)
-- 새로운 signature algorithm 추가 (Phase 2)
-- `internal/p2p/settlement/` 의존 변경 (정당한 wallet 의존)
+- Changing the `wallet.WalletProvider` interface
+- Changing P2P protocol format (Challenge/ChallengeResponse)
+- Changing DID format (did:lango:v2 is Phase 3)
+- Adding new signature algorithms (Phase 2)
+- Changing `internal/p2p/settlement/` dependencies (legitimate wallet dependency)
 
 ## Decisions
 
 ### D1: Consumer-local interface (not shared package)
 
-Go 관용: interface는 consumer에서 정의. `identity`는 `KeyProvider` (1 method), `handshake`는 `Signer` (2 methods)를 각각 정의. 공유 interface 패키지를 만들지 않음.
+Go idiom: interfaces are defined at the consumer. `identity` defines `KeyProvider` (1 method) and `handshake` defines `Signer` (2 methods) separately. No shared interface package is created.
 
-**대안:** `internal/security/signer/` 공유 패키지 → 불필요한 추상화 레이어 (no-dead-abstraction-layer 규칙 위반)
+**Alternative:** `internal/security/signer/` shared package → unnecessary abstraction layer (violates the no-dead-abstraction-layer rule)
 
-### D2: Handshake에서 identity.DIDFromPublicKey 사용
+### D2: Handshake uses identity.DIDFromPublicKey
 
-Unit 1 완료 후 `identity` 패키지는 wallet-free. `handshake → identity` import는 안전하며, inline DID 조립 (`"did:lango:" + fmt.Sprintf("%x", pubkey)`) 중복을 제거.
+After Unit 1 is complete, the `identity` package is wallet-free. The `handshake → identity` import is safe and eliminates duplicate inline DID assembly (`"did:lango:" + fmt.Sprintf("%x", pubkey)`).
 
-**대안:** `types.DIDPrefix + hex.EncodeToString` → DID 조립 로직 중복, 향후 DID v2에서 동기화 실패 위험
+**Alternative:** `types.DIDPrefix + hex.EncodeToString` → duplicates DID assembly logic, risks sync failure in future DID v2
 
-### D3: Provenance verifier는 wiring에서만 주입
+### D3: Provenance verifier is injected only at wiring
 
-`BundleService`는 `verifiers map[string]SignatureVerifyFunc`를 생성자에서 받음. provenance 패키지 내부에 default verifier를 넣지 않음. 빈 map이면 Verify는 "unsupported algorithm" 에러.
+`BundleService` receives `verifiers map[string]SignatureVerifyFunc` in its constructor. No default verifier is placed inside the provenance package. If the map is empty, Verify returns an "unsupported algorithm" error.
 
-**핵심 원칙:** 검증 구현의 소유권은 `app/cli` integration layer. provenance 패키지는 type 정의만.
+**Core principle:** Ownership of verification implementation belongs to the `app/cli` integration layer. The provenance package only defines types.
 
-**대안:** provenance 내부에 default verifier → `p2p/identity` import가 남아서 분리 실패
+**Alternative:** Default verifier inside provenance → `p2p/identity` import remains, causing separation failure
 
-### D4: ResponseVerifyFunc는 Config에서 optional
+### D4: ResponseVerifyFunc is optional in Config
 
-`Config.ResponseVerifier`가 nil이면 `VerifySecp256k1Signature` (default). 이 패턴은 이미 `ZKProverFunc`/`ZKVerifierFunc`에서 사용 중.
+If `Config.ResponseVerifier` is nil, `VerifySecp256k1Signature` is used as default. This pattern is already used by `ZKProverFunc`/`ZKVerifierFunc`.
 
-### D5: BundleSigner interface (callback 대체)
+### D5: BundleSigner interface (replacing callback)
 
-`BundleSignFunc func(ctx, payload) ([]byte, error)`를 `BundleSigner interface { Sign(); Algorithm() }`으로 교체. algorithm을 signer가 자신의 속성으로 제공하므로 하드코딩 제거.
+Replace `BundleSignFunc func(ctx, payload) ([]byte, error)` with `BundleSigner interface { Sign(); Algorithm() }`. Since the signer provides the algorithm as its own property, hardcoding is eliminated.
 
 ## Risks / Trade-offs
 
 | Risk | Impact | Mitigation |
 |------|--------|------------|
-| NewBundleService 시그니처 변경 (11곳) | 누락 시 컴파일 에러 | 전체 호출부 목록 계획서에 명시 + go build 검증 |
-| implicit interface satisfaction 착각 | 런타임 실패 | compile-time check `var _ Signer = (*wallet.LocalWallet)(nil)` 불필요 — wiring에서 바로 컴파일 에러 |
-| archtest trailing slash 수정이 기존 테스트를 깨뜨림 | CI 실패 | 모든 p2p 패키지에서 wallet import가 이미 제거된 후 (Wave 4)에 archtest 강화 |
-| provenance default verifier 회귀 | 분리 경계 붕괴 | archtest rule로 `provenance → p2p/identity` 금지 강제 |
+| NewBundleService signature change (11 call sites) | Compile error if missed | Full call site list documented in the plan + go build verification |
+| Incorrect assumption about implicit interface satisfaction | Runtime failure | Compile-time check `var _ Signer = (*wallet.LocalWallet)(nil)` is unnecessary — wiring produces compile errors directly |
+| archtest trailing slash fix breaks existing tests | CI failure | Strengthen archtest only after wallet imports are already removed from all p2p packages (Wave 4) |
+| provenance default verifier regression | Separation boundary collapse | Enforce `provenance → p2p/identity` prohibition with archtest rule |
