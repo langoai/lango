@@ -279,7 +279,7 @@ func TestVerifyChallengeSignature_Roundtrip(t *testing.T) {
 	senderDID := "did:lango:abc123"
 
 	// Sign the canonical payload (signer hashes with Keccak256 internally).
-	canonical := challengeCanonicalPayload(nonce, timestamp, senderDID)
+	canonical := challengeCanonicalPayload(nonce, timestamp, senderDID, "", nil)
 	sig, err := s.SignMessage(context.Background(), canonical)
 	require.NoError(t, err)
 
@@ -310,7 +310,7 @@ func TestVerifyChallengeSignature_WrongKey(t *testing.T) {
 	otherPubkey := ethcrypto.CompressPubkey(&otherKey.PublicKey)
 
 	nonce := []byte("test-challenge-nonce-32bytes!!!!!")
-	canonical := challengeCanonicalPayload(nonce, int64(1700000000), "did:lango:abc")
+	canonical := challengeCanonicalPayload(nonce, int64(1700000000), "did:lango:abc", "", nil)
 	sig, err := s.SignMessage(context.Background(), canonical)
 	require.NoError(t, err)
 
@@ -364,4 +364,280 @@ func TestVerifyResponse_Ed25519(t *testing.T) {
 	// production capability. Phase 3 DID v2 is required for Ed25519 DIDs.
 	err = h.verifyResponse(context.Background(), resp, nonce)
 	assert.NoError(t, err)
+}
+
+// --- Phase 4: KEM-specific tests ---
+
+func TestKEMHandshakeRoundtrip(t *testing.T) {
+	t.Parallel()
+
+	// Generate initiator and responder signers.
+	initKey, err := ethcrypto.GenerateKey()
+	require.NoError(t, err)
+	respKey, err := ethcrypto.GenerateKey()
+	require.NoError(t, err)
+
+	initSigner := &mockSigner{privKeyBytes: ethcrypto.FromECDSA(initKey)}
+	respSigner := &mockSigner{privKeyBytes: ethcrypto.FromECDSA(respKey)}
+
+	initDID, _ := initSigner.DID(context.Background())
+	respDID, _ := respSigner.DID(context.Background())
+
+	// Initiator: generate KEM keypair.
+	kemPub, kemDecap, err := security.GenerateEphemeralKEM()
+	require.NoError(t, err)
+
+	// Responder: encapsulate.
+	ct, ssResp, err := security.KEMEncapsulate(kemPub)
+	require.NoError(t, err)
+
+	// Initiator: decapsulate.
+	ssInit, err := kemDecap(ct)
+	require.NoError(t, err)
+
+	// Shared secrets must match.
+	assert.Equal(t, ssResp, ssInit)
+
+	// Derive session keys on both sides.
+	keyInit, err := security.DeriveSessionKey(ssInit, initDID, respDID)
+	require.NoError(t, err)
+
+	keyResp, err := security.DeriveSessionKey(ssResp, initDID, respDID)
+	require.NoError(t, err)
+
+	// Session keys must be identical.
+	assert.Equal(t, keyInit, keyResp)
+	assert.Len(t, keyInit, 32)
+}
+
+func TestKEMGracefulDegradation(t *testing.T) {
+	t.Parallel()
+
+	// v1.2 initiator with KEM, v1.1 responder without KEM.
+	initKey, err := ethcrypto.GenerateKey()
+	require.NoError(t, err)
+	initSigner := &mockSigner{privKeyBytes: ethcrypto.FromECDSA(initKey)}
+
+	nonce := []byte("test-challenge-nonce-32bytes!!!!!")
+
+	// Initiator generates KEM keypair.
+	kemPub, _, err := security.GenerateEphemeralKEM()
+	require.NoError(t, err)
+
+	// Build challenge with KEM fields.
+	initDID, _ := initSigner.DID(context.Background())
+	challenge := Challenge{
+		Nonce:        nonce,
+		Timestamp:    time.Now().Unix(),
+		SenderDID:    initDID,
+		KEMPublicKey: kemPub,
+		KEMAlgorithm: security.AlgorithmX25519MLKEM768,
+	}
+
+	// v1.1 responder signs nonce only (no KEM ciphertext).
+	respKey, err := ethcrypto.GenerateKey()
+	require.NoError(t, err)
+	respSigner := &mockSigner{privKeyBytes: ethcrypto.FromECDSA(respKey)}
+
+	respPub, _ := respSigner.PublicKey(context.Background())
+	// v1.1 response: sign nonce only (empty kemCiphertext → responseCanonicalPayload = nonce).
+	signPayload := responseCanonicalPayload(challenge.Nonce, nil)
+	sig, err := respSigner.SignMessage(context.Background(), signPayload)
+	require.NoError(t, err)
+
+	resp := &ChallengeResponse{
+		Nonce:     nonce,
+		Signature: sig,
+		PublicKey: respPub,
+		DID:       "did:lango:v1-responder",
+		// No KEMCiphertext — v1.1 responder.
+	}
+
+	// Verify response succeeds (graceful degradation).
+	sessions, err := NewSessionStore(24 * time.Hour)
+	require.NoError(t, err)
+	h := NewHandshaker(Config{
+		Signer:      initSigner,
+		Sessions:    sessions,
+		Timeout:     30 * time.Second,
+		EnablePQKEM: true,
+		Logger:      zap.NewNop().Sugar(),
+	})
+
+	err = h.verifyResponse(context.Background(), resp, nonce)
+	assert.NoError(t, err)
+
+	// No KEM ciphertext means KEMUsed should be false.
+	assert.Empty(t, resp.KEMCiphertext)
+}
+
+func TestSessionKeyZeroed(t *testing.T) {
+	t.Parallel()
+
+	store, err := NewSessionStore(24 * time.Hour)
+	require.NoError(t, err)
+
+	sess, err := store.Create("did:lango:peer1", false)
+	require.NoError(t, err)
+	sess.EncryptionKey = []byte{1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16,
+		17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32}
+	sess.KEMUsed = true
+
+	// Keep a reference to verify zeroing.
+	keyRef := sess.EncryptionKey
+
+	// Remove should zero the key.
+	store.Remove("did:lango:peer1")
+
+	// All bytes should be zero.
+	for i, b := range keyRef {
+		assert.Equalf(t, byte(0), b, "byte %d should be zero after Remove", i)
+	}
+}
+
+func TestSessionKeyZeroedOnOverwrite(t *testing.T) {
+	t.Parallel()
+
+	store, err := NewSessionStore(24 * time.Hour)
+	require.NoError(t, err)
+
+	// Create first session with encryption key.
+	sess1, err := store.Create("did:lango:peer1", false)
+	require.NoError(t, err)
+	sess1.EncryptionKey = []byte{1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16,
+		17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32}
+
+	keyRef := sess1.EncryptionKey
+
+	// Create second session for same peer (overwrite).
+	_, err = store.Create("did:lango:peer1", false)
+	require.NoError(t, err)
+
+	// First session's key should be zeroed.
+	for i, b := range keyRef {
+		assert.Equalf(t, byte(0), b, "byte %d should be zero after overwrite", i)
+	}
+}
+
+func TestKEMTranscriptBinding(t *testing.T) {
+	t.Parallel()
+
+	privKey, err := ethcrypto.GenerateKey()
+	require.NoError(t, err)
+	s := &mockSigner{privKeyBytes: ethcrypto.FromECDSA(privKey)}
+
+	nonce := []byte("test-challenge-nonce-32bytes!!!!!")
+	kemPub, _, err := security.GenerateEphemeralKEM()
+	require.NoError(t, err)
+
+	timestamp := time.Now().Unix()
+	did, _ := s.DID(context.Background())
+
+	// Sign canonical payload including KEM fields.
+	canonical := challengeCanonicalPayload(nonce, timestamp, did, security.AlgorithmX25519MLKEM768, kemPub)
+	sig, err := s.SignMessage(context.Background(), canonical)
+	require.NoError(t, err)
+
+	pubkey, _ := s.PublicKey(context.Background())
+
+	sessions, err := NewSessionStore(24 * time.Hour)
+	require.NoError(t, err)
+	h := NewHandshaker(Config{
+		Signer:   s,
+		Sessions: sessions,
+		Timeout:  30 * time.Second,
+		Logger:   zap.NewNop().Sugar(),
+	})
+
+	// Valid challenge with correct KEM fields.
+	challenge := &Challenge{
+		Nonce:              nonce,
+		Timestamp:          timestamp,
+		SenderDID:          did,
+		PublicKey:          pubkey,
+		Signature:          sig,
+		SignatureAlgorithm: security.AlgorithmSecp256k1Keccak256,
+		KEMPublicKey:       kemPub,
+		KEMAlgorithm:       security.AlgorithmX25519MLKEM768,
+	}
+	err = h.verifyChallengeSignature(challenge)
+	assert.NoError(t, err, "valid KEM challenge should pass")
+
+	// Tampered KEM public key should fail signature verification.
+	tamperedPub := make([]byte, len(kemPub))
+	copy(tamperedPub, kemPub)
+	tamperedPub[0] ^= 0xFF
+	tamperedChallenge := *challenge
+	tamperedChallenge.KEMPublicKey = tamperedPub
+	err = h.verifyChallengeSignature(&tamperedChallenge)
+	assert.Error(t, err, "tampered KEM public key should fail verification")
+}
+
+func TestResponseTranscriptBinding(t *testing.T) {
+	t.Parallel()
+
+	privKey, err := ethcrypto.GenerateKey()
+	require.NoError(t, err)
+	s := &mockSigner{privKeyBytes: ethcrypto.FromECDSA(privKey)}
+
+	nonce := []byte("test-challenge-nonce-32bytes!!!!!")
+	kemCt := []byte("fake-kem-ciphertext-for-binding-test")
+
+	// Sign response payload: nonce || kemCiphertext.
+	signPayload := responseCanonicalPayload(nonce, kemCt)
+	sig, err := s.SignMessage(context.Background(), signPayload)
+	require.NoError(t, err)
+
+	pubkey, _ := s.PublicKey(context.Background())
+
+	sessions, err := NewSessionStore(24 * time.Hour)
+	require.NoError(t, err)
+	h := NewHandshaker(Config{
+		Signer:   s,
+		Sessions: sessions,
+		Timeout:  30 * time.Second,
+		Logger:   zap.NewNop().Sugar(),
+	})
+
+	// Valid response with matching ciphertext.
+	resp := &ChallengeResponse{
+		Nonce:         nonce,
+		Signature:     sig,
+		PublicKey:     pubkey,
+		DID:           "did:lango:resp",
+		KEMCiphertext: kemCt,
+	}
+	err = h.verifyResponse(context.Background(), resp, nonce)
+	assert.NoError(t, err, "valid response with KEM ciphertext should pass")
+
+	// Tampered ciphertext should fail.
+	tamperedCt := make([]byte, len(kemCt))
+	copy(tamperedCt, kemCt)
+	tamperedCt[0] ^= 0xFF
+	tamperedResp := *resp
+	tamperedResp.KEMCiphertext = tamperedCt
+	err = h.verifyResponse(context.Background(), &tamperedResp, nonce)
+	assert.Error(t, err, "tampered KEM ciphertext should fail verification")
+}
+
+func TestPreferredProtocols(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		give       string
+		kemEnabled bool
+		wantFirst  string
+		wantLen    int
+	}{
+		{"KEM enabled", true, ProtocolIDv12, 3},
+		{"KEM disabled", false, ProtocolIDv11, 2},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.give, func(t *testing.T) {
+			protocols := PreferredProtocols(tt.kemEnabled)
+			assert.Len(t, protocols, tt.wantLen)
+			assert.Equal(t, tt.wantFirst, protocols[0])
+		})
+	}
 }

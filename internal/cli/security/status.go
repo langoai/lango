@@ -59,10 +59,12 @@ type statusOutput struct {
 	DBEncryption   string                `json:"db_encryption"`
 	Envelope       envelopeSection       `json:"envelope"`
 	IdentityBundle identityBundleSection `json:"identity_bundle"`
-	DBAvailable    bool                  `json:"db_available"`
-	KMSProvider    string                `json:"kms_provider,omitempty"`
-	KMSKeyID       string                `json:"kms_key_id,omitempty"`
-	KMSFallback    string                `json:"kms_fallback,omitempty"`
+	DBAvailable        bool                  `json:"db_available"`
+	KMSProvider        string                `json:"kms_provider,omitempty"`
+	KMSKeyID           string                `json:"kms_key_id,omitempty"`
+	KMSFallback        string                `json:"kms_fallback,omitempty"`
+	PQHandshakeEnabled bool                  `json:"pq_handshake_enabled"`
+	PQHandshakeAlgo    string                `json:"pq_handshake_algorithm,omitempty"`
 }
 
 // readIdentityBundleStatus reads the identity bundle file from langoDir.
@@ -288,9 +290,11 @@ func runStatusNonInteractive(jsonOutput bool) error {
 		PIIRedaction:   boolToStatus(cfg.Security.Interceptor.RedactPII),
 		ApprovalPolicy: policy,
 		DBEncryption:   dbEncStatus,
-		Envelope:       envelope,
-		IdentityBundle: readIdentityBundleStatus(langoDir),
-		DBAvailable:    dbStatus.available,
+		Envelope:           envelope,
+		IdentityBundle:     readIdentityBundleStatus(langoDir),
+		DBAvailable:        dbStatus.available,
+		PQHandshakeEnabled: cfg.P2P.EnablePQHandshake,
+		PQHandshakeAlgo:    pqAlgorithmLabel(cfg.P2P.EnablePQHandshake),
 	}
 	return renderStatus(s, jsonOutput)
 }
@@ -330,9 +334,11 @@ func runStatusFullBootstrap(bootLoader func() (*bootstrap.Result, error), jsonOu
 		PIIRedaction:   boolToStatus(cfg.Security.Interceptor.RedactPII),
 		ApprovalPolicy: policy,
 		DBEncryption:   dbEncStatus,
-		Envelope:       readEnvelopeStatus(langoDir),
-		IdentityBundle: readIdentityBundleStatus(langoDir),
-		DBAvailable:    true,
+		Envelope:           readEnvelopeStatus(langoDir),
+		IdentityBundle:     readIdentityBundleStatus(langoDir),
+		DBAvailable:        true,
+		PQHandshakeEnabled: cfg.P2P.EnablePQHandshake,
+		PQHandshakeAlgo:    pqAlgorithmLabel(cfg.P2P.EnablePQHandshake),
 	}
 
 	if isKMSProvider(cfg.Security.Signer.Provider) {
@@ -400,12 +406,26 @@ func renderStatus(s statusOutput, jsonOutput bool) error {
 	} else {
 		fmt.Println("    absent (v1 identity only)")
 	}
+	// PQ handshake section.
+	if s.PQHandshakeEnabled {
+		fmt.Printf("  PQ Handshake:       enabled (%s)\n", s.PQHandshakeAlgo)
+	} else {
+		fmt.Println("  PQ Handshake:       disabled")
+	}
 	if s.KMSProvider != "" {
 		fmt.Printf("  KMS Provider:       %s\n", s.KMSProvider)
 		fmt.Printf("  KMS Key ID:         %s\n", s.KMSKeyID)
 		fmt.Printf("  KMS Fallback:       %s\n", s.KMSFallback)
 	}
 	return nil
+}
+
+// pqAlgorithmLabel returns the algorithm label for PQ handshake status display.
+func pqAlgorithmLabel(enabled bool) string {
+	if enabled {
+		return "X25519-MLKEM768"
+	}
+	return ""
 }
 
 func boolToStatus(b bool) string {

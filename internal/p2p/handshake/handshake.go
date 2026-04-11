@@ -24,6 +24,9 @@ const (
 
 	// ProtocolIDv11 is the signed-challenge protocol (v1.1).
 	ProtocolIDv11 = "/lango/handshake/1.1.0"
+
+	// ProtocolIDv12 is the PQ KEM handshake protocol (v1.2).
+	ProtocolIDv12 = "/lango/handshake/1.2.0"
 )
 
 // challengeTimestampWindow is the maximum age of a challenge timestamp (5 min).
@@ -52,24 +55,27 @@ type PendingHandshake struct {
 
 // Challenge is sent by the initiator to start the handshake.
 type Challenge struct {
-	Nonce              []byte              `json:"nonce"`
-	Timestamp          int64               `json:"timestamp"`
-	SenderDID          string              `json:"senderDid"`
-	PublicKey          []byte              `json:"publicKey,omitempty"`          // v1.1: initiator's public key
-	Signature          []byte              `json:"signature,omitempty"`          // v1.1: signature over canonical payload
-	SignatureAlgorithm string              `json:"signatureAlgorithm,omitempty"` // algorithm (empty = secp256k1-keccak256)
+	Nonce              []byte                   `json:"nonce"`
+	Timestamp          int64                    `json:"timestamp"`
+	SenderDID          string                   `json:"senderDid"`
+	PublicKey          []byte                   `json:"publicKey,omitempty"`          // v1.1: initiator's public key
+	Signature          []byte                   `json:"signature,omitempty"`          // v1.1: signature over canonical payload
+	SignatureAlgorithm string                   `json:"signatureAlgorithm,omitempty"` // algorithm (empty = secp256k1-keccak256)
 	Bundle             *identity.IdentityBundle `json:"bundle,omitempty"`             // v2: initiator's identity bundle
+	KEMPublicKey       []byte                   `json:"kemPublicKey,omitempty"`       // v1.2: ephemeral hybrid KEM public key
+	KEMAlgorithm       string                   `json:"kemAlgorithm,omitempty"`       // v1.2: "X25519-MLKEM768"
 }
 
 // ChallengeResponse is the target's reply with proof of identity.
 type ChallengeResponse struct {
-	Nonce              []byte              `json:"nonce"`
-	Signature          []byte              `json:"signature,omitempty"`
-	ZKProof            []byte              `json:"zkProof,omitempty"`
-	DID                string              `json:"did"`
-	PublicKey          []byte              `json:"publicKey"`
-	SignatureAlgorithm string              `json:"signatureAlgorithm,omitempty"` // algorithm (empty = secp256k1-keccak256)
+	Nonce              []byte                   `json:"nonce"`
+	Signature          []byte                   `json:"signature,omitempty"`
+	ZKProof            []byte                   `json:"zkProof,omitempty"`
+	DID                string                   `json:"did"`
+	PublicKey          []byte                   `json:"publicKey"`
+	SignatureAlgorithm string                   `json:"signatureAlgorithm,omitempty"` // algorithm (empty = secp256k1-keccak256)
 	Bundle             *identity.IdentityBundle `json:"bundle,omitempty"`             // v2: responder's identity bundle
+	KEMCiphertext      []byte                   `json:"kemCiphertext,omitempty"`      // v1.2: KEM ciphertext
 }
 
 // SessionAck is sent by the initiator after verifying the response.
@@ -103,6 +109,7 @@ type Handshaker struct {
 	verifiers              map[string]SignatureVerifyFunc
 	bundleCache            identity.BundleResolver // optional: cache received bundles
 	didAlias               *identity.DIDAlias      // optional: v1/v2 DID alias for session continuity
+	kemEnabled             bool                    // PQ KEM key exchange enabled
 	logger                 *zap.SugaredLogger
 }
 
@@ -122,6 +129,7 @@ type Config struct {
 	Verifiers              map[string]SignatureVerifyFunc // nil → default with secp256k1 + ed25519
 	BundleCache            identity.BundleResolver       // optional: for caching received bundles
 	DIDAlias               *identity.DIDAlias            // optional: v1/v2 DID alias for session continuity
+	EnablePQKEM            bool                          // enable PQ KEM key exchange (default false)
 	Logger                 *zap.SugaredLogger
 }
 
@@ -149,6 +157,7 @@ func NewHandshaker(cfg Config) *Handshaker {
 		verifiers:              verifiers,
 		bundleCache:            cfg.BundleCache,
 		didAlias:               cfg.DIDAlias,
+		kemEnabled:             cfg.EnablePQKEM,
 		logger:                 cfg.Logger,
 	}
 }
@@ -207,21 +216,40 @@ func (h *Handshaker) Initiate(ctx context.Context, s network.Stream, localDID st
 	// Select signer for initiation. Use legacy for unknown peers (safe default).
 	initSigner := h.selectSigner("")
 
+	// Anchor challenge.SenderDID to the signing identity.
+	initDID, err := initSigner.DID(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("get signer DID: %w", err)
+	}
+
 	challenge := Challenge{
 		Nonce:     nonce,
 		Timestamp: time.Now().Unix(),
-		SenderDID: localDID,
+		SenderDID: initDID,
 		Bundle:    signerBundle(initSigner),
 	}
 
-	// Sign the challenge (v1.1 protocol).
+	// Generate ephemeral KEM keypair for PQ key exchange (v1.2).
+	var kemDecap security.KEMDecapsulator
+	if h.kemEnabled {
+		kemPub, decap, kemErr := security.GenerateEphemeralKEM()
+		if kemErr != nil {
+			h.logger.Warnw("KEM keypair generation failed, proceeding without KEM", "error", kemErr)
+		} else {
+			kemDecap = decap
+			challenge.KEMPublicKey = kemPub
+			challenge.KEMAlgorithm = security.AlgorithmX25519MLKEM768
+		}
+	}
+
+	// Sign the challenge (v1.1/v1.2 protocol — transcript includes KEM fields).
 	pubkey, err := initSigner.PublicKey(ctx)
 	if err != nil {
 		h.logger.Warnw("challenge signing skipped: get public key", "error", err)
 	} else {
 		challenge.PublicKey = pubkey
 		challenge.SignatureAlgorithm = initSigner.Algorithm()
-		payload := challengeCanonicalPayload(nonce, challenge.Timestamp, localDID)
+		payload := challengeCanonicalPayload(nonce, challenge.Timestamp, initDID, challenge.KEMAlgorithm, challenge.KEMPublicKey)
 		sig, err := initSigner.SignMessage(ctx, payload)
 		if err != nil {
 			h.logger.Warnw("challenge signing skipped: sign", "error", err)
@@ -256,6 +284,20 @@ func (h *Handshaker) Initiate(ctx context.Context, s network.Stream, localDID st
 		return nil, fmt.Errorf("verify response: %w", err)
 	}
 
+	// Derive session key from KEM exchange (v1.2).
+	var sessionKey []byte
+	if kemDecap != nil && len(resp.KEMCiphertext) > 0 {
+		ss, kemErr := kemDecap(resp.KEMCiphertext)
+		if kemErr != nil {
+			return nil, fmt.Errorf("KEM decapsulate: %w", kemErr)
+		}
+		sessionKey, err = security.DeriveSessionKey(ss, initDID, resp.DID)
+		security.ZeroBytes(ss)
+		if err != nil {
+			return nil, fmt.Errorf("derive session key: %w", err)
+		}
+	}
+
 	// Determine ZK verification status.
 	zkVerified := len(resp.ZKProof) > 0
 
@@ -263,6 +305,10 @@ func (h *Handshaker) Initiate(ctx context.Context, s network.Stream, localDID st
 	sess, err := h.sessions.Create(h.canonicalDID(resp.DID), zkVerified)
 	if err != nil {
 		return nil, fmt.Errorf("create session: %w", err)
+	}
+	if sessionKey != nil {
+		sess.EncryptionKey = sessionKey
+		sess.KEMUsed = true
 	}
 
 	// Send session acknowledgment.
@@ -277,6 +323,7 @@ func (h *Handshaker) Initiate(ctx context.Context, s network.Stream, localDID st
 	h.logger.Infow("handshake initiated",
 		"remoteDID", resp.DID,
 		"zkVerified", zkVerified,
+		"kemUsed", sess.KEMUsed,
 	)
 
 	return sess, nil
@@ -363,6 +410,25 @@ func (h *Handshaker) HandleIncoming(ctx context.Context, s network.Stream) (*Ses
 		return nil, fmt.Errorf("get signer DID: %w", err)
 	}
 
+	// KEM encapsulation (v1.2) — derive session key if initiator sent KEM pubkey.
+	var sessionKey []byte
+	var kemCiphertext []byte
+	if len(challenge.KEMPublicKey) > 0 && challenge.KEMAlgorithm == security.AlgorithmX25519MLKEM768 {
+		ct, ss, kemErr := security.KEMEncapsulate(challenge.KEMPublicKey)
+		if kemErr != nil {
+			h.logger.Warnw("KEM encapsulate failed, proceeding without KEM", "error", kemErr)
+		} else {
+			kemCiphertext = ct
+			sessionKey, err = security.DeriveSessionKey(ss, challenge.SenderDID, didStr)
+			security.ZeroBytes(ss)
+			if err != nil {
+				h.logger.Warnw("session key derivation failed", "error", err)
+				kemCiphertext = nil
+				sessionKey = nil
+			}
+		}
+	}
+
 	// Build response.
 	resp := ChallengeResponse{
 		Nonce:              challenge.Nonce,
@@ -370,14 +436,17 @@ func (h *Handshaker) HandleIncoming(ctx context.Context, s network.Stream) (*Ses
 		DID:                didStr,
 		SignatureAlgorithm: signer.Algorithm(),
 		Bundle:             signerBundle(signer),
+		KEMCiphertext:      kemCiphertext,
 	}
 
 	// Sign or generate ZK proof.
+	// v1.2: response signature covers nonce + kemCiphertext (transcript binding).
+	signPayload := responseCanonicalPayload(challenge.Nonce, kemCiphertext)
 	if h.zkEnabled && h.zkProver != nil {
 		proof, err := h.zkProver(ctx, challenge.Nonce)
 		if err != nil {
 			h.logger.Warnw("ZK proof generation failed, falling back to signature", "error", err)
-			sig, err := signer.SignMessage(ctx, challenge.Nonce)
+			sig, err := signer.SignMessage(ctx, signPayload)
 			if err != nil {
 				return nil, fmt.Errorf("sign challenge: %w", err)
 			}
@@ -386,7 +455,7 @@ func (h *Handshaker) HandleIncoming(ctx context.Context, s network.Stream) (*Ses
 			resp.ZKProof = proof
 		}
 	} else {
-		sig, err := signer.SignMessage(ctx, challenge.Nonce)
+		sig, err := signer.SignMessage(ctx, signPayload)
 		if err != nil {
 			return nil, fmt.Errorf("sign challenge: %w", err)
 		}
@@ -408,21 +477,27 @@ func (h *Handshaker) HandleIncoming(ctx context.Context, s network.Stream) (*Ses
 	zkVerified := len(resp.ZKProof) > 0
 	canonicalPeer := h.canonicalDID(challenge.SenderDID)
 	sess := &Session{
-		PeerDID:    canonicalPeer,
-		Token:      ack.Token,
-		CreatedAt:  time.Now(),
-		ExpiresAt:  time.Unix(ack.ExpiresAt, 0),
-		ZKVerified: zkVerified,
+		PeerDID:       canonicalPeer,
+		Token:         ack.Token,
+		CreatedAt:     time.Now(),
+		ExpiresAt:     time.Unix(ack.ExpiresAt, 0),
+		ZKVerified:    zkVerified,
+		EncryptionKey: sessionKey,
+		KEMUsed:       sessionKey != nil,
 	}
 
-	// Store the session locally as well.
+	// Store the session locally (zero existing key if overwriting).
 	h.sessions.mu.Lock()
+	if existing, ok := h.sessions.sessions[canonicalPeer]; ok {
+		security.ZeroBytes(existing.EncryptionKey)
+	}
 	h.sessions.sessions[canonicalPeer] = sess
 	h.sessions.mu.Unlock()
 
 	h.logger.Infow("handshake accepted",
 		"remoteDID", challenge.SenderDID,
 		"zkVerified", zkVerified,
+		"kemUsed", sess.KEMUsed,
 	)
 
 	return sess, nil
@@ -457,7 +532,9 @@ func (h *Handshaker) verifyResponse(ctx context.Context, resp *ChallengeResponse
 		if !ok {
 			return fmt.Errorf("unsupported signature algorithm %q", algo)
 		}
-		return verifier(resp.PublicKey, nonce, resp.Signature)
+		// v1.2 transcript binding: verify against nonce + kemCiphertext.
+		verifyPayload := responseCanonicalPayload(nonce, resp.KEMCiphertext)
+		return verifier(resp.PublicKey, verifyPayload, resp.Signature)
 	}
 
 	return fmt.Errorf("no proof or signature in response")
@@ -511,4 +588,27 @@ func (h *Handshaker) StreamHandler() network.StreamHandler {
 			h.logger.Warnw("incoming handshake failed", "peer", s.Conn().RemotePeer(), "error", err)
 		}
 	}
+}
+
+// StreamHandlerV12 returns a libp2p stream handler for v1.2 (PQ KEM) handshakes.
+func (h *Handshaker) StreamHandlerV12() network.StreamHandler {
+	return func(s network.Stream) {
+		defer s.Close()
+
+		ctx := context.Background()
+		_, err := h.HandleIncoming(ctx, s)
+		if err != nil {
+			h.logger.Warnw("incoming v1.2 handshake failed", "peer", s.Conn().RemotePeer(), "error", err)
+		}
+	}
+}
+
+// PreferredProtocols returns the ordered list of protocol IDs for initiator
+// stream negotiation. When kemEnabled is true, v1.2 is tried first.
+// Returns []string since libp2p protocol.ID is a string alias.
+func PreferredProtocols(kemEnabled bool) []string {
+	if kemEnabled {
+		return []string{ProtocolIDv12, ProtocolIDv11, ProtocolID}
+	}
+	return []string{ProtocolIDv11, ProtocolID}
 }

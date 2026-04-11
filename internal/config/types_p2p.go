@@ -67,6 +67,11 @@ type P2PConfig struct {
 	// When false (default), unsigned legacy challenges are accepted for backward compatibility.
 	RequireSignedChallenge bool `mapstructure:"requireSignedChallenge" json:"requireSignedChallenge"`
 
+	// EnablePQHandshake enables post-quantum hybrid KEM (X25519-MLKEM768)
+	// key exchange during peer handshake. When true, protocol v1.2 is
+	// advertised and PQ session keys are derived. Default: false (opt-in).
+	EnablePQHandshake bool `mapstructure:"enablePqHandshake" json:"enablePqHandshake"`
+
 	// Workspace configures collaborative workspace settings for P2P agent co-work.
 	Workspace WorkspaceConfig `mapstructure:"workspace" json:"workspace"`
 

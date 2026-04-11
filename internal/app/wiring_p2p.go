@@ -146,6 +146,7 @@ type p2pComponents struct {
 	coordinator    *team.Coordinator
 	provider       *agentpool.PoolProvider
 	healthMonitor  *team.HealthMonitor
+	kemEnabled     bool // PQ KEM handshake enabled
 }
 
 // initP2P creates the P2P networking components if enabled.
@@ -262,6 +263,7 @@ func initP2P(cfg *config.Config, wp wallet.WalletProvider, pc *paymentComponents
 		RequireSignedChallenge: cfg.P2P.RequireSignedChallenge,
 		BundleCache:            bundleCache,
 		DIDAlias:               didAlias,
+		EnablePQKEM:            cfg.P2P.EnablePQHandshake,
 		Logger:                 pLogger,
 	}
 
@@ -371,6 +373,9 @@ func initP2P(cfg *config.Config, wp wallet.WalletProvider, pc *paymentComponents
 	// Register handshake protocol handlers (v1.0 legacy + v1.1 signed challenge).
 	node.Host().SetStreamHandler(libp2pproto.ID(handshake.ProtocolID), handshaker.StreamHandler())
 	node.Host().SetStreamHandler(libp2pproto.ID(handshake.ProtocolIDv11), handshaker.StreamHandlerV11())
+	if cfg.P2P.EnablePQHandshake {
+		node.Host().SetStreamHandler(libp2pproto.ID(handshake.ProtocolIDv12), handshaker.StreamHandlerV12())
+	}
 
 	// Get local DID for protocol handler.
 	var localDID string
@@ -760,6 +765,7 @@ func initP2P(cfg *config.Config, wp wallet.WalletProvider, pc *paymentComponents
 		coordinator:   coord,
 		provider:      provider,
 		healthMonitor: healthMon,
+		kemEnabled:    cfg.P2P.EnablePQHandshake,
 	}
 }
 

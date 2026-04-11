@@ -36,8 +36,9 @@ func VerifySecp256k1Signature(pubkey, message, signature []byte) error {
 	return nil
 }
 
-// verifyChallengeSignature verifies the signature on a v1.1 challenge.
+// verifyChallengeSignature verifies the signature on a v1.1/v1.2 challenge.
 // Dispatches by challenge.SignatureAlgorithm, defaulting to secp256k1-keccak256.
+// For v1.2, the canonical payload includes KEM fields (transcript binding).
 func (h *Handshaker) verifyChallengeSignature(c *Challenge) error {
 	algo := c.SignatureAlgorithm
 	if algo == "" {
@@ -47,20 +48,39 @@ func (h *Handshaker) verifyChallengeSignature(c *Challenge) error {
 	if !ok {
 		return fmt.Errorf("unsupported challenge signature algorithm %q", algo)
 	}
-	canonical := challengeCanonicalPayload(c.Nonce, c.Timestamp, c.SenderDID)
+	canonical := challengeCanonicalPayload(c.Nonce, c.Timestamp, c.SenderDID, c.KEMAlgorithm, c.KEMPublicKey)
 	return verifier(c.PublicKey, canonical, c.Signature)
 }
 
 // challengeCanonicalPayload constructs the canonical bytes for challenge signing:
-// nonce || bigEndian(timestamp, 8) || utf8(senderDID).
-// Returns raw bytes — the caller or signer is responsible for any
-// algorithm-specific hashing.
-func challengeCanonicalPayload(nonce []byte, timestamp int64, senderDID string) []byte {
-	buf := make([]byte, 0, len(nonce)+8+len(senderDID))
+// nonce || bigEndian(timestamp, 8) || utf8(senderDID) [|| utf8(kemAlgorithm) || kemPublicKey]
+//
+// KEM fields are appended only when kemPublicKey is non-empty (v1.2).
+// When empty (v1.1), the payload is identical to the previous format.
+func challengeCanonicalPayload(nonce []byte, timestamp int64, senderDID string, kemAlgorithm string, kemPublicKey []byte) []byte {
+	buf := make([]byte, 0, len(nonce)+8+len(senderDID)+len(kemAlgorithm)+len(kemPublicKey))
 	buf = append(buf, nonce...)
 	ts := make([]byte, 8)
 	binary.BigEndian.PutUint64(ts, uint64(timestamp))
 	buf = append(buf, ts...)
 	buf = append(buf, []byte(senderDID)...)
+	if len(kemPublicKey) > 0 {
+		buf = append(buf, []byte(kemAlgorithm)...)
+		buf = append(buf, kemPublicKey...)
+	}
+	return buf
+}
+
+// responseCanonicalPayload constructs the canonical bytes for response signing:
+// nonce [|| kemCiphertext]
+//
+// KEM ciphertext is appended only when non-empty (v1.2 transcript binding).
+// When empty (v1.1), the payload is the nonce only — matching current behavior.
+func responseCanonicalPayload(nonce []byte, kemCiphertext []byte) []byte {
+	buf := make([]byte, 0, len(nonce)+len(kemCiphertext))
+	buf = append(buf, nonce...)
+	if len(kemCiphertext) > 0 {
+		buf = append(buf, kemCiphertext...)
+	}
 	return buf
 }

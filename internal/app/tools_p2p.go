@@ -22,6 +22,7 @@ import (
 	"github.com/langoai/lango/internal/session"
 	"github.com/langoai/lango/internal/wallet"
 	"github.com/libp2p/go-libp2p/core/peer"
+	libp2pproto "github.com/libp2p/go-libp2p/core/protocol"
 	"github.com/multiformats/go-multiaddr"
 )
 
@@ -109,8 +110,13 @@ func buildP2PTools(pc *p2pComponents) []*agent.Tool {
 					return nil, fmt.Errorf("connect to peer: %w", err)
 				}
 
-				// Open a handshake stream.
-				s, err := pc.node.Host().NewStream(ctx, pi.ID, handshake.ProtocolID)
+				// Open a handshake stream with protocol preference order.
+				protocols := handshake.PreferredProtocols(pc.kemEnabled)
+				protoIDs := make([]libp2pproto.ID, len(protocols))
+				for i, p := range protocols {
+					protoIDs[i] = libp2pproto.ID(p)
+				}
+				s, err := pc.node.Host().NewStream(ctx, pi.ID, protoIDs...)
 				if err != nil {
 					return nil, fmt.Errorf("open handshake stream: %w", err)
 				}

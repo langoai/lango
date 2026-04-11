@@ -9,6 +9,8 @@ import (
 	"fmt"
 	"sync"
 	"time"
+
+	"github.com/langoai/lango/internal/security"
 )
 
 // InvalidationReason describes why a session was invalidated.
@@ -38,6 +40,8 @@ type Session struct {
 	ZKVerified        bool               `json:"zkVerified"`
 	Invalidated       bool               `json:"invalidated"`
 	InvalidatedReason InvalidationReason `json:"invalidatedReason,omitempty"`
+	EncryptionKey     []byte             `json:"-"`       // derived from KEM, never serialized
+	KEMUsed           bool               `json:"kemUsed"` // true if PQ KEM key exchange succeeded
 }
 
 // IsExpired reports whether the session has expired.
@@ -91,6 +95,10 @@ func (s *SessionStore) Create(peerDID string, zkVerified bool) (*Session, error)
 	}
 
 	s.mu.Lock()
+	// Zero existing session's encryption key if overwriting.
+	if existing, ok := s.sessions[peerDID]; ok {
+		security.ZeroBytes(existing.EncryptionKey)
+	}
 	s.sessions[peerDID] = sess
 	s.mu.Unlock()
 
@@ -129,9 +137,12 @@ func (s *SessionStore) Get(peerDID string) *Session {
 	return sess
 }
 
-// Remove deletes a session.
+// Remove deletes a session, zeroing any encryption key first.
 func (s *SessionStore) Remove(peerDID string) {
 	s.mu.Lock()
+	if existing, ok := s.sessions[peerDID]; ok {
+		security.ZeroBytes(existing.EncryptionKey)
+	}
 	delete(s.sessions, peerDID)
 	s.mu.Unlock()
 }
@@ -171,6 +182,7 @@ func (s *SessionStore) Cleanup() int {
 	removed := 0
 	for did, sess := range s.sessions {
 		if sess.IsExpired() || sess.Invalidated {
+			security.ZeroBytes(sess.EncryptionKey)
 			delete(s.sessions, did)
 			removed++
 		}
@@ -184,6 +196,7 @@ func (s *SessionStore) Invalidate(peerDID string, reason InvalidationReason) {
 	s.mu.Lock()
 	sess, ok := s.sessions[peerDID]
 	if ok {
+		security.ZeroBytes(sess.EncryptionKey)
 		sess.Invalidated = true
 		sess.InvalidatedReason = reason
 		delete(s.sessions, peerDID)
@@ -207,6 +220,7 @@ func (s *SessionStore) InvalidateAll(reason InvalidationReason) {
 	now := time.Now()
 	var dids []string
 	for did, sess := range s.sessions {
+		security.ZeroBytes(sess.EncryptionKey)
 		sess.Invalidated = true
 		sess.InvalidatedReason = reason
 		dids = append(dids, did)
@@ -236,6 +250,7 @@ func (s *SessionStore) InvalidateByCondition(reason InvalidationReason, predicat
 	var dids []string
 	for did, sess := range s.sessions {
 		if predicate(sess) {
+			security.ZeroBytes(sess.EncryptionKey)
 			sess.Invalidated = true
 			sess.InvalidatedReason = reason
 			dids = append(dids, did)

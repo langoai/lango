@@ -42,6 +42,21 @@ The system SHALL provide a `lango security status` command that displays the cur
 - **WHEN** the session database cannot be opened (any reason)
 - **THEN** the command displays status with zero counts for keys and secrets, without failing
 
+#### Scenario: Display PQ KEM status
+
+- **WHEN** user runs `lango security status` and PQ handshake is enabled
+- **THEN** the output SHALL include "PQ Handshake: enabled (X25519-MLKEM768)"
+
+#### Scenario: Display PQ KEM status when disabled
+
+- **WHEN** user runs `lango security status` and PQ handshake is not enabled
+- **THEN** the output SHALL include "PQ Handshake: disabled"
+
+#### Scenario: JSON output includes PQ KEM status
+
+- **WHEN** user runs `lango security status --json`
+- **THEN** the JSON output SHALL include `"pq_handshake_enabled": true/false` and `"pq_handshake_algorithm": "X25519-MLKEM768"` (when enabled)
+
 ### Requirement: Non-interactive mini-bootstrap for status
 
 The system SHALL provide a `readDBStatusNonInteractive` helper that runs a minimal bootstrap (envelope load → non-interactive passphrase → MK unwrap → read-only DB open → read counts → close) without triggering interactive prompts or schema migration. The helper SHALL handle both envelope-based and legacy installations.
