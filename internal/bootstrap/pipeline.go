@@ -60,6 +60,10 @@ type State struct {
 	// PQ signing key seed derived from MK via HKDF (Phase 5).
 	// 32-byte seed for ML-DSA-65. Downstream code calls mldsa65.NewKeyFromSeed.
 	PQSigningKeySeed []byte
+
+	// KMS KEK state (Phase 6).
+	KMSProvider security.CryptoProvider // transient, for KMS KEK unwrap only
+	KMSUnwrap   bool                    // MK was unwrapped via KMS (not passphrase)
 }
 
 // Phase represents a single step in the bootstrap pipeline.

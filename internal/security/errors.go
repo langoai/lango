@@ -24,7 +24,8 @@ var (
 	ErrKMSThrottled    = errors.New("KMS request throttled")
 	ErrKMSInvalidKey   = errors.New("KMS invalid key")
 	ErrPKCS11Module    = errors.New("PKCS#11 module error")
-	ErrPKCS11Session   = errors.New("PKCS#11 session error")
+	ErrPKCS11Session       = errors.New("PKCS#11 session error")
+	ErrKMSSlotUnavailable  = errors.New("KMS KEK slot unavailable")
 )
 
 // KMSError wraps a KMS operation error with context.

@@ -127,7 +127,35 @@ func phaseLoadEnvelopeFile() Phase {
 func phaseAcquireCredential() Phase {
 	return Phase{
 		Name: "acquire credential",
-		Run: func(_ context.Context, s *State) error {
+		Run: func(ctx context.Context, s *State) error {
+			// KMS path: if envelope has a hardware/KMS slot and KMS config
+			// is provided, attempt to create a bare KMS provider and unwrap
+			// the MK directly. On success, skip passphrase entirely.
+			// On failure, fall through to passphrase acquisition.
+			if s.Envelope != nil && s.Envelope.HasSlotType(security.KEKSlotHardware) &&
+				s.Options.KMSConfig != nil && s.Options.KMSProviderName != "" {
+
+				kmsProvider, kmsErr := security.NewKMSProvider(
+					security.KMSProviderName(s.Options.KMSProviderName),
+					*s.Options.KMSConfig,
+				)
+				if kmsErr == nil {
+					mk, _, unwrapErr := s.Envelope.UnwrapFromKMS(
+						ctx, kmsProvider, s.Options.KMSProviderName, s.Options.KMSConfig.KeyID,
+					)
+					if unwrapErr == nil {
+						s.MasterKey = mk
+						s.KMSUnwrap = true
+						s.KMSProvider = kmsProvider
+						s.Result.KMSUnwrap = true
+						return nil // Skip passphrase entirely.
+					}
+					fmt.Fprintf(os.Stderr, "warning: KMS unwrap failed: %v (falling back to passphrase)\n", unwrapErr)
+				} else {
+					fmt.Fprintf(os.Stderr, "warning: KMS provider init failed: %v (falling back to passphrase)\n", kmsErr)
+				}
+			}
+
 			// Detect secure provider (biometric/TPM).
 			if !s.Options.SkipSecureDetection {
 				s.SecureProvider, s.SecurityTier = keyring.DetectSecureProvider()

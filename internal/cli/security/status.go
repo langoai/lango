@@ -28,6 +28,8 @@ type envelopeSection struct {
 	RecoverySetup    bool     `json:"recovery_setup"`
 	PendingMigration bool     `json:"pending_migration,omitempty"`
 	PendingRekey     bool     `json:"pending_rekey,omitempty"`
+	KMSProtected     bool     `json:"kms_protected"`
+	KMSProvider      string   `json:"kms_provider,omitempty"`
 }
 
 // dbStatusResult holds the DB-dependent fields populated by the non-interactive
@@ -114,6 +116,18 @@ func readEnvelopeStatus(langoDir string) envelopeSection {
 			seen[slot.Type] = true
 		}
 	}
+	// Check for KMS KEK slot.
+	kmsProtected := env.HasSlotType(sec.KEKSlotHardware)
+	var kmsProvider string
+	if kmsProtected {
+		for _, slot := range env.Slots {
+			if slot.Type == sec.KEKSlotHardware && slot.KMSProvider != "" {
+				kmsProvider = slot.KMSProvider
+				break
+			}
+		}
+	}
+
 	return envelopeSection{
 		Present:          true,
 		Version:          env.Version,
@@ -122,6 +136,8 @@ func readEnvelopeStatus(langoDir string) envelopeSection {
 		RecoverySetup:    env.HasSlotType(sec.KEKSlotMnemonic),
 		PendingMigration: env.PendingMigration,
 		PendingRekey:     env.PendingRekey,
+		KMSProtected:     kmsProtected,
+		KMSProvider:      kmsProvider,
 	}
 }
 
@@ -396,6 +412,11 @@ func renderStatus(s statusOutput, jsonOutput bool) error {
 		fmt.Printf("    Version:          %d\n", s.Envelope.Version)
 		fmt.Printf("    KEK Slots:        %d (%s)\n", s.Envelope.SlotCount, strings.Join(s.Envelope.SlotTypes, ", "))
 		fmt.Printf("    Recovery Setup:   %s\n", boolToStatus(s.Envelope.RecoverySetup))
+		if s.Envelope.KMSProtected {
+			fmt.Printf("    KMS Protection:   enabled (%s)\n", s.Envelope.KMSProvider)
+		} else {
+			fmt.Println("    KMS Protection:   disabled")
+		}
 		if s.Envelope.PendingMigration {
 			fmt.Println("    PendingMigration: TRUE (migration incomplete)")
 		}

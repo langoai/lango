@@ -2,7 +2,10 @@ package security
 
 import (
 	"bytes"
+	"context"
+	"encoding/json"
 	"errors"
+	"fmt"
 	"testing"
 )
 
@@ -264,5 +267,283 @@ func TestZeroBytes(t *testing.T) {
 		if v != 0 {
 			t.Fatalf("byte %d not zero: %d", i, v)
 		}
+	}
+}
+
+// mockKMSProvider implements CryptoProvider for testing KMS slot operations.
+// Uses LocalCryptoProvider internally for actual encrypt/decrypt.
+type mockKMSProvider struct {
+	local *LocalCryptoProvider
+}
+
+func newMockKMSProvider(t *testing.T) *mockKMSProvider {
+	t.Helper()
+	p := NewLocalCryptoProvider()
+	if err := p.Initialize("mock-kms-passphrase-1234"); err != nil {
+		t.Fatal(err)
+	}
+	return &mockKMSProvider{local: p}
+}
+
+func (m *mockKMSProvider) Sign(ctx context.Context, keyID string, payload []byte) ([]byte, error) {
+	return m.local.Sign(ctx, keyID, payload)
+}
+
+func (m *mockKMSProvider) Encrypt(ctx context.Context, keyID string, plaintext []byte) ([]byte, error) {
+	return m.local.Encrypt(ctx, keyID, plaintext)
+}
+
+func (m *mockKMSProvider) Decrypt(ctx context.Context, keyID string, ciphertext []byte) ([]byte, error) {
+	return m.local.Decrypt(ctx, keyID, ciphertext)
+}
+
+// failingKMSProvider always returns an error on Decrypt.
+type failingKMSProvider struct{}
+
+func (f *failingKMSProvider) Sign(context.Context, string, []byte) ([]byte, error) {
+	return nil, fmt.Errorf("failing mock")
+}
+func (f *failingKMSProvider) Encrypt(context.Context, string, []byte) ([]byte, error) {
+	return nil, fmt.Errorf("failing mock")
+}
+func (f *failingKMSProvider) Decrypt(context.Context, string, []byte) ([]byte, error) {
+	return nil, fmt.Errorf("failing mock: KMS decrypt")
+}
+
+func TestEnvelope_AddKMSSlot(t *testing.T) {
+	env, mk, err := NewEnvelope(testPassphrase)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer ZeroBytes(mk)
+
+	kms := newMockKMSProvider(t)
+	ctx := context.Background()
+
+	err = env.AddKMSSlot(ctx, "test-kms", mk, kms, "aws-kms", "arn:aws:kms:us-east-1:123:key/abc")
+	if err != nil {
+		t.Fatalf("AddKMSSlot: %v", err)
+	}
+
+	if env.SlotCount() != 2 {
+		t.Fatalf("expected 2 slots, got %d", env.SlotCount())
+	}
+	if !env.HasSlotType(KEKSlotHardware) {
+		t.Fatal("expected HasSlotType(hardware) to return true")
+	}
+
+	kmsSlot := env.Slots[1]
+	if kmsSlot.Type != KEKSlotHardware {
+		t.Fatalf("expected hardware slot, got %q", kmsSlot.Type)
+	}
+	if kmsSlot.KDFAlg != KDFAlgNone {
+		t.Fatalf("expected KDFAlg %q, got %q", KDFAlgNone, kmsSlot.KDFAlg)
+	}
+	if kmsSlot.WrapAlg != WrapAlgKMSEnvelope {
+		t.Fatalf("expected WrapAlg %q, got %q", WrapAlgKMSEnvelope, kmsSlot.WrapAlg)
+	}
+	if kmsSlot.KMSProvider != "aws-kms" {
+		t.Fatalf("expected KMSProvider %q, got %q", "aws-kms", kmsSlot.KMSProvider)
+	}
+	if kmsSlot.KMSKeyID != "arn:aws:kms:us-east-1:123:key/abc" {
+		t.Fatalf("expected KMSKeyID, got %q", kmsSlot.KMSKeyID)
+	}
+	if len(kmsSlot.WrappedMK) == 0 {
+		t.Fatal("expected non-empty WrappedMK")
+	}
+	if kmsSlot.ID == "" {
+		t.Fatal("expected non-empty slot ID")
+	}
+}
+
+func TestEnvelope_UnwrapFromKMS_RoundTrip(t *testing.T) {
+	env, mk, err := NewEnvelope(testPassphrase)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer ZeroBytes(mk)
+
+	kms := newMockKMSProvider(t)
+	ctx := context.Background()
+	keyID := "test-key-1"
+
+	err = env.AddKMSSlot(ctx, "kms", mk, kms, "aws-kms", keyID)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	got, slotID, err := env.UnwrapFromKMS(ctx, kms, "aws-kms", keyID)
+	if err != nil {
+		t.Fatalf("UnwrapFromKMS: %v", err)
+	}
+	defer ZeroBytes(got)
+
+	if !bytes.Equal(got, mk) {
+		t.Fatal("unwrapped MK mismatch")
+	}
+	if slotID == "" {
+		t.Fatal("expected non-empty slot ID")
+	}
+}
+
+func TestEnvelope_UnwrapFromKMS_Failure(t *testing.T) {
+	env, mk, err := NewEnvelope(testPassphrase)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer ZeroBytes(mk)
+
+	kms := newMockKMSProvider(t)
+	ctx := context.Background()
+
+	err = env.AddKMSSlot(ctx, "kms", mk, kms, "aws-kms", "key-1")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Use a failing provider for unwrap.
+	_, _, err = env.UnwrapFromKMS(ctx, &failingKMSProvider{}, "aws-kms", "key-1")
+	if !errors.Is(err, ErrKMSSlotUnavailable) {
+		t.Fatalf("expected ErrKMSSlotUnavailable, got %v", err)
+	}
+}
+
+func TestEnvelope_UnwrapFromKMS_TierMatching(t *testing.T) {
+	env, mk, err := NewEnvelope(testPassphrase)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer ZeroBytes(mk)
+
+	kms := newMockKMSProvider(t)
+	ctx := context.Background()
+
+	// Add two KMS slots with same provider but different key IDs.
+	err = env.AddKMSSlot(ctx, "kms-a", mk, kms, "aws-kms", "key-A")
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = env.AddKMSSlot(ctx, "kms-b", mk, kms, "aws-kms", "key-B")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Tier 1: exact match on key-A.
+	got, _, err := env.UnwrapFromKMS(ctx, kms, "aws-kms", "key-A")
+	if err != nil {
+		t.Fatalf("Tier 1 exact match failed: %v", err)
+	}
+	if !bytes.Equal(got, mk) {
+		t.Fatal("Tier 1 MK mismatch")
+	}
+	ZeroBytes(got)
+
+	// Tier 2: provider-only fallback (env keyID doesn't match any slot).
+	got, _, err = env.UnwrapFromKMS(ctx, kms, "aws-kms", "key-nonexistent")
+	if err != nil {
+		t.Fatalf("Tier 2 provider-only fallback failed: %v", err)
+	}
+	if !bytes.Equal(got, mk) {
+		t.Fatal("Tier 2 MK mismatch")
+	}
+	ZeroBytes(got)
+
+	// No match: wrong provider.
+	_, _, err = env.UnwrapFromKMS(ctx, kms, "gcp-kms", "key-A")
+	if !errors.Is(err, ErrKMSSlotUnavailable) {
+		t.Fatalf("expected ErrKMSSlotUnavailable for wrong provider, got %v", err)
+	}
+}
+
+func TestEnvelope_KMSSlot_JSON_RoundTrip(t *testing.T) {
+	env, mk, err := NewEnvelope(testPassphrase)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer ZeroBytes(mk)
+
+	kms := newMockKMSProvider(t)
+	ctx := context.Background()
+
+	err = env.AddKMSSlot(ctx, "kms-test", mk, kms, "gcp-kms", "projects/x/locations/y/keyRings/z/cryptoKeys/w")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	data, err := json.Marshal(env)
+	if err != nil {
+		t.Fatalf("marshal: %v", err)
+	}
+
+	var loaded MasterKeyEnvelope
+	if err := json.Unmarshal(data, &loaded); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+
+	if loaded.SlotCount() != 2 {
+		t.Fatalf("expected 2 slots after JSON roundtrip, got %d", loaded.SlotCount())
+	}
+
+	kmsSlot := loaded.Slots[1]
+	if kmsSlot.KMSProvider != "gcp-kms" {
+		t.Fatalf("KMSProvider lost in JSON: got %q", kmsSlot.KMSProvider)
+	}
+	if kmsSlot.KMSKeyID != "projects/x/locations/y/keyRings/z/cryptoKeys/w" {
+		t.Fatalf("KMSKeyID lost in JSON: got %q", kmsSlot.KMSKeyID)
+	}
+
+	// Verify unwrap still works after JSON roundtrip.
+	got, _, err := loaded.UnwrapFromKMS(ctx, kms, "gcp-kms", kmsSlot.KMSKeyID)
+	if err != nil {
+		t.Fatalf("UnwrapFromKMS after JSON roundtrip: %v", err)
+	}
+	defer ZeroBytes(got)
+
+	if !bytes.Equal(got, mk) {
+		t.Fatal("MK mismatch after JSON roundtrip")
+	}
+}
+
+func TestEnvelope_KMSSlot_BackwardCompat(t *testing.T) {
+	// Simulate an old envelope JSON without KMS fields.
+	oldJSON := `{
+		"version": 1,
+		"slots": [{
+			"id": "test-id",
+			"type": "passphrase",
+			"kdf_alg": "pbkdf2-sha256",
+			"kdf_params": {"iterations": 100000},
+			"wrap_alg": "aes-256-gcm",
+			"domain": "passphrase",
+			"salt": "AAAAAAAAAAAAAAAAAAAAAA==",
+			"wrapped_mk": "AAAAAAAAAAAAAAAAAAAAAA==",
+			"nonce": "AAAAAAAAAAAAAAA=",
+			"created_at": "2024-01-01T00:00:00Z"
+		}],
+		"created_at": "2024-01-01T00:00:00Z",
+		"updated_at": "2024-01-01T00:00:00Z"
+	}`
+
+	var env MasterKeyEnvelope
+	if err := json.Unmarshal([]byte(oldJSON), &env); err != nil {
+		t.Fatalf("failed to unmarshal old envelope: %v", err)
+	}
+
+	if env.SlotCount() != 1 {
+		t.Fatalf("expected 1 slot, got %d", env.SlotCount())
+	}
+
+	slot := env.Slots[0]
+	if slot.KMSProvider != "" {
+		t.Fatalf("expected empty KMSProvider in old envelope, got %q", slot.KMSProvider)
+	}
+	if slot.KMSKeyID != "" {
+		t.Fatalf("expected empty KMSKeyID in old envelope, got %q", slot.KMSKeyID)
+	}
+	if !env.HasSlotType(KEKSlotPassphrase) {
+		t.Fatal("passphrase slot should still be present")
+	}
+	if env.HasSlotType(KEKSlotHardware) {
+		t.Fatal("hardware slot should not be present in old envelope")
 	}
 }

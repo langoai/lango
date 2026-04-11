@@ -56,6 +56,8 @@ type Result struct {
 	// PQSigningKeySeed is the 32-byte HKDF seed for ML-DSA-65 PQ signing (Phase 5).
 	// nil when MK is unavailable. Downstream calls mldsa65.NewKeyFromSeed to derive the key.
 	PQSigningKeySeed []byte
+	// KMSUnwrap indicates the MK was unwrapped via a KMS KEK slot (not passphrase/mnemonic).
+	KMSUnwrap bool
 	// PhaseTiming records the duration of each bootstrap phase.
 	PhaseTiming []PhaseTimingEntry `json:"phaseTiming,omitempty"`
 }
@@ -81,6 +83,12 @@ type Options struct {
 	// When true, the bootstrap falls back to keyfile or interactive prompt only.
 	// Useful for testing and headless environments.
 	SkipSecureDetection bool
+	// KMSConfig provides KMS settings for KMS KEK slot unwrapping during bootstrap.
+	// When set and the envelope has a hardware slot, bootstrap attempts KMS-based
+	// MK unwrap before falling back to passphrase.
+	KMSConfig *config.KMSConfig
+	// KMSProviderName identifies which KMS backend to use for KEK unwrap (e.g., "aws-kms").
+	KMSProviderName string
 }
 
 // Run executes the full bootstrap sequence using the phase pipeline:
@@ -92,6 +100,10 @@ type Options struct {
 //  6. Initialize crypto provider
 //  7. Load or create configuration profile
 func Run(opts Options) (*Result, error) {
+	// Explicit Options > env vars: only read env when Options are empty.
+	if opts.KMSConfig == nil && opts.KMSProviderName == "" {
+		opts.KMSConfig, opts.KMSProviderName = KMSConfigFromEnv()
+	}
 	pipeline := NewPipeline(DefaultPhases()...)
 	return pipeline.Execute(context.Background(), opts)
 }

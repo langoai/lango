@@ -158,6 +158,19 @@ func (p *LocalCryptoProvider) Envelope() *MasterKeyEnvelope {
 	return p.envelope
 }
 
+// MasterKey returns a copy of the unwrapped Master Key, or nil in legacy mode.
+// Callers MUST ZeroBytes the returned slice when done.
+func (p *LocalCryptoProvider) MasterKey() []byte {
+	p.mu.RLock()
+	defer p.mu.RUnlock()
+	if p.masterKey == nil {
+		return nil
+	}
+	mk := make([]byte, len(p.masterKey))
+	copy(mk, p.masterKey)
+	return mk
+}
+
 // IsLegacy reports whether the provider was initialized via the legacy
 // direct-passphrase-derived-key path.
 func (p *LocalCryptoProvider) IsLegacy() bool {

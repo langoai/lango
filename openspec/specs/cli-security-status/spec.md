@@ -72,6 +72,18 @@ The system SHALL provide a `lango security status` command that displays the cur
 - **WHEN** user runs `lango security status --json`
 - **THEN** the identity bundle section SHALL include `"pq_signing_key_available": true/false` and `"pq_signing_algorithm": "ml-dsa-65"` (when available)
 
+#### Scenario: Display KMS protection status
+- **WHEN** user runs `lango security status` and the envelope has a KMS KEK slot
+- **THEN** the output SHALL include "KMS Protection: enabled (<provider>)" showing the KMS provider name
+
+#### Scenario: Display KMS protection disabled
+- **WHEN** user runs `lango security status` and no KMS KEK slot exists
+- **THEN** the output SHALL include "KMS Protection: disabled"
+
+#### Scenario: JSON output includes KMS protection
+- **WHEN** user runs `lango security status --json`
+- **THEN** the JSON output SHALL include `"kms_protected": true/false` and `"kms_provider": "<provider>"` (when protected)
+
 ### Requirement: Non-interactive mini-bootstrap for status
 
 The system SHALL provide a `readDBStatusNonInteractive` helper that runs a minimal bootstrap (envelope load → non-interactive passphrase → MK unwrap → read-only DB open → read counts → close) without triggering interactive prompts or schema migration. The helper SHALL handle both envelope-based and legacy installations.

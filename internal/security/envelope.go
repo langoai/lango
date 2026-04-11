@@ -1,6 +1,7 @@
 package security
 
 import (
+	"context"
 	"crypto/aes"
 	"crypto/cipher"
 	"crypto/rand"
@@ -21,11 +22,14 @@ const EnvelopeVersion = 1
 // KDF and wrap algorithm identifiers.
 const (
 	KDFAlgPBKDF2SHA256 = "pbkdf2-sha256"
+	KDFAlgNone         = "none"
 	WrapAlgAES256GCM   = "aes-256-gcm"
+	WrapAlgKMSEnvelope = "kms-envelope"
 
 	// Domain separation strings.
 	domainPassphrase = "passphrase"
 	domainMnemonic   = "mnemonic"
+	domainKMS        = "kms"
 	domainDBKey      = "lango-db-encryption"
 )
 
@@ -65,6 +69,10 @@ type KEKSlot struct {
 	Nonce     []byte      `json:"nonce"`
 	CreatedAt time.Time   `json:"created_at"`
 	Label     string      `json:"label,omitempty"`
+
+	// KMS-specific fields (populated only for KEKSlotHardware slots).
+	KMSProvider string `json:"kms_provider,omitempty"` // "aws-kms", "gcp-kms", "azure-kv", "pkcs11"
+	KMSKeyID    string `json:"kms_key_id,omitempty"`   // KMS key identifier
 }
 
 // MasterKeyEnvelope holds the wrapped Master Key across one or more KEK slots.
@@ -331,7 +339,109 @@ func domainForSlotType(t KEKSlotType) string {
 		return domainPassphrase
 	case KEKSlotMnemonic:
 		return domainMnemonic
+	case KEKSlotHardware:
+		return domainKMS
 	default:
 		return string(t)
 	}
+}
+
+// AddKMSSlot wraps the MK using the CryptoProvider's Encrypt and stores the
+// ciphertext as a KMS KEK slot. The KMS provider handles all wrapping internally
+// (nonces, key material), so no local KDF or GCM nonce is needed.
+func (e *MasterKeyEnvelope) AddKMSSlot(
+	ctx context.Context,
+	label string,
+	mk []byte,
+	provider CryptoProvider,
+	kmsProviderName string,
+	kmsKeyID string,
+) error {
+	if len(mk) != KeySize {
+		return fmt.Errorf("%w: invalid mk size", ErrInvalidSlot)
+	}
+	if kmsProviderName == "" || kmsKeyID == "" {
+		return fmt.Errorf("%w: kms provider and key ID are required", ErrInvalidSlot)
+	}
+
+	wrapped, err := provider.Encrypt(ctx, kmsKeyID, mk)
+	if err != nil {
+		return fmt.Errorf("add KMS slot: encrypt mk: %w", err)
+	}
+
+	slot := KEKSlot{
+		ID:          uuid.NewString(),
+		Type:        KEKSlotHardware,
+		KDFAlg:      KDFAlgNone,
+		WrapAlg:     WrapAlgKMSEnvelope,
+		Domain:      domainKMS,
+		WrappedMK:   wrapped,
+		CreatedAt:   time.Now().UTC(),
+		Label:       label,
+		KMSProvider: kmsProviderName,
+		KMSKeyID:    kmsKeyID,
+	}
+	e.Slots = append(e.Slots, slot)
+	e.UpdatedAt = time.Now().UTC()
+	return nil
+}
+
+// UnwrapFromKMS attempts to unwrap the MK using a KMS provider with 2-tier matching.
+//
+// Tier 1: exact match — slots where KMSProvider == providerName AND KMSKeyID == keyID.
+// Tier 2: provider-only — slots where KMSProvider == providerName (any keyID).
+//
+// The provider is a bare KMS CryptoProvider. CompositeCryptoProvider with local
+// fallback MUST NOT be used — if KMS fails, the caller should fall through to
+// the next credential path (mnemonic/passphrase), not attempt local decryption.
+//
+// Returns (mk, slotID, nil) on success. Callers MUST ZeroBytes the returned MK
+// when done.
+func (e *MasterKeyEnvelope) UnwrapFromKMS(
+	ctx context.Context,
+	provider CryptoProvider,
+	providerName string,
+	keyID string,
+) ([]byte, string, error) {
+	// Tier 1: exact match (provider + keyID).
+	for i := range e.Slots {
+		slot := &e.Slots[i]
+		if slot.Type != KEKSlotHardware || slot.KMSProvider != providerName {
+			continue
+		}
+		if slot.KMSKeyID != keyID {
+			continue
+		}
+		mk, err := provider.Decrypt(ctx, slot.KMSKeyID, slot.WrappedMK)
+		if err != nil {
+			continue
+		}
+		if len(mk) != KeySize {
+			ZeroBytes(mk)
+			continue
+		}
+		return mk, slot.ID, nil
+	}
+
+	// Tier 2: provider-only fallback (handles key rotation).
+	for i := range e.Slots {
+		slot := &e.Slots[i]
+		if slot.Type != KEKSlotHardware || slot.KMSProvider != providerName {
+			continue
+		}
+		if slot.KMSKeyID == keyID {
+			continue // Already tried in Tier 1.
+		}
+		mk, err := provider.Decrypt(ctx, slot.KMSKeyID, slot.WrappedMK)
+		if err != nil {
+			continue
+		}
+		if len(mk) != KeySize {
+			ZeroBytes(mk)
+			continue
+		}
+		return mk, slot.ID, nil
+	}
+
+	return nil, "", ErrKMSSlotUnavailable
 }
