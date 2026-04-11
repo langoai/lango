@@ -10,6 +10,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/cloudflare/circl/sign/mldsa/mldsa65"
 	ethcrypto "github.com/ethereum/go-ethereum/crypto"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -208,4 +209,128 @@ func TestBundleService_ExportVerify_Ed25519(t *testing.T) {
 	// Verify using the Ed25519 verifier.
 	err = bundleSvc.Verify(bundle)
 	assert.NoError(t, err)
+}
+
+// pqDualSigner implements both BundleSigner (Ed25519) and PQBundleSigner (ML-DSA-65).
+type pqDualSigner struct {
+	ed25519Priv ed25519.PrivateKey
+	pqPriv      *mldsa65.PrivateKey
+	pqPub       *mldsa65.PublicKey
+}
+
+func (s *pqDualSigner) Sign(_ context.Context, payload []byte) ([]byte, error) {
+	return ed25519.Sign(s.ed25519Priv, payload), nil
+}
+
+func (s *pqDualSigner) Algorithm() string { return security.AlgorithmEd25519 }
+
+func (s *pqDualSigner) SignPQ(_ context.Context, payload []byte) ([]byte, error) {
+	return security.SignMLDSA65(s.pqPriv, payload)
+}
+
+func (s *pqDualSigner) PQAlgorithm() string { return security.AlgorithmMLDSA65 }
+
+func (s *pqDualSigner) PQPublicKey() []byte {
+	b, _ := s.pqPub.MarshalBinary()
+	return b
+}
+
+func TestBundleService_DualSignature(t *testing.T) {
+	cpStore := NewMemoryStore()
+	treeStore := NewMemoryTreeStore()
+	attrStore := NewMemoryAttributionStore()
+	attrSvc := NewAttributionService(attrStore, cpStore, &stubTokenReader{})
+
+	ed25519Verifier := func(didStr string, payload, signature []byte) error {
+		pubkey, err := identity.ParseDIDPublicKey(didStr)
+		if err != nil {
+			return err
+		}
+		return security.VerifyEd25519(pubkey, payload, signature)
+	}
+	verifiers := map[string]SignatureVerifyFunc{
+		security.AlgorithmEd25519: ed25519Verifier,
+	}
+	bundleSvc := NewBundleService(cpStore, treeStore, attrStore, attrSvc, verifiers)
+
+	ctx := context.Background()
+	require.NoError(t, cpStore.SaveCheckpoint(ctx, Checkpoint{
+		ID:         "cp-dual",
+		SessionKey: "sess-dual",
+		Label:      "dual-sig-test",
+		Trigger:    TriggerManual,
+		CreatedAt:  time.Now(),
+	}))
+
+	// Generate Ed25519 + ML-DSA-65 key pairs.
+	edPub, edPriv, err := ed25519.GenerateKey(rand.Reader)
+	require.NoError(t, err)
+	pqPub, pqPriv, err := mldsa65.GenerateKey(nil)
+	require.NoError(t, err)
+
+	testDID := types.DIDPrefix + hex.EncodeToString(edPub)
+	signer := &pqDualSigner{ed25519Priv: edPriv, pqPriv: pqPriv, pqPub: pqPub}
+
+	// Export with dual signer.
+	bundle, _, err := bundleSvc.Export(ctx, "sess-dual", RedactionNone, testDID, signer)
+	require.NoError(t, err)
+
+	// Verify classical fields.
+	assert.Equal(t, security.AlgorithmEd25519, bundle.SignatureAlgorithm)
+	assert.NotEmpty(t, bundle.Signature)
+
+	// Verify PQ fields.
+	assert.Equal(t, security.AlgorithmMLDSA65, bundle.PQSignatureAlgorithm)
+	assert.NotEmpty(t, bundle.PQSignature)
+	assert.NotEmpty(t, bundle.PQSignerPublicKey)
+
+	// Dual verification.
+	err = bundleSvc.Verify(bundle)
+	assert.NoError(t, err, "dual-signed bundle should verify")
+}
+
+func TestBundleService_ClassicalOnlyBackwardCompat(t *testing.T) {
+	cpStore := NewMemoryStore()
+	treeStore := NewMemoryTreeStore()
+	attrStore := NewMemoryAttributionStore()
+	attrSvc := NewAttributionService(attrStore, cpStore, &stubTokenReader{})
+
+	ed25519Verifier := func(didStr string, payload, signature []byte) error {
+		pubkey, err := identity.ParseDIDPublicKey(didStr)
+		if err != nil {
+			return err
+		}
+		return security.VerifyEd25519(pubkey, payload, signature)
+	}
+	verifiers := map[string]SignatureVerifyFunc{
+		security.AlgorithmEd25519: ed25519Verifier,
+	}
+	bundleSvc := NewBundleService(cpStore, treeStore, attrStore, attrSvc, verifiers)
+
+	ctx := context.Background()
+	require.NoError(t, cpStore.SaveCheckpoint(ctx, Checkpoint{
+		ID:         "cp-classic",
+		SessionKey: "sess-classic",
+		Label:      "classic-only",
+		Trigger:    TriggerManual,
+		CreatedAt:  time.Now(),
+	}))
+
+	// Ed25519-only signer (no PQBundleSigner).
+	edPub, edPriv, err := ed25519.GenerateKey(rand.Reader)
+	require.NoError(t, err)
+	testDID := types.DIDPrefix + hex.EncodeToString(edPub)
+	signer := &ed25519BundleSigner{priv: edPriv}
+
+	bundle, _, err := bundleSvc.Export(ctx, "sess-classic", RedactionNone, testDID, signer)
+	require.NoError(t, err)
+
+	// PQ fields should be empty.
+	assert.Empty(t, bundle.PQSignature)
+	assert.Empty(t, bundle.PQSignerPublicKey)
+	assert.Empty(t, bundle.PQSignatureAlgorithm)
+
+	// Classical-only verification should pass.
+	err = bundleSvc.Verify(bundle)
+	assert.NoError(t, err, "classical-only bundle should verify")
 }

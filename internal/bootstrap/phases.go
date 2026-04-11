@@ -39,6 +39,7 @@ func DefaultPhases() []Phase {
 		phaseLoadSecurityState(),
 		phaseInitCrypto(),
 		phaseDeriveIdentityKey(),
+		phaseDerivePQKey(),
 		phaseLoadProfile(),
 	}
 }
@@ -436,6 +437,24 @@ func phaseDeriveIdentityKey() Phase {
 			}
 			s.IdentityKey = security.DeriveIdentityKey(s.MasterKey, 0)
 			s.Result.IdentityKey = s.IdentityKey
+			return nil
+		},
+	}
+}
+
+// phaseDerivePQKey derives the ML-DSA-65 PQ signing key seed from the Master Key
+// via HKDF. The 32-byte seed is stored in Result; downstream code derives the
+// full ML-DSA-65 keypair via mldsa65.NewKeyFromSeed.
+// No-op when MK is unavailable (legacy mode).
+func phaseDerivePQKey() Phase {
+	return Phase{
+		Name: "derive PQ signing key",
+		Run: func(_ context.Context, s *State) error {
+			if s.MasterKey == nil {
+				return nil
+			}
+			s.PQSigningKeySeed = security.DerivePQSigningSeed(s.MasterKey, 0)
+			s.Result.PQSigningKeySeed = s.PQSigningKeySeed
 			return nil
 		},
 	}

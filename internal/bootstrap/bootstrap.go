@@ -53,6 +53,9 @@ type Result struct {
 	// IdentityKey is the Ed25519 identity key derived from the Master Key (Phase 3).
 	// nil when MK is unavailable (legacy mode).
 	IdentityKey ed25519.PrivateKey
+	// PQSigningKeySeed is the 32-byte HKDF seed for ML-DSA-65 PQ signing (Phase 5).
+	// nil when MK is unavailable. Downstream calls mldsa65.NewKeyFromSeed to derive the key.
+	PQSigningKeySeed []byte
 	// PhaseTiming records the duration of each bootstrap phase.
 	PhaseTiming []PhaseTimingEntry `json:"phaseTiming,omitempty"`
 }

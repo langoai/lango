@@ -56,6 +56,10 @@ type State struct {
 
 	// Identity key derived from MK via HKDF (Phase 3).
 	IdentityKey ed25519.PrivateKey
+
+	// PQ signing key seed derived from MK via HKDF (Phase 5).
+	// 32-byte seed for ML-DSA-65. Downstream code calls mldsa65.NewKeyFromSeed.
+	PQSigningKeySeed []byte
 }
 
 // Phase represents a single step in the bootstrap pipeline.

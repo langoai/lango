@@ -42,11 +42,13 @@ type dbStatusResult struct {
 // statusOutput is the full status payload (envelope + DB + config fields).
 // identityBundleSection captures DID v2 identity bundle state.
 type identityBundleSection struct {
-	Present          bool   `json:"present"`
-	DIDv2            string `json:"did_v2,omitempty"`
-	SigningAlgorithm string `json:"signing_algorithm,omitempty"`
-	HasSettlement    bool   `json:"has_settlement"`
-	LegacyDID        string `json:"legacy_did,omitempty"`
+	Present               bool   `json:"present"`
+	DIDv2                 string `json:"did_v2,omitempty"`
+	SigningAlgorithm      string `json:"signing_algorithm,omitempty"`
+	HasSettlement         bool   `json:"has_settlement"`
+	LegacyDID             string `json:"legacy_did,omitempty"`
+	PQSigningKeyAvailable bool   `json:"pq_signing_key_available"`
+	PQSigningAlgorithm    string `json:"pq_signing_algorithm,omitempty"`
 }
 
 type statusOutput struct {
@@ -77,12 +79,19 @@ func readIdentityBundleStatus(langoDir string) identityBundleSection {
 		return identityBundleSection{}
 	}
 	didV2, _ := identity.ComputeDIDv2(bundle)
+	hasPQ := bundle.PQSigningKey != nil && len(bundle.PQSigningKey.PublicKey) > 0
+	var pqAlgo string
+	if hasPQ {
+		pqAlgo = bundle.PQSigningKey.Algorithm
+	}
 	return identityBundleSection{
-		Present:          true,
-		DIDv2:            didV2,
-		SigningAlgorithm: bundle.SigningKey.Algorithm,
-		HasSettlement:    len(bundle.SettlementKey.PublicKey) > 0,
-		LegacyDID:        bundle.LegacyDID,
+		Present:               true,
+		DIDv2:                 didV2,
+		SigningAlgorithm:      bundle.SigningKey.Algorithm,
+		HasSettlement:         len(bundle.SettlementKey.PublicKey) > 0,
+		LegacyDID:             bundle.LegacyDID,
+		PQSigningKeyAvailable: hasPQ,
+		PQSigningAlgorithm:    pqAlgo,
 	}
 }
 
@@ -403,6 +412,11 @@ func renderStatus(s statusOutput, jsonOutput bool) error {
 		fmt.Printf("    Signing Key:      %s\n", s.IdentityBundle.SigningAlgorithm)
 		fmt.Printf("    Settlement Key:   %s\n", boolToStatus(s.IdentityBundle.HasSettlement))
 		fmt.Printf("    Legacy DID:       %s\n", s.IdentityBundle.LegacyDID)
+		if s.IdentityBundle.PQSigningKeyAvailable {
+			fmt.Printf("    PQ Signing Key:   available (%s)\n", s.IdentityBundle.PQSigningAlgorithm)
+		} else {
+			fmt.Println("    PQ Signing Key:   not available")
+		}
 	} else {
 		fmt.Println("    absent (v1 identity only)")
 	}

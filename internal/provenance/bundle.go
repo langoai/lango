@@ -18,6 +18,14 @@ type BundleSigner interface {
 	Algorithm() string
 }
 
+// PQBundleSigner is an optional interface that BundleSigners can implement
+// to provide ML-DSA-65 post-quantum dual signatures.
+type PQBundleSigner interface {
+	SignPQ(ctx context.Context, payload []byte) ([]byte, error)
+	PQAlgorithm() string
+	PQPublicKey() []byte
+}
+
 // SignatureVerifyFunc verifies a signature against a signer DID.
 // Implementations are injected at the app/cli wiring layer.
 type SignatureVerifyFunc func(signerDID string, payload, signature []byte) error
@@ -78,15 +86,33 @@ func (s *BundleService) Export(
 	bundle.SignerDID = signerDID
 	bundle.SignatureAlgorithm = signer.Algorithm()
 
+	// PQ dual-sign: embed PQ public key before computing canonical payload.
+	// The classical signature covers PQSignerPublicKey (trust chain binding).
+	if pqs, ok := signer.(PQBundleSigner); ok {
+		bundle.PQSignerPublicKey = pqs.PQPublicKey()
+		bundle.PQSignatureAlgorithm = pqs.PQAlgorithm()
+	}
+
 	payload, err := canonicalBundlePayload(bundle)
 	if err != nil {
 		return nil, nil, err
 	}
+
+	// Classical signature (required).
 	sig, err := signer.Sign(ctx, payload)
 	if err != nil {
 		return nil, nil, fmt.Errorf("sign bundle: %w", err)
 	}
 	bundle.Signature = sig
+
+	// PQ signature (optional, over the same canonical payload).
+	if pqs, ok := signer.(PQBundleSigner); ok {
+		pqSig, pqErr := pqs.SignPQ(ctx, payload)
+		if pqErr != nil {
+			return nil, nil, fmt.Errorf("PQ sign bundle: %w", pqErr)
+		}
+		bundle.PQSignature = pqSig
+	}
 
 	data, err := json.MarshalIndent(bundle, "", "  ")
 	if err != nil {
@@ -118,8 +144,16 @@ func (s *BundleService) Verify(bundle *ProvenanceBundle) error {
 	if err != nil {
 		return err
 	}
+	// Classical signature verification (required).
 	if err := verifier(bundle.SignerDID, payload, bundle.Signature); err != nil {
 		return fmt.Errorf("verify bundle signature: %w", err)
+	}
+	// PQ signature verification (optional — backward compat with classical-only bundles).
+	// Uses the embedded PQ public key directly (self-contained, rotation-safe).
+	if len(bundle.PQSignature) > 0 && len(bundle.PQSignerPublicKey) > 0 {
+		if err := security.VerifyMLDSA65(bundle.PQSignerPublicKey, payload, bundle.PQSignature); err != nil {
+			return fmt.Errorf("verify PQ bundle signature: %w", err)
+		}
 	}
 	return nil
 }
@@ -198,6 +232,9 @@ func (s *BundleService) buildBundle(ctx context.Context, sessionKey string, leve
 func canonicalBundlePayload(bundle *ProvenanceBundle) ([]byte, error) {
 	clone := *bundle
 	clone.Signature = nil
+	clone.PQSignature = nil
+	// PQSignerPublicKey and PQSignatureAlgorithm are INCLUDED —
+	// the classical signature authenticates the embedded PQ public key.
 	return json.Marshal(clone)
 }
 

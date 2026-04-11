@@ -57,6 +57,21 @@ The system SHALL provide a `lango security status` command that displays the cur
 - **WHEN** user runs `lango security status --json`
 - **THEN** the JSON output SHALL include `"pq_handshake_enabled": true/false` and `"pq_handshake_algorithm": "X25519-MLKEM768"` (when enabled)
 
+#### Scenario: Display PQ signing key status
+
+- **WHEN** user runs `lango security status` and PQ signing key is available
+- **THEN** the identity bundle section SHALL include "PQ Signing Key: available (ml-dsa-65)"
+
+#### Scenario: Display PQ signing key unavailable
+
+- **WHEN** user runs `lango security status` and PQ signing key is not available
+- **THEN** the identity bundle section SHALL include "PQ Signing Key: not available"
+
+#### Scenario: JSON output includes PQ signing key status
+
+- **WHEN** user runs `lango security status --json`
+- **THEN** the identity bundle section SHALL include `"pq_signing_key_available": true/false` and `"pq_signing_algorithm": "ml-dsa-65"` (when available)
+
 ### Requirement: Non-interactive mini-bootstrap for status
 
 The system SHALL provide a `readDBStatusNonInteractive` helper that runs a minimal bootstrap (envelope load → non-interactive passphrase → MK unwrap → read-only DB open → read counts → close) without triggering interactive prompts or schema migration. The helper SHALL handle both envelope-based and legacy installations.

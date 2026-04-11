@@ -122,6 +122,19 @@ func (s *walletHandshakeSigner) DID(ctx context.Context) (string, error) {
 	return did.ID, nil
 }
 
+// bundleCardSigner adapts BundleProvider to the discovery.CardSigner interface.
+type bundleCardSigner struct {
+	bp *identity.BundleProvider
+}
+
+func (s *bundleCardSigner) Sign(ctx context.Context, payload []byte) ([]byte, error) {
+	return s.bp.SignMessage(ctx, payload)
+}
+
+func (s *bundleCardSigner) Algorithm() string {
+	return s.bp.Algorithm()
+}
+
 // didProvider is the minimal interface for DID retrieval used by p2pComponents.
 type didProvider interface {
 	DID(ctx context.Context) (*identity.DID, error)
@@ -150,7 +163,7 @@ type p2pComponents struct {
 }
 
 // initP2P creates the P2P networking components if enabled.
-func initP2P(cfg *config.Config, wp wallet.WalletProvider, pc *paymentComponents, dbClient *ent.Client, secrets *security.SecretsStore, bus *eventbus.Bus, identityKey ed25519.PrivateKey, langoDir string) *p2pComponents {
+func initP2P(cfg *config.Config, wp wallet.WalletProvider, pc *paymentComponents, dbClient *ent.Client, secrets *security.SecretsStore, bus *eventbus.Bus, identityKey ed25519.PrivateKey, pqSigningKeySeed []byte, langoDir string) *p2pComponents {
 	if !cfg.P2P.Enabled {
 		logger().Info("P2P networking disabled")
 		return nil
@@ -179,11 +192,12 @@ func initP2P(cfg *config.Config, wp wallet.WalletProvider, pc *paymentComponents
 		walletPub, pubErr := wp.PublicKey(context.Background())
 		if pubErr == nil {
 			bp, bpErr := identity.NewBundleProvider(identity.BundleProviderConfig{
-				SigningKey:     identityKey,
-				SettlementPub: walletPub,
-				LangoDir:      langoDir,
-				Legacy:        legacyIDProvider,
-				Logger:        pLogger,
+				SigningKey:       identityKey,
+				SettlementPub:   walletPub,
+				PQSigningKeySeed: pqSigningKeySeed,
+				LangoDir:        langoDir,
+				Legacy:          legacyIDProvider,
+				Logger:          pLogger,
 			})
 			if bpErr == nil {
 				localID = bp
@@ -530,12 +544,20 @@ func initP2P(cfg *config.Config, wp wallet.WalletProvider, pc *paymentComponents
 		}
 	}
 
-	gossip, err = discovery.NewGossipService(discovery.GossipConfig{
+	gossipCfg := discovery.GossipConfig{
 		Host:      node.Host(),
 		LocalCard: localCard,
 		Interval:  gossipInterval,
 		Logger:    pLogger,
-	})
+	}
+	// Wire card signers for gossip card signing (classical + PQ dual-sign).
+	if bp, ok := localID.(*identity.BundleProvider); ok {
+		gossipCfg.CardSigner = &bundleCardSigner{bp: bp}
+		if bp.HasPQKey() {
+			gossipCfg.PQCardSigner = bp
+		}
+	}
+	gossip, err = discovery.NewGossipService(gossipCfg)
 	if err != nil {
 		pLogger.Warnw("gossip service creation failed", "error", err)
 	}

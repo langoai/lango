@@ -16,10 +16,12 @@ import (
 // shared with peers via handshake and gossip.
 type IdentityBundle struct {
 	Version       int            `json:"version"`
-	Generation    uint32         `json:"generation"`               // key derivation generation (default 0)
+	Generation    uint32         `json:"generation"`               // Ed25519 key derivation generation (default 0)
 	SigningKey    PublicKeyEntry `json:"signing_key"`              // Ed25519 primary signing key
 	SettlementKey PublicKeyEntry `json:"settlement_key"`           // secp256k1 (from wallet)
 	LegacyDID     string         `json:"legacy_did,omitempty"`     // did:lango:<secp256k1-hex> for v1 compat
+	PQGeneration  uint32         `json:"pq_generation,omitempty"`  // ML-DSA key derivation generation (default 0)
+	PQSigningKey  *PublicKeyEntry `json:"pq_signing_key,omitempty"` // ML-DSA-65 PQ signing key (nil if unavailable)
 	Proofs        BundleProofs   `json:"proofs"`
 	CreatedAt     time.Time      `json:"created_at"`
 }
@@ -34,6 +36,7 @@ type PublicKeyEntry struct {
 type BundleProofs struct {
 	Legacy  []byte `json:"legacy,omitempty"`  // secp256k1+keccak256 signature over canonical
 	Ed25519 []byte `json:"ed25519,omitempty"` // Ed25519 signature over canonical
+	MLDSA65 []byte `json:"mldsa65,omitempty"` // ML-DSA-65 signature over canonical
 }
 
 // canonicalBundleData is the subset of IdentityBundle fields included in the

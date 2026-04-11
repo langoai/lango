@@ -194,9 +194,9 @@ func TestPipeline_ErrorWrapsPhaseNameAndCause(t *testing.T) {
 	assert.True(t, errors.Is(err, sentinel))
 }
 
-func TestDefaultPhases_Returns11Phases(t *testing.T) {
+func TestDefaultPhases_Returns12Phases(t *testing.T) {
 	phases := DefaultPhases()
-	require.Len(t, phases, 11)
+	require.Len(t, phases, 12)
 
 	wantNames := []string{
 		"ensure data directory",
@@ -209,6 +209,7 @@ func TestDefaultPhases_Returns11Phases(t *testing.T) {
 		"load security state",
 		"initialize crypto",
 		"derive identity key",
+		"derive PQ signing key",
 		"load profile",
 	}
 

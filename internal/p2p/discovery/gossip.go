@@ -12,6 +12,8 @@ import (
 	"github.com/libp2p/go-libp2p/core/host"
 	"github.com/libp2p/go-libp2p/core/peer"
 	"go.uber.org/zap"
+
+	"github.com/langoai/lango/internal/security"
 )
 
 // TopicAgentCard is the GossipSub topic for agent card propagation.
@@ -19,17 +21,22 @@ const TopicAgentCard = "/lango/agentcard/1.0.0"
 
 // GossipCard is an agent card propagated via GossipSub.
 type GossipCard struct {
-	Name          string         `json:"name"`
-	Description   string         `json:"description"`
-	DID           string         `json:"did,omitempty"`
-	Multiaddrs    []string       `json:"multiaddrs,omitempty"`
-	Capabilities  []string       `json:"capabilities,omitempty"`
-	Pricing       *PricingInfo   `json:"pricing,omitempty"`
-	ZKCredentials  []ZKCredential  `json:"zkCredentials,omitempty"`
-	OntologyDigest *OntologyDigest `json:"ontologyDigest,omitempty"`
-	PeerID         string          `json:"peerId"`
-	Timestamp      time.Time       `json:"timestamp"`
-	Bundle         json.RawMessage `json:"bundle,omitempty"` // v2: serialized IdentityBundle for DID resolution
+	Name               string          `json:"name"`
+	Description        string          `json:"description"`
+	DID                string          `json:"did,omitempty"`
+	Multiaddrs         []string        `json:"multiaddrs,omitempty"`
+	Capabilities       []string        `json:"capabilities,omitempty"`
+	Pricing            *PricingInfo    `json:"pricing,omitempty"`
+	ZKCredentials      []ZKCredential  `json:"zkCredentials,omitempty"`
+	OntologyDigest     *OntologyDigest `json:"ontologyDigest,omitempty"`
+	PeerID             string          `json:"peerId"`
+	Timestamp          time.Time       `json:"timestamp"`
+	Bundle             json.RawMessage `json:"bundle,omitempty"`             // v2: serialized IdentityBundle for DID resolution
+	Signature          []byte          `json:"signature,omitempty"`          // classical signature over canonical payload
+	SignatureAlgorithm string          `json:"signatureAlgorithm,omitempty"` // algorithm for classical signature
+	PQSignerPublicKey  []byte          `json:"pqSignerPublicKey,omitempty"`  // embedded ML-DSA-65 pubkey for rotation-safe PQ verification
+	PQSignature        []byte          `json:"pqSignature,omitempty"`        // ML-DSA-65 signature over canonical payload
+	PQSignatureAlgorithm string        `json:"pqSignatureAlgorithm,omitempty"`
 }
 
 // PricingInfo describes the pricing for an agent's services.
@@ -62,18 +69,69 @@ type ZKCredential struct {
 // ZKCredentialVerifier verifies a ZK credential proof.
 type ZKCredentialVerifier func(cred *ZKCredential) (bool, error)
 
+// CardSigner signs gossip card content with a classical algorithm.
+type CardSigner interface {
+	Sign(ctx context.Context, payload []byte) ([]byte, error)
+	Algorithm() string
+}
+
+// PQCardSigner is an optional interface for PQ dual-signing gossip cards.
+type PQCardSigner interface {
+	SignPQ(ctx context.Context, payload []byte) ([]byte, error)
+	PQAlgorithm() string
+	PQPublicKey() []byte
+}
+
+// CanonicalCardPayload returns the canonical JSON for signing.
+// It clones the card, zeros ONLY Signature and PQSignature, and marshals
+// everything else — including Bundle and PQSignerPublicKey.
+func CanonicalCardPayload(card *GossipCard) ([]byte, error) {
+	clone := *card
+	clone.Signature = nil
+	clone.PQSignature = nil
+	return json.Marshal(clone)
+}
+
+// VerifyCardSignature verifies the classical + optional PQ signatures on a card.
+// Returns nil if the card is unsigned (backward compat with legacy cards).
+func VerifyCardSignature(card *GossipCard, classicalVerify func(pubkey, message, sig []byte) error) error {
+	if len(card.Signature) == 0 {
+		return nil // unsigned legacy card — accepted
+	}
+	payload, err := CanonicalCardPayload(card)
+	if err != nil {
+		return fmt.Errorf("canonical card payload: %w", err)
+	}
+	// Classical signature verification is required when present.
+	// Note: the caller provides a verify function that resolves the public key from card.DID.
+	if classicalVerify != nil {
+		if err := classicalVerify(nil, payload, card.Signature); err != nil {
+			return fmt.Errorf("verify card signature: %w", err)
+		}
+	}
+	// PQ verification uses embedded public key (self-contained, rotation-safe).
+	if len(card.PQSignature) > 0 && len(card.PQSignerPublicKey) > 0 {
+		if err := security.VerifyMLDSA65(card.PQSignerPublicKey, payload, card.PQSignature); err != nil {
+			return fmt.Errorf("verify card PQ signature: %w", err)
+		}
+	}
+	return nil
+}
+
 // defaultMaxCredentialAge is the default maximum age for ZK credentials.
 const defaultMaxCredentialAge = 24 * time.Hour
 
 // GossipService manages agent card propagation via GossipSub.
 type GossipService struct {
-	host      host.Host
-	ps        *pubsub.PubSub
-	topic     *pubsub.Topic
-	sub       *pubsub.Subscription
-	localCard *GossipCard
-	interval  time.Duration
-	verifier  ZKCredentialVerifier
+	host        host.Host
+	ps          *pubsub.PubSub
+	topic       *pubsub.Topic
+	sub         *pubsub.Subscription
+	localCard   *GossipCard
+	interval    time.Duration
+	verifier    ZKCredentialVerifier
+	cardSigner  CardSigner   // optional: for signing published cards
+	pqSigner    PQCardSigner // optional: for PQ dual-signing
 
 	mu     sync.RWMutex
 	peers  map[string]*GossipCard // keyed by DID
@@ -87,12 +145,14 @@ type GossipService struct {
 
 // GossipConfig configures the gossip service.
 type GossipConfig struct {
-	Host      host.Host
-	PubSub    *pubsub.PubSub // optional pre-created PubSub instance
-	LocalCard *GossipCard
-	Interval  time.Duration
-	Verifier  ZKCredentialVerifier
-	Logger    *zap.SugaredLogger
+	Host         host.Host
+	PubSub       *pubsub.PubSub // optional pre-created PubSub instance
+	LocalCard    *GossipCard
+	Interval     time.Duration
+	Verifier     ZKCredentialVerifier
+	CardSigner   CardSigner   // optional: sign published cards
+	PQCardSigner PQCardSigner // optional: PQ dual-sign
+	Logger       *zap.SugaredLogger
 }
 
 // NewGossipService creates a new gossip-based discovery service.
@@ -124,6 +184,8 @@ func NewGossipService(cfg GossipConfig) (*GossipService, error) {
 		localCard:        cfg.LocalCard,
 		interval:         cfg.Interval,
 		verifier:         cfg.Verifier,
+		cardSigner:       cfg.CardSigner,
+		pqSigner:         cfg.PQCardSigner,
 		peers:            make(map[string]*GossipCard),
 		logger:           cfg.Logger,
 		revokedDIDs:      make(map[string]time.Time),
@@ -248,6 +310,9 @@ func (g *GossipService) publishCard(ctx context.Context) {
 
 	g.localCard.Timestamp = time.Now()
 
+	// Sign the card before publishing.
+	g.signCard(ctx, g.localCard)
+
 	data, err := json.Marshal(g.localCard)
 	if err != nil {
 		g.logger.Warnw("marshal agent card", "error", err)
@@ -256,6 +321,45 @@ func (g *GossipService) publishCard(ctx context.Context) {
 
 	if err := g.topic.Publish(ctx, data); err != nil {
 		g.logger.Debugw("publish agent card", "error", err)
+	}
+}
+
+// signCard applies classical and PQ signatures to a gossip card.
+func (g *GossipService) signCard(ctx context.Context, card *GossipCard) {
+	if g.cardSigner == nil {
+		return
+	}
+
+	// PQ pubkey must be set before canonical payload computation
+	// (included in classical signature's payload for trust chain binding).
+	if g.pqSigner != nil {
+		card.PQSignerPublicKey = g.pqSigner.PQPublicKey()
+		card.PQSignatureAlgorithm = g.pqSigner.PQAlgorithm()
+	}
+
+	payload, err := CanonicalCardPayload(card)
+	if err != nil {
+		g.logger.Warnw("canonical card payload", "error", err)
+		return
+	}
+
+	// Classical signature.
+	sig, err := g.cardSigner.Sign(ctx, payload)
+	if err != nil {
+		g.logger.Warnw("sign gossip card", "error", err)
+		return
+	}
+	card.Signature = sig
+	card.SignatureAlgorithm = g.cardSigner.Algorithm()
+
+	// PQ signature (optional).
+	if g.pqSigner != nil {
+		pqSig, pqErr := g.pqSigner.SignPQ(ctx, payload)
+		if pqErr != nil {
+			g.logger.Warnw("PQ sign gossip card", "error", pqErr)
+			return
+		}
+		card.PQSignature = pqSig
 	}
 }
 

@@ -5,6 +5,7 @@ package security
 const (
 	AlgorithmSecp256k1Keccak256 = "secp256k1-keccak256"
 	AlgorithmEd25519            = "ed25519"
+	AlgorithmMLDSA65            = "ml-dsa-65"
 )
 
 // SignatureScheme is a canonical algorithm descriptor with verification

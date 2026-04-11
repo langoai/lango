@@ -7,8 +7,11 @@ import (
 	"sync"
 	"time"
 
+	"github.com/cloudflare/circl/sign/mldsa/mldsa65"
 	"github.com/libp2p/go-libp2p/core/peer"
 	"go.uber.org/zap"
+
+	"github.com/langoai/lango/internal/security"
 )
 
 // LocalIdentityProvider is the interface for local agent identity operations.
@@ -26,11 +29,12 @@ type LocalIdentityProvider interface {
 
 // BundleProviderConfig holds the configuration for creating a BundleProvider.
 type BundleProviderConfig struct {
-	SigningKey     ed25519.PrivateKey
-	SettlementPub []byte // compressed secp256k1 public key from wallet
-	LangoDir      string
-	Legacy        *WalletDIDProvider
-	Logger        *zap.SugaredLogger
+	SigningKey       ed25519.PrivateKey
+	SettlementPub   []byte // compressed secp256k1 public key from wallet
+	PQSigningKeySeed []byte // 32-byte HKDF seed for ML-DSA-65 (optional, nil = no PQ)
+	LangoDir        string
+	Legacy          *WalletDIDProvider
+	Logger          *zap.SugaredLogger
 }
 
 // BundleProvider manages the local agent's v2 identity. It creates and caches
@@ -39,13 +43,14 @@ type BundleProviderConfig struct {
 // BundleProvider does NOT implement VerifyDID for remote peers — that
 // responsibility belongs to BundleResolver.
 type BundleProvider struct {
-	bundle     *IdentityBundle
-	signingKey ed25519.PrivateKey
-	legacyProv *WalletDIDProvider
-	did        *DID // cached v2 DID
-	langoDir   string
-	logger     *zap.SugaredLogger
-	mu         sync.RWMutex
+	bundle       *IdentityBundle
+	signingKey   ed25519.PrivateKey
+	pqSigningKey *mldsa65.PrivateKey // nil when PQ unavailable
+	legacyProv   *WalletDIDProvider
+	did          *DID // cached v2 DID
+	langoDir     string
+	logger       *zap.SugaredLogger
+	mu           sync.RWMutex
 }
 
 // Compile-time interface check.
@@ -64,6 +69,15 @@ func NewBundleProvider(cfg BundleProviderConfig) (*BundleProvider, error) {
 		legacyProv: cfg.Legacy,
 		langoDir:   cfg.LangoDir,
 		logger:     cfg.Logger,
+	}
+
+	// Derive ML-DSA-65 PQ signing key from seed if available.
+	if len(cfg.PQSigningKeySeed) == mldsa65.SeedSize {
+		var seed [mldsa65.SeedSize]byte
+		copy(seed[:], cfg.PQSigningKeySeed)
+		_, sk := mldsa65.NewKeyFromSeed(&seed)
+		security.ZeroBytes(seed[:])
+		p.pqSigningKey = sk
 	}
 
 	// Try loading existing bundle.
@@ -127,6 +141,19 @@ func (p *BundleProvider) createBundle(settlementPub []byte) (*IdentityBundle, er
 		CreatedAt: time.Now(),
 	}
 
+	// Add PQ signing key if available.
+	if p.pqSigningKey != nil {
+		pqPub := p.pqSigningKey.Public().(*mldsa65.PublicKey)
+		pqPubBytes, err := pqPub.MarshalBinary()
+		if err != nil {
+			return nil, fmt.Errorf("marshal PQ public key: %w", err)
+		}
+		bundle.PQSigningKey = &PublicKeyEntry{
+			Algorithm: security.AlgorithmMLDSA65,
+			PublicKey: pqPubBytes,
+		}
+	}
+
 	// Generate canonical bytes for proof signing.
 	canonical, err := CanonicalBundleBytes(bundle)
 	if err != nil {
@@ -136,10 +163,17 @@ func (p *BundleProvider) createBundle(settlementPub []byte) (*IdentityBundle, er
 	// Ed25519 proof.
 	bundle.Proofs.Ed25519 = ed25519.Sign(p.signingKey, canonical)
 
+	// ML-DSA-65 proof.
+	if p.pqSigningKey != nil {
+		pqSig, err := security.SignMLDSA65(p.pqSigningKey, canonical)
+		if err != nil {
+			return nil, fmt.Errorf("ML-DSA-65 proof: %w", err)
+		}
+		bundle.Proofs.MLDSA65 = pqSig
+	}
+
 	// Legacy proof (secp256k1 via wallet).
 	if p.legacyProv != nil && p.legacyProv.keys != nil {
-		// We need the wallet's SignMessage for the legacy proof,
-		// but KeyProvider only has PublicKey. The legacy proof is optional.
 		p.logger.Debugw("legacy proof requires wallet signer — skipping if unavailable")
 	}
 
@@ -221,6 +255,34 @@ func (p *BundleProvider) PublicKey(_ context.Context) ([]byte, error) {
 // Algorithm returns the signing algorithm identifier.
 func (p *BundleProvider) Algorithm() string {
 	return "ed25519"
+}
+
+// SignPQ signs a message with the ML-DSA-65 PQ signing key.
+func (p *BundleProvider) SignPQ(_ context.Context, message []byte) ([]byte, error) {
+	if p.pqSigningKey == nil {
+		return nil, fmt.Errorf("PQ signing key not available")
+	}
+	return security.SignMLDSA65(p.pqSigningKey, message)
+}
+
+// PQAlgorithm returns the PQ signing algorithm identifier.
+func (p *BundleProvider) PQAlgorithm() string {
+	return security.AlgorithmMLDSA65
+}
+
+// PQPublicKey returns the ML-DSA-65 public key bytes, or nil if unavailable.
+func (p *BundleProvider) PQPublicKey() []byte {
+	if p.pqSigningKey == nil {
+		return nil
+	}
+	pub := p.pqSigningKey.Public().(*mldsa65.PublicKey)
+	b, _ := pub.MarshalBinary()
+	return b
+}
+
+// HasPQKey reports whether a PQ signing key is available.
+func (p *BundleProvider) HasPQKey() bool {
+	return p.pqSigningKey != nil
 }
 
 // DIDString returns the DID v2 string for the Signer.DID() interface.
