@@ -8,6 +8,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"sync"
@@ -15,6 +16,7 @@ import (
 	"github.com/consensys/gnark-crypto/ecc"
 	"github.com/consensys/gnark-crypto/kzg"
 	"github.com/consensys/gnark/backend/groth16"
+	groth16bn254 "github.com/consensys/gnark/backend/groth16/bn254"
 	"github.com/consensys/gnark/backend/plonk"
 	"github.com/consensys/gnark/constraint"
 	"github.com/consensys/gnark/frontend"
@@ -323,6 +325,42 @@ func (s *ProverService) Verify(ctx context.Context, proof *Proof, circuit fronte
 	default:
 		return false, fmt.Errorf("%w: %s", ErrUnsupportedScheme, s.scheme)
 	}
+}
+
+// ExportGroth16Verifier compiles the circuit with Groth16 (regardless of the
+// service's default scheme), generates a trusted setup, and writes a Solidity
+// verifier contract to w. Uses unsafe SRS for R&D.
+//
+// The exported verifier is BN254-specific and implements the standard Groth16
+// verification interface: verifyProof(uint256[2] a, uint256[2][2] b, uint256[2] c, uint256[] input).
+func (s *ProverService) ExportGroth16Verifier(circuitID string, circuit frontend.Circuit, w io.Writer) error {
+	s.logger.Infow("exporting Groth16 verifier", "circuitID", circuitID)
+
+	ccs, err := frontend.Compile(ecc.BN254.ScalarField(), r1cs.NewBuilder, circuit)
+	if err != nil {
+		return fmt.Errorf("compile circuit %q for groth16: %w", circuitID, err)
+	}
+
+	_, vk, err := groth16.Setup(ccs)
+	if err != nil {
+		return fmt.Errorf("groth16 setup for %q: %w", circuitID, err)
+	}
+
+	// Type-assert to *groth16bn254.VerifyingKey which has ExportSolidity.
+	bn254VK, ok := vk.(*groth16bn254.VerifyingKey)
+	if !ok {
+		return fmt.Errorf("verifying key for %q does not support Solidity export (requires BN254)", circuitID)
+	}
+
+	if err := bn254VK.ExportSolidity(w); err != nil {
+		return fmt.Errorf("export solidity for %q: %w", circuitID, err)
+	}
+
+	s.logger.Infow("Groth16 verifier exported",
+		"circuitID", circuitID,
+		"constraints", ccs.GetNbConstraints(),
+	)
+	return nil
 }
 
 // IsCompiled reports whether the circuit with the given ID has been compiled.

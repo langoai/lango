@@ -303,3 +303,31 @@ The `EventMonitor` SHALL use helper methods to extract deal ID and address from 
 - **WHEN** a DealResolved or SettlementFinalized event is processed
 - **THEN** `extractDealID` SHALL return the correct dealID regardless of V1/V2 layout
 
+### Requirement: ZK-gated escrow prototype
+
+The system SHALL provide a standalone `LangoZKEscrow.sol` contract (separate from `LangoEscrowHubV2`) that gates fund release on ZK proof verification. The contract uses gnark's compressed Groth16 format (`uint256[8] proof, uint256[8] input`) and reverts on invalid proofs.
+
+#### Scenario: Release with valid ZK proof
+- **WHEN** a seller submits a valid ZK proof via `releaseWithProof` with matching domain binding
+- **THEN** the contract verifies the proof via `IZKVerifier`, checks domain inputs (dealId, chainId, contractAddress), validates the attestor is trusted, and releases funds
+
+#### Scenario: Domain binding mismatch rejected
+- **WHEN** a ZK proof is submitted with `publicInputs[chainIdIdx] != block.chainid`
+- **THEN** the contract SHALL revert
+
+#### Scenario: Untrusted attestor rejected
+- **WHEN** a ZK proof is submitted with an attestor DID hash not in `trustedAttestors`
+- **THEN** the contract SHALL revert
+
+#### Scenario: Invalid ZK proof rejected
+- **WHEN** `IZKVerifier.verifyProof` reverts (proof invalid)
+- **THEN** the contract SHALL revert with `InvalidZKProof()`
+
+### Requirement: IZKVerifier interface
+
+The system SHALL define an `IZKVerifier` interface with `verifyProof(uint256[8] proof, uint256[8] input)` using gnark's compressed Groth16 format. The function reverts on invalid proofs (no bool return).
+
+#### Scenario: Verifier interface matches gnark export
+- **WHEN** a gnark Groth16 verifier is exported as Solidity
+- **THEN** it SHALL implement `IZKVerifier` interface
+
