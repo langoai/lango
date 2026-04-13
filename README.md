@@ -116,7 +116,7 @@ For the full configuration editor with all options, use `lango settings`.
 
 ### CLI Commands
 
-See the full [CLI Reference](docs/cli/index.md) for all 80+ commands.
+See the full [CLI Reference](docs/cli/index.md) for the complete command set.
 
 ```
 lango                            Launch cockpit TUI (interactive terminal)

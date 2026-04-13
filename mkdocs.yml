@@ -150,6 +150,7 @@ nav:
     - Core Commands: cli/core.md
     - Config Management: cli/config.md
     - Agent & Memory: cli/agent-memory.md
+    - A2A Commands: cli/a2a.md
     - Security Commands: cli/security.md
     - Payment Commands: cli/payment.md
     - P2P Commands: cli/p2p.md

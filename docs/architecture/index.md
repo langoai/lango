@@ -1,6 +1,6 @@
 # Architecture
 
-This section describes the internal architecture of Lango, a Go-based AI agent built on Google ADK v0.6.0.
+This section describes the internal architecture of Lango, a Go-based AI agent built on Google ADK v1.0.0
 
 <div class="grid cards" markdown>
 
