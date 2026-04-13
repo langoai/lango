@@ -1,0 +1,14 @@
+{
+  "events": [
+    {"author": "lango-orchestrator", "transfer_to": "vault"},
+    {"author": "vault", "kind": "tool_call", "tool": "payment_balance", "args": {}},
+    {"author": "vault", "kind": "tool_result", "tool": "payment_balance", "response": {"address": "0xabc", "balance": "0.00", "currency": "USDC"}},
+    {"author": "vault", "kind": "tool_call", "tool": "payment_balance", "args": {}},
+    {"author": "vault", "kind": "tool_result", "tool": "payment_balance", "response": {"address": "0xabc", "balance": "0.00", "currency": "USDC"}},
+    {"author": "vault", "kind": "tool_call", "tool": "payment_balance", "args": {}},
+    {"author": "vault", "kind": "tool_result", "tool": "payment_balance", "response": {"address": "0xabc", "balance": "0.00", "currency": "USDC"}},
+    {"author": "vault", "kind": "tool_call", "tool": "payment_balance", "args": {}},
+    {"author": "vault", "kind": "tool_result", "tool": "payment_balance", "response": {"address": "0xabc", "balance": "0.00", "currency": "USDC"}},
+    {"author": "vault", "kind": "tool_call", "tool": "payment_balance", "args": {}}
+  ]
+}

@@ -3,6 +3,7 @@ package background
 import (
 	"context"
 	"fmt"
+	"sync"
 	"testing"
 	"time"
 
@@ -25,6 +26,7 @@ func (m *mockRunner) Run(_ context.Context, _ string, _ string) (string, error) 
 }
 
 type mockProjection struct {
+	mu         sync.Mutex
 	id         string
 	prepared   int
 	synced     []TaskSnapshot
@@ -33,6 +35,8 @@ type mockProjection struct {
 }
 
 func (m *mockProjection) PrepareTask(_ context.Context, _ string, _ Origin) (string, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
 	if m.prepareErr != nil {
 		return "", m.prepareErr
 	}
@@ -44,11 +48,27 @@ func (m *mockProjection) PrepareTask(_ context.Context, _ string, _ Origin) (str
 }
 
 func (m *mockProjection) SyncTask(_ context.Context, snap TaskSnapshot) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
 	if m.syncErr != nil {
 		return m.syncErr
 	}
 	m.synced = append(m.synced, snap)
 	return nil
+}
+
+func (m *mockProjection) getPrepared() int {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return m.prepared
+}
+
+func (m *mockProjection) getSynced() []TaskSnapshot {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	cp := make([]TaskSnapshot, len(m.synced))
+	copy(cp, m.synced)
+	return cp
 }
 
 func testLogger() *zap.SugaredLogger {
@@ -144,10 +164,11 @@ func TestManager_WithProjection_UsesPreparedIDAndSyncsLifecycle(t *testing.T) {
 
 	time.Sleep(150 * time.Millisecond)
 
-	require.GreaterOrEqual(t, projection.prepared, 1)
-	require.NotEmpty(t, projection.synced)
-	assert.Equal(t, "run-ledger-id", projection.synced[len(projection.synced)-1].ID)
-	assert.Equal(t, Done, projection.synced[len(projection.synced)-1].Status)
+	require.GreaterOrEqual(t, projection.getPrepared(), 1)
+	synced := projection.getSynced()
+	require.NotEmpty(t, synced)
+	assert.Equal(t, "run-ledger-id", synced[len(synced)-1].ID)
+	assert.Equal(t, Done, synced[len(synced)-1].Status)
 }
 
 func TestManager_Submit_RunnerError(t *testing.T) {
