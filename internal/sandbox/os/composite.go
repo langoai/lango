@@ -14,6 +14,14 @@ type compositeIsolator struct {
 	isolators []OSIsolator
 }
 
+// Compile-time interface compliance check.
+var _ OSIsolator = (*compositeIsolator)(nil)
+
+// NewCompositeIsolator returns an isolator that applies multiple isolators in sequence.
+func NewCompositeIsolator(isolators ...OSIsolator) OSIsolator {
+	return &compositeIsolator{isolators: isolators}
+}
+
 func (c *compositeIsolator) Apply(ctx context.Context, cmd *exec.Cmd, policy Policy) error {
 	for _, iso := range c.isolators {
 		if err := iso.Apply(ctx, cmd, policy); err != nil {
