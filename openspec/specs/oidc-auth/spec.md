@@ -1,3 +1,7 @@
+## Purpose
+
+Capability spec for oidc-auth. See requirements below for scope and behavior contracts.
+
 ## Requirements
 
 ### Requirement: OIDC Provider Configuration

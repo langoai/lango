@@ -2,6 +2,8 @@ package knowledge
 
 import (
 	"context"
+	"fmt"
+	"time"
 
 	entknowledge "github.com/langoai/lango/internal/ent/knowledge"
 	entlearning "github.com/langoai/lango/internal/ent/learning"
@@ -30,6 +32,32 @@ func (l ContextLayer) Valid() bool {
 		return true
 	}
 	return false
+}
+
+// String returns a human-readable name for the context layer.
+func (l ContextLayer) String() string {
+	switch l {
+	case LayerToolRegistry:
+		return "tool_registry"
+	case LayerUserKnowledge:
+		return "user_knowledge"
+	case LayerSkillPatterns:
+		return "skill_patterns"
+	case LayerExternalKnowledge:
+		return "external_knowledge"
+	case LayerAgentLearnings:
+		return "agent_learnings"
+	case LayerRuntimeContext:
+		return "runtime_context"
+	case LayerObservations:
+		return "observations"
+	case LayerReflections:
+		return "reflections"
+	case LayerPendingInquiries:
+		return "pending_inquiries"
+	default:
+		return fmt.Sprintf("layer_%d", int(l))
+	}
 }
 
 // Values returns all known context layers.
@@ -67,11 +95,14 @@ type RetrievalResult struct {
 
 // KnowledgeEntry is the domain type for knowledge CRUD operations.
 type KnowledgeEntry struct {
-	Key      string
-	Category entknowledge.Category
-	Content  string
-	Tags     []string
-	Source   string
+	Key       string
+	Category  entknowledge.Category
+	Content   string
+	Tags      []string
+	Source    string
+	Version   int       // 0 = unset (callers constructing entries don't set this)
+	CreatedAt time.Time // zero = unset
+	UpdatedAt time.Time // zero = unset; populated from DB on read
 }
 
 // LearningEntry is the domain type for learning CRUD operations.
@@ -107,10 +138,27 @@ type InquiryProvider interface {
 	PendingInquiryItems(ctx context.Context, sessionKey string, limit int) ([]ContextItem, error)
 }
 
+// ScoredKnowledgeEntry wraps a KnowledgeEntry with its search relevance score.
+type ScoredKnowledgeEntry struct {
+	Entry        KnowledgeEntry
+	Score        float64 // normalized: higher = better
+	SearchSource string  // "fts5" or "like"
+}
+
+// ScoredLearningEntry wraps a LearningEntry with its search relevance score.
+type ScoredLearningEntry struct {
+	Entry        LearningEntry
+	Score        float64 // normalized: higher = better
+	SearchSource string  // "fts5" or "like"
+}
+
 // ToolDescriptor describes a single tool available to the agent.
 type ToolDescriptor struct {
 	Name        string
 	Description string
+	Aliases     []string // alternate names for search (e.g. "ls" for "fs_list")
+	Category    string   // semantic category from Capability (e.g. "filesystem")
+	SearchHints []string // additional keywords for search ranking
 }
 
 // RuntimeContext holds the current session and system state.

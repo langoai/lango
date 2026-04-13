@@ -206,6 +206,143 @@ func TestFileSkillStore_SaveResource_NestedDir(t *testing.T) {
 	assert.Equal(t, string(data), string(got))
 }
 
+func TestFileSkillStore_DiscoverProjectSkills(t *testing.T) {
+	t.Parallel()
+
+	t.Run("discovers valid project skills", func(t *testing.T) {
+		t.Parallel()
+
+		store := newTestFileStore(t)
+		ctx := context.Background()
+
+		projectRoot := t.TempDir()
+		skillsDir := filepath.Join(projectRoot, ".lango", "skills", "sample")
+		require.NoError(t, os.MkdirAll(skillsDir, 0o700))
+
+		skillMD := []byte("---\nname: sample\ndescription: A sample skill\ntype: instruction\nstatus: active\n---\n\nSample content here.\n")
+		require.NoError(t, os.WriteFile(filepath.Join(skillsDir, "SKILL.md"), skillMD, 0o644))
+
+		entries, err := store.DiscoverProjectSkills(ctx, projectRoot)
+		require.NoError(t, err)
+		require.Len(t, entries, 1)
+		assert.Equal(t, "sample", entries[0].Name)
+		assert.Equal(t, "A sample skill", entries[0].Description)
+		assert.Equal(t, SkillTypeInstruction, entries[0].Type)
+	})
+
+	t.Run("missing directory returns nil", func(t *testing.T) {
+		t.Parallel()
+
+		store := newTestFileStore(t)
+		ctx := context.Background()
+
+		projectRoot := filepath.Join(t.TempDir(), "nonexistent")
+		entries, err := store.DiscoverProjectSkills(ctx, projectRoot)
+		require.NoError(t, err)
+		assert.Nil(t, entries)
+	})
+
+	t.Run("empty directory returns nil", func(t *testing.T) {
+		t.Parallel()
+
+		store := newTestFileStore(t)
+		ctx := context.Background()
+
+		projectRoot := t.TempDir()
+		skillsDir := filepath.Join(projectRoot, ".lango", "skills")
+		require.NoError(t, os.MkdirAll(skillsDir, 0o700))
+
+		entries, err := store.DiscoverProjectSkills(ctx, projectRoot)
+		require.NoError(t, err)
+		assert.Nil(t, entries)
+	})
+
+	t.Run("skips dot-prefixed directories", func(t *testing.T) {
+		t.Parallel()
+
+		store := newTestFileStore(t)
+		ctx := context.Background()
+
+		projectRoot := t.TempDir()
+		skillsDir := filepath.Join(projectRoot, ".lango", "skills")
+
+		// Create a dot-prefixed directory with a valid SKILL.md.
+		hiddenDir := filepath.Join(skillsDir, ".hidden")
+		require.NoError(t, os.MkdirAll(hiddenDir, 0o700))
+		skillMD := []byte("---\nname: hidden\ndescription: hidden\ntype: instruction\nstatus: active\n---\n\nHidden.\n")
+		require.NoError(t, os.WriteFile(filepath.Join(hiddenDir, "SKILL.md"), skillMD, 0o644))
+
+		// Create a valid skill too.
+		visibleDir := filepath.Join(skillsDir, "visible")
+		require.NoError(t, os.MkdirAll(visibleDir, 0o700))
+		visibleMD := []byte("---\nname: visible\ndescription: visible\ntype: instruction\nstatus: active\n---\n\nVisible.\n")
+		require.NoError(t, os.WriteFile(filepath.Join(visibleDir, "SKILL.md"), visibleMD, 0o644))
+
+		entries, err := store.DiscoverProjectSkills(ctx, projectRoot)
+		require.NoError(t, err)
+		require.Len(t, entries, 1)
+		assert.Equal(t, "visible", entries[0].Name)
+	})
+
+	t.Run("skips directories without SKILL.md", func(t *testing.T) {
+		t.Parallel()
+
+		store := newTestFileStore(t)
+		ctx := context.Background()
+
+		projectRoot := t.TempDir()
+		skillsDir := filepath.Join(projectRoot, ".lango", "skills")
+
+		// Create a directory without SKILL.md.
+		emptySkillDir := filepath.Join(skillsDir, "incomplete")
+		require.NoError(t, os.MkdirAll(emptySkillDir, 0o700))
+
+		entries, err := store.DiscoverProjectSkills(ctx, projectRoot)
+		require.NoError(t, err)
+		assert.Nil(t, entries)
+	})
+
+	t.Run("skips skills with invalid frontmatter", func(t *testing.T) {
+		t.Parallel()
+
+		store := newTestFileStore(t)
+		ctx := context.Background()
+
+		projectRoot := t.TempDir()
+		skillsDir := filepath.Join(projectRoot, ".lango", "skills", "bad")
+		require.NoError(t, os.MkdirAll(skillsDir, 0o700))
+
+		// Write a SKILL.md with missing required name field.
+		badMD := []byte("---\ndescription: no name\ntype: instruction\n---\n\nContent.\n")
+		require.NoError(t, os.WriteFile(filepath.Join(skillsDir, "SKILL.md"), badMD, 0o644))
+
+		entries, err := store.DiscoverProjectSkills(ctx, projectRoot)
+		require.NoError(t, err)
+		assert.Nil(t, entries)
+	})
+
+	t.Run("discovers multiple skills", func(t *testing.T) {
+		t.Parallel()
+
+		store := newTestFileStore(t)
+		ctx := context.Background()
+
+		projectRoot := t.TempDir()
+		skillsDir := filepath.Join(projectRoot, ".lango", "skills")
+
+		for _, name := range []string{"alpha", "beta"} {
+			dir := filepath.Join(skillsDir, name)
+			require.NoError(t, os.MkdirAll(dir, 0o700))
+			md := []byte("---\nname: " + name + "\ndescription: " + name + " skill\ntype: instruction\nstatus: active\n---\n\nContent.\n")
+			require.NoError(t, os.WriteFile(filepath.Join(dir, "SKILL.md"), md, 0o644))
+		}
+
+		entries, err := store.DiscoverProjectSkills(ctx, projectRoot)
+		require.NoError(t, err)
+		require.Len(t, entries, 2)
+	})
+}
+
 func TestFileSkillStore_EnsureDefaults(t *testing.T) {
 	t.Parallel()
 

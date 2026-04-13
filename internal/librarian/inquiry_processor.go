@@ -25,8 +25,9 @@ Output JSON array of matches:
     "confidence": "high|medium|low",
     "knowledge": {
       "key": "unique_snake_case_key",
-      "category": "preference|fact|rule|definition",
-      "content": "structured knowledge to save"
+      "category": "preference|fact|rule|definition|pattern|correction",
+      "content": "structured knowledge to save",
+      "temporal": "evergreen|current_state"
     }
   }
 ]
@@ -112,6 +113,9 @@ func (p *InquiryProcessor) ProcessAnswers(ctx context.Context, sessionKey string
 					Content:  match.Knowledge.Content,
 					Source:   "proactive_librarian",
 				}
+				if match.Knowledge.Temporal != "" {
+					entry.Tags = append(entry.Tags, "temporal:"+match.Knowledge.Temporal)
+				}
 				if err := p.knowledgeStore.SaveKnowledge(ctx, sessionKey, entry); err != nil {
 					p.logger.Warnw("save matched knowledge", "key", entry.Key, "error", err)
 				} else {
@@ -119,6 +123,11 @@ func (p *InquiryProcessor) ProcessAnswers(ctx context.Context, sessionKey string
 					p.logger.Infow("knowledge saved from inquiry answer",
 						"key", entry.Key, "inquiryID", match.InquiryID)
 				}
+
+				// Dual-save: pattern/correction also go to learning store.
+				dualSaveToLearning(ctx, p.knowledgeStore, sessionKey,
+					match.Knowledge.Category, match.Knowledge.Key, match.Knowledge.Content,
+					"inquiry:", p.logger)
 			}
 		}
 

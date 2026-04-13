@@ -1,10 +1,13 @@
 package app
 
 import (
+	"context"
 	"testing"
 
 	"github.com/langoai/lango/internal/appinit"
+	"github.com/langoai/lango/internal/bootstrap"
 	"github.com/langoai/lango/internal/config"
+	"github.com/langoai/lango/internal/ent/enttest"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -192,4 +195,29 @@ func TestModuleProvides(t *testing.T) {
 			assert.Equal(t, tt.wantKeys, tt.module.Provides())
 		})
 	}
+}
+
+func TestRunLedgerModule_WorkspaceIsolationGate(t *testing.T) {
+	t.Parallel()
+
+	client := enttest.Open(t, "sqlite3", "file:ent?mode=memory&_fk=1")
+	defer client.Close()
+
+	cfg := config.DefaultConfig()
+	cfg.RunLedger.Enabled = true
+	cfg.RunLedger.WorkspaceIsolation = true
+
+	mod := &runLedgerModule{
+		cfg:  cfg,
+		boot: &bootstrap.Result{DBClient: client},
+	}
+
+	result, err := mod.Init(context.Background(), nil)
+	require.NoError(t, err)
+
+	vals, ok := result.Values[appinit.ProvidesRunLedger].(*runLedgerValues)
+	require.True(t, ok)
+	require.NotNil(t, vals)
+	require.NotNil(t, vals.pev)
+	assert.True(t, vals.pev.WorkspaceEnabled())
 }

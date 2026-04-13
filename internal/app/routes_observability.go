@@ -6,14 +6,17 @@ import (
 	"strconv"
 	"time"
 
+	"entgo.io/ent/dialect/sql"
 	"github.com/go-chi/chi/v5"
+	"github.com/langoai/lango/internal/ent"
+	"github.com/langoai/lango/internal/ent/auditlog"
 	"github.com/langoai/lango/internal/observability"
 	"github.com/langoai/lango/internal/observability/health"
 	"github.com/langoai/lango/internal/observability/token"
 )
 
 // registerObservabilityRoutes adds observability HTTP endpoints to the router.
-func registerObservabilityRoutes(r chi.Router, collector *observability.MetricsCollector, hr *health.Registry, store *token.EntTokenStore) {
+func registerObservabilityRoutes(r chi.Router, collector *observability.MetricsCollector, hr *health.Registry, store *token.EntTokenStore, dbClient *ent.Client, promExporter *observability.PrometheusExporter) {
 	if collector == nil {
 		return
 	}
@@ -68,6 +71,15 @@ func registerObservabilityRoutes(r chi.Router, collector *observability.MetricsC
 			})
 		}
 		writeObsJSON(w, map[string]interface{}{"tools": tools})
+	})
+
+	r.Get("/metrics/policy", func(w http.ResponseWriter, _ *http.Request) {
+		snap := collector.Snapshot()
+		writeObsJSON(w, map[string]interface{}{
+			"blocks":   snap.Policy.Blocks,
+			"observes": snap.Policy.Observes,
+			"byReason": snap.Policy.ByReason,
+		})
 	})
 
 	r.Get("/metrics/agents", func(w http.ResponseWriter, _ *http.Request) {
@@ -129,11 +141,58 @@ func registerObservabilityRoutes(r chi.Router, collector *observability.MetricsC
 		})
 	}
 
+	// Prometheus exposition endpoint
+	if promExporter != nil {
+		r.Handle("/metrics/prometheus", promExporter.Handler())
+	}
+
 	// Detailed health endpoint
 	if hr != nil {
 		r.Get("/health/detailed", func(w http.ResponseWriter, r *http.Request) {
 			result := hr.CheckAll(r.Context())
 			writeObsJSON(w, result)
+		})
+	}
+
+	// Alerts endpoint — queries audit DB for action="alert"
+	if dbClient != nil {
+		r.Get("/alerts", func(w http.ResponseWriter, r *http.Request) {
+			daysStr := r.URL.Query().Get("days")
+			days := 7
+			if d, err := strconv.Atoi(daysStr); err == nil && d > 0 {
+				days = d
+			}
+
+			from := time.Now().AddDate(0, 0, -days)
+
+			logs, err := dbClient.AuditLog.Query().
+				Where(
+					auditlog.ActionEQ(auditlog.Action("alert")),
+					auditlog.TimestampGTE(from),
+				).
+				Order(auditlog.ByTimestamp(sql.OrderDesc())).
+				All(r.Context())
+			if err != nil {
+				http.Error(w, err.Error(), http.StatusInternalServerError)
+				return
+			}
+
+			items := make([]map[string]interface{}, len(logs))
+			for i, l := range logs {
+				items[i] = map[string]interface{}{
+					"id":        l.ID.String(),
+					"type":      l.Target,
+					"actor":     l.Actor,
+					"details":   l.Details,
+					"timestamp": l.Timestamp.Format(time.RFC3339),
+				}
+			}
+
+			writeObsJSON(w, map[string]interface{}{
+				"alerts": items,
+				"total":  len(items),
+				"days":   days,
+			})
 		})
 	}
 }

@@ -1,4 +1,8 @@
-## ADDED Requirements
+## Purpose
+
+Capability spec for p2p-networking. See requirements below for scope and behavior contracts.
+
+## Requirements
 
 ### Requirement: libp2p Node Lifecycle
 

@@ -1,3 +1,7 @@
+## Purpose
+
+Capability spec for apikey-security-check. See requirements below for scope and behavior contracts.
+
 ## Requirements
 
 ### Requirement: API Key Security Diagnostic Check

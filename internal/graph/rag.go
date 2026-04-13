@@ -73,6 +73,7 @@ type GraphRAGResult struct {
 // GraphNode represents a node discovered through graph expansion.
 type GraphNode struct {
 	ID        string
+	NodeType  string // ObjectType name from triple metadata (empty = untyped)
 	Predicate string // the edge that led here
 	FromNode  string // the source node this was discovered from
 	Depth     int
@@ -128,8 +129,13 @@ func (s *GraphRAGService) Retrieve(ctx context.Context, query string, opts Vecto
 			}
 			seen[target] = true
 
+			nodeType := t.SubjectType
+			if target == t.Object {
+				nodeType = t.ObjectType
+			}
 			result.GraphResults = append(result.GraphResults, GraphNode{
 				ID:        target,
+				NodeType:  nodeType,
 				Predicate: t.Predicate,
 				FromNode:  nodeID,
 				Depth:     1, // simplified — real depth comes from BFS
@@ -174,7 +180,11 @@ func (s *GraphRAGService) AssembleSection(result *GraphRAGResult) string {
 		b.WriteString("\n## Graph-Expanded Context\n")
 		b.WriteString("The following related items were discovered through knowledge graph traversal:\n")
 		for _, g := range result.GraphResults {
-			fmt.Fprintf(&b, "- **%s** (via %s from %s)\n", g.ID, g.Predicate, g.FromNode)
+			if g.NodeType != "" {
+				fmt.Fprintf(&b, "- **%s:%s** (via %s from %s)\n", g.NodeType, g.ID, g.Predicate, g.FromNode)
+			} else {
+				fmt.Fprintf(&b, "- **%s** (via %s from %s)\n", g.ID, g.Predicate, g.FromNode)
+			}
 		}
 	}
 

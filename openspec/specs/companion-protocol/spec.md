@@ -1,4 +1,8 @@
-## ADDED Requirements
+## Purpose
+
+Capability spec for companion-protocol. See requirements below for scope and behavior contracts.
+
+## Requirements
 
 ### Requirement: Companion handshake
 The gateway SHALL accept WebSocket connections on `/companion` endpoint and perform mutual identification.

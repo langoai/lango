@@ -15,7 +15,7 @@ The system SHALL provide an `AgentError` type with fields: `Code` (ErrorCode), `
 - **THEN** `errors.As(wrappedErr, &target)` SHALL succeed and populate the target with the original AgentError
 
 ### Requirement: Error classification
-The system SHALL classify errors into codes: `ErrTimeout` (E001), `ErrModelError` (E002), `ErrToolError` (E003), `ErrTurnLimit` (E004), `ErrInternal` (E005). Classification SHALL be based on error content and context state.
+The system SHALL classify errors into codes: `ErrTimeout` (E001), `ErrModelError` (E002), `ErrToolError` (E003), `ErrTurnLimit` (E004), `ErrInternal` (E005), `ErrIdleTimeout` (E006), `ErrToolChurn` (E007), and `ErrEmptyAfterToolUse` (E008). Classification SHALL be based on error content and context state.
 
 #### Scenario: Context deadline classified as timeout
 - **WHEN** the error is or wraps `context.DeadlineExceeded`
@@ -25,20 +25,90 @@ The system SHALL classify errors into codes: `ErrTimeout` (E001), `ErrModelError
 - **WHEN** the error message contains "maximum turn limit"
 - **THEN** `classifyError` SHALL return `ErrTurnLimit`
 
+#### Scenario: Approval failure classified as tool error
+- **WHEN** the error wraps `approval.ErrDenied`, `approval.ErrTimeout`, or `approval.ErrUnavailable`
+- **THEN** `classifyError` SHALL return `ErrToolError`
+
+#### Scenario: thought_signature error classified as model error
+- **WHEN** the error message contains both `"function call"` and `"thought_signature"` (e.g., Gemini API error `"Function call is missing a thought_signature in functionCall parts"`)
+- **THEN** `classifyError` SHALL return `ErrModelError`, not `ErrToolError`
+- **AND** the `thought_signature` check SHALL be evaluated BEFORE the `"tool"`/`"function call"` keyword check
+
+#### Scenario: Pure tool error still classified correctly
+- **WHEN** the error message contains `"tool"` but not `"thought_signature"`
+- **THEN** `classifyError` SHALL return `ErrToolError`
+
+#### Scenario: Tool churn error classified correctly
+- **WHEN** the error message contains "consecutively, forcing stop"
+- **THEN** `classifyError` SHALL return `ErrToolChurn`
+
+#### Scenario: Empty-after-tool-use classified correctly
+- **WHEN** the runtime terminates a turn after successful tool activity but without any visible assistant completion
+- **THEN** it SHALL return `ErrEmptyAfterToolUse`
+- **AND** the turn SHALL NOT be treated as a successful empty response
+
+#### Scenario: Provider auth error classified as model error
+- **WHEN** the error message contains `"401"`, `"403"`, `"unauthorized"`, `"invalid api key"`, `"invalid_api_key"`, or `"authentication failed"` (case-insensitive)
+- **THEN** `classifyError` SHALL return `ErrModelError` with `CauseClass` = `"provider_auth"`
+
+#### Scenario: Case-insensitive auth matching
+- **WHEN** the error message contains `"UNAUTHORIZED"` or `"Invalid API Key"` (mixed case)
+- **THEN** `classifyError` SHALL still return `ErrModelError` with `CauseClass` = `"provider_auth"`
+
+#### Scenario: Provider connection error classified as model error
+- **WHEN** the error message contains `"connection refused"`, `"no such host"`, `"dial tcp"`, or `"connection reset"` (case-insensitive)
+- **THEN** `classifyError` SHALL return `ErrModelError` with `CauseClass` = `"provider_connection"`
+
 #### Scenario: Unknown error classified as internal
 - **WHEN** the error does not match any known pattern
-- **THEN** `classifyError` SHALL return `ErrInternal`
+- **THEN** `classifyError` SHALL return `ErrInternal` with `CauseDetail` set to the error message
+- **AND** `OperatorSummary` SHALL include a truncated version of the error message (max 200 chars)
+- **AND** the user-facing `UserMessage()` SHALL NOT include the raw error message
 
 ### Requirement: User-facing error messages
-The `AgentError` SHALL provide a `UserMessage()` method that returns a human-readable message including the error code and actionable guidance.
+The `AgentError` SHALL provide a `UserMessage()` method that returns a human-readable message including the error code and actionable guidance. User-facing messages SHALL NOT instruct the user to read a raw partial draft above.
 
 #### Scenario: Timeout with partial result
 - **WHEN** an `AgentError` has Code `ErrTimeout` and a non-empty `Partial` field
-- **THEN** `UserMessage()` SHALL mention that a partial response was recovered
+- **THEN** `UserMessage()` SHALL report the timeout with actionable guidance
+- **AND** it SHALL NOT claim that the partial response was shown to the user
 
 #### Scenario: Timeout without partial result
 - **WHEN** an `AgentError` has Code `ErrTimeout` and an empty `Partial` field
 - **THEN** `UserMessage()` SHALL suggest breaking the question into smaller parts
+
+#### Scenario: Approval denied message
+- **WHEN** the underlying error wraps `approval.ErrDenied`
+- **THEN** `UserMessage()` SHALL explain that the action was denied by approval
+
+#### Scenario: Approval expired message
+- **WHEN** the underlying error wraps `approval.ErrTimeout`
+- **THEN** `UserMessage()` SHALL explain that the approval request expired
+
+#### Scenario: Approval unavailable message
+- **WHEN** the underlying error wraps `approval.ErrUnavailable`
+- **THEN** `UserMessage()` SHALL explain that no approval channel was available
+
+#### Scenario: Auth error user message
+- **WHEN** an `AgentError` has `CauseClass` = `"provider_auth"`
+- **THEN** `UserMessage()` SHALL return a message about API key configuration
+- **AND** SHALL NOT expose raw error details from `CauseDetail`
+
+#### Scenario: Connection error user message
+- **WHEN** an `AgentError` has `CauseClass` = `"provider_connection"`
+- **THEN** `UserMessage()` SHALL return a message about network connectivity and provider URL
+- **AND** SHALL NOT expose raw error details from `CauseDetail`
+
+### Requirement: Streaming partial events omit thought metadata
+Partial tool-call `LLMResponse` events yielded during streaming SHALL NOT carry `Thought` or `ThoughtSignature` fields. Only the final accumulated response (via `toolAccum.done()`) SHALL include the correct `Thought` and `ThoughtSignature` values.
+
+#### Scenario: Partial tool-call event has no thought fields
+- **WHEN** `ModelAdapter.GenerateContent` yields a partial event for a tool call with `Name` set
+- **THEN** the `genai.Part` SHALL have `Thought=false` and `ThoughtSignature=nil`
+
+#### Scenario: Final accumulated event preserves thought fields
+- **WHEN** `ModelAdapter.GenerateContent` yields the final `TurnComplete=true` event
+- **THEN** the accumulated `genai.Part` from `toolAccum.done()` SHALL preserve the original `Thought` and `ThoughtSignature` values from the stream
 
 ### Requirement: Partial result preservation on agent error
 When an agent run fails (timeout, turn limit, or other error), the system SHALL return the accumulated text as the `Partial` field of the `AgentError` instead of discarding it.
@@ -52,11 +122,12 @@ When an agent run fails (timeout, turn limit, or other error), the system SHALL 
 - **THEN** the returned `AgentError` SHALL have `Partial` containing the accumulated chunks
 
 ### Requirement: Partial result recovery in runAgent
-When `runAgent()` receives an `AgentError` with a non-empty `Partial`, it SHALL return the partial text appended with an error note as a successful response rather than propagating the error.
+When `runAgent()` receives an `AgentError` with a non-empty `Partial`, it SHALL retain the partial internally for diagnostics but SHALL NOT return the raw partial text to the user.
 
-#### Scenario: Partial result returned as success
+#### Scenario: Partial result suppressed from user response
 - **WHEN** the agent returns an `AgentError` with `Partial` "Here is my analysis..."
-- **THEN** `runAgent()` SHALL return a string containing the partial text plus a warning note, and `nil` error
+- **THEN** `runAgent()` SHALL return only a user-facing warning/error note, and `nil` error
+- **AND** it SHALL NOT append the raw partial draft to that message
 
 #### Scenario: Error without partial propagated normally
 - **WHEN** the agent returns an `AgentError` with empty `Partial`
@@ -73,3 +144,129 @@ All channel `sendError()` functions SHALL use `formatChannelError()` which check
 - **WHEN** a channel receives a plain error without `UserMessage()`
 - **THEN** the displayed error SHALL use `Error()` output prefixed with "Error:"
 
+### Requirement: Empty-after-tool-use error classification
+If an agent run terminates with no visible assistant completion after one or more successful tool results, the runtime SHALL return a dedicated structured agent error classification for that condition rather than reporting a silent success.
+
+#### Scenario: Channel path receives classified empty-after-tool-use error
+- **WHEN** `RunAndCollect` finishes without visible text after successful specialist tool results
+- **THEN** the runtime SHALL return a structured agent error classified as `empty_after_tool_use`
+- **AND** the channel path SHALL surface the corresponding user-facing message instead of relying on the generic empty-success fallback
+
+#### Scenario: Gateway path broadcasts classified empty-after-tool-use error
+- **WHEN** `RunStreaming` finishes without visible text after successful specialist tool results
+- **THEN** the gateway path SHALL emit an `agent.error` event carrying the `empty_after_tool_use` classification
+- **AND** SHALL NOT treat the turn as a successful empty response
+
+### Requirement: Call-signature loop classification
+The runtime SHALL classify repeated same-agent same-tool same-params sequences as loop failures even when call IDs differ or tool response events are interleaved between attempts.
+
+#### Scenario: Different call IDs do not bypass loop classification
+- **WHEN** the same agent repeatedly emits the same tool name with canonically equal params but different generated call IDs
+- **THEN** the runtime SHALL still classify the sequence as the same loop signature
+- **AND** SHALL terminate the run with `loop_detected` once the configured threshold is exceeded
+
+#### Scenario: Tool response interleaving does not reset the loop signature
+- **WHEN** a specialist alternates `FunctionCall` and `FunctionResponse` events for the same canonical tool signature without visible assistant progress
+- **THEN** the runtime SHALL continue counting the repeated signature
+- **AND** SHALL NOT reset the loop counter solely because tool responses were observed
+
+### Requirement: Truthful recovery messaging
+User-facing recovery messages after loop, timeout, or empty-after-tool-use failures SHALL only describe evidence actually gathered during the current turn. They SHALL NOT claim that unavailable tools were directly executed.
+
+#### Scenario: Recovery message avoids unavailable direct-call claim
+- **WHEN** the orchestrator has no direct access to `payment_balance` and recovery messaging is generated after a specialist failure
+- **THEN** the user-facing message SHALL NOT claim that the orchestrator directly executed `payment_balance`
+- **AND** SHALL instead describe the actual specialist failure or previously gathered evidence truthfully
+
+### Requirement: Failure classification preserves operator diagnostics
+The system SHALL classify agent failures with structured operator-facing metadata in addition to broad user-facing error codes.
+
+#### Scenario: Agent error carries cause metadata
+- **WHEN** the runtime classifies a failure
+- **THEN** the resulting `AgentError` SHALL include `CauseClass`, `CauseDetail`, and `OperatorSummary`
+- **AND** the user-facing message MAY remain broader than the operator-facing summary
+
+#### Scenario: Sentinel errors take precedence
+- **WHEN** an error wraps a known sentinel such as approval denial or timeout
+- **THEN** the classification SHALL use the sentinel-derived `CauseClass`
+- **AND** SHALL NOT fall through to a generic heuristic cause
+
+### Requirement: Turn-limit failures have distinct cause class
+Turn-limit failures SHALL be classified distinctly from repeated-call failures.
+
+#### Scenario: Turn limit maps to turn_limit_exceeded
+- **WHEN** a run fails because it exceeded the configured maximum turn limit
+- **THEN** the failure SHALL use `ErrTurnLimit`
+- **AND** its `CauseClass` SHALL be `turn_limit_exceeded`
+
+### Requirement: RecoveryPolicy captures inline recovery patterns
+The `RecoveryPolicy` in `internal/agentrt/` SHALL capture the recovery patterns currently inline in `adk/agent.go:473-593` as a code policy. It SHALL support REJECT detection, tool churn recovery, learning-based error correction, missing agent correction, and specialist-aware reroute recovery — applied as a wrapper around the inner executor without modifying `agent.go`.
+
+#### Scenario: Tool churn recovery via hint retry
+- **WHEN** inner executor returns `ErrToolChurn` and recovery budget allows
+- **THEN** RecoveryPolicy SHALL return `RecoveryRetryWithHint` adding "do not delegate to same agent" hint
+
+#### Scenario: Learning-based fix applied
+- **WHEN** inner executor fails and `ErrorFixProvider.GetFixForError()` returns a fix
+- **THEN** RecoveryPolicy SHALL incorporate the fix into the retry input
+
+#### Scenario: Specialist tool error becomes reroute recovery
+- **WHEN** inner executor returns `ErrToolError` after a specialist delegation has been observed
+- **THEN** RecoveryPolicy SHALL return `RecoveryRetryWithHint`
+- **AND** the reroute hint SHALL include the failed specialist name
+- **AND** the recovery layer SHALL not issue a blind same-input retry to the same specialist path
+
+#### Scenario: Generic retry remains available before delegation
+- **WHEN** inner executor returns a retryable tool error before any specialist delegation has been observed
+- **THEN** RecoveryPolicy MAY return `RecoveryRetry`
+- **AND** the recovery context SHALL leave `AgentName` empty
+
+#### Scenario: Provider auth error escalates immediately
+- **WHEN** inner executor returns `ErrModelError` with `CauseClass` = `"provider_auth"`
+- **THEN** `RecoveryPolicy` SHALL return `RecoveryEscalate` (no retry)
+
+#### Scenario: Provider connection error retries
+- **WHEN** inner executor returns `ErrModelError` with `CauseClass` = `"provider_connection"` and recovery budget allows
+- **THEN** `RecoveryPolicy` SHALL return `RecoveryRetry`
+
+### Requirement: convertMessages splits merged FunctionResponse parts
+`convertMessages()` SHALL split a Content with 2+ FunctionResponse parts (caused by EventsAdapter same-role merge) into individual `provider.Message` entries, each with its own `tool_call_id`. This prevents provider API `400` errors when multiple tool responses are merged into one Content.
+
+#### Scenario: Merged 3 FunctionResponses produce 3 messages
+- **WHEN** a Content with role `"function"` contains 3 FunctionResponse parts (e.g., from vault parallel tool calls)
+- **THEN** `convertMessages()` SHALL produce 3 separate `provider.Message` entries
+- **AND** each SHALL have role `"tool"`, distinct `Metadata["tool_call_id"]`, and its own response content
+
+#### Scenario: Single FunctionResponse unchanged
+- **WHEN** a Content with role `"function"` contains exactly 1 FunctionResponse part
+- **THEN** `convertMessages()` SHALL produce 1 message using existing logic (backward compatible)
+
+### Requirement: Dangling tool call cleanup preserves origin author
+`closeDanglingParentToolCalls()` SHALL set `Author` on synthetic tool-response messages to the originating assistant's Author (tracked via `danglingCall.OriginAuthor`). Fallback order: `OriginAuthor` → `rootAgentName` → `"lango-agent"`. A warning SHALL be logged when OriginAuthor is empty.
+
+#### Scenario: Origin author preserved in synthetic closure
+- **WHEN** a dangling tool call from agent "vault" is closed during CleanupFailedTurn
+- **THEN** the synthetic tool response message SHALL have `Author == "vault"`
+
+#### Scenario: Multiple agents' dangling calls preserve respective authors
+- **WHEN** dangling tool calls exist from both "vault" and "operator"
+- **THEN** each synthetic closure SHALL use its respective originating author
+
+#### Scenario: Empty origin author falls back with warning
+- **WHEN** a dangling tool call has empty OriginAuthor
+- **THEN** the system SHALL use `rootAgentName` as fallback and log a warning
+
+### Requirement: Orphan repair message accuracy
+`repairOrphanedToolCalls()` synthetic error content SHALL describe the interruption cause as "previous turn interruption or failed cleanup" (not "timeout" specifically) and instruct the model not to retry the same call.
+
+#### Scenario: Orphan error message is accurate
+- **WHEN** an orphaned tool call is repaired in the provider layer
+- **THEN** the synthetic content SHALL contain "previous turn interruption or failed cleanup"
+- **AND** SHALL instruct "Do not retry this call"
+
+### Requirement: TUI stdlib logger redirect
+TUI mode SHALL redirect Go stdlib `log` package output to the chat log file via `log.SetOutput()`, preventing third-party library log messages (e.g., ADK runner's `log.Printf`) from corrupting the TUI display. The file handle SHALL be closed on runChat exit.
+
+#### Scenario: ADK runner log does not appear in TUI
+- **WHEN** the ADK runner calls `log.Printf("Event from an unknown agent: ...")`
+- **THEN** the output SHALL appear in `~/.lango/chat.log`, NOT in the TUI display

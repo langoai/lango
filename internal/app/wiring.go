@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"path/filepath"
 	"strings"
+	"sync"
 
 	"github.com/langoai/lango/internal/a2a"
 	"github.com/langoai/lango/internal/adk"
@@ -19,11 +20,15 @@ import (
 	"github.com/langoai/lango/internal/knowledge"
 	"github.com/langoai/lango/internal/orchestration"
 	"github.com/langoai/lango/internal/prompt"
+	"github.com/langoai/lango/internal/provenance"
+	"github.com/langoai/lango/internal/runledger"
 	"github.com/langoai/lango/internal/security"
 	"github.com/langoai/lango/internal/session"
 	"github.com/langoai/lango/internal/skill"
 	"github.com/langoai/lango/internal/supervisor"
 	"github.com/langoai/lango/internal/toolcatalog"
+	"github.com/langoai/lango/internal/toolchain"
+	"github.com/langoai/lango/internal/types"
 	"google.golang.org/adk/model"
 	adk_tool "google.golang.org/adk/tool"
 )
@@ -159,7 +164,7 @@ func initSecurity(cfg *config.Config, store session.Store, boot *bootstrap.Resul
 
 	case "aws-kms", "gcp-kms", "azure-kv", "pkcs11":
 		kmsProvider, err := security.NewKMSProvider(security.KMSProviderName(cfg.Security.Signer.Provider), cfg.Security.KMS) //nolint:staticcheck // stubs always error; real impls use build tags
-		if err != nil {
+		if err != nil {                                                                                                      //nolint:staticcheck // SA4023: always true on stub platforms, real KMS impls may succeed
 			return nil, nil, nil, fmt.Errorf("KMS provider %q: %w", cfg.Security.Signer.Provider, err)
 		}
 
@@ -244,20 +249,23 @@ func initAuth(cfg *config.Config, store session.Store) *gateway.AuthManager {
 
 // agentDeps groups the dependencies needed by initAgent to reduce parameter sprawl.
 type agentDeps struct {
-	sv       *supervisor.Supervisor
-	cfg      *config.Config
-	store    session.Store
-	tools    []*agent.Tool
-	kc       *knowledgeComponents
-	mc       *memoryComponents
-	ec       *embeddingComponents
-	gc       *graphComponents
-	scanner  *agent.SecretScanner
-	sr       *skill.Registry
-	lc       *librarianComponents
-	catalog  *toolcatalog.Catalog
-	p2pc     *p2pComponents
-	eventBus *eventbus.Bus
+	sv           *supervisor.Supervisor
+	cfg          *config.Config
+	store        session.Store
+	tools        []*agent.Tool
+	kc           *knowledgeComponents
+	mc           *memoryComponents
+	ec           *embeddingComponents
+	gc           *graphComponents
+	scanner      *agent.SecretScanner
+	sr           *skill.Registry
+	lc           *librarianComponents
+	catalog      *toolcatalog.Catalog
+	p2pc         *p2pComponents
+	eventBus     *eventbus.Bus
+	rls          runledger.RunLedgerStore
+	prov         *provenanceValues
+	hookRegistry *toolchain.HookRegistry
 }
 
 // initAgent creates the ADK agent with the given tools and provider proxy.
@@ -278,7 +286,7 @@ func initAgent(ctx context.Context, deps *agentDeps) (*adk.Agent, error) {
 	toolTimeout := cfg.Agent.ToolTimeout
 	var adkTools []adk_tool.Tool
 	for _, t := range tools {
-		at, err := adk.AdaptToolWithTimeout(t, toolTimeout)
+		at, err := adk.AdaptToolForAgentWithTimeout(t, "lango-agent", toolTimeout)
 		if err != nil {
 			logger().Warnw("adapt tool error", "name", t.Name, "error", err)
 			continue
@@ -354,6 +362,12 @@ func initAgent(ctx context.Context, deps *agentDeps) (*adk.Agent, error) {
 
 		ctxAdapter := adk.NewContextAwareModelAdapter(modelAdapter, retriever, builder, logger())
 		ctxAdapter.WithRuntimeAdapter(runtimeAdapter)
+		if deps.rls != nil && cfg.RunLedger.Enabled && cfg.RunLedger.AuthoritativeRead {
+			ctxAdapter.WithRunSummaryProvider(&runSummaryProviderAdapter{store: deps.rls})
+		}
+
+		// Wire in context budget manager.
+		wireBudgetManager(cfg, builder, ctxAdapter)
 
 		// Wire in observational memory if available
 		if mc != nil {
@@ -392,11 +406,24 @@ func initAgent(ctx context.Context, deps *agentDeps) (*adk.Agent, error) {
 			}
 		}
 
+		// Wire in agentic retrieval coordinator if enabled.
+		if coordinator := initRetrievalCoordinator(cfg, kc.store, ec); coordinator != nil {
+			ctxAdapter.WithCoordinator(coordinator)
+		}
+
+		// Wire event bus for context injection observability.
+		if deps.eventBus != nil {
+			ctxAdapter.WithEventBus(deps.eventBus)
+		}
+
 		llm = ctxAdapter
 	} else if mc != nil {
 		// OM without knowledge system — create minimal context-aware adapter
 		ctxAdapter := adk.NewContextAwareModelAdapter(modelAdapter, nil, builder, logger())
 		ctxAdapter.WithMemory(mc.store)
+		if deps.rls != nil && cfg.RunLedger.Enabled && cfg.RunLedger.AuthoritativeRead {
+			ctxAdapter.WithRunSummaryProvider(&runSummaryProviderAdapter{store: deps.rls})
+		}
 
 		// Apply memory context limits from config.
 		maxRef := cfg.ObservationalMemory.MaxReflectionsInContext
@@ -430,7 +457,20 @@ func initAgent(ctx context.Context, deps *agentDeps) (*adk.Agent, error) {
 			}
 		}
 
+		// Wire event bus for context injection observability.
+		if deps.eventBus != nil {
+			ctxAdapter.WithEventBus(deps.eventBus)
+		}
+
 		llm = ctxAdapter
+	}
+
+	// Wire feedback processor for context injection observability (independent of knowledge/coordinator).
+	initFeedbackProcessor(cfg, deps.eventBus)
+
+	// Wire relevance adjuster for score auto-adjustment.
+	if kc != nil {
+		initRelevanceAdjuster(cfg, kc.store, deps.eventBus)
 	}
 
 	// If PII redaction is enabled, wrap with PII-redacting adapter
@@ -468,10 +508,12 @@ func initAgent(ctx context.Context, deps *agentDeps) (*adk.Agent, error) {
 		orchestratorPrompt := orchBuilder.Build()
 
 		orchCfg := orchestration.Config{
-			Tools:               tools,
-			Model:               llm,
-			SystemPrompt:        orchestratorPrompt,
-			AdaptTool:           adk.AdaptTool,
+			Tools:        tools,
+			Model:        llm,
+			SystemPrompt: orchestratorPrompt,
+			AdaptTool: func(t *agent.Tool, agentName string) (adk_tool.Tool, error) {
+				return adk.AdaptToolForAgentWithTimeout(t, agentName, cfg.Agent.ToolTimeout)
+			},
 			MaxDelegationRounds: cfg.Agent.MaxDelegationRounds,
 			SubAgentPrompt:      buildSubAgentPromptFunc(&cfg.Agent),
 			// UniversalTools intentionally omitted — the orchestrator must
@@ -511,6 +553,8 @@ func initAgent(ctx context.Context, deps *agentDeps) (*adk.Agent, error) {
 
 		// Build agent options for multi-agent mode.
 		agentOpts := buildAgentOptions(cfg, kc)
+		agentOpts = append(agentOpts, buildProvenanceAgentOptions(deps.prov, deps.hookRegistry)...)
+		agentOpts = append(agentOpts, adk.WithAgentIsolatedAgents(isolatedAgentNames(orchCfg.Specs)))
 		adkAgent, err := adk.NewAgentFromADK(agentTree, store, agentOpts...)
 		if err != nil {
 			return nil, fmt.Errorf("adk multi-agent: %w", err)
@@ -521,11 +565,25 @@ func initAgent(ctx context.Context, deps *agentDeps) (*adk.Agent, error) {
 	// Single-agent mode (default).
 	logger().Info("initializing agent runtime (ADK)...")
 	agentOpts := buildAgentOptions(cfg, kc)
+	agentOpts = append(agentOpts, buildProvenanceAgentOptions(deps.prov, deps.hookRegistry)...)
 	adkAgent, err := adk.NewAgent(ctx, adkTools, llm, systemPrompt, store, agentOpts...)
 	if err != nil {
 		return nil, fmt.Errorf("adk agent: %w", err)
 	}
 	return adkAgent, nil
+}
+
+func isolatedAgentNames(specs []orchestration.AgentSpec) []string {
+	if specs == nil {
+		specs = orchestration.DefaultAgentSpecs()
+	}
+	var out []string
+	for _, spec := range specs {
+		if spec.SessionIsolation {
+			out = append(out, spec.Name)
+		}
+	}
+	return out
 }
 
 // buildAgentOptions constructs AgentOption slice from config and knowledge components.
@@ -540,7 +598,7 @@ func buildAgentOptions(cfg *config.Config, kc *knowledgeComponents) []adk.AgentO
 	if cfg.Agent.MaxTurns > 0 {
 		opts = append(opts, adk.WithAgentMaxTurns(cfg.Agent.MaxTurns))
 	} else if cfg.Agent.MultiAgent {
-		opts = append(opts, adk.WithAgentMaxTurns(50))
+		opts = append(opts, adk.WithAgentMaxTurns(75))
 	}
 
 	// Error correction: enabled by default when knowledge system is available.
@@ -553,6 +611,75 @@ func buildAgentOptions(cfg *config.Config, kc *knowledgeComponents) []adk.AgentO
 	}
 
 	return opts
+}
+
+func buildProvenanceAgentOptions(pv *provenanceValues, hookRegistry *toolchain.HookRegistry) []adk.AgentOption {
+	if pv == nil || pv.sessionTree == nil {
+		return nil
+	}
+
+	// Update hook registry snapshot in cached metadata now that hooks are registered.
+	if pv.configMetadata != nil && hookRegistry != nil {
+		pv.configMetadata["hook_registry"] = buildHookRegistrySnapshot(hookRegistry)
+	}
+
+	// sync.Map for idempotent config checkpoint creation per session per app instance.
+	var configCPCreated sync.Map
+
+	cpService := pv.checkpointService
+
+	// Copy metadata map before closure capture to prevent data race: the
+	// original pv.configMetadata may be mutated later (e.g., hook_registry
+	// key update) while the closure reads concurrently.
+	var cachedMetadata map[string]string
+	if pv.configMetadata != nil {
+		cachedMetadata = make(map[string]string, len(pv.configMetadata))
+		for k, v := range pv.configMetadata {
+			cachedMetadata[k] = v
+		}
+	}
+
+	rootObserver := func(sessionKey string) {
+		ctx := context.Background()
+		// Idempotent: skip if already registered (supports backfill from Get).
+		if _, err := pv.sessionTree.GetNode(ctx, sessionKey); err == nil {
+			// Session tree node exists; still attempt config checkpoint below.
+		} else {
+			if _, err := pv.sessionTree.RegisterSession(ctx, sessionKey, "", "root", ""); err != nil && err != provenance.ErrInvalidSessionKey {
+				logger().Debugw("register provenance root session", "session", sessionKey, "error", err)
+			}
+		}
+
+		// Create session config checkpoint (idempotent — once per session per app instance).
+		if cpService != nil && cachedMetadata != nil {
+			if _, loaded := configCPCreated.LoadOrStore(sessionKey, true); !loaded {
+				_, _ = cpService.CreateManualWithMetadata(ctx, sessionKey, "", "session_config_snapshot", cachedMetadata)
+			}
+		}
+	}
+
+	childHook := func(ev session.SessionLifecycleEvent) {
+		ctx := context.Background()
+		switch ev.Type {
+		case "fork":
+			if _, err := pv.sessionTree.RegisterSession(ctx, ev.ChildKey, ev.ParentKey, ev.AgentName, ""); err != nil {
+				logger().Debugw("register provenance child session", "child", ev.ChildKey, "parent", ev.ParentKey, "error", err)
+			}
+		case "merge":
+			if err := pv.sessionTree.CloseSession(ctx, ev.ChildKey, provenance.SessionStatusMerged); err != nil {
+				logger().Debugw("close provenance merged session", "child", ev.ChildKey, "error", err)
+			}
+		case "discard":
+			if err := pv.sessionTree.CloseSession(ctx, ev.ChildKey, provenance.SessionStatusDiscarded); err != nil {
+				logger().Debugw("close provenance discarded session", "child", ev.ChildKey, "error", err)
+			}
+		}
+	}
+
+	return []adk.AgentOption{
+		adk.WithAgentRootSessionObserver(rootObserver),
+		adk.WithAgentChildLifecycleHook(childHook),
+	}
 }
 
 // initGateway creates the gateway server.
@@ -573,15 +700,25 @@ func initGateway(cfg *config.Config, adkAgent *adk.Agent, store session.Store, a
 		RequestTimeout:   cfg.Agent.RequestTimeout,
 		IdleTimeout:      idle,
 		MaxTimeout:       ceiling,
+		RunLedger:        cfg.RunLedger,
 	}, adkAgent, nil, store, auth)
 }
 
-// buildToolCatalogSection creates a dynamic prompt section listing active tool
+// buildToolCatalogSection creates a dynamic prompt section listing visible tool
 // categories with their tool names, so the LLM can discover available tools.
+// Tools marked as ExposureDeferred are excluded from the listing; a summary note
+// tells the LLM how many additional tools are available via builtin_search.
 func buildToolCatalogSection(catalog *toolcatalog.Catalog) *prompt.StaticSection {
-	summary := catalog.EnabledCategorySummary()
-	if len(summary) == 0 {
+	// Only include tools that are visible (Default or AlwaysVisible exposure).
+	visible := catalog.ListVisibleTools("")
+	if len(visible) == 0 {
 		return prompt.NewStaticSection(prompt.SectionToolCatalog, 410, "", "")
+	}
+
+	// Group visible tools by category.
+	catTools := make(map[string][]string)
+	for _, ts := range visible {
+		catTools[ts.Category] = append(catTools[ts.Category], ts.Name)
 	}
 
 	var b strings.Builder
@@ -589,7 +726,7 @@ func buildToolCatalogSection(catalog *toolcatalog.Catalog) *prompt.StaticSection
 
 	categories := catalog.ListCategories()
 	for _, cat := range categories {
-		names, ok := summary[cat.Name]
+		names, ok := catTools[cat.Name]
 		if !ok {
 			continue
 		}
@@ -617,6 +754,11 @@ func buildToolCatalogSection(catalog *toolcatalog.Catalog) *prompt.StaticSection
 	}
 
 	b.WriteString("\nUse builtin_health to diagnose tool registration, or builtin_list to discover all tools.")
+
+	// Inform the LLM about deferred tools available via search.
+	if deferred := catalog.DeferredToolCount(); deferred > 0 {
+		fmt.Fprintf(&b, "\nAdditional %d specialized tools available via builtin_search.", deferred)
+	}
 
 	return prompt.NewStaticSection(prompt.SectionToolCatalog, 410, "Available Tool Categories", b.String())
 }
@@ -665,4 +807,40 @@ func buildAutomationPromptSection(cfg *config.Config) *prompt.StaticSection {
 
 	content := strings.Join(parts, "\n")
 	return prompt.NewStaticSection(prompt.SectionAutomation, 450, "Automation", content)
+}
+
+// wireBudgetManager creates and injects a ContextBudgetManager into the context adapter.
+func wireBudgetManager(cfg *config.Config, builder *prompt.Builder, ctxAdapter *adk.ContextAwareModelAdapter) {
+	modelWindow := cfg.Context.ModelWindow
+	if modelWindow <= 0 {
+		modelWindow = adk.LookupModelWindow(cfg.Agent.Model)
+	}
+
+	responseReserve := cfg.Context.ResponseReserve
+	if responseReserve <= 0 {
+		responseReserve = cfg.Agent.MaxTokens
+	}
+
+	basePromptTokens := types.EstimateTokens(builder.Build())
+
+	alloc := adk.SectionAllocation{
+		Knowledge:  cfg.Context.Allocation.Knowledge,
+		RAG:        cfg.Context.Allocation.RAG,
+		Memory:     cfg.Context.Allocation.Memory,
+		RunSummary: cfg.Context.Allocation.RunSummary,
+		Headroom:   cfg.Context.Allocation.Headroom,
+	}
+
+	bm, err := adk.NewContextBudgetManager(modelWindow, responseReserve, basePromptTokens, alloc)
+	if err != nil {
+		logger().Warnw("context budget manager creation failed, continuing without budget", "error", err)
+		return
+	}
+
+	ctxAdapter.WithBudgetManager(bm)
+	logger().Infow("context budget manager initialized",
+		"modelWindow", modelWindow,
+		"responseReserve", responseReserve,
+		"basePromptTokens", basePromptTokens,
+	)
 }

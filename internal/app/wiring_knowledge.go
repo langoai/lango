@@ -2,22 +2,29 @@ package app
 
 import (
 	"context"
+	"database/sql"
+	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 
-	"fmt"
+	"github.com/langoai/lango/internal/adk"
 	"github.com/langoai/lango/internal/agent"
 	"github.com/langoai/lango/internal/config"
-	"github.com/langoai/lango/internal/graph"
+	"github.com/langoai/lango/internal/embedding"
+	"github.com/langoai/lango/internal/eventbus"
 	"github.com/langoai/lango/internal/knowledge"
 	"github.com/langoai/lango/internal/learning"
+	"github.com/langoai/lango/internal/retrieval"
 	"github.com/langoai/lango/internal/librarian"
 	"github.com/langoai/lango/internal/provider"
+	"github.com/langoai/lango/internal/runledger"
+	"github.com/langoai/lango/internal/search"
 	"github.com/langoai/lango/internal/session"
 	"github.com/langoai/lango/internal/skill"
 	"github.com/langoai/lango/internal/supervisor"
+	"github.com/langoai/lango/internal/types"
 	"github.com/langoai/lango/skills"
-	"strings"
 )
 
 // knowledgeComponents holds optional self-learning components.
@@ -29,22 +36,29 @@ type knowledgeComponents struct {
 
 // initKnowledge creates the self-learning components if enabled.
 // When gc is provided, a GraphEngine is used as the observer instead of the base Engine.
-func initKnowledge(cfg *config.Config, store session.Store, gc *graphComponents) *knowledgeComponents {
+func initKnowledge(cfg *config.Config, store session.Store, gc *graphComponents, bus *eventbus.Bus) (*knowledgeComponents, *types.FeatureStatus) {
+	const featureName = "Knowledge"
+
 	if !cfg.Knowledge.Enabled {
 		logger().Info("knowledge system disabled")
-		return nil
+		return nil, &types.FeatureStatus{Name: featureName, Enabled: false, Healthy: true}
 	}
 
 	entStore, ok := store.(*session.EntStore)
 	if !ok {
 		logger().Warn("knowledge system requires EntStore, skipping")
-		return nil
+		return nil, &types.FeatureStatus{
+			Name: featureName, Enabled: false, Healthy: false,
+			Reason:     "requires EntStore backend",
+			Suggestion: "configure session.databasePath with an Ent-backed store",
+		}
 	}
 
 	client := entStore.Client()
 	kLogger := logger()
 
 	kStore := knowledge.NewStore(client, kLogger)
+	kStore.SetEventBus(bus)
 
 	engine := learning.NewEngine(kStore, kLogger)
 
@@ -52,9 +66,7 @@ func initKnowledge(cfg *config.Config, store session.Store, gc *graphComponents)
 	var observer learning.ToolResultObserver = engine
 	if gc != nil {
 		graphEngine := learning.NewGraphEngine(kStore, gc.store, kLogger)
-		graphEngine.SetGraphCallback(func(triples []graph.Triple) {
-			gc.buffer.Enqueue(graph.GraphRequest{Triples: triples})
-		})
+		graphEngine.SetEventBus(bus)
 		observer = graphEngine
 		logger().Info("graph-enhanced learning engine initialized")
 	}
@@ -64,11 +76,120 @@ func initKnowledge(cfg *config.Config, store session.Store, gc *graphComponents)
 		store:    kStore,
 		engine:   engine,
 		observer: observer,
+	}, &types.FeatureStatus{Name: featureName, Enabled: true, Healthy: true}
+}
+
+// initFTS5 probes for FTS5 support, creates FTS5 indexes for knowledge and learning,
+// bulk-indexes existing entries, and injects indexes into the knowledge store.
+// Returns true if FTS5 is available and initialized.
+func initFTS5(ctx context.Context, rawDB *sql.DB, kStore *knowledge.Store) bool {
+	if rawDB == nil {
+		return false
 	}
+	if !search.ProbeFTS5(rawDB) {
+		logger().Info("FTS5 unavailable, using LIKE search fallback")
+		return false
+	}
+
+	// Create knowledge FTS5 index (columns: key, content).
+	knowledgeIdx := search.NewFTS5Index(rawDB, "knowledge_fts", []string{"key", "content"})
+	if err := knowledgeIdx.EnsureTable(); err != nil {
+		logger().Warnw("FTS5 knowledge table creation failed", "error", err)
+		return false
+	}
+
+	// Create learning FTS5 index (columns: trigger, error_pattern, fix).
+	learningIdx := search.NewFTS5Index(rawDB, "learning_fts", []string{"trigger", "error_pattern", "fix"})
+	if err := learningIdx.EnsureTable(); err != nil {
+		logger().Warnw("FTS5 learning table creation failed", "error", err)
+		return false
+	}
+
+	// Bulk-index existing entries.
+	if err := bulkIndexKnowledge(ctx, rawDB, knowledgeIdx); err != nil {
+		logger().Warnw("FTS5 knowledge bulk index failed", "error", err)
+	}
+	if err := bulkIndexLearnings(ctx, rawDB, learningIdx); err != nil {
+		logger().Warnw("FTS5 learning bulk index failed", "error", err)
+	}
+
+	// Inject into knowledge store.
+	kStore.SetFTS5Index(knowledgeIdx)
+	kStore.SetLearningFTS5Index(learningIdx)
+
+	logger().Info("FTS5 search initialized")
+	return true
+}
+
+// bulkIndexKnowledge clears and re-indexes all knowledge entries into FTS5.
+func bulkIndexKnowledge(ctx context.Context, db *sql.DB, idx *search.FTS5Index) error {
+	// Clear existing index data for idempotent re-index.
+	if _, err := db.ExecContext(ctx, `DELETE FROM knowledge_fts`); err != nil {
+		return fmt.Errorf("clear knowledge FTS5: %w", err)
+	}
+
+	rows, err := db.QueryContext(ctx, `SELECT "key", content FROM knowledges WHERE is_latest = 1`)
+	if err != nil {
+		return fmt.Errorf("query knowledge for FTS5 index: %w", err)
+	}
+	defer rows.Close()
+
+	var records []search.Record
+	for rows.Next() {
+		var key, content string
+		if err := rows.Scan(&key, &content); err != nil {
+			return fmt.Errorf("scan knowledge row: %w", err)
+		}
+		records = append(records, search.Record{RowID: key, Values: []string{key, content}})
+	}
+	if err := rows.Err(); err != nil {
+		return fmt.Errorf("iterate knowledge rows: %w", err)
+	}
+
+	if len(records) > 0 {
+		if err := idx.BulkInsert(ctx, records); err != nil {
+			return fmt.Errorf("bulk insert knowledge FTS5: %w", err)
+		}
+		logger().Infow("FTS5 knowledge index populated", "count", len(records))
+	}
+	return nil
+}
+
+// bulkIndexLearnings clears and re-indexes all learning entries into FTS5.
+func bulkIndexLearnings(ctx context.Context, db *sql.DB, idx *search.FTS5Index) error {
+	if _, err := db.ExecContext(ctx, `DELETE FROM learning_fts`); err != nil {
+		return fmt.Errorf("clear learning FTS5: %w", err)
+	}
+
+	rows, err := db.QueryContext(ctx, `SELECT id, trigger, COALESCE(error_pattern, ''), COALESCE(fix, '') FROM learnings`)
+	if err != nil {
+		return fmt.Errorf("query learnings for FTS5 index: %w", err)
+	}
+	defer rows.Close()
+
+	var records []search.Record
+	for rows.Next() {
+		var id, trigger, errorPattern, fix string
+		if err := rows.Scan(&id, &trigger, &errorPattern, &fix); err != nil {
+			return fmt.Errorf("scan learning row: %w", err)
+		}
+		records = append(records, search.Record{RowID: id, Values: []string{trigger, errorPattern, fix}})
+	}
+	if err := rows.Err(); err != nil {
+		return fmt.Errorf("iterate learning rows: %w", err)
+	}
+
+	if len(records) > 0 {
+		if err := idx.BulkInsert(ctx, records); err != nil {
+			return fmt.Errorf("bulk insert learning FTS5: %w", err)
+		}
+		logger().Infow("FTS5 learning index populated", "count", len(records))
+	}
+	return nil
 }
 
 // initSkills creates the file-based skill registry.
-func initSkills(cfg *config.Config, baseTools []*agent.Tool) *skill.Registry {
+func initSkills(cfg *config.Config, baseTools []*agent.Tool, bus *eventbus.Bus) *skill.Registry {
 	if !cfg.Skill.Enabled {
 		logger().Info("skill system disabled")
 		return nil
@@ -97,6 +218,22 @@ func initSkills(cfg *config.Config, baseTools []*agent.Tool) *skill.Registry {
 	}
 
 	registry := skill.NewRegistry(store, baseTools, sLogger)
+
+	// Inject OS-level sandbox if enabled.
+	if iso := initOSSandbox(cfg); iso != nil {
+		if iso.Available() {
+			workDir := cfg.Sandbox.WorkspacePath
+			if workDir == "" {
+				workDir, _ = os.Getwd()
+			}
+			registry.SetOSIsolator(iso, workDir, cfg.DataRoot)
+		}
+		registry.SetFailClosed(cfg.Sandbox.FailClosed)
+	}
+	if bus != nil {
+		registry.SetEventBus(bus)
+	}
+
 	ctx := context.Background()
 	if err := registry.LoadSkills(ctx); err != nil {
 		sLogger.Warnw("load skills error", "error", err)
@@ -108,7 +245,7 @@ func initSkills(cfg *config.Config, baseTools []*agent.Tool) *skill.Registry {
 
 // initConversationAnalysis creates the conversation analysis pipeline if both
 // knowledge and observational memory are enabled.
-func initConversationAnalysis(cfg *config.Config, sv *supervisor.Supervisor, store session.Store, kc *knowledgeComponents, gc *graphComponents) *learning.AnalysisBuffer {
+func initConversationAnalysis(cfg *config.Config, sv *supervisor.Supervisor, store session.Store, kc *knowledgeComponents, gc *graphComponents, bus *eventbus.Bus) *learning.AnalysisBuffer {
 	if kc == nil {
 		return nil
 	}
@@ -132,16 +269,9 @@ func initConversationAnalysis(cfg *config.Config, sv *supervisor.Supervisor, sto
 	aLogger := logger()
 
 	analyzer := learning.NewConversationAnalyzer(generator, kc.store, aLogger)
+	analyzer.SetEventBus(bus)
 	learner := learning.NewSessionLearner(generator, kc.store, aLogger)
-
-	// Wire graph callbacks if graph store is available.
-	if gc != nil && gc.buffer != nil {
-		graphCB := func(triples []graph.Triple) {
-			gc.buffer.Enqueue(graph.GraphRequest{Triples: triples})
-		}
-		analyzer.SetGraphCallback(graphCB)
-		learner.SetGraphCallback(graphCB)
-	}
+	learner.SetEventBus(bus)
 
 	// Message provider.
 	getMessages := func(sessionKey string) ([]session.Message, error) {
@@ -168,7 +298,7 @@ func initConversationAnalysis(cfg *config.Config, sv *supervisor.Supervisor, sto
 	return buf
 }
 
-// providerTextGenerator adapts a supervisor.ProviderProxy to the memory.TextGenerator interface.
+// providerTextGenerator adapts a supervisor.ProviderProxy to the llm.TextGenerator interface.
 type providerTextGenerator struct {
 	proxy *supervisor.ProviderProxy
 }
@@ -243,4 +373,115 @@ func (a *skillProviderAdapter) ListActiveSkillInfos(ctx context.Context) ([]know
 		}
 	}
 	return infos, nil
+}
+
+// runSummaryProviderAdapter adapts RunLedger summaries for ADK command-context injection.
+type runSummaryProviderAdapter struct {
+	store runledger.RunLedgerStore
+}
+
+func (a *runSummaryProviderAdapter) ListRunSummaries(
+	ctx context.Context,
+	sessionKey string,
+	limit int,
+) ([]adk.RunSummaryContext, error) {
+	summaries, err := a.store.ListRunSummariesBySession(ctx, sessionKey, limit)
+	if err != nil {
+		return nil, err
+	}
+	result := make([]adk.RunSummaryContext, 0, len(summaries))
+	for _, summary := range summaries {
+		if summary.Status != runledger.RunStatusRunning && summary.Status != runledger.RunStatusPaused {
+			continue
+		}
+		result = append(result, adk.RunSummaryContext{
+			RunID:          summary.RunID,
+			Goal:           summary.Goal,
+			Status:         string(summary.Status),
+			CurrentStep:    summary.CurrentStepGoal,
+			CurrentBlocker: summary.CurrentBlocker,
+		})
+	}
+	return result, nil
+}
+
+func (a *runSummaryProviderAdapter) MaxJournalSeqForSession(
+	ctx context.Context,
+	sessionKey string,
+) (int64, error) {
+	return a.store.MaxJournalSeqForSession(ctx, sessionKey)
+}
+
+// initRetrievalCoordinator creates the agentic retrieval coordinator if enabled.
+// When ragService is available, a ContextSearchAgent is registered alongside
+// FactSearchAgent to provide semantic/vector expansion for factual layers.
+func initRetrievalCoordinator(cfg *config.Config, kStore *knowledge.Store, ec *embeddingComponents) *retrieval.RetrievalCoordinator {
+	if !cfg.Retrieval.Enabled {
+		return nil
+	}
+
+	agents := []retrieval.RetrievalAgent{
+		retrieval.NewFactSearchAgent(kStore),
+		retrieval.NewTemporalSearchAgent(kStore),
+	}
+
+	// Register context search agent when embedding/RAG is available and enabled.
+	if ec != nil && ec.ragService != nil && cfg.Embedding.RAG.Enabled {
+		ragOpts := embedding.RetrieveOptions{
+			Limit:      cfg.Embedding.RAG.MaxResults,
+			MaxDistance: cfg.Embedding.RAG.MaxDistance,
+		}
+		if ragOpts.Limit <= 0 {
+			ragOpts.Limit = 5
+		}
+		contextAgent := retrieval.NewContextSearchAgent(ec.ragService, ragOpts, logger())
+		agents = append(agents, contextAgent)
+	}
+
+	coordinator := retrieval.NewRetrievalCoordinator(agents, logger())
+
+	logger().Infow("retrieval coordinator initialized", "agents", len(agents))
+	return coordinator
+}
+
+// initFeedbackProcessor creates and subscribes the context injection feedback
+// processor if enabled. This operates independently of the knowledge system
+// and retrieval coordinator — it observes all GenerateContent context injection.
+func initFeedbackProcessor(cfg *config.Config, bus *eventbus.Bus) {
+	if !cfg.Retrieval.Feedback {
+		return
+	}
+	if bus == nil {
+		return
+	}
+
+	fp := retrieval.NewFeedbackProcessor(logger())
+	fp.Subscribe(bus)
+
+	logger().Info("retrieval feedback processor initialized")
+}
+
+// initRelevanceAdjuster creates and subscribes the relevance score adjuster if enabled.
+func initRelevanceAdjuster(cfg *config.Config, kStore *knowledge.Store, bus *eventbus.Bus) {
+	if !cfg.Retrieval.AutoAdjust.Enabled {
+		return
+	}
+	if bus == nil || kStore == nil {
+		return
+	}
+
+	adjCfg := retrieval.RelevanceAdjusterConfig{
+		Mode:          cfg.Retrieval.AutoAdjust.Mode,
+		BoostDelta:    cfg.Retrieval.AutoAdjust.BoostDelta,
+		DecayDelta:    cfg.Retrieval.AutoAdjust.DecayDelta,
+		DecayInterval: cfg.Retrieval.AutoAdjust.DecayInterval,
+		MinScore:      cfg.Retrieval.AutoAdjust.MinScore,
+		MaxScore:      cfg.Retrieval.AutoAdjust.MaxScore,
+		WarmupTurns:   cfg.Retrieval.AutoAdjust.WarmupTurns,
+	}
+
+	adj := retrieval.NewRelevanceAdjuster(kStore, adjCfg, logger())
+	adj.Subscribe(bus)
+
+	logger().Infow("relevance adjuster initialized", "mode", adjCfg.Mode, "warmupTurns", adjCfg.WarmupTurns)
 }

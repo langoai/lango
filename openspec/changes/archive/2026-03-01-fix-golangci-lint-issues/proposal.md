@@ -1,6 +1,6 @@
 ## Why
 
-golangci-lint v2.4.0 CI 실행 시 90개 이슈(errcheck:50, staticcheck:28, unused:11, ineffassign:1)가 발생하여 CI가 통과하지 못했다. `.golangci.yml` 설정 파일이 없어 기본 설정으로 실행되었고, ent 자동생성 코드도 lint 대상에 포함되어 불필요한 이슈가 대량 보고되었다.
+When running golangci-lint v2.4.0 in CI, 90 issues were reported (errcheck:50, staticcheck:28, unused:11, ineffassign:1) causing CI to fail. No `.golangci.yml` configuration file existed so it ran with defaults, and ent auto-generated code was also included in lint targets, causing a large number of unnecessary issues to be reported.
 
 ## What Changes
 

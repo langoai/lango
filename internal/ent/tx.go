@@ -12,6 +12,10 @@ import (
 // Tx is a transactional client that is created by calling Client.Tx().
 type Tx struct {
 	config
+	// ActionLog is the client for interacting with the ActionLog builders.
+	ActionLog *ActionLogClient
+	// AgentMemory is the client for interacting with the AgentMemory builders.
+	AgentMemory *AgentMemoryClient
 	// AuditLog is the client for interacting with the AuditLog builders.
 	AuditLog *AuditLogClient
 	// ConfigProfile is the client for interacting with the ConfigProfile builders.
@@ -20,6 +24,10 @@ type Tx struct {
 	CronJob *CronJobClient
 	// CronJobHistory is the client for interacting with the CronJobHistory builders.
 	CronJobHistory *CronJobHistoryClient
+	// EntityAlias is the client for interacting with the EntityAlias builders.
+	EntityAlias *EntityAliasClient
+	// EntityProperty is the client for interacting with the EntityProperty builders.
+	EntityProperty *EntityPropertyClient
 	// EscrowDeal is the client for interacting with the EscrowDeal builders.
 	EscrowDeal *EscrowDealClient
 	// ExternalRef is the client for interacting with the ExternalRef builders.
@@ -36,18 +44,40 @@ type Tx struct {
 	Message *MessageClient
 	// Observation is the client for interacting with the Observation builders.
 	Observation *ObservationClient
+	// OntologyConflict is the client for interacting with the OntologyConflict builders.
+	OntologyConflict *OntologyConflictClient
+	// OntologyPredicate is the client for interacting with the OntologyPredicate builders.
+	OntologyPredicate *OntologyPredicateClient
+	// OntologyType is the client for interacting with the OntologyType builders.
+	OntologyType *OntologyTypeClient
 	// PaymentTx is the client for interacting with the PaymentTx builders.
 	PaymentTx *PaymentTxClient
 	// PeerReputation is the client for interacting with the PeerReputation builders.
 	PeerReputation *PeerReputationClient
+	// ProvenanceAttribution is the client for interacting with the ProvenanceAttribution builders.
+	ProvenanceAttribution *ProvenanceAttributionClient
+	// ProvenanceCheckpoint is the client for interacting with the ProvenanceCheckpoint builders.
+	ProvenanceCheckpoint *ProvenanceCheckpointClient
 	// Reflection is the client for interacting with the Reflection builders.
 	Reflection *ReflectionClient
+	// RunJournal is the client for interacting with the RunJournal builders.
+	RunJournal *RunJournalClient
+	// RunSnapshot is the client for interacting with the RunSnapshot builders.
+	RunSnapshot *RunSnapshotClient
+	// RunStep is the client for interacting with the RunStep builders.
+	RunStep *RunStepClient
 	// Secret is the client for interacting with the Secret builders.
 	Secret *SecretClient
 	// Session is the client for interacting with the Session builders.
 	Session *SessionClient
+	// SessionProvenance is the client for interacting with the SessionProvenance builders.
+	SessionProvenance *SessionProvenanceClient
 	// TokenUsage is the client for interacting with the TokenUsage builders.
 	TokenUsage *TokenUsageClient
+	// TurnTrace is the client for interacting with the TurnTrace builders.
+	TurnTrace *TurnTraceClient
+	// TurnTraceEvent is the client for interacting with the TurnTraceEvent builders.
+	TurnTraceEvent *TurnTraceEventClient
 	// WorkflowRun is the client for interacting with the WorkflowRun builders.
 	WorkflowRun *WorkflowRunClient
 	// WorkflowStepRun is the client for interacting with the WorkflowStepRun builders.
@@ -183,10 +213,14 @@ func (tx *Tx) Client() *Client {
 }
 
 func (tx *Tx) init() {
+	tx.ActionLog = NewActionLogClient(tx.config)
+	tx.AgentMemory = NewAgentMemoryClient(tx.config)
 	tx.AuditLog = NewAuditLogClient(tx.config)
 	tx.ConfigProfile = NewConfigProfileClient(tx.config)
 	tx.CronJob = NewCronJobClient(tx.config)
 	tx.CronJobHistory = NewCronJobHistoryClient(tx.config)
+	tx.EntityAlias = NewEntityAliasClient(tx.config)
+	tx.EntityProperty = NewEntityPropertyClient(tx.config)
 	tx.EscrowDeal = NewEscrowDealClient(tx.config)
 	tx.ExternalRef = NewExternalRefClient(tx.config)
 	tx.Inquiry = NewInquiryClient(tx.config)
@@ -195,12 +229,23 @@ func (tx *Tx) init() {
 	tx.Learning = NewLearningClient(tx.config)
 	tx.Message = NewMessageClient(tx.config)
 	tx.Observation = NewObservationClient(tx.config)
+	tx.OntologyConflict = NewOntologyConflictClient(tx.config)
+	tx.OntologyPredicate = NewOntologyPredicateClient(tx.config)
+	tx.OntologyType = NewOntologyTypeClient(tx.config)
 	tx.PaymentTx = NewPaymentTxClient(tx.config)
 	tx.PeerReputation = NewPeerReputationClient(tx.config)
+	tx.ProvenanceAttribution = NewProvenanceAttributionClient(tx.config)
+	tx.ProvenanceCheckpoint = NewProvenanceCheckpointClient(tx.config)
 	tx.Reflection = NewReflectionClient(tx.config)
+	tx.RunJournal = NewRunJournalClient(tx.config)
+	tx.RunSnapshot = NewRunSnapshotClient(tx.config)
+	tx.RunStep = NewRunStepClient(tx.config)
 	tx.Secret = NewSecretClient(tx.config)
 	tx.Session = NewSessionClient(tx.config)
+	tx.SessionProvenance = NewSessionProvenanceClient(tx.config)
 	tx.TokenUsage = NewTokenUsageClient(tx.config)
+	tx.TurnTrace = NewTurnTraceClient(tx.config)
+	tx.TurnTraceEvent = NewTurnTraceEventClient(tx.config)
 	tx.WorkflowRun = NewWorkflowRunClient(tx.config)
 	tx.WorkflowStepRun = NewWorkflowStepRunClient(tx.config)
 }
@@ -212,7 +257,7 @@ func (tx *Tx) init() {
 // of them in order to commit or rollback the transaction.
 //
 // If a closed transaction is embedded in one of the generated entities, and the entity
-// applies a query, for example: AuditLog.QueryXXX(), the query will be executed
+// applies a query, for example: ActionLog.QueryXXX(), the query will be executed
 // through the driver which created this transaction.
 //
 // Note that txDriver is not goroutine safe.

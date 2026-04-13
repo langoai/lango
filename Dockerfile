@@ -22,7 +22,7 @@ ARG BUILD_TIME=unknown
 
 # Build with CGO enabled (required by mattn/go-sqlite3 and sqlite-vec)
 # Link against libsqlcipher for transparent DB encryption support
-RUN CGO_ENABLED=1 go build -ldflags="-s -w -X main.Version=${VERSION} -X main.BuildTime=${BUILD_TIME}" -o lango ./cmd/lango
+RUN CGO_ENABLED=1 go build -tags "fts5,vec" -ldflags="-s -w -X main.Version=${VERSION} -X main.BuildTime=${BUILD_TIME}" -o lango ./cmd/lango
 
 # Runtime image
 FROM debian:bookworm-slim

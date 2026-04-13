@@ -1,4 +1,8 @@
-## ADDED Requirements
+## Purpose
+
+Capability spec for enum-validation. See requirements below for scope and behavior contracts.
+
+## Requirements
 
 ### Requirement: Valid and Values methods on existing enums
 The system SHALL add `Valid() bool` and `Values() []T` methods to all existing typed enum types.

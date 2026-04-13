@@ -3,6 +3,7 @@ package background
 import (
 	"context"
 	"fmt"
+	"sync"
 	"testing"
 	"time"
 
@@ -22,6 +23,52 @@ func (m *mockRunner) Run(_ context.Context, _ string, _ string) (string, error) 
 		time.Sleep(m.delay)
 	}
 	return m.result, m.err
+}
+
+type mockProjection struct {
+	mu         sync.Mutex
+	id         string
+	prepared   int
+	synced     []TaskSnapshot
+	prepareErr error
+	syncErr    error
+}
+
+func (m *mockProjection) PrepareTask(_ context.Context, _ string, _ Origin) (string, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if m.prepareErr != nil {
+		return "", m.prepareErr
+	}
+	m.prepared++
+	if m.id != "" {
+		return m.id, nil
+	}
+	return "projected-id", nil
+}
+
+func (m *mockProjection) SyncTask(_ context.Context, snap TaskSnapshot) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if m.syncErr != nil {
+		return m.syncErr
+	}
+	m.synced = append(m.synced, snap)
+	return nil
+}
+
+func (m *mockProjection) getPrepared() int {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return m.prepared
+}
+
+func (m *mockProjection) getSynced() []TaskSnapshot {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	cp := make([]TaskSnapshot, len(m.synced))
+	copy(cp, m.synced)
+	return cp
 }
 
 func testLogger() *zap.SugaredLogger {
@@ -49,7 +96,6 @@ func TestManager_Submit_And_List(t *testing.T) {
 	require.NoError(t, err)
 	assert.NotEmpty(t, id)
 
-	// Give time for task to start.
 	time.Sleep(10 * time.Millisecond)
 
 	tasks := mgr.List()
@@ -64,7 +110,6 @@ func TestManager_Submit_MaxTasksReached(t *testing.T) {
 	require.NoError(t, err)
 	assert.NotEmpty(t, id1)
 
-	// Wait for the first task to become active.
 	time.Sleep(20 * time.Millisecond)
 
 	_, err = mgr.Submit(context.Background(), "task2", Origin{})
@@ -100,12 +145,30 @@ func TestManager_Submit_And_Result(t *testing.T) {
 	id, err := mgr.Submit(context.Background(), "test", Origin{})
 	require.NoError(t, err)
 
-	// Wait for completion.
 	time.Sleep(100 * time.Millisecond)
 
 	result, err := mgr.Result(id)
 	require.NoError(t, err)
 	assert.Equal(t, "hello world", result)
+}
+
+func TestManager_WithProjection_UsesPreparedIDAndSyncsLifecycle(t *testing.T) {
+	runner := &mockRunner{result: "done"}
+	projection := &mockProjection{id: "run-ledger-id"}
+	mgr := NewManager(runner, nil, 5, time.Minute, testLogger()).
+		WithProjection(projection)
+
+	id, err := mgr.Submit(context.Background(), "test", Origin{})
+	require.NoError(t, err)
+	assert.Equal(t, "run-ledger-id", id)
+
+	time.Sleep(150 * time.Millisecond)
+
+	require.GreaterOrEqual(t, projection.getPrepared(), 1)
+	synced := projection.getSynced()
+	require.NotEmpty(t, synced)
+	assert.Equal(t, "run-ledger-id", synced[len(synced)-1].ID)
+	assert.Equal(t, Done, synced[len(synced)-1].Status)
 }
 
 func TestManager_Submit_RunnerError(t *testing.T) {
@@ -115,7 +178,6 @@ func TestManager_Submit_RunnerError(t *testing.T) {
 	id, err := mgr.Submit(context.Background(), "test", Origin{})
 	require.NoError(t, err)
 
-	// Wait for completion.
 	time.Sleep(100 * time.Millisecond)
 
 	snap, err := mgr.Status(id)
@@ -123,7 +185,6 @@ func TestManager_Submit_RunnerError(t *testing.T) {
 	assert.Equal(t, Failed, snap.Status)
 }
 
-// Test Status enum.
 func TestStatus_Valid(t *testing.T) {
 	assert.True(t, Pending.Valid())
 	assert.True(t, Running.Valid())
@@ -149,11 +210,9 @@ func TestTask_Fail_PreservesCancelledStatus(t *testing.T) {
 		Status: Pending,
 	}
 
-	// Cancel the task first.
 	task.Cancel()
 	assert.Equal(t, Cancelled, task.Status)
 
-	// Fail should not overwrite Cancelled.
 	task.Fail("some error")
 	assert.Equal(t, Cancelled, task.Status)
 	assert.Empty(t, task.Error)
@@ -165,36 +224,145 @@ func TestTask_Complete_PreservesCancelledStatus(t *testing.T) {
 		Status: Pending,
 	}
 
-	// Cancel the task first.
 	task.Cancel()
 	assert.Equal(t, Cancelled, task.Status)
 
-	// Complete should not overwrite Cancelled.
 	task.Complete("result")
 	assert.Equal(t, Cancelled, task.Status)
 	assert.Empty(t, task.Result)
 }
 
 func TestManager_Cancel_PreservesStatus(t *testing.T) {
-	// Use a slow runner to keep the task in-flight.
 	runner := &mockRunner{result: "done", delay: 2 * time.Second}
 	mgr := NewManager(runner, nil, 5, time.Minute, testLogger())
 
 	id, err := mgr.Submit(context.Background(), "slow task", Origin{})
 	require.NoError(t, err)
 
-	// Wait for task to start running.
 	time.Sleep(100 * time.Millisecond)
 
-	// Cancel the task.
 	err = mgr.Cancel(id)
 	require.NoError(t, err)
 
-	// Wait for the runner goroutine to finish (it should see context cancelled).
 	time.Sleep(200 * time.Millisecond)
 
-	// The status should remain Cancelled, not Failed.
 	snap, err := mgr.Status(id)
 	require.NoError(t, err)
 	assert.Equal(t, Cancelled, snap.Status)
+}
+
+func TestTerminalTaskEviction(t *testing.T) {
+	t.Parallel()
+
+	mgr := NewManager(nil, nil, 1000, time.Minute, testLogger())
+
+	totalTasks := maxTerminalTasks + 100 // 600 total
+
+	// Directly populate terminal tasks to avoid goroutine overhead.
+	baseTime := time.Now()
+	for i := 0; i < totalTasks; i++ {
+		id := fmt.Sprintf("task-%04d", i)
+		task := &Task{
+			ID:          id,
+			Status:      Done,
+			Prompt:      "prompt",
+			Result:      "result",
+			StartedAt:   baseTime.Add(time.Duration(i) * time.Second),
+			CompletedAt: baseTime.Add(time.Duration(i)*time.Second + time.Millisecond),
+		}
+		mgr.tasks[id] = task
+	}
+
+	// Trigger eviction.
+	mgr.mu.Lock()
+	mgr.evictTerminalTasksLocked()
+	mgr.mu.Unlock()
+
+	// Should have exactly maxTerminalTasks remaining.
+	assert.Equal(t, maxTerminalTasks, len(mgr.tasks))
+
+	// The oldest 100 tasks (task-0000 through task-0099) should be evicted.
+	for i := 0; i < 100; i++ {
+		id := fmt.Sprintf("task-%04d", i)
+		_, ok := mgr.tasks[id]
+		assert.False(t, ok, "oldest task %s should have been evicted", id)
+	}
+
+	// The newest 500 tasks (task-0100 through task-0599) should remain.
+	for i := 100; i < totalTasks; i++ {
+		id := fmt.Sprintf("task-%04d", i)
+		_, ok := mgr.tasks[id]
+		assert.True(t, ok, "recent task %s should still be present", id)
+	}
+}
+
+func TestTerminalTaskEviction_PreservesActiveTasks(t *testing.T) {
+	t.Parallel()
+
+	mgr := NewManager(nil, nil, 1000, time.Minute, testLogger())
+
+	baseTime := time.Now()
+
+	// Add maxTerminalTasks + 50 terminal tasks.
+	for i := 0; i < maxTerminalTasks+50; i++ {
+		id := fmt.Sprintf("done-%04d", i)
+		mgr.tasks[id] = &Task{
+			ID:          id,
+			Status:      Done,
+			CompletedAt: baseTime.Add(time.Duration(i) * time.Second),
+		}
+	}
+
+	// Add some active (non-terminal) tasks.
+	for i := 0; i < 5; i++ {
+		id := fmt.Sprintf("active-%d", i)
+		mgr.tasks[id] = &Task{
+			ID:        id,
+			Status:    Running,
+			StartedAt: baseTime,
+		}
+	}
+
+	mgr.mu.Lock()
+	mgr.evictTerminalTasksLocked()
+	mgr.mu.Unlock()
+
+	// All 5 active tasks should remain.
+	for i := 0; i < 5; i++ {
+		id := fmt.Sprintf("active-%d", i)
+		_, ok := mgr.tasks[id]
+		assert.True(t, ok, "active task %s should not be evicted", id)
+	}
+
+	// Terminal tasks should be capped at maxTerminalTasks.
+	terminalCount := 0
+	for _, task := range mgr.tasks {
+		snap := task.Snapshot()
+		if snap.Status == Done || snap.Status == Failed || snap.Status == Cancelled {
+			terminalCount++
+		}
+	}
+	assert.Equal(t, maxTerminalTasks, terminalCount)
+}
+
+func TestManagerShutdownHonorsContextDeadline(t *testing.T) {
+	t.Parallel()
+
+	mgr := NewManager(nil, nil, 1, time.Minute, zap.NewNop().Sugar())
+
+	release := make(chan struct{})
+	mgr.wg.Add(1)
+	go func() {
+		defer mgr.wg.Done()
+		<-release
+	}()
+
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Millisecond)
+	defer cancel()
+
+	err := mgr.Shutdown(ctx)
+	require.ErrorIs(t, err, context.DeadlineExceeded)
+
+	close(release)
+	require.NoError(t, mgr.Shutdown(context.Background()))
 }

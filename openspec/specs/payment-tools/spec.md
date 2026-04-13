@@ -1,4 +1,8 @@
-## ADDED Requirements
+## Purpose
+
+Capability spec for payment-tools. See requirements below for scope and behavior contracts.
+
+## Requirements
 
 ### Requirement: Payment send tool
 The system SHALL provide a `payment_send` tool with SafetyLevel Dangerous that accepts `to` (address), `amount` (USDC string), and `purpose` (string) parameters. It MUST return txHash, status, amount, from, to, chainId, and network.

@@ -126,6 +126,22 @@ func (idx *DependencyIndex) HasDependencies(categoryID string) bool {
 // defaultDependencies defines all known feature dependency relationships.
 func defaultDependencies() map[string][]Dependency {
 	return map[string][]Dependency{
+		// Alerting depends on Observability (wiring_observability.go returns nil when disabled)
+		"alerting": {
+			{
+				CategoryID: "observability",
+				Label:      "Observability",
+				Required:   true,
+				FixHint:    "Enable Observability for alerting to work",
+				Check: func(cfg *config.Config) DepStatus {
+					if !cfg.Observability.Enabled {
+						return DepNotEnabled
+					}
+					return DepMet
+				},
+			},
+		},
+
 		// Smart Account depends on Payment + Security Signer
 		"smartaccount": {
 			{
@@ -268,6 +284,22 @@ func defaultDependencies() map[string][]Dependency {
 				FixHint:    "Enable Payment for paid tool invocations",
 				Check: func(cfg *config.Config) DepStatus {
 					if !cfg.Payment.Enabled {
+						return DepNotEnabled
+					}
+					return DepMet
+				},
+			},
+		},
+
+		// Retrieval depends on Knowledge
+		"retrieval": {
+			{
+				CategoryID: "knowledge",
+				Label:      "Knowledge",
+				Required:   true,
+				FixHint:    "Enable Knowledge for retrieval coordinator",
+				Check: func(cfg *config.Config) DepStatus {
+					if !cfg.Knowledge.Enabled {
 						return DepNotEnabled
 					}
 					return DepMet

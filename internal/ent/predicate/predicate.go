@@ -6,6 +6,12 @@ import (
 	"entgo.io/ent/dialect/sql"
 )
 
+// ActionLog is the predicate function for actionlog builders.
+type ActionLog func(*sql.Selector)
+
+// AgentMemory is the predicate function for agentmemory builders.
+type AgentMemory func(*sql.Selector)
+
 // AuditLog is the predicate function for auditlog builders.
 type AuditLog func(*sql.Selector)
 
@@ -17,6 +23,12 @@ type CronJob func(*sql.Selector)
 
 // CronJobHistory is the predicate function for cronjobhistory builders.
 type CronJobHistory func(*sql.Selector)
+
+// EntityAlias is the predicate function for entityalias builders.
+type EntityAlias func(*sql.Selector)
+
+// EntityProperty is the predicate function for entityproperty builders.
+type EntityProperty func(*sql.Selector)
 
 // EscrowDeal is the predicate function for escrowdeal builders.
 type EscrowDeal func(*sql.Selector)
@@ -42,14 +54,38 @@ type Message func(*sql.Selector)
 // Observation is the predicate function for observation builders.
 type Observation func(*sql.Selector)
 
+// OntologyConflict is the predicate function for ontologyconflict builders.
+type OntologyConflict func(*sql.Selector)
+
+// OntologyPredicate is the predicate function for ontologypredicate builders.
+type OntologyPredicate func(*sql.Selector)
+
+// OntologyType is the predicate function for ontologytype builders.
+type OntologyType func(*sql.Selector)
+
 // PaymentTx is the predicate function for paymenttx builders.
 type PaymentTx func(*sql.Selector)
 
 // PeerReputation is the predicate function for peerreputation builders.
 type PeerReputation func(*sql.Selector)
 
+// ProvenanceAttribution is the predicate function for provenanceattribution builders.
+type ProvenanceAttribution func(*sql.Selector)
+
+// ProvenanceCheckpoint is the predicate function for provenancecheckpoint builders.
+type ProvenanceCheckpoint func(*sql.Selector)
+
 // Reflection is the predicate function for reflection builders.
 type Reflection func(*sql.Selector)
+
+// RunJournal is the predicate function for runjournal builders.
+type RunJournal func(*sql.Selector)
+
+// RunSnapshot is the predicate function for runsnapshot builders.
+type RunSnapshot func(*sql.Selector)
+
+// RunStep is the predicate function for runstep builders.
+type RunStep func(*sql.Selector)
 
 // Secret is the predicate function for secret builders.
 type Secret func(*sql.Selector)
@@ -57,8 +93,17 @@ type Secret func(*sql.Selector)
 // Session is the predicate function for session builders.
 type Session func(*sql.Selector)
 
+// SessionProvenance is the predicate function for sessionprovenance builders.
+type SessionProvenance func(*sql.Selector)
+
 // TokenUsage is the predicate function for tokenusage builders.
 type TokenUsage func(*sql.Selector)
+
+// TurnTrace is the predicate function for turntrace builders.
+type TurnTrace func(*sql.Selector)
+
+// TurnTraceEvent is the predicate function for turntraceevent builders.
+type TurnTraceEvent func(*sql.Selector)
 
 // WorkflowRun is the predicate function for workflowrun builders.
 type WorkflowRun func(*sql.Selector)

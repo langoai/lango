@@ -12,11 +12,15 @@ import (
 	"github.com/langoai/lango/internal/background"
 	"github.com/langoai/lango/internal/config"
 	cronpkg "github.com/langoai/lango/internal/cron"
+	"github.com/langoai/lango/internal/economy/budget"
+	"github.com/langoai/lango/internal/economy/escrow"
+	"github.com/langoai/lango/internal/economy/negotiation"
+	"github.com/langoai/lango/internal/economy/pricing"
+	"github.com/langoai/lango/internal/economy/risk"
 	"github.com/langoai/lango/internal/embedding"
 	"github.com/langoai/lango/internal/eventbus"
 	"github.com/langoai/lango/internal/gatekeeper"
 	"github.com/langoai/lango/internal/gateway"
-	"github.com/langoai/lango/internal/tooloutput"
 	"github.com/langoai/lango/internal/graph"
 	"github.com/langoai/lango/internal/knowledge"
 	"github.com/langoai/lango/internal/learning"
@@ -31,11 +35,17 @@ import (
 	"github.com/langoai/lango/internal/p2p/agentpool"
 	"github.com/langoai/lango/internal/p2p/team"
 	"github.com/langoai/lango/internal/payment"
+	"github.com/langoai/lango/internal/provenance"
+	"github.com/langoai/lango/internal/runledger"
 	"github.com/langoai/lango/internal/security"
 	"github.com/langoai/lango/internal/session"
 	"github.com/langoai/lango/internal/skill"
+	sa "github.com/langoai/lango/internal/smartaccount"
 	"github.com/langoai/lango/internal/toolcatalog"
 	"github.com/langoai/lango/internal/toolchain"
+	"github.com/langoai/lango/internal/tooloutput"
+	"github.com/langoai/lango/internal/turnrunner"
+	"github.com/langoai/lango/internal/turntrace"
 	"github.com/langoai/lango/internal/wallet"
 	"github.com/langoai/lango/internal/workflow"
 	x402pkg "github.com/langoai/lango/internal/x402"
@@ -61,6 +71,7 @@ type App struct {
 	// Approval Provider (composite, routes to channel-specific providers)
 	ApprovalProvider approval.Provider
 	GrantStore       *approval.GrantStore
+	ApprovalHistory  *approval.HistoryStore
 
 	// Self-Learning Components
 	KnowledgeStore *knowledge.Store
@@ -104,14 +115,14 @@ type App struct {
 	WorkflowEngine *workflow.Engine
 
 	// Economy Components (optional, P2P economy layer)
-	EconomyBudget      interface{} // *budget.Engine
-	EconomyRisk        interface{} // *risk.Engine
-	EconomyPricing     interface{} // *pricing.Engine
-	EconomyNegotiation interface{} // *negotiation.Engine
-	EconomyEscrow      interface{} // *escrow.Engine
+	EconomyBudget      *budget.Engine
+	EconomyRisk        *risk.Engine
+	EconomyPricing     *pricing.Engine
+	EconomyNegotiation *negotiation.Engine
+	EconomyEscrow      *escrow.Engine
 
 	// Smart Account Components (optional, ERC-7579 modular accounts)
-	SmartAccountManager    interface{}             // *smartaccount.Manager
+	SmartAccountManager    sa.AccountManager
 	SmartAccountComponents *smartAccountComponents // full components for CLI access
 
 	// Output Store (compressed tool output retrieval)
@@ -120,6 +131,20 @@ type App struct {
 	// Gatekeeper (response sanitizer)
 	Sanitizer *gatekeeper.Sanitizer
 
+	// Turn Runtime (shared execution + durable traces)
+	TurnRunner    *turnrunner.Runner
+	TurnTraceStore turntrace.Store
+
+	// RunLedger Components (optional, Task OS durable execution)
+	RunLedgerStore runledger.RunLedgerStore
+	RunLedgerPEV   *runledger.PEVEngine
+
+	// Provenance Components (optional)
+	ProvenanceCheckpoints *provenance.CheckpointService
+	ProvenanceSessionTree *provenance.SessionTree
+	ProvenanceAttribution *provenance.AttributionService
+	ProvenanceBundle      *provenance.BundleService
+
 	// MCP Components (optional, external MCP server integration)
 	MCPManager *mcp.ServerManager
 
@@ -127,6 +152,7 @@ type App struct {
 	MetricsCollector *observability.MetricsCollector
 	HealthRegistry   *health.Registry
 	TokenStore       *token.EntTokenStore
+	TracerShutdown   func(context.Context) error
 
 	// Tool Catalog (built-in tool discovery + dynamic dispatch)
 	ToolCatalog *toolcatalog.Catalog
@@ -146,6 +172,9 @@ type App struct {
 	// Hook Registry (tool execution hooks)
 	HookRegistry *toolchain.HookRegistry
 
+	// FeatureStatuses holds aggregated init diagnostics for context subsystems.
+	FeatureStatuses *StatusCollector
+
 	// Channels
 	Channels []Channel
 
@@ -162,6 +191,45 @@ type App struct {
 
 // Channel represents a communication channel (Telegram, Discord, Slack)
 type Channel interface {
+	Name() string
 	Start(ctx context.Context) error
-	Stop()
+	Stop(ctx context.Context) error
+}
+
+// AppMode determines the application operating mode.
+type AppMode int
+
+const (
+	// AppModeServer is the default mode — starts all components including
+	// gateway, channels, automation, and network.
+	AppModeServer AppMode = iota
+
+	// AppModeLocalChat starts only core components (Infra, Core, Buffer)
+	// and skips network/automation/gateway/channel lifecycle. Used for
+	// interactive TUI chat.
+	AppModeLocalChat
+
+	// AppModeCockpit starts core + buffer components and optionally initializes
+	// channels (if configured), but skips the HTTP gateway and automation lifecycle.
+	// Channel Start/Stop is managed externally by the caller (e.g., runCockpit).
+	AppModeCockpit
+)
+
+// AppOption configures optional behavior for App construction.
+type AppOption func(*appOptions)
+
+type appOptions struct {
+	mode AppMode
+}
+
+// WithLocalChat creates an App in local-chat mode. Network, automation,
+// gateway, and channel lifecycle components are not started.
+func WithLocalChat() AppOption {
+	return func(o *appOptions) { o.mode = AppModeLocalChat }
+}
+
+// WithCockpit creates an App in cockpit mode. Core components start normally,
+// channels are initialized if configured, but gateway and automation are skipped.
+func WithCockpit() AppOption {
+	return func(o *appOptions) { o.mode = AppModeCockpit }
 }

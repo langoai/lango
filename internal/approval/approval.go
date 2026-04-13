@@ -15,12 +15,18 @@ type ApprovalRequest struct {
 	Params     map[string]interface{}
 	Summary    string // Human-readable description of what the tool will do
 	CreatedAt  time.Time
+
+	// Tier classification fields (optional, populated by approval middleware).
+	SafetyLevel string `json:",omitempty"` // "safe", "moderate", "dangerous"
+	Category    string `json:",omitempty"` // tool capability category (e.g. "filesystem", "automation")
+	Activity    string `json:",omitempty"` // tool capability activity (e.g. "execute", "write", "read")
 }
 
 // ApprovalResponse carries the result of an approval request.
 type ApprovalResponse struct {
 	Approved    bool
 	AlwaysAllow bool
+	Provider    string
 }
 
 // Provider defines the interface for approval request handling.

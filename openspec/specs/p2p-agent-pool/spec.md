@@ -1,4 +1,8 @@
-## ADDED Requirements
+## Purpose
+
+Capability spec for p2p-agent-pool. See requirements below for scope and behavior contracts.
+
+## Requirements
 
 ### Requirement: AgentPool management
 The `p2p/agentpool` package SHALL provide a `Pool` type for managing remote P2P agents. It SHALL support Add, Get, Remove, List, and FindByCapability operations.

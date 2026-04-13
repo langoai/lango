@@ -1,4 +1,8 @@
-## ADDED Requirements
+## Purpose
+
+Capability spec for cli-reference. See requirements below for scope and behavior contracts.
+
+## Requirements
 
 ### Requirement: Security extension commands documented in CLI reference
 The docs/cli/index.md SHALL include keyring (store/clear/status), db-migrate, db-decrypt, and kms (status/test/keys) commands in the Security table.

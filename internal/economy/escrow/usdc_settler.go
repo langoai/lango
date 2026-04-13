@@ -59,6 +59,7 @@ type USDCSettler struct {
 	txBuilder *payment.TxBuilder
 	rpc       *ethclient.Client
 	chainID   *big.Int
+	resolver  AddressResolver // v1+v2 DID → Ethereum address (nil = v1 only fallback)
 
 	receiptTimeout time.Duration
 	maxRetries     int
@@ -66,6 +67,15 @@ type USDCSettler struct {
 
 	// nonceMu serializes transaction building to avoid nonce collisions.
 	nonceMu sync.Mutex
+}
+
+// WithAddressResolver sets the address resolver for v1+v2 DID support.
+func WithAddressResolver(r AddressResolver) USDCSettlerOption {
+	return func(s *USDCSettler) {
+		if r != nil {
+			s.resolver = r
+		}
+	}
 }
 
 // NewUSDCSettler creates a USDC settler with the given dependencies and options.
@@ -110,7 +120,7 @@ func (s *USDCSettler) Lock(ctx context.Context, buyerDID string, amount *big.Int
 
 // Release transfers USDC from the agent wallet to the seller.
 func (s *USDCSettler) Release(ctx context.Context, sellerDID string, amount *big.Int) error {
-	to, err := ResolveAddress(sellerDID)
+	to, err := s.resolveAddress(sellerDID)
 	if err != nil {
 		return fmt.Errorf("resolve seller address: %w", err)
 	}
@@ -119,11 +129,20 @@ func (s *USDCSettler) Release(ctx context.Context, sellerDID string, amount *big
 
 // Refund transfers USDC from the agent wallet back to the buyer.
 func (s *USDCSettler) Refund(ctx context.Context, buyerDID string, amount *big.Int) error {
-	to, err := ResolveAddress(buyerDID)
+	to, err := s.resolveAddress(buyerDID)
 	if err != nil {
 		return fmt.Errorf("resolve buyer address: %w", err)
 	}
 	return s.transferFromAgent(ctx, to, amount, "refund", buyerDID)
+}
+
+// resolveAddress uses the injected resolver if available, otherwise falls back
+// to the package-level v1-only function.
+func (s *USDCSettler) resolveAddress(did string) (common.Address, error) {
+	if s.resolver != nil {
+		return s.resolver.ResolveAddress(did)
+	}
+	return ResolveAddress(did)
 }
 
 // transferFromAgent builds, signs, submits, and confirms a USDC transfer

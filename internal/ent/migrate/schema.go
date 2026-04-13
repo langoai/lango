@@ -8,11 +8,98 @@ import (
 )
 
 var (
+	// ActionLogsColumns holds the columns for the "action_logs" table.
+	ActionLogsColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeUUID},
+		{Name: "action_name", Type: field.TypeString},
+		{Name: "principal", Type: field.TypeString},
+		{Name: "params", Type: field.TypeJSON, Nullable: true},
+		{Name: "status", Type: field.TypeEnum, Enums: []string{"started", "completed", "failed", "compensated"}, Default: "started"},
+		{Name: "effects", Type: field.TypeJSON, Nullable: true},
+		{Name: "error_message", Type: field.TypeString, Nullable: true},
+		{Name: "started_at", Type: field.TypeTime},
+		{Name: "completed_at", Type: field.TypeTime, Nullable: true},
+	}
+	// ActionLogsTable holds the schema information for the "action_logs" table.
+	ActionLogsTable = &schema.Table{
+		Name:       "action_logs",
+		Columns:    ActionLogsColumns,
+		PrimaryKey: []*schema.Column{ActionLogsColumns[0]},
+		Indexes: []*schema.Index{
+			{
+				Name:    "actionlog_action_name",
+				Unique:  false,
+				Columns: []*schema.Column{ActionLogsColumns[1]},
+			},
+			{
+				Name:    "actionlog_principal",
+				Unique:  false,
+				Columns: []*schema.Column{ActionLogsColumns[2]},
+			},
+			{
+				Name:    "actionlog_status",
+				Unique:  false,
+				Columns: []*schema.Column{ActionLogsColumns[4]},
+			},
+			{
+				Name:    "actionlog_started_at",
+				Unique:  false,
+				Columns: []*schema.Column{ActionLogsColumns[7]},
+			},
+		},
+	}
+	// AgentMemoriesColumns holds the columns for the "agent_memories" table.
+	AgentMemoriesColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeUUID},
+		{Name: "agent_name", Type: field.TypeString},
+		{Name: "scope", Type: field.TypeEnum, Enums: []string{"instance", "global"}},
+		{Name: "kind", Type: field.TypeEnum, Enums: []string{"pattern", "preference", "fact", "skill"}},
+		{Name: "key", Type: field.TypeString},
+		{Name: "content", Type: field.TypeString, Size: 2147483647},
+		{Name: "confidence", Type: field.TypeFloat64, Default: 0.5},
+		{Name: "use_count", Type: field.TypeInt, Default: 0},
+		{Name: "tags", Type: field.TypeJSON, Nullable: true},
+		{Name: "created_at", Type: field.TypeTime},
+		{Name: "updated_at", Type: field.TypeTime},
+	}
+	// AgentMemoriesTable holds the schema information for the "agent_memories" table.
+	AgentMemoriesTable = &schema.Table{
+		Name:       "agent_memories",
+		Columns:    AgentMemoriesColumns,
+		PrimaryKey: []*schema.Column{AgentMemoriesColumns[0]},
+		Indexes: []*schema.Index{
+			{
+				Name:    "agentmemory_agent_name_key",
+				Unique:  true,
+				Columns: []*schema.Column{AgentMemoriesColumns[1], AgentMemoriesColumns[4]},
+			},
+			{
+				Name:    "agentmemory_agent_name",
+				Unique:  false,
+				Columns: []*schema.Column{AgentMemoriesColumns[1]},
+			},
+			{
+				Name:    "agentmemory_scope",
+				Unique:  false,
+				Columns: []*schema.Column{AgentMemoriesColumns[2]},
+			},
+			{
+				Name:    "agentmemory_kind",
+				Unique:  false,
+				Columns: []*schema.Column{AgentMemoriesColumns[3]},
+			},
+			{
+				Name:    "agentmemory_confidence",
+				Unique:  false,
+				Columns: []*schema.Column{AgentMemoriesColumns[6]},
+			},
+		},
+	}
 	// AuditLogsColumns holds the columns for the "audit_logs" table.
 	AuditLogsColumns = []*schema.Column{
 		{Name: "id", Type: field.TypeUUID},
 		{Name: "session_key", Type: field.TypeString, Nullable: true},
-		{Name: "action", Type: field.TypeEnum, Enums: []string{"tool_call", "knowledge_save", "learning_save", "skill_create", "skill_execute", "skill_import", "skill_import_bulk", "knowledge_search", "approval_request", "approval_response"}},
+		{Name: "action", Type: field.TypeEnum, Enums: []string{"tool_call", "knowledge_save", "learning_save", "skill_create", "skill_execute", "skill_import", "skill_import_bulk", "knowledge_search", "approval_request", "approval_response", "policy_decision", "alert", "sandbox_decision"}},
 		{Name: "actor", Type: field.TypeString},
 		{Name: "target", Type: field.TypeString, Nullable: true},
 		{Name: "details", Type: field.TypeJSON, Nullable: true},
@@ -137,6 +224,61 @@ var (
 				Name:    "cronjobhistory_started_at",
 				Unique:  false,
 				Columns: []*schema.Column{CronJobHistoriesColumns[8]},
+			},
+		},
+	}
+	// EntityAliasColumns holds the columns for the "entity_alias" table.
+	EntityAliasColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeUUID},
+		{Name: "raw_id", Type: field.TypeString, Unique: true},
+		{Name: "canonical_id", Type: field.TypeString},
+		{Name: "source", Type: field.TypeString, Default: "manual"},
+		{Name: "created_at", Type: field.TypeTime},
+	}
+	// EntityAliasTable holds the schema information for the "entity_alias" table.
+	EntityAliasTable = &schema.Table{
+		Name:       "entity_alias",
+		Columns:    EntityAliasColumns,
+		PrimaryKey: []*schema.Column{EntityAliasColumns[0]},
+		Indexes: []*schema.Index{
+			{
+				Name:    "entityalias_canonical_id",
+				Unique:  false,
+				Columns: []*schema.Column{EntityAliasColumns[2]},
+			},
+		},
+	}
+	// EntityPropertiesColumns holds the columns for the "entity_properties" table.
+	EntityPropertiesColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeUUID},
+		{Name: "entity_id", Type: field.TypeString},
+		{Name: "entity_type", Type: field.TypeString},
+		{Name: "property", Type: field.TypeString},
+		{Name: "value", Type: field.TypeString, Size: 2147483647},
+		{Name: "value_type", Type: field.TypeString, Default: "string"},
+		{Name: "created_at", Type: field.TypeTime},
+		{Name: "updated_at", Type: field.TypeTime},
+	}
+	// EntityPropertiesTable holds the schema information for the "entity_properties" table.
+	EntityPropertiesTable = &schema.Table{
+		Name:       "entity_properties",
+		Columns:    EntityPropertiesColumns,
+		PrimaryKey: []*schema.Column{EntityPropertiesColumns[0]},
+		Indexes: []*schema.Index{
+			{
+				Name:    "entityproperty_entity_id_property",
+				Unique:  true,
+				Columns: []*schema.Column{EntityPropertiesColumns[1], EntityPropertiesColumns[3]},
+			},
+			{
+				Name:    "entityproperty_entity_type_property_value",
+				Unique:  false,
+				Columns: []*schema.Column{EntityPropertiesColumns[2], EntityPropertiesColumns[3], EntityPropertiesColumns[4]},
+			},
+			{
+				Name:    "entityproperty_entity_type",
+				Unique:  false,
+				Columns: []*schema.Column{EntityPropertiesColumns[2]},
 			},
 		},
 	}
@@ -277,11 +419,13 @@ var (
 	// KnowledgesColumns holds the columns for the "knowledges" table.
 	KnowledgesColumns = []*schema.Column{
 		{Name: "id", Type: field.TypeUUID},
-		{Name: "key", Type: field.TypeString, Unique: true},
+		{Name: "key", Type: field.TypeString},
 		{Name: "category", Type: field.TypeEnum, Enums: []string{"rule", "definition", "preference", "fact", "pattern", "correction"}},
 		{Name: "content", Type: field.TypeString, Size: 2147483647},
 		{Name: "tags", Type: field.TypeJSON, Nullable: true},
 		{Name: "source", Type: field.TypeString, Nullable: true},
+		{Name: "version", Type: field.TypeInt, Default: 1},
+		{Name: "is_latest", Type: field.TypeBool, Default: true},
 		{Name: "use_count", Type: field.TypeInt, Default: 0},
 		{Name: "relevance_score", Type: field.TypeFloat64, Default: 1},
 		{Name: "created_at", Type: field.TypeTime},
@@ -293,6 +437,16 @@ var (
 		Columns:    KnowledgesColumns,
 		PrimaryKey: []*schema.Column{KnowledgesColumns[0]},
 		Indexes: []*schema.Index{
+			{
+				Name:    "knowledge_key_version",
+				Unique:  true,
+				Columns: []*schema.Column{KnowledgesColumns[1], KnowledgesColumns[6]},
+			},
+			{
+				Name:    "knowledge_key_is_latest",
+				Unique:  false,
+				Columns: []*schema.Column{KnowledgesColumns[1], KnowledgesColumns[7]},
+			},
 			{
 				Name:    "knowledge_category",
 				Unique:  false,
@@ -385,6 +539,92 @@ var (
 			},
 		},
 	}
+	// OntologyConflictsColumns holds the columns for the "ontology_conflicts" table.
+	OntologyConflictsColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeUUID},
+		{Name: "subject", Type: field.TypeString},
+		{Name: "predicate", Type: field.TypeString},
+		{Name: "candidates", Type: field.TypeJSON, Nullable: true},
+		{Name: "status", Type: field.TypeEnum, Enums: []string{"open", "resolved", "auto_resolved"}, Default: "open"},
+		{Name: "resolution", Type: field.TypeString, Nullable: true},
+		{Name: "resolved_at", Type: field.TypeTime, Nullable: true},
+		{Name: "created_at", Type: field.TypeTime},
+	}
+	// OntologyConflictsTable holds the schema information for the "ontology_conflicts" table.
+	OntologyConflictsTable = &schema.Table{
+		Name:       "ontology_conflicts",
+		Columns:    OntologyConflictsColumns,
+		PrimaryKey: []*schema.Column{OntologyConflictsColumns[0]},
+		Indexes: []*schema.Index{
+			{
+				Name:    "ontologyconflict_subject_predicate",
+				Unique:  false,
+				Columns: []*schema.Column{OntologyConflictsColumns[1], OntologyConflictsColumns[2]},
+			},
+			{
+				Name:    "ontologyconflict_status",
+				Unique:  false,
+				Columns: []*schema.Column{OntologyConflictsColumns[4]},
+			},
+			{
+				Name:    "ontologyconflict_created_at",
+				Unique:  false,
+				Columns: []*schema.Column{OntologyConflictsColumns[7]},
+			},
+		},
+	}
+	// OntologyPredicatesColumns holds the columns for the "ontology_predicates" table.
+	OntologyPredicatesColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeUUID},
+		{Name: "name", Type: field.TypeString, Unique: true},
+		{Name: "description", Type: field.TypeString, Default: ""},
+		{Name: "source_types", Type: field.TypeJSON, Nullable: true},
+		{Name: "target_types", Type: field.TypeJSON, Nullable: true},
+		{Name: "cardinality", Type: field.TypeEnum, Enums: []string{"one_to_one", "one_to_many", "many_to_one", "many_to_many"}, Default: "many_to_many"},
+		{Name: "inverse", Type: field.TypeString, Nullable: true},
+		{Name: "status", Type: field.TypeEnum, Enums: []string{"proposed", "quarantined", "shadow", "active", "deprecated"}, Default: "active"},
+		{Name: "version", Type: field.TypeInt, Default: 1},
+		{Name: "created_at", Type: field.TypeTime},
+		{Name: "updated_at", Type: field.TypeTime},
+	}
+	// OntologyPredicatesTable holds the schema information for the "ontology_predicates" table.
+	OntologyPredicatesTable = &schema.Table{
+		Name:       "ontology_predicates",
+		Columns:    OntologyPredicatesColumns,
+		PrimaryKey: []*schema.Column{OntologyPredicatesColumns[0]},
+		Indexes: []*schema.Index{
+			{
+				Name:    "ontologypredicate_status",
+				Unique:  false,
+				Columns: []*schema.Column{OntologyPredicatesColumns[7]},
+			},
+		},
+	}
+	// OntologyTypesColumns holds the columns for the "ontology_types" table.
+	OntologyTypesColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeUUID},
+		{Name: "name", Type: field.TypeString, Unique: true},
+		{Name: "description", Type: field.TypeString, Default: ""},
+		{Name: "properties", Type: field.TypeJSON, Nullable: true},
+		{Name: "extends", Type: field.TypeString, Nullable: true},
+		{Name: "status", Type: field.TypeEnum, Enums: []string{"proposed", "quarantined", "shadow", "active", "deprecated"}, Default: "active"},
+		{Name: "version", Type: field.TypeInt, Default: 1},
+		{Name: "created_at", Type: field.TypeTime},
+		{Name: "updated_at", Type: field.TypeTime},
+	}
+	// OntologyTypesTable holds the schema information for the "ontology_types" table.
+	OntologyTypesTable = &schema.Table{
+		Name:       "ontology_types",
+		Columns:    OntologyTypesColumns,
+		PrimaryKey: []*schema.Column{OntologyTypesColumns[0]},
+		Indexes: []*schema.Index{
+			{
+				Name:    "ontologytype_status",
+				Unique:  false,
+				Columns: []*schema.Column{OntologyTypesColumns[5]},
+			},
+		},
+	}
 	// PaymentTxesColumns holds the columns for the "payment_txes" table.
 	PaymentTxesColumns = []*schema.Column{
 		{Name: "id", Type: field.TypeUUID},
@@ -466,6 +706,110 @@ var (
 			},
 		},
 	}
+	// ProvenanceAttributionsColumns holds the columns for the "provenance_attributions" table.
+	ProvenanceAttributionsColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeUUID},
+		{Name: "session_key", Type: field.TypeString},
+		{Name: "run_id", Type: field.TypeString, Nullable: true},
+		{Name: "workspace_id", Type: field.TypeString, Nullable: true},
+		{Name: "author_type", Type: field.TypeString},
+		{Name: "author_id", Type: field.TypeString},
+		{Name: "file_path", Type: field.TypeString, Nullable: true},
+		{Name: "commit_hash", Type: field.TypeString, Nullable: true},
+		{Name: "step_id", Type: field.TypeString, Nullable: true},
+		{Name: "source", Type: field.TypeString},
+		{Name: "lines_added", Type: field.TypeInt, Default: 0},
+		{Name: "lines_removed", Type: field.TypeInt, Default: 0},
+		{Name: "created_at", Type: field.TypeTime},
+	}
+	// ProvenanceAttributionsTable holds the schema information for the "provenance_attributions" table.
+	ProvenanceAttributionsTable = &schema.Table{
+		Name:       "provenance_attributions",
+		Columns:    ProvenanceAttributionsColumns,
+		PrimaryKey: []*schema.Column{ProvenanceAttributionsColumns[0]},
+		Indexes: []*schema.Index{
+			{
+				Name:    "provenanceattribution_session_key",
+				Unique:  false,
+				Columns: []*schema.Column{ProvenanceAttributionsColumns[1]},
+			},
+			{
+				Name:    "provenanceattribution_workspace_id",
+				Unique:  false,
+				Columns: []*schema.Column{ProvenanceAttributionsColumns[3]},
+			},
+			{
+				Name:    "provenanceattribution_run_id",
+				Unique:  false,
+				Columns: []*schema.Column{ProvenanceAttributionsColumns[2]},
+			},
+			{
+				Name:    "provenanceattribution_author_id",
+				Unique:  false,
+				Columns: []*schema.Column{ProvenanceAttributionsColumns[5]},
+			},
+			{
+				Name:    "provenanceattribution_commit_hash",
+				Unique:  false,
+				Columns: []*schema.Column{ProvenanceAttributionsColumns[7]},
+			},
+			{
+				Name:    "provenanceattribution_file_path",
+				Unique:  false,
+				Columns: []*schema.Column{ProvenanceAttributionsColumns[6]},
+			},
+			{
+				Name:    "provenanceattribution_created_at",
+				Unique:  false,
+				Columns: []*schema.Column{ProvenanceAttributionsColumns[12]},
+			},
+		},
+	}
+	// ProvenanceCheckpointsColumns holds the columns for the "provenance_checkpoints" table.
+	ProvenanceCheckpointsColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeUUID},
+		{Name: "session_key", Type: field.TypeString, Nullable: true},
+		{Name: "run_id", Type: field.TypeString, Nullable: true},
+		{Name: "label", Type: field.TypeString},
+		{Name: "trigger", Type: field.TypeEnum, Enums: []string{"manual", "step_complete", "policy_applied"}},
+		{Name: "journal_seq", Type: field.TypeInt64, Default: 0},
+		{Name: "git_ref", Type: field.TypeString, Nullable: true},
+		{Name: "metadata", Type: field.TypeString, Nullable: true, Size: 2147483647},
+		{Name: "created_at", Type: field.TypeTime},
+	}
+	// ProvenanceCheckpointsTable holds the schema information for the "provenance_checkpoints" table.
+	ProvenanceCheckpointsTable = &schema.Table{
+		Name:       "provenance_checkpoints",
+		Columns:    ProvenanceCheckpointsColumns,
+		PrimaryKey: []*schema.Column{ProvenanceCheckpointsColumns[0]},
+		Indexes: []*schema.Index{
+			{
+				Name:    "provenancecheckpoint_session_key",
+				Unique:  false,
+				Columns: []*schema.Column{ProvenanceCheckpointsColumns[1]},
+			},
+			{
+				Name:    "provenancecheckpoint_run_id",
+				Unique:  false,
+				Columns: []*schema.Column{ProvenanceCheckpointsColumns[2]},
+			},
+			{
+				Name:    "provenancecheckpoint_trigger",
+				Unique:  false,
+				Columns: []*schema.Column{ProvenanceCheckpointsColumns[4]},
+			},
+			{
+				Name:    "provenancecheckpoint_created_at",
+				Unique:  false,
+				Columns: []*schema.Column{ProvenanceCheckpointsColumns[8]},
+			},
+			{
+				Name:    "provenancecheckpoint_run_id_journal_seq",
+				Unique:  false,
+				Columns: []*schema.Column{ProvenanceCheckpointsColumns[2], ProvenanceCheckpointsColumns[5]},
+			},
+		},
+	}
 	// ReflectionsColumns holds the columns for the "reflections" table.
 	ReflectionsColumns = []*schema.Column{
 		{Name: "id", Type: field.TypeUUID},
@@ -490,6 +834,118 @@ var (
 				Name:    "reflection_created_at",
 				Unique:  false,
 				Columns: []*schema.Column{ReflectionsColumns[5]},
+			},
+		},
+	}
+	// RunJournalsColumns holds the columns for the "run_journals" table.
+	RunJournalsColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeUUID},
+		{Name: "run_id", Type: field.TypeString},
+		{Name: "seq", Type: field.TypeInt64},
+		{Name: "type", Type: field.TypeEnum, Enums: []string{"run_created", "plan_attached", "step_started", "step_result_proposed", "step_validation_passed", "step_validation_failed", "policy_decision_applied", "note_written", "run_paused", "run_resumed", "run_completed", "run_failed", "projection_synced", "criterion_met"}},
+		{Name: "timestamp", Type: field.TypeTime},
+		{Name: "payload", Type: field.TypeString, Size: 2147483647},
+	}
+	// RunJournalsTable holds the schema information for the "run_journals" table.
+	RunJournalsTable = &schema.Table{
+		Name:       "run_journals",
+		Columns:    RunJournalsColumns,
+		PrimaryKey: []*schema.Column{RunJournalsColumns[0]},
+		Indexes: []*schema.Index{
+			{
+				Name:    "runjournal_run_id_seq",
+				Unique:  true,
+				Columns: []*schema.Column{RunJournalsColumns[1], RunJournalsColumns[2]},
+			},
+			{
+				Name:    "runjournal_run_id",
+				Unique:  false,
+				Columns: []*schema.Column{RunJournalsColumns[1]},
+			},
+			{
+				Name:    "runjournal_type",
+				Unique:  false,
+				Columns: []*schema.Column{RunJournalsColumns[3]},
+			},
+			{
+				Name:    "runjournal_timestamp",
+				Unique:  false,
+				Columns: []*schema.Column{RunJournalsColumns[4]},
+			},
+		},
+	}
+	// RunSnapshotsColumns holds the columns for the "run_snapshots" table.
+	RunSnapshotsColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeUUID},
+		{Name: "run_id", Type: field.TypeString, Unique: true},
+		{Name: "session_key", Type: field.TypeString, Nullable: true},
+		{Name: "status", Type: field.TypeEnum, Enums: []string{"planning", "running", "paused", "completed", "failed"}, Default: "planning"},
+		{Name: "goal", Type: field.TypeString, Nullable: true},
+		{Name: "snapshot_data", Type: field.TypeString, Size: 2147483647},
+		{Name: "last_journal_seq", Type: field.TypeInt64, Default: 0},
+		{Name: "created_at", Type: field.TypeTime},
+		{Name: "updated_at", Type: field.TypeTime},
+	}
+	// RunSnapshotsTable holds the schema information for the "run_snapshots" table.
+	RunSnapshotsTable = &schema.Table{
+		Name:       "run_snapshots",
+		Columns:    RunSnapshotsColumns,
+		PrimaryKey: []*schema.Column{RunSnapshotsColumns[0]},
+		Indexes: []*schema.Index{
+			{
+				Name:    "runsnapshot_status",
+				Unique:  false,
+				Columns: []*schema.Column{RunSnapshotsColumns[3]},
+			},
+			{
+				Name:    "runsnapshot_session_key",
+				Unique:  false,
+				Columns: []*schema.Column{RunSnapshotsColumns[2]},
+			},
+			{
+				Name:    "runsnapshot_updated_at",
+				Unique:  false,
+				Columns: []*schema.Column{RunSnapshotsColumns[8]},
+			},
+		},
+	}
+	// RunStepsColumns holds the columns for the "run_steps" table.
+	RunStepsColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeUUID},
+		{Name: "run_id", Type: field.TypeString},
+		{Name: "step_id", Type: field.TypeString},
+		{Name: "step_index", Type: field.TypeInt, Default: 0},
+		{Name: "goal", Type: field.TypeString, Nullable: true},
+		{Name: "owner_agent", Type: field.TypeString, Nullable: true},
+		{Name: "status", Type: field.TypeEnum, Enums: []string{"pending", "in_progress", "verify_pending", "completed", "failed", "interrupted"}, Default: "pending"},
+		{Name: "result", Type: field.TypeString, Nullable: true, Size: 2147483647},
+		{Name: "evidence", Type: field.TypeString, Nullable: true, Size: 2147483647},
+		{Name: "validator_spec", Type: field.TypeString, Nullable: true, Size: 2147483647},
+		{Name: "retry_count", Type: field.TypeInt, Default: 0},
+		{Name: "max_retries", Type: field.TypeInt, Default: 2},
+		{Name: "created_at", Type: field.TypeTime},
+		{Name: "updated_at", Type: field.TypeTime},
+	}
+	// RunStepsTable holds the schema information for the "run_steps" table.
+	RunStepsTable = &schema.Table{
+		Name:       "run_steps",
+		Columns:    RunStepsColumns,
+		PrimaryKey: []*schema.Column{RunStepsColumns[0]},
+		Indexes: []*schema.Index{
+			{
+				Name:    "runstep_run_id",
+				Unique:  false,
+				Columns: []*schema.Column{RunStepsColumns[1]},
+			},
+			{
+				Name:    "runstep_run_id_step_id",
+				Unique:  true,
+				Columns: []*schema.Column{RunStepsColumns[1], RunStepsColumns[2]},
+			},
+			{
+				Name:    "runstep_status",
+				Unique:  false,
+				Columns: []*schema.Column{RunStepsColumns[6]},
 			},
 		},
 	}
@@ -554,6 +1010,53 @@ var (
 			},
 		},
 	}
+	// SessionProvenancesColumns holds the columns for the "session_provenances" table.
+	SessionProvenancesColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeUUID},
+		{Name: "session_key", Type: field.TypeString, Unique: true},
+		{Name: "parent_key", Type: field.TypeString, Nullable: true},
+		{Name: "agent_name", Type: field.TypeString},
+		{Name: "goal", Type: field.TypeString, Nullable: true},
+		{Name: "run_id", Type: field.TypeString, Nullable: true},
+		{Name: "workspace_id", Type: field.TypeString, Nullable: true},
+		{Name: "depth", Type: field.TypeInt, Default: 0},
+		{Name: "status", Type: field.TypeEnum, Enums: []string{"active", "merged", "discarded", "completed"}, Default: "active"},
+		{Name: "created_at", Type: field.TypeTime},
+		{Name: "closed_at", Type: field.TypeTime, Nullable: true},
+	}
+	// SessionProvenancesTable holds the schema information for the "session_provenances" table.
+	SessionProvenancesTable = &schema.Table{
+		Name:       "session_provenances",
+		Columns:    SessionProvenancesColumns,
+		PrimaryKey: []*schema.Column{SessionProvenancesColumns[0]},
+		Indexes: []*schema.Index{
+			{
+				Name:    "sessionprovenance_parent_key",
+				Unique:  false,
+				Columns: []*schema.Column{SessionProvenancesColumns[2]},
+			},
+			{
+				Name:    "sessionprovenance_agent_name",
+				Unique:  false,
+				Columns: []*schema.Column{SessionProvenancesColumns[3]},
+			},
+			{
+				Name:    "sessionprovenance_status",
+				Unique:  false,
+				Columns: []*schema.Column{SessionProvenancesColumns[8]},
+			},
+			{
+				Name:    "sessionprovenance_run_id",
+				Unique:  false,
+				Columns: []*schema.Column{SessionProvenancesColumns[5]},
+			},
+			{
+				Name:    "sessionprovenance_created_at",
+				Unique:  false,
+				Columns: []*schema.Column{SessionProvenancesColumns[9]},
+			},
+		},
+	}
 	// TokenUsagesColumns holds the columns for the "token_usages" table.
 	TokenUsagesColumns = []*schema.Column{
 		{Name: "id", Type: field.TypeUUID},
@@ -592,6 +1095,89 @@ var (
 				Name:    "tokenusage_agent_name_timestamp",
 				Unique:  false,
 				Columns: []*schema.Column{TokenUsagesColumns[4], TokenUsagesColumns[9]},
+			},
+		},
+	}
+	// TurnTracesColumns holds the columns for the "turn_traces" table.
+	TurnTracesColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeUUID},
+		{Name: "trace_id", Type: field.TypeString, Unique: true},
+		{Name: "session_key", Type: field.TypeString},
+		{Name: "entrypoint", Type: field.TypeString},
+		{Name: "outcome", Type: field.TypeString, Default: "running"},
+		{Name: "error_code", Type: field.TypeString, Nullable: true},
+		{Name: "cause_class", Type: field.TypeString, Nullable: true},
+		{Name: "cause_detail", Type: field.TypeString, Nullable: true, Size: 2147483647},
+		{Name: "summary", Type: field.TypeString, Nullable: true, Size: 2147483647},
+		{Name: "started_at", Type: field.TypeTime},
+		{Name: "ended_at", Type: field.TypeTime, Nullable: true},
+	}
+	// TurnTracesTable holds the schema information for the "turn_traces" table.
+	TurnTracesTable = &schema.Table{
+		Name:       "turn_traces",
+		Columns:    TurnTracesColumns,
+		PrimaryKey: []*schema.Column{TurnTracesColumns[0]},
+		Indexes: []*schema.Index{
+			{
+				Name:    "turntrace_session_key",
+				Unique:  false,
+				Columns: []*schema.Column{TurnTracesColumns[2]},
+			},
+			{
+				Name:    "turntrace_entrypoint",
+				Unique:  false,
+				Columns: []*schema.Column{TurnTracesColumns[3]},
+			},
+			{
+				Name:    "turntrace_outcome",
+				Unique:  false,
+				Columns: []*schema.Column{TurnTracesColumns[4]},
+			},
+			{
+				Name:    "turntrace_started_at",
+				Unique:  false,
+				Columns: []*schema.Column{TurnTracesColumns[9]},
+			},
+		},
+	}
+	// TurnTraceEventsColumns holds the columns for the "turn_trace_events" table.
+	TurnTraceEventsColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeUUID},
+		{Name: "trace_id", Type: field.TypeString},
+		{Name: "seq", Type: field.TypeInt64},
+		{Name: "event_type", Type: field.TypeString},
+		{Name: "agent_name", Type: field.TypeString, Nullable: true},
+		{Name: "tool_name", Type: field.TypeString, Nullable: true},
+		{Name: "call_signature", Type: field.TypeString, Nullable: true},
+		{Name: "payload_json", Type: field.TypeString, Nullable: true, Size: 2147483647},
+		{Name: "payload_truncated", Type: field.TypeBool, Default: false},
+		{Name: "created_at", Type: field.TypeTime},
+	}
+	// TurnTraceEventsTable holds the schema information for the "turn_trace_events" table.
+	TurnTraceEventsTable = &schema.Table{
+		Name:       "turn_trace_events",
+		Columns:    TurnTraceEventsColumns,
+		PrimaryKey: []*schema.Column{TurnTraceEventsColumns[0]},
+		Indexes: []*schema.Index{
+			{
+				Name:    "turntraceevent_trace_id_seq",
+				Unique:  true,
+				Columns: []*schema.Column{TurnTraceEventsColumns[1], TurnTraceEventsColumns[2]},
+			},
+			{
+				Name:    "turntraceevent_trace_id",
+				Unique:  false,
+				Columns: []*schema.Column{TurnTraceEventsColumns[1]},
+			},
+			{
+				Name:    "turntraceevent_event_type",
+				Unique:  false,
+				Columns: []*schema.Column{TurnTraceEventsColumns[3]},
+			},
+			{
+				Name:    "turntraceevent_created_at",
+				Unique:  false,
+				Columns: []*schema.Column{TurnTraceEventsColumns[9]},
 			},
 		},
 	}
@@ -668,10 +1254,14 @@ var (
 	}
 	// Tables holds all the tables in the schema.
 	Tables = []*schema.Table{
+		ActionLogsTable,
+		AgentMemoriesTable,
 		AuditLogsTable,
 		ConfigProfilesTable,
 		CronJobsTable,
 		CronJobHistoriesTable,
+		EntityAliasTable,
+		EntityPropertiesTable,
 		EscrowDealsTable,
 		ExternalRefsTable,
 		InquiriesTable,
@@ -680,12 +1270,23 @@ var (
 		LearningsTable,
 		MessagesTable,
 		ObservationsTable,
+		OntologyConflictsTable,
+		OntologyPredicatesTable,
+		OntologyTypesTable,
 		PaymentTxesTable,
 		PeerReputationsTable,
+		ProvenanceAttributionsTable,
+		ProvenanceCheckpointsTable,
 		ReflectionsTable,
+		RunJournalsTable,
+		RunSnapshotsTable,
+		RunStepsTable,
 		SecretsTable,
 		SessionsTable,
+		SessionProvenancesTable,
 		TokenUsagesTable,
+		TurnTracesTable,
+		TurnTraceEventsTable,
 		WorkflowRunsTable,
 		WorkflowStepRunsTable,
 	}

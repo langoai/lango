@@ -10,7 +10,13 @@ Lango encrypts all sensitive data using AES-256-GCM and manages cryptographic ke
 
 ### Local Mode (Default)
 
-Local mode derives encryption keys from a user-provided passphrase using **PBKDF2** (100,000 iterations, SHA-256, 16-byte salt). All cryptographic operations happen in-process.
+Local mode uses a **Master Key (MK) envelope** architecture. A random 32-byte Master Key encrypts all data (AES-256-GCM). The passphrase does not encrypt data directly — it derives a Key Encryption Key (KEK) that wraps/unwraps the MK.
+
+```
+Passphrase → PBKDF2 → KEK → wraps Master Key (AES-256-GCM)
+                              ├── Data Encryption: secrets, config profiles
+                              └── DB Key: HKDF(MK, "lango-db-encryption")
+```
 
 === "Interactive"
 
@@ -23,38 +29,58 @@ Local mode derives encryption keys from a user-provided passphrase using **PBKDF
 
 === "Headless"
 
-    For CI/CD or server deployments, set the passphrase via environment variable:
+    For CI/CD or server deployments, provide a keyfile:
 
     ```bash
-    export LANGO_PASSPHRASE="your-secure-passphrase"
+    echo "your-secure-passphrase" > ~/.lango/keyfile
+    chmod 600 ~/.lango/keyfile
     lango serve
     ```
 
-!!! danger "Passphrase Recovery"
+!!! info "Recovery Mnemonic"
 
-    There is no passphrase recovery mechanism. If you lose your passphrase, all encrypted data (secrets, wallet keys, session data) becomes permanently inaccessible. Back up your passphrase in a secure location.
+    Lango supports a BIP39 recovery mnemonic as an alternative KEK slot. If you lose your passphrase, the mnemonic can unwrap the Master Key and restore access. Set it up with:
 
-**Key Derivation Parameters:**
+    ```bash
+    lango security recovery setup
+    ```
 
-| Parameter | Value |
-|-----------|-------|
-| Algorithm | PBKDF2 |
-| Hash | SHA-256 |
-| Key Size | 256 bits (32 bytes) |
-| Salt Size | 128 bits (16 bytes) |
-| Iterations | 100,000 |
-| Cipher | AES-256-GCM |
-| Nonce Size | 96 bits (12 bytes) |
+    Without a recovery mnemonic, losing your passphrase means permanent loss of all encrypted data.
 
-**Passphrase Migration:**
+**Key Hierarchy:**
 
-To change your passphrase without losing data:
+| Layer | Parameter | Value |
+|-------|-----------|-------|
+| KEK derivation | Algorithm | PBKDF2-SHA256, 100,000 iterations |
+| KEK derivation | Salt | 128 bits (16 bytes), per-slot |
+| MK wrapping | Cipher | AES-256-GCM |
+| Data encryption | Key | Master Key (256 bits, random) |
+| Data encryption | Cipher | AES-256-GCM, 96-bit nonce |
+| DB key | Derivation | HKDF-SHA256(MK, "lango-db-encryption") |
+| Identity key | Derivation | HKDF-SHA256(MK, "lango-identity-ed25519") → Ed25519 |
+
+**Identity Bundle:**
+
+When the Master Key is available, Lango derives an Ed25519 identity key and creates an **Identity Bundle** (`~/.lango/identity-bundle.json`). The bundle contains the Ed25519 signing key, secp256k1 settlement key (from wallet), and dual proofs. A content-addressed DID v2 (`did:lango:v2:<hash>`) is computed from the bundle. The legacy v1 DID (`did:lango:<secp256k1-hex>`) is preserved for backward compatibility.
+
+**Envelope File:**
+
+The Master Key envelope is stored at `~/.lango/envelope.json` (0600 permissions). It contains KEK slots (passphrase, mnemonic), KDF metadata, and crash recovery flags. The envelope is readable without opening the database.
+
+**Change Passphrase:**
+
+To change the passphrase without re-encrypting data:
 
 ```bash
-lango security migrate-passphrase
+lango security change-passphrase
 ```
 
-This re-encrypts all secrets and keys under the new passphrase.
+This re-wraps the Master Key with a new passphrase-derived KEK. Because the MK itself does not change, no data re-encryption or DB rekey is needed — the operation is O(1).
+
+!!! note "Legacy Command"
+    `lango security migrate-passphrase` is deprecated. Use `change-passphrase` instead.
+
+See [Envelope Migration](envelope-migration.md) for details on upgrading from legacy installations.
 
 ### RPC Mode (Production)
 
@@ -237,7 +263,9 @@ Lango supports transparent database encryption using SQLCipher PRAGMA-based encr
 
 **How it works:**
 
-1. After `sql.Open`, the bootstrap process issues `PRAGMA key = '<passphrase>'` to unlock the database
+1. After `sql.Open`, the bootstrap process issues `PRAGMA key` to unlock the database:
+    - **Envelope-based**: `PRAGMA key = "x'<HKDF(MK)>'"` (raw 256-bit key, no internal PBKDF2)
+    - **Legacy**: `PRAGMA key = '<passphrase>'` (passphrase mode)
 2. `PRAGMA cipher_page_size` is set according to configuration (default: 4096)
 3. All subsequent reads and writes are transparently encrypted/decrypted
 

@@ -8,9 +8,10 @@ LDFLAGS      := -ldflags "-X main.Version=$(VERSION) -X main.BuildTime=$(BUILD_T
 
 # Go parameters (CGO required for sqlite3/sqlite-vec)
 GOCMD    := go
-GOBUILD  := CGO_ENABLED=1 $(GOCMD) build
+GOTAGS   := -tags "fts5,vec"
+GOBUILD  := CGO_ENABLED=1 $(GOCMD) build $(GOTAGS)
 GOCLEAN  := $(GOCMD) clean
-GOTEST   := CGO_ENABLED=1 $(GOCMD) test
+GOTEST   := CGO_ENABLED=1 $(GOCMD) test $(GOTAGS)
 GOMOD    := $(GOCMD) mod
 
 # Docker

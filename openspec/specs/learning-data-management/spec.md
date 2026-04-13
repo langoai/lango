@@ -1,4 +1,8 @@
-## ADDED Requirements
+## Purpose
+
+Capability spec for learning-data-management. See requirements below for scope and behavior contracts.
+
+## Requirements
 
 ### Requirement: Learning Statistics
 The system SHALL provide aggregate statistics about stored learning entries via `Store.GetLearningStats()`.

@@ -1,6 +1,10 @@
 # Paymaster Specification
 
-## ADDED Requirements
+## Purpose
+
+Capability spec for paymaster. See requirements below for scope and behavior contracts.
+
+## Requirements
 
 ### Requirement: PaymasterProvider interface
 The system SHALL define a `PaymasterProvider` interface with `SponsorUserOp(ctx, req) (result, error)` and `Type() string` methods for paymaster integration.

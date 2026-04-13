@@ -12,16 +12,87 @@ import (
 	"github.com/langoai/lango/internal/mdparse"
 )
 
+// buildSkillBody renders the body portion of a SKILL.md (below the frontmatter).
+func buildSkillBody(entry *SkillEntry) (string, error) {
+	var buf bytes.Buffer
+
+	switch entry.Type {
+	case "script":
+		script, _ := entry.Definition["script"].(string)
+		buf.WriteString("```sh\n")
+		buf.WriteString(script)
+		if !strings.HasSuffix(script, "\n") {
+			buf.WriteString("\n")
+		}
+		buf.WriteString("```\n")
+
+	case "template":
+		tmpl, _ := entry.Definition["template"].(string)
+		buf.WriteString("```template\n")
+		buf.WriteString(tmpl)
+		if !strings.HasSuffix(tmpl, "\n") {
+			buf.WriteString("\n")
+		}
+		buf.WriteString("```\n")
+
+	case "composite":
+		steps, _ := entry.Definition["steps"].([]interface{})
+		for i, step := range steps {
+			stepJSON, err := json.MarshalIndent(step, "", "  ")
+			if err != nil {
+				return "", fmt.Errorf("marshal step %d: %w", i, err)
+			}
+			fmt.Fprintf(&buf, "### Step %d\n\n", i+1)
+			buf.WriteString("```json\n")
+			buf.Write(stepJSON)
+			buf.WriteString("\n```\n\n")
+		}
+
+	case "instruction":
+		content, _ := entry.Definition["content"].(string)
+		buf.WriteString(content)
+		if content != "" && !strings.HasSuffix(content, "\n") {
+			buf.WriteString("\n")
+		}
+
+	case "fork":
+		instruction, _ := entry.Definition["instruction"].(string)
+		buf.WriteString(instruction)
+		if instruction != "" && !strings.HasSuffix(instruction, "\n") {
+			buf.WriteString("\n")
+		}
+	}
+
+	if len(entry.Parameters) > 0 {
+		paramJSON, err := json.MarshalIndent(entry.Parameters, "", "  ")
+		if err != nil {
+			return "", fmt.Errorf("marshal parameters: %w", err)
+		}
+		buf.WriteString("\n## Parameters\n\n```json\n")
+		buf.Write(paramJSON)
+		buf.WriteString("\n```\n")
+	}
+
+	return buf.String(), nil
+}
+
 // frontmatter is the YAML frontmatter structure of a SKILL.md file.
 type frontmatter struct {
-	Name             string `yaml:"name"`
-	Description      string `yaml:"description"`
-	Type             string `yaml:"type"`
-	Status           string `yaml:"status"`
-	CreatedBy        string `yaml:"created_by"`
-	RequiresApproval bool   `yaml:"requires_approval"`
-	Source           string `yaml:"source,omitempty"`
-	AllowedTools     string `yaml:"allowed-tools,omitempty"`
+	Name             string            `yaml:"name"`
+	Description      string            `yaml:"description"`
+	Type             string            `yaml:"type"`
+	Status           string            `yaml:"status"`
+	CreatedBy        string            `yaml:"created_by"`
+	RequiresApproval bool              `yaml:"requires_approval"`
+	Source           string            `yaml:"source,omitempty"`
+	AllowedTools     string            `yaml:"allowed-tools,omitempty"`
+	WhenToUse        string            `yaml:"when_to_use,omitempty"`
+	Paths            string            `yaml:"paths,omitempty"`
+	Context          string            `yaml:"context,omitempty"`
+	Model            string            `yaml:"model,omitempty"`
+	Effort           string            `yaml:"effort,omitempty"`
+	Agent            string            `yaml:"agent,omitempty"`
+	Hooks            map[string]string `yaml:"hooks,omitempty"`
 }
 
 var _codeBlockRe = regexp.MustCompile("(?s)```(\\w+)?\\s*\n(.*?)```")
@@ -54,6 +125,11 @@ func ParseSkillMD(content []byte) (*SkillEntry, error) {
 		allowedTools = strings.Fields(meta.AllowedTools)
 	}
 
+	var paths []string
+	if meta.Paths != "" {
+		paths = strings.Fields(meta.Paths)
+	}
+
 	entry := &SkillEntry{
 		Name:             meta.Name,
 		Description:      meta.Description,
@@ -63,6 +139,13 @@ func ParseSkillMD(content []byte) (*SkillEntry, error) {
 		RequiresApproval: meta.RequiresApproval,
 		Source:           meta.Source,
 		AllowedTools:     allowedTools,
+		WhenToUse:        meta.WhenToUse,
+		Paths:            paths,
+		Context:          meta.Context,
+		Model:            meta.Model,
+		Effort:           meta.Effort,
+		Agent:            meta.Agent,
+		Hooks:            meta.Hooks,
 	}
 
 	definition, params, err := parseBody(meta.Type, body)
@@ -87,6 +170,11 @@ func RenderSkillMD(entry *SkillEntry) ([]byte, error) {
 		allowedToolsStr = strings.Join(entry.AllowedTools, " ")
 	}
 
+	var pathsStr string
+	if len(entry.Paths) > 0 {
+		pathsStr = strings.Join(entry.Paths, " ")
+	}
+
 	meta := frontmatter{
 		Name:             entry.Name,
 		Description:      entry.Description,
@@ -96,69 +184,25 @@ func RenderSkillMD(entry *SkillEntry) ([]byte, error) {
 		RequiresApproval: entry.RequiresApproval,
 		Source:           entry.Source,
 		AllowedTools:     allowedToolsStr,
+		WhenToUse:        entry.WhenToUse,
+		Paths:            pathsStr,
+		Context:          entry.Context,
+		Model:            entry.Model,
+		Effort:           entry.Effort,
+		Agent:            entry.Agent,
+		Hooks:            entry.Hooks,
 	}
 
-	fmBytes, err := yaml.Marshal(meta)
+	body, err := buildSkillBody(entry)
+	if err != nil {
+		return nil, err
+	}
+
+	result, err := mdparse.RenderFrontmatter(meta, body)
 	if err != nil {
 		return nil, fmt.Errorf("marshal frontmatter: %w", err)
 	}
-
-	var buf bytes.Buffer
-	buf.WriteString("---\n")
-	buf.Write(fmBytes)
-	buf.WriteString("---\n\n")
-
-	switch entry.Type {
-	case "script":
-		script, _ := entry.Definition["script"].(string)
-		buf.WriteString("```sh\n")
-		buf.WriteString(script)
-		if !strings.HasSuffix(script, "\n") {
-			buf.WriteString("\n")
-		}
-		buf.WriteString("```\n")
-
-	case "template":
-		tmpl, _ := entry.Definition["template"].(string)
-		buf.WriteString("```template\n")
-		buf.WriteString(tmpl)
-		if !strings.HasSuffix(tmpl, "\n") {
-			buf.WriteString("\n")
-		}
-		buf.WriteString("```\n")
-
-	case "composite":
-		steps, _ := entry.Definition["steps"].([]interface{})
-		for i, step := range steps {
-			stepJSON, err := json.MarshalIndent(step, "", "  ")
-			if err != nil {
-				return nil, fmt.Errorf("marshal step %d: %w", i, err)
-			}
-			fmt.Fprintf(&buf, "### Step %d\n\n", i+1)
-			buf.WriteString("```json\n")
-			buf.Write(stepJSON)
-			buf.WriteString("\n```\n\n")
-		}
-
-	case "instruction":
-		content, _ := entry.Definition["content"].(string)
-		buf.WriteString(content)
-		if content != "" && !strings.HasSuffix(content, "\n") {
-			buf.WriteString("\n")
-		}
-	}
-
-	if len(entry.Parameters) > 0 {
-		paramJSON, err := json.MarshalIndent(entry.Parameters, "", "  ")
-		if err != nil {
-			return nil, fmt.Errorf("marshal parameters: %w", err)
-		}
-		buf.WriteString("\n## Parameters\n\n```json\n")
-		buf.Write(paramJSON)
-		buf.WriteString("\n```\n")
-	}
-
-	return buf.Bytes(), nil
+	return result, nil
 }
 
 // splitFrontmatter delegates to mdparse.SplitFrontmatter.
@@ -213,6 +257,15 @@ func parseBody(skillType, body string) (definition map[string]interface{}, param
 			content = strings.TrimSpace(content[:idx])
 		}
 		definition["content"] = content
+
+	case "fork":
+		// Store the entire body as the delegation instruction.
+		// Strip the ## Parameters section if present — it is parsed separately below.
+		instruction := body
+		if idx := strings.Index(instruction, "## Parameters"); idx >= 0 {
+			instruction = strings.TrimSpace(instruction[:idx])
+		}
+		definition["instruction"] = instruction
 	}
 
 	// Extract parameters section (last json block after ## Parameters header)

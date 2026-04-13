@@ -3,6 +3,10 @@
 ## Goal
 The `lango onboard` command provides a guided 5-step wizard for first-time setup. For the full configuration editor, users should use `lango settings`.
 
+## Purpose
+
+Capability spec for cli-onboard. See requirements below for scope and behavior contracts.
+
 ## Requirements
 
 ### Guided Wizard Flow

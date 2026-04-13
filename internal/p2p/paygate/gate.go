@@ -13,11 +13,9 @@ import (
 	"github.com/ethereum/go-ethereum/ethclient"
 	"go.uber.org/zap"
 
+	"github.com/langoai/lango/internal/finance"
 	"github.com/langoai/lango/internal/payment/contracts"
 	"github.com/langoai/lango/internal/payment/eip3009"
-
-	// wallet is imported for ParseUSDC delegation and currency constants.
-	"github.com/langoai/lango/internal/wallet"
 )
 
 // PricingFunc returns the price (decimal USDC string like "0.50") and whether
@@ -26,9 +24,6 @@ type PricingFunc func(toolName string) (price string, isFree bool)
 
 // ResultStatus describes the outcome of a payment gate check.
 type ResultStatus string
-
-// DefaultQuoteExpiry is the validity window for a price quote.
-const DefaultQuoteExpiry = 5 * time.Minute
 
 const (
 	// StatusFree means the tool is free; no payment required.
@@ -216,17 +211,17 @@ func (g *Gate) BuildQuote(toolName, price string) *PriceQuote {
 	return &PriceQuote{
 		ToolName:     toolName,
 		Price:        price,
-		Currency:     wallet.CurrencyUSDC,
+		Currency:     finance.CurrencyUSDC,
 		USDCContract: g.usdcAddr.Hex(),
 		ChainID:      g.chainID,
 		SellerAddr:   g.localAddr,
-		QuoteExpiry:  time.Now().Add(DefaultQuoteExpiry).Unix(),
+		QuoteExpiry:  time.Now().Add(finance.DefaultQuoteExpiry).Unix(),
 	}
 }
 
-// ParseUSDC delegates to wallet.ParseUSDC. Kept as a package-level alias for
+// ParseUSDC delegates to finance.ParseUSDC. Kept as a package-level alias for
 // backward compatibility within the paygate package.
-var ParseUSDC = wallet.ParseUSDC
+var ParseUSDC = finance.ParseUSDC
 
 // parseAuthorization converts a JSON-decoded map into an eip3009.Authorization.
 func parseAuthorization(m map[string]interface{}) (*eip3009.Authorization, error) {

@@ -3,6 +3,10 @@
 ## Overview
 Generic async buffer package (`internal/asyncbuf/`) providing two reusable buffer types that replace 5 duplicate implementations across the codebase.
 
+## Purpose
+
+Capability spec for async-buffer. See requirements below for scope and behavior contracts.
+
 ## Requirements
 
 ### R1: BatchBuffer[T] — Batch-Oriented Async Processing

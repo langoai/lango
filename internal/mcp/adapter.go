@@ -39,13 +39,19 @@ func AdaptTool(dt DiscoveredTool, conn *ServerConnection, maxOutputTokens int) *
 	// Determine safety level from server config
 	safety := parseSafetyLevel(conn.cfg.SafetyLevel)
 
-	return &agent.Tool{
+	t := &agent.Tool{
 		Name:        toolName,
 		Description: tool.Description,
 		Parameters:  params,
 		SafetyLevel: safety,
 		Handler:     makeHandler(tool.Name, conn, maxOutputTokens),
 	}
+	t.Capability = agent.ToolCapability{
+		Category: "mcp",
+		Exposure: agent.ExposureDeferred,
+		Activity: agent.ActivityExecute,
+	}
+	return t
 }
 
 func makeHandler(toolName string, conn *ServerConnection, maxOutputTokens int) agent.ToolHandler {

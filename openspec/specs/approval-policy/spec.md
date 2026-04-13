@@ -171,6 +171,15 @@ wrapWithApproval SHALL accept an optional SpendingLimiter parameter (nil allowed
 - **WHEN** tool is `exec` AND limiter is non-nil
 - **THEN** wrapWithApproval SHALL ignore the limiter and follow normal approval policy
 
+### Requirement: Startup warning for "none" policy
+The application SHALL emit a WARN-level log message at startup when `approvalPolicy` is set to `"none"`, indicating that all tool calls will execute without user confirmation and that this is not recommended for production.
+
+#### Scenario: Policy "none" startup warning
+- **GIVEN** `security.interceptor.approvalPolicy` is set to `"none"`
+- **WHEN** the application initializes
+- **THEN** a WARN-level log message SHALL be emitted indicating that all tool calls will execute without user confirmation
+- **AND** the message SHALL note this is not recommended for production
+
 ### Requirement: P2P payment approval summary
 buildApprovalSummary SHALL return a human-readable summary for `p2p_pay` tool invocations including amount, peer DID (truncated), and memo.
 

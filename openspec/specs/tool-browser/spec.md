@@ -1,11 +1,15 @@
-## ADDED Requirements
+## Purpose
+
+Capability spec for tool-browser. See requirements below for scope and behavior contracts.
+
+## Requirements
 
 ### Requirement: Browser automation via go-rod
 The system SHALL provide browser automation tools powered by go-rod for web page interaction, with local browser launch support.
 
 #### Scenario: Browser navigation
 - **WHEN** `browser_navigate` is called with a URL
-- **THEN** the system SHALL navigate to the URL, wait for page load, and return title, URL, and text snippet
+- **THEN** the system SHALL navigate to the URL, wait for page load, and return a structured page snapshot including title, URL, snippet, headings, links, action candidates, page type, result count, and empty-state signal
 
 #### Scenario: Implicit session management
 - **WHEN** any browser tool is called without a prior session
@@ -32,6 +36,75 @@ The system SHALL provide browser automation tools powered by go-rod for web page
 - **WHEN** `Close()` is called and browser resources are cleaned up
 - **THEN** the `initDone` flag SHALL be reset to false under `initMu`
 - **AND** the next browser tool call SHALL re-initialize from scratch
+
+### Requirement: Browser-native web search
+The browser toolset SHALL provide a `browser_search` tool that accepts a search query and returns structured search results without requiring the agent to manually drive a search engine page step by step.
+
+#### Scenario: Search query returns structured results
+- **WHEN** `browser_search` is called with a query and optional result limit
+- **THEN** the system SHALL navigate to a browser-accessible search results page
+- **AND** it SHALL return a structured list of results containing title, URL, and snippet
+- **AND** it SHALL include `resultCount`, `empty`, and page type fields
+
+#### Scenario: Search results fallback to visible links
+- **WHEN** the page-specific search result selectors do not match any result cards
+- **THEN** the system SHALL fall back to extracting visible links with text and URLs
+
+#### Scenario: Search churn diagnostics
+- **WHEN** a single request performs 3 or more `browser_search` calls
+- **THEN** the system SHALL emit a warning log including session, request ID, agent, search count, queries, and current URL
+- **AND** `RecordSearch()` SHALL return `(count int, queries []string, shouldWarn bool, limitReached bool)`
+- **AND** when `count > MaxSearchesPerRequest`, `limitReached` SHALL be true
+
+#### Scenario: RecordSearch preserves currentURL on empty input
+- **WHEN** `RecordSearch` is called with an empty `currentURL`
+- **THEN** the previously stored `currentURL` SHALL be preserved
+
+### Requirement: Browser search hard limit per request
+The browser `Search()` function SHALL enforce a maximum of `MaxSearchesPerRequest` (2) calls per agent request. When the limit is exceeded, the function SHALL return `ErrSearchLimitReached` (a sentinel error) instead of executing the search. Returning an error instead of a structured response ensures the model interprets the limit as a tool failure, providing a stronger convergence signal.
+
+#### Scenario: Third search attempt is blocked
+- **WHEN** the agent calls `browser_search` for the 3rd time in the same request
+- **THEN** `Search()` SHALL return `(nil, ErrSearchLimitReached)` — an error, not a SearchResponse
+
+#### Scenario: First two searches execute normally
+- **WHEN** the agent calls `browser_search` for the 1st or 2nd time in the same request
+- **THEN** `Search()` SHALL execute the search normally and return results
+
+### Requirement: SearchResponse convergence fields
+`SearchResponse` SHALL include `LimitReached bool`, `NextStep string`, and `Warning string` fields. Normal search results SHALL populate `NextStep` with guidance based on result state.
+
+#### Scenario: Search returns results
+- **WHEN** `browser_search` returns results with `resultCount > 0`
+- **THEN** `NextStep` SHALL contain guidance to present results or navigate to a result URL, explicitly stating not to search again
+
+#### Scenario: Search returns no results
+- **WHEN** `browser_search` returns results with `resultCount == 0`
+- **THEN** `NextStep` SHALL contain guidance to reformulate the query once or inform the user
+
+### Requirement: Page observation
+The browser toolset SHALL provide a `browser_observe` tool that returns structured actionable elements from the current page.
+
+#### Scenario: Observe actionable elements
+- **WHEN** `browser_observe` is called on the current page
+- **THEN** the system SHALL return clickable and input-capable elements with stable selectors and descriptive metadata
+
+### Requirement: Structured page extraction
+The browser toolset SHALL provide a `browser_extract` tool for structured extraction from the current page.
+
+#### Scenario: Summary extraction
+- **WHEN** `browser_extract` is called with mode `summary`
+- **THEN** the system SHALL return page title, URL, snippet, headings, links, action candidates, page type, result count, and empty-state signal
+
+#### Scenario: Search result extraction
+- **WHEN** `browser_extract` is called with mode `search_results`
+- **THEN** the system SHALL return structured search result items from the current page
+- **AND** it SHALL include `resultCount`, `empty`, and page type fields
+
+#### Scenario: Article extraction
+- **WHEN** `browser_extract` is called with mode `article`
+- **THEN** the system SHALL return the main textual content and headings from the current page
+- **AND** it SHALL include current URL, page type, and empty-state signal
 
 ### Requirement: Page interaction via browser_action
 The system SHALL multiplex page interactions through a single `browser_action` tool.
@@ -179,3 +252,62 @@ The application layer SHALL wrap all browser tool handlers with panic recovery a
 - **WHEN** a browser tool handler returns `ErrBrowserPanic`
 - **THEN** the wrapper SHALL close the session manager and retry the handler once
 - **AND** if the retry succeeds, the result SHALL be returned normally
+
+#### Scenario: CDP target error on browser_navigate triggers retry
+- **WHEN** `browser_navigate` returns an error containing "Inspected target navigated or closed"
+- **THEN** the middleware SHALL close the browser session
+- **AND** retry the navigation once with a fresh session
+- **AND** if the retry also fails, return the error as-is
+
+#### Scenario: CDP target error on browser_action does NOT trigger retry
+- **WHEN** `browser_action` returns an error containing "Inspected target navigated or closed"
+- **THEN** the middleware SHALL NOT retry the action
+- **AND** the error SHALL be returned as-is
+
+
+
+### Requirement: Private network URL blocking for P2P
+The `browser_navigate` handler MUST validate URLs against a private network blocklist when the context carries a P2P origin marker. Blocked addresses: `localhost`, `127.0.0.0/8`, `10.0.0.0/8`, `172.16.0.0/12`, `192.168.0.0/16`, `169.254.0.0/16`, `[::1]`, and `file://` scheme. `ValidateURLForP2P` MUST resolve non-IP hostnames via `net.LookupIP` and check all resolved IPs against private ranges. After navigation completes, the handler MUST always retrieve the final page URL and re-validate it via `ValidateURLForP2P`, regardless of whether the final URL string matches the original request URL. This prevents both redirect-based SSRF and DNS rebinding attacks where the same hostname resolves to a different IP at navigation time.
+
+#### Scenario: Internal URL blocked in P2P context
+- **WHEN** a P2P peer navigates to `http://127.0.0.1:8080/admin`
+- **THEN** the handler returns `ErrBlockedURL` without creating a browser session
+
+#### Scenario: Private network IP blocked
+- **WHEN** a P2P peer navigates to `http://10.0.0.1/internal`
+- **THEN** the handler returns `ErrBlockedURL`
+
+#### Scenario: File scheme blocked
+- **WHEN** a P2P peer navigates to `file:///etc/passwd`
+- **THEN** the handler returns `ErrBlockedURL`
+
+#### Scenario: External URL allowed in P2P context
+- **WHEN** a P2P peer navigates to `https://example.com`
+- **THEN** navigation proceeds normally
+
+#### Scenario: URL validation skipped for local context
+- **WHEN** a local (non-P2P) user navigates to `http://localhost:3000`
+- **THEN** navigation proceeds normally (no restriction)
+
+#### Scenario: Hostname resolving to private IP blocked
+- **WHEN** a P2P peer navigates to `http://metadata.internal` which resolves to `169.254.169.254`
+- **THEN** `ValidateURLForP2P` returns `ErrBlockedURL`
+
+#### Scenario: Redirect to internal address blocked
+- **WHEN** a P2P peer navigates to `https://external.com` which redirects to `http://127.0.0.1:8080`
+- **THEN** the handler navigates to `about:blank`
+- **AND** returns an error wrapping `ErrBlockedURL`
+
+### Requirement: Eval action blocking for P2P
+The `browser_action` handler MUST reject `eval` actions when the context carries a P2P origin marker, returning `ErrEvalBlockedP2P` before creating a browser session.
+
+#### Scenario: Eval blocked for P2P peer
+- **WHEN** a P2P peer sends `browser_action` with `action: "eval"`
+- **THEN** the handler returns `ErrEvalBlockedP2P`
+
+#### Scenario: Eval allowed for local user
+- **WHEN** a local user sends `browser_action` with `action: "eval"`
+- **THEN** the JavaScript is executed normally
+
+### Requirement: Browser sentinel errors
+The browser package MUST define `ErrBlockedURL` and `ErrEvalBlockedP2P` sentinel errors.

@@ -117,8 +117,9 @@ func TestRegisterPostBuildLifecycle_Names(t *testing.T) {
 // noopChannel satisfies the Channel interface for testing.
 type noopChannel struct{}
 
+func (n *noopChannel) Name() string                  { return "noop" }
 func (n *noopChannel) Start(_ context.Context) error { return nil }
-func (n *noopChannel) Stop()                         {}
+func (n *noopChannel) Stop(_ context.Context) error  { return nil }
 
 // ─── Layer 2: Integration Parity Tests ───
 
@@ -174,17 +175,19 @@ func TestAppNew_DefaultConfig_Parity(t *testing.T) {
 	assert.GreaterOrEqual(t, catalog.ToolCount(), 11,
 		"default config should register at least 11 tools (exec+filesystem)")
 
-	// 4. Dispatcher tools: verify BuildDispatcher produces the expected 3 tools.
+	// 4. Dispatcher tools: verify BuildDispatcher produces the expected 4 tools.
 	// These are appended to the tool list passed to the agent at B3.
-	dispatcherTools := toolcatalog.BuildDispatcher(catalog)
-	require.Len(t, dispatcherTools, 3)
-	dispatcherNames := make(map[string]bool, 3)
+	searchIndex := toolcatalog.NewSearchIndex(catalog)
+	dispatcherTools := toolcatalog.BuildDispatcher(catalog, searchIndex)
+	require.Len(t, dispatcherTools, 4)
+	dispatcherNames := make(map[string]bool, 4)
 	for _, dt := range dispatcherTools {
 		dispatcherNames[dt.Name] = true
 	}
 	assert.True(t, dispatcherNames["builtin_list"], "builtin_list dispatcher tool missing")
 	assert.True(t, dispatcherNames["builtin_invoke"], "builtin_invoke dispatcher tool missing")
 	assert.True(t, dispatcherNames["builtin_health"], "builtin_health dispatcher tool missing")
+	assert.True(t, dispatcherNames["builtin_search"], "builtin_search dispatcher tool missing")
 
 	// 5. Lifecycle names include "gateway".
 	regNames := application.registry.Names()

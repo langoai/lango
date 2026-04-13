@@ -18,6 +18,7 @@ graph TD
     O --> AUTO[automator]
     O --> PLAN[planner]
     O --> CHR[chronicler]
+    O --> ONT[ontologist]
     O --> RA[Remote A2A Agents]
 
     style O fill:#4a9eff,color:#fff
@@ -25,19 +26,20 @@ graph TD
     style RA fill:#e67e22,color:#fff
 ```
 
-The **orchestrator** has no tools of its own. It receives user messages, classifies them, and transfers execution to the appropriate sub-agent via `transfer_to_agent`.
+The **orchestrator** has no tools of its own. It receives user messages, classifies them, and transfers execution to the appropriate sub-agent via `transfer_to_agent`. Runtime enforcement now prevents the tool-less orchestrator from treating specialist-only tool calls as valid recovery behavior.
 
 ## Sub-Agent Roles
 
 | Agent | Role | Tool Prefixes |
 |---|---|---|
 | **operator** | System operations: shell commands, file I/O, skill execution | `exec_*`, `fs_*`, `skill_*` |
-| **navigator** | Web browsing: page navigation, interaction, screenshots | `browser_*` |
+| **navigator** | Web browsing: bounded search, page navigation, structured extraction, interaction, screenshots | `browser_*` |
 | **vault** | Security: encryption, secret management, blockchain payments | `crypto_*`, `secrets_*`, `payment_*` |
 | **librarian** | Knowledge: search, RAG, graph traversal, skill management, learning data, proactive knowledge extraction | `search_*`, `rag_*`, `graph_*`, `save_knowledge`, `save_learning`, `learning_*`, `create_skill`, `list_skills`, `import_skill`, `librarian_*` |
 | **automator** | Automation: cron scheduling, background tasks, workflow pipelines | `cron_*`, `bg_*`, `workflow_*` |
 | **planner** | Task decomposition and planning (LLM reasoning only, no tools) | _(none)_ |
 | **chronicler** | Conversational memory: observations, reflections, recall | `memory_*`, `observe_*`, `reflect_*` |
+| **ontologist** | Knowledge ontology management: types, entities, facts, conflicts, and data ingestion | `ontology_*` |
 
 ### Agent Details
 
@@ -49,7 +51,7 @@ Executes system-level operations. Handles shell commands, file read/write, and s
 
 #### navigator
 
-Browses the web. Navigates to pages, interacts with elements (click, type, scroll), and takes screenshots. Returns page content with current URL and title.
+Browses the web. Runs browser-native searches, navigates to pages, observes actionable elements, extracts structured page content, and takes screenshots. For topic queries it searches once, works from the current results page, and only reformulates once when the first search is empty or clearly irrelevant. Returns structured page/search data with current URL and title when relevant.
 
 **Cannot**: shell commands, file operations, cryptographic operations, payment transactions, knowledge search.
 
@@ -83,6 +85,12 @@ Manages conversational memory. Records observations, creates reflections, and re
 
 **Cannot**: shell commands, web browsing, file operations, knowledge search, cryptographic operations.
 
+#### ontologist
+
+Manages the knowledge ontology. Defines and maintains types, entities, facts, and relationships. Detects and resolves conflicts. Handles data ingestion into the ontology layer.
+
+**Cannot**: shell commands, web browsing, file operations, cryptographic operations, memory management.
+
 ## Tool Partitioning
 
 Tools are assigned to sub-agents based on their name prefix. The matching order is:
@@ -92,8 +100,9 @@ Tools are assigned to sub-agents based on their name prefix. The matching order 
 3. **automator** -- `cron_*`, `bg_*`, `workflow_*`
 4. **navigator** -- `browser_*`
 5. **vault** -- `crypto_*`, `secrets_*`, `payment_*`
-6. **operator** -- `exec_*`, `fs_*`, `skill_*`
-7. **unmatched** -- tools matching no prefix are tracked separately and listed in the orchestrator prompt
+6. **ontologist** -- `ontology_*`
+7. **operator** -- `exec_*`, `fs_*`, `skill_*`
+8. **unmatched** -- tools matching no prefix are tracked separately and listed in the orchestrator prompt
 
 Sub-agents with no matching tools are skipped (not created), except for the **planner** which is always included.
 
@@ -120,20 +129,25 @@ Each sub-agent has a keyword list used for routing:
 | automator | schedule, cron, every, recurring, background, async, later, workflow, pipeline, automate, timer |
 | planner | plan, decompose, steps, strategy, how to, break down |
 | chronicler | remember, recall, observation, reflection, memory, history |
+| ontologist | ontology, type, entity, fact, conflict, ingest, schema, taxonomy |
 
 ### Rejection Handling
 
-Sub-agents can reject misrouted tasks by responding with:
+Sub-agents do not emit textual rejection markers. When a task is out of scope, they produce a short visible escalation sentence, transfer control back to the orchestrator via `transfer_to_agent`, and the orchestrator re-evaluates the request using only evidence gathered in the current turn.
 
-```
-[REJECT] This task requires <correct_agent>. I handle: <capability list>.
-```
+### Completion Contract
 
-When a rejection occurs, the orchestrator re-evaluates and tries the next most relevant agent.
+Successful tool execution is not enough on its own. A specialist turn is only considered complete when it ends in one of the following:
+
+- A visible assistant response summarizing the result
+- A `transfer_to_agent` handoff
+- A structured runtime outcome such as `loop_detected`, `empty_after_tool_use`, or `timeout`
+
+This prevents "tool-only" specialist turns from being treated as silent success.
 
 ### Delegation Limits
 
-The orchestrator enforces a maximum number of delegation rounds per user turn (default: **10**). Simple conversational messages (greetings, opinions, general knowledge) are handled directly by the orchestrator without delegation.
+The orchestrator enforces a maximum number of delegation rounds per user turn (default: **10**). Simple conversational messages (greetings, opinions, general knowledge) are handled directly by the orchestrator without delegation. Delegation activity also extends the active request so specialist handoffs do not look idle to the timeout system.
 
 ## Remote A2A Agents
 
@@ -141,7 +155,7 @@ When [A2A protocol](a2a-protocol.md) is enabled, remote agents are appended to t
 
 ## Custom Agent Definitions
 
-In addition to the built-in agents (operator, navigator, vault, librarian, automator, planner, chronicler), you can define custom agents using `AGENT.md` files.
+In addition to the built-in agents (operator, navigator, vault, librarian, automator, planner, chronicler, ontologist), you can define custom agents using `AGENT.md` files.
 
 ### AGENT.md Format
 
@@ -212,11 +226,22 @@ Agent memory is backed by the same storage layer as the main session store and s
 
 Sub-agents operate in isolated child sessions forked from the parent conversation. This provides:
 
-- **Context isolation** — Each sub-agent sees only its relevant context, not the full conversation history
+- **Cross-turn isolation** — Raw sub-agent turns do not persist into the parent conversation history for later turns
+- **Same-run continuity** — During the active run, tool calls and tool results remain visible through the parent in-memory view so the sub-agent can continue the ADK loop correctly
 - **Result merging** — When a sub-agent completes, its results are summarized and merged back into the parent session
 - **Cleanup** — Discarded child sessions are cleaned up automatically
 
-The `ChildSessionServiceAdapter` manages the fork/merge lifecycle. A `Summarizer` extracts the key results from the child session before merging.
+The `ChildSessionServiceAdapter` manages the fork/merge lifecycle. A `Summarizer` extracts the key results from the child session before merging, and discarded child runs leave a compact root-authored failure note instead of raw child history. Child-session routing is enabled by the isolation setting itself; it no longer depends on provenance wiring being present.
+
+Streaming failure paths use the same discard contract as collection-based failures. If an isolated specialist fails mid-turn, the runtime removes the stale child overlay before retrying and closes any dangling parent-visible tool-call state so later retries do not inherit orphaned specialist calls.
+
+Built-in specialist agents such as `operator`, `navigator`, `vault`, `librarian`, `automator`, and `ontologist` use child-session routing by default. `planner` and `chronicler` remain on the parent-session path.
+
+## Turn Traces And Diagnostics
+
+Every multi-agent turn records a durable trace with delegation, tool-call, tool-result, recovery-attempt, and final outcome events. Recent failed traces and isolation leaks are surfaced through `lango doctor` so operators can inspect `loop_detected`, `empty_after_tool_use`, reroute attempts, and similar runtime failures without reading raw logs first.
+
+When structured orchestration is enabled, recovery distinguishes between failures that happen before specialist delegation and failures that happen after a specialist handoff. Post-handoff tool failures generate a reroute hint that names the failed specialist and tells the orchestrator to try a different specialist or answer directly instead of blindly replaying the same specialist path.
 
 ## Configuration
 

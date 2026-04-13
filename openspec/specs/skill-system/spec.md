@@ -1,4 +1,8 @@
-## ADDED Requirements
+## Purpose
+
+Capability spec for skill-system. See requirements below for scope and behavior contracts.
+
+## Requirements
 
 ### Requirement: File-Based Skill Storage
 The system SHALL store skills as `<dir>/<name>/SKILL.md` files with YAML frontmatter containing name, description, type, status, and optional parameters. `ListActive()` SHALL skip hidden directories (names starting with `.`) when scanning.
@@ -266,3 +270,27 @@ The registry SHALL expose a `Store()` method returning the underlying `SkillStor
 #### Scenario: Store access
 - **WHEN** `registry.Store()` is called
 - **THEN** it SHALL return the configured SkillStore instance
+
+### Requirement: SkillTypeFork as valid type
+The system SHALL support a `fork` skill type (`SkillTypeFork = "fork"`) that is included in the valid skill types enumeration alongside `instruction`, `composite`, `script`, and `template`.
+
+#### Scenario: Fork type is valid
+- **WHEN** `SkillTypeFork.Valid()` is called
+- **THEN** it SHALL return `true`
+- **AND** `SkillTypeFork` SHALL appear in `SkillType.Values()`
+
+#### Scenario: Registry accepts fork type
+- **WHEN** `CreateSkill` is called with type `fork`
+- **THEN** the registry SHALL accept it as a valid skill type
+
+### Requirement: Extended SkillEntry v2 fields
+`SkillEntry` SHALL include additional v2 fields: `WhenToUse` (string), `Paths` ([]string), `Context` (string), `Model` (string), `Effort` (string), `Agent` (string), `Hooks` (map[string]string). All v2 fields SHALL be optional and default to their zero values.
+
+#### Scenario: Full v2 field population
+- **WHEN** a `SkillEntry` is created with all v2 fields set (WhenToUse, Paths, Context, Model, Effort, Agent, Hooks)
+- **THEN** all fields SHALL be stored and retrievable on the entry
+
+#### Scenario: Backward compatibility with empty v2 fields
+- **WHEN** a legacy SKILL.md without any v2 fields is parsed
+- **THEN** the resulting `SkillEntry` SHALL have all v2 fields at their zero values (empty strings, nil slices, nil maps)
+- **AND** the skill SHALL function identically to pre-v2 behavior

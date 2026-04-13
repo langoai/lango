@@ -4,6 +4,10 @@
 
 This capability defines how the CLI tools interact with the provider system, including listing available providers, configuring them, and verifying their health.
 
+## Purpose
+
+Capability spec for cli-provider-management. See requirements below for scope and behavior contracts.
+
 ## Requirements
 
 ### Requirement: List supported providers

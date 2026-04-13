@@ -1,4 +1,8 @@
-## ADDED Requirements
+## Purpose
+
+Capability spec for incremental-git-bundle. See requirements below for scope and behavior contracts.
+
+## Requirements
 
 ### Requirement: Incremental bundle creation
 The system SHALL create incremental git bundles using `base..HEAD` commit range when a valid base commit is provided. If the base commit does not exist in the repository, the system SHALL automatically fall back to creating a full bundle.

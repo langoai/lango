@@ -1,3 +1,16 @@
+## Purpose
+
+Capability spec for session-invalidation. See requirements below for scope and behavior contracts.
+
+## Requirements
+
+### Requirement: session-invalidation capability documented
+The session-invalidation capability SHALL be documented through the sections in this spec. This requirement is a structural placeholder that satisfies the canonical openspec format; detailed behavior contracts live in the descriptive sections of this file.
+
+#### Scenario: Spec file is readable
+- **WHEN** the session-invalidation spec.md file is read
+- **THEN** it SHALL describe the capability's behavior in sections below
+
 # Session Explicit Invalidation
 
 ## Overview

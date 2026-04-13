@@ -17,6 +17,6 @@ A structured plan with numbered steps, dependencies between steps, and estimated
 ## Escalation Protocol
 If a task does not match your capabilities:
 1. Do NOT attempt to answer or explain why you cannot help.
-2. Do NOT tell the user to ask another agent.
+2. Output ONE short sentence explaining why you are escalating.
 3. IMMEDIATELY call transfer_to_agent with agent_name "lango-orchestrator".
-4. Do NOT output any text before the transfer_to_agent call.
+4. Never transfer silently.

@@ -3,10 +3,15 @@ package app
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
 
 	"github.com/go-chi/chi/v5"
 
+	"github.com/langoai/lango/internal/gateway"
+	"github.com/langoai/lango/internal/p2p/identity"
+	"github.com/langoai/lango/internal/p2p/provenanceproto"
+	"github.com/langoai/lango/internal/provenance"
 	"github.com/langoai/lango/internal/wallet"
 )
 
@@ -18,15 +23,25 @@ func writeJSON(w http.ResponseWriter, v interface{}) {
 }
 
 // registerP2PRoutes mounts P2P status endpoints on the gateway router.
-// Endpoints are public (no auth) since they expose only node metadata.
-func registerP2PRoutes(r chi.Router, p2pc *p2pComponents) {
+// When OIDC is configured, endpoints require authentication.
+// When auth is nil (dev mode), endpoints are accessible without authentication.
+func registerP2PRoutes(r chi.Router, app *App, p2pc *p2pComponents, auth *gateway.AuthManager) {
 	r.Route("/api/p2p", func(r chi.Router) {
+		r.Use(gateway.RequireAuth(auth))
 		r.Get("/status", p2pStatusHandler(p2pc))
 		r.Get("/peers", p2pPeersHandler(p2pc))
 		r.Get("/identity", p2pIdentityHandler(p2pc))
 		r.Get("/reputation", p2pReputationHandler(p2pc))
 		r.Get("/pricing", p2pPricingHandler(p2pc))
+		r.Post("/provenance/push", p2pProvenancePushHandler(app, p2pc))
+		r.Post("/provenance/fetch", p2pProvenanceFetchHandler(app, p2pc))
 	})
+}
+
+type provenanceExchangeRequest struct {
+	PeerDID    string `json:"peerDid"`
+	SessionKey string `json:"sessionKey"`
+	Redaction  string `json:"redaction"`
 }
 
 func p2pStatusHandler(p2pc *p2pComponents) http.HandlerFunc {
@@ -180,4 +195,134 @@ func p2pIdentityHandler(p2pc *p2pComponents) http.HandlerFunc {
 			"peerId": p2pc.node.PeerID().String(),
 		})
 	}
+}
+
+func p2pProvenancePushHandler(app *App, p2pc *p2pComponents) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+
+		req, ok := decodeProvenanceRequest(w, r)
+		if !ok {
+			return
+		}
+		token, target, ok := resolveProvenancePeer(w, req.PeerDID, p2pc)
+		if !ok {
+			return
+		}
+		did, signFn, ok := provenanceSigner(w, r.Context(), app, p2pc)
+		if !ok {
+			return
+		}
+
+		_, bundle, err := app.ProvenanceBundle.Export(r.Context(), req.SessionKey, provenance.RedactionLevel(req.Redaction), did, signFn)
+		if err != nil {
+			http.Error(w, "export provenance bundle: "+err.Error(), http.StatusBadRequest)
+			return
+		}
+
+		resp, err := provenanceproto.PushBundle(r.Context(), p2pc.node.Host(), target.PeerID, token, bundle)
+		if err != nil {
+			http.Error(w, "push provenance bundle: "+err.Error(), http.StatusBadGateway)
+			return
+		}
+		writeJSON(w, map[string]any{
+			"pushed":    resp.Stored,
+			"peerDid":   req.PeerDID,
+			"message":   resp.Message,
+			"redaction": req.Redaction,
+		})
+	}
+}
+
+func p2pProvenanceFetchHandler(app *App, p2pc *p2pComponents) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+
+		req, ok := decodeProvenanceRequest(w, r)
+		if !ok {
+			return
+		}
+		token, target, ok := resolveProvenancePeer(w, req.PeerDID, p2pc)
+		if !ok {
+			return
+		}
+
+		data, err := provenanceproto.FetchBundle(r.Context(), p2pc.node.Host(), target.PeerID, token, req.SessionKey, req.Redaction)
+		if err != nil {
+			http.Error(w, "fetch provenance bundle: "+err.Error(), http.StatusBadGateway)
+			return
+		}
+		bundle, err := app.ProvenanceBundle.Import(r.Context(), data)
+		if err != nil {
+			http.Error(w, "import provenance bundle: "+err.Error(), http.StatusBadRequest)
+			return
+		}
+
+		writeJSON(w, map[string]any{
+			"imported":  true,
+			"peerDid":   req.PeerDID,
+			"signerDid": bundle.SignerDID,
+			"redaction": bundle.RedactionLevel,
+		})
+	}
+}
+
+func decodeProvenanceRequest(w http.ResponseWriter, r *http.Request) (*provenanceExchangeRequest, bool) {
+	var req provenanceExchangeRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, "decode request: "+err.Error(), http.StatusBadRequest)
+		return nil, false
+	}
+	if req.PeerDID == "" || req.SessionKey == "" {
+		http.Error(w, "peerDid and sessionKey are required", http.StatusBadRequest)
+		return nil, false
+	}
+	if req.Redaction == "" {
+		req.Redaction = string(provenance.RedactionContent)
+	}
+	if !provenance.RedactionLevel(req.Redaction).Valid() {
+		http.Error(w, fmt.Sprintf("invalid redaction level %q: must be none, content, or full", req.Redaction), http.StatusBadRequest)
+		return nil, false
+	}
+	return &req, true
+}
+
+func resolveProvenancePeer(w http.ResponseWriter, peerDID string, p2pc *p2pComponents) (string, *identity.DID, bool) {
+	if p2pc == nil || p2pc.sessions == nil || p2pc.node == nil {
+		http.Error(w, "P2P runtime is not available", http.StatusServiceUnavailable)
+		return "", nil, false
+	}
+	sess := p2pc.sessions.Get(peerDID)
+	if sess == nil {
+		http.Error(w, "active session required for peer DID", http.StatusConflict)
+		return "", nil, false
+	}
+	target, err := identity.ParseDID(peerDID)
+	if err != nil {
+		http.Error(w, "parse peer DID: "+err.Error(), http.StatusBadRequest)
+		return "", nil, false
+	}
+	return sess.Token, target, true
+}
+
+func provenanceSigner(w http.ResponseWriter, ctx context.Context, app *App, p2pc *p2pComponents) (string, provenance.BundleSigner, bool) {
+	if app == nil || app.ProvenanceBundle == nil || app.WalletProvider == nil || p2pc == nil || p2pc.identity == nil {
+		http.Error(w, "local signed provenance export requires wallet identity and provenance bundle service", http.StatusServiceUnavailable)
+		return "", nil, false
+	}
+	// Use the wallet's v1 DID for provenance signing. The wallet signer uses
+	// secp256k1-keccak256, and VerifyMessageSignature only supports v1 DIDs.
+	// Using p2pc.identity.DID() would return a v2 DID when BundleProvider is
+	// active, causing verification failures on the receiving end.
+	walletPub, err := app.WalletProvider.PublicKey(ctx)
+	if err != nil {
+		http.Error(w, "resolve wallet public key: "+err.Error(), http.StatusServiceUnavailable)
+		return "", nil, false
+	}
+	walletDID, err := identity.DIDFromPublicKey(walletPub)
+	if err != nil {
+		http.Error(w, "derive wallet DID: "+err.Error(), http.StatusServiceUnavailable)
+		return "", nil, false
+	}
+	return walletDID.ID, &walletBundleSigner{wp: app.WalletProvider}, true
 }

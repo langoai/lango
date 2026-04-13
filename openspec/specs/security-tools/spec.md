@@ -1,4 +1,8 @@
-## ADDED Requirements
+## Purpose
+
+Capability spec for security-tools. See requirements below for scope and behavior contracts.
+
+## Requirements
 
 ### Requirement: Secrets tool registration
 The app SHALL register secrets tool with store/get/list/delete operations.

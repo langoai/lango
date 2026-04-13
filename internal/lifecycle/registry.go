@@ -5,13 +5,19 @@ import (
 	"fmt"
 	"sort"
 	"sync"
+
+	"github.com/langoai/lango/internal/logging"
 )
+
+var logger = logging.SubsystemSugar("lifecycle")
 
 // Registry manages component lifecycle with ordered startup and reverse shutdown.
 type Registry struct {
-	mu      sync.Mutex
-	entries []ComponentEntry
-	started []Component
+	mu             sync.Mutex
+	entries        []ComponentEntry
+	started        []Component
+	maxPriority    Priority
+	hasMaxPriority bool
 }
 
 // NewRegistry creates an empty component registry.
@@ -24,6 +30,15 @@ func (r *Registry) Register(c Component, p Priority) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	r.entries = append(r.entries, ComponentEntry{Component: c, Priority: p})
+}
+
+// SetMaxPriority sets an upper bound on component priority. Components with
+// priority above this threshold are skipped during StartAll and StopAll.
+func (r *Registry) SetMaxPriority(p Priority) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.maxPriority = p
+	r.hasMaxPriority = true
 }
 
 // StartAll starts all registered components in priority order (ascending).
@@ -42,6 +57,14 @@ func (r *Registry) StartAll(ctx context.Context, wg *sync.WaitGroup) error {
 	r.started = r.started[:0]
 
 	for _, entry := range sorted {
+		if r.hasMaxPriority && entry.Priority > r.maxPriority {
+			logger.Infow("skipping component (above max priority)",
+				"component", entry.Component.Name(),
+				"priority", entry.Priority,
+				"maxPriority", r.maxPriority,
+			)
+			continue
+		}
 		if err := entry.Component.Start(ctx, wg); err != nil {
 			for i := len(r.started) - 1; i >= 0; i-- {
 				_ = r.started[i].Stop(ctx)
@@ -58,15 +81,38 @@ func (r *Registry) StartAll(ctx context.Context, wg *sync.WaitGroup) error {
 // StopAll stops all started components in reverse startup order.
 func (r *Registry) StopAll(ctx context.Context) error {
 	r.mu.Lock()
-	defer r.mu.Unlock()
+	started := make([]Component, len(r.started))
+	copy(started, r.started)
+	r.started = nil
+	r.mu.Unlock()
 
 	var firstErr error
-	for i := len(r.started) - 1; i >= 0; i-- {
-		if err := r.started[i].Stop(ctx); err != nil && firstErr == nil {
-			firstErr = fmt.Errorf("stop %s: %w", r.started[i].Name(), err)
+	for i := len(started) - 1; i >= 0; i-- {
+		component := started[i]
+		logger.Infow("stopping component", "component", component.Name())
+
+		done := make(chan error, 1)
+		go func(c Component) {
+			done <- c.Stop(ctx)
+		}(component)
+
+		select {
+		case err := <-done:
+			if err != nil {
+				logger.Warnw("component stop error", "component", component.Name(), "error", err)
+				if firstErr == nil {
+					firstErr = fmt.Errorf("stop %s: %w", component.Name(), err)
+				}
+				continue
+			}
+			logger.Infow("stopped component", "component", component.Name())
+		case <-ctx.Done():
+			logger.Warnw("component stop timed out", "component", component.Name(), "error", ctx.Err())
+			if firstErr == nil {
+				firstErr = fmt.Errorf("stop %s: %w", component.Name(), ctx.Err())
+			}
 		}
 	}
-	r.started = nil
 	return firstErr
 }
 

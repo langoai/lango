@@ -11,16 +11,19 @@ import (
 // It probes available runtimes in priority order and falls back to native
 // subprocess execution when no container runtime is available.
 type ContainerExecutor struct {
-	runtime     ContainerRuntime
-	cfg         Config
-	image       string
-	networkMode string
-	readOnly    bool
-	cpuQuotaUS  int64
+	runtime          ContainerRuntime
+	cfg              Config
+	image            string
+	networkMode      string
+	readOnly         bool
+	cpuQuotaUS       int64
+	requireContainer bool
 }
 
 // NewContainerExecutor creates a ContainerExecutor by probing runtimes in order.
 // Priority: docker (if requested or auto) > gvisor (if requested or auto) > native.
+// When requireContainer is true and no container runtime is available, an error
+// is returned instead of silently falling back to NativeRuntime.
 func NewContainerExecutor(cfg Config, containerCfg config.ContainerSandboxConfig) (*ContainerExecutor, error) {
 	ctx := context.Background()
 	runtimeName := containerCfg.Runtime
@@ -31,11 +34,12 @@ func NewContainerExecutor(cfg Config, containerCfg config.ContainerSandboxConfig
 	}
 
 	exec := &ContainerExecutor{
-		cfg:         cfg,
-		image:       containerCfg.Image,
-		networkMode: containerCfg.NetworkMode,
-		readOnly:    readOnly,
-		cpuQuotaUS:  containerCfg.CPUQuotaUS,
+		cfg:              cfg,
+		image:            containerCfg.Image,
+		networkMode:      containerCfg.NetworkMode,
+		readOnly:         readOnly,
+		cpuQuotaUS:       containerCfg.CPUQuotaUS,
+		requireContainer: containerCfg.RequireContainer,
 	}
 
 	// Try Docker runtime.
@@ -60,6 +64,15 @@ func NewContainerExecutor(cfg Config, containerCfg config.ContainerSandboxConfig
 		if runtimeName == "gvisor" {
 			return nil, fmt.Errorf("gvisor runtime requested but unavailable: %w", ErrRuntimeUnavailable)
 		}
+	}
+
+	// Fail-closed: refuse to proceed when container isolation is required
+	// but no container runtime is available.
+	if exec.requireContainer {
+		return nil, fmt.Errorf(
+			"container runtime required but unavailable: %w",
+			ErrRuntimeUnavailable,
+		)
 	}
 
 	// Fallback to native (subprocess).

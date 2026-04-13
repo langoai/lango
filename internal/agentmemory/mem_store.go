@@ -31,6 +31,9 @@ func (s *InMemoryStore) Save(entry *Entry) error {
 	if entry.Key == "" {
 		return fmt.Errorf("save: key is required")
 	}
+	if entry.Kind != "" && !entry.Kind.Valid() {
+		return fmt.Errorf("save: invalid memory kind %q", entry.Kind)
+	}
 
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -109,6 +112,11 @@ func (s *InMemoryStore) Search(agentName string, opts SearchOptions) ([]*Entry, 
 }
 
 func (s *InMemoryStore) SearchWithContext(agentName string, query string, limit int) ([]*Entry, error) {
+	return s.SearchWithContextOptions(agentName, SearchOptions{Query: query, Limit: limit})
+}
+
+func (s *InMemoryStore) SearchWithContextOptions(agentName string, opts SearchOptions) ([]*Entry, error) {
+	limit := opts.Limit
 	if limit <= 0 {
 		limit = 10
 	}
@@ -117,12 +125,12 @@ func (s *InMemoryStore) SearchWithContext(agentName string, query string, limit 
 	defer s.mu.RUnlock()
 
 	var results []*Entry
-	queryLower := strings.ToLower(query)
+	queryLower := strings.ToLower(opts.Query)
 
 	// Phase 1: instance-scoped entries for this agent.
 	if agentMap := s.entries[agentName]; agentMap != nil {
 		for _, e := range agentMap {
-			if matchesQuery(e, queryLower) {
+			if matchesQuery(e, queryLower) && matchesContextOpts(e, opts) {
 				clone := *e
 				results = append(results, &clone)
 			}
@@ -138,7 +146,7 @@ func (s *InMemoryStore) SearchWithContext(agentName string, query string, limit 
 			if e.Scope != ScopeGlobal {
 				continue
 			}
-			if matchesQuery(e, queryLower) {
+			if matchesQuery(e, queryLower) && matchesContextOpts(e, opts) {
 				clone := *e
 				results = append(results, &clone)
 			}
@@ -149,6 +157,20 @@ func (s *InMemoryStore) SearchWithContext(agentName string, query string, limit 
 		results = results[:limit]
 	}
 	return results, nil
+}
+
+// matchesContextOpts applies Kind, Tags, and MinConfidence filters.
+func matchesContextOpts(e *Entry, opts SearchOptions) bool {
+	if opts.Kind != "" && e.Kind != opts.Kind {
+		return false
+	}
+	if opts.MinConfidence > 0 && e.Confidence < opts.MinConfidence {
+		return false
+	}
+	if len(opts.Tags) > 0 && !hasAnyTag(e.Tags, opts.Tags) {
+		return false
+	}
+	return true
 }
 
 func (s *InMemoryStore) Delete(agentName, key string) error {

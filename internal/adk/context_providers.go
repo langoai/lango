@@ -21,6 +21,9 @@ func NewToolRegistryAdapter(tools []*agent.Tool) *ToolRegistryAdapter {
 		descriptors[i] = knowledge.ToolDescriptor{
 			Name:        t.Name,
 			Description: t.Description,
+			Aliases:     t.Capability.Aliases,
+			Category:    t.Capability.Category,
+			SearchHints: t.Capability.SearchHints,
 		}
 	}
 	return &ToolRegistryAdapter{tools: descriptors}
@@ -33,7 +36,8 @@ func (a *ToolRegistryAdapter) ListTools() []knowledge.ToolDescriptor {
 	return out
 }
 
-// SearchTools returns tools whose name or description contains the query (case-insensitive).
+// SearchTools returns tools whose name, aliases, category, search hints, or description
+// contains the query (case-insensitive substring match).
 func (a *ToolRegistryAdapter) SearchTools(query string, limit int) []knowledge.ToolDescriptor {
 	if limit <= 0 {
 		limit = len(a.tools)
@@ -44,12 +48,41 @@ func (a *ToolRegistryAdapter) SearchTools(query string, limit int) []knowledge.T
 		if len(result) >= limit {
 			break
 		}
-		if strings.Contains(strings.ToLower(t.Name), queryLower) ||
-			strings.Contains(strings.ToLower(t.Description), queryLower) {
+		if toolMatchesQuery(t, queryLower) {
 			result = append(result, t)
 		}
 	}
 	return result
+}
+
+// toolMatchesQuery checks name, aliases, category, search hints, and description
+// against the lowered query string via case-insensitive substring matching.
+func toolMatchesQuery(t knowledge.ToolDescriptor, queryLower string) bool {
+	// 1. Name
+	if strings.Contains(strings.ToLower(t.Name), queryLower) {
+		return true
+	}
+	// 2. Aliases
+	for _, alias := range t.Aliases {
+		if strings.Contains(strings.ToLower(alias), queryLower) {
+			return true
+		}
+	}
+	// 3. Category
+	if t.Category != "" && strings.Contains(strings.ToLower(t.Category), queryLower) {
+		return true
+	}
+	// 4. Search hints
+	for _, hint := range t.SearchHints {
+		if strings.Contains(strings.ToLower(hint), queryLower) {
+			return true
+		}
+	}
+	// 5. Description
+	if strings.Contains(strings.ToLower(t.Description), queryLower) {
+		return true
+	}
+	return false
 }
 
 // RuntimeContextAdapter provides runtime session/system state.

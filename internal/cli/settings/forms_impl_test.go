@@ -265,6 +265,211 @@ func TestUpdateConfigFromForm_KnowledgeFields(t *testing.T) {
 	}
 }
 
+func TestNewContextProfileForm_AllFields(t *testing.T) {
+	cfg := defaultTestConfig()
+	form := NewContextProfileForm(cfg)
+
+	wantKeys := []string{
+		"ctx_profile",
+	}
+
+	if len(form.Fields) != len(wantKeys) {
+		t.Fatalf("expected %d fields, got %d", len(wantKeys), len(form.Fields))
+	}
+
+	for _, key := range wantKeys {
+		if f := fieldByKey(form, key); f == nil {
+			t.Errorf("missing field %q", key)
+		}
+	}
+
+	if f := fieldByKey(form, "ctx_profile"); f.Type != tuicore.InputSelect {
+		t.Errorf("ctx_profile: want InputSelect, got %d", f.Type)
+	}
+}
+
+func TestUpdateConfigFromForm_ContextProfile(t *testing.T) {
+	state := tuicore.NewConfigState()
+	form := tuicore.NewFormModel("test")
+	form.AddField(&tuicore.Field{Key: "ctx_profile", Type: tuicore.InputSelect, Value: "balanced"})
+
+	state.UpdateConfigFromForm(&form)
+
+	if state.Current.ContextProfile != "balanced" {
+		t.Errorf("ContextProfile: want %q, got %q", "balanced", state.Current.ContextProfile)
+	}
+}
+
+func TestNewRetrievalForm_AllFields(t *testing.T) {
+	cfg := defaultTestConfig()
+	form := NewRetrievalForm(cfg)
+
+	wantKeys := []string{
+		"retrieval_enabled", "retrieval_feedback",
+	}
+
+	if len(form.Fields) != len(wantKeys) {
+		t.Fatalf("expected %d fields, got %d", len(wantKeys), len(form.Fields))
+	}
+
+	for _, key := range wantKeys {
+		if f := fieldByKey(form, key); f == nil {
+			t.Errorf("missing field %q", key)
+		}
+	}
+
+	if f := fieldByKey(form, "retrieval_enabled"); f.Checked {
+		t.Error("retrieval_enabled: want false by default")
+	}
+}
+
+func TestUpdateConfigFromForm_RetrievalFields(t *testing.T) {
+	state := tuicore.NewConfigState()
+	form := tuicore.NewFormModel("test")
+	form.AddField(&tuicore.Field{Key: "retrieval_enabled", Type: tuicore.InputBool, Checked: true})
+	form.AddField(&tuicore.Field{Key: "retrieval_feedback", Type: tuicore.InputBool, Checked: true})
+
+	state.UpdateConfigFromForm(&form)
+
+	if !state.Current.Retrieval.Enabled {
+		t.Error("Retrieval.Enabled: want true")
+	}
+	if !state.Current.Retrieval.Feedback {
+		t.Error("Retrieval.Feedback: want true")
+	}
+}
+
+func TestNewAutoAdjustForm_AllFields(t *testing.T) {
+	cfg := defaultTestConfig()
+	form := NewAutoAdjustForm(cfg)
+
+	wantKeys := []string{
+		"aa_enabled", "aa_mode", "aa_boost_delta", "aa_decay_delta",
+		"aa_decay_interval", "aa_min_score", "aa_max_score", "aa_warmup_turns",
+	}
+
+	if len(form.Fields) != len(wantKeys) {
+		t.Fatalf("expected %d fields, got %d", len(wantKeys), len(form.Fields))
+	}
+
+	for _, key := range wantKeys {
+		if f := fieldByKey(form, key); f == nil {
+			t.Errorf("missing field %q", key)
+		}
+	}
+
+	if f := fieldByKey(form, "aa_mode"); f.Type != tuicore.InputSelect {
+		t.Errorf("aa_mode: want InputSelect, got %d", f.Type)
+	}
+}
+
+func TestUpdateConfigFromForm_AutoAdjustFields(t *testing.T) {
+	state := tuicore.NewConfigState()
+	form := tuicore.NewFormModel("test")
+	form.AddField(&tuicore.Field{Key: "aa_enabled", Type: tuicore.InputBool, Checked: true})
+	form.AddField(&tuicore.Field{Key: "aa_mode", Type: tuicore.InputSelect, Value: "active"})
+	form.AddField(&tuicore.Field{Key: "aa_boost_delta", Type: tuicore.InputText, Value: "0.10"})
+	form.AddField(&tuicore.Field{Key: "aa_decay_delta", Type: tuicore.InputText, Value: "0.05"})
+	form.AddField(&tuicore.Field{Key: "aa_decay_interval", Type: tuicore.InputInt, Value: "5"})
+	form.AddField(&tuicore.Field{Key: "aa_min_score", Type: tuicore.InputText, Value: "0.1"})
+	form.AddField(&tuicore.Field{Key: "aa_max_score", Type: tuicore.InputText, Value: "0.9"})
+	form.AddField(&tuicore.Field{Key: "aa_warmup_turns", Type: tuicore.InputInt, Value: "3"})
+
+	state.UpdateConfigFromForm(&form)
+
+	aa := state.Current.Retrieval.AutoAdjust
+	if !aa.Enabled {
+		t.Error("AutoAdjust.Enabled: want true")
+	}
+	if aa.Mode != "active" {
+		t.Errorf("AutoAdjust.Mode: want %q, got %q", "active", aa.Mode)
+	}
+	if aa.BoostDelta != 0.10 {
+		t.Errorf("AutoAdjust.BoostDelta: want 0.10, got %.2f", aa.BoostDelta)
+	}
+	if aa.DecayDelta != 0.05 {
+		t.Errorf("AutoAdjust.DecayDelta: want 0.05, got %.2f", aa.DecayDelta)
+	}
+	if aa.DecayInterval != 5 {
+		t.Errorf("AutoAdjust.DecayInterval: want 5, got %d", aa.DecayInterval)
+	}
+	if aa.MinScore != 0.1 {
+		t.Errorf("AutoAdjust.MinScore: want 0.1, got %.1f", aa.MinScore)
+	}
+	if aa.MaxScore != 0.9 {
+		t.Errorf("AutoAdjust.MaxScore: want 0.9, got %.1f", aa.MaxScore)
+	}
+	if aa.WarmupTurns != 3 {
+		t.Errorf("AutoAdjust.WarmupTurns: want 3, got %d", aa.WarmupTurns)
+	}
+}
+
+func TestNewContextBudgetForm_AllFields(t *testing.T) {
+	cfg := defaultTestConfig()
+	form := NewContextBudgetForm(cfg)
+
+	wantKeys := []string{
+		"ctx_model_window", "ctx_response_reserve",
+		"ctx_alloc_knowledge", "ctx_alloc_rag", "ctx_alloc_memory",
+		"ctx_alloc_run_summary", "ctx_alloc_headroom",
+	}
+
+	if len(form.Fields) != len(wantKeys) {
+		t.Fatalf("expected %d fields, got %d", len(wantKeys), len(form.Fields))
+	}
+
+	for _, key := range wantKeys {
+		if f := fieldByKey(form, key); f == nil {
+			t.Errorf("missing field %q", key)
+		}
+	}
+
+	// Verify default allocation values from spec
+	if f := fieldByKey(form, "ctx_alloc_knowledge"); f.Value != "0.30" {
+		t.Errorf("ctx_alloc_knowledge: want %q, got %q", "0.30", f.Value)
+	}
+	if f := fieldByKey(form, "ctx_alloc_rag"); f.Value != "0.25" {
+		t.Errorf("ctx_alloc_rag: want %q, got %q", "0.25", f.Value)
+	}
+}
+
+func TestUpdateConfigFromForm_ContextBudgetFields(t *testing.T) {
+	state := tuicore.NewConfigState()
+	form := tuicore.NewFormModel("test")
+	form.AddField(&tuicore.Field{Key: "ctx_model_window", Type: tuicore.InputInt, Value: "128000"})
+	form.AddField(&tuicore.Field{Key: "ctx_response_reserve", Type: tuicore.InputInt, Value: "4096"})
+	form.AddField(&tuicore.Field{Key: "ctx_alloc_knowledge", Type: tuicore.InputText, Value: "0.35"})
+	form.AddField(&tuicore.Field{Key: "ctx_alloc_rag", Type: tuicore.InputText, Value: "0.20"})
+	form.AddField(&tuicore.Field{Key: "ctx_alloc_memory", Type: tuicore.InputText, Value: "0.25"})
+	form.AddField(&tuicore.Field{Key: "ctx_alloc_run_summary", Type: tuicore.InputText, Value: "0.10"})
+	form.AddField(&tuicore.Field{Key: "ctx_alloc_headroom", Type: tuicore.InputText, Value: "0.10"})
+
+	state.UpdateConfigFromForm(&form)
+
+	ctx := state.Current.Context
+	if ctx.ModelWindow != 128000 {
+		t.Errorf("Context.ModelWindow: want 128000, got %d", ctx.ModelWindow)
+	}
+	if ctx.ResponseReserve != 4096 {
+		t.Errorf("Context.ResponseReserve: want 4096, got %d", ctx.ResponseReserve)
+	}
+	if ctx.Allocation.Knowledge != 0.35 {
+		t.Errorf("Context.Allocation.Knowledge: want 0.35, got %.2f", ctx.Allocation.Knowledge)
+	}
+	if ctx.Allocation.RAG != 0.20 {
+		t.Errorf("Context.Allocation.RAG: want 0.20, got %.2f", ctx.Allocation.RAG)
+	}
+	if ctx.Allocation.Memory != 0.25 {
+		t.Errorf("Context.Allocation.Memory: want 0.25, got %.2f", ctx.Allocation.Memory)
+	}
+	if ctx.Allocation.RunSummary != 0.10 {
+		t.Errorf("Context.Allocation.RunSummary: want 0.10, got %.2f", ctx.Allocation.RunSummary)
+	}
+	if ctx.Allocation.Headroom != 0.10 {
+		t.Errorf("Context.Allocation.Headroom: want 0.10, got %.2f", ctx.Allocation.Headroom)
+	}
+}
+
 func TestNewObservationalMemoryForm_ProviderIsSelect(t *testing.T) {
 	cfg := defaultTestConfig()
 	form := NewObservationalMemoryForm(cfg)
@@ -1114,5 +1319,103 @@ func TestValidatePort(t *testing.T) {
 				t.Errorf("validatePort(%q): wantErr=%v, got %v", tt.give, tt.wantErr, err)
 			}
 		})
+	}
+}
+
+func TestCreateFormForCategory_OntologyAndAlerting(t *testing.T) {
+	cfg := defaultTestConfig()
+
+	t.Run("ontology form is non-nil", func(t *testing.T) {
+		form := createFormForCategory("ontology", cfg)
+		if form == nil {
+			t.Fatal("createFormForCategory(\"ontology\") returned nil")
+		}
+		if form.Title != "Ontology Configuration" {
+			t.Errorf("title: want %q, got %q", "Ontology Configuration", form.Title)
+		}
+	})
+
+	t.Run("alerting form is non-nil", func(t *testing.T) {
+		form := createFormForCategory("alerting", cfg)
+		if form == nil {
+			t.Fatal("createFormForCategory(\"alerting\") returned nil")
+		}
+		if form.Title != "Alerting Configuration" {
+			t.Errorf("title: want %q, got %q", "Alerting Configuration", form.Title)
+		}
+	})
+}
+
+func TestUpdateConfigFromForm_OntologyFields(t *testing.T) {
+	state := tuicore.NewConfigState()
+	form := tuicore.NewFormModel("test")
+	form.AddField(&tuicore.Field{Key: "ontology_enabled", Type: tuicore.InputBool, Checked: true})
+	form.AddField(&tuicore.Field{Key: "ontology_acl_enabled", Type: tuicore.InputBool, Checked: true})
+	form.AddField(&tuicore.Field{Key: "ontology_acl_roles", Type: tuicore.InputText, Value: "operator=write,librarian=read"})
+	form.AddField(&tuicore.Field{Key: "ontology_acl_p2p_permission", Type: tuicore.InputSelect, Value: "admin"})
+	form.AddField(&tuicore.Field{Key: "ontology_gov_enabled", Type: tuicore.InputBool, Checked: true})
+	form.AddField(&tuicore.Field{Key: "ontology_gov_max_new_per_day", Type: tuicore.InputText, Value: "30"})
+	form.AddField(&tuicore.Field{Key: "ontology_gov_quarantine_hrs", Type: tuicore.InputText, Value: "48"})
+	form.AddField(&tuicore.Field{Key: "ontology_gov_shadow_hrs", Type: tuicore.InputText, Value: "336"})
+	form.AddField(&tuicore.Field{Key: "ontology_gov_min_usage", Type: tuicore.InputText, Value: "10"})
+	form.AddField(&tuicore.Field{Key: "ontology_gov_explosion_budget", Type: tuicore.InputText, Value: "200"})
+	form.AddField(&tuicore.Field{Key: "ontology_ex_enabled", Type: tuicore.InputBool, Checked: true})
+	form.AddField(&tuicore.Field{Key: "ontology_ex_min_trust_schema", Type: tuicore.InputText, Value: "0.60"})
+	form.AddField(&tuicore.Field{Key: "ontology_ex_min_trust_facts", Type: tuicore.InputText, Value: "0.80"})
+	form.AddField(&tuicore.Field{Key: "ontology_ex_auto_import_mode", Type: tuicore.InputSelect, Value: "governed"})
+	form.AddField(&tuicore.Field{Key: "ontology_ex_max_types", Type: tuicore.InputText, Value: "20"})
+
+	state.UpdateConfigFromForm(&form)
+
+	o := state.Current.Ontology
+	if !o.Enabled {
+		t.Error("Ontology.Enabled: want true")
+	}
+	if !o.ACL.Enabled {
+		t.Error("Ontology.ACL.Enabled: want true")
+	}
+	if o.ACL.Roles["operator"] != "write" || o.ACL.Roles["librarian"] != "read" {
+		t.Errorf("Ontology.ACL.Roles: want operator=write,librarian=read, got %v", o.ACL.Roles)
+	}
+	if o.ACL.P2PPermission != "admin" {
+		t.Errorf("Ontology.ACL.P2PPermission: want admin, got %q", o.ACL.P2PPermission)
+	}
+	if !o.Governance.Enabled {
+		t.Error("Ontology.Governance.Enabled: want true")
+	}
+	if o.Governance.MaxNewPerDay != 30 {
+		t.Errorf("MaxNewPerDay: want 30, got %d", o.Governance.MaxNewPerDay)
+	}
+	if !o.Exchange.Enabled {
+		t.Error("Ontology.Exchange.Enabled: want true")
+	}
+	if o.Exchange.MinTrustForSchema != 0.60 {
+		t.Errorf("MinTrustForSchema: want 0.60, got %f", o.Exchange.MinTrustForSchema)
+	}
+	if o.Exchange.AutoImportMode != "governed" {
+		t.Errorf("AutoImportMode: want governed, got %q", o.Exchange.AutoImportMode)
+	}
+	if o.Exchange.MaxTypesPerImport != 20 {
+		t.Errorf("MaxTypesPerImport: want 20, got %d", o.Exchange.MaxTypesPerImport)
+	}
+}
+
+func TestUpdateConfigFromForm_AlertingFields(t *testing.T) {
+	state := tuicore.NewConfigState()
+	form := tuicore.NewFormModel("test")
+	form.AddField(&tuicore.Field{Key: "alerting_enabled", Type: tuicore.InputBool, Checked: true})
+	form.AddField(&tuicore.Field{Key: "alerting_policy_block_rate", Type: tuicore.InputText, Value: "15"})
+	form.AddField(&tuicore.Field{Key: "alerting_recovery_retries", Type: tuicore.InputText, Value: "8"})
+
+	state.UpdateConfigFromForm(&form)
+
+	if !state.Current.Alerting.Enabled {
+		t.Error("Alerting.Enabled: want true")
+	}
+	if state.Current.Alerting.PolicyBlockRate != 15 {
+		t.Errorf("PolicyBlockRate: want 15, got %d", state.Current.Alerting.PolicyBlockRate)
+	}
+	if state.Current.Alerting.RecoveryRetries != 8 {
+		t.Errorf("RecoveryRetries: want 8, got %d", state.Current.Alerting.RecoveryRetries)
 	}
 }

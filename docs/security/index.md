@@ -10,6 +10,7 @@ Lango provides multiple layers of security to protect sensitive data flowing bet
 
 | Layer | Purpose | Details |
 |-------|---------|---------|
+| **Master Key Envelope** | Hierarchical key management | MK/KEK architecture, recovery mnemonic, passphrase rotation without re-encryption |
 | **Encryption & Secrets** | Protect data at rest and in transit | AES-256-GCM encryption, key registry, secret management |
 | **PII Redaction** | Strip personal information before it reaches AI providers | Regex patterns + optional NER via Microsoft Presidio |
 | **Tool Approval** | Control which tools agents can execute | Policy-based approval workflows with channel notifications |
@@ -63,7 +64,7 @@ The **security interceptor** sits between the user and the AI agent. It:
 
 Lango supports three encryption modes depending on your deployment:
 
-- **Local Mode** (default) -- AES-256-GCM with passphrase-derived keys via PBKDF2. Suitable for development and single-user setups.
+- **Local Mode** (default) -- AES-256-GCM with a Master Key envelope. The passphrase wraps a random Master Key; data keys are derived from the MK. Supports recovery mnemonic and O(1) passphrase rotation.
 - **RPC Mode** (production) -- Delegates cryptographic operations to a hardware-backed companion app or external signer. Keys never leave secure hardware.
 - **Cloud KMS Mode** (enterprise) -- Delegates to managed key services (AWS KMS, GCP KMS, Azure Key Vault) or on-premises HSM via PKCS#11. Automatic fallback to local mode when KMS is unavailable.
 
@@ -71,6 +72,7 @@ See [Encryption & Secrets](encryption.md) for full details.
 
 ## Quick Links
 
+- [Master Key Envelope](envelope-migration.md) -- MK/KEK hierarchy, migration from legacy, backup & recovery
 - [Encryption & Secrets](encryption.md) -- Key derivation, secret storage, output scanning, companion app
 - [PII Redaction](pii-redaction.md) -- Builtin patterns, custom regex, Presidio integration
 - [Tool Approval](tool-approval.md) -- Approval policies, sensitive/exempt tools, notifications

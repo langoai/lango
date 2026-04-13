@@ -1,4 +1,8 @@
-## ADDED Requirements
+## Purpose
+
+Capability spec for secure-signer. See requirements below for scope and behavior contracts.
+
+## Requirements
 
 ### Requirement: Local Fallback Provider
 The system SHALL provide a local encryption fallback when companion app is unavailable.

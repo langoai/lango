@@ -1,4 +1,8 @@
-## ADDED Requirements
+## Purpose
+
+Capability spec for encrypted-config-profiles. See requirements below for scope and behavior contracts.
+
+## Requirements
 
 ### Requirement: Encrypted config profile storage
 The system SHALL store application configuration as AES-256-GCM encrypted blobs in a SQLite database table (`config_profiles`). Each profile SHALL contain a UUID id, unique name, encrypted data, active flag, version counter, and timestamps.

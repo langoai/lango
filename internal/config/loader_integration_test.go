@@ -25,8 +25,9 @@ func TestLoad_WithTempYAML(t *testing.T) {
 	}`
 	require.NoError(t, os.WriteFile(cfgPath, []byte(content), 0644))
 
-	cfg, err := Load(cfgPath)
+	result, err := Load(cfgPath)
 	require.NoError(t, err)
+	cfg := result.Config
 
 	assert.Equal(t, 9999, cfg.Server.Port)
 	assert.Equal(t, "anthropic", cfg.Agent.Provider)
@@ -40,10 +41,10 @@ func TestLoad_DefaultsWhenNoFile(t *testing.T) {
 	dir := t.TempDir()
 	cfgPath := filepath.Join(dir, "nonexistent.json")
 
-	cfg, err := Load(cfgPath)
+	result, err := Load(cfgPath)
 	// File not found with explicit path returns an error
 	assert.Error(t, err)
-	assert.Nil(t, cfg)
+	assert.Nil(t, result)
 }
 
 func TestLoad_InvalidJSON(t *testing.T) {
@@ -53,9 +54,9 @@ func TestLoad_InvalidJSON(t *testing.T) {
 	cfgPath := filepath.Join(dir, "lango.json")
 	require.NoError(t, os.WriteFile(cfgPath, []byte(`{invalid json`), 0644))
 
-	cfg, err := Load(cfgPath)
+	result, err := Load(cfgPath)
 	assert.Error(t, err)
-	assert.Nil(t, cfg)
+	assert.Nil(t, result)
 }
 
 func TestLoad_EnvOverrides(t *testing.T) {
@@ -75,10 +76,10 @@ func TestLoad_EnvOverrides(t *testing.T) {
 	}`
 	require.NoError(t, os.WriteFile(cfgPath, []byte(content), 0644))
 
-	cfg, err := Load(cfgPath)
+	result, err := Load(cfgPath)
 	require.NoError(t, err)
 
-	assert.Equal(t, "resolved-api-key", cfg.Providers["anthropic"].APIKey)
+	assert.Equal(t, "resolved-api-key", result.Config.Providers["anthropic"].APIKey)
 }
 
 func TestLoad_ValidationFailure(t *testing.T) {
@@ -93,9 +94,9 @@ func TestLoad_ValidationFailure(t *testing.T) {
 	}`
 	require.NoError(t, os.WriteFile(cfgPath, []byte(content), 0644))
 
-	cfg, err := Load(cfgPath)
+	result, err := Load(cfgPath)
 	assert.Error(t, err)
-	assert.Nil(t, cfg)
+	assert.Nil(t, result)
 	assert.Contains(t, err.Error(), "invalid port")
 }
 
@@ -111,8 +112,9 @@ func TestLoad_PartialConfig_UsesDefaults(t *testing.T) {
 	}`
 	require.NoError(t, os.WriteFile(cfgPath, []byte(content), 0644))
 
-	cfg, err := Load(cfgPath)
+	result, err := Load(cfgPath)
 	require.NoError(t, err)
+	cfg := result.Config
 
 	// Overridden values
 	assert.Equal(t, "warn", cfg.Logging.Level)

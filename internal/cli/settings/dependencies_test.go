@@ -324,3 +324,30 @@ func indexOf(slice []string, item string) int {
 	}
 	return -1
 }
+
+func TestDependencyIndex_AlertingRequiresObservability(t *testing.T) {
+	idx := NewDependencyIndex()
+
+	t.Run("observability disabled", func(t *testing.T) {
+		cfg := &config.Config{}
+		cfg.Observability.Enabled = false
+		unmet := idx.UnmetRequired("alerting", cfg)
+		assert.Equal(t, 1, unmet, "alerting should have 1 unmet required dep when observability is disabled")
+	})
+
+	t.Run("observability enabled", func(t *testing.T) {
+		cfg := &config.Config{}
+		cfg.Observability.Enabled = true
+		unmet := idx.UnmetRequired("alerting", cfg)
+		assert.Equal(t, 0, unmet, "alerting should have 0 unmet required deps when observability is enabled")
+	})
+
+	t.Run("evaluate returns correct status", func(t *testing.T) {
+		cfg := &config.Config{}
+		cfg.Observability.Enabled = false
+		results := idx.Evaluate("alerting", cfg)
+		require.Len(t, results, 1)
+		assert.Equal(t, "observability", results[0].CategoryID)
+		assert.Equal(t, DepNotEnabled, results[0].Status)
+	})
+}

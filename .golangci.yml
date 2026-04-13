@@ -2,6 +2,32 @@ version: "2"
 
 linters:
   default: standard
+  enable:
+    - depguard
+  settings:
+    depguard:
+      rules:
+        economy-no-p2p:
+          list-mode: lax
+          files:
+            - "**/internal/economy/**/*.go"
+          deny:
+            - pkg: "github.com/langoai/lango/internal/p2p"
+              desc: "economy packages must not import p2p packages (layer boundary violation)"
+        p2p-infra-no-economy:
+          list-mode: lax
+          files:
+            - "**/internal/p2p/discovery/**/*.go"
+            - "**/internal/p2p/handshake/**/*.go"
+            - "**/internal/p2p/identity/**/*.go"
+            - "**/internal/p2p/firewall/**/*.go"
+            - "**/internal/p2p/protocol/**/*.go"
+            - "**/internal/p2p/agentpool/**/*.go"
+          deny:
+            - pkg: "github.com/langoai/lango/internal/economy"
+              desc: "p2p infrastructure packages must not import economy packages (layer boundary violation)"
+            - pkg: "github.com/langoai/lango/internal/wallet"
+              desc: "p2p infrastructure packages must not import wallet packages (layer boundary violation)"
   exclusions:
     generated: strict
     presets:

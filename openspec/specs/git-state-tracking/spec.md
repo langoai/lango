@@ -1,4 +1,8 @@
-## ADDED Requirements
+## Purpose
+
+Capability spec for git-state-tracking. See requirements below for scope and behavior contracts.
+
+## Requirements
 
 ### Requirement: Git state collection during health pings
 The health monitor SHALL collect HEAD commit hashes from team members during successful health pings when a GitStateProvider is configured.

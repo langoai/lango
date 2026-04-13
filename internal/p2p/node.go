@@ -21,7 +21,6 @@ import (
 	ma "github.com/multiformats/go-multiaddr"
 	"go.uber.org/zap"
 
-	"github.com/langoai/lango/internal/config"
 	"github.com/langoai/lango/internal/security"
 )
 
@@ -37,7 +36,7 @@ type Node struct {
 	ps     *pubsub.PubSub
 	psOnce sync.Once
 	psErr  error
-	cfg    config.P2PConfig
+	cfg    ConfigReader
 	logger *zap.SugaredLogger
 	cancel context.CancelFunc
 
@@ -47,25 +46,26 @@ type Node struct {
 // NewNode creates a libp2p node with Noise encryption and TCP/QUIC transports.
 // The node key is persisted in SecretsStore (encrypted) when available, falling
 // back to cfg.KeyDir for backward compatibility.
-func NewNode(cfg config.P2PConfig, logger *zap.SugaredLogger, secrets *security.SecretsStore) (*Node, error) {
-	privKey, err := loadOrGenerateKey(cfg.KeyDir, secrets, logger) //nolint:staticcheck // KeyDir used for backward-compatible migration
+func NewNode(cfg ConfigReader, logger *zap.SugaredLogger, secrets *security.SecretsStore) (*Node, error) {
+	privKey, err := loadOrGenerateKey(cfg.GetKeyDir(), secrets, logger)
 	if err != nil {
 		return nil, fmt.Errorf("load node key: %w", err)
 	}
 
-	lowWatermark := cfg.MaxPeers * 80 / 100
-	cm, err := connmgr.NewConnManager(lowWatermark, cfg.MaxPeers)
+	maxPeers := cfg.GetMaxPeers()
+	lowWatermark := maxPeers * 80 / 100
+	cm, err := connmgr.NewConnManager(lowWatermark, maxPeers)
 	if err != nil {
 		return nil, fmt.Errorf("new conn manager: %w", err)
 	}
 
 	opts := []libp2p.Option{
 		libp2p.Identity(privKey),
-		libp2p.ListenAddrStrings(cfg.ListenAddrs...),
+		libp2p.ListenAddrStrings(cfg.GetListenAddrs()...),
 		libp2p.ConnectionManager(cm),
 	}
 
-	if cfg.EnableRelay {
+	if cfg.GetEnableRelay() {
 		opts = append(opts, libp2p.EnableRelayService())
 	}
 
@@ -106,7 +106,7 @@ func (n *Node) Start(wg *sync.WaitGroup) error {
 	}
 
 	// Connect to bootstrap peers.
-	for _, addr := range n.cfg.BootstrapPeers {
+	for _, addr := range n.cfg.GetBootstrapPeers() {
 		maddr, err := ma.NewMultiaddr(addr)
 		if err != nil {
 			n.logger.Warnw("invalid bootstrap multiaddr", "addr", addr, "err", err)
@@ -129,7 +129,7 @@ func (n *Node) Start(wg *sync.WaitGroup) error {
 	}
 
 	// Optional mDNS discovery for LAN peers.
-	if n.cfg.EnableMDNS {
+	if n.cfg.GetEnableMDNS() {
 		svc := mdns.NewMdnsService(n.host, "", &mdnsNotifee{
 			host:   n.host,
 			ctx:    ctx,
@@ -235,7 +235,7 @@ func loadOrGenerateKey(keyDir string, secrets *security.SecretsStore, log *zap.S
 		ctx := context.Background()
 		data, err := secrets.Get(ctx, nodeKeySecret)
 		if err == nil {
-			defer zeroBytes(data)
+			defer security.ZeroBytes(data)
 			key, parseErr := crypto.UnmarshalPrivateKey(data)
 			if parseErr != nil {
 				return nil, fmt.Errorf("unmarshal node key from secrets store: %w", parseErr)
@@ -249,7 +249,7 @@ func loadOrGenerateKey(keyDir string, secrets *security.SecretsStore, log *zap.S
 	keyPath := filepath.Join(keyDir, nodeKeyFile)
 	data, err := os.ReadFile(keyPath)
 	if err == nil {
-		defer zeroBytes(data)
+		defer security.ZeroBytes(data)
 		key, parseErr := crypto.UnmarshalPrivateKey(data)
 		if parseErr != nil {
 			return nil, fmt.Errorf("unmarshal node key: %w", parseErr)
@@ -278,7 +278,7 @@ func loadOrGenerateKey(keyDir string, secrets *security.SecretsStore, log *zap.S
 	if err != nil {
 		return nil, fmt.Errorf("marshal node key: %w", err)
 	}
-	defer zeroBytes(raw)
+	defer security.ZeroBytes(raw)
 
 	// Store in SecretsStore if available, otherwise fall back to file.
 	if secrets != nil {
@@ -316,12 +316,6 @@ func migrateKeyToSecrets(secrets *security.SecretsStore, keyData []byte, keyPath
 	return nil
 }
 
-// zeroBytes overwrites a byte slice with zeros for immediate memory cleanup.
-func zeroBytes(b []byte) {
-	for i := range b {
-		b[i] = 0
-	}
-}
 
 // expandHome replaces a leading ~ with the user's home directory.
 func expandHome(path string) string {

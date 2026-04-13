@@ -1,4 +1,8 @@
-## ADDED Requirements
+## Purpose
+
+Capability spec for provider-interface. See requirements below for scope and behavior contracts.
+
+## Requirements
 
 ### Requirement: Provider Interface Definition
 The system SHALL define a `Provider` interface that all LLM provider implementations MUST implement.

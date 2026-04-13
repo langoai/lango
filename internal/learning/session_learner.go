@@ -6,9 +6,9 @@ import (
 
 	"go.uber.org/zap"
 
-	entlearning "github.com/langoai/lango/internal/ent/learning"
-	"github.com/langoai/lango/internal/graph"
+	"github.com/langoai/lango/internal/eventbus"
 	"github.com/langoai/lango/internal/knowledge"
+	"github.com/langoai/lango/internal/llm"
 	"github.com/langoai/lango/internal/session"
 	"github.com/langoai/lango/internal/types"
 )
@@ -16,16 +16,19 @@ import (
 const sessionLearnerPrompt = `You are a session analysis assistant. Analyze this complete conversation session and extract high-confidence learnings.
 
 Focus only on insights that are clearly established and would be useful across future sessions:
+- Rules and constraints (invariants, coding standards, project rules)
+- Definitions and terminology (domain-specific terms, acronyms)
 - Confirmed user preferences (tools, styles, approaches)
 - Verified domain knowledge (facts, rules, constraints)
 - Established workflows (successful multi-step patterns)
 - Important corrections (where the user explicitly corrected behavior)
 
 For each learning, output a JSON object with:
-- "type": one of "fact", "pattern", "correction", "preference"
+- "type": one of "rule", "definition", "preference", "fact", "pattern", "correction"
 - "category": brief category label
 - "content": clear, reusable statement
 - "confidence": MUST be "high" (only extract high-confidence learnings)
+- "temporal": one of "evergreen" (always-true knowledge like "Go uses gofmt") or "current_state" (may change over time like "the team lead is Alice")
 - "subject": (optional) graph triple subject
 - "predicate": (optional) graph triple predicate
 - "object": (optional) graph triple object
@@ -34,15 +37,15 @@ Output a JSON array. If nothing high-confidence is found, output [].`
 
 // SessionLearner extracts high-confidence knowledge at session end.
 type SessionLearner struct {
-	generator     TextGenerator
-	store         *knowledge.Store
-	graphCallback GraphCallback
-	logger        *zap.SugaredLogger
+	generator llm.TextGenerator
+	store     *knowledge.Store
+	bus       *eventbus.Bus // Optional event bus for publishing triple events.
+	logger    *zap.SugaredLogger
 }
 
 // NewSessionLearner creates a new session learner.
 func NewSessionLearner(
-	generator TextGenerator,
+	generator llm.TextGenerator,
 	store *knowledge.Store,
 	logger *zap.SugaredLogger,
 ) *SessionLearner {
@@ -53,9 +56,9 @@ func NewSessionLearner(
 	}
 }
 
-// SetGraphCallback sets the optional graph update hook.
-func (l *SessionLearner) SetGraphCallback(cb GraphCallback) {
-	l.graphCallback = cb
+// SetEventBus sets the optional event bus for publishing triple events.
+func (l *SessionLearner) SetEventBus(bus *eventbus.Bus) {
+	l.bus = bus
 }
 
 // LearnFromSession analyzes a complete session and stores high-confidence results.
@@ -97,47 +100,11 @@ func (l *SessionLearner) LearnFromSession(ctx context.Context, sessionKey string
 }
 
 func (l *SessionLearner) saveSessionResult(ctx context.Context, sessionKey string, r analysisResult) {
-	switch r.Type {
-	case "fact", "preference":
-		cat, err := mapKnowledgeCategory(r.Type)
-		if err != nil {
-			l.logger.Debugw("skip session knowledge: unknown type", "type", r.Type, "error", err)
-			break
-		}
-		key := fmt.Sprintf("session:%s:%s", sessionKey, sanitizeForNode(r.Content[:min(len(r.Content), 32)]))
-		entry := knowledge.KnowledgeEntry{
-			Key:      key,
-			Category: cat,
-			Content:  r.Content,
-			Source:   "session_learning",
-		}
-		if err := l.store.SaveKnowledge(ctx, sessionKey, entry); err != nil {
-			l.logger.Debugw("save session knowledge", "error", err)
-		}
-
-	case "pattern", "correction":
-		entry := knowledge.LearningEntry{
-			Trigger:   fmt.Sprintf("session:%s", r.Category),
-			Diagnosis: r.Content,
-			Category:  mapLearningCategory(r.Type),
-		}
-		if r.Type == "correction" {
-			entry.Fix = r.Content
-			entry.Category = entlearning.CategoryUserCorrection
-		}
-		if err := l.store.SaveLearning(ctx, sessionKey, entry); err != nil {
-			l.logger.Debugw("save session learning", "error", err)
-		}
-	}
-
-	// Cross-reference graph triple.
-	if l.graphCallback != nil && r.Subject != "" && r.Predicate != "" && r.Object != "" {
-		l.graphCallback([]graph.Triple{{
-			Subject:   r.Subject,
-			Predicate: r.Predicate,
-			Object:    r.Object,
-		}})
-	}
+	saveAnalysisResult(ctx, l.store, l.bus, l.logger, sessionKey, r, saveResultParams{
+		KeyPrefix:     "session",
+		TriggerPrefix: "session",
+		Source:        "session_learning",
+	})
 }
 
 // sampleMessages samples messages from long sessions for efficient LLM processing.

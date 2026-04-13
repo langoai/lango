@@ -109,6 +109,41 @@ func (_u *KnowledgeUpdate) ClearSource() *KnowledgeUpdate {
 	return _u
 }
 
+// SetVersion sets the "version" field.
+func (_u *KnowledgeUpdate) SetVersion(v int) *KnowledgeUpdate {
+	_u.mutation.ResetVersion()
+	_u.mutation.SetVersion(v)
+	return _u
+}
+
+// SetNillableVersion sets the "version" field if the given value is not nil.
+func (_u *KnowledgeUpdate) SetNillableVersion(v *int) *KnowledgeUpdate {
+	if v != nil {
+		_u.SetVersion(*v)
+	}
+	return _u
+}
+
+// AddVersion adds value to the "version" field.
+func (_u *KnowledgeUpdate) AddVersion(v int) *KnowledgeUpdate {
+	_u.mutation.AddVersion(v)
+	return _u
+}
+
+// SetIsLatest sets the "is_latest" field.
+func (_u *KnowledgeUpdate) SetIsLatest(v bool) *KnowledgeUpdate {
+	_u.mutation.SetIsLatest(v)
+	return _u
+}
+
+// SetNillableIsLatest sets the "is_latest" field if the given value is not nil.
+func (_u *KnowledgeUpdate) SetNillableIsLatest(v *bool) *KnowledgeUpdate {
+	if v != nil {
+		_u.SetIsLatest(*v)
+	}
+	return _u
+}
+
 // SetUseCount sets the "use_count" field.
 func (_u *KnowledgeUpdate) SetUseCount(v int) *KnowledgeUpdate {
 	_u.mutation.ResetUseCount()
@@ -256,6 +291,15 @@ func (_u *KnowledgeUpdate) sqlSave(ctx context.Context) (_node int, err error) {
 	if _u.mutation.SourceCleared() {
 		_spec.ClearField(knowledge.FieldSource, field.TypeString)
 	}
+	if value, ok := _u.mutation.Version(); ok {
+		_spec.SetField(knowledge.FieldVersion, field.TypeInt, value)
+	}
+	if value, ok := _u.mutation.AddedVersion(); ok {
+		_spec.AddField(knowledge.FieldVersion, field.TypeInt, value)
+	}
+	if value, ok := _u.mutation.IsLatest(); ok {
+		_spec.SetField(knowledge.FieldIsLatest, field.TypeBool, value)
+	}
 	if value, ok := _u.mutation.UseCount(); ok {
 		_spec.SetField(knowledge.FieldUseCount, field.TypeInt, value)
 	}
@@ -368,6 +412,41 @@ func (_u *KnowledgeUpdateOne) SetNillableSource(v *string) *KnowledgeUpdateOne {
 // ClearSource clears the value of the "source" field.
 func (_u *KnowledgeUpdateOne) ClearSource() *KnowledgeUpdateOne {
 	_u.mutation.ClearSource()
+	return _u
+}
+
+// SetVersion sets the "version" field.
+func (_u *KnowledgeUpdateOne) SetVersion(v int) *KnowledgeUpdateOne {
+	_u.mutation.ResetVersion()
+	_u.mutation.SetVersion(v)
+	return _u
+}
+
+// SetNillableVersion sets the "version" field if the given value is not nil.
+func (_u *KnowledgeUpdateOne) SetNillableVersion(v *int) *KnowledgeUpdateOne {
+	if v != nil {
+		_u.SetVersion(*v)
+	}
+	return _u
+}
+
+// AddVersion adds value to the "version" field.
+func (_u *KnowledgeUpdateOne) AddVersion(v int) *KnowledgeUpdateOne {
+	_u.mutation.AddVersion(v)
+	return _u
+}
+
+// SetIsLatest sets the "is_latest" field.
+func (_u *KnowledgeUpdateOne) SetIsLatest(v bool) *KnowledgeUpdateOne {
+	_u.mutation.SetIsLatest(v)
+	return _u
+}
+
+// SetNillableIsLatest sets the "is_latest" field if the given value is not nil.
+func (_u *KnowledgeUpdateOne) SetNillableIsLatest(v *bool) *KnowledgeUpdateOne {
+	if v != nil {
+		_u.SetIsLatest(*v)
+	}
 	return _u
 }
 
@@ -547,6 +626,15 @@ func (_u *KnowledgeUpdateOne) sqlSave(ctx context.Context) (_node *Knowledge, er
 	}
 	if _u.mutation.SourceCleared() {
 		_spec.ClearField(knowledge.FieldSource, field.TypeString)
+	}
+	if value, ok := _u.mutation.Version(); ok {
+		_spec.SetField(knowledge.FieldVersion, field.TypeInt, value)
+	}
+	if value, ok := _u.mutation.AddedVersion(); ok {
+		_spec.AddField(knowledge.FieldVersion, field.TypeInt, value)
+	}
+	if value, ok := _u.mutation.IsLatest(); ok {
+		_spec.SetField(knowledge.FieldIsLatest, field.TypeBool, value)
 	}
 	if value, ok := _u.mutation.UseCount(); ok {
 		_spec.SetField(knowledge.FieldUseCount, field.TypeInt, value)

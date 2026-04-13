@@ -59,6 +59,7 @@ type Channel struct {
 	handler  MessageHandler
 	approval *ApprovalProvider
 	stopChan chan struct{}
+	stopOnce sync.Once
 	wg       sync.WaitGroup
 }
 
@@ -111,6 +112,9 @@ func (c *Channel) GetApprovalProvider() *ApprovalProvider {
 	return c.approval
 }
 
+// Name returns the channel identifier.
+func (c *Channel) Name() string { return "telegram" }
+
 // Start starts listening for updates
 func (c *Channel) Start(ctx context.Context) error {
 	if c.handler == nil {
@@ -132,7 +136,10 @@ func (c *Channel) Start(ctx context.Context) error {
 				return
 			case <-c.stopChan:
 				return
-			case update := <-updates:
+			case update, ok := <-updates:
+				if !ok {
+					return
+				}
 				if update.CallbackQuery != nil {
 					c.approval.HandleCallback(update.CallbackQuery)
 					continue
@@ -529,10 +536,25 @@ func (c *Channel) isAllowed(chatID, userID int64) bool {
 	return false
 }
 
-// Stop stops the channel
-func (c *Channel) Stop() {
-	close(c.stopChan)
-	c.wg.Wait()
-	c.bot.StopReceivingUpdates()
+// Stop stops the channel.
+func (c *Channel) Stop(ctx context.Context) error {
+	c.stopOnce.Do(func() {
+		close(c.stopChan)
+		c.bot.StopReceivingUpdates()
+	})
+
+	done := make(chan struct{})
+	go func() {
+		c.wg.Wait()
+		close(done)
+	}()
+
+	select {
+	case <-done:
+	case <-ctx.Done():
+		return ctx.Err()
+	}
+
 	logger().Info("telegram channel stopped")
+	return nil
 }

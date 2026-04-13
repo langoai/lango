@@ -320,6 +320,104 @@ func TestInferToolNameFromHistory_BackwardCompat(t *testing.T) {
 	assert.Equal(t, "exec", inferred)
 }
 
+func TestDropOrphanedFunctionResponses(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		give         string
+		contents     []*genai.Content
+		wantParts    int // total parts after filtering
+		wantContents int // total content blocks after filtering
+	}{
+		{
+			give: "orphan response removed when FunctionCall dropped",
+			contents: []*genai.Content{
+				{
+					Role: "user",
+					Parts: []*genai.Part{{Text: "hello"}},
+				},
+				{
+					Role: "model",
+					Parts: []*genai.Part{
+						{FunctionCall: &genai.FunctionCall{ID: "call_real", Name: "exec", Args: map[string]interface{}{}}},
+						// Note: call_thought was dropped by thought filtering, so no FunctionCall for it.
+					},
+				},
+				{
+					Role: "user",
+					Parts: []*genai.Part{
+						{FunctionResponse: &genai.FunctionResponse{ID: "call_real", Name: "exec", Response: map[string]interface{}{"result": "ok"}}},
+						{FunctionResponse: &genai.FunctionResponse{ID: "call_thought", Name: "think", Response: map[string]interface{}{"result": "thought"}}},
+					},
+				},
+			},
+			wantParts:    1, // only call_real response survives
+			wantContents: 3,
+		},
+		{
+			give: "no orphans when all FunctionCalls present",
+			contents: []*genai.Content{
+				{
+					Role: "model",
+					Parts: []*genai.Part{
+						{FunctionCall: &genai.FunctionCall{ID: "c1", Name: "exec", Args: map[string]interface{}{}}},
+						{FunctionCall: &genai.FunctionCall{ID: "c2", Name: "read", Args: map[string]interface{}{}}},
+					},
+				},
+				{
+					Role: "user",
+					Parts: []*genai.Part{
+						{FunctionResponse: &genai.FunctionResponse{ID: "c1", Name: "exec", Response: map[string]interface{}{}}},
+						{FunctionResponse: &genai.FunctionResponse{ID: "c2", Name: "read", Response: map[string]interface{}{}}},
+					},
+				},
+			},
+			wantParts:    2,
+			wantContents: 2,
+		},
+		{
+			give: "all responses orphaned removes content block",
+			contents: []*genai.Content{
+				{
+					Role: "user",
+					Parts: []*genai.Part{{Text: "hello"}},
+				},
+				{
+					Role: "model",
+					Parts: []*genai.Part{{Text: "thinking..."}},
+				},
+				{
+					Role: "user",
+					Parts: []*genai.Part{
+						{FunctionResponse: &genai.FunctionResponse{ID: "ghost", Name: "gone", Response: map[string]interface{}{}}},
+					},
+				},
+			},
+			wantParts:    0, // the orphan content block is removed entirely
+			wantContents: 2,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.give, func(t *testing.T) {
+			t.Parallel()
+			result := dropOrphanedFunctionResponses(tt.contents)
+			assert.Len(t, result, tt.wantContents)
+
+			// Count FunctionResponse parts in all content blocks.
+			var frCount int
+			for _, c := range result {
+				for _, p := range c.Parts {
+					if p.FunctionResponse != nil {
+						frCount++
+					}
+				}
+			}
+			assert.Equal(t, tt.wantParts, frCount)
+		})
+	}
+}
+
 func TestResolveFunctionCallID(t *testing.T) {
 	tests := []struct {
 		give   string

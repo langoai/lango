@@ -227,6 +227,24 @@ func (t *Tool) Navigate(ctx context.Context, sessionID, url string) error {
 	return nil
 }
 
+// CurrentURL returns the current page URL for the given session.
+func (t *Tool) CurrentURL(sessionID string) (string, error) {
+	sess, err := t.getSession(sessionID)
+	if err != nil {
+		return "", err
+	}
+
+	var result string
+	if err := safeRodCall(func() error {
+		res := sess.Page.MustEval("() => window.location.href")
+		result = res.Str()
+		return nil
+	}); err != nil {
+		return "", fmt.Errorf("get current URL: %w", err)
+	}
+	return result, nil
+}
+
 // Screenshot captures a screenshot
 func (t *Tool) Screenshot(sessionID string, fullPage bool) (*ScreenshotResult, error) {
 	sess, err := t.getSession(sessionID)

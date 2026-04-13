@@ -11,11 +11,12 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/langoai/lango/internal/ent/enttest"
+	"github.com/langoai/lango/internal/llm"
 	"github.com/langoai/lango/internal/session"
 	_ "github.com/mattn/go-sqlite3"
 )
 
-func newTestBuffer(t *testing.T, gen TextGenerator, msgs []session.Message, msgThreshold, obsThreshold int) *Buffer {
+func newTestBuffer(t *testing.T, gen llm.TextGenerator, msgs []session.Message, msgThreshold, obsThreshold int) *Buffer {
 	t.Helper()
 	client := enttest.Open(t, "sqlite3", "file:ent?mode=memory&_fk=1")
 	t.Cleanup(func() { client.Close() })

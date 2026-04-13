@@ -10,6 +10,8 @@ import (
 	"github.com/stretchr/testify/require"
 
 	_ "github.com/mattn/go-sqlite3"
+
+	"github.com/langoai/lango/internal/security"
 )
 
 // Uses newTestSecretsStore from local_wallet_test.go.
@@ -35,7 +37,7 @@ func TestCreateWallet_StoresRecoverableKey(t *testing.T) {
 	// Retrieve the stored key and verify it derives the same address.
 	keyBytes, err := secrets.Get(ctx, WalletKeyName)
 	require.NoError(t, err)
-	defer zeroBytes(keyBytes)
+	defer security.ZeroBytes(keyBytes)
 
 	privateKey, err := crypto.ToECDSA(keyBytes)
 	require.NoError(t, err)

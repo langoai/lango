@@ -3,12 +3,14 @@ package background
 import (
 	"context"
 	"fmt"
+	"sort"
 	"strings"
 	"sync"
 	"time"
 
 	"github.com/google/uuid"
 	"github.com/langoai/lango/internal/approval"
+	"github.com/langoai/lango/internal/session"
 	"github.com/langoai/lango/internal/types"
 	"go.uber.org/zap"
 )
@@ -17,9 +19,20 @@ import (
 // the orchestrator recognises them as automated tasks requiring tool execution.
 const automationPrefix = "[Automated Task — Execute the following task using tools. Do NOT answer from general knowledge alone.]\n\n"
 
+// maxTerminalTasks is the maximum number of completed/failed/cancelled tasks
+// retained in memory. When exceeded, the oldest terminal task is evicted.
+const maxTerminalTasks = 500
+
 // AgentRunner executes agent prompts.
 type AgentRunner interface {
 	Run(ctx context.Context, sessionKey string, prompt string) (string, error)
+}
+
+// Projection mirrors background task lifecycle into another authority layer.
+// RunLedger uses this to create canonical task IDs and persist transitions.
+type Projection interface {
+	PrepareTask(ctx context.Context, prompt string, origin Origin) (string, error)
+	SyncTask(ctx context.Context, snap TaskSnapshot) error
 }
 
 // Origin identifies where a background task was initiated from.
@@ -37,6 +50,7 @@ type Manager struct {
 	taskTimeout time.Duration
 	runner      AgentRunner
 	notify      *Notification
+	projection  Projection
 	sem         chan struct{} // concurrency limiter
 	logger      *zap.SugaredLogger
 }
@@ -63,6 +77,12 @@ func NewManager(runner AgentRunner, notify *Notification, maxTasks int, taskTime
 	}
 }
 
+// WithProjection configures an optional projection hook for task lifecycle mirroring.
+func (m *Manager) WithProjection(projection Projection) *Manager {
+	m.projection = projection
+	return m
+}
+
 // Submit creates and enqueues a new background task. It returns the task ID on success.
 func (m *Manager) Submit(ctx context.Context, prompt string, origin Origin) (string, error) {
 	m.mu.Lock()
@@ -75,6 +95,15 @@ func (m *Manager) Submit(ctx context.Context, prompt string, origin Origin) (str
 	detached := types.DetachContext(ctx)
 	taskCtx, cancelFn := context.WithTimeout(detached, m.taskTimeout)
 	id := uuid.New().String()
+	if m.projection != nil {
+		preparedID, err := m.projection.PrepareTask(detached, prompt, origin)
+		if err != nil {
+			cancelFn()
+			m.mu.Unlock()
+			return "", fmt.Errorf("submit task: prepare projection: %w", err)
+		}
+		id = preparedID
+	}
 
 	task := &Task{
 		ID:            id,
@@ -86,6 +115,8 @@ func (m *Manager) Submit(ctx context.Context, prompt string, origin Origin) (str
 	}
 	m.tasks[id] = task
 	m.mu.Unlock()
+
+	m.syncProjection(detached, task)
 
 	m.logger.Infow("task submitted", "taskID", id, "channel", origin.Channel)
 
@@ -114,6 +145,7 @@ func (m *Manager) Cancel(id string) error {
 	}
 
 	task.Cancel()
+	m.syncProjection(context.Background(), task)
 	m.logger.Infow("task cancelled", "taskID", id)
 	return nil
 }
@@ -168,11 +200,15 @@ func (m *Manager) execute(ctx context.Context, task *Task) {
 	case m.sem <- struct{}{}:
 	case <-ctx.Done():
 		task.Fail("context cancelled waiting for semaphore")
+		m.mu.Lock()
+		m.evictTerminalTasksLocked()
+		m.mu.Unlock()
 		return
 	}
 	defer func() { <-m.sem }()
 
 	task.SetRunning()
+	m.syncProjection(ctx, task)
 	m.logger.Infow("task running", "taskID", task.ID)
 
 	// Send start notification (best-effort, use task context).
@@ -196,6 +232,10 @@ func (m *Manager) execute(ctx context.Context, task *Task) {
 	}
 
 	sessionKey := "bg:" + task.ID
+	ctx = session.WithRunContext(ctx, session.RunContext{
+		SessionType: "background",
+		RunID:       task.ID,
+	})
 	enrichedPrompt := automationPrefix + "Task: " + task.Prompt
 	result, err := m.runner.Run(ctx, sessionKey, enrichedPrompt)
 	stopTyping()
@@ -203,16 +243,26 @@ func (m *Manager) execute(ctx context.Context, task *Task) {
 	// If the context was cancelled (user cancellation or timeout),
 	// don't overwrite the Cancelled status set by Cancel().
 	if ctx.Err() != nil {
+		m.mu.Lock()
+		m.evictTerminalTasksLocked()
+		m.mu.Unlock()
 		return
 	}
 
 	if err != nil {
 		task.Fail(err.Error())
+		m.syncProjection(types.DetachContext(ctx), task)
 		m.logger.Warnw("task failed", "taskID", task.ID, "error", err)
 	} else {
 		task.Complete(result)
+		m.syncProjection(types.DetachContext(ctx), task)
 		m.logger.Infow("task completed", "taskID", task.ID)
 	}
+
+	// Evict oldest terminal tasks if the cap is exceeded.
+	m.mu.Lock()
+	m.evictTerminalTasksLocked()
+	m.mu.Unlock()
 
 	// Send completion notification (best-effort, detach from task context).
 	if m.notify != nil {
@@ -223,7 +273,7 @@ func (m *Manager) execute(ctx context.Context, task *Task) {
 }
 
 // Shutdown cancels all Pending/Running tasks and waits for goroutines to finish.
-func (m *Manager) Shutdown() {
+func (m *Manager) Shutdown(ctx context.Context) error {
 	m.mu.Lock()
 	for _, task := range m.tasks {
 		snap := task.Snapshot()
@@ -233,8 +283,21 @@ func (m *Manager) Shutdown() {
 	}
 	m.mu.Unlock()
 
-	m.wg.Wait()
+	done := make(chan struct{})
+	go func() {
+		m.wg.Wait()
+		close(done)
+	}()
+
+	select {
+	case <-done:
+	case <-ctx.Done():
+		m.logger.Warnw("background manager shutdown timed out", "error", ctx.Err())
+		return ctx.Err()
+	}
+
 	m.logger.Info("background manager shut down")
+	return nil
 }
 
 // activeCountLocked returns the number of non-terminal tasks. Caller must hold m.mu.
@@ -247,4 +310,48 @@ func (m *Manager) activeCountLocked() int {
 		}
 	}
 	return count
+}
+
+func (m *Manager) syncProjection(ctx context.Context, task *Task) {
+	if m.projection == nil {
+		return
+	}
+	if err := m.projection.SyncTask(ctx, task.Snapshot()); err != nil {
+		m.logger.Warnw("background projection sync failed", "taskID", task.ID, "error", err)
+	}
+}
+
+// evictTerminalTasksLocked removes the oldest terminal tasks when the count
+// exceeds maxTerminalTasks. Caller must hold m.mu (write lock).
+func (m *Manager) evictTerminalTasksLocked() {
+	type terminalEntry struct {
+		id          string
+		completedAt time.Time
+	}
+
+	var terminals []terminalEntry
+	for id, task := range m.tasks {
+		snap := task.Snapshot()
+		switch snap.Status {
+		case Done, Failed, Cancelled:
+			ts := snap.CompletedAt
+			if ts.IsZero() {
+				ts = snap.StartedAt
+			}
+			terminals = append(terminals, terminalEntry{id: id, completedAt: ts})
+		}
+	}
+
+	if len(terminals) <= maxTerminalTasks {
+		return
+	}
+
+	sort.Slice(terminals, func(i, j int) bool {
+		return terminals[i].completedAt.Before(terminals[j].completedAt)
+	})
+
+	evictCount := len(terminals) - maxTerminalTasks
+	for i := 0; i < evictCount; i++ {
+		delete(m.tasks, terminals[i].id)
+	}
 }

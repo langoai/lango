@@ -36,7 +36,8 @@ Output JSON:
       "key": "unique_snake_case_key",
       "subject": "optional graph subject",
       "predicate": "optional graph predicate",
-      "object": "optional graph object"
+      "object": "optional graph object",
+      "temporal": "evergreen or current_state — evergreen if the knowledge is always true (e.g., 'Go uses gofmt'), current_state if it may change over time (e.g., 'the team lead is Alice')"
     }
   ],
   "gaps": [

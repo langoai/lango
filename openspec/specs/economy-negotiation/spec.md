@@ -1,4 +1,8 @@
-## ADDED Requirements
+## Purpose
+
+Capability spec for economy-negotiation. See requirements below for scope and behavior contracts.
+
+## Requirements
 
 ### Requirement: P2P negotiation protocol
 The system SHALL implement a P2P price negotiation protocol in `internal/economy/negotiation/` with a session-based lifecycle: Propose → Counter (repeated) → Accept/Reject.

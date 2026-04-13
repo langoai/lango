@@ -1,3 +1,7 @@
+## Purpose
+
+Capability spec for agent-provider-config. See requirements below for scope and behavior contracts.
+
 ## Requirements
 
 ### Requirement: Provider Configuration
@@ -41,15 +45,11 @@ The `AgentConfig` struct SHALL include a `PromptsDir` field (mapstructure: "prom
 - **WHEN** both PromptsDir and SystemPromptPath are empty
 - **THEN** the system SHALL use the built-in default sections including conversation rules
 
-## Removed Requirements
-
 ### Requirement: OAuth Provider Login (REMOVED 2026-02-14)
 **Reason**: OAuth with AI providers risks account bans.
 **Migration**: Use API key authentication with `${ENV_VAR}` references.
 
 Previously, providers could be configured with `clientId`, `clientSecret`, and `scopes` for OAuth-based authentication via `lango login [provider]`. This has been removed.
-
-## Deprecated Requirements
 
 ### Requirement: Legacy API Key Support
 **Reason**: Duplication and ambiguity with `providers` map.
@@ -58,3 +58,7 @@ Previously, providers could be configured with `clientId`, `clientSecret`, and `
 #### Scenario: Legacy config detected
 - **WHEN** user configuration contains `agent.apiKey`
 - **THEN** system fails to start (or ignores it with a warning, depending on strictness - we choose fail for clarity)
+
+## Removed Requirements
+
+## Deprecated Requirements

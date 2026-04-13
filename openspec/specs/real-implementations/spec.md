@@ -1,5 +1,9 @@
 # Spec: Stub to Real Implementations
 
+## Purpose
+
+Capability spec for real-implementations. See requirements below for scope and behavior contracts.
+
 ## Requirements
 
 ### REQ-1: CLI commands must call real services

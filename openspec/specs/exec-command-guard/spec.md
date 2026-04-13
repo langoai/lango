@@ -34,6 +34,39 @@ The system SHALL block commands where the first verb is `kill`, `pkill`, or `kil
 - **WHEN** agent executes `grep kill log.txt`
 - **THEN** the command is allowed because "kill" is not the verb
 
+### Requirement: PolicyEvaluator unwraps shell wrappers before guard checks
+The PolicyEvaluator SHALL detect one level of shell wrapper (`sh -c`, `bash -c`, `zsh -c`, `dash -c` with optional path prefix) and apply all guard checks to the inner command. Patterns not supported in Phase 1: `sh -lc`, `/usr/bin/env sh -c`, nested wrappers, escaped quotes.
+
+#### Scenario: Block kill verb through shell wrapper
+- **WHEN** PolicyEvaluator evaluates `sh -c "kill 1234"`
+- **THEN** the inner command `kill 1234` is extracted and blocked by the process management guard
+
+#### Scenario: Block lango CLI through shell wrapper
+- **WHEN** PolicyEvaluator evaluates `bash -c "lango security check"`
+- **THEN** the inner command is extracted and blocked by the lango CLI guard
+
+#### Scenario: Allow clean command through shell wrapper
+- **WHEN** PolicyEvaluator evaluates `sh -c "go build ./..."`
+- **THEN** the inner command is extracted and allowed
+
+### Requirement: PolicyEvaluator observes opaque shell patterns
+The PolicyEvaluator SHALL detect opaque shell patterns (command substitution, unsafe variable expansion, eval verb, encoded pipes) and return an observe verdict. Observe verdicts allow execution but log the decision and publish an event.
+
+#### Scenario: Observe command substitution
+- **WHEN** PolicyEvaluator evaluates `ls $(cat /etc/passwd)`
+- **THEN** the verdict is observe with reason `cmd_substitution`
+
+#### Scenario: Safe variable expansion not flagged
+- **WHEN** PolicyEvaluator evaluates `echo ${HOME}/bin`
+- **THEN** the verdict is allow (HOME is in the safe variable set)
+
+### Requirement: classifyLangoExec returns structured reason codes
+The `classifyLangoExec` function SHALL return `(message string, reason ReasonCode)` distinguishing lango CLI invocation (`ReasonLangoCLI`) from skill import redirects (`ReasonSkillImport`).
+
+#### Scenario: Skill import classified separately from lango CLI
+- **WHEN** `classifyLangoExec` receives `git clone https://github.com/org/repo skill-name`
+- **THEN** it returns a non-empty message and `ReasonSkillImport`
+
 ### Requirement: CommandGuard uses pre-built Replacer
 The system SHALL pre-build a `strings.Replacer` at construction time for `$HOME`, `${HOME}`, and tilde-at-word-boundary patterns. The `normalizeCommand` method SHALL use this replacer for single-pass replacement.
 

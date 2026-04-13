@@ -17,18 +17,18 @@ import (
 	"github.com/gorilla/websocket"
 	"github.com/langoai/lango/internal/adk"
 	"github.com/langoai/lango/internal/approval"
-	"github.com/langoai/lango/internal/deadline"
+	"github.com/langoai/lango/internal/config"
 	"github.com/langoai/lango/internal/gatekeeper"
 	"github.com/langoai/lango/internal/logging"
+	"github.com/langoai/lango/internal/runledger"
 	"github.com/langoai/lango/internal/security"
 	"github.com/langoai/lango/internal/session"
+	"github.com/langoai/lango/internal/turnrunner"
+	"github.com/langoai/lango/internal/turntrace"
+	"github.com/langoai/lango/internal/types"
 )
 
 func logger() *zap.SugaredLogger { return logging.Gateway() }
-
-// emptyResponseFallback is returned to the user when the agent succeeds
-// but produces no visible text (e.g. Gemini thought-only responses).
-const emptyResponseFallback = "I processed your message but couldn't formulate a visible response. Could you try rephrasing your question?"
 
 // TurnCallback is called after each agent turn completes (for buffer triggers, etc).
 type TurnCallback func(sessionKey string)
@@ -40,6 +40,7 @@ type Server struct {
 	provider           *security.RPCProvider
 	auth               *AuthManager
 	store              session.Store
+	runLedgerStore     runledger.RunLedgerStore
 	router             chi.Router
 	httpServer         *http.Server
 	upgrader           websocket.Upgrader
@@ -51,8 +52,10 @@ type Server struct {
 	pendingApprovalsMu sync.Mutex
 	turnCallbacks      []TurnCallback
 	sanitizer          *gatekeeper.Sanitizer
+	turnRunner         *turnrunner.Runner
 	shutdownCtx        context.Context
 	shutdownCancel     context.CancelFunc
+	featureStatuses    []types.FeatureStatus
 }
 
 // Config holds gateway server configuration
@@ -66,6 +69,7 @@ type Config struct {
 	RequestTimeout   time.Duration
 	IdleTimeout      time.Duration // inactivity timeout (0 = disabled)
 	MaxTimeout       time.Duration // absolute hard ceiling
+	RunLedger        config.RunLedgerConfig
 }
 
 // Client represents a connected WebSocket client
@@ -156,14 +160,16 @@ func New(cfg Config, agent *adk.Agent, provider *security.RPCProvider, store ses
 // handleChatMessage processes chat messages via Agent
 func (s *Server) handleChatMessage(client *Client, params json.RawMessage) (interface{}, error) {
 	var req struct {
-		Message    string `json:"message"`
-		SessionKey string `json:"sessionKey"`
+		Message       string `json:"message"`
+		SessionKey    string `json:"sessionKey"`
+		ResumeRunID   string `json:"resumeRunId"`
+		ConfirmResume bool   `json:"confirmResume"`
 	}
 	if err := json.Unmarshal(params, &req); err != nil {
 		return nil, fmt.Errorf("invalid params: %w", err)
 	}
 
-	if req.Message == "" {
+	if req.Message == "" && (!req.ConfirmResume || req.ResumeRunID == "") {
 		return nil, fmt.Errorf("message is required")
 	}
 
@@ -179,6 +185,50 @@ func (s *Server) handleChatMessage(client *Client, params json.RawMessage) (inte
 		sessionKey = req.SessionKey
 	}
 
+	if s.runLedgerStore != nil {
+		rm := runledger.NewResumeManager(s.runLedgerStore, s.config.RunLedger.StaleTTL)
+
+		if req.ConfirmResume && req.ResumeRunID != "" {
+			resumeCtx, cancel := s.newResumeContext()
+			defer cancel()
+
+			if _, err := rm.Resume(resumeCtx, req.ResumeRunID, "user"); err != nil {
+				return nil, fmt.Errorf("resume run: %w", err)
+			}
+			s.BroadcastToSession(sessionKey, "agent.resume_confirmed", map[string]string{
+				"sessionKey": sessionKey,
+				"runId":      req.ResumeRunID,
+			})
+			return map[string]interface{}{
+				"resumed": true,
+				"runId":   req.ResumeRunID,
+			}, nil
+		}
+
+		if runledger.DetectResumeIntent(req.Message) {
+			resumeCtx, cancel := s.newResumeContext()
+			defer cancel()
+
+			candidates, err := rm.FindCandidates(resumeCtx, sessionKey)
+			if err != nil {
+				return nil, fmt.Errorf("find resume candidates: %w", err)
+			}
+			if len(candidates) > 0 {
+				payload := map[string]interface{}{
+					"sessionKey":  sessionKey,
+					"candidates":  candidates,
+					"message":     "Resume candidates found. Confirm one to continue.",
+					"requiresAck": true,
+				}
+				s.BroadcastToSession(sessionKey, "agent.resume_required", payload)
+				return map[string]interface{}{
+					"resumeRequired": true,
+					"candidates":     candidates,
+				}, nil
+			}
+		}
+	}
+
 	if s.agent == nil {
 		return nil, ErrAgentNotReady
 	}
@@ -187,44 +237,6 @@ func (s *Server) handleChatMessage(client *Client, params json.RawMessage) (inte
 	s.BroadcastToSession(sessionKey, "agent.thinking", map[string]string{
 		"sessionKey": sessionKey,
 	})
-
-	var (
-		ctx         context.Context
-		cancel      context.CancelFunc
-		extDeadline *deadline.ExtendableDeadline
-		runOpts     []adk.RunOption
-	)
-
-	idleTimeout := s.config.IdleTimeout
-	hardCeiling := s.config.MaxTimeout
-	if hardCeiling <= 0 {
-		hardCeiling = s.config.RequestTimeout
-	}
-	if hardCeiling <= 0 {
-		hardCeiling = 5 * time.Minute
-	}
-
-	if idleTimeout > 0 {
-		ctx, extDeadline = deadline.New(s.shutdownCtx, idleTimeout, hardCeiling)
-		cancel = extDeadline.Stop
-		runOpts = append(runOpts, adk.WithOnActivity(extDeadline.Extend))
-	} else {
-		ctx, cancel = context.WithTimeout(s.shutdownCtx, hardCeiling)
-	}
-	defer cancel()
-
-	// Warn UI when approaching timeout (80%).
-	warnTimer := time.AfterFunc(time.Duration(float64(hardCeiling)*0.8), func() {
-		logger().Warnw("agent request approaching timeout",
-			"session", sessionKey,
-			"timeout", hardCeiling.String())
-		s.BroadcastToSession(sessionKey, "agent.warning", map[string]string{
-			"sessionKey": sessionKey,
-			"message":    "Request is taking longer than expected",
-			"type":       "approaching_timeout",
-		})
-	})
-	defer warnTimer.Stop()
 
 	// Start periodic progress broadcast every 15s.
 	progressStart := time.Now()
@@ -249,98 +261,104 @@ func (s *Server) handleChatMessage(client *Client, params json.RawMessage) (inte
 	}()
 	stopProgress := func() { progressOnce.Do(func() { close(progressDone) }) }
 
-	ctx = session.WithSessionKey(ctx, sessionKey)
-	response, err := s.agent.RunStreaming(ctx, sessionKey, req.Message, func(chunk string) {
-		if s.sanitizer != nil && s.sanitizer.Enabled() {
-			chunk = s.sanitizer.Sanitize(chunk)
-		}
-		if chunk == "" {
-			return
-		}
-		s.BroadcastToSession(sessionKey, "agent.chunk", map[string]string{
-			"sessionKey": sessionKey,
-			"chunk":      chunk,
-		})
-	}, runOpts...)
+	if s.turnRunner == nil {
+		stopProgress()
+		return nil, fmt.Errorf("turn runner is not initialized")
+	}
+	result, err := s.turnRunner.Run(s.shutdownCtx, turnrunner.Request{
+		SessionKey: sessionKey,
+		Input:      req.Message,
+		Entrypoint: "gateway",
+		OnChunk: func(chunk string) {
+			if chunk == "" {
+				return
+			}
+			s.BroadcastToSession(sessionKey, "agent.chunk", map[string]string{
+				"sessionKey": sessionKey,
+				"chunk":      chunk,
+			})
+		},
+		OnWarning: func(elapsed, hardCeiling time.Duration) {
+			logger().Warnw("agent request approaching timeout",
+				"session", sessionKey,
+				"timeout", hardCeiling.String())
+			s.BroadcastToSession(sessionKey, "agent.warning", map[string]string{
+				"sessionKey": sessionKey,
+				"message":    "Request is taking longer than expected",
+				"type":       "approaching_timeout",
+			})
+		},
+		OnDelegation: func(from, to, reason string) {
+			s.BroadcastToSession(sessionKey, "agent.delegation", map[string]string{
+				"sessionKey": sessionKey,
+				"from":       from,
+				"to":         to,
+				"reason":     reason,
+			})
+		},
+		OnBudgetWarning: func(used, max int) {
+			s.BroadcastToSession(sessionKey, "agent.budget_warning", map[string]string{
+				"sessionKey": sessionKey,
+				"used":       fmt.Sprintf("%d", used),
+				"max":        fmt.Sprintf("%d", max),
+			})
+		},
+	})
 
 	// Stop progress updates now that the agent has finished.
 	stopProgress()
 
-	// Fire turn-complete callbacks (buffer triggers, etc.) regardless of error.
-	for _, cb := range s.turnCallbacks {
-		cb(sessionKey)
-	}
-
-	// Guard against empty responses (e.g. Gemini thought-only output).
-	if err == nil && response == "" {
-		response = emptyResponseFallback
-		logger().Warnw("empty agent response, using fallback",
-			"session", sessionKey)
-	}
-
-	// Apply response sanitization.
-	if err == nil && s.sanitizer != nil && s.sanitizer.Enabled() {
-		response = s.sanitizer.Sanitize(response)
-	}
-
 	if err != nil {
-		// Classify the error for UI display.
-		errType := "unknown"
-		errCode := ""
-		partial := ""
-		hint := ""
-		userMsg := err.Error()
-
-		var agentErr *adk.AgentError
-		if errors.As(err, &agentErr) {
-			errType = string(agentErr.Code)
-			errCode = string(agentErr.Code)
-			partial = agentErr.Partial
-			userMsg = agentErr.UserMessage()
-		}
-
-		if ctx.Err() != nil {
-			errType = string(deadline.ReasonMaxTimeout)
-			if extDeadline != nil {
-				switch extDeadline.Reason() {
-				case deadline.ReasonIdle:
-					errType = string(deadline.ReasonIdle)
-					errCode = string(adk.ErrIdleTimeout)
-				case deadline.ReasonMaxTimeout:
-					errType = string(deadline.ReasonMaxTimeout)
-				}
-			}
-			// Annotate session to prevent error leak.
-			if s.store != nil {
-				_ = s.store.AnnotateTimeout(sessionKey, partial)
-			}
-		}
-
-		if partial != "" {
-			hint = "Partial result was recovered. Check the 'partial' field."
-		}
-
-		// Notify UI of the error so it can stop thinking indicators
-		// and display a user-visible error message.
-		s.BroadcastToSession(sessionKey, "agent.error", map[string]string{
-			"sessionKey": sessionKey,
-			"error":      userMsg,
-			"type":       errType,
-			"code":       errCode,
-			"partial":    partial,
-			"hint":       hint,
-		})
 		return nil, err
 	}
+
+	if result.Outcome != turntrace.OutcomeSuccess {
+		logger().Warnw("gateway turn completed with failure",
+			"session", sessionKey,
+			"elapsed", result.Elapsed.String(),
+			"outcome", string(result.Outcome),
+			"trace_id", result.TraceID,
+			"error_code", result.ErrorCode,
+			"cause_class", result.CauseClass,
+			"summary", result.Summary)
+		s.BroadcastToSession(sessionKey, "agent.error", map[string]string{
+			"sessionKey": sessionKey,
+			"error":      result.UserMessage,
+			"type":       string(result.Outcome),
+			"code":       result.ErrorCode,
+			"causeClass": result.CauseClass,
+			"summary":    result.Summary,
+			"traceId":    result.TraceID,
+		})
+		return nil, errors.New(result.UserMessage)
+	}
+
+	logger().Infow("gateway turn completed",
+		"session", sessionKey,
+		"elapsed", result.Elapsed.String(),
+		"outcome", string(result.Outcome),
+		"trace_id", result.TraceID)
 
 	// Notify UI that agent completed successfully.
 	s.BroadcastToSession(sessionKey, "agent.done", map[string]string{
 		"sessionKey": sessionKey,
+		"traceId":    result.TraceID,
 	})
 
 	return map[string]string{
-		"response": response,
+		"response": result.ResponseText,
 	}, nil
+}
+
+func (s *Server) newResumeContext() (context.Context, context.CancelFunc) {
+	timeout := s.config.MaxTimeout
+	if timeout <= 0 {
+		timeout = s.config.RequestTimeout
+	}
+	if timeout <= 0 {
+		timeout = 5 * time.Minute
+	}
+	return context.WithTimeout(s.shutdownCtx, timeout)
 }
 
 // BroadcastToSession sends an event to all UI clients belonging to a specific session.
@@ -546,7 +564,7 @@ func (s *Server) setupRoutes() {
 
 	// Protected routes — require auth when OIDC is configured
 	s.router.Group(func(r chi.Router) {
-		r.Use(requireAuth(s.auth))
+		r.Use(RequireAuth(s.auth))
 
 		if s.config.HTTPEnabled {
 			r.Get("/status", s.handleStatus)
@@ -577,8 +595,24 @@ func (s *Server) SetSanitizer(san *gatekeeper.Sanitizer) {
 	s.sanitizer = san
 }
 
+// SetTurnRunner wires the shared turn runner into the gateway.
+func (s *Server) SetTurnRunner(runner *turnrunner.Runner) {
+	s.turnRunner = runner
+}
+
+// SetRunLedgerStore wires optional RunLedger access for resume and authoritative flows.
+func (s *Server) SetRunLedgerStore(store runledger.RunLedgerStore) {
+	s.runLedgerStore = store
+}
+
 // OnTurnComplete registers a callback that fires after each agent turn.
 func (s *Server) OnTurnComplete(cb TurnCallback) {
+	if s.turnRunner != nil {
+		s.turnRunner.OnTurnComplete(func(sessionKey string) {
+			cb(sessionKey)
+		})
+		return
+	}
 	s.turnCallbacks = append(s.turnCallbacks, cb)
 }
 
@@ -623,13 +657,22 @@ func (s *Server) Shutdown(ctx context.Context) error {
 	return s.httpServer.Shutdown(ctx)
 }
 
+// SetFeatureStatuses sets the context subsystem status for health reporting.
+func (s *Server) SetFeatureStatuses(statuses []types.FeatureStatus) {
+	s.featureStatuses = statuses
+}
+
 // handleHealth returns health status
 func (s *Server) handleHealth(w http.ResponseWriter, _ *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
-	_ = json.NewEncoder(w).Encode(map[string]string{
+	resp := map[string]interface{}{
 		"status": "ok",
 		"time":   time.Now().Format(time.RFC3339),
-	})
+	}
+	if len(s.featureStatuses) > 0 {
+		resp["features"] = s.featureStatuses
+	}
+	_ = json.NewEncoder(w).Encode(resp)
 }
 
 // handleStatus returns server status
@@ -667,8 +710,12 @@ func (s *Server) handleWebSocketConnection(w http.ResponseWriter, r *http.Reques
 
 	clientID := fmt.Sprintf("%s-%d", clientType, time.Now().UnixNano())
 
-	// Bind authenticated session to client (empty if no auth)
+	// Bind authenticated session to client; isolate unauthenticated clients
+	// by assigning the unique clientID as their session key.
 	sessionKey := SessionFromContext(r.Context())
+	if sessionKey == "" {
+		sessionKey = clientID
+	}
 
 	client := &Client{
 		ID:         clientID,

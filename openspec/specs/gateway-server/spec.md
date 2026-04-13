@@ -51,7 +51,7 @@ The `server.go` file SHALL contain the Server struct definition, Config struct w
 - **WHEN** routes are configured
 - **THEN** `/health` SHALL be public (no auth middleware)
 - **THEN** `/auth/*` SHALL be public with rate limiting
-- **THEN** `/ws` and `/status` SHALL be in a protected route group with `requireAuth` middleware
+- **THEN** `/ws`, `/status`, and `/playground` SHALL be in a protected route group with `RequireAuth` middleware
 - **THEN** `/companion` SHALL be separate (no OIDC auth, origin restriction via upgrader)
 
 #### Scenario: Server Lifecycle
@@ -97,7 +97,7 @@ The `websocket.go` file SHALL contain the Client struct, WebSocket upgrade handl
 
 #### Scenario: Client Connection without Auth
 - **WHEN** a client connects to `/ws` with no auth configured
-- **THEN** a Client SHALL be created with empty `SessionKey`
+- **THEN** a Client SHALL be created with `SessionKey` set to the unique `clientID` (for session isolation)
 
 #### Scenario: RPC Dispatch
 - **WHEN** a Client receives a JSON message in readPump

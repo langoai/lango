@@ -39,6 +39,8 @@ func TestCollectFeatures_AllEnabled(t *testing.T) {
 		Payment:             config.PaymentConfig{Enabled: true},
 		Economy:             config.EconomyConfig{Enabled: true},
 		A2A:                 config.A2AConfig{Enabled: true},
+		RunLedger:           config.RunLedgerConfig{Enabled: true, WorkspaceIsolation: true},
+		Provenance:          config.ProvenanceConfig{Enabled: true},
 	}
 
 	features := collectFeatures(cfg)

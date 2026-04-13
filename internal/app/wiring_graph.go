@@ -2,14 +2,24 @@ package app
 
 import (
 	"context"
+	"fmt"
 	"path/filepath"
 
 	"github.com/langoai/lango/internal/config"
 	"github.com/langoai/lango/internal/embedding"
+	"github.com/langoai/lango/internal/eventbus"
 	"github.com/langoai/lango/internal/graph"
 	"github.com/langoai/lango/internal/memory"
 	"github.com/langoai/lango/internal/supervisor"
+	"github.com/langoai/lango/internal/types"
 )
+
+// predicateValidatable is an optional capability for graph stores that support
+// runtime predicate validation. Used to inject ontology validators without
+// coupling wiring code to concrete store types.
+type predicateValidatable interface {
+	SetPredicateValidator(graph.PredicateValidatorFunc)
+}
 
 // graphComponents holds optional graph store components.
 type graphComponents struct {
@@ -19,10 +29,12 @@ type graphComponents struct {
 }
 
 // initGraphStore creates the graph store if enabled.
-func initGraphStore(cfg *config.Config) *graphComponents {
+func initGraphStore(cfg *config.Config) (*graphComponents, *types.FeatureStatus) {
+	const featureName = "Graph Store"
+
 	if !cfg.Graph.Enabled {
 		logger().Info("graph store disabled")
-		return nil
+		return nil, &types.FeatureStatus{Name: featureName, Enabled: false, Healthy: true}
 	}
 
 	dbPath := cfg.Graph.DatabasePath
@@ -38,7 +50,11 @@ func initGraphStore(cfg *config.Config) *graphComponents {
 	store, err := graph.NewBoltStore(dbPath)
 	if err != nil {
 		logger().Warnw("graph store init error, skipping", "error", err)
-		return nil
+		return nil, &types.FeatureStatus{
+			Name: featureName, Enabled: false, Healthy: false,
+			Reason:     fmt.Sprintf("bolt store init failed: %v", err),
+			Suggestion: "check graph.databasePath permissions and disk space",
+		}
 	}
 
 	buffer := graph.NewGraphBuffer(store, logger())
@@ -47,14 +63,22 @@ func initGraphStore(cfg *config.Config) *graphComponents {
 	return &graphComponents{
 		store:  store,
 		buffer: buffer,
-	}
+	}, &types.FeatureStatus{Name: featureName, Enabled: true, Healthy: true}
 }
 
-// wireGraphCallbacks connects graph store callbacks to knowledge and memory stores.
+// wireGraphCallbacks subscribes to content.saved and triples.extracted events to feed the graph buffer.
 // It also creates the Entity Extractor pipeline and Memory GraphHooks.
-func wireGraphCallbacks(gc *graphComponents, kc *knowledgeComponents, mc *memoryComponents, sv *supervisor.Supervisor, cfg *config.Config) {
+func wireGraphCallbacks(gc *graphComponents, kc *knowledgeComponents, mc *memoryComponents, sv *supervisor.Supervisor, cfg *config.Config, bus *eventbus.Bus, ontologyValidator graph.PredicateValidatorFunc) {
 	if gc == nil || gc.buffer == nil {
 		return
+	}
+
+	// Inject predicate validator if the store implementation supports it.
+	if ontologyValidator != nil {
+		if pv, ok := gc.store.(predicateValidatable); ok {
+			pv.SetPredicateValidator(ontologyValidator)
+			logger().Info("ontology predicate validator injected into graph store")
+		}
 	}
 
 	// Create Entity Extractor for async triple extraction from content.
@@ -64,46 +88,71 @@ func wireGraphCallbacks(gc *graphComponents, kc *knowledgeComponents, mc *memory
 		mdl := cfg.Agent.Model
 		proxy := supervisor.NewProviderProxy(sv, provider, mdl)
 		generator := &providerTextGenerator{proxy: proxy}
-		extractor = graph.NewExtractor(generator, logger())
+		var opts []graph.ExtractorOption
+		if ontologyValidator != nil {
+			opts = append(opts, graph.WithPredicateValidator(ontologyValidator))
+		}
+		extractor = graph.NewExtractor(generator, logger(), opts...)
 		logger().Info("graph entity extractor initialized")
 	}
 
-	graphCB := func(id, collection, content string, metadata map[string]string) {
-		// Basic containment triple.
-		gc.buffer.Enqueue(graph.GraphRequest{
-			Triples: []graph.Triple{
-				{
-					Subject:   collection + ":" + id,
-					Predicate: graph.Contains,
-					Object:    "collection:" + collection,
-					Metadata:  metadata,
+	// Subscribe to content.saved events to create graph triples and extract entities.
+	// Only events with NeedsGraph=true trigger graph operations, preserving the
+	// original callback behavior: new knowledge creation and memory saves graph,
+	// while knowledge updates and learning saves are embed-only.
+	if bus != nil {
+		eventbus.SubscribeTyped(bus, func(evt eventbus.ContentSavedEvent) {
+			if !evt.NeedsGraph {
+				return
+			}
+			// Basic containment triple.
+			gc.buffer.Enqueue(graph.GraphRequest{
+				Triples: []graph.Triple{
+					{
+						Subject:     evt.Collection + ":" + evt.ID,
+						SubjectType: evt.Collection,
+						Predicate:   graph.Contains,
+						Object:      "collection:" + evt.Collection,
+						Metadata:    evt.Metadata,
+					},
 				},
-			},
+			})
+
+			// Async entity extraction via LLM.
+			if extractor != nil && evt.Content != "" {
+				go func() {
+					ctx := context.Background()
+					triples, err := extractor.Extract(ctx, evt.Content, evt.ID)
+					if err != nil {
+						logger().Debugw("entity extraction error", "id", evt.ID, "error", err)
+						return
+					}
+					if len(triples) > 0 {
+						gc.buffer.Enqueue(graph.GraphRequest{Triples: triples})
+					}
+				}()
+			}
 		})
 
-		// Async entity extraction via LLM.
-		if extractor != nil && content != "" {
-			go func() {
-				ctx := context.Background()
-				triples, err := extractor.Extract(ctx, content, id)
-				if err != nil {
-					logger().Debugw("entity extraction error", "id", id, "error", err)
-					return
+		// Subscribe to triples.extracted events to enqueue graph triples.
+		eventbus.SubscribeTyped(bus, func(evt eventbus.TriplesExtractedEvent) {
+			graphTriples := make([]graph.Triple, len(evt.Triples))
+			for i, t := range evt.Triples {
+				graphTriples[i] = graph.Triple{
+					Subject:     t.Subject,
+					Predicate:   t.Predicate,
+					Object:      t.Object,
+					SubjectType: t.SubjectType,
+					ObjectType:  t.ObjectType,
+					Metadata:    t.Metadata,
 				}
-				if len(triples) > 0 {
-					gc.buffer.Enqueue(graph.GraphRequest{Triples: triples})
-				}
-			}()
-		}
+			}
+			gc.buffer.Enqueue(graph.GraphRequest{Triples: graphTriples})
+		})
 	}
 
-	if kc != nil {
-		kc.store.SetGraphCallback(graphCB)
-	}
+	// Wire Memory GraphHooks for temporal/session triples.
 	if mc != nil {
-		mc.store.SetGraphCallback(graphCB)
-
-		// Wire Memory GraphHooks for temporal/session triples.
 		tripleCallback := func(triples []graph.Triple) {
 			gc.buffer.Enqueue(graph.GraphRequest{Triples: triples})
 		}

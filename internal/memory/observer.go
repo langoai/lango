@@ -9,13 +9,9 @@ import (
 	"github.com/google/uuid"
 	"go.uber.org/zap"
 
+	"github.com/langoai/lango/internal/llm"
 	"github.com/langoai/lango/internal/session"
 )
-
-// TextGenerator generates text from a prompt. Used to abstract LLM calls for testability.
-type TextGenerator interface {
-	GenerateText(ctx context.Context, systemPrompt, userPrompt string) (string, error)
-}
 
 const observerPrompt = `You are a conversation memory assistant. Your task is to compress the following conversation messages into a concise observation note.
 
@@ -35,13 +31,13 @@ Write a concise paragraph (2-5 sentences) capturing the essential information.`
 
 // Observer generates compressed observation notes from conversation history.
 type Observer struct {
-	generator TextGenerator
+	generator llm.TextGenerator
 	store     *Store
 	logger    *zap.SugaredLogger
 }
 
 // NewObserver creates a new Observer.
-func NewObserver(generator TextGenerator, store *Store, logger *zap.SugaredLogger) *Observer {
+func NewObserver(generator llm.TextGenerator, store *Store, logger *zap.SugaredLogger) *Observer {
 	return &Observer{
 		generator: generator,
 		store:     store,

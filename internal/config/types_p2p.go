@@ -67,12 +67,45 @@ type P2PConfig struct {
 	// When false (default), unsigned legacy challenges are accepted for backward compatibility.
 	RequireSignedChallenge bool `mapstructure:"requireSignedChallenge" json:"requireSignedChallenge"`
 
+	// EnablePQHandshake enables post-quantum hybrid KEM (X25519-MLKEM768)
+	// key exchange during peer handshake. When true, protocol v1.2 is
+	// advertised and PQ session keys are derived. Default: false (opt-in).
+	EnablePQHandshake bool `mapstructure:"enablePqHandshake" json:"enablePqHandshake"`
+
 	// Workspace configures collaborative workspace settings for P2P agent co-work.
 	Workspace WorkspaceConfig `mapstructure:"workspace" json:"workspace"`
 
 	// Team configures team health monitoring and membership policies.
 	Team TeamConfig `mapstructure:"team" json:"team"`
+
+	// MaxSafetyLevel is the highest SafetyLevel a P2P peer may invoke.
+	// Tools above this level are rejected. Valid values: "safe", "moderate", "dangerous".
+	// Default: "moderate" — blocks Dangerous tools from remote peers.
+	MaxSafetyLevel string `mapstructure:"maxSafetyLevel" json:"maxSafetyLevel"`
+
+	// AllowedTools is an explicit whitelist of tool names that bypass the
+	// SafetyLevel gate for P2P peers. An empty list means the SafetyLevel
+	// gate alone decides (together with firewall ACL).
+	AllowedTools []string `mapstructure:"allowedTools" json:"allowedTools,omitempty"`
 }
+
+// GetKeyDir returns the legacy directory for persisting node keys.
+func (c P2PConfig) GetKeyDir() string { return c.KeyDir }
+
+// GetMaxPeers returns the maximum number of connected peers.
+func (c P2PConfig) GetMaxPeers() int { return c.MaxPeers }
+
+// GetListenAddrs returns the multiaddrs to listen on.
+func (c P2PConfig) GetListenAddrs() []string { return c.ListenAddrs }
+
+// GetEnableRelay reports whether this node acts as a relay for NAT traversal.
+func (c P2PConfig) GetEnableRelay() bool { return c.EnableRelay }
+
+// GetBootstrapPeers returns the initial peers for DHT bootstrapping.
+func (c P2PConfig) GetBootstrapPeers() []string { return c.BootstrapPeers }
+
+// GetEnableMDNS reports whether multicast DNS discovery is enabled.
+func (c P2PConfig) GetEnableMDNS() bool { return c.EnableMDNS }
 
 // ToolIsolationConfig configures subprocess isolation for P2P tool execution.
 type ToolIsolationConfig struct {
@@ -93,6 +126,11 @@ type ToolIsolationConfig struct {
 type ContainerSandboxConfig struct {
 	// Enabled activates container-based sandbox instead of subprocess isolation.
 	Enabled bool `mapstructure:"enabled" json:"enabled"`
+
+	// RequireContainer enforces fail-closed behavior: when true and no container
+	// runtime (Docker/gVisor) is available, tool execution is refused instead of
+	// silently falling back to NativeRuntime. Defaults to true for security.
+	RequireContainer bool `mapstructure:"requireContainer" json:"requireContainer"`
 
 	// Runtime selects the container runtime: "auto", "docker", "gvisor", or "native" (default: "auto").
 	Runtime string `mapstructure:"runtime" json:"runtime"`

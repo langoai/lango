@@ -147,6 +147,78 @@ See the [Installation Guide](getting-started/installation.md) for detailed instr
 
     Pre-built configuration templates for common deployment scenarios. Quick-start with `lango onboard --preset`.
 
+-   :electric_plug: **MCP Integration**
+
+    ---
+
+    Connect to external MCP servers (stdio/HTTP/SSE) for extending agent tooling with the Model Context Protocol.
+
+-   :bank: **Smart Accounts**
+
+    ---
+
+    ERC-7579 modular smart accounts with session keys, ERC-4337 paymaster support, and on-chain policy enforcement.
+
+-   :moneybag: **P2P Economy**
+
+    ---
+
+    Budget management, risk assessment, dynamic pricing, P2P negotiation, and milestone-based escrow for agent commerce.
+
+-   :brain: **Agent Memory**
+
+    ---
+
+    Per-agent persistent memory for cross-session context retention and experience accumulation.
+
+-   :toolbox: **Skill System**
+
+    ---
+
+    File-based skills with import from URLs and GitHub repositories. Extend agent capabilities without code changes.
+
+-   :books: **Proactive Librarian**
+
+    ---
+
+    Autonomous knowledge agent that observes conversations and proactively curates the knowledge base.
+
+-   :dart: **Context Engineering**
+
+    ---
+
+    Token-budget-aware context allocation with retrieval coordinator, config profiles, and relevance auto-adjustment.
+
+-   :desktop_computer: **Cockpit TUI**
+
+    ---
+
+    Multi-panel terminal dashboard with chat, tools, status, sessions, and settings pages.
+
+-   :ledger: **RunLedger (Task OS)**
+
+    ---
+
+    Durable execution engine with append-only journal, PEV verification, typed validators, and planner integration.
+
+-   :bookmark_tabs: **Session Provenance**
+
+    ---
+
+    Persistent checkpoints, session lineage, git-aware attribution, and signed provenance bundle export/import.
+
+-   :shield: **OS-level Sandbox**
+
+    ---
+
+    Process isolation via macOS Seatbelt (Linux: planned, not yet enforced) for tool execution with network deny and workspace-scoped access.
+
+-   :construction: **Response Gatekeeper**
+
+    ---
+
+    Output sanitization stripping thought tags, internal markers, raw JSON, and custom patterns from agent responses.
+
 </div>
 
 ## Next Steps

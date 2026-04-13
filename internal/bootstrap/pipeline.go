@@ -2,11 +2,14 @@ package bootstrap
 
 import (
 	"context"
+	"crypto/ed25519"
 	"database/sql"
 	"fmt"
+	"time"
 
 	"github.com/langoai/lango/internal/ent"
 	"github.com/langoai/lango/internal/keyring"
+	"github.com/langoai/lango/internal/logging"
 	"github.com/langoai/lango/internal/security"
 	"github.com/langoai/lango/internal/security/passphrase"
 )
@@ -36,7 +39,7 @@ type State struct {
 	Client *ent.Client
 	RawDB  *sql.DB
 
-	// Security state from DB.
+	// Security state from DB (legacy path).
 	Salt     []byte
 	Checksum []byte
 	FirstRun bool
@@ -44,6 +47,23 @@ type State struct {
 	// Crypto.
 	DBKey  string
 	Crypto security.CryptoProvider
+
+	// Envelope-based crypto state.
+	Envelope     *security.MasterKeyEnvelope
+	MasterKey    []byte // unwrapped MK (zeroed on cleanup)
+	LegacyMode   bool   // no envelope, not first run — needs legacy→envelope migration
+	RecoveryMode bool   // reserved for future use; no longer set during bootstrap
+
+	// Identity key derived from MK via HKDF (Phase 3).
+	IdentityKey ed25519.PrivateKey
+
+	// PQ signing key seed derived from MK via HKDF (Phase 5).
+	// 32-byte seed for ML-DSA-65. Downstream code calls mldsa65.NewKeyFromSeed.
+	PQSigningKeySeed []byte
+
+	// KMS KEK state (Phase 6).
+	KMSProvider security.CryptoProvider // transient, for KMS KEK unwrap only
+	KMSUnwrap   bool                    // MK was unwrapped via KMS (not passphrase)
 }
 
 // Phase represents a single step in the bootstrap pipeline.
@@ -66,11 +86,14 @@ func NewPipeline(phases ...Phase) *Pipeline {
 
 // Execute runs all phases. On failure, cleans up in reverse order.
 func (p *Pipeline) Execute(ctx context.Context, opts Options) (*Result, error) {
+	log := logging.SubsystemSugar("bootstrap")
 	state := &State{Options: opts}
 
 	var completed []int // indices of completed phases
+	var timing []PhaseTimingEntry
 
 	for i, phase := range p.phases {
+		start := time.Now()
 		if err := phase.Run(ctx, state); err != nil {
 			// Cleanup in reverse order.
 			for j := len(completed) - 1; j >= 0; j-- {
@@ -81,8 +104,12 @@ func (p *Pipeline) Execute(ctx context.Context, opts Options) (*Result, error) {
 			}
 			return nil, fmt.Errorf("%s: %w", phase.Name, err)
 		}
+		elapsed := time.Since(start)
+		timing = append(timing, PhaseTimingEntry{Phase: phase.Name, Duration: elapsed})
+		log.Infow("bootstrap phase complete", "phase", phase.Name, "duration_ms", elapsed.Milliseconds())
 		completed = append(completed, i)
 	}
 
+	state.Result.PhaseTiming = timing
 	return &state.Result, nil
 }

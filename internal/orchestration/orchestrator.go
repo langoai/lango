@@ -13,9 +13,11 @@ import (
 )
 
 // ToolAdapter converts an internal agent.Tool to an ADK tool.Tool.
+// The agentName parameter identifies the sub-agent that will own the tool,
+// allowing downstream hooks and middleware to track which agent invoked it.
 // This is injected to avoid a direct dependency on the adk package,
 // which carries transitive imports that may cause import cycles.
-type ToolAdapter func(t *agent.Tool) (adk_tool.Tool, error)
+type ToolAdapter func(t *agent.Tool, agentName string) (adk_tool.Tool, error)
 
 // SubAgentPromptFunc builds the final instruction for a sub-agent.
 // agentName is the spec name (e.g. "operator"), defaultInstruction is
@@ -167,7 +169,7 @@ func buildSubAgent(cfg Config, spec AgentSpec, tools []*agent.Tool) (adk_agent.A
 	var adkTools []adk_tool.Tool
 	if len(tools) > 0 {
 		var err error
-		adkTools, err = adaptTools(cfg.AdaptTool, tools)
+		adkTools, err = adaptTools(cfg.AdaptTool, spec.Name, tools)
 		if err != nil {
 			return nil, routingEntry{}, fmt.Errorf("adapt %s tools: %w", spec.Name, err)
 		}
@@ -199,10 +201,10 @@ func buildSubAgent(cfg Config, spec AgentSpec, tools []*agent.Tool) (adk_agent.A
 }
 
 // adaptTools converts a slice of internal agent tools to ADK tools using the provided adapter.
-func adaptTools(adapt ToolAdapter, tools []*agent.Tool) ([]adk_tool.Tool, error) {
+func adaptTools(adapt ToolAdapter, agentName string, tools []*agent.Tool) ([]adk_tool.Tool, error) {
 	result := make([]adk_tool.Tool, 0, len(tools))
 	for _, t := range tools {
-		adapted, err := adapt(t)
+		adapted, err := adapt(t, agentName)
 		if err != nil {
 			return nil, fmt.Errorf("adapt tool %q: %w", t.Name, err)
 		}

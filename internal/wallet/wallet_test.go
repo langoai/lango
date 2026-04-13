@@ -8,6 +8,8 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/langoai/lango/internal/security"
 )
 
 func TestNetworkName_AllChainIDs(t *testing.T) {
@@ -76,7 +78,7 @@ func TestZeroBytes(t *testing.T) {
 				b[i] = 0xFF
 			}
 
-			zeroBytes(b)
+			security.ZeroBytes(b)
 
 			for i, v := range b {
 				assert.Equal(t, byte(0), v, "byte at index %d should be zero", i)
@@ -91,7 +93,7 @@ func TestZeroBytes_PreservesLength(t *testing.T) {
 		b[i] = byte(i)
 	}
 
-	zeroBytes(b)
+	security.ZeroBytes(b)
 
 	assert.Len(t, b, 42)
 }

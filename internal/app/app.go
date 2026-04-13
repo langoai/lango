@@ -2,6 +2,7 @@ package app
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 	"sync"
@@ -10,33 +11,78 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/langoai/lango/internal/a2a"
+	"github.com/langoai/lango/internal/adk"
 	"github.com/langoai/lango/internal/agent"
+	"github.com/langoai/lango/internal/agentrt"
 	"github.com/langoai/lango/internal/appinit"
 	"github.com/langoai/lango/internal/approval"
 	"github.com/langoai/lango/internal/background"
 	"github.com/langoai/lango/internal/bootstrap"
-	cronpkg "github.com/langoai/lango/internal/cron"
 	"github.com/langoai/lango/internal/config"
+	cronpkg "github.com/langoai/lango/internal/cron"
 	"github.com/langoai/lango/internal/eventbus"
 	"github.com/langoai/lango/internal/gateway"
 	"github.com/langoai/lango/internal/learning"
 	"github.com/langoai/lango/internal/lifecycle"
-	"github.com/langoai/lango/internal/skill"
 	"github.com/langoai/lango/internal/logging"
+	"github.com/langoai/lango/internal/observability"
 	"github.com/langoai/lango/internal/observability/audit"
+	"github.com/langoai/lango/internal/runledger"
 	"github.com/langoai/lango/internal/sandbox"
 	"github.com/langoai/lango/internal/session"
+	"github.com/langoai/lango/internal/skill"
 	"github.com/langoai/lango/internal/toolcatalog"
 	"github.com/langoai/lango/internal/toolchain"
 	"github.com/langoai/lango/internal/tooloutput"
+	execpkg "github.com/langoai/lango/internal/tools/exec"
+	"github.com/langoai/lango/internal/turnrunner"
+	"github.com/langoai/lango/internal/turntrace"
 	"github.com/langoai/lango/internal/wallet"
 	"github.com/langoai/lango/internal/workflow"
 )
 
 func logger() *zap.SugaredLogger { return logging.App() }
 
+// cleanupEntry pairs a name with its rollback function.
+type cleanupEntry struct {
+	name string
+	fn   func()
+}
+
+// cleanupStack accumulates rollback functions during Phase B wiring.
+// On failure, rollback() executes all cleanups in reverse order.
+// On success, clear() discards the stack (lifecycle registry takes ownership).
+type cleanupStack struct {
+	entries []cleanupEntry
+}
+
+// push adds a named cleanup function to the stack.
+func (s *cleanupStack) push(name string, fn func()) {
+	s.entries = append(s.entries, cleanupEntry{name: name, fn: fn})
+}
+
+// rollback executes all cleanups in reverse order (last-in, first-out).
+func (s *cleanupStack) rollback() {
+	for i := len(s.entries) - 1; i >= 0; i-- {
+		e := s.entries[i]
+		logger().Infow("rolling back Phase B step", "step", e.name)
+		e.fn()
+	}
+	s.entries = nil
+}
+
+// clear discards the cleanup stack without executing any cleanups.
+func (s *cleanupStack) clear() {
+	s.entries = nil
+}
+
 // New creates a new application instance from a bootstrap result.
-func New(boot *bootstrap.Result) (*App, error) {
+func New(boot *bootstrap.Result, opts ...AppOption) (*App, error) {
+	var options appOptions
+	for _, o := range opts {
+		o(&options)
+	}
+
 	cfg := boot.Config
 	bus := eventbus.New()
 	ctx, cancel := context.WithCancel(context.Background())
@@ -48,14 +94,21 @@ func New(boot *bootstrap.Result) (*App, error) {
 		cancel:   cancel,
 	}
 
+	// LocalChat/Cockpit mode: skip Network and Automation lifecycle components.
+	if options.mode == AppModeLocalChat || options.mode == AppModeCockpit {
+		app.registry.SetMaxPriority(lifecycle.PriorityBuffer)
+	}
+
 	// ── Phase A: Module Build ──
 
 	builder := appinit.NewBuilder()
 	builder.AddModule(&foundationModule{cfg: cfg, boot: boot})
-	builder.AddModule(&intelligenceModule{cfg: cfg, boot: boot, rawDB: boot.RawDB})
+	builder.AddModule(&intelligenceModule{cfg: cfg, boot: boot, rawDB: boot.RawDB, bus: bus})
 	builder.AddModule(&automationModule{cfg: cfg, app: app})
 	builder.AddModule(&networkModule{cfg: cfg, boot: boot, bus: bus, app: app})
 	builder.AddModule(&extensionModule{cfg: cfg, boot: boot, bus: bus})
+	builder.AddModule(&runLedgerModule{cfg: cfg, boot: boot})
+	builder.AddModule(&provenanceModule{cfg: cfg, boot: boot})
 
 	buildResult, err := builder.Build(ctx)
 	if err != nil {
@@ -66,15 +119,31 @@ func New(boot *bootstrap.Result) (*App, error) {
 	tools := buildResult.Tools
 
 	// ── Phase B: Post-Build Wiring ──
+	// Cleanup stack accumulates rollback functions during Phase B.
+	// On failure, cleanups run in reverse order (bootstrap pipeline pattern).
+	// On success, the stack is discarded — ownership transfers to the lifecycle registry.
+	var cleanups cleanupStack
+
+	logger().Info("Phase B: starting post-build wiring")
 
 	// B1. Populate app fields from resolver.
 	populateAppFields(app, resolver)
+
+	// B1a. Wire the event bus into the supervisor's exec tool so that
+	// SandboxDecisionEvent records flow into the audit recorder.
+	if fv, ok := resolver.Resolve(appinit.ProvidesSupervisor).(*foundationValues); ok && fv.Supervisor != nil {
+		fv.Supervisor.SetEventBus(bus)
+	}
+
+	// B1b. Provenance runtime capture + transport wiring.
+	wireProvenanceRuntime(app, resolver)
 
 	// B2. Build catalog from module CatalogEntries.
 	catalog := buildCatalogFromEntries(buildResult.CatalogEntries)
 
 	// B3. Dispatcher tools — dynamic access to all registered built-in tools.
-	dispatcherTools := toolcatalog.BuildDispatcher(catalog)
+	searchIndex := toolcatalog.NewSearchIndex(catalog)
+	dispatcherTools := toolcatalog.BuildDispatcher(catalog, searchIndex)
 	tools = append(tools, dispatcherTools...)
 	app.ToolCatalog = catalog
 
@@ -91,7 +160,10 @@ func New(boot *bootstrap.Result) (*App, error) {
 	outputStore := tooloutput.NewOutputStore(10 * time.Minute)
 	app.registry.Register(outputStore, lifecycle.PriorityCore)
 	app.OutputStore = outputStore
-	outputTools := buildOutputTools(outputStore)
+	cleanups.push("output-store", func() {
+		_ = outputStore.Stop(context.Background())
+	})
+	outputTools := tooloutput.BuildTools(outputStore)
 	tools = append(tools, outputTools...)
 	catalog.RegisterCategory(toolcatalog.Category{Name: "output", Description: "Tool output retrieval", Enabled: true})
 	catalog.Register("output", outputTools)
@@ -106,6 +178,9 @@ func New(boot *bootstrap.Result) (*App, error) {
 		"postHooks", len(hookRegistry.PostHooks()),
 	)
 
+	// B4c2. Principal injection — maps agent name to ontology principal.
+	tools = toolchain.ChainAll(tools, toolchain.WithPrincipal())
+
 	// B5. Auth + Gateway.
 	fv := resolver.Resolve(appinit.ProvidesSupervisor).(*foundationValues)
 	auth := initAuth(cfg, fv.Store)
@@ -113,15 +188,27 @@ func New(boot *bootstrap.Result) (*App, error) {
 	if app.Sanitizer != nil {
 		app.Gateway.SetSanitizer(app.Sanitizer)
 	}
+	if app.RunLedgerStore != nil {
+		app.Gateway.SetRunLedgerStore(app.RunLedgerStore)
+	}
+	cleanups.push("gateway", func() {
+		_ = app.Gateway.Shutdown(context.Background())
+	})
 
 	// B4d. Build composite approval provider and tool approval wrapper.
 	composite, grantStore := buildApprovalProvider(cfg, app.Gateway)
 	app.ApprovalProvider = composite
 	app.GrantStore = grantStore
 
+	historyStore := approval.NewHistoryStore(500)
+	app.ApprovalHistory = historyStore
+
 	policy := cfg.Security.Interceptor.ApprovalPolicy
 	if policy == "" {
 		policy = config.ApprovalPolicyDangerous
+	}
+	if policy == config.ApprovalPolicyNone {
+		logger().Warnw("tool approval policy is set to 'none' -- all tool calls will execute without user confirmation; not recommended for production")
 	}
 	if policy != config.ApprovalPolicyNone {
 		var limiter wallet.SpendingLimiter
@@ -130,8 +217,36 @@ func New(boot *bootstrap.Result) (*App, error) {
 			limiter = nv.limiter
 		}
 		tools = toolchain.ChainAll(tools,
-			toolchain.WithApproval(cfg.Security.Interceptor, composite, grantStore, limiter))
+			toolchain.WithApproval(cfg.Security.Interceptor, composite, grantStore, limiter, historyStore))
 		logger().Infow("tool approval enabled", "policy", string(policy))
+	}
+
+	if app.RunLedgerStore != nil && cfg.RunLedger.WorkspaceIsolation {
+		tools = toolchain.ChainAll(tools, runledger.ToolProfileGuard(app.RunLedgerStore))
+	}
+
+	// B4e. Exec policy middleware — outermost, runs before approval.
+	{
+		classifier := func(cmd string) (string, execpkg.ReasonCode) {
+			return classifyLangoExec(cmd, fv.AutoAvail)
+		}
+		var policyBus execpkg.EventPublisher
+		if bus != nil {
+			policyBus = &policyBusAdapter{bus: bus}
+		}
+		// Merge catastrophic patterns: defaults + user-configured (same set as SecurityFilterHook).
+		mergedPatterns := toolchain.DefaultBlockedPatterns()
+		mergedPatterns = append(mergedPatterns, cfg.Hooks.BlockedCommands...)
+		pe := execpkg.NewPolicyEvaluator(fv.CmdGuard, classifier, policyBus,
+			execpkg.WithCatastrophicPatterns(mergedPatterns))
+		tools = toolchain.ChainAll(tools, execpkg.WithPolicy(pe))
+		logger().Info("exec policy middleware enabled")
+	}
+
+	// B4f. Tracing middleware — outermost, so blocked calls are also traced.
+	if cfg.Observability.Tracing.Enabled {
+		tools = toolchain.ChainAll(tools, toolchain.WithTracing(observability.Tracer()))
+		logger().Info("tracing middleware enabled (outermost)")
 	}
 
 	// Log tool registration summary for diagnostics.
@@ -155,19 +270,49 @@ func New(boot *bootstrap.Result) (*App, error) {
 		catalog:  catalog,
 		p2pc:     p2pc,
 		eventBus: bus,
+		rls:      app.RunLedgerStore,
+		prov: func() *provenanceValues {
+			pv, _ := resolver.Resolve(appinit.ProvidesProvenance).(*provenanceValues)
+			return pv
+		}(),
+		hookRegistry: hookRegistry,
 	})
 	if err != nil {
+		cleanups.rollback()
 		return nil, fmt.Errorf("create agent: %w", err)
 	}
 	app.Agent = adkAgent
 	app.Gateway.SetAgent(adkAgent)
+	app.TurnTraceStore = initTurnTraceStore(app.Store)
+	idleTimeout, hardCeiling := app.resolveTimeouts()
+	var errorFixProvider adk.ErrorFixProvider
+	if iv != nil && iv.KC != nil && iv.KC.engine != nil {
+		errorFixProvider = iv.KC.engine
+	}
+	executor := initAgentRuntime(cfg, adkAgent, bus, errorFixProvider)
+	var budgetExec *budgetRestoringExecutor
+	if _, isCoord := executor.(*agentrt.CoordinatingExecutor); isCoord {
+		wrapped := wrapWithBudgetRestore(executor, fv.Store)
+		budgetExec = wrapped.(*budgetRestoringExecutor)
+		executor = wrapped
+	}
+	app.TurnRunner = turnrunner.New(turnrunner.Config{
+		IdleTimeout:         idleTimeout,
+		HardCeiling:         hardCeiling,
+		TraceStore:          app.TurnTraceStore,
+		DelegationBudgetMax: cfg.Agent.Orchestration.Budget.DelegationLimit,
+	}, executor, app.Store, app.Sanitizer)
+	wireSessionUsage(app.TurnRunner, budgetExec, fv.Store, app.MetricsCollector)
+	app.Gateway.SetTurnRunner(app.TurnRunner)
 
 	// B7. Post-agent wiring.
-	wirePostAgent(app, resolver, tools, bus, composite, grantStore, boot)
+	wirePostAgent(app, resolver, tools, bus, composite, grantStore, boot, auth)
 
-	// B8. Channels.
-	if err := app.initChannels(); err != nil {
-		logger().Errorw("initialize channels", "error", err)
+	// B8. Channels (Server + Cockpit modes initialize channel objects).
+	if options.mode == AppModeServer || options.mode == AppModeCockpit {
+		if err := app.initChannels(); err != nil {
+			logger().Errorw("initialize channels", "error", err)
+		}
 	}
 
 	// B9. Memory compaction + turn callbacks.
@@ -177,7 +322,23 @@ func New(boot *bootstrap.Result) (*App, error) {
 	for _, entry := range buildResult.Components {
 		app.registry.Register(entry.Component, entry.Priority)
 	}
-	registerPostBuildLifecycle(app)
+	if options.mode == AppModeServer {
+		registerPostBuildLifecycle(app)
+	}
+
+	// B11. Trace retention cleaner (if configured).
+	if tsCfg := cfg.Observability.TraceStore; tsCfg.MaxAge > 0 || tsCfg.MaxTraces > 0 {
+		cleaner := turntrace.NewRetentionCleaner(app.TurnTraceStore, turntrace.RetentionConfig{
+			MaxAge:                tsCfg.MaxAge,
+			MaxTraces:             tsCfg.MaxTraces,
+			FailedTraceMultiplier: tsCfg.FailedTraceMultiplier,
+			CleanupInterval:       tsCfg.CleanupInterval,
+		})
+		app.registry.Register(cleaner, lifecycle.PriorityCore)
+	}
+
+	// Phase B succeeded — discard rollback cleanups; lifecycle registry owns everything now.
+	cleanups.clear()
 
 	return app, nil
 }
@@ -227,6 +388,10 @@ func populateAppFields(app *App, r appinit.Resolver) {
 			app.SkillRegistry = sr
 		}
 		app.AgentMemoryStore = iv.AgentMemoryStore
+		app.FeatureStatuses = iv.FeatureStatuses
+		if app.Gateway != nil && iv.FeatureStatuses != nil {
+			app.Gateway.SetFeatureStatuses(iv.FeatureStatuses.All())
+		}
 	}
 
 	// Automation.
@@ -273,6 +438,21 @@ func populateAppFields(app *App, r appinit.Resolver) {
 		app.MetricsCollector = obsc.collector
 		app.HealthRegistry = obsc.healthRegistry
 		app.TokenStore = obsc.tokenStore
+		app.TracerShutdown = obsc.tracerShutdown
+	}
+
+	// RunLedger.
+	if rlv, ok := r.Resolve(appinit.ProvidesRunLedger).(*runLedgerValues); ok && rlv != nil {
+		app.RunLedgerStore = rlv.store
+		app.RunLedgerPEV = rlv.pev
+	}
+
+	// Provenance.
+	if pv, ok := r.Resolve(appinit.ProvidesProvenance).(*provenanceValues); ok && pv != nil {
+		app.ProvenanceCheckpoints = pv.checkpointService
+		app.ProvenanceSessionTree = pv.sessionTree
+		app.ProvenanceAttribution = pv.attribution
+		app.ProvenanceBundle = pv.bundle
 	}
 }
 
@@ -291,6 +471,28 @@ func buildCatalogFromEntries(entries []appinit.CatalogEntry) *toolcatalog.Catalo
 		}
 	}
 	return catalog
+}
+
+// policyBusAdapter bridges exec.EventPublisher and eventbus.Bus.
+// Converts exec.PolicyDecisionData into eventbus.PolicyDecisionEvent
+// so that subscribers using eventbus.SubscribeTyped work correctly.
+type policyBusAdapter struct{ bus *eventbus.Bus }
+
+func (a *policyBusAdapter) Publish(e execpkg.PolicyEvent) {
+	if pd, ok := e.(execpkg.PolicyDecisionData); ok {
+		a.bus.Publish(eventbus.PolicyDecisionEvent{
+			Command:    pd.Command,
+			Unwrapped:  pd.Unwrapped,
+			Verdict:    pd.Verdict,
+			Reason:     pd.Reason,
+			Message:    pd.Message,
+			SessionKey: pd.SessionKey,
+			AgentName:  pd.AgentName,
+		})
+		return
+	}
+	// Fallback: forward as-is (interface method sets match).
+	a.bus.Publish(e)
 }
 
 // buildHookRegistry constructs the tool execution hook registry.
@@ -332,7 +534,7 @@ func buildApprovalProvider(cfg *config.Config, gw *gateway.Server) (*approval.Co
 }
 
 // wirePostAgent handles A2A, P2P executor, routes, and audit after agent creation.
-func wirePostAgent(app *App, r appinit.Resolver, tools []*agent.Tool, bus *eventbus.Bus, composite *approval.CompositeProvider, grantStore *approval.GrantStore, boot *bootstrap.Result) {
+func wirePostAgent(app *App, r appinit.Resolver, tools []*agent.Tool, bus *eventbus.Bus, composite *approval.CompositeProvider, grantStore *approval.GrantStore, boot *bootstrap.Result, auth *gateway.AuthManager) {
 	cfg := app.Config
 	adkAgent := app.Agent
 
@@ -369,6 +571,9 @@ func wirePostAgent(app *App, r appinit.Resolver, tools []*agent.Tool, bus *event
 			})
 
 			// Sandbox executor for P2P tool isolation.
+			// When toolIsolation.enabled=false (default), no executor is
+			// attached and the handler rejects inbound tool_invoke with
+			// ErrNoSandboxExecutor — this is the intended safe posture.
 			if cfg.P2P.ToolIsolation.Enabled {
 				sbxCfg := sandbox.Config{
 					Enabled:        true,
@@ -379,8 +584,13 @@ func wirePostAgent(app *App, r appinit.Resolver, tools []*agent.Tool, bus *event
 				if cfg.P2P.ToolIsolation.Container.Enabled {
 					containerExec, err := sandbox.NewContainerExecutor(sbxCfg, cfg.P2P.ToolIsolation.Container)
 					if err != nil {
-						logger().Warnf("Container sandbox unavailable, falling back to subprocess: %v", err)
-						sbxExec = sandbox.NewSubprocessExecutor(sbxCfg)
+						if cfg.P2P.ToolIsolation.Container.RequireContainer {
+							logger().Errorf("Container sandbox required but unavailable: %v", err)
+							// sbxExec stays nil — handler will reject P2P tool calls.
+						} else {
+							logger().Warnf("Container sandbox unavailable, falling back to subprocess: %v", err)
+							sbxExec = sandbox.NewSubprocessExecutor(sbxCfg)
+						}
 					} else {
 						sbxExec = containerExec
 						logger().Infof("P2P tool isolation enabled (container mode: %s)", containerExec.RuntimeName())
@@ -389,9 +599,13 @@ func wirePostAgent(app *App, r appinit.Resolver, tools []*agent.Tool, bus *event
 					sbxExec = sandbox.NewSubprocessExecutor(sbxCfg)
 					logger().Info("P2P tool isolation enabled (subprocess mode)")
 				}
-				p2pc.handler.SetSandboxExecutor(func(ctx context.Context, toolName string, params map[string]interface{}) (map[string]interface{}, error) {
-					return sbxExec.Execute(ctx, toolName, params)
-				})
+				if sbxExec != nil {
+					p2pc.handler.SetSandboxExecutor(func(ctx context.Context, toolName string, params map[string]interface{}) (map[string]interface{}, error) {
+						return sbxExec.Execute(ctx, toolName, params)
+					})
+				}
+			} else {
+				logger().Warnw("P2P enabled but toolIsolation disabled — inbound tool_invoke requests will be rejected; set p2p.toolIsolation.enabled=true to allow remote tool execution")
 			}
 
 			// Owner approval callback for inbound remote tool invocations.
@@ -433,15 +647,44 @@ func wirePostAgent(app *App, r appinit.Resolver, tools []*agent.Tool, bus *event
 					return resp.Approved, nil
 				})
 			}
+
+			// Wire safety-level gate for P2P tool invocations.
+			if app.ToolCatalog != nil {
+				maxLevel, ok := agent.ParseSafetyLevel(cfg.P2P.MaxSafetyLevel)
+				if !ok {
+					maxLevel = agent.SafetyLevelModerate
+				}
+				p2pc.handler.SetSafetyGate(
+					func(toolName string) (int, bool) {
+						level, found := app.ToolCatalog.GetToolSafetyLevel(toolName)
+						return int(level), found
+					},
+					int(maxLevel),
+					cfg.P2P.AllowedTools,
+				)
+			}
 		}
-		registerP2PRoutes(app.Gateway.Router(), p2pc)
+		registerP2PRoutes(app.Gateway.Router(), app, p2pc, auth)
 		logger().Info("P2P REST API routes registered")
+
+		// Connect ontology bridge to P2P handler.
+		if p2pc.handler != nil {
+			intv, _ := r.Resolve(appinit.ProvidesKnowledge).(*intelligenceValues)
+			if intv != nil && intv.OntologyBridge != nil {
+				if p2pc.reputation != nil {
+					intv.OntologyBridge.SetReputation(p2pc.reputation)
+				}
+				intv.OntologyBridge.SetEventBus(bus)
+				p2pc.handler.SetOntologyHandler(intv.OntologyBridge)
+				logger().Info("ontology bridge wired to P2P handler")
+			}
+		}
 	}
 
 	// Observability API routes.
 	obsc, _ := r.Resolve(appinit.ProvidesObservability).(*observabilityComponents)
 	if obsc != nil {
-		registerObservabilityRoutes(app.Gateway.Router(), obsc.collector, obsc.healthRegistry, obsc.tokenStore)
+		registerObservabilityRoutes(app.Gateway.Router(), obsc.collector, obsc.healthRegistry, obsc.tokenStore, boot.DBClient, obsc.promExporter)
 		logger().Info("observability API routes registered")
 	}
 
@@ -465,22 +708,30 @@ func wireMemoryAndTurnCallbacks(app *App, iv *intelligenceValues, fv *foundation
 
 	// Gateway turn callbacks for buffer triggers.
 	if app.MemoryBuffer != nil {
-		app.Gateway.OnTurnComplete(func(sessionKey string) {
+		app.TurnRunner.OnTurnComplete(func(sessionKey string) {
 			app.MemoryBuffer.Trigger(sessionKey)
 		})
 	}
 	if iv != nil && iv.AB != nil {
 		if ab, ok := iv.AB.(interface{ Trigger(string) }); ok {
-			app.Gateway.OnTurnComplete(func(sessionKey string) {
+			app.TurnRunner.OnTurnComplete(func(sessionKey string) {
 				ab.Trigger(sessionKey)
 			})
 		}
 	}
 	if app.LibrarianProactiveBuffer != nil {
-		app.Gateway.OnTurnComplete(func(sessionKey string) {
+		app.TurnRunner.OnTurnComplete(func(sessionKey string) {
 			app.LibrarianProactiveBuffer.Trigger(sessionKey)
 		})
 	}
+}
+
+func initTurnTraceStore(store session.Store) turntrace.Store {
+	entStore, ok := store.(*session.EntStore)
+	if !ok {
+		return nil
+	}
+	return turntrace.NewEntStore(entStore.Client())
 }
 
 // registerPostBuildLifecycle registers gateway and channel lifecycle components.
@@ -520,9 +771,8 @@ func registerPostBuildLifecycle(app *App) {
 				}()
 				return nil
 			},
-			func(_ context.Context) error {
-				ch.Stop()
-				return nil
+			func(ctx context.Context) error {
+				return ch.Stop(ctx)
 			},
 		), lifecycle.PriorityNetwork)
 	}
@@ -567,7 +817,6 @@ func resolveSR(iv *intelligenceValues) *skill.Registry {
 	return sr
 }
 
-
 // Start starts the application services using the lifecycle registry.
 func (a *App) Start(ctx context.Context) error {
 	logger().Info("starting application")
@@ -584,7 +833,7 @@ func (a *App) Stop(ctx context.Context) error {
 	}
 
 	// Stop all lifecycle-managed components in reverse startup order.
-	_ = a.registry.StopAll(ctx)
+	stopErr := a.registry.StopAll(ctx)
 
 	// Wait for all background goroutines to finish.
 	done := make(chan struct{})
@@ -593,10 +842,12 @@ func (a *App) Stop(ctx context.Context) error {
 		close(done)
 	}()
 
+	var waitErr error
 	select {
 	case <-done:
 		logger().Info("all services stopped")
 	case <-ctx.Done():
+		waitErr = ctx.Err()
 		logger().Warnw("shutdown timed out waiting for services", "error", ctx.Err())
 	}
 
@@ -613,13 +864,19 @@ func (a *App) Stop(ctx context.Context) error {
 		}
 	}
 
+	if a.TracerShutdown != nil {
+		if err := a.TracerShutdown(ctx); err != nil {
+			logger().Warnw("tracer shutdown error", "error", err)
+		}
+	}
+
 	if a.GraphStore != nil {
 		if err := a.GraphStore.Close(); err != nil {
 			logger().Warnw("graph store close error", "error", err)
 		}
 	}
 
-	return nil
+	return errors.Join(stopErr, waitErr)
 }
 
 // logToolRegistrationSummary logs a diagnostic summary of registered tool categories.

@@ -78,7 +78,7 @@ LLM agent settings including model selection, prompt configuration, and timeouts
 | `agent.multiAgent` | `bool` | `false` | Enable [multi-agent orchestration](features/multi-agent.md) |
 | `agent.agentsDir` | `string` | `""` | Directory containing user-defined [AGENT.md](features/multi-agent.md#custom-agent-definitions) agent definitions |
 | `agent.autoExtendTimeout` | `bool` | `false` | Auto-extend deadline when agent activity is detected |
-| `agent.maxRequestTimeout` | `duration` | | Absolute max when auto-extend enabled (default: 3× requestTimeout) |
+| `agent.maxRequestTimeout` | `duration` | | Absolute max when auto-extend enabled (default: 3x requestTimeout) |
 
 ---
 
@@ -214,7 +214,7 @@ The security interceptor controls tool execution approval and PII protection. Se
 |-----|------|---------|-------------|
 | `security.interceptor.enabled` | `bool` | `true` | Enable the security interceptor |
 | `security.interceptor.redactPii` | `bool` | `false` | Enable PII redaction in messages |
-| `security.interceptor.approvalPolicy` | `string` | `dangerous` | Tool approval policy: `always`, `dangerous`, `never` |
+| `security.interceptor.approvalPolicy` | `string` | `dangerous` | Tool approval policy: `all`, `dangerous`, `configured`, `none` |
 | `security.interceptor.approvalTimeoutSec` | `int` | `30` | Timeout for approval requests (seconds) |
 | `security.interceptor.notifyChannel` | `string` | | Channel to send approval notifications |
 | `security.interceptor.sensitiveTools` | `[]string` | | Tools that always require approval |
@@ -401,6 +401,25 @@ Tool execution hooks for security filtering, access control, and event publishin
 
 ---
 
+## Context Profile
+
+| Key | Type | Default | Description |
+|-----|------|---------|-------------|
+| `contextProfile` | `string` | - | Preset that auto-configures context subsystems: `off`, `lite`, `balanced`, `full` |
+
+Profiles control which subsystems are enabled:
+
+| Profile | Knowledge | Memory | Librarian | Graph |
+|---------|-----------|--------|-----------|-------|
+| `off` | - | - | - | - |
+| `lite` | ✓ | ✓ | - | - |
+| `balanced` | ✓ | ✓ | ✓ | - |
+| `full` | ✓ | ✓ | ✓ | ✓ |
+
+User-explicit overrides take precedence over profile defaults.
+
+---
+
 ## Knowledge
 
 | Key | Type | Default | Description |
@@ -516,6 +535,80 @@ Tool execution hooks for security filtering, access control, and event publishin
 | `graph.databasePath` | `string` | | Path to the graph database file |
 | `graph.maxTraversalDepth` | `int` | `2` | Max depth for graph traversal in Graph RAG |
 | `graph.maxExpansionResults` | `int` | `10` | Max results from graph expansion |
+
+---
+
+## Retrieval Coordinator
+
+> **Settings:** `lango settings` → Retrieval / Auto-Adjust
+
+The retrieval coordinator runs multiple search agents (FactSearch, TemporalSearch, ContextSearch) in parallel and merges results using evidence-based priority ranking.
+
+```json
+{
+  "retrieval": {
+    "enabled": true,
+    "feedback": true,
+    "autoAdjust": {
+      "enabled": true,
+      "mode": "shadow",
+      "boostDelta": 0.05,
+      "decayDelta": 0.01,
+      "decayInterval": 100,
+      "minScore": 0.1,
+      "maxScore": 5.0,
+      "warmupTurns": 50
+    }
+  }
+}
+```
+
+| Key | Type | Default | Description |
+|-----|------|---------|-------------|
+| `retrieval.enabled` | `bool` | `false` | Enable multi-agent retrieval coordinator |
+| `retrieval.feedback` | `bool` | `false` | Log context injection events for observability |
+| `retrieval.autoAdjust.enabled` | `bool` | `false` | Enable relevance score auto-adjustment |
+| `retrieval.autoAdjust.mode` | `string` | `shadow` | `shadow` (observe only) or `active` (apply changes) |
+| `retrieval.autoAdjust.boostDelta` | `float64` | `0.05` | Score boost per context injection |
+| `retrieval.autoAdjust.decayDelta` | `float64` | `0.01` | Score decay per interval |
+| `retrieval.autoAdjust.decayInterval` | `int` | `100` | Turns between global decay |
+| `retrieval.autoAdjust.minScore` | `float64` | `0.1` | Score floor |
+| `retrieval.autoAdjust.maxScore` | `float64` | `5.0` | Score ceiling |
+| `retrieval.autoAdjust.warmupTurns` | `int` | `50` | Turns before auto-adjust activates |
+
+---
+
+## Context Budget
+
+> **Settings:** `lango settings` → Context Budget
+
+Controls how the model's context window is allocated across prompt sections. Ratios must sum to 1.0 (tolerance: +/-0.001).
+
+```json
+{
+  "context": {
+    "modelWindow": 0,
+    "responseReserve": 0,
+    "allocation": {
+      "knowledge": 0.30,
+      "rag": 0.25,
+      "memory": 0.25,
+      "runSummary": 0.10,
+      "headroom": 0.10
+    }
+  }
+}
+```
+
+| Key | Type | Default | Description |
+|-----|------|---------|-------------|
+| `context.modelWindow` | `int` | `0` | Model context window in tokens (0 = auto-detect) |
+| `context.responseReserve` | `int` | `0` | Tokens reserved for response (0 = use agent.maxTokens) |
+| `context.allocation.knowledge` | `float64` | `0.30` | Knowledge section budget ratio |
+| `context.allocation.rag` | `float64` | `0.25` | RAG section budget ratio |
+| `context.allocation.memory` | `float64` | `0.25` | Memory section budget ratio |
+| `context.allocation.runSummary` | `float64` | `0.10` | Run summary budget ratio |
+| `context.allocation.headroom` | `float64` | `0.10` | Unallocated headroom ratio |
 
 ---
 
@@ -939,7 +1032,7 @@ Each firewall rule entry:
 | `observability.audit.enabled` | `bool` | `false` | Enable audit logging |
 | `observability.audit.retentionDays` | `int` | `90` | Days to retain audit records |
 | `observability.metrics.enabled` | `bool` | `true` | Enable metrics export endpoint |
-| `observability.metrics.format` | `string` | `json` | Metrics export format (`json`, `prometheus`) |
+| `observability.metrics.format` | `string` | `json` | Metrics export format (currently only `json` is implemented) |
 
 ---
 
@@ -1059,6 +1152,337 @@ See [Cron Scheduling](automation/cron.md) for usage details and [CLI reference](
 | `librarian.autoSaveConfidence` | `string` | `high` | Confidence level for auto-saving: `low`, `medium`, `high` |
 | `librarian.provider` | `string` | | AI provider for librarian (empty = agent default) |
 | `librarian.model` | `string` | | Model for librarian (empty = agent default) |
+
+---
+
+## RunLedger
+
+!!! warning "Experimental"
+    The RunLedger (Task OS) is experimental. It progresses through shadow, write-through, and authoritative-read adoption phases.
+
+> **Settings:** `lango settings` → RunLedger
+
+```json
+{
+  "runLedger": {
+    "enabled": false,
+    "shadow": true,
+    "writeThrough": false,
+    "authoritativeRead": false,
+    "workspaceIsolation": false,
+    "staleTtl": "1h",
+    "maxRunHistory": 0,
+    "validatorTimeout": "2m",
+    "plannerMaxRetries": 2
+  }
+}
+```
+
+| Key | Type | Default | Description |
+|-----|------|---------|-------------|
+| `runLedger.enabled` | `bool` | `false` | Activate the RunLedger system |
+| `runLedger.shadow` | `bool` | `true` | Shadow mode: journal records only, existing systems unaffected |
+| `runLedger.writeThrough` | `bool` | `false` | All creates/updates go through ledger first, then mirror to legacy stores |
+| `runLedger.authoritativeRead` | `bool` | `false` | State reads come from ledger snapshots only |
+| `runLedger.workspaceIsolation` | `bool` | `false` | Enable runtime PEV workspace wiring for coding-step validation |
+| `runLedger.staleTtl` | `duration` | `1h` | How long a paused run remains resumable |
+| `runLedger.maxRunHistory` | `int` | `0` | Maximum number of runs to keep (0 = unlimited) |
+| `runLedger.validatorTimeout` | `duration` | `2m` | Timeout for individual validator execution |
+| `runLedger.plannerMaxRetries` | `int` | `2` | How many times a malformed planner output is retried |
+
+---
+
+## Provenance
+
+!!! warning "Experimental"
+    The provenance system is experimental. It provides session-level checkpoint tracking for auditability and replay.
+
+> **Settings:** `lango settings` → Provenance
+
+```json
+{
+  "provenance": {
+    "enabled": false,
+    "checkpoints": {
+      "autoOnStepComplete": false,
+      "autoOnPolicy": false,
+      "maxPerSession": 0,
+      "retentionDays": 0
+    }
+  }
+}
+```
+
+| Key | Type | Default | Description |
+|-----|------|---------|-------------|
+| `provenance.enabled` | `bool` | `false` | Activate the provenance system |
+| `provenance.checkpoints.autoOnStepComplete` | `bool` | `false` | Create a checkpoint when a RunLedger step passes validation |
+| `provenance.checkpoints.autoOnPolicy` | `bool` | `false` | Create a checkpoint when a policy decision is applied |
+| `provenance.checkpoints.maxPerSession` | `int` | `0` | Maximum checkpoints per session (0 = unlimited) |
+| `provenance.checkpoints.retentionDays` | `int` | `0` | Days to keep checkpoints before pruning (0 = unlimited) |
+
+---
+
+## Ontology
+
+!!! warning "Experimental"
+    The knowledge ontology subsystem is experimental. Schema lifecycle governance, P2P exchange, and ACL enforcement may change in future releases.
+
+Typed knowledge ontology for structured entity management with schema governance, access control, and P2P exchange.
+
+> **Settings:** `lango settings` → Ontology
+
+```json
+{
+  "ontology": {
+    "enabled": false,
+    "acl": {
+      "enabled": false,
+      "roles": {},
+      "p2pPermission": "write"
+    },
+    "governance": {
+      "enabled": false,
+      "maxNewPerDay": 20,
+      "quarantinePeriodHrs": 24,
+      "shadowModeDurationHrs": 168,
+      "minUsageForPromotion": 5,
+      "schemaExplosionBudget": 100
+    },
+    "exchange": {
+      "enabled": false,
+      "minTrustForSchema": 0.5,
+      "minTrustForFacts": 0.7,
+      "autoImportMode": "shadow",
+      "maxTypesPerImport": 10
+    }
+  }
+}
+```
+
+| Key | Type | Default | Description |
+|-----|------|---------|-------------|
+| `ontology.enabled` | `bool` | `false` | Enable the ontology registry and seed migration |
+| `ontology.acl.enabled` | `bool` | `false` | Activate ACL policy enforcement for ontology operations |
+| `ontology.acl.roles` | `map[string]string` | `{}` | Map principal names to permission levels: `read`, `write`, or `admin` |
+| `ontology.acl.p2pPermission` | `string` | `write` | Default permission for `peer:` prefix principals |
+| `ontology.governance.enabled` | `bool` | `false` | Activate governance FSM enforcement on `RegisterType`/`RegisterPredicate` |
+| `ontology.governance.maxNewPerDay` | `int` | `20` | Combined daily limit for type + predicate proposals |
+| `ontology.governance.quarantinePeriodHrs` | `int` | `24` | Quarantine duration in hours before a proposal can advance |
+| `ontology.governance.shadowModeDurationHrs` | `int` | `168` | Shadow mode duration in hours (default: 7 days) |
+| `ontology.governance.minUsageForPromotion` | `int` | `5` | Minimum usage count required for auto-promotion from shadow to active |
+| `ontology.governance.schemaExplosionBudget` | `int` | `100` | Monthly limit for new proposals to prevent schema explosion |
+| `ontology.exchange.enabled` | `bool` | `false` | Enable P2P ontology exchange (requires both `p2p.enabled` and `ontology.enabled`) |
+| `ontology.exchange.minTrustForSchema` | `float` | `0.5` | Minimum peer trust score for schema exchange |
+| `ontology.exchange.minTrustForFacts` | `float` | `0.7` | Minimum peer trust score for fact exchange |
+| `ontology.exchange.autoImportMode` | `string` | `shadow` | How proposed schemas are imported: `shadow`, `governed`, or `disabled` |
+| `ontology.exchange.maxTypesPerImport` | `int` | `10` | Maximum types imported from a single peer exchange |
+
+---
+
+## Alerting
+
+Operational alerting with threshold-based monitoring for policy decisions, recovery events, and circuit breaker trips.
+
+> **Settings:** `lango settings` → Alerting
+
+```json
+{
+  "alerting": {
+    "enabled": false,
+    "policyBlockRateThreshold": 10,
+    "recoveryRetryThreshold": 5
+  }
+}
+```
+
+| Key | Type | Default | Description |
+|-----|------|---------|-------------|
+| `alerting.enabled` | `bool` | `false` | Enable operational alerting |
+| `alerting.policyBlockRateThreshold` | `int` | `10` | Policy block events per 5-minute window before triggering an alert |
+| `alerting.recoveryRetryThreshold` | `int` | `5` | Recovery retry events per session before triggering an alert |
+
+Alerts flow through: EventBus (real-time) → Audit log (persistent) → CLI (`lango alerts list`). See [Operational Alerting](features/alerting.md) for architecture details.
+
+---
+
+## Sandbox
+
+!!! warning "Experimental"
+    The OS-level sandbox is experimental. It applies to child processes spawned by exec tools, MCP stdio servers, and skill scripts. Independent of `p2p.toolIsolation`.
+
+> **Settings:** `lango settings` → OS Sandbox
+
+**Control-plane protection (baseline).** Whenever the sandbox is enabled, every sandboxed child process — exec-tool commands, skill scripts, and MCP stdio servers — is blocked from reading or writing the lango control-plane (`~/.lango`, including the session/audit database, secret tokens, skills directory, workflow state). The workspace's `.git` directory is also denied as a baseline so agent commands cannot mutate git metadata. These protections do not require any extra configuration.
+
+**Path semantics (file-level deny, symlinks, globs).** All sandbox policy paths (`allowedWritePaths`, deny entries, internal baselines) flow through a shared normalization pipeline: sanitize → absolute → glob expand → symlink resolve. This means:
+
+- **File-level deny.** A deny entry pointing to a regular file (e.g. `~/.lango/lango.db`) is now denied via a `/dev/null` bind mount — previous versions rejected non-directory deny paths. Linked git worktrees (`.git` as a file) are denied at the pointer AND their resolved gitdir target.
+- **Symlink resolution.** Every path is resolved through `filepath.EvalSymlinks` before backend emission, so a symlinked `.git` directory or deny target is masked at its real filesystem location — symlink escape closed.
+- **Glob patterns.** Entries containing `*`, `?`, or `[` are expanded via `filepath.Glob`. An entry like `~/.lango/*.db` matches every `.db` file under `~/.lango`. Unmatched patterns are silently skipped (shell nullglob semantics); invalid patterns (unclosed bracket, etc.) cause the policy to fail loudly at startup.
+
+**Fail-open visibility.** When `failClosed=false` (default) and the sandbox cannot be applied at runtime, lango proceeds without isolation but prints a one-shot stderr warning so the user notices that subsequent commands are running unsandboxed. Each apply/skip/reject/exclude decision is also recorded in the audit log and visible via `lango sandbox status`.
+
+```json
+{
+  "sandbox": {
+    "enabled": false,
+    "failClosed": false,
+    "workspacePath": "",
+    "networkMode": "deny",
+    "allowedNetworkIPs": [],
+    "allowedWritePaths": [],
+    "excludedCommands": [],
+    "timeoutPerTool": "30s",
+    "os": {
+      "seccompProfile": "moderate",
+      "seatbeltCustomProfile": ""
+    }
+  }
+}
+```
+
+| Key | Type | Default | Description |
+|-----|------|---------|-------------|
+| `sandbox.enabled` | `bool` | `false` | Enable OS-level sandboxing for tool-spawned child processes |
+| `sandbox.failClosed` | `bool` | `false` | Reject tool execution when OS sandbox is unavailable (false = fail-open + one-shot stderr warning) |
+| `sandbox.backend` | `string` | `auto` | Isolation backend: `auto`, `seatbelt` (macOS), `bwrap` (Linux, requires bubblewrap binary), `native` (Landlock+seccomp, planned), `none`. Invalid values rejected at startup |
+| `sandbox.workspacePath` | `string` | `""` | Root directory for workspace-relative write access (empty = CWD). Tilde and relative paths are normalized at load time |
+| `sandbox.networkMode` | `string` | `deny` | Network access from sandboxed processes: `deny` or `allow`. On Linux/bwrap: `deny` → `--unshare-net`; `allow` → host network |
+| `sandbox.allowedNetworkIPs` | `[]string` | `[]` | IP addresses permitted for outbound connections (macOS Seatbelt only; ignored on Linux/bwrap which has no AF_INET filter) |
+| `sandbox.allowedWritePaths` | `[]string` | `[]` | Additional paths writable from the sandbox beyond `workspacePath`. Each entry is normalized at load time AND passes through the shared sandbox pipeline (glob expansion via `filepath.Glob`, symlink resolution via `filepath.EvalSymlinks`). Entries that fall under `dataRoot` are still denied — the control-plane mask wins |
+| `sandbox.excludedCommands` | `[]string` | `[]` | Command basenames (e.g. `git`, `docker`) that bypass the sandbox. Matched against the basename of the user command's first whitespace-separated token; chained commands like `cd /tmp && git status` do NOT match. Excluded commands run UNSANDBOXED and every match is recorded in audit. Use sparingly |
+| `sandbox.timeoutPerTool` | `duration` | `30s` | Maximum duration for a single sandboxed tool execution |
+| `sandbox.os.seccompProfile` | `string` | `moderate` | Seccomp filter profile on Linux: `strict`, `moderate`, or `permissive`. Consumed by the planned native (Landlock+seccomp) backend; bwrap ignores this field |
+| `sandbox.os.seatbeltCustomProfile` | `string` | `""` | Path to a custom `.sb` profile on macOS (overrides generated profile). Tilde and relative paths normalized at load time |
+
+---
+
+## Gatekeeper
+
+Response sanitization (output gatekeeper) settings. The gatekeeper strips internal markers, thought tags, and large raw JSON from agent responses before they reach the user.
+
+> **Settings:** `lango settings` → Gatekeeper
+
+```json
+{
+  "gatekeeper": {
+    "enabled": true,
+    "stripThoughtTags": true,
+    "stripInternalMarkers": true,
+    "stripRawJSON": true,
+    "rawJsonThreshold": 500,
+    "customPatterns": []
+  }
+}
+```
+
+| Key | Type | Default | Description |
+|-----|------|---------|-------------|
+| `gatekeeper.enabled` | `bool` | `true` | Enable response sanitization |
+| `gatekeeper.stripThoughtTags` | `bool` | `true` | Strip `<thought>`/`<thinking>` tags from responses |
+| `gatekeeper.stripInternalMarkers` | `bool` | `true` | Strip lines starting with `[INTERNAL]`, `[DEBUG]`, `[SYSTEM]`, `[OBSERVATION]` |
+| `gatekeeper.stripRawJSON` | `bool` | `true` | Replace large raw JSON code blocks with a placeholder |
+| `gatekeeper.rawJsonThreshold` | `int` | `500` | Character threshold for raw JSON replacement |
+| `gatekeeper.customPatterns` | `[]string` | `[]` | Additional regex patterns to strip from responses |
+
+---
+
+## MCP
+
+MCP (Model Context Protocol) server integration for connecting to external tool servers.
+
+> **Settings:** `lango settings` → MCP
+
+```json
+{
+  "mcp": {
+    "enabled": false,
+    "defaultTimeout": "30s",
+    "maxOutputTokens": 25000,
+    "healthCheckInterval": "30s",
+    "autoReconnect": true,
+    "maxReconnectAttempts": 5,
+    "servers": {
+      "my-server": {
+        "transport": "stdio",
+        "command": "npx",
+        "args": ["-y", "@modelcontextprotocol/server-filesystem"],
+        "env": {},
+        "enabled": true,
+        "timeout": "",
+        "safetyLevel": "dangerous"
+      }
+    }
+  }
+}
+```
+
+| Key | Type | Default | Description |
+|-----|------|---------|-------------|
+| `mcp.enabled` | `bool` | `false` | Enable MCP server integration |
+| `mcp.defaultTimeout` | `duration` | `30s` | Default timeout for MCP operations |
+| `mcp.maxOutputTokens` | `int` | `25000` | Maximum output size from MCP tool calls |
+| `mcp.healthCheckInterval` | `duration` | `30s` | Interval for periodic server health probes |
+| `mcp.autoReconnect` | `bool` | `true` | Automatically reconnect on connection loss |
+| `mcp.maxReconnectAttempts` | `int` | `5` | Maximum reconnection attempts before giving up |
+
+Each server entry (`mcp.servers.<name>`):
+
+| Key | Type | Default | Description |
+|-----|------|---------|-------------|
+| `mcp.servers.<name>.transport` | `string` | `stdio` | Transport type: `stdio`, `http`, `sse` |
+| `mcp.servers.<name>.command` | `string` | | Executable for stdio transport |
+| `mcp.servers.<name>.args` | `[]string` | `[]` | Command-line arguments for stdio transport |
+| `mcp.servers.<name>.env` | `map[string]string` | `{}` | Environment variables for stdio transport (supports `${VAR}` expansion) |
+| `mcp.servers.<name>.url` | `string` | | Endpoint URL for http/sse transport |
+| `mcp.servers.<name>.headers` | `map[string]string` | `{}` | HTTP headers for http/sse transport (supports `${VAR}` expansion) |
+| `mcp.servers.<name>.enabled` | `bool` | `true` | Whether this server is active |
+| `mcp.servers.<name>.timeout` | `duration` | | Override the global default timeout for this server |
+| `mcp.servers.<name>.safetyLevel` | `string` | `dangerous` | Tool safety level: `safe`, `moderate`, `dangerous` |
+
+---
+
+## Orchestration
+
+!!! warning "Experimental"
+    Structured orchestration is experimental. It wraps the agent executor with delegation guard, budget policy, and recovery policy.
+
+> **Settings:** `lango settings` → Orchestration
+
+```json
+{
+  "agent": {
+    "orchestration": {
+      "mode": "classic",
+      "circuitBreaker": {
+        "failureThreshold": 3,
+        "resetTimeout": "30s"
+      },
+      "budget": {
+        "toolCallLimit": 50,
+        "delegationLimit": 15,
+        "alertThreshold": 0.8
+      },
+      "recovery": {
+        "maxRetries": 2,
+        "circuitBreakerCooldown": "5m"
+      }
+    }
+  }
+}
+```
+
+| Key | Type | Default | Description |
+|-----|------|---------|-------------|
+| `agent.orchestration.mode` | `string` | `classic` | Orchestration mode: `classic` (default) or `structured` |
+| `agent.orchestration.circuitBreaker.failureThreshold` | `int` | `3` | Consecutive failures before circuit opens |
+| `agent.orchestration.circuitBreaker.resetTimeout` | `duration` | `30s` | Time before half-open probe |
+| `agent.orchestration.budget.toolCallLimit` | `int` | `50` | Maximum tool calls per agent run |
+| `agent.orchestration.budget.delegationLimit` | `int` | `15` | Maximum delegations before alerting |
+| `agent.orchestration.budget.alertThreshold` | `float64` | `0.8` | Budget usage percentage at which alerts fire |
+| `agent.orchestration.recovery.maxRetries` | `int` | `2` | Maximum retry attempts on failure |
+| `agent.orchestration.recovery.circuitBreakerCooldown` | `duration` | `5m` | Time before re-enabling a tripped agent |
 
 ---
 

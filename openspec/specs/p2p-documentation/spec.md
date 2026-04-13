@@ -1,4 +1,8 @@
-## ADDED Requirements
+## Purpose
+
+Capability spec for p2p-documentation. See requirements below for scope and behavior contracts.
+
+## Requirements
 
 ### Requirement: P2P feature documentation
 The system SHALL provide docs/features/p2p-network.md covering: overview, identity (DID scheme), handshake flow, knowledge firewall (ACL rules, response sanitization, ZK attestation), discovery (GossipSub, agent card structure), ZK circuits, configuration, and CLI commands.

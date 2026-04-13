@@ -11,6 +11,7 @@ import (
 	"github.com/libp2p/go-libp2p/core/network"
 	"go.uber.org/zap"
 
+	"github.com/langoai/lango/internal/ctxkeys"
 	"github.com/langoai/lango/internal/eventbus"
 	"github.com/langoai/lango/internal/p2p/firewall"
 	"github.com/langoai/lango/internal/p2p/handshake"
@@ -31,6 +32,10 @@ type SecurityEventTracker interface {
 	RecordToolFailure(peerDID string)
 	RecordToolSuccess(peerDID string)
 }
+
+// SafetyLevelChecker looks up a tool's safety level by name.
+// Returns the numeric level and true if found, or (dangerous, false) for unknown tools.
+type SafetyLevelChecker func(toolName string) (int, bool)
 
 // CardProvider returns the local agent card as a map.
 type CardProvider func() map[string]interface{}
@@ -74,10 +79,16 @@ type Handler struct {
 	approvalFn     ToolApprovalFunc
 	securityEvents SecurityEventTracker
 	eventBus       *eventbus.Bus
-	negotiator     NegotiateHandler
-	teamHandler    TeamHandler
-	localDID       string
-	logger         *zap.SugaredLogger
+	negotiator      NegotiateHandler
+	teamHandler     TeamHandler
+	ontologyHandler OntologyHandler
+	localDID        string
+	logger          *zap.SugaredLogger
+
+	// Safety-level gate for P2P tool invocations.
+	safetyChecker  SafetyLevelChecker
+	maxSafetyLevel int      // numeric threshold (1=safe, 2=moderate, 3=dangerous)
+	allowedTools   []string // explicit whitelist that bypasses the safety gate
 }
 
 // HandlerConfig configures the protocol handler.
@@ -145,6 +156,20 @@ func (h *Handler) SetTeamHandler(fn TeamHandler) {
 	h.teamHandler = fn
 }
 
+// SetSafetyGate configures the safety-level gate for P2P tool invocations.
+// maxLevel is the numeric safety threshold (1=safe, 2=moderate, 3=dangerous).
+// checker looks up a tool's safety level; allowedTools bypasses the gate.
+func (h *Handler) SetSafetyGate(checker SafetyLevelChecker, maxLevel int, allowedTools []string) {
+	h.safetyChecker = checker
+	h.maxSafetyLevel = maxLevel
+	h.allowedTools = allowedTools
+}
+
+// SetOntologyHandler sets the handler for ontology schema exchange messages.
+func (h *Handler) SetOntologyHandler(oh OntologyHandler) {
+	h.ontologyHandler = oh
+}
+
 // StreamHandler returns a libp2p stream handler for incoming A2A messages.
 func (h *Handler) StreamHandler() network.StreamHandler {
 	return func(s network.Stream) {
@@ -193,6 +218,10 @@ func (h *Handler) handleRequest(ctx context.Context, s network.Stream, req *Requ
 		return h.handleNegotiate(ctx, req, peerDID)
 	case RequestTeamInvite, RequestTeamAccept, RequestTeamTask, RequestTeamResult, RequestTeamDisband:
 		return h.handleTeamMessage(ctx, req, peerDID)
+	case RequestSchemaQuery:
+		return h.handleSchemaQuery(ctx, req, peerDID)
+	case RequestSchemaPropose:
+		return h.handleSchemaPropose(ctx, req, peerDID)
 	default:
 		return &Response{
 			RequestID: req.RequestID,
@@ -245,6 +274,8 @@ func (h *Handler) handleCapabilityQuery(req *Request, peerDID string) *Response 
 
 // handleToolInvoke executes a tool and returns the result.
 func (h *Handler) handleToolInvoke(ctx context.Context, req *Request, peerDID string) *Response {
+	ctx = ctxkeys.WithP2PRequest(ctx)
+
 	toolName, _ := req.Payload["toolName"].(string)
 	if toolName == "" {
 		return &Response{
@@ -264,6 +295,16 @@ func (h *Handler) handleToolInvoke(ctx context.Context, req *Request, peerDID st
 				Error:     err.Error(),
 				Timestamp: time.Now(),
 			}
+		}
+	}
+
+	// Safety-level gate: block tools that exceed the configured max level.
+	if !h.checkSafetyGate(toolName) {
+		return &Response{
+			RequestID: req.RequestID,
+			Status:    ResponseStatusDenied,
+			Error:     ErrToolSafetyBlocked.Error(),
+			Timestamp: time.Now(),
 		}
 	}
 
@@ -299,12 +340,17 @@ func (h *Handler) handleToolInvoke(ctx context.Context, req *Request, peerDID st
 		}
 	}
 
-	// Execute tool (prefer sandbox executor for process isolation).
-	exec := h.executor
-	if h.sandboxExec != nil {
-		exec = h.sandboxExec
+	// Execute tool through sandbox executor only — refuse in-process fallback
+	// for remote peer requests to prevent host process memory access.
+	if h.sandboxExec == nil {
+		return &Response{
+			RequestID: req.RequestID,
+			Status:    ResponseStatusDenied,
+			Error:     ErrNoSandboxExecutor.Error(),
+			Timestamp: time.Now(),
+		}
 	}
-	result, err := exec(ctx, toolName, params)
+	result, err := h.sandboxExec(ctx, toolName, params)
 	if err != nil {
 		if h.securityEvents != nil {
 			h.securityEvents.RecordToolFailure(peerDID)
@@ -409,6 +455,8 @@ func (h *Handler) handlePriceQuery(ctx context.Context, req *Request, peerDID st
 
 // handleToolInvokePaid executes a paid tool invocation with payment verification.
 func (h *Handler) handleToolInvokePaid(ctx context.Context, req *Request, peerDID string) *Response {
+	ctx = ctxkeys.WithP2PRequest(ctx)
+
 	toolName, _ := req.Payload["toolName"].(string)
 	if toolName == "" {
 		return &Response{
@@ -431,7 +479,18 @@ func (h *Handler) handleToolInvokePaid(ctx context.Context, req *Request, peerDI
 		}
 	}
 
-	// 2. Payment gate check.
+	// 2. Safety-level gate: block tools that exceed the configured max level.
+	// Must run before payment gate to avoid charging for tools that will be denied.
+	if !h.checkSafetyGate(toolName) {
+		return &Response{
+			RequestID: req.RequestID,
+			Status:    ResponseStatusDenied,
+			Error:     ErrToolSafetyBlocked.Error(),
+			Timestamp: time.Now(),
+		}
+	}
+
+	// 3. Payment gate check.
 	var verifiedAuth interface{}
 	var settlementID string
 	if h.payGate != nil {
@@ -471,7 +530,7 @@ func (h *Handler) handleToolInvokePaid(ctx context.Context, req *Request, peerDI
 		}
 	}
 
-	// 3. Owner approval check (default-deny when no approval handler is configured).
+	// 4. Owner approval check (default-deny when no approval handler is configured).
 	params, _ := req.Payload["params"].(map[string]interface{})
 	if params == nil {
 		params = map[string]interface{}{}
@@ -503,21 +562,18 @@ func (h *Handler) handleToolInvokePaid(ctx context.Context, req *Request, peerDI
 		}
 	}
 
-	// 4. Execute tool (prefer sandbox executor for process isolation).
-	paidExec := h.executor
-	if h.sandboxExec != nil {
-		paidExec = h.sandboxExec
-	}
-	if paidExec == nil {
+	// 4. Execute tool through sandbox executor only — refuse in-process fallback
+	// for remote peer requests to prevent host process memory access.
+	if h.sandboxExec == nil {
 		return &Response{
 			RequestID: req.RequestID,
-			Status:    ResponseStatusError,
-			Error:     ErrExecutorNotConfigured.Error(),
+			Status:    ResponseStatusDenied,
+			Error:     ErrNoSandboxExecutor.Error(),
 			Timestamp: time.Now(),
 		}
 	}
 
-	result, err := paidExec(ctx, toolName, params)
+	result, err := h.sandboxExec(ctx, toolName, params)
 	if err != nil {
 		if h.securityEvents != nil {
 			h.securityEvents.RecordToolFailure(peerDID)
@@ -589,6 +645,24 @@ func (h *Handler) resolvePeerDID(s network.Stream, token string) string {
 	}
 
 	return ""
+}
+
+// checkSafetyGate returns true if the tool is allowed under the safety-level
+// policy. When no checker is configured, all tools pass (backward compatible).
+func (h *Handler) checkSafetyGate(toolName string) bool {
+	if h.safetyChecker == nil {
+		return true
+	}
+
+	// Explicit whitelist bypasses the level check.
+	for _, name := range h.allowedTools {
+		if name == toolName {
+			return true
+		}
+	}
+
+	level, _ := h.safetyChecker(toolName)
+	return level <= h.maxSafetyLevel
 }
 
 // sendError sends a quick error response on a stream.
@@ -684,4 +758,110 @@ func SendRequest(ctx context.Context, s network.Stream, reqType RequestType, tok
 	}
 
 	return &resp, nil
+}
+
+// handleSchemaQuery processes a schema_query request.
+func (h *Handler) handleSchemaQuery(ctx context.Context, req *Request, peerDID string) *Response {
+	if h.ontologyHandler == nil {
+		return &Response{
+			RequestID: req.RequestID,
+			Status:    ResponseStatusError,
+			Error:     "ontology handler not configured",
+			Timestamp: time.Now(),
+		}
+	}
+
+	raw, err := json.Marshal(req.Payload)
+	if err != nil {
+		return &Response{
+			RequestID: req.RequestID,
+			Status:    ResponseStatusError,
+			Error:     fmt.Sprintf("marshal schema query payload: %v", err),
+			Timestamp: time.Now(),
+		}
+	}
+
+	var sqReq SchemaQueryRequest
+	if err := json.Unmarshal(raw, &sqReq); err != nil {
+		return &Response{
+			RequestID: req.RequestID,
+			Status:    ResponseStatusError,
+			Error:     fmt.Sprintf("decode schema query: %v", err),
+			Timestamp: time.Now(),
+		}
+	}
+
+	sqResp, err := h.ontologyHandler.HandleSchemaQuery(ctx, peerDID, sqReq)
+	if err != nil {
+		return &Response{
+			RequestID: req.RequestID,
+			Status:    ResponseStatusError,
+			Error:     err.Error(),
+			Timestamp: time.Now(),
+		}
+	}
+
+	result := map[string]interface{}{}
+	respBytes, _ := json.Marshal(sqResp)
+	_ = json.Unmarshal(respBytes, &result)
+
+	return &Response{
+		RequestID: req.RequestID,
+		Status:    ResponseStatusOK,
+		Result:    result,
+		Timestamp: time.Now(),
+	}
+}
+
+// handleSchemaPropose processes a schema_propose request.
+func (h *Handler) handleSchemaPropose(ctx context.Context, req *Request, peerDID string) *Response {
+	if h.ontologyHandler == nil {
+		return &Response{
+			RequestID: req.RequestID,
+			Status:    ResponseStatusError,
+			Error:     "ontology handler not configured",
+			Timestamp: time.Now(),
+		}
+	}
+
+	raw, err := json.Marshal(req.Payload)
+	if err != nil {
+		return &Response{
+			RequestID: req.RequestID,
+			Status:    ResponseStatusError,
+			Error:     fmt.Sprintf("marshal schema propose payload: %v", err),
+			Timestamp: time.Now(),
+		}
+	}
+
+	var spReq SchemaProposeRequest
+	if err := json.Unmarshal(raw, &spReq); err != nil {
+		return &Response{
+			RequestID: req.RequestID,
+			Status:    ResponseStatusError,
+			Error:     fmt.Sprintf("decode schema propose: %v", err),
+			Timestamp: time.Now(),
+		}
+	}
+
+	spResp, err := h.ontologyHandler.HandleSchemaPropose(ctx, peerDID, spReq)
+	if err != nil {
+		return &Response{
+			RequestID: req.RequestID,
+			Status:    ResponseStatusError,
+			Error:     err.Error(),
+			Timestamp: time.Now(),
+		}
+	}
+
+	result := map[string]interface{}{}
+	respBytes, _ := json.Marshal(spResp)
+	_ = json.Unmarshal(respBytes, &result)
+
+	return &Response{
+		RequestID: req.RequestID,
+		Status:    ResponseStatusOK,
+		Result:    result,
+		Timestamp: time.Now(),
+	}
 }

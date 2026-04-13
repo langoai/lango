@@ -1,3 +1,9 @@
+## Purpose
+
+Hierarchical multi-agent orchestration for Lango. Defines how the tool-less orchestrator routes work to specialist sub-agents, how tools are partitioned, and what runtime delegation guarantees the system must uphold.
+
+## Requirements
+
 ### Requirement: Orchestrator universal tools
 The orchestration `Config` struct SHALL include a `UniversalTools` field. In multi-agent mode, the orchestrator SHALL NOT receive universal tools. `BuildAgentTree` SHALL NOT adapt or assign `UniversalTools` to the orchestrator agent. The orchestrator SHALL have no direct tools and MUST delegate all tasks to sub-agents.
 
@@ -20,11 +26,11 @@ The orchestration `Config` struct SHALL include a `UniversalTools` field. In mul
 - **AND** `builtin_*` tools SHALL not appear in any RoleToolSet field
 
 ### Requirement: Hierarchical agent tree with sub-agents
-The system SHALL support a multi-agent mode (`agent.multiAgent: true`) that creates an orchestrator root agent with specialized sub-agents: operator, navigator, vault, librarian, automator, planner, and chronicler. The orchestrator SHALL have NO direct tools (`Tools: nil`) and MUST delegate all tool-requiring tasks to sub-agents. Each sub-agent SHALL include an Escalation Protocol section in its instruction that directs it to call `transfer_to_agent` with agent_name `lango-orchestrator` when it receives an out-of-scope request. Sub-agents SHALL NOT emit `[REJECT]` text or tell users to ask another agent.
+The system SHALL support a multi-agent mode (`agent.multiAgent: true`) that creates an orchestrator root agent with specialized sub-agents: operator, navigator, vault, librarian, automator, planner, chronicler, and ontologist. The orchestrator SHALL have NO direct tools (`Tools: nil`) and MUST delegate all tool-requiring tasks to sub-agents. Each sub-agent SHALL include an Escalation Protocol section in its instruction that directs it to call `transfer_to_agent` with agent_name `lango-orchestrator` when it receives an out-of-scope request. Sub-agents SHALL NOT emit `[REJECT]` text or tell users to ask another agent.
 
 #### Scenario: Multi-agent mode enabled
 - **WHEN** `agent.multiAgent` is true
-- **THEN** BuildAgentTree SHALL create an orchestrator that has NO direct tools AND has sub-agents (operator, navigator, vault, librarian, automator, planner, chronicler)
+- **THEN** BuildAgentTree SHALL create an orchestrator that has NO direct tools AND has sub-agents (operator, navigator, vault, librarian, automator, planner, chronicler, ontologist)
 
 #### Scenario: Orchestrator has no direct tools
 - **WHEN** the orchestrator is created
@@ -42,12 +48,23 @@ The system SHALL support a multi-agent mode (`agent.multiAgent: true`) that crea
 - **AND** the sub-agent instruction SHALL contain `## Escalation Protocol` section
 
 #### Scenario: All sub-agents have escalation protocol
-- **WHEN** agentSpecs are defined for all 7 sub-agents
+- **WHEN** agentSpecs are defined for all 8 sub-agents
 - **THEN** every spec's Instruction SHALL contain `transfer_to_agent` and `lango-orchestrator`
 - **AND** every spec's Instruction SHALL contain `## Escalation Protocol`
 
+#### Scenario: Navigator fallback protocol
+- **WHEN** the navigator receives a live web query and `browser_search` is unavailable in the current runtime
+- **THEN** its instruction SHALL direct it to continue with `browser_navigate` to a search URL and `browser_extract` in `search_results` mode
+- **AND** if those higher-level tools are also unavailable, it SHALL continue with low-level `browser_action` or `eval` rather than stopping while browser browsing remains in scope
+
+#### Scenario: Navigator bounded search protocol
+- **WHEN** the navigator handles a topic-based live web request
+- **THEN** its instruction SHALL direct it to run `browser_search` once and then prefer current-page extraction over repeated search
+- **AND** it SHALL allow at most one search reformulation when the first results are empty or clearly unrelated
+- **AND** it SHALL stop once the requested count of credible results has been collected
+
 ### Requirement: Tool partitioning by prefix
-Tools SHALL be partitioned to sub-agents based on name prefixes with matching order Librarian → Chronicler → Navigator → Vault → Operator → Unmatched: `exec/fs_/skill_` → operator, `browser_` → navigator, `crypto_/secrets_/payment_` → vault, `search_/rag_/graph_/save_knowledge/save_learning/create_skill/list_skills` → librarian, `memory_/observe_/reflect_` → chronicler, unmatched → Unmatched bucket (not assigned to any agent).
+Tools SHALL be partitioned to sub-agents based on name prefixes with matching order Librarian → Chronicler → Ontologist → Navigator → Vault → Operator → Unmatched: `exec/fs_/skill_` → operator, `browser_` → navigator, `crypto_/secrets_/payment_` → vault, `search_/rag_/graph_/save_knowledge/save_learning/create_skill/list_skills` → librarian, `memory_/observe_/reflect_` → chronicler, `ontology_` → ontologist, unmatched → Unmatched bucket (not assigned to any agent).
 
 #### Scenario: Operator gets shell, file, and skill tools
 - **WHEN** tools named `exec_shell`, `fs_read`, `skill_deploy` are registered
@@ -186,7 +203,7 @@ The `BuildAgentTree` function SHALL create sub-agents data-driven from the agent
 
 #### Scenario: All tool categories have tools
 - **WHEN** tools exist for operator, navigator, vault, librarian, automator, and chronicler roles
-- **THEN** all seven sub-agents (operator, navigator, vault, librarian, automator, planner, chronicler) SHALL be created
+- **THEN** all eight sub-agents (operator, navigator, vault, librarian, automator, planner, chronicler, ontologist) SHALL be created
 
 #### Scenario: Partial tools — only operator and librarian
 - **WHEN** only operator and librarian tools are provided
@@ -202,19 +219,33 @@ The `BuildAgentTree` function SHALL create sub-agents data-driven from the agent
 - **AND** no unmatched tools SHALL be adapted
 
 ### Requirement: Orchestrator direct response assessment
-The orchestrator's Decision Protocol SHALL include a Step 0 (ASSESS) that evaluates whether a request is a simple conversational message (greeting, general knowledge, opinion, weather, math, small talk). If yes, the orchestrator SHALL respond directly without delegation.
+The orchestrator's Decision Protocol SHALL include a Step 0 (ASSESS) that evaluates whether a request is a simple conversational message (greeting, opinion, math, small talk). If yes, the orchestrator SHALL respond directly without delegation. The ASSESS step SHALL explicitly state that the orchestrator MUST NOT emit any function calls even when responding directly, and that requests requiring real-time data (weather, news, prices, search) SHALL be delegated to the appropriate sub-agent.
 
 #### Scenario: Simple greeting handled directly
-- **WHEN** the user sends a greeting like "안녕하세요"
+- **WHEN** the user sends a greeting like "hello"
 - **THEN** the orchestrator SHALL respond directly without delegating to any sub-agent
 
-#### Scenario: General knowledge handled directly
-- **WHEN** the user asks a general knowledge question (e.g., weather, math)
+#### Scenario: Math question handled directly
+- **WHEN** the user asks a math question (e.g., "what is 2 + 2?")
 - **THEN** the orchestrator SHALL respond directly without delegation
 
+#### Scenario: Weather request delegated
+- **WHEN** the user asks about weather (e.g., "tell me today's weather")
+- **THEN** the orchestrator SHALL delegate to the appropriate sub-agent (e.g., navigator or librarian)
+- **AND** the orchestrator SHALL NOT attempt to respond directly or emit any function calls
+
+#### Scenario: General knowledge requiring search delegated
+- **WHEN** the user asks a factual question that may require search (e.g., "what is the latest news?")
+- **THEN** the orchestrator SHALL delegate to the appropriate sub-agent
+
 #### Scenario: Tool-requiring request delegated normally
-- **WHEN** the user requests an action requiring tools (e.g., "지갑 만들어줘")
+- **WHEN** the user requests an action requiring tools (e.g., "create a wallet")
 - **THEN** the orchestrator SHALL delegate to the appropriate sub-agent per the routing table
+
+#### Scenario: No function calls in direct response
+- **WHEN** the orchestrator responds directly (ASSESS step determines direct-answer)
+- **THEN** the orchestrator SHALL NOT emit any function calls
+- **AND** the ASSESS instruction SHALL contain "MUST NOT emit any function calls"
 
 ### Requirement: Orchestrator re-routing protocol
 The orchestrator instruction SHALL include a "Re-Routing Protocol" section. When a sub-agent transfers control back to the orchestrator, the orchestrator SHALL NOT re-send the same request to the same agent. It SHALL re-evaluate using the Decision Protocol (starting from Step 0) and either route to a different agent or answer directly as a general-purpose assistant.
@@ -236,7 +267,7 @@ The orchestrator's Delegation Rules SHALL list direct response for simple conver
 - **THEN** the rule about responding directly to simple messages SHALL appear before the rule about delegating to sub-agents
 
 ### Requirement: Orchestrator Short-Circuit for Simple Queries
-The orchestrator instruction SHALL direct the LLM to respond directly to simple conversational queries (greetings, opinions, general knowledge) without delegating to sub-agents.
+The orchestrator instruction SHALL direct the LLM to respond directly to simple conversational queries (greetings, opinions, math, small talk) without delegating to sub-agents.
 
 #### Scenario: Simple greeting
 - **WHEN** user sends a greeting like "hello"
@@ -246,7 +277,55 @@ The orchestrator instruction SHALL direct the LLM to respond directly to simple 
 - **WHEN** user requests an action requiring tool execution
 - **THEN** the orchestrator SHALL delegate to the appropriate sub-agent
 
+#### Scenario: Direct-answer list excludes real-time topics
+- **WHEN** the orchestrator instruction is built
+- **THEN** the direct-answer categories in ASSESS and Delegation Rules SHALL NOT include "weather" or "general knowledge"
+
 ### Requirement: SubAgentPromptFunc type
+The orchestration package SHALL expose a `SubAgentPromptFunc` type that can rewrite default sub-agent instructions at build time.
+
+#### Scenario: Prompt override hook available
+- **WHEN** multi-agent orchestration is initialized
+- **THEN** callers SHALL be able to provide a `SubAgentPromptFunc`
+- **AND** the returned string SHALL replace the default sub-agent instruction for that agent
+
+### Requirement: Specialist completion contract
+After a specialist sub-agent receives successful tool output, the runtime SHALL require the specialist turn to end in exactly one of: visible assistant completion, `transfer_to_agent`, or a structured incomplete outcome emitted by the runtime. Tool-only terminal states SHALL NOT be treated as successful completion.
+
+#### Scenario: Successful tool use followed by visible completion
+- **WHEN** `vault` successfully retrieves wallet balance information
+- **THEN** the specialist turn SHALL produce a visible assistant completion summarizing the result
+- **AND** the runtime SHALL classify the turn as successful
+
+#### Scenario: Tool-only terminal state becomes incomplete outcome
+- **WHEN** a specialist receives successful tool output but terminates without visible completion or transfer
+- **THEN** the runtime SHALL terminate the specialist turn with a structured incomplete outcome
+- **AND** the parent turn SHALL NOT treat the specialist turn as a silent success
+
+### Requirement: Repeated identical specialist call containment
+Within a single user turn, repeated calls from the same specialist to the same tool with canonically equal params SHALL be detected and stopped even if the model changes call IDs between attempts.
+
+#### Scenario: Same tool same params repeated with different call IDs
+- **WHEN** `vault` repeatedly calls `payment_balance` with `{}` and each attempt has a different call ID
+- **THEN** the runtime SHALL still count those attempts against the same call-signature loop budget
+- **AND** SHALL stop the loop when the threshold is reached
+
+#### Scenario: Different params do not trip the identical-call budget immediately
+- **WHEN** the same specialist calls the same tool name with materially different params
+- **THEN** the runtime SHALL treat those calls as distinct signatures for loop containment purposes
+
+### Requirement: Evidence-only orchestrator recovery
+When the orchestrator has no direct tools and a delegated specialist fails or returns an incomplete outcome, the orchestrator SHALL either re-route to another agent or answer only from evidence already gathered in the turn trace. It SHALL NOT emit direct FunctionCalls to specialist-only tools.
+
+#### Scenario: Tool-less orchestrator cannot call specialist tool directly
+- **WHEN** a previous `vault` turn failed and the orchestrator enters recovery
+- **THEN** the orchestrator SHALL NOT emit a direct FunctionCall to `payment_balance`
+- **AND** SHALL instead re-route, answer from existing evidence, or report an inability to complete
+
+#### Scenario: Recovery answer references gathered evidence only
+- **WHEN** the orchestrator answers after a specialist failure
+- **THEN** the answer SHALL be derived only from tool results or summaries already recorded in the current turn trace
+- **AND** it SHALL NOT claim that a new unavailable tool call was executed
 The orchestration package SHALL define a `SubAgentPromptFunc` function type that takes `(agentName, defaultInstruction string)` and returns the assembled system prompt string for a sub-agent.
 
 #### Scenario: Function receives correct parameters
@@ -304,12 +383,12 @@ Each sub-agent instruction SHALL include guidance to report results clearly afte
 - **WHEN** the chronicler sub-agent completes memory operations
 - **THEN** its instruction SHALL guide it to report what was stored or retrieved
 
-### Requirement: RoleToolSet has seven roles plus Unmatched
-The RoleToolSet struct SHALL have fields: Operator, Navigator, Vault, Librarian, Planner, Chronicler, Automator, and Unmatched. Each field is a slice of `*agent.Tool`.
+### Requirement: RoleToolSet has eight roles plus Unmatched
+The RoleToolSet struct SHALL have fields: Operator, Navigator, Vault, Librarian, Planner, Chronicler, Automator, Ontologist, and Unmatched. Each field is a slice of `*agent.Tool`.
 
 #### Scenario: RoleToolSet structure
 - **WHEN** PartitionTools is called
-- **THEN** it SHALL return a RoleToolSet with eight fields (seven roles + Unmatched)
+- **THEN** it SHALL return a RoleToolSet with nine fields (eight roles + Unmatched)
 
 #### Scenario: Planner tools always empty
 - **WHEN** PartitionTools is called with any input
@@ -352,11 +431,11 @@ The `capabilityMap` SHALL include entries for `cron_`, `bg_`, and `workflow_` pr
 - **THEN** it SHALL return "cron job scheduling"
 
 ### Requirement: Multi-agent default turn limit
-When `agent.multiAgent` is true and no explicit `MaxTurns` is configured, the system SHALL default to 50 turns instead of the standard 25. This provides sufficient headroom for multi-agent workflows with delegation overhead.
+When `agent.multiAgent` is true and no explicit `MaxTurns` is configured, the system SHALL default to 75 turns instead of the standard 50. This provides sufficient headroom for multi-agent workflows with delegation overhead.
 
 #### Scenario: Multi-agent mode with no explicit MaxTurns
 - **WHEN** `agent.multiAgent` is true AND `agent.maxTurns` is zero or unset
-- **THEN** the system SHALL use 50 as the maximum turn limit
+- **THEN** the system SHALL use 75 as the maximum turn limit
 
 #### Scenario: Multi-agent mode with explicit MaxTurns
 - **WHEN** `agent.multiAgent` is true AND `agent.maxTurns` is set to a positive value
@@ -364,7 +443,7 @@ When `agent.multiAgent` is true and no explicit `MaxTurns` is configured, the sy
 
 #### Scenario: Single-agent mode unaffected
 - **WHEN** `agent.multiAgent` is false
-- **THEN** the system SHALL use the standard default of 25 turns (unchanged behavior)
+- **THEN** the system SHALL use the standard default of 50 turns
 
 ### Requirement: Dynamic specs support in Config
 The orchestration `Config` struct SHALL include a `Specs []AgentSpec` field. When non-nil, `BuildAgentTree` SHALL use these specs instead of the hardcoded built-in specs.
@@ -484,9 +563,104 @@ The orchestrator instruction SHALL include output awareness guidance for compres
 All non-planner sub-agent instructions SHALL include an Output Handling section teaching agents to use `tool_output_get` for compressed results.
 
 #### Scenario: Non-planner agents have output handling
-- **WHEN** a sub-agent instruction is generated for operator, navigator, vault, librarian, automator, or chronicler
+- **WHEN** a sub-agent instruction is generated for operator, navigator, vault, librarian, automator, chronicler, or ontologist
 - **THEN** the instruction SHALL contain "## Output Handling" with `tool_output_get` guidance
 
 #### Scenario: Planner excluded from output handling
 - **WHEN** a sub-agent instruction is generated for planner
 - **THEN** the instruction SHALL NOT contain "## Output Handling"
+
+### Requirement: Session Isolation
+`SessionIsolation` SHALL be a runtime behavior contract, not metadata only.
+
+#### Scenario: Isolated sub-agent uses same-run overlay
+- **WHEN** a sub-agent with `SessionIsolation=true` runs
+- **THEN** its raw events are written to child session history
+- **AND** the active parent session's in-memory view SHALL also see those events for the current run
+- **AND** the parent persistent history SHALL not store those raw events
+
+#### Scenario: Successful isolated run summary-merges to parent
+- **WHEN** an isolated child run completes successfully
+- **THEN** any raw in-memory overlay for that child SHALL be removed from the parent view
+- **AND** the parent session receives only a summary message
+- **AND** the full child history is not appended to the parent persistent history
+
+#### Scenario: Failed isolated run leaves compact failure note
+- **WHEN** an isolated child run fails or returns only a rejection/escalation path
+- **THEN** the child session is discarded
+- **AND** any raw in-memory overlay for that child SHALL be removed from the parent view
+- **AND** the parent session SHALL retain only a compact root-authored failure note
+
+#### Scenario: Non-isolated sub-agent unchanged
+- **WHEN** a sub-agent has `SessionIsolation=false`
+- **THEN** it continues to use the existing parent-session execution path
+
+### Requirement: DelegationGuard monitors orchestrator delegations
+The `DelegationGuard` SHALL observe delegation events emitted by the root orchestrator and maintain per-agent circuit breaker state. When a circuit-open agent is targeted, the guard SHALL log a warning and publish a `CircuitBreakerTrippedEvent`. The guard SHALL NOT block or redirect delegations — routing authority remains with the root orchestrator LLM.
+
+#### Scenario: Warn on delegation to circuit-open agent
+- **WHEN** root orchestrator delegates to an agent whose circuit is open
+- **THEN** DelegationGuard SHALL log a warning with agent name and circuit state
+
+### Requirement: Doctor multi-agent checks extended
+The existing `MultiAgentCheck` in doctor SHALL be extended with:
+- Loop frequency: count traces with `outcome=loop_detected` in last 24h via `RecentByOutcome`, warn if >3
+- Timeout frequency: count traces with `outcome=timeout` in last 24h, warn if >5
+- Trace store growth: `TraceCount()` vs configured maxTraces, warn if >80%
+- Average turn duration: mean `ended_at - started_at` of recent successful traces, warn if >2min
+
+#### Scenario: Loop frequency warning
+- **WHEN** 5 traces with `outcome=loop_detected` exist in the last 24 hours
+- **THEN** doctor SHALL emit a warning with loop count and recommendation
+
+#### Scenario: Trace growth warning
+- **WHEN** `TraceCount()` returns 8500 and maxTraces is 10000
+- **THEN** doctor SHALL emit a warning that trace store is at 85% capacity
+
+### Requirement: Gateway delegation WebSocket events
+The gateway SHALL broadcast `agent.delegation` and `agent.budget_warning` WebSocket events when the corresponding TurnRunner callbacks fire.
+
+#### Scenario: Delegation event broadcast
+- **WHEN** `Request.OnDelegation` callback fires with from="orchestrator", to="operator"
+- **THEN** gateway SHALL broadcast `agent.delegation` event to session clients
+
+### Requirement: TurnRunner delegation and budget callbacks
+`turnrunner.Request` SHALL support optional `OnDelegation func(from, to, reason string)` and `OnBudgetWarning func(used, max int)` callbacks. These callbacks SHALL be invoked by the turn runner when delegation events are detected in the trace recorder and when delegation count approaches the configured threshold.
+
+#### Scenario: Callback fires on delegation
+- **WHEN** the trace recorder observes a delegation event and `Request.OnDelegation` is non-nil
+- **THEN** the callback SHALL be invoked with the source agent, target agent, and reason
+
+#### Scenario: Nil callback is no-op
+- **WHEN** `Request.OnDelegation` is nil and a delegation event occurs
+- **THEN** no callback SHALL be invoked and execution SHALL continue normally
+
+### Requirement: Structured recovery avoids repeating a failed specialist
+When structured orchestration handles a specialist failure, the recovery layer SHALL use the observed specialist identity to avoid immediately repeating the same failed specialist path.
+
+#### Scenario: Specialist tool failure reroutes away from failed specialist
+- **WHEN** the orchestrator delegates to `vault`, the specialist attempt fails with a tool error, and structured recovery is enabled
+- **THEN** the recovery layer SHALL retry with a reroute hint instead of a blind same-input retry
+- **AND** the hint SHALL identify `vault` as the failed specialist
+- **AND** the hint SHALL instruct the orchestrator to choose a different specialist or answer directly
+
+#### Scenario: Pre-specialist failure keeps generic retry behavior
+- **WHEN** structured recovery handles a retryable failure before any specialist delegation is observed
+- **THEN** the recovery layer MAY retry the same input
+- **AND** it SHALL not fabricate a failed specialist identity
+
+### Requirement: Automator agent routing includes agent and task prefixes
+The automator agent spec SHALL include `"agent_"` and `"task_"` in its Prefixes list alongside `"cron_"`, `"bg_"`, and `"workflow_"`. The `capabilityMap` SHALL include entries mapping `"agent_"` to "agent lifecycle management" and `"task_"` to "structured task management". Tools with these prefixes SHALL be routed to the automator sub-agent.
+
+#### Scenario: Agent lifecycle tools routed to automator
+- **WHEN** tools with `agent_` prefix (e.g., `agent_spawn`, `agent_status`) are registered
+- **THEN** they SHALL be partitioned to the Automator role in `PartitionTools`
+
+#### Scenario: Task management tools routed to automator
+- **WHEN** tools with `task_` prefix (e.g., `task_create`, `task_list`) are registered
+- **THEN** they SHALL be partitioned to the Automator role in `PartitionTools`
+
+#### Scenario: Capability descriptions for agent and task tools
+- **WHEN** `toolCapability` is called for an `agent_` prefixed tool
+- **THEN** it SHALL return "agent lifecycle management"
+- **AND** `toolCapability` for a `task_` prefixed tool SHALL return "structured task management"

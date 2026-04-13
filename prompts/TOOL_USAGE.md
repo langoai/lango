@@ -7,6 +7,8 @@
 ### Exec Tool
 - **NEVER use exec to run `lango` CLI commands** (e.g., `lango security`, `lango memory`, `lango graph`, `lango p2p`, `lango config`, `lango cron`, `lango bg`, `lango workflow`, `lango payment`, `lango economy`, `lango metrics`, `lango contract`, `lango account`, `lango serve`, `lango doctor`, `lango mcp`, etc.). Every `lango` command requires passphrase authentication during bootstrap and **will fail** when spawned as a non-interactive subprocess. Use the built-in tools instead — they run in-process and do not require authentication.
 - If you need functionality that has no built-in tool equivalent (e.g., `lango config`, `lango doctor`, `lango settings`), inform the user and ask them to run the command directly in their terminal.
+- **Do NOT wrap blocked commands in shell wrappers to bypass restrictions.** Commands like `sh -c "lango ..."`, `bash -c "kill ..."`, or `/bin/sh -c "cat ~/.lango/..."` are detected and blocked the same way as direct invocations. The policy evaluator unwraps one level of `sh -c` / `bash -c` before checking.
+- **OS sandbox awareness.** When `sandbox.enabled=true`, every exec command runs under kernel-level isolation: workspace + `/tmp` writable, the lango control-plane (`~/.lango`) and the workspace's `.git` directory are denied (read AND write). Do not try to read or modify files under `~/.lango` from exec — those operations will fail. If the user has listed a command in `sandbox.excludedCommands` (e.g. `git`, `docker`), those specific basenames bypass the sandbox entirely and run unsandboxed; this is recorded in audit and is the user's explicit decision, not yours to expand. Do not invent shell tricks (`/usr/bin/git ...`, basename aliasing) to bypass the sandbox — assume the user wants the policy applied.
 - Prefer read-only commands first (`cat`, `ls`, `grep`, `ps`) before modifying anything.
 - Set appropriate timeouts for long-running commands. Default is 30 seconds.
 - Use background execution (`exec_bg`) for processes that run indefinitely (servers, watchers). Monitor with `exec_status`, stop with `exec_stop`.
@@ -23,7 +25,18 @@
 
 ### Browser Tool
 - Sessions are created automatically on the first browser action — you do not need to manage session lifecycle.
-- After navigation, use `browser_action` with action `get_text` or `get_element_info` to verify the page loaded correctly before interacting.
+- Use `browser_search` for open-ended live web queries instead of manually driving a search engine page.
+- Call `browser_search` ONCE. If it returns results (`resultCount > 0`), do NOT call `browser_search` again — present the results or use `browser_navigate` on a result URL for details.
+- You may reformulate and call `browser_search` EXACTLY once more, only when the first search returns zero results or results clearly unrelated to the request. This is your last search.
+- NEVER call `browser_search` more than twice per request.
+- If the user gives a URL directly, navigate to it once and then use `browser_extract` on the current page. Do not re-navigate to the same URL unless the previous navigation clearly failed.
+- If `browser_search` is unavailable in the current runtime, do NOT stop. Fall back to `browser_navigate` with a search URL, then use `browser_extract` with mode `search_results`.
+- If `browser_extract` is also unavailable, continue with `browser_action` and `eval` to inspect result links and page content manually. Missing a higher-level browser tool is not a reason to abandon an otherwise valid browser task.
+- Prefer `browser_observe` and `browser_extract` to inspect the current page before falling back to low-level `browser_action`.
+- `browser_navigate` returns a structured page snapshot with headings, links, and actionable elements. Use it as the first step when opening a page.
+- Use `browser_extract` with mode `search_results` to pull result cards from a search page, or `article` to pull the main readable content.
+- If the user asks for a fixed number of items such as "3 news articles", stop searching once you have that many credible candidates. Do not expand beyond the requested count.
+- If a browser action is denied by approval or the approval request expires, do not immediately retry the exact same browser action. Explain the approval issue or choose a materially different lower-risk browser step instead.
 - Use `browser_action` with action `wait` (selector, timeout) before clicking or typing on dynamically loaded elements.
 - Capture screenshots with `browser_screenshot` to verify visual state when interactions produce visual changes.
 - Use `browser_action` with action `eval` (JavaScript) for operations that CSS selectors cannot express, such as scrolling, reading computed styles, or interacting with shadow DOM.

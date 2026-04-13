@@ -134,6 +134,11 @@ func (s *Service) MergeTaskBranch(ctx context.Context, workspaceID, taskID, targ
 
 	mergeCommitHash := strings.TrimSpace(commitOut.String())
 
+	stats, err := s.DiffNumStat(ctx, workspaceID, targetHash, mergeCommitHash)
+	if err != nil {
+		return nil, fmt.Errorf("merge numstat: %w", err)
+	}
+
 	// Update target ref to point to merge commit.
 	updateCmd := exec.CommandContext(ctx, "git", "update-ref", "refs/heads/"+targetBranch, mergeCommitHash)
 	updateCmd.Dir = repoPath
@@ -147,6 +152,18 @@ func (s *Service) MergeTaskBranch(ctx context.Context, workspaceID, taskID, targ
 		zap.String("source", sourceBranch),
 		zap.String("target", targetBranch),
 		zap.String("mergeCommit", mergeCommitHash))
+
+	if s.onMerge != nil {
+		s.onMerge(ctx, MergeHookEvent{
+			WorkspaceID:    workspaceID,
+			TaskID:         taskID,
+			TargetBranch:   targetBranch,
+			MergeCommit:    mergeCommitHash,
+			SourceCommit:   sourceHash,
+			PreviousTarget: targetHash,
+			Files:          stats,
+		})
+	}
 
 	return &MergeResult{
 		Success:     true,

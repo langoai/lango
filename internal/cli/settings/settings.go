@@ -31,13 +31,16 @@ All categories are visible by default. Advanced items are marked with an ADV bad
 Press Tab to toggle between showing all categories and basic-only view.
 Press "/" to search, or use smart filters: @basic, @advanced, @enabled, @modified.
 
-  Core:             Providers, Agent, Channels, Tools, Logging, Gatekeeper, Output Manager
-  AI & Knowledge:   Knowledge, Skill, Observational Memory, Embedding & RAG
-  Automation:       Cron, Background, Workflow
+  Core:             Providers, Agent, Channels, Tools, Server, Session, Logging, Gatekeeper, Output Manager
+  AI & Knowledge:   Context Profile, Knowledge, Skill, Observational Memory, Embedding & RAG,
+                    Graph, Librarian, Retrieval, Auto-Adjust, Context Budget, Agent Memory,
+                    Multi-Agent, A2A Protocol, Hooks, Ontology
+  Automation:       Cron, Background, Workflow, RunLedger, Provenance
   Payment & Account: Payment, Smart Account
-  P2P & Economy:    P2P Network, Economy, Escrow
-  Integrations:     MCP, Observability
-  Security:         Security, Auth, DB Encryption, KMS
+  P2P & Economy:    P2P Network, P2P Workspace, P2P ZKP, P2P Pricing, P2P Owner, P2P Sandbox,
+                    Economy, Risk, Negotiation, Escrow, On-Chain Escrow, Pricing
+  Integrations:     MCP, Observability, Alerting
+  Security:         Security, Auth, DB Encryption, KMS, OS Sandbox
 
 All settings including API keys are saved in an encrypted profile (~/.lango/lango.db).
 
@@ -94,7 +97,13 @@ func runSettings(profileName string) error {
 	}
 
 	cfg := editor.Config()
-	if err := boot.ConfigStore.Save(ctx, profileName, cfg); err != nil {
+	// Mark all context-related keys as explicitly set — the user has seen and
+	// accepted these values in the TUI, so auto-enable must not override them.
+	explicitKeys := make(map[string]bool, len(config.ContextRelatedKeys()))
+	for _, k := range config.ContextRelatedKeys() {
+		explicitKeys[k] = true
+	}
+	if err := boot.ConfigStore.Save(ctx, profileName, cfg, explicitKeys); err != nil {
 		return fmt.Errorf("save profile %q: %w", profileName, err)
 	}
 
@@ -110,7 +119,7 @@ func runSettings(profileName string) error {
 }
 
 func loadOrDefault(ctx context.Context, store *configstore.Store, name string) (*config.Config, bool, error) {
-	cfg, err := store.Load(ctx, name)
+	cfg, _, err := store.Load(ctx, name)
 	if err == nil {
 		return cfg, false, nil
 	}

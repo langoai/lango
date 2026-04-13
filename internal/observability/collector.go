@@ -6,6 +6,9 @@ import (
 	"time"
 )
 
+// DefaultMaxSessions is the default session map capacity before LRU eviction.
+const DefaultMaxSessions = 10000
+
 // MetricsCollector performs thread-safe in-memory metrics aggregation.
 type MetricsCollector struct {
 	mu        sync.RWMutex
@@ -17,15 +20,25 @@ type MetricsCollector struct {
 
 	toolExecs int64
 	tools     map[string]*ToolMetric
+
+	// Policy decision counters.
+	policyBlocks   int64
+	policyObserves int64
+	policyByReason map[string]int64
+
+	// MaxSessions caps the session map size; 0 means DefaultMaxSessions.
+	MaxSessions int
 }
 
 // NewCollector creates a new MetricsCollector.
 func NewCollector() *MetricsCollector {
 	return &MetricsCollector{
-		startedAt: time.Now(),
-		sessions:  make(map[string]*SessionMetric),
-		agents:    make(map[string]*AgentMetric),
-		tools:     make(map[string]*ToolMetric),
+		startedAt:      time.Now(),
+		sessions:       make(map[string]*SessionMetric),
+		agents:         make(map[string]*AgentMetric),
+		tools:          make(map[string]*ToolMetric),
+		policyByReason: make(map[string]int64),
+		MaxSessions:    DefaultMaxSessions,
 	}
 }
 
@@ -42,6 +55,7 @@ func (c *MetricsCollector) RecordTokenUsage(usage TokenUsage) {
 	if usage.SessionKey != "" {
 		sm, ok := c.sessions[usage.SessionKey]
 		if !ok {
+			c.evictOldestSession()
 			sm = &SessionMetric{SessionKey: usage.SessionKey}
 			c.sessions[usage.SessionKey] = sm
 		}
@@ -49,6 +63,7 @@ func (c *MetricsCollector) RecordTokenUsage(usage TokenUsage) {
 		sm.OutputTokens += usage.OutputTokens
 		sm.TotalTokens += usage.TotalTokens
 		sm.RequestCount++
+		sm.LastUpdated = time.Now()
 	}
 
 	if usage.AgentName != "" {
@@ -91,10 +106,55 @@ func (c *MetricsCollector) RecordToolExecution(name, agentName string, duration 
 	}
 }
 
+// RecordPolicyDecision records a policy block or observe event.
+// verdict is a string such as "block" or "observe".
+func (c *MetricsCollector) RecordPolicyDecision(verdict, reason string) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	switch verdict {
+	case "block":
+		c.policyBlocks++
+	case "observe":
+		c.policyObserves++
+	}
+	if reason != "" {
+		c.policyByReason[reason]++
+	}
+}
+
+// evictOldestSession removes the least-recently-updated session when
+// the session map reaches MaxSessions capacity. Must be called with mu held.
+func (c *MetricsCollector) evictOldestSession() {
+	// MaxSessions <= 0 means unlimited (no eviction).
+	if c.MaxSessions <= 0 {
+		return
+	}
+	if len(c.sessions) < c.MaxSessions {
+		return
+	}
+	var oldestKey string
+	var oldestTime time.Time
+	for k, sm := range c.sessions {
+		if oldestKey == "" || sm.LastUpdated.Before(oldestTime) {
+			oldestKey = k
+			oldestTime = sm.LastUpdated
+		}
+	}
+	if oldestKey != "" {
+		delete(c.sessions, oldestKey)
+	}
+}
+
 // Snapshot returns a point-in-time copy of all metrics.
 func (c *MetricsCollector) Snapshot() SystemSnapshot {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
+
+	byReason := make(map[string]int64, len(c.policyByReason))
+	for k, v := range c.policyByReason {
+		byReason[k] = v
+	}
 
 	snap := SystemSnapshot{
 		StartedAt:        c.startedAt,
@@ -104,6 +164,11 @@ func (c *MetricsCollector) Snapshot() SystemSnapshot {
 		ToolBreakdown:    make(map[string]ToolMetric, len(c.tools)),
 		AgentBreakdown:   make(map[string]AgentMetric, len(c.agents)),
 		SessionBreakdown: make(map[string]SessionMetric, len(c.sessions)),
+		Policy: PolicyMetrics{
+			Blocks:   c.policyBlocks,
+			Observes: c.policyObserves,
+			ByReason: byReason,
+		},
 	}
 
 	for k, v := range c.tools {
@@ -161,4 +226,7 @@ func (c *MetricsCollector) Reset() {
 	c.agents = make(map[string]*AgentMetric)
 	c.tools = make(map[string]*ToolMetric)
 	c.toolExecs = 0
+	c.policyBlocks = 0
+	c.policyObserves = 0
+	c.policyByReason = make(map[string]int64)
 }

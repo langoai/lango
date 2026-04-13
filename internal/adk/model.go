@@ -23,14 +23,34 @@ type accumEntry struct {
 	thoughtSignature []byte
 }
 
+// accumulatorState represents the current phase of the tool call accumulator.
+type accumulatorState int
+
+const (
+	// stateIdle means no tool call has been started yet.
+	// A delta-only chunk (no Index, ID, or Name) arriving in this state is an
+	// orphaned delta and is dropped with a warning.
+	stateIdle accumulatorState = iota
+	// stateReceiving means at least one tool call entry exists.
+	// Delta-only chunks are appended to the active entry (activeIndex).
+	stateReceiving
+)
+
 // toolCallAccumulator assembles streaming tool call deltas into complete FunctionCall parts.
-// It supports both OpenAI (Index-based correlation) and Anthropic (ID/Name start + orphan delta)
-// streaming patterns.
+// It uses a provider-agnostic state machine (Idle → Receiving) instead of OpenAI/Anthropic
+// branching, making the orphaned-delta invariant explicit.
 type toolCallAccumulator struct {
-	entries   map[int]*accumEntry
-	nextIndex int // auto-increment for entries without explicit Index
-	lastIndex int // last active entry for orphan deltas
-	hasAny    bool
+	entries     map[int]*accumEntry
+	nextIndex   int              // auto-increment for entries without explicit Index
+	activeIndex int              // last active entry; valid only in stateReceiving
+	state       accumulatorState // current state machine phase
+}
+
+// isStartChunk returns true when the tool call chunk carries identity information
+// (an explicit Index, an ID, or a Name), indicating it starts or correlates with
+// a specific tool call entry.
+func isStartChunk(tc *provider.ToolCall) bool {
+	return tc.Index != nil || tc.ID != "" || tc.Name != ""
 }
 
 func (a *toolCallAccumulator) add(tc *provider.ToolCall) {
@@ -41,30 +61,37 @@ func (a *toolCallAccumulator) add(tc *provider.ToolCall) {
 		a.entries = make(map[int]*accumEntry)
 	}
 
-	// Resolve entry index via fallback chain.
+	// State machine: resolve the target entry index based on current state.
 	var idx int
 	switch {
-	case tc.Index != nil:
-		// OpenAI: explicit chunk correlation index
-		idx = *tc.Index
-	case tc.ID != "" || tc.Name != "":
-		// Anthropic start: new tool call, assign synthetic index
-		idx = a.nextIndex
-		a.nextIndex++
+	case isStartChunk(tc):
+		// Start or correlated chunk — valid in any state.
+		if tc.Index != nil {
+			// Provider supplies an explicit correlation index (e.g., OpenAI).
+			idx = *tc.Index
+		} else {
+			// No explicit index; assign a synthetic one (e.g., Anthropic start).
+			idx = a.nextIndex
+			a.nextIndex++
+		}
+		// Transition: Idle → Receiving (or stay in Receiving).
+		a.state = stateReceiving
+
 	default:
-		// Anthropic delta / orphan: append to last active entry
-		if !a.hasAny {
+		// Delta-only chunk: no Index, ID, or Name.
+		if a.state == stateIdle {
+			// Orphaned delta — no tool call has been started yet.
 			logger().Warnw("dropping orphan tool call delta", "args_len", len(tc.Arguments))
 			return
 		}
-		idx = a.lastIndex
+		// In Receiving state: append to the active entry.
+		idx = a.activeIndex
 	}
 
 	if _, exists := a.entries[idx]; !exists {
 		a.entries[idx] = &accumEntry{index: idx}
 	}
-	a.lastIndex = idx
-	a.hasAny = true
+	a.activeIndex = idx
 
 	e := a.entries[idx]
 	if tc.ID != "" {
@@ -223,14 +250,18 @@ func (m *ModelAdapter) GenerateContent(ctx context.Context, req *model.LLMReques
 						if id == "" {
 							id = "call_" + evt.ToolCall.Name
 						}
+						// Partial events are for UI notification only.
+						// Do NOT carry Thought/ThoughtSignature here — the
+						// signature may not have arrived yet in the stream,
+						// and storing Thought=true with nil signature corrupts
+						// session history. The final toolAccum.done() emits
+						// the correct values.
 						part := &genai.Part{
 							FunctionCall: &genai.FunctionCall{
 								ID:   id,
 								Name: evt.ToolCall.Name,
 								Args: args,
 							},
-							Thought:          evt.ToolCall.Thought,
-							ThoughtSignature: evt.ToolCall.ThoughtSignature,
 						}
 						resp := &model.LLMResponse{
 							Content: &genai.Content{
@@ -333,6 +364,27 @@ func convertMessages(contents []*genai.Content) ([]provider.Message, error) {
 			role = "tool"
 		}
 
+		// When EventsAdapter merges consecutive same-role events, a single
+		// Content may contain multiple FunctionResponse parts. Each provider
+		// API (OpenAI, Gemini) expects one tool_call_id per tool message, so
+		// we must split them into separate messages. Only trigger the split
+		// when the normalized role is "tool" and there are 2+ FunctionResponses
+		// to keep the change minimal and backward-compatible.
+		if role == "tool" {
+			var funcResps []*genai.Part
+			for _, p := range c.Parts {
+				if p.FunctionResponse != nil {
+					funcResps = append(funcResps, p)
+				}
+			}
+			if len(funcResps) >= 2 {
+				for _, p := range funcResps {
+					msgs = append(msgs, buildToolResponseMessage(role, p))
+				}
+				continue // split handled; skip default path
+			}
+		}
+
 		msg := provider.Message{Role: role}
 		for _, p := range c.Parts {
 			if p.Text != "" {
@@ -373,6 +425,23 @@ func convertMessages(contents []*genai.Content) ([]provider.Message, error) {
 		msgs = append(msgs, msg)
 	}
 	return msgs, nil
+}
+
+// buildToolResponseMessage creates a single provider.Message for one FunctionResponse part.
+func buildToolResponseMessage(role string, p *genai.Part) provider.Message {
+	b, _ := json.Marshal(p.FunctionResponse.Response)
+	id := p.FunctionResponse.ID
+	if id == "" {
+		id = p.FunctionResponse.Name
+	}
+	return provider.Message{
+		Role:    role,
+		Content: string(b),
+		Metadata: map[string]interface{}{
+			"tool_call_id":   id,
+			"tool_call_name": p.FunctionResponse.Name,
+		},
+	}
 }
 
 // extractSystemText concatenates all text parts from a genai.Content into a single string.

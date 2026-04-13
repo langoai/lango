@@ -1,3 +1,7 @@
+## Purpose
+
+Capability spec for passphrase-acquisition. See requirements below for scope and behavior contracts.
+
 ## Requirements
 
 ### Requirement: Passphrase acquisition priority chain
@@ -73,3 +77,47 @@ The system SHALL read, write, and securely shred keyfiles with strict 0600 permi
 #### Scenario: Shred nonexistent keyfile
 - **WHEN** `ShredKeyfile()` is called on a nonexistent file
 - **THEN** nil is returned without error
+
+### Requirement: Non-interactive passphrase acquisition
+
+The system SHALL provide a `passphrase.AcquireNonInteractive(opts Options)` function that acquires a passphrase only from keyring (Touch ID / TPM) or keyfile, without triggering any interactive terminal prompt or stdin pipe read. This function is used by commands that must work in non-interactive environments (e.g., `lango security status` default path).
+
+#### Scenario: Acquire from keyring succeeds
+
+- **WHEN** `AcquireNonInteractive` is called with a non-nil `KeyringProvider` that has a stored passphrase
+- **THEN** the function returns the passphrase and `SourceKeyring`
+- **AND** no interactive prompt is shown (biometric OS-level prompt is permitted)
+
+#### Scenario: Fallback to keyfile when keyring has no value
+
+- **WHEN** `AcquireNonInteractive` is called and the keyring returns `ErrNotFound`
+- **AND** a keyfile exists at the configured path with 0600 permissions
+- **THEN** the function returns the passphrase read from the keyfile and `SourceKeyfile`
+
+#### Scenario: Error when neither source available
+
+- **WHEN** `AcquireNonInteractive` is called and neither keyring nor keyfile provides a passphrase
+- **THEN** the function returns an error without prompting for interactive input
+- **AND** the caller is expected to gracefully degrade (e.g., show zero counts in status)
+
+#### Scenario: Never reads stdin or tty
+
+- **WHEN** `AcquireNonInteractive` is called in any environment
+- **THEN** it SHALL NOT call `term.ReadPassword` (interactive prompt)
+- **AND** it SHALL NOT read from `os.Stdin` pipe
+
+### Requirement: No recovery credential choice during bootstrap
+
+The bootstrap credential acquisition phase SHALL NOT offer a mnemonic recovery choice. When an envelope contains a mnemonic slot, the bootstrap SHALL proceed with the standard passphrase acquisition chain. Mnemonic recovery is handled exclusively by `lango security recovery restore`.
+
+#### Scenario: Bootstrap with mnemonic slot proceeds normally
+
+- **WHEN** bootstrap Phase 4 runs with an envelope containing a slot of type `KEKSlotMnemonic`
+- **THEN** no mnemonic choice prompt SHALL be shown
+- **AND** passphrase acquisition SHALL follow the standard priority chain (KMS, keyring, keyfile, interactive, stdin)
+
+#### Scenario: Non-interactive bootstrap unaffected
+
+- **WHEN** bootstrap runs non-interactively (no tty, keyring/keyfile available)
+- **THEN** passphrase acquisition SHALL proceed via the normal priority chain
+- **AND** no behavior change from the previous non-interactive path

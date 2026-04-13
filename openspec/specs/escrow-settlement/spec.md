@@ -4,12 +4,20 @@ On-chain USDC settlement for the escrow engine. Converts DIDs to Ethereum addres
 
 ## Requirements
 
-### Requirement: DID-to-Address resolver converts DID to Ethereum address
-The system SHALL provide a `ResolveAddress(did string) (common.Address, error)` function that parses `did:lango:<hex-compressed-pubkey>`, hex-decodes the suffix, decompresses the secp256k1 public key via `crypto.DecompressPubkey`, and derives the Ethereum address via `crypto.PubkeyToAddress`.
+### Requirement: DID-to-Address resolution
+The `ResolveAddress` function SHALL be provided via an `AddressResolver` interface with `ResolveAddress(did string) (common.Address, error)`. The `DefaultAddressResolver` SHALL dispatch by DID version: v1 DIDs (`did:lango:<hex>`) are resolved directly by decompressing the secp256k1 public key and deriving the Ethereum address. V2 DIDs (`did:lango:v2:<hash>`) are resolved via `SettlementKeyLookup` -> settlement key extraction -> address derivation. A backward-compatible package-level `ResolveAddress` function is retained for v1-only callers.
 
-#### Scenario: Valid DID resolves to address
-- **WHEN** `ResolveAddress` is called with a valid `did:lango:<33-byte-hex-compressed-pubkey>`
-- **THEN** the correct Ethereum address is returned
+#### Scenario: v1 DID resolves directly
+- **WHEN** `ResolveAddress("did:lango:<secp256k1-hex>")` is called
+- **THEN** the resolver SHALL decompress the secp256k1 key and derive the Ethereum address
+
+#### Scenario: v2 DID resolves via bundle
+- **WHEN** `ResolveAddress("did:lango:v2:<hash>")` is called and the bundle is available
+- **THEN** the resolver SHALL look up the IdentityBundle, extract the settlement key (secp256k1), and derive the Ethereum address
+
+#### Scenario: v2 DID without bundle returns error
+- **WHEN** `ResolveAddress("did:lango:v2:<hash>")` is called and no bundle is available
+- **THEN** the resolver SHALL return an `ErrBundleNotFound` error
 
 #### Scenario: Missing DID prefix returns error
 - **WHEN** `ResolveAddress` is called with a string not prefixed with `did:lango:`

@@ -3,9 +3,12 @@ package main
 import (
 	"context"
 	"fmt"
+	"log"
 	"net/http"
 	"os"
 	"os/signal"
+	"path/filepath"
+	"sort"
 	"strconv"
 	"strings"
 	"syscall"
@@ -13,14 +16,22 @@ import (
 
 	"github.com/spf13/cobra"
 
+	tea "github.com/charmbracelet/bubbletea"
+
 	"github.com/langoai/lango/internal/app"
+	"github.com/langoai/lango/internal/approval"
 	"github.com/langoai/lango/internal/background"
 	"github.com/langoai/lango/internal/bootstrap"
 	clia2a "github.com/langoai/lango/internal/cli/a2a"
 	cliagent "github.com/langoai/lango/internal/cli/agent"
+	clialerts "github.com/langoai/lango/internal/cli/alerts"
 	cliapproval "github.com/langoai/lango/internal/cli/approval"
 	clibg "github.com/langoai/lango/internal/cli/bg"
+	"github.com/langoai/lango/internal/cli/chat"
+	"github.com/langoai/lango/internal/cli/prompt"
 	"github.com/langoai/lango/internal/cli/cliboot"
+	"github.com/langoai/lango/internal/cli/cockpit"
+	"github.com/langoai/lango/internal/cli/cockpit/pages"
 	cliconfigcmd "github.com/langoai/lango/internal/cli/configcmd"
 	clicontract "github.com/langoai/lango/internal/cli/contract"
 	clicron "github.com/langoai/lango/internal/cli/cron"
@@ -35,6 +46,9 @@ import (
 	"github.com/langoai/lango/internal/cli/onboard"
 	clip2p "github.com/langoai/lango/internal/cli/p2p"
 	clipayment "github.com/langoai/lango/internal/cli/payment"
+	clisandbox "github.com/langoai/lango/internal/cli/sandbox"
+	cliprovenance "github.com/langoai/lango/internal/cli/provenance"
+	clirun "github.com/langoai/lango/internal/cli/run"
 	clisecurity "github.com/langoai/lango/internal/cli/security"
 	"github.com/langoai/lango/internal/cli/settings"
 	cliaccount "github.com/langoai/lango/internal/cli/smartaccount"
@@ -44,12 +58,22 @@ import (
 	"github.com/langoai/lango/internal/config"
 	"github.com/langoai/lango/internal/logging"
 	"github.com/langoai/lango/internal/sandbox"
+	"github.com/langoai/lango/internal/session"
+	"github.com/langoai/lango/internal/types"
+	"go.uber.org/zap"
 )
 
 var (
 	Version   = "dev"
 	BuildTime = "unknown"
 )
+
+var exitFn = os.Exit
+
+type stoppableApplication interface {
+	Start(ctx context.Context) error
+	Stop(ctx context.Context) error
+}
 
 func main() {
 	// Check if running as sandbox worker subprocess.
@@ -64,6 +88,12 @@ func main() {
 		Use:   "lango",
 		Short: "Lango - Fast AI Agent in Go",
 		Long:  `Lango is a high-performance AI agent built with Go, supporting multiple channels and tools.`,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			if !prompt.IsInteractive() {
+				return cmd.Help()
+			}
+			return runCockpit()
+		},
 	}
 
 	rootCmd.AddGroup(
@@ -76,6 +106,8 @@ func main() {
 
 	// --- Getting Started ---
 	rootCmd.AddCommand(serveCmd())
+	rootCmd.AddCommand(cockpitCmd())
+	rootCmd.AddCommand(chatCmd())
 
 	onboardCmd := onboard.NewCommand()
 	onboardCmd.GroupID = "start"
@@ -106,7 +138,7 @@ func main() {
 	memoryCmd.GroupID = "ai"
 	rootCmd.AddCommand(memoryCmd)
 
-	agentCmd := cliagent.NewAgentCmd(cliboot.Config)
+	agentCmd := cliagent.NewAgentCmd(cliboot.Config, cliboot.BootResult)
 	agentCmd.GroupID = "ai"
 	rootCmd.AddCommand(agentCmd)
 
@@ -139,6 +171,14 @@ func main() {
 	workflowCmd.GroupID = "auto"
 	rootCmd.AddCommand(workflowCmd)
 
+	runCmd := clirun.NewRunCmd(cliboot.BootResult)
+	runCmd.GroupID = "auto"
+	rootCmd.AddCommand(runCmd)
+
+	provenanceCmd := cliprovenance.NewProvenanceCmd(cliboot.BootResult)
+	provenanceCmd.GroupID = "auto"
+	rootCmd.AddCommand(provenanceCmd)
+
 	bgCmd := clibg.NewBgCmd(func() (*background.Manager, error) {
 		return nil, fmt.Errorf("bg commands require a running server (use 'lango serve' first)")
 	})
@@ -170,6 +210,14 @@ func main() {
 	mcpCmd.GroupID = "net"
 	rootCmd.AddCommand(mcpCmd)
 
+	sandboxCmd := clisandbox.NewSandboxCmd(cliboot.Config, cliboot.BootResult)
+	sandboxCmd.GroupID = "sys"
+	rootCmd.AddCommand(sandboxCmd)
+
+	alertsCmd := clialerts.NewAlertsCmd()
+	alertsCmd.GroupID = "sys"
+	rootCmd.AddCommand(alertsCmd)
+
 	// --- Security & System (continued) ---
 	approvalCmd := cliapproval.NewApprovalCmd(cliboot.Config)
 	approvalCmd.GroupID = "sys"
@@ -183,6 +231,81 @@ func main() {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
 	}
+}
+
+func runChat() error {
+	boot, err := cliboot.BootResult()
+	if err != nil {
+		return fmt.Errorf("bootstrap: %w", err)
+	}
+	defer boot.DBClient.Close()
+
+	cfg := boot.Config
+	// TUI mode: redirect logging to file (stderr output corrupts alt-screen TUI).
+	logPath := filepath.Join(cfg.DataRoot, "chat.log")
+	if err := logging.Init(logging.LogConfig{
+		Level:      cfg.Logging.Level,
+		Format:     cfg.Logging.Format,
+		OutputPath: logPath,
+	}); err != nil {
+		return fmt.Errorf("init logging: %w", err)
+	}
+	defer func() { _ = logging.Sync() }()
+
+	// Redirect Go stdlib logger to the same file so third-party libraries
+	// (e.g., ADK runner) that use log.Printf don't leak into the TUI.
+	if logFile, err := os.OpenFile(logPath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644); err == nil {
+		defer logFile.Close()
+		log.SetOutput(logFile)
+	}
+
+	tui.SetProfile(boot.ProfileName)
+
+	fmt.Fprint(os.Stderr, tui.Banner())
+	fmt.Fprintf(os.Stderr, "\n  Logs: %s\n", logPath)
+	fmt.Fprintln(os.Stderr, "  Initializing...")
+
+	// Create app in local-chat mode (skip gateway/channels/automation lifecycle).
+	application, err := app.New(boot, app.WithLocalChat())
+	if err != nil {
+		return fmt.Errorf("create application: %w", err)
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	if err := application.Start(ctx); err != nil {
+		return fmt.Errorf("start application: %w", err)
+	}
+	defer func() {
+		shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer shutdownCancel()
+		_ = application.Stop(shutdownCtx)
+	}()
+
+	sessionKey := fmt.Sprintf("tui-%d", time.Now().UnixMilli())
+
+	model := chat.New(chat.Deps{
+		TurnRunner: application.TurnRunner,
+		Config:     cfg,
+		SessionKey: sessionKey,
+	})
+
+	p := tea.NewProgram(model, tea.WithAltScreen(), tea.WithMouseCellMotion())
+	model.SetProgram(p)
+
+	// Override TTY fallback with TUI approval provider.
+	if composite, ok := application.ApprovalProvider.(*approval.CompositeProvider); ok {
+		composite.SetTTYFallback(chat.NewTUIApprovalProvider(func(msg interface{}) {
+			p.Send(msg)
+		}))
+	}
+
+	if _, err := p.Run(); err != nil {
+		return fmt.Errorf("TUI: %w", err)
+	}
+
+	return nil
 }
 
 func serveCmd() *cobra.Command {
@@ -222,19 +345,11 @@ func serveCmd() *cobra.Command {
 			ctx, cancel := context.WithCancel(context.Background())
 			defer cancel()
 
-			sigChan := make(chan os.Signal, 1)
+			sigChan := make(chan os.Signal, 2)
 			signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
+			defer signal.Stop(sigChan)
 
-			go func() {
-				<-sigChan
-				log.Info("shutting down...")
-				shutdownCtx, shutdownCancel := context.WithTimeout(ctx, 10*time.Second)
-				defer shutdownCancel()
-				if err := application.Stop(shutdownCtx); err != nil {
-					log.Warnw("shutdown error", "error", err)
-				}
-				cancel()
-			}()
+			go watchServeSignals(ctx, application, log, sigChan, 10*time.Second, cancel, exitFn)
 
 			if err := application.Start(ctx); err != nil {
 				log.Errorw("startup error", "error", err)
@@ -246,6 +361,46 @@ func serveCmd() *cobra.Command {
 			<-ctx.Done()
 			return nil
 		},
+	}
+}
+
+func watchServeSignals(
+	ctx context.Context,
+	application stoppableApplication,
+	log *zap.SugaredLogger,
+	sigChan <-chan os.Signal,
+	shutdownTimeout time.Duration,
+	cancel context.CancelFunc,
+	forceExit func(int),
+) {
+	shutdownStarted := false
+
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case _, ok := <-sigChan:
+			if !ok {
+				return
+			}
+
+			if shutdownStarted {
+				log.Warn("received second interrupt, forcing exit")
+				forceExit(130)
+				return
+			}
+
+			shutdownStarted = true
+			log.Info("shutting down...")
+			go func() {
+				shutdownCtx, shutdownCancel := context.WithTimeout(ctx, shutdownTimeout)
+				defer shutdownCancel()
+				if err := application.Stop(shutdownCtx); err != nil {
+					log.Warnw("shutdown error", "error", err)
+				}
+				cancel()
+			}()
+		}
 	}
 }
 
@@ -315,7 +470,7 @@ func configCmd() *cobra.Command {
 				return fmt.Errorf("internal error: bootstrap result not available")
 			}
 			return setBootResult.ConfigStore.Save(
-				context.Background(), setBootResult.ProfileName, cfg,
+				context.Background(), setBootResult.ProfileName, cfg, nil,
 			)
 		},
 	))
@@ -352,6 +507,7 @@ func startupSummary(cfg *config.Config) string {
 		{Name: "MCP", Enabled: cfg.MCP.Enabled, Detail: mcpServerCount(cfg)},
 		{Name: "P2P", Enabled: cfg.P2P.Enabled},
 		{Name: "Payment", Enabled: cfg.Payment.Enabled},
+		{Name: "Provenance", Enabled: cfg.Provenance.Enabled},
 	}
 
 	return tui.StartupSummary(features)
@@ -367,3 +523,264 @@ func mcpServerCount(cfg *config.Config) string {
 	}
 	return fmt.Sprintf("%d server(s)", n)
 }
+
+// withChannels controls whether cockpit starts live channel adapters.
+// Default false to avoid conflicts with a running `lango serve`.
+// Set via --with-channels flag on `lango cockpit`.
+var withChannels bool
+
+func cockpitCmd() *cobra.Command {
+	cmd := &cobra.Command{
+		Use:     "cockpit",
+		Short:   "Launch multi-panel TUI (same as bare lango)",
+		GroupID: "start",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			if !prompt.IsInteractive() {
+				return fmt.Errorf("cockpit requires an interactive terminal")
+			}
+			return runCockpit()
+		},
+	}
+	cmd.Flags().BoolVar(&withChannels, "with-channels", false,
+		"Start live channel adapters (Telegram/Discord/Slack). "+
+			"Only use when no lango serve is running with the same credentials.")
+	return cmd
+}
+
+func chatCmd() *cobra.Command {
+	return &cobra.Command{
+		Use:     "chat",
+		Short:   "Launch plain chat TUI",
+		GroupID: "start",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			if !prompt.IsInteractive() {
+				return fmt.Errorf("chat requires an interactive terminal")
+			}
+			return runChat()
+		},
+	}
+}
+
+func runCockpit() error {
+	boot, err := cliboot.BootResult()
+	if err != nil {
+		return fmt.Errorf("bootstrap: %w", err)
+	}
+	defer boot.DBClient.Close()
+
+	cfg := boot.Config
+	logPath := filepath.Join(cfg.DataRoot, "cockpit.log")
+	if err := logging.Init(logging.LogConfig{
+		Level:      cfg.Logging.Level,
+		Format:     cfg.Logging.Format,
+		OutputPath: logPath,
+	}); err != nil {
+		return fmt.Errorf("init logging: %w", err)
+	}
+	defer func() { _ = logging.Sync() }()
+
+	if logFile, err := os.OpenFile(logPath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644); err == nil {
+		defer logFile.Close()
+		log.SetOutput(logFile)
+	}
+
+	tui.SetProfile(boot.ProfileName)
+
+	fmt.Fprint(os.Stderr, tui.Banner())
+	fmt.Fprintf(os.Stderr, "\n  Logs: %s\n", logPath)
+	fmt.Fprintln(os.Stderr, "  Initializing cockpit...")
+
+	// Use Cockpit mode (channels enabled) only when explicitly requested
+	// via --with-channels to avoid conflict with a running `lango serve`.
+	appMode := app.WithLocalChat()
+	if withChannels {
+		appMode = app.WithCockpit()
+	}
+	application, err := app.New(boot, appMode)
+	if err != nil {
+		return fmt.Errorf("create application: %w", err)
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	if err := application.Start(ctx); err != nil {
+		return fmt.Errorf("start application: %w", err)
+	}
+	defer func() {
+		shutdownCtx, shutdownCancel := context.WithTimeout(
+			context.Background(), 10*time.Second,
+		)
+		defer shutdownCancel()
+		_ = application.Stop(shutdownCtx)
+	}()
+
+	// Create channel tracker for cockpit status display.
+	tracker := cockpit.NewChannelTracker(application.EventBus)
+
+	// Seed tracker with known channel names (Start status updated later).
+	for _, ch := range application.Channels {
+		tracker.SeedChannel(ch.Name(), false)
+	}
+
+	// Channel shutdown: cancel ctx first so in-flight requests unblock,
+	// then stop channels. Using a single defer to guarantee ordering
+	// (cancel before stop) and avoid LIFO defer reversal.
+	defer func() {
+		cancel() // unblock any in-flight channel workers waiting on ctx
+		for _, ch := range application.Channels {
+			stopCtx, stopCancel := context.WithTimeout(context.Background(), 5*time.Second)
+			_ = ch.Stop(stopCtx)
+			stopCancel()
+		}
+	}()
+
+	sessionKey := fmt.Sprintf("cockpit-%d", time.Now().UnixMilli())
+
+	model := cockpit.New(cockpit.Deps{
+		TurnRunner:        application.TurnRunner,
+		Config:            cfg,
+		SessionKey:        sessionKey,
+		ToolCatalog:       application.ToolCatalog,
+		MetricsCollector:  application.MetricsCollector,
+		FeatureStatuses:   application.FeatureStatuses,
+		ConfigStore:       boot.ConfigStore,
+		ProfileName:       boot.ProfileName,
+		BackgroundManager: application.BackgroundManager,
+		EventBus:          application.EventBus,
+		ApprovalHistory:   application.ApprovalHistory,
+		GrantStore:        application.GrantStore,
+	})
+
+	// Register pages.
+	if application.ToolCatalog != nil {
+		model.RegisterPage(cockpit.PageTools,
+			pages.NewToolsPage(application.ToolCatalog))
+	}
+	if application.MetricsCollector != nil || application.FeatureStatuses != nil {
+		var statusProvider func() []types.FeatureStatus
+		if application.FeatureStatuses != nil {
+			statusProvider = application.FeatureStatuses.All
+		}
+		model.RegisterPage(cockpit.PageStatus,
+			pages.NewStatusPage(statusProvider, application.MetricsCollector, cfg))
+	}
+	if boot.ConfigStore != nil {
+		model.RegisterPage(cockpit.PageSettings,
+			pages.NewSettingsPage(cfg, boot.ConfigStore, boot.ProfileName))
+	}
+	model.RegisterPage(cockpit.PageSessions,
+		pages.NewSessionsPage(func(ctx context.Context) ([]session.SessionSummary, error) {
+			return application.Store.ListSessions(ctx)
+		}))
+	if application.BackgroundManager != nil {
+		var actioner pages.TaskActioner = &bgTaskActioner{mgr: application.BackgroundManager}
+		model.RegisterPage(cockpit.PageTasks,
+			pages.NewTasksPage(&bgTaskLister{mgr: application.BackgroundManager}, actioner))
+	} else {
+		model.RegisterPage(cockpit.PageTasks, pages.NewTasksPage(nil, nil))
+	}
+	model.RegisterPage(cockpit.PageApprovals,
+		pages.NewApprovalsPage(application.ApprovalHistory, application.GrantStore))
+
+	p := tea.NewProgram(model, tea.WithAltScreen(), tea.WithMouseCellMotion())
+	model.SetProgram(p)
+	model.SetChannelTracker(tracker)
+
+	// Wire runtime tracker for live token/delegation/recovery metrics.
+	runtimeTracker := cockpit.NewRuntimeTracker(application.EventBus, p, sessionKey)
+	model.SetRuntimeTracker(runtimeTracker)
+
+	// Wire channel events from EventBus to TUI — BEFORE starting channels
+	// so no early inbound messages are dropped (EventBus drops unhandled events).
+	cockpit.SubscribeChannelEvents(application.EventBus, p)
+
+	// Start channel polling/socket loops AFTER subscribe is wired.
+	for _, ch := range application.Channels {
+		ch := ch
+		go func() {
+			err := ch.Start(ctx)
+			tracker.SeedChannel(ch.Name(), err == nil)
+			if err != nil {
+				fmt.Fprintf(os.Stderr, "channel start (%s): %v\n", ch.Name(), err)
+			}
+		}()
+	}
+
+	if composite, ok := application.ApprovalProvider.(*approval.CompositeProvider); ok {
+		composite.SetTTYFallback(chat.NewTUIApprovalProvider(func(msg interface{}) {
+			p.Send(msg)
+		}))
+	}
+
+	if _, err := p.Run(); err != nil {
+		return fmt.Errorf("TUI: %w", err)
+	}
+
+	return nil
+}
+
+// bgTaskLister adapts background.Manager to pages.TaskLister.
+type bgTaskLister struct {
+	mgr *background.Manager
+}
+
+func (b *bgTaskLister) ListTasks() []pages.TaskInfo {
+	snapshots := b.mgr.List()
+
+	// Sort by StartedAt descending for stable ordering.
+	sort.Slice(snapshots, func(i, j int) bool {
+		return snapshots[i].StartedAt.After(snapshots[j].StartedAt)
+	})
+
+	tasks := make([]pages.TaskInfo, len(snapshots))
+	for i, s := range snapshots {
+		tasks[i] = pages.TaskInfo{
+			ID:            s.ID,
+			Prompt:        s.Prompt,
+			Status:        s.StatusText,
+			Elapsed:       taskElapsed(s),
+			Result:        s.Result,
+			Error:         s.Error,
+			OriginChannel: s.OriginChannel,
+			TokensUsed:    s.TokensUsed,
+		}
+	}
+	return tasks
+}
+
+// bgTaskActioner adapts background.Manager to pages.TaskActioner.
+type bgTaskActioner struct {
+	mgr *background.Manager
+}
+
+func (b *bgTaskActioner) CancelTask(id string) error {
+	return b.mgr.Cancel(id)
+}
+
+func (b *bgTaskActioner) RetryTask(ctx context.Context, id string) error {
+	snap, err := b.mgr.Status(id)
+	if err != nil {
+		return fmt.Errorf("retry task %s: %w", id, err)
+	}
+	_, err = b.mgr.Submit(ctx, snap.Prompt, background.Origin{
+		Channel: snap.OriginChannel,
+		Session: snap.OriginSession,
+	})
+	if err != nil {
+		return fmt.Errorf("retry task %s: %w", id, err)
+	}
+	return nil
+}
+
+// taskElapsed computes the correct elapsed duration for a task snapshot.
+func taskElapsed(s background.TaskSnapshot) time.Duration {
+	if s.StartedAt.IsZero() {
+		return 0 // pending, not yet started
+	}
+	if !s.CompletedAt.IsZero() {
+		return s.CompletedAt.Sub(s.StartedAt) // terminal: freeze at actual runtime
+	}
+	return time.Since(s.StartedAt) // running: wall-clock
+}
+

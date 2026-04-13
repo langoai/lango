@@ -16,7 +16,7 @@ graph TB
     end
 
     subgraph AgentLayer["Agent Layer"]
-        ADK["ADK Agent<br/>(Google ADK v0.5.0)"]
+        ADK["ADK Agent<br/>(Google ADK v1.0.0)"]
         ORCH["Orchestration<br/>(Multi-Agent)"]
         TOOLS["Tools<br/>(exec, fs, browser,<br/>crypto, payment)"]
         SKILL["Skills<br/>(User-defined)"]
@@ -139,7 +139,7 @@ The agent layer is the core runtime. It manages the AI agent lifecycle, tool exe
 
 | Component | Package | Role |
 |-----------|---------|------|
-| **ADK Agent** | `internal/adk/` | Wraps Google ADK v0.5.0 (`llmagent.New`, `runner.Runner`). Provides `Run`, `RunAndCollect`, and `RunStreaming` methods |
+| **ADK Agent** | `internal/adk/` | Wraps Google ADK v1.0.0 (`llmagent.New`, `runner.Runner`). Provides `Run`, `RunAndCollect`, and `RunStreaming` methods |
 | **Context-Aware Model** | `internal/adk/context_model.go` | `ContextAwareModelAdapter` intercepts every LLM call to inject knowledge, memory, RAG, and Graph RAG context into the system prompt. Retrieval runs in parallel via `errgroup` |
 | **Tool Adaptation** | `internal/adk/tools.go` | `AdaptTool()` converts internal `agent.Tool` definitions to ADK `tool.Tool` format with JSON Schema parameters |
 | **Tool Catalog** | `internal/toolcatalog/` | Thread-safe tool registry with category grouping. All tools (built-in, MCP, P2P) are registered here before being passed to the agent |

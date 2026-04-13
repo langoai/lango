@@ -1,4 +1,8 @@
-## ADDED Requirements
+## Purpose
+
+Capability spec for agent-registry. See requirements below for scope and behavior contracts.
+
+## Requirements
 
 ### Requirement: AgentDefinition type
 The `agentregistry` package SHALL define an `AgentDefinition` struct with fields: Name, Description, Status, Capabilities, Prefixes, Keywords, AlwaysInclude, Instruction, Source, and metadata (Version, Author, Tags).
@@ -55,11 +59,11 @@ The `FileStore` SHALL load AGENT.md files from a directory structure: `<base>/<n
 - **THEN** it SHALL return two AgentDefinitions with names "operator" and "custom" and Source set to SourceUser
 
 ### Requirement: EmbeddedStore for default agents
-The `EmbeddedStore` SHALL load AGENT.md files from an `embed.FS` containing the 7 default agent definitions (operator, navigator, vault, librarian, automator, planner, chronicler).
+The `EmbeddedStore` SHALL load AGENT.md files from an `embed.FS` containing the 8 default agent definitions (operator, navigator, vault, librarian, automator, planner, chronicler, ontologist).
 
 #### Scenario: Load embedded defaults
 - **WHEN** EmbeddedStore loads agents
-- **THEN** it SHALL return 7 AgentDefinitions with Source set to SourceEmbedded
+- **THEN** it SHALL return 8 AgentDefinitions with Source set to SourceEmbedded
 
 ### Requirement: Store interface
 The package SHALL define a `Store` interface with `Load() ([]AgentDefinition, error)` method. Both FileStore and EmbeddedStore SHALL implement this interface.

@@ -1,15 +1,15 @@
 ## Purpose
 
-Default per-agent IDENTITY.md prompt files for all 7 sub-agents, embedded in `prompts/agents/<name>/IDENTITY.md`. These provide reference defaults for the per-agent prompt customization system.
+Default per-agent IDENTITY.md prompt files for all 8 sub-agents, embedded in `prompts/agents/<name>/IDENTITY.md`. These provide reference defaults for the per-agent prompt customization system.
 
 ## Requirements
 
 ### Requirement: Default IDENTITY.md for each sub-agent
-The system SHALL provide a default `prompts/agents/<name>/IDENTITY.md` file for each of the 7 sub-agents: operator, navigator, vault, librarian, automator, planner, chronicler.
+The system SHALL provide a default `prompts/agents/<name>/IDENTITY.md` file for each of the 8 sub-agents: operator, navigator, vault, librarian, automator, planner, chronicler, ontologist.
 
-#### Scenario: All 7 IDENTITY.md files exist
+#### Scenario: All 8 IDENTITY.md files exist
 - **WHEN** the prompts directory is inspected
-- **THEN** each of `prompts/agents/{operator,navigator,vault,librarian,automator,planner,chronicler}/IDENTITY.md` SHALL exist
+- **THEN** each of `prompts/agents/{operator,navigator,vault,librarian,automator,planner,chronicler,ontologist}/IDENTITY.md` SHALL exist
 
 #### Scenario: Content matches agentSpecs instruction
 - **WHEN** a sub-agent IDENTITY.md is loaded

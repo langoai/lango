@@ -135,6 +135,9 @@ func TestBuildFilesystemTools_Properties(t *testing.T) {
 		{give: "fs_mkdir", wantPrefix: "fs_"},
 		{give: "fs_delete", wantPrefix: "fs_"},
 		{give: "browser_navigate", wantPrefix: "browser_"},
+		{give: "browser_search", wantPrefix: "browser_"},
+		{give: "browser_observe", wantPrefix: "browser_"},
+		{give: "browser_extract", wantPrefix: "browser_"},
 		{give: "browser_action", wantPrefix: "browser_"},
 		{give: "browser_screenshot", wantPrefix: "browser_"},
 	}

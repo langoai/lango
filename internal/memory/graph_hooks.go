@@ -41,17 +41,21 @@ func (h *GraphHooks) OnObservation(obs Observation, previousObsID string) {
 
 	triples := []graph.Triple{
 		{
-			Subject:   obsNode,
-			Predicate: graph.InSession,
-			Object:    sessionNode,
+			Subject:     obsNode,
+			SubjectType: "Observation",
+			Predicate:   graph.InSession,
+			Object:      sessionNode,
+			ObjectType:  "Session",
 		},
 	}
 
 	if previousObsID != "" {
 		triples = append(triples, graph.Triple{
-			Subject:   obsNode,
-			Predicate: graph.Follows,
-			Object:    fmt.Sprintf("observation:%s", previousObsID),
+			Subject:     obsNode,
+			SubjectType: "Observation",
+			Predicate:   graph.Follows,
+			Object:      fmt.Sprintf("observation:%s", previousObsID),
+			ObjectType:  "Observation",
 		})
 	}
 
@@ -72,17 +76,21 @@ func (h *GraphHooks) OnReflection(ref Reflection, observationIDs []string) {
 
 	triples := []graph.Triple{
 		{
-			Subject:   refNode,
-			Predicate: graph.InSession,
-			Object:    sessionNode,
+			Subject:     refNode,
+			SubjectType: "Reflection",
+			Predicate:   graph.InSession,
+			Object:      sessionNode,
+			ObjectType:  "Session",
 		},
 	}
 
 	for _, obsID := range observationIDs {
 		triples = append(triples, graph.Triple{
-			Subject:   refNode,
-			Predicate: graph.ReflectsOn,
-			Object:    fmt.Sprintf("observation:%s", obsID),
+			Subject:     refNode,
+			SubjectType: "Reflection",
+			Predicate:   graph.ReflectsOn,
+			Object:      fmt.Sprintf("observation:%s", obsID),
+			ObjectType:  "Observation",
 		})
 	}
 

@@ -6,6 +6,7 @@ import (
 
 	"github.com/langoai/lango/internal/bootstrap"
 	"github.com/langoai/lango/internal/config"
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
@@ -70,4 +71,63 @@ func TestNew_InvalidProviderType(t *testing.T) {
 	cfg.Session.DatabasePath = filepath.Join(t.TempDir(), "test.db")
 	_, err := New(testBoot(t, cfg))
 	require.Error(t, err, "expected error for invalid provider type")
+}
+
+// ── Phase B Cleanup Stack Tests ──
+
+func TestCleanupStack_RollbackReverseOrder(t *testing.T) {
+	var order []string
+	var s cleanupStack
+
+	s.push("step-A", func() { order = append(order, "A") })
+	s.push("step-B", func() { order = append(order, "B") })
+	s.push("step-C", func() { order = append(order, "C") })
+
+	s.rollback()
+
+	assert.Equal(t, []string{"C", "B", "A"}, order, "cleanups must execute in reverse order")
+	assert.Empty(t, s.entries, "stack should be empty after rollback")
+}
+
+func TestCleanupStack_ClearDiscardsWithoutExecution(t *testing.T) {
+	executed := false
+	var s cleanupStack
+
+	s.push("step-A", func() { executed = true })
+	s.clear()
+
+	assert.False(t, executed, "clear must not execute cleanup functions")
+	assert.Empty(t, s.entries, "stack should be empty after clear")
+}
+
+func TestCleanupStack_RollbackEmpty(t *testing.T) {
+	var s cleanupStack
+	// Should not panic on empty stack.
+	s.rollback()
+	assert.Empty(t, s.entries)
+}
+
+func TestCleanupStack_PushAndRollbackPartial(t *testing.T) {
+	var order []string
+	var s cleanupStack
+
+	s.push("output-store", func() { order = append(order, "output-store") })
+	s.push("gateway", func() { order = append(order, "gateway") })
+
+	// Simulate B6 failure — rollback should clean up gateway then output-store.
+	s.rollback()
+
+	assert.Equal(t, []string{"gateway", "output-store"}, order,
+		"B6 failure should rollback gateway then output-store")
+}
+
+func TestNew_PhaseBRollback_AgentCreationFailure(t *testing.T) {
+	// No providers configured: Phase A succeeds (supervisor with zero providers),
+	// but B6 (initAgent) fails — triggering Phase B rollback of OutputStore + Gateway.
+	cfg := config.DefaultConfig()
+	cfg.Providers = nil
+	cfg.Session.DatabasePath = filepath.Join(t.TempDir(), "test.db")
+
+	_, err := New(testBoot(t, cfg))
+	require.Error(t, err, "expected error when agent creation fails")
 }

@@ -98,6 +98,14 @@ The `approvalTimeoutSec` setting controls how long the system waits for human ap
 
 If the timeout expires without approval, the tool call is denied and the agent receives an error.
 
+Within a single request, Lango also caches the approval outcome for the same canonical approval action:
+
+- A normal `Approve` is reused for identical retries in the same turn
+- Canonicalization can ignore approval-neutral params. For example, `browser_search` reuses the same turn-local approval state across `limit`-only variants of the same query
+- A deny still blocks identical retries in the same turn without reopening another prompt
+- A timeout can reopen approval a bounded number of times in the same turn, then it is blocked until the next user turn
+- `Always Allow` remains the only session-wide persistent grant
+
 ## Notification Channel
 
 Configure which messaging channel receives approval notifications. When a tool requires approval, a notification is sent to the specified channel with details about the pending tool call:

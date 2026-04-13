@@ -1,10 +1,18 @@
 package session
 
 import (
+	"context"
 	"time"
 
 	"github.com/langoai/lango/internal/types"
 )
+
+// SessionSummary is a lightweight view of a session for listing purposes.
+type SessionSummary struct {
+	Key       string
+	CreatedAt time.Time
+	UpdatedAt time.Time
+}
 
 // Message represents a single message in conversation history
 type Message struct {
@@ -57,6 +65,10 @@ type Store interface {
 	AnnotateTimeout(key string, partial string) error
 	// Close closes the store
 	Close() error
+
+	// ListSessions returns lightweight summaries of all sessions,
+	// ordered by most recent update first.
+	ListSessions(ctx context.Context) ([]SessionSummary, error)
 
 	// GetSalt retrieves the encryption salt for LocalCryptoProvider
 	GetSalt(name string) ([]byte, error)

@@ -46,6 +46,7 @@ type matchedKnowledge struct {
 	Key      string `json:"key"`
 	Category string `json:"category"`
 	Content  string `json:"content"`
+	Temporal string `json:"temporal,omitempty"` // "evergreen" or "current_state"
 }
 
 // stripCodeFence removes markdown code fences from LLM output.

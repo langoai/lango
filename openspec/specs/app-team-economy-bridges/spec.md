@@ -4,6 +4,10 @@
 
 Event-driven bridge layer connecting P2P team lifecycle events to escrow engine state transitions, reputation score adjustments, and budget-triggered graceful shutdown. All bridges live in `internal/app/` and use `eventbus.SubscribeTyped` to react to cross-subsystem events.
 
+## Purpose
+
+Capability spec for app-team-economy-bridges. See requirements below for scope and behavior contracts.
+
 ## Requirements
 
 ### Requirement: On-chain escrow event reconciliation

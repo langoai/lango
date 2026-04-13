@@ -1,4 +1,8 @@
-## ADDED Requirements
+## Purpose
+
+Capability spec for payment-service. See requirements below for scope and behavior contracts.
+
+## Requirements
 
 ### Requirement: USDC ERC-20 transfer transaction building
 The system SHALL build EIP-1559 ERC-20 transfer transactions by ABI-encoding `transfer(address,uint256)` with gas estimation and nonce management.

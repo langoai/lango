@@ -176,6 +176,8 @@ func TestAllEventTypesHaveDistinctNames(t *testing.T) {
 		TurnCompletedEvent{},
 		ReputationChangedEvent{},
 		MemoryGraphEvent{},
+		ChannelMessageReceivedEvent{},
+		ChannelMessageSentEvent{},
 	}
 
 	seen := make(map[string]bool, len(events))

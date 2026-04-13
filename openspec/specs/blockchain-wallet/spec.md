@@ -1,4 +1,8 @@
-## ADDED Requirements
+## Purpose
+
+Capability spec for blockchain-wallet. See requirements below for scope and behavior contracts.
+
+## Requirements
 
 ### Requirement: Wallet provider interface
 The system SHALL define a `WalletProvider` interface with methods: `Address`, `Balance`, `SignTransaction`, `SignMessage`, and `PublicKey`. All implementations MUST ensure private keys are never returned to callers.

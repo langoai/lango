@@ -210,6 +210,30 @@ func TestWithHooks_ToolErrorPassedToPostHook(t *testing.T) {
 	assert.Equal(t, toolErr, postHook.gotErr)
 }
 
+func TestWithHooks_PreHookObserveContinuesExecution(t *testing.T) {
+	t.Parallel()
+
+	reg := NewHookRegistry()
+	reg.RegisterPre(&stubPreHook{
+		name:     "observer",
+		priority: 1,
+		result:   PreHookResult{Action: Observe, ObserveReason: "scripting language detected"},
+	})
+
+	var handlerCalled bool
+	tool := makeTool("exec", func(_ context.Context, _ map[string]interface{}) (interface{}, error) {
+		handlerCalled = true
+		return "tool-result", nil
+	})
+
+	wrapped := Chain(tool, WithHooks(reg))
+	result, err := wrapped.Handler(context.Background(), map[string]interface{}{"command": "python -c 'print(1)'"})
+
+	require.NoError(t, err)
+	assert.True(t, handlerCalled, "handler should be called when action is Observe")
+	assert.Equal(t, "tool-result", result)
+}
+
 // --- test helpers ---
 
 type captureHookCtxPreHook struct {

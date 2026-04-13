@@ -11,27 +11,26 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Go Report Card](https://goreportcard.com/badge/github.com/langoai/lango)](https://goreportcard.com/report/github.com/langoai/lango)
 
-**A sovereign AI agent runtime with built-in commerce.** Lango is a high-performance agent in Go that lets AI agents discover each other, negotiate, transact, and collaborate — without intermediaries.
+> **Early-stage project.** Some features are experimental and may change between releases.
+> See the [feature status table](docs/features/index.md) for stability details.
+
+**A trustworthy multi-agent runtime in Go.** Lango is a high-performance agent runtime that lets AI agents collaborate, learn, and operate autonomously — with built-in observability, security hardening, and an optional peer-to-peer economy layer.
 
 ### Why Lango?
 
-Most agent frameworks stop at tool-calling. Lango goes further — it gives agents a full **sovereign economic stack**:
+Most agent frameworks stop at tool-calling. Lango builds a **trustworthy operational foundation** — then optionally extends into a peer-to-peer economy:
 
-- **Peer-to-Peer Agent Economy** — Agents discover, authenticate, negotiate prices, and trade capabilities over libp2p with budget management, trust-based risk assessment, and dynamic pricing. No central hub. No vendor lock-in.
-- **On-Chain Settlement** — USDC payments on Base L2 with EIP-3009 authorization, milestone-based escrow (Hub/Vault dual-mode), Foundry smart contracts, and a Security Sentinel that detects anomalies in real time.
-- **Smart Accounts** — ERC-7579 modular smart accounts (Safe-based) with ERC-4337 account abstraction, hierarchical session keys, gasless USDC transactions via paymaster, and on-chain spending limits.
-- **Trust & Reputation** — Every interaction builds a verifiable reputation score. Trusted peers get post-pay terms and price discounts; new peers prepay or use escrow.
+- **Multi-Agent Orchestration** — Hierarchical sub-agent teams with role-based delegation, P2P team coordination with conflict resolution strategies, and DAG-based workflow pipelines.
+- **Production Observability** — Token usage tracking, Prometheus metrics, OpenTelemetry tracing, health monitoring, alerting with webhook delivery, and audit logging.
 - **Zero-Knowledge Security** — ZK proofs (Plonk/Groth16) for handshake authentication and response attestation. Agents prove identity and output integrity without revealing internals. Hardware keyring and Cloud KMS support.
 - **Knowledge as Currency** — Self-learning knowledge graph, observational memory, and hybrid vector + graph RAG retrieval — agents that get smarter with every interaction can charge for their expertise.
-- **Multi-Agent Orchestration** — Hierarchical sub-agent teams with role-based delegation, P2P team coordination with conflict resolution strategies, and DAG-based workflow pipelines.
 - **Open Interoperability** — A2A protocol for remote agent discovery, MCP integration for external tool servers, and multi-provider AI support (OpenAI, Anthropic, Gemini, Ollama).
-- **Production Observability** — Token usage tracking, health monitoring, audit logging, and metrics endpoints for operational visibility.
+- **Peer-to-Peer Agent Economy** — Agents discover, authenticate, negotiate prices, and trade capabilities over libp2p with budget management, trust-based risk assessment, and dynamic pricing. No central hub. No vendor lock-in.
+- **On-Chain Settlement** — USDC payments on Base Sepolia testnet (chainId 84532) with EIP-3009 authorization, milestone-based escrow (Hub/Vault dual-mode), Foundry smart contracts, and a Security Sentinel that detects anomalies in real time.
+- **Smart Accounts** — ERC-7579 modular smart accounts (Safe-based) with ERC-4337 account abstraction, hierarchical session keys, gasless USDC transactions via paymaster, and on-chain spending limits.
+- **Trust & Reputation** — Every interaction builds a verifiable reputation score. Trusted peers get post-pay terms and price discounts; new peers prepay or use escrow.
 
 Single binary. <100ms startup. <250MB memory. Just Go.
-
-## ⚠️ **Note**
-
-This project includes experimental AI Agent features and is currently in an unstable state. Please use with caution, as significant breaking changes may occur in future updates.
 
 ## Features
 
@@ -41,7 +40,7 @@ This project includes experimental AI Agent features and is currently in an unst
 - 🛠️ **Rich Tools** - Shell execution, file system operations, browser automation, crypto & secrets tools
 - 🧠 **Self-Learning** - Knowledge store, learning engine, file-based skill system with GitHub import (git clone + HTTP fallback), observational memory, proactive knowledge librarian
 - 📊 **Knowledge Graph & Graph RAG** - BoltDB triple store with hybrid vector + graph retrieval
-- 🔀 **Multi-Agent Orchestration** - Hierarchical sub-agents (operator, navigator, vault, librarian, automator, planner, chronicler)
+- 🔀 **Multi-Agent Orchestration** - Hierarchical sub-agents (operator, navigator, vault, librarian, automator, planner, chronicler, ontologist)
 - 🌍 **A2A Protocol** - Agent-to-Agent protocol for remote agent discovery and integration
 - 🌐 **P2P Network** - Decentralized agent-to-agent connectivity via libp2p with DHT discovery, ZK-enhanced handshake, knowledge firewall, and peer payments
 - 💸 **Blockchain Payments** - USDC payments on Base L2, X402 V2 auto-pay protocol (Coinbase SDK), spending limits
@@ -49,7 +48,7 @@ This project includes experimental AI Agent features and is currently in an unst
 - ⚡ **Background Execution** - Async task manager with concurrency control and completion notifications
 - 🔄 **Workflow Engine** - DAG-based YAML workflows with parallel step execution and state persistence
 - 🔗 **MCP Integration** - Connect to external MCP servers (stdio/HTTP/SSE), auto-discovery, health checks, multi-scope config
-- 🔒 **Secure** - AES-256-GCM encryption, key registry, secret management, output scanning, hardware keyring (Touch ID / TPM), SQLCipher DB encryption, Cloud KMS (AWS/GCP/Azure/PKCS#11)
+- 🔒 **Secure** - Master Key envelope (MK/KEK hierarchy), AES-256-GCM encryption, recovery mnemonic, key registry, secret management, output scanning, hardware keyring (Touch ID / TPM), SQLCipher DB encryption, Cloud KMS (AWS/GCP/Azure/PKCS#11)
 - 💾 **Persistent** - Ent ORM with SQLite session storage
 - 🌐 **Gateway** - WebSocket/HTTP server with real-time streaming
 - 🔑 **Auth** - OIDC authentication, OAuth login flow
@@ -65,6 +64,12 @@ This project includes experimental AI Agent features and is currently in an unst
 - 🏦 **Smart Accounts** — ERC-7579 modular smart accounts (Safe-based), ERC-4337 account abstraction with session keys, gasless USDC transactions via paymaster (Circle/Pimlico/Alchemy), on-chain spending limits, and hierarchical session key management
 - 👥 **P2P Teams** — Task-scoped agent groups with role-based delegation, conflict resolution (trust_weighted, majority_vote, leader_decides, fail_on_conflict), assignment strategies, and payment coordination
 - 📊 **Observability** — Token usage tracking, health monitoring, audit logging, and metrics endpoints
+- 🎯 **Context Engineering** — Token-budget-aware context allocation, retrieval coordinator (FactSearch + TemporalSearch + ContextSearch), config profiles (off/lite/balanced/full), and relevance score auto-adjustment
+- 🖥️ **Cockpit TUI** — Multi-panel terminal dashboard with 7 pages (Chat, Settings, Tools, Status, Sessions, Tasks, Approvals). Context panel with live token usage, tool stats, runtime, channels, and system metrics. Two-tier approval with inline strip and fullscreen dialog. Background task management with detail view, cancel, and retry. Runtime visibility with delegation tracking, budget warnings, and recovery events
+- 📋 **RunLedger (Task OS)** — Durable execution engine with append-only journal, PEV verification, typed validators, and planner integration
+- 📜 **Session Provenance** — Persistent checkpoints, session lineage tree, git-aware attribution, and signed provenance bundle export/import
+- 🛡️ **OS-level Sandbox** — Process isolation via macOS Seatbelt and Linux bubblewrap (when `bwrap` is installed), network deny, workspace-scoped write access, automatic control-plane (`~/.lango`) and `.git` masking (walks up to the repo root and follows linked-worktree pointers), file-level deny via `/dev/null` bind, symlink resolution, glob patterns in deny/write lists, audit trail of every apply/skip/exclude decision
+- 🚧 **Response Gatekeeper** — Output sanitization stripping thought tags, internal markers, raw JSON, and custom patterns
 
 ## Quick Start
 
@@ -111,164 +116,17 @@ For the full configuration editor with all options, use `lango settings`.
 
 ### CLI Commands
 
+See the full [CLI Reference](docs/cli/index.md) for the complete command set.
+
 ```
+lango                            Launch cockpit TUI (interactive terminal)
+lango cockpit                    Launch multi-panel TUI dashboard
 lango serve                      Start the gateway server
-lango version                    Print version and build info
-lango health [--port N]          Check gateway health (default port: 18789)
-lango onboard                    Guided 5-step setup wizard for first-time configuration
-lango settings                   Full interactive configuration editor (all options)
-lango status [--output json] [--addr] Show unified system status dashboard
-lango doctor [--fix] [--json]    Diagnostics and health checks
-
-lango config list                List all configuration profiles
-lango config create <name>       Create a new profile with defaults
-lango config use <name>          Switch to a different profile
-lango config delete <name>       Delete a profile (--force to skip prompt)
-lango config import <file>       Import and encrypt a JSON config (--profile <name>, source file is deleted after import)
-lango config export <name>       Export active profile as JSON (requires passphrase)
-lango config validate            Validate the active profile
-
-lango security status [--json]   Show security configuration status
-lango security migrate-passphrase Rotate encryption passphrase
-lango security secrets list      List stored secrets (values hidden)
-lango security secrets set <n>   Store an encrypted secret (--value-hex for non-interactive)
-lango security secrets delete <n> Delete a stored secret (--force)
-lango security keyring store     Store passphrase in hardware keyring (Touch ID / TPM)
-lango security keyring clear     Remove passphrase from keyring (--force)
-lango security keyring status    Show hardware keyring status (--json)
-lango security db-migrate        Encrypt database with SQLCipher (--force)
-lango security db-decrypt        Decrypt database to plaintext (--force)
-lango security kms status        Show KMS provider status (--json)
-lango security kms test          Test KMS encrypt/decrypt roundtrip
-lango security kms keys          List KMS keys in registry (--json)
-
-lango memory list [--json]       List observational memory entries
-lango memory status [--json]     Show memory system status
-lango memory clear [--force]     Clear all memory entries
-lango memory agents [--json]     List agents with persistent memory
-lango memory agent <name>        Show memory entries for a specific agent
-
-lango graph status [--json]      Show graph store status
-lango graph query [flags] [--json] Query graph triples (--subject, --predicate, --object, --limit)
-lango graph stats [--json]       Show graph statistics
-lango graph clear [--force]      Clear all graph data
-lango graph add [flags]          Add a triple (--subject, --predicate, --object)
-lango graph export <file>        Export graph data to a file
-lango graph import <file>        Import graph data from a file
-
-lango agent status [--json]      Show agent mode and configuration
-lango agent list [--json] [--check] List local and remote agents
-lango agent tools [--json]       Show tool-to-agent assignments
-lango agent hooks [--json]       Show registered tool hooks
-
-lango a2a card [--json]          Show local A2A agent card configuration
-lango a2a check <url> [--json]   Fetch and display a remote agent card
-
-lango learning status [--json]   Show learning system configuration
-lango learning history           Show recent learning entries
-
-lango librarian status [--json]  Show librarian configuration and inquiry stats
-lango librarian inquiries        List pending knowledge inquiries
-
-lango approval status [--json]   Show approval system configuration
-
-lango payment balance [--json]   Show USDC wallet balance
-lango payment history [--json] [--limit N] Show payment transaction history
-lango payment limits [--json]    Show spending limits and daily usage
-lango payment info [--json]      Show wallet and payment system info
-lango payment send [flags]       Send USDC payment (--to, --amount, --purpose required; --force, --json)
-lango payment x402 [--json]      Show X402 auto-pay configuration
-
-lango cron add [flags]           Add a cron job (--name, --schedule/--every/--at, --prompt, --deliver, --timezone)
-lango cron list                  List all cron jobs
-lango cron delete <id-or-name>   Delete a cron job
-lango cron pause <id-or-name>    Pause a cron job
-lango cron resume <id-or-name>   Resume a paused job
-lango cron history [id-or-name]  Show cron execution history
-
-lango workflow run <file.yaml>   Execute a workflow YAML file
-lango workflow list              List workflow runs
-lango workflow status <run-id>   Show workflow run status with step details
-lango workflow cancel <run-id>   Cancel a running workflow
-lango workflow history           Show workflow execution history
-lango workflow validate <file>   Validate a workflow YAML file
-
-lango mcp list                   List all configured MCP servers
-lango mcp add <name> [flags]     Add a new MCP server (--type, --command, --url, --env, --header, --scope, --safety)
-lango mcp remove <name>          Remove an MCP server configuration (--scope)
-lango mcp get <name>             Show server details and discovered tools
-lango mcp test <name>            Test server connectivity (handshake + ping + tool count)
-lango mcp enable <name>          Enable an MCP server (--scope)
-lango mcp disable <name>         Disable an MCP server (--scope)
-
-lango p2p status                 Show P2P node status
-lango p2p peers                  List connected peers
-lango p2p connect <multiaddr>    Connect to a peer by multiaddr
-lango p2p disconnect <peer-id>   Disconnect from a peer
-lango p2p firewall list          List firewall ACL rules
-lango p2p firewall add           Add a firewall ACL rule
-lango p2p firewall remove        Remove firewall rules for a peer
-lango p2p discover               Discover agents by capability
-lango p2p identity               Show local DID and peer identity
-lango p2p reputation             Query peer trust score
-lango p2p pricing                Show tool pricing
-lango p2p session list           List active peer sessions (--json)
-lango p2p session revoke         Revoke a peer session (--peer-did)
-lango p2p session revoke-all     Revoke all active peer sessions
-lango p2p sandbox status         Show sandbox runtime status
-lango p2p sandbox test           Run sandbox smoke test
-lango p2p sandbox cleanup        Remove orphaned sandbox containers
-lango p2p team list              List active P2P teams
-lango p2p team status <id>       Show team details and member status
-lango p2p team disband <id>      Disband an active team
-lango p2p workspace create <name> Create a collaborative workspace (--goal, --json)
-lango p2p workspace list          List workspaces (--json)
-lango p2p workspace status <id>   Show workspace details (--json)
-lango p2p workspace join <id>     Join an existing workspace
-lango p2p workspace leave <id>    Leave a workspace
-lango p2p git init <workspace-id> Initialize git repo for a workspace
-lango p2p git log <workspace-id>  Show commit log (--limit, --json)
-lango p2p git diff <id> <from> <to> Show diff between commits
-lango p2p git push <workspace-id> Push git bundle to peers
-lango p2p git fetch <workspace-id> Fetch git bundle from peers
-lango p2p zkp status             Show ZKP configuration
-lango p2p zkp circuits           List compiled ZKP circuits
-
-lango economy budget status     Show budget allocation status
-lango economy risk status       Show risk assessment configuration
-lango economy pricing status    Show dynamic pricing configuration
-lango economy negotiate status  Show negotiation protocol status
-lango economy escrow status     Show escrow service configuration
-lango economy escrow list       Show escrow summary (on-chain mode, addresses)
-lango economy escrow show       Show detailed on-chain escrow configuration (--id)
-lango economy escrow sentinel status  Show Security Sentinel engine status
-
-lango contract read [flags]     Read a smart contract method (--address, --method, --abi, --args)
-lango contract call [flags]     Execute a state-changing contract method (--address, --method, --value)
-lango contract abi load [flags] Load and cache a contract ABI (--address, --file)
-
-lango account info               Show smart account configuration and status
-lango account deploy             Deploy a new Safe smart account with ERC-7579 adapter
-lango account session list       List active session keys
-lango account session create     Create a new session key
-lango account session revoke     Revoke a session key (or --all)
-lango account module list        List registered ERC-7579 modules
-lango account module install     Install an ERC-7579 module
-lango account policy show        Show current harness policy configuration
-lango account policy set         Set harness policy limits
-lango account paymaster status   Show paymaster configuration and approval status
-lango account paymaster approve  Approve USDC spending for the paymaster
-
-lango metrics                   Show system metrics snapshot
-lango metrics sessions          Show per-session token usage
-lango metrics tools             Show per-tool metrics
-lango metrics agents            Show per-agent metrics
-lango metrics history [--days]  Show historical metrics
-
-lango bg list                    List background tasks
-lango bg status <id>             Show background task status
-lango bg cancel <id>             Cancel a running background task
-lango bg result <id>             Show completed task result
+lango chat                       Launch plain chat TUI
+lango onboard                    Guided 5-step setup wizard
+lango settings                   Full interactive configuration editor
+lango doctor [--fix]             Diagnostics and health checks
+lango status [--output json]     Unified system status dashboard
 ```
 
 ### Diagnostics
@@ -285,6 +143,32 @@ lango doctor --fix
 # JSON output for scripting
 lango doctor --json
 ```
+
+## Cockpit TUI
+
+The cockpit is a multi-panel terminal dashboard launched via `lango` or `lango cockpit`. It provides real-time visibility into agent operations with a sidebar, context panel, and 7 switchable pages:
+
+| Shortcut | Page | Description |
+|----------|------|-------------|
+| Ctrl+1 | Chat | Interactive agent conversation with streaming, tool lifecycle indicators, and two-tier approval |
+| Ctrl+2 | Settings | Runtime configuration editor |
+| Ctrl+3 | Tools | Registered tools with categories and safety levels |
+| Ctrl+4 | Status | System health and component status |
+| — | Sessions | Session history browser (accessible via sidebar) |
+| Ctrl+5 | Tasks | Background task management with detail view, cancel, and retry |
+| Ctrl+6 | Approvals | Approval history and active grant management with revoke controls |
+
+**Context Panel** (Ctrl+P) — Right-side panel with 5 live sections: token usage, tool stats, runtime status, channel status, and system uptime.
+
+**Two-Tier Approval** — Inline strip for safe operations and fullscreen dialog with diff preview for dangerous tools, integrated into the Chat page.
+
+**Runtime Visibility** — Context panel shows delegation tracking, per-turn token summary, and active agent indicator during multi-agent turns. Recovery events surface as in-chat notifications.
+
+**Background Tasks** — Tasks page with table view, detail expansion (Enter), cancel (c), and retry (r) for failed/cancelled tasks.
+
+Additional shortcuts: Ctrl+B (toggle sidebar), Tab (switch focus), Ctrl+Y (copy to clipboard).
+
+See [Cockpit Reference](docs/features/cockpit.md), [Approval Guide](docs/features/cockpit-approval-guide.md), [Task Management Guide](docs/features/cockpit-tasks-guide.md), [Channel Integration Guide](docs/features/cockpit-channels-guide.md), and [Troubleshooting](docs/features/cockpit-troubleshooting.md) for full documentation.
 
 ## Architecture
 
@@ -306,28 +190,37 @@ lango/
 │   ├── cli/                # CLI commands
 │   │   ├── tuicore/        #   Shared TUI components (FormModel, Field types)
 │   │   ├── clitypes/       #   Shared CLI type definitions (provider loaders)
+│   │   ├── a2a/            #   lango a2a card/check
 │   │   ├── agent/          #   lango agent status/list/tools/hooks
 │   │   ├── approval/       #   lango approval status
+│   │   ├── bg/             #   lango bg list/status/cancel/result
+│   │   ├── chat/           #   lango chat (plain TUI chat)
+│   │   ├── cliboot/        #   Shared CLI bootstrap / lazy config loading
+│   │   ├── cockpit/        #   lango cockpit (multi-panel TUI dashboard)
+│   │   ├── configcmd/      #   lango config list/create/use/delete/import/export/validate/get/set/keys
+│   │   ├── contract/       #   lango contract read/call/abi
+│   │   ├── cron/           #   lango cron add/list/delete/pause/resume/history
 │   │   ├── doctor/         #   lango doctor (diagnostics)
+│   │   ├── economy/        #   lango economy budget/risk/pricing/negotiate/escrow status/list/show/sentinel
 │   │   ├── graph/          #   lango graph status/query/stats/clear
 │   │   ├── learning/       #   lango learning status/history
 │   │   ├── librarian/      #   lango librarian status/inquiries
-│   │   ├── memory/         #   lango memory list/status/clear
-│   │   ├── onboard/        #   lango onboard (5-step guided wizard)
-│   │   ├── settings/       #   lango settings (full configuration editor)
-│   │   ├── payment/        #   lango payment balance/history/limits/info/send
-│   │   ├── cron/           #   lango cron add/list/delete/pause/resume/history
-│   │   ├── bg/             #   lango bg list/status/cancel/result
-│   │   ├── workflow/       #   lango workflow run/list/status/cancel/history
 │   │   ├── mcp/            #   lango mcp list/add/remove/get/test/enable/disable
-│   │   ├── prompt/         #   interactive prompt utilities
-│   │   ├── security/       #   lango security status/secrets/migrate-passphrase/keyring/db-migrate/db-decrypt/kms
-│   │   ├── p2p/            #   lango p2p status/peers/connect/disconnect/firewall/discover/identity/reputation/pricing/session/sandbox/team/zkp
-│   │   ├── economy/        #   lango economy budget/risk/pricing/negotiate/escrow status/list/show/sentinel
-│   │   ├── contract/       #   lango contract read/call/abi
-│   │   ├── smartaccount/   #   lango account info/deploy/session/module/policy/paymaster
+│   │   ├── memory/         #   lango memory list/status/clear
 │   │   ├── metrics/        #   lango metrics [sessions|tools|agents|history]
-│   │   └── tui/            #   TUI components and views
+│   │   ├── onboard/        #   lango onboard (5-step guided wizard)
+│   │   ├── p2p/            #   lango p2p status/peers/connect/disconnect/firewall/discover/identity/reputation/pricing/session/sandbox/team/zkp
+│   │   ├── payment/        #   lango payment balance/history/limits/info/send
+│   │   ├── prompt/         #   interactive prompt utilities
+│   │   ├── provenance/     #   lango provenance status/checkpoint/session/attribution/bundle
+│   │   ├── run/            #   lango run list/status/journal
+│   │   ├── sandbox/        #   lango sandbox status/test
+│   │   ├── security/       #   lango security status/secrets/change-passphrase/recovery/keyring/db-migrate/db-decrypt/kms
+│   │   ├── settings/       #   lango settings (full configuration editor)
+│   │   ├── smartaccount/   #   lango account info/deploy/session/module/policy/paymaster
+│   │   ├── status/         #   lango status (unified dashboard)
+│   │   ├── tui/            #   TUI components and views
+│   │   └── workflow/       #   lango workflow run/list/status/cancel/history
 │   ├── config/             # Config loading, env var substitution, validation
 │   ├── configstore/        # Encrypted config profile storage (Ent-backed)
 │   ├── ctxkeys/            # Context key helpers for agent name propagation
@@ -340,32 +233,44 @@ lango/
 │   │   ├── negotiation/     #   P2P price negotiation protocol
 │   │   ├── pricing/         #   Dynamic pricing with trust/volume discounts
 │   │   └── risk/            #   Trust-based risk assessment
+│   ├── agentrt/            # Agent runtime control plane (coordinating executor, delegation guard, budget, recovery)
+│   ├── automation/         # Automation module helpers
+│   ├── deadline/           # Deadline extension and auto-extend logic
 │   ├── embedding/          # Embedding providers (OpenAI, Google, local) and RAG
 │   ├── ent/                # Ent ORM schemas and generated code
 │   ├── eventbus/           # Typed synchronous event pub/sub
+│   ├── gatekeeper/         # Response sanitization (thought tags, internal markers, raw JSON, custom patterns)
 │   ├── gateway/            # WebSocket/HTTP server, OIDC auth
 │   ├── graph/              # BoltDB triple store, Graph RAG, entity extractor
 │   ├── knowledge/          # Knowledge store, 8-layer context retriever
 │   ├── learning/           # Learning engine, error pattern analyzer, self-learning graph
 │   ├── lifecycle/          # Component lifecycle management (priority-ordered startup/shutdown)
+│   ├── llm/                # LLM abstraction layer
 │   ├── logging/            # Zap structured logger
 │   ├── memory/             # Observational memory (observer, reflector, token counter)
-│   ├── orchestration/      # Multi-agent orchestration (operator, navigator, vault, librarian, automator, planner, chronicler)
+│   ├── orchestration/      # Multi-agent orchestration (operator, navigator, vault, librarian, automator, planner, chronicler, ontologist)
 │   ├── keyring/            # Hardware keyring integration (Touch ID / TPM 2.0)
 │   ├── mdparse/            # Markdown frontmatter parser (YAML extraction)
 │   ├── prompt/             # System prompt builder, section loader, defaults
+│   ├── provenance/         # Session provenance (checkpoints, session tree, attribution, bundles)
 │   ├── provider/           # AI provider interface and implementations
 │   │   ├── anthropic/      #   Claude models
 │   │   ├── gemini/         #   Google Gemini models
 │   │   └── openai/         #   OpenAI-compatible (GPT, Ollama, etc.)
-│   ├── sandbox/            # Tool execution isolation (subprocess/container)
+│   ├── retrieval/          # Retrieval coordinator (FactSearch, TemporalSearch, ContextSearch)
+│   ├── runledger/          # RunLedger / Task OS (durable execution, journal, validators, planner)
+│   ├── sandbox/            # Tool execution isolation (subprocess/container/OS-level)
+│   ├── search/             # FTS5 search substrate (domain-agnostic full-text CRUD)
 │   ├── security/           # Crypto providers, key registry, secrets store, companion discovery, KMS providers
 │   ├── session/            # Ent-based SQLite session store
 │   ├── skill/              # File-based skill system (SKILL.md parser, FileSkillStore, registry, executor, GitHub importer with git clone + HTTP fallback, resource directories)
+│   ├── storeutil/          # Database store utilities
 │   ├── contract/            # EVM smart contract interaction, ABI cache
 │   ├── cron/               # Cron scheduler (robfig/cron/v3), job store, executor, delivery
 │   ├── background/         # Background task manager, notifications, monitoring
 │   ├── workflow/            # DAG workflow engine, YAML parser, state persistence
+│   ├── turnrunner/         # Turn execution runner
+│   ├── turntrace/          # Turn trace recording and analysis
 │   ├── payment/            # Blockchain payment service (USDC on EVM chains, X402 audit trail)
 │   ├── observability/       # Metrics, token tracking, health checks, audit logging
 │   ├── p2p/                # P2P networking (libp2p node, identity, handshake, firewall, discovery, ZKP)
@@ -492,6 +397,8 @@ All settings are managed via `lango onboard` (guided wizard), `lango settings` (
 | `tools.browser.enabled`                                | bool     | `false`                     | Enable browser automation tools (requires Chromium)                                                               |
 | `tools.browser.headless`                               | bool     | `true`                      | Run browser in headless mode                                                                                      |
 | `tools.browser.sessionTimeout`                         | duration | `5m`                        | Browser session timeout                                                                                           |
+| **Context Profile**                                    |          |                             |                                                                                                                   |
+| `contextProfile`                                       | string   | -                           | Preset: `off`, `lite`, `balanced`, `full`. Auto-configures knowledge, memory, librarian, graph.                   |
 | **Knowledge**                                          |          |                             |                                                                                                                   |
 | `knowledge.enabled`                                    | bool     | `false`                     | Enable self-learning knowledge system                                                                             |
 | `knowledge.maxContextPerLayer`                         | int      | `5`                         | Max context items per layer in retrieval                                                                          |
@@ -523,6 +430,25 @@ All settings are managed via `lango onboard` (guided wizard), `lango settings` (
 | `embedding.rag.enabled`                                | bool     | `false`                     | Enable RAG context injection                                                                                      |
 | `embedding.rag.maxResults`                             | int      | -                           | Max results to inject into context                                                                                |
 | `embedding.rag.collections`                            | []string | -                           | Collections to search (empty = all)                                                                               |
+| **Retrieval Coordinator**                              |          |                             |                                                                                                                   |
+| `retrieval.enabled`                                    | bool     | `false`                     | Enable multi-agent retrieval coordinator (FactSearch + TemporalSearch + ContextSearch)                            |
+| `retrieval.feedback`                                   | bool     | `false`                     | Log context injection events for observability                                                                    |
+| `retrieval.autoAdjust.enabled`                         | bool     | `false`                     | Enable relevance score auto-adjustment                                                                            |
+| `retrieval.autoAdjust.mode`                            | string   | `shadow`                    | `shadow` (observe only) or `active` (apply score changes)                                                         |
+| `retrieval.autoAdjust.boostDelta`                      | float64  | `0.05`                      | Score boost per context injection                                                                                 |
+| `retrieval.autoAdjust.decayDelta`                      | float64  | `0.01`                      | Score decay per interval                                                                                          |
+| `retrieval.autoAdjust.decayInterval`                   | int      | `100`                       | Turns between global decay                                                                                        |
+| `retrieval.autoAdjust.minScore`                        | float64  | `0.1`                       | Score floor                                                                                                       |
+| `retrieval.autoAdjust.maxScore`                        | float64  | `5.0`                       | Score ceiling                                                                                                     |
+| `retrieval.autoAdjust.warmupTurns`                     | int      | `50`                        | Turns before auto-adjust activates                                                                                |
+| **Context Budget**                                     |          |                             |                                                                                                                   |
+| `context.modelWindow`                                  | int      | `0`                         | Model context window in tokens (0 = auto-detect)                                                                  |
+| `context.responseReserve`                              | int      | `0`                         | Tokens reserved for response (0 = use agent.maxTokens)                                                            |
+| `context.allocation.knowledge`                         | float64  | `0.30`                      | Knowledge section budget ratio                                                                                    |
+| `context.allocation.rag`                               | float64  | `0.25`                      | RAG section budget ratio                                                                                          |
+| `context.allocation.memory`                            | float64  | `0.25`                      | Memory section budget ratio                                                                                       |
+| `context.allocation.runSummary`                        | float64  | `0.10`                      | Run summary budget ratio                                                                                          |
+| `context.allocation.headroom`                          | float64  | `0.10`                      | Unallocated headroom ratio                                                                                        |
 | **Graph Store**                                        |          |                             |                                                                                                                   |
 | `graph.enabled`                                        | bool     | `false`                     | Enable the knowledge graph store                                                                                  |
 | `graph.backend`                                        | string   | `bolt`                      | Graph backend type (currently only `bolt`)                                                                        |
@@ -692,7 +618,49 @@ All settings are managed via `lango onboard` (guided wizard), `lango settings` (
 | `mcp.servers.<name>.enabled`                           | bool     | `true`                      | Whether this server is active                                                                                     |
 | `mcp.servers.<name>.timeout`                           | duration | -                           | Override default timeout for this server                                                                          |
 | `mcp.servers.<name>.safetyLevel`                       | string   | `"dangerous"`               | Tool safety level: `safe`, `moderate`, `dangerous`                                                                |
-
+| **RunLedger (Task OS)** (🧪 Experimental Features)     |          |                             |                                                                                                                   |
+| `runLedger.enabled`                                    | bool     | `false`                     | Activate the RunLedger system                                                                                     |
+| `runLedger.shadow`                                     | bool     | `true`                      | Shadow mode: journal records only, existing systems unaffected                                                    |
+| `runLedger.writeThrough`                               | bool     | `false`                     | All creates/updates go through ledger first, then mirror                                                          |
+| `runLedger.authoritativeRead`                          | bool     | `false`                     | State reads come from ledger snapshots only                                                                       |
+| `runLedger.workspaceIsolation`                         | bool     | `false`                     | Enable PEV workspace wiring for coding-step validation                                                            |
+| `runLedger.staleTtl`                                   | duration | `1h`                        | How long a paused run remains resumable                                                                           |
+| `runLedger.maxRunHistory`                              | int      | `0`                         | Max runs to keep (0 = unlimited)                                                                                  |
+| `runLedger.validatorTimeout`                           | duration | `2m`                        | Timeout for individual validator execution                                                                        |
+| `runLedger.plannerMaxRetries`                          | int      | `2`                         | Retries for malformed planner output                                                                              |
+| **Provenance** (🧪 Experimental Features)              |          |                             |                                                                                                                   |
+| `provenance.enabled`                                   | bool     | `false`                     | Activate the provenance system                                                                                    |
+| `provenance.checkpoints.autoOnStepComplete`            | bool     | `false`                     | Checkpoint when RunLedger step passes validation                                                                  |
+| `provenance.checkpoints.autoOnPolicy`                  | bool     | `false`                     | Checkpoint when a policy decision is applied                                                                      |
+| `provenance.checkpoints.maxPerSession`                 | int      | `0`                         | Max checkpoints per session (0 = unlimited)                                                                       |
+| `provenance.checkpoints.retentionDays`                 | int      | `0`                         | Days to keep checkpoints (0 = unlimited)                                                                          |
+| **Sandbox** (🧪 Experimental Features)                 |          |                             |                                                                                                                   |
+| `sandbox.enabled`                                      | bool     | `false`                     | Enable OS-level sandboxing for tool-spawned processes                                                             |
+| `sandbox.failClosed`                                   | bool     | `false`                     | Reject tool execution when sandbox unavailable (false = fail-open; also prints a one-shot stderr warning)         |
+| `sandbox.backend`                                      | string   | `auto`                      | Isolation backend: `auto`, `seatbelt` (macOS), `bwrap` (Linux, requires bubblewrap), `native` (planned), `none`  |
+| `sandbox.networkMode`                                  | string   | `deny`                      | Network access: `deny` or `allow`                                                                                 |
+| `sandbox.workspacePath`                                | string   | -                           | Workspace root for write access (tilde and relative paths are normalized at load time; defaults to CWD)           |
+| `sandbox.allowedWritePaths`                            | strings  | -                           | Additional writable paths beyond workspace (each entry normalized at load time)                                   |
+| `sandbox.excludedCommands`                             | strings  | -                           | Command basenames that bypass the sandbox (e.g. `git`, `docker`). Run UNSANDBOXED and recorded in audit; sparing use only |
+| `sandbox.timeoutPerTool`                               | duration | `30s`                       | Max duration for sandboxed tool execution                                                                         |
+| `sandbox.os.seccompProfile`                            | string   | `moderate`                  | Linux seccomp profile: `strict`, `moderate`, `permissive` (consumed by planned native backend; bwrap ignores it)  |
+| `sandbox.os.seatbeltCustomProfile`                     | string   | -                           | Custom macOS `.sb` profile path (tilde and relative paths normalized at load time)                                |
+| **Gatekeeper**                                         |          |                             |                                                                                                                   |
+| `gatekeeper.enabled`                                   | bool     | `true`                      | Enable response sanitization                                                                                      |
+| `gatekeeper.stripThoughtTags`                          | bool     | `true`                      | Strip `<thought>`/`<thinking>` tags                                                                               |
+| `gatekeeper.stripInternalMarkers`                      | bool     | `true`                      | Strip `[INTERNAL]`, `[DEBUG]`, `[SYSTEM]` lines                                                                   |
+| `gatekeeper.stripRawJSON`                              | bool     | `true`                      | Replace large raw JSON with placeholder                                                                           |
+| `gatekeeper.rawJsonThreshold`                          | int      | `500`                       | Character threshold for JSON replacement                                                                          |
+| `gatekeeper.customPatterns`                            | []string | `[]`                        | Additional regex patterns to strip                                                                                |
+| **Orchestration** (🧪 Experimental Features)           |          |                             |                                                                                                                   |
+| `agent.orchestration.mode`                             | string   | `classic`                   | Mode: `classic` or `structured`                                                                                   |
+| `agent.orchestration.circuitBreaker.failureThreshold`  | int      | `3`                         | Consecutive failures before circuit opens                                                                         |
+| `agent.orchestration.circuitBreaker.resetTimeout`      | duration | `30s`                       | Time before half-open probe                                                                                       |
+| `agent.orchestration.budget.toolCallLimit`             | int      | `50`                        | Max tool calls per agent run                                                                                      |
+| `agent.orchestration.budget.delegationLimit`           | int      | `15`                        | Max delegations before alerting                                                                                   |
+| `agent.orchestration.budget.alertThreshold`            | float64  | `0.8`                       | Budget usage percentage for alerts                                                                                |
+| `agent.orchestration.recovery.maxRetries`              | int      | `2`                         | Max retry attempts on failure                                                                                     |
+| `agent.orchestration.recovery.circuitBreakerCooldown`  | duration | `5m`                        | Time before re-enabling tripped agent                                                                             |
 
 ## On-Chain Economy (Base Sepolia Testnet)
 
@@ -840,7 +808,7 @@ Unknown `.md` files in the directory are added as custom sections with priority 
 
 ### Per-Agent Prompt Customization
 
-In multi-agent mode (`agent.multiAgent: true`), all sub-agents (operator, navigator, vault, librarian, automator, planner, chronicler) automatically inherit shared prompt sections (Safety, Conversation Rules) from the prompts directory.
+In multi-agent mode (`agent.multiAgent: true`), all sub-agents (operator, navigator, vault, librarian, automator, planner, chronicler, ontologist) automatically inherit shared prompt sections (Safety, Conversation Rules) from the prompts directory.
 
 You can override or extend prompts per agent by creating an `agents/<name>/` subdirectory:
 
@@ -874,6 +842,8 @@ If no `agents/<name>/` directory exists, the sub-agent uses its built-in instruc
 ## Embedding & RAG
 
 Lango supports embedding-based retrieval-augmented generation (RAG) to inject relevant context into agent prompts automatically.
+
+> **Build tag required:** The default build uses FTS5-only search. To enable semantic vector search (embedding/RAG), build with `-tags "fts5,vec"`. Without the `vec` tag, the embedding system gracefully degrades and vector operations are skipped.
 
 ### Supported Providers
 
@@ -946,6 +916,7 @@ When `agent.multiAgent` is enabled, Lango builds a hierarchical agent tree with 
 | **automator**  | Automation: cron scheduling, background tasks, workflow pipelines                                                   | cron_*, bg_*, workflow_*                                                                                                                               |
 | **planner**    | Task decomposition and planning                                                                                     | (LLM reasoning only, no tools)                                                                                                                         |
 | **chronicler** | Conversational memory: observations, reflections, recall                                                            | memory_*, observe_*, reflect_*                                                                                                                         |
+| **ontologist** | Knowledge ontology management: types, entities, facts, conflicts, and data ingestion                                | ontology_*                                                                                                                                             |
 
 
 The orchestrator uses a keyword-based routing table and 5-step decision protocol (CLASSIFY → MATCH → SELECT → VERIFY → DELEGATE) to route tasks. Each sub-agent can reject misrouted tasks with `[REJECT]`. Unmatched tools are tracked separately and reported to the orchestrator.
@@ -1266,7 +1237,7 @@ lango workflow history
 
 ### Supported Agents
 
-Steps specify which sub-agent to use: `operator`, `navigator`, `vault`, `librarian`, `automator`, `planner`, or `chronicler`. These map to the multi-agent orchestration system when `agent.multiAgent` is enabled.
+Steps specify which sub-agent to use: `operator`, `navigator`, `vault`, `librarian`, `automator`, `planner`, `chronicler`, or `ontologist`. These map to the multi-agent orchestration system when `agent.multiAgent` is enabled.
 
 ## Self-Learning System
 
@@ -1306,14 +1277,19 @@ Lango includes built-in security features for AI agents:
 Lango supports two security modes:
 
 1. **Local Mode** (Default)
-  - Encrypts secrets using AES-256-GCM derived from a passphrase (PBKDF2).
+  - Uses a **Master Key (MK) envelope** — a random 32-byte MK encrypts all data (AES-256-GCM), and the passphrase wraps the MK via a KEK.
   - **Interactive**: Prompts for passphrase on startup (Recommended).
-  - **Headless**: Set `LANGO_PASSPHRASE` environment variable.
-  - **Migration**: Rotate your passphrase using:
+  - **Headless**: Provide a keyfile at `~/.lango/keyfile` (0600 permissions).
+  - **Change passphrase** (O(1), no data re-encryption):
     ```bash
-    lango security migrate-passphrase
+    lango security change-passphrase
     ```
-  > **⚠️ Warning**: Losing your passphrase results in permanent loss of all encrypted secrets. Lango does not store your passphrase.
+  - **Recovery mnemonic** (BIP39 24-word backup):
+    ```bash
+    lango security recovery setup     # Generate and store mnemonic
+    lango security recovery restore   # Recover access with mnemonic
+    ```
+  > **Note**: Without a recovery mnemonic, losing your passphrase results in permanent loss of all encrypted data. Set up recovery with `lango security recovery setup`.
 2. **RPC Mode** (Production)
   - Offloads cryptographic operations to a hardware-backed companion app or external signer.
   - Keys never leave the secure hardware.

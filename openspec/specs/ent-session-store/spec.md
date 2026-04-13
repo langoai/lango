@@ -1,4 +1,8 @@
-## ADDED Requirements
+## Purpose
+
+Capability spec for ent-session-store. See requirements below for scope and behavior contracts.
+
+## Requirements
 
 ### Requirement: Ent schema definition
 The system SHALL define ent schemas for Session and Message entities with appropriate fields and relationships.

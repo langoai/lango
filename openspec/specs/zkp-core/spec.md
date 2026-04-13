@@ -1,4 +1,8 @@
-## ADDED Requirements
+## Purpose
+
+Capability spec for zkp-core. See requirements below for scope and behavior contracts.
+
+## Requirements
 
 ### Requirement: ProverService Lifecycle and Scheme Selection
 
@@ -125,3 +129,36 @@ The `AgentCapabilityCircuit` SHALL prove that an agent has a capability with an 
 #### Scenario: Score below minimum fails circuit
 - **WHEN** `ActualScore < MinScore`
 - **THEN** `AssertIsLessOrEqual(MinScore, ActualScore)` SHALL fail
+
+### Requirement: Groth16 Solidity verifier export
+
+The system SHALL provide a `cmd/zkexport` CLI tool that compiles gnark circuits and exports Groth16 verifying keys as Solidity contracts. The tool SHALL use unsafe SRS for R&D and support all registered circuit IDs.
+
+#### Scenario: Export verifier for existing circuit
+- **WHEN** `zkexport --circuit ownership --output contracts/src/verifiers/OwnershipVerifier.sol` is run
+- **THEN** the tool compiles the circuit, runs Groth16 setup, and writes a Solidity verifier contract
+
+#### Scenario: Exported verifier accepts valid proof
+- **WHEN** a proof is generated off-chain for the ownership circuit and submitted to the exported verifier contract
+- **THEN** the verifier returns true
+
+#### Scenario: Groth16 verifier export method
+- **WHEN** `ExportGroth16Verifier(circuitID, circuit, w)` is called on ProverService
+- **THEN** the service compiles the circuit with Groth16 R1CS, runs Groth16 setup with unsafe SRS, and writes the Solidity verifier to `w`
+
+### Requirement: PQAttestationCircuit (Circuit ID: "pq_attestation")
+
+The `PQAttestationCircuit` SHALL prove that a trusted attestor observed and verified a post-quantum (ML-DSA-65) signature off-chain, and binds the attestation to a specific on-chain action via domain-separated public inputs. The circuit uses MiMC hashes (consistent with existing circuits). Public inputs: `AttestorDIDHash`, `MessageHash`, `PQPublicKeyHash`, `Timestamp`, `MinTimestamp`, `DealID`, `ChainID`, `ContractAddress`. Private inputs: `AttestorSecret`, `MessagePreimage`, `PQPublicKeyPreimage`.
+
+#### Scenario: PQ attestation proof generated
+- **WHEN** an attestor verifies an ML-DSA-65 signature off-chain and generates a PQ attestation proof
+- **THEN** the proof SHALL bind attestor DID hash, message hash, PQ public key hash, timestamp, deal ID, chain ID, and contract address as public inputs
+
+#### Scenario: Domain binding prevents replay
+- **WHEN** a valid PQ attestation proof for deal D1 on chain C1 is submitted for deal D2 on chain C2
+- **THEN** the on-chain verifier SHALL reject it because the public inputs do not match
+
+#### Scenario: Attestor binding prevents impersonation
+- **WHEN** a PQ attestation proof is generated
+- **THEN** the circuit SHALL prove `MiMC(AttestorSecret) == AttestorDIDHash`
+- **AND** only the holder of the attestor secret can produce a valid proof

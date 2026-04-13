@@ -1,16 +1,135 @@
+## Purpose
+
+Capability spec for cli-security-status. See requirements below for scope and behavior contracts.
+
 ## Requirements
 
 ### Requirement: Security status command
-The system SHALL provide a `lango security status` command that displays the current security configuration and state. The command SHALL show signer provider, encryption key count, stored secret count, interceptor status, PII redaction status, and approval policy. The command SHALL support `--json` for JSON output. The command SHALL NOT require a passphrase (it reads counts only, no decryption).
+
+The system SHALL provide a `lango security status` command that displays the current security configuration and state. The command SHALL show signer provider, encryption key count, stored secret count, interceptor status, PII redaction status, approval policy, DB encryption state, and envelope information (version, KEK slot count/types, recovery setup, pending flags). The command SHALL support `--json` for JSON output. The command default behavior SHALL be passphrase-free: it SHALL NOT trigger an interactive passphrase prompt. When DB access requires a passphrase that cannot be obtained non-interactively (via keyring or keyfile), the command SHALL gracefully degrade DB-dependent fields (e.g., encryption key count = 0, signer provider = "unavailable") without failing.
+
+#### Scenario: Display security status with envelope fields
+
+- **WHEN** user runs `lango security status` with an envelope-based installation
+- **THEN** the command SHALL display the envelope version, number of KEK slots, slot types (passphrase, mnemonic), recovery setup status, and any pending flags (`PendingMigration`, `PendingRekey`)
 
 #### Scenario: Display security status with approval policy
+
 - **WHEN** user runs `lango security status`
 - **THEN** the command SHALL display "Approval Policy: <policy>" where policy is the `ApprovalPolicy` string value (defaulting to "dangerous" if empty)
 
-#### Scenario: JSON output with approval policy
-- **WHEN** user runs `lango security status --json`
-- **THEN** the JSON output SHALL include `"approval_policy": "<policy>"` instead of the legacy `"approval_required"` field
+#### Scenario: JSON output with envelope and approval policy
 
-#### Scenario: Database unavailable
-- **WHEN** the session database cannot be opened
+- **WHEN** user runs `lango security status --json`
+- **THEN** the JSON output SHALL include envelope fields (`envelope_version`, `kek_slots`, `recovery_setup`, `pending_migration`, `pending_rekey`) and `"approval_policy": "<policy>"`
+
+#### Scenario: Database unavailable (non-interactive)
+
+- **WHEN** the session database cannot be opened because no passphrase is available non-interactively
+- **THEN** the command displays all envelope fields and configuration fields
+- **AND** DB-dependent fields show zero counts or "unavailable"
+- **AND** the command exits with code 0 without failing
+
+#### Scenario: Passphrase-free default behavior
+
+- **WHEN** user runs `lango security status` in any environment
+- **THEN** the command SHALL NOT trigger an interactive passphrase prompt
+- **AND** it SHALL use `passphrase.AcquireNonInteractive()` (keyring/keyfile only)
+- **AND** if neither source provides a passphrase, it SHALL proceed with DB fields unavailable
+
+#### Scenario: Database unavailable (legacy behavior preserved)
+
+- **WHEN** the session database cannot be opened (any reason)
 - **THEN** the command displays status with zero counts for keys and secrets, without failing
+
+#### Scenario: Display PQ KEM status
+
+- **WHEN** user runs `lango security status` and PQ handshake is enabled
+- **THEN** the output SHALL include "PQ Handshake: enabled (X25519-MLKEM768)"
+
+#### Scenario: Display PQ KEM status when disabled
+
+- **WHEN** user runs `lango security status` and PQ handshake is not enabled
+- **THEN** the output SHALL include "PQ Handshake: disabled"
+
+#### Scenario: JSON output includes PQ KEM status
+
+- **WHEN** user runs `lango security status --json`
+- **THEN** the JSON output SHALL include `"pq_handshake_enabled": true/false` and `"pq_handshake_algorithm": "X25519-MLKEM768"` (when enabled)
+
+#### Scenario: Display PQ signing key status
+
+- **WHEN** user runs `lango security status` and PQ signing key is available
+- **THEN** the identity bundle section SHALL include "PQ Signing Key: available (ml-dsa-65)"
+
+#### Scenario: Display PQ signing key unavailable
+
+- **WHEN** user runs `lango security status` and PQ signing key is not available
+- **THEN** the identity bundle section SHALL include "PQ Signing Key: not available"
+
+#### Scenario: JSON output includes PQ signing key status
+
+- **WHEN** user runs `lango security status --json`
+- **THEN** the identity bundle section SHALL include `"pq_signing_key_available": true/false` and `"pq_signing_algorithm": "ml-dsa-65"` (when available)
+
+#### Scenario: Display KMS protection status
+- **WHEN** user runs `lango security status` and the envelope has a KMS KEK slot
+- **THEN** the output SHALL include "KMS Protection: enabled (<provider>)" showing the KMS provider name
+
+#### Scenario: Display KMS protection disabled
+- **WHEN** user runs `lango security status` and no KMS KEK slot exists
+- **THEN** the output SHALL include "KMS Protection: disabled"
+
+#### Scenario: JSON output includes KMS protection
+- **WHEN** user runs `lango security status --json`
+- **THEN** the JSON output SHALL include `"kms_protected": true/false` and `"kms_provider": "<provider>"` (when protected)
+
+### Requirement: Non-interactive mini-bootstrap for status
+
+The system SHALL provide a `readDBStatusNonInteractive` helper that runs a minimal bootstrap (envelope load → non-interactive passphrase → MK unwrap → read-only DB open → read counts → close) without triggering interactive prompts or schema migration. The helper SHALL handle both envelope-based and legacy installations.
+
+#### Scenario: Envelope-based non-interactive read
+
+- **WHEN** `readDBStatusNonInteractive` is called with an envelope present and a keyring-stored passphrase
+- **THEN** the helper unwraps the MK, derives the DB key via `DeriveDBKeyHex(mk)`, opens the DB read-only with `PRAGMA key = "x'<hex>'"`, reads key and secret counts, and closes the DB
+
+#### Scenario: Legacy non-interactive read
+
+- **WHEN** `readDBStatusNonInteractive` is called with no envelope and a keyfile-stored passphrase
+- **THEN** the helper uses the passphrase directly as the DB key, opens the DB read-only, reads counts, and closes
+
+#### Scenario: Keyring provider passed to non-interactive acquisition
+- **WHEN** `readDBStatusNonInteractive` acquires a passphrase
+- **THEN** it SHALL pass `keyring.DetectSecureProvider()` as the `KeyringProvider` option
+
+#### Scenario: Active config loaded when DB available
+- **WHEN** `readDBStatusNonInteractive` successfully opens the DB with MK
+- **THEN** it SHALL load the active config profile via `configstore.Store.LoadActive`
+- **AND** the loaded config SHALL be used for status display instead of `DefaultConfig()`
+
+#### Scenario: Keyfile fallback on stale keyring passphrase
+- **WHEN** envelope unwrap fails with a keyring-sourced passphrase
+- **THEN** `readDBStatusNonInteractive` SHALL retry with a keyfile-only acquisition
+- **AND** legacy DB open failure with keyring passphrase SHALL also retry with keyfile
+
+#### Scenario: No passphrase available
+
+- **WHEN** `readDBStatusNonInteractive` is called and `AcquireNonInteractive` returns an error
+- **THEN** the helper returns a zero-valued `dbStatusResult` (all counts 0)
+- **AND** no DB open attempt is made
+
+### Requirement: Read-only database open for status
+
+The system SHALL provide an `OpenDatabaseReadOnly` function used by status commands. This function SHALL open the SQLite database in read-only mode (`file:path?mode=ro`), SHALL NOT invoke ent schema migration, and SHALL NOT create any tables or indexes. The contract: read-only, no migration, no prompt, failure returns error (caller degrades gracefully).
+
+#### Scenario: Read-only open succeeds
+
+- **WHEN** `OpenDatabaseReadOnly(dbPath, dbKey, rawKey)` is called with a valid DB and key
+- **THEN** the function opens the DB with `mode=ro`
+- **AND** does NOT call `Schema.Create`
+- **AND** returns an `*ent.Client` backed by a read-only connection
+
+#### Scenario: Read-only open rejects writes
+
+- **WHEN** a write operation is attempted on the read-only client
+- **THEN** SQLite returns a "read-only database" error

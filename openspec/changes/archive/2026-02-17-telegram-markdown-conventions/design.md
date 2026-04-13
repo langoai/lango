@@ -1,6 +1,6 @@
 ## Context
 
-Telegram Markdown v1 uses `*` for bold, `_` for italic, and `` ` `` for code. The `FormatMarkdown` function in `internal/channels/telegram/format.go` converts standard Markdown `**bold**` to `*bold*`. When the LLM generates `*`-style bullet lists (e.g., `* **작업 이름:** ...`), the conversion produces lines with an odd number of `*` characters, causing Telegram's parser to reject the message with "Can't find end of the entity" errors.
+Telegram Markdown v1 uses `*` for bold, `_` for italic, and `` ` `` for code. The `FormatMarkdown` function in `internal/channels/telegram/format.go` converts standard Markdown `**bold**` to `*bold*`. When the LLM generates `*`-style bullet lists (e.g., `* **Task Name:** ...`), the conversion produces lines with an odd number of `*` characters, causing Telegram's parser to reject the message with "Can't find end of the entity" errors.
 
 The existing `Send()` method already has a plain text fallback that retries without formatting when the API rejects a message.
 

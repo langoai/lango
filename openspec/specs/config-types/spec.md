@@ -1,3 +1,7 @@
+## Purpose
+
+Capability spec for config-types. See requirements below for scope and behavior contracts.
+
 ## Requirements
 
 ### Requirement: ProviderConfig type strengthening
@@ -16,7 +20,8 @@ The `ProviderConfig.Type` field SHALL use `types.ProviderType` instead of raw `s
 
 #### Scenario: Zero-value defaults
 - **WHEN** config omits `maxTurns`, `errorCorrectionEnabled`, and `maxDelegationRounds`
-- **THEN** the zero values (0, nil, 0) SHALL be interpreted as defaults (25, true, 10) by the wiring layer
+- **THEN** the zero values SHALL be interpreted as defaults by the wiring layer
+- **AND** the effective defaults SHALL be 50 turns in single-agent mode, 75 turns in multi-agent mode, true for error correction, and 10 for max delegation rounds
 
 ### Requirement: ObservationalMemoryConfig fields
 `ObservationalMemoryConfig` SHALL include `MemoryTokenBudget int` and `ReflectionConsolidationThreshold int` fields with mapstructure/json tags.

@@ -2,12 +2,10 @@ package pricing
 
 import (
 	"context"
-	"fmt"
 	"math/big"
-)
 
-// USDCDecimals is the number of decimal places for USDC.
-const USDCDecimals = 6
+	"github.com/langoai/lango/internal/finance"
+)
 
 // AdaptToPricingFunc returns a function compatible with paygate.PricingFunc.
 // Signature: func(toolName string) (price string, isFree bool)
@@ -18,7 +16,7 @@ func (e *Engine) AdaptToPricingFunc() func(toolName string) (string, bool) {
 		if err != nil || quote.IsFree {
 			return "", true
 		}
-		return formatUSDC(quote.FinalPrice), false
+		return finance.FormatUSDC(quote.FinalPrice), false
 	}
 }
 
@@ -30,29 +28,8 @@ func (e *Engine) AdaptToPricingFuncWithPeer(peerDID string) func(toolName string
 		if err != nil || quote.IsFree {
 			return "", true
 		}
-		return formatUSDC(quote.FinalPrice), false
+		return finance.FormatUSDC(quote.FinalPrice), false
 	}
-}
-
-// formatUSDC converts smallest USDC units to decimal string.
-// e.g., 1500000 → "1.50", 0 → "0.00", 50 → "0.000050"
-func formatUSDC(amount *big.Int) string {
-	divisor := new(big.Int).Exp(big.NewInt(10), big.NewInt(USDCDecimals), nil)
-	whole := new(big.Int).Div(amount, divisor)
-	remainder := new(big.Int).Mod(amount, divisor)
-
-	if remainder.Sign() == 0 {
-		return fmt.Sprintf("%s.00", whole)
-	}
-
-	// Format remainder with leading zeros, then trim trailing zeros.
-	fracStr := fmt.Sprintf("%06d", remainder.Int64())
-	// Trim trailing zeros but keep at least 2 decimal places.
-	trimmed := fracStr
-	for len(trimmed) > 2 && trimmed[len(trimmed)-1] == '0' {
-		trimmed = trimmed[:len(trimmed)-1]
-	}
-	return fmt.Sprintf("%s.%s", whole, trimmed)
 }
 
 // MapToolPricer provides a simple way to set base prices from a map during

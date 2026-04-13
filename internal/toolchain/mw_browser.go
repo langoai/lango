@@ -34,6 +34,16 @@ func WithBrowserRecovery(sm *browser.SessionManager) Middleware {
 				_ = sm.Close()
 				result, retErr = next(ctx, params)
 			}
+
+			// CDP target error recovery — navigate only (no side-effect tools).
+			if retErr != nil && tool.Name == "browser_navigate" {
+				if strings.Contains(retErr.Error(), "Inspected target navigated or closed") {
+					logging.App().Warnw("browser navigate CDP target error, resetting session and retrying",
+						"tool", tool.Name, "error", retErr)
+					_ = sm.Close()
+					result, retErr = next(ctx, params)
+				}
+			}
 			return
 		}
 	}

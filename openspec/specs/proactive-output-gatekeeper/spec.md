@@ -1,6 +1,10 @@
 # Proactive Output Gatekeeper Specification
 
-## ADDED Requirements
+## Purpose
+
+Capability spec for proactive-output-gatekeeper. See requirements below for scope and behavior contracts.
+
+## Requirements
 
 ### Requirement: Token-based output tier classification
 The system SHALL classify tool output into three tiers based on estimated token count relative to the configured token budget: Small (tokens ≤ budget), Medium (budget < tokens ≤ 3×budget), Large (tokens > 3×budget).

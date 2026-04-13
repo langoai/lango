@@ -36,6 +36,12 @@ const (
 
 	// RequestNegotiateRespond responds to a negotiation (counter/accept/reject).
 	RequestNegotiateRespond RequestType = "negotiate_respond"
+
+	// RequestSchemaQuery queries a peer's ontology schema bundle.
+	RequestSchemaQuery RequestType = "schema_query"
+
+	// RequestSchemaPropose proposes ontology schema elements for import.
+	RequestSchemaPropose RequestType = "schema_propose"
 )
 
 // ResponseStatus identifies the status of an A2A response.
@@ -73,6 +79,8 @@ var (
 	ErrExecutorNotConfigured = errors.New("tool executor not configured")
 	ErrInvalidSession        = errors.New("invalid or expired session token")
 	ErrInvalidPaymentAuth    = errors.New("invalid payment authorization")
+	ErrNoSandboxExecutor     = errors.New("tool execution refused: no sandbox executor configured for remote peer requests")
+	ErrToolSafetyBlocked     = errors.New("tool blocked by P2P safety level policy")
 )
 
 // Request is a P2P A2A request message.

@@ -58,7 +58,7 @@ The main chat endpoint accepts user messages and returns agent responses. When W
 
 ### P2P Network
 
-When P2P networking is enabled (`p2p.enabled: true`), the gateway exposes read-only endpoints for querying the running node's state. These endpoints are public (no authentication required) and return only node metadata.
+When P2P networking is enabled (`p2p.enabled: true`), the gateway exposes read-only endpoints for querying the running node's state. When OIDC authentication is configured, these endpoints require authentication. Without OIDC, they are accessible without authentication (development mode).
 
 #### `GET /api/p2p/status`
 

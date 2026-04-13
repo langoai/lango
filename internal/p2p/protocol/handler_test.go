@@ -48,6 +48,13 @@ func testHandler() (*Handler, *handshake.SessionStore) {
 	return h, sessions
 }
 
+// testSandboxExecutor returns a ToolExecutor that echoes the tool name.
+func testSandboxExecutor() ToolExecutor {
+	return func(_ context.Context, toolName string, _ map[string]interface{}) (map[string]interface{}, error) {
+		return map[string]interface{}{"tool": toolName, "executed": true}, nil
+	}
+}
+
 // createSession adds a session and returns the token.
 func createSession(sessions *handshake.SessionStore, peerDID string) string {
 	sess, err := sessions.Create(peerDID, false)
@@ -106,6 +113,7 @@ func TestHandleToolInvoke_Approved(t *testing.T) {
 	h.SetApprovalFunc(func(_ context.Context, _, _ string, _ map[string]interface{}) (bool, error) {
 		return true, nil
 	})
+	h.SetSandboxExecutor(testSandboxExecutor())
 
 	peerDID := "did:key:peer-3"
 	token := createSession(sessions, peerDID)
@@ -128,6 +136,7 @@ func TestHandleToolInvoke_Denied(t *testing.T) {
 	h.SetApprovalFunc(func(_ context.Context, _, _ string, _ map[string]interface{}) (bool, error) {
 		return false, nil
 	})
+	h.SetSandboxExecutor(testSandboxExecutor())
 
 	peerDID := "did:key:peer-4"
 	token := createSession(sessions, peerDID)
@@ -151,6 +160,7 @@ func TestHandleToolInvoke_ApprovalError(t *testing.T) {
 	h.SetApprovalFunc(func(_ context.Context, _, _ string, _ map[string]interface{}) (bool, error) {
 		return false, fmt.Errorf("approval service unavailable")
 	})
+	h.SetSandboxExecutor(testSandboxExecutor())
 
 	peerDID := "did:key:peer-5"
 	token := createSession(sessions, peerDID)
@@ -173,6 +183,7 @@ func TestHandleToolInvokePaid_Approved(t *testing.T) {
 	h.SetApprovalFunc(func(_ context.Context, _, _ string, _ map[string]interface{}) (bool, error) {
 		return true, nil
 	})
+	h.SetSandboxExecutor(testSandboxExecutor())
 
 	peerDID := "did:key:peer-6"
 	token := createSession(sessions, peerDID)
@@ -186,6 +197,54 @@ func TestHandleToolInvokePaid_Approved(t *testing.T) {
 
 	resp := h.handleRequest(context.Background(), nil, req)
 	assert.Equal(t, ResponseStatusOK, resp.Status, "error: %s", resp.Error)
+}
+
+func TestHandleToolInvoke_NilSandboxExecutor_Denied(t *testing.T) {
+	t.Parallel()
+
+	h, sessions := testHandler()
+	h.SetApprovalFunc(func(_ context.Context, _, _ string, _ map[string]interface{}) (bool, error) {
+		return true, nil
+	})
+	// Do NOT set sandbox executor — it stays nil.
+
+	peerDID := "did:key:peer-3"
+	token := createSession(sessions, peerDID)
+
+	req := &Request{
+		Type:         RequestToolInvoke,
+		SessionToken: token,
+		RequestID:    "req-sandbox-1",
+		Payload:      map[string]interface{}{"toolName": "echo"},
+	}
+
+	resp := h.handleRequest(context.Background(), nil, req)
+	assert.Equal(t, ResponseStatusDenied, resp.Status)
+	assert.Equal(t, ErrNoSandboxExecutor.Error(), resp.Error)
+}
+
+func TestHandleToolInvokePaid_NilSandboxExecutor_Denied(t *testing.T) {
+	t.Parallel()
+
+	h, sessions := testHandler()
+	h.SetApprovalFunc(func(_ context.Context, _, _ string, _ map[string]interface{}) (bool, error) {
+		return true, nil
+	})
+	// Do NOT set sandbox executor — it stays nil.
+
+	peerDID := "did:key:peer-6"
+	token := createSession(sessions, peerDID)
+
+	req := &Request{
+		Type:         RequestToolInvokePaid,
+		SessionToken: token,
+		RequestID:    "req-sandbox-2",
+		Payload:      map[string]interface{}{"toolName": "paid_echo"},
+	}
+
+	resp := h.handleRequest(context.Background(), nil, req)
+	assert.Equal(t, ResponseStatusDenied, resp.Status)
+	assert.Equal(t, ErrNoSandboxExecutor.Error(), resp.Error)
 }
 
 func TestResponseJSON_DefaultDeny(t *testing.T) {

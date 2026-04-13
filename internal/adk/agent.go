@@ -2,6 +2,8 @@ package adk
 
 import (
 	"context"
+	"encoding/json"
+	"errors"
 	"fmt"
 	"iter"
 	"regexp"
@@ -12,12 +14,14 @@ import (
 	adk_agent "google.golang.org/adk/agent"
 	"google.golang.org/adk/agent/llmagent"
 	"google.golang.org/adk/model"
+	"google.golang.org/adk/plugin"
 	"google.golang.org/adk/runner"
 	"google.golang.org/adk/session"
 	"google.golang.org/adk/tool"
 	"google.golang.org/genai"
 
 	"github.com/langoai/lango/internal/logging"
+	"github.com/langoai/lango/internal/runledger"
 	internal "github.com/langoai/lango/internal/session"
 )
 
@@ -30,15 +34,24 @@ type ErrorFixProvider interface {
 }
 
 // defaultMaxTurns is the default maximum number of tool-calling iterations per agent run.
-const defaultMaxTurns = 25
+const defaultMaxTurns = 50
+
+// maxConsecutiveSameToolCalls is the safety limit for detecting tool churn loops.
+// When the same tool is called this many times in a row without any other tool
+// call or text generation, the agent run is force-stopped.
+const maxConsecutiveSameToolCalls = 5
 
 // AgentOption configures optional Agent behavior at construction time.
 type AgentOption func(*agentOptions)
 
 type agentOptions struct {
-	tokenBudget      int
-	maxTurns         int
-	errorFixProvider ErrorFixProvider
+	tokenBudget         int
+	maxTurns            int
+	errorFixProvider    ErrorFixProvider
+	rootSessionObserver func(string)
+	childLifecycleHook  func(internal.SessionLifecycleEvent)
+	isolatedAgents      []string
+	plugins             []*plugin.Plugin
 }
 
 // WithAgentTokenBudget sets the session history token budget.
@@ -57,12 +70,53 @@ func WithAgentErrorFixProvider(p ErrorFixProvider) AgentOption {
 	return func(o *agentOptions) { o.errorFixProvider = p }
 }
 
+// WithAgentRootSessionObserver records root session creation events.
+func WithAgentRootSessionObserver(fn func(string)) AgentOption {
+	return func(o *agentOptions) { o.rootSessionObserver = fn }
+}
+
+// WithAgentChildLifecycleHook records synthetic child-session lifecycle events.
+func WithAgentChildLifecycleHook(fn func(internal.SessionLifecycleEvent)) AgentOption {
+	return func(o *agentOptions) { o.childLifecycleHook = fn }
+}
+
+// WithAgentIsolatedAgents marks agent names that should use child session history routing.
+func WithAgentIsolatedAgents(names []string) AgentOption {
+	return func(o *agentOptions) { o.isolatedAgents = append([]string(nil), names...) }
+}
+
+// WithPlugins adds ADK plugins to the runner configuration.
+// Plugins provide agent-level callbacks (BeforeTool, AfterTool, OnEvent, etc.)
+// that are executed by the ADK runner for every tool invocation.
+// Zero plugins preserves current behavior.
+func WithPlugins(plugins ...*plugin.Plugin) AgentOption {
+	return func(o *agentOptions) { o.plugins = append(o.plugins, plugins...) }
+}
+
 // Agent wraps the ADK runner for integration with Lango.
 type Agent struct {
 	runner           *runner.Runner
 	adkAgent         adk_agent.Agent
 	maxTurns         int              // 0 = defaultMaxTurns
 	errorFixProvider ErrorFixProvider // optional: for self-correction on errors
+	sessionService   *SessionServiceAdapter
+	isolatedAgents   map[string]struct{}
+}
+
+// RunDiagnostics captures high-level runtime facts about a single agent turn.
+type RunDiagnostics struct {
+	VisibleTextCount        int
+	ToolCallCount           int
+	ToolResultCount         int
+	DelegationCount         int
+	DirectRootToolCallCount int
+}
+
+// RunReport is the structured result returned by detailed run helpers.
+type RunReport struct {
+	TraceID     string
+	Response    string
+	Diagnostics RunDiagnostics
 }
 
 // NewAgent creates a new Agent instance.
@@ -91,12 +145,26 @@ func NewAgent(ctx context.Context, tools []tool.Tool, mod model.LLM, systemPromp
 	if o.tokenBudget > 0 {
 		sessService.WithTokenBudget(o.tokenBudget)
 	}
+	if o.rootSessionObserver != nil {
+		sessService.WithRootSessionObserver(o.rootSessionObserver)
+	}
+	if o.childLifecycleHook != nil {
+		sessService.WithChildLifecycleHook(o.childLifecycleHook)
+	}
+	if len(o.isolatedAgents) > 0 {
+		sessService.WithIsolatedAgents(o.isolatedAgents)
+	}
 
 	// Create Runner
 	runnerCfg := runner.Config{
 		AppName:        "lango",
 		Agent:          adkAgent,
 		SessionService: sessService,
+	}
+	if len(o.plugins) > 0 {
+		runnerCfg.PluginConfig = runner.PluginConfig{
+			Plugins: o.plugins,
+		}
 	}
 
 	r, err := runner.New(runnerCfg)
@@ -109,6 +177,8 @@ func NewAgent(ctx context.Context, tools []tool.Tool, mod model.LLM, systemPromp
 		adkAgent:         adkAgent,
 		maxTurns:         o.maxTurns,
 		errorFixProvider: o.errorFixProvider,
+		sessionService:   sessService,
+		isolatedAgents:   makeIsolatedAgentSet(o.isolatedAgents),
 	}, nil
 }
 
@@ -124,11 +194,25 @@ func NewAgentFromADK(adkAgent adk_agent.Agent, store internal.Store, opts ...Age
 	if o.tokenBudget > 0 {
 		sessService.WithTokenBudget(o.tokenBudget)
 	}
+	if o.rootSessionObserver != nil {
+		sessService.WithRootSessionObserver(o.rootSessionObserver)
+	}
+	if o.childLifecycleHook != nil {
+		sessService.WithChildLifecycleHook(o.childLifecycleHook)
+	}
+	if len(o.isolatedAgents) > 0 {
+		sessService.WithIsolatedAgents(o.isolatedAgents)
+	}
 
 	runnerCfg := runner.Config{
 		AppName:        "lango",
 		Agent:          adkAgent,
 		SessionService: sessService,
+	}
+	if len(o.plugins) > 0 {
+		runnerCfg.PluginConfig = runner.PluginConfig{
+			Plugins: o.plugins,
+		}
 	}
 
 	r, err := runner.New(runnerCfg)
@@ -141,11 +225,13 @@ func NewAgentFromADK(adkAgent adk_agent.Agent, store internal.Store, opts ...Age
 		adkAgent:         adkAgent,
 		maxTurns:         o.maxTurns,
 		errorFixProvider: o.errorFixProvider,
+		sessionService:   sessService,
+		isolatedAgents:   makeIsolatedAgentSet(o.isolatedAgents),
 	}, nil
 }
 
 // WithMaxTurns sets the maximum number of tool-calling turns per run.
-// Zero or negative values use the default (25).
+// Zero or negative values use the default (50).
 func (a *Agent) WithMaxTurns(n int) *Agent {
 	a.maxTurns = n
 	return a
@@ -166,6 +252,8 @@ func (a *Agent) ADKAgent() adk_agent.Agent {
 // Run executes the agent for a given session and returns an event iterator.
 // It enforces a maximum turn limit to prevent unbounded tool-calling loops.
 func (a *Agent) Run(ctx context.Context, sessionID string, input string) iter.Seq2[*session.Event, error] {
+	ctx = runledger.WithSnapshotCache(ctx)
+
 	// Create user content
 	userMsg := &genai.Content{
 		Role:  "user",
@@ -196,9 +284,15 @@ func (a *Agent) Run(ctx context.Context, sessionID string, input string) iter.Se
 		plannerInvolved := false
 
 		// Wrap-up tracking (loop-level scope).
-		wrapUpBudget := 1   // default: 1 wrap-up turn
+		wrapUpBudget := 1 // default: 1 wrap-up turn
 		wrapUpRemaining := 0
 		inWrapUp := false
+
+		// Tool churn detection: force-stop when the same tool is called
+		// consecutively without the model producing any other tool call or
+		// text response (indicates the model is stuck in a loop).
+		lastCallSignature := ""
+		consecutiveSameToolCalls := 0
 
 		for event, err := range inner {
 			if err != nil {
@@ -234,10 +328,53 @@ func (a *Agent) Run(ctx context.Context, sessionID string, input string) iter.Se
 				}
 			}
 
+			if len(a.adkAgent.SubAgents()) > 0 &&
+				event.Author == a.adkAgent.Name() &&
+				hasFunctionCalls(event) &&
+				!isDelegationEvent(event) &&
+				!isPureTransferToAgentCall(event) {
+				yield(nil, fmt.Errorf(
+					"orchestrator emitted direct tool call %q without tool access",
+					extractPrimaryToolName(event),
+				))
+				return
+			}
+
+			// Reset tool churn counter when the model generates a text-only
+			// response (reasoning step, not a tool call), indicating it is
+			// not stuck in a single-tool loop.
+			if event.Content != nil && hasText(event) && !hasFunctionCalls(event) {
+				lastCallSignature = ""
+				consecutiveSameToolCalls = 0
+			}
+
 			// Count events containing function calls as agent turns.
 			// Delegation transfers (agent-to-agent routing) are not counted
 			// because they are routing overhead, not actual tool work.
 			if event.Content != nil && hasFunctionCalls(event) && !isDelegationEvent(event) {
+				// Tool churn detection: same call signature called consecutively.
+				if signature := extractPrimaryToolSignature(event); signature != "" {
+					if signature == lastCallSignature {
+						consecutiveSameToolCalls++
+					} else {
+						lastCallSignature = signature
+						consecutiveSameToolCalls = 1
+					}
+					if consecutiveSameToolCalls >= maxConsecutiveSameToolCalls {
+						logger().Warnw("tool churn detected, forcing stop",
+							"session", sessionID,
+							"signature", signature,
+							"consecutiveCalls", consecutiveSameToolCalls,
+							"maxAllowed", maxConsecutiveSameToolCalls)
+						yield(nil, fmt.Errorf(
+							"call signature %q repeated %d times consecutively, forcing stop",
+							signature,
+							consecutiveSameToolCalls,
+						))
+						return
+					}
+				}
+
 				turnCount++
 
 				// Log a warning at 80% of the turn limit for observability.
@@ -301,6 +438,63 @@ func isDelegationEvent(e *session.Event) bool {
 	return e.Actions.TransferToAgent != ""
 }
 
+// isPureTransferToAgentCall reports whether every FunctionCall in the event
+// is a transfer_to_agent call. ADK yields the model response event (with
+// the FunctionCall) before promoting it to Actions.TransferToAgent in a
+// subsequent event. This helper prevents the orchestrator direct-tool guard
+// from killing a legitimate delegation before the ADK promotes it.
+// Mixed events (transfer_to_agent + other tool calls) return false so the
+// guard still catches them.
+func isPureTransferToAgentCall(e *session.Event) bool {
+	if e.Content == nil {
+		return false
+	}
+	hasCalls := false
+	for _, p := range e.Content.Parts {
+		if p.FunctionCall == nil {
+			continue
+		}
+		if p.FunctionCall.Name != "transfer_to_agent" {
+			return false
+		}
+		hasCalls = true
+	}
+	return hasCalls
+}
+
+// extractPrimaryToolName returns the name of the first FunctionCall in the event,
+// or empty string if the event contains no function calls.
+func extractPrimaryToolName(e *session.Event) string {
+	if e.Content == nil {
+		return ""
+	}
+	for _, p := range e.Content.Parts {
+		if p.FunctionCall != nil {
+			return p.FunctionCall.Name
+		}
+	}
+	return ""
+}
+
+func extractPrimaryToolSignature(e *session.Event) string {
+	if e.Content == nil {
+		return ""
+	}
+	for _, p := range e.Content.Parts {
+		if p.FunctionCall == nil {
+			continue
+		}
+		args := "{}"
+		if len(p.FunctionCall.Args) > 0 {
+			if data, err := json.Marshal(p.FunctionCall.Args); err == nil {
+				args = string(data)
+			}
+		}
+		return fmt.Sprintf("%s|%s|%s", e.Author, p.FunctionCall.Name, args)
+	}
+	return ""
+}
+
 // RunAndCollect executes the agent and returns the full text response.
 // If the agent encounters a "failed to find agent" error (hallucinated agent
 // name), it sends a correction message and retries once.
@@ -315,6 +509,7 @@ func (a *Agent) RunAndCollect(ctx context.Context, sessionID, input string, opts
 		// Safety net: detect [REJECT] text from sub-agents that failed to
 		// call transfer_to_agent and force re-routing through the orchestrator.
 		if resp != "" && containsRejectPattern(resp) && len(a.adkAgent.SubAgents()) > 0 {
+			a.cleanupFailedTurn(sessionID, "escalated without producing a result")
 			logger().Warnw("sub-agent REJECT detected in text, forcing re-route",
 				"session", sessionID,
 				"response_preview", truncate(resp, 100))
@@ -324,9 +519,15 @@ func (a *Agent) RunAndCollect(ctx context.Context, sessionID, input string, opts
 					"Original user request: %s]", input)
 			retryResp, retryErr := a.runAndCollectOnce(ctx, sessionID, correction, &ro)
 			if retryErr == nil && retryResp != "" && !containsRejectPattern(retryResp) {
+				if a.sessionService != nil {
+					_ = a.sessionService.CloseActiveChild(sessionID)
+				}
 				return retryResp, nil
 			}
 			// Fall through with original response if retry also fails.
+		}
+		if a.sessionService != nil {
+			_ = a.sessionService.CloseActiveChild(sessionID)
 		}
 
 		if resp == "" {
@@ -344,6 +545,39 @@ func (a *Agent) RunAndCollect(ctx context.Context, sessionID, input string, opts
 
 	badAgent := extractMissingAgent(err)
 	if badAgent == "" || len(a.adkAgent.SubAgents()) == 0 {
+		// Tool churn recovery: if a sub-agent was stopped due to repeated
+		// same-tool calls, discard the stuck child session and let the
+		// orchestrator respond using whatever information was gathered.
+		var agentErr *AgentError
+		if errors.As(err, &agentErr) && agentErr.Code == ErrToolChurn && len(a.adkAgent.SubAgents()) > 0 {
+			a.cleanupFailedTurn(sessionID, "same tool loop detected")
+			recovery := "[System: The previous sub-agent was stopped because it called the same tool repeatedly without producing a response. " +
+				"Do NOT delegate to the same sub-agent again for this request. " +
+				"Respond to the user directly using whatever information has already been gathered in this conversation. " +
+				"If no useful information was found, apologize and tell the user you were unable to complete the search.]"
+			logger().Infow("tool churn recovery attempt",
+				"session", sessionID,
+				"elapsed", time.Since(start).String())
+			retryResp, retryErr := a.runAndCollectOnce(ctx, sessionID, recovery, &ro)
+			if retryErr == nil && retryResp != "" {
+				if a.sessionService != nil {
+					_ = a.sessionService.CloseActiveChild(sessionID)
+				}
+				logger().Infow("tool churn recovery succeeded",
+					"session", sessionID,
+					"elapsed", time.Since(start).String(),
+					"response_len", len(retryResp))
+				return retryResp, nil
+			}
+			logger().Warnw("tool churn recovery failed",
+				"session", sessionID,
+				"elapsed", time.Since(start).String(),
+				"error", retryErr)
+			if retryResp != "" && len(retryResp) > len(resp) {
+				resp = retryResp
+			}
+		}
+
 		// Try learning-based error correction before giving up.
 		if a.errorFixProvider != nil {
 			if fix, ok := a.errorFixProvider.GetFixForError(ctx, "", err); ok {
@@ -373,6 +607,7 @@ func (a *Agent) RunAndCollect(ctx context.Context, sessionID, input string, opts
 			"elapsed", time.Since(start).String(),
 			"error", err)
 		// Return partial result from the best attempt if available.
+		a.cleanupFailedTurn(sessionID, "agent error")
 		return resp, err
 	}
 
@@ -399,10 +634,14 @@ func (a *Agent) RunAndCollect(ctx context.Context, sessionID, input string, opts
 		if retryResp != "" && len(retryResp) > len(resp) {
 			resp = retryResp
 		}
+		a.cleanupFailedTurn(sessionID, "agent error")
 		return resp, retryErr
 	}
 	resp = retryResp
 	err = nil
+	if a.sessionService != nil {
+		_ = a.sessionService.CloseActiveChild(sessionID)
+	}
 
 	logger().Infow("agent hallucination retry succeeded",
 		"session", sessionID,
@@ -418,19 +657,25 @@ func (a *Agent) RunAndCollect(ctx context.Context, sessionID, input string, opts
 // final non-partial response.
 func (a *Agent) runAndCollectOnce(ctx context.Context, sessionID, input string, ro *runOptions) (string, error) {
 	var b strings.Builder
-	var sawPartial bool
+	var sawVisiblePartial bool
 
 	start := time.Now()
+	defer invokeFinishCallback(ro)
 
 	for event, err := range a.Run(ctx, sessionID, input) {
 		if err != nil {
 			partial := b.String()
+			a.cleanupFailedTurn(sessionID, discardReasonForError(err))
+			fc := classifyError(err)
 			return partial, &AgentError{
-				Code:    classifyError(err),
-				Message: "agent error",
-				Cause:   err,
-				Partial: partial,
-				Elapsed: time.Since(start),
+				Code:            fc.Code,
+				Message:         "agent error",
+				Cause:           err,
+				Partial:         partial,
+				Elapsed:         time.Since(start),
+				CauseClass:      fc.CauseClass,
+				CauseDetail:     fc.CauseDetail,
+				OperatorSummary: fc.OperatorSummary,
 			}
 		}
 
@@ -449,25 +694,31 @@ func (a *Agent) runAndCollectOnce(ctx context.Context, sessionID, input string, 
 		}
 
 		if event.Content == nil {
+			if ro != nil && ro.onEvent != nil {
+				ro.onEvent(event)
+			}
 			continue
+		}
+		if ro != nil && ro.onEvent != nil {
+			ro.onEvent(event)
 		}
 
 		// Signal activity for deadline extension.
 		if ro != nil && ro.onActivity != nil {
-			if hasText(event) || hasFunctionCalls(event) {
+			if hasText(event) || hasFunctionCalls(event) || isDelegationEvent(event) {
 				ro.onActivity()
 			}
 		}
 
 		if event.Partial {
 			// Streaming text chunk — collect incrementally.
-			sawPartial = true
+			sawVisiblePartial = true
 			for _, part := range event.Content.Parts {
 				if part.Text != "" {
 					b.WriteString(part.Text)
 				}
 			}
-		} else if !sawPartial {
+		} else if !sawVisiblePartial {
 			// Non-streaming mode: no partial events were seen,
 			// so collect from the final complete response.
 			for _, part := range event.Content.Parts {
@@ -476,7 +727,7 @@ func (a *Agent) runAndCollectOnce(ctx context.Context, sessionID, input string, 
 				}
 			}
 		}
-		// If sawPartial && !event.Partial: this is the final done event
+		// If sawVisiblePartial && !event.Partial: this is the final done event
 		// in streaming mode. Its text duplicates partial chunks, so skip.
 	}
 
@@ -485,12 +736,16 @@ func (a *Agent) runAndCollectOnce(ctx context.Context, sessionID, input string, 
 	// timeout that the iterator failed to propagate.
 	if err := ctx.Err(); err != nil {
 		partial := b.String()
+		a.cleanupFailedTurn(sessionID, discardReasonForError(err))
 		return partial, &AgentError{
-			Code:    ErrTimeout,
-			Message: "agent error",
-			Cause:   err,
-			Partial: partial,
-			Elapsed: time.Since(start),
+			Code:            ErrTimeout,
+			Message:         "agent error",
+			Cause:           err,
+			Partial:         partial,
+			Elapsed:         time.Since(start),
+			CauseClass:      CauseTimeoutHard,
+			CauseDetail:     err.Error(),
+			OperatorSummary: fmt.Sprintf("[%s] %s", ErrTimeout, CauseTimeoutHard),
 		}
 	}
 
@@ -541,6 +796,24 @@ type RunOption func(*runOptions)
 
 type runOptions struct {
 	onActivity func()
+	onEvent    func(*session.Event)
+	onRecovery func(RecoveryInfo)
+	onFinish   func()
+}
+
+// RunHooks is the exported view of parsed RunOptions for tests and adapters.
+type RunHooks struct {
+	OnActivity func()
+	OnEvent    func(*session.Event)
+	OnRecovery func(RecoveryInfo)
+	OnFinish   func()
+}
+
+// RecoveryInfo captures a structured recovery action observed during a run.
+type RecoveryInfo struct {
+	Action    string
+	AgentName string
+	Error     string
 }
 
 // WithOnActivity sets a callback that is invoked whenever the agent produces
@@ -549,31 +822,95 @@ func WithOnActivity(fn func()) RunOption {
 	return func(o *runOptions) { o.onActivity = fn }
 }
 
+// WithOnEvent receives each event observed by the detailed collectors.
+func WithOnEvent(fn func(*session.Event)) RunOption {
+	return func(o *runOptions) { o.onEvent = fn }
+}
+
+// WithOnRecovery receives each structured recovery action observed by runtime wrappers.
+func WithOnRecovery(fn func(RecoveryInfo)) RunOption {
+	return func(o *runOptions) { o.onRecovery = fn }
+}
+
+// ChainOnEvent appends an event handler after any existing one, instead of replacing.
+// Use this when wrapping an executor that may already have an OnEvent handler set.
+func ChainOnEvent(fn func(*session.Event)) RunOption {
+	return func(o *runOptions) {
+		prev := o.onEvent
+		o.onEvent = func(event *session.Event) {
+			if prev != nil {
+				prev(event)
+			}
+			fn(event)
+		}
+	}
+}
+
+// WithOnFinish registers a callback fired when collection completes.
+func WithOnFinish(fn func()) RunOption {
+	return func(o *runOptions) { o.onFinish = fn }
+}
+
+// ResolveRunHooks applies RunOptions and returns the resulting hooks.
+func ResolveRunHooks(opts ...RunOption) RunHooks {
+	var ro runOptions
+	for _, o := range opts {
+		o(&ro)
+	}
+	return RunHooks{
+		OnActivity: ro.onActivity,
+		OnEvent:    ro.onEvent,
+		OnRecovery: ro.onRecovery,
+		OnFinish:   ro.onFinish,
+	}
+}
+
 // ChunkCallback is called for each streaming text chunk during agent execution.
 type ChunkCallback func(chunk string)
 
 // RunStreaming executes the agent and streams partial text chunks via the callback.
 // It returns the full accumulated response text for backward compatibility.
 func (a *Agent) RunStreaming(ctx context.Context, sessionID, input string, onChunk ChunkCallback, opts ...RunOption) (string, error) {
+	report, err := a.RunStreamingDetailed(ctx, sessionID, input, onChunk, opts...)
+	return report.Response, err
+}
+
+// RunStreamingDetailed executes the agent, streams chunks, and returns structured diagnostics.
+func (a *Agent) RunStreamingDetailed(ctx context.Context, sessionID, input string, onChunk ChunkCallback, opts ...RunOption) (RunReport, error) {
 	var ro runOptions
 	for _, o := range opts {
 		o(&ro)
 	}
+	defer invokeFinishCallback(&ro)
 
 	var b strings.Builder
-	var sawPartial bool
+	var sawVisiblePartial bool
 	start := time.Now()
+	var diagnostics RunDiagnostics
 
 	for event, err := range a.Run(ctx, sessionID, input) {
 		if err != nil {
 			partial := b.String()
-			return partial, &AgentError{
-				Code:    classifyError(err),
-				Message: "agent error",
-				Cause:   err,
-				Partial: partial,
-				Elapsed: time.Since(start),
-			}
+			a.cleanupFailedTurn(sessionID, discardReasonForError(err))
+			fc := classifyError(err)
+			return RunReport{
+					Response:    partial,
+					Diagnostics: diagnostics,
+				}, &AgentError{
+					Code:            fc.Code,
+					Message:         "agent error",
+					Cause:           err,
+					Partial:         partial,
+					Elapsed:         time.Since(start),
+					CauseClass:      fc.CauseClass,
+					CauseDetail:     fc.CauseDetail,
+					OperatorSummary: fc.OperatorSummary,
+				}
+		}
+
+		recordDiagnostics(&diagnostics, a.adkAgent.Name(), len(a.adkAgent.SubAgents()) > 0, event)
+		if ro.onEvent != nil {
+			ro.onEvent(event)
 		}
 
 		if event.Content == nil {
@@ -582,13 +919,13 @@ func (a *Agent) RunStreaming(ctx context.Context, sessionID, input string, onChu
 
 		// Signal activity for deadline extension.
 		if ro.onActivity != nil {
-			if hasText(event) || hasFunctionCalls(event) {
+			if hasText(event) || hasFunctionCalls(event) || isDelegationEvent(event) {
 				ro.onActivity()
 			}
 		}
 
 		if event.Partial {
-			sawPartial = true
+			sawVisiblePartial = true
 			for _, part := range event.Content.Parts {
 				if part.Text != "" {
 					b.WriteString(part.Text)
@@ -597,7 +934,7 @@ func (a *Agent) RunStreaming(ctx context.Context, sessionID, input string, onChu
 					}
 				}
 			}
-		} else if !sawPartial {
+		} else if !sawVisiblePartial {
 			// Non-streaming mode: collect from final response.
 			for _, part := range event.Content.Parts {
 				if part.Text != "" {
@@ -612,16 +949,46 @@ func (a *Agent) RunStreaming(ctx context.Context, sessionID, input string, onChu
 	// timeout that the iterator failed to propagate.
 	if err := ctx.Err(); err != nil {
 		partial := b.String()
-		return partial, &AgentError{
-			Code:    ErrTimeout,
-			Message: "agent error",
-			Cause:   err,
-			Partial: partial,
-			Elapsed: time.Since(start),
-		}
+		a.cleanupFailedTurn(sessionID, discardReasonForError(err))
+		return RunReport{
+				Response:    partial,
+				Diagnostics: diagnostics,
+			}, &AgentError{
+				Code:            ErrTimeout,
+				Message:         "agent error",
+				Cause:           err,
+				Partial:         partial,
+				Elapsed:         time.Since(start),
+				CauseClass:      CauseTimeoutHard,
+				CauseDetail:     err.Error(),
+				OperatorSummary: fmt.Sprintf("[%s] %s", ErrTimeout, CauseTimeoutHard),
+			}
 	}
+	if a.sessionService != nil {
+		_ = a.sessionService.CloseActiveChild(sessionID)
+	}
+	return RunReport{
+		Response:    b.String(),
+		Diagnostics: diagnostics,
+	}, nil
+}
 
-	return b.String(), nil
+func discardReasonForError(err error) string {
+	switch classifyError(err).Code {
+	case ErrToolChurn:
+		return "loop_detected"
+	case ErrEmptyAfterToolUse:
+		return "empty_after_tool_use"
+	default:
+		return "agent error"
+	}
+}
+
+func (a *Agent) cleanupFailedTurn(sessionID, reason string) {
+	if a.sessionService == nil {
+		return
+	}
+	_ = a.sessionService.CleanupFailedTurn(sessionID, reason)
 }
 
 // hasText reports whether the event contains any non-empty text part.
@@ -635,4 +1002,98 @@ func hasText(e *session.Event) bool {
 		}
 	}
 	return false
+}
+
+func makeIsolatedAgentSet(names []string) map[string]struct{} {
+	if len(names) == 0 {
+		return nil
+	}
+
+	out := make(map[string]struct{}, len(names))
+	for _, name := range names {
+		name = strings.TrimSpace(name)
+		if name == "" {
+			continue
+		}
+		out[name] = struct{}{}
+	}
+	return out
+}
+
+func (a *Agent) shouldCollectUserText(author string) bool {
+	if len(a.isolatedAgents) == 0 || author == "" {
+		return true
+	}
+	_, isolated := a.isolatedAgents[author]
+	return !isolated
+}
+
+func recordDiagnostics(
+	diagnostics *RunDiagnostics,
+	rootAgentName string,
+	multiAgent bool,
+	event *session.Event,
+) {
+	if diagnostics == nil || event == nil {
+		return
+	}
+	if isDelegationEvent(event) {
+		diagnostics.DelegationCount++
+	}
+	if hasText(event) {
+		diagnostics.VisibleTextCount += countTextParts(event)
+	}
+	if hasFunctionCalls(event) {
+		diagnostics.ToolCallCount += countFunctionCalls(event)
+		if multiAgent && event.Author == rootAgentName && !isDelegationEvent(event) {
+			diagnostics.DirectRootToolCallCount += countFunctionCalls(event)
+		}
+	}
+	diagnostics.ToolResultCount += countFunctionResponses(event)
+}
+
+func countTextParts(e *session.Event) int {
+	if e.Content == nil {
+		return 0
+	}
+	count := 0
+	for _, p := range e.Content.Parts {
+		if p.Text != "" {
+			count++
+		}
+	}
+	return count
+}
+
+func countFunctionCalls(e *session.Event) int {
+	if e.Content == nil {
+		return 0
+	}
+	count := 0
+	for _, p := range e.Content.Parts {
+		if p.FunctionCall != nil {
+			count++
+		}
+	}
+	return count
+}
+
+func countFunctionResponses(e *session.Event) int {
+	if e.Content == nil {
+		return 0
+	}
+	count := 0
+	for _, p := range e.Content.Parts {
+		if p.FunctionResponse != nil {
+			count++
+		}
+	}
+	return count
+}
+
+func invokeFinishCallback(ro *runOptions) {
+	if ro == nil || ro.onFinish == nil {
+		return
+	}
+	ro.onFinish()
 }

@@ -212,3 +212,40 @@ func TestNewSummary(t *testing.T) {
 		t.Error("expected HasWarnings to be true")
 	}
 }
+
+func TestRunLedgerCheck_Run_Disabled(t *testing.T) {
+	check := &RunLedgerCheck{}
+	result := check.Run(context.Background(), config.DefaultConfig())
+
+	if result.Status != StatusSkip {
+		t.Errorf("expected StatusSkip, got %v", result.Status)
+	}
+}
+
+func TestRunLedgerCheck_Run_InvalidConfig(t *testing.T) {
+	cfg := config.DefaultConfig()
+	cfg.RunLedger.Enabled = true
+	cfg.RunLedger.AuthoritativeRead = true
+	cfg.RunLedger.WriteThrough = false
+
+	check := &RunLedgerCheck{}
+	result := check.Run(context.Background(), cfg)
+
+	if result.Status != StatusFail {
+		t.Errorf("expected StatusFail, got %v: %s", result.Status, result.Message)
+	}
+}
+
+func TestRunLedgerCheck_Run_ValidConfig(t *testing.T) {
+	cfg := config.DefaultConfig()
+	cfg.RunLedger.Enabled = true
+	cfg.RunLedger.WriteThrough = true
+	cfg.RunLedger.AuthoritativeRead = true
+
+	check := &RunLedgerCheck{}
+	result := check.Run(context.Background(), cfg)
+
+	if result.Status != StatusPass {
+		t.Errorf("expected StatusPass, got %v: %s", result.Status, result.Message)
+	}
+}

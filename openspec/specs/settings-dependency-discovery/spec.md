@@ -1,4 +1,8 @@
-## ADDED Requirements
+## Purpose
+
+Capability spec for settings-dependency-discovery. See requirements below for scope and behavior contracts.
+
+## Requirements
 
 ### Requirement: Dependency Registry
 The system SHALL maintain a registry of feature dependency relationships as a `DependencyIndex` with O(1) lookup by category ID. Each dependency SHALL have a category ID, label, required flag, check function, and fix hint. The registry SHALL support evaluation, unmet-required counting, transitive resolution with cycle guard, and reverse lookup (dependents).

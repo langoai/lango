@@ -1,4 +1,8 @@
-## ADDED Requirements
+## Purpose
+
+Capability spec for branch-per-task. See requirements below for scope and behavior contracts.
+
+## Requirements
 
 ### Requirement: Task branch creation
 The system SHALL create isolated `task/{taskID}` branches in bare workspace repositories. The operation SHALL be idempotent — creating an already-existing branch returns success.

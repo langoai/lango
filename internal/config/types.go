@@ -1,10 +1,22 @@
 package config
 
 import (
+	"encoding/json"
 	"time"
 
 	"github.com/langoai/lango/internal/types"
 )
+
+// Clone returns a deep copy of the Config via JSON roundtrip.
+func (c *Config) Clone() *Config {
+	if c == nil {
+		return nil
+	}
+	data, _ := json.Marshal(c)
+	var clone Config
+	_ = json.Unmarshal(data, &clone)
+	return &clone
+}
 
 // Config is the root configuration structure for lango
 type Config struct {
@@ -88,14 +100,65 @@ type Config struct {
 	// Smart Account configuration (ERC-7579 modular accounts)
 	SmartAccount SmartAccountConfig `mapstructure:"smartAccount" json:"smartAccount"`
 
+	// Retrieval coordinator configuration (agentic retrieval)
+	Retrieval RetrievalConfig `mapstructure:"retrieval" json:"retrieval"`
+
 	// Gatekeeper configuration (response sanitization)
 	Gatekeeper GatekeeperConfig `mapstructure:"gatekeeper" json:"gatekeeper"`
 
 	// Observability configuration (token tracking, health, audit, metrics)
 	Observability ObservabilityConfig `mapstructure:"observability" json:"observability"`
 
+	// Alerting configuration (operational alert thresholds and delivery)
+	Alerting AlertingConfig `mapstructure:"alerting" json:"alerting"`
+
+	// RunLedger configuration (Task OS — durable execution engine)
+	RunLedger RunLedgerConfig `mapstructure:"runLedger" json:"runLedger"`
+
+	// Provenance configuration (session checkpoints, attribution, session tree)
+	Provenance ProvenanceConfig `mapstructure:"provenance" json:"provenance"`
+
+	// Sandbox configuration (OS-level tool execution isolation)
+	Sandbox SandboxConfig `mapstructure:"sandbox" json:"sandbox"`
+
+	// Ontology subsystem configuration (typed objects and predicates)
+	Ontology OntologyConfig `mapstructure:"ontology" json:"ontology,omitempty"`
+
+	// ContextProfile selects a named preset that bundles context subsystem settings.
+	// Valid values: "off", "lite", "balanced", "full", or empty (no profile).
+	ContextProfile ContextProfileName `mapstructure:"contextProfile" json:"contextProfile,omitempty"`
+
+	// Context budget configuration (advanced). contextProfile stays top-level;
+	// these settings control token budget allocation across prompt sections.
+	Context ContextConfig `mapstructure:"context" json:"context"`
+
 	// Providers configuration
 	Providers map[string]ProviderConfig `mapstructure:"providers" json:"providers"`
+}
+
+// ContextConfig controls token budget allocation across prompt sections.
+// These are advanced settings; most users should use contextProfile instead.
+type ContextConfig struct {
+	// ModelWindow overrides the auto-detected model context window size (tokens).
+	// 0 = auto-detect from model registry.
+	ModelWindow int `mapstructure:"modelWindow" json:"modelWindow"`
+
+	// ResponseReserve overrides the response token reserve.
+	// 0 = use agent.maxTokens. Clamped to [1024, 25% of modelWindow].
+	ResponseReserve int `mapstructure:"responseReserve" json:"responseReserve"`
+
+	// Allocation controls the ratio of available tokens allocated to each section.
+	// All values must sum to 1.0.
+	Allocation ContextAllocationConfig `mapstructure:"allocation" json:"allocation"`
+}
+
+// ContextAllocationConfig defines per-section token allocation ratios.
+type ContextAllocationConfig struct {
+	Knowledge  float64 `mapstructure:"knowledge" json:"knowledge"`
+	RAG        float64 `mapstructure:"rag" json:"rag"`
+	Memory     float64 `mapstructure:"memory" json:"memory"`
+	RunSummary float64 `mapstructure:"runSummary" json:"runSummary"`
+	Headroom   float64 `mapstructure:"headroom" json:"headroom"`
 }
 
 // ServerConfig defines gateway server settings
@@ -169,6 +232,11 @@ type AgentConfig struct {
 	// MaxRequestTimeout is the absolute maximum duration for a request when auto-extend is enabled.
 	// Defaults to 3x RequestTimeout (e.g. 15m if RequestTimeout is 5m).
 	MaxRequestTimeout time.Duration `mapstructure:"maxRequestTimeout" json:"maxRequestTimeout"`
+
+	// Orchestration configures the structured multi-agent control plane.
+	// When Mode is "structured", a CoordinatingExecutor wraps the agent executor
+	// to apply DelegationGuard, BudgetPolicy, and RecoveryPolicy.
+	Orchestration OrchestrationConfig `mapstructure:"orchestration" json:"orchestration"`
 
 	// IdleTimeout is the duration of inactivity (no streaming chunks, tool calls, or model responses)
 	// before a request is timed out. When set, RequestTimeout becomes the hard ceiling.
@@ -331,6 +399,26 @@ type AgentMemoryConfig struct {
 	Enabled bool `mapstructure:"enabled" json:"enabled"`
 }
 
+// RetrievalConfig controls the agentic retrieval coordinator.
+type RetrievalConfig struct {
+	Enabled    bool             `mapstructure:"enabled" json:"enabled"`       // Enable agentic retrieval coordinator
+	Feedback   bool             `mapstructure:"feedback" json:"feedback"`     // Context injection observability
+	AutoAdjust AutoAdjustConfig `mapstructure:"autoAdjust" json:"autoAdjust"` // Relevance score auto-adjustment
+}
+
+// AutoAdjustConfig controls relevance score auto-adjustment.
+// Primarily affects LIKE fallback search path and coordinator merge priority.
+type AutoAdjustConfig struct {
+	Enabled       bool    `mapstructure:"enabled" json:"enabled"`             // Master switch (default: false)
+	Mode          string  `mapstructure:"mode" json:"mode"`                   // "shadow" or "active" (default: "shadow")
+	BoostDelta    float64 `mapstructure:"boostDelta" json:"boostDelta"`       // Per-injection boost (default: 0.05)
+	DecayDelta    float64 `mapstructure:"decayDelta" json:"decayDelta"`       // Per-interval decay (default: 0.01)
+	DecayInterval int     `mapstructure:"decayInterval" json:"decayInterval"` // Turns between global decay (default: 100)
+	MinScore      float64 `mapstructure:"minScore" json:"minScore"`           // Floor (default: 0.1)
+	MaxScore      float64 `mapstructure:"maxScore" json:"maxScore"`           // Cap (default: 5.0)
+	WarmupTurns   int     `mapstructure:"warmupTurns" json:"warmupTurns"`     // Turns before activation (default: 50)
+}
+
 // GatekeeperConfig defines response sanitization (output gatekeeper) settings.
 type GatekeeperConfig struct {
 	// Master switch (nil defaults to true — enabled by default)
@@ -380,4 +468,29 @@ type BrowserToolConfig struct {
 
 	// Session timeout
 	SessionTimeout time.Duration `mapstructure:"sessionTimeout" json:"sessionTimeout"`
+}
+
+// AlertingConfig defines operational alerting thresholds and delivery settings.
+type AlertingConfig struct {
+	// Master switch (default: false)
+	Enabled bool `mapstructure:"enabled" json:"enabled"`
+
+	// PolicyBlockRate is the threshold for policy block events per 5min window (default: 10)
+	PolicyBlockRate int `mapstructure:"policyBlockRateThreshold" json:"policyBlockRateThreshold"`
+
+	// RecoveryRetries is the threshold for recovery retry events per session (default: 5)
+	RecoveryRetries int `mapstructure:"recoveryRetryThreshold" json:"recoveryRetryThreshold"`
+
+	// Delivery configures external alert delivery channels (webhook, etc.).
+	Delivery []AlertDeliveryConfig `mapstructure:"delivery" json:"delivery,omitempty"`
+}
+
+// AlertDeliveryConfig configures a single alert delivery channel.
+type AlertDeliveryConfig struct {
+	// Type is the delivery channel type ("webhook").
+	Type string `mapstructure:"type" json:"type"`
+	// WebhookURL is the target URL for webhook delivery.
+	WebhookURL string `mapstructure:"webhookURL" json:"webhookURL,omitempty"`
+	// MinSeverity filters alerts below this level ("warning", "critical").
+	MinSeverity string `mapstructure:"minSeverity" json:"minSeverity,omitempty"`
 }

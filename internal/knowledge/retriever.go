@@ -6,6 +6,7 @@ import (
 	"regexp"
 	"strings"
 
+	"github.com/langoai/lango/internal/types"
 	"go.uber.org/zap"
 )
 
@@ -139,6 +140,66 @@ func (r *ContextRetriever) Retrieve(ctx context.Context, req RetrievalRequest) (
 	}
 
 	return result, nil
+}
+
+// TruncateResult reduces a RetrievalResult to fit within a token budget.
+// Truncation operates at the item level — removing items from the end of each
+// layer (lowest priority first) until the total estimated tokens fit.
+// A budgetTokens of 0 means unlimited (returns result unchanged).
+func TruncateResult(result *RetrievalResult, budgetTokens int) *RetrievalResult {
+	if result == nil || budgetTokens == 0 || result.TotalItems == 0 {
+		return result
+	}
+
+	// Estimate total tokens across all items.
+	totalTokens := 0
+	for _, items := range result.Items {
+		for _, item := range items {
+			totalTokens += types.EstimateTokens(item.Content)
+		}
+	}
+
+	if totalTokens <= budgetTokens {
+		return result
+	}
+
+	// Need to truncate. Build a new result, keeping items from each layer
+	// until we exhaust the budget. Process layers in priority order.
+	truncated := &RetrievalResult{
+		Items: make(map[ContextLayer][]ContextItem),
+	}
+	remaining := budgetTokens
+
+	// Layer priority: runtime > tools > knowledge > skills > external > learnings > inquiries.
+	priorityOrder := []ContextLayer{
+		LayerRuntimeContext, LayerToolRegistry, LayerUserKnowledge,
+		LayerSkillPatterns, LayerExternalKnowledge, LayerAgentLearnings,
+		LayerPendingInquiries,
+	}
+
+	for _, layer := range priorityOrder {
+		items, ok := result.Items[layer]
+		if !ok || len(items) == 0 {
+			continue
+		}
+
+		var kept []ContextItem
+		for _, item := range items {
+			tokens := types.EstimateTokens(item.Content)
+			if remaining-tokens < 0 {
+				break
+			}
+			kept = append(kept, item)
+			remaining -= tokens
+		}
+
+		if len(kept) > 0 {
+			truncated.Items[layer] = kept
+			truncated.TotalItems += len(kept)
+		}
+	}
+
+	return truncated
 }
 
 // AssemblePrompt builds an augmented system prompt from base prompt and retrieved context.

@@ -2,7 +2,7 @@
 
 The tool health diagnostics capability provides an agent-facing diagnostic tool (`builtin_health`) that reports tool registration health status, enabling agents to self-diagnose why tools may be missing.
 
-## ADDED Requirements
+## Requirements
 
 ### Requirement: builtin_health diagnostic tool
 The system SHALL provide a `builtin_health` tool in `BuildDispatcher()` that reports tool registration health status. It SHALL return all categories grouped by enabled/disabled state, with tool name lists for enabled categories and actionable `lango config set` hints for disabled categories.

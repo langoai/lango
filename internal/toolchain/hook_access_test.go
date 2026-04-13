@@ -6,6 +6,8 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/langoai/lango/internal/ctxkeys"
 )
 
 func TestAgentAccessControlHook_Pre(t *testing.T) {
@@ -124,4 +126,115 @@ func TestAgentAccessControlHook_Metadata(t *testing.T) {
 	hook := &AgentAccessControlHook{}
 	assert.Equal(t, "agent_access_control", hook.Name())
 	assert.Equal(t, 20, hook.Priority())
+}
+
+func TestAgentAccessControlHook_DynamicAllowedTools(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		give         string
+		dynAllowed   []string
+		toolName     string
+		agentName    string
+		wantAction   PreHookAction
+		wantReason   string
+	}{
+		{
+			give:       "allowed tool passes through",
+			dynAllowed: []string{"fs_read", "web_search"},
+			toolName:   "fs_read",
+			agentName:  "worker",
+			wantAction: Continue,
+		},
+		{
+			give:       "disallowed tool is blocked",
+			dynAllowed: []string{"fs_read"},
+			toolName:   "exec",
+			agentName:  "worker",
+			wantAction: Block,
+			wantReason: "tool restricted by DynamicAllowedTools",
+		},
+		{
+			give:       "runtime essential tool_output_get always allowed",
+			dynAllowed: []string{"fs_read"},
+			toolName:   "tool_output_get",
+			agentName:  "worker",
+			wantAction: Continue,
+		},
+		{
+			give:       "runtime essential builtin_list always allowed",
+			dynAllowed: []string{"fs_read"},
+			toolName:   "builtin_list",
+			agentName:  "worker",
+			wantAction: Continue,
+		},
+		{
+			give:       "runtime essential builtin_search always allowed",
+			dynAllowed: []string{"fs_read"},
+			toolName:   "builtin_search",
+			agentName:  "worker",
+			wantAction: Continue,
+		},
+		{
+			give:       "runtime essential builtin_health always allowed",
+			dynAllowed: []string{"fs_read"},
+			toolName:   "builtin_health",
+			agentName:  "worker",
+			wantAction: Continue,
+		},
+		{
+			give:       "builtin_invoke is NOT a runtime essential — blocked",
+			dynAllowed: []string{"fs_read"},
+			toolName:   "builtin_invoke",
+			agentName:  "worker",
+			wantAction: Block,
+			wantReason: "tool restricted by DynamicAllowedTools",
+		},
+		{
+			give:       "empty dynAllowed means no restriction",
+			dynAllowed: []string{},
+			toolName:   "exec",
+			agentName:  "worker",
+			wantAction: Continue,
+		},
+		{
+			give:       "nil dynAllowed means no restriction",
+			dynAllowed: nil,
+			toolName:   "exec",
+			agentName:  "worker",
+			wantAction: Continue,
+		},
+		{
+			give:       "no agent name skips dynamic check entirely",
+			dynAllowed: []string{"fs_read"},
+			toolName:   "exec",
+			agentName:  "",
+			wantAction: Continue,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.give, func(t *testing.T) {
+			t.Parallel()
+
+			hook := &AgentAccessControlHook{}
+
+			ctx := context.Background()
+			if tt.dynAllowed != nil {
+				ctx = ctxkeys.WithDynamicAllowedTools(ctx, tt.dynAllowed)
+			}
+
+			result, err := hook.Pre(HookContext{
+				ToolName:  tt.toolName,
+				AgentName: tt.agentName,
+				Ctx:       ctx,
+			})
+
+			require.NoError(t, err)
+			assert.Equal(t, tt.wantAction, result.Action)
+			if tt.wantReason != "" {
+				assert.Equal(t, tt.wantReason, result.BlockReason)
+			}
+		})
+	}
 }

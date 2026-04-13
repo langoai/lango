@@ -1,3 +1,5 @@
+//go:build vec
+
 package embedding
 
 import (

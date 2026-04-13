@@ -25,12 +25,17 @@ const (
 	Block
 	// Modify indicates that tool execution should proceed with modified params.
 	Modify
+	// Observe indicates that tool execution should proceed but be logged for review.
+	// Commands matching observe-level patterns are legitimate but common obfuscation
+	// vectors, so they are allowed with a warning.
+	Observe
 )
 
 // PreHookResult is returned by pre-hooks to control execution flow.
 type PreHookResult struct {
 	Action         PreHookAction
 	BlockReason    string                 // Used when Action == Block
+	ObserveReason  string                 // Used when Action == Observe
 	ModifiedParams map[string]interface{} // Used when Action == Modify
 }
 

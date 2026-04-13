@@ -167,6 +167,16 @@ func TestDefaultConfig_Skill(t *testing.T) {
 	assert.Equal(t, 2*time.Minute, cfg.Skill.ImportTimeout)
 }
 
+func TestDefaultConfig_Alerting(t *testing.T) {
+	t.Parallel()
+
+	cfg := DefaultConfig()
+
+	assert.False(t, cfg.Alerting.Enabled)
+	assert.Equal(t, 10, cfg.Alerting.PolicyBlockRate)
+	assert.Equal(t, 5, cfg.Alerting.RecoveryRetries)
+}
+
 func TestValidate_ValidLogLevels(t *testing.T) {
 	t.Parallel()
 

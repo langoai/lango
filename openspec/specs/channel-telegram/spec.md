@@ -95,11 +95,15 @@ The Telegram channel SHALL provide an approval provider that uses InlineKeyboard
 
 #### Scenario: Approval timeout
 - **WHEN** no button is clicked within the timeout period
-- **THEN** the approval request SHALL be denied with a timeout error
+- **THEN** the approval request SHALL be denied with an error wrapping `approval.ErrTimeout`
 
 #### Scenario: Context cancellation
 - **WHEN** the request context is cancelled before a response
 - **THEN** the approval request SHALL return the context error
+
+#### Scenario: Approval outcome logs include provider metadata
+- **WHEN** the Telegram provider processes approval request, callback, approval, denial, or expiry
+- **THEN** it SHALL emit structured logs including provider=`telegram`, request ID, tool, session, and outcome
 
 ### Requirement: Callback query routing
 The Telegram channel event loop SHALL route CallbackQuery updates to the approval provider before processing regular messages.
@@ -199,4 +203,3 @@ The Telegram channel SHALL expose a public `StartTyping(ctx context.Context, cha
 #### Scenario: Initial typing failure is non-blocking
 - **WHEN** the initial `ChatTyping` request fails
 - **THEN** the error SHALL be logged at Warn level and a valid stop function SHALL still be returned
-

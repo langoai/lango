@@ -22,7 +22,6 @@ func (Knowledge) Fields() []ent.Field {
 			Default(uuid.New).
 			Immutable(),
 		field.String("key").
-			Unique().
 			NotEmpty(),
 		field.Enum("category").
 			Values("rule", "definition", "preference", "fact", "pattern", "correction"),
@@ -32,6 +31,10 @@ func (Knowledge) Fields() []ent.Field {
 			Optional(),
 		field.String("source").
 			Optional(),
+		field.Int("version").
+			Default(1),
+		field.Bool("is_latest").
+			Default(true),
 		field.Int("use_count").
 			Default(0),
 		field.Float("relevance_score").
@@ -53,6 +56,8 @@ func (Knowledge) Edges() []ent.Edge {
 // Indexes of the Knowledge.
 func (Knowledge) Indexes() []ent.Index {
 	return []ent.Index{
+		index.Fields("key", "version").Unique(),
+		index.Fields("key", "is_latest"),
 		index.Fields("category"),
 	}
 }

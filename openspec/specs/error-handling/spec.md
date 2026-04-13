@@ -1,4 +1,8 @@
-## MODIFIED Requirements
+## Purpose
+
+Capability spec for error-handling. See requirements below for scope and behavior contracts.
+
+## Requirements
 
 ### Requirement: Error message format
 All error messages in the codebase SHALL follow the concise format `"context: %w"` without "failed to" prefix, per project rule `go-errors.md`.

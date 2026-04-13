@@ -15,6 +15,11 @@ type Store interface {
 	// instance (agent_name) > type (all agents of same type) > global.
 	SearchWithContext(agentName string, query string, limit int) ([]*Entry, error)
 
+	// SearchWithContextOptions is like SearchWithContext but accepts full
+	// SearchOptions (Kind, Tags, MinConfidence). Filters are applied during
+	// collection, before limit truncation, so no results are lost.
+	SearchWithContextOptions(agentName string, opts SearchOptions) ([]*Entry, error)
+
 	// Delete removes an entry.
 	Delete(agentName, key string) error
 

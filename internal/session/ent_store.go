@@ -20,6 +20,7 @@ import (
 	"github.com/langoai/lango/internal/ent/message"
 	entschema "github.com/langoai/lango/internal/ent/schema"
 	entsession "github.com/langoai/lango/internal/ent/session"
+	"github.com/langoai/lango/internal/security"
 	"github.com/langoai/lango/internal/types"
 	_ "github.com/mattn/go-sqlite3"
 )
@@ -409,9 +410,6 @@ func (s *EntStore) AppendMessage(key string, msg Message) error {
 // AnnotateTimeout appends a synthetic assistant message to mark a timed-out turn.
 func (s *EntStore) AnnotateTimeout(key string, partial string) error {
 	content := "[This response was interrupted due to a timeout]"
-	if partial != "" {
-		content = partial + "\n\n---\n" + content
-	}
 
 	return s.AppendMessage(key, Message{
 		Role:      "assistant",
@@ -480,6 +478,29 @@ func (s *EntStore) CompactMessages(key string, upToIndex int, summary string) er
 	return nil
 }
 
+// ListSessions returns lightweight summaries of all sessions,
+// ordered by most recent update first.
+func (s *EntStore) ListSessions(ctx context.Context) ([]SessionSummary, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	rows, err := s.client.Session.Query().
+		Order(entsession.ByUpdatedAt(entsql.OrderDesc())).
+		All(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("list sessions: %w", err)
+	}
+	summaries := make([]SessionSummary, len(rows))
+	for i, r := range rows {
+		summaries[i] = SessionSummary{
+			Key:       r.Key,
+			CreatedAt: r.CreatedAt,
+			UpdatedAt: r.UpdatedAt,
+		}
+	}
+	return summaries, nil
+}
+
 // Close closes the ent client and underlying database connection.
 // When the client was provided externally via NewEntStoreWithClient, only the
 // ent client is closed; the raw DB connection is managed by the caller.
@@ -529,148 +550,63 @@ func (s *EntStore) entToSession(e *ent.Session) *Session {
 	return session
 }
 
-// ensureSecurityTable ensures the security_config table exists with correct schema
-func (s *EntStore) ensureSecurityTable() error {
-	// Create table if not exists with basic schema
-	_, err := s.db.Exec(`
-		CREATE TABLE IF NOT EXISTS security_config (
-			name TEXT PRIMARY KEY,
-			value BLOB NOT NULL
-		)
-	`)
-	if err != nil {
-		return fmt.Errorf("create security_config table: %w", err)
-	}
-
-	// Check if checksum column exists
-	// This is a simple migration check for SQLite
-	var count int
-	err = s.db.QueryRow(`
-		SELECT count(*) FROM pragma_table_info('security_config') WHERE name='checksum'
-	`).Scan(&count)
-	if err != nil {
-		return fmt.Errorf("check table schema: %w", err)
-	}
-
-	if count == 0 {
-		// Add checksum column
-		_, err = s.db.Exec(`ALTER TABLE security_config ADD COLUMN checksum BLOB`)
-		if err != nil {
-			return fmt.Errorf("add checksum column: %w", err)
-		}
-	}
-
-	return nil
-}
-
-// GetSalt retrieves the encryption salt by name
+// GetSalt retrieves the encryption salt by name.
+// Delegates to SecurityConfigStore for unified access.
 func (s *EntStore) GetSalt(name string) ([]byte, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
-	if err := s.ensureSecurityTable(); err != nil {
+	store := security.NewSecurityConfigStore(s.db)
+	salt, err := store.LoadSaltNamed(name)
+	if err != nil {
 		return nil, err
 	}
-
-	var salt []byte
-	err := s.db.QueryRow(`SELECT value FROM security_config WHERE name = ?`, name).Scan(&salt)
-	if err != nil {
-		if err == sql.ErrNoRows {
-			return nil, fmt.Errorf("salt not found: %s", name)
-		}
-		return nil, fmt.Errorf("query salt: %w", err)
+	if salt == nil {
+		return nil, fmt.Errorf("salt not found: %s", name)
 	}
-
 	return salt, nil
 }
 
-// SetSalt stores the encryption salt by name
+// SetSalt stores the encryption salt by name.
 func (s *EntStore) SetSalt(name string, salt []byte) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-
-	if err := s.ensureSecurityTable(); err != nil {
-		return err
-	}
-
-	// Upsert salt (value column)
-	// We use ON CONFLICT DO UPDATE to preserve checksum if it exists
-	_, err := s.db.Exec(`
-		INSERT INTO security_config (name, value) VALUES (?, ?)
-		ON CONFLICT(name) DO UPDATE SET value=excluded.value
-	`, name, salt)
-	if err != nil {
-		return fmt.Errorf("store salt: %w", err)
-	}
-
-	return nil
+	return security.NewSecurityConfigStore(s.db).StoreSaltNamed(name, salt)
 }
 
-// GetChecksum retrieves the passphrase checksum by name
+// GetChecksum retrieves the passphrase checksum by name.
 func (s *EntStore) GetChecksum(name string) ([]byte, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
-	if err := s.ensureSecurityTable(); err != nil {
+	store := security.NewSecurityConfigStore(s.db)
+	sum, err := store.LoadChecksumNamed(name)
+	if err != nil {
 		return nil, err
 	}
-
-	// Scan directly into interface{} specific for SQLite type handling
-	var raw interface{}
-
-	err := s.db.QueryRow(`SELECT checksum FROM security_config WHERE name = ?`, name).Scan(&raw)
-	if err != nil {
-		if err == sql.ErrNoRows {
+	if sum == nil {
+		// Distinguish "row missing" from "checksum null" by re-reading salt.
+		salt, saltErr := store.LoadSaltNamed(name)
+		if saltErr == nil && salt == nil {
 			return nil, fmt.Errorf("checksum not found: %s", name)
 		}
-		return nil, fmt.Errorf("query checksum: %w", err)
-	}
-
-	if raw == nil {
 		return nil, fmt.Errorf("checksum not set for: %s", name)
 	}
-
-	switch v := raw.(type) {
-	case []byte:
-		return v, nil
-	case string:
-		return []byte(v), nil
-	default:
-		return nil, fmt.Errorf("unexpected type for checksum: %T", v)
-	}
+	return sum, nil
 }
 
-// SetChecksum stores the passphrase checksum by name
+// SetChecksum stores the passphrase checksum by name.
 func (s *EntStore) SetChecksum(name string, checksum []byte) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	if err := s.ensureSecurityTable(); err != nil {
+	rows, err := security.NewSecurityConfigStore(s.db).StoreChecksumNamed(name, checksum)
+	if err != nil {
 		return err
 	}
-
-	// Update checksum
-	// The row MUST exist (salt should be set first or together)
-	// But let's support upsert just in case, though value (salt) cannot be NULL if inserted fresh?
-	// Schema says value is NOT NULL.
-	// So we assume row exists or we fail?
-	// Or we insert with empty salt? No.
-	// Task 2.5 says "Store checksum on first-time passphrase setup".
-	// Typically we set Salt AND Checksum.
-	// Let's allow updating just checksum if row exists.
-
-	res, err := s.db.Exec(`
-		UPDATE security_config SET checksum = ? WHERE name = ?
-	`, checksum, name)
-	if err != nil {
-		return fmt.Errorf("update checksum: %w", err)
-	}
-
-	rows, _ := res.RowsAffected()
 	if rows == 0 {
 		return fmt.Errorf("cannot set checksum: salt entry '%s' does not exist", name)
 	}
-
 	return nil
 }
 

@@ -21,11 +21,15 @@ func (h *HeadlessProvider) RequestApproval(_ context.Context, req ApprovalReques
 		"requestID", req.ID,
 		"summary", req.Summary,
 	)
-	return ApprovalResponse{Approved: true}, nil
+	return ApprovalResponse{Approved: true, Provider: "headless"}, nil
 }
 
 // CanHandle always returns false. HeadlessProvider is used as a TTY
 // fallback slot, not prefix-matched by session key.
 func (h *HeadlessProvider) CanHandle(_ string) bool {
 	return false
+}
+
+func (h *HeadlessProvider) Name() string {
+	return "headless"
 }

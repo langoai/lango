@@ -47,7 +47,7 @@ func TestFormatUSDC(t *testing.T) {
 		want string
 	}{
 		{give: 1_000_000, want: "1.00"},
-		{give: 500_000, want: "0.500000"},
+		{give: 500_000, want: "0.50"},
 		{give: 10_000_000, want: "10.00"},
 		{give: 0, want: "0.00"},
 		{give: 1, want: "0.000001"},

@@ -1,4 +1,8 @@
-## ADDED Requirements
+## Purpose
+
+Capability spec for memory-graph. See requirements below for scope and behavior contracts.
+
+## Requirements
 
 ### Requirement: Memory GraphHooks for temporal triples
 The memory system SHALL generate graph triples for temporal ordering and session membership when observations and reflections are saved.

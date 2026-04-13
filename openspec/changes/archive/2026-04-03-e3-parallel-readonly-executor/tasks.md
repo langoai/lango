@@ -1,0 +1,22 @@
+## Tasks
+
+- [x] Create `internal/streamx/parallel_executor.go` with `ToolInvocation`, `ToolResult`, `ParallelReadOnlyExecutor`, `IsEligible`
+- [x] Implement `NewParallelReadOnlyExecutor` with concurrency floor clamping
+- [x] Implement `IsEligible` checking `ReadOnly && ConcurrencySafe` flags
+- [x] Implement `ExecuteParallel` using `errgroup.WithContext` and `SetLimit`
+- [x] Handle non-eligible tools with descriptive error (no execution)
+- [x] Handle nil tools with error result
+- [x] Preserve result ordering via indexed slice
+- [x] Create `internal/streamx/parallel_executor_test.go` with all required test cases
+- [x] Test: 3 eligible tools execute in parallel, all succeed
+- [x] Test: Mix of eligible and non-eligible tools
+- [x] Test: Context cancellation stops pending invocations
+- [x] Test: Max concurrency limiting verified with slow handlers
+- [x] Test: Empty invocations returns empty results
+- [x] Test: Single invocation works
+- [x] Test: Handler error captured in ToolResult.Error
+- [x] Test: Result ordering preserved
+- [x] Test: Nil tool handled gracefully
+- [x] Verify `go build ./...` passes
+- [x] Verify `go test ./internal/streamx/...` passes
+- [x] Verify `go vet ./internal/streamx/...` passes

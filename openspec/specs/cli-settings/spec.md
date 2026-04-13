@@ -3,49 +3,11 @@
 Define the `lango settings` command that provides a comprehensive, interactive menu-based configuration editor for all aspects of the encrypted configuration profile.
 ## Requirements
 ### Requirement: Configuration Coverage
-The settings editor SHALL support editing all configuration sections:
-1. **Providers** — Add, edit, delete multi-provider configurations
-2. **Agent** — Provider, Model, MaxTokens, Temperature, PromptsDir, Fallback
-3. **Server** — Host, Port, HTTP/WebSocket toggles
-4. **Channels** — Telegram, Discord, Slack enable/disable + tokens
-5. **Tools** — Exec timeout, Browser, Filesystem limits
-6. **Session** — TTL, Max history turns
-7. **Security** — Interceptor (PII, policy, timeout, tools), Signer (provider incl. aws-kms/gcp-kms/azure-kv/pkcs11, RPC, KeyID)
-8. **Auth** — OIDC provider management (add, edit, delete)
-9. **Knowledge** — Enabled, max context per layer, auto approve skills, max skills per day
-10. **Skill** — Enabled, skills directory
-11. **Observational Memory** — Enabled, provider, model, thresholds, budget, context limits
-12. **Embedding & RAG** — Provider, model, dimensions, local URL, RAG settings
-13. **Graph Store** — Enabled, backend, DB path, traversal depth, expansion results
-14. **Multi-Agent** — Orchestration toggle
-15. **A2A Protocol** — Enabled, base URL, agent name/description
-16. **Payment** — Wallet, chain ID, RPC URL, USDC contract, limits, X402
-17. **Cron Scheduler** — Enabled, timezone, max concurrent jobs, session mode, history retention
-18. **Background Tasks** — Enabled, yield time, max concurrent tasks
-19. **Workflow Engine** — Enabled, max concurrent steps, default timeout, state directory
-20. **Librarian** — Enabled, observation threshold, inquiry cooldown, max inquiries, auto-save confidence, provider, model
-21. **P2P Network** — Enabled, listen addrs, bootstrap peers, relay, mDNS, max peers, handshake timeout, session token TTL, auto-approve, gossip interval, ZK handshake/attestation, signed challenge, min trust score
-22. **P2P ZKP** — Proof cache dir, proving scheme, SRS mode/path, max credential age
-23. **P2P Pricing** — Enabled, per query price, tool-specific prices
-24. **P2P Owner Protection** — Owner name/email/phone, extra terms, block conversations
-25. **P2P Sandbox** — Tool isolation (enabled, timeout, memory), container sandbox (runtime, image, network, rootfs, CPU, pool)
-26. **Security Keyring** — OS keyring enabled
-27. **Security DB Encryption** — SQLCipher enabled, cipher page size
-28. **Security KMS** — Region, key ID, endpoint, fallback, timeout, retries, Azure vault/version, PKCS#11 module/slot/PIN/key label
-29. **Economy** — Enabled, budget (defaultMax, hardLimit, alertThresholds)
-30. **Economy Risk** — Escrow threshold, high trust score, medium trust score
-31. **Economy Negotiation** — Enabled, max rounds, timeout, auto-negotiate, max discount
-32. **Economy Escrow** — Enabled, default timeout, max milestones, auto-release, dispute window
-33. **Economy Pricing** — Enabled, trust discount, volume discount, min price
-34. **Observability** — Enabled, tokens (enabled, persist, retention), health (enabled, interval), audit (enabled, retention), metrics (enabled, format)
+The settings editor SHALL support editing all configuration sections, including RunLedger (Task OS) configuration.
 
-#### Scenario: Menu categories
+#### Scenario: RunLedger category appears in Automation
 - **WHEN** user launches `lango settings`
-- **THEN** the menu SHALL display all categories including Economy (5 sub-forms), Observability, grouped under "Economy" and "Infrastructure" sections respectively
-
-#### Scenario: Provider form includes github
-- **WHEN** user opens the provider add/edit form
-- **THEN** the Type select field options SHALL include "github" alongside openai, anthropic, gemini, and ollama
+- **THEN** the `Automation` section SHALL include `RunLedger` alongside Cron Scheduler, Background Tasks, and Workflow Engine
 
 ### Requirement: User Interface
 The settings editor SHALL provide menu-based navigation with a two-level hierarchy, free navigation between categories at Level 2, and shared `tuicore.FormModel` for all forms. Provider and OIDC provider list views SHALL support managing collections. Pressing Esc at Level 1 of StepMenu SHALL navigate back to StepWelcome. Pressing Esc at Level 2 SHALL navigate back to Level 1 with cursor restored. The help bar at Level 1 SHALL omit the Tab hint. The help bar at Level 2 SHALL include the Tab hint.
@@ -313,12 +275,12 @@ The settings menu SHALL organize categories into named sections using a two-leve
 
 The sections SHALL be, in order:
 1. **Core** — Providers, Agent, Channels, Tools, Server (advanced), Session (advanced), Logging (advanced), Gatekeeper (advanced), Output Manager (advanced)
-2. **AI & Knowledge** — Knowledge, Skill, Observational Memory, Embedding & RAG, Graph Store (advanced), Librarian (advanced), Agent Memory (advanced), Multi-Agent (advanced), A2A Protocol (advanced), Hooks (advanced)
-3. **Automation** — Cron Scheduler, Background Tasks (advanced), Workflow Engine (advanced)
+2. **AI & Knowledge** — Context Profile, Knowledge, Skill, Observational Memory, Embedding & RAG, Graph Store (advanced), Librarian (advanced), Retrieval (advanced), Auto-Adjust (advanced), Context Budget (advanced), Agent Memory (advanced), Multi-Agent (advanced), A2A Protocol (advanced), Hooks (advanced), Ontology (advanced)
+3. **Automation** — Cron Scheduler, Background Tasks (advanced), Workflow Engine (advanced), RunLedger (advanced), Provenance (advanced)
 4. **Payment & Account** — Payment, Smart Account (advanced), SA Session Keys (advanced), SA Paymaster (advanced), SA Modules (advanced)
 5. **P2P & Economy** — P2P Network (advanced), P2P Workspace (advanced), P2P ZKP (advanced), P2P Pricing (advanced), P2P Owner Protection (advanced), P2P Sandbox (advanced), Economy (advanced), Economy Risk (advanced), Economy Negotiation (advanced), Economy Escrow (advanced), On-Chain Escrow (advanced), Economy Pricing (advanced)
-6. **Integrations** — MCP Settings, MCP Server List (advanced), Observability (advanced)
-7. **Security** — Security, Auth (advanced), Security DB Encryption (advanced), Security KMS (advanced)
+6. **Integrations** — MCP Settings, MCP Server List (advanced), Observability (advanced), Alerting (advanced)
+7. **Security** — Security, Auth (advanced), Security DB Encryption (advanced), Security KMS (advanced), OS Sandbox (advanced)
 8. *(untitled)* — Save & Exit, Cancel
 
 #### Scenario: Level 1 section list displayed
@@ -729,3 +691,83 @@ The system SHALL wire the `economy_escrow_onchain` menu selection to the `NewEco
 - **WHEN** the user selects `economy_escrow_onchain` from the menu
 - **THEN** `handleMenuSelection` returns the on-chain escrow form model
 
+### Requirement: RunLedger configuration form
+The settings editor SHALL provide a RunLedger configuration form with the following fields:
+
+- **Enabled** (`runledger_enabled`) — Boolean toggle
+- **Shadow Mode** (`runledger_shadow`) — Boolean toggle
+- **Write-Through** (`runledger_write_through`) — Boolean toggle
+- **Authoritative Read** (`runledger_authoritative_read`) — Boolean toggle
+- **Workspace Isolation** (`runledger_workspace_isolation`) — Boolean toggle
+- **Stale TTL** (`runledger_stale_ttl`) — Duration text input
+- **Max Run History** (`runledger_max_history`) — Integer input
+- **Validator Timeout** (`runledger_validator_timeout`) — Duration text input
+- **Planner Max Retries** (`runledger_planner_retries`) — Integer input
+
+#### Scenario: Edit RunLedger settings
+- **WHEN** user selects `RunLedger` from the settings menu
+- **THEN** the editor SHALL display a form with all RunLedger fields pre-populated from `config.RunLedger`
+
+#### Scenario: Save RunLedger settings
+- **WHEN** user edits RunLedger fields and navigates back or saves
+- **THEN** the config state SHALL be updated through `UpdateConfigFromForm`
+- **AND** all edited values SHALL persist into `config.RunLedger`
+
+### Requirement: Provenance configuration form
+The settings editor SHALL provide a Provenance configuration form with the following fields:
+
+- **Enabled** (`provenance_enabled`) — Boolean toggle
+- **Auto on Step Complete** (`provenance_auto_on_step_complete`) — Boolean toggle
+- **Auto on Policy** (`provenance_auto_on_policy`) — Boolean toggle
+- **Max Per Session** (`provenance_max_per_session`) — Integer input
+- **Retention Days** (`provenance_retention_days`) — Integer input
+
+#### Scenario: Edit Provenance settings
+- **WHEN** user selects `Provenance` from the settings menu
+- **THEN** the editor SHALL display a form with all provenance fields pre-populated from `config.Provenance`
+
+#### Scenario: Save Provenance settings
+- **WHEN** user edits Provenance fields and navigates back or saves
+- **THEN** the config state SHALL be updated through `UpdateConfigFromForm`
+- **AND** all edited values SHALL persist into `config.Provenance`
+
+### Requirement: Orchestration state update mapping
+The `UpdateConfigFromForm()` function SHALL handle orchestration form field keys, mapping them to `Config.Agent.Orchestration` sub-fields: `orchestration_mode` → `Mode`, `orc_cb_failure_threshold` → `CircuitBreaker.FailureThreshold`, `orc_cb_reset_timeout` → `CircuitBreaker.ResetTimeout`, `orc_budget_tool_call_limit` → `Budget.ToolCallLimit`, `orc_budget_delegation_limit` → `Budget.DelegationLimit`, `orc_budget_alert_threshold` → `Budget.AlertThreshold`, `orc_recovery_max_retries` → `Recovery.MaxRetries`, `orc_recovery_cooldown` → `Recovery.CircuitBreakerCooldown`.
+
+#### Scenario: Orchestration fields saved to config
+- **WHEN** user sets `orchestration_mode=structured`, `orc_cb_failure_threshold=5`, `orc_budget_alert_threshold=0.75`
+- **THEN** `Config.Agent.Orchestration.Mode` SHALL be "structured", `CircuitBreaker.FailureThreshold` SHALL be 5, `Budget.AlertThreshold` SHALL be 0.75
+
+#### Scenario: Invalid orchestration values ignored
+- **WHEN** user enters "not-a-number" for `orc_cb_failure_threshold`
+- **THEN** the config value SHALL remain unchanged (parse error silently skipped)
+
+### Requirement: Trace store state update mapping
+The `UpdateConfigFromForm()` function SHALL handle trace store form field keys, mapping them to `Config.Observability.TraceStore` sub-fields: `obs_trace_max_age` → `MaxAge`, `obs_trace_max_traces` → `MaxTraces`, `obs_trace_failed_multiplier` → `FailedTraceMultiplier`, `obs_trace_cleanup_interval` → `CleanupInterval`.
+
+#### Scenario: Trace store fields saved to config
+- **WHEN** user sets `obs_trace_max_age=168h`, `obs_trace_max_traces=5000`
+- **THEN** `Config.Observability.TraceStore.MaxAge` SHALL be 168h, `MaxTraces` SHALL be 5000
+
+#### Scenario: Duration parse for trace store
+- **WHEN** user enters "30m" for `obs_trace_cleanup_interval`
+- **THEN** `Config.Observability.TraceStore.CleanupInterval` SHALL be 30 minutes
+
+### Requirement: OS Sandbox settings form
+The settings TUI SHALL provide an "OS Sandbox" category under the Security section with 9 fields mapping to `cfg.Sandbox.*`, using `os_sandbox_*` field key prefix.
+
+#### Scenario: Form contains all sandbox config fields
+- **WHEN** `NewOSSandboxForm(cfg)` is called
+- **THEN** the form SHALL contain 9 fields: os_sandbox_enabled, os_sandbox_fail_closed, os_sandbox_workspace_path, os_sandbox_network_mode, os_sandbox_allowed_ips, os_sandbox_allowed_write_paths, os_sandbox_timeout, os_sandbox_seccomp_profile, os_sandbox_seatbelt_profile
+
+#### Scenario: OS sandbox fields do not affect P2P sandbox config
+- **WHEN** `os_sandbox_enabled` is toggled in the form
+- **THEN** `cfg.Sandbox.Enabled` SHALL change and `cfg.P2P.ToolIsolation.Enabled` SHALL NOT change
+
+#### Scenario: Menu includes OS Sandbox category
+- **WHEN** the settings menu is rendered
+- **THEN** the Security section SHALL contain an "OS Sandbox" entry with ID `os_sandbox`
+
+#### Scenario: OS Sandbox category is always enabled
+- **WHEN** `categoryIsEnabled("os_sandbox")` is called
+- **THEN** it SHALL return true regardless of other config settings

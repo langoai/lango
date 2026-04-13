@@ -2,13 +2,20 @@ package skill
 
 import (
 	"context"
+	"errors"
+	"fmt"
+	"os/exec"
 	"strings"
+	"sync"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
 	"go.uber.org/zap"
+
+	"github.com/langoai/lango/internal/eventbus"
+	sandboxos "github.com/langoai/lango/internal/sandbox/os"
 )
 
 func newTestExecutor(t *testing.T) *Executor {
@@ -230,6 +237,118 @@ func TestExecute_Script(t *testing.T) {
 	})
 }
 
+func TestExecute_Fork(t *testing.T) {
+	t.Parallel()
+
+	executor := newTestExecutor(t)
+	ctx := context.Background()
+
+	t.Run("normal delegation text", func(t *testing.T) {
+		t.Parallel()
+
+		sk := SkillEntry{
+			Name:  "deploy-task",
+			Type:  "fork",
+			Agent: "deployer",
+			Definition: map[string]interface{}{
+				"instruction": "Deploy the application to staging",
+			},
+			AllowedTools: []string{"bash", "read_file"},
+		}
+
+		result, err := executor.Execute(ctx, sk, map[string]interface{}{
+			"target": "staging",
+		})
+		require.NoError(t, err)
+
+		got, ok := result.(string)
+		require.True(t, ok, "result is %T, want string", result)
+
+		assert.Contains(t, got, "[Fork Skill Result]")
+		assert.Contains(t, got, "'deployer' specialist agent")
+		assert.Contains(t, got, "Instruction: Deploy the application to staging")
+		assert.Contains(t, got, "target: staging")
+		assert.Contains(t, got, "Advisory tool restrictions: bash, read_file")
+		assert.Contains(t, got, "transfer_to_agent('deployer')")
+	})
+
+	t.Run("empty agent defaults to operator", func(t *testing.T) {
+		t.Parallel()
+
+		sk := SkillEntry{
+			Name: "default-agent",
+			Type: "fork",
+			Definition: map[string]interface{}{
+				"instruction": "Do the thing",
+			},
+		}
+
+		result, err := executor.Execute(ctx, sk, nil)
+		require.NoError(t, err)
+
+		got, ok := result.(string)
+		require.True(t, ok, "result is %T, want string", result)
+
+		assert.Contains(t, got, "'operator' specialist agent")
+		assert.Contains(t, got, "transfer_to_agent('operator')")
+	})
+
+	t.Run("missing instruction returns error", func(t *testing.T) {
+		t.Parallel()
+
+		sk := SkillEntry{
+			Name:       "no-instruction",
+			Type:       "fork",
+			Agent:      "helper",
+			Definition: map[string]interface{}{},
+		}
+
+		_, err := executor.Execute(ctx, sk, nil)
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "missing 'instruction'")
+	})
+
+	t.Run("no allowed tools shows none", func(t *testing.T) {
+		t.Parallel()
+
+		sk := SkillEntry{
+			Name: "no-tools",
+			Type: "fork",
+			Definition: map[string]interface{}{
+				"instruction": "Simple task",
+			},
+		}
+
+		result, err := executor.Execute(ctx, sk, nil)
+		require.NoError(t, err)
+
+		got, ok := result.(string)
+		require.True(t, ok)
+
+		assert.Contains(t, got, "Advisory tool restrictions: none")
+	})
+
+	t.Run("no params shows none marker", func(t *testing.T) {
+		t.Parallel()
+
+		sk := SkillEntry{
+			Name: "no-params",
+			Type: "fork",
+			Definition: map[string]interface{}{
+				"instruction": "Paramless task",
+			},
+		}
+
+		result, err := executor.Execute(ctx, sk, nil)
+		require.NoError(t, err)
+
+		got, ok := result.(string)
+		require.True(t, ok)
+
+		assert.Contains(t, got, "(none)")
+	})
+}
+
 func TestExecute_UnknownType(t *testing.T) {
 	t.Parallel()
 
@@ -245,4 +364,264 @@ func TestExecute_UnknownType(t *testing.T) {
 	_, err := executor.Execute(ctx, sk, nil)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "unknown skill type")
+}
+
+// mockIsolator is a test double for sandboxos.OSIsolator.
+type mockIsolator struct {
+	available  bool
+	applyCalls int
+	applyErr   error
+}
+
+func (m *mockIsolator) Apply(_ context.Context, _ *exec.Cmd, _ sandboxos.Policy) error {
+	m.applyCalls++
+	return m.applyErr
+}
+
+func (m *mockIsolator) Available() bool { return m.available }
+func (m *mockIsolator) Name() string    { return "mock" }
+func (m *mockIsolator) Reason() string  { return "" }
+
+func TestSetOSIsolator(t *testing.T) {
+	t.Parallel()
+
+	executor := newTestExecutor(t)
+	iso := &mockIsolator{available: true}
+
+	executor.SetOSIsolator(iso, "/tmp/workspace", "")
+
+	assert.Equal(t, iso, executor.isolator)
+	assert.Equal(t, "/tmp/workspace", executor.workspacePath)
+}
+
+func TestExecute_Script_WithIsolator(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+
+	t.Run("isolator applied to script execution", func(t *testing.T) {
+		t.Parallel()
+
+		executor := newTestExecutor(t)
+		iso := &mockIsolator{available: true}
+		executor.SetOSIsolator(iso, "/tmp/workspace", "")
+
+		sk := SkillEntry{
+			Name: "sandbox-echo",
+			Type: "script",
+			Definition: map[string]interface{}{
+				"script": "echo sandboxed",
+			},
+		}
+
+		result, err := executor.Execute(ctx, sk, nil)
+		require.NoError(t, err)
+
+		got, ok := result.(string)
+		require.True(t, ok)
+		assert.Equal(t, "sandboxed", strings.TrimSpace(got))
+		assert.Equal(t, 1, iso.applyCalls, "isolator.Apply should be called once")
+	})
+
+	t.Run("isolator error logged but does not block execution", func(t *testing.T) {
+		t.Parallel()
+
+		executor := newTestExecutor(t)
+		iso := &mockIsolator{
+			available: true,
+			applyErr:  fmt.Errorf("sandbox apply: %w", sandboxos.ErrIsolatorUnavailable),
+		}
+		executor.SetOSIsolator(iso, "/tmp/workspace", "")
+
+		sk := SkillEntry{
+			Name: "fallback-echo",
+			Type: "script",
+			Definition: map[string]interface{}{
+				"script": "echo fallback",
+			},
+		}
+
+		result, err := executor.Execute(ctx, sk, nil)
+		require.NoError(t, err, "script should run even when sandbox apply fails")
+
+		got, ok := result.(string)
+		require.True(t, ok)
+		assert.Equal(t, "fallback", strings.TrimSpace(got))
+		assert.Equal(t, 1, iso.applyCalls)
+	})
+
+	t.Run("nil isolator does not interfere with script execution", func(t *testing.T) {
+		t.Parallel()
+
+		executor := newTestExecutor(t)
+
+		sk := SkillEntry{
+			Name: "no-sandbox",
+			Type: "script",
+			Definition: map[string]interface{}{
+				"script": "echo plain",
+			},
+		}
+
+		result, err := executor.Execute(ctx, sk, nil)
+		require.NoError(t, err)
+
+		got, ok := result.(string)
+		require.True(t, ok)
+		assert.Equal(t, "plain", strings.TrimSpace(got))
+	})
+
+	t.Run("non-script types unaffected by isolator", func(t *testing.T) {
+		t.Parallel()
+
+		executor := newTestExecutor(t)
+		iso := &mockIsolator{available: true}
+		executor.SetOSIsolator(iso, "/tmp/workspace", "")
+
+		sk := SkillEntry{
+			Name: "tmpl-with-sandbox",
+			Type: "template",
+			Definition: map[string]interface{}{
+				"template": "Hello {{.Name}}!",
+			},
+		}
+
+		result, err := executor.Execute(ctx, sk, map[string]interface{}{"Name": "Test"})
+		require.NoError(t, err)
+
+		got, ok := result.(string)
+		require.True(t, ok)
+		assert.Equal(t, "Hello Test!", got)
+		assert.Equal(t, 0, iso.applyCalls, "isolator should not be called for template skills")
+	})
+}
+
+func TestExecuteScript_FailClosed_NilIsolator(t *testing.T) {
+	t.Parallel()
+
+	executor := newTestExecutor(t)
+	executor.SetFailClosed(true)
+
+	sk := SkillEntry{
+		Name: "echo-test",
+		Type: "script",
+		Definition: map[string]interface{}{
+			"script": "echo hello",
+		},
+	}
+
+	_, err := executor.Execute(context.Background(), sk, nil)
+	require.Error(t, err)
+	assert.True(t, errors.Is(err, sandboxos.ErrSandboxRequired))
+	assert.Contains(t, err.Error(), "no OS isolator configured")
+}
+
+// TestExecuteScript_FailClosedWithoutIsolatorPublishesRejection verifies that
+// a skill script run with failClosed=true and no isolator publishes a
+// SandboxDecisionEvent{Decision:"rejected"} before returning the error. This
+// is a regression guard for the early-return bug where the fail-closed path
+// short-circuited before reaching the publish call.
+func TestExecuteScript_FailClosedWithoutIsolatorPublishesRejection(t *testing.T) {
+	t.Parallel()
+
+	bus := eventbus.New()
+	var (
+		mu       sync.Mutex
+		received []eventbus.SandboxDecisionEvent
+	)
+	eventbus.SubscribeTyped(bus, func(evt eventbus.SandboxDecisionEvent) {
+		mu.Lock()
+		defer mu.Unlock()
+		received = append(received, evt)
+	})
+
+	executor := newTestExecutor(t)
+	executor.SetFailClosed(true)
+	executor.SetEventBus(bus)
+
+	sk := SkillEntry{
+		Name: "rejected-script",
+		Type: "script",
+		Definition: map[string]interface{}{
+			"script": "echo hello",
+		},
+	}
+
+	_, err := executor.Execute(context.Background(), sk, nil)
+	require.Error(t, err)
+	assert.True(t, errors.Is(err, sandboxos.ErrSandboxRequired))
+
+	mu.Lock()
+	defer mu.Unlock()
+	require.Len(t, received, 1, "expected exactly one rejection event")
+	evt := received[0]
+	assert.Equal(t, "skill", evt.Source)
+	assert.Equal(t, "rejected-script", evt.Command)
+	assert.Equal(t, "rejected", evt.Decision)
+	assert.Equal(t, "no isolator configured", evt.Reason)
+}
+
+// TestExecuteScript_FailOpenWithoutIsolatorPublishesSkipped verifies that
+// when failClosed=false and no isolator is configured, the executor
+// publishes a "skipped" event and still runs the script unsandboxed.
+func TestExecuteScript_FailOpenWithoutIsolatorPublishesSkipped(t *testing.T) {
+	t.Parallel()
+
+	bus := eventbus.New()
+	var (
+		mu       sync.Mutex
+		received []eventbus.SandboxDecisionEvent
+	)
+	eventbus.SubscribeTyped(bus, func(evt eventbus.SandboxDecisionEvent) {
+		mu.Lock()
+		defer mu.Unlock()
+		received = append(received, evt)
+	})
+
+	executor := newTestExecutor(t)
+	// failClosed left at default (false)
+	executor.SetEventBus(bus)
+
+	sk := SkillEntry{
+		Name: "skipped-script",
+		Type: "script",
+		Definition: map[string]interface{}{
+			"script": "echo fallback",
+		},
+	}
+
+	result, err := executor.Execute(context.Background(), sk, nil)
+	require.NoError(t, err, "script should run unsandboxed when fail-open and no isolator")
+	got, ok := result.(string)
+	require.True(t, ok)
+	assert.Equal(t, "fallback", strings.TrimSpace(got))
+
+	mu.Lock()
+	defer mu.Unlock()
+	require.Len(t, received, 1)
+	evt := received[0]
+	assert.Equal(t, "skill", evt.Source)
+	assert.Equal(t, "skipped-script", evt.Command)
+	assert.Equal(t, "skipped", evt.Decision)
+	assert.Equal(t, "no isolator configured", evt.Reason)
+}
+
+func TestExecuteScript_FailClosed_ApplyError(t *testing.T) {
+	t.Parallel()
+
+	executor := newTestExecutor(t)
+	executor.SetFailClosed(true)
+	executor.SetOSIsolator(&mockIsolator{applyErr: errors.New("landlock unavailable")}, t.TempDir(), "")
+
+	sk := SkillEntry{
+		Name: "echo-test",
+		Type: "script",
+		Definition: map[string]interface{}{
+			"script": "echo hello",
+		},
+	}
+
+	_, err := executor.Execute(context.Background(), sk, nil)
+	require.Error(t, err)
+	assert.True(t, errors.Is(err, sandboxos.ErrSandboxRequired))
 }

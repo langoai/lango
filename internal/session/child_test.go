@@ -1,6 +1,7 @@
 package session
 
 import (
+	"context"
 	"testing"
 	"time"
 
@@ -25,7 +26,8 @@ func (m *mockStore) Update(s *Session) error          { m.sessions[s.Key] = s; r
 func (m *mockStore) Delete(key string) error          { delete(m.sessions, key); return nil }
 func (m *mockStore) Close() error                     { return nil }
 func (m *mockStore) GetSalt(_ string) ([]byte, error) { return nil, nil }
-func (m *mockStore) SetSalt(_ string, _ []byte) error { return nil }
+func (m *mockStore) SetSalt(_ string, _ []byte) error                          { return nil }
+func (m *mockStore) ListSessions(_ context.Context) ([]SessionSummary, error)  { return nil, nil }
 
 func (m *mockStore) AppendMessage(key string, msg Message) error {
 	s := m.sessions[key]

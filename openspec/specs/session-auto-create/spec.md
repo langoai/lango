@@ -1,3 +1,9 @@
+## Purpose
+
+Capability spec for session-auto-create. See requirements below for scope and behavior contracts.
+
+## Requirements
+
 ### Requirement: Auto-create session on first access
 The `SessionServiceAdapter.Get()` SHALL automatically create a new session when the requested session ID does not exist in the store, instead of returning an error.
 
@@ -18,11 +24,21 @@ The `SessionServiceAdapter.Get()` SHALL automatically create a new session when 
 - **THEN** the system SHALL create a new session with key `default` and return it successfully
 
 ### Requirement: Existing sessions retrieved normally
-The `SessionServiceAdapter.Get()` SHALL return existing sessions without creating duplicates.
+The `SessionServiceAdapter.Get()` SHALL return existing sessions without creating duplicates. When provenance is enabled, Get() SHALL ensure the session is registered in the provenance tree (missing-only backfill).
 
 #### Scenario: Subsequent messages from an existing user
 - **WHEN** `SessionServiceAdapter.Get()` is called with a session ID that already exists
 - **THEN** the system SHALL return the existing session with its conversation history intact
+
+#### Scenario: Existing session backfilled in provenance tree
+- **WHEN** `Get()` returns an existing session
+- **AND** the session is not yet registered in the provenance tree
+- **THEN** the rootSessionObserver SHALL register the session (missing-only backfill)
+
+#### Scenario: Already registered session not re-registered
+- **WHEN** `Get()` returns an existing session
+- **AND** the session is already registered in the provenance tree
+- **THEN** the rootSessionObserver SHALL skip registration (idempotent)
 
 ### Requirement: Non-recoverable store errors propagated
 The `SessionServiceAdapter.Get()` SHALL propagate store errors that are not "session not found" or "session expired" (e.g., database connection failures).

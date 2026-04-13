@@ -1,6 +1,7 @@
 package logging
 
 import (
+	"io"
 	"os"
 
 	"go.uber.org/zap"
@@ -19,6 +20,7 @@ type LogConfig struct {
 	Level      string
 	Format     string
 	OutputPath string
+	Writer     io.Writer // explicit writer (overrides OutputPath when set)
 }
 
 // Init initializes the logging system with the given configuration
@@ -42,13 +44,16 @@ func Init(cfg LogConfig) error {
 	}
 
 	var writeSyncer zapcore.WriteSyncer
-	if cfg.OutputPath != "" {
+	switch {
+	case cfg.Writer != nil:
+		writeSyncer = zapcore.AddSync(cfg.Writer)
+	case cfg.OutputPath != "":
 		file, err := os.OpenFile(cfg.OutputPath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
 		if err != nil {
 			return err
 		}
 		writeSyncer = zapcore.AddSync(file)
-	} else {
+	default:
 		writeSyncer = zapcore.AddSync(os.Stdout)
 	}
 

@@ -134,8 +134,33 @@ func (p *OpenAIProvider) ListModels(ctx context.Context) ([]provider.ModelInfo, 
 
 func (p *OpenAIProvider) convertParams(params provider.GenerateParams) (openai.ChatCompletionRequest, error) {
 	repairedMsgs := repairOrphanedToolCalls(params.Messages)
-	msgs := make([]openai.ChatCompletionMessage, len(repairedMsgs))
-	for i, m := range repairedMsgs {
+
+	// Collect IDs of Gemini thought tool calls that OpenAI cannot represent.
+	// Both the FunctionCall and its corresponding FunctionResponse must be dropped.
+	droppedThoughtIDs := make(map[string]struct{})
+	for _, m := range repairedMsgs {
+		for _, tc := range m.ToolCalls {
+			if tc.Thought {
+				droppedThoughtIDs[tc.ID] = struct{}{}
+				logger.Warnw("dropping thought tool call for OpenAI",
+					"id", tc.ID, "name", tc.Name)
+			}
+		}
+	}
+
+	msgs := make([]openai.ChatCompletionMessage, 0, len(repairedMsgs))
+	for _, m := range repairedMsgs {
+		// Drop tool responses whose FunctionCall was a thought call.
+		if m.Role == "tool" {
+			if toolCallID, ok := m.Metadata["tool_call_id"].(string); ok {
+				if _, dropped := droppedThoughtIDs[toolCallID]; dropped {
+					logger.Warnw("dropping tool response for thought call",
+						"tool_call_id", toolCallID)
+					continue
+				}
+			}
+		}
+
 		msg := openai.ChatCompletionMessage{
 			Role:    m.Role,
 			Content: m.Content,
@@ -145,6 +170,9 @@ func (p *OpenAIProvider) convertParams(params provider.GenerateParams) (openai.C
 			for _, tc := range m.ToolCalls {
 				if tc.Name == "" {
 					logger.Warnw("filtering tool call with empty name", "id", tc.ID)
+					continue
+				}
+				if _, dropped := droppedThoughtIDs[tc.ID]; dropped {
 					continue
 				}
 				tcs = append(tcs, openai.ToolCall{
@@ -163,7 +191,7 @@ func (p *OpenAIProvider) convertParams(params provider.GenerateParams) (openai.C
 		if toolCallID, ok := m.Metadata["tool_call_id"].(string); ok {
 			msg.ToolCallID = toolCallID
 		}
-		msgs[i] = msg
+		msgs = append(msgs, msg)
 	}
 
 	req := openai.ChatCompletionRequest{
@@ -268,6 +296,8 @@ func repairOrphanedToolCalls(msgs []provider.Message) []provider.Message {
 		// before the next non-tool message.
 		answered := make(map[string]bool, len(msg.ToolCalls))
 		hasFollowingUser := false
+		boundaryIdx := -1
+		boundaryRole := ""
 		for j := i + 1; j < len(msgs); j++ {
 			if msgs[j].Role == "tool" {
 				if id, ok := msgs[j].Metadata["tool_call_id"].(string); ok {
@@ -277,6 +307,8 @@ func repairOrphanedToolCalls(msgs []provider.Message) []provider.Message {
 			}
 			// Non-tool message (user, assistant, etc.) — orphan boundary
 			hasFollowingUser = true
+			boundaryIdx = j
+			boundaryRole = msgs[j].Role
 			break
 		}
 		// Pending calls at end of history are valid (response pending)
@@ -287,10 +319,15 @@ func repairOrphanedToolCalls(msgs []provider.Message) []provider.Message {
 		for _, tc := range msg.ToolCalls {
 			if tc.ID != "" && !answered[tc.ID] {
 				logger.Warnw("injecting synthetic tool response for orphaned tool call",
-					"call_id", tc.ID, "name", tc.Name)
+					"call_id", tc.ID,
+					"name", tc.Name,
+					"assistant_msg_index", i,
+					"boundary_index", boundaryIdx,
+					"boundary_role", boundaryRole,
+					"history_length", len(msgs))
 				result = append(result, provider.Message{
 					Role:    "tool",
-					Content: `{"error":"tool call was interrupted and did not complete"}`,
+					Content: `{"error":"This tool call was interrupted due to a previous turn interruption or failed cleanup. Do not retry this call. Proceed with available information or try a different approach."}`,
 					Metadata: map[string]interface{}{
 						"tool_call_id": tc.ID,
 					},

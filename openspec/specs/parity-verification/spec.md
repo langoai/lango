@@ -1,3 +1,9 @@
+## Purpose
+
+Capability spec for parity-verification. See requirements below for scope and behavior contracts.
+
+## Requirements
+
 ### Requirement: Registry Names accessor
 The `lifecycle.Registry` SHALL expose a `Names()` method that returns the names of all registered components in registration order.
 
@@ -83,3 +89,18 @@ Calling `app.New()` with knowledge, graph, memory, and cron enabled SHALL produc
 #### Scenario: Unrelated features remain nil
 - **WHEN** P2P and MCP are not enabled
 - **THEN** `P2PNode` and `MCPManager` SHALL remain nil
+
+### Requirement: Extracted tool builders have parity coverage
+The test suite SHALL include parity coverage for extracted tool builders so refactors do not silently change tool names or remove handlers.
+
+#### Scenario: Extracted builders expose expected tool names
+- **WHEN** the builder parity tests run
+- **THEN** extracted builder functions SHALL return the expected tool names in stable order for the covered packages
+
+#### Scenario: Extracted builders have non-nil handlers
+- **WHEN** parity tests inspect tools returned by extracted builders
+- **THEN** every tool SHALL have a non-nil handler
+
+#### Scenario: Extracted builders avoid duplicate names
+- **WHEN** parity tests inspect a builder result set
+- **THEN** tool names within that result SHALL be unique

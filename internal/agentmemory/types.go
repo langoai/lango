@@ -21,6 +21,15 @@ const (
 	KindSkill      MemoryKind = "skill"      // learned capabilities
 )
 
+// Valid returns true if k is one of the defined MemoryKind constants.
+func (k MemoryKind) Valid() bool {
+	switch k {
+	case KindPattern, KindPreference, KindFact, KindSkill:
+		return true
+	}
+	return false
+}
+
 // Entry represents a single agent memory entry.
 type Entry struct {
 	ID         string      `json:"id"`

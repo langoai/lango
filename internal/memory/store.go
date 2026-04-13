@@ -12,15 +12,14 @@ import (
 	"github.com/langoai/lango/internal/ent"
 	"github.com/langoai/lango/internal/ent/observation"
 	"github.com/langoai/lango/internal/ent/reflection"
-	"github.com/langoai/lango/internal/types"
+	"github.com/langoai/lango/internal/eventbus"
 )
 
 // Store provides CRUD operations for observations and reflections.
 type Store struct {
 	client     *ent.Client
 	logger     *zap.SugaredLogger
-	onEmbed    types.EmbedCallback
-	onGraph    types.ContentCallback
+	bus        *eventbus.Bus // Optional event bus for cross-domain notifications.
 	graphHooks *GraphHooks
 
 	// lastObsMu protects lastObsIDs for concurrent SaveObservation calls.
@@ -37,14 +36,27 @@ func NewStore(client *ent.Client, logger *zap.SugaredLogger) *Store {
 	}
 }
 
-// SetEmbedCallback sets the optional embedding hook.
-func (s *Store) SetEmbedCallback(cb types.EmbedCallback) {
-	s.onEmbed = cb
+// SetEventBus sets the optional event bus for publishing content events.
+func (s *Store) SetEventBus(bus *eventbus.Bus) {
+	s.bus = bus
 }
 
-// SetGraphCallback sets the optional graph relationship hook.
-func (s *Store) SetGraphCallback(cb types.ContentCallback) {
-	s.onGraph = cb
+// publishContentSaved publishes a ContentSavedEvent if the bus is configured.
+// Memory observations and reflections are always new and always need graph processing,
+// matching the original SetGraphCallback behavior on the memory store.
+func (s *Store) publishContentSaved(id, collection, content string, metadata map[string]string) {
+	if s.bus == nil {
+		return
+	}
+	s.bus.Publish(eventbus.ContentSavedEvent{
+		ID:         id,
+		Collection: collection,
+		Content:    content,
+		Metadata:   metadata,
+		Source:     "memory",
+		IsNew:      true,
+		NeedsGraph: true,
+	})
 }
 
 // SetGraphHooks sets the graph hooks for temporal/session triple generation.
@@ -73,12 +85,7 @@ func (s *Store) SaveObservation(ctx context.Context, obs Observation) error {
 	savedID := saved.ID.String()
 
 	meta := map[string]string{"session_key": obs.SessionKey}
-	if s.onEmbed != nil {
-		s.onEmbed(savedID, "observation", obs.Content, meta)
-	}
-	if s.onGraph != nil {
-		s.onGraph(savedID, "observation", obs.Content, meta)
-	}
+	s.publishContentSaved(savedID, "observation", obs.Content, meta)
 
 	// Graph hooks: temporal ordering and session membership.
 	if s.graphHooks != nil {
@@ -181,12 +188,7 @@ func (s *Store) SaveReflection(ctx context.Context, ref Reflection) error {
 	savedID := saved.ID.String()
 
 	meta := map[string]string{"session_key": ref.SessionKey}
-	if s.onEmbed != nil {
-		s.onEmbed(savedID, "reflection", ref.Content, meta)
-	}
-	if s.onGraph != nil {
-		s.onGraph(savedID, "reflection", ref.Content, meta)
-	}
+	s.publishContentSaved(savedID, "reflection", ref.Content, meta)
 
 	// Graph hooks: reflection-observation links.
 	if s.graphHooks != nil {

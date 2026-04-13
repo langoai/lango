@@ -1,0 +1,160 @@
+package approval
+
+import (
+	"fmt"
+	"strings"
+)
+
+// DisplayTier determines how an approval request is rendered in the TUI.
+type DisplayTier int
+
+const (
+	// TierInline renders a compact single-line strip.
+	TierInline DisplayTier = 1
+	// TierFullscreen renders a fullscreen overlay with diff preview.
+	TierFullscreen DisplayTier = 2
+)
+
+// RiskIndicator provides a human-readable risk assessment for an approval request.
+type RiskIndicator struct {
+	Level string // "low", "moderate", "high", "critical"
+	Label string // human-readable description
+}
+
+// ApprovalViewModel bridges ApprovalRequest data to TUI rendering.
+type ApprovalViewModel struct {
+	Request         ApprovalRequest
+	Tier            DisplayTier
+	Risk            RiskIndicator
+	DiffContent     string // unified diff for fs_edit/fs_write, empty otherwise
+	RuleExplanation string // human-readable explanation of why approval is needed
+}
+
+// fullscreenCategories are tool categories that trigger fullscreen approval.
+var fullscreenCategories = map[string]bool{
+	"filesystem": true,
+	"automation": true,
+}
+
+// fullscreenActivities are tool activities that trigger fullscreen approval.
+var fullscreenActivities = map[string]bool{
+	"execute": true,
+	"write":   true,
+}
+
+// ClassifyTier determines the display tier for an approval request based on
+// safety level, category, and activity. Fullscreen is used when the tool is
+// dangerous AND targets filesystem/automation or performs execute/write.
+func ClassifyTier(safetyLevel, category, activity string) DisplayTier {
+	if safetyLevel != "dangerous" {
+		return TierInline
+	}
+	if fullscreenCategories[category] || fullscreenActivities[activity] {
+		return TierFullscreen
+	}
+	return TierInline
+}
+
+// ComputeRisk returns a risk indicator based on safety level and category.
+func ComputeRisk(safetyLevel, category string) RiskIndicator {
+	switch safetyLevel {
+	case "dangerous":
+		switch category {
+		case "filesystem":
+			return RiskIndicator{Level: "critical", Label: "Modifies filesystem"}
+		case "automation":
+			return RiskIndicator{Level: "critical", Label: "Executes arbitrary code"}
+		default:
+			return RiskIndicator{Level: "high", Label: "Dangerous operation"}
+		}
+	case "moderate":
+		return RiskIndicator{Level: "moderate", Label: "Creates or modifies resources"}
+	default:
+		return RiskIndicator{Level: "low", Label: "Read-only operation"}
+	}
+}
+
+// NewViewModel creates an ApprovalViewModel from a request.
+func NewViewModel(req ApprovalRequest) ApprovalViewModel {
+	vm := ApprovalViewModel{
+		Request:         req,
+		Tier:            ClassifyTier(req.SafetyLevel, req.Category, req.Activity),
+		Risk:            ComputeRisk(req.SafetyLevel, req.Category),
+		RuleExplanation: buildRuleExplanation(req),
+	}
+	if vm.Tier == TierFullscreen {
+		vm.DiffContent = buildDiffPreview(req.ToolName, req.Params)
+	}
+	return vm
+}
+
+// buildRuleExplanation returns a human-readable explanation for why approval is required.
+func buildRuleExplanation(req ApprovalRequest) string {
+	switch {
+	case req.SafetyLevel == "dangerous" && req.Category == "filesystem":
+		return "This tool modifies the filesystem and is classified as dangerous."
+	case req.SafetyLevel == "dangerous" && req.Category == "automation":
+		return "This tool executes arbitrary code and is classified as dangerous."
+	case req.SafetyLevel == "moderate":
+		return "This tool creates or modifies resources (moderate risk)."
+	default:
+		return "This tool requires approval under the current approval policy."
+	}
+}
+
+// buildDiffPreview generates a simple preview of the proposed file change.
+func buildDiffPreview(toolName string, params map[string]interface{}) string {
+	path, _ := params["path"].(string)
+	if path == "" {
+		return ""
+	}
+	content, hasContent := params["content"].(string)
+
+	switch toolName {
+	case "fs_write":
+		if !hasContent {
+			return fmt.Sprintf("--- /dev/null\n+++ %s\n@@ new file @@", path)
+		}
+		if content == "" {
+			return fmt.Sprintf("--- %s\n+++ %s\n@@ truncate to empty @@", path, path)
+		}
+		lines := splitLines(content)
+		if len(lines) > maxDiffLines {
+			lines = append(lines[:maxDiffLines], "... (truncated)")
+		}
+		// Use path for both sides — fs_write creates or overwrites.
+		header := fmt.Sprintf("--- %s (current or new)\n+++ %s (proposed)\n@@ write %d lines @@", path, path, len(lines))
+		for i, l := range lines {
+			lines[i] = "+" + l
+		}
+		return header + "\n" + joinLines(lines)
+
+	case "fs_edit":
+		if content == "" {
+			return fmt.Sprintf("--- %s\n+++ %s (edited)\n@@ delete line range @@", path, path)
+		}
+		lines := splitLines(content)
+		if len(lines) > maxDiffLines {
+			lines = append(lines[:maxDiffLines], "... (truncated)")
+		}
+		header := fmt.Sprintf("--- %s\n+++ %s (edited)\n@@ replacement content @@", path, path)
+		for i, l := range lines {
+			lines[i] = "+" + l
+		}
+		return header + "\n" + joinLines(lines)
+	}
+	return ""
+}
+
+const maxDiffLines = 500
+
+func splitLines(s string) []string {
+	if s == "" {
+		return nil
+	}
+	return strings.Split(s, "\n")
+}
+
+func joinLines(lines []string) string {
+	return strings.Join(lines, "\n")
+}

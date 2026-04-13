@@ -1,4 +1,8 @@
-## ADDED Requirements
+## Purpose
+
+Capability spec for p2p-payment. See requirements below for scope and behavior contracts.
+
+## Requirements
 
 ### Requirement: p2p_pay Tool for Peer-to-Peer USDC Payment
 

@@ -1,4 +1,8 @@
-## ADDED Requirements
+## Purpose
+
+Capability spec for economy-risk. See requirements below for scope and behavior contracts.
+
+## Requirements
 
 ### Requirement: Risk Assessor interface
 The system SHALL provide an `Assessor` interface in `internal/economy/risk/` with method `Assess(ctx, peerDID, amount, verifiability)` that evaluates transaction risk using a 3-variable matrix (trust x value x verifiability) and returns an `Assessment` with recommended payment `Strategy`.

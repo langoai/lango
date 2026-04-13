@@ -7,6 +7,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/langoai/lango/internal/session"
 	"github.com/langoai/lango/internal/types"
 	"go.uber.org/zap"
 )
@@ -28,7 +29,7 @@ type ChannelSender interface {
 // Engine orchestrates DAG-based workflow execution.
 type Engine struct {
 	runner         AgentRunner
-	state          *StateStore
+	state          RunStore
 	sender         ChannelSender
 	maxConcurrent  int
 	defaultTimeout time.Duration
@@ -42,7 +43,7 @@ type Engine struct {
 // NewEngine creates a new workflow execution engine.
 func NewEngine(
 	runner AgentRunner,
-	state *StateStore,
+	state RunStore,
 	sender ChannelSender,
 	maxConcurrent int,
 	defaultTimeout time.Duration,
@@ -317,6 +318,11 @@ func (e *Engine) executeStep(
 
 	// Generate session key — include runID to isolate sessions across re-runs.
 	sessionKey := fmt.Sprintf("workflow:%s:%s:%s", workflowName, runID, step.ID)
+	stepCtx = session.WithRunContext(stepCtx, session.RunContext{
+		SessionType: "workflow",
+		WorkflowID:  workflowName,
+		RunID:       runID,
+	})
 
 	// Enrich with automation prefix so the orchestrator routes correctly.
 	rendered = automationPrefix + "Task: " + rendered
@@ -415,7 +421,7 @@ func (e *Engine) ListRuns(ctx context.Context, limit int) ([]RunStatus, error) {
 }
 
 // Shutdown cancels all running workflows and waits for goroutines to finish.
-func (e *Engine) Shutdown() {
+func (e *Engine) Shutdown(ctx context.Context) error {
 	e.mu.Lock()
 	for runID, cancel := range e.cancels {
 		cancel()
@@ -423,8 +429,21 @@ func (e *Engine) Shutdown() {
 	}
 	e.mu.Unlock()
 
-	e.wg.Wait()
+	done := make(chan struct{})
+	go func() {
+		e.wg.Wait()
+		close(done)
+	}()
+
+	select {
+	case <-done:
+	case <-ctx.Done():
+		e.logger.Warnw("workflow engine shutdown timed out", "error", ctx.Err())
+		return ctx.Err()
+	}
+
 	e.logger.Info("workflow engine shut down")
+	return nil
 }
 
 // buildSummary formats a human-readable summary of workflow results.

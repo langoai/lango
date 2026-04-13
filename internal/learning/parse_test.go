@@ -4,6 +4,7 @@ import (
 	"testing"
 
 	entknowledge "github.com/langoai/lango/internal/ent/knowledge"
+	entlearning "github.com/langoai/lango/internal/ent/learning"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -34,6 +35,39 @@ func TestMapKnowledgeCategory(t *testing.T) {
 			if tt.wantErr {
 				require.Error(t, err)
 				assert.Contains(t, err.Error(), "unrecognized knowledge type")
+			} else {
+				require.NoError(t, err)
+				assert.Equal(t, tt.wantCat, got)
+			}
+		})
+	}
+}
+
+func TestMapLearningCategory(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		give    string
+		wantCat entlearning.Category
+		wantErr bool
+	}{
+		{give: "correction", wantCat: entlearning.CategoryUserCorrection},
+		{give: "pattern", wantCat: entlearning.CategoryGeneral},
+		{give: "tool_error", wantCat: entlearning.CategoryToolError},
+		{give: "provider_error", wantCat: entlearning.CategoryProviderError},
+		{give: "timeout", wantCat: entlearning.CategoryTimeout},
+		{give: "permission", wantCat: entlearning.CategoryPermission},
+		{give: "unknown", wantErr: true},
+		{give: "", wantErr: true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.give, func(t *testing.T) {
+			t.Parallel()
+			got, err := mapLearningCategory(tt.give)
+			if tt.wantErr {
+				require.Error(t, err)
+				assert.Contains(t, err.Error(), "unrecognized learning type")
 			} else {
 				require.NoError(t, err)
 				assert.Equal(t, tt.wantCat, got)

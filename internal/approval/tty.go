@@ -22,7 +22,12 @@ var _ Provider = (*TTYProvider)(nil)
 // access for the tool in this session.
 func (t *TTYProvider) RequestApproval(_ context.Context, req ApprovalRequest) (ApprovalResponse, error) {
 	if !term.IsTerminal(int(os.Stdin.Fd())) {
-		return ApprovalResponse{}, fmt.Errorf("TTY approval unavailable: stdin is not a terminal")
+		return ApprovalResponse{}, WrapError(
+			ErrUnavailable,
+			"tty",
+			req.ID,
+			"TTY approval unavailable: stdin is not a terminal",
+		)
 	}
 
 	fmt.Fprintf(os.Stderr, "\n⚠ Sensitive tool '%s' requires approval.\n", req.ToolName)
@@ -40,15 +45,19 @@ func (t *TTYProvider) RequestApproval(_ context.Context, req ApprovalRequest) (A
 	answer := strings.TrimSpace(strings.ToLower(input))
 	switch answer {
 	case "a", "always":
-		return ApprovalResponse{Approved: true, AlwaysAllow: true}, nil
+		return ApprovalResponse{Approved: true, AlwaysAllow: true, Provider: "tty"}, nil
 	case "y", "yes":
-		return ApprovalResponse{Approved: true}, nil
+		return ApprovalResponse{Approved: true, Provider: "tty"}, nil
 	default:
-		return ApprovalResponse{}, nil
+		return ApprovalResponse{Provider: "tty"}, nil
 	}
 }
 
 // CanHandle always returns false. TTY is used as a fallback only.
 func (t *TTYProvider) CanHandle(_ string) bool {
 	return false
+}
+
+func (t *TTYProvider) Name() string {
+	return "tty"
 }

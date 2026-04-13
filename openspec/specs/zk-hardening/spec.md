@@ -1,3 +1,16 @@
+## Purpose
+
+Capability spec for zk-hardening. See requirements below for scope and behavior contracts.
+
+## Requirements
+
+### Requirement: zk-hardening capability documented
+The zk-hardening capability SHALL be documented through the sections in this spec. This requirement is a structural placeholder that satisfies the canonical openspec format; detailed behavior contracts live in the descriptive sections of this file.
+
+#### Scenario: Spec file is readable
+- **WHEN** the zk-hardening spec.md file is read
+- **THEN** it SHALL describe the capability's behavior in sections below
+
 # ZK Proof Hardening Spec
 
 ## Overview

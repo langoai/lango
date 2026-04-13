@@ -322,6 +322,34 @@ All sessions revoked.
 
 ---
 
+## lango p2p provenance
+
+Exchange signed provenance bundles with peers through the running gateway.
+
+These commands are server-backed. They require:
+
+- `lango serve` to be running
+- `p2p.enabled = true`
+- an active authenticated session for the target peer DID
+
+### lango p2p provenance push
+
+```bash
+lango p2p provenance push <peer-did> <session-key> [--redaction <none|content|full>] [--addr <gateway>]
+```
+
+Push a signed provenance bundle for the given session key to a remote peer.
+
+### lango p2p provenance fetch
+
+```bash
+lango p2p provenance fetch <peer-did> <session-key> [--redaction <none|content|full>] [--addr <gateway>]
+```
+
+Fetch a signed provenance bundle from a remote peer and verify-and-store import it locally.
+
+---
+
 ## lango p2p sandbox
 
 Manage the P2P tool execution sandbox. Inspect sandbox status, run smoke tests, and clean up orphaned containers.

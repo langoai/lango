@@ -180,6 +180,11 @@ func (p *GeminiProvider) Generate(ctx context.Context, params provider.GenerateP
 	// (no consecutive same-role turns, FunctionCall/Response pairing, etc).
 	contents = sanitizeContents(contents)
 
+	// After sanitization, remove orphaned FunctionResponses whose FunctionCall
+	// was dropped (e.g., thought calls filtered above). Build a set of surviving
+	// FunctionCall IDs/Names, then strip any FunctionResponse that has no match.
+	contents = dropOrphanedFunctionResponses(contents)
+
 	// Streaming
 	streamIter := p.client.Models.GenerateContentStream(ctx, model, contents, conf)
 

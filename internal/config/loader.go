@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/langoai/lango/internal/provider"
+	sandboxos "github.com/langoai/lango/internal/sandbox/os"
 	"github.com/langoai/lango/internal/types"
 	"github.com/spf13/viper"
 )
@@ -139,6 +140,46 @@ func DefaultConfig() *Config {
 			DefaultTimeout:     10 * time.Minute,
 			StateDir:           "~/.lango/workflows/",
 		},
+		Context: ContextConfig{
+			Allocation: ContextAllocationConfig{
+				Knowledge:  0.30,
+				RAG:        0.25,
+				Memory:     0.25,
+				RunSummary: 0.10,
+				Headroom:   0.10,
+			},
+		},
+		RunLedger: RunLedgerConfig{
+			Enabled:            false,
+			Shadow:             false,
+			WriteThrough:       false,
+			AuthoritativeRead:  false,
+			WorkspaceIsolation: false,
+			StaleTTL:           time.Hour,
+			MaxRunHistory:      100,
+			ValidatorTimeout:   2 * time.Minute,
+			PlannerMaxRetries:  2,
+		},
+		Provenance: ProvenanceConfig{
+			Enabled: false,
+			Checkpoints: CheckpointConfig{
+				AutoOnStepComplete: true,
+				AutoOnPolicy:       true,
+				MaxPerSession:      100,
+				RetentionDays:      30,
+			},
+		},
+		Sandbox: SandboxConfig{
+			Enabled:           false,
+			FailClosed:        false,
+			Backend:           "auto",
+			NetworkMode:       "deny",
+			TimeoutPerTool:    30 * time.Second,
+			AllowedWritePaths: []string{"/tmp"},
+			OS: OSSandboxConfig{
+				SeccompProfile: "moderate",
+			},
+		},
 		ObservationalMemory: ObservationalMemoryConfig{
 			Enabled:                          false,
 			MessageTokenThreshold:            1000,
@@ -156,6 +197,20 @@ func DefaultConfig() *Config {
 			MaxPendingInquiries:  2,
 			AutoSaveConfidence:   types.ConfidenceHigh,
 		},
+		Retrieval: RetrievalConfig{
+			Enabled:  false,
+			Feedback: false,
+			AutoAdjust: AutoAdjustConfig{
+				Enabled:       false,
+				Mode:          "shadow",
+				BoostDelta:    0.05,
+				DecayDelta:    0.01,
+				DecayInterval: 100,
+				MinScore:      0.1,
+				MaxScore:      5.0,
+				WarmupTurns:   50,
+			},
+		},
 		MCP: MCPConfig{
 			Enabled:              false,
 			DefaultTimeout:       30 * time.Second,
@@ -163,6 +218,16 @@ func DefaultConfig() *Config {
 			HealthCheckInterval:  30 * time.Second,
 			AutoReconnect:        true,
 			MaxReconnectAttempts: 5,
+		},
+		Ontology: OntologyConfig{
+			ACL: OntologyACLConfig{
+				P2PPermission: "read",
+			},
+		},
+		Alerting: AlertingConfig{
+			Enabled:         false,
+			PolicyBlockRate: 10,
+			RecoveryRetries: 5,
 		},
 		P2P: P2PConfig{
 			Enabled: false,
@@ -185,18 +250,20 @@ func DefaultConfig() *Config {
 				SRSMode:          "unsafe",
 				MaxCredentialAge: "24h",
 			},
-			ToolIsolation: ToolIsolationConfig{
+			MaxSafetyLevel: "moderate",
+			ToolIsolation:  ToolIsolationConfig{
 				Enabled:        false,
 				TimeoutPerTool: 30 * time.Second,
 				MaxMemoryMB:    256,
 				Container: ContainerSandboxConfig{
-					Enabled:         false,
-					Runtime:         "auto",
-					Image:           "lango-sandbox:latest",
-					NetworkMode:     "none",
-					ReadOnlyRootfs:  boolPtr(true),
-					PoolSize:        0,
-					PoolIdleTimeout: 5 * time.Minute,
+					Enabled:          false,
+					RequireContainer: true,
+					Runtime:          "auto",
+					Image:            "lango-sandbox:latest",
+					NetworkMode:      "none",
+					ReadOnlyRootfs:   boolPtr(true),
+					PoolSize:         0,
+					PoolIdleTimeout:  5 * time.Minute,
 				},
 			},
 		},
@@ -262,8 +329,16 @@ func setDefaultsFromStruct(v *viper.Viper, prefix string, val reflect.Value) {
 	}
 }
 
-// Load reads configuration from file and environment
-func Load(configPath string) (*Config, error) {
+// LoadResult holds the configuration and metadata produced by Load().
+type LoadResult struct {
+	Config       *Config         `json:"config"`
+	ExplicitKeys map[string]bool `json:"explicitKeys,omitempty"`
+	AutoEnabled  AutoEnabledSet  `json:"autoEnabled,omitempty"`
+}
+
+// Load reads configuration from file and environment.
+// Returns LoadResult with the Config, explicitly-set keys, and auto-enable metadata.
+func Load(configPath string) (*LoadResult, error) {
 	v := viper.New()
 
 	// Set defaults from DefaultConfig — single source of truth.
@@ -296,12 +371,25 @@ func Load(configPath string) (*Config, error) {
 		return nil, fmt.Errorf("unmarshal config: %w", err)
 	}
 
+	// Detect which context-related keys the user explicitly set in their config file.
+	explicitKeys := collectExplicitKeys(configPath, contextRelatedKeys)
+
+	// Apply context profile (only modifies fields not explicitly set by user).
+	ApplyContextProfile(cfg, explicitKeys)
+
+	// Auto-enable context subsystems when dependencies are detectable.
+	autoEnabled := ResolveContextAutoEnable(cfg, explicitKeys)
+
 	// Post-load: migrate, substitute env vars, normalize paths, validate.
 	if err := PostLoad(cfg); err != nil {
 		return nil, err
 	}
 
-	return cfg, nil
+	return &LoadResult{
+		Config:       cfg,
+		ExplicitKeys: explicitKeys,
+		AutoEnabled:  autoEnabled,
+	}, nil
 }
 
 // PostLoad applies post-load processing: legacy migration, env substitution,
@@ -410,6 +498,11 @@ func Validate(cfg *Config) error {
 		}
 	}
 
+	// Validate context profile name.
+	if cfg.ContextProfile != "" && !ValidContextProfiles[cfg.ContextProfile] {
+		errs = append(errs, fmt.Sprintf("invalid contextProfile: %s (must be off, lite, balanced, or full)", cfg.ContextProfile))
+	}
+
 	// Validate logging config
 	if !ValidLogLevels[cfg.Logging.Level] {
 		errs = append(errs, fmt.Sprintf("invalid log level: %s (must be debug, info, warn, or error)", cfg.Logging.Level))
@@ -450,6 +543,36 @@ func Validate(cfg *Config) error {
 	// Validate graph config
 	if cfg.Graph.Enabled && cfg.Graph.Backend != "bolt" {
 		errs = append(errs, fmt.Sprintf("graph.backend %q is not supported (must be \"bolt\")", cfg.Graph.Backend))
+	}
+
+	// Validate sandbox backend.
+	if _, err := sandboxos.ParseBackendMode(cfg.Sandbox.Backend); err != nil {
+		errs = append(errs, fmt.Sprintf("sandbox.backend %q is invalid (must be auto, seatbelt, bwrap, native, or none)", cfg.Sandbox.Backend))
+	}
+
+	// Validate sandbox workspace paths do not collide with the control-plane
+	// deny. DefaultToolPolicy adds cfg.DataRoot to DenyPaths, and bwrap applies
+	// deny mounts AFTER write mounts so a workspace nested under DataRoot ends
+	// up covered by the later --tmpfs and becomes unreachable. Reject early
+	// with a clear error instead of silently breaking writes at runtime.
+	//
+	// Paths here are already normalised (NormalizePaths ran before Validate),
+	// so relative inputs have been expanded. This check catches both the
+	// "relative path that ended up under DataRoot via NormalizePaths" and the
+	// "user explicitly wrote an absolute path under ~/.lango" cases.
+	if cfg.DataRoot != "" {
+		if cfg.Sandbox.WorkspacePath != "" && pathIsUnder(cfg.Sandbox.WorkspacePath, cfg.DataRoot) {
+			errs = append(errs, fmt.Sprintf(
+				"sandbox.workspacePath %q is inside cfg.DataRoot %q — the control-plane deny would make the workspace unreachable; use an absolute path outside %s",
+				cfg.Sandbox.WorkspacePath, cfg.DataRoot, cfg.DataRoot))
+		}
+		for _, p := range cfg.Sandbox.AllowedWritePaths {
+			if p != "" && pathIsUnder(p, cfg.DataRoot) {
+				errs = append(errs, fmt.Sprintf(
+					"sandbox.allowedWritePaths entry %q is inside cfg.DataRoot %q — the control-plane deny would cover the path; use an absolute path outside %s",
+					p, cfg.DataRoot, cfg.DataRoot))
+			}
+		}
 	}
 
 	// Validate A2A config
@@ -515,6 +638,29 @@ func Validate(cfg *Config) error {
 	return nil
 }
 
+// pathIsUnder reports whether child is the same path as parent or is nested
+// inside it. Both arguments are expected to be absolute, already-cleaned
+// paths (NormalizePaths guarantees this at call sites that use this helper).
+// Returns false when filepath.Rel fails (different volumes on Windows, etc.)
+// so the caller does not trigger a spurious validation error.
+func pathIsUnder(child, parent string) bool {
+	if child == "" || parent == "" {
+		return false
+	}
+	rel, err := filepath.Rel(parent, child)
+	if err != nil {
+		return false
+	}
+	// Clean Rel output: same path → ".", nested → "sub[/..]", outside → "..[/..]"
+	if rel == "." {
+		return true
+	}
+	if rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+		return false
+	}
+	return true
+}
+
 // expandTilde replaces a leading ~ with the given home directory.
 func expandTilde(path, home string) string {
 	if home == "" || (!strings.HasPrefix(path, "~/") && path != "~") {
@@ -541,6 +687,13 @@ func NormalizePaths(cfg *Config) {
 	normalizePath(&cfg.P2P.KeyDir, cfg.DataRoot, home)
 	normalizePath(&cfg.P2P.ZKP.ProofCacheDir, cfg.DataRoot, home)
 	normalizePath(&cfg.P2P.Workspace.DataDir, cfg.DataRoot, home)
+
+	// Normalize sandbox paths so downstream code (supervisor wiring, bwrap arg
+	// compiler, Seatbelt profile generator) receives absolute paths instead of
+	// raw user input containing tilde or relative segments.
+	normalizePath(&cfg.Sandbox.WorkspacePath, cfg.DataRoot, home)
+	normalizePath(&cfg.Sandbox.OS.SeatbeltCustomProfile, cfg.DataRoot, home)
+	cfg.Sandbox.AllowedWritePaths = normalizePathSlice(cfg.Sandbox.AllowedWritePaths, cfg.DataRoot, home)
 }
 
 // normalizePath expands ~ and resolves relative paths under dataRoot.
@@ -555,6 +708,22 @@ func normalizePath(p *string, dataRoot, home string) {
 		*p = filepath.Join(dataRoot, *p)
 	}
 	*p = filepath.Clean(*p)
+}
+
+// normalizePathSlice applies normalizePath to each entry of a slice, returning
+// a new slice. Empty entries are preserved as-is so the caller can distinguish
+// "explicitly empty" from absent. Used for slice-typed config fields like
+// SandboxConfig.AllowedWritePaths.
+func normalizePathSlice(in []string, dataRoot, home string) []string {
+	if len(in) == 0 {
+		return in
+	}
+	out := make([]string, len(in))
+	for i, p := range in {
+		out[i] = p
+		normalizePath(&out[i], dataRoot, home)
+	}
+	return out
 }
 
 // ValidateDataPaths checks that all configurable data paths reside under DataRoot.

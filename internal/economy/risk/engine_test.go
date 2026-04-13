@@ -11,16 +11,17 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/langoai/lango/internal/config"
+	"github.com/langoai/lango/internal/types"
 	"github.com/langoai/lango/internal/wallet"
 )
 
-func mockReputation(scores map[string]float64) ReputationQuerier {
+func mockReputation(scores map[string]float64) types.ReputationQuerier {
 	return func(_ context.Context, peerDID string) (float64, error) {
 		return scores[peerDID], nil
 	}
 }
 
-func mockReputationErr(err error) ReputationQuerier {
+func mockReputationErr(err error) types.ReputationQuerier {
 	return func(_ context.Context, _ string) (float64, error) {
 		return 0, err
 	}

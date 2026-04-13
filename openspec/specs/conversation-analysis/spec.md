@@ -1,17 +1,34 @@
 # Conversation Analysis Specification
 
+## Purpose
+
+Capability spec for conversation-analysis. See requirements below for scope and behavior contracts.
+
 ## Requirements
 
-### Requirement: Conversation analyzer extracts knowledge from turns
-The system SHALL analyze conversation turns using an LLM to extract facts, patterns, corrections, and preferences as knowledge and learning entries.
+### Requirement: Conversation knowledge extraction
+The ConversationAnalyzer and SessionLearner SHALL extract knowledge using all 6 categories (rule, definition, preference, fact, pattern, correction) with temporal classification. ALL extracted types SHALL be saved as Knowledge entries. Pattern and correction types SHALL additionally be saved as Learning entries (dual-save).
 
-#### Scenario: Extract facts from conversation
-- **WHEN** conversation analyzer processes a batch of messages containing factual statements
-- **THEN** it SHALL produce KnowledgeEntry items with category matching the extracted type (fact, pattern, correction, preference)
+#### Scenario: All 6 types saved as knowledge
+- **WHEN** the ConversationAnalyzer extracts a result with type "rule"
+- **THEN** the result SHALL be saved as a Knowledge entry with category "rule"
 
-#### Scenario: Extract corrections from user feedback
-- **WHEN** a user corrects the agent's behavior in conversation
-- **THEN** the analyzer SHALL produce a LearningEntry with category "user_correction" and confidence >= 0.7
+#### Scenario: Pattern dual-saved
+- **WHEN** the ConversationAnalyzer extracts a result with type "pattern"
+- **THEN** the result SHALL be saved as a Knowledge entry with category "pattern"
+- **AND** the result SHALL additionally be saved as a Learning entry
+
+#### Scenario: Temporal tag preserved
+- **WHEN** the ConversationAnalyzer extracts a result with temporal "evergreen"
+- **THEN** the Knowledge entry SHALL include tag "temporal:evergreen"
+
+#### Scenario: Session learner uses same routing
+- **WHEN** the SessionLearner extracts results
+- **THEN** it SHALL use the same all-as-knowledge + dual-save routing as ConversationAnalyzer
+
+#### Scenario: Shared save helper
+- **WHEN** ConversationAnalyzer or SessionLearner saves a result
+- **THEN** both SHALL delegate to the shared `saveAnalysisResult()` helper with appropriate parameters
 
 ### Requirement: Analysis triggers on turn count or token threshold
 The system SHALL trigger conversation analysis when either the configured turn threshold (default 10) or token threshold (default 2000) is exceeded since the last analysis for that session.

@@ -6,24 +6,42 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"time"
 
+	"github.com/langoai/lango/internal/adk"
 	"github.com/langoai/lango/internal/agent"
 	"github.com/langoai/lango/internal/agentmemory"
+	"github.com/langoai/lango/internal/agentrt"
 	"github.com/langoai/lango/internal/appinit"
+	"github.com/langoai/lango/internal/background"
 	"github.com/langoai/lango/internal/bootstrap"
 	"github.com/langoai/lango/internal/config"
+	cronpkg "github.com/langoai/lango/internal/cron"
+	"github.com/langoai/lango/internal/economy"
+	"github.com/langoai/lango/internal/economy/escrow/sentinel"
+	"github.com/langoai/lango/internal/embedding"
 	"github.com/langoai/lango/internal/eventbus"
 	"github.com/langoai/lango/internal/gatekeeper"
+	"github.com/langoai/lango/internal/graph"
+	"github.com/langoai/lango/internal/librarian"
 	"github.com/langoai/lango/internal/lifecycle"
+	"github.com/langoai/lango/internal/memory"
+	"github.com/langoai/lango/internal/ontology"
 	"github.com/langoai/lango/internal/p2p/gitbundle"
+	"github.com/langoai/lango/internal/p2p/ontologybridge"
+	"github.com/langoai/lango/internal/p2p/team"
+	toolcrypto "github.com/langoai/lango/internal/tools/crypto"
+	toolpayment "github.com/langoai/lango/internal/tools/payment"
+	toolsecrets "github.com/langoai/lango/internal/tools/secrets"
 	"github.com/langoai/lango/internal/security"
 	"github.com/langoai/lango/internal/session"
 	"github.com/langoai/lango/internal/supervisor"
 	"github.com/langoai/lango/internal/tools/browser"
 	execpkg "github.com/langoai/lango/internal/tools/exec"
 	"github.com/langoai/lango/internal/tools/filesystem"
+	"github.com/langoai/lango/internal/workflow"
 	x402pkg "github.com/langoai/lango/internal/x402"
 )
 
@@ -31,31 +49,33 @@ import (
 
 // foundationValues holds the outputs of the foundation module.
 type foundationValues struct {
-	Supervisor  *supervisor.Supervisor
-	Store       session.Store
-	Crypto      security.CryptoProvider
-	Keys        *security.KeyRegistry
-	Secrets     *security.SecretsStore
-	BrowserSM   *browser.SessionManager
-	Refs        *security.RefStore
-	Scanner     *agent.SecretScanner
-	Sanitizer   *gatekeeper.Sanitizer
-	CmdGuard    *execpkg.CommandGuard
-	FsConfig    filesystem.Config
-	AutoAvail   map[string]bool
+	Supervisor *supervisor.Supervisor
+	Store      session.Store
+	Crypto     security.CryptoProvider
+	Keys       *security.KeyRegistry
+	Secrets    *security.SecretsStore
+	BrowserSM  *browser.SessionManager
+	Refs       *security.RefStore
+	Scanner    *agent.SecretScanner
+	Sanitizer  *gatekeeper.Sanitizer
+	CmdGuard   *execpkg.CommandGuard
+	FsConfig   filesystem.Config
+	AutoAvail  map[string]bool
 }
 
 // intelligenceValues holds the outputs of the intelligence module.
 type intelligenceValues struct {
-	KC       *knowledgeComponents
-	MC       *memoryComponents
-	EC       *embeddingComponents
-	GC       *graphComponents
-	LC       *librarianComponents
-	AB       interface{} // *learning.AnalysisBuffer
-	Observer interface{} // learning.Observer — for WithLearning middleware
+	KC               *knowledgeComponents
+	MC               *memoryComponents
+	EC               *embeddingComponents
+	GC               *graphComponents
+	LC               *librarianComponents
+	AB               interface{} // *learning.AnalysisBuffer
+	Observer         interface{} // learning.Observer — for WithLearning middleware
 	SkillRegistry    interface{}
 	AgentMemoryStore agentmemory.Store
+	FeatureStatuses  *StatusCollector
+	OntologyBridge   *ontologybridge.Bridge // P2P schema exchange bridge
 }
 
 // automationValues holds the outputs of the automation module.
@@ -65,7 +85,6 @@ type automationValues struct {
 	WorkflowEngine    interface{}
 }
 
-
 // ─── Foundation Module ───
 
 type foundationModule struct {
@@ -73,12 +92,12 @@ type foundationModule struct {
 	boot *bootstrap.Result
 }
 
-func (m *foundationModule) Name() string         { return "foundation" }
+func (m *foundationModule) Name() string { return "foundation" }
 func (m *foundationModule) Provides() []appinit.Provides {
 	return []appinit.Provides{appinit.ProvidesSupervisor, appinit.ProvidesSessionStore, appinit.ProvidesSecurity}
 }
 func (m *foundationModule) DependsOn() []appinit.Provides { return nil }
-func (m *foundationModule) Enabled() bool                  { return true }
+func (m *foundationModule) Enabled() bool                 { return true }
 
 func (m *foundationModule) Init(ctx context.Context, r appinit.Resolver) (*appinit.ModuleResult, error) {
 	cfg := m.cfg
@@ -149,13 +168,13 @@ func (m *foundationModule) Init(ctx context.Context, r appinit.Resolver) (*appin
 	// Crypto tools.
 	var cryptoTools []*agent.Tool
 	if crypto != nil && keys != nil {
-		cryptoTools = buildCryptoTools(crypto, keys, refs, scanner)
+		cryptoTools = toolcrypto.BuildTools(crypto, keys, refs, scanner)
 	}
 
 	// Secrets tools.
 	var secretsTools []*agent.Tool
 	if secrets != nil {
-		secretsTools = buildSecretsTools(secrets, refs, scanner)
+		secretsTools = toolsecrets.BuildTools(secrets, refs, scanner)
 	}
 
 	allTools := append(baseTools, cryptoTools...)
@@ -193,13 +212,15 @@ func buildFoundationCatalogEntries(cfg *config.Config, base, crypto, secrets []*
 	var entries []appinit.CatalogEntry
 
 	// Split base tools by prefix.
-	var execTools, fsTools, browserTools []*agent.Tool
+	var execTools, fsTools, browserTools, webTools []*agent.Tool
 	for _, t := range base {
 		switch {
 		case len(t.Name) >= 4 && t.Name[:4] == "exec":
 			execTools = append(execTools, t)
 		case len(t.Name) >= 3 && t.Name[:3] == "fs_":
 			fsTools = append(fsTools, t)
+		case len(t.Name) >= 4 && t.Name[:4] == "web_":
+			webTools = append(webTools, t)
 		case len(t.Name) >= 8 && t.Name[:8] == "browser_":
 			browserTools = append(browserTools, t)
 		}
@@ -212,6 +233,10 @@ func buildFoundationCatalogEntries(cfg *config.Config, base, crypto, secrets []*
 		entries = append(entries, appinit.CatalogEntry{Category: "browser", Description: "Web browsing", ConfigKey: "tools.browser.enabled", Enabled: true, Tools: browserTools})
 	} else {
 		entries = append(entries, appinit.CatalogEntry{Category: "browser", Description: "Web browsing (disabled)", ConfigKey: "tools.browser.enabled", Enabled: false})
+	}
+
+	if len(webTools) > 0 {
+		entries = append(entries, appinit.CatalogEntry{Category: "web", Description: "Web search and page fetching", Enabled: true, Tools: webTools})
 	}
 
 	if len(crypto) > 0 {
@@ -235,9 +260,10 @@ type intelligenceModule struct {
 	cfg   *config.Config
 	boot  *bootstrap.Result
 	rawDB *sql.DB
+	bus   *eventbus.Bus
 }
 
-func (m *intelligenceModule) Name() string         { return "intelligence" }
+func (m *intelligenceModule) Name() string { return "intelligence" }
 func (m *intelligenceModule) Provides() []appinit.Provides {
 	return []appinit.Provides{appinit.ProvidesKnowledge, appinit.ProvidesMemory, appinit.ProvidesEmbedding, appinit.ProvidesGraph, appinit.ProvidesLibrarian, appinit.ProvidesSkills}
 }
@@ -257,21 +283,44 @@ func (m *intelligenceModule) Init(ctx context.Context, r appinit.Resolver) (*app
 	var components []lifecycle.ComponentEntry
 
 	// Graph Store (before knowledge).
-	gc := initGraphStore(cfg)
+	gc, gcStatus := initGraphStore(cfg)
+
+	// Ontology Registry (after graph store).
+	var graphStoreForOntology graph.Store
+	if gc != nil {
+		graphStoreForOntology = gc.store
+	}
+	ontologyResult, err := initOntology(ctx, m.boot.DBClient, cfg, graphStoreForOntology)
+	if err != nil {
+		logger().Warnw("ontology init failed, continuing without ontology", "error", err)
+	}
+	// Ontology tools.
+	if ontologyResult != nil && ontologyResult.Service != nil {
+		ontologyTools := ontology.BuildTools(ontologyResult.Service, ontologyResult.Registry)
+		tools = append(tools, ontologyTools...)
+		entries = append(entries, appinit.CatalogEntry{
+			Category: "ontology", Description: "Ontology management (types, entities, facts, conflicts)",
+			ConfigKey: "ontology.enabled", Enabled: true, Tools: ontologyTools,
+		})
+	}
 
 	// Skills — resolve base tools from foundation for skill init.
 	var baseToolSlice []*agent.Tool
 	if bt := r.Resolve(appinit.ProvidesBaseTools); bt != nil {
 		baseToolSlice, _ = bt.([]*agent.Tool)
 	}
-	skillReg := initSkills(cfg, baseToolSlice)
+	skillReg := initSkills(cfg, baseToolSlice, m.bus)
 	if skillReg != nil {
 		tools = append(tools, skillReg.LoadedSkills()...)
 	}
 
 	// Knowledge.
-	kc := initKnowledge(cfg, store, gc)
+	kc, kcStatus := initKnowledge(cfg, store, gc, m.bus)
+	fts5Available := false
 	if kc != nil {
+		// FTS5 search index.
+		fts5Available = initFTS5(ctx, m.rawDB, kc.store)
+
 		metaTools := buildMetaTools(kc.store, kc.engine, skillReg, cfg.Skill)
 		tools = append(tools, metaTools...)
 		entries = append(entries, appinit.CatalogEntry{Category: "meta", Description: "Knowledge, learning, and skill management", ConfigKey: "knowledge.enabled", Enabled: true, Tools: metaTools})
@@ -280,26 +329,58 @@ func (m *intelligenceModule) Init(ctx context.Context, r appinit.Resolver) (*app
 	}
 
 	// Observational Memory.
-	mc := initMemory(cfg, store, sv)
+	mc, mcStatus := initMemory(cfg, store, sv, m.bus)
 
 	// Embedding / RAG.
-	ec := initEmbedding(cfg, m.rawDB, kc, mc)
+	ec, ecStatus := initEmbedding(cfg, m.rawDB, kc, mc, m.bus)
 
 	// Graph callbacks.
 	if gc != nil {
-		wireGraphCallbacks(gc, kc, mc, sv, cfg)
+		var ontologyValidator graph.PredicateValidatorFunc
+		if ontologyResult != nil && ontologyResult.Service != nil {
+			ontologyValidator = ontologyResult.Service.PredicateValidator()
+		}
+		wireGraphCallbacks(gc, kc, mc, sv, cfg, m.bus, ontologyValidator)
 		initGraphRAG(cfg, gc, ec)
 	}
 
 	// Conversation Analysis.
-	ab := initConversationAnalysis(cfg, sv, store, kc, gc)
+	ab := initConversationAnalysis(cfg, sv, store, kc, gc, m.bus)
 
 	// Librarian.
-	lc := initLibrarian(cfg, sv, store, kc, mc, gc)
+	lc, lcStatus := initLibrarian(cfg, sv, store, kc, mc, gc, m.bus)
+
+	// Enrich knowledge status with FTS5 and budget info.
+	if kcStatus != nil && kcStatus.Enabled && kcStatus.Healthy {
+		var details []string
+		if fts5Available {
+			details = append(details, "FTS5 search active")
+		} else {
+			details = append(details, "FTS5 unavailable, using LIKE fallback")
+		}
+		// Budget info from config.
+		modelWindow := cfg.Context.ModelWindow
+		if modelWindow <= 0 {
+			modelWindow = adk.LookupModelWindow(cfg.Agent.Model)
+		}
+		details = append(details, fmt.Sprintf("budgeted (%dk)", modelWindow/1000))
+		kcStatus.Reason = strings.Join(details, ", ")
+	}
+
+	// Collect feature statuses for diagnostics.
+	sc := NewStatusCollector()
+	sc.Add(gcStatus)
+	sc.Add(kcStatus)
+	sc.Add(mcStatus)
+	sc.Add(ecStatus)
+	sc.Add(lcStatus)
+	if n := sc.SilentDisabledCount(); n > 0 {
+		logger().Infow("some features disabled due to missing dependencies", "count", n)
+	}
 
 	// Graph tools.
 	if gc != nil {
-		gt := buildGraphTools(gc.store)
+		gt := graph.BuildTools(gc.store)
 		tools = append(tools, gt...)
 		entries = append(entries, appinit.CatalogEntry{Category: "graph", Description: "Knowledge graph traversal", ConfigKey: "graph.enabled", Enabled: true, Tools: gt})
 	} else {
@@ -308,7 +389,7 @@ func (m *intelligenceModule) Init(ctx context.Context, r appinit.Resolver) (*app
 
 	// RAG tools.
 	if ec != nil && ec.ragService != nil {
-		rt := buildRAGTools(ec.ragService)
+		rt := embedding.BuildRAGTools(ec.ragService)
 		tools = append(tools, rt...)
 		entries = append(entries, appinit.CatalogEntry{Category: "rag", Description: "Retrieval-augmented generation", ConfigKey: "embedding.rag.enabled", Enabled: true, Tools: rt})
 	} else {
@@ -317,7 +398,7 @@ func (m *intelligenceModule) Init(ctx context.Context, r appinit.Resolver) (*app
 
 	// Memory tools.
 	if mc != nil {
-		mt := buildMemoryAgentTools(mc.store)
+		mt := memory.BuildObservationTools(mc.store)
 		tools = append(tools, mt...)
 		entries = append(entries, appinit.CatalogEntry{Category: "memory", Description: "Observational memory", ConfigKey: "observationalMemory.enabled", Enabled: true, Tools: mt})
 	} else {
@@ -327,8 +408,8 @@ func (m *intelligenceModule) Init(ctx context.Context, r appinit.Resolver) (*app
 	// Agent Memory.
 	var amStore agentmemory.Store
 	if cfg.AgentMemory.Enabled {
-		amStore = agentmemory.NewInMemoryStore()
-		amTools := buildAgentMemoryTools(amStore)
+		amStore = agentmemory.NewEntStore(m.boot.DBClient)
+		amTools := agentmemory.BuildTools(amStore)
 		tools = append(tools, amTools...)
 		entries = append(entries, appinit.CatalogEntry{Category: "agent_memory", Description: "Per-agent persistent memory", ConfigKey: "agentMemory.enabled", Enabled: true, Tools: amTools})
 		logger().Info("agent memory tools enabled")
@@ -338,7 +419,7 @@ func (m *intelligenceModule) Init(ctx context.Context, r appinit.Resolver) (*app
 
 	// Librarian tools.
 	if lc != nil {
-		lt := buildLibrarianTools(lc.inquiryStore)
+		lt := librarian.BuildTools(lc.inquiryStore)
 		tools = append(tools, lt...)
 		entries = append(entries, appinit.CatalogEntry{Category: "librarian", Description: "Knowledge inquiries and gap detection", ConfigKey: "librarian.enabled", Enabled: true, Tools: lt})
 	} else {
@@ -383,6 +464,12 @@ func (m *intelligenceModule) Init(ctx context.Context, r appinit.Resolver) (*app
 		observer = kc.observer
 	}
 
+	// Ontology exchange bridge — extracted for post-build P2P wiring.
+	var ontologyBridge *ontologybridge.Bridge
+	if ontologyResult != nil {
+		ontologyBridge = ontologyResult.Bridge
+	}
+
 	return &appinit.ModuleResult{
 		Tools:          tools,
 		Components:     components,
@@ -393,6 +480,8 @@ func (m *intelligenceModule) Init(ctx context.Context, r appinit.Resolver) (*app
 				Observer:         observer,
 				SkillRegistry:    skillReg,
 				AgentMemoryStore: amStore,
+				FeatureStatuses:  sc,
+				OntologyBridge:   ontologyBridge,
 			},
 			appinit.ProvidesGraph:     gc,
 			appinit.ProvidesMemory:    mc,
@@ -406,16 +495,16 @@ func (m *intelligenceModule) Init(ctx context.Context, r appinit.Resolver) (*app
 // ─── Automation Module ───
 
 type automationModule struct {
-	cfg  *config.Config
-	app  *App // needed for AgentRunner interface at runtime
+	cfg *config.Config
+	app *App // needed for AgentRunner interface at runtime
 }
 
-func (m *automationModule) Name() string         { return "automation" }
+func (m *automationModule) Name() string { return "automation" }
 func (m *automationModule) Provides() []appinit.Provides {
 	return []appinit.Provides{appinit.ProvidesAutomation}
 }
 func (m *automationModule) DependsOn() []appinit.Provides {
-	return []appinit.Provides{appinit.ProvidesSessionStore}
+	return []appinit.Provides{appinit.ProvidesSessionStore, appinit.ProvidesRunLedger}
 }
 func (m *automationModule) Enabled() bool {
 	return m.cfg.Cron.Enabled || m.cfg.Background.Enabled || m.cfg.Workflow.Enabled
@@ -425,6 +514,7 @@ func (m *automationModule) Init(ctx context.Context, r appinit.Resolver) (*appin
 	cfg := m.cfg
 	fv := r.Resolve(appinit.ProvidesSupervisor).(*foundationValues)
 	store := fv.Store
+	rlv, _ := r.Resolve(appinit.ProvidesRunLedger).(*runLedgerValues)
 
 	var tools []*agent.Tool
 	var entries []appinit.CatalogEntry
@@ -432,7 +522,7 @@ func (m *automationModule) Init(ctx context.Context, r appinit.Resolver) (*appin
 
 	cron := initCron(cfg, store, m.app)
 	if cron != nil {
-		cronTools := buildCronTools(cron, cfg.Cron.DefaultDeliverTo)
+		cronTools := cronpkg.BuildTools(cron, cfg.Cron.DefaultDeliverTo)
 		tools = append(tools, cronTools...)
 		entries = append(entries, appinit.CatalogEntry{Category: "cron", Description: "Cron job scheduling", ConfigKey: "cron.enabled", Enabled: true, Tools: cronTools})
 		cs := cron // capture for closure
@@ -448,35 +538,66 @@ func (m *automationModule) Init(ctx context.Context, r appinit.Resolver) (*appin
 
 	bg := initBackground(cfg, m.app)
 	if bg != nil {
-		bgTools := buildBackgroundTools(bg, cfg.Background.DefaultDeliverTo)
+		bgTools := background.BuildTools(bg, cfg.Background.DefaultDeliverTo)
 		tools = append(tools, bgTools...)
 		entries = append(entries, appinit.CatalogEntry{Category: "background", Description: "Background task execution", ConfigKey: "background.enabled", Enabled: true, Tools: bgTools})
 		bm := bg // capture for closure
 		components = append(components, lifecycle.ComponentEntry{
 			Component: lifecycle.NewFuncComponent("background-manager",
 				func(_ context.Context, _ *sync.WaitGroup) error { return nil },
-				func(_ context.Context) error { bm.Shutdown(); return nil },
+				func(ctx context.Context) error { return bm.Shutdown(ctx) },
 			),
 			Priority: lifecycle.PriorityAutomation,
 		})
 		logger().Info("background tools registered")
 	}
 
-	wf := initWorkflow(cfg, store, m.app)
+	wf := initWorkflow(cfg, store, m.app, rlv)
 	if wf != nil {
-		wfTools := buildWorkflowTools(wf, cfg.Workflow.StateDir, cfg.Workflow.DefaultDeliverTo)
+		wfTools := workflow.BuildTools(wf, cfg.Workflow.StateDir, cfg.Workflow.DefaultDeliverTo)
 		tools = append(tools, wfTools...)
 		entries = append(entries, appinit.CatalogEntry{Category: "workflow", Description: "Workflow pipeline execution", ConfigKey: "workflow.enabled", Enabled: true, Tools: wfTools})
 		we := wf // capture for closure
 		components = append(components, lifecycle.ComponentEntry{
 			Component: lifecycle.NewFuncComponent("workflow-engine",
 				func(_ context.Context, _ *sync.WaitGroup) error { return nil },
-				func(_ context.Context) error { we.Shutdown(); return nil },
+				func(ctx context.Context) error { return we.Shutdown(ctx) },
 			),
 			Priority: lifecycle.PriorityAutomation,
 		})
 		logger().Info("workflow tools registered")
 	}
+
+	// Agent lifecycle tools (always available when automation module is active).
+	agentRunStore := agentrt.NewInMemoryAgentRunStore()
+	agentRunProjection := agentrt.NewAgentRunProjection(agentRunStore)
+	controlPlane := &agentrt.AgentControlPlane{
+		RunStore:   agentRunStore,
+		Projection: agentRunProjection,
+	}
+	controlTools := agentrt.BuildControlTools(controlPlane)
+	tools = append(tools, controlTools...)
+	entries = append(entries, appinit.CatalogEntry{
+		Category:    "agent_control",
+		Description: "Agent lifecycle management (spawn, wait, stop)",
+		ConfigKey:   "agent.orchestration.mode",
+		Enabled:     true,
+		Tools:       controlTools,
+	})
+	logger().Info("agent control tools registered")
+
+	// Task tracking tools (always available when automation module is active).
+	taskStore := agentrt.NewInMemoryTaskStore()
+	taskTools := agentrt.BuildTaskTools(taskStore)
+	tools = append(tools, taskTools...)
+	entries = append(entries, appinit.CatalogEntry{
+		Category:    "task_tracking",
+		Description: "Structured task management (create, get, list, update)",
+		ConfigKey:   "agent.orchestration.mode",
+		Enabled:     true,
+		Tools:       taskTools,
+	})
+	logger().Info("task tools registered")
 
 	// Disabled category entries.
 	if !cfg.Cron.Enabled {
@@ -512,7 +633,7 @@ type networkModule struct {
 	app  *App
 }
 
-func (m *networkModule) Name() string         { return "network" }
+func (m *networkModule) Name() string { return "network" }
 func (m *networkModule) Provides() []appinit.Provides {
 	return []appinit.Provides{appinit.ProvidesPayment, appinit.ProvidesP2P, appinit.ProvidesEconomy, appinit.ProvidesContract, appinit.ProvidesSmartAccount, appinit.ProvidesWorkspace}
 }
@@ -545,12 +666,12 @@ func (m *networkModule) Init(ctx context.Context, r appinit.Resolver) (*appinit.
 			x402Interceptor = xc.interceptor
 		}
 
-		pt := buildPaymentTools(pc, x402Interceptor)
+		pt := toolpayment.BuildTools(pc.service, pc.limiter, pc.secrets, pc.chainID, x402Interceptor)
 		tools = append(tools, pt...)
 		entries = append(entries, appinit.CatalogEntry{Category: "payment", Description: "Blockchain payments (USDC on Base)", ConfigKey: "payment.enabled", Enabled: true, Tools: pt})
 
 		// P2P.
-		p2pc = initP2P(cfg, pc.wallet, pc, m.boot.DBClient, fv.Secrets, m.bus)
+		p2pc = initP2P(cfg, pc.wallet, pc, m.boot.DBClient, fv.Secrets, m.bus, m.boot.IdentityKey, m.boot.PQSigningKeySeed, m.boot.LangoDir)
 		if p2pc != nil {
 			// P2P Node lifecycle.
 			if p2pc.node != nil {
@@ -584,7 +705,7 @@ func (m *networkModule) Init(ctx context.Context, r appinit.Resolver) (*appinit.
 
 			// Team coordination tools.
 			if p2pc.coordinator != nil {
-				teamTools := buildTeamTools(p2pc.coordinator)
+				teamTools := team.BuildTools(p2pc.coordinator)
 				tools = append(tools, teamTools...)
 			}
 
@@ -664,7 +785,13 @@ func (m *networkModule) Init(ctx context.Context, r appinit.Resolver) (*appinit.
 		// Economy.
 		econc = initEconomy(cfg, p2pc, pc, m.bus)
 		if econc != nil {
-			econTools := buildEconomyTools(econc)
+			econTools := economy.BuildTools(
+				econc.budgetEngine,
+				econc.riskEngine,
+				econc.negotiationEngine,
+				econc.escrowEngine,
+				econc.pricingEngine,
+			)
 			tools = append(tools, econTools...)
 			entries = append(entries, appinit.CatalogEntry{Category: "economy", Description: "P2P economy (budget, risk, pricing, negotiation, escrow)", ConfigKey: "economy.enabled", Enabled: true, Tools: econTools})
 
@@ -674,7 +801,7 @@ func (m *networkModule) Init(ctx context.Context, r appinit.Resolver) (*appinit.
 				entries = append(entries, appinit.CatalogEntry{Category: "escrow", Description: "On-chain escrow management", ConfigKey: "economy.escrow.enabled", Enabled: true, Tools: escrowTools})
 			}
 			if econc.sentinelEngine != nil {
-				sentTools := buildSentinelTools(econc.sentinelEngine)
+				sentTools := sentinel.BuildTools(econc.sentinelEngine)
 				tools = append(tools, sentTools...)
 				entries = append(entries, appinit.CatalogEntry{Category: "sentinel", Description: "Security Sentinel anomaly detection", ConfigKey: "economy.escrow.enabled", Enabled: true, Tools: sentTools})
 			}
@@ -719,7 +846,7 @@ func (m *networkModule) Init(ctx context.Context, r appinit.Resolver) (*appinit.
 			}
 			// Team-Escrow convenience tools.
 			if econc != nil && econc.escrowEngine != nil {
-				teTools := buildTeamEscrowTools(p2pc.coordinator, econc.escrowEngine, econc.budgetEngine)
+				teTools := team.BuildEscrowTools(p2pc.coordinator, econc.escrowEngine, econc.budgetEngine)
 				tools = append(tools, teTools...)
 			}
 		}
@@ -777,9 +904,9 @@ func (m *networkModule) Init(ctx context.Context, r appinit.Resolver) (*appinit.
 // ─── Extension Module ───
 
 type extensionModule struct {
-	cfg      *config.Config
-	boot     *bootstrap.Result
-	bus      *eventbus.Bus
+	cfg  *config.Config
+	boot *bootstrap.Result
+	bus  *eventbus.Bus
 }
 
 func (m *extensionModule) Name() string { return "extension" }
@@ -797,7 +924,7 @@ func (m *extensionModule) Init(ctx context.Context, r appinit.Resolver) (*appini
 	var components []lifecycle.ComponentEntry
 
 	// MCP.
-	mcpc := initMCP(cfg)
+	mcpc := initMCP(cfg, m.bus)
 	if mcpc != nil {
 		tools = append(tools, mcpc.tools...)
 		entries = append(entries, appinit.CatalogEntry{Category: "mcp", Description: "MCP plugin tools (external servers)", ConfigKey: "mcp.enabled", Enabled: true, Tools: mcpc.tools})
@@ -856,4 +983,3 @@ func (m *extensionModule) Init(ctx context.Context, r appinit.Resolver) (*appini
 		},
 	}, nil
 }
-

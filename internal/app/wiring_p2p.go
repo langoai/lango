@@ -2,6 +2,8 @@ package app
 
 import (
 	"context"
+	"crypto/ed25519"
+	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -36,6 +38,109 @@ import (
 	libp2pproto "github.com/libp2p/go-libp2p/core/protocol"
 )
 
+// walletHandshakeSigner wraps a WalletProvider to satisfy handshake.Signer.
+// The wallet always uses secp256k1-keccak256 and returns a v1 DID.
+type walletHandshakeSigner struct {
+	wp wallet.WalletProvider
+}
+
+func (s *walletHandshakeSigner) SignMessage(ctx context.Context, message []byte) ([]byte, error) {
+	return s.wp.SignMessage(ctx, message)
+}
+
+func (s *walletHandshakeSigner) PublicKey(ctx context.Context) ([]byte, error) {
+	return s.wp.PublicKey(ctx)
+}
+
+func (s *walletHandshakeSigner) Algorithm() string {
+	return security.AlgorithmSecp256k1Keccak256
+}
+
+// legacyLocalIdentity wraps WalletDIDProvider + WalletProvider to satisfy
+// LocalIdentityProvider when BundleProvider is not available (legacy/no-MK mode).
+type legacyLocalIdentity struct {
+	prov *identity.WalletDIDProvider
+	wp   wallet.WalletProvider
+}
+
+func (l *legacyLocalIdentity) DID(ctx context.Context) (*identity.DID, error) {
+	return l.prov.DID(ctx)
+}
+func (l *legacyLocalIdentity) Bundle() *identity.IdentityBundle { return nil }
+func (l *legacyLocalIdentity) LegacyDID(ctx context.Context) (*identity.DID, error) {
+	return l.prov.DID(ctx)
+}
+func (l *legacyLocalIdentity) SignMessage(ctx context.Context, message []byte) ([]byte, error) {
+	return l.wp.SignMessage(ctx, message)
+}
+func (l *legacyLocalIdentity) PublicKey(ctx context.Context) ([]byte, error) {
+	return l.wp.PublicKey(ctx)
+}
+func (l *legacyLocalIdentity) Algorithm() string { return security.AlgorithmSecp256k1Keccak256 }
+func (l *legacyLocalIdentity) DIDString(ctx context.Context) (string, error) {
+	d, err := l.prov.DID(ctx)
+	if err != nil {
+		return "", err
+	}
+	return d.ID, nil
+}
+
+// bundleHandshakeSigner wraps a BundleProvider to satisfy handshake.Signer.
+// Uses Ed25519 signing and DID v2.
+type bundleHandshakeSigner struct {
+	bp *identity.BundleProvider
+}
+
+func (s *bundleHandshakeSigner) SignMessage(ctx context.Context, message []byte) ([]byte, error) {
+	return s.bp.SignMessage(ctx, message)
+}
+
+func (s *bundleHandshakeSigner) PublicKey(ctx context.Context) ([]byte, error) {
+	return s.bp.PublicKey(ctx)
+}
+
+func (s *bundleHandshakeSigner) Algorithm() string {
+	return s.bp.Algorithm()
+}
+
+func (s *bundleHandshakeSigner) DID(ctx context.Context) (string, error) {
+	return s.bp.DIDString(ctx)
+}
+
+func (s *bundleHandshakeSigner) Bundle() *identity.IdentityBundle {
+	return s.bp.Bundle()
+}
+
+func (s *walletHandshakeSigner) DID(ctx context.Context) (string, error) {
+	pub, err := s.wp.PublicKey(ctx)
+	if err != nil {
+		return "", err
+	}
+	did, err := identity.DIDFromPublicKey(pub)
+	if err != nil {
+		return "", err
+	}
+	return did.ID, nil
+}
+
+// bundleCardSigner adapts BundleProvider to the discovery.CardSigner interface.
+type bundleCardSigner struct {
+	bp *identity.BundleProvider
+}
+
+func (s *bundleCardSigner) Sign(ctx context.Context, payload []byte) ([]byte, error) {
+	return s.bp.SignMessage(ctx, payload)
+}
+
+func (s *bundleCardSigner) Algorithm() string {
+	return s.bp.Algorithm()
+}
+
+// didProvider is the minimal interface for DID retrieval used by p2pComponents.
+type didProvider interface {
+	DID(ctx context.Context) (*identity.DID, error)
+}
+
 // p2pComponents holds optional P2P networking components.
 type p2pComponents struct {
 	node           *p2p.Node
@@ -44,7 +149,7 @@ type p2pComponents struct {
 	nonceCache     *handshake.NonceCache
 	fw             *firewall.Firewall
 	gossip         *discovery.GossipService
-	identity       *identity.WalletDIDProvider
+	identity       didProvider // DID() — WalletDIDProvider or BundleProvider
 	handler        *p2pproto.Handler
 	payGate        *paygate.Gate
 	reputation     *reputation.Store
@@ -55,10 +160,11 @@ type p2pComponents struct {
 	coordinator    *team.Coordinator
 	provider       *agentpool.PoolProvider
 	healthMonitor  *team.HealthMonitor
+	kemEnabled     bool // PQ KEM handshake enabled
 }
 
 // initP2P creates the P2P networking components if enabled.
-func initP2P(cfg *config.Config, wp wallet.WalletProvider, pc *paymentComponents, dbClient *ent.Client, secrets *security.SecretsStore, bus *eventbus.Bus) *p2pComponents {
+func initP2P(cfg *config.Config, wp wallet.WalletProvider, pc *paymentComponents, dbClient *ent.Client, secrets *security.SecretsStore, bus *eventbus.Bus, identityKey ed25519.PrivateKey, pqSigningKeySeed []byte, langoDir string) *p2pComponents {
 	if !cfg.P2P.Enabled {
 		logger().Info("P2P networking disabled")
 		return nil
@@ -78,8 +184,34 @@ func initP2P(cfg *config.Config, wp wallet.WalletProvider, pc *paymentComponents
 		return nil
 	}
 
-	// Create identity provider from wallet.
-	idProvider := identity.NewProvider(wp, pLogger)
+	// Create identity provider.
+	legacyIDProvider := identity.NewProvider(wp, pLogger)
+	var localID identity.LocalIdentityProvider
+	bundleCache := identity.NewMemoryBundleCache()
+
+	if identityKey != nil && langoDir != "" {
+		walletPub, pubErr := wp.PublicKey(context.Background())
+		if pubErr == nil {
+			bp, bpErr := identity.NewBundleProvider(identity.BundleProviderConfig{
+				SigningKey:       identityKey,
+				SettlementPub:   walletPub,
+				PQSigningKeySeed: pqSigningKeySeed,
+				LangoDir:        langoDir,
+				Legacy:          legacyIDProvider,
+				Logger:          pLogger,
+			})
+			if bpErr == nil {
+				localID = bp
+				pLogger.Infow("identity bundle provider initialized", "algorithm", bp.Algorithm())
+			} else {
+				pLogger.Warnw("bundle provider creation failed, using legacy identity", "error", bpErr)
+			}
+		}
+	}
+	// Fallback: if BundleProvider wasn't created, wrap legacy provider.
+	if localID == nil {
+		localID = &legacyLocalIdentity{prov: legacyIDProvider, wp: wp}
+	}
 
 	// Create session store.
 	sessionTTL := cfg.P2P.SessionTokenTTL
@@ -127,8 +259,16 @@ func initP2P(cfg *config.Config, wp wallet.WalletProvider, pc *paymentComponents
 		return false, nil // default: deny unknown peers
 	}
 
+	legacySigner := &walletHandshakeSigner{wp: wp}
+	var primarySigner handshake.Signer = legacySigner
+	if bp, ok := localID.(*identity.BundleProvider); ok {
+		primarySigner = &bundleHandshakeSigner{bp: bp}
+	}
+
+	didAlias := identity.NewDIDAlias()
 	hsCfg := handshake.Config{
-		Wallet:                 wp,
+		Signer:                 primarySigner,
+		LegacySigner:           legacySigner,
 		Sessions:               sessions,
 		ApprovalFn:             approvalFn,
 		ZKEnabled:              cfg.P2P.ZKHandshake,
@@ -136,6 +276,9 @@ func initP2P(cfg *config.Config, wp wallet.WalletProvider, pc *paymentComponents
 		AutoApproveKnown:       cfg.P2P.AutoApproveKnownPeers,
 		NonceCache:             nonceCache,
 		RequireSignedChallenge: cfg.P2P.RequireSignedChallenge,
+		BundleCache:            bundleCache,
+		DIDAlias:               didAlias,
+		EnablePQKEM:            cfg.P2P.EnablePQHandshake,
 		Logger:                 pLogger,
 	}
 
@@ -245,11 +388,14 @@ func initP2P(cfg *config.Config, wp wallet.WalletProvider, pc *paymentComponents
 	// Register handshake protocol handlers (v1.0 legacy + v1.1 signed challenge).
 	node.Host().SetStreamHandler(libp2pproto.ID(handshake.ProtocolID), handshaker.StreamHandler())
 	node.Host().SetStreamHandler(libp2pproto.ID(handshake.ProtocolIDv11), handshaker.StreamHandlerV11())
+	if cfg.P2P.EnablePQHandshake {
+		node.Host().SetStreamHandler(libp2pproto.ID(handshake.ProtocolIDv12), handshaker.StreamHandlerV12())
+	}
 
 	// Get local DID for protocol handler.
 	var localDID string
 	ctx := context.Background()
-	d, err := idProvider.DID(ctx)
+	d, err := legacyIDProvider.DID(ctx)
 	if err == nil && d != nil {
 		localDID = d.ID
 	}
@@ -284,8 +430,11 @@ func initP2P(cfg *config.Config, wp wallet.WalletProvider, pc *paymentComponents
 	}
 	secEvents := handshake.NewSecurityEventHandler(sessions, 5, minTrust, pLogger)
 	handler.SetSecurityEvents(secEvents)
-	if repStore != nil {
-		repStore.SetOnChangeCallback(secEvents.OnReputationChange)
+	if repStore != nil && bus != nil {
+		repStore.SetEventBus(bus)
+		eventbus.SubscribeTyped(bus, func(evt eventbus.ReputationChangedEvent) {
+			secEvents.OnReputationChange(evt.PeerDID, evt.NewScore)
+		})
 	}
 	pLogger.Info("P2P security event handler wired")
 
@@ -396,12 +545,30 @@ func initP2P(cfg *config.Config, wp wallet.WalletProvider, pc *paymentComponents
 		}
 	}
 
-	gossip, err = discovery.NewGossipService(discovery.GossipConfig{
-		Host:      node.Host(),
-		LocalCard: localCard,
-		Interval:  gossipInterval,
-		Logger:    pLogger,
-	})
+	// Attach identity bundle to gossip card for v2 signature verification.
+	if bp, ok := localID.(*identity.BundleProvider); ok {
+		if b := bp.Bundle(); b != nil {
+			if bundleJSON, marshalErr := json.Marshal(b); marshalErr == nil {
+				localCard.Bundle = bundleJSON
+			}
+		}
+	}
+
+	gossipCfg := discovery.GossipConfig{
+		Host:            node.Host(),
+		LocalCard:       localCard,
+		Interval:        gossipInterval,
+		ClassicalVerify: security.VerifyEd25519,
+		Logger:          pLogger,
+	}
+	// Wire card signers for gossip card signing (classical + PQ dual-sign).
+	if bp, ok := localID.(*identity.BundleProvider); ok {
+		gossipCfg.CardSigner = &bundleCardSigner{bp: bp}
+		if bp.HasPQKey() {
+			gossipCfg.PQCardSigner = bp
+		}
+	}
+	gossip, err = discovery.NewGossipService(gossipCfg)
 	if err != nil {
 		pLogger.Warnw("gossip service creation failed", "error", err)
 	}
@@ -620,7 +787,7 @@ func initP2P(cfg *config.Config, wp wallet.WalletProvider, pc *paymentComponents
 		nonceCache:  nonceCache,
 		fw:          fw,
 		gossip:      gossip,
-		identity:    idProvider,
+		identity:    localID,
 		handler:     handler,
 		payGate:     pg,
 		reputation:  repStore,
@@ -631,6 +798,7 @@ func initP2P(cfg *config.Config, wp wallet.WalletProvider, pc *paymentComponents
 		coordinator:   coord,
 		provider:      provider,
 		healthMonitor: healthMon,
+		kemEnabled:    cfg.P2P.EnablePQHandshake,
 	}
 }
 

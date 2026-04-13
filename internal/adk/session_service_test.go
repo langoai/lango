@@ -11,6 +11,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	internal "github.com/langoai/lango/internal/session"
+	"github.com/langoai/lango/internal/types"
 	"google.golang.org/adk/model"
 	"google.golang.org/adk/session"
 	"google.golang.org/genai"
@@ -213,6 +214,357 @@ func TestAppendEvent_PreservesFunctionCallID(t *testing.T) {
 	require.Len(t, msg.ToolCalls, 1)
 	assert.Equal(t, "adk-original-uuid-123", msg.ToolCalls[0].ID)
 	assert.Equal(t, "exec", msg.ToolCalls[0].Name)
+}
+
+func TestAppendEvent_EmitsChildLifecycle(t *testing.T) {
+	t.Parallel()
+
+	store := newMockStore()
+	sess := &internal.Session{
+		Key:       "test-session",
+		Metadata:  make(map[string]string),
+		CreatedAt: time.Now(),
+		UpdatedAt: time.Now(),
+	}
+	store.Create(sess)
+
+	var roots []string
+	var events []internal.SessionLifecycleEvent
+	svc := NewSessionServiceAdapter(store, "lango-orchestrator").
+		WithRootSessionObserver(func(sessionKey string) { roots = append(roots, sessionKey) }).
+		WithChildLifecycleHook(func(ev internal.SessionLifecycleEvent) { events = append(events, ev) }).
+		WithIsolatedAgents([]string{"operator"})
+
+	_, err := svc.Create(context.Background(), &session.CreateRequest{SessionID: "test-session"})
+	require.NoError(t, err)
+
+	adapter := NewSessionAdapter(sess, store, "lango-orchestrator")
+	require.NoError(t, svc.AppendEvent(context.Background(), adapter, newTestEvent("operator", "model", "sub-agent reply")))
+	require.NoError(t, svc.AppendEvent(context.Background(), adapter, newTestEvent("lango-orchestrator", "model", "merged back")))
+
+	require.Len(t, roots, 1)
+	require.Len(t, events, 2)
+	assert.Equal(t, "fork", events[0].Type)
+	assert.Equal(t, "merge", events[1].Type)
+}
+
+func TestAppendEvent_IsolatedAgentWritesToChildHistoryAndParentOverlay(t *testing.T) {
+	t.Parallel()
+
+	store := newMockStore()
+	sess := &internal.Session{
+		Key:       "test-session",
+		Metadata:  make(map[string]string),
+		CreatedAt: time.Now(),
+		UpdatedAt: time.Now(),
+	}
+	store.Create(sess)
+
+	adapter := NewSessionAdapter(sess, store, "lango-orchestrator")
+	svc := NewSessionServiceAdapter(store, "lango-orchestrator").
+		WithChildLifecycleHook(func(ev internal.SessionLifecycleEvent) {}).
+		WithIsolatedAgents([]string{"operator"})
+
+	require.NoError(t, svc.AppendEvent(context.Background(), adapter, newTestEvent("operator", "model", "isolated reply")))
+
+	require.Len(t, adapter.sess.History, 1)
+	assert.Equal(t, "isolated reply", adapter.sess.History[0].Content)
+	assert.Empty(t, store.messages["test-session"], "isolated raw events must not be persisted to parent store")
+	require.NotNil(t, svc.activeChild["test-session"])
+	require.Len(t, svc.activeChild["test-session"].child.History, 1)
+	assert.Equal(t, "isolated reply", svc.activeChild["test-session"].child.History[0].Content)
+}
+
+func TestAppendEvent_IsolatedAgentWithoutLifecycleHook_UsesChildStore(t *testing.T) {
+	t.Parallel()
+
+	store := newMockStore()
+	sess := &internal.Session{
+		Key:       "test-session",
+		Metadata:  make(map[string]string),
+		CreatedAt: time.Now(),
+		UpdatedAt: time.Now(),
+	}
+	store.Create(sess)
+
+	adapter := NewSessionAdapter(sess, store, "lango-orchestrator")
+	svc := NewSessionServiceAdapter(store, "lango-orchestrator").
+		WithIsolatedAgents([]string{"operator"})
+
+	require.NotNil(t, svc.childStore)
+	require.NoError(t, svc.AppendEvent(
+		context.Background(),
+		adapter,
+		newTestEvent("operator", "model", "isolated reply"),
+	))
+
+	assert.Empty(t, store.messages["test-session"], "raw isolated turns must not be persisted")
+	require.NotNil(t, svc.activeChild["test-session"])
+	require.Len(t, svc.activeChild["test-session"].child.History, 1)
+	assert.Equal(t, "isolated reply", svc.activeChild["test-session"].child.History[0].Content)
+}
+
+func TestCloseActiveChild_MergesSummaryAsRootAuthor(t *testing.T) {
+	t.Parallel()
+
+	store := newMockStore()
+	sess := &internal.Session{
+		Key:       "test-session",
+		Metadata:  make(map[string]string),
+		CreatedAt: time.Now(),
+		UpdatedAt: time.Now(),
+	}
+	store.Create(sess)
+
+	adapter := NewSessionAdapter(sess, store, "lango-orchestrator")
+	svc := NewSessionServiceAdapter(store, "lango-orchestrator").
+		WithChildLifecycleHook(func(ev internal.SessionLifecycleEvent) {}).
+		WithIsolatedAgents([]string{"operator"})
+
+	require.NoError(t, svc.AppendEvent(context.Background(), adapter, newTestEvent("operator", "model", "isolated reply")))
+	require.NoError(t, svc.CloseActiveChild("test-session"))
+
+	dbMsgs := store.messages["test-session"]
+	require.Len(t, dbMsgs, 1)
+	assert.Equal(t, "lango-orchestrator", dbMsgs[0].Author)
+	assert.Equal(t, "isolated reply", dbMsgs[0].Content)
+	require.Len(t, adapter.sess.History, 1)
+	assert.Equal(t, "lango-orchestrator", adapter.sess.History[0].Author)
+	assert.Equal(t, "isolated reply", adapter.sess.History[0].Content)
+	assert.Nil(t, svc.activeChild["test-session"])
+}
+
+func TestDiscardActiveChildWithReason_ReplacesOverlayWithFailureNote(t *testing.T) {
+	t.Parallel()
+
+	store := newMockStore()
+	sess := &internal.Session{
+		Key:       "test-session",
+		Metadata:  make(map[string]string),
+		CreatedAt: time.Now(),
+		UpdatedAt: time.Now(),
+	}
+	store.Create(sess)
+
+	adapter := NewSessionAdapter(sess, store, "lango-orchestrator")
+	svc := NewSessionServiceAdapter(store, "lango-orchestrator").
+		WithChildLifecycleHook(func(ev internal.SessionLifecycleEvent) {}).
+		WithIsolatedAgents([]string{"operator"})
+
+	require.NoError(t, svc.AppendEvent(context.Background(), adapter, newTestEvent("operator", "model", "[REJECT] nope")))
+	require.NoError(t, svc.DiscardActiveChildWithReason("test-session", "escalated without producing a result"))
+
+	dbMsgs := store.messages["test-session"]
+	require.Len(t, dbMsgs, 1)
+	assert.Equal(t, "lango-orchestrator", dbMsgs[0].Author)
+	assert.Equal(t, "[Isolated sub-agent operator discarded: escalated without producing a result. Raw child history discarded.]", dbMsgs[0].Content)
+	require.Len(t, adapter.sess.History, 1)
+	assert.Equal(t, dbMsgs[0].Content, adapter.sess.History[0].Content)
+	assert.Nil(t, svc.activeChild["test-session"])
+}
+
+func TestCleanupFailedTurn_DiscardsActiveChildAndPersistsCompactNote(t *testing.T) {
+	t.Parallel()
+
+	store := newMockStore()
+	sess := &internal.Session{
+		Key:       "test-session",
+		Metadata:  make(map[string]string),
+		CreatedAt: time.Now(),
+		UpdatedAt: time.Now(),
+	}
+	store.Create(sess)
+
+	adapter := NewSessionAdapter(sess, store, "lango-orchestrator")
+	svc := NewSessionServiceAdapter(store, "lango-orchestrator").
+		WithChildLifecycleHook(func(ev internal.SessionLifecycleEvent) {}).
+		WithIsolatedAgents([]string{"vault"})
+
+	require.NoError(t, svc.AppendEvent(context.Background(), adapter, newTestEvent("vault", "model", "isolated reply")))
+	require.NoError(t, svc.CleanupFailedTurn("test-session", "agent error"))
+
+	dbMsgs := store.messages["test-session"]
+	require.Len(t, dbMsgs, 1)
+	assert.Equal(t, "lango-orchestrator", dbMsgs[0].Author)
+	assert.Contains(t, dbMsgs[0].Content, "vault discarded: agent error")
+	require.Len(t, adapter.sess.History, 1)
+	assert.Equal(t, dbMsgs[0].Content, adapter.sess.History[0].Content)
+	assert.Nil(t, svc.activeChild["test-session"])
+}
+
+func TestCleanupFailedTurn_ClosesDanglingToolCalls(t *testing.T) {
+	t.Parallel()
+
+	store := newMockStore()
+	sess := &internal.Session{
+		Key:       "test-session",
+		Metadata:  make(map[string]string),
+		CreatedAt: time.Now(),
+		UpdatedAt: time.Now(),
+		History: []internal.Message{{
+			Role:      types.RoleAssistant,
+			Timestamp: time.Now(),
+			Author:    "lango-orchestrator",
+			ToolCalls: []internal.ToolCall{{
+				ID:    "call-balance",
+				Name:  "payment_balance",
+				Input: `{"wallet":"0xabc"}`,
+			}},
+		}},
+	}
+	store.Create(sess)
+
+	svc := NewSessionServiceAdapter(store, "lango-orchestrator")
+	require.NoError(t, svc.CleanupFailedTurn("test-session", ""))
+
+	dbMsgs := store.messages["test-session"]
+	require.Len(t, dbMsgs, 1)
+	assert.Equal(t, types.RoleTool, dbMsgs[0].Role)
+	assert.Equal(t, "lango-orchestrator", dbMsgs[0].Author, "synthetic tool response must preserve origin author")
+	assert.Equal(t, interruptedToolCallOutput, dbMsgs[0].Content)
+	require.Len(t, dbMsgs[0].ToolCalls, 1)
+	assert.Equal(t, "call-balance", dbMsgs[0].ToolCalls[0].ID)
+	assert.Equal(t, "payment_balance", dbMsgs[0].ToolCalls[0].Name)
+	assert.Equal(t, interruptedToolCallOutput, dbMsgs[0].ToolCalls[0].Output)
+	require.Len(t, sess.History, 2)
+	assert.Empty(t, danglingToolCalls(sess.History))
+}
+
+func TestCleanupFailedTurn_PreservesMultipleOriginAuthors(t *testing.T) {
+	t.Parallel()
+
+	store := newMockStore()
+	sess := &internal.Session{
+		Key:       "test-session",
+		Metadata:  make(map[string]string),
+		CreatedAt: time.Now(),
+		UpdatedAt: time.Now(),
+		History: []internal.Message{
+			{
+				Role:      types.RoleAssistant,
+				Timestamp: time.Now(),
+				Author:    "vault",
+				ToolCalls: []internal.ToolCall{{
+					ID:    "call-sign",
+					Name:  "crypto_sign",
+					Input: `{"data":"tx"}`,
+				}},
+			},
+			{
+				Role:      types.RoleAssistant,
+				Timestamp: time.Now(),
+				Author:    "operator",
+				ToolCalls: []internal.ToolCall{{
+					ID:    "call-exec",
+					Name:  "exec",
+					Input: `{"cmd":"ls"}`,
+				}},
+			},
+		},
+	}
+	store.Create(sess)
+
+	svc := NewSessionServiceAdapter(store, "lango-orchestrator")
+	require.NoError(t, svc.CleanupFailedTurn("test-session", ""))
+
+	dbMsgs := store.messages["test-session"]
+	require.Len(t, dbMsgs, 2, "one synthetic response per dangling call")
+	assert.Equal(t, "vault", dbMsgs[0].Author, "first closure must use vault's author")
+	assert.Equal(t, "call-sign", dbMsgs[0].ToolCalls[0].ID)
+	assert.Equal(t, "operator", dbMsgs[1].Author, "second closure must use operator's author")
+	assert.Equal(t, "call-exec", dbMsgs[1].ToolCalls[0].ID)
+	assert.Empty(t, danglingToolCalls(sess.History))
+}
+
+func TestAppendEvent_IsolatedFunctionResponseVisibleInParentEvents(t *testing.T) {
+	t.Parallel()
+
+	store := newMockStore()
+	sess := &internal.Session{
+		Key:       "test-session",
+		Metadata:  make(map[string]string),
+		CreatedAt: time.Now(),
+		UpdatedAt: time.Now(),
+	}
+	store.Create(sess)
+
+	adapter := NewSessionAdapter(sess, store, "lango-orchestrator")
+	svc := NewSessionServiceAdapter(store, "lango-orchestrator").
+		WithChildLifecycleHook(func(ev internal.SessionLifecycleEvent) {}).
+		WithIsolatedAgents([]string{"operator"})
+
+	callEvt := &session.Event{
+		Timestamp: time.Now(),
+		Author:    "operator",
+		LLMResponse: model.LLMResponse{
+			Content: &genai.Content{
+				Role: "model",
+				Parts: []*genai.Part{{
+					FunctionCall: &genai.FunctionCall{
+						ID:   "call-search-1",
+						Name: "browser_search",
+						Args: map[string]any{"query": "lango"},
+					},
+				}},
+			},
+		},
+	}
+	respEvt := &session.Event{
+		Timestamp: time.Now(),
+		Author:    "operator",
+		LLMResponse: model.LLMResponse{
+			Content: &genai.Content{
+				Role: "user",
+				Parts: []*genai.Part{{
+					FunctionResponse: &genai.FunctionResponse{
+						ID:       "call-search-1",
+						Name:     "browser_search",
+						Response: map[string]any{"result": "ok"},
+					},
+				}},
+			},
+		},
+	}
+
+	require.NoError(t, svc.AppendEvent(context.Background(), adapter, callEvt))
+	require.NoError(t, svc.AppendEvent(context.Background(), adapter, respEvt))
+
+	require.Len(t, adapter.sess.History, 2)
+	assert.Empty(t, store.messages["test-session"])
+
+	var restored []*session.Event
+	for evt := range adapter.Events().All() {
+		restored = append(restored, evt)
+	}
+	require.Len(t, restored, 2)
+	require.NotNil(t, restored[1].Content)
+	require.Len(t, restored[1].Content.Parts, 1)
+	require.NotNil(t, restored[1].Content.Parts[0].FunctionResponse)
+	assert.Equal(t, "call-search-1", restored[1].Content.Parts[0].FunctionResponse.ID)
+	assert.Equal(t, "browser_search", restored[1].Content.Parts[0].FunctionResponse.Name)
+}
+
+func TestAppendEvent_NonIsolatedAgentUsesParentHistory(t *testing.T) {
+	t.Parallel()
+
+	store := newMockStore()
+	sess := &internal.Session{
+		Key:       "test-session",
+		Metadata:  make(map[string]string),
+		CreatedAt: time.Now(),
+		UpdatedAt: time.Now(),
+	}
+	store.Create(sess)
+
+	adapter := NewSessionAdapter(sess, store, "lango-orchestrator")
+	svc := NewSessionServiceAdapter(store, "lango-orchestrator").
+		WithChildLifecycleHook(func(ev internal.SessionLifecycleEvent) {}).
+		WithIsolatedAgents([]string{"operator"})
+
+	require.NoError(t, svc.AppendEvent(context.Background(), adapter, newTestEvent("planner", "model", "non-isolated reply")))
+
+	require.Len(t, adapter.sess.History, 1)
+	assert.Equal(t, "non-isolated reply", adapter.sess.History[0].Content)
 }
 
 func TestAppendEvent_FunctionCallFallbackID(t *testing.T) {

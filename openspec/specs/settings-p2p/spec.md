@@ -15,6 +15,11 @@ The settings TUI SHALL provide a "P2P Network" menu category with a form exposin
 - **WHEN** user enters comma-separated multiaddrs in "Listen Addresses"
 - **THEN** the config's `p2p.listenAddrs` SHALL contain each address as a separate array element
 
+#### Scenario: User enables PQ handshake
+- **WHEN** user navigates to "P2P Network" and sets "Enable PQ Handshake" to true
+- **THEN** the config's `p2p.enablePqHandshake` field SHALL be set to true upon save
+- **AND** the default value SHALL be false (opt-in)
+
 ### Requirement: P2P ZKP settings form
 The settings TUI SHALL provide a "P2P ZKP" menu category with fields for proof cache directory, proving scheme (plonk/groth16), SRS mode (unsafe/file), SRS path, and max credential age.
 

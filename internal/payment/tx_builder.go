@@ -3,7 +3,7 @@ package payment
 import (
 	"context"
 	"fmt"
-	"log"
+	"github.com/langoai/lango/internal/logging"
 	"math/big"
 	"strings"
 
@@ -74,7 +74,7 @@ func (b *TxBuilder) BuildTransferTx(ctx context.Context, from common.Address, to
 
 	baseFee := header.BaseFee
 	if baseFee == nil {
-		log.Printf("WARNING: block header missing baseFee, using fallback %d wei", DefaultBaseFeeWei)
+		logging.SubsystemSugar("payment").Warnw("block header missing baseFee", "fallback", DefaultBaseFeeWei)
 		baseFee = big.NewInt(DefaultBaseFeeWei)
 	}
 

@@ -5,6 +5,8 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"strings"
+	"sync"
 	"time"
 
 	internal "github.com/langoai/lango/internal/session"
@@ -13,19 +15,74 @@ import (
 )
 
 type SessionServiceAdapter struct {
-	store         internal.Store
-	rootAgentName string
-	tokenBudget   int // 0 = use DefaultTokenBudget
+	store               internal.Store
+	rootAgentName       string
+	tokenBudget         int // 0 = use DefaultTokenBudget
+	rootSessionObserver func(string)
+	childStore          *internal.InMemoryChildStore
+	summarizer          Summarizer
+	isolatedAgents      map[string]bool
+	childMu             sync.Mutex
+	activeChild         map[string]*runtimeChild
+}
+
+type runtimeChild struct {
+	key         string
+	agent       string
+	child       *internal.ChildSession
+	parentID    string
+	parent      *SessionAdapter
+	baseHistory int
+	overlayLen  int
 }
 
 func NewSessionServiceAdapter(store internal.Store, rootAgentName string) *SessionServiceAdapter {
-	return &SessionServiceAdapter{store: store, rootAgentName: rootAgentName}
+	return &SessionServiceAdapter{
+		store:          store,
+		rootAgentName:  rootAgentName,
+		activeChild:    make(map[string]*runtimeChild),
+		summarizer:     &StructuredSummarizer{},
+		isolatedAgents: make(map[string]bool),
+	}
 }
 
 // WithTokenBudget sets the token budget for history truncation.
 // Use ModelTokenBudget(modelName) to derive an appropriate budget from the model name.
 func (s *SessionServiceAdapter) WithTokenBudget(budget int) *SessionServiceAdapter {
 	s.tokenBudget = budget
+	return s
+}
+
+// WithRootSessionObserver records root session creation events.
+func (s *SessionServiceAdapter) WithRootSessionObserver(fn func(string)) *SessionServiceAdapter {
+	s.rootSessionObserver = fn
+	return s
+}
+
+// WithChildLifecycleHook enables synthetic child-session lifecycle tracking.
+func (s *SessionServiceAdapter) WithChildLifecycleHook(h func(internal.SessionLifecycleEvent)) *SessionServiceAdapter {
+	if h == nil {
+		return s
+	}
+	if s.childStore == nil {
+		s.childStore = internal.NewInMemoryChildStore(s.store, internal.WithLifecycleHook(h))
+		return s
+	}
+	s.childStore.SetLifecycleHook(h)
+	return s
+}
+
+// WithIsolatedAgents marks the agent names that should write to child session history.
+func (s *SessionServiceAdapter) WithIsolatedAgents(names []string) *SessionServiceAdapter {
+	if s.childStore == nil {
+		s.childStore = internal.NewInMemoryChildStore(s.store)
+	}
+	s.isolatedAgents = make(map[string]bool, len(names))
+	for _, name := range names {
+		if strings.TrimSpace(name) != "" {
+			s.isolatedAgents[name] = true
+		}
+	}
 	return s
 }
 
@@ -54,12 +111,24 @@ func (s *SessionServiceAdapter) Create(ctx context.Context, req *session.CreateR
 	if err := s.store.Create(sess); err != nil {
 		return nil, err
 	}
+	if s.rootSessionObserver != nil {
+		s.rootSessionObserver(req.SessionID)
+	}
 
 	sa := NewSessionAdapter(sess, s.store, s.rootAgentName)
 	sa.tokenBudget = s.tokenBudget
 	return &session.CreateResponse{Session: sa}, nil
 }
 
+// Get retrieves a session by ID.
+//
+// CONTRACT DEVIATION: ADK's session.Service.Get() contract expects an error for
+// missing sessions. This implementation auto-creates missing sessions and
+// auto-renews expired sessions instead of returning an error. This is intentional
+// because lango's session lifecycle is self-managing — the caller should not need
+// to handle "not found" as a special case. The auto-create/renew behavior is
+// preserved for backward compatibility and must not be changed without updating
+// all callers.
 func (s *SessionServiceAdapter) Get(ctx context.Context, req *session.GetRequest) (*session.GetResponse, error) {
 	sess, err := s.store.Get(req.SessionID)
 	if err != nil {
@@ -79,6 +148,11 @@ func (s *SessionServiceAdapter) Get(ctx context.Context, req *session.GetRequest
 	}
 	if sess == nil {
 		return s.getOrCreate(ctx, req)
+	}
+	// Backfill provenance tree for sessions that existed before provenance was
+	// initialized or were created externally. The observer is idempotent.
+	if s.rootSessionObserver != nil {
+		s.rootSessionObserver(req.SessionID)
 	}
 	sa := NewSessionAdapter(sess, s.store, s.rootAgentName)
 	sa.tokenBudget = s.tokenBudget
@@ -119,50 +193,470 @@ func (s *SessionServiceAdapter) Delete(ctx context.Context, req *session.DeleteR
 }
 
 func (s *SessionServiceAdapter) AppendEvent(ctx context.Context, sess session.Session, evt *session.Event) error {
+	s.trackChildLifecycle(evt, sess)
+
 	// Map ADK event to internal message
+	msg, skip, err := eventToMessage(evt)
+	if err != nil {
+		return err
+	}
+	if skip {
+		// Event might be purely internal/state update without content?
+		// Ensure we don't save empty messages unless necessary.
+		if len(evt.Actions.StateDelta) > 0 {
+			// State update event.
+			// Adapt persisted metadata.
+			// Currently internal model stores state in Metadata.
+			// AppendEvent is for history.
+			// State updates are persistent via StateStoreAdapter.
+			// So we might skip appending "message" for pure state events if Lango history doesn't support them.
+			return nil
+		}
+	}
+	return s.appendMessage(sess, msg)
+}
+
+// CloseActiveChild merges any active synthetic child session for the parent session.
+func (s *SessionServiceAdapter) CloseActiveChild(sessionID string) error {
+	active := s.takeActiveChild(sessionID)
+	if active == nil {
+		return nil
+	}
+
+	s.rollbackOverlay(active)
+
+	summary, err := s.childSummary(active)
+	if err != nil {
+		return err
+	}
+	if err := s.childStore.MergeChildAsAuthor(active.key, summary, s.rootAgentName); err != nil {
+		return err
+	}
+	s.appendOutcomeToParentMemory(active, summary)
+	return nil
+}
+
+// DiscardActiveChild discards the current synthetic child session for the parent session.
+func (s *SessionServiceAdapter) DiscardActiveChild(sessionID string) error {
+	return s.discardActiveChild(sessionID, "")
+}
+
+// DiscardActiveChildWithReason discards the current synthetic child session and
+// leaves a compact root-authored note in the parent history.
+func (s *SessionServiceAdapter) DiscardActiveChildWithReason(sessionID, reason string) error {
+	return s.discardActiveChild(sessionID, reason)
+}
+
+// CleanupFailedTurn discards any active isolated child state and closes
+// dangling parent-visible tool calls before the session is retried or reused.
+func (s *SessionServiceAdapter) CleanupFailedTurn(sessionID, reason string) error {
+	var active *runtimeChild
+	if s.childStore != nil {
+		active = s.takeActiveChild(sessionID)
+		if active != nil {
+			s.rollbackOverlay(active)
+			if err := s.childStore.DiscardChild(active.key); err != nil {
+				return err
+			}
+		}
+	}
+
+	var parent *SessionAdapter
+	if active != nil {
+		parent = active.parent
+	}
+	if err := s.closeDanglingParentToolCalls(sessionID, parent); err != nil {
+		return err
+	}
+
+	if active != nil && strings.TrimSpace(reason) != "" {
+		if err := s.appendOutcomeToParent(active, formatDiscardNote(active.agent, reason)); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (s *SessionServiceAdapter) discardActiveChild(sessionID, reason string) error {
+	if s.childStore == nil {
+		return nil
+	}
+	active := s.takeActiveChild(sessionID)
+	if active == nil {
+		return nil
+	}
+
+	s.rollbackOverlay(active)
+	if err := s.childStore.DiscardChild(active.key); err != nil {
+		return err
+	}
+	if strings.TrimSpace(reason) != "" {
+		if err := s.appendOutcomeToParent(active, formatDiscardNote(active.agent, reason)); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (s *SessionServiceAdapter) trackChildLifecycle(evt *session.Event, sess session.Session) {
+	if s.childStore == nil || evt == nil {
+		return
+	}
+
+	sessionID := sess.ID()
+	parentAdapter, _ := sess.(*SessionAdapter)
+	author := evt.Author
+	if author == "" || author == "user" || author == s.rootAgentName || !s.isolatedAgents[author] {
+		_ = s.CloseActiveChild(sessionID)
+		return
+	}
+
+	s.childMu.Lock()
+	active := s.activeChild[sessionID]
+	s.childMu.Unlock()
+	if active != nil && active.agent == author {
+		if parentAdapter != nil {
+			s.bindParentOverlay(active, parentAdapter)
+		}
+		if evt.Actions.TransferToAgent == s.rootAgentName && !hasText(evt) && !hasFunctionCalls(evt) {
+			_ = s.DiscardActiveChildWithReason(sessionID, "escalated without producing a result")
+		}
+		return
+	}
+
+	_ = s.CloseActiveChild(sessionID)
+	s.forkChildSession(evt, sessionID, author, parentAdapter)
+}
+
+// forkChildSession creates a new synthetic child session for the given author
+// and registers it as the active child. If the event immediately transfers back
+// to the root agent without content, the child is discarded.
+func (s *SessionServiceAdapter) forkChildSession(evt *session.Event, sessionID, author string, parentAdapter *SessionAdapter) {
+	child, err := s.childStore.ForkChild(sessionID, author, internal.ChildSessionConfig{
+		SummarizeOnMerge: true,
+	})
+	if err != nil {
+		logger().Debugw("fork synthetic child session", "session", sessionID, "author", author, "error", err)
+		return
+	}
+
+	s.childMu.Lock()
+	baseHistory := 0
+	if parentAdapter != nil {
+		baseHistory = len(parentAdapter.sess.History)
+	}
+	s.activeChild[sessionID] = &runtimeChild{
+		key:         child.Key,
+		agent:       author,
+		child:       child,
+		parentID:    sessionID,
+		parent:      parentAdapter,
+		baseHistory: baseHistory,
+	}
+	s.childMu.Unlock()
+
+	if evt.Actions.TransferToAgent == s.rootAgentName && !hasText(evt) && !hasFunctionCalls(evt) {
+		_ = s.DiscardActiveChildWithReason(sessionID, "escalated without producing a result")
+	}
+}
+
+func (s *SessionServiceAdapter) appendMessage(sess session.Session, msg internal.Message) error {
+	targetID := sess.ID()
+	var parentAdapter *SessionAdapter
+	if sa, ok := sess.(*SessionAdapter); ok {
+		parentAdapter = sa
+	}
+
+	s.childMu.Lock()
+	active := s.activeChild[targetID]
+	if active != nil && s.isolatedAgents[msg.Author] {
+		if parentAdapter != nil {
+			s.bindParentOverlay(active, parentAdapter)
+		}
+		active.child.AppendMessage(msg)
+		if active.parent != nil {
+			active.parent.sess.History = append(active.parent.sess.History, msg)
+			active.overlayLen++
+		}
+		s.childMu.Unlock()
+		return nil
+	}
+	s.childMu.Unlock()
+
+	if err := s.store.AppendMessage(targetID, msg); err != nil {
+		return err
+	}
+	if parentAdapter != nil {
+		parentAdapter.sess.History = append(parentAdapter.sess.History, msg)
+	}
+	return nil
+}
+
+func (s *SessionServiceAdapter) takeActiveChild(sessionID string) *runtimeChild {
+	if s.childStore == nil {
+		return nil
+	}
+	s.childMu.Lock()
+	active := s.activeChild[sessionID]
+	if active != nil {
+		delete(s.activeChild, sessionID)
+	}
+	s.childMu.Unlock()
+	return active
+}
+
+func (s *SessionServiceAdapter) bindParentOverlay(active *runtimeChild, parent *SessionAdapter) {
+	if active == nil || parent == nil {
+		return
+	}
+	if active.parent == nil || active.overlayLen == 0 {
+		active.parent = parent
+		active.baseHistory = len(parent.sess.History)
+		return
+	}
+	if active.parent != parent {
+		logger().Warnw("isolated child overlay parent changed unexpectedly",
+			"session", active.parentID,
+			"agent", active.agent)
+	}
+}
+
+func (s *SessionServiceAdapter) rollbackOverlay(active *runtimeChild) {
+	if active == nil || active.parent == nil {
+		return
+	}
+	history := active.parent.sess.History
+	if active.baseHistory < 0 || active.baseHistory > len(history) {
+		logger().Warnw("isolated child overlay base out of range",
+			"session", active.parentID,
+			"agent", active.agent,
+			"base_history", active.baseHistory,
+			"history_len", len(history))
+		return
+	}
+	active.parent.sess.History = history[:active.baseHistory]
+	active.overlayLen = 0
+}
+
+func (s *SessionServiceAdapter) childSummary(active *runtimeChild) (string, error) {
+	if active == nil {
+		return "", nil
+	}
+	summary := ""
+	if s.summarizer != nil {
+		var err error
+		summary, err = s.summarizer.Summarize(active.child.History)
+		if err != nil {
+			return "", err
+		}
+	}
+	if strings.TrimSpace(summary) != "" {
+		return summary, nil
+	}
+	return fmt.Sprintf("[Isolated sub-agent %s ended without a visible assistant result: empty_after_tool_use.]", active.agent), nil
+}
+
+func (s *SessionServiceAdapter) appendOutcomeToParent(active *runtimeChild, content string) error {
+	if active == nil || strings.TrimSpace(content) == "" {
+		return nil
+	}
+	msg := internal.Message{
+		Role:      types.RoleAssistant,
+		Content:   content,
+		Timestamp: time.Now(),
+		Author:    s.rootAgentName,
+	}
+	if err := s.store.AppendMessage(active.parentID, msg); err != nil {
+		return err
+	}
+	if active.parent != nil {
+		active.parent.sess.History = append(active.parent.sess.History, msg)
+	}
+	return nil
+}
+
+func (s *SessionServiceAdapter) appendOutcomeToParentMemory(active *runtimeChild, content string) {
+	if active == nil || active.parent == nil || strings.TrimSpace(content) == "" {
+		return
+	}
+	active.parent.sess.History = append(active.parent.sess.History, internal.Message{
+		Role:      types.RoleAssistant,
+		Content:   content,
+		Timestamp: time.Now(),
+		Author:    s.rootAgentName,
+	})
+}
+
+func formatDiscardNote(agent, reason string) string {
+	reason = strings.TrimSpace(reason)
+	if reason == "" {
+		reason = "discarded"
+	}
+	return fmt.Sprintf("[Isolated sub-agent %s discarded: %s. Raw child history discarded.]", agent, reason)
+}
+
+const interruptedToolCallOutput = `{"error":"tool call was interrupted and did not complete"}`
+
+func (s *SessionServiceAdapter) closeDanglingParentToolCalls(sessionID string, parent *SessionAdapter) error {
+	if s.store == nil {
+		return nil
+	}
+
+	var history []internal.Message
+	var sess *internal.Session
+	if parent != nil {
+		history = append(history, parent.sess.History...)
+	} else {
+		var err error
+		sess, err = s.store.Get(sessionID)
+		if err != nil {
+			return err
+		}
+		if sess != nil {
+			history = append(history, sess.History...)
+		}
+	}
+
+	dangling := danglingToolCalls(history)
+	if len(dangling) == 0 {
+		return nil
+	}
+
+	// Diagnostic: log metadata only (no payload) to aid root-cause analysis.
+	authors := make([]string, 0, len(dangling))
+	callIDs := make([]string, 0, len(dangling))
+	for _, dc := range dangling {
+		authors = append(authors, dc.OriginAuthor)
+		callIDs = append(callIDs, dc.ID)
+	}
+	logger().Infow("closing dangling tool calls",
+		"session", sessionID,
+		"count", len(dangling),
+		"origin_authors", authors,
+		"call_ids", callIDs,
+		"history_length", len(history))
+
+	now := time.Now()
+	for _, tc := range dangling {
+		author := tc.OriginAuthor
+		if author == "" {
+			// Fallback: use rootAgentName to avoid "unknown agent" in ADK routing.
+			author = s.rootAgentName
+			if author == "" {
+				author = "lango-agent"
+			}
+			logger().Warnw("dangling tool call has empty origin author, using fallback",
+				"session", sessionID,
+				"call_id", tc.ID,
+				"call_name", tc.Name,
+				"fallback_author", author)
+		}
+		msg := internal.Message{
+			Role:      types.RoleTool,
+			Content:   interruptedToolCallOutput,
+			Timestamp: now,
+			Author:    author,
+			ToolCalls: []internal.ToolCall{{
+				ID:     tc.ID,
+				Name:   tc.Name,
+				Output: interruptedToolCallOutput,
+			}},
+		}
+		if err := s.store.AppendMessage(sessionID, msg); err != nil {
+			return err
+		}
+		if sess != nil {
+			sess.History = append(sess.History, msg)
+		}
+		if parent != nil {
+			parent.sess.History = append(parent.sess.History, msg)
+		}
+	}
+	return nil
+}
+
+// danglingCall pairs an unanswered tool call with the Author of the
+// assistant message that emitted it, so synthetic closures can preserve
+// the originating agent identity.
+type danglingCall struct {
+	internal.ToolCall
+	OriginAuthor string
+}
+
+func danglingToolCalls(history []internal.Message) []danglingCall {
+	type pending struct {
+		tc     internal.ToolCall
+		author string
+	}
+	m := make(map[string]pending)
+	order := make([]string, 0)
+
+	for _, msg := range history {
+		switch msg.Role {
+		case types.RoleAssistant, types.RoleModel:
+			for _, tc := range msg.ToolCalls {
+				if tc.Input == "" {
+					continue
+				}
+				id := tc.ID
+				if strings.TrimSpace(id) == "" {
+					id = "call_" + tc.Name
+				}
+				tc.ID = id
+				if _, exists := m[id]; !exists {
+					order = append(order, id)
+				}
+				m[id] = pending{tc: tc, author: msg.Author}
+			}
+		case types.RoleTool, types.RoleFunction:
+			for _, tc := range msg.ToolCalls {
+				if tc.Output == "" {
+					continue
+				}
+				id := tc.ID
+				if strings.TrimSpace(id) == "" {
+					id = "call_" + tc.Name
+				}
+				delete(m, id)
+			}
+		}
+	}
+
+	out := make([]danglingCall, 0, len(m))
+	for _, id := range order {
+		if p, ok := m[id]; ok {
+			out = append(out, danglingCall{ToolCall: p.tc, OriginAuthor: p.author})
+		}
+	}
+	return out
+}
+
+func eventToMessage(evt *session.Event) (internal.Message, bool, error) {
 	msg := internal.Message{
 		Timestamp: evt.Timestamp,
 	}
 
-	if evt.Content != nil {
-		msg.Role = types.MessageRole(evt.Content.Role).Normalize()
+	content := evt.Content
+	if content == nil && evt.Content != nil {
+		content = evt.Content
+	}
 
-		for _, p := range evt.Content.Parts {
+	if content != nil {
+		msg.Role = types.MessageRole(content.Role).Normalize()
+
+		for _, p := range content.Parts {
 			if p.Text != "" {
 				msg.Content += p.Text
 			}
 			if p.FunctionCall != nil {
-				argsBytes, _ := json.Marshal(p.FunctionCall.Args)
-				id := p.FunctionCall.ID
-				if id == "" {
-					id = "call_" + p.FunctionCall.Name
-				}
-				tc := internal.ToolCall{
-					Name:             p.FunctionCall.Name,
-					Input:            string(argsBytes),
-					ID:               id,
-					Thought:          p.Thought,
-					ThoughtSignature: p.ThoughtSignature,
-				}
-				msg.ToolCalls = append(msg.ToolCalls, tc)
+				msg.ToolCalls = append(msg.ToolCalls, functionCallToToolCall(p.FunctionCall, p))
 			}
 			if p.FunctionResponse != nil {
-				responseBytes, _ := json.Marshal(p.FunctionResponse.Response)
-				id := p.FunctionResponse.ID
-				if id == "" {
-					id = "call_" + p.FunctionResponse.Name
-				}
-				msg.ToolCalls = append(msg.ToolCalls, internal.ToolCall{
-					ID:     id,
-					Name:   p.FunctionResponse.Name,
-					Output: string(responseBytes),
-				})
-				msg.Content += string(responseBytes)
+				tc := functionResponseToToolCall(p.FunctionResponse)
+				msg.ToolCalls = append(msg.ToolCalls, tc)
+				msg.Content += tc.Output
 			}
 		}
-		// Override role for FunctionResponse-only messages.
-		// ADK stores FunctionResponse with Content.Role="user", but
-		// correct session reconstruction requires the "tool" role.
 		hasFuncResponse := false
 		hasFuncCall := false
 		for _, tc := range msg.ToolCalls {
@@ -176,18 +670,8 @@ func (s *SessionServiceAdapter) AppendEvent(ctx context.Context, sess session.Se
 		if hasFuncResponse && !hasFuncCall {
 			msg.Role = types.RoleTool
 		}
-	} else {
-		// Event might be purely internal/state update without content?
-		// Ensure we don't save empty messages unless necessary.
-		if len(evt.Actions.StateDelta) > 0 {
-			// State update event.
-			// Adapt persisted metadata.
-			// Currently internal model stores state in Metadata.
-			// AppendEvent is for history.
-			// State updates are persistent via StateStoreAdapter.
-			// So we might skip appending "message" for pure state events if Lango history doesn't support them.
-			return nil
-		}
+	} else if len(evt.Actions.StateDelta) > 0 {
+		return msg, true, nil
 	}
 
 	if msg.Role == "" {
@@ -196,19 +680,6 @@ func (s *SessionServiceAdapter) AppendEvent(ctx context.Context, sess session.Se
 			msg.Role = types.RoleUser
 		}
 	}
-
-	// Preserve the ADK author for multi-agent routing.
 	msg.Author = evt.Author
-
-	if err := s.store.AppendMessage(sess.ID(), msg); err != nil {
-		return err
-	}
-
-	// Update in-memory history so subsequent reads see the new event.
-	// The ADK runner reads events from the same session object after appending.
-	if sa, ok := sess.(*SessionAdapter); ok {
-		sa.sess.History = append(sa.sess.History, msg)
-	}
-
-	return nil
+	return msg, false, nil
 }

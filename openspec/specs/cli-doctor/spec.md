@@ -3,15 +3,11 @@
 Define the `lango doctor` diagnostic command that checks installation health, configuration validity, and service connectivity.
 ## Requirements
 ### Requirement: Doctor Command Entry Point
-The system SHALL provide a `lango doctor` command that runs diagnostic checks on the Lango installation and configuration.
+The system SHALL include RunLedger diagnostics in the `lango doctor` command output and help text.
 
-#### Scenario: Running doctor command
-- **WHEN** user executes `lango doctor`
-- **THEN** system runs all diagnostic checks and displays results in TUI format
-
-#### Scenario: Running doctor with JSON output
-- **WHEN** user executes `lango doctor --json`
-- **THEN** system outputs results as JSON to stdout without TUI formatting
+#### Scenario: Doctor help text mentions RunLedger
+- **WHEN** user runs `lango doctor --help`
+- **THEN** the long description SHALL include RunLedger configuration diagnostics among the check families
 
 ### Requirement: Verify all providers
 The command SHALL verify the status of every provider defined in the `providers` configuration map.
@@ -237,11 +233,11 @@ The system SHALL include an OutputScanningCheck in the doctor command that valid
 - **THEN** the check returns StatusSkip with message "Cannot verify (database encrypted)"
 
 ### Requirement: Doctor check registration
-The system SHALL register ObservationalMemoryCheck and OutputScanningCheck in the AllChecks() function so they are executed by the `lango doctor` command.
+The system SHALL register `RunLedgerCheck` in `checks.AllChecks()` so it is executed by `lango doctor`.
 
-#### Scenario: Doctor runs all checks
+#### Scenario: RunLedger check present in doctor execution
 - **WHEN** user runs `lango doctor`
-- **THEN** the output includes results for "Observational Memory" and "Output Scanning" checks
+- **THEN** the result set SHALL include a `RunLedger` check entry
 
 ### Requirement: Embedding doctor check uses unified resolver
 The embedding doctor check SHALL use `Config.ResolveEmbeddingProvider()` for validation instead of hardcoded provider type switch statements and name-based API key lookups.
@@ -420,4 +416,49 @@ The EconomyCheck, ContractCheck, and ObservabilityCheck SHALL be registered in t
 #### Scenario: Doctor runs economy, contract, and observability checks
 - **WHEN** user runs `lango doctor`
 - **THEN** the output includes results for "Economy Layer", "Smart Contracts", and "Observability" checks
+
+### Requirement: RunLedger diagnostic check
+The doctor command SHALL include a `RunLedgerCheck` that validates RunLedger-specific configuration invariants.
+
+#### Scenario: RunLedger disabled
+- **WHEN** `runLedger.enabled` is false
+- **THEN** the check SHALL return `StatusSkip`
+
+#### Scenario: Invalid stale TTL
+- **WHEN** `runLedger.enabled` is true
+- **AND** `runLedger.staleTtl <= 0`
+- **THEN** the check SHALL return `StatusFail`
+
+#### Scenario: Invalid validator timeout
+- **WHEN** `runLedger.enabled` is true
+- **AND** `runLedger.validatorTimeout <= 0`
+- **THEN** the check SHALL return `StatusFail`
+
+#### Scenario: Invalid history or retry values
+- **WHEN** `runLedger.maxRunHistory < 0` or `runLedger.plannerMaxRetries < 0`
+- **THEN** the check SHALL return `StatusFail`
+
+#### Scenario: Authoritative read without write-through
+- **WHEN** `runLedger.authoritativeRead` is true
+- **AND** `runLedger.writeThrough` is false
+- **THEN** the check SHALL return `StatusFail`
+
+#### Scenario: Valid RunLedger configuration
+- **WHEN** RunLedger is enabled and all invariants are satisfied
+- **THEN** the check SHALL return `StatusPass`
+
+### Requirement: Context Engineering doctor check
+`AllChecks()` SHALL include a `ContextHealthCheck` that reports aggregated context subsystem status. The check SHALL be registered before individual subsystem checks (Embedding, Graph, Memory, Librarian).
+
+#### Scenario: Balanced profile with silent disabled embedding
+- **WHEN** `contextProfile: balanced` is set AND embedding provider is not configured
+- **THEN** doctor check reports StatusWarn with message including "1 silently disabled" and suggestion to configure embedding provider
+
+#### Scenario: All context subsystems healthy
+- **WHEN** `contextProfile: full` is set AND all subsystems initialize successfully
+- **THEN** doctor check reports StatusPass with message summarizing active profile and enabled subsystem count
+
+#### Scenario: No profile set and nothing enabled
+- **WHEN** `contextProfile` is not set AND no context subsystems are enabled
+- **THEN** doctor check reports StatusSkip or StatusWarn suggesting user set a context profile
 

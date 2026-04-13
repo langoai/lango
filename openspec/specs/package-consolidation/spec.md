@@ -3,6 +3,10 @@
 ## Overview
 Merge three underused packages into their logical parent packages to improve codebase clarity.
 
+## Purpose
+
+Capability spec for package-consolidation. See requirements below for scope and behavior contracts.
+
 ## Requirements
 
 ### R1: ctxutil → types

@@ -34,12 +34,12 @@ func (s *stubTool) Description() string { return "stub " + s.name }
 func (s *stubTool) IsLongRunning() bool { return false }
 
 // stubAdapter is a ToolAdapter that returns a stubTool without real ADK wiring.
-func stubAdapter(t *agent.Tool) (adk_tool.Tool, error) {
+func stubAdapter(t *agent.Tool, agentName string) (adk_tool.Tool, error) {
 	return &stubTool{name: t.Name}, nil
 }
 
 // failingAdapter always returns an error.
-func failingAdapter(t *agent.Tool) (adk_tool.Tool, error) {
+func failingAdapter(t *agent.Tool, agentName string) (adk_tool.Tool, error) {
 	return nil, fmt.Errorf("adapter error for %s", t.Name)
 }
 
@@ -55,6 +55,7 @@ func TestPartitionTools(t *testing.T) {
 		wantLibrarian  []string
 		wantPlanner    []string
 		wantChronicler []string
+		wantOntologist []string
 		wantUnmatched  []string
 	}{
 		{
@@ -114,6 +115,15 @@ func TestPartitionTools(t *testing.T) {
 			wantChronicler: []string{"memory_store", "observe_event", "reflect_summary"},
 		},
 		{
+			name: "ontologist prefixes",
+			give: []*agent.Tool{
+				newTestTool("ontology_list_types"),
+				newTestTool("ontology_assert_fact"),
+				newTestTool("ontology_import_json"),
+			},
+			wantOntologist: []string{"ontology_list_types", "ontology_assert_fact", "ontology_import_json"},
+		},
+		{
 			name: "unmatched tools tracked separately",
 			give: []*agent.Tool{
 				newTestTool("custom_action"),
@@ -154,6 +164,7 @@ func TestPartitionTools(t *testing.T) {
 			assert.Equal(t, tt.wantLibrarian, toolNames(got.Librarian), "librarian tools")
 			assert.Equal(t, tt.wantPlanner, toolNames(got.Planner), "planner tools")
 			assert.Equal(t, tt.wantChronicler, toolNames(got.Chronicler), "chronicler tools")
+			assert.Equal(t, tt.wantOntologist, toolNames(got.Ontologist), "ontologist tools")
 			assert.Equal(t, tt.wantUnmatched, toolNames(got.Unmatched), "unmatched tools")
 		})
 	}
@@ -190,12 +201,13 @@ func TestBuildAgentTree_NilAdaptTool(t *testing.T) {
 
 func TestBuildAgentTree_Success(t *testing.T) {
 	tools := []*agent.Tool{
-		newTestTool("exec_shell"),     // operator
-		newTestTool("browser_open"),   // navigator
-		newTestTool("crypto_sign"),    // vault
-		newTestTool("search_web"),     // librarian
-		newTestTool("memory_store"),   // chronicler
-		newTestTool("custom_unknown"), // unmatched
+		newTestTool("exec_shell"),          // operator
+		newTestTool("browser_open"),        // navigator
+		newTestTool("crypto_sign"),         // vault
+		newTestTool("search_web"),          // librarian
+		newTestTool("memory_store"),        // chronicler
+		newTestTool("ontology_list_types"), // ontologist
+		newTestTool("custom_unknown"),      // unmatched
 	}
 
 	root, err := BuildAgentTree(Config{
@@ -208,8 +220,8 @@ func TestBuildAgentTree_Success(t *testing.T) {
 	require.NotNil(t, root)
 
 	assert.Equal(t, "lango-orchestrator", root.Name())
-	// operator, navigator, vault, librarian, planner (always), chronicler = 6
-	assert.Len(t, root.SubAgents(), 6, "orchestrator should have 6 sub-agents")
+	// operator, navigator, vault, librarian, planner (always), chronicler, ontologist = 7
+	assert.Len(t, root.SubAgents(), 7, "orchestrator should have 7 sub-agents")
 
 	subNames := make([]string, len(root.SubAgents()))
 	for i, sa := range root.SubAgents() {
@@ -221,6 +233,7 @@ func TestBuildAgentTree_Success(t *testing.T) {
 	assert.Contains(t, subNames, "librarian")
 	assert.Contains(t, subNames, "planner")
 	assert.Contains(t, subNames, "chronicler")
+	assert.Contains(t, subNames, "ontologist")
 }
 
 func TestBuildAgentTree_NoTools(t *testing.T) {
@@ -275,7 +288,7 @@ func TestBuildAgentTree_UnmatchedToolsNotAssigned(t *testing.T) {
 	}
 
 	var adaptedTools []string
-	trackingAdapter := func(tool *agent.Tool) (adk_tool.Tool, error) {
+	trackingAdapter := func(tool *agent.Tool, agentName string) (adk_tool.Tool, error) {
 		adaptedTools = append(adaptedTools, tool.Name)
 		return &stubTool{name: tool.Name}, nil
 	}
@@ -378,7 +391,7 @@ func TestBuildAgentTree_AdapterError(t *testing.T) {
 
 func TestBuildAgentTree_OrchestratorHasNoDirectTools(t *testing.T) {
 	var adaptedTools []string
-	trackingAdapter := func(tool *agent.Tool) (adk_tool.Tool, error) {
+	trackingAdapter := func(tool *agent.Tool, agentName string) (adk_tool.Tool, error) {
 		adaptedTools = append(adaptedTools, tool.Name)
 		return &stubTool{name: tool.Name}, nil
 	}
@@ -743,6 +756,42 @@ func TestBuildOrchestratorInstruction_HasAssessStep(t *testing.T) {
 	assert.Contains(t, got, "0. ASSESS")
 	assert.Contains(t, got, "simple conversational request")
 	assert.Contains(t, got, "respond directly")
+
+	// ASSESS direct-answer line must NOT list weather or general knowledge.
+	assessIdx := strings.Index(got, "0. ASSESS:")
+	require.Greater(t, assessIdx, 0)
+	// The direct-answer list is the parenthesized portion on the ASSESS line.
+	assessLine := got[assessIdx:]
+	parenOpen := strings.Index(assessLine, "(")
+	parenClose := strings.Index(assessLine, ")")
+	require.Greater(t, parenOpen, 0)
+	require.Greater(t, parenClose, parenOpen)
+	directAnswerList := assessLine[parenOpen : parenClose+1]
+	assert.NotContains(t, directAnswerList, "weather", "weather must not be in ASSESS direct-answer list")
+	assert.NotContains(t, directAnswerList, "general knowledge", "general knowledge must not be in ASSESS direct-answer list")
+
+	// ASSESS block must include the no-function-call guard.
+	phase1Idx := strings.Index(got[assessIdx:], "Phase 1")
+	assessBlock := got[assessIdx : assessIdx+phase1Idx]
+	assert.Contains(t, assessBlock, "MUST NOT emit any function calls")
+}
+
+func TestBuildOrchestratorInstruction_DelegationRulesNoWeather(t *testing.T) {
+	got := buildOrchestratorInstruction("base", nil, 5, nil)
+
+	// Delegation Rules section must NOT list weather or general knowledge.
+	rulesIdx := strings.Index(got, "## Delegation Rules")
+	require.Greater(t, rulesIdx, 0)
+	// Extract through the next section header.
+	nextSection := strings.Index(got[rulesIdx+1:], "\n## ")
+	var rulesBlock string
+	if nextSection > 0 {
+		rulesBlock = got[rulesIdx : rulesIdx+1+nextSection]
+	} else {
+		rulesBlock = got[rulesIdx:]
+	}
+	assert.NotContains(t, rulesBlock, "weather", "weather must not be in Delegation Rules direct-answer list")
+	assert.NotContains(t, rulesBlock, "general knowledge", "general knowledge must not be in Delegation Rules direct-answer list")
 }
 
 func TestBuildOrchestratorInstruction_HasAutomatedTaskHandling(t *testing.T) {
@@ -1224,21 +1273,46 @@ func TestBuildOrchestratorInstruction_NoPartialAnswerGuidance(t *testing.T) {
 func TestBuildOrchestratorInstruction_ToolCountInsteadOfNames(t *testing.T) {
 	entries := []routingEntry{
 		{
-			Name:      "operator",
-			Keywords:  []string{"run"},
-			ToolNames: []string{"exec_shell", "fs_read", "fs_write"},
-			Accepts:   "command",
+			Name:              "operator",
+			Keywords:          []string{"run"},
+			ToolCount:         3,
+			CapabilitySummary: "command execution, file operations",
+			Accepts:           "command",
+			Returns:           "output",
+		},
+	}
+
+	got := buildOrchestratorInstruction("base", entries, 5, nil)
+
+	// Should contain capability summary with tool count.
+	assert.Contains(t, got, "Capabilities (3 tools)")
+	assert.Contains(t, got, "command execution, file operations")
+	// Should NOT list individual tool names in routing table.
+	assert.NotContains(t, got, "**Tools**: exec_shell")
+}
+
+func TestBuildOrchestratorInstruction_ToolCountWithoutSummary(t *testing.T) {
+	entries := []routingEntry{
+		{
+			Name:      "custom",
+			Keywords:  []string{"custom"},
+			ToolCount: 2,
+			Accepts:   "input",
 			Returns:   "output",
 		},
 	}
 
 	got := buildOrchestratorInstruction("base", entries, 5, nil)
 
-	// Should contain tool count, not individual tool names.
-	assert.Contains(t, got, "Tool count")
-	assert.Contains(t, got, "3")
-	// Should NOT list individual tool names in routing table.
-	assert.NotContains(t, got, "**Tools**: exec_shell")
+	// Without CapabilitySummary, should fall back to plain tool count.
+	assert.Contains(t, got, "**Tool count**: 2")
+}
+
+func TestBuildOrchestratorInstruction_BuiltinSearchInstruction(t *testing.T) {
+	got := buildOrchestratorInstruction("base", nil, 5, nil)
+
+	assert.Contains(t, got, "Tool Discovery")
+	assert.Contains(t, got, "Use builtin_search to find specific tools by name or capability.")
 }
 
 // --- Output Handling in sub-agent instructions ---

@@ -1,5 +1,45 @@
 # Core Commands
 
+## lango
+
+Run `lango` without arguments to launch the multi-panel TUI cockpit. This is the default entry point and is equivalent to `lango cockpit`.
+
+```bash
+$ lango
+```
+
+Only core components (session store, embedding, knowledge) are started. Network and automation components (gateway, channels, cron, MCP, P2P) are not active in TUI mode.
+
+---
+
+## lango cockpit
+
+Launch the multi-panel TUI dashboard explicitly. Same behavior as bare `lango`. The cockpit provides:
+
+- Multi-page layout with Chat, Tools, Status, Sessions, and Settings pages
+- Transcript viewport with assistant markdown reflow on resize
+- Clear visual separation between user, assistant, status, and approval transcript blocks
+- Dedicated turn status strip for ready/streaming/approval/failure states
+- Inline tool approval interrupts (`a` allow / `s` allow session / `d` deny)
+- Slash commands (`/help`, `/clear`, `/model`, `/status`, `/exit`)
+- Key bindings: `Enter` send, `Alt+Enter` newline, `Ctrl+C` cancel/quit, `Ctrl+D` quit
+
+```bash
+$ lango cockpit
+```
+
+---
+
+## lango chat
+
+Launch the plain chat TUI. A simpler, transcript-first experience without the multi-panel cockpit layout. Suitable for quick interactions that don't require the full dashboard.
+
+```bash
+$ lango chat
+```
+
+---
+
 ## lango serve
 
 Start the gateway server. This boots the full application stack including all enabled channels, tools, embedding, graph, cron, and workflow engines.
@@ -15,7 +55,7 @@ The server reads configuration from the active encrypted profile and starts:
 - All configured channel adapters (Telegram, Discord, Slack)
 - Background systems (cron scheduler, workflow engine) if enabled
 
-Graceful shutdown is handled via `SIGINT` or `SIGTERM` with a 10-second timeout.
+Graceful shutdown is handled via `SIGINT` or `SIGTERM` with a 10-second timeout. If shutdown is already in progress, a second `Ctrl+C` forces immediate exit with code `130`.
 
 **Example:**
 
@@ -122,14 +162,15 @@ lango settings [--profile <name>]
 |------|------|---------|-------------|
 | `--profile` | string | `default` | Profile name to edit |
 
-The settings editor uses a TUI menu interface where you can navigate through categories and edit individual values. Categories are organized into groups:
+The settings editor uses a TUI menu interface where you can navigate through categories and edit individual values. Categories are organized into sections:
 
-- **Core:** Providers, Agent, Server, Session
-- **Communication:** Channels, Tools, Multi-Agent, A2A Protocol
-- **AI & Knowledge:** Knowledge, Skill, Observational Memory, Embedding & RAG, Graph Store, Librarian
-- **Infrastructure:** Payment, Cron Scheduler, Background Tasks, Workflow Engine
-- **P2P Network:** P2P Network, P2P ZKP, P2P Pricing, P2P Owner Protection, P2P Sandbox
-- **Security:** Security, Auth, Security DB Encryption, Security KMS
+- **Core:** Providers, Agent, Channels, Tools, Server, Session, Logging, Gatekeeper, Output Manager
+- **AI & Knowledge:** Context Profile, Knowledge, Skill, Observational Memory, Embedding & RAG, Graph Store, Librarian, Retrieval, Auto-Adjust, Context Budget, Agent Memory, Multi-Agent, A2A Protocol, Hooks, Ontology
+- **Automation:** Cron Scheduler, Background Tasks, Workflow Engine, RunLedger, Provenance
+- **Payment & Account:** Payment, Smart Account, SA Session Keys, SA Paymaster, SA Modules
+- **P2P & Economy:** P2P Network, P2P Workspace, P2P ZKP, P2P Pricing, P2P Owner Protection, P2P Sandbox, Economy, Risk, Negotiation, Escrow, On-Chain Escrow, Pricing
+- **Integrations:** MCP Settings, MCP Server List, Observability, Alerting
+- **Security:** Security, Auth, Security DB Encryption, Security KMS, OS Sandbox
 
 Press `/` to search across all categories by keyword.
 
@@ -153,7 +194,7 @@ lango doctor [--fix] [--json]
 | `--fix` | bool | `false` | Attempt to automatically fix issues |
 | `--json` | bool | `false` | Output results as JSON |
 
-**Checks performed (20 total):**
+**Checks performed include:**
 
 - Configuration profile validity
 - AI provider configuration and API keys
@@ -168,10 +209,15 @@ lango doctor [--fix] [--json]
 - Embedding / RAG provider and model setup
 - Graph store configuration
 - Multi-agent orchestration settings
+- Recent multi-agent turn traces (`loop_detected`, `empty_after_tool_use`, `timeout`)
+- Persisted isolated-turn leak detection
 - A2A protocol connectivity
+- RunLedger configuration invariants
 - Tool hooks configuration
 - Agent registry health
 - Librarian status
+- Retrieval coordinator and auto-adjust settings
+- Context budget allocation ratio validation
 - Approval system status
 - Economy layer configuration
 - Contract configuration
@@ -190,8 +236,51 @@ $ lango doctor --fix
 $ lango doctor --json
 ```
 
+When multi-agent runtime failures exist, `--json` now includes structured trace metadata such as `traceFailures[].traceId`, `outcome`, `errorCode`, `causeClass`, and `summary`, plus `isolationLeakCount` when applicable.
+
 !!! tip
-    Run `lango doctor` after `lango onboard` to verify your setup is correct. If issues are found, the `--fix` flag can resolve common problems automatically.
+    Run `lango doctor` after `lango onboard` to verify your setup is correct. In multi-agent mode, `doctor` also reports recent failed turn traces and whether isolated specialist turns have leaked into persisted parent history.
+
+---
+
+## lango agent trace
+
+Inspect turn traces for diagnostics.
+
+```bash
+# List recent failed traces
+$ lango agent trace list
+
+# Filter by outcome
+$ lango agent trace list --outcome timeout --limit 10
+
+# Filter by session
+$ lango agent trace list --session tui-123456
+
+# View detailed event timeline for a trace
+$ lango agent trace abc-123-def
+
+# JSON output
+$ lango agent trace list --json
+```
+
+## lango agent graph
+
+Show the delegation graph for a session, displaying which agents were involved and handoff edges.
+
+```bash
+$ lango agent graph <session-key>
+$ lango agent graph tui-123456 --json
+```
+
+## lango agent trace metrics
+
+Display trace-derived per-agent performance metrics (success rate, turn count, duration percentiles). Distinct from `lango metrics agents` which shows token usage.
+
+```bash
+$ lango agent trace metrics
+$ lango agent trace metrics --agent operator --json
+```
 
 ---
 

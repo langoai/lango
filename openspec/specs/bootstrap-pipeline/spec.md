@@ -1,47 +1,20 @@
 ## Purpose
 
-Phase-based bootstrap with sequential execution and reverse-order cleanup on failure.
+Capability spec for bootstrap-pipeline. See requirements below for scope and behavior contracts.
 
 ## Requirements
 
-### Requirement: Phase-based pipeline
-The bootstrap system SHALL execute phases sequentially using a Pipeline with Phase structs containing Name, Run, and optional Cleanup functions.
+### Requirement: Pipeline Execute returns Result with phase timing
+The `Pipeline.Execute()` method SHALL record the wall-clock duration of each phase and populate `Result.PhaseTiming` with one `PhaseTimingEntry` per completed phase. Each entry SHALL contain the phase name and elapsed duration. A structured log line with `duration_ms` SHALL be emitted after each phase completes.
 
 #### Scenario: All phases succeed
-- **WHEN** all phases complete without error
-- **THEN** Pipeline.Execute SHALL return the Result from State
+- **WHEN** `Execute()` runs a pipeline with 3 phases that all succeed
+- **THEN** `Result.PhaseTiming` contains 3 entries with non-negative durations matching phase names
 
-### Requirement: Reverse cleanup on failure
-If a phase fails, the Pipeline SHALL call Cleanup functions of all previously completed phases in reverse order.
+#### Scenario: A phase fails midway
+- **WHEN** the second of 3 phases fails
+- **THEN** `Execute()` returns an error and cleanup runs; no timing data is returned (error path)
 
-#### Scenario: Phase 4 fails after phases 1-3 complete
-- **WHEN** phase 4 returns an error
-- **THEN** cleanup SHALL run for phases 3, 2, 1 in that order (if they have Cleanup functions)
-
-### Requirement: State passes data between phases
-The Pipeline SHALL use a State struct to carry data between phases, including Options, Result, and intermediate values.
-
-#### Scenario: Database handle passes from open to security phase
-- **WHEN** phaseOpenDatabase sets Client on State
-- **THEN** phaseLoadSecurityState SHALL read Client from State
-
-### Requirement: Default bootstrap phases
-The system SHALL provide DefaultPhases() returning the 7-phase bootstrap sequence: ensureDataDir, detectEncryption, acquirePassphrase, openDatabase, loadSecurityState, initCrypto, loadProfile.
-
-#### Scenario: Run uses default phases
-- **WHEN** bootstrap.Run(opts) is called
-- **THEN** it SHALL create a Pipeline with DefaultPhases and execute it
-
-#### Scenario: Data directory writability verified
-- **WHEN** phaseEnsureDataDir creates `~/.lango/`
-- **THEN** it SHALL write a probe file (`.write-test`) to verify writability
-- **AND** it SHALL remove the probe file immediately after verification
-- **AND** if the directory is not writable, it SHALL return an error including the current UID
-
-#### Scenario: Skills directory pre-created
-- **WHEN** phaseEnsureDataDir completes successfully
-- **THEN** `~/.lango/skills/` SHALL exist with the same permission mode as the parent data directory
-
-#### Scenario: Consistent permission mode
-- **WHEN** phaseEnsureDataDir or openDatabase create directories
-- **THEN** they SHALL use the `dataDirPerm` constant (0700)
+#### Scenario: Structured log output per phase
+- **WHEN** a phase named "openDB" completes in 42ms
+- **THEN** a log line is emitted with fields `phase=openDB` and `duration_ms=42`

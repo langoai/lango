@@ -3,6 +3,10 @@
 ## Overview
 Comprehensive test suite covering core business logic, security tools, and existing package enhancements for the Lango project.
 
+## Purpose
+
+Capability spec for test-coverage. See requirements below for scope and behavior contracts.
+
 ## Requirements
 
 ### REQ-1: Knowledge Package Tests

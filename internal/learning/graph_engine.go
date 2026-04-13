@@ -6,6 +6,7 @@ import (
 
 	"go.uber.org/zap"
 
+	"github.com/langoai/lango/internal/eventbus"
 	"github.com/langoai/lango/internal/graph"
 	"github.com/langoai/lango/internal/knowledge"
 )
@@ -20,10 +21,10 @@ var _ ToolResultObserver = (*GraphEngine)(nil)
 // and confidence propagation across similar learnings.
 type GraphEngine struct {
 	*Engine
-	graphStore    graph.Store
-	graphCallback GraphCallback
-	propagation   float64 // confidence propagation rate (0.0-1.0)
-	logger        *zap.SugaredLogger
+	graphStore  graph.Store
+	bus         *eventbus.Bus // Optional event bus for publishing triple events.
+	propagation float64       // confidence propagation rate (0.0-1.0)
+	logger      *zap.SugaredLogger
 }
 
 // NewGraphEngine creates a graph-enhanced learning engine.
@@ -36,9 +37,31 @@ func NewGraphEngine(store *knowledge.Store, graphStore graph.Store, logger *zap.
 	}
 }
 
-// SetGraphCallback sets the asynchronous graph update hook.
-func (e *GraphEngine) SetGraphCallback(cb GraphCallback) {
-	e.graphCallback = cb
+// SetEventBus sets the optional event bus for publishing triple events.
+func (e *GraphEngine) SetEventBus(bus *eventbus.Bus) {
+	e.bus = bus
+}
+
+// publishTriples publishes a TriplesExtractedEvent if the bus is configured.
+func (e *GraphEngine) publishTriples(triples []graph.Triple) {
+	if e.bus == nil {
+		return
+	}
+	ebTriples := make([]eventbus.Triple, len(triples))
+	for i, t := range triples {
+		ebTriples[i] = eventbus.Triple{
+			Subject:     t.Subject,
+			Predicate:   t.Predicate,
+			Object:      t.Object,
+			SubjectType: t.SubjectType,
+			ObjectType:  t.ObjectType,
+			Metadata:    t.Metadata,
+		}
+	}
+	e.bus.Publish(eventbus.TriplesExtractedEvent{
+		Triples: ebTriples,
+		Source:   "learning",
+	})
 }
 
 // OnToolResult observes a tool execution result, records learnings,
@@ -64,14 +87,18 @@ func (e *GraphEngine) recordErrorGraph(ctx context.Context, sessionKey, toolName
 
 	triples := []graph.Triple{
 		{
-			Subject:   errorNode,
-			Predicate: graph.CausedBy,
-			Object:    toolNode,
+			Subject:     errorNode,
+			SubjectType: "ErrorPattern",
+			Predicate:   graph.CausedBy,
+			Object:      toolNode,
+			ObjectType:  "Tool",
 		},
 		{
-			Subject:   errorNode,
-			Predicate: graph.InSession,
-			Object:    sessionNode,
+			Subject:     errorNode,
+			SubjectType: "ErrorPattern",
+			Predicate:   graph.InSession,
+			Object:      sessionNode,
+			ObjectType:  "Session",
 		},
 	}
 
@@ -86,9 +113,11 @@ func (e *GraphEngine) recordErrorGraph(ctx context.Context, sessionKey, toolName
 					if entity.ErrorPattern != "" && entity.ErrorPattern != pattern {
 						similarNode := fmt.Sprintf("error:%s", sanitizeForNode(entity.ErrorPattern))
 						triples = append(triples, graph.Triple{
-							Subject:   errorNode,
-							Predicate: graph.SimilarTo,
-							Object:    similarNode,
+							Subject:     errorNode,
+							SubjectType: "ErrorPattern",
+							Predicate:   graph.SimilarTo,
+							Object:      similarNode,
+							ObjectType:  "ErrorPattern",
 						})
 					}
 				}
@@ -96,8 +125,8 @@ func (e *GraphEngine) recordErrorGraph(ctx context.Context, sessionKey, toolName
 		}
 	}
 
-	if e.graphCallback != nil {
-		e.graphCallback(triples)
+	if e.bus != nil {
+		e.publishTriples(triples)
 	} else if e.graphStore != nil {
 		if addErr := e.graphStore.AddTriples(ctx, triples); addErr != nil {
 			e.logger.Warnw("add error graph triples", "error", addErr)
@@ -156,19 +185,23 @@ func (e *GraphEngine) RecordFix(ctx context.Context, errorPattern, fix, sessionK
 
 	triples := []graph.Triple{
 		{
-			Subject:   errorNode,
-			Predicate: graph.ResolvedBy,
-			Object:    fixNode,
+			Subject:     errorNode,
+			SubjectType: "ErrorPattern",
+			Predicate:   graph.ResolvedBy,
+			Object:      fixNode,
+			ObjectType:  "Fix",
 		},
 		{
-			Subject:   fixNode,
-			Predicate: graph.LearnedFrom,
-			Object:    sessionNode,
+			Subject:     fixNode,
+			SubjectType: "Fix",
+			Predicate:   graph.LearnedFrom,
+			Object:      sessionNode,
+			ObjectType:  "Session",
 		},
 	}
 
-	if e.graphCallback != nil {
-		e.graphCallback(triples)
+	if e.bus != nil {
+		e.publishTriples(triples)
 	} else if e.graphStore != nil {
 		if addErr := e.graphStore.AddTriples(ctx, triples); addErr != nil {
 			e.logger.Warnw("add fix graph triples", "error", addErr)

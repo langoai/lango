@@ -1,8 +1,11 @@
 package mcp
 
 import (
+	"context"
+	"errors"
 	"fmt"
 	"net/http"
+	"os/exec"
 	"testing"
 	"time"
 
@@ -10,6 +13,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/langoai/lango/internal/config"
+	sandboxos "github.com/langoai/lango/internal/sandbox/os"
 )
 
 func TestToolNameFormat(t *testing.T) {
@@ -296,6 +300,16 @@ func TestServerManager_AllPrompts_Empty(t *testing.T) {
 	assert.Empty(t, mgr.AllPrompts())
 }
 
+// stubRoundTripper records the last request without performing any I/O.
+type stubRoundTripper struct {
+	lastReq *http.Request
+}
+
+func (s *stubRoundTripper) RoundTrip(req *http.Request) (*http.Response, error) {
+	s.lastReq = req
+	return &http.Response{StatusCode: 200, Body: http.NoBody, Request: req}, nil
+}
+
 func TestHeaderRoundTripper(t *testing.T) {
 	t.Parallel()
 
@@ -303,19 +317,134 @@ func TestHeaderRoundTripper(t *testing.T) {
 		"Authorization": "Bearer test-token",
 		"X-Custom":      "custom-value",
 	}
+	stub := &stubRoundTripper{}
 	rt := &headerRoundTripper{
-		base:    http.DefaultTransport,
+		base:    stub,
 		headers: headers,
 	}
 
-	// Build a request that goes to a non-routable address so it fails,
-	// but we can still verify headers were set before the transport call.
-	req, err := http.NewRequest("GET", "http://192.0.2.1:1/test", nil)
+	req, err := http.NewRequest("GET", "http://example.invalid/test", nil)
 	require.NoError(t, err)
 
-	// The RoundTrip will fail (connection refused), but headers should be set.
-	_, _ = rt.RoundTrip(req)
+	_, err = rt.RoundTrip(req)
+	require.NoError(t, err)
 
-	assert.Equal(t, "Bearer test-token", req.Header.Get("Authorization"))
-	assert.Equal(t, "custom-value", req.Header.Get("X-Custom"))
+	assert.Equal(t, "Bearer test-token", stub.lastReq.Header.Get("Authorization"))
+	assert.Equal(t, "custom-value", stub.lastReq.Header.Get("X-Custom"))
 }
+
+// mockIsolator is a test double for sandboxos.OSIsolator.
+type mockIsolator struct {
+	err error
+}
+
+func (m *mockIsolator) Apply(_ context.Context, _ *exec.Cmd, _ sandboxos.Policy) error {
+	return m.err
+}
+
+func (m *mockIsolator) Available() bool { return m.err == nil }
+func (m *mockIsolator) Name() string    { return "mock" }
+func (m *mockIsolator) Reason() string  { return "" }
+
+func TestServerConnection_FailClosed_NilIsolator_Stdio(t *testing.T) {
+	t.Parallel()
+
+	conn := NewServerConnection("secure-server",
+		config.MCPServerConfig{Transport: "stdio", Command: "echo"},
+		config.MCPConfig{},
+	)
+	conn.SetFailClosed(true)
+
+	_, err := conn.createTransport()
+	require.Error(t, err)
+	assert.ErrorIs(t, err, sandboxos.ErrSandboxRequired)
+	assert.Contains(t, err.Error(), "secure-server")
+}
+
+func TestServerConnection_FailClosed_ApplyError_Stdio(t *testing.T) {
+	t.Parallel()
+
+	conn := NewServerConnection("apply-fail",
+		config.MCPServerConfig{Transport: "stdio", Command: "echo"},
+		config.MCPConfig{},
+	)
+	conn.SetFailClosed(true)
+	conn.SetOSIsolator(&mockIsolator{err: errors.New("landlock unsupported")}, "", "")
+
+	_, err := conn.createTransport()
+	require.Error(t, err)
+	assert.ErrorIs(t, err, sandboxos.ErrSandboxRequired)
+	assert.Contains(t, err.Error(), "apply-fail")
+	assert.Contains(t, err.Error(), "landlock unsupported")
+}
+
+func TestServerConnection_FailOpen_ApplyError(t *testing.T) {
+	t.Parallel()
+
+	conn := NewServerConnection("lenient-server",
+		config.MCPServerConfig{Transport: "stdio", Command: "echo"},
+		config.MCPConfig{},
+	)
+	conn.SetOSIsolator(&mockIsolator{err: errors.New("not supported")}, "", "")
+
+	transport, err := conn.createTransport()
+	assert.NoError(t, err)
+	assert.NotNil(t, transport)
+}
+
+func TestServerConnection_FailClosed_Http(t *testing.T) {
+	t.Parallel()
+
+	conn := NewServerConnection("http-server",
+		config.MCPServerConfig{Transport: "http", URL: "http://localhost:8080"},
+		config.MCPConfig{},
+	)
+	conn.SetFailClosed(true)
+
+	transport, err := conn.createTransport()
+	assert.NoError(t, err)
+	assert.NotNil(t, transport)
+}
+
+func TestServerManager_SetFailClosed_Propagates(t *testing.T) {
+	t.Parallel()
+
+	mgr := NewServerManager(config.MCPConfig{
+		Servers: map[string]config.MCPServerConfig{
+			"s1": {Transport: "stdio", Command: "echo", Enabled: boolPtr(true)},
+			"s2": {Transport: "stdio", Command: "echo", Enabled: boolPtr(true)},
+		},
+	})
+
+	// Manually add connections (without connecting to a real server).
+	c1 := NewServerConnection("s1",
+		config.MCPServerConfig{Transport: "stdio", Command: "echo"},
+		config.MCPConfig{},
+	)
+	c2 := NewServerConnection("s2",
+		config.MCPServerConfig{Transport: "stdio", Command: "echo"},
+		config.MCPConfig{},
+	)
+
+	mgr.mu.Lock()
+	mgr.servers["s1"] = c1
+	mgr.servers["s2"] = c2
+	mgr.mu.Unlock()
+
+	mgr.SetFailClosed(true)
+
+	// Both connections should now have failClosed=true.
+	c1.mu.RLock()
+	assert.True(t, c1.failClosed)
+	c1.mu.RUnlock()
+
+	c2.mu.RLock()
+	assert.True(t, c2.failClosed)
+	c2.mu.RUnlock()
+
+	// Verify transport creation is blocked for stdio.
+	_, err := c1.createTransport()
+	assert.ErrorIs(t, err, sandboxos.ErrSandboxRequired)
+}
+
+func boolPtr(b bool) *bool { return &b }

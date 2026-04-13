@@ -18,12 +18,13 @@ The system SHALL provide a `lango agent status` command that displays agent mode
 ### Requirement: Performance fields in agent status
 `lango agent status` SHALL display MaxTurns, ErrorCorrectionEnabled, and MaxDelegationRounds (multi-agent only) with their effective values (config or default).
 
-#### Scenario: Default values displayed
-- **WHEN** user runs `lango agent status` with no performance config
-- **THEN** output SHALL show Max Turns: 25, Error Correction: true
+#### Scenario: Default values displayed in single-agent mode
+- **WHEN** user runs `lango agent status` with no performance config and `agent.multiAgent: false`
+- **THEN** output SHALL show Max Turns: 50, Error Correction: true
 
-#### Scenario: Multi-agent delegation rounds
-- **WHEN** user runs `lango agent status` with `agent.multiAgent: true`
+#### Scenario: Default values displayed in multi-agent mode
+- **WHEN** user runs `lango agent status` with no performance config and `agent.multiAgent: true`
+- **THEN** output SHALL show Max Turns: 75, Error Correction: true
 - **THEN** output SHALL include Delegation Rounds field
 
 #### Scenario: JSON output includes new fields
@@ -35,7 +36,7 @@ The `lango agent list` command SHALL load agents from the dynamic agent registry
 
 #### Scenario: List shows embedded agents
 - **WHEN** `lango agent list` is run with no user-defined agents
-- **THEN** it SHALL display the 7 default agents with source "embedded"
+- **THEN** it SHALL display the 8 default agents with source "embedded"
 
 #### Scenario: List shows user-defined agents
 - **WHEN** user-defined agents exist in the configured agents directory

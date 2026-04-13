@@ -29,6 +29,10 @@ type Knowledge struct {
 	Tags []string `json:"tags,omitempty"`
 	// Source holds the value of the "source" field.
 	Source string `json:"source,omitempty"`
+	// Version holds the value of the "version" field.
+	Version int `json:"version,omitempty"`
+	// IsLatest holds the value of the "is_latest" field.
+	IsLatest bool `json:"is_latest,omitempty"`
 	// UseCount holds the value of the "use_count" field.
 	UseCount int `json:"use_count,omitempty"`
 	// RelevanceScore holds the value of the "relevance_score" field.
@@ -47,9 +51,11 @@ func (*Knowledge) scanValues(columns []string) ([]any, error) {
 		switch columns[i] {
 		case knowledge.FieldTags:
 			values[i] = new([]byte)
+		case knowledge.FieldIsLatest:
+			values[i] = new(sql.NullBool)
 		case knowledge.FieldRelevanceScore:
 			values[i] = new(sql.NullFloat64)
-		case knowledge.FieldUseCount:
+		case knowledge.FieldVersion, knowledge.FieldUseCount:
 			values[i] = new(sql.NullInt64)
 		case knowledge.FieldKey, knowledge.FieldCategory, knowledge.FieldContent, knowledge.FieldSource:
 			values[i] = new(sql.NullString)
@@ -109,6 +115,18 @@ func (_m *Knowledge) assignValues(columns []string, values []any) error {
 				return fmt.Errorf("unexpected type %T for field source", values[i])
 			} else if value.Valid {
 				_m.Source = value.String
+			}
+		case knowledge.FieldVersion:
+			if value, ok := values[i].(*sql.NullInt64); !ok {
+				return fmt.Errorf("unexpected type %T for field version", values[i])
+			} else if value.Valid {
+				_m.Version = int(value.Int64)
+			}
+		case knowledge.FieldIsLatest:
+			if value, ok := values[i].(*sql.NullBool); !ok {
+				return fmt.Errorf("unexpected type %T for field is_latest", values[i])
+			} else if value.Valid {
+				_m.IsLatest = value.Bool
 			}
 		case knowledge.FieldUseCount:
 			if value, ok := values[i].(*sql.NullInt64); !ok {
@@ -184,6 +202,12 @@ func (_m *Knowledge) String() string {
 	builder.WriteString(", ")
 	builder.WriteString("source=")
 	builder.WriteString(_m.Source)
+	builder.WriteString(", ")
+	builder.WriteString("version=")
+	builder.WriteString(fmt.Sprintf("%v", _m.Version))
+	builder.WriteString(", ")
+	builder.WriteString("is_latest=")
+	builder.WriteString(fmt.Sprintf("%v", _m.IsLatest))
 	builder.WriteString(", ")
 	builder.WriteString("use_count=")
 	builder.WriteString(fmt.Sprintf("%v", _m.UseCount))

@@ -1,4 +1,8 @@
-## ADDED Requirements
+## Purpose
+
+Capability spec for system-feedback. See requirements below for scope and behavior contracts.
+
+## Requirements
 
 ### Requirement: Non-blocking startup security
 The system SHALL prioritize environment-based security credentials (LANGO_PASSPHRASE) over interactive prompts to ensure automated and remote startups are not blocked.

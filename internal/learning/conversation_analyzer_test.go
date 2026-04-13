@@ -10,7 +10,7 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/langoai/lango/internal/ent/enttest"
-	"github.com/langoai/lango/internal/graph"
+	"github.com/langoai/lango/internal/eventbus"
 	"github.com/langoai/lango/internal/knowledge"
 	"github.com/langoai/lango/internal/session"
 	_ "github.com/mattn/go-sqlite3"
@@ -139,11 +139,14 @@ func TestConversationAnalyzer_GraphCallback(t *testing.T) {
 	responseJSON, _ := json.Marshal(results)
 	gen := &fakeTextGenerator{response: string(responseJSON)}
 
-	var callbackTriples []graph.Triple
-	analyzer := NewConversationAnalyzer(gen, store, logger)
-	analyzer.SetGraphCallback(func(triples []graph.Triple) {
-		callbackTriples = append(callbackTriples, triples...)
+	bus := eventbus.New()
+	var callbackTriples []eventbus.Triple
+	eventbus.SubscribeTyped(bus, func(evt eventbus.TriplesExtractedEvent) {
+		callbackTriples = append(callbackTriples, evt.Triples...)
 	})
+
+	analyzer := NewConversationAnalyzer(gen, store, logger)
+	analyzer.SetEventBus(bus)
 
 	msgs := []session.Message{
 		{Role: "user", Content: "Service A depends on Service B"},
@@ -152,6 +155,6 @@ func TestConversationAnalyzer_GraphCallback(t *testing.T) {
 	ctx := context.Background()
 	require.NoError(t, analyzer.Analyze(ctx, "test", msgs))
 
-	require.NotEmpty(t, callbackTriples, "expected graph callback to receive triples")
+	require.NotEmpty(t, callbackTriples, "expected event bus to receive triples")
 	assert.Equal(t, "service:A", callbackTriples[0].Subject)
 }

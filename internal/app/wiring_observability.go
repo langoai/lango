@@ -1,7 +1,10 @@
 package app
 
 import (
+	"context"
+
 	"github.com/langoai/lango/internal/adk"
+	"github.com/langoai/lango/internal/alerting"
 	"github.com/langoai/lango/internal/config"
 	"github.com/langoai/lango/internal/ent"
 	"github.com/langoai/lango/internal/eventbus"
@@ -17,6 +20,8 @@ type observabilityComponents struct {
 	healthRegistry *health.Registry
 	tracker        *token.Tracker
 	tokenStore     *token.EntTokenStore
+	promExporter   *observability.PrometheusExporter
+	tracerShutdown func(context.Context) error
 }
 
 // initObservability creates observability components if enabled.
@@ -64,7 +69,13 @@ func initObservability(cfg *config.Config, dbClient *ent.Client, bus *eventbus.B
 		logger().Info("observability: token tracker subscribed to event bus")
 	}
 
-	// 5. Subscribe to ToolExecutedEvent for tool metrics + error logging
+	// 5. Subscribe to PolicyDecisionEvent for policy metrics
+	eventbus.SubscribeTyped[eventbus.PolicyDecisionEvent](bus, func(evt eventbus.PolicyDecisionEvent) {
+		oc.collector.RecordPolicyDecision(evt.Verdict, evt.Reason)
+	})
+	logger().Info("observability: policy decision metrics wired")
+
+	// 6. Subscribe to ToolExecutedEvent for tool metrics + error logging
 	eventbus.SubscribeTyped[toolchain.ToolExecutedEvent](bus, func(evt toolchain.ToolExecutedEvent) {
 		oc.collector.RecordToolExecution(evt.ToolName, evt.AgentName, evt.Duration, evt.Success)
 		if !evt.Success && evt.Error != "" {
@@ -78,6 +89,43 @@ func initObservability(cfg *config.Config, dbClient *ent.Client, bus *eventbus.B
 		}
 	})
 	logger().Info("observability: tool execution metrics wired")
+
+	// 6b. OpenTelemetry tracing
+	if cfg.Observability.Tracing.Enabled {
+		_, shutdown, err := observability.InitTracer(cfg.Observability.Tracing)
+		if err != nil {
+			logger().Warnw("tracing initialization failed", "error", err)
+		} else {
+			oc.tracerShutdown = shutdown
+			logger().Infow("observability: tracing initialized", "exporter", cfg.Observability.Tracing.Exporter)
+		}
+	}
+
+	// 6c. Prometheus exporter — event-driven metric registration
+	if cfg.Observability.Metrics.Format == "prometheus" {
+		oc.promExporter = observability.NewPrometheusExporter()
+		oc.promExporter.SetCollector(oc.collector)
+		oc.promExporter.Subscribe(bus)
+		logger().Info("observability: Prometheus exporter wired")
+	}
+
+	// 7. Alerting dispatcher — threshold-based operational alerts
+	if cfg.Alerting.Enabled {
+		if !cfg.Observability.Audit.Enabled {
+			logger().Warnw("alerting enabled but audit logging is disabled; alerts will not be persisted — enable observability.audit for alert history")
+		}
+		dispatcher := alerting.NewDispatcher(bus, cfg.Alerting.PolicyBlockRate, cfg.Alerting.RecoveryRetries)
+		dispatcher.Subscribe(bus)
+		logger().Info("observability: alerting dispatcher wired",
+			"policyBlockRate", cfg.Alerting.PolicyBlockRate,
+			"recoveryRetries", cfg.Alerting.RecoveryRetries)
+
+		// 7b. External alert delivery channels (webhook, etc.)
+		if len(cfg.Alerting.Delivery) > 0 {
+			alerting.NewDeliveryRouter(bus, cfg.Alerting.Delivery)
+			logger().Infow("observability: alert delivery router wired", "channels", len(cfg.Alerting.Delivery))
+		}
+	}
 
 	return oc
 }

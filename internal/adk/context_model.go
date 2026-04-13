@@ -4,7 +4,7 @@ import (
 	"context"
 	"fmt"
 	"iter"
-	"strings"
+	"time"
 
 	"go.uber.org/zap"
 	"golang.org/x/sync/errgroup"
@@ -12,11 +12,14 @@ import (
 	"google.golang.org/genai"
 
 	"github.com/langoai/lango/internal/embedding"
+	"github.com/langoai/lango/internal/eventbus"
 	"github.com/langoai/lango/internal/graph"
 	"github.com/langoai/lango/internal/knowledge"
 	"github.com/langoai/lango/internal/memory"
 	"github.com/langoai/lango/internal/prompt"
+	"github.com/langoai/lango/internal/retrieval"
 	"github.com/langoai/lango/internal/session"
+	"github.com/langoai/lango/internal/types"
 )
 
 // MemoryProvider retrieves observations and reflections for a session.
@@ -27,22 +30,42 @@ type MemoryProvider interface {
 	ListRecentObservations(ctx context.Context, sessionKey string, limit int) ([]memory.Observation, error)
 }
 
+// RunSummaryProvider retrieves active RunLedger summaries for a session.
+type RunSummaryProvider interface {
+	ListRunSummaries(ctx context.Context, sessionKey string, limit int) ([]RunSummaryContext, error)
+	MaxJournalSeqForSession(ctx context.Context, sessionKey string) (int64, error)
+}
+
+// RunSummaryContext is the compact command-context view injected from RunLedger.
+type RunSummaryContext struct {
+	RunID          string
+	Goal           string
+	Status         string
+	CurrentStep    string
+	CurrentBlocker string
+}
+
 // ContextAwareModelAdapter wraps a ModelAdapter with context retrieval.
 // Before each LLM call, it retrieves relevant knowledge and injects it
 // into the system instruction.
 type ContextAwareModelAdapter struct {
-	inner             *ModelAdapter
-	retriever         *knowledge.ContextRetriever
-	memoryProvider    MemoryProvider
-	ragService        *embedding.RAGService
-	ragOpts           embedding.RetrieveOptions
-	graphRAG          *graph.GraphRAGService
-	runtimeAdapter    *RuntimeContextAdapter
-	basePrompt        string
-	maxReflections    int
-	maxObservations   int
-	memoryTokenBudget int // max tokens for the memory section; 0 = default (4000)
-	logger            *zap.SugaredLogger
+	inner              *ModelAdapter
+	retriever          *knowledge.ContextRetriever
+	memoryProvider     MemoryProvider
+	ragService         *embedding.RAGService
+	ragOpts            embedding.RetrieveOptions
+	graphRAG           *graph.GraphRAGService
+	coordinator        *retrieval.RetrievalCoordinator
+	runtimeAdapter     *RuntimeContextAdapter
+	runSummaryProvider RunSummaryProvider
+	runSummaryCache    *runSummaryCache
+	basePrompt         string
+	maxReflections     int
+	maxObservations    int
+	memoryTokenBudget  int // max tokens for the memory section; 0 = default (4000)
+	budgetManager      *ContextBudgetManager
+	bus                *eventbus.Bus
+	logger             *zap.SugaredLogger
 }
 
 // NewContextAwareModelAdapter creates a context-aware model adapter.
@@ -59,6 +82,9 @@ func NewContextAwareModelAdapter(
 		retriever:  retriever,
 		basePrompt: builder.Build(),
 		logger:     logger,
+		runSummaryCache: &runSummaryCache{
+			entries: make(map[string]summaryCacheEntry),
+		},
 	}
 }
 
@@ -76,6 +102,12 @@ func (m *ContextAwareModelAdapter) WithRuntimeAdapter(adapter *RuntimeContextAda
 	return m
 }
 
+// WithRunSummaryProvider adds RunLedger command-context injection support.
+func (m *ContextAwareModelAdapter) WithRunSummaryProvider(provider RunSummaryProvider) *ContextAwareModelAdapter {
+	m.runSummaryProvider = provider
+	return m
+}
+
 // WithRAG adds RAG (retrieval-augmented generation) support.
 func (m *ContextAwareModelAdapter) WithRAG(svc *embedding.RAGService, opts embedding.RetrieveOptions) *ContextAwareModelAdapter {
 	m.ragService = svc
@@ -87,6 +119,14 @@ func (m *ContextAwareModelAdapter) WithRAG(svc *embedding.RAGService, opts embed
 // is performed on vector search results to discover structurally connected context.
 func (m *ContextAwareModelAdapter) WithGraphRAG(svc *graph.GraphRAGService) *ContextAwareModelAdapter {
 	m.graphRAG = svc
+	return m
+}
+
+// WithCoordinator adds the agentic retrieval coordinator for factual layer retrieval.
+// When set, the coordinator runs in Phase 1 alongside the retriever (non-factual layers)
+// and their results are merged before context assembly.
+func (m *ContextAwareModelAdapter) WithCoordinator(c *retrieval.RetrievalCoordinator) *ContextAwareModelAdapter {
+	m.coordinator = c
 	return m
 }
 
@@ -104,6 +144,20 @@ func (m *ContextAwareModelAdapter) WithMemoryLimits(maxReflections, maxObservati
 // Zero means use default (4000 tokens).
 func (m *ContextAwareModelAdapter) WithMemoryTokenBudget(budget int) *ContextAwareModelAdapter {
 	m.memoryTokenBudget = budget
+	return m
+}
+
+// WithBudgetManager sets the context budget manager for per-section token allocation.
+// When set, GenerateContent computes per-section budgets and truncates content to fit.
+func (m *ContextAwareModelAdapter) WithBudgetManager(bm *ContextBudgetManager) *ContextAwareModelAdapter {
+	m.budgetManager = bm
+	return m
+}
+
+// WithEventBus sets the event bus for context injection observability.
+// When set, GenerateContent publishes a ContextInjectedEvent after context assembly.
+func (m *ContextAwareModelAdapter) WithEventBus(bus *eventbus.Bus) *ContextAwareModelAdapter {
+	m.bus = bus
 	return m
 }
 
@@ -126,20 +180,28 @@ func (m *ContextAwareModelAdapter) GenerateContent(ctx context.Context, req *mod
 
 	userQuery := extractLastUserMessage(req.Contents)
 
-	var knowledgeSection, ragSection, memorySection string
+	// ──────────────────────────────────────────────────────────
+	// Phase 1: Retrieve all section data in parallel (no truncation).
+	//   - Retriever: non-factual layers (RuntimeContext, ToolRegistry, SkillPatterns, PendingInquiries)
+	//   - Coordinator: factual layers (UserKnowledge, AgentLearnings, ExternalKnowledge)
+	// ──────────────────────────────────────────────────────────
+	var knowledgeResult *knowledge.RetrievalResult
+	var coordinatorResult *knowledge.RetrievalResult
+	var ragResults []embedding.RAGResult
+	var graphRAGResult *graph.GraphRAGResult
+	var reflections []memory.Reflection
+	var observations []memory.Observation
+	var runSummaries []RunSummaryContext
 
 	g, gCtx := errgroup.WithContext(ctx)
 
-	// Knowledge retrieval
 	if userQuery != "" && m.retriever != nil {
 		g.Go(func() error {
 			layers := []knowledge.ContextLayer{
 				knowledge.LayerRuntimeContext,
 				knowledge.LayerToolRegistry,
-				knowledge.LayerUserKnowledge,
 				knowledge.LayerSkillPatterns,
-				knowledge.LayerExternalKnowledge,
-				knowledge.LayerAgentLearnings,
+				knowledge.LayerPendingInquiries,
 			}
 			retrieved, err := m.retriever.Retrieve(gCtx, knowledge.RetrievalRequest{
 				Query:  userQuery,
@@ -148,36 +210,99 @@ func (m *ContextAwareModelAdapter) GenerateContent(ctx context.Context, req *mod
 			if err != nil {
 				m.logger.Warnw("context retrieval error", "error", err)
 			} else if retrieved != nil && retrieved.TotalItems > 0 {
-				knowledgeSection = m.retriever.AssemblePrompt("", retrieved)
+				knowledgeResult = retrieved
 			}
 			return nil
 		})
 	}
 
-	// RAG/GraphRAG retrieval
+	if userQuery != "" && m.coordinator != nil {
+		g.Go(func() error {
+			findings, err := m.coordinator.Retrieve(gCtx, userQuery, 0)
+			if err != nil {
+				m.logger.Warnw("coordinator retrieval error", "error", err)
+				return nil
+			}
+			coordinatorResult = retrieval.ToRetrievalResult(findings)
+			return nil
+		})
+	}
+
 	if userQuery != "" {
 		if m.graphRAG != nil {
 			g.Go(func() error {
-				ragSection = m.assembleGraphRAGSection(gCtx, userQuery, sessionKey)
+				graphRAGResult = m.retrieveGraphRAGData(gCtx, userQuery, sessionKey)
 				return nil
 			})
 		} else if m.ragService != nil {
 			g.Go(func() error {
-				ragSection = m.assembleRAGSection(gCtx, userQuery, sessionKey)
+				ragResults = m.retrieveRAGData(gCtx, userQuery, sessionKey)
 				return nil
 			})
 		}
 	}
 
-	// Memory retrieval
 	if m.memoryProvider != nil && sessionKey != "" {
 		g.Go(func() error {
-			memorySection = m.assembleMemorySection(gCtx, sessionKey)
+			reflections, observations = m.retrieveMemoryData(gCtx, sessionKey)
+			return nil
+		})
+	}
+
+	if m.runSummaryProvider != nil && sessionKey != "" {
+		g.Go(func() error {
+			runSummaries = m.retrieveRunSummaryData(gCtx, sessionKey)
 			return nil
 		})
 	}
 
 	_ = g.Wait()
+
+	// Merge retriever (non-factual) and coordinator (factual) results.
+	knowledgeResult = mergeRetrievalResults(knowledgeResult, coordinatorResult)
+
+	// ──────────────────────────────────────────────────────────
+	// Phase 2: Measure actual content → Reallocate budgets.
+	// ──────────────────────────────────────────────────────────
+	measured := SectionTokens{
+		Knowledge:  estimateKnowledgeTokens(knowledgeResult),
+		RAG:        estimateRAGResultTokens(ragResults, graphRAGResult),
+		Memory:     estimateMemoryTokens(reflections, observations),
+		RunSummary: estimateRunSummaryTokens(runSummaries),
+	}
+
+	var budgets SectionBudgets
+	if m.budgetManager != nil {
+		budgets = m.budgetManager.ReallocateBudgets(measured)
+		if budgets.Degraded {
+			m.logger.Warnw("context budget degraded to unlimited — model window too small for base prompt",
+				"modelWindow", m.budgetManager.ModelWindow())
+		}
+	}
+
+	// ──────────────────────────────────────────────────────────
+	// Phase 3: Truncate + Format each section with reallocated budgets.
+	// ──────────────────────────────────────────────────────────
+	var knowledgeSection, ragSection, memorySection, runSummarySection string
+
+	if knowledgeResult != nil {
+		knowledgeResult = knowledge.TruncateResult(knowledgeResult, budgets.Knowledge)
+		knowledgeSection = m.retriever.AssemblePrompt("", knowledgeResult)
+	}
+
+	if graphRAGResult != nil {
+		ragSection = m.formatGraphRAGSection(graphRAGResult, budgets.RAG)
+	} else if len(ragResults) > 0 {
+		ragSection = formatRAGSection(ragResults, budgets.RAG)
+	}
+
+	if len(reflections) > 0 || len(observations) > 0 {
+		memorySection = m.formatMemorySection(reflections, observations, budgets.Memory)
+	}
+
+	if len(runSummaries) > 0 {
+		runSummarySection = formatRunSummarySection(runSummaries, budgets.RunSummary)
+	}
 
 	// Combine sections
 	if knowledgeSection != "" {
@@ -188,6 +313,29 @@ func (m *ContextAwareModelAdapter) GenerateContent(ctx context.Context, req *mod
 	}
 	if memorySection != "" {
 		prompt = fmt.Sprintf("%s\n\n%s", prompt, memorySection)
+	}
+	if runSummarySection != "" {
+		prompt = fmt.Sprintf("%s\n\n%s", prompt, runSummarySection)
+	}
+
+	// Publish context injection event for observability.
+	if m.bus != nil {
+		knowledgeTokens := types.EstimateTokens(knowledgeSection)
+		ragTokens := types.EstimateTokens(ragSection)
+		memoryTokens := types.EstimateTokens(memorySection)
+		runSummaryTokens := types.EstimateTokens(runSummarySection)
+		m.bus.Publish(eventbus.ContextInjectedEvent{
+			TurnID:           session.TurnIDFromContext(ctx),
+			SessionKey:       sessionKey,
+			Query:            userQuery,
+			Items:            buildContextInjectedItems(knowledgeResult),
+			KnowledgeTokens:  knowledgeTokens,
+			RAGTokens:        ragTokens,
+			MemoryTokens:     memoryTokens,
+			RunSummaryTokens: runSummaryTokens,
+			TotalTokens:      knowledgeTokens + ragTokens + memoryTokens + runSummaryTokens,
+			Timestamp:        time.Now(),
+		})
 	}
 
 	// Set the augmented system instruction
@@ -203,139 +351,105 @@ func (m *ContextAwareModelAdapter) GenerateContent(ctx context.Context, req *mod
 	return m.inner.GenerateContent(ctx, req, stream)
 }
 
-// defaultMemoryTokenBudget is the default token budget for the memory section.
-const defaultMemoryTokenBudget = 4000
-
-// assembleMemorySection builds the "Conversation Memory" section from observations and reflections.
-// It enforces a token budget: reflections are included first (higher information density),
-// then observations fill the remaining budget.
-func (m *ContextAwareModelAdapter) assembleMemorySection(ctx context.Context, sessionKey string) string {
-	var reflections []memory.Reflection
-	var observations []memory.Observation
-	var err error
-
-	if m.maxReflections > 0 {
-		reflections, err = m.memoryProvider.ListRecentReflections(ctx, sessionKey, m.maxReflections)
-	} else {
-		reflections, err = m.memoryProvider.ListReflections(ctx, sessionKey)
+// buildContextInjectedItems converts knowledge RetrievalResult items into event items.
+// Only knowledge items are included — RAG/memory/runSummary are opaque sections.
+func buildContextInjectedItems(retrieved *knowledge.RetrievalResult) []eventbus.ContextInjectedItem {
+	if retrieved == nil {
+		return nil
 	}
-	if err != nil {
-		m.logger.Warnw("memory reflection retrieval error", "error", err)
-	}
-
-	if m.maxObservations > 0 {
-		observations, err = m.memoryProvider.ListRecentObservations(ctx, sessionKey, m.maxObservations)
-	} else {
-		observations, err = m.memoryProvider.ListObservations(ctx, sessionKey)
-	}
-	if err != nil {
-		m.logger.Warnw("memory observation retrieval error", "error", err)
-	}
-
-	if len(reflections) == 0 && len(observations) == 0 {
-		return ""
-	}
-
-	budget := m.memoryTokenBudget
-	if budget <= 0 {
-		budget = defaultMemoryTokenBudget
-	}
-
-	var b strings.Builder
-	currentTokens := 0
-
-	b.WriteString("## Conversation Memory\n")
-
-	// Reflections first — higher information density from compressed summaries.
-	if len(reflections) > 0 {
-		b.WriteString("\n### Summary\n")
-		for _, ref := range reflections {
-			t := memory.EstimateTokens(ref.Content)
-			if currentTokens+t > budget {
-				break
-			}
-			b.WriteString(ref.Content)
-			b.WriteString("\n")
-			currentTokens += t
+	var items []eventbus.ContextInjectedItem
+	for layer, ctxItems := range retrieved.Items {
+		for _, item := range ctxItems {
+			items = append(items, eventbus.ContextInjectedItem{
+				Layer:         layer.String(),
+				Key:           item.Key,
+				Score:         item.Score,
+				Source:        item.Source,
+				Category:      item.Category,
+				TokenEstimate: types.EstimateTokens(item.Content),
+			})
 		}
 	}
-
-	// Observations fill remaining budget.
-	if len(observations) > 0 && currentTokens < budget {
-		b.WriteString("\n### Recent Observations\n")
-		for _, obs := range observations {
-			t := memory.EstimateTokens(obs.Content)
-			if currentTokens+t > budget {
-				break
-			}
-			b.WriteString("- ")
-			b.WriteString(obs.Content)
-			b.WriteString("\n")
-			currentTokens += t
-		}
-	}
-
-	return b.String()
+	return items
 }
 
-// assembleGraphRAGSection builds a combined section from vector search + graph expansion.
-func (m *ContextAwareModelAdapter) assembleGraphRAGSection(ctx context.Context, query, sessionKey string) string {
-	opts := graph.VectorRetrieveOptions{
-		Collections: m.ragOpts.Collections,
-		Limit:       m.ragOpts.Limit,
-		SessionKey:  m.ragOpts.SessionKey,
-		MaxDistance: m.ragOpts.MaxDistance,
-	}
-	if sessionKey != "" {
-		opts.SessionKey = sessionKey
-	}
-	result, err := m.graphRAG.Retrieve(ctx, query, opts)
-	if err != nil {
-		m.logger.Warnw("graph rag retrieval error", "error", err)
-		return ""
-	}
-	return m.graphRAG.AssembleSection(result)
-}
+// ──────────────────────────────────────────────────────────
+// Token estimation helpers for pre-assembly measurement.
+// ──────────────────────────────────────────────────────────
 
-// assembleRAGSection builds a "Semantic Context" section from RAG retrieval results.
-func (m *ContextAwareModelAdapter) assembleRAGSection(ctx context.Context, query, sessionKey string) string {
-	opts := m.ragOpts
-	if sessionKey != "" {
-		opts.SessionKey = sessionKey
+func estimateKnowledgeTokens(result *knowledge.RetrievalResult) int {
+	if result == nil {
+		return 0
 	}
-	results, err := m.ragService.Retrieve(ctx, query, opts)
-	if err != nil {
-		m.logger.Warnw("rag retrieval error", "error", err)
-		return ""
-	}
-	if len(results) == 0 {
-		return ""
-	}
-
-	var b strings.Builder
-	b.WriteString("## Semantic Context (RAG)\n")
-	for _, r := range results {
-		if r.Content == "" {
-			continue
-		}
-		fmt.Fprintf(&b, "\n### [%s] %s\n", r.Collection, r.SourceID)
-		b.WriteString(r.Content)
-		b.WriteString("\n")
-	}
-	return b.String()
-}
-
-// extractLastUserMessage finds the last user message from the content history.
-func extractLastUserMessage(contents []*genai.Content) string {
-	for i := len(contents) - 1; i >= 0; i-- {
-		c := contents[i]
-		if c.Role == "user" {
-			for _, p := range c.Parts {
-				if p.Text != "" {
-					return p.Text
-				}
-			}
+	total := 0
+	for _, items := range result.Items {
+		for _, item := range items {
+			total += types.EstimateTokens(item.Content) + 20 // header overhead per item
 		}
 	}
-	return ""
+	return total
+}
+
+func estimateRAGResultTokens(ragResults []embedding.RAGResult, graphResult *graph.GraphRAGResult) int {
+	total := 0
+	if len(ragResults) > 0 {
+		total += types.EstimateTokens("## Semantic Context (RAG)\n")
+		for _, r := range ragResults {
+			total += types.EstimateTokens(r.Content) + 30
+		}
+	}
+	if graphResult != nil {
+		for _, r := range graphResult.VectorResults {
+			total += types.EstimateTokens(r.Content) + 30
+		}
+		for range graphResult.GraphResults {
+			total += 40 // approximate per graph node
+		}
+	}
+	return total
+}
+
+func estimateMemoryTokens(reflections []memory.Reflection, observations []memory.Observation) int {
+	total := 0
+	for _, r := range reflections {
+		total += types.EstimateTokens(r.Content) + 5
+	}
+	for _, o := range observations {
+		total += types.EstimateTokens(o.Content) + 5
+	}
+	return total
+}
+
+func estimateRunSummaryTokens(summaries []RunSummaryContext) int {
+	total := 0
+	for _, s := range summaries {
+		total += types.EstimateTokens(s.Goal) + types.EstimateTokens(s.RunID) + 20
+	}
+	return total
+}
+
+// mergeRetrievalResults combines two RetrievalResults by merging their Items maps.
+// The two results should cover disjoint layer sets (no key conflict expected).
+func mergeRetrievalResults(a, b *knowledge.RetrievalResult) *knowledge.RetrievalResult {
+	if a == nil && b == nil {
+		return nil
+	}
+	if a == nil {
+		return b
+	}
+	if b == nil {
+		return a
+	}
+	merged := &knowledge.RetrievalResult{
+		Items: make(map[knowledge.ContextLayer][]knowledge.ContextItem, len(a.Items)+len(b.Items)),
+	}
+	for layer, items := range a.Items {
+		merged.Items[layer] = items
+		merged.TotalItems += len(items)
+	}
+	for layer, items := range b.Items {
+		merged.Items[layer] = items
+		merged.TotalItems += len(items)
+	}
+	return merged
 }

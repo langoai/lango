@@ -139,6 +139,80 @@ func TestIsDelegationEvent(t *testing.T) {
 	}
 }
 
+func TestIsPureTransferToAgentCall(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		give string
+		evt  *session.Event
+		want bool
+	}{
+		{
+			give: "nil content",
+			evt:  &session.Event{},
+			want: false,
+		},
+		{
+			give: "pure transfer_to_agent",
+			evt: &session.Event{
+				LLMResponse: model.LLMResponse{
+					Content: &genai.Content{
+						Parts: []*genai.Part{
+							{FunctionCall: &genai.FunctionCall{Name: "transfer_to_agent", Args: map[string]any{"agent_name": "vault"}}},
+						},
+					},
+				},
+			},
+			want: true,
+		},
+		{
+			give: "mixed transfer_to_agent and real tool",
+			evt: &session.Event{
+				LLMResponse: model.LLMResponse{
+					Content: &genai.Content{
+						Parts: []*genai.Part{
+							{FunctionCall: &genai.FunctionCall{Name: "transfer_to_agent", Args: map[string]any{"agent_name": "vault"}}},
+							{FunctionCall: &genai.FunctionCall{Name: "exec", Args: map[string]any{"cmd": "ls"}}},
+						},
+					},
+				},
+			},
+			want: false,
+		},
+		{
+			give: "regular tool call",
+			evt: &session.Event{
+				LLMResponse: model.LLMResponse{
+					Content: &genai.Content{
+						Parts: []*genai.Part{
+							{FunctionCall: &genai.FunctionCall{Name: "exec"}},
+						},
+					},
+				},
+			},
+			want: false,
+		},
+		{
+			give: "text only no calls",
+			evt: &session.Event{
+				LLMResponse: model.LLMResponse{
+					Content: &genai.Content{
+						Parts: []*genai.Part{{Text: "hello"}},
+					},
+				},
+			},
+			want: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.give, func(t *testing.T) {
+			t.Parallel()
+			assert.Equal(t, tt.want, isPureTransferToAgentCall(tt.evt))
+		})
+	}
+}
+
 // TestContextErrCheck_Canceled and TestContextErrCheck_DeadlineExceeded validate
 // the post-iteration ctx.Err() check pattern used in runAndCollectOnce (agent.go:391)
 // and RunStreaming (agent.go:455).
@@ -249,9 +323,9 @@ func TestBudgetExpansionMath(t *testing.T) {
 		initial    int
 		wantResult int
 	}{
-		{name: "default 25 → 37", initial: 25, wantResult: 37},
+		{name: "default 50 → 75", initial: 50, wantResult: 75},
 		{name: "10 → 15", initial: 10, wantResult: 15},
-		{name: "50 → 75", initial: 50, wantResult: 75},
+		{name: "75 → 112", initial: 75, wantResult: 112},
 	}
 
 	for _, tt := range tests {
@@ -261,6 +335,22 @@ func TestBudgetExpansionMath(t *testing.T) {
 			assert.Equal(t, tt.wantResult, expanded)
 		})
 	}
+}
+
+func TestShouldCollectUserText(t *testing.T) {
+	t.Parallel()
+
+	agent := &Agent{
+		isolatedAgents: map[string]struct{}{
+			"navigator": {},
+			"operator":  {},
+		},
+	}
+
+	assert.True(t, agent.shouldCollectUserText(""))
+	assert.True(t, agent.shouldCollectUserText("lango-orchestrator"))
+	assert.False(t, agent.shouldCollectUserText("navigator"))
+	assert.False(t, agent.shouldCollectUserText("operator"))
 }
 
 func TestWrapUpBudgetMechanics(t *testing.T) {

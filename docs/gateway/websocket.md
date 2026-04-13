@@ -40,7 +40,7 @@ Lango supports WebSocket connections for real-time streaming of agent responses.
 | `agent.done` | `{sessionKey}` | Sent after agent execution completes |
 | `agent.progress` | `{sessionKey, elapsed, message}` | Periodic progress update during agent execution (every 15s) |
 | `agent.warning` | `{sessionKey, message, type}` | Warning when approaching timeout |
-| `agent.error` | `{sessionKey, error, type, code, partial, hint}` | Agent execution error with structured fields |
+| `agent.error` | `{sessionKey, error, type, code, hint}` | Agent execution error with structured fields |
 
 ### Event Scoping
 

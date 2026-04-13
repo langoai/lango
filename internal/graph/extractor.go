@@ -6,25 +6,37 @@ import (
 	"strings"
 
 	"go.uber.org/zap"
-)
 
-// TextGenerator generates text from an LLM for entity extraction.
-type TextGenerator interface {
-	GenerateText(ctx context.Context, systemPrompt, userPrompt string) (string, error)
-}
+	"github.com/langoai/lango/internal/llm"
+)
 
 // Extractor uses an LLM to extract entities and relationships from text.
 type Extractor struct {
-	generator TextGenerator
+	generator llm.TextGenerator
+	validator PredicateValidatorFunc
 	logger    *zap.SugaredLogger
 }
 
+// ExtractorOption configures optional Extractor behavior.
+type ExtractorOption func(*Extractor)
+
+// WithPredicateValidator injects an ontology-backed predicate validator.
+// When set, extracted predicates are validated against the registry.
+// When not set, the hardcoded 9-predicate list is used as fallback.
+func WithPredicateValidator(v PredicateValidatorFunc) ExtractorOption {
+	return func(e *Extractor) { e.validator = v }
+}
+
 // NewExtractor creates a new LLM-based entity/relationship extractor.
-func NewExtractor(generator TextGenerator, logger *zap.SugaredLogger) *Extractor {
-	return &Extractor{
+func NewExtractor(generator llm.TextGenerator, logger *zap.SugaredLogger, opts ...ExtractorOption) *Extractor {
+	e := &Extractor{
 		generator: generator,
 		logger:    logger,
 	}
+	for _, opt := range opts {
+		opt(e)
+	}
+	return e
 }
 
 const extractionSystemPrompt = `You are an entity and relationship extraction system. Given text, extract entities and relationships as triples.
@@ -95,8 +107,13 @@ func (e *Extractor) parseResponse(response, sourceID string) []Triple {
 			continue
 		}
 
-		if !isValidPredicate(predicate) {
-			e.logger.Debugw("skip invalid predicate", "predicate", predicate)
+		if !e.isValidPredicate(predicate) {
+			e.logger.Warnw("rejected unknown predicate from extraction",
+				"predicate", predicate,
+				"subject", subject,
+				"object", object,
+				"source", sourceID,
+			)
 			continue
 		}
 
@@ -113,8 +130,16 @@ func (e *Extractor) parseResponse(response, sourceID string) []Triple {
 	return triples
 }
 
-// isValidPredicate checks if a predicate is in the allowed set.
-func isValidPredicate(p string) bool {
+// isValidPredicate validates using the ontology validator if set, otherwise hardcoded fallback.
+func (e *Extractor) isValidPredicate(p string) bool {
+	if e.validator != nil {
+		return e.validator(p)
+	}
+	return defaultIsValidPredicate(p)
+}
+
+// defaultIsValidPredicate is the hardcoded fallback when no ontology validator is set.
+func defaultIsValidPredicate(p string) bool {
 	switch p {
 	case RelatedTo, CausedBy, ResolvedBy, Follows, SimilarTo, Contains, InSession, ReflectsOn, LearnedFrom:
 		return true

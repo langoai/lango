@@ -8,6 +8,8 @@ import (
 
 	"github.com/google/uuid"
 	"go.uber.org/zap"
+
+	"github.com/langoai/lango/internal/llm"
 )
 
 const reflectorPrompt = `You are a conversation memory assistant. Your task is to condense these observation notes into a single, comprehensive summary.
@@ -18,13 +20,13 @@ Write a concise summary (3-8 sentences) that captures all essential context.`
 
 // Reflector condenses accumulated observations into reflections.
 type Reflector struct {
-	generator TextGenerator
+	generator llm.TextGenerator
 	store     *Store
 	logger    *zap.SugaredLogger
 }
 
 // NewReflector creates a new Reflector.
-func NewReflector(generator TextGenerator, store *Store, logger *zap.SugaredLogger) *Reflector {
+func NewReflector(generator llm.TextGenerator, store *Store, logger *zap.SugaredLogger) *Reflector {
 	return &Reflector{
 		generator: generator,
 		store:     store,

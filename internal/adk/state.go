@@ -280,98 +280,7 @@ func (e *EventsAdapter) All() iter.Seq[*session.Event] {
 			}
 
 			var parts []*genai.Part
-
-			switch role {
-			case types.RoleAssistant, types.RoleModel:
-				// Text content
-				if msg.Content != "" {
-					parts = append(parts, &genai.Part{Text: msg.Content})
-				}
-				// FunctionCall parts from ToolCalls (only those with Input, not Output-only)
-				for _, tc := range msg.ToolCalls {
-					if tc.Input == "" {
-						continue
-					}
-					args := make(map[string]any)
-					_ = json.Unmarshal([]byte(tc.Input), &args)
-					parts = append(parts, &genai.Part{
-						FunctionCall: &genai.FunctionCall{
-							ID:   tc.ID,
-							Name: tc.Name,
-							Args: args,
-						},
-						Thought:          tc.Thought,
-						ThoughtSignature: tc.ThoughtSignature,
-					})
-				}
-				// Remember for legacy fallback
-				lastAssistantToolCalls = msg.ToolCalls
-
-			case types.RoleTool, types.RoleFunction:
-				// Check if ToolCalls carry FunctionResponse metadata (new format)
-				hasResponseMeta := false
-				for _, tc := range msg.ToolCalls {
-					if tc.Output != "" {
-						hasResponseMeta = true
-						break
-					}
-				}
-
-				if hasResponseMeta {
-					// New format: reconstruct FunctionResponse from stored ToolCalls
-					for _, tc := range msg.ToolCalls {
-						if tc.Output == "" {
-							continue
-						}
-						resp := make(map[string]any)
-						_ = json.Unmarshal([]byte(tc.Output), &resp)
-						parts = append(parts, &genai.Part{
-							FunctionResponse: &genai.FunctionResponse{
-								ID:       tc.ID,
-								Name:     tc.Name,
-								Response: resp,
-							},
-						})
-					}
-					role = types.RoleFunction // Gemini expects "function" role for FunctionResponse
-				} else if len(lastAssistantToolCalls) > 0 {
-					// Legacy format: infer FunctionResponse from preceding assistant ToolCalls.
-					// Use the content as the response body for the first call.
-					tc := lastAssistantToolCalls[0]
-					resp := make(map[string]any)
-					if msg.Content != "" {
-						_ = json.Unmarshal([]byte(msg.Content), &resp)
-						if len(resp) == 0 {
-							resp = map[string]any{"result": msg.Content}
-						}
-					}
-					parts = append(parts, &genai.Part{
-						FunctionResponse: &genai.FunctionResponse{
-							ID:       tc.ID,
-							Name:     tc.Name,
-							Response: resp,
-						},
-					})
-					// Consume used call
-					if len(lastAssistantToolCalls) > 1 {
-						lastAssistantToolCalls = lastAssistantToolCalls[1:]
-					} else {
-						lastAssistantToolCalls = nil
-					}
-					role = types.RoleFunction
-				} else {
-					// No context to reconstruct FunctionResponse — emit as text
-					if msg.Content != "" {
-						parts = append(parts, &genai.Part{Text: msg.Content})
-					}
-				}
-
-			default:
-				// user or other roles
-				if msg.Content != "" {
-					parts = append(parts, &genai.Part{Text: msg.Content})
-				}
-			}
+			parts, role, lastAssistantToolCalls = buildEventParts(msg, role, lastAssistantToolCalls)
 
 			if len(parts) == 0 {
 				continue
@@ -426,4 +335,159 @@ func (e *EventsAdapter) At(i int) *session.Event {
 		return nil
 	}
 	return e.eventsCache[i]
+}
+
+// buildEventParts converts an internal.Message into genai.Parts for event reconstruction.
+// It returns the assembled parts, the (possibly corrected) role, and the updated
+// lastAssistantToolCalls slice for legacy fallback tracking.
+func buildEventParts(msg internal.Message, role types.MessageRole, lastAssistantToolCalls []internal.ToolCall) ([]*genai.Part, types.MessageRole, []internal.ToolCall) {
+	var parts []*genai.Part
+
+	switch role {
+	case types.RoleAssistant, types.RoleModel:
+		// Text content
+		if msg.Content != "" {
+			parts = append(parts, &genai.Part{Text: msg.Content})
+		}
+		// FunctionCall parts from ToolCalls (only those with Input, not Output-only)
+		for _, tc := range msg.ToolCalls {
+			if tc.Input == "" {
+				continue
+			}
+			parts = append(parts, toolCallToFunctionCallPart(tc))
+		}
+		// Remember for legacy fallback
+		lastAssistantToolCalls = msg.ToolCalls
+
+	case types.RoleTool, types.RoleFunction:
+		// Check if ToolCalls carry FunctionResponse metadata (new format)
+		hasResponseMeta := false
+		for _, tc := range msg.ToolCalls {
+			if tc.Output != "" {
+				hasResponseMeta = true
+				break
+			}
+		}
+
+		if hasResponseMeta {
+			// New format: reconstruct FunctionResponse from stored ToolCalls
+			for _, tc := range msg.ToolCalls {
+				if tc.Output == "" {
+					continue
+				}
+				parts = append(parts, toolCallToFunctionResponsePart(tc))
+			}
+			role = types.RoleFunction // Gemini expects "function" role for FunctionResponse
+		} else if len(lastAssistantToolCalls) > 0 {
+			// Legacy format: infer FunctionResponse from preceding assistant ToolCalls.
+			// Use the content as the response body for the first call.
+			tc := lastAssistantToolCalls[0]
+			resp := make(map[string]any)
+			if msg.Content != "" {
+				_ = json.Unmarshal([]byte(msg.Content), &resp)
+				if len(resp) == 0 {
+					resp = map[string]any{"result": msg.Content}
+				}
+			}
+			parts = append(parts, &genai.Part{
+				FunctionResponse: &genai.FunctionResponse{
+					ID:       tc.ID,
+					Name:     tc.Name,
+					Response: resp,
+				},
+			})
+			// Consume used call
+			if len(lastAssistantToolCalls) > 1 {
+				lastAssistantToolCalls = lastAssistantToolCalls[1:]
+			} else {
+				lastAssistantToolCalls = nil
+			}
+			role = types.RoleFunction
+		} else {
+			// No context to reconstruct FunctionResponse — emit as text
+			if msg.Content != "" {
+				parts = append(parts, &genai.Part{Text: msg.Content})
+			}
+		}
+
+	default:
+		// user or other roles
+		if msg.Content != "" {
+			parts = append(parts, &genai.Part{Text: msg.Content})
+		}
+	}
+
+	return parts, role, lastAssistantToolCalls
+}
+
+// --- Shared FunctionCall / FunctionResponse converter helpers ---
+//
+// These helpers centralize the field mapping between genai.FunctionCall/FunctionResponse
+// and internal.ToolCall so that both eventToMessage (ADK→internal) and buildEventParts
+// (internal→ADK) use the same field logic.
+//
+// Mapped fields:
+//   FunctionCall:     ID (fallback "call_"+Name), Name, Args↔Input(JSON), Thought, ThoughtSignature
+//   FunctionResponse: ID (fallback "call_"+Name), Name, Response↔Output(JSON)
+
+// functionCallToToolCall converts a genai.FunctionCall (plus Part-level thought fields)
+// into an internal.ToolCall. Used by eventToMessage when saving ADK events.
+func functionCallToToolCall(fc *genai.FunctionCall, p *genai.Part) internal.ToolCall {
+	argsBytes, _ := json.Marshal(fc.Args)
+	id := fc.ID
+	if id == "" {
+		id = "call_" + fc.Name
+	}
+	return internal.ToolCall{
+		Name:             fc.Name,
+		Input:            string(argsBytes),
+		ID:               id,
+		Thought:          p.Thought,          // Bug fix #4: thought preservation
+		ThoughtSignature: p.ThoughtSignature, // Bug fix #4: thought_signature preservation
+	}
+}
+
+// functionResponseToToolCall converts a genai.FunctionResponse into an internal.ToolCall.
+// Used by eventToMessage when saving ADK events.
+func functionResponseToToolCall(fr *genai.FunctionResponse) internal.ToolCall {
+	responseBytes, _ := json.Marshal(fr.Response)
+	id := fr.ID
+	if id == "" {
+		id = "call_" + fr.Name
+	}
+	return internal.ToolCall{
+		ID:     id,
+		Name:   fr.Name,
+		Output: string(responseBytes),
+	}
+}
+
+// toolCallToFunctionCallPart converts an internal.ToolCall (with Input) into a genai.Part
+// containing a FunctionCall. Used by buildEventParts when reconstructing ADK events.
+func toolCallToFunctionCallPart(tc internal.ToolCall) *genai.Part {
+	args := make(map[string]any)
+	_ = json.Unmarshal([]byte(tc.Input), &args)
+	return &genai.Part{
+		FunctionCall: &genai.FunctionCall{
+			ID:   tc.ID,
+			Name: tc.Name,
+			Args: args,
+		},
+		Thought:          tc.Thought,          // Bug fix #4: thought preservation
+		ThoughtSignature: tc.ThoughtSignature, // Bug fix #4: thought_signature preservation
+	}
+}
+
+// toolCallToFunctionResponsePart converts an internal.ToolCall (with Output) into a genai.Part
+// containing a FunctionResponse. Used by buildEventParts when reconstructing ADK events.
+func toolCallToFunctionResponsePart(tc internal.ToolCall) *genai.Part {
+	resp := make(map[string]any)
+	_ = json.Unmarshal([]byte(tc.Output), &resp)
+	return &genai.Part{
+		FunctionResponse: &genai.FunctionResponse{
+			ID:       tc.ID,
+			Name:     tc.Name,
+			Response: resp,
+		},
+	}
 }

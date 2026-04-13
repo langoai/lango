@@ -24,6 +24,10 @@ The system SHALL define a `Provider` interface with `RequestApproval(ctx, req) (
 - **WHEN** a user denies a request
 - **THEN** the provider SHALL return `ApprovalResponse{Approved: false, AlwaysAllow: false}`
 
+#### Scenario: Provider tags response source
+- **WHEN** a provider returns an approval response successfully
+- **THEN** the response SHALL include provider metadata indicating which approval backend handled it
+
 ### Requirement: Composite approval routing
 The system SHALL provide a `CompositeProvider` that routes approval requests to the first registered provider whose `CanHandle` returns true for the given session key. The session key used for routing MAY be overridden by an explicit approval target set in the context, which takes precedence over the standard session key.
 
@@ -96,19 +100,97 @@ The system SHALL provide a `GatewayProvider` that delegates approval to connecte
 - **THEN** the provider SHALL return `ApprovalResponse{Approved: true, AlwaysAllow: false}`
 
 ### Requirement: Approval request context
-Each approval request SHALL carry an ID, tool name, session key, parameters, a human-readable Summary string, and creation timestamp.
+The approval request SHALL carry ID, ToolName, SessionKey, Params, Summary, CreatedAt, and additionally SafetyLevel, Category, and Activity as optional string fields for tier classification.
 
 #### Scenario: Request fields
 - **WHEN** an approval request is created
-- **THEN** it SHALL contain a unique ID, the tool name, the originating session key, tool parameters, a Summary string, and a timestamp
+- **THEN** it contains ID, ToolName, SessionKey, Params, Summary, CreatedAt
 
 #### Scenario: Summary populated
-- **WHEN** a tool approval request is created via wrapWithApproval
-- **THEN** the Summary field SHALL be populated by buildApprovalSummary with a human-readable description of the operation
+- **WHEN** the interceptor builds a request for tool "exec" with command "rm -rf /"
+- **THEN** Summary is a human-readable string like `Execute command: rm -rf /`
 
 #### Scenario: Empty summary backward compatibility
-- **WHEN** an approval request has an empty Summary
-- **THEN** providers SHALL display the existing tool-name-only message
+- **WHEN** a provider receives a request with empty Summary
+- **THEN** the provider falls back to displaying ToolName only
+
+#### Scenario: SafetyLevel populated
+- **WHEN** the approval middleware creates a request for a dangerous tool
+- **THEN** `SafetyLevel` is set to `"dangerous"`
+
+#### Scenario: Category and Activity populated
+- **WHEN** the approval middleware creates a request for a filesystem write tool
+- **THEN** `Category` is set to `"filesystem"` and `Activity` is set to `"write"`
+
+#### Scenario: Fields omitted for legacy providers
+- **WHEN** a channel provider (Slack/Telegram/Discord) receives a request with SafetyLevel/Category/Activity
+- **THEN** the provider ignores these fields gracefully (they are optional, omitempty)
+
+### Requirement: Turn-local approval replay protection
+Each request SHALL maintain turn-local approval state keyed by `tool name + canonical params JSON`. The approval middleware SHALL consult this state before issuing a new approval request. Canonical params MAY normalize or omit fields that do not change approval risk for a tool.
+
+#### Scenario: Turn-local positive replay
+- **WHEN** a request already approved a specific `tool + params` once in the current turn
+- **THEN** an identical retry in the same turn SHALL execute without issuing another approval prompt
+
+#### Scenario: Canonical browser search replay key ignores limit-only variants
+- **WHEN** `browser_search` is retried with the same query but different `limit` values or whitespace-only query differences
+- **THEN** the approval middleware SHALL treat those retries as the same canonical approval action
+
+#### Scenario: Turn-local denied or unavailable replay block
+- **WHEN** a request already received deny or unavailable for a specific canonical approval action in the current turn
+- **THEN** an identical retry in the same turn SHALL return the same failure immediately without issuing another approval prompt
+
+#### Scenario: Timeout allows bounded re-prompt
+- **WHEN** a request already timed out for a specific canonical approval action in the current turn
+- **AND** the timeout count for that canonical action is below the configured per-turn timeout budget
+- **THEN** the middleware SHALL issue another approval prompt instead of replay-blocking immediately
+
+#### Scenario: Timeout replay blocked after budget exhaustion
+- **WHEN** a request already accumulated the maximum per-turn timeout count for a specific canonical approval action
+- **THEN** a later identical retry in the same turn SHALL return timeout immediately without issuing another approval prompt
+
+#### Scenario: Different params require new approval
+- **WHEN** the retried tool call changes the canonical approval action
+- **THEN** the middleware SHALL treat it as a new approval request
+
+#### Scenario: Always Allow still uses session-wide grant store
+- **WHEN** a user selects `Always Allow`
+- **THEN** the approval result SHALL be persisted in the session-wide grant store
+- **AND** future matching calls MAY bypass approval in later turns according to existing grant-store behavior
+
+### Requirement: Structured approval failures
+The approval system SHALL expose structured sentinel errors for deny, timeout, and unavailable outcomes.
+
+#### Scenario: User deny returns denied sentinel
+- **WHEN** the user denies the approval request
+- **THEN** the middleware SHALL return an error wrapping `approval.ErrDenied`
+- **AND** the user-facing message SHALL state that execution was denied by user approval
+
+#### Scenario: Approval timeout returns timeout sentinel
+- **WHEN** the approval request expires without response
+- **THEN** the middleware SHALL return an error wrapping `approval.ErrTimeout`
+- **AND** the user-facing message SHALL state that approval expired
+
+#### Scenario: No provider available returns unavailable sentinel
+- **WHEN** no approval provider can handle the request
+- **THEN** the middleware SHALL return an error wrapping `approval.ErrUnavailable`
+- **AND** the user-facing message SHALL state that no approval channel is available
+
+### Requirement: Approval observability logs
+The approval flow SHALL emit structured logs for request, callback, final outcome, turn-local bypass, and replay-block events.
+
+#### Scenario: Approval request logged
+- **WHEN** the middleware issues an approval request
+- **THEN** it SHALL log session, request ID, tool, summary, params hash, provider, outcome=`requested`, and grant scope
+
+#### Scenario: Turn-local bypass logged
+- **WHEN** the middleware reuses a turn-local positive grant
+- **THEN** it SHALL log outcome=`bypass` and grant scope=`turn`
+
+#### Scenario: Replay-block logged
+- **WHEN** the middleware short-circuits an identical denied/expired/unavailable request
+- **THEN** it SHALL log outcome=`replay_blocked` and the cached failure kind
 
 ### Requirement: Approval summary rendering
 All approval providers SHALL include the Summary field in their approval messages when it is non-empty.
@@ -242,3 +324,22 @@ Tool handlers that call `store.SaveAuditLog` SHALL log a warning via `logger().W
 - **WHEN** `store.SaveAuditLog` returns a non-nil error during `save_knowledge` tool execution
 - **THEN** a warning log SHALL be emitted with the action name and error details
 - **AND** the tool SHALL still return success to the caller
+
+### Requirement: Channel origin display on approval requests
+Approval rendering surfaces SHALL display channel origin information when the approval request's SessionKey contains a recognized channel prefix.
+
+#### Scenario: Telegram origin on approval banner
+- **WHEN** an approval request has SessionKey="telegram:123:456"
+- **THEN** the approval banner renders an origin line containing "[Telegram]"
+
+#### Scenario: Channel badge on approval strip
+- **WHEN** a Tier 1 approval has SessionKey="telegram:123:456"
+- **THEN** the approval strip summary is prefixed with "[TG]"
+
+#### Scenario: Channel origin on approval dialog
+- **WHEN** a Tier 2 approval has SessionKey="discord:ch1:user1"
+- **THEN** the approval dialog header includes an origin line containing "[Discord]"
+
+#### Scenario: No origin for local session
+- **WHEN** an approval request has SessionKey="tui-12345"
+- **THEN** no channel origin info is displayed

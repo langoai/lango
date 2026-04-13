@@ -1,4 +1,10 @@
-## Requirement: System prompt construction
+## Purpose
+
+Capability spec for agent-prompting. See requirements below for scope and behavior contracts.
+
+## Requirements
+
+### Requirement: System prompt construction
 The system SHALL construct the system prompt using a structured `prompt.Builder` instead of a single string. The `ContextAwareModelAdapter` constructor SHALL accept a `*prompt.Builder` and call `Build()` to produce the base prompt string. Dynamic context injection (knowledge, memory, RAG) SHALL continue to append to the built prompt at runtime.
 
 #### Scenario: Prepend system prompt to new session
@@ -35,6 +41,33 @@ The TOOL_USAGE.md prompt SHALL include a "Tool Selection Priority" section that 
 #### Scenario: Agent encounters a skill with built-in equivalent
 - **WHEN** a skill provides functionality already available as a built-in tool
 - **THEN** the prompt guidance SHALL direct the agent to use the built-in tool instead
+
+#### Scenario: Approval failure guidance for browser actions
+- **WHEN** the agent processes browser guidance in TOOL_USAGE.md or navigator-specific instructions
+- **THEN** it SHALL be instructed not to immediately reissue the same browser action after approval denial or expiry
+- **AND** it SHALL instead explain the approval issue or choose a lower-risk alternative only when that alternative materially changes the action
+
+#### Scenario: Browser search fallback guidance
+- **WHEN** the agent processes the browser section of TOOL_USAGE.md
+- **THEN** it SHALL be instructed to prefer `browser_search` for open-ended live web queries
+- **AND** it SHALL also be instructed to fall back to `browser_navigate` with a search URL plus `browser_extract` in `search_results` mode when `browser_search` is unavailable
+- **AND** it SHALL be instructed to continue with low-level `browser_action` or `eval` instead of stopping if equivalent browser tools are still available
+
+#### Scenario: Bounded browser search guidance
+- **WHEN** the agent processes browser guidance in TOOL_USAGE.md
+- **THEN** it SHALL use imperative language: "ONCE", "EXACTLY once", "NEVER more than twice"
+- **AND** it SHALL instruct to call `browser_search` ONCE and present results if `resultCount > 0` without searching again
+- **AND** it SHALL allow reformulation EXACTLY once when `resultCount == 0` or results are clearly unrelated
+- **AND** it SHALL state "NEVER call browser_search more than twice per request"
+- **AND** it SHALL instruct to stop once the requested number of credible results has been collected
+
+#### Scenario: Navigator bounded search protocol
+- **WHEN** the navigator handles a topic-based live web request
+- **THEN** its instruction SHALL use a "Search Workflow (MANDATORY)" section with imperative language
+- **AND** it SHALL direct the agent to call `browser_search` ONCE with its best query
+- **AND** it SHALL state that `resultCount > 0` means results are available and the agent MUST NOT search again
+- **AND** it SHALL allow EXACTLY one reformulation when `resultCount == 0`
+- **AND** it SHALL state "NEVER call browser_search more than twice per request. There are no exceptions."
 
 ### Requirement: Tool selection directive in agent identity
 The AGENTS.md prompt SHALL include a tool selection directive stating that built-in tools MUST be preferred over skills, and skills are extensions for specialized use cases only.

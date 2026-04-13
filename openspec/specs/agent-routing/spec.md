@@ -104,7 +104,7 @@ Every AgentSpec SHALL define Accepts (input format description) and Returns (out
 #### Scenario: All specs have I/O metadata
 - **WHEN** agentSpecs is iterated
 - **THEN** every spec SHALL have non-empty Accepts and Returns fields
-## Requirements
+
 ### Requirement: Vault agent prefix list covers all vault tool families
 The vault AgentSpec Prefixes SHALL include prefixes for all vault-domain tool families: crypto, secrets, payment, p2p, smartaccount, economy, escrow, sentinel, and contract.
 
