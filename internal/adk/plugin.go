@@ -9,7 +9,7 @@
 //
 // ## Summary
 //
-// ADK v0.6.0 provides agent-level callback hooks via plugin.Config.
+// ADK v1.0.0 provides agent-level callback hooks via plugin.Config.
 // Lango provides per-tool middleware via internal/toolchain (Chain/ChainAll)
 // with a priority-based hook registry.
 //

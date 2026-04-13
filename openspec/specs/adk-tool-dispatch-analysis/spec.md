@@ -19,7 +19,7 @@ The spike report SHALL evaluate at least 4 distinct hook point options for paral
 - **THEN** the option includes: mechanism description, feasibility rating, risk rating, effort estimate, and verdict (recommend/reject)
 
 ### Requirement: Spike report documents ADK constraints
-The spike report SHALL document constraints imposed by the ADK v0.6.0 runner and plugin system on concurrent tool execution.
+The spike report SHALL document constraints imposed by the ADK v1.0.0 runner and plugin system on concurrent tool execution.
 
 #### Scenario: ADK plugin callback signatures documented
 - **WHEN** reading the ADK constraints section

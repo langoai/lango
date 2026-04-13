@@ -5,7 +5,7 @@ Capability spec for adk-plugin-spike. See requirements below for scope and behav
 ## Requirements
 
 ### Requirement: Plugin config pass-through to ADK runner
-The system SHALL provide an option to pass `plugin.Config` (ADK v0.6.0 `plugin/plugin.go:26`) through to `runner.Config.PluginConfig` when creating an ADK runner in `internal/adk/agent.go`.
+The system SHALL provide an option to pass `plugin.Config` (ADK v1.0.0 `plugin/plugin.go:26`) through to `runner.Config.PluginConfig` when creating an ADK runner in `internal/adk/agent.go`.
 
 #### Scenario: Runner created with plugin config
 - **WHEN** an agent is created with ADK plugin options specified
