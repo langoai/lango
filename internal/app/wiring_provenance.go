@@ -6,6 +6,7 @@ import (
 
 	"github.com/langoai/lango/internal/appinit"
 	"github.com/langoai/lango/internal/p2p/gitbundle"
+	"github.com/langoai/lango/internal/p2p/identity"
 	"github.com/langoai/lango/internal/p2p/provenanceproto"
 	"github.com/langoai/lango/internal/provenance"
 	"github.com/langoai/lango/internal/security"
@@ -107,15 +108,21 @@ func wireProvenanceRuntime(app *App, r appinit.Resolver) {
 			return nil
 		},
 		Exporter: func(ctx context.Context, peerDID, sessionKey, redaction string) ([]byte, error) {
-			if app == nil || app.WalletProvider == nil || p2pc.identity == nil {
+			if app == nil || app.WalletProvider == nil {
 				return nil, fmt.Errorf("wallet-backed DID identity is required for provenance bundle export")
 			}
-			did, err := p2pc.identity.DID(ctx)
-			if err != nil {
-				return nil, err
+			// Use wallet's v1 DID for provenance signing (secp256k1-keccak256).
+			// VerifyMessageSignature only supports v1 DIDs; using v2 would fail.
+			walletPub, pubErr := app.WalletProvider.PublicKey(ctx)
+			if pubErr != nil {
+				return nil, fmt.Errorf("resolve wallet public key: %w", pubErr)
+			}
+			walletDID, didErr := identity.DIDFromPublicKey(walletPub)
+			if didErr != nil {
+				return nil, fmt.Errorf("derive wallet DID: %w", didErr)
 			}
 			signer := &walletBundleSigner{wp: app.WalletProvider}
-			_, data, err := pv.bundle.Export(ctx, sessionKey, provenance.RedactionLevel(redaction), did.ID, signer)
+			_, data, err := pv.bundle.Export(ctx, sessionKey, provenance.RedactionLevel(redaction), walletDID.ID, signer)
 			if err != nil {
 				return nil, err
 			}

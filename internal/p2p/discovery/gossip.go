@@ -13,6 +13,7 @@ import (
 	"github.com/libp2p/go-libp2p/core/peer"
 	"go.uber.org/zap"
 
+	"github.com/langoai/lango/internal/p2p/identity"
 	"github.com/langoai/lango/internal/security"
 )
 
@@ -102,17 +103,48 @@ func VerifyCardSignature(card *GossipCard, classicalVerify func(pubkey, message,
 	if err != nil {
 		return fmt.Errorf("canonical card payload: %w", err)
 	}
-	// Classical signature verification is required when present.
-	// Note: the caller provides a verify function that resolves the public key from card.DID.
-	if classicalVerify != nil {
-		if err := classicalVerify(nil, payload, card.Signature); err != nil {
-			return fmt.Errorf("verify card signature: %w", err)
+	// Classical signature verification.
+	// If bundle is absent (pre-upgrade peers), skip — backward compatibility.
+	// If bundle is present, it MUST contain a valid signing key.
+	if len(card.Bundle) > 0 {
+		var bundle struct {
+			SigningKey struct {
+				PublicKey []byte `json:"public_key"`
+			} `json:"signing_key"`
+		}
+		var pubkey []byte
+		if err := json.Unmarshal(card.Bundle, &bundle); err == nil {
+			pubkey = bundle.SigningKey.PublicKey
+		}
+		if len(pubkey) == 0 {
+			return fmt.Errorf("signed card has bundle but no valid signing key")
+		}
+		if classicalVerify != nil {
+			if err := classicalVerify(pubkey, payload, card.Signature); err != nil {
+				return fmt.Errorf("verify card signature: %w", err)
+			}
 		}
 	}
 	// PQ verification uses embedded public key (self-contained, rotation-safe).
-	if len(card.PQSignature) > 0 && len(card.PQSignerPublicKey) > 0 {
+	// Skip PQ verification for bundle-less cards (pre-upgrade peers may have
+	// signed PQ over a different canonical payload before SignatureAlgorithm
+	// was populated).
+	if len(card.PQSignature) > 0 && len(card.PQSignerPublicKey) > 0 && len(card.Bundle) > 0 {
 		if err := security.VerifyMLDSA65(card.PQSignerPublicKey, payload, card.PQSignature); err != nil {
 			return fmt.Errorf("verify card PQ signature: %w", err)
+		}
+	}
+	// Verify card.DID matches the bundle's v2 DID to prevent impersonation.
+	// Only ComputeDIDv2 is accepted — LegacyDID is a self-reported field
+	// without Proofs.Legacy verification, so accepting it would allow
+	// identity spoofing. Upgraded peers always use v2 DID in their cards.
+	if len(card.Bundle) > 0 && card.DID != "" {
+		var bundle identity.IdentityBundle
+		if unmarshalErr := json.Unmarshal(card.Bundle, &bundle); unmarshalErr == nil {
+			didV2, _ := identity.ComputeDIDv2(&bundle)
+			if card.DID != didV2 {
+				return fmt.Errorf("card DID %q does not match bundle v2 DID", card.DID)
+			}
 		}
 	}
 	return nil
@@ -130,8 +162,9 @@ type GossipService struct {
 	localCard   *GossipCard
 	interval    time.Duration
 	verifier    ZKCredentialVerifier
-	cardSigner  CardSigner   // optional: for signing published cards
-	pqSigner    PQCardSigner // optional: for PQ dual-signing
+	cardSigner      CardSigner              // optional: for signing published cards
+	pqSigner        PQCardSigner            // optional: for PQ dual-signing
+	classicalVerify CardSignatureVerifyFunc  // optional: verify received card signatures
 
 	mu     sync.RWMutex
 	peers  map[string]*GossipCard // keyed by DID
@@ -143,16 +176,20 @@ type GossipService struct {
 	maxCredentialAge time.Duration
 }
 
+// CardSignatureVerifyFunc verifies a card's classical signature.
+type CardSignatureVerifyFunc func(pubkey, message, sig []byte) error
+
 // GossipConfig configures the gossip service.
 type GossipConfig struct {
-	Host         host.Host
-	PubSub       *pubsub.PubSub // optional pre-created PubSub instance
-	LocalCard    *GossipCard
-	Interval     time.Duration
-	Verifier     ZKCredentialVerifier
-	CardSigner   CardSigner   // optional: sign published cards
-	PQCardSigner PQCardSigner // optional: PQ dual-sign
-	Logger       *zap.SugaredLogger
+	Host            host.Host
+	PubSub          *pubsub.PubSub // optional pre-created PubSub instance
+	LocalCard       *GossipCard
+	Interval        time.Duration
+	Verifier        ZKCredentialVerifier
+	CardSigner      CardSigner            // optional: sign published cards
+	PQCardSigner    PQCardSigner          // optional: PQ dual-sign
+	ClassicalVerify CardSignatureVerifyFunc // optional: verify received card signatures
+	Logger          *zap.SugaredLogger
 }
 
 // NewGossipService creates a new gossip-based discovery service.
@@ -186,6 +223,7 @@ func NewGossipService(cfg GossipConfig) (*GossipService, error) {
 		verifier:         cfg.Verifier,
 		cardSigner:       cfg.CardSigner,
 		pqSigner:         cfg.PQCardSigner,
+		classicalVerify:  cfg.ClassicalVerify,
 		peers:            make(map[string]*GossipCard),
 		logger:           cfg.Logger,
 		revokedDIDs:      make(map[string]time.Time),
@@ -330,6 +368,11 @@ func (g *GossipService) signCard(ctx context.Context, card *GossipCard) {
 		return
 	}
 
+	// Set SignatureAlgorithm BEFORE canonical payload computation.
+	// CanonicalCardPayload includes SignatureAlgorithm, so it must be set
+	// before signing to ensure sender and receiver hash the same JSON.
+	card.SignatureAlgorithm = g.cardSigner.Algorithm()
+
 	// PQ pubkey must be set before canonical payload computation
 	// (included in classical signature's payload for trust chain binding).
 	if g.pqSigner != nil {
@@ -350,7 +393,6 @@ func (g *GossipService) signCard(ctx context.Context, card *GossipCard) {
 		return
 	}
 	card.Signature = sig
-	card.SignatureAlgorithm = g.cardSigner.Algorithm()
 
 	// PQ signature (optional).
 	if g.pqSigner != nil {
@@ -436,6 +478,12 @@ func (g *GossipService) handleMessage(msg *pubsub.Message) {
 				return // Discard the entire card if any credential is invalid.
 			}
 		}
+	}
+
+	// Verify card signature if present. Unsigned legacy cards are accepted.
+	if err := VerifyCardSignature(&card, g.classicalVerify); err != nil {
+		g.logger.Warnw("invalid card signature, discarding", "did", card.DID, "error", err)
+		return
 	}
 
 	// Store/update peer card.

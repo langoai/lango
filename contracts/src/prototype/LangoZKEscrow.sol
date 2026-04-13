@@ -55,9 +55,12 @@ contract LangoZKEscrow {
     mapping(uint256 => Deal) public deals;
     mapping(uint256 => bool) public trustedAttestors; // attestorDIDHash => trusted
     address public owner;
+    address public immutable zkVerifier; // pinned Groth16 verifier — never caller-supplied
 
-    constructor(uint256[] memory trustedAttestorHashes_) {
+    constructor(uint256[] memory trustedAttestorHashes_, address verifier_) {
+        require(verifier_ != address(0), "zero verifier");
         owner = msg.sender;
+        zkVerifier = verifier_;
         for (uint256 i = 0; i < trustedAttestorHashes_.length; i++) {
             trustedAttestors[trustedAttestorHashes_[i]] = true;
         }
@@ -97,12 +100,10 @@ contract LangoZKEscrow {
     /// @param dealId The deal identifier (must match proof's domain binding).
     /// @param proof Compressed Groth16 proof [a.x, a.y, b.x0, b.x1, b.y0, b.y1, c.x, c.y].
     /// @param publicInputs Public inputs to the PQAttestationCircuit (8 field elements).
-    /// @param verifier Address of the deployed gnark Groth16 verifier contract.
     function releaseWithProof(
         uint256 dealId,
         uint256[8] calldata proof,
-        uint256[8] calldata publicInputs,
-        address verifier
+        uint256[8] calldata publicInputs
     ) external {
         Deal storage deal = deals[dealId];
         if (deal.buyer == address(0)) revert DealNotFound();
@@ -119,7 +120,7 @@ contract LangoZKEscrow {
         // ZK proof verification via external verifier contract.
         // gnark's verifyProof reverts with ProofInvalid() on failure (no bool return).
         // If this call does not revert, the proof is valid.
-        try IZKVerifier(verifier).verifyProof(proof, publicInputs) {
+        try IZKVerifier(zkVerifier).verifyProof(proof, publicInputs) {
             // Proof valid — continue to release.
         } catch {
             revert InvalidZKProof();

@@ -35,8 +35,8 @@ func DefaultPhases() []Phase {
 		phaseAcquireCredential(),
 		phaseUnwrapOrCreateMK(),
 		phaseOpenDatabase(),
-		phaseMigrateEnvelope(),
 		phaseLoadSecurityState(),
+		phaseMigrateEnvelope(),
 		phaseInitCrypto(),
 		phaseDeriveIdentityKey(),
 		phaseDerivePQKey(),
@@ -380,8 +380,16 @@ func phaseLoadSecurityState() Phase {
 		Name: "load security state",
 		Run: func(_ context.Context, s *State) error {
 			if s.Envelope != nil {
-				// Envelope path already resolved; legacy salt/checksum are no longer
-				// authoritative. Skip to keep FirstRun semantics consistent.
+				// When pending flags are set, legacy salt/checksum are still
+				// needed for crash-recovery retry in phaseMigrateEnvelope.
+				if s.Envelope.PendingMigration || s.Envelope.PendingRekey {
+					salt, checksum, _, err := loadSecurityState(s.RawDB)
+					if err != nil {
+						return fmt.Errorf("load security state for pending migration: %w", err)
+					}
+					s.Salt = salt
+					s.Checksum = checksum
+				}
 				s.FirstRun = false
 				return nil
 			}

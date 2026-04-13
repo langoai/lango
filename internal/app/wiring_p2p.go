@@ -3,6 +3,7 @@ package app
 import (
 	"context"
 	"crypto/ed25519"
+	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -544,11 +545,21 @@ func initP2P(cfg *config.Config, wp wallet.WalletProvider, pc *paymentComponents
 		}
 	}
 
+	// Attach identity bundle to gossip card for v2 signature verification.
+	if bp, ok := localID.(*identity.BundleProvider); ok {
+		if b := bp.Bundle(); b != nil {
+			if bundleJSON, marshalErr := json.Marshal(b); marshalErr == nil {
+				localCard.Bundle = bundleJSON
+			}
+		}
+	}
+
 	gossipCfg := discovery.GossipConfig{
-		Host:      node.Host(),
-		LocalCard: localCard,
-		Interval:  gossipInterval,
-		Logger:    pLogger,
+		Host:            node.Host(),
+		LocalCard:       localCard,
+		Interval:        gossipInterval,
+		ClassicalVerify: security.VerifyEd25519,
+		Logger:          pLogger,
 	}
 	// Wire card signers for gossip card signing (classical + PQ dual-sign).
 	if bp, ok := localID.(*identity.BundleProvider); ok {

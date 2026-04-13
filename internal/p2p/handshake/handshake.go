@@ -1,12 +1,14 @@
 package handshake
 
 import (
+	"bytes"
 	"context"
 	"crypto/hmac"
 	"crypto/rand"
 	"encoding/json"
 	"fmt"
 	"math"
+	"strings"
 	"time"
 
 	"github.com/libp2p/go-libp2p/core/network"
@@ -15,6 +17,7 @@ import (
 
 	"github.com/langoai/lango/internal/p2p/identity"
 	"github.com/langoai/lango/internal/security"
+	"github.com/langoai/lango/internal/types"
 )
 
 // Protocol version constants for handshake negotiation.
@@ -213,7 +216,10 @@ func (h *Handshaker) Initiate(ctx context.Context, s network.Stream, localDID st
 		return nil, fmt.Errorf("generate nonce: %w", err)
 	}
 
-	// Select signer for initiation. Use legacy for unknown peers (safe default).
+	// Use legacy signer for unknown peers (safe default for mixed-version).
+	// Legacy peers may not have Ed25519 verifiers, so sending Ed25519
+	// challenges would fail. The responder's algorithm is learned after
+	// the first handshake; subsequent connections upgrade via selectSigner.
 	initSigner := h.selectSigner("")
 
 	// Anchor challenge.SenderDID to the signing identity.
@@ -271,17 +277,31 @@ func (h *Handshaker) Initiate(ctx context.Context, s network.Stream, localDID st
 		return nil, fmt.Errorf("receive challenge response: %w", err)
 	}
 
-	// Cache received bundle from response (v2 peers include their bundle).
+	// Verify response BEFORE caching bundle (never cache unauthenticated data).
+	if err := h.verifyResponse(ctx, &resp, nonce); err != nil {
+		return nil, fmt.Errorf("verify response: %w", err)
+	}
+
+	// For v2 DIDs: require bundle, verify DID hash, and bind signing key.
+	if strings.HasPrefix(resp.DID, types.DIDv2Prefix) {
+		if resp.Bundle == nil {
+			return nil, fmt.Errorf("v2 response DID requires identity bundle")
+		}
+		computedDID, compErr := identity.ComputeDIDv2(resp.Bundle)
+		if compErr != nil || computedDID != resp.DID {
+			return nil, fmt.Errorf("v2 response DID does not match bundle hash")
+		}
+		if !bytes.Equal(resp.PublicKey, resp.Bundle.SigningKey.PublicKey) {
+			return nil, fmt.Errorf("response public key does not match bundle signing key")
+		}
+	}
+
+	// Cache received bundle AFTER authentication succeeds.
 	if resp.Bundle != nil {
 		if cache, ok := h.bundleCache.(*identity.MemoryBundleCache); ok {
 			cache.Store(resp.DID, resp.Bundle)
 		}
 		h.registerAlias(resp.Bundle, resp.DID)
-	}
-
-	// Verify response.
-	if err := h.verifyResponse(ctx, &resp, nonce); err != nil {
-		return nil, fmt.Errorf("verify response: %w", err)
 	}
 
 	// Derive session key from KEM exchange (v1.2).
@@ -341,14 +361,6 @@ func (h *Handshaker) HandleIncoming(ctx context.Context, s network.Stream) (*Ses
 		return nil, fmt.Errorf("receive challenge: %w", err)
 	}
 
-	// Cache received bundle from challenge (v2 initiators include their bundle).
-	if challenge.Bundle != nil {
-		if cache, ok := h.bundleCache.(*identity.MemoryBundleCache); ok {
-			cache.Store(challenge.SenderDID, challenge.Bundle)
-		}
-		h.registerAlias(challenge.Bundle, challenge.SenderDID)
-	}
-
 	// Validate challenge timestamp (reject stale or far-future challenges).
 	if err := validateChallengeTimestamp(challenge.Timestamp); err != nil {
 		return nil, fmt.Errorf("challenge timestamp: %w", err)
@@ -371,17 +383,64 @@ func (h *Handshaker) HandleIncoming(ctx context.Context, s network.Stream) (*Ses
 		return nil, fmt.Errorf("unsigned challenge rejected (requireSignedChallenge=true)")
 	}
 
+	// Verify SenderDID matches the signing public key for v1 DIDs.
+	// A peer signing with their own key but claiming another DID would
+	// otherwise poison the bundle cache and DID alias.
+	// v2 DIDs (did:lango:v2:...) are hash-based and cannot be derived from
+	// the pubkey directly; they are authenticated via bundle proofs instead.
+	if len(challenge.PublicKey) > 0 && challenge.SenderDID != "" &&
+		!strings.HasPrefix(challenge.SenderDID, types.DIDv2Prefix) {
+		expectedDID, didErr := identity.DIDFromPublicKey(challenge.PublicKey)
+		if didErr == nil && expectedDID.ID != challenge.SenderDID {
+			return nil, fmt.Errorf("challenge SenderDID does not match public key")
+		}
+	}
+
+	// For v2 DIDs: require bundle, verify DID hash, and bind signing key.
+	if strings.HasPrefix(challenge.SenderDID, types.DIDv2Prefix) {
+		if challenge.Bundle == nil {
+			return nil, fmt.Errorf("v2 DID requires identity bundle")
+		}
+		computedDID, compErr := identity.ComputeDIDv2(challenge.Bundle)
+		if compErr != nil || computedDID != challenge.SenderDID {
+			return nil, fmt.Errorf("v2 DID does not match bundle hash")
+		}
+		// Verify the handshake public key is the bundle's signing key.
+		// Without this, an attacker could replay someone else's bundle
+		// while signing with a different key.
+		if !bytes.Equal(challenge.PublicKey, challenge.Bundle.SigningKey.PublicKey) {
+			return nil, fmt.Errorf("handshake public key does not match bundle signing key")
+		}
+	}
+
+	// Cache received bundle AFTER authentication succeeds (never before).
+	// Bundle is cached here but alias is NOT registered yet — alias registration
+	// happens after approval to prevent forged LegacyDID from bypassing auto-approve.
+	if challenge.Bundle != nil {
+		if cache, ok := h.bundleCache.(*identity.MemoryBundleCache); ok {
+			cache.Store(challenge.SenderDID, challenge.Bundle)
+		}
+	}
+
 	// Request user approval (HITL).
 	remotePeer := s.Conn().RemotePeer()
 	if h.approvalFn != nil {
 		// Check if auto-approve is enabled for known peers.
-		existing := h.sessions.Get(challenge.SenderDID)
+		// Look up session under: (1) existing alias if registered, (2) raw DID,
+		// (3) bundle's LegacyDID for v1→v2 upgrade transitions.
+		lookupDID := challenge.SenderDID
+		if h.didAlias != nil {
+			if canonical := h.didAlias.CanonicalDID(challenge.SenderDID); canonical != challenge.SenderDID {
+				lookupDID = canonical
+			}
+		}
+		existing := h.sessions.Get(lookupDID)
 		needsApproval := existing == nil || !h.autoApproveKnown
 
 		if needsApproval {
 			pending := &PendingHandshake{
 				PeerID:     remotePeer,
-				PeerDID:    challenge.SenderDID,
+				PeerDID:    lookupDID, // canonical DID for reputation lookup
 				RemoteAddr: s.Conn().RemoteMultiaddr().String(),
 				Timestamp:  time.Now(),
 			}
@@ -472,6 +531,13 @@ func (h *Handshaker) HandleIncoming(ctx context.Context, s network.Stream) (*Ses
 	var ack SessionAck
 	if err := dec.Decode(&ack); err != nil {
 		return nil, fmt.Errorf("receive session ack: %w", err)
+	}
+
+	// Register alias AFTER approval succeeds. Registering before approval
+	// would let a forged LegacyDID bypass auto-approve by inheriting an
+	// existing trusted session via canonicalDID().
+	if challenge.Bundle != nil {
+		h.registerAlias(challenge.Bundle, challenge.SenderDID)
 	}
 
 	zkVerified := len(resp.ZKProof) > 0

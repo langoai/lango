@@ -323,6 +323,11 @@ The system SHALL provide a standalone `LangoZKEscrow.sol` contract (separate fro
 - **WHEN** `IZKVerifier.verifyProof` reverts (proof invalid)
 - **THEN** the contract SHALL revert with `InvalidZKProof()`
 
+#### Scenario: Verifier pinned at deployment
+- **WHEN** `LangoZKEscrow` is deployed
+- **THEN** the ZK verifier address SHALL be set as `immutable` in the constructor
+- **AND** `releaseWithProof` SHALL NOT accept a caller-supplied verifier address
+
 ### Requirement: IZKVerifier interface
 
 The system SHALL define an `IZKVerifier` interface with `verifyProof(uint256[8] proof, uint256[8] input)` using gnark's compressed Groth16 format. The function reverts on invalid proofs (no bool return).

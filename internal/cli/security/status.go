@@ -13,6 +13,8 @@ import (
 
 	"github.com/langoai/lango/internal/bootstrap"
 	"github.com/langoai/lango/internal/config"
+	"github.com/langoai/lango/internal/configstore"
+	"github.com/langoai/lango/internal/keyring"
 	"github.com/langoai/lango/internal/p2p/identity"
 	sec "github.com/langoai/lango/internal/security"
 	"github.com/langoai/lango/internal/security/passphrase"
@@ -39,6 +41,7 @@ type dbStatusResult struct {
 	available      bool
 	encryptionKeys int
 	storedSecrets  int
+	config         *config.Config // non-nil when DB was opened and config loaded
 }
 
 // statusOutput is the full status payload (envelope + DB + config fields).
@@ -186,12 +189,16 @@ func readDBStatusNonInteractive(
 	}
 
 	var (
-		dbKey  string
-		rawKey bool
+		dbKey      string
+		rawKey     bool
+		masterKey  []byte // non-nil when envelope unwrap succeeded
+		usedKeyring bool  // true when passphrase came from keyring (stale fallback possible)
 	)
 	if needsKey {
-		pass, _, err := passphrase.AcquireNonInteractive(passphrase.Options{
-			KeyfilePath: filepath.Join(langoDir, "keyfile"),
+		keyringProvider, _ := keyring.DetectSecureProvider()
+		pass, source, err := passphrase.AcquireNonInteractive(passphrase.Options{
+			KeyfilePath:     filepath.Join(langoDir, "keyfile"),
+			KeyringProvider: keyringProvider,
 		})
 		if err != nil {
 			if !errors.Is(err, passphrase.ErrNoNonInteractiveSource) {
@@ -199,12 +206,36 @@ func readDBStatusNonInteractive(
 			}
 			return result
 		}
+
+		usedKeyring = source == passphrase.SourceKeyring
+
+		// retryWithKeyfile attempts keyfile-only acquisition when the first
+		// passphrase (possibly from a stale keyring) fails to work.
+		retryWithKeyfile := func() (string, bool) {
+			if source != passphrase.SourceKeyring {
+				return "", false // first attempt was already keyfile
+			}
+			kfPass, _, kfErr := passphrase.AcquireNonInteractive(passphrase.Options{
+				KeyfilePath: filepath.Join(langoDir, "keyfile"),
+			})
+			if kfErr != nil {
+				return "", false
+			}
+			return kfPass, true
+		}
+
 		if envelope != nil && !envelope.PendingMigration && !envelope.PendingRekey {
 			mk, _, uerr := envelope.UnwrapFromPassphrase(pass)
 			if uerr != nil {
+				if fallback, ok := retryWithKeyfile(); ok {
+					mk, _, uerr = envelope.UnwrapFromPassphrase(fallback)
+				}
+			}
+			if uerr != nil {
 				return result
 			}
-			defer sec.ZeroBytes(mk)
+			masterKey = mk
+			defer sec.ZeroBytes(masterKey)
 			dbKey = sec.DeriveDBKeyHex(mk)
 			rawKey = true
 		} else {
@@ -216,7 +247,18 @@ func readDBStatusNonInteractive(
 
 	client, rawDB, err := bootstrap.OpenDatabaseReadOnly(dbPath, dbKey, rawKey, 0)
 	if err != nil {
-		return result
+		// For legacy mode with stale keyring, retry with keyfile-only.
+		if needsKey && !rawKey && usedKeyring {
+			kfPass, _, kfErr := passphrase.AcquireNonInteractive(passphrase.Options{
+				KeyfilePath: filepath.Join(langoDir, "keyfile"),
+			})
+			if kfErr == nil {
+				client, rawDB, err = bootstrap.OpenDatabaseReadOnly(dbPath, kfPass, false, 0)
+			}
+		}
+		if err != nil {
+			return result
+		}
 	}
 	defer client.Close()
 	defer rawDB.Close()
@@ -229,6 +271,19 @@ func readDBStatusNonInteractive(
 	if n, err := client.Secret.Query().Count(ctx); err == nil {
 		result.storedSecrets = n
 	}
+
+	// Try to load the active config profile when MK is available.
+	if masterKey != nil && envelope != nil {
+		crypto := sec.NewLocalCryptoProvider()
+		if initErr := crypto.InitializeWithEnvelope(masterKey, envelope); initErr == nil {
+			store := configstore.NewStore(client, crypto)
+			if _, cfg, _, loadErr := store.LoadActive(ctx); loadErr == nil {
+				result.config = cfg
+			}
+			crypto.Close()
+		}
+	}
+
 	result.available = true
 	return result
 }
@@ -288,7 +343,11 @@ func runStatusNonInteractive(jsonOutput bool) error {
 	needsKey := bootstrap.IsDBEncrypted(dbPath)
 	dbStatus := readDBStatusNonInteractive(langoDir, dbPath, envPtr, needsKey)
 
-	cfg := resolveStatusConfig()
+	// Use the active config if DB read succeeded; otherwise fall back to defaults.
+	cfg := dbStatus.config
+	if cfg == nil {
+		cfg = resolveStatusConfig()
+	}
 
 	dbEncStatus := "disabled (plaintext)"
 	if bootstrap.IsDBEncrypted(dbPath) {

@@ -72,6 +72,21 @@ The system SHALL provide a CLI command to change the passphrase. For envelope-ba
 - **THEN** the original envelope file remains unchanged (atomic replace or temp-file-rename pattern)
 - **AND** the user can retry with the original passphrase
 
+### Requirement: Passphrase change updates stored credentials
+
+#### Scenario: Keyring updated after passphrase change
+- **WHEN** `lango security change-passphrase` succeeds
+- **THEN** the command SHALL attempt to update the secure keyring with the new passphrase
+- **AND** failure SHALL print a warning with manual fix instructions
+
+#### Scenario: Keyfile updated after passphrase change
+- **WHEN** `lango security change-passphrase` succeeds and a keyfile exists
+- **THEN** the command SHALL write the new passphrase to the keyfile
+
+#### Scenario: Recovery restore updates stored credentials
+- **WHEN** `lango security recovery restore` succeeds
+- **THEN** the same keyring and keyfile update logic SHALL apply as in passphrase change
+
 ### Requirement: Passphrase no longer directly encrypts data
 
 With the envelope architecture, the passphrase SHALL function as a Key Encryption Key (KEK) source only. It SHALL NOT be used directly as a data encryption key. The Master Key (MK) is the sole data encryption key, and the passphrase-derived KEK is used only to wrap/unwrap the MK.

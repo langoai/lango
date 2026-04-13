@@ -57,6 +57,11 @@ The system SHALL execute a complete bootstrap sequence with 10 phases: ensure da
 - **THEN** the bootstrap SHALL use those values and NOT read KMS env vars
 - **AND** env vars serve only as default source when Options are empty
 
+#### Scenario: Load security state before envelope migration
+- **WHEN** the bootstrap sequence runs
+- **THEN** `phaseLoadSecurityState` SHALL execute before `phaseMigrateEnvelope`
+- **AND** when an envelope has `PendingMigration` or `PendingRekey`, salt and checksum SHALL be loaded even when envelope is present
+
 #### Scenario: No profiles exist
 
 - **WHEN** no profiles exist in the database

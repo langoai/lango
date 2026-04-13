@@ -4,12 +4,15 @@ import (
 	"crypto/rand"
 	"encoding/binary"
 	"fmt"
+	"os"
+	"path/filepath"
 	"strings"
 
 	"github.com/spf13/cobra"
 
 	"github.com/langoai/lango/internal/bootstrap"
 	"github.com/langoai/lango/internal/cli/prompt"
+	"github.com/langoai/lango/internal/keyring"
 	"github.com/langoai/lango/internal/security"
 )
 
@@ -166,6 +169,25 @@ and any other slots are unchanged.`,
 			}
 			if err := security.StoreEnvelopeFile(boot.LangoDir, envelope); err != nil {
 				return fmt.Errorf("persist envelope: %w", err)
+			}
+
+			// Sync stored credentials so next headless/keyring bootstrap works.
+			keyfilePath := filepath.Join(boot.LangoDir, "keyfile")
+			if _, statErr := os.Stat(keyfilePath); statErr == nil {
+				if writeErr := os.WriteFile(keyfilePath, []byte(newPass), 0600); writeErr != nil {
+					fmt.Fprintf(os.Stderr, "warning: update keyfile: %v\n", writeErr)
+				} else {
+					fmt.Fprintln(os.Stderr, "Keyfile updated with new passphrase.")
+				}
+			}
+			if secureProvider, _ := keyring.DetectSecureProvider(); secureProvider != nil {
+				if setErr := secureProvider.Set(keyring.Service, keyring.KeyMasterPassphrase, newPass); setErr != nil {
+					fmt.Fprintf(os.Stderr, "warning: keyring update failed: %v\n", setErr)
+					fmt.Fprintf(os.Stderr, "  If a stale passphrase is stored, next headless bootstrap may fail.\n")
+					fmt.Fprintf(os.Stderr, "  Fix: run `lango security keyring set` or clear the keyring entry manually.\n")
+				} else {
+					fmt.Fprintln(os.Stderr, "Keyring updated with new passphrase.")
+				}
 			}
 
 			fmt.Println("Recovery complete. The new passphrase is now active.")

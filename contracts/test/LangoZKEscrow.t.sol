@@ -40,10 +40,10 @@ contract LangoZKEscrowTest is Test {
         validVerifier = new MockVerifierValid();
         invalidVerifier = new MockVerifierInvalid();
 
-        // Deploy escrow with one trusted attestor.
+        // Deploy escrow with one trusted attestor and pinned valid verifier.
         uint256[] memory attestors = new uint256[](1);
         attestors[0] = ATTESTOR_HASH;
-        escrow = new LangoZKEscrow(attestors);
+        escrow = new LangoZKEscrow(attestors, address(validVerifier));
 
         // Fund buyer.
         usdc.mint(buyer, 100_000e6);
@@ -116,7 +116,7 @@ contract LangoZKEscrowTest is Test {
             uint256(uint160(address(escrow)))
         );
 
-        escrow.releaseWithProof(DEAL_ID, _dummyProof(), inputs, address(validVerifier));
+        escrow.releaseWithProof(DEAL_ID, _dummyProof(), inputs);
 
         (, , , , bool released) = escrow.deals(DEAL_ID);
         assertTrue(released);
@@ -130,10 +130,10 @@ contract LangoZKEscrowTest is Test {
         uint256[8] memory inputs = _buildPublicInputs(
             ATTESTOR_HASH, DEAL_ID, block.chainid, uint256(uint160(address(escrow)))
         );
-        escrow.releaseWithProof(DEAL_ID, _dummyProof(), inputs, address(validVerifier));
+        escrow.releaseWithProof(DEAL_ID, _dummyProof(), inputs);
 
         vm.expectRevert(LangoZKEscrow.DealAlreadyReleased.selector);
-        escrow.releaseWithProof(DEAL_ID, _dummyProof(), inputs, address(validVerifier));
+        escrow.releaseWithProof(DEAL_ID, _dummyProof(), inputs);
     }
 
     function testReleaseNonexistentDeal() public {
@@ -141,7 +141,7 @@ contract LangoZKEscrowTest is Test {
             ATTESTOR_HASH, 999, block.chainid, uint256(uint160(address(escrow)))
         );
         vm.expectRevert(LangoZKEscrow.DealNotFound.selector);
-        escrow.releaseWithProof(999, _dummyProof(), inputs, address(validVerifier));
+        escrow.releaseWithProof(999, _dummyProof(), inputs);
     }
 
     // ==================== Domain Binding ====================
@@ -158,7 +158,7 @@ contract LangoZKEscrowTest is Test {
         );
 
         vm.expectRevert(LangoZKEscrow.DomainBindingMismatch.selector);
-        escrow.releaseWithProof(DEAL_ID, _dummyProof(), inputs, address(validVerifier));
+        escrow.releaseWithProof(DEAL_ID, _dummyProof(), inputs);
     }
 
     function testDomainBindingChainIdMismatch() public {
@@ -173,7 +173,7 @@ contract LangoZKEscrowTest is Test {
         );
 
         vm.expectRevert(LangoZKEscrow.DomainBindingMismatch.selector);
-        escrow.releaseWithProof(DEAL_ID, _dummyProof(), inputs, address(validVerifier));
+        escrow.releaseWithProof(DEAL_ID, _dummyProof(), inputs);
     }
 
     function testDomainBindingContractMismatch() public {
@@ -188,7 +188,7 @@ contract LangoZKEscrowTest is Test {
         );
 
         vm.expectRevert(LangoZKEscrow.DomainBindingMismatch.selector);
-        escrow.releaseWithProof(DEAL_ID, _dummyProof(), inputs, address(validVerifier));
+        escrow.releaseWithProof(DEAL_ID, _dummyProof(), inputs);
     }
 
     // ==================== Attestor Trust ====================
@@ -205,7 +205,7 @@ contract LangoZKEscrowTest is Test {
         );
 
         vm.expectRevert(LangoZKEscrow.UntrustedAttestor.selector);
-        escrow.releaseWithProof(DEAL_ID, _dummyProof(), inputs, address(validVerifier));
+        escrow.releaseWithProof(DEAL_ID, _dummyProof(), inputs);
     }
 
     function testAddTrustedAttestor() public {
@@ -223,15 +223,22 @@ contract LangoZKEscrowTest is Test {
     // ==================== Invalid ZK Proof ====================
 
     function testInvalidProofRejected() public {
+        // Deploy a separate escrow pinned to the invalid (always-reverting) verifier.
+        uint256[] memory attestors2 = new uint256[](1);
+        attestors2[0] = ATTESTOR_HASH;
+        LangoZKEscrow badEscrow = new LangoZKEscrow(attestors2, address(invalidVerifier));
+
+        usdc.mint(buyer, AMOUNT);
         vm.prank(buyer);
-        escrow.createDeal(DEAL_ID, seller, address(usdc), AMOUNT);
+        usdc.approve(address(badEscrow), type(uint256).max);
+        vm.prank(buyer);
+        badEscrow.createDeal(DEAL_ID, seller, address(usdc), AMOUNT);
 
         uint256[8] memory inputs = _buildPublicInputs(
-            ATTESTOR_HASH, DEAL_ID, block.chainid, uint256(uint160(address(escrow)))
+            ATTESTOR_HASH, DEAL_ID, block.chainid, uint256(uint160(address(badEscrow)))
         );
-
         vm.expectRevert(LangoZKEscrow.InvalidZKProof.selector);
-        escrow.releaseWithProof(DEAL_ID, _dummyProof(), inputs, address(invalidVerifier));
+        badEscrow.releaseWithProof(DEAL_ID, _dummyProof(), inputs);
     }
 
     // ==================== Refund ====================

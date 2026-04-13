@@ -310,10 +310,19 @@ func provenanceSigner(w http.ResponseWriter, ctx context.Context, app *App, p2pc
 		http.Error(w, "local signed provenance export requires wallet identity and provenance bundle service", http.StatusServiceUnavailable)
 		return "", nil, false
 	}
-	did, err := p2pc.identity.DID(ctx)
+	// Use the wallet's v1 DID for provenance signing. The wallet signer uses
+	// secp256k1-keccak256, and VerifyMessageSignature only supports v1 DIDs.
+	// Using p2pc.identity.DID() would return a v2 DID when BundleProvider is
+	// active, causing verification failures on the receiving end.
+	walletPub, err := app.WalletProvider.PublicKey(ctx)
 	if err != nil {
-		http.Error(w, "resolve local DID: "+err.Error(), http.StatusServiceUnavailable)
+		http.Error(w, "resolve wallet public key: "+err.Error(), http.StatusServiceUnavailable)
 		return "", nil, false
 	}
-	return did.ID, &walletBundleSigner{wp: app.WalletProvider}, true
+	walletDID, err := identity.DIDFromPublicKey(walletPub)
+	if err != nil {
+		http.Error(w, "derive wallet DID: "+err.Error(), http.StatusServiceUnavailable)
+		return "", nil, false
+	}
+	return walletDID.ID, &walletBundleSigner{wp: app.WalletProvider}, true
 }
