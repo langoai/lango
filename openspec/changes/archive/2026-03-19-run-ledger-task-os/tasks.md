@@ -46,7 +46,7 @@
 
 - [x] 6.1 Create `internal/runledger/resume.go` — ResumeManager with staleTTL
 - [x] 6.2 Implement FindCandidates with session key filtering and staleness checking
-- [x] 6.3 Implement DetectResumeIntent (Korean: 계속, 이어서, 마저; English: resume, continue)
+- [x] 6.3 Implement DetectResumeIntent (Korean keywords: 계속, 이어서, 마저; English keywords: resume, continue)
 - [x] 6.4 Implement Resume with status validation (ErrRunNotPaused)
 
 ## 7. Workspace Isolation

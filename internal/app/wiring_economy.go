@@ -204,8 +204,14 @@ func initEconomy(cfg *config.Config, p2pc *p2pComponents, pc *paymentComponents,
 			escrowCfg.DisputeWindow = escrow.DefaultEngineConfig().DisputeWindow
 		}
 
+		// Build address resolver for DID v2 support.
+		var addrResolver escrow.AddressResolver
+		if p2pc != nil {
+			addrResolver = escrow.NewDefaultAddressResolver(nil) // v1 only for now; v2 lookup wired when bundleCache is accessible
+		}
+
 		// Select settlement mode based on config.
-		settler := selectSettler(cfg, pc)
+		settler := selectSettler(cfg, pc, addrResolver)
 		ec.escrowSettler = settler
 
 		escrowEngine := escrow.NewEngine(escrowStore, settler, escrowCfg)
@@ -264,7 +270,7 @@ func initEconomy(cfg *config.Config, p2pc *p2pComponents, pc *paymentComponents,
 
 // selectSettler chooses the settlement executor based on config.
 // Returns: USDCSettler (custodian), HubSettler, VaultSettler, or noopSettler.
-func selectSettler(cfg *config.Config, pc *paymentComponents) escrow.SettlementExecutor {
+func selectSettler(cfg *config.Config, pc *paymentComponents, resolver escrow.AddressResolver) escrow.SettlementExecutor {
 	oc := cfg.Economy.Escrow.OnChain
 
 	// On-chain mode requires payment components.
@@ -301,13 +307,19 @@ func selectSettler(cfg *config.Config, pc *paymentComponents) escrow.SettlementE
 
 	// Default: custodian mode (existing USDCSettler).
 	if pc != nil {
+		opts := []escrow.USDCSettlerOption{
+			escrow.WithReceiptTimeout(cfg.Economy.Escrow.Settlement.ReceiptTimeout),
+			escrow.WithMaxRetries(cfg.Economy.Escrow.Settlement.MaxRetries),
+		}
+		if resolver != nil {
+			opts = append(opts, escrow.WithAddressResolver(resolver))
+		}
 		settler := escrow.NewUSDCSettler(
 			pc.wallet,
 			payment.NewTxBuilder(pc.rpcClient, pc.chainID, cfg.Payment.Network.USDCContract),
 			pc.rpcClient,
 			pc.chainID,
-			escrow.WithReceiptTimeout(cfg.Economy.Escrow.Settlement.ReceiptTimeout),
-			escrow.WithMaxRetries(cfg.Economy.Escrow.Settlement.MaxRetries),
+			opts...,
 		)
 		logger().Info("economy: escrow using USDC settler (custodian)")
 		return settler

@@ -10,15 +10,16 @@ lango security <subcommand>
 
 ## lango security status
 
-Show the current security configuration status including signer provider, encryption keys, stored secrets count, and interceptor settings.
+Show the current security configuration status. By default, runs in **passphrase-free mode** — reads `envelope.json` directly and attempts a non-interactive DB read via keyring/keyfile. DB-dependent fields gracefully degrade to zero/"unavailable" when no credential is available.
 
 ```
-lango security status [--json]
+lango security status [--json] [--full]
 ```
 
 | Flag | Type | Default | Description |
 |------|------|---------|-------------|
 | `--json` | bool | `false` | Output as JSON |
+| `--full` | bool | `false` | Run full bootstrap (may prompt for passphrase) |
 
 **Example:**
 
@@ -32,75 +33,177 @@ Security Status
   PII Redaction:      disabled
   Approval Policy:    dangerous
   DB Encryption:      disabled (plaintext)
+  Master Key Envelope:
+    Version:          1
+    KEK Slots:        2 (passphrase, mnemonic)
+    Recovery Setup:   enabled
 ```
 
 ```bash
-# With KMS configured
+# DB unavailable (no keyring/keyfile)
 $ lango security status
 Security Status
-  Signer Provider:    aws-kms
-  Encryption Keys:    2
-  Stored Secrets:     5
-  Interceptor:        enabled
-  PII Redaction:      disabled
-  Approval Policy:    dangerous
-  DB Encryption:      encrypted (active)
-  KMS Provider:       aws-kms
-  KMS Key ID:         arn:aws:kms:us-east-1:...
-  KMS Fallback:       enabled
+  Signer Provider:    unavailable
+  Encryption Keys:    0
+  Stored Secrets:     0
+  ...
+  DB Access:          unavailable (no non-interactive credential)
+  Master Key Envelope:
+    Version:          1
+    KEK Slots:        1 (passphrase)
+    Recovery Setup:   disabled
 ```
 
 **JSON output fields:**
 
 | Field | Type | Description |
 |-------|------|-------------|
-| `signer_provider` | string | Active signer provider (`local`) |
+| `signer_provider` | string | Active signer provider (`local`, `unavailable`) |
 | `encryption_keys` | int | Number of registered encryption keys |
 | `stored_secrets` | int | Number of stored encrypted secrets |
 | `interceptor` | string | Interceptor status (`enabled`/`disabled`) |
 | `pii_redaction` | string | PII redaction status (`enabled`/`disabled`) |
 | `approval_policy` | string | Tool approval policy (`always`, `dangerous`, `never`) |
 | `db_encryption` | string | Database encryption status |
+| `db_available` | bool | Whether DB was accessible non-interactively |
+| `envelope` | object | Envelope details (see below) |
 | `kms_provider` | string | KMS provider name (when configured) |
 | `kms_key_id` | string | KMS key identifier (when configured) |
 | `kms_fallback` | string | KMS fallback status (when configured) |
 
+**Envelope JSON fields:**
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `present` | bool | Whether envelope.json exists |
+| `version` | int | Envelope format version |
+| `slot_count` | int | Number of KEK slots |
+| `slot_types` | []string | Unique slot types (`passphrase`, `mnemonic`) |
+| `recovery_setup` | bool | Whether a mnemonic recovery slot exists |
+| `pending_migration` | bool | Data re-encryption incomplete |
+| `pending_rekey` | bool | SQLCipher rekey incomplete |
+
 ---
 
-## lango security migrate-passphrase
+## lango security change-passphrase
 
-Rotate the encryption passphrase. Re-encrypts all stored secrets with a new passphrase. This command requires an interactive terminal.
+Change the passphrase by re-wrapping the Master Key. No data is re-encrypted and no DB rekey is issued — the operation is O(1) regardless of data size.
+
+```
+lango security change-passphrase
+```
+
+!!! info "Requirements"
+    - Only available for envelope-based installations (local crypto provider)
+    - Requires an interactive terminal
+    - Recovery mnemonic slots are unchanged
+
+**Process:**
+
+1. Full bootstrap verifies the current passphrase
+2. You enter and confirm the current passphrase again
+3. You enter and confirm a new passphrase (min 8 characters)
+4. The Master Key is re-wrapped with the new passphrase-derived KEK
+5. The updated envelope is atomically persisted
+
+**Example:**
+
+```bash
+$ lango security change-passphrase
+Enter CURRENT passphrase: ********
+Enter NEW passphrase: ********
+Confirm NEW passphrase: ********
+Passphrase changed. No data was re-encrypted.
+```
+
+---
+
+## lango security migrate-passphrase (deprecated)
+
+!!! warning "Deprecated"
+    Use `lango security change-passphrase` instead. The legacy command re-encrypts all data, which is unnecessary with the envelope architecture.
 
 ```
 lango security migrate-passphrase
 ```
 
-!!! warning "Important"
-    - Only available when using the `local` security provider
-    - Requires an interactive terminal for passphrase input
-    - Back up your data directory before running this command
-    - If the process is interrupted, data may be corrupted
+---
+
+## Recovery Mnemonic
+
+Manage the BIP39 recovery mnemonic for the Master Key envelope.
+
+### lango security recovery setup
+
+Generate a 24-word BIP39 recovery mnemonic and add it as a KEK slot. The mnemonic is displayed exactly once — you must write it down and store it securely.
+
+```
+lango security recovery setup
+```
+
+!!! warning "Requirements"
+    - Requires an interactive terminal
+    - Only one mnemonic slot is allowed per envelope
+    - The current passphrase must be provided to authorize setup
 
 **Process:**
 
-1. Your current passphrase is verified during bootstrap
-2. You are prompted to enter and confirm a new passphrase
-3. A new random salt is generated
-4. All secrets are decrypted with the old passphrase and re-encrypted with the new one
-5. The new salt and passphrase checksum are saved
+1. Enter the current passphrase to unwrap the Master Key
+2. A 24-word BIP39 mnemonic is generated and displayed
+3. Confirm you have written it down
+4. Enter two randomly selected words to verify
+5. The mnemonic KEK slot is added to the envelope
 
 **Example:**
 
 ```bash
-$ lango security migrate-passphrase
-This process will re-encrypt all your stored secrets with a new passphrase.
-Warning: If this process is interrupted, your data may be corrupted.
-Ensure you have a backup of your data directory.
+$ lango security recovery setup
+Enter current passphrase to authorize setup: ********
 
-Enter NEW passphrase:
-Confirm NEW passphrase:
-Migrating secrets...
-Migration completed successfully!
+============================================================
+RECOVERY MNEMONIC — write this down and store securely
+============================================================
+ 1. abandon    2. ability    3. able       4. about
+ 5. above      6. absent     7. absorb     8. abstract
+ ...
+============================================================
+
+Have you written down all 24 words? [y/N] y
+Enter word 7 to confirm: absorb
+Enter word 19 to confirm: ...
+Recovery mnemonic slot added successfully.
+```
+
+---
+
+### lango security recovery restore
+
+Recover access using the BIP39 mnemonic when the passphrase is lost. Unwraps the Master Key via the mnemonic slot and sets a new passphrase.
+
+```
+lango security recovery restore
+```
+
+!!! info "Requirements"
+    - Requires an interactive terminal
+    - A mnemonic slot must exist on the envelope
+
+**Process:**
+
+1. Enter the 24-word recovery mnemonic
+2. The mnemonic is validated and used to unwrap the Master Key
+3. Enter and confirm a new passphrase
+4. The passphrase KEK slot is replaced with the new passphrase
+5. The recovery mnemonic slot is unchanged
+
+**Example:**
+
+```bash
+$ lango security recovery restore
+Enter 24-word recovery mnemonic: ********
+Enter NEW passphrase: ********
+Confirm NEW passphrase: ********
+Recovery complete. The new passphrase is now active.
 ```
 
 ---

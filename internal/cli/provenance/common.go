@@ -49,7 +49,18 @@ func loadServices(boot *bootstrap.Result) *services {
 
 	tree := provenancepkg.NewSessionTree(treeStore)
 	attribution := provenancepkg.NewAttributionService(attrs, checkpoints, tokenStore)
-	bundle := provenancepkg.NewBundleService(checkpoints, treeStore, attrs, attribution)
+	ed25519Verifier := func(didStr string, payload, signature []byte) error {
+		pubkey, err := identity.ParseDIDPublicKey(didStr)
+		if err != nil {
+			return err
+		}
+		return security.VerifyEd25519(pubkey, payload, signature)
+	}
+	verifiers := map[string]provenancepkg.SignatureVerifyFunc{
+		security.AlgorithmSecp256k1Keccak256: identity.VerifyMessageSignature,
+		security.AlgorithmEd25519:            ed25519Verifier,
+	}
+	bundle := provenancepkg.NewBundleService(checkpoints, treeStore, attrs, attribution, verifiers)
 
 	return &services{
 		checkpoints: checkpoints,
@@ -61,7 +72,20 @@ func loadServices(boot *bootstrap.Result) *services {
 	}
 }
 
-func loadSigner(ctx context.Context, boot *bootstrap.Result) (string, provenancepkg.BundleSignFunc, error) {
+// cliBundleSigner wraps a WalletProvider to satisfy provenance.BundleSigner.
+type cliBundleSigner struct {
+	wp wallet.WalletProvider
+}
+
+func (s *cliBundleSigner) Sign(ctx context.Context, payload []byte) ([]byte, error) {
+	return s.wp.SignMessage(ctx, payload)
+}
+
+func (s *cliBundleSigner) Algorithm() string {
+	return provenancepkg.AlgorithmSecp256k1Keccak256
+}
+
+func loadSigner(ctx context.Context, boot *bootstrap.Result) (string, provenancepkg.BundleSigner, error) {
 	if boot == nil || boot.DBClient == nil || boot.Crypto == nil {
 		return "", nil, fmt.Errorf("signed provenance export requires initialized bootstrap crypto")
 	}
@@ -92,7 +116,5 @@ func loadSigner(ctx context.Context, boot *bootstrap.Result) (string, provenance
 		return "", nil, fmt.Errorf("derive signer DID: %w", err)
 	}
 
-	return did.ID, func(ctx context.Context, payload []byte) ([]byte, error) {
-		return wp.SignMessage(ctx, payload)
-	}, nil
+	return did.ID, &cliBundleSigner{wp: wp}, nil
 }

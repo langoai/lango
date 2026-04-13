@@ -21,20 +21,31 @@ import (
 // encrypted secrets, database files, and keyfiles).
 const dataDirPerm = 0700
 
-// DefaultPhases returns the standard bootstrap phase sequence.
+// DefaultPhases returns the standard bootstrap phase sequence (11 phases).
+//
+// Envelope-aware order: envelope loads BEFORE DB open so recovery credentials
+// (mnemonic) and MK-derived DB keys are available when we actually open
+// SQLCipher. Legacy installations follow the same pipeline but land in
+// MigrateEnvelope which performs a one-time upgrade.
 func DefaultPhases() []Phase {
 	return []Phase{
 		phaseEnsureDataDir(),
 		phaseDetectEncryption(),
-		phaseAcquirePassphrase(),
+		phaseLoadEnvelopeFile(),
+		phaseAcquireCredential(),
+		phaseUnwrapOrCreateMK(),
 		phaseOpenDatabase(),
 		phaseLoadSecurityState(),
+		phaseMigrateEnvelope(),
 		phaseInitCrypto(),
+		phaseDeriveIdentityKey(),
+		phaseDerivePQKey(),
 		phaseLoadProfile(),
 	}
 }
 
-// phaseEnsureDataDir creates ~/.lango/ directory and resolves default paths.
+// phaseEnsureDataDir resolves the lango data directory (honoring Options.LangoDir),
+// creates it with 0700 permissions, and fills in default paths for DBPath and KeyfilePath.
 func phaseEnsureDataDir() Phase {
 	return Phase{
 		Name: "ensure data directory",
@@ -44,7 +55,11 @@ func phaseEnsureDataDir() Phase {
 				return fmt.Errorf("resolve home directory: %w", err)
 			}
 			s.Home = home
-			s.LangoDir = filepath.Join(home, ".lango")
+			if s.Options.LangoDir != "" {
+				s.LangoDir = s.Options.LangoDir
+			} else {
+				s.LangoDir = filepath.Join(home, ".lango")
+			}
 
 			if s.Options.DBPath == "" {
 				s.Options.DBPath = filepath.Join(s.LangoDir, "lango.db")
@@ -71,6 +86,8 @@ func phaseEnsureDataDir() Phase {
 				return fmt.Errorf("create skills directory: %w", err)
 			}
 
+			// Expose the resolved lango dir to downstream CLI/tools.
+			s.Result.LangoDir = s.LangoDir
 			return nil
 		},
 	}
@@ -88,20 +105,90 @@ func phaseDetectEncryption() Phase {
 	}
 }
 
-// phaseAcquirePassphrase acquires the passphrase from keyring, keyfile, or interactive prompt.
-// Also offers to store the passphrase when secure hardware is available.
-func phaseAcquirePassphrase() Phase {
+// phaseLoadEnvelopeFile attempts to load <LangoDir>/envelope.json.
+// On success populates s.Envelope; on "file does not exist" sets it to nil.
+// A corrupt file (invalid JSON, wrong version) fails the phase.
+func phaseLoadEnvelopeFile() Phase {
 	return Phase{
-		Name: "acquire passphrase",
+		Name: "load envelope file",
 		Run: func(_ context.Context, s *State) error {
+			env, err := security.LoadEnvelopeFile(s.LangoDir)
+			if err != nil {
+				return fmt.Errorf("load envelope: %w", err)
+			}
+			s.Envelope = env
+			return nil
+		},
+	}
+}
+
+// phaseAcquireCredential acquires the passphrase, or offers mnemonic recovery
+// if the envelope contains a mnemonic slot and the terminal is interactive.
+func phaseAcquireCredential() Phase {
+	return Phase{
+		Name: "acquire credential",
+		Run: func(ctx context.Context, s *State) error {
+			// KMS path: if envelope has a hardware/KMS slot and KMS config
+			// is provided, attempt to create a bare KMS provider and unwrap
+			// the MK directly. On success, skip passphrase entirely.
+			// On failure, fall through to passphrase acquisition.
+			if s.Envelope != nil && s.Envelope.HasSlotType(security.KEKSlotHardware) &&
+				s.Options.KMSConfig != nil && s.Options.KMSProviderName != "" {
+
+				kmsProvider, kmsErr := security.NewKMSProvider(
+					security.KMSProviderName(s.Options.KMSProviderName),
+					*s.Options.KMSConfig,
+				)
+				if kmsErr == nil {
+					mk, _, unwrapErr := s.Envelope.UnwrapFromKMS(
+						ctx, kmsProvider, s.Options.KMSProviderName, s.Options.KMSConfig.KeyID,
+					)
+					if unwrapErr == nil {
+						s.MasterKey = mk
+						s.KMSUnwrap = true
+						s.KMSProvider = kmsProvider
+						s.Result.KMSUnwrap = true
+						return nil // Skip passphrase entirely.
+					}
+					fmt.Fprintf(os.Stderr, "warning: KMS unwrap failed: %v (falling back to passphrase)\n", unwrapErr)
+				} else {
+					fmt.Fprintf(os.Stderr, "warning: KMS provider init failed: %v (falling back to passphrase)\n", kmsErr)
+				}
+			}
+
 			// Detect secure provider (biometric/TPM).
 			if !s.Options.SkipSecureDetection {
 				s.SecureProvider, s.SecurityTier = keyring.DetectSecureProvider()
 			}
 
-			// Determine if this is a first-run scenario: no DB file.
+			// Determine if this is a first-run scenario: no DB file AND no envelope.
 			_, statErr := os.Stat(s.Options.DBPath)
-			s.FirstRunGuess = statErr != nil
+			s.FirstRunGuess = statErr != nil && s.Envelope == nil
+
+			// Recovery path: offer mnemonic choice when the envelope has a
+			// mnemonic slot and we're on an interactive terminal. The interactive
+			// check relies on passphrase.Acquire's TTY detection; the choice
+			// prompt itself uses prompt.Confirm which already gates on TTY.
+			if s.Envelope != nil && s.Envelope.HasSlotType(security.KEKSlotMnemonic) {
+				if ok, promptErr := prompt.Confirm("Recovery mnemonic slot detected. Recover with mnemonic?"); promptErr == nil && ok {
+					mnemonic, mErr := prompt.Passphrase("Enter 24-word recovery mnemonic: ")
+					if mErr != nil {
+						return fmt.Errorf("read mnemonic: %w", mErr)
+					}
+					if err := security.ValidateMnemonic(mnemonic); err != nil {
+						return fmt.Errorf("invalid mnemonic: %w", err)
+					}
+					mk, _, unwrapErr := s.Envelope.UnwrapFromMnemonic(mnemonic)
+					if unwrapErr != nil {
+						return fmt.Errorf("mnemonic does not match any envelope slot: %w", unwrapErr)
+					}
+					s.MasterKey = mk
+					s.RecoveryMode = true
+					// We still need a DBKey for SQLCipher below, but that will
+					// be derived from the MK in phaseOpenDatabase.
+					return nil
+				}
+			}
 
 			pass, source, err := passphrase.Acquire(passphrase.Options{
 				KeyfilePath:     s.Options.KeyfilePath,
@@ -138,21 +225,84 @@ func phaseAcquirePassphrase() Phase {
 	}
 }
 
+// phaseUnwrapOrCreateMK covers three cases:
+//  1. MasterKey already set (by mnemonic recovery) — no-op.
+//  2. Envelope exists — derive KEK from passphrase and unwrap the MK.
+//  3. No envelope and no legacy DB — treat as first run: create a new MK +
+//     envelope and persist the envelope file immediately.
+//  4. No envelope but legacy DB exists — mark LegacyMode; migration will handle it.
+func phaseUnwrapOrCreateMK() Phase {
+	return Phase{
+		Name: "unwrap or create master key",
+		Run: func(_ context.Context, s *State) error {
+			if s.MasterKey != nil {
+				// Already unwrapped via mnemonic recovery.
+				return nil
+			}
+			if s.Envelope != nil {
+				mk, _, err := s.Envelope.UnwrapFromPassphrase(s.Passphrase)
+				if err != nil {
+					return fmt.Errorf("unwrap master key: %w", err)
+				}
+				s.MasterKey = mk
+				return nil
+			}
+			// No envelope. Decide between first-run and legacy upgrade.
+			if s.FirstRunGuess {
+				env, mk, err := security.NewEnvelope(s.Passphrase)
+				if err != nil {
+					return fmt.Errorf("create envelope: %w", err)
+				}
+				if err := security.StoreEnvelopeFile(s.LangoDir, env); err != nil {
+					security.ZeroBytes(mk)
+					return fmt.Errorf("store envelope: %w", err)
+				}
+				s.Envelope = env
+				s.MasterKey = mk
+				return nil
+			}
+			// Legacy DB exists; migration phase will handle it after DB open.
+			s.LegacyMode = true
+			return nil
+		},
+	}
+}
+
 // phaseOpenDatabase opens SQLite/SQLCipher DB and runs ent schema migration.
+//
+// Key selection matrix:
+//   - MK available + no pending flags  → MK-derived raw key (rawKey=true)
+//   - MK available + pending flags     → legacy passphrase (fallback)
+//   - No MK (legacy mode)              → legacy passphrase
+//   - Encryption disabled              → no key
 func phaseOpenDatabase() Phase {
 	return Phase{
 		Name: "open database",
 		Run: func(_ context.Context, s *State) error {
+			var (
+				dbKey  string
+				rawKey bool
+			)
 			if s.NeedsDBKey {
-				s.DBKey = s.Passphrase
+				switch {
+				case s.MasterKey != nil && s.Envelope != nil &&
+					!s.Envelope.PendingMigration && !s.Envelope.PendingRekey:
+					dbKey = security.DeriveDBKeyHex(s.MasterKey)
+					rawKey = true
+				case s.Passphrase != "":
+					dbKey = s.Passphrase
+					rawKey = false
+				default:
+					return fmt.Errorf("open database: no credential available for encrypted db")
+				}
+				s.DBKey = dbKey
 			}
-			client, rawDB, err := openDatabase(s.Options.DBPath, s.DBKey, s.Options.DBEncryption.CipherPageSize)
+			client, rawDB, err := openDatabase(s.Options.DBPath, dbKey, rawKey, s.Options.DBEncryption.CipherPageSize)
 			if err != nil {
 				return fmt.Errorf("open database: %w", err)
 			}
 			s.Client = client
 			s.RawDB = rawDB
-			// Populate Result early so later phases can build on it.
 			s.Result.DBClient = client
 			s.Result.RawDB = rawDB
 			return nil
@@ -165,11 +315,84 @@ func phaseOpenDatabase() Phase {
 	}
 }
 
-// phaseLoadSecurityState reads salt and checksum from the database.
+// phaseMigrateEnvelope performs three conditional actions:
+//
+//   - LegacyMode: run the full legacy → envelope migration.
+//   - PendingMigration=true: retry data re-encryption using the already-unwrapped MK.
+//   - PendingRekey=true: retry `PRAGMA rekey` on SQLCipher DB.
+//
+// On failure the envelope retains its pending flags so the next bootstrap can retry.
+func phaseMigrateEnvelope() Phase {
+	return Phase{
+		Name: "migrate envelope",
+		Run: func(ctx context.Context, s *State) error {
+			if s.LegacyMode {
+				fmt.Fprintln(os.Stderr, "Upgrading encryption format (one-time migration)...")
+				env, mk, err := security.MigrateToEnvelope(
+					ctx, s.RawDB, s.Client, s.LangoDir,
+					s.Passphrase, s.Salt, s.Checksum,
+					s.NeedsDBKey,
+				)
+				if err != nil {
+					return fmt.Errorf("legacy migration: %w", err)
+				}
+				s.Envelope = env
+				s.MasterKey = mk
+				return nil
+			}
+
+			if s.Envelope != nil && s.Envelope.PendingMigration {
+				if s.MasterKey == nil {
+					return fmt.Errorf("pending migration retry requires unwrapped master key")
+				}
+				if err := security.RetryMigration(ctx, s.Client, s.MasterKey, s.Passphrase, s.Salt); err != nil {
+					return fmt.Errorf("retry migration: %w", err)
+				}
+				s.Envelope.PendingMigration = false
+				if err := security.StoreEnvelopeFile(s.LangoDir, s.Envelope); err != nil {
+					return fmt.Errorf("persist envelope after retry migration: %w", err)
+				}
+			}
+
+			if s.Envelope != nil && s.Envelope.PendingRekey {
+				if s.MasterKey == nil {
+					return fmt.Errorf("pending rekey retry requires unwrapped master key")
+				}
+				if err := security.RetryRekey(s.RawDB, s.MasterKey); err != nil {
+					return fmt.Errorf("retry rekey: %w", err)
+				}
+				s.Envelope.PendingRekey = false
+				if err := security.StoreEnvelopeFile(s.LangoDir, s.Envelope); err != nil {
+					return fmt.Errorf("persist envelope after retry rekey: %w", err)
+				}
+			}
+
+			return nil
+		},
+	}
+}
+
+// phaseLoadSecurityState reads legacy salt and checksum from the database.
+// These are only used when an envelope has NOT been installed yet (i.e. on
+// installations that predate this change and will be migrated in Phase 7).
 func phaseLoadSecurityState() Phase {
 	return Phase{
 		Name: "load security state",
 		Run: func(_ context.Context, s *State) error {
+			if s.Envelope != nil {
+				// When pending flags are set, legacy salt/checksum are still
+				// needed for crash-recovery retry in phaseMigrateEnvelope.
+				if s.Envelope.PendingMigration || s.Envelope.PendingRekey {
+					salt, checksum, _, err := loadSecurityState(s.RawDB)
+					if err != nil {
+						return fmt.Errorf("load security state for pending migration: %w", err)
+					}
+					s.Salt = salt
+					s.Checksum = checksum
+				}
+				s.FirstRun = false
+				return nil
+			}
 			salt, checksum, firstRun, err := loadSecurityState(s.RawDB)
 			if err != nil {
 				return fmt.Errorf("load security state: %w", err)
@@ -182,14 +405,23 @@ func phaseLoadSecurityState() Phase {
 	}
 }
 
-// phaseInitCrypto initializes the crypto provider and shreds keyfile if needed.
+// phaseInitCrypto installs the Master Key (or legacy passphrase-derived key)
+// into the LocalCryptoProvider and shreds the keyfile on success.
 func phaseInitCrypto() Phase {
 	return Phase{
 		Name: "initialize crypto",
 		Run: func(_ context.Context, s *State) error {
 			provider := security.NewLocalCryptoProvider()
 
-			if s.FirstRun {
+			switch {
+			case s.MasterKey != nil && s.Envelope != nil:
+				// Envelope path: install the already-unwrapped MK.
+				if err := provider.InitializeWithEnvelope(s.MasterKey, s.Envelope); err != nil {
+					return fmt.Errorf("initialize crypto with envelope: %w", err)
+				}
+			case s.FirstRun:
+				// Legacy first run (should be rare now — UnwrapOrCreateMK handles
+				// first runs via NewEnvelope). Kept as a safety net.
 				if err := provider.Initialize(s.Passphrase); err != nil {
 					return fmt.Errorf("initialize crypto: %w", err)
 				}
@@ -200,7 +432,10 @@ func phaseInitCrypto() Phase {
 				if err := storeChecksum(s.RawDB, cs); err != nil {
 					return fmt.Errorf("store checksum: %w", err)
 				}
-			} else {
+			default:
+				// Legacy returning-user path. Used for DBs that still have
+				// salt/checksum and no envelope (shouldn't reach here after
+				// successful migration).
 				if err := provider.InitializeWithSalt(s.Passphrase, s.Salt); err != nil {
 					return fmt.Errorf("initialize crypto with salt: %w", err)
 				}
@@ -221,6 +456,41 @@ func phaseInitCrypto() Phase {
 
 			s.Crypto = provider
 			s.Result.Crypto = provider
+			return nil
+		},
+	}
+}
+
+// phaseDeriveIdentityKey derives the Ed25519 identity key from the Master Key
+// via HKDF. This key is used by BundleProvider for DID v2 identity.
+// No-op when MK is unavailable (legacy mode).
+func phaseDeriveIdentityKey() Phase {
+	return Phase{
+		Name: "derive identity key",
+		Run: func(_ context.Context, s *State) error {
+			if s.MasterKey == nil {
+				return nil // No MK = no identity key (legacy mode)
+			}
+			s.IdentityKey = security.DeriveIdentityKey(s.MasterKey, 0)
+			s.Result.IdentityKey = s.IdentityKey
+			return nil
+		},
+	}
+}
+
+// phaseDerivePQKey derives the ML-DSA-65 PQ signing key seed from the Master Key
+// via HKDF. The 32-byte seed is stored in Result; downstream code derives the
+// full ML-DSA-65 keypair via mldsa65.NewKeyFromSeed.
+// No-op when MK is unavailable (legacy mode).
+func phaseDerivePQKey() Phase {
+	return Phase{
+		Name: "derive PQ signing key",
+		Run: func(_ context.Context, s *State) error {
+			if s.MasterKey == nil {
+				return nil
+			}
+			s.PQSigningKeySeed = security.DerivePQSigningSeed(s.MasterKey, 0)
+			s.Result.PQSigningKeySeed = s.PQSigningKeySeed
 			return nil
 		},
 	}

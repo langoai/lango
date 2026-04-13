@@ -41,7 +41,7 @@ func (w *LocalWallet) Address(ctx context.Context) (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("load wallet key: %w", err)
 	}
-	defer zeroBytes(keyBytes)
+	defer security.ZeroBytes(keyBytes)
 
 	privateKey, err := crypto.ToECDSA(keyBytes)
 	if err != nil {
@@ -78,7 +78,7 @@ func (w *LocalWallet) SignTransaction(ctx context.Context, rawTx []byte) ([]byte
 	if err != nil {
 		return nil, fmt.Errorf("load wallet key: %w", err)
 	}
-	defer zeroBytes(keyBytes)
+	defer security.ZeroBytes(keyBytes)
 
 	privateKey, err := crypto.ToECDSA(keyBytes)
 	if err != nil {
@@ -99,7 +99,7 @@ func (w *LocalWallet) SignMessage(ctx context.Context, message []byte) ([]byte, 
 	if err != nil {
 		return nil, fmt.Errorf("load wallet key: %w", err)
 	}
-	defer zeroBytes(keyBytes)
+	defer security.ZeroBytes(keyBytes)
 
 	privateKey, err := crypto.ToECDSA(keyBytes)
 	if err != nil {
@@ -139,7 +139,7 @@ func (w *LocalWallet) PublicKey(ctx context.Context) ([]byte, error) {
 	if err != nil {
 		return nil, fmt.Errorf("load wallet key: %w", err)
 	}
-	defer zeroBytes(keyBytes)
+	defer security.ZeroBytes(keyBytes)
 
 	privateKey, err := crypto.ToECDSA(keyBytes)
 	if err != nil {
@@ -149,9 +149,3 @@ func (w *LocalWallet) PublicKey(ctx context.Context) ([]byte, error) {
 	return crypto.CompressPubkey(&privateKey.PublicKey), nil
 }
 
-// zeroBytes overwrites a byte slice with zeros.
-func zeroBytes(b []byte) {
-	for i := range b {
-		b[i] = 0
-	}
-}

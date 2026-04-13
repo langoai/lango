@@ -48,7 +48,7 @@ Single binary. <100ms startup. <250MB memory. Just Go.
 - ⚡ **Background Execution** - Async task manager with concurrency control and completion notifications
 - 🔄 **Workflow Engine** - DAG-based YAML workflows with parallel step execution and state persistence
 - 🔗 **MCP Integration** - Connect to external MCP servers (stdio/HTTP/SSE), auto-discovery, health checks, multi-scope config
-- 🔒 **Secure** - AES-256-GCM encryption, key registry, secret management, output scanning, hardware keyring (Touch ID / TPM), SQLCipher DB encryption, Cloud KMS (AWS/GCP/Azure/PKCS#11)
+- 🔒 **Secure** - Master Key envelope (MK/KEK hierarchy), AES-256-GCM encryption, recovery mnemonic, key registry, secret management, output scanning, hardware keyring (Touch ID / TPM), SQLCipher DB encryption, Cloud KMS (AWS/GCP/Azure/PKCS#11)
 - 💾 **Persistent** - Ent ORM with SQLite session storage
 - 🌐 **Gateway** - WebSocket/HTTP server with real-time streaming
 - 🔑 **Auth** - OIDC authentication, OAuth login flow
@@ -215,7 +215,7 @@ lango/
 │   │   ├── provenance/     #   lango provenance status/checkpoint/session/attribution/bundle
 │   │   ├── run/            #   lango run list/status/journal
 │   │   ├── sandbox/        #   lango sandbox status/test
-│   │   ├── security/       #   lango security status/secrets/migrate-passphrase/keyring/db-migrate/db-decrypt/kms
+│   │   ├── security/       #   lango security status/secrets/change-passphrase/recovery/keyring/db-migrate/db-decrypt/kms
 │   │   ├── settings/       #   lango settings (full configuration editor)
 │   │   ├── smartaccount/   #   lango account info/deploy/session/module/policy/paymaster
 │   │   ├── status/         #   lango status (unified dashboard)
@@ -1277,14 +1277,19 @@ Lango includes built-in security features for AI agents:
 Lango supports two security modes:
 
 1. **Local Mode** (Default)
-  - Encrypts secrets using AES-256-GCM derived from a passphrase (PBKDF2).
+  - Uses a **Master Key (MK) envelope** — a random 32-byte MK encrypts all data (AES-256-GCM), and the passphrase wraps the MK via a KEK.
   - **Interactive**: Prompts for passphrase on startup (Recommended).
-  - **Headless**: Set `LANGO_PASSPHRASE` environment variable.
-  - **Migration**: Rotate your passphrase using:
+  - **Headless**: Provide a keyfile at `~/.lango/keyfile` (0600 permissions).
+  - **Change passphrase** (O(1), no data re-encryption):
     ```bash
-    lango security migrate-passphrase
+    lango security change-passphrase
     ```
-  > **⚠️ Warning**: Losing your passphrase results in permanent loss of all encrypted secrets. Lango does not store your passphrase.
+  - **Recovery mnemonic** (BIP39 24-word backup):
+    ```bash
+    lango security recovery setup     # Generate and store mnemonic
+    lango security recovery restore   # Recover access with mnemonic
+    ```
+  > **Note**: Without a recovery mnemonic, losing your passphrase results in permanent loss of all encrypted data. Set up recovery with `lango security recovery setup`.
 2. **RPC Mode** (Production)
   - Offloads cryptographic operations to a hardware-backed companion app or external signer.
   - Keys never leave the secure hardware.

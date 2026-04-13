@@ -103,3 +103,51 @@ The `AdService` SHALL publish the local `AgentAd` to the Kademlia DHT under the 
 #### Scenario: Ad with empty DID rejected
 - **WHEN** `StoreAd` is called with an ad where `DID == ""`
 - **THEN** `StoreAd` SHALL return an error containing "agent ad missing DID"
+
+---
+
+### Requirement: GossipCard signing
+
+GossipCards SHALL support dual signatures (classical + PQ). The `CanonicalCardPayload()` function SHALL serialize all card fields except `Signature` and `PQSignature`. The `Bundle` and `PQSignerPublicKey` fields SHALL be included in the canonical payload to prevent bundle substitution. Unsigned legacy cards SHALL be accepted for backward compatibility.
+
+#### Scenario: Signed gossip card published
+- **WHEN** a gossip card is published with a signer available
+- **THEN** `Signature` and `SignatureAlgorithm` SHALL be set from the classical signer
+- **AND** if a PQ signer is available, `PQSignature`, `PQSignatureAlgorithm`, and `PQSignerPublicKey` SHALL be set
+
+#### Scenario: Signed gossip card verified on receive
+- **WHEN** a gossip card with signature fields is received
+- **THEN** `handleMessage` SHALL call `VerifyCardSignature` before storing the card
+- **AND** cards with invalid signatures SHALL be discarded with a warning log
+
+#### Scenario: Empty bundle in signed card rejected
+- **WHEN** a signed gossip card has a non-empty `Bundle` field but the bundle contains no valid `SigningKey.PublicKey`
+- **THEN** the card SHALL be rejected with "signed card has bundle but no valid signing key"
+
+#### Scenario: Card DID matches bundle v2 DID only
+- **WHEN** a signed gossip card with a bundle is verified
+- **THEN** `card.DID` SHALL match `ComputeDIDv2(bundle)` only
+- **AND** `bundle.LegacyDID` SHALL NOT be accepted as a valid match (unverifiable without `Proofs.Legacy`)
+
+#### Scenario: Bundle-less signed card accepted for backward compat
+- **WHEN** a signed gossip card has no `Bundle` field (pre-upgrade peer)
+- **THEN** classical and PQ signature verification SHALL be skipped
+- **AND** the card SHALL be accepted for backward compatibility
+
+#### Scenario: SignatureAlgorithm set before canonical payload
+- **WHEN** `signCard` computes the canonical payload for signing
+- **THEN** `SignatureAlgorithm` SHALL be set before `CanonicalCardPayload` is called
+- **AND** sender and receiver SHALL hash the same JSON fields
+
+#### Scenario: Unsigned legacy card accepted
+- **WHEN** a gossip card without signature fields is received
+- **THEN** the card SHALL be accepted for backward compatibility
+
+#### Scenario: Tampered card rejected
+- **WHEN** a signed gossip card with a modified field is received
+- **THEN** signature verification SHALL fail and the card SHALL be discarded
+
+#### Scenario: Bundle included in signed payload
+- **WHEN** `CanonicalCardPayload()` is computed
+- **THEN** the Bundle field SHALL be included in the canonical payload
+- **AND** an attacker cannot substitute a different Bundle without invalidating the signature

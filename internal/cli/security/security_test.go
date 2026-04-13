@@ -22,7 +22,8 @@ func TestNewSecurityCmd_Structure(t *testing.T) {
 	assert.NotEmpty(t, cmd.Short)
 
 	expected := []string{
-		"migrate-passphrase", "secrets", "status",
+		"change-passphrase", "recovery", "migrate-passphrase",
+		"secrets", "status",
 		"keyring", "db-migrate", "db-decrypt", "kms",
 	}
 
@@ -38,7 +39,9 @@ func TestNewSecurityCmd_Structure(t *testing.T) {
 
 func TestNewSecurityCmd_SubcommandCount(t *testing.T) {
 	cmd := NewSecurityCmd(dummyBootLoader())
-	assert.Equal(t, 7, len(cmd.Commands()), "expected 7 security subcommands")
+	// 9 subcommands: change-passphrase, recovery, migrate-passphrase (deprecated),
+	// secrets, status, keyring, db-migrate, db-decrypt, kms
+	assert.Equal(t, 9, len(cmd.Commands()), "expected 9 security subcommands")
 }
 
 func TestSecretsCmd_HasSubcommands(t *testing.T) {

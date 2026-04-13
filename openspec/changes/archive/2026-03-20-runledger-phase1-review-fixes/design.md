@@ -1,66 +1,66 @@
 ## Context
 
-RunLedger Phase 1은 scaffold으로 구현됐으나, 코드 리뷰에서 5개 결함이 발견됐다:
+RunLedger Phase 1 was implemented as a scaffold, but 5 defects were found during code review:
 
-1. PEV 자동 실행이 `run_propose_step_result`에 연결되지 않아 step이 `verify_pending`에서 영구 정지
-2. `run_approve_step`이 validator type 검증 없이 아무 step이든 통과 가능
-3. validator가 main tree에서 실행 — WorkDir 지원 미비로 workspace isolation이 무의미
-4. `checkRole`이 execution tool에 orchestrator도 허용 — access control 무력화
-5. CLI/TUI/README 등 downstream artifact 미반영
+1. PEV auto-execution is not connected to `run_propose_step_result`, causing steps to permanently stall at `verify_pending`
+2. `run_approve_step` passes any step without validator type verification
+3. Validators execute in the main tree — workspace isolation is meaningless without WorkDir support
+4. `checkRole` also allows orchestrator in execution tools — access control is undermined
+5. Downstream artifacts not reflected (CLI/TUI/README, etc.)
 
-이미 코드 구현은 완료된 상태이고, 이 설계 문서는 사후 기록용이다.
+The code implementation is already complete, and this design document serves as a post-hoc record.
 
 ## Goals / Non-Goals
 
 **Goals:**
-- PEV auto-verification: propose → journal → verify → completion check를 하나의 호출로 연결
-- Strict access control: orchestrator ↔ execution agent 역할 분리 엄격 적용
-- Validator WorkDir: Phase 1에서 필드/지원 준비, Phase 3에서 한 줄 활성화
-- Run completion: step 검증 후 acceptance criteria 자동 확인 → run 상태 전이
-- Downstream: CLI, status dashboard, README, docs, openspec 반영
+- PEV auto-verification: connect propose → journal → verify → completion check in a single call
+- Strict access control: enforce strict orchestrator vs. execution agent role separation
+- Validator WorkDir: prepare field/support in Phase 1, activate with one line in Phase 3
+- Run completion: automatic acceptance criteria check after step verification → run state transition
+- Downstream: reflect in CLI, status dashboard, README, docs, openspec
 
 **Non-Goals:**
-- 실제 worktree 활성화 (Phase 3)
-- DB 트랜잭션 래핑 (Phase 2 — Ent store 전환 시)
-- TUI 전용 RunLedger surface (config-driven이 아닌 runtime feature이므로 불필요)
+- Actual worktree activation (Phase 3)
+- DB transaction wrapping (Phase 2 — when switching to Ent store)
+- TUI-specific RunLedger surface (unnecessary since it's a runtime feature, not config-driven)
 
 ## Decisions
 
-### 1. PEV 자동 실행 위치: `buildRunProposeStepResult` 내부
+### 1. PEV auto-execution location: inside `buildRunProposeStepResult`
 
-`run_propose_step_result` handler에서 journal 기록 직후 `pev.Verify()`를 호출한다. 별도 이벤트 핸들러나 비동기 처리 대신 동기 호출을 선택한 이유:
-- Phase 1은 MemoryStore(순차 호출) — 동기가 가장 단순
-- PEV 결과가 tool 응답에 즉시 포함되어야 agent가 다음 행동을 결정 가능
-- Phase 2에서 Ent store로 전환 시 `tx := client.Tx()` 래핑만 추가하면 됨
+Call `pev.Verify()` immediately after journal recording in the `run_propose_step_result` handler. Synchronous call chosen over separate event handler or async processing because:
+- Phase 1 uses MemoryStore (sequential calls) — synchronous is simplest
+- PEV results must be immediately included in tool responses so the agent can decide next actions
+- When switching to Ent store in Phase 2, only `tx := client.Tx()` wrapping needs to be added
 
-대안: 이벤트 버스로 비동기 트리거 → 복잡도 증가, Phase 1에 불필요
+Alternative: Async trigger via event bus → increased complexity, unnecessary in Phase 1
 
-### 2. 에러 처리 이원화: 인프라 vs 비즈니스
+### 2. Dual error handling: infrastructure vs. business
 
-- 인프라 실패 (validator 미등록, exec 실패): `return nil, fmt.Errorf(...)` — non-nil Go error
-- 비즈니스 실패 (validation not passed): structured map payload, nil error
+- Infrastructure failure (validator not registered, exec failure): `return nil, fmt.Errorf(...)` — non-nil Go error
+- Business failure (validation not passed): structured map payload, nil error
 
-이 구분이 필요한 이유: agent가 Go error를 받으면 tool 호출 자체가 실패한 것으로 간주하고, structured payload를 받으면 정상 흐름 안에서 정책 결정을 할 수 있다.
+This distinction is needed because: when an agent receives a Go error, it treats the tool call itself as failed; when it receives a structured payload, it can make policy decisions within the normal flow.
 
-### 3. orchestrator_approval 흐름: PEV 자동 실행 → 항상 failed → approve
+### 3. orchestrator_approval flow: PEV auto-execution → always failed → approve
 
-orchestrator_approval validator는 항상 failed를 반환한다. PEV가 자동 실행하면 step은 `failed`로 전이된다. 따라서 `run_approve_step`은 `verify_pending`뿐 아니라 `failed` 상태도 허용해야 한다.
+The orchestrator_approval validator always returns failed. When PEV auto-executes, the step transitions to `failed`. Therefore, `run_approve_step` must allow not only `verify_pending` but also `failed` state.
 
-대안: PEV가 orchestrator_approval을 감지하면 skip → approve 전까지 verify_pending 유지 → 특수 케이스 로직이 PEV에 침투하므로 거부
+Alternative: PEV detects orchestrator_approval and skips → step stays at verify_pending until approve → special case logic leaks into PEV, so rejected
 
-### 4. checkRunCompletion 공통 함수 추출
+### 4. Extract common checkRunCompletion function
 
-`run_propose_step_result`과 `run_approve_step` 모두 step 완료 후 run completion을 확인해야 한다. 동일한 로직:
-- `AllStepsSuccessful()` → acceptance criteria 검증 → `EventCriterionMet` journaling → completed/failed
+Both `run_propose_step_result` and `run_approve_step` need to check run completion after step completion. Same logic:
+- `AllStepsSuccessful()` → acceptance criteria verification → `EventCriterionMet` journaling → completed/failed
 - `AllStepsTerminal()` but not successful → run failed
-- 진행 중 → running
+- In progress → running
 
-### 5. WorkDir: 필드 추가 + validator 지원, 활성화는 Phase 3
+### 5. WorkDir: field added + validator support, activation in Phase 3
 
-`ValidatorSpec.WorkDir` 필드를 추가하고 모든 command-running validator에서 사용한다. Phase 1에서 WorkDir는 항상 빈 문자열(기존 동작 유지). Phase 3에서 `pev.WithWorkspace(NewWorkspaceManager())`로 한 줄 활성화.
+Add `ValidatorSpec.WorkDir` field and use it in all command-running validators. In Phase 1, WorkDir is always an empty string (maintaining existing behavior). Activate in Phase 3 with one line: `pev.WithWorkspace(NewWorkspaceManager())`.
 
 ## Risks / Trade-offs
 
-- [PEV 동기 호출 성능] → Phase 1은 in-memory store라 무시 가능. Phase 2에서 validator timeout 설정으로 대응.
-- [checkRunCompletion 중복 criterion_met journaling] → 이미 Met인 criteria도 매번 journal에 기록됨. Phase 2에서 "이미 Met이면 skip" 조건 추가.
-- [orchestrator_approval 2단계 전이 (verify_pending → failed → approved)] → journal에 validation_failed 이벤트가 기록된 뒤 validation_passed가 따라옴. 재생 시 최종 상태는 정확하지만 이벤트 로그가 다소 장황함. 수용 가능한 trade-off.
+- [PEV synchronous call performance] → Negligible in Phase 1 with in-memory store. Address with validator timeout settings in Phase 2.
+- [checkRunCompletion duplicate criterion_met journaling] → Already met criteria are recorded in journal every time. Add "skip if already met" condition in Phase 2.
+- [orchestrator_approval 2-step transition (verify_pending → failed → approved)] → validation_failed event is recorded in journal followed by validation_passed. Final state is correct on replay but event log is somewhat verbose. Acceptable trade-off.

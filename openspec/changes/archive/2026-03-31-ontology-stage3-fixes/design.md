@@ -1,20 +1,20 @@
 ## Context
 
-Stage 3 코드 리뷰 5건 수정. 통합 경로 버그 + 보안 가정 위반 해결.
+5 fixes from Stage 3 code review. Resolves integration path bugs + security assumption violations.
 
 ## Goals / Non-Goals
 
-**Goals:** 5건 모두 수정, 회귀 테스트 추가, 전체 빌드/테스트 통과.
+**Goals:** Fix all 5 issues, add regression tests, pass full build/test.
 
-**Non-Goals:** 새 기능 추가 없음.
+**Non-Goals:** No new features added.
 
 ## Decisions
 
 ### D1: TrustScorer interface
-`*reputation.Store` 직접 참조 대신 `TrustScorer` interface (GetScore method만) 도입. 테스트 용이성 + 의존성 분리.
+Introduce `TrustScorer` interface (GetScore method only) instead of direct `*reputation.Store` reference. Improves testability + dependency separation.
 
 ### D2: Post-build wiring
-Bridge를 `intelligenceValues`에 실어 post-build 단계에서 P2P handler와 연결. Module dependency 추가 없음.
+Bridge is carried in `intelligenceValues` and connected to P2P handler at the post-build stage. No additional module dependencies.
 
 ### D3: Registry UpdateStatus methods
-PromoteType/PromotePredicate가 create-only RegisterType 대신 update-only UpdateTypeStatus 사용. DeprecateType 패턴 재사용.
+PromoteType/PromotePredicate use update-only UpdateTypeStatus instead of create-only RegisterType. Reuses DeprecateType pattern.

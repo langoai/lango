@@ -127,7 +127,7 @@ func TestInitEconomy_EnabledWithP2PComponents(t *testing.T) {
 func TestSelectSettler_NilPaymentComponents_ReturnsNoopSettler(t *testing.T) {
 	cfg := config.DefaultConfig()
 
-	settler := selectSettler(cfg, nil)
+	settler := selectSettler(cfg, nil, nil)
 
 	assert.NotNil(t, settler, "settler should never be nil")
 }
@@ -158,7 +158,7 @@ func TestSelectSettler_TableDriven(t *testing.T) {
 			cfg := config.DefaultConfig()
 			cfg.Economy.Escrow.OnChain.Enabled = tt.giveOnChain
 
-			settler := selectSettler(cfg, tt.givePC)
+			settler := selectSettler(cfg, tt.givePC, nil)
 
 			if tt.wantNotNil {
 				assert.NotNil(t, settler)

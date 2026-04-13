@@ -22,6 +22,8 @@ func newKMSCmd(bootLoader func() (*bootstrap.Result, error)) *cobra.Command {
 	cmd.AddCommand(newKMSStatusCmd(bootLoader))
 	cmd.AddCommand(newKMSTestCmd(bootLoader))
 	cmd.AddCommand(newKMSKeysCmd(bootLoader))
+	cmd.AddCommand(newKMSWrapCmd(bootLoader))
+	cmd.AddCommand(newKMSDetachCmd(bootLoader))
 
 	return cmd
 }
@@ -208,4 +210,150 @@ func newKMSKeysCmd(bootLoader func() (*bootstrap.Result, error)) *cobra.Command 
 
 func isKMSProvider(provider string) bool {
 	return sec.KMSProviderName(provider).Valid()
+}
+
+func newKMSWrapCmd(bootLoader func() (*bootstrap.Result, error)) *cobra.Command {
+	var (
+		provider string
+		keyID    string
+	)
+
+	cmd := &cobra.Command{
+		Use:   "wrap",
+		Short: "Add a KMS KEK slot to protect the Master Key",
+		Long: `Wraps the Master Key with a KMS key and adds a KMS slot to the envelope.
+This enables passphraseless bootstrap when KMS credentials are available.`,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			if provider == "" || keyID == "" {
+				return fmt.Errorf("--provider and --key-id are required")
+			}
+			if !sec.KMSProviderName(provider).Valid() {
+				return fmt.Errorf("unknown KMS provider %q (supported: aws-kms, gcp-kms, azure-kv, pkcs11)", provider)
+			}
+
+			boot, err := bootLoader()
+			if err != nil {
+				return fmt.Errorf("bootstrap: %w", err)
+			}
+			defer boot.DBClient.Close()
+
+			crypto, ok := boot.Crypto.(*sec.LocalCryptoProvider)
+			if !ok || crypto == nil {
+				return fmt.Errorf("local crypto provider not available")
+			}
+			envelope := crypto.Envelope()
+			if envelope == nil {
+				return fmt.Errorf("envelope not available (legacy mode)")
+			}
+
+			// Unwrap MK from existing passphrase slot to wrap with KMS.
+			// The MK is already in memory via bootstrap.
+			mk := crypto.MasterKey()
+			if mk == nil {
+				return fmt.Errorf("master key not available")
+			}
+
+			// Create the KMS provider.
+			kmsProvider, err := sec.NewKMSProvider(sec.KMSProviderName(provider), boot.Config.Security.KMS) //nolint:staticcheck
+			if err != nil {
+				return fmt.Errorf("create KMS provider: %w", err)
+			}
+
+			ctx := context.Background()
+			if err := envelope.AddKMSSlot(ctx, "kms", mk, kmsProvider, provider, keyID); err != nil {
+				return fmt.Errorf("add KMS slot: %w", err)
+			}
+
+			if err := sec.StoreEnvelopeFile(boot.LangoDir, envelope); err != nil {
+				return fmt.Errorf("persist envelope: %w", err)
+			}
+
+			fmt.Printf("KMS slot added (provider=%s, keyID=%s)\n", provider, keyID)
+			fmt.Println("Next bootstrap can use KMS for passphraseless unlock.")
+			return nil
+		},
+	}
+
+	cmd.Flags().StringVar(&provider, "provider", "", "KMS provider name (aws-kms, gcp-kms, azure-kv, pkcs11)")
+	cmd.Flags().StringVar(&keyID, "key-id", "", "KMS key identifier")
+
+	return cmd
+}
+
+func newKMSDetachCmd(bootLoader func() (*bootstrap.Result, error)) *cobra.Command {
+	var slotID string
+
+	cmd := &cobra.Command{
+		Use:   "detach",
+		Short: "Remove a KMS KEK slot from the envelope",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			boot, err := bootLoader()
+			if err != nil {
+				return fmt.Errorf("bootstrap: %w", err)
+			}
+			defer boot.DBClient.Close()
+
+			crypto, ok := boot.Crypto.(*sec.LocalCryptoProvider)
+			if !ok || crypto == nil {
+				return fmt.Errorf("local crypto provider not available")
+			}
+			envelope := crypto.Envelope()
+			if envelope == nil {
+				return fmt.Errorf("envelope not available (legacy mode)")
+			}
+
+			// Find KMS slots.
+			var kmsSlots []sec.KEKSlot
+			for _, s := range envelope.Slots {
+				if s.Type == sec.KEKSlotHardware {
+					kmsSlots = append(kmsSlots, s)
+				}
+			}
+
+			if len(kmsSlots) == 0 {
+				return fmt.Errorf("no KMS slots found in envelope")
+			}
+
+			// Determine which slot to remove.
+			var targetID string
+			if len(kmsSlots) == 1 {
+				targetID = kmsSlots[0].ID
+			} else if slotID != "" {
+				targetID = slotID
+			} else {
+				fmt.Println("Multiple KMS slots found. Specify --slot-id:")
+				for _, s := range kmsSlots {
+					fmt.Printf("  %s  provider=%s  keyID=%s  label=%s\n",
+						s.ID, s.KMSProvider, s.KMSKeyID, s.Label)
+				}
+				return fmt.Errorf("--slot-id required when multiple KMS slots exist")
+			}
+
+			// Ensure at least one non-KMS slot remains.
+			nonKMSCount := 0
+			for _, s := range envelope.Slots {
+				if s.Type != sec.KEKSlotHardware {
+					nonKMSCount++
+				}
+			}
+			if nonKMSCount == 0 {
+				return fmt.Errorf("cannot remove KMS slot: at least one passphrase or mnemonic slot must remain")
+			}
+
+			if err := envelope.RemoveSlot(targetID); err != nil {
+				return fmt.Errorf("remove slot: %w", err)
+			}
+
+			if err := sec.StoreEnvelopeFile(boot.LangoDir, envelope); err != nil {
+				return fmt.Errorf("persist envelope: %w", err)
+			}
+
+			fmt.Printf("KMS slot %s removed.\n", targetID)
+			return nil
+		},
+	}
+
+	cmd.Flags().StringVar(&slotID, "slot-id", "", "UUID of the KMS slot to remove (required when multiple exist)")
+
+	return cmd
 }

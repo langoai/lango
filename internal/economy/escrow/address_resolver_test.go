@@ -3,9 +3,10 @@ package escrow
 import (
 	"encoding/hex"
 	"errors"
+	"fmt"
 	"testing"
 
-	"github.com/ethereum/go-ethereum/crypto"
+	ethcrypto "github.com/ethereum/go-ethereum/crypto"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
@@ -16,11 +17,11 @@ func TestResolveAddress(t *testing.T) {
 	t.Parallel()
 
 	// Generate a real key for the valid case.
-	privKey, err := crypto.GenerateKey()
+	privKey, err := ethcrypto.GenerateKey()
 	require.NoError(t, err)
 
-	compressed := crypto.CompressPubkey(&privKey.PublicKey)
-	wantAddr := crypto.PubkeyToAddress(privKey.PublicKey)
+	compressed := ethcrypto.CompressPubkey(&privKey.PublicKey)
+	wantAddr := ethcrypto.PubkeyToAddress(privKey.PublicKey)
 	validDID := types.DIDPrefix + hex.EncodeToString(compressed)
 
 	tests := []struct {
@@ -72,4 +73,63 @@ func TestResolveAddress(t *testing.T) {
 			assert.Equal(t, wantAddr, addr)
 		})
 	}
+}
+
+func TestDefaultAddressResolver_V1(t *testing.T) {
+	t.Parallel()
+	resolver := NewDefaultAddressResolver(nil) // v1-only mode
+
+	key, err := ethcrypto.GenerateKey()
+	require.NoError(t, err)
+	compressed := ethcrypto.CompressPubkey(&key.PublicKey)
+	did := "did:lango:" + hex.EncodeToString(compressed)
+
+	addr, err := resolver.ResolveAddress(did)
+	require.NoError(t, err)
+	assert.Equal(t, ethcrypto.PubkeyToAddress(key.PublicKey), addr)
+}
+
+func TestDefaultAddressResolver_V2_WithBundle(t *testing.T) {
+	t.Parallel()
+
+	// Create a settlement key (secp256k1).
+	key, err := ethcrypto.GenerateKey()
+	require.NoError(t, err)
+	compressed := ethcrypto.CompressPubkey(&key.PublicKey)
+	wantAddr := ethcrypto.PubkeyToAddress(key.PublicKey)
+
+	// Mock settlement key lookup.
+	lookup := SettlementKeyLookup(func(did string) ([]byte, error) {
+		return compressed, nil
+	})
+
+	resolver := NewDefaultAddressResolver(lookup)
+	didV2 := "did:lango:v2:abcdef1234567890abcdef1234567890abcdef12"
+
+	addr, err := resolver.ResolveAddress(didV2)
+	require.NoError(t, err)
+	assert.Equal(t, wantAddr, addr)
+}
+
+func TestDefaultAddressResolver_V2_NoBundleResolver(t *testing.T) {
+	t.Parallel()
+	resolver := NewDefaultAddressResolver(nil)
+	didV2 := "did:lango:v2:abcdef1234567890abcdef1234567890abcdef12"
+
+	_, err := resolver.ResolveAddress(didV2)
+	require.Error(t, err)
+	assert.ErrorIs(t, err, ErrBundleNotFound)
+}
+
+func TestDefaultAddressResolver_V2_BundleNotFound(t *testing.T) {
+	t.Parallel()
+	lookup := SettlementKeyLookup(func(did string) ([]byte, error) {
+		return nil, fmt.Errorf("not found")
+	})
+	resolver := NewDefaultAddressResolver(lookup)
+	didV2 := "did:lango:v2:abcdef1234567890abcdef1234567890abcdef12"
+
+	_, err := resolver.ResolveAddress(didV2)
+	require.Error(t, err)
+	assert.ErrorIs(t, err, ErrBundleNotFound)
 }

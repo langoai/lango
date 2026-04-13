@@ -10,6 +10,13 @@ var (
 	ErrNoEncryptionKeys = errors.New("no encryption keys available")
 	ErrDecryptionFailed = errors.New("decryption failed")
 
+	// Envelope errors
+	ErrInvalidSlot     = errors.New("invalid KEK slot")
+	ErrLastSlot        = errors.New("cannot remove last KEK slot")
+	ErrUnwrapFailed    = errors.New("master key unwrap failed")
+	ErrEnvelopeCorrupt = errors.New("master key envelope corrupted")
+	ErrNoEnvelopeFile  = errors.New("envelope file not found")
+
 	// KMS errors
 	ErrKMSUnavailable  = errors.New("KMS service unavailable")
 	ErrKMSAccessDenied = errors.New("KMS access denied")
@@ -17,7 +24,8 @@ var (
 	ErrKMSThrottled    = errors.New("KMS request throttled")
 	ErrKMSInvalidKey   = errors.New("KMS invalid key")
 	ErrPKCS11Module    = errors.New("PKCS#11 module error")
-	ErrPKCS11Session   = errors.New("PKCS#11 session error")
+	ErrPKCS11Session       = errors.New("PKCS#11 session error")
+	ErrKMSSlotUnavailable  = errors.New("KMS KEK slot unavailable")
 )
 
 // KMSError wraps a KMS operation error with context.

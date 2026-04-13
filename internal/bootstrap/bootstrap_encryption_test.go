@@ -52,7 +52,7 @@ func TestOpenDatabase_Plaintext(t *testing.T) {
 	dir := t.TempDir()
 	dbPath := filepath.Join(dir, "test.db")
 
-	client, rawDB, err := openDatabase(dbPath, "", 0)
+	client, rawDB, err := openDatabase(dbPath, "", false, 0)
 	require.NoError(t, err)
 	require.NotNil(t, client)
 	require.NotNil(t, rawDB)
@@ -70,7 +70,7 @@ func TestOpenDatabase_WithEncryptionKey_NoSQLCipher(t *testing.T) {
 	dir := t.TempDir()
 	dbPath := filepath.Join(dir, "test.db")
 
-	client, rawDB, err := openDatabase(dbPath, "test-key", 4096)
+	client, rawDB, err := openDatabase(dbPath, "test-key", false, 4096)
 	require.NoError(t, err)
 	require.NotNil(t, client)
 	require.NotNil(t, rawDB)

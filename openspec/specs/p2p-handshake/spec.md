@@ -6,7 +6,29 @@ Capability spec for p2p-handshake. See requirements below for scope and behavior
 
 ### Requirement: Challenge-Response Mutual Authentication
 
-The `Handshaker` SHALL implement a three-message challenge-response protocol over libp2p streams using protocol ID `/lango/handshake/1.0.0`. The initiator SHALL send a `Challenge` containing a 32-byte cryptographically random nonce, a Unix timestamp, and the sender's DID. The responder SHALL reply with a `ChallengeResponse` containing the echoed nonce, the responder's DID, the responder's compressed public key, and either a ZK proof or an ECDSA signature. The initiator SHALL send a `SessionAck` containing the session token and expiry on successful verification.
+The `Handshaker` SHALL accept a `Signer` interface (methods `SignMessage(ctx, message) ([]byte, error)`, `PublicKey(ctx) ([]byte, error)`, `Algorithm() string`, and `DID(ctx) (string, error)`) instead of `wallet.WalletProvider`. The `internal/p2p/handshake` package SHALL NOT import `internal/wallet`. The `Challenge` and `ChallengeResponse` structs SHALL include a `SignatureAlgorithm` field (omitempty for backward compatibility). The `Config` SHALL include `LegacySigner Signer` for v1 fallback. The `Handshaker` SHALL select signer based on peer's algorithm via `selectSigner(peerAlgo)` and dispatch signature verification based on the `SignatureAlgorithm` field, defaulting to `"secp256k1-keccak256"` when empty. The responder SHALL use `signer.DID(ctx)` to populate the ChallengeResponse DID field.
+
+#### Scenario: Signer interface replaces wallet dependency
+- **WHEN** `NewHandshaker` is called with a `Config` containing a `Signer`
+- **THEN** the handshaker SHALL use only `SignMessage` and `PublicKey` from the signer
+- **AND** `internal/p2p/handshake` SHALL NOT have an import path to `internal/wallet`
+
+#### Scenario: Signer provides DID directly
+- **WHEN** `HandleIncoming` constructs a ChallengeResponse
+- **THEN** it SHALL call `signer.DID(ctx)` to get the DID string
+- **AND** it SHALL NOT call `identity.DIDFromPublicKey` directly
+
+#### Scenario: LegacySigner used for unknown peers
+- **WHEN** `Initiate` is called to connect to an unknown peer
+- **THEN** the handshaker SHALL use `LegacySigner` (secp256k1) for signing
+
+#### Scenario: Responder matches initiator algorithm
+- **WHEN** `HandleIncoming` receives a challenge with `SignatureAlgorithm = "ed25519"`
+- **THEN** the responder SHALL use the primary `Signer` (Ed25519)
+
+#### Scenario: Responder falls back for v1 initiator
+- **WHEN** `HandleIncoming` receives a challenge with empty `SignatureAlgorithm`
+- **THEN** the responder SHALL use `LegacySigner` (secp256k1)
 
 #### Scenario: Successful handshake with ECDSA signature
 - **WHEN** `Handshaker.Initiate` is called with `ZKEnabled=false` and the remote peer completes the challenge-response
@@ -95,6 +117,104 @@ The handshake verifier SHALL use `hmac.Equal()` for nonce comparison to prevent 
 
 ---
 
+### Requirement: Bundle transport in handshake
+
+The `Challenge` and `ChallengeResponse` structs SHALL include an optional `Bundle *IdentityBundle` field (omitempty). V2 signers SHALL include their IdentityBundle in handshake messages. Received bundles SHALL be cached in the BundleResolver.
+
+#### Scenario: v2 responder includes bundle
+- **WHEN** a v2 responder sends a ChallengeResponse
+- **THEN** `resp.Bundle` SHALL contain the responder's IdentityBundle
+
+#### Scenario: v1 peer ignores bundle field
+- **WHEN** a v1 peer receives a message with a Bundle field
+- **THEN** the unknown field SHALL be ignored (JSON flexibility)
+
+#### Scenario: Received bundle cached
+- **WHEN** a handshake message with a Bundle is received
+- **THEN** the bundle SHALL be stored in the BundleResolver cache
+
+---
+
+### Requirement: Handshake authentication
+
+#### Scenario: Bundle cached only after authentication
+- **WHEN** a handshake challenge or response is received
+- **THEN** the bundle SHALL be cached only after signature verification succeeds
+- **AND** alias registration SHALL occur only after approval succeeds
+
+#### Scenario: v2 DID requires bundle with matching signing key
+- **WHEN** a handshake peer claims a `did:lango:v2:` DID
+- **THEN** the handshake SHALL require a non-nil bundle
+- **AND** `ComputeDIDv2(bundle) == SenderDID` SHALL be verified
+- **AND** `bytes.Equal(PublicKey, Bundle.SigningKey.PublicKey)` SHALL be verified
+- **AND** failure of any check SHALL reject the handshake
+
+#### Scenario: v1 DID matches public key
+- **WHEN** a handshake peer claims a v1 `did:lango:` DID and provides a public key
+- **THEN** `DIDFromPublicKey(PublicKey).ID == SenderDID` SHALL be verified
+- **AND** mismatch SHALL reject the handshake
+
+#### Scenario: Auto-approve uses existing alias only
+- **WHEN** `AutoApproveKnownPeers` is enabled
+- **THEN** session lookup SHALL use `DIDAlias.CanonicalDID` only if an alias was previously registered
+- **AND** `bundle.LegacyDID` SHALL NOT be used for session lookup (unverifiable)
+
+---
+
+### Requirement: Injectable response verifier
+
+The `Handshaker` SHALL support an injectable `SignatureVerifyFunc` for signature verification. When `Config.Verifiers` is nil, the default verifier map SHALL contain only `"secp256k1-keccak256"` → `VerifySecp256k1Signature`. The default verifier SHALL be extracted into a named exported function.
+
+#### Scenario: Default verifier preserves existing behavior
+- **WHEN** `NewHandshaker` is called with `Config.Verifiers = nil`
+- **THEN** the handshaker SHALL use `VerifySecp256k1Signature` as the default response verifier
+
+#### Scenario: Custom verifier injected
+- **WHEN** `NewHandshaker` is called with a non-nil `Config.Verifiers` map
+- **THEN** the handshaker SHALL use the provided map for response signature verification
+
+#### Scenario: Ed25519 in default verifier map
+- **WHEN** `NewHandshaker` is called with nil `Verifiers`
+- **THEN** the default map SHALL include both `"secp256k1-keccak256"` and `"ed25519"` verifiers
+
+#### Scenario: Signer declares algorithm
+- **WHEN** `Initiate` constructs a Challenge
+- **THEN** `challenge.SignatureAlgorithm` SHALL be set to `h.signer.Algorithm()`
+
+#### Scenario: Challenge SenderDID from signer identity
+- **WHEN** `Initiate()` constructs a Challenge
+- **THEN** `challenge.SenderDID` SHALL be set to `initSigner.DID(ctx)` (the selected signer's DID), not the raw `localDID` parameter
+
+#### Scenario: Responder declares algorithm
+- **WHEN** `HandleIncoming` constructs a ChallengeResponse
+- **THEN** `resp.SignatureAlgorithm` SHALL be set to `h.signer.Algorithm()`
+
+#### Scenario: Backward compatible empty algorithm
+- **WHEN** a Challenge or ChallengeResponse has an empty `SignatureAlgorithm`
+- **THEN** the verifier SHALL default to `"secp256k1-keccak256"`
+
+#### Scenario: Unsupported algorithm rejected
+- **WHEN** the `SignatureAlgorithm` is not registered in the handshaker's verifier map
+- **THEN** verification SHALL return an error containing "unsupported"
+
+---
+
+### Requirement: SignatureVerifyFunc type
+
+The `SignatureVerifyFunc` type SHALL be used for both challenge and response signature verification, replacing the previous `ResponseVerifyFunc` name.
+
+---
+
+### Requirement: Challenge canonical payload
+
+The `challengeCanonicalPayload` function SHALL return raw canonical bytes (nonce || bigEndian(timestamp) || senderDID) WITHOUT Keccak256 hashing. The signing and verification sides SHALL each hash the canonical payload once via their respective algorithm implementations, ensuring consistent hash depth.
+
+#### Scenario: Challenge signature roundtrip succeeds
+- **WHEN** a challenge is signed via `signer.SignMessage(challengeCanonicalPayload(...))` and verified via `verifyChallengeSignature`
+- **THEN** verification SHALL succeed (single hash on each side)
+
+---
+
 ### Requirement: Signature verification
 The handshake verifier SHALL perform full ECDSA secp256k1 signature verification by recovering the public key from the signature using `ethcrypto.SigToPub()` and comparing it with the claimed public key via `ethcrypto.CompressPubkey()`, instead of accepting any non-empty signature.
 
@@ -139,3 +259,89 @@ The `SessionStore` SHALL store authenticated peer sessions keyed by peer DID. Se
 #### Scenario: Session cleanup removes all expired entries
 - **WHEN** `SessionStore.Cleanup()` is called
 - **THEN** all sessions where `ExpiresAt` is before `time.Now()` SHALL be deleted and the count of removed sessions SHALL be returned
+
+---
+
+### Requirement: Hybrid PQ KEM key exchange in handshake v1.2
+
+The `Handshaker` SHALL support an optional hybrid post-quantum KEM (X25519-MLKEM768) key exchange during handshake, enabled via `Config.EnablePQKEM`. When enabled, the initiator SHALL generate an ephemeral KEM keypair per handshake and include the public key in the Challenge. The responder SHALL encapsulate a shared secret using the initiator's KEM public key and include the ciphertext in the ChallengeResponse. Both sides SHALL derive a 32-byte session encryption key via `HKDF-SHA256(hybrid_shared_secret, nil, "lango-p2p-session-v1:" + initiatorSignerDID + ":" + responderSignerDID)`. The session key SHALL be stored in `Session.EncryptionKey` (never serialized) with `Session.KEMUsed = true`.
+
+#### Scenario: Full KEM exchange between v1.2 peers
+- **WHEN** both initiator and responder have `EnablePQKEM = true`
+- **THEN** the initiator SHALL include `KEMPublicKey` and `KEMAlgorithm` in the Challenge
+- **AND** the responder SHALL encapsulate and include `KEMCiphertext` in the ChallengeResponse
+- **AND** both sides SHALL derive identical 32-byte session encryption keys
+- **AND** `Session.KEMUsed` SHALL be `true`
+
+#### Scenario: v1.2 initiator with v1.1 responder (graceful degradation)
+- **WHEN** the initiator has `EnablePQKEM = true` but the responder does not support KEM
+- **THEN** the ChallengeResponse SHALL have empty `KEMCiphertext`
+- **AND** `Session.KEMUsed` SHALL be `false`
+- **AND** the handshake SHALL succeed with signature-only authentication
+
+#### Scenario: v1.1 initiator with v1.2 responder
+- **WHEN** the initiator does not include KEM fields in the Challenge
+- **THEN** the responder SHALL skip KEM encapsulation
+- **AND** the handshake SHALL proceed as a normal v1.1 handshake
+
+#### Scenario: KEM keypair generation failure
+- **WHEN** `GenerateEphemeralKEM()` returns an error
+- **THEN** the initiator SHALL log a warning and proceed without KEM fields (v1.1 fallback)
+
+#### Scenario: KEM encapsulation failure
+- **WHEN** `KEMEncapsulate()` returns an error on the responder side
+- **THEN** the responder SHALL log a warning, omit `KEMCiphertext`, and proceed without KEM
+
+---
+
+### Requirement: KEM transcript binding in v1.2 signatures
+
+The v1.2 challenge canonical payload SHALL include `kemAlgorithm` and `kemPublicKey` appended after `senderDID`. The v1.2 response canonical payload SHALL include `kemCiphertext` appended after the nonce. When KEM fields are empty (v1.1 messages), the canonical payloads SHALL be identical to v1.1 for backward compatibility.
+
+#### Scenario: Challenge signature covers KEM public key
+- **WHEN** a v1.2 challenge is signed
+- **THEN** the canonical payload SHALL be `nonce || bigEndian(timestamp) || utf8(senderDID) || utf8(kemAlgorithm) || kemPublicKey`
+
+#### Scenario: Response signature covers KEM ciphertext
+- **WHEN** a v1.2 response is signed
+- **THEN** the responder SHALL sign `nonce || kemCiphertext` instead of raw nonce
+
+#### Scenario: Tampered KEM public key rejected
+- **WHEN** an attacker modifies `KEMPublicKey` in a v1.2 challenge
+- **THEN** `verifyChallengeSignature()` SHALL reject the challenge due to signature mismatch
+
+#### Scenario: Tampered KEM ciphertext rejected
+- **WHEN** an attacker modifies `KEMCiphertext` in a v1.2 response
+- **THEN** `verifyResponse()` SHALL reject the response due to signature mismatch
+
+#### Scenario: v1.1 canonical payload unchanged
+- **WHEN** KEM fields are empty (v1.1 message)
+- **THEN** the canonical payload SHALL be identical to the current v1.1 format
+
+---
+
+### Requirement: Session encryption key zeroing
+
+`Session.EncryptionKey` SHALL be zeroed via `security.ZeroBytes()` at all exit points: `Create()` overwrite (when same peerDID session already exists), `Remove()`, `Invalidate()`, `InvalidateAll()`, `InvalidateByCondition()`, and `Cleanup()`.
+
+#### Scenario: Key zeroed on session removal
+- **WHEN** `SessionStore.Remove(peerDID)` is called and the session has an EncryptionKey
+- **THEN** the EncryptionKey SHALL be zeroed before the session is deleted from the map
+
+#### Scenario: Key zeroed on session overwrite
+- **WHEN** `SessionStore.Create(peerDID, ...)` is called and a session for that peerDID already exists
+- **THEN** the existing session's EncryptionKey SHALL be zeroed before being replaced
+
+---
+
+### Requirement: Initiator protocol selection
+
+The handshake package SHALL provide a `PreferredProtocols(kemEnabled bool)` function returning the ordered list of protocol IDs to try. When `kemEnabled = true`, the order SHALL be `[v1.2, v1.1, v1.0]`. When `kemEnabled = false`, the order SHALL be `[v1.1, v1.0]`. The initiator call site SHALL use this function with libp2p's `NewStream` for automatic fallback.
+
+#### Scenario: KEM enabled initiator
+- **WHEN** `PreferredProtocols(true)` is called
+- **THEN** it SHALL return `["/lango/handshake/1.2.0", "/lango/handshake/1.1.0", "/lango/handshake/1.0.0"]`
+
+#### Scenario: KEM disabled initiator
+- **WHEN** `PreferredProtocols(false)` is called
+- **THEN** it SHALL return `["/lango/handshake/1.1.0", "/lango/handshake/1.0.0"]`

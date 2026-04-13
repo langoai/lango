@@ -45,7 +45,7 @@ The system SHALL provide 8 agent tools with role-based access control: run_creat
 - **THEN** the step transitions to `verify_pending`, NOT `completed`
 
 ### Requirement: Resume Protocol
-Resume SHALL be opt-in only. The system SHALL detect resume intent from Korean (계속, 이어서, 마저) and English (resume, continue) keywords.
+Resume SHALL be opt-in only. The system SHALL detect resume intent from Korean keywords (계속, 이어서, 마저) and English keywords (resume, continue).
 
 #### Scenario: Stale run excluded
 - **GIVEN** a paused run last updated more than `staleTTL` ago

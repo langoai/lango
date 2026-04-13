@@ -2,6 +2,7 @@ package bootstrap
 
 import (
 	"context"
+	"crypto/ed25519"
 	"database/sql"
 	"fmt"
 	"time"
@@ -38,7 +39,7 @@ type State struct {
 	Client *ent.Client
 	RawDB  *sql.DB
 
-	// Security state from DB.
+	// Security state from DB (legacy path).
 	Salt     []byte
 	Checksum []byte
 	FirstRun bool
@@ -46,6 +47,23 @@ type State struct {
 	// Crypto.
 	DBKey  string
 	Crypto security.CryptoProvider
+
+	// Envelope-based crypto state.
+	Envelope     *security.MasterKeyEnvelope
+	MasterKey    []byte // unwrapped MK (zeroed on cleanup)
+	LegacyMode   bool   // no envelope, not first run — needs legacy→envelope migration
+	RecoveryMode bool   // mnemonic was used instead of passphrase
+
+	// Identity key derived from MK via HKDF (Phase 3).
+	IdentityKey ed25519.PrivateKey
+
+	// PQ signing key seed derived from MK via HKDF (Phase 5).
+	// 32-byte seed for ML-DSA-65. Downstream code calls mldsa65.NewKeyFromSeed.
+	PQSigningKeySeed []byte
+
+	// KMS KEK state (Phase 6).
+	KMSProvider security.CryptoProvider // transient, for KMS KEK unwrap only
+	KMSUnwrap   bool                    // MK was unwrapped via KMS (not passphrase)
 }
 
 // Phase represents a single step in the bootstrap pipeline.

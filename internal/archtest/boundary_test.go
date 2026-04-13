@@ -32,15 +32,16 @@ const modulePath = "github.com/langoai/lango/"
 var p2pNetworkingPrefixes = []string{
 	modulePath + "internal/p2p/discovery",
 	modulePath + "internal/p2p/handshake",
+	modulePath + "internal/p2p/identity",
 	modulePath + "internal/p2p/firewall",
 	modulePath + "internal/p2p/protocol",
 	modulePath + "internal/p2p/agentpool",
 }
 
 var forbiddenForP2P = []string{
-	modulePath + "internal/economy/",
-	modulePath + "internal/payment/",
-	modulePath + "internal/wallet/",
+	modulePath + "internal/economy",
+	modulePath + "internal/payment",
+	modulePath + "internal/wallet",
 }
 
 var rules = []boundaryRule{
@@ -56,7 +57,7 @@ var rules = []boundaryRule{
 		},
 		forbiddenMatch: func(dep string) bool {
 			for _, prefix := range forbiddenForP2P {
-				if strings.HasPrefix(dep, prefix) {
+				if dep == prefix || strings.HasPrefix(dep, prefix+"/") {
 					return true
 				}
 			}
@@ -72,6 +73,17 @@ var rules = []boundaryRule{
 		forbiddenMatch: func(dep string) bool {
 			return strings.HasPrefix(dep, modulePath+"internal/p2p/") ||
 				dep == modulePath+"internal/p2p"
+		},
+	},
+	{
+		name: "provenance must not import p2p/identity",
+		sourceMatch: func(importPath string) bool {
+			return importPath == modulePath+"internal/provenance" ||
+				strings.HasPrefix(importPath, modulePath+"internal/provenance/")
+		},
+		forbiddenMatch: func(dep string) bool {
+			return dep == modulePath+"internal/p2p/identity" ||
+				strings.HasPrefix(dep, modulePath+"internal/p2p/identity/")
 		},
 	},
 }

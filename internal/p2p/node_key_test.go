@@ -9,6 +9,8 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/zap"
+
+	"github.com/langoai/lango/internal/security"
 )
 
 func TestLoadOrGenerateKey_NewKeyWithoutSecrets(t *testing.T) {
@@ -110,7 +112,7 @@ func TestZeroBytes(t *testing.T) {
 	t.Parallel()
 
 	data := []byte{0x01, 0x02, 0x03, 0x04, 0x05}
-	zeroBytes(data)
+	security.ZeroBytes(data)
 	for _, b := range data {
 		assert.Equal(t, byte(0), b)
 	}

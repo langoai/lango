@@ -1,6 +1,6 @@
 ## Why
 
-Docker 컨테이너에서 lango를 실행할 때 3가지 문제가 발생한다: (1) exec 도구의 approval chain이 TTY 없는 환경에서 전부 실패하여 도구 사용이 거부됨, (2) go-rod가 시스템 chromium 바이너리를 찾지 못해 브라우저 자동화 불가, (3) WORKDIR `/app`이 root 소유여서 non-root 사용자가 쓸 수 없음.
+When running lango in a Docker container, 3 issues occur: (1) the exec tool's approval chain fails entirely in environments without a TTY, causing tool usage to be denied, (2) go-rod cannot find the system chromium binary, preventing browser automation, (3) WORKDIR `/app` is owned by root so non-root users cannot write to it.
 
 ## What Changes
 

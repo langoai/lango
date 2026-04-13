@@ -1,21 +1,14 @@
 ## Why
 
-RunLedger Phase 1은 기본 journal/snapshot/PEV 뼈대까지는 들어왔지만, 실제 실행 권한과
-workspace lifecycle에서 P1급 구멍이 남아 있다. 특히 step ownership 검증 없는 proposal
-journaling과 retry-safe 하지 않은 worktree branch naming은 Task OS의 핵심 불변 조건을
-직접 깬다. 이 변경은 현재 Phase 1을 안전한 hardening 상태까지 끌어올리고, 이후
-Phase 2~4 OpenSpec change들이 올라갈 수 있는 안정된 바닥을 만든다.
+RunLedger Phase 1 has the basic journal/snapshot/PEV skeleton in place, but P1-level gaps remain in actual execution authority and workspace lifecycle. Specifically, proposal journaling without step ownership verification and branch naming that is not retry-safe directly violate Task OS core invariants. This change brings Phase 1 to a safe hardened state and creates a stable foundation for subsequent Phase 2-4 OpenSpec changes to build upon.
 
 ## What Changes
 
-- `run_propose_step_result`가 journal append 전에 step 존재, owner agent, 허용 상태를
-  검증하도록 수정한다.
-- workspace preparation이 재시도와 반복 검증에서 깨지지 않도록 branch/path lifecycle을
-  retry-safe 하게 바꾼다.
-- RunLedger module이 Phase 1에서는 workspace isolation을 의도적으로 비활성 상태로
-  둔다는 점을 코드와 문서에서 명시한다.
-- RunLedger README/docs/OpenSpec를 현재 실제 동작과 일치하도록 정리한다.
-- 후속 구현이 바로 가능하도록 Phase 2~4를 별도 OpenSpec change로 계획한다.
+- Modify `run_propose_step_result` to verify step existence, owner agent, and allowed state before journal append.
+- Make workspace preparation retry-safe so that branch/path lifecycle does not break on retries and repeated verification.
+- Make it explicit in code and documentation that RunLedger module intentionally keeps workspace isolation disabled in Phase 1.
+- Clean up RunLedger README/docs/OpenSpec to match current actual behavior.
+- Plan Phase 2-4 as separate OpenSpec changes so subsequent implementation can proceed immediately.
 
 ## Capabilities
 
