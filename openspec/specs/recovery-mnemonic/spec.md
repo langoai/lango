@@ -68,19 +68,29 @@ The mnemonic string SHALL only exist in memory during generation, display, and u
 - **THEN** any internal buffer containing the mnemonic is zeroed before the function returns
 - **AND** no log message contains any portion of the mnemonic
 
-### Requirement: Recovery during bootstrap
+### Requirement: Recovery is an explicit CLI action
 
-During bootstrap, if an envelope exists and contains at least one mnemonic slot, the system SHALL offer the user a choice between passphrase and mnemonic credential acquisition. If the user selects mnemonic, the passphrase acquisition is skipped and the MK is unwrapped directly from the mnemonic slot.
+Mnemonic recovery SHALL NOT be offered as an automatic prompt during bootstrap. Recovery is an explicit user action performed via `lango security recovery restore`. The restore command SHALL load the envelope directly from the filesystem without running the full bootstrap pipeline.
 
-#### Scenario: Bootstrap offers recovery option when mnemonic slot exists
+#### Scenario: Bootstrap does not prompt for mnemonic
 
 - **WHEN** bootstrap Phase 4 (AcquireCredential) runs with an envelope containing a mnemonic slot
-- **AND** the terminal is interactive
-- **THEN** the user is prompted to choose between passphrase and mnemonic
-- **AND** selecting mnemonic triggers `UnwrapFromMnemonic` and sets `RecoveryMode = true`
+- **THEN** the mnemonic choice prompt SHALL NOT be shown
+- **AND** passphrase acquisition SHALL proceed via the normal priority chain (KMS, keyring, keyfile, interactive, stdin)
 
-#### Scenario: Non-interactive bootstrap skips recovery option
+#### Scenario: Mnemonic recovery via dedicated command without bootstrap
 
-- **WHEN** bootstrap runs in a non-interactive environment (no tty, keyfile available)
-- **THEN** the recovery choice prompt is skipped
-- **AND** the keyfile passphrase path is used
+- **WHEN** the user runs `lango security recovery restore`
+- **THEN** the command SHALL load the envelope directly via `security.LoadEnvelopeFile(langoDir)` without invoking the full bootstrap pipeline
+- **AND** the user SHALL be prompted for the 24-word mnemonic
+- **AND** on success, the user SHALL set a new passphrase via `ChangePassphraseSlot`
+
+#### Scenario: Restore reports clear error when no envelope exists
+
+- **WHEN** the user runs `lango security recovery restore` and no envelope file exists
+- **THEN** the command SHALL return an error: `"envelope not found — recovery requires local encryption mode"`
+
+#### Scenario: Non-interactive restore fails gracefully
+
+- **WHEN** `lango security recovery restore` is run in a non-interactive environment
+- **THEN** it SHALL return an error requiring an interactive terminal

@@ -122,6 +122,20 @@ func TestRecoveryPolicy_Decide(t *testing.T) {
 			},
 			wantAction: RecoveryEscalate,
 		},
+		{
+			give: "provider auth → escalate immediately",
+			failure: RecoveryContext{
+				Error: &adk.AgentError{Code: adk.ErrModelError, CauseClass: adk.CauseProviderAuth},
+			},
+			wantAction: RecoveryEscalate,
+		},
+		{
+			give: "provider connection → retry",
+			failure: RecoveryContext{
+				Error: &adk.AgentError{Code: adk.ErrModelError, CauseClass: adk.CauseProviderConnection},
+			},
+			wantAction: RecoveryRetry,
+		},
 	}
 
 	policy := NewRecoveryPolicy(config.RecoveryCfg{MaxRetries: 2}, nil)

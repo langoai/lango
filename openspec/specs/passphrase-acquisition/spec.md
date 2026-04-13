@@ -106,19 +106,18 @@ The system SHALL provide a `passphrase.AcquireNonInteractive(opts Options)` func
 - **THEN** it SHALL NOT call `term.ReadPassword` (interactive prompt)
 - **AND** it SHALL NOT read from `os.Stdin` pipe
 
-### Requirement: Recovery credential choice during bootstrap
+### Requirement: No recovery credential choice during bootstrap
 
-The system SHALL offer a credential choice when bootstrap loads an envelope that contains at least one mnemonic slot, in an interactive terminal. The user SHALL be able to select "passphrase" (default) or "recovery mnemonic" to unlock the envelope.
+The bootstrap credential acquisition phase SHALL NOT offer a mnemonic recovery choice. When an envelope contains a mnemonic slot, the bootstrap SHALL proceed with the standard passphrase acquisition chain. Mnemonic recovery is handled exclusively by `lango security recovery restore`.
 
-#### Scenario: Interactive bootstrap with mnemonic slot prompts choice
+#### Scenario: Bootstrap with mnemonic slot proceeds normally
 
-- **WHEN** bootstrap Phase 4 runs in an interactive terminal
-- **AND** the loaded envelope contains a slot of type `KEKSlotMnemonic`
-- **THEN** the user is prompted to choose between passphrase and mnemonic input
-- **AND** choosing "mnemonic" skips `passphrase.Acquire()` entirely and sets `RecoveryMode = true`
+- **WHEN** bootstrap Phase 4 runs with an envelope containing a slot of type `KEKSlotMnemonic`
+- **THEN** no mnemonic choice prompt SHALL be shown
+- **AND** passphrase acquisition SHALL follow the standard priority chain (KMS, keyring, keyfile, interactive, stdin)
 
-#### Scenario: Non-interactive bootstrap skips choice prompt
+#### Scenario: Non-interactive bootstrap unaffected
 
 - **WHEN** bootstrap runs non-interactively (no tty, keyring/keyfile available)
-- **THEN** no choice prompt is shown
-- **AND** passphrase acquisition proceeds via normal priority chain
+- **THEN** passphrase acquisition SHALL proceed via the normal priority chain
+- **AND** no behavior change from the previous non-interactive path

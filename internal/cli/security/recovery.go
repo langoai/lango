@@ -23,7 +23,7 @@ func newRecoveryCmd(bootLoader func() (*bootstrap.Result, error)) *cobra.Command
 		Short: "Manage recovery mnemonic for the Master Key envelope",
 	}
 	cmd.AddCommand(newRecoverySetupCmd(bootLoader))
-	cmd.AddCommand(newRecoveryRestoreCmd(bootLoader))
+	cmd.AddCommand(newRecoveryRestoreCmd())
 	return cmd
 }
 
@@ -116,7 +116,10 @@ of access to all encrypted data.`,
 	}
 }
 
-func newRecoveryRestoreCmd(bootLoader func() (*bootstrap.Result, error)) *cobra.Command {
+// newRecoveryRestoreCmd creates the restore command that loads the envelope
+// directly from the filesystem without running the full bootstrap pipeline.
+// This allows recovery even when the user has lost their passphrase.
+func newRecoveryRestoreCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:   "restore",
 		Short: "Recover access using the BIP39 recovery mnemonic",
@@ -129,19 +132,18 @@ and any other slots are unchanged.`,
 			if !prompt.IsInteractive() {
 				return fmt.Errorf("recovery restore requires an interactive terminal")
 			}
-			boot, err := bootLoader()
-			if err != nil {
-				return fmt.Errorf("load config: %w", err)
-			}
-			defer boot.DBClient.Close()
 
-			provider, ok := boot.Crypto.(*security.LocalCryptoProvider)
-			if !ok {
-				return fmt.Errorf("recovery restore is only available for the local crypto provider")
+			langoDir := defaultLangoDir()
+			if langoDir == "" {
+				return fmt.Errorf("resolve home directory: cannot determine lango data directory")
 			}
-			envelope := provider.Envelope()
+
+			envelope, err := security.LoadEnvelopeFile(langoDir)
+			if err != nil {
+				return fmt.Errorf("load envelope: %w", err)
+			}
 			if envelope == nil {
-				return fmt.Errorf("envelope not found — nothing to recover")
+				return fmt.Errorf("envelope not found — recovery requires local encryption mode")
 			}
 			if !envelope.HasSlotType(security.KEKSlotMnemonic) {
 				return fmt.Errorf("no recovery mnemonic slot on this envelope")
@@ -167,12 +169,12 @@ and any other slots are unchanged.`,
 			if err := envelope.ChangePassphraseSlot(mk, newPass); err != nil {
 				return fmt.Errorf("replace passphrase slot: %w", err)
 			}
-			if err := security.StoreEnvelopeFile(boot.LangoDir, envelope); err != nil {
+			if err := security.StoreEnvelopeFile(langoDir, envelope); err != nil {
 				return fmt.Errorf("persist envelope: %w", err)
 			}
 
 			// Sync stored credentials so next headless/keyring bootstrap works.
-			keyfilePath := filepath.Join(boot.LangoDir, "keyfile")
+			keyfilePath := filepath.Join(langoDir, "keyfile")
 			if _, statErr := os.Stat(keyfilePath); statErr == nil {
 				if writeErr := os.WriteFile(keyfilePath, []byte(newPass), 0600); writeErr != nil {
 					fmt.Fprintf(os.Stderr, "warning: update keyfile: %v\n", writeErr)
