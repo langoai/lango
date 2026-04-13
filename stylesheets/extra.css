@@ -1,0 +1,40 @@
+/* Logo rounded corners */
+.md-header__button.md-logo img {
+  border-radius: 50%;
+}
+
+/* Experimental badge */
+.md-typeset .badge-experimental {
+  background-color: #ff9100;
+  color: #fff;
+  font-size: 0.7rem;
+  font-weight: 700;
+  padding: 0.15rem 0.5rem;
+  border-radius: 1rem;
+  vertical-align: middle;
+  margin-left: 0.3rem;
+}
+
+/* Stable badge */
+.md-typeset .badge-stable {
+  background-color: #00c853;
+  color: #fff;
+  font-size: 0.7rem;
+  font-weight: 700;
+  padding: 0.15rem 0.5rem;
+  border-radius: 1rem;
+  vertical-align: middle;
+  margin-left: 0.3rem;
+}
+
+/* Feature grid cards */
+.md-typeset .grid.cards > ul > li {
+  border: 1px solid var(--md-default-fg-color--lightest);
+  border-radius: 0.5rem;
+  padding: 1rem;
+  transition: border-color 0.2s;
+}
+
+.md-typeset .grid.cards > ul > li:hover {
+  border-color: var(--md-accent-fg-color);
+}
