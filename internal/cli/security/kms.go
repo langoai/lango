@@ -64,8 +64,8 @@ func newKMSStatusCmd(bootLoader func() (*bootstrap.Result, error)) *cobra.Comman
 
 			if isKMS {
 				// Try to create the provider to check connectivity.
-				kmsProvider, provErr := sec.NewKMSProvider(sec.KMSProviderName(provider), cfg.Security.KMS) //nolint:staticcheck // stubs always error; real impls use build tags
-				if provErr != nil {
+				kmsProvider, provErr := sec.NewKMSProvider(sec.KMSProviderName(provider), cfg.Security.KMS)
+				if provErr != nil { //nolint:staticcheck // stubs always error; real impls use kms_* build tags
 					s.Status = fmt.Sprintf("error: %v", provErr)
 				} else {
 					checker := sec.NewKMSHealthChecker(kmsProvider, cfg.Security.KMS.KeyID, 0)
@@ -117,8 +117,8 @@ func newKMSTestCmd(bootLoader func() (*bootstrap.Result, error)) *cobra.Command 
 				return fmt.Errorf("current provider %q is not a KMS provider", provider)
 			}
 
-			kmsProvider, err := sec.NewKMSProvider(sec.KMSProviderName(provider), cfg.Security.KMS) //nolint:staticcheck // stubs always error; real impls use build tags
-			if err != nil {
+			kmsProvider, err := sec.NewKMSProvider(sec.KMSProviderName(provider), cfg.Security.KMS)
+			if err != nil { //nolint:staticcheck // stubs always error; real impls use kms_* build tags
 				return fmt.Errorf("create KMS provider: %w", err)
 			}
 
@@ -254,8 +254,8 @@ This enables passphraseless bootstrap when KMS credentials are available.`,
 			}
 
 			// Create the KMS provider.
-			kmsProvider, err := sec.NewKMSProvider(sec.KMSProviderName(provider), boot.Config.Security.KMS) //nolint:staticcheck
-			if err != nil {
+			kmsProvider, err := sec.NewKMSProvider(sec.KMSProviderName(provider), boot.Config.Security.KMS)
+			if err != nil { //nolint:staticcheck // stubs always error; real impls use kms_* build tags
 				return fmt.Errorf("create KMS provider: %w", err)
 			}
 

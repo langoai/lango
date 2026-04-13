@@ -139,7 +139,7 @@ func phaseAcquireCredential() Phase {
 					security.KMSProviderName(s.Options.KMSProviderName),
 					*s.Options.KMSConfig,
 				)
-				if kmsErr == nil {
+				if kmsErr == nil { //nolint:staticcheck // stubs always error; real impls use kms_* build tags
 					mk, _, unwrapErr := s.Envelope.UnwrapFromKMS(
 						ctx, kmsProvider, s.Options.KMSProviderName, s.Options.KMSConfig.KeyID,
 					)
