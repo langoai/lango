@@ -122,8 +122,8 @@ func phaseLoadEnvelopeFile() Phase {
 	}
 }
 
-// phaseAcquireCredential acquires the passphrase, or offers mnemonic recovery
-// if the envelope contains a mnemonic slot and the terminal is interactive.
+// phaseAcquireCredential attempts KMS unwrap first (if configured),
+// then falls back to the passphrase acquisition chain (keyring, keyfile, interactive, stdin).
 func phaseAcquireCredential() Phase {
 	return Phase{
 		Name: "acquire credential",
@@ -165,31 +165,6 @@ func phaseAcquireCredential() Phase {
 			_, statErr := os.Stat(s.Options.DBPath)
 			s.FirstRunGuess = statErr != nil && s.Envelope == nil
 
-			// Recovery path: offer mnemonic choice when the envelope has a
-			// mnemonic slot and we're on an interactive terminal. The interactive
-			// check relies on passphrase.Acquire's TTY detection; the choice
-			// prompt itself uses prompt.Confirm which already gates on TTY.
-			if s.Envelope != nil && s.Envelope.HasSlotType(security.KEKSlotMnemonic) {
-				if ok, promptErr := prompt.Confirm("Recovery mnemonic slot detected. Recover with mnemonic?"); promptErr == nil && ok {
-					mnemonic, mErr := prompt.Passphrase("Enter 24-word recovery mnemonic: ")
-					if mErr != nil {
-						return fmt.Errorf("read mnemonic: %w", mErr)
-					}
-					if err := security.ValidateMnemonic(mnemonic); err != nil {
-						return fmt.Errorf("invalid mnemonic: %w", err)
-					}
-					mk, _, unwrapErr := s.Envelope.UnwrapFromMnemonic(mnemonic)
-					if unwrapErr != nil {
-						return fmt.Errorf("mnemonic does not match any envelope slot: %w", unwrapErr)
-					}
-					s.MasterKey = mk
-					s.RecoveryMode = true
-					// We still need a DBKey for SQLCipher below, but that will
-					// be derived from the MK in phaseOpenDatabase.
-					return nil
-				}
-			}
-
 			pass, source, err := passphrase.Acquire(passphrase.Options{
 				KeyfilePath:     s.Options.KeyfilePath,
 				AllowCreation:   s.FirstRunGuess,
@@ -226,17 +201,16 @@ func phaseAcquireCredential() Phase {
 }
 
 // phaseUnwrapOrCreateMK covers three cases:
-//  1. MasterKey already set (by mnemonic recovery) — no-op.
+//  1. MasterKey already set (by KMS unwrap) — no-op.
 //  2. Envelope exists — derive KEK from passphrase and unwrap the MK.
-//  3. No envelope and no legacy DB — treat as first run: create a new MK +
-//     envelope and persist the envelope file immediately.
-//  4. No envelope but legacy DB exists — mark LegacyMode; migration will handle it.
+//  3. No envelope and no legacy DB — first run: create MK + envelope.
+//  4. No envelope but legacy DB — mark LegacyMode; migration handles it.
 func phaseUnwrapOrCreateMK() Phase {
 	return Phase{
 		Name: "unwrap or create master key",
 		Run: func(_ context.Context, s *State) error {
 			if s.MasterKey != nil {
-				// Already unwrapped via mnemonic recovery.
+				// Already unwrapped (e.g. KMS).
 				return nil
 			}
 			if s.Envelope != nil {

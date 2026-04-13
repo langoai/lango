@@ -45,7 +45,7 @@ The system SHALL execute a complete bootstrap sequence with 10 phases: ensure da
 #### Scenario: KMS bootstrap with graceful fallback
 - **WHEN** KMS unwrap fails (provider init error, decrypt error, or no matching slot)
 - **THEN** the bootstrap SHALL print a warning to stderr
-- **AND** fall through to the standard credential acquisition (mnemonic → passphrase)
+- **AND** fall through to the standard passphrase credential acquisition
 - **AND** NOT attempt local decryption of KMS-wrapped ciphertext
 
 #### Scenario: No KMS env vars configured

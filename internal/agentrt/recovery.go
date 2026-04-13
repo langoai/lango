@@ -48,6 +48,10 @@ func classifyForRetry(agentErr *adk.AgentError) CauseClass {
 		return CauseRateLimit
 	case agentErr.CauseClass == adk.CauseProviderTransient:
 		return CauseTransient
+	case agentErr.CauseClass == adk.CauseProviderAuth:
+		return CauseUnknown // auth errors are not retryable
+	case agentErr.CauseClass == adk.CauseProviderConnection:
+		return CauseTransient // connection errors are transient, retryable
 	case agentErr.CauseClass == adk.CauseFunctionCallValidation:
 		return CauseMalformedToolCall
 	case agentErr.Code == adk.ErrTimeout || agentErr.Code == adk.ErrIdleTimeout:
@@ -170,7 +174,12 @@ func (p *RecoveryPolicy) Decide(ctx context.Context, failure *RecoveryContext) R
 		return RecoveryRetryWithHint
 
 	case adk.ErrModelError:
-		if agentErr.CauseClass == adk.CauseProviderRateLimit || agentErr.CauseClass == adk.CauseProviderTransient {
+		if agentErr.CauseClass == adk.CauseProviderAuth {
+			return RecoveryEscalate
+		}
+		if agentErr.CauseClass == adk.CauseProviderRateLimit ||
+			agentErr.CauseClass == adk.CauseProviderTransient ||
+			agentErr.CauseClass == adk.CauseProviderConnection {
 			return RecoveryRetry
 		}
 		return RecoveryEscalate

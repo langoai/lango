@@ -52,7 +52,7 @@ type State struct {
 	Envelope     *security.MasterKeyEnvelope
 	MasterKey    []byte // unwrapped MK (zeroed on cleanup)
 	LegacyMode   bool   // no envelope, not first run — needs legacy→envelope migration
-	RecoveryMode bool   // mnemonic was used instead of passphrase
+	RecoveryMode bool   // reserved for future use; no longer set during bootstrap
 
 	// Identity key derived from MK via HKDF (Phase 3).
 	IdentityKey ed25519.PrivateKey

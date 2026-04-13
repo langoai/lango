@@ -34,6 +34,8 @@ const (
 	CauseUnknownToolError         = "unknown_tool_error"
 	CauseProviderRateLimit        = "provider_rate_limit"
 	CauseProviderTransient        = "provider_transient"
+	CauseProviderAuth             = "provider_auth"
+	CauseProviderConnection       = "provider_connection"
 	CauseThoughtSignatureMissing  = "thought_signature_missing"
 	CauseTimeoutIdle              = "timeout_idle"
 	CauseTimeoutHard              = "timeout_hard"
@@ -99,7 +101,14 @@ func (e *AgentError) UserMessage() string {
 	case ErrTimeout:
 		return fmt.Sprintf("[%s] The request timed out after %s. Try breaking your question into smaller parts or increasing the timeout.", e.Code, e.Elapsed.Truncate(time.Second))
 	case ErrModelError:
-		return fmt.Sprintf("[%s] The AI model returned an error. Please try again.", e.Code)
+		switch e.CauseClass {
+		case CauseProviderAuth:
+			return fmt.Sprintf("[%s] Authentication failed with the AI provider. Check your API key configuration.", e.Code)
+		case CauseProviderConnection:
+			return fmt.Sprintf("[%s] Could not connect to the AI provider. Check your network and provider URL.", e.Code)
+		default:
+			return fmt.Sprintf("[%s] The AI model returned an error. Please try again.", e.Code)
+		}
 	case ErrToolError:
 		switch {
 		case errors.Is(e.Cause, approval.ErrDenied):
@@ -129,6 +138,7 @@ func classifyError(err error) FailureClassification {
 		return FailureClassification{
 			Code:            ErrInternal,
 			CauseClass:      CauseInternalRuntimeError,
+			CauseDetail:     "classifyError called with nil error (defensive)",
 			OperatorSummary: "[E005] internal_runtime_error",
 		}
 	}
@@ -252,6 +262,30 @@ func classifyError(err error) FailureClassification {
 			OperatorSummary: fmt.Sprintf("[%s] %s", ErrModelError, CauseProviderTransient),
 		}
 	}
+	// Provider auth/connection classification uses case-insensitive matching.
+	lower := strings.ToLower(msg)
+
+	if strings.Contains(lower, "401") || strings.Contains(lower, "403") ||
+		strings.Contains(lower, "unauthorized") ||
+		strings.Contains(lower, "invalid api key") || strings.Contains(lower, "invalid_api_key") ||
+		strings.Contains(lower, "authentication failed") {
+		return FailureClassification{
+			Code:            ErrModelError,
+			CauseClass:      CauseProviderAuth,
+			CauseDetail:     msg,
+			OperatorSummary: fmt.Sprintf("[%s] %s", ErrModelError, CauseProviderAuth),
+		}
+	}
+	if strings.Contains(lower, "connection refused") || strings.Contains(lower, "no such host") ||
+		strings.Contains(lower, "dial tcp") || strings.Contains(lower, "connection reset") {
+		return FailureClassification{
+			Code:            ErrModelError,
+			CauseClass:      CauseProviderConnection,
+			CauseDetail:     msg,
+			OperatorSummary: fmt.Sprintf("[%s] %s", ErrModelError, CauseProviderConnection),
+		}
+	}
+
 	if strings.Contains(msg, "tool") {
 		return FailureClassification{
 			Code:            ErrToolError,
@@ -265,6 +299,6 @@ func classifyError(err error) FailureClassification {
 		Code:            ErrInternal,
 		CauseClass:      CauseInternalRuntimeError,
 		CauseDetail:     msg,
-		OperatorSummary: fmt.Sprintf("[%s] %s", ErrInternal, CauseInternalRuntimeError),
+		OperatorSummary: fmt.Sprintf("[%s] %s: %s", ErrInternal, CauseInternalRuntimeError, msg[:min(len(msg), 200)]),
 	}
 }

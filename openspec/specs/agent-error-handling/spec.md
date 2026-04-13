@@ -47,9 +47,23 @@ The system SHALL classify errors into codes: `ErrTimeout` (E001), `ErrModelError
 - **THEN** it SHALL return `ErrEmptyAfterToolUse`
 - **AND** the turn SHALL NOT be treated as a successful empty response
 
+#### Scenario: Provider auth error classified as model error
+- **WHEN** the error message contains `"401"`, `"403"`, `"unauthorized"`, `"invalid api key"`, `"invalid_api_key"`, or `"authentication failed"` (case-insensitive)
+- **THEN** `classifyError` SHALL return `ErrModelError` with `CauseClass` = `"provider_auth"`
+
+#### Scenario: Case-insensitive auth matching
+- **WHEN** the error message contains `"UNAUTHORIZED"` or `"Invalid API Key"` (mixed case)
+- **THEN** `classifyError` SHALL still return `ErrModelError` with `CauseClass` = `"provider_auth"`
+
+#### Scenario: Provider connection error classified as model error
+- **WHEN** the error message contains `"connection refused"`, `"no such host"`, `"dial tcp"`, or `"connection reset"` (case-insensitive)
+- **THEN** `classifyError` SHALL return `ErrModelError` with `CauseClass` = `"provider_connection"`
+
 #### Scenario: Unknown error classified as internal
 - **WHEN** the error does not match any known pattern
-- **THEN** `classifyError` SHALL return `ErrInternal`
+- **THEN** `classifyError` SHALL return `ErrInternal` with `CauseDetail` set to the error message
+- **AND** `OperatorSummary` SHALL include a truncated version of the error message (max 200 chars)
+- **AND** the user-facing `UserMessage()` SHALL NOT include the raw error message
 
 ### Requirement: User-facing error messages
 The `AgentError` SHALL provide a `UserMessage()` method that returns a human-readable message including the error code and actionable guidance. User-facing messages SHALL NOT instruct the user to read a raw partial draft above.
@@ -74,6 +88,16 @@ The `AgentError` SHALL provide a `UserMessage()` method that returns a human-rea
 #### Scenario: Approval unavailable message
 - **WHEN** the underlying error wraps `approval.ErrUnavailable`
 - **THEN** `UserMessage()` SHALL explain that no approval channel was available
+
+#### Scenario: Auth error user message
+- **WHEN** an `AgentError` has `CauseClass` = `"provider_auth"`
+- **THEN** `UserMessage()` SHALL return a message about API key configuration
+- **AND** SHALL NOT expose raw error details from `CauseDetail`
+
+#### Scenario: Connection error user message
+- **WHEN** an `AgentError` has `CauseClass` = `"provider_connection"`
+- **THEN** `UserMessage()` SHALL return a message about network connectivity and provider URL
+- **AND** SHALL NOT expose raw error details from `CauseDetail`
 
 ### Requirement: Streaming partial events omit thought metadata
 Partial tool-call `LLMResponse` events yielded during streaming SHALL NOT carry `Thought` or `ThoughtSignature` fields. Only the final accumulated response (via `toolAccum.done()`) SHALL include the correct `Thought` and `ThoughtSignature` values.
@@ -196,6 +220,14 @@ The `RecoveryPolicy` in `internal/agentrt/` SHALL capture the recovery patterns 
 - **WHEN** inner executor returns a retryable tool error before any specialist delegation has been observed
 - **THEN** RecoveryPolicy MAY return `RecoveryRetry`
 - **AND** the recovery context SHALL leave `AgentName` empty
+
+#### Scenario: Provider auth error escalates immediately
+- **WHEN** inner executor returns `ErrModelError` with `CauseClass` = `"provider_auth"`
+- **THEN** `RecoveryPolicy` SHALL return `RecoveryEscalate` (no retry)
+
+#### Scenario: Provider connection error retries
+- **WHEN** inner executor returns `ErrModelError` with `CauseClass` = `"provider_connection"` and recovery budget allows
+- **THEN** `RecoveryPolicy` SHALL return `RecoveryRetry`
 
 ### Requirement: convertMessages splits merged FunctionResponse parts
 `convertMessages()` SHALL split a Content with 2+ FunctionResponse parts (caused by EventsAdapter same-role merge) into individual `provider.Message` entries, each with its own `tool_call_id`. This prevents provider API `400` errors when multiple tool responses are merged into one Content.

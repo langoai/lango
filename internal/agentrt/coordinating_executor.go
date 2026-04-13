@@ -169,6 +169,8 @@ func (c *CoordinatingExecutor) runWithRecovery(
 			"action", action.String(),
 			"error_code", agentErr.Code,
 			"cause_class", agentErr.CauseClass,
+			"cause_detail", agentErr.CauseDetail,
+			"error", agentErr.Error(),
 			"retry", retryCount)
 	} else {
 		logger().Warnw("recovery triggered",
