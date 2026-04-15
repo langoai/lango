@@ -256,6 +256,12 @@ func New(boot *bootstrap.Result, opts ...AppOption) (*App, error) {
 	// Log tool registration summary for diagnostics.
 	logToolRegistrationSummary(catalog)
 
+	// B5.5. Extension packs: load installed manifests and merge extension
+	// modes into Config.Modes before agent construction so the context
+	// adapter and mode allowlist middleware see them through the normal
+	// ResolveModes surface.
+	wireExtensionRegistry(app)
+
 	// B6. Agent creation.
 	scanner := fv.Scanner
 	p2pc, _ := resolver.Resolve(appinit.ProvidesP2P).(*p2pComponents)

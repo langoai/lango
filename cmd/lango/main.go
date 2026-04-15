@@ -38,6 +38,7 @@ import (
 	"github.com/langoai/lango/internal/cli/doctor"
 	clieconomy "github.com/langoai/lango/internal/cli/economy"
 	cligraph "github.com/langoai/lango/internal/cli/graph"
+	cliextension "github.com/langoai/lango/internal/cli/extension"
 	clilearning "github.com/langoai/lango/internal/cli/learning"
 	clilibrarian "github.com/langoai/lango/internal/cli/librarian"
 	climcp "github.com/langoai/lango/internal/cli/mcp"
@@ -155,6 +156,10 @@ func main() {
 	learningCmd := clilearning.NewLearningCmd(cliboot.Config, cliboot.BootResult)
 	learningCmd.GroupID = "ai"
 	rootCmd.AddCommand(learningCmd)
+
+	extensionCmd := cliextension.NewExtensionCmd(cliboot.Config)
+	extensionCmd.GroupID = "ai"
+	rootCmd.AddCommand(extensionCmd)
 
 	librarianCmd := clilibrarian.NewLibrarianCmd(cliboot.Config, cliboot.BootResult)
 	librarianCmd.GroupID = "ai"

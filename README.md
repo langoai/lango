@@ -71,6 +71,42 @@ Single binary. <100ms startup. <250MB memory. Just Go.
 - 🛡️ **OS-level Sandbox** — Process isolation via macOS Seatbelt and Linux bubblewrap (when `bwrap` is installed), network deny, workspace-scoped write access, automatic control-plane (`~/.lango`) and `.git` masking (walks up to the repo root and follows linked-worktree pointers), file-level deny via `/dev/null` bind, symlink resolution, glob patterns in deny/write lists, audit trail of every apply/skip/exclude decision
 - 🚧 **Response Gatekeeper** — Output sanitization stripping thought tags, internal markers, raw JSON, and custom patterns
 - 🔁 **Continuity (Phase 3)** — Background hygiene compaction with a 2s sync-point guard (`context.compaction.*`), FTS5-backed session recall that surfaces prior-session summaries at turn start (`context.recall.*`), and approval-gated learning suggestions published through the event bus (`learning.suggestions.*`). All three features ship enabled-by-default and can be turned off independently.
+- 📦 **Extension Packs (Phase 4)** — Install skills, modes, and prompts in bundles via `lango extension install <source>` (local dir or git URL). The trust model is **inspect + confirm**: every install prints the pack's identity, SHA-256 hashes, and planned filesystem writes before anything is written. Removal is atomic; tamper detection compares on-disk hashes at every startup. v1 packs intentionally cannot install tools, MCP servers, or providers — those surfaces land in later phases with their own trust review.
+
+#### Writing an extension pack
+
+A minimal `extension.yaml`:
+
+```yaml
+schema: lango.extension/v1
+name: python-dev
+version: 0.1.0
+description: Python development skills and a focused review mode
+author: you
+license: Apache-2.0
+contents:
+  skills:
+    - name: pytest-refactor
+      path: skills/pytest-refactor/SKILL.md
+  modes:
+    - name: python-review
+      systemHint: Focus on Python idioms and test coverage.
+      tools: ["@filesystem", "@exec"]
+  prompts:
+    - path: prompts/python.md
+      section: python
+```
+
+Then publish the directory as a git repo and install from anywhere:
+
+```bash
+lango extension inspect https://example.com/python-dev.git   # preview only
+lango extension install https://example.com/python-dev.git   # inspect + confirm
+lango extension list
+lango extension remove python-dev
+```
+
+Config surface: `extensions.enabled` (default `true`), `extensions.dir` (default `~/.lango/extensions`), `extensions.enforceIntegrity` (default `false`; set `true` to skip loading any pack whose on-disk files changed after install).
 
 ## Quick Start
 

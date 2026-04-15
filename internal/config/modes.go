@@ -45,7 +45,22 @@ func BuiltInModes() map[string]SessionMode {
 // ResolveModes returns the merged map of built-in and user-defined modes.
 // User entries with the same name as a built-in replace the built-in entirely.
 func (c *Config) ResolveModes() map[string]SessionMode {
+	return c.ResolveModesWithExtensions(nil)
+}
+
+// ResolveModesWithExtensions merges built-in, extension-origin, and
+// user-defined modes in that precedence order (user wins on name collision,
+// then extensions, then built-ins). extensionModes is the flat list of
+// pack-declared modes collected by the extension registry at startup.
+// When extensionModes is nil/empty the result is identical to ResolveModes.
+func (c *Config) ResolveModesWithExtensions(extensionModes []SessionMode) map[string]SessionMode {
 	resolved := BuiltInModes()
+	for _, mode := range extensionModes {
+		if mode.Name == "" {
+			continue
+		}
+		resolved[mode.Name] = mode
+	}
 	for name, mode := range c.Modes {
 		if mode.Name == "" {
 			mode.Name = name
@@ -62,6 +77,17 @@ func (c *Config) LookupMode(name string) (SessionMode, bool) {
 		return SessionMode{}, false
 	}
 	modes := c.ResolveModes()
+	m, ok := modes[name]
+	return m, ok
+}
+
+// LookupModeWithExtensions is LookupMode but including the given
+// extension-origin modes.
+func (c *Config) LookupModeWithExtensions(name string, extensionModes []SessionMode) (SessionMode, bool) {
+	if name == "" {
+		return SessionMode{}, false
+	}
+	modes := c.ResolveModesWithExtensions(extensionModes)
 	m, ok := modes[name]
 	return m, ok
 }

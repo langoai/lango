@@ -168,6 +168,11 @@ func DefaultConfig() *Config {
 				DedupWindow: time.Hour,
 			},
 		},
+		Extensions: ExtensionsConfig{
+			Enabled:          boolPtr(true),
+			Dir:              DefaultExtensionsDir,
+			EnforceIntegrity: false,
+		},
 		RunLedger: RunLedgerConfig{
 			Enabled:            false,
 			Shadow:             false,

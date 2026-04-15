@@ -19,6 +19,7 @@ import (
 	"github.com/langoai/lango/internal/economy/risk"
 	"github.com/langoai/lango/internal/embedding"
 	"github.com/langoai/lango/internal/eventbus"
+	"github.com/langoai/lango/internal/extension"
 	"github.com/langoai/lango/internal/gatekeeper"
 	"github.com/langoai/lango/internal/gateway"
 	"github.com/langoai/lango/internal/graph"
@@ -95,6 +96,11 @@ type App struct {
 
 	// Compaction Components (optional, Phase 3 background hygiene)
 	CompactionBuffer *session.CompactionBuffer
+
+	// ExtensionRegistry holds the set of installed extension packs
+	// discovered at startup. nil when the subsystem is disabled or the
+	// extensions directory does not exist.
+	ExtensionRegistry *extension.Registry
 
 	// recallIndex is the FTS5-backed session recall index. nil when disabled
 	// or when FTS5 is unavailable in the build.

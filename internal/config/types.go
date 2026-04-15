@@ -143,6 +143,26 @@ type Config struct {
 	// Modes is the map of session-mode definitions keyed by mode name.
 	// User-defined entries merge with built-in modes (user overrides win on name conflict).
 	Modes map[string]SessionMode `mapstructure:"modes" json:"modes,omitempty"`
+
+	// Extensions holds extension-pack subsystem settings (Phase 4). When
+	// Enabled, the pack registry walks Dir at startup and merges pack-origin
+	// modes, skills, and prompts into the effective config.
+	Extensions ExtensionsConfig `mapstructure:"extensions" json:"extensions"`
+}
+
+// ExtensionsConfig controls the extension-pack subsystem. An empty struct
+// resolves to (Enabled=true, Dir="~/.lango/extensions", EnforceIntegrity=false)
+// via ResolveExtensions.
+type ExtensionsConfig struct {
+	// Enabled toggles the subsystem. When false, startup skips pack discovery
+	// and CLI install/remove refuses to run.
+	Enabled *bool `mapstructure:"enabled" json:"enabled"`
+	// Dir is the root directory where installed packs live. Default
+	// "~/.lango/extensions". Tilde expansion happens at consumption time.
+	Dir string `mapstructure:"dir" json:"dir"`
+	// EnforceIntegrity skips loading any pack whose on-disk SHA-256 differs
+	// from the manifest recorded in .installed. Default false (warn-only).
+	EnforceIntegrity bool `mapstructure:"enforceIntegrity" json:"enforceIntegrity"`
 }
 
 // SessionMode narrows the agent's active capabilities for a session.
