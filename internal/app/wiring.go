@@ -16,6 +16,7 @@ import (
 	"github.com/langoai/lango/internal/deadline"
 	"github.com/langoai/lango/internal/embedding"
 	"github.com/langoai/lango/internal/eventbus"
+	"github.com/langoai/lango/internal/extension"
 	"github.com/langoai/lango/internal/gateway"
 	"github.com/langoai/lango/internal/knowledge"
 	"github.com/langoai/lango/internal/orchestration"
@@ -268,6 +269,7 @@ type agentDeps struct {
 	hookRegistry    *toolchain.HookRegistry
 	compactionSync  *compactionSyncHolder
 	recallIndex     *session.RecallIndex
+	extReg          *extension.Registry
 }
 
 // initAgent creates the ADK agent with the given tools and provider proxy.
@@ -322,6 +324,13 @@ func initAgent(ctx context.Context, deps *agentDeps) (*adk.Agent, error) {
 	// Add automation prompt section if any automation system is enabled.
 	if cfg.Cron.Enabled || cfg.Background.Enabled || cfg.Workflow.Enabled {
 		builder.Add(buildAutomationPromptSection(cfg))
+	}
+
+	// Extension-contributed prompt sections (from pack manifests).
+	if deps.extReg != nil {
+		for _, s := range extensionPromptSections(deps.extReg) {
+			builder.Add(s)
+		}
 	}
 
 	// Tool catalog section is generated dynamically per turn by

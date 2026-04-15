@@ -449,16 +449,28 @@ func (m *ContextAwareModelAdapter) GenerateContent(ctx context.Context, req *mod
 		knowledgeSection = m.retriever.AssemblePrompt("", knowledgeResult)
 	}
 
-	if graphRAGResult != nil {
-		ragSection = m.formatGraphRAGSection(graphRAGResult, budgets.RAG)
-	} else if len(ragResults) > 0 {
-		ragSection = formatRAGSection(ragResults, budgets.RAG)
+	// Split RAG budget between semantic results and session recall when both
+	// are present. Recall gets 1/3, RAG gets 2/3. When only one source
+	// exists it gets the full budget.
+	ragBudget := budgets.RAG
+	recallBudget := budgets.RAG
+	hasRAG := graphRAGResult != nil || len(ragResults) > 0
+	if len(recallMatches) > 0 && hasRAG {
+		recallBudget = budgets.RAG / 3
+		ragBudget = budgets.RAG - recallBudget
 	}
 
-	// Prepend session recall matches to the RAG section under the shared
-	// RAG section budget. Lower-ranked matches drop first on overflow.
+	if graphRAGResult != nil {
+		ragSection = m.formatGraphRAGSection(graphRAGResult, ragBudget)
+	} else if len(ragResults) > 0 {
+		ragSection = formatRAGSection(ragResults, ragBudget)
+	}
+
+	// Prepend session recall matches to the RAG section. Each source is
+	// independently budget-capped so their combined size stays within the
+	// total RAG allocation.
 	if len(recallMatches) > 0 {
-		recallSection := formatRecallSection(recallMatches, budgets.RAG)
+		recallSection := formatRecallSection(recallMatches, recallBudget)
 		if recallSection != "" {
 			if ragSection == "" {
 				ragSection = recallSection

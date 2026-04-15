@@ -8,6 +8,7 @@ import (
 	"math/rand"
 	"strings"
 	"sync"
+	syncatomic "sync/atomic"
 	"time"
 
 	"github.com/google/uuid"
@@ -215,7 +216,20 @@ func (r *Runner) Run(parent context.Context, req Request) (Result, error) {
 			}
 		}
 
-		chunkCb, stopStale := r.wrapChunkCallbackWithStale(req.OnChunk, cancel)
+		// Guard: track whether visible chunks were emitted in this attempt.
+		// If a provider fails mid-stream after the user saw partial output,
+		// retrying would append duplicate content to the TUI.
+		var chunksEmitted syncatomic.Bool
+		guardedOnChunk := func(chunk string) {
+			if chunk != "" {
+				chunksEmitted.Store(true)
+			}
+			if req.OnChunk != nil {
+				req.OnChunk(chunk)
+			}
+		}
+
+		chunkCb, stopStale := r.wrapChunkCallbackWithStale(guardedOnChunk, cancel)
 		report, runErr := r.executor.RunStreamingDetailed(
 			ctx,
 			req.SessionKey,
@@ -234,6 +248,10 @@ func (r *Runner) Run(parent context.Context, req Request) (Result, error) {
 			CauseClass: result.CauseClass,
 		})
 		if action != adk.RecoveryRetry || attempt >= maxAttempts-1 {
+			break
+		}
+		// Don't retry when partial content was already streamed to the user.
+		if chunksEmitted.Load() {
 			break
 		}
 

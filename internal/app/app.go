@@ -294,6 +294,7 @@ func New(boot *bootstrap.Result, opts ...AppOption) (*App, error) {
 		hookRegistry:   hookRegistry,
 		compactionSync: app.compactionSync,
 		recallIndex:    app.recallIndex,
+		extReg:         app.ExtensionRegistry,
 	})
 	if err != nil {
 		cleanups.rollback()

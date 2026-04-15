@@ -491,7 +491,12 @@ func buildMetaTools(store *knowledge.Store, engine *learning.Engine, registry *s
 					}, nil
 				}
 
-				skillRoot := filepath.Join(skillsDir, name)
+				var skillRoot string
+				if found.SourcePack != "" {
+					skillRoot = filepath.Join(skillsDir, "ext-"+found.SourcePack, name)
+				} else {
+					skillRoot = filepath.Join(skillsDir, name)
+				}
 				var target string
 				if path == "" {
 					target = filepath.Join(skillRoot, "SKILL.md")

@@ -7,6 +7,7 @@ import (
 
 	"github.com/langoai/lango/internal/config"
 	"github.com/langoai/lango/internal/extension"
+	"github.com/langoai/lango/internal/prompt"
 )
 
 // wireExtensionRegistry loads installed extension packs at startup and
@@ -66,6 +67,39 @@ func wireExtensionRegistry(app *App) {
 			extension.LogOrphanSubdirs(resolved, reg, slog.Default())
 		}
 	}
+}
+
+// extensionPromptSections reads prompt files declared by healthy packs and
+// returns them as PromptSections ready for the prompt builder. Files that
+// cannot be read are logged and skipped — a missing prompt file does not
+// prevent startup.
+func extensionPromptSections(reg *extension.Registry) []prompt.PromptSection {
+	if reg == nil {
+		return nil
+	}
+	sources := reg.PromptSources()
+	if len(sources) == 0 {
+		return nil
+	}
+	sections := make([]prompt.PromptSection, 0, len(sources))
+	for _, ps := range sources {
+		data, err := os.ReadFile(ps.AbsolutePath)
+		if err != nil {
+			slog.Warn("extension prompt file unreadable",
+				"pack", ps.PackName,
+				"path", ps.AbsolutePath,
+				"error", err,
+			)
+			continue
+		}
+		content := string(data)
+		if content == "" {
+			continue
+		}
+		id := prompt.SectionID("extension_" + ps.PackName + "_" + ps.Section)
+		sections = append(sections, prompt.NewStaticSection(id, 850, ps.Section, content))
+	}
+	return sections
 }
 
 // expandTildeAbs expands a leading "~/" and makes the result absolute.

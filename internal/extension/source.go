@@ -162,6 +162,38 @@ func fetchFromDir(dir, sourceRef string, cleanup func() error) (*WorkingCopy, er
 		if err := hashFile(s.Path); err != nil {
 			return nil, err
 		}
+		// When the manifest points at SKILL.md, copySkillsToStore copies the
+		// entire parent directory. Hash every file so tamper detection covers
+		// all copied content.
+		if strings.HasSuffix(filepath.Base(s.Path), "SKILL.md") {
+			parentRel := filepath.Dir(s.Path)
+			parentAbs, err := ResolvePath(dir, parentRel)
+			if err != nil {
+				return nil, fmt.Errorf("hash skill dir %q: %w", parentRel, err)
+			}
+			// Resolve the root through symlinks so filepath.Rel produces clean
+			// relative paths (macOS /tmp → /private/var).
+			resolvedDir, err := filepath.EvalSymlinks(dir)
+			if err != nil {
+				return nil, fmt.Errorf("resolve pack root: %w", err)
+			}
+			if walkErr := filepath.Walk(parentAbs, func(path string, info os.FileInfo, err error) error {
+				if err != nil || info.IsDir() {
+					return err
+				}
+				rel, relErr := filepath.Rel(resolvedDir, path)
+				if relErr != nil {
+					return relErr
+				}
+				normalized := filepath.ToSlash(filepath.Clean(rel))
+				if _, exists := hashes[normalized]; exists {
+					return nil // already hashed (e.g. the SKILL.md itself)
+				}
+				return hashFile(normalized)
+			}); walkErr != nil {
+				return nil, fmt.Errorf("hash skill dir %q: %w", parentRel, walkErr)
+			}
+		}
 	}
 	for _, p := range m.Contents.Prompts {
 		if err := hashFile(p.Path); err != nil {

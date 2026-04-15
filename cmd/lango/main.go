@@ -291,6 +291,12 @@ func runChat() error {
 	}()
 
 	sessionKey := fmt.Sprintf("tui-%d", time.Now().UnixMilli())
+	// Hard session end: bounded best-effort summarize/index (mirrors runCockpit).
+	defer func() {
+		if application.Store != nil {
+			_ = application.Store.End(sessionKey)
+		}
+	}()
 
 	model := chat.New(chat.Deps{
 		TurnRunner:   application.TurnRunner,
