@@ -13,6 +13,7 @@ import (
 	"github.com/langoai/lango/internal/config"
 	"github.com/langoai/lango/internal/embedding"
 	"github.com/langoai/lango/internal/eventbus"
+	"github.com/langoai/lango/internal/extension"
 	"github.com/langoai/lango/internal/knowledge"
 	"github.com/langoai/lango/internal/learning"
 	"github.com/langoai/lango/internal/retrieval"
@@ -189,7 +190,7 @@ func bulkIndexLearnings(ctx context.Context, db *sql.DB, idx *search.FTS5Index) 
 }
 
 // initSkills creates the file-based skill registry.
-func initSkills(cfg *config.Config, baseTools []*agent.Tool, bus *eventbus.Bus) *skill.Registry {
+func initSkills(cfg *config.Config, baseTools []*agent.Tool, bus *eventbus.Bus, extReg *extension.Registry) *skill.Registry {
 	if !cfg.Skill.Enabled {
 		logger().Info("skill system disabled")
 		return nil
@@ -208,6 +209,19 @@ func initSkills(cfg *config.Config, baseTools []*agent.Tool, bus *eventbus.Bus) 
 
 	sLogger := logger()
 	store := skill.NewFileSkillStore(dir, sLogger)
+
+	// Restrict ext-<pack>/ skill loading to healthy packs from the extension
+	// registry. When extensions are disabled or no registry exists,
+	// AllowedExtPacks stays nil → all ext-packs are skipped (safe default).
+	if extReg != nil {
+		allowed := make(map[string]bool)
+		for _, p := range extReg.OKPacks() {
+			if p.Manifest != nil {
+				allowed[p.Manifest.Name] = true
+			}
+		}
+		store.AllowedExtPacks = allowed
+	}
 
 	// Deploy embedded default skills.
 	defaultFS, err := skills.DefaultFS()

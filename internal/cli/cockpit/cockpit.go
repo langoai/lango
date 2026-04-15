@@ -9,6 +9,8 @@ import (
 	"github.com/langoai/lango/internal/cli/chat"
 	"github.com/langoai/lango/internal/cli/cockpit/sidebar"
 	"github.com/langoai/lango/internal/cli/cockpit/theme"
+	"github.com/langoai/lango/internal/config"
+	"github.com/langoai/lango/internal/provider"
 )
 
 // childModel is the minimal contract for the wrapped child.
@@ -24,6 +26,7 @@ var _ childModel = (*chat.ChatModel)(nil)
 // Model is the root cockpit tea.Model.
 type Model struct {
 	child           childModel
+	cfg             *config.Config
 	pages           map[PageID]Page
 	activePage      PageID
 	sidebar         sidebar.Model
@@ -44,11 +47,14 @@ func New(deps Deps) *Model {
 		TurnRunner:        deps.TurnRunner,
 		Config:            deps.Config,
 		SessionKey:        deps.SessionKey,
+		SessionStore:      deps.SessionStore,
+		EventBus:          deps.EventBus,
 		BackgroundManager: deps.BackgroundManager,
 	})
 
 	return &Model{
 		child:          chatModel,
+		cfg:            deps.Config,
 		pages:          make(map[PageID]Page),
 		activePage:     PageChat,
 		sidebar:        sidebar.New(AllPageMetas()),
@@ -217,11 +223,16 @@ func (m *Model) handleDone(msg chat.DoneMsg) (*Model, tea.Cmd) {
 	if m.runtimeTracker != nil {
 		snap := m.runtimeTracker.FlushTurnTokens()
 		if snap.TotalTokens > 0 {
+			var costUSD float64
+			if m.cfg != nil {
+				costUSD = provider.EstimateCostUSD(m.cfg.Agent.Model, int(snap.InputTokens), int(snap.OutputTokens))
+			}
 			up2, cmd2 := m.child.Update(chat.TurnTokenUsageMsg{
-				InputTokens:  snap.InputTokens,
-				OutputTokens: snap.OutputTokens,
-				TotalTokens:  snap.TotalTokens,
-				CacheTokens:  snap.CacheTokens,
+				InputTokens:      snap.InputTokens,
+				OutputTokens:     snap.OutputTokens,
+				TotalTokens:      snap.TotalTokens,
+				CacheTokens:      snap.CacheTokens,
+				EstimatedCostUSD: costUSD,
 			})
 			m.child = up2.(childModel)
 			if cmd2 != nil {

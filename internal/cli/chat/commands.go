@@ -58,6 +58,16 @@ func slashCommands() []slashCommand {
 			desc:  "Alias for /exit",
 			run:   cmdExit,
 		},
+		{
+			name: "/mode",
+			desc: "Set or list session modes (e.g., /mode code-review)",
+			run:  cmdMode,
+		},
+		{
+			name: "/cost",
+			desc: "Show cumulative session token usage and estimated cost",
+			run:  cmdCost,
+		},
 	}
 }
 
@@ -187,4 +197,59 @@ func cmdStatus(m *ChatModel, _ string) tea.Cmd {
 
 func cmdExit(_ *ChatModel, _ string) tea.Cmd {
 	return tea.Quit
+}
+
+func cmdMode(m *ChatModel, args string) tea.Cmd {
+	args = strings.TrimSpace(args)
+	cfg := m.cfg
+
+	// No arg: list current and available modes.
+	if args == "" {
+		var b strings.Builder
+		current := "none"
+		if name := m.currentModeName(); name != "" {
+			current = name
+		}
+		fmt.Fprintf(&b, "Current mode: %s\n\n", current)
+		b.WriteString("Available modes:\n")
+		modes := cfg.ResolveModes()
+		for name := range modes {
+			fmt.Fprintf(&b, "  %s\n", name)
+		}
+		out := b.String()
+		return func() tea.Msg { return SystemMsg{Text: out} }
+	}
+
+	// Set mode: validate against resolved modes.
+	mode, ok := cfg.LookupMode(args)
+	if !ok {
+		out := fmt.Sprintf("Unknown mode %q. Type /mode for the list of available modes.", args)
+		return func() tea.Msg { return SystemMsg{Text: out} }
+	}
+
+	old := m.currentModeName()
+	if err := m.setSessionMode(mode.Name); err != nil {
+		out := fmt.Sprintf("Failed to set mode: %v", err)
+		return func() tea.Msg { return SystemMsg{Text: out} }
+	}
+
+	out := fmt.Sprintf("Mode changed: %s → %s", old, mode.Name)
+	return func() tea.Msg { return SystemMsg{Text: out} }
+}
+
+func cmdCost(m *ChatModel, _ string) tea.Cmd {
+	cost := m.sessionCostUSD
+	costStr := "—"
+	if cost > 0 {
+		if cost < 0.01 {
+			costStr = fmt.Sprintf("$%.4f", cost)
+		} else {
+			costStr = fmt.Sprintf("$%.2f", cost)
+		}
+	}
+	out := fmt.Sprintf(
+		"Session totals: %d input tokens, %d output tokens, estimated cost %s",
+		m.sessionInputTokens, m.sessionOutputTokens, costStr,
+	)
+	return func() tea.Msg { return SystemMsg{Text: out} }
 }

@@ -16,6 +16,7 @@ import (
 	"github.com/langoai/lango/internal/deadline"
 	"github.com/langoai/lango/internal/embedding"
 	"github.com/langoai/lango/internal/eventbus"
+	"github.com/langoai/lango/internal/extension"
 	"github.com/langoai/lango/internal/gateway"
 	"github.com/langoai/lango/internal/knowledge"
 	"github.com/langoai/lango/internal/orchestration"
@@ -264,8 +265,11 @@ type agentDeps struct {
 	p2pc         *p2pComponents
 	eventBus     *eventbus.Bus
 	rls          runledger.RunLedgerStore
-	prov         *provenanceValues
-	hookRegistry *toolchain.HookRegistry
+	prov            *provenanceValues
+	hookRegistry    *toolchain.HookRegistry
+	compactionSync  *compactionSyncHolder
+	recallIndex     *session.RecallIndex
+	extReg          *extension.Registry
 }
 
 // initAgent creates the ADK agent with the given tools and provider proxy.
@@ -322,10 +326,16 @@ func initAgent(ctx context.Context, deps *agentDeps) (*adk.Agent, error) {
 		builder.Add(buildAutomationPromptSection(cfg))
 	}
 
-	// Add dynamic tool catalog guide so the LLM knows what tool categories are available.
-	if deps.catalog != nil {
-		builder.Add(buildToolCatalogSection(deps.catalog))
+	// Extension-contributed prompt sections (from pack manifests).
+	if deps.extReg != nil {
+		for _, s := range extensionPromptSections(deps.extReg) {
+			builder.Add(s)
+		}
 	}
+
+	// Tool catalog section is generated dynamically per turn by
+	// ContextAwareModelAdapter (see WithCatalog). It is no longer baked into
+	// basePrompt so that session modes can narrow the visible tool set.
 
 	systemPrompt := builder.Build()
 
@@ -362,8 +372,28 @@ func initAgent(ctx context.Context, deps *agentDeps) (*adk.Agent, error) {
 
 		ctxAdapter := adk.NewContextAwareModelAdapter(modelAdapter, retriever, builder, logger())
 		ctxAdapter.WithRuntimeAdapter(runtimeAdapter)
+		if deps.catalog != nil {
+			ctxAdapter.WithCatalog(&catalogSourceAdapter{catalog: deps.catalog, cfg: cfg})
+		}
+		ctxAdapter.WithModeResolver(&modeResolverAdapter{cfg: cfg})
+
+		// Wire session compactor for emergency context compaction.
+		if entStore, ok := store.(*session.EntStore); ok {
+			ctxAdapter.WithSessionCompactor(entStore)
+		}
 		if deps.rls != nil && cfg.RunLedger.Enabled && cfg.RunLedger.AuthoritativeRead {
 			ctxAdapter.WithRunSummaryProvider(&runSummaryProviderAdapter{store: deps.rls})
+		}
+
+		// Wire in background-compaction sync-point guard. The holder is
+		// filled in after CompactionBuffer is constructed (wireCompactionBuffer).
+		if deps.compactionSync != nil {
+			syncTimeout := cfg.Context.Compaction.ResolveCompaction().SyncTimeout
+			ctxAdapter.WithCompactionSync(deps.compactionSync, syncTimeout)
+		}
+
+		if deps.recallIndex != nil {
+			ctxAdapter.WithRecallProvider(newRecallProviderAdapter(deps.recallIndex, cfg.Context.Recall))
 		}
 
 		// Wire in context budget manager.
@@ -421,8 +451,20 @@ func initAgent(ctx context.Context, deps *agentDeps) (*adk.Agent, error) {
 		// OM without knowledge system — create minimal context-aware adapter
 		ctxAdapter := adk.NewContextAwareModelAdapter(modelAdapter, nil, builder, logger())
 		ctxAdapter.WithMemory(mc.store)
+		if deps.catalog != nil {
+			ctxAdapter.WithCatalog(&catalogSourceAdapter{catalog: deps.catalog, cfg: cfg})
+		}
+		ctxAdapter.WithModeResolver(&modeResolverAdapter{cfg: cfg})
+		if entStore, ok := store.(*session.EntStore); ok {
+			ctxAdapter.WithSessionCompactor(entStore)
+		}
 		if deps.rls != nil && cfg.RunLedger.Enabled && cfg.RunLedger.AuthoritativeRead {
 			ctxAdapter.WithRunSummaryProvider(&runSummaryProviderAdapter{store: deps.rls})
+		}
+
+		if deps.compactionSync != nil {
+			syncTimeout := cfg.Context.Compaction.ResolveCompaction().SyncTimeout
+			ctxAdapter.WithCompactionSync(deps.compactionSync, syncTimeout)
 		}
 
 		// Apply memory context limits from config.
@@ -704,33 +746,53 @@ func initGateway(cfg *config.Config, adkAgent *adk.Agent, store session.Store, a
 	}, adkAgent, nil, store, auth)
 }
 
-// buildToolCatalogSection creates a dynamic prompt section listing visible tool
-// categories with their tool names, so the LLM can discover available tools.
-// Tools marked as ExposureDeferred are excluded from the listing; a summary note
-// tells the LLM how many additional tools are available via builtin_search.
-func buildToolCatalogSection(catalog *toolcatalog.Catalog) *prompt.StaticSection {
-	// Only include tools that are visible (Default or AlwaysVisible exposure).
-	visible := catalog.ListVisibleTools("")
-	if len(visible) == 0 {
-		return prompt.NewStaticSection(prompt.SectionToolCatalog, 410, "", "")
+// catalogSourceAdapter implements adk.CatalogSource for runtime generation of
+// the per-turn tool catalog prompt section. When a mode is active and its
+// allowlist is non-empty, the section lists only mode-filtered tools.
+type catalogSourceAdapter struct {
+	catalog *toolcatalog.Catalog
+	cfg     *config.Config
+}
+
+func (a *catalogSourceAdapter) BuildToolCatalogSection(modeName string) string {
+	if a.catalog == nil {
+		return ""
 	}
 
-	// Group visible tools by category.
+	var visible []toolcatalog.ToolSchema
+	if modeName != "" && a.cfg != nil {
+		if mode, ok := a.cfg.LookupMode(modeName); ok && len(mode.Tools) > 0 {
+			visible = a.catalog.ListVisibleToolsForMode(mode.Tools)
+		} else {
+			visible = a.catalog.ListVisibleTools("")
+		}
+	} else {
+		visible = a.catalog.ListVisibleTools("")
+	}
+
+	if len(visible) == 0 {
+		return ""
+	}
+
 	catTools := make(map[string][]string)
 	for _, ts := range visible {
 		catTools[ts.Category] = append(catTools[ts.Category], ts.Name)
 	}
 
 	var b strings.Builder
-	b.WriteString("You have access to the following tool categories:\n\n")
+	if modeName != "" {
+		fmt.Fprintf(&b, "## Tools Available in `%s` Mode\n\n", modeName)
+	} else {
+		b.WriteString("## Available Tool Categories\n\n")
+	}
+	b.WriteString("You have access to the following tools:\n\n")
 
-	categories := catalog.ListCategories()
+	categories := a.catalog.ListCategories()
 	for _, cat := range categories {
 		names, ok := catTools[cat.Name]
 		if !ok {
 			continue
 		}
-		// Show up to 8 tool names per category to keep the prompt manageable.
 		display := names
 		suffix := ""
 		if len(display) > 8 {
@@ -742,25 +804,42 @@ func buildToolCatalogSection(catalog *toolcatalog.Catalog) *prompt.StaticSection
 			strings.Join(display, ", "), suffix)
 	}
 
-	// Note disabled categories.
-	var disabled []string
-	for _, cat := range categories {
-		if !cat.Enabled && cat.ConfigKey != "" {
-			disabled = append(disabled, fmt.Sprintf("%s (%s)", cat.Name, cat.ConfigKey))
+	if modeName == "" {
+		var disabled []string
+		for _, cat := range categories {
+			if !cat.Enabled && cat.ConfigKey != "" {
+				disabled = append(disabled, fmt.Sprintf("%s (%s)", cat.Name, cat.ConfigKey))
+			}
 		}
-	}
-	if len(disabled) > 0 {
-		fmt.Fprintf(&b, "\nDisabled categories (enable via config): %s\n", strings.Join(disabled, ", "))
+		if len(disabled) > 0 {
+			fmt.Fprintf(&b, "\nDisabled categories (enable via config): %s\n", strings.Join(disabled, ", "))
+		}
+		b.WriteString("\nUse builtin_health to diagnose tool registration, or builtin_list to discover all tools.")
+		if deferred := a.catalog.DeferredToolCount(); deferred > 0 {
+			fmt.Fprintf(&b, "\nAdditional %d specialized tools available via builtin_search.", deferred)
+		}
+	} else {
+		b.WriteString("\nOnly tools in this mode's allowlist are available; calls to other tools will fail.")
 	}
 
-	b.WriteString("\nUse builtin_health to diagnose tool registration, or builtin_list to discover all tools.")
+	return b.String()
+}
 
-	// Inform the LLM about deferred tools available via search.
-	if deferred := catalog.DeferredToolCount(); deferred > 0 {
-		fmt.Fprintf(&b, "\nAdditional %d specialized tools available via builtin_search.", deferred)
+// modeResolverAdapter implements adk.ModeResolver, looking up SystemHint
+// from the user config.
+type modeResolverAdapter struct {
+	cfg *config.Config
+}
+
+func (a *modeResolverAdapter) LookupModeHint(modeName string) string {
+	if a == nil || a.cfg == nil || modeName == "" {
+		return ""
 	}
-
-	return prompt.NewStaticSection(prompt.SectionToolCatalog, 410, "Available Tool Categories", b.String())
+	mode, ok := a.cfg.LookupMode(modeName)
+	if !ok {
+		return ""
+	}
+	return mode.SystemHint
 }
 
 // buildAutomationPromptSection creates a dynamic prompt section describing

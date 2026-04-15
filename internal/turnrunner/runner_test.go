@@ -160,6 +160,7 @@ func (s *stubSessionStore) AnnotateTimeout(key, _ string) error {
 	s.annotated = append(s.annotated, key)
 	return nil
 }
+func (s *stubSessionStore) End(string) error { return nil }
 
 type fixtureFile struct {
 	Events []fixtureEvent `json:"events"`
@@ -492,4 +493,248 @@ func TestRunner_RecoveryAttemptsRecorded(t *testing.T) {
 		assert.Contains(t, event.PayloadJSON, "retry_with_hint")
 	}
 	assert.True(t, found, "expected recovery_attempt event in trace")
+}
+
+// countingExecutor tracks call count and returns different results per call.
+type countingExecutor struct {
+	calls   int
+	results []struct {
+		report adk.RunReport
+		err    error
+		chunks []string
+	}
+}
+
+func (e *countingExecutor) RunStreamingDetailed(
+	_ context.Context,
+	_, _ string,
+	onChunk adk.ChunkCallback,
+	opts ...adk.RunOption,
+) (adk.RunReport, error) {
+	hooks := adk.ResolveRunHooks(opts...)
+	defer func() {
+		if hooks.OnFinish != nil {
+			hooks.OnFinish()
+		}
+	}()
+
+	idx := e.calls
+	if idx >= len(e.results) {
+		idx = len(e.results) - 1
+	}
+	e.calls++
+	r := e.results[idx]
+	for _, chunk := range r.chunks {
+		if onChunk != nil {
+			onChunk(chunk)
+		}
+	}
+	return r.report, r.err
+}
+
+func transientAgentError() error {
+	return &adk.AgentError{
+		Code:       adk.ErrModelError,
+		Message:    "provider transient",
+		CauseClass: adk.CauseProviderTransient,
+	}
+}
+
+func rateLimitAgentError() error {
+	return &adk.AgentError{
+		Code:       adk.ErrModelError,
+		Message:    "rate limited",
+		CauseClass: adk.CauseProviderRateLimit,
+	}
+}
+
+func authAgentError() error {
+	return &adk.AgentError{
+		Code:       adk.ErrModelError,
+		Message:    "auth failed",
+		CauseClass: adk.CauseProviderAuth,
+	}
+}
+
+func TestRetryLoop_TransientErrorRetries(t *testing.T) {
+	exec := &countingExecutor{
+		results: []struct {
+			report adk.RunReport
+			err    error
+			chunks []string
+		}{
+			{err: transientAgentError()},
+			{report: adk.RunReport{Response: "ok"}, chunks: []string{"ok"}},
+		},
+	}
+	runner := New(Config{HardCeiling: 30 * time.Second}, exec, nil, nil)
+	result, err := runner.Run(context.Background(), Request{
+		SessionKey: "test-retry",
+		Input:      "hello",
+	})
+	require.NoError(t, err)
+	assert.Equal(t, "ok", result.ResponseText)
+	assert.Equal(t, 2, exec.calls, "should have retried once")
+}
+
+func TestRetryLoop_NonRetryableExitsImmediately(t *testing.T) {
+	exec := &countingExecutor{
+		results: []struct {
+			report adk.RunReport
+			err    error
+			chunks []string
+		}{
+			{err: authAgentError()},
+		},
+	}
+	runner := New(Config{HardCeiling: 30 * time.Second}, exec, nil, nil)
+	result, err := runner.Run(context.Background(), Request{
+		SessionKey: "test-no-retry",
+		Input:      "hello",
+	})
+	require.NoError(t, err)
+	assert.Equal(t, 1, exec.calls, "should NOT retry auth errors")
+	assert.Equal(t, adk.CauseProviderAuth, result.CauseClass)
+}
+
+func TestRetryLoop_MaxAttemptsExhausted(t *testing.T) {
+	exec := &countingExecutor{
+		results: []struct {
+			report adk.RunReport
+			err    error
+			chunks []string
+		}{
+			{err: rateLimitAgentError()},
+			{err: rateLimitAgentError()},
+			{err: rateLimitAgentError()},
+		},
+	}
+	runner := New(Config{HardCeiling: 30 * time.Second}, exec, nil, nil)
+	result, err := runner.Run(context.Background(), Request{
+		SessionKey: "test-max-attempts",
+		Input:      "hello",
+	})
+	require.NoError(t, err)
+	assert.Equal(t, 3, exec.calls, "should exhaust all 3 attempts")
+	assert.Equal(t, adk.CauseProviderRateLimit, result.CauseClass)
+}
+
+// modeCapturingExecutor records the mode name resolved from context when
+// RunStreamingDetailed is invoked.
+type modeCapturingExecutor struct {
+	capturedMode string
+}
+
+func (e *modeCapturingExecutor) RunStreamingDetailed(
+	ctx context.Context,
+	_, _ string,
+	_ adk.ChunkCallback,
+	opts ...adk.RunOption,
+) (adk.RunReport, error) {
+	hooks := adk.ResolveRunHooks(opts...)
+	defer func() {
+		if hooks.OnFinish != nil {
+			hooks.OnFinish()
+		}
+	}()
+	e.capturedMode = langosession.ModeNameFromContext(ctx)
+	return adk.RunReport{Response: "ok"}, nil
+}
+
+// stubModeStore satisfies the langosession.Store subset needed by the runner
+// for the mode-propagation test (Get + AnnotateTimeout). Other methods are
+// no-ops returning nil to keep the fake minimal.
+type stubModeStore struct {
+	session *langosession.Session
+}
+
+func (s *stubModeStore) Create(*langosession.Session) error { return nil }
+func (s *stubModeStore) Get(key string) (*langosession.Session, error) {
+	if s.session != nil && s.session.Key == key {
+		return s.session, nil
+	}
+	return nil, fmt.Errorf("not found")
+}
+func (s *stubModeStore) Update(*langosession.Session) error            { return nil }
+func (s *stubModeStore) Delete(string) error                           { return nil }
+func (s *stubModeStore) AppendMessage(string, langosession.Message) error { return nil }
+func (s *stubModeStore) AnnotateTimeout(string, string) error          { return nil }
+func (s *stubModeStore) End(string) error                              { return nil }
+func (s *stubModeStore) ListSessions(context.Context) ([]langosession.SessionSummary, error) {
+	return nil, nil
+}
+func (s *stubModeStore) GetSalt(string) ([]byte, error)  { return nil, nil }
+func (s *stubModeStore) SetSalt(string, []byte) error    { return nil }
+func (s *stubModeStore) Close() error                    { return nil }
+
+func TestRunner_PropagatesSessionModeToExecutor(t *testing.T) {
+	exec := &modeCapturingExecutor{}
+
+	sess := &langosession.Session{Key: "mode-prop-test"}
+	sess.SetMode("research")
+	store := &stubModeStore{session: sess}
+
+	runner := New(Config{HardCeiling: 30 * time.Second}, exec, store, nil)
+	_, err := runner.Run(context.Background(), Request{
+		SessionKey: "mode-prop-test",
+		Input:      "hello",
+	})
+	require.NoError(t, err)
+	assert.Equal(t, "research", exec.capturedMode)
+}
+
+func TestStaleDetection_TimerResetOnChunk(t *testing.T) {
+	// If chunks keep arriving, no stale detection should fire.
+	exec := &fixtureExecutor{
+		chunks: []string{"a", "b", "c"},
+		report: adk.RunReport{Response: "abc"},
+	}
+	runner := New(Config{
+		HardCeiling:  30 * time.Second,
+		StaleTimeout: 100 * time.Millisecond,
+	}, exec, nil, nil)
+	result, err := runner.Run(context.Background(), Request{
+		SessionKey: "test-stale-reset",
+		Input:      "hello",
+	})
+	require.NoError(t, err)
+	assert.Equal(t, turntrace.OutcomeSuccess, result.Outcome)
+}
+
+func TestStaleDetection_InactiveBeforeFirstChunk(t *testing.T) {
+	// No chunks at all — stale timer should not fire (only activates after first chunk).
+	exec := &fixtureExecutor{
+		report: adk.RunReport{Response: "no-stream"},
+	}
+	runner := New(Config{
+		HardCeiling:  30 * time.Second,
+		StaleTimeout: 50 * time.Millisecond,
+	}, exec, nil, nil)
+	result, err := runner.Run(context.Background(), Request{
+		SessionKey: "test-stale-inactive",
+		Input:      "hello",
+	})
+	require.NoError(t, err)
+	assert.Equal(t, turntrace.OutcomeSuccess, result.Outcome)
+}
+
+func TestRetryLoop_SuccessfulFirstAttempt(t *testing.T) {
+	exec := &countingExecutor{
+		results: []struct {
+			report adk.RunReport
+			err    error
+			chunks []string
+		}{
+			{report: adk.RunReport{Response: "success"}, chunks: []string{"success"}},
+		},
+	}
+	runner := New(Config{HardCeiling: 30 * time.Second}, exec, nil, nil)
+	result, err := runner.Run(context.Background(), Request{
+		SessionKey: "test-success",
+		Input:      "hello",
+	})
+	require.NoError(t, err)
+	assert.Equal(t, "success", result.ResponseText)
+	assert.Equal(t, 1, exec.calls, "should not retry on success")
+	assert.Equal(t, turntrace.OutcomeSuccess, result.Outcome)
 }

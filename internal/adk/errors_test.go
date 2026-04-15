@@ -317,3 +317,35 @@ func TestAgentError_ErrorsAs(t *testing.T) {
 	assert.Equal(t, ErrTimeout, agentErr.Code)
 	assert.Equal(t, "partial result", agentErr.Partial)
 }
+
+func TestRecoveryActionFor(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		give       string
+		causeClass string
+		want       RecoveryAction
+	}{
+		{give: "rate limit", causeClass: CauseProviderRateLimit, want: RecoveryRetry},
+		{give: "transient", causeClass: CauseProviderTransient, want: RecoveryRetry},
+		{give: "connection", causeClass: CauseProviderConnection, want: RecoveryRetry},
+		{give: "auth", causeClass: CauseProviderAuth, want: RecoveryAbortWithHint},
+		{give: "approval denied", causeClass: CauseApprovalDenied, want: 0},
+		{give: "approval timeout", causeClass: CauseApprovalTimeout, want: 0},
+		{give: "tool not found", causeClass: CauseToolNotFound, want: 0},
+		{give: "turn limit", causeClass: CauseTurnLimitExceeded, want: 0},
+		{give: "internal error", causeClass: CauseInternalRuntimeError, want: 0},
+		{give: "tool churn", causeClass: CauseRepeatedCallSignature, want: 0},
+		{give: "idle timeout", causeClass: CauseTimeoutIdle, want: 0},
+		{give: "hard timeout", causeClass: CauseTimeoutHard, want: 0},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.give, func(t *testing.T) {
+			t.Parallel()
+			fc := FailureClassification{CauseClass: tt.causeClass}
+			got := RecoveryActionFor(fc)
+			assert.Equal(t, tt.want, got)
+		})
+	}
+}

@@ -21,13 +21,22 @@ var _ ToolResultObserver = (*Engine)(nil)
 
 // Engine observes tool execution results and learns from errors.
 type Engine struct {
-	store  *knowledge.Store
-	logger *zap.SugaredLogger
+	store   *knowledge.Store
+	logger  *zap.SugaredLogger
+	emitter *SuggestionEmitter
 }
 
 // NewEngine creates a new learning engine.
 func NewEngine(store *knowledge.Store, logger *zap.SugaredLogger) *Engine {
 	return &Engine{store: store, logger: logger}
+}
+
+// WithSuggestionEmitter installs an emitter. When set, the engine calls
+// emitter.MaybeEmit after saving a new learning from an error, giving the
+// emitter a chance to surface the pattern as a user-approval suggestion.
+func (e *Engine) WithSuggestionEmitter(em *SuggestionEmitter) *Engine {
+	e.emitter = em
+	return e
 }
 
 // OnToolResult observes a tool execution result and records learnings.
@@ -129,6 +138,19 @@ func (e *Engine) handleError(ctx context.Context, sessionKey, toolName string, e
 			"session", sessionKey,
 			"tool", toolName,
 			"error", saveErr)
+	}
+
+	// Surface as an approval-gated suggestion if the emitter is configured.
+	// The save above starts at a low initial confidence — we pass that value
+	// (rounded) so subscribers can show it as "early signal, needs approval."
+	if e.emitter != nil {
+		_ = e.emitter.MaybeEmit(ctx, SuggestionCandidate{
+			SessionKey:   sessionKey,
+			Pattern:      pattern,
+			ProposedRule: fmt.Sprintf("retry %s with recovery diagnostics", toolName),
+			Confidence:   0.6,
+			Rationale:    fmt.Sprintf("Observed %q error from %s; similar patterns appeared before", category, toolName),
+		})
 	}
 }
 

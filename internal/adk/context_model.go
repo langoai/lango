@@ -30,6 +30,38 @@ type MemoryProvider interface {
 	ListRecentObservations(ctx context.Context, sessionKey string, limit int) ([]memory.Observation, error)
 }
 
+// SessionCompactor abstracts session message compaction for the context model.
+// When the measured context exceeds the model window threshold, the adapter
+// calls CompactMessages to shrink the message history.
+type SessionCompactor interface {
+	CompactMessages(key string, upToIndex int, summary string) error
+}
+
+// RecallMatch is a single prior-session recall hit.
+type RecallMatch struct {
+	SessionKey string
+	Summary    string
+	Rank       float64
+}
+
+// RecallProvider surfaces prior-session summaries from the FTS recall index
+// at turn start. Implementations should exclude the current session key and
+// respect their own rank floor and topN limits.
+type RecallProvider interface {
+	// RecallRecent queries for matches against the user's input. The current
+	// session key is supplied so implementations can exclude it.
+	RecallRecent(ctx context.Context, currentSessionKey, query string) ([]RecallMatch, error)
+}
+
+// CompactionSyncWaiter waits up to timeout for any in-flight background
+// hygiene compaction for the session to complete. Returns true if no
+// compaction was in flight or it finished within the bound; false on timeout.
+// The returned duration is the actual time spent waiting (useful for slow-path
+// telemetry). Implementations should be goroutine-safe.
+type CompactionSyncWaiter interface {
+	WaitForSession(ctx context.Context, key string, timeout time.Duration) (bool, time.Duration)
+}
+
 // RunSummaryProvider retrieves active RunLedger summaries for a session.
 type RunSummaryProvider interface {
 	ListRunSummaries(ctx context.Context, sessionKey string, limit int) ([]RunSummaryContext, error)
@@ -64,8 +96,34 @@ type ContextAwareModelAdapter struct {
 	maxObservations    int
 	memoryTokenBudget  int // max tokens for the memory section; 0 = default (4000)
 	budgetManager      *ContextBudgetManager
+	sessionCompactor   SessionCompactor
+	compactionSync     CompactionSyncWaiter
+	compactionSyncWait time.Duration
+	recallProvider     RecallProvider
+	catalogSource      CatalogSource
+	modeResolver       ModeResolver
 	bus                *eventbus.Bus
 	logger             *zap.SugaredLogger
+}
+
+// CatalogSource generates the dynamic tool catalog prompt section for a turn.
+// An implementation typically holds a *toolcatalog.Catalog and produces a
+// prompt-ready string listing visible tools, optionally filtered by the
+// session's active mode.
+type CatalogSource interface {
+	// BuildToolCatalogSection returns the tool catalog prompt section for
+	// the given mode name. An empty modeName means "no mode filter".
+	BuildToolCatalogSection(modeName string) string
+}
+
+// ModeResolver looks up a SessionMode definition by name. It is used to
+// resolve the system hint and skill allowlist for the active session.
+// Consumers inject a thin adapter around config.LookupMode to avoid an
+// import cycle between adk and config.
+type ModeResolver interface {
+	// LookupModeHint returns the SystemHint for the given mode name, or ""
+	// when the mode is unknown or has no hint.
+	LookupModeHint(modeName string) string
 }
 
 // NewContextAwareModelAdapter creates a context-aware model adapter.
@@ -154,6 +212,50 @@ func (m *ContextAwareModelAdapter) WithBudgetManager(bm *ContextBudgetManager) *
 	return m
 }
 
+// WithSessionCompactor sets the session message compactor for emergency context
+// compaction. When the measured token total exceeds 90% of the model window,
+// GenerateContent invokes the compactor to shrink the message history before
+// proceeding with the LLM call.
+func (m *ContextAwareModelAdapter) WithSessionCompactor(sc SessionCompactor) *ContextAwareModelAdapter {
+	m.sessionCompactor = sc
+	return m
+}
+
+// WithRecallProvider sets the session recall provider. When set,
+// GenerateContent queries it at turn start and prepends matching prior-session
+// summaries to the RAG section (bounded by the RAG section budget).
+func (m *ContextAwareModelAdapter) WithRecallProvider(p RecallProvider) *ContextAwareModelAdapter {
+	m.recallProvider = p
+	return m
+}
+
+// WithCompactionSync sets the background-compaction sync-point waiter and the
+// per-turn timeout. When set, GenerateContent waits up to timeout at turn
+// start for any in-flight compaction for the session to finish. On timeout
+// the turn proceeds with the current state and emits a CompactionSlowEvent
+// on the event bus. A nil waiter or zero timeout disables the sync point.
+func (m *ContextAwareModelAdapter) WithCompactionSync(w CompactionSyncWaiter, timeout time.Duration) *ContextAwareModelAdapter {
+	m.compactionSync = w
+	m.compactionSyncWait = timeout
+	return m
+}
+
+// WithCatalog sets the tool catalog source used to generate the per-turn tool
+// catalog prompt section. When set, the tool catalog section is generated
+// dynamically in GenerateContent() from the current session mode, rather than
+// being baked into basePrompt at boot time.
+func (m *ContextAwareModelAdapter) WithCatalog(cs CatalogSource) *ContextAwareModelAdapter {
+	m.catalogSource = cs
+	return m
+}
+
+// WithModeResolver sets the mode resolver used to fetch the SystemHint for
+// the active session mode. A nil resolver disables mode hint injection.
+func (m *ContextAwareModelAdapter) WithModeResolver(r ModeResolver) *ContextAwareModelAdapter {
+	m.modeResolver = r
+	return m
+}
+
 // WithEventBus sets the event bus for context injection observability.
 // When set, GenerateContent publishes a ContextInjectedEvent after context assembly.
 func (m *ContextAwareModelAdapter) WithEventBus(bus *eventbus.Bus) *ContextAwareModelAdapter {
@@ -178,6 +280,26 @@ func (m *ContextAwareModelAdapter) GenerateContent(ctx context.Context, req *mod
 		m.runtimeAdapter.SetSession(sessionKey)
 	}
 
+	// Sync point: wait for any in-flight background hygiene compaction to
+	// settle before assembling the new turn. Bounded by compactionSyncWait;
+	// on timeout we proceed with the current state and emit a slow event.
+	if m.compactionSync != nil && m.compactionSyncWait > 0 && sessionKey != "" {
+		done, waited := m.compactionSync.WaitForSession(ctx, sessionKey, m.compactionSyncWait)
+		if !done {
+			m.logger.Warnw("compaction sync-point timeout; proceeding with current context",
+				"sessionKey", sessionKey,
+				"waited", waited,
+			)
+			if m.bus != nil {
+				m.bus.Publish(eventbus.CompactionSlowEvent{
+					SessionKey: sessionKey,
+					WaitedFor:  waited,
+					Timestamp:  time.Now(),
+				})
+			}
+		}
+	}
+
 	userQuery := extractLastUserMessage(req.Contents)
 
 	// ──────────────────────────────────────────────────────────
@@ -192,8 +314,21 @@ func (m *ContextAwareModelAdapter) GenerateContent(ctx context.Context, req *mod
 	var reflections []memory.Reflection
 	var observations []memory.Observation
 	var runSummaries []RunSummaryContext
+	var recallMatches []RecallMatch
 
 	g, gCtx := errgroup.WithContext(ctx)
+
+	if userQuery != "" && m.recallProvider != nil {
+		g.Go(func() error {
+			matches, err := m.recallProvider.RecallRecent(gCtx, sessionKey, userQuery)
+			if err != nil {
+				m.logger.Warnw("session recall error", "error", err)
+				return nil
+			}
+			recallMatches = matches
+			return nil
+		})
+	}
 
 	if userQuery != "" && m.retriever != nil {
 		g.Go(func() error {
@@ -281,6 +416,41 @@ func (m *ContextAwareModelAdapter) GenerateContent(ctx context.Context, req *mod
 	}
 
 	// ──────────────────────────────────────────────────────────
+	// Phase 2.5: Emergency compaction if context nears model window.
+	// Trigger: measured total > modelWindow × 0.9, compactor available.
+	// NOT triggered by budgets.Degraded (that's a config issue).
+	// ──────────────────────────────────────────────────────────
+	if m.sessionCompactor != nil && m.budgetManager != nil && !budgets.Degraded && sessionKey != "" {
+		// Include conversation history and base prompt in the measurement
+		// so long chats also trigger compaction (not just injected context).
+		var historyTokens int
+		for _, c := range req.Contents {
+			for _, p := range c.Parts {
+				if p.Text != "" {
+					historyTokens += types.EstimateTokens(p.Text)
+				}
+			}
+		}
+		baseTokens := types.EstimateTokens(m.basePrompt)
+		totalMeasured := measured.Knowledge + measured.RAG + measured.Memory + measured.RunSummary + historyTokens + baseTokens
+		threshold := int(float64(m.budgetManager.ModelWindow()) * 0.9)
+		if totalMeasured > threshold {
+			m.logger.Warnw("emergency context compaction triggered",
+				"measured", totalMeasured,
+				"threshold", threshold,
+				"sessionKey", sessionKey,
+			)
+			if err := m.sessionCompactor.CompactMessages(sessionKey, -1, ""); err != nil {
+				m.logger.Errorw("emergency compaction failed", "error", err)
+			}
+			// Note: compaction ran at most once per GenerateContent call.
+			// We do NOT restart Phase 1 here because the LLM request's
+			// Contents already carry the session history from ADK.
+			// Compaction shortens future turns, not the current one.
+		}
+	}
+
+	// ──────────────────────────────────────────────────────────
 	// Phase 3: Truncate + Format each section with reallocated budgets.
 	// ──────────────────────────────────────────────────────────
 	var knowledgeSection, ragSection, memorySection, runSummarySection string
@@ -290,10 +460,35 @@ func (m *ContextAwareModelAdapter) GenerateContent(ctx context.Context, req *mod
 		knowledgeSection = m.retriever.AssemblePrompt("", knowledgeResult)
 	}
 
+	// Split RAG budget between semantic results and session recall when both
+	// are present. Recall gets 1/3, RAG gets 2/3. When only one source
+	// exists it gets the full budget.
+	ragBudget := budgets.RAG
+	recallBudget := budgets.RAG
+	hasRAG := graphRAGResult != nil || len(ragResults) > 0
+	if len(recallMatches) > 0 && hasRAG {
+		recallBudget = budgets.RAG / 3
+		ragBudget = budgets.RAG - recallBudget
+	}
+
 	if graphRAGResult != nil {
-		ragSection = m.formatGraphRAGSection(graphRAGResult, budgets.RAG)
+		ragSection = m.formatGraphRAGSection(graphRAGResult, ragBudget)
 	} else if len(ragResults) > 0 {
-		ragSection = formatRAGSection(ragResults, budgets.RAG)
+		ragSection = formatRAGSection(ragResults, ragBudget)
+	}
+
+	// Prepend session recall matches to the RAG section. Each source is
+	// independently budget-capped so their combined size stays within the
+	// total RAG allocation.
+	if len(recallMatches) > 0 {
+		recallSection := formatRecallSection(recallMatches, recallBudget)
+		if recallSection != "" {
+			if ragSection == "" {
+				ragSection = recallSection
+			} else {
+				ragSection = recallSection + "\n\n" + ragSection
+			}
+		}
 	}
 
 	if len(reflections) > 0 || len(observations) > 0 {
@@ -316,6 +511,21 @@ func (m *ContextAwareModelAdapter) GenerateContent(ctx context.Context, req *mod
 	}
 	if runSummarySection != "" {
 		prompt = fmt.Sprintf("%s\n\n%s", prompt, runSummarySection)
+	}
+
+	// Dynamic tool catalog section — generated per turn, mode-aware.
+	modeName := session.ModeNameFromContext(ctx)
+	if m.catalogSource != nil {
+		if toolCatalogSection := m.catalogSource.BuildToolCatalogSection(modeName); toolCatalogSection != "" {
+			prompt = fmt.Sprintf("%s\n\n%s", prompt, toolCatalogSection)
+		}
+	}
+
+	// Mode system hint injection.
+	if modeName != "" && m.modeResolver != nil {
+		if hint := m.modeResolver.LookupModeHint(modeName); hint != "" {
+			prompt = fmt.Sprintf("%s\n\n## Session Mode: %s\n\n%s", prompt, modeName, hint)
+		}
 	}
 
 	// Publish context injection event for observability.

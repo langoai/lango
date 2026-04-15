@@ -1,9 +1,7 @@
 ## Purpose
 
 Capability spec for interactive-tui-chat. See requirements below for scope and behavior contracts.
-
 ## Requirements
-
 ### Requirement: Interactive TUI chat on bare invocation
 Running `lango` without arguments SHALL start an interactive terminal chat session using bubbletea. `lango serve` SHALL continue to work as the full gateway + channels mode.
 
@@ -16,11 +14,20 @@ Running `lango` without arguments SHALL start an interactive terminal chat sessi
 - **THEN** the full gateway + channels server starts as before
 
 ### Requirement: Real-time streaming responses
-The TUI SHALL stream agent responses in real-time via `TurnRunner.Run()`.
+The TUI SHALL stream agent responses in real-time via `TurnRunner.Run()`. During streaming, the input composer SHALL remain focused and accept user input. If the user submits input during streaming, the current turn SHALL be cancelled and the new input SHALL be queued for immediate submission after the cancelled turn completes.
 
 #### Scenario: Streaming output displayed incrementally
 - **WHEN** the agent generates a response
 - **THEN** text appears incrementally in the chat viewport as tokens arrive
+
+#### Scenario: User can type during streaming
+- **WHEN** the agent is streaming a response
+- **THEN** the input composer SHALL be focused and accept text input
+
+#### Scenario: User submits input during streaming
+- **WHEN** the user presses Enter with non-empty input during streaming
+- **THEN** the current turn SHALL be cancelled
+- **AND** the new input SHALL be submitted as the next turn after cancellation completes
 
 ### Requirement: Inline tool approval prompts
 Tool executions SHALL show inline approval prompts with keyboard shortcuts: `a` (allow), `s` (allow for session), `d`/`Esc` (deny).
@@ -34,11 +41,25 @@ Tool executions SHALL show inline approval prompts with keyboard shortcuts: `a` 
 - **THEN** the tool executes and future invocations of the same tool are auto-approved
 
 ### Requirement: Slash commands
-The TUI SHALL support slash commands: `/help`, `/clear`, `/new`, `/model`, `/status`, `/exit`, `/quit`.
+The TUI SHALL support slash commands: `/help`, `/clear`, `/new`, `/model`, `/status`, `/exit`, `/quit`, `/mode`, `/cost`. The `/mode` command SHALL accept a mode name argument and update the session's mode accordingly; without an argument, it SHALL print the current mode and available modes. The `/cost` command SHALL print the session's cumulative token usage and estimated cost.
 
 #### Scenario: /clear resets chat
 - **WHEN** the user types `/clear`
 - **THEN** the chat viewport is cleared and a new session starts
+
+#### Scenario: /mode with name sets session mode
+- **WHEN** the user types `/mode code-review`
+- **THEN** the session mode SHALL be set to `code-review`
+- **AND** a `ModeChangedEvent` SHALL be published
+- **AND** the chat view SHALL display a system status entry indicating the new mode
+
+#### Scenario: /mode without argument lists modes
+- **WHEN** the user types `/mode`
+- **THEN** the TUI SHALL print the current mode (or "none") and the list of available modes
+
+#### Scenario: /cost prints session summary
+- **WHEN** the user types `/cost` after turns have occurred
+- **THEN** the TUI SHALL print cumulative input tokens, output tokens, and estimated cost
 
 ### Requirement: Chat history scrolling
 Chat history SHALL be scrollable via PgUp/PgDn keys.
@@ -175,3 +196,40 @@ ChatModel SHALL use composite sub-model types for CPR filtering (`cprFilter`), p
 - **WHEN** an approval request arrives
 - **THEN** ChatModel SHALL call `m.approval.Reset(&msg)` to initialize and `m.approval.Clear()` after response
 - **AND** `m.approval.pending`, `m.approval.confirmPending` SHALL be used for rendering and key handling
+
+### Requirement: Compaction status entry in transcript
+The TUI SHALL subscribe to `CompactionCompletedEvent` and `CompactionSlowEvent` and render a transient status entry in the chat transcript.
+
+- `CompactionCompletedEvent` SHALL render as an `itemStatus` entry with a concise message such as `"context compacted (reclaimed N tokens)"`.
+- `CompactionSlowEvent` SHALL render as an `itemStatus` entry with a warn-styled message such as `"compaction still running — proceeded with current context"`.
+
+These entries SHALL NOT block streaming and SHALL NOT be persisted as assistant or user messages.
+
+#### Scenario: Completed event appended as status
+- **WHEN** a `CompactionCompletedEvent` with `ReclaimedTokens=4200` is received
+- **THEN** an `itemStatus` entry SHALL be appended with text indicating the reclaimed token count
+- **AND** the entry SHALL NOT appear in the session's persisted message history
+
+#### Scenario: Slow event appended as warn status
+- **WHEN** a `CompactionSlowEvent` is received
+- **THEN** an `itemStatus` entry styled as a warning SHALL be appended
+- **AND** the chat viewport SHALL remain responsive
+
+### Requirement: Learning suggestion rendering in TUI
+The TUI SHALL subscribe to `LearningSuggestionEvent` and render the suggestion as an inline approval prompt reusing the existing approval rendering path. Approval/denial SHALL route through the existing approval pipeline, producing the same persistence outcome whether the approval is resolved via TUI or a channel surface.
+
+#### Scenario: Suggestion renders as approval prompt
+- **WHEN** a `LearningSuggestionEvent` with confidence 0.6 is published while on the chat page
+- **THEN** the TUI SHALL render an approval prompt summarizing the proposed rule and confidence
+- **AND** the user SHALL be able to accept or deny via the same keys used for tool approvals (`a`/`d`/`s`)
+
+#### Scenario: Acceptance persists learning via approval pipeline
+- **WHEN** the user accepts a learning suggestion prompt
+- **THEN** the approval pipeline SHALL route acceptance to the learning engine's persistence path
+- **AND** the stored confidence SHALL equal the suggestion's confidence value (not auto-boosted)
+
+#### Scenario: Denial suppresses re-emission within dedup window
+- **WHEN** the user denies a learning suggestion prompt
+- **THEN** the pattern hash SHALL be recorded as "dismissed" for the configured dedup window
+- **AND** no new prompt for the same pattern SHALL appear within that window
+

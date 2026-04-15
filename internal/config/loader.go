@@ -148,6 +148,30 @@ func DefaultConfig() *Config {
 				RunSummary: 0.10,
 				Headroom:   0.10,
 			},
+			Compaction: ContextCompactionConfig{
+				Enabled:     boolPtr(true),
+				Threshold:   0.5,
+				SyncTimeout: 2 * time.Second,
+				WorkerCount: 1,
+			},
+			Recall: ContextRecallConfig{
+				Enabled: boolPtr(true),
+				TopN:    3,
+				MinRank: 0.2,
+			},
+		},
+		Learning: LearningConfig{
+			Suggestions: LearningSuggestionsConfig{
+				Enabled:     boolPtr(true),
+				Threshold:   0.5,
+				RateLimit:   10,
+				DedupWindow: time.Hour,
+			},
+		},
+		Extensions: ExtensionsConfig{
+			Enabled:          boolPtr(true),
+			Dir:              DefaultExtensionsDir,
+			EnforceIntegrity: false,
 		},
 		RunLedger: RunLedgerConfig{
 			Enabled:            false,

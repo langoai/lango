@@ -19,6 +19,7 @@ import (
 	"github.com/langoai/lango/internal/economy/risk"
 	"github.com/langoai/lango/internal/embedding"
 	"github.com/langoai/lango/internal/eventbus"
+	"github.com/langoai/lango/internal/extension"
 	"github.com/langoai/lango/internal/gatekeeper"
 	"github.com/langoai/lango/internal/gateway"
 	"github.com/langoai/lango/internal/graph"
@@ -74,9 +75,10 @@ type App struct {
 	ApprovalHistory  *approval.HistoryStore
 
 	// Self-Learning Components
-	KnowledgeStore *knowledge.Store
-	LearningEngine *learning.Engine
-	SkillRegistry  *skill.Registry
+	KnowledgeStore            *knowledge.Store
+	LearningEngine            *learning.Engine
+	LearningSuggestionEmitter *learning.SuggestionEmitter
+	SkillRegistry             *skill.Registry
 
 	// Agent Memory Components (optional, per-agent persistent memory)
 	AgentMemoryStore agentmemory.Store
@@ -91,6 +93,23 @@ type App struct {
 
 	// Conversation Analysis Components (optional)
 	AnalysisBuffer *learning.AnalysisBuffer
+
+	// Compaction Components (optional, Phase 3 background hygiene)
+	CompactionBuffer *session.CompactionBuffer
+
+	// ExtensionRegistry holds the set of installed extension packs
+	// discovered at startup. nil when the subsystem is disabled or the
+	// extensions directory does not exist.
+	ExtensionRegistry *extension.Registry
+
+	// recallIndex is the FTS5-backed session recall index. nil when disabled
+	// or when FTS5 is unavailable in the build.
+	recallIndex *session.RecallIndex
+
+	// compactionSync is the indirect sync-point handle installed on the
+	// context adapter at build time. wireCompactionBuffer plugs the real
+	// buffer into it once it exists.
+	compactionSync *compactionSyncHolder
 
 	// Proactive Librarian Components (optional)
 	LibrarianInquiryStore    *librarian.InquiryStore

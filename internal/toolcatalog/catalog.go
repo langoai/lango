@@ -157,6 +157,57 @@ func (c *Catalog) ListVisibleTools(category string) []ToolSchema {
 	return schemas
 }
 
+// ResolveModeAllowlist expands a mode's tools spec (tool names or "@category"
+// references) into a concrete set of tool names. Categories expand to all
+// tools in that category. Unknown names are passed through (deferred to
+// middleware-level enforcement to surface a clearer error).
+func (c *Catalog) ResolveModeAllowlist(modeTools []string) map[string]bool {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	allow := make(map[string]bool)
+	for _, spec := range modeTools {
+		if spec == "" {
+			continue
+		}
+		if spec[0] == '@' {
+			category := spec[1:]
+			for _, name := range c.order {
+				if c.tools[name].Category == category {
+					allow[name] = true
+				}
+			}
+			continue
+		}
+		allow[spec] = true
+	}
+	return allow
+}
+
+// ListVisibleToolsForMode returns visible tool schemas filtered by a session
+// mode's tool allowlist. modeTools is the raw list from SessionMode.Tools;
+// category references ("@foo") are expanded. An empty modeTools slice falls
+// back to ListVisibleTools("") (no filtering).
+func (c *Catalog) ListVisibleToolsForMode(modeTools []string) []ToolSchema {
+	if len(modeTools) == 0 {
+		return c.ListVisibleTools("")
+	}
+	allow := c.ResolveModeAllowlist(modeTools)
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	var schemas []ToolSchema
+	for _, name := range c.order {
+		if !allow[name] {
+			continue
+		}
+		e := c.tools[name]
+		if !e.Tool.Capability.Exposure.IsVisible() {
+			continue
+		}
+		schemas = append(schemas, schemaFromEntry(e))
+	}
+	return schemas
+}
+
 // SearchableEntries returns all entries except those with ExposureHidden.
 // The returned entries are ordered by insertion order.
 func (c *Catalog) SearchableEntries() []ToolEntry {

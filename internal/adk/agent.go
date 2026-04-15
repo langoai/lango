@@ -811,9 +811,12 @@ type RunHooks struct {
 
 // RecoveryInfo captures a structured recovery action observed during a run.
 type RecoveryInfo struct {
-	Action    string
-	AgentName string
-	Error     string
+	Action     string
+	AgentName  string
+	Error      string
+	CauseClass string        // e.g., "provider_rate_limit"
+	Attempt    int           // 1-based retry attempt number
+	Backoff    time.Duration // backoff duration before this retry
 }
 
 // WithOnActivity sets a callback that is invoked whenever the agent produces

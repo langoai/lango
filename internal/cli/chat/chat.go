@@ -18,6 +18,9 @@ import (
 	"github.com/langoai/lango/internal/approval"
 	"github.com/langoai/lango/internal/background"
 	"github.com/langoai/lango/internal/config"
+	"github.com/langoai/lango/internal/eventbus"
+	"github.com/langoai/lango/internal/provider"
+	"github.com/langoai/lango/internal/session"
 	"github.com/langoai/lango/internal/turnrunner"
 )
 
@@ -26,6 +29,8 @@ type Deps struct {
 	TurnRunner        *turnrunner.Runner
 	Config            *config.Config
 	SessionKey        string
+	SessionStore      session.Store       // optional; used by /mode to persist the session's mode
+	EventBus          *eventbus.Bus       // optional; used by /mode to publish ModeChangedEvent
 	BackgroundManager *background.Manager // optional, nil when background tasks unavailable
 }
 
@@ -45,9 +50,11 @@ type ChatParts struct {
 
 // ChatModel is the root bubbletea model for the interactive TUI chat.
 type ChatModel struct {
-	turnRunner *turnrunner.Runner
-	cfg        *config.Config
-	sessionKey string
+	turnRunner   *turnrunner.Runner
+	cfg          *config.Config
+	sessionKey   string
+	sessionStore session.Store // optional; enables /mode to persist session mode
+	eventBus     *eventbus.Bus // optional; enables /mode to publish ModeChangedEvent
 
 	input    inputModel
 	chatView chatViewModel
@@ -70,24 +77,91 @@ type ChatModel struct {
 
 	lastCtrlC time.Time
 
+	pendingRedirectInput string // queued input to submit after cancelled turn completes
+
+	// Session cumulative usage (for /cost slash command).
+	sessionInputTokens  int64
+	sessionOutputTokens int64
+	sessionCostUSD      float64
+
+	// Per-turn token accumulation (plain chat path — mirrors cockpit's RuntimeTracker).
+	turnActive       bool
+	turnInputTokens  int64
+	turnOutputTokens int64
+	turnCacheTokens  int64
+
 	cpr cprFilter
 }
 
 // New creates a new ChatModel with the given dependencies.
 func New(deps Deps) *ChatModel {
-	return &ChatModel{
-		turnRunner: deps.TurnRunner,
-		cfg:        deps.Config,
-		sessionKey: deps.SessionKey,
-		bgManager:  deps.BackgroundManager,
-		taskStrip:  newTaskStripModel(deps.BackgroundManager),
-		input:      newInputModel(),
-		chatView:   newChatViewModel(80, 20),
-		state:      stateIdle,
+	m := &ChatModel{
+		turnRunner:   deps.TurnRunner,
+		cfg:          deps.Config,
+		sessionKey:   deps.SessionKey,
+		sessionStore: deps.SessionStore,
+		eventBus:     deps.EventBus,
+		bgManager:    deps.BackgroundManager,
+		taskStrip:    newTaskStripModel(deps.BackgroundManager),
+		input:        newInputModel(),
+		chatView:     newChatViewModel(80, 20),
+		state:        stateIdle,
 	}
+	m.subscribeContinuityEvents()
+	return m
+}
+
+// currentModeName returns the active session mode name, or "" if none is set
+// or the session store is unavailable.
+func (m *ChatModel) currentModeName() string {
+	if m.sessionStore == nil {
+		return ""
+	}
+	s, err := m.sessionStore.Get(m.sessionKey)
+	if err != nil || s == nil {
+		return ""
+	}
+	return s.Mode()
+}
+
+// setSessionMode persists the given mode name on the active session and
+// publishes a ModeChangedEvent so multi-channel subscribers can render the
+// transition in their native format. An empty name clears the mode.
+func (m *ChatModel) setSessionMode(name string) error {
+	if m.sessionStore == nil {
+		return fmt.Errorf("session store not available")
+	}
+	var oldMode string
+	s, err := m.sessionStore.Get(m.sessionKey)
+	if err != nil || s == nil {
+		// Create the session record on the fly so /mode can be set before the
+		// first turn (which would otherwise create the session lazily).
+		s = &session.Session{Key: m.sessionKey}
+		if createErr := m.sessionStore.Create(s); createErr != nil {
+			return fmt.Errorf("create session: %w", createErr)
+		}
+	} else {
+		oldMode = s.Mode()
+	}
+	s.SetMode(name)
+	if err := m.sessionStore.Update(s); err != nil {
+		return err
+	}
+	if m.eventBus != nil {
+		m.eventBus.Publish(eventbus.ModeChangedEvent{
+			SessionKey: m.sessionKey,
+			OldMode:    oldMode,
+			NewMode:    name,
+		})
+	}
+	return nil
 }
 
 // SetProgram stores a reference to the tea.Program for sending messages from callbacks.
+// SessionKey returns the current session key. After /clear this differs
+// from the initial key captured at construction time.
+func (m *ChatModel) SessionKey() string { return m.sessionKey }
+
 func (m *ChatModel) SetProgram(p *tea.Program) {
 	m.program = p
 }
@@ -165,6 +239,23 @@ func (m *ChatModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.chatView.finalizeThinking(msg.Summary, msg.Duration)
 		return m, nil
 
+	case CompactionCompletedTeaMsg:
+		return m.handleCompactionCompleted(msg)
+
+	case CompactionSlowTeaMsg:
+		return m.handleCompactionSlow(msg)
+
+	case LearningSuggestionTeaMsg:
+		return m.handleLearningSuggestion(msg)
+
+	case TokenUsageTeaMsg:
+		if m.turnActive {
+			m.turnInputTokens += msg.InputTokens
+			m.turnOutputTokens += msg.OutputTokens
+			m.turnCacheTokens += msg.CacheTokens
+		}
+		return m, nil
+
 	case TaskStripTickMsg:
 		m.taskStrip.refresh()
 		m.refreshView()
@@ -203,6 +294,24 @@ func (m *ChatModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case DoneMsg:
 		m.dismissPending()
 		m.chatView.stopCursorBlink()
+
+		// Short-circuit: if a redirect is queued, skip error display and
+		// immediately submit the pending input as the next turn.
+		if m.pendingRedirectInput != "" {
+			redirect := m.pendingRedirectInput
+			m.pendingRedirectInput = ""
+			if m.chatView.streamBuf.Len() > 0 {
+				m.chatView.finalizeStream()
+			}
+			m.chatView.appendUser(redirect)
+			m.pending.Activate()
+			return m, tea.Batch(
+				m.transitionTo(stateStreaming),
+				m.submitCmd(redirect),
+				m.pending.TickCmd(),
+			)
+		}
+
 		if m.chatView.streamBuf.Len() > 0 {
 			m.chatView.finalizeStream()
 		} else if strings.TrimSpace(msg.Result.ResponseText) != "" {
@@ -221,6 +330,32 @@ func (m *ChatModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 		}
 
+		// Flush per-turn token accumulation as TurnTokenUsageMsg (plain chat
+		// path — cockpit does this via its RuntimeTracker in handleDone).
+		if m.turnActive && (m.turnInputTokens > 0 || m.turnOutputTokens > 0) {
+			total := m.turnInputTokens + m.turnOutputTokens
+			var costUSD float64
+			if m.cfg != nil {
+				costUSD = provider.EstimateCostUSD(m.cfg.Agent.Model, int(m.turnInputTokens), int(m.turnOutputTokens))
+			}
+			inTok := m.turnInputTokens
+			outTok := m.turnOutputTokens
+			cacheTok := m.turnCacheTokens
+			cmds = append(cmds, func() tea.Msg {
+				return TurnTokenUsageMsg{
+					InputTokens:      inTok,
+					OutputTokens:     outTok,
+					TotalTokens:      total,
+					CacheTokens:      cacheTok,
+					EstimatedCostUSD: costUSD,
+				}
+			})
+		}
+		m.turnActive = false
+		m.turnInputTokens = 0
+		m.turnOutputTokens = 0
+		m.turnCacheTokens = 0
+
 		if cmd := m.transitionTo(nextState); cmd != nil {
 			cmds = append(cmds, cmd)
 		}
@@ -229,6 +364,12 @@ func (m *ChatModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case ErrorMsg:
 		m.dismissPending()
 		m.chatView.stopCursorBlink()
+		// Reset turn token accumulation on error to prevent leakage into next turn.
+		m.turnActive = false
+		m.turnInputTokens = 0
+		m.turnOutputTokens = 0
+		m.turnCacheTokens = 0
+
 		if m.chatView.streamBuf.Len() > 0 {
 			m.chatView.finalizeStream()
 		}
@@ -281,7 +422,11 @@ func (m *ChatModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case TurnTokenUsageMsg:
-		m.chatView.appendTokenSummary(msg.InputTokens, msg.OutputTokens, msg.TotalTokens, msg.CacheTokens)
+		m.chatView.appendTokenSummaryWithCost(msg.InputTokens, msg.OutputTokens, msg.TotalTokens, msg.CacheTokens, msg.EstimatedCostUSD)
+		// Track session cumulative totals for /cost summary.
+		m.sessionInputTokens += msg.InputTokens
+		m.sessionOutputTokens += msg.OutputTokens
+		m.sessionCostUSD += msg.EstimatedCostUSD
 		return m, nil
 
 	case ChannelMessageMsg:
@@ -386,7 +531,7 @@ func (m *ChatModel) taskStripTick() tea.Cmd {
 }
 
 func (m *ChatModel) inputAcceptsText() bool {
-	return m.state == stateIdle || m.state == stateFailed
+	return m.state == stateIdle || m.state == stateFailed || m.state == stateStreaming
 }
 
 func (m *ChatModel) transitionTo(state chatState) tea.Cmd {
@@ -458,11 +603,29 @@ func (m *ChatModel) handleIdleKey(msg tea.KeyMsg) tea.Cmd {
 }
 
 func (m *ChatModel) handleStreamingKey(msg tea.KeyMsg) tea.Cmd {
-	if key.Matches(msg, key.NewBinding(key.WithKeys("ctrl+c"))) {
+	switch {
+	case key.Matches(msg, key.NewBinding(key.WithKeys("ctrl+c"))):
 		if m.cancelFn != nil {
 			m.cancelFn()
 		}
 		return m.transitionTo(stateCancelling)
+
+	case key.Matches(msg, key.NewBinding(key.WithKeys("enter"))):
+		input := strings.TrimSpace(m.input.Value())
+		if input == "" {
+			return nil
+		}
+		m.pendingRedirectInput = input
+		m.input.Reset()
+		if m.cancelFn != nil {
+			m.cancelFn()
+		}
+		m.chatView.stopCursorBlink()
+		if m.chatView.streamBuf.Len() > 0 {
+			m.chatView.finalizeStream()
+		}
+		m.chatView.appendStatus("[interrupted]", "warning")
+		return nil
 	}
 	return nil
 }
@@ -552,6 +715,12 @@ func (m *ChatModel) submitCmd(input string) tea.Cmd {
 	ctx, cancel := context.WithCancel(context.Background())
 	m.runCtx = ctx
 	m.cancelFn = cancel
+
+	// Reset per-turn token accumulation (mirrors cockpit RuntimeTracker.StartTurn).
+	m.turnActive = true
+	m.turnInputTokens = 0
+	m.turnOutputTokens = 0
+	m.turnCacheTokens = 0
 
 	program := m.program
 	return func() tea.Msg {

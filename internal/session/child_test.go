@@ -40,6 +40,8 @@ func (m *mockStore) AppendMessage(key string, msg Message) error {
 
 func (m *mockStore) AnnotateTimeout(_ string, _ string) error { return nil }
 
+func (m *mockStore) End(_ string) error { return nil }
+
 func TestNewChildSession(t *testing.T) {
 	t.Parallel()
 	cs := NewChildSession("parent-1", "operator", ChildSessionConfig{

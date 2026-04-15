@@ -57,6 +57,8 @@ type EntStore struct {
 	passphrase      string
 	maxHistoryTurns int
 	ttl             time.Duration
+	endProcessor    SessionEndProcessor
+	hardEndTimeout  time.Duration
 }
 
 // NewEntStore creates a new ent-backed session store
@@ -144,6 +146,12 @@ func NewEntStoreWithClient(client *ent.Client, opts ...StoreOption) *EntStore {
 // Client returns the ent client
 func (s *EntStore) Client() *ent.Client {
 	return s.client
+}
+
+// DB returns the underlying *sql.DB. Useful for sidecar consumers (FTS5
+// indexes, custom SQL) that live in the same database as sessions.
+func (s *EntStore) DB() *sql.DB {
+	return s.db
 }
 
 // Create creates a new session

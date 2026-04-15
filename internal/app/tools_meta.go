@@ -4,6 +4,9 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"os"
+	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -15,11 +18,14 @@ import (
 	entlearning "github.com/langoai/lango/internal/ent/learning"
 	"github.com/langoai/lango/internal/knowledge"
 	"github.com/langoai/lango/internal/learning"
+	"github.com/langoai/lango/internal/session"
 	"github.com/langoai/lango/internal/skill"
 )
 
 // buildMetaTools creates knowledge/learning/skill meta-tools for the agent.
-func buildMetaTools(store *knowledge.Store, engine *learning.Engine, registry *skill.Registry, skillCfg config.SkillConfig) []*agent.Tool {
+// cfg is used for session-mode-aware skill filtering and view_skill path resolution;
+// it may be nil for tests that don't exercise mode features.
+func buildMetaTools(store *knowledge.Store, engine *learning.Engine, registry *skill.Registry, skillCfg config.SkillConfig, cfg *config.Config) []*agent.Tool {
 	return []*agent.Tool{
 		{
 			Name:        "save_knowledge",
@@ -358,7 +364,7 @@ func buildMetaTools(store *knowledge.Store, engine *learning.Engine, registry *s
 		},
 		{
 			Name:        "list_skills",
-			Description: "List all active skills",
+			Description: "List all active skills. Pass summary=true for token-efficient metadata only.",
 			SafetyLevel: agent.SafetyLevelSafe,
 			Capability: agent.ToolCapability{
 				Category:        "skill",
@@ -367,8 +373,13 @@ func buildMetaTools(store *knowledge.Store, engine *learning.Engine, registry *s
 				ConcurrencySafe: true,
 			},
 			Parameters: map[string]interface{}{
-				"type":       "object",
-				"properties": map[string]interface{}{},
+				"type": "object",
+				"properties": map[string]interface{}{
+					"summary": map[string]interface{}{
+						"type":        "boolean",
+						"description": "When true, return only {name, description, when_to_use} per skill.",
+					},
+				},
 			},
 			Handler: func(ctx context.Context, params map[string]interface{}) (interface{}, error) {
 				if registry == nil {
@@ -380,9 +391,140 @@ func buildMetaTools(store *knowledge.Store, engine *learning.Engine, registry *s
 					return nil, fmt.Errorf("list skills: %w", err)
 				}
 
+				// Apply session mode filter if active.
+				modeName := session.ModeNameFromContext(ctx)
+				if modeName != "" && cfg != nil {
+					if mode, ok := cfg.LookupMode(modeName); ok && len(mode.Skills) > 0 {
+						allow := make(map[string]bool, len(mode.Skills))
+						for _, name := range mode.Skills {
+							allow[name] = true
+						}
+						filtered := skills[:0]
+						for _, s := range skills {
+							if allow[s.Name] {
+								filtered = append(filtered, s)
+							}
+						}
+						skills = filtered
+					}
+				}
+
+				summary, _ := params["summary"].(bool)
+				if summary {
+					out := make([]map[string]interface{}, 0, len(skills))
+					for _, s := range skills {
+						out = append(out, map[string]interface{}{
+							"name":        s.Name,
+							"description": s.Description,
+							"when_to_use": s.WhenToUse,
+						})
+					}
+					return map[string]interface{}{
+						"skills": out,
+						"count":  len(out),
+					}, nil
+				}
+
 				return map[string]interface{}{
 					"skills": skills,
 					"count":  len(skills),
+				}, nil
+			},
+		},
+		{
+			Name: "view_skill",
+			Description: "Read the full content of an active skill. " +
+				"With name only, returns the skill's SKILL.md. With name+path, returns the referenced supporting file " +
+				"resolved relative to the skill directory.",
+			SafetyLevel: agent.SafetyLevelSafe,
+			Capability: agent.ToolCapability{
+				Category:        "skill",
+				Activity:        agent.ActivityQuery,
+				ReadOnly:        true,
+				ConcurrencySafe: true,
+			},
+			Parameters: map[string]interface{}{
+				"type": "object",
+				"properties": map[string]interface{}{
+					"name": map[string]interface{}{
+						"type":        "string",
+						"description": "The active skill name to read.",
+					},
+					"path": map[string]interface{}{
+						"type":        "string",
+						"description": "Optional supporting file path relative to the skill directory.",
+					},
+				},
+				"required": []string{"name"},
+			},
+			Handler: func(ctx context.Context, params map[string]interface{}) (interface{}, error) {
+				if registry == nil {
+					return nil, fmt.Errorf("skill registry not available")
+				}
+				name, _ := params["name"].(string)
+				if strings.TrimSpace(name) == "" {
+					return nil, fmt.Errorf("name is required")
+				}
+				path, _ := params["path"].(string)
+
+				skills, err := registry.ListActiveSkills(ctx)
+				if err != nil {
+					return nil, fmt.Errorf("list skills: %w", err)
+				}
+				var found *skill.SkillEntry
+				for i := range skills {
+					if skills[i].Name == name {
+						found = &skills[i]
+						break
+					}
+				}
+				if found == nil {
+					return nil, fmt.Errorf("skill %q is not active", name)
+				}
+
+				skillsDir := skillCfg.SkillsDir
+				if skillsDir == "" {
+					return map[string]interface{}{
+						"name":    name,
+						"content": found.Context,
+						"note":    "skills directory not configured; returning skill Context only",
+					}, nil
+				}
+
+				var skillRoot string
+				if found.SourcePack != "" {
+					skillRoot = filepath.Join(skillsDir, "ext-"+found.SourcePack, name)
+				} else {
+					skillRoot = filepath.Join(skillsDir, name)
+				}
+				var target string
+				if path == "" {
+					target = filepath.Join(skillRoot, "SKILL.md")
+				} else {
+					// Resolve and verify the path stays inside the skill directory.
+					cleaned := filepath.Clean(filepath.Join(skillRoot, path))
+					absRoot, err := filepath.Abs(skillRoot)
+					if err != nil {
+						return nil, fmt.Errorf("resolve skill root: %w", err)
+					}
+					absTarget, err := filepath.Abs(cleaned)
+					if err != nil {
+						return nil, fmt.Errorf("resolve target: %w", err)
+					}
+					if !strings.HasPrefix(absTarget, absRoot+string(filepath.Separator)) && absTarget != absRoot {
+						return nil, fmt.Errorf("path %q is outside the skill directory", path)
+					}
+					target = cleaned
+				}
+
+				content, err := os.ReadFile(target)
+				if err != nil {
+					return nil, fmt.Errorf("read %s: %w", filepath.Base(target), err)
+				}
+				return map[string]interface{}{
+					"name":    name,
+					"path":    target,
+					"content": string(content),
 				}, nil
 			},
 		},

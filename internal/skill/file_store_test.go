@@ -108,6 +108,60 @@ func TestFileSkillStore_ListActive_EmptyDir(t *testing.T) {
 	assert.Empty(t, entries)
 }
 
+// writeActiveSkill writes a minimal SKILL.md under <base>/<name>/SKILL.md.
+func writeActiveSkill(t *testing.T, base, name string) {
+	t.Helper()
+	dir := filepath.Join(base, name)
+	require.NoError(t, os.MkdirAll(dir, 0o755))
+	body := "---\nname: " + name + "\ntype: script\nstatus: active\n---\n"
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "SKILL.md"), []byte(body), 0o644))
+}
+
+func TestFileSkillStore_ListActive_ExtPackDiscovered(t *testing.T) {
+	t.Parallel()
+
+	store := newTestFileStore(t)
+	store.AllowedExtPacks = map[string]bool{"python-dev": true}
+	require.NoError(t, os.MkdirAll(store.dir, 0o755))
+	writeActiveSkill(t, filepath.Join(store.dir, "ext-python-dev"), "pytest-refactor")
+
+	entries, err := store.ListActive(context.Background())
+	require.NoError(t, err)
+	require.Len(t, entries, 1)
+	assert.Equal(t, "pytest-refactor", entries[0].Name)
+	assert.Equal(t, "python-dev", entries[0].SourcePack)
+}
+
+func TestFileSkillStore_ListActive_UserShadowsExt(t *testing.T) {
+	t.Parallel()
+
+	store := newTestFileStore(t)
+	store.AllowedExtPacks = map[string]bool{"packA": true}
+	require.NoError(t, os.MkdirAll(store.dir, 0o755))
+	writeActiveSkill(t, store.dir, "shared")
+	writeActiveSkill(t, filepath.Join(store.dir, "ext-packA"), "shared")
+
+	entries, err := store.ListActive(context.Background())
+	require.NoError(t, err)
+	require.Len(t, entries, 1)
+	assert.Equal(t, "shared", entries[0].Name)
+	assert.Empty(t, entries[0].SourcePack, "user-authored entry wins and has no pack attribution")
+}
+
+func TestFileSkillStore_ListActive_CrossExtCollisionErrors(t *testing.T) {
+	t.Parallel()
+
+	store := newTestFileStore(t)
+	store.AllowedExtPacks = map[string]bool{"A": true, "B": true}
+	require.NoError(t, os.MkdirAll(store.dir, 0o755))
+	writeActiveSkill(t, filepath.Join(store.dir, "ext-A"), "collide")
+	writeActiveSkill(t, filepath.Join(store.dir, "ext-B"), "collide")
+
+	_, err := store.ListActive(context.Background())
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "multiple extension packs")
+}
+
 func TestFileSkillStore_Activate(t *testing.T) {
 	t.Parallel()
 

@@ -111,8 +111,9 @@ type RecoveryMsg struct {
 
 // TurnTokenUsageMsg delivers per-turn token usage summary.
 type TurnTokenUsageMsg struct {
-	InputTokens  int64
-	OutputTokens int64
-	TotalTokens  int64
-	CacheTokens  int64
+	InputTokens      int64
+	OutputTokens     int64
+	TotalTokens      int64
+	CacheTokens      int64
+	EstimatedCostUSD float64 // 0 when model has no pricing entry
 }

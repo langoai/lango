@@ -17,6 +17,10 @@ var _ SkillStore = (*FileSkillStore)(nil)
 type FileSkillStore struct {
 	dir    string
 	logger *zap.SugaredLogger
+	// AllowedExtPacks controls which ext-<pack>/ subdirectories are walked.
+	// nil means skip ALL ext-packs (safe default when extensions are disabled).
+	// An empty non-nil map means extensions are enabled but no packs are healthy.
+	AllowedExtPacks map[string]bool
 }
 
 // NewFileSkillStore creates a new file-based skill store rooted at dir.
@@ -72,7 +76,22 @@ func (s *FileSkillStore) Get(_ context.Context, name string) (*SkillEntry, error
 	return entry, nil
 }
 
+// extPrefix reserves the "ext-" directory-name prefix for extension-pack-
+// owned skill subtrees under the skills directory. The ListActive walker
+// descends into each ext-<pack>/ dir as if it were the top level, but
+// records SourcePack on each SkillEntry it loads.
+const extPrefix = "ext-"
+
 // ListActive scans all skill directories and returns entries with status=active.
+// Directories whose names begin with "ext-" are treated as extension-owned
+// skill roots: their direct children are each walked for SKILL.md, and the
+// parent's "ext-<pack>" name (minus the prefix) is recorded on each loaded
+// entry as SourcePack.
+//
+// Name precedence: user-authored skills (found directly under s.dir) shadow
+// extension-authored skills with the same bare name. When both exist, the
+// user entry is returned and a debug log is emitted for the shadowed pack
+// entry.
 func (s *FileSkillStore) ListActive(_ context.Context) ([]SkillEntry, error) {
 	entries, err := os.ReadDir(s.dir)
 	if err != nil {
@@ -82,31 +101,101 @@ func (s *FileSkillStore) ListActive(_ context.Context) ([]SkillEntry, error) {
 		return nil, fmt.Errorf("list skills dir: %w", err)
 	}
 
-	var result []SkillEntry
+	// Two-pass walk: collect user-authored first so we can detect shadowing
+	// when extension-owned skills are added in the second pass.
+	userByName := map[string]SkillEntry{}
+	extByName := map[string][]SkillEntry{} // name → entries from different packs (collision detection)
+
 	for _, e := range entries {
 		if !e.IsDir() || strings.HasPrefix(e.Name(), ".") {
 			continue
 		}
-
-		path := filepath.Join(s.dir, e.Name(), "SKILL.md")
-		data, err := os.ReadFile(path)
-		if err != nil {
-			s.logger.Debugw("skip skill dir (no SKILL.md)", "dir", e.Name())
+		if strings.HasPrefix(e.Name(), extPrefix) {
+			packName := strings.TrimPrefix(e.Name(), extPrefix)
+			if s.AllowedExtPacks == nil || !s.AllowedExtPacks[packName] {
+				continue // skip disabled/tampered/unknown packs
+			}
+			s.walkExtPack(filepath.Join(s.dir, e.Name()), packName, extByName)
 			continue
 		}
-
-		entry, err := ParseSkillMD(data)
-		if err != nil {
-			s.logger.Warnw("skip invalid skill", "dir", e.Name(), "error", err)
+		entry, ok := s.loadSkillDir(filepath.Join(s.dir, e.Name()), "")
+		if !ok {
 			continue
 		}
+		userByName[entry.Name] = entry
+	}
 
-		if entry.Status == "active" {
-			result = append(result, *entry)
+	// Cross-extension collision detection: same skill name in two different
+	// ext-<pack>/ subtrees is a runtime error (installer normally prevents
+	// this, but manual edits or old filesystems may produce it).
+	for name, sources := range extByName {
+		if len(sources) > 1 {
+			packs := make([]string, 0, len(sources))
+			for _, e := range sources {
+				packs = append(packs, e.SourcePack)
+			}
+			return nil, fmt.Errorf("skill name %q provided by multiple extension packs %v — resolve before continuing", name, packs)
 		}
 	}
 
+	result := make([]SkillEntry, 0, len(userByName)+len(extByName))
+	for _, e := range userByName {
+		result = append(result, e)
+	}
+	for name, sources := range extByName {
+		if _, shadowed := userByName[name]; shadowed {
+			s.logger.Debugw("skill.name.shadowed_by_user",
+				"name", name,
+				"pack", sources[0].SourcePack,
+			)
+			continue
+		}
+		result = append(result, sources[0])
+	}
 	return result, nil
+}
+
+// walkExtPack scans <s.dir>/ext-<pack>/ and collects every active skill
+// directly under it into extByName keyed by skill name.
+func (s *FileSkillStore) walkExtPack(packDir, packName string, extByName map[string][]SkillEntry) {
+	entries, err := os.ReadDir(packDir)
+	if err != nil {
+		s.logger.Warnw("skip ext pack dir", "dir", packDir, "error", err)
+		return
+	}
+	for _, e := range entries {
+		if !e.IsDir() || strings.HasPrefix(e.Name(), ".") {
+			continue
+		}
+		entry, ok := s.loadSkillDir(filepath.Join(packDir, e.Name()), packName)
+		if !ok {
+			continue
+		}
+		extByName[entry.Name] = append(extByName[entry.Name], entry)
+	}
+}
+
+// loadSkillDir reads <dir>/SKILL.md, parses it, and returns the active
+// SkillEntry. The second return is false when the dir should be skipped
+// (missing SKILL.md, parse error, or inactive status). sourcePack is the
+// pack attribution string or "" for non-extension skills.
+func (s *FileSkillStore) loadSkillDir(dir, sourcePack string) (SkillEntry, bool) {
+	path := filepath.Join(dir, "SKILL.md")
+	data, err := os.ReadFile(path)
+	if err != nil {
+		s.logger.Debugw("skip skill dir (no SKILL.md)", "dir", dir)
+		return SkillEntry{}, false
+	}
+	entry, err := ParseSkillMD(data)
+	if err != nil {
+		s.logger.Warnw("skip invalid skill", "dir", dir, "error", err)
+		return SkillEntry{}, false
+	}
+	if entry.Status != "active" {
+		return SkillEntry{}, false
+	}
+	entry.SourcePack = sourcePack
+	return *entry, true
 }
 
 // Activate sets a skill's status to active by rewriting its SKILL.md.

@@ -219,12 +219,29 @@ func (m *chatViewModel) appendRecovery(action, causeClass string, attempt int, b
 }
 
 func (m *chatViewModel) appendTokenSummary(input, output, total, cache int64) {
+	m.appendTokenSummaryWithCost(input, output, total, cache, 0)
+}
+
+func (m *chatViewModel) appendTokenSummaryWithCost(input, output, total, cache int64, costUSD float64) {
 	summary := fmt.Sprintf("\U0001F4CA Token usage: %s input, %s output, %s total",
 		formatTokenCount(input), formatTokenCount(output), formatTokenCount(total))
 	if cache > 0 {
 		summary += fmt.Sprintf(" (%s cached)", formatTokenCount(cache))
 	}
+	if costUSD > 0 {
+		summary += fmt.Sprintf(" ~%s", formatCostUSD(costUSD))
+	}
 	m.appendStatus(summary, "")
+}
+
+// formatCostUSD formats an estimated cost in USD with adaptive precision.
+// Costs under $0.01 use four-decimal precision (e.g. $0.0034); larger costs
+// use two-decimal precision (e.g. $0.45).
+func formatCostUSD(cost float64) string {
+	if cost < 0.01 {
+		return fmt.Sprintf("$%.4f", cost)
+	}
+	return fmt.Sprintf("$%.2f", cost)
 }
 
 // formatTokenCount formats a token count for display (e.g. 1500 → "1.5k").

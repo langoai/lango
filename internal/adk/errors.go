@@ -302,3 +302,27 @@ func classifyError(err error) FailureClassification {
 		OperatorSummary: fmt.Sprintf("[%s] %s: %s", ErrInternal, CauseInternalRuntimeError, msg[:min(len(msg), 200)]),
 	}
 }
+
+// RecoveryAction indicates what the retry owner should do after a failure.
+type RecoveryAction int
+
+const (
+	// RecoveryRetry means the operation should be retried with backoff.
+	RecoveryRetry RecoveryAction = iota + 1
+	// RecoveryAbortWithHint means the operation should not be retried;
+	// a user-facing hint should be displayed instead.
+	RecoveryAbortWithHint
+)
+
+// RecoveryActionFor maps a failure classification to a recovery action.
+// Returns nil (zero value) when the failure is not retryable.
+func RecoveryActionFor(fc FailureClassification) RecoveryAction {
+	switch fc.CauseClass {
+	case CauseProviderRateLimit, CauseProviderTransient, CauseProviderConnection:
+		return RecoveryRetry
+	case CauseProviderAuth:
+		return RecoveryAbortWithHint
+	default:
+		return 0
+	}
+}

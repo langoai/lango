@@ -38,6 +38,7 @@ import (
 	"github.com/langoai/lango/internal/cli/doctor"
 	clieconomy "github.com/langoai/lango/internal/cli/economy"
 	cligraph "github.com/langoai/lango/internal/cli/graph"
+	cliextension "github.com/langoai/lango/internal/cli/extension"
 	clilearning "github.com/langoai/lango/internal/cli/learning"
 	clilibrarian "github.com/langoai/lango/internal/cli/librarian"
 	climcp "github.com/langoai/lango/internal/cli/mcp"
@@ -92,9 +93,11 @@ func main() {
 			if !prompt.IsInteractive() {
 				return cmd.Help()
 			}
-			return runCockpit()
+			modeName, _ := cmd.Flags().GetString("mode")
+			return runCockpit(modeName)
 		},
 	}
+	rootCmd.PersistentFlags().String("mode", "", "Initial session mode (e.g., code-review, research, debug)")
 
 	rootCmd.AddGroup(
 		&cobra.Group{ID: "start", Title: "Getting Started:"},
@@ -153,6 +156,10 @@ func main() {
 	learningCmd := clilearning.NewLearningCmd(cliboot.Config, cliboot.BootResult)
 	learningCmd.GroupID = "ai"
 	rootCmd.AddCommand(learningCmd)
+
+	extensionCmd := cliextension.NewExtensionCmd(cliboot.Config)
+	extensionCmd.GroupID = "ai"
+	rootCmd.AddCommand(extensionCmd)
 
 	librarianCmd := clilibrarian.NewLibrarianCmd(cliboot.Config, cliboot.BootResult)
 	librarianCmd.GroupID = "ai"
@@ -233,7 +240,7 @@ func main() {
 	}
 }
 
-func runChat() error {
+func runChat(initialMode string) error {
 	boot, err := cliboot.BootResult()
 	if err != nil {
 		return fmt.Errorf("bootstrap: %w", err)
@@ -285,11 +292,34 @@ func runChat() error {
 
 	sessionKey := fmt.Sprintf("tui-%d", time.Now().UnixMilli())
 
+	// Pre-create session and persist initial mode if --mode was provided
+	// (mirrors runCockpit's mode handling).
+	if initialMode != "" && application.Store != nil {
+		if _, ok := cfg.LookupMode(initialMode); !ok {
+			return fmt.Errorf("unknown mode %q; valid modes can be listed via /mode", initialMode)
+		}
+		s := &session.Session{Key: sessionKey}
+		s.SetMode(initialMode)
+		if err := application.Store.Create(s); err != nil {
+			return fmt.Errorf("create initial session: %w", err)
+		}
+	}
+
 	model := chat.New(chat.Deps{
-		TurnRunner: application.TurnRunner,
-		Config:     cfg,
-		SessionKey: sessionKey,
+		TurnRunner:   application.TurnRunner,
+		Config:       cfg,
+		SessionKey:   sessionKey,
+		SessionStore: application.Store,
+		EventBus:     application.EventBus,
 	})
+
+	// Hard session end: reads model.SessionKey() so /clear key changes
+	// are respected (not the initial captured local).
+	defer func() {
+		if application.Store != nil {
+			_ = application.Store.End(model.SessionKey())
+		}
+	}()
 
 	p := tea.NewProgram(model, tea.WithAltScreen(), tea.WithMouseCellMotion())
 	model.SetProgram(p)
@@ -538,9 +568,11 @@ func cockpitCmd() *cobra.Command {
 			if !prompt.IsInteractive() {
 				return fmt.Errorf("cockpit requires an interactive terminal")
 			}
-			return runCockpit()
+			modeName, _ := cmd.Flags().GetString("mode")
+			return runCockpit(modeName)
 		},
 	}
+	cmd.Flags().String("mode", "", "Initial session mode (e.g., code-review, research, debug)")
 	cmd.Flags().BoolVar(&withChannels, "with-channels", false,
 		"Start live channel adapters (Telegram/Discord/Slack). "+
 			"Only use when no lango serve is running with the same credentials.")
@@ -556,12 +588,13 @@ func chatCmd() *cobra.Command {
 			if !prompt.IsInteractive() {
 				return fmt.Errorf("chat requires an interactive terminal")
 			}
-			return runChat()
+			modeName, _ := cmd.Flags().GetString("mode")
+			return runChat(modeName)
 		},
 	}
 }
 
-func runCockpit() error {
+func runCockpit(initialMode string) error {
 	boot, err := cliboot.BootResult()
 	if err != nil {
 		return fmt.Errorf("bootstrap: %w", err)
@@ -637,10 +670,33 @@ func runCockpit() error {
 
 	sessionKey := fmt.Sprintf("cockpit-%d", time.Now().UnixMilli())
 
+	// Hard session end (TUI quit): bounded best-effort summarize/index.
+	// The EntStore processor honors its own hardEndTimeout so this call
+	// returns within a short bound even on a slow summarizer. Errors are
+	// ignored — a missing session (if the first turn never ran) is fine.
+	defer func() {
+		if application.Store != nil {
+			_ = application.Store.End(sessionKey)
+		}
+	}()
+
+	// Pre-create the session and persist initial mode if --mode was provided.
+	if initialMode != "" {
+		if _, ok := cfg.LookupMode(initialMode); !ok {
+			return fmt.Errorf("unknown mode %q; valid modes can be listed via /mode", initialMode)
+		}
+		s := &session.Session{Key: sessionKey}
+		s.SetMode(initialMode)
+		if err := application.Store.Create(s); err != nil {
+			return fmt.Errorf("create initial session: %w", err)
+		}
+	}
+
 	model := cockpit.New(cockpit.Deps{
 		TurnRunner:        application.TurnRunner,
 		Config:            cfg,
 		SessionKey:        sessionKey,
+		SessionStore:      application.Store,
 		ToolCatalog:       application.ToolCatalog,
 		MetricsCollector:  application.MetricsCollector,
 		FeatureStatuses:   application.FeatureStatuses,

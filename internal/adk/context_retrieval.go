@@ -128,3 +128,42 @@ func formatRAGSection(results []embedding.RAGResult, budgetTokens int) string {
 	return b.String()
 }
 
+// formatRecallSection formats prior-session recall matches under the shared
+// RAG section budget. Higher-ranked matches are kept first; lower-ranked
+// matches drop on overflow. Returns an empty string when nothing fits or
+// the input is empty.
+func formatRecallSection(matches []RecallMatch, budgetTokens int) string {
+	if len(matches) == 0 {
+		return ""
+	}
+	const header = "## Prior Session Recall\n"
+	if budgetTokens > 0 {
+		remaining := budgetTokens - types.EstimateTokens(header)
+		kept := 0
+		for i, m := range matches {
+			entry := fmt.Sprintf("\n### [%s] (rank=%.2f)\n%s\n", m.SessionKey, m.Rank, m.Summary)
+			itemTokens := types.EstimateTokens(entry)
+			if remaining-itemTokens < 0 {
+				matches = matches[:i]
+				break
+			}
+			remaining -= itemTokens
+			kept++
+		}
+		if kept == 0 {
+			return ""
+		}
+	}
+	var b strings.Builder
+	b.WriteString(header)
+	for _, m := range matches {
+		if m.Summary == "" {
+			continue
+		}
+		fmt.Fprintf(&b, "\n### [%s] (rank=%.2f)\n", m.SessionKey, m.Rank)
+		b.WriteString(m.Summary)
+		b.WriteString("\n")
+	}
+	return b.String()
+}
+

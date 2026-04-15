@@ -99,11 +99,15 @@ func New(boot *bootstrap.Result, opts ...AppOption) (*App, error) {
 		app.registry.SetMaxPriority(lifecycle.PriorityBuffer)
 	}
 
+	// Extension registry: load early (before module build) so skill loading
+	// can filter ext-packs by health/integrity status.
+	wireExtensionRegistry(app)
+
 	// ── Phase A: Module Build ──
 
 	builder := appinit.NewBuilder()
 	builder.AddModule(&foundationModule{cfg: cfg, boot: boot})
-	builder.AddModule(&intelligenceModule{cfg: cfg, boot: boot, rawDB: boot.RawDB, bus: bus})
+	builder.AddModule(&intelligenceModule{cfg: cfg, boot: boot, rawDB: boot.RawDB, bus: bus, extReg: app.ExtensionRegistry})
 	builder.AddModule(&automationModule{cfg: cfg, app: app})
 	builder.AddModule(&networkModule{cfg: cfg, boot: boot, bus: bus, app: app})
 	builder.AddModule(&extensionModule{cfg: cfg, boot: boot, bus: bus})
@@ -181,6 +185,10 @@ func New(boot *bootstrap.Result, opts ...AppOption) (*App, error) {
 	// B4c2. Principal injection — maps agent name to ontology principal.
 	tools = toolchain.ChainAll(tools, toolchain.WithPrincipal())
 
+	// B4c3. Mode allowlist enforcement — blocks tools outside the active
+	// session mode's allowlist before they reach approval/policy/handler layers.
+	tools = toolchain.ChainAll(tools, toolchain.WithModeAllowlist(buildModeAllowlistResolver(cfg, catalog)))
+
 	// B5. Auth + Gateway.
 	fv := resolver.Resolve(appinit.ProvidesSupervisor).(*foundationValues)
 	auth := initAuth(cfg, fv.Store)
@@ -255,6 +263,12 @@ func New(boot *bootstrap.Result, opts ...AppOption) (*App, error) {
 	// B6. Agent creation.
 	scanner := fv.Scanner
 	p2pc, _ := resolver.Resolve(appinit.ProvidesP2P).(*p2pComponents)
+	app.compactionSync = newCompactionSyncHolder()
+
+	// Session recall: construct before agent so the provider can be wired
+	// into the context adapter. Installs the session-end processor and
+	// registers the startup sweep.
+	app.recallIndex = wireSessionRecall(app)
 	adkAgent, err := initAgent(context.Background(), &agentDeps{
 		sv:       fv.Supervisor,
 		cfg:      cfg,
@@ -275,7 +289,10 @@ func New(boot *bootstrap.Result, opts ...AppOption) (*App, error) {
 			pv, _ := resolver.Resolve(appinit.ProvidesProvenance).(*provenanceValues)
 			return pv
 		}(),
-		hookRegistry: hookRegistry,
+		hookRegistry:   hookRegistry,
+		compactionSync: app.compactionSync,
+		recallIndex:    app.recallIndex,
+		extReg:         app.ExtensionRegistry,
 	})
 	if err != nil {
 		cleanups.rollback()
@@ -317,6 +334,13 @@ func New(boot *bootstrap.Result, opts ...AppOption) (*App, error) {
 
 	// B9. Memory compaction + turn callbacks.
 	wireMemoryAndTurnCallbacks(app, iv, fv)
+
+	// B9.1. Background hygiene compaction (Phase 3).
+	wireCompactionBuffer(app, adk.LookupModelWindow(cfg.Agent.Model))
+
+	// B9.3. Learning suggestions (Phase 3C).
+	wireLearningSuggestions(app)
+
 
 	// B10. Lifecycle registration (module components + gateway + channels).
 	for _, entry := range buildResult.Components {
