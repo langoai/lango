@@ -240,7 +240,7 @@ func main() {
 	}
 }
 
-func runChat() error {
+func runChat(initialMode string) error {
 	boot, err := cliboot.BootResult()
 	if err != nil {
 		return fmt.Errorf("bootstrap: %w", err)
@@ -297,6 +297,19 @@ func runChat() error {
 			_ = application.Store.End(sessionKey)
 		}
 	}()
+
+	// Pre-create session and persist initial mode if --mode was provided
+	// (mirrors runCockpit's mode handling).
+	if initialMode != "" && application.Store != nil {
+		if _, ok := cfg.LookupMode(initialMode); !ok {
+			return fmt.Errorf("unknown mode %q; valid modes can be listed via /mode", initialMode)
+		}
+		s := &session.Session{Key: sessionKey}
+		s.SetMode(initialMode)
+		if err := application.Store.Create(s); err != nil {
+			return fmt.Errorf("create initial session: %w", err)
+		}
+	}
 
 	model := chat.New(chat.Deps{
 		TurnRunner:   application.TurnRunner,
@@ -573,7 +586,8 @@ func chatCmd() *cobra.Command {
 			if !prompt.IsInteractive() {
 				return fmt.Errorf("chat requires an interactive terminal")
 			}
-			return runChat()
+			modeName, _ := cmd.Flags().GetString("mode")
+			return runChat(modeName)
 		},
 	}
 }

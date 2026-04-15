@@ -19,6 +19,7 @@ import (
 	"github.com/langoai/lango/internal/background"
 	"github.com/langoai/lango/internal/config"
 	"github.com/langoai/lango/internal/eventbus"
+	"github.com/langoai/lango/internal/provider"
 	"github.com/langoai/lango/internal/session"
 	"github.com/langoai/lango/internal/turnrunner"
 )
@@ -82,6 +83,12 @@ type ChatModel struct {
 	sessionInputTokens  int64
 	sessionOutputTokens int64
 	sessionCostUSD      float64
+
+	// Per-turn token accumulation (plain chat path — mirrors cockpit's RuntimeTracker).
+	turnActive       bool
+	turnInputTokens  int64
+	turnOutputTokens int64
+	turnCacheTokens  int64
 
 	cpr cprFilter
 }
@@ -237,6 +244,14 @@ func (m *ChatModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case LearningSuggestionTeaMsg:
 		return m.handleLearningSuggestion(msg)
 
+	case TokenUsageTeaMsg:
+		if m.turnActive {
+			m.turnInputTokens += msg.InputTokens
+			m.turnOutputTokens += msg.OutputTokens
+			m.turnCacheTokens += msg.CacheTokens
+		}
+		return m, nil
+
 	case TaskStripTickMsg:
 		m.taskStrip.refresh()
 		m.refreshView()
@@ -311,6 +326,32 @@ func (m *ChatModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 		}
 
+		// Flush per-turn token accumulation as TurnTokenUsageMsg (plain chat
+		// path — cockpit does this via its RuntimeTracker in handleDone).
+		if m.turnActive && (m.turnInputTokens > 0 || m.turnOutputTokens > 0) {
+			total := m.turnInputTokens + m.turnOutputTokens
+			var costUSD float64
+			if m.cfg != nil {
+				costUSD = provider.EstimateCostUSD(m.cfg.Agent.Model, int(m.turnInputTokens), int(m.turnOutputTokens))
+			}
+			inTok := m.turnInputTokens
+			outTok := m.turnOutputTokens
+			cacheTok := m.turnCacheTokens
+			cmds = append(cmds, func() tea.Msg {
+				return TurnTokenUsageMsg{
+					InputTokens:      inTok,
+					OutputTokens:     outTok,
+					TotalTokens:      total,
+					CacheTokens:      cacheTok,
+					EstimatedCostUSD: costUSD,
+				}
+			})
+		}
+		m.turnActive = false
+		m.turnInputTokens = 0
+		m.turnOutputTokens = 0
+		m.turnCacheTokens = 0
+
 		if cmd := m.transitionTo(nextState); cmd != nil {
 			cmds = append(cmds, cmd)
 		}
@@ -319,6 +360,12 @@ func (m *ChatModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case ErrorMsg:
 		m.dismissPending()
 		m.chatView.stopCursorBlink()
+		// Reset turn token accumulation on error to prevent leakage into next turn.
+		m.turnActive = false
+		m.turnInputTokens = 0
+		m.turnOutputTokens = 0
+		m.turnCacheTokens = 0
+
 		if m.chatView.streamBuf.Len() > 0 {
 			m.chatView.finalizeStream()
 		}
@@ -664,6 +711,12 @@ func (m *ChatModel) submitCmd(input string) tea.Cmd {
 	ctx, cancel := context.WithCancel(context.Background())
 	m.runCtx = ctx
 	m.cancelFn = cancel
+
+	// Reset per-turn token accumulation (mirrors cockpit RuntimeTracker.StartTurn).
+	m.turnActive = true
+	m.turnInputTokens = 0
+	m.turnOutputTokens = 0
+	m.turnCacheTokens = 0
 
 	program := m.program
 	return func() tea.Msg {

@@ -229,7 +229,7 @@ func (r *Runner) Run(parent context.Context, req Request) (Result, error) {
 			}
 		}
 
-		chunkCb, stopStale := r.wrapChunkCallbackWithStale(guardedOnChunk, cancel)
+		chunkCb, stopStale, staleFlag := r.wrapChunkCallbackWithStale(guardedOnChunk, cancel)
 		report, runErr := r.executor.RunStreamingDetailed(
 			ctx,
 			req.SessionKey,
@@ -250,8 +250,10 @@ func (r *Runner) Run(parent context.Context, req Request) (Result, error) {
 		if action != adk.RecoveryRetry || attempt >= maxAttempts-1 {
 			break
 		}
-		// Don't retry when partial content was already streamed to the user.
-		if chunksEmitted.Load() {
+		// Don't retry when partial content was already streamed to the
+		// user — UNLESS the failure was caused by a stale stream timeout
+		// (stream stalled after some output, retry is appropriate).
+		if chunksEmitted.Load() && !staleFlag.Load() {
 			break
 		}
 
@@ -372,10 +374,11 @@ func (r *Runner) wrapChunkCallback(onChunk func(string)) adk.ChunkCallback {
 // subsequent chunk. If no chunk arrives for staleTimeout, attemptCancel is
 // called. Returns the wrapped callback and a stop function that MUST be called
 // when the attempt finishes (to prevent the timer from firing after cancel).
-func (r *Runner) wrapChunkCallbackWithStale(onChunk func(string), attemptCancel context.CancelFunc) (adk.ChunkCallback, func()) {
+func (r *Runner) wrapChunkCallbackWithStale(onChunk func(string), attemptCancel context.CancelFunc) (adk.ChunkCallback, func(), *syncatomic.Bool) {
+	staleFlag := &syncatomic.Bool{}
 	inner := r.wrapChunkCallback(onChunk)
 	if inner == nil || r.staleTimeout < 0 {
-		return inner, func() {}
+		return inner, func() {}, staleFlag
 	}
 
 	var staleTimer *time.Timer
@@ -397,6 +400,7 @@ func (r *Runner) wrapChunkCallbackWithStale(onChunk func(string), attemptCancel 
 			staleTimer = time.AfterFunc(r.staleTimeout, func() {
 				logger().Warnw("stale stream detected, cancelling attempt",
 					"staleTimeout", r.staleTimeout)
+				staleFlag.Store(true)
 				attemptCancel()
 			})
 		} else if gotFirstChunk && staleTimer != nil {
@@ -404,7 +408,7 @@ func (r *Runner) wrapChunkCallbackWithStale(onChunk func(string), attemptCancel 
 		}
 		mu.Unlock()
 		inner(chunk)
-	}, stop
+	}, stop, staleFlag
 }
 
 func (r *Runner) classifyResult(report adk.RunReport, runErr error, elapsed time.Duration) Result {
