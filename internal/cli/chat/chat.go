@@ -158,6 +158,10 @@ func (m *ChatModel) setSessionMode(name string) error {
 }
 
 // SetProgram stores a reference to the tea.Program for sending messages from callbacks.
+// SessionKey returns the current session key. After /clear this differs
+// from the initial key captured at construction time.
+func (m *ChatModel) SessionKey() string { return m.sessionKey }
+
 func (m *ChatModel) SetProgram(p *tea.Program) {
 	m.program = p
 }

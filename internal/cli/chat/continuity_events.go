@@ -48,11 +48,12 @@ func (m *ChatModel) subscribeContinuityEvents() {
 	if m.eventBus == nil {
 		return
 	}
-	sessionKey := m.sessionKey
 	bus := m.eventBus
 
+	// Note: handlers read m.sessionKey live (not a captured local) so that
+	// /clear session key changes are respected immediately.
 	eventbus.SubscribeTyped(bus, func(e eventbus.CompactionCompletedEvent) {
-		if e.SessionKey != sessionKey {
+		if e.SessionKey != m.sessionKey {
 			return
 		}
 		m.sendSafe(CompactionCompletedTeaMsg{
@@ -61,13 +62,13 @@ func (m *ChatModel) subscribeContinuityEvents() {
 		})
 	})
 	eventbus.SubscribeTyped(bus, func(e eventbus.CompactionSlowEvent) {
-		if e.SessionKey != sessionKey {
+		if e.SessionKey != m.sessionKey {
 			return
 		}
 		m.sendSafe(CompactionSlowTeaMsg{SessionKey: e.SessionKey})
 	})
 	eventbus.SubscribeTyped(bus, func(e eventbus.LearningSuggestionEvent) {
-		if e.SessionKey != sessionKey {
+		if e.SessionKey != m.sessionKey {
 			return
 		}
 		m.sendSafe(LearningSuggestionTeaMsg{

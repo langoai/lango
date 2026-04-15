@@ -99,11 +99,15 @@ func New(boot *bootstrap.Result, opts ...AppOption) (*App, error) {
 		app.registry.SetMaxPriority(lifecycle.PriorityBuffer)
 	}
 
+	// Extension registry: load early (before module build) so skill loading
+	// can filter ext-packs by health/integrity status.
+	wireExtensionRegistry(app)
+
 	// ── Phase A: Module Build ──
 
 	builder := appinit.NewBuilder()
 	builder.AddModule(&foundationModule{cfg: cfg, boot: boot})
-	builder.AddModule(&intelligenceModule{cfg: cfg, boot: boot, rawDB: boot.RawDB, bus: bus})
+	builder.AddModule(&intelligenceModule{cfg: cfg, boot: boot, rawDB: boot.RawDB, bus: bus, extReg: app.ExtensionRegistry})
 	builder.AddModule(&automationModule{cfg: cfg, app: app})
 	builder.AddModule(&networkModule{cfg: cfg, boot: boot, bus: bus, app: app})
 	builder.AddModule(&extensionModule{cfg: cfg, boot: boot, bus: bus})
@@ -255,12 +259,6 @@ func New(boot *bootstrap.Result, opts ...AppOption) (*App, error) {
 
 	// Log tool registration summary for diagnostics.
 	logToolRegistrationSummary(catalog)
-
-	// B5.5. Extension packs: load installed manifests and merge extension
-	// modes into Config.Modes before agent construction so the context
-	// adapter and mode allowlist middleware see them through the normal
-	// ResolveModes surface.
-	wireExtensionRegistry(app)
 
 	// B6. Agent creation.
 	scanner := fv.Scanner

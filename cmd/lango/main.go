@@ -291,12 +291,6 @@ func runChat(initialMode string) error {
 	}()
 
 	sessionKey := fmt.Sprintf("tui-%d", time.Now().UnixMilli())
-	// Hard session end: bounded best-effort summarize/index (mirrors runCockpit).
-	defer func() {
-		if application.Store != nil {
-			_ = application.Store.End(sessionKey)
-		}
-	}()
 
 	// Pre-create session and persist initial mode if --mode was provided
 	// (mirrors runCockpit's mode handling).
@@ -318,6 +312,14 @@ func runChat(initialMode string) error {
 		SessionStore: application.Store,
 		EventBus:     application.EventBus,
 	})
+
+	// Hard session end: reads model.SessionKey() so /clear key changes
+	// are respected (not the initial captured local).
+	defer func() {
+		if application.Store != nil {
+			_ = application.Store.End(model.SessionKey())
+		}
+	}()
 
 	p := tea.NewProgram(model, tea.WithAltScreen(), tea.WithMouseCellMotion())
 	model.SetProgram(p)

@@ -121,6 +121,7 @@ func TestFileSkillStore_ListActive_ExtPackDiscovered(t *testing.T) {
 	t.Parallel()
 
 	store := newTestFileStore(t)
+	store.AllowedExtPacks = map[string]bool{"python-dev": true}
 	require.NoError(t, os.MkdirAll(store.dir, 0o755))
 	writeActiveSkill(t, filepath.Join(store.dir, "ext-python-dev"), "pytest-refactor")
 
@@ -135,6 +136,7 @@ func TestFileSkillStore_ListActive_UserShadowsExt(t *testing.T) {
 	t.Parallel()
 
 	store := newTestFileStore(t)
+	store.AllowedExtPacks = map[string]bool{"packA": true}
 	require.NoError(t, os.MkdirAll(store.dir, 0o755))
 	writeActiveSkill(t, store.dir, "shared")
 	writeActiveSkill(t, filepath.Join(store.dir, "ext-packA"), "shared")
@@ -150,6 +152,7 @@ func TestFileSkillStore_ListActive_CrossExtCollisionErrors(t *testing.T) {
 	t.Parallel()
 
 	store := newTestFileStore(t)
+	store.AllowedExtPacks = map[string]bool{"A": true, "B": true}
 	require.NoError(t, os.MkdirAll(store.dir, 0o755))
 	writeActiveSkill(t, filepath.Join(store.dir, "ext-A"), "collide")
 	writeActiveSkill(t, filepath.Join(store.dir, "ext-B"), "collide")

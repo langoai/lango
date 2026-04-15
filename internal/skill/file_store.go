@@ -17,6 +17,10 @@ var _ SkillStore = (*FileSkillStore)(nil)
 type FileSkillStore struct {
 	dir    string
 	logger *zap.SugaredLogger
+	// AllowedExtPacks controls which ext-<pack>/ subdirectories are walked.
+	// nil means skip ALL ext-packs (safe default when extensions are disabled).
+	// An empty non-nil map means extensions are enabled but no packs are healthy.
+	AllowedExtPacks map[string]bool
 }
 
 // NewFileSkillStore creates a new file-based skill store rooted at dir.
@@ -108,6 +112,9 @@ func (s *FileSkillStore) ListActive(_ context.Context) ([]SkillEntry, error) {
 		}
 		if strings.HasPrefix(e.Name(), extPrefix) {
 			packName := strings.TrimPrefix(e.Name(), extPrefix)
+			if s.AllowedExtPacks == nil || !s.AllowedExtPacks[packName] {
+				continue // skip disabled/tampered/unknown packs
+			}
 			s.walkExtPack(filepath.Join(s.dir, e.Name()), packName, extByName)
 			continue
 		}

@@ -247,8 +247,29 @@ func copyPackFiles(wc *WorkingCopy, stagingDir string) error {
 		return copyFile(src, dst)
 	}
 	for _, s := range wc.Manifest.Contents.Skills {
-		if err := copyOne(s.Path); err != nil {
-			return err
+		// Mirror the full skill directory (not just the listed file) so
+		// the pack mirror on disk matches what fetchFromDir hashes.
+		srcRel := s.Path
+		if strings.HasSuffix(filepath.Base(srcRel), "SKILL.md") {
+			srcRel = filepath.Dir(srcRel)
+		}
+		srcAbs, err := ResolvePath(wc.RootDir, srcRel)
+		if err != nil {
+			return fmt.Errorf("skill %q: %w", s.Name, err)
+		}
+		fi, err := os.Stat(srcAbs)
+		if err != nil {
+			return fmt.Errorf("stat skill %q: %w", s.Name, err)
+		}
+		dstAbs := filepath.Join(stagingDir, filepath.FromSlash(filepath.Clean(srcRel)))
+		if fi.IsDir() {
+			if err := copyTree(srcAbs, dstAbs); err != nil {
+				return fmt.Errorf("copy skill dir %q: %w", s.Name, err)
+			}
+		} else {
+			if err := copyOne(s.Path); err != nil {
+				return err
+			}
 		}
 	}
 	for _, p := range wc.Manifest.Contents.Prompts {

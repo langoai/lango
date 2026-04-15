@@ -23,6 +23,7 @@ import (
 	"github.com/langoai/lango/internal/economy/escrow/sentinel"
 	"github.com/langoai/lango/internal/embedding"
 	"github.com/langoai/lango/internal/eventbus"
+	"github.com/langoai/lango/internal/extension"
 	"github.com/langoai/lango/internal/gatekeeper"
 	"github.com/langoai/lango/internal/graph"
 	"github.com/langoai/lango/internal/librarian"
@@ -257,10 +258,11 @@ func buildFoundationCatalogEntries(cfg *config.Config, base, crypto, secrets []*
 // ─── Intelligence Module ───
 
 type intelligenceModule struct {
-	cfg   *config.Config
-	boot  *bootstrap.Result
-	rawDB *sql.DB
-	bus   *eventbus.Bus
+	cfg    *config.Config
+	boot   *bootstrap.Result
+	rawDB  *sql.DB
+	bus    *eventbus.Bus
+	extReg *extension.Registry
 }
 
 func (m *intelligenceModule) Name() string { return "intelligence" }
@@ -309,7 +311,7 @@ func (m *intelligenceModule) Init(ctx context.Context, r appinit.Resolver) (*app
 	if bt := r.Resolve(appinit.ProvidesBaseTools); bt != nil {
 		baseToolSlice, _ = bt.([]*agent.Tool)
 	}
-	skillReg := initSkills(cfg, baseToolSlice, m.bus)
+	skillReg := initSkills(cfg, baseToolSlice, m.bus, m.extReg)
 	if skillReg != nil {
 		tools = append(tools, skillReg.LoadedSkills()...)
 	}

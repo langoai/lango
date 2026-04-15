@@ -421,7 +421,18 @@ func (m *ContextAwareModelAdapter) GenerateContent(ctx context.Context, req *mod
 	// NOT triggered by budgets.Degraded (that's a config issue).
 	// ──────────────────────────────────────────────────────────
 	if m.sessionCompactor != nil && m.budgetManager != nil && !budgets.Degraded && sessionKey != "" {
-		totalMeasured := measured.Knowledge + measured.RAG + measured.Memory + measured.RunSummary
+		// Include conversation history and base prompt in the measurement
+		// so long chats also trigger compaction (not just injected context).
+		var historyTokens int
+		for _, c := range req.Contents {
+			for _, p := range c.Parts {
+				if p.Text != "" {
+					historyTokens += types.EstimateTokens(p.Text)
+				}
+			}
+		}
+		baseTokens := types.EstimateTokens(m.basePrompt)
+		totalMeasured := measured.Knowledge + measured.RAG + measured.Memory + measured.RunSummary + historyTokens + baseTokens
 		threshold := int(float64(m.budgetManager.ModelWindow()) * 0.9)
 		if totalMeasured > threshold {
 			m.logger.Warnw("emergency context compaction triggered",
