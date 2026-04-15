@@ -61,8 +61,8 @@ func (m *inputModel) SetState(state chatState) tea.Cmd {
 		m.textarea.Placeholder = defaultComposerPlaceholder
 		return m.textarea.Focus()
 	case stateStreaming:
-		m.textarea.Placeholder = "Lango is responding. Ctrl+C cancels the current turn."
-		m.textarea.Blur()
+		m.textarea.Placeholder = "Type to interrupt and redirect... (Ctrl+C to cancel)"
+		return m.textarea.Focus()
 	case stateApproving:
 		m.textarea.Placeholder = "Approval is required below before the turn can continue."
 		m.textarea.Blur()

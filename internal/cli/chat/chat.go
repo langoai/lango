@@ -70,6 +70,8 @@ type ChatModel struct {
 
 	lastCtrlC time.Time
 
+	pendingRedirectInput string // queued input to submit after cancelled turn completes
+
 	cpr cprFilter
 }
 
@@ -203,6 +205,24 @@ func (m *ChatModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case DoneMsg:
 		m.dismissPending()
 		m.chatView.stopCursorBlink()
+
+		// Short-circuit: if a redirect is queued, skip error display and
+		// immediately submit the pending input as the next turn.
+		if m.pendingRedirectInput != "" {
+			redirect := m.pendingRedirectInput
+			m.pendingRedirectInput = ""
+			if m.chatView.streamBuf.Len() > 0 {
+				m.chatView.finalizeStream()
+			}
+			m.chatView.appendUser(redirect)
+			m.pending.Activate()
+			return m, tea.Batch(
+				m.transitionTo(stateStreaming),
+				m.submitCmd(redirect),
+				m.pending.TickCmd(),
+			)
+		}
+
 		if m.chatView.streamBuf.Len() > 0 {
 			m.chatView.finalizeStream()
 		} else if strings.TrimSpace(msg.Result.ResponseText) != "" {
@@ -386,7 +406,7 @@ func (m *ChatModel) taskStripTick() tea.Cmd {
 }
 
 func (m *ChatModel) inputAcceptsText() bool {
-	return m.state == stateIdle || m.state == stateFailed
+	return m.state == stateIdle || m.state == stateFailed || m.state == stateStreaming
 }
 
 func (m *ChatModel) transitionTo(state chatState) tea.Cmd {
@@ -458,11 +478,29 @@ func (m *ChatModel) handleIdleKey(msg tea.KeyMsg) tea.Cmd {
 }
 
 func (m *ChatModel) handleStreamingKey(msg tea.KeyMsg) tea.Cmd {
-	if key.Matches(msg, key.NewBinding(key.WithKeys("ctrl+c"))) {
+	switch {
+	case key.Matches(msg, key.NewBinding(key.WithKeys("ctrl+c"))):
 		if m.cancelFn != nil {
 			m.cancelFn()
 		}
 		return m.transitionTo(stateCancelling)
+
+	case key.Matches(msg, key.NewBinding(key.WithKeys("enter"))):
+		input := strings.TrimSpace(m.input.Value())
+		if input == "" {
+			return nil
+		}
+		m.pendingRedirectInput = input
+		m.input.Reset()
+		if m.cancelFn != nil {
+			m.cancelFn()
+		}
+		m.chatView.stopCursorBlink()
+		if m.chatView.streamBuf.Len() > 0 {
+			m.chatView.finalizeStream()
+		}
+		m.chatView.appendStatus("[interrupted]", "warning")
+		return nil
 	}
 	return nil
 }

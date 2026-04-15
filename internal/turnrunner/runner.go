@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"math/rand"
 	"strings"
 	"sync"
 	"time"
@@ -57,6 +58,11 @@ type Config struct {
 	IdleTimeout time.Duration
 	HardCeiling time.Duration
 	TraceStore  turntrace.Store
+
+	// StaleTimeout is how long to wait for the next streaming chunk before
+	// considering the stream stale and cancelling the attempt. Zero means
+	// use default (30s). Negative disables stale detection.
+	StaleTimeout time.Duration
 
 	// DelegationBudgetMax is the delegation count threshold for budget warnings.
 	// Zero means use default (15).
@@ -112,6 +118,7 @@ type Runner struct {
 	traceStore          turntrace.Store
 	idleTimeout         time.Duration
 	hardCeiling         time.Duration
+	staleTimeout        time.Duration
 	delegationBudgetMax int
 
 	mu        sync.RWMutex
@@ -135,6 +142,11 @@ func New(
 		delegMax = 15
 	}
 
+	staleTimeout := cfg.StaleTimeout
+	if staleTimeout == 0 {
+		staleTimeout = 30 * time.Second
+	}
+
 	return &Runner{
 		executor:            executor,
 		sessionStore:        sessionStore,
@@ -142,6 +154,7 @@ func New(
 		traceStore:          cfg.TraceStore,
 		idleTimeout:         cfg.IdleTimeout,
 		hardCeiling:         hardCeiling,
+		staleTimeout:        staleTimeout,
 		delegationBudgetMax: delegMax,
 	}
 }
@@ -181,24 +194,58 @@ func (r *Runner) Run(parent context.Context, req Request) (Result, error) {
 	recorder.toolStartedAt = make(map[string]time.Time)
 	recorder.start(req.SessionKey, entrypoint, start)
 
-	ctx, cancel, _, runOpts := r.prepareContext(parent, req, recorder, start)
-	defer cancel()
+	const maxAttempts = 3
 
-	ctx = langosession.WithSessionKey(ctx, req.SessionKey)
-	ctx = langosession.WithTurnID(ctx, traceID)
-	ctx = approval.WithTurnApprovalState(ctx, approval.NewTurnApprovalState())
-	ctx = browser.WithRequestState(ctx, browser.NewRequestState())
+	var result Result
+	for attempt := 0; attempt < maxAttempts; attempt++ {
+		ctx, cancel, _, runOpts := r.prepareContext(parent, req, recorder, start)
 
-	report, runErr := r.executor.RunStreamingDetailed(
-		ctx,
-		req.SessionKey,
-		req.Input,
-		r.wrapChunkCallback(req.OnChunk),
-		runOpts...,
-	)
+		ctx = langosession.WithSessionKey(ctx, req.SessionKey)
+		ctx = langosession.WithTurnID(ctx, traceID)
+		ctx = approval.WithTurnApprovalState(ctx, approval.NewTurnApprovalState())
+		ctx = browser.WithRequestState(ctx, browser.NewRequestState())
 
-	elapsed := time.Since(start)
-	result := r.classifyResult(report, runErr, elapsed)
+		chunkCb, stopStale := r.wrapChunkCallbackWithStale(req.OnChunk, cancel)
+		report, runErr := r.executor.RunStreamingDetailed(
+			ctx,
+			req.SessionKey,
+			req.Input,
+			chunkCb,
+			runOpts...,
+		)
+		stopStale()
+		cancel()
+
+		elapsed := time.Since(start)
+		result = r.classifyResult(report, runErr, elapsed)
+
+		action := adk.RecoveryActionFor(adk.FailureClassification{
+			Code:       adk.ErrorCode(result.ErrorCode),
+			CauseClass: result.CauseClass,
+		})
+		if action != adk.RecoveryRetry || attempt >= maxAttempts-1 {
+			break
+		}
+
+		// Record recovery event and backoff before next attempt.
+		recorder.recordRecovery(adk.RecoveryInfo{
+			Action:     "retry",
+			CauseClass: result.CauseClass,
+			Attempt:    attempt + 1,
+			Backoff:    retryBackoff(attempt),
+		})
+		logger().Infow("retrying after transient failure",
+			"attempt", attempt+1,
+			"causeClass", result.CauseClass,
+			"backoff", retryBackoff(attempt),
+		)
+		timer := time.NewTimer(retryBackoff(attempt))
+		select {
+		case <-timer.C:
+		case <-parent.Done():
+			timer.Stop()
+		}
+	}
 	if result.TraceID == "" {
 		result.TraceID = traceID
 	}
@@ -290,6 +337,46 @@ func (r *Runner) wrapChunkCallback(onChunk func(string)) adk.ChunkCallback {
 		}
 		onChunk(chunk)
 	}
+}
+
+// wrapChunkCallbackWithStale wraps the chunk callback with a stale stream
+// watchdog. The watchdog starts on the first chunk and resets on each
+// subsequent chunk. If no chunk arrives for staleTimeout, attemptCancel is
+// called. Returns the wrapped callback and a stop function that MUST be called
+// when the attempt finishes (to prevent the timer from firing after cancel).
+func (r *Runner) wrapChunkCallbackWithStale(onChunk func(string), attemptCancel context.CancelFunc) (adk.ChunkCallback, func()) {
+	inner := r.wrapChunkCallback(onChunk)
+	if inner == nil || r.staleTimeout < 0 {
+		return inner, func() {}
+	}
+
+	var staleTimer *time.Timer
+	var mu sync.Mutex
+	gotFirstChunk := false
+
+	stop := func() {
+		mu.Lock()
+		defer mu.Unlock()
+		if staleTimer != nil {
+			staleTimer.Stop()
+		}
+	}
+
+	return func(chunk string) {
+		mu.Lock()
+		if !gotFirstChunk && chunk != "" {
+			gotFirstChunk = true
+			staleTimer = time.AfterFunc(r.staleTimeout, func() {
+				logger().Warnw("stale stream detected, cancelling attempt",
+					"staleTimeout", r.staleTimeout)
+				attemptCancel()
+			})
+		} else if gotFirstChunk && staleTimer != nil {
+			staleTimer.Reset(r.staleTimeout)
+		}
+		mu.Unlock()
+		inner(chunk)
+	}, stop
 }
 
 func (r *Runner) classifyResult(report adk.RunReport, runErr error, elapsed time.Duration) Result {
@@ -704,4 +791,12 @@ func truncateText(s string, max int) string {
 		return s[:max]
 	}
 	return s[:max-3] + "..."
+}
+
+// retryBackoff returns a jittered exponential backoff duration for the given
+// zero-based attempt index: base * 2^attempt + random jitter up to 500ms.
+func retryBackoff(attempt int) time.Duration {
+	base := time.Duration(1<<uint(attempt)) * time.Second // 1s, 2s, 4s
+	jitter := time.Duration(rand.Int63n(int64(500 * time.Millisecond)))
+	return base + jitter
 }

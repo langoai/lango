@@ -1,9 +1,7 @@
 ## Purpose
 
 Capability spec for interactive-tui-chat. See requirements below for scope and behavior contracts.
-
 ## Requirements
-
 ### Requirement: Interactive TUI chat on bare invocation
 Running `lango` without arguments SHALL start an interactive terminal chat session using bubbletea. `lango serve` SHALL continue to work as the full gateway + channels mode.
 
@@ -16,11 +14,20 @@ Running `lango` without arguments SHALL start an interactive terminal chat sessi
 - **THEN** the full gateway + channels server starts as before
 
 ### Requirement: Real-time streaming responses
-The TUI SHALL stream agent responses in real-time via `TurnRunner.Run()`.
+The TUI SHALL stream agent responses in real-time via `TurnRunner.Run()`. During streaming, the input composer SHALL remain focused and accept user input. If the user submits input during streaming, the current turn SHALL be cancelled and the new input SHALL be queued for immediate submission after the cancelled turn completes.
 
 #### Scenario: Streaming output displayed incrementally
 - **WHEN** the agent generates a response
 - **THEN** text appears incrementally in the chat viewport as tokens arrive
+
+#### Scenario: User can type during streaming
+- **WHEN** the agent is streaming a response
+- **THEN** the input composer SHALL be focused and accept text input
+
+#### Scenario: User submits input during streaming
+- **WHEN** the user presses Enter with non-empty input during streaming
+- **THEN** the current turn SHALL be cancelled
+- **AND** the new input SHALL be submitted as the next turn after cancellation completes
 
 ### Requirement: Inline tool approval prompts
 Tool executions SHALL show inline approval prompts with keyboard shortcuts: `a` (allow), `s` (allow for session), `d`/`Esc` (deny).
@@ -175,3 +182,4 @@ ChatModel SHALL use composite sub-model types for CPR filtering (`cprFilter`), p
 - **WHEN** an approval request arrives
 - **THEN** ChatModel SHALL call `m.approval.Reset(&msg)` to initialize and `m.approval.Clear()` after response
 - **AND** `m.approval.pending`, `m.approval.confirmPending` SHALL be used for rendering and key handling
+

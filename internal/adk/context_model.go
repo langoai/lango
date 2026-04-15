@@ -30,6 +30,13 @@ type MemoryProvider interface {
 	ListRecentObservations(ctx context.Context, sessionKey string, limit int) ([]memory.Observation, error)
 }
 
+// SessionCompactor abstracts session message compaction for the context model.
+// When the measured context exceeds the model window threshold, the adapter
+// calls CompactMessages to shrink the message history.
+type SessionCompactor interface {
+	CompactMessages(key string, upToIndex int, summary string) error
+}
+
 // RunSummaryProvider retrieves active RunLedger summaries for a session.
 type RunSummaryProvider interface {
 	ListRunSummaries(ctx context.Context, sessionKey string, limit int) ([]RunSummaryContext, error)
@@ -64,6 +71,7 @@ type ContextAwareModelAdapter struct {
 	maxObservations    int
 	memoryTokenBudget  int // max tokens for the memory section; 0 = default (4000)
 	budgetManager      *ContextBudgetManager
+	sessionCompactor   SessionCompactor
 	bus                *eventbus.Bus
 	logger             *zap.SugaredLogger
 }
@@ -151,6 +159,15 @@ func (m *ContextAwareModelAdapter) WithMemoryTokenBudget(budget int) *ContextAwa
 // When set, GenerateContent computes per-section budgets and truncates content to fit.
 func (m *ContextAwareModelAdapter) WithBudgetManager(bm *ContextBudgetManager) *ContextAwareModelAdapter {
 	m.budgetManager = bm
+	return m
+}
+
+// WithSessionCompactor sets the session message compactor for emergency context
+// compaction. When the measured token total exceeds 90% of the model window,
+// GenerateContent invokes the compactor to shrink the message history before
+// proceeding with the LLM call.
+func (m *ContextAwareModelAdapter) WithSessionCompactor(sc SessionCompactor) *ContextAwareModelAdapter {
+	m.sessionCompactor = sc
 	return m
 }
 
@@ -277,6 +294,30 @@ func (m *ContextAwareModelAdapter) GenerateContent(ctx context.Context, req *mod
 		if budgets.Degraded {
 			m.logger.Warnw("context budget degraded to unlimited — model window too small for base prompt",
 				"modelWindow", m.budgetManager.ModelWindow())
+		}
+	}
+
+	// ──────────────────────────────────────────────────────────
+	// Phase 2.5: Emergency compaction if context nears model window.
+	// Trigger: measured total > modelWindow × 0.9, compactor available.
+	// NOT triggered by budgets.Degraded (that's a config issue).
+	// ──────────────────────────────────────────────────────────
+	if m.sessionCompactor != nil && m.budgetManager != nil && !budgets.Degraded && sessionKey != "" {
+		totalMeasured := measured.Knowledge + measured.RAG + measured.Memory + measured.RunSummary
+		threshold := int(float64(m.budgetManager.ModelWindow()) * 0.9)
+		if totalMeasured > threshold {
+			m.logger.Warnw("emergency context compaction triggered",
+				"measured", totalMeasured,
+				"threshold", threshold,
+				"sessionKey", sessionKey,
+			)
+			if err := m.sessionCompactor.CompactMessages(sessionKey, -1, ""); err != nil {
+				m.logger.Errorw("emergency compaction failed", "error", err)
+			}
+			// Note: compaction ran at most once per GenerateContent call.
+			// We do NOT restart Phase 1 here because the LLM request's
+			// Contents already carry the session history from ADK.
+			// Compaction shortens future turns, not the current one.
 		}
 	}
 

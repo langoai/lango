@@ -362,6 +362,11 @@ func initAgent(ctx context.Context, deps *agentDeps) (*adk.Agent, error) {
 
 		ctxAdapter := adk.NewContextAwareModelAdapter(modelAdapter, retriever, builder, logger())
 		ctxAdapter.WithRuntimeAdapter(runtimeAdapter)
+
+		// Wire session compactor for emergency context compaction.
+		if entStore, ok := store.(*session.EntStore); ok {
+			ctxAdapter.WithSessionCompactor(entStore)
+		}
 		if deps.rls != nil && cfg.RunLedger.Enabled && cfg.RunLedger.AuthoritativeRead {
 			ctxAdapter.WithRunSummaryProvider(&runSummaryProviderAdapter{store: deps.rls})
 		}

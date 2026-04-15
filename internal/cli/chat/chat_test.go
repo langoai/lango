@@ -477,6 +477,87 @@ func TestDoublePress_DenyResetsConfirm(t *testing.T) {
 	}
 }
 
+func TestRedirect_DuringStreamingQueuesAndCancels(t *testing.T) {
+	m := newTestModel()
+	m.state = stateStreaming
+	cancelled := false
+	m.cancelFn = func() { cancelled = true }
+	m.chatView.appendChunk("partial response")
+
+	// Directly set the field and call handleStreamingKey to simulate
+	// Enter with content, bypassing textarea's own Enter→newline behavior.
+	m.input.textarea.SetValue("new question")
+	m.handleStreamingKey(tea.KeyMsg{Type: tea.KeyEnter})
+
+	if m.pendingRedirectInput != "new question" {
+		t.Fatalf("want pendingRedirectInput='new question', got %q", m.pendingRedirectInput)
+	}
+	if !cancelled {
+		t.Fatal("cancelFn should have been called")
+	}
+}
+
+func TestRedirect_EmptyInputDuringStreamingIgnored(t *testing.T) {
+	m := newTestModel()
+	m.state = stateStreaming
+	cancelled := false
+	m.cancelFn = func() { cancelled = true }
+
+	m.input.textarea.SetValue("")
+	m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+
+	if m.pendingRedirectInput != "" {
+		t.Fatalf("want empty pendingRedirectInput, got %q", m.pendingRedirectInput)
+	}
+	if cancelled {
+		t.Fatal("cancelFn should not be called for empty input")
+	}
+}
+
+func TestRedirect_DoneMsgConsumesAndResubmits(t *testing.T) {
+	m := newTestModel()
+	m.pendingRedirectInput = "follow-up question"
+
+	// DoneMsg short-circuit path modifies m in place (pointer receiver).
+	m.Update(DoneMsg{Result: turnrunner.Result{Outcome: "timeout"}})
+
+	if m.pendingRedirectInput != "" {
+		t.Fatalf("pendingRedirectInput should be cleared, got %q", m.pendingRedirectInput)
+	}
+	// The user input should appear as a user entry in the chatView.
+	var found bool
+	for _, e := range m.chatView.entries {
+		if e.kind == itemUser && e.content == "follow-up question" {
+			found = true
+			break
+		}
+	}
+	if !found {
+		kinds := make([]string, len(m.chatView.entries))
+		for i, e := range m.chatView.entries {
+			kinds[i] = fmt.Sprintf("%s:content=%q", e.kind, e.content)
+		}
+		t.Fatalf("redirect input should be appended as user entry, got entries: %v", kinds)
+	}
+	if m.state != stateStreaming {
+		t.Fatalf("want stateStreaming after redirect, got %v", m.state)
+	}
+}
+
+func TestRedirect_DoneMsgWithoutRedirectPreservesExistingBehavior(t *testing.T) {
+	m := newTestModel()
+	m.chatView.appendChunk("partial")
+
+	m.Update(DoneMsg{Result: turnrunner.Result{
+		Outcome:     "timeout",
+		UserMessage: "Request timed out",
+	}})
+
+	if m.state != stateFailed {
+		t.Fatalf("want stateFailed without redirect, got %v", m.state)
+	}
+}
+
 func TestCPRTimeoutFlushesEsc(t *testing.T) {
 	m := newTestModel()
 	m.Update(tea.KeyMsg{Type: tea.KeyEscape})
