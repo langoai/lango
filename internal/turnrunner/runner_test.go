@@ -618,6 +618,69 @@ func TestRetryLoop_MaxAttemptsExhausted(t *testing.T) {
 	assert.Equal(t, adk.CauseProviderRateLimit, result.CauseClass)
 }
 
+// modeCapturingExecutor records the mode name resolved from context when
+// RunStreamingDetailed is invoked.
+type modeCapturingExecutor struct {
+	capturedMode string
+}
+
+func (e *modeCapturingExecutor) RunStreamingDetailed(
+	ctx context.Context,
+	_, _ string,
+	_ adk.ChunkCallback,
+	opts ...adk.RunOption,
+) (adk.RunReport, error) {
+	hooks := adk.ResolveRunHooks(opts...)
+	defer func() {
+		if hooks.OnFinish != nil {
+			hooks.OnFinish()
+		}
+	}()
+	e.capturedMode = langosession.ModeNameFromContext(ctx)
+	return adk.RunReport{Response: "ok"}, nil
+}
+
+// stubModeStore satisfies the langosession.Store subset needed by the runner
+// for the mode-propagation test (Get + AnnotateTimeout). Other methods are
+// no-ops returning nil to keep the fake minimal.
+type stubModeStore struct {
+	session *langosession.Session
+}
+
+func (s *stubModeStore) Create(*langosession.Session) error { return nil }
+func (s *stubModeStore) Get(key string) (*langosession.Session, error) {
+	if s.session != nil && s.session.Key == key {
+		return s.session, nil
+	}
+	return nil, fmt.Errorf("not found")
+}
+func (s *stubModeStore) Update(*langosession.Session) error            { return nil }
+func (s *stubModeStore) Delete(string) error                           { return nil }
+func (s *stubModeStore) AppendMessage(string, langosession.Message) error { return nil }
+func (s *stubModeStore) AnnotateTimeout(string, string) error          { return nil }
+func (s *stubModeStore) ListSessions(context.Context) ([]langosession.SessionSummary, error) {
+	return nil, nil
+}
+func (s *stubModeStore) GetSalt(string) ([]byte, error)  { return nil, nil }
+func (s *stubModeStore) SetSalt(string, []byte) error    { return nil }
+func (s *stubModeStore) Close() error                    { return nil }
+
+func TestRunner_PropagatesSessionModeToExecutor(t *testing.T) {
+	exec := &modeCapturingExecutor{}
+
+	sess := &langosession.Session{Key: "mode-prop-test"}
+	sess.SetMode("research")
+	store := &stubModeStore{session: sess}
+
+	runner := New(Config{HardCeiling: 30 * time.Second}, exec, store, nil)
+	_, err := runner.Run(context.Background(), Request{
+		SessionKey: "mode-prop-test",
+		Input:      "hello",
+	})
+	require.NoError(t, err)
+	assert.Equal(t, "research", exec.capturedMode)
+}
+
 func TestStaleDetection_TimerResetOnChunk(t *testing.T) {
 	// If chunks keep arriving, no stale detection should fire.
 	exec := &fixtureExecutor{

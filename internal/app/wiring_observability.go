@@ -11,6 +11,7 @@ import (
 	"github.com/langoai/lango/internal/observability"
 	"github.com/langoai/lango/internal/observability/health"
 	"github.com/langoai/lango/internal/observability/token"
+	"github.com/langoai/lango/internal/provider"
 	"github.com/langoai/lango/internal/toolchain"
 )
 
@@ -138,12 +139,13 @@ func wireModelAdapterTokenUsage(adapter *adk.ModelAdapter, bus *eventbus.Bus) {
 	}
 	adapter.OnTokenUsage = func(providerID, model string, input, output, total, cache int64) {
 		bus.Publish(eventbus.TokenUsageEvent{
-			Provider:     providerID,
-			Model:        model,
-			InputTokens:  input,
-			OutputTokens: output,
-			TotalTokens:  total,
-			CacheTokens:  cache,
+			Provider:         providerID,
+			Model:            model,
+			InputTokens:      input,
+			OutputTokens:     output,
+			TotalTokens:      total,
+			CacheTokens:      cache,
+			EstimatedCostUSD: provider.EstimateCostUSD(model, int(input), int(output)),
 		})
 	}
 }

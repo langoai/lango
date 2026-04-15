@@ -18,6 +18,8 @@ import (
 	"github.com/langoai/lango/internal/approval"
 	"github.com/langoai/lango/internal/background"
 	"github.com/langoai/lango/internal/config"
+	"github.com/langoai/lango/internal/eventbus"
+	"github.com/langoai/lango/internal/session"
 	"github.com/langoai/lango/internal/turnrunner"
 )
 
@@ -26,6 +28,8 @@ type Deps struct {
 	TurnRunner        *turnrunner.Runner
 	Config            *config.Config
 	SessionKey        string
+	SessionStore      session.Store       // optional; used by /mode to persist the session's mode
+	EventBus          *eventbus.Bus       // optional; used by /mode to publish ModeChangedEvent
 	BackgroundManager *background.Manager // optional, nil when background tasks unavailable
 }
 
@@ -45,9 +49,11 @@ type ChatParts struct {
 
 // ChatModel is the root bubbletea model for the interactive TUI chat.
 type ChatModel struct {
-	turnRunner *turnrunner.Runner
-	cfg        *config.Config
-	sessionKey string
+	turnRunner   *turnrunner.Runner
+	cfg          *config.Config
+	sessionKey   string
+	sessionStore session.Store // optional; enables /mode to persist session mode
+	eventBus     *eventbus.Bus // optional; enables /mode to publish ModeChangedEvent
 
 	input    inputModel
 	chatView chatViewModel
@@ -72,21 +78,74 @@ type ChatModel struct {
 
 	pendingRedirectInput string // queued input to submit after cancelled turn completes
 
+	// Session cumulative usage (for /cost slash command).
+	sessionInputTokens  int64
+	sessionOutputTokens int64
+	sessionCostUSD      float64
+
 	cpr cprFilter
 }
 
 // New creates a new ChatModel with the given dependencies.
 func New(deps Deps) *ChatModel {
 	return &ChatModel{
-		turnRunner: deps.TurnRunner,
-		cfg:        deps.Config,
-		sessionKey: deps.SessionKey,
-		bgManager:  deps.BackgroundManager,
-		taskStrip:  newTaskStripModel(deps.BackgroundManager),
-		input:      newInputModel(),
-		chatView:   newChatViewModel(80, 20),
-		state:      stateIdle,
+		turnRunner:   deps.TurnRunner,
+		cfg:          deps.Config,
+		sessionKey:   deps.SessionKey,
+		sessionStore: deps.SessionStore,
+		eventBus:     deps.EventBus,
+		bgManager:    deps.BackgroundManager,
+		taskStrip:    newTaskStripModel(deps.BackgroundManager),
+		input:        newInputModel(),
+		chatView:     newChatViewModel(80, 20),
+		state:        stateIdle,
 	}
+}
+
+// currentModeName returns the active session mode name, or "" if none is set
+// or the session store is unavailable.
+func (m *ChatModel) currentModeName() string {
+	if m.sessionStore == nil {
+		return ""
+	}
+	s, err := m.sessionStore.Get(m.sessionKey)
+	if err != nil || s == nil {
+		return ""
+	}
+	return s.Mode()
+}
+
+// setSessionMode persists the given mode name on the active session and
+// publishes a ModeChangedEvent so multi-channel subscribers can render the
+// transition in their native format. An empty name clears the mode.
+func (m *ChatModel) setSessionMode(name string) error {
+	if m.sessionStore == nil {
+		return fmt.Errorf("session store not available")
+	}
+	var oldMode string
+	s, err := m.sessionStore.Get(m.sessionKey)
+	if err != nil || s == nil {
+		// Create the session record on the fly so /mode can be set before the
+		// first turn (which would otherwise create the session lazily).
+		s = &session.Session{Key: m.sessionKey}
+		if createErr := m.sessionStore.Create(s); createErr != nil {
+			return fmt.Errorf("create session: %w", createErr)
+		}
+	} else {
+		oldMode = s.Mode()
+	}
+	s.SetMode(name)
+	if err := m.sessionStore.Update(s); err != nil {
+		return err
+	}
+	if m.eventBus != nil {
+		m.eventBus.Publish(eventbus.ModeChangedEvent{
+			SessionKey: m.sessionKey,
+			OldMode:    oldMode,
+			NewMode:    name,
+		})
+	}
+	return nil
 }
 
 // SetProgram stores a reference to the tea.Program for sending messages from callbacks.
@@ -301,7 +360,11 @@ func (m *ChatModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case TurnTokenUsageMsg:
-		m.chatView.appendTokenSummary(msg.InputTokens, msg.OutputTokens, msg.TotalTokens, msg.CacheTokens)
+		m.chatView.appendTokenSummaryWithCost(msg.InputTokens, msg.OutputTokens, msg.TotalTokens, msg.CacheTokens, msg.EstimatedCostUSD)
+		// Track session cumulative totals for /cost summary.
+		m.sessionInputTokens += msg.InputTokens
+		m.sessionOutputTokens += msg.OutputTokens
+		m.sessionCostUSD += msg.EstimatedCostUSD
 		return m, nil
 
 	case ChannelMessageMsg:

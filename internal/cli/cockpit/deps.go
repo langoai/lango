@@ -8,6 +8,7 @@ import (
 	"github.com/langoai/lango/internal/configstore"
 	"github.com/langoai/lango/internal/eventbus"
 	"github.com/langoai/lango/internal/observability"
+	"github.com/langoai/lango/internal/session"
 	"github.com/langoai/lango/internal/toolcatalog"
 	"github.com/langoai/lango/internal/turnrunner"
 )
@@ -19,6 +20,7 @@ type Deps struct {
 	TurnRunner        *turnrunner.Runner
 	Config            *config.Config
 	SessionKey        string
+	SessionStore      session.Store // optional; enables /mode to persist session mode
 	ToolCatalog       *toolcatalog.Catalog
 	MetricsCollector  *observability.MetricsCollector
 	FeatureStatuses   *app.StatusCollector

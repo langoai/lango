@@ -205,6 +205,16 @@ func (r *Runner) Run(parent context.Context, req Request) (Result, error) {
 		ctx = approval.WithTurnApprovalState(ctx, approval.NewTurnApprovalState())
 		ctx = browser.WithRequestState(ctx, browser.NewRequestState())
 
+		// Propagate the session's active mode (if any) so the context model
+		// adapter and middleware-level enforcement see the same value.
+		if r.sessionStore != nil {
+			if s, getErr := r.sessionStore.Get(req.SessionKey); getErr == nil && s != nil {
+				if name := s.Mode(); name != "" {
+					ctx = langosession.WithModeName(ctx, name)
+				}
+			}
+		}
+
 		chunkCb, stopStale := r.wrapChunkCallbackWithStale(req.OnChunk, cancel)
 		report, runErr := r.executor.RunStreamingDetailed(
 			ctx,

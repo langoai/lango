@@ -321,7 +321,7 @@ func (m *intelligenceModule) Init(ctx context.Context, r appinit.Resolver) (*app
 		// FTS5 search index.
 		fts5Available = initFTS5(ctx, m.rawDB, kc.store)
 
-		metaTools := buildMetaTools(kc.store, kc.engine, skillReg, cfg.Skill)
+		metaTools := buildMetaTools(kc.store, kc.engine, skillReg, cfg.Skill, cfg)
 		tools = append(tools, metaTools...)
 		entries = append(entries, appinit.CatalogEntry{Category: "meta", Description: "Knowledge, learning, and skill management", ConfigKey: "knowledge.enabled", Enabled: true, Tools: metaTools})
 	} else {

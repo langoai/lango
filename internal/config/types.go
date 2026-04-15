@@ -134,6 +134,27 @@ type Config struct {
 
 	// Providers configuration
 	Providers map[string]ProviderConfig `mapstructure:"providers" json:"providers"`
+
+	// Modes is the map of session-mode definitions keyed by mode name.
+	// User-defined entries merge with built-in modes (user overrides win on name conflict).
+	Modes map[string]SessionMode `mapstructure:"modes" json:"modes,omitempty"`
+}
+
+// SessionMode narrows the agent's active capabilities for a session.
+// The LLM sees only tools in the mode's allowlist, skills listed here, and a
+// SystemHint guiding scope. Tool execution is also enforced at middleware level.
+type SessionMode struct {
+	// Name is the mode identifier (e.g., "code-review").
+	Name string `mapstructure:"name" json:"name"`
+	// Tools is a list of tool names or "@category" references. Categories expand
+	// to all tools in that category at resolution time.
+	Tools []string `mapstructure:"tools" json:"tools,omitempty"`
+	// Skills is a list of skill names that remain discoverable in this mode.
+	// Empty = all skills discoverable (legacy behavior).
+	Skills []string `mapstructure:"skills" json:"skills,omitempty"`
+	// SystemHint is a free-form prompt snippet appended to the per-turn system
+	// prompt when this mode is active.
+	SystemHint string `mapstructure:"systemHint" json:"systemHint,omitempty"`
 }
 
 // ContextConfig controls token budget allocation across prompt sections.

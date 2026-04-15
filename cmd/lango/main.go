@@ -92,9 +92,11 @@ func main() {
 			if !prompt.IsInteractive() {
 				return cmd.Help()
 			}
-			return runCockpit()
+			modeName, _ := cmd.Flags().GetString("mode")
+			return runCockpit(modeName)
 		},
 	}
+	rootCmd.PersistentFlags().String("mode", "", "Initial session mode (e.g., code-review, research, debug)")
 
 	rootCmd.AddGroup(
 		&cobra.Group{ID: "start", Title: "Getting Started:"},
@@ -286,9 +288,11 @@ func runChat() error {
 	sessionKey := fmt.Sprintf("tui-%d", time.Now().UnixMilli())
 
 	model := chat.New(chat.Deps{
-		TurnRunner: application.TurnRunner,
-		Config:     cfg,
-		SessionKey: sessionKey,
+		TurnRunner:   application.TurnRunner,
+		Config:       cfg,
+		SessionKey:   sessionKey,
+		SessionStore: application.Store,
+		EventBus:     application.EventBus,
 	})
 
 	p := tea.NewProgram(model, tea.WithAltScreen(), tea.WithMouseCellMotion())
@@ -538,9 +542,11 @@ func cockpitCmd() *cobra.Command {
 			if !prompt.IsInteractive() {
 				return fmt.Errorf("cockpit requires an interactive terminal")
 			}
-			return runCockpit()
+			modeName, _ := cmd.Flags().GetString("mode")
+			return runCockpit(modeName)
 		},
 	}
+	cmd.Flags().String("mode", "", "Initial session mode (e.g., code-review, research, debug)")
 	cmd.Flags().BoolVar(&withChannels, "with-channels", false,
 		"Start live channel adapters (Telegram/Discord/Slack). "+
 			"Only use when no lango serve is running with the same credentials.")
@@ -561,7 +567,7 @@ func chatCmd() *cobra.Command {
 	}
 }
 
-func runCockpit() error {
+func runCockpit(initialMode string) error {
 	boot, err := cliboot.BootResult()
 	if err != nil {
 		return fmt.Errorf("bootstrap: %w", err)
@@ -637,10 +643,23 @@ func runCockpit() error {
 
 	sessionKey := fmt.Sprintf("cockpit-%d", time.Now().UnixMilli())
 
+	// Pre-create the session and persist initial mode if --mode was provided.
+	if initialMode != "" {
+		if _, ok := cfg.LookupMode(initialMode); !ok {
+			return fmt.Errorf("unknown mode %q; valid modes can be listed via /mode", initialMode)
+		}
+		s := &session.Session{Key: sessionKey}
+		s.SetMode(initialMode)
+		if err := application.Store.Create(s); err != nil {
+			return fmt.Errorf("create initial session: %w", err)
+		}
+	}
+
 	model := cockpit.New(cockpit.Deps{
 		TurnRunner:        application.TurnRunner,
 		Config:            cfg,
 		SessionKey:        sessionKey,
+		SessionStore:      application.Store,
 		ToolCatalog:       application.ToolCatalog,
 		MetricsCollector:  application.MetricsCollector,
 		FeatureStatuses:   application.FeatureStatuses,

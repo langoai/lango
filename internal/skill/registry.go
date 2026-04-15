@@ -249,6 +249,10 @@ func (r *Registry) skillToTool(sk SkillEntry) *agent.Tool {
 			Activity:    agent.ActivityRead,
 			ReadOnly:    true,
 			SearchHints: skillSearchHints(skillEntry),
+			// Instruction skills are deferred — they appear via list_skills/view_skill,
+			// not as standalone tools in the system prompt. Keeps token cost flat
+			// regardless of how many instruction skills are active.
+			Exposure: agent.ExposureDeferred,
 		}
 		return tool
 	}

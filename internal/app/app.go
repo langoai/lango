@@ -181,6 +181,10 @@ func New(boot *bootstrap.Result, opts ...AppOption) (*App, error) {
 	// B4c2. Principal injection — maps agent name to ontology principal.
 	tools = toolchain.ChainAll(tools, toolchain.WithPrincipal())
 
+	// B4c3. Mode allowlist enforcement — blocks tools outside the active
+	// session mode's allowlist before they reach approval/policy/handler layers.
+	tools = toolchain.ChainAll(tools, toolchain.WithModeAllowlist(buildModeAllowlistResolver(cfg, catalog)))
+
 	// B5. Auth + Gateway.
 	fv := resolver.Resolve(appinit.ProvidesSupervisor).(*foundationValues)
 	auth := initAuth(cfg, fv.Store)

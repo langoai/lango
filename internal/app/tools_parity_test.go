@@ -311,7 +311,7 @@ func TestBuildSecretsTools_Parity(t *testing.T) {
 func TestBuildMetaTools_Parity(t *testing.T) {
 	t.Parallel()
 
-	tools := buildMetaTools(nil, nil, nil, config.SkillConfig{})
+	tools := buildMetaTools(nil, nil, nil, config.SkillConfig{}, nil)
 
 	wantNames := []string{
 		"save_knowledge",
@@ -321,6 +321,7 @@ func TestBuildMetaTools_Parity(t *testing.T) {
 		"search_learnings",
 		"create_skill",
 		"list_skills",
+		"view_skill",
 		"import_skill",
 		"learning_stats",
 		"learning_cleanup",

@@ -68,7 +68,7 @@ When `available <= 0` (model window too small or base prompt too large), the `Co
 - **AND** SHALL log a warning that the model window is too small for the current base prompt configuration
 
 ### Requirement: Budget-aware section assembly
-The `ContextAwareModelAdapter.GenerateContent()` SHALL compute per-section budgets from the `ContextBudgetManager` (if set) before parallel retrieval. Each section assembly SHALL receive its budget and truncate content to fit. When no budget manager is set, existing unbounded behavior SHALL be preserved.
+The `ContextAwareModelAdapter.GenerateContent()` SHALL compute per-section budgets from the `ContextBudgetManager` (if set) before parallel retrieval. Each section assembly SHALL receive its budget and truncate content to fit. When no budget manager is set, existing unbounded behavior SHALL be preserved. The tool catalog section SHALL be generated dynamically per turn from the injected `*toolcatalog.Catalog` (not from `basePrompt`), using mode-filtered listing when a session mode is active.
 
 #### Scenario: Budget manager set
 - **WHEN** `WithBudgetManager()` has been called with a valid budget manager
@@ -85,6 +85,11 @@ The `ContextAwareModelAdapter.GenerateContent()` SHALL compute per-section budge
 #### Scenario: Section exceeds budget
 - **WHEN** a section's content exceeds its allocated budget
 - **THEN** the section SHALL be truncated by dropping lower-priority items until within budget
+
+#### Scenario: Tool catalog generated dynamically
+- **WHEN** `GenerateContent()` executes with a `WithCatalog()` wired catalog
+- **THEN** the tool catalog section SHALL be regenerated from the catalog for this turn
+- **AND** the section SHALL reflect the session's active mode allowlist if a mode is set
 
 ### Requirement: Config surface for context budget
 The system SHALL provide a `ContextConfig` struct in `internal/config/types.go` with fields: `ModelWindow` (int), `ResponseReserve` (int), and `Allocation` (SectionAllocation with Knowledge, RAG, Memory, RunSummary, Headroom float64 fields). Default allocation SHALL be 0.30/0.25/0.25/0.10/0.10. `contextProfile` SHALL remain top-level and independent.

@@ -72,8 +72,30 @@ type ContextAwareModelAdapter struct {
 	memoryTokenBudget  int // max tokens for the memory section; 0 = default (4000)
 	budgetManager      *ContextBudgetManager
 	sessionCompactor   SessionCompactor
+	catalogSource      CatalogSource
+	modeResolver       ModeResolver
 	bus                *eventbus.Bus
 	logger             *zap.SugaredLogger
+}
+
+// CatalogSource generates the dynamic tool catalog prompt section for a turn.
+// An implementation typically holds a *toolcatalog.Catalog and produces a
+// prompt-ready string listing visible tools, optionally filtered by the
+// session's active mode.
+type CatalogSource interface {
+	// BuildToolCatalogSection returns the tool catalog prompt section for
+	// the given mode name. An empty modeName means "no mode filter".
+	BuildToolCatalogSection(modeName string) string
+}
+
+// ModeResolver looks up a SessionMode definition by name. It is used to
+// resolve the system hint and skill allowlist for the active session.
+// Consumers inject a thin adapter around config.LookupMode to avoid an
+// import cycle between adk and config.
+type ModeResolver interface {
+	// LookupModeHint returns the SystemHint for the given mode name, or ""
+	// when the mode is unknown or has no hint.
+	LookupModeHint(modeName string) string
 }
 
 // NewContextAwareModelAdapter creates a context-aware model adapter.
@@ -168,6 +190,22 @@ func (m *ContextAwareModelAdapter) WithBudgetManager(bm *ContextBudgetManager) *
 // proceeding with the LLM call.
 func (m *ContextAwareModelAdapter) WithSessionCompactor(sc SessionCompactor) *ContextAwareModelAdapter {
 	m.sessionCompactor = sc
+	return m
+}
+
+// WithCatalog sets the tool catalog source used to generate the per-turn tool
+// catalog prompt section. When set, the tool catalog section is generated
+// dynamically in GenerateContent() from the current session mode, rather than
+// being baked into basePrompt at boot time.
+func (m *ContextAwareModelAdapter) WithCatalog(cs CatalogSource) *ContextAwareModelAdapter {
+	m.catalogSource = cs
+	return m
+}
+
+// WithModeResolver sets the mode resolver used to fetch the SystemHint for
+// the active session mode. A nil resolver disables mode hint injection.
+func (m *ContextAwareModelAdapter) WithModeResolver(r ModeResolver) *ContextAwareModelAdapter {
+	m.modeResolver = r
 	return m
 }
 
@@ -357,6 +395,21 @@ func (m *ContextAwareModelAdapter) GenerateContent(ctx context.Context, req *mod
 	}
 	if runSummarySection != "" {
 		prompt = fmt.Sprintf("%s\n\n%s", prompt, runSummarySection)
+	}
+
+	// Dynamic tool catalog section — generated per turn, mode-aware.
+	modeName := session.ModeNameFromContext(ctx)
+	if m.catalogSource != nil {
+		if toolCatalogSection := m.catalogSource.BuildToolCatalogSection(modeName); toolCatalogSection != "" {
+			prompt = fmt.Sprintf("%s\n\n%s", prompt, toolCatalogSection)
+		}
+	}
+
+	// Mode system hint injection.
+	if modeName != "" && m.modeResolver != nil {
+		if hint := m.modeResolver.LookupModeHint(modeName); hint != "" {
+			prompt = fmt.Sprintf("%s\n\n## Session Mode: %s\n\n%s", prompt, modeName, hint)
+		}
 	}
 
 	// Publish context injection event for observability.

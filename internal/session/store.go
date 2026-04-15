@@ -46,6 +46,35 @@ type Session struct {
 	UpdatedAt   time.Time         `json:"updatedAt"`
 }
 
+// MetadataKeyMode is the reserved key used to persist the session's active
+// mode name inside Session.Metadata.
+const MetadataKeyMode = "lango.mode"
+
+// Mode returns the active mode name persisted in the session's metadata.
+// Returns an empty string if no mode is set.
+func (s *Session) Mode() string {
+	if s == nil || s.Metadata == nil {
+		return ""
+	}
+	return s.Metadata[MetadataKeyMode]
+}
+
+// SetMode persists the given mode name in the session's metadata.
+// Passing an empty string clears the mode.
+func (s *Session) SetMode(name string) {
+	if s == nil {
+		return
+	}
+	if s.Metadata == nil {
+		s.Metadata = make(map[string]string)
+	}
+	if name == "" {
+		delete(s.Metadata, MetadataKeyMode)
+		return
+	}
+	s.Metadata[MetadataKeyMode] = name
+}
+
 // Store defines the interface for session storage
 type Store interface {
 	// Create creates a new session
