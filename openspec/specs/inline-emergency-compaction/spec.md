@@ -14,23 +14,20 @@ The system SHALL define a `SessionCompactor` interface with method `CompactMessa
 - **WHEN** `WithSessionCompactor` is not called
 - **THEN** the adapter SHALL NOT attempt emergency compaction (compactor is nil)
 
-### Requirement: Emergency compaction trigger in GenerateContent
-After Phase 2 (budget measurement) in `GenerateContent()`, the adapter SHALL check if `measured total tokens > modelWindow × 0.9`. If true and a `SessionCompactor` is available, the adapter SHALL invoke `CompactMessages()` synchronously, preserving the first 3 and last 6 messages, then restart from Phase 1 (retrieval). The compaction SHALL execute at most once per `GenerateContent()` call.
+### Requirement: Emergency compaction trigger measurement
+The emergency compaction trigger SHALL measure the TOTAL context size including conversation history (`req.Contents`), base prompt tokens, and all injected sections (Knowledge, RAG, Memory, RunSummary). The threshold comparison SHALL use `modelWindow × 0.9`.
 
-#### Scenario: Compaction triggered at 90% threshold
-- **WHEN** measured total tokens exceed 90% of the model window
-- **AND** a `SessionCompactor` is injected
-- **THEN** the adapter SHALL call `CompactMessages()` with the session key
-- **AND** SHALL restart retrieval from Phase 1 with the compacted message set
+#### Scenario: Long conversation triggers compaction
+- **WHEN** a session has 100K tokens of conversation history, 8K base prompt, and 5K injected context
+- **AND** the model window is 128K tokens
+- **THEN** `totalMeasured` SHALL be approximately 113K (100K + 8K + 5K)
+- **AND** compaction SHALL trigger because 113K > 115.2K × 0.9
 
-#### Scenario: Below threshold no compaction
-- **WHEN** measured total tokens are below 90% of the model window
-- **THEN** no compaction SHALL occur
-
-#### Scenario: Compaction runs at most once
-- **WHEN** compaction is triggered and the re-measured total still exceeds 90%
-- **THEN** the adapter SHALL NOT trigger a second compaction
-- **AND** SHALL proceed with the over-budget context (best effort)
+#### Scenario: Short conversation with heavy context does not over-trigger
+- **WHEN** a session has 5K tokens of conversation history, 8K base prompt, and 20K injected context
+- **AND** the model window is 128K tokens
+- **THEN** `totalMeasured` SHALL be approximately 33K
+- **AND** compaction SHALL NOT trigger because 33K < 115.2K
 
 ### Requirement: budgets.Degraded is not a compaction trigger
 The `budgets.Degraded` flag SHALL NOT trigger emergency compaction. `Degraded` indicates that the base prompt alone exceeds the model window budget, which is a configuration issue that session message compaction cannot resolve. When `Degraded` is true, the adapter SHALL log a warning and emit a user-facing message indicating the model window is too small for the current configuration.
