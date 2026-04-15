@@ -141,6 +141,23 @@ func (m *MockSessionStore) Close() error {
 	return m.CloseErr
 }
 
+// End marks the session with MetadataKeyEndPending and returns. The mock
+// store does not invoke any processor; tests that need processor wiring
+// should use EntStore directly.
+func (m *MockSessionStore) End(key string) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	s, ok := m.sessions[key]
+	if !ok {
+		return fmt.Errorf("session %q not found", key)
+	}
+	if s.Metadata == nil {
+		s.Metadata = make(map[string]string)
+	}
+	s.Metadata[session.MetadataKeyEndPending] = session.MetadataValueTrue
+	return nil
+}
+
 func (m *MockSessionStore) GetSalt(name string) ([]byte, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()

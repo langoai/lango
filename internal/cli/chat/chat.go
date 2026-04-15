@@ -88,7 +88,7 @@ type ChatModel struct {
 
 // New creates a new ChatModel with the given dependencies.
 func New(deps Deps) *ChatModel {
-	return &ChatModel{
+	m := &ChatModel{
 		turnRunner:   deps.TurnRunner,
 		cfg:          deps.Config,
 		sessionKey:   deps.SessionKey,
@@ -100,6 +100,8 @@ func New(deps Deps) *ChatModel {
 		chatView:     newChatViewModel(80, 20),
 		state:        stateIdle,
 	}
+	m.subscribeContinuityEvents()
+	return m
 }
 
 // currentModeName returns the active session mode name, or "" if none is set
@@ -225,6 +227,15 @@ func (m *ChatModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case ThinkingFinishedMsg:
 		m.chatView.finalizeThinking(msg.Summary, msg.Duration)
 		return m, nil
+
+	case CompactionCompletedTeaMsg:
+		return m.handleCompactionCompleted(msg)
+
+	case CompactionSlowTeaMsg:
+		return m.handleCompactionSlow(msg)
+
+	case LearningSuggestionTeaMsg:
+		return m.handleLearningSuggestion(msg)
 
 	case TaskStripTickMsg:
 		m.taskStrip.refresh()

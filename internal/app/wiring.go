@@ -264,8 +264,10 @@ type agentDeps struct {
 	p2pc         *p2pComponents
 	eventBus     *eventbus.Bus
 	rls          runledger.RunLedgerStore
-	prov         *provenanceValues
-	hookRegistry *toolchain.HookRegistry
+	prov            *provenanceValues
+	hookRegistry    *toolchain.HookRegistry
+	compactionSync  *compactionSyncHolder
+	recallIndex     *session.RecallIndex
 }
 
 // initAgent creates the ADK agent with the given tools and provider proxy.
@@ -374,6 +376,17 @@ func initAgent(ctx context.Context, deps *agentDeps) (*adk.Agent, error) {
 			ctxAdapter.WithRunSummaryProvider(&runSummaryProviderAdapter{store: deps.rls})
 		}
 
+		// Wire in background-compaction sync-point guard. The holder is
+		// filled in after CompactionBuffer is constructed (wireCompactionBuffer).
+		if deps.compactionSync != nil {
+			syncTimeout := cfg.Context.Compaction.ResolveCompaction().SyncTimeout
+			ctxAdapter.WithCompactionSync(deps.compactionSync, syncTimeout)
+		}
+
+		if deps.recallIndex != nil {
+			ctxAdapter.WithRecallProvider(newRecallProviderAdapter(deps.recallIndex, cfg.Context.Recall))
+		}
+
 		// Wire in context budget manager.
 		wireBudgetManager(cfg, builder, ctxAdapter)
 
@@ -438,6 +451,11 @@ func initAgent(ctx context.Context, deps *agentDeps) (*adk.Agent, error) {
 		}
 		if deps.rls != nil && cfg.RunLedger.Enabled && cfg.RunLedger.AuthoritativeRead {
 			ctxAdapter.WithRunSummaryProvider(&runSummaryProviderAdapter{store: deps.rls})
+		}
+
+		if deps.compactionSync != nil {
+			syncTimeout := cfg.Context.Compaction.ResolveCompaction().SyncTimeout
+			ctxAdapter.WithCompactionSync(deps.compactionSync, syncTimeout)
 		}
 
 		// Apply memory context limits from config.

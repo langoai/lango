@@ -643,6 +643,16 @@ func runCockpit(initialMode string) error {
 
 	sessionKey := fmt.Sprintf("cockpit-%d", time.Now().UnixMilli())
 
+	// Hard session end (TUI quit): bounded best-effort summarize/index.
+	// The EntStore processor honors its own hardEndTimeout so this call
+	// returns within a short bound even on a slow summarizer. Errors are
+	// ignored — a missing session (if the first turn never ran) is fine.
+	defer func() {
+		if application.Store != nil {
+			_ = application.Store.End(sessionKey)
+		}
+	}()
+
 	// Pre-create the session and persist initial mode if --mode was provided.
 	if initialMode != "" {
 		if _, ok := cfg.LookupMode(initialMode); !ok {

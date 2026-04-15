@@ -55,6 +55,11 @@ type Config struct {
 	// Knowledge configuration
 	Knowledge KnowledgeConfig `mapstructure:"knowledge" json:"knowledge"`
 
+	// Learning configuration (suggestion pipeline, etc.). Threshold and
+	// analysis knobs for the existing learning engine remain under
+	// Knowledge; this block covers the Phase 3 approval-gated suggestion UX.
+	Learning LearningConfig `mapstructure:"learning" json:"learning"`
+
 	// Observational Memory configuration
 	ObservationalMemory ObservationalMemoryConfig `mapstructure:"observationalMemory" json:"observationalMemory"`
 
@@ -171,6 +176,67 @@ type ContextConfig struct {
 	// Allocation controls the ratio of available tokens allocated to each section.
 	// All values must sum to 1.0.
 	Allocation ContextAllocationConfig `mapstructure:"allocation" json:"allocation"`
+
+	// Compaction controls background hygiene compaction (Phase 3A).
+	Compaction ContextCompactionConfig `mapstructure:"compaction" json:"compaction"`
+
+	// Recall controls FTS5-based session recall retrieval (Phase 3B).
+	Recall ContextRecallConfig `mapstructure:"recall" json:"recall"`
+}
+
+// ContextCompactionConfig controls post-turn background compaction.
+// After a turn, if the session's estimated message tokens exceed
+// modelWindow * Threshold, a compaction job is enqueued. The next turn's
+// GenerateContent waits up to SyncTimeout for in-flight compactions.
+type ContextCompactionConfig struct {
+	// Enabled toggles the whole subsystem (default true).
+	Enabled *bool `mapstructure:"enabled" json:"enabled"`
+	// Threshold is the ratio of modelWindow at which compaction triggers
+	// (default 0.5, valid range [0.1, 0.95]).
+	Threshold float64 `mapstructure:"threshold" json:"threshold"`
+	// SyncTimeout caps the wait at turn start for an in-flight compaction
+	// (default 2s, valid range [100ms, 10s]).
+	SyncTimeout time.Duration `mapstructure:"syncTimeout" json:"syncTimeout"`
+	// WorkerCount is the number of background compaction workers (default 1).
+	WorkerCount int `mapstructure:"workerCount" json:"workerCount"`
+}
+
+// ContextRecallConfig controls FTS5-based session recall retrieval.
+// At turn start, the retriever queries the recall index using the user's
+// input as the MATCH string and injects matching prior-session summaries
+// into the RAG section, respecting the section's token budget.
+type ContextRecallConfig struct {
+	// Enabled toggles the retriever (default true).
+	Enabled *bool `mapstructure:"enabled" json:"enabled"`
+	// TopN caps the number of matches returned per turn (default 3, valid [1,10]).
+	TopN int `mapstructure:"topN" json:"topN"`
+	// MinRank is the BM25 rank floor; candidates below this are filtered out
+	// (default 0.2, valid [0.0, 1.0]).
+	MinRank float64 `mapstructure:"minRank" json:"minRank"`
+}
+
+// LearningConfig holds learning-engine settings beyond the existing knowledge
+// analysis thresholds. Phase 3 introduces approval-gated learning suggestions.
+type LearningConfig struct {
+	// Suggestions controls the approval-gated learning suggestion pipeline.
+	Suggestions LearningSuggestionsConfig `mapstructure:"suggestions" json:"suggestions"`
+}
+
+// LearningSuggestionsConfig controls the threshold, rate limit, and dedup
+// window for LearningSuggestionEvent emission.
+type LearningSuggestionsConfig struct {
+	// Enabled toggles suggestion emission (default true).
+	Enabled *bool `mapstructure:"enabled" json:"enabled"`
+	// Threshold is the confidence floor for emitting a suggestion
+	// (default 0.5, valid range [0.1, 0.9]). Distinct from the 0.7
+	// auto-apply threshold used by GetFixForError.
+	Threshold float64 `mapstructure:"threshold" json:"threshold"`
+	// RateLimit is the minimum number of turns between suggestions for a
+	// single session (default 10, valid range [1, 100]).
+	RateLimit int `mapstructure:"rateLimit" json:"rateLimit"`
+	// DedupWindow suppresses re-emission of the same pattern within this
+	// period (default 1h, valid range [1m, 24h]).
+	DedupWindow time.Duration `mapstructure:"dedupWindow" json:"dedupWindow"`
 }
 
 // ContextAllocationConfig defines per-section token allocation ratios.

@@ -160,6 +160,7 @@ func (s *stubSessionStore) AnnotateTimeout(key, _ string) error {
 	s.annotated = append(s.annotated, key)
 	return nil
 }
+func (s *stubSessionStore) End(string) error { return nil }
 
 type fixtureFile struct {
 	Events []fixtureEvent `json:"events"`
@@ -658,6 +659,7 @@ func (s *stubModeStore) Update(*langosession.Session) error            { return 
 func (s *stubModeStore) Delete(string) error                           { return nil }
 func (s *stubModeStore) AppendMessage(string, langosession.Message) error { return nil }
 func (s *stubModeStore) AnnotateTimeout(string, string) error          { return nil }
+func (s *stubModeStore) End(string) error                              { return nil }
 func (s *stubModeStore) ListSessions(context.Context) ([]langosession.SessionSummary, error) {
 	return nil, nil
 }

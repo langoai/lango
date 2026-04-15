@@ -70,6 +70,7 @@ Single binary. <100ms startup. <250MB memory. Just Go.
 - 📜 **Session Provenance** — Persistent checkpoints, session lineage tree, git-aware attribution, and signed provenance bundle export/import
 - 🛡️ **OS-level Sandbox** — Process isolation via macOS Seatbelt and Linux bubblewrap (when `bwrap` is installed), network deny, workspace-scoped write access, automatic control-plane (`~/.lango`) and `.git` masking (walks up to the repo root and follows linked-worktree pointers), file-level deny via `/dev/null` bind, symlink resolution, glob patterns in deny/write lists, audit trail of every apply/skip/exclude decision
 - 🚧 **Response Gatekeeper** — Output sanitization stripping thought tags, internal markers, raw JSON, and custom patterns
+- 🔁 **Continuity (Phase 3)** — Background hygiene compaction with a 2s sync-point guard (`context.compaction.*`), FTS5-backed session recall that surfaces prior-session summaries at turn start (`context.recall.*`), and approval-gated learning suggestions published through the event bus (`learning.suggestions.*`). All three features ship enabled-by-default and can be turned off independently.
 
 ## Quick Start
 

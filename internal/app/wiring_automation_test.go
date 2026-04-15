@@ -25,6 +25,7 @@ func (s *stubSessionStore) Update(_ *session.Session) error              { retur
 func (s *stubSessionStore) Delete(_ string) error                        { return nil }
 func (s *stubSessionStore) AppendMessage(_ string, _ session.Message) error { return nil }
 func (s *stubSessionStore) AnnotateTimeout(_ string, _ string) error     { return nil }
+func (s *stubSessionStore) End(_ string) error                           { return nil }
 func (s *stubSessionStore) Close() error                                 { return nil }
 func (s *stubSessionStore) GetSalt(_ string) ([]byte, error)             { return nil, nil }
 func (s *stubSessionStore) SetSalt(_ string, _ []byte) error                              { return nil }

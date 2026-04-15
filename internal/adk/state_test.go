@@ -64,6 +64,7 @@ func (m *mockStore) AppendMessage(key string, msg internal.Message) error {
 	return nil
 }
 func (m *mockStore) AnnotateTimeout(_ string, _ string) error { return nil }
+func (m *mockStore) End(_ string) error                       { return nil }
 func (m *mockStore) Close() error                             { return nil }
 func (m *mockStore) GetSalt(name string) ([]byte, error)      { return nil, nil }
 func (m *mockStore) SetSalt(name string, salt []byte) error   { return nil }
@@ -986,6 +987,7 @@ func (m *uniqueMockStore) Update(s *internal.Session) error {
 func (m *uniqueMockStore) Delete(key string) error                      { return nil }
 func (m *uniqueMockStore) AppendMessage(string, internal.Message) error { return nil }
 func (m *uniqueMockStore) AnnotateTimeout(string, string) error         { return nil }
+func (m *uniqueMockStore) End(string) error                             { return nil }
 func (m *uniqueMockStore) Close() error                                 { return nil }
 func (m *uniqueMockStore) GetSalt(string) ([]byte, error)               { return nil, nil }
 func (m *uniqueMockStore) SetSalt(string, []byte) error                 { return nil }

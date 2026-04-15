@@ -259,6 +259,12 @@ func New(boot *bootstrap.Result, opts ...AppOption) (*App, error) {
 	// B6. Agent creation.
 	scanner := fv.Scanner
 	p2pc, _ := resolver.Resolve(appinit.ProvidesP2P).(*p2pComponents)
+	app.compactionSync = newCompactionSyncHolder()
+
+	// Session recall: construct before agent so the provider can be wired
+	// into the context adapter. Installs the session-end processor and
+	// registers the startup sweep.
+	app.recallIndex = wireSessionRecall(app)
 	adkAgent, err := initAgent(context.Background(), &agentDeps{
 		sv:       fv.Supervisor,
 		cfg:      cfg,
@@ -279,7 +285,9 @@ func New(boot *bootstrap.Result, opts ...AppOption) (*App, error) {
 			pv, _ := resolver.Resolve(appinit.ProvidesProvenance).(*provenanceValues)
 			return pv
 		}(),
-		hookRegistry: hookRegistry,
+		hookRegistry:   hookRegistry,
+		compactionSync: app.compactionSync,
+		recallIndex:    app.recallIndex,
 	})
 	if err != nil {
 		cleanups.rollback()
@@ -321,6 +329,13 @@ func New(boot *bootstrap.Result, opts ...AppOption) (*App, error) {
 
 	// B9. Memory compaction + turn callbacks.
 	wireMemoryAndTurnCallbacks(app, iv, fv)
+
+	// B9.1. Background hygiene compaction (Phase 3).
+	wireCompactionBuffer(app, adk.LookupModelWindow(cfg.Agent.Model))
+
+	// B9.3. Learning suggestions (Phase 3C).
+	wireLearningSuggestions(app)
+
 
 	// B10. Lifecycle registration (module components + gateway + channels).
 	for _, entry := range buildResult.Components {
