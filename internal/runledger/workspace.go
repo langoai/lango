@@ -29,16 +29,23 @@ func NeedsIsolation(step *Step) bool {
 }
 
 // CheckDirtyTree returns an error if the git working tree has uncommitted changes.
+// The error includes a count of changed files and a suggested remediation command.
 func (m *WorkspaceManager) CheckDirtyTree() error {
 	cmd := exec.Command("git", "status", "--porcelain")
 	output, err := cmd.Output()
 	if err != nil {
 		return fmt.Errorf("git status: %w", err)
 	}
-	if len(strings.TrimSpace(string(output))) > 0 {
-		return fmt.Errorf("working tree has uncommitted changes — stash or commit before proceeding")
+	trimmed := strings.TrimSpace(string(output))
+	if len(trimmed) == 0 {
+		return nil
 	}
-	return nil
+	lines := strings.Split(trimmed, "\n")
+	return fmt.Errorf(
+		"working tree has %d uncommitted change(s) — workspace isolation requires a clean tree\n"+
+			"  suggestion: git stash push -m \"lango-workspace-isolation\"",
+		len(lines),
+	)
 }
 
 // CreateWorktree creates a git worktree at the given path for isolated execution.
@@ -114,10 +121,16 @@ func (m *WorkspaceManager) ExportPatch(worktreePath, outputPath string) error {
 }
 
 // ApplyPatch applies a patch to the main tree using git am.
+// On failure, the error includes rollback instructions.
 func (m *WorkspaceManager) ApplyPatch(patchPath string) error {
 	cmd := exec.Command("git", "am", patchPath)
-	if output, err := cmd.CombinedOutput(); err != nil {
-		return fmt.Errorf("git am: %s: %w", strings.TrimSpace(string(output)), err)
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		return fmt.Errorf(
+			"git am: %s: %w\n"+
+				"  to abort and return to the previous state: git am --abort",
+			strings.TrimSpace(string(output)), err,
+		)
 	}
 	return nil
 }

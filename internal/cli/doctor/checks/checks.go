@@ -153,6 +153,7 @@ func AllChecks() []Check {
 		&RunLedgerCheck{},
 		// Bootstrap Diagnostics
 		&BootstrapTimingCheck{},
+		&RunLedgerWorkspaceIsolationCheck{},
 		// Economy / Contract / Observability
 		&EconomyCheck{},
 		&ContractCheck{},

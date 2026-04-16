@@ -29,7 +29,7 @@ func NewCommand() *cobra.Command {
 		Long: `The doctor command checks your Lango configuration and environment
 for common issues and can automatically fix some problems.
 
-Checks performed (26 total):
+Checks performed (27 total):
 
   Core Configuration:
     - Configuration Profile   Profile validity and file accessibility
@@ -68,6 +68,7 @@ Checks performed (26 total):
   Execution:
     - RunLedger               Ledger configuration invariants
     - Bootstrap Timing        Phase timing baseline comparison
+    - RunLedger Workspace Isolation  Worktree health and stale detection
 
   Economy / Contract / Observability:
     - Economy Layer           Token economy and budget settings
