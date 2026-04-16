@@ -84,6 +84,7 @@ func main() {
 	}
 
 	tui.SetVersionInfo(Version, BuildTime)
+	cliboot.Version = Version
 
 	rootCmd := &cobra.Command{
 		Use:   "lango",

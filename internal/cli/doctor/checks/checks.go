@@ -151,6 +151,8 @@ func AllChecks() []Check {
 		&LibrarianCheck{},
 		&ApprovalCheck{},
 		&RunLedgerCheck{},
+		// Bootstrap Diagnostics
+		&BootstrapTimingCheck{},
 		// Economy / Contract / Observability
 		&EconomyCheck{},
 		&ContractCheck{},
