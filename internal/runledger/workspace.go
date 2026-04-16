@@ -7,6 +7,8 @@ import (
 	"path/filepath"
 	"strings"
 	"time"
+
+	"github.com/langoai/lango/internal/logging"
 )
 
 // WorkspaceManager handles git worktree isolation for coding steps.
@@ -104,8 +106,12 @@ func (m *WorkspaceManager) PrepareStepWorkspace(step *Step, runID string) (clean
 	step.Validator.WorkDir = path
 
 	return func() {
-		_ = m.RemoveWorktree(path)
-		_ = m.DeleteBranch(branch)
+		if err := m.RemoveWorktree(path); err != nil {
+			logging.App().Warnw("workspace cleanup: remove worktree", "path", path, "error", err)
+		}
+		if err := m.DeleteBranch(branch); err != nil {
+			logging.App().Warnw("workspace cleanup: delete branch", "branch", branch, "error", err)
+		}
 		step.Validator.WorkDir = ""
 	}, nil
 }

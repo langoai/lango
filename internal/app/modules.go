@@ -833,6 +833,7 @@ func (m *networkModule) Init(ctx context.Context, r appinit.Resolver) (*appinit.
 			if econc != nil && econc.budgetEngine != nil {
 				wireTeamBudgetBridge(m.app.ctx, m.bus, econc.budgetEngine, p2pc.coordinator, logger())
 			}
+			wireTeamMetricsBridge(m.bus, &TeamMetrics{}, logger())
 			if p2pc.reputation != nil {
 				minRepScore := cfg.P2P.Team.MinReputationScore
 				if minRepScore <= 0 {
