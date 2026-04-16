@@ -51,7 +51,7 @@ func (i *Installer) Inspect(ctx context.Context, src Source) (*InspectReport, *W
 		ManifestSHA256: wc.ManifestSHA256,
 		FileHashes:     wc.FileHashes,
 		SourceRef:      wc.SourceRef,
-		PlannedWrites:  i.plannedWrites(wc.Manifest),
+		PlannedWrites:  i.plannedWrites(wc.Manifest, wc.RootDir),
 		SkippedWrites: []string{
 			"tools:     not supported in v1 packs",
 			"mcp:       not supported in v1 packs",
@@ -174,8 +174,10 @@ func (i *Installer) Remove(_ context.Context, name string) error {
 }
 
 // plannedWrites returns the paths Install would write for a given manifest.
-// Used by Inspect for user-visible preview.
-func (i *Installer) plannedWrites(m *Manifest) []string {
+// Used by Inspect for user-visible preview. When rootDir is non-empty,
+// skill directories are walked to enumerate all files (not just the
+// manifest-listed path), matching what Install actually copies.
+func (i *Installer) plannedWrites(m *Manifest, rootDir string) []string {
 	packDir := filepath.Join(i.ExtensionsDir, m.Name)
 	extSkillDir := filepath.Join(i.SkillsDir, extSkillPrefix+m.Name)
 	out := []string{
@@ -183,9 +185,29 @@ func (i *Installer) plannedWrites(m *Manifest) []string {
 		filepath.Join(packDir, installedFileName),
 	}
 	for _, s := range m.Contents.Skills {
-		// Pack-side mirror.
+		srcRel := s.Path
+		if strings.HasSuffix(filepath.Base(srcRel), "SKILL.md") {
+			srcRel = filepath.Dir(srcRel)
+		}
+		// Enumerate all files in the skill directory for accurate preview.
+		if rootDir != "" {
+			srcAbs := filepath.Join(rootDir, filepath.FromSlash(srcRel))
+			if fi, err := os.Stat(srcAbs); err == nil && fi.IsDir() {
+				_ = filepath.Walk(srcAbs, func(path string, info os.FileInfo, err error) error {
+					if err != nil || info.IsDir() {
+						return err
+					}
+					rel, _ := filepath.Rel(rootDir, path)
+					out = append(out, filepath.Join(packDir, filepath.FromSlash(rel)))
+					skillRel, _ := filepath.Rel(srcAbs, path)
+					out = append(out, filepath.Join(extSkillDir, s.Name, filepath.FromSlash(skillRel)))
+					return nil
+				})
+				continue
+			}
+		}
+		// Fallback: report only the declared path.
 		out = append(out, filepath.Join(packDir, filepath.FromSlash(s.Path)))
-		// SkillsDir-side copy.
 		out = append(out, filepath.Join(extSkillDir, s.Name, "SKILL.md"))
 	}
 	for _, p := range m.Contents.Prompts {
@@ -263,7 +285,7 @@ func copyPackFiles(wc *WorkingCopy, stagingDir string) error {
 		}
 		dstAbs := filepath.Join(stagingDir, filepath.FromSlash(filepath.Clean(srcRel)))
 		if fi.IsDir() {
-			if err := copyTree(srcAbs, dstAbs); err != nil {
+			if err := copyTree(srcAbs, dstAbs, wc.RootDir); err != nil {
 				return fmt.Errorf("copy skill dir %q: %w", s.Name, err)
 			}
 		} else {
@@ -299,7 +321,7 @@ func (i *Installer) copySkillsToStore(wc *WorkingCopy, extSkillDir string) error
 			return fmt.Errorf("skill %q: %w", s.Name, err)
 		}
 		dstAbs := filepath.Join(extSkillDir, s.Name)
-		if err := copyTree(srcAbs, dstAbs); err != nil {
+		if err := copyTree(srcAbs, dstAbs, wc.RootDir); err != nil {
 			return fmt.Errorf("copy skill %q: %w", s.Name, err)
 		}
 	}
@@ -307,7 +329,17 @@ func (i *Installer) copySkillsToStore(wc *WorkingCopy, extSkillDir string) error
 }
 
 // copyFile is a small cross-platform file copy respecting source mode.
+// It rejects symlink sources via os.Lstat as a belt-and-suspenders defense
+// against TOCTTOU symlink replacement between containment check and copy.
 func copyFile(src, dst string) error {
+	fi, err := os.Lstat(src)
+	if err != nil {
+		return err
+	}
+	if fi.Mode()&os.ModeSymlink != 0 {
+		return fmt.Errorf("copy %q: source is a symlink", src)
+	}
+
 	in, err := os.Open(src)
 	if err != nil {
 		return err
@@ -331,12 +363,17 @@ func copyFile(src, dst string) error {
 	return err
 }
 
-// copyTree duplicates a directory tree. Symlinks are not followed; the
-// copy writes the symlink target's contents as a regular file after
-// passing the same containment check used for manifest paths. Callers
-// have already validated the source root, so this function focuses on
-// the mechanical work.
-func copyTree(src, dst string) error {
+// copyTree duplicates a directory tree with per-file containment
+// validation. Every file discovered during the walk is re-checked via
+// ResolvePath(rootDir, rel) to prevent TOCTTOU symlink replacement
+// between the initial directory validation and the actual copy.
+func copyTree(src, dst, rootDir string) error {
+	// Resolve rootDir to canonical form so filepath.Rel works correctly
+	// when the OS has path aliases (e.g., macOS /var → /private/var).
+	resolvedRoot, err := filepath.EvalSymlinks(rootDir)
+	if err != nil {
+		return fmt.Errorf("resolve root dir: %w", err)
+	}
 	return filepath.Walk(src, func(path string, info os.FileInfo, err error) error {
 		if err != nil {
 			return err
@@ -348,6 +385,15 @@ func copyTree(src, dst string) error {
 		target := filepath.Join(dst, rel)
 		if info.IsDir() {
 			return os.MkdirAll(target, 0o755)
+		}
+		// Re-validate containment for every file, matching the per-file
+		// ResolvePath pattern used by fetchFromDir during Inspect.
+		rootRel, relErr := filepath.Rel(resolvedRoot, path)
+		if relErr != nil {
+			return fmt.Errorf("path %q: relative to root: %w", path, relErr)
+		}
+		if _, resolveErr := ResolvePath(resolvedRoot, rootRel); resolveErr != nil {
+			return fmt.Errorf("path %q escapes pack root: %w", rootRel, resolveErr)
 		}
 		return copyFile(path, target)
 	})

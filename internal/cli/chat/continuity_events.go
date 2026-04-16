@@ -23,9 +23,10 @@ type CompactionSlowTeaMsg struct {
 
 // TokenUsageTeaMsg mirrors eventbus.TokenUsageEvent for per-turn accumulation.
 type TokenUsageTeaMsg struct {
-	InputTokens  int64
-	OutputTokens int64
-	CacheTokens  int64
+	InputTokens      int64
+	OutputTokens     int64
+	CacheTokens      int64
+	EstimatedCostUSD float64
 }
 
 // LearningSuggestionTeaMsg mirrors eventbus.LearningSuggestionEvent.
@@ -86,9 +87,10 @@ func (m *ChatModel) subscribeContinuityEvents() {
 	// cockpit's turnActive pattern instead of filtering by session key.
 	eventbus.SubscribeTyped(bus, func(e eventbus.TokenUsageEvent) {
 		m.sendSafe(TokenUsageTeaMsg{
-			InputTokens:  e.InputTokens,
-			OutputTokens: e.OutputTokens,
-			CacheTokens:  e.CacheTokens,
+			InputTokens:      e.InputTokens,
+			OutputTokens:     e.OutputTokens,
+			CacheTokens:      e.CacheTokens,
+			EstimatedCostUSD: e.EstimatedCostUSD,
 		})
 	})
 }

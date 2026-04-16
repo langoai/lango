@@ -83,15 +83,9 @@ func (s *GitSource) Fetch(ctx context.Context) (*WorkingCopy, error) {
 		return nil, fmt.Errorf("create temp dir: %w", err)
 	}
 
-	cloneArgs := []string{"clone", "--depth=1"}
-	if ref != "" {
-		cloneArgs = append(cloneArgs, "--branch", ref)
-	}
-	cloneArgs = append(cloneArgs, url, tmp)
-	cmd := exec.CommandContext(ctx, "git", cloneArgs...)
-	if out, err := cmd.CombinedOutput(); err != nil {
+	if err := cloneAndCheckout(ctx, url, ref, tmp); err != nil {
 		_ = os.RemoveAll(tmp)
-		return nil, fmt.Errorf("git clone: %s: %w", strings.TrimSpace(string(out)), err)
+		return nil, err
 	}
 
 	// Record the resolved HEAD SHA for .installed.
@@ -108,6 +102,51 @@ func (s *GitSource) Fetch(ctx context.Context) (*WorkingCopy, error) {
 	}
 	wc.SourceRef = resolvedSHA
 	return wc, nil
+}
+
+// cloneAndCheckout handles the git clone strategy. Branch/tag refs use
+// --depth=1 --branch; commit SHAs clone without --branch (shallow clone
+// cannot fetch arbitrary SHAs) and then checkout the specific commit.
+func cloneAndCheckout(ctx context.Context, url, ref, dst string) error {
+	if ref == "" || !looksLikeSHA(ref) {
+		// Branch, tag, or default branch: shallow clone with --branch.
+		args := []string{"clone", "--depth=1"}
+		if ref != "" {
+			args = append(args, "--branch", ref)
+		}
+		args = append(args, url, dst)
+		cmd := exec.CommandContext(ctx, "git", args...)
+		if out, err := cmd.CombinedOutput(); err != nil {
+			return fmt.Errorf("git clone: %s: %w", strings.TrimSpace(string(out)), err)
+		}
+		return nil
+	}
+
+	// Commit SHA: full clone (shallow clone can't fetch arbitrary SHAs),
+	// then checkout the exact commit.
+	cloneCmd := exec.CommandContext(ctx, "git", "clone", url, dst)
+	if out, err := cloneCmd.CombinedOutput(); err != nil {
+		return fmt.Errorf("git clone: %s: %w", strings.TrimSpace(string(out)), err)
+	}
+	checkoutCmd := exec.CommandContext(ctx, "git", "-C", dst, "checkout", ref)
+	if out, err := checkoutCmd.CombinedOutput(); err != nil {
+		return fmt.Errorf("git checkout %s: %s: %w", ref, strings.TrimSpace(string(out)), err)
+	}
+	return nil
+}
+
+// looksLikeSHA returns true if ref is 7–40 lowercase hex characters,
+// indicating a commit SHA rather than a branch or tag name.
+func looksLikeSHA(ref string) bool {
+	if len(ref) < 7 || len(ref) > 40 {
+		return false
+	}
+	for _, c := range ref {
+		if !((c >= '0' && c <= '9') || (c >= 'a' && c <= 'f')) {
+			return false
+		}
+	}
+	return true
 }
 
 // splitGitRef partitions a URL of the form "repo#ref" into ("repo", "ref").

@@ -198,6 +198,7 @@ func (r *Runner) Run(parent context.Context, req Request) (Result, error) {
 	const maxAttempts = 3
 
 	var result Result
+retryLoop:
 	for attempt := 0; attempt < maxAttempts; attempt++ {
 		ctx, cancel, _, runOpts := r.prepareContext(parent, req, recorder, start)
 
@@ -274,7 +275,15 @@ func (r *Runner) Run(parent context.Context, req Request) (Result, error) {
 		case <-timer.C:
 		case <-parent.Done():
 			timer.Stop()
+			break retryLoop
 		}
+	}
+	// Context cancelled during backoff — override any prior transient error
+	// so the result accurately reflects cancellation rather than the last
+	// provider failure.
+	if parent.Err() != nil {
+		result.ErrorCode = "context_cancelled"
+		result.Outcome = "cancelled"
 	}
 	if result.TraceID == "" {
 		result.TraceID = traceID
@@ -723,9 +732,12 @@ func (r *traceRecorder) recordRecovery(info adk.RecoveryInfo) {
 		EventType: turntrace.EventRecoveryAttempt,
 		AgentName: info.AgentName,
 		PayloadJSON: marshalTracePayload(map[string]any{
-			"action": info.Action,
-			"agent":  info.AgentName,
-			"error":  info.Error,
+			"action":     info.Action,
+			"agent":      info.AgentName,
+			"error":      info.Error,
+			"causeClass": info.CauseClass,
+			"attempt":    info.Attempt,
+			"backoffMs":  info.Backoff.Milliseconds(),
 		}),
 	})
 }
