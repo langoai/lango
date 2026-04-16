@@ -174,7 +174,11 @@ func New(boot *bootstrap.Result, opts ...AppOption) (*App, error) {
 	tools = toolchain.ChainAll(tools, toolchain.WithOutputManager(cfg.Tools.OutputManager, outputStore))
 
 	// B4c. Tool Execution Hooks.
-	hookRegistry := buildHookRegistry(cfg, bus, catalog)
+	// Extract KnowledgeSaver from intelligence wiring if available.
+	// Currently knowledge.Store does not implement toolchain.KnowledgeSaver;
+	// the saver param is threaded through so future implementations can plug in.
+	var knowledgeSaver toolchain.KnowledgeSaver
+	hookRegistry := buildHookRegistry(cfg, bus, knowledgeSaver, catalog)
 	tools = toolchain.ChainAll(tools, toolchain.WithHooks(hookRegistry))
 	app.HookRegistry = hookRegistry
 	logger().Infow("tool hooks enabled",
@@ -549,8 +553,8 @@ func BuildHookRegistry(cfg *config.Config, bus *eventbus.Bus, knowledgeSaver too
 }
 
 // buildHookRegistry is the internal call site used during full app bootstrap.
-func buildHookRegistry(cfg *config.Config, bus *eventbus.Bus, catalog *toolcatalog.Catalog) *toolchain.HookRegistry {
-	return BuildHookRegistry(cfg, bus, nil, catalog)
+func buildHookRegistry(cfg *config.Config, bus *eventbus.Bus, knowledgeSaver toolchain.KnowledgeSaver, catalog *toolcatalog.Catalog) *toolchain.HookRegistry {
+	return BuildHookRegistry(cfg, bus, knowledgeSaver, catalog)
 }
 
 // buildApprovalProvider constructs the composite approval provider and grant store.

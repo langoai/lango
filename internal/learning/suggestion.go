@@ -27,7 +27,12 @@ type SuggestionEmitter struct {
 	turnCounters   map[string]int       // sessionKey -> turns since last emit
 	recentHashes   map[string]time.Time // pattern hash -> last emit time
 	dismissed      map[string]time.Time // pattern hash -> dismissal time (also serves as negative dedup)
-	driftCounters  map[string]int       // "toolName:errorClass" -> occurrence count
+	driftCounters  map[string]driftEntry // "toolName:errorClass" -> count + first seen
+}
+
+type driftEntry struct {
+	count     int
+	firstSeen time.Time
 }
 
 // SuggestionCandidate is the minimum shape an emitter needs to decide and
@@ -55,7 +60,7 @@ func NewSuggestionEmitter(bus *eventbus.Bus, threshold float64, rateLimit int, d
 		turnCounters:   make(map[string]int),
 		recentHashes:   make(map[string]time.Time),
 		dismissed:      make(map[string]time.Time),
-		driftCounters:  make(map[string]int),
+		driftCounters:  make(map[string]driftEntry),
 	}
 }
 
@@ -127,13 +132,22 @@ func (e *SuggestionEmitter) EmitSpecDrift(_ context.Context, toolName, errorClas
 		return false
 	}
 
-	e.driftCounters[key]++
-	if e.driftCounters[key] < e.driftThreshold {
+	entry := e.driftCounters[key]
+	if entry.firstSeen.IsZero() {
+		entry.firstSeen = now
+	}
+	if now.Sub(entry.firstSeen) >= e.dedupWindow {
+		entry = driftEntry{firstSeen: now}
+	}
+	entry.count++
+	e.driftCounters[key] = entry
+
+	if entry.count < e.driftThreshold {
 		return false
 	}
 
-	occurrences := e.driftCounters[key]
-	e.driftCounters[key] = 0
+	occurrences := entry.count
+	delete(e.driftCounters, key)
 	e.recentHashes[hash] = now
 
 	if e.bus != nil {
@@ -165,6 +179,10 @@ func (e *SuggestionEmitter) Prune() {
 	for k, t := range e.recentHashes {
 		if now.Sub(t) >= e.dedupWindow {
 			delete(e.recentHashes, k)
+		}
+	}
+	for k, entry := range e.driftCounters {
+		if now.Sub(entry.firstSeen) >= e.dedupWindow {
 			delete(e.driftCounters, k)
 		}
 	}

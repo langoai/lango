@@ -50,6 +50,13 @@ func (c *BootstrapTimingCheck) RunWithBootstrap(_ context.Context, _ *config.Con
 		}
 	}
 
+	// Exclude the last entry: Pipeline.Execute appends the current run's timing
+	// before doctor checks run, so the baseline would include the run being evaluated.
+	// Single-writer assumption: only one bootstrap process appends at a time.
+	if len(baseline) > 0 {
+		baseline = baseline[:len(baseline)-1]
+	}
+
 	if len(baseline) < minBaselineRecords {
 		return Result{
 			Name:    c.Name(),

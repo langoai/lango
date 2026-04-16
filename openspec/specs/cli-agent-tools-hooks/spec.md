@@ -42,12 +42,17 @@ The system SHALL provide a `lango agent hooks [--json]` command that displays th
 - **AND** the placeholder's `phase` is `pre+post` since EventBus registers in both phases at runtime
 
 ### Requirement: Public BuildHookRegistry helper
-The `internal/app` package SHALL export a `BuildHookRegistry(cfg *config.Config, bus *eventbus.Bus, knowledgeSaver toolchain.KnowledgeSaver) *toolchain.HookRegistry` function that produces the same hook registry as the runtime app builder. When `bus` is nil, EventBus hooks are omitted. When `knowledgeSaver` is nil, `KnowledgeSaveHook` is still registered (for snapshot inspection) but its `Post` method safely no-ops. The private `buildHookRegistry` function SHALL delegate to this public helper.
+The `internal/app` package SHALL export a `BuildHookRegistry(cfg *config.Config, bus *eventbus.Bus, knowledgeSaver toolchain.KnowledgeSaver, catalog *toolcatalog.Catalog) *toolchain.HookRegistry` function that produces the same hook registry as the runtime app builder. When `bus` is nil, EventBus hooks are omitted. When `knowledgeSaver` is nil, `KnowledgeSaveHook` is still registered (for snapshot inspection) but its `Post` method safely no-ops. When `catalog` is non-nil, `SaveableTools` is derived from catalog; otherwise falls back to `DefaultSaveableTools`. The private `buildHookRegistry` function SHALL delegate to this public helper, passing the runtime `KnowledgeSaver` from the knowledge subsystem.
 
 #### Scenario: CLI uses BuildHookRegistry without full bootstrap
-- **WHEN** the `agent hooks` CLI command loads config and calls `BuildHookRegistry(cfg, nil, nil)`
+- **WHEN** the `agent hooks` CLI command loads config and calls `BuildHookRegistry(cfg, nil, nil, nil)`
 - **THEN** the returned registry contains all config-derivable hooks (SecurityFilter, AccessControl, KnowledgeSaveHook)
 - **AND** no database connection, crypto initialization, or event bus is required
+
+#### Scenario: Runtime path provides KnowledgeSaver
+- **WHEN** the app builder calls `buildHookRegistry` during full bootstrap
+- **THEN** the `KnowledgeSaver` from the knowledge subsystem is passed through to `KnowledgeSaveHook`
+- **AND** tool results for saveable tools are persisted to the knowledge store
 
 ### Requirement: Default SaveableTools allowlist
 The `toolchain` package SHALL define a `DefaultSaveableTools` constant as a fallback for CLI mode. At runtime, the `app.go` builder SHALL derive the saveable tools list from the tool catalog using `Catalog.SaveableToolNames()`, which filters by `ToolCapability.KnowledgeSaveable()`. The `BuildHookRegistry` function SHALL accept an optional catalog parameter and prefer catalog-derived tools when available.

@@ -45,7 +45,7 @@ func (m *WorkspaceManager) CheckDirtyTree() error {
 	lines := strings.Split(trimmed, "\n")
 	return fmt.Errorf(
 		"working tree has %d uncommitted change(s) — workspace isolation requires a clean tree\n"+
-			"  suggestion: git stash push -m \"lango-workspace-isolation\"",
+			"  suggestion: git stash push -u -m \"lango-workspace-isolation\"",
 		len(lines),
 	)
 }

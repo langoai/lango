@@ -41,7 +41,15 @@ func (c *RunLedgerWorkspaceIsolationCheck) Run(_ context.Context, cfg *config.Co
 		}
 	}
 
-	worktrees, stale := listRunLedgerWorktrees()
+	worktrees, stale, wtErr := listRunLedgerWorktrees()
+	if wtErr != nil {
+		return Result{
+			Name:    c.Name(),
+			Status:  StatusWarn,
+			Message: "Could not inspect git worktrees",
+			Details: wtErr.Error(),
+		}
+	}
 
 	var details []string
 	details = append(details, fmt.Sprintf("Active runledger worktrees: %d", len(worktrees)))
@@ -70,11 +78,11 @@ func (c *RunLedgerWorkspaceIsolationCheck) Fix(ctx context.Context, cfg *config.
 	return c.Run(ctx, cfg)
 }
 
-func listRunLedgerWorktrees() (active []string, stale []string) {
+func listRunLedgerWorktrees() (active []string, stale []string, err error) {
 	cmd := exec.Command("git", "worktree", "list", "--porcelain")
-	output, err := cmd.Output()
-	if err != nil {
-		return nil, nil
+	output, cmdErr := cmd.Output()
+	if cmdErr != nil {
+		return nil, nil, fmt.Errorf("git worktree list: %w", cmdErr)
 	}
 
 	classifyPath := func(p string) {
@@ -107,5 +115,8 @@ func listRunLedgerWorktrees() (active []string, stale []string) {
 	if currentPath != "" {
 		classifyPath(currentPath)
 	}
-	return active, stale
+	if scanErr := scanner.Err(); scanErr != nil {
+		return active, stale, fmt.Errorf("parse worktree list: %w", scanErr)
+	}
+	return active, stale, nil
 }
