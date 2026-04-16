@@ -17,6 +17,10 @@ const (
 	// rule/skill/preference that crosses the suggestion threshold. TUI and
 	// channel adapters subscribe to render their own approval surface.
 	EventLearningSuggestion = "learning.suggestion"
+
+	// EventSpecDriftDetected fires when recurring error patterns suggest
+	// OpenSpec documentation may be stale for a particular tool.
+	EventSpecDriftDetected = "learning.spec_drift"
 )
 
 // CompactionCompletedEvent is published when a background hygiene compaction
@@ -61,3 +65,17 @@ type LearningSuggestionEvent struct {
 
 // EventName implements Event.
 func (e LearningSuggestionEvent) EventName() string { return EventLearningSuggestion }
+
+// SpecDriftDetectedEvent is published when recurring error patterns for a tool
+// suggest the corresponding OpenSpec may no longer match runtime behavior.
+type SpecDriftDetectedEvent struct {
+	ToolName     string
+	ErrorClass   string
+	Occurrences  int
+	SampleError  string
+	AffectedSpec string
+	Timestamp    time.Time
+}
+
+// EventName implements Event.
+func (e SpecDriftDetectedEvent) EventName() string { return EventSpecDriftDetected }
