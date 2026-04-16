@@ -27,7 +27,7 @@ func newHooksCmd(cfgLoader func() (*config.Config, error)) *cobra.Command {
 
 			h := cfg.Hooks
 
-			registry := app.BuildHookRegistry(cfg, nil, nil)
+			registry := app.BuildHookRegistry(cfg, nil, nil, nil)
 
 			if jsonOutput {
 				return printJSON(h, registry)
@@ -94,7 +94,10 @@ func buildRegistryOutput(registry *toolchain.HookRegistry, cfg config.HooksConfi
 			for t := range kh.SaveableTools {
 				tools = append(tools, t)
 			}
-			info.Details = map[string]any{"saveableTools": tools}
+			info.Details = map[string]any{
+				"saveableTools": tools,
+				"source":        "fallback-constant",
+			}
 		}
 		out.PostHooks = append(out.PostHooks, info)
 	}

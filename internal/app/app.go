@@ -174,7 +174,7 @@ func New(boot *bootstrap.Result, opts ...AppOption) (*App, error) {
 	tools = toolchain.ChainAll(tools, toolchain.WithOutputManager(cfg.Tools.OutputManager, outputStore))
 
 	// B4c. Tool Execution Hooks.
-	hookRegistry := buildHookRegistry(cfg, bus)
+	hookRegistry := buildHookRegistry(cfg, bus, catalog)
 	tools = toolchain.ChainAll(tools, toolchain.WithHooks(hookRegistry))
 	app.HookRegistry = hookRegistry
 	logger().Infow("tool hooks enabled",
@@ -522,8 +522,10 @@ func (a *policyBusAdapter) Publish(e execpkg.PolicyEvent) {
 // BuildHookRegistry constructs the tool execution hook registry from config.
 // Pass nil for bus when running outside a full app (e.g. CLI snapshot mode);
 // EventBus hooks will be omitted. Pass nil for knowledgeSaver when the hook
-// only needs to be inspected (snapshot), not executed.
-func BuildHookRegistry(cfg *config.Config, bus *eventbus.Bus, knowledgeSaver toolchain.KnowledgeSaver) *toolchain.HookRegistry {
+// only needs to be inspected (snapshot), not executed. When catalog is non-nil,
+// SaveableTools is derived from tool metadata; otherwise falls back to the
+// hard-coded DefaultSaveableTools constant.
+func BuildHookRegistry(cfg *config.Config, bus *eventbus.Bus, knowledgeSaver toolchain.KnowledgeSaver, catalog *toolcatalog.Catalog) *toolchain.HookRegistry {
 	hookRegistry := toolchain.NewHookRegistry()
 	hookRegistry.RegisterPre(toolchain.NewSecurityFilterHook(cfg.Hooks.BlockedCommands))
 	if cfg.Hooks.AccessControl {
@@ -535,14 +537,20 @@ func BuildHookRegistry(cfg *config.Config, bus *eventbus.Bus, knowledgeSaver too
 		hookRegistry.RegisterPost(ebHook)
 	}
 	if cfg.Hooks.KnowledgeSave {
-		hookRegistry.RegisterPost(toolchain.NewKnowledgeSaveHook(knowledgeSaver, toolchain.DefaultSaveableTools))
+		saveableTools := toolchain.DefaultSaveableTools
+		if catalog != nil {
+			if derived := catalog.SaveableToolNames(); len(derived) > 0 {
+				saveableTools = derived
+			}
+		}
+		hookRegistry.RegisterPost(toolchain.NewKnowledgeSaveHook(knowledgeSaver, saveableTools))
 	}
 	return hookRegistry
 }
 
 // buildHookRegistry is the internal call site used during full app bootstrap.
-func buildHookRegistry(cfg *config.Config, bus *eventbus.Bus) *toolchain.HookRegistry {
-	return BuildHookRegistry(cfg, bus, nil)
+func buildHookRegistry(cfg *config.Config, bus *eventbus.Bus, catalog *toolcatalog.Catalog) *toolchain.HookRegistry {
+	return BuildHookRegistry(cfg, bus, nil, catalog)
 }
 
 // buildApprovalProvider constructs the composite approval provider and grant store.

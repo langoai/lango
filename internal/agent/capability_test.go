@@ -94,3 +94,29 @@ func TestTool_ZeroCapabilityBackwardCompat(t *testing.T) {
 	assert.False(t, tool.Capability.ReadOnly)
 	assert.False(t, tool.Capability.ConcurrencySafe)
 }
+
+func TestKnowledgeSaveable(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		give string
+		cap  ToolCapability
+		want bool
+	}{
+		{give: "read-only true", cap: ToolCapability{ReadOnly: true}, want: true},
+		{give: "activity read", cap: ToolCapability{Activity: ActivityRead}, want: true},
+		{give: "activity query", cap: ToolCapability{Activity: ActivityQuery}, want: true},
+		{give: "activity write", cap: ToolCapability{Activity: ActivityWrite}, want: false},
+		{give: "activity execute", cap: ToolCapability{Activity: ActivityExecute}, want: false},
+		{give: "activity manage", cap: ToolCapability{Activity: ActivityManage}, want: false},
+		{give: "zero value", cap: ToolCapability{}, want: false},
+		{give: "read-only + write activity", cap: ToolCapability{ReadOnly: true, Activity: ActivityWrite}, want: true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.give, func(t *testing.T) {
+			t.Parallel()
+			assert.Equal(t, tt.want, tt.cap.KnowledgeSaveable())
+		})
+	}
+}
