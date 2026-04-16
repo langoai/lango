@@ -519,8 +519,11 @@ func (a *policyBusAdapter) Publish(e execpkg.PolicyEvent) {
 	a.bus.Publish(e)
 }
 
-// buildHookRegistry constructs the tool execution hook registry.
-func buildHookRegistry(cfg *config.Config, bus *eventbus.Bus) *toolchain.HookRegistry {
+// BuildHookRegistry constructs the tool execution hook registry from config.
+// Pass nil for bus when running outside a full app (e.g. CLI snapshot mode);
+// EventBus hooks will be omitted. Pass nil for knowledgeSaver when the hook
+// only needs to be inspected (snapshot), not executed.
+func BuildHookRegistry(cfg *config.Config, bus *eventbus.Bus, knowledgeSaver toolchain.KnowledgeSaver) *toolchain.HookRegistry {
 	hookRegistry := toolchain.NewHookRegistry()
 	hookRegistry.RegisterPre(toolchain.NewSecurityFilterHook(cfg.Hooks.BlockedCommands))
 	if cfg.Hooks.AccessControl {
@@ -531,7 +534,15 @@ func buildHookRegistry(cfg *config.Config, bus *eventbus.Bus) *toolchain.HookReg
 		hookRegistry.RegisterPre(ebHook)
 		hookRegistry.RegisterPost(ebHook)
 	}
+	if cfg.Hooks.KnowledgeSave {
+		hookRegistry.RegisterPost(toolchain.NewKnowledgeSaveHook(knowledgeSaver, toolchain.DefaultSaveableTools))
+	}
 	return hookRegistry
+}
+
+// buildHookRegistry is the internal call site used during full app bootstrap.
+func buildHookRegistry(cfg *config.Config, bus *eventbus.Bus) *toolchain.HookRegistry {
+	return BuildHookRegistry(cfg, bus, nil)
 }
 
 // buildApprovalProvider constructs the composite approval provider and grant store.

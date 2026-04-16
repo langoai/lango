@@ -5,6 +5,35 @@ import (
 	"fmt"
 )
 
+// DefaultSaveableTools is the app-level default set of tool names whose results
+// are eligible for knowledge saving. Read-type tools only.
+// P1: replace with tool catalog capability-based auto computation.
+var DefaultSaveableTools = []string{
+	"web_fetch",
+	"web_search",
+	"search_knowledge",
+	"search_learnings",
+	"get_knowledge_history",
+	"graph_query",
+	"graph_traverse",
+	"rag_retrieve",
+	"memory_list_observations",
+	"memory_list_reflections",
+	"memory_agent_recall",
+	"browser_observe",
+	"browser_extract",
+	"ontology_query_entities",
+	"ontology_get_entity",
+	"ontology_describe_type",
+	"ontology_list_types",
+	"ontology_facts_at",
+	"librarian_pending_inquiries",
+	"learning_stats",
+	"bg_status",
+	"bg_list",
+	"bg_result",
+}
+
 // KnowledgeSaver is the interface for saving tool results as knowledge.
 // This avoids a direct import of the knowledge package.
 type KnowledgeSaver interface {
@@ -42,8 +71,7 @@ func (h *KnowledgeSaveHook) Priority() int { return 100 }
 // Post saves the tool result as knowledge if the tool is in the saveable set
 // and the tool succeeded.
 func (h *KnowledgeSaveHook) Post(ctx HookContext, result interface{}, toolErr error) error {
-	// Only save successful results for opted-in tools.
-	if toolErr != nil {
+	if h.saver == nil || toolErr != nil {
 		return nil
 	}
 	if !h.SaveableTools[ctx.ToolName] {

@@ -121,3 +121,16 @@ func TestKnowledgeSaveHook_Metadata(t *testing.T) {
 	assert.Equal(t, "knowledge_save", hook.Name())
 	assert.Equal(t, 100, hook.Priority())
 }
+
+func TestDefaultSaveableTools(t *testing.T) {
+	t.Parallel()
+
+	assert.NotEmpty(t, DefaultSaveableTools, "DefaultSaveableTools must not be empty")
+
+	seen := make(map[string]bool, len(DefaultSaveableTools))
+	for _, name := range DefaultSaveableTools {
+		assert.NotEmpty(t, name, "tool name must not be empty")
+		assert.False(t, seen[name], "duplicate tool name: %s", name)
+		seen[name] = true
+	}
+}
