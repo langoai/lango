@@ -13,6 +13,7 @@ import (
 	"github.com/langoai/lango/internal/config"
 	"github.com/langoai/lango/internal/ent/enttest"
 	"github.com/langoai/lango/internal/runledger"
+	"github.com/langoai/lango/internal/storage"
 )
 
 func TestMaybeListRunsFromLedger(t *testing.T) {
@@ -47,7 +48,10 @@ func TestMaybeListRunsFromLedger(t *testing.T) {
 	cfg := config.DefaultConfig()
 	cfg.RunLedger.Enabled = true
 	cfg.RunLedger.AuthoritativeRead = true
-	boot := &bootstrap.Result{Config: cfg, DBClient: client}
+	boot := &bootstrap.Result{
+		Config:  cfg,
+		Storage: storage.NewFacade(nil, nil, storage.WithEntClient(client)),
+	}
 
 	runs, handled, err := maybeListRunsFromLedger(boot, 10)
 	require.NoError(t, err)
@@ -85,7 +89,10 @@ func TestMaybeStatusFromLedger(t *testing.T) {
 	cfg := config.DefaultConfig()
 	cfg.RunLedger.Enabled = true
 	cfg.RunLedger.AuthoritativeRead = true
-	boot := &bootstrap.Result{Config: cfg, DBClient: client}
+	boot := &bootstrap.Result{
+		Config:  cfg,
+		Storage: storage.NewFacade(nil, nil, storage.WithEntClient(client)),
+	}
 
 	status, handled, err := maybeStatusFromLedger(boot, "run-2")
 	require.NoError(t, err)

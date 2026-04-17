@@ -12,7 +12,6 @@ import (
 	"github.com/langoai/lango/internal/config"
 	"github.com/langoai/lango/internal/payment"
 	"github.com/langoai/lango/internal/security"
-	"github.com/langoai/lango/internal/session"
 	"github.com/langoai/lango/internal/wallet"
 )
 
@@ -53,14 +52,18 @@ func initPaymentDeps(boot *bootstrap.Result) (*paymentDeps, error) {
 
 	// Build secrets store for wallet key management.
 	ctx := context.Background()
-	registry := security.NewKeyRegistry(boot.DBClient)
+	if boot.Storage == nil {
+		return nil, fmt.Errorf("payment storage unavailable")
+	}
+	registry := boot.Storage.KeyRegistry()
+	secrets := boot.Storage.SecretsStore(boot.Crypto)
+	client := boot.Storage.EntClient()
+	if registry == nil || secrets == nil || client == nil {
+		return nil, fmt.Errorf("payment secrets store unavailable")
+	}
 	if _, err := registry.RegisterKey(ctx, "default", "local", security.KeyTypeEncryption); err != nil {
 		return nil, fmt.Errorf("register default key: %w", err)
 	}
-	secrets := security.NewSecretsStore(boot.DBClient, registry, boot.Crypto)
-
-	// Get ent client for payment records.
-	client := session.NewEntStoreWithClient(boot.DBClient).Client()
 
 	// Create RPC client for blockchain interaction.
 	rpcClient, err := ethclient.Dial(cfg.Payment.Network.RPCURL)

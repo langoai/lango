@@ -41,7 +41,7 @@ Examples:
 			if err != nil {
 				return fmt.Errorf("bootstrap: %w", err)
 			}
-			defer boot.DBClient.Close()
+			defer boot.Close()
 
 			info := collectStatus(boot.Config, boot.ProfileName, addr)
 			info.Version = tui.GetVersion()

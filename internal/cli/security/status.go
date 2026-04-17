@@ -13,11 +13,11 @@ import (
 
 	"github.com/langoai/lango/internal/bootstrap"
 	"github.com/langoai/lango/internal/config"
-	"github.com/langoai/lango/internal/configstore"
 	"github.com/langoai/lango/internal/keyring"
 	"github.com/langoai/lango/internal/p2p/identity"
 	sec "github.com/langoai/lango/internal/security"
 	"github.com/langoai/lango/internal/security/passphrase"
+	"github.com/langoai/lango/internal/storagebroker"
 )
 
 // envelopeSection captures passphrase-free envelope state for status output.
@@ -57,15 +57,15 @@ type identityBundleSection struct {
 }
 
 type statusOutput struct {
-	SignerProvider string                `json:"signer_provider"`
-	EncryptionKeys int                   `json:"encryption_keys"`
-	StoredSecrets  int                   `json:"stored_secrets"`
-	Interceptor    string                `json:"interceptor"`
-	PIIRedaction   string                `json:"pii_redaction"`
-	ApprovalPolicy string                `json:"approval_policy"`
-	DBEncryption   string                `json:"db_encryption"`
-	Envelope       envelopeSection       `json:"envelope"`
-	IdentityBundle identityBundleSection `json:"identity_bundle"`
+	SignerProvider     string                `json:"signer_provider"`
+	EncryptionKeys     int                   `json:"encryption_keys"`
+	StoredSecrets      int                   `json:"stored_secrets"`
+	Interceptor        string                `json:"interceptor"`
+	PIIRedaction       string                `json:"pii_redaction"`
+	ApprovalPolicy     string                `json:"approval_policy"`
+	DBEncryption       string                `json:"db_encryption"`
+	Envelope           envelopeSection       `json:"envelope"`
+	IdentityBundle     identityBundleSection `json:"identity_bundle"`
 	DBAvailable        bool                  `json:"db_available"`
 	KMSProvider        string                `json:"kms_provider,omitempty"`
 	KMSKeyID           string                `json:"kms_key_id,omitempty"`
@@ -170,10 +170,10 @@ func expandPath(p string) string {
 //     available, return a zero result — the caller renders "unavailable".
 //  2. If an envelope is present, unwrap the MK and derive the raw DB key via
 //     HKDF. Otherwise, fall back to the passphrase as the DB key (legacy path).
-//  3. Open the DB via bootstrap.OpenDatabaseReadOnly — no schema migration,
-//     no writes.
-//  4. Read encryption key count and stored secret count.
-//  5. Close the DB.
+//  3. Start a transient storage broker client and request a read-only DB status
+//     summary. The CLI process does not open the database directly.
+//  4. Read encryption key count and stored secret count from the broker result.
+//  5. Close the broker client.
 //
 // This helper NEVER triggers an interactive prompt. Any failure (wrong
 // passphrase, corrupt DB, schema drift) results in a zero result instead of
@@ -189,10 +189,10 @@ func readDBStatusNonInteractive(
 	}
 
 	var (
-		dbKey      string
-		rawKey     bool
-		masterKey  []byte // non-nil when envelope unwrap succeeded
-		usedKeyring bool  // true when passphrase came from keyring (stale fallback possible)
+		dbKey       string
+		rawKey      bool
+		masterKey   []byte // non-nil when envelope unwrap succeeded
+		usedKeyring bool   // true when passphrase came from keyring (stale fallback possible)
 	)
 	if needsKey {
 		keyringProvider, _ := keyring.DetectSecureProvider()
@@ -245,7 +245,18 @@ func readDBStatusNonInteractive(
 		}
 	}
 
-	client, rawDB, err := bootstrap.OpenDatabaseReadOnly(dbPath, dbKey, rawKey, 0)
+	brokerClient, err := storagebroker.Start(context.Background())
+	if err != nil {
+		return result
+	}
+	defer func() { _ = brokerClient.Close(context.Background()) }()
+
+	summary, err := brokerClient.DBStatusSummary(context.Background(), storagebroker.DBStatusSummaryRequest{
+		DBPath:         dbPath,
+		EncryptionKey:  dbKey,
+		RawKey:         rawKey,
+		CipherPageSize: 0,
+	})
 	if err != nil {
 		// For legacy mode with stale keyring, retry with keyfile-only.
 		if needsKey && !rawKey && usedKeyring {
@@ -253,38 +264,24 @@ func readDBStatusNonInteractive(
 				KeyfilePath: filepath.Join(langoDir, "keyfile"),
 			})
 			if kfErr == nil {
-				client, rawDB, err = bootstrap.OpenDatabaseReadOnly(dbPath, kfPass, false, 0)
+				summary, err = brokerClient.DBStatusSummary(context.Background(), storagebroker.DBStatusSummaryRequest{
+					DBPath:         dbPath,
+					EncryptionKey:  kfPass,
+					RawKey:         false,
+					CipherPageSize: 0,
+				})
 			}
 		}
 		if err != nil {
 			return result
 		}
 	}
-	defer client.Close()
-	defer rawDB.Close()
 
-	ctx := context.Background()
-	registry := sec.NewKeyRegistry(client)
-	if keys, err := registry.ListKeys(ctx); err == nil {
-		result.encryptionKeys = len(keys)
-	}
-	if n, err := client.Secret.Query().Count(ctx); err == nil {
-		result.storedSecrets = n
-	}
-
-	// Try to load the active config profile when MK is available.
-	if masterKey != nil && envelope != nil {
-		crypto := sec.NewLocalCryptoProvider()
-		if initErr := crypto.InitializeWithEnvelope(masterKey, envelope); initErr == nil {
-			store := configstore.NewStore(client, crypto)
-			if _, cfg, _, loadErr := store.LoadActive(ctx); loadErr == nil {
-				result.config = cfg
-			}
-			crypto.Close()
-		}
-	}
-
-	result.available = true
+	_ = masterKey
+	_ = envelope
+	result.available = summary.Available
+	result.encryptionKeys = summary.EncryptionKeys
+	result.storedSecrets = summary.StoredSecrets
 	return result
 }
 
@@ -367,13 +364,13 @@ func runStatusNonInteractive(jsonOutput bool) error {
 	}
 
 	s := statusOutput{
-		SignerProvider: signer,
-		EncryptionKeys: dbStatus.encryptionKeys,
-		StoredSecrets:  dbStatus.storedSecrets,
-		Interceptor:    boolToStatus(cfg.Security.Interceptor.Enabled),
-		PIIRedaction:   boolToStatus(cfg.Security.Interceptor.RedactPII),
-		ApprovalPolicy: policy,
-		DBEncryption:   dbEncStatus,
+		SignerProvider:     signer,
+		EncryptionKeys:     dbStatus.encryptionKeys,
+		StoredSecrets:      dbStatus.storedSecrets,
+		Interceptor:        boolToStatus(cfg.Security.Interceptor.Enabled),
+		PIIRedaction:       boolToStatus(cfg.Security.Interceptor.RedactPII),
+		ApprovalPolicy:     policy,
+		DBEncryption:       dbEncStatus,
 		Envelope:           envelope,
 		IdentityBundle:     readIdentityBundleStatus(langoDir),
 		DBAvailable:        dbStatus.available,
@@ -390,7 +387,7 @@ func runStatusFullBootstrap(bootLoader func() (*bootstrap.Result, error), jsonOu
 	if err != nil {
 		return fmt.Errorf("load config: %w", err)
 	}
-	defer boot.DBClient.Close()
+	defer boot.Close()
 
 	cfg := boot.Config
 
@@ -413,11 +410,11 @@ func runStatusFullBootstrap(bootLoader func() (*bootstrap.Result, error), jsonOu
 	}
 
 	s := statusOutput{
-		SignerProvider: cfg.Security.Signer.Provider,
-		Interceptor:    boolToStatus(cfg.Security.Interceptor.Enabled),
-		PIIRedaction:   boolToStatus(cfg.Security.Interceptor.RedactPII),
-		ApprovalPolicy: policy,
-		DBEncryption:   dbEncStatus,
+		SignerProvider:     cfg.Security.Signer.Provider,
+		Interceptor:        boolToStatus(cfg.Security.Interceptor.Enabled),
+		PIIRedaction:       boolToStatus(cfg.Security.Interceptor.RedactPII),
+		ApprovalPolicy:     policy,
+		DBEncryption:       dbEncStatus,
 		Envelope:           readEnvelopeStatus(langoDir),
 		IdentityBundle:     readIdentityBundleStatus(langoDir),
 		DBAvailable:        true,
@@ -432,12 +429,11 @@ func runStatusFullBootstrap(bootLoader func() (*bootstrap.Result, error), jsonOu
 	}
 
 	ctx := context.Background()
-	registry := sec.NewKeyRegistry(boot.DBClient)
-	if keys, err := registry.ListKeys(ctx); err == nil {
-		s.EncryptionKeys = len(keys)
-	}
-	if secrets, err := boot.DBClient.Secret.Query().Count(ctx); err == nil {
-		s.StoredSecrets = secrets
+	if boot.Storage != nil {
+		if summary, err := boot.Storage.SecuritySummary(ctx); err == nil {
+			s.EncryptionKeys = summary.EncryptionKeys
+			s.StoredSecrets = summary.StoredSecrets
+		}
 	}
 
 	return renderStatus(s, jsonOutput)

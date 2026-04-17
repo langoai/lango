@@ -1,88 +1,13 @@
 ## Purpose
 
 Capability spec for cli-security-status. See requirements below for scope and behavior contracts.
-
 ## Requirements
-
 ### Requirement: Security status command
+Security status reads SHALL use broker-backed storage diagnostics rather than opening the SQLite database directly from the CLI process.
 
-The system SHALL provide a `lango security status` command that displays the current security configuration and state. The command SHALL show signer provider, encryption key count, stored secret count, interceptor status, PII redaction status, approval policy, DB encryption state, and envelope information (version, KEK slot count/types, recovery setup, pending flags). The command SHALL support `--json` for JSON output. The command default behavior SHALL be passphrase-free: it SHALL NOT trigger an interactive passphrase prompt. When DB access requires a passphrase that cannot be obtained non-interactively (via keyring or keyfile), the command SHALL gracefully degrade DB-dependent fields (e.g., encryption key count = 0, signer provider = "unavailable") without failing.
-
-#### Scenario: Display security status with envelope fields
-
-- **WHEN** user runs `lango security status` with an envelope-based installation
-- **THEN** the command SHALL display the envelope version, number of KEK slots, slot types (passphrase, mnemonic), recovery setup status, and any pending flags (`PendingMigration`, `PendingRekey`)
-
-#### Scenario: Display security status with approval policy
-
-- **WHEN** user runs `lango security status`
-- **THEN** the command SHALL display "Approval Policy: <policy>" where policy is the `ApprovalPolicy` string value (defaulting to "dangerous" if empty)
-
-#### Scenario: JSON output with envelope and approval policy
-
-- **WHEN** user runs `lango security status --json`
-- **THEN** the JSON output SHALL include envelope fields (`envelope_version`, `kek_slots`, `recovery_setup`, `pending_migration`, `pending_rekey`) and `"approval_policy": "<policy>"`
-
-#### Scenario: Database unavailable (non-interactive)
-
-- **WHEN** the session database cannot be opened because no passphrase is available non-interactively
-- **THEN** the command displays all envelope fields and configuration fields
-- **AND** DB-dependent fields show zero counts or "unavailable"
-- **AND** the command exits with code 0 without failing
-
-#### Scenario: Passphrase-free default behavior
-
-- **WHEN** user runs `lango security status` in any environment
-- **THEN** the command SHALL NOT trigger an interactive passphrase prompt
-- **AND** it SHALL use `passphrase.AcquireNonInteractive()` (keyring/keyfile only)
-- **AND** if neither source provides a passphrase, it SHALL proceed with DB fields unavailable
-
-#### Scenario: Database unavailable (legacy behavior preserved)
-
-- **WHEN** the session database cannot be opened (any reason)
-- **THEN** the command displays status with zero counts for keys and secrets, without failing
-
-#### Scenario: Display PQ KEM status
-
-- **WHEN** user runs `lango security status` and PQ handshake is enabled
-- **THEN** the output SHALL include "PQ Handshake: enabled (X25519-MLKEM768)"
-
-#### Scenario: Display PQ KEM status when disabled
-
-- **WHEN** user runs `lango security status` and PQ handshake is not enabled
-- **THEN** the output SHALL include "PQ Handshake: disabled"
-
-#### Scenario: JSON output includes PQ KEM status
-
-- **WHEN** user runs `lango security status --json`
-- **THEN** the JSON output SHALL include `"pq_handshake_enabled": true/false` and `"pq_handshake_algorithm": "X25519-MLKEM768"` (when enabled)
-
-#### Scenario: Display PQ signing key status
-
-- **WHEN** user runs `lango security status` and PQ signing key is available
-- **THEN** the identity bundle section SHALL include "PQ Signing Key: available (ml-dsa-65)"
-
-#### Scenario: Display PQ signing key unavailable
-
-- **WHEN** user runs `lango security status` and PQ signing key is not available
-- **THEN** the identity bundle section SHALL include "PQ Signing Key: not available"
-
-#### Scenario: JSON output includes PQ signing key status
-
-- **WHEN** user runs `lango security status --json`
-- **THEN** the identity bundle section SHALL include `"pq_signing_key_available": true/false` and `"pq_signing_algorithm": "ml-dsa-65"` (when available)
-
-#### Scenario: Display KMS protection status
-- **WHEN** user runs `lango security status` and the envelope has a KMS KEK slot
-- **THEN** the output SHALL include "KMS Protection: enabled (<provider>)" showing the KMS provider name
-
-#### Scenario: Display KMS protection disabled
-- **WHEN** user runs `lango security status` and no KMS KEK slot exists
-- **THEN** the output SHALL include "KMS Protection: disabled"
-
-#### Scenario: JSON output includes KMS protection
-- **WHEN** user runs `lango security status --json`
-- **THEN** the JSON output SHALL include `"kms_protected": true/false` and `"kms_provider": "<provider>"` (when protected)
+#### Scenario: Status command reads through broker
+- **WHEN** the security status command needs database-backed counts or metadata
+- **THEN** it SHALL query the broker-backed storage layer instead of opening the database directly in the CLI process
 
 ### Requirement: Non-interactive mini-bootstrap for status
 
@@ -133,3 +58,4 @@ The system SHALL provide an `OpenDatabaseReadOnly` function used by status comma
 
 - **WHEN** a write operation is attempted on the read-only client
 - **THEN** SQLite returns a "read-only database" error
+

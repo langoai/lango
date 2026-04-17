@@ -12,6 +12,7 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/langoai/lango/internal/bootstrap"
+	"github.com/langoai/lango/internal/ent"
 	"github.com/langoai/lango/internal/runledger"
 	"github.com/langoai/lango/internal/toolchain"
 	"github.com/langoai/lango/internal/workflow"
@@ -84,7 +85,7 @@ func newRunCmd(bootLoader func() (*bootstrap.Result, error)) *cobra.Command {
 				fmt.Println("(Server not available for direct execution)")
 				return nil
 			}
-			defer boot.DBClient.Close()
+			defer boot.Close()
 
 			engine := initEngine(boot)
 			if engine == nil {
@@ -124,7 +125,7 @@ func newWorkflowListCmd(bootLoader func() (*bootstrap.Result, error)) *cobra.Com
 			if err != nil {
 				return fmt.Errorf("bootstrap: %w", err)
 			}
-			defer boot.DBClient.Close()
+			defer boot.Close()
 
 			engine := initEngine(boot)
 			if engine == nil {
@@ -184,7 +185,7 @@ func newWorkflowStatusCmd(bootLoader func() (*bootstrap.Result, error)) *cobra.C
 			if err != nil {
 				return fmt.Errorf("bootstrap: %w", err)
 			}
-			defer boot.DBClient.Close()
+			defer boot.Close()
 
 			engine := initEngine(boot)
 			if engine == nil {
@@ -249,7 +250,7 @@ func newWorkflowCancelCmd(bootLoader func() (*bootstrap.Result, error)) *cobra.C
 			if err != nil {
 				return fmt.Errorf("bootstrap: %w", err)
 			}
-			defer boot.DBClient.Close()
+			defer boot.Close()
 
 			engine := initEngine(boot)
 			if engine == nil {
@@ -277,7 +278,7 @@ func newWorkflowHistoryCmd(bootLoader func() (*bootstrap.Result, error)) *cobra.
 			if err != nil {
 				return fmt.Errorf("bootstrap: %w", err)
 			}
-			defer boot.DBClient.Close()
+			defer boot.Close()
 
 			engine := initEngine(boot)
 			if engine == nil {
@@ -331,8 +332,13 @@ func initEngine(boot *bootstrap.Result) *workflow.Engine {
 		return nil
 	}
 
+	client := workflowEntClient(boot)
+	if client == nil {
+		return nil
+	}
+
 	lg, _ := zap.NewProduction()
-	state := workflow.NewStateStore(boot.DBClient, lg.Sugar())
+	state := workflow.NewStateStore(client, lg.Sugar())
 	return workflow.NewEngine(nil, state, nil,
 		boot.Config.Workflow.MaxConcurrentSteps,
 		boot.Config.Workflow.DefaultTimeout,
@@ -346,7 +352,10 @@ func maybeListRunsFromLedger(
 	if !boot.Config.RunLedger.Enabled || !boot.Config.RunLedger.AuthoritativeRead {
 		return nil, false, nil
 	}
-	store := runledger.NewEntStore(boot.DBClient)
+	store := workflowRunLedgerStore(boot)
+	if store == nil {
+		return nil, true, fmt.Errorf("workflow runledger storage unavailable")
+	}
 	summaries, err := store.ListRuns(context.Background(), limit)
 	if err != nil {
 		return nil, true, fmt.Errorf("list workflow runs from RunLedger: %w", err)
@@ -371,7 +380,10 @@ func maybeStatusFromLedger(
 	if !boot.Config.RunLedger.Enabled || !boot.Config.RunLedger.AuthoritativeRead {
 		return nil, false, nil
 	}
-	store := runledger.NewEntStore(boot.DBClient)
+	store := workflowRunLedgerStore(boot)
+	if store == nil {
+		return nil, true, fmt.Errorf("workflow runledger storage unavailable")
+	}
 	snap, err := store.GetRunSnapshot(context.Background(), runID)
 	if err != nil {
 		return nil, true, fmt.Errorf("get workflow status from RunLedger: %w", err)
@@ -412,4 +424,18 @@ func formatTime(t time.Time) string {
 		return "-"
 	}
 	return t.Format(time.DateTime)
+}
+
+func workflowEntClient(boot *bootstrap.Result) *ent.Client {
+	if boot != nil && boot.Storage != nil {
+		return boot.Storage.EntClient()
+	}
+	return nil
+}
+
+func workflowRunLedgerStore(boot *bootstrap.Result) runledger.RunLedgerStore {
+	if boot != nil && boot.Storage != nil {
+		return boot.Storage.RunLedger()
+	}
+	return nil
 }

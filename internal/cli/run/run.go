@@ -11,6 +11,13 @@ import (
 	"github.com/langoai/lango/internal/runledger"
 )
 
+func runLedgerStoreFromBoot(boot *bootstrap.Result) runledger.RunLedgerStore {
+	if boot != nil && boot.Storage != nil {
+		return boot.Storage.RunLedger()
+	}
+	return nil
+}
+
 // NewRunCmd creates the run command with lazy bootstrap loading.
 func NewRunCmd(bootLoader func() (*bootstrap.Result, error)) *cobra.Command {
 	cmd := &cobra.Command{
@@ -30,20 +37,23 @@ func newListCmd(bootLoader func() (*bootstrap.Result, error)) *cobra.Command {
 	return &cobra.Command{
 		Use:   "list",
 		Short: "List recent runs",
-		Long: `List recent RunLedger runs from the persistent snapshot store.`,
+		Long:  `List recent RunLedger runs from the persistent snapshot store.`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			boot, err := bootLoader()
 			if err != nil {
 				return fmt.Errorf("bootstrap: %w", err)
 			}
-			defer boot.DBClient.Close()
+			defer boot.Close()
 
 			if !boot.Config.RunLedger.Enabled {
 				fmt.Println("RunLedger is disabled. Enable with: lango config set runLedger.enabled true")
 				return nil
 			}
 
-			store := runledger.NewEntStore(boot.DBClient)
+			store := runLedgerStoreFromBoot(boot)
+			if store == nil {
+				return fmt.Errorf("runledger store unavailable")
+			}
 			runs, err := store.ListRuns(context.Background(), boot.Config.RunLedger.MaxRunHistory)
 			if err != nil {
 				return fmt.Errorf("list runs: %w", err)
@@ -70,7 +80,7 @@ func newStatusCmd(bootLoader func() (*bootstrap.Result, error)) *cobra.Command {
 			if err != nil {
 				return fmt.Errorf("bootstrap: %w", err)
 			}
-			defer boot.DBClient.Close()
+			defer boot.Close()
 
 			cfg := boot.Config.RunLedger
 			fmt.Printf("RunLedger Configuration:\n")
@@ -98,14 +108,17 @@ func newJournalCmd(bootLoader func() (*bootstrap.Result, error)) *cobra.Command 
 			if err != nil {
 				return fmt.Errorf("bootstrap: %w", err)
 			}
-			defer boot.DBClient.Close()
+			defer boot.Close()
 
 			if !boot.Config.RunLedger.Enabled {
 				fmt.Println("RunLedger is disabled. Enable with: lango config set runLedger.enabled true")
 				return nil
 			}
 
-			store := runledger.NewEntStore(boot.DBClient)
+			store := runLedgerStoreFromBoot(boot)
+			if store == nil {
+				return fmt.Errorf("runledger store unavailable")
+			}
 			events, err := store.GetJournalEvents(context.Background(), args[0])
 			if err != nil {
 				return fmt.Errorf("get journal events: %w", err)

@@ -34,7 +34,7 @@ Recovery mnemonic slots (if present) are unchanged.`,
 			if err != nil {
 				return fmt.Errorf("load config: %w", err)
 			}
-			defer boot.DBClient.Close()
+			defer boot.Close()
 
 			if !prompt.IsInteractive() {
 				return fmt.Errorf("this command requires an interactive terminal")

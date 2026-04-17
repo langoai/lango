@@ -240,6 +240,7 @@ func initSkills(cfg *config.Config, baseTools []*agent.Tool, bus *eventbus.Bus, 
 				workDir, _ = os.Getwd()
 			}
 			registry.SetOSIsolator(iso, workDir, cfg.DataRoot)
+			registry.SetProtectedPaths(resolvedProtectedPaths(cfg, nil))
 		}
 		registry.SetFailClosed(cfg.Sandbox.FailClosed)
 	}

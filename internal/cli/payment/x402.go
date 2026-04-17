@@ -21,7 +21,7 @@ func newX402Cmd(bootLoader func() (*bootstrap.Result, error)) *cobra.Command {
 			if err != nil {
 				return fmt.Errorf("bootstrap: %w", err)
 			}
-			defer boot.DBClient.Close()
+			defer boot.Close()
 
 			cfg := boot.Config.Payment
 

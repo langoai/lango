@@ -36,7 +36,10 @@ func NewCronCmd(bootLoader func() (*bootstrap.Result, error)) *cobra.Command {
 }
 
 func initStore(boot *bootstrap.Result) cron.Store {
-	return cron.NewEntStore(boot.DBClient)
+	if boot != nil && boot.Storage != nil {
+		return boot.Storage.Cron()
+	}
+	return nil
 }
 
 func newAddCmd(bootLoader func() (*bootstrap.Result, error)) *cobra.Command {
@@ -106,7 +109,7 @@ Examples:
 			if err != nil {
 				return fmt.Errorf("bootstrap: %w", err)
 			}
-			defer boot.DBClient.Close()
+			defer boot.Close()
 
 			store := initStore(boot)
 
@@ -158,7 +161,7 @@ func newListCmd(bootLoader func() (*bootstrap.Result, error)) *cobra.Command {
 			if err != nil {
 				return fmt.Errorf("bootstrap: %w", err)
 			}
-			defer boot.DBClient.Close()
+			defer boot.Close()
 
 			store := initStore(boot)
 			jobs, err := store.List(context.Background())
@@ -205,7 +208,7 @@ func newDeleteCmd(bootLoader func() (*bootstrap.Result, error)) *cobra.Command {
 			if err != nil {
 				return fmt.Errorf("bootstrap: %w", err)
 			}
-			defer boot.DBClient.Close()
+			defer boot.Close()
 
 			store := initStore(boot)
 			id, err := resolveJobID(context.Background(), store, args[0])
@@ -233,7 +236,7 @@ func newPauseCmd(bootLoader func() (*bootstrap.Result, error)) *cobra.Command {
 			if err != nil {
 				return fmt.Errorf("bootstrap: %w", err)
 			}
-			defer boot.DBClient.Close()
+			defer boot.Close()
 
 			store := initStore(boot)
 			id, err := resolveJobID(context.Background(), store, args[0])
@@ -266,7 +269,7 @@ func newResumeCmd(bootLoader func() (*bootstrap.Result, error)) *cobra.Command {
 			if err != nil {
 				return fmt.Errorf("bootstrap: %w", err)
 			}
-			defer boot.DBClient.Close()
+			defer boot.Close()
 
 			store := initStore(boot)
 			id, err := resolveJobID(context.Background(), store, args[0])
@@ -301,7 +304,7 @@ func newHistoryCmd(bootLoader func() (*bootstrap.Result, error)) *cobra.Command 
 			if err != nil {
 				return fmt.Errorf("bootstrap: %w", err)
 			}
-			defer boot.DBClient.Close()
+			defer boot.Close()
 
 			store := initStore(boot)
 

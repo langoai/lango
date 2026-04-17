@@ -6,19 +6,15 @@ import (
 	"database/sql"
 	"fmt"
 	"os"
-	"path/filepath"
-	"strings"
 	"time"
-
-	"entgo.io/ent/dialect"
-	entsql "entgo.io/ent/dialect/sql"
-	"entgo.io/ent/dialect/sql/schema"
-	_ "github.com/mattn/go-sqlite3"
 
 	"github.com/langoai/lango/internal/config"
 	"github.com/langoai/lango/internal/configstore"
+	"github.com/langoai/lango/internal/dbopen"
 	"github.com/langoai/lango/internal/ent"
 	"github.com/langoai/lango/internal/security"
+	"github.com/langoai/lango/internal/storage"
+	"github.com/langoai/lango/internal/storagebroker"
 )
 
 // PhaseTimingEntry records the duration of a bootstrap phase.
@@ -36,14 +32,17 @@ type Result struct {
 	ExplicitKeys map[string]bool
 	// AutoEnabled records which context subsystems were auto-enabled during config resolution.
 	AutoEnabled config.AutoEnabledSet
-	// DBClient is the shared ent.Client for the application database.
-	DBClient *ent.Client
-	// RawDB is the underlying *sql.DB for direct SQL operations (e.g., sqlite-vec).
-	RawDB *sql.DB
+	// Broker is the optional storage broker client used during transitional
+	// broker-boundary rollout and diagnostics.
+	Broker storagebroker.API
 	// Crypto is the initialized CryptoProvider for the session.
 	Crypto security.CryptoProvider
-	// ConfigStore provides encrypted profile CRUD operations.
+	// ConfigStore is retained as a transitional compatibility handle. New code
+	// should prefer Storage.ConfigProfiles().
 	ConfigStore *configstore.Store
+	// Storage is the sole bootstrap-owned access point for database-backed
+	// capabilities. Callers should not depend on raw DB handles.
+	Storage *storage.Facade
 	// ProfileName is the name of the loaded profile.
 	ProfileName string
 	// LangoDir is the resolved data directory (Options.LangoDir or ~/.lango).
@@ -91,6 +90,9 @@ type Options struct {
 	KMSProviderName string
 	// Version is the application version string, recorded in bootstrap timing diagnostics.
 	Version string
+	// StartStorageBroker enables the transitional bootstrap path that starts a
+	// long-lived broker subprocess and completes an open-db handshake.
+	StartStorageBroker bool
 }
 
 // Run executes the full bootstrap sequence using the phase pipeline:
@@ -110,6 +112,26 @@ func Run(opts Options) (*Result, error) {
 	return pipeline.Execute(context.Background(), opts)
 }
 
+// Close releases resources held by the bootstrap result.
+func (r *Result) Close() error {
+	if r == nil {
+		return nil
+	}
+	if r.Broker != nil {
+		_ = r.Broker.Close(context.Background())
+		r.Broker = nil
+	}
+	if r.Storage != nil {
+		if client := r.Storage.EntClient(); client != nil {
+			return client.Close()
+		}
+		if rawDB := r.Storage.RawDB(); rawDB != nil {
+			return rawDB.Close()
+		}
+	}
+	return nil
+}
+
 // openDatabase opens the SQLite/SQLCipher database and runs ent schema migration.
 // When encryptionKey is non-empty, PRAGMA key is executed after sql.Open.
 //
@@ -122,67 +144,14 @@ func Run(opts Options) (*Result, error) {
 //
 // When encryptionKey is empty, no PRAGMA key is issued and the DB opens in plaintext mode.
 func openDatabase(dbPath, encryptionKey string, rawKey bool, cipherPageSize int) (*ent.Client, *sql.DB, error) {
-	// Expand tilde.
-	if strings.HasPrefix(dbPath, "~/") {
-		home, err := os.UserHomeDir()
-		if err == nil {
-			dbPath = filepath.Join(home, dbPath[2:])
-		}
-	}
+	return dbopen.OpenManaged(dbPath, encryptionKey, rawKey, cipherPageSize)
+}
 
-	// Ensure parent directory exists.
-	if err := os.MkdirAll(filepath.Dir(dbPath), dataDirPerm); err != nil {
-		return nil, nil, fmt.Errorf("create db directory: %w", err)
-	}
-
-	connStr := "file:" + dbPath + "?cache=shared&_journal_mode=WAL&_busy_timeout=5000"
-	db, err := sql.Open("sqlite3", connStr)
-	if err != nil {
-		return nil, nil, fmt.Errorf("sql open: %w", err)
-	}
-
-	db.SetMaxOpenConns(4)
-	db.SetMaxIdleConns(4)
-
-	// When encryption key is provided, set SQLCipher PRAGMAs.
-	// This requires the binary to be built with SQLCipher support.
-	if encryptionKey != "" {
-		if cipherPageSize <= 0 {
-			cipherPageSize = 4096
-		}
-		var pragmaKey string
-		if rawKey {
-			pragmaKey = fmt.Sprintf(`PRAGMA key = "x'%s'"`, encryptionKey)
-		} else {
-			pragmaKey = fmt.Sprintf("PRAGMA key = '%s'", encryptionKey)
-		}
-		if _, err := db.Exec(pragmaKey); err != nil {
-			db.Close()
-			return nil, nil, fmt.Errorf("set PRAGMA key: %w", err)
-		}
-		if _, err := db.Exec(fmt.Sprintf("PRAGMA cipher_page_size = %d", cipherPageSize)); err != nil {
-			db.Close()
-			return nil, nil, fmt.Errorf("set cipher_page_size: %w", err)
-		}
-	}
-
-	if _, err := db.Exec("PRAGMA foreign_keys = ON"); err != nil {
-		db.Close()
-		return nil, nil, fmt.Errorf("enable foreign keys: %w", err)
-	}
-
-	drv := entsql.OpenDB(dialect.SQLite, db)
-	client := ent.NewClient(ent.Driver(drv))
-
-	if err := client.Schema.Create(
-		context.Background(),
-		schema.WithForeignKeys(false),
-	); err != nil {
-		client.Close()
-		return nil, nil, fmt.Errorf("schema migration: %w", err)
-	}
-
-	return client, db, nil
+// OpenDatabaseManaged opens the application database in read-write mode and
+// applies schema migration. It is intended for infrastructure owners such as
+// the storage broker.
+func OpenDatabaseManaged(dbPath, encryptionKey string, rawKey bool, cipherPageSize int) (*ent.Client, *sql.DB, error) {
+	return dbopen.OpenManaged(dbPath, encryptionKey, rawKey, cipherPageSize)
 }
 
 // OpenDatabaseReadOnly opens the SQLite/SQLCipher database in read-only mode
@@ -204,61 +173,7 @@ func openDatabase(dbPath, encryptionKey string, rawKey bool, cipherPageSize int)
 // The returned *ent.Client shares the underlying *sql.DB so callers should
 // Close() the client (which closes the DB) when done.
 func OpenDatabaseReadOnly(dbPath, encryptionKey string, rawKey bool, cipherPageSize int) (*ent.Client, *sql.DB, error) {
-	// Expand tilde.
-	if strings.HasPrefix(dbPath, "~/") {
-		home, err := os.UserHomeDir()
-		if err == nil {
-			dbPath = filepath.Join(home, dbPath[2:])
-		}
-	}
-
-	// If the file doesn't exist, fail fast — read-only open on a nonexistent
-	// DB would still succeed but produce an empty database, which is misleading.
-	if _, err := os.Stat(dbPath); err != nil {
-		return nil, nil, fmt.Errorf("read-only db open: stat %q: %w", dbPath, err)
-	}
-
-	connStr := "file:" + dbPath + "?mode=ro&cache=shared&_journal_mode=WAL&_busy_timeout=5000"
-	db, err := sql.Open("sqlite3", connStr)
-	if err != nil {
-		return nil, nil, fmt.Errorf("read-only sql open: %w", err)
-	}
-
-	db.SetMaxOpenConns(2)
-	db.SetMaxIdleConns(2)
-
-	if encryptionKey != "" {
-		if cipherPageSize <= 0 {
-			cipherPageSize = 4096
-		}
-		var pragmaKey string
-		if rawKey {
-			pragmaKey = fmt.Sprintf(`PRAGMA key = "x'%s'"`, encryptionKey)
-		} else {
-			pragmaKey = fmt.Sprintf("PRAGMA key = '%s'", encryptionKey)
-		}
-		if _, err := db.Exec(pragmaKey); err != nil {
-			db.Close()
-			return nil, nil, fmt.Errorf("read-only PRAGMA key: %w", err)
-		}
-		if _, err := db.Exec(fmt.Sprintf("PRAGMA cipher_page_size = %d", cipherPageSize)); err != nil {
-			db.Close()
-			return nil, nil, fmt.Errorf("read-only cipher_page_size: %w", err)
-		}
-	}
-
-	// Sanity check: run a trivial query to confirm the key (if any) is correct.
-	// This catches "wrong PRAGMA key → DB looks OK but queries fail later".
-	if _, err := db.Exec("PRAGMA schema_version"); err != nil {
-		db.Close()
-		return nil, nil, fmt.Errorf("read-only db verify: %w", err)
-	}
-
-	// NOTE: intentionally no Schema.Create — this is the whole point of the
-	// read-only path. Callers that need a migrated schema should use bootstrap.Run.
-	drv := entsql.OpenDB(dialect.SQLite, db)
-	client := ent.NewClient(ent.Driver(drv))
-	return client, db, nil
+	return dbopen.OpenReadOnly(dbPath, encryptionKey, rawKey, cipherPageSize)
 }
 
 // IsDBEncrypted checks whether a SQLite database file is encrypted.
@@ -301,14 +216,39 @@ func loadSecurityState(db *sql.DB) ([]byte, []byte, bool, error) {
 	return salt, checksum, false, nil
 }
 
+func loadSecurityStateViaBroker(ctx context.Context, broker storagebroker.API) ([]byte, []byte, bool, error) {
+	if broker == nil {
+		return nil, nil, false, fmt.Errorf("storage broker not available")
+	}
+	result, err := broker.LoadSecurityState(ctx)
+	if err != nil {
+		return nil, nil, false, err
+	}
+	return result.Salt, result.Checksum, result.FirstRun, nil
+}
+
 // storeSalt writes the encryption salt into the security_config table.
 func storeSalt(db *sql.DB, salt []byte) error {
 	return security.NewSecurityConfigStore(db).StoreSalt(salt)
 }
 
+func storeSaltViaBroker(ctx context.Context, broker storagebroker.API, salt []byte) error {
+	if broker == nil {
+		return fmt.Errorf("storage broker not available")
+	}
+	return broker.StoreSalt(ctx, salt)
+}
+
 // storeChecksum writes the passphrase checksum into the security_config table.
 func storeChecksum(db *sql.DB, checksum []byte) error {
 	return security.NewSecurityConfigStore(db).StoreChecksum(checksum)
+}
+
+func storeChecksumViaBroker(ctx context.Context, broker storagebroker.API, checksum []byte) error {
+	if broker == nil {
+		return fmt.Errorf("storage broker not available")
+	}
+	return broker.StoreChecksum(ctx, checksum)
 }
 
 // handleNoProfile handles the case where no active profile exists.

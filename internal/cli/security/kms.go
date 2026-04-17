@@ -39,7 +39,7 @@ func newKMSStatusCmd(bootLoader func() (*bootstrap.Result, error)) *cobra.Comman
 			if err != nil {
 				return fmt.Errorf("load config: %w", err)
 			}
-			defer boot.DBClient.Close()
+			defer boot.Close()
 
 			cfg := boot.Config
 
@@ -109,7 +109,7 @@ func newKMSTestCmd(bootLoader func() (*bootstrap.Result, error)) *cobra.Command 
 			if err != nil {
 				return fmt.Errorf("load config: %w", err)
 			}
-			defer boot.DBClient.Close()
+			defer boot.Close()
 
 			cfg := boot.Config
 			provider := cfg.Security.Signer.Provider
@@ -174,10 +174,16 @@ func newKMSKeysCmd(bootLoader func() (*bootstrap.Result, error)) *cobra.Command 
 			if err != nil {
 				return fmt.Errorf("load config: %w", err)
 			}
-			defer boot.DBClient.Close()
+			defer boot.Close()
 
 			ctx := context.Background()
-			registry := sec.NewKeyRegistry(boot.DBClient)
+			var registry *sec.KeyRegistry
+			if boot.Storage != nil {
+				registry = boot.Storage.KeyRegistry()
+			}
+			if registry == nil {
+				return fmt.Errorf("key registry unavailable")
+			}
 			keys, err := registry.ListKeys(ctx)
 			if err != nil {
 				return fmt.Errorf("list keys: %w", err)
@@ -235,7 +241,7 @@ This enables passphraseless bootstrap when KMS credentials are available.`,
 			if err != nil {
 				return fmt.Errorf("bootstrap: %w", err)
 			}
-			defer boot.DBClient.Close()
+			defer boot.Close()
 
 			crypto, ok := boot.Crypto.(*sec.LocalCryptoProvider)
 			if !ok || crypto == nil {
@@ -291,7 +297,7 @@ func newKMSDetachCmd(bootLoader func() (*bootstrap.Result, error)) *cobra.Comman
 			if err != nil {
 				return fmt.Errorf("bootstrap: %w", err)
 			}
-			defer boot.DBClient.Close()
+			defer boot.Close()
 
 			crypto, ok := boot.Crypto.(*sec.LocalCryptoProvider)
 			if !ok || crypto == nil {

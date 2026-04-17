@@ -8,6 +8,7 @@ import (
 	"github.com/langoai/lango/internal/bootstrap"
 	"github.com/langoai/lango/internal/config"
 	"github.com/langoai/lango/internal/ent/enttest"
+	"github.com/langoai/lango/internal/storage"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -208,8 +209,10 @@ func TestRunLedgerModule_WorkspaceIsolationGate(t *testing.T) {
 	cfg.RunLedger.WorkspaceIsolation = true
 
 	mod := &runLedgerModule{
-		cfg:  cfg,
-		boot: &bootstrap.Result{DBClient: client},
+		cfg: cfg,
+		boot: &bootstrap.Result{
+			Storage: storage.NewFacade(nil, nil, storage.WithEntClient(client)),
+		},
 	}
 
 	result, err := mod.Init(context.Background(), nil)

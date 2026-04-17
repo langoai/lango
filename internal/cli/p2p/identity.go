@@ -22,7 +22,7 @@ func newIdentityCmd(bootLoader func() (*bootstrap.Result, error)) *cobra.Command
 			if err != nil {
 				return fmt.Errorf("load config: %w", err)
 			}
-			defer boot.DBClient.Close()
+			defer boot.Close()
 
 			deps, err := initP2PDeps(boot)
 			if err != nil {

@@ -14,7 +14,34 @@ import (
 	"github.com/langoai/lango/internal/keyring"
 	"github.com/langoai/lango/internal/security"
 	"github.com/langoai/lango/internal/security/passphrase"
+	"github.com/langoai/lango/internal/storage"
+	"github.com/langoai/lango/internal/storagebroker"
 )
+
+var startStorageBroker = func(ctx context.Context) (storagebroker.API, error) {
+	return storagebroker.Start(ctx)
+}
+
+func loadSecurityStateForState(ctx context.Context, s *State) ([]byte, []byte, bool, error) {
+	if s != nil && s.Broker != nil {
+		return loadSecurityStateViaBroker(ctx, s.Broker)
+	}
+	return loadSecurityState(s.RawDB)
+}
+
+func storeSaltForState(ctx context.Context, s *State, salt []byte) error {
+	if s != nil && s.Broker != nil {
+		return storeSaltViaBroker(ctx, s.Broker, salt)
+	}
+	return storeSalt(s.RawDB, salt)
+}
+
+func storeChecksumForState(ctx context.Context, s *State, checksum []byte) error {
+	if s != nil && s.Broker != nil {
+		return storeChecksumViaBroker(ctx, s.Broker, checksum)
+	}
+	return storeChecksum(s.RawDB, checksum)
+}
 
 // dataDirPerm is the permission mode for all ~/.lango/ directories.
 // 0700 restricts access to the owner only (appropriate for data containing
@@ -271,19 +298,43 @@ func phaseOpenDatabase() Phase {
 				}
 				s.DBKey = dbKey
 			}
+			if s.Options.StartStorageBroker {
+				brokerClient, err := startStorageBroker(context.Background())
+				if err != nil {
+					return fmt.Errorf("start storage broker: %w", err)
+				}
+				if _, err := brokerClient.OpenDB(context.Background(), storagebroker.OpenDBRequest{
+					DBPath:         s.Options.DBPath,
+					EncryptionKey:  dbKey,
+					RawKey:         rawKey,
+					CipherPageSize: s.Options.DBEncryption.CipherPageSize,
+				}); err != nil {
+					_ = brokerClient.Close(context.Background())
+					return fmt.Errorf("storage broker open_db: %w", err)
+				}
+				s.Broker = brokerClient
+				s.Result.Broker = brokerClient
+			}
 			client, rawDB, err := openDatabase(s.Options.DBPath, dbKey, rawKey, s.Options.DBEncryption.CipherPageSize)
 			if err != nil {
+				if s.Broker != nil {
+					_ = s.Broker.Close(context.Background())
+					s.Broker = nil
+					s.Result.Broker = nil
+				}
 				return fmt.Errorf("open database: %w", err)
 			}
 			s.Client = client
 			s.RawDB = rawDB
-			s.Result.DBClient = client
-			s.Result.RawDB = rawDB
 			return nil
 		},
 		Cleanup: func(s *State) {
+			if s.Broker != nil {
+				_ = s.Broker.Close(context.Background())
+				s.Broker = nil
+			}
 			if s.Client != nil {
-				s.Client.Close()
+				_ = s.Client.Close()
 			}
 		},
 	}
@@ -357,7 +408,7 @@ func phaseLoadSecurityState() Phase {
 				// When pending flags are set, legacy salt/checksum are still
 				// needed for crash-recovery retry in phaseMigrateEnvelope.
 				if s.Envelope.PendingMigration || s.Envelope.PendingRekey {
-					salt, checksum, _, err := loadSecurityState(s.RawDB)
+					salt, checksum, _, err := loadSecurityStateForState(context.Background(), s)
 					if err != nil {
 						return fmt.Errorf("load security state for pending migration: %w", err)
 					}
@@ -367,7 +418,7 @@ func phaseLoadSecurityState() Phase {
 				s.FirstRun = false
 				return nil
 			}
-			salt, checksum, firstRun, err := loadSecurityState(s.RawDB)
+			salt, checksum, firstRun, err := loadSecurityStateForState(context.Background(), s)
 			if err != nil {
 				return fmt.Errorf("load security state: %w", err)
 			}
@@ -399,11 +450,11 @@ func phaseInitCrypto() Phase {
 				if err := provider.Initialize(s.Passphrase); err != nil {
 					return fmt.Errorf("initialize crypto: %w", err)
 				}
-				if err := storeSalt(s.RawDB, provider.Salt()); err != nil {
+				if err := storeSaltForState(context.Background(), s, provider.Salt()); err != nil {
 					return fmt.Errorf("store salt: %w", err)
 				}
 				cs := provider.CalculateChecksum(s.Passphrase, provider.Salt())
-				if err := storeChecksum(s.RawDB, cs); err != nil {
+				if err := storeChecksumForState(context.Background(), s, cs); err != nil {
 					return fmt.Errorf("store checksum: %w", err)
 				}
 			default:
@@ -519,6 +570,15 @@ func phaseLoadProfile() Phase {
 			if err := config.PostLoad(s.Result.Config); err != nil {
 				return fmt.Errorf("post-load config: %w", err)
 			}
+
+			s.Result.Storage = storage.NewFacade(
+				store,
+				security.NewSecurityConfigStore(s.RawDB),
+				storage.WithEntClient(s.Client),
+				storage.WithRawDB(s.RawDB),
+				storage.WithSessionClient(s.Client),
+				storage.WithSessionDBPath(s.Result.Config.Session.DatabasePath),
+			)
 			return nil
 		},
 	}

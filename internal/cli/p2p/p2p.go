@@ -73,9 +73,10 @@ func initP2PDeps(boot *bootstrap.Result) (*p2pDeps, error) {
 	// Build SecretsStore from bootstrap result if crypto is available.
 	var secrets *security.SecretsStore
 	keyStorage := "file"
-	if boot.Crypto != nil && boot.DBClient != nil {
-		keys := security.NewKeyRegistry(boot.DBClient)
-		secrets = security.NewSecretsStore(boot.DBClient, keys, boot.Crypto)
+	if boot.Crypto != nil && boot.Storage != nil {
+		secrets = boot.Storage.SecretsStore(boot.Crypto)
+	}
+	if secrets != nil {
 		keyStorage = "secrets-store"
 	}
 

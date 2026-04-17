@@ -14,13 +14,12 @@ import (
 	"strings"
 	"time"
 
-	"entgo.io/ent/dialect/sql"
 	"github.com/spf13/cobra"
 
 	"github.com/langoai/lango/internal/bootstrap"
 	"github.com/langoai/lango/internal/config"
-	"github.com/langoai/lango/internal/ent/auditlog"
 	sandboxos "github.com/langoai/lango/internal/sandbox/os"
+	"github.com/langoai/lango/internal/storage"
 )
 
 // BootLoader is the optional dependency that opens the encrypted application
@@ -36,7 +35,7 @@ type BootLoader func() (*bootstrap.Result, error)
 // the DB on the way out) — used by `sandbox test` which does not need the
 // audit DB, and as the graceful-degradation fallback for `sandbox status`
 // when `bootLoader` is unavailable. bootLoader runs the full bootstrap and
-// returns the result with an open DBClient — used by `sandbox status` to
+// returns the result with initialized bootstrap storage — used by `sandbox status` to
 // query the sandbox decision audit trail.
 //
 // `sandbox status` prefers bootLoader so that one bootstrap pass serves both
@@ -102,11 +101,7 @@ func newStatusCmd(cfgLoader func() (*config.Config, error), bootLoader BootLoade
 				if b, err := bootLoader(); err == nil && b != nil && b.Config != nil {
 					boot = b
 					cfg = b.Config
-					defer func() {
-						if boot.DBClient != nil {
-							_ = boot.DBClient.Close()
-						}
-					}()
+					defer func() { _ = boot.Close() }()
 				}
 			}
 			if cfg == nil {
@@ -204,9 +199,7 @@ func newStatusCmd(cfgLoader func() (*config.Config, error), bootLoader BootLoade
 				fmt.Fprintln(w, "WARNING: allowedNetworkIPs is macOS-only; Linux isolation is not yet enforced")
 			}
 
-			// Recent Sandbox Decisions (graceful — skip if audit DB unavailable).
-			// boot.DBClient may still be nil in degraded bootstrap modes; the
-			// helper handles that case silently.
+			// Recent Sandbox Decisions (graceful — skip if audit storage unavailable).
 			renderRecentDecisions(cmd.Context(), w, boot, sessionPrefix)
 
 			return nil
@@ -219,26 +212,22 @@ func newStatusCmd(cfgLoader func() (*config.Config, error), bootLoader BootLoade
 
 // renderRecentDecisions queries the audit log for the most recent
 // SandboxDecisionEvent records and prints them to w. It is best-effort:
-// any failure (missing DB client, schema unavailable, query error) is
+// any failure (missing storage, schema unavailable, query error) is
 // silently ignored so the diagnostic remains usable as a sandbox-layer
 // inspection tool that does not depend on audit availability.
 //
-// The caller owns the *bootstrap.Result and its DBClient lifecycle; this
-// helper does not close the client.
+// The caller owns the *bootstrap.Result lifecycle; this helper does not close it.
 func renderRecentDecisions(ctx context.Context, w io.Writer, boot *bootstrap.Result, sessionPrefix string) {
-	if boot == nil || boot.DBClient == nil {
+	if boot == nil || boot.Storage == nil {
 		return
 	}
 
-	q := boot.DBClient.AuditLog.Query().
-		Where(auditlog.ActionEQ(auditlog.ActionSandboxDecision)).
-		Order(auditlog.ByTimestamp(sql.OrderDesc())).
-		Limit(10)
-	if sessionPrefix != "" {
-		q = q.Where(auditlog.SessionKeyHasPrefix(sessionPrefix))
+	var records []storage.SandboxDecisionRecord
+	decisions, err := boot.Storage.RecentSandboxDecisions(ctx, sessionPrefix, 10)
+	if err == nil {
+		records = decisions
 	}
-	decisions, err := q.All(ctx)
-	if err != nil || len(decisions) == 0 {
+	if err != nil || len(records) == 0 {
 		return
 	}
 
@@ -248,19 +237,9 @@ func renderRecentDecisions(ctx context.Context, w io.Writer, boot *bootstrap.Res
 	}
 	fmt.Fprintln(w)
 	fmt.Fprintln(w, title)
-	for _, d := range decisions {
-		var decision, backend, reason string
-		if v, ok := d.Details["decision"].(string); ok {
-			decision = v
-		}
-		if v, ok := d.Details["backend"].(string); ok {
-			backend = v
-		}
-		if v, ok := d.Details["reason"].(string); ok {
-			reason = v
-		}
+	for _, d := range records {
 		sessShort := truncateSessionKey(d.SessionKey, 8)
-		fmt.Fprintln(w, formatDecisionLine(d.Timestamp, sessShort, decision, backend, d.Target, reason))
+		fmt.Fprintln(w, formatDecisionLine(d.Timestamp, sessShort, d.Decision, d.Backend, d.Target, d.Reason))
 	}
 }
 

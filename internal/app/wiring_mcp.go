@@ -50,6 +50,7 @@ func initMCP(cfg *config.Config, bus *eventbus.Bus) *mcpComponents {
 				workDir, _ = os.Getwd()
 			}
 			mgr.SetOSIsolator(iso, workDir, cfg.DataRoot)
+			mgr.SetProtectedPaths(resolvedProtectedPaths(cfg, nil))
 		}
 		mgr.SetFailClosed(cfg.Sandbox.FailClosed)
 	}

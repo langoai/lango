@@ -11,17 +11,23 @@ import (
 var Version string
 
 // BootResult runs bootstrap and returns the full result.
-// The caller is responsible for closing boot.DBClient.
+// The caller is responsible for closing the result via boot.Close().
 func BootResult() (*bootstrap.Result, error) {
-	return bootstrap.Run(bootstrap.Options{Version: Version})
+	return bootstrap.Run(bootstrap.Options{
+		Version:            Version,
+		StartStorageBroker: true,
+	})
 }
 
 // Config runs bootstrap, returns only the config, and closes the DB client.
 func Config() (*config.Config, error) {
-	boot, err := bootstrap.Run(bootstrap.Options{Version: Version})
+	boot, err := bootstrap.Run(bootstrap.Options{
+		Version:            Version,
+		StartStorageBroker: true,
+	})
 	if err != nil {
 		return nil, err
 	}
-	defer boot.DBClient.Close()
+	defer boot.Close()
 	return boot.Config, nil
 }

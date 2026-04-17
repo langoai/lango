@@ -29,9 +29,12 @@ func newTraceMetricsCmd(bootLoader func() (*bootstrap.Result, error)) *cobra.Com
 			if err != nil {
 				return fmt.Errorf("bootstrap: %w", err)
 			}
-			defer boot.DBClient.Close()
+			defer boot.Close()
 
-			store := turntrace.NewEntStore(boot.DBClient)
+			store := traceStoreFromBoot(boot)
+			if store == nil {
+				return fmt.Errorf("trace store unavailable")
+			}
 			ctx := cmd.Context()
 
 			// Get recent successful and failed traces.

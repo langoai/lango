@@ -27,9 +27,12 @@ func newInquiriesCmd(bootLoader func() (*bootstrap.Result, error)) *cobra.Comman
 			if err != nil {
 				return fmt.Errorf("bootstrap: %w", err)
 			}
-			defer boot.DBClient.Close()
+			defer boot.Close()
 
-			entries, err := boot.DBClient.Inquiry.Query().
+			if boot.Storage == nil || boot.Storage.EntClient() == nil {
+				return fmt.Errorf("librarian storage unavailable")
+			}
+			entries, err := boot.Storage.EntClient().Inquiry.Query().
 				Where(inquiry.StatusEQ(inquiry.StatusPending)).
 				Order(inquiry.ByCreatedAt()).
 				Limit(limit).

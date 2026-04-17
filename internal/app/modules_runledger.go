@@ -37,8 +37,8 @@ func (m *runLedgerModule) Init(_ context.Context, _ appinit.Resolver) (*appinit.
 	// WithWorkspace(), but Phase 1 intentionally keeps runtime isolation disabled.
 	// Phase 4 activates workspace wiring as part of the execution-isolation rollout.
 	store := runledger.RunLedgerStore(runledger.NewMemoryStore())
-	if m.boot != nil && m.boot.DBClient != nil {
-		store = runledger.NewEntStore(m.boot.DBClient)
+	if m.boot != nil && m.boot.Storage != nil && m.boot.Storage.RunLedger() != nil {
+		store = m.boot.Storage.RunLedger()
 	}
 	validators := runledger.DefaultValidators()
 	pev := runledger.NewPEVEngine(store, validators)

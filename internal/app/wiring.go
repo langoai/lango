@@ -107,9 +107,11 @@ func initSessionStore(cfg *config.Config, boot *bootstrap.Result) (session.Store
 
 	logger().Info("initializing session store...")
 
-	// Reuse the ent client opened during bootstrap.
-	if boot != nil && boot.DBClient != nil {
-		return session.NewEntStoreWithClient(boot.DBClient, storeOpts...), nil
+	if boot != nil && boot.Storage != nil {
+		store, err := boot.Storage.OpenSessionStore(storeOpts...)
+		if err == nil && store != nil {
+			return store, nil
+		}
 	}
 
 	// Fallback: open a fresh connection (e.g., for tests).
@@ -131,17 +133,23 @@ func initSecurity(cfg *config.Config, store session.Store, boot *bootstrap.Resul
 	switch cfg.Security.Signer.Provider {
 	case "local":
 		// Reuse the crypto provider initialized during bootstrap.
-		if boot != nil && boot.Crypto != nil && boot.DBClient != nil {
-			keys := security.NewKeyRegistry(boot.DBClient)
-			secrets := security.NewSecretsStore(boot.DBClient, keys, boot.Crypto)
-
-			ctx := context.Background()
-			if _, err := keys.RegisterKey(ctx, "default", "local", security.KeyTypeEncryption); err != nil {
-				return nil, nil, nil, fmt.Errorf("register default key: %w", err)
+		if boot != nil && boot.Crypto != nil {
+			var keys *security.KeyRegistry
+			var secrets *security.SecretsStore
+			if boot.Storage != nil {
+				keys = boot.Storage.KeyRegistry()
+				secrets = boot.Storage.SecretsStore(boot.Crypto)
 			}
+			if keys != nil && secrets != nil {
 
-			logger().Info("security initialized (local provider, from bootstrap)")
-			return boot.Crypto, keys, secrets, nil
+				ctx := context.Background()
+				if _, err := keys.RegisterKey(ctx, "default", "local", security.KeyTypeEncryption); err != nil {
+					return nil, nil, nil, fmt.Errorf("register default key: %w", err)
+				}
+
+				logger().Info("security initialized (local provider, from bootstrap)")
+				return boot.Crypto, keys, secrets, nil
+			}
 		}
 
 		// Fallback: standalone initialization (should not happen in normal flow).
@@ -168,11 +176,17 @@ func initSecurity(cfg *config.Config, store session.Store, boot *bootstrap.Resul
 			return nil, nil, nil, fmt.Errorf("KMS provider %q: %w", cfg.Security.Signer.Provider, err)
 		}
 
-		if boot == nil || boot.DBClient == nil {
+		if boot == nil {
 			return nil, nil, nil, fmt.Errorf("KMS security provider requires bootstrap")
 		}
 
-		keys := security.NewKeyRegistry(boot.DBClient)
+		var keys *security.KeyRegistry
+		if boot.Storage != nil {
+			keys = boot.Storage.KeyRegistry()
+		}
+		if keys == nil {
+			return nil, nil, nil, fmt.Errorf("KMS security provider requires key registry")
+		}
 		ctx := context.Background()
 		if _, err := keys.RegisterKey(ctx, "kms-default", cfg.Security.KMS.KeyID, security.KeyTypeEncryption); err != nil {
 			return nil, nil, nil, fmt.Errorf("register KMS key: %w", err)
@@ -193,7 +207,13 @@ func initSecurity(cfg *config.Config, store session.Store, boot *bootstrap.Resul
 				"keyID", cfg.Security.KMS.KeyID)
 		}
 
-		secrets := security.NewSecretsStore(boot.DBClient, keys, finalProvider)
+		var secrets *security.SecretsStore
+		if boot.Storage != nil {
+			secrets = boot.Storage.SecretsStore(finalProvider)
+		}
+		if secrets == nil {
+			return nil, nil, nil, fmt.Errorf("KMS security provider requires secrets store")
+		}
 		return finalProvider, keys, secrets, nil
 
 	default:

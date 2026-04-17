@@ -1,6 +1,7 @@
 package bootstrap
 
 import (
+	"context"
 	"os"
 	"path/filepath"
 	"testing"
@@ -9,6 +10,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/langoai/lango/internal/security/passphrase"
+	"github.com/langoai/lango/internal/storagebroker"
 )
 
 func TestRun_ShredsKeyfileAfterCryptoInit(t *testing.T) {
@@ -27,7 +29,7 @@ func TestRun_ShredsKeyfileAfterCryptoInit(t *testing.T) {
 	})
 	require.NoError(t, err)
 	t.Cleanup(func() {
-		result.DBClient.Close()
+		_ = result.Close()
 	})
 
 	_, statErr := os.Stat(keyfilePath)
@@ -51,9 +53,78 @@ func TestRun_KeepsKeyfileWhenOptedOut(t *testing.T) {
 	})
 	require.NoError(t, err)
 	t.Cleanup(func() {
-		result.DBClient.Close()
+		_ = result.Close()
 	})
 
 	_, statErr := os.Stat(keyfilePath)
 	assert.NoError(t, statErr, "keyfile should still exist when KeepKeyfile is true")
 }
+
+func TestRun_StartStorageBroker(t *testing.T) {
+	dir := t.TempDir()
+	dbPath := filepath.Join(dir, "test.db")
+	keyfilePath := filepath.Join(dir, "keyfile")
+	pass := "test-passphrase-for-broker"
+
+	require.NoError(t, passphrase.WriteKeyfile(keyfilePath, pass))
+
+	origStart := startStorageBroker
+	t.Cleanup(func() { startStorageBroker = origStart })
+	startStorageBroker = func(ctx context.Context) (storagebroker.API, error) {
+		return &stubBrokerClient{}, nil
+	}
+
+	result, err := Run(Options{
+		LangoDir:            dir,
+		DBPath:              dbPath,
+		KeyfilePath:         keyfilePath,
+		KeepKeyfile:         true,
+		SkipSecureDetection: true,
+		StartStorageBroker:  true,
+	})
+	require.NoError(t, err)
+	require.NotNil(t, result.Broker)
+
+	health, err := result.Broker.Health(context.Background())
+	require.NoError(t, err)
+	assert.True(t, health.Opened)
+	require.NotNil(t, result.Storage)
+
+	sessionStore, err := result.Storage.OpenSessionStore()
+	require.NoError(t, err)
+	require.NotNil(t, sessionStore)
+
+	summary, err := result.Storage.SecuritySummary(context.Background())
+	require.NoError(t, err)
+	assert.Zero(t, summary.EncryptionKeys)
+	assert.Zero(t, summary.StoredSecrets)
+
+	require.NoError(t, result.Close())
+}
+
+type stubBrokerClient struct {
+	opened bool
+}
+
+func (s *stubBrokerClient) Health(context.Context) (storagebroker.HealthResult, error) {
+	return storagebroker.HealthResult{Opened: s.opened}, nil
+}
+
+func (s *stubBrokerClient) OpenDB(context.Context, storagebroker.OpenDBRequest) (storagebroker.OpenDBResult, error) {
+	s.opened = true
+	return storagebroker.OpenDBResult{Opened: true}, nil
+}
+
+func (s *stubBrokerClient) DBStatusSummary(context.Context, storagebroker.DBStatusSummaryRequest) (storagebroker.DBStatusSummaryResult, error) {
+	return storagebroker.DBStatusSummaryResult{}, nil
+}
+
+func (s *stubBrokerClient) LoadSecurityState(context.Context) (storagebroker.LoadSecurityStateResult, error) {
+	return storagebroker.LoadSecurityStateResult{}, nil
+}
+
+func (s *stubBrokerClient) StoreSalt(context.Context, []byte) error { return nil }
+func (s *stubBrokerClient) StoreChecksum(context.Context, []byte) error {
+	return nil
+}
+func (s *stubBrokerClient) Close(context.Context) error { return nil }

@@ -32,7 +32,7 @@ func newReputationCmd(bootLoader func() (*bootstrap.Result, error)) *cobra.Comma
 			if err != nil {
 				return fmt.Errorf("load config: %w", err)
 			}
-			defer boot.DBClient.Close()
+			defer boot.Close()
 
 			logger := logging.Sugar()
 			if logger == nil {
@@ -40,7 +40,10 @@ func newReputationCmd(bootLoader func() (*bootstrap.Result, error)) *cobra.Comma
 				logger = l.Sugar()
 			}
 
-			store := reputation.NewStore(boot.DBClient, logger)
+			if boot.Storage == nil || boot.Storage.EntClient() == nil {
+				return fmt.Errorf("p2p reputation storage unavailable")
+			}
+			store := reputation.NewStore(boot.Storage.EntClient(), logger)
 			details, err := store.GetDetails(cmd.Context(), peerDID)
 			if err != nil {
 				return fmt.Errorf("get reputation: %w", err)

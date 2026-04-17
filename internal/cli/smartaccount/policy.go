@@ -41,7 +41,7 @@ func policyShowCmd(bootLoader BootLoader) *cobra.Command {
 			if err != nil {
 				return fmt.Errorf("bootstrap: %w", err)
 			}
-			defer boot.DBClient.Close()
+			defer boot.Close()
 
 			deps, err := initSmartAccountDeps(boot)
 			if err != nil {
@@ -149,7 +149,7 @@ func policySetCmd(bootLoader BootLoader) *cobra.Command {
 			if err != nil {
 				return fmt.Errorf("bootstrap: %w", err)
 			}
-			defer boot.DBClient.Close()
+			defer boot.Close()
 
 			deps, err := initSmartAccountDeps(boot)
 			if err != nil {

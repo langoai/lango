@@ -11,6 +11,15 @@ import (
 	"github.com/langoai/lango/internal/runledger"
 )
 
+func provenanceRunLedgerStore(boot *bootstrap.Result) runledger.RunLedgerStore {
+	if boot != nil && boot.Storage != nil {
+		if store := boot.Storage.RunLedger(); store != nil {
+			return store
+		}
+	}
+	return nil
+}
+
 func newCheckpointCmd(bootLoader func() (*bootstrap.Result, error)) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "checkpoint",
@@ -38,13 +47,13 @@ func newCheckpointListCmd(bootLoader func() (*bootstrap.Result, error)) *cobra.C
 			if err != nil {
 				return err
 			}
-			defer boot.DBClient.Close()
+			defer boot.Close()
 
 			if isProvenanceDisabled(boot, cmd) {
 				return nil
 			}
 
-			store := provenancepkg.CheckpointStore(provenancepkg.NewEntCheckpointStore(boot.DBClient))
+			store := loadServices(boot).checkpoints
 			ctx := context.Background()
 
 			var checkpoints []provenancepkg.Checkpoint
@@ -95,14 +104,18 @@ func newCheckpointCreateCmd(bootLoader func() (*bootstrap.Result, error)) *cobra
 			if err != nil {
 				return err
 			}
-			defer boot.DBClient.Close()
+			defer boot.Close()
 
 			if isProvenanceDisabled(boot, cmd) {
 				return nil
 			}
 
-			cpStore := provenancepkg.CheckpointStore(provenancepkg.NewEntCheckpointStore(boot.DBClient))
-			ledgerStore := runledger.NewEntStore(boot.DBClient)
+			svcs := loadServices(boot)
+			cpStore := svcs.checkpoints
+			ledgerStore := provenanceRunLedgerStore(boot)
+			if ledgerStore == nil {
+				return fmt.Errorf("runledger store unavailable")
+			}
 			svc := provenancepkg.NewCheckpointService(cpStore, ledgerStore, boot.Config.Provenance.Checkpoints)
 
 			cp, err := svc.CreateManual(context.Background(), "", runID, args[0])
@@ -131,13 +144,13 @@ func newCheckpointShowCmd(bootLoader func() (*bootstrap.Result, error)) *cobra.C
 			if err != nil {
 				return err
 			}
-			defer boot.DBClient.Close()
+			defer boot.Close()
 
 			if isProvenanceDisabled(boot, cmd) {
 				return nil
 			}
 
-			store := provenancepkg.CheckpointStore(provenancepkg.NewEntCheckpointStore(boot.DBClient))
+			store := loadServices(boot).checkpoints
 			cp, err := store.GetCheckpoint(context.Background(), args[0])
 			if err != nil {
 				return fmt.Errorf("get checkpoint: %w", err)

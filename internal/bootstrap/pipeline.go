@@ -12,6 +12,7 @@ import (
 	"github.com/langoai/lango/internal/logging"
 	"github.com/langoai/lango/internal/security"
 	"github.com/langoai/lango/internal/security/passphrase"
+	"github.com/langoai/lango/internal/storagebroker"
 )
 
 // State carries data between pipeline phases.
@@ -38,6 +39,7 @@ type State struct {
 	// Database handles (set by phaseOpenDatabase).
 	Client *ent.Client
 	RawDB  *sql.DB
+	Broker storagebroker.API
 
 	// Security state from DB (legacy path).
 	Salt     []byte

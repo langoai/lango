@@ -3,69 +3,17 @@
 Define the bootstrap sequence that initializes Lango's runtime: data directory, database, passphrase, crypto, and config profile loading.
 ## Requirements
 ### Requirement: Unified bootstrap sequence
+The system SHALL execute a complete bootstrap sequence with broker-owned database initialization: ensure data directory → detect encryption/header state → load envelope file → acquire credential → spawn storage broker → open database through broker → load security state/config/profile via broker-backed storage → initialize runtime services. The result SHALL be a single struct containing the initialized runtime handles, but SHALL NOT expose direct `*sql.DB` or `*ent.Client` ownership to callers once broker mode is active.
 
-The system SHALL execute a complete bootstrap sequence with 10 phases: ensure data directory → detect encryption → load envelope file → acquire credential → unwrap or create MK → open database → migrate envelope → load security state → initialize crypto → load config profile. The `Options` struct SHALL include `KeepKeyfile bool` (defaults to false), `SkipSecureDetection bool`, and `LangoDir string` (defaults to `~/.lango/` if empty). The `Options` struct SHALL NOT include a `MigrationPath` field. The result SHALL be a single struct containing all initialized components.
+#### Scenario: Broker bootstrap on returning user
+- **WHEN** bootstrap runs for a normal application start
+- **THEN** the parent process SHALL spawn the storage broker before loading config profiles
+- **AND** the broker SHALL own the SQLite open/migration step
 
-#### Scenario: First-run bootstrap on fresh install
-
-- **WHEN** no envelope file and no legacy salt/checksum exist
-- **THEN** the system acquires a new passphrase (with confirmation), generates a random 32-byte MK, creates an envelope with a passphrase KEK slot, persists `envelope.json`, and opens the database (with MK-derived DB key if encryption enabled)
-- **AND** returns the Result
-
-#### Scenario: Returning-user bootstrap with envelope
-
-- **WHEN** an envelope file exists with no pending flags
-- **THEN** the system loads the envelope, acquires the passphrase, unwraps the MK via `UnwrapFromPassphrase`, derives the DB key via `DeriveDBKey(mk)`, opens the database with `PRAGMA key = "x'<hex>'"`, and loads the active profile
-
-#### Scenario: Wrong passphrase on envelope-based install
-
-- **WHEN** the user provides an incorrect passphrase for an existing envelope
-- **THEN** `UnwrapFromPassphrase` returns `ErrUnwrapFailed`
-- **AND** the system returns the error wrapped with context
-- **AND** the keyfile is NOT shredded
-
-#### Scenario: Legacy-to-envelope migration on first boot after upgrade
-
-- **WHEN** the database has legacy salt/checksum but no envelope file
-- **THEN** the system acquires the passphrase, verifies the legacy checksum, runs `MigrateToEnvelope` (data re-encryption + SQLCipher rekey if applicable), and persists the new envelope
-- **AND** the user sees a one-time "Upgrading encryption format..." message
-
-#### Scenario: Crash recovery during migration
-
-- **WHEN** the envelope file has `PendingMigration = true` or `PendingRekey = true`
-- **THEN** Phase 6 (OpenDatabase) uses the legacy passphrase as the DB key (fallback)
-- **AND** Phase 7 (MigrateEnvelope) retries the pending operations
-- **AND** on success, the pending flags are cleared and the updated envelope is persisted
-
-#### Scenario: KMS-based passphraseless bootstrap
-- **WHEN** an envelope has a `KEKSlotHardware` slot and KMS env vars (`LANGO_KMS_PROVIDER`, etc.) are set
-- **THEN** the bootstrap SHALL create a bare KMS provider, attempt `UnwrapFromKMS` with 2-tier matching, and skip passphrase acquisition on success
-- **AND** `Result.KMSUnwrap` SHALL be set to true
-
-#### Scenario: KMS bootstrap with graceful fallback
-- **WHEN** KMS unwrap fails (provider init error, decrypt error, or no matching slot)
-- **THEN** the bootstrap SHALL print a warning to stderr
-- **AND** fall through to the standard passphrase credential acquisition
-- **AND** NOT attempt local decryption of KMS-wrapped ciphertext
-
-#### Scenario: No KMS env vars configured
-- **WHEN** `LANGO_KMS_PROVIDER` is not set and `Options.KMSConfig` is nil
-- **THEN** the bootstrap SHALL follow the standard passphrase path without any KMS attempt
-
-#### Scenario: Explicit Options override env vars
-- **WHEN** `Options.KMSConfig` and `Options.KMSProviderName` are explicitly set
-- **THEN** the bootstrap SHALL use those values and NOT read KMS env vars
-- **AND** env vars serve only as default source when Options are empty
-
-#### Scenario: Load security state before envelope migration
-- **WHEN** the bootstrap sequence runs
-- **THEN** `phaseLoadSecurityState` SHALL execute before `phaseMigrateEnvelope`
-- **AND** when an envelope has `PendingMigration` or `PendingRekey`, salt and checksum SHALL be loaded even when envelope is present
-
-#### Scenario: No profiles exist
-
-- **WHEN** no profiles exist in the database
-- **THEN** the system creates a default profile with `config.DefaultConfig()` and sets it as active
+#### Scenario: Broker bootstrap on first run
+- **WHEN** bootstrap runs on a fresh install
+- **THEN** credential acquisition and master-key setup SHALL complete before the broker `open_db` handshake is attempted
+- **AND** the broker SHALL prepare the database before profile creation proceeds
 
 ### Requirement: Profile loading applies PostLoad normalization
 The `phaseLoadProfile` phase SHALL call `config.PostLoad()` exactly once at the end, after all branches (explicit profile, active profile, default profile) have set the config. No branch SHALL return early before PostLoad is applied.
@@ -281,3 +229,4 @@ The system SHALL provide a `KMSConfigFromEnv()` function that reads KMS KEK conf
 #### Scenario: Missing provider env var
 - **WHEN** `LANGO_KMS_PROVIDER` is not set
 - **THEN** the function returns nil config and empty provider name
+

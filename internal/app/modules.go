@@ -4,8 +4,6 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
-	"os"
-	"path/filepath"
 	"strings"
 	"sync"
 	"time"
@@ -21,6 +19,7 @@ import (
 	cronpkg "github.com/langoai/lango/internal/cron"
 	"github.com/langoai/lango/internal/economy"
 	"github.com/langoai/lango/internal/economy/escrow/sentinel"
+	"github.com/langoai/lango/internal/ent"
 	"github.com/langoai/lango/internal/eventbus"
 	"github.com/langoai/lango/internal/extension"
 	"github.com/langoai/lango/internal/gatekeeper"
@@ -124,15 +123,11 @@ func (m *foundationModule) Init(ctx context.Context, r appinit.Resolver) (*appin
 	}
 
 	// Base tools: exec, filesystem, browser.
-	var blockedPaths []string
-	if home, err := os.UserHomeDir(); err == nil {
-		blockedPaths = append(blockedPaths,
-			filepath.Join(home, ".lango")+string(os.PathSeparator))
-	}
+	protectedPaths := resolvedProtectedPaths(cfg, m.boot)
 	fsConfig := filesystem.Config{
 		MaxReadSize:  cfg.Tools.Filesystem.MaxReadSize,
 		AllowedPaths: cfg.Tools.Filesystem.AllowedPaths,
-		BlockedPaths: blockedPaths,
+		BlockedPaths: protectedPaths,
 	}
 
 	var browserSM *browser.SessionManager
@@ -154,8 +149,6 @@ func (m *foundationModule) Init(ctx context.Context, r appinit.Resolver) (*appin
 		"background": cfg.Background.Enabled,
 		"workflow":   cfg.Workflow.Enabled,
 	}
-	protectedPaths := []string{cfg.DataRoot}
-	protectedPaths = append(protectedPaths, cfg.Tools.Exec.AdditionalProtectedPaths...)
 	cmdGuard := execpkg.NewCommandGuard(protectedPaths)
 
 	baseTools := buildTools(sv, fsConfig, browserSM, automationAvailable, cmdGuard)
@@ -258,7 +251,6 @@ func buildFoundationCatalogEntries(cfg *config.Config, base, crypto, secrets []*
 type intelligenceModule struct {
 	cfg    *config.Config
 	boot   *bootstrap.Result
-	rawDB  *sql.DB
 	bus    *eventbus.Bus
 	extReg *extension.Registry
 }
@@ -287,10 +279,16 @@ func (m *intelligenceModule) Init(ctx context.Context, r appinit.Resolver) (*app
 
 	// Ontology Registry (after graph store).
 	var graphStoreForOntology graph.Store
+	var entClient *ent.Client
+	var rawDB *sql.DB
 	if gc != nil {
 		graphStoreForOntology = gc.store
 	}
-	ontologyResult, err := initOntology(ctx, m.boot.DBClient, cfg, graphStoreForOntology)
+	if m.boot != nil && m.boot.Storage != nil {
+		entClient = m.boot.Storage.EntClient()
+		rawDB = m.boot.Storage.RawDB()
+	}
+	ontologyResult, err := initOntology(ctx, entClient, cfg, graphStoreForOntology)
 	if err != nil {
 		logger().Warnw("ontology init failed, continuing without ontology", "error", err)
 	}
@@ -319,7 +317,7 @@ func (m *intelligenceModule) Init(ctx context.Context, r appinit.Resolver) (*app
 	fts5Available := false
 	if kc != nil {
 		// FTS5 search index.
-		fts5Available = initFTS5(ctx, m.rawDB, kc.store)
+		fts5Available = initFTS5(ctx, rawDB, kc.store)
 
 		metaTools := buildMetaTools(kc.store, kc.engine, skillReg, cfg.Skill, cfg)
 		tools = append(tools, metaTools...)
@@ -395,7 +393,12 @@ func (m *intelligenceModule) Init(ctx context.Context, r appinit.Resolver) (*app
 	// Agent Memory.
 	var amStore agentmemory.Store
 	if cfg.AgentMemory.Enabled {
-		amStore = agentmemory.NewEntStore(m.boot.DBClient)
+		if m.boot != nil && m.boot.Storage != nil {
+			amStore = m.boot.Storage.AgentMemory()
+		}
+		if amStore == nil && entClient != nil {
+			amStore = agentmemory.NewEntStore(entClient)
+		}
 		amTools := agentmemory.BuildTools(amStore)
 		tools = append(tools, amTools...)
 		entries = append(entries, appinit.CatalogEntry{Category: "agent_memory", Description: "Per-agent persistent memory", ConfigKey: "agentMemory.enabled", Enabled: true, Tools: amTools})
@@ -639,6 +642,10 @@ func (m *networkModule) Init(ctx context.Context, r appinit.Resolver) (*appinit.
 	var sacc *smartAccountComponents
 	var wsc *wsComponents
 	var x402Interceptor *x402pkg.Interceptor
+	var entClient *ent.Client
+	if m.boot != nil && m.boot.Storage != nil {
+		entClient = m.boot.Storage.EntClient()
+	}
 
 	if pc != nil {
 		xc := initX402(cfg, fv.Secrets, pc.limiter)
@@ -651,7 +658,7 @@ func (m *networkModule) Init(ctx context.Context, r appinit.Resolver) (*appinit.
 		entries = append(entries, appinit.CatalogEntry{Category: "payment", Description: "Blockchain payments (USDC on Base)", ConfigKey: "payment.enabled", Enabled: true, Tools: pt})
 
 		// P2P.
-		p2pc = initP2P(cfg, pc.wallet, pc, m.boot.DBClient, fv.Secrets, m.bus, m.boot.IdentityKey, m.boot.PQSigningKeySeed, m.boot.LangoDir)
+		p2pc = initP2P(cfg, pc.wallet, pc, entClient, fv.Secrets, m.bus, m.boot.IdentityKey, m.boot.PQSigningKeySeed, m.boot.LangoDir)
 		if p2pc != nil {
 			// P2P Node lifecycle.
 			if p2pc.node != nil {
@@ -926,7 +933,11 @@ func (m *extensionModule) Init(ctx context.Context, r appinit.Resolver) (*appini
 	}
 
 	// Observability.
-	obsc := initObservability(cfg, m.boot.DBClient, m.bus)
+	var entClient *ent.Client
+	if m.boot != nil && m.boot.Storage != nil {
+		entClient = m.boot.Storage.EntClient()
+	}
+	obsc := initObservability(cfg, entClient, m.bus)
 	if obsc == nil {
 		entries = append(entries, appinit.CatalogEntry{Category: "observability", Description: "Metrics & health (disabled)", ConfigKey: "observability.enabled", Enabled: false})
 	}

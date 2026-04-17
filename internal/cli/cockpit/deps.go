@@ -5,10 +5,10 @@ import (
 	"github.com/langoai/lango/internal/approval"
 	"github.com/langoai/lango/internal/background"
 	"github.com/langoai/lango/internal/config"
-	"github.com/langoai/lango/internal/configstore"
 	"github.com/langoai/lango/internal/eventbus"
 	"github.com/langoai/lango/internal/observability"
 	"github.com/langoai/lango/internal/session"
+	"github.com/langoai/lango/internal/storage"
 	"github.com/langoai/lango/internal/toolcatalog"
 	"github.com/langoai/lango/internal/turnrunner"
 )
@@ -24,7 +24,7 @@ type Deps struct {
 	ToolCatalog       *toolcatalog.Catalog
 	MetricsCollector  *observability.MetricsCollector
 	FeatureStatuses   *app.StatusCollector
-	ConfigStore       *configstore.Store
+	ConfigStore       storage.ConfigProfileStore
 	ProfileName       string
 	BackgroundManager *background.Manager    // optional, nil when unavailable
 	EventBus          *eventbus.Bus          // optional, enables channel event subscription

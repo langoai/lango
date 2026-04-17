@@ -9,9 +9,14 @@ import (
 	"github.com/langoai/lango/internal/config"
 )
 
+type importStore interface {
+	Save(ctx context.Context, name string, cfg *config.Config, explicitKeys map[string]bool) error
+	SetActive(ctx context.Context, name string) error
+}
+
 // MigrateFromJSON reads a JSON config file and imports it as an encrypted profile.
 // The imported profile is set as the active profile.
-func MigrateFromJSON(ctx context.Context, store *Store, jsonPath, profileName string) error {
+func MigrateFromJSON(ctx context.Context, store importStore, jsonPath, profileName string) error {
 	result, err := config.Load(jsonPath)
 	if err != nil {
 		return fmt.Errorf("load config from %q: %w", jsonPath, err)

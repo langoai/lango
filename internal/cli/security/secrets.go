@@ -39,7 +39,7 @@ func newSecretsListCmd(bootLoader func() (*bootstrap.Result, error)) *cobra.Comm
 			if err != nil {
 				return fmt.Errorf("load config: %w", err)
 			}
-			defer boot.DBClient.Close()
+			defer boot.Close()
 
 			secretsStore, err := secretsStoreFromBoot(boot)
 			if err != nil {
@@ -96,7 +96,7 @@ func newSecretsSetCmd(bootLoader func() (*bootstrap.Result, error)) *cobra.Comma
 			if err != nil {
 				return fmt.Errorf("load config: %w", err)
 			}
-			defer boot.DBClient.Close()
+			defer boot.Close()
 
 			secretsStore, err := secretsStoreFromBoot(boot)
 			if err != nil {
@@ -150,7 +150,7 @@ func newSecretsDeleteCmd(bootLoader func() (*bootstrap.Result, error)) *cobra.Co
 			if err != nil {
 				return fmt.Errorf("load config: %w", err)
 			}
-			defer boot.DBClient.Close()
+			defer boot.Close()
 
 			secretsStore, err := secretsStoreFromBoot(boot)
 			if err != nil {

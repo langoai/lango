@@ -14,6 +14,7 @@ import (
 	"github.com/langoai/lango/internal/bootstrap"
 	"github.com/langoai/lango/internal/config"
 	"github.com/langoai/lango/internal/lifecycle"
+	"github.com/langoai/lango/internal/storage"
 	"github.com/langoai/lango/internal/testutil"
 	"github.com/langoai/lango/internal/toolcatalog"
 )
@@ -135,8 +136,7 @@ func TestAppNew_DefaultConfig_Parity(t *testing.T) {
 	client := testutil.TestEntClient(t)
 	boot := &bootstrap.Result{
 		Config:      cfg,
-		DBClient:    client,
-		RawDB:       nil, // safe: embedding provider is empty
+		Storage:     storage.NewFacade(nil, nil, storage.WithEntClient(client)),
 		ProfileName: "test",
 	}
 
@@ -234,8 +234,7 @@ func TestAppNew_FeaturesEnabled_Parity(t *testing.T) {
 	client := testutil.TestEntClient(t)
 	boot := &bootstrap.Result{
 		Config:      cfg,
-		DBClient:    client,
-		RawDB:       nil,
+		Storage:     storage.NewFacade(nil, nil, storage.WithEntClient(client)),
 		ProfileName: "test",
 	}
 

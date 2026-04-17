@@ -30,9 +30,12 @@ func newHistoryCmd(bootLoader func() (*bootstrap.Result, error)) *cobra.Command 
 			if err != nil {
 				return fmt.Errorf("bootstrap: %w", err)
 			}
-			defer boot.DBClient.Close()
+			defer boot.Close()
 
-			entries, err := boot.DBClient.Learning.Query().
+			if boot.Storage == nil || boot.Storage.EntClient() == nil {
+				return fmt.Errorf("learning storage unavailable")
+			}
+			entries, err := boot.Storage.EntClient().Learning.Query().
 				Order(entlearning.ByCreatedAt(sql.OrderDesc())).
 				Limit(limit).
 				All(cmd.Context())

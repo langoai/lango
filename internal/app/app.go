@@ -20,6 +20,7 @@ import (
 	"github.com/langoai/lango/internal/bootstrap"
 	"github.com/langoai/lango/internal/config"
 	cronpkg "github.com/langoai/lango/internal/cron"
+	"github.com/langoai/lango/internal/ent"
 	"github.com/langoai/lango/internal/eventbus"
 	"github.com/langoai/lango/internal/gateway"
 	"github.com/langoai/lango/internal/learning"
@@ -107,7 +108,7 @@ func New(boot *bootstrap.Result, opts ...AppOption) (*App, error) {
 
 	builder := appinit.NewBuilder()
 	builder.AddModule(&foundationModule{cfg: cfg, boot: boot})
-	builder.AddModule(&intelligenceModule{cfg: cfg, boot: boot, rawDB: boot.RawDB, bus: bus, extReg: app.ExtensionRegistry})
+	builder.AddModule(&intelligenceModule{cfg: cfg, boot: boot, bus: bus, extReg: app.ExtensionRegistry})
 	builder.AddModule(&automationModule{cfg: cfg, app: app})
 	builder.AddModule(&networkModule{cfg: cfg, boot: boot, bus: bus, app: app})
 	builder.AddModule(&extensionModule{cfg: cfg, boot: boot, bus: bus})
@@ -726,15 +727,24 @@ func wirePostAgent(app *App, r appinit.Resolver, tools []*agent.Tool, bus *event
 	// Observability API routes.
 	obsc, _ := r.Resolve(appinit.ProvidesObservability).(*observabilityComponents)
 	if obsc != nil {
-		registerObservabilityRoutes(app.Gateway.Router(), obsc.collector, obsc.healthRegistry, obsc.tokenStore, boot.DBClient, obsc.promExporter)
+		var entClient *ent.Client
+		if boot != nil && boot.Storage != nil {
+			entClient = boot.Storage.EntClient()
+		}
+		registerObservabilityRoutes(app.Gateway.Router(), obsc.collector, obsc.healthRegistry, obsc.tokenStore, entClient, obsc.promExporter)
 		logger().Info("observability API routes registered")
 	}
 
 	// Audit recorder.
-	if cfg.Observability.Audit.Enabled && boot.DBClient != nil {
-		auditRec := audit.NewRecorder(boot.DBClient)
-		auditRec.Subscribe(bus)
-		logger().Info("audit recorder wired to event bus")
+	if cfg.Observability.Audit.Enabled {
+		var auditRec *audit.Recorder
+		if boot != nil && boot.Storage != nil {
+			auditRec = boot.Storage.AuditRecorder()
+		}
+		if auditRec != nil {
+			auditRec.Subscribe(bus)
+			logger().Info("audit recorder wired to event bus")
+		}
 	}
 }
 

@@ -42,7 +42,7 @@ func newProvenancePushCmd(bootLoader func() (*bootstrap.Result, error)) *cobra.C
 			if err != nil {
 				return fmt.Errorf("load config: %w", err)
 			}
-			defer boot.DBClient.Close()
+			defer boot.Close()
 			if !boot.Config.P2P.Enabled {
 				return errP2PDisabled
 			}
@@ -75,7 +75,7 @@ func newProvenanceFetchCmd(bootLoader func() (*bootstrap.Result, error)) *cobra.
 			if err != nil {
 				return fmt.Errorf("load config: %w", err)
 			}
-			defer boot.DBClient.Close()
+			defer boot.Close()
 			if !boot.Config.P2P.Enabled {
 				return errP2PDisabled
 			}
