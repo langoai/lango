@@ -281,7 +281,6 @@ func New(boot *bootstrap.Result, opts ...AppOption) (*App, error) {
 		tools:    tools,
 		kc:       resolveKC(iv),
 		mc:       resolveMC(iv),
-		ec:       resolveEC(iv),
 		gc:       resolveGC(iv),
 		scanner:  scanner,
 		sr:       resolveSR(iv),
@@ -346,7 +345,6 @@ func New(boot *bootstrap.Result, opts ...AppOption) (*App, error) {
 	// B9.3. Learning suggestions (Phase 3C).
 	wireLearningSuggestions(app)
 
-
 	// B10. Lifecycle registration (module components + gateway + channels).
 	for _, entry := range buildResult.Components {
 		app.registry.Register(entry.Component, entry.Priority)
@@ -395,10 +393,6 @@ func populateAppFields(app *App, r appinit.Resolver) {
 		if iv.MC != nil {
 			app.MemoryStore = iv.MC.store
 			app.MemoryBuffer = iv.MC.buffer
-		}
-		if iv.EC != nil {
-			app.EmbeddingBuffer = iv.EC.buffer
-			app.RAGService = iv.EC.ragService
 		}
 		if iv.GC != nil {
 			app.GraphStore = iv.GC.store
@@ -838,12 +832,6 @@ func resolveMC(iv *intelligenceValues) *memoryComponents {
 		return nil
 	}
 	return iv.MC
-}
-func resolveEC(iv *intelligenceValues) *embeddingComponents {
-	if iv == nil {
-		return nil
-	}
-	return iv.EC
 }
 func resolveGC(iv *intelligenceValues) *graphComponents {
 	if iv == nil {

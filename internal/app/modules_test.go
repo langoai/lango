@@ -178,7 +178,7 @@ func TestModuleProvides(t *testing.T) {
 			module: &intelligenceModule{cfg: cfg},
 			wantKeys: []appinit.Provides{
 				appinit.ProvidesKnowledge, appinit.ProvidesMemory,
-				appinit.ProvidesEmbedding, appinit.ProvidesGraph,
+				appinit.ProvidesGraph,
 				appinit.ProvidesLibrarian, appinit.ProvidesSkills,
 			},
 		},

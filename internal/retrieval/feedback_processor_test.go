@@ -13,9 +13,9 @@ import (
 
 func TestFeedbackProcessor_HandleContextInjected(t *testing.T) {
 	tests := []struct {
-		give     string
-		giveEvt  eventbus.ContextInjectedEvent
-		wantKeys []string
+		give       string
+		giveEvt    eventbus.ContextInjectedEvent
+		wantKeys   []string
 		wantNoKeys []string
 	}{
 		{
@@ -29,7 +29,7 @@ func TestFeedbackProcessor_HandleContextInjected(t *testing.T) {
 					{Layer: "agent_learnings", Key: "l1", Score: 0.7, Source: "like", Category: "tool_error", TokenEstimate: 30},
 				},
 				KnowledgeTokens:  80,
-				RAGTokens:        0,
+				RetrievedTokens:  0,
 				MemoryTokens:     120,
 				RunSummaryTokens: 40,
 				TotalTokens:      240,

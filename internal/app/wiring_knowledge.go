@@ -11,14 +11,13 @@ import (
 	"github.com/langoai/lango/internal/adk"
 	"github.com/langoai/lango/internal/agent"
 	"github.com/langoai/lango/internal/config"
-	"github.com/langoai/lango/internal/embedding"
 	"github.com/langoai/lango/internal/eventbus"
 	"github.com/langoai/lango/internal/extension"
 	"github.com/langoai/lango/internal/knowledge"
 	"github.com/langoai/lango/internal/learning"
-	"github.com/langoai/lango/internal/retrieval"
 	"github.com/langoai/lango/internal/librarian"
 	"github.com/langoai/lango/internal/provider"
+	"github.com/langoai/lango/internal/retrieval"
 	"github.com/langoai/lango/internal/runledger"
 	"github.com/langoai/lango/internal/search"
 	"github.com/langoai/lango/internal/session"
@@ -427,9 +426,7 @@ func (a *runSummaryProviderAdapter) MaxJournalSeqForSession(
 }
 
 // initRetrievalCoordinator creates the agentic retrieval coordinator if enabled.
-// When ragService is available, a ContextSearchAgent is registered alongside
-// FactSearchAgent to provide semantic/vector expansion for factual layers.
-func initRetrievalCoordinator(cfg *config.Config, kStore *knowledge.Store, ec *embeddingComponents) *retrieval.RetrievalCoordinator {
+func initRetrievalCoordinator(cfg *config.Config, kStore *knowledge.Store) *retrieval.RetrievalCoordinator {
 	if !cfg.Retrieval.Enabled {
 		return nil
 	}
@@ -437,19 +434,6 @@ func initRetrievalCoordinator(cfg *config.Config, kStore *knowledge.Store, ec *e
 	agents := []retrieval.RetrievalAgent{
 		retrieval.NewFactSearchAgent(kStore),
 		retrieval.NewTemporalSearchAgent(kStore),
-	}
-
-	// Register context search agent when embedding/RAG is available and enabled.
-	if ec != nil && ec.ragService != nil && cfg.Embedding.RAG.Enabled {
-		ragOpts := embedding.RetrieveOptions{
-			Limit:      cfg.Embedding.RAG.MaxResults,
-			MaxDistance: cfg.Embedding.RAG.MaxDistance,
-		}
-		if ragOpts.Limit <= 0 {
-			ragOpts.Limit = 5
-		}
-		contextAgent := retrieval.NewContextSearchAgent(ec.ragService, ragOpts, logger())
-		agents = append(agents, contextAgent)
 	}
 
 	coordinator := retrieval.NewRetrievalCoordinator(agents, logger())

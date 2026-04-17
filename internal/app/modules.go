@@ -21,7 +21,6 @@ import (
 	cronpkg "github.com/langoai/lango/internal/cron"
 	"github.com/langoai/lango/internal/economy"
 	"github.com/langoai/lango/internal/economy/escrow/sentinel"
-	"github.com/langoai/lango/internal/embedding"
 	"github.com/langoai/lango/internal/eventbus"
 	"github.com/langoai/lango/internal/extension"
 	"github.com/langoai/lango/internal/gatekeeper"
@@ -33,15 +32,15 @@ import (
 	"github.com/langoai/lango/internal/p2p/gitbundle"
 	"github.com/langoai/lango/internal/p2p/ontologybridge"
 	"github.com/langoai/lango/internal/p2p/team"
-	toolcrypto "github.com/langoai/lango/internal/tools/crypto"
-	toolpayment "github.com/langoai/lango/internal/tools/payment"
-	toolsecrets "github.com/langoai/lango/internal/tools/secrets"
 	"github.com/langoai/lango/internal/security"
 	"github.com/langoai/lango/internal/session"
 	"github.com/langoai/lango/internal/supervisor"
 	"github.com/langoai/lango/internal/tools/browser"
+	toolcrypto "github.com/langoai/lango/internal/tools/crypto"
 	execpkg "github.com/langoai/lango/internal/tools/exec"
 	"github.com/langoai/lango/internal/tools/filesystem"
+	toolpayment "github.com/langoai/lango/internal/tools/payment"
+	toolsecrets "github.com/langoai/lango/internal/tools/secrets"
 	"github.com/langoai/lango/internal/workflow"
 	x402pkg "github.com/langoai/lango/internal/x402"
 )
@@ -68,7 +67,6 @@ type foundationValues struct {
 type intelligenceValues struct {
 	KC               *knowledgeComponents
 	MC               *memoryComponents
-	EC               *embeddingComponents
 	GC               *graphComponents
 	LC               *librarianComponents
 	AB               interface{} // *learning.AnalysisBuffer
@@ -267,7 +265,7 @@ type intelligenceModule struct {
 
 func (m *intelligenceModule) Name() string { return "intelligence" }
 func (m *intelligenceModule) Provides() []appinit.Provides {
-	return []appinit.Provides{appinit.ProvidesKnowledge, appinit.ProvidesMemory, appinit.ProvidesEmbedding, appinit.ProvidesGraph, appinit.ProvidesLibrarian, appinit.ProvidesSkills}
+	return []appinit.Provides{appinit.ProvidesKnowledge, appinit.ProvidesMemory, appinit.ProvidesGraph, appinit.ProvidesLibrarian, appinit.ProvidesSkills}
 }
 func (m *intelligenceModule) DependsOn() []appinit.Provides {
 	return []appinit.Provides{appinit.ProvidesSessionStore, appinit.ProvidesSupervisor}
@@ -333,9 +331,6 @@ func (m *intelligenceModule) Init(ctx context.Context, r appinit.Resolver) (*app
 	// Observational Memory.
 	mc, mcStatus := initMemory(cfg, store, sv, m.bus)
 
-	// Embedding / RAG.
-	ec, ecStatus := initEmbedding(cfg, m.rawDB, kc, mc, m.bus)
-
 	// Graph callbacks.
 	if gc != nil {
 		var ontologyValidator graph.PredicateValidatorFunc
@@ -343,7 +338,7 @@ func (m *intelligenceModule) Init(ctx context.Context, r appinit.Resolver) (*app
 			ontologyValidator = ontologyResult.Service.PredicateValidator()
 		}
 		wireGraphCallbacks(gc, kc, mc, sv, cfg, m.bus, ontologyValidator)
-		initGraphRAG(cfg, gc, ec)
+		initGraphRAG(cfg, gc, kc)
 	}
 
 	// Conversation Analysis.
@@ -374,7 +369,6 @@ func (m *intelligenceModule) Init(ctx context.Context, r appinit.Resolver) (*app
 	sc.Add(gcStatus)
 	sc.Add(kcStatus)
 	sc.Add(mcStatus)
-	sc.Add(ecStatus)
 	sc.Add(lcStatus)
 	if n := sc.SilentDisabledCount(); n > 0 {
 		logger().Infow("some features disabled due to missing dependencies", "count", n)
@@ -387,15 +381,6 @@ func (m *intelligenceModule) Init(ctx context.Context, r appinit.Resolver) (*app
 		entries = append(entries, appinit.CatalogEntry{Category: "graph", Description: "Knowledge graph traversal", ConfigKey: "graph.enabled", Enabled: true, Tools: gt})
 	} else {
 		entries = append(entries, appinit.CatalogEntry{Category: "graph", Description: "Knowledge graph (disabled)", ConfigKey: "graph.enabled", Enabled: false})
-	}
-
-	// RAG tools.
-	if ec != nil && ec.ragService != nil {
-		rt := embedding.BuildRAGTools(ec.ragService)
-		tools = append(tools, rt...)
-		entries = append(entries, appinit.CatalogEntry{Category: "rag", Description: "Retrieval-augmented generation", ConfigKey: "embedding.rag.enabled", Enabled: true, Tools: rt})
-	} else {
-		entries = append(entries, appinit.CatalogEntry{Category: "rag", Description: "RAG retrieval (disabled)", ConfigKey: "embedding.provider", Enabled: false})
 	}
 
 	// Memory tools.
@@ -432,12 +417,6 @@ func (m *intelligenceModule) Init(ctx context.Context, r appinit.Resolver) (*app
 	if mc != nil && mc.buffer != nil {
 		components = append(components, lifecycle.ComponentEntry{
 			Component: lifecycle.NewSimpleComponent("memory-buffer", mc.buffer),
-			Priority:  lifecycle.PriorityBuffer,
-		})
-	}
-	if ec != nil && ec.buffer != nil {
-		components = append(components, lifecycle.ComponentEntry{
-			Component: lifecycle.NewSimpleComponent("embedding-buffer", ec.buffer),
 			Priority:  lifecycle.PriorityBuffer,
 		})
 	}
@@ -478,7 +457,7 @@ func (m *intelligenceModule) Init(ctx context.Context, r appinit.Resolver) (*app
 		CatalogEntries: entries,
 		Values: map[appinit.Provides]interface{}{
 			appinit.ProvidesKnowledge: &intelligenceValues{
-				KC: kc, MC: mc, EC: ec, GC: gc, LC: lc, AB: ab,
+				KC: kc, MC: mc, GC: gc, LC: lc, AB: ab,
 				Observer:         observer,
 				SkillRegistry:    skillReg,
 				AgentMemoryStore: amStore,
@@ -487,7 +466,6 @@ func (m *intelligenceModule) Init(ctx context.Context, r appinit.Resolver) (*app
 			},
 			appinit.ProvidesGraph:     gc,
 			appinit.ProvidesMemory:    mc,
-			appinit.ProvidesEmbedding: ec,
 			appinit.ProvidesLibrarian: lc,
 			appinit.ProvidesSkills:    skillReg,
 		},

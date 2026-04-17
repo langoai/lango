@@ -79,9 +79,6 @@
 - `graph_traverse` traverses the knowledge graph from a start node using BFS. Specify `start_node` (required), optional `max_depth` (default 2), and optional `predicates` array to filter by predicate types. Returns matching triples and count.
 - `graph_query` queries the knowledge graph by subject or object node. Provide `subject` and/or `object`, with optional `predicate` filter. At least one of subject or object is required. Returns matching triples and count.
 
-### RAG Tool
-- `rag_retrieve` retrieves semantically similar content from the knowledge base using vector search. Specify `query` (required), optional `limit` (default 5), and optional `collections` array (e.g., "knowledge", "observation"). Returns results and count.
-
 ### Memory Tool (Observational)
 - `memory_list_observations` lists observations for a session. Specify optional `session_key` (uses current session if empty). Returns compressed notes from conversation history.
 - `memory_list_reflections` lists reflections for a session. Reflections are condensed observations across time.

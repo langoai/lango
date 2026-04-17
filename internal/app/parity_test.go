@@ -167,7 +167,7 @@ func TestAppNew_DefaultConfig_Parity(t *testing.T) {
 	assert.Contains(t, enabledNames, "output")
 
 	// 2. Disabled categories.
-	for _, name := range []string{"browser", "crypto", "secrets", "meta", "graph", "rag", "memory", "agent_memory", "librarian", "mcp", "observability"} {
+	for _, name := range []string{"browser", "crypto", "secrets", "meta", "graph", "memory", "agent_memory", "librarian", "mcp", "observability"} {
 		assert.Contains(t, disabledNames, name, "expected %q to be disabled", name)
 	}
 

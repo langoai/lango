@@ -11,7 +11,6 @@ import (
 	"google.golang.org/adk/model"
 	"google.golang.org/genai"
 
-	"github.com/langoai/lango/internal/embedding"
 	"github.com/langoai/lango/internal/eventbus"
 	"github.com/langoai/lango/internal/graph"
 	"github.com/langoai/lango/internal/knowledge"
@@ -84,9 +83,8 @@ type ContextAwareModelAdapter struct {
 	inner              *ModelAdapter
 	retriever          *knowledge.ContextRetriever
 	memoryProvider     MemoryProvider
-	ragService         *embedding.RAGService
-	ragOpts            embedding.RetrieveOptions
 	graphRAG           *graph.GraphRAGService
+	retrievedLimit     int
 	coordinator        *retrieval.RetrievalCoordinator
 	runtimeAdapter     *RuntimeContextAdapter
 	runSummaryProvider RunSummaryProvider
@@ -166,17 +164,15 @@ func (m *ContextAwareModelAdapter) WithRunSummaryProvider(provider RunSummaryPro
 	return m
 }
 
-// WithRAG adds RAG (retrieval-augmented generation) support.
-func (m *ContextAwareModelAdapter) WithRAG(svc *embedding.RAGService, opts embedding.RetrieveOptions) *ContextAwareModelAdapter {
-	m.ragService = svc
-	m.ragOpts = opts
-	return m
-}
-
-// WithGraphRAG adds graph-enhanced RAG support. When set, graph expansion
-// is performed on vector search results to discover structurally connected context.
-func (m *ContextAwareModelAdapter) WithGraphRAG(svc *graph.GraphRAGService) *ContextAwareModelAdapter {
+// WithGraphRAG adds graph-enhanced retrieved context support. When set, graph
+// expansion is performed on phase-1 retrieved results to discover structurally
+// connected context.
+func (m *ContextAwareModelAdapter) WithGraphRAG(svc *graph.GraphRAGService, limit int) *ContextAwareModelAdapter {
 	m.graphRAG = svc
+	if limit <= 0 {
+		limit = 5
+	}
+	m.retrievedLimit = limit
 	return m
 }
 
@@ -309,7 +305,6 @@ func (m *ContextAwareModelAdapter) GenerateContent(ctx context.Context, req *mod
 	// ──────────────────────────────────────────────────────────
 	var knowledgeResult *knowledge.RetrievalResult
 	var coordinatorResult *knowledge.RetrievalResult
-	var ragResults []embedding.RAGResult
 	var graphRAGResult *graph.GraphRAGResult
 	var reflections []memory.Reflection
 	var observations []memory.Observation
@@ -369,11 +364,6 @@ func (m *ContextAwareModelAdapter) GenerateContent(ctx context.Context, req *mod
 				graphRAGResult = m.retrieveGraphRAGData(gCtx, userQuery, sessionKey)
 				return nil
 			})
-		} else if m.ragService != nil {
-			g.Go(func() error {
-				ragResults = m.retrieveRAGData(gCtx, userQuery, sessionKey)
-				return nil
-			})
 		}
 	}
 
@@ -401,7 +391,7 @@ func (m *ContextAwareModelAdapter) GenerateContent(ctx context.Context, req *mod
 	// ──────────────────────────────────────────────────────────
 	measured := SectionTokens{
 		Knowledge:  estimateKnowledgeTokens(knowledgeResult),
-		RAG:        estimateRAGResultTokens(ragResults, graphRAGResult),
+		RAG:        estimateRetrievedResultTokens(graphRAGResult),
 		Memory:     estimateMemoryTokens(reflections, observations),
 		RunSummary: estimateRunSummaryTokens(runSummaries),
 	}
@@ -453,40 +443,38 @@ func (m *ContextAwareModelAdapter) GenerateContent(ctx context.Context, req *mod
 	// ──────────────────────────────────────────────────────────
 	// Phase 3: Truncate + Format each section with reallocated budgets.
 	// ──────────────────────────────────────────────────────────
-	var knowledgeSection, ragSection, memorySection, runSummarySection string
+	var knowledgeSection, retrievedSection, memorySection, runSummarySection string
 
 	if knowledgeResult != nil {
 		knowledgeResult = knowledge.TruncateResult(knowledgeResult, budgets.Knowledge)
 		knowledgeSection = m.retriever.AssemblePrompt("", knowledgeResult)
 	}
 
-	// Split RAG budget between semantic results and session recall when both
-	// are present. Recall gets 1/3, RAG gets 2/3. When only one source
+	// Split retrieved-context budget between graph-expanded results and session
+	// recall when both are present. Recall gets 1/3, retrieved context gets 2/3. When only one source
 	// exists it gets the full budget.
-	ragBudget := budgets.RAG
+	retrievedBudget := budgets.RAG
 	recallBudget := budgets.RAG
-	hasRAG := graphRAGResult != nil || len(ragResults) > 0
-	if len(recallMatches) > 0 && hasRAG {
+	hasRetrieved := graphRAGResult != nil
+	if len(recallMatches) > 0 && hasRetrieved {
 		recallBudget = budgets.RAG / 3
-		ragBudget = budgets.RAG - recallBudget
+		retrievedBudget = budgets.RAG - recallBudget
 	}
 
 	if graphRAGResult != nil {
-		ragSection = m.formatGraphRAGSection(graphRAGResult, ragBudget)
-	} else if len(ragResults) > 0 {
-		ragSection = formatRAGSection(ragResults, ragBudget)
+		retrievedSection = m.formatGraphRAGSection(graphRAGResult, retrievedBudget)
 	}
 
-	// Prepend session recall matches to the RAG section. Each source is
+	// Prepend session recall matches to the retrieved context section. Each source is
 	// independently budget-capped so their combined size stays within the
-	// total RAG allocation.
+	// total retrieved context allocation.
 	if len(recallMatches) > 0 {
 		recallSection := formatRecallSection(recallMatches, recallBudget)
 		if recallSection != "" {
-			if ragSection == "" {
-				ragSection = recallSection
+			if retrievedSection == "" {
+				retrievedSection = recallSection
 			} else {
-				ragSection = recallSection + "\n\n" + ragSection
+				retrievedSection = recallSection + "\n\n" + retrievedSection
 			}
 		}
 	}
@@ -503,8 +491,8 @@ func (m *ContextAwareModelAdapter) GenerateContent(ctx context.Context, req *mod
 	if knowledgeSection != "" {
 		prompt = fmt.Sprintf("%s\n\n%s", prompt, knowledgeSection)
 	}
-	if ragSection != "" {
-		prompt = fmt.Sprintf("%s\n\n%s", prompt, ragSection)
+	if retrievedSection != "" {
+		prompt = fmt.Sprintf("%s\n\n%s", prompt, retrievedSection)
 	}
 	if memorySection != "" {
 		prompt = fmt.Sprintf("%s\n\n%s", prompt, memorySection)
@@ -531,7 +519,7 @@ func (m *ContextAwareModelAdapter) GenerateContent(ctx context.Context, req *mod
 	// Publish context injection event for observability.
 	if m.bus != nil {
 		knowledgeTokens := types.EstimateTokens(knowledgeSection)
-		ragTokens := types.EstimateTokens(ragSection)
+		retrievedTokens := types.EstimateTokens(retrievedSection)
 		memoryTokens := types.EstimateTokens(memorySection)
 		runSummaryTokens := types.EstimateTokens(runSummarySection)
 		m.bus.Publish(eventbus.ContextInjectedEvent{
@@ -540,10 +528,10 @@ func (m *ContextAwareModelAdapter) GenerateContent(ctx context.Context, req *mod
 			Query:            userQuery,
 			Items:            buildContextInjectedItems(knowledgeResult),
 			KnowledgeTokens:  knowledgeTokens,
-			RAGTokens:        ragTokens,
+			RetrievedTokens:  retrievedTokens,
 			MemoryTokens:     memoryTokens,
 			RunSummaryTokens: runSummaryTokens,
-			TotalTokens:      knowledgeTokens + ragTokens + memoryTokens + runSummaryTokens,
+			TotalTokens:      knowledgeTokens + retrievedTokens + memoryTokens + runSummaryTokens,
 			Timestamp:        time.Now(),
 		})
 	}
@@ -600,16 +588,11 @@ func estimateKnowledgeTokens(result *knowledge.RetrievalResult) int {
 	return total
 }
 
-func estimateRAGResultTokens(ragResults []embedding.RAGResult, graphResult *graph.GraphRAGResult) int {
+func estimateRetrievedResultTokens(graphResult *graph.GraphRAGResult) int {
 	total := 0
-	if len(ragResults) > 0 {
-		total += types.EstimateTokens("## Semantic Context (RAG)\n")
-		for _, r := range ragResults {
-			total += types.EstimateTokens(r.Content) + 30
-		}
-	}
 	if graphResult != nil {
-		for _, r := range graphResult.VectorResults {
+		total += types.EstimateTokens("## Retrieved Context\n")
+		for _, r := range graphResult.ContentResults {
 			total += types.EstimateTokens(r.Content) + 30
 		}
 		for range graphResult.GraphResults {

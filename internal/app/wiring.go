@@ -14,7 +14,6 @@ import (
 	"github.com/langoai/lango/internal/bootstrap"
 	"github.com/langoai/lango/internal/config"
 	"github.com/langoai/lango/internal/deadline"
-	"github.com/langoai/lango/internal/embedding"
 	"github.com/langoai/lango/internal/eventbus"
 	"github.com/langoai/lango/internal/extension"
 	"github.com/langoai/lango/internal/gateway"
@@ -165,7 +164,7 @@ func initSecurity(cfg *config.Config, store session.Store, boot *bootstrap.Resul
 
 	case "aws-kms", "gcp-kms", "azure-kv", "pkcs11":
 		kmsProvider, err := security.NewKMSProvider(security.KMSProviderName(cfg.Security.Signer.Provider), cfg.Security.KMS) //nolint:staticcheck // stubs always error; real impls use build tags
-		if err != nil {                                                                                                      //nolint:staticcheck // SA4023: always true on stub platforms, real KMS impls may succeed
+		if err != nil {                                                                                                       //nolint:staticcheck // SA4023: always true on stub platforms, real KMS impls may succeed
 			return nil, nil, nil, fmt.Errorf("KMS provider %q: %w", cfg.Security.Signer.Provider, err)
 		}
 
@@ -250,26 +249,25 @@ func initAuth(cfg *config.Config, store session.Store) *gateway.AuthManager {
 
 // agentDeps groups the dependencies needed by initAgent to reduce parameter sprawl.
 type agentDeps struct {
-	sv           *supervisor.Supervisor
-	cfg          *config.Config
-	store        session.Store
-	tools        []*agent.Tool
-	kc           *knowledgeComponents
-	mc           *memoryComponents
-	ec           *embeddingComponents
-	gc           *graphComponents
-	scanner      *agent.SecretScanner
-	sr           *skill.Registry
-	lc           *librarianComponents
-	catalog      *toolcatalog.Catalog
-	p2pc         *p2pComponents
-	eventBus     *eventbus.Bus
-	rls          runledger.RunLedgerStore
-	prov            *provenanceValues
-	hookRegistry    *toolchain.HookRegistry
-	compactionSync  *compactionSyncHolder
-	recallIndex     *session.RecallIndex
-	extReg          *extension.Registry
+	sv             *supervisor.Supervisor
+	cfg            *config.Config
+	store          session.Store
+	tools          []*agent.Tool
+	kc             *knowledgeComponents
+	mc             *memoryComponents
+	gc             *graphComponents
+	scanner        *agent.SecretScanner
+	sr             *skill.Registry
+	lc             *librarianComponents
+	catalog        *toolcatalog.Catalog
+	p2pc           *p2pComponents
+	eventBus       *eventbus.Bus
+	rls            runledger.RunLedgerStore
+	prov           *provenanceValues
+	hookRegistry   *toolchain.HookRegistry
+	compactionSync *compactionSyncHolder
+	recallIndex    *session.RecallIndex
+	extReg         *extension.Registry
 }
 
 // initAgent creates the ADK agent with the given tools and provider proxy.
@@ -280,7 +278,6 @@ func initAgent(ctx context.Context, deps *agentDeps) (*adk.Agent, error) {
 	tools := deps.tools
 	kc := deps.kc
 	mc := deps.mc
-	ec := deps.ec
 	gc := deps.gc
 	scanner := deps.scanner
 	sr := deps.sr
@@ -418,26 +415,17 @@ func initAgent(ctx context.Context, deps *agentDeps) (*adk.Agent, error) {
 			}
 		}
 
-		// Wire in RAG if available and enabled
-		if ec != nil && cfg.Embedding.RAG.Enabled {
-			ragOpts := embedding.RetrieveOptions{
-				Limit:       cfg.Embedding.RAG.MaxResults,
-				Collections: cfg.Embedding.RAG.Collections,
-				MaxDistance: cfg.Embedding.RAG.MaxDistance,
+		// Wire in graph-enhanced retrieved context if graph store is available.
+		if gc != nil && gc.ragService != nil {
+			retrievedLimit := cfg.Embedding.RAG.MaxResults
+			if retrievedLimit <= 0 {
+				retrievedLimit = 5
 			}
-			if ragOpts.Limit <= 0 {
-				ragOpts.Limit = 5
-			}
-			ctxAdapter.WithRAG(ec.ragService, ragOpts)
-
-			// Wire in Graph RAG if graph store is available.
-			if gc != nil && gc.ragService != nil {
-				ctxAdapter.WithGraphRAG(gc.ragService)
-			}
+			ctxAdapter.WithGraphRAG(gc.ragService, retrievedLimit)
 		}
 
 		// Wire in agentic retrieval coordinator if enabled.
-		if coordinator := initRetrievalCoordinator(cfg, kc.store, ec); coordinator != nil {
+		if coordinator := initRetrievalCoordinator(cfg, kc.store); coordinator != nil {
 			ctxAdapter.WithCoordinator(coordinator)
 		}
 
@@ -481,22 +469,13 @@ func initAgent(ctx context.Context, deps *agentDeps) (*adk.Agent, error) {
 			ctxAdapter.WithMemoryTokenBudget(cfg.ObservationalMemory.MemoryTokenBudget)
 		}
 
-		// Wire in RAG if available and enabled
-		if ec != nil && cfg.Embedding.RAG.Enabled {
-			ragOpts := embedding.RetrieveOptions{
-				Limit:       cfg.Embedding.RAG.MaxResults,
-				Collections: cfg.Embedding.RAG.Collections,
-				MaxDistance: cfg.Embedding.RAG.MaxDistance,
+		// Wire in graph-enhanced retrieved context if graph store is available.
+		if gc != nil && gc.ragService != nil {
+			retrievedLimit := cfg.Embedding.RAG.MaxResults
+			if retrievedLimit <= 0 {
+				retrievedLimit = 5
 			}
-			if ragOpts.Limit <= 0 {
-				ragOpts.Limit = 5
-			}
-			ctxAdapter.WithRAG(ec.ragService, ragOpts)
-
-			// Wire in Graph RAG if graph store is available.
-			if gc != nil && gc.ragService != nil {
-				ctxAdapter.WithGraphRAG(gc.ragService)
-			}
+			ctxAdapter.WithGraphRAG(gc.ragService, retrievedLimit)
 		}
 
 		// Wire event bus for context injection observability.

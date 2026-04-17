@@ -17,7 +17,6 @@ import (
 	"github.com/langoai/lango/internal/economy/negotiation"
 	"github.com/langoai/lango/internal/economy/pricing"
 	"github.com/langoai/lango/internal/economy/risk"
-	"github.com/langoai/lango/internal/embedding"
 	"github.com/langoai/lango/internal/eventbus"
 	"github.com/langoai/lango/internal/extension"
 	"github.com/langoai/lango/internal/gatekeeper"
@@ -87,10 +86,6 @@ type App struct {
 	MemoryStore  *memory.Store
 	MemoryBuffer *memory.Buffer
 
-	// Embedding / RAG Components (optional)
-	EmbeddingBuffer *embedding.EmbeddingBuffer
-	RAGService      *embedding.RAGService
-
 	// Conversation Analysis Components (optional)
 	AnalysisBuffer *learning.AnalysisBuffer
 
@@ -151,7 +146,7 @@ type App struct {
 	Sanitizer *gatekeeper.Sanitizer
 
 	// Turn Runtime (shared execution + durable traces)
-	TurnRunner    *turnrunner.Runner
+	TurnRunner     *turnrunner.Runner
 	TurnTraceStore turntrace.Store
 
 	// RunLedger Components (optional, Task OS durable execution)

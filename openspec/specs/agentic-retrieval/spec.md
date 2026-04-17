@@ -1,9 +1,7 @@
 ## Purpose
 
 Capability spec for agentic-retrieval. See requirements below for scope and behavior contracts.
-
 ## Requirements
-
 ### Requirement: Finding type
 The `retrieval` package SHALL provide a `Finding` struct with fields: Key (string), Content (string), Score (float64, higher=better), Category (string), SearchSource (string, "fts5"/"like"/"vector"/"temporal"), Agent (string), Layer (knowledge.ContextLayer). The `SearchSource` field documents the retrieval METHOD used. The `Source` field documents the AUTHORSHIP origin.
 
@@ -19,6 +17,10 @@ The `retrieval` package SHALL provide a `Finding` struct with fields: Key (strin
 
 ### Requirement: RetrievalAgent interface
 The `retrieval` package SHALL define a `RetrievalAgent` interface with methods: `Name() string`, `Layers() []knowledge.ContextLayer`, `Search(ctx context.Context, query string, limit int) ([]Finding, error)`. The `limit` parameter is item count, NOT token budget.
+
+#### Scenario: Retrieval agent receives item-count limit
+- **WHEN** the coordinator invokes a retrieval agent
+- **THEN** the agent SHALL interpret `limit` as a maximum item count rather than a token budget
 
 ### Requirement: FactSearchAgent
 `FactSearchAgent` SHALL implement `RetrievalAgent`. It SHALL depend on `FactSearchSource` interface (not concrete `*knowledge.Store`). It SHALL cover 3 factual layers: UserKnowledge, AgentLearnings, ExternalKnowledge. It SHALL call `SearchKnowledgeScored`, `SearchLearningsScored`, `SearchExternalRefs` and convert results to `[]Finding`.
@@ -63,8 +65,17 @@ The `retrieval` package SHALL define a `RetrievalAgent` interface with methods: 
 ### Requirement: Layer coverage boundary
 The coordinator SHALL cover 3 factual layers: UserKnowledge, AgentLearnings, ExternalKnowledge. ToolRegistry, RuntimeContext, SkillPatterns, PendingInquiries are handled by the ContextRetriever. The coordinator runs as primary in Phase 1 of GenerateContent (not shadow).
 
+#### Scenario: Coordinator limits itself to factual layers
+- **WHEN** the retrieval coordinator is initialized
+- **THEN** it SHALL only return findings for UserKnowledge, AgentLearnings, and ExternalKnowledge
+- **AND** it SHALL not retrieve ToolRegistry, RuntimeContext, SkillPatterns, or PendingInquiries layers
+
 ### Requirement: Configuration
 `RetrievalConfig` SHALL have `Enabled` (bool, default false) and `Feedback` (bool, default false) fields, plus nested `AutoAdjust AutoAdjustConfig`. The coordinator SHALL only be created when `Enabled=true`.
+
+#### Scenario: Coordinator disabled by config
+- **WHEN** `retrieval.enabled` is `false`
+- **THEN** the retrieval coordinator SHALL not be created
 
 ### Requirement: RetrievalConfig Feedback field
 The `RetrievalConfig` struct SHALL include a `Feedback bool` field that enables context injection observability. This field SHALL operate independently of `Enabled` — feedback observability SHALL work regardless of whether the agentic retrieval coordinator is enabled.
@@ -89,18 +100,23 @@ The `ContextAwareModelAdapter` SHALL accept an event bus via `WithEventBus(*even
 - **THEN** `WithEventBus(eventBus)` SHALL be called on the adapter
 
 ### Requirement: RAG enabled flag enforcement
-`ContextSearchAgent` SHALL only be registered when BOTH `ec.ragService != nil` AND `cfg.Embedding.RAG.Enabled` are true. `RAGService` SHALL only be created when `embedding.rag.enabled` is true.
+The agentic retrieval coordinator SHALL NOT register a vector-backed context search agent. The coordinator SHALL operate without any embedding-specific dependency.
+
+#### Scenario: Coordinator created with retrieval enabled
+- **WHEN** the retrieval coordinator is initialized
+- **THEN** it SHALL not require an embedding service to be present
 
 ### Requirement: TemporalSearchAgent registration in coordinator
-`initRetrievalCoordinator` SHALL always register `TemporalSearchAgent` alongside `FactSearchAgent`. Unlike `ContextSearchAgent` (which requires RAGService), `TemporalSearchAgent` has no optional dependencies — it uses `kStore` which is always available.
+`initRetrievalCoordinator` SHALL always register `TemporalSearchAgent` alongside `FactSearchAgent`. `TemporalSearchAgent` has no optional dependencies — it uses `kStore` which is always available.
+
+#### Scenario: Temporal search always registered
+- **WHEN** the retrieval coordinator is initialized with retrieval enabled
+- **THEN** the coordinator SHALL include `TemporalSearchAgent`
 
 ### Requirement: ContextSearchAgent registration in coordinator
-`initRetrievalCoordinator` SHALL accept embedding components and register `ContextSearchAgent` when RAGService is available. The coordinator SHALL run FactSearchAgent, TemporalSearchAgent, and ContextSearchAgent in parallel.
+`initRetrievalCoordinator` SHALL register only `FactSearchAgent` and `TemporalSearchAgent`. The coordinator SHALL run those agents in parallel and SHALL NOT register the removed vector-backed `ContextSearchAgent`.
 
-#### Scenario: RAG available
-- **WHEN** embedding components with ragService are provided
-- **THEN** coordinator SHALL have 3 agents registered (fact-search + temporal-search + context-search)
+#### Scenario: Retrieval coordinator agent count
+- **WHEN** the retrieval coordinator is initialized with retrieval enabled
+- **THEN** the coordinator SHALL have 2 agents registered (fact-search + temporal-search)
 
-#### Scenario: RAG not available
-- **WHEN** embedding components are nil
-- **THEN** coordinator SHALL have 2 agents registered (fact-search + temporal-search)

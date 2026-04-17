@@ -17,7 +17,6 @@ import (
 	"github.com/langoai/lango/internal/economy/negotiation"
 	"github.com/langoai/lango/internal/economy/pricing"
 	"github.com/langoai/lango/internal/economy/risk"
-	"github.com/langoai/lango/internal/embedding"
 	"github.com/langoai/lango/internal/eventbus"
 	"github.com/langoai/lango/internal/graph"
 	"github.com/langoai/lango/internal/librarian"
@@ -205,23 +204,6 @@ func TestBuildGraphTools_Parity(t *testing.T) {
 	assert.Equal(t, wantNames, toolNamesUnsorted(tools))
 	assertAllHandlersNonNil(t, tools)
 	assertNoDuplicateNames(t, tools)
-}
-
-// ─── RAG Tools ───
-
-func TestBuildRAGTools_Parity(t *testing.T) {
-	t.Parallel()
-
-	// RAGService is a concrete type; pass nil to verify tool definitions.
-	tools := embedding.BuildRAGTools(nil)
-
-	wantNames := []string{
-		"rag_retrieve",
-	}
-
-	assert.Len(t, tools, len(wantNames))
-	assert.Equal(t, wantNames, toolNamesUnsorted(tools))
-	assertAllHandlersNonNil(t, tools)
 }
 
 // ─── Memory Agent Tools ───

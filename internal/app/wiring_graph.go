@@ -6,9 +6,9 @@ import (
 	"path/filepath"
 
 	"github.com/langoai/lango/internal/config"
-	"github.com/langoai/lango/internal/embedding"
 	"github.com/langoai/lango/internal/eventbus"
 	"github.com/langoai/lango/internal/graph"
+	"github.com/langoai/lango/internal/knowledge"
 	"github.com/langoai/lango/internal/memory"
 	"github.com/langoai/lango/internal/supervisor"
 	"github.com/langoai/lango/internal/types"
@@ -162,9 +162,10 @@ func wireGraphCallbacks(gc *graphComponents, kc *knowledgeComponents, mc *memory
 	}
 }
 
-// initGraphRAG creates the Graph RAG service if both graph store and vector RAG are available.
-func initGraphRAG(cfg *config.Config, gc *graphComponents, ec *embeddingComponents) {
-	if gc == nil || ec == nil || ec.ragService == nil {
+// initGraphRAG creates the Graph RAG service when both graph store and
+// knowledge search are available.
+func initGraphRAG(cfg *config.Config, gc *graphComponents, kc *knowledgeComponents) {
+	if gc == nil || kc == nil || kc.store == nil {
 		return
 	}
 
@@ -177,39 +178,55 @@ func initGraphRAG(cfg *config.Config, gc *graphComponents, ec *embeddingComponen
 		maxExpand = 10
 	}
 
-	// Create a VectorRetriever adapter from embedding.RAGService.
-	adapter := &ragServiceAdapter{inner: ec.ragService}
+	adapter := &knowledgeContentRetriever{store: kc.store}
 
 	gc.ragService = graph.NewGraphRAGService(adapter, gc.store, maxDepth, maxExpand, logger())
 	logger().Info("graph RAG hybrid retrieval initialized")
 }
 
-// ragServiceAdapter adapts embedding.RAGService to graph.VectorRetriever interface.
-type ragServiceAdapter struct {
-	inner *embedding.RAGService
+type contentSearchSource interface {
+	SearchKnowledgeScored(ctx context.Context, query string, category string, limit int) ([]knowledge.ScoredKnowledgeEntry, error)
 }
 
-func (a *ragServiceAdapter) Retrieve(ctx context.Context, query string, opts graph.VectorRetrieveOptions) ([]graph.VectorResult, error) {
-	embOpts := embedding.RetrieveOptions{
-		Collections: opts.Collections,
-		Limit:       opts.Limit,
-		SessionKey:  opts.SessionKey,
-		MaxDistance: opts.MaxDistance,
+type knowledgeContentRetriever struct {
+	store contentSearchSource
+}
+
+func (r *knowledgeContentRetriever) Retrieve(ctx context.Context, query string, opts graph.ContentRetrieveOptions) ([]graph.ContentResult, error) {
+	if r.store == nil || query == "" {
+		return nil, nil
+	}
+	if len(opts.Collections) > 0 {
+		allowed := false
+		for _, collection := range opts.Collections {
+			if collection == "knowledge" {
+				allowed = true
+				break
+			}
+		}
+		if !allowed {
+			return nil, nil
+		}
 	}
 
-	results, err := a.inner.Retrieve(ctx, query, embOpts)
+	limit := opts.Limit
+	if limit <= 0 {
+		limit = 5
+	}
+
+	results, err := r.store.SearchKnowledgeScored(ctx, query, "", limit)
 	if err != nil {
 		return nil, err
 	}
 
-	graphResults := make([]graph.VectorResult, len(results))
-	for i, r := range results {
-		graphResults[i] = graph.VectorResult{
-			Collection: r.Collection,
-			SourceID:   r.SourceID,
-			Content:    r.Content,
-			Distance:   r.Distance,
-		}
+	graphResults := make([]graph.ContentResult, 0, len(results))
+	for _, item := range results {
+		graphResults = append(graphResults, graph.ContentResult{
+			Collection: "knowledge",
+			SourceID:   item.Entry.Key,
+			Content:    item.Entry.Content,
+			Score:      float32(item.Score),
+		})
 	}
 	return graphResults, nil
 }
