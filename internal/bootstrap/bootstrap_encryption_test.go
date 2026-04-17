@@ -1,21 +1,22 @@
 package bootstrap
 
 import (
-	"database/sql"
+	"bytes"
 	"os"
 	"path/filepath"
 	"testing"
 
-	_ "github.com/mattn/go-sqlite3"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/langoai/lango/internal/sqlitedriver"
 )
 
 func TestIsDBEncrypted_PlaintextDB(t *testing.T) {
 	dir := t.TempDir()
 	dbPath := filepath.Join(dir, "plain.db")
 
-	db, err := sql.Open("sqlite3", "file:"+dbPath)
+	db, err := sqlitedriver.Open(dbPath, false)
 	require.NoError(t, err)
 	_, err = db.Exec("CREATE TABLE test (id INTEGER PRIMARY KEY)")
 	require.NoError(t, err)
@@ -82,4 +83,16 @@ func TestOpenDatabase_WithEncryptionKey_NoSQLCipher(t *testing.T) {
 
 	// Without SQLCipher, the file should still be plaintext.
 	assert.False(t, IsDBEncrypted(dbPath))
+}
+
+func TestOpenDatabase_LegacyHeaderFailsFast(t *testing.T) {
+	dir := t.TempDir()
+	dbPath := filepath.Join(dir, "legacy.db")
+	require.NoError(t, os.WriteFile(dbPath, bytes.Repeat([]byte{0x42}, 64), 0600))
+
+	client, rawDB, err := openDatabase(dbPath, "", false, 0)
+	require.Error(t, err)
+	assert.ErrorIs(t, err, sqlitedriver.ErrLegacyEncryptedOrUnreadableDB)
+	assert.Nil(t, client)
+	assert.Nil(t, rawDB)
 }

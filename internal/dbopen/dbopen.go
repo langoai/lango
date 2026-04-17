@@ -6,14 +6,13 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"strings"
 
 	"entgo.io/ent/dialect"
 	entsql "entgo.io/ent/dialect/sql"
 	"entgo.io/ent/dialect/sql/schema"
-	_ "github.com/mattn/go-sqlite3"
 
 	"github.com/langoai/lango/internal/ent"
+	"github.com/langoai/lango/internal/sqlitedriver"
 )
 
 const dataDirPerm = 0o700
@@ -21,12 +20,9 @@ const dataDirPerm = 0o700
 // OpenManaged opens the application database in read-write mode and applies
 // schema migration.
 func OpenManaged(dbPath, encryptionKey string, rawKey bool, cipherPageSize int) (*ent.Client, *sql.DB, error) {
-	// Expand tilde.
-	if strings.HasPrefix(dbPath, "~/") {
-		home, err := os.UserHomeDir()
-		if err == nil {
-			dbPath = filepath.Join(home, dbPath[2:])
-		}
+	dbPath = sqlitedriver.ExpandPath(dbPath)
+	if err := sqlitedriver.CheckFileHeader(dbPath); err != nil {
+		return nil, nil, err
 	}
 
 	// Ensure parent directory exists.
@@ -34,8 +30,7 @@ func OpenManaged(dbPath, encryptionKey string, rawKey bool, cipherPageSize int) 
 		return nil, nil, fmt.Errorf("create db directory: %w", err)
 	}
 
-	connStr := "file:" + dbPath + "?cache=shared&_journal_mode=WAL&_busy_timeout=5000"
-	db, err := sql.Open("sqlite3", connStr)
+	db, err := sqlitedriver.Open(dbPath, false)
 	if err != nil {
 		return nil, nil, fmt.Errorf("sql open: %w", err)
 	}
@@ -70,19 +65,16 @@ func OpenManaged(dbPath, encryptionKey string, rawKey bool, cipherPageSize int) 
 // OpenReadOnly opens the application database in read-only mode without
 // invoking ent schema migration.
 func OpenReadOnly(dbPath, encryptionKey string, rawKey bool, cipherPageSize int) (*ent.Client, *sql.DB, error) {
-	if strings.HasPrefix(dbPath, "~/") {
-		home, err := os.UserHomeDir()
-		if err == nil {
-			dbPath = filepath.Join(home, dbPath[2:])
-		}
+	dbPath = sqlitedriver.ExpandPath(dbPath)
+	if err := sqlitedriver.CheckFileHeader(dbPath); err != nil {
+		return nil, nil, err
 	}
 
 	if _, err := os.Stat(dbPath); err != nil {
 		return nil, nil, fmt.Errorf("read-only db open: stat %q: %w", dbPath, err)
 	}
 
-	connStr := "file:" + dbPath + "?mode=ro&cache=shared&_journal_mode=WAL&_busy_timeout=5000"
-	db, err := sql.Open("sqlite3", connStr)
+	db, err := sqlitedriver.Open(dbPath, true)
 	if err != nil {
 		return nil, nil, fmt.Errorf("read-only sql open: %w", err)
 	}

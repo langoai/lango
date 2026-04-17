@@ -3,15 +3,19 @@
 package testutil
 
 import (
+	"fmt"
+	"strings"
+	"sync/atomic"
 	"testing"
 
 	"go.uber.org/zap"
 
 	"github.com/langoai/lango/internal/ent"
 	"github.com/langoai/lango/internal/ent/enttest"
-
-	_ "github.com/mattn/go-sqlite3"
+	"github.com/langoai/lango/internal/sqlitedriver"
 )
+
+var testDBSeq uint64
 
 // NopLogger returns a no-op *zap.SugaredLogger suitable for tests.
 func NopLogger() *zap.SugaredLogger {
@@ -22,7 +26,9 @@ func NopLogger() *zap.SugaredLogger {
 // The client is automatically closed when the test completes.
 func TestEntClient(t testing.TB) *ent.Client {
 	t.Helper()
-	client := enttest.Open(t, "sqlite3", "file:ent?mode=memory&_fk=1")
+	name := strings.NewReplacer("/", "-", " ", "-", ":", "-").Replace(t.Name())
+	seq := atomic.AddUint64(&testDBSeq, 1)
+	client := enttest.Open(t, sqlitedriver.DriverName(), sqlitedriver.MemoryDSN(fmt.Sprintf("%s-%d", name, seq)))
 	t.Cleanup(func() { client.Close() })
 	return client
 }

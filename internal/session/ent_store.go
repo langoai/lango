@@ -5,8 +5,6 @@ import (
 	"database/sql"
 	"encoding/hex"
 	"fmt"
-	"os"
-	"path/filepath"
 	"reflect"
 	"strings"
 	"sync"
@@ -21,8 +19,8 @@ import (
 	entschema "github.com/langoai/lango/internal/ent/schema"
 	entsession "github.com/langoai/lango/internal/ent/session"
 	"github.com/langoai/lango/internal/security"
+	"github.com/langoai/lango/internal/sqlitedriver"
 	"github.com/langoai/lango/internal/types"
-	_ "github.com/mattn/go-sqlite3"
 )
 
 // StoreOption defines the functional option pattern for EntStore
@@ -68,31 +66,12 @@ func NewEntStore(dbPath string, opts ...StoreOption) (*EntStore, error) {
 		opt(store)
 	}
 
-	// Expand tilde in path if present
-	if strings.HasPrefix(dbPath, "~/") {
-		home, err := os.UserHomeDir()
-		if err == nil {
-			dbPath = filepath.Join(home, dbPath[2:])
-		}
+	dbPath = sqlitedriver.ExpandPath(dbPath)
+	if err := sqlitedriver.CheckFileHeader(dbPath); err != nil {
+		return nil, err
 	}
 
-	// Build connection string
-	// We use "file:" prefix to ensure parameters are respected
-	connStr := dbPath
-	if !strings.HasPrefix(connStr, "file:") {
-		connStr = "file:" + connStr
-	}
-
-	// Add parameters. Note: _fk=1 is standard but we'll enable it manually to be safe with encryption
-	if !strings.Contains(connStr, "?") {
-		connStr += "?cache=shared"
-	} else {
-		connStr += "&cache=shared"
-	}
-
-	// Open with sqlite3 driver (mattn/go-sqlite3)
-	// modernc.org/sqlite registers as "sqlite", mattn/go-sqlite3 registers as "sqlite3"
-	db, err := sql.Open("sqlite3", connStr)
+	db, err := sqlitedriver.Open(dbPath, false)
 	if err != nil {
 		return nil, fmt.Errorf("open database: %w", err)
 	}
