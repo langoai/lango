@@ -24,10 +24,22 @@ type Message struct {
 	Role string `json:"role,omitempty"`
 	// Content holds the value of the "content" field.
 	Content string `json:"content,omitempty"`
+	// ContentCiphertext holds the value of the "content_ciphertext" field.
+	ContentCiphertext *[]byte `json:"content_ciphertext,omitempty"`
+	// ContentNonce holds the value of the "content_nonce" field.
+	ContentNonce *[]byte `json:"content_nonce,omitempty"`
+	// ContentKeyVersion holds the value of the "content_key_version" field.
+	ContentKeyVersion *int `json:"content_key_version,omitempty"`
 	// Timestamp holds the value of the "timestamp" field.
 	Timestamp time.Time `json:"timestamp,omitempty"`
 	// ToolCalls holds the value of the "tool_calls" field.
 	ToolCalls []schema.ToolCall `json:"tool_calls,omitempty"`
+	// ToolCallsCiphertext holds the value of the "tool_calls_ciphertext" field.
+	ToolCallsCiphertext *[]byte `json:"tool_calls_ciphertext,omitempty"`
+	// ToolCallsNonce holds the value of the "tool_calls_nonce" field.
+	ToolCallsNonce *[]byte `json:"tool_calls_nonce,omitempty"`
+	// ToolCallsKeyVersion holds the value of the "tool_calls_key_version" field.
+	ToolCallsKeyVersion *int `json:"tool_calls_key_version,omitempty"`
 	// Author holds the value of the "author" field.
 	Author string `json:"author,omitempty"`
 	// Edges holds the relations/edges for other nodes in the graph.
@@ -62,9 +74,9 @@ func (*Message) scanValues(columns []string) ([]any, error) {
 	values := make([]any, len(columns))
 	for i := range columns {
 		switch columns[i] {
-		case message.FieldToolCalls:
+		case message.FieldContentCiphertext, message.FieldContentNonce, message.FieldToolCalls, message.FieldToolCallsCiphertext, message.FieldToolCallsNonce:
 			values[i] = new([]byte)
-		case message.FieldID:
+		case message.FieldID, message.FieldContentKeyVersion, message.FieldToolCallsKeyVersion:
 			values[i] = new(sql.NullInt64)
 		case message.FieldRole, message.FieldContent, message.FieldAuthor:
 			values[i] = new(sql.NullString)
@@ -105,6 +117,25 @@ func (_m *Message) assignValues(columns []string, values []any) error {
 			} else if value.Valid {
 				_m.Content = value.String
 			}
+		case message.FieldContentCiphertext:
+			if value, ok := values[i].(*[]byte); !ok {
+				return fmt.Errorf("unexpected type %T for field content_ciphertext", values[i])
+			} else if value != nil {
+				_m.ContentCiphertext = value
+			}
+		case message.FieldContentNonce:
+			if value, ok := values[i].(*[]byte); !ok {
+				return fmt.Errorf("unexpected type %T for field content_nonce", values[i])
+			} else if value != nil {
+				_m.ContentNonce = value
+			}
+		case message.FieldContentKeyVersion:
+			if value, ok := values[i].(*sql.NullInt64); !ok {
+				return fmt.Errorf("unexpected type %T for field content_key_version", values[i])
+			} else if value.Valid {
+				_m.ContentKeyVersion = new(int)
+				*_m.ContentKeyVersion = int(value.Int64)
+			}
 		case message.FieldTimestamp:
 			if value, ok := values[i].(*sql.NullTime); !ok {
 				return fmt.Errorf("unexpected type %T for field timestamp", values[i])
@@ -118,6 +149,25 @@ func (_m *Message) assignValues(columns []string, values []any) error {
 				if err := json.Unmarshal(*value, &_m.ToolCalls); err != nil {
 					return fmt.Errorf("unmarshal field tool_calls: %w", err)
 				}
+			}
+		case message.FieldToolCallsCiphertext:
+			if value, ok := values[i].(*[]byte); !ok {
+				return fmt.Errorf("unexpected type %T for field tool_calls_ciphertext", values[i])
+			} else if value != nil {
+				_m.ToolCallsCiphertext = value
+			}
+		case message.FieldToolCallsNonce:
+			if value, ok := values[i].(*[]byte); !ok {
+				return fmt.Errorf("unexpected type %T for field tool_calls_nonce", values[i])
+			} else if value != nil {
+				_m.ToolCallsNonce = value
+			}
+		case message.FieldToolCallsKeyVersion:
+			if value, ok := values[i].(*sql.NullInt64); !ok {
+				return fmt.Errorf("unexpected type %T for field tool_calls_key_version", values[i])
+			} else if value.Valid {
+				_m.ToolCallsKeyVersion = new(int)
+				*_m.ToolCallsKeyVersion = int(value.Int64)
 			}
 		case message.FieldAuthor:
 			if value, ok := values[i].(*sql.NullString); !ok {
@@ -179,11 +229,41 @@ func (_m *Message) String() string {
 	builder.WriteString("content=")
 	builder.WriteString(_m.Content)
 	builder.WriteString(", ")
+	if v := _m.ContentCiphertext; v != nil {
+		builder.WriteString("content_ciphertext=")
+		builder.WriteString(fmt.Sprintf("%v", *v))
+	}
+	builder.WriteString(", ")
+	if v := _m.ContentNonce; v != nil {
+		builder.WriteString("content_nonce=")
+		builder.WriteString(fmt.Sprintf("%v", *v))
+	}
+	builder.WriteString(", ")
+	if v := _m.ContentKeyVersion; v != nil {
+		builder.WriteString("content_key_version=")
+		builder.WriteString(fmt.Sprintf("%v", *v))
+	}
+	builder.WriteString(", ")
 	builder.WriteString("timestamp=")
 	builder.WriteString(_m.Timestamp.Format(time.ANSIC))
 	builder.WriteString(", ")
 	builder.WriteString("tool_calls=")
 	builder.WriteString(fmt.Sprintf("%v", _m.ToolCalls))
+	builder.WriteString(", ")
+	if v := _m.ToolCallsCiphertext; v != nil {
+		builder.WriteString("tool_calls_ciphertext=")
+		builder.WriteString(fmt.Sprintf("%v", *v))
+	}
+	builder.WriteString(", ")
+	if v := _m.ToolCallsNonce; v != nil {
+		builder.WriteString("tool_calls_nonce=")
+		builder.WriteString(fmt.Sprintf("%v", *v))
+	}
+	builder.WriteString(", ")
+	if v := _m.ToolCallsKeyVersion; v != nil {
+		builder.WriteString("tool_calls_key_version=")
+		builder.WriteString(fmt.Sprintf("%v", *v))
+	}
 	builder.WriteString(", ")
 	builder.WriteString("author=")
 	builder.WriteString(_m.Author)

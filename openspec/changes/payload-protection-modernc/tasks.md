@@ -6,7 +6,7 @@
 
 ## 2. Payload Protection
 
-- [ ] 2.1 Add encrypted payload fields for user-content-heavy entities.
+- [x] 2.1 Add encrypted payload fields for user-content-heavy entities.
 - [ ] 2.2 Implement broker-managed AEAD encrypt/decrypt with `key_version=1`.
 - [ ] 2.3 Define redacted search/recalI projection generation and atomic commit rules.
 

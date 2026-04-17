@@ -70,6 +70,21 @@ func Content(v string) predicate.AgentMemory {
 	return predicate.AgentMemory(sql.FieldEQ(FieldContent, v))
 }
 
+// ContentCiphertext applies equality check predicate on the "content_ciphertext" field. It's identical to ContentCiphertextEQ.
+func ContentCiphertext(v []byte) predicate.AgentMemory {
+	return predicate.AgentMemory(sql.FieldEQ(FieldContentCiphertext, v))
+}
+
+// ContentNonce applies equality check predicate on the "content_nonce" field. It's identical to ContentNonceEQ.
+func ContentNonce(v []byte) predicate.AgentMemory {
+	return predicate.AgentMemory(sql.FieldEQ(FieldContentNonce, v))
+}
+
+// ContentKeyVersion applies equality check predicate on the "content_key_version" field. It's identical to ContentKeyVersionEQ.
+func ContentKeyVersion(v int) predicate.AgentMemory {
+	return predicate.AgentMemory(sql.FieldEQ(FieldContentKeyVersion, v))
+}
+
 // Confidence applies equality check predicate on the "confidence" field. It's identical to ConfidenceEQ.
 func Confidence(v float64) predicate.AgentMemory {
 	return predicate.AgentMemory(sql.FieldEQ(FieldConfidence, v))
@@ -323,6 +338,156 @@ func ContentEqualFold(v string) predicate.AgentMemory {
 // ContentContainsFold applies the ContainsFold predicate on the "content" field.
 func ContentContainsFold(v string) predicate.AgentMemory {
 	return predicate.AgentMemory(sql.FieldContainsFold(FieldContent, v))
+}
+
+// ContentCiphertextEQ applies the EQ predicate on the "content_ciphertext" field.
+func ContentCiphertextEQ(v []byte) predicate.AgentMemory {
+	return predicate.AgentMemory(sql.FieldEQ(FieldContentCiphertext, v))
+}
+
+// ContentCiphertextNEQ applies the NEQ predicate on the "content_ciphertext" field.
+func ContentCiphertextNEQ(v []byte) predicate.AgentMemory {
+	return predicate.AgentMemory(sql.FieldNEQ(FieldContentCiphertext, v))
+}
+
+// ContentCiphertextIn applies the In predicate on the "content_ciphertext" field.
+func ContentCiphertextIn(vs ...[]byte) predicate.AgentMemory {
+	return predicate.AgentMemory(sql.FieldIn(FieldContentCiphertext, vs...))
+}
+
+// ContentCiphertextNotIn applies the NotIn predicate on the "content_ciphertext" field.
+func ContentCiphertextNotIn(vs ...[]byte) predicate.AgentMemory {
+	return predicate.AgentMemory(sql.FieldNotIn(FieldContentCiphertext, vs...))
+}
+
+// ContentCiphertextGT applies the GT predicate on the "content_ciphertext" field.
+func ContentCiphertextGT(v []byte) predicate.AgentMemory {
+	return predicate.AgentMemory(sql.FieldGT(FieldContentCiphertext, v))
+}
+
+// ContentCiphertextGTE applies the GTE predicate on the "content_ciphertext" field.
+func ContentCiphertextGTE(v []byte) predicate.AgentMemory {
+	return predicate.AgentMemory(sql.FieldGTE(FieldContentCiphertext, v))
+}
+
+// ContentCiphertextLT applies the LT predicate on the "content_ciphertext" field.
+func ContentCiphertextLT(v []byte) predicate.AgentMemory {
+	return predicate.AgentMemory(sql.FieldLT(FieldContentCiphertext, v))
+}
+
+// ContentCiphertextLTE applies the LTE predicate on the "content_ciphertext" field.
+func ContentCiphertextLTE(v []byte) predicate.AgentMemory {
+	return predicate.AgentMemory(sql.FieldLTE(FieldContentCiphertext, v))
+}
+
+// ContentCiphertextIsNil applies the IsNil predicate on the "content_ciphertext" field.
+func ContentCiphertextIsNil() predicate.AgentMemory {
+	return predicate.AgentMemory(sql.FieldIsNull(FieldContentCiphertext))
+}
+
+// ContentCiphertextNotNil applies the NotNil predicate on the "content_ciphertext" field.
+func ContentCiphertextNotNil() predicate.AgentMemory {
+	return predicate.AgentMemory(sql.FieldNotNull(FieldContentCiphertext))
+}
+
+// ContentNonceEQ applies the EQ predicate on the "content_nonce" field.
+func ContentNonceEQ(v []byte) predicate.AgentMemory {
+	return predicate.AgentMemory(sql.FieldEQ(FieldContentNonce, v))
+}
+
+// ContentNonceNEQ applies the NEQ predicate on the "content_nonce" field.
+func ContentNonceNEQ(v []byte) predicate.AgentMemory {
+	return predicate.AgentMemory(sql.FieldNEQ(FieldContentNonce, v))
+}
+
+// ContentNonceIn applies the In predicate on the "content_nonce" field.
+func ContentNonceIn(vs ...[]byte) predicate.AgentMemory {
+	return predicate.AgentMemory(sql.FieldIn(FieldContentNonce, vs...))
+}
+
+// ContentNonceNotIn applies the NotIn predicate on the "content_nonce" field.
+func ContentNonceNotIn(vs ...[]byte) predicate.AgentMemory {
+	return predicate.AgentMemory(sql.FieldNotIn(FieldContentNonce, vs...))
+}
+
+// ContentNonceGT applies the GT predicate on the "content_nonce" field.
+func ContentNonceGT(v []byte) predicate.AgentMemory {
+	return predicate.AgentMemory(sql.FieldGT(FieldContentNonce, v))
+}
+
+// ContentNonceGTE applies the GTE predicate on the "content_nonce" field.
+func ContentNonceGTE(v []byte) predicate.AgentMemory {
+	return predicate.AgentMemory(sql.FieldGTE(FieldContentNonce, v))
+}
+
+// ContentNonceLT applies the LT predicate on the "content_nonce" field.
+func ContentNonceLT(v []byte) predicate.AgentMemory {
+	return predicate.AgentMemory(sql.FieldLT(FieldContentNonce, v))
+}
+
+// ContentNonceLTE applies the LTE predicate on the "content_nonce" field.
+func ContentNonceLTE(v []byte) predicate.AgentMemory {
+	return predicate.AgentMemory(sql.FieldLTE(FieldContentNonce, v))
+}
+
+// ContentNonceIsNil applies the IsNil predicate on the "content_nonce" field.
+func ContentNonceIsNil() predicate.AgentMemory {
+	return predicate.AgentMemory(sql.FieldIsNull(FieldContentNonce))
+}
+
+// ContentNonceNotNil applies the NotNil predicate on the "content_nonce" field.
+func ContentNonceNotNil() predicate.AgentMemory {
+	return predicate.AgentMemory(sql.FieldNotNull(FieldContentNonce))
+}
+
+// ContentKeyVersionEQ applies the EQ predicate on the "content_key_version" field.
+func ContentKeyVersionEQ(v int) predicate.AgentMemory {
+	return predicate.AgentMemory(sql.FieldEQ(FieldContentKeyVersion, v))
+}
+
+// ContentKeyVersionNEQ applies the NEQ predicate on the "content_key_version" field.
+func ContentKeyVersionNEQ(v int) predicate.AgentMemory {
+	return predicate.AgentMemory(sql.FieldNEQ(FieldContentKeyVersion, v))
+}
+
+// ContentKeyVersionIn applies the In predicate on the "content_key_version" field.
+func ContentKeyVersionIn(vs ...int) predicate.AgentMemory {
+	return predicate.AgentMemory(sql.FieldIn(FieldContentKeyVersion, vs...))
+}
+
+// ContentKeyVersionNotIn applies the NotIn predicate on the "content_key_version" field.
+func ContentKeyVersionNotIn(vs ...int) predicate.AgentMemory {
+	return predicate.AgentMemory(sql.FieldNotIn(FieldContentKeyVersion, vs...))
+}
+
+// ContentKeyVersionGT applies the GT predicate on the "content_key_version" field.
+func ContentKeyVersionGT(v int) predicate.AgentMemory {
+	return predicate.AgentMemory(sql.FieldGT(FieldContentKeyVersion, v))
+}
+
+// ContentKeyVersionGTE applies the GTE predicate on the "content_key_version" field.
+func ContentKeyVersionGTE(v int) predicate.AgentMemory {
+	return predicate.AgentMemory(sql.FieldGTE(FieldContentKeyVersion, v))
+}
+
+// ContentKeyVersionLT applies the LT predicate on the "content_key_version" field.
+func ContentKeyVersionLT(v int) predicate.AgentMemory {
+	return predicate.AgentMemory(sql.FieldLT(FieldContentKeyVersion, v))
+}
+
+// ContentKeyVersionLTE applies the LTE predicate on the "content_key_version" field.
+func ContentKeyVersionLTE(v int) predicate.AgentMemory {
+	return predicate.AgentMemory(sql.FieldLTE(FieldContentKeyVersion, v))
+}
+
+// ContentKeyVersionIsNil applies the IsNil predicate on the "content_key_version" field.
+func ContentKeyVersionIsNil() predicate.AgentMemory {
+	return predicate.AgentMemory(sql.FieldIsNull(FieldContentKeyVersion))
+}
+
+// ContentKeyVersionNotNil applies the NotNil predicate on the "content_key_version" field.
+func ContentKeyVersionNotNil() predicate.AgentMemory {
+	return predicate.AgentMemory(sql.FieldNotNull(FieldContentKeyVersion))
 }
 
 // ConfidenceEQ applies the EQ predicate on the "confidence" field.

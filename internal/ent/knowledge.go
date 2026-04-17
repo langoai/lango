@@ -25,6 +25,12 @@ type Knowledge struct {
 	Category knowledge.Category `json:"category,omitempty"`
 	// Content holds the value of the "content" field.
 	Content string `json:"content,omitempty"`
+	// ContentCiphertext holds the value of the "content_ciphertext" field.
+	ContentCiphertext *[]byte `json:"content_ciphertext,omitempty"`
+	// ContentNonce holds the value of the "content_nonce" field.
+	ContentNonce *[]byte `json:"content_nonce,omitempty"`
+	// ContentKeyVersion holds the value of the "content_key_version" field.
+	ContentKeyVersion *int `json:"content_key_version,omitempty"`
 	// Tags holds the value of the "tags" field.
 	Tags []string `json:"tags,omitempty"`
 	// Source holds the value of the "source" field.
@@ -49,13 +55,13 @@ func (*Knowledge) scanValues(columns []string) ([]any, error) {
 	values := make([]any, len(columns))
 	for i := range columns {
 		switch columns[i] {
-		case knowledge.FieldTags:
+		case knowledge.FieldContentCiphertext, knowledge.FieldContentNonce, knowledge.FieldTags:
 			values[i] = new([]byte)
 		case knowledge.FieldIsLatest:
 			values[i] = new(sql.NullBool)
 		case knowledge.FieldRelevanceScore:
 			values[i] = new(sql.NullFloat64)
-		case knowledge.FieldVersion, knowledge.FieldUseCount:
+		case knowledge.FieldContentKeyVersion, knowledge.FieldVersion, knowledge.FieldUseCount:
 			values[i] = new(sql.NullInt64)
 		case knowledge.FieldKey, knowledge.FieldCategory, knowledge.FieldContent, knowledge.FieldSource:
 			values[i] = new(sql.NullString)
@@ -101,6 +107,25 @@ func (_m *Knowledge) assignValues(columns []string, values []any) error {
 				return fmt.Errorf("unexpected type %T for field content", values[i])
 			} else if value.Valid {
 				_m.Content = value.String
+			}
+		case knowledge.FieldContentCiphertext:
+			if value, ok := values[i].(*[]byte); !ok {
+				return fmt.Errorf("unexpected type %T for field content_ciphertext", values[i])
+			} else if value != nil {
+				_m.ContentCiphertext = value
+			}
+		case knowledge.FieldContentNonce:
+			if value, ok := values[i].(*[]byte); !ok {
+				return fmt.Errorf("unexpected type %T for field content_nonce", values[i])
+			} else if value != nil {
+				_m.ContentNonce = value
+			}
+		case knowledge.FieldContentKeyVersion:
+			if value, ok := values[i].(*sql.NullInt64); !ok {
+				return fmt.Errorf("unexpected type %T for field content_key_version", values[i])
+			} else if value.Valid {
+				_m.ContentKeyVersion = new(int)
+				*_m.ContentKeyVersion = int(value.Int64)
 			}
 		case knowledge.FieldTags:
 			if value, ok := values[i].(*[]byte); !ok {
@@ -196,6 +221,21 @@ func (_m *Knowledge) String() string {
 	builder.WriteString(", ")
 	builder.WriteString("content=")
 	builder.WriteString(_m.Content)
+	builder.WriteString(", ")
+	if v := _m.ContentCiphertext; v != nil {
+		builder.WriteString("content_ciphertext=")
+		builder.WriteString(fmt.Sprintf("%v", *v))
+	}
+	builder.WriteString(", ")
+	if v := _m.ContentNonce; v != nil {
+		builder.WriteString("content_nonce=")
+		builder.WriteString(fmt.Sprintf("%v", *v))
+	}
+	builder.WriteString(", ")
+	if v := _m.ContentKeyVersion; v != nil {
+		builder.WriteString("content_key_version=")
+		builder.WriteString(fmt.Sprintf("%v", *v))
+	}
 	builder.WriteString(", ")
 	builder.WriteString("tags=")
 	builder.WriteString(fmt.Sprintf("%v", _m.Tags))

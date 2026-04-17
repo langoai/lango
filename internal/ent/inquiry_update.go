@@ -70,6 +70,57 @@ func (_u *InquiryUpdate) SetNillableQuestion(v *string) *InquiryUpdate {
 	return _u
 }
 
+// SetPayloadCiphertext sets the "payload_ciphertext" field.
+func (_u *InquiryUpdate) SetPayloadCiphertext(v []byte) *InquiryUpdate {
+	_u.mutation.SetPayloadCiphertext(v)
+	return _u
+}
+
+// ClearPayloadCiphertext clears the value of the "payload_ciphertext" field.
+func (_u *InquiryUpdate) ClearPayloadCiphertext() *InquiryUpdate {
+	_u.mutation.ClearPayloadCiphertext()
+	return _u
+}
+
+// SetPayloadNonce sets the "payload_nonce" field.
+func (_u *InquiryUpdate) SetPayloadNonce(v []byte) *InquiryUpdate {
+	_u.mutation.SetPayloadNonce(v)
+	return _u
+}
+
+// ClearPayloadNonce clears the value of the "payload_nonce" field.
+func (_u *InquiryUpdate) ClearPayloadNonce() *InquiryUpdate {
+	_u.mutation.ClearPayloadNonce()
+	return _u
+}
+
+// SetPayloadKeyVersion sets the "payload_key_version" field.
+func (_u *InquiryUpdate) SetPayloadKeyVersion(v int) *InquiryUpdate {
+	_u.mutation.ResetPayloadKeyVersion()
+	_u.mutation.SetPayloadKeyVersion(v)
+	return _u
+}
+
+// SetNillablePayloadKeyVersion sets the "payload_key_version" field if the given value is not nil.
+func (_u *InquiryUpdate) SetNillablePayloadKeyVersion(v *int) *InquiryUpdate {
+	if v != nil {
+		_u.SetPayloadKeyVersion(*v)
+	}
+	return _u
+}
+
+// AddPayloadKeyVersion adds value to the "payload_key_version" field.
+func (_u *InquiryUpdate) AddPayloadKeyVersion(v int) *InquiryUpdate {
+	_u.mutation.AddPayloadKeyVersion(v)
+	return _u
+}
+
+// ClearPayloadKeyVersion clears the value of the "payload_key_version" field.
+func (_u *InquiryUpdate) ClearPayloadKeyVersion() *InquiryUpdate {
+	_u.mutation.ClearPayloadKeyVersion()
+	return _u
+}
+
 // SetContext sets the "context" field.
 func (_u *InquiryUpdate) SetContext(v string) *InquiryUpdate {
 	_u.mutation.SetContext(v)
@@ -281,6 +332,27 @@ func (_u *InquiryUpdate) sqlSave(ctx context.Context) (_node int, err error) {
 	if value, ok := _u.mutation.Question(); ok {
 		_spec.SetField(inquiry.FieldQuestion, field.TypeString, value)
 	}
+	if value, ok := _u.mutation.PayloadCiphertext(); ok {
+		_spec.SetField(inquiry.FieldPayloadCiphertext, field.TypeBytes, value)
+	}
+	if _u.mutation.PayloadCiphertextCleared() {
+		_spec.ClearField(inquiry.FieldPayloadCiphertext, field.TypeBytes)
+	}
+	if value, ok := _u.mutation.PayloadNonce(); ok {
+		_spec.SetField(inquiry.FieldPayloadNonce, field.TypeBytes, value)
+	}
+	if _u.mutation.PayloadNonceCleared() {
+		_spec.ClearField(inquiry.FieldPayloadNonce, field.TypeBytes)
+	}
+	if value, ok := _u.mutation.PayloadKeyVersion(); ok {
+		_spec.SetField(inquiry.FieldPayloadKeyVersion, field.TypeInt, value)
+	}
+	if value, ok := _u.mutation.AddedPayloadKeyVersion(); ok {
+		_spec.AddField(inquiry.FieldPayloadKeyVersion, field.TypeInt, value)
+	}
+	if _u.mutation.PayloadKeyVersionCleared() {
+		_spec.ClearField(inquiry.FieldPayloadKeyVersion, field.TypeInt)
+	}
 	if value, ok := _u.mutation.Context(); ok {
 		_spec.SetField(inquiry.FieldContext, field.TypeString, value)
 	}
@@ -376,6 +448,57 @@ func (_u *InquiryUpdateOne) SetNillableQuestion(v *string) *InquiryUpdateOne {
 	if v != nil {
 		_u.SetQuestion(*v)
 	}
+	return _u
+}
+
+// SetPayloadCiphertext sets the "payload_ciphertext" field.
+func (_u *InquiryUpdateOne) SetPayloadCiphertext(v []byte) *InquiryUpdateOne {
+	_u.mutation.SetPayloadCiphertext(v)
+	return _u
+}
+
+// ClearPayloadCiphertext clears the value of the "payload_ciphertext" field.
+func (_u *InquiryUpdateOne) ClearPayloadCiphertext() *InquiryUpdateOne {
+	_u.mutation.ClearPayloadCiphertext()
+	return _u
+}
+
+// SetPayloadNonce sets the "payload_nonce" field.
+func (_u *InquiryUpdateOne) SetPayloadNonce(v []byte) *InquiryUpdateOne {
+	_u.mutation.SetPayloadNonce(v)
+	return _u
+}
+
+// ClearPayloadNonce clears the value of the "payload_nonce" field.
+func (_u *InquiryUpdateOne) ClearPayloadNonce() *InquiryUpdateOne {
+	_u.mutation.ClearPayloadNonce()
+	return _u
+}
+
+// SetPayloadKeyVersion sets the "payload_key_version" field.
+func (_u *InquiryUpdateOne) SetPayloadKeyVersion(v int) *InquiryUpdateOne {
+	_u.mutation.ResetPayloadKeyVersion()
+	_u.mutation.SetPayloadKeyVersion(v)
+	return _u
+}
+
+// SetNillablePayloadKeyVersion sets the "payload_key_version" field if the given value is not nil.
+func (_u *InquiryUpdateOne) SetNillablePayloadKeyVersion(v *int) *InquiryUpdateOne {
+	if v != nil {
+		_u.SetPayloadKeyVersion(*v)
+	}
+	return _u
+}
+
+// AddPayloadKeyVersion adds value to the "payload_key_version" field.
+func (_u *InquiryUpdateOne) AddPayloadKeyVersion(v int) *InquiryUpdateOne {
+	_u.mutation.AddPayloadKeyVersion(v)
+	return _u
+}
+
+// ClearPayloadKeyVersion clears the value of the "payload_key_version" field.
+func (_u *InquiryUpdateOne) ClearPayloadKeyVersion() *InquiryUpdateOne {
+	_u.mutation.ClearPayloadKeyVersion()
 	return _u
 }
 
@@ -619,6 +742,27 @@ func (_u *InquiryUpdateOne) sqlSave(ctx context.Context) (_node *Inquiry, err er
 	}
 	if value, ok := _u.mutation.Question(); ok {
 		_spec.SetField(inquiry.FieldQuestion, field.TypeString, value)
+	}
+	if value, ok := _u.mutation.PayloadCiphertext(); ok {
+		_spec.SetField(inquiry.FieldPayloadCiphertext, field.TypeBytes, value)
+	}
+	if _u.mutation.PayloadCiphertextCleared() {
+		_spec.ClearField(inquiry.FieldPayloadCiphertext, field.TypeBytes)
+	}
+	if value, ok := _u.mutation.PayloadNonce(); ok {
+		_spec.SetField(inquiry.FieldPayloadNonce, field.TypeBytes, value)
+	}
+	if _u.mutation.PayloadNonceCleared() {
+		_spec.ClearField(inquiry.FieldPayloadNonce, field.TypeBytes)
+	}
+	if value, ok := _u.mutation.PayloadKeyVersion(); ok {
+		_spec.SetField(inquiry.FieldPayloadKeyVersion, field.TypeInt, value)
+	}
+	if value, ok := _u.mutation.AddedPayloadKeyVersion(); ok {
+		_spec.AddField(inquiry.FieldPayloadKeyVersion, field.TypeInt, value)
+	}
+	if _u.mutation.PayloadKeyVersionCleared() {
+		_spec.ClearField(inquiry.FieldPayloadKeyVersion, field.TypeInt)
 	}
 	if value, ok := _u.mutation.Context(); ok {
 		_spec.SetField(inquiry.FieldContext, field.TypeString, value)

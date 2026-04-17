@@ -29,6 +29,12 @@ type AgentMemory struct {
 	Key string `json:"key,omitempty"`
 	// Content holds the value of the "content" field.
 	Content string `json:"content,omitempty"`
+	// ContentCiphertext holds the value of the "content_ciphertext" field.
+	ContentCiphertext *[]byte `json:"content_ciphertext,omitempty"`
+	// ContentNonce holds the value of the "content_nonce" field.
+	ContentNonce *[]byte `json:"content_nonce,omitempty"`
+	// ContentKeyVersion holds the value of the "content_key_version" field.
+	ContentKeyVersion *int `json:"content_key_version,omitempty"`
 	// Confidence holds the value of the "confidence" field.
 	Confidence float64 `json:"confidence,omitempty"`
 	// UseCount holds the value of the "use_count" field.
@@ -47,11 +53,11 @@ func (*AgentMemory) scanValues(columns []string) ([]any, error) {
 	values := make([]any, len(columns))
 	for i := range columns {
 		switch columns[i] {
-		case agentmemory.FieldTags:
+		case agentmemory.FieldContentCiphertext, agentmemory.FieldContentNonce, agentmemory.FieldTags:
 			values[i] = new([]byte)
 		case agentmemory.FieldConfidence:
 			values[i] = new(sql.NullFloat64)
-		case agentmemory.FieldUseCount:
+		case agentmemory.FieldContentKeyVersion, agentmemory.FieldUseCount:
 			values[i] = new(sql.NullInt64)
 		case agentmemory.FieldAgentName, agentmemory.FieldScope, agentmemory.FieldKind, agentmemory.FieldKey, agentmemory.FieldContent:
 			values[i] = new(sql.NullString)
@@ -109,6 +115,25 @@ func (_m *AgentMemory) assignValues(columns []string, values []any) error {
 				return fmt.Errorf("unexpected type %T for field content", values[i])
 			} else if value.Valid {
 				_m.Content = value.String
+			}
+		case agentmemory.FieldContentCiphertext:
+			if value, ok := values[i].(*[]byte); !ok {
+				return fmt.Errorf("unexpected type %T for field content_ciphertext", values[i])
+			} else if value != nil {
+				_m.ContentCiphertext = value
+			}
+		case agentmemory.FieldContentNonce:
+			if value, ok := values[i].(*[]byte); !ok {
+				return fmt.Errorf("unexpected type %T for field content_nonce", values[i])
+			} else if value != nil {
+				_m.ContentNonce = value
+			}
+		case agentmemory.FieldContentKeyVersion:
+			if value, ok := values[i].(*sql.NullInt64); !ok {
+				return fmt.Errorf("unexpected type %T for field content_key_version", values[i])
+			} else if value.Valid {
+				_m.ContentKeyVersion = new(int)
+				*_m.ContentKeyVersion = int(value.Int64)
 			}
 		case agentmemory.FieldConfidence:
 			if value, ok := values[i].(*sql.NullFloat64); !ok {
@@ -192,6 +217,21 @@ func (_m *AgentMemory) String() string {
 	builder.WriteString(", ")
 	builder.WriteString("content=")
 	builder.WriteString(_m.Content)
+	builder.WriteString(", ")
+	if v := _m.ContentCiphertext; v != nil {
+		builder.WriteString("content_ciphertext=")
+		builder.WriteString(fmt.Sprintf("%v", *v))
+	}
+	builder.WriteString(", ")
+	if v := _m.ContentNonce; v != nil {
+		builder.WriteString("content_nonce=")
+		builder.WriteString(fmt.Sprintf("%v", *v))
+	}
+	builder.WriteString(", ")
+	if v := _m.ContentKeyVersion; v != nil {
+		builder.WriteString("content_key_version=")
+		builder.WriteString(fmt.Sprintf("%v", *v))
+	}
 	builder.WriteString(", ")
 	builder.WriteString("confidence=")
 	builder.WriteString(fmt.Sprintf("%v", _m.Confidence))

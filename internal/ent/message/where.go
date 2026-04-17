@@ -65,9 +65,39 @@ func Content(v string) predicate.Message {
 	return predicate.Message(sql.FieldEQ(FieldContent, v))
 }
 
+// ContentCiphertext applies equality check predicate on the "content_ciphertext" field. It's identical to ContentCiphertextEQ.
+func ContentCiphertext(v []byte) predicate.Message {
+	return predicate.Message(sql.FieldEQ(FieldContentCiphertext, v))
+}
+
+// ContentNonce applies equality check predicate on the "content_nonce" field. It's identical to ContentNonceEQ.
+func ContentNonce(v []byte) predicate.Message {
+	return predicate.Message(sql.FieldEQ(FieldContentNonce, v))
+}
+
+// ContentKeyVersion applies equality check predicate on the "content_key_version" field. It's identical to ContentKeyVersionEQ.
+func ContentKeyVersion(v int) predicate.Message {
+	return predicate.Message(sql.FieldEQ(FieldContentKeyVersion, v))
+}
+
 // Timestamp applies equality check predicate on the "timestamp" field. It's identical to TimestampEQ.
 func Timestamp(v time.Time) predicate.Message {
 	return predicate.Message(sql.FieldEQ(FieldTimestamp, v))
+}
+
+// ToolCallsCiphertext applies equality check predicate on the "tool_calls_ciphertext" field. It's identical to ToolCallsCiphertextEQ.
+func ToolCallsCiphertext(v []byte) predicate.Message {
+	return predicate.Message(sql.FieldEQ(FieldToolCallsCiphertext, v))
+}
+
+// ToolCallsNonce applies equality check predicate on the "tool_calls_nonce" field. It's identical to ToolCallsNonceEQ.
+func ToolCallsNonce(v []byte) predicate.Message {
+	return predicate.Message(sql.FieldEQ(FieldToolCallsNonce, v))
+}
+
+// ToolCallsKeyVersion applies equality check predicate on the "tool_calls_key_version" field. It's identical to ToolCallsKeyVersionEQ.
+func ToolCallsKeyVersion(v int) predicate.Message {
+	return predicate.Message(sql.FieldEQ(FieldToolCallsKeyVersion, v))
 }
 
 // Author applies equality check predicate on the "author" field. It's identical to AuthorEQ.
@@ -205,6 +235,156 @@ func ContentContainsFold(v string) predicate.Message {
 	return predicate.Message(sql.FieldContainsFold(FieldContent, v))
 }
 
+// ContentCiphertextEQ applies the EQ predicate on the "content_ciphertext" field.
+func ContentCiphertextEQ(v []byte) predicate.Message {
+	return predicate.Message(sql.FieldEQ(FieldContentCiphertext, v))
+}
+
+// ContentCiphertextNEQ applies the NEQ predicate on the "content_ciphertext" field.
+func ContentCiphertextNEQ(v []byte) predicate.Message {
+	return predicate.Message(sql.FieldNEQ(FieldContentCiphertext, v))
+}
+
+// ContentCiphertextIn applies the In predicate on the "content_ciphertext" field.
+func ContentCiphertextIn(vs ...[]byte) predicate.Message {
+	return predicate.Message(sql.FieldIn(FieldContentCiphertext, vs...))
+}
+
+// ContentCiphertextNotIn applies the NotIn predicate on the "content_ciphertext" field.
+func ContentCiphertextNotIn(vs ...[]byte) predicate.Message {
+	return predicate.Message(sql.FieldNotIn(FieldContentCiphertext, vs...))
+}
+
+// ContentCiphertextGT applies the GT predicate on the "content_ciphertext" field.
+func ContentCiphertextGT(v []byte) predicate.Message {
+	return predicate.Message(sql.FieldGT(FieldContentCiphertext, v))
+}
+
+// ContentCiphertextGTE applies the GTE predicate on the "content_ciphertext" field.
+func ContentCiphertextGTE(v []byte) predicate.Message {
+	return predicate.Message(sql.FieldGTE(FieldContentCiphertext, v))
+}
+
+// ContentCiphertextLT applies the LT predicate on the "content_ciphertext" field.
+func ContentCiphertextLT(v []byte) predicate.Message {
+	return predicate.Message(sql.FieldLT(FieldContentCiphertext, v))
+}
+
+// ContentCiphertextLTE applies the LTE predicate on the "content_ciphertext" field.
+func ContentCiphertextLTE(v []byte) predicate.Message {
+	return predicate.Message(sql.FieldLTE(FieldContentCiphertext, v))
+}
+
+// ContentCiphertextIsNil applies the IsNil predicate on the "content_ciphertext" field.
+func ContentCiphertextIsNil() predicate.Message {
+	return predicate.Message(sql.FieldIsNull(FieldContentCiphertext))
+}
+
+// ContentCiphertextNotNil applies the NotNil predicate on the "content_ciphertext" field.
+func ContentCiphertextNotNil() predicate.Message {
+	return predicate.Message(sql.FieldNotNull(FieldContentCiphertext))
+}
+
+// ContentNonceEQ applies the EQ predicate on the "content_nonce" field.
+func ContentNonceEQ(v []byte) predicate.Message {
+	return predicate.Message(sql.FieldEQ(FieldContentNonce, v))
+}
+
+// ContentNonceNEQ applies the NEQ predicate on the "content_nonce" field.
+func ContentNonceNEQ(v []byte) predicate.Message {
+	return predicate.Message(sql.FieldNEQ(FieldContentNonce, v))
+}
+
+// ContentNonceIn applies the In predicate on the "content_nonce" field.
+func ContentNonceIn(vs ...[]byte) predicate.Message {
+	return predicate.Message(sql.FieldIn(FieldContentNonce, vs...))
+}
+
+// ContentNonceNotIn applies the NotIn predicate on the "content_nonce" field.
+func ContentNonceNotIn(vs ...[]byte) predicate.Message {
+	return predicate.Message(sql.FieldNotIn(FieldContentNonce, vs...))
+}
+
+// ContentNonceGT applies the GT predicate on the "content_nonce" field.
+func ContentNonceGT(v []byte) predicate.Message {
+	return predicate.Message(sql.FieldGT(FieldContentNonce, v))
+}
+
+// ContentNonceGTE applies the GTE predicate on the "content_nonce" field.
+func ContentNonceGTE(v []byte) predicate.Message {
+	return predicate.Message(sql.FieldGTE(FieldContentNonce, v))
+}
+
+// ContentNonceLT applies the LT predicate on the "content_nonce" field.
+func ContentNonceLT(v []byte) predicate.Message {
+	return predicate.Message(sql.FieldLT(FieldContentNonce, v))
+}
+
+// ContentNonceLTE applies the LTE predicate on the "content_nonce" field.
+func ContentNonceLTE(v []byte) predicate.Message {
+	return predicate.Message(sql.FieldLTE(FieldContentNonce, v))
+}
+
+// ContentNonceIsNil applies the IsNil predicate on the "content_nonce" field.
+func ContentNonceIsNil() predicate.Message {
+	return predicate.Message(sql.FieldIsNull(FieldContentNonce))
+}
+
+// ContentNonceNotNil applies the NotNil predicate on the "content_nonce" field.
+func ContentNonceNotNil() predicate.Message {
+	return predicate.Message(sql.FieldNotNull(FieldContentNonce))
+}
+
+// ContentKeyVersionEQ applies the EQ predicate on the "content_key_version" field.
+func ContentKeyVersionEQ(v int) predicate.Message {
+	return predicate.Message(sql.FieldEQ(FieldContentKeyVersion, v))
+}
+
+// ContentKeyVersionNEQ applies the NEQ predicate on the "content_key_version" field.
+func ContentKeyVersionNEQ(v int) predicate.Message {
+	return predicate.Message(sql.FieldNEQ(FieldContentKeyVersion, v))
+}
+
+// ContentKeyVersionIn applies the In predicate on the "content_key_version" field.
+func ContentKeyVersionIn(vs ...int) predicate.Message {
+	return predicate.Message(sql.FieldIn(FieldContentKeyVersion, vs...))
+}
+
+// ContentKeyVersionNotIn applies the NotIn predicate on the "content_key_version" field.
+func ContentKeyVersionNotIn(vs ...int) predicate.Message {
+	return predicate.Message(sql.FieldNotIn(FieldContentKeyVersion, vs...))
+}
+
+// ContentKeyVersionGT applies the GT predicate on the "content_key_version" field.
+func ContentKeyVersionGT(v int) predicate.Message {
+	return predicate.Message(sql.FieldGT(FieldContentKeyVersion, v))
+}
+
+// ContentKeyVersionGTE applies the GTE predicate on the "content_key_version" field.
+func ContentKeyVersionGTE(v int) predicate.Message {
+	return predicate.Message(sql.FieldGTE(FieldContentKeyVersion, v))
+}
+
+// ContentKeyVersionLT applies the LT predicate on the "content_key_version" field.
+func ContentKeyVersionLT(v int) predicate.Message {
+	return predicate.Message(sql.FieldLT(FieldContentKeyVersion, v))
+}
+
+// ContentKeyVersionLTE applies the LTE predicate on the "content_key_version" field.
+func ContentKeyVersionLTE(v int) predicate.Message {
+	return predicate.Message(sql.FieldLTE(FieldContentKeyVersion, v))
+}
+
+// ContentKeyVersionIsNil applies the IsNil predicate on the "content_key_version" field.
+func ContentKeyVersionIsNil() predicate.Message {
+	return predicate.Message(sql.FieldIsNull(FieldContentKeyVersion))
+}
+
+// ContentKeyVersionNotNil applies the NotNil predicate on the "content_key_version" field.
+func ContentKeyVersionNotNil() predicate.Message {
+	return predicate.Message(sql.FieldNotNull(FieldContentKeyVersion))
+}
+
 // TimestampEQ applies the EQ predicate on the "timestamp" field.
 func TimestampEQ(v time.Time) predicate.Message {
 	return predicate.Message(sql.FieldEQ(FieldTimestamp, v))
@@ -253,6 +433,156 @@ func ToolCallsIsNil() predicate.Message {
 // ToolCallsNotNil applies the NotNil predicate on the "tool_calls" field.
 func ToolCallsNotNil() predicate.Message {
 	return predicate.Message(sql.FieldNotNull(FieldToolCalls))
+}
+
+// ToolCallsCiphertextEQ applies the EQ predicate on the "tool_calls_ciphertext" field.
+func ToolCallsCiphertextEQ(v []byte) predicate.Message {
+	return predicate.Message(sql.FieldEQ(FieldToolCallsCiphertext, v))
+}
+
+// ToolCallsCiphertextNEQ applies the NEQ predicate on the "tool_calls_ciphertext" field.
+func ToolCallsCiphertextNEQ(v []byte) predicate.Message {
+	return predicate.Message(sql.FieldNEQ(FieldToolCallsCiphertext, v))
+}
+
+// ToolCallsCiphertextIn applies the In predicate on the "tool_calls_ciphertext" field.
+func ToolCallsCiphertextIn(vs ...[]byte) predicate.Message {
+	return predicate.Message(sql.FieldIn(FieldToolCallsCiphertext, vs...))
+}
+
+// ToolCallsCiphertextNotIn applies the NotIn predicate on the "tool_calls_ciphertext" field.
+func ToolCallsCiphertextNotIn(vs ...[]byte) predicate.Message {
+	return predicate.Message(sql.FieldNotIn(FieldToolCallsCiphertext, vs...))
+}
+
+// ToolCallsCiphertextGT applies the GT predicate on the "tool_calls_ciphertext" field.
+func ToolCallsCiphertextGT(v []byte) predicate.Message {
+	return predicate.Message(sql.FieldGT(FieldToolCallsCiphertext, v))
+}
+
+// ToolCallsCiphertextGTE applies the GTE predicate on the "tool_calls_ciphertext" field.
+func ToolCallsCiphertextGTE(v []byte) predicate.Message {
+	return predicate.Message(sql.FieldGTE(FieldToolCallsCiphertext, v))
+}
+
+// ToolCallsCiphertextLT applies the LT predicate on the "tool_calls_ciphertext" field.
+func ToolCallsCiphertextLT(v []byte) predicate.Message {
+	return predicate.Message(sql.FieldLT(FieldToolCallsCiphertext, v))
+}
+
+// ToolCallsCiphertextLTE applies the LTE predicate on the "tool_calls_ciphertext" field.
+func ToolCallsCiphertextLTE(v []byte) predicate.Message {
+	return predicate.Message(sql.FieldLTE(FieldToolCallsCiphertext, v))
+}
+
+// ToolCallsCiphertextIsNil applies the IsNil predicate on the "tool_calls_ciphertext" field.
+func ToolCallsCiphertextIsNil() predicate.Message {
+	return predicate.Message(sql.FieldIsNull(FieldToolCallsCiphertext))
+}
+
+// ToolCallsCiphertextNotNil applies the NotNil predicate on the "tool_calls_ciphertext" field.
+func ToolCallsCiphertextNotNil() predicate.Message {
+	return predicate.Message(sql.FieldNotNull(FieldToolCallsCiphertext))
+}
+
+// ToolCallsNonceEQ applies the EQ predicate on the "tool_calls_nonce" field.
+func ToolCallsNonceEQ(v []byte) predicate.Message {
+	return predicate.Message(sql.FieldEQ(FieldToolCallsNonce, v))
+}
+
+// ToolCallsNonceNEQ applies the NEQ predicate on the "tool_calls_nonce" field.
+func ToolCallsNonceNEQ(v []byte) predicate.Message {
+	return predicate.Message(sql.FieldNEQ(FieldToolCallsNonce, v))
+}
+
+// ToolCallsNonceIn applies the In predicate on the "tool_calls_nonce" field.
+func ToolCallsNonceIn(vs ...[]byte) predicate.Message {
+	return predicate.Message(sql.FieldIn(FieldToolCallsNonce, vs...))
+}
+
+// ToolCallsNonceNotIn applies the NotIn predicate on the "tool_calls_nonce" field.
+func ToolCallsNonceNotIn(vs ...[]byte) predicate.Message {
+	return predicate.Message(sql.FieldNotIn(FieldToolCallsNonce, vs...))
+}
+
+// ToolCallsNonceGT applies the GT predicate on the "tool_calls_nonce" field.
+func ToolCallsNonceGT(v []byte) predicate.Message {
+	return predicate.Message(sql.FieldGT(FieldToolCallsNonce, v))
+}
+
+// ToolCallsNonceGTE applies the GTE predicate on the "tool_calls_nonce" field.
+func ToolCallsNonceGTE(v []byte) predicate.Message {
+	return predicate.Message(sql.FieldGTE(FieldToolCallsNonce, v))
+}
+
+// ToolCallsNonceLT applies the LT predicate on the "tool_calls_nonce" field.
+func ToolCallsNonceLT(v []byte) predicate.Message {
+	return predicate.Message(sql.FieldLT(FieldToolCallsNonce, v))
+}
+
+// ToolCallsNonceLTE applies the LTE predicate on the "tool_calls_nonce" field.
+func ToolCallsNonceLTE(v []byte) predicate.Message {
+	return predicate.Message(sql.FieldLTE(FieldToolCallsNonce, v))
+}
+
+// ToolCallsNonceIsNil applies the IsNil predicate on the "tool_calls_nonce" field.
+func ToolCallsNonceIsNil() predicate.Message {
+	return predicate.Message(sql.FieldIsNull(FieldToolCallsNonce))
+}
+
+// ToolCallsNonceNotNil applies the NotNil predicate on the "tool_calls_nonce" field.
+func ToolCallsNonceNotNil() predicate.Message {
+	return predicate.Message(sql.FieldNotNull(FieldToolCallsNonce))
+}
+
+// ToolCallsKeyVersionEQ applies the EQ predicate on the "tool_calls_key_version" field.
+func ToolCallsKeyVersionEQ(v int) predicate.Message {
+	return predicate.Message(sql.FieldEQ(FieldToolCallsKeyVersion, v))
+}
+
+// ToolCallsKeyVersionNEQ applies the NEQ predicate on the "tool_calls_key_version" field.
+func ToolCallsKeyVersionNEQ(v int) predicate.Message {
+	return predicate.Message(sql.FieldNEQ(FieldToolCallsKeyVersion, v))
+}
+
+// ToolCallsKeyVersionIn applies the In predicate on the "tool_calls_key_version" field.
+func ToolCallsKeyVersionIn(vs ...int) predicate.Message {
+	return predicate.Message(sql.FieldIn(FieldToolCallsKeyVersion, vs...))
+}
+
+// ToolCallsKeyVersionNotIn applies the NotIn predicate on the "tool_calls_key_version" field.
+func ToolCallsKeyVersionNotIn(vs ...int) predicate.Message {
+	return predicate.Message(sql.FieldNotIn(FieldToolCallsKeyVersion, vs...))
+}
+
+// ToolCallsKeyVersionGT applies the GT predicate on the "tool_calls_key_version" field.
+func ToolCallsKeyVersionGT(v int) predicate.Message {
+	return predicate.Message(sql.FieldGT(FieldToolCallsKeyVersion, v))
+}
+
+// ToolCallsKeyVersionGTE applies the GTE predicate on the "tool_calls_key_version" field.
+func ToolCallsKeyVersionGTE(v int) predicate.Message {
+	return predicate.Message(sql.FieldGTE(FieldToolCallsKeyVersion, v))
+}
+
+// ToolCallsKeyVersionLT applies the LT predicate on the "tool_calls_key_version" field.
+func ToolCallsKeyVersionLT(v int) predicate.Message {
+	return predicate.Message(sql.FieldLT(FieldToolCallsKeyVersion, v))
+}
+
+// ToolCallsKeyVersionLTE applies the LTE predicate on the "tool_calls_key_version" field.
+func ToolCallsKeyVersionLTE(v int) predicate.Message {
+	return predicate.Message(sql.FieldLTE(FieldToolCallsKeyVersion, v))
+}
+
+// ToolCallsKeyVersionIsNil applies the IsNil predicate on the "tool_calls_key_version" field.
+func ToolCallsKeyVersionIsNil() predicate.Message {
+	return predicate.Message(sql.FieldIsNull(FieldToolCallsKeyVersion))
+}
+
+// ToolCallsKeyVersionNotNil applies the NotNil predicate on the "tool_calls_key_version" field.
+func ToolCallsKeyVersionNotNil() predicate.Message {
+	return predicate.Message(sql.FieldNotNull(FieldToolCallsKeyVersion))
 }
 
 // AuthorEQ applies the EQ predicate on the "author" field.

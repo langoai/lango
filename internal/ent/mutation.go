@@ -889,26 +889,30 @@ func (m *ActionLogMutation) ResetEdge(name string) error {
 // AgentMemoryMutation represents an operation that mutates the AgentMemory nodes in the graph.
 type AgentMemoryMutation struct {
 	config
-	op            Op
-	typ           string
-	id            *uuid.UUID
-	agent_name    *string
-	scope         *agentmemory.Scope
-	kind          *agentmemory.Kind
-	key           *string
-	content       *string
-	confidence    *float64
-	addconfidence *float64
-	use_count     *int
-	adduse_count  *int
-	tags          *[]string
-	appendtags    []string
-	created_at    *time.Time
-	updated_at    *time.Time
-	clearedFields map[string]struct{}
-	done          bool
-	oldValue      func(context.Context) (*AgentMemory, error)
-	predicates    []predicate.AgentMemory
+	op                     Op
+	typ                    string
+	id                     *uuid.UUID
+	agent_name             *string
+	scope                  *agentmemory.Scope
+	kind                   *agentmemory.Kind
+	key                    *string
+	content                *string
+	content_ciphertext     *[]byte
+	content_nonce          *[]byte
+	content_key_version    *int
+	addcontent_key_version *int
+	confidence             *float64
+	addconfidence          *float64
+	use_count              *int
+	adduse_count           *int
+	tags                   *[]string
+	appendtags             []string
+	created_at             *time.Time
+	updated_at             *time.Time
+	clearedFields          map[string]struct{}
+	done                   bool
+	oldValue               func(context.Context) (*AgentMemory, error)
+	predicates             []predicate.AgentMemory
 }
 
 var _ ent.Mutation = (*AgentMemoryMutation)(nil)
@@ -1195,6 +1199,174 @@ func (m *AgentMemoryMutation) ResetContent() {
 	m.content = nil
 }
 
+// SetContentCiphertext sets the "content_ciphertext" field.
+func (m *AgentMemoryMutation) SetContentCiphertext(b []byte) {
+	m.content_ciphertext = &b
+}
+
+// ContentCiphertext returns the value of the "content_ciphertext" field in the mutation.
+func (m *AgentMemoryMutation) ContentCiphertext() (r []byte, exists bool) {
+	v := m.content_ciphertext
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldContentCiphertext returns the old "content_ciphertext" field's value of the AgentMemory entity.
+// If the AgentMemory object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *AgentMemoryMutation) OldContentCiphertext(ctx context.Context) (v *[]byte, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldContentCiphertext is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldContentCiphertext requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldContentCiphertext: %w", err)
+	}
+	return oldValue.ContentCiphertext, nil
+}
+
+// ClearContentCiphertext clears the value of the "content_ciphertext" field.
+func (m *AgentMemoryMutation) ClearContentCiphertext() {
+	m.content_ciphertext = nil
+	m.clearedFields[agentmemory.FieldContentCiphertext] = struct{}{}
+}
+
+// ContentCiphertextCleared returns if the "content_ciphertext" field was cleared in this mutation.
+func (m *AgentMemoryMutation) ContentCiphertextCleared() bool {
+	_, ok := m.clearedFields[agentmemory.FieldContentCiphertext]
+	return ok
+}
+
+// ResetContentCiphertext resets all changes to the "content_ciphertext" field.
+func (m *AgentMemoryMutation) ResetContentCiphertext() {
+	m.content_ciphertext = nil
+	delete(m.clearedFields, agentmemory.FieldContentCiphertext)
+}
+
+// SetContentNonce sets the "content_nonce" field.
+func (m *AgentMemoryMutation) SetContentNonce(b []byte) {
+	m.content_nonce = &b
+}
+
+// ContentNonce returns the value of the "content_nonce" field in the mutation.
+func (m *AgentMemoryMutation) ContentNonce() (r []byte, exists bool) {
+	v := m.content_nonce
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldContentNonce returns the old "content_nonce" field's value of the AgentMemory entity.
+// If the AgentMemory object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *AgentMemoryMutation) OldContentNonce(ctx context.Context) (v *[]byte, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldContentNonce is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldContentNonce requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldContentNonce: %w", err)
+	}
+	return oldValue.ContentNonce, nil
+}
+
+// ClearContentNonce clears the value of the "content_nonce" field.
+func (m *AgentMemoryMutation) ClearContentNonce() {
+	m.content_nonce = nil
+	m.clearedFields[agentmemory.FieldContentNonce] = struct{}{}
+}
+
+// ContentNonceCleared returns if the "content_nonce" field was cleared in this mutation.
+func (m *AgentMemoryMutation) ContentNonceCleared() bool {
+	_, ok := m.clearedFields[agentmemory.FieldContentNonce]
+	return ok
+}
+
+// ResetContentNonce resets all changes to the "content_nonce" field.
+func (m *AgentMemoryMutation) ResetContentNonce() {
+	m.content_nonce = nil
+	delete(m.clearedFields, agentmemory.FieldContentNonce)
+}
+
+// SetContentKeyVersion sets the "content_key_version" field.
+func (m *AgentMemoryMutation) SetContentKeyVersion(i int) {
+	m.content_key_version = &i
+	m.addcontent_key_version = nil
+}
+
+// ContentKeyVersion returns the value of the "content_key_version" field in the mutation.
+func (m *AgentMemoryMutation) ContentKeyVersion() (r int, exists bool) {
+	v := m.content_key_version
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldContentKeyVersion returns the old "content_key_version" field's value of the AgentMemory entity.
+// If the AgentMemory object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *AgentMemoryMutation) OldContentKeyVersion(ctx context.Context) (v *int, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldContentKeyVersion is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldContentKeyVersion requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldContentKeyVersion: %w", err)
+	}
+	return oldValue.ContentKeyVersion, nil
+}
+
+// AddContentKeyVersion adds i to the "content_key_version" field.
+func (m *AgentMemoryMutation) AddContentKeyVersion(i int) {
+	if m.addcontent_key_version != nil {
+		*m.addcontent_key_version += i
+	} else {
+		m.addcontent_key_version = &i
+	}
+}
+
+// AddedContentKeyVersion returns the value that was added to the "content_key_version" field in this mutation.
+func (m *AgentMemoryMutation) AddedContentKeyVersion() (r int, exists bool) {
+	v := m.addcontent_key_version
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ClearContentKeyVersion clears the value of the "content_key_version" field.
+func (m *AgentMemoryMutation) ClearContentKeyVersion() {
+	m.content_key_version = nil
+	m.addcontent_key_version = nil
+	m.clearedFields[agentmemory.FieldContentKeyVersion] = struct{}{}
+}
+
+// ContentKeyVersionCleared returns if the "content_key_version" field was cleared in this mutation.
+func (m *AgentMemoryMutation) ContentKeyVersionCleared() bool {
+	_, ok := m.clearedFields[agentmemory.FieldContentKeyVersion]
+	return ok
+}
+
+// ResetContentKeyVersion resets all changes to the "content_key_version" field.
+func (m *AgentMemoryMutation) ResetContentKeyVersion() {
+	m.content_key_version = nil
+	m.addcontent_key_version = nil
+	delete(m.clearedFields, agentmemory.FieldContentKeyVersion)
+}
+
 // SetConfidence sets the "confidence" field.
 func (m *AgentMemoryMutation) SetConfidence(f float64) {
 	m.confidence = &f
@@ -1478,7 +1650,7 @@ func (m *AgentMemoryMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *AgentMemoryMutation) Fields() []string {
-	fields := make([]string, 0, 10)
+	fields := make([]string, 0, 13)
 	if m.agent_name != nil {
 		fields = append(fields, agentmemory.FieldAgentName)
 	}
@@ -1493,6 +1665,15 @@ func (m *AgentMemoryMutation) Fields() []string {
 	}
 	if m.content != nil {
 		fields = append(fields, agentmemory.FieldContent)
+	}
+	if m.content_ciphertext != nil {
+		fields = append(fields, agentmemory.FieldContentCiphertext)
+	}
+	if m.content_nonce != nil {
+		fields = append(fields, agentmemory.FieldContentNonce)
+	}
+	if m.content_key_version != nil {
+		fields = append(fields, agentmemory.FieldContentKeyVersion)
 	}
 	if m.confidence != nil {
 		fields = append(fields, agentmemory.FieldConfidence)
@@ -1527,6 +1708,12 @@ func (m *AgentMemoryMutation) Field(name string) (ent.Value, bool) {
 		return m.Key()
 	case agentmemory.FieldContent:
 		return m.Content()
+	case agentmemory.FieldContentCiphertext:
+		return m.ContentCiphertext()
+	case agentmemory.FieldContentNonce:
+		return m.ContentNonce()
+	case agentmemory.FieldContentKeyVersion:
+		return m.ContentKeyVersion()
 	case agentmemory.FieldConfidence:
 		return m.Confidence()
 	case agentmemory.FieldUseCount:
@@ -1556,6 +1743,12 @@ func (m *AgentMemoryMutation) OldField(ctx context.Context, name string) (ent.Va
 		return m.OldKey(ctx)
 	case agentmemory.FieldContent:
 		return m.OldContent(ctx)
+	case agentmemory.FieldContentCiphertext:
+		return m.OldContentCiphertext(ctx)
+	case agentmemory.FieldContentNonce:
+		return m.OldContentNonce(ctx)
+	case agentmemory.FieldContentKeyVersion:
+		return m.OldContentKeyVersion(ctx)
 	case agentmemory.FieldConfidence:
 		return m.OldConfidence(ctx)
 	case agentmemory.FieldUseCount:
@@ -1610,6 +1803,27 @@ func (m *AgentMemoryMutation) SetField(name string, value ent.Value) error {
 		}
 		m.SetContent(v)
 		return nil
+	case agentmemory.FieldContentCiphertext:
+		v, ok := value.([]byte)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetContentCiphertext(v)
+		return nil
+	case agentmemory.FieldContentNonce:
+		v, ok := value.([]byte)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetContentNonce(v)
+		return nil
+	case agentmemory.FieldContentKeyVersion:
+		v, ok := value.(int)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetContentKeyVersion(v)
+		return nil
 	case agentmemory.FieldConfidence:
 		v, ok := value.(float64)
 		if !ok {
@@ -1653,6 +1867,9 @@ func (m *AgentMemoryMutation) SetField(name string, value ent.Value) error {
 // this mutation.
 func (m *AgentMemoryMutation) AddedFields() []string {
 	var fields []string
+	if m.addcontent_key_version != nil {
+		fields = append(fields, agentmemory.FieldContentKeyVersion)
+	}
 	if m.addconfidence != nil {
 		fields = append(fields, agentmemory.FieldConfidence)
 	}
@@ -1667,6 +1884,8 @@ func (m *AgentMemoryMutation) AddedFields() []string {
 // was not set, or was not defined in the schema.
 func (m *AgentMemoryMutation) AddedField(name string) (ent.Value, bool) {
 	switch name {
+	case agentmemory.FieldContentKeyVersion:
+		return m.AddedContentKeyVersion()
 	case agentmemory.FieldConfidence:
 		return m.AddedConfidence()
 	case agentmemory.FieldUseCount:
@@ -1680,6 +1899,13 @@ func (m *AgentMemoryMutation) AddedField(name string) (ent.Value, bool) {
 // type.
 func (m *AgentMemoryMutation) AddField(name string, value ent.Value) error {
 	switch name {
+	case agentmemory.FieldContentKeyVersion:
+		v, ok := value.(int)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddContentKeyVersion(v)
+		return nil
 	case agentmemory.FieldConfidence:
 		v, ok := value.(float64)
 		if !ok {
@@ -1702,6 +1928,15 @@ func (m *AgentMemoryMutation) AddField(name string, value ent.Value) error {
 // mutation.
 func (m *AgentMemoryMutation) ClearedFields() []string {
 	var fields []string
+	if m.FieldCleared(agentmemory.FieldContentCiphertext) {
+		fields = append(fields, agentmemory.FieldContentCiphertext)
+	}
+	if m.FieldCleared(agentmemory.FieldContentNonce) {
+		fields = append(fields, agentmemory.FieldContentNonce)
+	}
+	if m.FieldCleared(agentmemory.FieldContentKeyVersion) {
+		fields = append(fields, agentmemory.FieldContentKeyVersion)
+	}
 	if m.FieldCleared(agentmemory.FieldTags) {
 		fields = append(fields, agentmemory.FieldTags)
 	}
@@ -1719,6 +1954,15 @@ func (m *AgentMemoryMutation) FieldCleared(name string) bool {
 // error if the field is not defined in the schema.
 func (m *AgentMemoryMutation) ClearField(name string) error {
 	switch name {
+	case agentmemory.FieldContentCiphertext:
+		m.ClearContentCiphertext()
+		return nil
+	case agentmemory.FieldContentNonce:
+		m.ClearContentNonce()
+		return nil
+	case agentmemory.FieldContentKeyVersion:
+		m.ClearContentKeyVersion()
+		return nil
 	case agentmemory.FieldTags:
 		m.ClearTags()
 		return nil
@@ -1744,6 +1988,15 @@ func (m *AgentMemoryMutation) ResetField(name string) error {
 		return nil
 	case agentmemory.FieldContent:
 		m.ResetContent()
+		return nil
+	case agentmemory.FieldContentCiphertext:
+		m.ResetContentCiphertext()
+		return nil
+	case agentmemory.FieldContentNonce:
+		m.ResetContentNonce()
+		return nil
+	case agentmemory.FieldContentKeyVersion:
+		m.ResetContentKeyVersion()
 		return nil
 	case agentmemory.FieldConfidence:
 		m.ResetConfidence()
@@ -8409,24 +8662,28 @@ func (m *ExternalRefMutation) ResetEdge(name string) error {
 // InquiryMutation represents an operation that mutates the Inquiry nodes in the graph.
 type InquiryMutation struct {
 	config
-	op                    Op
-	typ                   string
-	id                    *uuid.UUID
-	session_key           *string
-	topic                 *string
-	question              *string
-	context               *string
-	priority              *inquiry.Priority
-	status                *inquiry.Status
-	answer                *string
-	knowledge_key         *string
-	source_observation_id *string
-	created_at            *time.Time
-	resolved_at           *time.Time
-	clearedFields         map[string]struct{}
-	done                  bool
-	oldValue              func(context.Context) (*Inquiry, error)
-	predicates            []predicate.Inquiry
+	op                     Op
+	typ                    string
+	id                     *uuid.UUID
+	session_key            *string
+	topic                  *string
+	question               *string
+	payload_ciphertext     *[]byte
+	payload_nonce          *[]byte
+	payload_key_version    *int
+	addpayload_key_version *int
+	context                *string
+	priority               *inquiry.Priority
+	status                 *inquiry.Status
+	answer                 *string
+	knowledge_key          *string
+	source_observation_id  *string
+	created_at             *time.Time
+	resolved_at            *time.Time
+	clearedFields          map[string]struct{}
+	done                   bool
+	oldValue               func(context.Context) (*Inquiry, error)
+	predicates             []predicate.Inquiry
 }
 
 var _ ent.Mutation = (*InquiryMutation)(nil)
@@ -8639,6 +8896,174 @@ func (m *InquiryMutation) OldQuestion(ctx context.Context) (v string, err error)
 // ResetQuestion resets all changes to the "question" field.
 func (m *InquiryMutation) ResetQuestion() {
 	m.question = nil
+}
+
+// SetPayloadCiphertext sets the "payload_ciphertext" field.
+func (m *InquiryMutation) SetPayloadCiphertext(b []byte) {
+	m.payload_ciphertext = &b
+}
+
+// PayloadCiphertext returns the value of the "payload_ciphertext" field in the mutation.
+func (m *InquiryMutation) PayloadCiphertext() (r []byte, exists bool) {
+	v := m.payload_ciphertext
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldPayloadCiphertext returns the old "payload_ciphertext" field's value of the Inquiry entity.
+// If the Inquiry object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *InquiryMutation) OldPayloadCiphertext(ctx context.Context) (v *[]byte, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldPayloadCiphertext is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldPayloadCiphertext requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldPayloadCiphertext: %w", err)
+	}
+	return oldValue.PayloadCiphertext, nil
+}
+
+// ClearPayloadCiphertext clears the value of the "payload_ciphertext" field.
+func (m *InquiryMutation) ClearPayloadCiphertext() {
+	m.payload_ciphertext = nil
+	m.clearedFields[inquiry.FieldPayloadCiphertext] = struct{}{}
+}
+
+// PayloadCiphertextCleared returns if the "payload_ciphertext" field was cleared in this mutation.
+func (m *InquiryMutation) PayloadCiphertextCleared() bool {
+	_, ok := m.clearedFields[inquiry.FieldPayloadCiphertext]
+	return ok
+}
+
+// ResetPayloadCiphertext resets all changes to the "payload_ciphertext" field.
+func (m *InquiryMutation) ResetPayloadCiphertext() {
+	m.payload_ciphertext = nil
+	delete(m.clearedFields, inquiry.FieldPayloadCiphertext)
+}
+
+// SetPayloadNonce sets the "payload_nonce" field.
+func (m *InquiryMutation) SetPayloadNonce(b []byte) {
+	m.payload_nonce = &b
+}
+
+// PayloadNonce returns the value of the "payload_nonce" field in the mutation.
+func (m *InquiryMutation) PayloadNonce() (r []byte, exists bool) {
+	v := m.payload_nonce
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldPayloadNonce returns the old "payload_nonce" field's value of the Inquiry entity.
+// If the Inquiry object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *InquiryMutation) OldPayloadNonce(ctx context.Context) (v *[]byte, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldPayloadNonce is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldPayloadNonce requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldPayloadNonce: %w", err)
+	}
+	return oldValue.PayloadNonce, nil
+}
+
+// ClearPayloadNonce clears the value of the "payload_nonce" field.
+func (m *InquiryMutation) ClearPayloadNonce() {
+	m.payload_nonce = nil
+	m.clearedFields[inquiry.FieldPayloadNonce] = struct{}{}
+}
+
+// PayloadNonceCleared returns if the "payload_nonce" field was cleared in this mutation.
+func (m *InquiryMutation) PayloadNonceCleared() bool {
+	_, ok := m.clearedFields[inquiry.FieldPayloadNonce]
+	return ok
+}
+
+// ResetPayloadNonce resets all changes to the "payload_nonce" field.
+func (m *InquiryMutation) ResetPayloadNonce() {
+	m.payload_nonce = nil
+	delete(m.clearedFields, inquiry.FieldPayloadNonce)
+}
+
+// SetPayloadKeyVersion sets the "payload_key_version" field.
+func (m *InquiryMutation) SetPayloadKeyVersion(i int) {
+	m.payload_key_version = &i
+	m.addpayload_key_version = nil
+}
+
+// PayloadKeyVersion returns the value of the "payload_key_version" field in the mutation.
+func (m *InquiryMutation) PayloadKeyVersion() (r int, exists bool) {
+	v := m.payload_key_version
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldPayloadKeyVersion returns the old "payload_key_version" field's value of the Inquiry entity.
+// If the Inquiry object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *InquiryMutation) OldPayloadKeyVersion(ctx context.Context) (v *int, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldPayloadKeyVersion is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldPayloadKeyVersion requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldPayloadKeyVersion: %w", err)
+	}
+	return oldValue.PayloadKeyVersion, nil
+}
+
+// AddPayloadKeyVersion adds i to the "payload_key_version" field.
+func (m *InquiryMutation) AddPayloadKeyVersion(i int) {
+	if m.addpayload_key_version != nil {
+		*m.addpayload_key_version += i
+	} else {
+		m.addpayload_key_version = &i
+	}
+}
+
+// AddedPayloadKeyVersion returns the value that was added to the "payload_key_version" field in this mutation.
+func (m *InquiryMutation) AddedPayloadKeyVersion() (r int, exists bool) {
+	v := m.addpayload_key_version
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ClearPayloadKeyVersion clears the value of the "payload_key_version" field.
+func (m *InquiryMutation) ClearPayloadKeyVersion() {
+	m.payload_key_version = nil
+	m.addpayload_key_version = nil
+	m.clearedFields[inquiry.FieldPayloadKeyVersion] = struct{}{}
+}
+
+// PayloadKeyVersionCleared returns if the "payload_key_version" field was cleared in this mutation.
+func (m *InquiryMutation) PayloadKeyVersionCleared() bool {
+	_, ok := m.clearedFields[inquiry.FieldPayloadKeyVersion]
+	return ok
+}
+
+// ResetPayloadKeyVersion resets all changes to the "payload_key_version" field.
+func (m *InquiryMutation) ResetPayloadKeyVersion() {
+	m.payload_key_version = nil
+	m.addpayload_key_version = nil
+	delete(m.clearedFields, inquiry.FieldPayloadKeyVersion)
 }
 
 // SetContext sets the "context" field.
@@ -9028,7 +9453,7 @@ func (m *InquiryMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *InquiryMutation) Fields() []string {
-	fields := make([]string, 0, 11)
+	fields := make([]string, 0, 14)
 	if m.session_key != nil {
 		fields = append(fields, inquiry.FieldSessionKey)
 	}
@@ -9037,6 +9462,15 @@ func (m *InquiryMutation) Fields() []string {
 	}
 	if m.question != nil {
 		fields = append(fields, inquiry.FieldQuestion)
+	}
+	if m.payload_ciphertext != nil {
+		fields = append(fields, inquiry.FieldPayloadCiphertext)
+	}
+	if m.payload_nonce != nil {
+		fields = append(fields, inquiry.FieldPayloadNonce)
+	}
+	if m.payload_key_version != nil {
+		fields = append(fields, inquiry.FieldPayloadKeyVersion)
 	}
 	if m.context != nil {
 		fields = append(fields, inquiry.FieldContext)
@@ -9076,6 +9510,12 @@ func (m *InquiryMutation) Field(name string) (ent.Value, bool) {
 		return m.Topic()
 	case inquiry.FieldQuestion:
 		return m.Question()
+	case inquiry.FieldPayloadCiphertext:
+		return m.PayloadCiphertext()
+	case inquiry.FieldPayloadNonce:
+		return m.PayloadNonce()
+	case inquiry.FieldPayloadKeyVersion:
+		return m.PayloadKeyVersion()
 	case inquiry.FieldContext:
 		return m.Context()
 	case inquiry.FieldPriority:
@@ -9107,6 +9547,12 @@ func (m *InquiryMutation) OldField(ctx context.Context, name string) (ent.Value,
 		return m.OldTopic(ctx)
 	case inquiry.FieldQuestion:
 		return m.OldQuestion(ctx)
+	case inquiry.FieldPayloadCiphertext:
+		return m.OldPayloadCiphertext(ctx)
+	case inquiry.FieldPayloadNonce:
+		return m.OldPayloadNonce(ctx)
+	case inquiry.FieldPayloadKeyVersion:
+		return m.OldPayloadKeyVersion(ctx)
 	case inquiry.FieldContext:
 		return m.OldContext(ctx)
 	case inquiry.FieldPriority:
@@ -9152,6 +9598,27 @@ func (m *InquiryMutation) SetField(name string, value ent.Value) error {
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
 		m.SetQuestion(v)
+		return nil
+	case inquiry.FieldPayloadCiphertext:
+		v, ok := value.([]byte)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetPayloadCiphertext(v)
+		return nil
+	case inquiry.FieldPayloadNonce:
+		v, ok := value.([]byte)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetPayloadNonce(v)
+		return nil
+	case inquiry.FieldPayloadKeyVersion:
+		v, ok := value.(int)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetPayloadKeyVersion(v)
 		return nil
 	case inquiry.FieldContext:
 		v, ok := value.(string)
@@ -9216,13 +9683,21 @@ func (m *InquiryMutation) SetField(name string, value ent.Value) error {
 // AddedFields returns all numeric fields that were incremented/decremented during
 // this mutation.
 func (m *InquiryMutation) AddedFields() []string {
-	return nil
+	var fields []string
+	if m.addpayload_key_version != nil {
+		fields = append(fields, inquiry.FieldPayloadKeyVersion)
+	}
+	return fields
 }
 
 // AddedField returns the numeric value that was incremented/decremented on a field
 // with the given name. The second boolean return value indicates that this field
 // was not set, or was not defined in the schema.
 func (m *InquiryMutation) AddedField(name string) (ent.Value, bool) {
+	switch name {
+	case inquiry.FieldPayloadKeyVersion:
+		return m.AddedPayloadKeyVersion()
+	}
 	return nil, false
 }
 
@@ -9231,6 +9706,13 @@ func (m *InquiryMutation) AddedField(name string) (ent.Value, bool) {
 // type.
 func (m *InquiryMutation) AddField(name string, value ent.Value) error {
 	switch name {
+	case inquiry.FieldPayloadKeyVersion:
+		v, ok := value.(int)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddPayloadKeyVersion(v)
+		return nil
 	}
 	return fmt.Errorf("unknown Inquiry numeric field %s", name)
 }
@@ -9239,6 +9721,15 @@ func (m *InquiryMutation) AddField(name string, value ent.Value) error {
 // mutation.
 func (m *InquiryMutation) ClearedFields() []string {
 	var fields []string
+	if m.FieldCleared(inquiry.FieldPayloadCiphertext) {
+		fields = append(fields, inquiry.FieldPayloadCiphertext)
+	}
+	if m.FieldCleared(inquiry.FieldPayloadNonce) {
+		fields = append(fields, inquiry.FieldPayloadNonce)
+	}
+	if m.FieldCleared(inquiry.FieldPayloadKeyVersion) {
+		fields = append(fields, inquiry.FieldPayloadKeyVersion)
+	}
 	if m.FieldCleared(inquiry.FieldContext) {
 		fields = append(fields, inquiry.FieldContext)
 	}
@@ -9268,6 +9759,15 @@ func (m *InquiryMutation) FieldCleared(name string) bool {
 // error if the field is not defined in the schema.
 func (m *InquiryMutation) ClearField(name string) error {
 	switch name {
+	case inquiry.FieldPayloadCiphertext:
+		m.ClearPayloadCiphertext()
+		return nil
+	case inquiry.FieldPayloadNonce:
+		m.ClearPayloadNonce()
+		return nil
+	case inquiry.FieldPayloadKeyVersion:
+		m.ClearPayloadKeyVersion()
+		return nil
 	case inquiry.FieldContext:
 		m.ClearContext()
 		return nil
@@ -9299,6 +9799,15 @@ func (m *InquiryMutation) ResetField(name string) error {
 		return nil
 	case inquiry.FieldQuestion:
 		m.ResetQuestion()
+		return nil
+	case inquiry.FieldPayloadCiphertext:
+		m.ResetPayloadCiphertext()
+		return nil
+	case inquiry.FieldPayloadNonce:
+		m.ResetPayloadNonce()
+		return nil
+	case inquiry.FieldPayloadKeyVersion:
+		m.ResetPayloadKeyVersion()
 		return nil
 	case inquiry.FieldContext:
 		m.ResetContext()
@@ -10042,28 +10551,32 @@ func (m *KeyMutation) ResetEdge(name string) error {
 // KnowledgeMutation represents an operation that mutates the Knowledge nodes in the graph.
 type KnowledgeMutation struct {
 	config
-	op                 Op
-	typ                string
-	id                 *uuid.UUID
-	key                *string
-	category           *knowledge.Category
-	content            *string
-	tags               *[]string
-	appendtags         []string
-	source             *string
-	version            *int
-	addversion         *int
-	is_latest          *bool
-	use_count          *int
-	adduse_count       *int
-	relevance_score    *float64
-	addrelevance_score *float64
-	created_at         *time.Time
-	updated_at         *time.Time
-	clearedFields      map[string]struct{}
-	done               bool
-	oldValue           func(context.Context) (*Knowledge, error)
-	predicates         []predicate.Knowledge
+	op                     Op
+	typ                    string
+	id                     *uuid.UUID
+	key                    *string
+	category               *knowledge.Category
+	content                *string
+	content_ciphertext     *[]byte
+	content_nonce          *[]byte
+	content_key_version    *int
+	addcontent_key_version *int
+	tags                   *[]string
+	appendtags             []string
+	source                 *string
+	version                *int
+	addversion             *int
+	is_latest              *bool
+	use_count              *int
+	adduse_count           *int
+	relevance_score        *float64
+	addrelevance_score     *float64
+	created_at             *time.Time
+	updated_at             *time.Time
+	clearedFields          map[string]struct{}
+	done                   bool
+	oldValue               func(context.Context) (*Knowledge, error)
+	predicates             []predicate.Knowledge
 }
 
 var _ ent.Mutation = (*KnowledgeMutation)(nil)
@@ -10276,6 +10789,174 @@ func (m *KnowledgeMutation) OldContent(ctx context.Context) (v string, err error
 // ResetContent resets all changes to the "content" field.
 func (m *KnowledgeMutation) ResetContent() {
 	m.content = nil
+}
+
+// SetContentCiphertext sets the "content_ciphertext" field.
+func (m *KnowledgeMutation) SetContentCiphertext(b []byte) {
+	m.content_ciphertext = &b
+}
+
+// ContentCiphertext returns the value of the "content_ciphertext" field in the mutation.
+func (m *KnowledgeMutation) ContentCiphertext() (r []byte, exists bool) {
+	v := m.content_ciphertext
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldContentCiphertext returns the old "content_ciphertext" field's value of the Knowledge entity.
+// If the Knowledge object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *KnowledgeMutation) OldContentCiphertext(ctx context.Context) (v *[]byte, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldContentCiphertext is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldContentCiphertext requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldContentCiphertext: %w", err)
+	}
+	return oldValue.ContentCiphertext, nil
+}
+
+// ClearContentCiphertext clears the value of the "content_ciphertext" field.
+func (m *KnowledgeMutation) ClearContentCiphertext() {
+	m.content_ciphertext = nil
+	m.clearedFields[knowledge.FieldContentCiphertext] = struct{}{}
+}
+
+// ContentCiphertextCleared returns if the "content_ciphertext" field was cleared in this mutation.
+func (m *KnowledgeMutation) ContentCiphertextCleared() bool {
+	_, ok := m.clearedFields[knowledge.FieldContentCiphertext]
+	return ok
+}
+
+// ResetContentCiphertext resets all changes to the "content_ciphertext" field.
+func (m *KnowledgeMutation) ResetContentCiphertext() {
+	m.content_ciphertext = nil
+	delete(m.clearedFields, knowledge.FieldContentCiphertext)
+}
+
+// SetContentNonce sets the "content_nonce" field.
+func (m *KnowledgeMutation) SetContentNonce(b []byte) {
+	m.content_nonce = &b
+}
+
+// ContentNonce returns the value of the "content_nonce" field in the mutation.
+func (m *KnowledgeMutation) ContentNonce() (r []byte, exists bool) {
+	v := m.content_nonce
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldContentNonce returns the old "content_nonce" field's value of the Knowledge entity.
+// If the Knowledge object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *KnowledgeMutation) OldContentNonce(ctx context.Context) (v *[]byte, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldContentNonce is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldContentNonce requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldContentNonce: %w", err)
+	}
+	return oldValue.ContentNonce, nil
+}
+
+// ClearContentNonce clears the value of the "content_nonce" field.
+func (m *KnowledgeMutation) ClearContentNonce() {
+	m.content_nonce = nil
+	m.clearedFields[knowledge.FieldContentNonce] = struct{}{}
+}
+
+// ContentNonceCleared returns if the "content_nonce" field was cleared in this mutation.
+func (m *KnowledgeMutation) ContentNonceCleared() bool {
+	_, ok := m.clearedFields[knowledge.FieldContentNonce]
+	return ok
+}
+
+// ResetContentNonce resets all changes to the "content_nonce" field.
+func (m *KnowledgeMutation) ResetContentNonce() {
+	m.content_nonce = nil
+	delete(m.clearedFields, knowledge.FieldContentNonce)
+}
+
+// SetContentKeyVersion sets the "content_key_version" field.
+func (m *KnowledgeMutation) SetContentKeyVersion(i int) {
+	m.content_key_version = &i
+	m.addcontent_key_version = nil
+}
+
+// ContentKeyVersion returns the value of the "content_key_version" field in the mutation.
+func (m *KnowledgeMutation) ContentKeyVersion() (r int, exists bool) {
+	v := m.content_key_version
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldContentKeyVersion returns the old "content_key_version" field's value of the Knowledge entity.
+// If the Knowledge object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *KnowledgeMutation) OldContentKeyVersion(ctx context.Context) (v *int, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldContentKeyVersion is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldContentKeyVersion requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldContentKeyVersion: %w", err)
+	}
+	return oldValue.ContentKeyVersion, nil
+}
+
+// AddContentKeyVersion adds i to the "content_key_version" field.
+func (m *KnowledgeMutation) AddContentKeyVersion(i int) {
+	if m.addcontent_key_version != nil {
+		*m.addcontent_key_version += i
+	} else {
+		m.addcontent_key_version = &i
+	}
+}
+
+// AddedContentKeyVersion returns the value that was added to the "content_key_version" field in this mutation.
+func (m *KnowledgeMutation) AddedContentKeyVersion() (r int, exists bool) {
+	v := m.addcontent_key_version
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ClearContentKeyVersion clears the value of the "content_key_version" field.
+func (m *KnowledgeMutation) ClearContentKeyVersion() {
+	m.content_key_version = nil
+	m.addcontent_key_version = nil
+	m.clearedFields[knowledge.FieldContentKeyVersion] = struct{}{}
+}
+
+// ContentKeyVersionCleared returns if the "content_key_version" field was cleared in this mutation.
+func (m *KnowledgeMutation) ContentKeyVersionCleared() bool {
+	_, ok := m.clearedFields[knowledge.FieldContentKeyVersion]
+	return ok
+}
+
+// ResetContentKeyVersion resets all changes to the "content_key_version" field.
+func (m *KnowledgeMutation) ResetContentKeyVersion() {
+	m.content_key_version = nil
+	m.addcontent_key_version = nil
+	delete(m.clearedFields, knowledge.FieldContentKeyVersion)
 }
 
 // SetTags sets the "tags" field.
@@ -10702,7 +11383,7 @@ func (m *KnowledgeMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *KnowledgeMutation) Fields() []string {
-	fields := make([]string, 0, 11)
+	fields := make([]string, 0, 14)
 	if m.key != nil {
 		fields = append(fields, knowledge.FieldKey)
 	}
@@ -10711,6 +11392,15 @@ func (m *KnowledgeMutation) Fields() []string {
 	}
 	if m.content != nil {
 		fields = append(fields, knowledge.FieldContent)
+	}
+	if m.content_ciphertext != nil {
+		fields = append(fields, knowledge.FieldContentCiphertext)
+	}
+	if m.content_nonce != nil {
+		fields = append(fields, knowledge.FieldContentNonce)
+	}
+	if m.content_key_version != nil {
+		fields = append(fields, knowledge.FieldContentKeyVersion)
 	}
 	if m.tags != nil {
 		fields = append(fields, knowledge.FieldTags)
@@ -10750,6 +11440,12 @@ func (m *KnowledgeMutation) Field(name string) (ent.Value, bool) {
 		return m.Category()
 	case knowledge.FieldContent:
 		return m.Content()
+	case knowledge.FieldContentCiphertext:
+		return m.ContentCiphertext()
+	case knowledge.FieldContentNonce:
+		return m.ContentNonce()
+	case knowledge.FieldContentKeyVersion:
+		return m.ContentKeyVersion()
 	case knowledge.FieldTags:
 		return m.Tags()
 	case knowledge.FieldSource:
@@ -10781,6 +11477,12 @@ func (m *KnowledgeMutation) OldField(ctx context.Context, name string) (ent.Valu
 		return m.OldCategory(ctx)
 	case knowledge.FieldContent:
 		return m.OldContent(ctx)
+	case knowledge.FieldContentCiphertext:
+		return m.OldContentCiphertext(ctx)
+	case knowledge.FieldContentNonce:
+		return m.OldContentNonce(ctx)
+	case knowledge.FieldContentKeyVersion:
+		return m.OldContentKeyVersion(ctx)
 	case knowledge.FieldTags:
 		return m.OldTags(ctx)
 	case knowledge.FieldSource:
@@ -10826,6 +11528,27 @@ func (m *KnowledgeMutation) SetField(name string, value ent.Value) error {
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
 		m.SetContent(v)
+		return nil
+	case knowledge.FieldContentCiphertext:
+		v, ok := value.([]byte)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetContentCiphertext(v)
+		return nil
+	case knowledge.FieldContentNonce:
+		v, ok := value.([]byte)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetContentNonce(v)
+		return nil
+	case knowledge.FieldContentKeyVersion:
+		v, ok := value.(int)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetContentKeyVersion(v)
 		return nil
 	case knowledge.FieldTags:
 		v, ok := value.([]string)
@@ -10891,6 +11614,9 @@ func (m *KnowledgeMutation) SetField(name string, value ent.Value) error {
 // this mutation.
 func (m *KnowledgeMutation) AddedFields() []string {
 	var fields []string
+	if m.addcontent_key_version != nil {
+		fields = append(fields, knowledge.FieldContentKeyVersion)
+	}
 	if m.addversion != nil {
 		fields = append(fields, knowledge.FieldVersion)
 	}
@@ -10908,6 +11634,8 @@ func (m *KnowledgeMutation) AddedFields() []string {
 // was not set, or was not defined in the schema.
 func (m *KnowledgeMutation) AddedField(name string) (ent.Value, bool) {
 	switch name {
+	case knowledge.FieldContentKeyVersion:
+		return m.AddedContentKeyVersion()
 	case knowledge.FieldVersion:
 		return m.AddedVersion()
 	case knowledge.FieldUseCount:
@@ -10923,6 +11651,13 @@ func (m *KnowledgeMutation) AddedField(name string) (ent.Value, bool) {
 // type.
 func (m *KnowledgeMutation) AddField(name string, value ent.Value) error {
 	switch name {
+	case knowledge.FieldContentKeyVersion:
+		v, ok := value.(int)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddContentKeyVersion(v)
+		return nil
 	case knowledge.FieldVersion:
 		v, ok := value.(int)
 		if !ok {
@@ -10952,6 +11687,15 @@ func (m *KnowledgeMutation) AddField(name string, value ent.Value) error {
 // mutation.
 func (m *KnowledgeMutation) ClearedFields() []string {
 	var fields []string
+	if m.FieldCleared(knowledge.FieldContentCiphertext) {
+		fields = append(fields, knowledge.FieldContentCiphertext)
+	}
+	if m.FieldCleared(knowledge.FieldContentNonce) {
+		fields = append(fields, knowledge.FieldContentNonce)
+	}
+	if m.FieldCleared(knowledge.FieldContentKeyVersion) {
+		fields = append(fields, knowledge.FieldContentKeyVersion)
+	}
 	if m.FieldCleared(knowledge.FieldTags) {
 		fields = append(fields, knowledge.FieldTags)
 	}
@@ -10972,6 +11716,15 @@ func (m *KnowledgeMutation) FieldCleared(name string) bool {
 // error if the field is not defined in the schema.
 func (m *KnowledgeMutation) ClearField(name string) error {
 	switch name {
+	case knowledge.FieldContentCiphertext:
+		m.ClearContentCiphertext()
+		return nil
+	case knowledge.FieldContentNonce:
+		m.ClearContentNonce()
+		return nil
+	case knowledge.FieldContentKeyVersion:
+		m.ClearContentKeyVersion()
+		return nil
 	case knowledge.FieldTags:
 		m.ClearTags()
 		return nil
@@ -10994,6 +11747,15 @@ func (m *KnowledgeMutation) ResetField(name string) error {
 		return nil
 	case knowledge.FieldContent:
 		m.ResetContent()
+		return nil
+	case knowledge.FieldContentCiphertext:
+		m.ResetContentCiphertext()
+		return nil
+	case knowledge.FieldContentNonce:
+		m.ResetContentNonce()
+		return nil
+	case knowledge.FieldContentKeyVersion:
+		m.ResetContentKeyVersion()
 		return nil
 	case knowledge.FieldTags:
 		m.ResetTags()
@@ -11074,28 +11836,32 @@ func (m *KnowledgeMutation) ResetEdge(name string) error {
 // LearningMutation represents an operation that mutates the Learning nodes in the graph.
 type LearningMutation struct {
 	config
-	op                  Op
-	typ                 string
-	id                  *uuid.UUID
-	trigger             *string
-	error_pattern       *string
-	diagnosis           *string
-	fix                 *string
-	category            *learning.Category
-	tags                *[]string
-	appendtags          []string
-	occurrence_count    *int
-	addoccurrence_count *int
-	success_count       *int
-	addsuccess_count    *int
-	confidence          *float64
-	addconfidence       *float64
-	created_at          *time.Time
-	updated_at          *time.Time
-	clearedFields       map[string]struct{}
-	done                bool
-	oldValue            func(context.Context) (*Learning, error)
-	predicates          []predicate.Learning
+	op                     Op
+	typ                    string
+	id                     *uuid.UUID
+	trigger                *string
+	error_pattern          *string
+	diagnosis              *string
+	fix                    *string
+	payload_ciphertext     *[]byte
+	payload_nonce          *[]byte
+	payload_key_version    *int
+	addpayload_key_version *int
+	category               *learning.Category
+	tags                   *[]string
+	appendtags             []string
+	occurrence_count       *int
+	addoccurrence_count    *int
+	success_count          *int
+	addsuccess_count       *int
+	confidence             *float64
+	addconfidence          *float64
+	created_at             *time.Time
+	updated_at             *time.Time
+	clearedFields          map[string]struct{}
+	done                   bool
+	oldValue               func(context.Context) (*Learning, error)
+	predicates             []predicate.Learning
 }
 
 var _ ent.Mutation = (*LearningMutation)(nil)
@@ -11383,6 +12149,174 @@ func (m *LearningMutation) FixCleared() bool {
 func (m *LearningMutation) ResetFix() {
 	m.fix = nil
 	delete(m.clearedFields, learning.FieldFix)
+}
+
+// SetPayloadCiphertext sets the "payload_ciphertext" field.
+func (m *LearningMutation) SetPayloadCiphertext(b []byte) {
+	m.payload_ciphertext = &b
+}
+
+// PayloadCiphertext returns the value of the "payload_ciphertext" field in the mutation.
+func (m *LearningMutation) PayloadCiphertext() (r []byte, exists bool) {
+	v := m.payload_ciphertext
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldPayloadCiphertext returns the old "payload_ciphertext" field's value of the Learning entity.
+// If the Learning object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *LearningMutation) OldPayloadCiphertext(ctx context.Context) (v *[]byte, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldPayloadCiphertext is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldPayloadCiphertext requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldPayloadCiphertext: %w", err)
+	}
+	return oldValue.PayloadCiphertext, nil
+}
+
+// ClearPayloadCiphertext clears the value of the "payload_ciphertext" field.
+func (m *LearningMutation) ClearPayloadCiphertext() {
+	m.payload_ciphertext = nil
+	m.clearedFields[learning.FieldPayloadCiphertext] = struct{}{}
+}
+
+// PayloadCiphertextCleared returns if the "payload_ciphertext" field was cleared in this mutation.
+func (m *LearningMutation) PayloadCiphertextCleared() bool {
+	_, ok := m.clearedFields[learning.FieldPayloadCiphertext]
+	return ok
+}
+
+// ResetPayloadCiphertext resets all changes to the "payload_ciphertext" field.
+func (m *LearningMutation) ResetPayloadCiphertext() {
+	m.payload_ciphertext = nil
+	delete(m.clearedFields, learning.FieldPayloadCiphertext)
+}
+
+// SetPayloadNonce sets the "payload_nonce" field.
+func (m *LearningMutation) SetPayloadNonce(b []byte) {
+	m.payload_nonce = &b
+}
+
+// PayloadNonce returns the value of the "payload_nonce" field in the mutation.
+func (m *LearningMutation) PayloadNonce() (r []byte, exists bool) {
+	v := m.payload_nonce
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldPayloadNonce returns the old "payload_nonce" field's value of the Learning entity.
+// If the Learning object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *LearningMutation) OldPayloadNonce(ctx context.Context) (v *[]byte, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldPayloadNonce is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldPayloadNonce requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldPayloadNonce: %w", err)
+	}
+	return oldValue.PayloadNonce, nil
+}
+
+// ClearPayloadNonce clears the value of the "payload_nonce" field.
+func (m *LearningMutation) ClearPayloadNonce() {
+	m.payload_nonce = nil
+	m.clearedFields[learning.FieldPayloadNonce] = struct{}{}
+}
+
+// PayloadNonceCleared returns if the "payload_nonce" field was cleared in this mutation.
+func (m *LearningMutation) PayloadNonceCleared() bool {
+	_, ok := m.clearedFields[learning.FieldPayloadNonce]
+	return ok
+}
+
+// ResetPayloadNonce resets all changes to the "payload_nonce" field.
+func (m *LearningMutation) ResetPayloadNonce() {
+	m.payload_nonce = nil
+	delete(m.clearedFields, learning.FieldPayloadNonce)
+}
+
+// SetPayloadKeyVersion sets the "payload_key_version" field.
+func (m *LearningMutation) SetPayloadKeyVersion(i int) {
+	m.payload_key_version = &i
+	m.addpayload_key_version = nil
+}
+
+// PayloadKeyVersion returns the value of the "payload_key_version" field in the mutation.
+func (m *LearningMutation) PayloadKeyVersion() (r int, exists bool) {
+	v := m.payload_key_version
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldPayloadKeyVersion returns the old "payload_key_version" field's value of the Learning entity.
+// If the Learning object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *LearningMutation) OldPayloadKeyVersion(ctx context.Context) (v *int, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldPayloadKeyVersion is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldPayloadKeyVersion requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldPayloadKeyVersion: %w", err)
+	}
+	return oldValue.PayloadKeyVersion, nil
+}
+
+// AddPayloadKeyVersion adds i to the "payload_key_version" field.
+func (m *LearningMutation) AddPayloadKeyVersion(i int) {
+	if m.addpayload_key_version != nil {
+		*m.addpayload_key_version += i
+	} else {
+		m.addpayload_key_version = &i
+	}
+}
+
+// AddedPayloadKeyVersion returns the value that was added to the "payload_key_version" field in this mutation.
+func (m *LearningMutation) AddedPayloadKeyVersion() (r int, exists bool) {
+	v := m.addpayload_key_version
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ClearPayloadKeyVersion clears the value of the "payload_key_version" field.
+func (m *LearningMutation) ClearPayloadKeyVersion() {
+	m.payload_key_version = nil
+	m.addpayload_key_version = nil
+	m.clearedFields[learning.FieldPayloadKeyVersion] = struct{}{}
+}
+
+// PayloadKeyVersionCleared returns if the "payload_key_version" field was cleared in this mutation.
+func (m *LearningMutation) PayloadKeyVersionCleared() bool {
+	_, ok := m.clearedFields[learning.FieldPayloadKeyVersion]
+	return ok
+}
+
+// ResetPayloadKeyVersion resets all changes to the "payload_key_version" field.
+func (m *LearningMutation) ResetPayloadKeyVersion() {
+	m.payload_key_version = nil
+	m.addpayload_key_version = nil
+	delete(m.clearedFields, learning.FieldPayloadKeyVersion)
 }
 
 // SetCategory sets the "category" field.
@@ -11760,7 +12694,7 @@ func (m *LearningMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *LearningMutation) Fields() []string {
-	fields := make([]string, 0, 11)
+	fields := make([]string, 0, 14)
 	if m.trigger != nil {
 		fields = append(fields, learning.FieldTrigger)
 	}
@@ -11772,6 +12706,15 @@ func (m *LearningMutation) Fields() []string {
 	}
 	if m.fix != nil {
 		fields = append(fields, learning.FieldFix)
+	}
+	if m.payload_ciphertext != nil {
+		fields = append(fields, learning.FieldPayloadCiphertext)
+	}
+	if m.payload_nonce != nil {
+		fields = append(fields, learning.FieldPayloadNonce)
+	}
+	if m.payload_key_version != nil {
+		fields = append(fields, learning.FieldPayloadKeyVersion)
 	}
 	if m.category != nil {
 		fields = append(fields, learning.FieldCategory)
@@ -11810,6 +12753,12 @@ func (m *LearningMutation) Field(name string) (ent.Value, bool) {
 		return m.Diagnosis()
 	case learning.FieldFix:
 		return m.Fix()
+	case learning.FieldPayloadCiphertext:
+		return m.PayloadCiphertext()
+	case learning.FieldPayloadNonce:
+		return m.PayloadNonce()
+	case learning.FieldPayloadKeyVersion:
+		return m.PayloadKeyVersion()
 	case learning.FieldCategory:
 		return m.Category()
 	case learning.FieldTags:
@@ -11841,6 +12790,12 @@ func (m *LearningMutation) OldField(ctx context.Context, name string) (ent.Value
 		return m.OldDiagnosis(ctx)
 	case learning.FieldFix:
 		return m.OldFix(ctx)
+	case learning.FieldPayloadCiphertext:
+		return m.OldPayloadCiphertext(ctx)
+	case learning.FieldPayloadNonce:
+		return m.OldPayloadNonce(ctx)
+	case learning.FieldPayloadKeyVersion:
+		return m.OldPayloadKeyVersion(ctx)
 	case learning.FieldCategory:
 		return m.OldCategory(ctx)
 	case learning.FieldTags:
@@ -11891,6 +12846,27 @@ func (m *LearningMutation) SetField(name string, value ent.Value) error {
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
 		m.SetFix(v)
+		return nil
+	case learning.FieldPayloadCiphertext:
+		v, ok := value.([]byte)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetPayloadCiphertext(v)
+		return nil
+	case learning.FieldPayloadNonce:
+		v, ok := value.([]byte)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetPayloadNonce(v)
+		return nil
+	case learning.FieldPayloadKeyVersion:
+		v, ok := value.(int)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetPayloadKeyVersion(v)
 		return nil
 	case learning.FieldCategory:
 		v, ok := value.(learning.Category)
@@ -11949,6 +12925,9 @@ func (m *LearningMutation) SetField(name string, value ent.Value) error {
 // this mutation.
 func (m *LearningMutation) AddedFields() []string {
 	var fields []string
+	if m.addpayload_key_version != nil {
+		fields = append(fields, learning.FieldPayloadKeyVersion)
+	}
 	if m.addoccurrence_count != nil {
 		fields = append(fields, learning.FieldOccurrenceCount)
 	}
@@ -11966,6 +12945,8 @@ func (m *LearningMutation) AddedFields() []string {
 // was not set, or was not defined in the schema.
 func (m *LearningMutation) AddedField(name string) (ent.Value, bool) {
 	switch name {
+	case learning.FieldPayloadKeyVersion:
+		return m.AddedPayloadKeyVersion()
 	case learning.FieldOccurrenceCount:
 		return m.AddedOccurrenceCount()
 	case learning.FieldSuccessCount:
@@ -11981,6 +12962,13 @@ func (m *LearningMutation) AddedField(name string) (ent.Value, bool) {
 // type.
 func (m *LearningMutation) AddField(name string, value ent.Value) error {
 	switch name {
+	case learning.FieldPayloadKeyVersion:
+		v, ok := value.(int)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddPayloadKeyVersion(v)
+		return nil
 	case learning.FieldOccurrenceCount:
 		v, ok := value.(int)
 		if !ok {
@@ -12019,6 +13007,15 @@ func (m *LearningMutation) ClearedFields() []string {
 	if m.FieldCleared(learning.FieldFix) {
 		fields = append(fields, learning.FieldFix)
 	}
+	if m.FieldCleared(learning.FieldPayloadCiphertext) {
+		fields = append(fields, learning.FieldPayloadCiphertext)
+	}
+	if m.FieldCleared(learning.FieldPayloadNonce) {
+		fields = append(fields, learning.FieldPayloadNonce)
+	}
+	if m.FieldCleared(learning.FieldPayloadKeyVersion) {
+		fields = append(fields, learning.FieldPayloadKeyVersion)
+	}
 	if m.FieldCleared(learning.FieldTags) {
 		fields = append(fields, learning.FieldTags)
 	}
@@ -12045,6 +13042,15 @@ func (m *LearningMutation) ClearField(name string) error {
 	case learning.FieldFix:
 		m.ClearFix()
 		return nil
+	case learning.FieldPayloadCiphertext:
+		m.ClearPayloadCiphertext()
+		return nil
+	case learning.FieldPayloadNonce:
+		m.ClearPayloadNonce()
+		return nil
+	case learning.FieldPayloadKeyVersion:
+		m.ClearPayloadKeyVersion()
+		return nil
 	case learning.FieldTags:
 		m.ClearTags()
 		return nil
@@ -12067,6 +13073,15 @@ func (m *LearningMutation) ResetField(name string) error {
 		return nil
 	case learning.FieldFix:
 		m.ResetFix()
+		return nil
+	case learning.FieldPayloadCiphertext:
+		m.ResetPayloadCiphertext()
+		return nil
+	case learning.FieldPayloadNonce:
+		m.ResetPayloadNonce()
+		return nil
+	case learning.FieldPayloadKeyVersion:
+		m.ResetPayloadKeyVersion()
 		return nil
 	case learning.FieldCategory:
 		m.ResetCategory()
@@ -12144,21 +13159,29 @@ func (m *LearningMutation) ResetEdge(name string) error {
 // MessageMutation represents an operation that mutates the Message nodes in the graph.
 type MessageMutation struct {
 	config
-	op               Op
-	typ              string
-	id               *int
-	role             *string
-	content          *string
-	timestamp        *time.Time
-	tool_calls       *[]schema.ToolCall
-	appendtool_calls []schema.ToolCall
-	author           *string
-	clearedFields    map[string]struct{}
-	session          *int
-	clearedsession   bool
-	done             bool
-	oldValue         func(context.Context) (*Message, error)
-	predicates       []predicate.Message
+	op                        Op
+	typ                       string
+	id                        *int
+	role                      *string
+	content                   *string
+	content_ciphertext        *[]byte
+	content_nonce             *[]byte
+	content_key_version       *int
+	addcontent_key_version    *int
+	timestamp                 *time.Time
+	tool_calls                *[]schema.ToolCall
+	appendtool_calls          []schema.ToolCall
+	tool_calls_ciphertext     *[]byte
+	tool_calls_nonce          *[]byte
+	tool_calls_key_version    *int
+	addtool_calls_key_version *int
+	author                    *string
+	clearedFields             map[string]struct{}
+	session                   *int
+	clearedsession            bool
+	done                      bool
+	oldValue                  func(context.Context) (*Message, error)
+	predicates                []predicate.Message
 }
 
 var _ ent.Mutation = (*MessageMutation)(nil)
@@ -12331,6 +13354,174 @@ func (m *MessageMutation) ResetContent() {
 	m.content = nil
 }
 
+// SetContentCiphertext sets the "content_ciphertext" field.
+func (m *MessageMutation) SetContentCiphertext(b []byte) {
+	m.content_ciphertext = &b
+}
+
+// ContentCiphertext returns the value of the "content_ciphertext" field in the mutation.
+func (m *MessageMutation) ContentCiphertext() (r []byte, exists bool) {
+	v := m.content_ciphertext
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldContentCiphertext returns the old "content_ciphertext" field's value of the Message entity.
+// If the Message object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *MessageMutation) OldContentCiphertext(ctx context.Context) (v *[]byte, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldContentCiphertext is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldContentCiphertext requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldContentCiphertext: %w", err)
+	}
+	return oldValue.ContentCiphertext, nil
+}
+
+// ClearContentCiphertext clears the value of the "content_ciphertext" field.
+func (m *MessageMutation) ClearContentCiphertext() {
+	m.content_ciphertext = nil
+	m.clearedFields[message.FieldContentCiphertext] = struct{}{}
+}
+
+// ContentCiphertextCleared returns if the "content_ciphertext" field was cleared in this mutation.
+func (m *MessageMutation) ContentCiphertextCleared() bool {
+	_, ok := m.clearedFields[message.FieldContentCiphertext]
+	return ok
+}
+
+// ResetContentCiphertext resets all changes to the "content_ciphertext" field.
+func (m *MessageMutation) ResetContentCiphertext() {
+	m.content_ciphertext = nil
+	delete(m.clearedFields, message.FieldContentCiphertext)
+}
+
+// SetContentNonce sets the "content_nonce" field.
+func (m *MessageMutation) SetContentNonce(b []byte) {
+	m.content_nonce = &b
+}
+
+// ContentNonce returns the value of the "content_nonce" field in the mutation.
+func (m *MessageMutation) ContentNonce() (r []byte, exists bool) {
+	v := m.content_nonce
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldContentNonce returns the old "content_nonce" field's value of the Message entity.
+// If the Message object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *MessageMutation) OldContentNonce(ctx context.Context) (v *[]byte, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldContentNonce is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldContentNonce requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldContentNonce: %w", err)
+	}
+	return oldValue.ContentNonce, nil
+}
+
+// ClearContentNonce clears the value of the "content_nonce" field.
+func (m *MessageMutation) ClearContentNonce() {
+	m.content_nonce = nil
+	m.clearedFields[message.FieldContentNonce] = struct{}{}
+}
+
+// ContentNonceCleared returns if the "content_nonce" field was cleared in this mutation.
+func (m *MessageMutation) ContentNonceCleared() bool {
+	_, ok := m.clearedFields[message.FieldContentNonce]
+	return ok
+}
+
+// ResetContentNonce resets all changes to the "content_nonce" field.
+func (m *MessageMutation) ResetContentNonce() {
+	m.content_nonce = nil
+	delete(m.clearedFields, message.FieldContentNonce)
+}
+
+// SetContentKeyVersion sets the "content_key_version" field.
+func (m *MessageMutation) SetContentKeyVersion(i int) {
+	m.content_key_version = &i
+	m.addcontent_key_version = nil
+}
+
+// ContentKeyVersion returns the value of the "content_key_version" field in the mutation.
+func (m *MessageMutation) ContentKeyVersion() (r int, exists bool) {
+	v := m.content_key_version
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldContentKeyVersion returns the old "content_key_version" field's value of the Message entity.
+// If the Message object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *MessageMutation) OldContentKeyVersion(ctx context.Context) (v *int, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldContentKeyVersion is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldContentKeyVersion requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldContentKeyVersion: %w", err)
+	}
+	return oldValue.ContentKeyVersion, nil
+}
+
+// AddContentKeyVersion adds i to the "content_key_version" field.
+func (m *MessageMutation) AddContentKeyVersion(i int) {
+	if m.addcontent_key_version != nil {
+		*m.addcontent_key_version += i
+	} else {
+		m.addcontent_key_version = &i
+	}
+}
+
+// AddedContentKeyVersion returns the value that was added to the "content_key_version" field in this mutation.
+func (m *MessageMutation) AddedContentKeyVersion() (r int, exists bool) {
+	v := m.addcontent_key_version
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ClearContentKeyVersion clears the value of the "content_key_version" field.
+func (m *MessageMutation) ClearContentKeyVersion() {
+	m.content_key_version = nil
+	m.addcontent_key_version = nil
+	m.clearedFields[message.FieldContentKeyVersion] = struct{}{}
+}
+
+// ContentKeyVersionCleared returns if the "content_key_version" field was cleared in this mutation.
+func (m *MessageMutation) ContentKeyVersionCleared() bool {
+	_, ok := m.clearedFields[message.FieldContentKeyVersion]
+	return ok
+}
+
+// ResetContentKeyVersion resets all changes to the "content_key_version" field.
+func (m *MessageMutation) ResetContentKeyVersion() {
+	m.content_key_version = nil
+	m.addcontent_key_version = nil
+	delete(m.clearedFields, message.FieldContentKeyVersion)
+}
+
 // SetTimestamp sets the "timestamp" field.
 func (m *MessageMutation) SetTimestamp(t time.Time) {
 	m.timestamp = &t
@@ -12430,6 +13621,174 @@ func (m *MessageMutation) ResetToolCalls() {
 	m.tool_calls = nil
 	m.appendtool_calls = nil
 	delete(m.clearedFields, message.FieldToolCalls)
+}
+
+// SetToolCallsCiphertext sets the "tool_calls_ciphertext" field.
+func (m *MessageMutation) SetToolCallsCiphertext(b []byte) {
+	m.tool_calls_ciphertext = &b
+}
+
+// ToolCallsCiphertext returns the value of the "tool_calls_ciphertext" field in the mutation.
+func (m *MessageMutation) ToolCallsCiphertext() (r []byte, exists bool) {
+	v := m.tool_calls_ciphertext
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldToolCallsCiphertext returns the old "tool_calls_ciphertext" field's value of the Message entity.
+// If the Message object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *MessageMutation) OldToolCallsCiphertext(ctx context.Context) (v *[]byte, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldToolCallsCiphertext is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldToolCallsCiphertext requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldToolCallsCiphertext: %w", err)
+	}
+	return oldValue.ToolCallsCiphertext, nil
+}
+
+// ClearToolCallsCiphertext clears the value of the "tool_calls_ciphertext" field.
+func (m *MessageMutation) ClearToolCallsCiphertext() {
+	m.tool_calls_ciphertext = nil
+	m.clearedFields[message.FieldToolCallsCiphertext] = struct{}{}
+}
+
+// ToolCallsCiphertextCleared returns if the "tool_calls_ciphertext" field was cleared in this mutation.
+func (m *MessageMutation) ToolCallsCiphertextCleared() bool {
+	_, ok := m.clearedFields[message.FieldToolCallsCiphertext]
+	return ok
+}
+
+// ResetToolCallsCiphertext resets all changes to the "tool_calls_ciphertext" field.
+func (m *MessageMutation) ResetToolCallsCiphertext() {
+	m.tool_calls_ciphertext = nil
+	delete(m.clearedFields, message.FieldToolCallsCiphertext)
+}
+
+// SetToolCallsNonce sets the "tool_calls_nonce" field.
+func (m *MessageMutation) SetToolCallsNonce(b []byte) {
+	m.tool_calls_nonce = &b
+}
+
+// ToolCallsNonce returns the value of the "tool_calls_nonce" field in the mutation.
+func (m *MessageMutation) ToolCallsNonce() (r []byte, exists bool) {
+	v := m.tool_calls_nonce
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldToolCallsNonce returns the old "tool_calls_nonce" field's value of the Message entity.
+// If the Message object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *MessageMutation) OldToolCallsNonce(ctx context.Context) (v *[]byte, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldToolCallsNonce is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldToolCallsNonce requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldToolCallsNonce: %w", err)
+	}
+	return oldValue.ToolCallsNonce, nil
+}
+
+// ClearToolCallsNonce clears the value of the "tool_calls_nonce" field.
+func (m *MessageMutation) ClearToolCallsNonce() {
+	m.tool_calls_nonce = nil
+	m.clearedFields[message.FieldToolCallsNonce] = struct{}{}
+}
+
+// ToolCallsNonceCleared returns if the "tool_calls_nonce" field was cleared in this mutation.
+func (m *MessageMutation) ToolCallsNonceCleared() bool {
+	_, ok := m.clearedFields[message.FieldToolCallsNonce]
+	return ok
+}
+
+// ResetToolCallsNonce resets all changes to the "tool_calls_nonce" field.
+func (m *MessageMutation) ResetToolCallsNonce() {
+	m.tool_calls_nonce = nil
+	delete(m.clearedFields, message.FieldToolCallsNonce)
+}
+
+// SetToolCallsKeyVersion sets the "tool_calls_key_version" field.
+func (m *MessageMutation) SetToolCallsKeyVersion(i int) {
+	m.tool_calls_key_version = &i
+	m.addtool_calls_key_version = nil
+}
+
+// ToolCallsKeyVersion returns the value of the "tool_calls_key_version" field in the mutation.
+func (m *MessageMutation) ToolCallsKeyVersion() (r int, exists bool) {
+	v := m.tool_calls_key_version
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldToolCallsKeyVersion returns the old "tool_calls_key_version" field's value of the Message entity.
+// If the Message object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *MessageMutation) OldToolCallsKeyVersion(ctx context.Context) (v *int, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldToolCallsKeyVersion is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldToolCallsKeyVersion requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldToolCallsKeyVersion: %w", err)
+	}
+	return oldValue.ToolCallsKeyVersion, nil
+}
+
+// AddToolCallsKeyVersion adds i to the "tool_calls_key_version" field.
+func (m *MessageMutation) AddToolCallsKeyVersion(i int) {
+	if m.addtool_calls_key_version != nil {
+		*m.addtool_calls_key_version += i
+	} else {
+		m.addtool_calls_key_version = &i
+	}
+}
+
+// AddedToolCallsKeyVersion returns the value that was added to the "tool_calls_key_version" field in this mutation.
+func (m *MessageMutation) AddedToolCallsKeyVersion() (r int, exists bool) {
+	v := m.addtool_calls_key_version
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ClearToolCallsKeyVersion clears the value of the "tool_calls_key_version" field.
+func (m *MessageMutation) ClearToolCallsKeyVersion() {
+	m.tool_calls_key_version = nil
+	m.addtool_calls_key_version = nil
+	m.clearedFields[message.FieldToolCallsKeyVersion] = struct{}{}
+}
+
+// ToolCallsKeyVersionCleared returns if the "tool_calls_key_version" field was cleared in this mutation.
+func (m *MessageMutation) ToolCallsKeyVersionCleared() bool {
+	_, ok := m.clearedFields[message.FieldToolCallsKeyVersion]
+	return ok
+}
+
+// ResetToolCallsKeyVersion resets all changes to the "tool_calls_key_version" field.
+func (m *MessageMutation) ResetToolCallsKeyVersion() {
+	m.tool_calls_key_version = nil
+	m.addtool_calls_key_version = nil
+	delete(m.clearedFields, message.FieldToolCallsKeyVersion)
 }
 
 // SetAuthor sets the "author" field.
@@ -12554,18 +13913,36 @@ func (m *MessageMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *MessageMutation) Fields() []string {
-	fields := make([]string, 0, 5)
+	fields := make([]string, 0, 11)
 	if m.role != nil {
 		fields = append(fields, message.FieldRole)
 	}
 	if m.content != nil {
 		fields = append(fields, message.FieldContent)
 	}
+	if m.content_ciphertext != nil {
+		fields = append(fields, message.FieldContentCiphertext)
+	}
+	if m.content_nonce != nil {
+		fields = append(fields, message.FieldContentNonce)
+	}
+	if m.content_key_version != nil {
+		fields = append(fields, message.FieldContentKeyVersion)
+	}
 	if m.timestamp != nil {
 		fields = append(fields, message.FieldTimestamp)
 	}
 	if m.tool_calls != nil {
 		fields = append(fields, message.FieldToolCalls)
+	}
+	if m.tool_calls_ciphertext != nil {
+		fields = append(fields, message.FieldToolCallsCiphertext)
+	}
+	if m.tool_calls_nonce != nil {
+		fields = append(fields, message.FieldToolCallsNonce)
+	}
+	if m.tool_calls_key_version != nil {
+		fields = append(fields, message.FieldToolCallsKeyVersion)
 	}
 	if m.author != nil {
 		fields = append(fields, message.FieldAuthor)
@@ -12582,10 +13959,22 @@ func (m *MessageMutation) Field(name string) (ent.Value, bool) {
 		return m.Role()
 	case message.FieldContent:
 		return m.Content()
+	case message.FieldContentCiphertext:
+		return m.ContentCiphertext()
+	case message.FieldContentNonce:
+		return m.ContentNonce()
+	case message.FieldContentKeyVersion:
+		return m.ContentKeyVersion()
 	case message.FieldTimestamp:
 		return m.Timestamp()
 	case message.FieldToolCalls:
 		return m.ToolCalls()
+	case message.FieldToolCallsCiphertext:
+		return m.ToolCallsCiphertext()
+	case message.FieldToolCallsNonce:
+		return m.ToolCallsNonce()
+	case message.FieldToolCallsKeyVersion:
+		return m.ToolCallsKeyVersion()
 	case message.FieldAuthor:
 		return m.Author()
 	}
@@ -12601,10 +13990,22 @@ func (m *MessageMutation) OldField(ctx context.Context, name string) (ent.Value,
 		return m.OldRole(ctx)
 	case message.FieldContent:
 		return m.OldContent(ctx)
+	case message.FieldContentCiphertext:
+		return m.OldContentCiphertext(ctx)
+	case message.FieldContentNonce:
+		return m.OldContentNonce(ctx)
+	case message.FieldContentKeyVersion:
+		return m.OldContentKeyVersion(ctx)
 	case message.FieldTimestamp:
 		return m.OldTimestamp(ctx)
 	case message.FieldToolCalls:
 		return m.OldToolCalls(ctx)
+	case message.FieldToolCallsCiphertext:
+		return m.OldToolCallsCiphertext(ctx)
+	case message.FieldToolCallsNonce:
+		return m.OldToolCallsNonce(ctx)
+	case message.FieldToolCallsKeyVersion:
+		return m.OldToolCallsKeyVersion(ctx)
 	case message.FieldAuthor:
 		return m.OldAuthor(ctx)
 	}
@@ -12630,6 +14031,27 @@ func (m *MessageMutation) SetField(name string, value ent.Value) error {
 		}
 		m.SetContent(v)
 		return nil
+	case message.FieldContentCiphertext:
+		v, ok := value.([]byte)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetContentCiphertext(v)
+		return nil
+	case message.FieldContentNonce:
+		v, ok := value.([]byte)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetContentNonce(v)
+		return nil
+	case message.FieldContentKeyVersion:
+		v, ok := value.(int)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetContentKeyVersion(v)
+		return nil
 	case message.FieldTimestamp:
 		v, ok := value.(time.Time)
 		if !ok {
@@ -12643,6 +14065,27 @@ func (m *MessageMutation) SetField(name string, value ent.Value) error {
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
 		m.SetToolCalls(v)
+		return nil
+	case message.FieldToolCallsCiphertext:
+		v, ok := value.([]byte)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetToolCallsCiphertext(v)
+		return nil
+	case message.FieldToolCallsNonce:
+		v, ok := value.([]byte)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetToolCallsNonce(v)
+		return nil
+	case message.FieldToolCallsKeyVersion:
+		v, ok := value.(int)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetToolCallsKeyVersion(v)
 		return nil
 	case message.FieldAuthor:
 		v, ok := value.(string)
@@ -12658,13 +14101,26 @@ func (m *MessageMutation) SetField(name string, value ent.Value) error {
 // AddedFields returns all numeric fields that were incremented/decremented during
 // this mutation.
 func (m *MessageMutation) AddedFields() []string {
-	return nil
+	var fields []string
+	if m.addcontent_key_version != nil {
+		fields = append(fields, message.FieldContentKeyVersion)
+	}
+	if m.addtool_calls_key_version != nil {
+		fields = append(fields, message.FieldToolCallsKeyVersion)
+	}
+	return fields
 }
 
 // AddedField returns the numeric value that was incremented/decremented on a field
 // with the given name. The second boolean return value indicates that this field
 // was not set, or was not defined in the schema.
 func (m *MessageMutation) AddedField(name string) (ent.Value, bool) {
+	switch name {
+	case message.FieldContentKeyVersion:
+		return m.AddedContentKeyVersion()
+	case message.FieldToolCallsKeyVersion:
+		return m.AddedToolCallsKeyVersion()
+	}
 	return nil, false
 }
 
@@ -12673,6 +14129,20 @@ func (m *MessageMutation) AddedField(name string) (ent.Value, bool) {
 // type.
 func (m *MessageMutation) AddField(name string, value ent.Value) error {
 	switch name {
+	case message.FieldContentKeyVersion:
+		v, ok := value.(int)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddContentKeyVersion(v)
+		return nil
+	case message.FieldToolCallsKeyVersion:
+		v, ok := value.(int)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddToolCallsKeyVersion(v)
+		return nil
 	}
 	return fmt.Errorf("unknown Message numeric field %s", name)
 }
@@ -12681,8 +14151,26 @@ func (m *MessageMutation) AddField(name string, value ent.Value) error {
 // mutation.
 func (m *MessageMutation) ClearedFields() []string {
 	var fields []string
+	if m.FieldCleared(message.FieldContentCiphertext) {
+		fields = append(fields, message.FieldContentCiphertext)
+	}
+	if m.FieldCleared(message.FieldContentNonce) {
+		fields = append(fields, message.FieldContentNonce)
+	}
+	if m.FieldCleared(message.FieldContentKeyVersion) {
+		fields = append(fields, message.FieldContentKeyVersion)
+	}
 	if m.FieldCleared(message.FieldToolCalls) {
 		fields = append(fields, message.FieldToolCalls)
+	}
+	if m.FieldCleared(message.FieldToolCallsCiphertext) {
+		fields = append(fields, message.FieldToolCallsCiphertext)
+	}
+	if m.FieldCleared(message.FieldToolCallsNonce) {
+		fields = append(fields, message.FieldToolCallsNonce)
+	}
+	if m.FieldCleared(message.FieldToolCallsKeyVersion) {
+		fields = append(fields, message.FieldToolCallsKeyVersion)
 	}
 	if m.FieldCleared(message.FieldAuthor) {
 		fields = append(fields, message.FieldAuthor)
@@ -12701,8 +14189,26 @@ func (m *MessageMutation) FieldCleared(name string) bool {
 // error if the field is not defined in the schema.
 func (m *MessageMutation) ClearField(name string) error {
 	switch name {
+	case message.FieldContentCiphertext:
+		m.ClearContentCiphertext()
+		return nil
+	case message.FieldContentNonce:
+		m.ClearContentNonce()
+		return nil
+	case message.FieldContentKeyVersion:
+		m.ClearContentKeyVersion()
+		return nil
 	case message.FieldToolCalls:
 		m.ClearToolCalls()
+		return nil
+	case message.FieldToolCallsCiphertext:
+		m.ClearToolCallsCiphertext()
+		return nil
+	case message.FieldToolCallsNonce:
+		m.ClearToolCallsNonce()
+		return nil
+	case message.FieldToolCallsKeyVersion:
+		m.ClearToolCallsKeyVersion()
 		return nil
 	case message.FieldAuthor:
 		m.ClearAuthor()
@@ -12721,11 +14227,29 @@ func (m *MessageMutation) ResetField(name string) error {
 	case message.FieldContent:
 		m.ResetContent()
 		return nil
+	case message.FieldContentCiphertext:
+		m.ResetContentCiphertext()
+		return nil
+	case message.FieldContentNonce:
+		m.ResetContentNonce()
+		return nil
+	case message.FieldContentKeyVersion:
+		m.ResetContentKeyVersion()
+		return nil
 	case message.FieldTimestamp:
 		m.ResetTimestamp()
 		return nil
 	case message.FieldToolCalls:
 		m.ResetToolCalls()
+		return nil
+	case message.FieldToolCallsCiphertext:
+		m.ResetToolCallsCiphertext()
+		return nil
+	case message.FieldToolCallsNonce:
+		m.ResetToolCallsNonce()
+		return nil
+	case message.FieldToolCallsKeyVersion:
+		m.ResetToolCallsKeyVersion()
 		return nil
 	case message.FieldAuthor:
 		m.ResetAuthor()
@@ -12811,22 +14335,26 @@ func (m *MessageMutation) ResetEdge(name string) error {
 // ObservationMutation represents an operation that mutates the Observation nodes in the graph.
 type ObservationMutation struct {
 	config
-	op                    Op
-	typ                   string
-	id                    *uuid.UUID
-	session_key           *string
-	content               *string
-	token_count           *int
-	addtoken_count        *int
-	source_start_index    *int
-	addsource_start_index *int
-	source_end_index      *int
-	addsource_end_index   *int
-	created_at            *time.Time
-	clearedFields         map[string]struct{}
-	done                  bool
-	oldValue              func(context.Context) (*Observation, error)
-	predicates            []predicate.Observation
+	op                     Op
+	typ                    string
+	id                     *uuid.UUID
+	session_key            *string
+	content                *string
+	content_ciphertext     *[]byte
+	content_nonce          *[]byte
+	content_key_version    *int
+	addcontent_key_version *int
+	token_count            *int
+	addtoken_count         *int
+	source_start_index     *int
+	addsource_start_index  *int
+	source_end_index       *int
+	addsource_end_index    *int
+	created_at             *time.Time
+	clearedFields          map[string]struct{}
+	done                   bool
+	oldValue               func(context.Context) (*Observation, error)
+	predicates             []predicate.Observation
 }
 
 var _ ent.Mutation = (*ObservationMutation)(nil)
@@ -13003,6 +14531,174 @@ func (m *ObservationMutation) OldContent(ctx context.Context) (v string, err err
 // ResetContent resets all changes to the "content" field.
 func (m *ObservationMutation) ResetContent() {
 	m.content = nil
+}
+
+// SetContentCiphertext sets the "content_ciphertext" field.
+func (m *ObservationMutation) SetContentCiphertext(b []byte) {
+	m.content_ciphertext = &b
+}
+
+// ContentCiphertext returns the value of the "content_ciphertext" field in the mutation.
+func (m *ObservationMutation) ContentCiphertext() (r []byte, exists bool) {
+	v := m.content_ciphertext
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldContentCiphertext returns the old "content_ciphertext" field's value of the Observation entity.
+// If the Observation object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *ObservationMutation) OldContentCiphertext(ctx context.Context) (v *[]byte, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldContentCiphertext is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldContentCiphertext requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldContentCiphertext: %w", err)
+	}
+	return oldValue.ContentCiphertext, nil
+}
+
+// ClearContentCiphertext clears the value of the "content_ciphertext" field.
+func (m *ObservationMutation) ClearContentCiphertext() {
+	m.content_ciphertext = nil
+	m.clearedFields[observation.FieldContentCiphertext] = struct{}{}
+}
+
+// ContentCiphertextCleared returns if the "content_ciphertext" field was cleared in this mutation.
+func (m *ObservationMutation) ContentCiphertextCleared() bool {
+	_, ok := m.clearedFields[observation.FieldContentCiphertext]
+	return ok
+}
+
+// ResetContentCiphertext resets all changes to the "content_ciphertext" field.
+func (m *ObservationMutation) ResetContentCiphertext() {
+	m.content_ciphertext = nil
+	delete(m.clearedFields, observation.FieldContentCiphertext)
+}
+
+// SetContentNonce sets the "content_nonce" field.
+func (m *ObservationMutation) SetContentNonce(b []byte) {
+	m.content_nonce = &b
+}
+
+// ContentNonce returns the value of the "content_nonce" field in the mutation.
+func (m *ObservationMutation) ContentNonce() (r []byte, exists bool) {
+	v := m.content_nonce
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldContentNonce returns the old "content_nonce" field's value of the Observation entity.
+// If the Observation object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *ObservationMutation) OldContentNonce(ctx context.Context) (v *[]byte, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldContentNonce is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldContentNonce requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldContentNonce: %w", err)
+	}
+	return oldValue.ContentNonce, nil
+}
+
+// ClearContentNonce clears the value of the "content_nonce" field.
+func (m *ObservationMutation) ClearContentNonce() {
+	m.content_nonce = nil
+	m.clearedFields[observation.FieldContentNonce] = struct{}{}
+}
+
+// ContentNonceCleared returns if the "content_nonce" field was cleared in this mutation.
+func (m *ObservationMutation) ContentNonceCleared() bool {
+	_, ok := m.clearedFields[observation.FieldContentNonce]
+	return ok
+}
+
+// ResetContentNonce resets all changes to the "content_nonce" field.
+func (m *ObservationMutation) ResetContentNonce() {
+	m.content_nonce = nil
+	delete(m.clearedFields, observation.FieldContentNonce)
+}
+
+// SetContentKeyVersion sets the "content_key_version" field.
+func (m *ObservationMutation) SetContentKeyVersion(i int) {
+	m.content_key_version = &i
+	m.addcontent_key_version = nil
+}
+
+// ContentKeyVersion returns the value of the "content_key_version" field in the mutation.
+func (m *ObservationMutation) ContentKeyVersion() (r int, exists bool) {
+	v := m.content_key_version
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldContentKeyVersion returns the old "content_key_version" field's value of the Observation entity.
+// If the Observation object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *ObservationMutation) OldContentKeyVersion(ctx context.Context) (v *int, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldContentKeyVersion is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldContentKeyVersion requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldContentKeyVersion: %w", err)
+	}
+	return oldValue.ContentKeyVersion, nil
+}
+
+// AddContentKeyVersion adds i to the "content_key_version" field.
+func (m *ObservationMutation) AddContentKeyVersion(i int) {
+	if m.addcontent_key_version != nil {
+		*m.addcontent_key_version += i
+	} else {
+		m.addcontent_key_version = &i
+	}
+}
+
+// AddedContentKeyVersion returns the value that was added to the "content_key_version" field in this mutation.
+func (m *ObservationMutation) AddedContentKeyVersion() (r int, exists bool) {
+	v := m.addcontent_key_version
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ClearContentKeyVersion clears the value of the "content_key_version" field.
+func (m *ObservationMutation) ClearContentKeyVersion() {
+	m.content_key_version = nil
+	m.addcontent_key_version = nil
+	m.clearedFields[observation.FieldContentKeyVersion] = struct{}{}
+}
+
+// ContentKeyVersionCleared returns if the "content_key_version" field was cleared in this mutation.
+func (m *ObservationMutation) ContentKeyVersionCleared() bool {
+	_, ok := m.clearedFields[observation.FieldContentKeyVersion]
+	return ok
+}
+
+// ResetContentKeyVersion resets all changes to the "content_key_version" field.
+func (m *ObservationMutation) ResetContentKeyVersion() {
+	m.content_key_version = nil
+	m.addcontent_key_version = nil
+	delete(m.clearedFields, observation.FieldContentKeyVersion)
 }
 
 // SetTokenCount sets the "token_count" field.
@@ -13243,12 +14939,21 @@ func (m *ObservationMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *ObservationMutation) Fields() []string {
-	fields := make([]string, 0, 6)
+	fields := make([]string, 0, 9)
 	if m.session_key != nil {
 		fields = append(fields, observation.FieldSessionKey)
 	}
 	if m.content != nil {
 		fields = append(fields, observation.FieldContent)
+	}
+	if m.content_ciphertext != nil {
+		fields = append(fields, observation.FieldContentCiphertext)
+	}
+	if m.content_nonce != nil {
+		fields = append(fields, observation.FieldContentNonce)
+	}
+	if m.content_key_version != nil {
+		fields = append(fields, observation.FieldContentKeyVersion)
 	}
 	if m.token_count != nil {
 		fields = append(fields, observation.FieldTokenCount)
@@ -13274,6 +14979,12 @@ func (m *ObservationMutation) Field(name string) (ent.Value, bool) {
 		return m.SessionKey()
 	case observation.FieldContent:
 		return m.Content()
+	case observation.FieldContentCiphertext:
+		return m.ContentCiphertext()
+	case observation.FieldContentNonce:
+		return m.ContentNonce()
+	case observation.FieldContentKeyVersion:
+		return m.ContentKeyVersion()
 	case observation.FieldTokenCount:
 		return m.TokenCount()
 	case observation.FieldSourceStartIndex:
@@ -13295,6 +15006,12 @@ func (m *ObservationMutation) OldField(ctx context.Context, name string) (ent.Va
 		return m.OldSessionKey(ctx)
 	case observation.FieldContent:
 		return m.OldContent(ctx)
+	case observation.FieldContentCiphertext:
+		return m.OldContentCiphertext(ctx)
+	case observation.FieldContentNonce:
+		return m.OldContentNonce(ctx)
+	case observation.FieldContentKeyVersion:
+		return m.OldContentKeyVersion(ctx)
 	case observation.FieldTokenCount:
 		return m.OldTokenCount(ctx)
 	case observation.FieldSourceStartIndex:
@@ -13325,6 +15042,27 @@ func (m *ObservationMutation) SetField(name string, value ent.Value) error {
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
 		m.SetContent(v)
+		return nil
+	case observation.FieldContentCiphertext:
+		v, ok := value.([]byte)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetContentCiphertext(v)
+		return nil
+	case observation.FieldContentNonce:
+		v, ok := value.([]byte)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetContentNonce(v)
+		return nil
+	case observation.FieldContentKeyVersion:
+		v, ok := value.(int)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetContentKeyVersion(v)
 		return nil
 	case observation.FieldTokenCount:
 		v, ok := value.(int)
@@ -13362,6 +15100,9 @@ func (m *ObservationMutation) SetField(name string, value ent.Value) error {
 // this mutation.
 func (m *ObservationMutation) AddedFields() []string {
 	var fields []string
+	if m.addcontent_key_version != nil {
+		fields = append(fields, observation.FieldContentKeyVersion)
+	}
 	if m.addtoken_count != nil {
 		fields = append(fields, observation.FieldTokenCount)
 	}
@@ -13379,6 +15120,8 @@ func (m *ObservationMutation) AddedFields() []string {
 // was not set, or was not defined in the schema.
 func (m *ObservationMutation) AddedField(name string) (ent.Value, bool) {
 	switch name {
+	case observation.FieldContentKeyVersion:
+		return m.AddedContentKeyVersion()
 	case observation.FieldTokenCount:
 		return m.AddedTokenCount()
 	case observation.FieldSourceStartIndex:
@@ -13394,6 +15137,13 @@ func (m *ObservationMutation) AddedField(name string) (ent.Value, bool) {
 // type.
 func (m *ObservationMutation) AddField(name string, value ent.Value) error {
 	switch name {
+	case observation.FieldContentKeyVersion:
+		v, ok := value.(int)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddContentKeyVersion(v)
+		return nil
 	case observation.FieldTokenCount:
 		v, ok := value.(int)
 		if !ok {
@@ -13422,7 +15172,17 @@ func (m *ObservationMutation) AddField(name string, value ent.Value) error {
 // ClearedFields returns all nullable fields that were cleared during this
 // mutation.
 func (m *ObservationMutation) ClearedFields() []string {
-	return nil
+	var fields []string
+	if m.FieldCleared(observation.FieldContentCiphertext) {
+		fields = append(fields, observation.FieldContentCiphertext)
+	}
+	if m.FieldCleared(observation.FieldContentNonce) {
+		fields = append(fields, observation.FieldContentNonce)
+	}
+	if m.FieldCleared(observation.FieldContentKeyVersion) {
+		fields = append(fields, observation.FieldContentKeyVersion)
+	}
+	return fields
 }
 
 // FieldCleared returns a boolean indicating if a field with the given name was
@@ -13435,6 +15195,17 @@ func (m *ObservationMutation) FieldCleared(name string) bool {
 // ClearField clears the value of the field with the given name. It returns an
 // error if the field is not defined in the schema.
 func (m *ObservationMutation) ClearField(name string) error {
+	switch name {
+	case observation.FieldContentCiphertext:
+		m.ClearContentCiphertext()
+		return nil
+	case observation.FieldContentNonce:
+		m.ClearContentNonce()
+		return nil
+	case observation.FieldContentKeyVersion:
+		m.ClearContentKeyVersion()
+		return nil
+	}
 	return fmt.Errorf("unknown Observation nullable field %s", name)
 }
 
@@ -13447,6 +15218,15 @@ func (m *ObservationMutation) ResetField(name string) error {
 		return nil
 	case observation.FieldContent:
 		m.ResetContent()
+		return nil
+	case observation.FieldContentCiphertext:
+		m.ResetContentCiphertext()
+		return nil
+	case observation.FieldContentNonce:
+		m.ResetContentNonce()
+		return nil
+	case observation.FieldContentKeyVersion:
+		m.ResetContentKeyVersion()
 		return nil
 	case observation.FieldTokenCount:
 		m.ResetTokenCount()
@@ -19931,20 +21711,24 @@ func (m *ProvenanceCheckpointMutation) ResetEdge(name string) error {
 // ReflectionMutation represents an operation that mutates the Reflection nodes in the graph.
 type ReflectionMutation struct {
 	config
-	op             Op
-	typ            string
-	id             *uuid.UUID
-	session_key    *string
-	content        *string
-	token_count    *int
-	addtoken_count *int
-	generation     *int
-	addgeneration  *int
-	created_at     *time.Time
-	clearedFields  map[string]struct{}
-	done           bool
-	oldValue       func(context.Context) (*Reflection, error)
-	predicates     []predicate.Reflection
+	op                     Op
+	typ                    string
+	id                     *uuid.UUID
+	session_key            *string
+	content                *string
+	content_ciphertext     *[]byte
+	content_nonce          *[]byte
+	content_key_version    *int
+	addcontent_key_version *int
+	token_count            *int
+	addtoken_count         *int
+	generation             *int
+	addgeneration          *int
+	created_at             *time.Time
+	clearedFields          map[string]struct{}
+	done                   bool
+	oldValue               func(context.Context) (*Reflection, error)
+	predicates             []predicate.Reflection
 }
 
 var _ ent.Mutation = (*ReflectionMutation)(nil)
@@ -20121,6 +21905,174 @@ func (m *ReflectionMutation) OldContent(ctx context.Context) (v string, err erro
 // ResetContent resets all changes to the "content" field.
 func (m *ReflectionMutation) ResetContent() {
 	m.content = nil
+}
+
+// SetContentCiphertext sets the "content_ciphertext" field.
+func (m *ReflectionMutation) SetContentCiphertext(b []byte) {
+	m.content_ciphertext = &b
+}
+
+// ContentCiphertext returns the value of the "content_ciphertext" field in the mutation.
+func (m *ReflectionMutation) ContentCiphertext() (r []byte, exists bool) {
+	v := m.content_ciphertext
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldContentCiphertext returns the old "content_ciphertext" field's value of the Reflection entity.
+// If the Reflection object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *ReflectionMutation) OldContentCiphertext(ctx context.Context) (v *[]byte, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldContentCiphertext is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldContentCiphertext requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldContentCiphertext: %w", err)
+	}
+	return oldValue.ContentCiphertext, nil
+}
+
+// ClearContentCiphertext clears the value of the "content_ciphertext" field.
+func (m *ReflectionMutation) ClearContentCiphertext() {
+	m.content_ciphertext = nil
+	m.clearedFields[reflection.FieldContentCiphertext] = struct{}{}
+}
+
+// ContentCiphertextCleared returns if the "content_ciphertext" field was cleared in this mutation.
+func (m *ReflectionMutation) ContentCiphertextCleared() bool {
+	_, ok := m.clearedFields[reflection.FieldContentCiphertext]
+	return ok
+}
+
+// ResetContentCiphertext resets all changes to the "content_ciphertext" field.
+func (m *ReflectionMutation) ResetContentCiphertext() {
+	m.content_ciphertext = nil
+	delete(m.clearedFields, reflection.FieldContentCiphertext)
+}
+
+// SetContentNonce sets the "content_nonce" field.
+func (m *ReflectionMutation) SetContentNonce(b []byte) {
+	m.content_nonce = &b
+}
+
+// ContentNonce returns the value of the "content_nonce" field in the mutation.
+func (m *ReflectionMutation) ContentNonce() (r []byte, exists bool) {
+	v := m.content_nonce
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldContentNonce returns the old "content_nonce" field's value of the Reflection entity.
+// If the Reflection object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *ReflectionMutation) OldContentNonce(ctx context.Context) (v *[]byte, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldContentNonce is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldContentNonce requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldContentNonce: %w", err)
+	}
+	return oldValue.ContentNonce, nil
+}
+
+// ClearContentNonce clears the value of the "content_nonce" field.
+func (m *ReflectionMutation) ClearContentNonce() {
+	m.content_nonce = nil
+	m.clearedFields[reflection.FieldContentNonce] = struct{}{}
+}
+
+// ContentNonceCleared returns if the "content_nonce" field was cleared in this mutation.
+func (m *ReflectionMutation) ContentNonceCleared() bool {
+	_, ok := m.clearedFields[reflection.FieldContentNonce]
+	return ok
+}
+
+// ResetContentNonce resets all changes to the "content_nonce" field.
+func (m *ReflectionMutation) ResetContentNonce() {
+	m.content_nonce = nil
+	delete(m.clearedFields, reflection.FieldContentNonce)
+}
+
+// SetContentKeyVersion sets the "content_key_version" field.
+func (m *ReflectionMutation) SetContentKeyVersion(i int) {
+	m.content_key_version = &i
+	m.addcontent_key_version = nil
+}
+
+// ContentKeyVersion returns the value of the "content_key_version" field in the mutation.
+func (m *ReflectionMutation) ContentKeyVersion() (r int, exists bool) {
+	v := m.content_key_version
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldContentKeyVersion returns the old "content_key_version" field's value of the Reflection entity.
+// If the Reflection object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *ReflectionMutation) OldContentKeyVersion(ctx context.Context) (v *int, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldContentKeyVersion is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldContentKeyVersion requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldContentKeyVersion: %w", err)
+	}
+	return oldValue.ContentKeyVersion, nil
+}
+
+// AddContentKeyVersion adds i to the "content_key_version" field.
+func (m *ReflectionMutation) AddContentKeyVersion(i int) {
+	if m.addcontent_key_version != nil {
+		*m.addcontent_key_version += i
+	} else {
+		m.addcontent_key_version = &i
+	}
+}
+
+// AddedContentKeyVersion returns the value that was added to the "content_key_version" field in this mutation.
+func (m *ReflectionMutation) AddedContentKeyVersion() (r int, exists bool) {
+	v := m.addcontent_key_version
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ClearContentKeyVersion clears the value of the "content_key_version" field.
+func (m *ReflectionMutation) ClearContentKeyVersion() {
+	m.content_key_version = nil
+	m.addcontent_key_version = nil
+	m.clearedFields[reflection.FieldContentKeyVersion] = struct{}{}
+}
+
+// ContentKeyVersionCleared returns if the "content_key_version" field was cleared in this mutation.
+func (m *ReflectionMutation) ContentKeyVersionCleared() bool {
+	_, ok := m.clearedFields[reflection.FieldContentKeyVersion]
+	return ok
+}
+
+// ResetContentKeyVersion resets all changes to the "content_key_version" field.
+func (m *ReflectionMutation) ResetContentKeyVersion() {
+	m.content_key_version = nil
+	m.addcontent_key_version = nil
+	delete(m.clearedFields, reflection.FieldContentKeyVersion)
 }
 
 // SetTokenCount sets the "token_count" field.
@@ -20305,12 +22257,21 @@ func (m *ReflectionMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *ReflectionMutation) Fields() []string {
-	fields := make([]string, 0, 5)
+	fields := make([]string, 0, 8)
 	if m.session_key != nil {
 		fields = append(fields, reflection.FieldSessionKey)
 	}
 	if m.content != nil {
 		fields = append(fields, reflection.FieldContent)
+	}
+	if m.content_ciphertext != nil {
+		fields = append(fields, reflection.FieldContentCiphertext)
+	}
+	if m.content_nonce != nil {
+		fields = append(fields, reflection.FieldContentNonce)
+	}
+	if m.content_key_version != nil {
+		fields = append(fields, reflection.FieldContentKeyVersion)
 	}
 	if m.token_count != nil {
 		fields = append(fields, reflection.FieldTokenCount)
@@ -20333,6 +22294,12 @@ func (m *ReflectionMutation) Field(name string) (ent.Value, bool) {
 		return m.SessionKey()
 	case reflection.FieldContent:
 		return m.Content()
+	case reflection.FieldContentCiphertext:
+		return m.ContentCiphertext()
+	case reflection.FieldContentNonce:
+		return m.ContentNonce()
+	case reflection.FieldContentKeyVersion:
+		return m.ContentKeyVersion()
 	case reflection.FieldTokenCount:
 		return m.TokenCount()
 	case reflection.FieldGeneration:
@@ -20352,6 +22319,12 @@ func (m *ReflectionMutation) OldField(ctx context.Context, name string) (ent.Val
 		return m.OldSessionKey(ctx)
 	case reflection.FieldContent:
 		return m.OldContent(ctx)
+	case reflection.FieldContentCiphertext:
+		return m.OldContentCiphertext(ctx)
+	case reflection.FieldContentNonce:
+		return m.OldContentNonce(ctx)
+	case reflection.FieldContentKeyVersion:
+		return m.OldContentKeyVersion(ctx)
 	case reflection.FieldTokenCount:
 		return m.OldTokenCount(ctx)
 	case reflection.FieldGeneration:
@@ -20380,6 +22353,27 @@ func (m *ReflectionMutation) SetField(name string, value ent.Value) error {
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
 		m.SetContent(v)
+		return nil
+	case reflection.FieldContentCiphertext:
+		v, ok := value.([]byte)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetContentCiphertext(v)
+		return nil
+	case reflection.FieldContentNonce:
+		v, ok := value.([]byte)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetContentNonce(v)
+		return nil
+	case reflection.FieldContentKeyVersion:
+		v, ok := value.(int)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetContentKeyVersion(v)
 		return nil
 	case reflection.FieldTokenCount:
 		v, ok := value.(int)
@@ -20410,6 +22404,9 @@ func (m *ReflectionMutation) SetField(name string, value ent.Value) error {
 // this mutation.
 func (m *ReflectionMutation) AddedFields() []string {
 	var fields []string
+	if m.addcontent_key_version != nil {
+		fields = append(fields, reflection.FieldContentKeyVersion)
+	}
 	if m.addtoken_count != nil {
 		fields = append(fields, reflection.FieldTokenCount)
 	}
@@ -20424,6 +22421,8 @@ func (m *ReflectionMutation) AddedFields() []string {
 // was not set, or was not defined in the schema.
 func (m *ReflectionMutation) AddedField(name string) (ent.Value, bool) {
 	switch name {
+	case reflection.FieldContentKeyVersion:
+		return m.AddedContentKeyVersion()
 	case reflection.FieldTokenCount:
 		return m.AddedTokenCount()
 	case reflection.FieldGeneration:
@@ -20437,6 +22436,13 @@ func (m *ReflectionMutation) AddedField(name string) (ent.Value, bool) {
 // type.
 func (m *ReflectionMutation) AddField(name string, value ent.Value) error {
 	switch name {
+	case reflection.FieldContentKeyVersion:
+		v, ok := value.(int)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddContentKeyVersion(v)
+		return nil
 	case reflection.FieldTokenCount:
 		v, ok := value.(int)
 		if !ok {
@@ -20458,7 +22464,17 @@ func (m *ReflectionMutation) AddField(name string, value ent.Value) error {
 // ClearedFields returns all nullable fields that were cleared during this
 // mutation.
 func (m *ReflectionMutation) ClearedFields() []string {
-	return nil
+	var fields []string
+	if m.FieldCleared(reflection.FieldContentCiphertext) {
+		fields = append(fields, reflection.FieldContentCiphertext)
+	}
+	if m.FieldCleared(reflection.FieldContentNonce) {
+		fields = append(fields, reflection.FieldContentNonce)
+	}
+	if m.FieldCleared(reflection.FieldContentKeyVersion) {
+		fields = append(fields, reflection.FieldContentKeyVersion)
+	}
+	return fields
 }
 
 // FieldCleared returns a boolean indicating if a field with the given name was
@@ -20471,6 +22487,17 @@ func (m *ReflectionMutation) FieldCleared(name string) bool {
 // ClearField clears the value of the field with the given name. It returns an
 // error if the field is not defined in the schema.
 func (m *ReflectionMutation) ClearField(name string) error {
+	switch name {
+	case reflection.FieldContentCiphertext:
+		m.ClearContentCiphertext()
+		return nil
+	case reflection.FieldContentNonce:
+		m.ClearContentNonce()
+		return nil
+	case reflection.FieldContentKeyVersion:
+		m.ClearContentKeyVersion()
+		return nil
+	}
 	return fmt.Errorf("unknown Reflection nullable field %s", name)
 }
 
@@ -20483,6 +22510,15 @@ func (m *ReflectionMutation) ResetField(name string) error {
 		return nil
 	case reflection.FieldContent:
 		m.ResetContent()
+		return nil
+	case reflection.FieldContentCiphertext:
+		m.ResetContentCiphertext()
+		return nil
+	case reflection.FieldContentNonce:
+		m.ResetContentNonce()
+		return nil
+	case reflection.FieldContentKeyVersion:
+		m.ResetContentKeyVersion()
 		return nil
 	case reflection.FieldTokenCount:
 		m.ResetTokenCount()

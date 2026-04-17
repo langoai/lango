@@ -56,6 +56,9 @@ var (
 		{Name: "kind", Type: field.TypeEnum, Enums: []string{"pattern", "preference", "fact", "skill"}},
 		{Name: "key", Type: field.TypeString},
 		{Name: "content", Type: field.TypeString, Size: 2147483647},
+		{Name: "content_ciphertext", Type: field.TypeBytes, Nullable: true},
+		{Name: "content_nonce", Type: field.TypeBytes, Nullable: true},
+		{Name: "content_key_version", Type: field.TypeInt, Nullable: true},
 		{Name: "confidence", Type: field.TypeFloat64, Default: 0.5},
 		{Name: "use_count", Type: field.TypeInt, Default: 0},
 		{Name: "tags", Type: field.TypeJSON, Nullable: true},
@@ -91,7 +94,7 @@ var (
 			{
 				Name:    "agentmemory_confidence",
 				Unique:  false,
-				Columns: []*schema.Column{AgentMemoriesColumns[6]},
+				Columns: []*schema.Column{AgentMemoriesColumns[9]},
 			},
 		},
 	}
@@ -362,6 +365,9 @@ var (
 		{Name: "session_key", Type: field.TypeString},
 		{Name: "topic", Type: field.TypeString},
 		{Name: "question", Type: field.TypeString, Size: 2147483647},
+		{Name: "payload_ciphertext", Type: field.TypeBytes, Nullable: true},
+		{Name: "payload_nonce", Type: field.TypeBytes, Nullable: true},
+		{Name: "payload_key_version", Type: field.TypeInt, Nullable: true},
 		{Name: "context", Type: field.TypeString, Nullable: true, Size: 2147483647},
 		{Name: "priority", Type: field.TypeEnum, Enums: []string{"low", "medium", "high"}, Default: "medium"},
 		{Name: "status", Type: field.TypeEnum, Enums: []string{"pending", "resolved", "dismissed"}, Default: "pending"},
@@ -380,12 +386,12 @@ var (
 			{
 				Name:    "inquiry_session_key_status",
 				Unique:  false,
-				Columns: []*schema.Column{InquiriesColumns[1], InquiriesColumns[6]},
+				Columns: []*schema.Column{InquiriesColumns[1], InquiriesColumns[9]},
 			},
 			{
 				Name:    "inquiry_status",
 				Unique:  false,
-				Columns: []*schema.Column{InquiriesColumns[6]},
+				Columns: []*schema.Column{InquiriesColumns[9]},
 			},
 		},
 	}
@@ -422,6 +428,9 @@ var (
 		{Name: "key", Type: field.TypeString},
 		{Name: "category", Type: field.TypeEnum, Enums: []string{"rule", "definition", "preference", "fact", "pattern", "correction"}},
 		{Name: "content", Type: field.TypeString, Size: 2147483647},
+		{Name: "content_ciphertext", Type: field.TypeBytes, Nullable: true},
+		{Name: "content_nonce", Type: field.TypeBytes, Nullable: true},
+		{Name: "content_key_version", Type: field.TypeInt, Nullable: true},
 		{Name: "tags", Type: field.TypeJSON, Nullable: true},
 		{Name: "source", Type: field.TypeString, Nullable: true},
 		{Name: "version", Type: field.TypeInt, Default: 1},
@@ -440,12 +449,12 @@ var (
 			{
 				Name:    "knowledge_key_version",
 				Unique:  true,
-				Columns: []*schema.Column{KnowledgesColumns[1], KnowledgesColumns[6]},
+				Columns: []*schema.Column{KnowledgesColumns[1], KnowledgesColumns[9]},
 			},
 			{
 				Name:    "knowledge_key_is_latest",
 				Unique:  false,
-				Columns: []*schema.Column{KnowledgesColumns[1], KnowledgesColumns[7]},
+				Columns: []*schema.Column{KnowledgesColumns[1], KnowledgesColumns[10]},
 			},
 			{
 				Name:    "knowledge_category",
@@ -461,6 +470,9 @@ var (
 		{Name: "error_pattern", Type: field.TypeString, Nullable: true, Size: 2147483647},
 		{Name: "diagnosis", Type: field.TypeString, Nullable: true, Size: 2147483647},
 		{Name: "fix", Type: field.TypeString, Nullable: true, Size: 2147483647},
+		{Name: "payload_ciphertext", Type: field.TypeBytes, Nullable: true},
+		{Name: "payload_nonce", Type: field.TypeBytes, Nullable: true},
+		{Name: "payload_key_version", Type: field.TypeInt, Nullable: true},
 		{Name: "category", Type: field.TypeEnum, Enums: []string{"tool_error", "provider_error", "user_correction", "timeout", "permission", "general"}},
 		{Name: "tags", Type: field.TypeJSON, Nullable: true},
 		{Name: "occurrence_count", Type: field.TypeInt, Default: 1},
@@ -478,12 +490,12 @@ var (
 			{
 				Name:    "learning_category",
 				Unique:  false,
-				Columns: []*schema.Column{LearningsColumns[5]},
+				Columns: []*schema.Column{LearningsColumns[8]},
 			},
 			{
 				Name:    "learning_confidence",
 				Unique:  false,
-				Columns: []*schema.Column{LearningsColumns[9]},
+				Columns: []*schema.Column{LearningsColumns[12]},
 			},
 		},
 	}
@@ -492,8 +504,14 @@ var (
 		{Name: "id", Type: field.TypeInt, Increment: true},
 		{Name: "role", Type: field.TypeString},
 		{Name: "content", Type: field.TypeString, Size: 2147483647},
+		{Name: "content_ciphertext", Type: field.TypeBytes, Nullable: true},
+		{Name: "content_nonce", Type: field.TypeBytes, Nullable: true},
+		{Name: "content_key_version", Type: field.TypeInt, Nullable: true},
 		{Name: "timestamp", Type: field.TypeTime},
 		{Name: "tool_calls", Type: field.TypeJSON, Nullable: true},
+		{Name: "tool_calls_ciphertext", Type: field.TypeBytes, Nullable: true},
+		{Name: "tool_calls_nonce", Type: field.TypeBytes, Nullable: true},
+		{Name: "tool_calls_key_version", Type: field.TypeInt, Nullable: true},
 		{Name: "author", Type: field.TypeString, Nullable: true, Default: ""},
 		{Name: "session_messages", Type: field.TypeInt, Nullable: true},
 	}
@@ -505,7 +523,7 @@ var (
 		ForeignKeys: []*schema.ForeignKey{
 			{
 				Symbol:     "messages_sessions_messages",
-				Columns:    []*schema.Column{MessagesColumns[6]},
+				Columns:    []*schema.Column{MessagesColumns[12]},
 				RefColumns: []*schema.Column{SessionsColumns[0]},
 				OnDelete:   schema.SetNull,
 			},
@@ -516,6 +534,9 @@ var (
 		{Name: "id", Type: field.TypeUUID},
 		{Name: "session_key", Type: field.TypeString},
 		{Name: "content", Type: field.TypeString, Size: 2147483647},
+		{Name: "content_ciphertext", Type: field.TypeBytes, Nullable: true},
+		{Name: "content_nonce", Type: field.TypeBytes, Nullable: true},
+		{Name: "content_key_version", Type: field.TypeInt, Nullable: true},
 		{Name: "token_count", Type: field.TypeInt, Default: 0},
 		{Name: "source_start_index", Type: field.TypeInt, Default: 0},
 		{Name: "source_end_index", Type: field.TypeInt, Default: 0},
@@ -535,7 +556,7 @@ var (
 			{
 				Name:    "observation_created_at",
 				Unique:  false,
-				Columns: []*schema.Column{ObservationsColumns[6]},
+				Columns: []*schema.Column{ObservationsColumns[9]},
 			},
 		},
 	}
@@ -815,6 +836,9 @@ var (
 		{Name: "id", Type: field.TypeUUID},
 		{Name: "session_key", Type: field.TypeString},
 		{Name: "content", Type: field.TypeString, Size: 2147483647},
+		{Name: "content_ciphertext", Type: field.TypeBytes, Nullable: true},
+		{Name: "content_nonce", Type: field.TypeBytes, Nullable: true},
+		{Name: "content_key_version", Type: field.TypeInt, Nullable: true},
 		{Name: "token_count", Type: field.TypeInt, Default: 0},
 		{Name: "generation", Type: field.TypeInt, Default: 1},
 		{Name: "created_at", Type: field.TypeTime},
@@ -833,7 +857,7 @@ var (
 			{
 				Name:    "reflection_created_at",
 				Unique:  false,
-				Columns: []*schema.Column{ReflectionsColumns[5]},
+				Columns: []*schema.Column{ReflectionsColumns[8]},
 			},
 		},
 	}
