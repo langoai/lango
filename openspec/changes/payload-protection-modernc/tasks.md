@@ -1,6 +1,6 @@
 ## 1. Driver And Legacy Policy
 
-- [ ] 1.1 Introduce a SQLite driver adapter and switch the primary runtime to modernc.
+- [x] 1.1 Introduce a SQLite driver adapter and switch the primary runtime to modernc.
 - [ ] 1.2 Remove SQLCipher runtime paths and DB encrypt/decrypt workflows.
 - [ ] 1.3 Detect non-SQLite legacy DB headers and fail fast with remediation messaging.
 

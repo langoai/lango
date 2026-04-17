@@ -8,13 +8,12 @@ import (
 	"path/filepath"
 	"strings"
 
-	_ "github.com/mattn/go-sqlite3"
+	_ "modernc.org/sqlite"
 )
 
 const (
-	driverName         = "sqlite3"
+	driverName         = "sqlite"
 	defaultBusyTimeout = 5000
-	defaultJournalMode = "WAL"
 )
 
 var ErrLegacyEncryptedOrUnreadableDB = errors.New("legacy encrypted or unreadable DB")
@@ -104,15 +103,26 @@ func buildDSN(path string, readonly bool) string {
 	if readonly {
 		params = append(params, "mode=ro")
 	}
-	params = append(params,
-		"cache=shared",
-		"_journal_mode="+defaultJournalMode,
-		fmt.Sprintf("_busy_timeout=%d", defaultBusyTimeout),
-	)
+	params = append(params, "cache=shared")
 
 	sep := "?"
 	if strings.Contains(base, "?") {
 		sep = "&"
 	}
 	return base + sep + strings.Join(params, "&")
+}
+
+func ConfigureConnection(db *sql.DB, readonly bool) error {
+	if db == nil {
+		return nil
+	}
+	if _, err := db.Exec(fmt.Sprintf("PRAGMA busy_timeout = %d", defaultBusyTimeout)); err != nil {
+		return fmt.Errorf("set busy_timeout: %w", err)
+	}
+	if !readonly {
+		if _, err := db.Exec("PRAGMA journal_mode = WAL"); err != nil {
+			return fmt.Errorf("set journal_mode: %w", err)
+		}
+	}
+	return nil
 }

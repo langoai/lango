@@ -76,6 +76,11 @@ func NewEntStore(dbPath string, opts ...StoreOption) (*EntStore, error) {
 		return nil, fmt.Errorf("open database: %w", err)
 	}
 
+	if err := sqlitedriver.ConfigureConnection(db, false); err != nil {
+		db.Close()
+		return nil, err
+	}
+
 	// Set key immediately if provided (essential for SQLCipher)
 	// Use hex-encoded key to avoid SQL injection via passphrase content.
 	// SQLCipher accepts: PRAGMA key = "x'HEX_ENCODED_KEY'"

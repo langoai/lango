@@ -7,8 +7,8 @@ import (
 	"github.com/langoai/lango/internal/appinit"
 	"github.com/langoai/lango/internal/bootstrap"
 	"github.com/langoai/lango/internal/config"
-	"github.com/langoai/lango/internal/ent/enttest"
 	"github.com/langoai/lango/internal/storage"
+	"github.com/langoai/lango/internal/testutil"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -201,8 +201,7 @@ func TestModuleProvides(t *testing.T) {
 func TestRunLedgerModule_WorkspaceIsolationGate(t *testing.T) {
 	t.Parallel()
 
-	client := enttest.Open(t, "sqlite3", "file:ent?mode=memory&_fk=1")
-	defer client.Close()
+	client := testutil.TestEntClient(t)
 
 	cfg := config.DefaultConfig()
 	cfg.RunLedger.Enabled = true

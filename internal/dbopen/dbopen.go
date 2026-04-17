@@ -38,6 +38,11 @@ func OpenManaged(dbPath, encryptionKey string, rawKey bool, cipherPageSize int) 
 	db.SetMaxOpenConns(4)
 	db.SetMaxIdleConns(4)
 
+	if err := sqlitedriver.ConfigureConnection(db, false); err != nil {
+		db.Close()
+		return nil, nil, err
+	}
+
 	if err := applyEncryptionPragmas(db, encryptionKey, rawKey, cipherPageSize, false); err != nil {
 		db.Close()
 		return nil, nil, err
@@ -81,6 +86,11 @@ func OpenReadOnly(dbPath, encryptionKey string, rawKey bool, cipherPageSize int)
 
 	db.SetMaxOpenConns(2)
 	db.SetMaxIdleConns(2)
+
+	if err := sqlitedriver.ConfigureConnection(db, true); err != nil {
+		db.Close()
+		return nil, nil, err
+	}
 
 	if err := applyEncryptionPragmas(db, encryptionKey, rawKey, cipherPageSize, true); err != nil {
 		db.Close()
