@@ -7,7 +7,9 @@ import (
 	"strings"
 	"time"
 
+	"entgo.io/ent/dialect"
 	"entgo.io/ent/dialect/sql"
+	entsql "entgo.io/ent/dialect/sql"
 	"github.com/google/uuid"
 	"go.uber.org/zap"
 
@@ -35,7 +37,7 @@ type Store struct {
 var (
 	emailProjectionPattern = regexp.MustCompile(`[A-Za-z0-9._%+\-]+@[A-Za-z0-9.\-]+\.[A-Za-z]{2,}`)
 	longDigitsPattern      = regexp.MustCompile(`\b\d{6,}\b`)
-	longSecretTokenPattern = regexp.MustCompile(`\b(?:[A-Fa-f0-9]{32,}|[A-Za-z0-9_\-]{40,})\b`)
+	longSecretTokenPattern = regexp.MustCompile(`\b(?:[A-Fa-f0-9]{32,}|[A-Za-z0-9_\-]{32,})\b`)
 )
 
 // NewStore creates a new knowledge store.
@@ -118,6 +120,10 @@ func (s *Store) SaveKnowledge(ctx context.Context, sessionKey string, entry Know
 }
 
 func (s *Store) saveKnowledgeOnce(ctx context.Context, _ string, entry KnowledgeEntry) error {
+	if s.payloads != nil && s.fts5Index != nil && s.fts5Index.DB() != nil {
+		return s.saveKnowledgeAtomic(ctx, entry)
+	}
+
 	existing, err := s.client.Knowledge.Query().
 		Where(entknowledge.Key(entry.Key), entknowledge.IsLatest(true)).
 		Only(ctx)
@@ -225,6 +231,87 @@ func (s *Store) saveKnowledgeOnce(ctx context.Context, _ string, entry Knowledge
 // isUniqueConstraintError checks for SQLite unique constraint violation.
 func isUniqueConstraintError(err error) bool {
 	return err != nil && strings.Contains(err.Error(), "UNIQUE constraint failed")
+}
+
+func (s *Store) saveKnowledgeAtomic(ctx context.Context, entry KnowledgeEntry) error {
+	tx, err := s.fts5Index.DB().BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("begin knowledge sql tx: %w", err)
+	}
+	committed := false
+	defer func() {
+		if !committed {
+			_ = tx.Rollback()
+		}
+	}()
+
+	txClient := ent.NewClient(ent.Driver(entsql.NewDriver(dialect.SQLite, entsql.Conn{ExecQuerier: tx})))
+	existing, err := txClient.Knowledge.Query().
+		Where(entknowledge.Key(entry.Key), entknowledge.IsLatest(true)).
+		Only(ctx)
+
+	if err != nil && !ent.IsNotFound(err) {
+		return fmt.Errorf("query knowledge: %w", err)
+	}
+	if err == nil && existing.Category == entry.Category && s.resolveKnowledgeContent(ctx, existing) == entry.Content {
+		return nil
+	}
+
+	storedContent, ciphertext, nonce, keyVersion, err := s.prepareKnowledgeWrite(ctx, entry.Content)
+	if err != nil {
+		return fmt.Errorf("prepare knowledge payload: %w", err)
+	}
+
+	isNew := ent.IsNotFound(err)
+	version := 1
+	if !isNew {
+		if err := txClient.Knowledge.UpdateOne(existing).SetIsLatest(false).Exec(ctx); err != nil {
+			return fmt.Errorf("unset latest: %w", err)
+		}
+		version = existing.Version + 1
+	}
+
+	builder := txClient.Knowledge.Create().
+		SetKey(entry.Key).
+		SetCategory(entry.Category).
+		SetContent(storedContent).
+		SetVersion(version).
+		SetIsLatest(true)
+	if !isNew {
+		builder = builder.SetUseCount(existing.UseCount).SetRelevanceScore(existing.RelevanceScore)
+	}
+	if ciphertext != nil {
+		builder.SetContentCiphertext(ciphertext)
+		builder.SetContentNonce(nonce)
+		builder.SetContentKeyVersion(keyVersion)
+	}
+	if len(entry.Tags) > 0 {
+		builder.SetTags(entry.Tags)
+	}
+	if entry.Source != "" {
+		builder.SetSource(entry.Source)
+	}
+	if _, err := builder.Save(ctx); err != nil {
+		return fmt.Errorf("create knowledge version: %w", err)
+	}
+
+	if isNew {
+		err = s.fts5Index.InsertWithExec(ctx, tx, entry.Key, []string{entry.Key, storedContent})
+	} else {
+		err = s.fts5Index.UpdateWithExec(ctx, tx, entry.Key, []string{entry.Key, storedContent})
+	}
+	if err != nil {
+		return err
+	}
+
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("commit knowledge sql tx: %w", err)
+	}
+	committed = true
+
+	meta := map[string]string{"category": string(entry.Category)}
+	s.publishContentSaved(entry.Key, "knowledge", storedContent, meta, isNew, isNew, version)
+	return nil
 }
 
 // GetKnowledge retrieves the latest version of a knowledge entry by key.

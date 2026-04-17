@@ -12,6 +12,6 @@
 
 ## 3. Verification
 
-- [ ] 3.1 Add round-trip, tamper, and leakage regression tests.
+- [x] 3.1 Add round-trip, tamper, and leakage regression tests.
 - [ ] 3.2 Verify modernc FTS5 probe/build behavior.
 - [ ] 3.3 Update security/docs/status surfaces to reflect brokered payload protection.

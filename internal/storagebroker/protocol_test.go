@@ -85,3 +85,76 @@ func TestServerOpenDB(t *testing.T) {
 
 	_ = srv.shutdown()
 }
+
+func TestServerEncryptDecryptPayloadRoundTrip(t *testing.T) {
+	dir := t.TempDir()
+	dbPath := dir + "/broker.db"
+
+	srv := NewServer()
+	_, err := srv.openDB(context.Background(), OpenDBRequest{
+		DBPath:         dbPath,
+		PayloadKey:     bytes.Repeat([]byte{0x22}, 32),
+		PayloadVersion: 1,
+	})
+	require.NoError(t, err)
+
+	encAny, err := srv.dispatch(context.Background(), Request{
+		Method:  methodEncryptPayload,
+		Payload: mustPayload(t, EncryptPayloadRequest{Plaintext: []byte("secret payload")}),
+	})
+	require.NoError(t, err)
+	enc := encAny.(EncryptPayloadResult)
+	assert.Equal(t, 1, enc.KeyVersion)
+	require.NotEmpty(t, enc.Ciphertext)
+	require.NotEmpty(t, enc.Nonce)
+
+	decAny, err := srv.dispatch(context.Background(), Request{
+		Method: methodDecryptPayload,
+		Payload: mustPayload(t, DecryptPayloadRequest{
+			Ciphertext: enc.Ciphertext,
+			Nonce:      enc.Nonce,
+			KeyVersion: enc.KeyVersion,
+		}),
+	})
+	require.NoError(t, err)
+	dec := decAny.(DecryptPayloadResult)
+	assert.Equal(t, []byte("secret payload"), dec.Plaintext)
+}
+
+func TestServerDecryptPayloadTamperFails(t *testing.T) {
+	dir := t.TempDir()
+	dbPath := dir + "/broker.db"
+
+	srv := NewServer()
+	_, err := srv.openDB(context.Background(), OpenDBRequest{
+		DBPath:         dbPath,
+		PayloadKey:     bytes.Repeat([]byte{0x33}, 32),
+		PayloadVersion: 1,
+	})
+	require.NoError(t, err)
+
+	encAny, err := srv.dispatch(context.Background(), Request{
+		Method:  methodEncryptPayload,
+		Payload: mustPayload(t, EncryptPayloadRequest{Plaintext: []byte("secret payload")}),
+	})
+	require.NoError(t, err)
+	enc := encAny.(EncryptPayloadResult)
+	enc.Ciphertext[0] ^= 0xFF
+
+	_, err = srv.dispatch(context.Background(), Request{
+		Method: methodDecryptPayload,
+		Payload: mustPayload(t, DecryptPayloadRequest{
+			Ciphertext: enc.Ciphertext,
+			Nonce:      enc.Nonce,
+			KeyVersion: enc.KeyVersion,
+		}),
+	})
+	require.Error(t, err)
+}
+
+func mustPayload(t *testing.T, v any) json.RawMessage {
+	t.Helper()
+	data, err := json.Marshal(v)
+	require.NoError(t, err)
+	return data
+}

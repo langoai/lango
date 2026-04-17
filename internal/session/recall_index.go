@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"fmt"
 	"log/slog"
+	"regexp"
 	"strings"
 	"sync"
 	"time"
@@ -16,6 +17,12 @@ import (
 // RecallTableName is the dedicated FTS5 table used by session recall. Kept
 // separate from the knowledge FTS5 table per the fts5-search-index spec.
 const RecallTableName = "fts_session_recall"
+
+var (
+	recallEmailPattern = regexp.MustCompile(`[A-Za-z0-9._%+\-]+@[A-Za-z0-9.\-]+\.[A-Za-z]{2,}`)
+	recallLongDigits   = regexp.MustCompile(`\b\d{6,}\b`)
+	recallLongSecret   = regexp.MustCompile(`\b(?:[A-Fa-f0-9]{32,}|[A-Za-z0-9_\-]{32,})\b`)
+)
 
 // RecallIndex wraps search.FTS5Index for session recall. Each row indexes
 // exactly one ended session by its key.
@@ -137,7 +144,7 @@ func summarizeHistory(history []Message, maxTokens int) string {
 	totalTokens := 0
 	for i := len(history) - 1; i >= 0; i-- {
 		msg := history[i]
-		piece := fmt.Sprintf("[%s] %s\n", msg.Role, strings.TrimSpace(msg.Content))
+		piece := fmt.Sprintf("[%s] %s\n", msg.Role, redactRecallProjection(strings.TrimSpace(msg.Content)))
 		pieceTokens := types.EstimateTokens(piece)
 		if totalTokens+pieceTokens > maxTokens {
 			break
@@ -146,6 +153,17 @@ func summarizeHistory(history []Message, maxTokens int) string {
 		totalTokens += pieceTokens
 	}
 	return strings.TrimSpace(b.String())
+}
+
+func redactRecallProjection(content string) string {
+	content = recallEmailPattern.ReplaceAllString(content, "[email]")
+	content = recallLongDigits.ReplaceAllString(content, "[number]")
+	content = recallLongSecret.ReplaceAllString(content, "[secret]")
+	content = strings.Join(strings.Fields(content), " ")
+	if len(content) > 512 {
+		content = content[:512]
+	}
+	return content
 }
 
 // countRoles returns a compact role-mix string like "user:8 assistant:8 tool:2".
