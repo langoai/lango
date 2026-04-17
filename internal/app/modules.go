@@ -348,7 +348,7 @@ func (m *intelligenceModule) Init(ctx context.Context, r appinit.Resolver) (*app
 	ab := initConversationAnalysis(cfg, sv, store, kc, gc, m.bus)
 
 	// Librarian.
-	lc, lcStatus := initLibrarian(cfg, sv, store, kc, mc, gc, m.bus)
+	lc, lcStatus := initLibrarian(cfg, sv, store, kc, mc, gc, m.bus, brokerAPI)
 
 	// Enrich knowledge status with FTS5 and budget info.
 	if kcStatus != nil && kcStatus.Enabled && kcStatus.Healthy {
@@ -403,6 +403,11 @@ func (m *intelligenceModule) Init(ctx context.Context, r appinit.Resolver) (*app
 		}
 		if amStore == nil && entClient != nil {
 			amStore = agentmemory.NewEntStore(entClient)
+		}
+		if brokerAPI != nil {
+			if entStore, ok := amStore.(*agentmemory.EntStore); ok {
+				entStore.SetPayloadProtector(storagebroker.NewPayloadProtector(brokerAPI))
+			}
 		}
 		amTools := agentmemory.BuildTools(amStore)
 		tools = append(tools, amTools...)

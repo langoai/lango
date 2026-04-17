@@ -3,6 +3,7 @@ package librarian
 import (
 	"context"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -10,12 +11,14 @@ import (
 
 	"github.com/langoai/lango/internal/ent"
 	"github.com/langoai/lango/internal/ent/inquiry"
+	"github.com/langoai/lango/internal/security"
 )
 
 // InquiryStore provides CRUD operations for knowledge inquiries.
 type InquiryStore struct {
-	client *ent.Client
-	logger *zap.SugaredLogger
+	client   *ent.Client
+	logger   *zap.SugaredLogger
+	payloads security.PayloadProtector
 }
 
 // NewInquiryStore creates a new inquiry store.
@@ -26,17 +29,30 @@ func NewInquiryStore(client *ent.Client, logger *zap.SugaredLogger) *InquiryStor
 	}
 }
 
+func (s *InquiryStore) SetPayloadProtector(protector security.PayloadProtector) {
+	s.payloads = protector
+}
+
 // SaveInquiry persists a new inquiry to the database.
 func (s *InquiryStore) SaveInquiry(ctx context.Context, inq Inquiry) error {
+	question, contextText, ciphertext, nonce, keyVersion, err := s.prepareInquiryWrite(inq.Question, inq.Context)
+	if err != nil {
+		return fmt.Errorf("prepare inquiry payload: %w", err)
+	}
 	builder := s.client.Inquiry.Create().
 		SetSessionKey(inq.SessionKey).
 		SetTopic(inq.Topic).
-		SetQuestion(inq.Question).
+		SetQuestion(question).
 		SetPriority(inquiry.Priority(inq.Priority)).
 		SetStatus(inquiry.StatusPending)
+	if ciphertext != nil {
+		builder.SetPayloadCiphertext(ciphertext)
+		builder.SetPayloadNonce(nonce)
+		builder.SetPayloadKeyVersion(keyVersion)
+	}
 
-	if inq.Context != "" {
-		builder.SetContext(inq.Context)
+	if contextText != "" {
+		builder.SetContext(contextText)
 	}
 	if inq.SourceObservationID != "" {
 		builder.SetSourceObservationID(inq.SourceObservationID)
@@ -76,8 +92,19 @@ func (s *InquiryStore) ListPendingInquiries(ctx context.Context, sessionKey stri
 func (s *InquiryStore) ResolveInquiry(ctx context.Context, id uuid.UUID, answer, knowledgeKey string) error {
 	builder := s.client.Inquiry.UpdateOneID(id).
 		SetStatus(inquiry.StatusResolved).
-		SetAnswer(answer).
 		SetResolvedAt(time.Now())
+	if answer != "" {
+		projection, ciphertext, nonce, keyVersion, err := s.prepareProtectedText(answer)
+		if err != nil {
+			return fmt.Errorf("prepare inquiry answer payload: %w", err)
+		}
+		builder.SetAnswer(projection)
+		if ciphertext != nil {
+			builder.SetPayloadCiphertext(ciphertext)
+			builder.SetPayloadNonce(nonce)
+			builder.SetPayloadKeyVersion(keyVersion)
+		}
+	}
 
 	if knowledgeKey != "" {
 		builder.SetKnowledgeKey(knowledgeKey)
@@ -139,4 +166,34 @@ func entToInquiry(e *ent.Inquiry) Inquiry {
 		inq.SourceObservationID = *e.SourceObservationID
 	}
 	return inq
+}
+
+func (s *InquiryStore) prepareInquiryWrite(question, contextText string) (string, string, []byte, []byte, int, error) {
+	if s.payloads == nil {
+		return question, contextText, nil, nil, 0, nil
+	}
+	plaintext := question
+	if contextText != "" {
+		plaintext += "\n" + contextText
+	}
+	ciphertext, nonce, keyVersion, err := s.payloads.EncryptPayload([]byte(plaintext))
+	if err != nil {
+		return "", "", nil, nil, 0, err
+	}
+	return redactInquiryProjection(question), redactInquiryProjection(contextText), ciphertext, nonce, keyVersion, nil
+}
+
+func (s *InquiryStore) prepareProtectedText(text string) (string, []byte, []byte, int, error) {
+	if s.payloads == nil || text == "" {
+		return text, nil, nil, 0, nil
+	}
+	ciphertext, nonce, keyVersion, err := s.payloads.EncryptPayload([]byte(text))
+	if err != nil {
+		return "", nil, nil, 0, err
+	}
+	return redactInquiryProjection(text), ciphertext, nonce, keyVersion, nil
+}
+
+func redactInquiryProjection(text string) string {
+	return strings.TrimSpace(text)
 }

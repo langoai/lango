@@ -11,18 +11,24 @@ import (
 	"github.com/langoai/lango/internal/ent"
 	entam "github.com/langoai/lango/internal/ent/agentmemory"
 	"github.com/langoai/lango/internal/ent/predicate"
+	"github.com/langoai/lango/internal/security"
 )
 
 var _ Store = (*EntStore)(nil)
 
 // EntStore is a persistent Ent-backed implementation of Store.
 type EntStore struct {
-	client *ent.Client
+	client   *ent.Client
+	payloads security.PayloadProtector
 }
 
 // NewEntStore creates a new Ent-backed agent memory store.
 func NewEntStore(client *ent.Client) *EntStore {
 	return &EntStore{client: client}
+}
+
+func (s *EntStore) SetPayloadProtector(protector security.PayloadProtector) {
+	s.payloads = protector
 }
 
 func (s *EntStore) Save(entry *Entry) error {
@@ -46,13 +52,22 @@ func (s *EntStore) Save(entry *Entry) error {
 		Only(ctx)
 
 	if ent.IsNotFound(err) {
+		content, ciphertext, nonce, keyVersion, err := s.prepareContent(entry.Content)
+		if err != nil {
+			return fmt.Errorf("prepare agent memory payload: %w", err)
+		}
 		builder := s.client.AgentMemory.Create().
 			SetAgentName(entry.AgentName).
 			SetKey(entry.Key).
-			SetContent(entry.Content).
+			SetContent(content).
 			SetScope(entam.Scope(entry.Scope)).
 			SetKind(entam.Kind(entry.Kind)).
 			SetConfidence(entry.Confidence)
+		if ciphertext != nil {
+			builder.SetContentCiphertext(ciphertext)
+			builder.SetContentNonce(nonce)
+			builder.SetContentKeyVersion(keyVersion)
+		}
 
 		if len(entry.Tags) > 0 {
 			builder.SetTags(entry.Tags)
@@ -69,11 +84,20 @@ func (s *EntStore) Save(entry *Entry) error {
 	}
 
 	// Upsert: update mutable fields, preserve ID and CreatedAt.
+	content, ciphertext, nonce, keyVersion, err := s.prepareContent(entry.Content)
+	if err != nil {
+		return fmt.Errorf("prepare agent memory payload: %w", err)
+	}
 	updater := existing.Update().
-		SetContent(entry.Content).
+		SetContent(content).
 		SetScope(entam.Scope(entry.Scope)).
 		SetKind(entam.Kind(entry.Kind)).
 		SetConfidence(entry.Confidence)
+	if ciphertext != nil {
+		updater.SetContentCiphertext(ciphertext)
+		updater.SetContentNonce(nonce)
+		updater.SetContentKeyVersion(keyVersion)
+	}
 
 	if len(entry.Tags) > 0 {
 		updater.SetTags(entry.Tags)
@@ -105,7 +129,7 @@ func (s *EntStore) Get(agentName, key string) (*Entry, error) {
 		return nil, fmt.Errorf("get agent memory: %w", err)
 	}
 
-	return entToEntry(e), nil
+	return s.entToEntry(e), nil
 }
 
 func (s *EntStore) Search(agentName string, opts SearchOptions) ([]*Entry, error) {
@@ -152,7 +176,7 @@ func (s *EntStore) Search(agentName string, opts SearchOptions) ([]*Entry, error
 		return nil, fmt.Errorf("search agent memory: %w", err)
 	}
 
-	return entsToEntries(entries), nil
+	return s.entsToEntries(entries), nil
 }
 
 // SearchWithContext resolves entries with scope fallback:
@@ -227,10 +251,10 @@ func (s *EntStore) SearchWithContextOptions(agentName string, opts SearchOptions
 	// Combine: phase 1 first, then phase 2, then truncate to limit.
 	combined := make([]*Entry, 0, len(phase1)+len(phase2))
 	for _, e := range phase1 {
-		combined = append(combined, entToEntry(e))
+		combined = append(combined, s.entToEntry(e))
 	}
 	for _, e := range phase2 {
-		combined = append(combined, entToEntry(e))
+		combined = append(combined, s.entToEntry(e))
 	}
 
 	if len(combined) > limit {
@@ -326,20 +350,26 @@ func (s *EntStore) ListAll(agentName string) ([]*Entry, error) {
 		return nil, fmt.Errorf("list all agent memory: %w", err)
 	}
 
-	return entsToEntries(entries), nil
+	return s.entsToEntries(entries), nil
 }
 
 // ─── helpers ──────────────────────────────────────────────────────
 
 // entToEntry converts an Ent AgentMemory entity to a domain Entry.
-func entToEntry(e *ent.AgentMemory) *Entry {
+func (s *EntStore) entToEntry(e *ent.AgentMemory) *Entry {
+	content := e.Content
+	if s.payloads != nil && e.ContentCiphertext != nil && e.ContentNonce != nil && e.ContentKeyVersion != nil {
+		if plaintext, err := s.payloads.DecryptPayload(*e.ContentCiphertext, *e.ContentNonce, *e.ContentKeyVersion); err == nil {
+			content = string(plaintext)
+		}
+	}
 	return &Entry{
 		ID:         e.ID.String(),
 		AgentName:  e.AgentName,
 		Scope:      MemoryScope(e.Scope),
 		Kind:       MemoryKind(e.Kind),
 		Key:        e.Key,
-		Content:    e.Content,
+		Content:    content,
 		Confidence: e.Confidence,
 		UseCount:   e.UseCount,
 		Tags:       e.Tags,
@@ -349,12 +379,23 @@ func entToEntry(e *ent.AgentMemory) *Entry {
 }
 
 // entsToEntries converts a slice of Ent entities to domain entries.
-func entsToEntries(ents []*ent.AgentMemory) []*Entry {
+func (s *EntStore) entsToEntries(ents []*ent.AgentMemory) []*Entry {
 	result := make([]*Entry, 0, len(ents))
 	for _, e := range ents {
-		result = append(result, entToEntry(e))
+		result = append(result, s.entToEntry(e))
 	}
 	return result
+}
+
+func (s *EntStore) prepareContent(content string) (string, []byte, []byte, int, error) {
+	if s.payloads == nil {
+		return strings.TrimSpace(content), nil, nil, 0, nil
+	}
+	ciphertext, nonce, keyVersion, err := s.payloads.EncryptPayload([]byte(content))
+	if err != nil {
+		return "", nil, nil, 0, err
+	}
+	return strings.TrimSpace(content), ciphertext, nonce, keyVersion, nil
 }
 
 // keywordPredicates splits a query into keywords and creates
