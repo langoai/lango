@@ -10,7 +10,7 @@ Lango provides a Docker image that includes all runtime dependencies: Chromium f
 
 The Docker image uses a multi-stage build:
 
-- **Builder stage**: `golang:1.25-bookworm` -- compiles the Go binary with CGO enabled (required by mattn/go-sqlite3 and sqlite-vec). Links against `libsqlcipher` for transparent database encryption support.
+- **Builder stage**: `golang:1.25-bookworm` -- compiles the default Go binary with the pure-Go SQLite runtime and FTS5 enabled. Optional legacy `vec` builds are not part of the default container image.
 - **Runtime stage**: `debian:bookworm-slim` -- minimal runtime with Chromium and utilities
 
 Build the image:

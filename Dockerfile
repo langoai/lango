@@ -2,13 +2,6 @@ FROM golang:1.25-bookworm AS builder
 
 WORKDIR /app
 
-# Install SQLite dev headers (required by sqlite-vec-go-bindings)
-# Install libsqlcipher-dev for SQLCipher transparent DB encryption support
-RUN apt-get update && apt-get install -y --no-install-recommends \
-        libsqlite3-dev \
-        libsqlcipher-dev \
-    && rm -rf /var/lib/apt/lists/*
-
 # Copy go mod files
 COPY go.mod go.sum ./
 RUN go mod download
@@ -20,9 +13,8 @@ COPY . .
 ARG VERSION=dev
 ARG BUILD_TIME=unknown
 
-# Build with CGO enabled (required by mattn/go-sqlite3 and sqlite-vec)
-# Link against libsqlcipher for transparent DB encryption support
-RUN CGO_ENABLED=1 go build -tags "fts5,vec" -ldflags="-s -w -X main.Version=${VERSION} -X main.BuildTime=${BUILD_TIME}" -o lango ./cmd/lango
+# Build the default runtime with FTS5 enabled.
+RUN go build -tags "fts5" -ldflags="-s -w -X main.Version=${VERSION} -X main.BuildTime=${BUILD_TIME}" -o lango ./cmd/lango
 
 # Runtime image
 FROM debian:bookworm-slim

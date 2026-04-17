@@ -48,7 +48,7 @@ Single binary. <100ms startup. <250MB memory. Just Go.
 - ⚡ **Background Execution** - Async task manager with concurrency control and completion notifications
 - 🔄 **Workflow Engine** - DAG-based YAML workflows with parallel step execution and state persistence
 - 🔗 **MCP Integration** - Connect to external MCP servers (stdio/HTTP/SSE), auto-discovery, health checks, multi-scope config
-- 🔒 **Secure** - Master Key envelope (MK/KEK hierarchy), AES-256-GCM encryption, recovery mnemonic, key registry, secret management, output scanning, hardware keyring (Touch ID / TPM), SQLCipher DB encryption, Cloud KMS (AWS/GCP/Azure/PKCS#11)
+- 🔒 **Secure** - Master Key envelope (MK/KEK hierarchy), AES-256-GCM encryption, brokered payload protection with redacted search projections, recovery mnemonic, key registry, secret management, output scanning, hardware keyring (Touch ID / TPM), Cloud KMS (AWS/GCP/Azure/PKCS#11)
 - 💾 **Persistent** - Ent ORM with SQLite session storage
 - 🌐 **Gateway** - WebSocket/HTTP server with real-time streaming
 - 🔑 **Auth** - OIDC authentication, OAuth login flow
@@ -222,7 +222,7 @@ lango/
 │   ├── approval/           # Composite approval provider for sensitive tools
 │   ├── asyncbuf/           # Generic async batch processor
 │   ├── bootstrap/          # Application bootstrap: DB, crypto, config profile init
-│   ├── dbmigrate/          # Database encryption migration (SQLCipher)
+│   ├── dbmigrate/          # Legacy DB migration tombstones and remediation helpers
 │   ├── channels/           # Telegram, Discord, Slack integrations
 │   ├── cli/                # CLI commands
 │   │   ├── tuicore/        #   Shared TUI components (FormModel, Field types)
@@ -252,7 +252,7 @@ lango/
 │   │   ├── provenance/     #   lango provenance status/checkpoint/session/attribution/bundle
 │   │   ├── run/            #   lango run list/status/journal
 │   │   ├── sandbox/        #   lango sandbox status/test
-│   │   ├── security/       #   lango security status/secrets/change-passphrase/recovery/keyring/db-migrate/db-decrypt/kms
+│   │   ├── security/       #   lango security status/secrets/change-passphrase/recovery/keyring/kms (+ legacy db-* tombstones)
 │   │   ├── settings/       #   lango settings (full configuration editor)
 │   │   ├── smartaccount/   #   lango account info/deploy/session/module/policy/paymaster
 │   │   ├── status/         #   lango status (unified dashboard)
@@ -542,8 +542,8 @@ All settings are managed via `lango onboard` (guided wizard), `lango settings` (
 | `p2p.zkp.srsPath`                                      | string   | -                           | Path to SRS file (when srsMode = file)                                                                            |
 | `p2p.zkp.maxCredentialAge`                             | string   | `24h`                       | Maximum age for ZK credentials                                                                                    |
 | **Security**                                           |          |                             |                                                                                                                   |
-| `security.dbEncryption.enabled`                        | bool     | `false`                     | Enable SQLCipher database encryption                                                                              |
-| `security.dbEncryption.cipherPageSize`                 | int      | `4096`                      | SQLCipher cipher page size                                                                                        |
+| `security.dbEncryption.enabled`                        | bool     | `false`                     | Deprecated legacy SQLCipher flag; ignored by the current runtime                                                  |
+| `security.dbEncryption.cipherPageSize`                 | int      | `4096`                      | Deprecated legacy SQLCipher page-size setting; retained for parsing older configs                                 |
 | `security.signer.provider`                             | string   | `local`                     | Signer provider: `local`, `rpc`, `aws-kms`, `gcp-kms`, `azure-kv`, `pkcs11`                                       |
 | `security.kms.region`                                  | string   | -                           | Cloud region for KMS API calls                                                                                    |
 | `security.kms.keyId`                                   | string   | -                           | KMS key identifier (ARN, resource name, or alias)                                                                 |
@@ -1002,7 +1002,7 @@ Lango supports decentralized peer-to-peer agent connectivity via the Sovereign A
 - **Session Management** — TTL + explicit session invalidation with security event auto-revocation
 - **Tool Sandbox** — Subprocess and container-based isolation for remote tool execution
 - **Cloud KMS / HSM** — AWS KMS, GCP KMS, Azure Key Vault, PKCS#11 HSM integration for signing and encryption
-- **Database Encryption** — SQLCipher transparent encryption for the application database
+- **Payload Protection** — Broker-managed AES-256-GCM protection for sensitive payloads with redacted search projections
 - **OS Keyring** — Hardware-backed passphrase storage in OS keyring (macOS Keychain, Linux secret-service, Windows DPAPI)
 - **Credential Revocation** — DID revocation and max credential age enforcement via gossip
 - **Trust-Based Pricing** — Tiered pricing model: PostPay for trusted peers (reputation score >= 0.8), PrePay for new/untrusted peers
@@ -1387,14 +1387,14 @@ Supported: macOS Touch ID (Secure Enclave), Linux TPM 2.0. Plain OS keyring is n
 
 ### Database Encryption
 
-Encrypt the application database at rest using SQLCipher:
+Legacy SQLCipher database commands remain only as remediation signposts:
 
 ```bash
-lango security db-migrate    # Encrypt plaintext DB
-lango security db-decrypt    # Decrypt back to plaintext
+lango security db-migrate    # unsupported in the current runtime
+lango security db-decrypt    # unsupported in the current runtime
 ```
 
-Configure via `security.dbEncryption.enabled` and `security.dbEncryption.cipherPageSize` (default: 4096).
+The current runtime uses broker-managed payload protection instead of SQLCipher page encryption. `security.dbEncryption.*` is retained only for parsing older configs.
 
 ### Cloud KMS / HSM
 

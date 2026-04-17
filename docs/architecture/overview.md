@@ -245,7 +245,7 @@ The infrastructure layer provides foundational services that all other layers de
 | **Lifecycle** | `internal/lifecycle/` | Component lifecycle management with priority-ordered startup and reverse-order shutdown |
 | **Keyring** | `internal/keyring/` | Hardware keyring integration (Touch ID / TPM 2.0) via go-keyring |
 | **Sandbox** | `internal/sandbox/` | Tool execution isolation with subprocess, Docker, gVisor, and native runtime fallback chain |
-| **DB Migration** | `internal/dbmigrate/` | Database encryption migration for SQLCipher transitions |
+| **DB Migration** | `internal/dbmigrate/` | Legacy DB migration tombstones and remediation helpers |
 
 ## Key Design Decisions
 

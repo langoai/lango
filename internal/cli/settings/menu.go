@@ -109,7 +109,6 @@ func (m *MenuModel) allCategories() []Category {
 	return all
 }
 
-
 // AllCategories returns a flat list of all categories (public, for tests).
 func (m MenuModel) AllCategories() []Category {
 	return m.allCategories()
@@ -281,7 +280,7 @@ func NewMenuModel() MenuModel {
 				Categories: []Category{
 					{"security", "Security", "PII, Approval, Encryption", TierBasic},
 					{"auth", "Auth", "OIDC provider configuration", TierAdvanced},
-					{"security_db", "Security DB Encryption", "SQLCipher database encryption", TierAdvanced},
+					{"security_db", "Legacy DB Encryption", "Deprecated SQLCipher compatibility settings", TierAdvanced},
 					{"security_kms", "Security KMS", "Cloud KMS / HSM backends", TierAdvanced},
 					{"os_sandbox", "OS Sandbox", "OS-level tool isolation (macOS enforced, Linux planned)", TierAdvanced},
 				},
