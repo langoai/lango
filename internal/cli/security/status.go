@@ -337,7 +337,7 @@ func runStatusNonInteractive(jsonOutput bool) error {
 		envPtr, _ = sec.LoadEnvelopeFile(langoDir)
 	}
 
-	needsKey := bootstrap.IsDBEncrypted(dbPath)
+	needsKey := false
 	dbStatus := readDBStatusNonInteractive(langoDir, dbPath, envPtr, needsKey)
 
 	// Use the active config if DB read succeeded; otherwise fall back to defaults.
@@ -348,9 +348,9 @@ func runStatusNonInteractive(jsonOutput bool) error {
 
 	dbEncStatus := "disabled (plaintext)"
 	if bootstrap.IsDBEncrypted(dbPath) {
-		dbEncStatus = "encrypted (active)"
+		dbEncStatus = "legacy encrypted or unreadable DB (unsupported)"
 	} else if cfg.Security.DBEncryption.Enabled {
-		dbEncStatus = "enabled (pending migration)"
+		dbEncStatus = "deprecated config (ignored)"
 	}
 
 	policy := string(cfg.Security.Interceptor.ApprovalPolicy)
@@ -399,9 +399,9 @@ func runStatusFullBootstrap(bootLoader func() (*bootstrap.Result, error), jsonOu
 	dbEncStatus := "disabled (plaintext)"
 	dbPath := expandPath(cfg.Session.DatabasePath)
 	if bootstrap.IsDBEncrypted(dbPath) {
-		dbEncStatus = "encrypted (active)"
+		dbEncStatus = "legacy encrypted or unreadable DB (unsupported)"
 	} else if cfg.Security.DBEncryption.Enabled {
-		dbEncStatus = "enabled (pending migration)"
+		dbEncStatus = "deprecated config (ignored)"
 	}
 
 	langoDir := boot.LangoDir

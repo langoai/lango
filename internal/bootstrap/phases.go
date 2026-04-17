@@ -14,6 +14,7 @@ import (
 	"github.com/langoai/lango/internal/keyring"
 	"github.com/langoai/lango/internal/security"
 	"github.com/langoai/lango/internal/security/passphrase"
+	"github.com/langoai/lango/internal/sqlitedriver"
 	"github.com/langoai/lango/internal/storage"
 	"github.com/langoai/lango/internal/storagebroker"
 )
@@ -120,13 +121,17 @@ func phaseEnsureDataDir() Phase {
 	}
 }
 
-// phaseDetectEncryption checks if DB is encrypted or encryption is configured.
+// phaseDetectEncryption rejects non-SQLite legacy DB headers and no longer
+// enables SQLCipher database-key handling.
 func phaseDetectEncryption() Phase {
 	return Phase{
 		Name: "detect encryption",
 		Run: func(_ context.Context, s *State) error {
 			s.DBEncrypted = IsDBEncrypted(s.Options.DBPath)
-			s.NeedsDBKey = s.DBEncrypted || s.Options.DBEncryption.Enabled
+			if s.DBEncrypted {
+				return fmt.Errorf("%w: downgrade/export required", sqlitedriver.ErrLegacyEncryptedOrUnreadableDB)
+			}
+			s.NeedsDBKey = false
 			return nil
 		},
 	}
@@ -269,45 +274,18 @@ func phaseUnwrapOrCreateMK() Phase {
 	}
 }
 
-// phaseOpenDatabase opens SQLite/SQLCipher DB and runs ent schema migration.
-//
-// Key selection matrix:
-//   - MK available + no pending flags  → MK-derived raw key (rawKey=true)
-//   - MK available + pending flags     → legacy passphrase (fallback)
-//   - No MK (legacy mode)              → legacy passphrase
-//   - Encryption disabled              → no key
+// phaseOpenDatabase opens the plaintext SQLite DB and runs ent schema migration.
 func phaseOpenDatabase() Phase {
 	return Phase{
 		Name: "open database",
 		Run: func(_ context.Context, s *State) error {
-			var (
-				dbKey  string
-				rawKey bool
-			)
-			if s.NeedsDBKey {
-				switch {
-				case s.MasterKey != nil && s.Envelope != nil &&
-					!s.Envelope.PendingMigration && !s.Envelope.PendingRekey:
-					dbKey = security.DeriveDBKeyHex(s.MasterKey)
-					rawKey = true
-				case s.Passphrase != "":
-					dbKey = s.Passphrase
-					rawKey = false
-				default:
-					return fmt.Errorf("open database: no credential available for encrypted db")
-				}
-				s.DBKey = dbKey
-			}
 			if s.Options.StartStorageBroker {
 				brokerClient, err := startStorageBroker(context.Background())
 				if err != nil {
 					return fmt.Errorf("start storage broker: %w", err)
 				}
 				if _, err := brokerClient.OpenDB(context.Background(), storagebroker.OpenDBRequest{
-					DBPath:         s.Options.DBPath,
-					EncryptionKey:  dbKey,
-					RawKey:         rawKey,
-					CipherPageSize: s.Options.DBEncryption.CipherPageSize,
+					DBPath: s.Options.DBPath,
 				}); err != nil {
 					_ = brokerClient.Close(context.Background())
 					return fmt.Errorf("storage broker open_db: %w", err)
@@ -315,7 +293,7 @@ func phaseOpenDatabase() Phase {
 				s.Broker = brokerClient
 				s.Result.Broker = brokerClient
 			}
-			client, rawDB, err := openDatabase(s.Options.DBPath, dbKey, rawKey, s.Options.DBEncryption.CipherPageSize)
+			client, rawDB, err := openDatabase(s.Options.DBPath, "", false, 0)
 			if err != nil {
 				if s.Broker != nil {
 					_ = s.Broker.Close(context.Background())
@@ -340,11 +318,10 @@ func phaseOpenDatabase() Phase {
 	}
 }
 
-// phaseMigrateEnvelope performs three conditional actions:
+// phaseMigrateEnvelope performs two conditional actions:
 //
 //   - LegacyMode: run the full legacy → envelope migration.
 //   - PendingMigration=true: retry data re-encryption using the already-unwrapped MK.
-//   - PendingRekey=true: retry `PRAGMA rekey` on SQLCipher DB.
 //
 // On failure the envelope retains its pending flags so the next bootstrap can retry.
 func phaseMigrateEnvelope() Phase {
@@ -380,16 +357,7 @@ func phaseMigrateEnvelope() Phase {
 			}
 
 			if s.Envelope != nil && s.Envelope.PendingRekey {
-				if s.MasterKey == nil {
-					return fmt.Errorf("pending rekey retry requires unwrapped master key")
-				}
-				if err := security.RetryRekey(s.RawDB, s.MasterKey); err != nil {
-					return fmt.Errorf("retry rekey: %w", err)
-				}
-				s.Envelope.PendingRekey = false
-				if err := security.StoreEnvelopeFile(s.LangoDir, s.Envelope); err != nil {
-					return fmt.Errorf("persist envelope after retry rekey: %w", err)
-				}
+				return fmt.Errorf("%w: pending rekey requires legacy runtime downgrade/export", sqlitedriver.ErrLegacyEncryptedOrUnreadableDB)
 			}
 
 			return nil

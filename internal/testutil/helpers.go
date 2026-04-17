@@ -7,6 +7,7 @@ import (
 	"database/sql"
 	"fmt"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"testing"
 
@@ -20,6 +21,7 @@ import (
 )
 
 var testDBSeq uint64
+var testDBCreateMu sync.Mutex
 
 // NopLogger returns a no-op *zap.SugaredLogger suitable for tests.
 func NopLogger() *zap.SugaredLogger {
@@ -30,6 +32,9 @@ func NopLogger() *zap.SugaredLogger {
 // The client is automatically closed when the test completes.
 func TestEntClient(t testing.TB) *ent.Client {
 	t.Helper()
+	testDBCreateMu.Lock()
+	defer testDBCreateMu.Unlock()
+
 	name := strings.NewReplacer("/", "-", " ", "-", ":", "-").Replace(t.Name())
 	seq := atomic.AddUint64(&testDBSeq, 1)
 	db, err := sql.Open(sqlitedriver.DriverName(), sqlitedriver.MemoryDSN(fmt.Sprintf("%s-%d", name, seq)))

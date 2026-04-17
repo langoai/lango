@@ -108,29 +108,10 @@ func OpenReadOnly(dbPath, encryptionKey string, rawKey bool, cipherPageSize int)
 }
 
 func applyEncryptionPragmas(db *sql.DB, encryptionKey string, rawKey bool, cipherPageSize int, readonly bool) error {
-	if encryptionKey == "" {
-		return nil
-	}
-	if cipherPageSize <= 0 {
-		cipherPageSize = 4096
-	}
-	var pragmaKey string
-	if rawKey {
-		pragmaKey = fmt.Sprintf(`PRAGMA key = "x'%s'"`, encryptionKey)
-	} else {
-		pragmaKey = fmt.Sprintf("PRAGMA key = '%s'", encryptionKey)
-	}
-	if _, err := db.Exec(pragmaKey); err != nil {
-		if readonly {
-			return fmt.Errorf("read-only PRAGMA key: %w", err)
-		}
-		return fmt.Errorf("set PRAGMA key: %w", err)
-	}
-	if _, err := db.Exec(fmt.Sprintf("PRAGMA cipher_page_size = %d", cipherPageSize)); err != nil {
-		if readonly {
-			return fmt.Errorf("read-only cipher_page_size: %w", err)
-		}
-		return fmt.Errorf("set cipher_page_size: %w", err)
-	}
+	_ = db
+	_ = encryptionKey
+	_ = rawKey
+	_ = cipherPageSize
+	_ = readonly
 	return nil
 }
