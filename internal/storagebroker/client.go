@@ -17,6 +17,8 @@ type API interface {
 	Health(ctx context.Context) (HealthResult, error)
 	OpenDB(ctx context.Context, req OpenDBRequest) (OpenDBResult, error)
 	DBStatusSummary(ctx context.Context, req DBStatusSummaryRequest) (DBStatusSummaryResult, error)
+	EncryptPayload(ctx context.Context, plaintext []byte) (EncryptPayloadResult, error)
+	DecryptPayload(ctx context.Context, ciphertext, nonce []byte, keyVersion int) (DecryptPayloadResult, error)
 	LoadSecurityState(ctx context.Context) (LoadSecurityStateResult, error)
 	StoreSalt(ctx context.Context, salt []byte) error
 	StoreChecksum(ctx context.Context, checksum []byte) error
@@ -89,6 +91,26 @@ func (c *Client) DBStatusSummary(ctx context.Context, req DBStatusSummaryRequest
 	var result DBStatusSummaryResult
 	if err := c.call(ctx, methodDBStatus, req, &result); err != nil {
 		return DBStatusSummaryResult{}, err
+	}
+	return result, nil
+}
+
+func (c *Client) EncryptPayload(ctx context.Context, plaintext []byte) (EncryptPayloadResult, error) {
+	var result EncryptPayloadResult
+	if err := c.call(ctx, methodEncryptPayload, EncryptPayloadRequest{Plaintext: plaintext}, &result); err != nil {
+		return EncryptPayloadResult{}, err
+	}
+	return result, nil
+}
+
+func (c *Client) DecryptPayload(ctx context.Context, ciphertext, nonce []byte, keyVersion int) (DecryptPayloadResult, error) {
+	var result DecryptPayloadResult
+	if err := c.call(ctx, methodDecryptPayload, DecryptPayloadRequest{
+		Ciphertext: ciphertext,
+		Nonce:      nonce,
+		KeyVersion: keyVersion,
+	}, &result); err != nil {
+		return DecryptPayloadResult{}, err
 	}
 	return result, nil
 }

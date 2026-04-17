@@ -33,6 +33,7 @@ import (
 	"github.com/langoai/lango/internal/p2p/team"
 	"github.com/langoai/lango/internal/security"
 	"github.com/langoai/lango/internal/session"
+	"github.com/langoai/lango/internal/storagebroker"
 	"github.com/langoai/lango/internal/supervisor"
 	"github.com/langoai/lango/internal/tools/browser"
 	toolcrypto "github.com/langoai/lango/internal/tools/crypto"
@@ -313,7 +314,11 @@ func (m *intelligenceModule) Init(ctx context.Context, r appinit.Resolver) (*app
 	}
 
 	// Knowledge.
-	kc, kcStatus := initKnowledge(cfg, store, gc, m.bus)
+	var brokerAPI storagebroker.API
+	if m.boot != nil {
+		brokerAPI = m.boot.Broker
+	}
+	kc, kcStatus := initKnowledge(cfg, store, gc, m.bus, brokerAPI)
 	fts5Available := false
 	if kc != nil {
 		// FTS5 search index.

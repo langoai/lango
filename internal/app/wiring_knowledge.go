@@ -22,6 +22,7 @@ import (
 	"github.com/langoai/lango/internal/search"
 	"github.com/langoai/lango/internal/session"
 	"github.com/langoai/lango/internal/skill"
+	"github.com/langoai/lango/internal/storagebroker"
 	"github.com/langoai/lango/internal/supervisor"
 	"github.com/langoai/lango/internal/types"
 	"github.com/langoai/lango/skills"
@@ -36,7 +37,7 @@ type knowledgeComponents struct {
 
 // initKnowledge creates the self-learning components if enabled.
 // When gc is provided, a GraphEngine is used as the observer instead of the base Engine.
-func initKnowledge(cfg *config.Config, store session.Store, gc *graphComponents, bus *eventbus.Bus) (*knowledgeComponents, *types.FeatureStatus) {
+func initKnowledge(cfg *config.Config, store session.Store, gc *graphComponents, bus *eventbus.Bus, broker storagebroker.API) (*knowledgeComponents, *types.FeatureStatus) {
 	const featureName = "Knowledge"
 
 	if !cfg.Knowledge.Enabled {
@@ -59,6 +60,9 @@ func initKnowledge(cfg *config.Config, store session.Store, gc *graphComponents,
 
 	kStore := knowledge.NewStore(client, kLogger)
 	kStore.SetEventBus(bus)
+	if broker != nil {
+		kStore.SetPayloadProtector(storagebroker.NewPayloadProtector(broker))
+	}
 
 	engine := learning.NewEngine(kStore, kLogger)
 

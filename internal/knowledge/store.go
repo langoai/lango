@@ -3,6 +3,7 @@ package knowledge
 import (
 	"context"
 	"fmt"
+	"regexp"
 	"strings"
 	"time"
 
@@ -18,16 +19,24 @@ import (
 	"github.com/langoai/lango/internal/ent/predicate"
 	"github.com/langoai/lango/internal/eventbus"
 	"github.com/langoai/lango/internal/search"
+	"github.com/langoai/lango/internal/security"
 )
 
 // Store provides CRUD operations for knowledge, learning, skill, audit, and external ref entities.
 type Store struct {
 	client          *ent.Client
 	logger          *zap.SugaredLogger
-	bus             *eventbus.Bus      // Optional event bus for cross-domain notifications.
-	fts5Index       *search.FTS5Index  // Optional FTS5 index for knowledge search.
-	learningFTS5Idx *search.FTS5Index  // Optional FTS5 index for learning search.
+	bus             *eventbus.Bus     // Optional event bus for cross-domain notifications.
+	fts5Index       *search.FTS5Index // Optional FTS5 index for knowledge search.
+	learningFTS5Idx *search.FTS5Index // Optional FTS5 index for learning search.
+	payloads        security.PayloadProtector
 }
+
+var (
+	emailProjectionPattern = regexp.MustCompile(`[A-Za-z0-9._%+\-]+@[A-Za-z0-9.\-]+\.[A-Za-z]{2,}`)
+	longDigitsPattern      = regexp.MustCompile(`\b\d{6,}\b`)
+	longSecretTokenPattern = regexp.MustCompile(`\b(?:[A-Fa-f0-9]{32,}|[A-Za-z0-9_\-]{40,})\b`)
+)
 
 // NewStore creates a new knowledge store.
 func NewStore(client *ent.Client, logger *zap.SugaredLogger) *Store {
@@ -52,6 +61,11 @@ func (s *Store) SetFTS5Index(idx *search.FTS5Index) {
 // When set, SearchLearnings uses FTS5 with BM25 ranking instead of LIKE.
 func (s *Store) SetLearningFTS5Index(idx *search.FTS5Index) {
 	s.learningFTS5Idx = idx
+}
+
+// SetPayloadProtector enables broker-managed payload encryption for sensitive fields.
+func (s *Store) SetPayloadProtector(protector security.PayloadProtector) {
+	s.payloads = protector
 }
 
 // SaveToolResult satisfies toolchain.KnowledgeSaver. It wraps the tool result
@@ -109,13 +123,22 @@ func (s *Store) saveKnowledgeOnce(ctx context.Context, _ string, entry Knowledge
 		Only(ctx)
 
 	if ent.IsNotFound(err) {
+		storedContent, ciphertext, nonce, keyVersion, err := s.prepareKnowledgeWrite(ctx, entry.Content)
+		if err != nil {
+			return fmt.Errorf("prepare knowledge payload: %w", err)
+		}
 		// First version: create with version=1, is_latest=true.
 		builder := s.client.Knowledge.Create().
 			SetKey(entry.Key).
 			SetCategory(entry.Category).
-			SetContent(entry.Content).
+			SetContent(storedContent).
 			SetVersion(1).
 			SetIsLatest(true)
+		if ciphertext != nil {
+			builder.SetContentCiphertext(ciphertext)
+			builder.SetContentNonce(nonce)
+			builder.SetContentKeyVersion(keyVersion)
+		}
 
 		if len(entry.Tags) > 0 {
 			builder.SetTags(entry.Tags)
@@ -130,8 +153,8 @@ func (s *Store) saveKnowledgeOnce(ctx context.Context, _ string, entry Knowledge
 		}
 
 		meta := map[string]string{"category": string(entry.Category)}
-		s.publishContentSaved(entry.Key, "knowledge", entry.Content, meta, true, true, 1)
-		s.syncKnowledgeFTS5(ctx, entry.Key, entry.Content, false)
+		s.publishContentSaved(entry.Key, "knowledge", storedContent, meta, true, true, 1)
+		s.syncKnowledgeFTS5(ctx, entry.Key, storedContent, false)
 		return nil
 	}
 	if err != nil {
@@ -142,6 +165,11 @@ func (s *Store) saveKnowledgeOnce(ctx context.Context, _ string, entry Knowledge
 	// source/tags changes alone do not justify a new version.
 	if existing.Category == entry.Category && existing.Content == entry.Content {
 		return nil
+	}
+
+	storedContent, ciphertext, nonce, keyVersion, err := s.prepareKnowledgeWrite(ctx, entry.Content)
+	if err != nil {
+		return fmt.Errorf("prepare knowledge payload: %w", err)
 	}
 
 	// Append new version in transaction.
@@ -160,11 +188,16 @@ func (s *Store) saveKnowledgeOnce(ctx context.Context, _ string, entry Knowledge
 	builder := tx.Knowledge.Create().
 		SetKey(entry.Key).
 		SetCategory(entry.Category).
-		SetContent(entry.Content).
+		SetContent(storedContent).
 		SetVersion(newVersion).
 		SetIsLatest(true).
 		SetUseCount(existing.UseCount).
 		SetRelevanceScore(existing.RelevanceScore)
+	if ciphertext != nil {
+		builder.SetContentCiphertext(ciphertext)
+		builder.SetContentNonce(nonce)
+		builder.SetContentKeyVersion(keyVersion)
+	}
 
 	if len(entry.Tags) > 0 {
 		builder.SetTags(entry.Tags)
@@ -184,8 +217,8 @@ func (s *Store) saveKnowledgeOnce(ctx context.Context, _ string, entry Knowledge
 	}
 
 	meta := map[string]string{"category": string(entry.Category)}
-	s.publishContentSaved(entry.Key, "knowledge", entry.Content, meta, false, false, newVersion)
-	s.syncKnowledgeFTS5(ctx, entry.Key, entry.Content, true)
+	s.publishContentSaved(entry.Key, "knowledge", storedContent, meta, false, false, newVersion)
+	s.syncKnowledgeFTS5(ctx, entry.Key, storedContent, true)
 	return nil
 }
 
@@ -210,7 +243,7 @@ func (s *Store) GetKnowledge(ctx context.Context, key string) (*KnowledgeEntry, 
 	return &KnowledgeEntry{
 		Key:       k.Key,
 		Category:  k.Category,
-		Content:   k.Content,
+		Content:   s.resolveKnowledgeContent(ctx, k),
 		Tags:      k.Tags,
 		Source:    k.Source,
 		Version:   k.Version,
@@ -238,7 +271,7 @@ func (s *Store) GetKnowledgeHistory(ctx context.Context, key string) ([]Knowledg
 		result = append(result, KnowledgeEntry{
 			Key:       k.Key,
 			Category:  k.Category,
-			Content:   k.Content,
+			Content:   s.resolveKnowledgeContent(ctx, k),
 			Tags:      k.Tags,
 			Source:    k.Source,
 			Version:   k.Version,
@@ -300,7 +333,7 @@ func (s *Store) searchKnowledgeLIKE(ctx context.Context, query string, category 
 		result = append(result, KnowledgeEntry{
 			Key:       k.Key,
 			Category:  k.Category,
-			Content:   k.Content,
+			Content:   s.resolveKnowledgeContent(ctx, k),
 			Tags:      k.Tags,
 			Source:    k.Source,
 			Version:   k.Version,
@@ -346,7 +379,7 @@ func (s *Store) resolveKnowledgeByKeys(ctx context.Context, ftsResults []search.
 		result = append(result, KnowledgeEntry{
 			Key:       k.Key,
 			Category:  k.Category,
-			Content:   k.Content,
+			Content:   s.resolveKnowledgeContent(ctx, k),
 			Tags:      k.Tags,
 			Source:    k.Source,
 			Version:   k.Version,
@@ -434,7 +467,7 @@ func (s *Store) resolveKnowledgeScoredByKeys(ctx context.Context, ftsResults []s
 			Entry: KnowledgeEntry{
 				Key:       k.Key,
 				Category:  k.Category,
-				Content:   k.Content,
+				Content:   s.resolveKnowledgeContent(ctx, k),
 				Tags:      k.Tags,
 				Source:    k.Source,
 				Version:   k.Version,
@@ -474,7 +507,7 @@ func (s *Store) searchKnowledgeScoredLIKE(ctx context.Context, query string, cat
 			Entry: KnowledgeEntry{
 				Key:       k.Key,
 				Category:  k.Category,
-				Content:   k.Content,
+				Content:   s.resolveKnowledgeContent(ctx, k),
 				Tags:      k.Tags,
 				Source:    k.Source,
 				Version:   k.Version,
@@ -518,7 +551,7 @@ func (s *Store) SearchRecentKnowledge(ctx context.Context, query string, limit i
 		result = append(result, KnowledgeEntry{
 			Key:       k.Key,
 			Category:  k.Category,
-			Content:   k.Content,
+			Content:   s.resolveKnowledgeContent(ctx, k),
 			Tags:      k.Tags,
 			Source:    k.Source,
 			Version:   k.Version,
@@ -1054,6 +1087,48 @@ func (s *Store) syncKnowledgeFTS5(ctx context.Context, key, content string, isUp
 	if err != nil {
 		s.logger.Warnw("FTS5 knowledge sync failed", "key", key, "error", err)
 	}
+}
+
+func (s *Store) prepareKnowledgeWrite(ctx context.Context, content string) (storedContent string, ciphertext, nonce []byte, keyVersion int, err error) {
+	if s.payloads == nil {
+		return content, nil, nil, 0, nil
+	}
+	projection := redactKnowledgeProjection(content)
+	ciphertext, nonce, keyVersion, err = s.payloads.EncryptPayload([]byte(content))
+	if err != nil {
+		return "", nil, nil, 0, err
+	}
+	return projection, ciphertext, nonce, keyVersion, nil
+}
+
+func (s *Store) resolveKnowledgeContent(ctx context.Context, k *ent.Knowledge) string {
+	if s.payloads == nil || k == nil || k.ContentCiphertext == nil || k.ContentNonce == nil || k.ContentKeyVersion == nil {
+		if k == nil {
+			return ""
+		}
+		return k.Content
+	}
+	plaintext, err := s.payloads.DecryptPayload(*k.ContentCiphertext, *k.ContentNonce, *k.ContentKeyVersion)
+	if err != nil {
+		s.logger.Warnw("knowledge payload decrypt failed", "key", k.Key, "error", err)
+		return k.Content
+	}
+	return string(plaintext)
+}
+
+func redactKnowledgeProjection(content string) string {
+	projection := strings.TrimSpace(content)
+	if projection == "" {
+		return ""
+	}
+	projection = emailProjectionPattern.ReplaceAllString(projection, "[email]")
+	projection = longDigitsPattern.ReplaceAllString(projection, "[number]")
+	projection = longSecretTokenPattern.ReplaceAllString(projection, "[secret]")
+	projection = strings.Join(strings.Fields(projection), " ")
+	if len(projection) > 512 {
+		projection = projection[:512]
+	}
+	return projection
 }
 
 // deleteKnowledgeFTS5 removes a knowledge entry from the FTS5 index.

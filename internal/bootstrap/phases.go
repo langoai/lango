@@ -279,19 +279,31 @@ func phaseOpenDatabase() Phase {
 	return Phase{
 		Name: "open database",
 		Run: func(_ context.Context, s *State) error {
+			var payloadKey []byte
+			if s.MasterKey != nil {
+				payloadKey = security.DerivePayloadKey(s.MasterKey)
+			}
 			if s.Options.StartStorageBroker {
 				brokerClient, err := startStorageBroker(context.Background())
 				if err != nil {
 					return fmt.Errorf("start storage broker: %w", err)
 				}
 				if _, err := brokerClient.OpenDB(context.Background(), storagebroker.OpenDBRequest{
-					DBPath: s.Options.DBPath,
+					DBPath:         s.Options.DBPath,
+					PayloadKey:     payloadKey,
+					PayloadVersion: security.PayloadKeyVersionV1,
 				}); err != nil {
 					_ = brokerClient.Close(context.Background())
+					if payloadKey != nil {
+						security.ZeroBytes(payloadKey)
+					}
 					return fmt.Errorf("storage broker open_db: %w", err)
 				}
 				s.Broker = brokerClient
 				s.Result.Broker = brokerClient
+			}
+			if payloadKey != nil {
+				security.ZeroBytes(payloadKey)
 			}
 			client, rawDB, err := openDatabase(s.Options.DBPath, "", false, 0)
 			if err != nil {

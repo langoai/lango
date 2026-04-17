@@ -6,6 +6,8 @@ const (
 	methodHealth            = "health"
 	methodDBStatus          = "db_status_summary"
 	methodOpenDB            = "open_db"
+	methodEncryptPayload    = "encrypt_payload"
+	methodDecryptPayload    = "decrypt_payload"
 	methodLoadSecurityState = "load_security_state"
 	methodStoreSalt         = "store_salt"
 	methodStoreChecksum     = "store_checksum"
@@ -37,6 +39,8 @@ type OpenDBRequest struct {
 	EncryptionKey  string `json:"encryption_key,omitempty"`
 	RawKey         bool   `json:"raw_key,omitempty"`
 	CipherPageSize int    `json:"cipher_page_size,omitempty"`
+	PayloadKey     []byte `json:"payload_key,omitempty"`
+	PayloadVersion int    `json:"payload_version,omitempty"`
 }
 
 type OpenDBResult struct {
@@ -54,6 +58,26 @@ type DBStatusSummaryResult struct {
 	Available      bool `json:"available"`
 	EncryptionKeys int  `json:"encryption_keys"`
 	StoredSecrets  int  `json:"stored_secrets"`
+}
+
+type EncryptPayloadRequest struct {
+	Plaintext []byte `json:"plaintext"`
+}
+
+type EncryptPayloadResult struct {
+	Ciphertext []byte `json:"ciphertext"`
+	Nonce      []byte `json:"nonce"`
+	KeyVersion int    `json:"key_version"`
+}
+
+type DecryptPayloadRequest struct {
+	Ciphertext []byte `json:"ciphertext"`
+	Nonce      []byte `json:"nonce"`
+	KeyVersion int    `json:"key_version"`
+}
+
+type DecryptPayloadResult struct {
+	Plaintext []byte `json:"plaintext"`
 }
 
 type LoadSecurityStateRequest struct{}

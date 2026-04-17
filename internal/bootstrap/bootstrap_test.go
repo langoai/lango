@@ -119,6 +119,18 @@ func (s *stubBrokerClient) DBStatusSummary(context.Context, storagebroker.DBStat
 	return storagebroker.DBStatusSummaryResult{}, nil
 }
 
+func (s *stubBrokerClient) EncryptPayload(context.Context, []byte) (storagebroker.EncryptPayloadResult, error) {
+	return storagebroker.EncryptPayloadResult{
+		Ciphertext: []byte("cipher"),
+		Nonce:      make([]byte, 12),
+		KeyVersion: 1,
+	}, nil
+}
+
+func (s *stubBrokerClient) DecryptPayload(context.Context, []byte, []byte, int) (storagebroker.DecryptPayloadResult, error) {
+	return storagebroker.DecryptPayloadResult{Plaintext: []byte("plain")}, nil
+}
+
 func (s *stubBrokerClient) LoadSecurityState(context.Context) (storagebroker.LoadSecurityStateResult, error) {
 	return storagebroker.LoadSecurityStateResult{}, nil
 }

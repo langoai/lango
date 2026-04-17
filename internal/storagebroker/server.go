@@ -17,10 +17,12 @@ import (
 
 // Server owns the broker process state.
 type Server struct {
-	mu      sync.Mutex
-	client  *ent.Client
-	rawDB   *sql.DB
-	stopped bool
+	mu             sync.Mutex
+	client         *ent.Client
+	rawDB          *sql.DB
+	payloadKey     []byte
+	payloadVersion int
+	stopped        bool
 }
 
 // NewServer constructs a broker server with no open database yet.
@@ -95,6 +97,18 @@ func (s *Server) dispatch(ctx context.Context, req Request) (interface{}, error)
 			return nil, err
 		}
 		return s.dbStatus(ctx, payload)
+	case methodEncryptPayload:
+		var payload EncryptPayloadRequest
+		if err := decodePayload(req.Payload, &payload); err != nil {
+			return nil, err
+		}
+		return s.encryptPayload(ctx, payload)
+	case methodDecryptPayload:
+		var payload DecryptPayloadRequest
+		if err := decodePayload(req.Payload, &payload); err != nil {
+			return nil, err
+		}
+		return s.decryptPayload(ctx, payload)
 	case methodLoadSecurityState:
 		return s.loadSecurityState(ctx)
 	case methodStoreSalt:
@@ -147,6 +161,8 @@ func (s *Server) openDB(_ context.Context, req OpenDBRequest) (OpenDBResult, err
 
 	s.client = client
 	s.rawDB = rawDB
+	s.payloadKey = append([]byte(nil), req.PayloadKey...)
+	s.payloadVersion = req.PayloadVersion
 	return OpenDBResult{Opened: true}, nil
 }
 
@@ -202,6 +218,46 @@ func (s *Server) loadSecurityState(_ context.Context) (LoadSecurityStateResult, 
 	}, nil
 }
 
+func (s *Server) encryptPayload(_ context.Context, req EncryptPayloadRequest) (EncryptPayloadResult, error) {
+	s.mu.Lock()
+	key := append([]byte(nil), s.payloadKey...)
+	version := s.payloadVersion
+	s.mu.Unlock()
+	if len(key) == 0 {
+		return EncryptPayloadResult{}, fmt.Errorf("payload protection key not initialized")
+	}
+	if version == 0 {
+		version = sec.PayloadKeyVersionV1
+	}
+	ciphertext, nonce, err := sec.EncryptPayloadWithKey(key, req.Plaintext)
+	if err != nil {
+		return EncryptPayloadResult{}, err
+	}
+	return EncryptPayloadResult{
+		Ciphertext: ciphertext,
+		Nonce:      nonce,
+		KeyVersion: version,
+	}, nil
+}
+
+func (s *Server) decryptPayload(_ context.Context, req DecryptPayloadRequest) (DecryptPayloadResult, error) {
+	s.mu.Lock()
+	key := append([]byte(nil), s.payloadKey...)
+	version := s.payloadVersion
+	s.mu.Unlock()
+	if len(key) == 0 {
+		return DecryptPayloadResult{}, fmt.Errorf("payload protection key not initialized")
+	}
+	if req.KeyVersion != 0 && version != 0 && req.KeyVersion != version {
+		return DecryptPayloadResult{}, fmt.Errorf("unsupported payload key version %d", req.KeyVersion)
+	}
+	plaintext, err := sec.DecryptPayloadWithKey(key, req.Ciphertext, req.Nonce)
+	if err != nil {
+		return DecryptPayloadResult{}, err
+	}
+	return DecryptPayloadResult{Plaintext: plaintext}, nil
+}
+
 func (s *Server) storeSalt(_ context.Context, req StoreSaltRequest) (map[string]bool, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -239,6 +295,11 @@ func (s *Server) shutdown() ShutdownResult {
 		_ = s.rawDB.Close()
 		s.rawDB = nil
 	}
+	if s.payloadKey != nil {
+		sec.ZeroBytes(s.payloadKey)
+		s.payloadKey = nil
+	}
+	s.payloadVersion = 0
 	return ShutdownResult{ShuttingDown: true}
 }
 
