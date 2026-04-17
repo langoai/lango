@@ -237,7 +237,7 @@ Resume SHALL be integrated with gateway/session handling while remaining opt-in.
 - **AND** hardcoded `time.Hour` is not used
 
 ### Requirement: Workspace Isolation
-Production runtime SHALL activate workspace isolation for coding steps once the execution-isolation stage is enabled.
+Production runtime SHALL activate workspace isolation for coding steps once the execution-isolation stage is enabled. Error messages SHALL provide guided remediation with actionable commands. Patch application failures SHALL include rollback instructions.
 
 #### Scenario: Runtime isolation active
 - **WHEN** `runLedger.workspaceIsolation` is enabled
@@ -248,6 +248,49 @@ Production runtime SHALL activate workspace isolation for coding steps once the 
 - **WHEN** the same step is validated multiple times under isolation
 - **THEN** each attempt uses a retry-safe workspace identity
 - **AND** previous attempts do not block later ones via reused branch metadata
+
+#### Scenario: Dirty tree guided remediation
+- **WHEN** `CheckDirtyTree` detects uncommitted changes
+- **THEN** the error message includes a count of changed files
+- **AND** the error suggests `git stash push -m "lango-workspace-isolation"` as a remediation command
+
+#### Scenario: Patch apply conflict guidance
+- **WHEN** `ApplyPatch` fails due to a merge conflict
+- **THEN** the error message includes the raw git output
+- **AND** the error instructs the user to run `git am --abort` to rollback
+
+#### Scenario: Enablement conditions
+- **WHEN** the system evaluates whether workspace isolation should be active
+- **THEN** isolation is required for steps with validators of type `file_changed`, `build_pass`, or `test_pass`
+- **AND** isolation is not required for validators of type `human_approval` or `always_pass`
+
+### Requirement: RunLedger Workspace Isolation doctor check
+The doctor command SHALL include a `RunLedger Workspace Isolation` check that validates the workspace isolation configuration and environment health. The check name SHALL be distinct from the existing `P2P Workspaces` check.
+
+#### Scenario: Isolation enabled and healthy
+- **WHEN** `runLedger.workspaceIsolation` is enabled and git is available and no stale worktrees exist
+- **THEN** the check status is `Pass`
+- **AND** the message includes the config value and active worktree count
+
+#### Scenario: Isolation disabled
+- **WHEN** `runLedger.workspaceIsolation` is disabled
+- **THEN** the check status is `Skip`
+- **AND** the message indicates isolation is not enabled
+
+#### Scenario: Git unavailable
+- **WHEN** `runLedger.workspaceIsolation` is enabled but `git` is not in PATH
+- **THEN** the check status is `Warn`
+- **AND** the message indicates git is required for workspace isolation
+
+#### Scenario: Stale worktrees detected
+- **WHEN** `git worktree list` reports worktrees under the runledger temp directory that no longer exist on disk
+- **THEN** the check status is `Warn`
+- **AND** the message lists the stale worktree paths
+
+#### Scenario: Doctor help text
+- **WHEN** user runs `lango doctor --help`
+- **THEN** the output lists `RunLedger Workspace Isolation` under the Execution category
+- **AND** the total check count is incremented by 1
 
 ### Requirement: Rollout Stages
 Write-through mode SHALL route workflow/background writes through RunLedger first.
@@ -532,3 +575,15 @@ Concrete store types (`MemoryStore`, `EntStore`) SHALL implement the `AppendHook
 - **WHEN** a store is created with `WithAppendHook(first)` and then `SetAppendHook(second)` is called
 - **THEN** both `first` and `second` are invoked in order on each `AppendJournalEvent` call
 
+### Requirement: Runtime wake boundary definition
+The system SHALL document the boundary between application-layer resume (opt-in `confirmResume + resumeRunId` handshake) and runtime-layer wake (harness re-initialization from persisted state). The design document SHALL enumerate the state categories that must persist for wake to be possible without a full bootstrap pipeline.
+
+#### Scenario: State categories enumerated
+- **WHEN** the design document is reviewed
+- **THEN** it explicitly covers: in-flight tool call state, pending approval state, supervisor/ADK session bridge state, and crypto provider re-initialization
+- **AND** it maps which of these the current resume protocol covers vs does not cover
+
+#### Scenario: No runtime behavior change
+- **WHEN** this change is implemented
+- **THEN** no runtime code paths for session handling, resume, or bootstrap are modified
+- **AND** the change is limited to design documentation and diagnostic tooling

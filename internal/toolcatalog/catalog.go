@@ -122,6 +122,22 @@ func schemaFromEntry(e ToolEntry) ToolSchema {
 	return s
 }
 
+// SaveableToolNames returns sorted names of tools whose ToolCapability
+// indicates they are eligible for knowledge saving (ReadOnly or read/query activity).
+func (c *Catalog) SaveableToolNames() []string {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	var names []string
+	for _, name := range c.order {
+		e := c.tools[name]
+		if e.Tool.Capability.KnowledgeSaveable() {
+			names = append(names, name)
+		}
+	}
+	sort.Strings(names)
+	return names
+}
+
 // ListTools returns schemas for all tools in the given category.
 // If category is empty, all tools are returned.
 func (c *Catalog) ListTools(category string) []ToolSchema {

@@ -16,16 +16,23 @@ import (
 // LearningSuggestionEvent when it does. Rate-limiting is per-session; dedup
 // is global by pattern hash within a sliding window.
 type SuggestionEmitter struct {
-	bus         *eventbus.Bus
-	threshold   float64
-	rateLimit   int
-	dedupWindow time.Duration
-	now         func() time.Time
+	bus            *eventbus.Bus
+	threshold      float64
+	rateLimit      int
+	driftThreshold int
+	dedupWindow    time.Duration
+	now            func() time.Time
 
-	mu            sync.Mutex
-	turnCounters  map[string]int         // sessionKey -> turns since last emit
-	recentHashes  map[string]time.Time   // pattern hash -> last emit time
-	dismissed     map[string]time.Time   // pattern hash -> dismissal time (also serves as negative dedup)
+	mu             sync.Mutex
+	turnCounters   map[string]int       // sessionKey -> turns since last emit
+	recentHashes   map[string]time.Time // pattern hash -> last emit time
+	dismissed      map[string]time.Time // pattern hash -> dismissal time (also serves as negative dedup)
+	driftCounters  map[string]driftEntry // "toolName:errorClass" -> count + first seen
+}
+
+type driftEntry struct {
+	count     int
+	firstSeen time.Time
 }
 
 // SuggestionCandidate is the minimum shape an emitter needs to decide and
@@ -38,18 +45,22 @@ type SuggestionCandidate struct {
 	Rationale    string
 }
 
+const defaultDriftThreshold = 5
+
 // NewSuggestionEmitter constructs an emitter. bus may be nil — callers can
 // use this emitter in tests without wiring the event bus.
 func NewSuggestionEmitter(bus *eventbus.Bus, threshold float64, rateLimit int, dedupWindow time.Duration) *SuggestionEmitter {
 	return &SuggestionEmitter{
-		bus:          bus,
-		threshold:    threshold,
-		rateLimit:    rateLimit,
-		dedupWindow:  dedupWindow,
-		now:          time.Now,
-		turnCounters: make(map[string]int),
-		recentHashes: make(map[string]time.Time),
-		dismissed:    make(map[string]time.Time),
+		bus:            bus,
+		threshold:      threshold,
+		rateLimit:      rateLimit,
+		driftThreshold: defaultDriftThreshold,
+		dedupWindow:    dedupWindow,
+		now:            time.Now,
+		turnCounters:   make(map[string]int),
+		recentHashes:   make(map[string]time.Time),
+		dismissed:      make(map[string]time.Time),
+		driftCounters:  make(map[string]driftEntry),
 	}
 }
 
@@ -106,6 +117,51 @@ func (e *SuggestionEmitter) MaybeEmit(_ context.Context, c SuggestionCandidate) 
 	return true
 }
 
+// EmitSpecDrift tracks recurring error patterns per tool and publishes a
+// SpecDriftDetectedEvent when the occurrence threshold is crossed. Returns
+// true if an event was published.
+func (e *SuggestionEmitter) EmitSpecDrift(_ context.Context, toolName, errorClass, sampleErr string) bool {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	now := e.now()
+
+	key := fmt.Sprintf("%s:%s", toolName, errorClass)
+	hash := fmt.Sprintf("drift-%x", sha256.Sum256([]byte(key)))[:20]
+
+	if t, ok := e.recentHashes[hash]; ok && now.Sub(t) < e.dedupWindow {
+		return false
+	}
+
+	entry := e.driftCounters[key]
+	if entry.firstSeen.IsZero() {
+		entry.firstSeen = now
+	}
+	if now.Sub(entry.firstSeen) >= e.dedupWindow {
+		entry = driftEntry{firstSeen: now}
+	}
+	entry.count++
+	e.driftCounters[key] = entry
+
+	if entry.count < e.driftThreshold {
+		return false
+	}
+
+	occurrences := entry.count
+	delete(e.driftCounters, key)
+	e.recentHashes[hash] = now
+
+	if e.bus != nil {
+		e.bus.Publish(eventbus.SpecDriftDetectedEvent{
+			ToolName:    toolName,
+			ErrorClass:  errorClass,
+			Occurrences: occurrences,
+			SampleError: sampleErr,
+			Timestamp:   now,
+		})
+	}
+	return true
+}
+
 // Dismiss records that a suggestion was denied by the user. Suppresses
 // re-emission of the same pattern within dedupWindow.
 func (e *SuggestionEmitter) Dismiss(pattern string) {
@@ -123,6 +179,11 @@ func (e *SuggestionEmitter) Prune() {
 	for k, t := range e.recentHashes {
 		if now.Sub(t) >= e.dedupWindow {
 			delete(e.recentHashes, k)
+		}
+	}
+	for k, entry := range e.driftCounters {
+		if now.Sub(entry.firstSeen) >= e.dedupWindow {
+			delete(e.driftCounters, k)
 		}
 	}
 	for k, t := range e.dismissed {

@@ -200,3 +200,92 @@ func TestRegistry_BrokenPackSkipped(t *testing.T) {
 	assert.Equal(t, StatusBroken, reg.List()[0].Status)
 	assert.Empty(t, reg.OKPacks())
 }
+
+func TestCopyTreeRejectsSymlinkEscape(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	outside := t.TempDir()
+	secret := filepath.Join(outside, "secret.txt")
+	require.NoError(t, os.WriteFile(secret, []byte("stolen"), 0o644))
+
+	// Create a skill directory with a legitimate file and a symlink escape.
+	skillDir := filepath.Join(root, "skills", "x")
+	require.NoError(t, os.MkdirAll(skillDir, 0o755))
+	require.NoError(t, os.WriteFile(filepath.Join(skillDir, "SKILL.md"), []byte("ok"), 0o644))
+	require.NoError(t, os.Symlink(secret, filepath.Join(skillDir, "escape.md")))
+
+	dst := t.TempDir()
+	err := copyTree(skillDir, dst, root)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "escapes pack root")
+}
+
+func TestCopyFileRejectsSymlink(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	target := filepath.Join(dir, "real.txt")
+	require.NoError(t, os.WriteFile(target, []byte("real"), 0o644))
+	link := filepath.Join(dir, "link.txt")
+	require.NoError(t, os.Symlink(target, link))
+
+	dst := filepath.Join(dir, "out.txt")
+	err := copyFile(link, dst)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "symlink")
+}
+
+func TestCopyTreeAcceptsInRootSymlink(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	// Create shared/guide.md and skills/x/SKILL.md + symlink to shared.
+	sharedDir := filepath.Join(root, "shared")
+	require.NoError(t, os.MkdirAll(sharedDir, 0o755))
+	require.NoError(t, os.WriteFile(filepath.Join(sharedDir, "guide.md"), []byte("shared guide"), 0o644))
+
+	skillDir := filepath.Join(root, "skills", "x")
+	require.NoError(t, os.MkdirAll(skillDir, 0o755))
+	require.NoError(t, os.WriteFile(filepath.Join(skillDir, "SKILL.md"), []byte("ok"), 0o644))
+	// In-root symlink: skills/x/guide.md → ../../shared/guide.md (stays within root)
+	require.NoError(t, os.Symlink(filepath.Join(sharedDir, "guide.md"), filepath.Join(skillDir, "guide.md")))
+
+	dst := t.TempDir()
+	err := copyTree(skillDir, dst, root)
+	require.NoError(t, err, "in-root symlink should be accepted")
+
+	// Verify the symlinked file was copied as a regular file.
+	data, err := os.ReadFile(filepath.Join(dst, "guide.md"))
+	require.NoError(t, err)
+	assert.Equal(t, "shared guide", string(data))
+}
+
+func TestPlannedWritesIncludesDirectoryContents(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	skillDir := filepath.Join(root, "skills", "x")
+	require.NoError(t, os.MkdirAll(filepath.Join(skillDir, "references"), 0o755))
+	require.NoError(t, os.WriteFile(filepath.Join(skillDir, "SKILL.md"), []byte("skill"), 0o644))
+	require.NoError(t, os.WriteFile(filepath.Join(skillDir, "references", "guide.md"), []byte("guide"), 0o644))
+
+	inst := newTestInstaller(t)
+	m := &Manifest{
+		Name: "test-pack",
+		Contents: Contents{
+			Skills: []SkillRef{
+				{Name: "x", Path: "skills/x/SKILL.md"},
+			},
+		},
+	}
+	writes := inst.plannedWrites(m, root)
+
+	// Should include SKILL.md AND references/guide.md, for both pack-side and skill-side.
+	found := map[string]bool{}
+	for _, w := range writes {
+		found[filepath.Base(w)] = true
+	}
+	assert.True(t, found["SKILL.md"], "should include SKILL.md")
+	assert.True(t, found["guide.md"], "should include sibling guide.md")
+}

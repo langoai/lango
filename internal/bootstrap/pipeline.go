@@ -111,5 +111,10 @@ func (p *Pipeline) Execute(ctx context.Context, opts Options) (*Result, error) {
 	}
 
 	state.Result.PhaseTiming = timing
+
+	if err := AppendTimingLog(timing, opts.Version); err != nil {
+		log.Warnw("append bootstrap timing log", "error", err)
+	}
+
 	return &state.Result, nil
 }

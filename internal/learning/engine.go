@@ -68,6 +68,10 @@ func (e *Engine) OnToolResult(ctx context.Context, sessionKey, toolName string, 
 
 	if err != nil {
 		e.handleError(ctx, sessionKey, toolName, err)
+		if e.emitter != nil {
+			category := categorizeError(toolName, err)
+			e.emitter.EmitSpecDrift(ctx, toolName, string(category), err.Error())
+		}
 		return
 	}
 

@@ -89,6 +89,8 @@ type Options struct {
 	KMSConfig *config.KMSConfig
 	// KMSProviderName identifies which KMS backend to use for KEK unwrap (e.g., "aws-kms").
 	KMSProviderName string
+	// Version is the application version string, recorded in bootstrap timing diagnostics.
+	Version string
 }
 
 // Run executes the full bootstrap sequence using the phase pipeline:

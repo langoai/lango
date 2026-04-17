@@ -7,15 +7,18 @@ import (
 	"github.com/langoai/lango/internal/config"
 )
 
+// Version is set by cmd/lango to record the app version in bootstrap diagnostics.
+var Version string
+
 // BootResult runs bootstrap and returns the full result.
 // The caller is responsible for closing boot.DBClient.
 func BootResult() (*bootstrap.Result, error) {
-	return bootstrap.Run(bootstrap.Options{})
+	return bootstrap.Run(bootstrap.Options{Version: Version})
 }
 
 // Config runs bootstrap, returns only the config, and closes the DB client.
 func Config() (*config.Config, error) {
-	boot, err := bootstrap.Run(bootstrap.Options{})
+	boot, err := bootstrap.Run(bootstrap.Options{Version: Version})
 	if err != nil {
 		return nil, err
 	}

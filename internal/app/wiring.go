@@ -702,6 +702,14 @@ func buildProvenanceAgentOptions(pv *provenanceValues, hookRegistry *toolchain.H
 
 	childHook := func(ev session.SessionLifecycleEvent) {
 		ctx := context.Background()
+
+		logger().Infow("child session lifecycle",
+			"type", ev.Type,
+			"child", ev.ChildKey,
+			"parent", ev.ParentKey,
+			"agent", ev.AgentName,
+		)
+
 		switch ev.Type {
 		case "fork":
 			if _, err := pv.sessionTree.RegisterSession(ctx, ev.ChildKey, ev.ParentKey, ev.AgentName, ""); err != nil {

@@ -19,7 +19,6 @@ import (
 	"github.com/langoai/lango/internal/background"
 	"github.com/langoai/lango/internal/config"
 	"github.com/langoai/lango/internal/eventbus"
-	"github.com/langoai/lango/internal/provider"
 	"github.com/langoai/lango/internal/session"
 	"github.com/langoai/lango/internal/turnrunner"
 )
@@ -89,6 +88,7 @@ type ChatModel struct {
 	turnInputTokens  int64
 	turnOutputTokens int64
 	turnCacheTokens  int64
+	turnCostUSD      float64
 
 	cpr cprFilter
 }
@@ -253,6 +253,7 @@ func (m *ChatModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.turnInputTokens += msg.InputTokens
 			m.turnOutputTokens += msg.OutputTokens
 			m.turnCacheTokens += msg.CacheTokens
+			m.turnCostUSD += msg.EstimatedCostUSD
 		}
 		return m, nil
 
@@ -334,13 +335,10 @@ func (m *ChatModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// path — cockpit does this via its RuntimeTracker in handleDone).
 		if m.turnActive && (m.turnInputTokens > 0 || m.turnOutputTokens > 0) {
 			total := m.turnInputTokens + m.turnOutputTokens
-			var costUSD float64
-			if m.cfg != nil {
-				costUSD = provider.EstimateCostUSD(m.cfg.Agent.Model, int(m.turnInputTokens), int(m.turnOutputTokens))
-			}
 			inTok := m.turnInputTokens
 			outTok := m.turnOutputTokens
 			cacheTok := m.turnCacheTokens
+			costUSD := m.turnCostUSD
 			cmds = append(cmds, func() tea.Msg {
 				return TurnTokenUsageMsg{
 					InputTokens:      inTok,
@@ -355,6 +353,7 @@ func (m *ChatModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.turnInputTokens = 0
 		m.turnOutputTokens = 0
 		m.turnCacheTokens = 0
+		m.turnCostUSD = 0
 
 		if cmd := m.transitionTo(nextState); cmd != nil {
 			cmds = append(cmds, cmd)
@@ -369,6 +368,7 @@ func (m *ChatModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.turnInputTokens = 0
 		m.turnOutputTokens = 0
 		m.turnCacheTokens = 0
+		m.turnCostUSD = 0
 
 		if m.chatView.streamBuf.Len() > 0 {
 			m.chatView.finalizeStream()
@@ -721,6 +721,7 @@ func (m *ChatModel) submitCmd(input string) tea.Cmd {
 	m.turnInputTokens = 0
 	m.turnOutputTokens = 0
 	m.turnCacheTokens = 0
+	m.turnCostUSD = 0
 
 	program := m.program
 	return func() tea.Msg {

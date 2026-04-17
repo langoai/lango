@@ -105,3 +105,54 @@ func TestSuggestionEmitter_DismissSuppressesReemission(t *testing.T) {
 	})
 	assert.False(t, ok, "dismissed pattern should not re-emit within the dedup window")
 }
+
+func TestEmitSpecDrift_BelowThreshold(t *testing.T) {
+	t.Parallel()
+
+	em := NewSuggestionEmitter(nil, 0.5, 1, time.Hour)
+
+	for i := 0; i < defaultDriftThreshold-1; i++ {
+		ok := em.EmitSpecDrift(context.Background(), "exec", "timeout", "context deadline exceeded")
+		assert.False(t, ok, "should not emit below threshold")
+	}
+}
+
+func TestEmitSpecDrift_ThresholdCrossed(t *testing.T) {
+	t.Parallel()
+
+	bus := eventbus.New()
+	received := make(chan eventbus.SpecDriftDetectedEvent, 1)
+	eventbus.SubscribeTyped(bus, func(e eventbus.SpecDriftDetectedEvent) {
+		received <- e
+	})
+
+	em := NewSuggestionEmitter(bus, 0.5, 1, time.Hour)
+
+	var emitted bool
+	for i := 0; i < defaultDriftThreshold; i++ {
+		emitted = em.EmitSpecDrift(context.Background(), "exec", "timeout", "deadline exceeded")
+	}
+	assert.True(t, emitted, "should emit at threshold")
+
+	select {
+	case e := <-received:
+		assert.Equal(t, "exec", e.ToolName)
+		assert.Equal(t, "timeout", e.ErrorClass)
+		assert.Equal(t, defaultDriftThreshold, e.Occurrences)
+	case <-time.After(time.Second):
+		t.Fatal("event not received")
+	}
+}
+
+func TestEmitSpecDrift_DedupAfterEmit(t *testing.T) {
+	t.Parallel()
+
+	em := NewSuggestionEmitter(nil, 0.5, 1, time.Hour)
+
+	for i := 0; i < defaultDriftThreshold; i++ {
+		em.EmitSpecDrift(context.Background(), "exec", "timeout", "err")
+	}
+
+	ok := em.EmitSpecDrift(context.Background(), "exec", "timeout", "err")
+	assert.False(t, ok, "dedup should suppress immediate re-emission")
+}
