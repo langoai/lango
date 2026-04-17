@@ -8,6 +8,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/langoai/lango/internal/bootstrap"
+	"github.com/langoai/lango/internal/cli/cliboot"
 	"github.com/langoai/lango/internal/cli/doctor/checks"
 	"github.com/langoai/lango/internal/cli/doctor/output"
 	"github.com/langoai/lango/internal/config"
@@ -99,7 +100,7 @@ See Also:
 func run(ctx context.Context, opts *Options) error {
 	// Load configuration from encrypted profile via bootstrap.
 	var cfg *config.Config
-	boot, err := bootstrap.Run(bootstrap.Options{})
+	boot, err := bootstrap.Run(bootstrap.Options{Version: cliboot.Version})
 	if err == nil {
 		cfg = boot.Config
 		defer boot.DBClient.Close()

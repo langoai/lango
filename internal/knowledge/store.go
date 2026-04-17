@@ -54,6 +54,23 @@ func (s *Store) SetLearningFTS5Index(idx *search.FTS5Index) {
 	s.learningFTS5Idx = idx
 }
 
+// SaveToolResult satisfies toolchain.KnowledgeSaver. It wraps the tool result
+// into a KnowledgeEntry and delegates to SaveKnowledge. The key is derived
+// from sessionKey + toolName for dedup; content is the JSON-serialized result.
+func (s *Store) SaveToolResult(ctx context.Context, sessionKey, toolName string, _ map[string]interface{}, result interface{}) error {
+	content := fmt.Sprintf("%v", result)
+	if len(content) > 4096 {
+		content = content[:4096]
+	}
+	key := fmt.Sprintf("tool_result:%s:%s", sessionKey, toolName)
+	return s.SaveKnowledge(ctx, sessionKey, KnowledgeEntry{
+		Key:      key,
+		Category: entknowledge.CategoryFact,
+		Content:  content,
+		Source:   "tool:" + toolName,
+	})
+}
+
 // publishContentSaved publishes a ContentSavedEvent if the bus is configured.
 // needsGraph mirrors the original SetGraphCallback behavior: only new knowledge
 // creation triggers graph processing; updates and learning saves are embed-only.

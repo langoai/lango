@@ -10,6 +10,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/langoai/lango/internal/bootstrap"
+	"github.com/langoai/lango/internal/cli/cliboot"
 	"github.com/langoai/lango/internal/cli/tui"
 	"github.com/langoai/lango/internal/config"
 	"github.com/langoai/lango/internal/configstore"
@@ -63,7 +64,7 @@ func runOnboard(profileName, preset string) error {
 		return fmt.Errorf("unknown preset %q (valid: minimal, researcher, collaborator, full)", preset)
 	}
 
-	boot, err := bootstrap.Run(bootstrap.Options{})
+	boot, err := bootstrap.Run(bootstrap.Options{Version: cliboot.Version})
 	if err != nil {
 		return fmt.Errorf("bootstrap: %w", err)
 	}

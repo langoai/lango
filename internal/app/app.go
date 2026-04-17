@@ -175,9 +175,10 @@ func New(boot *bootstrap.Result, opts ...AppOption) (*App, error) {
 
 	// B4c. Tool Execution Hooks.
 	// Extract KnowledgeSaver from intelligence wiring if available.
-	// Currently knowledge.Store does not implement toolchain.KnowledgeSaver;
-	// the saver param is threaded through so future implementations can plug in.
 	var knowledgeSaver toolchain.KnowledgeSaver
+	if iv != nil && iv.KC != nil {
+		knowledgeSaver = iv.KC.store
+	}
 	hookRegistry := buildHookRegistry(cfg, bus, knowledgeSaver, catalog)
 	tools = toolchain.ChainAll(tools, toolchain.WithHooks(hookRegistry))
 	app.HookRegistry = hookRegistry

@@ -368,17 +368,21 @@ func copyFile(src, dst string) error {
 // ResolvePath(rootDir, rel) to prevent TOCTTOU symlink replacement
 // between the initial directory validation and the actual copy.
 func copyTree(src, dst, rootDir string) error {
-	// Resolve rootDir to canonical form so filepath.Rel works correctly
+	// Resolve rootDir and src to canonical form so filepath.Rel works correctly
 	// when the OS has path aliases (e.g., macOS /var → /private/var).
 	resolvedRoot, err := filepath.EvalSymlinks(rootDir)
 	if err != nil {
 		return fmt.Errorf("resolve root dir: %w", err)
 	}
-	return filepath.Walk(src, func(path string, info os.FileInfo, err error) error {
+	resolvedSrc, err := filepath.EvalSymlinks(src)
+	if err != nil {
+		return fmt.Errorf("resolve src dir: %w", err)
+	}
+	return filepath.Walk(resolvedSrc, func(path string, info os.FileInfo, err error) error {
 		if err != nil {
 			return err
 		}
-		rel, err := filepath.Rel(src, path)
+		rel, err := filepath.Rel(resolvedSrc, path)
 		if err != nil {
 			return err
 		}
@@ -395,7 +399,15 @@ func copyTree(src, dst, rootDir string) error {
 		if _, resolveErr := ResolvePath(resolvedRoot, rootRel); resolveErr != nil {
 			return fmt.Errorf("path %q escapes pack root: %w", rootRel, resolveErr)
 		}
-		return copyFile(path, target)
+		// Resolve symlinks before copying, matching the Inspect behavior
+		// where ResolvePath returns a resolved path. This allows in-root
+		// symlinks (e.g., skills/foo/link.md → ../shared/link.md) that
+		// pass containment to be copied as regular files.
+		resolvedPath, evalErr := filepath.EvalSymlinks(path)
+		if evalErr != nil {
+			return fmt.Errorf("resolve %q: %w", rootRel, evalErr)
+		}
+		return copyFile(resolvedPath, target)
 	})
 }
 

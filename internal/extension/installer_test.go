@@ -236,6 +236,31 @@ func TestCopyFileRejectsSymlink(t *testing.T) {
 	assert.Contains(t, err.Error(), "symlink")
 }
 
+func TestCopyTreeAcceptsInRootSymlink(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	// Create shared/guide.md and skills/x/SKILL.md + symlink to shared.
+	sharedDir := filepath.Join(root, "shared")
+	require.NoError(t, os.MkdirAll(sharedDir, 0o755))
+	require.NoError(t, os.WriteFile(filepath.Join(sharedDir, "guide.md"), []byte("shared guide"), 0o644))
+
+	skillDir := filepath.Join(root, "skills", "x")
+	require.NoError(t, os.MkdirAll(skillDir, 0o755))
+	require.NoError(t, os.WriteFile(filepath.Join(skillDir, "SKILL.md"), []byte("ok"), 0o644))
+	// In-root symlink: skills/x/guide.md → ../../shared/guide.md (stays within root)
+	require.NoError(t, os.Symlink(filepath.Join(sharedDir, "guide.md"), filepath.Join(skillDir, "guide.md")))
+
+	dst := t.TempDir()
+	err := copyTree(skillDir, dst, root)
+	require.NoError(t, err, "in-root symlink should be accepted")
+
+	// Verify the symlinked file was copied as a regular file.
+	data, err := os.ReadFile(filepath.Join(dst, "guide.md"))
+	require.NoError(t, err)
+	assert.Equal(t, "shared guide", string(data))
+}
+
 func TestPlannedWritesIncludesDirectoryContents(t *testing.T) {
 	t.Parallel()
 

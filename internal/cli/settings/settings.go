@@ -10,6 +10,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/langoai/lango/internal/bootstrap"
+	"github.com/langoai/lango/internal/cli/cliboot"
 	"github.com/langoai/lango/internal/cli/tui"
 	"github.com/langoai/lango/internal/config"
 	"github.com/langoai/lango/internal/configstore"
@@ -61,7 +62,7 @@ See Also:
 }
 
 func runSettings(profileName string) error {
-	boot, err := bootstrap.Run(bootstrap.Options{})
+	boot, err := bootstrap.Run(bootstrap.Options{Version: cliboot.Version})
 	if err != nil {
 		return fmt.Errorf("bootstrap: %w", err)
 	}
