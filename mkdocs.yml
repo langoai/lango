@@ -101,6 +101,9 @@ nav:
     - System Overview: architecture/overview.md
     - Project Structure: architecture/project-structure.md
     - Data Flow: architecture/data-flow.md
+    - Master Document: architecture/master-document.md
+    - External Collaboration Audit: architecture/external-collaboration-audit.md
+    - P2P Knowledge Exchange Track: architecture/p2p-knowledge-exchange-track.md
   - Features:
     - features/index.md
     - AI Providers: features/ai-providers.md

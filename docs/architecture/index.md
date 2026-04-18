@@ -22,4 +22,22 @@ This section describes the internal architecture of Lango, a Go-based AI agent b
 
     End-to-end message flow, the bootstrap/wiring process, and async buffer patterns used for embedding generation and graph indexing.
 
+-   :material-compass-outline: **[Master Document](master-document.md)**
+
+    ---
+
+    Top-level product constitution, product path, capability areas, and execution-track portfolio for Lango.
+
+-   :material-clipboard-search-outline: **[External Collaboration Audit](external-collaboration-audit.md)**
+
+    ---
+
+    The first audit ledger for the product area that most directly defines Lango: trust, pricing, settlement, teams, and shared artifacts.
+
+-   :material-cash-fast: **[P2P Knowledge Exchange Track](p2p-knowledge-exchange-track.md)**
+
+    ---
+
+    The first concrete product track for external sovereign-agent economic activity.
+
 </div>
