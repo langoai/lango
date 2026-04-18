@@ -33,6 +33,12 @@ Knowledge exchange is the narrowest useful slice because it:
 - produces reviewable artifacts,
 - creates a clean bridge toward later team execution.
 
+## Relationship to Later Team Execution
+
+This track is intentionally narrower than leader-led team execution.
+
+It establishes the trust, settlement, deliverable, and exportability boundaries that later team-based collaboration depends on, without taking on full role orchestration, delegated budget control, or broader shared-workspace behavior. Leader-led team execution builds on these boundaries rather than replacing them.
+
 ## In Scope
 
 - pseudonymous but cryptographically continuous identities,

@@ -11,6 +11,12 @@ It exists to:
 - define which execution tracks own which problems,
 - keep future work aligned with one product story.
 
+## Relationship to Existing Stabilization Work
+
+Existing stabilization work remains valid, but it is subordinate to this master document rather than a replacement for it.
+
+Stabilization is one execution track among several in the track portfolio. It exists to harden, clarify, and make reliable the parts of the product story defined here; it does not define the top-level product constitution, capability taxonomy, or product path by itself.
+
 ## Product Constitution
 
 Lango is a sovereign peer-to-peer agent network, not just a local agent runtime.

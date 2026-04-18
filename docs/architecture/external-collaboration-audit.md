@@ -15,6 +15,12 @@ It exists to review the product area that most directly defines Lango:
 - team formation,
 - shared artifacts.
 
+## Relationship to the Master Document
+
+This audit sits underneath `docs/architecture/master-document.md` and must use that document's constitution, capability taxonomy, audit vocabulary, and track-routing rules.
+
+It does not redefine what Lango is, replace the product constitution, or create new top-level capability areas or execution tracks. Its role is to apply the master document's framework to the external collaboration capability area in detailed ledger form.
+
 ## Document Ownership
 
 - Primary capability area: `External Collaboration & Economic Exchange`
