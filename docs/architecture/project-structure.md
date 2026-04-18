@@ -62,7 +62,7 @@ All application code lives under `internal/` to enforce Go's visibility boundary
 | `cli/p2p/` | `lango p2p status`, `peers`, `connect`, `disconnect`, `firewall list/add/remove`, `discover`, `identity`, `reputation`, `pricing`, `session list/revoke/revoke-all`, `sandbox status/test/cleanup` -- P2P network management |
 | `cli/payment/` | `lango payment balance`, `history`, `limits`, `info`, `send` -- payment operations |
 | `cli/prompt/` | Interactive prompt utilities for CLI input |
-| `cli/security/` | `lango security status`, `secrets`, `migrate-passphrase`, `keyring store/clear/status`, `db-migrate`, `db-decrypt`, `kms status/test/keys` -- security operations |
+| `cli/security/` | `lango security status`, `secrets`, `migrate-passphrase`, `keyring store/clear/status`, `kms status/test/keys` plus legacy `db-migrate`/`db-decrypt` tombstones -- security operations |
 | `cli/settings/` | `lango settings` -- full configuration editor |
 | `cli/smartaccount/` | `lango account info`, `deploy`, `session list`, `module list`, `policy show`, `paymaster` -- ERC-7579 smart account management |
 | `cli/tuicore/` | Shared TUI components for interactive terminal sessions. `FormModel` (Bubbletea form manager), `Field` struct with input types: `InputText`, `InputInt`, `InputPassword`, `InputBool`, `InputSelect`, `InputSearchSelect` |
@@ -149,8 +149,8 @@ All application code lives under `internal/` to enforce Go's visibility boundary
 | `supervisor/` | `Supervisor` manages provider credentials and configuration. `ProviderProxy` handles model routing with temperature, max tokens, and fallback provider chains |
 | `prompt/` | Structured prompt builder. `Builder` assembles system prompts from prioritized `Section` instances. `LoadFromDir()` loads custom prompts from user directories. Sections: Identity, Safety, ConversationRules, ToolUsage, Automation, AgentIdentity |
 | `approval/` | Tool execution approval system. `CompositeProvider` routes approval requests to channel-specific providers. `GatewayProvider` sends approval requests over WebSocket. `TTYProvider` prompts in terminal. `HeadlessProvider` auto-approves. `GrantStore` caches approval decisions |
-| `payment/` | Blockchain payment service. `TxBuilder` constructs USDC transfer transactions. `Service` coordinates wallet, spending limiter, and transaction execution |
-| `wallet/` | Wallet providers: `LocalWallet` (derives keys from secrets store), `RPCWallet` (remote signing), `CompositeWallet` (fallback chain). `EntSpendingLimiter` enforces per-transaction and daily spending limits |
+| `payment/` | Blockchain payment service. `TxBuilder` constructs USDC transfer transactions. `Service` coordinates wallet, spending limiter, and transaction execution through an explicit payment transaction store |
+| `wallet/` | Wallet providers: `LocalWallet` (derives keys from secrets store), `RPCWallet` (remote signing), `CompositeWallet` (fallback chain). `EntSpendingLimiter` / store-backed limiters enforce per-transaction and daily spending limits |
 | `x402/` | X402 V2 payment protocol implementation. `Interceptor` handles automatic payment for 402 responses. `LocalSignerProvider` derives signing keys from secrets store. EIP-3009 signing for gasless USDC transfers |
 | `cron/` | Cron scheduling system built on robfig/cron/v3. `Scheduler` manages job lifecycle. `EntStore` persists jobs and execution history. `Executor` runs agent prompts on schedule. `Delivery` routes results to channels |
 | `background/` | In-memory background task manager. `Manager` enforces concurrency limits and task timeouts. `Notification` routes results to channels |
@@ -158,7 +158,7 @@ All application code lives under `internal/` to enforce Go's visibility boundary
 | `lifecycle/` | Component lifecycle management. `Registry` with priority-ordered startup and reverse-order shutdown. Adapters: `SimpleComponent`, `FuncComponent`, `ErrorComponent` |
 | `keyring/` | Hardware keyring integration (Touch ID / TPM 2.0). `Provider` interface backed by OS keyring via go-keyring |
 | `sandbox/` | Tool execution isolation. `SubprocessExecutor` for process-isolated P2P tool execution. `ContainerRuntime` interface with Docker/gVisor/native fallback chain. Optional pre-warmed container pool |
-| `dbmigrate/` | Database encryption migration. `MigrateToEncrypted` / `DecryptToPlaintext` for SQLCipher transitions. `IsEncrypted` detection and `secureDeleteFile` cleanup |
+| `dbmigrate/` | Legacy database migration tombstones and remediation helpers for old SQLCipher installs |
 | `toolcatalog/` | Thread-safe tool registry with category grouping. `Catalog` with `Register()`, `Get()`, `ListCategories()`, `ListTools()`. `ToolEntry` pairs tools with categories, `ToolSchema` provides tool summaries |
 | `toolchain/` | HTTP-style middleware chain for tool wrapping. `Middleware` type, `Chain()` / `ChainAll()` functions. Built-in middlewares: security filter, access control, event publishing, knowledge save, approval, browser recovery |
 | `appinit/` | Declarative module initialization system. `Module` interface with `Provides` / `DependsOn` keys. `Builder` with Kahn's algorithm topological sort for dependency resolution. Foundation for ordered application bootstrap |

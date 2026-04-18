@@ -1,9 +1,7 @@
 ## Purpose
 
 Capability spec for project-docs. See requirements below for scope and behavior contracts.
-
 ## Requirements
-
 ### Requirement: New packages documented in architecture
 The README.md Architecture section and docs/architecture/project-structure.md SHALL include dbmigrate, lifecycle, keyring, and sandbox packages.
 
@@ -46,3 +44,12 @@ The README.md Features section security line SHALL mention hardware keyring, SQL
 #### Scenario: README security feature is complete
 - **WHEN** a user reads the Features section of README.md
 - **THEN** the Secure line SHALL include hardware keyring, SQLCipher DB encryption, and Cloud KMS
+
+### Requirement: Build and installation docs describe FTS5 as always on
+Project documentation MUST describe FTS5 as included in the default runtime and MUST NOT require `-tags "fts5"` for normal builds or installs.
+
+#### Scenario: Install docs use default build commands
+- **WHEN** a user reads installation or development build instructions
+- **THEN** normal build and install examples omit `-tags "fts5"`
+- **AND** optional `vec` examples remain explicitly tagged
+

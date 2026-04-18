@@ -45,7 +45,7 @@ of access to all encrypted data.`,
 			if err != nil {
 				return fmt.Errorf("load config: %w", err)
 			}
-			defer boot.DBClient.Close()
+			defer boot.Close()
 
 			provider, ok := boot.Crypto.(*security.LocalCryptoProvider)
 			if !ok {

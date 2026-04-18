@@ -51,6 +51,32 @@ func (_c *AgentMemoryCreate) SetContent(v string) *AgentMemoryCreate {
 	return _c
 }
 
+// SetContentCiphertext sets the "content_ciphertext" field.
+func (_c *AgentMemoryCreate) SetContentCiphertext(v []byte) *AgentMemoryCreate {
+	_c.mutation.SetContentCiphertext(v)
+	return _c
+}
+
+// SetContentNonce sets the "content_nonce" field.
+func (_c *AgentMemoryCreate) SetContentNonce(v []byte) *AgentMemoryCreate {
+	_c.mutation.SetContentNonce(v)
+	return _c
+}
+
+// SetContentKeyVersion sets the "content_key_version" field.
+func (_c *AgentMemoryCreate) SetContentKeyVersion(v int) *AgentMemoryCreate {
+	_c.mutation.SetContentKeyVersion(v)
+	return _c
+}
+
+// SetNillableContentKeyVersion sets the "content_key_version" field if the given value is not nil.
+func (_c *AgentMemoryCreate) SetNillableContentKeyVersion(v *int) *AgentMemoryCreate {
+	if v != nil {
+		_c.SetContentKeyVersion(*v)
+	}
+	return _c
+}
+
 // SetConfidence sets the "confidence" field.
 func (_c *AgentMemoryCreate) SetConfidence(v float64) *AgentMemoryCreate {
 	_c.mutation.SetConfidence(v)
@@ -292,6 +318,18 @@ func (_c *AgentMemoryCreate) createSpec() (*AgentMemory, *sqlgraph.CreateSpec) {
 	if value, ok := _c.mutation.Content(); ok {
 		_spec.SetField(agentmemory.FieldContent, field.TypeString, value)
 		_node.Content = value
+	}
+	if value, ok := _c.mutation.ContentCiphertext(); ok {
+		_spec.SetField(agentmemory.FieldContentCiphertext, field.TypeBytes, value)
+		_node.ContentCiphertext = &value
+	}
+	if value, ok := _c.mutation.ContentNonce(); ok {
+		_spec.SetField(agentmemory.FieldContentNonce, field.TypeBytes, value)
+		_node.ContentNonce = &value
+	}
+	if value, ok := _c.mutation.ContentKeyVersion(); ok {
+		_spec.SetField(agentmemory.FieldContentKeyVersion, field.TypeInt, value)
+		_node.ContentKeyVersion = &value
 	}
 	if value, ok := _c.mutation.Confidence(); ok {
 		_spec.SetField(agentmemory.FieldConfidence, field.TypeFloat64, value)

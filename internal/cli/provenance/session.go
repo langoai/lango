@@ -33,7 +33,7 @@ func newSessionTreeCmd(bootLoader func() (*bootstrap.Result, error)) *cobra.Comm
 			if err != nil {
 				return err
 			}
-			defer boot.DBClient.Close()
+			defer boot.Close()
 			if isProvenanceDisabled(boot, cmd) {
 				return nil
 			}
@@ -66,7 +66,7 @@ func newSessionListCmd(bootLoader func() (*bootstrap.Result, error)) *cobra.Comm
 			if err != nil {
 				return err
 			}
-			defer boot.DBClient.Close()
+			defer boot.Close()
 			if isProvenanceDisabled(boot, cmd) {
 				return nil
 			}

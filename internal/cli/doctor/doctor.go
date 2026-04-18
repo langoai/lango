@@ -100,10 +100,13 @@ See Also:
 func run(ctx context.Context, opts *Options) error {
 	// Load configuration from encrypted profile via bootstrap.
 	var cfg *config.Config
-	boot, err := bootstrap.Run(bootstrap.Options{Version: cliboot.Version})
+	boot, err := bootstrap.Run(bootstrap.Options{
+		Version:            cliboot.Version,
+		StartStorageBroker: true,
+	})
 	if err == nil {
 		cfg = boot.Config
-		defer boot.DBClient.Close()
+		defer boot.Close()
 	}
 
 	// Get all checks

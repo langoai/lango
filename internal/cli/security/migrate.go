@@ -45,7 +45,7 @@ func newMigratePassphraseCmd(bootLoader func() (*bootstrap.Result, error)) *cobr
 			if err != nil {
 				return fmt.Errorf("load config: %w", err)
 			}
-			defer boot.DBClient.Close()
+			defer boot.Close()
 
 			if boot.Config.Security.Signer.Provider != "local" {
 				return fmt.Errorf("this command is only available when using 'local' security provider")
@@ -60,7 +60,17 @@ func newMigratePassphraseCmd(bootLoader func() (*bootstrap.Result, error)) *cobr
 			fmt.Println("Ensure you have a backup of your data directory.")
 			fmt.Println()
 
-			store := session.NewEntStoreWithClient(boot.DBClient)
+			if boot.Storage == nil {
+				return fmt.Errorf("bootstrap session storage unavailable")
+			}
+			store, err := boot.Storage.OpenSessionStore()
+			if err != nil {
+				return fmt.Errorf("open session store: %w", err)
+			}
+			entStore, ok := store.(*session.EntStore)
+			if !ok {
+				return fmt.Errorf("bootstrap session store is not Ent-backed")
+			}
 
 			// Current passphrase already verified by bootstrap
 			newPass, err := prompt.PassphraseConfirm("Enter NEW passphrase: ", "Confirm NEW passphrase: ")
@@ -69,7 +79,7 @@ func newMigratePassphraseCmd(bootLoader func() (*bootstrap.Result, error)) *cobr
 			}
 
 			ctx := context.Background()
-			return migrateSecrets(ctx, store, boot.Crypto, newPass)
+			return migrateSecrets(ctx, entStore, boot.Crypto, newPass)
 		},
 	}
 }

@@ -14,7 +14,35 @@ import (
 	"github.com/langoai/lango/internal/keyring"
 	"github.com/langoai/lango/internal/security"
 	"github.com/langoai/lango/internal/security/passphrase"
+	"github.com/langoai/lango/internal/sqlitedriver"
+	"github.com/langoai/lango/internal/storage"
+	"github.com/langoai/lango/internal/storagebroker"
 )
+
+var startStorageBroker = func(ctx context.Context) (storagebroker.API, error) {
+	return storagebroker.Start(ctx)
+}
+
+func loadSecurityStateForState(ctx context.Context, s *State) ([]byte, []byte, bool, error) {
+	if s != nil && s.Broker != nil {
+		return loadSecurityStateViaBroker(ctx, s.Broker)
+	}
+	return loadSecurityState(s.RawDB)
+}
+
+func storeSaltForState(ctx context.Context, s *State, salt []byte) error {
+	if s != nil && s.Broker != nil {
+		return storeSaltViaBroker(ctx, s.Broker, salt)
+	}
+	return storeSalt(s.RawDB, salt)
+}
+
+func storeChecksumForState(ctx context.Context, s *State, checksum []byte) error {
+	if s != nil && s.Broker != nil {
+		return storeChecksumViaBroker(ctx, s.Broker, checksum)
+	}
+	return storeChecksum(s.RawDB, checksum)
+}
 
 // dataDirPerm is the permission mode for all ~/.lango/ directories.
 // 0700 restricts access to the owner only (appropriate for data containing
@@ -93,13 +121,17 @@ func phaseEnsureDataDir() Phase {
 	}
 }
 
-// phaseDetectEncryption checks if DB is encrypted or encryption is configured.
+// phaseDetectEncryption rejects non-SQLite legacy DB headers and no longer
+// enables SQLCipher database-key handling.
 func phaseDetectEncryption() Phase {
 	return Phase{
 		Name: "detect encryption",
 		Run: func(_ context.Context, s *State) error {
 			s.DBEncrypted = IsDBEncrypted(s.Options.DBPath)
-			s.NeedsDBKey = s.DBEncrypted || s.Options.DBEncryption.Enabled
+			if s.DBEncrypted {
+				return fmt.Errorf("%w: downgrade/export required", sqlitedriver.ErrLegacyEncryptedOrUnreadableDB)
+			}
+			s.NeedsDBKey = false
 			return nil
 		},
 	}
@@ -242,58 +274,71 @@ func phaseUnwrapOrCreateMK() Phase {
 	}
 }
 
-// phaseOpenDatabase opens SQLite/SQLCipher DB and runs ent schema migration.
-//
-// Key selection matrix:
-//   - MK available + no pending flags  → MK-derived raw key (rawKey=true)
-//   - MK available + pending flags     → legacy passphrase (fallback)
-//   - No MK (legacy mode)              → legacy passphrase
-//   - Encryption disabled              → no key
+// phaseOpenDatabase opens the plaintext SQLite DB and runs ent schema migration.
 func phaseOpenDatabase() Phase {
 	return Phase{
 		Name: "open database",
 		Run: func(_ context.Context, s *State) error {
-			var (
-				dbKey  string
-				rawKey bool
-			)
-			if s.NeedsDBKey {
-				switch {
-				case s.MasterKey != nil && s.Envelope != nil &&
-					!s.Envelope.PendingMigration && !s.Envelope.PendingRekey:
-					dbKey = security.DeriveDBKeyHex(s.MasterKey)
-					rawKey = true
-				case s.Passphrase != "":
-					dbKey = s.Passphrase
-					rawKey = false
-				default:
-					return fmt.Errorf("open database: no credential available for encrypted db")
-				}
-				s.DBKey = dbKey
+			var payloadKey []byte
+			if s.MasterKey != nil {
+				payloadKey = security.DerivePayloadKey(s.MasterKey)
 			}
-			client, rawDB, err := openDatabase(s.Options.DBPath, dbKey, rawKey, s.Options.DBEncryption.CipherPageSize)
+			if s.Options.StartStorageBroker {
+				brokerClient, err := startStorageBroker(context.Background())
+				if err != nil {
+					return fmt.Errorf("start storage broker: %w", err)
+				}
+				if _, err := brokerClient.OpenDB(context.Background(), storagebroker.OpenDBRequest{
+					DBPath:         s.Options.DBPath,
+					MasterKey:      s.MasterKey,
+					PayloadKey:     payloadKey,
+					PayloadVersion: security.PayloadKeyVersionV1,
+				}); err != nil {
+					_ = brokerClient.Close(context.Background())
+					if payloadKey != nil {
+						security.ZeroBytes(payloadKey)
+					}
+					return fmt.Errorf("storage broker open_db: %w", err)
+				}
+				s.Broker = brokerClient
+				s.Result.Broker = brokerClient
+				if payloadKey != nil {
+					security.ZeroBytes(payloadKey)
+				}
+				return nil
+			}
+			if payloadKey != nil {
+				security.ZeroBytes(payloadKey)
+			}
+			client, rawDB, err := openDatabase(s.Options.DBPath, "", false, 0)
 			if err != nil {
+				if s.Broker != nil {
+					_ = s.Broker.Close(context.Background())
+					s.Broker = nil
+					s.Result.Broker = nil
+				}
 				return fmt.Errorf("open database: %w", err)
 			}
 			s.Client = client
 			s.RawDB = rawDB
-			s.Result.DBClient = client
-			s.Result.RawDB = rawDB
 			return nil
 		},
 		Cleanup: func(s *State) {
+			if s.Broker != nil {
+				_ = s.Broker.Close(context.Background())
+				s.Broker = nil
+			}
 			if s.Client != nil {
-				s.Client.Close()
+				_ = s.Client.Close()
 			}
 		},
 	}
 }
 
-// phaseMigrateEnvelope performs three conditional actions:
+// phaseMigrateEnvelope performs two conditional actions:
 //
 //   - LegacyMode: run the full legacy → envelope migration.
 //   - PendingMigration=true: retry data re-encryption using the already-unwrapped MK.
-//   - PendingRekey=true: retry `PRAGMA rekey` on SQLCipher DB.
 //
 // On failure the envelope retains its pending flags so the next bootstrap can retry.
 func phaseMigrateEnvelope() Phase {
@@ -301,6 +346,9 @@ func phaseMigrateEnvelope() Phase {
 		Name: "migrate envelope",
 		Run: func(ctx context.Context, s *State) error {
 			if s.LegacyMode {
+				if s.Broker != nil {
+					return fmt.Errorf("legacy envelope migration requires non-broker bootstrap path")
+				}
 				fmt.Fprintln(os.Stderr, "Upgrading encryption format (one-time migration)...")
 				env, mk, err := security.MigrateToEnvelope(
 					ctx, s.RawDB, s.Client, s.LangoDir,
@@ -316,6 +364,9 @@ func phaseMigrateEnvelope() Phase {
 			}
 
 			if s.Envelope != nil && s.Envelope.PendingMigration {
+				if s.Broker != nil {
+					return fmt.Errorf("pending envelope migration retry requires non-broker bootstrap path")
+				}
 				if s.MasterKey == nil {
 					return fmt.Errorf("pending migration retry requires unwrapped master key")
 				}
@@ -329,16 +380,7 @@ func phaseMigrateEnvelope() Phase {
 			}
 
 			if s.Envelope != nil && s.Envelope.PendingRekey {
-				if s.MasterKey == nil {
-					return fmt.Errorf("pending rekey retry requires unwrapped master key")
-				}
-				if err := security.RetryRekey(s.RawDB, s.MasterKey); err != nil {
-					return fmt.Errorf("retry rekey: %w", err)
-				}
-				s.Envelope.PendingRekey = false
-				if err := security.StoreEnvelopeFile(s.LangoDir, s.Envelope); err != nil {
-					return fmt.Errorf("persist envelope after retry rekey: %w", err)
-				}
+				return fmt.Errorf("%w: pending rekey requires legacy runtime downgrade/export", sqlitedriver.ErrLegacyEncryptedOrUnreadableDB)
 			}
 
 			return nil
@@ -357,7 +399,7 @@ func phaseLoadSecurityState() Phase {
 				// When pending flags are set, legacy salt/checksum are still
 				// needed for crash-recovery retry in phaseMigrateEnvelope.
 				if s.Envelope.PendingMigration || s.Envelope.PendingRekey {
-					salt, checksum, _, err := loadSecurityState(s.RawDB)
+					salt, checksum, _, err := loadSecurityStateForState(context.Background(), s)
 					if err != nil {
 						return fmt.Errorf("load security state for pending migration: %w", err)
 					}
@@ -367,7 +409,7 @@ func phaseLoadSecurityState() Phase {
 				s.FirstRun = false
 				return nil
 			}
-			salt, checksum, firstRun, err := loadSecurityState(s.RawDB)
+			salt, checksum, firstRun, err := loadSecurityStateForState(context.Background(), s)
 			if err != nil {
 				return fmt.Errorf("load security state: %w", err)
 			}
@@ -399,11 +441,11 @@ func phaseInitCrypto() Phase {
 				if err := provider.Initialize(s.Passphrase); err != nil {
 					return fmt.Errorf("initialize crypto: %w", err)
 				}
-				if err := storeSalt(s.RawDB, provider.Salt()); err != nil {
+				if err := storeSaltForState(context.Background(), s, provider.Salt()); err != nil {
 					return fmt.Errorf("store salt: %w", err)
 				}
 				cs := provider.CalculateChecksum(s.Passphrase, provider.Salt())
-				if err := storeChecksum(s.RawDB, cs); err != nil {
+				if err := storeChecksumForState(context.Background(), s, cs); err != nil {
 					return fmt.Errorf("store checksum: %w", err)
 				}
 			default:
@@ -475,8 +517,12 @@ func phaseLoadProfile() Phase {
 	return Phase{
 		Name: "load profile",
 		Run: func(ctx context.Context, s *State) error {
-			store := configstore.NewStore(s.Client, s.Crypto)
-			s.Result.ConfigStore = store
+			var store storage.ConfigProfileStore
+			if s.Broker != nil {
+				store = storage.NewBrokerConfigProfiles(s.Broker)
+			} else {
+				store = configstore.NewStore(s.Client, s.Crypto)
+			}
 			profileName := s.Options.ForceProfile
 
 			var explicitKeys map[string]bool
@@ -519,6 +565,42 @@ func phaseLoadProfile() Phase {
 			if err := config.PostLoad(s.Result.Config); err != nil {
 				return fmt.Errorf("post-load config: %w", err)
 			}
+
+			if legacyStore, ok := store.(*configstore.Store); ok {
+				s.Result.ConfigStore = legacyStore
+			}
+			securityState := storage.SecurityStateStore(security.NewSecurityConfigStore(s.RawDB))
+			if s.Broker != nil {
+				securityState = storage.NewBrokerSecurityState(s.Broker)
+			}
+			var opts []storage.Option
+			if s.Broker != nil {
+				opts = append(opts, storage.WithSecurityDiagnostics(func(ctx context.Context) (storage.SecuritySummary, error) {
+					result, err := s.Broker.DBStatusSummary(ctx, storagebroker.DBStatusSummaryRequest{
+						DBPath: s.Options.DBPath,
+					})
+					if err != nil {
+						return storage.SecuritySummary{}, err
+					}
+					return storage.SecuritySummary{
+						EncryptionKeys: result.EncryptionKeys,
+						StoredSecrets:  result.StoredSecrets,
+					}, nil
+				}))
+			}
+			opts = append(opts,
+				storage.WithEntClient(s.Client),
+				storage.WithRawDB(s.RawDB),
+				storage.WithBrokerSessionStore(s.Broker),
+				storage.WithBrokerRuntimeReaders(s.Broker),
+				storage.WithSessionClient(s.Client),
+				storage.WithSessionDBPath(s.Result.Config.Session.DatabasePath),
+			)
+			s.Result.Storage = storage.NewFacade(
+				store,
+				securityState,
+				opts...,
+			)
 			return nil
 		},
 	}

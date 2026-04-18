@@ -12,14 +12,15 @@ import (
 
 // ServerManager manages multiple MCP server connections.
 type ServerManager struct {
-	cfg           config.MCPConfig
-	mu            sync.RWMutex
-	servers       map[string]*ServerConnection
-	isolator      sandboxos.OSIsolator
-	failClosed    bool
-	workspacePath string        // User workspace root, forwarded to each connection for MCPServerPolicy walk-up
-	dataRoot      string        // Lango control-plane root, forwarded to each connection
-	bus           *eventbus.Bus // event bus, forwarded to each connection
+	cfg            config.MCPConfig
+	mu             sync.RWMutex
+	servers        map[string]*ServerConnection
+	isolator       sandboxos.OSIsolator
+	failClosed     bool
+	workspacePath  string // User workspace root, forwarded to each connection for MCPServerPolicy walk-up
+	dataRoot       string // Lango control-plane root, forwarded to each connection
+	protectedPaths []string
+	bus            *eventbus.Bus // event bus, forwarded to each connection
 }
 
 // NewServerManager creates a new manager for the given config.
@@ -44,6 +45,17 @@ func (m *ServerManager) SetOSIsolator(iso sandboxos.OSIsolator, workspacePath, d
 	m.dataRoot = dataRoot
 	for _, s := range m.servers {
 		s.SetOSIsolator(iso, workspacePath, dataRoot)
+	}
+}
+
+// SetProtectedPaths sets the resolved runtime denylist for all current and
+// future connections.
+func (m *ServerManager) SetProtectedPaths(paths []string) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.protectedPaths = append([]string(nil), paths...)
+	for _, s := range m.servers {
+		s.SetProtectedPaths(paths)
 	}
 }
 
@@ -86,6 +98,9 @@ func (m *ServerManager) ConnectAll(ctx context.Context) map[string]error {
 		conn := NewServerConnection(name, srvCfg, m.cfg)
 		if m.isolator != nil {
 			conn.SetOSIsolator(m.isolator, m.workspacePath, m.dataRoot)
+		}
+		if len(m.protectedPaths) > 0 {
+			conn.SetProtectedPaths(m.protectedPaths)
 		}
 		if m.bus != nil {
 			conn.SetEventBus(m.bus)

@@ -45,7 +45,7 @@ func newWorkspaceCreateCmd(bootLoader func() (*bootstrap.Result, error)) *cobra.
 			if err != nil {
 				return fmt.Errorf("load config: %w", err)
 			}
-			defer boot.DBClient.Close()
+			defer boot.Close()
 
 			if !boot.Config.P2P.Enabled {
 				return errP2PDisabled
@@ -91,7 +91,7 @@ func newWorkspaceListCmd(bootLoader func() (*bootstrap.Result, error)) *cobra.Co
 			if err != nil {
 				return fmt.Errorf("load config: %w", err)
 			}
-			defer boot.DBClient.Close()
+			defer boot.Close()
 
 			if !boot.Config.P2P.Enabled {
 				return errP2PDisabled
@@ -128,7 +128,7 @@ func newWorkspaceStatusCmd(bootLoader func() (*bootstrap.Result, error)) *cobra.
 			if err != nil {
 				return fmt.Errorf("load config: %w", err)
 			}
-			defer boot.DBClient.Close()
+			defer boot.Close()
 
 			if !boot.Config.P2P.Enabled {
 				return errP2PDisabled
@@ -166,7 +166,7 @@ func newWorkspaceJoinCmd(bootLoader func() (*bootstrap.Result, error)) *cobra.Co
 			if err != nil {
 				return fmt.Errorf("load config: %w", err)
 			}
-			defer boot.DBClient.Close()
+			defer boot.Close()
 
 			if !boot.Config.P2P.Enabled {
 				return errP2PDisabled
@@ -193,7 +193,7 @@ func newWorkspaceLeaveCmd(bootLoader func() (*bootstrap.Result, error)) *cobra.C
 			if err != nil {
 				return fmt.Errorf("load config: %w", err)
 			}
-			defer boot.DBClient.Close()
+			defer boot.Close()
 
 			if !boot.Config.P2P.Enabled {
 				return errP2PDisabled

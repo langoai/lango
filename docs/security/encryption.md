@@ -259,41 +259,35 @@ lango security keyring clear    # Remove stored passphrase
 
 ## Database Encryption
 
-Lango supports transparent database encryption using SQLCipher PRAGMA-based encryption. When enabled, the entire application database (`~/.lango/lango.db`) is encrypted at rest.
+The current runtime no longer supports SQLCipher page-level database encryption. Instead, Lango uses **broker-managed payload protection**: sensitive content is encrypted with AES-256-GCM at the application layer while redacted plaintext projections remain available for FTS5 search and recall.
 
-**How it works:**
+**Current behavior:**
 
-1. After `sql.Open`, the bootstrap process issues `PRAGMA key` to unlock the database:
-    - **Envelope-based**: `PRAGMA key = "x'<HKDF(MK)>'"` (raw 256-bit key, no internal PBKDF2)
-    - **Legacy**: `PRAGMA key = '<passphrase>'` (passphrase mode)
-2. `PRAGMA cipher_page_size` is set according to configuration (default: 4096)
-3. All subsequent reads and writes are transparently encrypted/decrypted
+1. The SQLite database is opened with the default pure-Go runtime driver.
+2. Sensitive payloads are encrypted and decrypted through the storage broker using keys derived from the Master Key envelope.
+3. Searchable fields store **redacted projections**, not raw plaintext secrets.
+4. Session messages, learning payloads, inquiries, and agent memory use ciphertext for original values and keep only redacted projections in plaintext search columns.
+5. Production app and CLI paths consume these records through storage facade capabilities instead of generic raw Ent/SQL handles.
 
-Configure:
+Legacy compatibility:
+
+- `security.dbEncryption.*` is still parsed from older configs, but ignored by the runtime.
+- `lango security db-migrate` and `lango security db-decrypt` remain only as remediation signposts and return an unsupported message.
+- If the runtime sees a non-SQLite DB header, it treats it as a **legacy encrypted or unreadable DB** and fails fast with remediation guidance.
 
 ```json
 {
   "security": {
     "dbEncryption": {
-      "enabled": true,
+      "enabled": false,
       "cipherPageSize": 4096
     }
   }
 }
 ```
 
-**Migration commands:**
-
-```bash
-# Encrypt an existing plaintext database
-lango security db-migrate
-
-# Decrypt back to plaintext
-lango security db-decrypt
-```
-
-!!! note "Build Dependency"
-    Database encryption requires `libsqlcipher-dev` at build time. The `mattn/go-sqlite3` driver is retained for `sqlite-vec` compatibility, with PRAGMA-based encryption instead of a separate `go-sqlcipher` driver.
+!!! note "Legacy SQLCipher Databases"
+    If you still have an old SQLCipher-encrypted database, use an older build to export or decrypt it before upgrading. The current runtime does not attempt to unlock or migrate SQLCipher files in place.
 
 ## Key Registry
 

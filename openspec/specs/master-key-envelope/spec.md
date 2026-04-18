@@ -2,10 +2,8 @@
 
 ## Purpose
 
-Defines the MK/KEK three-layer key hierarchy for Lango's local storage encryption. The Master Key (MK) is a random 32-byte root key wrapped by one or more Key Encryption Keys (KEK). KEKs are derived from user secrets (passphrase, recovery mnemonic) via PBKDF2. The envelope is stored as a JSON file alongside the database, enabling passphrase change without data re-encryption, recovery mnemonic support, and crash-safe migration from the legacy passphrase-derived-key model.
-
+Defines the MK/KEK three-layer key hierarchy for Lango's local storage encryption. The Master Key (MK) is a random 32-byte root key wrapped by one or more Key Encryption Keys (KEK). KEKs are derived from user secrets (passphrase, recovery mnemonic) via PBKDF2. The envelope is stored as a JSON file alongside the database, enabling passphrase change without data re-encryption, recovery mnemonic support, and broker-managed payload protection key derivation.
 ## Requirements
-
 ### Requirement: Master Key generation
 
 The system SHALL generate a 32-byte Master Key (MK) from a cryptographically secure random source using `crypto/rand`. The MK is the root of data encryption and DB encryption key derivation.
@@ -144,26 +142,13 @@ The envelope SHALL support multiple KEK slots wrapping the same MK independently
 - **AND** mnemonic slots (if any) are unchanged
 - **AND** data in the DB remains untouched
 
-### Requirement: DB key derivation from MK
+### Requirement: Envelope remains payload-protection root
+The master-key envelope MUST remain the root source of key material for broker-managed payload protection after SQLCipher page encryption is removed.
 
-The system SHALL derive the SQLCipher database key from the MK using HKDF-SHA256 with a domain-separated info label `"lango-db-encryption"`. The derived key is 32 bytes, hex-encoded, and used as `PRAGMA key = "x'<hex>'"` (raw key mode, no SQLCipher internal PBKDF2).
-
-#### Scenario: DB key is deterministic from MK
-
-- **WHEN** `DeriveDBKey(mk)` is called twice with the same MK
-- **THEN** both calls return the same 32-byte key
-
-#### Scenario: DB key changes with MK
-
-- **WHEN** `DeriveDBKey(mk1)` and `DeriveDBKey(mk2)` are called with different MKs
-- **THEN** the returned keys are different with overwhelming probability
-
-#### Scenario: Passphrase change does not change DB key
-
-- **WHEN** the passphrase is changed via envelope re-wrap
-- **THEN** the MK is unchanged
-- **AND** `DeriveDBKey(mk)` returns the same value
-- **AND** no `PRAGMA rekey` is needed
+#### Scenario: Envelope-backed payload protection
+- **WHEN** the broker needs key material for payload encryption or decryption
+- **THEN** it derives the required key material from the envelope-managed master key
+- **AND** it does not derive or apply a SQLCipher page key
 
 ### Requirement: Crash recovery flags
 
@@ -195,3 +180,12 @@ The system SHALL provide an exported `ZeroBytes(b []byte)` function that overwri
 
 - **WHEN** `ZeroBytes(buf)` is called on a non-empty byte slice
 - **THEN** all bytes of `buf` are `0x00`
+
+### Requirement: Payload key version remains fixed in leakage follow-up
+The corrective leakage-follow-up change MUST continue using payload key version `1` and MUST NOT introduce rotation or multi-version payload handling.
+
+#### Scenario: Protected rows continue using key version 1
+- **WHEN** payload-protected rows are written by the corrective leakage-followup change
+- **THEN** their `*_key_version` fields are set to `1`
+- **AND** no new payload key version is introduced
+

@@ -51,11 +51,17 @@ func initSmartAccountDeps(boot *bootstrap.Result) (*smartAccountDeps, error) {
 
 	// Build secrets store for wallet key management.
 	ctx := context.Background()
-	registry := security.NewKeyRegistry(boot.DBClient)
+	if boot.Storage == nil {
+		return nil, fmt.Errorf("smart account storage unavailable")
+	}
+	registry := boot.Storage.KeyRegistry()
+	secrets := boot.Storage.SecretsStore(boot.Crypto)
+	if registry == nil || secrets == nil {
+		return nil, fmt.Errorf("smart account secrets store unavailable")
+	}
 	if _, err := registry.RegisterKey(ctx, "default", "local", security.KeyTypeEncryption); err != nil {
 		return nil, fmt.Errorf("register default key: %w", err)
 	}
-	secrets := security.NewSecretsStore(boot.DBClient, registry, boot.Crypto)
 
 	// Create RPC client for blockchain interaction.
 	rpcClient, err := ethclient.Dial(cfg.Payment.Network.RPCURL)

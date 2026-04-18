@@ -65,6 +65,21 @@ func Content(v string) predicate.Observation {
 	return predicate.Observation(sql.FieldEQ(FieldContent, v))
 }
 
+// ContentCiphertext applies equality check predicate on the "content_ciphertext" field. It's identical to ContentCiphertextEQ.
+func ContentCiphertext(v []byte) predicate.Observation {
+	return predicate.Observation(sql.FieldEQ(FieldContentCiphertext, v))
+}
+
+// ContentNonce applies equality check predicate on the "content_nonce" field. It's identical to ContentNonceEQ.
+func ContentNonce(v []byte) predicate.Observation {
+	return predicate.Observation(sql.FieldEQ(FieldContentNonce, v))
+}
+
+// ContentKeyVersion applies equality check predicate on the "content_key_version" field. It's identical to ContentKeyVersionEQ.
+func ContentKeyVersion(v int) predicate.Observation {
+	return predicate.Observation(sql.FieldEQ(FieldContentKeyVersion, v))
+}
+
 // TokenCount applies equality check predicate on the "token_count" field. It's identical to TokenCountEQ.
 func TokenCount(v int) predicate.Observation {
 	return predicate.Observation(sql.FieldEQ(FieldTokenCount, v))
@@ -213,6 +228,156 @@ func ContentEqualFold(v string) predicate.Observation {
 // ContentContainsFold applies the ContainsFold predicate on the "content" field.
 func ContentContainsFold(v string) predicate.Observation {
 	return predicate.Observation(sql.FieldContainsFold(FieldContent, v))
+}
+
+// ContentCiphertextEQ applies the EQ predicate on the "content_ciphertext" field.
+func ContentCiphertextEQ(v []byte) predicate.Observation {
+	return predicate.Observation(sql.FieldEQ(FieldContentCiphertext, v))
+}
+
+// ContentCiphertextNEQ applies the NEQ predicate on the "content_ciphertext" field.
+func ContentCiphertextNEQ(v []byte) predicate.Observation {
+	return predicate.Observation(sql.FieldNEQ(FieldContentCiphertext, v))
+}
+
+// ContentCiphertextIn applies the In predicate on the "content_ciphertext" field.
+func ContentCiphertextIn(vs ...[]byte) predicate.Observation {
+	return predicate.Observation(sql.FieldIn(FieldContentCiphertext, vs...))
+}
+
+// ContentCiphertextNotIn applies the NotIn predicate on the "content_ciphertext" field.
+func ContentCiphertextNotIn(vs ...[]byte) predicate.Observation {
+	return predicate.Observation(sql.FieldNotIn(FieldContentCiphertext, vs...))
+}
+
+// ContentCiphertextGT applies the GT predicate on the "content_ciphertext" field.
+func ContentCiphertextGT(v []byte) predicate.Observation {
+	return predicate.Observation(sql.FieldGT(FieldContentCiphertext, v))
+}
+
+// ContentCiphertextGTE applies the GTE predicate on the "content_ciphertext" field.
+func ContentCiphertextGTE(v []byte) predicate.Observation {
+	return predicate.Observation(sql.FieldGTE(FieldContentCiphertext, v))
+}
+
+// ContentCiphertextLT applies the LT predicate on the "content_ciphertext" field.
+func ContentCiphertextLT(v []byte) predicate.Observation {
+	return predicate.Observation(sql.FieldLT(FieldContentCiphertext, v))
+}
+
+// ContentCiphertextLTE applies the LTE predicate on the "content_ciphertext" field.
+func ContentCiphertextLTE(v []byte) predicate.Observation {
+	return predicate.Observation(sql.FieldLTE(FieldContentCiphertext, v))
+}
+
+// ContentCiphertextIsNil applies the IsNil predicate on the "content_ciphertext" field.
+func ContentCiphertextIsNil() predicate.Observation {
+	return predicate.Observation(sql.FieldIsNull(FieldContentCiphertext))
+}
+
+// ContentCiphertextNotNil applies the NotNil predicate on the "content_ciphertext" field.
+func ContentCiphertextNotNil() predicate.Observation {
+	return predicate.Observation(sql.FieldNotNull(FieldContentCiphertext))
+}
+
+// ContentNonceEQ applies the EQ predicate on the "content_nonce" field.
+func ContentNonceEQ(v []byte) predicate.Observation {
+	return predicate.Observation(sql.FieldEQ(FieldContentNonce, v))
+}
+
+// ContentNonceNEQ applies the NEQ predicate on the "content_nonce" field.
+func ContentNonceNEQ(v []byte) predicate.Observation {
+	return predicate.Observation(sql.FieldNEQ(FieldContentNonce, v))
+}
+
+// ContentNonceIn applies the In predicate on the "content_nonce" field.
+func ContentNonceIn(vs ...[]byte) predicate.Observation {
+	return predicate.Observation(sql.FieldIn(FieldContentNonce, vs...))
+}
+
+// ContentNonceNotIn applies the NotIn predicate on the "content_nonce" field.
+func ContentNonceNotIn(vs ...[]byte) predicate.Observation {
+	return predicate.Observation(sql.FieldNotIn(FieldContentNonce, vs...))
+}
+
+// ContentNonceGT applies the GT predicate on the "content_nonce" field.
+func ContentNonceGT(v []byte) predicate.Observation {
+	return predicate.Observation(sql.FieldGT(FieldContentNonce, v))
+}
+
+// ContentNonceGTE applies the GTE predicate on the "content_nonce" field.
+func ContentNonceGTE(v []byte) predicate.Observation {
+	return predicate.Observation(sql.FieldGTE(FieldContentNonce, v))
+}
+
+// ContentNonceLT applies the LT predicate on the "content_nonce" field.
+func ContentNonceLT(v []byte) predicate.Observation {
+	return predicate.Observation(sql.FieldLT(FieldContentNonce, v))
+}
+
+// ContentNonceLTE applies the LTE predicate on the "content_nonce" field.
+func ContentNonceLTE(v []byte) predicate.Observation {
+	return predicate.Observation(sql.FieldLTE(FieldContentNonce, v))
+}
+
+// ContentNonceIsNil applies the IsNil predicate on the "content_nonce" field.
+func ContentNonceIsNil() predicate.Observation {
+	return predicate.Observation(sql.FieldIsNull(FieldContentNonce))
+}
+
+// ContentNonceNotNil applies the NotNil predicate on the "content_nonce" field.
+func ContentNonceNotNil() predicate.Observation {
+	return predicate.Observation(sql.FieldNotNull(FieldContentNonce))
+}
+
+// ContentKeyVersionEQ applies the EQ predicate on the "content_key_version" field.
+func ContentKeyVersionEQ(v int) predicate.Observation {
+	return predicate.Observation(sql.FieldEQ(FieldContentKeyVersion, v))
+}
+
+// ContentKeyVersionNEQ applies the NEQ predicate on the "content_key_version" field.
+func ContentKeyVersionNEQ(v int) predicate.Observation {
+	return predicate.Observation(sql.FieldNEQ(FieldContentKeyVersion, v))
+}
+
+// ContentKeyVersionIn applies the In predicate on the "content_key_version" field.
+func ContentKeyVersionIn(vs ...int) predicate.Observation {
+	return predicate.Observation(sql.FieldIn(FieldContentKeyVersion, vs...))
+}
+
+// ContentKeyVersionNotIn applies the NotIn predicate on the "content_key_version" field.
+func ContentKeyVersionNotIn(vs ...int) predicate.Observation {
+	return predicate.Observation(sql.FieldNotIn(FieldContentKeyVersion, vs...))
+}
+
+// ContentKeyVersionGT applies the GT predicate on the "content_key_version" field.
+func ContentKeyVersionGT(v int) predicate.Observation {
+	return predicate.Observation(sql.FieldGT(FieldContentKeyVersion, v))
+}
+
+// ContentKeyVersionGTE applies the GTE predicate on the "content_key_version" field.
+func ContentKeyVersionGTE(v int) predicate.Observation {
+	return predicate.Observation(sql.FieldGTE(FieldContentKeyVersion, v))
+}
+
+// ContentKeyVersionLT applies the LT predicate on the "content_key_version" field.
+func ContentKeyVersionLT(v int) predicate.Observation {
+	return predicate.Observation(sql.FieldLT(FieldContentKeyVersion, v))
+}
+
+// ContentKeyVersionLTE applies the LTE predicate on the "content_key_version" field.
+func ContentKeyVersionLTE(v int) predicate.Observation {
+	return predicate.Observation(sql.FieldLTE(FieldContentKeyVersion, v))
+}
+
+// ContentKeyVersionIsNil applies the IsNil predicate on the "content_key_version" field.
+func ContentKeyVersionIsNil() predicate.Observation {
+	return predicate.Observation(sql.FieldIsNull(FieldContentKeyVersion))
+}
+
+// ContentKeyVersionNotNil applies the NotNil predicate on the "content_key_version" field.
+func ContentKeyVersionNotNil() predicate.Observation {
+	return predicate.Observation(sql.FieldNotNull(FieldContentKeyVersion))
 }
 
 // TokenCountEQ applies the EQ predicate on the "token_count" field.

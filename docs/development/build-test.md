@@ -6,20 +6,13 @@ title: Build & Test
 
 ## Prerequisites
 
-Lango requires **CGO** for sqlite3 dependencies. Ensure CGO is enabled:
-
-```bash
-export CGO_ENABLED=1
-```
-
-You also need a C compiler (`gcc` or `clang`) installed on your system.
+The default runtime does **not** require CGO. A C compiler is only needed if you explicitly build optional legacy `vec` integrations.
 
 ### Build Tags
 
 | Tag | Purpose | Required? |
 |-----|---------|-----------|
-| `fts5` | SQLite FTS5 full-text search | Yes (default) |
-| `vec` | sqlite-vec semantic vector search (RAG) | Optional |
+| `vec` | Legacy sqlite-vec semantic vector search integration | Optional |
 | `kms_aws` | AWS KMS signer provider | Optional |
 | `kms_gcp` | GCP Cloud KMS signer provider | Optional |
 | `kms_azure` | Azure Key Vault signer provider | Optional |
@@ -27,26 +20,26 @@ You also need a C compiler (`gcc` or `clang`) installed on your system.
 | `kms_all` | All KMS providers above | Optional |
 | `integration` | Include integration tests | Optional |
 
-The `fts5` tag is sufficient for most use cases. Add `vec` only when you need embedding-based semantic search (RAG). sqlite-vec is an **optional** dependency; without the `vec` tag the binary compiles and runs without it. KMS tags pull in cloud-specific SDKs and are only needed when using HSM or cloud key management for P2P signing. Without any `kms_*` tag, stub providers are compiled in and KMS features are unavailable.
+FTS5 is part of the default runtime. Add `vec` only if you explicitly want the legacy sqlite-vec integration. KMS tags pull in cloud-specific SDKs and are only needed when using HSM or cloud key management for P2P signing. Without any `kms_*` tag, stub providers are compiled in and KMS features are unavailable.
 
 ```bash
-# FTS5-only build (default, no sqlite-vec required)
-CGO_ENABLED=1 go build -tags fts5 ./cmd/lango
+# Default build (FTS5 included)
+go build ./cmd/lango
 
-# Full build with semantic vector search
-CGO_ENABLED=1 go build -tags "fts5,vec" ./cmd/lango
+# Optional legacy build with sqlite-vec integration
+CGO_ENABLED=1 go build -tags "vec" ./cmd/lango
 
 # Build with AWS KMS support
-CGO_ENABLED=1 go build -tags "fts5,kms_aws" ./cmd/lango
+go build -tags "kms_aws" ./cmd/lango
 
 # Build with all KMS providers + vector search
-CGO_ENABLED=1 go build -tags "fts5,vec,kms_all" ./cmd/lango
+CGO_ENABLED=1 go build -tags "vec,kms_all" ./cmd/lango
 
 # Run integration tests
-CGO_ENABLED=1 go test -tags "fts5,vec,integration" ./...
+go test -tags "integration" ./...
 ```
 
-The Makefile defaults to `-tags "fts5,vec"` for all `build` and `test` targets.
+The Makefile uses the default runtime for normal `build` and `test` targets.
 
 ## Makefile Targets
 

@@ -98,8 +98,8 @@ Lango provides a comprehensive command-line interface built with [Cobra](https:/
 | `lango security keyring store` | Store passphrase in hardware keyring (Touch ID / TPM) |
 | `lango security keyring clear` | Remove passphrase from keyring |
 | `lango security keyring status` | Show hardware keyring status |
-| `lango security db-migrate` | Encrypt database with SQLCipher |
-| `lango security db-decrypt` | Decrypt database to plaintext |
+| `lango security db-migrate` | Legacy SQLCipher migration command (unsupported in current runtime) |
+| `lango security db-decrypt` | Legacy SQLCipher decrypt command (unsupported in current runtime) |
 | `lango security kms status` | Show KMS provider status |
 | `lango security kms test` | Test KMS encrypt/decrypt roundtrip |
 | `lango security kms keys` | List KMS keys in registry |

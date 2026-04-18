@@ -8,7 +8,7 @@ import (
 
 	"github.com/langoai/lango/internal/cli/settings"
 	"github.com/langoai/lango/internal/config"
-	"github.com/langoai/lango/internal/configstore"
+	"github.com/langoai/lango/internal/storage"
 )
 
 // SettingsPage embeds a settings.Editor in the cockpit.
@@ -21,9 +21,14 @@ type SettingsPage struct {
 // The save callback persists to ConfigStore without exiting the TUI.
 func NewSettingsPage(
 	cfg *config.Config,
-	store *configstore.Store,
+	store storage.ConfigProfileStore,
 	profileName string,
 ) *SettingsPage {
+	if store == nil {
+		return &SettingsPage{
+			editor: settings.NewEditorForEmbedding(cfg, func(cfg *config.Config, dirtyKeys map[string]bool) error { return nil }),
+		}
+	}
 	onSave := func(cfg *config.Config, dirtyKeys map[string]bool) error {
 		return store.Save(context.Background(), profileName, cfg, dirtyKeys)
 	}

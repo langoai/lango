@@ -13,6 +13,13 @@ import (
 	"github.com/langoai/lango/internal/turntrace"
 )
 
+func traceStoreFromBoot(boot *bootstrap.Result) turntrace.Store {
+	if boot != nil && boot.Storage != nil {
+		return boot.Storage.TurnTrace()
+	}
+	return nil
+}
+
 func newTraceCmd(bootLoader func() (*bootstrap.Result, error)) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "trace",
@@ -39,9 +46,12 @@ func newTraceListCmd(bootLoader func() (*bootstrap.Result, error)) *cobra.Comman
 			if err != nil {
 				return fmt.Errorf("bootstrap: %w", err)
 			}
-			defer boot.DBClient.Close()
+			defer boot.Close()
 
-			store := turntrace.NewEntStore(boot.DBClient)
+			store := traceStoreFromBoot(boot)
+			if store == nil {
+				return fmt.Errorf("trace store unavailable")
+			}
 			ctx := cmd.Context()
 
 			var traces []turntrace.Trace
@@ -109,9 +119,12 @@ func newTraceDetailCmd(bootLoader func() (*bootstrap.Result, error)) *cobra.Comm
 			if err != nil {
 				return fmt.Errorf("bootstrap: %w", err)
 			}
-			defer boot.DBClient.Close()
+			defer boot.Close()
 
-			store := turntrace.NewEntStore(boot.DBClient)
+			store := traceStoreFromBoot(boot)
+			if store == nil {
+				return fmt.Errorf("trace store unavailable")
+			}
 			ctx := cmd.Context()
 
 			events, err := store.EventsForTrace(ctx, traceID)

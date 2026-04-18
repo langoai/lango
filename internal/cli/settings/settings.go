@@ -14,6 +14,7 @@ import (
 	"github.com/langoai/lango/internal/cli/tui"
 	"github.com/langoai/lango/internal/config"
 	"github.com/langoai/lango/internal/configstore"
+	"github.com/langoai/lango/internal/storage"
 )
 
 // NewCommand creates the settings command.
@@ -62,15 +63,18 @@ See Also:
 }
 
 func runSettings(profileName string) error {
-	boot, err := bootstrap.Run(bootstrap.Options{Version: cliboot.Version})
+	boot, err := bootstrap.Run(bootstrap.Options{
+		Version:            cliboot.Version,
+		StartStorageBroker: true,
+	})
 	if err != nil {
 		return fmt.Errorf("bootstrap: %w", err)
 	}
-	defer boot.DBClient.Close()
+	defer boot.Close()
 
 	ctx := context.Background()
 
-	initialCfg, isNew, err := loadOrDefault(ctx, boot.ConfigStore, profileName)
+	initialCfg, isNew, err := loadOrDefault(ctx, boot.Storage.ConfigProfiles(), profileName)
 	if err != nil {
 		return fmt.Errorf("load profile %q: %w", profileName, err)
 	}
@@ -104,12 +108,12 @@ func runSettings(profileName string) error {
 	for _, k := range config.ContextRelatedKeys() {
 		explicitKeys[k] = true
 	}
-	if err := boot.ConfigStore.Save(ctx, profileName, cfg, explicitKeys); err != nil {
+	if err := boot.Storage.ConfigProfiles().Save(ctx, profileName, cfg, explicitKeys); err != nil {
 		return fmt.Errorf("save profile %q: %w", profileName, err)
 	}
 
 	if isNew {
-		if err := boot.ConfigStore.SetActive(ctx, profileName); err != nil {
+		if err := boot.Storage.ConfigProfiles().SetActive(ctx, profileName); err != nil {
 			return fmt.Errorf("activate profile %q: %w", profileName, err)
 		}
 	}
@@ -119,7 +123,7 @@ func runSettings(profileName string) error {
 	return nil
 }
 
-func loadOrDefault(ctx context.Context, store *configstore.Store, name string) (*config.Config, bool, error) {
+func loadOrDefault(ctx context.Context, store storage.ConfigProfileStore, name string) (*config.Config, bool, error) {
 	cfg, _, err := store.Load(ctx, name)
 	if err == nil {
 		return cfg, false, nil

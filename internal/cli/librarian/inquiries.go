@@ -8,7 +8,6 @@ import (
 	"time"
 
 	"github.com/langoai/lango/internal/bootstrap"
-	"github.com/langoai/lango/internal/ent/inquiry"
 	"github.com/langoai/lango/internal/toolchain"
 	"github.com/spf13/cobra"
 )
@@ -27,13 +26,12 @@ func newInquiriesCmd(bootLoader func() (*bootstrap.Result, error)) *cobra.Comman
 			if err != nil {
 				return fmt.Errorf("bootstrap: %w", err)
 			}
-			defer boot.DBClient.Close()
+			defer boot.Close()
 
-			entries, err := boot.DBClient.Inquiry.Query().
-				Where(inquiry.StatusEQ(inquiry.StatusPending)).
-				Order(inquiry.ByCreatedAt()).
-				Limit(limit).
-				All(cmd.Context())
+			if boot.Storage == nil {
+				return fmt.Errorf("librarian storage unavailable")
+			}
+			entries, err := boot.Storage.PendingInquiries(cmd.Context(), limit)
 			if err != nil {
 				return fmt.Errorf("query inquiries: %w", err)
 			}
@@ -50,11 +48,11 @@ func newInquiriesCmd(bootLoader func() (*bootstrap.Result, error)) *cobra.Comman
 				out := make([]entry, 0, len(entries))
 				for _, e := range entries {
 					out = append(out, entry{
-						ID:       e.ID.String(),
+						ID:       e.ID,
 						Topic:    e.Topic,
 						Question: e.Question,
-						Priority: string(e.Priority),
-						Created:  e.CreatedAt.Format(time.RFC3339),
+						Priority: e.Priority,
+						Created:  e.Created.Format(time.RFC3339),
 					})
 				}
 
@@ -73,11 +71,11 @@ func newInquiriesCmd(bootLoader func() (*bootstrap.Result, error)) *cobra.Comman
 			fmt.Fprintln(w, "ID\tPRIORITY\tTOPIC\tQUESTION\tCREATED")
 			for _, e := range entries {
 				fmt.Fprintf(w, "%s\t%s\t%s\t%s\t%s\n",
-					e.ID.String()[:8],
+					e.ID[:8],
 					e.Priority,
 					toolchain.Truncate(e.Topic, 22),
 					toolchain.Truncate(e.Question, 37),
-					e.CreatedAt.Format(time.DateTime),
+					e.Created.Format(time.DateTime),
 				)
 			}
 			return w.Flush()

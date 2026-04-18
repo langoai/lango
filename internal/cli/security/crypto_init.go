@@ -13,9 +13,20 @@ import (
 // passphrase prompt since bootstrap already acquired and verified it.
 func secretsStoreFromBoot(boot *bootstrap.Result) (*sec.SecretsStore, error) {
 	ctx := context.Background()
-	registry := sec.NewKeyRegistry(boot.DBClient)
+	var registry *sec.KeyRegistry
+	if boot != nil && boot.Storage != nil {
+		registry = boot.Storage.KeyRegistry()
+	}
+	if registry == nil {
+		return nil, fmt.Errorf("bootstrap key registry unavailable")
+	}
 	if _, err := registry.RegisterKey(ctx, "default", "local", sec.KeyTypeEncryption); err != nil {
 		return nil, fmt.Errorf("register default key: %w", err)
 	}
-	return sec.NewSecretsStore(boot.DBClient, registry, boot.Crypto), nil
+	if boot != nil && boot.Storage != nil {
+		if secrets := boot.Storage.SecretsStore(boot.Crypto); secrets != nil {
+			return secrets, nil
+		}
+	}
+	return nil, fmt.Errorf("bootstrap secrets store unavailable")
 }

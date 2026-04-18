@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"math/big"
 	"os"
 
 	"github.com/spf13/cobra"
@@ -23,46 +24,40 @@ func newLimitsCmd(bootLoader func() (*bootstrap.Result, error)) *cobra.Command {
 			if err != nil {
 				return fmt.Errorf("load config: %w", err)
 			}
-			defer boot.DBClient.Close()
+			defer boot.Close()
 
-			deps, err := initPaymentDeps(boot)
-			if err != nil {
-				return err
+			if boot.Storage == nil {
+				return fmt.Errorf("payment usage unavailable")
 			}
-			defer deps.cleanup()
-
-			ctx := context.Background()
-
-			spent, err := deps.limiter.DailySpent(ctx)
+			usage, err := boot.Storage.PaymentUsage(context.Background())
 			if err != nil {
 				return fmt.Errorf("get daily spent: %w", err)
 			}
-
-			remaining, err := deps.limiter.DailyRemaining(ctx)
+			maxPerTx := depsFromConfig(boot.Config.Payment.Limits.MaxPerTx)
+			maxDaily := depsFromConfig(boot.Config.Payment.Limits.MaxDaily)
+			spent := usage.DailySpent
+			remaining, err := remainingFromUsage(maxDaily, spent)
 			if err != nil {
-				return fmt.Errorf("get daily remaining: %w", err)
+				return err
 			}
-
-			maxPerTx := deps.limiter.MaxPerTx()
-			maxDaily := deps.limiter.MaxDaily()
 
 			if jsonOutput {
 				enc := json.NewEncoder(os.Stdout)
 				enc.SetIndent("", "  ")
 				return enc.Encode(map[string]interface{}{
-					"maxPerTx":       wallet.FormatUSDC(maxPerTx),
-					"maxDaily":       wallet.FormatUSDC(maxDaily),
-					"dailySpent":     wallet.FormatUSDC(spent),
-					"dailyRemaining": wallet.FormatUSDC(remaining),
+					"maxPerTx":       maxPerTx,
+					"maxDaily":       maxDaily,
+					"dailySpent":     spent,
+					"dailyRemaining": remaining,
 					"currency":       wallet.CurrencyUSDC,
 				})
 			}
 
 			fmt.Println("Spending Limits")
-			fmt.Printf("  Max Per Transaction:  %s %s\n", wallet.FormatUSDC(maxPerTx), wallet.CurrencyUSDC)
-			fmt.Printf("  Max Daily:            %s %s\n", wallet.FormatUSDC(maxDaily), wallet.CurrencyUSDC)
-			fmt.Printf("  Spent Today:          %s %s\n", wallet.FormatUSDC(spent), wallet.CurrencyUSDC)
-			fmt.Printf("  Remaining Today:      %s %s\n", wallet.FormatUSDC(remaining), wallet.CurrencyUSDC)
+			fmt.Printf("  Max Per Transaction:  %s %s\n", maxPerTx, wallet.CurrencyUSDC)
+			fmt.Printf("  Max Daily:            %s %s\n", maxDaily, wallet.CurrencyUSDC)
+			fmt.Printf("  Spent Today:          %s %s\n", spent, wallet.CurrencyUSDC)
+			fmt.Printf("  Remaining Today:      %s %s\n", remaining, wallet.CurrencyUSDC)
 
 			return nil
 		},
@@ -70,4 +65,27 @@ func newLimitsCmd(bootLoader func() (*bootstrap.Result, error)) *cobra.Command {
 
 	cmd.Flags().BoolVar(&jsonOutput, "json", false, "Output as JSON")
 	return cmd
+}
+
+func depsFromConfig(v string) string {
+	if v == "" {
+		return "0"
+	}
+	return v
+}
+
+func remainingFromUsage(maxDaily, spent string) (string, error) {
+	maxAmt, err := wallet.ParseUSDC(maxDaily)
+	if err != nil {
+		return "", fmt.Errorf("parse max daily: %w", err)
+	}
+	spentAmt, err := wallet.ParseUSDC(spent)
+	if err != nil {
+		return "", fmt.Errorf("parse spent amount: %w", err)
+	}
+	remaining := new(big.Int).Sub(maxAmt, spentAmt)
+	if remaining.Sign() < 0 {
+		remaining = big.NewInt(0)
+	}
+	return wallet.FormatUSDC(remaining), nil
 }

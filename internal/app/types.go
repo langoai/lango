@@ -17,7 +17,6 @@ import (
 	"github.com/langoai/lango/internal/economy/negotiation"
 	"github.com/langoai/lango/internal/economy/pricing"
 	"github.com/langoai/lango/internal/economy/risk"
-	"github.com/langoai/lango/internal/embedding"
 	"github.com/langoai/lango/internal/eventbus"
 	"github.com/langoai/lango/internal/extension"
 	"github.com/langoai/lango/internal/gatekeeper"
@@ -87,10 +86,6 @@ type App struct {
 	MemoryStore  *memory.Store
 	MemoryBuffer *memory.Buffer
 
-	// Embedding / RAG Components (optional)
-	EmbeddingBuffer *embedding.EmbeddingBuffer
-	RAGService      *embedding.RAGService
-
 	// Conversation Analysis Components (optional)
 	AnalysisBuffer *learning.AnalysisBuffer
 
@@ -102,9 +97,9 @@ type App struct {
 	// extensions directory does not exist.
 	ExtensionRegistry *extension.Registry
 
-	// recallIndex is the FTS5-backed session recall index. nil when disabled
-	// or when FTS5 is unavailable in the build.
-	recallIndex *session.RecallIndex
+	// recallIndex is the session recall backend. It may be backed by the
+	// in-process Ent recall index or by broker-backed recall RPCs.
+	recallIndex recallBackend
 
 	// compactionSync is the indirect sync-point handle installed on the
 	// context adapter at build time. wireCompactionBuffer plugs the real
@@ -151,7 +146,7 @@ type App struct {
 	Sanitizer *gatekeeper.Sanitizer
 
 	// Turn Runtime (shared execution + durable traces)
-	TurnRunner    *turnrunner.Runner
+	TurnRunner     *turnrunner.Runner
 	TurnTraceStore turntrace.Store
 
 	// RunLedger Components (optional, Task OS durable execution)

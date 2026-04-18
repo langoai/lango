@@ -27,6 +27,15 @@ func (Knowledge) Fields() []ent.Field {
 			Values("rule", "definition", "preference", "fact", "pattern", "correction"),
 		field.Text("content").
 			NotEmpty(),
+		field.Bytes("content_ciphertext").
+			Optional().
+			Nillable(),
+		field.Bytes("content_nonce").
+			Optional().
+			Nillable(),
+		field.Int("content_key_version").
+			Optional().
+			Nillable(),
 		field.JSON("tags", []string{}).
 			Optional(),
 		field.String("source").

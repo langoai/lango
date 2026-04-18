@@ -15,7 +15,7 @@ import (
 
 // newChangePassphraseCmd creates `lango security change-passphrase`, the envelope-aware
 // replacement for `migrate-passphrase`. Unlike migrate-passphrase, this command does
-// NOT re-encrypt any data or rekey the SQLCipher database — it re-wraps the Master Key
+// NOT re-encrypt any data or rekey any database pages — it re-wraps the Master Key
 // in-place, so the operation is O(1) in the amount of stored data.
 func newChangePassphraseCmd(bootLoader func() (*bootstrap.Result, error)) *cobra.Command {
 	return &cobra.Command{
@@ -25,7 +25,7 @@ func newChangePassphraseCmd(bootLoader func() (*bootstrap.Result, error)) *cobra
 
 This command re-wraps the existing Master Key with a new passphrase-derived
 KEK. Because the MK itself does not change, stored secrets, configuration
-profiles, and the SQLCipher database key all remain valid — no data is
+profiles and broker-managed payload protection remain valid — no data is
 re-encrypted and no PRAGMA rekey is issued.
 
 Recovery mnemonic slots (if present) are unchanged.`,
@@ -34,7 +34,7 @@ Recovery mnemonic slots (if present) are unchanged.`,
 			if err != nil {
 				return fmt.Errorf("load config: %w", err)
 			}
-			defer boot.DBClient.Close()
+			defer boot.Close()
 
 			if !prompt.IsInteractive() {
 				return fmt.Errorf("this command requires an interactive terminal")

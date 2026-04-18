@@ -60,6 +60,8 @@ pending → resolved (user answered)
         → dismissed (expired or irrelevant)
 ```
 
+The original `question`, `context`, and `answer` values are stored together as a protected payload bundle. Plaintext columns keep only redacted projections for list/read surfaces.
+
 Inquiries are injected into the agent's context as part of the **Pending Inquiries** layer in the [Knowledge System](knowledge.md). The agent naturally weaves one question into its response when appropriate.
 
 ### Inquiry Processor

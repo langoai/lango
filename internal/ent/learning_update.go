@@ -103,6 +103,57 @@ func (_u *LearningUpdate) ClearFix() *LearningUpdate {
 	return _u
 }
 
+// SetPayloadCiphertext sets the "payload_ciphertext" field.
+func (_u *LearningUpdate) SetPayloadCiphertext(v []byte) *LearningUpdate {
+	_u.mutation.SetPayloadCiphertext(v)
+	return _u
+}
+
+// ClearPayloadCiphertext clears the value of the "payload_ciphertext" field.
+func (_u *LearningUpdate) ClearPayloadCiphertext() *LearningUpdate {
+	_u.mutation.ClearPayloadCiphertext()
+	return _u
+}
+
+// SetPayloadNonce sets the "payload_nonce" field.
+func (_u *LearningUpdate) SetPayloadNonce(v []byte) *LearningUpdate {
+	_u.mutation.SetPayloadNonce(v)
+	return _u
+}
+
+// ClearPayloadNonce clears the value of the "payload_nonce" field.
+func (_u *LearningUpdate) ClearPayloadNonce() *LearningUpdate {
+	_u.mutation.ClearPayloadNonce()
+	return _u
+}
+
+// SetPayloadKeyVersion sets the "payload_key_version" field.
+func (_u *LearningUpdate) SetPayloadKeyVersion(v int) *LearningUpdate {
+	_u.mutation.ResetPayloadKeyVersion()
+	_u.mutation.SetPayloadKeyVersion(v)
+	return _u
+}
+
+// SetNillablePayloadKeyVersion sets the "payload_key_version" field if the given value is not nil.
+func (_u *LearningUpdate) SetNillablePayloadKeyVersion(v *int) *LearningUpdate {
+	if v != nil {
+		_u.SetPayloadKeyVersion(*v)
+	}
+	return _u
+}
+
+// AddPayloadKeyVersion adds value to the "payload_key_version" field.
+func (_u *LearningUpdate) AddPayloadKeyVersion(v int) *LearningUpdate {
+	_u.mutation.AddPayloadKeyVersion(v)
+	return _u
+}
+
+// ClearPayloadKeyVersion clears the value of the "payload_key_version" field.
+func (_u *LearningUpdate) ClearPayloadKeyVersion() *LearningUpdate {
+	_u.mutation.ClearPayloadKeyVersion()
+	return _u
+}
+
 // SetCategory sets the "category" field.
 func (_u *LearningUpdate) SetCategory(v learning.Category) *LearningUpdate {
 	_u.mutation.SetCategory(v)
@@ -293,6 +344,27 @@ func (_u *LearningUpdate) sqlSave(ctx context.Context) (_node int, err error) {
 	if _u.mutation.FixCleared() {
 		_spec.ClearField(learning.FieldFix, field.TypeString)
 	}
+	if value, ok := _u.mutation.PayloadCiphertext(); ok {
+		_spec.SetField(learning.FieldPayloadCiphertext, field.TypeBytes, value)
+	}
+	if _u.mutation.PayloadCiphertextCleared() {
+		_spec.ClearField(learning.FieldPayloadCiphertext, field.TypeBytes)
+	}
+	if value, ok := _u.mutation.PayloadNonce(); ok {
+		_spec.SetField(learning.FieldPayloadNonce, field.TypeBytes, value)
+	}
+	if _u.mutation.PayloadNonceCleared() {
+		_spec.ClearField(learning.FieldPayloadNonce, field.TypeBytes)
+	}
+	if value, ok := _u.mutation.PayloadKeyVersion(); ok {
+		_spec.SetField(learning.FieldPayloadKeyVersion, field.TypeInt, value)
+	}
+	if value, ok := _u.mutation.AddedPayloadKeyVersion(); ok {
+		_spec.AddField(learning.FieldPayloadKeyVersion, field.TypeInt, value)
+	}
+	if _u.mutation.PayloadKeyVersionCleared() {
+		_spec.ClearField(learning.FieldPayloadKeyVersion, field.TypeInt)
+	}
 	if value, ok := _u.mutation.Category(); ok {
 		_spec.SetField(learning.FieldCategory, field.TypeEnum, value)
 	}
@@ -419,6 +491,57 @@ func (_u *LearningUpdateOne) SetNillableFix(v *string) *LearningUpdateOne {
 // ClearFix clears the value of the "fix" field.
 func (_u *LearningUpdateOne) ClearFix() *LearningUpdateOne {
 	_u.mutation.ClearFix()
+	return _u
+}
+
+// SetPayloadCiphertext sets the "payload_ciphertext" field.
+func (_u *LearningUpdateOne) SetPayloadCiphertext(v []byte) *LearningUpdateOne {
+	_u.mutation.SetPayloadCiphertext(v)
+	return _u
+}
+
+// ClearPayloadCiphertext clears the value of the "payload_ciphertext" field.
+func (_u *LearningUpdateOne) ClearPayloadCiphertext() *LearningUpdateOne {
+	_u.mutation.ClearPayloadCiphertext()
+	return _u
+}
+
+// SetPayloadNonce sets the "payload_nonce" field.
+func (_u *LearningUpdateOne) SetPayloadNonce(v []byte) *LearningUpdateOne {
+	_u.mutation.SetPayloadNonce(v)
+	return _u
+}
+
+// ClearPayloadNonce clears the value of the "payload_nonce" field.
+func (_u *LearningUpdateOne) ClearPayloadNonce() *LearningUpdateOne {
+	_u.mutation.ClearPayloadNonce()
+	return _u
+}
+
+// SetPayloadKeyVersion sets the "payload_key_version" field.
+func (_u *LearningUpdateOne) SetPayloadKeyVersion(v int) *LearningUpdateOne {
+	_u.mutation.ResetPayloadKeyVersion()
+	_u.mutation.SetPayloadKeyVersion(v)
+	return _u
+}
+
+// SetNillablePayloadKeyVersion sets the "payload_key_version" field if the given value is not nil.
+func (_u *LearningUpdateOne) SetNillablePayloadKeyVersion(v *int) *LearningUpdateOne {
+	if v != nil {
+		_u.SetPayloadKeyVersion(*v)
+	}
+	return _u
+}
+
+// AddPayloadKeyVersion adds value to the "payload_key_version" field.
+func (_u *LearningUpdateOne) AddPayloadKeyVersion(v int) *LearningUpdateOne {
+	_u.mutation.AddPayloadKeyVersion(v)
+	return _u
+}
+
+// ClearPayloadKeyVersion clears the value of the "payload_key_version" field.
+func (_u *LearningUpdateOne) ClearPayloadKeyVersion() *LearningUpdateOne {
+	_u.mutation.ClearPayloadKeyVersion()
 	return _u
 }
 
@@ -641,6 +764,27 @@ func (_u *LearningUpdateOne) sqlSave(ctx context.Context) (_node *Learning, err 
 	}
 	if _u.mutation.FixCleared() {
 		_spec.ClearField(learning.FieldFix, field.TypeString)
+	}
+	if value, ok := _u.mutation.PayloadCiphertext(); ok {
+		_spec.SetField(learning.FieldPayloadCiphertext, field.TypeBytes, value)
+	}
+	if _u.mutation.PayloadCiphertextCleared() {
+		_spec.ClearField(learning.FieldPayloadCiphertext, field.TypeBytes)
+	}
+	if value, ok := _u.mutation.PayloadNonce(); ok {
+		_spec.SetField(learning.FieldPayloadNonce, field.TypeBytes, value)
+	}
+	if _u.mutation.PayloadNonceCleared() {
+		_spec.ClearField(learning.FieldPayloadNonce, field.TypeBytes)
+	}
+	if value, ok := _u.mutation.PayloadKeyVersion(); ok {
+		_spec.SetField(learning.FieldPayloadKeyVersion, field.TypeInt, value)
+	}
+	if value, ok := _u.mutation.AddedPayloadKeyVersion(); ok {
+		_spec.AddField(learning.FieldPayloadKeyVersion, field.TypeInt, value)
+	}
+	if _u.mutation.PayloadKeyVersionCleared() {
+		_spec.ClearField(learning.FieldPayloadKeyVersion, field.TypeInt)
 	}
 	if value, ok := _u.mutation.Category(); ok {
 		_spec.SetField(learning.FieldCategory, field.TypeEnum, value)

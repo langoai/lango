@@ -17,9 +17,9 @@ import (
 	"github.com/google/uuid"
 	"go.uber.org/zap"
 
-	"github.com/langoai/lango/internal/ent"
 	"github.com/langoai/lango/internal/ent/paymenttx"
 	"github.com/langoai/lango/internal/eventbus"
+	"github.com/langoai/lango/internal/payment"
 	"github.com/langoai/lango/internal/payment/eip3009"
 	"github.com/langoai/lango/internal/wallet"
 )
@@ -34,7 +34,7 @@ type ReputationRecorder interface {
 type Config struct {
 	Wallet         wallet.WalletProvider
 	RPCClient      *ethclient.Client
-	DBClient       *ent.Client
+	TxStore        payment.TxStore
 	ChainID        int64
 	USDCAddr       common.Address
 	ReceiptTimeout time.Duration // default: 2m
@@ -46,7 +46,7 @@ type Config struct {
 type Service struct {
 	wallet     wallet.WalletProvider
 	rpc        *ethclient.Client
-	db         *ent.Client
+	store      payment.TxStore
 	chainID    *big.Int
 	usdcAddr   common.Address
 	timeout    time.Duration
@@ -74,7 +74,7 @@ func New(cfg Config) *Service {
 	return &Service{
 		wallet:     cfg.Wallet,
 		rpc:        cfg.RPCClient,
-		db:         cfg.DBClient,
+		store:      cfg.TxStore,
 		chainID:    big.NewInt(cfg.ChainID),
 		usdcAddr:   cfg.USDCAddr,
 		timeout:    timeout,
@@ -140,21 +140,21 @@ func (s *Service) handleEvent(evt eventbus.ToolExecutionPaidEvent) {
 // 4. Submit with retry
 // 5. Wait for on-chain confirmation
 func (s *Service) settle(ctx context.Context, auth *eip3009.Authorization, peerDID, toolName string) error {
-	if s.db == nil {
-		return fmt.Errorf("db client not configured")
+	if s.store == nil {
+		return fmt.Errorf("payment tx store not configured")
 	}
 
 	// 1. Create DB record.
-	txRecord, err := s.db.PaymentTx.Create().
-		SetID(uuid.New()).
-		SetFromAddress(auth.From.Hex()).
-		SetToAddress(auth.To.Hex()).
-		SetAmount(auth.Value.String()).
-		SetChainID(s.chainID.Int64()).
-		SetStatus(paymenttx.StatusPending).
-		SetPaymentMethod(paymenttx.PaymentMethodP2pSettlement).
-		SetPurpose(fmt.Sprintf("p2p settlement: %s from %s", toolName, peerDID)).
-		Save(ctx)
+	txRecord, err := s.store.Create(ctx, payment.TxRecord{
+		ID:            uuid.New(),
+		FromAddress:   auth.From.Hex(),
+		ToAddress:     auth.To.Hex(),
+		Amount:        auth.Value.String(),
+		ChainID:       s.chainID.Int64(),
+		Status:        paymenttx.StatusPending,
+		PaymentMethod: paymenttx.PaymentMethodP2pSettlement,
+		Purpose:       fmt.Sprintf("p2p settlement: %s from %s", toolName, peerDID),
+	})
 	if err != nil {
 		return fmt.Errorf("create payment record: %w", err)
 	}
@@ -316,14 +316,7 @@ func (s *Service) waitForConfirmation(ctx context.Context, txHash common.Hash) e
 
 // updateStatus updates the payment transaction record in the database.
 func (s *Service) updateStatus(ctx context.Context, id uuid.UUID, status paymenttx.Status, txHash, errMsg string) {
-	update := s.db.PaymentTx.UpdateOneID(id).SetStatus(status)
-	if txHash != "" {
-		update = update.SetTxHash(txHash)
-	}
-	if errMsg != "" {
-		update = update.SetErrorMessage(errMsg)
-	}
-	if err := update.Exec(ctx); err != nil {
+	if err := s.store.UpdateStatus(ctx, id, status, txHash, errMsg); err != nil {
 		s.logger.Warnw("update payment tx status",
 			"id", id, "status", status, "error", err)
 	}

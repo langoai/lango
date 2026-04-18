@@ -16,8 +16,8 @@ type GraphRequest struct {
 }
 
 // GraphBuffer collects graph update requests and processes them in batches
-// on a background goroutine. It follows the same lifecycle pattern as
-// embedding.EmbeddingBuffer: Start -> Enqueue -> Stop.
+// on a background goroutine. It follows the same lifecycle pattern as other
+// asynchronous buffers: Start -> Enqueue -> Stop.
 //
 // Note: GraphRequest items are expanded into individual Triples for batch
 // processing, so the BatchBuffer operates on Triple slices internally.

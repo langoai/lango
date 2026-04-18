@@ -10,6 +10,7 @@ import (
 
 	"github.com/langoai/lango/internal/bootstrap"
 	"github.com/langoai/lango/internal/config"
+	"github.com/langoai/lango/internal/storage"
 )
 
 // CLIResult captures the output of a CLI command execution.
@@ -86,8 +87,8 @@ func FakeBootLoader(t testing.TB, cfg *config.Config) func() (*bootstrap.Result,
 	return func() (*bootstrap.Result, error) {
 		client := TestEntClient(t)
 		return &bootstrap.Result{
-			Config:   cfg,
-			DBClient: client,
+			Config:  cfg,
+			Storage: storage.NewFacade(nil, nil, storage.WithEntClient(client)),
 		}, nil
 	}
 }
@@ -98,4 +99,3 @@ func FailBootLoader(err error) func() (*bootstrap.Result, error) {
 		return nil, err
 	}
 }
-

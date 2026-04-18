@@ -45,6 +45,7 @@ passphrase.txt
 .vscode/
 .claude/
 .agents/
+.codex/
 
 AGENTS.md 
 

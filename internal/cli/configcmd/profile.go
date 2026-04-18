@@ -13,6 +13,7 @@ import (
 	"github.com/langoai/lango/internal/bootstrap"
 	"github.com/langoai/lango/internal/config"
 	"github.com/langoai/lango/internal/configstore"
+	"github.com/langoai/lango/internal/storage"
 )
 
 // NewConfigCmd creates the "config" parent command with all profile subcommands.
@@ -43,6 +44,13 @@ See Also:
 	return cmd
 }
 
+func profileStore(boot *bootstrap.Result) storage.ConfigProfileStore {
+	if boot == nil || boot.Storage == nil || boot.Storage.ConfigProfiles() == nil {
+		return nil
+	}
+	return boot.Storage.ConfigProfiles()
+}
+
 func newListCmd(bootLoader func() (*bootstrap.Result, error)) *cobra.Command {
 	return &cobra.Command{
 		Use:   "list",
@@ -52,9 +60,13 @@ func newListCmd(bootLoader func() (*bootstrap.Result, error)) *cobra.Command {
 			if err != nil {
 				return fmt.Errorf("bootstrap: %w", err)
 			}
-			defer boot.DBClient.Close()
+			defer boot.Close()
 
-			profiles, err := boot.ConfigStore.List(context.Background())
+			store := profileStore(boot)
+			if store == nil {
+				return fmt.Errorf("bootstrap: config profile storage unavailable")
+			}
+			profiles, err := store.List(context.Background())
 			if err != nil {
 				return fmt.Errorf("list profiles: %w", err)
 			}
@@ -113,11 +125,15 @@ Examples:
 			if err != nil {
 				return fmt.Errorf("bootstrap: %w", err)
 			}
-			defer boot.DBClient.Close()
+			defer boot.Close()
 
 			ctx := context.Background()
 
-			exists, err := boot.ConfigStore.Exists(ctx, name)
+			store := profileStore(boot)
+			if store == nil {
+				return fmt.Errorf("bootstrap: config profile storage unavailable")
+			}
+			exists, err := store.Exists(ctx, name)
 			if err != nil {
 				return fmt.Errorf("check profile: %w", err)
 			}
@@ -136,7 +152,7 @@ Examples:
 			if preset != "" {
 				explicitKeys = config.PresetExplicitKeys(preset)
 			}
-			if err := boot.ConfigStore.Save(ctx, name, cfg, explicitKeys); err != nil {
+			if err := store.Save(ctx, name, cfg, explicitKeys); err != nil {
 				return fmt.Errorf("create profile: %w", err)
 			}
 
@@ -165,9 +181,13 @@ func newUseCmd(bootLoader func() (*bootstrap.Result, error)) *cobra.Command {
 			if err != nil {
 				return fmt.Errorf("bootstrap: %w", err)
 			}
-			defer boot.DBClient.Close()
+			defer boot.Close()
 
-			if err := boot.ConfigStore.SetActive(context.Background(), name); err != nil {
+			store := profileStore(boot)
+			if store == nil {
+				return fmt.Errorf("bootstrap: config profile storage unavailable")
+			}
+			if err := store.SetActive(context.Background(), name); err != nil {
 				return fmt.Errorf("switch profile: %w", err)
 			}
 
@@ -201,9 +221,13 @@ func newDeleteCmd(bootLoader func() (*bootstrap.Result, error)) *cobra.Command {
 			if err != nil {
 				return fmt.Errorf("bootstrap: %w", err)
 			}
-			defer boot.DBClient.Close()
+			defer boot.Close()
 
-			if err := boot.ConfigStore.Delete(context.Background(), name); err != nil {
+			store := profileStore(boot)
+			if store == nil {
+				return fmt.Errorf("bootstrap: config profile storage unavailable")
+			}
+			if err := store.Delete(context.Background(), name); err != nil {
 				return fmt.Errorf("delete profile: %w", err)
 			}
 
@@ -230,10 +254,14 @@ func newImportCmd(bootLoader func() (*bootstrap.Result, error)) *cobra.Command {
 			if err != nil {
 				return fmt.Errorf("bootstrap: %w", err)
 			}
-			defer boot.DBClient.Close()
+			defer boot.Close()
 
 			ctx := context.Background()
-			if err := configstore.MigrateFromJSON(ctx, boot.ConfigStore, filePath, profileName); err != nil {
+			store := profileStore(boot)
+			if store == nil {
+				return fmt.Errorf("bootstrap: config profile storage unavailable")
+			}
+			if err := configstore.MigrateFromJSON(ctx, store, filePath, profileName); err != nil {
 				return fmt.Errorf("import config: %w", err)
 			}
 
@@ -259,9 +287,13 @@ func newExportCmd(bootLoader func() (*bootstrap.Result, error)) *cobra.Command {
 			if err != nil {
 				return fmt.Errorf("bootstrap: %w", err)
 			}
-			defer boot.DBClient.Close()
+			defer boot.Close()
 
-			cfg, _, err := boot.ConfigStore.Load(context.Background(), name)
+			store := profileStore(boot)
+			if store == nil {
+				return fmt.Errorf("bootstrap: config profile storage unavailable")
+			}
+			cfg, _, err := store.Load(context.Background(), name)
 			if err != nil {
 				return fmt.Errorf("load profile: %w", err)
 			}
@@ -288,7 +320,7 @@ func newValidateCmd(bootLoader func() (*bootstrap.Result, error)) *cobra.Command
 			if err != nil {
 				return fmt.Errorf("bootstrap: %w", err)
 			}
-			defer boot.DBClient.Close()
+			defer boot.Close()
 
 			if err := config.Validate(boot.Config); err != nil {
 				return fmt.Errorf("validation failed: %w", err)

@@ -21,6 +21,12 @@ const (
 	FieldCategory = "category"
 	// FieldContent holds the string denoting the content field in the database.
 	FieldContent = "content"
+	// FieldContentCiphertext holds the string denoting the content_ciphertext field in the database.
+	FieldContentCiphertext = "content_ciphertext"
+	// FieldContentNonce holds the string denoting the content_nonce field in the database.
+	FieldContentNonce = "content_nonce"
+	// FieldContentKeyVersion holds the string denoting the content_key_version field in the database.
+	FieldContentKeyVersion = "content_key_version"
 	// FieldTags holds the string denoting the tags field in the database.
 	FieldTags = "tags"
 	// FieldSource holds the string denoting the source field in the database.
@@ -47,6 +53,9 @@ var Columns = []string{
 	FieldKey,
 	FieldCategory,
 	FieldContent,
+	FieldContentCiphertext,
+	FieldContentNonce,
+	FieldContentKeyVersion,
 	FieldTags,
 	FieldSource,
 	FieldVersion,
@@ -138,6 +147,11 @@ func ByCategory(opts ...sql.OrderTermOption) OrderOption {
 // ByContent orders the results by the content field.
 func ByContent(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldContent, opts...).ToFunc()
+}
+
+// ByContentKeyVersion orders the results by the content_key_version field.
+func ByContentKeyVersion(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldContentKeyVersion, opts...).ToFunc()
 }
 
 // BySource orders the results by the source field.

@@ -16,7 +16,7 @@ Lango provides multiple layers of security to protect sensitive data flowing bet
 | **Tool Approval** | Control which tools agents can execute | Policy-based approval workflows with channel notifications |
 | **Authentication** | Secure gateway access | OIDC login flow, session management, CORS controls |
 | **Hardware Keyring** | Secure passphrase storage | Hardware-backed passphrase via Touch ID (macOS Secure Enclave) or TPM 2.0 (Linux) |
-| **Database Encryption** | Protect data at rest | SQLCipher transparent encryption for the application database |
+| **Payload Protection** | Protect sensitive data at rest | Broker-managed AES-256-GCM payload encryption with redacted search projections |
 | **Cloud KMS / HSM** | Hardware-backed cryptography | AWS KMS, GCP KMS, Azure Key Vault, PKCS#11 HSM integration |
 | **P2P Session Management** | Peer session lifecycle | Session listing, explicit invalidation, security-event-based revocation |
 | **P2P Tool Sandbox** | Execution isolation | Subprocess and container-based isolation for remote tool invocations |
@@ -78,5 +78,5 @@ See [Encryption & Secrets](encryption.md) for full details.
 - [Tool Approval](tool-approval.md) -- Approval policies, sensitive/exempt tools, notifications
 - [Authentication](authentication.md) -- OIDC providers, session management, CORS configuration
 - [Hardware Keyring](encryption.md#hardware-keyring-integration) -- Secure passphrase storage via Touch ID / TPM
-- [Database Encryption](encryption.md#database-encryption) -- SQLCipher transparent database encryption
+- [Payload Protection](encryption.md#database-encryption) -- Broker-managed payload encryption and legacy DB compatibility notes
 - [Cloud KMS / HSM](encryption.md#cloud-kms-mode) -- AWS, GCP, Azure, PKCS#11 integration

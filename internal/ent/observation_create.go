@@ -33,6 +33,32 @@ func (_c *ObservationCreate) SetContent(v string) *ObservationCreate {
 	return _c
 }
 
+// SetContentCiphertext sets the "content_ciphertext" field.
+func (_c *ObservationCreate) SetContentCiphertext(v []byte) *ObservationCreate {
+	_c.mutation.SetContentCiphertext(v)
+	return _c
+}
+
+// SetContentNonce sets the "content_nonce" field.
+func (_c *ObservationCreate) SetContentNonce(v []byte) *ObservationCreate {
+	_c.mutation.SetContentNonce(v)
+	return _c
+}
+
+// SetContentKeyVersion sets the "content_key_version" field.
+func (_c *ObservationCreate) SetContentKeyVersion(v int) *ObservationCreate {
+	_c.mutation.SetContentKeyVersion(v)
+	return _c
+}
+
+// SetNillableContentKeyVersion sets the "content_key_version" field if the given value is not nil.
+func (_c *ObservationCreate) SetNillableContentKeyVersion(v *int) *ObservationCreate {
+	if v != nil {
+		_c.SetContentKeyVersion(*v)
+	}
+	return _c
+}
+
 // SetTokenCount sets the "token_count" field.
 func (_c *ObservationCreate) SetTokenCount(v int) *ObservationCreate {
 	_c.mutation.SetTokenCount(v)
@@ -232,6 +258,18 @@ func (_c *ObservationCreate) createSpec() (*Observation, *sqlgraph.CreateSpec) {
 	if value, ok := _c.mutation.Content(); ok {
 		_spec.SetField(observation.FieldContent, field.TypeString, value)
 		_node.Content = value
+	}
+	if value, ok := _c.mutation.ContentCiphertext(); ok {
+		_spec.SetField(observation.FieldContentCiphertext, field.TypeBytes, value)
+		_node.ContentCiphertext = &value
+	}
+	if value, ok := _c.mutation.ContentNonce(); ok {
+		_spec.SetField(observation.FieldContentNonce, field.TypeBytes, value)
+		_node.ContentNonce = &value
+	}
+	if value, ok := _c.mutation.ContentKeyVersion(); ok {
+		_spec.SetField(observation.FieldContentKeyVersion, field.TypeInt, value)
+		_node.ContentKeyVersion = &value
 	}
 	if value, ok := _c.mutation.TokenCount(); ok {
 		_spec.SetField(observation.FieldTokenCount, field.TypeInt, value)

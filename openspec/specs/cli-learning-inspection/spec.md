@@ -2,9 +2,7 @@
 
 ## Purpose
 Provides CLI commands for inspecting the learning system configuration and viewing learning history audit logs.
-
 ## Requirements
-
 ### Requirement: Learning status command
 The system SHALL provide a `lango learning status [--json]` command that displays the current learning system configuration including enabled state, graph engine settings, and confidence propagation rate. The command SHALL use cfgLoader (config only).
 
@@ -45,3 +43,18 @@ The system SHALL provide a `lango learning` command group that shows help text l
 #### Scenario: Help text
 - **WHEN** user runs `lango learning`
 - **THEN** system displays help listing status and history subcommands
+
+### Requirement: Learning history uses storage reader
+The `lango learning history` command MUST read recent learning rows through a storage facade reader instead of querying Ent directly from the CLI layer.
+
+#### Scenario: Learning history command reads through facade
+- **WHEN** the user runs `lango learning history`
+- **THEN** the command loads recent learning records from the storage facade reader
+
+### Requirement: Learning history supports broker-backed runtime reads
+The `lango learning history` command MUST remain functional when bootstrap is broker-owned and runtime reads come from broker-backed storage.
+
+#### Scenario: Learning history under broker-owned runtime
+- **WHEN** broker-backed runtime storage is active
+- **THEN** `lango learning history` still returns recent learning records through the broker-backed reader path
+

@@ -36,7 +36,7 @@ func newSendCmd(bootLoader func() (*bootstrap.Result, error)) *cobra.Command {
 			if err != nil {
 				return fmt.Errorf("load config: %w", err)
 			}
-			defer boot.DBClient.Close()
+			defer boot.Close()
 
 			deps, err := initPaymentDeps(boot)
 			if err != nil {

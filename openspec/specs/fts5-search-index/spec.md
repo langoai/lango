@@ -1,9 +1,7 @@
 ## Purpose
 
 Capability spec for fts5-search-index. See requirements below for scope and behavior contracts.
-
 ## Requirements
-
 ### Requirement: FTS5 runtime probe
 The system SHALL provide a `ProbeFTS5(db)` function that tests whether the current SQLite connection supports FTS5. The probe SHALL execute a temporary FTS5 table creation and immediately drop it. The function SHALL return a boolean and SHALL NOT panic or log errors on unsupported builds.
 
@@ -90,3 +88,12 @@ The `FTS5Index` SHALL NOT contain any knowledge-specific, learning-specific, or 
 #### Scenario: Reusable across collections
 - **WHEN** separate FTS5Index instances are created for knowledge and learning
 - **THEN** each instance SHALL operate independently with its own table name and column configuration
+
+### Requirement: FTS5 is part of the default supported runtime
+FTS5 search support MUST be documented and verified as part of the default supported runtime instead of a dedicated `fts5` build-tag variant.
+
+#### Scenario: FTS5 tests describe default runtime expectation
+- **WHEN** FTS5-related tests or diagnostics report unavailable support
+- **THEN** they describe it as an unexpected runtime limitation
+- **AND** they do not instruct the user to rebuild with `-tags "fts5"`
+

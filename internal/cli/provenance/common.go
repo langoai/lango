@@ -7,7 +7,6 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/langoai/lango/internal/bootstrap"
-	"github.com/langoai/lango/internal/observability/token"
 	"github.com/langoai/lango/internal/p2p/identity"
 	provenancepkg "github.com/langoai/lango/internal/provenance"
 	"github.com/langoai/lango/internal/security"
@@ -40,11 +39,18 @@ func loadServices(boot *bootstrap.Result) *services {
 	attrs := provenancepkg.AttributionStore(provenancepkg.NewMemoryAttributionStore())
 	var tokenStore provenancepkg.TokenUsageReader
 
-	if boot != nil && boot.DBClient != nil {
-		checkpoints = provenancepkg.NewEntCheckpointStore(boot.DBClient)
-		treeStore = provenancepkg.NewEntSessionTreeStore(boot.DBClient)
-		attrs = provenancepkg.NewEntAttributionStore(boot.DBClient)
-		tokenStore = token.NewEntTokenStore(boot.DBClient)
+	if boot != nil && boot.Storage != nil && boot.Storage.Provenance() != nil {
+		prov := boot.Storage.Provenance()
+		if prov.Checkpoints() != nil {
+			checkpoints = prov.Checkpoints()
+		}
+		if prov.SessionTree() != nil {
+			treeStore = prov.SessionTree()
+		}
+		if prov.Attribution() != nil {
+			attrs = prov.Attribution()
+		}
+		tokenStore = prov.TokenUsage()
 	}
 
 	tree := provenancepkg.NewSessionTree(treeStore)
@@ -86,15 +92,22 @@ func (s *cliBundleSigner) Algorithm() string {
 }
 
 func loadSigner(ctx context.Context, boot *bootstrap.Result) (string, provenancepkg.BundleSigner, error) {
-	if boot == nil || boot.DBClient == nil || boot.Crypto == nil {
+	if boot == nil || boot.Crypto == nil {
 		return "", nil, fmt.Errorf("signed provenance export requires initialized bootstrap crypto")
 	}
 	if !boot.Config.Payment.Enabled {
 		return "", nil, fmt.Errorf("signed provenance export requires payment.enabled=true")
 	}
 
-	keys := security.NewKeyRegistry(boot.DBClient)
-	secrets := security.NewSecretsStore(boot.DBClient, keys, boot.Crypto)
+	var keys *security.KeyRegistry
+	var secrets *security.SecretsStore
+	if boot.Storage != nil {
+		keys = boot.Storage.KeyRegistry()
+		secrets = boot.Storage.SecretsStore(boot.Crypto)
+	}
+	if keys == nil || secrets == nil {
+		return "", nil, fmt.Errorf("signed provenance export requires persistent security stores")
+	}
 
 	var wp wallet.WalletProvider
 	switch boot.Config.Payment.WalletProvider {

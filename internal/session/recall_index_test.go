@@ -14,7 +14,7 @@ import (
 func skipWithoutFTS5Recall(t *testing.T, store *EntStore) {
 	t.Helper()
 	if !search.ProbeFTS5(store.DB()) {
-		t.Skip("FTS5 not available (build with -tags fts5)")
+		t.Skip("FTS5 not available in current SQLite runtime")
 	}
 }
 
@@ -90,4 +90,43 @@ func TestRecallIndex_ProcessPending(t *testing.T) {
 	require.NoError(t, err)
 	require.Len(t, results, 1)
 	assert.Equal(t, "sess-a", results[0].RowID)
+}
+
+func TestRecallIndex_RedactsSensitiveProjection(t *testing.T) {
+	store := newTestEntStore(t)
+	skipWithoutFTS5Recall(t, store)
+	require.NoError(t, store.Create(&Session{
+		Key: "sess-secret",
+		History: []Message{
+			{Role: types.RoleUser, Content: "email alice@example.com token SECRETSECRETSECRETSECRETSECRETSECRET 123456789"},
+		},
+	}))
+
+	idx := NewRecallIndex(store)
+	require.NoError(t, idx.IndexSession(context.Background(), "sess-secret"))
+
+	summary, err := idx.GetSummary(context.Background(), "sess-secret")
+	require.NoError(t, err)
+	assert.NotContains(t, summary, "alice@example.com")
+	assert.NotContains(t, summary, "SECRETSECRETSECRETSECRETSECRETSECRET")
+	assert.NotContains(t, summary, "123456789")
+	assert.Contains(t, summary, "[email]")
+	assert.Contains(t, summary, "[secret]")
+	assert.Contains(t, summary, "[number]")
+}
+
+func TestRecallIndex_ProtectedDecryptFailureDoesNotUseProjection(t *testing.T) {
+	store := newTestEntStore(t, WithPayloadProtector(stubPayloadProtector{}))
+	skipWithoutFTS5Recall(t, store)
+	require.NoError(t, store.Create(&Session{
+		Key: "sess-protected-recall",
+		History: []Message{
+			{Role: types.RoleUser, Content: "top secret"},
+		},
+	}))
+	store.SetPayloadProtector(failDecryptProtector{})
+
+	idx := NewRecallIndex(store)
+	err := idx.IndexSession(context.Background(), "sess-protected-recall")
+	require.Error(t, err)
 }

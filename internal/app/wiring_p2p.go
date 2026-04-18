@@ -16,7 +16,6 @@ import (
 	bolt "go.etcd.io/bbolt"
 
 	"github.com/langoai/lango/internal/config"
-	"github.com/langoai/lango/internal/ent"
 	"github.com/langoai/lango/internal/eventbus"
 	"github.com/langoai/lango/internal/p2p"
 	"github.com/langoai/lango/internal/p2p/agentpool"
@@ -143,28 +142,28 @@ type didProvider interface {
 
 // p2pComponents holds optional P2P networking components.
 type p2pComponents struct {
-	node           *p2p.Node
-	sessions       *handshake.SessionStore
-	handshaker     *handshake.Handshaker
-	nonceCache     *handshake.NonceCache
-	fw             *firewall.Firewall
-	gossip         *discovery.GossipService
-	identity       didProvider // DID() — WalletDIDProvider or BundleProvider
-	handler        *p2pproto.Handler
-	payGate        *paygate.Gate
-	reputation     *reputation.Store
-	pricingCfg     config.P2PPricingConfig
-	pricingFn      func(toolName string) (string, bool)
-	agentPool      *agentpool.Pool
-	selector       *agentpool.Selector
-	coordinator    *team.Coordinator
-	provider       *agentpool.PoolProvider
-	healthMonitor  *team.HealthMonitor
-	kemEnabled     bool // PQ KEM handshake enabled
+	node          *p2p.Node
+	sessions      *handshake.SessionStore
+	handshaker    *handshake.Handshaker
+	nonceCache    *handshake.NonceCache
+	fw            *firewall.Firewall
+	gossip        *discovery.GossipService
+	identity      didProvider // DID() — WalletDIDProvider or BundleProvider
+	handler       *p2pproto.Handler
+	payGate       *paygate.Gate
+	reputation    *reputation.Store
+	pricingCfg    config.P2PPricingConfig
+	pricingFn     func(toolName string) (string, bool)
+	agentPool     *agentpool.Pool
+	selector      *agentpool.Selector
+	coordinator   *team.Coordinator
+	provider      *agentpool.PoolProvider
+	healthMonitor *team.HealthMonitor
+	kemEnabled    bool // PQ KEM handshake enabled
 }
 
 // initP2P creates the P2P networking components if enabled.
-func initP2P(cfg *config.Config, wp wallet.WalletProvider, pc *paymentComponents, dbClient *ent.Client, secrets *security.SecretsStore, bus *eventbus.Bus, identityKey ed25519.PrivateKey, pqSigningKeySeed []byte, langoDir string) *p2pComponents {
+func initP2P(cfg *config.Config, wp wallet.WalletProvider, pc *paymentComponents, repStore *reputation.Store, secrets *security.SecretsStore, bus *eventbus.Bus, identityKey ed25519.PrivateKey, pqSigningKeySeed []byte, langoDir string) *p2pComponents {
 	if !cfg.P2P.Enabled {
 		logger().Info("P2P networking disabled")
 		return nil
@@ -194,11 +193,11 @@ func initP2P(cfg *config.Config, wp wallet.WalletProvider, pc *paymentComponents
 		if pubErr == nil {
 			bp, bpErr := identity.NewBundleProvider(identity.BundleProviderConfig{
 				SigningKey:       identityKey,
-				SettlementPub:   walletPub,
+				SettlementPub:    walletPub,
 				PQSigningKeySeed: pqSigningKeySeed,
-				LangoDir:        langoDir,
-				Legacy:          legacyIDProvider,
-				Logger:          pLogger,
+				LangoDir:         langoDir,
+				Legacy:           legacyIDProvider,
+				Logger:           pLogger,
 			})
 			if bpErr == nil {
 				localID = bp
@@ -369,9 +368,7 @@ func initP2P(cfg *config.Config, wp wallet.WalletProvider, pc *paymentComponents
 	}
 
 	// Wire reputation system if DB client is available.
-	var repStore *reputation.Store
-	if dbClient != nil {
-		repStore = reputation.NewStore(dbClient, pLogger)
+	if repStore != nil {
 		minScore := cfg.P2P.MinTrustScore
 		if minScore <= 0 {
 			minScore = 0.3
@@ -499,7 +496,7 @@ func initP2P(cfg *config.Config, wp wallet.WalletProvider, pc *paymentComponents
 		)
 
 		// Wire settlement service for on-chain payment processing.
-		if bus != nil && pc.rpcClient != nil && dbClient != nil {
+		if bus != nil && pc.rpcClient != nil && pc.txStore != nil {
 			receiptTimeout := cfg.P2P.Pricing.Settlement.ReceiptTimeout
 			if receiptTimeout <= 0 {
 				receiptTimeout = 2 * time.Minute
@@ -511,7 +508,7 @@ func initP2P(cfg *config.Config, wp wallet.WalletProvider, pc *paymentComponents
 			settleSvc := settlement.New(settlement.Config{
 				Wallet:         wp,
 				RPCClient:      pc.rpcClient,
-				DBClient:       dbClient,
+				TxStore:        pc.txStore,
 				ChainID:        pc.chainID,
 				USDCAddr:       usdcAddr,
 				ReceiptTimeout: receiptTimeout,
@@ -781,20 +778,20 @@ func initP2P(cfg *config.Config, wp wallet.WalletProvider, pc *paymentComponents
 	)
 
 	return &p2pComponents{
-		node:        node,
-		sessions:    sessions,
-		handshaker:  handshaker,
-		nonceCache:  nonceCache,
-		fw:          fw,
-		gossip:      gossip,
-		identity:    localID,
-		handler:     handler,
-		payGate:     pg,
-		reputation:  repStore,
-		pricingCfg:  cfg.P2P.Pricing,
-		pricingFn:   extPricingFn,
-		agentPool:   pool,
-		selector:    selector,
+		node:          node,
+		sessions:      sessions,
+		handshaker:    handshaker,
+		nonceCache:    nonceCache,
+		fw:            fw,
+		gossip:        gossip,
+		identity:      localID,
+		handler:       handler,
+		payGate:       pg,
+		reputation:    repStore,
+		pricingCfg:    cfg.P2P.Pricing,
+		pricingFn:     extPricingFn,
+		agentPool:     pool,
+		selector:      selector,
 		coordinator:   coord,
 		provider:      provider,
 		healthMonitor: healthMon,

@@ -1,9 +1,7 @@
 ## Purpose
 
 The proactive librarian system automatically extracts knowledge from conversation observations, detects knowledge gaps, creates inquiry records for natural follow-up questions, and resolves answers back into stored knowledge.
-
 ## Requirements
-
 ### Requirement: Inquiry Ent Schema
 The system SHALL persist knowledge inquiries using an Ent schema with fields: id (UUID), session_key, topic, question, context (optional), priority (low/medium/high), status (pending/resolved/dismissed), answer (optional), knowledge_key (optional), source_observation_id (optional), created_at, resolved_at (optional). The schema SHALL have indexes on (session_key, status) and (status).
 
@@ -115,3 +113,27 @@ The system SHALL automatically save knowledge extractions that meet the configur
 #### Scenario: Unknown extraction type skipped
 - **WHEN** an extraction with an unrecognized type is encountered
 - **THEN** the system SHALL log a warning with the key and type, skip that extraction, and continue processing remaining extractions
+
+### Requirement: Inquiry payload bundle preserves all fields
+Inquiry persistence MUST store `{question, context, answer}` as one protected bundle so resolve operations preserve the original question and context.
+
+#### Scenario: Save inquiry stores question and context in payload bundle
+- **WHEN** `SaveInquiry` persists a pending inquiry
+- **THEN** the protected payload bundle contains `question` and `context`
+- **AND** the plaintext `question` and `context` columns store only redacted projections
+
+#### Scenario: Resolve inquiry preserves question and context
+- **WHEN** `ResolveInquiry` stores an answer for an existing inquiry
+- **THEN** it first restores the existing bundle
+- **AND** it writes back a new protected bundle containing `question`, `context`, and `answer`
+- **AND** the plaintext `answer` column stores only a redacted projection
+
+#### Scenario: Inquiry read helpers decrypt protected bundles
+- **WHEN** inquiry list or read helpers return a row with ciphertext
+- **THEN** they return decrypted `question`, `context`, and `answer` values from the protected bundle
+
+#### Scenario: Inquiry protected row decrypt failure does not fall back
+- **WHEN** an inquiry row has ciphertext fields present but decryption fails
+- **THEN** the store returns an error or empty protected values
+- **AND** it does not promote the stored plaintext projections as originals
+

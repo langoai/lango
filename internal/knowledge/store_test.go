@@ -7,12 +7,14 @@ import (
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/require"
 	"go.uber.org/zap"
 
 	"github.com/langoai/lango/internal/ent/enttest"
 	entknowledge "github.com/langoai/lango/internal/ent/knowledge"
 	entlearning "github.com/langoai/lango/internal/ent/learning"
 	"github.com/langoai/lango/internal/eventbus"
+	"github.com/langoai/lango/internal/security"
 	_ "github.com/mattn/go-sqlite3"
 )
 
@@ -22,6 +24,22 @@ func newTestStore(t *testing.T) *Store {
 	t.Cleanup(func() { client.Close() })
 	logger := zap.NewNop().Sugar()
 	return NewStore(client, logger)
+}
+
+type stubPayloadProtector struct{}
+
+func (stubPayloadProtector) EncryptPayload(plaintext []byte) ([]byte, []byte, int, error) {
+	return append([]byte("enc:"), plaintext...), []byte("123456789012"), security.PayloadKeyVersionV1, nil
+}
+
+func (stubPayloadProtector) DecryptPayload(ciphertext []byte, nonce []byte, keyVersion int) ([]byte, error) {
+	if keyVersion != security.PayloadKeyVersionV1 {
+		return nil, fmt.Errorf("unexpected key version %d", keyVersion)
+	}
+	if string(nonce) != "123456789012" {
+		return nil, fmt.Errorf("unexpected nonce %q", string(nonce))
+	}
+	return []byte(strings.TrimPrefix(string(ciphertext), "enc:")), nil
 }
 
 func TestSaveAndGetKnowledge(t *testing.T) {
@@ -120,6 +138,83 @@ func TestSaveAndGetKnowledge(t *testing.T) {
 			t.Errorf("want source %q, got %q", "team-wiki", got.Source)
 		}
 	})
+}
+
+func TestKnowledgePayloadProtection_RoundTripAndProjection(t *testing.T) {
+	store := newTestStore(t)
+	store.SetPayloadProtector(stubPayloadProtector{})
+	ctx := context.Background()
+
+	entry := KnowledgeEntry{
+		Key:      "sensitive",
+		Category: "fact",
+		Content:  "email alice@example.com token SECRETSECRETSECRETSECRETSECRETSECRET",
+	}
+	if err := store.SaveKnowledge(ctx, "session-1", entry); err != nil {
+		t.Fatalf("SaveKnowledge: %v", err)
+	}
+
+	got, err := store.GetKnowledge(ctx, "sensitive")
+	if err != nil {
+		t.Fatalf("GetKnowledge: %v", err)
+	}
+	if got.Content != entry.Content {
+		t.Fatalf("want decrypted content %q, got %q", entry.Content, got.Content)
+	}
+
+	row, err := store.client.Knowledge.Query().
+		Where(entknowledge.Key("sensitive"), entknowledge.IsLatest(true)).
+		Only(ctx)
+	if err != nil {
+		t.Fatalf("query raw row: %v", err)
+	}
+	if row.ContentCiphertext == nil || row.ContentNonce == nil || row.ContentKeyVersion == nil {
+		t.Fatal("expected encrypted payload columns to be set")
+	}
+	if *row.ContentKeyVersion != security.PayloadKeyVersionV1 {
+		t.Fatalf("want key version %d, got %d", security.PayloadKeyVersionV1, *row.ContentKeyVersion)
+	}
+	if strings.Contains(row.Content, "alice@example.com") {
+		t.Fatalf("projection leaked email: %q", row.Content)
+	}
+	if strings.Contains(row.Content, "SECRETSECRETSECRETSECRETSECRETSECRET") {
+		t.Fatalf("projection leaked secret token: %q", row.Content)
+	}
+	if !strings.Contains(row.Content, "[email]") || !strings.Contains(row.Content, "[secret]") {
+		t.Fatalf("projection did not redact sensitive material: %q", row.Content)
+	}
+}
+
+func TestLearningPayloadProtection_RoundTripAndProjection(t *testing.T) {
+	store := newTestStore(t)
+	store.SetPayloadProtector(stubPayloadProtector{})
+	ctx := context.Background()
+
+	entry := LearningEntry{
+		Trigger:      "timeout",
+		ErrorPattern: "email alice@example.com",
+		Diagnosis:    "token SECRETSECRETSECRETSECRETSECRETSECRET",
+		Fix:          "rotate 123456789",
+		Category:     entlearning.CategoryTimeout,
+	}
+	require.NoError(t, store.SaveLearning(ctx, "session-1", entry))
+
+	got, err := store.GetLearning(ctx, store.client.Learning.Query().OnlyX(ctx).ID)
+	require.NoError(t, err)
+	require.Equal(t, entry.ErrorPattern, got.ErrorPattern)
+	require.Equal(t, entry.Diagnosis, got.Diagnosis)
+	require.Equal(t, entry.Fix, got.Fix)
+
+	results, err := store.SearchLearningsScored(ctx, "timeout", "", 10)
+	require.NoError(t, err)
+	require.Len(t, results, 1)
+	require.Equal(t, entry.ErrorPattern, results[0].Entry.ErrorPattern)
+
+	row := store.client.Learning.Query().OnlyX(ctx)
+	require.NotNil(t, row.PayloadCiphertext)
+	require.NotContains(t, row.ErrorPattern, "alice@example.com")
+	require.NotContains(t, row.Diagnosis, "SECRETSECRETSECRETSECRETSECRETSECRET")
+	require.NotContains(t, row.Fix, "123456789")
 }
 
 func TestGetKnowledge_NotFound(t *testing.T) {

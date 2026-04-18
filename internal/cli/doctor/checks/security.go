@@ -3,6 +3,7 @@ package checks
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"os"
@@ -13,6 +14,7 @@ import (
 	"github.com/langoai/lango/internal/bootstrap"
 	"github.com/langoai/lango/internal/config"
 	"github.com/langoai/lango/internal/session"
+	"github.com/langoai/lango/internal/sqlitedriver"
 )
 
 // SecurityCheck checks security configuration and state
@@ -56,17 +58,13 @@ func (c *SecurityCheck) Run(ctx context.Context, cfg *config.Config) Result {
 	} else {
 		store, err := session.NewEntStore(cfg.Session.DatabasePath)
 		if err != nil {
-			// Check for known SQLite/SQLCipher errors related to encryption
-			// "out of memory" (14) is often returned when opening an encrypted DB without a key
-			// or with an incorrect page size/key.
-			errMsg := err.Error()
-			if strings.Contains(errMsg, "out of memory") || strings.Contains(errMsg, "file is not a database") {
+			if errors.Is(err, sqlitedriver.ErrLegacyEncryptedOrUnreadableDB) {
 				return Result{
 					Name:    c.Name(),
 					Status:  StatusWarn,
-					Message: "Session database is encrypted and locked",
-					Details: "The doctor command cannot verify the session database contents because it is encrypted.\n" +
-						"Ensure your passphrase keyfile (~/.lango/keyfile) exists, or run in an interactive terminal.",
+					Message: "Session database is a legacy encrypted or unreadable DB",
+					Details: "This runtime no longer supports SQLCipher database files.\n" +
+						"Use an older build to export or decrypt the database before upgrading.",
 				}
 			}
 			return Result{
@@ -93,17 +91,22 @@ func (c *SecurityCheck) Run(ctx context.Context, cfg *config.Config) Result {
 
 	// 3. Check DB encryption status.
 	if cfg.Security.DBEncryption.Enabled {
-		dbPath := cfg.Session.DatabasePath
-		if strings.HasPrefix(dbPath, "~/") {
-			if h, err := os.UserHomeDir(); err == nil {
-				dbPath = filepath.Join(h, dbPath[2:])
-			}
+		issues = append(issues, "security.dbEncryption is deprecated and ignored by this runtime")
+		if status < StatusWarn {
+			status = StatusWarn
 		}
-		if !bootstrap.IsDBEncrypted(dbPath) {
-			issues = append(issues, "DB encryption enabled in config but database is plaintext (run 'lango security db-migrate')")
-			if status < StatusWarn {
-				status = StatusWarn
-			}
+	}
+
+	dbPath := cfg.Session.DatabasePath
+	if strings.HasPrefix(dbPath, "~/") {
+		if h, err := os.UserHomeDir(); err == nil {
+			dbPath = filepath.Join(h, dbPath[2:])
+		}
+	}
+	if bootstrap.IsDBEncrypted(dbPath) {
+		issues = append(issues, "Session database header indicates a legacy encrypted or unreadable DB; export it with an older build before upgrading")
+		if status < StatusWarn {
+			status = StatusWarn
 		}
 	}
 

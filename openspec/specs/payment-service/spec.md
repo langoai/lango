@@ -1,9 +1,7 @@
 ## Purpose
 
 Capability spec for payment-service. See requirements below for scope and behavior contracts.
-
 ## Requirements
-
 ### Requirement: USDC ERC-20 transfer transaction building
 The system SHALL build EIP-1559 ERC-20 transfer transactions by ABI-encoding `transfer(address,uint256)` with gas estimation and nonce management.
 
@@ -16,7 +14,7 @@ The system SHALL execute payments through the flow: validate address → parse a
 
 #### Scenario: Successful payment
 - **WHEN** `Send` is called with a valid PaymentRequest within spending limits
-- **THEN** the transaction is submitted on-chain and a PaymentReceipt with txHash and status "submitted" is returned
+- **THEN** the transaction is submitted on-chain and a PaymentReceipt with txHash and status "confirmed" is returned
 
 #### Scenario: Payment exceeds per-transaction limit
 - **WHEN** `Send` is called with an amount exceeding `maxPerTx`
@@ -31,11 +29,12 @@ The system SHALL execute payments through the flow: validate address → parse a
 - **THEN** an error is returned immediately
 
 ### Requirement: Spending limits enforcement
-The system SHALL enforce per-transaction and daily spending limits using Ent PaymentTx records. Daily totals are calculated by summing non-failed transactions since start of day.
+The system SHALL enforce per-transaction and daily spending limits using a storage-facing payment usage reader. Daily totals are calculated by summing non-failed transactions since start of day.
 
-#### Scenario: Daily spending calculated from records
+#### Scenario: Daily spending calculated from stored records
 - **WHEN** `DailySpent` is called
-- **THEN** the sum of all pending/submitted/confirmed PaymentTx amounts for today is returned
+- **THEN** the limiter obtains usage totals through a storage-facing payment usage reader
+- **AND** it does not require a direct Ent client
 
 ### Requirement: USDC balance query
 The system SHALL query the wallet's USDC balance via `balanceOf(address)` eth_call to the USDC contract.
@@ -50,6 +49,7 @@ The system SHALL return recent PaymentTx records ordered by creation time descen
 #### Scenario: Query transaction history
 - **WHEN** `History` is called with a limit
 - **THEN** up to `limit` TransactionInfo records are returned, most recent first
+- **AND** the history read path can be satisfied through storage-facing transaction capabilities
 
 ### Requirement: PaymentTx entity schema
 The system SHALL persist transaction records in an Ent PaymentTx schema with fields: id (UUID), tx_hash, from_address, to_address, amount, chain_id, status (pending/submitted/confirmed/failed), session_key, purpose, x402_url, error_message, timestamps.
@@ -116,3 +116,12 @@ The EIP-3009 Sign function SHALL use SignTransaction (raw signing without additi
 #### Scenario: WalletSigner interface
 - **WHEN** a wallet is used for EIP-3009 signing
 - **THEN** it SHALL implement both SignTransaction (raw) and SignMessage (hashed) methods
+
+### Requirement: PaymentTx persistence abstraction
+Payment transaction writes MUST flow through an explicit transaction-store interface rather than direct service-owned Ent access.
+
+#### Scenario: Payment service records lifecycle through store interface
+- **WHEN** a payment is created, submitted, confirmed, failed, or recorded as X402 activity
+- **THEN** the payment service persists those transitions through a transaction-store interface
+- **AND** the service does not directly access Ent-generated `PaymentTx` builders
+

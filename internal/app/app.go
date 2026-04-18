@@ -31,6 +31,7 @@ import (
 	"github.com/langoai/lango/internal/sandbox"
 	"github.com/langoai/lango/internal/session"
 	"github.com/langoai/lango/internal/skill"
+	"github.com/langoai/lango/internal/storage"
 	"github.com/langoai/lango/internal/toolcatalog"
 	"github.com/langoai/lango/internal/toolchain"
 	"github.com/langoai/lango/internal/tooloutput"
@@ -107,7 +108,7 @@ func New(boot *bootstrap.Result, opts ...AppOption) (*App, error) {
 
 	builder := appinit.NewBuilder()
 	builder.AddModule(&foundationModule{cfg: cfg, boot: boot})
-	builder.AddModule(&intelligenceModule{cfg: cfg, boot: boot, rawDB: boot.RawDB, bus: bus, extReg: app.ExtensionRegistry})
+	builder.AddModule(&intelligenceModule{cfg: cfg, boot: boot, bus: bus, extReg: app.ExtensionRegistry})
 	builder.AddModule(&automationModule{cfg: cfg, app: app})
 	builder.AddModule(&networkModule{cfg: cfg, boot: boot, bus: bus, app: app})
 	builder.AddModule(&extensionModule{cfg: cfg, boot: boot, bus: bus})
@@ -281,7 +282,6 @@ func New(boot *bootstrap.Result, opts ...AppOption) (*App, error) {
 		tools:    tools,
 		kc:       resolveKC(iv),
 		mc:       resolveMC(iv),
-		ec:       resolveEC(iv),
 		gc:       resolveGC(iv),
 		scanner:  scanner,
 		sr:       resolveSR(iv),
@@ -346,7 +346,6 @@ func New(boot *bootstrap.Result, opts ...AppOption) (*App, error) {
 	// B9.3. Learning suggestions (Phase 3C).
 	wireLearningSuggestions(app)
 
-
 	// B10. Lifecycle registration (module components + gateway + channels).
 	for _, entry := range buildResult.Components {
 		app.registry.Register(entry.Component, entry.Priority)
@@ -395,10 +394,6 @@ func populateAppFields(app *App, r appinit.Resolver) {
 		if iv.MC != nil {
 			app.MemoryStore = iv.MC.store
 			app.MemoryBuffer = iv.MC.buffer
-		}
-		if iv.EC != nil {
-			app.EmbeddingBuffer = iv.EC.buffer
-			app.RAGService = iv.EC.ragService
 		}
 		if iv.GC != nil {
 			app.GraphStore = iv.GC.store
@@ -732,15 +727,24 @@ func wirePostAgent(app *App, r appinit.Resolver, tools []*agent.Tool, bus *event
 	// Observability API routes.
 	obsc, _ := r.Resolve(appinit.ProvidesObservability).(*observabilityComponents)
 	if obsc != nil {
-		registerObservabilityRoutes(app.Gateway.Router(), obsc.collector, obsc.healthRegistry, obsc.tokenStore, boot.DBClient, obsc.promExporter)
+		var alertsReader func(context.Context, time.Time) ([]storage.AlertRecord, error)
+		if boot != nil && boot.Storage != nil {
+			alertsReader = boot.Storage.Alerts
+		}
+		registerObservabilityRoutes(app.Gateway.Router(), obsc.collector, obsc.healthRegistry, obsc.tokenStore, alertsReader, obsc.promExporter)
 		logger().Info("observability API routes registered")
 	}
 
 	// Audit recorder.
-	if cfg.Observability.Audit.Enabled && boot.DBClient != nil {
-		auditRec := audit.NewRecorder(boot.DBClient)
-		auditRec.Subscribe(bus)
-		logger().Info("audit recorder wired to event bus")
+	if cfg.Observability.Audit.Enabled {
+		var auditRec *audit.Recorder
+		if boot != nil && boot.Storage != nil {
+			auditRec = boot.Storage.AuditRecorder()
+		}
+		if auditRec != nil {
+			auditRec.Subscribe(bus)
+			logger().Info("audit recorder wired to event bus")
+		}
 	}
 }
 
@@ -838,12 +842,6 @@ func resolveMC(iv *intelligenceValues) *memoryComponents {
 		return nil
 	}
 	return iv.MC
-}
-func resolveEC(iv *intelligenceValues) *embeddingComponents {
-	if iv == nil {
-		return nil
-	}
-	return iv.EC
 }
 func resolveGC(iv *intelligenceValues) *graphComponents {
 	if iv == nil {

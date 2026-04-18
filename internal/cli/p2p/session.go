@@ -39,7 +39,7 @@ func newSessionListCmd(bootLoader func() (*bootstrap.Result, error)) *cobra.Comm
 			if err != nil {
 				return fmt.Errorf("load config: %w", err)
 			}
-			defer boot.DBClient.Close()
+			defer boot.Close()
 
 			deps, err := initP2PDeps(boot)
 			if err != nil {
@@ -94,7 +94,7 @@ func newSessionRevokeCmd(bootLoader func() (*bootstrap.Result, error)) *cobra.Co
 			if err != nil {
 				return fmt.Errorf("load config: %w", err)
 			}
-			defer boot.DBClient.Close()
+			defer boot.Close()
 
 			deps, err := initP2PDeps(boot)
 			if err != nil {
@@ -122,7 +122,7 @@ func newSessionRevokeAllCmd(bootLoader func() (*bootstrap.Result, error)) *cobra
 			if err != nil {
 				return fmt.Errorf("load config: %w", err)
 			}
-			defer boot.DBClient.Close()
+			defer boot.Close()
 
 			deps, err := initP2PDeps(boot)
 			if err != nil {

@@ -8,40 +8,41 @@ import (
 	"go.uber.org/zap"
 )
 
-// VectorResult mirrors embedding.RAGResult to avoid an import cycle.
-type VectorResult struct {
+// ContentResult represents a single retrieved context item used to seed graph
+// traversal.
+type ContentResult struct {
 	Collection string
 	SourceID   string
 	Content    string
-	Distance   float32
+	Score      float32
 }
 
-// VectorRetrieveOptions mirrors embedding.RetrieveOptions to avoid an import cycle.
-type VectorRetrieveOptions struct {
+// ContentRetrieveOptions configures phase-1 retrieved context lookup.
+type ContentRetrieveOptions struct {
 	Collections []string
 	Limit       int
 	SessionKey  string
-	MaxDistance float32
 }
 
-// VectorRetriever retrieves results from a vector store. Implemented by
-// embedding.RAGService (satisfies via adapter).
-type VectorRetriever interface {
-	Retrieve(ctx context.Context, query string, opts VectorRetrieveOptions) ([]VectorResult, error)
+// ContentRetriever retrieves phase-1 context items from an arbitrary backend
+// such as FTS5. Implementations are supplied by wiring.
+type ContentRetriever interface {
+	Retrieve(ctx context.Context, query string, opts ContentRetrieveOptions) ([]ContentResult, error)
 }
 
-// GraphRAGService provides hybrid retrieval combining vector search with graph expansion.
+// GraphRAGService provides hybrid retrieval combining retrieved-context seeding
+// with graph expansion.
 type GraphRAGService struct {
-	vectorRAG VectorRetriever
-	graph     Store
-	maxDepth  int
-	maxExpand int
-	logger    *zap.SugaredLogger
+	contentRetriever ContentRetriever
+	graph            Store
+	maxDepth         int
+	maxExpand        int
+	logger           *zap.SugaredLogger
 }
 
 // NewGraphRAGService creates a new hybrid graph RAG service.
 func NewGraphRAGService(
-	vectorRAG VectorRetriever,
+	contentRetriever ContentRetriever,
 	graph Store,
 	maxDepth int,
 	maxExpand int,
@@ -54,18 +55,18 @@ func NewGraphRAGService(
 		maxExpand = 10
 	}
 	return &GraphRAGService{
-		vectorRAG: vectorRAG,
-		graph:     graph,
-		maxDepth:  maxDepth,
-		maxExpand: maxExpand,
-		logger:    logger,
+		contentRetriever: contentRetriever,
+		graph:            graph,
+		maxDepth:         maxDepth,
+		maxExpand:        maxExpand,
+		logger:           logger,
 	}
 }
 
-// GraphRAGResult extends VectorResult with graph-expanded context.
+// GraphRAGResult extends phase-1 content results with graph-expanded context.
 type GraphRAGResult struct {
-	// VectorResults are the original vector-search results.
-	VectorResults []VectorResult
+	// ContentResults are the original retrieved context results.
+	ContentResults []ContentResult
 	// GraphResults are additional results discovered via graph traversal.
 	GraphResults []GraphNode
 }
@@ -80,38 +81,38 @@ type GraphNode struct {
 }
 
 // Retrieve performs 2-phase hybrid retrieval:
-// Phase 1: Vector search (sqlite-vec cosine similarity)
-// Phase 2: Graph expansion from Phase 1 results (depth 1-2 hops)
-func (s *GraphRAGService) Retrieve(ctx context.Context, query string, opts VectorRetrieveOptions) (*GraphRAGResult, error) {
+// Phase 1: Retrieved context lookup (e.g., FTS5/BM25)
+// Phase 2: Graph expansion from phase-1 results (depth 1-2 hops)
+func (s *GraphRAGService) Retrieve(ctx context.Context, query string, opts ContentRetrieveOptions) (*GraphRAGResult, error) {
 	result := &GraphRAGResult{}
 
-	// Phase 1: Vector search via existing RAG service.
-	if s.vectorRAG != nil {
-		vectorResults, err := s.vectorRAG.Retrieve(ctx, query, opts)
+	// Phase 1: Retrieved context lookup via configured content retriever.
+	if s.contentRetriever != nil {
+		contentResults, err := s.contentRetriever.Retrieve(ctx, query, opts)
 		if err != nil {
-			s.logger.Warnw("vector retrieval error", "error", err)
+			s.logger.Warnw("content retrieval error", "error", err)
 		} else {
-			result.VectorResults = vectorResults
+			result.ContentResults = contentResults
 		}
 	}
 
-	// Phase 2: Graph expansion from vector results.
-	if s.graph == nil || len(result.VectorResults) == 0 {
+	// Phase 2: Graph expansion from retrieved context results.
+	if s.graph == nil || len(result.ContentResults) == 0 {
 		return result, nil
 	}
 
 	expansionPredicates := []string{RelatedTo, ResolvedBy, CausedBy, SimilarTo}
-	seen := make(map[string]bool, len(result.VectorResults))
+	seen := make(map[string]bool, len(result.ContentResults))
 
-	// Mark vector results as seen to avoid duplicates.
-	for _, vr := range result.VectorResults {
-		nodeID := buildNodeID(vr.Collection, vr.SourceID)
+	// Mark phase-1 results as seen to avoid duplicates.
+	for _, cr := range result.ContentResults {
+		nodeID := buildNodeID(cr.Collection, cr.SourceID)
 		seen[nodeID] = true
 	}
 
-	// Expand from each vector result node.
-	for _, vr := range result.VectorResults {
-		nodeID := buildNodeID(vr.Collection, vr.SourceID)
+	// Expand from each phase-1 result node.
+	for _, cr := range result.ContentResults {
+		nodeID := buildNodeID(cr.Collection, cr.SourceID)
 
 		triples, err := s.graph.Traverse(ctx, nodeID, s.maxDepth, expansionPredicates)
 		if err != nil {
@@ -162,10 +163,10 @@ func (s *GraphRAGService) AssembleSection(result *GraphRAGResult) string {
 
 	var b strings.Builder
 
-	// Vector results section.
-	if len(result.VectorResults) > 0 {
-		b.WriteString("## Semantic Context (RAG)\n")
-		for _, r := range result.VectorResults {
+	// Retrieved context section.
+	if len(result.ContentResults) > 0 {
+		b.WriteString("## Retrieved Context\n")
+		for _, r := range result.ContentResults {
 			if r.Content == "" {
 				continue
 			}

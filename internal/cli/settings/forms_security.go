@@ -152,19 +152,19 @@ func NewSecurityForm(cfg *config.Config) *tuicore.FormModel {
 
 // NewDBEncryptionForm creates the Security DB Encryption configuration form.
 func NewDBEncryptionForm(cfg *config.Config) *tuicore.FormModel {
-	form := tuicore.NewFormModel("Security DB Encryption Configuration")
+	form := tuicore.NewFormModel("Legacy DB Encryption Configuration")
 
 	form.AddField(&tuicore.Field{
-		Key: "db_encryption_enabled", Label: "SQLCipher Encryption", Type: tuicore.InputBool,
+		Key: "db_encryption_enabled", Label: "Legacy SQLCipher Flag", Type: tuicore.InputBool,
 		Checked:     cfg.Security.DBEncryption.Enabled,
-		Description: "Encrypt the SQLite database at rest using SQLCipher",
+		Description: "Deprecated compatibility flag. The current runtime ignores SQLCipher database encryption settings.",
 	})
 
 	form.AddField(&tuicore.Field{
 		Key: "db_cipher_page_size", Label: "Cipher Page Size", Type: tuicore.InputInt,
 		Value:       strconv.Itoa(cfg.Security.DBEncryption.CipherPageSize),
 		Placeholder: "4096",
-		Description: "SQLCipher page size; must match database creation settings (default: 4096)",
+		Description: "Deprecated legacy SQLCipher page size. Retained only for parsing older configs.",
 		Validate: func(s string) error {
 			if i, err := strconv.Atoi(s); err != nil || i <= 0 {
 				return fmt.Errorf("must be a positive integer")

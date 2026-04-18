@@ -81,7 +81,7 @@ Security Status
 | `slot_types` | []string | Unique slot types (`passphrase`, `mnemonic`) |
 | `recovery_setup` | bool | Whether a mnemonic recovery slot exists |
 | `pending_migration` | bool | Data re-encryption incomplete |
-| `pending_rekey` | bool | SQLCipher rekey incomplete |
+| `pending_rekey` | bool | Legacy pre-upgrade SQLCipher migration state |
 
 ---
 
@@ -295,13 +295,13 @@ Hardware Keyring Status
 
 ---
 
-## Database Encryption
+## Legacy Database Encryption
 
-Encrypt or decrypt the application database using SQLCipher.
+Legacy SQLCipher database workflows are no longer supported by the current runtime. The commands remain only as remediation signposts for users who need to export old databases with an older build first.
 
 ### lango security db-migrate
 
-Convert the plaintext SQLite database to SQLCipher-encrypted format using the current passphrase.
+Legacy SQLCipher migration command. The current runtime exits with an unsupported/remediation message.
 
 ```
 lango security db-migrate [--force]
@@ -315,18 +315,15 @@ lango security db-migrate [--force]
 
 ```bash
 $ lango security db-migrate
-This will encrypt your database. A backup will be created. Continue? [y/N] y
-Enter passphrase for DB encryption: ********
-Encrypting database...
-Database encrypted successfully.
-Set security.dbEncryption.enabled=true in your config to use the encrypted DB.
+SQLCipher database encryption is no longer supported by this runtime.
+Use an older build to export or decrypt the legacy database before upgrading.
 ```
 
 ---
 
 ### lango security db-decrypt
 
-Convert a SQLCipher-encrypted database back to plaintext SQLite.
+Legacy SQLCipher decrypt command. The current runtime exits with an unsupported/remediation message.
 
 ```
 lango security db-decrypt [--force]
@@ -340,11 +337,8 @@ lango security db-decrypt [--force]
 
 ```bash
 $ lango security db-decrypt
-This will decrypt your database to plaintext. Continue? [y/N] y
-Enter passphrase for DB decryption: ********
-Decrypting database...
-Database decrypted successfully.
-Set security.dbEncryption.enabled=false in your config if you no longer want encryption.
+SQLCipher database decryption is no longer supported by this runtime.
+Use an older build to export the legacy database before upgrading.
 ```
 
 ---

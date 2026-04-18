@@ -170,7 +170,7 @@ The settings editor uses a TUI menu interface where you can navigate through cat
 - **Payment & Account:** Payment, Smart Account, SA Session Keys, SA Paymaster, SA Modules
 - **P2P & Economy:** P2P Network, P2P Workspace, P2P ZKP, P2P Pricing, P2P Owner Protection, P2P Sandbox, Economy, Risk, Negotiation, Escrow, On-Chain Escrow, Pricing
 - **Integrations:** MCP Settings, MCP Server List, Observability, Alerting
-- **Security:** Security, Auth, Security DB Encryption, Security KMS, OS Sandbox
+- **Security:** Security, Auth, Legacy DB Encryption, Security KMS, OS Sandbox
 
 Press `/` to search across all categories by keyword.
 

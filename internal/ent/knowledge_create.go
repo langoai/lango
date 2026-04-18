@@ -39,6 +39,32 @@ func (_c *KnowledgeCreate) SetContent(v string) *KnowledgeCreate {
 	return _c
 }
 
+// SetContentCiphertext sets the "content_ciphertext" field.
+func (_c *KnowledgeCreate) SetContentCiphertext(v []byte) *KnowledgeCreate {
+	_c.mutation.SetContentCiphertext(v)
+	return _c
+}
+
+// SetContentNonce sets the "content_nonce" field.
+func (_c *KnowledgeCreate) SetContentNonce(v []byte) *KnowledgeCreate {
+	_c.mutation.SetContentNonce(v)
+	return _c
+}
+
+// SetContentKeyVersion sets the "content_key_version" field.
+func (_c *KnowledgeCreate) SetContentKeyVersion(v int) *KnowledgeCreate {
+	_c.mutation.SetContentKeyVersion(v)
+	return _c
+}
+
+// SetNillableContentKeyVersion sets the "content_key_version" field if the given value is not nil.
+func (_c *KnowledgeCreate) SetNillableContentKeyVersion(v *int) *KnowledgeCreate {
+	if v != nil {
+		_c.SetContentKeyVersion(*v)
+	}
+	return _c
+}
+
 // SetTags sets the "tags" field.
 func (_c *KnowledgeCreate) SetTags(v []string) *KnowledgeCreate {
 	_c.mutation.SetTags(v)
@@ -312,6 +338,18 @@ func (_c *KnowledgeCreate) createSpec() (*Knowledge, *sqlgraph.CreateSpec) {
 	if value, ok := _c.mutation.Content(); ok {
 		_spec.SetField(knowledge.FieldContent, field.TypeString, value)
 		_node.Content = value
+	}
+	if value, ok := _c.mutation.ContentCiphertext(); ok {
+		_spec.SetField(knowledge.FieldContentCiphertext, field.TypeBytes, value)
+		_node.ContentCiphertext = &value
+	}
+	if value, ok := _c.mutation.ContentNonce(); ok {
+		_spec.SetField(knowledge.FieldContentNonce, field.TypeBytes, value)
+		_node.ContentNonce = &value
+	}
+	if value, ok := _c.mutation.ContentKeyVersion(); ok {
+		_spec.SetField(knowledge.FieldContentKeyVersion, field.TypeInt, value)
+		_node.ContentKeyVersion = &value
 	}
 	if value, ok := _c.mutation.Tags(); ok {
 		_spec.SetField(knowledge.FieldTags, field.TypeJSON, value)

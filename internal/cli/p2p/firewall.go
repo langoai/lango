@@ -38,7 +38,7 @@ func newFirewallListCmd(bootLoader func() (*bootstrap.Result, error)) *cobra.Com
 			if err != nil {
 				return fmt.Errorf("load config: %w", err)
 			}
-			defer boot.DBClient.Close()
+			defer boot.Close()
 
 			cfg := boot.Config
 			if !cfg.P2P.Enabled {

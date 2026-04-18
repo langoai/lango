@@ -53,7 +53,7 @@ the passphrase to avoid exposing it to same-UID attacks via plain OS keyring.`,
 			if err != nil {
 				return fmt.Errorf("load config: %w", err)
 			}
-			defer boot.DBClient.Close()
+			defer boot.Close()
 
 			// Check if passphrase is already stored in the secure provider.
 			if checker, ok := secureProvider.(keyring.KeyChecker); ok {

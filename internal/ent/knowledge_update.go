@@ -71,6 +71,57 @@ func (_u *KnowledgeUpdate) SetNillableContent(v *string) *KnowledgeUpdate {
 	return _u
 }
 
+// SetContentCiphertext sets the "content_ciphertext" field.
+func (_u *KnowledgeUpdate) SetContentCiphertext(v []byte) *KnowledgeUpdate {
+	_u.mutation.SetContentCiphertext(v)
+	return _u
+}
+
+// ClearContentCiphertext clears the value of the "content_ciphertext" field.
+func (_u *KnowledgeUpdate) ClearContentCiphertext() *KnowledgeUpdate {
+	_u.mutation.ClearContentCiphertext()
+	return _u
+}
+
+// SetContentNonce sets the "content_nonce" field.
+func (_u *KnowledgeUpdate) SetContentNonce(v []byte) *KnowledgeUpdate {
+	_u.mutation.SetContentNonce(v)
+	return _u
+}
+
+// ClearContentNonce clears the value of the "content_nonce" field.
+func (_u *KnowledgeUpdate) ClearContentNonce() *KnowledgeUpdate {
+	_u.mutation.ClearContentNonce()
+	return _u
+}
+
+// SetContentKeyVersion sets the "content_key_version" field.
+func (_u *KnowledgeUpdate) SetContentKeyVersion(v int) *KnowledgeUpdate {
+	_u.mutation.ResetContentKeyVersion()
+	_u.mutation.SetContentKeyVersion(v)
+	return _u
+}
+
+// SetNillableContentKeyVersion sets the "content_key_version" field if the given value is not nil.
+func (_u *KnowledgeUpdate) SetNillableContentKeyVersion(v *int) *KnowledgeUpdate {
+	if v != nil {
+		_u.SetContentKeyVersion(*v)
+	}
+	return _u
+}
+
+// AddContentKeyVersion adds value to the "content_key_version" field.
+func (_u *KnowledgeUpdate) AddContentKeyVersion(v int) *KnowledgeUpdate {
+	_u.mutation.AddContentKeyVersion(v)
+	return _u
+}
+
+// ClearContentKeyVersion clears the value of the "content_key_version" field.
+func (_u *KnowledgeUpdate) ClearContentKeyVersion() *KnowledgeUpdate {
+	_u.mutation.ClearContentKeyVersion()
+	return _u
+}
+
 // SetTags sets the "tags" field.
 func (_u *KnowledgeUpdate) SetTags(v []string) *KnowledgeUpdate {
 	_u.mutation.SetTags(v)
@@ -274,6 +325,27 @@ func (_u *KnowledgeUpdate) sqlSave(ctx context.Context) (_node int, err error) {
 	if value, ok := _u.mutation.Content(); ok {
 		_spec.SetField(knowledge.FieldContent, field.TypeString, value)
 	}
+	if value, ok := _u.mutation.ContentCiphertext(); ok {
+		_spec.SetField(knowledge.FieldContentCiphertext, field.TypeBytes, value)
+	}
+	if _u.mutation.ContentCiphertextCleared() {
+		_spec.ClearField(knowledge.FieldContentCiphertext, field.TypeBytes)
+	}
+	if value, ok := _u.mutation.ContentNonce(); ok {
+		_spec.SetField(knowledge.FieldContentNonce, field.TypeBytes, value)
+	}
+	if _u.mutation.ContentNonceCleared() {
+		_spec.ClearField(knowledge.FieldContentNonce, field.TypeBytes)
+	}
+	if value, ok := _u.mutation.ContentKeyVersion(); ok {
+		_spec.SetField(knowledge.FieldContentKeyVersion, field.TypeInt, value)
+	}
+	if value, ok := _u.mutation.AddedContentKeyVersion(); ok {
+		_spec.AddField(knowledge.FieldContentKeyVersion, field.TypeInt, value)
+	}
+	if _u.mutation.ContentKeyVersionCleared() {
+		_spec.ClearField(knowledge.FieldContentKeyVersion, field.TypeInt)
+	}
 	if value, ok := _u.mutation.Tags(); ok {
 		_spec.SetField(knowledge.FieldTags, field.TypeJSON, value)
 	}
@@ -374,6 +446,57 @@ func (_u *KnowledgeUpdateOne) SetNillableContent(v *string) *KnowledgeUpdateOne 
 	if v != nil {
 		_u.SetContent(*v)
 	}
+	return _u
+}
+
+// SetContentCiphertext sets the "content_ciphertext" field.
+func (_u *KnowledgeUpdateOne) SetContentCiphertext(v []byte) *KnowledgeUpdateOne {
+	_u.mutation.SetContentCiphertext(v)
+	return _u
+}
+
+// ClearContentCiphertext clears the value of the "content_ciphertext" field.
+func (_u *KnowledgeUpdateOne) ClearContentCiphertext() *KnowledgeUpdateOne {
+	_u.mutation.ClearContentCiphertext()
+	return _u
+}
+
+// SetContentNonce sets the "content_nonce" field.
+func (_u *KnowledgeUpdateOne) SetContentNonce(v []byte) *KnowledgeUpdateOne {
+	_u.mutation.SetContentNonce(v)
+	return _u
+}
+
+// ClearContentNonce clears the value of the "content_nonce" field.
+func (_u *KnowledgeUpdateOne) ClearContentNonce() *KnowledgeUpdateOne {
+	_u.mutation.ClearContentNonce()
+	return _u
+}
+
+// SetContentKeyVersion sets the "content_key_version" field.
+func (_u *KnowledgeUpdateOne) SetContentKeyVersion(v int) *KnowledgeUpdateOne {
+	_u.mutation.ResetContentKeyVersion()
+	_u.mutation.SetContentKeyVersion(v)
+	return _u
+}
+
+// SetNillableContentKeyVersion sets the "content_key_version" field if the given value is not nil.
+func (_u *KnowledgeUpdateOne) SetNillableContentKeyVersion(v *int) *KnowledgeUpdateOne {
+	if v != nil {
+		_u.SetContentKeyVersion(*v)
+	}
+	return _u
+}
+
+// AddContentKeyVersion adds value to the "content_key_version" field.
+func (_u *KnowledgeUpdateOne) AddContentKeyVersion(v int) *KnowledgeUpdateOne {
+	_u.mutation.AddContentKeyVersion(v)
+	return _u
+}
+
+// ClearContentKeyVersion clears the value of the "content_key_version" field.
+func (_u *KnowledgeUpdateOne) ClearContentKeyVersion() *KnowledgeUpdateOne {
+	_u.mutation.ClearContentKeyVersion()
 	return _u
 }
 
@@ -609,6 +732,27 @@ func (_u *KnowledgeUpdateOne) sqlSave(ctx context.Context) (_node *Knowledge, er
 	}
 	if value, ok := _u.mutation.Content(); ok {
 		_spec.SetField(knowledge.FieldContent, field.TypeString, value)
+	}
+	if value, ok := _u.mutation.ContentCiphertext(); ok {
+		_spec.SetField(knowledge.FieldContentCiphertext, field.TypeBytes, value)
+	}
+	if _u.mutation.ContentCiphertextCleared() {
+		_spec.ClearField(knowledge.FieldContentCiphertext, field.TypeBytes)
+	}
+	if value, ok := _u.mutation.ContentNonce(); ok {
+		_spec.SetField(knowledge.FieldContentNonce, field.TypeBytes, value)
+	}
+	if _u.mutation.ContentNonceCleared() {
+		_spec.ClearField(knowledge.FieldContentNonce, field.TypeBytes)
+	}
+	if value, ok := _u.mutation.ContentKeyVersion(); ok {
+		_spec.SetField(knowledge.FieldContentKeyVersion, field.TypeInt, value)
+	}
+	if value, ok := _u.mutation.AddedContentKeyVersion(); ok {
+		_spec.AddField(knowledge.FieldContentKeyVersion, field.TypeInt, value)
+	}
+	if _u.mutation.ContentKeyVersionCleared() {
+		_spec.ClearField(knowledge.FieldContentKeyVersion, field.TypeInt)
 	}
 	if value, ok := _u.mutation.Tags(); ok {
 		_spec.SetField(knowledge.FieldTags, field.TypeJSON, value)

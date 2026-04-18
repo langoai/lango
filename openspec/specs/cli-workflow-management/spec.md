@@ -1,9 +1,7 @@
 ## Purpose
 
 Define the CLI commands for managing workflow execution (run, list, status, cancel, history).
-
 ## Requirements
-
 ### Requirement: Workflow run command
 The CLI SHALL provide `lango workflow run <file.yaml>` that parses and executes a workflow YAML file.
 
@@ -74,3 +72,18 @@ The addition of the validate subcommand SHALL NOT change the behavior or registr
 #### Scenario: Existing commands still work
 - **WHEN** user runs existing `lango workflow list` command
 - **THEN** the command behaves identically to before the validate addition
+
+### Requirement: Workflow CLI uses workflow state store capability
+Workflow CLI commands MUST obtain workflow state persistence through a storage facade capability instead of constructing a state store from a generic Ent client in the CLI layer.
+
+#### Scenario: Workflow engine initialization uses facade state store
+- **WHEN** the workflow CLI initializes a workflow engine
+- **THEN** it resolves the workflow state store from the storage facade capability
+
+### Requirement: Workflow history/status support broker-backed runtime reads
+Workflow CLI read surfaces MUST remain functional when runtime state is served by broker-backed storage.
+
+#### Scenario: Workflow read path under broker-owned runtime
+- **WHEN** broker-backed runtime storage is active
+- **THEN** workflow list/history/status read state through broker-backed storage capabilities
+

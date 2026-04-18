@@ -9,11 +9,10 @@ title: Installation
 | Requirement | Details |
 |---|---|
 | **Go** | 1.25 or later |
-| **CGO** | Must be enabled (`CGO_ENABLED=1`). Required by the `sqlite3` and `sqlite-vec` drivers. |
-| **C compiler** | `gcc` or `clang` (needed by CGO) |
 | **Git** | For cloning the repository |
+| **C compiler** | Optional. Only needed when building legacy `vec` integrations that still depend on CGO. |
 
-### Platform-Specific C Compiler Setup
+### Optional C Compiler Setup
 
 === "macOS"
 
@@ -41,9 +40,9 @@ title: Installation
     apk add gcc musl-dev sqlite-dev
     ```
 
-!!! info "Why CGO?"
+!!! info "Default Runtime"
 
-    Lango uses SQLite for encrypted configuration storage and `sqlite-vec` for vector similarity search. Both require CGO-enabled builds. The Makefile sets `CGO_ENABLED=1` automatically.
+    The default runtime uses a pure-Go SQLite driver with FTS5 enabled. CGO is not required for normal builds. A C compiler is only needed if you explicitly build optional legacy `vec` integrations.
 
 ## Build from Source
 
@@ -64,12 +63,12 @@ make install
 You can also install directly with `go install`:
 
 ```bash
-CGO_ENABLED=1 go install -tags "fts5,vec" github.com/langoai/lango/cmd/lango@latest
+go install github.com/langoai/lango/cmd/lango@latest
 ```
 
 !!! note "`make build` vs `go install`"
 
-    `make build` sets CGO, build tags (`fts5`, `vec`), and version/build-time LDFLAGS automatically. With `go install` you must pass these flags yourself. If you omit `-tags "fts5,vec"`, full-text search and vector similarity will not be available.
+    `make build` and `go install` both use the default runtime with FTS5 enabled. Optional legacy `vec` integrations are not part of the default build.
 
 ## Verify Installation
 

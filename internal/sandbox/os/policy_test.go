@@ -290,6 +290,14 @@ func TestMCPServerPolicy(t *testing.T) {
 	assert.Equal(t, NetworkAllow, policy.Network)
 }
 
+func TestDefaultToolPolicyWithProtectedPaths(t *testing.T) {
+	workDir := t.TempDir()
+	protected := filepath.Join(t.TempDir(), "graph.db")
+
+	policy := DefaultToolPolicyWithProtectedPaths(workDir, "", []string{protected})
+	assert.Contains(t, policy.Filesystem.DenyPaths, protected)
+}
+
 func TestMCPServerPolicy_EmptyDataRoot(t *testing.T) {
 	policy := MCPServerPolicy("", "")
 

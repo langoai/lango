@@ -14,7 +14,6 @@ import (
 	"github.com/langoai/lango/internal/bootstrap"
 	"github.com/langoai/lango/internal/config"
 	"github.com/langoai/lango/internal/deadline"
-	"github.com/langoai/lango/internal/embedding"
 	"github.com/langoai/lango/internal/eventbus"
 	"github.com/langoai/lango/internal/extension"
 	"github.com/langoai/lango/internal/gateway"
@@ -26,6 +25,7 @@ import (
 	"github.com/langoai/lango/internal/security"
 	"github.com/langoai/lango/internal/session"
 	"github.com/langoai/lango/internal/skill"
+	"github.com/langoai/lango/internal/storagebroker"
 	"github.com/langoai/lango/internal/supervisor"
 	"github.com/langoai/lango/internal/toolcatalog"
 	"github.com/langoai/lango/internal/toolchain"
@@ -105,12 +105,17 @@ func initSessionStore(cfg *config.Config, boot *bootstrap.Result) (session.Store
 	if cfg.Session.TTL > 0 {
 		storeOpts = append(storeOpts, session.WithTTL(cfg.Session.TTL))
 	}
+	if boot != nil && boot.Broker != nil {
+		storeOpts = append(storeOpts, session.WithPayloadProtector(storagebroker.NewPayloadProtector(boot.Broker)))
+	}
 
 	logger().Info("initializing session store...")
 
-	// Reuse the ent client opened during bootstrap.
-	if boot != nil && boot.DBClient != nil {
-		return session.NewEntStoreWithClient(boot.DBClient, storeOpts...), nil
+	if boot != nil && boot.Storage != nil {
+		store, err := boot.Storage.OpenSessionStore(storeOpts...)
+		if err == nil && store != nil {
+			return store, nil
+		}
 	}
 
 	// Fallback: open a fresh connection (e.g., for tests).
@@ -132,17 +137,23 @@ func initSecurity(cfg *config.Config, store session.Store, boot *bootstrap.Resul
 	switch cfg.Security.Signer.Provider {
 	case "local":
 		// Reuse the crypto provider initialized during bootstrap.
-		if boot != nil && boot.Crypto != nil && boot.DBClient != nil {
-			keys := security.NewKeyRegistry(boot.DBClient)
-			secrets := security.NewSecretsStore(boot.DBClient, keys, boot.Crypto)
-
-			ctx := context.Background()
-			if _, err := keys.RegisterKey(ctx, "default", "local", security.KeyTypeEncryption); err != nil {
-				return nil, nil, nil, fmt.Errorf("register default key: %w", err)
+		if boot != nil && boot.Crypto != nil {
+			var keys *security.KeyRegistry
+			var secrets *security.SecretsStore
+			if boot.Storage != nil {
+				keys = boot.Storage.KeyRegistry()
+				secrets = boot.Storage.SecretsStore(boot.Crypto)
 			}
+			if keys != nil && secrets != nil {
 
-			logger().Info("security initialized (local provider, from bootstrap)")
-			return boot.Crypto, keys, secrets, nil
+				ctx := context.Background()
+				if _, err := keys.RegisterKey(ctx, "default", "local", security.KeyTypeEncryption); err != nil {
+					return nil, nil, nil, fmt.Errorf("register default key: %w", err)
+				}
+
+				logger().Info("security initialized (local provider, from bootstrap)")
+				return boot.Crypto, keys, secrets, nil
+			}
 		}
 
 		// Fallback: standalone initialization (should not happen in normal flow).
@@ -165,15 +176,21 @@ func initSecurity(cfg *config.Config, store session.Store, boot *bootstrap.Resul
 
 	case "aws-kms", "gcp-kms", "azure-kv", "pkcs11":
 		kmsProvider, err := security.NewKMSProvider(security.KMSProviderName(cfg.Security.Signer.Provider), cfg.Security.KMS) //nolint:staticcheck // stubs always error; real impls use build tags
-		if err != nil {                                                                                                      //nolint:staticcheck // SA4023: always true on stub platforms, real KMS impls may succeed
+		if err != nil {                                                                                                       //nolint:staticcheck // SA4023: always true on stub platforms, real KMS impls may succeed
 			return nil, nil, nil, fmt.Errorf("KMS provider %q: %w", cfg.Security.Signer.Provider, err)
 		}
 
-		if boot == nil || boot.DBClient == nil {
+		if boot == nil {
 			return nil, nil, nil, fmt.Errorf("KMS security provider requires bootstrap")
 		}
 
-		keys := security.NewKeyRegistry(boot.DBClient)
+		var keys *security.KeyRegistry
+		if boot.Storage != nil {
+			keys = boot.Storage.KeyRegistry()
+		}
+		if keys == nil {
+			return nil, nil, nil, fmt.Errorf("KMS security provider requires key registry")
+		}
 		ctx := context.Background()
 		if _, err := keys.RegisterKey(ctx, "kms-default", cfg.Security.KMS.KeyID, security.KeyTypeEncryption); err != nil {
 			return nil, nil, nil, fmt.Errorf("register KMS key: %w", err)
@@ -194,7 +211,13 @@ func initSecurity(cfg *config.Config, store session.Store, boot *bootstrap.Resul
 				"keyID", cfg.Security.KMS.KeyID)
 		}
 
-		secrets := security.NewSecretsStore(boot.DBClient, keys, finalProvider)
+		var secrets *security.SecretsStore
+		if boot.Storage != nil {
+			secrets = boot.Storage.SecretsStore(finalProvider)
+		}
+		if secrets == nil {
+			return nil, nil, nil, fmt.Errorf("KMS security provider requires secrets store")
+		}
 		return finalProvider, keys, secrets, nil
 
 	default:
@@ -250,26 +273,25 @@ func initAuth(cfg *config.Config, store session.Store) *gateway.AuthManager {
 
 // agentDeps groups the dependencies needed by initAgent to reduce parameter sprawl.
 type agentDeps struct {
-	sv           *supervisor.Supervisor
-	cfg          *config.Config
-	store        session.Store
-	tools        []*agent.Tool
-	kc           *knowledgeComponents
-	mc           *memoryComponents
-	ec           *embeddingComponents
-	gc           *graphComponents
-	scanner      *agent.SecretScanner
-	sr           *skill.Registry
-	lc           *librarianComponents
-	catalog      *toolcatalog.Catalog
-	p2pc         *p2pComponents
-	eventBus     *eventbus.Bus
-	rls          runledger.RunLedgerStore
-	prov            *provenanceValues
-	hookRegistry    *toolchain.HookRegistry
-	compactionSync  *compactionSyncHolder
-	recallIndex     *session.RecallIndex
-	extReg          *extension.Registry
+	sv             *supervisor.Supervisor
+	cfg            *config.Config
+	store          session.Store
+	tools          []*agent.Tool
+	kc             *knowledgeComponents
+	mc             *memoryComponents
+	gc             *graphComponents
+	scanner        *agent.SecretScanner
+	sr             *skill.Registry
+	lc             *librarianComponents
+	catalog        *toolcatalog.Catalog
+	p2pc           *p2pComponents
+	eventBus       *eventbus.Bus
+	rls            runledger.RunLedgerStore
+	prov           *provenanceValues
+	hookRegistry   *toolchain.HookRegistry
+	compactionSync *compactionSyncHolder
+	recallIndex    recallBackend
+	extReg         *extension.Registry
 }
 
 // initAgent creates the ADK agent with the given tools and provider proxy.
@@ -280,7 +302,6 @@ func initAgent(ctx context.Context, deps *agentDeps) (*adk.Agent, error) {
 	tools := deps.tools
 	kc := deps.kc
 	mc := deps.mc
-	ec := deps.ec
 	gc := deps.gc
 	scanner := deps.scanner
 	sr := deps.sr
@@ -418,26 +439,17 @@ func initAgent(ctx context.Context, deps *agentDeps) (*adk.Agent, error) {
 			}
 		}
 
-		// Wire in RAG if available and enabled
-		if ec != nil && cfg.Embedding.RAG.Enabled {
-			ragOpts := embedding.RetrieveOptions{
-				Limit:       cfg.Embedding.RAG.MaxResults,
-				Collections: cfg.Embedding.RAG.Collections,
-				MaxDistance: cfg.Embedding.RAG.MaxDistance,
+		// Wire in graph-enhanced retrieved context if graph store is available.
+		if gc != nil && gc.ragService != nil {
+			retrievedLimit := cfg.Embedding.RAG.MaxResults
+			if retrievedLimit <= 0 {
+				retrievedLimit = 5
 			}
-			if ragOpts.Limit <= 0 {
-				ragOpts.Limit = 5
-			}
-			ctxAdapter.WithRAG(ec.ragService, ragOpts)
-
-			// Wire in Graph RAG if graph store is available.
-			if gc != nil && gc.ragService != nil {
-				ctxAdapter.WithGraphRAG(gc.ragService)
-			}
+			ctxAdapter.WithGraphRAG(gc.ragService, retrievedLimit)
 		}
 
 		// Wire in agentic retrieval coordinator if enabled.
-		if coordinator := initRetrievalCoordinator(cfg, kc.store, ec); coordinator != nil {
+		if coordinator := initRetrievalCoordinator(cfg, kc.store); coordinator != nil {
 			ctxAdapter.WithCoordinator(coordinator)
 		}
 
@@ -481,22 +493,13 @@ func initAgent(ctx context.Context, deps *agentDeps) (*adk.Agent, error) {
 			ctxAdapter.WithMemoryTokenBudget(cfg.ObservationalMemory.MemoryTokenBudget)
 		}
 
-		// Wire in RAG if available and enabled
-		if ec != nil && cfg.Embedding.RAG.Enabled {
-			ragOpts := embedding.RetrieveOptions{
-				Limit:       cfg.Embedding.RAG.MaxResults,
-				Collections: cfg.Embedding.RAG.Collections,
-				MaxDistance: cfg.Embedding.RAG.MaxDistance,
+		// Wire in graph-enhanced retrieved context if graph store is available.
+		if gc != nil && gc.ragService != nil {
+			retrievedLimit := cfg.Embedding.RAG.MaxResults
+			if retrievedLimit <= 0 {
+				retrievedLimit = 5
 			}
-			if ragOpts.Limit <= 0 {
-				ragOpts.Limit = 5
-			}
-			ctxAdapter.WithRAG(ec.ragService, ragOpts)
-
-			// Wire in Graph RAG if graph store is available.
-			if gc != nil && gc.ragService != nil {
-				ctxAdapter.WithGraphRAG(gc.ragService)
-			}
+			ctxAdapter.WithGraphRAG(gc.ragService, retrievedLimit)
 		}
 
 		// Wire event bus for context injection observability.

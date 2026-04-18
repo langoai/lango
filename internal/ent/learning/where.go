@@ -75,6 +75,21 @@ func Fix(v string) predicate.Learning {
 	return predicate.Learning(sql.FieldEQ(FieldFix, v))
 }
 
+// PayloadCiphertext applies equality check predicate on the "payload_ciphertext" field. It's identical to PayloadCiphertextEQ.
+func PayloadCiphertext(v []byte) predicate.Learning {
+	return predicate.Learning(sql.FieldEQ(FieldPayloadCiphertext, v))
+}
+
+// PayloadNonce applies equality check predicate on the "payload_nonce" field. It's identical to PayloadNonceEQ.
+func PayloadNonce(v []byte) predicate.Learning {
+	return predicate.Learning(sql.FieldEQ(FieldPayloadNonce, v))
+}
+
+// PayloadKeyVersion applies equality check predicate on the "payload_key_version" field. It's identical to PayloadKeyVersionEQ.
+func PayloadKeyVersion(v int) predicate.Learning {
+	return predicate.Learning(sql.FieldEQ(FieldPayloadKeyVersion, v))
+}
+
 // OccurrenceCount applies equality check predicate on the "occurrence_count" field. It's identical to OccurrenceCountEQ.
 func OccurrenceCount(v int) predicate.Learning {
 	return predicate.Learning(sql.FieldEQ(FieldOccurrenceCount, v))
@@ -388,6 +403,156 @@ func FixEqualFold(v string) predicate.Learning {
 // FixContainsFold applies the ContainsFold predicate on the "fix" field.
 func FixContainsFold(v string) predicate.Learning {
 	return predicate.Learning(sql.FieldContainsFold(FieldFix, v))
+}
+
+// PayloadCiphertextEQ applies the EQ predicate on the "payload_ciphertext" field.
+func PayloadCiphertextEQ(v []byte) predicate.Learning {
+	return predicate.Learning(sql.FieldEQ(FieldPayloadCiphertext, v))
+}
+
+// PayloadCiphertextNEQ applies the NEQ predicate on the "payload_ciphertext" field.
+func PayloadCiphertextNEQ(v []byte) predicate.Learning {
+	return predicate.Learning(sql.FieldNEQ(FieldPayloadCiphertext, v))
+}
+
+// PayloadCiphertextIn applies the In predicate on the "payload_ciphertext" field.
+func PayloadCiphertextIn(vs ...[]byte) predicate.Learning {
+	return predicate.Learning(sql.FieldIn(FieldPayloadCiphertext, vs...))
+}
+
+// PayloadCiphertextNotIn applies the NotIn predicate on the "payload_ciphertext" field.
+func PayloadCiphertextNotIn(vs ...[]byte) predicate.Learning {
+	return predicate.Learning(sql.FieldNotIn(FieldPayloadCiphertext, vs...))
+}
+
+// PayloadCiphertextGT applies the GT predicate on the "payload_ciphertext" field.
+func PayloadCiphertextGT(v []byte) predicate.Learning {
+	return predicate.Learning(sql.FieldGT(FieldPayloadCiphertext, v))
+}
+
+// PayloadCiphertextGTE applies the GTE predicate on the "payload_ciphertext" field.
+func PayloadCiphertextGTE(v []byte) predicate.Learning {
+	return predicate.Learning(sql.FieldGTE(FieldPayloadCiphertext, v))
+}
+
+// PayloadCiphertextLT applies the LT predicate on the "payload_ciphertext" field.
+func PayloadCiphertextLT(v []byte) predicate.Learning {
+	return predicate.Learning(sql.FieldLT(FieldPayloadCiphertext, v))
+}
+
+// PayloadCiphertextLTE applies the LTE predicate on the "payload_ciphertext" field.
+func PayloadCiphertextLTE(v []byte) predicate.Learning {
+	return predicate.Learning(sql.FieldLTE(FieldPayloadCiphertext, v))
+}
+
+// PayloadCiphertextIsNil applies the IsNil predicate on the "payload_ciphertext" field.
+func PayloadCiphertextIsNil() predicate.Learning {
+	return predicate.Learning(sql.FieldIsNull(FieldPayloadCiphertext))
+}
+
+// PayloadCiphertextNotNil applies the NotNil predicate on the "payload_ciphertext" field.
+func PayloadCiphertextNotNil() predicate.Learning {
+	return predicate.Learning(sql.FieldNotNull(FieldPayloadCiphertext))
+}
+
+// PayloadNonceEQ applies the EQ predicate on the "payload_nonce" field.
+func PayloadNonceEQ(v []byte) predicate.Learning {
+	return predicate.Learning(sql.FieldEQ(FieldPayloadNonce, v))
+}
+
+// PayloadNonceNEQ applies the NEQ predicate on the "payload_nonce" field.
+func PayloadNonceNEQ(v []byte) predicate.Learning {
+	return predicate.Learning(sql.FieldNEQ(FieldPayloadNonce, v))
+}
+
+// PayloadNonceIn applies the In predicate on the "payload_nonce" field.
+func PayloadNonceIn(vs ...[]byte) predicate.Learning {
+	return predicate.Learning(sql.FieldIn(FieldPayloadNonce, vs...))
+}
+
+// PayloadNonceNotIn applies the NotIn predicate on the "payload_nonce" field.
+func PayloadNonceNotIn(vs ...[]byte) predicate.Learning {
+	return predicate.Learning(sql.FieldNotIn(FieldPayloadNonce, vs...))
+}
+
+// PayloadNonceGT applies the GT predicate on the "payload_nonce" field.
+func PayloadNonceGT(v []byte) predicate.Learning {
+	return predicate.Learning(sql.FieldGT(FieldPayloadNonce, v))
+}
+
+// PayloadNonceGTE applies the GTE predicate on the "payload_nonce" field.
+func PayloadNonceGTE(v []byte) predicate.Learning {
+	return predicate.Learning(sql.FieldGTE(FieldPayloadNonce, v))
+}
+
+// PayloadNonceLT applies the LT predicate on the "payload_nonce" field.
+func PayloadNonceLT(v []byte) predicate.Learning {
+	return predicate.Learning(sql.FieldLT(FieldPayloadNonce, v))
+}
+
+// PayloadNonceLTE applies the LTE predicate on the "payload_nonce" field.
+func PayloadNonceLTE(v []byte) predicate.Learning {
+	return predicate.Learning(sql.FieldLTE(FieldPayloadNonce, v))
+}
+
+// PayloadNonceIsNil applies the IsNil predicate on the "payload_nonce" field.
+func PayloadNonceIsNil() predicate.Learning {
+	return predicate.Learning(sql.FieldIsNull(FieldPayloadNonce))
+}
+
+// PayloadNonceNotNil applies the NotNil predicate on the "payload_nonce" field.
+func PayloadNonceNotNil() predicate.Learning {
+	return predicate.Learning(sql.FieldNotNull(FieldPayloadNonce))
+}
+
+// PayloadKeyVersionEQ applies the EQ predicate on the "payload_key_version" field.
+func PayloadKeyVersionEQ(v int) predicate.Learning {
+	return predicate.Learning(sql.FieldEQ(FieldPayloadKeyVersion, v))
+}
+
+// PayloadKeyVersionNEQ applies the NEQ predicate on the "payload_key_version" field.
+func PayloadKeyVersionNEQ(v int) predicate.Learning {
+	return predicate.Learning(sql.FieldNEQ(FieldPayloadKeyVersion, v))
+}
+
+// PayloadKeyVersionIn applies the In predicate on the "payload_key_version" field.
+func PayloadKeyVersionIn(vs ...int) predicate.Learning {
+	return predicate.Learning(sql.FieldIn(FieldPayloadKeyVersion, vs...))
+}
+
+// PayloadKeyVersionNotIn applies the NotIn predicate on the "payload_key_version" field.
+func PayloadKeyVersionNotIn(vs ...int) predicate.Learning {
+	return predicate.Learning(sql.FieldNotIn(FieldPayloadKeyVersion, vs...))
+}
+
+// PayloadKeyVersionGT applies the GT predicate on the "payload_key_version" field.
+func PayloadKeyVersionGT(v int) predicate.Learning {
+	return predicate.Learning(sql.FieldGT(FieldPayloadKeyVersion, v))
+}
+
+// PayloadKeyVersionGTE applies the GTE predicate on the "payload_key_version" field.
+func PayloadKeyVersionGTE(v int) predicate.Learning {
+	return predicate.Learning(sql.FieldGTE(FieldPayloadKeyVersion, v))
+}
+
+// PayloadKeyVersionLT applies the LT predicate on the "payload_key_version" field.
+func PayloadKeyVersionLT(v int) predicate.Learning {
+	return predicate.Learning(sql.FieldLT(FieldPayloadKeyVersion, v))
+}
+
+// PayloadKeyVersionLTE applies the LTE predicate on the "payload_key_version" field.
+func PayloadKeyVersionLTE(v int) predicate.Learning {
+	return predicate.Learning(sql.FieldLTE(FieldPayloadKeyVersion, v))
+}
+
+// PayloadKeyVersionIsNil applies the IsNil predicate on the "payload_key_version" field.
+func PayloadKeyVersionIsNil() predicate.Learning {
+	return predicate.Learning(sql.FieldIsNull(FieldPayloadKeyVersion))
+}
+
+// PayloadKeyVersionNotNil applies the NotNil predicate on the "payload_key_version" field.
+func PayloadKeyVersionNotNil() predicate.Learning {
+	return predicate.Learning(sql.FieldNotNull(FieldPayloadKeyVersion))
 }
 
 // CategoryEQ applies the EQ predicate on the "category" field.

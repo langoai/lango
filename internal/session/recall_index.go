@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/langoai/lango/internal/search"
+	"github.com/langoai/lango/internal/security"
 	"github.com/langoai/lango/internal/types"
 )
 
@@ -137,7 +138,7 @@ func summarizeHistory(history []Message, maxTokens int) string {
 	totalTokens := 0
 	for i := len(history) - 1; i >= 0; i-- {
 		msg := history[i]
-		piece := fmt.Sprintf("[%s] %s\n", msg.Role, strings.TrimSpace(msg.Content))
+		piece := fmt.Sprintf("[%s] %s\n", msg.Role, redactRecallProjection(strings.TrimSpace(msg.Content)))
 		pieceTokens := types.EstimateTokens(piece)
 		if totalTokens+pieceTokens > maxTokens {
 			break
@@ -146,6 +147,10 @@ func summarizeHistory(history []Message, maxTokens int) string {
 		totalTokens += pieceTokens
 	}
 	return strings.TrimSpace(b.String())
+}
+
+func redactRecallProjection(content string) string {
+	return security.RedactedProjection(content, 512)
 }
 
 // countRoles returns a compact role-mix string like "user:8 assistant:8 tool:2".

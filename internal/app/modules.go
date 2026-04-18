@@ -4,8 +4,6 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
-	"os"
-	"path/filepath"
 	"strings"
 	"sync"
 	"time"
@@ -21,7 +19,6 @@ import (
 	cronpkg "github.com/langoai/lango/internal/cron"
 	"github.com/langoai/lango/internal/economy"
 	"github.com/langoai/lango/internal/economy/escrow/sentinel"
-	"github.com/langoai/lango/internal/embedding"
 	"github.com/langoai/lango/internal/eventbus"
 	"github.com/langoai/lango/internal/extension"
 	"github.com/langoai/lango/internal/gatekeeper"
@@ -29,19 +26,23 @@ import (
 	"github.com/langoai/lango/internal/librarian"
 	"github.com/langoai/lango/internal/lifecycle"
 	"github.com/langoai/lango/internal/memory"
+	"github.com/langoai/lango/internal/observability/token"
 	"github.com/langoai/lango/internal/ontology"
 	"github.com/langoai/lango/internal/p2p/gitbundle"
 	"github.com/langoai/lango/internal/p2p/ontologybridge"
+	"github.com/langoai/lango/internal/p2p/reputation"
 	"github.com/langoai/lango/internal/p2p/team"
-	toolcrypto "github.com/langoai/lango/internal/tools/crypto"
-	toolpayment "github.com/langoai/lango/internal/tools/payment"
-	toolsecrets "github.com/langoai/lango/internal/tools/secrets"
 	"github.com/langoai/lango/internal/security"
 	"github.com/langoai/lango/internal/session"
+	"github.com/langoai/lango/internal/storage"
+	"github.com/langoai/lango/internal/storagebroker"
 	"github.com/langoai/lango/internal/supervisor"
 	"github.com/langoai/lango/internal/tools/browser"
+	toolcrypto "github.com/langoai/lango/internal/tools/crypto"
 	execpkg "github.com/langoai/lango/internal/tools/exec"
 	"github.com/langoai/lango/internal/tools/filesystem"
+	toolpayment "github.com/langoai/lango/internal/tools/payment"
+	toolsecrets "github.com/langoai/lango/internal/tools/secrets"
 	"github.com/langoai/lango/internal/workflow"
 	x402pkg "github.com/langoai/lango/internal/x402"
 )
@@ -68,7 +69,6 @@ type foundationValues struct {
 type intelligenceValues struct {
 	KC               *knowledgeComponents
 	MC               *memoryComponents
-	EC               *embeddingComponents
 	GC               *graphComponents
 	LC               *librarianComponents
 	AB               interface{} // *learning.AnalysisBuffer
@@ -126,15 +126,11 @@ func (m *foundationModule) Init(ctx context.Context, r appinit.Resolver) (*appin
 	}
 
 	// Base tools: exec, filesystem, browser.
-	var blockedPaths []string
-	if home, err := os.UserHomeDir(); err == nil {
-		blockedPaths = append(blockedPaths,
-			filepath.Join(home, ".lango")+string(os.PathSeparator))
-	}
+	protectedPaths := resolvedProtectedPaths(cfg, m.boot)
 	fsConfig := filesystem.Config{
 		MaxReadSize:  cfg.Tools.Filesystem.MaxReadSize,
 		AllowedPaths: cfg.Tools.Filesystem.AllowedPaths,
-		BlockedPaths: blockedPaths,
+		BlockedPaths: protectedPaths,
 	}
 
 	var browserSM *browser.SessionManager
@@ -156,8 +152,6 @@ func (m *foundationModule) Init(ctx context.Context, r appinit.Resolver) (*appin
 		"background": cfg.Background.Enabled,
 		"workflow":   cfg.Workflow.Enabled,
 	}
-	protectedPaths := []string{cfg.DataRoot}
-	protectedPaths = append(protectedPaths, cfg.Tools.Exec.AdditionalProtectedPaths...)
 	cmdGuard := execpkg.NewCommandGuard(protectedPaths)
 
 	baseTools := buildTools(sv, fsConfig, browserSM, automationAvailable, cmdGuard)
@@ -260,14 +254,13 @@ func buildFoundationCatalogEntries(cfg *config.Config, base, crypto, secrets []*
 type intelligenceModule struct {
 	cfg    *config.Config
 	boot   *bootstrap.Result
-	rawDB  *sql.DB
 	bus    *eventbus.Bus
 	extReg *extension.Registry
 }
 
 func (m *intelligenceModule) Name() string { return "intelligence" }
 func (m *intelligenceModule) Provides() []appinit.Provides {
-	return []appinit.Provides{appinit.ProvidesKnowledge, appinit.ProvidesMemory, appinit.ProvidesEmbedding, appinit.ProvidesGraph, appinit.ProvidesLibrarian, appinit.ProvidesSkills}
+	return []appinit.Provides{appinit.ProvidesKnowledge, appinit.ProvidesMemory, appinit.ProvidesGraph, appinit.ProvidesLibrarian, appinit.ProvidesSkills}
 }
 func (m *intelligenceModule) DependsOn() []appinit.Provides {
 	return []appinit.Provides{appinit.ProvidesSessionStore, appinit.ProvidesSupervisor}
@@ -289,10 +282,18 @@ func (m *intelligenceModule) Init(ctx context.Context, r appinit.Resolver) (*app
 
 	// Ontology Registry (after graph store).
 	var graphStoreForOntology graph.Store
+	var ontologyDeps *storage.OntologyDeps
+	var rawDB *sql.DB
 	if gc != nil {
 		graphStoreForOntology = gc.store
 	}
-	ontologyResult, err := initOntology(ctx, m.boot.DBClient, cfg, graphStoreForOntology)
+	if m.boot != nil && m.boot.Storage != nil {
+		ontologyDeps = m.boot.Storage.OntologyDeps()
+	}
+	if entStore, ok := store.(*session.EntStore); ok {
+		rawDB = entStore.DB()
+	}
+	ontologyResult, err := initOntology(ctx, ontologyDeps, cfg, graphStoreForOntology)
 	if err != nil {
 		logger().Warnw("ontology init failed, continuing without ontology", "error", err)
 	}
@@ -317,11 +318,15 @@ func (m *intelligenceModule) Init(ctx context.Context, r appinit.Resolver) (*app
 	}
 
 	// Knowledge.
-	kc, kcStatus := initKnowledge(cfg, store, gc, m.bus)
+	var brokerAPI storagebroker.API
+	if m.boot != nil {
+		brokerAPI = m.boot.Broker
+	}
+	kc, kcStatus := initKnowledge(cfg, store, gc, m.bus, brokerAPI)
 	fts5Available := false
 	if kc != nil {
 		// FTS5 search index.
-		fts5Available = initFTS5(ctx, m.rawDB, kc.store)
+		fts5Available = initFTS5(ctx, rawDB, kc.store)
 
 		metaTools := buildMetaTools(kc.store, kc.engine, skillReg, cfg.Skill, cfg)
 		tools = append(tools, metaTools...)
@@ -333,9 +338,6 @@ func (m *intelligenceModule) Init(ctx context.Context, r appinit.Resolver) (*app
 	// Observational Memory.
 	mc, mcStatus := initMemory(cfg, store, sv, m.bus)
 
-	// Embedding / RAG.
-	ec, ecStatus := initEmbedding(cfg, m.rawDB, kc, mc, m.bus)
-
 	// Graph callbacks.
 	if gc != nil {
 		var ontologyValidator graph.PredicateValidatorFunc
@@ -343,14 +345,14 @@ func (m *intelligenceModule) Init(ctx context.Context, r appinit.Resolver) (*app
 			ontologyValidator = ontologyResult.Service.PredicateValidator()
 		}
 		wireGraphCallbacks(gc, kc, mc, sv, cfg, m.bus, ontologyValidator)
-		initGraphRAG(cfg, gc, ec)
+		initGraphRAG(cfg, gc, kc)
 	}
 
 	// Conversation Analysis.
 	ab := initConversationAnalysis(cfg, sv, store, kc, gc, m.bus)
 
 	// Librarian.
-	lc, lcStatus := initLibrarian(cfg, sv, store, kc, mc, gc, m.bus)
+	lc, lcStatus := initLibrarian(cfg, sv, store, kc, mc, gc, m.bus, brokerAPI)
 
 	// Enrich knowledge status with FTS5 and budget info.
 	if kcStatus != nil && kcStatus.Enabled && kcStatus.Healthy {
@@ -374,7 +376,6 @@ func (m *intelligenceModule) Init(ctx context.Context, r appinit.Resolver) (*app
 	sc.Add(gcStatus)
 	sc.Add(kcStatus)
 	sc.Add(mcStatus)
-	sc.Add(ecStatus)
 	sc.Add(lcStatus)
 	if n := sc.SilentDisabledCount(); n > 0 {
 		logger().Infow("some features disabled due to missing dependencies", "count", n)
@@ -389,15 +390,6 @@ func (m *intelligenceModule) Init(ctx context.Context, r appinit.Resolver) (*app
 		entries = append(entries, appinit.CatalogEntry{Category: "graph", Description: "Knowledge graph (disabled)", ConfigKey: "graph.enabled", Enabled: false})
 	}
 
-	// RAG tools.
-	if ec != nil && ec.ragService != nil {
-		rt := embedding.BuildRAGTools(ec.ragService)
-		tools = append(tools, rt...)
-		entries = append(entries, appinit.CatalogEntry{Category: "rag", Description: "Retrieval-augmented generation", ConfigKey: "embedding.rag.enabled", Enabled: true, Tools: rt})
-	} else {
-		entries = append(entries, appinit.CatalogEntry{Category: "rag", Description: "RAG retrieval (disabled)", ConfigKey: "embedding.provider", Enabled: false})
-	}
-
 	// Memory tools.
 	if mc != nil {
 		mt := memory.BuildObservationTools(mc.store)
@@ -410,7 +402,14 @@ func (m *intelligenceModule) Init(ctx context.Context, r appinit.Resolver) (*app
 	// Agent Memory.
 	var amStore agentmemory.Store
 	if cfg.AgentMemory.Enabled {
-		amStore = agentmemory.NewEntStore(m.boot.DBClient)
+		if m.boot != nil && m.boot.Storage != nil {
+			amStore = m.boot.Storage.AgentMemory()
+		}
+		if brokerAPI != nil {
+			if entStore, ok := amStore.(*agentmemory.EntStore); ok {
+				entStore.SetPayloadProtector(storagebroker.NewPayloadProtector(brokerAPI))
+			}
+		}
 		amTools := agentmemory.BuildTools(amStore)
 		tools = append(tools, amTools...)
 		entries = append(entries, appinit.CatalogEntry{Category: "agent_memory", Description: "Per-agent persistent memory", ConfigKey: "agentMemory.enabled", Enabled: true, Tools: amTools})
@@ -432,12 +431,6 @@ func (m *intelligenceModule) Init(ctx context.Context, r appinit.Resolver) (*app
 	if mc != nil && mc.buffer != nil {
 		components = append(components, lifecycle.ComponentEntry{
 			Component: lifecycle.NewSimpleComponent("memory-buffer", mc.buffer),
-			Priority:  lifecycle.PriorityBuffer,
-		})
-	}
-	if ec != nil && ec.buffer != nil {
-		components = append(components, lifecycle.ComponentEntry{
-			Component: lifecycle.NewSimpleComponent("embedding-buffer", ec.buffer),
 			Priority:  lifecycle.PriorityBuffer,
 		})
 	}
@@ -478,7 +471,7 @@ func (m *intelligenceModule) Init(ctx context.Context, r appinit.Resolver) (*app
 		CatalogEntries: entries,
 		Values: map[appinit.Provides]interface{}{
 			appinit.ProvidesKnowledge: &intelligenceValues{
-				KC: kc, MC: mc, EC: ec, GC: gc, LC: lc, AB: ab,
+				KC: kc, MC: mc, GC: gc, LC: lc, AB: ab,
 				Observer:         observer,
 				SkillRegistry:    skillReg,
 				AgentMemoryStore: amStore,
@@ -487,7 +480,6 @@ func (m *intelligenceModule) Init(ctx context.Context, r appinit.Resolver) (*app
 			},
 			appinit.ProvidesGraph:     gc,
 			appinit.ProvidesMemory:    mc,
-			appinit.ProvidesEmbedding: ec,
 			appinit.ProvidesLibrarian: lc,
 			appinit.ProvidesSkills:    skillReg,
 		},
@@ -654,13 +646,21 @@ func (m *networkModule) Init(ctx context.Context, r appinit.Resolver) (*appinit.
 	var entries []appinit.CatalogEntry
 	var components []lifecycle.ComponentEntry
 
-	pc := initPayment(cfg, fv.Store, fv.Secrets)
+	var storageFacade *storage.Facade
+	if m.boot != nil {
+		storageFacade = m.boot.Storage
+	}
+	pc := initPaymentWithStorage(cfg, fv.Secrets, storageFacade)
 	var p2pc *p2pComponents
 	var econc *economyComponents
 	var cc *contractComponents
 	var sacc *smartAccountComponents
 	var wsc *wsComponents
 	var x402Interceptor *x402pkg.Interceptor
+	var repStore *reputation.Store
+	if m.boot != nil && m.boot.Storage != nil {
+		repStore = m.boot.Storage.ReputationStore(logger())
+	}
 
 	if pc != nil {
 		xc := initX402(cfg, fv.Secrets, pc.limiter)
@@ -673,7 +673,7 @@ func (m *networkModule) Init(ctx context.Context, r appinit.Resolver) (*appinit.
 		entries = append(entries, appinit.CatalogEntry{Category: "payment", Description: "Blockchain payments (USDC on Base)", ConfigKey: "payment.enabled", Enabled: true, Tools: pt})
 
 		// P2P.
-		p2pc = initP2P(cfg, pc.wallet, pc, m.boot.DBClient, fv.Secrets, m.bus, m.boot.IdentityKey, m.boot.PQSigningKeySeed, m.boot.LangoDir)
+		p2pc = initP2P(cfg, pc.wallet, pc, repStore, fv.Secrets, m.bus, m.boot.IdentityKey, m.boot.PQSigningKeySeed, m.boot.LangoDir)
 		if p2pc != nil {
 			// P2P Node lifecycle.
 			if p2pc.node != nil {
@@ -948,7 +948,11 @@ func (m *extensionModule) Init(ctx context.Context, r appinit.Resolver) (*appini
 	}
 
 	// Observability.
-	obsc := initObservability(cfg, m.boot.DBClient, m.bus)
+	var tokenStore *token.EntTokenStore
+	if m.boot != nil && m.boot.Storage != nil {
+		tokenStore = m.boot.Storage.TokenStore()
+	}
+	obsc := initObservability(cfg, tokenStore, m.bus)
 	if obsc == nil {
 		entries = append(entries, appinit.CatalogEntry{Category: "observability", Description: "Metrics & health (disabled)", ConfigKey: "observability.enabled", Enabled: false})
 	}

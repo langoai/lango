@@ -10,7 +10,6 @@ import (
 
 	"github.com/langoai/lango/internal/bootstrap"
 	"github.com/langoai/lango/internal/logging"
-	"github.com/langoai/lango/internal/p2p/reputation"
 )
 
 func newReputationCmd(bootLoader func() (*bootstrap.Result, error)) *cobra.Command {
@@ -32,7 +31,7 @@ func newReputationCmd(bootLoader func() (*bootstrap.Result, error)) *cobra.Comma
 			if err != nil {
 				return fmt.Errorf("load config: %w", err)
 			}
-			defer boot.DBClient.Close()
+			defer boot.Close()
 
 			logger := logging.Sugar()
 			if logger == nil {
@@ -40,12 +39,13 @@ func newReputationCmd(bootLoader func() (*bootstrap.Result, error)) *cobra.Comma
 				logger = l.Sugar()
 			}
 
-			store := reputation.NewStore(boot.DBClient, logger)
-			details, err := store.GetDetails(cmd.Context(), peerDID)
+			if boot.Storage == nil {
+				return fmt.Errorf("p2p reputation storage unavailable")
+			}
+			details, err := boot.Storage.ReputationDetails(cmd.Context(), peerDID)
 			if err != nil {
 				return fmt.Errorf("get reputation: %w", err)
 			}
-
 			if details == nil {
 				if jsonOutput {
 					enc := json.NewEncoder(os.Stdout)
@@ -58,6 +58,9 @@ func newReputationCmd(bootLoader func() (*bootstrap.Result, error)) *cobra.Comma
 				}
 				fmt.Printf("No reputation record found for %s\n", peerDID)
 				return nil
+			}
+			if logger == nil {
+				return fmt.Errorf("p2p reputation storage unavailable")
 			}
 
 			if jsonOutput {

@@ -46,7 +46,6 @@ var (
 	knowledgeProfileTools = map[string]struct{}{
 		"search_knowledge":            {},
 		"search_learnings":            {},
-		"rag_retrieve":                {},
 		"graph_traverse":              {},
 		"graph_query":                 {},
 		"save_knowledge":              {},

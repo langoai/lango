@@ -42,7 +42,7 @@ Connect to the running server API to inspect live teams.`,
 			if err != nil {
 				return fmt.Errorf("load config: %w", err)
 			}
-			defer boot.DBClient.Close()
+			defer boot.Close()
 
 			if !boot.Config.P2P.Enabled {
 				return fmt.Errorf("P2P networking is not enabled (set p2p.enabled = true)")
@@ -79,7 +79,7 @@ func newTeamStatusCmd(bootLoader func() (*bootstrap.Result, error)) *cobra.Comma
 			if err != nil {
 				return fmt.Errorf("load config: %w", err)
 			}
-			defer boot.DBClient.Close()
+			defer boot.Close()
 
 			if !boot.Config.P2P.Enabled {
 				return fmt.Errorf("P2P networking is not enabled (set p2p.enabled = true)")
@@ -118,7 +118,7 @@ func newTeamDisbandCmd(bootLoader func() (*bootstrap.Result, error)) *cobra.Comm
 			if err != nil {
 				return fmt.Errorf("load config: %w", err)
 			}
-			defer boot.DBClient.Close()
+			defer boot.Close()
 
 			if !boot.Config.P2P.Enabled {
 				return fmt.Errorf("P2P networking is not enabled (set p2p.enabled = true)")

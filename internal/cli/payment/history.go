@@ -35,17 +35,12 @@ func newHistoryCmd(bootLoader func() (*bootstrap.Result, error)) *cobra.Command 
 			if err != nil {
 				return fmt.Errorf("load config: %w", err)
 			}
-			defer boot.DBClient.Close()
+			defer boot.Close()
 
-			deps, err := initPaymentDeps(boot)
-			if err != nil {
-				return err
+			if boot.Storage == nil {
+				return fmt.Errorf("payment history unavailable")
 			}
-			defer deps.cleanup()
-
-			ctx := context.Background()
-
-			txs, err := deps.service.History(ctx, limit)
+			txs, err := boot.Storage.PaymentHistory(context.Background(), limit)
 			if err != nil {
 				return fmt.Errorf("get history: %w", err)
 			}

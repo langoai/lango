@@ -28,7 +28,6 @@ import (
 	cliapproval "github.com/langoai/lango/internal/cli/approval"
 	clibg "github.com/langoai/lango/internal/cli/bg"
 	"github.com/langoai/lango/internal/cli/chat"
-	"github.com/langoai/lango/internal/cli/prompt"
 	"github.com/langoai/lango/internal/cli/cliboot"
 	"github.com/langoai/lango/internal/cli/cockpit"
 	"github.com/langoai/lango/internal/cli/cockpit/pages"
@@ -37,8 +36,8 @@ import (
 	clicron "github.com/langoai/lango/internal/cli/cron"
 	"github.com/langoai/lango/internal/cli/doctor"
 	clieconomy "github.com/langoai/lango/internal/cli/economy"
-	cligraph "github.com/langoai/lango/internal/cli/graph"
 	cliextension "github.com/langoai/lango/internal/cli/extension"
+	cligraph "github.com/langoai/lango/internal/cli/graph"
 	clilearning "github.com/langoai/lango/internal/cli/learning"
 	clilibrarian "github.com/langoai/lango/internal/cli/librarian"
 	climcp "github.com/langoai/lango/internal/cli/mcp"
@@ -47,9 +46,10 @@ import (
 	"github.com/langoai/lango/internal/cli/onboard"
 	clip2p "github.com/langoai/lango/internal/cli/p2p"
 	clipayment "github.com/langoai/lango/internal/cli/payment"
-	clisandbox "github.com/langoai/lango/internal/cli/sandbox"
+	"github.com/langoai/lango/internal/cli/prompt"
 	cliprovenance "github.com/langoai/lango/internal/cli/provenance"
 	clirun "github.com/langoai/lango/internal/cli/run"
+	clisandbox "github.com/langoai/lango/internal/cli/sandbox"
 	clisecurity "github.com/langoai/lango/internal/cli/security"
 	"github.com/langoai/lango/internal/cli/settings"
 	cliaccount "github.com/langoai/lango/internal/cli/smartaccount"
@@ -60,6 +60,7 @@ import (
 	"github.com/langoai/lango/internal/logging"
 	"github.com/langoai/lango/internal/sandbox"
 	"github.com/langoai/lango/internal/session"
+	"github.com/langoai/lango/internal/storagebroker"
 	"github.com/langoai/lango/internal/types"
 	"go.uber.org/zap"
 )
@@ -80,6 +81,13 @@ func main() {
 	// Check if running as sandbox worker subprocess.
 	if sandbox.IsWorkerMode() {
 		sandbox.RunWorker(sandbox.ToolRegistry{})
+		return
+	}
+	if storagebroker.IsBrokerMode() {
+		if err := storagebroker.NewServer().Run(os.Stdin, os.Stdout); err != nil {
+			fmt.Fprintln(os.Stderr, err)
+			exitFn(1)
+		}
 		return
 	}
 
@@ -246,7 +254,7 @@ func runChat(initialMode string) error {
 	if err != nil {
 		return fmt.Errorf("bootstrap: %w", err)
 	}
-	defer boot.DBClient.Close()
+	defer boot.Close()
 
 	cfg := boot.Config
 	// TUI mode: redirect logging to file (stderr output corrupts alt-screen TUI).
@@ -349,7 +357,7 @@ func serveCmd() *cobra.Command {
 			if err != nil {
 				return fmt.Errorf("bootstrap: %w", err)
 			}
-			defer boot.DBClient.Close()
+			defer boot.Close()
 
 			cfg := boot.Config
 			if err := logging.Init(logging.LogConfig{
@@ -491,7 +499,7 @@ func configCmd() *cobra.Command {
 			}
 			setBootResult = boot
 			cleanup := func() {
-				boot.DBClient.Close()
+				_ = boot.Close()
 				setBootResult = nil
 			}
 			return boot.Config, cleanup, nil
@@ -500,7 +508,7 @@ func configCmd() *cobra.Command {
 			if setBootResult == nil {
 				return fmt.Errorf("internal error: bootstrap result not available")
 			}
-			return setBootResult.ConfigStore.Save(
+			return setBootResult.Storage.ConfigProfiles().Save(
 				context.Background(), setBootResult.ProfileName, cfg, nil,
 			)
 		},
@@ -600,7 +608,7 @@ func runCockpit(initialMode string) error {
 	if err != nil {
 		return fmt.Errorf("bootstrap: %w", err)
 	}
-	defer boot.DBClient.Close()
+	defer boot.Close()
 
 	cfg := boot.Config
 	logPath := filepath.Join(cfg.DataRoot, "cockpit.log")
@@ -701,7 +709,7 @@ func runCockpit(initialMode string) error {
 		ToolCatalog:       application.ToolCatalog,
 		MetricsCollector:  application.MetricsCollector,
 		FeatureStatuses:   application.FeatureStatuses,
-		ConfigStore:       boot.ConfigStore,
+		ConfigStore:       boot.Storage.ConfigProfiles(),
 		ProfileName:       boot.ProfileName,
 		BackgroundManager: application.BackgroundManager,
 		EventBus:          application.EventBus,
@@ -722,9 +730,9 @@ func runCockpit(initialMode string) error {
 		model.RegisterPage(cockpit.PageStatus,
 			pages.NewStatusPage(statusProvider, application.MetricsCollector, cfg))
 	}
-	if boot.ConfigStore != nil {
+	if boot.Storage != nil && boot.Storage.ConfigProfiles() != nil {
 		model.RegisterPage(cockpit.PageSettings,
-			pages.NewSettingsPage(cfg, boot.ConfigStore, boot.ProfileName))
+			pages.NewSettingsPage(cfg, boot.Storage.ConfigProfiles(), boot.ProfileName))
 	}
 	model.RegisterPage(cockpit.PageSessions,
 		pages.NewSessionsPage(func(ctx context.Context) ([]session.SessionSummary, error) {
@@ -840,4 +848,3 @@ func taskElapsed(s background.TaskSnapshot) time.Duration {
 	}
 	return time.Since(s.StartedAt) // running: wall-clock
 }
-

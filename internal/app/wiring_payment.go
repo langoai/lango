@@ -6,7 +6,7 @@ import (
 	"github.com/langoai/lango/internal/config"
 	"github.com/langoai/lango/internal/payment"
 	"github.com/langoai/lango/internal/security"
-	"github.com/langoai/lango/internal/session"
+	"github.com/langoai/lango/internal/storage"
 	"github.com/langoai/lango/internal/wallet"
 	x402pkg "github.com/langoai/lango/internal/x402"
 )
@@ -17,13 +17,14 @@ type paymentComponents struct {
 	service   *payment.Service
 	limiter   wallet.SpendingLimiter
 	secrets   *security.SecretsStore
+	txStore   payment.TxStore
 	rpcClient *ethclient.Client
 	chainID   int64
 }
 
-// initPayment creates the payment components if enabled.
+// initPaymentWithStorage creates the payment components if enabled.
 // Follows the same graceful degradation pattern as initGraphStore.
-func initPayment(cfg *config.Config, store session.Store, secrets *security.SecretsStore) *paymentComponents {
+func initPaymentWithStorage(cfg *config.Config, secrets *security.SecretsStore, facade *storage.Facade) *paymentComponents {
 	if !cfg.Payment.Enabled {
 		logger().Info("payment system disabled")
 		return nil
@@ -34,13 +35,16 @@ func initPayment(cfg *config.Config, store session.Store, secrets *security.Secr
 		return nil
 	}
 
-	entStore, ok := store.(*session.EntStore)
-	if !ok {
-		logger().Warn("payment system requires EntStore, skipping")
+	if facade == nil {
+		logger().Warn("payment system requires storage facade, skipping")
 		return nil
 	}
 
-	client := entStore.Client()
+	txStore := facade.PaymentTxStore()
+	if txStore == nil {
+		logger().Warn("payment system requires payment tx storage, skipping")
+		return nil
+	}
 
 	// Validate RPC URL before attempting to connect.
 	if cfg.Payment.Network.RPCURL == "" {
@@ -73,7 +77,7 @@ func initPayment(cfg *config.Config, store session.Store, secrets *security.Secr
 	}
 
 	// Create spending limiter
-	limiter, err := wallet.NewEntSpendingLimiter(client,
+	limiter, err := facade.NewSpendingLimiter(
 		cfg.Payment.Limits.MaxPerTx,
 		cfg.Payment.Limits.MaxDaily,
 		cfg.Payment.Limits.AutoApproveBelow,
@@ -90,7 +94,7 @@ func initPayment(cfg *config.Config, store session.Store, secrets *security.Secr
 	)
 
 	// Create payment service
-	svc := payment.NewService(wp, limiter, builder, client, rpcClient, cfg.Payment.Network.ChainID)
+	svc := payment.NewService(wp, limiter, builder, txStore, rpcClient, cfg.Payment.Network.ChainID)
 
 	logger().Infow("payment system initialized",
 		"walletProvider", cfg.Payment.WalletProvider,
@@ -105,6 +109,7 @@ func initPayment(cfg *config.Config, store session.Store, secrets *security.Secr
 		service:   svc,
 		limiter:   limiter,
 		secrets:   secrets,
+		txStore:   txStore,
 		rpcClient: rpcClient,
 		chainID:   cfg.Payment.Network.ChainID,
 	}

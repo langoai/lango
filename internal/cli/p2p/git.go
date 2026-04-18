@@ -40,7 +40,7 @@ func newGitInitCmd(bootLoader func() (*bootstrap.Result, error)) *cobra.Command 
 			if err != nil {
 				return fmt.Errorf("load config: %w", err)
 			}
-			defer boot.DBClient.Close()
+			defer boot.Close()
 
 			if !boot.Config.P2P.Enabled {
 				return errP2PDisabled
@@ -71,7 +71,7 @@ func newGitLogCmd(bootLoader func() (*bootstrap.Result, error)) *cobra.Command {
 			if err != nil {
 				return fmt.Errorf("load config: %w", err)
 			}
-			defer boot.DBClient.Close()
+			defer boot.Close()
 
 			if !boot.Config.P2P.Enabled {
 				return errP2PDisabled
@@ -108,7 +108,7 @@ func newGitDiffCmd(bootLoader func() (*bootstrap.Result, error)) *cobra.Command 
 			if err != nil {
 				return fmt.Errorf("load config: %w", err)
 			}
-			defer boot.DBClient.Close()
+			defer boot.Close()
 
 			if !boot.Config.P2P.Enabled {
 				return errP2PDisabled
@@ -132,7 +132,7 @@ func newGitPushCmd(bootLoader func() (*bootstrap.Result, error)) *cobra.Command 
 			if err != nil {
 				return fmt.Errorf("load config: %w", err)
 			}
-			defer boot.DBClient.Close()
+			defer boot.Close()
 
 			if !boot.Config.P2P.Enabled {
 				return errP2PDisabled
@@ -156,7 +156,7 @@ func newGitFetchCmd(bootLoader func() (*bootstrap.Result, error)) *cobra.Command
 			if err != nil {
 				return fmt.Errorf("load config: %w", err)
 			}
-			defer boot.DBClient.Close()
+			defer boot.Close()
 
 			if !boot.Config.P2P.Enabled {
 				return errP2PDisabled

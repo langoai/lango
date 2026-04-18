@@ -16,7 +16,6 @@ var DefaultSaveableTools = []string{
 	"get_knowledge_history",
 	"graph_query",
 	"graph_traverse",
-	"rag_retrieve",
 	"memory_list_observations",
 	"memory_list_reflections",
 	"memory_agent_recall",
