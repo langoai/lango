@@ -22,12 +22,14 @@ import (
 	"github.com/langoai/lango/internal/observability/token"
 	"github.com/langoai/lango/internal/ontology"
 	"github.com/langoai/lango/internal/p2p/reputation"
+	"github.com/langoai/lango/internal/payment"
 	"github.com/langoai/lango/internal/provenance"
 	"github.com/langoai/lango/internal/runledger"
 	"github.com/langoai/lango/internal/security"
 	"github.com/langoai/lango/internal/session"
 	"github.com/langoai/lango/internal/storagebroker"
 	"github.com/langoai/lango/internal/turntrace"
+	"github.com/langoai/lango/internal/wallet"
 	"github.com/langoai/lango/internal/workflow"
 	"go.uber.org/zap"
 )
@@ -175,6 +177,8 @@ type Facade struct {
 	workflowState    func(logger *zap.SugaredLogger) WorkflowRunReader
 	paymentHistory   func(ctx context.Context, limit int) ([]PaymentHistoryRecord, error)
 	paymentUsage     func(ctx context.Context) (PaymentUsageSummary, error)
+	paymentTxStore   func() payment.TxStore
+	spendingLimiter  func(maxPerTx, maxDaily, autoApproveBelow string) (wallet.SpendingLimiter, error)
 	closeFn          func() error
 }
 
@@ -340,6 +344,20 @@ func (f *Facade) PaymentUsage(ctx context.Context) (PaymentUsageSummary, error) 
 		return PaymentUsageSummary{}, fmt.Errorf("payment usage unavailable")
 	}
 	return f.paymentUsage(ctx)
+}
+
+func (f *Facade) PaymentTxStore() payment.TxStore {
+	if f == nil || f.paymentTxStore == nil {
+		return nil
+	}
+	return f.paymentTxStore()
+}
+
+func (f *Facade) NewSpendingLimiter(maxPerTx, maxDaily, autoApproveBelow string) (wallet.SpendingLimiter, error) {
+	if f == nil || f.spendingLimiter == nil {
+		return nil, fmt.Errorf("payment limiter unavailable")
+	}
+	return f.spendingLimiter(maxPerTx, maxDaily, autoApproveBelow)
 }
 
 func (f *Facade) Close() error {
@@ -598,6 +616,12 @@ func WithEntClient(client *ent.Client) Option {
 				total.Add(total, amt)
 			}
 			return PaymentUsageSummary{DailySpent: finance.FormatUSDC(total)}, nil
+		}
+		f.paymentTxStore = func() payment.TxStore {
+			return payment.NewEntTxStore(client)
+		}
+		f.spendingLimiter = func(maxPerTx, maxDaily, autoApproveBelow string) (wallet.SpendingLimiter, error) {
+			return wallet.NewStoreSpendingLimiter(payment.NewEntTxStore(client), maxPerTx, maxDaily, autoApproveBelow)
 		}
 		f.closeFn = client.Close
 	}

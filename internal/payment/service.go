@@ -14,7 +14,6 @@ import (
 	"github.com/ethereum/go-ethereum/ethclient"
 	"github.com/google/uuid"
 
-	"github.com/langoai/lango/internal/ent"
 	"github.com/langoai/lango/internal/ent/paymenttx"
 	"github.com/langoai/lango/internal/wallet"
 )
@@ -35,7 +34,7 @@ type Service struct {
 	wallet    wallet.WalletProvider
 	limiter   wallet.SpendingLimiter
 	builder   *TxBuilder
-	client    *ent.Client
+	store     TxStore
 	rpcClient *ethclient.Client
 	chainID   int64
 
@@ -50,7 +49,7 @@ func NewService(
 	wp wallet.WalletProvider,
 	limiter wallet.SpendingLimiter,
 	builder *TxBuilder,
-	client *ent.Client,
+	store TxStore,
 	rpcClient *ethclient.Client,
 	chainID int64,
 ) *Service {
@@ -58,7 +57,7 @@ func NewService(
 		wallet:         wp,
 		limiter:        limiter,
 		builder:        builder,
-		client:         client,
+		store:          store,
 		rpcClient:      rpcClient,
 		chainID:        chainID,
 		receiptTimeout: DefaultReceiptTimeout,
@@ -94,16 +93,18 @@ func (s *Service) Send(ctx context.Context, req PaymentRequest) (*PaymentReceipt
 	}
 
 	// Create pending transaction record
-	ptx, err := s.client.PaymentTx.Create().
-		SetFromAddress(fromAddr).
-		SetToAddress(req.To).
-		SetAmount(req.Amount).
-		SetChainID(s.chainID).
-		SetStatus(paymenttx.StatusPending).
-		SetNillableSessionKey(nilIfEmpty(req.SessionKey)).
-		SetNillablePurpose(nilIfEmpty(req.Purpose)).
-		SetNillableX402URL(nilIfEmpty(req.X402URL)).
-		Save(ctx)
+	ptx, err := s.store.Create(ctx, TxRecord{
+		ID:            uuid.New(),
+		FromAddress:   fromAddr,
+		ToAddress:     req.To,
+		Amount:        req.Amount,
+		ChainID:       s.chainID,
+		Status:        paymenttx.StatusPending,
+		SessionKey:    req.SessionKey,
+		Purpose:       req.Purpose,
+		X402URL:       req.X402URL,
+		PaymentMethod: paymenttx.PaymentMethodDirectTransfer,
+	})
 	if err != nil {
 		return nil, fmt.Errorf("create tx record: %w", err)
 	}
@@ -145,10 +146,9 @@ func (s *Service) Send(ctx context.Context, req PaymentRequest) (*PaymentReceipt
 	}
 
 	// Update record to submitted.
-	s.client.PaymentTx.UpdateOneID(ptx.ID).
-		SetTxHash(txHashHex).
-		SetStatus(paymenttx.StatusSubmitted).
-		SaveX(ctx)
+	if err := s.store.UpdateStatus(ctx, ptx.ID, paymenttx.StatusSubmitted, txHashHex, ""); err != nil {
+		return nil, fmt.Errorf("mark submitted: %w", err)
+	}
 
 	// Wait for on-chain confirmation.
 	receipt, err := s.waitForConfirmation(ctx, signedTx.Hash())
@@ -164,9 +164,9 @@ func (s *Service) Send(ctx context.Context, req PaymentRequest) (*PaymentReceipt
 	}
 
 	// Update record to confirmed.
-	s.client.PaymentTx.UpdateOneID(ptx.ID).
-		SetStatus(paymenttx.StatusConfirmed).
-		SaveX(ctx)
+	if err := s.store.UpdateStatus(ctx, ptx.ID, paymenttx.StatusConfirmed, "", ""); err != nil {
+		return nil, fmt.Errorf("mark confirmed: %w", err)
+	}
 
 	// Record spending — non-fatal since tx is already confirmed.
 	_ = s.limiter.Record(ctx, amount)
@@ -216,10 +216,7 @@ func (s *Service) History(ctx context.Context, limit int) ([]TransactionInfo, er
 		limit = DefaultHistoryLimit
 	}
 
-	txs, err := s.client.PaymentTx.Query().
-		Order(ent.Desc(paymenttx.FieldCreatedAt)).
-		Limit(limit).
-		All(ctx)
+	txs, err := s.store.List(ctx, limit)
 	if err != nil {
 		return nil, fmt.Errorf("query history: %w", err)
 	}
@@ -248,16 +245,17 @@ func (s *Service) History(ctx context.Context, limit int) ([]TransactionInfo, er
 // Unlike Send(), this does not build or submit a transaction — the SDK handles
 // payment signing. This only creates the database record for tracking.
 func (s *Service) RecordX402Payment(ctx context.Context, record X402PaymentRecord) error {
-	_, err := s.client.PaymentTx.Create().
-		SetFromAddress(record.From).
-		SetToAddress(record.To).
-		SetAmount(record.Amount).
-		SetChainID(record.ChainID).
-		SetStatus(paymenttx.StatusSubmitted).
-		SetPurpose(purposeX402AutoPayment).
-		SetX402URL(record.URL).
-		SetPaymentMethod(paymenttx.PaymentMethodX402V2).
-		Save(ctx)
+	_, err := s.store.Create(ctx, TxRecord{
+		ID:            uuid.New(),
+		FromAddress:   record.From,
+		ToAddress:     record.To,
+		Amount:        record.Amount,
+		ChainID:       record.ChainID,
+		Status:        paymenttx.StatusSubmitted,
+		Purpose:       purposeX402AutoPayment,
+		X402URL:       record.URL,
+		PaymentMethod: paymenttx.PaymentMethodX402V2,
+	})
 	if err != nil {
 		return fmt.Errorf("record X402 payment: %w", err)
 	}
@@ -324,10 +322,7 @@ func (s *Service) waitForConfirmation(ctx context.Context, txHash common.Hash) (
 
 // failTx marks a transaction as failed with an error message.
 func (s *Service) failTx(ctx context.Context, id uuid.UUID, txErr error) {
-	s.client.PaymentTx.UpdateOneID(id).
-		SetStatus(paymenttx.StatusFailed).
-		SetErrorMessage(txErr.Error()).
-		SaveX(ctx)
+	_ = s.store.UpdateStatus(ctx, id, paymenttx.StatusFailed, "", txErr.Error())
 }
 
 func nilIfEmpty(s string) *string {

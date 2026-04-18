@@ -308,7 +308,7 @@ lango/
 │   ├── workflow/            # DAG workflow engine, YAML parser, state persistence
 │   ├── turnrunner/         # Turn execution runner
 │   ├── turntrace/          # Turn trace recording and analysis
-│   ├── payment/            # Blockchain payment service (USDC on EVM chains, X402 audit trail)
+│   ├── payment/            # Blockchain payment service (USDC on EVM chains, X402 audit trail, storage-facing tx store)
 │   ├── observability/       # Metrics, token tracking, health checks, audit logging
 │   ├── p2p/                # P2P networking (libp2p node, identity, handshake, firewall, discovery, ZKP)
 │   │   ├── agentpool/      #   Agent pool with health checking and weighted selection

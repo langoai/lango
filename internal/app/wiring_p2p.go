@@ -16,7 +16,6 @@ import (
 	bolt "go.etcd.io/bbolt"
 
 	"github.com/langoai/lango/internal/config"
-	"github.com/langoai/lango/internal/ent"
 	"github.com/langoai/lango/internal/eventbus"
 	"github.com/langoai/lango/internal/p2p"
 	"github.com/langoai/lango/internal/p2p/agentpool"
@@ -164,7 +163,7 @@ type p2pComponents struct {
 }
 
 // initP2P creates the P2P networking components if enabled.
-func initP2P(cfg *config.Config, wp wallet.WalletProvider, pc *paymentComponents, repStore *reputation.Store, paymentClient *ent.Client, secrets *security.SecretsStore, bus *eventbus.Bus, identityKey ed25519.PrivateKey, pqSigningKeySeed []byte, langoDir string) *p2pComponents {
+func initP2P(cfg *config.Config, wp wallet.WalletProvider, pc *paymentComponents, repStore *reputation.Store, secrets *security.SecretsStore, bus *eventbus.Bus, identityKey ed25519.PrivateKey, pqSigningKeySeed []byte, langoDir string) *p2pComponents {
 	if !cfg.P2P.Enabled {
 		logger().Info("P2P networking disabled")
 		return nil
@@ -497,7 +496,7 @@ func initP2P(cfg *config.Config, wp wallet.WalletProvider, pc *paymentComponents
 		)
 
 		// Wire settlement service for on-chain payment processing.
-		if bus != nil && pc.rpcClient != nil && paymentClient != nil {
+		if bus != nil && pc.rpcClient != nil && pc.txStore != nil {
 			receiptTimeout := cfg.P2P.Pricing.Settlement.ReceiptTimeout
 			if receiptTimeout <= 0 {
 				receiptTimeout = 2 * time.Minute
@@ -509,7 +508,7 @@ func initP2P(cfg *config.Config, wp wallet.WalletProvider, pc *paymentComponents
 			settleSvc := settlement.New(settlement.Config{
 				Wallet:         wp,
 				RPCClient:      pc.rpcClient,
-				DBClient:       paymentClient,
+				TxStore:        pc.txStore,
 				ChainID:        pc.chainID,
 				USDCAddr:       usdcAddr,
 				ReceiptTimeout: receiptTimeout,

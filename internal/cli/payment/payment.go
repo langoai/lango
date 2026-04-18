@@ -12,14 +12,13 @@ import (
 	"github.com/langoai/lango/internal/config"
 	"github.com/langoai/lango/internal/payment"
 	"github.com/langoai/lango/internal/security"
-	"github.com/langoai/lango/internal/session"
 	"github.com/langoai/lango/internal/wallet"
 )
 
 // paymentDeps holds lazily-initialized payment dependencies.
 type paymentDeps struct {
 	service *payment.Service
-	limiter *wallet.EntSpendingLimiter
+	limiter wallet.SpendingLimiter
 	config  *config.PaymentConfig
 	cleanup func()
 }
@@ -58,16 +57,8 @@ func initPaymentDeps(boot *bootstrap.Result) (*paymentDeps, error) {
 	}
 	registry := boot.Storage.KeyRegistry()
 	secrets := boot.Storage.SecretsStore(boot.Crypto)
-	sessStore, err := boot.Storage.OpenSessionStore()
-	if err != nil {
-		return nil, fmt.Errorf("open session store: %w", err)
-	}
-	entStore, ok := sessStore.(*session.EntStore)
-	if !ok {
-		return nil, fmt.Errorf("payment requires Ent-backed session store")
-	}
-	client := entStore.Client()
-	if registry == nil || secrets == nil || client == nil {
+	txStore := boot.Storage.PaymentTxStore()
+	if registry == nil || secrets == nil || txStore == nil {
 		return nil, fmt.Errorf("payment secrets store unavailable")
 	}
 	if _, err := registry.RegisterKey(ctx, "default", "local", security.KeyTypeEncryption); err != nil {
@@ -96,7 +87,7 @@ func initPaymentDeps(boot *bootstrap.Result) (*paymentDeps, error) {
 	}
 
 	// Create spending limiter.
-	limiter, err := wallet.NewEntSpendingLimiter(client,
+	limiter, err := boot.Storage.NewSpendingLimiter(
 		cfg.Payment.Limits.MaxPerTx,
 		cfg.Payment.Limits.MaxDaily,
 		cfg.Payment.Limits.AutoApproveBelow,
@@ -113,7 +104,7 @@ func initPaymentDeps(boot *bootstrap.Result) (*paymentDeps, error) {
 	)
 
 	// Create payment service.
-	svc := payment.NewService(wp, limiter, builder, client, rpcClient, cfg.Payment.Network.ChainID)
+	svc := payment.NewService(wp, limiter, builder, txStore, rpcClient, cfg.Payment.Network.ChainID)
 
 	return &paymentDeps{
 		service: svc,

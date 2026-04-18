@@ -19,7 +19,6 @@ import (
 	cronpkg "github.com/langoai/lango/internal/cron"
 	"github.com/langoai/lango/internal/economy"
 	"github.com/langoai/lango/internal/economy/escrow/sentinel"
-	"github.com/langoai/lango/internal/ent"
 	"github.com/langoai/lango/internal/eventbus"
 	"github.com/langoai/lango/internal/extension"
 	"github.com/langoai/lango/internal/gatekeeper"
@@ -647,7 +646,11 @@ func (m *networkModule) Init(ctx context.Context, r appinit.Resolver) (*appinit.
 	var entries []appinit.CatalogEntry
 	var components []lifecycle.ComponentEntry
 
-	pc := initPayment(cfg, fv.Store, fv.Secrets)
+	var storageFacade *storage.Facade
+	if m.boot != nil {
+		storageFacade = m.boot.Storage
+	}
+	pc := initPaymentWithStorage(cfg, fv.Store, fv.Secrets, storageFacade)
 	var p2pc *p2pComponents
 	var econc *economyComponents
 	var cc *contractComponents
@@ -655,12 +658,8 @@ func (m *networkModule) Init(ctx context.Context, r appinit.Resolver) (*appinit.
 	var wsc *wsComponents
 	var x402Interceptor *x402pkg.Interceptor
 	var repStore *reputation.Store
-	var paymentClient *ent.Client
 	if m.boot != nil && m.boot.Storage != nil {
 		repStore = m.boot.Storage.ReputationStore(logger())
-		if entStore, ok := fv.Store.(*session.EntStore); ok {
-			paymentClient = entStore.Client()
-		}
 	}
 
 	if pc != nil {
@@ -674,7 +673,7 @@ func (m *networkModule) Init(ctx context.Context, r appinit.Resolver) (*appinit.
 		entries = append(entries, appinit.CatalogEntry{Category: "payment", Description: "Blockchain payments (USDC on Base)", ConfigKey: "payment.enabled", Enabled: true, Tools: pt})
 
 		// P2P.
-		p2pc = initP2P(cfg, pc.wallet, pc, repStore, paymentClient, fv.Secrets, m.bus, m.boot.IdentityKey, m.boot.PQSigningKeySeed, m.boot.LangoDir)
+		p2pc = initP2P(cfg, pc.wallet, pc, repStore, fv.Secrets, m.bus, m.boot.IdentityKey, m.boot.PQSigningKeySeed, m.boot.LangoDir)
 		if p2pc != nil {
 			// P2P Node lifecycle.
 			if p2pc.node != nil {

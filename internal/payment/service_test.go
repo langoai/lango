@@ -2,16 +2,24 @@ package payment
 
 import (
 	"context"
+	"database/sql"
 	"errors"
 	"fmt"
 	"math/big"
+	"strings"
+	"sync"
+	"sync/atomic"
 	"testing"
 
+	"entgo.io/ent/dialect"
+	entsql "entgo.io/ent/dialect/sql"
+	"entgo.io/ent/dialect/sql/schema"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/langoai/lango/internal/ent"
 	"github.com/langoai/lango/internal/ent/paymenttx"
-	"github.com/langoai/lango/internal/testutil"
+	"github.com/langoai/lango/internal/sqlitedriver"
 )
 
 // --- mock implementations ---
@@ -70,6 +78,28 @@ func (m *mockLimiter) IsAutoApprovable(_ context.Context, _ *big.Int) (bool, err
 
 // validAddr is a well-formed Ethereum address for tests.
 const validAddr = "0x1234567890abcdef1234567890abcdef12345678"
+
+var paymentTestDBSeq uint64
+var paymentTestDBMu sync.Mutex
+
+func testEntClient(t testing.TB) *ent.Client {
+	t.Helper()
+	paymentTestDBMu.Lock()
+	defer paymentTestDBMu.Unlock()
+
+	name := strings.NewReplacer("/", "-", " ", "-", ":", "-").Replace(t.Name())
+	seq := atomic.AddUint64(&paymentTestDBSeq, 1)
+	db, err := sql.Open(sqlitedriver.DriverName(), sqlitedriver.MemoryDSN(fmt.Sprintf("%s-%d", name, seq)))
+	require.NoError(t, err)
+	require.NoError(t, sqlitedriver.ConfigureConnection(db, false))
+	_, err = db.Exec("PRAGMA foreign_keys = ON")
+	require.NoError(t, err)
+	drv := entsql.OpenDB(dialect.SQLite, db)
+	client := ent.NewClient(ent.Driver(drv))
+	require.NoError(t, client.Schema.Create(context.Background(), schema.WithForeignKeys(false)))
+	t.Cleanup(func() { _ = client.Close() })
+	return client
+}
 
 // --- Send tests ---
 
@@ -198,7 +228,7 @@ func TestService_Send_WalletAddressFails(t *testing.T) {
 // --- History tests ---
 
 func TestService_History(t *testing.T) {
-	client := testutil.TestEntClient(t)
+	client := testEntClient(t)
 	ctx := context.Background()
 
 	// Seed two payment records.
@@ -221,7 +251,7 @@ func TestService_History(t *testing.T) {
 		SetErrorMessage("gas estimation failed").
 		SaveX(ctx)
 
-	svc := &Service{client: client}
+	svc := &Service{store: NewEntTxStore(client)}
 
 	t.Run("returns all records", func(t *testing.T) {
 		result, err := svc.History(ctx, 10)
@@ -271,10 +301,10 @@ func TestService_History(t *testing.T) {
 // --- RecordX402Payment tests ---
 
 func TestService_RecordX402Payment(t *testing.T) {
-	client := testutil.TestEntClient(t)
+	client := testEntClient(t)
 	ctx := context.Background()
 
-	svc := &Service{client: client}
+	svc := &Service{store: NewEntTxStore(client)}
 
 	t.Run("happy path", func(t *testing.T) {
 		err := svc.RecordX402Payment(ctx, X402PaymentRecord{
@@ -306,10 +336,10 @@ func TestService_RecordX402Payment(t *testing.T) {
 // --- failTx tests ---
 
 func TestService_failTx(t *testing.T) {
-	client := testutil.TestEntClient(t)
+	client := testEntClient(t)
 	ctx := context.Background()
 
-	svc := &Service{client: client}
+	svc := &Service{store: NewEntTxStore(client)}
 
 	// Create a pending transaction.
 	ptx := client.PaymentTx.Create().
@@ -407,13 +437,13 @@ func TestService_Send_CreatesRecordBeforeBuild(t *testing.T) {
 	// This test verifies that Send creates an ent record after passing
 	// validation and limit checks. The build step will fail because
 	// builder/rpcClient are nil, but the pending record should exist.
-	client := testutil.TestEntClient(t)
+	client := testEntClient(t)
 	ctx := context.Background()
 
 	svc := &Service{
 		wallet:  &mockWallet{address: validAddr},
 		limiter: &mockLimiter{},
-		client:  client,
+		store:   NewEntTxStore(client),
 		chainID: 84532,
 		// builder and rpcClient are nil — BuildTransferTx will panic/fail
 	}
@@ -444,13 +474,13 @@ func TestService_Send_CreatesRecordBeforeBuild(t *testing.T) {
 }
 
 func TestService_Send_SetsOptionalFields(t *testing.T) {
-	client := testutil.TestEntClient(t)
+	client := testEntClient(t)
 	ctx := context.Background()
 
 	svc := &Service{
 		wallet:  &mockWallet{address: validAddr},
 		limiter: &mockLimiter{},
-		client:  client,
+		store:   NewEntTxStore(client),
 		chainID: 84532,
 	}
 
@@ -477,13 +507,13 @@ func TestService_Send_SetsOptionalFields(t *testing.T) {
 }
 
 func TestService_Send_OmitsEmptyOptionalFields(t *testing.T) {
-	client := testutil.TestEntClient(t)
+	client := testEntClient(t)
 	ctx := context.Background()
 
 	svc := &Service{
 		wallet:  &mockWallet{address: validAddr},
 		limiter: &mockLimiter{},
-		client:  client,
+		store:   NewEntTxStore(client),
 		chainID: 84532,
 	}
 
@@ -509,10 +539,10 @@ func TestService_Send_OmitsEmptyOptionalFields(t *testing.T) {
 // --- failTx with multiple errors ---
 
 func TestService_failTx_PreservesErrorMessage(t *testing.T) {
-	client := testutil.TestEntClient(t)
+	client := testEntClient(t)
 	ctx := context.Background()
 
-	svc := &Service{client: client}
+	svc := &Service{store: NewEntTxStore(client)}
 
 	tests := []struct {
 		give string
@@ -544,7 +574,7 @@ func TestService_failTx_PreservesErrorMessage(t *testing.T) {
 // --- History ordering ---
 
 func TestService_History_OrderByCreatedAtDesc(t *testing.T) {
-	client := testutil.TestEntClient(t)
+	client := testEntClient(t)
 	ctx := context.Background()
 
 	// Create records — ent auto-sets created_at, so order depends on insertion.
@@ -558,7 +588,7 @@ func TestService_History_OrderByCreatedAtDesc(t *testing.T) {
 			SaveX(ctx)
 	}
 
-	svc := &Service{client: client}
+	svc := &Service{store: NewEntTxStore(client)}
 
 	result, err := svc.History(ctx, 10)
 	require.NoError(t, err)
@@ -573,8 +603,8 @@ func TestService_History_OrderByCreatedAtDesc(t *testing.T) {
 // --- History with empty database ---
 
 func TestService_History_EmptyDatabase(t *testing.T) {
-	client := testutil.TestEntClient(t)
-	svc := &Service{client: client}
+	client := testEntClient(t)
+	svc := &Service{store: NewEntTxStore(client)}
 
 	result, err := svc.History(context.Background(), 10)
 	require.NoError(t, err)
@@ -584,10 +614,10 @@ func TestService_History_EmptyDatabase(t *testing.T) {
 // --- RecordX402Payment duplicate records ---
 
 func TestService_RecordX402Payment_MultipleSameURL(t *testing.T) {
-	client := testutil.TestEntClient(t)
+	client := testEntClient(t)
 	ctx := context.Background()
 
-	svc := &Service{client: client}
+	svc := &Service{store: NewEntTxStore(client)}
 
 	for i := 0; i < 3; i++ {
 		err := svc.RecordX402Payment(ctx, X402PaymentRecord{
