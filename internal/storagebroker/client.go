@@ -1,7 +1,6 @@
 package storagebroker
 
 import (
-	"bufio"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -31,6 +30,7 @@ type Client struct {
 	stdin  io.WriteCloser
 	stdout io.ReadCloser
 
+	writeMu sync.Mutex
 	mu      sync.Mutex
 	nextID  uint64
 	closed  bool
@@ -137,11 +137,13 @@ func (c *Client) Close(ctx context.Context) error {
 		c.mu.Unlock()
 		return nil
 	}
-	c.closed = true
 	c.mu.Unlock()
 
 	var result ShutdownResult
 	_ = c.call(ctx, methodShutdown, nil, &result)
+	c.mu.Lock()
+	c.closed = true
+	c.mu.Unlock()
 	if err := c.stdin.Close(); err != nil {
 		return err
 	}
@@ -167,7 +169,10 @@ func (c *Client) call(ctx context.Context, method string, payload interface{}, o
 		req.Payload = raw
 	}
 
-	if err := json.NewEncoder(c.stdin).Encode(req); err != nil {
+	c.writeMu.Lock()
+	err = json.NewEncoder(c.stdin).Encode(req)
+	c.writeMu.Unlock()
+	if err != nil {
 		c.release(id)
 		return fmt.Errorf("write broker request: %w", err)
 	}
@@ -215,11 +220,11 @@ func (c *Client) release(id uint64) {
 }
 
 func (c *Client) readLoop() {
-	scanner := bufio.NewScanner(c.stdout)
-	for scanner.Scan() {
+	dec := json.NewDecoder(c.stdout)
+	for {
 		var resp Response
-		if err := json.Unmarshal(scanner.Bytes(), &resp); err != nil {
-			continue
+		if err := dec.Decode(&resp); err != nil {
+			break
 		}
 		c.mu.Lock()
 		ch, ok := c.pending[resp.ID]
