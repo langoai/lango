@@ -559,9 +559,13 @@ func phaseLoadProfile() Phase {
 			if legacyStore, ok := store.(*configstore.Store); ok {
 				s.Result.ConfigStore = legacyStore
 			}
+			securityState := storage.SecurityStateStore(security.NewSecurityConfigStore(s.RawDB))
+			if s.Broker != nil {
+				securityState = storage.NewBrokerSecurityState(s.Broker)
+			}
 			s.Result.Storage = storage.NewFacade(
 				store,
-				security.NewSecurityConfigStore(s.RawDB),
+				securityState,
 				storage.WithEntClient(s.Client),
 				storage.WithRawDB(s.RawDB),
 				storage.WithBrokerSessionStore(s.Broker),
