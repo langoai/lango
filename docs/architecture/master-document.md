@@ -60,6 +60,8 @@ Lango is a sovereign peer-to-peer agent network, not just a local agent runtime.
 
 ## Capability Areas
 
+Capability areas are a classification lens, not execution tracks. They describe where work belongs conceptually and can route into one or more tracks below.
+
 ### Sovereign Runtime & Operator UX
 
 Providers, agent runtime, channels, cockpit, settings, status, session handling, logging, and core tool surfaces.
@@ -105,6 +107,8 @@ MCP, extension packs, architecture boundaries, docs truthfulness, CLI surface cl
 
 ## Track Portfolio
 
+Tracks are execution lanes. They own concrete backlog, documents, and delivery outcomes, while capability areas stay as the stable taxonomy used to classify work.
+
 ### Stabilization Track
 
 Truth alignment, durability, defaults, hardening, observability, and production correctness.
@@ -129,10 +133,19 @@ The next layer above knowledge exchange.
 
 Architecture boundary, naming, documentation, and codebase clarity improvements.
 
+### Capability-to-Track Routing
+
+- `Sovereign Runtime & Operator UX` routes primarily to `Stabilization Track` and `UX Clarity Track`.
+- `Knowledge & Intelligence Capital` routes primarily to `Stabilization Track` and `Consolidation Track` when overlapping systems need cleanup.
+- `External Collaboration & Economic Exchange` routes primarily to `P2P Knowledge Exchange Track` and, later, `Leader-Led Team Execution Track`.
+- `Trust, Security & Policy` routes primarily to `Stabilization Track` when hardening or safety work is needed.
+- `Execution, Continuity & Accountability` routes primarily to `Stabilization Track` and `Consolidation Track`.
+- `Extensibility & Developer Clarity` is a taxonomy bucket for platform boundary work; its work routes into `Developer Clarity Track` when the goal is naming, architecture, or documentation clarity, and into `UX Clarity Track` when the goal is user-facing simplification or default cleanup.
+
 ## Near-Term Priorities
 
 1. Audit `External Collaboration & Economic Exchange`.
 2. Audit `Trust, Security & Policy`.
 3. Publish the first `P2P Knowledge Exchange` track document.
-4. Move stabilization work under the master-document hierarchy.
+4. Move stabilization work under the master-document hierarchy, meaning future stabilization docs and audits must sit under `docs/architecture/`, reference this master document as their source of truth, and declare which capability area and track they are serving.
 5. Follow with consolidation and UX clarity work.
