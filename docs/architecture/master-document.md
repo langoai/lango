@@ -87,6 +87,12 @@ Workflow, background tasks, cron, RunLedger, provenance, and hooks.
 
 MCP, extension packs, architecture boundaries, extension points, developer-doc truthfulness, and duplicate cleanup.
 
+### Phase 4 Capability Tie-Break
+
+- If the main responsibility is cross-agent coordination, settlement, market behavior, or shared artifacts between agents, the primary capability area is `External Collaboration & Economic Exchange`.
+- If the main responsibility is durable execution, provenance, ledgers, workflow continuation, or accountability mechanics, the primary capability area is `Execution, Continuity & Accountability`.
+- If the main responsibility is policy, approval, auth, sandboxing, privacy, or security controls, the primary capability area is `Trust, Security & Policy`.
+
 ## Feature Audit Framework
 
 ### Allowed Audit Judgments
@@ -166,8 +172,9 @@ Architecture boundary, naming, documentation, and codebase clarity improvements.
 
 - Every downstream audit or plan must declare exactly one primary capability area; any other affected capability areas are secondary capability areas only.
 - Every downstream audit or plan must declare exactly one primary execution track; any other affected tracks are secondary tracks only.
+- When the main responsibility is deduplicating or converging duplicate surfaces, duplicate subsystems, duplicate commands, or overlapping responsibilities across capabilities, `Consolidation Track` overrides capability-default routing and becomes the primary execution track.
 - `Sovereign Runtime & Operator UX` binds to `Stabilization Track`; it may override to `UX Clarity Track` only when the work's main responsibility is simplifying operator flows, operator-facing settings, cockpit behavior, CLI defaults, help, or other user-facing surface clarity.
-- `Knowledge & Intelligence Capital` binds to `Stabilization Track`; secondary track: `Consolidation Track` when overlapping systems need cleanup.
+- `Knowledge & Intelligence Capital` binds to `Stabilization Track`; it overrides to `Consolidation Track` when the work's main responsibility is deduplicating or converging duplicate surfaces, duplicate subsystems, duplicate commands, or overlapping responsibilities across capabilities.
 - `External Collaboration & Economic Exchange` binds to `P2P Knowledge Exchange Track` for Phase 1-2 style work; it overrides to `Leader-Led Team Execution Track` when the work's main responsibility is team formation, role coordination, delegated budget control, or shared artifacts for Phase 3 execution, and it also uses `Leader-Led Team Execution Track` for current Phase 4 collaboration or execution work until a dedicated long-running collaboration track is added to this master document.
 - `Trust, Security & Policy` binds to `Stabilization Track`; secondary track: none unless a downstream audit explicitly identifies one.
 - `Execution, Continuity & Accountability` binds to `Stabilization Track`; secondary track: `Consolidation Track`.
