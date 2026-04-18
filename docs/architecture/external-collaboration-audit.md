@@ -19,7 +19,7 @@ It exists to review the product area that most directly defines Lango:
 
 - Primary capability area: `External Collaboration & Economic Exchange`
 - Primary execution track: `P2P Knowledge Exchange Track`
-- Secondary capability areas: none
+- Secondary capability areas: `Execution, Continuity & Accountability`
 - Secondary tracks: `Leader-Led Team Execution Track`
 - Rows may override to `Leader-Led Team Execution Track` when the main responsibility is team formation, role coordination, delegated budget control, or shared artifacts for Phase 3 execution work and current Phase 4 collaboration or execution work.
 
