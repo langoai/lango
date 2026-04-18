@@ -105,6 +105,25 @@ MCP, extension packs, architecture boundaries, docs truthfulness, CLI surface cl
 - Features that fit the vision but are too early for the current product path should be deferred.
 - Features that add complexity without strengthening the core story should be removal candidates.
 
+### Minimum Audit Record Schema
+
+Every audit record must include these fields:
+
+- feature name
+- capability area
+- product-path linkage
+- current surface area
+- core value
+- current problem
+- judgment
+- execution track
+
+### Downstream Precedence Rule
+
+This master document is the top-level source of truth for product constitution, capability taxonomy, audit judgment, and track routing.
+
+If any audit doc, track charter, stabilization doc, or future architecture doc conflicts with this document, the downstream document must defer to this one and be updated to match it.
+
 ## Track Portfolio
 
 Tracks are execution lanes. They own concrete backlog, documents, and delivery outcomes, while capability areas stay as the stable taxonomy used to classify work.
