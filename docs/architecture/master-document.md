@@ -144,6 +144,7 @@ Truth alignment, durability, defaults, hardening, observability, and production 
 ### Consolidation Track
 
 Duplicate feature, config-surface, command-surface, and responsibility cleanup.
+Consolidation Track becomes the primary execution track when the main responsibility is converging or removing duplicate surfaces, duplicate subsystems, duplicate commands, or overlapping responsibilities across capabilities.
 
 ### UX Clarity Track
 
@@ -167,7 +168,7 @@ Architecture boundary, naming, documentation, and codebase clarity improvements.
 - Every downstream audit or plan must declare exactly one primary execution track; any other affected tracks are secondary tracks only.
 - `Sovereign Runtime & Operator UX` binds to `Stabilization Track`; it may override to `UX Clarity Track` only when the work's main responsibility is simplifying operator flows, operator-facing settings, cockpit behavior, CLI defaults, help, or other user-facing surface clarity.
 - `Knowledge & Intelligence Capital` binds to `Stabilization Track`; secondary track: `Consolidation Track` when overlapping systems need cleanup.
-- `External Collaboration & Economic Exchange` binds to `P2P Knowledge Exchange Track` for Phase 1-2 style work; it overrides to `Leader-Led Team Execution Track` when the work's main responsibility is team formation, role coordination, delegated budget control, or shared artifacts for Phase 3 execution.
+- `External Collaboration & Economic Exchange` binds to `P2P Knowledge Exchange Track` for Phase 1-2 style work; it overrides to `Leader-Led Team Execution Track` when the work's main responsibility is team formation, role coordination, delegated budget control, or shared artifacts for Phase 3 execution, and it also uses `Leader-Led Team Execution Track` for current Phase 4 collaboration or execution work until a dedicated long-running collaboration track is added to this master document.
 - `Trust, Security & Policy` binds to `Stabilization Track`; secondary track: none unless a downstream audit explicitly identifies one.
 - `Execution, Continuity & Accountability` binds to `Stabilization Track`; secondary track: `Consolidation Track`.
 - `Extensibility & Developer Clarity` binds to `Developer Clarity Track`; it owns developer-facing architecture boundaries, extension points, developer-doc truthfulness, and duplicate cleanup.
