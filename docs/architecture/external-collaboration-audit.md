@@ -22,6 +22,7 @@ It exists to review the product area that most directly defines Lango:
 - Secondary capability areas: `Execution, Continuity & Accountability`
 - Secondary tracks: `Leader-Led Team Execution Track`
 - Rows may override to `Leader-Led Team Execution Track` when the main responsibility is team formation, role coordination, delegated budget control, or shared artifacts for Phase 3 execution work and current Phase 4 collaboration or execution work.
+- For provenance, ledgers, workflow continuation, or accountability-heavy rows, detailed follow-on audit work may classify `Execution, Continuity & Accountability` as the primary capability area using the master document's Phase 4 tie-break.
 
 ## Audit Order
 
@@ -34,7 +35,7 @@ It exists to review the product area that most directly defines Lango:
 
 This ledger adopts the master document's minimum audit schema for detailed row-level work.
 
-Each row should capture:
+Each row must include:
 
 - feature name,
 - capability area,
