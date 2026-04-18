@@ -5,10 +5,10 @@ import (
 	"fmt"
 
 	"github.com/langoai/lango/internal/config"
-	"github.com/langoai/lango/internal/ent"
 	"github.com/langoai/lango/internal/graph"
 	"github.com/langoai/lango/internal/ontology"
 	"github.com/langoai/lango/internal/p2p/ontologybridge"
+	"github.com/langoai/lango/internal/storage"
 )
 
 // initOntology creates the ontology service and seeds default types/predicates.
@@ -20,12 +20,15 @@ type initOntologyResult struct {
 	Bridge   *ontologybridge.Bridge // non-nil when exchange is enabled
 }
 
-func initOntology(ctx context.Context, client *ent.Client, cfg *config.Config, graphStore graph.Store) (*initOntologyResult, error) {
+func initOntology(ctx context.Context, deps *storage.OntologyDeps, cfg *config.Config, graphStore graph.Store) (*initOntologyResult, error) {
 	if !cfg.Ontology.Enabled {
 		return &initOntologyResult{}, nil
 	}
+	if deps == nil || deps.Registry == nil {
+		return nil, fmt.Errorf("ontology storage unavailable")
+	}
 
-	reg := ontology.NewEntRegistry(client)
+	reg := deps.Registry
 	svc := ontology.NewService(reg, graphStore)
 
 	if err := ontology.SeedDefaults(ctx, svc); err != nil {
@@ -34,20 +37,20 @@ func initOntology(ctx context.Context, client *ent.Client, cfg *config.Config, g
 
 	// Truth Maintenance — requires graph store for triple CRUD.
 	if graphStore != nil {
-		conflictStore := ontology.NewConflictStore(client)
+		conflictStore := deps.Conflict
 		tm := ontology.NewTruthMaintainer(svc, graphStore, conflictStore)
 		svc.SetTruthMaintainer(tm)
 		logger().Info("truth maintenance initialized")
 
 		// Entity Resolution — requires truth maintainer for Merge retraction.
-		aliasStore := ontology.NewAliasStore(client)
+		aliasStore := deps.Alias
 		resolver := ontology.NewEntityResolver(aliasStore, graphStore, tm)
 		svc.SetEntityResolver(resolver)
 		logger().Info("entity resolution initialized")
 	}
 
 	// Property Store — EAV for per-entity property values.
-	propStore := ontology.NewPropertyStore(client)
+	propStore := deps.Property
 	svc.SetPropertyStore(propStore)
 	logger().Info("property store initialized")
 
@@ -75,7 +78,7 @@ func initOntology(ctx context.Context, client *ent.Client, cfg *config.Config, g
 	if err := actionReg.Register(ontology.BuiltinSetEntityStatus()); err != nil {
 		return nil, fmt.Errorf("register set_entity_status: %w", err)
 	}
-	logStore := ontology.NewActionLogStore(client)
+	logStore := deps.ActionLog
 	executor := ontology.NewActionExecutor(svc, actionReg, acl, logStore)
 	svc.SetActionExecutor(executor)
 	logger().Infow("action executor initialized", "actions", len(actionReg.List()))

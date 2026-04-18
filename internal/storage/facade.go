@@ -13,13 +13,19 @@ import (
 	"github.com/langoai/lango/internal/cron"
 	"github.com/langoai/lango/internal/ent"
 	entauditlog "github.com/langoai/lango/internal/ent/auditlog"
+	entinquiry "github.com/langoai/lango/internal/ent/inquiry"
+	entlearning "github.com/langoai/lango/internal/ent/learning"
 	"github.com/langoai/lango/internal/observability/audit"
 	"github.com/langoai/lango/internal/observability/token"
+	"github.com/langoai/lango/internal/ontology"
+	"github.com/langoai/lango/internal/p2p/reputation"
 	"github.com/langoai/lango/internal/provenance"
 	"github.com/langoai/lango/internal/runledger"
 	"github.com/langoai/lango/internal/security"
 	"github.com/langoai/lango/internal/session"
 	"github.com/langoai/lango/internal/turntrace"
+	"github.com/langoai/lango/internal/workflow"
+	"go.uber.org/zap"
 )
 
 // ConfigProfileStore captures the configuration profile operations needed by
@@ -73,6 +79,40 @@ type SandboxDecisionRecord struct {
 	Reason     string
 }
 
+type LearningHistoryRecord struct {
+	ID         string
+	Trigger    string
+	Category   string
+	Diagnosis  string
+	Fix        string
+	Confidence float64
+	CreatedAt  time.Time
+}
+
+type InquiryRecord struct {
+	ID       string
+	Topic    string
+	Question string
+	Priority string
+	Created  time.Time
+}
+
+type AlertRecord struct {
+	ID        string
+	Type      string
+	Actor     string
+	Details   map[string]interface{}
+	Timestamp time.Time
+}
+
+type OntologyDeps struct {
+	Registry  *ontology.EntRegistry
+	Conflict  *ontology.ConflictStore
+	Alias     *ontology.AliasStore
+	Property  *ontology.PropertyStore
+	ActionLog *ontology.ActionLogStore
+}
+
 // Option customizes a storage facade.
 type Option func(*Facade)
 
@@ -93,6 +133,14 @@ type Facade struct {
 	securityDiag     func(ctx context.Context) (SecuritySummary, error)
 	sandboxDecisions func(ctx context.Context, sessionPrefix string, limit int) ([]SandboxDecisionRecord, error)
 	auditRecorder    func() *audit.Recorder
+	tokenStore       func() *token.EntTokenStore
+	learningHistory  func(ctx context.Context, limit int) ([]LearningHistoryRecord, error)
+	pendingInquiries func(ctx context.Context, limit int) ([]InquiryRecord, error)
+	alerts           func(ctx context.Context, from time.Time) ([]AlertRecord, error)
+	ontologyDeps     func() *OntologyDeps
+	reputationStore  func(logger *zap.SugaredLogger) *reputation.Store
+	workflowState    func(logger *zap.SugaredLogger) workflow.RunStore
+	closeFn          func() error
 }
 
 // NewFacade constructs a storage facade from capability implementations.
@@ -111,14 +159,21 @@ func NewFacade(configProfiles ConfigProfileStore, securityState SecurityStateSto
 
 func (f *Facade) ConfigProfiles() ConfigProfileStore { return f.configProfiles }
 func (f *Facade) SecurityState() SecurityStateStore  { return f.securityState }
-func (f *Facade) EntClient() *ent.Client             { return f.client }
-func (f *Facade) RawDB() *sql.DB                     { return f.rawDB }
 
 func (f *Facade) OpenSessionStore(opts ...session.StoreOption) (session.Store, error) {
 	if f == nil || f.openSession == nil {
 		return nil, fmt.Errorf("session storage unavailable")
 	}
 	return f.openSession(opts...)
+}
+
+// FTSDB exposes the shared SQLite handle only for domain-specific FTS index
+// initialization while broader raw DB access remains hidden from app/CLI code.
+func (f *Facade) FTSDB() *sql.DB {
+	if f == nil {
+		return nil
+	}
+	return f.rawDB
 }
 
 func (f *Facade) KeyRegistry() *security.KeyRegistry {
@@ -189,6 +244,69 @@ func (f *Facade) AuditRecorder() *audit.Recorder {
 		return nil
 	}
 	return f.auditRecorder()
+}
+
+func (f *Facade) TokenStore() *token.EntTokenStore {
+	if f == nil || f.tokenStore == nil {
+		return nil
+	}
+	return f.tokenStore()
+}
+
+func (f *Facade) LearningHistory(ctx context.Context, limit int) ([]LearningHistoryRecord, error) {
+	if f == nil || f.learningHistory == nil {
+		return nil, fmt.Errorf("learning storage unavailable")
+	}
+	return f.learningHistory(ctx, limit)
+}
+
+func (f *Facade) PendingInquiries(ctx context.Context, limit int) ([]InquiryRecord, error) {
+	if f == nil || f.pendingInquiries == nil {
+		return nil, fmt.Errorf("inquiry storage unavailable")
+	}
+	return f.pendingInquiries(ctx, limit)
+}
+
+func (f *Facade) Alerts(ctx context.Context, from time.Time) ([]AlertRecord, error) {
+	if f == nil || f.alerts == nil {
+		return nil, fmt.Errorf("alert storage unavailable")
+	}
+	return f.alerts(ctx, from)
+}
+
+func (f *Facade) OntologyDeps() *OntologyDeps {
+	if f == nil || f.ontologyDeps == nil {
+		return nil
+	}
+	return f.ontologyDeps()
+}
+
+func (f *Facade) ReputationStore(logger *zap.SugaredLogger) *reputation.Store {
+	if f == nil || f.reputationStore == nil {
+		return nil
+	}
+	return f.reputationStore(logger)
+}
+
+func (f *Facade) WorkflowStateStore(logger *zap.SugaredLogger) workflow.RunStore {
+	if f == nil || f.workflowState == nil {
+		return nil
+	}
+	return f.workflowState(logger)
+}
+
+func (f *Facade) PaymentClient() *ent.Client {
+	if f == nil {
+		return nil
+	}
+	return f.client
+}
+
+func (f *Facade) Close() error {
+	if f == nil || f.closeFn == nil {
+		return nil
+	}
+	return f.closeFn()
 }
 
 // WithSessionStoreFactory wires session store creation into the facade.
@@ -286,6 +404,97 @@ func WithEntClient(client *ent.Client) Option {
 		f.auditRecorder = func() *audit.Recorder {
 			return audit.NewRecorder(client)
 		}
+		f.tokenStore = func() *token.EntTokenStore {
+			return token.NewEntTokenStore(client)
+		}
+		f.learningHistory = func(ctx context.Context, limit int) ([]LearningHistoryRecord, error) {
+			if limit <= 0 {
+				limit = 20
+			}
+			rows, err := client.Learning.Query().
+				Order(entlearning.ByCreatedAt(entsql.OrderDesc())).
+				Limit(limit).
+				All(ctx)
+			if err != nil {
+				return nil, err
+			}
+			out := make([]LearningHistoryRecord, 0, len(rows))
+			for _, row := range rows {
+				out = append(out, LearningHistoryRecord{
+					ID:         row.ID.String(),
+					Trigger:    row.Trigger,
+					Category:   string(row.Category),
+					Diagnosis:  row.Diagnosis,
+					Fix:        row.Fix,
+					Confidence: row.Confidence,
+					CreatedAt:  row.CreatedAt,
+				})
+			}
+			return out, nil
+		}
+		f.pendingInquiries = func(ctx context.Context, limit int) ([]InquiryRecord, error) {
+			if limit <= 0 {
+				limit = 20
+			}
+			rows, err := client.Inquiry.Query().
+				Where(entinquiry.StatusEQ(entinquiry.StatusPending)).
+				Order(entinquiry.ByCreatedAt()).
+				Limit(limit).
+				All(ctx)
+			if err != nil {
+				return nil, err
+			}
+			out := make([]InquiryRecord, 0, len(rows))
+			for _, row := range rows {
+				out = append(out, InquiryRecord{
+					ID:       row.ID.String(),
+					Topic:    row.Topic,
+					Question: row.Question,
+					Priority: string(row.Priority),
+					Created:  row.CreatedAt,
+				})
+			}
+			return out, nil
+		}
+		f.alerts = func(ctx context.Context, from time.Time) ([]AlertRecord, error) {
+			rows, err := client.AuditLog.Query().
+				Where(
+					entauditlog.ActionEQ(entauditlog.Action("alert")),
+					entauditlog.TimestampGTE(from),
+				).
+				Order(entauditlog.ByTimestamp(entsql.OrderDesc())).
+				All(ctx)
+			if err != nil {
+				return nil, err
+			}
+			out := make([]AlertRecord, 0, len(rows))
+			for _, row := range rows {
+				out = append(out, AlertRecord{
+					ID:        row.ID.String(),
+					Type:      row.Target,
+					Actor:     row.Actor,
+					Details:   row.Details,
+					Timestamp: row.Timestamp,
+				})
+			}
+			return out, nil
+		}
+		f.ontologyDeps = func() *OntologyDeps {
+			return &OntologyDeps{
+				Registry:  ontology.NewEntRegistry(client),
+				Conflict:  ontology.NewConflictStore(client),
+				Alias:     ontology.NewAliasStore(client),
+				Property:  ontology.NewPropertyStore(client),
+				ActionLog: ontology.NewActionLogStore(client),
+			}
+		}
+		f.reputationStore = func(logger *zap.SugaredLogger) *reputation.Store {
+			return reputation.NewStore(client, logger)
+		}
+		f.workflowState = func(logger *zap.SugaredLogger) workflow.RunStore {
+			return workflow.NewStateStore(client, logger)
+		}
+		f.closeFn = client.Close
 	}
 }
 
@@ -297,6 +506,9 @@ func WithRawDB(db *sql.DB) Option {
 			return
 		}
 		f.rawDB = db
+		if f.closeFn == nil {
+			f.closeFn = db.Close
+		}
 	}
 }
 

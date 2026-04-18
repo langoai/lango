@@ -7,11 +7,8 @@ import (
 	"text/tabwriter"
 	"time"
 
-	"entgo.io/ent/dialect/sql"
-
 	"github.com/langoai/lango/internal/bootstrap"
-	"github.com/langoai/lango/internal/ent"
-	entlearning "github.com/langoai/lango/internal/ent/learning"
+	"github.com/langoai/lango/internal/storage"
 	"github.com/langoai/lango/internal/toolchain"
 	"github.com/spf13/cobra"
 )
@@ -32,13 +29,10 @@ func newHistoryCmd(bootLoader func() (*bootstrap.Result, error)) *cobra.Command 
 			}
 			defer boot.Close()
 
-			if boot.Storage == nil || boot.Storage.EntClient() == nil {
+			if boot.Storage == nil {
 				return fmt.Errorf("learning storage unavailable")
 			}
-			entries, err := boot.Storage.EntClient().Learning.Query().
-				Order(entlearning.ByCreatedAt(sql.OrderDesc())).
-				Limit(limit).
-				All(cmd.Context())
+			entries, err := boot.Storage.LearningHistory(cmd.Context(), limit)
 			if err != nil {
 				return fmt.Errorf("query learnings: %w", err)
 			}
@@ -56,7 +50,7 @@ func newHistoryCmd(bootLoader func() (*bootstrap.Result, error)) *cobra.Command 
 	return cmd
 }
 
-func printHistoryJSON(entries []*ent.Learning) error {
+func printHistoryJSON(entries []storage.LearningHistoryRecord) error {
 	type entry struct {
 		ID         string  `json:"id"`
 		Trigger    string  `json:"trigger"`
@@ -70,9 +64,9 @@ func printHistoryJSON(entries []*ent.Learning) error {
 	out := make([]entry, 0, len(entries))
 	for _, e := range entries {
 		out = append(out, entry{
-			ID:         e.ID.String(),
+			ID:         e.ID,
 			Trigger:    e.Trigger,
-			Category:   string(e.Category),
+			Category:   e.Category,
 			Diagnosis:  e.Diagnosis,
 			Fix:        e.Fix,
 			Confidence: e.Confidence,
@@ -85,7 +79,7 @@ func printHistoryJSON(entries []*ent.Learning) error {
 	return enc.Encode(out)
 }
 
-func printHistoryTable(entries []*ent.Learning) error {
+func printHistoryTable(entries []storage.LearningHistoryRecord) error {
 	if len(entries) == 0 {
 		fmt.Println("No learning entries found.")
 		return nil
@@ -95,7 +89,7 @@ func printHistoryTable(entries []*ent.Learning) error {
 	fmt.Fprintln(w, "ID\tCATEGORY\tTRIGGER\tCONFIDENCE\tCREATED")
 	for _, e := range entries {
 		fmt.Fprintf(w, "%s\t%s\t%s\t%.2f\t%s\n",
-			e.ID.String()[:8],
+			e.ID[:8],
 			e.Category,
 			toolchain.Truncate(e.Trigger, 37),
 			e.Confidence,

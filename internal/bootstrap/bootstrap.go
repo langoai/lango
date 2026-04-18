@@ -122,12 +122,7 @@ func (r *Result) Close() error {
 		r.Broker = nil
 	}
 	if r.Storage != nil {
-		if client := r.Storage.EntClient(); client != nil {
-			return client.Close()
-		}
-		if rawDB := r.Storage.RawDB(); rawDB != nil {
-			return rawDB.Close()
-		}
+		return r.Storage.Close()
 	}
 	return nil
 }

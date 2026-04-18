@@ -12,7 +12,6 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/langoai/lango/internal/bootstrap"
-	"github.com/langoai/lango/internal/ent"
 	"github.com/langoai/lango/internal/runledger"
 	"github.com/langoai/lango/internal/toolchain"
 	"github.com/langoai/lango/internal/workflow"
@@ -332,13 +331,11 @@ func initEngine(boot *bootstrap.Result) *workflow.Engine {
 		return nil
 	}
 
-	client := workflowEntClient(boot)
-	if client == nil {
+	lg, _ := zap.NewProduction()
+	state := workflowRunStore(boot, lg.Sugar())
+	if state == nil {
 		return nil
 	}
-
-	lg, _ := zap.NewProduction()
-	state := workflow.NewStateStore(client, lg.Sugar())
 	return workflow.NewEngine(nil, state, nil,
 		boot.Config.Workflow.MaxConcurrentSteps,
 		boot.Config.Workflow.DefaultTimeout,
@@ -426,9 +423,9 @@ func formatTime(t time.Time) string {
 	return t.Format(time.DateTime)
 }
 
-func workflowEntClient(boot *bootstrap.Result) *ent.Client {
+func workflowRunStore(boot *bootstrap.Result, logger *zap.SugaredLogger) workflow.RunStore {
 	if boot != nil && boot.Storage != nil {
-		return boot.Storage.EntClient()
+		return boot.Storage.WorkflowStateStore(logger)
 	}
 	return nil
 }

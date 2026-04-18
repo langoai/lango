@@ -10,7 +10,6 @@ import (
 
 	"github.com/langoai/lango/internal/bootstrap"
 	"github.com/langoai/lango/internal/logging"
-	"github.com/langoai/lango/internal/p2p/reputation"
 )
 
 func newReputationCmd(bootLoader func() (*bootstrap.Result, error)) *cobra.Command {
@@ -40,10 +39,13 @@ func newReputationCmd(bootLoader func() (*bootstrap.Result, error)) *cobra.Comma
 				logger = l.Sugar()
 			}
 
-			if boot.Storage == nil || boot.Storage.EntClient() == nil {
+			if boot.Storage == nil {
 				return fmt.Errorf("p2p reputation storage unavailable")
 			}
-			store := reputation.NewStore(boot.Storage.EntClient(), logger)
+			store := boot.Storage.ReputationStore(logger)
+			if store == nil {
+				return fmt.Errorf("p2p reputation storage unavailable")
+			}
 			details, err := store.GetDetails(cmd.Context(), peerDID)
 			if err != nil {
 				return fmt.Errorf("get reputation: %w", err)

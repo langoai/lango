@@ -6,7 +6,6 @@ import (
 	"github.com/langoai/lango/internal/adk"
 	"github.com/langoai/lango/internal/alerting"
 	"github.com/langoai/lango/internal/config"
-	"github.com/langoai/lango/internal/ent"
 	"github.com/langoai/lango/internal/eventbus"
 	"github.com/langoai/lango/internal/observability"
 	"github.com/langoai/lango/internal/observability/health"
@@ -26,7 +25,7 @@ type observabilityComponents struct {
 }
 
 // initObservability creates observability components if enabled.
-func initObservability(cfg *config.Config, dbClient *ent.Client, bus *eventbus.Bus) *observabilityComponents {
+func initObservability(cfg *config.Config, tokenStore *token.EntTokenStore, bus *eventbus.Bus) *observabilityComponents {
 	if !cfg.Observability.Enabled {
 		if cfg.Observability.Tokens.Enabled || cfg.Observability.Health.Enabled {
 			logger().Warn("observability disabled but sub-features enabled; sub-features ignored",
@@ -54,8 +53,8 @@ func initObservability(cfg *config.Config, dbClient *ent.Client, bus *eventbus.B
 	}
 
 	// 3. Token Store (persistent, optional)
-	if cfg.Observability.Tokens.PersistHistory && dbClient != nil {
-		oc.tokenStore = token.NewEntTokenStore(dbClient)
+	if cfg.Observability.Tokens.PersistHistory && tokenStore != nil {
+		oc.tokenStore = tokenStore
 		logger().Info("observability: token store (persistent) initialized")
 	}
 
@@ -149,4 +148,3 @@ func wireModelAdapterTokenUsage(adapter *adk.ModelAdapter, bus *eventbus.Bus) {
 		})
 	}
 }
-

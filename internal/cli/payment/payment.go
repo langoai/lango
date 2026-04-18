@@ -57,7 +57,7 @@ func initPaymentDeps(boot *bootstrap.Result) (*paymentDeps, error) {
 	}
 	registry := boot.Storage.KeyRegistry()
 	secrets := boot.Storage.SecretsStore(boot.Crypto)
-	client := boot.Storage.EntClient()
+	client := boot.Storage.PaymentClient()
 	if registry == nil || secrets == nil || client == nil {
 		return nil, fmt.Errorf("payment secrets store unavailable")
 	}

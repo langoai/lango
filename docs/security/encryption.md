@@ -267,6 +267,7 @@ The current runtime no longer supports SQLCipher page-level database encryption.
 2. Sensitive payloads are encrypted and decrypted through the storage broker using keys derived from the Master Key envelope.
 3. Searchable fields store **redacted projections**, not raw plaintext secrets.
 4. Session messages, learning payloads, inquiries, and agent memory use ciphertext for original values and keep only redacted projections in plaintext search columns.
+5. Production app and CLI paths consume these records through storage facade capabilities instead of generic raw Ent/SQL handles.
 
 Legacy compatibility:
 

@@ -3,9 +3,7 @@
 ## Purpose
 
 Provides CLI commands for managing blockchain payment operations, allowing users to view balances, transaction history, spending limits, wallet information, and send USDC payments directly from the terminal without going through the AI agent.
-
 ## Requirements
-
 ### Requirement: Payment command group
 The system SHALL provide a `lango payment` command group that contains subcommands for managing blockchain payment operations.
 
@@ -124,3 +122,11 @@ The addition of the x402 subcommand SHALL NOT change the behavior or registratio
 #### Scenario: Existing commands still work
 - **WHEN** user runs existing `lango payment status` command
 - **THEN** the command behaves identically to before the x402 addition
+
+### Requirement: Payment CLI uses storage factories
+Payment CLI setup MUST create spending limiters and payment services through storage facade factories instead of generic Ent client access.
+
+#### Scenario: Payment dependencies initialized through facade
+- **WHEN** a payment CLI subcommand initializes its dependencies
+- **THEN** it obtains the spending limiter and payment service from storage facade factories
+

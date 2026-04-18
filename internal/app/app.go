@@ -20,7 +20,6 @@ import (
 	"github.com/langoai/lango/internal/bootstrap"
 	"github.com/langoai/lango/internal/config"
 	cronpkg "github.com/langoai/lango/internal/cron"
-	"github.com/langoai/lango/internal/ent"
 	"github.com/langoai/lango/internal/eventbus"
 	"github.com/langoai/lango/internal/gateway"
 	"github.com/langoai/lango/internal/learning"
@@ -32,6 +31,7 @@ import (
 	"github.com/langoai/lango/internal/sandbox"
 	"github.com/langoai/lango/internal/session"
 	"github.com/langoai/lango/internal/skill"
+	"github.com/langoai/lango/internal/storage"
 	"github.com/langoai/lango/internal/toolcatalog"
 	"github.com/langoai/lango/internal/toolchain"
 	"github.com/langoai/lango/internal/tooloutput"
@@ -727,11 +727,11 @@ func wirePostAgent(app *App, r appinit.Resolver, tools []*agent.Tool, bus *event
 	// Observability API routes.
 	obsc, _ := r.Resolve(appinit.ProvidesObservability).(*observabilityComponents)
 	if obsc != nil {
-		var entClient *ent.Client
+		var alertsReader func(context.Context, time.Time) ([]storage.AlertRecord, error)
 		if boot != nil && boot.Storage != nil {
-			entClient = boot.Storage.EntClient()
+			alertsReader = boot.Storage.Alerts
 		}
-		registerObservabilityRoutes(app.Gateway.Router(), obsc.collector, obsc.healthRegistry, obsc.tokenStore, entClient, obsc.promExporter)
+		registerObservabilityRoutes(app.Gateway.Router(), obsc.collector, obsc.healthRegistry, obsc.tokenStore, alertsReader, obsc.promExporter)
 		logger().Info("observability API routes registered")
 	}
 

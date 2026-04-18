@@ -27,12 +27,15 @@ import (
 	"github.com/langoai/lango/internal/librarian"
 	"github.com/langoai/lango/internal/lifecycle"
 	"github.com/langoai/lango/internal/memory"
+	"github.com/langoai/lango/internal/observability/token"
 	"github.com/langoai/lango/internal/ontology"
 	"github.com/langoai/lango/internal/p2p/gitbundle"
 	"github.com/langoai/lango/internal/p2p/ontologybridge"
+	"github.com/langoai/lango/internal/p2p/reputation"
 	"github.com/langoai/lango/internal/p2p/team"
 	"github.com/langoai/lango/internal/security"
 	"github.com/langoai/lango/internal/session"
+	"github.com/langoai/lango/internal/storage"
 	"github.com/langoai/lango/internal/storagebroker"
 	"github.com/langoai/lango/internal/supervisor"
 	"github.com/langoai/lango/internal/tools/browser"
@@ -280,16 +283,16 @@ func (m *intelligenceModule) Init(ctx context.Context, r appinit.Resolver) (*app
 
 	// Ontology Registry (after graph store).
 	var graphStoreForOntology graph.Store
-	var entClient *ent.Client
+	var ontologyDeps *storage.OntologyDeps
 	var rawDB *sql.DB
 	if gc != nil {
 		graphStoreForOntology = gc.store
 	}
 	if m.boot != nil && m.boot.Storage != nil {
-		entClient = m.boot.Storage.EntClient()
-		rawDB = m.boot.Storage.RawDB()
+		ontologyDeps = m.boot.Storage.OntologyDeps()
+		rawDB = m.boot.Storage.FTSDB()
 	}
-	ontologyResult, err := initOntology(ctx, entClient, cfg, graphStoreForOntology)
+	ontologyResult, err := initOntology(ctx, ontologyDeps, cfg, graphStoreForOntology)
 	if err != nil {
 		logger().Warnw("ontology init failed, continuing without ontology", "error", err)
 	}
@@ -400,9 +403,6 @@ func (m *intelligenceModule) Init(ctx context.Context, r appinit.Resolver) (*app
 	if cfg.AgentMemory.Enabled {
 		if m.boot != nil && m.boot.Storage != nil {
 			amStore = m.boot.Storage.AgentMemory()
-		}
-		if amStore == nil && entClient != nil {
-			amStore = agentmemory.NewEntStore(entClient)
 		}
 		if brokerAPI != nil {
 			if entStore, ok := amStore.(*agentmemory.EntStore); ok {
@@ -652,9 +652,11 @@ func (m *networkModule) Init(ctx context.Context, r appinit.Resolver) (*appinit.
 	var sacc *smartAccountComponents
 	var wsc *wsComponents
 	var x402Interceptor *x402pkg.Interceptor
-	var entClient *ent.Client
+	var repStore *reputation.Store
+	var paymentClient *ent.Client
 	if m.boot != nil && m.boot.Storage != nil {
-		entClient = m.boot.Storage.EntClient()
+		repStore = m.boot.Storage.ReputationStore(logger())
+		paymentClient = m.boot.Storage.PaymentClient()
 	}
 
 	if pc != nil {
@@ -668,7 +670,7 @@ func (m *networkModule) Init(ctx context.Context, r appinit.Resolver) (*appinit.
 		entries = append(entries, appinit.CatalogEntry{Category: "payment", Description: "Blockchain payments (USDC on Base)", ConfigKey: "payment.enabled", Enabled: true, Tools: pt})
 
 		// P2P.
-		p2pc = initP2P(cfg, pc.wallet, pc, entClient, fv.Secrets, m.bus, m.boot.IdentityKey, m.boot.PQSigningKeySeed, m.boot.LangoDir)
+		p2pc = initP2P(cfg, pc.wallet, pc, repStore, paymentClient, fv.Secrets, m.bus, m.boot.IdentityKey, m.boot.PQSigningKeySeed, m.boot.LangoDir)
 		if p2pc != nil {
 			// P2P Node lifecycle.
 			if p2pc.node != nil {
@@ -943,11 +945,11 @@ func (m *extensionModule) Init(ctx context.Context, r appinit.Resolver) (*appini
 	}
 
 	// Observability.
-	var entClient *ent.Client
+	var tokenStore *token.EntTokenStore
 	if m.boot != nil && m.boot.Storage != nil {
-		entClient = m.boot.Storage.EntClient()
+		tokenStore = m.boot.Storage.TokenStore()
 	}
-	obsc := initObservability(cfg, entClient, m.bus)
+	obsc := initObservability(cfg, tokenStore, m.bus)
 	if obsc == nil {
 		entries = append(entries, appinit.CatalogEntry{Category: "observability", Description: "Metrics & health (disabled)", ConfigKey: "observability.enabled", Enabled: false})
 	}
