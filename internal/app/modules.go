@@ -290,7 +290,9 @@ func (m *intelligenceModule) Init(ctx context.Context, r appinit.Resolver) (*app
 	}
 	if m.boot != nil && m.boot.Storage != nil {
 		ontologyDeps = m.boot.Storage.OntologyDeps()
-		rawDB = m.boot.Storage.FTSDB()
+	}
+	if entStore, ok := store.(*session.EntStore); ok {
+		rawDB = entStore.DB()
 	}
 	ontologyResult, err := initOntology(ctx, ontologyDeps, cfg, graphStoreForOntology)
 	if err != nil {

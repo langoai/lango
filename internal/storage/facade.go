@@ -202,15 +202,6 @@ func (f *Facade) OpenSessionStore(opts ...session.StoreOption) (session.Store, e
 	return f.openSession(opts...)
 }
 
-// FTSDB exposes the shared SQLite handle only for domain-specific FTS index
-// initialization while broader raw DB access remains hidden from app/CLI code.
-func (f *Facade) FTSDB() *sql.DB {
-	if f == nil {
-		return nil
-	}
-	return f.rawDB
-}
-
 func (f *Facade) KeyRegistry() *security.KeyRegistry {
 	if f == nil || f.keyRegistry == nil {
 		return nil
