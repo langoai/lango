@@ -63,12 +63,12 @@ make install
 You can also install directly with `go install`:
 
 ```bash
-go install -tags "fts5" github.com/langoai/lango/cmd/lango@latest
+go install github.com/langoai/lango/cmd/lango@latest
 ```
 
 !!! note "`make build` vs `go install`"
 
-    `make build` uses the default `fts5` build. If you use `go install`, pass `-tags "fts5"` to match the default runtime. Optional legacy `vec` integrations are no longer part of the default build.
+    `make build` and `go install` both use the default runtime with FTS5 enabled. Optional legacy `vec` integrations are not part of the default build.
 
 ## Verify Installation
 

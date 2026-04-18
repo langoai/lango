@@ -18,7 +18,7 @@ import (
 )
 
 // newFTS5TestStore creates a store with both Ent and FTS5 indexes wired up.
-// Skips if FTS5 is not available (build without -tags fts5).
+// Skips if FTS5 is unavailable in the current SQLite runtime.
 func newFTS5TestStore(t *testing.T) (*Store, *sql.DB) {
 	t.Helper()
 
@@ -32,7 +32,7 @@ func newFTS5TestStore(t *testing.T) (*Store, *sql.DB) {
 	t.Cleanup(func() { rawDB.Close() })
 
 	if !search.ProbeFTS5(rawDB) {
-		t.Skip("FTS5 not available (build with -tags fts5)")
+		t.Skip("FTS5 not available in current SQLite runtime")
 	}
 
 	logger := zap.NewNop().Sugar()

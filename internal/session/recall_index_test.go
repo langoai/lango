@@ -14,7 +14,7 @@ import (
 func skipWithoutFTS5Recall(t *testing.T, store *EntStore) {
 	t.Helper()
 	if !search.ProbeFTS5(store.DB()) {
-		t.Skip("FTS5 not available (build with -tags fts5)")
+		t.Skip("FTS5 not available in current SQLite runtime")
 	}
 }
 

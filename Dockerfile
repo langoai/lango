@@ -13,8 +13,8 @@ COPY . .
 ARG VERSION=dev
 ARG BUILD_TIME=unknown
 
-# Build the default runtime with FTS5 enabled.
-RUN go build -tags "fts5" -ldflags="-s -w -X main.Version=${VERSION} -X main.BuildTime=${BUILD_TIME}" -o lango ./cmd/lango
+# Build the default runtime.
+RUN go build -ldflags="-s -w -X main.Version=${VERSION} -X main.BuildTime=${BUILD_TIME}" -o lango ./cmd/lango
 
 # Runtime image
 FROM debian:bookworm-slim

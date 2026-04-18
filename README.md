@@ -880,7 +880,7 @@ If no `agents/<name>/` directory exists, the sub-agent uses its built-in instruc
 
 Lango supports embedding-based retrieval-augmented generation (RAG) to inject relevant context into agent prompts automatically.
 
-> **Build tag required:** The default build uses FTS5-only search. To enable semantic vector search (embedding/RAG), build with `-tags "fts5,vec"`. Without the `vec` tag, the embedding system gracefully degrades and vector operations are skipped.
+> **Default runtime:** FTS5 search is built in to the normal runtime. To enable semantic vector search (embedding/RAG), build with `-tags "vec"`. Without the `vec` tag, the embedding system gracefully degrades and vector operations are skipped.
 
 ### Supported Providers
 

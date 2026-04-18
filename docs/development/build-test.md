@@ -12,7 +12,6 @@ The default runtime does **not** require CGO. A C compiler is only needed if you
 
 | Tag | Purpose | Required? |
 |-----|---------|-----------|
-| `fts5` | SQLite FTS5 full-text search | Yes (default) |
 | `vec` | Legacy sqlite-vec semantic vector search integration | Optional |
 | `kms_aws` | AWS KMS signer provider | Optional |
 | `kms_gcp` | GCP Cloud KMS signer provider | Optional |
@@ -21,26 +20,26 @@ The default runtime does **not** require CGO. A C compiler is only needed if you
 | `kms_all` | All KMS providers above | Optional |
 | `integration` | Include integration tests | Optional |
 
-The `fts5` tag is the default runtime. Add `vec` only if you explicitly want the legacy sqlite-vec integration. KMS tags pull in cloud-specific SDKs and are only needed when using HSM or cloud key management for P2P signing. Without any `kms_*` tag, stub providers are compiled in and KMS features are unavailable.
+FTS5 is part of the default runtime. Add `vec` only if you explicitly want the legacy sqlite-vec integration. KMS tags pull in cloud-specific SDKs and are only needed when using HSM or cloud key management for P2P signing. Without any `kms_*` tag, stub providers are compiled in and KMS features are unavailable.
 
 ```bash
-# FTS5-only build (default)
-go build -tags fts5 ./cmd/lango
+# Default build (FTS5 included)
+go build ./cmd/lango
 
 # Optional legacy build with sqlite-vec integration
-CGO_ENABLED=1 go build -tags "fts5,vec" ./cmd/lango
+CGO_ENABLED=1 go build -tags "vec" ./cmd/lango
 
 # Build with AWS KMS support
-go build -tags "fts5,kms_aws" ./cmd/lango
+go build -tags "kms_aws" ./cmd/lango
 
 # Build with all KMS providers + vector search
-CGO_ENABLED=1 go build -tags "fts5,vec,kms_all" ./cmd/lango
+CGO_ENABLED=1 go build -tags "vec,kms_all" ./cmd/lango
 
 # Run integration tests
-go test -tags "fts5,integration" ./...
+go test -tags "integration" ./...
 ```
 
-The Makefile defaults to `-tags "fts5"` for normal `build` and `test` targets.
+The Makefile uses the default runtime for normal `build` and `test` targets.
 
 ## Makefile Targets
 

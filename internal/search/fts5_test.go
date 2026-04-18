@@ -23,7 +23,7 @@ func openTestDB(t *testing.T) *sql.DB {
 func skipWithoutFTS5(t *testing.T, db *sql.DB) {
 	t.Helper()
 	if !ProbeFTS5(db) {
-		t.Skip("FTS5 not available (build with -tags fts5)")
+		t.Skip("FTS5 not available in current SQLite runtime")
 	}
 }
 

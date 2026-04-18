@@ -8,7 +8,7 @@ LDFLAGS      := -ldflags "-X main.Version=$(VERSION) -X main.BuildTime=$(BUILD_T
 
 # Go parameters
 GOCMD    := go
-GOTAGS   := -tags "fts5"
+GOTAGS   :=
 GOBUILD  := $(GOCMD) build $(GOTAGS)
 GOCLEAN  := $(GOCMD) clean
 GOTEST   := $(GOCMD) test $(GOTAGS)
