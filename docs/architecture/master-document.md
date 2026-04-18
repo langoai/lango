@@ -65,7 +65,7 @@ Every downstream audit or plan must declare exactly one primary capability area.
 
 ### Sovereign Runtime & Operator UX
 
-Providers, agent runtime, channels, cockpit, settings, status, session handling, logging, and core tool surfaces.
+Providers, agent runtime, channels, cockpit, operator-facing settings, status, help, session handling, logging, core tool surfaces, and default behavior.
 
 ### Knowledge & Intelligence Capital
 
@@ -85,7 +85,7 @@ Workflow, background tasks, cron, RunLedger, provenance, and hooks.
 
 ### Extensibility & Developer Clarity
 
-MCP, extension packs, architecture boundaries, docs truthfulness, CLI surface clarity, and duplicate cleanup.
+MCP, extension packs, architecture boundaries, extension points, developer-doc truthfulness, and duplicate cleanup.
 
 ## Feature Audit Framework
 
@@ -123,6 +123,7 @@ Every audit record must include these fields:
 
 The `capability area` field means the single primary capability area for the audit or plan.
 The `execution track` field means the single primary execution track for the audit or plan.
+The canonical empty value for `secondary capability areas` and `secondary tracks` is `none`.
 Downstream docs must not invent new capability areas or track names; new names must be added here first.
 
 ### Downstream Precedence Rule
@@ -164,12 +165,12 @@ Architecture boundary, naming, documentation, and codebase clarity improvements.
 
 - Every downstream audit or plan must declare exactly one primary capability area; any other affected capability areas are secondary capability areas only.
 - Every downstream audit or plan must declare exactly one primary execution track; any other affected tracks are secondary tracks only.
-- `Sovereign Runtime & Operator UX` binds to `Stabilization Track`; it may override to `UX Clarity Track` only when the work's main responsibility is simplifying operator flows, settings, cockpit behavior, CLI defaults, or other user-facing surface clarity.
+- `Sovereign Runtime & Operator UX` binds to `Stabilization Track`; it may override to `UX Clarity Track` only when the work's main responsibility is simplifying operator flows, operator-facing settings, cockpit behavior, CLI defaults, help, or other user-facing surface clarity.
 - `Knowledge & Intelligence Capital` binds to `Stabilization Track`; secondary track: `Consolidation Track` when overlapping systems need cleanup.
-- `External Collaboration & Economic Exchange` binds to `P2P Knowledge Exchange Track`; secondary track: `Leader-Led Team Execution Track` for later-stage team execution work.
+- `External Collaboration & Economic Exchange` binds to `P2P Knowledge Exchange Track` for Phase 1-2 style work; it overrides to `Leader-Led Team Execution Track` when the work's main responsibility is team formation, role coordination, delegated budget control, or shared artifacts for Phase 3 execution.
 - `Trust, Security & Policy` binds to `Stabilization Track`; secondary track: none unless a downstream audit explicitly identifies one.
 - `Execution, Continuity & Accountability` binds to `Stabilization Track`; secondary track: `Consolidation Track`.
-- `Extensibility & Developer Clarity` binds to `Developer Clarity Track`; it may override to `UX Clarity Track` only when the work is user-facing simplification or default cleanup.
+- `Extensibility & Developer Clarity` binds to `Developer Clarity Track`; it owns developer-facing architecture boundaries, extension points, developer-doc truthfulness, and duplicate cleanup.
 
 ## Near-Term Priorities
 
