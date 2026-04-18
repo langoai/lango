@@ -4,8 +4,11 @@
 
 - Primary capability area: `External Collaboration & Economic Exchange`
 - Primary execution track: `P2P Knowledge Exchange Track`
-- Secondary capability areas: none
-- Secondary tracks: none
+- Secondary capability areas:
+  - `Trust, Security & Policy`
+  - `Execution, Continuity & Accountability`
+- Secondary tracks:
+  - `Stabilization Track`
 
 This track charter follows `docs/architecture/master-document.md` as the top-level source of truth.
 
