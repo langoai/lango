@@ -186,7 +186,39 @@ Architecture boundary, naming, documentation, and codebase clarity improvements.
 - `Execution, Continuity & Accountability` binds to `Stabilization Track`; secondary track: `Consolidation Track`.
 - `Extensibility & Developer Clarity` binds to `Developer Clarity Track`; it owns developer-facing architecture boundaries, extension points, developer-doc truthfulness, and duplicate cleanup.
 
-## Near-Term Priorities
+## External Collaboration Decisions Captured So Far
+
+These decisions are already approved baseline guidance for downstream audits and track work.
+
+### Identity / Trust / Reputation
+
+- Trust is mixed: cryptographic identity continuity is the base, while real transaction and collaboration history is the center of reputation.
+- Endorsements and guarantees are secondary signals, and domain-specific agent reputation stays distinct from owner-level root trust.
+- Positive signals may accumulate automatically, but durable negative reputation impact requires dispute resolution or explicit adjudication.
+- New agents begin under constrained terms, and agents under a trusted owner inherit limited trust rather than full trust.
+
+### Knowledge Exchange Boundaries
+
+- Early external trade is bounded by allowlists plus explicit exportability policy defined by the user.
+- Private conversations, confidential material, and raw sensitive inputs are not tradeable by default.
+- Generalized or derived knowledge only becomes tradeable when user policy explicitly allows it.
+- The default external experience is reviewable deliverable exchange; limited execution opens only under higher trust, explicit approval, and strong policy controls.
+
+### Pricing / Negotiation / Settlement
+
+- Pricing is mixed: agents publish baseline rates and conditions, but concrete deals may negotiate from that baseline.
+- Early negotiation centers on price, delivery time, and deliverable scope or quality criteria.
+- Settlement is mixed: single-deliverable exchange is the default, and milestone settlement appears as scope grows.
+- On-chain stablecoin is the trust anchor, while off-chain accrual and dynamic credit limits open only after trust is established.
+
+### Team Formation and Shared Artifacts
+
+- Team formation is mixed: direct invitation is the default, with brief-based recruitment or bidding available when needed.
+- Role assignment starts with standard templates, while custom roles remain available when necessary.
+- Contracting and budget control stay centralized with the leader by default, with only narrow delegated authority.
+- Shared workspaces are leader-owned by default and selectively exposed by scope, role, and contract; shared artifact flow defaults to snapshot or package delivery, with live collaboration reserved for higher-trust cases and explicit permission.
+
+## Near-Term Sequencing
 
 1. Audit `External Collaboration & Economic Exchange`.
 2. Audit `Trust, Security & Policy`.
