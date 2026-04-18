@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	entsql "entgo.io/ent/dialect/sql"
 	"errors"
 	"fmt"
 	"io"
@@ -14,6 +15,11 @@ import (
 	"github.com/langoai/lango/internal/configstore"
 	"github.com/langoai/lango/internal/dbopen"
 	"github.com/langoai/lango/internal/ent"
+	entauditlog "github.com/langoai/lango/internal/ent/auditlog"
+	entinquiry "github.com/langoai/lango/internal/ent/inquiry"
+	entlearning "github.com/langoai/lango/internal/ent/learning"
+	"github.com/langoai/lango/internal/ent/workflowrun"
+	peerrep "github.com/langoai/lango/internal/p2p/reputation"
 	sec "github.com/langoai/lango/internal/security"
 	"github.com/langoai/lango/internal/session"
 )
@@ -233,6 +239,36 @@ func (s *Server) dispatch(ctx context.Context, req Request) (interface{}, error)
 			return nil, err
 		}
 		return s.recallSummary(ctx, payload)
+	case methodLearningHistory:
+		var payload LearningHistoryRequest
+		if err := decodePayload(req.Payload, &payload); err != nil {
+			return nil, err
+		}
+		return s.learningHistory(ctx, payload)
+	case methodPendingInquiries:
+		var payload PendingInquiriesRequest
+		if err := decodePayload(req.Payload, &payload); err != nil {
+			return nil, err
+		}
+		return s.pendingInquiries(ctx, payload)
+	case methodWorkflowRuns:
+		var payload WorkflowRunsRequest
+		if err := decodePayload(req.Payload, &payload); err != nil {
+			return nil, err
+		}
+		return s.workflowRuns(ctx, payload)
+	case methodAlerts:
+		var payload AlertsRequest
+		if err := decodePayload(req.Payload, &payload); err != nil {
+			return nil, err
+		}
+		return s.alerts(ctx, payload)
+	case methodReputationGet:
+		var payload ReputationGetRequest
+		if err := decodePayload(req.Payload, &payload); err != nil {
+			return nil, err
+		}
+		return s.reputationGet(ctx, payload)
 	case methodOpenDB:
 		var payload OpenDBRequest
 		if err := decodePayload(req.Payload, &payload); err != nil {
@@ -695,6 +731,160 @@ func (s *Server) recallSummary(ctx context.Context, req RecallSummaryRequest) (R
 		return RecallSummaryResult{}, err
 	}
 	return RecallSummaryResult{Summary: summary}, nil
+}
+
+func (s *Server) learningHistory(ctx context.Context, req LearningHistoryRequest) (LearningHistoryResult, error) {
+	s.mu.Lock()
+	client := s.client
+	s.mu.Unlock()
+	if client == nil {
+		return LearningHistoryResult{}, fmt.Errorf("database not opened")
+	}
+	limit := req.Limit
+	if limit <= 0 {
+		limit = 20
+	}
+	rows, err := client.Learning.Query().
+		Order(entlearning.ByCreatedAt(entsql.OrderDesc())).
+		Limit(limit).
+		All(ctx)
+	if err != nil {
+		return LearningHistoryResult{}, err
+	}
+	result := LearningHistoryResult{Entries: make([]LearningHistoryRecord, 0, len(rows))}
+	for _, row := range rows {
+		result.Entries = append(result.Entries, LearningHistoryRecord{
+			ID:         row.ID.String(),
+			Trigger:    row.Trigger,
+			Category:   string(row.Category),
+			Diagnosis:  row.Diagnosis,
+			Fix:        row.Fix,
+			Confidence: row.Confidence,
+			CreatedAt:  row.CreatedAt,
+		})
+	}
+	return result, nil
+}
+
+func (s *Server) pendingInquiries(ctx context.Context, req PendingInquiriesRequest) (PendingInquiriesResult, error) {
+	s.mu.Lock()
+	client := s.client
+	s.mu.Unlock()
+	if client == nil {
+		return PendingInquiriesResult{}, fmt.Errorf("database not opened")
+	}
+	limit := req.Limit
+	if limit <= 0 {
+		limit = 20
+	}
+	rows, err := client.Inquiry.Query().
+		Where(entinquiry.StatusEQ(entinquiry.StatusPending)).
+		Order(entinquiry.ByCreatedAt()).
+		Limit(limit).
+		All(ctx)
+	if err != nil {
+		return PendingInquiriesResult{}, err
+	}
+	result := PendingInquiriesResult{Entries: make([]PendingInquiryRecord, 0, len(rows))}
+	for _, row := range rows {
+		result.Entries = append(result.Entries, PendingInquiryRecord{
+			ID:       row.ID.String(),
+			Topic:    row.Topic,
+			Question: row.Question,
+			Priority: string(row.Priority),
+			Created:  row.CreatedAt,
+		})
+	}
+	return result, nil
+}
+
+func (s *Server) workflowRuns(ctx context.Context, req WorkflowRunsRequest) (WorkflowRunsResult, error) {
+	s.mu.Lock()
+	client := s.client
+	s.mu.Unlock()
+	if client == nil {
+		return WorkflowRunsResult{}, fmt.Errorf("database not opened")
+	}
+	limit := req.Limit
+	if limit <= 0 {
+		limit = 20
+	}
+	rows, err := client.WorkflowRun.Query().
+		Order(workflowrun.ByStartedAt(entsql.OrderDesc())).
+		Limit(limit).
+		All(ctx)
+	if err != nil {
+		return WorkflowRunsResult{}, err
+	}
+	result := WorkflowRunsResult{Runs: make([]WorkflowRunRecord, 0, len(rows))}
+	for _, row := range rows {
+		result.Runs = append(result.Runs, WorkflowRunRecord{
+			RunID:          row.ID.String(),
+			WorkflowName:   row.WorkflowName,
+			Status:         string(row.Status),
+			TotalSteps:     row.TotalSteps,
+			CompletedSteps: row.CompletedSteps,
+			StartedAt:      row.StartedAt,
+		})
+	}
+	return result, nil
+}
+
+func (s *Server) alerts(ctx context.Context, req AlertsRequest) (AlertsResult, error) {
+	s.mu.Lock()
+	client := s.client
+	s.mu.Unlock()
+	if client == nil {
+		return AlertsResult{}, fmt.Errorf("database not opened")
+	}
+	rows, err := client.AuditLog.Query().
+		Where(
+			entauditlog.ActionEQ(entauditlog.Action("alert")),
+			entauditlog.TimestampGTE(req.From),
+		).
+		Order(entauditlog.ByTimestamp(entsql.OrderDesc())).
+		All(ctx)
+	if err != nil {
+		return AlertsResult{}, err
+	}
+	result := AlertsResult{Alerts: make([]AlertRecord, 0, len(rows))}
+	for _, row := range rows {
+		result.Alerts = append(result.Alerts, AlertRecord{
+			ID:        row.ID.String(),
+			Type:      row.Target,
+			Actor:     row.Actor,
+			Details:   row.Details,
+			Timestamp: row.Timestamp,
+		})
+	}
+	return result, nil
+}
+
+func (s *Server) reputationGet(ctx context.Context, req ReputationGetRequest) (ReputationGetResult, error) {
+	s.mu.Lock()
+	client := s.client
+	s.mu.Unlock()
+	if client == nil {
+		return ReputationGetResult{}, fmt.Errorf("database not opened")
+	}
+	store := peerrep.NewStore(client, nil)
+	details, err := store.GetDetails(ctx, req.PeerDID)
+	if err != nil {
+		return ReputationGetResult{}, err
+	}
+	if details == nil {
+		return ReputationGetResult{PeerDID: req.PeerDID, Found: false}, nil
+	}
+	return ReputationGetResult{
+		PeerDID:             details.PeerDID,
+		TrustScore:          details.TrustScore,
+		SuccessfulExchanges: details.SuccessfulExchanges,
+		FailedExchanges:     details.FailedExchanges,
+		TimeoutCount:        details.TimeoutCount,
+		FirstSeen:           details.FirstSeen,
+		LastInteraction:     details.LastInteraction,
+		Found:               true,
+	}, nil
 }
 
 type serverPayloadProtector struct {

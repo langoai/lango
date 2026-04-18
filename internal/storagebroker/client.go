@@ -44,6 +44,11 @@ type API interface {
 	RecallProcessPending(ctx context.Context) error
 	RecallSearch(ctx context.Context, query string, limit int) ([]search.SearchResult, error)
 	RecallGetSummary(ctx context.Context, key string) (string, error)
+	LearningHistory(ctx context.Context, limit int) (LearningHistoryResult, error)
+	PendingInquiries(ctx context.Context, limit int) (PendingInquiriesResult, error)
+	WorkflowRuns(ctx context.Context, limit int) (WorkflowRunsResult, error)
+	Alerts(ctx context.Context, from time.Time) (AlertsResult, error)
+	ReputationGet(ctx context.Context, peerDID string) (ReputationGetResult, error)
 	Close(ctx context.Context) error
 }
 
@@ -280,6 +285,46 @@ func (c *Client) RecallGetSummary(ctx context.Context, key string) (string, erro
 		return "", err
 	}
 	return result.Summary, nil
+}
+
+func (c *Client) LearningHistory(ctx context.Context, limit int) (LearningHistoryResult, error) {
+	var result LearningHistoryResult
+	if err := c.call(ctx, methodLearningHistory, LearningHistoryRequest{Limit: limit}, &result); err != nil {
+		return LearningHistoryResult{}, err
+	}
+	return result, nil
+}
+
+func (c *Client) PendingInquiries(ctx context.Context, limit int) (PendingInquiriesResult, error) {
+	var result PendingInquiriesResult
+	if err := c.call(ctx, methodPendingInquiries, PendingInquiriesRequest{Limit: limit}, &result); err != nil {
+		return PendingInquiriesResult{}, err
+	}
+	return result, nil
+}
+
+func (c *Client) WorkflowRuns(ctx context.Context, limit int) (WorkflowRunsResult, error) {
+	var result WorkflowRunsResult
+	if err := c.call(ctx, methodWorkflowRuns, WorkflowRunsRequest{Limit: limit}, &result); err != nil {
+		return WorkflowRunsResult{}, err
+	}
+	return result, nil
+}
+
+func (c *Client) Alerts(ctx context.Context, from time.Time) (AlertsResult, error) {
+	var result AlertsResult
+	if err := c.call(ctx, methodAlerts, AlertsRequest{From: from}, &result); err != nil {
+		return AlertsResult{}, err
+	}
+	return result, nil
+}
+
+func (c *Client) ReputationGet(ctx context.Context, peerDID string) (ReputationGetResult, error) {
+	var result ReputationGetResult
+	if err := c.call(ctx, methodReputationGet, ReputationGetRequest{PeerDID: peerDID}, &result); err != nil {
+		return ReputationGetResult{}, err
+	}
+	return result, nil
 }
 
 func (c *Client) Close(ctx context.Context) error {

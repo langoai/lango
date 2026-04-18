@@ -36,6 +36,11 @@ const (
 	methodRecallProcess     = "recall_process_pending"
 	methodRecallSearch      = "recall_search"
 	methodRecallSummary     = "recall_get_summary"
+	methodLearningHistory   = "learning_history"
+	methodPendingInquiries  = "pending_inquiries"
+	methodWorkflowRuns      = "workflow_runs"
+	methodAlerts            = "alerts"
+	methodReputationGet     = "reputation_get"
 	methodShutdown          = "shutdown"
 )
 
@@ -247,6 +252,88 @@ type RecallSummaryRequest struct {
 
 type RecallSummaryResult struct {
 	Summary string `json:"summary"`
+}
+
+type LearningHistoryRequest struct {
+	Limit int `json:"limit"`
+}
+
+type LearningHistoryResult struct {
+	Entries []LearningHistoryRecord `json:"entries"`
+}
+
+type LearningHistoryRecord struct {
+	ID         string    `json:"id"`
+	Trigger    string    `json:"trigger"`
+	Category   string    `json:"category"`
+	Diagnosis  string    `json:"diagnosis"`
+	Fix        string    `json:"fix"`
+	Confidence float64   `json:"confidence"`
+	CreatedAt  time.Time `json:"created_at"`
+}
+
+type PendingInquiriesRequest struct {
+	Limit int `json:"limit"`
+}
+
+type PendingInquiriesResult struct {
+	Entries []PendingInquiryRecord `json:"entries"`
+}
+
+type PendingInquiryRecord struct {
+	ID       string    `json:"id"`
+	Topic    string    `json:"topic"`
+	Question string    `json:"question"`
+	Priority string    `json:"priority"`
+	Created  time.Time `json:"created"`
+}
+
+type WorkflowRunsRequest struct {
+	Limit int `json:"limit"`
+}
+
+type WorkflowRunsResult struct {
+	Runs []WorkflowRunRecord `json:"runs"`
+}
+
+type WorkflowRunRecord struct {
+	RunID          string    `json:"run_id"`
+	WorkflowName   string    `json:"workflow_name"`
+	Status         string    `json:"status"`
+	TotalSteps     int       `json:"total_steps"`
+	CompletedSteps int       `json:"completed_steps"`
+	StartedAt      time.Time `json:"started_at"`
+}
+
+type AlertsRequest struct {
+	From time.Time `json:"from"`
+}
+
+type AlertsResult struct {
+	Alerts []AlertRecord `json:"alerts"`
+}
+
+type AlertRecord struct {
+	ID        string                 `json:"id"`
+	Type      string                 `json:"type"`
+	Actor     string                 `json:"actor"`
+	Details   map[string]interface{} `json:"details"`
+	Timestamp time.Time              `json:"timestamp"`
+}
+
+type ReputationGetRequest struct {
+	PeerDID string `json:"peer_did"`
+}
+
+type ReputationGetResult struct {
+	PeerDID             string    `json:"peer_did"`
+	TrustScore          float64   `json:"trust_score"`
+	SuccessfulExchanges int       `json:"successful_exchanges"`
+	FailedExchanges     int       `json:"failed_exchanges"`
+	TimeoutCount        int       `json:"timeout_count"`
+	FirstSeen           time.Time `json:"first_seen"`
+	LastInteraction     time.Time `json:"last_interaction"`
+	Found               bool      `json:"found"`
 }
 
 type ShutdownResult struct {
