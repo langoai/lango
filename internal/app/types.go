@@ -97,9 +97,9 @@ type App struct {
 	// extensions directory does not exist.
 	ExtensionRegistry *extension.Registry
 
-	// recallIndex is the FTS5-backed session recall index. nil when disabled
-	// or when FTS5 is unavailable in the build.
-	recallIndex *session.RecallIndex
+	// recallIndex is the session recall backend. It may be backed by the
+	// in-process Ent recall index or by broker-backed recall RPCs.
+	recallIndex recallBackend
 
 	// compactionSync is the indirect sync-point handle installed on the
 	// context adapter at build time. wireCompactionBuffer plugs the real

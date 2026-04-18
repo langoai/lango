@@ -55,6 +55,14 @@ func WithPayloadProtector(protector security.PayloadProtector) StoreOption {
 	}
 }
 
+// WithDB wires an existing raw DB handle into the store.
+// Used by shared-client/broker-owned setups that must expose DB() for FTS5.
+func WithDB(db *sql.DB) StoreOption {
+	return func(s *EntStore) {
+		s.db = db
+	}
+}
+
 // EntStore implements Store using entgo.io
 type EntStore struct {
 	client          *ent.Client

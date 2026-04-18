@@ -5,8 +5,8 @@
 
 ## 2. Broker Session Bootstrap APIs
 
-- [ ] 2.1 Add broker protocol/server/client methods for session bootstrap/store operations needed by runtime wiring.
-- [ ] 2.2 Add a broker-backed `session.Store` adapter and connect it to `storage.Facade.OpenSessionStore`.
+- [x] 2.1 Add broker protocol/server/client methods for session bootstrap/store operations needed by runtime wiring.
+- [x] 2.2 Add a broker-backed `session.Store` adapter and connect it to `storage.Facade.OpenSessionStore`.
 
 ## 3. Verification
 

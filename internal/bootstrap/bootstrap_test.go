@@ -11,7 +11,9 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/langoai/lango/internal/config"
+	"github.com/langoai/lango/internal/search"
 	"github.com/langoai/lango/internal/security/passphrase"
+	"github.com/langoai/lango/internal/session"
 	"github.com/langoai/lango/internal/storagebroker"
 )
 
@@ -161,4 +163,27 @@ func (s *stubBrokerClient) ConfigDelete(context.Context, string) error { return 
 func (s *stubBrokerClient) ConfigExists(context.Context, string) (storagebroker.ConfigExistsResult, error) {
 	return storagebroker.ConfigExistsResult{Exists: true}, nil
 }
-func (s *stubBrokerClient) Close(context.Context) error { return nil }
+func (s *stubBrokerClient) SessionCreate(context.Context, *session.Session) error { return nil }
+func (s *stubBrokerClient) SessionGet(context.Context, string) (*session.Session, error) {
+	return &session.Session{Key: "stub"}, nil
+}
+func (s *stubBrokerClient) SessionUpdate(context.Context, *session.Session) error { return nil }
+func (s *stubBrokerClient) SessionDelete(context.Context, string) error           { return nil }
+func (s *stubBrokerClient) SessionAppendMessage(context.Context, string, session.Message) error {
+	return nil
+}
+func (s *stubBrokerClient) SessionEnd(context.Context, string) error { return nil }
+func (s *stubBrokerClient) SessionList(context.Context) ([]session.SessionSummary, error) {
+	return nil, nil
+}
+func (s *stubBrokerClient) SessionGetSalt(context.Context, string) ([]byte, error) {
+	return nil, nil
+}
+func (s *stubBrokerClient) SessionSetSalt(context.Context, string, []byte) error { return nil }
+func (s *stubBrokerClient) RecallIndexSession(context.Context, string) error     { return nil }
+func (s *stubBrokerClient) RecallProcessPending(context.Context) error           { return nil }
+func (s *stubBrokerClient) RecallSearch(context.Context, string, int) ([]search.SearchResult, error) {
+	return nil, nil
+}
+func (s *stubBrokerClient) RecallGetSummary(context.Context, string) (string, error) { return "", nil }
+func (s *stubBrokerClient) Close(context.Context) error                              { return nil }

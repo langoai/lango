@@ -23,6 +23,7 @@ import (
 	"github.com/langoai/lango/internal/runledger"
 	"github.com/langoai/lango/internal/security"
 	"github.com/langoai/lango/internal/session"
+	"github.com/langoai/lango/internal/storagebroker"
 	"github.com/langoai/lango/internal/turntrace"
 	"github.com/langoai/lango/internal/workflow"
 	"go.uber.org/zap"
@@ -313,6 +314,19 @@ func (f *Facade) Close() error {
 func WithSessionStoreFactory(fn func(opts ...session.StoreOption) (session.Store, error)) Option {
 	return func(f *Facade) {
 		f.openSession = fn
+	}
+}
+
+// WithBrokerSessionStore uses a broker-backed session store adapter for
+// session.Store construction.
+func WithBrokerSessionStore(broker storagebroker.API) Option {
+	return func(f *Facade) {
+		if broker == nil || f == nil {
+			return
+		}
+		f.openSession = func(opts ...session.StoreOption) (session.Store, error) {
+			return NewBrokerSessionStore(broker, opts...), nil
+		}
 	}
 }
 

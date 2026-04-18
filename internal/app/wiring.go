@@ -290,7 +290,7 @@ type agentDeps struct {
 	prov           *provenanceValues
 	hookRegistry   *toolchain.HookRegistry
 	compactionSync *compactionSyncHolder
-	recallIndex    *session.RecallIndex
+	recallIndex    recallBackend
 	extReg         *extension.Registry
 }
 

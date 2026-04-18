@@ -1,6 +1,11 @@
 package storagebroker
 
-import "encoding/json"
+import (
+	"encoding/json"
+	"time"
+
+	"github.com/langoai/lango/internal/session"
+)
 
 const (
 	methodHealth            = "health"
@@ -18,6 +23,19 @@ const (
 	methodConfigList        = "config_list"
 	methodConfigDelete      = "config_delete"
 	methodConfigExists      = "config_exists"
+	methodSessionCreate     = "session_create"
+	methodSessionGet        = "session_get"
+	methodSessionUpdate     = "session_update"
+	methodSessionDelete     = "session_delete"
+	methodSessionAppend     = "session_append_message"
+	methodSessionEnd        = "session_end"
+	methodSessionList       = "session_list"
+	methodSessionGetSalt    = "session_get_salt"
+	methodSessionSetSalt    = "session_set_salt"
+	methodRecallIndex       = "recall_index_session"
+	methodRecallProcess     = "recall_process_pending"
+	methodRecallSearch      = "recall_search"
+	methodRecallSummary     = "recall_get_summary"
 	methodShutdown          = "shutdown"
 )
 
@@ -151,6 +169,84 @@ type ConfigProfileInfo struct {
 
 type ConfigListResult struct {
 	Profiles []ConfigProfileInfo `json:"profiles"`
+}
+
+type SessionCreateRequest struct {
+	Session session.Session `json:"session"`
+}
+
+type SessionGetRequest struct {
+	Key string `json:"key"`
+}
+
+type SessionGetResult struct {
+	Session *session.Session `json:"session,omitempty"`
+}
+
+type SessionUpdateRequest struct {
+	Session session.Session `json:"session"`
+}
+
+type SessionDeleteRequest struct {
+	Key string `json:"key"`
+}
+
+type SessionAppendMessageRequest struct {
+	Key     string          `json:"key"`
+	Message session.Message `json:"message"`
+}
+
+type SessionEndRequest struct {
+	Key string `json:"key"`
+}
+
+type SessionListResult struct {
+	Sessions []SessionSummaryRecord `json:"sessions"`
+}
+
+type SessionSummaryRecord struct {
+	Key       string    `json:"key"`
+	CreatedAt time.Time `json:"created_at"`
+	UpdatedAt time.Time `json:"updated_at"`
+}
+
+type SessionGetSaltRequest struct {
+	Name string `json:"name"`
+}
+
+type SessionGetSaltResult struct {
+	Salt []byte `json:"salt,omitempty"`
+}
+
+type SessionSetSaltRequest struct {
+	Name string `json:"name"`
+	Salt []byte `json:"salt"`
+}
+
+type RecallIndexRequest struct {
+	Key string `json:"key"`
+}
+
+type RecallSearchRequest struct {
+	Query string `json:"query"`
+	Limit int    `json:"limit"`
+}
+
+type RecallSearchResult struct {
+	Results []RecallSearchRecord `json:"results"`
+}
+
+type RecallSearchRecord struct {
+	RowID string  `json:"row_id"`
+	Rank  float64 `json:"rank"`
+}
+
+type RecallSummaryRequest struct {
+	Key string `json:"key"`
+}
+
+type RecallSummaryResult struct {
+	Summary string `json:"summary"`
 }
 
 type ShutdownResult struct {

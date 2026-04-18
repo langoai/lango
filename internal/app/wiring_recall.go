@@ -3,16 +3,30 @@ package app
 import (
 	"context"
 	"sync"
+	"time"
 
 	"github.com/langoai/lango/internal/adk"
 	"github.com/langoai/lango/internal/config"
 	"github.com/langoai/lango/internal/lifecycle"
+	"github.com/langoai/lango/internal/search"
 	"github.com/langoai/lango/internal/session"
 )
 
-// wireSessionRecall constructs the RecallIndex, registers its startup sweep,
+type recallBackend interface {
+	Search(ctx context.Context, query string, limit int) ([]search.SearchResult, error)
+	GetSummary(ctx context.Context, key string) (string, error)
+	ProcessPending(ctx context.Context) error
+	IndexSession(ctx context.Context, key string) error
+}
+
+type recallSessionProcessorSetter interface {
+	SetSessionEndProcessor(session.SessionEndProcessor)
+	SetHardEndTimeout(time.Duration)
+}
+
+// wireSessionRecall constructs the recall backend, registers its startup sweep,
 // and installs it as the session-end processor for hard-end flows.
-func wireSessionRecall(app *App) *session.RecallIndex {
+func wireSessionRecall(app *App) recallBackend {
 	if app == nil || app.Store == nil {
 		return nil
 	}
@@ -20,32 +34,36 @@ func wireSessionRecall(app *App) *session.RecallIndex {
 	if cfg.Enabled == nil || !*cfg.Enabled {
 		return nil
 	}
-	entStore, ok := app.Store.(*session.EntStore)
-	if !ok {
-		return nil
-	}
-	// When the store was constructed via NewEntStoreWithClient (e.g., under
-	// tests using testutil.TestEntClient), the raw sql.DB handle is not
-	// available and FTS5 cannot be wired. Recall is silently disabled.
-	if entStore.DB() == nil {
-		return nil
-	}
-	idx := session.NewRecallIndex(entStore)
-	// Eager EnsureReady to surface FTS5 availability early; if unavailable
-	// (no-fts5 build), the retriever returns an error on query and we log
-	// once here rather than on every turn.
-	if err := idx.EnsureReady(); err != nil {
-		logger().Warnw("session recall disabled — FTS5 unavailable", "error", err)
+
+	var idx recallBackend
+	if entStore, ok := app.Store.(*session.EntStore); ok {
+		if entStore.DB() == nil {
+			return nil
+		}
+		recallIdx := session.NewRecallIndex(entStore)
+		if err := recallIdx.EnsureReady(); err != nil {
+			logger().Warnw("session recall disabled — FTS5 unavailable", "error", err)
+			return nil
+		}
+		idx = recallIdx
+	} else if brokerStore, ok := app.Store.(interface {
+		recallSessionProcessorSetter
+		IndexSession(ctx context.Context, key string) error
+		ProcessPending(ctx context.Context) error
+		Search(ctx context.Context, query string, limit int) ([]search.SearchResult, error)
+		GetSummary(ctx context.Context, key string) (string, error)
+	}); ok {
+		idx = brokerStore
+	} else {
 		return nil
 	}
 
-	// Hard-end path: EntStore.End invokes this processor with a bounded timeout.
-	entStore.SetSessionEndProcessor(func(ctx context.Context, key string) error {
-		return idx.IndexSession(ctx, key)
-	})
+	if setter, ok := app.Store.(recallSessionProcessorSetter); ok {
+		setter.SetSessionEndProcessor(func(ctx context.Context, key string) error {
+			return idx.IndexSession(ctx, key)
+		})
+	}
 
-	// Startup sweep to reprocess sessions left pending from a previous run
-	// (crash, TUI hard-quit that timed out, soft-end from channel idle).
 	app.registry.Register(lifecycle.NewFuncComponent("session-recall-sweep",
 		func(ctx context.Context, wg *sync.WaitGroup) error {
 			wg.Add(1)
@@ -63,15 +81,15 @@ func wireSessionRecall(app *App) *session.RecallIndex {
 	return idx
 }
 
-// recallProviderAdapter adapts *session.RecallIndex to adk.RecallProvider
-// using the configured topN and minRank.
+// recallProviderAdapter adapts the recall backend to adk.RecallProvider using
+// the configured topN and minRank.
 type recallProviderAdapter struct {
-	idx     *session.RecallIndex
+	idx     recallBackend
 	topN    int
 	minRank float64
 }
 
-func newRecallProviderAdapter(idx *session.RecallIndex, cfg config.ContextRecallConfig) *recallProviderAdapter {
+func newRecallProviderAdapter(idx recallBackend, cfg config.ContextRecallConfig) *recallProviderAdapter {
 	resolved := cfg.ResolveRecall()
 	return &recallProviderAdapter{
 		idx:     idx,
@@ -84,7 +102,7 @@ func (a *recallProviderAdapter) RecallRecent(ctx context.Context, currentSession
 	if a.idx == nil {
 		return nil, nil
 	}
-	results, err := a.idx.Search(ctx, query, a.topN*2) // over-fetch to survive self-filter.
+	results, err := a.idx.Search(ctx, query, a.topN*2)
 	if err != nil {
 		return nil, err
 	}
@@ -93,10 +111,6 @@ func (a *recallProviderAdapter) RecallRecent(ctx context.Context, currentSession
 		if r.RowID == currentSessionKey {
 			continue
 		}
-		// FTS5 rank is a negative BM25 score (lower = better match). Convert
-		// to a positive comparability value: rankFloor is applied against
-		// |rank| so users can reason about minRank as "a stronger signal
-		// passes a higher floor."
 		score := -r.Rank
 		if score < a.minRank {
 			continue

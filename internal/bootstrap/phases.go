@@ -564,6 +564,7 @@ func phaseLoadProfile() Phase {
 				security.NewSecurityConfigStore(s.RawDB),
 				storage.WithEntClient(s.Client),
 				storage.WithRawDB(s.RawDB),
+				storage.WithBrokerSessionStore(s.Broker),
 				storage.WithSessionClient(s.Client),
 				storage.WithSessionDBPath(s.Result.Config.Session.DatabasePath),
 			)

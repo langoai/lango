@@ -9,6 +9,9 @@ import (
 	"os/exec"
 	"sync"
 	"time"
+
+	"github.com/langoai/lango/internal/search"
+	"github.com/langoai/lango/internal/session"
 )
 
 // API is the broker client contract used by bootstrap and higher layers.
@@ -28,6 +31,19 @@ type API interface {
 	ConfigList(ctx context.Context) (ConfigListResult, error)
 	ConfigDelete(ctx context.Context, name string) error
 	ConfigExists(ctx context.Context, name string) (ConfigExistsResult, error)
+	SessionCreate(ctx context.Context, sess *session.Session) error
+	SessionGet(ctx context.Context, key string) (*session.Session, error)
+	SessionUpdate(ctx context.Context, sess *session.Session) error
+	SessionDelete(ctx context.Context, key string) error
+	SessionAppendMessage(ctx context.Context, key string, msg session.Message) error
+	SessionEnd(ctx context.Context, key string) error
+	SessionList(ctx context.Context) ([]session.SessionSummary, error)
+	SessionGetSalt(ctx context.Context, name string) ([]byte, error)
+	SessionSetSalt(ctx context.Context, name string, salt []byte) error
+	RecallIndexSession(ctx context.Context, key string) error
+	RecallProcessPending(ctx context.Context) error
+	RecallSearch(ctx context.Context, query string, limit int) ([]search.SearchResult, error)
+	RecallGetSummary(ctx context.Context, key string) (string, error)
 	Close(ctx context.Context) error
 }
 
@@ -184,6 +200,86 @@ func (c *Client) ConfigExists(ctx context.Context, name string) (ConfigExistsRes
 		return ConfigExistsResult{}, err
 	}
 	return result, nil
+}
+
+func (c *Client) SessionCreate(ctx context.Context, sess *session.Session) error {
+	return c.call(ctx, methodSessionCreate, SessionCreateRequest{Session: *sess}, nil)
+}
+
+func (c *Client) SessionGet(ctx context.Context, key string) (*session.Session, error) {
+	var result SessionGetResult
+	if err := c.call(ctx, methodSessionGet, SessionGetRequest{Key: key}, &result); err != nil {
+		return nil, err
+	}
+	return result.Session, nil
+}
+
+func (c *Client) SessionUpdate(ctx context.Context, sess *session.Session) error {
+	return c.call(ctx, methodSessionUpdate, SessionUpdateRequest{Session: *sess}, nil)
+}
+
+func (c *Client) SessionDelete(ctx context.Context, key string) error {
+	return c.call(ctx, methodSessionDelete, SessionDeleteRequest{Key: key}, nil)
+}
+
+func (c *Client) SessionAppendMessage(ctx context.Context, key string, msg session.Message) error {
+	return c.call(ctx, methodSessionAppend, SessionAppendMessageRequest{Key: key, Message: msg}, nil)
+}
+
+func (c *Client) SessionEnd(ctx context.Context, key string) error {
+	return c.call(ctx, methodSessionEnd, SessionEndRequest{Key: key}, nil)
+}
+
+func (c *Client) SessionList(ctx context.Context) ([]session.SessionSummary, error) {
+	var result SessionListResult
+	if err := c.call(ctx, methodSessionList, nil, &result); err != nil {
+		return nil, err
+	}
+	out := make([]session.SessionSummary, 0, len(result.Sessions))
+	for _, row := range result.Sessions {
+		out = append(out, session.SessionSummary{Key: row.Key, CreatedAt: row.CreatedAt, UpdatedAt: row.UpdatedAt})
+	}
+	return out, nil
+}
+
+func (c *Client) SessionGetSalt(ctx context.Context, name string) ([]byte, error) {
+	var result SessionGetSaltResult
+	if err := c.call(ctx, methodSessionGetSalt, SessionGetSaltRequest{Name: name}, &result); err != nil {
+		return nil, err
+	}
+	return result.Salt, nil
+}
+
+func (c *Client) SessionSetSalt(ctx context.Context, name string, salt []byte) error {
+	return c.call(ctx, methodSessionSetSalt, SessionSetSaltRequest{Name: name, Salt: salt}, nil)
+}
+
+func (c *Client) RecallIndexSession(ctx context.Context, key string) error {
+	return c.call(ctx, methodRecallIndex, RecallIndexRequest{Key: key}, nil)
+}
+
+func (c *Client) RecallProcessPending(ctx context.Context) error {
+	return c.call(ctx, methodRecallProcess, nil, nil)
+}
+
+func (c *Client) RecallSearch(ctx context.Context, query string, limit int) ([]search.SearchResult, error) {
+	var result RecallSearchResult
+	if err := c.call(ctx, methodRecallSearch, RecallSearchRequest{Query: query, Limit: limit}, &result); err != nil {
+		return nil, err
+	}
+	out := make([]search.SearchResult, 0, len(result.Results))
+	for _, row := range result.Results {
+		out = append(out, search.SearchResult{RowID: row.RowID, Rank: row.Rank})
+	}
+	return out, nil
+}
+
+func (c *Client) RecallGetSummary(ctx context.Context, key string) (string, error) {
+	var result RecallSummaryResult
+	if err := c.call(ctx, methodRecallSummary, RecallSummaryRequest{Key: key}, &result); err != nil {
+		return "", err
+	}
+	return result.Summary, nil
 }
 
 func (c *Client) Close(ctx context.Context) error {

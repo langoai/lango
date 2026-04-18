@@ -15,6 +15,7 @@ import (
 	"github.com/langoai/lango/internal/dbopen"
 	"github.com/langoai/lango/internal/ent"
 	sec "github.com/langoai/lango/internal/security"
+	"github.com/langoai/lango/internal/session"
 )
 
 // Server owns the broker process state.
@@ -25,6 +26,8 @@ type Server struct {
 	masterKey      []byte
 	payloadKey     []byte
 	payloadVersion int
+	sessionStore   *session.EntStore
+	recallIndex    *session.RecallIndex
 	stopped        bool
 }
 
@@ -160,6 +163,76 @@ func (s *Server) dispatch(ctx context.Context, req Request) (interface{}, error)
 			return nil, err
 		}
 		return s.configExists(ctx, payload)
+	case methodSessionCreate:
+		var payload SessionCreateRequest
+		if err := decodePayload(req.Payload, &payload); err != nil {
+			return nil, err
+		}
+		return nil, s.sessionCreate(payload)
+	case methodSessionGet:
+		var payload SessionGetRequest
+		if err := decodePayload(req.Payload, &payload); err != nil {
+			return nil, err
+		}
+		return s.sessionGet(payload)
+	case methodSessionUpdate:
+		var payload SessionUpdateRequest
+		if err := decodePayload(req.Payload, &payload); err != nil {
+			return nil, err
+		}
+		return nil, s.sessionUpdate(payload)
+	case methodSessionDelete:
+		var payload SessionDeleteRequest
+		if err := decodePayload(req.Payload, &payload); err != nil {
+			return nil, err
+		}
+		return nil, s.sessionDelete(payload)
+	case methodSessionAppend:
+		var payload SessionAppendMessageRequest
+		if err := decodePayload(req.Payload, &payload); err != nil {
+			return nil, err
+		}
+		return nil, s.sessionAppend(payload)
+	case methodSessionEnd:
+		var payload SessionEndRequest
+		if err := decodePayload(req.Payload, &payload); err != nil {
+			return nil, err
+		}
+		return nil, s.sessionEnd(payload)
+	case methodSessionList:
+		return s.sessionList()
+	case methodSessionGetSalt:
+		var payload SessionGetSaltRequest
+		if err := decodePayload(req.Payload, &payload); err != nil {
+			return nil, err
+		}
+		return s.sessionGetSalt(payload)
+	case methodSessionSetSalt:
+		var payload SessionSetSaltRequest
+		if err := decodePayload(req.Payload, &payload); err != nil {
+			return nil, err
+		}
+		return nil, s.sessionSetSalt(payload)
+	case methodRecallIndex:
+		var payload RecallIndexRequest
+		if err := decodePayload(req.Payload, &payload); err != nil {
+			return nil, err
+		}
+		return nil, s.recallIndexSession(ctx, payload)
+	case methodRecallProcess:
+		return nil, s.recallProcessPending(ctx)
+	case methodRecallSearch:
+		var payload RecallSearchRequest
+		if err := decodePayload(req.Payload, &payload); err != nil {
+			return nil, err
+		}
+		return s.recallSearch(ctx, payload)
+	case methodRecallSummary:
+		var payload RecallSummaryRequest
+		if err := decodePayload(req.Payload, &payload); err != nil {
+			return nil, err
+		}
+		return s.recallSummary(ctx, payload)
 	case methodOpenDB:
 		var payload OpenDBRequest
 		if err := decodePayload(req.Payload, &payload); err != nil {
@@ -201,6 +274,17 @@ func (s *Server) openDB(_ context.Context, req OpenDBRequest) (OpenDBResult, err
 	s.masterKey = append([]byte(nil), req.MasterKey...)
 	s.payloadKey = append([]byte(nil), req.PayloadKey...)
 	s.payloadVersion = req.PayloadVersion
+	s.sessionStore = session.NewEntStoreWithClient(client, session.WithDB(rawDB))
+	if len(s.payloadKey) > 0 {
+		s.sessionStore.SetPayloadProtector(&serverPayloadProtector{
+			key:     s.payloadKey,
+			version: s.payloadVersion,
+		})
+	}
+	s.recallIndex = session.NewRecallIndex(s.sessionStore)
+	if err := s.recallIndex.EnsureReady(); err != nil {
+		return OpenDBResult{}, err
+	}
 	return OpenDBResult{Opened: true}, nil
 }
 
@@ -449,6 +533,8 @@ func (s *Server) shutdown() ShutdownResult {
 		_ = s.rawDB.Close()
 		s.rawDB = nil
 	}
+	s.sessionStore = nil
+	s.recallIndex = nil
 	if s.masterKey != nil {
 		sec.ZeroBytes(s.masterKey)
 		s.masterKey = nil
@@ -459,6 +545,180 @@ func (s *Server) shutdown() ShutdownResult {
 	}
 	s.payloadVersion = 0
 	return ShutdownResult{ShuttingDown: true}
+}
+
+func (s *Server) requireSessionStore() (*session.EntStore, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.sessionStore == nil {
+		return nil, fmt.Errorf("session store not initialized")
+	}
+	return s.sessionStore, nil
+}
+
+func (s *Server) requireRecallIndex() (*session.RecallIndex, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.recallIndex == nil {
+		return nil, fmt.Errorf("recall index not initialized")
+	}
+	return s.recallIndex, nil
+}
+
+func (s *Server) sessionCreate(req SessionCreateRequest) error {
+	store, err := s.requireSessionStore()
+	if err != nil {
+		return err
+	}
+	return store.Create(&req.Session)
+}
+
+func (s *Server) sessionGet(req SessionGetRequest) (SessionGetResult, error) {
+	store, err := s.requireSessionStore()
+	if err != nil {
+		return SessionGetResult{}, err
+	}
+	sess, err := store.Get(req.Key)
+	if err != nil {
+		return SessionGetResult{}, err
+	}
+	return SessionGetResult{Session: sess}, nil
+}
+
+func (s *Server) sessionUpdate(req SessionUpdateRequest) error {
+	store, err := s.requireSessionStore()
+	if err != nil {
+		return err
+	}
+	return store.Update(&req.Session)
+}
+
+func (s *Server) sessionDelete(req SessionDeleteRequest) error {
+	store, err := s.requireSessionStore()
+	if err != nil {
+		return err
+	}
+	return store.Delete(req.Key)
+}
+
+func (s *Server) sessionAppend(req SessionAppendMessageRequest) error {
+	store, err := s.requireSessionStore()
+	if err != nil {
+		return err
+	}
+	return store.AppendMessage(req.Key, req.Message)
+}
+
+func (s *Server) sessionEnd(req SessionEndRequest) error {
+	store, err := s.requireSessionStore()
+	if err != nil {
+		return err
+	}
+	return store.End(req.Key)
+}
+
+func (s *Server) sessionList() (SessionListResult, error) {
+	store, err := s.requireSessionStore()
+	if err != nil {
+		return SessionListResult{}, err
+	}
+	rows, err := store.ListSessions(context.Background())
+	if err != nil {
+		return SessionListResult{}, err
+	}
+	out := make([]SessionSummaryRecord, 0, len(rows))
+	for _, row := range rows {
+		out = append(out, SessionSummaryRecord{Key: row.Key, CreatedAt: row.CreatedAt, UpdatedAt: row.UpdatedAt})
+	}
+	return SessionListResult{Sessions: out}, nil
+}
+
+func (s *Server) sessionGetSalt(req SessionGetSaltRequest) (SessionGetSaltResult, error) {
+	store, err := s.requireSessionStore()
+	if err != nil {
+		return SessionGetSaltResult{}, err
+	}
+	salt, err := store.GetSalt(req.Name)
+	if err != nil {
+		return SessionGetSaltResult{}, err
+	}
+	return SessionGetSaltResult{Salt: salt}, nil
+}
+
+func (s *Server) sessionSetSalt(req SessionSetSaltRequest) error {
+	store, err := s.requireSessionStore()
+	if err != nil {
+		return err
+	}
+	return store.SetSalt(req.Name, req.Salt)
+}
+
+func (s *Server) recallIndexSession(ctx context.Context, req RecallIndexRequest) error {
+	idx, err := s.requireRecallIndex()
+	if err != nil {
+		return err
+	}
+	return idx.IndexSession(ctx, req.Key)
+}
+
+func (s *Server) recallProcessPending(ctx context.Context) error {
+	idx, err := s.requireRecallIndex()
+	if err != nil {
+		return err
+	}
+	return idx.ProcessPending(ctx)
+}
+
+func (s *Server) recallSearch(ctx context.Context, req RecallSearchRequest) (RecallSearchResult, error) {
+	idx, err := s.requireRecallIndex()
+	if err != nil {
+		return RecallSearchResult{}, err
+	}
+	results, err := idx.Search(ctx, req.Query, req.Limit)
+	if err != nil {
+		return RecallSearchResult{}, err
+	}
+	out := make([]RecallSearchRecord, 0, len(results))
+	for _, row := range results {
+		out = append(out, RecallSearchRecord{RowID: row.RowID, Rank: row.Rank})
+	}
+	return RecallSearchResult{Results: out}, nil
+}
+
+func (s *Server) recallSummary(ctx context.Context, req RecallSummaryRequest) (RecallSummaryResult, error) {
+	idx, err := s.requireRecallIndex()
+	if err != nil {
+		return RecallSummaryResult{}, err
+	}
+	summary, err := idx.GetSummary(ctx, req.Key)
+	if err != nil {
+		return RecallSummaryResult{}, err
+	}
+	return RecallSummaryResult{Summary: summary}, nil
+}
+
+type serverPayloadProtector struct {
+	key     []byte
+	version int
+}
+
+func (p *serverPayloadProtector) EncryptPayload(plaintext []byte) ([]byte, []byte, int, error) {
+	ciphertext, nonce, err := sec.EncryptPayloadWithKey(p.key, plaintext)
+	if err != nil {
+		return nil, nil, 0, err
+	}
+	version := p.version
+	if version == 0 {
+		version = sec.PayloadKeyVersionV1
+	}
+	return ciphertext, nonce, version, nil
+}
+
+func (p *serverPayloadProtector) DecryptPayload(ciphertext, nonce []byte, keyVersion int) ([]byte, error) {
+	if keyVersion != 0 && p.version != 0 && keyVersion != p.version {
+		return nil, fmt.Errorf("unsupported payload key version %d", keyVersion)
+	}
+	return sec.DecryptPayloadWithKey(p.key, ciphertext, nonce)
 }
 
 func decodePayload(data json.RawMessage, out interface{}) error {
