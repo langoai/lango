@@ -127,8 +127,8 @@ func newWorkflowListCmd(bootLoader func() (*bootstrap.Result, error)) *cobra.Com
 			}
 			defer boot.Close()
 
-			engine := initEngine(boot)
-			if engine == nil {
+			reader := workflowRunStore(boot, nil)
+			if reader == nil {
 				return ErrWorkflowDisabled
 			}
 
@@ -149,7 +149,7 @@ func newWorkflowListCmd(bootLoader func() (*bootstrap.Result, error)) *cobra.Com
 				return w.Flush()
 			}
 
-			runs, err := engine.ListRuns(context.Background(), limit)
+			runs, err := reader.ListRuns(context.Background(), limit)
 			if err != nil {
 				return fmt.Errorf("list runs: %w", err)
 			}
@@ -187,8 +187,8 @@ func newWorkflowStatusCmd(bootLoader func() (*bootstrap.Result, error)) *cobra.C
 			}
 			defer boot.Close()
 
-			engine := initEngine(boot)
-			if engine == nil {
+			reader := workflowRunStore(boot, nil)
+			if reader == nil {
 				return ErrWorkflowDisabled
 			}
 
@@ -214,7 +214,7 @@ func newWorkflowStatusCmd(bootLoader func() (*bootstrap.Result, error)) *cobra.C
 				return nil
 			}
 
-			status, err := engine.Status(context.Background(), args[0])
+			status, err := reader.GetRunStatus(context.Background(), args[0])
 			if err != nil {
 				return fmt.Errorf("get status: %w", err)
 			}
@@ -280,8 +280,8 @@ func newWorkflowHistoryCmd(bootLoader func() (*bootstrap.Result, error)) *cobra.
 			}
 			defer boot.Close()
 
-			engine := initEngine(boot)
-			if engine == nil {
+			reader := workflowRunStore(boot, nil)
+			if reader == nil {
 				return ErrWorkflowDisabled
 			}
 
@@ -302,7 +302,7 @@ func newWorkflowHistoryCmd(bootLoader func() (*bootstrap.Result, error)) *cobra.
 				return w.Flush()
 			}
 
-			runs, err := engine.ListRuns(context.Background(), limit)
+			runs, err := reader.ListRuns(context.Background(), limit)
 			if err != nil {
 				return fmt.Errorf("list runs: %w", err)
 			}
